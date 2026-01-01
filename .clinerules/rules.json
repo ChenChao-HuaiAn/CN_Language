@@ -1,0 +1,244 @@
+{
+  "project": {
+    "name": "CN_Language",
+    "description": "中文编程语言项目，旨在为中文用户提供友好、直观的编程体验",
+    "version": "1.0.0",
+    "license": "MIT"
+  },
+  
+  "code_organization": {
+    "single_responsibility_principle": {
+      "description": "遵循单一职责原则",
+      "rules": [
+        "每个.c文件不超过500行",
+        "每个函数不超过50行",
+        "每个头文件只暴露必要的接口"
+      ]
+    },
+    
+    "directory_structure": {
+      "description": "项目目录结构规范",
+      "directories": {
+        "bin/": "包含所有编译生成的可执行文件",
+        "build/": "编译过程中生成的对象文件（.o文件）",
+        "docs/": "项目文档目录",
+        "examples/": "CN语言示例程序目录",
+        "scripts/": "构建脚本目录",
+        "src/": "C语言源代码目录",
+        "tests/": "C语言测试和调试文件目录",
+        "tools/": "工具脚本目录"
+      }
+    }
+  },
+  
+  "naming_conventions": {
+    "file_naming": {
+      "c_source_files": {
+        "prefix": "CN_",
+        "extension": ".c (源文件) 和 .h (头文件)",
+        "examples": [
+          "CN_main.c",
+          "CN_language.c",
+          "CN_lexer.c",
+          "CN_parser.c",
+          "CN_ast.h"
+        ]
+      },
+      "cn_source_files": {
+        "extension": ".cn",
+        "examples": [
+          "hello_world.cn",
+          "test_basic.cn"
+        ]
+      },
+      "executables": {
+        "main_interpreter": "cn_language.exe (Windows) / CN_Language (Linux)",
+        "debugger": "cn_debugger.exe",
+        "repl": "cn_repl.exe"
+      }
+    },
+    
+    "code_naming": {
+      "struct_prefix": "Stru_",
+      "function_prefix": "F_",
+      "enum_prefix": "Eum_",
+      "global_variable_prefix": "g_",
+      "constant_prefix": "CN_",
+      
+      "examples": {
+        "structs": "typedef struct Stru_LanguageCore_t Stru_LanguageCore_t;",
+        "functions": "Stru_LanguageCore_t* F_create_language_core(void);",
+        "enums": "enum Eum_TokenType { Eum_TOKEN_KEYWORD, Eum_TOKEN_IDENTIFIER };",
+        "constants": "#define CN_MAX_TOKEN_LENGTH 256"
+      }
+    },
+    
+    "naming_styles": {
+      "struct_names": "大驼峰命名法（PascalCase），以Stru_前缀开头，以_t结尾",
+      "function_names": "系统匈牙利命名法（Systems Hungarian），使用描述性中文或英文名称",
+      "variable_names": "小驼峰命名法，局部变量使用有意义名称",
+      "constant_names": "全大写，下划线分隔，以CN_前缀开头",
+      "enum_names": "大驼峰命名法，枚举值全大写，以枚举名开头"
+    }
+  },
+  
+  "coding_standards": {
+    "formatting": {
+      "indentation": "使用4个空格进行缩进（禁止使用制表符）",
+      "brace_style": "Allman风格（大括号单独成行）",
+      "line_length": "每行代码不超过120个字符",
+      "spacing": {
+        "operators": "运算符两侧添加空格",
+        "commas": "逗号后添加空格",
+        "control_statements": "控制语句关键字后添加空格"
+      }
+    },
+    
+    "comments": {
+      "file_header": "每个源文件开头应包含文件头注释，包含文件名、功能、作者、创建日期、修改历史、版权",
+      "function_comments": "每个函数前应添加注释说明，使用@brief、@param、@return、@note标签",
+      "inline_comments": "复杂逻辑处添加行内注释，使用中文清晰说明代码意图"
+    },
+    
+    "header_files": {
+      "include_guards": "每个头文件必须包含防止重复包含的保护",
+      "include_order": [
+        "对应的源文件头文件（如有）",
+        "C标准库头文件",
+        "第三方库头文件",
+        "项目其他头文件"
+      ]
+    }
+  },
+  
+  "cn_language_specifications": {
+    "character_set": "支持UTF-8编码，完全兼容中文字符",
+    "identifiers": "可以包含中文字符、英文字母、数字和下划线",
+    "keywords": {
+      "variable_declaration": ["变量", "整数", "小数", "字符串", "布尔", "数组"],
+      "control_structures": ["如果", "否则", "当", "循环", "中断", "继续"],
+      "functions": ["函数", "返回", "主程序"],
+      "logical_operators": ["与", "且", "或", "非"],
+      "literals": ["真", "假", "空"],
+      "modules": ["模块", "导入"]
+    },
+    
+    "data_types": {
+      "basic_types": ["整数", "小数", "字符串", "布尔"],
+      "composite_types": ["数组", "结构体", "枚举"],
+      "pointer_types": "使用*符号表示指针类型",
+      "reference_types": "使用&符号表示引用类型"
+    },
+    
+    "operators": {
+      "arithmetic": ["+", "-", "*", "/", "%"],
+      "comparison": ["==", "!=", "<", ">", "<=", ">="],
+      "logical": ["与", "且", "或", "非"],
+      "assignment": ["=", "+=", "-=", "*=", "/="],
+      "member_access": [".", "[]"]
+    }
+  },
+  
+  "development_workflow": {
+    "daily_development": {
+      "code_standard_check": [
+        "运行代码格式检查",
+        "确保符合单一职责原则",
+        "验证函数和文件大小限制"
+      ],
+      "debug_output": "禁止直接使用printf，必须使用CN_DEBUG宏进行调试输出",
+      "module_development_steps": [
+        "在docs/design/编写设计文档",
+        "在include/创建头文件",
+        "在src/实现功能（<500行/文件）",
+        "在tests/编写测试用例",
+        "在docs/api/更新API文档",
+        "创建模块README.md"
+      ]
+    },
+    
+    "documentation_requirements": {
+      "per_module": [
+        "README.md - 模块概述和使用说明",
+        "API.md - 接口文档",
+        "EXAMPLES.md - 使用示例",
+        "DESIGN.md - 设计原理"
+      ]
+    },
+    
+    "code_quality_standards": {
+      "function_standards": [
+        "每个函数不超过50行",
+        "函数功能单一明确",
+        "有完整的参数验证"
+      ],
+      "file_standards": [
+        "每个.c文件不超过500行",
+        "头文件只暴露必要接口",
+        "文件名清晰表达功能"
+      ],
+      "debug_standards": [
+        "禁止直接使用printf",
+        "使用CN_DEBUG宏进行调试输出",
+        "调试信息分级别管理"
+      ]
+    }
+  },
+  
+  "build_and_compilation": {
+    "build_system": "使用Makefile构建系统",
+    "debug_system": "集成CN_debug调试系统",
+    "compilation_scripts": {
+      "linux": "scripts/compile_linux.sh",
+      "windows": "scripts/compile_all.bat"
+    }
+  },
+  
+  "testing_strategy": {
+    "unit_tests": "覆盖所有公开接口",
+    "integration_tests": "验证模块协作",
+    "performance_tests": "确保编译效率",
+    "compatibility_tests": "跨平台支持"
+  },
+  
+  "development_phases": {
+    "phase_1": "基础架构和词法分析（第1-4周）",
+    "phase_2": "语法分析和抽象语法树（第5-8周）",
+    "phase_3": "代码生成和运行时（第9-12周）",
+    "phase_4": "系统编程支持和优化（第13-16周）"
+  },
+  
+  "tools_and_configuration": {
+    "code_formatting": "使用clang-format统一代码风格",
+    "pre_commit_hooks": "配置pre-commit hooks检查代码规范",
+    "documentation": "使用Doxygen生成API文档",
+    "continuous_integration": "设置持续集成流程"
+  },
+  
+  "milestone_checks": {
+    "weekly_checks": [
+      "代码是否符合规范",
+      "文档是否同步更新",
+      "调试输出是否规范",
+      "测试覆盖率是否达标"
+    ]
+  },
+  
+  "references": {
+    "specification_documents": [
+      "docs/specifications/CN_Language项目 技术规范和编码标准.md",
+      "docs/specifications/CN_Language项目 目录结构规范.md",
+      "docs/specifications/CN_Language 语法规范.md",
+      "docs/specifications/CN_Language项目 构建方法和编译流程.md"
+    ],
+    "design_documents": [
+      "docs/design/中文编程语言CN_Language开发规划.md"
+    ],
+    "api_documents": [
+      "docs/api/CN_debug_API.md"
+    ]
+  },
+  
+  "last_updated": "2026-01-02",
+  "maintainer": "CN_Language开发团队"
+}
