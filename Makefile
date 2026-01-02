@@ -38,6 +38,10 @@ INFRASTRUCTURE_SRC = \
     src/infrastructure/containers/hash_table/CN_hash_table.c \
     src/infrastructure/containers/hash_table/CN_hash_table_operations.c \
     src/infrastructure/containers/hash_table/CN_hash_table_utils.c \
+    src/infrastructure/containers/stack/CN_stack.c \
+    src/infrastructure/containers/stack/CN_stack_api.c \
+    src/infrastructure/containers/queue/CN_queue.c \
+    src/infrastructure/containers/queue/CN_queue_api.c \
     src/infrastructure/utils/CN_string.c
 
 # 核心层源文件
@@ -62,7 +66,9 @@ APPLICATION_SRC = \
 
 # 测试源文件
 TEST_SRC = \
-    tests/test_debug.c
+    tests/test_debug.c \
+    tests/infrastructure/containers/test_stack.c \
+    tests/infrastructure/containers/test_queue.c
 
 # ============================================================================
 # 目标文件定义
@@ -100,11 +106,14 @@ all: dirs $(INFRASTRUCTURE_LIB) $(CORE_LIB) $(APPLICATION_LIB) $(TEST_EXEC)
 dirs:
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers
+	@mkdir -p $(BUILD_DIR)/infrastructure/containers/stack
+	@mkdir -p $(BUILD_DIR)/infrastructure/containers/queue
 	@mkdir -p $(BUILD_DIR)/infrastructure/utils
 	@mkdir -p $(BUILD_DIR)/core/types
 	@mkdir -p $(BUILD_DIR)/core/lexer
 	@mkdir -p $(BUILD_DIR)/application/debugger
 	@mkdir -p $(BUILD_DIR)/tests
+	@mkdir -p $(BUILD_DIR)/tests/infrastructure/containers
 	@mkdir -p $(BIN_DIR)
 	@mkdir -p $(LIB_DIR)
 
