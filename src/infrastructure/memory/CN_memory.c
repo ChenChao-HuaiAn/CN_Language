@@ -12,6 +12,7 @@
 #include "CN_pool_allocator.h"
 #include "arena/CN_arena_allocator.h"
 #include "system/CN_system_allocator.h"
+#include "debug/CN_debug_allocator.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -121,40 +122,70 @@ static const Stru_CN_AllocatorInterface_t g_system_allocator_interface = {
 };
 
 // ============================================================================
-// 调试分配器实现（简化版）
+// 调试分配器实现（完整版）
 // ============================================================================
+
+// 全局调试分配器实例
+static Stru_CN_DebugAllocator_t* g_debug_allocator_instance = NULL;
 
 static void* debug_allocate(size_t size, const char* file, int line)
 {
-    // 调试信息输出
-    if (g_debug_enabled)
+    // 确保调试分配器已初始化
+    if (g_debug_allocator_instance == NULL)
     {
-        printf("[DEBUG] 分配内存: %zu 字节, 文件: %s, 行: %d\n", size, file, line);
+        // 使用默认配置创建调试分配器
+        Stru_CN_DebugConfig_t config = CN_DEBUG_CONFIG_DEFAULT;
+        config.enable_statistics = true;
+        config.track_allocations = true;
+        config.enable_leak_detection = true;
+        config.enable_boundary_check = true;
+        config.enable_double_free_check = true;
+        config.enable_memory_corruption_check = true;
+        
+        g_debug_allocator_instance = CN_debug_create(&config);
+        if (g_debug_allocator_instance == NULL)
+        {
+            // 创建失败，回退到系统分配器
+            return system_allocate(size, file, line);
+        }
     }
     
-    // 实际使用系统分配器
-    return system_allocate(size, file, line);
+    // 使用调试分配器分配内存
+    return CN_debug_alloc(g_debug_allocator_instance, size, file, line, "CN_memory调试分配");
 }
 
 static void debug_deallocate(void* ptr, const char* file, int line)
 {
-    if (g_debug_enabled)
+    if (ptr == NULL)
     {
-        printf("[DEBUG] 释放内存: 地址: %p, 文件: %s, 行: %d\n", ptr, file, line);
+        return;
     }
     
-    system_deallocate(ptr, file, line);
+    // 如果调试分配器未初始化，使用系统释放
+    if (g_debug_allocator_instance == NULL)
+    {
+        system_deallocate(ptr, file, line);
+        return;
+    }
+    
+    // 使用调试分配器释放内存
+    CN_debug_free(g_debug_allocator_instance, ptr, file, line);
 }
 
 static void* debug_reallocate(void* ptr, size_t new_size, const char* file, int line)
 {
-    if (g_debug_enabled)
+    // 如果调试分配器未初始化，使用系统重新分配
+    if (g_debug_allocator_instance == NULL)
     {
-        printf("[DEBUG] 重新分配内存: 原地址: %p, 新大小: %zu, 文件: %s, 行: %d\n", 
-               ptr, new_size, file, line);
+        if (ptr == NULL)
+        {
+            return debug_allocate(new_size, file, line);
+        }
+        return system_reallocate(ptr, new_size, file, line);
     }
     
-    return system_reallocate(ptr, new_size, file, line);
+    // 使用调试分配器重新分配内存
+    return CN_debug_realloc(g_debug_allocator_instance, ptr, new_size, file, line, "CN_memory调试重新分配");
 }
 
 // 调试分配器接口实例
@@ -403,6 +434,13 @@ bool CN_memory_init(Eum_CN_AllocatorType_t allocator_type)
 
 void CN_memory_shutdown(void)
 {
+    // 清理调试分配器资源
+    if (g_debug_allocator_instance != NULL)
+    {
+        CN_debug_destroy(g_debug_allocator_instance);
+        g_debug_allocator_instance = NULL;
+    }
+    
     // 清理对象池资源
     if (g_pool_allocator_instance != NULL)
     {
