@@ -34,6 +34,9 @@ LIB_DIR = lib
 # 基础设施层源文件
 INFRASTRUCTURE_SRC = \
     src/infrastructure/memory/CN_memory.c \
+    src/infrastructure/memory/system/CN_system_core.c \
+    src/infrastructure/memory/system/CN_system_operations.c \
+    src/infrastructure/memory/system/CN_system_utils.c \
     src/infrastructure/memory/pool/CN_pool_core.c \
     src/infrastructure/memory/pool/CN_pool_operations.c \
     src/infrastructure/memory/pool/CN_pool_management.c \
@@ -116,6 +119,7 @@ all: dirs $(INFRASTRUCTURE_LIB) $(CORE_LIB) $(APPLICATION_LIB) $(TEST_EXEC)
 # 创建必要的目录
 dirs:
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory
+	@mkdir -p $(BUILD_DIR)/infrastructure/memory/system
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory/pool
 	@mkdir -p $(BUILD_DIR)/tests/memory
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers

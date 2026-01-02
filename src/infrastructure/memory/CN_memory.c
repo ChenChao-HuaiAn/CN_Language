@@ -11,6 +11,7 @@
 #include "CN_memory.h"
 #include "CN_pool_allocator.h"
 #include "arena/CN_arena_allocator.h"
+#include "system/CN_system_allocator.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -42,94 +43,78 @@ typedef struct Stru_CN_MemoryStats_t
 static Stru_CN_MemoryStats_t g_memory_stats = {0};
 
 // ============================================================================
-// 系统分配器实现
+// 系统分配器适配器
 // ============================================================================
 
+// 全局系统分配器实例（使用默认配置）
+static Stru_CN_SystemAllocator_t* g_system_allocator_instance = NULL;
+
+// 系统分配器适配函数
 static void* system_allocate(size_t size, const char* file, int line)
 {
-    (void)file; // 暂未使用
-    (void)line; // 暂未使用
-    
-    void* ptr = malloc(size);
-    if (ptr)
+    // 确保系统分配器已初始化
+    if (g_system_allocator_instance == NULL)
     {
-        g_memory_stats.total_allocated += size;
-        g_memory_stats.current_usage += size;
-        g_memory_stats.allocation_count++;
+        // 使用默认配置创建系统分配器
+        Stru_CN_SystemConfig_t config = CN_SYSTEM_CONFIG_DEFAULT;
+        config.enable_statistics = true;
+        config.track_allocations = true;
+        config.detect_leaks = true;
+        config.enable_debug = g_debug_enabled;
         
-        if (g_memory_stats.current_usage > g_memory_stats.peak_usage)
+        g_system_allocator_instance = CN_system_create(&config);
+        if (g_system_allocator_instance == NULL)
         {
-            g_memory_stats.peak_usage = g_memory_stats.current_usage;
-        }
-        
-        if (g_debug_enabled)
-        {
-            // 调试模式下填充特定模式
-            memset(ptr, 0xCC, size);
+            // 创建失败，回退到标准库
+            void* ptr = malloc(size);
+            if (ptr && g_debug_enabled)
+            {
+                memset(ptr, 0xCC, size);
+            }
+            return ptr;
         }
     }
     
-    return ptr;
+    // 使用系统分配器分配内存
+    return CN_system_alloc(g_system_allocator_instance, size, file, line, "CN_memory系统分配");
 }
 
 static void system_deallocate(void* ptr, const char* file, int line)
 {
-    (void)file; // 暂未使用
-    (void)line; // 暂未使用
-    
     if (ptr == NULL)
     {
         return;
     }
     
-    // 注意：我们无法知道释放的大小，所以统计可能不准确
-    // 在实际实现中，需要跟踪分配大小
-    free(ptr);
-    g_memory_stats.free_count++;
-    
-    // 更新总释放字节数（估算）
-    // 假设平均每次分配大小 = 总分配字节数 / 分配次数
-    if (g_memory_stats.allocation_count > 0)
+    // 如果系统分配器未初始化，使用标准库释放
+    if (g_system_allocator_instance == NULL)
     {
-        size_t avg_size = g_memory_stats.total_allocated / g_memory_stats.allocation_count;
-        g_memory_stats.total_freed += avg_size;
-        
-        // 减少当前使用量（估算）
-        if (g_memory_stats.current_usage > avg_size)
-        {
-            g_memory_stats.current_usage -= avg_size;
-        }
-        else
-        {
-            g_memory_stats.current_usage = 0;
-        }
+        free(ptr);
+        return;
     }
+    
+    // 使用系统分配器释放内存
+    CN_system_free(g_system_allocator_instance, ptr, file, line);
 }
 
 static void* system_reallocate(void* ptr, size_t new_size, const char* file, int line)
 {
-    (void)file; // 暂未使用
-    (void)line; // 暂未使用
-    
-    if (ptr == NULL)
+    // 如果系统分配器未初始化，使用标准库重新分配
+    if (g_system_allocator_instance == NULL)
     {
-        return system_allocate(new_size, file, line);
+        if (ptr == NULL)
+        {
+            return system_allocate(new_size, file, line);
+        }
+        return realloc(ptr, new_size);
     }
     
-    // 注意：realloc的统计处理不准确，因为我们不知道原大小
-    void* new_ptr = realloc(ptr, new_size);
-    if (new_ptr)
-    {
-        // 简化处理：假设重新分配成功
-        g_memory_stats.total_allocated += new_size;
-        g_memory_stats.allocation_count++;
-    }
-    
-    return new_ptr;
+    // 使用系统分配器重新分配内存
+    return CN_system_realloc(g_system_allocator_instance, ptr, new_size, file, line, "CN_memory重新分配");
 }
 
 // 系统分配器接口实例
-static const Stru_CN_AllocatorInterface_t g_system_allocator = {
+static const Stru_CN_AllocatorInterface_t g_system_allocator_interface = {
     .allocate = system_allocate,
     .deallocate = system_deallocate,
     .reallocate = system_reallocate
@@ -320,8 +305,8 @@ static void* arena_allocate(size_t size, const char* file, int line)
         g_arena_allocator_instance = CN_arena_create(&config);
         if (g_arena_allocator_instance == NULL)
         {
-            // 区域分配器创建失败，使用系统分配
-            return system_allocate(size, file, line);
+        // 区域分配器创建失败，使用系统分配
+        return system_allocate(size, file, line);
         }
         
         printf("[INFO] 区域分配器已自动初始化，初始大小: %zu\n", config.initial_size);
@@ -389,7 +374,7 @@ static const Stru_CN_AllocatorInterface_t* get_allocator_interface(Eum_CN_Alloca
     switch (type)
     {
         case Eum_ALLOCATOR_SYSTEM:
-            return &g_system_allocator;
+            return &g_system_allocator_interface;
             
         case Eum_ALLOCATOR_DEBUG:
             return &g_debug_allocator;
@@ -401,7 +386,7 @@ static const Stru_CN_AllocatorInterface_t* get_allocator_interface(Eum_CN_Alloca
             return &g_arena_allocator_interface;
             
         default:
-            return &g_system_allocator;
+            return &g_system_allocator_interface;
     }
 }
 
@@ -433,9 +418,16 @@ void CN_memory_shutdown(void)
         g_arena_allocator_instance = NULL;
     }
     
+    // 清理系统分配器资源
+    if (g_system_allocator_instance != NULL)
+    {
+        CN_system_destroy(g_system_allocator_instance);
+        g_system_allocator_instance = NULL;
+    }
+    
     // 重置状态
     g_current_allocator = Eum_ALLOCATOR_SYSTEM;
-    g_current_allocator_interface = &g_system_allocator;
+    g_current_allocator_interface = &g_system_allocator_interface;
     memset(&g_memory_stats, 0, sizeof(g_memory_stats));
 }
 
@@ -515,11 +507,26 @@ void cn_enable_debug(bool enable)
 
 bool cn_check_leaks(void)
 {
+    // 使用系统分配器的泄漏检测功能
+    if (g_system_allocator_instance != NULL)
+    {
+        return CN_system_check_leaks(g_system_allocator_instance);
+    }
+    
+    // 回退到旧的统计方法
     return g_memory_stats.current_usage > 0;
 }
 
 void cn_dump_stats(void)
 {
+    // 优先使用系统分配器的统计信息
+    if (g_system_allocator_instance != NULL)
+    {
+        CN_system_dump(g_system_allocator_instance);
+        return;
+    }
+    
+    // 回退到旧的统计显示
     printf("=== 内存统计信息 ===\n");
     printf("总分配字节数: %zu\n", g_memory_stats.total_allocated);
     printf("总释放字节数: %zu\n", g_memory_stats.total_freed);
