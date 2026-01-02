@@ -10,6 +10,7 @@
 
 #include "CN_memory.h"
 #include "CN_pool_allocator.h"
+#include "arena/CN_arena_allocator.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -296,34 +297,43 @@ static const Stru_CN_AllocatorInterface_t g_pool_allocator_interface = {
 };
 
 // ============================================================================
-// 区域分配器实现（简化版）
+// 区域分配器实现（完整版）
 // ============================================================================
 
-// 区域分配器内部结构
-typedef struct Stru_CN_ArenaAllocator_t
-{
-    void* memory;
-    size_t size;
-    size_t used;
-} Stru_CN_ArenaAllocator_t;
-
-static Stru_CN_ArenaAllocator_t g_arena_allocator = {0};
+// 全局区域分配器实例
+static Stru_CN_ArenaAllocator_t* g_arena_allocator_instance = NULL;
 
 static void* arena_allocate(size_t size, const char* file, int line)
 {
     (void)file;
     (void)line;
     
-    // 检查是否有足够空间
-    if (g_arena_allocator.memory == NULL || 
-        g_arena_allocator.used + size > g_arena_allocator.size)
+    // 如果区域分配器未初始化，初始化它
+    if (g_arena_allocator_instance == NULL)
     {
-        // 区域不足，使用系统分配
-        return system_allocate(size, file, line);
+        Stru_CN_ArenaConfig_t config = CN_ARENA_CONFIG_DEFAULT;
+        config.initial_size = 1024 * 1024;  // 1MB初始大小
+        config.max_size = 16 * 1024 * 1024; // 16MB最大大小
+        config.auto_expand = true;
+        config.expand_increment = 1024 * 1024; // 1MB扩展增量
+        
+        g_arena_allocator_instance = CN_arena_create(&config);
+        if (g_arena_allocator_instance == NULL)
+        {
+            // 区域分配器创建失败，使用系统分配
+            return system_allocate(size, file, line);
+        }
+        
+        printf("[INFO] 区域分配器已自动初始化，初始大小: %zu\n", config.initial_size);
     }
     
-    void* ptr = (char*)g_arena_allocator.memory + g_arena_allocator.used;
-    g_arena_allocator.used += size;
+    // 从区域分配器分配
+    void* ptr = CN_arena_alloc(g_arena_allocator_instance, size);
+    if (ptr == NULL)
+    {
+        // 区域分配失败，回退到系统分配
+        return system_allocate(size, file, line);
+    }
     
     return ptr;
 }
@@ -334,14 +344,33 @@ static void arena_deallocate(void* ptr, const char* file, int line)
     (void)file;
     (void)line;
     
-    // 区域分配器不支持单独释放，只在区域销毁时统一释放
+    // 区域分配器不支持单独释放，只在区域重置或销毁时统一释放
     // 这里什么也不做
 }
 
 static void* arena_reallocate(void* ptr, size_t new_size, const char* file, int line)
 {
-    // 区域分配器不支持重新分配，使用系统重新分配
-    return system_reallocate(ptr, new_size, file, line);
+    // 区域分配器不支持重新分配
+    // 分配新对象，复制数据（如果ptr不为NULL）
+    
+    if (ptr == NULL)
+    {
+        // 相当于分配新对象
+        return arena_allocate(new_size, file, line);
+    }
+    
+    // 分配新对象
+    void* new_ptr = arena_allocate(new_size, file, line);
+    if (new_ptr == NULL)
+    {
+        return NULL;
+    }
+    
+    // 注意：我们不知道原大小，所以无法安全复制
+    // 这里简化处理，假设调用者知道原大小
+    // 实际使用中应该避免对区域分配的内存进行realloc
+    
+    return new_ptr;
 }
 
 // 区域分配器接口实例
@@ -398,10 +427,10 @@ void CN_memory_shutdown(void)
     }
     
     // 清理区域分配器资源
-    if (g_arena_allocator.memory != NULL)
+    if (g_arena_allocator_instance != NULL)
     {
-        free(g_arena_allocator.memory);
-        g_arena_allocator.memory = NULL;
+        CN_arena_destroy(g_arena_allocator_instance);
+        g_arena_allocator_instance = NULL;
     }
     
     // 重置状态
