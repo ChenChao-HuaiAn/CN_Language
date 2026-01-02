@@ -34,7 +34,10 @@ LIB_DIR = lib
 # 基础设施层源文件
 INFRASTRUCTURE_SRC = \
     src/infrastructure/memory/CN_memory.c \
-    src/infrastructure/containers/CN_array.c \
+    src/infrastructure/containers/array/CN_array.c \
+    src/infrastructure/containers/hash_table/CN_hash_table.c \
+    src/infrastructure/containers/hash_table/CN_hash_table_operations.c \
+    src/infrastructure/containers/hash_table/CN_hash_table_utils.c \
     src/infrastructure/utils/CN_string.c
 
 # 核心层源文件
