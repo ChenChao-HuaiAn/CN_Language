@@ -436,4 +436,25 @@ size_t CN_queue_internal_enqueue_batch(Stru_CN_Queue_t* queue, const void* eleme
  */
 size_t CN_queue_internal_dequeue_batch(Stru_CN_Queue_t* queue, void* elements, size_t max_count);
 
+/**
+ * @brief 清空数组队列
+ * 
+ * @param queue 队列
+ */
+void CN_queue_internal_array_clear(Stru_CN_Queue_t* queue);
+
+/**
+ * @brief 清空链表队列
+ * 
+ * @param queue 队列
+ */
+void CN_queue_internal_list_clear(Stru_CN_Queue_t* queue);
+
+/**
+ * @brief 清空循环数组队列
+ * 
+ * @param queue 队列
+ */
+void CN_queue_internal_circular_clear(Stru_CN_Queue_t* queue);
+
 #endif // CN_QUEUE_INTERNAL_H

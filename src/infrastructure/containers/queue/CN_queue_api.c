@@ -123,53 +123,21 @@ void CN_queue_clear(Stru_CN_Queue_t* queue)
     switch (queue->implementation)
     {
         case Eum_QUEUE_IMPLEMENTATION_ARRAY:
-            // 对于数组实现，只需重置大小和索引
-            if (queue->free_func != NULL)
-            {
-                for (size_t i = 0; i < queue->size; i++)
-                {
-                    void* element = CN_queue_internal_array_get_element(queue, i);
-                    if (element != NULL)
-                    {
-                        queue->free_func(element);
-                    }
-                }
-            }
-            queue->impl.array.head_index = 0;
-            queue->impl.array.tail_index = 0;
+            CN_queue_internal_array_clear(queue);
             break;
             
         case Eum_QUEUE_IMPLEMENTATION_LIST:
-            // 对于链表实现，需要释放所有节点
-            CN_queue_internal_destroy_list(queue);
-            // 重新初始化链表
-            queue->impl.list.head = NULL;
-            queue->impl.list.tail = NULL;
+            CN_queue_internal_list_clear(queue);
             break;
             
         case Eum_QUEUE_IMPLEMENTATION_CIRCULAR:
-            // 对于循环数组实现，重置索引和标志
-            if (queue->free_func != NULL)
-            {
-                for (size_t i = 0; i < queue->size; i++)
-                {
-                    void* element = CN_queue_internal_circular_get_element(queue, i);
-                    if (element != NULL)
-                    {
-                        queue->free_func(element);
-                    }
-                }
-            }
-            queue->impl.circular.head_index = 0;
-            queue->impl.circular.tail_index = 0;
-            queue->impl.circular.is_full = false;
+            CN_queue_internal_circular_clear(queue);
             break;
             
         default:
             break;
     }
     
-    queue->size = 0;
     CN_queue_internal_unlock(queue);
 }
 

@@ -354,4 +354,122 @@ void* CN_stack_internal_circular_get_element(const Stru_CN_Stack_t* stack, size_
  */
 size_t CN_stack_internal_circular_compute_index(const Stru_CN_Stack_t* stack, size_t logical_index);
 
+/**
+ * @brief 清空数组栈
+ * 
+ * @param stack 栈
+ */
+void CN_stack_internal_array_clear(Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 清空链表栈
+ * 
+ * @param stack 栈
+ */
+void CN_stack_internal_list_clear(Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 清空循环数组栈
+ * 
+ * @param stack 栈
+ */
+void CN_stack_internal_circular_clear(Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 获取数组栈容量
+ * 
+ * @param stack 栈
+ * @return 栈容量
+ */
+size_t CN_stack_internal_array_capacity(const Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 获取链表栈容量
+ * 
+ * @param stack 栈
+ * @return 栈容量（链表实现返回SIZE_MAX）
+ */
+size_t CN_stack_internal_list_capacity(const Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 获取循环数组栈容量
+ * 
+ * @param stack 栈
+ * @return 栈容量
+ */
+size_t CN_stack_internal_circular_capacity(const Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 检查数组栈是否已满
+ * 
+ * @param stack 栈
+ * @return 如果栈已满返回true，否则返回false
+ */
+bool CN_stack_internal_array_is_full(const Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 检查链表栈是否已满
+ * 
+ * @param stack 栈
+ * @return 链表实现总是返回false
+ */
+bool CN_stack_internal_list_is_full(const Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 检查循环数组栈是否已满
+ * 
+ * @param stack 栈
+ * @return 如果栈已满返回true，否则返回false
+ */
+bool CN_stack_internal_circular_is_full(const Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 缩小数组栈容量以匹配大小
+ * 
+ * @param stack 栈
+ * @return 操作成功返回true，失败返回false
+ */
+bool CN_stack_internal_array_shrink_to_fit(Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 缩小链表栈容量以匹配大小
+ * 
+ * @param stack 栈
+ * @return 链表实现总是返回true
+ */
+bool CN_stack_internal_list_shrink_to_fit(Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 缩小循环数组栈容量以匹配大小
+ * 
+ * @param stack 栈
+ * @return 操作成功返回true，失败返回false
+ */
+bool CN_stack_internal_circular_shrink_to_fit(Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 确保链表栈有足够容量
+ * 
+ * @param stack 栈
+ * @param min_capacity 最小容量要求
+ * @return 链表实现总是返回true
+ */
+bool CN_stack_internal_list_ensure_capacity(Stru_CN_Stack_t* stack, size_t min_capacity);
+
+/**
+ * @brief 检查循环数组栈是否回绕
+ * 
+ * @param stack 栈
+ * @return 如果栈已回绕返回true，否则返回false
+ */
+bool CN_stack_internal_circular_is_wrapped(const Stru_CN_Stack_t* stack);
+
+/**
+ * @brief 获取循环数组栈的剩余空间
+ * 
+ * @param stack 栈
+ * @return 剩余空间大小
+ */
+size_t CN_stack_internal_circular_remaining_space(const Stru_CN_Stack_t* stack);
+
 #endif // CN_STACK_INTERNAL_H

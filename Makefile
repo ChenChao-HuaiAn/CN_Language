@@ -40,8 +40,14 @@ INFRASTRUCTURE_SRC = \
     src/infrastructure/containers/hash_table/CN_hash_table_utils.c \
     src/infrastructure/containers/stack/CN_stack.c \
     src/infrastructure/containers/stack/CN_stack_api.c \
+    src/infrastructure/containers/stack/CN_stack_array.c \
+    src/infrastructure/containers/stack/CN_stack_list.c \
+    src/infrastructure/containers/stack/CN_stack_circular.c \
     src/infrastructure/containers/queue/CN_queue.c \
     src/infrastructure/containers/queue/CN_queue_api.c \
+    src/infrastructure/containers/queue/CN_queue_array.c \
+    src/infrastructure/containers/queue/CN_queue_list.c \
+    src/infrastructure/containers/queue/CN_queue_circular.c \
     src/infrastructure/utils/CN_string.c
 
 # 核心层源文件

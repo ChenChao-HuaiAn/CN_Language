@@ -123,51 +123,21 @@ void CN_stack_clear(Stru_CN_Stack_t* stack)
     switch (stack->implementation)
     {
         case Eum_STACK_IMPLEMENTATION_ARRAY:
-            // 对于数组实现，只需重置大小和索引
-            if (stack->free_func != NULL)
-            {
-                for (size_t i = 0; i < stack->size; i++)
-                {
-                    void* element = CN_stack_internal_array_get_element(stack, i);
-                    if (element != NULL)
-                    {
-                        stack->free_func(element);
-                    }
-                }
-            }
-            stack->impl.array.top_index = 0;
+            CN_stack_internal_array_clear(stack);
             break;
             
         case Eum_STACK_IMPLEMENTATION_LIST:
-            // 对于链表实现，需要释放所有节点
-            CN_stack_internal_destroy_list(stack);
-            // 重新初始化链表
-            stack->impl.list.top = NULL;
+            CN_stack_internal_list_clear(stack);
             break;
             
         case Eum_STACK_IMPLEMENTATION_CIRCULAR:
-            // 对于循环数组实现，重置索引和标志
-            if (stack->free_func != NULL)
-            {
-                for (size_t i = 0; i < stack->size; i++)
-                {
-                    void* element = CN_stack_internal_circular_get_element(stack, i);
-                    if (element != NULL)
-                    {
-                        stack->free_func(element);
-                    }
-                }
-            }
-            stack->impl.circular.top_index = 0;
-            stack->impl.circular.base_index = 0;
-            stack->impl.circular.is_wrapped = false;
+            CN_stack_internal_circular_clear(stack);
             break;
             
         default:
             break;
     }
     
-    stack->size = 0;
     CN_stack_internal_unlock(stack);
 }
 
@@ -214,13 +184,13 @@ bool CN_stack_is_full(const Stru_CN_Stack_t* stack)
     switch (stack->implementation)
     {
         case Eum_STACK_IMPLEMENTATION_ARRAY:
-            return stack->size >= stack->impl.array.capacity;
+            return CN_stack_internal_array_is_full(stack);
             
         case Eum_STACK_IMPLEMENTATION_LIST:
-            return false; // 链表实现没有固定容量限制
+            return CN_stack_internal_list_is_full(stack);
             
         case Eum_STACK_IMPLEMENTATION_CIRCULAR:
-            return stack->size >= stack->impl.circular.capacity;
+            return CN_stack_internal_circular_is_full(stack);
             
         default:
             return false;
@@ -240,13 +210,13 @@ size_t CN_stack_capacity(const Stru_CN_Stack_t* stack)
     switch (stack->implementation)
     {
         case Eum_STACK_IMPLEMENTATION_ARRAY:
-            return stack->impl.array.capacity;
+            return CN_stack_internal_array_capacity(stack);
             
         case Eum_STACK_IMPLEMENTATION_LIST:
-            return SIZE_MAX; // 链表实现理论上无限容量
+            return CN_stack_internal_list_capacity(stack);
             
         case Eum_STACK_IMPLEMENTATION_CIRCULAR:
-            return stack->impl.circular.capacity;
+            return CN_stack_internal_circular_capacity(stack);
             
         default:
             return 0;
@@ -438,7 +408,7 @@ bool CN_stack_ensure_capacity(Stru_CN_Stack_t* stack, size_t min_capacity)
             break;
             
         case Eum_STACK_IMPLEMENTATION_LIST:
-            result = true; // 链表实现不需要容量管理
+            result = CN_stack_internal_list_ensure_capacity(stack, min_capacity);
             break;
             
         case Eum_STACK_IMPLEMENTATION_CIRCULAR:
@@ -471,29 +441,19 @@ bool CN_stack_shrink_to_fit(Stru_CN_Stack_t* stack)
     switch (stack->implementation)
     {
         case Eum_STACK_IMPLEMENTATION_ARRAY:
-            if (stack->size < stack->impl.array.capacity)
-            {
-                result = CN_stack_internal_array_ensure_capacity(stack, stack->size);
-            }
-            else
-            {
-                result = true; // 已经匹配
-            }
+            result = CN_stack_internal_array_shrink_to_fit(stack);
+            break;
+            
+        case Eum_STACK_IMPLEMENTATION_LIST:
+            result = CN_stack_internal_list_shrink_to_fit(stack);
             break;
             
         case Eum_STACK_IMPLEMENTATION_CIRCULAR:
-            if (stack->size < stack->impl.circular.capacity)
-            {
-                result = CN_stack_internal_circular_ensure_capacity(stack, stack->size);
-            }
-            else
-            {
-                result = true; // 已经匹配
-            }
+            result = CN_stack_internal_circular_shrink_to_fit(stack);
             break;
             
         default:
-            result = true; // 链表实现不需要此操作
+            result = true; // 默认实现不需要此操作
             break;
     }
     
