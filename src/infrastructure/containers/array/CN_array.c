@@ -1,40 +1,38 @@
 /******************************************************************************
  * 文件名: CN_array.c
- * 功能: CN_Language动态数组容器实现
+ * 功能: CN_Language动态数组容器核心实现
  * 作者: CN_Language开发团队
  * 创建日期: 2026年1月
  * 修改历史:
- *  2026-01-02: 创建文件，实现动态数组接口
+ *  2026-01-02: 创建文件，实现动态数组核心接口
+ *  2026-01-02: 重构为模块化设计，遵循单一职责原则
  * 版权: MIT许可证
  ******************************************************************************/
 
-#include "CN_array.h"
+#include "CN_array_internal.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
 
-// ============================================================================
-// 内部数据结构
-// ============================================================================
-
-struct Stru_CN_Array_t
-{
-    void* data;                     /**< 数据指针 */
-    size_t element_size;            /**< 元素大小（字节） */
-    size_t length;                  /**< 当前长度（元素数量） */
-    size_t capacity;                /**< 当前容量（元素数量） */
-    Eum_CN_ArrayElementType_t element_type; /**< 元素类型 */
-    CN_ArrayCompareFunc compare_func; /**< 比较函数 */
-    CN_ArrayFreeFunc free_func;     /**< 释放函数 */
-    CN_ArrayCopyFunc copy_func;     /**< 复制函数 */
-};
 
 // ============================================================================
 // 内部辅助函数
 // ============================================================================
 
+/**
+ * @brief 确保数组有足够容量
+ * 
+ * @param array 数组
+ * @param min_capacity 最小容量要求
+ * @return 调整成功返回true，失败返回false
+ */
 static bool ensure_capacity(Stru_CN_Array_t* array, size_t min_capacity)
 {
+    if (array == NULL)
+    {
+        return false;
+    }
+    
     if (array->capacity >= min_capacity)
     {
         return true;
@@ -62,13 +60,25 @@ static bool ensure_capacity(Stru_CN_Array_t* array, size_t min_capacity)
     return true;
 }
 
+/**
+ * @brief 获取元素指针
+ * 
+ * @param array 数组
+ * @param index 元素索引
+ * @return 元素指针
+ */
 static void* get_element_ptr(const Stru_CN_Array_t* array, size_t index)
 {
+    if (array == NULL || array->data == NULL)
+    {
+        return NULL;
+    }
+    
     return (char*)array->data + index * array->element_size;
 }
 
 // ============================================================================
-// 公共API实现
+// 数组创建和销毁
 // ============================================================================
 
 Stru_CN_Array_t* CN_array_create(Eum_CN_ArrayElementType_t element_type,
@@ -160,6 +170,10 @@ void CN_array_clear(Stru_CN_Array_t* array)
     array->length = 0;
 }
 
+// ============================================================================
+// 数组属性查询
+// ============================================================================
+
 size_t CN_array_length(const Stru_CN_Array_t* array)
 {
     return array != NULL ? array->length : 0;
@@ -184,6 +198,10 @@ Eum_CN_ArrayElementType_t CN_array_element_type(const Stru_CN_Array_t* array)
 {
     return array != NULL ? array->element_type : Eum_ARRAY_ELEMENT_CUSTOM;
 }
+
+// ============================================================================
+// 元素访问和修改
+// ============================================================================
 
 void* CN_array_get(const Stru_CN_Array_t* array, size_t index)
 {
@@ -314,6 +332,10 @@ bool CN_array_pop(Stru_CN_Array_t* array, void* element)
     return true;
 }
 
+// ============================================================================
+// 数组容量管理
+// ============================================================================
+
 bool CN_array_ensure_capacity(Stru_CN_Array_t* array, size_t min_capacity)
 {
     return array != NULL && ensure_capacity(array, min_capacity);
@@ -345,114 +367,36 @@ bool CN_array_shrink_to_fit(Stru_CN_Array_t* array)
     return true;
 }
 
-// 简化实现，只返回基本功能
-Stru_CN_Array_t* CN_array_copy(const Stru_CN_Array_t* src)
+// ============================================================================
+// 内部辅助函数实现
+// ============================================================================
+
+bool CN_array_internal_ensure_capacity(Stru_CN_Array_t* array, size_t min_capacity)
 {
-    if (src == NULL)
-    {
-        return NULL;
-    }
-    
-    Stru_CN_Array_t* copy = CN_array_create(src->element_type,
-                                            src->element_size,
-                                            src->capacity);
-    if (copy == NULL)
-    {
-        return NULL;
-    }
-    
-    copy->compare_func = src->compare_func;
-    copy->free_func = src->free_func;
-    copy->copy_func = src->copy_func;
-    
-    if (src->length > 0)
-    {
-        if (!ensure_capacity(copy, src->length))
-        {
-            CN_array_destroy(copy);
-            return NULL;
-        }
-        
-        if (copy->copy_func != NULL)
-        {
-            for (size_t i = 0; i < src->length; i++)
-            {
-                void* src_element = get_element_ptr(src, i);
-                void* copy_element = copy->copy_func(src_element);
-                if (copy_element == NULL)
-                {
-                    CN_array_destroy(copy);
-                    return NULL;
-                }
-                memcpy(get_element_ptr(copy, i), copy_element, copy->element_size);
-                free(copy_element);
-            }
-        }
-        else
-        {
-            memcpy(copy->data, src->data, src->length * src->element_size);
-        }
-        
-        copy->length = src->length;
-    }
-    
-    return copy;
+    return ensure_capacity(array, min_capacity);
 }
 
-// 其他函数简化实现
-size_t CN_array_find(const Stru_CN_Array_t* array, const void* element)
+void* CN_array_internal_get_element_ptr(const Stru_CN_Array_t* array, size_t index)
 {
-    if (array == NULL || element == NULL || array->length == 0)
-    {
-        return SIZE_MAX;
-    }
-    
-    for (size_t i = 0; i < array->length; i++)
-    {
-        void* current = get_element_ptr(array, i);
-        if (array->compare_func != NULL)
-        {
-            if (array->compare_func(current, element) == 0)
-            {
-                return i;
-            }
-        }
-        else if (memcmp(current, element, array->element_size) == 0)
-        {
-            return i;
-        }
-    }
-    
-    return SIZE_MAX;
+    return get_element_ptr(array, index);
 }
 
-void CN_array_sort(Stru_CN_Array_t* array)
+void* CN_array_internal_get_data(const Stru_CN_Array_t* array)
 {
-    // 简化实现：使用qsort
-    if (array == NULL || array->length < 2)
-    {
-        return;
-    }
-    
-    if (array->compare_func != NULL)
-    {
-        qsort(array->data, array->length, array->element_size,
-              (int (*)(const void*, const void*))array->compare_func);
-    }
+    return array != NULL ? array->data : NULL;
 }
 
-void CN_array_dump(const Stru_CN_Array_t* array)
+CN_ArrayCompareFunc CN_array_internal_get_compare_func(const Stru_CN_Array_t* array)
 {
-    if (array == NULL)
-    {
-        printf("Array: NULL\n");
-        return;
-    }
-    
-    printf("=== Array Information ===\n");
-    printf("Length: %lu\n", (unsigned long)array->length);
-    printf("Capacity: %lu\n", (unsigned long)array->capacity);
-    printf("Element size: %lu bytes\n", (unsigned long)array->element_size);
-    printf("Element type: %d\n", array->element_type);
-    printf("=========================\n");
+    return array != NULL ? array->compare_func : NULL;
+}
+
+CN_ArrayFreeFunc CN_array_internal_get_free_func(const Stru_CN_Array_t* array)
+{
+    return array != NULL ? array->free_func : NULL;
+}
+
+CN_ArrayCopyFunc CN_array_internal_get_copy_func(const Stru_CN_Array_t* array)
+{
+    return array != NULL ? array->copy_func : NULL;
 }
