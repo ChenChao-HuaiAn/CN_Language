@@ -367,8 +367,8 @@ debug: program
 release: CFLAGS += -O2 -DNDEBUG
 release: program
 
-program: main.c src/debug/CN_debug.c
-	$(CC) $(CFLAGS) -Isrc/debug -o $@ $^
+program: main.c src/application/debugger/CN_debug.c
+	$(CC) $(CFLAGS) -Isrc/application/debugger -o $@ $^
 ```
 
 ### 2. CMake集成示例
@@ -379,8 +379,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 # 添加调试模块
-add_library(cn_debug src/debug/CN_debug.c)
-target_include_directories(cn_debug PUBLIC src/debug)
+add_library(cn_debug src/application/debugger/CN_debug.c)
+target_include_directories(cn_debug PUBLIC src/application/debugger)
 
 # 链接到主程序
 target_link_libraries(main cn_debug)

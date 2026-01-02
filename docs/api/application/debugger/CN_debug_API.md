@@ -244,10 +244,10 @@ int main()
 
 ```bash
 # 生产环境 - 禁用调试功能
-gcc -O2 -DNDEBUG -o myapp main.c src/debug/CN_debug.c
+gcc -O2 -DNDEBUG -o myapp main.c src/application/debugger/CN_debug.c
 
 # 开发环境 - 启用调试功能
-gcc -DCN_DEBUG_MODE -g -o myapp_debug main.c src/debug/CN_debug.c
+gcc -DCN_DEBUG_MODE -g -o myapp_debug main.c src/application/debugger/CN_debug.c
 ```
 
 ## 性能考虑

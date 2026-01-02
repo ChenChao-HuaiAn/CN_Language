@@ -901,7 +901,7 @@ void shutdown_debug_memory_system()
 
 **启用调试功能：**
 ```bash
-gcc -DCN_DEBUG_MEMORY -g -o myapp main.c src/infrastructure/memory/debug/*.c
+gcc -DCN_DEBUG_MEMORY -g -o myapp main.c src/infrastructure/memory/debug_allocator/*.c
 ```
 
 **禁用调试功能（生产环境）：**

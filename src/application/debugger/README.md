@@ -149,7 +149,7 @@ int main()
 ## 文件结构
 
 ```
-src/debug/
+src/application/debugger/
 ├── CN_debug.h          # 头文件，包含接口声明和宏定义
 ├── CN_debug.c          # 实现文件，包含具体实现
 └── README.md           # 模块说明文档

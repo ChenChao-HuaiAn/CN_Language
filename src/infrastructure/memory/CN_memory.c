@@ -12,7 +12,7 @@
 #include "CN_pool_allocator.h"
 #include "arena/CN_arena_allocator.h"
 #include "system/CN_system_allocator.h"
-#include "debug/CN_debug_allocator.h"
+#include "debug_allocator/CN_debug_allocator.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>

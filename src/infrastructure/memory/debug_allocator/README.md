@@ -36,7 +36,7 @@
 
 ### 模块结构
 ```
-src/infrastructure/memory/debug/
+src/infrastructure/memory/debug_allocator/
 ├── CN_debug_allocator.h      # 公共接口定义
 ├── CN_debug_internal.h       # 内部数据结构和常量
 ├── CN_debug_core.c           # 核心实现（创建/销毁/内部辅助）
