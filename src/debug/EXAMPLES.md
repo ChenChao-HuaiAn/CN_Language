@@ -9,15 +9,15 @@
 int main()
 {
     // 初始化调试系统，设置为DEBUG级别
-    cn_debug_init(CN_DEBUG_LEVEL_DEBUG);
+    F_debug_init(Eum_DEBUG_LEVEL_DEBUG);
     
     printf("=== 基本调试功能示例 ===\n");
     
     // 输出不同级别的调试信息
-    CN_DEBUG(CN_DEBUG_LEVEL_ERROR, "错误: 无法连接到数据库");
-    CN_DEBUG(CN_DEBUG_LEVEL_WARN, "警告: 内存使用率达到85%%");
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "信息: 用户登录成功，用户名: %s", "张三");
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "调试: 计算结果: %d + %d = %d", 10, 20, 30);
+    CN_DEBUG(Eum_DEBUG_LEVEL_ERROR, "错误: 无法连接到数据库");
+    CN_DEBUG(Eum_DEBUG_LEVEL_WARN, "警告: 内存使用率达到85%%");
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "信息: 用户登录成功，用户名: %s", "张三");
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "调试: 计算结果: %d + %d = %d", 10, 20, 30);
     
     return 0;
 }
@@ -47,20 +47,20 @@ gcc -DCN_DEBUG_MODE -I. -o basic_debug basic_debug.c CN_debug.c
 int main()
 {
     // 初始化调试系统
-    cn_debug_init(CN_DEBUG_LEVEL_INFO);
+    F_debug_init(Eum_DEBUG_LEVEL_INFO);
     
     printf("=== 文件重定向示例 ===\n");
     
     // 将调试信息重定向到文件
-    cn_debug_set_output_file("application.log");
+    F_debug_set_output_file("application.log");
     
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "应用程序启动");
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "初始化配置完成");
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "应用程序启动");
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "初始化配置完成");
     
     // 恢复到标准错误输出
-    cn_debug_set_output_file(NULL);
+    F_debug_set_output_file(NULL);
     
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "恢复到标准错误输出");
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "恢复到标准错误输出");
     
     return 0;
 }
@@ -93,7 +93,7 @@ gcc -DCN_DEBUG_MODE -I. -o file_redirect file_redirect.c CN_debug.c
 
 int divide(int a, int b)
 {
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "执行除法运算: %d / %d", a, b);
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "执行除法运算: %d / %d", a, b);
     
     // 断言检查除数不为零
     CN_ASSERT(b != 0, "除数不能为零");
@@ -103,13 +103,13 @@ int divide(int a, int b)
 
 int main()
 {
-    cn_debug_init(CN_DEBUG_LEVEL_DEBUG);
+    F_debug_init(Eum_DEBUG_LEVEL_DEBUG);
     
     printf("=== 断言检查示例 ===\n");
     
     // 正常情况
     int result = divide(100, 5);
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "100 / 5 = %d", result);
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "100 / 5 = %d", result);
     
     // 这里会导致程序崩溃
     printf("尝试除以零...\n");
@@ -146,10 +146,10 @@ void demonstrate_levels()
 {
     printf("不同调试级别的演示:\n");
     
-    CN_DEBUG(CN_DEBUG_LEVEL_ERROR, "这是错误信息");
-    CN_DEBUG(CN_DEBUG_LEVEL_WARN, "这是警告信息");
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "这是普通信息");
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "这是调试信息");
+    CN_DEBUG(Eum_DEBUG_LEVEL_ERROR, "这是错误信息");
+    CN_DEBUG(Eum_DEBUG_LEVEL_WARN, "这是警告信息");
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "这是普通信息");
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "这是调试信息");
 }
 
 int main()
@@ -158,23 +158,23 @@ int main()
     
     // 测试不同级别的设置
     printf("1. 设置为NONE级别:\n");
-    cn_debug_init(CN_DEBUG_LEVEL_NONE);
+    F_debug_init(Eum_DEBUG_LEVEL_NONE);
     demonstrate_levels();
     
     printf("\n2. 设置为ERROR级别:\n");
-    cn_debug_init(CN_DEBUG_LEVEL_ERROR);
+    F_debug_init(Eum_DEBUG_LEVEL_ERROR);
     demonstrate_levels();
     
     printf("\n3. 设置为WARN级别:\n");
-    cn_debug_init(CN_DEBUG_LEVEL_WARN);
+    F_debug_init(Eum_DEBUG_LEVEL_WARN);
     demonstrate_levels();
     
     printf("\n4. 设置为INFO级别:\n");
-    cn_debug_init(CN_DEBUG_LEVEL_INFO);
+    F_debug_init(Eum_DEBUG_LEVEL_INFO);
     demonstrate_levels();
     
     printf("\n5. 设置为DEBUG级别:\n");
-    cn_debug_init(CN_DEBUG_LEVEL_DEBUG);
+    F_debug_init(Eum_DEBUG_LEVEL_DEBUG);
     demonstrate_levels();
     
     return 0;
@@ -196,7 +196,7 @@ gcc -DCN_DEBUG_MODE -I. -o level_control level_control.c CN_debug.c
 
 int process_data(int* data, int size)
 {
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "开始处理数据，大小: %d", size);
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "开始处理数据，大小: %d", size);
     
     CN_ASSERT(data != NULL, "数据指针不能为空");
     CN_ASSERT(size > 0, "数据大小必须大于0");
@@ -204,18 +204,18 @@ int process_data(int* data, int size)
     int sum = 0;
     for (int i = 0; i < size; i++)
     {
-        CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "处理元素[%d]: %d", i, data[i]);
+        CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "处理元素[%d]: %d", i, data[i]);
         sum += data[i];
     }
     
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "数据处理完成，总和: %d", sum);
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "数据处理完成，总和: %d", sum);
     return sum;
 }
 
 int main()
 {
-    cn_debug_init(CN_DEBUG_LEVEL_DEBUG);
-    cn_debug_set_output_file("debug.log");
+    F_debug_init(Eum_DEBUG_LEVEL_DEBUG);
+    F_debug_set_output_file("debug.log");
     
     printf("=== 开发环境版本 ===\n");
     
@@ -236,7 +236,7 @@ int main()
 int process_data(int* data, int size)
 {
     // 在生产环境中，调试代码会被优化掉
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "开始处理数据，大小: %d", size);
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "开始处理数据，大小: %d", size);
     
     // 断言在生产环境中也会被移除
     CN_ASSERT(data != NULL, "数据指针不能为空");
@@ -245,19 +245,19 @@ int process_data(int* data, int size)
     int sum = 0;
     for (int i = 0; i < size; i++)
     {
-        CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "处理元素[%d]: %d", i, data[i]);
+        CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "处理元素[%d]: %d", i, data[i]);
         sum += data[i];
     }
     
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "数据处理完成，总和: %d", sum);
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "数据处理完成，总和: %d", sum);
     return sum;
 }
 
 int main()
 {
     // 这些调用在生产环境中也不会产生任何开销
-    cn_debug_init(CN_DEBUG_LEVEL_DEBUG);
-    cn_debug_set_output_file("debug.log");
+    F_debug_init(Eum_DEBUG_LEVEL_DEBUG);
+    F_debug_set_output_file("debug.log");
     
     printf("=== 生产环境版本 ===\n");
     
@@ -295,13 +295,13 @@ gcc -O2 -DNDEBUG -I. -o release_version release_version.c CN_debug.c
 // 词法分析器调试
 CN_Token* cn_lexical_analyze(const char* source_code)
 {
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "开始词法分析: %s", source_code);
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "开始词法分析: %s", source_code);
     
     CN_Token* tokens = malloc(sizeof(CN_Token) * MAX_TOKENS);
     CN_ASSERT(tokens != NULL, "词法分析器: 内存分配失败");
     
     // 词法分析逻辑...
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "词法分析完成，生成%d个token", token_count);
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "词法分析完成，生成%d个token", token_count);
     
     return tokens;
 }
@@ -309,15 +309,15 @@ CN_Token* cn_lexical_analyze(const char* source_code)
 // 语法分析器调试
 CN_ASTNode* cn_parse_tokens(CN_Token* tokens)
 {
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "开始语法分析");
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "开始语法分析");
     
     CN_ASSERT(tokens != NULL, "语法分析器: token列表不能为空");
     
     CN_ASTNode* ast = cn_create_ast_node(AST_PROGRAM);
-    CN_DEBUG(CN_DEBUG_LEVEL_DEBUG, "创建AST根节点: %p", ast);
+    CN_DEBUG(Eum_DEBUG_LEVEL_DEBUG, "创建AST根节点: %p", ast);
     
     // 语法分析逻辑...
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "语法分析完成，AST节点数: %d", node_count);
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "语法分析完成，AST节点数: %d", node_count);
     
     return ast;
 }
@@ -327,17 +327,17 @@ int main(int argc, char* argv[])
     // 根据命令行参数设置调试级别
     if (argc > 1 && strcmp(argv[1], "--debug") == 0)
     {
-        cn_debug_init(CN_DEBUG_LEVEL_DEBUG);
-        cn_debug_set_output_file("cn_language_debug.log");
-        CN_DEBUG(CN_DEBUG_LEVEL_INFO, "CN_Language调试模式启动");
+        F_debug_init(Eum_DEBUG_LEVEL_DEBUG);
+        F_debug_set_output_file("cn_language_debug.log");
+        CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "CN_Language调试模式启动");
     }
     else
     {
-        cn_debug_init(CN_DEBUG_LEVEL_ERROR);  // 生产环境只输出错误
+        F_debug_init(Eum_DEBUG_LEVEL_ERROR);  // 生产环境只输出错误
     }
     
     const char* source_code = "整数 变量 = 42;";
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "开始编译源代码: %s", source_code);
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "开始编译源代码: %s", source_code);
     
     // 词法分析
     CN_Token* tokens = cn_lexical_analyze(source_code);
@@ -345,7 +345,7 @@ int main(int argc, char* argv[])
     // 语法分析
     CN_ASTNode* ast = cn_parse_tokens(tokens);
     
-    CN_DEBUG(CN_DEBUG_LEVEL_INFO, "编译完成");
+    CN_DEBUG(Eum_DEBUG_LEVEL_INFO, "编译完成");
     
     // 清理资源...
     free(tokens);

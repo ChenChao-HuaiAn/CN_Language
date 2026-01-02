@@ -16,32 +16,33 @@
 #include <time.h>
 
 // 调试级别定义
-typedef enum {
-    CN_DEBUG_LEVEL_NONE = 0,
-    CN_DEBUG_LEVEL_ERROR = 1,
-    CN_DEBUG_LEVEL_WARN = 2,
-    CN_DEBUG_LEVEL_INFO = 3,
-    CN_DEBUG_LEVEL_DEBUG = 4
-} CN_DebugLevel;
+typedef enum Eum_DebugLevel_t
+{
+    Eum_DEBUG_LEVEL_NONE = 0,
+    Eum_DEBUG_LEVEL_ERROR = 1,
+    Eum_DEBUG_LEVEL_WARN = 2,
+    Eum_DEBUG_LEVEL_INFO = 3,
+    Eum_DEBUG_LEVEL_DEBUG = 4
+} Eum_DebugLevel_t;
 
 // 调试宏
 #ifdef CN_DEBUG_MODE
     #define CN_DEBUG(level, format, ...) \
-        cn_debug_log(level, __FILE__, __LINE__, format, ##__VA_ARGS__)
+        F_debug_log(level, __FILE__, __LINE__, format, ##__VA_ARGS__)
     #define CN_ASSERT(condition, message) \
-        cn_debug_assert(condition, __FILE__, __LINE__, message)
+        F_debug_assert(condition, __FILE__, __LINE__, message)
 #else
     #define CN_DEBUG(level, format, ...)
     #define CN_ASSERT(condition, message)
 #endif
 
 // 接口声明
-void cn_debug_init(CN_DebugLevel level);
-void cn_debug_set_output_file(const char* filename);
-void cn_debug_log(CN_DebugLevel level, const char* file, int line, 
+void F_debug_init(Eum_DebugLevel_t level);
+void F_debug_set_output_file(const char* filename);
+void F_debug_log(Eum_DebugLevel_t level, const char* file, int line, 
                   const char* format, ...);
-void cn_debug_assert(int condition, const char* file, int line, 
+void F_debug_assert(int condition, const char* file, int line, 
                      const char* message);
-const char* cn_debug_level_to_string(CN_DebugLevel level);
+const char* F_debug_level_to_string(Eum_DebugLevel_t level);
 
 #endif // CN_DEBUG_H

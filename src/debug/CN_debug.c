@@ -14,7 +14,7 @@
 #include <stdio.h>
 
 // 全局变量
-static CN_DebugLevel g_debug_level = CN_DEBUG_LEVEL_NONE;
+static Eum_DebugLevel_t g_debug_level = Eum_DEBUG_LEVEL_NONE;
 static FILE* g_debug_file = NULL;
 static char* g_debug_filename = NULL;
 
@@ -23,7 +23,7 @@ static char* g_debug_filename = NULL;
  * @param level 调试级别
  * @note 设置全局调试级别，控制调试信息的输出
  */
-void cn_debug_init(CN_DebugLevel level)
+void F_debug_init(Eum_DebugLevel_t level)
 {
     g_debug_level = level;
     
@@ -47,7 +47,7 @@ void cn_debug_init(CN_DebugLevel level)
  * @param filename 输出文件名，NULL表示输出到标准错误
  * @note 可以将调试信息重定向到指定文件
  */
-void cn_debug_set_output_file(const char* filename)
+void F_debug_set_output_file(const char* filename)
 {
     // 关闭当前文件
     if (g_debug_file != NULL && g_debug_file != stdout && g_debug_file != stderr)
@@ -92,17 +92,17 @@ void cn_debug_set_output_file(const char* filename)
  * @param level 调试级别
  * @return 对应的字符串表示
  */
-const char* cn_debug_level_to_string(CN_DebugLevel level)
+const char* F_debug_level_to_string(Eum_DebugLevel_t level)
 {
     switch (level)
     {
-        case CN_DEBUG_LEVEL_ERROR:
+        case Eum_DEBUG_LEVEL_ERROR:
             return "ERROR";
-        case CN_DEBUG_LEVEL_WARN:
+        case Eum_DEBUG_LEVEL_WARN:
             return "WARN";
-        case CN_DEBUG_LEVEL_INFO:
+        case Eum_DEBUG_LEVEL_INFO:
             return "INFO";
-        case CN_DEBUG_LEVEL_DEBUG:
+        case Eum_DEBUG_LEVEL_DEBUG:
             return "DEBUG";
         default:
             return "UNKNOWN";
@@ -118,11 +118,11 @@ const char* cn_debug_level_to_string(CN_DebugLevel level)
  * @param ... 可变参数
  * @note 根据调试级别和全局设置决定是否输出调试信息
  */
-void cn_debug_log(CN_DebugLevel level, const char* file, int line, 
+void F_debug_log(Eum_DebugLevel_t level, const char* file, int line, 
                   const char* format, ...)
 {
     // 检查是否应该输出此级别的调试信息
-    if (level > g_debug_level || g_debug_level == CN_DEBUG_LEVEL_NONE)
+    if (level > g_debug_level || g_debug_level == Eum_DEBUG_LEVEL_NONE)
     {
         return;
     }
@@ -146,7 +146,7 @@ void cn_debug_log(CN_DebugLevel level, const char* file, int line,
             time_info->tm_hour,
             time_info->tm_min,
             time_info->tm_sec,
-            cn_debug_level_to_string(level));
+            F_debug_level_to_string(level));
     
     // 输出文件名和行号
     const char* filename = strrchr(file, '/');
@@ -186,7 +186,7 @@ void cn_debug_log(CN_DebugLevel level, const char* file, int line,
  * @param message 错误消息
  * @note 当条件为假时输出错误信息并终止程序
  */
-void cn_debug_assert(int condition, const char* file, int line, 
+void F_debug_assert(int condition, const char* file, int line, 
                      const char* message)
 {
     if (!condition)
