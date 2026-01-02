@@ -8,7 +8,7 @@
  * 版权: MIT许可证
  ******************************************************************************/
 
-#include "../src/debug/CN_debug.h"
+#include "../src/application/debugger/CN_debug.h"
 #include <stdio.h>
 #include <time.h>
 

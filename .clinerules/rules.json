@@ -1,37 +1,173 @@
 {
   "project": {
     "name": "CN_Language",
-    "description": "中文编程语言项目，旨在为中文用户提供友好、直观的编程体验",
+    "description": "中文编程语言项目，旨在为中文用户提供友好、直观的编程体验，采用分层架构和SOLID设计原则",
     "version": "1.0.0",
-    "license": "MIT"
+    "license": "MIT",
+    "architecture_version": "2.0.0",
+    "architecture_documents": [
+      "../docs/architecture/架构设计原则.md",
+      "../docs/architecture/架构决策记录.md",
+      "../docs/architecture/模块依赖规范.md",
+      "../docs/architecture/实施路线图.md"
+    ]
   },
   
-  "code_organization": {
-    "single_responsibility_principle": {
-      "description": "遵循单一职责原则",
-      "rules": [
-        "每个.c文件不超过500行",
-        "每个函数不超过50行",
-        "每个头文件只暴露必要的接口"
-      ]
+  "architecture_principles": {
+    "layered_architecture": {
+      "description": "三层分层架构设计",
+      "layers": {
+        "infrastructure_layer": {
+          "responsibility": "提供基础服务，无业务逻辑",
+          "modules": ["memory", "containers", "utils", "platform"],
+          "dependencies": ["C标准库", "操作系统API"],
+          "dependency_rule": "只能依赖C标准库和操作系统API，不能依赖任何项目其他层"
+        },
+        "core_layer": {
+          "responsibility": "实现编译器核心功能",
+          "modules": ["lexer", "parser", "ast", "semantic", "codegen", "runtime"],
+          "dependencies": ["infrastructure_layer"],
+          "dependency_rule": "可以依赖基础设施层，不能依赖应用层"
+        },
+        "application_layer": {
+          "responsibility": "提供用户界面和交互",
+          "modules": ["cli", "repl", "debugger", "ide-plugin"],
+          "dependencies": ["core_layer", "infrastructure_layer"],
+          "dependency_rule": "可以依赖核心层和基础设施层"
+        }
+      },
+      "dependency_direction": "应用层 → 核心层 → 基础设施层（单向依赖）"
     },
     
-    "directory_structure": {
-      "description": "项目目录结构规范",
-      "directories": {
-        "bin/": "包含所有编译生成的可执行文件",
-        "build/": "编译过程中生成的对象文件（.o文件）",
-        "docs/": "项目文档目录",
-        "examples/": "CN语言示例程序目录",
-        "scripts/": "构建脚本目录",
-        "src/": "C语言源代码目录",
-        "tests/": "C语言测试和调试文件目录",
-        "tools/": "工具脚本目录"
+    "solid_principles": {
+      "single_responsibility": {
+        "description": "单一职责原则",
+        "rules": [
+          "每个.c文件不超过500行",
+          "每个函数不超过50行",
+          "每个模块只负责一个功能领域",
+          "头文件只暴露必要的接口"
+        ]
+      },
+      "open_closed": {
+        "description": "开闭原则",
+        "rules": [
+          "通过抽象接口支持扩展",
+          "使用策略模式实现可替换算法",
+          "模块对修改封闭，对扩展开放"
+        ]
+      },
+      "liskov_substitution": {
+        "description": "里氏替换原则",
+        "rules": [
+          "接口实现必须完全遵守契约",
+          "子类可无缝替换父类",
+          "通过单元测试验证替换性"
+        ]
+      },
+      "interface_segregation": {
+        "description": "接口隔离原则",
+        "rules": [
+          "为不同客户端提供专用接口",
+          "避免'胖接口'",
+          "通过接口组合提供灵活的功能集"
+        ]
+      },
+      "dependency_inversion": {
+        "description": "依赖倒置原则",
+        "rules": [
+          "高层模块定义接口",
+          "低层模块实现接口",
+          "通过依赖注入管理依赖关系"
+        ]
+      }
+    },
+    
+    "modular_design": {
+      "module_boundaries": {
+        "description": "模块边界定义",
+        "rules": [
+          "功能内聚性：每个模块专注于单一功能领域",
+          "数据封装：模块内部数据结构对外部不可见",
+          "接口最小化：只暴露必要的API，隐藏实现细节",
+          "独立编译：每个模块可独立编译和测试"
+        ]
+      },
+      "interface_design": {
+        "description": "接口设计规范",
+        "rules": [
+          "使用抽象接口模式，模块间通过接口指针通信",
+          "接口定义使用前向声明，避免包含具体头文件",
+          "接口应有明确的输入输出契约",
+          "接口应定义清晰的错误处理机制"
+        ],
+        "example": "typedef struct Stru_CN_LexerInterface_t { bool (*initialize)(const char* source); Stru_CN_Token_t* (*next_token)(void); void (*destroy)(void); } Stru_CN_LexerInterface_t;"
       }
     }
   },
   
-  "naming_conventions": {
+  "dependency_management": {
+    "dependency_rules": {
+      "compile_time": {
+        "header_file_order": [
+          "模块内部头文件",
+          "C标准库头文件", 
+          "第三方库头文件",
+          "项目其他模块头文件"
+        ],
+        "forbidden_patterns": [
+          "循环包含",
+          "不必要的包含",
+          "隐式依赖"
+        ]
+      },
+      "runtime": {
+        "dynamic_library": "优先静态链接，避免运行时依赖",
+        "system_dependencies": "明确声明最小系统要求",
+        "feature_detection": "支持运行时功能检测"
+      }
+    },
+    "version_management": {
+      "semantic_versioning": {
+        "format": "主版本号.次版本号.修订号",
+        "rules": [
+          "主版本号：不兼容的API修改",
+          "次版本号：向下兼容的功能性新增", 
+          "修订号：向下兼容的问题修正"
+        ]
+      },
+      "compatibility": {
+        "backward_compatibility": "公共API一旦发布，保持向后兼容",
+        "deprecation_policy": "废弃的API需要标记，至少保留两个主版本",
+        "version_locking": "使用版本锁定文件确保构建一致性"
+      }
+    },
+    "tools": {
+      "static_analysis": ["cppcheck", "clang-tidy"],
+      "dependency_analysis": "自定义依赖分析脚本",
+      "graph_generation": "生成依赖关系图",
+      "cycle_detection": "自动检测循环依赖"
+    }
+  },
+  
+  "code_organization": {
+    "directory_structure": {
+      "description": "基于分层架构的目录结构",
+      "directories": {
+        "src/infrastructure/": "基础设施层 - 基础服务和工具",
+        "src/core/": "核心层 - 编译器核心功能",
+        "src/application/": "应用层 - 用户界面和交互",
+        "bin/": "编译生成的可执行文件",
+        "build/": "编译过程中生成的对象文件",
+        "docs/architecture/": "架构设计文档",
+        "docs/specifications/": "技术规范和编码标准",
+        "examples/": "CN语言示例程序",
+        "tests/": "测试代码（单元测试、集成测试、端到端测试）",
+        "scripts/": "构建脚本和工具脚本",
+        "tools/": "开发工具"
+      }
+    },
+    
     "file_naming": {
       "c_source_files": {
         "prefix": "CN_",
@@ -64,9 +200,11 @@
       "enum_prefix": "Eum_",
       "global_variable_prefix": "g_",
       "constant_prefix": "CN_",
+      "interface_suffix": "_Interface_t",
       
       "examples": {
         "structs": "typedef struct Stru_LanguageCore_t Stru_LanguageCore_t;",
+        "interfaces": "typedef struct Stru_CN_LexerInterface_t Stru_CN_LexerInterface_t;",
         "functions": "Stru_LanguageCore_t* F_create_language_core(void);",
         "enums": "enum Eum_TokenType { Eum_TOKEN_KEYWORD, Eum_TOKEN_IDENTIFIER };",
         "constants": "#define CN_MAX_TOKEN_LENGTH 256"
@@ -75,6 +213,7 @@
     
     "naming_styles": {
       "struct_names": "大驼峰命名法（PascalCase），以Stru_前缀开头，以_t结尾",
+      "interface_names": "大驼峰命名法，以Stru_前缀开头，以_Interface_t结尾",
       "function_names": "系统匈牙利命名法（Systems Hungarian），使用描述性中文或英文名称",
       "variable_names": "小驼峰命名法，局部变量使用有意义名称",
       "constant_names": "全大写，下划线分隔，以CN_前缀开头",
@@ -97,7 +236,9 @@
     "comments": {
       "file_header": "每个源文件开头应包含文件头注释，包含文件名、功能、作者、创建日期、修改历史、版权",
       "function_comments": "每个函数前应添加注释说明，使用@brief、@param、@return、@note标签",
-      "inline_comments": "复杂逻辑处添加行内注释，使用中文清晰说明代码意图"
+      "interface_comments": "每个接口定义应有详细文档，说明契约、前置条件、后置条件",
+      "inline_comments": "复杂逻辑处添加行内注释，使用中文清晰说明代码意图",
+      "architecture_decisions": "重要的架构决策应添加注释说明理由"
     },
     
     "header_files": {
@@ -107,124 +248,134 @@
         "C标准库头文件",
         "第三方库头文件",
         "项目其他头文件"
-      ]
-    }
-  },
-  
-  "cn_language_specifications": {
-    "character_set": "支持UTF-8编码，完全兼容中文字符",
-    "identifiers": "可以包含中文字符、英文字母、数字和下划线",
-    "keywords": {
-      "variable_declaration": ["变量", "整数", "小数", "字符串", "布尔", "数组"],
-      "control_structures": ["如果", "否则", "当", "循环", "中断", "继续"],
-      "functions": ["函数", "返回", "主程序"],
-      "logical_operators": ["与", "且", "或", "非"],
-      "literals": ["真", "假", "空"],
-      "modules": ["模块", "导入"]
+      ],
+      "forward_declarations": "优先使用前向声明，减少编译依赖"
     },
     
-    "data_types": {
-      "basic_types": ["整数", "小数", "字符串", "布尔"],
-      "composite_types": ["数组", "结构体", "枚举"],
-      "pointer_types": "使用*符号表示指针类型",
-      "reference_types": "使用&符号表示引用类型"
+    "error_handling": {
+      "error_objects": "使用错误对象+返回码组合策略",
+      "error_propagation": "错误通过返回值传递，而非全局状态",
+      "resource_management": "谁创建谁销毁，或使用引用计数",
+      "defensive_programming": "对输入进行验证，对错误进行处理"
     },
     
-    "operators": {
-      "arithmetic": ["+", "-", "*", "/", "%"],
-      "comparison": ["==", "!=", "<", ">", "<=", ">="],
-      "logical": ["与", "且", "或", "非"],
-      "assignment": ["=", "+=", "-=", "*=", "/="],
-      "member_access": [".", "[]"]
+    "memory_management": {
+      "unified_interface": "使用统一的内存管理接口（cn_malloc/cn_free等）",
+      "allocation_strategies": ["系统分配器", "对象池", "区域分配器", "调试分配器"],
+      "memory_safety": "安全的内存分配包装，检测内存错误",
+      "ownership": "明确的数据对象所有权"
     }
   },
   
   "development_workflow": {
+    "implementation_roadmap": {
+      "phase_1": "基础设施层重构（3周）",
+      "phase_2": "核心层接口定义（4周）",
+      "phase_3": "模块边界清晰化（5周）",
+      "phase_4": "应用层重构和工具完善（3周）",
+      "buffer_time": "3周缓冲时间",
+      "total_duration": "18周（90个工作日）",
+      "reference": "../docs/architecture/实施路线图.md"
+    },
+    
     "daily_development": {
       "code_standard_check": [
         "运行代码格式检查",
         "确保符合单一职责原则",
-        "验证函数和文件大小限制"
+        "验证函数和文件大小限制",
+        "检查架构合规性"
       ],
-      "debug_output": "禁止直接使用printf，必须使用CN_DEBUG宏进行调试输出",
+      "debug_output": "禁止直接使用printf，必须使用CN_LOG宏进行日志输出",
       "module_development_steps": [
-        "在docs/design/编写设计文档",
-        "在include/创建头文件",
+        "在docs/architecture/编写架构设计文档",
+        "定义抽象接口（interface.h）",
         "在src/实现功能（<500行/文件）",
-        "在tests/编写测试用例",
+        "在tests/编写单元测试和集成测试",
         "在docs/api/更新API文档",
-        "创建模块README.md"
+        "创建模块README.md和设计文档"
       ]
     },
     
-    "documentation_requirements": {
-      "per_module": [
-        "README.md - 模块概述和使用说明",
-        "API.md - 接口文档",
-        "EXAMPLES.md - 使用示例",
-        "DESIGN.md - 设计原理"
-      ]
+    "testing_strategy": {
+      "test_pyramid": {
+        "unit_tests": "大量，覆盖所有公开接口，使用Unity测试框架",
+        "integration_tests": "中等，测试模块间协作",
+        "e2e_tests": "少量，完整编译流程测试"
+      },
+      "coverage_goals": {
+        "statement_coverage": "≥85%",
+        "branch_coverage": "≥70%",
+        "function_coverage": "≥90%",
+        "line_coverage": "≥85%"
+      },
+      "performance_testing": "建立关键路径的性能基准",
+      "compatibility_testing": "跨平台支持测试"
     },
     
     "code_quality_standards": {
       "function_standards": [
         "每个函数不超过50行",
         "函数功能单一明确",
-        "有完整的参数验证"
+        "有完整的参数验证",
+        "圈复杂度≤10"
       ],
       "file_standards": [
         "每个.c文件不超过500行",
         "头文件只暴露必要接口",
         "文件名清晰表达功能"
       ],
-      "debug_standards": [
-        "禁止直接使用printf",
-        "使用CN_DEBUG宏进行调试输出",
-        "调试信息分级别管理"
+      "architecture_standards": [
+        "遵循分层架构依赖规则",
+        "模块间通过接口通信",
+        "无循环依赖",
+        "依赖关系明确声明"
       ]
     }
   },
   
   "build_and_compilation": {
-    "build_system": "使用Makefile构建系统",
-    "debug_system": "集成CN_debug调试系统",
+    "build_system": "使用Makefile构建系统，辅以平台特定脚本",
+    "configurations": ["Debug", "Release"],
     "compilation_scripts": {
       "linux": "scripts/compile_linux.sh",
-      "windows": "scripts/compile_all.bat"
-    }
-  },
-  
-  "testing_strategy": {
-    "unit_tests": "覆盖所有公开接口",
-    "integration_tests": "验证模块协作",
-    "performance_tests": "确保编译效率",
-    "compatibility_tests": "跨平台支持"
-  },
-  
-  "development_phases": {
-    "phase_1": "基础架构和词法分析（第1-4周）",
-    "phase_2": "语法分析和抽象语法树（第5-8周）",
-    "phase_3": "代码生成和运行时（第9-12周）",
-    "phase_4": "系统编程支持和优化（第13-16周）"
+      "windows": "scripts/compile_windows.bat",
+      "macos": "scripts/compile_macos.sh"
+    },
+    "dependency_injection": "支持通过依赖注入配置模块实现",
+    "plugin_architecture": "关键组件（如优化器、后端）通过接口可替换"
   },
   
   "tools_and_configuration": {
     "code_formatting": "使用clang-format统一代码风格",
-    "pre_commit_hooks": "配置pre-commit hooks检查代码规范",
+    "static_analysis": "配置cppcheck和clang-tidy进行静态分析",
+    "dependency_analysis": "自定义脚本分析模块依赖",
     "documentation": "使用Doxygen生成API文档",
-    "continuous_integration": "设置持续集成流程"
+    "continuous_integration": "设置持续集成流程，集成质量检查",
+    "architecture_validation": "工具检查架构合规性"
   },
   
   "milestone_checks": {
     "weekly_checks": [
-      "代码是否符合规范",
+      "代码是否符合架构规范",
       "文档是否同步更新",
-      "调试输出是否规范",
-      "测试覆盖率是否达标"
+      "测试覆盖率是否达标",
+      "性能基准是否保持",
+      "依赖关系是否清晰"
+    ],
+    "phase_checks": [
+      "阶段验收评审",
+      "架构决策评审",
+      "用户验收测试"
     ]
   },
   
   "references": {
+    "architecture_documents": [
+      "docs/architecture/架构设计原则.md",
+      "docs/architecture/架构决策记录.md",
+      "docs/architecture/模块依赖规范.md",
+      "docs/architecture/实施路线图.md"
+    ],
     "specification_documents": [
       "docs/specifications/CN_Language项目 技术规范和编码标准.md",
       "docs/specifications/CN_Language项目 目录结构规范.md",
@@ -240,5 +391,7 @@
   },
   
   "last_updated": "2026-01-02",
-  "maintainer": "CN_Language开发团队"
+  "architecture_version": "2.0.0",
+  "maintainer": "CN_Language架构委员会",
+  "compliance_requirement": "所有新代码必须符合本架构标准，现有代码按实施路线图逐步迁移"
 }
