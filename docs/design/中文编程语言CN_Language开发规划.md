@@ -85,8 +85,8 @@ void cn_debug_assert(int condition, const char* file, int line,
 **模块结构**：
 - `src/compiler/lexer.c`（<500行）
 - `src/compiler/token.c`（<500行）
-- `include/compiler/lexer.h`
-- `include/compiler/token.h`
+- `src/compiler/lexer.h`
+- `src/compiler/token.h`
 
 #### 第3周：词法分析器实现
 **目标**：完成词法分析功能
