@@ -34,6 +34,10 @@ LIB_DIR = lib
 # 基础设施层源文件
 INFRASTRUCTURE_SRC = \
     src/infrastructure/memory/CN_memory.c \
+    src/infrastructure/memory/pool/CN_pool_core.c \
+    src/infrastructure/memory/pool/CN_pool_operations.c \
+    src/infrastructure/memory/pool/CN_pool_management.c \
+    src/infrastructure/memory/pool/CN_pool_utils.c \
     src/infrastructure/containers/array/CN_array.c \
     src/infrastructure/containers/hash_table/CN_hash_table.c \
     src/infrastructure/containers/hash_table/CN_hash_table_operations.c \
@@ -74,7 +78,8 @@ APPLICATION_SRC = \
 TEST_SRC = \
     tests/test_debug.c \
     tests/infrastructure/containers/test_stack.c \
-    tests/infrastructure/containers/test_queue.c
+    tests/infrastructure/containers/test_queue.c \
+    tests/memory/test_pool_allocator.c
 
 # ============================================================================
 # 目标文件定义
@@ -111,6 +116,8 @@ all: dirs $(INFRASTRUCTURE_LIB) $(CORE_LIB) $(APPLICATION_LIB) $(TEST_EXEC)
 # 创建必要的目录
 dirs:
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory
+	@mkdir -p $(BUILD_DIR)/infrastructure/memory/pool
+	@mkdir -p $(BUILD_DIR)/tests/memory
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers/stack
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers/queue

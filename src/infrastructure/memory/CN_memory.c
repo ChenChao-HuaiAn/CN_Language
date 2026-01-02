@@ -9,6 +9,7 @@
  ******************************************************************************/
 
 #include "CN_memory.h"
+#include "CN_pool_allocator.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -178,40 +179,54 @@ static const Stru_CN_AllocatorInterface_t g_debug_allocator = {
 };
 
 // ============================================================================
-// 对象池分配器实现（简化版）
+// 对象池分配器实现（完整版）
 // ============================================================================
 
-// 对象池分配器内部结构
-typedef struct Stru_CN_PoolAllocator_t
-{
-    size_t object_size;
-    size_t capacity;
-    void** free_list;
-    size_t free_count;
-} Stru_CN_PoolAllocator_t;
-
-static Stru_CN_PoolAllocator_t g_pool_allocator = {0};
+// 全局对象池实例（简化实现，支持单一对象池）
+static Stru_CN_PoolAllocator_t* g_pool_allocator_instance = NULL;
+static size_t g_pool_object_size = 64;  // 默认对象大小
 
 static void* pool_allocate(size_t size, const char* file, int line)
 {
     (void)file;
     (void)line;
     
-    // 简化实现：如果对象大小不匹配或池未初始化，使用系统分配
-    if (g_pool_allocator.object_size == 0 || g_pool_allocator.object_size != size)
+    // 如果对象池未初始化或对象大小不匹配，使用系统分配
+    if (g_pool_allocator_instance == NULL || size != g_pool_object_size)
     {
+        // 如果这是第一次使用对象池，初始化它
+        if (g_pool_allocator_instance == NULL && size > 0)
+        {
+            Stru_CN_PoolConfig_t config = CN_POOL_CONFIG_DEFAULT;
+            config.object_size = size;
+            config.initial_capacity = 64;
+            config.auto_expand = true;
+            config.expand_increment = 64;
+            
+            g_pool_allocator_instance = CN_pool_create(&config);
+            if (g_pool_allocator_instance != NULL)
+            {
+                g_pool_object_size = size;
+                printf("[INFO] 对象池已自动初始化，对象大小: %zu\n", size);
+            }
+        }
+        
+        // 如果对象池初始化失败或大小不匹配，使用系统分配
+        if (g_pool_allocator_instance == NULL || size != g_pool_object_size)
+        {
+            return system_allocate(size, file, line);
+        }
+    }
+    
+    // 从对象池分配
+    void* ptr = CN_pool_alloc(g_pool_allocator_instance);
+    if (ptr == NULL)
+    {
+        // 对象池分配失败，回退到系统分配
         return system_allocate(size, file, line);
     }
     
-    // 从空闲列表获取对象
-    if (g_pool_allocator.free_count > 0)
-    {
-        void* obj = g_pool_allocator.free_list[--g_pool_allocator.free_count];
-        return obj;
-    }
-    
-    // 空闲列表为空，使用系统分配
-    return system_allocate(size, file, line);
+    return ptr;
 }
 
 static void pool_deallocate(void* ptr, const char* file, int line)
@@ -224,21 +239,53 @@ static void pool_deallocate(void* ptr, const char* file, int line)
         return;
     }
     
-    // 如果池已满，直接释放
-    if (g_pool_allocator.free_count >= g_pool_allocator.capacity)
+    // 如果对象池未初始化，使用系统释放
+    if (g_pool_allocator_instance == NULL)
     {
         system_deallocate(ptr, file, line);
         return;
     }
     
-    // 添加到空闲列表
-    g_pool_allocator.free_list[g_pool_allocator.free_count++] = ptr;
+    // 尝试释放到对象池
+    if (!CN_pool_free(g_pool_allocator_instance, ptr))
+    {
+        // 对象不属于对象池，使用系统释放
+        system_deallocate(ptr, file, line);
+    }
 }
 
 static void* pool_reallocate(void* ptr, size_t new_size, const char* file, int line)
 {
-    // 对象池不支持重新分配，使用系统重新分配
-    return system_reallocate(ptr, new_size, file, line);
+    // 对象池不支持真正的重新分配
+    // 如果新大小等于对象大小，返回原指针
+    // 否则分配新对象，复制数据，释放原对象
+    
+    if (g_pool_allocator_instance == NULL || new_size != g_pool_object_size)
+    {
+        // 使用系统重新分配
+        return system_reallocate(ptr, new_size, file, line);
+    }
+    
+    if (ptr == NULL)
+    {
+        // 相当于分配新对象
+        return pool_allocate(new_size, file, line);
+    }
+    
+    // 分配新对象
+    void* new_ptr = CN_pool_alloc(g_pool_allocator_instance);
+    if (new_ptr == NULL)
+    {
+        return NULL;
+    }
+    
+    // 复制数据
+    memcpy(new_ptr, ptr, (new_size < g_pool_object_size) ? new_size : g_pool_object_size);
+    
+    // 释放原对象
+    CN_pool_free(g_pool_allocator_instance, ptr);
+    
+    return new_ptr;
 }
 
 // 对象池分配器接口实例
@@ -342,13 +389,15 @@ bool CN_memory_init(Eum_CN_AllocatorType_t allocator_type)
 
 void CN_memory_shutdown(void)
 {
-    // 清理资源
-    if (g_pool_allocator.free_list != NULL)
+    // 清理对象池资源
+    if (g_pool_allocator_instance != NULL)
     {
-        free(g_pool_allocator.free_list);
-        g_pool_allocator.free_list = NULL;
+        CN_pool_destroy(g_pool_allocator_instance);
+        g_pool_allocator_instance = NULL;
+        g_pool_object_size = 64;
     }
     
+    // 清理区域分配器资源
     if (g_arena_allocator.memory != NULL)
     {
         free(g_arena_allocator.memory);
