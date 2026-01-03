@@ -70,7 +70,14 @@ INFRASTRUCTURE_SRC = \
     src/infrastructure/utils/math/CN_math_random_algorithms.c \
     src/infrastructure/utils/math/CN_math_random_advanced.c \
     src/infrastructure/utils/math/CN_math_basic_arithmetic.c \
-    src/infrastructure/utils/math/CN_math_basic_trigonometric.c
+    src/infrastructure/utils/math/CN_math_basic_trigonometric.c \
+    src/infrastructure/platform/windows/CN_platform_windows.c \
+    src/infrastructure/platform/windows/CN_platform_windows_filesystem.c \
+    src/infrastructure/platform/windows/CN_platform_windows_thread.c \
+    src/infrastructure/platform/windows/CN_platform_windows_network.c \
+    src/infrastructure/platform/windows/CN_platform_windows_time.c \
+    src/infrastructure/platform/windows/CN_platform_windows_system.c \
+    src/infrastructure/platform/windows/CN_platform_windows_special.c
 
 # 核心层源文件
 CORE_SRC = \
@@ -139,6 +146,7 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory/system
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory/pool
+	@mkdir -p $(BUILD_DIR)/infrastructure/platform/windows
 	@mkdir -p $(BUILD_DIR)/tests/memory
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers/stack
@@ -185,11 +193,11 @@ $(APPLICATION_LIB): $(APPLICATION_OBJS)
 
 # 测试可执行文件
 $(TEST_EXEC): $(TEST_OBJS) $(APPLICATION_LIB) $(CORE_LIB) $(INFRASTRUCTURE_LIB)
-	$(CC) $(CFLAGS) -o $@ $^ -lm
+	$(CC) $(CFLAGS) -o $@ $^ -lm -lws2_32 -ladvapi32
 
 # 调试器可执行文件
 $(DEBUG_EXEC): $(APPLICATION_OBJS) $(CORE_LIB) $(INFRASTRUCTURE_LIB)
-	$(CC) $(CFLAGS) -o $@ $^ -lm
+	$(CC) $(CFLAGS) -o $@ $^ -lm -lws2_32 -ladvapi32
 
 # ============================================================================
 # 实用目标
