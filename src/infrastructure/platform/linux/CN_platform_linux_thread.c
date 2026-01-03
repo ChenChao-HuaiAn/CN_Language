@@ -15,6 +15,7 @@
 #include <errno.h>
 #include <string.h>
 #include <time.h>
+#include <stdatomic.h>
 
 /* 内部数据结构定义 */
 
@@ -71,6 +72,111 @@ static int linux_cond_timedwait(CN_CondHandle_t* cond, CN_MutexHandle_t* mutex,
 static int linux_cond_signal(CN_CondHandle_t* cond);
 static int linux_cond_broadcast(CN_CondHandle_t* cond);
 
+/* 原子操作和内存屏障函数声明 */
+static int32_t linux_atomic_increment(volatile int32_t* value);
+static int32_t linux_atomic_decrement(volatile int32_t* value);
+static int32_t linux_atomic_add(volatile int32_t* value, int32_t addend);
+static int32_t linux_atomic_compare_exchange(volatile int32_t* dest, 
+                                            int32_t exchange, int32_t comparand);
+static void linux_memory_barrier(void);
+
+/******************************************************************************
+ * 原子操作和内存屏障函数实现
+ ******************************************************************************/
+
+/******************************************************************************
+ * 函数名：linux_atomic_increment
+ * 功能：原子递增操作
+ * 参数：
+ *   value - 要递增的整数值指针
+ * 返回值：递增后的值
+ * 描述：使用GCC内置原子操作实现原子递增
+ ******************************************************************************/
+static int32_t linux_atomic_increment(volatile int32_t* value)
+{
+    if (!value) {
+        return 0;
+    }
+    
+    // 使用GCC内置原子操作
+    return __atomic_add_fetch(value, 1, __ATOMIC_SEQ_CST);
+}
+
+/******************************************************************************
+ * 函数名：linux_atomic_decrement
+ * 功能：原子递减操作
+ * 参数：
+ *   value - 要递减的整数值指针
+ * 返回值：递减后的值
+ * 描述：使用GCC内置原子操作实现原子递减
+ ******************************************************************************/
+static int32_t linux_atomic_decrement(volatile int32_t* value)
+{
+    if (!value) {
+        return 0;
+    }
+    
+    // 使用GCC内置原子操作
+    return __atomic_sub_fetch(value, 1, __ATOMIC_SEQ_CST);
+}
+
+/******************************************************************************
+ * 函数名：linux_atomic_add
+ * 功能：原子加法操作
+ * 参数：
+ *   value - 要修改的整数值指针
+ *   addend - 要加上的值
+ * 返回值：加法后的值
+ * 描述：使用GCC内置原子操作实现原子加法
+ ******************************************************************************/
+static int32_t linux_atomic_add(volatile int32_t* value, int32_t addend)
+{
+    if (!value) {
+        return 0;
+    }
+    
+    // 使用GCC内置原子操作
+    return __atomic_add_fetch(value, addend, __ATOMIC_SEQ_CST);
+}
+
+/******************************************************************************
+ * 函数名：linux_atomic_compare_exchange
+ * 功能：原子比较并交换操作
+ * 参数：
+ *   dest - 目标内存位置指针
+ *   exchange - 要交换的值
+ *   comparand - 要比较的值
+ * 返回值：原始值（如果比较成功，则dest被设置为exchange）
+ * 描述：使用GCC内置原子操作实现原子比较并交换
+ ******************************************************************************/
+static int32_t linux_atomic_compare_exchange(volatile int32_t* dest, 
+                                            int32_t exchange, int32_t comparand)
+{
+    if (!dest) {
+        return 0;
+    }
+    
+    int32_t expected = comparand;
+    // 使用GCC内置原子操作
+    __atomic_compare_exchange(dest, &expected, &exchange, 
+                              0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
+    
+    return expected;  // 返回原始值
+}
+
+/******************************************************************************
+ * 函数名：linux_memory_barrier
+ * 功能：内存屏障操作
+ * 参数：无
+ * 返回值：无
+ * 描述：使用GCC内置内存屏障确保内存操作的顺序性
+ ******************************************************************************/
+static void linux_memory_barrier(void)
+{
+    // 使用GCC内置全内存屏障
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+}
+
 /* 全局线程接口变量 */
 
 static Stru_CN_ThreadInterface_t g_linux_thread_interface = {
@@ -90,7 +196,12 @@ static Stru_CN_ThreadInterface_t g_linux_thread_interface = {
     .cond_wait = linux_cond_wait,
     .cond_timedwait = linux_cond_timedwait,
     .cond_signal = linux_cond_signal,
-    .cond_broadcast = linux_cond_broadcast
+    .cond_broadcast = linux_cond_broadcast,
+    .atomic_increment = linux_atomic_increment,
+    .atomic_decrement = linux_atomic_decrement,
+    .atomic_add = linux_atomic_add,
+    .atomic_compare_exchange = linux_atomic_compare_exchange,
+    .memory_barrier = linux_memory_barrier
 };
 
 /* 模块初始化状态 */

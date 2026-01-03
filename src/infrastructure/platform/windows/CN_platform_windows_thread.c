@@ -571,6 +571,28 @@ int32_t windows_atomic_sub_i32(volatile int32_t* ptr, int32_t value)
     return InterlockedExchangeAdd((volatile LONG*)ptr, -(LONG)value);
 }
 
+// 原子递增（符合CN_platform.h接口）
+int32_t windows_atomic_increment(volatile int32_t* value)
+{
+    if (!value) return 0;
+    return InterlockedIncrement((volatile LONG*)value);
+}
+
+// 原子递减（符合CN_platform.h接口）
+int32_t windows_atomic_decrement(volatile int32_t* value)
+{
+    if (!value) return 0;
+    return InterlockedDecrement((volatile LONG*)value);
+}
+
+// 原子比较并交换（符合CN_platform.h接口）
+int32_t windows_atomic_compare_exchange(volatile int32_t* dest, 
+                                       int32_t exchange, int32_t comparand)
+{
+    if (!dest) return 0;
+    return InterlockedCompareExchange((volatile LONG*)dest, (LONG)exchange, (LONG)comparand);
+}
+
 // 原子整数与运算
 int32_t windows_atomic_and_i32(volatile int32_t* ptr, int32_t value)
 {
@@ -749,10 +771,10 @@ Stru_CN_ThreadInterface_t g_windows_thread_interface = {
     .condition_broadcast = windows_condition_notify_all,
     
     // 原子操作
-    .atomic_increment = NULL, // 暂未实现
-    .atomic_decrement = NULL, // 暂未实现
+    .atomic_increment = windows_atomic_increment,
+    .atomic_decrement = windows_atomic_decrement,
     .atomic_add = windows_atomic_add_i32,
-    .atomic_compare_exchange = NULL, // 暂未实现
+    .atomic_compare_exchange = windows_atomic_compare_exchange,
     
     // 内存屏障
     .memory_barrier = windows_memory_barrier,
