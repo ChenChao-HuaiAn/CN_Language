@@ -10,6 +10,11 @@
 - `src/infrastructure/platform/linux/CN_platform_linux_interrupt.h` - Linux平台中断处理接口
 - `src/infrastructure/platform/linux/CN_platform_linux_interrupt_simple.c` - Linux平台中断控制器实现
 - `src/infrastructure/platform/linux/README_interrupt.md` - Linux平台中断处理模块说明文档
+- `src/infrastructure/platform/windows/CN_platform_windows_interrupt.h` - Windows平台中断处理接口
+- `src/infrastructure/platform/windows/CN_platform_windows_interrupt.c` - Windows平台中断控制器实现
+- `src/infrastructure/platform/windows/CN_platform_windows_interrupt_manager.c` - Windows平台中断管理器实现
+- `src/infrastructure/platform/windows/CN_platform_windows_interrupt_tools.c` - Windows平台中断工具实现
+- `src/infrastructure/platform/windows/README_interrupt.md` - Windows平台中断处理模块说明文档
 
 ## 基本类型定义
 
@@ -717,7 +722,7 @@ bool CN_interrupt_is_initialized(void);
 
 ## 使用示例
 
-### 基本使用
+### 基本使用（跨平台）
 ```c
 #include "CN_interrupt.h"
 
@@ -755,7 +760,15 @@ int main()
     
     // 注册中断处理函数
     int counter = 0;
-    CN_InterruptNumber_t irq = 1001; // Linux信号1映射的中断号
+    
+    // 平台特定的中断号
+    #ifdef __linux__
+        CN_InterruptNumber_t irq = 1001; // Linux信号1映射的中断号
+    #elif _WIN32
+        CN_InterruptNumber_t irq = 2001; // Windows事件1映射的中断号
+    #else
+        CN_InterruptNumber_t irq = 1; // 其他平台
+    #endif
     
     Stru_CN_InterruptDescriptor_t desc = {
         .number = irq,
@@ -788,7 +801,13 @@ int main()
     printf("中断处理已设置，等待中断...\n");
     
     // 等待一段时间
-    sleep(10);
+    #ifdef __linux__
+        sleep(10);
+    #elif _WIN32
+        Sleep(10000);
+    #else
+        // 其他平台实现
+    #endif
     
     // 禁用中断
     controller->disable_interrupt(irq);
@@ -804,6 +823,134 @@ int main()
     
     printf("程序结束，中断发生次数: %d\n", counter);
     return 0;
+}
+```
+
+### Windows平台特定示例
+```c
+#include "CN_platform_windows_interrupt.h"
+
+// Windows中断处理函数
+void windows_interrupt_handler(void* context)
+{
+    int* counter = (int*)context;
+    (*counter)++;
+    printf("Windows中断发生，计数器: %d\n", *counter);
+}
+
+int windows_example()
+{
+    // 初始化Windows中断处理系统
+    if (!CN_platform_windows_interrupt_initialize()) {
+        fprintf(stderr, "无法初始化Windows中断处理系统\n");
+        return -1;
+    }
+    
+    // 获取Windows中断控制器
+    Stru_CN_InterruptControllerInterface_t* controller = 
+        CN_platform_windows_get_interrupt_controller();
+    
+    // 注册中断处理函数
+    int counter = 0;
+    CN_InterruptNumber_t irq = 2001; // Windows事件1映射的中断号
+    
+    Stru_CN_InterruptDescriptor_t desc = {
+        .number = irq,
+        .type = Eum_INTERRUPT_TYPE_EXTERNAL,
+        .trigger = Eum_INTERRUPT_TRIGGER_EDGE,
+        .polarity = Eum_INTERRUPT_POLARITY_RISING_EDGE,
+        .priority = 5,
+        .cpu_affinity = 0x1,
+        .enabled = true,
+        .shared = false,
+        .description = "Windows测试中断"
+    };
+    
+    if (!controller->register_handler(irq, windows_interrupt_handler, &counter, &desc)) {
+        fprintf(stderr, "无法注册中断处理函数\n");
+        CN_platform_windows_interrupt_cleanup();
+        return -1;
+    }
+    
+    // 启用中断
+    controller->enable_interrupt(irq);
+    
+    printf("Windows中断处理已设置，等待中断...\n");
+    
+    // 模拟中断触发（在实际应用中可能由外部事件触发）
+    printf("按Enter键模拟中断触发...\n");
+    getchar();
+    
+    // 在实际应用中，这里会有事件触发机制
+    // 例如：SetEvent(handler_event);
+    
+    // 清理
+    controller->unregister_handler(irq);
+    CN_platform_windows_interrupt_cleanup();
+    
+    return 0;
+}
+```
+
+### 使用Windows事件接口
+```c
+#include "CN_platform_windows_interrupt.h"
+
+void use_windows_event_interface(void)
+{
+    Stru_CN_WindowsEventInterface_t* event_if = 
+        CN_platform_windows_get_event_interface();
+    
+    if (!event_if) {
+        return;
+    }
+    
+    // 创建事件
+    HANDLE event = event_if->event_create(FALSE, FALSE, "TestEvent");
+    if (!event) {
+        return;
+    }
+    
+    // 触发事件
+    event_if->event_set(event);
+    
+    // 等待事件
+    DWORD result = event_if->event_wait_single(event, 1000);
+    if (result == WAIT_OBJECT_0) {
+        printf("事件已触发\n");
+    }
+    
+    // 清理
+    event_if->event_destroy(event);
+}
+```
+
+### 使用Windows APC接口
+```c
+#include "CN_platform_windows_interrupt.h"
+
+VOID CALLBACK my_apc_func(ULONG_PTR param)
+{
+    printf("APC回调执行，参数: %llu\n", param);
+}
+
+void use_windows_apc_interface(void)
+{
+    Stru_CN_WindowsAPCInterface_t* apc_if = 
+        CN_platform_windows_get_apc_interface();
+    
+    if (!apc_if) {
+        return;
+    }
+    
+    // 注册APC回调
+    if (apc_if->apc_register_callback(my_apc_func, 12345)) {
+        // 进入可警告等待状态以执行APC
+        apc_if->apc_enter_alertable_wait();
+        
+        // 注销APC回调
+        apc_if->apc_unregister_callback(my_apc_func);
+    }
 }
 ```
 
@@ -955,9 +1102,22 @@ int use_interrupt_tools(void)
 - 提供完整的中断处理接口
 - Linux平台基本实现
 
+### v1.1.0 (2026-01-03)
+- 添加Windows平台支持
+- 实现Windows事件、APC、I/O完成端口中断处理
+- 添加跨平台示例代码
+- 完善API文档和模块说明
+
+### v1.2.0 (2026-01-03)
+- 完善Windows平台中断处理模块
+- 添加Windows中断管理器实现
+- 添加Windows中断工具实现（上下文管理、栈管理、延迟处理、中断过滤器、中断日志、性能分析）
+- 更新API文档，添加新文件说明
+
 ## 相关文档
 
-- [中断处理模块README](../../../src/infrastructure/platform/linux/README_interrupt.md)
+- [Linux中断处理模块README](../../../src/infrastructure/platform/linux/README_interrupt.md)
+- [Windows中断处理模块README](../../../src/infrastructure/platform/windows/README_interrupt.md)
 - [架构设计原则](../../../../architecture/架构设计原则.md)
 - [编码标准](../../../../specifications/CN_Language项目 技术规范和编码标准.md)
 - [平台API文档](./CN_platform_API.md)

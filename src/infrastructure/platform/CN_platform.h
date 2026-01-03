@@ -438,10 +438,8 @@ typedef struct Stru_CN_SystemInterface_t
 // 中断处理接口（新增）
 // ============================================================================
 
-// 前向声明中断处理接口结构体
-typedef struct Stru_CN_InterruptControllerInterface_t Stru_CN_InterruptControllerInterface_t;
-typedef struct Stru_CN_InterruptManagerInterface_t Stru_CN_InterruptManagerInterface_t;
-typedef struct Stru_CN_InterruptToolsInterface_t Stru_CN_InterruptToolsInterface_t;
+// 包含中断处理接口定义
+#include "CN_interrupt.h"
 
 // ============================================================================
 // 统一平台接口

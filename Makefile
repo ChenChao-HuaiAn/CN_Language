@@ -84,7 +84,11 @@ INFRASTRUCTURE_SRC = \
     src/infrastructure/platform/windows/CN_platform_windows_network.c \
     src/infrastructure/platform/windows/CN_platform_windows_time.c \
     src/infrastructure/platform/windows/CN_platform_windows_system.c \
-    src/infrastructure/platform/windows/CN_platform_windows_special.c
+    src/infrastructure/platform/windows/CN_platform_windows_special.c \
+    src/infrastructure/platform/windows/CN_platform_windows_interrupt.c \
+    src/infrastructure/platform/windows/CN_platform_windows_interrupt_manager.c \
+    src/infrastructure/platform/windows/CN_platform_windows_interrupt_tools.c \
+    src/infrastructure/platform/windows/CN_platform_windows_interrupt_special.c
 
 # 核心层源文件
 CORE_SRC = \
@@ -115,7 +119,8 @@ TEST_SRC = \
     tests/infrastructure/memory/dma/test_dma_allocator.c \
     tests/infrastructure/utils/math/test_math.c \
     tests/infrastructure/utils/math/test_math_full.c \
-    tests/infrastructure/memory_containers_integration_test.c
+    tests/infrastructure/memory_containers_integration_test.c \
+    tests/infrastructure/platform/windows/test_interrupt.c
 
 # ============================================================================
 # 目标文件定义
@@ -171,6 +176,7 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/tests/infrastructure
 	@mkdir -p $(BUILD_DIR)/tests/infrastructure/containers
 	@mkdir -p $(BUILD_DIR)/tests/infrastructure/utils/math
+	@mkdir -p $(BUILD_DIR)/tests/infrastructure/platform/windows
 	@mkdir -p $(BIN_DIR)
 	@mkdir -p $(LIB_DIR)
 
