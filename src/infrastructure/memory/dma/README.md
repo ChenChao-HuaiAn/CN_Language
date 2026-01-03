@@ -14,6 +14,36 @@ DMA内存分配器是CN_Language项目基础设施层的关键组件，专门用
 
 ## 架构设计
 
+### 模块化设计原则
+
+DMA内存分配器模块遵循CN_Language项目的模块化设计原则：
+
+1. **单一职责原则**：
+   - 每个.c文件不超过500行代码
+   - 每个函数不超过50行代码
+   - 每个模块只负责一个功能领域
+   - 头文件只暴露必要的接口
+
+2. **模块化文件结构**：
+   ```
+   src/infrastructure/memory/dma/
+   ├── CN_dma_allocator.h      # 公共接口定义
+   ├── CN_dma_allocator.c      # 模块化实现入口
+   ├── CN_dma_core.c           # 核心分配器功能（<500行）
+   ├── CN_dma_bitmap.c         # 位图管理功能（<500行）
+   ├── CN_dma_tracking.c       # 分配跟踪功能（<500行）
+   ├── CN_dma_cache.c          # 缓存一致性管理（<500行）
+   ├── CN_dma_scatter_gather.c # 分散-聚集DMA支持（<500行）
+   ├── CN_dma_debug.c          # 调试和统计功能（<500行）
+   ├── CN_dma_internal.h       # 内部接口定义
+   └── README.md               # 模块详细文档
+   ```
+
+3. **依赖关系管理**：
+   - 遵循基础设施层设计原则，不依赖项目其他层
+   - 只依赖C标准库和操作系统API
+   - 通过抽象接口实现模块间通信
+
 ### 核心数据结构
 
 1. **Stru_CN_DmaAllocator_t**：DMA内存分配器句柄（不透明指针）

@@ -112,6 +112,7 @@ TEST_SRC = \
     tests/infrastructure/containers/test_stack.c \
     tests/infrastructure/containers/test_queue.c \
     tests/memory/test_pool_allocator.c \
+    tests/infrastructure/memory/dma/test_dma_allocator.c \
     tests/infrastructure/utils/math/test_math.c \
     tests/infrastructure/utils/math/test_math_full.c \
     tests/infrastructure/memory_containers_integration_test.c
@@ -157,6 +158,7 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory/dma
 	@mkdir -p $(BUILD_DIR)/infrastructure/platform/windows
 	@mkdir -p $(BUILD_DIR)/tests/memory
+	@mkdir -p $(BUILD_DIR)/tests/infrastructure/memory/dma
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers/stack
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers/queue
