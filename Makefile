@@ -60,7 +60,17 @@ INFRASTRUCTURE_SRC = \
     src/infrastructure/utils/string/CN_string_encoding.c \
     src/infrastructure/utils/string/CN_string_search.c \
     src/infrastructure/utils/string/CN_string_regex_simple.c \
-    src/infrastructure/utils/string/CN_string_i18n.c
+    src/infrastructure/utils/string/CN_string_i18n.c \
+    src/infrastructure/utils/math/CN_math.c \
+    src/infrastructure/utils/math/CN_math_core.c \
+    src/infrastructure/utils/math/CN_math_safe_arithmetic.c \
+    src/infrastructure/utils/math/CN_math_safe_arithmetic_float.c \
+    src/infrastructure/utils/math/CN_math_safe_arithmetic_batch.c \
+    src/infrastructure/utils/math/CN_math_random.c \
+    src/infrastructure/utils/math/CN_math_random_algorithms.c \
+    src/infrastructure/utils/math/CN_math_random_advanced.c \
+    src/infrastructure/utils/math/CN_math_basic_arithmetic.c \
+    src/infrastructure/utils/math/CN_math_basic_trigonometric.c
 
 # 核心层源文件
 CORE_SRC = \
@@ -87,7 +97,8 @@ TEST_SRC = \
     tests/test_debug.c \
     tests/infrastructure/containers/test_stack.c \
     tests/infrastructure/containers/test_queue.c \
-    tests/memory/test_pool_allocator.c
+    tests/memory/test_pool_allocator.c \
+    tests/infrastructure/utils/math/test_math.c
 
 # ============================================================================
 # 目标文件定义
@@ -131,11 +142,13 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers/stack
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers/queue
 	@mkdir -p $(BUILD_DIR)/infrastructure/utils
+	@mkdir -p $(BUILD_DIR)/infrastructure/utils/math
 	@mkdir -p $(BUILD_DIR)/core/types
 	@mkdir -p $(BUILD_DIR)/core/lexer
 	@mkdir -p $(BUILD_DIR)/application/debugger
 	@mkdir -p $(BUILD_DIR)/tests
 	@mkdir -p $(BUILD_DIR)/tests/infrastructure/containers
+	@mkdir -p $(BUILD_DIR)/tests/infrastructure/utils/math
 	@mkdir -p $(BIN_DIR)
 	@mkdir -p $(LIB_DIR)
 
