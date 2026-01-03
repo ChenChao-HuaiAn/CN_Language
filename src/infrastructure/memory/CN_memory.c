@@ -13,6 +13,7 @@
 #include "arena/CN_arena_allocator.h"
 #include "system/CN_system_allocator.h"
 #include "debug_allocator/CN_debug_allocator.h"
+#include "physical/CN_physical_allocator.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -397,6 +398,230 @@ static const Stru_CN_AllocatorInterface_t g_arena_allocator_interface = {
 };
 
 // ============================================================================
+// 物理内存分配器实现（模拟版）
+// ============================================================================
+
+// 全局物理内存分配器实例
+static Stru_CN_PhysicalAllocator_t* g_physical_allocator_instance = NULL;
+
+// 模拟的物理内存范围（用于用户空间测试）
+#define PHYSICAL_MEMORY_START 0x10000000  // 256MB
+#define PHYSICAL_MEMORY_END   0x20000000  // 512MB
+#define PHYSICAL_PAGE_SIZE    4096        // 4KB
+
+// 物理到虚拟地址映射表（简化模拟）
+typedef struct Stru_PhysicalToVirtualMap_t
+{
+    uintptr_t physical_address;
+    void* virtual_address;
+    size_t size;
+} Stru_PhysicalToVirtualMap_t;
+
+static Stru_PhysicalToVirtualMap_t* g_physical_maps = NULL;
+static size_t g_physical_map_count = 0;
+static size_t g_physical_map_capacity = 0;
+
+// 将物理地址映射到虚拟地址（模拟）
+static void* map_physical_to_virtual(uintptr_t physical_address, size_t size)
+{
+    // 在用户空间，我们无法真正映射物理地址
+    // 这里使用malloc模拟，实际操作系统内核中需要使用MMU
+    void* virtual_address = malloc(size);
+    if (virtual_address == NULL)
+    {
+        return NULL;
+    }
+    
+    // 记录映射关系
+    if (g_physical_map_count >= g_physical_map_capacity)
+    {
+        size_t new_capacity = g_physical_map_capacity == 0 ? 16 : g_physical_map_capacity * 2;
+        Stru_PhysicalToVirtualMap_t* new_maps = realloc(g_physical_maps, 
+                                                        new_capacity * sizeof(Stru_PhysicalToVirtualMap_t));
+        if (new_maps == NULL)
+        {
+            free(virtual_address);
+            return NULL;
+        }
+        g_physical_maps = new_maps;
+        g_physical_map_capacity = new_capacity;
+    }
+    
+    g_physical_maps[g_physical_map_count].physical_address = physical_address;
+    g_physical_maps[g_physical_map_count].virtual_address = virtual_address;
+    g_physical_maps[g_physical_map_count].size = size;
+    g_physical_map_count++;
+    
+    return virtual_address;
+}
+
+// 取消物理地址映射（模拟）
+static void unmap_physical_to_virtual(uintptr_t physical_address)
+{
+    for (size_t i = 0; i < g_physical_map_count; i++)
+    {
+        if (g_physical_maps[i].physical_address == physical_address)
+        {
+            free(g_physical_maps[i].virtual_address);
+            
+            // 将最后一个元素移动到当前位置
+            if (i < g_physical_map_count - 1)
+            {
+                g_physical_maps[i] = g_physical_maps[g_physical_map_count - 1];
+            }
+            g_physical_map_count--;
+            break;
+        }
+    }
+}
+
+static void* physical_allocate(size_t size, const char* file, int line)
+{
+    (void)file;
+    (void)line;
+    
+    // 如果物理内存分配器未初始化，初始化它
+    if (g_physical_allocator_instance == NULL)
+    {
+        Stru_CN_PhysicalConfig_t config = CN_PHYSICAL_CONFIG_DEFAULT;
+        config.memory_start = PHYSICAL_MEMORY_START;
+        config.memory_end = PHYSICAL_MEMORY_END;
+        config.page_size = PHYSICAL_PAGE_SIZE;
+        config.enable_statistics = true;
+        config.enable_debug = g_debug_enabled;
+        config.zero_on_alloc = false;
+        config.track_allocations = true;
+        config.reserved_pages = 0;
+        config.name = "模拟物理内存分配器";
+        
+        g_physical_allocator_instance = CN_physical_create(&config);
+        if (g_physical_allocator_instance == NULL)
+        {
+            // 物理分配器创建失败，使用系统分配
+            return system_allocate(size, file, line);
+        }
+        
+        printf("[INFO] 物理内存分配器已自动初始化（模拟模式）\n");
+    }
+    
+    // 计算需要的页面数量
+    size_t page_count = (size + PHYSICAL_PAGE_SIZE - 1) / PHYSICAL_PAGE_SIZE;
+    
+    // 分配物理页面
+    uintptr_t physical_address = CN_physical_alloc_pages(g_physical_allocator_instance, 
+                                                        page_count, file, line, 
+                                                        "CN_memory物理分配");
+    if (physical_address == 0)
+    {
+        // 物理分配失败，使用系统分配
+        return system_allocate(size, file, line);
+    }
+    
+    // 将物理地址映射到虚拟地址（模拟）
+    void* virtual_address = map_physical_to_virtual(physical_address, page_count * PHYSICAL_PAGE_SIZE);
+    if (virtual_address == NULL)
+    {
+        // 映射失败，释放物理页面
+        CN_physical_free_pages(g_physical_allocator_instance, physical_address, page_count, file, line);
+        return system_allocate(size, file, line);
+    }
+    
+    return virtual_address;
+}
+
+static void physical_deallocate(void* ptr, const char* file, int line)
+{
+    if (ptr == NULL)
+    {
+        return;
+    }
+    
+    // 如果物理内存分配器未初始化，使用系统释放
+    if (g_physical_allocator_instance == NULL)
+    {
+        system_deallocate(ptr, file, line);
+        return;
+    }
+    
+    // 查找物理地址
+    uintptr_t physical_address = 0;
+    size_t page_count = 0;
+    
+    for (size_t i = 0; i < g_physical_map_count; i++)
+    {
+        if (g_physical_maps[i].virtual_address == ptr)
+        {
+            physical_address = g_physical_maps[i].physical_address;
+            page_count = g_physical_maps[i].size / PHYSICAL_PAGE_SIZE;
+            
+            // 取消映射
+            unmap_physical_to_virtual(physical_address);
+            break;
+        }
+    }
+    
+    if (physical_address != 0)
+    {
+        // 释放物理页面
+        CN_physical_free_pages(g_physical_allocator_instance, physical_address, page_count, file, line);
+    }
+    else
+    {
+        // 不是物理分配的内存，使用系统释放
+        system_deallocate(ptr, file, line);
+    }
+}
+
+static void* physical_reallocate(void* ptr, size_t new_size, const char* file, int line)
+{
+    // 物理内存分配器不支持真正的重新分配
+    // 分配新对象，复制数据，释放原对象
+    
+    if (ptr == NULL)
+    {
+        // 相当于分配新对象
+        return physical_allocate(new_size, file, line);
+    }
+    
+    // 分配新对象
+    void* new_ptr = physical_allocate(new_size, file, line);
+    if (new_ptr == NULL)
+    {
+        return NULL;
+    }
+    
+    // 查找原大小
+    size_t old_size = 0;
+    for (size_t i = 0; i < g_physical_map_count; i++)
+    {
+        if (g_physical_maps[i].virtual_address == ptr)
+        {
+            old_size = g_physical_maps[i].size;
+            break;
+        }
+    }
+    
+    if (old_size > 0)
+    {
+        // 复制数据
+        size_t copy_size = old_size < new_size ? old_size : new_size;
+        memcpy(new_ptr, ptr, copy_size);
+    }
+    
+    // 释放原对象
+    physical_deallocate(ptr, file, line);
+    
+    return new_ptr;
+}
+
+// 物理内存分配器接口实例
+static const Stru_CN_AllocatorInterface_t g_physical_allocator_interface = {
+    .allocate = physical_allocate,
+    .deallocate = physical_deallocate,
+    .reallocate = physical_reallocate
+};
+
+// ============================================================================
 // 分配器管理函数
 // ============================================================================
 
@@ -415,6 +640,9 @@ static const Stru_CN_AllocatorInterface_t* get_allocator_interface(Eum_CN_Alloca
             
         case Eum_ALLOCATOR_ARENA:
             return &g_arena_allocator_interface;
+            
+        case Eum_ALLOCATOR_PHYSICAL:
+            return &g_physical_allocator_interface;
             
         default:
             return &g_system_allocator_interface;
