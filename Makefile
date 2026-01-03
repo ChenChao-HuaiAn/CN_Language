@@ -99,7 +99,8 @@ TEST_SRC = \
     tests/infrastructure/containers/test_queue.c \
     tests/memory/test_pool_allocator.c \
     tests/infrastructure/utils/math/test_math.c \
-    tests/infrastructure/utils/math/test_math_full.c
+    tests/infrastructure/utils/math/test_math_full.c \
+    tests/infrastructure/memory_containers_integration_test.c
 
 # ============================================================================
 # 目标文件定义
@@ -148,6 +149,7 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/core/lexer
 	@mkdir -p $(BUILD_DIR)/application/debugger
 	@mkdir -p $(BUILD_DIR)/tests
+	@mkdir -p $(BUILD_DIR)/tests/infrastructure
 	@mkdir -p $(BUILD_DIR)/tests/infrastructure/containers
 	@mkdir -p $(BUILD_DIR)/tests/infrastructure/utils/math
 	@mkdir -p $(BIN_DIR)
@@ -205,6 +207,12 @@ test: $(TEST_EXEC)
 	@echo "运行测试..."
 	@./$(TEST_EXEC)
 
+# 运行内存与容器集成测试
+integration-test: $(TEST_EXEC)
+	@echo "运行内存管理模块与容器模块集成测试..."
+	@echo "=== 内存管理模块与容器模块集成测试 ==="
+	@./$(TEST_EXEC)
+
 # 运行调试器
 debug: $(DEBUG_EXEC)
 	@echo "启动调试器..."
@@ -250,7 +258,8 @@ help:
 	@echo "  all           - 构建所有目标（默认）"
 	@echo "  clean         - 清理所有构建产物"
 	@echo "  install       - 安装（同all）"
-	@echo "  test          - 构建并运行测试"
+	@echo "  test          - 构建并运行所有测试"
+	@echo "  integration-test - 运行内存管理模块与容器模块集成测试"
 	@echo "  debug         - 构建并运行调试器"
 	@echo "  debug-build   - 构建调试版本"
 	@echo "  deps-graph    - 生成依赖关系图（需要graphviz）"
@@ -260,7 +269,8 @@ help:
 	@echo "使用示例:"
 	@echo "  make                    # 构建发布版本"
 	@echo "  make BUILD_CONFIG=debug # 构建调试版本"
-	@echo "  make test              # 运行测试"
+	@echo "  make test              # 运行所有测试"
+	@echo "  make integration-test  # 运行集成测试"
 	@echo "  make clean             # 清理构建产物"
 	@echo "  make deps-graph        # 生成依赖关系图"
 
