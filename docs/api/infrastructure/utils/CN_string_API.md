@@ -435,6 +435,147 @@ bool CN_string_convert_encoding(Stru_CN_String_t* str,
 
 **返回值**：转换成功返回true，失败返回false
 
+### 编码转换函数
+
+#### `CN_string_convert_to_encoding`
+```c
+Stru_CN_String_t* CN_string_convert_to_encoding(const Stru_CN_String_t* str,
+                                                Eum_CN_StringEncoding_t target_encoding);
+```
+**功能**：将字符串转换为指定编码
+
+**参数**：
+- `str`：源字符串
+- `target_encoding`：目标编码
+
+**返回值**：新创建的转换后的字符串，失败返回NULL
+
+#### `CN_string_encoding_conversion_supported`
+```c
+bool CN_string_encoding_conversion_supported(Eum_CN_StringEncoding_t source_encoding,
+                                             Eum_CN_StringEncoding_t target_encoding);
+```
+**功能**：检查是否支持指定的编码转换
+
+**参数**：
+- `source_encoding`：源编码
+- `target_encoding`：目标编码
+
+**返回值**：如果支持转换返回true，否则返回false
+
+#### `CN_string_encoding_name`
+```c
+const char* CN_string_encoding_name(Eum_CN_StringEncoding_t encoding);
+```
+**功能**：获取编码名称
+
+**参数**：
+- `encoding`：编码类型
+
+**返回值**：编码名称字符串
+
+#### `CN_string_detect_encoding`
+```c
+Eum_CN_StringEncoding_t CN_string_detect_encoding(const char* data, size_t length);
+```
+**功能**：检测字符串编码
+
+**参数**：
+- `data`：字符串数据
+- `length`：数据长度
+
+**返回值**：检测到的编码类型
+
+#### `CN_string_utf8_to_utf16`
+```c
+size_t CN_string_utf8_to_utf16(const char* utf8_str, size_t utf8_len,
+                               uint16_t* utf16_str, size_t utf16_buf_size);
+```
+**功能**：UTF-8到UTF-16转换
+
+**参数**：
+- `utf8_str`：UTF-8字符串
+- `utf8_len`：UTF-8字符串长度
+- `utf16_str`：输出参数：UTF-16字符串缓冲区
+- `utf16_buf_size`：缓冲区大小（以16位字符计）
+
+**返回值**：实际写入的UTF-16字符数（不包括null终止符）
+
+#### `CN_string_utf16_to_utf8`
+```c
+size_t CN_string_utf16_to_utf8(const uint16_t* utf16_str, size_t utf16_len,
+                               char* utf8_str, size_t utf8_buf_size);
+```
+**功能**：UTF-16到UTF-8转换
+
+**参数**：
+- `utf16_str`：UTF-16字符串
+- `utf16_len`：UTF-16字符串长度（以16位字符计）
+- `utf8_str`：输出参数：UTF-8字符串缓冲区
+- `utf8_buf_size`：缓冲区大小（以字节计）
+
+**返回值**：实际写入的UTF-8字节数（不包括null终止符）
+
+#### `CN_string_utf8_to_utf32`
+```c
+size_t CN_string_utf8_to_utf32(const char* utf8_str, size_t utf8_len,
+                               uint32_t* utf32_str, size_t utf32_buf_size);
+```
+**功能**：UTF-8到UTF-32转换
+
+**参数**：
+- `utf8_str`：UTF-8字符串
+- `utf8_len`：UTF-8字符串长度
+- `utf32_str`：输出参数：UTF-32字符串缓冲区
+- `utf32_buf_size`：缓冲区大小（以32位字符计）
+
+**返回值**：实际写入的UTF-32字符数（不包括null终止符）
+
+#### `CN_string_utf32_to_utf8`
+```c
+size_t CN_string_utf32_to_utf8(const uint32_t* utf32_str, size_t utf32_len,
+                               char* utf8_str, size_t utf8_buf_size);
+```
+**功能**：UTF-32到UTF-8转换
+
+**参数**：
+- `utf32_str`：UTF-32字符串
+- `utf32_len`：UTF-32字符串长度（以32位字符计）
+- `utf8_str`：输出参数：UTF-8字符串缓冲区
+- `utf8_buf_size`：缓冲区大小（以字节计）
+
+**返回值**：实际写入的UTF-8字节数（不包括null终止符）
+
+#### `CN_string_gb2312_to_utf8`
+```c
+size_t CN_string_gb2312_to_utf8(const char* gb2312_str, size_t gb2312_len,
+                                char* utf8_str, size_t utf8_buf_size);
+```
+**功能**：GB2312到UTF-8转换（简体中文）
+
+**参数**：
+- `gb2312_str`：GB2312字符串
+- `gb2312_len`：GB2312字符串长度
+- `utf8_str`：输出参数：UTF-8字符串缓冲区
+- `utf8_buf_size`：缓冲区大小（以字节计）
+
+**返回值**：实际写入的UTF-8字节数（不包括null终止符）
+
+#### `CN_string_utf8_to_gb2312`
+```c
+size_t CN_string_utf8_to_gb2312(const char* utf8_str, size_t utf8_len,
+                                char* gb2312_str, size_t gb2312_buf_size);
+```
+**功能**：UTF-8到GB2312转换（简体中文）
+
+**参数**：
+- `utf8_str`：UTF-8字符串
+- `utf8_len`：UTF-8字符串长度
+- `gb2312_str`：输出参数：GB2312字符串缓冲区
+- `gb2312_buf_size`：缓冲区大小（以字节计）
+
+**返回值**：实际写入的GB2312字节数（不包括null终止符）
+
 ### 格式化字符串
 
 #### `CN_string_format`
@@ -661,10 +802,20 @@ if (formatted) {
 - 格式化字符串功能
 - 字符串分割和连接
 
+### v1.1.0 (2026-01-03)
+- 模块化重构：拆分为核心、Unicode、编码转换、兼容性模块
+- 完整的Unicode大小写转换支持
+- 编码转换框架实现
+- UTF-8/UTF-16/UTF-32编码转换
+- 简化的GB2312编码转换
+- 编码检测功能
+- 更新API文档
+
 ### 未来计划
-- 完整的Unicode支持
-- 优化的查找算法
-- 真正的编码转换
+- 优化的查找算法（Boyer-Moore等）
+- 正则表达式支持
+- 字符串国际化（i18n）支持
+- 完整的GB2312/GBK/GB18030转换表
 - 线程安全改进
 - 性能优化
 

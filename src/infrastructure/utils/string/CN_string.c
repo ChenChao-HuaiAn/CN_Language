@@ -1104,7 +1104,7 @@ Stru_CN_String_t* CN_string_escape(const Stru_CN_String_t* str)
             case '\t': escaped_length += 2; break;  // \t
             case '\r': escaped_length += 2; break;  // \r
             case '\"': escaped_length += 2; break;  // \"
-            case '\\': escaped_length += 2; break;  // \\
+            case '\\': escaped_length += 2; break;  // 反斜杠
             default:   escaped_length += 1; break;
         }
     }

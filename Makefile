@@ -55,7 +55,12 @@ INFRASTRUCTURE_SRC = \
     src/infrastructure/containers/queue/CN_queue_array.c \
     src/infrastructure/containers/queue/CN_queue_list.c \
     src/infrastructure/containers/queue/CN_queue_circular.c \
-    src/infrastructure/utils/CN_string.c
+    src/infrastructure/utils/string/CN_string_core.c \
+    src/infrastructure/utils/string/CN_string_unicode.c \
+    src/infrastructure/utils/string/CN_string_encoding.c \
+    src/infrastructure/utils/string/CN_string_search.c \
+    src/infrastructure/utils/string/CN_string_regex_simple.c \
+    src/infrastructure/utils/string/CN_string_i18n.c
 
 # 核心层源文件
 CORE_SRC = \
