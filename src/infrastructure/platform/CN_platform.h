@@ -435,6 +435,15 @@ typedef struct Stru_CN_SystemInterface_t
 } Stru_CN_SystemInterface_t;
 
 // ============================================================================
+// 中断处理接口（新增）
+// ============================================================================
+
+// 前向声明中断处理接口结构体
+typedef struct Stru_CN_InterruptControllerInterface_t Stru_CN_InterruptControllerInterface_t;
+typedef struct Stru_CN_InterruptManagerInterface_t Stru_CN_InterruptManagerInterface_t;
+typedef struct Stru_CN_InterruptToolsInterface_t Stru_CN_InterruptToolsInterface_t;
+
+// ============================================================================
 // 统一平台接口
 // ============================================================================
 
@@ -450,6 +459,9 @@ typedef struct Stru_CN_PlatformInterface_t
     Stru_CN_NetworkInterface_t* network;         /**< 网络接口 */
     Stru_CN_TimeInterface_t* time;               /**< 时间和日期接口 */
     Stru_CN_SystemInterface_t* system;           /**< 系统信息接口 */
+    Stru_CN_InterruptControllerInterface_t* interrupt_controller; /**< 中断控制器接口（新增） */
+    Stru_CN_InterruptManagerInterface_t* interrupt_manager;       /**< 中断管理器接口（新增） */
+    Stru_CN_InterruptToolsInterface_t* interrupt_tools;           /**< 中断工具接口（新增） */
 } Stru_CN_PlatformInterface_t;
 
 // ============================================================================
@@ -475,6 +487,9 @@ Stru_CN_PlatformInterface_t* CN_platform_get_default(void);
  * @param network 网络接口（可为NULL）
  * @param time 时间接口（可为NULL）
  * @param system 系统接口（可为NULL）
+ * @param interrupt_controller 中断控制器接口（可为NULL）
+ * @param interrupt_manager 中断管理器接口（可为NULL）
+ * @param interrupt_tools 中断工具接口（可为NULL）
  * @return 新创建的平台接口，失败返回NULL
  */
 Stru_CN_PlatformInterface_t* CN_platform_create_custom(
@@ -482,7 +497,10 @@ Stru_CN_PlatformInterface_t* CN_platform_create_custom(
     Stru_CN_ThreadInterface_t* thread,
     Stru_CN_NetworkInterface_t* network,
     Stru_CN_TimeInterface_t* time,
-    Stru_CN_SystemInterface_t* system);
+    Stru_CN_SystemInterface_t* system,
+    Stru_CN_InterruptControllerInterface_t* interrupt_controller,
+    Stru_CN_InterruptManagerInterface_t* interrupt_manager,
+    Stru_CN_InterruptToolsInterface_t* interrupt_tools);
 
 /**
  * @brief 销毁平台接口
