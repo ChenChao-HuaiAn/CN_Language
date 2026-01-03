@@ -42,6 +42,12 @@ INFRASTRUCTURE_SRC = \
     src/infrastructure/memory/pool/CN_pool_operations.c \
     src/infrastructure/memory/pool/CN_pool_management.c \
     src/infrastructure/memory/pool/CN_pool_utils.c \
+    src/infrastructure/memory/dma/CN_dma_core.c \
+    src/infrastructure/memory/dma/CN_dma_bitmap.c \
+    src/infrastructure/memory/dma/CN_dma_tracking.c \
+    src/infrastructure/memory/dma/CN_dma_cache.c \
+    src/infrastructure/memory/dma/CN_dma_scatter_gather.c \
+    src/infrastructure/memory/dma/CN_dma_debug.c \
     src/infrastructure/containers/array/CN_array.c \
     src/infrastructure/containers/hash_table/CN_hash_table.c \
     src/infrastructure/containers/hash_table/CN_hash_table_operations.c \
@@ -148,6 +154,7 @@ dirs:
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory/physical
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory/system
 	@mkdir -p $(BUILD_DIR)/infrastructure/memory/pool
+	@mkdir -p $(BUILD_DIR)/infrastructure/memory/dma
 	@mkdir -p $(BUILD_DIR)/infrastructure/platform/windows
 	@mkdir -p $(BUILD_DIR)/tests/memory
 	@mkdir -p $(BUILD_DIR)/infrastructure/containers

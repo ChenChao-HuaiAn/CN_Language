@@ -67,7 +67,8 @@ typedef enum Eum_CN_AllocatorType_t
     Eum_ALLOCATOR_DEBUG = 1,       /**< 调试分配器（边界检查、泄漏检测） */
     Eum_ALLOCATOR_POOL = 2,        /**< 对象池分配器（固定大小对象重用） */
     Eum_ALLOCATOR_ARENA = 3,       /**< 区域分配器（批量分配，统一释放） */
-    Eum_ALLOCATOR_PHYSICAL = 4     /**< 物理内存分配器（页框分配，用于操作系统开发） */
+    Eum_ALLOCATOR_PHYSICAL = 4,    /**< 物理内存分配器（页框分配，用于操作系统开发） */
+    Eum_ALLOCATOR_DMA = 5          /**< DMA内存分配器（DMA内存区域管理，支持缓存一致性） */
 } Eum_CN_AllocatorType_t;
 
 // ============================================================================
