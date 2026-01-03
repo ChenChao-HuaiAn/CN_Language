@@ -26,32 +26,32 @@ struct Stru_CN_RandomGenerator_t
 };
 
 // ============================================================================
-// 算法特定函数声明
+// 算法特定函数声明（在CN_math_random_algorithms.c中定义）
 // ============================================================================
 
 // Mersenne Twister 19937算法
-static void* mt19937_create_state(uint64_t seed);
-static void mt19937_destroy_state(void* state);
-static uint32_t mt19937_generate_u32(void* state);
-static uint64_t mt19937_generate_u64(void* state);
+extern void* mt19937_create_state(uint64_t seed);
+extern void mt19937_destroy_state(void* state);
+extern uint32_t mt19937_generate_u32(void* state);
+extern uint64_t mt19937_generate_u64(void* state);
 
 // Xorshift算法
-static void* xorshift_create_state(uint64_t seed);
-static void xorshift_destroy_state(void* state);
-static uint32_t xorshift_generate_u32(void* state);
-static uint64_t xorshift_generate_u64(void* state);
+extern void* xorshift_create_state(uint64_t seed);
+extern void xorshift_destroy_state(void* state);
+extern uint32_t xorshift_generate_u32(void* state);
+extern uint64_t xorshift_generate_u64(void* state);
 
 // 线性同余生成器
-static void* lcg_create_state(uint64_t seed);
-static void lcg_destroy_state(void* state);
-static uint32_t lcg_generate_u32(void* state);
-static uint64_t lcg_generate_u64(void* state);
+extern void* lcg_create_state(uint64_t seed);
+extern void lcg_destroy_state(void* state);
+extern uint32_t lcg_generate_u32(void* state);
+extern uint64_t lcg_generate_u64(void* state);
 
 // 系统随机数生成器
-static void* system_create_state(uint64_t seed);
-static void system_destroy_state(void* state);
-static uint32_t system_generate_u32(void* state);
-static uint64_t system_generate_u64(void* state);
+extern void* system_create_state(uint64_t seed);
+extern void system_destroy_state(void* state);
+extern uint32_t system_generate_u32(void* state);
+extern uint64_t system_generate_u64(void* state);
 
 // ============================================================================
 // 全局随机数生成器

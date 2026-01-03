@@ -98,7 +98,8 @@ TEST_SRC = \
     tests/infrastructure/containers/test_stack.c \
     tests/infrastructure/containers/test_queue.c \
     tests/memory/test_pool_allocator.c \
-    tests/infrastructure/utils/math/test_math.c
+    tests/infrastructure/utils/math/test_math.c \
+    tests/infrastructure/utils/math/test_math_full.c
 
 # ============================================================================
 # 目标文件定义

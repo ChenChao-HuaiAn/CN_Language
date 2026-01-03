@@ -21,7 +21,7 @@ typedef struct
     uint32_t x, y, z, w;
 } XorshiftState;
 
-static void* xorshift_create_state(uint64_t seed)
+void* xorshift_create_state(uint64_t seed)
 {
     XorshiftState* state = (XorshiftState*)malloc(sizeof(XorshiftState));
     if (state == NULL)
@@ -55,12 +55,12 @@ static void* xorshift_create_state(uint64_t seed)
     return state;
 }
 
-static void xorshift_destroy_state(void* state)
+void xorshift_destroy_state(void* state)
 {
     free(state);
 }
 
-static uint32_t xorshift_generate_u32(void* state_ptr)
+uint32_t xorshift_generate_u32(void* state_ptr)
 {
     XorshiftState* state = (XorshiftState*)state_ptr;
     
@@ -73,7 +73,7 @@ static uint32_t xorshift_generate_u32(void* state_ptr)
     return state->w;
 }
 
-static uint64_t xorshift_generate_u64(void* state_ptr)
+uint64_t xorshift_generate_u64(void* state_ptr)
 {
     uint64_t high = (uint64_t)xorshift_generate_u32(state_ptr) << 32;
     uint64_t low = (uint64_t)xorshift_generate_u32(state_ptr);
@@ -89,7 +89,7 @@ typedef struct
     uint64_t state;
 } LCGState;
 
-static void* lcg_create_state(uint64_t seed)
+void* lcg_create_state(uint64_t seed)
 {
     LCGState* state = (LCGState*)malloc(sizeof(LCGState));
     if (state == NULL)
@@ -107,12 +107,12 @@ static void* lcg_create_state(uint64_t seed)
     return state;
 }
 
-static void lcg_destroy_state(void* state)
+void lcg_destroy_state(void* state)
 {
     free(state);
 }
 
-static uint32_t lcg_generate_u32(void* state_ptr)
+uint32_t lcg_generate_u32(void* state_ptr)
 {
     LCGState* state = (LCGState*)state_ptr;
     
@@ -123,7 +123,7 @@ static uint32_t lcg_generate_u32(void* state_ptr)
     return (uint32_t)(state->state & 0xFFFFFFFF);
 }
 
-static uint64_t lcg_generate_u64(void* state_ptr)
+uint64_t lcg_generate_u64(void* state_ptr)
 {
     LCGState* state = (LCGState*)state_ptr;
     
@@ -143,7 +143,7 @@ typedef struct
     int dummy;
 } SystemState;
 
-static void* system_create_state(uint64_t seed)
+void* system_create_state(uint64_t seed)
 {
     SystemState* state = (SystemState*)malloc(sizeof(SystemState));
     if (state == NULL)
@@ -157,12 +157,12 @@ static void* system_create_state(uint64_t seed)
     return state;
 }
 
-static void system_destroy_state(void* state)
+void system_destroy_state(void* state)
 {
     free(state);
 }
 
-static uint32_t system_generate_u32(void* state_ptr)
+uint32_t system_generate_u32(void* state_ptr)
 {
     (void)state_ptr;  // 未使用参数
     
@@ -175,7 +175,7 @@ static uint32_t system_generate_u32(void* state_ptr)
     return (r1 << 16) ^ (r2 << 8) ^ r3;
 }
 
-static uint64_t system_generate_u64(void* state_ptr)
+uint64_t system_generate_u64(void* state_ptr)
 {
     (void)state_ptr;  // 未使用参数
     
@@ -200,7 +200,7 @@ typedef struct
     int index;
 } MT19937State;
 
-static void* mt19937_create_state(uint64_t seed)
+void* mt19937_create_state(uint64_t seed)
 {
     MT19937State* state = (MT19937State*)malloc(sizeof(MT19937State));
     if (state == NULL)
@@ -219,7 +219,7 @@ static void* mt19937_create_state(uint64_t seed)
     return state;
 }
 
-static void mt19937_destroy_state(void* state)
+void mt19937_destroy_state(void* state)
 {
     free(state);
 }
@@ -242,7 +242,7 @@ static void mt19937_twist(MT19937State* state)
     state->index = 0;
 }
 
-static uint32_t mt19937_generate_u32(void* state_ptr)
+uint32_t mt19937_generate_u32(void* state_ptr)
 {
     MT19937State* state = (MT19937State*)state_ptr;
     
@@ -262,7 +262,7 @@ static uint32_t mt19937_generate_u32(void* state_ptr)
     return y;
 }
 
-static uint64_t mt19937_generate_u64(void* state_ptr)
+uint64_t mt19937_generate_u64(void* state_ptr)
 {
     uint64_t high = (uint64_t)mt19937_generate_u32(state_ptr) << 32;
     uint64_t low = (uint64_t)mt19937_generate_u32(state_ptr);
