@@ -442,6 +442,13 @@ typedef struct Stru_CN_SystemInterface_t
 #include "CN_interrupt.h"
 
 // ============================================================================
+// 硬件抽象层接口（新增）
+// ============================================================================
+
+// 包含硬件抽象层接口定义
+#include "CN_hardware.h"
+
+// ============================================================================
 // 统一平台接口
 // ============================================================================
 
@@ -460,6 +467,7 @@ typedef struct Stru_CN_PlatformInterface_t
     Stru_CN_InterruptControllerInterface_t* interrupt_controller; /**< 中断控制器接口（新增） */
     Stru_CN_InterruptManagerInterface_t* interrupt_manager;       /**< 中断管理器接口（新增） */
     Stru_CN_InterruptToolsInterface_t* interrupt_tools;           /**< 中断工具接口（新增） */
+    Stru_CN_HardwareInterface_t* hardware;       /**< 硬件抽象层接口（新增） */
 } Stru_CN_PlatformInterface_t;
 
 // ============================================================================
@@ -488,6 +496,7 @@ Stru_CN_PlatformInterface_t* CN_platform_get_default(void);
  * @param interrupt_controller 中断控制器接口（可为NULL）
  * @param interrupt_manager 中断管理器接口（可为NULL）
  * @param interrupt_tools 中断工具接口（可为NULL）
+ * @param hardware 硬件抽象层接口（可为NULL）
  * @return 新创建的平台接口，失败返回NULL
  */
 Stru_CN_PlatformInterface_t* CN_platform_create_custom(
@@ -498,7 +507,8 @@ Stru_CN_PlatformInterface_t* CN_platform_create_custom(
     Stru_CN_SystemInterface_t* system,
     Stru_CN_InterruptControllerInterface_t* interrupt_controller,
     Stru_CN_InterruptManagerInterface_t* interrupt_manager,
-    Stru_CN_InterruptToolsInterface_t* interrupt_tools);
+    Stru_CN_InterruptToolsInterface_t* interrupt_tools,
+    Stru_CN_HardwareInterface_t* hardware);
 
 /**
  * @brief 销毁平台接口
