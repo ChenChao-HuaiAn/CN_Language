@@ -9,8 +9,8 @@
  * @version 1.0.0
  */
 
-#include "../../../../src/core/lexer/CN_lexer_interface.h"
-#include "../../../../src/core/token/CN_token.h"
+#include "../../../src/core/lexer/CN_lexer_interface.h"
+#include "../../../src/core/token/CN_token.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
