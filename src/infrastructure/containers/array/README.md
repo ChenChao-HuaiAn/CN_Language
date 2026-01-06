@@ -4,6 +4,23 @@
 
 动态数组模块提供了一种可以自动调整大小的数组数据结构。它支持在数组末尾高效地添加和删除元素，当数组满时会自动扩容。
 
+### 模块化重构 (版本 2.0.0+)
+
+动态数组模块已重构为模块化结构，遵循单一职责原则和项目架构规范：
+
+1. **核心功能模块** (`CN_dynamic_array_core.h/.c`) - 创建、销毁、基本操作
+2. **操作功能模块** (`CN_dynamic_array_operations.h/.c`) - 高级操作（查找、批量操作、迭代等）
+3. **工具函数模块** (`CN_dynamic_array_utils.h/.c`) - 错误处理、验证、辅助函数
+4. **主头文件** (`CN_dynamic_array.h`) - 统一接口和向后兼容
+5. **接口实现** (`CN_dynamic_array_interface_impl.c`) - 抽象接口实现
+6. **向后兼容包装** (`CN_dynamic_array.c`) - 确保现有代码继续工作
+
+这种模块化设计确保：
+- 每个.c文件不超过500行（符合单一职责原则）
+- 每个函数不超过50行
+- 模块间依赖清晰，符合分层架构
+- 易于测试和维护
+
 ## 特性
 
 - **自动扩容**：当数组满时自动扩容为原来的2倍
@@ -11,6 +28,24 @@
 - **动态大小**：支持动态调整数组大小
 - **类型安全**：通过元素大小参数确保类型安全
 - **内存管理**：自动管理内存分配和释放
+
+## 文件结构
+
+```
+src/infrastructure/containers/array/
+├── CN_dynamic_array.h              # 主头文件（统一接口）
+├── CN_dynamic_array.c              # 向后兼容包装
+├── CN_dynamic_array_interface.h    # 抽象接口定义
+├── CN_dynamic_array_interface_impl.c # 接口实现
+├── CN_dynamic_array_core.h         # 核心功能头文件
+├── CN_dynamic_array_core.c         # 核心功能实现
+├── CN_dynamic_array_operations.h   # 操作功能头文件
+├── CN_dynamic_array_operations.c   # 操作功能实现
+├── CN_dynamic_array_utils.h        # 工具函数头文件
+├── CN_dynamic_array_utils.c        # 工具函数实现
+├── README.md                       # 模块文档
+└── ... (测试文件等)
+```
 
 ## 数据结构
 
@@ -286,23 +321,44 @@ int main() {
 #define CN_DYNAMIC_ARRAY_GROWTH_FACTOR 2        // 扩容因子
 ```
 
-## 依赖关系
+## 模块依赖关系
 
 ### 编译时依赖
-- C标准库：`stdlib.h`, `string.h`, `stddef.h`, `stdbool.h`
+- C标准库：`stdlib.h`, `string.h`, `stddef.h`, `stdbool.h`, `limits.h`
 - 项目内部文件：
   - `CN_dynamic_array_interface.h` - 抽象接口定义
-  - `CN_dynamic_array.h` - 主头文件
+  - `CN_dynamic_array.h` - 主头文件（包含所有子模块）
+  - `CN_dynamic_array_core.h` - 核心功能
+  - `CN_dynamic_array_operations.h` - 操作功能
+  - `CN_dynamic_array_utils.h` - 工具函数
+
+### 模块间依赖关系
+```
+CN_dynamic_array.c (向后兼容包装)
+    ├── CN_dynamic_array.h
+    │   ├── CN_dynamic_array_core.h
+    │   ├── CN_dynamic_array_operations.h
+    │   └── CN_dynamic_array_utils.h
+    └── CN_dynamic_array_interface.h
+
+CN_dynamic_array_interface_impl.c (接口实现)
+    ├── CN_dynamic_array.h
+    └── 调用各模块的_ex函数
+
+各功能模块独立编译，通过主头文件统一暴露接口
+```
 
 ### 架构依赖
-- 基础设施层：本模块属于基础设施层
-- 依赖规则：只能依赖C标准库和操作系统API，不能依赖项目其他层
-- 被依赖：可被核心层和应用层依赖
+- **基础设施层**：本模块属于基础设施层
+- **依赖规则**：只能依赖C标准库和操作系统API，不能依赖项目其他层
+- **被依赖**：可被核心层和应用层依赖
+- **模块化原则**：遵循单一职责原则，每个模块功能专注
 
 ### 接口依赖
-- 抽象接口模式：通过`Stru_DynamicArrayInterface_t`提供抽象接口
-- 依赖注入：支持通过接口指针进行依赖注入
-- 测试桩：接口设计支持测试桩实现
+- **抽象接口模式**：通过`Stru_DynamicArrayInterface_t`提供抽象接口
+- **依赖注入**：支持通过接口指针进行依赖注入
+- **测试桩**：接口设计支持测试桩实现
+- **向后兼容**：所有现有API保持兼容，内部调用模块化实现
 
 ## 测试
 
@@ -317,6 +373,7 @@ int main() {
 |------|------|------|
 | 1.0.0 | 2026-01-06 | 初始版本，实现基本动态数组功能 |
 | 2.0.0 | 2026-01-06 | 重构版本，添加抽象接口、扩展API和错误处理机制 |
+| 2.1.0 | 2026-01-06 | 模块化重构版本，将大型实现文件拆分为功能专注的小模块，符合单一职责原则 |
 
 ## 许可证
 

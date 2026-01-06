@@ -38,6 +38,16 @@ typedef struct Stru_DynamicArray_t
     size_t item_size;       /**< 每个元素的大小（字节） */
 } Stru_DynamicArray_t;
 
+/* 模块化API结构说明 */
+/*
+ * 动态数组模块已重构为模块化结构，包含以下子模块：
+ * 1. CN_dynamic_array_core.h/.c - 核心功能（创建、销毁、基本操作）
+ * 2. CN_dynamic_array_operations.h/.c - 高级操作（查找、批量操作、迭代等）
+ * 3. CN_dynamic_array_utils.h/.c - 工具函数（错误处理、验证、辅助函数）
+ * 
+ * 以下API提供向后兼容的接口，内部调用相应的模块化实现。
+ */
+
 /* 基础API（向后兼容） */
 
 /**

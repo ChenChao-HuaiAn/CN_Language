@@ -1,9 +1,9 @@
 /**
  * @file CN_dynamic_array.c
- * @brief 动态数组模块实现文件
+ * @brief 动态数组模块向后兼容包装文件
  * 
- * 实现动态数组数据结构的核心功能。
- * 包括创建、销毁、添加、删除、遍历等操作。
+ * 提供动态数组模块的向后兼容接口。
+ * 这些函数调用新的模块化实现，确保现有代码继续工作。
  * 
  * @author CN_Language架构委员会
  * @date 2026-01-06
@@ -14,803 +14,67 @@
  */
 
 #include "CN_dynamic_array.h"
+#include "CN_dynamic_array_core.h"
+#include "CN_dynamic_array_operations.h"
+#include "CN_dynamic_array_utils.h"
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
-#include <limits.h>
 
-// 默认初始容量
-#define CN_DYNAMIC_ARRAY_INITIAL_CAPACITY 16
-// 扩容因子
-#define CN_DYNAMIC_ARRAY_GROWTH_FACTOR 2
-// 最小容量（防止容量为0）
-#define CN_DYNAMIC_ARRAY_MIN_CAPACITY 4
-
-/**
- * @brief 内部函数：设置错误码
- * 
- * 如果error_code指针不为NULL，则设置错误码。
- * 
- * @param error_code 错误码指针
- * @param code 错误码值
- */
-static void set_error_code(enum Eum_DynamicArrayError* error_code, enum Eum_DynamicArrayError code)
-{
-    if (error_code != NULL)
-    {
-        *error_code = code;
-    }
-}
-
-/**
- * @brief 内部函数：确保数组有足够容量
- * 
- * 检查数组是否有足够容量容纳新元素，如果没有则扩容。
- * 
- * @param array 动态数组指针
- * @return 容量足够或扩容成功返回true，失败返回false
- */
-static bool ensure_capacity(Stru_DynamicArray_t* array)
-{
-    if (array == NULL)
-    {
-        return false;
-    }
-    
-    // 如果数组已满，需要扩容
-    if (array->length >= array->capacity)
-    {
-        size_t new_capacity = array->capacity * CN_DYNAMIC_ARRAY_GROWTH_FACTOR;
-        if (new_capacity < CN_DYNAMIC_ARRAY_INITIAL_CAPACITY)
-        {
-            new_capacity = CN_DYNAMIC_ARRAY_INITIAL_CAPACITY;
-        }
-        
-        void** new_items = (void**)realloc(array->items, new_capacity * sizeof(void*));
-        if (new_items == NULL)
-        {
-            return false;
-        }
-        
-        array->items = new_items;
-        array->capacity = new_capacity;
-    }
-    
-    return true;
-}
-
-/**
- * @brief 内部函数：复制元素数据
- * 
- * 分配内存并复制元素数据。
- * 
- * @param array 动态数组指针
- * @param item 源元素指针
- * @return 新分配的元素指针，失败返回NULL
- */
-static void* copy_item_data(Stru_DynamicArray_t* array, const void* item)
-{
-    if (item == NULL)
-    {
-        return NULL;
-    }
-    
-    void* new_item = malloc(array->item_size);
-    if (new_item == NULL)
-    {
-        return NULL;
-    }
-    
-    memcpy(new_item, item, array->item_size);
-    return new_item;
-}
+/* 向后兼容的简单API实现 */
 
 Stru_DynamicArray_t* F_create_dynamic_array(size_t item_size)
 {
-    if (item_size == 0)
-    {
-        return NULL;
-    }
-    
-    // 分配动态数组结构体
-    Stru_DynamicArray_t* array = (Stru_DynamicArray_t*)malloc(sizeof(Stru_DynamicArray_t));
-    if (array == NULL)
-    {
-        return NULL;
-    }
-    
-    // 初始化字段
-    array->capacity = CN_DYNAMIC_ARRAY_INITIAL_CAPACITY;
-    array->length = 0;
-    array->item_size = item_size;
-    
-    // 分配初始元素数组
-    array->items = (void**)malloc(CN_DYNAMIC_ARRAY_INITIAL_CAPACITY * sizeof(void*));
-    if (array->items == NULL)
-    {
-        free(array);
-        return NULL;
-    }
-    
-    // 初始化指针为NULL
-    for (size_t i = 0; i < array->capacity; i++)
-    {
-        array->items[i] = NULL;
-    }
-    
-    return array;
+    return F_dynamic_array_create_ex(item_size, 0, NULL);
 }
 
 void F_destroy_dynamic_array(Stru_DynamicArray_t* array)
 {
-    if (array == NULL)
-    {
-        return;
-    }
-    
-    // 释放所有元素
-    for (size_t i = 0; i < array->length; i++)
-    {
-        if (array->items[i] != NULL)
-        {
-            free(array->items[i]);
-            array->items[i] = NULL;
-        }
-    }
-    
-    // 释放元素数组
-    if (array->items != NULL)
-    {
-        free(array->items);
-        array->items = NULL;
-    }
-    
-    // 释放动态数组结构体
-    free(array);
+    F_dynamic_array_destroy(array);
 }
 
-bool F_dynamic_array_push(Stru_DynamicArray_t* array, void* item)
+bool F_dynamic_array_push(Stru_DynamicArray_t* array, const void* item)
 {
-    if (array == NULL || item == NULL)
-    {
-        return false;
-    }
-    
-    // 确保有足够容量
-    if (!ensure_capacity(array))
-    {
-        return false;
-    }
-    
-    // 分配新元素内存并复制数据
-    void* new_item = malloc(array->item_size);
-    if (new_item == NULL)
-    {
-        return false;
-    }
-    
-    memcpy(new_item, item, array->item_size);
-    array->items[array->length] = new_item;
-    array->length++;
-    
-    return true;
+    return F_dynamic_array_push_ex(array, item, NULL);
 }
 
 void* F_dynamic_array_get(Stru_DynamicArray_t* array, size_t index)
 {
-    if (array == NULL || index >= array->length)
-    {
-        return NULL;
-    }
-    
-    return array->items[index];
+    return F_dynamic_array_get_ex(array, index, NULL);
 }
-
-bool F_dynamic_array_remove(Stru_DynamicArray_t* array, size_t index)
-{
-    if (array == NULL || index >= array->length)
-    {
-        return false;
-    }
-    
-    // 释放要移除的元素
-    if (array->items[index] != NULL)
-    {
-        free(array->items[index]);
-    }
-    
-    // 将后面的元素向前移动
-    for (size_t i = index; i < array->length - 1; i++)
-    {
-        array->items[i] = array->items[i + 1];
-    }
-    
-    // 最后一个元素置为NULL
-    array->items[array->length - 1] = NULL;
-    array->length--;
-    
-    return true;
-}
-
-size_t F_dynamic_array_length(Stru_DynamicArray_t* array)
-{
-    if (array == NULL)
-    {
-        return 0;
-    }
-    
-    return array->length;
-}
-
-size_t F_dynamic_array_capacity(Stru_DynamicArray_t* array)
-{
-    if (array == NULL)
-    {
-        return 0;
-    }
-    
-    return array->capacity;
-}
-
-void F_dynamic_array_clear(Stru_DynamicArray_t* array)
-{
-    if (array == NULL)
-    {
-        return;
-    }
-    
-    // 释放所有元素但不释放数组
-    for (size_t i = 0; i < array->length; i++)
-    {
-        if (array->items[i] != NULL)
-        {
-            free(array->items[i]);
-            array->items[i] = NULL;
-        }
-    }
-    
-    array->length = 0;
-}
-
-bool F_dynamic_array_resize(Stru_DynamicArray_t* array, size_t new_capacity)
-{
-    if (array == NULL)
-    {
-        return false;
-    }
-    
-    // 如果新容量小于当前长度，需要截断
-    if (new_capacity < array->length)
-    {
-        // 释放被截断的元素
-        for (size_t i = new_capacity; i < array->length; i++)
-        {
-            if (array->items[i] != NULL)
-            {
-                free(array->items[i]);
-                array->items[i] = NULL;
-            }
-        }
-        array->length = new_capacity;
-    }
-    
-    // 调整数组容量
-    void** new_items = (void**)realloc(array->items, new_capacity * sizeof(void*));
-    if (new_items == NULL && new_capacity > 0)
-    {
-        return false;
-    }
-    
-    array->items = new_items;
-    array->capacity = new_capacity;
-    
-    // 初始化新分配的空间
-    for (size_t i = array->length; i < array->capacity; i++)
-    {
-        array->items[i] = NULL;
-    }
-    
-    return true;
-}
-
-void F_dynamic_array_foreach(Stru_DynamicArray_t* array, 
-                            void (*callback)(void* item, void* user_data),
-                            void* user_data)
-{
-    if (array == NULL || callback == NULL)
-    {
-        return;
-    }
-    
-    for (size_t i = 0; i < array->length; i++)
-    {
-        callback(array->items[i], user_data);
-    }
-}
-
-/* 扩展API实现 */
-
-Stru_DynamicArray_t* F_create_dynamic_array_ex(size_t item_size, size_t initial_capacity, 
-                                               enum Eum_DynamicArrayError* error_code)
-{
-    if (item_size == 0)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_INVALID_SIZE);
-        return NULL;
-    }
-    
-    // 使用默认初始容量如果指定为0
-    if (initial_capacity == 0)
-    {
-        initial_capacity = CN_DYNAMIC_ARRAY_INITIAL_CAPACITY;
-    }
-    
-    // 确保最小容量
-    if (initial_capacity < CN_DYNAMIC_ARRAY_MIN_CAPACITY)
-    {
-        initial_capacity = CN_DYNAMIC_ARRAY_MIN_CAPACITY;
-    }
-    
-    // 分配动态数组结构体
-    Stru_DynamicArray_t* array = (Stru_DynamicArray_t*)malloc(sizeof(Stru_DynamicArray_t));
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_OUT_OF_MEMORY);
-        return NULL;
-    }
-    
-    // 初始化字段
-    array->capacity = initial_capacity;
-    array->length = 0;
-    array->item_size = item_size;
-    
-    // 分配初始元素数组
-    array->items = (void**)malloc(initial_capacity * sizeof(void*));
-    if (array->items == NULL)
-    {
-        free(array);
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_OUT_OF_MEMORY);
-        return NULL;
-    }
-    
-    // 初始化指针为NULL
-    for (size_t i = 0; i < array->capacity; i++)
-    {
-        array->items[i] = NULL;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return array;
-}
-
-bool F_dynamic_array_push_ex(Stru_DynamicArray_t* array, const void* item, 
-                             enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL || item == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    // 确保有足够容量
-    if (!ensure_capacity(array))
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_OUT_OF_MEMORY);
-        return false;
-    }
-    
-    // 分配新元素内存并复制数据
-    void* new_item = copy_item_data(array, item);
-    if (new_item == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_OUT_OF_MEMORY);
-        return false;
-    }
-    
-    array->items[array->length] = new_item;
-    array->length++;
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-void* F_dynamic_array_get_ex(Stru_DynamicArray_t* array, size_t index, 
-                             enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return NULL;
-    }
-    
-    if (index >= array->length)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_INDEX_OUT_OF_BOUNDS);
-        return NULL;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return array->items[index];
-}
-
-bool F_dynamic_array_set_ex(Stru_DynamicArray_t* array, size_t index, const void* item,
-                            enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL || item == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    if (index >= array->length)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_INDEX_OUT_OF_BOUNDS);
-        return false;
-    }
-    
-    // 释放旧元素
-    if (array->items[index] != NULL)
-    {
-        free(array->items[index]);
-    }
-    
-    // 分配新元素内存并复制数据
-    void* new_item = copy_item_data(array, item);
-    if (new_item == NULL)
-    {
-        array->items[index] = NULL;
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_OUT_OF_MEMORY);
-        return false;
-    }
-    
-    array->items[index] = new_item;
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-bool F_dynamic_array_remove_ex(Stru_DynamicArray_t* array, size_t index,
-                               enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    if (index >= array->length)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_INDEX_OUT_OF_BOUNDS);
-        return false;
-    }
-    
-    // 释放要移除的元素
-    if (array->items[index] != NULL)
-    {
-        free(array->items[index]);
-    }
-    
-    // 将后面的元素向前移动
-    for (size_t i = index; i < array->length - 1; i++)
-    {
-        array->items[i] = array->items[i + 1];
-    }
-    
-    // 最后一个元素置为NULL
-    array->items[array->length - 1] = NULL;
-    array->length--;
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-size_t F_dynamic_array_length_ex(Stru_DynamicArray_t* array, 
-                                 enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return 0;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return array->length;
-}
-
-size_t F_dynamic_array_capacity_ex(Stru_DynamicArray_t* array,
-                                   enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return 0;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return array->capacity;
-}
-
-bool F_dynamic_array_is_empty_ex(Stru_DynamicArray_t* array,
-                                 enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return true;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return (array->length == 0);
-}
-
-bool F_dynamic_array_clear_ex(Stru_DynamicArray_t* array,
-                              enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    // 释放所有元素但不释放数组
-    for (size_t i = 0; i < array->length; i++)
-    {
-        if (array->items[i] != NULL)
-        {
-            free(array->items[i]);
-            array->items[i] = NULL;
-        }
-    }
-    
-    array->length = 0;
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-bool F_dynamic_array_resize_ex(Stru_DynamicArray_t* array, size_t new_capacity,
-                               enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    // 确保最小容量
-    if (new_capacity < CN_DYNAMIC_ARRAY_MIN_CAPACITY)
-    {
-        new_capacity = CN_DYNAMIC_ARRAY_MIN_CAPACITY;
-    }
-    
-    // 如果新容量小于当前长度，需要截断
-    if (new_capacity < array->length)
-    {
-        // 释放被截断的元素
-        for (size_t i = new_capacity; i < array->length; i++)
-        {
-            if (array->items[i] != NULL)
-            {
-                free(array->items[i]);
-                array->items[i] = NULL;
-            }
-        }
-        array->length = new_capacity;
-    }
-    
-    // 调整数组容量
-    void** new_items = (void**)realloc(array->items, new_capacity * sizeof(void*));
-    if (new_items == NULL && new_capacity > 0)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_OUT_OF_MEMORY);
-        return false;
-    }
-    
-    array->items = new_items;
-    array->capacity = new_capacity;
-    
-    // 初始化新分配的空间
-    for (size_t i = array->length; i < array->capacity; i++)
-    {
-        array->items[i] = NULL;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-size_t F_dynamic_array_find_ex(Stru_DynamicArray_t* array, const void* item,
-                               F_DynamicArrayCompare_t compare,
-                               enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL || item == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return SIZE_MAX;
-    }
-    
-    for (size_t i = 0; i < array->length; i++)
-    {
-        if (array->items[i] != NULL)
-        {
-            bool found = false;
-            
-            if (compare != NULL)
-            {
-                // 使用比较函数
-                if (compare(array->items[i], item) == 0)
-                {
-                    found = true;
-                }
-            }
-            else
-            {
-                // 直接比较内存
-                if (memcmp(array->items[i], item, array->item_size) == 0)
-                {
-                    found = true;
-                }
-            }
-            
-            if (found)
-            {
-                set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-                return i;
-            }
-        }
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_ITEM_NOT_FOUND);
-    return SIZE_MAX;
-}
-
-bool F_dynamic_array_push_batch_ex(Stru_DynamicArray_t* array, const void* items, size_t count,
-                                   enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL || items == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    if (count == 0)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-        return true;
-    }
-    
-    // 确保有足够容量
-    size_t required_capacity = array->length + count;
-    if (required_capacity > array->capacity)
-    {
-        // 计算新的容量
-        size_t new_capacity = array->capacity;
-        while (new_capacity < required_capacity)
-        {
-            new_capacity *= CN_DYNAMIC_ARRAY_GROWTH_FACTOR;
-        }
-        
-        if (!F_dynamic_array_resize_ex(array, new_capacity, error_code))
-        {
-            return false;
-        }
-    }
-    
-    // 批量添加元素
-    const char* src = (const char*)items;
-    for (size_t i = 0; i < count; i++)
-    {
-        void* new_item = copy_item_data(array, src + (i * array->item_size));
-        if (new_item == NULL)
-        {
-            // 回滚：释放已添加的元素
-            for (size_t j = 0; j < i; j++)
-            {
-                size_t index = array->length - count + j;
-                if (array->items[index] != NULL)
-                {
-                    free(array->items[index]);
-                    array->items[index] = NULL;
-                }
-            }
-            array->length -= i;
-            set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_OUT_OF_MEMORY);
-            return false;
-        }
-        
-        array->items[array->length] = new_item;
-        array->length++;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-bool F_dynamic_array_foreach_ex(Stru_DynamicArray_t* array, 
-                               F_DynamicArrayIterator_t iterator, void* user_data,
-                               enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL || iterator == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    for (size_t i = 0; i < array->length; i++)
-    {
-        if (!iterator(array->items[i], i, user_data))
-        {
-            // 迭代器请求停止
-            set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-            return true;
-        }
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-bool F_dynamic_array_get_memory_stats_ex(Stru_DynamicArray_t* array, 
-                                         size_t* total_bytes, size_t* used_bytes,
-                                         enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    // 计算总字节数（结构体 + 指针数组 + 元素数据）
-    size_t total = sizeof(Stru_DynamicArray_t) + 
-                   (array->capacity * sizeof(void*)) + 
-                   (array->length * array->item_size);
-    
-    // 计算已使用字节数（结构体 + 指针数组 + 元素数据）
-    size_t used = sizeof(Stru_DynamicArray_t) + 
-                  (array->capacity * sizeof(void*)) + 
-                  (array->length * array->item_size);
-    
-    if (total_bytes != NULL)
-    {
-        *total_bytes = total;
-    }
-    
-    if (used_bytes != NULL)
-    {
-        *used_bytes = used;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-bool F_dynamic_array_shrink_to_fit_ex(Stru_DynamicArray_t* array,
-                                      enum Eum_DynamicArrayError* error_code)
-{
-    if (array == NULL)
-    {
-        set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
-        return false;
-    }
-    
-    // 如果容量大于长度，调整容量到长度
-    if (array->capacity > array->length)
-    {
-        return F_dynamic_array_resize_ex(array, array->length, error_code);
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
-}
-
-/* 向后兼容的简单包装函数 */
 
 bool F_dynamic_array_set(Stru_DynamicArray_t* array, size_t index, const void* item)
 {
     return F_dynamic_array_set_ex(array, index, item, NULL);
 }
 
+bool F_dynamic_array_remove(Stru_DynamicArray_t* array, size_t index)
+{
+    return F_dynamic_array_remove_ex(array, index, NULL);
+}
+
+size_t F_dynamic_array_length(Stru_DynamicArray_t* array)
+{
+    return F_dynamic_array_length_ex(array, NULL);
+}
+
+size_t F_dynamic_array_capacity(Stru_DynamicArray_t* array)
+{
+    return F_dynamic_array_capacity_ex(array, NULL);
+}
+
 bool F_dynamic_array_is_empty(Stru_DynamicArray_t* array)
 {
     return F_dynamic_array_is_empty_ex(array, NULL);
+}
+
+void F_dynamic_array_clear(Stru_DynamicArray_t* array)
+{
+    F_dynamic_array_clear_ex(array, NULL);
+}
+
+bool F_dynamic_array_resize(Stru_DynamicArray_t* array, size_t new_capacity)
+{
+    return F_dynamic_array_resize_ex(array, new_capacity, NULL);
 }
 
 size_t F_dynamic_array_find(Stru_DynamicArray_t* array, const void* item,
@@ -824,11 +88,37 @@ bool F_dynamic_array_push_batch(Stru_DynamicArray_t* array, const void* items, s
     return F_dynamic_array_push_batch_ex(array, items, count, NULL);
 }
 
-bool F_dynamic_array_foreach_ex_wrapper(Stru_DynamicArray_t* array, 
-                                       F_DynamicArrayIterator_t iterator, void* user_data,
-                                       enum Eum_DynamicArrayError* error_code)
+// 辅助函数：将简单回调包装为迭代器
+static bool foreach_wrapper(void* item, size_t index, void* user_data)
 {
-    return F_dynamic_array_foreach_ex(array, iterator, user_data, error_code);
+    struct ForeachWrapperData
+    {
+        void (*callback)(void* item, void* user_data);
+        void* user_data;
+    };
+    
+    struct ForeachWrapperData* data = (struct ForeachWrapperData*)user_data;
+    if (data->callback != NULL)
+    {
+        data->callback(item, data->user_data);
+    }
+    return true; // 继续迭代
+}
+
+void F_dynamic_array_foreach(Stru_DynamicArray_t* array, 
+                            void (*callback)(void* item, void* user_data),
+                            void* user_data)
+{
+    // 将简单的回调函数包装为迭代器函数
+    struct ForeachWrapperData
+    {
+        void (*callback)(void* item, void* user_data);
+        void* user_data;
+    };
+    
+    struct ForeachWrapperData wrapper_data = {callback, user_data};
+    
+    F_dynamic_array_foreach_ex(array, foreach_wrapper, &wrapper_data, NULL);
 }
 
 bool F_dynamic_array_get_memory_stats(Stru_DynamicArray_t* array, 
@@ -842,10 +132,104 @@ bool F_dynamic_array_shrink_to_fit(Stru_DynamicArray_t* array)
     return F_dynamic_array_shrink_to_fit_ex(array, NULL);
 }
 
+/* 扩展API的向后兼容实现 */
+
+Stru_DynamicArray_t* F_create_dynamic_array_ex(size_t item_size, size_t initial_capacity, 
+                                               enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_create_ex(item_size, initial_capacity, error_code);
+}
+
+bool F_dynamic_array_push_ex(Stru_DynamicArray_t* array, const void* item, 
+                             enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_push_ex(array, item, error_code);
+}
+
+void* F_dynamic_array_get_ex(Stru_DynamicArray_t* array, size_t index, 
+                             enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_get_ex(array, index, error_code);
+}
+
+bool F_dynamic_array_set_ex(Stru_DynamicArray_t* array, size_t index, const void* item,
+                            enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_set_ex(array, index, item, error_code);
+}
+
+bool F_dynamic_array_remove_ex(Stru_DynamicArray_t* array, size_t index,
+                               enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_remove_ex(array, index, error_code);
+}
+
+size_t F_dynamic_array_length_ex(Stru_DynamicArray_t* array, 
+                                 enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_length_ex(array, error_code);
+}
+
+size_t F_dynamic_array_capacity_ex(Stru_DynamicArray_t* array,
+                                   enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_capacity_ex(array, error_code);
+}
+
+bool F_dynamic_array_is_empty_ex(Stru_DynamicArray_t* array,
+                                 enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_is_empty_ex(array, error_code);
+}
+
+bool F_dynamic_array_clear_ex(Stru_DynamicArray_t* array,
+                              enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_clear_ex(array, error_code);
+}
+
+bool F_dynamic_array_resize_ex(Stru_DynamicArray_t* array, size_t new_capacity,
+                               enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_resize_ex(array, new_capacity, error_code);
+}
+
+size_t F_dynamic_array_find_ex(Stru_DynamicArray_t* array, const void* item,
+                               F_DynamicArrayCompare_t compare,
+                               enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_find_ex(array, item, compare, error_code);
+}
+
+bool F_dynamic_array_push_batch_ex(Stru_DynamicArray_t* array, const void* items, size_t count,
+                                   enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_push_batch_ex(array, items, count, error_code);
+}
+
+bool F_dynamic_array_foreach_ex(Stru_DynamicArray_t* array, 
+                               F_DynamicArrayIterator_t iterator, void* user_data,
+                               enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_foreach_ex(array, iterator, user_data, error_code);
+}
+
+bool F_dynamic_array_get_memory_stats_ex(Stru_DynamicArray_t* array, 
+                                         size_t* total_bytes, size_t* used_bytes,
+                                         enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_get_memory_stats_ex(array, total_bytes, used_bytes, error_code);
+}
+
+bool F_dynamic_array_shrink_to_fit_ex(Stru_DynamicArray_t* array,
+                                      enum Eum_DynamicArrayError* error_code)
+{
+    return F_dynamic_array_shrink_to_fit_ex(array, error_code);
+}
+
 const Stru_DynamicArrayInterface_t* F_get_default_dynamic_array_interface(void)
 {
     // 这个函数在CN_dynamic_array_interface_impl.c中实现
-    // 这里只是声明，避免链接错误
     extern const Stru_DynamicArrayInterface_t* F_get_default_dynamic_array_interface_impl(void);
     return F_get_default_dynamic_array_interface_impl();
 }

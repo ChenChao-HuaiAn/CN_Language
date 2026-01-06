@@ -181,30 +181,7 @@ static bool interface_get_memory_stats(void* array, size_t* total_bytes, size_t*
         return false;
     }
     
-    Stru_DynamicArray_t* da = (Stru_DynamicArray_t*)array;
-    
-    // 计算总字节数（结构体 + 指针数组 + 元素数据）
-    size_t total = sizeof(Stru_DynamicArray_t) + 
-                   (da->capacity * sizeof(void*)) + 
-                   (da->length * da->item_size);
-    
-    // 计算已使用字节数（结构体 + 指针数组 + 元素数据）
-    size_t used = sizeof(Stru_DynamicArray_t) + 
-                  (da->capacity * sizeof(void*)) + 
-                  (da->length * da->item_size);
-    
-    if (total_bytes != NULL)
-    {
-        *total_bytes = total;
-    }
-    
-    if (used_bytes != NULL)
-    {
-        *used_bytes = used;
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
+    return F_dynamic_array_get_memory_stats_ex((Stru_DynamicArray_t*)array, total_bytes, used_bytes, error_code);
 }
 
 static bool interface_shrink_to_fit(void* array, enum Eum_DynamicArrayError* error_code)
@@ -214,16 +191,7 @@ static bool interface_shrink_to_fit(void* array, enum Eum_DynamicArrayError* err
         return false;
     }
     
-    Stru_DynamicArray_t* da = (Stru_DynamicArray_t*)array;
-    
-    // 如果容量大于长度，调整容量到长度
-    if (da->capacity > da->length)
-    {
-        return F_dynamic_array_resize_ex(da, da->length, error_code);
-    }
-    
-    set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-    return true;
+    return F_dynamic_array_shrink_to_fit_ex((Stru_DynamicArray_t*)array, error_code);
 }
 
 /* 默认接口实例 */
