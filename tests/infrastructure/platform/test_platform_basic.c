@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-#include "../../src/infrastructure/platform/CN_platform_interface.h"
+#include "../../../src/infrastructure/platform/CN_platform_interface.h"
 
 /**
  * @brief 测试文件系统接口
