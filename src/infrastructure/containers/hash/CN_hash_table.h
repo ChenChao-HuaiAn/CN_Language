@@ -224,6 +224,174 @@ uint64_t F_int_hash_function(void* key);
  */
 int F_int_compare_function(void* key1, void* key2);
 
+/* 新增函数声明 - 哈希表条目操作 */
+
+/**
+ * @brief 创建哈希条目
+ * 
+ * 分配并初始化一个新的哈希条目。
+ * 
+ * @param key 键指针
+ * @param value 值指针
+ * @param key_size 键大小
+ * @param value_size 值大小
+ * @return 指向新条目的指针，失败返回NULL
+ */
+Stru_HashEntry_t* F_create_hash_entry(void* key, void* value, 
+                                     size_t key_size, size_t value_size);
+
+/**
+ * @brief 释放哈希条目
+ * 
+ * 释放条目占用的内存。
+ * 
+ * @param entry 要释放的条目指针
+ */
+void F_free_hash_entry(Stru_HashEntry_t* entry);
+
+/**
+ * @brief 复制哈希条目
+ * 
+ * 创建现有条目的深拷贝。
+ * 
+ * @param src 源条目指针
+ * @param key_size 键大小
+ * @param value_size 值大小
+ * @return 指向新条目的指针，失败返回NULL
+ */
+Stru_HashEntry_t* F_copy_hash_entry(Stru_HashEntry_t* src,
+                                   size_t key_size, size_t value_size);
+
+/**
+ * @brief 比较哈希条目键
+ * 
+ * 比较两个条目的键是否相等。
+ * 
+ * @param entry1 第一个条目指针
+ * @param entry2 第二个条目指针
+ * @param compare_function 键比较函数
+ * @return 相等返回true，否则返回false
+ */
+bool F_compare_hash_entry_keys(Stru_HashEntry_t* entry1, Stru_HashEntry_t* entry2,
+                              int (*compare_function)(void* key1, void* key2));
+
+/**
+ * @brief 获取哈希条目键
+ * 
+ * 获取条目的键指针。
+ * 
+ * @param entry 条目指针
+ * @return 键指针，如果entry为NULL则返回NULL
+ */
+void* F_get_hash_entry_key(Stru_HashEntry_t* entry);
+
+/**
+ * @brief 获取哈希条目值
+ * 
+ * 获取条目的值指针。
+ * 
+ * @param entry 条目指针
+ * @return 值指针，如果entry为NULL则返回NULL
+ */
+void* F_get_hash_entry_value(Stru_HashEntry_t* entry);
+
+/**
+ * @brief 设置哈希条目值
+ * 
+ * 设置条目的值。
+ * 
+ * @param entry 条目指针
+ * @param value 新值指针
+ * @param value_size 值大小
+ * @return 成功返回true，失败返回false
+ */
+bool F_set_hash_entry_value(Stru_HashEntry_t* entry, void* value, size_t value_size);
+
+/**
+ * @brief 获取哈希条目下一个条目
+ * 
+ * 获取链表中的下一个条目。
+ * 
+ * @param entry 当前条目指针
+ * @return 下一个条目指针，如果没有下一个条目则返回NULL
+ */
+Stru_HashEntry_t* F_get_hash_entry_next(Stru_HashEntry_t* entry);
+
+/**
+ * @brief 设置哈希条目下一个条目
+ * 
+ * 设置链表中的下一个条目。
+ * 
+ * @param entry 当前条目指针
+ * @param next 下一个条目指针
+ */
+void F_set_hash_entry_next(Stru_HashEntry_t* entry, Stru_HashEntry_t* next);
+
+/* 新增函数声明 - 工具函数 */
+
+/**
+ * @brief 指针哈希函数
+ * 
+ * 计算指针的哈希值。
+ * 
+ * @param key 指针键
+ * @return 哈希值
+ */
+uint64_t F_pointer_hash_function(void* key);
+
+/**
+ * @brief 指针比较函数
+ * 
+ * 比较两个指针是否相等。
+ * 
+ * @param key1 第一个指针键
+ * @param key2 第二个指针键
+ * @return 相等返回0，否则返回1
+ */
+int F_pointer_compare_function(void* key1, void* key2);
+
+/**
+ * @brief 计算下一个2的幂
+ * 
+ * 计算大于等于给定数的最小2的幂。
+ * 
+ * @param n 输入数
+ * @return 大于等于n的最小2的幂
+ */
+size_t F_next_power_of_two(size_t n);
+
+/**
+ * @brief 计算质数容量
+ * 
+ * 计算大于等于给定数的最小质数，适合作为哈希表容量。
+ * 
+ * @param n 输入数
+ * @return 大于等于n的最小质数
+ */
+size_t F_prime_capacity(size_t n);
+
+/**
+ * @brief 计算混合哈希值
+ * 
+ * 混合两个哈希值，用于组合多个键的哈希。
+ * 
+ * @param h1 第一个哈希值
+ * @param h2 第二个哈希值
+ * @return 混合后的哈希值
+ */
+uint64_t F_mix_hash(uint64_t h1, uint64_t h2);
+
+/**
+ * @brief 计算字节数组哈希值
+ * 
+ * 计算字节数组的哈希值。
+ * 
+ * @param data 数据指针
+ * @param length 数据长度
+ * @return 哈希值
+ */
+uint64_t F_bytes_hash_function(void* data, size_t length);
+
 #ifdef __cplusplus
 }
 #endif

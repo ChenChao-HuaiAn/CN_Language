@@ -1,5 +1,28 @@
 # CN_hash_table API 文档
 
+## 架构概述
+
+`CN_hash_table` 模块已按照CN_Language项目的三层架构和SOLID设计原则进行重构，实现了模块化、解耦简单、可读性高的结构。
+
+### 模块化设计
+
+模块被拆分为多个专注单一职责的文件：
+
+1. **CN_hash_table.h** - 主头文件，定义数据结构和公共API
+2. **CN_hash_table_interface.h** - 抽象接口定义，支持不同的实现和测试桩
+3. **CN_hash_table_impl.c** - 核心哈希表功能实现
+4. **CN_hash_table_entry.c** - 哈希表条目操作
+5. **CN_hash_table_utils.c** - 工具函数（哈希函数、比较函数等）
+6. **CN_hash_table_interface_impl.c** - 接口实现，包装现有功能
+7. **CN_hash_table.c** - 兼容层，确保向后兼容性
+
+### 设计原则遵循
+
+- **单一职责原则**：每个.c文件不超过500行，每个函数不超过50行
+- **开闭原则**：通过抽象接口支持扩展
+- **接口隔离原则**：为不同客户端提供专用接口
+- **依赖倒置原则**：高层模块定义接口，低层模块实现
+
 ## 概述
 
 `CN_hash_table` 模块提供了哈希表数据结构的实现。哈希表支持高效的键值对查找、插入和删除操作，使用链地址法解决哈希冲突。
@@ -283,6 +306,119 @@ int F_int_compare_function(void* key1, void* key2);
 
 **返回值：** 相等返回0，否则返回非0值
 
+## 新增函数（模块化重构后添加）
+
+### F_create_hash_entry
+
+```c
+Stru_HashEntry_t* F_create_hash_entry(void* key, void* value, 
+                                     size_t key_size, size_t value_size);
+```
+
+创建哈希条目。
+
+**参数：**
+- `key`: 键指针
+- `value`: 值指针
+- `key_size`: 键大小
+- `value_size`: 值大小
+
+**返回值：**
+- 成功：指向新条目的指针
+- 失败：NULL（参数无效或内存分配失败）
+
+### F_free_hash_entry
+
+```c
+void F_free_hash_entry(Stru_HashEntry_t* entry);
+```
+
+释放哈希条目。
+
+**参数：**
+- `entry`: 要释放的条目指针
+
+### F_pointer_hash_function
+
+```c
+uint64_t F_pointer_hash_function(void* key);
+```
+
+指针哈希函数。
+
+**参数：**
+- `key`: 指针键
+
+**返回值：** 哈希值
+
+### F_pointer_compare_function
+
+```c
+int F_pointer_compare_function(void* key1, void* key2);
+```
+
+指针比较函数。
+
+**参数：**
+- `key1`: 第一个指针键
+- `key2`: 第二个指针键
+
+**返回值：** 相等返回0，否则返回1
+
+### F_next_power_of_two
+
+```c
+size_t F_next_power_of_two(size_t n);
+```
+
+计算下一个2的幂。
+
+**参数：**
+- `n`: 输入数
+
+**返回值：** 大于等于n的最小2的幂
+
+### F_prime_capacity
+
+```c
+size_t F_prime_capacity(size_t n);
+```
+
+计算质数容量。
+
+**参数：**
+- `n`: 输入数
+
+**返回值：** 大于等于n的最小质数，适合作为哈希表容量
+
+### F_mix_hash
+
+```c
+uint64_t F_mix_hash(uint64_t h1, uint64_t h2);
+```
+
+混合两个哈希值。
+
+**参数：**
+- `h1`: 第一个哈希值
+- `h2`: 第二个哈希值
+
+**返回值：** 混合后的哈希值
+
+### F_bytes_hash_function
+
+```c
+uint64_t F_bytes_hash_function(void* data, size_t length);
+```
+
+计算字节数组哈希值。
+
+**参数：**
+- `data`: 数据指针
+- `length`: 数据长度
+
+**返回值：** 哈希值
+
 ## 配置宏
 
 ### CN_HASH_TABLE_INITIAL_CAPACITY
@@ -371,7 +507,8 @@ int main() {
 
 | 版本 | 日期 | 描述 |
 |------|------|------|
-| 1.0.0 | 2026-01-06 | 初始版本 |
+| 1.0.0 | 2026-01-06 | 初始版本，实现基本哈希表功能 |
+| 2.0.0 | 2026-01-06 | 模块化重构，按照三层架构和SOLID原则拆分文件，添加抽象接口和工具函数 |
 
 ## 相关文档
 
