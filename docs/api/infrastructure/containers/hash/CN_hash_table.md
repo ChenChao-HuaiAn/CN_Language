@@ -510,7 +510,50 @@ int main() {
 | 1.0.0 | 2026-01-06 | 初始版本，实现基本哈希表功能 |
 | 2.0.0 | 2026-01-06 | 模块化重构，按照三层架构和SOLID原则拆分文件，添加抽象接口和工具函数 |
 
+## 测试
+
+哈希表模块包含全面的测试套件，位于 `tests/infrastructure/containers/hash/` 目录中。测试按照模块化原则设计，每个测试功能在单独的文件中实现。
+
+### 测试模块结构
+
+1. **test_hash_table.h** - 测试头文件，包含测试宏和辅助函数
+2. **test_hash_table_create_destroy.c** - 测试哈希表的创建和销毁功能
+3. **test_hash_table_basic_ops.c** - 测试基本操作（插入、获取、删除）
+4. **test_hash_table_query_ops.c** - 测试查询操作（大小、容量、包含检查）
+5. **test_hash_table_table_ops.c** - 测试哈希表操作（清空、调整大小、遍历）
+6. **test_hash_table_entry_ops.c** - 测试哈希表条目操作
+7. **test_hash_table_utils.c** - 测试工具函数（哈希函数、比较函数等）
+8. **test_hash_table_interface.c** - 测试抽象接口功能
+9. **test_hash_table_error_handling.c** - 测试错误处理功能
+10. **test_hash_table_edge_cases.c** - 测试边界情况和异常情况
+11. **test_hash_table_performance.c** - 测试性能特征
+12. **test_runner.c** - 测试运行器，包含main函数
+13. **Makefile** - 编译脚本
+
+### 测试覆盖范围
+
+- **功能测试**：覆盖所有API接口和功能
+- **错误处理测试**：测试无效参数和异常情况处理
+- **边界情况测试**：测试空表、单个元素、大量元素等情况
+- **性能测试**：测试插入、查找、删除等操作的性能
+
+### 编译和运行测试
+
+```bash
+cd tests/infrastructure/containers/hash
+make
+./test_hash_table
+```
+
+### 测试覆盖率目标
+
+- 语句覆盖率：≥90%
+- 分支覆盖率：≥85%
+- 函数覆盖率：100%
+- 行覆盖率：≥90%
+
 ## 相关文档
 
 - [哈希表模块README](../src/infrastructure/containers/hash/README.md)
+- [哈希表测试模块README](../../../../tests/infrastructure/containers/hash/README.md)
 - [CN_Language项目架构文档](../../../../architecture/001-中文编程语言CN_Language开发规划.md)
