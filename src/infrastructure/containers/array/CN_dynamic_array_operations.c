@@ -256,7 +256,7 @@ bool F_dynamic_array_push_batch_ex(Stru_DynamicArray_t* array, const void* items
  * @param iterator 迭代器回调函数
  * @param user_data 用户数据
  * @param error_code 输出参数，错误码（可为NULL）
- * @return 是否成功完成遍历
+ * @return 是否成功完成遍历（如果迭代器提前停止返回false）
  */
 bool F_dynamic_array_foreach_ex(Stru_DynamicArray_t* array, 
                                F_DynamicArrayIterator_t iterator, void* user_data,
@@ -272,9 +272,9 @@ bool F_dynamic_array_foreach_ex(Stru_DynamicArray_t* array,
     {
         if (!iterator(array->items[i], i, user_data))
         {
-            // 迭代器请求停止
+            // 迭代器请求停止，遍历未完成
             F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
-            return true;
+            return false;
         }
     }
     

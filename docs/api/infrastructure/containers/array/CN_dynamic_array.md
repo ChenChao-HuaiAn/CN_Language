@@ -1261,6 +1261,91 @@ int main() {
 | 2.0.0 | 2026-01-06 | 重构版本，添加抽象接口、扩展API和错误处理机制 |
 | 2.1.0 | 2026-01-06 | 模块化重构版本，将大型实现文件拆分为功能专注的小模块，符合单一职责原则 |
 
+## 测试
+
+动态数组模块包含完整的单元测试套件，位于 `tests/infrastructure/containers/array/` 目录。测试覆盖所有API接口、错误处理、边界条件和性能特征。
+
+### 测试文件
+
+1. **test_dynamic_array.h** - 测试头文件，声明所有测试函数
+2. **test_dynamic_array.c** - 测试实现文件，包含10个完整的测试函数
+3. **test_runner.c** - 测试运行器，包含main()函数
+
+### 测试覆盖范围
+
+测试套件包含10个全面的测试函数：
+
+1. **test_dynamic_array_create_and_destroy** - 测试创建和销毁功能
+2. **test_dynamic_array_basic_operations** - 测试基本操作功能（push、get、set、remove）
+3. **test_dynamic_array_query_operations** - 测试查询操作功能（length、capacity、is_empty）
+4. **test_dynamic_array_array_operations** - 测试数组操作功能（clear、resize、find、push_batch）
+5. **test_dynamic_array_iteration_operations** - 测试迭代操作功能（foreach）
+6. **test_dynamic_array_memory_management** - 测试内存管理功能（get_memory_stats、shrink_to_fit）
+7. **test_dynamic_array_error_handling** - 测试错误处理功能（所有_ex函数）
+8. **test_dynamic_array_abstract_interface** - 测试抽象接口功能
+9. **test_dynamic_array_edge_cases** - 测试边界情况（超大容量、零大小元素、重复添加移除等）
+10. **test_dynamic_array_performance** - 测试性能特征
+
+### 测试辅助函数
+
+测试文件中包含以下辅助函数：
+- `compare_int` - 整数比较函数
+- `print_int_iterator` - 带索引的整数打印迭代器
+- `print_int_callback` - 整数打印回调函数
+- `stop_at_third` - 在第三个元素停止的迭代器
+- `run_all_dynamic_array_tests` - 运行所有测试并统计结果
+
+### 编译和运行测试
+
+```bash
+# 编译测试
+gcc -o test_runner tests/infrastructure/containers/array/test_runner.c \
+    tests/infrastructure/containers/array/test_dynamic_array.c \
+    src/infrastructure/containers/array/CN_dynamic_array.c \
+    src/infrastructure/containers/array/CN_dynamic_array_core.c \
+    src/infrastructure/containers/array/CN_dynamic_array_operations.c \
+    src/infrastructure/containers/array/CN_dynamic_array_utils.c \
+    src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
+    -I. -I./src -I./tests -std=c99 -Wall -Wextra
+
+# 运行测试
+./test_runner
+```
+
+### 测试输出
+
+测试运行器会输出详细的测试结果：
+
+```
+=== 动态数组模块测试套件 ===
+
+[1/10] test_dynamic_array_create_and_destroy... 通过
+[2/10] test_dynamic_array_basic_operations... 通过
+[3/10] test_dynamic_array_query_operations... 通过
+[4/10] test_dynamic_array_array_operations... 通过
+[5/10] test_dynamic_array_iteration_operations... 通过
+[6/10] test_dynamic_array_memory_management... 通过
+[7/10] test_dynamic_array_error_handling... 通过
+[8/10] test_dynamic_array_abstract_interface... 通过
+[9/10] test_dynamic_array_edge_cases... 通过
+[10/10] test_dynamic_array_performance... 通过
+
+=== 测试结果 ===
+总测试数: 10
+通过: 10
+失败: 0
+通过率: 100.00%
+```
+
+### 测试设计原则
+
+1. **模块化测试设计**：测试文件和main()函数分离，便于集成到更大的测试框架
+2. **全面覆盖**：覆盖所有API接口、错误处理、边界条件和性能特征
+3. **独立测试**：每个测试函数独立运行，不依赖其他测试的状态
+4. **清晰的断言**：使用明确的断言检查预期行为
+5. **错误处理验证**：验证所有错误码和边界条件
+6. **性能基准**：建立关键操作的性能基准
+
 ## 相关文档
 
 - [动态数组模块README](../src/infrastructure/containers/array/README.md)

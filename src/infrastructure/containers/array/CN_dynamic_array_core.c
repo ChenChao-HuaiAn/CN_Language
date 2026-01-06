@@ -110,7 +110,13 @@ void F_dynamic_array_destroy(Stru_DynamicArray_t* array)
 bool F_dynamic_array_push_ex(Stru_DynamicArray_t* array, const void* item, 
                              enum Eum_DynamicArrayError* error_code)
 {
-    if (!F_dynamic_array_validate_array(array, error_code) || item == NULL)
+    if (!F_dynamic_array_validate_array(array, error_code))
+    {
+        // validate_array已经设置了错误码
+        return false;
+    }
+    
+    if (item == NULL)
     {
         F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
         return false;
@@ -151,7 +157,13 @@ void* F_dynamic_array_get_ex(Stru_DynamicArray_t* array, size_t index,
 bool F_dynamic_array_set_ex(Stru_DynamicArray_t* array, size_t index, const void* item,
                             enum Eum_DynamicArrayError* error_code)
 {
-    if (!F_dynamic_array_validate_index(array, index, error_code) || item == NULL)
+    if (!F_dynamic_array_validate_index(array, index, error_code))
+    {
+        // validate_index已经设置了错误码
+        return false;
+    }
+    
+    if (item == NULL)
     {
         F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
         return false;

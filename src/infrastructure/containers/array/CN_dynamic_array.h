@@ -19,6 +19,9 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "CN_dynamic_array_interface.h"
+#include "CN_dynamic_array_core.h"
+#include "CN_dynamic_array_operations.h"
+#include "CN_dynamic_array_utils.h"
 
 #ifdef __cplusplus
 extern "C" {
