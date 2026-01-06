@@ -1,152 +1,48 @@
 /**
  * @file CN_ast.h
- * @brief CN_Language 抽象语法树（AST）定义
+ * @brief CN_Language 抽象语法树（AST）定义 - 兼容层
  * 
- * 定义AST节点结构体、节点类型枚举和AST操作函数。
+ * 提供向后兼容的AST API，内部使用新的接口实现。
  * 遵循项目架构规范，支持语法分析器的AST构建需求。
  * 
  * @author CN_Language架构委员会
  * @date 2026-01-06
- * @version 1.0.0
+ * @version 2.0.0
+ * @copyright MIT License
  */
 
 #ifndef CN_AST_H
 #define CN_AST_H
 
-#include "../token/CN_token.h"
-#include "../../infrastructure/containers/array/CN_dynamic_array.h"
+#include <stddef.h>
+#include <stdbool.h>
+#include "CN_ast_interface.h"
+
+// ============================================================================
+// 类型定义 - 保持向后兼容
+// ============================================================================
 
 /**
  * @brief AST节点类型枚举
  * 
  * 定义所有可能的AST节点类型，涵盖CN_Language的所有语法结构。
+ * 注意：此枚举与CN_ast_interface.h中的Eum_AstNodeType相同。
  */
-typedef enum Eum_AstNodeType {
-    // ============================================
-    // 程序结构
-    // ============================================
-    Eum_AST_PROGRAM,              ///< 程序根节点
-    Eum_AST_MODULE,               ///< 模块定义
-    Eum_AST_IMPORT,               ///< 导入语句
-    
-    // ============================================
-    // 声明
-    // ============================================
-    Eum_AST_VARIABLE_DECL,        ///< 变量声明
-    Eum_AST_FUNCTION_DECL,        ///< 函数声明
-    Eum_AST_STRUCT_DECL,          ///< 结构体声明
-    Eum_AST_ENUM_DECL,            ///< 枚举声明
-    Eum_AST_CONSTANT_DECL,        ///< 常量声明
-    Eum_AST_PARAMETER_DECL,       ///< 参数声明
-    
-    // ============================================
-    // 语句
-    // ============================================
-    Eum_AST_EXPRESSION_STMT,      ///< 表达式语句
-    Eum_AST_IF_STMT,              ///< if语句
-    Eum_AST_WHILE_STMT,           ///< while语句
-    Eum_AST_FOR_STMT,             ///< for语句
-    Eum_AST_RETURN_STMT,          ///< return语句
-    Eum_AST_BREAK_STMT,           ///< break语句
-    Eum_AST_CONTINUE_STMT,        ///< continue语句
-    Eum_AST_BLOCK_STMT,           ///< 代码块语句
-    Eum_AST_SWITCH_STMT,          ///< switch语句
-    Eum_AST_CASE_STMT,            ///< case语句
-    Eum_AST_DEFAULT_STMT,         ///< default语句
-    
-    // ============================================
-    // 表达式
-    // ============================================
-    Eum_AST_BINARY_EXPR,          ///< 二元表达式
-    Eum_AST_UNARY_EXPR,           ///< 一元表达式
-    Eum_AST_LITERAL_EXPR,         ///< 字面量表达式
-    Eum_AST_IDENTIFIER_EXPR,      ///< 标识符表达式
-    Eum_AST_CALL_EXPR,            ///< 函数调用表达式
-    Eum_AST_INDEX_EXPR,           ///< 数组索引表达式
-    Eum_AST_MEMBER_EXPR,          ///< 成员访问表达式
-    Eum_AST_ASSIGN_EXPR,          ///< 赋值表达式
-    Eum_AST_COMPOUND_ASSIGN_EXPR, ///< 复合赋值表达式
-    Eum_AST_CAST_EXPR,            ///< 类型转换表达式
-    Eum_AST_CONDITIONAL_EXPR,     ///< 条件表达式（三元运算符）
-    Eum_AST_NEW_EXPR,             ///< 对象创建表达式
-    Eum_AST_DELETE_EXPR,          ///< 对象销毁表达式
-    
-    // ============================================
-    // 类型
-    // ============================================
-    Eum_AST_TYPE_NAME,            ///< 类型名称
-    Eum_AST_ARRAY_TYPE,           ///< 数组类型
-    Eum_AST_POINTER_TYPE,         ///< 指针类型
-    Eum_AST_REFERENCE_TYPE,       ///< 引用类型
-    Eum_AST_FUNCTION_TYPE,        ///< 函数类型
-    
-    // ============================================
-    // 字面量
-    // ============================================
-    Eum_AST_INT_LITERAL,          ///< 整数字面量
-    Eum_AST_FLOAT_LITERAL,        ///< 浮点数字面量
-    Eum_AST_STRING_LITERAL,       ///< 字符串字面量
-    Eum_AST_BOOL_LITERAL,         ///< 布尔字面量
-    Eum_AST_ARRAY_LITERAL,        ///< 数组字面量
-    Eum_AST_STRUCT_LITERAL,       ///< 结构体字面量
-    Eum_AST_NULL_LITERAL,         ///< null字面量
-    
-    // ============================================
-    // 错误处理
-    // ============================================
-    Eum_AST_ERROR_NODE,           ///< 错误节点（用于错误恢复）
-    
-    // ============================================
-    // 特殊节点
-    // ============================================
-    Eum_AST_COMMENT,              ///< 注释节点
-    Eum_AST_DIRECTIVE,            ///< 预处理指令节点
-    
-    Eum_AST_COUNT                 ///< AST节点类型总数（用于边界检查）
-} Eum_AstNodeType;
+typedef Eum_AstNodeType Eum_AstNodeType;
 
 /**
- * @brief AST节点结构体
+ * @brief AST节点结构体（兼容层）
  * 
- * 表示抽象语法树中的一个节点，包含类型、令牌引用、子节点和属性信息。
+ * 提供向后兼容的AST节点结构体，内部使用接口实现。
  */
 typedef struct Stru_AstNode_t {
-    Eum_AstNodeType type;                 ///< 节点类型
-    Stru_Token_t* token;                  ///< 关联的令牌（可选）
-    size_t line;                          ///< 行号（从1开始）
-    size_t column;                        ///< 列号（从1开始）
-    
-    Stru_DynamicArray_t* children;        ///< 子节点数组
-    Stru_DynamicArray_t* attributes;      ///< 属性键值对数组
-    
-    /**
-     * @brief 节点数据联合体
-     * 
-     * 根据节点类型存储相应的数据。
-     */
-    union {
-        // 字面量值
-        long int_value;                   ///< 整数值
-        double float_value;               ///< 浮点数值
-        char* string_value;               ///< 字符串值
-        bool bool_value;                  ///< 布尔值
-        
-        // 类型信息
-        char* type_name;                  ///< 类型名称
-        size_t array_size;                ///< 数组大小
-        
-        // 其他数据
-        char* identifier;                 ///< 标识符名称
-        int operator_type;                ///< 运算符类型
-    } data;
-    
-    struct Stru_AstNode_t* parent;        ///< 父节点指针（可选）
-    
+    Stru_AstNodeInterface_t* interface;  ///< 内部接口实现
+    void* private_data;                  ///< 私有数据（用于兼容层）
 } Stru_AstNode_t;
 
-// ============================================
-// AST节点创建和销毁函数
-// ============================================
+// ============================================================================
+// AST节点创建和销毁函数（兼容层）
+// ============================================================================
 
 /**
  * @brief 创建AST节点
@@ -159,7 +55,7 @@ typedef struct Stru_AstNode_t {
  * @param column 列号
  * @return Stru_AstNode_t* 新创建的AST节点指针，失败返回NULL
  */
-Stru_AstNode_t* F_create_ast_node(Eum_AstNodeType type, Stru_Token_t* token, size_t line, size_t column);
+Stru_AstNode_t* F_create_ast_node(Eum_AstNodeType type, void* token, size_t line, size_t column);
 
 /**
  * @brief 销毁AST节点
@@ -180,9 +76,9 @@ void F_destroy_ast_node(Stru_AstNode_t* node);
  */
 Stru_AstNode_t* F_copy_ast_node(const Stru_AstNode_t* node);
 
-// ============================================
-// AST节点操作函数
-// ============================================
+// ============================================================================
+// AST节点操作函数（兼容层）
+// ============================================================================
 
 /**
  * @brief 添加子节点
@@ -228,9 +124,9 @@ Stru_AstNode_t* F_ast_get_child(const Stru_AstNode_t* node, size_t index);
  */
 Stru_AstNode_t* F_ast_remove_child(Stru_AstNode_t* node, size_t index);
 
-// ============================================
-// AST节点属性操作函数
-// ============================================
+// ============================================================================
+// AST节点属性操作函数（兼容层）
+// ============================================================================
 
 /**
  * @brief 设置节点属性
@@ -280,9 +176,9 @@ bool F_ast_remove_attribute(Stru_AstNode_t* node, const char* key);
  */
 bool F_ast_has_attribute(const Stru_AstNode_t* node, const char* key);
 
-// ============================================
-// AST节点数据操作函数
-// ============================================
+// ============================================================================
+// AST节点数据操作函数（兼容层）
+// ============================================================================
 
 /**
  * @brief 设置整数值
@@ -444,9 +340,9 @@ size_t F_ast_get_array_size(const Stru_AstNode_t* node);
  */
 int F_ast_get_operator_type(const Stru_AstNode_t* node);
 
-// ============================================
-// AST遍历和查询函数
-// ============================================
+// ============================================================================
+// AST遍历和查询函数（兼容层）
+// ============================================================================
 
 /**
  * @brief AST节点类型转字符串
@@ -488,11 +384,11 @@ void F_ast_print_tree(const Stru_AstNode_t* root, int indent);
  * @param root 根节点
  * @param predicate 谓词函数，返回true表示匹配
  * @param context 上下文参数（传递给谓词函数）
- * @return Stru_DynamicArray_t* 匹配的节点数组，NULL表示无匹配
+ * @return void* 匹配的节点数组，NULL表示无匹配
  */
-Stru_DynamicArray_t* F_ast_find_nodes(const Stru_AstNode_t* root, 
-                                     bool (*predicate)(const Stru_AstNode_t*, void*), 
-                                     void* context);
+void* F_ast_find_nodes(const Stru_AstNode_t* root, 
+                       bool (*predicate)(const Stru_AstNode_t*, void*), 
+                       void* context);
 
 /**
  * @brief 遍历AST树
@@ -507,9 +403,9 @@ void F_ast_traverse(Stru_AstNode_t* root,
                    void (*visitor)(Stru_AstNode_t*, void*), 
                    void* context);
 
-// ============================================
-// AST验证函数
-// ============================================
+// ============================================================================
+// AST验证函数（兼容层）
+// ============================================================================
 
 /**
  * @brief 验证AST节点
@@ -533,4 +429,54 @@ bool F_ast_validate_node(const Stru_AstNode_t* node);
  */
 bool F_ast_validate_tree(const Stru_AstNode_t* root);
 
-#endif // CN_AST_H
+// ============================================================================
+// 新接口访问函数
+// ============================================================================
+
+/**
+ * @brief 获取内部AST节点接口
+ * 
+ * 获取AST节点的内部接口实现。
+ * 
+ * @param node AST节点
+ * @return Stru_AstNodeInterface_t* 内部接口指针
+ */
+Stru_AstNodeInterface_t* F_ast_get_internal_interface(const Stru_AstNode_t* node);
+
+/**
+ * @brief 创建AST构建器接口实例
+ * 
+ * 创建新的AST构建器接口实例。
+ * 
+ * @return Stru_AstBuilderInterface_t* AST构建器接口实例，失败返回NULL
+ */
+Stru_AstBuilderInterface_t* F_ast_create_builder_interface(void);
+
+/**
+ * @brief 创建AST遍历接口实例
+ * 
+ * 创建新的AST遍历接口实例。
+ * 
+ * @return Stru_AstTraversalInterface_t* AST遍历接口实例，失败返回NULL
+ */
+Stru_AstTraversalInterface_t* F_ast_create_traversal_interface(void);
+
+/**
+ * @brief 创建AST查询接口实例
+ * 
+ * 创建新的AST查询接口实例。
+ * 
+ * @return Stru_AstQueryInterface_t* AST查询接口实例，失败返回NULL
+ */
+Stru_AstQueryInterface_t* F_ast_create_query_interface(void);
+
+/**
+ * @brief 创建AST序列化接口实例
+ * 
+ * 创建新的AST序列化接口实例。
+ * 
+ * @return Stru_AstSerializerInterface_t* AST序列化接口实例，失败返回NULL
+ */
+Stru_AstSerializerInterface_t* F_ast_create_serializer_interface(void);
+
+#endif /* CN_AST_H */
