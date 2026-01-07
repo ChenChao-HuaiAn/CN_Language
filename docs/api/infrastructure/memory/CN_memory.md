@@ -11,8 +11,11 @@
 ```
 内存管理模块
 ├── 分配器子模块 (allocators/)
-│   ├── 系统分配器
-│   └── 调试分配器
+│   ├── 系统分配器 (system/)
+│   ├── 调试分配器 (debug/)
+│   ├── 对象池分配器 (pool/)
+│   ├── 区域分配器 (region/)
+│   └── 分配器工厂 (factory/)
 ├── 工具函数子模块 (utilities/)
 │   ├── 内存操作函数
 │   ├── 内存安全函数
@@ -44,8 +47,11 @@
 
 ```c
 // 包含所有子模块的头文件
-#include "allocators/CN_system_allocator.h"
-#include "allocators/CN_debug_allocator.h"
+#include "allocators/system/CN_system_allocator.h"
+#include "allocators/debug/CN_debug_allocator.h"
+#include "allocators/pool/CN_pool_allocator.h"
+#include "allocators/region/CN_region_allocator.h"
+#include "allocators/factory/CN_allocator_factory.h"
 #include "utilities/CN_memory_utilities.h"
 #include "context/CN_memory_context.h"
 #include "debug/CN_memory_debug.h"
@@ -191,12 +197,12 @@ typedef struct Stru_MemoryDebuggerInterface_t {
 
 ### 分配器子模块函数
 
-#### `F_get_system_allocator`
+#### `F_create_system_allocator`
 
-获取系统分配器接口。
+创建系统分配器实例。
 
 ```c
-Stru_AllocatorInterface_t* F_get_system_allocator(void);
+Stru_MemoryAllocatorInterface_t* F_create_system_allocator(void);
 ```
 
 **参数**：无
@@ -205,19 +211,291 @@ Stru_AllocatorInterface_t* F_get_system_allocator(void);
 
 **说明**：基于标准C库的高性能分配器
 
-#### `F_get_debug_allocator`
+#### `F_get_global_system_allocator`
 
-获取调试分配器接口。
+获取全局系统分配器实例。
 
 ```c
-Stru_AllocatorInterface_t* F_get_debug_allocator(void);
+Stru_MemoryAllocatorInterface_t* F_get_global_system_allocator(void);
 ```
 
 **参数**：无
 
+**返回值**：全局系统分配器接口指针
+
+**说明**：返回单例系统分配器实例
+
+#### `F_create_debug_allocator`
+
+创建调试分配器实例。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_debug_allocator(
+    Stru_MemoryAllocatorInterface_t* parent_allocator,
+    bool enable_leak_detection,
+    bool enable_bounds_checking,
+    bool enable_tracking);
+```
+
+**参数**：
+- `parent_allocator`：父分配器（用于实际内存分配）
+- `enable_leak_detection`：是否启用内存泄漏检测
+- `enable_bounds_checking`：是否启用边界检查
+- `enable_tracking`：是否启用分配跟踪
+
 **返回值**：调试分配器接口指针
 
-**说明**：带完整调试功能的分配器
+**说明**：带完整调试功能的分配器，包装其他分配器
+
+#### `F_create_pool_allocator`
+
+创建对象池分配器实例。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_pool_allocator(
+    size_t object_size, 
+    size_t pool_size,
+    Stru_MemoryAllocatorInterface_t* parent_allocator);
+```
+
+**参数**：
+- `object_size`：每个对象的大小（字节）
+- `pool_size`：池中对象的数量
+- `parent_allocator`：父分配器（用于分配池内存）
+
+**返回值**：对象池分配器接口指针
+
+**说明**：固定大小对象的高效分配器，减少内存碎片
+
+#### `F_get_pool_allocator_statistics`
+
+获取对象池分配器的统计信息。
+
+```c
+void F_get_pool_allocator_statistics(
+    Stru_MemoryAllocatorInterface_t* allocator,
+    size_t* total_objects,
+    size_t* allocated_objects,
+    size_t* available_objects,
+    size_t* allocation_failures);
+```
+
+**参数**：
+- `allocator`：对象池分配器
+- `total_objects`：输出参数，总对象数
+- `allocated_objects`：输出参数，已分配对象数
+- `available_objects`：输出参数，可用对象数
+- `allocation_failures`：输出参数，分配失败次数
+
+#### `F_expand_pool_allocator`
+
+扩展对象池容量。
+
+```c
+bool F_expand_pool_allocator(
+    Stru_MemoryAllocatorInterface_t* allocator,
+    size_t additional_objects);
+```
+
+**参数**：
+- `allocator`：对象池分配器
+- `additional_objects`：要添加的对象数量
+
+**返回值**：扩展成功返回true，失败返回false
+
+### 区域分配器函数
+
+#### `F_create_region_allocator`
+
+创建区域内存分配器实例。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_region_allocator(
+    size_t region_size,
+    Stru_MemoryAllocatorInterface_t* parent_allocator);
+```
+
+**参数**：
+- `region_size`：区域大小（字节）
+- `parent_allocator`：父分配器（用于分配区域内存）
+
+**返回值**：区域分配器接口指针
+
+**说明**：区域分配器一次性分配大块内存，然后从该区域中分配小内存块，适用于临时内存分配场景
+
+#### `F_get_region_allocator_statistics`
+
+获取区域分配器的统计信息。
+
+```c
+void F_get_region_allocator_statistics(
+    Stru_MemoryAllocatorInterface_t* allocator,
+    size_t* total_size, size_t* used_size,
+    size_t* available_size, size_t* allocation_count);
+```
+
+**参数**：
+- `allocator`：区域分配器
+- `total_size`：输出参数，区域总大小
+- `used_size`：输出参数，已使用字节数
+- `available_size`：输出参数，可用字节数
+- `allocation_count`：输出参数，分配次数
+
+#### `F_reset_region_allocator`
+
+重置区域分配器。
+
+```c
+void F_reset_region_allocator(Stru_MemoryAllocatorInterface_t* allocator);
+```
+
+**参数**：
+- `allocator`：区域分配器
+
+**说明**：重置区域分配器，释放所有已分配的内存块，但保留区域内存本身以便重用
+
+#### `F_expand_region_allocator`
+
+扩展区域容量。
+
+```c
+bool F_expand_region_allocator(
+    Stru_MemoryAllocatorInterface_t* allocator,
+    size_t additional_size);
+```
+
+**参数**：
+- `allocator`：区域分配器
+- `additional_size`：要添加的字节数
+
+**返回值**：扩展成功返回true，失败返回false
+
+### 分配器工厂函数
+
+#### `F_create_allocator_factory`
+
+创建分配器工厂实例。
+
+```c
+Stru_AllocatorFactory_t* F_create_allocator_factory(void);
+```
+
+**参数**：无
+
+**返回值**：分配器工厂实例，失败返回NULL
+
+**说明**：创建并初始化一个新的分配器工厂实例
+
+#### `F_destroy_allocator_factory`
+
+销毁分配器工厂实例。
+
+```c
+void F_destroy_allocator_factory(Stru_AllocatorFactory_t* factory);
+```
+
+**参数**：
+- `factory`：要销毁的工厂实例
+
+#### `F_get_default_allocator_factory`
+
+获取默认分配器工厂实例。
+
+```c
+Stru_AllocatorFactory_t* F_get_default_allocator_factory(void);
+```
+
+**参数**：无
+
+**返回值**：默认工厂实例
+
+**说明**：第一次调用时会创建工厂，后续调用返回同一实例
+
+#### `F_create_system_allocator_from_factory`
+
+使用默认工厂创建系统分配器的快捷函数。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_system_allocator_from_factory(
+    const Stru_AllocatorConfig_t* config);
+```
+
+**参数**：
+- `config`：分配器配置（可为NULL，使用默认配置）
+
+**返回值**：分配器接口指针，失败返回NULL
+
+#### `F_create_debug_allocator_from_factory`
+
+使用默认工厂创建调试分配器的快捷函数。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_debug_allocator_from_factory(
+    const Stru_AllocatorConfig_t* config,
+    Stru_MemoryAllocatorInterface_t* parent_allocator);
+```
+
+**参数**：
+- `config`：分配器配置（可为NULL，使用默认配置）
+- `parent_allocator`：父分配器（可为NULL，使用系统分配器）
+
+**返回值**：分配器接口指针，失败返回NULL
+
+#### `F_create_pool_allocator_from_factory`
+
+使用默认工厂创建对象池分配器的快捷函数。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_pool_allocator_from_factory(
+    const Stru_AllocatorConfig_t* config,
+    size_t object_size,
+    size_t pool_size,
+    Stru_MemoryAllocatorInterface_t* parent_allocator);
+```
+
+**参数**：
+- `config`：分配器配置（可为NULL，使用默认配置）
+- `object_size`：对象大小（字节）
+- `pool_size`：池大小（对象数量）
+- `parent_allocator`：父分配器（可为NULL，使用系统分配器）
+
+**返回值**：分配器接口指针，失败返回NULL
+
+#### `F_create_region_allocator_from_factory`
+
+使用默认工厂创建区域分配器的快捷函数。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_region_allocator_from_factory(
+    const Stru_AllocatorConfig_t* config,
+    size_t region_size,
+    Stru_MemoryAllocatorInterface_t* parent_allocator);
+```
+
+**参数**：
+- `config`：分配器配置（可为NULL，使用默认配置）
+- `region_size`：区域大小（字节）
+- `parent_allocator`：父分配器（可为NULL，使用系统分配器）
+
+**返回值**：分配器接口指针，失败返回NULL
+
+#### `F_create_allocator_by_name_from_factory`
+
+使用默认工厂根据名称创建分配器的快捷函数。
+
+```c
+Stru_MemoryAllocatorInterface_t* F_create_allocator_by_name_from_factory(
+    const char* allocator_type,
+    const Stru_AllocatorConfig_t* config,
+    ...);
+```
+
+**参数**：
+- `allocator_type`：分配器类型名称（"system", "debug", "pool", "region"）
+- `config`：分配器配置（可为NULL，使用默认配置）
+- `...`：可变参数（根据分配器类型不同）
+
+**返回值**：分配器接口指针，失败返回NULL
 
 ### 工具函数子模块函数
 
@@ -403,39 +681,53 @@ cn_free(numbers);
 ### 2. 使用系统分配器
 
 ```c
-#include "allocators/CN_system_allocator.h"
+#include "allocators/system/CN_system_allocator.h"
 
-// 获取系统分配器接口
-Stru_AllocatorInterface_t* allocator = F_get_system_allocator();
+// 创建系统分配器实例
+Stru_MemoryAllocatorInterface_t* allocator = F_create_system_allocator();
 
 // 分配内存
-void* memory = allocator->allocate(1024, 8);
+void* memory = allocator->allocate(allocator, 1024, 8);
 
 // 使用内存...
 
 // 释放内存
-allocator->deallocate(memory);
+allocator->deallocate(allocator, memory);
+
+// 清理分配器
+allocator->cleanup(allocator);
 ```
 
 ### 3. 使用调试分配器
 
 ```c
-#include "allocators/CN_debug_allocator.h"
+#include "allocators/debug/CN_debug_allocator.h"
+#include "allocators/system/CN_system_allocator.h"
 
-// 获取调试分配器接口
-Stru_AllocatorInterface_t* debug_allocator = F_get_debug_allocator();
+// 创建系统分配器作为父分配器
+Stru_MemoryAllocatorInterface_t* system_allocator = F_create_system_allocator();
+
+// 创建调试分配器
+Stru_MemoryAllocatorInterface_t* debug_allocator = F_create_debug_allocator(
+    system_allocator, true, true, true);
 
 // 分配内存（带调试信息）
-void* debug_memory = debug_allocator->allocate(512, 16);
+void* debug_memory = debug_allocator->allocate(debug_allocator, 512, 16);
 
 // 验证内存有效性
-bool valid = debug_allocator->validate(debug_memory);
+bool valid = debug_allocator->validate(debug_allocator, debug_memory);
 
-// 获取分配大小
-size_t allocated_size = debug_allocator->get_allocated_size(debug_memory);
+// 获取统计信息
+size_t total_allocated = 0, total_freed = 0;
+size_t current_usage = 0, allocation_count = 0;
+debug_allocator->get_statistics(debug_allocator, &total_allocated, &total_freed,
+                               &current_usage, &allocation_count);
 
 // 释放内存
-debug_allocator->deallocate(debug_memory);
+debug_allocator->deallocate(debug_allocator, debug_memory);
+
+// 清理分配器
+debug_allocator->cleanup(debug_allocator);
 ```
 
 ### 4. 使用内存工具函数
@@ -608,12 +900,120 @@ debug_if->cleanup();
 
 ## 扩展指南
 
+### 4. 使用对象池分配器
+
+```c
+#include "allocators/pool/CN_pool_allocator.h"
+#include "allocators/system/CN_system_allocator.h"
+
+// 创建系统分配器作为父分配器
+Stru_MemoryAllocatorInterface_t* system_allocator = F_create_system_allocator();
+
+// 创建对象池分配器（对象大小64字节，池大小10个对象）
+Stru_MemoryAllocatorInterface_t* pool_allocator = F_create_pool_allocator(
+    64, 10, system_allocator);
+
+// 获取池统计信息
+size_t total_objects = 0, allocated_objects = 0;
+size_t available_objects = 0, allocation_failures = 0;
+F_get_pool_allocator_statistics(pool_allocator, &total_objects, &allocated_objects,
+                               &available_objects, &allocation_failures);
+
+// 分配对象
+void* objects[10];
+for (int i = 0; i < 10; i++) {
+    objects[i] = pool_allocator->allocate(pool_allocator, 64, 0);
+}
+
+// 扩展池容量
+bool expanded = F_expand_pool_allocator(pool_allocator, 5);
+
+// 释放对象
+for (int i = 0; i < 10; i++) {
+    if (objects[i] != NULL) {
+        pool_allocator->deallocate(pool_allocator, objects[i]);
+    }
+}
+
+// 清理分配器
+pool_allocator->cleanup(pool_allocator);
+```
+
+### 5. 使用区域分配器
+
+```c
+#include "allocators/region/CN_region_allocator.h"
+#include "allocators/system/CN_system_allocator.h"
+
+// 创建系统分配器作为父分配器
+Stru_MemoryAllocatorInterface_t* system_allocator = F_create_system_allocator();
+
+// 创建区域分配器（区域大小1MB）
+Stru_MemoryAllocatorInterface_t* region_allocator = F_create_region_allocator(
+    1024 * 1024, system_allocator);
+
+// 获取区域统计信息
+size_t total_size = 0, used_size = 0, available_size = 0, allocation_count = 0;
+F_get_region_allocator_statistics(region_allocator, &total_size, &used_size,
+                                 &available_size, &allocation_count);
+
+// 从区域中分配内存
+void* memory1 = region_allocator->allocate(region_allocator, 1024, 8);
+void* memory2 = region_allocator->allocate(region_allocator, 2048, 16);
+
+// 验证内存有效性
+bool valid = region_allocator->validate(region_allocator, memory1);
+
+// 重置区域分配器（释放所有分配的内存，但保留区域）
+F_reset_region_allocator(region_allocator);
+
+// 扩展区域容量
+bool expanded = F_expand_region_allocator(region_allocator, 512 * 1024);
+
+// 清理分配器
+region_allocator->cleanup(region_allocator);
+```
+
+### 6. 使用分配器工厂
+
+```c
+#include "allocators/factory/CN_allocator_factory.h"
+
+// 获取默认分配器工厂
+Stru_AllocatorFactory_t* factory = F_get_default_allocator_factory();
+
+// 使用工厂创建各种分配器
+Stru_MemoryAllocatorInterface_t* system_allocator = 
+    factory->create_system_allocator(factory, NULL);
+
+Stru_MemoryAllocatorInterface_t* debug_allocator = 
+    factory->create_debug_allocator(factory, NULL, system_allocator);
+
+Stru_MemoryAllocatorInterface_t* pool_allocator = 
+    factory->create_pool_allocator(factory, NULL, 64, 10, system_allocator);
+
+Stru_MemoryAllocatorInterface_t* region_allocator = 
+    factory->create_region_allocator(factory, NULL, 1024 * 1024, system_allocator);
+
+// 使用快捷函数创建分配器
+Stru_MemoryAllocatorInterface_t* quick_allocator = 
+    F_create_system_allocator_from_factory(NULL);
+
+// 根据名称创建分配器（可变参数）
+Stru_MemoryAllocatorInterface_t* named_allocator = 
+    F_create_allocator_by_name_from_factory("pool", NULL, 128, 20, system_allocator);
+
+// 获取工厂统计信息
+size_t total_created = 0, active_allocators = 0, memory_usage = 0;
+factory->get_statistics(factory, &total_created, &active_allocators, &memory_usage);
+
+// 清理工厂（自动销毁所有创建的分配器）
+F_destroy_allocator_factory(factory);
+```
+
 ### 添加新的分配器类型
-1. 在`allocators/`目录中创建新的分配器文件
-2. 实现`Stru_AllocatorInterface_t`接口
-3. 提供分配器获取函数（如`F_get_pool_allocator()`）
-4. 更新`allocators/README.md`文档
-5. 添加单元测试
+1. 在`allocators/`目录中创建新的子模块目录
+2. 实现`Stru_MemoryAll
 
 ### 添加新的工具函数
 1. 在`utilities/`目录中扩展现有接口或创建新接口
@@ -640,6 +1040,7 @@ debug_if->cleanup();
 | 1.0.0 | 2026-01-06 | 初始版本，包含系统分配器和调试分配器 |
 | 2.0.0 | 2026-01-07 | 模块化重构，分为四个子模块 |
 | 2.1.0 | 2026-01-07 | 完善子模块文档和API文档 |
+| 2.2.0 | 2026-01-07 | 添加对象池分配器，完善测试框架 |
 
 ## 相关文件
 

@@ -12,8 +12,8 @@
  */
 
 #include "CN_memory_context.h"
-#include "../allocators/CN_system_allocator.h"
-#include "../allocators/CN_debug_allocator.h"
+#include "../allocators/system/CN_system_allocator.h"
+#include "../allocators/debug/CN_debug_allocator.h"
 #include <stdlib.h>
 
 /**

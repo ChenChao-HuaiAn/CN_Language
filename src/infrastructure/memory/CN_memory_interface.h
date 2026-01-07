@@ -156,9 +156,20 @@ typedef struct Stru_MemoryContext_t
 // 子模块包含（模块化设计）
 // ============================================================================
 
-// 分配器模块
-#include "allocators/CN_system_allocator.h"
-#include "allocators/CN_debug_allocator.h"
+// 分配器模块 - 系统分配器
+#include "allocators/system/CN_system_allocator.h"
+
+// 分配器模块 - 调试分配器
+#include "allocators/debug/CN_debug_allocator.h"
+
+// 分配器模块 - 对象池分配器
+#include "allocators/pool/CN_pool_allocator.h"
+
+// 分配器模块 - 区域分配器
+#include "allocators/region/CN_region_allocator.h"
+
+// 分配器模块 - 分配器工厂
+#include "allocators/factory/CN_allocator_factory.h"
 
 // 工具函数模块
 #include "utilities/CN_memory_utilities.h"

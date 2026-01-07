@@ -22,7 +22,7 @@ endif
 
 # 编译器设置
 CC := gcc
-CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils
+CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils -I../src/infrastructure/memory -I../src/infrastructure/memory/allocators -I../src/infrastructure/memory/allocators/system -I../src/infrastructure/memory/allocators/debug -I../src/infrastructure/memory/allocators/pool -I../src/infrastructure/memory/allocators/region -I../src/infrastructure/memory/allocators/factory
 LDFLAGS := 
 
 # 构建目录
@@ -71,8 +71,25 @@ STRING_TEST_SRCS := infrastructure/containers/string/test_string_core.c \
                     infrastructure/containers/string/test_string_utils.c \
                     infrastructure/containers/string/test_string_runner.c
 
+# 内存分配器模块源文件
+MEMORY_ALLOCATOR_SRCS := ../src/infrastructure/memory/allocators/system/CN_system_allocator.c \
+                         ../src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
+                         ../src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
+                         ../src/infrastructure/memory/allocators/region/CN_region_allocator.c \
+                         ../src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
+                         ../src/infrastructure/memory/allocators/factory/CN_allocator_factory.c
+
+# 内存分配器模块测试文件
+MEMORY_ALLOCATOR_TEST_SRCS := infrastructure/memory/allocators/test_system_allocator.c \
+                              infrastructure/memory/allocators/test_debug_allocator.c \
+                              infrastructure/memory/allocators/test_pool_allocator.c \
+                              infrastructure/memory/allocators/test_region_allocator.c \
+                              infrastructure/memory/allocators/test_allocator_config.c \
+                              infrastructure/memory/allocators/test_allocator_factory.c \
+                              infrastructure/memory/allocators/test_allocators_runner.c
+
 # 所有源文件
-ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS)
+ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS) $(MEMORY_ALLOCATOR_SRCS) $(MEMORY_ALLOCATOR_TEST_SRCS)
 
 # 对象文件（按照源代码目录结构组织）
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
@@ -81,7 +98,9 @@ OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(QUEUE_SRCS)) \
         $(patsubst %.c,$(BUILD_DIR)/%.o,$(QUEUE_TEST_SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(STRING_SRCS)) \
-        $(patsubst %.c,$(BUILD_DIR)/%.o,$(STRING_TEST_SRCS))
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(STRING_TEST_SRCS)) \
+        $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(MEMORY_ALLOCATOR_SRCS)) \
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_ALLOCATOR_TEST_SRCS))
 
 # 可执行文件
 TARGET := $(BIN_DIR)/test_runner$(EXE_EXT)
@@ -139,6 +158,11 @@ run-string: $(TARGET)
 	@echo "运行字符串模块测试..."
 	$(subst /,$(PATH_SEP),$(TARGET)) string
 
+# 运行内存分配器模块测试
+run-allocators: $(TARGET)
+	@echo "运行内存分配器模块测试..."
+	$(subst /,$(PATH_SEP),$(TARGET)) allocators
+
 # 列出所有模块
 list: $(TARGET)
 	$(subst /,$(PATH_SEP),$(TARGET)) --list
@@ -163,13 +187,14 @@ help:
 	@echo "  run       - 构建并运行所有测试"
 	@echo "  run-stack - 构建并运行栈模块测试"
 	@echo "  run-queue - 构建并运行队列模块测试"
-	@echo "  run-string - 构建并运行字符串模块测试"
-	@echo "  list      - 列出所有可用的测试模块"
-	@echo "  clean     - 清理构建文件"
-	@echo "  help      - 显示此帮助信息"
+	@echo "  run-string    - 构建并运行字符串模块测试"
+	@echo "  run-allocators - 构建并运行内存分配器模块测试"
+	@echo "  list          - 列出所有可用的测试模块"
+	@echo "  clean         - 清理构建文件"
+	@echo "  help          - 显示此帮助信息"
 	@echo ""
 	@echo "当前操作系统: $(DETECTED_OS)"
 	@echo "构建目录: $(BUILD_DIR)"
 	@echo "目标文件: $(TARGET)"
 
-.PHONY: all info run run-stack run-queue list clean help
+.PHONY: all info run run-stack run-queue run-string run-allocators list clean help

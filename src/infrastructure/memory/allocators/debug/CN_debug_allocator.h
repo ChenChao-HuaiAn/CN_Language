@@ -14,7 +14,11 @@
 #ifndef CN_DEBUG_ALLOCATOR_H
 #define CN_DEBUG_ALLOCATOR_H
 
-#include "../CN_memory_interface.h"
+#include "../../CN_memory_interface.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * @brief 调试分配器私有数据结构
@@ -66,5 +70,9 @@ void F_get_debug_allocator_statistics(
  * @return size_t 泄漏的字节数
  */
 size_t F_check_debug_allocator_leaks(Stru_MemoryAllocatorInterface_t* allocator);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // CN_DEBUG_ALLOCATOR_H

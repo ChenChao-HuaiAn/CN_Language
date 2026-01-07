@@ -13,11 +13,15 @@
  */
 
 #include "CN_debug_allocator.h"
-#include "CN_system_allocator.h"
+#include "../system/CN_system_allocator.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * @brief 调试分配器私有数据
@@ -286,3 +290,7 @@ size_t F_check_debug_allocator_leaks(Stru_MemoryAllocatorInterface_t* allocator)
     // 泄漏字节数 = 总分配字节数 - 总释放字节数
     return data->total_allocated - data->total_freed;
 }
+
+#ifdef __cplusplus
+}
+#endif

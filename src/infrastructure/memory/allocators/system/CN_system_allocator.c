@@ -15,6 +15,10 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /**
  * @brief 系统分配器分配函数
  */
@@ -108,3 +112,7 @@ Stru_MemoryAllocatorInterface_t* F_get_global_system_allocator(void)
 {
     return &g_system_allocator_instance;
 }
+
+#ifdef __cplusplus
+}
+#endif

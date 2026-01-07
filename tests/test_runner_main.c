@@ -54,6 +54,9 @@ extern bool test_queue_all(void);  // 队列模块
 extern bool test_stack_all(void);  // 栈模块
 extern bool test_string_all(void); // 字符串模块
 
+// 基础设施层 - 内存模块
+extern bool test_allocators_all(void); // 内存分配器模块
+
 // 核心层 - 编译器模块
 // extern bool test_lexer_all(void);
 // extern bool test_parser_all(void);
@@ -79,6 +82,9 @@ int main(int argc, char* argv[])
         {"queue",         "infrastructure/containers/queue", test_queue_all,         true},
         {"stack",         "infrastructure/containers/stack", test_stack_all,         true},
         {"string",        "infrastructure/containers/string", test_string_all,       true},
+        
+        // 基础设施层 - 内存模块
+        {"allocators",    "infrastructure/memory/allocators", test_allocators_all,   true},
         
         // 核心层 - 编译器模块
         // {"lexer",         "core/lexer",                     test_lexer_all,         false},

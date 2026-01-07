@@ -14,7 +14,11 @@
 #ifndef CN_SYSTEM_ALLOCATOR_H
 #define CN_SYSTEM_ALLOCATOR_H
 
-#include "../CN_memory_interface.h"
+#include "../../CN_memory_interface.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /**
  * @brief 创建标准系统内存分配器
@@ -35,5 +39,9 @@ Stru_MemoryAllocatorInterface_t* F_create_system_allocator(void);
  * @return Stru_MemoryAllocatorInterface_t* 全局系统分配器实例
  */
 Stru_MemoryAllocatorInterface_t* F_get_global_system_allocator(void);
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif // CN_SYSTEM_ALLOCATOR_H
