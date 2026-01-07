@@ -22,7 +22,7 @@ endif
 
 # 编译器设置
 CC := gcc
-CFLAGS := -std=c99 -Wall -Wextra -I../src -I.
+CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils
 LDFLAGS := 
 
 # 构建目录
@@ -53,7 +53,8 @@ QUEUE_SRCS := ../src/infrastructure/containers/queue/CN_queue.c \
 QUEUE_TEST_SRCS := infrastructure/containers/queue/test_queue_core.c \
                    infrastructure/containers/queue/test_queue_iterator.c \
                    infrastructure/containers/queue/test_queue_utils.c \
-                   infrastructure/containers/queue/test_queue_integration.c
+                   infrastructure/containers/queue/test_queue_integration.c \
+                   infrastructure/containers/queue/test_queue_runner.c
 
 # 所有源文件
 ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS)

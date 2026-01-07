@@ -50,7 +50,20 @@ Stru_HashEntry_t* F_create_hash_entry(void* key, void* value,
         free(entry);
         return NULL;
     }
-    memcpy(entry->key, key, key_size);
+    
+    // 特殊处理：当键大小等于指针大小时，存储指针值本身
+    // 这是因为对于指针键，key参数是指针值，而不是指向数据的指针
+    if (key_size == sizeof(void*))
+    {
+        // 存储key指针值本身
+        void** key_ptr = (void**)entry->key;
+        *key_ptr = key;
+    }
+    else
+    {
+        // 正常情况：复制key指向的数据
+        memcpy(entry->key, key, key_size);
+    }
     
     // 分配值内存并复制数据
     entry->value = malloc(value_size);

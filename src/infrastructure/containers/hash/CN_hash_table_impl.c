@@ -121,15 +121,10 @@ Stru_HashTable_t* F_create_hash_table(size_t key_size, size_t value_size,
                                      size_t initial_capacity)
 {
     if (key_size == 0 || value_size == 0 || 
-        hash_function == NULL || compare_function == NULL)
+        hash_function == NULL || compare_function == NULL ||
+        initial_capacity == 0)  // 零容量应该失败
     {
         return NULL;
-    }
-    
-    // 确保初始容量至少为1
-    if (initial_capacity == 0)
-    {
-        initial_capacity = CN_HASH_TABLE_INITIAL_CAPACITY;
     }
     
     // 分配哈希表结构体
@@ -340,6 +335,12 @@ void F_hash_table_clear(Stru_HashTable_t* table)
 bool F_hash_table_resize(Stru_HashTable_t* table, size_t new_capacity)
 {
     if (table == NULL || new_capacity == 0)
+    {
+        return false;
+    }
+    
+    // 新容量必须大于或等于当前元素数量
+    if (new_capacity < table->size)
     {
         return false;
     }

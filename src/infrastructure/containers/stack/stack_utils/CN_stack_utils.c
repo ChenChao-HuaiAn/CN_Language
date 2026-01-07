@@ -339,7 +339,12 @@ void* F_stack_find_if(
 
 bool F_stack_reverse(Stru_Stack_t* stack)
 {
-    if (stack == NULL || stack->top <= 1)
+    if (stack == NULL)
+    {
+        return false; // NULL指针是错误
+    }
+    
+    if (stack->top <= 1)
     {
         return true; // 空栈或只有一个元素，已经反转
     }
