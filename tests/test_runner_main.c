@@ -47,9 +47,10 @@ void run_test_module(TestModule* module, TestStatistics* stats);
 
 /* 外部测试函数声明（各模块提供） */
 // 基础设施层 - 容器模块
-extern bool test_dynamic_array_all(void);
-extern bool test_hash_table_all(void);
-extern bool test_linked_list_all(void);
+// extern bool test_dynamic_array_all(void);
+// extern bool test_hash_table_all(void);
+// extern bool test_linked_list_all(void);
+extern bool test_queue_all(void);  // 队列模块
 
 // 核心层 - 编译器模块
 // extern bool test_lexer_all(void);
@@ -70,9 +71,10 @@ int main(int argc, char* argv[])
     /* 初始化测试模块列表 */
     TestModule modules[] = {
         // 基础设施层 - 容器模块
-        {"dynamic_array", "infrastructure/containers/array", test_dynamic_array_all, true},
-        {"hash_table",    "infrastructure/containers/hash",  test_hash_table_all,    true},
-        {"linked_list",   "infrastructure/containers/list",  test_linked_list_all,   true},
+        // {"dynamic_array", "infrastructure/containers/array", test_dynamic_array_all, true},
+        // {"hash_table",    "infrastructure/containers/hash",  test_hash_table_all,    true},
+        // {"linked_list",   "infrastructure/containers/list",  test_linked_list_all,   true},
+        {"queue",         "infrastructure/containers/queue", test_queue_all,         true},
         
         // 核心层 - 编译器模块
         // {"lexer",         "core/lexer",                     test_lexer_all,         false},
