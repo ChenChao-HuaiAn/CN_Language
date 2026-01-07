@@ -1,27 +1,31 @@
 /**
- * @file CN_stack.c
- * @brief 栈模块实现文件
+ * @file CN_stack_core.c
+ * @brief 栈核心模块实现文件
  * 
  * 实现栈数据结构的核心功能。
  * 包括创建、销毁、压栈、弹栈、查看等操作。
  * 
  * @author CN_Language架构委员会
- * @date 2026-01-06
- * @version 1.0.0
+ * @date 2026-01-07
+ * @version 2.0.0
  * @license MIT
  * 
  * @copyright Copyright (c) 2026 CN_Language项目
  */
 
-#include "CN_stack.h"
+#include "CN_stack_core.h"
 #include <stdlib.h>
 #include <string.h>
-#include <stdio.h>
 
-// 默认初始容量
+/* ==================== 内部常量定义 ==================== */
+
+/** 默认初始容量 */
 #define CN_STACK_INITIAL_CAPACITY 16
-// 扩容因子
+
+/** 扩容因子 */
 #define CN_STACK_GROWTH_FACTOR 2
+
+/* ==================== 内部函数声明 ==================== */
 
 /**
  * @brief 内部函数：确保栈有足够容量
@@ -31,6 +35,10 @@
  * @param stack 栈指针
  * @return 容量足够或扩容成功返回true，失败返回false
  */
+static bool ensure_capacity(Stru_Stack_t* stack);
+
+/* ==================== 内部函数实现 ==================== */
+
 static bool ensure_capacity(Stru_Stack_t* stack)
 {
     if (stack == NULL)
@@ -59,6 +67,8 @@ static bool ensure_capacity(Stru_Stack_t* stack)
     
     return true;
 }
+
+/* ==================== 公开函数实现 ==================== */
 
 Stru_Stack_t* F_create_stack(size_t item_size)
 {
@@ -209,6 +219,26 @@ bool F_stack_is_empty(Stru_Stack_t* stack)
     return stack->top == 0;
 }
 
+bool F_stack_is_full(Stru_Stack_t* stack)
+{
+    if (stack == NULL)
+    {
+        return false;
+    }
+    
+    return stack->top >= stack->capacity;
+}
+
+size_t F_stack_capacity(Stru_Stack_t* stack)
+{
+    if (stack == NULL)
+    {
+        return 0;
+    }
+    
+    return stack->capacity;
+}
+
 void F_stack_clear(Stru_Stack_t* stack)
 {
     if (stack == NULL)
@@ -227,4 +257,42 @@ void F_stack_clear(Stru_Stack_t* stack)
     }
     
     stack->top = 0;
+}
+
+bool F_stack_reserve(Stru_Stack_t* stack, size_t new_capacity)
+{
+    if (stack == NULL)
+    {
+        return false;
+    }
+    
+    // 如果新容量小于当前大小，调整失败
+    if (new_capacity < stack->top)
+    {
+        return false;
+    }
+    
+    // 如果新容量等于当前容量，不需要调整
+    if (new_capacity == stack->capacity)
+    {
+        return true;
+    }
+    
+    // 调整容量
+    void** new_items = (void**)realloc(stack->items, new_capacity * sizeof(void*));
+    if (new_items == NULL)
+    {
+        return false;
+    }
+    
+    stack->items = new_items;
+    stack->capacity = new_capacity;
+    
+    // 初始化新分配的空间为NULL
+    for (size_t i = stack->top; i < stack->capacity; i++)
+    {
+        stack->items[i] = NULL;
+    }
+    
+    return true;
 }

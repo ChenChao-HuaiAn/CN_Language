@@ -1,13 +1,13 @@
 /**
  * @file CN_stack.h
- * @brief 栈模块头文件
+ * @brief 栈模块主头文件
  * 
- * 提供栈数据结构的定义和接口声明。
- * 栈是一种后进先出（LIFO）的数据结构。
+ * 提供栈数据结构的完整接口声明。
+ * 这是栈模块的主要入口点，包含所有子模块的功能。
  * 
  * @author CN_Language架构委员会
- * @date 2026-01-06
- * @version 1.0.0
+ * @date 2026-01-07
+ * @version 2.0.0
  * @license MIT
  * 
  * @copyright Copyright (c) 2026 CN_Language项目
@@ -19,106 +19,75 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+/* 包含所有子模块的头文件 */
+#include "stack_core/CN_stack_core.h"
+#include "stack_iterator/CN_stack_iterator.h"
+#include "stack_utils/CN_stack_utils.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 /**
- * @brief 栈结构体
+ * @brief 栈模块版本信息
  * 
- * 基于动态数组实现的栈数据结构。
+ * 提供栈模块的版本信息，便于版本管理和兼容性检查。
  */
-typedef struct Stru_Stack_t
+#define CN_STACK_VERSION_MAJOR 2
+#define CN_STACK_VERSION_MINOR 0
+#define CN_STACK_VERSION_PATCH 0
+#define CN_STACK_VERSION_STRING "2.0.0"
+
+/**
+ * @brief 获取栈模块版本
+ * 
+ * 返回栈模块的版本信息。
+ * 
+ * @param major 输出参数，主版本号
+ * @param minor 输出参数，次版本号
+ * @param patch 输出参数，修订号
+ */
+static inline void F_stack_get_version(int* major, int* minor, int* patch)
 {
-    void** items;           /**< 元素指针数组 */
-    size_t capacity;        /**< 当前分配的容量 */
-    size_t top;             /**< 栈顶位置（下一个空闲位置） */
-    size_t item_size;       /**< 每个元素的大小（字节） */
-} Stru_Stack_t;
+    if (major != NULL) *major = CN_STACK_VERSION_MAJOR;
+    if (minor != NULL) *minor = CN_STACK_VERSION_MINOR;
+    if (patch != NULL) *patch = CN_STACK_VERSION_PATCH;
+}
 
 /**
- * @brief 创建栈
+ * @brief 获取栈模块版本字符串
  * 
- * 分配并初始化一个新的栈。
+ * 返回栈模块的版本字符串。
  * 
- * @param item_size 每个元素的大小（字节）
- * @return 指向新创建的栈的指针，失败返回NULL
+ * @return 版本字符串
  */
-Stru_Stack_t* F_create_stack(size_t item_size);
+static inline const char* F_stack_get_version_string(void)
+{
+    return CN_STACK_VERSION_STRING;
+}
 
 /**
- * @brief 销毁栈
+ * @brief 栈模块初始化
  * 
- * 释放栈占用的所有内存。
+ * 初始化栈模块。当前版本不需要特殊初始化，保留此接口用于未来扩展。
  * 
- * @param stack 要销毁的栈指针
- * 
- * @note 如果stack为NULL，函数不执行任何操作
+ * @return 初始化成功返回true，失败返回false
  */
-void F_destroy_stack(Stru_Stack_t* stack);
+static inline bool F_stack_module_init(void)
+{
+    // 当前版本不需要特殊初始化
+    return true;
+}
 
 /**
- * @brief 压栈
+ * @brief 栈模块清理
  * 
- * 将元素压入栈顶。
- * 
- * @param stack 栈指针
- * @param item 要压入的元素指针
- * @return 压栈成功返回true，失败返回false
+ * 清理栈模块。当前版本不需要特殊清理，保留此接口用于未来扩展。
  */
-bool F_stack_push(Stru_Stack_t* stack, void* item);
-
-/**
- * @brief 弹栈
- * 
- * 从栈顶弹出元素。
- * 
- * @param stack 栈指针
- * @param out_item 输出参数，用于接收弹出的元素（可为NULL）
- * @return 弹栈成功返回true，栈为空返回false
- */
-bool F_stack_pop(Stru_Stack_t* stack, void* out_item);
-
-/**
- * @brief 查看栈顶元素
- * 
- * 查看栈顶元素但不弹出。
- * 
- * @param stack 栈指针
- * @return 指向栈顶元素的指针，栈为空返回NULL
- */
-void* F_stack_peek(Stru_Stack_t* stack);
-
-/**
- * @brief 获取栈大小
- * 
- * 返回栈中元素的数量。
- * 
- * @param stack 栈指针
- * @return 栈大小，如果stack为NULL返回0
- */
-size_t F_stack_size(Stru_Stack_t* stack);
-
-/**
- * @brief 检查栈是否为空
- * 
- * 检查栈是否不包含任何元素。
- * 
- * @param stack 栈指针
- * @return 栈为空返回true，否则返回false
- */
-bool F_stack_is_empty(Stru_Stack_t* stack);
-
-/**
- * @brief 清空栈
- * 
- * 移除栈中的所有元素，但不释放栈本身。
- * 
- * @param stack 栈指针
- * 
- * @note 清空后栈大小变为0
- */
-void F_stack_clear(Stru_Stack_t* stack);
+static inline void F_stack_module_cleanup(void)
+{
+    // 当前版本不需要特殊清理
+}
 
 #ifdef __cplusplus
 }

@@ -1,118 +1,151 @@
 # Makefile for CN_Language项目总测试
-# 确保编译中途产生的.o文件放在build目录里对应的文件夹里
+# 简单跨平台版本，支持Windows和Linux
+
+# 检测操作系统
+ifeq ($(OS),Windows_NT)
+    # Windows系统
+    DETECTED_OS := Windows
+    MKDIR := mkdir
+    RMDIR := rmdir /s /q
+    RM := del
+    EXE_EXT := .exe
+    PATH_SEP := \\
+else
+    # Linux/Unix系统
+    DETECTED_OS := Linux
+    MKDIR := mkdir -p
+    RMDIR := rm -rf
+    RM := rm -f
+    EXE_EXT :=
+    PATH_SEP := /
+endif
 
 # 编译器设置
-CC = gcc
-CFLAGS = -std=c99 -Wall -Wextra -I../src -I.
-LDFLAGS = 
+CC := gcc
+CFLAGS := -std=c99 -Wall -Wextra -I../src -I.
+LDFLAGS := 
 
-# 队列模块源文件
-QUEUE_MODULE_SRCS = ../src/infrastructure/containers/queue/CN_queue.c \
-                    ../src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
-                    ../src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
-                    ../src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c
+# 构建目录
+BUILD_DIR := ../build/tests
+BIN_DIR := $(BUILD_DIR)/bin
 
-# 队列模块对象文件
-QUEUE_MODULE_OBJS = $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(QUEUE_MODULE_SRCS))
+# 源文件列表
+SRCS := test_runner_main.c
 
-# 目录设置
-BUILD_DIR = ../build/tests
-BIN_DIR = $(BUILD_DIR)/bin
+# 栈模块源文件
+STACK_SRCS := ../src/infrastructure/containers/stack/stack_core/CN_stack_core.c \
+              ../src/infrastructure/containers/stack/stack_iterator/CN_stack_iterator.c \
+              ../src/infrastructure/containers/stack/stack_utils/CN_stack_utils.c
 
-# 模块目录
-INFRASTRUCTURE_DIR = infrastructure
-CORE_DIR = core
-APPLICATION_DIR = application
+# 栈模块测试文件
+STACK_TEST_SRCS := infrastructure/containers/stack/test_stack_core.c \
+                   infrastructure/containers/stack/test_stack_iterator.c \
+                   infrastructure/containers/stack/test_stack_utils.c \
+                   infrastructure/containers/stack/test_stack_runner.c
 
-# 源文件
-MAIN_SRC = test_runner_main.c
+# 队列模块源文件（如果存在）
+QUEUE_SRCS := ../src/infrastructure/containers/queue/CN_queue.c \
+              ../src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
+              ../src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
+              ../src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c
 
-# 队列模块测试源文件（不包括test_queue_main.c，因为它有自己的main函数）
-QUEUE_SRCS = infrastructure/containers/queue/test_queue_core.c \
-             infrastructure/containers/queue/test_queue_iterator.c \
-             infrastructure/containers/queue/test_queue_utils.c \
-             infrastructure/containers/queue/test_queue_integration.c
+# 队列模块测试文件（如果存在）
+QUEUE_TEST_SRCS := infrastructure/containers/queue/test_queue_core.c \
+                   infrastructure/containers/queue/test_queue_iterator.c \
+                   infrastructure/containers/queue/test_queue_utils.c \
+                   infrastructure/containers/queue/test_queue_integration.c
 
-# 对象文件（放在build目录）
-MAIN_OBJ = $(BUILD_DIR)/test_runner_main.o
-QUEUE_OBJS = $(patsubst %.c,$(BUILD_DIR)/%.o,$(QUEUE_SRCS))
+# 所有源文件
+ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS)
+
+# 对象文件（所有放在build目录）
+OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(notdir $(SRCS))) \
+        $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(STACK_SRCS)) \
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(STACK_TEST_SRCS)) \
+        $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(QUEUE_SRCS)) \
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(QUEUE_TEST_SRCS))
 
 # 可执行文件
-TARGET = $(BIN_DIR)/test_runner
+TARGET := $(BIN_DIR)/test_runner$(EXE_EXT)
 
 # 默认目标
 all: $(TARGET)
 
+# 显示信息
+info:
+	@echo "操作系统: $(DETECTED_OS)"
+	@echo "目标文件: $(TARGET)"
+	@echo "源文件数量: $(words $(ALL_SRCS))"
+	@echo "对象文件数量: $(words $(OBJS))"
+
 # 创建构建目录
 $(BUILD_DIR) $(BIN_DIR):
-	mkdir -p $@
+	@echo "创建目录: $@"
+	@if not exist "$(subst /,$(PATH_SEP),$@)" $(MKDIR) "$(subst /,$(PATH_SEP),$@)"
 
-# 编译主测试运行器
-$(BUILD_DIR)/test_runner_main.o: $(MAIN_SRC) | $(BUILD_DIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# 通用编译规则：.c -> .o
+$(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
+	@echo "编译: $< -> $@"
+	@if not exist "$(subst /,$(PATH_SEP),$(dir $@))" $(MKDIR) "$(subst /,$(PATH_SEP),$(dir $@))"
+	$(CC) $(CFLAGS) -c $< -o $(subst /,$(PATH_SEP),$@)
 
-# 编译队列模块测试文件
-$(BUILD_DIR)/infrastructure/containers/queue/%.o: infrastructure/containers/queue/%.c | $(BUILD_DIR)
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# 编译队列模块源文件
-$(BUILD_DIR)/src/infrastructure/containers/queue/%.o: ../src/infrastructure/containers/queue/%.c | $(BUILD_DIR)
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/src/infrastructure/containers/queue/queue_core/%.o: ../src/infrastructure/containers/queue/queue_core/%.c | $(BUILD_DIR)
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/src/infrastructure/containers/queue/queue_iterator/%.o: ../src/infrastructure/containers/queue/queue_iterator/%.c | $(BUILD_DIR)
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
-
-$(BUILD_DIR)/src/infrastructure/containers/queue/queue_utils/%.o: ../src/infrastructure/containers/queue/queue_utils/%.c | $(BUILD_DIR)
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -c $< -o $@
+# 编译src目录下的源文件
+$(BUILD_DIR)/src/%.o: ../src/%.c | $(BUILD_DIR)
+	@echo "编译: $< -> $@"
+	@if not exist "$(subst /,$(PATH_SEP),$(dir $@))" $(MKDIR) "$(subst /,$(PATH_SEP),$(dir $@))"
+	$(CC) $(CFLAGS) -c $< -o $(subst /,$(PATH_SEP),$@)
 
 # 链接可执行文件
-$(TARGET): $(MAIN_OBJ) $(QUEUE_OBJS) $(QUEUE_MODULE_OBJS) | $(BIN_DIR)
-	$(CC) $(LDFLAGS) $^ -o $@
+$(TARGET): $(OBJS) | $(BIN_DIR)
+	@echo "链接: $(words $(OBJS)) 个对象文件 -> $@"
+	$(CC) $(LDFLAGS) $(subst /,$(PATH_SEP),$(OBJS)) -o $(subst /,$(PATH_SEP),$@)
+	@echo "构建完成: $@"
 
-# 运行测试
+# 运行所有测试
 run: $(TARGET)
-	$(TARGET)
+	@echo "运行所有测试..."
+	$(subst /,$(PATH_SEP),$(TARGET))
 
-# 运行特定模块测试
-run-array: $(TARGET)
-	$(TARGET) dynamic_array
+# 运行栈模块测试
+run-stack: $(TARGET)
+	@echo "运行栈模块测试..."
+	$(subst /,$(PATH_SEP),$(TARGET)) stack
 
-run-hash: $(TARGET)
-	$(TARGET) hash_table
-
-run-list: $(TARGET)
-	$(TARGET) linked_list
-
+# 运行队列模块测试
 run-queue: $(TARGET)
-	$(TARGET) queue
+	@echo "运行队列模块测试..."
+	$(subst /,$(PATH_SEP),$(TARGET)) queue
 
 # 列出所有模块
-list:
-	$(TARGET) --list
+list: $(TARGET)
+	$(subst /,$(PATH_SEP),$(TARGET)) --list
 
 # 清理
 clean:
-	rm -rf $(BUILD_DIR)
+	@echo "清理构建文件..."
+ifeq ($(DETECTED_OS),Windows)
+	@if exist "$(subst /,\,$(BUILD_DIR))" $(RMDIR) "$(subst /,\,$(BUILD_DIR))"
+else
+	@$(RMDIR) "$(BUILD_DIR)"
+endif
+	@echo "清理完成"
 
 # 帮助
 help:
+	@echo "CN_Language项目测试构建系统"
+	@echo "============================="
 	@echo "可用目标:"
-	@echo "  all          - 构建总测试运行器（默认）"
-	@echo "  run          - 构建并运行所有测试"
-	@echo "  run-array    - 构建并运行动态数组测试"
-	@echo "  run-hash     - 构建并运行哈希表测试"
-	@echo "  run-list     - 构建并运行链表测试"
-	@echo "  run-queue    - 构建并运行队列测试"
-	@echo "  list         - 列出所有可用的测试模块"
-	@echo "  clean        - 清理构建文件"
-	@echo "  help         - 显示此帮助信息"
+	@echo "  all       - 构建总测试运行器（默认）"
+	@echo "  info      - 显示构建信息"
+	@echo "  run       - 构建并运行所有测试"
+	@echo "  run-stack - 构建并运行栈模块测试"
+	@echo "  run-queue - 构建并运行队列模块测试"
+	@echo "  list      - 列出所有可用的测试模块"
+	@echo "  clean     - 清理构建文件"
+	@echo "  help      - 显示此帮助信息"
+	@echo ""
+	@echo "当前操作系统: $(DETECTED_OS)"
+	@echo "构建目录: $(BUILD_DIR)"
+	@echo "目标文件: $(TARGET)"
 
-.PHONY: all run run-array run-hash run-list list clean help
+.PHONY: all info run run-stack run-queue list clean help

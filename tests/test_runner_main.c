@@ -51,6 +51,7 @@ void run_test_module(TestModule* module, TestStatistics* stats);
 // extern bool test_hash_table_all(void);
 // extern bool test_linked_list_all(void);
 extern bool test_queue_all(void);  // 队列模块
+extern bool test_stack_all(void);  // 栈模块
 
 // 核心层 - 编译器模块
 // extern bool test_lexer_all(void);
@@ -75,6 +76,7 @@ int main(int argc, char* argv[])
         // {"hash_table",    "infrastructure/containers/hash",  test_hash_table_all,    true},
         // {"linked_list",   "infrastructure/containers/list",  test_linked_list_all,   true},
         {"queue",         "infrastructure/containers/queue", test_queue_all,         true},
+        {"stack",         "infrastructure/containers/stack", test_stack_all,         true},
         
         // 核心层 - 编译器模块
         // {"lexer",         "core/lexer",                     test_lexer_all,         false},
