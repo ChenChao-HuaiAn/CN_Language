@@ -13,7 +13,7 @@ QUEUE_MODULE_SRCS = ../src/infrastructure/containers/queue/CN_queue.c \
                     ../src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c
 
 # 队列模块对象文件
-QUEUE_MODULE_OBJS = $(patsubst ../src/%,$(BUILD_DIR)/%.o,$(QUEUE_MODULE_SRCS))
+QUEUE_MODULE_OBJS = $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(QUEUE_MODULE_SRCS))
 
 # 目录设置
 BUILD_DIR = ../build/tests

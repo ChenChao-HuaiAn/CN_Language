@@ -26,16 +26,19 @@
 ```
 queue/
 ├── CN_queue.h              # 主头文件（包含所有子模块）
-├── README.md              # 模块文档
+├── README.md              # 模块文档（本文件）
 ├── queue_core/            # 核心模块
 │   ├── CN_queue_core.h    # 核心头文件
-│   └── CN_queue_core.c    # 核心实现
+│   ├── CN_queue_core.c    # 核心实现
+│   └── README.md          # 核心模块文档
 ├── queue_iterator/        # 迭代器模块
 │   ├── CN_queue_iterator.h # 迭代器头文件
-│   └── CN_queue_iterator.c # 迭代器实现
+│   ├── CN_queue_iterator.c # 迭代器实现
+│   └── README.md          # 迭代器模块文档
 └── queue_utils/           # 工具模块
     ├── CN_queue_utils.h   # 工具头文件
-    └── CN_queue_utils.c   # 工具实现
+    ├── CN_queue_utils.c   # 工具实现
+    └── README.md          # 工具模块文档
 ```
 
 ## 数据结构
@@ -401,10 +404,32 @@ front = 1, rear = 0, size = 5
 
 ## 测试
 
-模块包含完整的单元测试，覆盖所有API接口和边界条件。测试覆盖率目标：
+模块包含完整的单元测试，覆盖所有API接口和边界条件。测试文件位于`tests/infrastructure/containers/queue/`目录，包括：
+
+- `test_queue_core.c` - 核心模块测试
+- `test_queue_iterator.c` - 迭代器模块测试  
+- `test_queue_utils.c` - 工具模块测试
+- `test_queue_integration.c` - 集成测试
+- `test_queue_main.c` - 独立测试运行器
+- `test_queue_runner.c` - 模块化测试运行器
+
+测试覆盖率目标：
 - 语句覆盖率：≥90%
 - 分支覆盖率：≥80%
 - 函数覆盖率：100%
+
+## 相关文档
+
+### 子模块文档
+- [队列核心模块文档](queue_core/README.md)
+- [队列迭代器模块文档](queue_iterator/README.md)
+- [队列工具模块文档](queue_utils/README.md)
+
+### API文档
+- [队列模块API文档](../../../docs/api/infrastructure/containers/queue/CN_queue.md)
+
+### 架构文档
+- [CN_Language项目架构文档](../../../docs/architecture/001-中文编程语言CN_Language开发规划.md)
 
 ## 版本历史
 
