@@ -153,114 +153,28 @@ typedef struct Stru_MemoryContext_t
 } Stru_MemoryContext_t;
 
 // ============================================================================
-// 标准内存管理函数（遵循项目命名规范）
+// 子模块包含（模块化设计）
 // ============================================================================
 
-/**
- * @brief 创建标准系统内存分配器
- * 
- * @return Stru_MemoryAllocatorInterface_t* 分配器接口指针
- */
-Stru_MemoryAllocatorInterface_t* F_create_system_allocator(void);
+// 分配器模块
+#include "allocators/CN_system_allocator.h"
+#include "allocators/CN_debug_allocator.h"
 
-/**
- * @brief 创建调试内存分配器
- * 
- * @param parent_allocator 父分配器（可为NULL，使用系统分配器）
- * @return Stru_MemoryAllocatorInterface_t* 调试分配器接口指针
- */
-Stru_MemoryAllocatorInterface_t* F_create_debug_allocator(
-    Stru_MemoryAllocatorInterface_t* parent_allocator);
+// 工具函数模块
+#include "utilities/CN_memory_utilities.h"
 
-/**
- * @brief 创建内存调试器
- * 
- * @param allocator 要调试的分配器
- * @return Stru_MemoryDebugInterface_t* 调试器接口指针
- */
-Stru_MemoryDebugInterface_t* F_create_memory_debugger(
-    Stru_MemoryAllocatorInterface_t* allocator);
+// 上下文管理模块
+#include "context/CN_memory_context.h"
 
-/**
- * @brief 创建完整的内存管理上下文
- * 
- * @param use_debug_allocator 是否使用调试分配器
- * @return Stru_MemoryContext_t* 内存上下文指针
- */
-Stru_MemoryContext_t* F_create_memory_context(bool use_debug_allocator);
-
-/**
- * @brief 销毁内存管理上下文
- * 
- * @param context 要销毁的上下文
- */
-void F_destroy_memory_context(Stru_MemoryContext_t* context);
+// 调试模块
+#include "debug/CN_memory_debug.h"
 
 // ============================================================================
-// 便捷包装函数（cn_前缀，供项目其他部分使用）
+// 向后兼容性（保持现有代码可用）
 // ============================================================================
 
-/**
- * @brief 分配内存（使用默认分配器）
- * 
- * @param size 要分配的字节数
- * @return void* 分配的内存指针
- */
-void* cn_malloc(size_t size);
-
-/**
- * @brief 分配对齐内存
- * 
- * @param size 要分配的字节数
- * @param alignment 对齐要求
- * @return void* 分配的内存指针
- */
-void* cn_malloc_aligned(size_t size, size_t alignment);
-
-/**
- * @brief 重新分配内存
- * 
- * @param ptr 原内存指针
- * @param new_size 新的字节数
- * @return void* 重新分配的内存指针
- */
-void* cn_realloc(void* ptr, size_t new_size);
-
-/**
- * @brief 释放内存
- * 
- * @param ptr 要释放的内存指针
- */
-void cn_free(void* ptr);
-
-/**
- * @brief 复制内存
- * 
- * @param dest 目标内存
- * @param src 源内存
- * @param size 要复制的字节数
- * @return void* 目标内存指针
- */
-void* cn_memcpy(void* dest, const void* src, size_t size);
-
-/**
- * @brief 设置内存值
- * 
- * @param ptr 内存指针
- * @param value 要设置的值
- * @param size 要设置的字节数
- * @return void* 内存指针
- */
-void* cn_memset(void* ptr, int value, size_t size);
-
-/**
- * @brief 比较内存
- * 
- * @param ptr1 第一个内存块
- * @param ptr2 第二个内存块
- * @param size 要比较的字节数
- * @return int 比较结果（0表示相等）
- */
-int cn_memcmp(const void* ptr1, const void* ptr2, size_t size);
+// 注意：所有函数现在在各自的子模块中定义
+// 为了向后兼容，我们通过包含子模块头文件来提供它们
+// 实际实现在子模块中
 
 #endif // CN_MEMORY_INTERFACE_H

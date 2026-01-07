@@ -11,77 +11,124 @@
 3. **依赖倒置原则**：高层模块通过接口使用内存服务
 4. **接口隔离原则**：为不同客户端提供专用接口
 
-## 模块结构
+## 模块化结构
+
+内存管理模块采用模块化设计，分为四个子模块，每个子模块专注于特定的功能领域：
 
 ```
 src/infrastructure/memory/
-├── CN_memory_interface.h     # 内存管理接口定义
-├── CN_memory_allocator.c     # 内存分配器实现
-└── README.md                 # 模块文档
+├── CN_memory_interface.h          # 内存管理主接口定义
+├── README.md                      # 模块主文档
+│
+├── allocators/                    # 内存分配器子模块
+│   ├── CN_system_allocator.h      # 系统分配器接口
+│   ├── CN_system_allocator.c      # 系统分配器实现
+│   ├── CN_debug_allocator.h       # 调试分配器接口
+│   ├── CN_debug_allocator.c       # 调试分配器实现
+│   └── README.md                  # 分配器子模块文档
+│
+├── utilities/                     # 内存工具函数子模块
+│   ├── CN_memory_utilities.h      # 内存工具函数接口
+│   ├── CN_memory_utilities.c      # 内存工具函数实现
+│   └── README.md                  # 工具函数子模块文档
+│
+├── context/                       # 内存上下文子模块
+│   ├── CN_memory_context.h        # 内存上下文接口
+│   ├── CN_memory_context.c        # 内存上下文实现
+│   └── README.md                  # 上下文子模块文档
+│
+└── debug/                         # 内存调试子模块
+    ├── CN_memory_debug.h          # 内存调试器接口
+    ├── CN_memory_debug.c          # 内存调试器实现
+    └── README.md                  # 调试子模块文档
 ```
+
+### 子模块职责
+
+1. **allocators/**: 提供多种内存分配策略的实现
+   - 系统分配器：基于标准C库的内存分配
+   - 调试分配器：带调试功能的内存分配
+
+2. **utilities/**: 提供内存操作辅助函数
+   - 安全内存操作函数
+   - 内存对齐工具
+   - 内存统计功能
+
+3. **context/**: 提供层次化内存管理
+   - 内存上下文创建和管理
+   - 上下文感知的内存分配
+   - 批量内存管理
+
+4. **debug/**: 提供内存调试和诊断功能
+   - 内存泄漏检测
+   - 内存错误检测
+   - 性能分析工具
 
 ## 核心接口
 
-### 内存分配器接口 (`Stru_MemoryAllocatorInterface_t`)
+### 主接口文件 (`CN_memory_interface.h`)
+
+主接口文件提供了统一的访问点，包含所有子模块的接口定义：
 
 ```c
-typedef struct Stru_MemoryAllocatorInterface_t
-{
-    void* (*allocate)(Stru_MemoryAllocatorInterface_t* allocator, 
-                     size_t size, size_t alignment);
-    void* (*reallocate)(Stru_MemoryAllocatorInterface_t* allocator,
-                       void* ptr, size_t new_size);
-    void (*deallocate)(Stru_MemoryAllocatorInterface_t* allocator,
-                      void* ptr);
-    void (*get_statistics)(Stru_MemoryAllocatorInterface_t* allocator,
-                          size_t* total_allocated, size_t* total_freed,
-                          size_t* current_usage, size_t* allocation_count);
-    bool (*validate)(Stru_MemoryAllocatorInterface_t* allocator,
-                    void* ptr);
-    void (*cleanup)(Stru_MemoryAllocatorInterface_t* allocator);
-    void* private_data;
-} Stru_MemoryAllocatorInterface_t;
+// 包含所有子模块的头文件
+#include "allocators/CN_system_allocator.h"
+#include "allocators/CN_debug_allocator.h"
+#include "utilities/CN_memory_utilities.h"
+#include "context/CN_memory_context.h"
+#include "debug/CN_memory_debug.h"
+
+// 便捷函数（向后兼容）
+void* cn_malloc(size_t size);
+void* cn_realloc(void* ptr, size_t new_size);
+void cn_free(void* ptr);
+void* cn_malloc_aligned(size_t size, size_t alignment);
+void* cn_memcpy(void* dest, const void* src, size_t size);
+void* cn_memset(void* ptr, int value, size_t size);
+int cn_memcmp(const void* ptr1, const void* ptr2, size_t size);
 ```
 
-### 内存调试接口 (`Stru_MemoryDebugInterface_t`)
+### 子模块接口
 
-提供内存调试功能，包括内存泄漏检测、越界检查等。
+每个子模块提供专门的接口，遵循接口隔离原则：
 
-## 可用分配器
+1. **分配器接口** (`allocators/`): 提供内存分配策略
+2. **工具函数接口** (`utilities/`): 提供内存操作辅助
+3. **上下文接口** (`context/`): 提供层次化内存管理
+4. **调试接口** (`debug/`): 提供调试和诊断功能
 
-### 1. 系统分配器
+详细接口定义请参考各子模块的文档。
 
-使用标准C库的`malloc`/`free`函数，提供基本的内存管理功能。
+## 子模块功能概述
 
-```c
-// 创建系统分配器
-Stru_MemoryAllocatorInterface_t* allocator = F_create_system_allocator();
+### 1. 分配器子模块 (`allocators/`)
+提供多种内存分配策略：
 
-// 使用分配器
-void* ptr = allocator->allocate(allocator, 1024, 0);
-allocator->deallocate(allocator, ptr);
-```
+- **系统分配器**: 基于标准C库的高性能分配器
+- **调试分配器**: 带完整调试功能的分配器
 
-### 2. 调试分配器
+### 2. 工具函数子模块 (`utilities/`)
+提供内存操作辅助函数：
 
-在系统分配器基础上添加调试功能：
-- 内存泄漏检测
-- 缓冲区溢出检查
-- 分配统计信息
+- **安全内存操作**: 带边界检查的内存函数
+- **内存对齐工具**: 对齐计算和检查
+- **内存统计**: 使用情况统计和分析
 
-```c
-// 创建调试分配器
-Stru_MemoryAllocatorInterface_t* debug_allocator = 
-    F_create_debug_allocator(NULL);
+### 3. 上下文子模块 (`context/`)
+提供层次化内存管理：
 
-// 使用调试分配器
-void* ptr = debug_allocator->allocate(debug_allocator, 1024, 0);
+- **内存上下文**: 逻辑内存容器
+- **上下文切换**: 线程本地上下文管理
+- **批量管理**: 相关内存的统一管理
 
-// 获取统计信息
-size_t total_allocated, current_usage;
-debug_allocator->get_statistics(debug_allocator, &total_allocated, 
-                               NULL, &current_usage, NULL);
-```
+### 4. 调试子模块 (`debug/`)
+提供全面的调试功能：
+
+- **内存泄漏检测**: 实时监控和报告
+- **错误检测**: 缓冲区溢出、双重释放等
+- **性能分析**: 分配性能统计和分析
+
+详细使用方法和示例请参考各子模块的README文档。
 
 ## 便捷函数
 
@@ -104,36 +151,12 @@ int cn_memcmp(const void* ptr1, const void* ptr2, size_t size);
 
 ## 使用示例
 
-### 基本使用
+### 1. 基本使用（向后兼容）
 
 ```c
 #include "CN_memory_interface.h"
 
-// 创建分配器
-Stru_MemoryAllocatorInterface_t* allocator = F_create_system_allocator();
-
-// 分配内存
-void* buffer = allocator->allocate(allocator, 1024, 0);
-if (buffer == NULL) {
-    // 处理分配失败
-}
-
-// 使用内存
-// ...
-
-// 释放内存
-allocator->deallocate(allocator, buffer);
-
-// 清理分配器
-allocator->cleanup(allocator);
-```
-
-### 使用便捷函数
-
-```c
-#include "CN_memory_interface.h"
-
-// 分配内存
+// 使用便捷函数（向后兼容）
 int* numbers = (int*)cn_malloc(10 * sizeof(int));
 if (numbers == NULL) {
     // 处理分配失败
@@ -154,64 +177,68 @@ numbers = (int*)cn_realloc(numbers, 20 * sizeof(int));
 cn_free(numbers);
 ```
 
-### 调试内存使用
+### 2. 使用系统分配器
 
 ```c
-#include "CN_memory_interface.h"
+#include "allocators/CN_system_allocator.h"
 
-// 创建调试分配器
-Stru_MemoryAllocatorInterface_t* debug_allocator = 
-    F_create_debug_allocator(NULL);
+// 获取系统分配器接口
+Stru_AllocatorInterface_t* allocator = F_get_system_allocator();
 
 // 分配内存
-char* str = (char*)debug_allocator->allocate(debug_allocator, 100, 0);
+void* memory = allocator->allocate(1024, 8);
 
-// 检查内存有效性
-bool valid = debug_allocator->validate(debug_allocator, str);
-if (!valid) {
-    // 内存损坏
-}
-
-// 获取统计信息
-size_t total_allocated, current_usage, allocation_count;
-debug_allocator->get_statistics(debug_allocator, &total_allocated, 
-                               NULL, &current_usage, &allocation_count);
-
-printf("Total allocated: %zu bytes\n", total_allocated);
-printf("Current usage: %zu bytes\n", current_usage);
-printf("Allocation count: %zu\n", allocation_count);
+// 使用内存...
 
 // 释放内存
-debug_allocator->deallocate(debug_allocator, str);
-
-// 清理分配器
-debug_allocator->cleanup(debug_allocator);
+allocator->deallocate(memory);
 ```
 
-## 内存上下文
-
-模块提供内存上下文管理，简化多个分配器的使用：
+### 3. 使用内存上下文
 
 ```c
-#include "CN_memory_interface.h"
+#include "context/CN_memory_context.h"
 
-// 创建内存上下文（使用调试分配器）
-Stru_MemoryContext_t* context = F_create_memory_context(true);
+// 获取内存上下文接口
+Stru_MemoryContextInterface_t* ctx_if = F_get_memory_context_interface();
 
-if (context != NULL) {
-    // 使用上下文中的分配器
-    void* ptr = context->allocator->allocate(context->allocator, 1024, 0);
-    
-    // 使用内存
-    // ...
-    
-    // 释放内存
-    context->allocator->deallocate(context->allocator, ptr);
-    
-    // 销毁上下文
-    F_destroy_memory_context(context);
-}
+// 创建上下文
+Stru_MemoryContext_t* ctx = ctx_if->create("MyContext", NULL);
+
+// 在上下文中分配内存
+void* memory = ctx_if->allocate(ctx, 1024, 16);
+
+// 使用内存...
+
+// 销毁上下文（自动释放所有内存）
+ctx_if->destroy(ctx);
 ```
+
+### 4. 使用内存调试器
+
+```c
+#include "debug/CN_memory_debug.h"
+
+// 获取内存调试器接口
+Stru_MemoryDebuggerInterface_t* debug_if = F_get_memory_debugger_interface();
+
+// 初始化调试器
+debug_if->initialize();
+debug_if->enable_monitoring(true);
+
+// 进行内存操作...
+
+// 检查内存泄漏
+size_t leak_count = debug_if->get_leak_count();
+if (leak_count > 0) {
+    debug_if->report_leaks();
+}
+
+// 清理调试器
+debug_if->cleanup();
+```
+
+详细示例请参考各子模块的README文档。
 
 ## 性能考虑
 
@@ -242,44 +269,60 @@ if (ptr == NULL) {
 
 ## 扩展指南
 
-要添加新的分配器类型：
+### 添加新的分配器类型
 
-1. 实现分配器接口函数
-2. 创建分配器创建函数
-3. 更新接口文档
+1. 在`allocators/`目录中创建新的分配器文件
+2. 实现`Stru_AllocatorInterface_t`接口
+3. 提供分配器获取函数（如`F_get_pool_allocator()`）
+4. 更新`allocators/README.md`文档
+5. 添加单元测试
+
+### 添加新的工具函数
+
+1. 在`utilities/`目录中扩展现有接口或创建新接口
+2. 遵循接口隔离原则
+3. 提供完整的参数验证
 4. 添加单元测试
 
-示例：实现池分配器
+### 添加新的调试功能
 
-```c
-// 池分配器私有数据
-typedef struct Stru_PoolAllocatorData_t {
-    // 池配置和数据
-} Stru_PoolAllocatorData_t;
+1. 在`debug/`目录中扩展现有接口
+2. 确保性能开销可控
+3. 提供详细的调试信息
+4. 添加测试用例
 
-// 实现接口函数
-static void* pool_allocate(Stru_MemoryAllocatorInterface_t* allocator,
-                          size_t size, size_t alignment) {
-    // 池分配实现
-}
+### 模块化设计优势
 
-// 创建函数
-Stru_MemoryAllocatorInterface_t* F_create_pool_allocator(/* 参数 */) {
-    // 创建池分配器
-}
-```
+1. **独立编译**: 每个子模块可独立编译和测试
+2. **最小依赖**: 减少不必要的编译依赖
+3. **易于维护**: 小文件易于理解和修改
+4. **灵活组合**: 可根据需要选择使用哪些子模块
 
 ## 相关文档
 
-- [API文档](../../docs/api/infrastructure/memory/API.md)
-- [设计文档](../../docs/design/infrastructure/memory/DESIGN.md)
-- [测试文档](../../tests/unit/infrastructure/memory/README.md)
+### 子模块文档
+- [分配器子模块](./allocators/README.md)
+- [工具函数子模块](./utilities/README.md)
+- [上下文子模块](./context/README.md)
+- [调试子模块](./debug/README.md)
+
+### API文档
+- [内存管理API文档](../../docs/api/infrastructure/memory/CN_memory.md)
+
+### 测试文档
+- [内存模块测试文档](../../tests/infrastructure/memory/README.md)
+
+### 架构文档
+- [CN_Language开发规划](../../docs/architecture/001-中文编程语言CN_Language开发规划.md)
+- [技术规范和编码标准](../../docs/specifications/CN_Language项目%20技术规范和编码标准.md)
 
 ## 版本历史
 
 | 版本 | 日期 | 描述 |
 |------|------|------|
 | 1.0.0 | 2026-01-06 | 初始版本，实现系统分配器和调试分配器 |
+| 2.0.0 | 2026-01-07 | 模块化重构，分为四个子模块 |
+| 2.1.0 | 2026-01-07 | 添加内存上下文和调试子模块 |
 
 ## 维护者
 
