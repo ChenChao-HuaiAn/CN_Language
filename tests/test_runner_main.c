@@ -52,6 +52,7 @@ void run_test_module(TestModule* module, TestStatistics* stats);
 // extern bool test_linked_list_all(void);
 extern bool test_queue_all(void);  // 队列模块
 extern bool test_stack_all(void);  // 栈模块
+extern bool test_string_all(void); // 字符串模块
 
 // 核心层 - 编译器模块
 // extern bool test_lexer_all(void);
@@ -77,6 +78,7 @@ int main(int argc, char* argv[])
         // {"linked_list",   "infrastructure/containers/list",  test_linked_list_all,   true},
         {"queue",         "infrastructure/containers/queue", test_queue_all,         true},
         {"stack",         "infrastructure/containers/stack", test_stack_all,         true},
+        {"string",        "infrastructure/containers/string", test_string_all,       true},
         
         // 核心层 - 编译器模块
         // {"lexer",         "core/lexer",                     test_lexer_all,         false},

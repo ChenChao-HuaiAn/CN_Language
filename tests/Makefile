@@ -22,7 +22,7 @@ endif
 
 # 编译器设置
 CC := gcc
-CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils
+CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils
 LDFLAGS := 
 
 # 构建目录
@@ -56,15 +56,32 @@ QUEUE_TEST_SRCS := infrastructure/containers/queue/test_queue_core.c \
                    infrastructure/containers/queue/test_queue_integration.c \
                    infrastructure/containers/queue/test_queue_runner.c
 
-# 所有源文件
-ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS)
+# 字符串模块源文件
+STRING_SRCS := ../src/infrastructure/containers/string/string_core/CN_string_core.c \
+               ../src/infrastructure/containers/string/string_operations/CN_string_operations.c \
+               ../src/infrastructure/containers/string/string_search/CN_string_search.c \
+               ../src/infrastructure/containers/string/string_transform/CN_string_transform.c \
+               ../src/infrastructure/containers/string/string_utils/CN_string_utils.c
 
-# 对象文件（所有放在build目录）
-OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(notdir $(SRCS))) \
+# 字符串模块测试文件
+STRING_TEST_SRCS := infrastructure/containers/string/test_string_core.c \
+                    infrastructure/containers/string/test_string_operations.c \
+                    infrastructure/containers/string/test_string_search.c \
+                    infrastructure/containers/string/test_string_transform.c \
+                    infrastructure/containers/string/test_string_utils.c \
+                    infrastructure/containers/string/test_string_runner.c
+
+# 所有源文件
+ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS)
+
+# 对象文件（按照源代码目录结构组织）
+OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(STACK_SRCS)) \
         $(patsubst %.c,$(BUILD_DIR)/%.o,$(STACK_TEST_SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(QUEUE_SRCS)) \
-        $(patsubst %.c,$(BUILD_DIR)/%.o,$(QUEUE_TEST_SRCS))
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(QUEUE_TEST_SRCS)) \
+        $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(STRING_SRCS)) \
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(STRING_TEST_SRCS))
 
 # 可执行文件
 TARGET := $(BIN_DIR)/test_runner$(EXE_EXT)
@@ -117,6 +134,11 @@ run-queue: $(TARGET)
 	@echo "运行队列模块测试..."
 	$(subst /,$(PATH_SEP),$(TARGET)) queue
 
+# 运行字符串模块测试
+run-string: $(TARGET)
+	@echo "运行字符串模块测试..."
+	$(subst /,$(PATH_SEP),$(TARGET)) string
+
 # 列出所有模块
 list: $(TARGET)
 	$(subst /,$(PATH_SEP),$(TARGET)) --list
@@ -141,6 +163,7 @@ help:
 	@echo "  run       - 构建并运行所有测试"
 	@echo "  run-stack - 构建并运行栈模块测试"
 	@echo "  run-queue - 构建并运行队列模块测试"
+	@echo "  run-string - 构建并运行字符串模块测试"
 	@echo "  list      - 列出所有可用的测试模块"
 	@echo "  clean     - 清理构建文件"
 	@echo "  help      - 显示此帮助信息"
