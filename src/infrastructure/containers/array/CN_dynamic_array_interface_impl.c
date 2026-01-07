@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
+#include <stdint.h>
 
 // 默认初始容量
 #define CN_DYNAMIC_ARRAY_INITIAL_CAPACITY 16

@@ -21,6 +21,7 @@
 #include <assert.h>
 #include <time.h>
 #include <limits.h>
+#include <stdint.h>
 
 // 测试辅助函数声明
 static int compare_int(const void* a, const void* b);

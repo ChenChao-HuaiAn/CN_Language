@@ -240,6 +240,64 @@ typedef struct Stru_DynamicArrayInterface_t
      */
     bool (*shrink_to_fit)(void* array, enum Eum_DynamicArrayError* error_code);
     
+    /* 高级操作（新增功能） */
+    
+    /**
+     * @brief 排序数组
+     * 
+     * @param array 动态数组句柄
+     * @param compare 比较函数
+     * @param error_code 输出参数，错误码（可为NULL）
+     * @return 是否成功
+     */
+    bool (*sort)(void* array, F_DynamicArrayCompare_t compare,
+                 enum Eum_DynamicArrayError* error_code);
+    
+    /**
+     * @brief 反转数组
+     * 
+     * @param array 动态数组句柄
+     * @param error_code 输出参数，错误码（可为NULL）
+     * @return 是否成功
+     */
+    bool (*reverse)(void* array, enum Eum_DynamicArrayError* error_code);
+    
+    /**
+     * @brief 映射函数（对每个元素应用函数）
+     * 
+     * @param array 动态数组句柄
+     * @param mapper 映射函数
+     * @param user_data 用户数据
+     * @param error_code 输出参数，错误码（可为NULL）
+     * @return 是否成功
+     */
+    bool (*map)(void* array, void (*mapper)(void* item, void* user_data), void* user_data,
+                enum Eum_DynamicArrayError* error_code);
+    
+    /**
+     * @brief 过滤数组（根据条件保留元素）
+     * 
+     * @param array 动态数组句柄
+     * @param filter 过滤函数（返回true保留元素）
+     * @param user_data 用户数据
+     * @param error_code 输出参数，错误码（可为NULL）
+     * @return 是否成功
+     */
+    bool (*filter)(void* array, bool (*filter)(void* item, void* user_data), void* user_data,
+                   enum Eum_DynamicArrayError* error_code);
+    
+    /**
+     * @brief 获取子数组（切片）
+     * 
+     * @param array 动态数组句柄
+     * @param start 起始索引
+     * @param end 结束索引（不包含）
+     * @param error_code 输出参数，错误码（可为NULL）
+     * @return 新的动态数组句柄，失败返回NULL
+     */
+    void* (*slice)(void* array, size_t start, size_t end,
+                   enum Eum_DynamicArrayError* error_code);
+    
 } Stru_DynamicArrayInterface_t;
 
 /**

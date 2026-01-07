@@ -1263,19 +1263,46 @@ int main() {
 
 ## 测试
 
-动态数组模块包含完整的单元测试套件，位于 `tests/infrastructure/containers/array/` 目录。测试覆盖所有API接口、错误处理、边界条件和性能特征。
+动态数组模块包含完整的模块化单元测试套件，位于 `tests/infrastructure/containers/array/` 目录。测试覆盖所有API接口、错误处理、边界条件和性能特征。
 
-### 测试文件
+### 模块化测试架构
 
-1. **test_dynamic_array.h** - 测试头文件，声明所有测试函数
-2. **test_dynamic_array.c** - 测试实现文件，包含10个完整的测试函数
-3. **test_runner.c** - 测试运行器，包含main()函数
+动态数组测试已重构为模块化结构，遵循单一职责原则：
+
+1. **测试公共模块** (`test_dynamic_array_common.h/.c`) - 共享的测试辅助函数和工具
+2. **独立测试模块** - 每个测试功能在单独的文件中实现
+3. **测试运行器** (`test_runner_unit.c`) - 单元测试运行器
+4. **测试声明头文件** (`test_dynamic_array_all.h`) - 所有测试函数声明
+5. **Makefile构建系统** - 自动化编译和运行测试
+
+### 测试文件结构
+
+```
+tests/infrastructure/containers/array/
+├── unit/                              # 单元测试目录
+│   ├── test_dynamic_array_common.h    # 测试公共头文件
+│   ├── test_dynamic_array_common.c    # 测试公共实现
+│   ├── test_dynamic_array_create_destroy.c      # 创建和销毁测试
+│   ├── test_dynamic_array_basic_operations.c    # 基本操作测试
+│   ├── test_dynamic_array_query_operations.c    # 查询操作测试
+│   ├── test_dynamic_array_array_operations.c    # 数组操作测试
+│   ├── test_dynamic_array_iteration_operations.c # 迭代操作测试
+│   ├── test_dynamic_array_memory_management.c   # 内存管理测试
+│   ├── test_dynamic_array_error_handling.c      # 错误处理测试
+│   ├── test_dynamic_array_abstract_interface.c  # 抽象接口测试
+│   ├── test_dynamic_array_edge_cases.c          # 边界情况测试
+│   ├── test_dynamic_array_performance.c         # 性能测试
+│   ├── test_dynamic_array_all.h                 # 所有测试函数声明
+│   └── test_runner_unit.c                       # 单元测试运行器
+├── Makefile                           # 测试构建脚本
+└── test_dynamic_array.c               # 向后兼容的旧测试文件
+```
 
 ### 测试覆盖范围
 
-测试套件包含10个全面的测试函数：
+测试套件包含10个独立的测试模块，每个模块专注于单一测试功能：
 
-1. **test_dynamic_array_create_and_destroy** - 测试创建和销毁功能
+1. **test_dynamic_array_create_destroy** - 测试创建和销毁功能
 2. **test_dynamic_array_basic_operations** - 测试基本操作功能（push、get、set、remove）
 3. **test_dynamic_array_query_operations** - 测试查询操作功能（length、capacity、is_empty）
 4. **test_dynamic_array_array_operations** - 测试数组操作功能（clear、resize、find、push_batch）
@@ -1288,7 +1315,7 @@ int main() {
 
 ### 测试辅助函数
 
-测试文件中包含以下辅助函数：
+测试公共模块包含以下辅助函数：
 - `compare_int` - 整数比较函数
 - `print_int_iterator` - 带索引的整数打印迭代器
 - `print_int_callback` - 整数打印回调函数
@@ -1297,10 +1324,38 @@ int main() {
 
 ### 编译和运行测试
 
+#### 使用Makefile编译和运行
+
+```bash
+# 进入测试目录
+cd tests/infrastructure/containers/array
+
+# 编译并运行测试
+make test
+
+# 或者单独编译
+make build
+
+# 清理编译文件
+make clean
+```
+
+#### 手动编译和运行
+
 ```bash
 # 编译测试
-gcc -o test_runner tests/infrastructure/containers/array/test_runner.c \
-    tests/infrastructure/containers/array/test_dynamic_array.c \
+gcc -o test_runner_unit tests/infrastructure/containers/array/unit/test_runner_unit.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_common.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_create_destroy.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_basic_operations.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_query_operations.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_array_operations.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_iteration_operations.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_memory_management.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_error_handling.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_abstract_interface.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_edge_cases.c \
+    tests/infrastructure/containers/array/unit/test_dynamic_array_performance.c \
     src/infrastructure/containers/array/CN_dynamic_array.c \
     src/infrastructure/containers/array/CN_dynamic_array_core.c \
     src/infrastructure/containers/array/CN_dynamic_array_operations.c \
@@ -1309,7 +1364,7 @@ gcc -o test_runner tests/infrastructure/containers/array/test_runner.c \
     -I. -I./src -I./tests -std=c99 -Wall -Wextra
 
 # 运行测试
-./test_runner
+./test_runner_unit
 ```
 
 ### 测试输出
@@ -1339,12 +1394,14 @@ gcc -o test_runner tests/infrastructure/containers/array/test_runner.c \
 
 ### 测试设计原则
 
-1. **模块化测试设计**：测试文件和main()函数分离，便于集成到更大的测试框架
+1. **模块化测试设计**：每个测试功能在单独的文件中实现，符合单一职责原则
 2. **全面覆盖**：覆盖所有API接口、错误处理、边界条件和性能特征
 3. **独立测试**：每个测试函数独立运行，不依赖其他测试的状态
 4. **清晰的断言**：使用明确的断言检查预期行为
 5. **错误处理验证**：验证所有错误码和边界条件
 6. **性能基准**：建立关键操作的性能基准
+7. **自动化构建**：使用Makefile自动化编译和测试过程
+8. **向后兼容**：保持旧测试文件的兼容性，便于逐步迁移
 
 ## 相关文档
 

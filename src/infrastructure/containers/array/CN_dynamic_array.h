@@ -438,6 +438,140 @@ bool F_dynamic_array_shrink_to_fit(Stru_DynamicArray_t* array);
 bool F_dynamic_array_shrink_to_fit_ex(Stru_DynamicArray_t* array,
                                       enum Eum_DynamicArrayError* error_code);
 
+/* 高级操作API（新增功能） */
+
+/**
+ * @brief 排序动态数组
+ * 
+ * 对动态数组进行排序。
+ * 
+ * @param array 动态数组指针
+ * @param compare 比较函数
+ * @return 排序成功返回true，失败返回false
+ */
+bool F_dynamic_array_sort(Stru_DynamicArray_t* array, F_DynamicArrayCompare_t compare);
+
+/**
+ * @brief 排序动态数组（带错误码）
+ * 
+ * 对动态数组进行排序，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param compare 比较函数
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 排序成功返回true，失败返回false
+ */
+bool F_dynamic_array_sort_ex(Stru_DynamicArray_t* array, F_DynamicArrayCompare_t compare,
+                             enum Eum_DynamicArrayError* error_code);
+
+/**
+ * @brief 反转动态数组
+ * 
+ * 反转动态数组中元素的顺序。
+ * 
+ * @param array 动态数组指针
+ * @return 反转成功返回true，失败返回false
+ */
+bool F_dynamic_array_reverse(Stru_DynamicArray_t* array);
+
+/**
+ * @brief 反转动态数组（带错误码）
+ * 
+ * 反转动态数组中元素的顺序，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 反转成功返回true，失败返回false
+ */
+bool F_dynamic_array_reverse_ex(Stru_DynamicArray_t* array,
+                                enum Eum_DynamicArrayError* error_code);
+
+/**
+ * @brief 映射动态数组
+ * 
+ * 对动态数组中的每个元素应用指定的函数。
+ * 
+ * @param array 动态数组指针
+ * @param mapper 映射函数
+ * @param user_data 用户数据
+ * @return 映射成功返回true，失败返回false
+ */
+bool F_dynamic_array_map(Stru_DynamicArray_t* array, 
+                         void (*mapper)(void* item, void* user_data),
+                         void* user_data);
+
+/**
+ * @brief 映射动态数组（带错误码）
+ * 
+ * 对动态数组中的每个元素应用指定的函数，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param mapper 映射函数
+ * @param user_data 用户数据
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 映射成功返回true，失败返回false
+ */
+bool F_dynamic_array_map_ex(Stru_DynamicArray_t* array,
+                            void (*mapper)(void* item, void* user_data),
+                            void* user_data, enum Eum_DynamicArrayError* error_code);
+
+/**
+ * @brief 过滤动态数组
+ * 
+ * 根据条件过滤动态数组中的元素。
+ * 
+ * @param array 动态数组指针
+ * @param filter 过滤函数（返回true保留元素）
+ * @param user_data 用户数据
+ * @return 过滤成功返回true，失败返回false
+ */
+bool F_dynamic_array_filter(Stru_DynamicArray_t* array,
+                            bool (*filter)(void* item, void* user_data),
+                            void* user_data);
+
+/**
+ * @brief 过滤动态数组（带错误码）
+ * 
+ * 根据条件过滤动态数组中的元素，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param filter 过滤函数（返回true保留元素）
+ * @param user_data 用户数据
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 过滤成功返回true，失败返回false
+ */
+bool F_dynamic_array_filter_ex(Stru_DynamicArray_t* array,
+                               bool (*filter)(void* item, void* user_data),
+                               void* user_data, enum Eum_DynamicArrayError* error_code);
+
+/**
+ * @brief 获取动态数组切片
+ * 
+ * 获取动态数组的子数组（切片）。
+ * 
+ * @param array 动态数组指针
+ * @param start 起始索引
+ * @param end 结束索引（不包含）
+ * @return 新的动态数组指针，失败返回NULL
+ */
+Stru_DynamicArray_t* F_dynamic_array_slice(Stru_DynamicArray_t* array,
+                                           size_t start, size_t end);
+
+/**
+ * @brief 获取动态数组切片（带错误码）
+ * 
+ * 获取动态数组的子数组（切片），返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param start 起始索引
+ * @param end 结束索引（不包含）
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 新的动态数组指针，失败返回NULL
+ */
+Stru_DynamicArray_t* F_dynamic_array_slice_ex(Stru_DynamicArray_t* array,
+                                              size_t start, size_t end,
+                                              enum Eum_DynamicArrayError* error_code);
+
 /**
  * @brief 获取默认动态数组接口
  * 
