@@ -28,7 +28,7 @@ typedef struct Stru_LinkedList_t
 
 **字段说明：**
 
-- `head`: 指向链表第一个节点的指针
+- `head`: *指向链表第一个节点的指针*
 - `tail`: 指向链表最后一个节点的指针
 - `length`: 链表中元素的数量
 - `item_size`: 每个元素的大小（字节）

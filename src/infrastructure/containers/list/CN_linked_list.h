@@ -207,6 +207,22 @@ void F_linked_list_foreach(Stru_LinkedList_t* list,
  */
 bool F_linked_list_is_empty(Stru_LinkedList_t* list);
 
+/**
+ * @brief 链表迭代器接口
+ * 
+ * 为了方便使用，这里包含迭代器接口的声明。
+ * 详细实现见CN_linked_list_iterator.h
+ */
+#include "CN_linked_list_iterator.h"
+
+/**
+ * @brief 链表排序接口
+ * 
+ * 为了方便使用，这里包含排序接口的声明。
+ * 详细实现见CN_linked_list_sort.h
+ */
+#include "CN_linked_list_sort.h"
+
 #ifdef __cplusplus
 }
 #endif
