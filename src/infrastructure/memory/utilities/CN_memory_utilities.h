@@ -16,6 +16,12 @@
 
 #include <stddef.h>
 
+// 包含子模块接口
+#include "operations/CN_memory_operations.h"
+#include "safety/CN_memory_safety.h"
+#include "alignment/CN_memory_alignment.h"
+#include "statistics/CN_memory_statistics.h"
+
 /**
  * @brief 分配内存（使用默认分配器）
  * 

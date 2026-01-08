@@ -17,9 +17,10 @@
 │   ├── 区域分配器 (region/)
 │   └── 分配器工厂 (factory/)
 ├── 工具函数子模块 (utilities/)
-│   ├── 内存操作函数
-│   ├── 内存安全函数
-│   └── 内存对齐工具
+│   ├── 内存操作函数 (operations/)
+│   ├── 内存安全函数 (safety/)
+│   ├── 内存对齐工具 (alignment/)
+│   └── 内存统计工具 (statistics/)
 ├── 上下文子模块 (context/)
 │   ├── 内存上下文管理
 │   ├── 上下文切换
@@ -107,6 +108,60 @@ typedef struct Stru_MemorySafetyInterface_t {
     bool (*validate_range)(const void* ptr, size_t n);
     void (*initialize_with_pattern)(void* ptr, size_t n, uint8_t pattern);
 } Stru_MemorySafetyInterface_t;
+```
+
+#### Stru_MemoryAlignmentInterface_t
+
+内存对齐接口：
+
+```c
+typedef struct Stru_MemoryAlignmentInterface_t {
+    size_t (*align_up)(size_t size, size_t alignment);
+    size_t (*align_down)(size_t size, size_t alignment);
+    bool (*is_aligned)(const void* ptr, size_t alignment);
+    size_t (*alignment_of)(const void* ptr);
+    void* (*align_pointer)(void* ptr, size_t alignment);
+    size_t (*calculate_padding)(size_t size, size_t alignment);
+} Stru_MemoryAlignmentInterface_t;
+```
+
+#### Stru_MemoryStatisticsInterface_t
+
+内存统计接口：
+
+```c
+typedef struct Stru_MemoryStatisticsInterface_t {
+    // 内存使用统计
+    size_t (*get_total_allocated)(void);
+    size_t (*get_total_freed)(void);
+    size_t (*get_current_usage)(void);
+    size_t (*get_peak_usage)(void);
+    
+    // 分配统计
+    uint64_t (*get_allocation_count)(void);
+    uint64_t (*get_deallocation_count)(void);
+    uint64_t (*get_failed_allocation_count)(void);
+    
+    // 性能统计
+    double (*get_average_allocation_time)(void);
+    double (*get_average_deallocation_time)(void);
+    uint64_t (*get_total_allocation_time)(void);
+    uint64_t (*get_total_deallocation_time)(void);
+    
+    // 碎片分析
+    size_t (*get_fragmentation_ratio)(void);
+    size_t (*get_largest_free_block)(void);
+    size_t (*get_smallest_free_block)(void);
+    
+    // 统计控制
+    void (*reset_statistics)(void);
+    void (*enable_statistics)(bool enable);
+    bool (*is_statistics_enabled)(void);
+    
+    // 统计报告
+    void (*print_statistics_report)(void);
+    void (*get_statistics_report)(char* buffer, size_t buffer_size);
+} Stru_MemoryStatisticsInterface_t;
 ```
 
 ### 上下文接口 (`context/`)
@@ -522,6 +577,30 @@ Stru_MemorySafetyInterface_t* F_get_memory_safety(void);
 **参数**：无
 
 **返回值**：内存安全接口指针
+
+#### `F_get_memory_alignment`
+
+获取内存对齐接口。
+
+```c
+Stru_MemoryAlignmentInterface_t* F_get_memory_alignment(void);
+```
+
+**参数**：无
+
+**返回值**：内存对齐接口指针
+
+#### `F_get_memory_statistics`
+
+获取内存统计接口。
+
+```c
+Stru_MemoryStatisticsInterface_t* F_get_memory_statistics(void);
+```
+
+**参数**：无
+
+**返回值**：内存统计接口指针
 
 ### 上下文子模块函数
 
@@ -1041,6 +1120,7 @@ F_destroy_allocator_factory(factory);
 | 2.0.0 | 2026-01-07 | 模块化重构，分为四个子模块 |
 | 2.1.0 | 2026-01-07 | 完善子模块文档和API文档 |
 | 2.2.0 | 2026-01-07 | 添加对象池分配器，完善测试框架 |
+| 2.3.0 | 2026-01-08 | 完善utilities模块，添加4个子模块：operations、safety、alignment、statistics |
 
 ## 相关文件
 

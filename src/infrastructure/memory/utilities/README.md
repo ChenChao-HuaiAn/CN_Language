@@ -2,30 +2,64 @@
 
 ## 概述
 
-内存工具函数模块提供了一系列辅助函数，用于简化内存操作、提高代码安全性和可维护性。该模块遵循单一职责原则，每个函数专注于特定的内存操作任务。
+内存工具函数模块是CN_Language项目基础设施层内存管理模块的核心组件，提供了一系列辅助函数，用于简化内存操作、提高代码安全性和可维护性。该模块采用模块化设计，分为四个子模块，每个子模块专注于特定的功能领域，遵循单一职责原则和接口隔离原则。
+
+## 模块化架构
+
+内存工具函数模块采用分层模块化设计：
+
+```
+内存工具函数模块
+├── 内存操作子模块 (operations/)
+│   ├── 内存复制函数
+│   ├── 内存移动函数
+│   ├── 内存比较函数
+│   └── 内存填充函数
+├── 内存安全子模块 (safety/)
+│   ├── 安全内存清零
+│   ├── 内存范围验证
+│   └── 模式内存初始化
+├── 内存对齐子模块 (alignment/)
+│   ├── 对齐计算函数
+│   ├── 对齐检查函数
+│   ├── 指针对齐函数
+│   └── 填充计算函数
+└── 内存统计子模块 (statistics/)
+    ├── 内存使用统计
+    ├── 分配性能统计
+    ├── 内存碎片分析
+    └── 统计报告生成
+```
+
+每个子模块提供独立的接口，遵循接口隔离原则，支持按需使用。
 
 ## 模块功能
 
-### 1. 内存操作函数
+### 1. 内存操作子模块 (operations/)
 - **内存复制**: 安全的内存复制函数，支持重叠区域处理
-- **内存移动**: 优化的内存移动函数
-- **内存比较**: 高效的内存比较函数
-- **内存填充**: 快速内存填充函数
+- **内存移动**: 优化的内存移动函数，正确处理源和目标重叠
+- **内存比较**: 高效的内存比较函数，返回比较结果
+- **内存填充**: 快速内存填充函数，支持任意填充值
 
-### 2. 内存安全函数
-- **内存清零**: 安全的内存清零，防止编译器优化
-- **内存初始化**: 带模式的内存初始化
-- **内存验证**: 内存区域有效性验证
+### 2. 内存安全子模块 (safety/)
+- **安全清零**: 安全的内存清零，防止编译器优化，保护敏感数据
+- **内存验证**: 内存区域有效性验证，检测无效内存访问
+- **模式初始化**: 带特定模式的内存初始化，用于调试和测试
 
-### 3. 内存对齐工具
-- **对齐计算**: 计算对齐后的内存地址
-- **对齐分配**: 辅助函数简化对齐内存分配
-- **对齐检查**: 检查内存地址对齐状态
+### 3. 内存对齐子模块 (alignment/)
+- **对齐计算**: 计算向上和向下对齐的大小
+- **对齐检查**: 检查指针是否按指定方式对齐
+- **指针对齐**: 将指针对齐到指定边界
+- **填充计算**: 计算达到对齐所需的填充字节数
+- **对齐分析**: 获取指针的自然对齐方式
 
-### 4. 内存统计工具
-- **内存使用统计**: 统计内存分配情况
-- **内存碎片分析**: 分析内存碎片程度
-- **内存性能监控**: 监控内存操作性能
+### 4. 内存统计子模块 (statistics/)
+- **使用统计**: 统计总分配、总释放、当前使用和峰值使用
+- **分配统计**: 统计分配次数、释放次数和失败次数
+- **性能统计**: 统计平均分配时间、平均释放时间和总时间
+- **碎片分析**: 分析内存碎片率、最大和最小空闲块
+- **统计控制**: 启用/禁用统计、重置统计信息
+- **报告生成**: 生成格式化的统计报告
 
 ## 接口设计
 
@@ -51,8 +85,44 @@ typedef struct Stru_MemoryAlignmentInterface_t {
     size_t (*align_up)(size_t size, size_t alignment);
     size_t (*align_down)(size_t size, size_t alignment);
     bool (*is_aligned)(const void* ptr, size_t alignment);
-    void* (*aligned_alloc_helper)(size_t size, size_t alignment);
+    size_t (*alignment_of)(const void* ptr);
+    void* (*align_pointer)(void* ptr, size_t alignment);
+    size_t (*calculate_padding)(size_t size, size_t alignment);
 } Stru_MemoryAlignmentInterface_t;
+
+// 内存统计接口
+typedef struct Stru_MemoryStatisticsInterface_t {
+    // 内存使用统计
+    size_t (*get_total_allocated)(void);
+    size_t (*get_total_freed)(void);
+    size_t (*get_current_usage)(void);
+    size_t (*get_peak_usage)(void);
+    
+    // 分配统计
+    uint64_t (*get_allocation_count)(void);
+    uint64_t (*get_deallocation_count)(void);
+    uint64_t (*get_failed_allocation_count)(void);
+    
+    // 性能统计
+    double (*get_average_allocation_time)(void);
+    double (*get_average_deallocation_time)(void);
+    uint64_t (*get_total_allocation_time)(void);
+    uint64_t (*get_total_deallocation_time)(void);
+    
+    // 碎片分析
+    size_t (*get_fragmentation_ratio)(void);
+    size_t (*get_largest_free_block)(void);
+    size_t (*get_smallest_free_block)(void);
+    
+    // 统计控制
+    void (*reset_statistics)(void);
+    void (*enable_statistics)(bool enable);
+    bool (*is_statistics_enabled)(void);
+    
+    // 统计报告
+    void (*print_statistics_report)(void);
+    void (*get_statistics_report)(char* buffer, size_t buffer_size);
+} Stru_MemoryStatisticsInterface_t;
 ```
 
 ## 使用示例
@@ -102,6 +172,44 @@ size_t aligned_size = align->align_up(original_size, 16);
 // 检查对齐状态
 void* ptr = malloc(aligned_size);
 bool is_aligned = align->is_aligned(ptr, 16);
+```
+
+### 4. 内存统计操作
+```c
+#include "CN_memory_utilities.h"
+
+// 获取内存统计接口
+Stru_MemoryStatisticsInterface_t* stats = F_get_memory_statistics();
+
+// 启用统计
+stats->enable_statistics(true);
+
+// 进行内存操作
+void* ptr1 = malloc(1024);
+void* ptr2 = malloc(2048);
+free(ptr1);
+void* ptr3 = malloc(4096);
+
+// 获取统计信息
+size_t current_usage = stats->get_current_usage();
+size_t peak_usage = stats->get_peak_usage();
+uint64_t alloc_count = stats->get_allocation_count();
+uint64_t dealloc_count = stats->get_deallocation_count();
+
+printf("当前内存使用: %zu 字节\n", current_usage);
+printf("峰值内存使用: %zu 字节\n", peak_usage);
+printf("分配次数: %llu\n", alloc_count);
+printf("释放次数: %llu\n", dealloc_count);
+
+// 打印完整报告
+stats->print_statistics_report();
+
+// 清理
+free(ptr2);
+free(ptr3);
+
+// 禁用统计
+stats->enable_statistics(false);
 ```
 
 ## 依赖关系
