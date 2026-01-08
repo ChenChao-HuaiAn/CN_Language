@@ -287,41 +287,86 @@ bool is_control_structure(Eum_TokenType type) {
 }
 ```
 
-## API参考
+## 详细文档
 
-### 核心函数
+### API文档
+
+1. **完整API参考**：`docs/api/core/token/CN_token_api_reference.md`
+   - 传统API（向后兼容）
+   - 模块化接口API
+   - 子模块API
+   - 错误处理和使用示例
+
+2. **模块化架构文档**：`docs/api/core/token/CN_token_module.md`
+   - 模块化设计原理
+   - 接口使用指南
+   - 测试框架和迁移指南
+
+3. **核心数据结构文档**：`docs/api/core/token/CN_token.md`
+   - 令牌类型枚举（70个中文关键字）
+   - 令牌结构体定义
+   - 关键字信息结构体
+   - 抽象接口定义
+
+### API参考概览
+
+#### 核心函数
+
+| 函数 | 描述 | 模块 |
+|------|------|------|
+| `F_create_token()` | 创建新令牌 | lifecycle |
+| `F_destroy_token()` | 销毁令牌 | lifecycle |
+| `F_clone_token()` | 克隆令牌 | lifecycle |
+| `F_token_set_int_value()` | 设置整数值 | values |
+| `F_token_set_float_value()` | 设置浮点数值 | values |
+| `F_token_set_bool_value()` | 设置布尔值 | values |
+| `F_token_get_int_value()` | 获取整数值 | values |
+| `F_token_get_float_value()` | 获取浮点数值 | values |
+| `F_token_get_bool_value()` | 获取布尔值 | values |
+
+#### 查询函数
+
+| 函数 | 描述 | 模块 |
+|------|------|------|
+| `F_token_is_keyword()` | 检查是否为关键字 | query |
+| `F_token_is_operator()` | 检查是否为运算符 | query |
+| `F_token_is_literal()` | 检查是否为字面量 | query |
+| `F_token_is_delimiter()` | 检查是否为分隔符 | query |
+| `F_token_get_precedence()` | 获取关键字优先级 | query |
+| `F_token_get_chinese_keyword()` | 获取中文表示 | keywords |
+| `F_token_get_english_keyword()` | 获取英文表示 | keywords |
+| `F_token_get_keyword_category()` | 获取关键字分类 | keywords |
+
+#### 工具函数
+
+| 函数 | 描述 | 模块 |
+|------|------|------|
+| `F_token_type_to_string()` | 令牌类型转字符串 | tools |
+| `F_token_equals()` | 比较两个令牌 | lifecycle |
+| `F_token_to_string()` | 将令牌转换为字符串 | tools |
+| `F_token_hash()` | 计算令牌哈希值 | lifecycle |
+
+#### 模块化接口
 
 | 函数 | 描述 |
 |------|------|
-| `F_create_token()` | 创建新令牌 |
-| `F_destroy_token()` | 销毁令牌 |
-| `F_clone_token()` | 克隆令牌 |
-| `F_token_set_int_value()` | 设置整数值 |
-| `F_token_set_float_value()` | 设置浮点数值 |
-| `F_token_set_string_value()` | 设置字符串值 |
-| `F_token_set_bool_value()` | 设置布尔值 |
-| `F_token_set_char_value()` | 设置字符值 |
+| `F_get_token_interface()` | 获取默认令牌接口实例 |
+| `token_if->create_token()` | 通过接口创建令牌 |
+| `token_if->destroy_token()` | 通过接口销毁令牌 |
+| `token_if->get_token_type()` | 通过接口获取令牌类型 |
+| `token_if->is_keyword()` | 通过接口检查是否为关键字 |
+| `token_if->to_string()` | 通过接口打印令牌信息 |
 
-### 查询函数
+### 错误代码
 
-| 函数 | 描述 |
-|------|------|
-| `F_get_token_type_name()` | 获取类型名称字符串 |
-| `F_is_keyword_token()` | 检查是否为关键字 |
-| `F_is_literal_token()` | 检查是否为字面量 |
-| `F_is_operator_token()` | 检查是否为运算符 |
-| `F_is_delimiter_token()` | 检查是否为分隔符 |
-| `F_get_keyword_info()` | 获取关键字信息 |
-| `F_get_keyword_by_english()` | 通过英文名获取关键字 |
-
-### 工具函数
-
-| 函数 | 描述 |
-|------|------|
-| `F_token_to_string()` | 将令牌转换为字符串 |
-| `F_print_token()` | 打印令牌信息 |
-| `F_compare_tokens()` | 比较两个令牌 |
-| `F_token_hash()` | 计算令牌哈希值 |
+| 错误代码 | 描述 | 可能原因 |
+|---------|------|---------|
+| TOKEN_ERROR_NONE | 无错误 | 操作成功 |
+| TOKEN_ERROR_MEMORY | 内存错误 | 内存分配失败 |
+| TOKEN_ERROR_INVALID_PARAM | 参数错误 | 传递了NULL指针或无效参数 |
+| TOKEN_ERROR_TYPE_MISMATCH | 类型不匹配 | 为错误类型的令牌设置值 |
+| TOKEN_ERROR_NOT_FOUND | 未找到 | 关键字未找到 |
+| TOKEN_ERROR_BUFFER_TOO_SMALL | 缓冲区太小 | 输出缓冲区不足 |
 
 ## 架构合规性
 
