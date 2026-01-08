@@ -977,11 +977,69 @@ CustomExtraData_t* get_custom_extra_data(const Stru_Token_t* token) {
 }
 ```
 
+## 模块化架构
+
+CN_Language 1.2.0版本引入了模块化架构，将令牌模块拆分为多个子模块，每个子模块专注于单一职责：
+
+### 模块化结构
+
+```
+src/core/token/
+├── CN_token.h                    # 主头文件（向后兼容）
+├── CN_token.c                    # 适配器实现（向后兼容）
+├── CN_token_interface.h          # 抽象接口定义
+├── CN_token_types.h              # 类型定义（70个中文关键字）
+├── lifecycle/                    # 令牌生命周期管理
+│   ├── CN_token_lifecycle.h
+│   └── CN_token_lifecycle.c
+├── values/                       # 字面量值操作
+│   ├── CN_token_values.h
+│   └── CN_token_values.c
+├── query/                        # 类型查询和分类
+│   ├── CN_token_query.h
+│   └── CN_token_query.c
+├── keywords/                     # 关键字信息管理
+│   ├── CN_token_keywords.h
+│   └── CN_token_keywords.c
+├── tools/                        # 工具函数
+│   ├── CN_token_tools.h
+│   └── CN_token_tools.c
+└── interface/                    # 接口实现
+    └── CN_token_interface_impl.c
+```
+
+### 新架构优势
+
+1. **单一职责原则**：每个子模块不超过500行代码，每个函数不超过50行
+2. **更好的可维护性**：模块间通过抽象接口通信，降低耦合度
+3. **可测试性**：每个子模块有独立的测试文件
+4. **可扩展性**：支持依赖注入，可替换模块实现
+5. **向后兼容**：现有代码无需修改
+
+### 使用新架构
+
+```c
+// 传统方式（向后兼容）
+#include "src/core/token/CN_token.h"
+
+// 新架构方式（模块化）
+#include "src/core/token/CN_token_interface.h"
+#include "src/core/token/lifecycle/CN_token_lifecycle.h"
+#include "src/core/token/values/CN_token_values.h"
+// ... 其他需要的子模块
+```
+
+### 详细文档
+
+有关模块化架构的完整文档，请参阅：
+- [令牌模块化架构文档](CN_token_module.md) - 详细的新架构设计、接口使用和测试框架
+
 ## 相关文档
 
 - [词法分析器接口 API 文档](../lexer/CN_lexer_interface.md)
 - [动态数组 API 文档](../../infrastructure/containers/array/CN_dynamic_array.md)
 - [架构设计文档](../../../architecture/001-中文编程语言CN_Language开发规划.md)
+- [令牌模块化架构文档](CN_token_module.md)
 
 ## 修订历史
 
@@ -990,6 +1048,7 @@ CustomExtraData_t* get_custom_extra_data(const Stru_Token_t* token) {
 | 1.0.0 | 2026-01-06 | 初始版本发布，支持70个中文关键字 |
 | 1.0.1 | 2026-01-06 | 修复内存泄漏问题 |
 | 1.1.0 | 2026-01-06 | 添加关键字信息查询功能 |
+| 1.2.0 | 2026-01-08 | 引入模块化架构，拆分为6个子模块 |
 
 ## 版权声明
 

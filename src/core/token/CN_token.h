@@ -14,6 +14,7 @@
 #define CN_TOKEN_H
 
 #include "CN_token_types.h"
+#include "CN_token_interface.h"
 #include <stddef.h>
 #include <stdbool.h>
 
