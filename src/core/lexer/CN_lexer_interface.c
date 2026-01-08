@@ -3,19 +3,24 @@
  * @brief CN_Language 词法分析器接口实现
  * 
  * 实现词法分析器抽象接口的工厂函数。
- * 核心实现在CN_lexer_impl.c中。
+ * 使用新的模块化实现。
  * 
  * @author CN_Language架构委员会
- * @date 2026-01-06
- * @version 1.0.0
+ * @date 2026-01-08
+ * @version 2.0.0
  */
 
 #include "CN_lexer_interface.h"
+#include "interface/CN_lexer_interface_impl.h"
 
 /**
  * @brief 创建词法分析器接口实例
  * 
- * 这个函数在CN_lexer_impl.c中实现
- * 这里只提供声明，避免重复定义
+ * 使用新的模块化实现创建词法分析器接口。
+ * 
+ * @return 词法分析器接口指针，失败返回NULL
  */
-Stru_LexerInterface_t* F_create_lexer_interface(void);
+Stru_LexerInterface_t* F_create_lexer_interface(void)
+{
+    return F_create_lexer_interface_impl();
+}

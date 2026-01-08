@@ -62,7 +62,7 @@ extern bool test_utilities_all(void);  // 内存工具函数模块
 extern bool test_memory_debug_tools(void); // 内存调试工具模块
 
 // 核心层 - 编译器模块
-// extern bool test_lexer_all(void);
+extern bool test_lexer_all(void);      // 词法分析器模块
 // extern bool test_parser_all(void);
 // extern bool test_ast_all(void);
 extern bool test_token_all(void);  // 令牌模块
@@ -96,7 +96,7 @@ int main(int argc, char* argv[])
         {"debug_tools",   "infrastructure/memory/debug/tools", test_memory_debug_tools, true}, // 内存调试工具模块
         
         // 核心层 - 编译器模块
-        // {"lexer",         "core/lexer",                     test_lexer_all,         false},
+        {"lexer",         "core/lexer",                     test_lexer_all,         true},
         // {"parser",        "core/parser",                    test_parser_all,        false},
         // {"ast",           "core/ast",                       test_ast_all,           false},
         {"token",          "core/token",                     test_token_all,         true},

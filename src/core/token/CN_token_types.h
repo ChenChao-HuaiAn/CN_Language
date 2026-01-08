@@ -124,7 +124,7 @@ typedef enum Eum_TokenType {
     Eum_TOKEN_KEYWORD_THROW,     ///< 抛出 - 抛出异常
     Eum_TOKEN_KEYWORD_CATCH,     ///< 捕获 - 捕获异常
     Eum_TOKEN_KEYWORD_TRY,       ///< 尝试 - 尝试执行代码块
-    Eum_TOKEN_KEYWORD_FINALLY,   ///< 最终 - 最终执行代码块（用于异常处理）
+    Eum_TOKEN_KEYWORD_FINALLY,   ///< 最终块 - 最终执行代码块（用于异常处理）
 
     // ============================================
     // 10. 非关键字令牌类型

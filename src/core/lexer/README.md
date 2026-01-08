@@ -6,21 +6,60 @@
 
 ## 模块结构
 
+### 分层架构
+
+词法分析器模块采用三层架构设计：
+
+1. **接口层** (`interface/`) - 提供抽象接口和工厂函数
+2. **核心层** (`scanner/`, `token_scanners/`, `keywords/`, `operators/`, `utils/`) - 实现核心词法分析功能
+3. **适配器层** (`CN_lexer_impl.c`) - 提供向后兼容的适配器
+
 ### 文件说明
 
+#### 接口层
 1. **CN_lexer_interface.h** - 词法分析器抽象接口定义
    - 定义`Stru_LexerInterface_t`接口结构体
    - 声明所有公共接口函数
    - 提供工厂函数声明
 
-2. **CN_lexer_interface.c** - 接口适配器
+2. **CN_lexer_interface.c** - 接口工厂
    - 实现工厂函数`F_create_lexer_interface()`
-   - 提供接口到具体实现的适配
+   - 使用新的模块化实现
 
-3. **CN_lexer_impl.c** - 词法分析器核心实现
-   - 实现所有词法分析功能
-   - 包含中文关键字识别、运算符识别、字面量识别等
-   - 遵循单一职责原则：每个函数不超过50行
+3. **interface/CN_lexer_interface_impl.h/.c** - 接口实现
+   - 实现接口的具体功能
+   - 提供工厂函数`F_create_lexer_interface_impl()`
+
+#### 核心层
+4. **scanner/CN_lexer_scanner.h/.c** - 字符扫描器
+   - 字符扫描和位置管理
+   - 空白字符跳过
+   - 错误状态管理
+
+5. **token_scanners/CN_lexer_token_scanners.h/.c** - 令牌扫描器
+   - 各种令牌类型的扫描实现
+   - 标识符、数字、字符串等扫描
+
+6. **keywords/CN_lexer_keywords.h/.c** - 关键字识别
+   - 70个中文关键字的识别
+   - 关键字表管理
+
+7. **operators/CN_lexer_operators.h/.c** - 运算符识别
+   - 运算符字符识别
+   - 运算符类型判断
+
+8. **utils/CN_lexer_utils.h/.c** - 工具函数
+   - 字符分类函数
+   - 字符串处理函数
+
+#### 适配器层
+9. **CN_lexer_impl.c** - 词法分析器核心实现（适配器版本）
+   - 使用新的模块化实现作为后端
+   - 保持与原始接口的兼容性
+
+10. **CN_lexer_impl_legacy.c** - 原始实现（备份）
+    - 原始的单文件实现
+    - 保留作为参考和向后兼容
 
 ### 依赖关系
 
