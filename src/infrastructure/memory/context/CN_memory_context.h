@@ -6,8 +6,8 @@
  * 内存上下文包含分配器和调试器的完整配置。
  * 
  * @author CN_Language架构委员会
- * @date 2026-01-07
- * @version 1.0.0
+ * @date 2026-01-08
+ * @version 2.0.0
  * @copyright MIT License
  */
 
@@ -15,6 +15,11 @@
 #define CN_MEMORY_CONTEXT_H
 
 #include "../CN_memory_interface.h"
+#include "core/CN_context_interface.h"
+
+// ============================================================================
+// 向后兼容性函数声明
+// ============================================================================
 
 /**
  * @brief 创建完整的内存管理上下文

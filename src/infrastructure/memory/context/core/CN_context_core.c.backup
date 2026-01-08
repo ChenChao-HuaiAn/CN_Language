@@ -1,0 +1,724 @@
+/**
+ * @file CN_context_core.c
+ * @brief 内存上下文核心实现
+ * 
+ * 实现了内存上下文管理的核心功能。
+ * 遵循单一职责原则，每个函数不超过50行。
+ * 
+ * @author CN_Language架构委员会
+ * @date 2026-01-08
+ * @version 2.0.0
+ * @copyright MIT License
+ */
+
+#include "CN_context_core.h"
+#include "CN_context_struct.h"
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+#include <malloc.h>  // 用于_aligned_malloc和_aligned_free
+
+// ============================================================================
+// 静态全局变量
+// ============================================================================
+
+/** 全局内存上下文接口实例 */
+static Stru_MemoryContextInterface_t g_memory_context_interface = {0};
+
+/** 默认根上下文 */
+static Stru_MemoryContext_t* g_root_context = NULL;
+
+/** 线程本地当前上下文 */
+static __declspec(thread) Stru_MemoryContext_t* g_thread_current_context = NULL;
+
+/** 上下文ID计数器 */
+static uint64_t g_next_context_id = 1;
+
+/** 系统初始化标志 */
+static bool g_system_initialized = false;
+
+// ============================================================================
+// 内部辅助函数
+// ============================================================================
+
+/**
+ * @brief 生成唯一上下文ID
+ * 
+ * @return uint64_t 唯一ID
+ */
+static uint64_t F_generate_context_id(void)
+{
+    return g_next_context_id++;
+}
+
+/**
+ * @brief 获取当前时间戳（毫秒）
+ * 
+ * @return uint64_t 当前时间戳
+ */
+static uint64_t F_get_current_timestamp(void)
+{
+    // 简单实现，实际项目中应使用平台特定的高精度时间函数
+    return (uint64_t)time(NULL) * 1000;
+}
+
+/**
+ * @brief 创建分配记录
+ * 
+ * @param address 内存地址
+ * @param size 分配大小
+ * @param alignment 对齐要求
+ * @param file 源文件名
+ * @param line 行号
+ * @return Stru_AllocationRecord_t* 分配记录指针
+ */
+static Stru_AllocationRecord_t* F_create_allocation_record(
+    void* address, size_t size, size_t alignment, const char* file, int line)
+{
+    Stru_AllocationRecord_t* record = 
+        (Stru_AllocationRecord_t*)malloc(sizeof(Stru_AllocationRecord_t));
+    
+    if (record == NULL)
+    {
+        return NULL;
+    }
+    
+    record->address = address;
+    record->size = size;
+    record->alignment = alignment;
+    record->timestamp = F_get_current_timestamp();
+    record->file = file;
+    record->line = line;
+    record->next = NULL;
+    
+    return record;
+}
+
+/**
+ * @brief 释放分配记录
+ * 
+ * @param record 要释放的记录
+ */
+static void F_free_allocation_record(Stru_AllocationRecord_t* record)
+{
+    if (record != NULL)
+    {
+        free(record);
+    }
+}
+
+/**
+ * @brief 添加分配记录到上下文
+ * 
+ * @param context 目标上下文
+ * @param record 分配记录
+ */
+static void F_add_allocation_to_context(Stru_MemoryContext_t* context,
+                                       Stru_AllocationRecord_t* record)
+{
+    if (context == NULL || record == NULL)
+    {
+        return;
+    }
+    
+    // 添加到链表头部
+    record->next = context->allocations;
+    context->allocations = record;
+    
+    // 更新统计信息
+    context->total_allocated += record->size;
+    context->current_usage += record->size;
+    context->allocation_count++;
+    
+    // 更新峰值使用量
+    if (context->current_usage > context->peak_allocated)
+    {
+        context->peak_allocated = context->current_usage;
+    }
+}
+
+/**
+ * @brief 从上下文中移除分配记录
+ * 
+ * @param context 目标上下文
+ * @param address 内存地址
+ * @return Stru_AllocationRecord_t* 移除的记录指针（需要调用者释放）
+ */
+static Stru_AllocationRecord_t* F_remove_allocation_from_context(
+    Stru_MemoryContext_t* context, void* address)
+{
+    if (context == NULL || address == NULL)
+    {
+        return NULL;
+    }
+    
+    Stru_AllocationRecord_t* prev = NULL;
+    Stru_AllocationRecord_t* current = context->allocations;
+    
+    while (current != NULL)
+    {
+        if (current->address == address)
+        {
+            // 从链表中移除
+            if (prev == NULL)
+            {
+                context->allocations = current->next;
+            }
+            else
+            {
+                prev->next = current->next;
+            }
+            
+            // 更新统计信息
+            context->current_usage -= current->size;
+            
+            // 断开链表连接
+            current->next = NULL;
+            return current;
+        }
+        
+        prev = current;
+        current = current->next;
+    }
+    
+    return NULL; // 未找到
+}
+
+// ============================================================================
+// 上下文管理函数实现
+// ============================================================================
+
+/**
+ * @brief 创建新的内存上下文
+ */
+static Stru_MemoryContext_t* F_context_create(const char* name,
+                                             Stru_MemoryContext_t* parent)
+{
+    // 验证参数
+    if (name == NULL)
+    {
+        return NULL;
+    }
+    
+    // 分配上下文结构体
+    Stru_MemoryContext_t* context = 
+        (Stru_MemoryContext_t*)malloc(sizeof(Stru_MemoryContext_t));
+    
+    if (context == NULL)
+    {
+        return NULL;
+    }
+    
+    // 初始化基本信息
+    context->name = (char*)malloc(strlen(name) + 1);
+    if (context->name == NULL)
+    {
+        free(context);
+        return NULL;
+    }
+    strcpy(context->name, name);
+    
+    context->id = F_generate_context_id();
+    context->creation_time = F_get_current_timestamp();
+    
+    // 初始化层次结构
+    context->parent = parent;
+    context->first_child = NULL;
+    context->next_sibling = NULL;
+    
+    if (parent != NULL)
+    {
+        context->depth = parent->depth + 1;
+        
+        // 添加到父上下文的子链表
+        context->next_sibling = parent->first_child;
+        parent->first_child = context;
+    }
+    else
+    {
+        context->depth = 0;
+    }
+    
+    // 初始化内存管理
+    context->allocations = NULL;
+    context->total_allocated = 0;
+    context->peak_allocated = 0;
+    context->current_usage = 0;
+    context->allocation_count = 0;
+    
+    // 初始化分配器接口（使用系统分配器）
+    context->allocate_func = NULL;
+    context->reallocate_func = NULL;
+    context->deallocate_func = NULL;
+    context->allocator_data = NULL;
+    
+    // 初始化线程本地存储
+    context->is_thread_local = false;
+    context->thread_data = NULL;
+    
+    // 初始化统计和调试
+    context->enable_statistics = true;
+    context->enable_debugging = false;
+    context->statistics_data = NULL;
+    context->debug_data = NULL;
+    
+    // 初始化引用计数
+    context->reference_count = 1;
+    
+    // 初始化状态标志
+    context->is_valid = true;
+    context->is_destroying = false;
+    context->is_resetting = false;
+    
+    return context;
+}
+
+/**
+ * @brief 销毁内存上下文及其所有内存
+ */
+static void F_context_destroy(Stru_MemoryContext_t* context)
+{
+    if (context == NULL || !context->is_valid)
+    {
+        return;
+    }
+    
+    // 标记为正在销毁
+    context->is_destroying = true;
+    
+    // 递归销毁所有子上下文
+    Stru_MemoryContext_t* child = context->first_child;
+    while (child != NULL)
+    {
+        Stru_MemoryContext_t* next = child->next_sibling;
+        F_context_destroy(child);
+        child = next;
+    }
+    
+    // 从父上下文的子链表中移除
+    if (context->parent != NULL)
+    {
+        Stru_MemoryContext_t* prev = NULL;
+        Stru_MemoryContext_t* current = context->parent->first_child;
+        
+        while (current != NULL)
+        {
+            if (current == context)
+            {
+                if (prev == NULL)
+                {
+                    context->parent->first_child = current->next_sibling;
+                }
+                else
+                {
+                    prev->next_sibling = current->next_sibling;
+                }
+                break;
+            }
+            
+            prev = current;
+            current = current->next_sibling;
+        }
+    }
+    
+    // 释放所有分配的内存
+    Stru_AllocationRecord_t* record = context->allocations;
+    while (record != NULL)
+    {
+        Stru_AllocationRecord_t* next = record->next;
+        
+        if (context->deallocate_func != NULL)
+        {
+            context->deallocate_func(context->allocator_data, record->address);
+        }
+        else
+        {
+            free(record->address);
+        }
+        
+        F_free_allocation_record(record);
+        record = next;
+    }
+    
+    // 释放分配器数据
+    if (context->allocator_data != NULL)
+    {
+        free(context->allocator_data);
+    }
+    
+    // 释放线程数据
+    if (context->thread_data != NULL)
+    {
+        free(context->thread_data);
+    }
+    
+    // 释放统计和调试数据
+    if (context->statistics_data != NULL)
+    {
+        free(context->statistics_data);
+    }
+    
+    if (context->debug_data != NULL)
+    {
+        free(context->debug_data);
+    }
+    
+    // 释放上下文名称
+    free(context->name);
+    
+    // 标记为无效并释放上下文结构体
+    context->is_valid = false;
+    free(context);
+}
+
+/**
+ * @brief 重置内存上下文
+ */
+static void F_context_reset(Stru_MemoryContext_t* context)
+{
+    if (context == NULL || !context->is_valid)
+    {
+        return;
+    }
+    
+    // 标记为正在重置
+    context->is_resetting = true;
+    
+    // 递归重置所有子上下文
+    Stru_MemoryContext_t* child = context->first_child;
+    while (child != NULL)
+    {
+        F_context_reset(child);
+        child = child->next_sibling;
+    }
+    
+    // 释放所有分配的内存
+    Stru_AllocationRecord_t* record = context->allocations;
+    while (record != NULL)
+    {
+        Stru_AllocationRecord_t* next = record->next;
+        
+        if (context->deallocate_func != NULL)
+        {
+            context->deallocate_func(context->allocator_data, record->address);
+        }
+        else
+        {
+            free(record->address);
+        }
+        
+        F_free_allocation_record(record);
+        record = next;
+    }
+    
+    // 重置内存管理状态
+    context->allocations = NULL;
+    context->current_usage = 0;
+    // 注意：不重置 total_allocated 和 peak_allocated，保留历史统计
+    
+    // 清除重置标志
+    context->is_resetting = false;
+}
+
+// ============================================================================
+// 上下文操作函数实现
+// ============================================================================
+
+/**
+ * @brief 获取当前线程的活动上下文
+ */
+static Stru_MemoryContext_t* F_context_get_current(void)
+{
+    if (g_thread_current_context != NULL)
+    {
+        return g_thread_current_context;
+    }
+    
+    // 如果没有设置线程本地上下文，返回根上下文
+    return g_root_context;
+}
+
+/**
+ * @brief 设置当前线程的活动上下文
+ */
+static void F_context_set_current(Stru_MemoryContext_t* context)
+{
+    if (context != NULL && !context->is_valid)
+    {
+        return; // 无效上下文
+    }
+    
+    g_thread_current_context = context;
+}
+
+/**
+ * @brief 获取上下文的父上下文
+ */
+static Stru_MemoryContext_t* F_context_get_parent(Stru_MemoryContext_t* context)
+{
+    if (context == NULL || !context->is_valid)
+    {
+        return NULL;
+    }
+    
+    return context->parent;
+}
+
+/**
+ * @brief 获取上下文的第一个子上下文
+ */
+static Stru_MemoryContext_t* F_context_get_first_child(Stru_MemoryContext_t* context)
+{
+    if (context == NULL || !context->is_valid)
+    {
+        return NULL;
+    }
+    
+    return context->first_child;
+}
+
+/**
+ * @brief 获取上下文的下一个兄弟上下文
+ */
+static Stru_MemoryContext_t* F_context_get_next_sibling(Stru_MemoryContext_t* context)
+{
+    if (context == NULL || !context->is_valid)
+    {
+        return NULL;
+    }
+    
+    return context->next_sibling;
+}
+
+// ============================================================================
+// 内存分配函数实现
+// ============================================================================
+
+/**
+ * @brief 在指定上下文中分配内存
+ */
+static void* F_context_allocate(Stru_MemoryContext_t* context,
+                               size_t size, size_t alignment)
+{
+    // 确定目标上下文
+    Stru_MemoryContext_t* target_context = context;
+    if (target_context == NULL)
+    {
+        target_context = F_context_get_current();
+    }
+    
+    if (target_context == NULL || !target_context->is_valid || size == 0)
+    {
+        return NULL;
+    }
+    
+    // 执行分配
+    void* memory = NULL;
+    
+    if (target_context->allocate_func != NULL)
+    {
+        memory = target_context->allocate_func(target_context->allocator_data,
+                                              size, alignment);
+    }
+    else
+    {
+        // 使用系统分配器
+        if (alignment == 0 || alignment <= sizeof(void*))
+        {
+            memory = malloc(size);
+        }
+        else
+        {
+            // 对齐分配（简化实现）
+            memory = _aligned_malloc(size, alignment);
+        }
+    }
+    
+    if (memory == NULL)
+    {
+        return NULL;
+    }
+    
+    // 记录分配（如果启用了统计）
+    if (target_context->enable_statistics)
+    {
+        Stru_AllocationRecord_t* record = F_create_allocation_record(
+            memory, size, alignment, __FILE__, __LINE__);
+        
+        if (record != NULL)
+        {
+            F_add_allocation_to_context(target_context, record);
+        }
+    }
+    
+    return memory;
+}
+
+/**
+ * @brief 在指定上下文中重新分配内存
+ */
+static void* F_context_reallocate(Stru_MemoryContext_t* context,
+                                 void* ptr, size_t new_size)
+{
+    // 简化实现：分配新内存，复制数据，释放旧内存
+    if (ptr == NULL)
+    {
+        return F_context_allocate(context, new_size, 0);
+    }
+    
+    if (new_size == 0)
+    {
+        F_context_deallocate(context, ptr);
+        return NULL;
+    }
+    
+    // 查找旧分配记录以获取大小信息
+    Stru_MemoryContext_t* target_context = context;
+    if (target_context == NULL)
+    {
+        target_context = F_context_get_current();
+    }
+    
+    size_t old_size = 0;
+    if (target_context != NULL && target_context->enable_statistics)
+    {
+        Stru_AllocationRecord_t* record = target_context->allocations;
+        while (record != NULL)
+        {
+            if (record->address == ptr)
+            {
+                old_size = record->size;
+                break;
+            }
+            record = record->next;
+        }
+    }
+    
+    // 分配新内存
+    void* new_memory = F_context_allocate(context, new_size, 0);
+    if (new_memory == NULL)
+    {
+        return NULL;
+    }
+    
+    // 复制数据
+    if (old_size > 0)
+    {
+        size_t copy_size = (old_size < new_size) ? old_size : new_size;
+        memcpy(new_memory, ptr, copy_size);
+    }
+    
+    // 释放旧内存
+    F_context_deallocate(context, ptr);
+    
+    return new_memory;
+}
+
+/**
+ * @brief 释放指定上下文中的内存
+ */
+static void F_context_deallocate(Stru_MemoryContext_t* context, void* ptr)
+{
+    if (ptr == NULL)
+    {
+        return;
+    }
+    
+    // 确定目标上下文
+    Stru_MemoryContext_t* target_context = context;
+    if (target_context == NULL)
+    {
+        target_context = F_context_get_current();
+    }
+    
+    if (target_context == NULL || !target_context->is_valid)
+    {
+        return;
+    }
+    
+    // 查找并移除分配记录
+    Stru_AllocationRecord_t* record = NULL;
+    if (target_context->enable_statistics)
+    {
+        record = F_remove_allocation_from_context(target_context, ptr);
+    }
+    
+    // 执行释放
+    if (target_context->deallocate_func != NULL)
+    {
+        target_context->deallocate_func(target_context->allocator_data, ptr);
+    }
+    else
+    {
+        // 检查是否是对齐分配
+        Stru_AllocationRecord_t* temp = target_context->allocations;
+        bool is_aligned = false;
+        
+        while (temp != NULL)
+        {
+            if (temp->address == ptr && temp->alignment > sizeof(void*))
+            {
+                is_aligned = true;
+                break;
+            }
+            temp = temp->next;
+        }
+        
+        if (is_aligned)
+        {
+            _aligned_free(ptr);
+        }
+        else
+        {
+            free(ptr);
+        }
+    }
+    
+    // 释放分配记录
+    if (record != NULL)
+    {
+        F_free_allocation_record(record);
+    }
+}
+
+// ============================================================================
+// 内存管理函数实现
+// ============================================================================
+
+/**
+ * @brief 获取内存块的实际分配大小
+ */
+static size_t F_context_get_allocated_size(Stru_MemoryContext_t* context,
+                                          void* ptr)
+{
+    if (context == NULL || ptr == NULL)
+    {
+        return 0;
+    }
+    
+    // 查找分配记录
+    Stru_AllocationRecord_t* record = context->allocations;
+    while (record != NULL)
+    {
+        if (record->address == ptr)
+        {
+            return record->size;
+        }
+        record = record->next;
+    }
+    
+    return 0; // 未找到
+}
+
+/**
+ * @brief 获取上下文的总分配内存
+ */
+static size_t F_context_get_total_allocated(Stru_MemoryContext_t* context)
+{
+    if (context == NULL || !context->is_valid)
+    {
+        return 0;
+    }
+    
+    return context->total_allocated;
+}
