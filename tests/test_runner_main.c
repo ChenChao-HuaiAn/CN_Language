@@ -57,6 +57,7 @@ extern bool test_string_all(void); // 字符串模块
 // 基础设施层 - 内存模块
 extern bool test_allocators_all(void); // 内存分配器模块
 extern bool test_context_all(void);    // 内存上下文模块
+extern bool test_memory_debug_all(void); // 内存调试模块
 
 // 核心层 - 编译器模块
 // extern bool test_lexer_all(void);
@@ -87,6 +88,7 @@ int main(int argc, char* argv[])
         // 基础设施层 - 内存模块
         {"allocators",    "infrastructure/memory/allocators", test_allocators_all,   true},
         {"context",       "infrastructure/memory/context",    test_context_all,      true},
+        {"debug",         "infrastructure/memory/debug",      test_memory_debug_all, true},
         
         // 核心层 - 编译器模块
         // {"lexer",         "core/lexer",                     test_lexer_all,         false},

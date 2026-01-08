@@ -1,8 +1,32 @@
-# 内存调试模块 (Memory Debug)
+# 内存调试模块 (Memory Debug) - 版本 2.0.0
 
 ## 概述
 
 内存调试模块提供了全面的内存调试和诊断功能，帮助开发者检测和修复内存相关的问题。该模块在开发和测试阶段特别有用，可以检测内存泄漏、缓冲区溢出、双重释放等常见内存错误。
+
+## 模块化架构
+
+本模块采用模块化设计，分为以下子模块：
+
+### 1. 接口模块 (`interface/`)
+- `CN_memory_debug_interface.h` - 内存调试器抽象接口定义
+- `CN_memory_debug_factory.h` - 内存调试器工厂函数
+
+### 2. 泄漏检测模块 (`leak_detection/`)
+- `CN_memory_leak_detection.h` - 内存泄漏检测功能
+
+### 3. 错误检测模块 (`error_detection/`)
+- `CN_memory_error_detection.h` - 内存错误检测功能
+
+### 4. 分析模块 (`analysis/`)
+- `CN_memory_analysis.h` - 内存使用分析功能
+
+### 5. 工具模块 (`tools/`)
+- `CN_memory_debug_tools.h` - 内存调试工具
+
+### 6. 主入口点
+- `CN_memory_debug.h` - 主头文件，包含所有子模块
+- `CN_memory_debug.c` - 主实现文件（向后兼容）
 
 ## 核心功能
 

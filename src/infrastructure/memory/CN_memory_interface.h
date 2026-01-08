@@ -94,9 +94,11 @@ struct Stru_MemoryAllocatorInterface_t
 };
 
 /**
- * @brief 内存调试接口
+ * @brief 内存调试接口（旧版本，保持向后兼容）
  * 
  * 提供内存调试功能，包括内存泄漏检测、越界检查、使用分析等。
+ * 
+ * @deprecated 请使用新的Stru_MemoryDebuggerInterface_t接口
  */
 typedef struct Stru_MemoryDebugInterface_t
 {
@@ -141,6 +143,19 @@ typedef struct Stru_MemoryDebugInterface_t
 } Stru_MemoryDebugInterface_t;
 
 /**
+ * @brief 内存调试器抽象接口（新版本）
+ * 
+ * 定义了内存调试的基本操作，支持多种调试功能：
+ * - 内存泄漏检测
+ * - 内存错误检测（越界、双重释放、野指针等）
+ * - 内存使用分析
+ * - 调试工具（内存转储、验证等）
+ * 
+ * 遵循依赖倒置原则，高层模块通过此接口使用内存调试服务。
+ */
+typedef struct Stru_MemoryDebuggerInterface_t Stru_MemoryDebuggerInterface_t;
+
+/**
  * @brief 内存管理上下文
  * 
  * 包含内存分配器和调试器的完整上下文。
@@ -179,6 +194,9 @@ typedef struct Stru_MemoryContext_t
 
 // 调试模块
 #include "debug/CN_memory_debug.h"
+
+// 调试模块 - 新接口
+#include "debug/interface/CN_memory_debug_interface.h"
 
 // ============================================================================
 // 向后兼容性（保持现有代码可用）
