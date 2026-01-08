@@ -15,6 +15,7 @@
 
 #include <stddef.h>
 #include <stdbool.h>
+#include "../errors/CN_lexer_errors.h"
 
 /**
  * @brief 扫描器状态结构体
@@ -22,14 +23,13 @@
  * 存储扫描器的内部状态，包括源代码、位置信息和错误状态。
  */
 typedef struct Stru_LexerScannerState_t {
-    const char* source;          ///< 源代码
-    size_t source_length;        ///< 源代码长度
-    const char* source_name;     ///< 源文件名
-    size_t current_pos;          ///< 当前位置（字节偏移）
-    size_t current_line;         ///< 当前行号
-    size_t current_column;       ///< 当前列号
-    bool has_error;              ///< 是否有错误
-    char error_message[256];     ///< 错误信息
+    const char* source;                  ///< 源代码
+    size_t source_length;                ///< 源代码长度
+    const char* source_name;             ///< 源文件名
+    size_t current_pos;                  ///< 当前位置（字节偏移）
+    size_t current_line;                 ///< 当前行号
+    size_t current_column;               ///< 当前列号
+    Stru_LexerErrorContext_t* error_ctx; ///< 错误上下文
 } Stru_LexerScannerState_t;
 
 /**
@@ -148,27 +148,44 @@ void F_get_scanner_position(const Stru_LexerScannerState_t* state,
 const char* F_get_scanner_source_name(const Stru_LexerScannerState_t* state);
 
 /**
- * @brief 设置错误信息
+ * @brief 设置扫描器错误
  * 
- * 设置扫描器的错误信息和错误状态。
+ * 使用新的错误处理系统设置扫描器错误。
  * 
  * @param state 扫描器状态
+ * @param code 错误码
  * @param format 错误信息格式字符串
  * @param ... 格式参数
  */
-void F_set_scanner_error(Stru_LexerScannerState_t* state, const char* format, ...);
+void F_set_scanner_error(Stru_LexerScannerState_t* state, 
+                        Eum_LexerErrorCode_t code,
+                        const char* format, ...);
 
 /**
- * @brief 清除错误信息
+ * @brief 设置扫描器致命错误
  * 
- * 清除扫描器的错误信息和错误状态。
+ * 设置扫描器致命错误，表示无法继续扫描。
+ * 
+ * @param state 扫描器状态
+ * @param code 错误码
+ * @param format 错误信息格式字符串
+ * @param ... 格式参数
+ */
+void F_set_scanner_fatal_error(Stru_LexerScannerState_t* state,
+                              Eum_LexerErrorCode_t code,
+                              const char* format, ...);
+
+/**
+ * @brief 清除扫描器错误
+ * 
+ * 清除扫描器的所有错误信息。
  * 
  * @param state 扫描器状态
  */
 void F_clear_scanner_error(Stru_LexerScannerState_t* state);
 
 /**
- * @brief 检查是否有错误
+ * @brief 检查扫描器是否有错误
  * 
  * 检查扫描过程中是否发生了错误。
  * 
@@ -179,7 +196,18 @@ void F_clear_scanner_error(Stru_LexerScannerState_t* state);
 bool F_scanner_has_errors(const Stru_LexerScannerState_t* state);
 
 /**
- * @brief 获取最后一个错误信息
+ * @brief 检查扫描器是否有致命错误
+ * 
+ * 检查扫描过程中是否发生了致命错误。
+ * 
+ * @param state 扫描器状态
+ * @return true 有致命错误
+ * @return false 没有致命错误
+ */
+bool F_scanner_has_fatal_error(const Stru_LexerScannerState_t* state);
+
+/**
+ * @brief 获取扫描器最后一个错误信息
  * 
  * 获取最后一个错误的详细描述。
  * 
@@ -187,5 +215,15 @@ bool F_scanner_has_errors(const Stru_LexerScannerState_t* state);
  * @return const char* 错误信息字符串
  */
 const char* F_get_scanner_last_error(const Stru_LexerScannerState_t* state);
+
+/**
+ * @brief 获取扫描器错误上下文
+ * 
+ * 获取扫描器的错误上下文，用于更详细的错误处理。
+ * 
+ * @param state 扫描器状态
+ * @return Stru_LexerErrorContext_t* 错误上下文
+ */
+Stru_LexerErrorContext_t* F_get_scanner_error_context(const Stru_LexerScannerState_t* state);
 
 #endif // CN_LEXER_SCANNER_H

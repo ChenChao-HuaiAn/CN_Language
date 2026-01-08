@@ -14,6 +14,7 @@
 #include "../keywords/CN_lexer_keywords.h"
 #include "../operators/CN_lexer_operators.h"
 #include "../utils/CN_lexer_utils.h"
+#include "../errors/CN_lexer_errors.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -437,7 +438,8 @@ Stru_Token_t* F_scan_next_token(Stru_LexerScannerState_t* state)
         char lexeme[2] = {c, '\0'};
         Stru_Token_t* token = F_create_token(Eum_TOKEN_ERROR, lexeme, 
                                             state->current_line, state->current_column);
-        F_set_scanner_error(state, "未知字符: %c (0x%02x)", c, (unsigned char)c);
+        F_set_scanner_error(state, Eum_LEXER_ERROR_UNKNOWN_CHAR, 
+                           "未知字符: %c (0x%02x)", c, (unsigned char)c);
         state->current_pos++;
         state->current_column++;
         return token;

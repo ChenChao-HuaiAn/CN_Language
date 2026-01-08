@@ -4,10 +4,11 @@
  * 
  * 实现字符扫描、位置管理和空白字符处理功能。
  * 负责源代码的字符级操作和位置跟踪。
+ * 使用新的错误处理系统。
  * 
  * @author CN_Language架构委员会
  * @date 2026-01-08
- * @version 1.0.0
+ * @version 2.0.0
  */
 
 #include "CN_lexer_scanner.h"
@@ -28,6 +29,14 @@ Stru_LexerScannerState_t* F_create_scanner_state(void)
         return NULL;
     }
     
+    // 创建错误上下文
+    state->error_ctx = F_create_lexer_error_context();
+    if (state->error_ctx == NULL)
+    {
+        free(state);
+        return NULL;
+    }
+    
     // 初始化状态
     state->source = NULL;
     state->source_length = 0;
@@ -35,8 +44,6 @@ Stru_LexerScannerState_t* F_create_scanner_state(void)
     state->current_pos = 0;
     state->current_line = 1;
     state->current_column = 1;
-    state->has_error = false;
-    state->error_message[0] = '\0';
     
     return state;
 }
@@ -46,10 +53,19 @@ Stru_LexerScannerState_t* F_create_scanner_state(void)
  */
 void F_destroy_scanner_state(Stru_LexerScannerState_t* state)
 {
-    if (state != NULL)
+    if (state == NULL)
     {
-        free(state);
+        return;
     }
+    
+    // 销毁错误上下文
+    if (state->error_ctx != NULL)
+    {
+        F_destroy_lexer_error_context(state->error_ctx);
+        state->error_ctx = NULL;
+    }
+    
+    free(state);
 }
 
 /**
@@ -66,7 +82,7 @@ bool F_initialize_scanner_state(Stru_LexerScannerState_t* state,
     
     if (source == NULL)
     {
-        F_set_scanner_error(state, "源代码不能为NULL");
+        F_set_scanner_error(state, Eum_LEXER_ERROR_INVALID_PARAMETER, "源代码不能为NULL");
         return false;
     }
     
@@ -76,8 +92,12 @@ bool F_initialize_scanner_state(Stru_LexerScannerState_t* state,
     state->current_pos = 0;
     state->current_line = 1;
     state->current_column = 1;
-    state->has_error = false;
-    state->error_message[0] = '\0';
+    
+    // 重置错误上下文
+    if (state->error_ctx != NULL)
+    {
+        F_reset_lexer_error_context(state->error_ctx);
+    }
     
     return true;
 }
@@ -95,8 +115,12 @@ void F_reset_scanner_state(Stru_LexerScannerState_t* state)
     state->current_pos = 0;
     state->current_line = 1;
     state->current_column = 1;
-    state->has_error = false;
-    state->error_message[0] = '\0';
+    
+    // 重置错误上下文
+    if (state->error_ctx != NULL)
+    {
+        F_reset_lexer_error_context(state->error_ctx);
+    }
 }
 
 /**
@@ -256,64 +280,118 @@ const char* F_get_scanner_source_name(const Stru_LexerScannerState_t* state)
 }
 
 /**
- * @brief 设置错误信息
+ * @brief 设置扫描器错误
  */
-void F_set_scanner_error(Stru_LexerScannerState_t* state, const char* format, ...)
+void F_set_scanner_error(Stru_LexerScannerState_t* state, 
+                        Eum_LexerErrorCode_t code,
+                        const char* format, ...)
 {
-    if (state == NULL)
+    if (state == NULL || state->error_ctx == NULL)
     {
         return;
     }
     
-    state->has_error = true;
+    va_list args;
+    va_start(args, format);
     
-    if (format != NULL)
-    {
-        va_list args;
-        va_start(args, format);
-        vsnprintf(state->error_message, sizeof(state->error_message), format, args);
-        va_end(args);
-    }
-    else
-    {
-        state->error_message[0] = '\0';
-    }
+    // 报告错误
+    F_report_lexer_error(state->error_ctx, code, 
+                        state->current_line, state->current_column,
+                        state->source_name, format, args);
+    
+    va_end(args);
 }
 
 /**
- * @brief 清除错误信息
+ * @brief 设置扫描器致命错误
+ */
+void F_set_scanner_fatal_error(Stru_LexerScannerState_t* state,
+                              Eum_LexerErrorCode_t code,
+                              const char* format, ...)
+{
+    if (state == NULL || state->error_ctx == NULL)
+    {
+        return;
+    }
+    
+    va_list args;
+    va_start(args, format);
+    
+    // 报告致命错误
+    F_report_fatal_lexer_error(state->error_ctx, code,
+                              state->current_line, state->current_column,
+                              state->source_name, format, args);
+    
+    va_end(args);
+}
+
+/**
+ * @brief 清除扫描器错误
  */
 void F_clear_scanner_error(Stru_LexerScannerState_t* state)
 {
-    if (state != NULL)
+    if (state == NULL || state->error_ctx == NULL)
     {
-        state->has_error = false;
-        state->error_message[0] = '\0';
+        return;
     }
+    
+    F_reset_lexer_error_context(state->error_ctx);
 }
 
 /**
- * @brief 检查是否有错误
+ * @brief 检查扫描器是否有错误
  */
 bool F_scanner_has_errors(const Stru_LexerScannerState_t* state)
 {
-    if (state == NULL)
+    if (state == NULL || state->error_ctx == NULL)
     {
         return false;
     }
     
-    return state->has_error;
+    return F_has_lexer_errors(state->error_ctx);
 }
 
 /**
- * @brief 获取最后一个错误信息
+ * @brief 检查扫描器是否有致命错误
+ */
+bool F_scanner_has_fatal_error(const Stru_LexerScannerState_t* state)
+{
+    if (state == NULL || state->error_ctx == NULL)
+    {
+        return false;
+    }
+    
+    return F_has_fatal_lexer_error(state->error_ctx);
+}
+
+/**
+ * @brief 获取扫描器最后一个错误信息
  */
 const char* F_get_scanner_last_error(const Stru_LexerScannerState_t* state)
 {
-    if (state == NULL)
+    if (state == NULL || state->error_ctx == NULL)
     {
         return "";
     }
     
-    return state->error_message;
+    const Stru_LexerErrorInfo_t* error = F_get_last_lexer_error(state->error_ctx);
+    if (error == NULL)
+    {
+        return "";
+    }
+    
+    return error->message;
+}
+
+/**
+ * @brief 获取扫描器错误上下文
+ */
+Stru_LexerErrorContext_t* F_get_scanner_error_context(const Stru_LexerScannerState_t* state)
+{
+    if (state == NULL)
+    {
+        return NULL;
+    }
+    
+    return state->error_ctx;
 }
