@@ -129,11 +129,11 @@ MEMORY_DEBUG_TOOLS_SRCS := ../src/infrastructure/memory/debug/tools/CN_memory_de
 # 内存调试工具模块测试文件
 MEMORY_DEBUG_TOOLS_TEST_SRCS := infrastructure/memory/debug/tools/test_tools_runner.c \
                                 infrastructure/memory/debug/tools/test_debug_tools_core.c \
-                                infrastructure/memory/debug/tools/test_debug_tools_dump.c \
-                                infrastructure/memory/debug/tools/test_debug_tools_validation.c \
-                                infrastructure/memory/debug/tools/test_debug_tools_stacktrace.c \
-                                infrastructure/memory/debug/tools/test_debug_tools_utils.c \
-                                infrastructure/memory/debug/tools/test_debug_tools_integration.c
+                                infrastructure/memory/debug/tools/test_debug_tools_dump_fixed.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_validation_fixed.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_stacktrace_fixed.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_utils_fixed.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_integration_fixed.c
 
 # 内存工具模块源文件（如果存在）
 MEMORY_UTILITIES_SRCS := ../src/infrastructure/memory/utilities/CN_memory_utilities.c \

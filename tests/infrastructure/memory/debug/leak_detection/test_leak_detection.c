@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "../../../../src/infrastructure/memory/debug/leak_detection/CN_memory_leak_detection.h"
+#include "../../../../../src/infrastructure/memory/debug/leak_detection/CN_memory_leak_detection.h"
 
 /**
  * @brief 测试泄漏检测器创建和销毁

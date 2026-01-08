@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "../../../../src/infrastructure/memory/debug/error_detection/CN_memory_error_detection.h"
+#include "../../../../../src/infrastructure/memory/debug/error_detection/CN_memory_error_detection.h"
 
 /**
  * @brief 测试错误检测器创建和销毁
@@ -51,7 +51,7 @@ static bool test_pointer_validation(void)
 {
     printf("    测试指针验证...\n");
     
-    Stru_ErrorDetectorContext_t* detector = F_create_error_detector(false, false, false, 0);
+    Stru_ErrorDetectorContext_t* detector = F_create_error_detector(false, true, false, 0);
     if (detector == NULL) {
         printf("      ❌ 创建错误检测器失败\n");
         return false;
@@ -59,6 +59,8 @@ static bool test_pointer_validation(void)
     
     // 测试有效指针
     void* valid_ptr = malloc(100);
+    // 记录分配，以便错误检测器知道这个内存
+    F_error_detector_record_allocation(detector, valid_ptr, 100);
     bool is_valid = F_validate_pointer(detector, valid_ptr);
     if (!is_valid) {
         printf("      ❌ 有效指针验证失败\n");
@@ -77,6 +79,8 @@ static bool test_pointer_validation(void)
     }
     
     // 测试无效指针（已释放）
+    // 记录释放
+    F_error_detector_record_deallocation(detector, valid_ptr);
     free(valid_ptr);
     is_valid = F_validate_pointer(detector, valid_ptr);
     if (is_valid) {
@@ -98,7 +102,7 @@ static bool test_memory_range_validation(void)
 {
     printf("    测试内存范围验证...\n");
     
-    Stru_ErrorDetectorContext_t* detector = F_create_error_detector(false, false, false, 0);
+    Stru_ErrorDetectorContext_t* detector = F_create_error_detector(false, true, false, 0);
     if (detector == NULL) {
         printf("      ❌ 创建错误检测器失败\n");
         return false;
@@ -106,6 +110,8 @@ static bool test_memory_range_validation(void)
     
     // 分配内存
     void* memory = malloc(200);
+    // 记录分配，以便错误检测器知道这个内存
+    F_error_detector_record_allocation(detector, memory, 200);
     
     // 测试有效内存范围
     bool is_valid = F_validate_memory_range(detector, memory, 100);
@@ -129,11 +135,15 @@ static bool test_memory_range_validation(void)
     is_valid = F_validate_memory_range(detector, NULL, 100);
     if (is_valid) {
         printf("      ❌ NULL指针内存范围验证失败（应该返回false）\n");
+        // 记录释放
+        F_error_detector_record_deallocation(detector, memory);
         free(memory);
         F_destroy_error_detector(detector);
         return false;
     }
     
+    // 记录释放
+    F_error_detector_record_deallocation(detector, memory);
     free(memory);
     F_destroy_error_detector(detector);
     

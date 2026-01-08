@@ -129,7 +129,7 @@ bool test_debug_tools_module_all(void)
  * @brief 主测试函数（供外部调用）
  * @return 所有测试通过返回true，否则返回false
  */
-bool test_memory_debug_tools(void)
+bool test_memory_debug_tools_module(void)
 {
     return test_debug_tools_module_all();
 }

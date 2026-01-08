@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "../../../src/infrastructure/memory/debug/tools/CN_memory_debug_tools.h"
+#include "CN_memory_debug_tools.h"
 
 // 测试用的调试输出回调函数
 static int g_debug_output_call_count = 0;

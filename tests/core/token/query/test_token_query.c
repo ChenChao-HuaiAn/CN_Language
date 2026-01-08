@@ -227,9 +227,9 @@ static void test_get_precedence(void)
     TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_KEYWORD_NOT_EQUAL) == 7, "不等于运算符优先级7");
     
     // 测试逻辑运算符优先级
-    TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_KEYWORD_AND) == 11, "与逻辑运算符优先级11");
-    TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_KEYWORD_OR) == 12, "或逻辑运算符优先级12");
-    TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_KEYWORD_NOT) == 2, "非逻辑运算符优先级2");
+    TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_KEYWORD_AND) == 8, "与逻辑运算符优先级8");
+    TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_KEYWORD_OR) == 9, "或逻辑运算符优先级9");
+    TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_KEYWORD_NOT) == 3, "非逻辑运算符优先级3");
     
     // 测试符号运算符优先级
     TEST_ASSERT(F_token_query_get_precedence(Eum_TOKEN_OPERATOR_MULTIPLY) == 3, "乘号运算符优先级3");

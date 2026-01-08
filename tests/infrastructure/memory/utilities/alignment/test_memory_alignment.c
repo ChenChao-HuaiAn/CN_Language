@@ -192,7 +192,11 @@ static bool test_aligned_alloc_helper(void)
     if (!align->is_aligned(ptr1, 16))
     {
         printf("❌ 分配的内存未正确对齐\n");
+        #ifdef _WIN32
+        _aligned_free(ptr1);
+        #else
         free(ptr1);
+        #endif
         return false;
     }
     
@@ -201,7 +205,11 @@ static bool test_aligned_alloc_helper(void)
     if (ptr2 != NULL)
     {
         printf("❌ 零大小分配应返回NULL\n");
+        #ifdef _WIN32
+        _aligned_free(ptr2);
+        #else
         free(ptr2);
+        #endif
         return false;
     }
     
@@ -210,12 +218,20 @@ static bool test_aligned_alloc_helper(void)
     if (ptr3 != NULL)
     {
         printf("❌ 非2的幂对齐分配应返回NULL\n");
+        #ifdef _WIN32
+        _aligned_free(ptr3);
+        #else
         free(ptr3);
+        #endif
         return false;
     }
     
     // 清理
+    #ifdef _WIN32
+    _aligned_free(ptr1);
+    #else
     free(ptr1);
+    #endif
     
     printf("✅ 通过\n");
     return true;
@@ -275,11 +291,16 @@ bool test_memory_alignment_all(void)
     int total = 0;
     
     // 运行各个测试
-    if (test_align_up()) passed++; total++;
-    if (test_align_down()) passed++; total++;
-    if (test_is_aligned()) passed++; total++;
-    if (test_aligned_alloc_helper()) passed++; total++;
-    if (test_padding_size()) passed++; total++;
+    if (test_align_up()) passed++;
+    total++;
+    if (test_align_down()) passed++;
+    total++;
+    if (test_is_aligned()) passed++;
+    total++;
+    if (test_aligned_alloc_helper()) passed++;
+    total++;
+    if (test_padding_size()) passed++;
+    total++;
     
     printf("\n测试结果: %d/%d 通过\n", passed, total);
     

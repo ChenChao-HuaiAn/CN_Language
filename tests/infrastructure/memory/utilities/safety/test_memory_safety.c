@@ -117,7 +117,7 @@ static bool test_initialize_with_pattern(void)
     // 检查初始化结果
     for (size_t i = 0; i < sizeof(buffer); i++)
     {
-        if (buffer[i] != pattern)
+        if ((uint8_t)buffer[i] != pattern)
         {
             printf("❌ 模式初始化失败\n");
             return false;

@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "../../../../src/infrastructure/memory/debug/tools/CN_memory_debug_tools.h"
+#include "infrastructure/memory/debug/tools/CN_memory_debug_tools.h"
 
 /**
  * @brief 测试调试工具初始化和清理

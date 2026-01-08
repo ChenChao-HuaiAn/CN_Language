@@ -37,9 +37,9 @@ static uint64_t get_current_time_ns_simple(void)
 /**
  * @brief 内存统计接口实现结构体
  */
-typedef struct
+typedef struct MemoryStatisticsImpl_t
 {
-    Stru_MemoryStatisticsInterface_t interface;  ///< 接口定义
+    Stru_MemoryStatisticsInterface_t iface;  /* 接口定义 */
     
     // 统计信息
     Stru_MemoryStatistics_t stats;
@@ -219,12 +219,12 @@ Stru_MemoryStatisticsInterface_t* F_create_memory_statistics(void)
     impl->last_alloc_time_ns = 0;
     
     // 初始化接口函数指针
-    impl->interface.get_statistics = get_statistics_impl;
-    impl->interface.get_fragmentation = get_fragmentation_impl;
-    impl->interface.get_performance = get_performance_impl;
-    impl->interface.reset_statistics = reset_statistics_impl;
-    impl->interface.generate_report = generate_report_impl;
-    impl->interface.private_data = impl;
+    impl->iface.get_statistics = get_statistics_impl;
+    impl->iface.get_fragmentation = get_fragmentation_impl;
+    impl->iface.get_performance = get_performance_impl;
+    impl->iface.reset_statistics = reset_statistics_impl;
+    impl->iface.generate_report = generate_report_impl;
+    impl->iface.private_data = impl;
     
     return (Stru_MemoryStatisticsInterface_t*)impl;
 }

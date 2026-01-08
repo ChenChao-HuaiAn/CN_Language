@@ -26,7 +26,7 @@ extern "C" {
  * 
  * @return bool 所有测试通过返回true，否则返回false
  */
-bool test_debug_tools_all(void);
+bool test_debug_tools_module_all(void);
 
 #ifdef __cplusplus
 }

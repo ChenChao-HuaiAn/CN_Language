@@ -76,7 +76,7 @@ bool test_memory_debug_tools(void)
     printf("  测试内存调试工具...\n");
     
     // 调用调试工具模块的测试
-    return test_debug_tools_all();
+    return test_debug_tools_module_all();
 }
 
 /**

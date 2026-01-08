@@ -15,7 +15,7 @@
 #include <string.h>
 #include <stdbool.h>
 
-#include "../../../../src/infrastructure/memory/debug/analysis/CN_memory_analysis.h"
+#include "../../../../../src/infrastructure/memory/debug/analysis/CN_memory_analysis.h"
 
 /**
  * @brief 测试分析器创建和销毁

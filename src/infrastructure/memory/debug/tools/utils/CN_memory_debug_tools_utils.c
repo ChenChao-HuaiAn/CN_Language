@@ -24,6 +24,7 @@ void F_byte_to_hex(char* hex, uint8_t byte)
     static const char* hex_digits = "0123456789ABCDEF";
     hex[0] = hex_digits[(byte >> 4) & 0x0F];
     hex[1] = hex_digits[byte & 0x0F];
+    hex[2] = '\0';  // 添加空终止符
 }
 
 /**

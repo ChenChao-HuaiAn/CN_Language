@@ -148,10 +148,15 @@ static void test_interface_functions(void)
         interface->get_token_position(token, &line, &column);
         TEST_ASSERT(line == 1 && column == 1, "通过接口获取令牌位置");
         
-        // 测试字面量值操作
-        interface->set_int_value(token, 42);
-        long int_value = interface->get_int_value(token);
-        TEST_ASSERT(int_value == 42, "通过接口设置和获取整数值");
+        // 测试字面量值操作 - 需要创建整数字面量令牌
+        Stru_Token_t* int_token = interface->create_token(Eum_TOKEN_LITERAL_INTEGER, "42", 2, 1);
+        TEST_ASSERT(int_token != NULL, "创建整数字面量令牌");
+        if (int_token != NULL) {
+            interface->set_int_value(int_token, 42);
+            long int_value = interface->get_int_value(int_token);
+            TEST_ASSERT(int_value == 42, "通过接口设置和获取整数值");
+            interface->destroy_token(int_token);
+        }
         
         // 测试类型查询
         bool is_keyword = interface->is_keyword(Eum_TOKEN_KEYWORD_VAR);
@@ -181,7 +186,7 @@ static void test_interface_functions(void)
         
         // 测试工具函数
         const char* type_str = interface->type_to_string(Eum_TOKEN_KEYWORD_VAR);
-        TEST_ASSERT(strstr(type_str, "KEYWORD_VAR") != NULL, "通过接口类型转字符串");
+        TEST_ASSERT(strcmp(type_str, "变量") == 0, "通过接口类型转字符串");
         
         // 测试复制令牌
         Stru_Token_t* copy = interface->copy_token(token);

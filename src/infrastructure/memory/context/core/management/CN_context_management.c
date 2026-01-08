@@ -17,6 +17,11 @@
 #include <string.h>
 #include <time.h>
 
+// 平台特定的对齐分配
+#ifdef _WIN32
+#include <malloc.h>
+#endif
+
 // ============================================================================
 // 内部辅助函数声明
 // ============================================================================
@@ -199,7 +204,20 @@ void F_context_destroy(Stru_MemoryContext_t* context)
         }
         else
         {
-            free(record->address);
+            // 检查是否是对齐分配
+            if (record->alignment > sizeof(void*))
+            {
+                // 对于对齐分配的内存，使用ALIGNED_FREE释放
+                #ifdef _WIN32
+                _aligned_free(record->address);
+                #else
+                free(record->address);
+                #endif
+            }
+            else
+            {
+                free(record->address);
+            }
         }
         
         free(record);
@@ -270,7 +288,20 @@ void F_context_reset(Stru_MemoryContext_t* context)
         }
         else
         {
-            free(record->address);
+            // 检查是否是对齐分配
+            if (record->alignment > sizeof(void*))
+            {
+                // 对于对齐分配的内存，使用ALIGNED_FREE释放
+                #ifdef _WIN32
+                _aligned_free(record->address);
+                #else
+                free(record->address);
+                #endif
+            }
+            else
+            {
+                free(record->address);
+            }
         }
         
         free(record);

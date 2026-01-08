@@ -17,6 +17,17 @@
 #include <string.h>
 #include <time.h>
 
+// 平台特定的对齐分配
+#ifdef _WIN32
+#include <malloc.h>
+#define ALIGNED_ALLOC(alignment, size) _aligned_malloc(size, alignment)
+#define ALIGNED_FREE(ptr) _aligned_free(ptr)
+#else
+// C11标准aligned_alloc，但需要检查可用性
+#define ALIGNED_ALLOC(alignment, size) aligned_alloc(alignment, size)
+#define ALIGNED_FREE(ptr) free(ptr)
+#endif
+
 // ============================================================================
 // 分配记录管理函数
 // ============================================================================
@@ -167,10 +178,10 @@ void* F_context_allocate(Stru_MemoryContext_t* context,
         }
         else
         {
-            // 对齐分配（使用C11 aligned_alloc）
-            // aligned_alloc要求size是alignment的倍数
+            // 对齐分配（使用平台特定的对齐分配函数）
+            // 对齐分配要求size是alignment的倍数
             size_t aligned_size = ((size + alignment - 1) / alignment) * alignment;
-            memory = aligned_alloc(alignment, aligned_size);
+            memory = ALIGNED_ALLOC(alignment, aligned_size);
         }
     }
     
@@ -291,23 +302,35 @@ void F_context_deallocate(Stru_MemoryContext_t* context, void* ptr)
     else
     {
         // 检查是否是对齐分配
-        Stru_AllocationRecord_t* temp = target_context->allocations;
         bool is_aligned = false;
         
-        while (temp != NULL)
+        if (record != NULL)
         {
-            if (temp->address == ptr && temp->alignment > sizeof(void*))
+            // 如果找到了记录，直接从记录中获取对齐信息
+            if (record->alignment > sizeof(void*))
             {
                 is_aligned = true;
-                break;
             }
-            temp = temp->next;
+        }
+        else if (target_context->enable_statistics)
+        {
+            // 如果没有记录但启用了统计，遍历链表查找
+            Stru_AllocationRecord_t* temp = target_context->allocations;
+            while (temp != NULL)
+            {
+                if (temp->address == ptr && temp->alignment > sizeof(void*))
+                {
+                    is_aligned = true;
+                    break;
+                }
+                temp = temp->next;
+            }
         }
         
         if (is_aligned)
         {
-            // 对于aligned_alloc分配的内存，使用free释放
-            free(ptr);
+            // 对于对齐分配的内存，使用ALIGNED_FREE释放
+            ALIGNED_FREE(ptr);
         }
         else
         {

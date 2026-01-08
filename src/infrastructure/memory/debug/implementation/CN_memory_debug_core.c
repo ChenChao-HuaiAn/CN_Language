@@ -12,6 +12,9 @@
  */
 
 #include "CN_memory_debug_private.h"
+#include "../leak_detection/CN_memory_leak_detection.h"
+#include "../error_detection/CN_memory_error_detection.h"
+#include "../analysis/CN_memory_analysis.h"
 #include <stdlib.h>
 #include <string.h>
 
