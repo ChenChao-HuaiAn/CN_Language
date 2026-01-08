@@ -188,7 +188,7 @@ static bool debug_validate(Stru_MemoryAllocatorInterface_t* allocator,
     
     if (ptr == NULL)
     {
-        return true;
+        return false;  // NULL指针不是有效的分配指针
     }
     
     void* real_ptr = (uint8_t*)ptr - sizeof(size_t) * 2;

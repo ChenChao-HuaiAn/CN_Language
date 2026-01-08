@@ -33,7 +33,7 @@ static Stru_MemoryAllocatorInterface_t* create_debug_allocator(void)
         return NULL;
     }
     
-    return F_create_debug_allocator(system_allocator, true, true, true);
+    return F_create_debug_allocator(system_allocator);
 }
 
 /**

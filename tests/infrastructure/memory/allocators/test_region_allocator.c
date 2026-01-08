@@ -136,8 +136,8 @@ static void test_region_reset(void)
     bool passed = (ptr1 != NULL && ptr2 != NULL && ptr3 != NULL);
     
     if (passed) {
-        // 重置区域
-        allocator->cleanup(allocator);
+        // 重置区域（使用正确的重置函数）
+        F_reset_region_allocator(allocator);
         
         // 重置后应该可以重新分配
         void* new_ptr = allocator->allocate(allocator, 400, 0);
@@ -310,8 +310,8 @@ static void test_region_memory_reuse(void)
         uintptr_t addr1 = (uintptr_t)ptr1;
         uintptr_t addr2 = (uintptr_t)ptr2;
         
-        // 重置区域
-        allocator->cleanup(allocator);
+        // 重置区域（使用正确的重置函数）
+        F_reset_region_allocator(allocator);
         
         // 第二轮分配
         void* new_ptr1 = allocator->allocate(allocator, 100, 0);

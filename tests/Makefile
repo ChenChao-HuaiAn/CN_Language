@@ -22,7 +22,7 @@ endif
 
 # 编译器设置
 CC := gcc
-CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils -I../src/infrastructure/memory -I../src/infrastructure/memory/allocators -I../src/infrastructure/memory/allocators/system -I../src/infrastructure/memory/allocators/debug -I../src/infrastructure/memory/allocators/pool -I../src/infrastructure/memory/allocators/region -I../src/infrastructure/memory/allocators/factory
+CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils -I../src/infrastructure/memory -I../src/infrastructure/memory/allocators -I../src/infrastructure/memory/allocators/system -I../src/infrastructure/memory/allocators/debug -I../src/infrastructure/memory/allocators/pool -I../src/infrastructure/memory/allocators/region -I../src/infrastructure/memory/allocators/factory -I../src/infrastructure/memory/context -I../src/infrastructure/memory/context/public -I../src/infrastructure/memory/context/interfaces -I../src/infrastructure/memory/context/core -I../src/infrastructure/memory/context/core/allocation -I../src/infrastructure/memory/context/core/management -I../src/infrastructure/memory/context/core/operations -I../src/infrastructure/memory/context/core/statistics
 LDFLAGS := 
 
 # 构建目录
@@ -88,8 +88,24 @@ MEMORY_ALLOCATOR_TEST_SRCS := infrastructure/memory/allocators/test_system_alloc
                               infrastructure/memory/allocators/test_allocator_factory.c \
                               infrastructure/memory/allocators/test_allocators_runner.c
 
+# 内存上下文模块源文件
+MEMORY_CONTEXT_SRCS := ../src/infrastructure/memory/context/public/CN_memory_context.c \
+                       ../src/infrastructure/memory/context/interfaces/CN_context_interface.c \
+                       ../src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
+                       ../src/infrastructure/memory/context/core/management/CN_context_management.c \
+                       ../src/infrastructure/memory/context/core/operations/CN_context_operations.c \
+                       ../src/infrastructure/memory/context/core/statistics/CN_context_statistics.c
+
+# 内存上下文模块测试文件
+MEMORY_CONTEXT_TEST_SRCS := infrastructure/memory/context/test_context_management.c \
+                            infrastructure/memory/context/test_context_operations.c \
+                            infrastructure/memory/context/test_context_allocation.c \
+                            infrastructure/memory/context/test_context_statistics.c \
+                            infrastructure/memory/context/test_context_utils.c \
+                            infrastructure/memory/context/test_context_runner.c
+
 # 所有源文件
-ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS) $(MEMORY_ALLOCATOR_SRCS) $(MEMORY_ALLOCATOR_TEST_SRCS)
+ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS) $(MEMORY_ALLOCATOR_SRCS) $(MEMORY_ALLOCATOR_TEST_SRCS) $(MEMORY_CONTEXT_SRCS) $(MEMORY_CONTEXT_TEST_SRCS)
 
 # 对象文件（按照源代码目录结构组织）
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
@@ -100,7 +116,9 @@ OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(STRING_SRCS)) \
         $(patsubst %.c,$(BUILD_DIR)/%.o,$(STRING_TEST_SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(MEMORY_ALLOCATOR_SRCS)) \
-        $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_ALLOCATOR_TEST_SRCS))
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_ALLOCATOR_TEST_SRCS)) \
+        $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(MEMORY_CONTEXT_SRCS)) \
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_CONTEXT_TEST_SRCS))
 
 # 可执行文件
 TARGET := $(BIN_DIR)/test_runner$(EXE_EXT)
@@ -118,18 +136,30 @@ info:
 # 创建构建目录
 $(BUILD_DIR) $(BIN_DIR):
 	@echo "创建目录: $@"
+ifeq ($(DETECTED_OS),Windows)
 	@if not exist "$(subst /,$(PATH_SEP),$@)" $(MKDIR) "$(subst /,$(PATH_SEP),$@)"
+else
+	@mkdir -p "$@"
+endif
 
 # 通用编译规则：.c -> .o
 $(BUILD_DIR)/%.o: %.c | $(BUILD_DIR)
 	@echo "编译: $< -> $@"
+ifeq ($(DETECTED_OS),Windows)
 	@if not exist "$(subst /,$(PATH_SEP),$(dir $@))" $(MKDIR) "$(subst /,$(PATH_SEP),$(dir $@))"
+else
+	@mkdir -p "$(dir $@)"
+endif
 	$(CC) $(CFLAGS) -c $< -o $(subst /,$(PATH_SEP),$@)
 
 # 编译src目录下的源文件
 $(BUILD_DIR)/src/%.o: ../src/%.c | $(BUILD_DIR)
 	@echo "编译: $< -> $@"
+ifeq ($(DETECTED_OS),Windows)
 	@if not exist "$(subst /,$(PATH_SEP),$(dir $@))" $(MKDIR) "$(subst /,$(PATH_SEP),$(dir $@))"
+else
+	@mkdir -p "$(dir $@)"
+endif
 	$(CC) $(CFLAGS) -c $< -o $(subst /,$(PATH_SEP),$@)
 
 # 链接可执行文件
@@ -163,6 +193,11 @@ run-allocators: $(TARGET)
 	@echo "运行内存分配器模块测试..."
 	$(subst /,$(PATH_SEP),$(TARGET)) allocators
 
+# 运行内存上下文模块测试
+run-context: $(TARGET)
+	@echo "运行内存上下文模块测试..."
+	$(subst /,$(PATH_SEP),$(TARGET)) context
+
 # 列出所有模块
 list: $(TARGET)
 	$(subst /,$(PATH_SEP),$(TARGET)) --list
@@ -189,6 +224,7 @@ help:
 	@echo "  run-queue - 构建并运行队列模块测试"
 	@echo "  run-string    - 构建并运行字符串模块测试"
 	@echo "  run-allocators - 构建并运行内存分配器模块测试"
+	@echo "  run-context    - 构建并运行内存上下文模块测试"
 	@echo "  list          - 列出所有可用的测试模块"
 	@echo "  clean         - 清理构建文件"
 	@echo "  help          - 显示此帮助信息"

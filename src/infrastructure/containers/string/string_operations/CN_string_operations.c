@@ -13,6 +13,8 @@
  * @copyright Copyright (c) 2026 CN_Language项目
  */
 
+#define _POSIX_C_SOURCE 200809L  /* 启用strdup等POSIX函数 */
+
 #include "CN_string_operations.h"
 #include <stdlib.h>
 #include <string.h>
@@ -138,10 +140,27 @@ int F_string_compare_case_insensitive(Stru_String_t* str1, Stru_String_t* str2)
     // 设置locale以支持大小写不敏感比较
     setlocale(LC_ALL, "en_US.UTF-8");
     
-    // 简单实现：转换为小写后比较
-    // 注意：这不是最优实现，但对于大多数情况足够
-    char* str1_lower = _strlwr(_strdup(str1->data));
-    char* str2_lower = _strlwr(_strdup(str2->data));
+    // 跨平台实现：手动转换为小写后比较
+    char* str1_lower = strdup(str1->data);
+    char* str2_lower = strdup(str2->data);
+    
+    if (str1_lower == NULL || str2_lower == NULL)
+    {
+        if (str1_lower) free(str1_lower);
+        if (str2_lower) free(str2_lower);
+        return strcmp(str1->data, str2->data); // 回退到普通比较
+    }
+    
+    // 转换为小写
+    for (char* p = str1_lower; *p; p++)
+    {
+        *p = tolower((unsigned char)*p);
+    }
+    
+    for (char* p = str2_lower; *p; p++)
+    {
+        *p = tolower((unsigned char)*p);
+    }
     
     int result = strcmp(str1_lower, str2_lower);
     

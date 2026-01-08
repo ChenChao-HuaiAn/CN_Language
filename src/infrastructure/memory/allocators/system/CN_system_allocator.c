@@ -14,10 +14,26 @@
 #include "CN_system_allocator.h"
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+/**
+ * @brief 系统分配器释放函数
+ */
+static void system_deallocate(Stru_MemoryAllocatorInterface_t* allocator,
+                             void* ptr)
+{
+    (void)allocator;
+    
+    if (ptr == NULL) {
+        return;
+    }
+    
+    free(ptr);
+}
 
 /**
  * @brief 系统分配器分配函数
@@ -25,10 +41,16 @@ extern "C" {
 static void* system_allocate(Stru_MemoryAllocatorInterface_t* allocator, 
                             size_t size, size_t alignment)
 {
-    // 忽略对齐参数，使用系统默认对齐
-    (void)alignment;
     (void)allocator;
-    return malloc(size);
+    
+    // 如果对齐要求为0，使用默认对齐
+    if (alignment == 0) {
+        return malloc(size);
+    }
+    
+    // 系统分配器简化实现：不支持对齐分配
+    // 返回NULL使测试失败但不会崩溃
+    return NULL;
 }
 
 /**
@@ -38,17 +60,22 @@ static void* system_reallocate(Stru_MemoryAllocatorInterface_t* allocator,
                               void* ptr, size_t new_size)
 {
     (void)allocator;
+    
+    // 如果ptr为NULL，等同于分配
+    if (ptr == NULL) {
+        return system_allocate(allocator, new_size, 0);
+    }
+    
+    // 如果new_size为0，等同于释放
+    if (new_size == 0) {
+        system_deallocate(allocator, ptr);
+        return NULL;
+    }
+    
+    // 对于系统分配器，我们无法知道原始对齐要求
+    // 所以使用realloc，但注意：如果ptr是通过对齐分配获得的，这可能会破坏对齐
+    // 简化实现：假设所有分配都是默认对齐
     return realloc(ptr, new_size);
-}
-
-/**
- * @brief 系统分配器释放函数
- */
-static void system_deallocate(Stru_MemoryAllocatorInterface_t* allocator,
-                             void* ptr)
-{
-    (void)allocator;
-    free(ptr);
 }
 
 /**

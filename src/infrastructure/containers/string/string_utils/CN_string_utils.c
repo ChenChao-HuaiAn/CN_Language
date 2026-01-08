@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <errno.h>
 #include <math.h>
+#include <limits.h>
 
 // 从核心模块导入内部函数
 extern size_t utf8_strlen(const char* utf8_str);

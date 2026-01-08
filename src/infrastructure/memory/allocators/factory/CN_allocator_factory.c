@@ -50,7 +50,18 @@ static Stru_MemoryAllocatorInterface_t* internal_create_system_allocator(
     const Stru_AllocatorConfig_t* config)
 {
     (void)config;  // 暂时忽略配置
-    return F_create_system_allocator();
+    
+    Stru_MemoryAllocatorInterface_t* allocator = F_create_system_allocator();
+    if (allocator != NULL) {
+        // 更新统计信息
+        Stru_AllocatorFactoryData_t* data = (Stru_AllocatorFactoryData_t*)factory->private_data;
+        if (data != NULL) {
+            data->total_created++;
+            data->active_allocators++;
+        }
+    }
+    
+    return allocator;
 }
 
 /**
@@ -71,7 +82,17 @@ static Stru_MemoryAllocatorInterface_t* internal_create_debug_allocator(
         }
     }
     
-    return F_create_debug_allocator(parent_allocator);
+    Stru_MemoryAllocatorInterface_t* allocator = F_create_debug_allocator(parent_allocator);
+    if (allocator != NULL) {
+        // 更新统计信息
+        Stru_AllocatorFactoryData_t* data = (Stru_AllocatorFactoryData_t*)factory->private_data;
+        if (data != NULL) {
+            data->total_created++;
+            data->active_allocators++;
+        }
+    }
+    
+    return allocator;
 }
 
 /**
@@ -94,7 +115,17 @@ static Stru_MemoryAllocatorInterface_t* internal_create_pool_allocator(
         }
     }
     
-    return F_create_pool_allocator(object_size, pool_size, parent_allocator);
+    Stru_MemoryAllocatorInterface_t* allocator = F_create_pool_allocator(object_size, pool_size, parent_allocator);
+    if (allocator != NULL) {
+        // 更新统计信息
+        Stru_AllocatorFactoryData_t* data = (Stru_AllocatorFactoryData_t*)factory->private_data;
+        if (data != NULL) {
+            data->total_created++;
+            data->active_allocators++;
+        }
+    }
+    
+    return allocator;
 }
 
 /**
@@ -116,7 +147,17 @@ static Stru_MemoryAllocatorInterface_t* internal_create_region_allocator(
         }
     }
     
-    return F_create_region_allocator(region_size, parent_allocator);
+    Stru_MemoryAllocatorInterface_t* allocator = F_create_region_allocator(region_size, parent_allocator);
+    if (allocator != NULL) {
+        // 更新统计信息
+        Stru_AllocatorFactoryData_t* data = (Stru_AllocatorFactoryData_t*)factory->private_data;
+        if (data != NULL) {
+            data->total_created++;
+            data->active_allocators++;
+        }
+    }
+    
+    return allocator;
 }
 
 /**
@@ -158,6 +199,12 @@ static Stru_MemoryAllocatorInterface_t* internal_create_allocator_by_name_va(
     // 检查注册的类型
     for (size_t i = 0; i < data->registered_count; i++) {
         if (strcmp(data->registered_types[i].type_name, allocator_type) == 0) {
+            // 如果creator为NULL，使用内置实现
+            if (data->registered_types[i].creator == NULL) {
+                // 使用内置实现
+                break;
+            }
+            
             // 调用注册的创建函数
             va_list args_copy;
             va_copy(args_copy, args);

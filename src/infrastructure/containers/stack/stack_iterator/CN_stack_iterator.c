@@ -16,6 +16,7 @@
 #include "CN_stack_iterator.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 /* ==================== 内部函数声明 ==================== */
 

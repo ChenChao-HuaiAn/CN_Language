@@ -79,7 +79,15 @@ static void* pool_reallocate(Stru_MemoryAllocatorInterface_t* allocator,
 {
     Stru_PoolAllocatorData_t* pool_data = (Stru_PoolAllocatorData_t*)allocator->private_data;
     
-    // 对象池不支持重新分配，使用父分配器
+    // 检查指针是否在对象池范围内
+    if (ptr >= pool_data->memory_block && 
+        ptr < (char*)pool_data->memory_block + pool_data->pool_size * pool_data->object_size)
+    {
+        // 对象池不支持重新分配固定大小的对象
+        return NULL;
+    }
+    
+    // 如果不在对象池范围内，使用父分配器
     if (pool_data->parent_allocator != NULL)
     {
         return pool_data->parent_allocator->reallocate(pool_data->parent_allocator, ptr, new_size);
@@ -405,6 +413,12 @@ bool F_expand_pool_allocator(
     
     Stru_PoolAllocatorData_t* pool_data = (Stru_PoolAllocatorData_t*)allocator->private_data;
     
+    // 检查是否有已分配的对象
+    // 如果有已分配的对象，我们不能扩展，因为无法更新已分配对象的指针
+    if (pool_data->allocated_objects > 0) {
+        return false;
+    }
+    
     // 计算新的总大小
     size_t new_pool_size = pool_data->pool_size + additional_objects;
     
@@ -427,6 +441,7 @@ bool F_expand_pool_allocator(
         return false;
     }
     
+    // 更新内存块指针
     pool_data->memory_block = new_memory_block;
     
     // 重新分配空闲链表
@@ -448,11 +463,11 @@ bool F_expand_pool_allocator(
     
     pool_data->free_list = new_free_list;
     
-    // 添加新对象到空闲链表
-    for (size_t i = pool_data->pool_size; i < new_pool_size; i++)
+    // 重新初始化整个空闲链表（因为所有对象都是空闲的）
+    pool_data->free_count = new_pool_size;
+    for (size_t i = 0; i < new_pool_size; i++)
     {
-        pool_data->free_list[pool_data->free_count++] = 
-            (char*)pool_data->memory_block + i * pool_data->object_size;
+        pool_data->free_list[i] = (char*)pool_data->memory_block + i * pool_data->object_size;
     }
     
     // 更新池大小
