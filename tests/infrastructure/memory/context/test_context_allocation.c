@@ -13,7 +13,7 @@
  */
 
 #include "test_context.h"
-#include "../../../../src/infrastructure/memory/context/CN_memory_context.h"
+#include "../../../../src/infrastructure/memory/context/public/CN_memory_context.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

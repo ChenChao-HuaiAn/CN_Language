@@ -19,16 +19,32 @@ mkdir -p "$OBJ_DIR"
 
 # 编译器设置
 CC="gcc"
-CFLAGS="-std=c99 -Wall -Wextra -I. -I./src -I./tests -DTEST_CONTEXT_STANDALONE"
+CFLAGS="-std=c11 -Wall -Wextra -Wno-unused-variable -I. -I./src -I./src/infrastructure -I./src/infrastructure/memory -I./src/infrastructure/memory/context -I./src/infrastructure/memory/allocators -I./tests -DTEST_CONTEXT_STANDALONE"
 LDFLAGS=""
 
-# 源文件列表（context模块）
+# 源文件列表（context模块 - 更新后的目录结构）
 SRC_FILES=(
-    "src/infrastructure/memory/context/core/CN_context_management.c"
-    "src/infrastructure/memory/context/core/CN_context_operations.c"
-    "src/infrastructure/memory/context/core/CN_context_allocation.c"
-    "src/infrastructure/memory/context/core/CN_context_statistics.c"
-    "src/infrastructure/memory/context/core/CN_context_interface.c"
+    # 公共API
+    "src/infrastructure/memory/context/public/CN_memory_context.c"
+    
+    # 接口模块
+    "src/infrastructure/memory/context/interfaces/CN_context_interface.c"
+    
+    # 核心模块 - 分配子模块
+    "src/infrastructure/memory/context/core/allocation/CN_context_allocation.c"
+    
+    # 核心模块 - 管理子模块
+    "src/infrastructure/memory/context/core/management/CN_context_management.c"
+    
+    # 核心模块 - 操作子模块
+    "src/infrastructure/memory/context/core/operations/CN_context_operations.c"
+    
+    # 核心模块 - 统计子模块
+    "src/infrastructure/memory/context/core/statistics/CN_context_statistics.c"
+    
+    # 分配器模块（CN_memory_context.c依赖）
+    "src/infrastructure/memory/allocators/system/CN_system_allocator.c"
+    "src/infrastructure/memory/allocators/debug/CN_debug_allocator.c"
 )
 
 # 测试文件列表

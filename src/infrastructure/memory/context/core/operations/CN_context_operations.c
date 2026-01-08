@@ -11,8 +11,8 @@
  * @copyright MIT License
  */
 
-#include "CN_context_core.h"
-#include "CN_context_struct.h"
+#include "../CN_context_core.h"
+#include "../CN_context_struct.h"
 
 // ============================================================================
 // 上下文操作函数实现
@@ -23,13 +23,7 @@
  */
 Stru_MemoryContext_t* F_context_get_current(void)
 {
-    if (g_thread_current_context != NULL)
-    {
-        return g_thread_current_context;
-    }
-    
-    // 如果没有设置线程本地上下文，返回根上下文
-    return g_root_context;
+    return g_thread_current_context;
 }
 
 /**

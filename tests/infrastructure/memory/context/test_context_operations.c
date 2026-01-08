@@ -13,7 +13,7 @@
  */
 
 #include "test_context.h"
-#include "../../../../src/infrastructure/memory/context/CN_memory_context.h"
+#include "../../../../src/infrastructure/memory/context/public/CN_memory_context.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -40,8 +40,8 @@ static bool test_context_get_current_basic(void)
     TEST_ASSERT_NOT_NULL(ctx_if);
     
     // 初始当前上下文应该为NULL或默认上下文
-    Stru_MemoryContext_t* initial_current = ctx_if->get_current();
-    // 可能为NULL，这是允许的
+    // 注意：我们只是获取它但不使用，用于验证接口正常工作
+    (void)ctx_if->get_current(); // 忽略返回值
     
     // 创建上下文并设置为当前
     Stru_MemoryContext_t* ctx = ctx_if->create("TestCurrentContext", NULL);
@@ -212,8 +212,8 @@ static bool test_context_get_name_null(void)
     TEST_ASSERT_NOT_NULL(ctx_if);
     
     // 获取NULL上下文的名称应该返回NULL或空字符串
-    const char* name = ctx_if->get_name(NULL);
-    // 可能为NULL，这是允许的
+    // 注意：我们只是调用它但不使用返回值，用于验证接口正常工作
+    (void)ctx_if->get_name(NULL); // 忽略返回值
     
     return true;
 }

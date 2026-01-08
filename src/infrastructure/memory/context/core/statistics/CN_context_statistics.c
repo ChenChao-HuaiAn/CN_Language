@@ -11,8 +11,8 @@
  * @copyright MIT License
  */
 
-#include "CN_context_core.h"
-#include "CN_context_struct.h"
+#include "../CN_context_core.h"
+#include "../CN_context_struct.h"
 
 // ============================================================================
 // 内存管理函数实现

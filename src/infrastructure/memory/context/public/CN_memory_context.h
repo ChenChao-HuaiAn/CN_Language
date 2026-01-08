@@ -14,8 +14,8 @@
 #ifndef CN_MEMORY_CONTEXT_H
 #define CN_MEMORY_CONTEXT_H
 
-#include "../CN_memory_interface.h"
-#include "core/CN_context_interface.h"
+#include "../../CN_memory_interface.h"
+#include "../interfaces/CN_context_interface.h"
 
 // ============================================================================
 // 向后兼容性函数声明

@@ -22,24 +22,34 @@
 
 ## 模块架构
 
-内存上下文模块采用模块化设计，分为多个子模块：
+内存上下文模块采用模块化设计，分为多个子模块，遵循单一职责原则和SOLID设计原则：
 
 ```
 内存上下文模块
-├── 核心接口 (core/)
+├── 公共API (public/)
+│   ├── CN_memory_context.h - 公共接口头文件
+│   └── CN_memory_context.c - 向后兼容性实现
+├── 接口模块 (interfaces/)
 │   ├── CN_context_interface.h - 核心接口定义
+│   ├── CN_context_interface.c - 接口初始化和全局管理
+│   └── README.md - 接口模块文档
+├── 核心模块 (core/)
+│   ├── CN_context_core.h - 核心功能声明
 │   ├── CN_context_struct.h - 数据结构定义
-│   └── CN_context_core.h - 核心功能声明
-├── 管理子模块 (core/)
-│   └── CN_context_management.c - 上下文创建、销毁、重置
-├── 操作子模块 (core/)
-│   └── CN_context_operations.c - 上下文切换、查询
-├── 分配子模块 (core/)
-│   └── CN_context_allocation.c - 内存分配、重新分配、释放
-├── 统计子模块 (core/)
-│   └── CN_context_statistics.c - 内存使用统计
-└── 接口子模块 (core/)
-    └── CN_context_interface.c - 全局状态管理和接口初始化
+│   ├── README.md - 核心模块文档
+│   ├── 分配子模块 (allocation/)
+│   │   ├── CN_context_allocation.c - 内存分配、重新分配、释放
+│   │   └── README.md - 分配模块文档
+│   ├── 管理子模块 (management/)
+│   │   ├── CN_context_management.c - 上下文创建、销毁、重置
+│   │   └── README.md - 管理模块文档
+│   ├── 操作子模块 (operations/)
+│   │   ├── CN_context_operations.c - 上下文切换、查询
+│   │   └── README.md - 操作模块文档
+│   └── 统计子模块 (statistics/)
+│       ├── CN_context_statistics.c - 内存使用统计
+│       └── README.md - 统计模块文档
+└── README.md - 模块总文档
 ```
 
 ## 核心接口
@@ -907,18 +917,25 @@ ctx_if->destroy(ctx);
 ## 相关文件
 
 ### 源代码文件
-- `src/infrastructure/memory/context/CN_memory_context.h` - 主接口文件
-- `src/infrastructure/memory/context/core/CN_context_interface.h` - 核心接口定义
-- `src/infrastructure/memory/context/core/CN_context_struct.h` - 数据结构定义
+- `src/infrastructure/memory/context/public/CN_memory_context.h` - 公共接口头文件
+- `src/infrastructure/memory/context/public/CN_memory_context.c` - 向后兼容性实现
+- `src/infrastructure/memory/context/interfaces/CN_context_interface.h` - 核心接口定义
+- `src/infrastructure/memory/context/interfaces/CN_context_interface.c` - 接口初始化和全局管理
 - `src/infrastructure/memory/context/core/CN_context_core.h` - 核心功能声明
-- `src/infrastructure/memory/context/core/CN_context_management.c` - 上下文管理实现
-- `src/infrastructure/memory/context/core/CN_context_operations.c` - 上下文操作实现
-- `src/infrastructure/memory/context/core/CN_context_allocation.c` - 内存分配实现
-- `src/infrastructure/memory/context/core/CN_context_statistics.c` - 统计功能实现
-- `src/infrastructure/memory/context/core/CN_context_interface.c` - 接口初始化实现
+- `src/infrastructure/memory/context/core/CN_context_struct.h` - 数据结构定义
+- `src/infrastructure/memory/context/core/allocation/CN_context_allocation.c` - 内存分配实现
+- `src/infrastructure/memory/context/core/management/CN_context_management.c` - 上下文管理实现
+- `src/infrastructure/memory/context/core/operations/CN_context_operations.c` - 上下文操作实现
+- `src/infrastructure/memory/context/core/statistics/CN_context_statistics.c` - 统计功能实现
 
 ### 文档文件
-- `src/infrastructure/memory/context/README.md` - 模块主文档
+- `src/infrastructure/memory/context/README.md` - 模块总文档
+- `src/infrastructure/memory/context/interfaces/README.md` - 接口模块文档
+- `src/infrastructure/memory/context/core/README.md` - 核心模块文档
+- `src/infrastructure/memory/context/core/allocation/README.md` - 分配模块文档
+- `src/infrastructure/memory/context/core/management/README.md` - 管理模块文档
+- `src/infrastructure/memory/context/core/operations/README.md` - 操作模块文档
+- `src/infrastructure/memory/context/core/statistics/README.md` - 统计模块文档
 - `docs/api/infrastructure/memory/context/CN_context.md` - API文档（本文档）
 
 ### 测试文件

@@ -11,8 +11,8 @@
  * @copyright MIT License
  */
 
-#include "CN_context_core.h"
-#include "CN_context_struct.h"
+#include "../CN_context_core.h"
+#include "../CN_context_struct.h"
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
@@ -51,12 +51,6 @@ static uint64_t F_get_current_timestamp(void)
 Stru_MemoryContext_t* F_context_create(const char* name,
                                       Stru_MemoryContext_t* parent)
 {
-    // 验证参数
-    if (name == NULL)
-    {
-        return NULL;
-    }
-    
     // 分配上下文结构体
     Stru_MemoryContext_t* context = 
         (Stru_MemoryContext_t*)malloc(sizeof(Stru_MemoryContext_t));
@@ -67,13 +61,28 @@ Stru_MemoryContext_t* F_context_create(const char* name,
     }
     
     // 初始化基本信息
-    context->name = (char*)malloc(strlen(name) + 1);
-    if (context->name == NULL)
+    if (name != NULL)
     {
-        free(context);
-        return NULL;
+        context->name = (char*)malloc(strlen(name) + 1);
+        if (context->name == NULL)
+        {
+            free(context);
+            return NULL;
+        }
+        strcpy(context->name, name);
     }
-    strcpy(context->name, name);
+    else
+    {
+        // 允许空名称，使用默认名称
+        const char* default_name = "UnnamedContext";
+        context->name = (char*)malloc(strlen(default_name) + 1);
+        if (context->name == NULL)
+        {
+            free(context);
+            return NULL;
+        }
+        strcpy(context->name, default_name);
+    }
     
     context->id = F_generate_context_id();
     context->creation_time = F_get_current_timestamp();
@@ -270,8 +279,10 @@ void F_context_reset(Stru_MemoryContext_t* context)
     
     // 重置内存管理状态
     context->allocations = NULL;
+    context->total_allocated = 0;
+    context->peak_allocated = 0;
     context->current_usage = 0;
-    // 注意：不重置 total_allocated 和 peak_allocated，保留历史统计
+    context->allocation_count = 0;
     
     // 清除重置标志
     context->is_resetting = false;

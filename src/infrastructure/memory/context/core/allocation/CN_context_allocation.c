@@ -11,11 +11,10 @@
  * @copyright MIT License
  */
 
-#include "CN_context_core.h"
-#include "CN_context_struct.h"
+#include "../CN_context_core.h"
+#include "../CN_context_struct.h"
 #include <stdlib.h>
 #include <string.h>
-#include <malloc.h>  // 用于_aligned_malloc和_aligned_free
 #include <time.h>
 
 // ============================================================================
@@ -115,6 +114,7 @@ Stru_AllocationRecord_t* F_remove_allocation_from_context(
             
             // 更新统计信息
             context->current_usage -= current->size;
+            context->total_allocated -= current->size;
             
             // 断开链表连接
             current->next = NULL;
@@ -167,8 +167,10 @@ void* F_context_allocate(Stru_MemoryContext_t* context,
         }
         else
         {
-            // 对齐分配（简化实现）
-            memory = _aligned_malloc(size, alignment);
+            // 对齐分配（使用C11 aligned_alloc）
+            // aligned_alloc要求size是alignment的倍数
+            size_t aligned_size = ((size + alignment - 1) / alignment) * alignment;
+            memory = aligned_alloc(alignment, aligned_size);
         }
     }
     
@@ -304,7 +306,8 @@ void F_context_deallocate(Stru_MemoryContext_t* context, void* ptr)
         
         if (is_aligned)
         {
-            _aligned_free(ptr);
+            // 对于aligned_alloc分配的内存，使用free释放
+            free(ptr);
         }
         else
         {

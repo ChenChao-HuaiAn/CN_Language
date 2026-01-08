@@ -11,9 +11,9 @@
  * @copyright MIT License
  */
 
-#include "CN_context_core.h"
+#include "../core/CN_context_core.h"
 #include "CN_context_interface.h"
-#include "CN_context_struct.h"
+#include "../core/CN_context_struct.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -28,7 +28,7 @@ Stru_MemoryContextInterface_t g_memory_context_interface = {0};
 Stru_MemoryContext_t* g_root_context = NULL;
 
 /** 线程本地当前上下文 */
-__declspec(thread) Stru_MemoryContext_t* g_thread_current_context = NULL;
+__thread Stru_MemoryContext_t* g_thread_current_context = NULL;
 
 /** 上下文ID计数器 */
 uint64_t g_next_context_id = 1;

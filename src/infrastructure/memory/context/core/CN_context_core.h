@@ -14,7 +14,7 @@
 #ifndef CN_CONTEXT_CORE_H
 #define CN_CONTEXT_CORE_H
 
-#include "CN_context_interface.h"
+#include "../interfaces/CN_context_interface.h"
 #include "CN_context_struct.h"
 
 // ============================================================================
@@ -25,7 +25,7 @@
 extern Stru_MemoryContext_t* g_root_context;
 
 /** 线程本地当前上下文 */
-extern __declspec(thread) Stru_MemoryContext_t* g_thread_current_context;
+extern __thread Stru_MemoryContext_t* g_thread_current_context;
 
 /** 上下文ID计数器 */
 extern uint64_t g_next_context_id;

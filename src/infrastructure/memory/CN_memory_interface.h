@@ -175,7 +175,7 @@ typedef struct Stru_MemoryContext_t
 #include "utilities/CN_memory_utilities.h"
 
 // 上下文管理模块
-#include "context/CN_memory_context.h"
+#include "context/public/CN_memory_context.h"
 
 // 调试模块
 #include "debug/CN_memory_debug.h"
