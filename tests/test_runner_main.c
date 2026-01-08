@@ -59,6 +59,7 @@ extern bool test_allocators_all(void); // 内存分配器模块
 extern bool test_context_all(void);    // 内存上下文模块
 extern bool test_memory_debug_all(void); // 内存调试模块
 extern bool test_utilities_all(void);  // 内存工具函数模块
+extern bool test_memory_debug_tools(void); // 内存调试工具模块
 
 // 核心层 - 编译器模块
 // extern bool test_lexer_all(void);
@@ -92,6 +93,7 @@ int main(int argc, char* argv[])
         {"context",       "infrastructure/memory/context",    test_context_all,      true},
         {"debug",         "infrastructure/memory/debug",      test_memory_debug_all, false}, // 暂时禁用
         {"utilities",     "infrastructure/memory/utilities",  test_utilities_all,    false}, // 暂时禁用
+        {"debug_tools",   "infrastructure/memory/debug/tools", test_memory_debug_tools, true}, // 内存调试工具模块
         
         // 核心层 - 编译器模块
         // {"lexer",         "core/lexer",                     test_lexer_all,         false},

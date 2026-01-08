@@ -22,7 +22,7 @@ endif
 
 # 编译器设置
 CC := gcc
-CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils -I../src/infrastructure/memory -I../src/infrastructure/memory/allocators -I../src/infrastructure/memory/allocators/system -I../src/infrastructure/memory/allocators/debug -I../src/infrastructure/memory/allocators/pool -I../src/infrastructure/memory/allocators/region -I../src/infrastructure/memory/allocators/factory -I../src/infrastructure/memory/context -I../src/infrastructure/memory/context/public -I../src/infrastructure/memory/context/interfaces -I../src/infrastructure/memory/context/core -I../src/infrastructure/memory/context/core/allocation -I../src/infrastructure/memory/context/core/management -I../src/infrastructure/memory/context/core/operations -I../src/infrastructure/memory/context/core/statistics -I../src/core/token -I../src/core/token/lifecycle -I../src/core/token/values -I../src/core/token/query -I../src/core/token/keywords -I../src/core/token/tools -I../src/core/token/interface
+CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils -I../src/infrastructure/memory -I../src/infrastructure/memory/allocators -I../src/infrastructure/memory/allocators/system -I../src/infrastructure/memory/allocators/debug -I../src/infrastructure/memory/allocators/pool -I../src/infrastructure/memory/allocators/region -I../src/infrastructure/memory/allocators/factory -I../src/infrastructure/memory/context -I../src/infrastructure/memory/context/public -I../src/infrastructure/memory/context/interfaces -I../src/infrastructure/memory/context/core -I../src/infrastructure/memory/context/core/allocation -I../src/infrastructure/memory/context/core/management -I../src/infrastructure/memory/context/core/operations -I../src/infrastructure/memory/context/core/statistics -I../src/infrastructure/memory/debug/tools -I../src/infrastructure/memory/debug/tools/core -I../src/infrastructure/memory/debug/tools/dump -I../src/infrastructure/memory/debug/tools/validation -I../src/infrastructure/memory/debug/tools/stacktrace -I../src/infrastructure/memory/debug/tools/utils -I../src/core/token -I../src/core/token/lifecycle -I../src/core/token/values -I../src/core/token/query -I../src/core/token/keywords -I../src/core/token/tools -I../src/core/token/interface
 LDFLAGS := 
 
 # 构建目录
@@ -116,8 +116,24 @@ MEMORY_DEBUG_SRCS := ../src/infrastructure/memory/debug/CN_memory_debug.c \
 MEMORY_DEBUG_TEST_SRCS := infrastructure/memory/debug/test_memory_debug.c \
                           infrastructure/memory/debug/leak_detection/test_leak_detection.c \
                           infrastructure/memory/debug/error_detection/test_error_detection.c \
-                          infrastructure/memory/debug/analysis/test_analysis.c \
-                          infrastructure/memory/debug/tools/test_debug_tools.c
+                          infrastructure/memory/debug/analysis/test_analysis.c
+
+# 内存调试工具模块源文件
+MEMORY_DEBUG_TOOLS_SRCS := ../src/infrastructure/memory/debug/tools/CN_memory_debug_tools.c \
+                           ../src/infrastructure/memory/debug/tools/core/CN_memory_debug_tools_core.c \
+                           ../src/infrastructure/memory/debug/tools/dump/CN_memory_debug_tools_dump.c \
+                           ../src/infrastructure/memory/debug/tools/validation/CN_memory_debug_tools_validation.c \
+                           ../src/infrastructure/memory/debug/tools/stacktrace/CN_memory_debug_tools_stacktrace.c \
+                           ../src/infrastructure/memory/debug/tools/utils/CN_memory_debug_tools_utils.c
+
+# 内存调试工具模块测试文件
+MEMORY_DEBUG_TOOLS_TEST_SRCS := infrastructure/memory/debug/tools/test_tools_runner.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_core.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_dump.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_validation.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_stacktrace.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_utils.c \
+                                infrastructure/memory/debug/tools/test_debug_tools_integration.c
 
 # 内存工具模块源文件（如果存在）
 MEMORY_UTILITIES_SRCS := ../src/infrastructure/memory/utilities/CN_memory_utilities.c \
@@ -152,7 +168,7 @@ TOKEN_TEST_SRCS := core/token/test_token_runner.c \
                    core/token/interface/test_token_interface.c
 
 # 所有源文件
-ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS) $(MEMORY_ALLOCATOR_SRCS) $(MEMORY_ALLOCATOR_TEST_SRCS) $(MEMORY_CONTEXT_SRCS) $(MEMORY_CONTEXT_TEST_SRCS) $(MEMORY_DEBUG_SRCS) $(MEMORY_DEBUG_TEST_SRCS) $(MEMORY_UTILITIES_SRCS) $(MEMORY_UTILITIES_TEST_SRCS) $(TOKEN_SRCS) $(TOKEN_TEST_SRCS)
+ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS) $(MEMORY_ALLOCATOR_SRCS) $(MEMORY_ALLOCATOR_TEST_SRCS) $(MEMORY_CONTEXT_SRCS) $(MEMORY_CONTEXT_TEST_SRCS) $(MEMORY_DEBUG_SRCS) $(MEMORY_DEBUG_TEST_SRCS) $(MEMORY_DEBUG_TOOLS_SRCS) $(MEMORY_DEBUG_TOOLS_TEST_SRCS) $(MEMORY_UTILITIES_SRCS) $(MEMORY_UTILITIES_TEST_SRCS) $(TOKEN_SRCS) $(TOKEN_TEST_SRCS)
 
 # 对象文件（按照源代码目录结构组织）
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
@@ -168,6 +184,8 @@ OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
         $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_CONTEXT_TEST_SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(MEMORY_DEBUG_SRCS)) \
         $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_DEBUG_TEST_SRCS)) \
+        $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(MEMORY_DEBUG_TOOLS_SRCS)) \
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_DEBUG_TOOLS_TEST_SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(MEMORY_UTILITIES_SRCS)) \
         $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_UTILITIES_TEST_SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(TOKEN_SRCS)) \
@@ -256,6 +274,11 @@ run-token: $(TARGET)
 	@echo "运行令牌模块测试..."
 	$(subst /,$(PATH_SEP),$(TARGET)) token
 
+# 运行内存调试工具模块测试
+run-debug-tools: $(TARGET)
+	@echo "运行内存调试工具模块测试..."
+	$(subst /,$(PATH_SEP),$(TARGET)) debug_tools
+
 # 列出所有模块
 list: $(TARGET)
 	$(subst /,$(PATH_SEP),$(TARGET)) --list
@@ -284,6 +307,7 @@ help:
 	@echo "  run-allocators - 构建并运行内存分配器模块测试"
 	@echo "  run-context    - 构建并运行内存上下文模块测试"
 	@echo "  run-token      - 构建并运行令牌模块测试"
+	@echo "  run-debug-tools - 构建并运行内存调试工具模块测试"
 	@echo "  list          - 列出所有可用的测试模块"
 	@echo "  clean         - 清理构建文件"
 	@echo "  help          - 显示此帮助信息"
