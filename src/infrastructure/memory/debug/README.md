@@ -24,9 +24,14 @@
 ### 5. 工具模块 (`tools/`)
 - `CN_memory_debug_tools.h` - 内存调试工具
 
-### 6. 主入口点
+### 6. 实现模块 (`implementation/`)
+- `CN_memory_debug_private.h/.c` - 私有数据结构和辅助函数
+- `CN_memory_debug_core.h/.c` - 核心接口函数实现
+
+### 7. 主入口点
 - `CN_memory_debug.h` - 主头文件，包含所有子模块
 - `CN_memory_debug.c` - 主实现文件（向后兼容）
+- `CN_memory_debug_new.c` - 模块化实现（薄包装层）
 
 ## 核心功能
 
@@ -54,73 +59,48 @@
 ## 接口设计
 
 ### 核心接口
-```c
-// 内存调试器接口
-typedef struct Stru_MemoryDebuggerInterface_t {
-    // 初始化/清理
-    bool (*initialize)(void);
-    void (*cleanup)(void);
-    
-    // 内存监控
-    void (*enable_monitoring)(bool enable);
-    bool (*is_monitoring_enabled)(void);
-    
-    // 泄漏检测
-    size_t (*get_leak_count)(void);
-    void (*report_leaks)(void);
-    void (*clear_leak_records)(void);
-    
-    // 错误检测
-    void (*enable_overflow_check)(bool enable);
-    void (*enable_double_free_check)(bool enable);
-    void (*enable_uninitialized_check)(bool enable);
-    
-    // 内存验证
-    bool (*validate_pointer)(const void* ptr);
-    bool (*validate_memory_range)(const void* ptr, size_t size);
-    void (*check_all_allocations)(void);
-    
-    // 调试信息
-    void (*dump_memory_info)(void);
-    void (*dump_allocation_stats)(void);
-    void (*set_debug_output)(void (*output_func)(const char*));
-    
-    // 调用栈跟踪
-    void (*enable_stack_trace)(bool enable);
-    size_t (*get_stack_trace_depth)(void);
-    void (*set_stack_trace_depth)(size_t depth);
-    
-    // 性能分析
-    uint64_t (*get_total_allocations)(void);
-    uint64_t (*get_total_deallocations)(void);
-    size_t (*get_peak_memory_usage)(void);
-    size_t (*get_current_memory_usage)(void);
-} Stru_MemoryDebuggerInterface_t;
-```
+内存调试器采用抽象接口模式，通过`Stru_MemoryDebuggerInterface_t`结构体提供所有功能。接口函数通过函数指针实现，支持运行时配置和扩展。
+
+### 工厂函数
+模块提供了多种工厂函数来创建调试器实例：
+- `F_create_default_memory_debugger()` - 创建默认配置的调试器
+- `F_create_configured_memory_debugger()` - 创建自定义配置的调试器
+- `F_get_memory_debugger_interface()` - 获取单例调试器接口（向后兼容）
+
+### 向后兼容性
+模块保持对旧接口`Stru_MemoryDebugInterface_t`的向后兼容性，通过适配器模式支持现有代码。
 
 ## 使用示例
 
-### 1. 基本使用
+### 1. 基本使用（新接口）
 ```c
 #include "CN_memory_debug.h"
 
-// 获取内存调试器接口
-Stru_MemoryDebuggerInterface_t* debug_if = F_get_memory_debugger_interface();
+// 创建默认内存调试器
+Stru_MemoryDebuggerInterface_t* debugger = F_create_default_memory_debugger();
+if (debugger == NULL) {
+    printf("无法创建内存调试器\n");
+    return;
+}
 
 // 初始化调试器
-debug_if->initialize();
+if (!debugger->initialize(debugger)) {
+    printf("调试器初始化失败\n");
+    F_destroy_memory_debugger(debugger);
+    return;
+}
 
 // 启用内存监控
-debug_if->enable_monitoring(true);
+debugger->enable_monitoring(debugger, true);
 
 // 启用各种检查
-debug_if->enable_overflow_check(true);
-debug_if->enable_double_free_check(true);
-debug_if->enable_uninitialized_check(true);
+debugger->enable_overflow_check(debugger, true);
+debugger->enable_double_free_check(debugger, true);
+debugger->enable_uninitialized_check(debugger, false); // 默认禁用
 
 // 启用调用栈跟踪
-debug_if->enable_stack_trace(true);
-debug_if->set_stack_trace_depth(10);
+debugger->enable_stack_trace(debugger, true);
+debugger->set_stack_trace_depth(debugger, 10);
 
 // 进行内存操作...
 void* ptr1 = malloc(100);
@@ -129,14 +109,31 @@ free(ptr1);
 free(ptr2);
 
 // 检查内存泄漏
-size_t leak_count = debug_if->get_leak_count();
+size_t leak_count = debugger->get_leak_count(debugger);
 if (leak_count > 0) {
     printf("发现 %zu 个内存泄漏\n", leak_count);
-    debug_if->report_leaks();
+    debugger->report_leaks(debugger);
 }
 
 // 清理
-debug_if->cleanup();
+debugger->cleanup(debugger);
+F_destroy_memory_debugger(debugger);
+```
+
+### 2. 向后兼容使用（旧接口）
+```c
+#include "CN_memory_debug.h"
+
+// 获取内存调试器接口（向后兼容）
+Stru_MemoryDebuggerInterface_t* debug_if = F_get_memory_debugger_interface();
+
+// 初始化调试器
+debug_if->initialize(debug_if);
+
+// 启用内存监控
+debug_if->enable_monitoring(debug_if, true);
+
+// ... 其他操作与上面相同
 ```
 
 ### 2. 内存验证
@@ -318,6 +315,12 @@ debug_if->cleanup();
 - v1.1.0: 添加调用栈跟踪支持
 - v1.2.0: 添加性能分析功能
 - v1.3.0: 优化内存使用，减少开销
+- v2.0.0: 模块化重构，遵循单一职责原则
+  - 拆分大文件为多个小文件
+  - 每个.c文件不超过500行
+  - 每个函数不超过50行
+  - 清晰的模块边界
+  - 改进的接口设计
 
 ## 维护者
 

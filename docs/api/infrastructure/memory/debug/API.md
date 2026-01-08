@@ -4,27 +4,63 @@
 
 本文档描述了内存调试模块的API接口。内存调试模块提供了全面的内存调试和诊断功能，包括内存泄漏检测、错误检测、使用分析和调试工具。
 
-## 模块结构
+## 模块化架构
+
+内存调试模块采用模块化设计，遵循单一职责原则和SOLID设计原则。模块分为多个子模块，每个子模块专注于特定功能领域。
+
+### 模块结构图
+```
+src/infrastructure/memory/debug/
+├── CN_memory_debug.h              # 主头文件（向后兼容）
+├── CN_memory_debug_new.c          # 新实现（薄包装层）
+├── README.md                      # 主模块文档
+├── interface/                     # 接口定义
+│   ├── CN_memory_debug_interface.h
+│   ├── CN_memory_debug_factory.h
+│   └── README.md
+├── implementation/                # 核心实现
+│   ├── CN_memory_debug_private.h/.c
+│   ├── CN_memory_debug_core.h/.c
+│   └── README.md
+├── leak_detection/               # 泄漏检测子模块
+│   ├── CN_memory_leak_detection.h/.c
+│   └── README.md
+├── error_detection/              # 错误检测子模块
+│   ├── CN_memory_error_detection.h/.c
+│   └── README.md
+├── analysis/                     # 分析功能子模块
+│   ├── CN_memory_analysis.h/.c
+│   └── README.md
+└── tools/                        # 调试工具子模块
+    ├── CN_memory_debug_tools.h/.c
+    └── README.md
+```
 
 ### 1. 主接口 (`CN_memory_debug.h`)
-主头文件，包含所有子模块的接口。
+主头文件，提供向后兼容的接口，包含所有子模块的接口。
 
-### 2. 抽象接口 (`interface/CN_memory_debug_interface.h`)
+### 2. 新实现 (`CN_memory_debug_new.c`)
+模块化实现的薄包装层，将旧接口映射到新模块化实现。
+
+### 3. 抽象接口 (`interface/CN_memory_debug_interface.h`)
 定义了内存调试器的抽象接口，遵循SOLID设计原则。
 
-### 3. 工厂函数 (`interface/CN_memory_debug_factory.h`)
+### 4. 工厂函数 (`interface/CN_memory_debug_factory.h`)
 提供了创建和销毁内存调试器实例的工厂函数。
 
-### 4. 泄漏检测 (`leak_detection/CN_memory_leak_detection.h`)
+### 5. 核心实现 (`implementation/`)
+包含私有数据结构和核心接口函数实现。
+
+### 6. 泄漏检测 (`leak_detection/CN_memory_leak_detection.h/.c`)
 专门处理内存泄漏检测的功能。
 
-### 5. 错误检测 (`error_detection/CN_memory_error_detection.h`)
+### 7. 错误检测 (`error_detection/CN_memory_error_detection.h/.c`)
 专门处理内存错误检测的功能。
 
-### 6. 分析功能 (`analysis/CN_memory_analysis.h`)
+### 8. 分析功能 (`analysis/CN_memory_analysis.h/.c`)
 专门处理内存使用分析的功能。
 
-### 7. 调试工具 (`tools/CN_memory_debug_tools.h`)
+### 9. 调试工具 (`tools/CN_memory_debug_tools.h/.c`)
 提供各种内存调试工具。
 
 ## API 参考
@@ -76,7 +112,7 @@ Stru_MemoryDebuggerInterface_t* F_create_default_memory_debugger(void);
 
 **返回值：** 调试器接口指针，失败返回NULL
 
-**描述：** 创建一个具有默认配置的内存调试器实例。
+**描述：** 创建一个具有默认配置的内存调试器实例。使用模块化实现，组合了泄漏检测、错误检测、分析和调试工具子模块。
 
 #### F_create_configured_memory_debugger
 创建具有特定配置的内存调试器。
@@ -98,7 +134,7 @@ Stru_MemoryDebuggerInterface_t* F_create_configured_memory_debugger(
 
 **返回值：** 调试器接口指针，失败返回NULL
 
-**描述：** 创建一个具有指定配置的内存调试器实例。
+**描述：** 创建一个具有指定配置的内存调试器实例。根据配置动态组合所需的子模块。
 
 #### F_destroy_memory_debugger
 销毁内存调试器。
@@ -113,7 +149,7 @@ void F_destroy_memory_debugger(Stru_MemoryDebuggerInterface_t* debugger);
 
 **返回值：** 无
 
-**描述：** 销毁内存调试器实例，释放相关资源。
+**描述：** 销毁内存调试器实例，释放相关资源。会正确销毁所有子模块。
 
 #### F_get_memory_debugger_interface
 获取内存调试器接口（向后兼容）。
@@ -127,7 +163,29 @@ Stru_MemoryDebuggerInterface_t* F_get_memory_debugger_interface(void);
 
 **返回值：** 调试器接口指针
 
-**描述：** 获取内存调试器接口，用于向后兼容旧代码。
+**描述：** 获取内存调试器接口，用于向后兼容旧代码。返回一个全局共享的调试器实例。
+
+#### F_create_memory_debugger_from_components
+从组件创建内存调试器（高级API）。
+
+**原型：**
+```c
+Stru_MemoryDebuggerInterface_t* F_create_memory_debugger_from_components(
+    Stru_LeakDetectorContext_t* leak_detector,
+    Stru_ErrorDetectorContext_t* error_detector,
+    Stru_AnalyzerContext_t* analyzer,
+    Stru_DebugToolsContext_t* debug_tools);
+```
+
+**参数：**
+- `leak_detector`: 泄漏检测器组件（可为NULL）
+- `error_detector`: 错误检测器组件（可为NULL）
+- `analyzer`: 分析器组件（可为NULL）
+- `debug_tools`: 调试工具组件（可为NULL）
+
+**返回值：** 调试器接口指针，失败返回NULL
+
+**描述：** 从现有组件创建内存调试器，允许高级用户自定义组件组合。
 
 ### 泄漏检测 API
 
@@ -355,11 +413,19 @@ int main() {
 
 ## 向后兼容性
 
-模块提供了向后兼容性支持：
+模块提供了完整的向后兼容性支持：
 
-1. 旧接口 `Stru_MemoryDebugInterface_t` 仍然可用
-2. 新接口 `Stru_MemoryDebuggerInterface_t` 提供了更多功能
-3. 工厂函数支持新旧接口的创建
+1. **旧接口兼容**：`Stru_MemoryDebugInterface_t` 仍然可用，通过 `CN_memory_debug_new.c` 中的薄包装层映射到新实现
+2. **新接口增强**：`Stru_MemoryDebuggerInterface_t` 提供了更多功能和更好的模块化设计
+3. **工厂函数支持**：工厂函数同时支持新旧接口的创建
+4. **平滑迁移**：现有代码无需修改即可继续工作，同时可以逐步迁移到新接口
+5. **二进制兼容**：模块化重构保持了二进制兼容性，现有应用程序无需重新编译
+
+### 迁移指南
+1. 新项目应直接使用 `Stru_MemoryDebuggerInterface_t` 接口
+2. 现有项目可以继续使用旧接口，或逐步迁移到新接口
+3. 可以使用 `F_get_memory_debugger_interface()` 获取新接口实例
+4. 所有新功能仅在新接口中可用
 
 ## 错误处理
 
@@ -372,17 +438,78 @@ int main() {
 
 ## 性能考虑
 
-1. 调试功能有性能开销，生产环境建议禁用
-2. 可以按需启用特定功能以减少开销
-3. 调用栈跟踪有显著性能影响
+1. **模块化开销**：模块化设计增加了少量间接调用开销，但提高了可维护性和可测试性
+2. **按需加载**：可以按需启用特定功能以减少开销
+3. **调用栈跟踪**：调用栈跟踪有显著性能影响，建议在调试时启用
+4. **内存开销**：调试功能会增加内存使用，包括：
+   - 泄漏检测：记录每个分配的元数据
+   - 错误检测：添加保护区域和校验和
+   - 分析功能：收集统计信息和性能数据
+5. **生产环境**：生产环境建议禁用所有调试功能，或仅启用必要的监控功能
+6. **配置优化**：可以通过配置调整平衡功能性和性能
+
+### 性能优化建议
+1. 在开发阶段启用完整调试功能
+2. 在测试阶段根据需求选择性启用功能
+3. 在生产阶段禁用所有调试功能，或仅启用轻量级监控
+4. 使用采样分析而不是连续跟踪来减少开销
 
 ## 平台支持
 
-模块设计为跨平台，但某些功能（如调用栈跟踪）可能需要平台特定实现。
+模块设计为跨平台，支持以下平台：
+
+### 支持平台
+- **Windows**: Windows 7及以上版本
+- **Linux**: 主流Linux发行版（Ubuntu, CentOS, Fedora等）
+- **macOS**: macOS 10.12及以上版本
+
+### 平台特定功能
+1. **调用栈跟踪**：需要平台特定实现
+   - Windows: 使用DbgHelp API
+   - Linux/macOS: 使用libunwind或backtrace
+2. **内存保护**：使用平台特定的内存保护机制
+3. **线程安全**：使用平台特定的线程同步原语
+
+### 编译要求
+- **C编译器**: GCC 4.8+, Clang 3.5+, MSVC 2015+
+- **标准库**: C11标准库
+- **可选依赖**: libunwind（用于高级调用栈跟踪）
+
+### 构建配置
+模块支持多种构建配置：
+- **Debug**: 启用所有调试功能，包含完整符号信息
+- **Release**: 禁用调试功能，优化性能
+- **Profile**: 启用性能分析功能
 
 ## 版本信息
 
+### 模块版本
 - **当前版本**: 2.0.0
+- **架构版本**: 2.0.0
 - **发布日期**: 2026-01-08
 - **兼容性**: 向后兼容版本1.x
+
+### 变更历史
+#### 版本 2.0.0 (2026-01-08)
+- **重大重构**: 从单体架构重构为模块化架构
+- **新增功能**: 添加了错误检测、分析和调试工具子模块
+- **性能改进**: 优化了内存使用和性能
+- **文档完善**: 为所有子模块添加了完整文档
+- **测试增强**: 实现了模块化测试架构
+
+#### 版本 1.0.0 (2025-12-01)
+- **初始版本**: 基本内存调试功能
+- **核心功能**: 泄漏检测和基本错误检查
+- **基础架构**: 单体实现，包含所有功能
+
+### 维护信息
 - **维护者**: CN_Language架构委员会
+- **支持周期**: 长期支持（LTS）
+- **更新策略**: 语义化版本控制
+- **问题跟踪**: 通过GitHub Issues
+
+### 未来规划
+1. **性能分析**: 添加更详细的性能分析功能
+2. **可视化工具**: 开发内存使用可视化工具
+3. **集成测试**: 增强集成测试覆盖
+4. **多语言绑定**: 提供Python、JavaScript等语言绑定
