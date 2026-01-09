@@ -4,25 +4,32 @@
 
 运行时系统接口是CN_Language项目的核心组件之一，负责程序的执行、内存管理和调试支持。本接口采用面向接口的编程模式，提供完整的抽象接口定义，支持多种运行时策略（解释执行、JIT编译、垃圾回收等）。
 
-## 接口架构
+## 模块化架构
 
-运行时系统采用分层接口设计：
+运行时系统采用模块化分层接口设计：
 
 ```
-┌─────────────────────────────────────────┐
-│      Stru_RuntimeInterface_t            │ (主运行时接口)
-├─────────────────────────────────────────┤
-│  Stru_VirtualMachineInterface_t         │ (虚拟机接口)
-├─────────────────────────────────────────┤
-│  Stru_ExecutionEngineInterface_t        │ (执行引擎接口)
-│  Stru_RuntimeMemoryInterface_t          │ (内存管理接口)
-│  Stru_DebugSupportInterface_t           │ (调试支持接口)
-└─────────────────────────────────────────┘
+src/core/runtime/
+├── factory/                         # 工厂模块
+│   ├── CN_runtime_factory.h               # 主运行时接口
+│   └── CN_runtime_factory.c               # 主运行时实现
+├── memory/                          # 内存管理模块
+│   ├── CN_runtime_memory_interface.h      # 内存管理接口
+│   └── CN_runtime_memory_interface.c      # 内存管理实现
+├── execution/                       # 执行引擎模块
+│   ├── CN_execution_engine_interface.h    # 执行引擎接口
+│   └── CN_execution_engine_interface.c    # 执行引擎实现
+├── debug/                           # 调试支持模块
+│   ├── CN_debug_support_interface.h       # 调试支持接口
+│   └── CN_debug_support_interface.c       # 调试支持实现
+└── vm/                              # 虚拟机模块
+    ├── CN_virtual_machine_interface.h     # 虚拟机接口
+    └── CN_virtual_machine_interface.c     # 虚拟机实现
 ```
 
 ## 接口定义
 
-### Stru_RuntimeInterface_t
+### Stru_RuntimeInterface_t (主运行时接口)
 
 运行时系统的主接口，提供统一的运行时访问。
 
@@ -42,6 +49,9 @@ typedef struct Stru_RuntimeInterface_t {
                           const uint8_t* bytecode, size_t bytecode_size,
                           int argc, char** argv);
     
+    // 系统控制
+    void (*reset)(Stru_RuntimeInterface_t* runtime);
+    
     // 资源管理
     void (*destroy)(Stru_RuntimeInterface_t* runtime);
     
@@ -50,7 +60,7 @@ typedef struct Stru_RuntimeInterface_t {
 } Stru_RuntimeInterface_t;
 ```
 
-### Stru_RuntimeMemoryInterface_t
+### Stru_RuntimeMemoryInterface_t (内存管理接口)
 
 运行时内存管理接口，专门为运行时系统设计。
 
@@ -67,6 +77,10 @@ typedef struct Stru_RuntimeMemoryInterface_t {
                            size_t element_size, size_t element_count,
                            uint32_t type_tag);
     
+    // 内存释放
+    void (*free_object)(Stru_RuntimeMemoryInterface_t* memory_interface,
+                       void* object);
+    
     // 垃圾回收
     void (*mark_object)(Stru_RuntimeMemoryInterface_t* memory_interface, void* object);
     size_t (*collect_garbage)(Stru_RuntimeMemoryInterface_t* memory_interface);
@@ -76,6 +90,9 @@ typedef struct Stru_RuntimeMemoryInterface_t {
                             size_t* total_heap, size_t* used_heap,
                             size_t* object_count, size_t* gc_count);
     
+    // 系统控制
+    void (*reset)(Stru_RuntimeMemoryInterface_t* memory_interface);
+    
     // 资源管理
     void (*destroy)(Stru_RuntimeMemoryInterface_t* memory_interface);
     
@@ -84,7 +101,7 @@ typedef struct Stru_RuntimeMemoryInterface_t {
 } Stru_RuntimeMemoryInterface_t;
 ```
 
-### Stru_ExecutionEngineInterface_t
+### Stru_ExecutionEngineInterface_t (执行引擎接口)
 
 执行引擎接口，负责执行编译后的字节码。
 
@@ -99,6 +116,8 @@ typedef struct Stru_ExecutionEngineInterface_t {
     void* (*load_module)(Stru_ExecutionEngineInterface_t* engine,
                         const uint8_t* bytecode, size_t bytecode_size,
                         const char* module_name);
+    void (*unload_module)(Stru_ExecutionEngineInterface_t* engine,
+                         void* module);
     void* (*execute_function)(Stru_ExecutionEngineInterface_t* engine,
                              void* module, const char* function_name,
                              int argc, void** argv);
@@ -108,13 +127,15 @@ typedef struct Stru_ExecutionEngineInterface_t {
     
     // 执行控制
     void (*set_timeout)(Stru_ExecutionEngineInterface_t* engine, uint64_t timeout_ms);
-    void (*reset)(Stru_ExecutionEngineInterface_t* engine);
     
     // 统计信息
     void (*get_execution_stats)(Stru_ExecutionEngineInterface_t* engine,
                                uint64_t* instructions_executed,
                                uint64_t* execution_time_ms,
                                size_t* memory_used);
+    
+    // 系统控制
+    void (*reset)(Stru_ExecutionEngineInterface_t* engine);
     
     // 资源管理
     void (*destroy)(Stru_ExecutionEngineInterface_t* engine);
@@ -124,7 +145,7 @@ typedef struct Stru_ExecutionEngineInterface_t {
 } Stru_ExecutionEngineInterface_t;
 ```
 
-### Stru_DebugSupportInterface_t
+### Stru_DebugSupportInterface_t (调试支持接口)
 
 调试支持接口，提供运行时调试功能。
 
@@ -165,7 +186,7 @@ typedef struct Stru_DebugSupportInterface_t {
 } Stru_DebugSupportInterface_t;
 ```
 
-### Stru_VirtualMachineInterface_t
+### Stru_VirtualMachineInterface_t (虚拟机接口)
 
 虚拟机接口，整合内存管理、执行引擎和调试支持。
 
@@ -184,6 +205,9 @@ typedef struct Stru_VirtualMachineInterface_t {
     Stru_RuntimeMemoryInterface_t* (*get_memory_interface)(Stru_VirtualMachineInterface_t* vm);
     Stru_ExecutionEngineInterface_t* (*get_execution_engine)(Stru_VirtualMachineInterface_t* vm);
     Stru_DebugSupportInterface_t* (*get_debug_support)(Stru_VirtualMachineInterface_t* vm);
+    
+    // 系统控制
+    void (*reset)(Stru_VirtualMachineInterface_t* vm);
     
     // 资源管理
     void (*destroy)(Stru_VirtualMachineInterface_t* vm);
@@ -252,12 +276,16 @@ typedef struct Stru_DebugEvent_t {
 Stru_RuntimeInterface_t* F_create_runtime_interface(void);
 ```
 
+**头文件：** `src/core/runtime/factory/CN_runtime_factory.h`
+
 **返回值：**
 - `Stru_RuntimeInterface_t*`：新创建的运行时接口实例
 - `NULL`：创建失败（内存不足）
 
 **示例：**
 ```c
+#include "src/core/runtime/factory/CN_runtime_factory.h"
+
 Stru_RuntimeInterface_t* runtime = F_create_runtime_interface();
 if (runtime == NULL) {
     fprintf(stderr, "无法创建运行时系统\n");
@@ -328,6 +356,8 @@ int execute_program(Stru_RuntimeInterface_t* runtime,
 Stru_RuntimeMemoryInterface_t* F_create_runtime_memory_interface(void);
 ```
 
+**头文件：** `src/core/runtime/memory/CN_runtime_memory_interface.h`
+
 ### F_create_execution_engine_interface
 
 创建执行引擎接口实例。
@@ -336,6 +366,8 @@ Stru_RuntimeMemoryInterface_t* F_create_runtime_memory_interface(void);
 ```c
 Stru_ExecutionEngineInterface_t* F_create_execution_engine_interface(void);
 ```
+
+**头文件：** `src/core/runtime/execution/CN_execution_engine_interface.h`
 
 ### F_create_debug_support_interface
 
@@ -346,6 +378,8 @@ Stru_ExecutionEngineInterface_t* F_create_execution_engine_interface(void);
 Stru_DebugSupportInterface_t* F_create_debug_support_interface(void);
 ```
 
+**头文件：** `src/core/runtime/debug/CN_debug_support_interface.h`
+
 ### F_create_virtual_machine_interface
 
 创建虚拟机接口实例。
@@ -355,12 +389,14 @@ Stru_DebugSupportInterface_t* F_create_debug_support_interface(void);
 Stru_VirtualMachineInterface_t* F_create_virtual_machine_interface(void);
 ```
 
+**头文件：** `src/core/runtime/vm/CN_virtual_machine_interface.h`
+
 ## 使用模式
 
 ### 基本使用模式
 
 ```c
-#include "CN_runtime_interface.h"
+#include "src/core/runtime/factory/CN_runtime_factory.h"
 
 int main(int argc, char** argv) {
     // 创建运行时系统
@@ -405,6 +441,8 @@ int main(int argc, char** argv) {
 ### 内存管理使用模式
 
 ```c
+#include "src/core/runtime/memory/CN_runtime_memory_interface.h"
+
 void memory_management_example(Stru_RuntimeInterface_t* runtime) {
     // 获取内存管理接口
     Stru_RuntimeMemoryInterface_t* memory = runtime->get_memory_interface(runtime);
@@ -440,14 +478,20 @@ void memory_management_example(Stru_RuntimeInterface_t* runtime) {
     size_t freed = memory->collect_garbage(memory);
     printf("回收了 %zu bytes\n", freed);
     
-    // 注意：实际项目中需要正确管理对象生命周期
-    // 这里简化示例，不实际释放对象
+    // 释放对象
+    memory->free_object(memory, object);
+    memory->free_object(memory, array);
+    
+    // 重置内存管理器
+    memory->reset(memory);
 }
 ```
 
 ### 调试支持使用模式
 
 ```c
+#include "src/core/runtime/debug/CN_debug_support_interface.h"
+
 void debugging_example(Stru_RuntimeInterface_t* runtime) {
     // 获取调试支持接口
     Stru_DebugSupportInterface_t* debugger = runtime->get_debug_support(runtime);
@@ -480,28 +524,38 @@ void debugging_example(Stru_RuntimeInterface_t* runtime) {
     // 检查变量
     char value[256];
     if (debugger->inspect_variable(debugger, "result", value, sizeof(value))) {
-        printf("变量值: %s\n", value);
+        printf("变量 result 的值: %s\n", value);
+    }
+    
+    // 设置变量
+    if (debugger->set_variable(debugger, "debug_mode", "true")) {
+        printf("变量 debug_mode 已设置为 true\n");
     }
     
     // 获取调用栈
-    void* stack_buffer[100];
-    int frame_count = debugger->get_call_stack(debugger, stack_buffer, 100);
-    printf("调用栈深度: %d\n", frame_count);
+    void* call_stack[32];
+    int stack_depth = debugger->get_call_stack(debugger, call_stack, 32);
+    printf("调用栈深度: %d\n", stack_depth);
     
     // 等待调试事件
     Stru_DebugEvent_t event;
-    if (debugger->get_next_event(debugger, &event, 1000)) { // 1秒超时
-        printf("调试事件: %s\n", event.message);
+    if (debugger->get_next_event(debugger, &event, 1000)) {
+        printf("收到调试事件: 类型=%d, 消息=%s\n", event.type, event.message);
     }
     
     // 继续执行
     debugger->continue_execution(debugger);
+    
+    // 清理
+    debugger->destroy(debugger);
 }
 ```
 
 ### 虚拟机使用模式
 
 ```c
+#include "src/core/runtime/vm/CN_virtual_machine_interface.h"
+
 void virtual_machine_example(void) {
     // 创建虚拟机
     Stru_VirtualMachineInterface_t* vm = F_create_virtual_machine_interface();
@@ -515,234 +569,129 @@ void virtual_machine_example(void) {
         return;
     }
     
+    // 加载并执行字节码
+    uint8_t bytecode[] = { /* 示例字节码 */ };
+    size_t bytecode_size = sizeof(bytecode);
+    
+    int argc = 2;
+    void* argv[] = { "arg1", "arg2" };
+    
+    int exit_code = vm->load_and_execute(vm, bytecode, bytecode_size, "example.cn", argc, argv);
+    printf("程序退出码: %d\n", exit_code);
+    
     // 获取组件接口
     Stru_RuntimeMemoryInterface_t* memory = vm->get_memory_interface(vm);
     Stru_ExecutionEngineInterface_t* engine = vm->get_execution_engine(vm);
     Stru_DebugSupportInterface_t* debugger = vm->get_debug_support(vm);
     
-    // 使用组件...
+    if (memory != NULL && engine != NULL && debugger != NULL) {
+        printf("虚拟机组件加载成功\n");
+    }
     
-    // 加载并执行模块
-    uint8_t bytecode[] = {0x01, 0x02, 0x03}; // 示例字节码
-    int exit_code = vm->load_and_execute(vm, bytecode, sizeof(bytecode), 
-                                        "test.cn", 0, NULL);
+    // 重置虚拟机状态
+    vm->reset(vm);
     
-    printf("程序退出码: %d\n", exit_code);
-    
-    // 销毁虚拟机
+    // 清理
     vm->destroy(vm);
 }
 ```
 
 ## 错误处理
 
-### 错误类型
+运行时系统使用统一的错误处理机制：
 
-运行时系统可能遇到以下类型的错误：
-
-1. **初始化错误**：无效的配置参数或资源不足
-2. **内存错误**：内存分配失败、堆溢出、内存泄漏
-3. **执行错误**：无效字节码、执行超时、运行时异常
-4. **调试错误**：断点设置失败、变量访问失败
-5. **配置错误**：无效的JSON配置、不支持的选项
-6. **状态错误**：在无效状态下调用方法
-
-### 错误信息格式
-
-错误信息包含以下内容：
-- 错误类型描述
-- 错误位置（模块、函数、行号）
-- 相关上下文信息
-- 建议的修复方法
-
-**示例错误信息：**
-```
-内存分配失败：请求 1048576 字节，可用 524288 字节
-位置：main.cn:calculate:42
-建议：增加堆大小或启用垃圾回收
-```
-
-### 错误恢复策略
-
-运行时系统实现以下错误恢复策略：
-
-1. **优雅降级**：当高级功能失败时，回退到基本功能
-2. **资源回收**：错误发生时自动回收已分配资源
-3. **状态保存**：保存错误发生前的状态，便于调试
-4. **错误传播**：错误通过返回值传递，不崩溃程序
-
-## 性能考虑
-
-### 内存使用
-
-1. **接口实例**：每个接口约64-128字节
-2. **私有数据**：取决于具体实现，通常256-1024字节
-3. **堆管理**：垃圾回收器有额外的内存开销
-4. **调试支持**：调试器需要存储断点和状态信息
-
-### 时间复杂性
-
-1. **初始化**：O(1)
-2. **内存分配**：平均O(1)，最坏O(n)
-3. **程序执行**：O(n)，其中n为指令数量
-4. **垃圾回收**：O(m)，其中m为对象数量
-5. **调试操作**：O(1) 到 O(k)，其中k为断点数量
-
-### 优化建议
-
-1. **批量操作**：对于大量对象，使用专用接口批量处理
-2. **内存池**：对于频繁分配的小对象，使用内存池
-3. **延迟初始化**：组件按需初始化，减少启动时间
-4. **缓存策略**：缓存频繁访问的数据和计算结果
-5. **异步操作**：长时间操作使用异步接口
-
-## 线程安全性
-
-### 线程安全级别
-
-运行时系统接口是**非线程安全**的。多个线程不能同时访问同一个接口实例。
-
-### 线程安全使用模式
+### 错误码定义
 
 ```c
-// 每个线程创建自己的运行时实例
-void* thread_function(void* arg) {
+typedef enum Eum_RuntimeError {
+    Eum_RUNTIME_SUCCESS = 0,           // 成功
+    Eum_RUNTIME_MEMORY_ERROR,          // 内存错误
+    Eum_RUNTIME_EXECUTION_ERROR,       // 执行错误
+    Eum_RUNTIME_DEBUGGER_ERROR,        // 调试器错误
+    Eum_RUNTIME_VM_ERROR,              // 虚拟机错误
+    Eum_RUNTIME_CONFIG_ERROR,          // 配置错误
+    Eum_RUNTIME_TIMEOUT_ERROR,         // 超时错误
+    Eum_RUNTIME_INVALID_ARGUMENT,      // 参数错误
+    Eum_RUNTIME_NOT_INITIALIZED,       // 未初始化
+    Eum_RUNTIME_ALREADY_INITIALIZED    // 已初始化
+} Eum_RuntimeError;
+```
+
+### 错误处理示例
+
+```c
+#include "src/core/runtime/factory/CN_runtime_factory.h"
+
+int handle_runtime_errors(void) {
     Stru_RuntimeInterface_t* runtime = F_create_runtime_interface();
-    runtime->initialize(runtime, NULL);
-    
-    // ... 使用运行时系统 ...
-    
-    runtime->destroy(runtime);
-    return NULL;
-}
-
-// 或者使用互斥锁保护共享实例
-pthread_mutex_t runtime_mutex = PTHREAD_MUTEX_INITIALIZER;
-Stru_RuntimeInterface_t* shared_runtime = NULL;
-
-void safe_runtime_operation(const uint8_t* bytecode, size_t size) {
-    pthread_mutex_lock(&runtime_mutex);
-    
-    if (shared_runtime == NULL) {
-        shared_runtime = F_create_runtime_interface();
-        shared_runtime->initialize(shared_runtime, NULL);
+    if (runtime == NULL) {
+        fprintf(stderr, "错误: 无法创建运行时系统 (内存不足)\n");
+        return Eum_RUNTIME_MEMORY_ERROR;
     }
     
-    int result = shared_runtime->execute_program(shared_runtime, 
-                                                bytecode, size, 0, NULL);
+    // 初始化
+    if (!runtime->initialize(runtime, NULL)) {
+        fprintf(stderr, "错误: 运行时系统初始化失败\n");
+        runtime->destroy(runtime);
+        return Eum_RUNTIME_NOT_INITIALIZED;
+    }
     
-    pthread_mutex_unlock(&runtime_mutex);
+    // 执行程序
+    uint8_t bytecode[] = { /* 字节码 */ };
+    int result = runtime->execute_program(runtime, bytecode, sizeof(bytecode), 0, NULL);
+    
+    if (result != 0) {
+        fprintf(stderr, "错误: 程序执行失败，退出码: %d\n", result);
+    }
+    
+    runtime->destroy(runtime);
+    return result == 0 ? Eum_RUNTIME_SUCCESS : Eum_RUNTIME_EXECUTION_ERROR;
 }
 ```
 
-## 版本兼容性
+## 性能优化建议
 
-### API 稳定性
+1. **内存管理优化**：
+   - 对于频繁分配的小对象，使用对象池
+   - 调整垃圾回收触发阈值以减少停顿时间
+   - 使用区域分配器管理临时对象
 
-运行时系统接口遵循以下版本兼容性规则：
+2. **执行引擎优化**：
+   - 启用JIT编译以提升热点代码性能
+   - 使用内联缓存优化方法调用
+   - 实现字节码优化器
 
-1. **主版本号变更**：不兼容的API修改
-2. **次版本号变更**：向下兼容的功能性新增
-3. **修订号变更**：向下兼容的问题修正
+3. **调试支持优化**：
+   - 仅在需要时启用调试功能
+   - 使用条件断点减少性能影响
+   - 批量处理调试事件
 
-### 向后兼容性保证
+## 兼容性说明
 
-1. 现有函数签名不会改变
-2. 现有枚举值不会删除
-3. 结构体布局保持稳定
-4. 错误代码含义不变
+运行时系统接口设计为跨平台兼容：
 
-### 废弃策略
+- **操作系统**：支持Linux、Windows、macOS
+- **编译器**：支持GCC、Clang、MSVC
+- **架构**：支持x86、x86_64、ARM
+- **标准**：符合C99标准
 
-1. 废弃的API会标记为`DEPRECATED`
-2. 废弃的API至少保留两个主版本
-3. 提供迁移指南和替代方案
+## 版本历史
 
-## 扩展指南
-
-### 添加新的内存管理策略
-
-1. 创建新的内存管理接口实现
-2. 实现所有接口函数
-3. 提供工厂函数
-4. 更新配置解析支持新策略
-
-**示例：添加分代垃圾回收器**
-```c
-// 分代垃圾回收器实现
-typedef struct Stru_GenerationalGCData_t {
-    // 实现细节...
-} Stru_GenerationalGCData_t;
-
-Stru_RuntimeMemoryInterface_t* F_create_generational_gc_interface(void) {
-    // 创建并初始化分代垃圾回收器
-}
-```
-
-### 添加新的执行引擎
-
-1. 创建新的执行引擎接口实现
-2. 实现字节码加载和执行函数
-3. 支持JIT编译（可选）
-4. 提供工厂函数
-
-### 添加新的调试功能
-
-1. 扩展调试支持接口（如果需要新功能）
-2. 实现新的调试功能
-3. 保持向后兼容性
-
-## 测试策略
-
-### 单元测试
-
-测试每个接口函数的正确性：
-- 正常情况测试
-- 边界条件测试
-- 错误处理测试
-- 内存泄漏测试
-
-### 集成测试
-
-测试接口组合使用：
-- 内存管理 + 执行引擎集成
-- 执行引擎 + 调试支持集成
-- 完整虚拟机测试
-
-### 性能测试
-
-建立性能基准：
-- 内存分配性能
-- 程序执行性能
-- 垃圾回收性能
-- 调试操作性能
-
-### 兼容性测试
-
-测试不同配置和环境的兼容性：
-- 不同堆大小配置
-- 启用/禁用垃圾回收
-- 启用/禁用JIT编译
-- 启用/禁用调试支持
+### 版本 1.0.0 (2026-01-09)
+- 初始版本发布
+- 模块化接口设计
+- 支持内存管理、执行引擎、调试支持、虚拟机
+- 完整的API文档
 
 ## 相关文档
 
-- [运行时系统模块 README](../../../src/core/runtime/README.md)
-- [架构设计文档](../../../architecture/001-中文编程语言CN_Language开发规划.md)
-- [编码规范](../../../specifications/CN_Language项目 技术规范和编码标准.md)
-- [内存管理接口文档](../../infrastructure/memory/CN_memory.md)
+- [CN_Language 架构设计](../architecture/001-中文编程语言CN_Language开发规划.md)
+- [CN_Language 语法规范](../../specifications/CN_Language%20语法规范.md)
+- [CN_Language 编码标准](../../specifications/CN_Language项目%20技术规范和编码标准.md)
 
-## 修订历史
+## 许可证
 
-| 版本 | 日期 | 描述 |
-|------|------|------|
-| 1.0.0 | 2026-01-06 | 初始版本发布 |
-| 1.0.1 | 2026-01-06 | 修复内存统计错误 |
-| 1.1.0 | 2026-01-06 | 添加虚拟机接口 |
-| 1.2.0 | 2026-01-06 | 添加调试事件支持 |
+本接口遵循MIT许可证。详见项目根目录的LICENSE文件。
 
-## 版权声明
-
-版权所有 © 2026 CN_Language项目团队。保留所有权利。
-
-本文档是CN_Language项目的一部分，遵循项目许可证条款。
+---
+*文档最后更新: 2026-01-09*

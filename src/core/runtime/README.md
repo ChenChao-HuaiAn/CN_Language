@@ -8,9 +8,22 @@
 
 ```
 src/core/runtime/
-├── CN_runtime_interface.h      # 运行时系统接口定义
-├── CN_runtime_interface.c      # 运行时系统接口实现
-└── README.md                   # 本文件
+├── memory/                          # 内存管理模块
+│   ├── CN_runtime_memory_interface.h      # 内存管理接口定义
+│   └── CN_runtime_memory_interface.c      # 内存管理接口实现
+├── execution/                       # 执行引擎模块
+│   ├── CN_execution_engine_interface.h    # 执行引擎接口定义
+│   └── CN_execution_engine_interface.c    # 执行引擎接口实现
+├── debug/                           # 调试支持模块
+│   ├── CN_debug_support_interface.h       # 调试支持接口定义
+│   └── CN_debug_support_interface.c       # 调试支持接口实现
+├── vm/                              # 虚拟机模块
+│   ├── CN_virtual_machine_interface.h     # 虚拟机接口定义
+│   └── CN_virtual_machine_interface.c     # 虚拟机接口实现
+├── factory/                         # 工厂模块
+│   ├── CN_runtime_factory.h               # 运行时工厂接口定义
+│   └── CN_runtime_factory.c               # 运行时工厂接口实现
+└── README.md                        # 本文件
 ```
 
 ## 接口设计
@@ -20,16 +33,19 @@ src/core/runtime/
 ### 1. Stru_RuntimeMemoryInterface_t
 运行时内存管理接口，提供：
 - 对象和数组内存分配
+- 内存释放
 - 垃圾回收支持
 - 内存使用统计
 - 对象生命周期管理
+- 内存管理器重置
 
 ### 2. Stru_ExecutionEngineInterface_t
 执行引擎接口，提供：
-- 字节码模块加载
+- 字节码模块加载和卸载
 - 函数执行
 - 字节码片段执行
 - 执行统计和超时控制
+- 执行引擎重置
 
 ### 3. Stru_DebugSupportInterface_t
 调试支持接口，提供：
@@ -45,19 +61,21 @@ src/core/runtime/
 - 执行引擎
 - 调试支持
 - 提供完整的虚拟机功能
+- 虚拟机状态重置
 
 ### 5. Stru_RuntimeInterface_t
 主运行时接口，提供：
 - 统一的运行时系统访问
 - 组件生命周期管理
 - 程序执行入口
+- 运行时系统重置
 
 ## 使用示例
 
 ### 基本使用
 
 ```c
-#include "CN_runtime_interface.h"
+#include "src/core/runtime/factory/CN_runtime_factory.h"
 
 int main() {
     // 创建运行时系统
@@ -77,6 +95,9 @@ int main() {
     
     // 使用对象...
     
+    // 释放对象
+    memory->free_object(memory, object);
+    
     // 销毁运行时系统
     runtime->destroy(runtime);
     
@@ -87,7 +108,7 @@ int main() {
 ### 执行程序
 
 ```c
-#include "CN_runtime_interface.h"
+#include "src/core/runtime/factory/CN_runtime_factory.h"
 #include <stdio.h>
 
 int main(int argc, char** argv) {
@@ -117,7 +138,7 @@ int main(int argc, char** argv) {
 ### 调试支持
 
 ```c
-#include "CN_runtime_interface.h"
+#include "src/core/runtime/factory/CN_runtime_factory.h"
 
 void debug_example(Stru_RuntimeInterface_t* runtime) {
     // 获取调试支持接口
@@ -239,7 +260,7 @@ void debug_example(Stru_RuntimeInterface_t* runtime) {
 
 ## 相关文档
 
-- [API文档](../../docs/api/core/runtime/CN_runtime_interface.md)
+- [API文档](../../../docs/api/core/runtime/CN_runtime_interface.md)
 - [架构设计文档](../../../docs/architecture/001-中文编程语言CN_Language开发规划.md)
 - [编码规范](../../../docs/specifications/CN_Language项目 技术规范和编码标准.md)
 
@@ -248,12 +269,12 @@ void debug_example(Stru_RuntimeInterface_t* runtime) {
 | 版本 | 日期 | 描述 |
 |------|------|------|
 | 1.0.0 | 2026-01-06 | 初始版本发布 |
-| 1.0.1 | 2026-01-06 | 修复内存统计错误 |
-| 1.1.0 | 2026-01-06 | 添加虚拟机接口 |
+| 2.0.0 | 2026-01-09 | 模块化重构，拆分为子模块 |
+| 2.1.0 | 2026-01-09 | 添加内存释放和重置功能 |
 
 ## 维护信息
 
-- **最后更新**：2026年1月6日
+- **最后更新**：2026年1月9日
 - **维护者**：CN_Language运行时系统团队
 - **联系方式**：runtime-team@cn-language.org
 
