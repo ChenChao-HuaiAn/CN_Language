@@ -24,16 +24,50 @@ src/application/
 
 ### 1. 命令行界面（CLI）
 
+CLI模块采用模块化设计，分为三个子模块：
+
+#### 1.1 命令解析器（Command Parser）
 **功能**：
-- 解析命令行参数
-- 提供统一的命令执行接口
-- 显示帮助和版本信息
-- 集成核心层功能（编译、运行、调试）
+- 解析命令行参数，支持命令、选项、标志和参数值
+- 支持短选项（-h）、长选项（--help）、等号分隔选项（--output=file）
+- 验证参数语法，提供详细的错误信息
+
+**接口**：`Stru_CommandParserInterface_t`
+- `parse()` - 解析命令行参数
+- `validate()` - 验证解析结果
+- `get_command()` - 获取主命令
+- `get_option_value()` - 获取选项值
+- `has_flag()` - 检查标志是否存在
+- `destroy_result()` - 销毁解析结果
+- `destroy()` - 清理资源
+
+#### 1.2 命令执行器（Command Executor）
+**功能**：
+- 执行具体的命令操作（编译、运行、调试等）
+- 提供统一的错误处理机制
+- 集成核心层功能
+
+**接口**：`Stru_CommandExecutorInterface_t`
+- `execute()` - 执行命令
+- `execute_help()` - 执行帮助命令
+- `execute_version()` - 执行版本命令
+- `execute_compile()` - 执行编译命令
+- `execute_run()` - 执行运行命令
+- `execute_debug()` - 执行调试命令
+- `get_error_message()` - 获取错误信息
+- `destroy()` - 清理资源
+
+#### 1.3 命令行界面整合层（CLI Integration）
+**功能**：
+- 整合命令解析器和执行器
+- 提供统一的用户界面
+- 处理错误和资源管理
 
 **接口**：`Stru_CliInterface_t`
 - `initialize()` - 初始化命令行界面
-- `parse_arguments()` - 解析命令行参数
-- `execute_command()` - 执行命令
+- `parse_and_execute()` - 解析并执行命令
+- `get_parser()` - 获取命令解析器
+- `get_executor()` - 获取命令执行器
 - `show_help()` - 显示帮助信息
 - `show_version()` - 显示版本信息
 - `destroy()` - 清理资源
@@ -42,18 +76,26 @@ src/application/
 ```bash
 # 显示帮助
 ./bin/CN_Language help
+./bin/CN_Language -h
+./bin/CN_Language --help
 
 # 显示版本
 ./bin/CN_Language version
+./bin/CN_Language -v
+./bin/CN_Language --version
 
-# 编译CN程序
+# 编译CN程序（带选项）
 ./bin/CN_Language compile hello.cn
+./bin/CN_Language compile hello.cn -o hello.exe
+./bin/CN_Language compile hello.cn --output=hello.exe --verbose
 
 # 运行CN程序
 ./bin/CN_Language run hello.cn
+./bin/CN_Language run hello.cn --verbose
 
 # 调试CN程序
 ./bin/CN_Language debug hello.cn
+./bin/CN_Language debug hello.cn -V
 ```
 
 ### 2. 交互式环境（REPL）

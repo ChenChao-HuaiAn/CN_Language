@@ -13,10 +13,12 @@ TARGET = bin/CN_Language
 
 # 应用层源文件
 APP_SRCS = src/application/CN_main.c \
-           src/application/cli/CN_cli.c
+           src/application/cli/CN_cli.c \
+           src/application/cli/CN_command_parser.c \
+           src/application/cli/CN_command_executor.c
 
-# 对象文件
-APP_OBJS = $(APP_SRCS:.c=.o)
+# 对象文件 - 放在build目录的相应位置
+APP_OBJS = $(patsubst src/%.c,build/%.o,$(APP_SRCS))
 
 # 默认目标
 all: $(TARGET)
@@ -27,14 +29,15 @@ $(TARGET): $(APP_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "构建完成: $(TARGET)"
 
-# 编译C源文件
-%.o: %.c
+# 通用编译规则
+build/%.o: src/%.c
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # 清理构建文件
 clean:
-	rm -f $(APP_OBJS) $(TARGET)
-	@echo "清理完成"
+	rm -rf build bin
+	@echo "清理完成: 已删除build和bin目录"
 
 # 运行程序
 run: $(TARGET)
@@ -70,12 +73,14 @@ info:
 	@echo "目标文件: $(TARGET)"
 	@echo "源文件:"
 	@for src in $(APP_SRCS); do echo "  $$src"; done
+	@echo "对象文件:"
+	@for obj in $(APP_OBJS); do echo "  $$obj"; done
 
 # 帮助信息
 help:
 	@echo "可用目标:"
 	@echo "  all       构建所有目标（默认）"
-	@echo "  clean     清理构建文件"
+	@echo "  clean     清理构建文件（删除build和bin目录）"
 	@echo "  run       运行程序（显示帮助）"
 	@echo "  test-*    运行各种测试"
 	@echo "  info      显示构建信息"

@@ -40,16 +40,8 @@ int main(int argc, char** argv)
         return EXIT_FAILURE;
     }
     
-    /* 解析命令行参数 */
-    if (!cli->parse_arguments(cli)) {
-        fprintf(stderr, "错误：命令行参数解析失败\n");
-        fprintf(stderr, "使用 'cn help' 查看可用命令\n");
-        cli->destroy(cli);
-        return EXIT_FAILURE;
-    }
-    
-    /* 执行命令 */
-    int result = cli->execute_command(cli);
+    /* 解析并执行命令 */
+    int result = cli->parse_and_execute(cli);
     
     /* 清理资源 */
     cli->destroy(cli);
@@ -72,8 +64,7 @@ void test_cli_basic(void)
     Stru_CliInterface_t* cli_help = F_create_cli_interface();
     if (cli_help != NULL) {
         cli_help->initialize(cli_help, 2, test_argv_help);
-        cli_help->parse_arguments(cli_help);
-        cli_help->execute_command(cli_help);
+        cli_help->parse_and_execute(cli_help);
         cli_help->destroy(cli_help);
     }
     
@@ -84,8 +75,7 @@ void test_cli_basic(void)
     Stru_CliInterface_t* cli_version = F_create_cli_interface();
     if (cli_version != NULL) {
         cli_version->initialize(cli_version, 2, test_argv_version);
-        cli_version->parse_arguments(cli_version);
-        cli_version->execute_command(cli_version);
+        cli_version->parse_and_execute(cli_version);
         cli_version->destroy(cli_version);
     }
 }
@@ -104,8 +94,26 @@ void test_cli_compile(void)
     Stru_CliInterface_t* cli = F_create_cli_interface();
     if (cli != NULL) {
         cli->initialize(cli, 3, test_argv);
-        cli->parse_arguments(cli);
-        cli->execute_command(cli);
+        cli->parse_and_execute(cli);
+        cli->destroy(cli);
+    }
+}
+
+/**
+ * @brief 带选项的编译测试函数
+ * 
+ * 用于测试带选项的编译命令。
+ */
+void test_cli_compile_with_options(void)
+{
+    printf("带选项的编译命令测试\n");
+    printf("====================\n");
+    
+    char* test_argv[] = {"cn", "compile", "test.cn", "-o", "test.exe", "--verbose"};
+    Stru_CliInterface_t* cli = F_create_cli_interface();
+    if (cli != NULL) {
+        cli->initialize(cli, 6, test_argv);
+        cli->parse_and_execute(cli);
         cli->destroy(cli);
     }
 }

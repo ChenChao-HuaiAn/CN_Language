@@ -14,6 +14,8 @@
 #ifndef CN_CLI_INTERFACE_H
 #define CN_CLI_INTERFACE_H
 
+#include "CN_command_parser.h"
+#include "CN_command_executor.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -44,24 +46,34 @@ struct Stru_CliInterface_t {
     bool (*initialize)(Stru_CliInterface_t* self, int argc, char** argv);
     
     /**
-     * @brief 解析命令行参数
+     * @brief 解析并执行命令行
      * 
-     * 解析用户输入的命令行参数，提取命令、选项和参数。
-     * 
-     * @param self 接口指针
-     * @return bool 解析成功返回true，失败返回false
-     */
-    bool (*parse_arguments)(Stru_CliInterface_t* self);
-    
-    /**
-     * @brief 执行命令行命令
-     * 
-     * 根据解析的命令执行相应的操作，如编译、运行、调试等。
+     * 解析命令行参数并执行相应的命令。
      * 
      * @param self 接口指针
      * @return int 执行结果，0表示成功，非0表示错误码
      */
-    int (*execute_command)(Stru_CliInterface_t* self);
+    int (*parse_and_execute)(Stru_CliInterface_t* self);
+    
+    /**
+     * @brief 获取命令解析器
+     * 
+     * 获取内部使用的命令解析器接口。
+     * 
+     * @param self 接口指针
+     * @return Stru_CommandParserInterface_t* 命令解析器接口
+     */
+    Stru_CommandParserInterface_t* (*get_parser)(Stru_CliInterface_t* self);
+    
+    /**
+     * @brief 获取命令执行器
+     * 
+     * 获取内部使用的命令执行器接口。
+     * 
+     * @param self 接口指针
+     * @return Stru_CommandExecutorInterface_t* 命令执行器接口
+     */
+    Stru_CommandExecutorInterface_t* (*get_executor)(Stru_CliInterface_t* self);
     
     /**
      * @brief 显示帮助信息

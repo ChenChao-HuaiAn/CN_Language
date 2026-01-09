@@ -6,12 +6,14 @@
  * @version 1.0.0
  * @copyright MIT License
  * 
- * 本文件实现了命令行界面模块的具体功能，包括命令行参数解析、
- * 命令执行和用户交互等功能。遵循CN_Language项目的分层架构
+ * 本文件实现了命令行界面模块的具体功能，整合命令解析器和执行器，
+ * 提供统一的命令行界面。遵循CN_Language项目的分层架构
  * 和SOLID设计原则，每个函数不超过50行，文件不超过500行。
  */
 
 #include "CN_cli_interface.h"
+#include "CN_command_parser.h"
+#include "CN_command_executor.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,12 +29,12 @@ extern "C" {
  * 遵循数据封装原则，隐藏实现细节。
  */
 typedef struct {
-    int argc;               /**< 命令行参数个数 */
-    char** argv;            /**< 命令行参数数组 */
-    char* command;          /**< 解析出的命令 */
-    char** arguments;       /**< 命令参数列表 */
-    int argument_count;     /**< 参数个数 */
-    bool is_initialized;    /**< 初始化标志 */
+    int argc;                                   /**< 命令行参数个数 */
+    char** argv;                                /**< 命令行参数数组 */
+    bool is_initialized;                        /**< 初始化标志 */
+    Stru_CommandParserInterface_t* parser;      /**< 命令解析器 */
+    Stru_CommandExecutorInterface_t* executor;  /**< 命令执行器 */
+    Stru_ParseResult_t* parse_result;           /**< 解析结果 */
 } Stru_CliContext_t;
 
 /**
@@ -47,8 +49,9 @@ typedef struct {
 
 /* 内部函数声明 */
 static bool F_cli_initialize(Stru_CliInterface_t* self, int argc, char** argv);
-static bool F_cli_parse_arguments(Stru_CliInterface_t* self);
-static int F_cli_execute_command(Stru_CliInterface_t* self);
+static int F_cli_parse_and_execute(Stru_CliInterface_t* self);
+static Stru_CommandParserInterface_t* F_cli_get_parser(Stru_CliInterface_t* self);
+static Stru_CommandExecutorInterface_t* F_cli_get_executor(Stru_CliInterface_t* self);
 static void F_cli_show_help(Stru_CliInterface_t* self);
 static void F_cli_show_version(Stru_CliInterface_t* self);
 static void F_cli_destroy(Stru_CliInterface_t* self);
@@ -72,8 +75,9 @@ Stru_CliInterface_t* F_create_cli_interface(void)
     
     /* 初始化接口方法 */
     impl->interface.initialize = F_cli_initialize;
-    impl->interface.parse_arguments = F_cli_parse_arguments;
-    impl->interface.execute_command = F_cli_execute_command;
+    impl->interface.parse_and_execute = F_cli_parse_and_execute;
+    impl->interface.get_parser = F_cli_get_parser;
+    impl->interface.get_executor = F_cli_get_executor;
     impl->interface.show_help = F_cli_show_help;
     impl->interface.show_version = F_cli_show_version;
     impl->interface.destroy = F_cli_destroy;
@@ -105,10 +109,25 @@ static Stru_CliContext_t* F_create_cli_context(void)
     /* 初始化上下文 */
     context->argc = 0;
     context->argv = NULL;
-    context->command = NULL;
-    context->arguments = NULL;
-    context->argument_count = 0;
     context->is_initialized = false;
+    context->parser = NULL;
+    context->executor = NULL;
+    context->parse_result = NULL;
+    
+    /* 创建命令解析器 */
+    context->parser = F_create_command_parser();
+    if (context->parser == NULL) {
+        free(context);
+        return NULL;
+    }
+    
+    /* 创建命令执行器 */
+    context->executor = F_create_command_executor();
+    if (context->executor == NULL) {
+        context->parser->destroy(context->parser);
+        free(context);
+        return NULL;
+    }
     
     return context;
 }
@@ -126,20 +145,25 @@ static void F_destroy_cli_context(Stru_CliContext_t* context)
         return;
     }
     
-    /* 释放动态分配的内存 */
-    if (context->command != NULL) {
-        free(context->command);
+    /* 销毁解析结果 */
+    if (context->parse_result != NULL && context->parser != NULL) {
+        context->parser->destroy_result(context->parser, context->parse_result);
+        context->parse_result = NULL;
     }
     
-    if (context->arguments != NULL) {
-        for (int i = 0; i < context->argument_count; i++) {
-            if (context->arguments[i] != NULL) {
-                free(context->arguments[i]);
-            }
-        }
-        free(context->arguments);
+    /* 销毁命令执行器 */
+    if (context->executor != NULL) {
+        context->executor->destroy(context->executor);
+        context->executor = NULL;
     }
     
+    /* 销毁命令解析器 */
+    if (context->parser != NULL) {
+        context->parser->destroy(context->parser);
+        context->parser = NULL;
+    }
+    
+    /* 释放上下文结构体 */
     free(context);
 }
 
@@ -169,73 +193,14 @@ static bool F_cli_initialize(Stru_CliInterface_t* self, int argc, char** argv)
 }
 
 /**
- * @brief 解析命令行参数
+ * @brief 解析并执行命令行
  * 
- * 解析用户输入的命令行参数，提取命令、选项和参数。
- * 支持常见命令：compile（编译）、run（运行）、debug（调试）。
- * 
- * @param self 接口指针
- * @return bool 解析成功返回true，失败返回false
- */
-static bool F_cli_parse_arguments(Stru_CliInterface_t* self)
-{
-    Stru_CliImpl_t* impl = (Stru_CliImpl_t*)self;
-    if (impl == NULL || impl->context == NULL || !impl->context->is_initialized) {
-        return false;
-    }
-    
-    Stru_CliContext_t* context = impl->context;
-    
-    /* 至少需要一个参数（命令本身） */
-    if (context->argc < 2) {
-        return false;
-    }
-    
-    /* 提取命令 */
-    context->command = strdup(context->argv[1]);
-    if (context->command == NULL) {
-        return false;
-    }
-    
-    /* 提取参数（如果有） */
-    context->argument_count = context->argc - 2;
-    if (context->argument_count > 0) {
-        context->arguments = (char**)malloc(context->argument_count * sizeof(char*));
-        if (context->arguments == NULL) {
-            free(context->command);
-            context->command = NULL;
-            return false;
-        }
-        
-        for (int i = 0; i < context->argument_count; i++) {
-            context->arguments[i] = strdup(context->argv[i + 2]);
-            if (context->arguments[i] == NULL) {
-                /* 清理已分配的内存 */
-                for (int j = 0; j < i; j++) {
-                    free(context->arguments[j]);
-                }
-                free(context->arguments);
-                free(context->command);
-                context->arguments = NULL;
-                context->command = NULL;
-                return false;
-            }
-        }
-    }
-    
-    return true;
-}
-
-/**
- * @brief 执行命令行命令
- * 
- * 根据解析的命令执行相应的操作。
- * 目前支持的命令：help（帮助）、version（版本）、compile（编译）。
+ * 解析命令行参数并执行相应的命令。
  * 
  * @param self 接口指针
  * @return int 执行结果，0表示成功，非0表示错误码
  */
-static int F_cli_execute_command(Stru_CliInterface_t* self)
+static int F_cli_parse_and_execute(Stru_CliInterface_t* self)
 {
     Stru_CliImpl_t* impl = (Stru_CliImpl_t*)self;
     if (impl == NULL || impl->context == NULL || !impl->context->is_initialized) {
@@ -244,36 +209,110 @@ static int F_cli_execute_command(Stru_CliInterface_t* self)
     
     Stru_CliContext_t* context = impl->context;
     
-    /* 如果没有命令，显示帮助 */
-    if (context->command == NULL) {
-        F_cli_show_help(self);
-        return 0;
-    }
-    
-    /* 根据命令执行相应操作 */
-    if (strcmp(context->command, "help") == 0) {
-        F_cli_show_help(self);
-        return 0;
-    } else if (strcmp(context->command, "version") == 0) {
-        F_cli_show_version(self);
-        return 0;
-    } else if (strcmp(context->command, "compile") == 0) {
-        /* TODO: 调用核心层的编译功能 */
-        printf("编译功能暂未实现\n");
-        return 0;
-    } else if (strcmp(context->command, "run") == 0) {
-        /* TODO: 调用核心层的运行功能 */
-        printf("运行功能暂未实现\n");
-        return 0;
-    } else if (strcmp(context->command, "debug") == 0) {
-        /* TODO: 调用调试器功能 */
-        printf("调试功能暂未实现\n");
-        return 0;
-    } else {
-        printf("未知命令: %s\n", context->command);
-        printf("使用 'cn help' 查看可用命令\n");
+    /* 解析命令行参数 */
+    context->parse_result = context->parser->parse(context->parser, 
+                                                  context->argc, 
+                                                  context->argv);
+    if (context->parse_result == NULL) {
+        fprintf(stderr, "错误：命令行参数解析失败\n");
         return 1;
     }
+    
+    /* 验证解析结果 */
+    if (!context->parser->validate(context->parser, context->parse_result)) {
+        fprintf(stderr, "错误：命令行参数验证失败\n");
+        fprintf(stderr, "使用 'cn help' 查看可用命令\n");
+        context->parser->destroy_result(context->parser, context->parse_result);
+        context->parse_result = NULL;
+        return 1;
+    }
+    
+    /* 执行命令 */
+    Eum_ExecutionResult_t exec_result = context->executor->execute(context->executor, 
+                                                                  context->parse_result);
+    
+    /* 检查执行结果 */
+    int return_code = 0;
+    switch (exec_result) {
+        case Eum_EXEC_RESULT_SUCCESS:
+            return_code = 0;
+            break;
+        case Eum_EXEC_RESULT_FAILURE:
+            fprintf(stderr, "错误：命令执行失败\n");
+            return_code = 1;
+            break;
+        case Eum_EXEC_RESULT_SYNTAX_ERROR:
+            fprintf(stderr, "错误：语法错误\n");
+            return_code = 2;
+            break;
+        case Eum_EXEC_RESULT_FILE_ERROR:
+            fprintf(stderr, "错误：文件错误\n");
+            return_code = 3;
+            break;
+        case Eum_EXEC_RESULT_SYSTEM_ERROR:
+            fprintf(stderr, "错误：系统错误\n");
+            return_code = 4;
+            break;
+        case Eum_EXEC_RESULT_UNKNOWN_CMD:
+            fprintf(stderr, "错误：未知命令\n");
+            fprintf(stderr, "使用 'cn help' 查看可用命令\n");
+            return_code = 5;
+            break;
+        default:
+            fprintf(stderr, "错误：未知执行结果\n");
+            return_code = 6;
+            break;
+    }
+    
+    /* 获取并显示错误信息（如果有） */
+    const char* error_msg = context->executor->get_error_message(context->executor);
+    if (error_msg != NULL && exec_result != Eum_EXEC_RESULT_SUCCESS) {
+        fprintf(stderr, "详细信息: %s\n", error_msg);
+    }
+    
+    /* 清理解析结果 */
+    if (context->parse_result != NULL) {
+        context->parser->destroy_result(context->parser, context->parse_result);
+        context->parse_result = NULL;
+    }
+    
+    return return_code;
+}
+
+/**
+ * @brief 获取命令解析器
+ * 
+ * 获取内部使用的命令解析器接口。
+ * 
+ * @param self 接口指针
+ * @return Stru_CommandParserInterface_t* 命令解析器接口
+ */
+static Stru_CommandParserInterface_t* F_cli_get_parser(Stru_CliInterface_t* self)
+{
+    Stru_CliImpl_t* impl = (Stru_CliImpl_t*)self;
+    if (impl == NULL || impl->context == NULL) {
+        return NULL;
+    }
+    
+    return impl->context->parser;
+}
+
+/**
+ * @brief 获取命令执行器
+ * 
+ * 获取内部使用的命令执行器接口。
+ * 
+ * @param self 接口指针
+ * @return Stru_CommandExecutorInterface_t* 命令执行器接口
+ */
+static Stru_CommandExecutorInterface_t* F_cli_get_executor(Stru_CliInterface_t* self)
+{
+    Stru_CliImpl_t* impl = (Stru_CliImpl_t*)self;
+    if (impl == NULL || impl->context == NULL) {
+        return NULL;
+    }
+    
+    return impl->context->executor;
 }
 
 /**
@@ -285,24 +324,16 @@ static int F_cli_execute_command(Stru_CliInterface_t* self)
  */
 static void F_cli_show_help(Stru_CliInterface_t* self)
 {
-    (void)self; /* 未使用参数 */
-    printf("CN_Language 命令行工具\n");
-    printf("版本: 1.0.0\n");
-    printf("\n");
-    printf("用法: cn <命令> [参数]\n");
-    printf("\n");
-    printf("可用命令:\n");
-    printf("  help        显示此帮助信息\n");
-    printf("  version     显示版本信息\n");
-    printf("  compile     编译CN源代码文件\n");
-    printf("  run         运行CN程序\n");
-    printf("  debug       调试CN程序\n");
-    printf("\n");
-    printf("示例:\n");
-    printf("  cn help\n");
-    printf("  cn version\n");
-    printf("  cn compile hello.cn\n");
-    printf("  cn run hello.cn\n");
+    Stru_CliImpl_t* impl = (Stru_CliImpl_t*)self;
+    if (impl == NULL || impl->context == NULL || impl->context->executor == NULL) {
+        return;
+    }
+    
+    /* 创建临时的解析结果用于显示帮助 */
+    Stru_ParseResult_t temp_result = {0};
+    temp_result.command = "help";
+    
+    impl->context->executor->execute_help(impl->context->executor, &temp_result);
 }
 
 /**
@@ -314,11 +345,16 @@ static void F_cli_show_help(Stru_CliInterface_t* self)
  */
 static void F_cli_show_version(Stru_CliInterface_t* self)
 {
-    (void)self; /* 未使用参数 */
-    printf("CN_Language 版本 1.0.0\n");
-    printf("架构版本: 2.0.0\n");
-    printf("构建日期: 2026-01-09\n");
-    printf("许可证: MIT\n");
+    Stru_CliImpl_t* impl = (Stru_CliImpl_t*)self;
+    if (impl == NULL || impl->context == NULL || impl->context->executor == NULL) {
+        return;
+    }
+    
+    /* 创建临时的解析结果用于显示版本 */
+    Stru_ParseResult_t temp_result = {0};
+    temp_result.command = "version";
+    
+    impl->context->executor->execute_version(impl->context->executor, &temp_result);
 }
 
 /**
