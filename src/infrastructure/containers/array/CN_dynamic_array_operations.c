@@ -353,3 +353,237 @@ bool F_dynamic_array_shrink_to_fit_ex(Stru_DynamicArray_t* array,
     F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
     return true;
 }
+
+/* 高级操作函数实现 */
+
+/**
+ * @brief 排序动态数组（带错误码）
+ * 
+ * 对动态数组进行排序，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param compare 比较函数
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 排序成功返回true，失败返回false
+ */
+bool F_dynamic_array_sort_ex(Stru_DynamicArray_t* array, F_DynamicArrayCompare_t compare,
+                             enum Eum_DynamicArrayError* error_code)
+{
+    if (!F_dynamic_array_validate_array(array, error_code) || compare == NULL)
+    {
+        F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
+        return false;
+    }
+    
+    if (array->length <= 1)
+    {
+        F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
+        return true;
+    }
+    
+    // 使用简单的冒泡排序（对于小数组足够）
+    for (size_t i = 0; i < array->length - 1; i++)
+    {
+        for (size_t j = 0; j < array->length - i - 1; j++)
+        {
+            void* item1 = array->items[j];
+            void* item2 = array->items[j + 1];
+            
+            if (compare(item1, item2) > 0)
+            {
+                // 交换元素
+                void* temp = array->items[j];
+                array->items[j] = array->items[j + 1];
+                array->items[j + 1] = temp;
+            }
+        }
+    }
+    
+    F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
+    return true;
+}
+
+/**
+ * @brief 反转动态数组（带错误码）
+ * 
+ * 反转动态数组中元素的顺序，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 反转成功返回true，失败返回false
+ */
+bool F_dynamic_array_reverse_ex(Stru_DynamicArray_t* array,
+                                enum Eum_DynamicArrayError* error_code)
+{
+    if (!F_dynamic_array_validate_array(array, error_code))
+    {
+        return false;
+    }
+    
+    if (array->length <= 1)
+    {
+        F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
+        return true;
+    }
+    
+    // 反转数组
+    size_t left = 0;
+    size_t right = array->length - 1;
+    
+    while (left < right)
+    {
+        // 交换元素
+        void* temp = array->items[left];
+        array->items[left] = array->items[right];
+        array->items[right] = temp;
+        
+        left++;
+        right--;
+    }
+    
+    F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
+    return true;
+}
+
+/**
+ * @brief 映射动态数组（带错误码）
+ * 
+ * 对动态数组中的每个元素应用指定的函数，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param mapper 映射函数
+ * @param user_data 用户数据
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 映射成功返回true，失败返回false
+ */
+bool F_dynamic_array_map_ex(Stru_DynamicArray_t* array,
+                            void (*mapper)(void* item, void* user_data),
+                            void* user_data, enum Eum_DynamicArrayError* error_code)
+{
+    if (!F_dynamic_array_validate_array(array, error_code) || mapper == NULL)
+    {
+        F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
+        return false;
+    }
+    
+    for (size_t i = 0; i < array->length; i++)
+    {
+        if (array->items[i] != NULL)
+        {
+            mapper(array->items[i], user_data);
+        }
+    }
+    
+    F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
+    return true;
+}
+
+/**
+ * @brief 过滤动态数组（带错误码）
+ * 
+ * 根据条件过滤动态数组中的元素，返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param filter 过滤函数（返回true保留元素）
+ * @param user_data 用户数据
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 过滤成功返回true，失败返回false
+ */
+bool F_dynamic_array_filter_ex(Stru_DynamicArray_t* array,
+                               bool (*filter)(void* item, void* user_data),
+                               void* user_data, enum Eum_DynamicArrayError* error_code)
+{
+    if (!F_dynamic_array_validate_array(array, error_code) || filter == NULL)
+    {
+        F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_NULL_POINTER);
+        return false;
+    }
+    
+    size_t write_index = 0;
+    
+    for (size_t read_index = 0; read_index < array->length; read_index++)
+    {
+        void* item = array->items[read_index];
+        
+        if (item != NULL && filter(item, user_data))
+        {
+            // 保留元素
+            if (write_index != read_index)
+            {
+                array->items[write_index] = item;
+                array->items[read_index] = NULL;
+            }
+            write_index++;
+        }
+        else
+        {
+            // 释放被过滤掉的元素
+            if (item != NULL)
+            {
+                free(item);
+                array->items[read_index] = NULL;
+            }
+        }
+    }
+    
+    // 更新长度
+    array->length = write_index;
+    
+    F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
+    return true;
+}
+
+/**
+ * @brief 获取动态数组切片（带错误码）
+ * 
+ * 获取动态数组的子数组（切片），返回详细错误码。
+ * 
+ * @param array 动态数组指针
+ * @param start 起始索引
+ * @param end 结束索引（不包含）
+ * @param error_code 输出参数，错误码（可为NULL）
+ * @return 新的动态数组指针，失败返回NULL
+ */
+Stru_DynamicArray_t* F_dynamic_array_slice_ex(Stru_DynamicArray_t* array,
+                                              size_t start, size_t end,
+                                              enum Eum_DynamicArrayError* error_code)
+{
+    if (!F_dynamic_array_validate_array(array, error_code))
+    {
+        return NULL;
+    }
+    
+    // 验证索引范围
+    if (start > end || end > array->length)
+    {
+        F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_ERROR_INDEX_OUT_OF_BOUNDS);
+        return NULL;
+    }
+    
+    // 计算切片长度
+    size_t slice_length = end - start;
+    
+    // 创建新的动态数组
+    Stru_DynamicArray_t* slice = F_create_dynamic_array_ex(array->item_size, slice_length, error_code);
+    if (slice == NULL)
+    {
+        return NULL;
+    }
+    
+    // 复制元素
+    for (size_t i = start; i < end; i++)
+    {
+        void* item = array->items[i];
+        if (item != NULL)
+        {
+            if (!F_dynamic_array_push_ex(slice, item, error_code))
+            {
+                F_destroy_dynamic_array(slice);
+                return NULL;
+            }
+        }
+    }
+    
+    F_dynamic_array_set_error_code(error_code, Eum_DYNAMIC_ARRAY_SUCCESS);
+    return slice;
+}

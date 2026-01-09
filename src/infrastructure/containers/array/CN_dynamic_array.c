@@ -148,3 +148,35 @@ Stru_DynamicArray_t* F_create_dynamic_array_ex(size_t item_size, size_t initial_
  * 这些函数通过包含 CN_dynamic_array_core.h 和 CN_dynamic_array_operations.h 头文件
  * 在 CN_dynamic_array.h 中声明，因此不需要在此处重新定义。
  */
+
+/* 高级操作的向后兼容实现 */
+
+bool F_dynamic_array_sort(Stru_DynamicArray_t* array, F_DynamicArrayCompare_t compare)
+{
+    return F_dynamic_array_sort_ex(array, compare, NULL);
+}
+
+bool F_dynamic_array_reverse(Stru_DynamicArray_t* array)
+{
+    return F_dynamic_array_reverse_ex(array, NULL);
+}
+
+bool F_dynamic_array_map(Stru_DynamicArray_t* array, 
+                         void (*mapper)(void* item, void* user_data),
+                         void* user_data)
+{
+    return F_dynamic_array_map_ex(array, mapper, user_data, NULL);
+}
+
+bool F_dynamic_array_filter(Stru_DynamicArray_t* array,
+                            bool (*filter)(void* item, void* user_data),
+                            void* user_data)
+{
+    return F_dynamic_array_filter_ex(array, filter, user_data, NULL);
+}
+
+Stru_DynamicArray_t* F_dynamic_array_slice(Stru_DynamicArray_t* array,
+                                           size_t start, size_t end)
+{
+    return F_dynamic_array_slice_ex(array, start, end, NULL);
+}
