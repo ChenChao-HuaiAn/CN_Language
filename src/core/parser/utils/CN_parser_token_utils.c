@@ -46,6 +46,12 @@ bool F_is_operator_token(Eum_TokenType token_type) {
         return true;
     }
     
+    // 检查是否为复合赋值运算符
+    if (token_type >= Eum_TOKEN_OPERATOR_PLUS_ASSIGN && 
+        token_type <= Eum_TOKEN_OPERATOR_MODULO_ASSIGN) {
+        return true;
+    }
+    
     return false;
 }
 
@@ -94,6 +100,11 @@ int F_get_operator_precedence(Eum_TokenType token_type) {
     switch (token_type) {
         // 赋值运算符（优先级1）
         case Eum_TOKEN_OPERATOR_ASSIGN:
+        case Eum_TOKEN_OPERATOR_PLUS_ASSIGN:
+        case Eum_TOKEN_OPERATOR_MINUS_ASSIGN:
+        case Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN:
+        case Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN:
+        case Eum_TOKEN_OPERATOR_MODULO_ASSIGN:
             return 1;
             
         // 逻辑或运算符（优先级2）
@@ -157,6 +168,11 @@ int F_get_operator_precedence(Eum_TokenType token_type) {
  * @brief 检查运算符是否为右结合
  */
 bool F_is_right_associative(Eum_TokenType token_type) {
-    // 赋值运算符是右结合的
-    return (token_type == Eum_TOKEN_OPERATOR_ASSIGN);
+    // 赋值运算符是右结合的（包括复合赋值运算符）
+    return (token_type == Eum_TOKEN_OPERATOR_ASSIGN ||
+            token_type == Eum_TOKEN_OPERATOR_PLUS_ASSIGN ||
+            token_type == Eum_TOKEN_OPERATOR_MINUS_ASSIGN ||
+            token_type == Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN ||
+            token_type == Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN ||
+            token_type == Eum_TOKEN_OPERATOR_MODULO_ASSIGN);
 }

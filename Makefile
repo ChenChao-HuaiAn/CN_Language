@@ -47,7 +47,35 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/lexer/token_scanners/CN_lexer_token_scanners.c \
             src/core/lexer/utils/CN_lexer_utf8.c \
             src/core/lexer/utils/CN_lexer_utils.c \
-            src/core/token/CN_token.c
+            src/core/token/CN_token.c \
+            src/core/parser/CN_parser_interface.c \
+            src/core/parser/interface/CN_parser_interface_impl.c \
+            src/core/parser/error_handling/CN_parser_errors.c \
+            src/core/parser/declaration_parsers/CN_parser_declarations_main.c \
+            src/core/parser/declaration_parsers/CN_parser_enum_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_function_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_member_lists.c \
+            src/core/parser/declaration_parsers/CN_parser_module_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_parameter_lists.c \
+            src/core/parser/declaration_parsers/CN_parser_struct_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_type_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_type_expressions.c \
+            src/core/parser/declaration_parsers/CN_parser_variable_declarations.c \
+            src/core/parser/expression_parsers/CN_parser_expressions_main.c \
+            src/core/parser/expression_parsers/CN_parser_function_calls.c \
+            src/core/parser/expression_parsers/CN_parser_primary_expressions.c \
+            src/core/parser/expression_parsers/CN_parser_unary_expressions.c \
+            src/core/parser/expression_parsers/CN_parser_postfix_expressions.c \
+            src/core/parser/statement_parsers/CN_parser_statements_main.c \
+            src/core/parser/statement_parsers/CN_parser_block_statements.c \
+            src/core/parser/statement_parsers/CN_parser_conditional_statements.c \
+            src/core/parser/statement_parsers/CN_parser_control_statements.c \
+            src/core/parser/statement_parsers/CN_parser_loop_statements.c \
+            src/core/parser/utils/CN_parser_ast_utils.c \
+            src/core/parser/utils/CN_parser_general_utils.c \
+            src/core/parser/utils/CN_parser_token_utils.c \
+            src/core/parser/utils/CN_parser_type_utils.c \
+            src/core/parser/utils/CN_parser_utils.c
 
 # 基础设施层源文件
 INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \
@@ -71,13 +99,13 @@ all: $(TARGET)
 
 # 链接可执行文件
 $(TARGET): $(ALL_OBJS)
-	@mkdir -p bin
+	@powershell -Command "if (!(Test-Path 'bin')) { New-Item -ItemType Directory -Force -Path 'bin' }"
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
 	@echo "构建完成: $(TARGET)"
 
 # 通用编译规则
 build/%.o: src/%.c
-	@mkdir -p $(dir $@)
+	@powershell -Command "if (!(Test-Path '$(dir $@)')) { New-Item -ItemType Directory -Force -Path '$(dir $@)' }"
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # 清理构建文件

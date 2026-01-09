@@ -129,6 +129,22 @@ Stru_AstNode_t* F_create_unary_expression_node(Stru_ParserInterface_t* interface
                                               Stru_AstNode_t* operand);
 
 /**
+ * @brief 创建复合赋值表达式节点
+ * 
+ * 创建复合赋值表达式AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param operator_token 复合赋值运算符令牌
+ * @param left 左表达式节点
+ * @param right 右表达式节点
+ * @return Stru_AstNode_t* 复合赋值表达式AST节点
+ */
+Stru_AstNode_t* F_create_compound_assignment_node(Stru_ParserInterface_t* interface,
+                                                 Stru_Token_t* operator_token,
+                                                 Stru_AstNode_t* left,
+                                                 Stru_AstNode_t* right);
+
+/**
  * @brief 创建字面量节点
  * 
  * 创建字面量AST节点。
@@ -203,6 +219,76 @@ Stru_AstNode_t* F_create_function_declaration_node(Stru_ParserInterface_t* inter
                                                   Stru_DynamicArray_t* parameters,
                                                   Stru_AstNode_t* return_type,
                                                   Stru_AstNode_t* body);
+
+/**
+ * @brief 创建类型转换表达式节点
+ * 
+ * 创建类型转换表达式AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param cast_token 类型转换令牌（通常是左括号）
+ * @param type_node 目标类型节点
+ * @param operand 要转换的表达式节点
+ * @return Stru_AstNode_t* 类型转换表达式AST节点
+ */
+Stru_AstNode_t* F_create_cast_expression_node(Stru_ParserInterface_t* interface,
+                                             Stru_Token_t* cast_token,
+                                             Stru_AstNode_t* type_node,
+                                             Stru_AstNode_t* operand);
+
+/**
+ * @brief 创建成员访问表达式节点
+ * 
+ * 创建成员访问表达式AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param dot_token 点运算符令牌
+ * @param object 对象表达式节点
+ * @param member_name 成员名称令牌
+ * @return Stru_AstNode_t* 成员访问表达式AST节点
+ */
+Stru_AstNode_t* F_create_member_access_node(Stru_ParserInterface_t* interface,
+                                           Stru_Token_t* dot_token,
+                                           Stru_AstNode_t* object,
+                                           Stru_Token_t* member_name);
+
+/**
+ * @brief 创建数组索引表达式节点
+ * 
+ * 创建数组索引表达式AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param lbracket_token 左方括号令牌
+ * @param array 数组表达式节点
+ * @param index 索引表达式节点
+ * @param rbracket_token 右方括号令牌（可选）
+ * @return Stru_AstNode_t* 数组索引表达式AST节点
+ */
+Stru_AstNode_t* F_create_array_index_node(Stru_ParserInterface_t* interface,
+                                         Stru_Token_t* lbracket_token,
+                                         Stru_AstNode_t* array,
+                                         Stru_AstNode_t* index,
+                                         Stru_Token_t* rbracket_token);
+
+/**
+ * @brief 创建条件表达式节点（三元运算符）
+ * 
+ * 创建条件表达式AST节点（三元运算符）。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param question_token 问号运算符令牌
+ * @param condition 条件表达式节点
+ * @param true_expr 真值表达式节点
+ * @param false_expr 假值表达式节点
+ * @param colon_token 冒号运算符令牌（可选）
+ * @return Stru_AstNode_t* 条件表达式AST节点
+ */
+Stru_AstNode_t* F_create_conditional_expression_node(Stru_ParserInterface_t* interface,
+                                                    Stru_Token_t* question_token,
+                                                    Stru_AstNode_t* condition,
+                                                    Stru_AstNode_t* true_expr,
+                                                    Stru_AstNode_t* false_expr,
+                                                    Stru_Token_t* colon_token);
 
 // ============================================
 // 类型工具函数声明

@@ -146,6 +146,11 @@ typedef enum Eum_TokenType {
     Eum_TOKEN_OPERATOR_DIVIDE,   ///< / 除法运算符
     Eum_TOKEN_OPERATOR_MODULO,   ///< % 取模运算符
     Eum_TOKEN_OPERATOR_ASSIGN,   ///< = 赋值运算符
+    Eum_TOKEN_OPERATOR_PLUS_ASSIGN,  ///< += 加后赋值运算符
+    Eum_TOKEN_OPERATOR_MINUS_ASSIGN, ///< -= 减后赋值运算符
+    Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN, ///< *= 乘后赋值运算符
+    Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN, ///< /= 除后赋值运算符
+    Eum_TOKEN_OPERATOR_MODULO_ASSIGN, ///< %= 取模后赋值运算符
     Eum_TOKEN_OPERATOR_EQUAL,    ///< == 等于运算符
     Eum_TOKEN_OPERATOR_NOT_EQUAL,///< != 不等于运算符
     Eum_TOKEN_OPERATOR_LESS,     ///< < 小于运算符
@@ -163,6 +168,10 @@ typedef enum Eum_TokenType {
     Eum_TOKEN_DELIMITER_RBRACE,  ///< } 右花括号
     Eum_TOKEN_DELIMITER_LBRACKET, ///< [ 左方括号
     Eum_TOKEN_DELIMITER_RBRACKET, ///< ] 右方括号
+    Eum_TOKEN_DELIMITER_DOT,     ///< . 点运算符（成员访问）
+    
+    // 特殊运算符
+    Eum_TOKEN_OPERATOR_QUESTION, ///< ? 问号运算符（三元运算符）
     
     // 特殊令牌
     Eum_TOKEN_EOF,               ///< 文件结束

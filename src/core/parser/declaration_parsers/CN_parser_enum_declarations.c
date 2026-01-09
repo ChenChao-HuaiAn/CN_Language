@@ -101,11 +101,11 @@ static Stru_AstNode_t* parse_enum_declaration_impl(Stru_ParserInterface_t* inter
     if (members == NULL)
     {
         // 报告错误
-        F_report_invalid_enum_members_error(interface,
-                                           state->current_token->line,
-                                           state->current_token->column,
-                                           "枚举成员列表无效",
-                                           state->current_token);
+        F_report_invalid_declaration_error(interface,
+                                          state->current_token->line,
+                                          state->current_token->column,
+                                          "枚举成员列表无效",
+                                          state->current_token);
         return NULL;
     }
     

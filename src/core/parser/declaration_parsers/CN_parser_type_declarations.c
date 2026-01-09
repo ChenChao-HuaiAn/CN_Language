@@ -115,7 +115,7 @@ static Stru_AstNode_t* parse_type_declaration_impl(Stru_ParserInterface_t* inter
     if (type_expression == NULL)
     {
         // 报告错误
-        F_report_invalid_type_error(interface,
+        F_report_invalid_declaration_error(interface,
                                    state->current_token->line,
                                    state->current_token->column,
                                    "类型表达式无效",

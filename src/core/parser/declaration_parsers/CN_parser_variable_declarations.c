@@ -108,7 +108,7 @@ static Stru_AstNode_t* parse_variable_declaration_impl(Stru_ParserInterface_t* i
         if (type_node == NULL)
         {
             // 报告错误
-            F_report_invalid_type_error(interface,
+            F_report_invalid_declaration_error(interface,
                                        state->current_token->line,
                                        state->current_token->column,
                                        "变量类型无效",
@@ -125,11 +125,11 @@ static Stru_AstNode_t* parse_variable_declaration_impl(Stru_ParserInterface_t* i
         F_advance_token(state);
         
         // 解析初始化表达式
-        initializer = F_parse_expression(interface);
+        initializer = F_parser_parse_expression(interface);
         if (initializer == NULL)
         {
             // 报告错误
-            F_report_invalid_expression_error(interface,
+            F_report_invalid_declaration_error(interface,
                                              state->current_token->line,
                                              state->current_token->column,
                                              "变量初始化表达式无效",

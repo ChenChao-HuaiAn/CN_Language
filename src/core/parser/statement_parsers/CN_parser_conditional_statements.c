@@ -69,7 +69,7 @@ Stru_AstNode_t* F_parse_if_statement(Stru_ParserInterface_t* interface)
     F_advance_token(state);
     
     // 解析条件表达式
-    Stru_AstNode_t* condition = F_parse_expression(interface);
+    Stru_AstNode_t* condition = F_parser_parse_expression(interface);
     if (condition == NULL)
     {
         // 报告错误

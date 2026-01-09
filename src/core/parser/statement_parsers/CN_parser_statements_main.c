@@ -16,6 +16,7 @@
 #include "../interface/CN_parser_interface_impl.h"
 #include "../error_handling/CN_parser_errors.h"
 #include "../utils/CN_parser_utils.h"
+#include "../declaration_parsers/CN_parser_declarations.h"
 #include "../../../infrastructure/containers/array/CN_dynamic_array.h"
 #include "../../token/CN_token_types.h"
 #include "../../ast/CN_ast.h"

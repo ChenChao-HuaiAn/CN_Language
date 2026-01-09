@@ -62,15 +62,6 @@ static Stru_AstNode_t* parse_additive_expression_impl(Stru_ParserInterface_t* in
  */
 static Stru_AstNode_t* parse_multiplicative_expression_impl(Stru_ParserInterface_t* interface);
 
-/**
- * @brief 解析一元表达式（内部实现）
- */
-static Stru_AstNode_t* parse_unary_expression_impl(Stru_ParserInterface_t* interface);
-
-/**
- * @brief 解析基本表达式（内部实现）
- */
-static Stru_AstNode_t* parse_primary_expression_impl(Stru_ParserInterface_t* interface);
 
 // ============================================
 // 表达式解析函数实现
@@ -146,21 +137,6 @@ Stru_AstNode_t* F_parse_multiplicative_expression(Stru_ParserInterface_t* interf
     return parse_multiplicative_expression_impl(interface);
 }
 
-/**
- * @brief 解析一元表达式
- */
-Stru_AstNode_t* F_parse_unary_expression(Stru_ParserInterface_t* interface)
-{
-    return parse_unary_expression_impl(interface);
-}
-
-/**
- * @brief 解析基本表达式
- */
-Stru_AstNode_t* F_parse_primary_expression(Stru_ParserInterface_t* interface)
-{
-    return parse_primary_expression_impl(interface);
-}
 
 // ============================================
 // 内部辅助函数实现
@@ -171,8 +147,8 @@ Stru_AstNode_t* F_parse_primary_expression(Stru_ParserInterface_t* interface)
  */
 static Stru_AstNode_t* parse_assignment_expression_impl(Stru_ParserInterface_t* interface)
 {
-    // 解析逻辑或表达式（更高优先级）
-    Stru_AstNode_t* left = parse_logical_or_expression_impl(interface);
+    // 解析条件表达式（更高优先级）
+    Stru_AstNode_t* left = F_parse_conditional_expression(interface);
     if (left == NULL)
     {
         return NULL;
@@ -184,8 +160,13 @@ static Stru_AstNode_t* parse_assignment_expression_impl(Stru_ParserInterface_t* 
         return left;
     }
     
-    // 检查是否为赋值运算符
-    if (state->current_token->type == Eum_TOKEN_OPERATOR_ASSIGN)
+    // 检查是否为赋值运算符（包括复合赋值运算符）
+    if (state->current_token->type == Eum_TOKEN_OPERATOR_ASSIGN ||
+        state->current_token->type == Eum_TOKEN_OPERATOR_PLUS_ASSIGN ||
+        state->current_token->type == Eum_TOKEN_OPERATOR_MINUS_ASSIGN ||
+        state->current_token->type == Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN ||
+        state->current_token->type == Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN ||
+        state->current_token->type == Eum_TOKEN_OPERATOR_MODULO_ASSIGN)
     {
         // 保存运算符令牌
         Stru_Token_t* operator_token = state->current_token;
@@ -202,12 +183,29 @@ static Stru_AstNode_t* parse_assignment_expression_impl(Stru_ParserInterface_t* 
             return NULL;
         }
         
-        // 创建赋值表达式节点
-        Stru_AstNode_t* assignment_node = F_create_binary_expression_node(interface,
-                                                                         operator_token,
-                                                                         left,
-                                                                         right);
-        return assignment_node;
+        // 检查是否为复合赋值运算符，如果是则创建复合赋值表达式节点
+        if (operator_token->type == Eum_TOKEN_OPERATOR_PLUS_ASSIGN ||
+            operator_token->type == Eum_TOKEN_OPERATOR_MINUS_ASSIGN ||
+            operator_token->type == Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN ||
+            operator_token->type == Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN ||
+            operator_token->type == Eum_TOKEN_OPERATOR_MODULO_ASSIGN)
+        {
+            // 创建复合赋值表达式节点
+            Stru_AstNode_t* compound_assignment_node = F_create_compound_assignment_node(interface,
+                                                                                       operator_token,
+                                                                                       left,
+                                                                                       right);
+            return compound_assignment_node;
+        }
+        else
+        {
+            // 创建普通赋值表达式节点
+            Stru_AstNode_t* assignment_node = F_create_binary_expression_node(interface,
+                                                                             operator_token,
+                                                                             left,
+                                                                             right);
+            return assignment_node;
+        }
     }
     
     return left;
@@ -462,7 +460,7 @@ static Stru_AstNode_t* parse_additive_expression_impl(Stru_ParserInterface_t* in
 static Stru_AstNode_t* parse_multiplicative_expression_impl(Stru_ParserInterface_t* interface)
 {
     // 解析一元表达式（更高优先级）
-    Stru_AstNode_t* left = parse_unary_expression_impl(interface);
+    Stru_AstNode_t* left = F_parse_unary_expression(interface);
     if (left == NULL)
     {
         return NULL;
@@ -487,7 +485,7 @@ static Stru_AstNode_t* parse_multiplicative_expression_impl(Stru_ParserInterface
         F_advance_token(state);
         
         // 解析右侧表达式
-        Stru_AstNode_t* right = parse_unary_expression_impl(interface);
+        Stru_AstNode_t* right = F_parse_unary_expression(interface);
         if (right == NULL)
         {
             // 清理左侧节点

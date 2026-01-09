@@ -76,7 +76,7 @@ Stru_DynamicArray_t* F_parse_parameter_list(Stru_ParserInterface_t* interface)
         if (parameter == NULL)
         {
             // 报告错误但继续尝试恢复
-            F_report_invalid_parameter_error(interface,
+            F_report_invalid_declaration_error(interface,
                                             state->current_token->line,
                                             state->current_token->column,
                                             "参数无效",
@@ -192,7 +192,7 @@ Stru_AstNode_t* F_parse_parameter(Stru_ParserInterface_t* interface)
     if (param_type == NULL)
     {
         // 报告错误
-        F_report_invalid_type_error(interface,
+        F_report_invalid_declaration_error(interface,
                                    state->current_token->line,
                                    state->current_token->column,
                                    "参数类型无效",

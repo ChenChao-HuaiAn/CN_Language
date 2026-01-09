@@ -98,6 +98,79 @@ Stru_AstNode_t* F_create_unary_expression_node(Stru_ParserInterface_t* interface
 }
 
 /**
+ * @brief 创建复合赋值表达式节点
+ */
+Stru_AstNode_t* F_create_compound_assignment_node(Stru_ParserInterface_t* interface,
+                                                 Stru_Token_t* operator_token,
+                                                 Stru_AstNode_t* left,
+                                                 Stru_AstNode_t* right)
+{
+    if (interface == NULL || operator_token == NULL || left == NULL || right == NULL) {
+        return NULL;
+    }
+    
+    // 检查是否为有效的复合赋值运算符
+    if (operator_token->type != Eum_TOKEN_OPERATOR_PLUS_ASSIGN &&
+        operator_token->type != Eum_TOKEN_OPERATOR_MINUS_ASSIGN &&
+        operator_token->type != Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN &&
+        operator_token->type != Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN &&
+        operator_token->type != Eum_TOKEN_OPERATOR_MODULO_ASSIGN) {
+        return NULL;
+    }
+    
+    // 创建复合赋值表达式节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_COMPOUND_ASSIGN_EXPR, 
+                                                     operator_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加左操作数
+    if (!interface->add_child_node(interface, node, left)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 添加右操作数
+    if (!interface->add_child_node(interface, node, right)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置运算符类型属性
+    char operator_type[32];
+    snprintf(operator_type, sizeof(operator_type), "%d", operator_token->type);
+    interface->set_node_attribute(interface, node, "operator_type", operator_type);
+    
+    // 设置运算符名称属性
+    const char* operator_name = NULL;
+    switch (operator_token->type) {
+        case Eum_TOKEN_OPERATOR_PLUS_ASSIGN:
+            operator_name = "+=";
+            break;
+        case Eum_TOKEN_OPERATOR_MINUS_ASSIGN:
+            operator_name = "-=";
+            break;
+        case Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN:
+            operator_name = "*=";
+            break;
+        case Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN:
+            operator_name = "/=";
+            break;
+        case Eum_TOKEN_OPERATOR_MODULO_ASSIGN:
+            operator_name = "%=";
+            break;
+        default:
+            operator_name = "unknown";
+            break;
+    }
+    interface->set_node_attribute(interface, node, "operator_name", (void*)operator_name);
+    
+    return node;
+}
+
+/**
  * @brief 创建字面量节点
  */
 Stru_AstNode_t* F_create_literal_node(Stru_ParserInterface_t* interface,
@@ -200,7 +273,7 @@ Stru_AstNode_t* F_create_function_call_node(Stru_ParserInterface_t* interface,
     
     // 添加参数节点
     if (arguments != NULL) {
-        size_t arg_count = F_dynamic_array_size(arguments);
+        size_t arg_count = F_dynamic_array_length(arguments);
         for (size_t i = 0; i < arg_count; i++) {
             Stru_AstNode_t* arg = *(Stru_AstNode_t**)F_dynamic_array_get(arguments, i);
             if (arg != NULL) {
@@ -283,7 +356,7 @@ Stru_AstNode_t* F_create_function_declaration_node(Stru_ParserInterface_t* inter
     
     // 添加参数节点（如果有）
     if (parameters != NULL) {
-        size_t param_count = F_dynamic_array_size(parameters);
+        size_t param_count = F_dynamic_array_length(parameters);
         for (size_t i = 0; i < param_count; i++) {
             Stru_AstNode_t* param = *(Stru_AstNode_t**)F_dynamic_array_get(parameters, i);
             if (param != NULL) {
@@ -299,6 +372,178 @@ Stru_AstNode_t* F_create_function_declaration_node(Stru_ParserInterface_t* inter
     
     // 添加函数体节点
     interface->add_child_node(interface, node, body);
+    
+    return node;
+}
+
+/**
+ * @brief 创建类型转换表达式节点
+ */
+Stru_AstNode_t* F_create_cast_expression_node(Stru_ParserInterface_t* interface,
+                                             Stru_Token_t* cast_token,
+                                             Stru_AstNode_t* type_node,
+                                             Stru_AstNode_t* operand)
+{
+    if (interface == NULL || cast_token == NULL || type_node == NULL || operand == NULL) {
+        return NULL;
+    }
+    
+    // 创建类型转换表达式节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_CAST_EXPR, 
+                                                     cast_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加类型节点
+    if (!interface->add_child_node(interface, node, type_node)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 添加操作数节点
+    if (!interface->add_child_node(interface, node, operand)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置类型转换属性
+    interface->set_node_attribute(interface, node, "cast_operator", "()");
+    
+    return node;
+}
+
+/**
+ * @brief 创建成员访问表达式节点
+ */
+Stru_AstNode_t* F_create_member_access_node(Stru_ParserInterface_t* interface,
+                                           Stru_Token_t* dot_token,
+                                           Stru_AstNode_t* object,
+                                           Stru_Token_t* member_name)
+{
+    if (interface == NULL || dot_token == NULL || object == NULL || member_name == NULL) {
+        return NULL;
+    }
+    
+    // 创建成员访问表达式节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_MEMBER_EXPR, 
+                                                     dot_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加对象表达式节点
+    if (!interface->add_child_node(interface, node, object)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置成员名称属性
+    if (member_name->lexeme != NULL) {
+        interface->set_node_attribute(interface, node, "member_name", 
+                                     (void*)member_name->lexeme);
+    }
+    
+    // 设置访问运算符属性
+    interface->set_node_attribute(interface, node, "access_operator", ".");
+    
+    return node;
+}
+
+/**
+ * @brief 创建数组索引表达式节点
+ */
+Stru_AstNode_t* F_create_array_index_node(Stru_ParserInterface_t* interface,
+                                         Stru_Token_t* lbracket_token,
+                                         Stru_AstNode_t* array,
+                                         Stru_AstNode_t* index,
+                                         Stru_Token_t* rbracket_token)
+{
+    if (interface == NULL || lbracket_token == NULL || array == NULL || index == NULL) {
+        return NULL;
+    }
+    
+    // 创建数组索引表达式节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_INDEX_EXPR, 
+                                                     lbracket_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加数组表达式节点
+    if (!interface->add_child_node(interface, node, array)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 添加索引表达式节点
+    if (!interface->add_child_node(interface, node, index)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置索引运算符属性
+    interface->set_node_attribute(interface, node, "index_operator", "[]");
+    
+    // 设置右括号令牌属性（如果有）
+    if (rbracket_token != NULL) {
+        interface->set_node_attribute(interface, node, "right_bracket_token", rbracket_token);
+    }
+    
+    return node;
+}
+
+/**
+ * @brief 创建条件表达式节点（三元运算符）
+ */
+Stru_AstNode_t* F_create_conditional_expression_node(Stru_ParserInterface_t* interface,
+                                                    Stru_Token_t* question_token,
+                                                    Stru_AstNode_t* condition,
+                                                    Stru_AstNode_t* true_expr,
+                                                    Stru_AstNode_t* false_expr,
+                                                    Stru_Token_t* colon_token)
+{
+    if (interface == NULL || question_token == NULL || condition == NULL || 
+        true_expr == NULL || false_expr == NULL) {
+        return NULL;
+    }
+    
+    // 创建条件表达式节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_CONDITIONAL_EXPR, 
+                                                     question_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加条件表达式节点
+    if (!interface->add_child_node(interface, node, condition)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 添加真值表达式节点
+    if (!interface->add_child_node(interface, node, true_expr)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 添加假值表达式节点
+    if (!interface->add_child_node(interface, node, false_expr)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置条件运算符属性
+    interface->set_node_attribute(interface, node, "conditional_operator", "?:");
+    
+    // 设置冒号令牌属性（如果有）
+    if (colon_token != NULL) {
+        interface->set_node_attribute(interface, node, "colon_token", colon_token);
+    }
     
     return node;
 }

@@ -76,11 +76,11 @@ Stru_DynamicArray_t* F_parse_struct_member_list(Stru_ParserInterface_t* interfac
         if (member == NULL)
         {
             // 报告错误但继续尝试恢复
-            F_report_invalid_member_error(interface,
-                                         state->current_token->line,
-                                         state->current_token->column,
-                                         "结构体成员无效",
-                                         state->current_token);
+            F_report_invalid_declaration_error(interface,
+                                              state->current_token->line,
+                                              state->current_token->column,
+                                              "结构体成员无效",
+                                              state->current_token);
             
             // 尝试同步到安全点
             Eum_TokenType sync_tokens[] = {Eum_TOKEN_DELIMITER_SEMICOLON, Eum_TOKEN_DELIMITER_RBRACE};
@@ -212,7 +212,7 @@ Stru_DynamicArray_t* F_parse_enum_member_list(Stru_ParserInterface_t* interface)
             F_advance_token(state);
             
             // 解析值表达式
-            Stru_AstNode_t* value = F_parse_expression(interface);
+            Stru_AstNode_t* value = F_parser_parse_expression(interface);
             if (value == NULL)
             {
                 // 报告错误

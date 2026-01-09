@@ -66,11 +66,11 @@ Eum_TokenType F_identify_assignment_operator(const char* lexeme)
     
     // 赋值运算符
     if (strcmp(lexeme, "=") == 0) return Eum_TOKEN_OPERATOR_ASSIGN;
-    if (strcmp(lexeme, "+=") == 0) return Eum_TOKEN_OPERATOR_PLUS;
-    if (strcmp(lexeme, "-=") == 0) return Eum_TOKEN_OPERATOR_MINUS;
-    if (strcmp(lexeme, "*=") == 0) return Eum_TOKEN_OPERATOR_MULTIPLY;
-    if (strcmp(lexeme, "/=") == 0) return Eum_TOKEN_OPERATOR_DIVIDE;
-    if (strcmp(lexeme, "%=") == 0) return Eum_TOKEN_OPERATOR_MODULO;
+    if (strcmp(lexeme, "+=") == 0) return Eum_TOKEN_OPERATOR_PLUS_ASSIGN;
+    if (strcmp(lexeme, "-=") == 0) return Eum_TOKEN_OPERATOR_MINUS_ASSIGN;
+    if (strcmp(lexeme, "*=") == 0) return Eum_TOKEN_OPERATOR_MULTIPLY_ASSIGN;
+    if (strcmp(lexeme, "/=") == 0) return Eum_TOKEN_OPERATOR_DIVIDE_ASSIGN;
+    if (strcmp(lexeme, "%=") == 0) return Eum_TOKEN_OPERATOR_MODULO_ASSIGN;
     
     return Eum_TOKEN_ERROR;
 }

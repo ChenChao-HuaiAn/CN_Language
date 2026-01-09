@@ -101,11 +101,11 @@ static Stru_AstNode_t* parse_function_declaration_impl(Stru_ParserInterface_t* i
     if (parameters == NULL)
     {
         // 报告错误
-        F_report_invalid_parameter_list_error(interface,
-                                             state->current_token->line,
-                                             state->current_token->column,
-                                             "函数参数列表无效",
-                                             state->current_token);
+        F_report_invalid_declaration_error(interface,
+                                          state->current_token->line,
+                                          state->current_token->column,
+                                          "函数参数列表无效",
+                                          state->current_token);
         return NULL;
     }
     
@@ -121,11 +121,11 @@ static Stru_AstNode_t* parse_function_declaration_impl(Stru_ParserInterface_t* i
         if (return_type == NULL)
         {
             // 报告错误
-            F_report_invalid_type_error(interface,
-                                       state->current_token->line,
-                                       state->current_token->column,
-                                       "函数返回类型无效",
-                                       state->current_token);
+            F_report_invalid_declaration_error(interface,
+                                              state->current_token->line,
+                                              state->current_token->column,
+                                              "函数返回类型无效",
+                                              state->current_token);
             
             // 清理参数数组
             F_destroy_dynamic_array(parameters);
@@ -134,15 +134,15 @@ static Stru_AstNode_t* parse_function_declaration_impl(Stru_ParserInterface_t* i
     }
     
     // 解析函数体（代码块）
-    Stru_AstNode_t* body = F_parse_block_statement(interface);
+    Stru_AstNode_t* body = F_parser_parse_statement(interface);
     if (body == NULL)
     {
         // 报告错误
-        F_report_invalid_function_body_error(interface,
-                                            state->current_token->line,
-                                            state->current_token->column,
-                                            "函数体无效",
-                                            state->current_token);
+        F_report_invalid_declaration_error(interface,
+                                          state->current_token->line,
+                                          state->current_token->column,
+                                          "函数体无效",
+                                          state->current_token);
         
         // 清理参数数组和返回类型
         F_destroy_dynamic_array(parameters);

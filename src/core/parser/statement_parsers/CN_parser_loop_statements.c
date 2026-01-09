@@ -69,7 +69,7 @@ Stru_AstNode_t* F_parse_while_statement(Stru_ParserInterface_t* interface)
     F_advance_token(state);
     
     // 解析条件表达式
-    Stru_AstNode_t* condition = F_parse_expression(interface);
+    Stru_AstNode_t* condition = F_parser_parse_expression(interface);
     if (condition == NULL)
     {
         // 报告错误
@@ -175,11 +175,11 @@ Stru_AstNode_t* F_parse_for_statement(Stru_ParserInterface_t* interface)
         // 可能是变量声明或表达式
         if (state->current_token->type == Eum_TOKEN_KEYWORD_VAR)
         {
-            init = F_parse_declaration(interface);
+            init = F_parser_parse_declaration(interface);
         }
         else
         {
-            init = F_parse_expression(interface);
+            init = F_parser_parse_expression(interface);
         }
         
         if (init == NULL)
@@ -218,7 +218,7 @@ Stru_AstNode_t* F_parse_for_statement(Stru_ParserInterface_t* interface)
     Stru_AstNode_t* condition = NULL;
     if (state->current_token != NULL && state->current_token->type != Eum_TOKEN_DELIMITER_SEMICOLON)
     {
-        condition = F_parse_expression(interface);
+        condition = F_parser_parse_expression(interface);
         if (condition == NULL)
         {
             // 报告错误
@@ -265,7 +265,7 @@ Stru_AstNode_t* F_parse_for_statement(Stru_ParserInterface_t* interface)
     Stru_AstNode_t* update = NULL;
     if (state->current_token != NULL && state->current_token->type != Eum_TOKEN_DELIMITER_RPAREN)
     {
-        update = F_parse_expression(interface);
+        update = F_parser_parse_expression(interface);
         if (update == NULL)
         {
             // 报告错误

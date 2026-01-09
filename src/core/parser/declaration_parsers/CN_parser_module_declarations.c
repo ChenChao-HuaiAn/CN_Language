@@ -97,11 +97,11 @@ static Stru_AstNode_t* parse_module_declaration_impl(Stru_ParserInterface_t* int
     F_advance_token(state);
     
     // 解析模块体（代码块）
-    Stru_AstNode_t* body = F_parse_block_statement(interface);
+    Stru_AstNode_t* body = F_parser_parse_statement(interface);
     if (body == NULL)
     {
         // 报告错误
-        F_report_invalid_module_body_error(interface,
+        F_report_invalid_declaration_error(interface,
                                           state->current_token->line,
                                           state->current_token->column,
                                           "模块体无效",

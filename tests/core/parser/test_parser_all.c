@@ -22,6 +22,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* 表达式测试函数声明 */
+extern bool test_parser_expressions_all(void);
+
 // ============================================
 // 测试夹具定义
 // ============================================
@@ -328,6 +331,44 @@ TEST_GROUP_RUNNER(parser_interface)
  */
 bool test_parser_all(void)
 {
+    bool all_passed = true;
+    
+    printf("\n");
+    printf("========================================\n");
+    printf("    语法分析器模块完整测试\n");
+    printf("========================================\n");
+    printf("\n");
+    
+    // 运行接口测试
+    printf("1. 运行接口测试...\n");
     UnityTestRunnerFunction runner = &TEST_GROUP_RUNNER_NAME(parser_interface);
-    return UnityMain(0, NULL, runner) == 0;
+    bool interface_passed = (UnityMain(0, NULL, runner) == 0);
+    
+    if (interface_passed) {
+        printf("✅ 接口测试通过\n");
+    } else {
+        printf("❌ 接口测试失败\n");
+        all_passed = false;
+    }
+    
+    printf("\n");
+    
+    // 运行表达式测试
+    printf("2. 运行表达式测试...\n");
+    bool expressions_passed = test_parser_expressions_all();
+    
+    if (expressions_passed) {
+        printf("✅ 表达式测试通过\n");
+    } else {
+        printf("❌ 表达式测试失败\n");
+        all_passed = false;
+    }
+    
+    printf("\n");
+    printf("========================================\n");
+    printf("    语法分析器模块测试完成\n");
+    printf("========================================\n");
+    printf("\n");
+    
+    return all_passed;
 }

@@ -101,7 +101,7 @@ static Stru_AstNode_t* parse_struct_declaration_impl(Stru_ParserInterface_t* int
     if (members == NULL)
     {
         // 报告错误
-        F_report_invalid_struct_members_error(interface,
+        F_report_invalid_declaration_error(interface,
                                              state->current_token->line,
                                              state->current_token->column,
                                              "结构体成员列表无效",

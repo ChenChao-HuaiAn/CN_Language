@@ -22,7 +22,7 @@ endif
 
 # 编译器设置
 CC := gcc
-CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils -I../src/infrastructure/memory -I../src/infrastructure/memory/allocators -I../src/infrastructure/memory/allocators/system -I../src/infrastructure/memory/allocators/debug -I../src/infrastructure/memory/allocators/pool -I../src/infrastructure/memory/allocators/region -I../src/infrastructure/memory/allocators/factory -I../src/infrastructure/memory/context -I../src/infrastructure/memory/context/public -I../src/infrastructure/memory/context/interfaces -I../src/infrastructure/memory/context/core -I../src/infrastructure/memory/context/core/allocation -I../src/infrastructure/memory/context/core/management -I../src/infrastructure/memory/context/core/operations -I../src/infrastructure/memory/context/core/statistics -I../src/infrastructure/memory/debug/tools -I../src/infrastructure/memory/debug/tools/core -I../src/infrastructure/memory/debug/tools/dump -I../src/infrastructure/memory/debug/tools/validation -I../src/infrastructure/memory/debug/tools/stacktrace -I../src/infrastructure/memory/debug/tools/utils -I../src/core/token -I../src/core/token/lifecycle -I../src/core/token/values -I../src/core/token/query -I../src/core/token/keywords -I../src/core/token/tools -I../src/core/token/interface
+CFLAGS := -std=c99 -Wall -Wextra -I../src -I. -I../src/infrastructure/containers/stack -I../src/infrastructure/containers/stack/stack_core -I../src/infrastructure/containers/stack/stack_iterator -I../src/infrastructure/containers/stack/stack_utils -I../src/infrastructure/containers/queue -I../src/infrastructure/containers/queue/queue_core -I../src/infrastructure/containers/queue/queue_iterator -I../src/infrastructure/containers/queue/queue_utils -I../src/infrastructure/containers/string -I../src/infrastructure/containers/string/string_core -I../src/infrastructure/containers/string/string_operations -I../src/infrastructure/containers/string/string_search -I../src/infrastructure/containers/string/string_transform -I../src/infrastructure/containers/string/string_utils -I../src/infrastructure/memory -I../src/infrastructure/memory/allocators -I../src/infrastructure/memory/allocators/system -I../src/infrastructure/memory/allocators/debug -I../src/infrastructure/memory/allocators/pool -I../src/infrastructure/memory/allocators/region -I../src/infrastructure/memory/allocators/factory -I../src/infrastructure/memory/context -I../src/infrastructure/memory/context/public -I../src/infrastructure/memory/context/interfaces -I../src/infrastructure/memory/context/core -I../src/infrastructure/memory/context/core/allocation -I../src/infrastructure/memory/context/core/management -I../src/infrastructure/memory/context/core/operations -I../src/infrastructure/memory/context/core/statistics -I../src/infrastructure/memory/debug/tools -I../src/infrastructure/memory/debug/tools/core -I../src/infrastructure/memory/debug/tools/dump -I../src/infrastructure/memory/debug/tools/validation -I../src/infrastructure/memory/debug/tools/stacktrace -I../src/infrastructure/memory/debug/tools/utils -I../src/core/token -I../src/core/token/lifecycle -I../src/core/token/values -I../src/core/token/query -I../src/core/token/keywords -I../src/core/token/tools -I../src/core/token/interface -I../src/core/parser -I../src/core/parser/interface -I../src/core/parser/declaration_parsers -I../src/core/parser/error_handling -I../src/core/parser/expression_parsers -I../src/core/parser/statement_parsers -I../src/core/parser/utils
 LDFLAGS := 
 
 # 构建目录
@@ -167,8 +167,41 @@ TOKEN_TEST_SRCS := core/token/test_token_runner.c \
                    core/token/tools/test_token_tools.c \
                    core/token/interface/test_token_interface.c
 
+# 语法分析器模块源文件
+PARSER_SRCS := ../src/core/parser/CN_parser_interface.c \
+               ../src/core/parser/interface/CN_parser_interface_impl.c \
+               ../src/core/parser/error_handling/CN_parser_errors.c \
+               ../src/core/parser/expression_parsers/CN_parser_expressions_main.c \
+               ../src/core/parser/expression_parsers/CN_parser_function_calls.c \
+               ../src/core/parser/expression_parsers/CN_parser_primary_expressions.c \
+               ../src/core/parser/expression_parsers/CN_parser_unary_expressions.c \
+               ../src/core/parser/statement_parsers/CN_parser_statements_main.c \
+               ../src/core/parser/statement_parsers/CN_parser_block_statements.c \
+               ../src/core/parser/statement_parsers/CN_parser_conditional_statements.c \
+               ../src/core/parser/statement_parsers/CN_parser_control_statements.c \
+               ../src/core/parser/statement_parsers/CN_parser_loop_statements.c \
+               ../src/core/parser/declaration_parsers/CN_parser_declarations_main.c \
+               ../src/core/parser/declaration_parsers/CN_parser_enum_declarations.c \
+               ../src/core/parser/declaration_parsers/CN_parser_function_declarations.c \
+               ../src/core/parser/declaration_parsers/CN_parser_member_lists.c \
+               ../src/core/parser/declaration_parsers/CN_parser_module_declarations.c \
+               ../src/core/parser/declaration_parsers/CN_parser_parameter_lists.c \
+               ../src/core/parser/declaration_parsers/CN_parser_struct_declarations.c \
+               ../src/core/parser/declaration_parsers/CN_parser_type_declarations.c \
+               ../src/core/parser/declaration_parsers/CN_parser_type_expressions.c \
+               ../src/core/parser/declaration_parsers/CN_parser_variable_declarations.c \
+               ../src/core/parser/utils/CN_parser_utils.c \
+               ../src/core/parser/utils/CN_parser_ast_utils.c \
+               ../src/core/parser/utils/CN_parser_general_utils.c \
+               ../src/core/parser/utils/CN_parser_token_utils.c \
+               ../src/core/parser/utils/CN_parser_type_utils.c
+
+# 语法分析器模块测试文件
+PARSER_TEST_SRCS := core/parser/test_parser_all.c \
+                    core/parser/test_parser_expressions.c
+
 # 所有源文件
-ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS) $(MEMORY_ALLOCATOR_SRCS) $(MEMORY_ALLOCATOR_TEST_SRCS) $(MEMORY_CONTEXT_SRCS) $(MEMORY_CONTEXT_TEST_SRCS) $(MEMORY_DEBUG_SRCS) $(MEMORY_DEBUG_TEST_SRCS) $(MEMORY_DEBUG_TOOLS_SRCS) $(MEMORY_DEBUG_TOOLS_TEST_SRCS) $(MEMORY_UTILITIES_SRCS) $(MEMORY_UTILITIES_TEST_SRCS) $(TOKEN_SRCS) $(TOKEN_TEST_SRCS)
+ALL_SRCS := $(SRCS) $(STACK_SRCS) $(STACK_TEST_SRCS) $(QUEUE_SRCS) $(QUEUE_TEST_SRCS) $(STRING_SRCS) $(STRING_TEST_SRCS) $(MEMORY_ALLOCATOR_SRCS) $(MEMORY_ALLOCATOR_TEST_SRCS) $(MEMORY_CONTEXT_SRCS) $(MEMORY_CONTEXT_TEST_SRCS) $(MEMORY_DEBUG_SRCS) $(MEMORY_DEBUG_TEST_SRCS) $(MEMORY_DEBUG_TOOLS_SRCS) $(MEMORY_DEBUG_TOOLS_TEST_SRCS) $(MEMORY_UTILITIES_SRCS) $(MEMORY_UTILITIES_TEST_SRCS) $(TOKEN_SRCS) $(TOKEN_TEST_SRCS) $(PARSER_SRCS) $(PARSER_TEST_SRCS)
 
 # 对象文件（按照源代码目录结构组织）
 OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
@@ -189,7 +222,9 @@ OBJS := $(patsubst %.c,$(BUILD_DIR)/%.o,$(SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(MEMORY_UTILITIES_SRCS)) \
         $(patsubst %.c,$(BUILD_DIR)/%.o,$(MEMORY_UTILITIES_TEST_SRCS)) \
         $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(TOKEN_SRCS)) \
-        $(patsubst %.c,$(BUILD_DIR)/%.o,$(TOKEN_TEST_SRCS))
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(TOKEN_TEST_SRCS)) \
+        $(patsubst ../src/%.c,$(BUILD_DIR)/src/%.o,$(PARSER_SRCS)) \
+        $(patsubst %.c,$(BUILD_DIR)/%.o,$(PARSER_TEST_SRCS))
 
 # 可执行文件
 TARGET := $(BIN_DIR)/test_runner$(EXE_EXT)
@@ -273,6 +308,11 @@ run-context: $(TARGET)
 run-token: $(TARGET)
 	@echo "运行令牌模块测试..."
 	$(subst /,$(PATH_SEP),$(TARGET)) token
+
+# 运行语法分析器模块测试
+run-parser: $(TARGET)
+	@echo "运行语法分析器模块测试..."
+	$(subst /,$(PATH_SEP),$(TARGET)) parser
 
 # 运行内存调试工具模块测试
 run-debug-tools: $(TARGET)

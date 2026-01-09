@@ -159,7 +159,7 @@ Stru_AstNode_t* F_parse_return_statement(Stru_ParserInterface_t* interface)
     if (state->current_token != NULL && state->current_token->type != Eum_TOKEN_DELIMITER_SEMICOLON)
     {
         // 解析返回值表达式
-        return_value = F_parse_expression(interface);
+        return_value = F_parser_parse_expression(interface);
         if (return_value == NULL)
         {
             // 报告错误

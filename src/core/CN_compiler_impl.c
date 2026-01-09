@@ -36,7 +36,7 @@ extern "C" {
 typedef struct {
     Stru_LexerInterface_t* lexer;          /**< 词法分析器实例 */
     Stru_ParserInterface_t* parser;        /**< 语法分析器实例 */
-    Stru_SemanticInterface_t* semantic;    /**< 语义分析器实例 */
+    Stru_SemanticAnalyzerInterface_t* semantic;    /**< 语义分析器实例 */
     Stru_CodeGeneratorInterface_t* codegen; /**< 代码生成器实例 */
     
     Stru_DynamicArray_t* tokens;           /**< 词法分析结果：token数组 */
@@ -306,6 +306,256 @@ static Stru_CompilationResult_t* F_create_compilation_result(void)
     return result;
 }
 
+/* ==================== 其他接口方法实现 ==================== */
+
+/**
+ * @brief 执行词法分析
+ */
+static bool F_lexical_analysis_impl(Stru_CompilerInterface_t* self,
+                                   const char* source,
+                                   const char* source_name)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    /* 保存源代码 */
+    if (state->current_source != NULL) {
+        free(state->current_source);
+    }
+    state->current_source = strdup(source);
+    
+    if (state->current_source_name != NULL) {
+        free(state->current_source_name);
+    }
+    state->current_source_name = strdup(source_name);
+    
+    /* 初始化词法分析器 */
+    if (!state->lexer->initialize(state->lexer, source, strlen(source), source_name)) {
+        F_add_error(state, "词法分析器初始化失败");
+        return false;
+    }
+    
+    /* 执行词法分析 */
+    state->tokens = F_create_dynamic_array(sizeof(Stru_Token_t*));
+    if (state->tokens == NULL) {
+        F_add_error(state, "无法创建token数组");
+        return false;
+    }
+    
+    /* 获取所有token */
+    while (state->lexer->has_more_tokens(state->lexer)) {
+        Stru_Token_t* token = state->lexer->next_token(state->lexer);
+        if (token == NULL) {
+            break;
+        }
+        
+        F_dynamic_array_push(state->tokens, &token);
+        
+        /* 检查是否到达文件结束 */
+        if (token->type == Eum_TOKEN_EOF) {
+            break;
+        }
+    }
+    
+    state->lexer_done = true;
+    return true;
+}
+
+/**
+ * @brief 执行语法分析
+ */
+static bool F_syntax_analysis_impl(Stru_CompilerInterface_t* self)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    if (!state->lexer_done) {
+        F_add_error(state, "需要先执行词法分析");
+        return false;
+    }
+    
+    /* TODO: 实现语法分析 */
+    /* 暂时返回成功，实际功能将在后续实现 */
+    
+    state->parser_done = true;
+    return true;
+}
+
+/**
+ * @brief 执行语义分析
+ */
+static bool F_semantic_analysis_impl(Stru_CompilerInterface_t* self)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    if (!state->parser_done) {
+        F_add_error(state, "需要先执行语法分析");
+        return false;
+    }
+    
+    /* TODO: 实现语义分析 */
+    /* 暂时返回成功，实际功能将在后续实现 */
+    
+    state->semantic_done = true;
+    return true;
+}
+
+/**
+ * @brief 执行代码生成
+ */
+static bool F_code_generation_impl(Stru_CompilerInterface_t* self,
+                                  const char* output_file)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    if (!state->semantic_done) {
+        F_add_error(state, "需要先执行语义分析");
+        return false;
+    }
+    
+    /* TODO: 实现代码生成 */
+    /* 暂时返回成功，实际功能将在后续实现 */
+    
+    return true;
+}
+
+/**
+ * @brief 获取错误数量
+ */
+static int F_get_error_count_impl(Stru_CompilerInterface_t* self)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    if (state->errors == NULL) {
+        return 0;
+    }
+    
+    return (int)state->errors->length;
+}
+
+/**
+ * @brief 获取警告数量
+ */
+static int F_get_warning_count_impl(Stru_CompilerInterface_t* self)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    if (state->warnings == NULL) {
+        return 0;
+    }
+    
+    return (int)state->warnings->length;
+}
+
+/**
+ * @brief 获取错误信息
+ */
+static const char* F_get_error_message_impl(Stru_CompilerInterface_t* self, int index)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    if (state->errors == NULL || index < 0 || index >= (int)state->errors->length) {
+        return NULL;
+    }
+    
+    char** error_ptr = (char**)F_dynamic_array_get(state->errors, index);
+    if (error_ptr == NULL) {
+        return NULL;
+    }
+    
+    return *error_ptr;
+}
+
+/**
+ * @brief 获取警告信息
+ */
+static const char* F_get_warning_message_impl(Stru_CompilerInterface_t* self, int index)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    if (state->warnings == NULL || index < 0 || index >= (int)state->warnings->length) {
+        return NULL;
+    }
+    
+    char** warning_ptr = (char**)F_dynamic_array_get(state->warnings, index);
+    if (warning_ptr == NULL) {
+        return NULL;
+    }
+    
+    return *warning_ptr;
+}
+
+/**
+ * @brief 重置编译器状态
+ */
+static void F_reset_impl(Stru_CompilerInterface_t* self)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    Stru_CompilerState_t* state = impl->state;
+    
+    /* 清除错误和警告 */
+    F_clear_errors_and_warnings(state);
+    
+    /* 重置状态标志 */
+    state->lexer_done = false;
+    state->parser_done = false;
+    state->semantic_done = false;
+    
+    /* 释放token数组 */
+    if (state->tokens != NULL) {
+        F_destroy_dynamic_array(state->tokens);
+        state->tokens = NULL;
+    }
+    
+    /* 释放AST */
+    if (state->ast_root != NULL) {
+        /* TODO: 释放AST节点 */
+        state->ast_root = NULL;
+    }
+    
+    /* 释放源代码 */
+    if (state->current_source != NULL) {
+        free(state->current_source);
+        state->current_source = NULL;
+    }
+    
+    if (state->current_source_name != NULL) {
+        free(state->current_source_name);
+        state->current_source_name = NULL;
+    }
+}
+
+/**
+ * @brief 销毁编译器
+ */
+static void F_destroy_impl(Stru_CompilerInterface_t* self)
+{
+    Stru_CompilerImpl_t* impl = (Stru_CompilerImpl_t*)self;
+    
+    if (impl == NULL) {
+        return;
+    }
+    
+    /* 销毁内部状态 */
+    if (impl->state != NULL) {
+        F_destroy_compiler_state(impl->state);
+        impl->state = NULL;
+    }
+    
+    /* 销毁实现结构体 */
+    free(impl);
+}
+
+#ifdef __cplusplus
+}
+#endif
+
 /**
  * @brief 添加错误信息
  */
@@ -529,4 +779,21 @@ static Stru_CompilationResult_t* F_compile_source_impl(Stru_CompilerInterface_t*
     
     /* 执行代码生成 */
     const char* output_file = (options != NULL && options->output_file != NULL) ? 
-                              options->output_file : "a
+                              options->output_file : "a.out";
+    
+    if (!F_code_generation_impl(self, output_file)) {
+        result->success = false;
+        result->error_count = F_get_error_count_impl(self);
+        result->warning_count = F_get_warning_count_impl(self);
+        result->error_message = strdup("代码生成失败");
+        return result;
+    }
+    
+    /* 编译成功 */
+    result->success = true;
+    result->error_count = F_get_error_count_impl(self);
+    result->warning_count = F_get_warning_count_impl(self);
+    result->output_path = strdup(output_file);
+    
+    return result;
+}

@@ -172,4 +172,26 @@ Stru_AstNode_t* F_parse_function_call_expression(Stru_ParserInterface_t* interfa
  */
 Stru_DynamicArray_t* F_parse_argument_list(Stru_ParserInterface_t* interface);
 
+/**
+ * @brief 解析后缀表达式
+ * 
+ * 解析后缀表达式，包括成员访问和数组索引。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param base 基础表达式节点
+ * @return Stru_AstNode_t* 后缀表达式AST节点
+ */
+Stru_AstNode_t* F_parse_postfix_expression(Stru_ParserInterface_t* interface,
+                                          Stru_AstNode_t* base);
+
+/**
+ * @brief 解析条件表达式（三元运算符）
+ * 
+ * 解析条件表达式（三元运算符），如：条件 ? 真值 : 假值。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 条件表达式AST节点
+ */
+Stru_AstNode_t* F_parse_conditional_expression(Stru_ParserInterface_t* interface);
+
 #endif // CN_PARSER_EXPRESSIONS_H
