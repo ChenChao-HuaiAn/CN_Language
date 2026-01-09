@@ -19,6 +19,11 @@ CFLAGS = -Wall -Wextra -std=c11 -g -D_GNU_SOURCE \
          -I./src/core/runtime \
          -I./src/core/token \
          -I./src/infrastructure/containers/array \
+         -I./src/infrastructure/containers/string \
+         -I./src/infrastructure/containers/queue \
+         -I./src/infrastructure/containers/hash \
+         -I./src/infrastructure/containers/list \
+         -I./src/infrastructure/containers/stack \
          -I./src/infrastructure/memory \
          -I./src/infrastructure/platform \
          -I./src/infrastructure/utils
@@ -38,6 +43,7 @@ APP_SRCS = src/application/CN_main.c \
 # 核心层源文件 - 编译器
 CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/lexer/CN_lexer_interface.c \
+            src/core/lexer/interface/CN_lexer_interface_impl.c \
             src/core/lexer/CN_lexer_impl.c \
             src/core/lexer/errors/CN_lexer_errors.c \
             src/core/lexer/keywords/CN_lexer_keywords.c \
@@ -48,9 +54,18 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/lexer/utils/CN_lexer_utf8.c \
             src/core/lexer/utils/CN_lexer_utils.c \
             src/core/token/CN_token.c \
+            src/core/token/interface/CN_token_interface_impl.c \
+            src/core/token/keywords/CN_token_keywords.c \
+            src/core/token/lifecycle/CN_token_lifecycle.c \
+            src/core/token/query/CN_token_query.c \
+            src/core/token/tools/CN_token_tools.c \
+            src/core/token/values/CN_token_values.c \
             src/core/parser/CN_parser_interface.c \
+            src/core/parser/CN_syntax_error.c \
             src/core/parser/interface/CN_parser_interface_impl.c \
             src/core/parser/error_handling/CN_parser_errors.c \
+            src/core/parser/error_handling/CN_parser_phrase_recovery.c \
+            src/core/parser/syntax_sugar/CN_parser_syntax_sugar.c \
             src/core/parser/declaration_parsers/CN_parser_declarations_main.c \
             src/core/parser/declaration_parsers/CN_parser_enum_declarations.c \
             src/core/parser/declaration_parsers/CN_parser_function_declarations.c \
@@ -61,6 +76,9 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/parser/declaration_parsers/CN_parser_type_declarations.c \
             src/core/parser/declaration_parsers/CN_parser_type_expressions.c \
             src/core/parser/declaration_parsers/CN_parser_variable_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_interface_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_class_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_generic_declarations.c \
             src/core/parser/expression_parsers/CN_parser_expressions_main.c \
             src/core/parser/expression_parsers/CN_parser_function_calls.c \
             src/core/parser/expression_parsers/CN_parser_primary_expressions.c \
@@ -71,11 +89,20 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/parser/statement_parsers/CN_parser_conditional_statements.c \
             src/core/parser/statement_parsers/CN_parser_control_statements.c \
             src/core/parser/statement_parsers/CN_parser_loop_statements.c \
+            src/core/parser/statement_parsers/CN_parser_switch_statements.c \
+            src/core/parser/statement_parsers/CN_parser_exception_statements.c \
             src/core/parser/utils/CN_parser_ast_utils.c \
             src/core/parser/utils/CN_parser_general_utils.c \
             src/core/parser/utils/CN_parser_token_utils.c \
             src/core/parser/utils/CN_parser_type_utils.c \
-            src/core/parser/utils/CN_parser_utils.c
+            src/core/parser/utils/CN_parser_utils.c \
+            src/core/ast/CN_ast_builder.c \
+            src/core/ast/CN_ast_compat.c \
+            src/core/ast/CN_ast_interface_impl.c \
+            src/core/ast/CN_ast_node.c \
+            src/core/ast/CN_ast_query.c \
+            src/core/ast/CN_ast_serializer.c \
+            src/core/ast/CN_ast_traversal.c
 
 # 基础设施层源文件
 INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \
@@ -83,7 +110,40 @@ INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \
              src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
              src/infrastructure/containers/array/CN_dynamic_array_operations.c \
              src/infrastructure/containers/array/CN_dynamic_array_utils.c \
-             src/infrastructure/utils/CN_utils_string.c
+             src/infrastructure/containers/string/string_core/CN_string_core.c \
+             src/infrastructure/containers/string/string_operations/CN_string_operations.c \
+             src/infrastructure/containers/string/string_search/CN_string_search.c \
+             src/infrastructure/containers/string/string_transform/CN_string_transform.c \
+             src/infrastructure/containers/string/string_utils/CN_string_utils.c \
+             src/infrastructure/containers/queue/CN_queue.c \
+             src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
+             src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
+             src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c \
+             src/infrastructure/containers/hash/CN_hash_table.c \
+             src/infrastructure/containers/hash/CN_hash_table_entry.c \
+             src/infrastructure/containers/hash/CN_hash_table_impl.c \
+             src/infrastructure/containers/hash/CN_hash_table_interface_impl.c \
+             src/infrastructure/containers/hash/CN_hash_table_utils.c \
+             src/infrastructure/containers/list/CN_linked_list.c \
+             src/infrastructure/containers/list/CN_linked_list_iterator.c \
+             src/infrastructure/containers/list/CN_linked_list_sort.c \
+             src/infrastructure/containers/stack/stack_core/CN_stack_core.c \
+             src/infrastructure/containers/stack/stack_iterator/CN_stack_iterator.c \
+             src/infrastructure/containers/stack/stack_utils/CN_stack_utils.c \
+             src/infrastructure/utils/CN_utils_string.c \
+             src/infrastructure/memory/utilities/CN_memory_utilities.c \
+             src/infrastructure/memory/allocators/system/CN_system_allocator.c \
+             src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
+             src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
+             src/infrastructure/memory/allocators/region/CN_region_allocator.c \
+             src/infrastructure/memory/allocators/factory/CN_allocator_factory.c \
+             src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
+             src/infrastructure/memory/context/public/CN_memory_context.c \
+             src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
+             src/infrastructure/memory/context/core/management/CN_context_management.c \
+             src/infrastructure/memory/context/core/operations/CN_context_operations.c \
+             src/infrastructure/memory/context/core/statistics/CN_context_statistics.c \
+             src/infrastructure/memory/context/interfaces/CN_context_interface.c
 
 # 所有源文件
 ALL_SRCS = $(APP_SRCS) $(CORE_SRCS) $(INFRA_SRCS)
@@ -110,7 +170,8 @@ build/%.o: src/%.c
 
 # 清理构建文件
 clean:
-	rm -rf build bin
+	@powershell -Command "if (Test-Path 'build') { Remove-Item -Recurse -Force 'build' }"
+	@powershell -Command "if (Test-Path 'bin') { Remove-Item -Recurse -Force 'bin' }"
 	@echo "清理完成: 已删除build和bin目录"
 
 # 运行程序

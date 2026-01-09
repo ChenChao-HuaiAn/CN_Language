@@ -101,7 +101,7 @@ static Stru_AstAttribute_t* find_attribute(Stru_DynamicArray_t* attributes, cons
 {
     if (!attributes || !key) return NULL;
     
-    size_t count = F_dynamic_array_get_size(attributes);
+    size_t count = F_dynamic_array_length(attributes);
     for (size_t i = 0; i < count; i++) {
         Stru_AstAttribute_t* attr = (Stru_AstAttribute_t*)F_dynamic_array_get(attributes, i);
         if (attr && attr->key && strcmp(attr->key, key) == 0) {
@@ -137,14 +137,14 @@ Stru_AstNodeInternalData_t* F_create_ast_node_internal_data(
     internal_data->parent = NULL;
     
     // 创建子节点数组
-    internal_data->children = F_create_dynamic_array(sizeof(Stru_AstNodeInterface_t*), 8);
+    internal_data->children = F_create_dynamic_array(sizeof(Stru_AstNodeInterface_t*));
     if (!internal_data->children) {
         cn_free(internal_data);
         return NULL;
     }
     
     // 创建属性数组
-    internal_data->attributes = F_create_dynamic_array(sizeof(Stru_AstAttribute_t*), 4);
+    internal_data->attributes = F_create_dynamic_array(sizeof(Stru_AstAttribute_t*));
     if (!internal_data->attributes) {
         F_destroy_dynamic_array(internal_data->children);
         cn_free(internal_data);
@@ -177,7 +177,7 @@ void F_destroy_ast_node_internal_data(Stru_AstNodeInternalData_t* internal_data)
     
     // 释放所有属性
     if (internal_data->attributes) {
-        size_t attr_count = F_dynamic_array_get_size(internal_data->attributes);
+        size_t attr_count = F_dynamic_array_length(internal_data->attributes);
         for (size_t i = 0; i < attr_count; i++) {
             Stru_AstAttribute_t* attr = (Stru_AstAttribute_t*)F_dynamic_array_get(internal_data->attributes, i);
             destroy_attribute(attr);
@@ -380,7 +380,7 @@ static size_t get_child_count_impl(const Stru_AstNodeInterface_t* node)
         F_get_internal_data_from_ast_node_interface(node);
     if (!internal_data || !internal_data->children) return 0;
     
-    return F_dynamic_array_get_size(internal_data->children);
+    return F_dynamic_array_length(internal_data->children);
 }
 
 static Stru_AstNodeInterface_t* get_child_impl(const Stru_AstNodeInterface_t* node, size_t index)
@@ -389,7 +389,7 @@ static Stru_AstNodeInterface_t* get_child_impl(const Stru_AstNodeInterface_t* no
         F_get_internal_data_from_ast_node_interface(node);
     if (!internal_data || !internal_data->children) return NULL;
     
-    size_t count = F_dynamic_array_get_size(internal_data->children);
+    size_t count = F_dynamic_array_length(internal_data->children);
     if (index >= count) return NULL;
     
     return *(Stru_AstNodeInterface_t**)F_dynamic_array_get(internal_data->children, index);
@@ -411,7 +411,7 @@ static bool add_child_impl(Stru_AstNodeInterface_t* node, Stru_AstNodeInterface_
     }
     
     // 添加子节点到数组
-    return F_dynamic_array_push_back(internal_data->children, &child);
+    return F_dynamic_array_push(internal_data->children, &child);
 }
 
 static Stru_AstNodeInterface_t* remove_child_impl(Stru_AstNodeInterface_t* node, size_t index)
@@ -420,7 +420,7 @@ static Stru_AstNodeInterface_t* remove_child_impl(Stru_AstNodeInterface_t* node,
         F_get_internal_data_from_ast_node_interface(node);
     if (!internal_data || !internal_data->children) return NULL;
     
-    size_t count = F_dynamic_array_get_size(internal_data->children);
+    size_t count = F_dynamic_array_length(internal_data->children);
     if (index >= count) return NULL;
     
     Stru_AstNodeInterface_t* child = 
@@ -471,7 +471,7 @@ static bool set_attribute_impl(Stru_AstNodeInterface_t* node, const char* key, v
         attr = create_attribute(key, value);
         if (!attr) return false;
         
-        return F_dynamic_array_push_back(internal_data->attributes, &attr);
+        return F_dynamic_array_push(internal_data->attributes, &attr);
     }
 }
 
@@ -481,7 +481,7 @@ static bool remove_attribute_impl(Stru_AstNodeInterface_t* node, const char* key
         F_get_internal_data_from_ast_node_interface(node);
     if (!internal_data || !internal_data->attributes || !key) return false;
     
-    size_t count = F_dynamic_array_get_size(internal_data->attributes);
+    size_t count = F_dynamic_array_length(internal_data->attributes);
     for (size_t i = 0; i < count; i++) {
         Stru_AstAttribute_t* attr = (Stru_AstAttribute_t*)F_dynamic_array_get(internal_data->attributes, i);
         if (attr && attr->key && strcmp(attr->key, key) == 0) {
@@ -543,7 +543,7 @@ static Stru_AstNodeInterface_t* copy_impl(const Stru_AstNodeInterface_t* node)
     }
     
     // 复制属性
-    size_t attr_count = F_dynamic_array_get_size(internal_data->attributes);
+    size_t attr_count = F_dynamic_array_length(internal_data->attributes);
     for (size_t i = 0; i < attr_count; i++) {
         Stru_AstAttribute_t* attr = (Stru_AstAttribute_t*)F_dynamic_array_get(internal_data->attributes, i);
         if (attr && attr->key) {

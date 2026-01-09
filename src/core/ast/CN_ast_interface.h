@@ -67,6 +67,10 @@ typedef enum Eum_AstNodeType
     Eum_AST_SWITCH_STMT,          ///< switch语句
     Eum_AST_CASE_STMT,            ///< case语句
     Eum_AST_DEFAULT_STMT,         ///< default语句
+    Eum_AST_TRY_STMT,             ///< try语句
+    Eum_AST_CATCH_STMT,           ///< catch语句
+    Eum_AST_THROW_STMT,           ///< throw语句
+    Eum_AST_FINALLY_STMT,         ///< finally语句
     
     // ============================================
     // 表达式
@@ -570,6 +574,138 @@ struct Stru_AstBuilderInterface_t
                                                      Stru_AstNodeInterface_t* function,
                                                      Stru_AstNodeInterface_t** arguments,
                                                      size_t argument_count);
+    
+    /**
+     * @brief 构建try语句节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param try_block try块节点
+     * @param catch_clauses catch子句节点数组
+     * @param catch_clause_count catch子句数量
+     * @param finally_block finally块节点（可选）
+     * @return Stru_AstNodeInterface_t* 新创建的try语句节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_try_statement)(Stru_AstBuilderInterface_t* builder,
+                                                   const Stru_AstNodeLocation_t* location,
+                                                   Stru_AstNodeInterface_t* try_block,
+                                                   Stru_AstNodeInterface_t** catch_clauses,
+                                                   size_t catch_clause_count,
+                                                   Stru_AstNodeInterface_t* finally_block);
+    
+    /**
+     * @brief 构建catch语句节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param exception_type 异常类型节点（可选）
+     * @param exception_name 异常名称（可选）
+     * @param catch_block catch块节点
+     * @return Stru_AstNodeInterface_t* 新创建的catch语句节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_catch_statement)(Stru_AstBuilderInterface_t* builder,
+                                                     const Stru_AstNodeLocation_t* location,
+                                                     Stru_AstNodeInterface_t* exception_type,
+                                                     const char* exception_name,
+                                                     Stru_AstNodeInterface_t* catch_block);
+    
+    /**
+     * @brief 构建throw语句节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param expression 抛出表达式节点（可选）
+     * @return Stru_AstNodeInterface_t* 新创建的throw语句节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_throw_statement)(Stru_AstBuilderInterface_t* builder,
+                                                     const Stru_AstNodeLocation_t* location,
+                                                     Stru_AstNodeInterface_t* expression);
+    
+    /**
+     * @brief 构建finally语句节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param finally_block finally块节点
+     * @return Stru_AstNodeInterface_t* 新创建的finally语句节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_finally_statement)(Stru_AstBuilderInterface_t* builder,
+                                                       const Stru_AstNodeLocation_t* location,
+                                                       Stru_AstNodeInterface_t* finally_block);
+    
+    /**
+     * @brief 构建switch语句节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param expression switch表达式节点
+     * @param cases case语句节点数组
+     * @param case_count case语句数量
+     * @param default_case default语句节点（可选）
+     * @return Stru_AstNodeInterface_t* 新创建的switch语句节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_switch_statement)(Stru_AstBuilderInterface_t* builder,
+                                                      const Stru_AstNodeLocation_t* location,
+                                                      Stru_AstNodeInterface_t* expression,
+                                                      Stru_AstNodeInterface_t** cases,
+                                                      size_t case_count,
+                                                      Stru_AstNodeInterface_t* default_case);
+    
+    /**
+     * @brief 构建case语句节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param case_expression case表达式节点
+     * @param case_body case体节点
+     * @return Stru_AstNodeInterface_t* 新创建的case语句节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_case_statement)(Stru_AstBuilderInterface_t* builder,
+                                                    const Stru_AstNodeLocation_t* location,
+                                                    Stru_AstNodeInterface_t* case_expression,
+                                                    Stru_AstNodeInterface_t* case_body);
+    
+    /**
+     * @brief 构建default语句节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param default_body default体节点
+     * @return Stru_AstNodeInterface_t* 新创建的default语句节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_default_statement)(Stru_AstBuilderInterface_t* builder,
+                                                       const Stru_AstNodeLocation_t* location,
+                                                       Stru_AstNodeInterface_t* default_body);
+    
+    /**
+     * @brief 构建数组字面量节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param elements 数组元素节点数组
+     * @param element_count 数组元素数量
+     * @return Stru_AstNodeInterface_t* 新创建的数组字面量节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_array_literal)(Stru_AstBuilderInterface_t* builder,
+                                                   const Stru_AstNodeLocation_t* location,
+                                                   Stru_AstNodeInterface_t** elements,
+                                                   size_t element_count);
+    
+    /**
+     * @brief 构建结构体字面量节点
+     * 
+     * @param builder AST构建器实例
+     * @param location 节点位置信息
+     * @param struct_type_name 结构体类型名称（可选）
+     * @param members 结构体成员节点数组
+     * @param member_count 结构体成员数量
+     * @return Stru_AstNodeInterface_t* 新创建的结构体字面量节点指针，失败返回NULL
+     */
+    Stru_AstNodeInterface_t* (*build_struct_literal)(Stru_AstBuilderInterface_t* builder,
+                                                    const Stru_AstNodeLocation_t* location,
+                                                    const char* struct_type_name,
+                                                    Stru_AstNodeInterface_t** members,
+                                                    size_t member_count);
     
     /**
      * @brief 销毁AST构建器

@@ -18,6 +18,7 @@
 
 #include "../CN_parser_interface.h"
 #include "../CN_syntax_error.h"
+#include "CN_parser_phrase_recovery.h"
 
 // ============================================
 // 错误处理函数声明
@@ -219,12 +220,53 @@ Stru_SyntaxError_t* F_report_unclosed_structure_error(Stru_ParserInterface_t* in
  * @brief 尝试错误恢复
  * 
  * 在发生错误后尝试恢复语法分析。
+ * 包括短语级恢复和同步恢复。
  * 
  * @param interface 语法分析器接口指针
  * @param error 发生的错误
  * @return bool 恢复成功返回true，否则返回false
  */
 bool F_try_error_recovery(Stru_ParserInterface_t* interface, Stru_SyntaxError_t* error);
+
+/**
+ * @brief 尝试短语级错误恢复
+ * 
+ * 尝试使用短语级恢复策略修复错误。
+ * 这是F_try_error_recovery的内部辅助函数。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param error 发生的错误
+ * @return bool 短语级恢复成功返回true，否则返回false
+ */
+bool F_try_phrase_level_recovery(Stru_ParserInterface_t* interface, Stru_SyntaxError_t* error);
+
+/**
+ * @brief 应用短语级恢复结果
+ * 
+ * 应用短语级恢复的结果到语法分析器状态。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param recovery_result 恢复结果
+ * @return bool 应用成功返回true，否则返回false
+ */
+bool F_apply_phrase_recovery(Stru_ParserInterface_t* interface, 
+                            Stru_PhraseRecoveryResult_t* recovery_result);
+
+/**
+ * @brief 获取常见错误模式建议
+ * 
+ * 根据错误类型和上下文获取常见的错误模式和建议。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param error 发生的错误
+ * @param suggestion_buffer 建议缓冲区
+ * @param buffer_size 缓冲区大小
+ * @return int 写入的字符数
+ */
+int F_get_common_error_pattern_suggestion(Stru_ParserInterface_t* interface,
+                                         Stru_SyntaxError_t* error,
+                                         char* suggestion_buffer,
+                                         size_t buffer_size);
 
 /**
  * @brief 同步到安全点

@@ -16,6 +16,7 @@
 #include "CN_ast_builder.h"
 #include "../../infrastructure/memory/CN_memory_interface.h"
 #include <string.h>
+#include <stdio.h>
 
 // ============================================================================
 // 内部辅助函数

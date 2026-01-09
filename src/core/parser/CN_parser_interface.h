@@ -224,6 +224,32 @@ typedef struct Stru_ParserInterface_t {
     Stru_Token_t* (*get_next_token)(struct Stru_ParserInterface_t* interface);
     
     // ============================================
+    // 语法糖支持
+    // ============================================
+    
+    /**
+     * @brief 应用语法糖转换
+     * 
+     * 对AST节点应用语法糖转换，将语法糖转换为标准语法结构。
+     * 
+     * @param interface 语法分析器接口指针
+     * @param node 要转换的AST节点
+     * @return Stru_AstNode_t* 转换后的AST节点，NULL表示错误
+     */
+    Stru_AstNode_t* (*apply_syntax_sugar)(struct Stru_ParserInterface_t* interface, Stru_AstNode_t* node);
+    
+    /**
+     * @brief 递归应用语法糖转换
+     * 
+     * 递归地对AST节点及其所有子节点应用语法糖转换。
+     * 
+     * @param interface 语法分析器接口指针
+     * @param node 要转换的AST节点
+     * @return Stru_AstNode_t* 转换后的AST节点，NULL表示错误
+     */
+    Stru_AstNode_t* (*apply_syntax_sugar_recursive)(struct Stru_ParserInterface_t* interface, Stru_AstNode_t* node);
+    
+    // ============================================
     // 资源管理
     // ============================================
     

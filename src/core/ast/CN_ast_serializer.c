@@ -13,6 +13,7 @@
 
 #include "CN_ast_serializer.h"
 #include "../../infrastructure/utils/CN_utils_interface.h"
+#include "../../infrastructure/containers/string/CN_string.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -242,11 +243,11 @@ void F_destroy_ast_serializer_data(Stru_AstSerializerData_t* data)
     
     // 释放缓冲区
     if (data->json_buffer) {
-        F_destroy_string(data->json_buffer);
+        F_string_destroy(data->json_buffer);
     }
     
     if (data->xml_buffer) {
-        F_destroy_string(data->xml_buffer);
+        F_string_destroy(data->xml_buffer);
     }
     
     if (data->binary_buffer) {
@@ -276,12 +277,12 @@ static bool initialize_impl(Stru_AstSerializerInterface_t* serializer)
     
     // 创建缓冲区
     if (!data->json_buffer) {
-        data->json_buffer = F_create_string(1024);
+        data->json_buffer = F_string_create_with_capacity(1024);
         if (!data->json_buffer) return false;
     }
     
     if (!data->xml_buffer) {
-        data->xml_buffer = F_create_string(1024);
+        data->xml_buffer = F_string_create_with_capacity(1024);
         if (!data->xml_buffer) return false;
     }
     

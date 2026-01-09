@@ -65,6 +65,8 @@ Stru_ParserInterface_t* F_create_parser_interface(void) {
     interface->get_current_token = F_parser_get_current_token;
     interface->get_previous_token = F_parser_get_previous_token;
     interface->get_next_token = F_parser_get_next_token;
+    interface->apply_syntax_sugar = F_parser_apply_syntax_sugar;
+    interface->apply_syntax_sugar_recursive = F_parser_apply_syntax_sugar_recursive;
     interface->reset = F_parser_reset;
     interface->destroy = F_parser_destroy;
     

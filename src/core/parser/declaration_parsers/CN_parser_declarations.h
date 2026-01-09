@@ -172,4 +172,34 @@ Stru_DynamicArray_t* F_parse_struct_member_list(Stru_ParserInterface_t* interfac
  */
 Stru_DynamicArray_t* F_parse_enum_member_list(Stru_ParserInterface_t* interface);
 
+/**
+ * @brief 解析接口声明
+ * 
+ * 解析接口声明，如：接口 名称 { ... }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 接口声明AST节点
+ */
+Stru_AstNode_t* F_parse_interface_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析类声明
+ * 
+ * 解析类声明，如：类 名称 { ... }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 类声明AST节点
+ */
+Stru_AstNode_t* F_parse_class_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析泛型声明
+ * 
+ * 解析泛型声明，如：泛型 名称<T> { ... }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 泛型声明AST节点
+ */
+Stru_AstNode_t* F_parse_generic_declaration(Stru_ParserInterface_t* interface);
+
 #endif // CN_PARSER_DECLARATIONS_H

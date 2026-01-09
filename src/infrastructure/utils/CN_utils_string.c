@@ -161,22 +161,5 @@ char* cn_strncpy(char* dest, const char* src, size_t n)
 // 内存操作函数实现
 // ============================================================================
 
-void* cn_memmove(void* dest, const void* src, size_t size)
-{
-    if (dest == NULL || src == NULL || size == 0)
-    {
-        return NULL;
-    }
-    
-    return memmove(dest, src, size);
-}
-
-void* cn_memchr(const void* ptr, int value, size_t size)
-{
-    if (ptr == NULL || size == 0)
-    {
-        return NULL;
-    }
-    
-    return memchr(ptr, value, size);
-}
+// 注意：cn_memmove和cn_memchr函数在CN_memory_utilities.c中实现
+// 这里不再重复定义，以避免链接错误

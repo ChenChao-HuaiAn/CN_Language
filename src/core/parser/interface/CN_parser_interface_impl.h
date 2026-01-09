@@ -200,4 +200,18 @@ void F_parser_reset(Stru_ParserInterface_t* interface);
  */
 void F_parser_destroy(Stru_ParserInterface_t* interface);
 
+// ============================================
+// 语法糖支持函数声明
+// ============================================
+
+/**
+ * @brief 应用语法糖转换
+ */
+Stru_AstNode_t* F_parser_apply_syntax_sugar(Stru_ParserInterface_t* interface, Stru_AstNode_t* node);
+
+/**
+ * @brief 递归应用语法糖转换
+ */
+Stru_AstNode_t* F_parser_apply_syntax_sugar_recursive(Stru_ParserInterface_t* interface, Stru_AstNode_t* node);
+
 #endif // CN_PARSER_INTERFACE_IMPL_H

@@ -73,6 +73,18 @@ Stru_AstNode_t* F_parse_declaration(Stru_ParserInterface_t* interface)
             // 类型声明
             return F_parse_type_declaration(interface);
             
+        case Eum_TOKEN_KEYWORD_INTERFACE:
+            // 接口声明
+            return F_parse_interface_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_CLASS:
+            // 类声明
+            return F_parse_class_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_GENERIC:
+            // 泛型声明
+            return F_parse_generic_declaration(interface);
+            
         default:
             // 不是声明，返回NULL
             return NULL;

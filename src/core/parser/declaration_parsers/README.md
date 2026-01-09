@@ -19,6 +19,9 @@
 - 枚举声明：定义枚举及其成员
 - 模块声明：定义模块及其内容
 - 类型声明：定义类型别名
+- 接口声明：定义接口及其方法
+- 类声明：定义类及其成员（字段和方法）
+- 泛型声明：定义泛型类型及其参数
 
 ## 文件结构
 
@@ -50,13 +53,22 @@
 8. **CN_parser_type_declarations.c** - 类型声明解析模块
    - 实现类型声明解析函数 `F_parse_type_declaration()`
 
-9. **CN_parser_parameter_lists.c** - 参数列表解析模块
-   - 实现参数列表解析函数 `F_parse_parameter_list()` 和 `F_parse_parameter()`
+9. **CN_parser_interface_declarations.c** - 接口声明解析模块
+   - 实现接口声明解析函数 `F_parse_interface_declaration()`
 
-10. **CN_parser_type_expressions.c** - 类型表达式解析模块
+10. **CN_parser_class_declarations.c** - 类声明解析模块
+    - 实现类声明解析函数 `F_parse_class_declaration()`
+
+11. **CN_parser_generic_declarations.c** - 泛型声明解析模块
+    - 实现泛型声明解析函数 `F_parse_generic_declaration()`
+
+12. **CN_parser_parameter_lists.c** - 参数列表解析模块
+    - 实现参数列表解析函数 `F_parse_parameter_list()` 和 `F_parse_parameter()`
+
+13. **CN_parser_type_expressions.c** - 类型表达式解析模块
     - 实现类型表达式解析函数 `F_parse_type_expression()`, `F_parse_basic_type()`, `F_parse_array_type()`, `F_parse_pointer_type()`
 
-11. **CN_parser_member_lists.c** - 成员列表解析模块
+14. **CN_parser_member_lists.c** - 成员列表解析模块
     - 实现成员列表解析函数 `F_parse_struct_member_list()` 和 `F_parse_enum_member_list()`
 
 ### 依赖关系
@@ -92,6 +104,15 @@
 
 #### `F_parse_type_declaration()`
 解析类型声明，如：`类型 名称 = 类型表达式;`。
+
+#### `F_parse_interface_declaration()`
+解析接口声明，如：`接口 名称 { ... }`。
+
+#### `F_parse_class_declaration()`
+解析类声明，如：`类 名称 { ... }`。
+
+#### `F_parse_generic_declaration()`
+解析泛型声明，如：`泛型 名称<T> { ... }`。
 
 ### 辅助解析函数
 
@@ -163,6 +184,35 @@
 类型 名称 = 类型表达式;
 ```
 
+### 接口声明
+```
+接口 名称 {
+    方法1(参数: 类型) -> 返回类型;
+    方法2(参数: 类型) -> 返回类型;
+    ...
+}
+```
+
+### 类声明
+```
+类 名称 {
+    公开 字段1: 类型;
+    私有 字段2: 类型;
+    静态 方法1(参数: 类型) -> 返回类型 { ... }
+    虚拟 方法2(参数: 类型) -> 返回类型 { ... }
+    ...
+}
+```
+
+### 泛型声明
+```
+泛型 名称<T, U> {
+    字段: T;
+    方法(参数: U) -> T { ... }
+    ...
+}
+```
+
 ## 使用示例
 
 ### 基本用法
@@ -188,6 +238,15 @@ if (decl != NULL) {
         case Eum_AST_NODE_STRUCT_DECL:
             // 处理结构体声明
             break;
+        case Eum_AST_NODE_INTERFACE_DECL:
+            // 处理接口声明
+            break;
+        case Eum_AST_NODE_CLASS_DECL:
+            // 处理类声明
+            break;
+        case Eum_AST_NODE_GENERIC_DECL:
+            // 处理泛型声明
+            break;
         // ... 其他声明类型
     }
 }
@@ -206,6 +265,15 @@ Stru_AstNode_t* struct_decl = F_parse_struct_declaration(parser);
 
 // 解析类型声明
 Stru_AstNode_t* type_decl = F_parse_type_declaration(parser);
+
+// 解析接口声明
+Stru_AstNode_t* interface_decl = F_parse_interface_declaration(parser);
+
+// 解析类声明
+Stru_AstNode_t* class_decl = F_parse_class_declaration(parser);
+
+// 解析泛型声明
+Stru_AstNode_t* generic_decl = F_parse_generic_declaration(parser);
 ```
 
 ## 设计原理
@@ -276,6 +344,7 @@ TEST_ASSERT_NOT_NULL(F_parse_type_expression(parser));
 
 ### 版本历史
 - **1.0.0** (2026-01-08): 初始版本，基于模块化架构设计
+- **1.1.0** (2026-01-09): 新增接口、类和泛型声明解析功能
 
 ### 维护者
 CN_Language架构委员会

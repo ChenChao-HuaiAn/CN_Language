@@ -142,4 +142,54 @@ Stru_AstNode_t* F_parse_variable_declaration_statement(Stru_ParserInterface_t* i
  */
 Stru_DynamicArray_t* F_parse_statement_list(Stru_ParserInterface_t* interface);
 
+/**
+ * @brief 解析switch语句
+ * 
+ * 解析switch语句，如：选择 (表达式) { 情况 值: 语句; 默认: 语句; }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* switch语句AST节点
+ */
+Stru_AstNode_t* F_parse_switch_statement(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析case语句
+ * 
+ * 解析case语句，如：情况 表达式: 语句。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* case语句AST节点
+ */
+Stru_AstNode_t* F_parse_case_statement(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析default语句
+ * 
+ * 解析default语句，如：默认: 语句。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* default语句AST节点
+ */
+Stru_AstNode_t* F_parse_default_statement(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析try-catch语句
+ * 
+ * 解析try-catch语句，如：尝试 { ... } 捕获 (异常类型) { ... } 最终块 { ... }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* try-catch语句AST节点
+ */
+Stru_AstNode_t* F_parse_try_catch_statement(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析throw语句
+ * 
+ * 解析throw语句，如：抛出 异常表达式;。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* throw语句AST节点
+ */
+Stru_AstNode_t* F_parse_throw_statement(Stru_ParserInterface_t* interface);
+
 #endif // CN_PARSER_STATEMENTS_H

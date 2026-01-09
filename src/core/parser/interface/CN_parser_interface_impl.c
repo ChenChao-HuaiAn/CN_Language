@@ -19,6 +19,7 @@
 #include "../declaration_parsers/CN_parser_declarations.h"
 #include "../error_handling/CN_parser_errors.h"
 #include "../utils/CN_parser_utils.h"
+#include "../syntax_sugar/CN_parser_syntax_sugar.h"
 
 // ============================================
 // 内部辅助函数实现
@@ -440,4 +441,32 @@ void F_parser_destroy(Stru_ParserInterface_t* interface) {
     
     // 释放接口
     free(interface);
+}
+
+// ============================================
+// 语法糖支持函数实现
+// ============================================
+
+/**
+ * @brief 应用语法糖转换
+ */
+Stru_AstNode_t* F_parser_apply_syntax_sugar(Stru_ParserInterface_t* interface, Stru_AstNode_t* node) {
+    if (!interface || !node) {
+        return NULL;
+    }
+    
+    // 调用语法糖模块的转换函数
+    return F_apply_syntax_sugar_transformations(interface, node);
+}
+
+/**
+ * @brief 递归应用语法糖转换
+ */
+Stru_AstNode_t* F_parser_apply_syntax_sugar_recursive(Stru_ParserInterface_t* interface, Stru_AstNode_t* node) {
+    if (!interface || !node) {
+        return NULL;
+    }
+    
+    // 调用语法糖模块的递归转换函数
+    return F_apply_syntax_sugar_recursive(interface, node);
 }

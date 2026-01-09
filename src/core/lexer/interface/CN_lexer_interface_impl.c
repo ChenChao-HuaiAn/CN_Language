@@ -56,7 +56,7 @@ static bool F_lexer_initialize_wrapper(Stru_LexerInterface_t* interface, const c
 static Stru_Token_t* F_lexer_next_token_wrapper(Stru_LexerInterface_t* interface)
 {
     Stru_LexerScannerState_t* state = F_get_scanner_state(interface);
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return NULL;
     }
@@ -70,26 +70,26 @@ static Stru_Token_t* F_lexer_next_token_wrapper(Stru_LexerInterface_t* interface
 static bool F_lexer_has_more_tokens_wrapper(Stru_LexerInterface_t* interface)
 {
     Stru_LexerScannerState_t* state = F_get_scanner_state(interface);
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return false;
     }
     
     // 保存当前位置
-    size_t saved_pos = state->current_pos;
     size_t saved_line = state->current_line;
     size_t saved_column = state->current_column;
+    size_t saved_buffer_pos = F_buffer_get_position(state->buffer);
     
     // 跳过空白字符
     F_skip_whitespace(state);
     
     // 检查是否还有字符
-    bool has_more = state->current_pos < state->source_length;
+    bool has_more = F_buffer_has_more_chars(state->buffer);
     
     // 恢复位置
-    state->current_pos = saved_pos;
     state->current_line = saved_line;
     state->current_column = saved_column;
+    F_buffer_set_position(state->buffer, saved_buffer_pos);
     
     return has_more;
 }
@@ -100,7 +100,7 @@ static bool F_lexer_has_more_tokens_wrapper(Stru_LexerInterface_t* interface)
 static Stru_DynamicArray_t* F_lexer_tokenize_all_wrapper(Stru_LexerInterface_t* interface)
 {
     Stru_LexerScannerState_t* state = F_get_scanner_state(interface);
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return NULL;
     }
@@ -113,12 +113,12 @@ static Stru_DynamicArray_t* F_lexer_tokenize_all_wrapper(Stru_LexerInterface_t* 
     }
     
     // 保存当前位置
-    size_t saved_pos = state->current_pos;
     size_t saved_line = state->current_line;
     size_t saved_column = state->current_column;
+    size_t saved_buffer_pos = F_buffer_get_position(state->buffer);
     
     // 重置到开始位置
-    state->current_pos = 0;
+    F_buffer_set_position(state->buffer, 0);
     state->current_line = 1;
     state->current_column = 1;
     F_clear_scanner_error(state);
@@ -147,9 +147,9 @@ static Stru_DynamicArray_t* F_lexer_tokenize_all_wrapper(Stru_LexerInterface_t* 
     }
     
     // 恢复位置
-    state->current_pos = saved_pos;
     state->current_line = saved_line;
     state->current_column = saved_column;
+    F_buffer_set_position(state->buffer, saved_buffer_pos);
     
     return tokens;
 }
