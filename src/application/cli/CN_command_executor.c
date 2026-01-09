@@ -11,6 +11,7 @@
  */
 
 #include "CN_command_executor.h"
+#include "../../core/CN_compiler_interface.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -244,16 +245,57 @@ static Eum_ExecutionResult_t F_execute_compile_impl(Stru_CommandExecutorInterfac
         }
     }
     
-    /* TODO: 调用核心层的编译功能 */
-    printf("编译功能正在开发中...\n");
-    printf("输入文件: %s\n", input_file);
-    if (output_file != NULL) {
-        printf("输出文件: %s\n", output_file);
+    /* 创建编译器实例 */
+    Stru_CompilerInterface_t* compiler = F_create_compiler_interface();
+    if (compiler == NULL) {
+        F_set_error_message(impl, "无法创建编译器实例");
+        return Eum_EXEC_RESULT_SYSTEM_ERROR;
     }
     
-    if (verbose) {
-        printf("编译完成\n");
+    /* 创建编译选项 */
+    Stru_CompileOptions_t options = F_create_default_compile_options();
+    options.input_file = input_file;
+    options.output_file = output_file;
+    options.verbose = verbose;
+    
+    /* 执行编译 */
+    Stru_CompilationResult_t* result = compiler->compile_file(compiler, &options);
+    
+    /* 处理编译结果 */
+    if (result == NULL) {
+        F_set_error_message(impl, "编译过程发生未知错误");
+        compiler->destroy(compiler);
+        return Eum_EXEC_RESULT_SYSTEM_ERROR;
     }
+    
+    if (!result->success) {
+        if (result->error_message != NULL) {
+            F_set_error_message(impl, result->error_message);
+        } else {
+            F_set_error_message(impl, "编译失败");
+        }
+        
+        F_free_compilation_result(result);
+        compiler->destroy(compiler);
+        return Eum_EXEC_RESULT_FAILURE;
+    }
+    
+    /* 输出成功信息 */
+    if (verbose) {
+        printf("编译成功！\n");
+        printf("输出文件: %s\n", result->output_path ? result->output_path : "未指定");
+        printf("编译耗时: %zu 毫秒\n", result->compile_time_ms);
+        printf("错误数量: %d\n", result->error_count);
+        printf("警告数量: %d\n", result->warning_count);
+    } else {
+        printf("编译成功: %s -> %s\n", 
+               input_file, 
+               result->output_path ? result->output_path : "a.out");
+    }
+    
+    /* 清理资源 */
+    F_free_compilation_result(result);
+    compiler->destroy(compiler);
     
     return Eum_EXEC_RESULT_SUCCESS;
 }
