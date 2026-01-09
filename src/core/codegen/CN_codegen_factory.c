@@ -12,11 +12,15 @@
  * 版权: MIT许可证
  ******************************************************************************/
 
+/* 确保strdup函数可用 */
+#define _POSIX_C_SOURCE 200809L
+
 #include "CN_codegen_interface.h"
 #include "../../infrastructure/memory/CN_memory_interface.h"
 #include "../../infrastructure/containers/string/CN_string.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 /* 内部状态结构体 */
 typedef struct {
@@ -530,7 +534,7 @@ static bool has_errors(Stru_CodeGeneratorInterface_t* interface)
 static Stru_DynamicArray_t* get_errors(Stru_CodeGeneratorInterface_t* interface)
 {
     CodeGeneratorState* state = get_state(interface);
-    if (!state) {
+    if (!state || !state->errors) {
         return NULL;
     }
     
@@ -553,3 +557,101 @@ static Stru_DynamicArray_t* get_errors(Stru_CodeGeneratorInterface_t* interface)
     
     // return copy;
     return NULL;
+}
+
+/**
+ * @brief 清除错误
+ */
+static void clear_errors(Stru_CodeGeneratorInterface_t* interface)
+{
+    CodeGeneratorState* state = get_state(interface);
+    if (!state || !state->errors) {
+        return;
+    }
+    
+    /* 清除所有错误信息 */
+    for (size_t i = 0; i < state->errors->length; i++) {
+        char* error = *(char**)F_dynamic_array_get(state->errors, i);
+        if (error) {
+            free(error);
+        }
+    }
+    
+    /* 重置数组 */
+    state->errors->length = 0;
+    
+    /* 同样清除警告 */
+    if (state->warnings) {
+        for (size_t i = 0; i < state->warnings->length; i++) {
+            char* warning = *(char**)F_dynamic_array_get(state->warnings, i);
+            if (warning) {
+                free(warning);
+            }
+        }
+        state->warnings->length = 0;
+    }
+}
+
+/**
+ * @brief 重置代码生成器
+ */
+static void reset(Stru_CodeGeneratorInterface_t* interface)
+{
+    CodeGeneratorState* state = get_state(interface);
+    if (!state) {
+        return;
+    }
+    
+    /* 清除错误和警告 */
+    clear_errors(interface);
+    
+    /* 重置状态 */
+    state->initialized = false;
+    state->options = F_create_default_codegen_options();
+    
+    /* 重置后端状态 */
+    if (state->backend_state) {
+        // TODO: 根据后端类型进行清理
+        free(state->backend_state);
+        state->backend_state = NULL;
+    }
+}
+
+/**
+ * @brief 销毁代码生成器
+ */
+static void destroy(Stru_CodeGeneratorInterface_t* interface)
+{
+    if (!interface) {
+        return;
+    }
+    
+    CodeGeneratorState* state = get_state(interface);
+    if (!state) {
+        free(interface);
+        return;
+    }
+    
+    /* 重置生成器 */
+    reset(interface);
+    
+    /* 销毁动态数组 */
+    if (state->errors) {
+        // TODO: 实现动态数组销毁
+        free(state->errors);
+    }
+    
+    if (state->warnings) {
+        // TODO: 实现动态数组销毁
+        free(state->warnings);
+    }
+    
+    if (state->optimizer_plugins) {
+        // TODO: 实现动态数组销毁
+        free(state->optimizer_plugins);
+    }
+    
+    /* 销毁状态和接口 */
+    free(state);
+    free(interface);
+}
