@@ -76,5 +76,7 @@
 !/compile_semantic_test.sh
 # 取消忽略"compile_runtime_test.sh"文件本身
 !/compile_runtime_test.sh
+# 取消忽略"test_application.sh"文件本身
+!/test_application.sh
 
 #############################################################################################################
