@@ -15,7 +15,8 @@ TARGET = bin/CN_Language
 APP_SRCS = src/application/CN_main.c \
            src/application/cli/CN_cli.c \
            src/application/cli/CN_command_parser.c \
-           src/application/cli/CN_command_executor.c
+           src/application/cli/CN_command_executor.c \
+           src/application/repl/CN_repl_impl.c
 
 # 对象文件 - 放在build目录的相应位置
 APP_OBJS = $(patsubst src/%.c,build/%.o,$(APP_SRCS))
@@ -62,6 +63,11 @@ test-run: $(TARGET)
 # 测试调试命令
 test-debug: $(TARGET)
 	./$(TARGET) debug test.cn
+
+# 测试REPL
+test-repl: $(TARGET)
+	@echo "启动REPL测试..."
+	@echo "help\nexit" | ./$(TARGET) || true
 
 # 显示构建信息
 info:
