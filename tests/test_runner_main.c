@@ -66,6 +66,7 @@ extern bool test_lexer_all(void);      // 词法分析器模块
 extern bool test_parser_all(void);     // 语法分析器模块
 // extern bool test_ast_all(void);
 extern bool test_token_all(void);  // 令牌模块
+extern bool test_codegen_all(void); // 代码生成器模块
 
 // 应用层 - 工具模块
 // extern bool test_cli_all(void);
@@ -99,7 +100,8 @@ int main(int argc, char* argv[])
         {"lexer",         "core/lexer",                     test_lexer_all,         true},
         {"parser",        "core/parser",                    test_parser_all,        true},
         // {"ast",           "core/ast",                       test_ast_all,           false},
-        {"token",          "core/token",                     test_token_all,         true},
+        {"token",         "core/token",                     test_token_all,         true},
+        {"codegen",       "core/codegen",                   test_codegen_all,       true},
         
         // 应用层 - 工具模块
         // {"cli",           "application/cli",                test_cli_all,           false},
