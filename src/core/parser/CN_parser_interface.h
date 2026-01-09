@@ -17,6 +17,9 @@
 #include "../token/CN_token.h"
 #include "../ast/CN_ast.h"
 
+// 前向声明词法分析器接口
+typedef struct Stru_LexerInterface_t Stru_LexerInterface_t;
+
 /**
  * @brief 语法分析器抽象接口结构体
  * 

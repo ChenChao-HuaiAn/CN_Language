@@ -32,8 +32,16 @@ bool F_check_type_compatibility(Stru_AstNode_t* type1, Stru_AstNode_t* type2) {
     // 简单实现：如果类型节点相同或都是数值类型，则兼容
     // 实际实现需要更复杂的类型系统
     
+    // 获取节点类型
+    Stru_AstNodeInterface_t* interface1 = F_ast_get_internal_interface(type1);
+    Stru_AstNodeInterface_t* interface2 = F_ast_get_internal_interface(type2);
+    
+    if (interface1 == NULL || interface2 == NULL) {
+        return false;
+    }
+    
     // 检查是否为相同类型
-    if (type1->type == type2->type) {
+    if (interface1->get_type(interface1) == interface2->get_type(interface2)) {
         return true;
     }
     
@@ -53,10 +61,16 @@ const char* F_get_type_name(Stru_AstNode_t* type_node) {
         return "未知类型";
     }
     
+    // 获取内部接口
+    Stru_AstNodeInterface_t* interface = F_ast_get_internal_interface(type_node);
+    if (interface == NULL) {
+        return "未知类型";
+    }
+    
     // 根据AST节点类型返回类型名称
-    // 注意：这里使用了兼容层的类型常量，实际应该使用CN_ast_interface.h中的常量
-    // 但由于兼容层可能没有定义这些常量，我们使用字符串表示
-    switch (type_node->type) {
+    Eum_AstNodeType node_type = interface->get_type(interface);
+    
+    switch (node_type) {
         case Eum_AST_TYPE_NAME:
             return "类型名称";
         case Eum_AST_ARRAY_TYPE:
@@ -67,13 +81,14 @@ const char* F_get_type_name(Stru_AstNode_t* type_node) {
             return "引用类型";
         case Eum_AST_FUNCTION_TYPE:
             return "函数类型";
-        default:
+        default: {
             // 尝试从属性中获取类型名称
             const char* type_name = (const char*)F_ast_get_attribute(type_node, "type_name");
             if (type_name != NULL) {
                 return type_name;
             }
             return "未知类型";
+        }
     }
 }
 

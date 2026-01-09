@@ -86,8 +86,15 @@ void F_get_current_position(Stru_ParserInterface_t* interface, size_t* line, siz
         return;
     }
     
-    // 调用接口获取当前位置
-    interface->get_current_position(interface, line, column);
+    // 通过当前令牌获取位置信息
+    Stru_Token_t* current_token = interface->get_current_token(interface);
+    if (current_token != NULL) {
+        *line = current_token->line;
+        *column = current_token->column;
+    } else {
+        *line = 0;
+        *column = 0;
+    }
 }
 
 /**
@@ -98,6 +105,7 @@ bool F_is_at_end_of_file(Stru_ParserInterface_t* interface) {
         return true;
     }
     
-    // 调用接口检查是否到达文件结尾
-    return interface->is_at_end_of_file(interface);
+    // 通过当前令牌检查是否到达文件结尾
+    Stru_Token_t* current_token = interface->get_current_token(interface);
+    return (current_token == NULL || current_token->type == Eum_TOKEN_EOF);
 }

@@ -1,0 +1,30 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src/**",
+                "${workspaceFolder}/src/infrastructure/**",
+                "${workspaceFolder}/src/infrastructure/memory/**",
+                "${workspaceFolder}/src/infrastructure/memory/utilities/**",
+                "${workspaceFolder}/src/infrastructure/utils/**",
+                "${workspaceFolder}/src/infrastructure/containers/**",
+                "${workspaceFolder}/src/core/**",
+                "${workspaceFolder}/src/core/parser/**",
+                "${workspaceFolder}/src/core/parser/utils/**",
+                "${workspaceFolder}/src/core/parser/interface/**",
+                "${workspaceFolder}/src/core/ast/**",
+                "${workspaceFolder}/src/core/token/**",
+                "${workspaceFolder}/tests/**"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/gcc",
+            "cStandard": "c99",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "gcc-x64",
+            "configurationProvider": "ms-vscode.cmake-tools"
+        }
+    ],
+    "version": 4
+}
