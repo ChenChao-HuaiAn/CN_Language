@@ -107,7 +107,7 @@ typedef enum Eum_TokenType {
     Eum_TOKEN_KEYWORD_TEMPLATE,  ///< 模板 - 模板类型
 
     // ============================================
-    // 9. 其他关键字（16个）
+    // 9. 其他关键字（18个）
     // ============================================
     Eum_TOKEN_KEYWORD_CONST,     ///< 常量 - 常量声明
     Eum_TOKEN_KEYWORD_STATIC,    ///< 静态 - 静态声明
@@ -125,6 +125,10 @@ typedef enum Eum_TokenType {
     Eum_TOKEN_KEYWORD_CATCH,     ///< 捕获 - 捕获异常
     Eum_TOKEN_KEYWORD_TRY,       ///< 尝试 - 尝试执行代码块
     Eum_TOKEN_KEYWORD_FINALLY,   ///< 最终块 - 最终执行代码块（用于异常处理）
+    Eum_TOKEN_KEYWORD_NEW,       ///< 新 - 对象创建
+    Eum_TOKEN_KEYWORD_DELETE,    ///< 删除 - 对象销毁
+    Eum_TOKEN_KEYWORD_LABEL,     ///< 标签 - 标签语句
+    Eum_TOKEN_KEYWORD_GOTO,      ///< 转到 - goto语句
 
     // ============================================
     // 10. 非关键字令牌类型

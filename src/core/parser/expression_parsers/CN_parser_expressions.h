@@ -194,4 +194,24 @@ Stru_AstNode_t* F_parse_postfix_expression(Stru_ParserInterface_t* interface,
  */
 Stru_AstNode_t* F_parse_conditional_expression(Stru_ParserInterface_t* interface);
 
+/**
+ * @brief 解析对象创建表达式
+ * 
+ * 解析对象创建表达式，如：新 类型()。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 对象创建表达式AST节点
+ */
+Stru_AstNode_t* F_parse_new_expression(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析对象销毁表达式
+ * 
+ * 解析对象销毁表达式，如：删除 对象。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 对象销毁表达式AST节点
+ */
+Stru_AstNode_t* F_parse_delete_expression(Stru_ParserInterface_t* interface);
+
 #endif // CN_PARSER_EXPRESSIONS_H

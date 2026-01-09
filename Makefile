@@ -79,11 +79,19 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/parser/declaration_parsers/CN_parser_interface_declarations.c \
             src/core/parser/declaration_parsers/CN_parser_class_declarations.c \
             src/core/parser/declaration_parsers/CN_parser_generic_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_constant_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_static_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_access_modifiers.c \
+            src/core/parser/declaration_parsers/CN_parser_virtual_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_abstract_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_final_class_declarations.c \
+            src/core/parser/declaration_parsers/CN_parser_template_declarations.c \
             src/core/parser/expression_parsers/CN_parser_expressions_main.c \
             src/core/parser/expression_parsers/CN_parser_function_calls.c \
             src/core/parser/expression_parsers/CN_parser_primary_expressions.c \
             src/core/parser/expression_parsers/CN_parser_unary_expressions.c \
             src/core/parser/expression_parsers/CN_parser_postfix_expressions.c \
+            src/core/parser/expression_parsers/CN_parser_object_expressions.c \
             src/core/parser/statement_parsers/CN_parser_statements_main.c \
             src/core/parser/statement_parsers/CN_parser_block_statements.c \
             src/core/parser/statement_parsers/CN_parser_conditional_statements.c \
@@ -91,6 +99,8 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/parser/statement_parsers/CN_parser_loop_statements.c \
             src/core/parser/statement_parsers/CN_parser_switch_statements.c \
             src/core/parser/statement_parsers/CN_parser_exception_statements.c \
+            src/core/parser/statement_parsers/CN_parser_async_statements.c \
+            src/core/parser/statement_parsers/CN_parser_label_statements.c \
             src/core/parser/utils/CN_parser_ast_utils.c \
             src/core/parser/utils/CN_parser_general_utils.c \
             src/core/parser/utils/CN_parser_token_utils.c \

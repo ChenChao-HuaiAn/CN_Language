@@ -192,4 +192,44 @@ Stru_AstNode_t* F_parse_try_catch_statement(Stru_ParserInterface_t* interface);
  */
 Stru_AstNode_t* F_parse_throw_statement(Stru_ParserInterface_t* interface);
 
+/**
+ * @brief 解析异步语句
+ * 
+ * 解析异步语句，如：异步 函数 名称() { ... }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 异步语句AST节点
+ */
+Stru_AstNode_t* F_parse_async_statement(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析等待语句
+ * 
+ * 解析等待语句，如：等待 表达式;。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 等待语句AST节点
+ */
+Stru_AstNode_t* F_parse_await_statement(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析标签语句
+ * 
+ * 解析标签语句，如：标签: 语句。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 标签语句AST节点
+ */
+Stru_AstNode_t* F_parse_label_statement(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析goto语句
+ * 
+ * 解析goto语句，如：转到 标签;。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* goto语句AST节点
+ */
+Stru_AstNode_t* F_parse_goto_statement(Stru_ParserInterface_t* interface);
+
 #endif // CN_PARSER_STATEMENTS_H

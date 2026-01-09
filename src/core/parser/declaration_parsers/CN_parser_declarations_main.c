@@ -85,6 +85,36 @@ Stru_AstNode_t* F_parse_declaration(Stru_ParserInterface_t* interface)
             // 泛型声明
             return F_parse_generic_declaration(interface);
             
+        case Eum_TOKEN_KEYWORD_CONST:
+            // 常量声明
+            return F_parse_constant_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_STATIC:
+            // 静态声明
+            return F_parse_static_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_PUBLIC:
+        case Eum_TOKEN_KEYWORD_PRIVATE:
+        case Eum_TOKEN_KEYWORD_PROTECTED:
+            // 访问修饰符声明
+            return F_parse_access_modifier_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_VIRTUAL:
+            // 虚拟函数声明
+            return F_parse_virtual_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_ABSTRACT:
+            // 抽象函数声明
+            return F_parse_abstract_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_FINAL:
+            // 最终类声明
+            return F_parse_final_class_declaration(interface);
+            
+        case Eum_TOKEN_KEYWORD_TEMPLATE:
+            // 模板声明
+            return F_parse_template_declaration(interface);
+            
         default:
             // 不是声明，返回NULL
             return NULL;

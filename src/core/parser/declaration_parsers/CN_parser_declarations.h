@@ -202,4 +202,77 @@ Stru_AstNode_t* F_parse_class_declaration(Stru_ParserInterface_t* interface);
  */
 Stru_AstNode_t* F_parse_generic_declaration(Stru_ParserInterface_t* interface);
 
+/**
+ * @brief 解析常量声明
+ * 
+ * 解析常量声明，如：常量 名称 = 值;。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 常量声明AST节点
+ */
+Stru_AstNode_t* F_parse_constant_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析静态声明
+ * 
+ * 解析静态变量或静态函数声明。
+ * 静态变量声明语法：静态 变量 名称 = 值;
+ * 静态函数声明语法：静态 函数 名称(参数) { ... }
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 静态声明AST节点
+ */
+Stru_AstNode_t* F_parse_static_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析访问修饰符声明
+ * 
+ * 解析访问修饰符声明，如：公开 变量 名称; 私有 函数 名称() { ... } 保护 结构体 名称 { ... }
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 访问修饰符声明AST节点
+ */
+Stru_AstNode_t* F_parse_access_modifier_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析虚拟函数声明
+ * 
+ * 解析虚拟函数声明，如：虚拟 函数 名称(参数) { ... }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 虚拟函数声明AST节点
+ */
+Stru_AstNode_t* F_parse_virtual_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析抽象函数声明
+ * 
+ * 解析抽象函数声明，如：抽象 函数 名称(参数);。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 抽象函数声明AST节点
+ */
+Stru_AstNode_t* F_parse_abstract_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析最终类声明
+ * 
+ * 解析最终类声明，如：最终 类 名称 { ... }。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 最终类声明AST节点
+ */
+Stru_AstNode_t* F_parse_final_class_declaration(Stru_ParserInterface_t* interface);
+
+/**
+ * @brief 解析模板声明
+ * 
+ * 解析模板声明，如：模板 名称<T> { ... }。
+ * 模板声明类似于泛型声明，但可能支持更复杂的模板特性。
+ * 
+ * @param interface 语法分析器接口指针
+ * @return Stru_AstNode_t* 模板声明AST节点
+ */
+Stru_AstNode_t* F_parse_template_declaration(Stru_ParserInterface_t* interface);
+
 #endif // CN_PARSER_DECLARATIONS_H

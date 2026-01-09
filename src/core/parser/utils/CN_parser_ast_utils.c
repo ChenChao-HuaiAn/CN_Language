@@ -65,6 +65,318 @@ Stru_AstNode_t* F_create_binary_expression_node(Stru_ParserInterface_t* interfac
 }
 
 /**
+ * @brief 创建switch语句节点
+ */
+Stru_AstNode_t* F_create_switch_statement_node(Stru_ParserInterface_t* interface,
+                                              Stru_Token_t* switch_token,
+                                              Stru_AstNode_t* expression,
+                                              Stru_DynamicArray_t* cases,
+                                              Stru_AstNode_t* default_case)
+{
+    if (interface == NULL || switch_token == NULL || expression == NULL) {
+        return NULL;
+    }
+    
+    // 检查是否为"选择"关键字
+    if (switch_token->type != Eum_TOKEN_KEYWORD_SWITCH) {
+        return NULL;
+    }
+    
+    // 创建switch语句节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_SWITCH_STMT, 
+                                                     switch_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加switch表达式节点
+    if (!interface->add_child_node(interface, node, expression)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 添加case语句节点（如果有）
+    if (cases != NULL) {
+        size_t case_count = F_dynamic_array_length(cases);
+        for (size_t i = 0; i < case_count; i++) {
+            Stru_AstNode_t* case_node = *(Stru_AstNode_t**)F_dynamic_array_get(cases, i);
+            if (case_node != NULL) {
+                interface->add_child_node(interface, node, case_node);
+            }
+        }
+    }
+    
+    // 添加default语句节点（如果有）
+    if (default_case != NULL) {
+        interface->add_child_node(interface, node, default_case);
+    }
+    
+    // 设置switch语句属性
+    interface->set_node_attribute(interface, node, "switch_keyword", "选择");
+    
+    return node;
+}
+
+/**
+ * @brief 创建case语句节点
+ */
+Stru_AstNode_t* F_create_case_statement_node(Stru_ParserInterface_t* interface,
+                                            Stru_Token_t* case_token,
+                                            Stru_AstNode_t* case_expression,
+                                            Stru_AstNode_t* case_body)
+{
+    if (interface == NULL || case_token == NULL || case_expression == NULL || case_body == NULL) {
+        return NULL;
+    }
+    
+    // 检查是否为"情况"关键字
+    if (case_token->type != Eum_TOKEN_KEYWORD_CASE) {
+        return NULL;
+    }
+    
+    // 创建case语句节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_CASE_STMT, 
+                                                     case_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加case表达式节点
+    if (!interface->add_child_node(interface, node, case_expression)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 添加case体节点
+    if (!interface->add_child_node(interface, node, case_body)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置case语句属性
+    interface->set_node_attribute(interface, node, "case_keyword", "情况");
+    
+    return node;
+}
+
+/**
+ * @brief 创建default语句节点
+ */
+Stru_AstNode_t* F_create_default_statement_node(Stru_ParserInterface_t* interface,
+                                               Stru_Token_t* default_token,
+                                               Stru_AstNode_t* default_body)
+{
+    if (interface == NULL || default_token == NULL || default_body == NULL) {
+        return NULL;
+    }
+    
+    // 检查是否为"默认"关键字
+    if (default_token->type != Eum_TOKEN_KEYWORD_DEFAULT) {
+        return NULL;
+    }
+    
+    // 创建default语句节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_DEFAULT_STMT, 
+                                                     default_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加default体节点
+    if (!interface->add_child_node(interface, node, default_body)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置default语句属性
+    interface->set_node_attribute(interface, node, "default_keyword", "默认");
+    
+    return node;
+}
+
+/**
+ * @brief 创建数组字面量节点
+ */
+Stru_AstNode_t* F_create_array_literal_node(Stru_ParserInterface_t* interface,
+                                           Stru_Token_t* lbracket_token,
+                                           Stru_DynamicArray_t* elements,
+                                           Stru_Token_t* rbracket_token)
+{
+    if (interface == NULL || lbracket_token == NULL) {
+        return NULL;
+    }
+    
+    // 创建数组字面量节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_ARRAY_LITERAL, 
+                                                     lbracket_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加数组元素节点（如果有）
+    if (elements != NULL) {
+        size_t element_count = F_dynamic_array_length(elements);
+        for (size_t i = 0; i < element_count; i++) {
+            Stru_AstNode_t* element = *(Stru_AstNode_t**)F_dynamic_array_get(elements, i);
+            if (element != NULL) {
+                interface->add_child_node(interface, node, element);
+            }
+        }
+    }
+    
+    // 设置数组字面量属性
+    interface->set_node_attribute(interface, node, "array_literal", "[]");
+    
+    // 设置右括号令牌属性（如果有）
+    if (rbracket_token != NULL) {
+        interface->set_node_attribute(interface, node, "right_bracket_token", rbracket_token);
+    }
+    
+    return node;
+}
+
+/**
+ * @brief 创建结构体字面量节点
+ */
+Stru_AstNode_t* F_create_struct_literal_node(Stru_ParserInterface_t* interface,
+                                            Stru_Token_t* lbrace_token,
+                                            const char* struct_type_name,
+                                            Stru_DynamicArray_t* members,
+                                            Stru_Token_t* rbrace_token)
+{
+    if (interface == NULL || lbrace_token == NULL) {
+        return NULL;
+    }
+    
+    // 创建结构体字面量节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_STRUCT_LITERAL, 
+                                                     lbrace_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 设置结构体类型名称属性（如果有）
+    if (struct_type_name != NULL) {
+        interface->set_node_attribute(interface, node, "struct_type_name", (void*)struct_type_name);
+    }
+    
+    // 添加结构体成员节点（如果有）
+    if (members != NULL) {
+        size_t member_count = F_dynamic_array_length(members);
+        for (size_t i = 0; i < member_count; i++) {
+            Stru_AstNode_t* member = *(Stru_AstNode_t**)F_dynamic_array_get(members, i);
+            if (member != NULL) {
+                interface->add_child_node(interface, node, member);
+            }
+        }
+    }
+    
+    // 设置结构体字面量属性
+    interface->set_node_attribute(interface, node, "struct_literal", "{}");
+    
+    // 设置右花括号令牌属性（如果有）
+    if (rbrace_token != NULL) {
+        interface->set_node_attribute(interface, node, "right_brace_token", rbrace_token);
+    }
+    
+    return node;
+}
+
+/**
+ * @brief 创建对象创建表达式节点
+ */
+Stru_AstNode_t* F_create_new_expression_node(Stru_ParserInterface_t* interface,
+                                            Stru_Token_t* new_token,
+                                            Stru_Token_t* type_token,
+                                            Stru_DynamicArray_t* arguments)
+{
+    if (interface == NULL || new_token == NULL || type_token == NULL) {
+        return NULL;
+    }
+    
+    // 检查是否为"新"关键字
+    if (new_token->type != Eum_TOKEN_KEYWORD_NEW) {
+        return NULL;
+    }
+    
+    // 检查是否为标识符（类型名称）
+    if (type_token->type != Eum_TOKEN_IDENTIFIER) {
+        return NULL;
+    }
+    
+    // 创建对象创建表达式节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_NEW_EXPR, 
+                                                     new_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 设置类型名称属性
+    if (type_token->lexeme != NULL) {
+        interface->set_node_attribute(interface, node, "type_name", 
+                                     (void*)type_token->lexeme);
+    }
+    
+    // 添加参数节点（如果有）
+    if (arguments != NULL) {
+        size_t arg_count = F_dynamic_array_length(arguments);
+        for (size_t i = 0; i < arg_count; i++) {
+            Stru_AstNode_t* arg = *(Stru_AstNode_t**)F_dynamic_array_get(arguments, i);
+            if (arg != NULL) {
+                interface->add_child_node(interface, node, arg);
+            }
+        }
+    }
+    
+    // 设置对象创建运算符属性
+    interface->set_node_attribute(interface, node, "new_operator", "新");
+    
+    return node;
+}
+
+/**
+ * @brief 创建对象销毁表达式节点
+ */
+Stru_AstNode_t* F_create_delete_expression_node(Stru_ParserInterface_t* interface,
+                                               Stru_Token_t* delete_token,
+                                               Stru_AstNode_t* object_expression)
+{
+    if (interface == NULL || delete_token == NULL || object_expression == NULL) {
+        return NULL;
+    }
+    
+    // 检查是否为"删除"关键字
+    if (delete_token->type != Eum_TOKEN_KEYWORD_DELETE) {
+        return NULL;
+    }
+    
+    // 创建对象销毁表达式节点
+    Stru_AstNode_t* node = interface->create_ast_node(interface, 
+                                                     Eum_AST_DELETE_EXPR, 
+                                                     delete_token);
+    if (node == NULL) {
+        return NULL;
+    }
+    
+    // 添加对象表达式节点
+    if (!interface->add_child_node(interface, node, object_expression)) {
+        F_destroy_ast_node(node);
+        return NULL;
+    }
+    
+    // 设置对象销毁运算符属性
+    interface->set_node_attribute(interface, node, "delete_operator", "删除");
+    
+    return node;
+}
+
+/**
  * @brief 创建一元表达式节点
  */
 Stru_AstNode_t* F_create_unary_expression_node(Stru_ParserInterface_t* interface,

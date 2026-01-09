@@ -290,6 +290,121 @@ Stru_AstNode_t* F_create_conditional_expression_node(Stru_ParserInterface_t* int
                                                     Stru_AstNode_t* false_expr,
                                                     Stru_Token_t* colon_token);
 
+/**
+ * @brief 创建对象创建表达式节点
+ * 
+ * 创建对象创建表达式AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param new_token "新"关键字令牌
+ * @param type_token 类型名称令牌
+ * @param arguments 参数表达式数组（可选）
+ * @return Stru_AstNode_t* 对象创建表达式AST节点
+ */
+Stru_AstNode_t* F_create_new_expression_node(Stru_ParserInterface_t* interface,
+                                            Stru_Token_t* new_token,
+                                            Stru_Token_t* type_token,
+                                            Stru_DynamicArray_t* arguments);
+
+/**
+ * @brief 创建对象销毁表达式节点
+ * 
+ * 创建对象销毁表达式AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param delete_token "删除"关键字令牌
+ * @param object_expression 对象表达式节点
+ * @return Stru_AstNode_t* 对象销毁表达式AST节点
+ */
+Stru_AstNode_t* F_create_delete_expression_node(Stru_ParserInterface_t* interface,
+                                               Stru_Token_t* delete_token,
+                                               Stru_AstNode_t* object_expression);
+
+/**
+ * @brief 创建switch语句节点
+ * 
+ * 创建switch语句AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param switch_token "选择"关键字令牌
+ * @param expression switch表达式节点
+ * @param cases case语句节点数组
+ * @param case_count case语句数量
+ * @param default_case default语句节点（可选）
+ * @return Stru_AstNode_t* switch语句AST节点
+ */
+Stru_AstNode_t* F_create_switch_statement_node(Stru_ParserInterface_t* interface,
+                                              Stru_Token_t* switch_token,
+                                              Stru_AstNode_t* expression,
+                                              Stru_DynamicArray_t* cases,
+                                              Stru_AstNode_t* default_case);
+
+/**
+ * @brief 创建case语句节点
+ * 
+ * 创建case语句AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param case_token "情况"关键字令牌
+ * @param case_expression case表达式节点
+ * @param case_body case体节点
+ * @return Stru_AstNode_t* case语句AST节点
+ */
+Stru_AstNode_t* F_create_case_statement_node(Stru_ParserInterface_t* interface,
+                                            Stru_Token_t* case_token,
+                                            Stru_AstNode_t* case_expression,
+                                            Stru_AstNode_t* case_body);
+
+/**
+ * @brief 创建default语句节点
+ * 
+ * 创建default语句AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param default_token "默认"关键字令牌
+ * @param default_body default体节点
+ * @return Stru_AstNode_t* default语句AST节点
+ */
+Stru_AstNode_t* F_create_default_statement_node(Stru_ParserInterface_t* interface,
+                                               Stru_Token_t* default_token,
+                                               Stru_AstNode_t* default_body);
+
+/**
+ * @brief 创建数组字面量节点
+ * 
+ * 创建数组字面量AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param lbracket_token 左方括号令牌
+ * @param elements 数组元素节点数组
+ * @param element_count 数组元素数量
+ * @param rbracket_token 右方括号令牌（可选）
+ * @return Stru_AstNode_t* 数组字面量AST节点
+ */
+Stru_AstNode_t* F_create_array_literal_node(Stru_ParserInterface_t* interface,
+                                           Stru_Token_t* lbracket_token,
+                                           Stru_DynamicArray_t* elements,
+                                           Stru_Token_t* rbracket_token);
+
+/**
+ * @brief 创建结构体字面量节点
+ * 
+ * 创建结构体字面量AST节点。
+ * 
+ * @param interface 语法分析器接口指针
+ * @param lbrace_token 左花括号令牌
+ * @param struct_type_name 结构体类型名称（可选）
+ * @param members 结构体成员节点数组
+ * @param member_count 结构体成员数量
+ * @param rbrace_token 右花括号令牌（可选）
+ * @return Stru_AstNode_t* 结构体字面量AST节点
+ */
+Stru_AstNode_t* F_create_struct_literal_node(Stru_ParserInterface_t* interface,
+                                            Stru_Token_t* lbrace_token,
+                                            const char* struct_type_name,
+                                            Stru_DynamicArray_t* members,
+                                            Stru_Token_t* rbrace_token);
+
 // ============================================
 // 类型工具函数声明
 // ============================================

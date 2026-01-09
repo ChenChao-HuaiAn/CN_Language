@@ -76,14 +76,15 @@ bool F_consume_token(Stru_ParserState_t* state, Eum_TokenType type, const char* 
     }
     
     // 报告错误
+    Stru_SyntaxError_t* error = NULL;
     if (state->current_token) {
-        state->error_handler->report_unexpected_token(
+        error = state->error_handler->report_unexpected_token(
             state->error_handler,
             state->current_token,
             error_message
         );
     } else {
-        state->error_handler->report_missing_token(
+        error = state->error_handler->report_missing_token(
             state->error_handler,
             state->previous_token ? state->previous_token->line + 1 : 1,
             state->previous_token ? state->previous_token->column + 1 : 1,
@@ -92,6 +93,22 @@ bool F_consume_token(Stru_ParserState_t* state, Eum_TokenType type, const char* 
     }
     
     state->has_errors = true;
+    
+    // 尝试错误恢复
+    if (error != NULL) {
+        // 创建临时的解析器接口来调用错误恢复
+        Stru_ParserInterface_t temp_interface;
+        temp_interface.internal_state = state;
+        
+        // 尝试错误恢复
+        bool recovery_success = F_try_error_recovery(&temp_interface, error);
+        
+        // 如果恢复成功，返回true以继续解析
+        if (recovery_success) {
+            return true;
+        }
+    }
+    
     return false;
 }
 

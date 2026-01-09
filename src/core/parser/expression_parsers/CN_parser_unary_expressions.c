@@ -102,6 +102,26 @@ static Stru_AstNode_t* parse_unary_expression_impl(Stru_ParserInterface_t* inter
         return unary_node;
     }
     
+    // 检查是否为"新"关键字（对象创建表达式）
+    if (state->current_token->type == Eum_TOKEN_KEYWORD_NEW)
+    {
+        Stru_AstNode_t* new_expr = F_parse_new_expression(interface);
+        if (new_expr != NULL)
+        {
+            return new_expr;
+        }
+    }
+    
+    // 检查是否为"删除"关键字（对象销毁表达式）
+    if (state->current_token->type == Eum_TOKEN_KEYWORD_DELETE)
+    {
+        Stru_AstNode_t* delete_expr = F_parse_delete_expression(interface);
+        if (delete_expr != NULL)
+        {
+            return delete_expr;
+        }
+    }
+    
     // 不是一元运算符，解析基本表达式
     return parse_primary_expression_impl(interface);
 }

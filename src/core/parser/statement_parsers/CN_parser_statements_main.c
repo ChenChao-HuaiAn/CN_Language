@@ -82,6 +82,22 @@ Stru_AstNode_t* F_parse_statement(Stru_ParserInterface_t* interface)
             // 变量声明语句
             return F_parse_variable_declaration_statement(interface);
             
+        case Eum_TOKEN_KEYWORD_ASYNC:
+            // 异步语句
+            return F_parse_async_statement(interface);
+            
+        case Eum_TOKEN_KEYWORD_AWAIT:
+            // 等待语句
+            return F_parse_await_statement(interface);
+            
+        case Eum_TOKEN_KEYWORD_LABEL:
+            // 标签语句
+            return F_parse_label_statement(interface);
+            
+        case Eum_TOKEN_KEYWORD_GOTO:
+            // goto语句
+            return F_parse_goto_statement(interface);
+            
         default:
             // 表达式语句
             return F_parse_expression_statement(interface);
