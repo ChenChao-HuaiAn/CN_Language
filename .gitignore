@@ -72,5 +72,7 @@
 !/更新文档.md
 # 取消忽略"compile_codegen_test.sh"文件本身
 !/compile_codegen_test.sh
+# 取消忽略"compile_semantic_test.sh"文件本身
+!/compile_semantic_test.sh
 
 #############################################################################################################
