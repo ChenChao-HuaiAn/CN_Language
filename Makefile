@@ -42,8 +42,10 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/lexer/errors/CN_lexer_errors.c \
             src/core/lexer/keywords/CN_lexer_keywords.c \
             src/core/lexer/operators/CN_lexer_operators.c \
+            src/core/lexer/scanner/CN_lexer_buffer.c \
             src/core/lexer/scanner/CN_lexer_scanner.c \
             src/core/lexer/token_scanners/CN_lexer_token_scanners.c \
+            src/core/lexer/utils/CN_lexer_utf8.c \
             src/core/lexer/utils/CN_lexer_utils.c \
             src/core/token/CN_token.c
 

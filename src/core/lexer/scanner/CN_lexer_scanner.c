@@ -4,11 +4,11 @@
  * 
  * 实现字符扫描、位置管理和空白字符处理功能。
  * 负责源代码的字符级操作和位置跟踪。
- * 使用新的错误处理系统。
+ * 使用新的错误处理系统和缓冲区管理。
  * 
  * @author CN_Language架构委员会
- * @date 2026-01-08
- * @version 2.0.0
+ * @date 2026-01-09
+ * @version 3.0.0
  */
 
 #include "CN_lexer_scanner.h"
@@ -38,10 +38,8 @@ Stru_LexerScannerState_t* F_create_scanner_state(void)
     }
     
     // 初始化状态
-    state->source = NULL;
-    state->source_length = 0;
+    state->buffer = NULL;
     state->source_name = NULL;
-    state->current_pos = 0;
     state->current_line = 1;
     state->current_column = 1;
     
@@ -58,6 +56,13 @@ void F_destroy_scanner_state(Stru_LexerScannerState_t* state)
         return;
     }
     
+    // 销毁缓冲区
+    if (state->buffer != NULL)
+    {
+        F_destroy_buffer(state->buffer);
+        state->buffer = NULL;
+    }
+    
     // 销毁错误上下文
     if (state->error_ctx != NULL)
     {
@@ -69,7 +74,7 @@ void F_destroy_scanner_state(Stru_LexerScannerState_t* state)
 }
 
 /**
- * @brief 初始化扫描器状态
+ * @brief 初始化扫描器状态（完整加载）
  */
 bool F_initialize_scanner_state(Stru_LexerScannerState_t* state, 
                                const char* source, size_t length, 
@@ -86,10 +91,49 @@ bool F_initialize_scanner_state(Stru_LexerScannerState_t* state,
         return false;
     }
     
-    state->source = source;
-    state->source_length = length;
+    // 创建完整加载缓冲区
+    state->buffer = F_create_buffer_full(source, length, false);
+    if (state->buffer == NULL)
+    {
+        F_set_scanner_error(state, Eum_LEXER_ERROR_MEMORY_ALLOCATION, "无法创建缓冲区");
+        return false;
+    }
+    
     state->source_name = source_name ? source_name : "unknown.cn";
-    state->current_pos = 0;
+    state->current_line = 1;
+    state->current_column = 1;
+    
+    // 重置错误上下文
+    if (state->error_ctx != NULL)
+    {
+        F_reset_lexer_error_context(state->error_ctx);
+    }
+    
+    return true;
+}
+
+/**
+ * @brief 初始化扫描器状态（文件流式）
+ */
+bool F_initialize_scanner_state_from_file(Stru_LexerScannerState_t* state,
+                                         const char* file_path,
+                                         size_t window_size,
+                                         const char* source_name)
+{
+    if (state == NULL || file_path == NULL)
+    {
+        return false;
+    }
+    
+    // 创建流式缓冲区
+    state->buffer = F_create_buffer_streaming(file_path, window_size);
+    if (state->buffer == NULL)
+    {
+        F_set_scanner_error(state, Eum_LEXER_ERROR_INTERNAL, "无法打开文件: %s", file_path);
+        return false;
+    }
+    
+    state->source_name = source_name ? source_name : file_path;
     state->current_line = 1;
     state->current_column = 1;
     
@@ -107,12 +151,14 @@ bool F_initialize_scanner_state(Stru_LexerScannerState_t* state,
  */
 void F_reset_scanner_state(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return;
     }
     
-    state->current_pos = 0;
+    // 重置缓冲区位置
+    F_buffer_set_position(state->buffer, 0);
+    
     state->current_line = 1;
     state->current_column = 1;
     
@@ -128,12 +174,12 @@ void F_reset_scanner_state(Stru_LexerScannerState_t* state)
  */
 char F_peek_char(const Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL || state->current_pos >= state->source_length)
+    if (state == NULL || state->buffer == NULL)
     {
         return '\0';
     }
     
-    return state->source[state->current_pos];
+    return F_buffer_peek_char(state->buffer);
 }
 
 /**
@@ -141,20 +187,19 @@ char F_peek_char(const Stru_LexerScannerState_t* state)
  */
 char F_next_char(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL || state->current_pos >= state->source_length)
+    if (state == NULL || state->buffer == NULL)
     {
         return '\0';
     }
     
-    char c = state->source[state->current_pos];
-    state->current_pos++;
+    char c = F_buffer_next_char(state->buffer);
     
     if (c == '\n')
     {
         state->current_line++;
         state->current_column = 1;
     }
-    else
+    else if (c != '\0')
     {
         state->current_column++;
     }
@@ -167,34 +212,33 @@ char F_next_char(Stru_LexerScannerState_t* state)
  */
 void F_skip_whitespace(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return;
     }
     
-    while (state->current_pos < state->source_length)
+    while (F_buffer_has_more_chars(state->buffer))
     {
-        char c = state->source[state->current_pos];
+        char c = F_buffer_peek_char(state->buffer);
         
         if (c == ' ' || c == '\t')
         {
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             state->current_column++;
         }
         else if (c == '\n')
         {
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             state->current_line++;
             state->current_column = 1;
         }
         else if (c == '\r')
         {
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             // 处理Windows换行符\r\n
-            if (state->current_pos < state->source_length && 
-                state->source[state->current_pos] == '\n')
+            if (F_buffer_peek_char(state->buffer) == '\n')
             {
-                state->current_pos++;
+                F_buffer_next_char(state->buffer);
             }
             state->current_line++;
             state->current_column = 1;
@@ -216,24 +260,24 @@ void F_skip_whitespace(Stru_LexerScannerState_t* state)
  */
 void F_skip_comment(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return;
     }
     
     // 跳过注释字符
-    state->current_pos++;
+    F_buffer_next_char(state->buffer);
     state->current_column++;
     
     // 跳过直到行尾
-    while (state->current_pos < state->source_length)
+    while (F_buffer_has_more_chars(state->buffer))
     {
-        char c = state->source[state->current_pos];
+        char c = F_buffer_peek_char(state->buffer);
         if (c == '\n' || c == '\r')
         {
             break;
         }
-        state->current_pos++;
+        F_buffer_next_char(state->buffer);
         state->current_column++;
     }
 }
@@ -243,12 +287,12 @@ void F_skip_comment(Stru_LexerScannerState_t* state)
  */
 bool F_has_more_chars(const Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return false;
     }
     
-    return state->current_pos < state->source_length;
+    return F_buffer_has_more_chars(state->buffer);
 }
 
 /**
@@ -394,4 +438,36 @@ Stru_LexerErrorContext_t* F_get_scanner_error_context(const Stru_LexerScannerSta
     }
     
     return state->error_ctx;
+}
+
+/**
+ * @brief 获取缓冲区
+ */
+Stru_LexerBuffer_t* F_get_scanner_buffer(const Stru_LexerScannerState_t* state)
+{
+    if (state == NULL)
+    {
+        return NULL;
+    }
+    
+    return state->buffer;
+}
+
+/**
+ * @brief 设置缓冲区
+ */
+void F_set_scanner_buffer(Stru_LexerScannerState_t* state, Stru_LexerBuffer_t* buffer)
+{
+    if (state == NULL)
+    {
+        return;
+    }
+    
+    // 销毁旧的缓冲区
+    if (state->buffer != NULL)
+    {
+        F_destroy_buffer(state->buffer);
+    }
+    
+    state->buffer = buffer;
 }

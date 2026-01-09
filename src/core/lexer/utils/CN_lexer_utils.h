@@ -15,6 +15,7 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include "CN_lexer_utf8.h"
 
 /**
  * @brief 检查字符是否为空白字符

@@ -137,4 +137,16 @@ bool F_is_operator_char(char c);
  */
 bool F_is_delimiter_char(char c);
 
+/**
+ * @brief 检查扫描器当前位置的字符是否为字母（UTF-8支持）
+ * 
+ * 检查扫描器当前位置的字符是否为字母，支持ASCII字母和中文字符。
+ * 使用完整的UTF-8支持。
+ * 
+ * @param state 扫描器状态
+ * @return true 是字母
+ * @return false 不是字母
+ */
+bool F_is_alpha_at_scanner_position(Stru_LexerScannerState_t* state);
+
 #endif // CN_LEXER_TOKEN_SCANNERS_H

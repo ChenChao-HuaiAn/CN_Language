@@ -4,10 +4,11 @@
  * 
  * 提供字符扫描、位置管理和空白字符处理功能。
  * 负责源代码的字符级操作和位置跟踪。
+ * 支持大文件处理和UTF-8编码。
  * 
  * @author CN_Language架构委员会
- * @date 2026-01-08
- * @version 1.0.0
+ * @date 2026-01-09
+ * @version 2.0.0
  */
 
 #ifndef CN_LEXER_SCANNER_H
@@ -16,17 +17,16 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include "../errors/CN_lexer_errors.h"
+#include "CN_lexer_buffer.h"
 
 /**
  * @brief 扫描器状态结构体
  * 
- * 存储扫描器的内部状态，包括源代码、位置信息和错误状态。
+ * 存储扫描器的内部状态，包括缓冲区、位置信息和错误状态。
  */
 typedef struct Stru_LexerScannerState_t {
-    const char* source;                  ///< 源代码
-    size_t source_length;                ///< 源代码长度
+    Stru_LexerBuffer_t* buffer;          ///< 缓冲区管理
     const char* source_name;             ///< 源文件名
-    size_t current_pos;                  ///< 当前位置（字节偏移）
     size_t current_line;                 ///< 当前行号
     size_t current_column;               ///< 当前列号
     Stru_LexerErrorContext_t* error_ctx; ///< 错误上下文
@@ -52,7 +52,7 @@ Stru_LexerScannerState_t* F_create_scanner_state(void);
 void F_destroy_scanner_state(Stru_LexerScannerState_t* state);
 
 /**
- * @brief 初始化扫描器状态
+ * @brief 初始化扫描器状态（完整加载）
  * 
  * 设置源代码和源文件名，准备进行扫描。
  * 
@@ -66,6 +66,23 @@ void F_destroy_scanner_state(Stru_LexerScannerState_t* state);
 bool F_initialize_scanner_state(Stru_LexerScannerState_t* state, 
                                const char* source, size_t length, 
                                const char* source_name);
+
+/**
+ * @brief 初始化扫描器状态（文件流式）
+ * 
+ * 从文件创建流式缓冲区，准备进行扫描。
+ * 
+ * @param state 扫描器状态
+ * @param file_path 文件路径
+ * @param window_size 滑动窗口大小
+ * @param source_name 源文件名（可选）
+ * @return true 初始化成功
+ * @return false 初始化失败
+ */
+bool F_initialize_scanner_state_from_file(Stru_LexerScannerState_t* state,
+                                         const char* file_path,
+                                         size_t window_size,
+                                         const char* source_name);
 
 /**
  * @brief 重置扫描器状态
@@ -225,5 +242,25 @@ const char* F_get_scanner_last_error(const Stru_LexerScannerState_t* state);
  * @return Stru_LexerErrorContext_t* 错误上下文
  */
 Stru_LexerErrorContext_t* F_get_scanner_error_context(const Stru_LexerScannerState_t* state);
+
+/**
+ * @brief 获取缓冲区
+ * 
+ * 获取扫描器使用的缓冲区。
+ * 
+ * @param state 扫描器状态
+ * @return Stru_LexerBuffer_t* 缓冲区
+ */
+Stru_LexerBuffer_t* F_get_scanner_buffer(const Stru_LexerScannerState_t* state);
+
+/**
+ * @brief 设置缓冲区
+ * 
+ * 设置扫描器使用的缓冲区。
+ * 
+ * @param state 扫描器状态
+ * @param buffer 缓冲区
+ */
+void F_set_scanner_buffer(Stru_LexerScannerState_t* state, Stru_LexerBuffer_t* buffer);
 
 #endif // CN_LEXER_SCANNER_H

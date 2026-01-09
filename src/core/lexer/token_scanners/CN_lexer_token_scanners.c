@@ -4,10 +4,11 @@
  * 
  * 实现各种令牌类型的扫描功能，包括标识符、数字、字符串、运算符和分隔符。
  * 负责将字符序列转换为具体的令牌。
+ * 支持大文件处理和UTF-8编码。
  * 
  * @author CN_Language架构委员会
- * @date 2026-01-08
- * @version 1.0.0
+ * @date 2026-01-09
+ * @version 2.0.0
  */
 
 #include "CN_lexer_token_scanners.h"
@@ -60,61 +61,112 @@ bool F_is_delimiter_char(char c)
 }
 
 /**
- * @brief 扫描标识符或关键字
+ * @brief 从缓冲区读取词素
  */
-Stru_Token_t* F_scan_identifier(Stru_LexerScannerState_t* state)
+static char* F_read_lexeme_from_buffer(Stru_LexerBuffer_t* buffer, size_t start_pos, size_t length)
 {
-    if (state == NULL || state->source == NULL)
+    if (buffer == NULL || length == 0)
     {
         return NULL;
     }
     
-    size_t start_pos = state->current_pos;
-    size_t start_line = state->current_line;
-    size_t start_column = state->current_column;
-    
-    // 收集标识符字符
-    while (state->current_pos < state->source_length)
-    {
-        char c = state->source[state->current_pos];
-        
-        // 检查是否为字母或数字
-        if (!F_is_alpha_numeric(c))
-        {
-            break;
-        }
-        
-        // 如果是中文字符的第一个字节（UTF-8编码），跳过整个字符
-        if ((unsigned char)c >= 0xE0 && (unsigned char)c <= 0xEF)
-        {
-            // UTF-8中文字符通常是3个字节
-            state->current_pos += 3;
-            state->current_column++;  // 中文字符在列计数中算作一个字符
-        }
-        else if ((unsigned char)c >= 0xC0 && (unsigned char)c <= 0xDF)
-        {
-            // 2字节UTF-8字符
-            state->current_pos += 2;
-            state->current_column++;
-        }
-        else
-        {
-            // ASCII字符
-            state->current_pos++;
-            state->current_column++;
-        }
-    }
-    
-    // 提取词素
-    size_t length = state->current_pos - start_pos;
     char* lexeme = (char*)malloc(length + 1);
     if (lexeme == NULL)
     {
         return NULL;
     }
     
-    strncpy(lexeme, state->source + start_pos, length);
+    // 读取词素数据
+    for (size_t i = 0; i < length; i++)
+    {
+        lexeme[i] = F_buffer_read_char(buffer, start_pos + i);
+    }
     lexeme[length] = '\0';
+    
+    return lexeme;
+}
+
+/**
+ * @brief 扫描标识符或关键字
+ */
+Stru_Token_t* F_scan_identifier(Stru_LexerScannerState_t* state)
+{
+    if (state == NULL || state->buffer == NULL)
+    {
+        return NULL;
+    }
+    
+    size_t start_line = state->current_line;
+    size_t start_column = state->current_column;
+    
+    // 获取缓冲区当前位置
+    size_t start_pos = F_buffer_get_position(state->buffer);
+    
+    // 收集标识符字符
+    while (F_buffer_has_more_chars(state->buffer))
+    {
+        // 查看当前字符
+        char current_char = F_buffer_peek_char(state->buffer);
+        if (current_char == '\0')
+        {
+            break;
+        }
+        
+        // 获取当前位置的缓冲区数据
+        const char* buffer_data = F_buffer_get_data(state->buffer);
+        size_t buffer_pos = F_buffer_get_position(state->buffer);
+        size_t buffer_size = F_buffer_get_size(state->buffer);
+        
+        if (buffer_pos >= buffer_size)
+        {
+            break;
+        }
+        
+        // 计算当前字符在缓冲区中的位置
+        const char* current_char_ptr = buffer_data + buffer_pos;
+        size_t remaining = buffer_size - buffer_pos;
+        
+        // 使用UTF-8支持检查字符
+        if (!F_is_identifier_continue_utf8(current_char_ptr, remaining))
+        {
+            break;
+        }
+        
+        // 获取UTF-8字符信息以确定字符长度
+        Stru_UTF8CharInfo_t char_info = F_get_utf8_char_info(current_char_ptr, remaining);
+        if (!char_info.is_valid)
+        {
+            // 无效的UTF-8编码，报告错误并跳过
+            F_set_scanner_error(state, Eum_LEXER_ERROR_INVALID_UTF8,
+                               "无效的UTF-8编码在位置 %zu", buffer_pos);
+            F_buffer_next_char(state->buffer);
+            state->current_column++;
+            continue;
+        }
+        
+        // 移动位置
+        for (size_t i = 0; i < char_info.byte_length; i++)
+        {
+            F_buffer_next_char(state->buffer);
+        }
+        state->current_column++;  // UTF-8字符在列计数中算作一个字符
+    }
+    
+    // 获取结束位置
+    size_t end_pos = F_buffer_get_position(state->buffer);
+    size_t length = end_pos - start_pos;
+    
+    if (length == 0)
+    {
+        return NULL;
+    }
+    
+    // 提取词素
+    char* lexeme = F_read_lexeme_from_buffer(state->buffer, start_pos, length);
+    if (lexeme == NULL)
+    {
+        return NULL;
+    }
     
     // 识别关键字
     Eum_TokenType type = F_identify_keyword(lexeme);
@@ -131,33 +183,35 @@ Stru_Token_t* F_scan_identifier(Stru_LexerScannerState_t* state)
  */
 Stru_Token_t* F_scan_number(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return NULL;
     }
     
-    size_t start_pos = state->current_pos;
     size_t start_line = state->current_line;
     size_t start_column = state->current_column;
+    
+    // 获取缓冲区当前位置
+    size_t start_pos = F_buffer_get_position(state->buffer);
     
     bool has_dot = false;
     bool is_float = false;
     
     // 收集数字字符
-    while (state->current_pos < state->source_length)
+    while (F_buffer_has_more_chars(state->buffer))
     {
-        char c = state->source[state->current_pos];
+        char c = F_buffer_peek_char(state->buffer);
         
         if (F_is_digit(c))
         {
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             state->current_column++;
         }
         else if (c == '.' && !has_dot)
         {
             has_dot = true;
             is_float = true;
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             state->current_column++;
         }
         else
@@ -166,16 +220,21 @@ Stru_Token_t* F_scan_number(Stru_LexerScannerState_t* state)
         }
     }
     
-    // 提取词素
-    size_t length = state->current_pos - start_pos;
-    char* lexeme = (char*)malloc(length + 1);
-    if (lexeme == NULL)
+    // 获取结束位置
+    size_t end_pos = F_buffer_get_position(state->buffer);
+    size_t length = end_pos - start_pos;
+    
+    if (length == 0)
     {
         return NULL;
     }
     
-    strncpy(lexeme, state->source + start_pos, length);
-    lexeme[length] = '\0';
+    // 提取词素
+    char* lexeme = F_read_lexeme_from_buffer(state->buffer, start_pos, length);
+    if (lexeme == NULL)
+    {
+        return NULL;
+    }
     
     // 创建令牌
     Eum_TokenType type = is_float ? Eum_TOKEN_LITERAL_FLOAT : Eum_TOKEN_LITERAL_INTEGER;
@@ -202,7 +261,7 @@ Stru_Token_t* F_scan_number(Stru_LexerScannerState_t* state)
  */
 Stru_Token_t* F_scan_string(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return NULL;
     }
@@ -211,15 +270,22 @@ Stru_Token_t* F_scan_string(Stru_LexerScannerState_t* state)
     size_t start_column = state->current_column;
     
     // 跳过开头的引号
-    state->current_pos++;
+    char quote_char = F_buffer_peek_char(state->buffer);
+    if (quote_char != '"')
+    {
+        return NULL;
+    }
+    
+    F_buffer_next_char(state->buffer);
     state->current_column++;
     
-    size_t start_pos = state->current_pos;
+    // 获取字符串开始位置
+    size_t start_pos = F_buffer_get_position(state->buffer);
     
     // 收集字符串内容
-    while (state->current_pos < state->source_length)
+    while (F_buffer_has_more_chars(state->buffer))
     {
-        char c = state->source[state->current_pos];
+        char c = F_buffer_peek_char(state->buffer);
         
         if (c == '"')
         {
@@ -228,36 +294,36 @@ Stru_Token_t* F_scan_string(Stru_LexerScannerState_t* state)
         else if (c == '\\')
         {
             // 处理转义字符
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             state->current_column++;
-            if (state->current_pos < state->source_length)
+            if (F_buffer_has_more_chars(state->buffer))
             {
-                state->current_pos++;
+                F_buffer_next_char(state->buffer);
                 state->current_column++;
             }
         }
         else
         {
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             state->current_column++;
         }
     }
     
+    // 获取结束位置
+    size_t end_pos = F_buffer_get_position(state->buffer);
+    size_t length = end_pos - start_pos;
+    
     // 提取词素（不包括引号）
-    size_t length = state->current_pos - start_pos;
-    char* lexeme = (char*)malloc(length + 1);
+    char* lexeme = F_read_lexeme_from_buffer(state->buffer, start_pos, length);
     if (lexeme == NULL)
     {
         return NULL;
     }
     
-    strncpy(lexeme, state->source + start_pos, length);
-    lexeme[length] = '\0';
-    
     // 跳过结尾的引号
-    if (state->current_pos < state->source_length && state->source[state->current_pos] == '"')
+    if (F_buffer_has_more_chars(state->buffer) && F_buffer_peek_char(state->buffer) == '"')
     {
-        state->current_pos++;
+        F_buffer_next_char(state->buffer);
         state->current_column++;
     }
     
@@ -273,25 +339,29 @@ Stru_Token_t* F_scan_string(Stru_LexerScannerState_t* state)
  */
 Stru_Token_t* F_scan_operator(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return NULL;
     }
     
-    size_t start_pos = state->current_pos;
     size_t start_line = state->current_line;
     size_t start_column = state->current_column;
     
     // 获取第一个字符
-    char first_char = state->source[state->current_pos];
-    state->current_pos++;
+    char first_char = F_buffer_peek_char(state->buffer);
+    if (first_char == '\0')
+    {
+        return NULL;
+    }
+    
+    F_buffer_next_char(state->buffer);
     state->current_column++;
     
     // 检查是否为双字符运算符
     char second_char = '\0';
-    if (state->current_pos < state->source_length)
+    if (F_buffer_has_more_chars(state->buffer))
     {
-        second_char = state->source[state->current_pos];
+        second_char = F_buffer_peek_char(state->buffer);
         
         // 检查可能的双字符运算符
         if ((first_char == '=' && second_char == '=') ||  // ==
@@ -303,7 +373,7 @@ Stru_Token_t* F_scan_operator(Stru_LexerScannerState_t* state)
             (first_char == '*' && second_char == '=') ||  // *=
             (first_char == '/' && second_char == '='))    // /=
         {
-            state->current_pos++;
+            F_buffer_next_char(state->buffer);
             state->current_column++;
         }
         else
@@ -312,7 +382,7 @@ Stru_Token_t* F_scan_operator(Stru_LexerScannerState_t* state)
         }
     }
     
-    // 提取词素
+    // 创建词素
     size_t length = second_char ? 2 : 1;
     char* lexeme = (char*)malloc(length + 1);
     if (lexeme == NULL)
@@ -320,7 +390,12 @@ Stru_Token_t* F_scan_operator(Stru_LexerScannerState_t* state)
         return NULL;
     }
     
-    strncpy(lexeme, state->source + start_pos, length);
+    // 读取词素数据
+    size_t start_pos = F_buffer_get_position(state->buffer) - length;
+    for (size_t i = 0; i < length; i++)
+    {
+        lexeme[i] = F_buffer_read_char(state->buffer, start_pos + i);
+    }
     lexeme[length] = '\0';
     
     // 识别运算符类型
@@ -336,7 +411,7 @@ Stru_Token_t* F_scan_operator(Stru_LexerScannerState_t* state)
  */
 Stru_Token_t* F_scan_delimiter(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return NULL;
     }
@@ -344,8 +419,13 @@ Stru_Token_t* F_scan_delimiter(Stru_LexerScannerState_t* state)
     size_t start_line = state->current_line;
     size_t start_column = state->current_column;
     
-    char c = state->source[state->current_pos];
-    state->current_pos++;
+    char c = F_buffer_peek_char(state->buffer);
+    if (c == '\0')
+    {
+        return NULL;
+    }
+    
+    F_buffer_next_char(state->buffer);
     state->current_column++;
     
     // 创建词素
@@ -393,11 +473,46 @@ Stru_Token_t* F_scan_delimiter(Stru_LexerScannerState_t* state)
 }
 
 /**
+ * @brief 检查扫描器当前位置的字符是否为字母（UTF-8支持）
+ */
+bool F_is_alpha_at_scanner_position(Stru_LexerScannerState_t* state)
+{
+    if (state == NULL || state->buffer == NULL)
+    {
+        return false;
+    }
+    
+    // 查看当前字符
+    char current_char = F_buffer_peek_char(state->buffer);
+    if (current_char == '\0')
+    {
+        return false;
+    }
+    
+    // 获取当前位置的缓冲区数据
+    const char* buffer_data = F_buffer_get_data(state->buffer);
+    size_t buffer_pos = F_buffer_get_position(state->buffer);
+    size_t buffer_size = F_buffer_get_size(state->buffer);
+    
+    if (buffer_pos >= buffer_size)
+    {
+        return false;
+    }
+    
+    // 计算当前字符在缓冲区中的位置
+    const char* current_char_ptr = buffer_data + buffer_pos;
+    size_t remaining = buffer_size - buffer_pos;
+    
+    // 使用UTF-8支持检查字符
+    return F_is_identifier_start_utf8(current_char_ptr, remaining);
+}
+
+/**
  * @brief 扫描下一个令牌
  */
 Stru_Token_t* F_scan_next_token(Stru_LexerScannerState_t* state)
 {
-    if (state == NULL || state->source == NULL)
+    if (state == NULL || state->buffer == NULL)
     {
         return NULL;
     }
@@ -406,16 +521,16 @@ Stru_Token_t* F_scan_next_token(Stru_LexerScannerState_t* state)
     F_skip_whitespace(state);
     
     // 检查是否到达文件末尾
-    if (state->current_pos >= state->source_length)
+    if (!F_buffer_has_more_chars(state->buffer))
     {
         return F_create_token(Eum_TOKEN_EOF, "", state->current_line, state->current_column);
     }
     
     // 查看下一个字符
-    char c = F_peek_char(state);
+    char c = F_buffer_peek_char(state->buffer);
     
     // 根据字符类型选择扫描函数
-    if (F_is_alpha(c))
+    if (F_is_alpha_at_scanner_position(state))
     {
         return F_scan_identifier(state);
     }
@@ -443,7 +558,7 @@ Stru_Token_t* F_scan_next_token(Stru_LexerScannerState_t* state)
                                             state->current_line, state->current_column);
         F_set_scanner_error(state, Eum_LEXER_ERROR_UNKNOWN_CHAR, 
                            "未知字符: %c (0x%02x)", c, (unsigned char)c);
-        state->current_pos++;
+        F_buffer_next_char(state->buffer);
         state->current_column++;
         return token;
     }

@@ -27,6 +27,7 @@ bool F_is_whitespace(char c)
  */
 bool F_is_alpha_utf8(char c)
 {
+    // 对于单个字符，使用简化的检查
     // 检查ASCII字母
     if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
     {
@@ -34,12 +35,14 @@ bool F_is_alpha_utf8(char c)
     }
     
     // 检查中文字符（UTF-8编码的第一个字节）
-    // 中文字符的UTF-8编码第一个字节在0xE0-0xEF范围内
+    // 中文字符的UTF-8编码第一个字节通常在0xE0-0xEF范围内
     if ((unsigned char)c >= 0xE0 && (unsigned char)c <= 0xEF)
     {
         return true;
     }
     
+    // 对于更精确的检查，可以使用完整的UTF-8支持
+    // 但这里为了保持向后兼容性，使用简化版本
     return false;
 }
 
