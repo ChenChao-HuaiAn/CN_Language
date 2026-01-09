@@ -156,6 +156,7 @@ typedef enum Eum_TokenType {
     // 分隔符
     Eum_TOKEN_DELIMITER_COMMA,   ///< , 逗号分隔符
     Eum_TOKEN_DELIMITER_SEMICOLON, ///< ; 分号分隔符
+    Eum_TOKEN_DELIMITER_COLON,   ///< : 冒号分隔符（用于类型注解）
     Eum_TOKEN_DELIMITER_LPAREN,  ///< ( 左括号
     Eum_TOKEN_DELIMITER_RPAREN,  ///< ) 右括号
     Eum_TOKEN_DELIMITER_LBRACE,  ///< { 左花括号

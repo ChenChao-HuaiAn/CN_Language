@@ -82,7 +82,7 @@ bool F_is_operator_char_simple(char c)
  */
 bool F_is_delimiter_char_simple(char c)
 {
-    return strchr(",;(){}[]", c) != NULL;
+    return strchr(",;:(){}[]", c) != NULL;
 }
 
 /**

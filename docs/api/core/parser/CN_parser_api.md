@@ -2,20 +2,72 @@
 
 ## 概述
 
-语法分析器模块是CN_Language编译器的核心组件之一，负责将词法分析器生成的令牌序列转换为抽象语法树（AST）。本模块采用接口模式设计，实现了模块间的解耦，支持灵活的语法分析策略和错误处理机制。
+语法分析器模块是CN_Language编译器的核心组件之一，负责将词法分析器生成的令牌序列转换为抽象语法树（AST）。本模块采用模块化架构设计，遵循单一职责原则，实现了高度解耦的组件结构。每个子模块专注于特定的语法分析功能，通过清晰的接口进行通信。
 
 ### 主要功能
 
 1. **语法分析**：解析CN语言程序，构建完整的抽象语法树
 2. **AST构建**：创建和管理AST节点，支持复杂的程序结构表示
 3. **错误处理**：检测和报告语法错误，支持错误恢复机制
-4. **状态管理**：维护语法分析器的内部状态，支持增量分析
+4. **模块化设计**：支持可扩展的子模块架构
 
 ### 架构位置
 
 - **所属层级**：核心层（Core Layer）
 - **依赖模块**：基础设施层（内存管理、容器）、词法分析器、AST模块
 - **被依赖模块**：语义分析器、代码生成器、应用层工具
+
+### 模块化结构
+
+语法分析器模块采用分层子模块设计：
+
+```
+src/core/parser/
+├── CN_parser_interface.h          # 主接口定义
+├── CN_parser_interface.c          # 工厂函数
+├── CN_syntax_error.h              # 语法错误接口
+├── README.md                      # 模块概述
+├── interface/                     # 接口实现子模块
+│   ├── CN_parser_interface_impl.h
+│   ├── CN_parser_interface_impl.c
+│   └── README.md
+├── expression_parsers/            # 表达式解析子模块
+│   ├── CN_parser_expressions.h
+│   ├── CN_parser_expressions_main.c
+│   ├── CN_parser_unary_expressions.c
+│   ├── CN_parser_primary_expressions.c
+│   ├── CN_parser_function_calls.c
+│   └── README.md
+├── statement_parsers/             # 语句解析子模块
+│   ├── CN_parser_statements.h
+│   ├── CN_parser_statements_main.c
+│   ├── CN_parser_control_statements.c
+│   ├── CN_parser_loop_statements.c
+│   ├── CN_parser_conditional_statements.c
+│   ├── CN_parser_block_statements.c
+│   └── README.md
+├── declaration_parsers/           # 声明解析子模块
+│   ├── CN_parser_declarations.h
+│   ├── CN_parser_declarations_main.c
+│   ├── CN_parser_variable_declarations.c
+│   ├── CN_parser_function_declarations.c
+│   ├── CN_parser_struct_declarations.c
+│   ├── CN_parser_enum_declarations.c
+│   ├── CN_parser_module_declarations.c
+│   ├── CN_parser_type_declarations.c
+│   ├── CN_parser_parameter_lists.c
+│   ├── CN_parser_type_expressions.c
+│   ├── CN_parser_member_lists.c
+│   └── README.md
+├── error_handling/                # 错误处理子模块
+│   ├── CN_parser_errors.h
+│   ├── CN_parser_errors.c
+│   └── README.md
+└── utils/                         # 工具函数子模块
+    ├── CN_parser_utils.h
+    ├── CN_parser_utils.c
+    └── README.md
+```
 
 ## 核心接口
 
@@ -81,25 +133,25 @@ typedef struct Stru_ParserInterface_t {
 - **功能**：解析整个程序，构建完整的AST
 - **参数**：`interface`：语法分析器接口指针
 - **返回值**：程序AST根节点，`NULL`表示错误
-- **支持的语法结构**：程序、模块、导入声明、全局声明等
+- **实现**：委托给`interface`子模块的`F_parser_parse_program()`函数
 
 **`parse_statement`**
 - **功能**：解析单个语句
 - **参数**：`interface`：语法分析器接口指针
 - **返回值**：语句AST节点，`NULL`表示错误或结束
-- **支持的语句类型**：赋值语句、控制流语句、表达式语句等
+- **实现**：委托给`statement_parsers`子模块的`F_parse_statement()`函数
 
 **`parse_expression`**
 - **功能**：解析单个表达式
 - **参数**：`interface`：语法分析器接口指针
 - **返回值**：表达式AST节点，`NULL`表示错误
-- **支持的表达式类型**：算术表达式、逻辑表达式、函数调用等
+- **实现**：委托给`expression_parsers`子模块的`F_parse_expression()`函数
 
 **`parse_declaration`**
 - **功能**：解析声明
 - **参数**：`interface`：语法分析器接口指针
 - **返回值**：声明AST节点，`NULL`表示错误
-- **支持的声明类型**：变量声明、函数声明、结构体声明、模块声明
+- **实现**：委托给`declaration_parsers`子模块的`F_parse_declaration()`函数
 
 ##### AST构建函数
 
@@ -110,6 +162,7 @@ typedef struct Stru_ParserInterface_t {
   - `type`：AST节点类型
   - `token`：关联的令牌（可选）
 - **返回值**：新创建的AST节点，`NULL`表示错误
+- **实现**：使用`utils`子模块的AST工具函数
 
 **`add_child_node`**
 - **功能**：向父AST节点添加子节点
@@ -147,6 +200,7 @@ typedef struct Stru_ParserInterface_t {
   - `message`：错误信息
   - `token`：出错的令牌（可选）
 - **返回值**：无
+- **实现**：委托给`error_handling`子模块的`F_report_parser_error()`函数
 
 **`has_errors`**
 - **功能**：检查语法分析过程中是否发生了错误
@@ -199,6 +253,97 @@ typedef struct Stru_ParserInterface_t {
 - **参数**：无
 - **返回值**：新创建的语法分析器接口实例
 - **内存管理**：调用者负责在不再使用时调用`destroy`函数
+- **实现位置**：`src/core/parser/CN_parser_interface.c`
+
+## 子模块API
+
+### 接口实现子模块 (`interface/`)
+
+负责实现语法分析器抽象接口的所有功能。
+
+#### 主要函数
+
+- `F_parser_initialize()` - 初始化语法分析器
+- `F_parser_parse_program()` - 解析整个程序
+- `F_parser_parse_statement()` - 解析语句（委托给语句解析模块）
+- `F_parser_parse_expression()` - 解析表达式（委托给表达式解析模块）
+- `F_parser_parse_declaration()` - 解析声明（委托给声明解析模块）
+
+### 表达式解析子模块 (`expression_parsers/`)
+
+负责解析各种类型的表达式。
+
+#### 主要函数
+
+- `F_parse_expression()` - 解析表达式（入口函数）
+- `F_parse_assignment_expression()` - 解析赋值表达式
+- `F_parse_logical_or_expression()` - 解析逻辑或表达式
+- `F_parse_logical_and_expression()` - 解析逻辑与表达式
+- `F_parse_equality_expression()` - 解析相等性表达式
+- `F_parse_relational_expression()` - 解析关系表达式
+- `F_parse_additive_expression()` - 解析加法表达式
+- `F_parse_multiplicative_expression()` - 解析乘法表达式
+- `F_parse_unary_expression()` - 解析一元表达式
+- `F_parse_primary_expression()` - 解析基本表达式
+
+### 语句解析子模块 (`statement_parsers/`)
+
+负责解析各种类型的语句。
+
+#### 主要函数
+
+- `F_parse_statement()` - 解析语句（入口函数）
+- `F_parse_expression_statement()` - 解析表达式语句
+- `F_parse_block_statement()` - 解析代码块语句
+- `F_parse_if_statement()` - 解析条件语句
+- `F_parse_while_statement()` - 解析循环语句
+- `F_parse_for_statement()` - 解析for循环语句
+- `F_parse_break_statement()` - 解析中断语句
+- `F_parse_continue_statement()` - 解析继续语句
+- `F_parse_return_statement()` - 解析返回语句
+
+### 声明解析子模块 (`declaration_parsers/`)
+
+负责解析各种类型的声明。
+
+#### 主要函数
+
+- `F_parse_declaration()` - 解析声明（入口函数）
+- `F_parse_variable_declaration()` - 解析变量声明
+- `F_parse_function_declaration()` - 解析函数声明
+- `F_parse_struct_declaration()` - 解析结构体声明
+- `F_parse_enum_declaration()` - 解析枚举声明
+- `F_parse_module_declaration()` - 解析模块声明
+- `F_parse_type_declaration()` - 解析类型声明
+
+### 错误处理子模块 (`error_handling/`)
+
+负责处理语法分析过程中的错误。
+
+#### 主要函数
+
+- `F_report_parser_error()` - 报告语法分析错误
+- `F_report_unexpected_token_error()` - 报告意外令牌错误
+- `F_report_missing_token_error()` - 报告缺失令牌错误
+- `F_report_type_mismatch_error()` - 报告类型不匹配错误
+- `F_report_duplicate_declaration_error()` - 报告重复声明错误
+- `F_try_error_recovery()` - 尝试错误恢复
+- `F_synchronize_to_safe_point()` - 同步到安全点
+
+### 工具函数子模块 (`utils/`)
+
+提供各种辅助工具函数。
+
+#### 主要函数
+
+- `F_is_keyword_token()` - 检查令牌是否为关键字
+- `F_is_operator_token()` - 检查令牌是否为运算符
+- `F_get_operator_precedence()` - 获取运算符优先级
+- `F_create_binary_expression_node()` - 创建二元表达式节点
+- `F_create_unary_expression_node()` - 创建一元表达式节点
+- `F_create_literal_node()` - 创建字面量节点
+- `F_check_type_compatibility()` - 检查类型兼容性
+- `F_is_numeric_type()` - 检查是否为数值类型
 
 ## 语法错误处理接口
 
@@ -259,92 +404,6 @@ typedef struct Stru_SyntaxErrorHandler_t {
 } Stru_SyntaxErrorHandler_t;
 ```
 
-### 错误类型枚举
-
-#### Eum_SyntaxErrorSeverity
-
-语法错误严重级别枚举：
-
-```c
-typedef enum Eum_SyntaxErrorSeverity {
-    Eum_SEVERITY_INFO,        // 信息级别（非错误）
-    Eum_SEVERITY_WARNING,     // 警告级别（可能有问题）
-    Eum_SEVERITY_ERROR,       // 错误级别（语法错误）
-    Eum_SEVERITY_FATAL        // 致命错误级别（无法恢复）
-} Eum_SyntaxErrorSeverity;
-```
-
-#### Eum_SyntaxErrorType
-
-语法错误类型枚举，包含以下类别：
-
-1. **词法错误**：由词法分析器报告
-   - `Eum_ERROR_UNKNOWN_TOKEN`：未知令牌
-   - `Eum_ERROR_UNTERMINATED_STRING`：未终止的字符串
-   - `Eum_ERROR_UNTERMINATED_COMMENT`：未终止的注释
-   - `Eum_ERROR_INVALID_NUMBER`：无效的数字字面量
-   - `Eum_ERROR_INVALID_ESCAPE`：无效的转义序列
-
-2. **语法错误**：语法分析过程中发现
-   - `Eum_ERROR_UNEXPECTED_TOKEN`：意外的令牌
-   - `Eum_ERROR_MISSING_TOKEN`：缺失的令牌
-   - `Eum_ERROR_MISMATCHED_TOKEN`：不匹配的令牌
-   - `Eum_ERROR_INVALID_EXPRESSION`：无效的表达式
-   - `Eum_ERROR_INVALID_STATEMENT`：无效的语句
-   - `Eum_ERROR_INVALID_DECLARATION`：无效的声明
-
-3. **结构错误**：程序结构错误
-   - `Eum_ERROR_UNEXPECTED_EOF`：意外的文件结束
-   - `Eum_ERROR_UNCLOSED_BLOCK`：未关闭的代码块
-   - `Eum_ERROR_UNCLOSED_PAREN`：未关闭的括号
-   - `Eum_ERROR_UNCLOSED_BRACKET`：未关闭的方括号
-   - `Eum_ERROR_UNCLOSED_BRACE`：未关闭的大括号
-
-4. **语义错误**：语法分析阶段可检测的语义错误
-   - `Eum_ERROR_DUPLICATE_DECLARATION`：重复声明
-   - `Eum_ERROR_UNDECLARED_IDENTIFIER`：未声明的标识符
-   - `Eum_ERROR_TYPE_MISMATCH`：类型不匹配
-   - `Eum_ERROR_ARGUMENT_COUNT`：参数数量错误
-
-5. **其他错误**：系统级错误
-   - `Eum_ERROR_INTERNAL`：内部错误
-   - `Eum_ERROR_MEMORY`：内存错误
-   - `Eum_ERROR_IO`：输入输出错误
-
-### 错误对象操作函数
-
-**`F_create_syntax_error`**
-- **功能**：创建语法错误对象
-- **参数**：错误类型、严重级别、位置、信息等
-- **返回值**：新创建的语法错误对象
-
-**`F_destroy_syntax_error`**
-- **功能**：销毁语法错误对象
-- **参数**：要销毁的语法错误对象
-- **返回值**：无
-
-**`F_copy_syntax_error`**
-- **功能**：复制语法错误对象
-- **参数**：要复制的语法错误对象
-- **返回值**：新复制的语法错误对象
-
-**`F_syntax_error_type_to_string`**
-- **功能**：错误类型转字符串
-- **参数**：错误类型
-- **返回值**：类型字符串表示
-
-**`F_syntax_error_severity_to_string`**
-- **功能**：错误严重级别转字符串
-- **参数**：错误严重级别
-- **返回值**：严重级别字符串表示
-
-### 工厂函数
-
-**`F_create_syntax_error_handler`**
-- **功能**：创建错误处理接口实例
-- **参数**：无
-- **返回值**：新创建的错误处理接口实例
-
 ## 使用示例
 
 ### 示例1：基本语法分析
@@ -383,125 +442,79 @@ parser->destroy(parser);
 lexer->destroy(lexer);
 ```
 
-### 示例2：错误处理
+### 示例2：使用子模块函数
 
 ```c
-#include "src/core/parser/CN_parser_interface.h"
-#include "src/core/parser/CN_syntax_error.h"
+#include "src/core/parser/expression_parsers/CN_parser_expressions.h"
+#include "src/core/parser/statement_parsers/CN_parser_statements.h"
 
-// 创建语法分析器
+// 直接使用表达式解析函数
 Stru_ParserInterface_t* parser = F_create_parser_interface();
+parser->initialize(parser, lexer);
 
-// 假设解析过程中发生错误
-parser->report_error(parser, 10, 5, "缺少分号", NULL);
-
-// 获取错误信息
-if (parser->has_errors(parser)) {
-    Stru_DynamicArray_t* errors = parser->get_errors(parser);
-    
-    if (errors != NULL) {
-        size_t error_count = errors->size;
-        printf("发现 %zu 个错误：\n", error_count);
-        
-        for (size_t i = 0; i < error_count; i++) {
-            Stru_SyntaxError_t* error = (Stru_SyntaxError_t*)errors->get(errors, i);
-            if (error != NULL) {
-                printf("  第%zu行第%zu列：%s\n", 
-                       error->line, error->column, error->message);
-            }
-        }
-    }
+// 解析表达式
+Stru_AstNode_t* expr = F_parse_expression(parser);
+if (expr != NULL) {
+    printf("表达式解析成功\n");
 }
 
-// 清除错误并继续
-parser->clear_errors(parser);
+// 解析语句
+Stru_AstNode_t* stmt = F_parse_statement(parser);
+if (stmt != NULL) {
+    printf("语句解析成功\n");
+}
 
 // 清理资源
 parser->destroy(parser);
 ```
 
-### 示例3：AST构建
+### 示例3：错误处理
 
 ```c
-#include "src/core/parser/CN_parser_interface.h"
-#include "src/core/ast/CN_ast.h"
+#include "src/core/parser/error_handling/CN_parser_errors.h"
 
-// 创建语法分析器
+// 获取语法分析器接口
 Stru_ParserInterface_t* parser = F_create_parser_interface();
+parser->initialize(parser, lexer);
 
-// 初始化语法分析器（需要先初始化词法分析器）
-// 假设lexer已经初始化
+// 报告意外令牌错误
+Stru_Token_t* token = parser->get_current_token(parser);
+Stru_SyntaxError_t* error = F_report_unexpected_token_error(parser, token, "期望分号");
+
+// 尝试错误恢复
+if (error != NULL && error->severity == Eum_SYNTAX_ERROR_SEVERITY_ERROR) {
+    bool recovered = F_try_error_recovery(parser, error);
+    if (!recovered) {
+        // 无法恢复，停止分析
+        return NULL;
+    }
+}
+
+// 清理资源
+parser->destroy(parser);
+```
+
+### 示例4：使用工具函数
+
+```c
+#include "src/core/parser/utils/CN_parser_utils.h"
+
+// 检查运算符优先级
+Eum_TokenType token_type = Eum_TOKEN_PLUS;
+int precedence = F_get_operator_precedence(token_type);
+printf("运算符'+'的优先级: %d\n", precedence);
+
+// 检查令牌类型
+if (F_is_keyword_token(Eum_TOKEN_KEYWORD_VAR)) {
+    printf("这是变量关键字\n");
+}
 
 // 创建AST节点
-Stru_AstNode_t* variable_node = parser->create_ast_node(
-    parser, 
-    Eum_AST_VARIABLE_DECL, 
-    NULL  // 没有关联的令牌
-);
-
-if (variable_node != NULL) {
-    // 设置节点属性
-    parser->set_node_attribute(parser, variable_node, "name", "计数器");
-    parser->set_node_attribute(parser, variable_node, "type", "整数");
-    
-    // 创建表达式子节点
-    Stru_AstNode_t* expr_node = parser->create_ast_node(
-        parser, 
-        Eum_AST_INTEGER_LITERAL, 
-        NULL
-    );
-    
-    if (expr_node != NULL) {
-        parser->set_node_attribute(parser, expr_node, "value", "0");
-        
-        // 添加子节点
-        if (parser->add_child_node(parser, variable_node, expr_node)) {
-            printf("AST节点构建成功\n");
-        }
-    }
+Stru_Token_t* literal_token = parser->get_current_token(parser);
+Stru_AstNode_t* literal_node = F_create_literal_node(parser, literal_token);
+if (literal_node != NULL) {
+    printf("字面量节点创建成功\n");
 }
-
-// 清理资源
-parser->destroy(parser);
-```
-
-### 示例4：使用错误处理接口
-
-```c
-#include "src/core/parser/CN_syntax_error.h"
-
-// 创建错误处理接口
-Stru_SyntaxErrorHandler_t* error_handler = F_create_syntax_error_handler();
-
-// 设置最大错误数量
-error_handler->set_max_errors(error_handler, 100);
-
-// 报告错误
-Stru_SyntaxError_t* error = error_handler->report_error(
-    error_handler,
-    Eum_ERROR_UNEXPECTED_TOKEN,
-    Eum_SEVERITY_ERROR,
-    15, 8,
-    "意外的令牌：期望分号，找到逗号",
-    NULL  // 没有关联的令牌
-);
-
-// 检查错误
-if (error_handler->has_errors(error_handler)) {
-    size_t error_count = error_handler->get_error_count(error_handler);
-    printf("发现 %zu 个错误\n", error_count);
-    
-    // 格式化并打印错误
-    char error_buffer[256];
-    error_handler->format_error(error_handler, error, error_buffer, sizeof(error_buffer));
-    printf("错误信息：%s\n", error_buffer);
-    
-    // 打印所有错误
-    error_handler->print_all_errors(error_handler);
-}
-
-// 清理资源
-error_handler->destroy(error_handler);
 ```
 
 ## 配置选项
@@ -664,6 +677,35 @@ error_handler->destroy(error_handler);
 - 语法错误处理接口
 - 支持CN语言基本语法结构
 
+### 版本 2.2.0 (2026-01-09)
+- **语句解析模块化**：将语句解析拆分为多个专门的文件
+- **文件结构优化**：
+  - `CN_parser_statements_main.c`：主语句解析函数和语句类型分发
+  - `CN_parser_control_statements.c`：控制语句解析（中断、继续、返回、空语句）
+  - `CN_parser_loop_statements.c`：循环语句解析（while、for）
+  - `CN_parser_conditional_statements.c`：条件语句解析（if）
+  - `CN_parser_block_statements.c`：代码块和表达式语句解析
+- **单一职责原则**：每个文件专注于特定语句类型
+- **文件大小合规**：所有文件不超过500行限制
+
+### 版本 2.1.0 (2026-01-09)
+- **表达式解析模块化**：将表达式解析拆分为多个专门的文件
+- **文件结构优化**：
+  - `CN_parser_expressions_main.c`：主解析函数和运算符优先级链
+  - `CN_parser_unary_expressions.c`：一元表达式解析
+  - `CN_parser_primary_expressions.c`：基本表达式解析
+  - `CN_parser_function_calls.c`：函数调用解析
+- **单一职责原则**：每个文件专注于特定表达式类型
+- **文件大小合规**：所有文件不超过500行限制
+
+### 版本 2.0.0 (2026-01-08)
+- **模块化重构**：将语法分析器拆分为多个子模块
+- **单一职责原则**：每个子模块专注于特定功能
+- **文件大小限制**：每个.c文件不超过500行
+- **函数大小限制**：每个函数不超过50行
+- **完整文档**：为每个子模块创建README文档
+- **测试框架**：模块化测试结构
+
 ### 版本 1.1.0 (计划中)
 - 性能优化
 - 扩展错误恢复机制
@@ -672,10 +714,17 @@ error_handler->destroy(error_handler);
 
 ## 相关文档
 
-1. [语法规范](../specifications/CN_Language%20语法规范.md)
+1. [语法规范](../../specifications/CN_Language%20语法规范.md)
 2. [AST模块API文档](../ast/CN_ast_api.md)
-3. [词法分析器API文档](../lexer/CN_lexer_api.md)
+3. [词法分析器API文档](../lexer/CN_lexer_interface.md)
 4. [项目架构文档](../../architecture/001-中文编程语言CN_Language开发规划.md)
+5. [子模块文档](../parser/)：
+   - [接口实现子模块](../parser/interface/README.md)
+   - [表达式解析子模块](../parser/expression_parsers/README.md)
+   - [语句解析子模块](../parser/statement_parsers/README.md)
+   - [声明解析子模块](../parser/declaration_parsers/README.md)
+   - [错误处理子模块](../parser/error_handling/README.md)
+   - [工具函数子模块](../parser/utils/README.md)
 
 ## 技术支持
 
@@ -685,5 +734,5 @@ error_handler->destroy(error_handler);
 - 文档更新：docs/api/core/parser/目录
 
 ---
-*文档最后更新：2026-01-06*
-*版本：1.0.0*
+*文档最后更新：2026-01-09*
+*版本：2.2.0*

@@ -361,6 +361,9 @@ Stru_Token_t* F_scan_delimiter(Stru_LexerScannerState_t* state)
         case ';':
             type = Eum_TOKEN_DELIMITER_SEMICOLON;
             break;
+        case ':':
+            type = Eum_TOKEN_DELIMITER_COLON;
+            break;
         case '(':
             type = Eum_TOKEN_DELIMITER_LPAREN;
             break;
