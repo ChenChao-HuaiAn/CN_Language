@@ -112,7 +112,14 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/ast/CN_ast_node.c \
             src/core/ast/CN_ast_query.c \
             src/core/ast/CN_ast_serializer.c \
-            src/core/ast/CN_ast_traversal.c
+            src/core/ast/CN_ast_traversal.c \
+            src/core/semantic/analyzer/CN_semantic_analyzer.c \
+            src/core/semantic/symbol_table/CN_symbol_table.c \
+            src/core/semantic/scope_manager/CN_scope_manager.c \
+            src/core/semantic/type_checker/CN_type_checker.c \
+            src/core/semantic/type_checker/CN_type_system.c \
+            src/core/semantic/error_reporter/CN_error_reporter.c \
+            src/core/semantic/factory/CN_semantic_factory.c
 
 # 基础设施层源文件
 INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \
