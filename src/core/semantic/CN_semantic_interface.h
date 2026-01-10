@@ -30,6 +30,7 @@
 #include "analyzer/CN_semantic_analyzer.h"
 #include "constant_folding/CN_constant_folding.h"
 #include "factory/CN_semantic_factory.h"
+#include "symbol_attributes/CN_symbol_attributes.h"
 
 // ============================================================================
 // 前向声明（为了向后兼容）

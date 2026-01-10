@@ -15,6 +15,9 @@ CFLAGS = -Wall -Wextra -std=c11 -g -D_GNU_SOURCE \
          -I./src/core/parser \
          -I./src/core/ast \
          -I./src/core/semantic \
+         -I./src/core/semantic/optimization \
+         -I./src/core/semantic/error_recovery \
+         -I./src/core/semantic/symbol_attributes \
          -I./src/core/codegen \
          -I./src/core/runtime \
          -I./src/core/token \
@@ -124,7 +127,10 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/semantic/factory/CN_semantic_factory.c \
             src/core/semantic/constant_folding/CN_constant_folding.c \
             src/core/semantic/constant_folding/CN_log.c \
-            src/core/semantic/flow_analysis/CN_flow_analysis.c
+            src/core/semantic/flow_analysis/CN_flow_analysis.c \
+            src/core/semantic/optimization/CN_optimization.c \
+            src/core/semantic/error_recovery/CN_error_recovery.c \
+            src/core/semantic/symbol_attributes/CN_symbol_attributes.c
 
 # 基础设施层源文件
 INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \
