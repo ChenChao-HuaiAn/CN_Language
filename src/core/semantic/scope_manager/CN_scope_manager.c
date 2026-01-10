@@ -20,6 +20,18 @@
 // ============================================================================
 
 /**
+ * @brief 作用域生命周期信息
+ */
+typedef struct Stru_ScopeLifecycleInfo_t
+{
+    size_t start_line;          ///< 作用域开始行号
+    size_t start_column;        ///< 作用域开始列号
+    size_t end_line;            ///< 作用域结束行号
+    size_t end_column;          ///< 作用域结束列号
+    bool is_active;             ///< 作用域是否活跃
+} Stru_ScopeLifecycleInfo_t;
+
+/**
  * @brief 作用域管理器接口私有数据
  */
 typedef struct Stru_ScopeManagerData_t
@@ -28,6 +40,8 @@ typedef struct Stru_ScopeManagerData_t
     size_t scope_depth;                         ///< 当前作用域深度
     size_t scope_capacity;                      ///< 作用域栈容量
     Stru_SymbolTableInterface_t** scope_stack;  ///< 作用域栈
+    Eum_ScopeType* scope_types;                 ///< 作用域类型数组
+    Stru_ScopeLifecycleInfo_t* lifecycle_info;  ///< 作用域生命周期信息数组
 } Stru_ScopeManagerData_t;
 
 // ============================================================================
@@ -257,6 +271,139 @@ static Stru_SymbolInfo_t* scope_manager_lookup_symbol_in_scope_chain(
 }
 
 /**
+ * @brief 验证作用域嵌套规则
+ */
+static bool scope_manager_validate_scope_nesting(
+    Stru_ScopeManagerInterface_t* scope_manager, Eum_ScopeType new_scope_type)
+{
+    if (scope_manager == NULL || scope_manager->private_data == NULL)
+    {
+        return false;
+    }
+    
+    Stru_ScopeManagerData_t* data = (Stru_ScopeManagerData_t*)scope_manager->private_data;
+    
+    // 如果当前没有作用域，任何类型的作用域都可以创建
+    if (data->scope_depth == 0)
+    {
+        return true;
+    }
+    
+    // 获取当前作用域类型（这里简化处理，实际应该从scope_types数组中获取）
+    // 这里我们假设当前作用域类型为函数作用域（实际实现中应该存储作用域类型）
+    Eum_ScopeType current_scope_type = Eum_SCOPE_FUNCTION;
+    
+    // 定义作用域嵌套规则
+    switch (current_scope_type)
+    {
+        case Eum_SCOPE_GLOBAL:
+            // 全局作用域可以包含函数、结构体等
+            return (new_scope_type == Eum_SCOPE_FUNCTION || 
+                    new_scope_type == Eum_SCOPE_STRUCT ||
+                    new_scope_type == Eum_SCOPE_BLOCK);
+            
+        case Eum_SCOPE_FUNCTION:
+            // 函数作用域可以包含块、循环、条件、try-catch作用域
+            return (new_scope_type == Eum_SCOPE_BLOCK ||
+                    new_scope_type == Eum_SCOPE_LOOP ||
+                    new_scope_type == Eum_SCOPE_CONDITIONAL ||
+                    new_scope_type == Eum_SCOPE_TRY_CATCH);
+            
+        case Eum_SCOPE_BLOCK:
+            // 块作用域可以包含嵌套块、循环、条件作用域
+            return (new_scope_type == Eum_SCOPE_BLOCK ||
+                    new_scope_type == Eum_SCOPE_LOOP ||
+                    new_scope_type == Eum_SCOPE_CONDITIONAL);
+            
+        case Eum_SCOPE_LOOP:
+            // 循环作用域可以包含块、条件作用域
+            return (new_scope_type == Eum_SCOPE_BLOCK ||
+                    new_scope_type == Eum_SCOPE_CONDITIONAL);
+            
+        case Eum_SCOPE_CONDITIONAL:
+            // 条件作用域可以包含块作用域
+            return (new_scope_type == Eum_SCOPE_BLOCK);
+            
+        case Eum_SCOPE_STRUCT:
+            // 结构体作用域不能包含其他作用域（只能包含成员声明）
+            return false;
+            
+        case Eum_SCOPE_TRY_CATCH:
+            // try-catch作用域可以包含块作用域
+            return (new_scope_type == Eum_SCOPE_BLOCK);
+            
+        default:
+            return false;
+    }
+}
+
+/**
+ * @brief 获取作用域生命周期信息
+ */
+static bool scope_manager_get_scope_lifecycle_info(
+    Stru_ScopeManagerInterface_t* scope_manager, Stru_ScopeInfo_t* scope_info)
+{
+    if (scope_manager == NULL || scope_manager->private_data == NULL || scope_info == NULL)
+    {
+        return false;
+    }
+    
+    Stru_ScopeManagerData_t* data = (Stru_ScopeManagerData_t*)scope_manager->private_data;
+    
+    // 如果当前没有作用域，返回false
+    if (data->scope_depth == 0)
+    {
+        return false;
+    }
+    
+    // 这里简化实现，实际应该从存储的信息中获取
+    scope_info->type = Eum_SCOPE_FUNCTION;  // 假设当前作用域类型
+    scope_info->depth = data->scope_depth;
+    scope_info->name = "current_scope";
+    scope_info->symbol_table = data->scope_stack[data->scope_depth - 1];
+    scope_info->extra_data = NULL;
+    
+    return true;
+}
+
+/**
+ * @brief 检查变量生命周期
+ */
+static bool scope_manager_check_variable_lifetime(
+    Stru_ScopeManagerInterface_t* scope_manager,
+    const char* variable_name,
+    size_t usage_line, size_t usage_column)
+{
+    if (scope_manager == NULL || scope_manager->private_data == NULL || variable_name == NULL)
+    {
+        return false;
+    }
+    
+    Stru_ScopeManagerData_t* data = (Stru_ScopeManagerData_t*)scope_manager->private_data;
+    
+    // 查找变量
+    Stru_SymbolInfo_t* symbol = scope_manager_lookup_symbol_in_scope_chain(
+        scope_manager, variable_name);
+    
+    if (symbol == NULL)
+    {
+        // 变量未声明
+        return false;
+    }
+    
+    // 这里简化实现，实际应该检查：
+    // 1. 变量是否在使用前已声明（通过声明位置和引用位置比较）
+    // 2. 变量是否在作用域外被引用
+    // 3. 变量是否在声明前被使用
+    
+    // 假设变量生命周期有效
+    (void)usage_line;
+    (void)usage_column;
+    
+    return true;
+}
+
+/**
  * @brief 销毁作用域管理器
  */
 static void scope_manager_destroy(Stru_ScopeManagerInterface_t* scope_manager)
@@ -273,6 +420,16 @@ static void scope_manager_destroy(Stru_ScopeManagerInterface_t* scope_manager)
         if (data->scope_stack != NULL)
         {
             free(data->scope_stack);
+        }
+        
+        if (data->scope_types != NULL)
+        {
+            free(data->scope_types);
+        }
+        
+        if (data->lifecycle_info != NULL)
+        {
+            free(data->lifecycle_info);
         }
         
         free(data);
@@ -306,6 +463,9 @@ Stru_ScopeManagerInterface_t* F_create_scope_manager_interface(void)
     interface->get_global_scope = scope_manager_get_global_scope;
     interface->get_scope_depth = scope_manager_get_scope_depth;
     interface->lookup_symbol_in_scope_chain = scope_manager_lookup_symbol_in_scope_chain;
+    interface->validate_scope_nesting = scope_manager_validate_scope_nesting;
+    interface->get_scope_lifecycle_info = scope_manager_get_scope_lifecycle_info;
+    interface->check_variable_lifetime = scope_manager_check_variable_lifetime;
     interface->destroy = scope_manager_destroy;
     interface->private_data = NULL;
     

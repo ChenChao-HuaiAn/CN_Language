@@ -121,7 +121,12 @@ static bool ast_analyzer_analyze_program(Stru_AstAnalyzerInterface_t* analyzer,
         semantic_analyzer->get_scope_manager(semantic_analyzer);
     if (scope_manager != NULL)
     {
-        scope_manager->enter_scope(scope_manager);
+        Stru_SymbolTableInterface_t* global_scope = 
+            scope_manager->get_global_scope(scope_manager);
+        if (global_scope != NULL)
+        {
+            scope_manager->enter_scope(scope_manager, global_scope);
+        }
     }
     
     // 分析所有子节点（声明）

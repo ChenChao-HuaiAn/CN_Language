@@ -52,6 +52,24 @@ extern "C" {
  */
 Stru_SemanticAnalyzerInterface_t* F_create_complete_semantic_analyzer_system(size_t max_errors);
 
+/**
+ * @brief 创建完整的语义分析器系统（使用优化版符号表）
+ * 
+ * 此函数创建并初始化一个完整的语义分析器系统，使用优化版的符号表（哈希表实现）。
+ * 包括所有必要的组件：
+ * 1. 优化版符号表（哈希表实现，带缓存）
+ * 2. 作用域管理器
+ * 3. 类型检查器
+ * 4. 语义错误报告器
+ * 5. 语义分析器
+ * 
+ * 所有组件都已正确初始化并建立依赖关系。
+ * 
+ * @param max_errors 最大错误数量限制
+ * @return Stru_SemanticAnalyzerInterface_t* 初始化完成的语义分析器，失败返回NULL
+ */
+Stru_SemanticAnalyzerInterface_t* F_create_complete_semantic_analyzer_system_optimized(size_t max_errors);
+
 #ifdef __cplusplus
 }
 #endif

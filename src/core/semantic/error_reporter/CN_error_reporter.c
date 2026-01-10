@@ -285,6 +285,201 @@ static void semantic_error_reporter_set_error_callback(
 }
 
 /**
+ * @brief 过滤错误
+ */
+static size_t semantic_error_reporter_filter_errors(
+    Stru_SemanticErrorReporterInterface_t* reporter,
+    Eum_SemanticErrorType filter_type,
+    size_t min_line, size_t max_line,
+    const char* file_name)
+{
+    if (reporter == NULL || reporter->private_data == NULL)
+    {
+        return 0;
+    }
+    
+    Stru_SemanticErrorReporterData_t* data = 
+        (Stru_SemanticErrorReporterData_t*)reporter->private_data;
+    
+    size_t filtered_count = 0;
+    
+    for (size_t i = 0; i < data->error_count; i++)
+    {
+        Stru_SemanticError_t* error = &data->errors[i];
+        bool matches = true;
+        
+        // 过滤错误类型
+        if (filter_type != 0 && error->type != filter_type)
+        {
+            matches = false;
+        }
+        
+        // 过滤行号范围
+        if (min_line > 0 && error->line < min_line)
+        {
+            matches = false;
+        }
+        if (max_line > 0 && error->line > max_line)
+        {
+            matches = false;
+        }
+        
+        // 过滤文件名
+        if (file_name != NULL && error->file_name != NULL && 
+            strcmp(error->file_name, file_name) != 0)
+        {
+            matches = false;
+        }
+        
+        if (matches)
+        {
+            filtered_count++;
+        }
+    }
+    
+    return filtered_count;
+}
+
+/**
+ * @brief 分类错误
+ */
+static size_t semantic_error_reporter_categorize_errors(
+    Stru_SemanticErrorReporterInterface_t* reporter,
+    size_t* error_counts, size_t max_types)
+{
+    if (reporter == NULL || reporter->private_data == NULL || error_counts == NULL)
+    {
+        return 0;
+    }
+    
+    Stru_SemanticErrorReporterData_t* data = 
+        (Stru_SemanticErrorReporterData_t*)reporter->private_data;
+    
+    // 初始化错误计数数组
+    for (size_t i = 0; i < max_types; i++)
+    {
+        error_counts[i] = 0;
+    }
+    
+    // 统计各类错误数量
+    size_t type_count = 0;
+    
+    for (size_t i = 0; i < data->error_count; i++)
+    {
+        Stru_SemanticError_t* error = &data->errors[i];
+        size_t type_index = (size_t)error->type;
+        
+        if (type_index < max_types)
+        {
+            error_counts[type_index]++;
+            if (error_counts[type_index] == 1)
+            {
+                type_count++;
+            }
+        }
+    }
+    
+    return type_count;
+}
+
+/**
+ * @brief 跟踪错误位置
+ */
+static bool semantic_error_reporter_track_error_location(
+    Stru_SemanticErrorReporterInterface_t* reporter,
+    size_t error_index,
+    size_t* line, size_t* column,
+    char* file_name, size_t file_name_size)
+{
+    if (reporter == NULL || reporter->private_data == NULL || 
+        line == NULL || column == NULL || file_name == NULL)
+    {
+        return false;
+    }
+    
+    Stru_SemanticErrorReporterData_t* data = 
+        (Stru_SemanticErrorReporterData_t*)reporter->private_data;
+    
+    if (error_index >= data->error_count)
+    {
+        return false;
+    }
+    
+    Stru_SemanticError_t* error = &data->errors[error_index];
+    
+    *line = error->line;
+    *column = error->column;
+    
+    if (error->file_name != NULL)
+    {
+        // 复制文件名，确保不超过缓冲区大小
+        size_t copy_size = file_name_size - 1;
+        if (strlen(error->file_name) < copy_size)
+        {
+            copy_size = strlen(error->file_name);
+        }
+        strncpy(file_name, error->file_name, copy_size);
+        file_name[copy_size] = '\0';
+    }
+    else
+    {
+        file_name[0] = '\0';
+    }
+    
+    return true;
+}
+
+/**
+ * @brief 获取错误严重性
+ */
+static int semantic_error_reporter_get_error_severity(
+    Stru_SemanticErrorReporterInterface_t* reporter,
+    size_t error_index)
+{
+    if (reporter == NULL || reporter->private_data == NULL)
+    {
+        return 0;
+    }
+    
+    Stru_SemanticErrorReporterData_t* data = 
+        (Stru_SemanticErrorReporterData_t*)reporter->private_data;
+    
+    if (error_index >= data->error_count)
+    {
+        return 0;
+    }
+    
+    Stru_SemanticError_t* error = &data->errors[error_index];
+    
+    // 根据错误类型判断严重性
+    switch (error->type)
+    {
+        case Eum_SEMANTIC_ERROR_UNDEFINED_SYMBOL:
+        case Eum_SEMANTIC_ERROR_TYPE_MISMATCH:
+        case Eum_SEMANTIC_ERROR_INVALID_OPERATION:
+        case Eum_SEMANTIC_ERROR_INVALID_ARGUMENTS:
+        case Eum_SEMANTIC_ERROR_MISSING_RETURN:
+        case Eum_SEMANTIC_ERROR_INVALID_RETURN_TYPE:
+        case Eum_SEMANTIC_ERROR_UNINITIALIZED_VARIABLE:
+        case Eum_SEMANTIC_ERROR_CONST_ASSIGNMENT:
+        case Eum_SEMANTIC_ERROR_SCOPE_VIOLATION:
+        case Eum_SEMANTIC_ERROR_CIRCULAR_DEPENDENCY:
+            return 8;  // 严重错误
+            
+        case Eum_SEMANTIC_ERROR_REDEFINED_SYMBOL:
+        case Eum_SEMANTIC_ERROR_INVALID_IMPORT:
+        case Eum_SEMANTIC_ERROR_INVALID_EXPORT:
+            return 6;  // 中等错误
+            
+        case Eum_SEMANTIC_ERROR_UNREACHABLE_CODE:
+            return 4;  // 警告级别
+            
+        default:
+            return 5;  // 默认中等错误
+    }
+}
+
+/**
  * @brief 销毁错误报告器
  */
 static void semantic_error_reporter_destroy(
@@ -340,6 +535,10 @@ Stru_SemanticErrorReporterInterface_t* F_create_semantic_error_reporter_interfac
     interface->has_errors = semantic_error_reporter_has_errors;
     interface->has_warnings = semantic_error_reporter_has_warnings;
     interface->set_error_callback = semantic_error_reporter_set_error_callback;
+    interface->filter_errors = semantic_error_reporter_filter_errors;
+    interface->categorize_errors = semantic_error_reporter_categorize_errors;
+    interface->track_error_location = semantic_error_reporter_track_error_location;
+    interface->get_error_severity = semantic_error_reporter_get_error_severity;
     interface->destroy = semantic_error_reporter_destroy;
     interface->private_data = NULL;
     

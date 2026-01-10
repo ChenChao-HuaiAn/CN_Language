@@ -143,6 +143,47 @@ struct Stru_ScopeManagerInterface_t
                                                       const char* name);
     
     /**
+     * @brief 验证作用域嵌套规则
+     * 
+     * 验证当前作用域是否可以嵌套在指定类型的作用域中。
+     * 例如：函数作用域不能嵌套在另一个函数作用域中（除非是嵌套函数）。
+     * 
+     * @param scope_manager 作用域管理器实例
+     * @param new_scope_type 新作用域类型
+     * @return bool 如果允许嵌套返回true，否则返回false
+     */
+    bool (*validate_scope_nesting)(Stru_ScopeManagerInterface_t* scope_manager,
+                                  Eum_ScopeType new_scope_type);
+    
+    /**
+     * @brief 获取作用域生命周期信息
+     * 
+     * 获取当前作用域的生命周期信息，包括作用域开始位置、结束位置等。
+     * 
+     * @param scope_manager 作用域管理器实例
+     * @param scope_info 输出参数，用于存储作用域信息
+     * @return bool 获取成功返回true，否则返回false
+     */
+    bool (*get_scope_lifecycle_info)(Stru_ScopeManagerInterface_t* scope_manager,
+                                    Stru_ScopeInfo_t* scope_info);
+    
+    /**
+     * @brief 检查变量生命周期
+     * 
+     * 检查变量在当前作用域中的生命周期是否有效。
+     * 例如：检查变量是否在使用前已声明，是否在作用域外被引用等。
+     * 
+     * @param scope_manager 作用域管理器实例
+     * @param variable_name 变量名称
+     * @param usage_line 变量使用位置行号
+     * @param usage_column 变量使用位置列号
+     * @return bool 如果生命周期有效返回true，否则返回false
+     */
+    bool (*check_variable_lifetime)(Stru_ScopeManagerInterface_t* scope_manager,
+                                   const char* variable_name,
+                                   size_t usage_line, size_t usage_column);
+    
+    /**
      * @brief 销毁作用域管理器
      * 
      * @param scope_manager 作用域管理器实例

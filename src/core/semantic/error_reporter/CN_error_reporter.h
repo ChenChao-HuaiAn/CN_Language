@@ -179,6 +179,66 @@ struct Stru_SemanticErrorReporterInterface_t
                               void* user_data);
     
     /**
+     * @brief 过滤错误
+     * 
+     * 根据错误类型、位置等条件过滤错误。
+     * 
+     * @param reporter 错误报告器实例
+     * @param filter_type 要过滤的错误类型（如果为0，不过滤类型）
+     * @param min_line 最小行号（如果为0，不过滤行号）
+     * @param max_line 最大行号（如果为0，不过滤行号）
+     * @param file_name 文件名过滤（如果为NULL，不过滤文件名）
+     * @return size_t 过滤后的错误数量
+     */
+    size_t (*filter_errors)(Stru_SemanticErrorReporterInterface_t* reporter,
+                           Eum_SemanticErrorType filter_type,
+                           size_t min_line, size_t max_line,
+                           const char* file_name);
+    
+    /**
+     * @brief 分类错误
+     * 
+     * 将错误按类型分类，返回各类错误的数量。
+     * 
+     * @param reporter 错误报告器实例
+     * @param error_counts 输出参数：各类错误数量数组（大小为错误类型数量）
+     * @param max_types 错误类型最大数量
+     * @return size_t 实际处理的错误类型数量
+     */
+    size_t (*categorize_errors)(Stru_SemanticErrorReporterInterface_t* reporter,
+                               size_t* error_counts, size_t max_types);
+    
+    /**
+     * @brief 跟踪错误位置
+     * 
+     * 获取错误在源代码中的位置信息，包括行号、列号、文件名等。
+     * 
+     * @param reporter 错误报告器实例
+     * @param error_index 错误索引
+     * @param line 输出参数：行号
+     * @param column 输出参数：列号
+     * @param file_name 输出参数：文件名（缓冲区）
+     * @param file_name_size 文件名缓冲区大小
+     * @return bool 获取成功返回true，否则返回false
+     */
+    bool (*track_error_location)(Stru_SemanticErrorReporterInterface_t* reporter,
+                                size_t error_index,
+                                size_t* line, size_t* column,
+                                char* file_name, size_t file_name_size);
+    
+    /**
+     * @brief 获取错误严重性
+     * 
+     * 根据错误类型和上下文判断错误的严重性。
+     * 
+     * @param reporter 错误报告器实例
+     * @param error_index 错误索引
+     * @return int 错误严重性（0-10，0表示信息，10表示致命错误）
+     */
+    int (*get_error_severity)(Stru_SemanticErrorReporterInterface_t* reporter,
+                             size_t error_index);
+    
+    /**
      * @brief 销毁错误报告器
      * 
      * @param reporter 错误报告器实例
