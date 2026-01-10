@@ -14,6 +14,9 @@
 #include "CN_type_checker.h"
 #include "CN_type_system.h"
 #include "../scope_manager/CN_scope_manager.h"
+#include "../symbol_table/CN_symbol_table.h"
+#include "../../ast/CN_ast_interface.h"
+#include "../../ast/CN_ast.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -413,18 +416,374 @@ static Stru_TypeCheckResult_t type_checker_check_type_cast(
 static void* type_checker_infer_expression_type(Stru_TypeCheckerInterface_t* type_checker,
                                                void* ast_node)
 {
-    (void)type_checker;
-    (void)ast_node;
-    
-    // 简化实现：返回整数类型
-    // 在实际实现中，需要根据AST节点推断类型
-    if (type_checker == NULL || type_checker->private_data == NULL)
+    if (type_checker == NULL || type_checker->private_data == NULL || ast_node == NULL)
     {
         return NULL;
     }
     
     Stru_TypeCheckerData_t* data = (Stru_TypeCheckerData_t*)type_checker->private_data;
-    return get_int_type(data);
+    Stru_AstNodeInterface_t* node = (Stru_AstNodeInterface_t*)ast_node;
+    
+    // 获取节点类型
+    Eum_AstNodeType node_type = node->get_type(node);
+    
+    // 根据节点类型推断类型
+    switch (node_type)
+    {
+        // 字面量类型推断
+        case Eum_AST_INT_LITERAL:
+            return get_int_type(data);
+            
+        case Eum_AST_FLOAT_LITERAL:
+            return get_float_type(data);
+            
+        case Eum_AST_BOOL_LITERAL:
+            return get_bool_type(data);
+            
+        case Eum_AST_STRING_LITERAL:
+            return get_string_type(data);
+            
+        case Eum_AST_NULL_LITERAL:
+            // null字面量可以赋值给任何指针类型
+            return data->type_system->interface->create_pointer_type(
+                data->type_system, get_void_type(data));
+            
+        // 标识符类型推断
+        case Eum_AST_IDENTIFIER_EXPR:
+        {
+            // 从符号表中查找标识符的类型
+            const Uni_AstNodeData_t* node_data = node->get_data(node);
+            if (node_data == NULL || node_data->identifier == NULL)
+            {
+                return NULL;
+            }
+            
+            // 在作用域中查找符号
+            if (data->scope_manager != NULL)
+            {
+                Stru_SymbolTableInterface_t* current_scope = 
+                    data->scope_manager->get_current_scope(data->scope_manager);
+                if (current_scope != NULL)
+                {
+                    Stru_SymbolInfo_t* symbol_info = 
+                        current_scope->lookup_symbol(current_scope, node_data->identifier, true);
+                    if (symbol_info != NULL)
+                    {
+                        return symbol_info->type_info;
+                    }
+                }
+            }
+            return NULL;
+        }
+        
+        // 二元表达式类型推断
+        case Eum_AST_BINARY_EXPR:
+        {
+            // 获取运算符类型
+            const Uni_AstNodeData_t* node_data = node->get_data(node);
+            if (node_data == NULL)
+            {
+                return NULL;
+            }
+            
+            int operator_type = node_data->operator_type;
+            
+            // 分析左操作数和右操作数
+            size_t child_count = node->get_child_count(node);
+            if (child_count < 2)
+            {
+                return NULL;
+            }
+            
+            Stru_AstNodeInterface_t* left_node = node->get_child(node, 0);
+            Stru_AstNodeInterface_t* right_node = node->get_child(node, 1);
+            
+            if (left_node == NULL || right_node == NULL)
+            {
+                return NULL;
+            }
+            
+            // 递归推断操作数类型
+            void* left_type = type_checker_infer_expression_type(type_checker, left_node);
+            void* right_type = type_checker_infer_expression_type(type_checker, right_node);
+            
+            if (left_type == NULL || right_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 检查二元表达式类型兼容性
+            Stru_TypeCheckResult_t result = 
+                type_checker_check_binary_expression(type_checker, left_type, right_type, operator_type);
+            
+            if (result.compatibility == Eum_TYPE_COMPATIBLE || 
+                result.compatibility == Eum_TYPE_CONVERTIBLE)
+            {
+                // 如果可转换，返回转换后的类型
+                if (result.converted_type != NULL)
+                {
+                    return result.converted_type;
+                }
+                // 否则返回左操作数类型（对于算术运算）
+                return left_type;
+            }
+            
+            return NULL;
+        }
+        
+        // 一元表达式类型推断
+        case Eum_AST_UNARY_EXPR:
+        {
+            // 获取运算符类型
+            const Uni_AstNodeData_t* node_data = node->get_data(node);
+            if (node_data == NULL)
+            {
+                return NULL;
+            }
+            
+            int operator_type = node_data->operator_type;
+            
+            // 分析操作数
+            size_t child_count = node->get_child_count(node);
+            if (child_count < 1)
+            {
+                return NULL;
+            }
+            
+            Stru_AstNodeInterface_t* operand_node = node->get_child(node, 0);
+            if (operand_node == NULL)
+            {
+                return NULL;
+            }
+            
+            // 递归推断操作数类型
+            void* operand_type = type_checker_infer_expression_type(type_checker, operand_node);
+            if (operand_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 检查一元表达式类型兼容性
+            Stru_TypeCheckResult_t result = 
+                type_checker_check_unary_expression(type_checker, operand_type, operator_type);
+            
+            if (result.compatibility == Eum_TYPE_COMPATIBLE || 
+                result.compatibility == Eum_TYPE_CONVERTIBLE)
+            {
+                // 如果可转换，返回转换后的类型
+                if (result.converted_type != NULL)
+                {
+                    return result.converted_type;
+                }
+                // 否则返回操作数类型
+                return operand_type;
+            }
+            
+            return NULL;
+        }
+        
+        // 函数调用类型推断
+        case Eum_AST_CALL_EXPR:
+        {
+            // 分析函数表达式
+            size_t child_count = node->get_child_count(node);
+            if (child_count < 1)
+            {
+                return NULL;
+            }
+            
+            Stru_AstNodeInterface_t* function_node = node->get_child(node, 0);
+            if (function_node == NULL)
+            {
+                return NULL;
+            }
+            
+            // 递归推断函数类型
+            void* function_type = type_checker_infer_expression_type(type_checker, function_node);
+            if (function_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 分析参数类型
+            void** arg_types = NULL;
+            if (child_count > 1)
+            {
+                arg_types = (void**)malloc((child_count - 1) * sizeof(void*));
+                if (arg_types == NULL)
+                {
+                    return NULL;
+                }
+                
+                for (size_t i = 1; i < child_count; i++)
+                {
+                    Stru_AstNodeInterface_t* arg_node = node->get_child(node, i);
+                    if (arg_node != NULL)
+                    {
+                        arg_types[i - 1] = type_checker_infer_expression_type(type_checker, arg_node);
+                    }
+                    else
+                    {
+                        arg_types[i - 1] = NULL;
+                    }
+                }
+            }
+            
+            // 检查函数调用类型兼容性
+            Stru_TypeCheckResult_t result = 
+                type_checker_check_function_call(type_checker, function_type, 
+                                                arg_types, child_count - 1);
+            
+            // 清理参数类型数组
+            if (arg_types != NULL)
+            {
+                free(arg_types);
+            }
+            
+            if (result.compatibility == Eum_TYPE_COMPATIBLE || 
+                result.compatibility == Eum_TYPE_CONVERTIBLE)
+            {
+                return result.converted_type;
+            }
+            
+            return NULL;
+        }
+        
+        // 类型转换表达式
+        case Eum_AST_CAST_EXPR:
+        {
+            // 分析目标类型和源表达式
+            size_t child_count = node->get_child_count(node);
+            if (child_count < 2)
+            {
+                return NULL;
+            }
+            
+            Stru_AstNodeInterface_t* target_type_node = node->get_child(node, 0);
+            Stru_AstNodeInterface_t* source_expr_node = node->get_child(node, 1);
+            
+            if (target_type_node == NULL || source_expr_node == NULL)
+            {
+                return NULL;
+            }
+            
+            // 推断源表达式类型
+            void* source_type = type_checker_infer_expression_type(type_checker, source_expr_node);
+            if (source_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 这里需要解析目标类型节点，但为了简化，我们假设目标类型已经解析
+            // 在实际实现中，需要从target_type_node中提取类型信息
+            // 暂时返回源类型
+            return source_type;
+        }
+        
+        // 条件表达式（三元运算符）
+        case Eum_AST_CONDITIONAL_EXPR:
+        {
+            // 分析条件、then和else表达式
+            size_t child_count = node->get_child_count(node);
+            if (child_count < 3)
+            {
+                return NULL;
+            }
+            
+            Stru_AstNodeInterface_t* condition_node = node->get_child(node, 0);
+            Stru_AstNodeInterface_t* then_node = node->get_child(node, 1);
+            Stru_AstNodeInterface_t* else_node = node->get_child(node, 2);
+            
+            if (condition_node == NULL || then_node == NULL || else_node == NULL)
+            {
+                return NULL;
+            }
+            
+            // 推断条件表达式类型（应该是布尔类型）
+            void* condition_type = type_checker_infer_expression_type(type_checker, condition_node);
+            if (condition_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 检查条件是否为布尔类型
+            Stru_TypeDescriptor_t* bool_type = get_bool_type(data);
+            if (!data->type_system->interface->check_type_compatibility(
+                    data->type_system, condition_type, bool_type))
+            {
+                return NULL;
+            }
+            
+            // 推断then和else表达式类型
+            void* then_type = type_checker_infer_expression_type(type_checker, then_node);
+            void* else_type = type_checker_infer_expression_type(type_checker, else_node);
+            
+            if (then_type == NULL || else_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 检查then和else类型是否兼容
+            if (data->type_system->interface->check_type_compatibility(
+                    data->type_system, then_type, else_type))
+            {
+                return then_type; // 返回then类型（两者兼容）
+            }
+            
+            // 如果不兼容，尝试查找公共类型
+            // 这里可以添加更复杂的类型推断逻辑
+            return NULL;
+        }
+        
+        // 赋值表达式
+        case Eum_AST_ASSIGN_EXPR:
+        {
+            // 分析左值和右值表达式
+            size_t child_count = node->get_child_count(node);
+            if (child_count < 2)
+            {
+                return NULL;
+            }
+            
+            Stru_AstNodeInterface_t* left_node = node->get_child(node, 0);
+            Stru_AstNodeInterface_t* right_node = node->get_child(node, 1);
+            
+            if (left_node == NULL || right_node == NULL)
+            {
+                return NULL;
+            }
+            
+            // 推断左值类型
+            void* left_type = type_checker_infer_expression_type(type_checker, left_node);
+            if (left_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 推断右值类型
+            void* right_type = type_checker_infer_expression_type(type_checker, right_node);
+            if (right_type == NULL)
+            {
+                return NULL;
+            }
+            
+            // 检查赋值类型兼容性
+            Stru_TypeCheckResult_t result = 
+                type_checker_check_assignment(type_checker, left_type, right_type, false);
+            
+            if (result.compatibility == Eum_TYPE_COMPATIBLE || 
+                result.compatibility == Eum_TYPE_CONVERTIBLE)
+            {
+                return left_type; // 赋值表达式的结果类型是左值类型
+            }
+            
+            return NULL;
+        }
+        
+        // 默认情况：返回未知类型
+        default:
+            return NULL;
+    }
 }
 
 /**

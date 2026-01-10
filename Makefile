@@ -119,7 +119,9 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/semantic/type_checker/CN_type_checker.c \
             src/core/semantic/type_checker/CN_type_system.c \
             src/core/semantic/error_reporter/CN_error_reporter.c \
-            src/core/semantic/factory/CN_semantic_factory.c
+            src/core/semantic/factory/CN_semantic_factory.c \
+            src/core/semantic/constant_folding/CN_constant_folding.c \
+            src/core/semantic/constant_folding/CN_log.c
 
 # 基础设施层源文件
 INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \

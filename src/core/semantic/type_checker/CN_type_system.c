@@ -60,6 +60,18 @@ static Stru_TypeDescriptor_t* F_create_function_type(Stru_TypeSystem_t* type_sys
                                                     Stru_TypeDescriptor_t** param_types,
                                                     size_t param_count,
                                                     bool is_variadic);
+static Stru_TypeDescriptor_t* F_create_generic_type(Stru_TypeSystem_t* type_system,
+                                                   const char* generic_name,
+                                                   Stru_TypeDescriptor_t** type_params,
+                                                   size_t param_count);
+static Stru_TypeDescriptor_t* F_instantiate_generic_type(Stru_TypeSystem_t* type_system,
+                                                        Stru_TypeDescriptor_t* generic_type,
+                                                        Stru_TypeDescriptor_t** type_args,
+                                                        size_t arg_count);
+static bool F_is_generic_type(Stru_TypeSystem_t* type_system,
+                             const Stru_TypeDescriptor_t* type);
+static size_t F_get_generic_type_param_count(Stru_TypeSystem_t* type_system,
+                                            const Stru_TypeDescriptor_t* generic_type);
 static bool F_add_type_qualifier(Stru_TypeSystem_t* type_system,
                                 Stru_TypeDescriptor_t* type,
                                 Eum_TypeQualifier qualifier);
@@ -118,6 +130,10 @@ static Stru_TypeSystemInterface_t g_type_system_interface = {
     .create_pointer_type = F_create_pointer_type,
     .create_array_type = F_create_array_type,
     .create_function_type = F_create_function_type,
+    .create_generic_type = F_create_generic_type,
+    .instantiate_generic_type = F_instantiate_generic_type,
+    .is_generic_type = F_is_generic_type,
+    .get_generic_type_param_count = F_get_generic_type_param_count,
     .add_type_qualifier = F_add_type_qualifier,
     .has_type_qualifier = F_has_type_qualifier,
     .check_type_compatibility = F_check_type_compatibility,
@@ -1457,4 +1473,190 @@ static void F_type_to_string_internal(const Stru_TypeDescriptor_t* type,
             }
             break;
     }
+}
+
+// ============================================================================
+// 泛型类型相关函数实现
+// ============================================================================
+
+/**
+ * @brief 创建泛型类型描述符
+ */
+static Stru_TypeDescriptor_t* F_create_generic_type(Stru_TypeSystem_t* type_system,
+                                                   const char* generic_name,
+                                                   Stru_TypeDescriptor_t** type_params,
+                                                   size_t param_count)
+{
+    if (!type_system || !generic_name)
+    {
+        return NULL;
+    }
+    
+    Stru_TypeDescriptor_t* type = F_allocate_type_descriptor();
+    if (!type)
+    {
+        return NULL;
+    }
+    
+    // 设置基本属性
+    type->category = Eum_TYPE_CATEGORY_GENERIC;
+    type->qualifiers = Eum_TYPE_QUALIFIER_NONE;
+    type->name = strdup(generic_name);
+    type->ref_count = 1;
+    type->extra_data = NULL;
+    
+    // 设置泛型特定信息
+    type->specific.generic_info.generic_name = strdup(generic_name);
+    type->specific.generic_info.type_params = NULL;
+    type->specific.generic_info.param_count = param_count;
+    
+    // 复制类型参数数组
+    if (param_count > 0 && type_params)
+    {
+        type->specific.generic_info.type_params = 
+            (Stru_TypeDescriptor_t**)malloc(param_count * sizeof(Stru_TypeDescriptor_t*));
+        if (type->specific.generic_info.type_params)
+        {
+            for (size_t i = 0; i < param_count; i++)
+            {
+                type->specific.generic_info.type_params[i] = type_params[i];
+                if (type_params[i])
+                {
+                    F_retain_type(type_system, type_params[i]);  // 增加类型参数的引用计数
+                }
+            }
+        }
+    }
+    
+    // 泛型类型的大小和对齐（暂时设置为指针大小）
+    type->size = sizeof(void*);
+    type->alignment = _Alignof(void*);
+    
+    return type;
+}
+
+/**
+ * @brief 实例化泛型类型
+ */
+static Stru_TypeDescriptor_t* F_instantiate_generic_type(Stru_TypeSystem_t* type_system,
+                                                        Stru_TypeDescriptor_t* generic_type,
+                                                        Stru_TypeDescriptor_t** type_args,
+                                                        size_t arg_count)
+{
+    if (!type_system || !generic_type || !type_args)
+    {
+        return NULL;
+    }
+    
+    // 检查是否为泛型类型
+    if (generic_type->category != Eum_TYPE_CATEGORY_GENERIC)
+    {
+        return NULL;
+    }
+    
+    // 检查参数数量是否匹配
+    if (generic_type->specific.generic_info.param_count != arg_count)
+    {
+        return NULL;
+    }
+    
+    // 这里实现泛型类型的实例化逻辑
+    // 注意：这是一个简化实现，实际项目中需要更复杂的类型替换逻辑
+    
+    // 对于简化实现，我们创建一个新的类型描述符，复制泛型类型的信息
+    // 实际项目中需要根据类型参数替换泛型类型中的类型变量
+    
+    Stru_TypeDescriptor_t* instantiated_type = F_allocate_type_descriptor();
+    if (!instantiated_type)
+    {
+        return NULL;
+    }
+    
+    // 复制基本属性
+    instantiated_type->category = generic_type->category;
+    instantiated_type->qualifiers = generic_type->qualifiers;
+    
+    // 生成实例化后的类型名称
+    char generic_name[256];
+    snprintf(generic_name, sizeof(generic_name), "%s<", generic_type->specific.generic_info.generic_name);
+    
+    for (size_t i = 0; i < arg_count; i++)
+    {
+        if (i > 0)
+        {
+            strcat(generic_name, ", ");
+        }
+        
+        if (type_args[i] && type_args[i]->name)
+        {
+            strcat(generic_name, type_args[i]->name);
+        }
+        else
+        {
+            strcat(generic_name, "unknown");
+        }
+    }
+    strcat(generic_name, ">");
+    
+    instantiated_type->name = strdup(generic_name);
+    instantiated_type->ref_count = 1;
+    instantiated_type->extra_data = NULL;
+    
+    // 复制泛型特定信息
+    instantiated_type->specific.generic_info.generic_name = strdup(generic_type->specific.generic_info.generic_name);
+    instantiated_type->specific.generic_info.param_count = arg_count;
+    
+    // 复制类型参数（实际类型实参）
+    instantiated_type->specific.generic_info.type_params = 
+        (Stru_TypeDescriptor_t**)malloc(arg_count * sizeof(Stru_TypeDescriptor_t*));
+    if (instantiated_type->specific.generic_info.type_params)
+    {
+        for (size_t i = 0; i < arg_count; i++)
+        {
+            instantiated_type->specific.generic_info.type_params[i] = type_args[i];
+            if (type_args[i])
+            {
+                F_retain_type(type_system, type_args[i]);  // 增加类型实参的引用计数
+            }
+        }
+    }
+    
+    // 实例化类型的大小和对齐（暂时设置为指针大小）
+    instantiated_type->size = sizeof(void*);
+    instantiated_type->alignment = _Alignof(void*);
+    
+    return instantiated_type;
+}
+
+/**
+ * @brief 检查类型是否为泛型类型
+ */
+static bool F_is_generic_type(Stru_TypeSystem_t* type_system,
+                             const Stru_TypeDescriptor_t* type)
+{
+    if (!type_system || !type)
+    {
+        return false;
+    }
+    
+    return type->category == Eum_TYPE_CATEGORY_GENERIC;
+}
+
+/**
+ * @brief 获取泛型类型的类型参数数量
+ */
+static size_t F_get_generic_type_param_count(Stru_TypeSystem_t* type_system,
+                                            const Stru_TypeDescriptor_t* generic_type)
+{
+    if (!type_system || !generic_type)
+    {
+        return 0;
+    }
+    
+    if (generic_type->category != Eum_TYPE_CATEGORY_GENERIC)
+    {
+        return 0;
+    }
+    
+    return generic_type->specific.generic_info.param_count;
 }

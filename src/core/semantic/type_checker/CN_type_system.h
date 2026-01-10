@@ -275,6 +275,54 @@ typedef struct Stru_TypeSystemInterface_t
                                                   bool is_variadic);
     
     /**
+     * @brief 创建泛型类型描述符
+     * 
+     * @param type_system 类型系统实例
+     * @param generic_name 泛型名称
+     * @param type_params 类型参数数组
+     * @param param_count 参数数量
+     * @return Stru_TypeDescriptor_t* 类型描述符，失败返回NULL
+     */
+    Stru_TypeDescriptor_t* (*create_generic_type)(Stru_TypeSystem_t* type_system,
+                                                 const char* generic_name,
+                                                 Stru_TypeDescriptor_t** type_params,
+                                                 size_t param_count);
+    
+    /**
+     * @brief 实例化泛型类型
+     * 
+     * @param type_system 类型系统实例
+     * @param generic_type 泛型类型
+     * @param type_args 类型实参数组
+     * @param arg_count 实参数量
+     * @return Stru_TypeDescriptor_t* 实例化后的类型描述符，失败返回NULL
+     */
+    Stru_TypeDescriptor_t* (*instantiate_generic_type)(Stru_TypeSystem_t* type_system,
+                                                      Stru_TypeDescriptor_t* generic_type,
+                                                      Stru_TypeDescriptor_t** type_args,
+                                                      size_t arg_count);
+    
+    /**
+     * @brief 检查类型是否为泛型类型
+     * 
+     * @param type_system 类型系统实例
+     * @param type 要检查的类型
+     * @return bool 如果是泛型类型返回true，否则返回false
+     */
+    bool (*is_generic_type)(Stru_TypeSystem_t* type_system,
+                           const Stru_TypeDescriptor_t* type);
+    
+    /**
+     * @brief 获取泛型类型的类型参数数量
+     * 
+     * @param type_system 类型系统实例
+     * @param generic_type 泛型类型
+     * @return size_t 类型参数数量，如果不是泛型类型返回0
+     */
+    size_t (*get_generic_type_param_count)(Stru_TypeSystem_t* type_system,
+                                          const Stru_TypeDescriptor_t* generic_type);
+    
+    /**
      * @brief 添加类型限定符
      * 
      * @param type_system 类型系统实例

@@ -230,6 +230,18 @@ struct Stru_TypeDescriptor_t
             const char** member_names;
             size_t member_count;
         } aggregate_info;
+        
+        // 类型别名信息
+        struct {
+            Stru_TypeDescriptor_t* aliased_type;
+        } alias_info;
+        
+        // 泛型类型信息
+        struct {
+            const char* generic_name;
+            Stru_TypeDescriptor_t** type_params;
+            size_t param_count;
+        } generic_info;
     } specific;
     
     uint32_t ref_count;              ///< 引用计数
@@ -270,6 +282,138 @@ struct Stru_TypeDescriptor_t
 - 类型检查器不直接管理类型内存
 - 使用引用计数管理类型生命周期
 - 支持自定义内存分配器
+
+### 泛型类型支持
+
+类型系统提供完整的泛型类型支持，包括泛型类型创建、实例化和类型参数管理。
+
+#### 泛型类型接口
+
+```c
+typedef struct Stru_TypeSystemInterface_t
+{
+    // ... 其他接口函数
+    
+    /**
+     * @brief 创建泛型类型描述符
+     * 
+     * @param type_system 类型系统实例
+     * @param generic_name 泛型名称
+     * @param type_params 类型参数数组
+     * @param param_count 参数数量
+     * @return Stru_TypeDescriptor_t* 类型描述符，失败返回NULL
+     */
+    Stru_TypeDescriptor_t* (*create_generic_type)(Stru_TypeSystem_t* type_system,
+                                                 const char* generic_name,
+                                                 Stru_TypeDescriptor_t** type_params,
+                                                 size_t param_count);
+    
+    /**
+     * @brief 实例化泛型类型
+     * 
+     * @param type_system 类型系统实例
+     * @param generic_type 泛型类型
+     * @param type_args 类型实参数组
+     * @param arg_count 实参数量
+     * @return Stru_TypeDescriptor_t* 实例化后的类型描述符，失败返回NULL
+     */
+    Stru_TypeDescriptor_t* (*instantiate_generic_type)(Stru_TypeSystem_t* type_system,
+                                                      Stru_TypeDescriptor_t* generic_type,
+                                                      Stru_TypeDescriptor_t** type_args,
+                                                      size_t arg_count);
+    
+    /**
+     * @brief 检查类型是否为泛型类型
+     * 
+     * @param type_system 类型系统实例
+     * @param type 要检查的类型
+     * @return bool 如果是泛型类型返回true，否则返回false
+     */
+    bool (*is_generic_type)(Stru_TypeSystem_t* type_system,
+                           const Stru_TypeDescriptor_t* type);
+    
+    /**
+     * @brief 获取泛型类型的类型参数数量
+     * 
+     * @param type_system 类型系统实例
+     * @param generic_type 泛型类型
+     * @return size_t 类型参数数量，如果不是泛型类型返回0
+     */
+    size_t (*get_generic_type_param_count)(Stru_TypeSystem_t* type_system,
+                                          const Stru_TypeDescriptor_t* generic_type);
+    
+    // ... 其他接口函数
+} Stru_TypeSystemInterface_t;
+```
+
+#### 泛型类型使用示例
+
+```c
+void generic_type_example(Stru_TypeSystem_t* type_system) {
+    // 创建基本类型
+    Stru_TypeDescriptor_t* int_type = type_system->interface->create_integer_type(
+        type_system, Eum_INTEGER_I32, "int");
+    Stru_TypeDescriptor_t* float_type = type_system->interface->create_float_type(
+        type_system, Eum_FLOAT_F64, "float");
+    
+    // 创建泛型类型参数数组
+    Stru_TypeDescriptor_t* type_params[] = {int_type, float_type};
+    
+    // 创建泛型类型
+    Stru_TypeDescriptor_t* generic_type = type_system->interface->create_generic_type(
+        type_system, "Pair", type_params, 2);
+    
+    if (generic_type) {
+        printf("创建泛型类型: %s\n", generic_type->name);
+        
+        // 检查是否为泛型类型
+        bool is_generic = type_system->interface->is_generic_type(type_system, generic_type);
+        printf("是否为泛型类型: %s\n", is_generic ? "是" : "否");
+        
+        // 获取类型参数数量
+        size_t param_count = type_system->interface->get_generic_type_param_count(
+            type_system, generic_type);
+        printf("泛型类型参数数量: %zu\n", param_count);
+        
+        // 实例化泛型类型
+        Stru_TypeDescriptor_t* type_args[] = {int_type, int_type};
+        Stru_TypeDescriptor_t* instantiated_type = type_system->interface->instantiate_generic_type(
+            type_system, generic_type, type_args, 2);
+        
+        if (instantiated_type) {
+            printf("实例化后的类型: %s\n", instantiated_type->name);
+            
+            // 释放实例化类型
+            type_system->interface->release_type(type_system, instantiated_type);
+        }
+        
+        // 释放泛型类型
+        type_system->interface->release_type(type_system, generic_type);
+    }
+    
+    // 释放基本类型
+    type_system->interface->release_type(type_system, int_type);
+    type_system->interface->release_type(type_system, float_type);
+}
+```
+
+#### 泛型类型兼容性规则
+
+1. **泛型类型相等**：泛型类型相等需要满足以下条件：
+   - 相同的泛型名称
+   - 相同数量的类型参数
+   - 对应的类型参数相等
+
+2. **泛型类型实例化**：泛型类型实例化时，类型实参必须满足泛型参数的约束条件
+
+3. **泛型类型转换**：泛型类型之间的转换需要满足类型参数的协变/逆变规则
+
+#### 泛型类型内存管理
+
+- 泛型类型使用引用计数管理内存
+- 类型参数被泛型类型引用，增加其引用计数
+- 泛型类型释放时，减少所有类型参数的引用计数
+- 支持循环引用检测和避免内存泄漏
 
 ## 配置选项
 
