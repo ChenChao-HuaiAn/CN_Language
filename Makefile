@@ -138,7 +138,18 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/ir/CN_ir_interface.c \
             src/core/ir/CN_ir_builder.c \
             src/core/ir/implementations/tac/CN_tac_impl.c \
-            src/core/codegen/CN_codegen_factory.c \
+            src/core/ir/implementations/ssa/CN_ssa_data.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter_main.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter_context.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter_variable.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter_expression.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter_statement.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter_statement_control.c \
+            src/core/ir/implementations/ssa/CN_ssa_converter_function.c \
+src/core/ir/implementations/ssa/CN_ssa_converter_instruction.c \
+src/core/ir/implementations/ssa/CN_ssa_phi.c \
+src/core/codegen/CN_codegen_factory.c \
             src/core/codegen/implementations/c_backend/CN_c_backend.c \
             src/core/codegen/optimizers/basic_optimizer/CN_basic_optimizer.c \
             src/core/codegen/optimizers/basic_optimizer/CN_constant_folding.c \

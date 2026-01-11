@@ -1,0 +1,312 @@
+/******************************************************************************
+ * 文件名: CN_ssa_converter_statement_control.c
+ * 功能: CN_Language SSA转换器控制流语句转换
+ * 
+ * 实现SSA转换器的控制流语句转换功能。
+ * 
+ * 作者: CN_Language开发团队
+ * 创建日期: 2026年1月11日
+ * 修改历史:
+ *   - 2026年1月11日: 初始版本
+ * 版权: MIT许可证
+ ******************************************************************************/
+
+#include "CN_ssa_converter_internal.h"
+
+// ============================================================================
+// AST转换函数实现 - 控制流语句部分
+// ============================================================================
+
+/**
+ * @brief 转换if语句
+ */
+static bool F_convert_if_statement(Stru_SsaConverterContext_t* context, Stru_AstNode_t* stmt)
+{
+    // if语句: if (cond) then_stmt [else else_stmt]
+    if (stmt->child_count < 2) {
+        F_add_error(context, "if语句缺少条件或then分支");
+        return false;
+    }
+    
+    // 转换条件表达式
+    if (!F_convert_expression(context, stmt->children[0])) {
+        return false;
+    }
+    
+    // 获取条件变量
+    Stru_SsaVariable_t* cond_var = F_get_or_create_variable(context, "temp", false);
+    if (cond_var == NULL) {
+        F_add_error(context, "获取条件变量失败");
+        return false;
+    }
+    
+    // 创建then基本块
+    Stru_SsaBasicBlock_t* then_block = F_create_ssa_basic_block("then");
+    if (then_block == NULL) {
+        F_add_error(context, "创建then基本块失败");
+        return false;
+    }
+    
+    // 创建else基本块（如果有）
+    Stru_SsaBasicBlock_t* else_block = NULL;
+    if (stmt->child_count > 2) {
+        else_block = F_create_ssa_basic_block("else");
+        if (else_block == NULL) {
+            F_add_error(context, "创建else基本块失败");
+            return false;
+        }
+    }
+    
+    // 创建merge基本块
+    Stru_SsaBasicBlock_t* merge_block = F_create_ssa_basic_block("merge");
+    if (merge_block == NULL) {
+        F_add_error(context, "创建merge基本块失败");
+        return false;
+    }
+    
+    // 创建条件跳转指令
+    Stru_SsaInstruction_t* branch_instr = F_create_ssa_instruction(
+        Eum_SSA_OP_BRANCH, cond_var, NULL, 0, stmt->line, stmt->column);
+    if (branch_instr == NULL) {
+        F_add_error(context, "创建条件跳转指令失败");
+        return false;
+    }
+    
+    // 设置跳转目标
+    branch_instr->operands[0] = then_block;
+    branch_instr->operands[1] = else_block != NULL ? else_block : merge_block;
+    branch_instr->operand_count = 2;
+    
+    // 将条件跳转指令添加到当前基本块
+    if (!F_ssa_basic_block_add_instruction(context->current_block, branch_instr)) {
+        F_add_error(context, "添加条件跳转指令失败");
+        return false;
+    }
+    
+    // 保存当前基本块
+    Stru_SsaBasicBlock_t* saved_block = context->current_block;
+    
+    // 转换then分支
+    context->current_block = then_block;
+    if (!F_convert_ast_node(context, stmt->children[1])) {
+        return false;
+    }
+    
+    // 添加跳转到merge块的指令
+    Stru_SsaInstruction_t* then_jump = F_create_ssa_instruction(
+        Eum_SSA_OP_JUMP, NULL, NULL, 0, stmt->line, stmt->column);
+    if (then_jump == NULL) {
+        F_add_error(context, "创建then跳转指令失败");
+        return false;
+    }
+    
+    then_jump->operands[0] = merge_block;
+    then_jump->operand_count = 1;
+    
+    if (!F_ssa_basic_block_add_instruction(then_block, then_jump)) {
+        F_add_error(context, "添加then跳转指令失败");
+        return false;
+    }
+    
+    // 转换else分支（如果有）
+    if (else_block != NULL && stmt->child_count > 2) {
+        context->current_block = else_block;
+        if (!F_convert_ast_node(context, stmt->children[2])) {
+            return false;
+        }
+        
+        // 添加跳转到merge块的指令
+        Stru_SsaInstruction_t* else_jump = F_create_ssa_instruction(
+            Eum_SSA_OP_JUMP, NULL, NULL, 0, stmt->line, stmt->column);
+        if (else_jump == NULL) {
+            F_add_error(context, "创建else跳转指令失败");
+            return false;
+        }
+        
+        else_jump->operands[0] = merge_block;
+        else_jump->operand_count = 1;
+        
+        if (!F_ssa_basic_block_add_instruction(else_block, else_jump)) {
+            F_add_error(context, "添加else跳转指令失败");
+            return false;
+        }
+    }
+    
+    // 恢复当前基本块为merge块
+    context->current_block = merge_block;
+    
+    // 将基本块添加到当前函数
+    if (!F_ssa_function_add_block(context->current_function, then_block)) {
+        F_add_error(context, "添加then基本块到函数失败");
+        return false;
+    }
+    
+    if (else_block != NULL) {
+        if (!F_ssa_function_add_block(context->current_function, else_block)) {
+            F_add_error(context, "添加else基本块到函数失败");
+            return false;
+        }
+    }
+    
+    if (!F_ssa_function_add_block(context->current_function, merge_block)) {
+        F_add_error(context, "添加merge基本块到函数失败");
+        return false;
+    }
+    
+    // 恢复原始当前基本块
+    context->current_block = saved_block;
+    
+    return true;
+}
+
+/**
+ * @brief 转换while语句
+ */
+static bool F_convert_while_statement(Stru_SsaConverterContext_t* context, Stru_AstNode_t* stmt)
+{
+    // while语句: while (cond) body
+    if (stmt->child_count < 2) {
+        F_add_error(context, "while语句缺少条件或循环体");
+        return false;
+    }
+    
+    // 创建cond基本块
+    Stru_SsaBasicBlock_t* cond_block = F_create_ssa_basic_block("while_cond");
+    if (cond_block == NULL) {
+        F_add_error(context, "创建while条件基本块失败");
+        return false;
+    }
+    
+    // 创建body基本块
+    Stru_SsaBasicBlock_t* body_block = F_create_ssa_basic_block("while_body");
+    if (body_block == NULL) {
+        F_add_error(context, "创建while循环体基本块失败");
+        return false;
+    }
+    
+    // 创建merge基本块
+    Stru_SsaBasicBlock_t* merge_block = F_create_ssa_basic_block("while_merge");
+    if (merge_block == NULL) {
+        F_add_error(context, "创建while合并基本块失败");
+        return false;
+    }
+    
+    // 添加跳转到cond块的指令
+    Stru_SsaInstruction_t* jump_to_cond = F_create_ssa_instruction(
+        Eum_SSA_OP_JUMP, NULL, NULL, 0, stmt->line, stmt->column);
+    if (jump_to_cond == NULL) {
+        F_add_error(context, "创建跳转到while条件指令失败");
+        return false;
+    }
+    
+    jump_to_cond->operands[0] = cond_block;
+    jump_to_cond->operand_count = 1;
+    
+    if (!F_ssa_basic_block_add_instruction(context->current_block, jump_to_cond)) {
+        F_add_error(context, "添加跳转到while条件指令失败");
+        return false;
+    }
+    
+    // 保存当前基本块
+    Stru_SsaBasicBlock_t* saved_block = context->current_block;
+    
+    // 转换条件表达式
+    context->current_block = cond_block;
+    if (!F_convert_expression(context, stmt->children[0])) {
+        return false;
+    }
+    
+    // 获取条件变量
+    Stru_SsaVariable_t* cond_var = F_get_or_create_variable(context, "temp", false);
+    if (cond_var == NULL) {
+        F_add_error(context, "获取条件变量失败");
+        return false;
+    }
+    
+    // 创建条件跳转指令
+    Stru_SsaInstruction_t* branch_instr = F_create_ssa_instruction(
+        Eum_SSA_OP_BRANCH, cond_var, NULL, 0, stmt->line, stmt->column);
+    if (branch_instr == NULL) {
+        F_add_error(context, "创建while条件跳转指令失败");
+        return false;
+    }
+    
+    // 设置跳转目标
+    branch_instr->operands[0] = body_block;
+    branch_instr->operands[1] = merge_block;
+    branch_instr->operand_count = 2;
+    
+    if (!F_ssa_basic_block_add_instruction(cond_block, branch_instr)) {
+        F_add_error(context, "添加while条件跳转指令失败");
+        return false;
+    }
+    
+    // 转换循环体
+    context->current_block = body_block;
+    if (!F_convert_ast_node(context, stmt->children[1])) {
+        return false;
+    }
+    
+    // 添加跳转到cond块的指令（循环）
+    Stru_SsaInstruction_t* loop_jump = F_create_ssa_instruction(
+        Eum_SSA_OP_JUMP, NULL, NULL, 0, stmt->line, stmt->column);
+    if (loop_jump == NULL) {
+        F_add_error(context, "创建while循环跳转指令失败");
+        return false;
+    }
+    
+    loop_jump->operands[0] = cond_block;
+    loop_jump->operand_count = 1;
+    
+    if (!F_ssa_basic_block_add_instruction(body_block, loop_jump)) {
+        F_add_error(context, "添加while循环跳转指令失败");
+        return false;
+    }
+    
+    // 恢复当前基本块为merge块
+    context->current_block = merge_block;
+    
+    // 将基本块添加到当前函数
+    if (!F_ssa_function_add_block(context->current_function, cond_block)) {
+        F_add_error(context, "添加while条件基本块到函数失败");
+        return false;
+    }
+    
+    if (!F_ssa_function_add_block(context->current_function, body_block)) {
+        F_add_error(context, "添加while循环体基本块到函数失败");
+        return false;
+    }
+    
+    if (!F_ssa_function_add_block(context->current_function, merge_block)) {
+        F_add_error(context, "添加while合并基本块到函数失败");
+        return false;
+    }
+    
+    // 恢复原始当前基本块
+    context->current_block = saved_block;
+    
+    return true;
+}
+
+/**
+ * @brief 转换控制流语句
+ */
+bool F_convert_control_flow_statement(Stru_SsaConverterContext_t* context, Stru_AstNode_t* stmt)
+{
+    if (context == NULL || stmt == NULL || context->current_block == NULL) {
+        return false;
+    }
+    
+    // 根据语句类型进行转换
+    switch (stmt->subtype) {
+        case Eum_AST_STMT_IF:
+            return F_convert_if_statement(context, stmt);
+            
+        case Eum_AST_STMT_WHILE:
+            return F_convert_while_statement(context, stmt);
+            
+        default:
+            F_add_error(context, "不支持的控制流语句类型");
+            return false;
+    }
+}
