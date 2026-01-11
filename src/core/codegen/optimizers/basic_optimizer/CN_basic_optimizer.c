@@ -13,6 +13,11 @@
  ******************************************************************************/
 
 #include "CN_basic_optimizer.h"
+#include "CN_constant_folding.h"
+#include "CN_dead_code_elimination.h"
+#include "CN_common_subexpr.h"
+#include "CN_strength_reduction.h"
+#include "CN_peephole_optimization.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -77,11 +82,11 @@ static BasicOptimizerState* get_state(Stru_OptimizerPluginInterface_t* interface
 static void add_error(BasicOptimizerState* state, const char* error_message);
 static void add_warning(BasicOptimizerState* state, const char* warning_message);
 static Stru_OptimizationResult_t* create_optimization_result(void);
-static bool apply_constant_folding(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
-static bool apply_dead_code_elimination(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
-static bool apply_common_subexpression_elimination(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
-static bool apply_strength_reduction(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
-static bool apply_peephole_optimization(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
+static bool apply_constant_folding_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
+static bool apply_dead_code_elimination_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
+static bool apply_common_subexpression_elimination_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
+static bool apply_strength_reduction_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
+static bool apply_peephole_optimization_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context);
 
 /**
  * @brief 创建基础优化器插件接口实例
@@ -339,31 +344,31 @@ static Stru_OptimizationResult_t* optimize(Stru_OptimizerPluginInterface_t* inte
     switch (optimization_type) {
         case Eum_OPTIMIZE_CONSTANT_FOLDING:
             if (context->ast) {
-                optimization_applied = apply_constant_folding(context->ast, context);
+                optimization_applied = apply_constant_folding_wrapper(context->ast, context);
             }
             break;
             
         case Eum_OPTIMIZE_DEAD_CODE_ELIM:
             if (context->ast) {
-                optimization_applied = apply_dead_code_elimination(context->ast, context);
+                optimization_applied = apply_dead_code_elimination_wrapper(context->ast, context);
             }
             break;
             
         case Eum_OPTIMIZE_COMMON_SUBEXPR:
             if (context->ast) {
-                optimization_applied = apply_common_subexpression_elimination(context->ast, context);
+                optimization_applied = apply_common_subexpression_elimination_wrapper(context->ast, context);
             }
             break;
             
         case Eum_OPTIMIZE_STRENGTH_REDUCTION:
             if (context->ast) {
-                optimization_applied = apply_strength_reduction(context->ast, context);
+                optimization_applied = apply_strength_reduction_wrapper(context->ast, context);
             }
             break;
             
         case Eum_OPTIMIZE_PEEPHOLE:
             if (context->ast) {
-                optimization_applied = apply_peephole_optimization(context->ast, context);
+                optimization_applied = apply_peephole_optimization_wrapper(context->ast, context);
             }
             break;
             
@@ -661,70 +666,70 @@ static void destroy(Stru_OptimizerPluginInterface_t* interface)
 }
 
 /* ============================================
- * 优化算法实现（占位符）
+ * 优化算法实现
  * ============================================ */
 
 /**
- * @brief 应用常量折叠
+ * @brief 应用常量折叠（包装函数）
  */
-static bool apply_constant_folding(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
+static bool apply_constant_folding_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
 {
     if (!ast || !context) {
         return false;
     }
     
-    /* TODO: 实现常量折叠算法 */
-    return true; // 假设应用成功
+    // 调用实际的常量折叠算法
+    return apply_constant_folding(ast, context);
 }
 
 /**
- * @brief 应用死代码消除
+ * @brief 应用死代码消除（包装函数）
  */
-static bool apply_dead_code_elimination(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
+static bool apply_dead_code_elimination_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
 {
     if (!ast || !context) {
         return false;
     }
     
-    /* TODO: 实现死代码消除算法 */
-    return true; // 假设应用成功
+    // 调用实际的死代码消除算法
+    return apply_dead_code_elimination(ast, context);
 }
 
 /**
- * @brief 应用公共子表达式消除
+ * @brief 应用公共子表达式消除（包装函数）
  */
-static bool apply_common_subexpression_elimination(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
+static bool apply_common_subexpression_elimination_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
 {
     if (!ast || !context) {
         return false;
     }
     
-    /* TODO: 实现公共子表达式消除算法 */
-    return true; // 假设应用成功
+    // 调用实际的公共子表达式消除算法
+    return apply_common_subexpression_elimination(ast, context);
 }
 
 /**
- * @brief 应用强度削减
+ * @brief 应用强度削减（包装函数）
  */
-static bool apply_strength_reduction(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
+static bool apply_strength_reduction_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
 {
     if (!ast || !context) {
         return false;
     }
     
-    /* TODO: 实现强度削减算法 */
-    return true; // 假设应用成功
+    // 调用实际的强度削减算法
+    return apply_strength_reduction(ast, context);
 }
 
 /**
- * @brief 应用窥孔优化
+ * @brief 应用窥孔优化（包装函数）
  */
-static bool apply_peephole_optimization(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
+static bool apply_peephole_optimization_wrapper(Stru_AstNode_t* ast, Stru_OptimizationContext_t* context)
 {
     if (!ast || !context) {
         return false;
     }
     
-    /* TODO: 实现窥孔优化算法 */
-    return true; // 假设应用成功
+    // 调用实际的窥孔优化算法
+    return apply_peephole_optimization(ast, context);
 }
