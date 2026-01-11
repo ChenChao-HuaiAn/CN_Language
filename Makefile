@@ -49,6 +49,9 @@ INCLUDES = \
 	-I$(CORE_DIR)/semantic/symbol_attributes \
 	-I$(CORE_DIR)/codegen \
 	-I$(CORE_DIR)/codegen/implementations/c_backend \
+	-I$(CORE_DIR)/codegen/implementations/bytecode_backend \
+	-I$(CORE_DIR)/codegen/implementations/bytecode_backend/backend \
+	-I$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter \
 	-I$(CORE_DIR)/codegen/optimizers/basic_optimizer \
 	-I$(CORE_DIR)/ir \
 	-I$(CORE_DIR)/ir/implementations/tac \
@@ -103,16 +106,32 @@ INFRA_SRCS = \
 	$(INFRA_DIR)/containers/hash/CN_hash_table_interface_impl.c \
 	$(INFRA_DIR)/containers/hash/CN_hash_table_utils.c
 
-# 核心层源文件
+# 核心层源文件 - 简化版本，只包含实际存在的文件
 CORE_SRCS = \
-	$(CORE_DIR)/lexer/CN_lexer.c \
-	$(CORE_DIR)/parser/CN_parser.c \
-	$(CORE_DIR)/ast/CN_ast.c \
-	$(CORE_DIR)/semantic/CN_semantic.c \
-	$(CORE_DIR)/codegen/CN_codegen.c \
-	$(CORE_DIR)/ir/CN_ir.c \
-	$(CORE_DIR)/runtime/CN_runtime.c \
-	$(CORE_DIR)/token/CN_token.c
+	$(CORE_DIR)/CN_compiler_impl.c \
+	$(CORE_DIR)/CN_compiler_simple.c \
+	$(CORE_DIR)/ast/CN_ast_builder.c \
+	$(CORE_DIR)/ast/CN_ast_compat.c \
+	$(CORE_DIR)/ast/CN_ast_interface_impl.c \
+	$(CORE_DIR)/ast/CN_ast_node.c \
+	$(CORE_DIR)/ast/CN_ast_query.c \
+	$(CORE_DIR)/ast/CN_ast_serializer.c \
+	$(CORE_DIR)/ast/CN_ast_traversal.c \
+	$(CORE_DIR)/codegen/CN_codegen_factory.c \
+	$(CORE_DIR)/codegen/implementations/c_backend/CN_c_backend.c \
+	$(CORE_DIR)/lexer/CN_lexer_impl.c \
+	$(CORE_DIR)/lexer/CN_lexer_interface.c \
+	$(CORE_DIR)/lexer/errors/CN_lexer_errors.c \
+	$(CORE_DIR)/lexer/interface/CN_lexer_interface_impl.c \
+	$(CORE_DIR)/lexer/keywords/CN_lexer_keywords.c \
+	$(CORE_DIR)/lexer/operators/CN_lexer_operators.c \
+	$(CORE_DIR)/lexer/scanner/CN_lexer_buffer.c \
+	$(CORE_DIR)/lexer/scanner/CN_lexer_scanner.c \
+	$(CORE_DIR)/lexer/token_scanners/CN_lexer_token_scanners.c \
+	$(CORE_DIR)/lexer/utils/CN_lexer_utf8.c \
+	$(CORE_DIR)/lexer/utils/CN_lexer_utils.c \
+	$(CORE_DIR)/parser/CN_parser_interface.c \
+	$(CORE_DIR)/parser/CN_syntax_error.c
 
 # 优化器源文件（基础优化器）
 OPTIMIZER_SRCS = \
@@ -123,13 +142,28 @@ OPTIMIZER_SRCS = \
 	$(CORE_DIR)/codegen/optimizers/basic_optimizer/CN_strength_reduction.c \
 	$(CORE_DIR)/codegen/optimizers/basic_optimizer/CN_peephole_optimization.c
 
+# 字节码后端源文件
+BYTECODE_BACKEND_SRCS = \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/CN_bytecode_interpreter_main.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/backend/CN_bytecode_generator.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/backend/CN_bytecode_optimizer.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/backend/CN_bytecode_validator.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/backend/CN_bytecode_serializer.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/backend/CN_bytecode_formatter.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/backend/CN_bytecode_utils.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_core.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_engine.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_instructions.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_stack.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_debug.c
+
 # 应用层源文件
 APP_SRCS = \
 	$(APP_DIR)/cli/CN_cli.c \
-	$(APP_DIR)/repl/CN_repl.c
+	$(APP_DIR)/repl/CN_repl_impl.c
 
 # 所有源文件
-ALL_SRCS = $(MAIN_SRC) $(INFRA_SRCS) $(CORE_SRCS) $(OPTIMIZER_SRCS) $(APP_SRCS)
+ALL_SRCS = $(MAIN_SRC) $(INFRA_SRCS) $(CORE_SRCS) $(OPTIMIZER_SRCS) $(BYTECODE_BACKEND_SRCS) $(APP_SRCS)
 
 # ============================================================================
 # 对象文件定义
@@ -139,10 +173,11 @@ ALL_SRCS = $(MAIN_SRC) $(INFRA_SRCS) $(CORE_SRCS) $(OPTIMIZER_SRCS) $(APP_SRCS)
 INFRA_OBJS = $(patsubst $(INFRA_DIR)/%.c,$(OBJ_INFRA_DIR)/%.o,$(INFRA_SRCS))
 CORE_OBJS = $(patsubst $(CORE_DIR)/%.c,$(OBJ_CORE_DIR)/%.o,$(CORE_SRCS))
 OPTIMIZER_OBJS = $(patsubst $(CORE_DIR)/codegen/optimizers/basic_optimizer/%.c,$(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/%.o,$(OPTIMIZER_SRCS))
+BYTECODE_BACKEND_OBJS = $(patsubst $(CORE_DIR)/codegen/implementations/bytecode_backend/%.c,$(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/%.o,$(BYTECODE_BACKEND_SRCS))
 APP_OBJS = $(patsubst $(APP_DIR)/%.c,$(OBJ_APP_DIR)/%.o,$(APP_SRCS))
 
 # 所有对象文件
-ALL_OBJS = $(MAIN_OBJ) $(INFRA_OBJS) $(CORE_OBJS) $(OPTIMIZER_OBJS) $(APP_OBJS)
+ALL_OBJS = $(MAIN_OBJ) $(INFRA_OBJS) $(CORE_OBJS) $(OPTIMIZER_OBJS) $(BYTECODE_BACKEND_OBJS) $(APP_OBJS)
 
 # ============================================================================
 # 目标可执行文件
@@ -154,38 +189,61 @@ TARGET = $(BIN_DIR)/CN_Language
 # 构建规则
 # ============================================================================
 
+# Windows兼容的目录创建函数
+ifeq ($(OS),Windows_NT)
+MKDIR = if not exist $(subst /,\,$(1)) mkdir $(subst /,\,$(1))
+else
+MKDIR = mkdir -p $(1)
+endif
+
 # 默认目标
 all: $(TARGET)
 
 # 链接可执行文件
 $(TARGET): $(ALL_OBJS)
-	@echo "链接可执行文件: $@"
-	@mkdir -p $(BIN_DIR)
+	@echo Linking executable: $@
+	@$(call MKDIR,$(BIN_DIR))
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ $(ALL_OBJS) $(LDFLAGS)
-	@echo "构建完成: $@"
+	@echo Build completed: $@
 
 # 主程序编译规则
 $(OBJ_APP_DIR)/%.o: $(APP_DIR)/%.c
-	@echo "编译应用程序: $<"
-	@mkdir -p $(dir $@)
+	@echo Compiling application: $<
+	@$(call MKDIR,$(dir $@))
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # 基础设施层编译规则
 $(OBJ_INFRA_DIR)/%.o: $(INFRA_DIR)/%.c
-	@echo "编译基础设施: $<"
-	@mkdir -p $(dir $@)
+	@echo Compiling infrastructure: $<
+	@$(call MKDIR,$(dir $@))
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # 核心层编译规则
 $(OBJ_CORE_DIR)/%.o: $(CORE_DIR)/%.c
-	@echo "编译核心模块: $<"
-	@mkdir -p $(dir $@)
+	@echo Compiling core module: $<
+	@$(call MKDIR,$(dir $@))
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # 优化器编译规则
 $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/%.o: $(CORE_DIR)/codegen/optimizers/basic_optimizer/%.c
-	@echo "编译优化器: $<"
-	@mkdir -p $(dir $@)
+	@echo Compiling optimizer: $<
+	@$(call MKDIR,$(dir $@))
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+# 字节码后端编译规则
+$(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/%.o: $(CORE_DIR)/codegen/implementations/bytecode_backend/%.c
+	@echo Compiling bytecode backend: $<
+	@$(call MKDIR,$(dir $@))
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/backend/%.o: $(CORE_DIR)/codegen/implementations/bytecode_backend/backend/%.c
+	@echo Compiling bytecode backend (backend): $<
+	@$(call MKDIR,$(dir $@))
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
+$(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/%.o: $(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/%.c
+	@echo Compiling bytecode backend (interpreter): $<
+	@$(call MKDIR,$(dir $@))
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
 # ============================================================================
@@ -195,8 +253,8 @@ $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/%.o: $(CORE_DIR)/codegen/opti
 # 清理构建文件
 clean:
 	@echo "清理构建文件..."
-	@if [ -d "$(BUILD_DIR)" ]; then rm -rf $(BUILD_DIR); fi
-	@if [ -d "$(BIN_DIR)" ]; then rm -rf $(BIN_DIR); fi
+	@if exist $(BUILD_DIR) rmdir /s /q $(BUILD_DIR)
+	@if exist $(BIN_DIR) rmdir /s /q $(BIN_DIR)
 	@echo "清理完成: 已删除$(BUILD_DIR)和$(BIN_DIR)目录"
 
 # 运行程序
@@ -222,6 +280,7 @@ info:
 	@echo "  基础设施层: $(words $(INFRA_SRCS))"
 	@echo "  核心层: $(words $(CORE_SRCS))"
 	@echo "  优化器: $(words $(OPTIMIZER_SRCS))"
+	@echo "  字节码后端: $(words $(BYTECODE_BACKEND_SRCS))"
 	@echo "  应用层: $(words $(APP_SRCS))"
 	@echo "  总计: $(words $(ALL_SRCS))"
 	@echo "对象文件目录: $(BUILD_DIR)"
