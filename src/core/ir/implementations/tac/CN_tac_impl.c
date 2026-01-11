@@ -549,6 +549,43 @@ const char* F_tac_data_get_errors(const Stru_TacData_t* data)
     return data ? data->errors : NULL;
 }
 
+/**
+ * @brief 复制TAC指令
+ */
+Stru_TacInstruction_t* F_copy_tac_instruction(const Stru_TacInstruction_t* instruction)
+{
+    if (!instruction) {
+        return NULL;
+    }
+    
+    // 创建新的指令
+    Stru_TacInstruction_t* new_instr = (Stru_TacInstruction_t*)malloc(sizeof(Stru_TacInstruction_t));
+    if (!new_instr) {
+        return NULL;
+    }
+    
+    // 复制基本字段
+    new_instr->opcode = instruction->opcode;
+    new_instr->line = instruction->line;
+    new_instr->column = instruction->column;
+    
+    // 复制字符串字段（深拷贝）
+    new_instr->result = instruction->result ? strdup(instruction->result) : NULL;
+    new_instr->operand1 = instruction->operand1 ? strdup(instruction->operand1) : NULL;
+    new_instr->operand2 = instruction->operand2 ? strdup(instruction->operand2) : NULL;
+    new_instr->label = instruction->label ? strdup(instruction->label) : NULL;
+    
+    // 复制额外数据（如果有）
+    new_instr->extra_data = NULL;
+    if (instruction->extra_data) {
+        // 注意：这里假设extra_data是一个字符串，实际实现可能需要根据具体类型处理
+        // 为了简单起见，这里只复制字符串
+        new_instr->extra_data = strdup((const char*)instruction->extra_data);
+    }
+    
+    return new_instr;
+}
+
 // ============================================================================
 // 接口函数实现
 // ============================================================================

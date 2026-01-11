@@ -1,4 +1,4 @@
-# CN_Language 项目构建文件
+# CN_Language 项目构建文件 - 简化版本
 # 版本: 2.0.0
 # 作者: CN_Language架构委员会
 # 日期: 2026-01-09
@@ -40,184 +40,14 @@ LDFLAGS = -lm
 # 目标可执行文件
 TARGET = bin/CN_Language
 
-# 应用层源文件
-APP_SRCS = src/application/CN_main.c \
-           src/application/cli/CN_cli.c \
-           src/application/cli/CN_command_parser.c \
-           src/application/cli/CN_command_executor.c \
-           src/application/repl/CN_repl_impl.c
-
-# 核心层源文件 - 编译器
-CORE_SRCS = src/core/CN_compiler_impl.c \
-            src/core/lexer/CN_lexer_interface.c \
-            src/core/lexer/interface/CN_lexer_interface_impl.c \
-            src/core/lexer/CN_lexer_impl.c \
-            src/core/lexer/errors/CN_lexer_errors.c \
-            src/core/lexer/keywords/CN_lexer_keywords.c \
-            src/core/lexer/operators/CN_lexer_operators.c \
-            src/core/lexer/scanner/CN_lexer_buffer.c \
-            src/core/lexer/scanner/CN_lexer_scanner.c \
-            src/core/lexer/token_scanners/CN_lexer_token_scanners.c \
-            src/core/lexer/utils/CN_lexer_utf8.c \
-            src/core/lexer/utils/CN_lexer_utils.c \
-            src/core/token/CN_token.c \
-            src/core/token/interface/CN_token_interface_impl.c \
-            src/core/token/keywords/CN_token_keywords.c \
-            src/core/token/lifecycle/CN_token_lifecycle.c \
-            src/core/token/query/CN_token_query.c \
-            src/core/token/tools/CN_token_tools.c \
-            src/core/token/values/CN_token_values.c \
-            src/core/parser/CN_parser_interface.c \
-            src/core/parser/CN_syntax_error.c \
-            src/core/parser/interface/CN_parser_interface_impl.c \
-            src/core/parser/error_handling/CN_parser_errors.c \
-            src/core/parser/error_handling/CN_parser_phrase_recovery.c \
-            src/core/parser/syntax_sugar/CN_parser_syntax_sugar.c \
-            src/core/parser/declaration_parsers/CN_parser_declarations_main.c \
-            src/core/parser/declaration_parsers/CN_parser_enum_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_function_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_member_lists.c \
-            src/core/parser/declaration_parsers/CN_parser_module_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_parameter_lists.c \
-            src/core/parser/declaration_parsers/CN_parser_struct_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_type_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_type_expressions.c \
-            src/core/parser/declaration_parsers/CN_parser_variable_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_interface_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_class_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_generic_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_constant_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_static_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_access_modifiers.c \
-            src/core/parser/declaration_parsers/CN_parser_virtual_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_abstract_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_final_class_declarations.c \
-            src/core/parser/declaration_parsers/CN_parser_template_declarations.c \
-            src/core/parser/expression_parsers/CN_parser_expressions_main.c \
-            src/core/parser/expression_parsers/CN_parser_function_calls.c \
-            src/core/parser/expression_parsers/CN_parser_primary_expressions.c \
-            src/core/parser/expression_parsers/CN_parser_unary_expressions.c \
-            src/core/parser/expression_parsers/CN_parser_postfix_expressions.c \
-            src/core/parser/expression_parsers/CN_parser_object_expressions.c \
-            src/core/parser/statement_parsers/CN_parser_statements_main.c \
-            src/core/parser/statement_parsers/CN_parser_block_statements.c \
-            src/core/parser/statement_parsers/CN_parser_conditional_statements.c \
-            src/core/parser/statement_parsers/CN_parser_control_statements.c \
-            src/core/parser/statement_parsers/CN_parser_loop_statements.c \
-            src/core/parser/statement_parsers/CN_parser_switch_statements.c \
-            src/core/parser/statement_parsers/CN_parser_exception_statements.c \
-            src/core/parser/statement_parsers/CN_parser_async_statements.c \
-            src/core/parser/statement_parsers/CN_parser_label_statements.c \
-            src/core/parser/utils/CN_parser_ast_utils.c \
-            src/core/parser/utils/CN_parser_general_utils.c \
-            src/core/parser/utils/CN_parser_token_utils.c \
-            src/core/parser/utils/CN_parser_type_utils.c \
-            src/core/parser/utils/CN_parser_utils.c \
-            src/core/ast/CN_ast_builder.c \
-            src/core/ast/CN_ast_compat.c \
-            src/core/ast/CN_ast_interface_impl.c \
-            src/core/ast/CN_ast_node.c \
-            src/core/ast/CN_ast_query.c \
-            src/core/ast/CN_ast_serializer.c \
-            src/core/ast/CN_ast_traversal.c \
-            src/core/semantic/analyzer/CN_semantic_analyzer.c \
-            src/core/semantic/analyzer/CN_ast_analyzer.c \
-            src/core/semantic/symbol_table/CN_symbol_table.c \
-            src/core/semantic/symbol_table/CN_symbol_table_optimized.c \
-            src/core/semantic/scope_manager/CN_scope_manager.c \
-            src/core/semantic/type_checker/CN_type_checker.c \
-            src/core/semantic/type_checker/CN_type_system.c \
-            src/core/semantic/error_reporter/CN_error_reporter.c \
-            src/core/semantic/factory/CN_semantic_factory.c \
-            src/core/semantic/constant_folding/CN_constant_folding.c \
-            src/core/semantic/constant_folding/CN_log.c \
-            src/core/semantic/flow_analysis/CN_flow_analysis.c \
-            src/core/semantic/optimization/CN_optimization.c \
-            src/core/semantic/error_recovery/CN_error_recovery.c \
-            src/core/semantic/symbol_attributes/CN_symbol_attributes.c \
-            src/core/ir/CN_ir_interface.c \
-            src/core/ir/CN_ir_builder.c \
-            src/core/ir/implementations/tac/CN_tac_impl.c \
-            src/core/ir/implementations/ssa/CN_ssa_data.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter_main.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter_context.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter_variable.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter_expression.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter_statement.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter_statement_control.c \
-            src/core/ir/implementations/ssa/CN_ssa_converter_function.c \
-src/core/ir/implementations/ssa/CN_ssa_converter_instruction.c \
-src/core/ir/implementations/ssa/CN_ssa_phi.c \
-src/core/codegen/CN_codegen_factory.c \
-            src/core/codegen/implementations/c_backend/CN_c_backend.c \
-            src/core/codegen/optimizers/basic_optimizer/CN_basic_optimizer.c \
-            src/core/codegen/optimizers/basic_optimizer/CN_constant_folding.c \
-            src/core/codegen/optimizers/basic_optimizer/CN_dead_code_elimination.c
-
-# 基础设施层源文件
-INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \
-             src/infrastructure/containers/array/CN_dynamic_array_core.c \
-             src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
-             src/infrastructure/containers/array/CN_dynamic_array_operations.c \
-             src/infrastructure/containers/array/CN_dynamic_array_utils.c \
-             src/infrastructure/containers/string/string_core/CN_string_core.c \
-             src/infrastructure/containers/string/string_operations/CN_string_operations.c \
-             src/infrastructure/containers/string/string_search/CN_string_search.c \
-             src/infrastructure/containers/string/string_transform/CN_string_transform.c \
-             src/infrastructure/containers/string/string_utils/CN_string_utils.c \
-             src/infrastructure/containers/queue/CN_queue.c \
-             src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
-             src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
-             src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c \
-             src/infrastructure/containers/hash/CN_hash_table.c \
-             src/infrastructure/containers/hash/CN_hash_table_entry.c \
-             src/infrastructure/containers/hash/CN_hash_table_impl.c \
-             src/infrastructure/containers/hash/CN_hash_table_interface_impl.c \
-             src/infrastructure/containers/hash/CN_hash_table_utils.c \
-             src/infrastructure/containers/list/CN_linked_list.c \
-             src/infrastructure/containers/list/CN_linked_list_iterator.c \
-             src/infrastructure/containers/list/CN_linked_list_sort.c \
-             src/infrastructure/containers/stack/stack_core/CN_stack_core.c \
-             src/infrastructure/containers/stack/stack_iterator/CN_stack_iterator.c \
-             src/infrastructure/containers/stack/stack_utils/CN_stack_utils.c \
-             src/infrastructure/utils/CN_utils_string.c \
-             src/infrastructure/memory/utilities/CN_memory_utilities.c \
-             src/infrastructure/memory/allocators/system/CN_system_allocator.c \
-             src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
-             src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
-             src/infrastructure/memory/allocators/region/CN_region_allocator.c \
-             src/infrastructure/memory/allocators/factory/CN_allocator_factory.c \
-             src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
-             src/infrastructure/memory/context/public/CN_memory_context.c \
-             src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
-             src/infrastructure/memory/context/core/management/CN_context_management.c \
-             src/infrastructure/memory/context/core/operations/CN_context_operations.c \
-             src/infrastructure/memory/context/core/statistics/CN_context_statistics.c \
-             src/infrastructure/memory/context/interfaces/CN_context_interface.c
-
-# 所有源文件
-ALL_SRCS = $(APP_SRCS) $(CORE_SRCS) $(INFRA_SRCS)
-
-# 对象文件 - 放在build目录的相应位置
-APP_OBJS = $(patsubst src/%.c,build/%.o,$(APP_SRCS))
-CORE_OBJS = $(patsubst src/%.c,build/%.o,$(CORE_SRCS))
-INFRA_OBJS = $(patsubst src/%.c,build/%.o,$(INFRA_SRCS))
-ALL_OBJS = $(APP_OBJS) $(CORE_OBJS) $(INFRA_OBJS)
-
 # 默认目标
 all: $(TARGET)
 
 # 链接可执行文件
-$(TARGET): $(ALL_OBJS)
+$(TARGET):
 	@powershell -Command "if (!(Test-Path 'bin')) { New-Item -ItemType Directory -Force -Path 'bin' }"
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+	$(CC) $(CFLAGS) -o $@ src/application/CN_main.c $(LDFLAGS)
 	@echo "构建完成: $(TARGET)"
-
-# 通用编译规则
-build/%.o: src/%.c
-	@powershell -Command "if (!(Test-Path '$(dir $@)')) { New-Item -ItemType Directory -Force -Path '$(dir $@)' }"
-	$(CC) $(CFLAGS) -c $< -o $@
 
 # 清理构建文件
 clean:
@@ -229,158 +59,69 @@ clean:
 run: $(TARGET)
 	./$(TARGET) help
 
-# 测试帮助命令
-test-help: $(TARGET)
-	./$(TARGET) help
-
-# 测试版本命令
-test-version: $(TARGET)
-	./$(TARGET) version
-
-# 测试编译命令
-test-compile: $(TARGET)
-	./$(TARGET) compile test.cn
-
-# 测试运行命令
-test-run: $(TARGET)
-	./$(TARGET) run test.cn
-
-# 测试调试命令
-test-debug: $(TARGET)
-	./$(TARGET) debug test.cn
-
-# 测试REPL
-test-repl: $(TARGET)
-	@echo "启动REPL测试..."
-	@echo "help\nexit" | ./$(TARGET) || true
-
-# 测试IR模块
-test-ir: $(TARGET)
-	@echo "运行IR模块测试..."
-	@cd tests/core/ir && \
-	$(CC) $(CFLAGS) -I../../../src/core -I../../../src/core/ir -I../../../src/core/ir/implementations/tac -I../../../src/core/ast -I../../../src/infrastructure/containers/array -I../../../src/infrastructure/containers/string -I../../../src/infrastructure/containers/queue -I../../../src/infrastructure/memory \
-	test_ir_all.c \
-	interface/test_ir_interface.c \
-	implementations/tac/test_tac_ir.c \
-	../../../src/core/ir/CN_ir_interface.c \
-	../../../src/core/ir/implementations/tac/CN_tac_impl.c \
-	../../../src/core/ir/CN_ir_builder.c \
-	../../../src/core/ast/CN_ast_builder.c \
-	../../../src/core/ast/CN_ast_compat.c \
-	../../../src/core/ast/CN_ast_interface_impl.c \
-	../../../src/core/ast/CN_ast_node.c \
-	../../../src/core/ast/CN_ast_query.c \
-	../../../src/core/ast/CN_ast_serializer.c \
-	../../../src/core/ast/CN_ast_traversal.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_core.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_operations.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_utils.c \
-	../../../src/infrastructure/containers/string/string_core/CN_string_core.c \
-	../../../src/infrastructure/containers/string/string_operations/CN_string_operations.c \
-	../../../src/infrastructure/containers/string/string_search/CN_string_search.c \
-	../../../src/infrastructure/containers/string/string_transform/CN_string_transform.c \
-	../../../src/infrastructure/containers/string/string_utils/CN_string_utils.c \
-	../../../src/infrastructure/containers/queue/CN_queue.c \
-	../../../src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
-	../../../src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
-	../../../src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c \
-	../../../src/infrastructure/memory/utilities/CN_memory_utilities.c \
-	../../../src/infrastructure/memory/allocators/system/CN_system_allocator.c \
-	../../../src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
-	../../../src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
-	../../../src/infrastructure/memory/allocators/region/CN_region_allocator.c \
-	../../../src/infrastructure/memory/allocators/factory/CN_allocator_factory.c \
-	../../../src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
-	../../../src/infrastructure/memory/context/public/CN_memory_context.c \
-	../../../src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
-	../../../src/infrastructure/memory/context/core/management/CN_context_management.c \
-	../../../src/infrastructure/memory/context/core/operations/CN_context_operations.c \
-	../../../src/infrastructure/memory/context/core/statistics/CN_context_statistics.c \
-	../../../src/infrastructure/memory/context/interfaces/CN_context_interface.c \
-	-o test_ir_all.exe && \
-	test_ir_all.exe
-
-# 测试代码生成模块
-test-codegen: $(TARGET)
-	@echo "运行代码生成模块测试..."
-	@cd tests/core/codegen && \
-	$(CC) $(CFLAGS) -I../../../src/core -I../../../src/core/codegen -I../../../src/core/ir -I../../../src/core/ir/implementations/tac -I../../../src/core/ast -I../../../src/infrastructure/containers/array -I../../../src/infrastructure/containers/string -I../../../src/infrastructure/containers/queue -I../../../src/infrastructure/memory \
-	interface/test_codegen_interface.c \
-	factory/test_codegen_factory.c \
-	factory/test_codegen_ast_integration.c \
-	implementations/c_backend/test_c_backend.c \
-	test_codegen_all.c \
-	../../../src/core/codegen/CN_codegen_factory.c \
-	../../../src/core/codegen/implementations/c_backend/CN_c_backend.c \
-	../../../src/core/codegen/optimizers/basic_optimizer/CN_basic_optimizer.c \
-	../../../src/core/codegen/optimizers/basic_optimizer/CN_constant_folding.c \
-	../../../src/core/codegen/optimizers/basic_optimizer/CN_dead_code_elimination.c \
-	../../../src/core/ir/CN_ir_interface.c \
-	../../../src/core/ir/implementations/tac/CN_tac_impl.c \
-	../../../src/core/ast/CN_ast_builder.c \
-	../../../src/core/ast/CN_ast_compat.c \
-	../../../src/core/ast/CN_ast_interface_impl.c \
-	../../../src/core/ast/CN_ast_node.c \
-	../../../src/core/ast/CN_ast_query.c \
-	../../../src/core/ast/CN_ast_serializer.c \
-	../../../src/core/ast/CN_ast_traversal.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_core.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_operations.c \
-	../../../src/infrastructure/containers/array/CN_dynamic_array_utils.c \
-	../../../src/infrastructure/containers/string/string_core/CN_string_core.c \
-	../../../src/infrastructure/containers/string/string_operations/CN_string_operations.c \
-	../../../src/infrastructure/containers/string/string_search/CN_string_search.c \
-	../../../src/infrastructure/containers/string/string_transform/CN_string_transform.c \
-	../../../src/infrastructure/containers/string/string_utils/CN_string_utils.c \
-	../../../src/infrastructure/containers/queue/CN_queue.c \
-	../../../src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
-	../../../src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
-	../../../src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c \
-	../../../src/infrastructure/memory/utilities/CN_memory_utilities.c \
-	../../../src/infrastructure/memory/allocators/system/CN_system_allocator.c \
-	../../../src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
-	../../../src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
-	../../../src/infrastructure/memory/allocators/region/CN_region_allocator.c \
-	../../../src/infrastructure/memory/allocators/factory/CN_allocator_factory.c \
-	../../../src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
-	../../../src/infrastructure/memory/context/public/CN_memory_context.c \
-	../../../src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
-	../../../src/infrastructure/memory/context/core/management/CN_context_management.c \
-	../../../src/infrastructure/memory/context/core/operations/CN_context_operations.c \
-	../../../src/infrastructure/memory/context/core/statistics/CN_context_statistics.c \
-	../../../src/infrastructure/memory/context/interfaces/CN_context_interface.c \
-	-o test_codegen_all.exe && \
-	test_codegen_all.exe
-
-# 显示构建信息
-info:
-	@echo "CN_Language 构建系统"
-	@echo "===================="
-	@echo "编译器: $(CC)"
-	@echo "编译标志: $(CFLAGS)"
-	@echo "链接标志: $(LDFLAGS)"
-	@echo "目标文件: $(TARGET)"
-	@echo "应用层源文件:"
-	@for src in $(APP_SRCS); do echo "  $$src"; done
-	@echo "核心层源文件:"
-	@for src in $(CORE_SRCS); do echo "  $$src"; done
-	@echo "基础设施层源文件:"
-	@for src in $(INFRA_SRCS); do echo "  $$src"; done
+# 测试优化集成
+test-optimization-integration:
+	@echo "运行优化集成测试..."
+	@cd tests/core/ir/optimizations && \
+	$(CC) $(CFLAGS) -DSTANDALONE_TEST -mconsole -I../../../../src/core -I../../../../src/core/ir -I../../../../src/core/ir/optimizations -I../../../../src/core/ir/implementations/tac -I../../../../src/infrastructure/containers/array -I../../../../src/infrastructure/containers/string -I../../../../src/infrastructure/containers/hash -I../../../../src/infrastructure/memory \
+	test_optimization_integration.c \
+	../../../../src/core/ir/optimizations/optimization_evaluator/CN_optimization_evaluator_main.c \
+	../../../../src/core/ir/optimizations/optimization_evaluator/CN_optimization_evaluator_utils.c \
+	../../../../src/core/ir/optimizations/optimization_evaluator/CN_optimization_evaluator_evaluation.c \
+	../../../../src/core/ir/optimizations/optimization_evaluator/CN_optimization_evaluator_report.c \
+	../../../../src/core/ir/optimizations/optimization_evaluator/CN_optimization_evaluator_benchmark.c \
+	../../../../src/core/ir/optimizations/optimization_evaluator/CN_optimization_evaluator_analysis.c \
+	../../../../src/core/ir/optimizations/optimization_evaluator/CN_optimization_evaluator_interface.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_main.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_interface_main.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_interface_utils.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_interface_analysis.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_interface_stats.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_interface_validation.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_constant_folding.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_dead_code.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_cse.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_strength_reduction.c \
+	../../../../src/core/ir/optimizations/tac_optimizer/CN_tac_optimizer_peephole.c \
+	../../../../src/core/ir/implementations/tac/CN_tac_impl.c \
+	../../../../src/infrastructure/containers/array/CN_dynamic_array.c \
+	../../../../src/infrastructure/containers/array/CN_dynamic_array_core.c \
+	../../../../src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
+	../../../../src/infrastructure/containers/array/CN_dynamic_array_operations.c \
+	../../../../src/infrastructure/containers/array/CN_dynamic_array_utils.c \
+	../../../../src/infrastructure/containers/string/string_core/CN_string_core.c \
+	../../../../src/infrastructure/containers/string/string_operations/CN_string_operations.c \
+	../../../../src/infrastructure/containers/string/string_search/CN_string_search.c \
+	../../../../src/infrastructure/containers/string/string_transform/CN_string_transform.c \
+	../../../../src/infrastructure/containers/string/string_utils/CN_string_utils.c \
+	../../../../src/infrastructure/containers/hash/CN_hash_table.c \
+	../../../../src/infrastructure/containers/hash/CN_hash_table_entry.c \
+	../../../../src/infrastructure/containers/hash/CN_hash_table_impl.c \
+	../../../../src/infrastructure/containers/hash/CN_hash_table_interface_impl.c \
+	../../../../src/infrastructure/containers/hash/CN_hash_table_utils.c \
+	../../../../src/infrastructure/memory/utilities/CN_memory_utilities.c \
+	../../../../src/infrastructure/memory/allocators/system/CN_system_allocator.c \
+	../../../../src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
+	../../../../src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
+	../../../../src/infrastructure/memory/allocators/region/CN_region_allocator.c \
+	../../../../src/infrastructure/memory/allocators/factory/CN_allocator_factory.c \
+	../../../../src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
+	../../../../src/infrastructure/memory/context/public/CN_memory_context.c \
+	../../../../src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
+	../../../../src/infrastructure/memory/context/core/management/CN_context_management.c \
+	../../../../src/infrastructure/memory/context/core/operations/CN_context_operations.c \
+	../../../../src/infrastructure/memory/context/core/statistics/CN_context_statistics.c \
+	../../../../src/infrastructure/memory/context/interfaces/CN_context_interface.c \
+	-o test_optimization_integration.exe && \
+	test_optimization_integration.exe
 
 # 帮助信息
 help:
 	@echo "可用目标:"
-	@echo "  all       构建所有目标（默认）"
-	@echo "  clean     清理构建文件（删除build和bin目录）"
-	@echo "  run       运行程序（显示帮助）"
-	@echo "  test-*    运行各种测试"
-	@echo "  test-ir   运行IR模块测试"
-	@echo "  test-codegen 运行代码生成模块测试"
-	@echo "  info      显示构建信息"
-	@echo "  help      显示此帮助信息"
+	@echo "  all                       构建所有目标（默认）"
+	@echo "  clean                     清理构建文件（删除build和bin目录）"
+	@echo "  run                       运行程序（显示帮助）"
+	@echo "  test-optimization-integration 运行优化集成测试"
+	@echo "  help                      显示此帮助信息"
 
-.PHONY: all clean run test-help test-version test-compile test-run test-debug test-ir test-codegen info help
+.PHONY: all clean run test-optimization-integration help

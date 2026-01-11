@@ -261,4 +261,14 @@ bool F_tac_data_has_errors(const Stru_TacData_t* data);
  */
 const char* F_tac_data_get_errors(const Stru_TacData_t* data);
 
+/**
+ * @brief 复制TAC指令
+ * 
+ * 创建TAC指令的深拷贝。
+ * 
+ * @param instruction 要复制的TAC指令
+ * @return Stru_TacInstruction_t* 新复制的TAC指令，失败返回NULL
+ */
+Stru_TacInstruction_t* F_copy_tac_instruction(const Stru_TacInstruction_t* instruction);
+
 #endif /* CN_TAC_INTERFACE_H */
