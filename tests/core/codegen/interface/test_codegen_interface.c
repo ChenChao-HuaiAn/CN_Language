@@ -176,24 +176,3 @@ bool test_codegen_interface_all(void)
     
     return all_passed;
 }
-
-/**
- * @brief 主函数（用于独立测试）
- */
-#ifdef STANDALONE_TEST
-int main(void)
-{
-    printf("CN_Language 代码生成器接口测试\n");
-    printf("===============================\n\n");
-    
-    bool success = test_codegen_interface_all();
-    
-    if (success) {
-        printf("\n✅ 所有接口测试通过！\n");
-        return EXIT_SUCCESS;
-    } else {
-        printf("\n❌ 接口测试失败！\n");
-        return EXIT_FAILURE;
-    }
-}
-#endif

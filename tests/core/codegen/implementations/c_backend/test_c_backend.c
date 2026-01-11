@@ -192,24 +192,3 @@ bool test_c_backend_all(void)
     
     return all_passed;
 }
-
-/**
- * @brief 主函数（用于独立测试）
- */
-#ifdef STANDALONE_TEST
-int main(void)
-{
-    printf("CN_Language C语言后端测试\n");
-    printf("===========================\n\n");
-    
-    bool success = test_c_backend_all();
-    
-    if (success) {
-        printf("\n✅ 所有C后端测试通过！\n");
-        return EXIT_SUCCESS;
-    } else {
-        printf("\n❌ C后端测试失败！\n");
-        return EXIT_FAILURE;
-    }
-}
-#endif

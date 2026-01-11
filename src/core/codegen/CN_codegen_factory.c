@@ -16,6 +16,7 @@
 #define _POSIX_C_SOURCE 200809L
 
 #include "CN_codegen_interface.h"
+#include "implementations/c_backend/CN_c_backend.h"
 #include "../../infrastructure/memory/CN_memory_interface.h"
 #include "../../infrastructure/containers/string/CN_string.h"
 #include <string.h>
@@ -292,40 +293,113 @@ static Stru_CodeGenResult_t* generate_code(Stru_CodeGeneratorInterface_t* interf
         return result;
     }
     
-    Stru_CodeGenResult_t* result = create_codegen_result();
-    if (!result) {
-        return NULL;
-    }
+    Stru_CodeGenResult_t* result = NULL;
     
-    /* TODO: 根据目标类型调用相应的后端生成代码 */
+    /* 根据目标类型调用相应的后端生成代码 */
     switch (state->options.target_type) {
         case Eum_TARGET_C:
-            /* TODO: 调用C后端生成代码 */
-            result->success = true;
-            result->code = strdup("// C代码生成器 - 待实现\n");
-            result->code_length = strlen(result->code);
+            /* 调用C后端生成代码 */
+            result = F_generate_c_code(ast);
+            if (!result) {
+                add_error(state, "C后端代码生成失败");
+                result = create_codegen_result();
+                if (result) {
+                    result->success = false;
+                }
+            }
+            break;
+        case Eum_TARGET_LLVM_IR:
+            /* TODO: 调用LLVM后端生成代码 */
+            result = create_codegen_result();
+            if (result) {
+                result->success = false;
+                result->code = strdup("// LLVM IR代码生成器 - 待实现\n");
+                result->code_length = strlen(result->code);
+                add_error(state, "LLVM IR后端尚未实现");
+            }
+            break;
+        case Eum_TARGET_X86_64:
+            /* TODO: 调用x86-64后端生成代码 */
+            result = create_codegen_result();
+            if (result) {
+                result->success = false;
+                result->code = strdup("// x86-64汇编代码生成器 - 待实现\n");
+                result->code_length = strlen(result->code);
+                add_error(state, "x86-64汇编后端尚未实现");
+            }
+            break;
+        case Eum_TARGET_ARM64:
+            /* TODO: 调用ARM64后端生成代码 */
+            result = create_codegen_result();
+            if (result) {
+                result->success = false;
+                result->code = strdup("// ARM64汇编代码生成器 - 待实现\n");
+                result->code_length = strlen(result->code);
+                add_error(state, "ARM64汇编后端尚未实现");
+            }
+            break;
+        case Eum_TARGET_WASM:
+            /* TODO: 调用WASM后端生成代码 */
+            result = create_codegen_result();
+            if (result) {
+                result->success = false;
+                result->code = strdup("// WebAssembly代码生成器 - 待实现\n");
+                result->code_length = strlen(result->code);
+                add_error(state, "WebAssembly后端尚未实现");
+            }
+            break;
+        case Eum_TARGET_BYTECODE:
+            /* TODO: 调用字节码后端生成代码 */
+            result = create_codegen_result();
+            if (result) {
+                result->success = false;
+                result->code = strdup("// 字节码生成器 - 待实现\n");
+                result->code_length = strlen(result->code);
+                add_error(state, "字节码后端尚未实现");
+            }
             break;
         default:
-            result->success = false;
-            add_error(state, "目标代码生成器尚未实现");
+            result = create_codegen_result();
+            if (result) {
+                result->success = false;
+                add_error(state, "不支持的目标代码类型");
+            }
             break;
     }
     
-    /* 复制错误和警告 */
-    if (state->errors && state->errors->length > 0) {
+    /* 如果结果不为空，合并状态中的错误和警告 */
+    if (result && state->errors && state->errors->length > 0) {
+        /* 确保结果有错误数组 */
+        if (!result->errors) {
+            result->errors = F_create_dynamic_array(sizeof(char*));
+        }
+        
+        /* 复制错误信息 */
         for (size_t i = 0; i < state->errors->length; i++) {
             char* error = *(char**)F_dynamic_array_get(state->errors, i);
             if (error) {
-                F_dynamic_array_push(result->errors, &error);
+                char* error_copy = strdup(error);
+                if (error_copy) {
+                    F_dynamic_array_push(result->errors, &error_copy);
+                }
             }
         }
     }
     
-    if (state->warnings && state->warnings->length > 0) {
+    if (result && state->warnings && state->warnings->length > 0) {
+        /* 确保结果有警告数组 */
+        if (!result->warnings) {
+            result->warnings = F_create_dynamic_array(sizeof(char*));
+        }
+        
+        /* 复制警告信息 */
         for (size_t i = 0; i < state->warnings->length; i++) {
             char* warning = *(char**)F_dynamic_array_get(state->warnings, i);
             if (warning) {
-                F_dynamic_array_push(result->warnings, &warning);
+                char* warning_copy = strdup(warning);
+                if (warning_copy) {
+                    F_dynamic_array_push(result->warnings, &warning_copy);
+                }
             }
         }
     }

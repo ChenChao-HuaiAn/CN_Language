@@ -17,10 +17,11 @@
 #include <string.h>
 #include <stdbool.h>
 
-/* 包含子模块测试函数 */
-#include "interface/test_codegen_interface.c"
-#include "factory/test_codegen_factory.c"
-#include "implementations/c_backend/test_c_backend.c"
+/* 声明子模块测试函数（不包含.c文件） */
+bool test_codegen_interface_all(void);
+bool test_codegen_factory_all(void);
+bool test_codegen_ast_integration_all(void);
+bool test_c_backend_all(void);
 
 /**
  * @brief 运行所有代码生成测试
@@ -66,6 +67,20 @@ bool test_codegen_all(void)
     modules_total++;
     printf("\n");
     
+    /* 运行集成测试 */
+    printf("模块: 代码生成与AST集成测试\n");
+    printf("---------------------------\n");
+    bool integration_passed = test_codegen_ast_integration_all();
+    if (integration_passed) {
+        printf("✅ 集成测试通过\n");
+        modules_passed++;
+    } else {
+        printf("❌ 集成测试失败\n");
+        all_passed = false;
+    }
+    modules_total++;
+    printf("\n");
+    
     /* 运行C后端测试 */
     printf("模块: C语言后端测试\n");
     printf("-------------------\n");
@@ -101,7 +116,6 @@ bool test_codegen_all(void)
 /**
  * @brief 主函数（用于独立测试）
  */
-#ifdef STANDALONE_TEST
 int main(void)
 {
     printf("CN_Language 代码生成模块测试\n");
@@ -117,4 +131,3 @@ int main(void)
         return EXIT_FAILURE;
     }
 }
-#endif

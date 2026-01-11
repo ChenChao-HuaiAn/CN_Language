@@ -39,7 +39,6 @@
 
 /* 包含被测试的头文件 */
 #include "../../../../src/core/codegen/CN_codegen_interface.h"
-#include "../../../../src/core/codegen/CN_codegen_factory.c"
 
 /**
  * @brief 测试工厂函数创建接口
@@ -279,24 +278,3 @@ bool test_codegen_factory_all(void)
     
     return all_passed;
 }
-
-/**
- * @brief 主函数（用于独立测试）
- */
-#ifdef STANDALONE_TEST
-int main(void)
-{
-    printf("CN_Language 代码生成器工厂测试\n");
-    printf("===============================\n\n");
-    
-    bool success = test_codegen_factory_all();
-    
-    if (success) {
-        printf("\n✅ 所有工厂测试通过！\n");
-        return EXIT_SUCCESS;
-    } else {
-        printf("\n❌ 工厂测试失败！\n");
-        return EXIT_FAILURE;
-    }
-}
-#endif

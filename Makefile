@@ -19,6 +19,10 @@ CFLAGS = -Wall -Wextra -std=c11 -g -D_GNU_SOURCE \
          -I./src/core/semantic/error_recovery \
          -I./src/core/semantic/symbol_attributes \
          -I./src/core/codegen \
+         -I./src/core/codegen/implementations/c_backend \
+         -I./src/core/codegen/optimizers/basic_optimizer \
+         -I./src/core/ir \
+         -I./src/core/ir/implementations/tac \
          -I./src/core/runtime \
          -I./src/core/token \
          -I./src/infrastructure/containers/array \
@@ -130,7 +134,15 @@ CORE_SRCS = src/core/CN_compiler_impl.c \
             src/core/semantic/flow_analysis/CN_flow_analysis.c \
             src/core/semantic/optimization/CN_optimization.c \
             src/core/semantic/error_recovery/CN_error_recovery.c \
-            src/core/semantic/symbol_attributes/CN_symbol_attributes.c
+            src/core/semantic/symbol_attributes/CN_symbol_attributes.c \
+            src/core/ir/CN_ir_interface.c \
+            src/core/ir/CN_ir_builder.c \
+            src/core/ir/implementations/tac/CN_tac_impl.c \
+            src/core/codegen/CN_codegen_factory.c \
+            src/core/codegen/implementations/c_backend/CN_c_backend.c \
+            src/core/codegen/optimizers/basic_optimizer/CN_basic_optimizer.c \
+            src/core/codegen/optimizers/basic_optimizer/CN_constant_folding.c \
+            src/core/codegen/optimizers/basic_optimizer/CN_dead_code_elimination.c
 
 # 基础设施层源文件
 INFRA_SRCS = src/infrastructure/containers/array/CN_dynamic_array.c \
@@ -231,6 +243,108 @@ test-repl: $(TARGET)
 	@echo "启动REPL测试..."
 	@echo "help\nexit" | ./$(TARGET) || true
 
+# 测试IR模块
+test-ir: $(TARGET)
+	@echo "运行IR模块测试..."
+	@cd tests/core/ir && \
+	$(CC) $(CFLAGS) -I../../../src/core -I../../../src/core/ir -I../../../src/core/ir/implementations/tac -I../../../src/core/ast -I../../../src/infrastructure/containers/array -I../../../src/infrastructure/containers/string -I../../../src/infrastructure/containers/queue -I../../../src/infrastructure/memory \
+	test_ir_all.c \
+	interface/test_ir_interface.c \
+	implementations/tac/test_tac_ir.c \
+	../../../src/core/ir/CN_ir_interface.c \
+	../../../src/core/ir/implementations/tac/CN_tac_impl.c \
+	../../../src/core/ir/CN_ir_builder.c \
+	../../../src/core/ast/CN_ast_builder.c \
+	../../../src/core/ast/CN_ast_compat.c \
+	../../../src/core/ast/CN_ast_interface_impl.c \
+	../../../src/core/ast/CN_ast_node.c \
+	../../../src/core/ast/CN_ast_query.c \
+	../../../src/core/ast/CN_ast_serializer.c \
+	../../../src/core/ast/CN_ast_traversal.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_core.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_operations.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_utils.c \
+	../../../src/infrastructure/containers/string/string_core/CN_string_core.c \
+	../../../src/infrastructure/containers/string/string_operations/CN_string_operations.c \
+	../../../src/infrastructure/containers/string/string_search/CN_string_search.c \
+	../../../src/infrastructure/containers/string/string_transform/CN_string_transform.c \
+	../../../src/infrastructure/containers/string/string_utils/CN_string_utils.c \
+	../../../src/infrastructure/containers/queue/CN_queue.c \
+	../../../src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
+	../../../src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
+	../../../src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c \
+	../../../src/infrastructure/memory/utilities/CN_memory_utilities.c \
+	../../../src/infrastructure/memory/allocators/system/CN_system_allocator.c \
+	../../../src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
+	../../../src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
+	../../../src/infrastructure/memory/allocators/region/CN_region_allocator.c \
+	../../../src/infrastructure/memory/allocators/factory/CN_allocator_factory.c \
+	../../../src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
+	../../../src/infrastructure/memory/context/public/CN_memory_context.c \
+	../../../src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
+	../../../src/infrastructure/memory/context/core/management/CN_context_management.c \
+	../../../src/infrastructure/memory/context/core/operations/CN_context_operations.c \
+	../../../src/infrastructure/memory/context/core/statistics/CN_context_statistics.c \
+	../../../src/infrastructure/memory/context/interfaces/CN_context_interface.c \
+	-o test_ir_all.exe && \
+	test_ir_all.exe
+
+# 测试代码生成模块
+test-codegen: $(TARGET)
+	@echo "运行代码生成模块测试..."
+	@cd tests/core/codegen && \
+	$(CC) $(CFLAGS) -I../../../src/core -I../../../src/core/codegen -I../../../src/core/ir -I../../../src/core/ir/implementations/tac -I../../../src/core/ast -I../../../src/infrastructure/containers/array -I../../../src/infrastructure/containers/string -I../../../src/infrastructure/containers/queue -I../../../src/infrastructure/memory \
+	interface/test_codegen_interface.c \
+	factory/test_codegen_factory.c \
+	factory/test_codegen_ast_integration.c \
+	implementations/c_backend/test_c_backend.c \
+	test_codegen_all.c \
+	../../../src/core/codegen/CN_codegen_factory.c \
+	../../../src/core/codegen/implementations/c_backend/CN_c_backend.c \
+	../../../src/core/codegen/optimizers/basic_optimizer/CN_basic_optimizer.c \
+	../../../src/core/codegen/optimizers/basic_optimizer/CN_constant_folding.c \
+	../../../src/core/codegen/optimizers/basic_optimizer/CN_dead_code_elimination.c \
+	../../../src/core/ir/CN_ir_interface.c \
+	../../../src/core/ir/implementations/tac/CN_tac_impl.c \
+	../../../src/core/ast/CN_ast_builder.c \
+	../../../src/core/ast/CN_ast_compat.c \
+	../../../src/core/ast/CN_ast_interface_impl.c \
+	../../../src/core/ast/CN_ast_node.c \
+	../../../src/core/ast/CN_ast_query.c \
+	../../../src/core/ast/CN_ast_serializer.c \
+	../../../src/core/ast/CN_ast_traversal.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_core.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_interface_impl.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_operations.c \
+	../../../src/infrastructure/containers/array/CN_dynamic_array_utils.c \
+	../../../src/infrastructure/containers/string/string_core/CN_string_core.c \
+	../../../src/infrastructure/containers/string/string_operations/CN_string_operations.c \
+	../../../src/infrastructure/containers/string/string_search/CN_string_search.c \
+	../../../src/infrastructure/containers/string/string_transform/CN_string_transform.c \
+	../../../src/infrastructure/containers/string/string_utils/CN_string_utils.c \
+	../../../src/infrastructure/containers/queue/CN_queue.c \
+	../../../src/infrastructure/containers/queue/queue_core/CN_queue_core.c \
+	../../../src/infrastructure/containers/queue/queue_iterator/CN_queue_iterator.c \
+	../../../src/infrastructure/containers/queue/queue_utils/CN_queue_utils.c \
+	../../../src/infrastructure/memory/utilities/CN_memory_utilities.c \
+	../../../src/infrastructure/memory/allocators/system/CN_system_allocator.c \
+	../../../src/infrastructure/memory/allocators/debug/CN_debug_allocator.c \
+	../../../src/infrastructure/memory/allocators/pool/CN_pool_allocator.c \
+	../../../src/infrastructure/memory/allocators/region/CN_region_allocator.c \
+	../../../src/infrastructure/memory/allocators/factory/CN_allocator_factory.c \
+	../../../src/infrastructure/memory/allocators/factory/CN_allocator_config.c \
+	../../../src/infrastructure/memory/context/public/CN_memory_context.c \
+	../../../src/infrastructure/memory/context/core/allocation/CN_context_allocation.c \
+	../../../src/infrastructure/memory/context/core/management/CN_context_management.c \
+	../../../src/infrastructure/memory/context/core/operations/CN_context_operations.c \
+	../../../src/infrastructure/memory/context/core/statistics/CN_context_statistics.c \
+	../../../src/infrastructure/memory/context/interfaces/CN_context_interface.c \
+	-o test_codegen_all.exe && \
+	test_codegen_all.exe
+
 # 显示构建信息
 info:
 	@echo "CN_Language 构建系统"
@@ -253,7 +367,9 @@ help:
 	@echo "  clean     清理构建文件（删除build和bin目录）"
 	@echo "  run       运行程序（显示帮助）"
 	@echo "  test-*    运行各种测试"
+	@echo "  test-ir   运行IR模块测试"
+	@echo "  test-codegen 运行代码生成模块测试"
 	@echo "  info      显示构建信息"
 	@echo "  help      显示此帮助信息"
 
-.PHONY: all clean run test-help test-version test-compile test-run test-debug info help
+.PHONY: all clean run test-help test-version test-compile test-run test-debug test-ir test-codegen info help

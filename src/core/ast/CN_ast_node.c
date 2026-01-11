@@ -158,17 +158,40 @@ void F_destroy_ast_node_internal_data(Stru_AstNodeInternalData_t* internal_data)
 {
     if (!internal_data) return;
     
-    // 释放字符串数据
-    if (internal_data->data.string_value) {
-        cn_free(internal_data->data.string_value);
-    }
+    // 根据节点类型决定是否释放字符串数据
+    Eum_AstNodeType node_type = internal_data->type;
     
-    if (internal_data->data.type_name) {
-        cn_free(internal_data->data.type_name);
-    }
-    
-    if (internal_data->data.identifier) {
-        cn_free(internal_data->data.identifier);
+    // 只有可能包含字符串数据的节点类型才释放字符串数据
+    switch (node_type) {
+        case Eum_AST_STRING_LITERAL:
+        case Eum_AST_IDENTIFIER_EXPR:
+        case Eum_AST_TYPE_NAME:
+        case Eum_AST_VARIABLE_DECL:
+        case Eum_AST_FUNCTION_DECL:
+        case Eum_AST_STRUCT_DECL:
+        case Eum_AST_ENUM_DECL:
+        case Eum_AST_CONSTANT_DECL:
+        case Eum_AST_PARAMETER_DECL:
+        case Eum_AST_IMPORT:
+        case Eum_AST_MODULE:
+            // 这些节点类型可能包含字符串数据
+            if (internal_data->data.string_value) {
+                cn_free(internal_data->data.string_value);
+            }
+            
+            if (internal_data->data.type_name) {
+                cn_free(internal_data->data.type_name);
+            }
+            
+            if (internal_data->data.identifier) {
+                cn_free(internal_data->data.identifier);
+            }
+            break;
+            
+        default:
+            // 对于其他节点类型，不释放字符串数据
+            // 因为它们可能包含非字符串数据（如整数、浮点数等）
+            break;
     }
     
     if (internal_data->location.file_name) {
@@ -322,36 +345,124 @@ static bool set_data_impl(Stru_AstNodeInterface_t* node, const Uni_AstNodeData_t
         F_get_internal_data_from_ast_node_interface(node);
     if (!internal_data) return false;
     
-    // 释放旧的字符串数据
-    if (internal_data->data.string_value) {
-        cn_free(internal_data->data.string_value);
-        internal_data->data.string_value = NULL;
+    // 根据节点类型决定如何处理数据
+    Eum_AstNodeType node_type = internal_data->type;
+    
+    // 对于需要字符串数据的节点类型，释放旧的字符串数据
+    switch (node_type) {
+        case Eum_AST_STRING_LITERAL:
+        case Eum_AST_IDENTIFIER_EXPR:
+        case Eum_AST_TYPE_NAME:
+        case Eum_AST_VARIABLE_DECL:
+        case Eum_AST_FUNCTION_DECL:
+        case Eum_AST_STRUCT_DECL:
+        case Eum_AST_ENUM_DECL:
+        case Eum_AST_CONSTANT_DECL:
+        case Eum_AST_PARAMETER_DECL:
+        case Eum_AST_IMPORT:
+        case Eum_AST_MODULE:
+            // 这些节点类型可能包含字符串数据
+            if (internal_data->data.string_value) {
+                cn_free(internal_data->data.string_value);
+                internal_data->data.string_value = NULL;
+            }
+            
+            if (internal_data->data.type_name) {
+                cn_free(internal_data->data.type_name);
+                internal_data->data.type_name = NULL;
+            }
+            
+            if (internal_data->data.identifier) {
+                cn_free(internal_data->data.identifier);
+                internal_data->data.identifier = NULL;
+            }
+            break;
+            
+        default:
+            // 对于其他节点类型，不清除字符串数据
+            // 因为它们可能包含非字符串数据（如整数、浮点数等）
+            break;
     }
     
-    if (internal_data->data.type_name) {
-        cn_free(internal_data->data.type_name);
-        internal_data->data.type_name = NULL;
-    }
+    // 复制数据 - 注意：不能直接复制整个联合体，因为字符串指针可能包含垃圾值
+    // 我们需要根据节点类型决定复制哪些字段
     
-    if (internal_data->data.identifier) {
-        cn_free(internal_data->data.identifier);
-        internal_data->data.identifier = NULL;
-    }
+    // 首先，清除所有字段
+    memset(&internal_data->data, 0, sizeof(Uni_AstNodeData_t));
     
-    // 复制数据
-    internal_data->data = *data;
-    
-    // 复制字符串数据
-    if (data->string_value) {
-        internal_data->data.string_value = cn_strdup(data->string_value);
-    }
-    
-    if (data->type_name) {
-        internal_data->data.type_name = cn_strdup(data->type_name);
-    }
-    
-    if (data->identifier) {
-        internal_data->data.identifier = cn_strdup(data->identifier);
+    // 根据节点类型复制相应的字段
+    switch (node_type) {
+        case Eum_AST_INT_LITERAL:
+            internal_data->data.int_value = data->int_value;
+            break;
+            
+        case Eum_AST_FLOAT_LITERAL:
+            internal_data->data.float_value = data->float_value;
+            break;
+            
+        case Eum_AST_STRING_LITERAL:
+            if (data->string_value) {
+                internal_data->data.string_value = cn_strdup(data->string_value);
+            }
+            break;
+            
+        case Eum_AST_BOOL_LITERAL:
+            internal_data->data.bool_value = data->bool_value;
+            break;
+            
+        case Eum_AST_IDENTIFIER_EXPR:
+            if (data->identifier) {
+                internal_data->data.identifier = cn_strdup(data->identifier);
+            }
+            break;
+            
+        case Eum_AST_TYPE_NAME:
+            if (data->type_name) {
+                internal_data->data.type_name = cn_strdup(data->type_name);
+            }
+            break;
+            
+        case Eum_AST_VARIABLE_DECL:
+        case Eum_AST_FUNCTION_DECL:
+        case Eum_AST_STRUCT_DECL:
+        case Eum_AST_ENUM_DECL:
+        case Eum_AST_CONSTANT_DECL:
+        case Eum_AST_PARAMETER_DECL:
+            // 这些节点可能包含标识符和类型名
+            if (data->identifier) {
+                internal_data->data.identifier = cn_strdup(data->identifier);
+            }
+            if (data->type_name) {
+                internal_data->data.type_name = cn_strdup(data->type_name);
+            }
+            break;
+            
+        case Eum_AST_BINARY_EXPR:
+        case Eum_AST_UNARY_EXPR:
+        case Eum_AST_ASSIGN_EXPR:
+        case Eum_AST_COMPOUND_ASSIGN_EXPR:
+            // 这些节点包含运算符类型
+            internal_data->data.operator_type = data->operator_type;
+            break;
+            
+        case Eum_AST_ARRAY_TYPE:
+            internal_data->data.array_size = data->array_size;
+            break;
+            
+        case Eum_AST_IMPORT:
+        case Eum_AST_MODULE:
+            // 这些节点可能包含字符串值
+            if (data->string_value) {
+                internal_data->data.string_value = cn_strdup(data->string_value);
+            }
+            break;
+            
+        default:
+            // 对于其他节点类型，复制自定义数据（如果有）
+            if (data->custom_data) {
+                internal_data->data.custom_data = data->custom_data;
+            }
+            break;
     }
     
     return true;
