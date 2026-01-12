@@ -89,6 +89,14 @@ INCLUDES = \
 	-I$(CORE_DIR)/ir \
 	-I$(CORE_DIR)/ir/implementations/tac \
 	-I$(CORE_DIR)/runtime \
+	-I$(CORE_DIR)/runtime/debug \
+	-I$(CORE_DIR)/runtime/factory \
+	-I$(CORE_DIR)/runtime/vm \
+	-I$(CORE_DIR)/runtime/memory \
+	-I$(CORE_DIR)/runtime/execution \
+	-I$(CORE_DIR)/runtime/execution/bytecode_loader \
+	-I$(CORE_DIR)/runtime/execution/bytecode_interpreter_adapter \
+	-I$(CORE_DIR)/runtime/execution/bytecode_executor \
 	-I$(CORE_DIR)/token \
 	-I$(INFRA_DIR)/containers/array \
 	-I$(INFRA_DIR)/containers/string \
@@ -255,7 +263,15 @@ CORE_SRCS = \
 	$(CORE_DIR)/token/lifecycle/CN_token_lifecycle.c \
 	$(CORE_DIR)/token/query/CN_token_query.c \
 	$(CORE_DIR)/token/tools/CN_token_tools.c \
-	$(CORE_DIR)/token/values/CN_token_values.c
+	$(CORE_DIR)/token/values/CN_token_values.c \
+	$(CORE_DIR)/runtime/debug/CN_debug_support_interface.c \
+	$(CORE_DIR)/runtime/factory/CN_runtime_factory.c \
+	$(CORE_DIR)/runtime/vm/CN_virtual_machine_interface.c \
+	$(CORE_DIR)/runtime/memory/CN_runtime_memory_interface.c \
+	$(CORE_DIR)/runtime/execution/CN_execution_engine_interface.c \
+	$(CORE_DIR)/runtime/execution/bytecode_loader/CN_bytecode_loader.c \
+	$(CORE_DIR)/runtime/execution/bytecode_interpreter_adapter/CN_bytecode_interpreter_adapter.c \
+	$(CORE_DIR)/runtime/execution/bytecode_executor/CN_bytecode_executor.c
 
 # 优化器源文件（基础优化器）
 OPTIMIZER_SRCS = \

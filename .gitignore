@@ -70,13 +70,8 @@
 !/Makefile
 # 取消忽略"更新文档.md"文件本身
 !/更新文档.md
-# 取消忽略"compile_codegen_test.sh"文件本身
-!/compile_codegen_test.sh
-# 取消忽略"compile_semantic_test.sh"文件本身
-!/compile_semantic_test.sh
-# 取消忽略"compile_runtime_test.sh"文件本身
-!/compile_runtime_test.sh
-# 取消忽略"test_application.sh"文件本身
-!/test_application.sh
 
+
+# 取消忽略"test_bytecode_simple.c"文件本身
+!/test_bytecode_simple.c
 #############################################################################################################
