@@ -125,7 +125,10 @@ INFRA_SRCS = \
 	$(INFRA_DIR)/memory/utilities/statistics/CN_memory_statistics.c \
 	$(INFRA_DIR)/memory/allocators/system/CN_system_allocator.c \
 	$(INFRA_DIR)/memory/allocators/debug/CN_debug_allocator.c \
-	$(INFRA_DIR)/memory/allocators/pool/CN_pool_allocator.c \
+	$(INFRA_DIR)/memory/allocators/pool/CN_pool_allocator_main.c \
+	$(INFRA_DIR)/memory/allocators/pool/core/CN_pool_core.c \
+	$(INFRA_DIR)/memory/allocators/pool/core/CN_pool_operations.c \
+	$(INFRA_DIR)/memory/allocators/pool/utils/CN_pool_utils.c \
 	$(INFRA_DIR)/memory/allocators/region/CN_region_allocator.c \
 	$(INFRA_DIR)/memory/allocators/factory/CN_allocator_factory.c \
 	$(INFRA_DIR)/memory/allocators/factory/CN_allocator_config.c \

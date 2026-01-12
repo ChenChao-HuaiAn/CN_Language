@@ -32,11 +32,12 @@ typedef struct Stru_PoolAllocatorData_t Stru_PoolAllocatorData_t;
  * 
  * @param object_size 每个对象的大小（字节）
  * @param pool_size 池中对象的数量
+ * @param alignment 内存对齐要求（字节），0表示使用默认对齐
  * @param parent_allocator 父分配器（用于分配池内存）
  * @return Stru_MemoryAllocatorInterface_t* 对象池分配器接口指针
  */
 Stru_MemoryAllocatorInterface_t* F_create_pool_allocator(
-    size_t object_size, size_t pool_size,
+    size_t object_size, size_t pool_size, size_t alignment,
     Stru_MemoryAllocatorInterface_t* parent_allocator);
 
 /**

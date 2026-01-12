@@ -2,7 +2,25 @@
 
 ## 概述
 
-对象池分配器是一种高效的内存分配策略，专门用于分配固定大小的对象。通过预分配内存块并重复使用，可以显著减少内存碎片和提高分配性能。
+对象池分配器是一种高效的内存分配策略，专门用于分配固定大小的对象。通过预分配内存块并重复使用，可以显著减少内存碎片和提高分配性能。本模块采用模块化设计，遵循单一职责原则，每个文件不超过500行，每个函数不超过50行。
+
+## 模块化结构
+
+对象池分配器被分解为多个子模块，以提高可维护性和可读性：
+
+```
+src/infrastructure/memory/allocators/pool/
+├── CN_pool_allocator.h              # 主接口头文件
+├── CN_pool_allocator_main.c         # 主接口实现
+├── README.md                        # 模块文档
+├── core/                           # 核心实现
+│   ├── CN_pool_core.h              # 核心数据结构
+│   ├── CN_pool_core.c              # 核心功能实现
+│   └── CN_pool_operations.c        # 分配器操作函数
+└── utils/                          # 工具函数
+    ├── CN_pool_utils.h             # 工具函数接口
+    └── CN_pool_utils.c             # 工具函数实现
+```
 
 ## 功能特性
 
@@ -10,8 +28,9 @@
 - **高效重用**: 释放的对象可以立即被重用
 - **零内存碎片**: 避免内存碎片问题
 - **快速分配/释放**: O(1)时间复杂度的分配和释放
-- **线程安全**: 支持多线程环境（可选）
+- **内存对齐支持**: 支持自定义内存对齐要求
 - **统计信息**: 详细的池使用统计
+- **池扩展**: 动态扩展池容量
 
 ## 接口设计
 
@@ -25,11 +44,12 @@
  * 
  * @param object_size 每个对象的大小（字节）
  * @param pool_size 池中对象的数量
+ * @param alignment 内存对齐要求（字节），0表示使用默认对齐
  * @param parent_allocator 父分配器（用于分配池内存）
  * @return Stru_MemoryAllocatorInterface_t* 对象池分配器接口指针
  */
 Stru_MemoryAllocatorInterface_t* F_create_pool_allocator(
-    size_t object_size, size_t pool_size,
+    size_t object_size, size_t pool_size, size_t alignment,
     Stru_MemoryAllocatorInterface_t* parent_allocator);
 
 /**
