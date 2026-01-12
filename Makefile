@@ -48,6 +48,7 @@ INCLUDES = \
 	-I$(CORE_DIR)/semantic/error_recovery \
 	-I$(CORE_DIR)/semantic/symbol_attributes \
 	-I$(CORE_DIR)/codegen \
+	-I$(CORE_DIR)/codegen/debug_info \
 	-I$(CORE_DIR)/codegen/implementations/c_backend \
 	-I$(CORE_DIR)/codegen/implementations/llvm_backend \
 	-I$(CORE_DIR)/codegen/implementations/x86_backend \
@@ -121,6 +122,7 @@ CORE_SRCS = \
 	$(CORE_DIR)/ast/CN_ast_serializer.c \
 	$(CORE_DIR)/ast/CN_ast_traversal.c \
 	$(CORE_DIR)/codegen/CN_codegen_factory.c \
+	$(CORE_DIR)/codegen/debug_info/CN_debug_info_generator.c \
 	$(CORE_DIR)/codegen/implementations/c_backend/CN_c_backend.c \
 	$(CORE_DIR)/codegen/implementations/llvm_backend/CN_llvm_backend.c \
 	$(CORE_DIR)/codegen/implementations/x86_backend/CN_x86_backend.c \
@@ -254,16 +256,6 @@ $(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/%.o: $(CORE_DIR)/codegen/optim
 # 字节码后端编译规则
 $(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/%.o: $(CORE_DIR)/codegen/implementations/bytecode_backend/%.c
 	@echo Compiling bytecode backend: $<
-	@$(call MKDIR,$(dir $@))
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/backend/%.o: $(CORE_DIR)/codegen/implementations/bytecode_backend/backend/%.c
-	@echo Compiling bytecode backend (backend): $<
-	@$(call MKDIR,$(dir $@))
-	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-
-$(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/%.o: $(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/%.c
-	@echo Compiling bytecode backend (interpreter): $<
 	@$(call MKDIR,$(dir $@))
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 

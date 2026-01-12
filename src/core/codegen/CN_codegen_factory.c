@@ -19,6 +19,7 @@
 #include "implementations/c_backend/CN_c_backend.h"
 #include "implementations/llvm_backend/CN_llvm_backend.h"
 #include "implementations/x86_backend/CN_x86_backend.h"
+#include "debug_info/CN_debug_info_interface.h"
 #include "../../infrastructure/memory/CN_memory_interface.h"
 #include "../../infrastructure/containers/string/CN_string.h"
 #include <string.h>
@@ -33,6 +34,8 @@ typedef struct {
     Stru_DynamicArray_t* optimizer_plugins;  ///< 优化器插件数组
     bool initialized;                        ///< 是否已初始化
     void* backend_state;                     ///< 后端特定状态
+    Stru_DebugInfoGeneratorInterface_t* debug_info_generator; ///< 调试信息生成器
+    Stru_DebugInfoConfig_t debug_info_config; ///< 调试信息配置
 } CodeGeneratorState;
 
 /* 内部函数声明 */
@@ -96,6 +99,8 @@ Stru_CodeGeneratorInterface_t* F_create_codegen_interface(void)
     state->optimizer_plugins = NULL; // 动态数组将在需要时创建
     state->initialized = false;
     state->backend_state = NULL;
+    state->debug_info_generator = NULL;
+    state->debug_info_config = F_create_default_debug_info_config();
     
     /* 设置接口函数指针 */
     interface->initialize = initialize_codegen;
@@ -251,6 +256,34 @@ static bool initialize_codegen(Stru_CodeGeneratorInterface_t* interface, const S
     /* 保存选项 */
     state->options = *options;
     
+    /* 如果启用了调试信息，创建调试信息生成器 */
+    if (options->debug_info) {
+        /* 创建调试信息生成器 */
+        state->debug_info_generator = F_create_debug_info_generator_interface(Eum_DEBUG_INFO_SOURCE_MAP);
+        if (!state->debug_info_generator) {
+            add_error(state, "无法创建调试信息生成器");
+            return false;
+        }
+        
+        /* 配置调试信息生成器 */
+        state->debug_info_config.format = Eum_DEBUG_INFO_SOURCE_MAP;
+        state->debug_info_config.level = Eum_DEBUG_LEVEL_BASIC;
+        state->debug_info_config.include_variable_info = true;
+        state->debug_info_config.include_type_info = false;
+        state->debug_info_config.include_source_code = false;
+        state->debug_info_config.compress_debug_info = false;
+        state->debug_info_config.source_root = ".";
+        state->debug_info_config.output_path = NULL;
+        
+        /* 初始化调试信息生成器 */
+        if (!state->debug_info_generator->initialize(state->debug_info_generator, &state->debug_info_config)) {
+            add_error(state, "无法初始化调试信息生成器");
+            state->debug_info_generator->destroy(state->debug_info_generator);
+            state->debug_info_generator = NULL;
+            return false;
+        }
+    }
+    
     /* 根据目标类型初始化后端 */
     switch (options->target_type) {
         case Eum_TARGET_C:
@@ -383,6 +416,29 @@ static Stru_CodeGenResult_t* generate_code(Stru_CodeGeneratorInterface_t* interf
                 add_error(state, "不支持的目标代码类型");
             }
             break;
+    }
+    
+    /* 如果启用了调试信息并且代码生成成功，生成调试信息 */
+    if (state->options.debug_info && state->debug_info_generator && result && result->success) {
+        Stru_DebugInfoResult_t* debug_result = state->debug_info_generator->generate_from_ast(
+            state->debug_info_generator, ast, 0 /* 代码起始地址 */);
+        
+        if (debug_result && debug_result->success) {
+            /* 将调试信息附加到代码生成结果中 */
+            /* TODO: 实现调试信息与代码的合并 */
+            add_warning(state, "调试信息已生成，但尚未与代码合并");
+            
+            /* 记录调试信息统计 */
+            result->instruction_count = debug_result->symbol_count;
+            result->memory_usage = debug_result->debug_data_size;
+        } else {
+            add_warning(state, "调试信息生成失败");
+        }
+        
+        /* 销毁调试信息结果 */
+        if (debug_result) {
+            F_destroy_debug_info_result(debug_result);
+        }
     }
     
     /* 如果结果不为空，合并状态中的错误和警告 */
@@ -707,6 +763,12 @@ static void reset(Stru_CodeGeneratorInterface_t* interface)
         free(state->backend_state);
         state->backend_state = NULL;
     }
+    
+    /* 销毁调试信息生成器 */
+    if (state->debug_info_generator) {
+        state->debug_info_generator->destroy(state->debug_info_generator);
+        state->debug_info_generator = NULL;
+    }
 }
 
 /**
@@ -741,6 +803,11 @@ static void destroy(Stru_CodeGeneratorInterface_t* interface)
     if (state->optimizer_plugins) {
         // TODO: 实现动态数组销毁
         free(state->optimizer_plugins);
+    }
+    
+    /* 销毁调试信息生成器 */
+    if (state->debug_info_generator) {
+        state->debug_info_generator->destroy(state->debug_info_generator);
     }
     
     /* 销毁状态和接口 */
