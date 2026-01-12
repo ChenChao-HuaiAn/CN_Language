@@ -21,6 +21,8 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/sysinfo.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <dirent.h>
 #include <fcntl.h>
 #include <time.h>

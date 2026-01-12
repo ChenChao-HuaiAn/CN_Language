@@ -97,6 +97,16 @@ char* cn_strstr(const char* haystack, const char* needle);
  */
 char* cn_strncpy(char* dest, const char* src, size_t n);
 
+/**
+ * @brief 复制字符串（动态分配内存）
+ * 
+ * 复制字符串到新分配的内存中。
+ * 
+ * @param str 要复制的字符串
+ * @return char* 新分配的字符串副本，失败返回NULL
+ */
+char* cn_strdup(const char* str);
+
 // ============================================================================
 // 内存操作函数（与内存管理模块互补）
 // ============================================================================

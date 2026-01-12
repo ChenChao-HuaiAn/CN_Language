@@ -12,6 +12,7 @@
  */
 
 #include "CN_utils_interface.h"
+#include "../memory/utilities/CN_memory_utilities.h"
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -155,6 +156,32 @@ char* cn_strncpy(char* dest, const char* src, size_t n)
     }
     
     return strncpy(dest, src, n);
+}
+
+/**
+ * @brief 复制字符串（动态分配内存）
+ * 
+ * 复制字符串到新分配的内存中。
+ * 
+ * @param str 要复制的字符串
+ * @return char* 新分配的字符串副本，失败返回NULL
+ */
+char* cn_strdup(const char* str)
+{
+    if (str == NULL)
+    {
+        return NULL;
+    }
+    
+    size_t len = strlen(str) + 1;  // 包括终止符
+    char* new_str = (char*)cn_malloc(len);
+    if (new_str == NULL)
+    {
+        return NULL;
+    }
+    
+    memcpy(new_str, str, len);
+    return new_str;
 }
 
 // ============================================================================

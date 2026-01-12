@@ -59,21 +59,6 @@ static void destroy_impl(Stru_AstTraversalInterface_t* traversal);
 // ============================================================================
 
 /**
- * @brief 复制字符串（类似strdup）
- */
-static char* cn_strdup(const char* str)
-{
-    if (!str) return NULL;
-    
-    size_t len = strlen(str) + 1;
-    char* new_str = (char*)cn_malloc(len);
-    if (!new_str) return NULL;
-    
-    memcpy(new_str, str, len);
-    return new_str;
-}
-
-/**
  * @brief 扩展匹配节点数组
  */
 static bool expand_matches_array(Stru_AstTraversalData_t* data)

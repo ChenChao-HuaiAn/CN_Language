@@ -24,25 +24,6 @@
 // 内部辅助函数
 // ============================================
 
-/**
- * @brief 复制字符串（类似strdup）
- */
-static char* cn_strdup(const char* str)
-{
-    if (str == NULL) {
-        return NULL;
-    }
-    
-    size_t len = strlen(str) + 1;
-    char* copy = cn_malloc(len);
-    if (copy == NULL) {
-        return NULL;
-    }
-    
-    memcpy(copy, str, len);
-    return copy;
-}
-
 // ============================================
 // 内部数据结构
 // ============================================

@@ -136,20 +136,8 @@ static void destroy_impl(Stru_AstBuilderInterface_t* builder);
 // 辅助函数
 // ============================================================================
 
-/**
- * @brief 复制字符串（类似strdup）
- */
-static char* cn_strdup(const char* str)
-{
-    if (!str) return NULL;
-    
-    size_t len = strlen(str) + 1;
-    char* new_str = (char*)cn_malloc(len);
-    if (!new_str) return NULL;
-    
-    memcpy(new_str, str, len);
-    return new_str;
-}
+// 注意：cn_strdup函数现在在基础设施层的utils模块中定义
+// 通过包含CN_utils_interface.h头文件使用
 
 // ============================================================================
 // 工厂函数实现

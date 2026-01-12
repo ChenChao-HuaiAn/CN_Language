@@ -13,9 +13,9 @@
 #ifndef CN_TARGET_CODEGEN_INTERFACE_H
 #define CN_TARGET_CODEGEN_INTERFACE_H
 
-#include "../../infrastructure/containers/array/CN_dynamic_array.h"
-#include "../ast/CN_ast.h"
-#include "CN_codegen_interface.h"
+#include "../../../infrastructure/containers/array/CN_dynamic_array.h"
+#include "../../ast/CN_ast.h"
+#include "../CN_codegen_interface.h"
 
 /**
  * @brief 目标平台枚举

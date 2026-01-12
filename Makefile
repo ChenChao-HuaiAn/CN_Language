@@ -1,7 +1,8 @@
-# CN_Language 项目构建文件 - 模块化版本
-# 版本: 3.0.0
+# CN_Language 项目构建文件 - 修复版本
+# 版本: 3.1.0
 # 作者: CN_Language架构委员会
-# 日期: 2026-01-11
+# 日期: 2026-01-12
+# 修复: 更新源文件列表以匹配实际存在的文件
 
 # ============================================================================
 # 编译器设置
@@ -10,6 +11,29 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -g -D_GNU_SOURCE
 LDFLAGS = -lm
+
+# ============================================================================
+# 平台检测
+# ============================================================================
+
+# 检测操作系统
+UNAME_S := $(shell uname -s)
+
+# 根据操作系统选择平台文件
+ifeq ($(UNAME_S),Linux)
+    PLATFORM_SRCS = $(INFRA_DIR)/platform/CN_platform_linux.c
+    PLATFORM_NAME = Linux
+else ifeq ($(UNAME_S),Darwin)
+    PLATFORM_SRCS = $(INFRA_DIR)/platform/CN_platform_macos.c
+    PLATFORM_NAME = macOS
+else ifeq ($(OS),Windows_NT)
+    PLATFORM_SRCS = $(INFRA_DIR)/platform/CN_platform_windows.c
+    PLATFORM_NAME = Windows
+else
+    # 默认使用stub平台
+    PLATFORM_SRCS = $(INFRA_DIR)/platform/CN_platform_stub.c
+    PLATFORM_NAME = Unknown
+endif
 
 # ============================================================================
 # 目录设置
@@ -57,6 +81,11 @@ INCLUDES = \
 	-I$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter \
 	-I$(CORE_DIR)/codegen/optimizers/basic_optimizer \
 	-I$(CORE_DIR)/codegen/optimizers/loop_optimizer \
+	-I$(CORE_DIR)/codegen/target_codegen \
+	-I$(CORE_DIR)/codegen/target_codegen/config \
+	-I$(CORE_DIR)/codegen/target_codegen/factory \
+	-I$(CORE_DIR)/codegen/target_codegen/result \
+	-I$(CORE_DIR)/codegen/target_codegen/utils \
 	-I$(CORE_DIR)/ir \
 	-I$(CORE_DIR)/ir/implementations/tac \
 	-I$(CORE_DIR)/runtime \
@@ -72,16 +101,20 @@ INCLUDES = \
 	-I$(INFRA_DIR)/utils
 
 # ============================================================================
-# 源文件定义
+# 源文件定义 - 更新为实际存在的文件
 # ============================================================================
 
 # 主程序源文件
 MAIN_SRC = $(APP_DIR)/CN_main.c
 MAIN_OBJ = $(OBJ_APP_DIR)/CN_main.o
 
-# 基础设施层源文件
+# 基础设施层源文件 - 更新列表（排除平台特定文件，使用平台检测）
 INFRA_SRCS = \
 	$(INFRA_DIR)/memory/utilities/CN_memory_utilities.c \
+	$(INFRA_DIR)/memory/utilities/alignment/CN_memory_alignment.c \
+	$(INFRA_DIR)/memory/utilities/operations/CN_memory_operations.c \
+	$(INFRA_DIR)/memory/utilities/safety/CN_memory_safety.c \
+	$(INFRA_DIR)/memory/utilities/statistics/CN_memory_statistics.c \
 	$(INFRA_DIR)/memory/allocators/system/CN_system_allocator.c \
 	$(INFRA_DIR)/memory/allocators/debug/CN_debug_allocator.c \
 	$(INFRA_DIR)/memory/allocators/pool/CN_pool_allocator.c \
@@ -94,6 +127,18 @@ INFRA_SRCS = \
 	$(INFRA_DIR)/memory/context/core/operations/CN_context_operations.c \
 	$(INFRA_DIR)/memory/context/core/statistics/CN_context_statistics.c \
 	$(INFRA_DIR)/memory/context/interfaces/CN_context_interface.c \
+	$(INFRA_DIR)/memory/debug/CN_memory_debug_new.c \
+	$(INFRA_DIR)/memory/debug/analysis/CN_memory_analysis.c \
+	$(INFRA_DIR)/memory/debug/error_detection/CN_memory_error_detection.c \
+	$(INFRA_DIR)/memory/debug/implementation/CN_memory_debug_core.c \
+	$(INFRA_DIR)/memory/debug/implementation/CN_memory_debug_private.c \
+	$(INFRA_DIR)/memory/debug/leak_detection/CN_memory_leak_detection.c \
+	$(INFRA_DIR)/memory/debug/tools/CN_memory_debug_tools.c \
+	$(INFRA_DIR)/memory/debug/tools/core/CN_memory_debug_tools_core.c \
+	$(INFRA_DIR)/memory/debug/tools/dump/CN_memory_debug_tools_dump.c \
+	$(INFRA_DIR)/memory/debug/tools/stacktrace/CN_memory_debug_tools_stacktrace.c \
+	$(INFRA_DIR)/memory/debug/tools/utils/CN_memory_debug_tools_utils.c \
+	$(INFRA_DIR)/memory/debug/tools/validation/CN_memory_debug_tools_validation.c \
 	$(INFRA_DIR)/containers/array/CN_dynamic_array.c \
 	$(INFRA_DIR)/containers/array/CN_dynamic_array_core.c \
 	$(INFRA_DIR)/containers/array/CN_dynamic_array_interface_impl.c \
@@ -108,12 +153,26 @@ INFRA_SRCS = \
 	$(INFRA_DIR)/containers/hash/CN_hash_table_entry.c \
 	$(INFRA_DIR)/containers/hash/CN_hash_table_impl.c \
 	$(INFRA_DIR)/containers/hash/CN_hash_table_interface_impl.c \
-	$(INFRA_DIR)/containers/hash/CN_hash_table_utils.c
+	$(INFRA_DIR)/containers/hash/CN_hash_table_utils.c \
+	$(INFRA_DIR)/containers/list/CN_linked_list.c \
+	$(INFRA_DIR)/containers/list/CN_linked_list_iterator.c \
+	$(INFRA_DIR)/containers/list/CN_linked_list_sort.c \
+	$(INFRA_DIR)/containers/queue/CN_queue.c \
+	$(INFRA_DIR)/containers/queue/queue_core/CN_queue_core.c \
+	$(INFRA_DIR)/containers/queue/queue_iterator/CN_queue_iterator.c \
+	$(INFRA_DIR)/containers/queue/queue_utils/CN_queue_utils.c \
+	$(INFRA_DIR)/containers/stack/stack_core/CN_stack_core.c \
+	$(INFRA_DIR)/containers/stack/stack_iterator/CN_stack_iterator.c \
+	$(INFRA_DIR)/containers/stack/stack_utils/CN_stack_utils.c \
+	$(INFRA_DIR)/utils/CN_utils_math_error.c \
+	$(INFRA_DIR)/utils/CN_utils_string.c
 
-# 核心层源文件 - 简化版本，只包含实际存在的文件
+# 添加平台特定源文件
+INFRA_SRCS += $(PLATFORM_SRCS)
+
+# 核心层源文件 - 更新为实际存在的文件
 CORE_SRCS = \
 	$(CORE_DIR)/CN_compiler_impl.c \
-	$(CORE_DIR)/CN_compiler_simple.c \
 	$(CORE_DIR)/ast/CN_ast_builder.c \
 	$(CORE_DIR)/ast/CN_ast_compat.c \
 	$(CORE_DIR)/ast/CN_ast_interface_impl.c \
@@ -122,10 +181,17 @@ CORE_SRCS = \
 	$(CORE_DIR)/ast/CN_ast_serializer.c \
 	$(CORE_DIR)/ast/CN_ast_traversal.c \
 	$(CORE_DIR)/codegen/CN_codegen_factory.c \
+	$(CORE_DIR)/codegen/CN_target_codegen_interface.c \
 	$(CORE_DIR)/codegen/debug_info/CN_debug_info_generator.c \
 	$(CORE_DIR)/codegen/implementations/c_backend/CN_c_backend.c \
 	$(CORE_DIR)/codegen/implementations/llvm_backend/CN_llvm_backend.c \
 	$(CORE_DIR)/codegen/implementations/x86_backend/CN_x86_backend.c \
+	$(CORE_DIR)/ir/CN_ir_builder.c \
+	$(CORE_DIR)/ir/CN_ir_interface.c \
+	$(CORE_DIR)/ir/implementations/cfg/CN_cfg_basic_block.c \
+	$(CORE_DIR)/ir/implementations/cfg/CN_cfg_builder.c \
+	$(CORE_DIR)/ir/implementations/cfg/CN_cfg_control_flow_graph.c \
+	$(CORE_DIR)/ir/implementations/tac/CN_tac_impl.c \
 	$(CORE_DIR)/lexer/CN_lexer_impl.c \
 	$(CORE_DIR)/lexer/CN_lexer_interface.c \
 	$(CORE_DIR)/lexer/errors/CN_lexer_errors.c \
@@ -138,7 +204,58 @@ CORE_SRCS = \
 	$(CORE_DIR)/lexer/utils/CN_lexer_utf8.c \
 	$(CORE_DIR)/lexer/utils/CN_lexer_utils.c \
 	$(CORE_DIR)/parser/CN_parser_interface.c \
-	$(CORE_DIR)/parser/CN_syntax_error.c
+	$(CORE_DIR)/parser/CN_syntax_error.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_access_modifiers.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_abstract_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_class_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_constant_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_declarations_main.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_enum_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_final_class_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_function_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_generic_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_interface_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_member_lists.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_module_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_parameter_lists.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_static_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_struct_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_template_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_type_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_type_expressions.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_variable_declarations.c \
+	$(CORE_DIR)/parser/declaration_parsers/CN_parser_virtual_declarations.c \
+	$(CORE_DIR)/parser/error_handling/CN_parser_errors.c \
+	$(CORE_DIR)/parser/error_handling/CN_parser_phrase_recovery.c \
+	$(CORE_DIR)/parser/expression_parsers/CN_parser_expressions_main.c \
+	$(CORE_DIR)/parser/expression_parsers/CN_parser_function_calls.c \
+	$(CORE_DIR)/parser/expression_parsers/CN_parser_object_expressions.c \
+	$(CORE_DIR)/parser/expression_parsers/CN_parser_postfix_expressions.c \
+	$(CORE_DIR)/parser/expression_parsers/CN_parser_primary_expressions.c \
+	$(CORE_DIR)/parser/expression_parsers/CN_parser_unary_expressions.c \
+	$(CORE_DIR)/parser/interface/CN_parser_interface_impl.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_async_statements.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_block_statements.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_conditional_statements.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_control_statements.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_exception_statements.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_label_statements.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_loop_statements.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_statements_main.c \
+	$(CORE_DIR)/parser/statement_parsers/CN_parser_switch_statements.c \
+	$(CORE_DIR)/parser/syntax_sugar/CN_parser_syntax_sugar.c \
+	$(CORE_DIR)/parser/utils/CN_parser_ast_utils.c \
+	$(CORE_DIR)/parser/utils/CN_parser_general_utils.c \
+	$(CORE_DIR)/parser/utils/CN_parser_token_utils.c \
+	$(CORE_DIR)/parser/utils/CN_parser_type_utils.c \
+	$(CORE_DIR)/parser/utils/CN_parser_utils.c \
+	$(CORE_DIR)/token/CN_token.c \
+	$(CORE_DIR)/token/interface/CN_token_interface_impl.c \
+	$(CORE_DIR)/token/keywords/CN_token_keywords.c \
+	$(CORE_DIR)/token/lifecycle/CN_token_lifecycle.c \
+	$(CORE_DIR)/token/query/CN_token_query.c \
+	$(CORE_DIR)/token/tools/CN_token_tools.c \
+	$(CORE_DIR)/token/values/CN_token_values.c
 
 # 优化器源文件（基础优化器）
 OPTIMIZER_SRCS = \
@@ -152,7 +269,6 @@ OPTIMIZER_SRCS = \
 # 循环优化器源文件
 LOOP_OPTIMIZER_SRCS = \
 	$(CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer_main.c \
-	$(CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer.c \
 	$(CORE_DIR)/codegen/optimizers/loop_optimizer/analysis/CN_loop_analysis.c \
 	$(CORE_DIR)/codegen/optimizers/loop_optimizer/algorithms/CN_loop_algorithms.c \
 	$(CORE_DIR)/codegen/optimizers/loop_optimizer/config/CN_loop_config.c \
@@ -171,11 +287,14 @@ BYTECODE_BACKEND_SRCS = \
 	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_engine.c \
 	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_instructions.c \
 	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_stack.c \
-	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_debug.c
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_debug.c \
+	$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/CN_interpreter_execution.c
 
 # 应用层源文件
 APP_SRCS = \
 	$(APP_DIR)/cli/CN_cli.c \
+	$(APP_DIR)/cli/CN_command_executor.c \
+	$(APP_DIR)/cli/CN_command_parser.c \
 	$(APP_DIR)/repl/CN_repl_impl.c
 
 # 所有源文件
@@ -282,11 +401,13 @@ test-optimizers: $(TARGET)
 # 显示构建信息
 info:
 	@echo "CN_Language 项目构建系统"
-	@echo "版本: 3.0.0"
+	@echo "版本: 3.2.0"
 	@echo "编译器: $(CC)"
 	@echo "编译标志: $(CFLAGS)"
 	@echo "链接标志: $(LDFLAGS)"
 	@echo "目标文件: $(TARGET)"
+	@echo "检测到的平台: $(PLATFORM_NAME)"
+	@echo "平台源文件: $(PLATFORM_SRCS)"
 	@echo "源文件数量:"
 	@echo "  主程序: 1"
 	@echo "  基础设施层: $(words $(INFRA_SRCS))"
