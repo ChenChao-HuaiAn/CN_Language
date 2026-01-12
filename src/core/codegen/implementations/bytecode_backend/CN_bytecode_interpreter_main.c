@@ -53,8 +53,8 @@ extern bool F_get_current_stack_frame(const Stru_BytecodeInterpreter_t* interpre
                                       const char** function_name,
                                       uint32_t* line_number,
                                       uint32_t* instruction_offset);
-extern bool F_get_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
-                              void*** frames, size_t* frame_count);
+extern bool F_get_interpreter_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
+                                          void*** frames, size_t* frame_count);
 
 // 从CN_interpreter_engine.c导入
 extern Stru_BytecodeValue_t F_execute_arithmetic_instruction(Stru_BytecodeInterpreter_t* interpreter, 

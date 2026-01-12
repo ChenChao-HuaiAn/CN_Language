@@ -219,8 +219,8 @@ bool F_get_current_stack_frame(const Stru_BytecodeInterpreter_t* interpreter,
 /**
  * @brief 获取栈跟踪
  */
-bool F_get_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
-                       void*** frames, size_t* frame_count)
+bool F_get_interpreter_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
+                                   void*** frames, size_t* frame_count)
 {
     if (!interpreter || !frames || !frame_count) {
         return false;

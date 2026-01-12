@@ -428,11 +428,11 @@ bool F_get_current_stack_frame(const Stru_BytecodeInterpreter_t* interpreter,
 
 **返回值**：获取成功返回true，失败返回false。
 
-#### F_get_stack_trace
+#### F_get_interpreter_stack_trace
 
 ```c
-bool F_get_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
-                       void*** frames, size_t* frame_count);
+bool F_get_interpreter_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
+                                   void*** frames, size_t* frame_count);
 ```
 
 **功能**：获取当前的调用栈跟踪。

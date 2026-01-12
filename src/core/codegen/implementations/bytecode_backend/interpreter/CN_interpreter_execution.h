@@ -38,25 +38,6 @@ bool F_load_bytecode_program(Stru_BytecodeInterpreter_t* interpreter,
  */
 bool F_execute_bytecode_program(Stru_BytecodeInterpreter_t* interpreter);
 
-/**
- * @brief 单步执行字节码程序
- */
-bool F_step_bytecode_program(Stru_BytecodeInterpreter_t* interpreter);
-
-/**
- * @brief 继续执行字节码程序
- */
-bool F_continue_bytecode_program(Stru_BytecodeInterpreter_t* interpreter);
-
-/**
- * @brief 暂停字节码程序执行
- */
-bool F_pause_bytecode_program(Stru_BytecodeInterpreter_t* interpreter);
-
-/**
- * @brief 停止字节码程序执行
- */
-bool F_stop_bytecode_program(Stru_BytecodeInterpreter_t* interpreter);
 
 /**
  * @brief 获取性能分析数据

@@ -381,8 +381,8 @@ bool F_get_current_stack_frame(const Stru_BytecodeInterpreter_t* interpreter,
  * @param frame_count 输出参数，栈帧数量
  * @return 获取成功返回true，失败返回false
  */
-bool F_get_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
-                       void*** frames, size_t* frame_count);
+bool F_get_interpreter_stack_trace(const Stru_BytecodeInterpreter_t* interpreter,
+                                   void*** frames, size_t* frame_count);
 
 /**
  * @brief 获取性能分析数据

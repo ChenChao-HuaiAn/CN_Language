@@ -22,6 +22,9 @@ bool test_codegen_interface_all(void);
 bool test_codegen_factory_all(void);
 bool test_codegen_ast_integration_all(void);
 bool test_c_backend_all(void);
+bool test_basic_optimizer_all(void);
+bool test_bytecode_backend_all(void);
+bool test_bytecode_generator_all(void);
 
 /**
  * @brief 运行所有代码生成测试
@@ -95,6 +98,48 @@ bool test_codegen_all(void)
     modules_total++;
     printf("\n");
     
+    /* 运行基础优化器测试 */
+    printf("模块: 基础优化器测试\n");
+    printf("--------------------\n");
+    bool basic_optimizer_passed = test_basic_optimizer_all();
+    if (basic_optimizer_passed) {
+        printf("✅ 基础优化器测试通过\n");
+        modules_passed++;
+    } else {
+        printf("❌ 基础优化器测试失败\n");
+        all_passed = false;
+    }
+    modules_total++;
+    printf("\n");
+    
+    /* 运行字节码后端测试 */
+    printf("模块: 字节码后端测试\n");
+    printf("--------------------\n");
+    bool bytecode_backend_passed = test_bytecode_backend_all();
+    if (bytecode_backend_passed) {
+        printf("✅ 字节码后端测试通过\n");
+        modules_passed++;
+    } else {
+        printf("❌ 字节码后端测试失败\n");
+        all_passed = false;
+    }
+    modules_total++;
+    printf("\n");
+    
+    /* 运行字节码生成器测试 */
+    printf("模块: 字节码生成器测试\n");
+    printf("----------------------\n");
+    bool bytecode_generator_passed = test_bytecode_generator_all();
+    if (bytecode_generator_passed) {
+        printf("✅ 字节码生成器测试通过\n");
+        modules_passed++;
+    } else {
+        printf("❌ 字节码生成器测试失败\n");
+        all_passed = false;
+    }
+    modules_total++;
+    printf("\n");
+    
     /* 打印统计信息 */
     printf("================================\n");
     printf("测试统计:\n");
@@ -113,21 +158,4 @@ bool test_codegen_all(void)
     return all_passed;
 }
 
-/**
- * @brief 主函数（用于独立测试）
- */
-int main(void)
-{
-    printf("CN_Language 代码生成模块测试\n");
-    printf("=============================\n\n");
-    
-    bool success = test_codegen_all();
-    
-    if (success) {
-        printf("\n✅ 所有测试通过！\n");
-        return EXIT_SUCCESS;
-    } else {
-        printf("\n❌ 测试失败！\n");
-        return EXIT_FAILURE;
-    }
-}
+/* 主函数在test_runner_main.c中定义，这里只提供测试函数 */
