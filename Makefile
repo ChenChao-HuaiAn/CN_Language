@@ -49,6 +49,8 @@ INCLUDES = \
 	-I$(CORE_DIR)/semantic/symbol_attributes \
 	-I$(CORE_DIR)/codegen \
 	-I$(CORE_DIR)/codegen/implementations/c_backend \
+	-I$(CORE_DIR)/codegen/implementations/llvm_backend \
+	-I$(CORE_DIR)/codegen/implementations/x86_backend \
 	-I$(CORE_DIR)/codegen/implementations/bytecode_backend \
 	-I$(CORE_DIR)/codegen/implementations/bytecode_backend/backend \
 	-I$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter \
@@ -120,6 +122,8 @@ CORE_SRCS = \
 	$(CORE_DIR)/ast/CN_ast_traversal.c \
 	$(CORE_DIR)/codegen/CN_codegen_factory.c \
 	$(CORE_DIR)/codegen/implementations/c_backend/CN_c_backend.c \
+	$(CORE_DIR)/codegen/implementations/llvm_backend/CN_llvm_backend.c \
+	$(CORE_DIR)/codegen/implementations/x86_backend/CN_x86_backend.c \
 	$(CORE_DIR)/lexer/CN_lexer_impl.c \
 	$(CORE_DIR)/lexer/CN_lexer_interface.c \
 	$(CORE_DIR)/lexer/errors/CN_lexer_errors.c \

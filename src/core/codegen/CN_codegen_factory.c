@@ -17,6 +17,8 @@
 
 #include "CN_codegen_interface.h"
 #include "implementations/c_backend/CN_c_backend.h"
+#include "implementations/llvm_backend/CN_llvm_backend.h"
+#include "implementations/x86_backend/CN_x86_backend.h"
 #include "../../infrastructure/memory/CN_memory_interface.h"
 #include "../../infrastructure/containers/string/CN_string.h"
 #include <string.h>
@@ -309,23 +311,39 @@ static Stru_CodeGenResult_t* generate_code(Stru_CodeGeneratorInterface_t* interf
             }
             break;
         case Eum_TARGET_LLVM_IR:
-            /* TODO: 调用LLVM后端生成代码 */
-            result = create_codegen_result();
-            if (result) {
-                result->success = false;
-                result->code = strdup("// LLVM IR代码生成器 - 待实现\n");
-                result->code_length = strlen(result->code);
-                add_error(state, "LLVM IR后端尚未实现");
+            /* 调用LLVM后端生成代码 */
+            {
+                Stru_LLVMBackendConfig_t llvm_config = F_create_default_llvm_backend_config();
+                llvm_config.optimization_level = state->options.optimization_level;
+                llvm_config.debug_info = state->options.debug_info;
+                
+                result = F_generate_llvm_ir_from_ast(ast, &llvm_config);
+                if (!result) {
+                    add_error(state, "LLVM IR后端代码生成失败");
+                    result = create_codegen_result();
+                    if (result) {
+                        result->success = false;
+                    }
+                }
             }
             break;
         case Eum_TARGET_X86_64:
-            /* TODO: 调用x86-64后端生成代码 */
-            result = create_codegen_result();
-            if (result) {
-                result->success = false;
-                result->code = strdup("// x86-64汇编代码生成器 - 待实现\n");
-                result->code_length = strlen(result->code);
-                add_error(state, "x86-64汇编后端尚未实现");
+            /* 调用x86-64后端生成代码 */
+            {
+                Stru_X86BackendConfig_t x86_config = F_create_default_x86_backend_config();
+                x86_config.optimization_level = state->options.optimization_level;
+                x86_config.debug_info = state->options.debug_info;
+                x86_config.use_64bit = true;
+                x86_config.architecture = Eum_X86_ARCH_64BIT;
+                
+                result = F_generate_x86_asm_from_ast(ast, &x86_config);
+                if (!result) {
+                    add_error(state, "x86-64汇编后端代码生成失败");
+                    result = create_codegen_result();
+                    if (result) {
+                        result->success = false;
+                    }
+                }
             }
             break;
         case Eum_TARGET_ARM64:
