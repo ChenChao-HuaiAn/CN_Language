@@ -53,6 +53,7 @@ INCLUDES = \
 	-I$(CORE_DIR)/codegen/implementations/bytecode_backend/backend \
 	-I$(CORE_DIR)/codegen/implementations/bytecode_backend/interpreter \
 	-I$(CORE_DIR)/codegen/optimizers/basic_optimizer \
+	-I$(CORE_DIR)/codegen/optimizers/loop_optimizer \
 	-I$(CORE_DIR)/ir \
 	-I$(CORE_DIR)/ir/implementations/tac \
 	-I$(CORE_DIR)/runtime \
@@ -142,6 +143,15 @@ OPTIMIZER_SRCS = \
 	$(CORE_DIR)/codegen/optimizers/basic_optimizer/CN_strength_reduction.c \
 	$(CORE_DIR)/codegen/optimizers/basic_optimizer/CN_peephole_optimization.c
 
+# 循环优化器源文件
+LOOP_OPTIMIZER_SRCS = \
+	$(CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer_main.c \
+	$(CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer.c \
+	$(CORE_DIR)/codegen/optimizers/loop_optimizer/analysis/CN_loop_analysis.c \
+	$(CORE_DIR)/codegen/optimizers/loop_optimizer/algorithms/CN_loop_algorithms.c \
+	$(CORE_DIR)/codegen/optimizers/loop_optimizer/config/CN_loop_config.c \
+	$(CORE_DIR)/codegen/optimizers/loop_optimizer/utils/CN_loop_utils.c
+
 # 字节码后端源文件
 BYTECODE_BACKEND_SRCS = \
 	$(CORE_DIR)/codegen/implementations/bytecode_backend/CN_bytecode_interpreter_main.c \
@@ -163,7 +173,7 @@ APP_SRCS = \
 	$(APP_DIR)/repl/CN_repl_impl.c
 
 # 所有源文件
-ALL_SRCS = $(MAIN_SRC) $(INFRA_SRCS) $(CORE_SRCS) $(OPTIMIZER_SRCS) $(BYTECODE_BACKEND_SRCS) $(APP_SRCS)
+ALL_SRCS = $(MAIN_SRC) $(INFRA_SRCS) $(CORE_SRCS) $(OPTIMIZER_SRCS) $(LOOP_OPTIMIZER_SRCS) $(BYTECODE_BACKEND_SRCS) $(APP_SRCS)
 
 # ============================================================================
 # 对象文件定义
@@ -173,11 +183,12 @@ ALL_SRCS = $(MAIN_SRC) $(INFRA_SRCS) $(CORE_SRCS) $(OPTIMIZER_SRCS) $(BYTECODE_B
 INFRA_OBJS = $(patsubst $(INFRA_DIR)/%.c,$(OBJ_INFRA_DIR)/%.o,$(INFRA_SRCS))
 CORE_OBJS = $(patsubst $(CORE_DIR)/%.c,$(OBJ_CORE_DIR)/%.o,$(CORE_SRCS))
 OPTIMIZER_OBJS = $(patsubst $(CORE_DIR)/codegen/optimizers/basic_optimizer/%.c,$(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/%.o,$(OPTIMIZER_SRCS))
+LOOP_OPTIMIZER_OBJS = $(patsubst $(CORE_DIR)/codegen/optimizers/loop_optimizer/%.c,$(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/%.o,$(LOOP_OPTIMIZER_SRCS))
 BYTECODE_BACKEND_OBJS = $(patsubst $(CORE_DIR)/codegen/implementations/bytecode_backend/%.c,$(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/%.o,$(BYTECODE_BACKEND_SRCS))
 APP_OBJS = $(patsubst $(APP_DIR)/%.c,$(OBJ_APP_DIR)/%.o,$(APP_SRCS))
 
 # 所有对象文件
-ALL_OBJS = $(MAIN_OBJ) $(INFRA_OBJS) $(CORE_OBJS) $(OPTIMIZER_OBJS) $(BYTECODE_BACKEND_OBJS) $(APP_OBJS)
+ALL_OBJS = $(MAIN_OBJ) $(INFRA_OBJS) $(CORE_OBJS) $(OPTIMIZER_OBJS) $(LOOP_OPTIMIZER_OBJS) $(BYTECODE_BACKEND_OBJS) $(APP_OBJS)
 
 # ============================================================================
 # 目标可执行文件
@@ -230,6 +241,12 @@ $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/%.o: $(CORE_DIR)/codegen/opti
 	@$(call MKDIR,$(dir $@))
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
 
+# 循环优化器编译规则
+$(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/%.o: $(CORE_DIR)/codegen/optimizers/loop_optimizer/%.c
+	@echo Compiling loop optimizer: $<
+	@$(call MKDIR,$(dir $@))
+	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
+
 # 字节码后端编译规则
 $(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/%.o: $(CORE_DIR)/codegen/implementations/bytecode_backend/%.c
 	@echo Compiling bytecode backend: $<
@@ -253,8 +270,7 @@ $(OBJ_CORE_DIR)/codegen/implementations/bytecode_backend/interpreter/%.o: $(CORE
 # 清理构建文件
 clean:
 	@echo "清理构建文件..."
-	@if exist $(BUILD_DIR) rmdir /s /q $(BUILD_DIR)
-	@if exist $(BIN_DIR) rmdir /s /q $(BIN_DIR)
+	@rm -rf $(BUILD_DIR) $(BIN_DIR)
 	@echo "清理完成: 已删除$(BUILD_DIR)和$(BIN_DIR)目录"
 
 # 运行程序
@@ -279,7 +295,8 @@ info:
 	@echo "  主程序: 1"
 	@echo "  基础设施层: $(words $(INFRA_SRCS))"
 	@echo "  核心层: $(words $(CORE_SRCS))"
-	@echo "  优化器: $(words $(OPTIMIZER_SRCS))"
+	@echo "  基础优化器: $(words $(OPTIMIZER_SRCS))"
+	@echo "  循环优化器: $(words $(LOOP_OPTIMIZER_SRCS))"
 	@echo "  字节码后端: $(words $(BYTECODE_BACKEND_SRCS))"
 	@echo "  应用层: $(words $(APP_SRCS))"
 	@echo "  总计: $(words $(ALL_SRCS))"
@@ -333,6 +350,14 @@ list-optimizers:
 	@echo "  $(CORE_DIR)/codegen/optimizers/basic_optimizer/CN_strength_reduction.c"
 	@echo "  $(CORE_DIR)/codegen/optimizers/basic_optimizer/CN_peephole_optimization.c"
 	@echo ""
+	@echo "循环优化器源文件:"
+	@echo "  $(CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer_main.c"
+	@echo "  $(CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer.c"
+	@echo "  $(CORE_DIR)/codegen/optimizers/loop_optimizer/analysis/CN_loop_analysis.c"
+	@echo "  $(CORE_DIR)/codegen/optimizers/loop_optimizer/algorithms/CN_loop_algorithms.c"
+	@echo "  $(CORE_DIR)/codegen/optimizers/loop_optimizer/config/CN_loop_config.c"
+	@echo "  $(CORE_DIR)/codegen/optimizers/loop_optimizer/utils/CN_loop_utils.c"
+	@echo ""
 	@echo "基础优化器对象文件将生成到:"
 	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/CN_basic_optimizer.o"
 	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/CN_constant_folding.o"
@@ -340,5 +365,13 @@ list-optimizers:
 	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/CN_common_subexpr.o"
 	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/CN_strength_reduction.o"
 	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/basic_optimizer/CN_peephole_optimization.o"
+	@echo ""
+	@echo "循环优化器对象文件将生成到:"
+	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer_main.o"
+	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/CN_loop_optimizer.o"
+	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/analysis/CN_loop_analysis.o"
+	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/algorithms/CN_loop_algorithms.o"
+	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/config/CN_loop_config.o"
+	@echo "  $(OBJ_CORE_DIR)/codegen/optimizers/loop_optimizer/utils/CN_loop_utils.o"
 
 .PHONY: verify-structure list-optimizers
