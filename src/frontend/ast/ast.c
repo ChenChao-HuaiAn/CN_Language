@@ -65,6 +65,16 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
         cn_frontend_ast_block_free(stmt->as.if_stmt.then_block);
         cn_frontend_ast_block_free(stmt->as.if_stmt.else_block);
         break;
+    case CN_AST_STMT_WHILE:
+        cn_frontend_ast_expr_free(stmt->as.while_stmt.condition);
+        cn_frontend_ast_block_free(stmt->as.while_stmt.body);
+        break;
+    case CN_AST_STMT_FOR:
+        cn_frontend_ast_stmt_free(stmt->as.for_stmt.init);
+        cn_frontend_ast_expr_free(stmt->as.for_stmt.condition);
+        cn_frontend_ast_expr_free(stmt->as.for_stmt.update);
+        cn_frontend_ast_block_free(stmt->as.for_stmt.body);
+        break;
     }
 
     free(stmt);

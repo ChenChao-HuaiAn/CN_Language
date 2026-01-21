@@ -30,6 +30,8 @@ static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *righ
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
+static CnAstStmt *make_while_stmt(CnAstExpr *condition, CnAstBlockStmt *body);
+static CnAstStmt *make_for_stmt(CnAstStmt *init, CnAstExpr *condition, CnAstExpr *update, CnAstBlockStmt *body);
 static CnAstBlockStmt *make_block(void);
 static void block_add_stmt(CnAstBlockStmt *block, CnAstStmt *stmt);
 static CnAstProgram *make_program(void);
@@ -236,6 +238,52 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return make_if_stmt(condition, then_block, else_block);
     }
 
+    if (parser->current.kind == CN_TOKEN_KEYWORD_WHILE) {
+        CnAstExpr *condition;
+        CnAstBlockStmt *body;
+
+        parser_advance(parser);
+
+        parser_expect(parser, CN_TOKEN_LPAREN);
+        condition = parse_expression(parser);
+        parser_expect(parser, CN_TOKEN_RPAREN);
+
+        body = parse_block(parser);
+
+        return make_while_stmt(condition, body);
+    }
+
+    if (parser->current.kind == CN_TOKEN_KEYWORD_FOR) {
+        CnAstStmt *init = NULL;
+        CnAstExpr *condition = NULL;
+        CnAstExpr *update = NULL;
+        CnAstBlockStmt *body;
+
+        parser_advance(parser);
+
+        parser_expect(parser, CN_TOKEN_LPAREN);
+
+        if (parser->current.kind != CN_TOKEN_SEMICOLON) {
+            init = parse_statement(parser);
+        } else {
+            parser_advance(parser);
+        }
+
+        if (parser->current.kind != CN_TOKEN_SEMICOLON) {
+            condition = parse_expression(parser);
+        }
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+
+        if (parser->current.kind != CN_TOKEN_RPAREN) {
+            update = parse_expression(parser);
+        }
+        parser_expect(parser, CN_TOKEN_RPAREN);
+
+        body = parse_block(parser);
+
+        return make_for_stmt(init, condition, update, body);
+    }
+
     expr = parse_expression(parser);
     if (!expr) {
         return NULL;
@@ -429,6 +477,37 @@ static CnAstStmt *make_if_stmt(CnAstExpr *condition,
     stmt->as.if_stmt.condition = condition;
     stmt->as.if_stmt.then_block = then_block;
     stmt->as.if_stmt.else_block = else_block;
+    return stmt;
+}
+
+static CnAstStmt *make_while_stmt(CnAstExpr *condition, CnAstBlockStmt *body)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_WHILE;
+    stmt->as.while_stmt.condition = condition;
+    stmt->as.while_stmt.body = body;
+    return stmt;
+}
+
+static CnAstStmt *make_for_stmt(CnAstStmt *init,
+                                CnAstExpr *condition,
+                                CnAstExpr *update,
+                                CnAstBlockStmt *body)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_FOR;
+    stmt->as.for_stmt.init = init;
+    stmt->as.for_stmt.condition = condition;
+    stmt->as.for_stmt.update = update;
+    stmt->as.for_stmt.body = body;
     return stmt;
 }
 

@@ -8,10 +8,16 @@
       <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\Debug\cnc.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
+      <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\debug_lexer_test.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
       <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\lexer_function_examples_test.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
       <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\parser_comparison_test.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\parser_loop_test.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
       <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\parser_minimal_test.exe</FullPath>

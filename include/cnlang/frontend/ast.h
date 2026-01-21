@@ -21,7 +21,9 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_VAR_DECL,
     CN_AST_STMT_EXPR,
     CN_AST_STMT_RETURN,
-    CN_AST_STMT_IF
+    CN_AST_STMT_IF,
+    CN_AST_STMT_WHILE,
+    CN_AST_STMT_FOR
 } CnAstStmtKind;
 
 // 二元运算符
@@ -71,6 +73,20 @@ typedef struct CnAstIfStmt {
     CnAstBlockStmt *then_block;
     CnAstBlockStmt *else_block; // 可以为 NULL
 } CnAstIfStmt;
+
+// while 循环语句
+typedef struct CnAstWhileStmt {
+    struct CnAstExpr *condition;
+    CnAstBlockStmt *body;
+} CnAstWhileStmt;
+
+// for 循环语句
+typedef struct CnAstForStmt {
+    struct CnAstStmt *init;      // 可以为 NULL
+    struct CnAstExpr *condition; // 可以为 NULL
+    struct CnAstExpr *update;    // 可以为 NULL
+    CnAstBlockStmt *body;
+} CnAstForStmt;
 
 // 函数声明
 typedef struct CnAstFunctionDecl {
@@ -127,6 +143,8 @@ typedef struct CnAstStmt {
         CnAstExprStmt expr;
         CnAstReturnStmt return_stmt;
         CnAstIfStmt if_stmt;
+        CnAstWhileStmt while_stmt;
+        CnAstForStmt for_stmt;
     } as;
 } CnAstStmt;
 
