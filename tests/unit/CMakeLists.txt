@@ -64,3 +64,18 @@ target_include_directories(parser_loop_test PRIVATE
 
 add_test(NAME parser_loop_test
          COMMAND parser_loop_test)
+
+add_executable(parser_assign_test
+    parser_assign_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/parser/parser.c
+    ../../src/frontend/ast/ast.c
+)
+
+target_include_directories(parser_assign_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_assign_test
+         COMMAND parser_assign_test)

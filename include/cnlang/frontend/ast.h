@@ -12,7 +12,8 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_BINARY,
     CN_AST_EXPR_CALL,
     CN_AST_EXPR_IDENTIFIER,
-    CN_AST_EXPR_INTEGER_LITERAL
+    CN_AST_EXPR_INTEGER_LITERAL,
+    CN_AST_EXPR_ASSIGN
 } CnAstExprKind;
 
 // AST 节点种类（语句）
@@ -123,6 +124,12 @@ typedef struct CnAstIntegerLiteralExpr {
     long value;
 } CnAstIntegerLiteralExpr;
 
+// 赋值表达式
+typedef struct CnAstAssignExpr {
+    struct CnAstExpr *target;  // 赋值目标（左值，如标识符）
+    struct CnAstExpr *value;   // 赋值的值（右值）
+} CnAstAssignExpr;
+
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
@@ -131,6 +138,7 @@ typedef struct CnAstExpr {
         CnAstCallExpr call;
         CnAstIdentifierExpr identifier;
         CnAstIntegerLiteralExpr integer_literal;
+        CnAstAssignExpr assign;
     } as;
 } CnAstExpr;
 

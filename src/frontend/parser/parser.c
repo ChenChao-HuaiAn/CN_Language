@@ -19,6 +19,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser);
 static CnAstBlockStmt *parse_block(CnParser *parser);
 static CnAstStmt *parse_statement(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
+static CnAstExpr *parse_assignment(CnParser *parser);
 static CnAstExpr *parse_comparison(CnParser *parser);
 static CnAstExpr *parse_additive(CnParser *parser);
 static CnAstExpr *parse_term(CnParser *parser);
@@ -27,6 +28,7 @@ static CnAstExpr *parse_factor(CnParser *parser);
 static CnAstExpr *make_integer_literal(long value);
 static CnAstExpr *make_identifier(const char *name, size_t length);
 static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *right);
+static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
@@ -296,7 +298,20 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
 static CnAstExpr *parse_expression(CnParser *parser)
 {
-    return parse_comparison(parser);
+    return parse_assignment(parser);
+}
+
+static CnAstExpr *parse_assignment(CnParser *parser)
+{
+    CnAstExpr *expr = parse_comparison(parser);
+
+    if (parser->current.kind == CN_TOKEN_EQUAL) {
+        parser_advance(parser);
+        CnAstExpr *value = parse_assignment(parser);  // 右结合
+        return make_assign(expr, value);
+    }
+
+    return expr;
 }
 
 static CnAstExpr *parse_comparison(CnParser *parser)
@@ -437,6 +452,19 @@ static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *righ
     expr->as.binary.op = op;
     expr->as.binary.left = left;
     expr->as.binary.right = right;
+    return expr;
+}
+
+static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_ASSIGN;
+    expr->as.assign.target = target;
+    expr->as.assign.value = value;
     return expr;
 }
 
