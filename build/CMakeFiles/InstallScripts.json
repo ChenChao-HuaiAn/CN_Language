@@ -1,0 +1,12 @@
+{
+	"InstallScripts" : 
+	[
+		"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/cmake_install.cmake",
+		"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cmake_install.cmake",
+		"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/cmake_install.cmake",
+		"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/cmake_install.cmake",
+		"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/cmake_install.cmake",
+		"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/system/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

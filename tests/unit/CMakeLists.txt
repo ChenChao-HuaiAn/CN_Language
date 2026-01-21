@@ -6,3 +6,16 @@ add_executable(sample_unit_test
 
 add_test(NAME sample_unit_test
          COMMAND sample_unit_test)
+
+add_executable(lexer_function_examples_test
+    lexer_function_examples_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+)
+
+target_include_directories(lexer_function_examples_test PRIVATE
+    ../../include
+)
+
+add_test(NAME lexer_function_examples_test
+         COMMAND lexer_function_examples_test)

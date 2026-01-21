@@ -1,0 +1,36 @@
+# CMake generated Testfile for 
+# Source directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit
+# Build directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+# 
+# This file includes the relevant testing commands required for 
+# testing this directory and lists subdirectories to be tested as well.
+if(CTEST_CONFIGURATION_TYPE MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+  add_test(sample_unit_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/sample_unit_test.exe")
+  set_tests_properties(sample_unit_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;7;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+  add_test(sample_unit_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Release/sample_unit_test.exe")
+  set_tests_properties(sample_unit_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;7;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+  add_test(sample_unit_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/MinSizeRel/sample_unit_test.exe")
+  set_tests_properties(sample_unit_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;7;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+  add_test(sample_unit_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/RelWithDebInfo/sample_unit_test.exe")
+  set_tests_properties(sample_unit_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;7;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+else()
+  add_test(sample_unit_test NOT_AVAILABLE)
+endif()
+if(CTEST_CONFIGURATION_TYPE MATCHES "^([Dd][Ee][Bb][Uu][Gg])$")
+  add_test(lexer_function_examples_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/lexer_function_examples_test.exe")
+  set_tests_properties(lexer_function_examples_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;20;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ee][Aa][Ss][Ee])$")
+  add_test(lexer_function_examples_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Release/lexer_function_examples_test.exe")
+  set_tests_properties(lexer_function_examples_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;20;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Mm][Ii][Nn][Ss][Ii][Zz][Ee][Rr][Ee][Ll])$")
+  add_test(lexer_function_examples_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/MinSizeRel/lexer_function_examples_test.exe")
+  set_tests_properties(lexer_function_examples_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;20;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+elseif(CTEST_CONFIGURATION_TYPE MATCHES "^([Rr][Ee][Ll][Ww][Ii][Tt][Hh][Dd][Ee][Bb][Ii][Nn][Ff][Oo])$")
+  add_test(lexer_function_examples_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/RelWithDebInfo/lexer_function_examples_test.exe")
+  set_tests_properties(lexer_function_examples_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;20;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+else()
+  add_test(lexer_function_examples_test NOT_AVAILABLE)
+endif()

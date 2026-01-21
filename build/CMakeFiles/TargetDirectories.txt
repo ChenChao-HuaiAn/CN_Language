@@ -1,0 +1,11 @@
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/RUN_TESTS.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/ALL_BUILD.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/ZERO_CHECK.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/cnc.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/RUN_TESTS.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/CMakeFiles/RUN_TESTS.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/sample_unit_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/lexer_function_examples_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/RUN_TESTS.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/RUN_TESTS.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/system/CMakeFiles/RUN_TESTS.dir
