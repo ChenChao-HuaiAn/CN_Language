@@ -26,7 +26,9 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_RETURN,
     CN_AST_STMT_IF,
     CN_AST_STMT_WHILE,
-    CN_AST_STMT_FOR
+    CN_AST_STMT_FOR,
+    CN_AST_STMT_BREAK,
+    CN_AST_STMT_CONTINUE
 } CnAstStmtKind;
 
 // 二元运算符

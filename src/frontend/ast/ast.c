@@ -86,6 +86,12 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
         cn_frontend_ast_expr_free(stmt->as.for_stmt.update);
         cn_frontend_ast_block_free(stmt->as.for_stmt.body);
         break;
+    case CN_AST_STMT_BREAK:
+        // break 语句没有子节点
+        break;
+    case CN_AST_STMT_CONTINUE:
+        // continue 语句没有子节点
+        break;
     }
 
     free(stmt);

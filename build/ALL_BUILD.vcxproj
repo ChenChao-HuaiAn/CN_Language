@@ -186,6 +186,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{FF19423D-8F66-3F2D-9A4C-89C315C747FC}</Project>
       <Name>parser_assign_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_break_test.vcxproj">
+      <Project>{0261ACF6-C11B-3D3D-834A-C670A28CA42D}</Project>
+      <Name>parser_break_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.vcxproj">
       <Project>{069F71D6-AA12-3563-B725-CDA82596E316}</Project>
       <Name>parser_comparison_test</Name>

@@ -39,6 +39,8 @@ static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
 static CnAstStmt *make_while_stmt(CnAstExpr *condition, CnAstBlockStmt *body);
 static CnAstStmt *make_for_stmt(CnAstStmt *init, CnAstExpr *condition, CnAstExpr *update, CnAstBlockStmt *body);
+static CnAstStmt *make_break_stmt(void);
+static CnAstStmt *make_continue_stmt(void);
 static CnAstBlockStmt *make_block(void);
 static void block_add_stmt(CnAstBlockStmt *block, CnAstStmt *stmt);
 static CnAstProgram *make_program(void);
@@ -289,6 +291,18 @@ static CnAstStmt *parse_statement(CnParser *parser)
         body = parse_block(parser);
 
         return make_for_stmt(init, condition, update, body);
+    }
+
+    if (parser->current.kind == CN_TOKEN_KEYWORD_BREAK) {
+        parser_advance(parser);
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+        return make_break_stmt();
+    }
+
+    if (parser->current.kind == CN_TOKEN_KEYWORD_CONTINUE) {
+        parser_advance(parser);
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+        return make_continue_stmt();
     }
 
     expr = parse_expression(parser);
@@ -605,6 +619,28 @@ static CnAstStmt *make_for_stmt(CnAstStmt *init,
     stmt->as.for_stmt.condition = condition;
     stmt->as.for_stmt.update = update;
     stmt->as.for_stmt.body = body;
+    return stmt;
+}
+
+static CnAstStmt *make_break_stmt(void)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_BREAK;
+    return stmt;
+}
+
+static CnAstStmt *make_continue_stmt(void)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_CONTINUE;
     return stmt;
 }
 
