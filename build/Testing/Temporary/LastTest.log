@@ -1,10 +1,26 @@
-Start testing: Jan 21 22:42 中国标准时间
+Start testing: Jan 22 07:06 中国标准时间
 ----------------------------------------------------------
-2/2 Testing: lexer_function_examples_test
-2/2 Test: lexer_function_examples_test
+1/4 Testing: sample_unit_test
+1/4 Test: sample_unit_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/sample_unit_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"sample_unit_test" start time: Jan 22 07:06 中国标准时间
+Output:
+----------------------------------------------------------
+sample_unit_test: OK
+<end of output>
+Test time =   0.02 sec
+----------------------------------------------------------
+Test Passed.
+"sample_unit_test" end time: Jan 22 07:06 中国标准时间
+"sample_unit_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+2/4 Testing: lexer_function_examples_test
+2/4 Test: lexer_function_examples_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/lexer_function_examples_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"lexer_function_examples_test" start time: Jan 21 22:42 中国标准时间
+"lexer_function_examples_test" start time: Jan 22 07:06 中国标准时间
 Output:
 ----------------------------------------------------------
 Token(KEYWORD_FN, line=9, column=1)
@@ -1122,11 +1138,43 @@ Token(SEMICOLON, line=306, column=21)
 Token(RBRACE, line=307, column=1)
 Token(EOF, line=311, column=1)
 <end of output>
-Test time =   0.19 sec
+Test time =   0.03 sec
 ----------------------------------------------------------
 Test Passed.
-"lexer_function_examples_test" end time: Jan 21 22:42 中国标准时间
+"lexer_function_examples_test" end time: Jan 22 07:06 中国标准时间
 "lexer_function_examples_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 21 22:42 中国标准时间
+3/4 Testing: parser_minimal_test
+3/4 Test: parser_minimal_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/parser_minimal_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"parser_minimal_test" start time: Jan 22 07:06 中国标准时间
+Output:
+----------------------------------------------------------
+parser_minimal_test: OK
+<end of output>
+Test time =   0.06 sec
+----------------------------------------------------------
+Test Passed.
+"parser_minimal_test" end time: Jan 22 07:06 中国标准时间
+"parser_minimal_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+4/4 Testing: parser_comparison_test
+4/4 Test: parser_comparison_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/parser_comparison_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"parser_comparison_test" start time: Jan 22 07:06 中国标准时间
+Output:
+----------------------------------------------------------
+parser_comparison_test: OK
+<end of output>
+Test time =   0.13 sec
+----------------------------------------------------------
+Test Passed.
+"parser_comparison_test" end time: Jan 22 07:06 中国标准时间
+"parser_comparison_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jan 22 07:06 中国标准时间

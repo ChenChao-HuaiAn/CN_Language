@@ -1,3 +1,5 @@
-sample_unit_test 1 0.12122
-lexer_function_examples_test 1 0.191703
+sample_unit_test 4 0.0043062
+lexer_function_examples_test 4 0.00627415
+parser_minimal_test 3 0.0199863
+parser_comparison_test 1 0.127816
 ---

@@ -2,6 +2,8 @@ add_executable(cnc
     cli/cnc/main.c
     frontend/lexer/token.c
     frontend/lexer/lexer.c
+    frontend/ast/ast.c
+    frontend/parser/parser.c
 )
 
 target_include_directories(cnc PRIVATE
