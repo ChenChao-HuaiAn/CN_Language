@@ -79,3 +79,18 @@ target_include_directories(parser_assign_test PRIVATE
 
 add_test(NAME parser_assign_test
          COMMAND parser_assign_test)
+
+add_executable(parser_logical_test
+    parser_logical_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/parser/parser.c
+    ../../src/frontend/ast/ast.c
+)
+
+target_include_directories(parser_logical_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_logical_test
+         COMMAND parser_logical_test)

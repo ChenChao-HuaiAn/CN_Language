@@ -190,6 +190,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{069F71D6-AA12-3563-B725-CDA82596E316}</Project>
       <Name>parser_comparison_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_logical_test.vcxproj">
+      <Project>{9691A1ED-E905-3D52-9155-00D0B69D10CD}</Project>
+      <Name>parser_logical_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_loop_test.vcxproj">
       <Project>{84A0B223-A384-3D47-9C30-5E85488E8B05}</Project>
       <Name>parser_loop_test</Name>

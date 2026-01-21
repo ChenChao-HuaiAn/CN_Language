@@ -29,6 +29,13 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
         cn_frontend_ast_expr_free(expr->as.assign.target);
         cn_frontend_ast_expr_free(expr->as.assign.value);
         break;
+    case CN_AST_EXPR_LOGICAL:
+        cn_frontend_ast_expr_free(expr->as.logical.left);
+        cn_frontend_ast_expr_free(expr->as.logical.right);
+        break;
+    case CN_AST_EXPR_UNARY:
+        cn_frontend_ast_expr_free(expr->as.unary.operand);
+        break;
     }
 
     free(expr);

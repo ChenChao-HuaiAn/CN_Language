@@ -13,7 +13,9 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_CALL,
     CN_AST_EXPR_IDENTIFIER,
     CN_AST_EXPR_INTEGER_LITERAL,
-    CN_AST_EXPR_ASSIGN
+    CN_AST_EXPR_ASSIGN,
+    CN_AST_EXPR_LOGICAL,
+    CN_AST_EXPR_UNARY
 } CnAstExprKind;
 
 // AST 节点种类（语句）
@@ -40,6 +42,18 @@ typedef enum CnAstBinaryOp {
     CN_AST_BINARY_OP_LE,
     CN_AST_BINARY_OP_GE
 } CnAstBinaryOp;
+
+// 逻辑运算符
+typedef enum CnAstLogicalOp {
+    CN_AST_LOGICAL_OP_AND,  // &&
+    CN_AST_LOGICAL_OP_OR    // ||
+} CnAstLogicalOp;
+
+// 一元运算符
+typedef enum CnAstUnaryOp {
+    CN_AST_UNARY_OP_NOT,    // !
+    CN_AST_UNARY_OP_MINUS   // - (负号，预留)
+} CnAstUnaryOp;
 
 struct CnAstExpr;
 struct CnAstStmt;
@@ -130,6 +144,19 @@ typedef struct CnAstAssignExpr {
     struct CnAstExpr *value;   // 赋值的值（右值）
 } CnAstAssignExpr;
 
+// 逻辑表达式
+typedef struct CnAstLogicalExpr {
+    CnAstLogicalOp op;
+    struct CnAstExpr *left;
+    struct CnAstExpr *right;
+} CnAstLogicalExpr;
+
+// 一元表达式
+typedef struct CnAstUnaryExpr {
+    CnAstUnaryOp op;
+    struct CnAstExpr *operand;
+} CnAstUnaryExpr;
+
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
@@ -139,6 +166,8 @@ typedef struct CnAstExpr {
         CnAstIdentifierExpr identifier;
         CnAstIntegerLiteralExpr integer_literal;
         CnAstAssignExpr assign;
+        CnAstLogicalExpr logical;
+        CnAstUnaryExpr unary;
     } as;
 } CnAstExpr;
 

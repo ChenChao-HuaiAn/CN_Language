@@ -20,14 +20,19 @@ static CnAstBlockStmt *parse_block(CnParser *parser);
 static CnAstStmt *parse_statement(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
 static CnAstExpr *parse_assignment(CnParser *parser);
+static CnAstExpr *parse_logical_or(CnParser *parser);
+static CnAstExpr *parse_logical_and(CnParser *parser);
 static CnAstExpr *parse_comparison(CnParser *parser);
 static CnAstExpr *parse_additive(CnParser *parser);
 static CnAstExpr *parse_term(CnParser *parser);
+static CnAstExpr *parse_unary(CnParser *parser);
 static CnAstExpr *parse_factor(CnParser *parser);
 
 static CnAstExpr *make_integer_literal(long value);
 static CnAstExpr *make_identifier(const char *name, size_t length);
 static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *right);
+static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *right);
+static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand);
 static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
@@ -303,7 +308,7 @@ static CnAstExpr *parse_expression(CnParser *parser)
 
 static CnAstExpr *parse_assignment(CnParser *parser)
 {
-    CnAstExpr *expr = parse_comparison(parser);
+    CnAstExpr *expr = parse_logical_or(parser);
 
     if (parser->current.kind == CN_TOKEN_EQUAL) {
         parser_advance(parser);
@@ -312,6 +317,32 @@ static CnAstExpr *parse_assignment(CnParser *parser)
     }
 
     return expr;
+}
+
+static CnAstExpr *parse_logical_or(CnParser *parser)
+{
+    CnAstExpr *left = parse_logical_and(parser);
+
+    while (parser->current.kind == CN_TOKEN_LOGICAL_OR) {
+        parser_advance(parser);
+        CnAstExpr *right = parse_logical_and(parser);
+        left = make_logical(CN_AST_LOGICAL_OP_OR, left, right);
+    }
+
+    return left;
+}
+
+static CnAstExpr *parse_logical_and(CnParser *parser)
+{
+    CnAstExpr *left = parse_comparison(parser);
+
+    while (parser->current.kind == CN_TOKEN_LOGICAL_AND) {
+        parser_advance(parser);
+        CnAstExpr *right = parse_comparison(parser);
+        left = make_logical(CN_AST_LOGICAL_OP_AND, left, right);
+    }
+
+    return left;
 }
 
 static CnAstExpr *parse_comparison(CnParser *parser)
@@ -375,7 +406,7 @@ static CnAstExpr *parse_additive(CnParser *parser)
 
 static CnAstExpr *parse_term(CnParser *parser)
 {
-    CnAstExpr *left = parse_factor(parser);
+    CnAstExpr *left = parse_unary(parser);
 
     while (parser->current.kind == CN_TOKEN_STAR ||
            parser->current.kind == CN_TOKEN_SLASH) {
@@ -383,10 +414,21 @@ static CnAstExpr *parse_term(CnParser *parser)
                                ? CN_AST_BINARY_OP_MUL
                                : CN_AST_BINARY_OP_DIV;
         parser_advance(parser);
-        left = make_binary(op, left, parse_factor(parser));
+        left = make_binary(op, left, parse_unary(parser));
     }
 
     return left;
+}
+
+static CnAstExpr *parse_unary(CnParser *parser)
+{
+    if (parser->current.kind == CN_TOKEN_BANG) {
+        parser_advance(parser);
+        CnAstExpr *operand = parse_unary(parser);  // 递归处理多个 !
+        return make_unary(CN_AST_UNARY_OP_NOT, operand);
+    }
+
+    return parse_factor(parser);
 }
 
 static CnAstExpr *parse_factor(CnParser *parser)
@@ -465,6 +507,33 @@ static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value)
     expr->kind = CN_AST_EXPR_ASSIGN;
     expr->as.assign.target = target;
     expr->as.assign.value = value;
+    return expr;
+}
+
+static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *right)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_LOGICAL;
+    expr->as.logical.op = op;
+    expr->as.logical.left = left;
+    expr->as.logical.right = right;
+    return expr;
+}
+
+static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_UNARY;
+    expr->as.unary.op = op;
+    expr->as.unary.operand = operand;
     return expr;
 }
 
