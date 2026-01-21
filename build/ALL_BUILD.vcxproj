@@ -206,6 +206,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{4EEF4A54-7A0A-342A-90A1-7035E8F615A4}</Project>
       <Name>parser_minimal_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_var_test.vcxproj">
+      <Project>{B91FFFFB-92AB-34C4-B132-601018052AA9}</Project>
+      <Name>parser_var_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\sample_unit_test.vcxproj">
       <Project>{97D94056-EA46-36C2-813A-90A799694F9A}</Project>
       <Name>sample_unit_test</Name>

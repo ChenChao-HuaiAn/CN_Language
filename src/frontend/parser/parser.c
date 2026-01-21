@@ -41,6 +41,7 @@ static CnAstStmt *make_while_stmt(CnAstExpr *condition, CnAstBlockStmt *body);
 static CnAstStmt *make_for_stmt(CnAstStmt *init, CnAstExpr *condition, CnAstExpr *update, CnAstBlockStmt *body);
 static CnAstStmt *make_break_stmt(void);
 static CnAstStmt *make_continue_stmt(void);
+static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnAstExpr *initializer);
 static CnAstBlockStmt *make_block(void);
 static void block_add_stmt(CnAstBlockStmt *block, CnAstStmt *stmt);
 static CnAstProgram *make_program(void);
@@ -303,6 +304,32 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser_advance(parser);
         parser_expect(parser, CN_TOKEN_SEMICOLON);
         return make_continue_stmt();
+    }
+
+    if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+        const char *var_name;
+        size_t var_name_length;
+        CnAstExpr *initializer = NULL;
+
+        parser_advance(parser);
+
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            return NULL;
+        }
+
+        var_name = parser->current.lexeme_begin;
+        var_name_length = parser->current.lexeme_length;
+        parser_advance(parser);
+
+        if (parser->current.kind == CN_TOKEN_EQUAL) {
+            parser_advance(parser);
+            initializer = parse_expression(parser);
+        }
+
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+
+        return make_var_decl_stmt(var_name, var_name_length, initializer);
     }
 
     expr = parse_expression(parser);
@@ -641,6 +668,20 @@ static CnAstStmt *make_continue_stmt(void)
     }
 
     stmt->kind = CN_AST_STMT_CONTINUE;
+    return stmt;
+}
+
+static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnAstExpr *initializer)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_VAR_DECL;
+    stmt->as.var_decl.name = name;
+    stmt->as.var_decl.name_length = name_length;
+    stmt->as.var_decl.initializer = initializer;
     return stmt;
 }
 
