@@ -58,6 +58,95 @@ size_t cn_support_diagnostics_error_count(const CnDiagnostics *diagnostics)
     return error_count;
 }
 
+// 语义分析专用诊断接口实现
+
+void cn_support_diag_semantic_error_duplicate_symbol(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column,
+    const char *symbol_name)
+{
+    (void)symbol_name; // 目前尚不支持动态消息，忽略符号名
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,
+        filename,
+        line,
+        column,
+        "语义错误：符号重复定义");
+}
+
+void cn_support_diag_semantic_error_undefined_identifier(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column,
+    const char *identifier)
+{
+    (void)identifier; // 目前尚不支持动态消息，忽略标识符名
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+        filename,
+        line,
+        column,
+        "语义错误：未定义的标识符");
+}
+
+void cn_support_diag_semantic_error_type_mismatch(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column,
+    const char *expected_type,
+    const char *actual_type)
+{
+    (void)expected_type;
+    (void)actual_type;
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+        filename,
+        line,
+        column,
+        "语义错误：类型不匹配");
+}
+
+void cn_support_diag_semantic_error_missing_return(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column,
+    const char *function_name)
+{
+    (void)function_name;
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_MISSING_RETURN,
+        filename,
+        line,
+        column,
+        "语义错误：函数缺少返回语句");
+}
+
+void cn_support_diag_semantic_error_generic(
+    CnDiagnostics *diagnostics,
+    CnDiagCode code,
+    const char *filename,
+    int line,
+    int column,
+    const char *message)
+{
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        code,
+        filename,
+        line,
+        column,
+        message);
+}
+
 // 便利函数：打印所有诊断信息到标准错误输出
 void cn_support_diagnostics_print(const CnDiagnostics *diagnostics)
 {

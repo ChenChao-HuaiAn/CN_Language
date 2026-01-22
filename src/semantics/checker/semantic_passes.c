@@ -98,7 +98,8 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_IDENTIFIER: {
             CnSemSymbol *sym = cn_sem_scope_lookup(scope, expr->as.identifier.name, expr->as.identifier.name_length);
             if (!sym) {
-                cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER, NULL, 0, 0, "未定义的标识符");
+                cn_support_diag_semantic_error_undefined_identifier(
+                    diagnostics, NULL, 0, 0, expr->as.identifier.name);
             }
             break;
         }
@@ -178,7 +179,8 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                     sym->type = decl->declared_type;
                     if (init_type && !cn_type_compatible(init_type, sym->type)) {
                         // 报错：类型不匹配
-                        cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_TYPE_MISMATCH, NULL, 0, 0, "变量初始化类型不匹配");
+                        cn_support_diag_semantic_error_type_mismatch(
+                            diagnostics, NULL, 0, 0, "变量声明类型", "初始值类型");
                     }
                 } else {
                     // 类型推断：var a = 1;
@@ -214,7 +216,11 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
         case CN_AST_STMT_BREAK:
         case CN_AST_STMT_CONTINUE:
             if (!in_loop) {
-                cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_BREAK_CONTINUE_OUTSIDE_LOOP, NULL, 0, 0, "break 或 continue 语句不在循环内");
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_BREAK_CONTINUE_OUTSIDE_LOOP,
+                    NULL, 0, 0,
+                    "语义错误：break 或 continue 语句不在循环内");
             }
             break;
         default:
@@ -238,7 +244,8 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 expr->type = sym->type;
             } else {
                 // 报错：未定义标识符
-                cn_support_diagnostics_report(diagnostics, CN_DIAG_SEVERITY_ERROR, 0, NULL, 0, 0, "未定义的标识符");
+                cn_support_diag_semantic_error_undefined_identifier(
+                    diagnostics, NULL, 0, 0, expr->as.identifier.name);
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
             break;
@@ -289,20 +296,29 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             if (callee_type && callee_type->kind == CN_TYPE_FUNCTION) {
                 // 检查参数个数
                 if (expr->as.call.argument_count != callee_type->as.function.param_count) {
-                    cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH, NULL, 0, 0, "函数调用参数个数不匹配");
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：函数调用参数个数不匹配");
                 } else {
                     // 逐个检查参数类型
                     for (size_t i = 0; i < expr->as.call.argument_count; i++) {
                         CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
                         if (arg_type && !cn_type_compatible(arg_type, callee_type->as.function.param_types[i])) {
-                            cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH, NULL, 0, 0, "函数调用参数类型不匹配");
+                            cn_support_diag_semantic_error_generic(
+                                diagnostics,
+                                CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
+                                NULL, 0, 0,
+                                "语义错误：函数调用参数类型不匹配");
                         }
                     }
                 }
                 expr->type = callee_type->as.function.return_type;
             } else {
                 if (callee_type && callee_type->kind != CN_TYPE_UNKNOWN) {
-                    cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_TYPE_MISMATCH, NULL, 0, 0, "尝试调用非函数类型");
+                    cn_support_diag_semantic_error_type_mismatch(
+                        diagnostics, NULL, 0, 0, "函数类型", "非函数类型");
                 }
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }

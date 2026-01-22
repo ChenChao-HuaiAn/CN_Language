@@ -56,10 +56,8 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                             function_decl->parameter_count);
         } else {
             // 报告重复定义
-            cn_support_diagnostics_report_error(diagnostics,
-                                              CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,
-                                              NULL, 0, 0,
-                                              "重复定义的函数名");
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, function_decl->name);
         }
 
         cn_sem_build_function_scope(global_scope, function_decl, diagnostics);
@@ -95,10 +93,8 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
             sym->type = param->declared_type;
         } else {
             // 报告重复定义
-            cn_support_diagnostics_report_error(diagnostics,
-                                              CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,
-                                              NULL, 0, 0,
-                                              "函数参数名重复定义");
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, param->name);
         }
     }
 
@@ -147,10 +143,8 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             sym->type = var_decl->declared_type;
         } else {
             // 报告重复定义
-            cn_support_diagnostics_report_error(diagnostics,
-                                              CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,
-                                              NULL, 0, 0,
-                                              "变量名在当前作用域中重复定义");
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, var_decl->name);
         }
 
         cn_sem_build_expr(scope, var_decl->initializer, diagnostics);
