@@ -26,14 +26,14 @@
 - [x] **其他指令**：`NEG` (取负), `NOT` (逻辑非), `PHI` (若后续考虑 SSA 形式)。
 
 #### 1.2 定义基本块与控制流图 (CFG)
-- [ ] **基本块 (Basic Block)**：
-    - 设计 `CnIrBasicBlock` 结构，包含一系列指令。
-    - 规定基本块必须以跳转指令或返回指令结尾（Terminator）。
-- [ ] **控制流图 (CFG)**：
-    - 在 `CnIrBasicBlock` 中维护前驱 (Predecessors) 和后继 (Successors) 指针。
-    - 实现基本块的拆分与连接算法。
-- [ ] **函数表示**：
-    - 设计 `CnIrFunction` 结构，包含入口基本块、参数列表及局部变量表。
+- [x] **基本块 (Basic Block)**：
+    - [x] 设计 `CnIrBasicBlock` 结构，包含一系列指令。
+    - [x] 规定基本块必须以跳转指令或返回指令结尾（Terminator）。
+- [x] **控制流图 (CFG)**：
+    - [x] 在 `CnIrBasicBlock` 中维护前驱 (Predecessors) 和后继 (Successors) 指针。
+    - [x] 实现基本块的拆分与连接算法。
+- [x] **函数表示**：
+    - [x] 设计 `CnIrFunction` 结构，包含入口基本块、参数列表及局部变量表。
 
 #### 1.3 实现 IR 数据结构 (`src/ir/`)
 - [x] **目录初始化**：创建 `src/ir/core/` 目录。

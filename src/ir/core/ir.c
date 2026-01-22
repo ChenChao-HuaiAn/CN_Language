@@ -11,12 +11,19 @@ CnIrModule *cn_ir_module_new() {
     return module;
 }
 
+static void cn_ir_block_list_free(CnIrBasicBlockList *list) {
+    while (list) {
+        CnIrBasicBlockList *next = list->next;
+        free(list);
+        list = next;
+    }
+}
+
 void cn_ir_module_free(CnIrModule *module) {
     if (!module) return;
     CnIrFunction *func = module->first_func;
     while (func) {
         CnIrFunction *next = func->next;
-        // 这里需要更深层次的释放逻辑，目前简写
         CnIrBasicBlock *block = func->first_block;
         while (block) {
             CnIrBasicBlock *next_b = block->next;
@@ -27,9 +34,15 @@ void cn_ir_module_free(CnIrModule *module) {
                 free(inst);
                 inst = next_i;
             }
+            cn_ir_block_list_free(block->preds);
+            cn_ir_block_list_free(block->succs);
+            if (block->name) free((void *)block->name);
             free(block);
             block = next_b;
         }
+        if (func->name) free((void *)func->name);
+        if (func->params) free(func->params);
+        if (func->locals) free(func->locals);
         free(func);
         func = next;
     }
@@ -41,12 +54,28 @@ CnIrFunction *cn_ir_function_new(const char *name, CnType *return_type) {
     if (func) {
         func->name = name ? strdup(name) : NULL;
         func->return_type = return_type;
+        func->params = NULL;
+        func->param_count = 0;
+        func->locals = NULL;
+        func->local_count = 0;
         func->first_block = NULL;
         func->last_block = NULL;
         func->next_reg_id = 0;
         func->next = NULL;
     }
     return func;
+}
+
+void cn_ir_function_add_param(CnIrFunction *func, CnIrOperand param) {
+    if (!func) return;
+    func->params = realloc(func->params, (func->param_count + 1) * sizeof(CnIrOperand));
+    func->params[func->param_count++] = param;
+}
+
+void cn_ir_function_add_local(CnIrFunction *func, CnIrOperand local) {
+    if (!func) return;
+    func->locals = realloc(func->locals, (func->local_count + 1) * sizeof(CnIrOperand));
+    func->locals[func->local_count++] = local;
 }
 
 void cn_ir_function_add_block(CnIrFunction *func, CnIrBasicBlock *block) {
@@ -67,6 +96,8 @@ CnIrBasicBlock *cn_ir_basic_block_new(const char *name_hint) {
         block->name = name_hint ? strdup(name_hint) : NULL;
         block->first_inst = NULL;
         block->last_inst = NULL;
+        block->preds = NULL;
+        block->succs = NULL;
         block->next = NULL;
         block->prev = NULL;
     }
@@ -83,6 +114,19 @@ void cn_ir_basic_block_add_inst(CnIrBasicBlock *block, CnIrInst *inst) {
         inst->prev = block->last_inst;
         block->last_inst = inst;
     }
+}
+
+static void add_block_to_list(CnIrBasicBlockList **list, CnIrBasicBlock *block) {
+    CnIrBasicBlockList *node = malloc(sizeof(CnIrBasicBlockList));
+    node->block = block;
+    node->next = *list;
+    *list = node;
+}
+
+void cn_ir_basic_block_connect(CnIrBasicBlock *from, CnIrBasicBlock *to) {
+    if (!from || !to) return;
+    add_block_to_list(&from->succs, to);
+    add_block_to_list(&to->preds, from);
 }
 
 CnIrInst *cn_ir_inst_new(CnIrInstKind kind, CnIrOperand dest, CnIrOperand src1, CnIrOperand src2) {
