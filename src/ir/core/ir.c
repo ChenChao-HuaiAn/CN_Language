@@ -194,101 +194,121 @@ static const char *inst_names[] = {
     "phi"
 };
 
-void cn_ir_dump_operand(CnIrOperand op) {
+void cn_ir_dump_operand_to_file(CnIrOperand op, FILE *file) {
     switch (op.kind) {
-        case CN_IR_OP_NONE: printf("none"); break;
-        case CN_IR_OP_REG: printf("%%r%d", op.as.reg_id); break;
-        case CN_IR_OP_IMM_INT: printf("%lld", op.as.imm_int); break;
-        case CN_IR_OP_IMM_STR: printf("\"%s\"", op.as.imm_str); break;
-        case CN_IR_OP_SYMBOL: printf("@%s", op.as.sym_name); break;
-        case CN_IR_OP_LABEL: printf("%s", op.as.label->name ? op.as.label->name : "unnamed"); break;
-        default: printf("unknown"); break;
+        case CN_IR_OP_NONE: fprintf(file, "none"); break;
+        case CN_IR_OP_REG: fprintf(file, "%%r%d", op.as.reg_id); break;
+        case CN_IR_OP_IMM_INT: fprintf(file, "%lld", op.as.imm_int); break;
+        case CN_IR_OP_IMM_STR: fprintf(file, "\"%s\"", op.as.imm_str); break;
+        case CN_IR_OP_SYMBOL: fprintf(file, "@%s", op.as.sym_name); break;
+        case CN_IR_OP_LABEL: fprintf(file, "%s", op.as.label->name ? op.as.label->name : "unnamed"); break;
+        default: fprintf(file, "unknown"); break;
     }
 }
 
-void cn_ir_dump_inst(CnIrInst *inst) {
+void cn_ir_dump_operand(CnIrOperand op) {
+    cn_ir_dump_operand_to_file(op, stdout);
+}
+
+void cn_ir_dump_inst_to_file(CnIrInst *inst, FILE *file) {
     if (!inst) return;
-    printf("  ");
+    fprintf(file, "  ");
     if (inst->kind == CN_IR_INST_LABEL) {
-        printf("%s:", inst->dest.as.sym_name);
+        fprintf(file, "%s:", inst->dest.as.sym_name);
     } else if (inst->kind == CN_IR_INST_STORE) {
-        printf("store ");
-        cn_ir_dump_operand(inst->src1); // value
-        printf(", ");
-        cn_ir_dump_operand(inst->dest); // address
+        fprintf(file, "store ");
+        cn_ir_dump_operand_to_file(inst->src1, file); // value
+        fprintf(file, ", ");
+        cn_ir_dump_operand_to_file(inst->dest, file); // address
     } else if (inst->kind == CN_IR_INST_JUMP) {
-        printf("jump ");
-        cn_ir_dump_operand(inst->dest);
+        fprintf(file, "jump ");
+        cn_ir_dump_operand_to_file(inst->dest, file);
     } else if (inst->kind == CN_IR_INST_BRANCH) {
-        printf("branch ");
-        cn_ir_dump_operand(inst->src1); // cond
-        printf(", ");
-        cn_ir_dump_operand(inst->dest); // true label
-        printf(", ");
-        cn_ir_dump_operand(inst->src2); // false label
+        fprintf(file, "branch ");
+        cn_ir_dump_operand_to_file(inst->src1, file); // cond
+        fprintf(file, ", ");
+        cn_ir_dump_operand_to_file(inst->dest, file); // true label
+        fprintf(file, ", ");
+        cn_ir_dump_operand_to_file(inst->src2, file); // false label
     } else if (inst->kind == CN_IR_INST_RET) {
-        printf("ret ");
-        if (inst->src1.kind != CN_IR_OP_NONE) cn_ir_dump_operand(inst->src1);
+        fprintf(file, "ret ");
+        if (inst->src1.kind != CN_IR_OP_NONE) cn_ir_dump_operand_to_file(inst->src1, file);
     } else if (inst->kind == CN_IR_INST_CALL) {
         if (inst->dest.kind != CN_IR_OP_NONE) {
-            cn_ir_dump_operand(inst->dest);
-            printf(" = ");
+            cn_ir_dump_operand_to_file(inst->dest, file);
+            fprintf(file, " = ");
         }
-        printf("call ");
-        cn_ir_dump_operand(inst->src1); // callee
-        printf("(");
+        fprintf(file, "call ");
+        cn_ir_dump_operand_to_file(inst->src1, file); // callee
+        fprintf(file, "(");
         for (size_t i = 0; i < inst->extra_args_count; i++) {
-            cn_ir_dump_operand(inst->extra_args[i]);
-            if (i < inst->extra_args_count - 1) printf(", ");
+            cn_ir_dump_operand_to_file(inst->extra_args[i], file);
+            if (i < inst->extra_args_count - 1) fprintf(file, ", ");
         }
-        printf(")");
+        fprintf(file, ")");
     } else {
         // Default binary/unary format: dest = op src1 [, src2]
         if (inst->dest.kind != CN_IR_OP_NONE) {
-            cn_ir_dump_operand(inst->dest);
-            printf(" = ");
+            cn_ir_dump_operand_to_file(inst->dest, file);
+            fprintf(file, " = ");
         }
-        printf("%s ", inst_names[inst->kind]);
-        cn_ir_dump_operand(inst->src1);
+        fprintf(file, "%s ", inst_names[inst->kind]);
+        cn_ir_dump_operand_to_file(inst->src1, file);
         if (inst->src2.kind != CN_IR_OP_NONE) {
-            printf(", ");
-            cn_ir_dump_operand(inst->src2);
+            fprintf(file, ", ");
+            cn_ir_dump_operand_to_file(inst->src2, file);
         }
     }
-    printf("\n");
+    fprintf(file, "\n");
 }
 
-void cn_ir_dump_block(CnIrBasicBlock *block) {
+void cn_ir_dump_inst(CnIrInst *inst) {
+    cn_ir_dump_inst_to_file(inst, stdout);
+}
+
+void cn_ir_dump_block_to_file(CnIrBasicBlock *block, FILE *file) {
     if (!block) return;
-    printf("%s:\n", block->name ? block->name : "unnamed");
+    fprintf(file, "%s:\n", block->name ? block->name : "unnamed");
     CnIrInst *inst = block->first_inst;
     while (inst) {
-        cn_ir_dump_inst(inst);
+        cn_ir_dump_inst_to_file(inst, file);
         inst = inst->next;
     }
 }
 
-void cn_ir_dump_function(CnIrFunction *func) {
-    if (!func) return;
-    printf("fn @%s(", func->name);
-    for (size_t i = 0; i < func->param_count; i++) {
-        cn_ir_dump_operand(func->params[i]);
-        if (i < func->param_count - 1) printf(", ");
-    }
-    printf(") {\n");
-    CnIrBasicBlock *block = func->first_block;
-    while (block) {
-        cn_ir_dump_block(block);
-        block = block->next;
-    }
-    printf("}\n\n");
+void cn_ir_dump_block(CnIrBasicBlock *block) {
+    cn_ir_dump_block_to_file(block, stdout);
 }
 
-void cn_ir_dump_module(CnIrModule *module) {
+void cn_ir_dump_function_to_file(CnIrFunction *func, FILE *file) {
+    if (!func) return;
+    fprintf(file, "fn @%s(", func->name);
+    for (size_t i = 0; i < func->param_count; i++) {
+        cn_ir_dump_operand_to_file(func->params[i], file);
+        if (i < func->param_count - 1) fprintf(file, ", ");
+    }
+    fprintf(file, ") {\n");
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        cn_ir_dump_block_to_file(block, file);
+        block = block->next;
+    }
+    fprintf(file, "}\n\n");
+}
+
+void cn_ir_dump_function(CnIrFunction *func) {
+    cn_ir_dump_function_to_file(func, stdout);
+}
+
+void cn_ir_dump_module_to_file(CnIrModule *module, FILE *file) {
     if (!module) return;
     CnIrFunction *func = module->first_func;
     while (func) {
-        cn_ir_dump_function(func);
+        cn_ir_dump_function_to_file(func, file);
         func = func->next;
     }
+}
+
+void cn_ir_dump_module(CnIrModule *module) {
+    cn_ir_dump_module_to_file(module, stdout);
 }

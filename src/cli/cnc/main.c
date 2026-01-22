@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <ctype.h>
 
 #include "cnlang/frontend/lexer.h"
 #include "cnlang/frontend/parser.h"
@@ -268,22 +269,40 @@ int main(int argc, char **argv)
     if (argc < 2) {
         fprintf(stderr, "用法: %s <源文件.cn> [选项]\n", argv[0]);
         fprintf(stderr, "选项:\n");
-        fprintf(stderr, "  -o <文件名>    指定输出文件名 (默认: a.out)\n");
+        fprintf(stderr, "  -o <文件名>    指定输出文件名\n");
         fprintf(stderr, "  -c            仅生成 .c 文件，不编译为可执行文件\n");
+        fprintf(stderr, "  -S            仅生成 IR 描述，输出到标准输出或文件 (-o)\n");
         fprintf(stderr, "  --emit-c       生成 C 代码后保留 .c 文件\n");
+        fprintf(stderr, "  --cc <编译器>  指定外部 C 编译器路径\n");
+        fprintf(stderr, "  -g            生成调试信息\n");
+        fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
         fprintf(stderr, "  --help         显示此帮助信息\n");
         return 1;
     }
     
+    // 默认参数
+    const char *output_filename = NULL;
+    bool compile_only = false;
+    bool emit_c = false;
+    bool run_pipeline = false;
+    bool dump_ir = false;
+    const char *cc_override = NULL;
+    bool debug_info = false;
+    const char *opt_level = NULL;
+
     // 检查是否是帮助请求
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             fprintf(stderr, "CN Compiler (cnc) - CN Language 编译器\n\n");
             fprintf(stderr, "用法: %s <源文件.cn> [选项]\n\n", argv[0]);
             fprintf(stderr, "选项:\n");
-            fprintf(stderr, "  -o <文件名>    指定输出文件名 (默认: a.out)\n");
+            fprintf(stderr, "  -o <文件名>    指定输出文件名\n");
             fprintf(stderr, "  -c            仅生成 .c 文件，不编译为可执行文件\n");
+            fprintf(stderr, "  -S            仅生成 IR 描述，输出到标准输出或文件 (-o)\n");
             fprintf(stderr, "  --emit-c       生成 C 代码后保留 .c 文件\n");
+            fprintf(stderr, "  --cc <编译器>  指定外部 C 编译器路径\n");
+            fprintf(stderr, "  -g            生成调试信息\n");
+            fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
             fprintf(stderr, "  --help/-h      显示此帮助信息\n\n");
             fprintf(stderr, "环境变量:\n");
             fprintf(stderr, "  CN_RUNTIME_PATH        指定运行时库路径\n");
@@ -291,13 +310,39 @@ int main(int argc, char **argv)
             fprintf(stderr, "示例:\n");
             fprintf(stderr, "  %s hello.cn                    # 仅进行语法和语义检查\n", argv[0]);
             fprintf(stderr, "  %s hello.cn -o hello            # 编译并生成 hello 可执行文件\n", argv[0]);
-            fprintf(stderr, "  %s hello.cn -c                  # 仅生成 hello.c 文件\n", argv[0]);
-            fprintf(stderr, "  %s hello.cn --emit-c            # 生成 C 代码并保留 .c 文件\n", argv[0]);
+            fprintf(stderr, "  %s hello.cn -S                  # 打印 IR 描述到 stdout\n", argv[0]);
+            fprintf(stderr, "  %s hello.cn -O2 -o hello        # 开启优化并编译\n", argv[0]);
             return 0;
         }
     }
 
     filename = argv[1];
+
+    // 解析其余参数
+    for (int i = 2; i < argc; i++) {
+        if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
+            output_filename = argv[++i];
+            run_pipeline = true;
+        } else if (strcmp(argv[i], "-c") == 0) {
+            compile_only = true;
+            run_pipeline = true;
+        } else if (strcmp(argv[i], "-S") == 0) {
+            dump_ir = true;
+            run_pipeline = true;
+        } else if (strcmp(argv[i], "--emit-c") == 0) {
+            emit_c = true;
+            run_pipeline = true;
+        } else if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
+            cc_override = argv[++i];
+            run_pipeline = true;
+        } else if (strcmp(argv[i], "-g") == 0) {
+            debug_info = true;
+            run_pipeline = true;
+        } else if (strlen(argv[i]) == 3 && argv[i][0] == '-' && argv[i][1] == 'O' && isdigit(argv[i][2])) {
+            opt_level = argv[i] + 2;
+            run_pipeline = true;
+        }
+    }
 
     source = read_file_to_buffer(filename, &source_length);
     if (!source) {
@@ -375,105 +420,116 @@ int main(int argc, char **argv)
     print_diagnostics(&diagnostics);
 
     // 检查是否需要进行编译和链接
-    if (argc >= 2) {
-        // 默认参数
-        const char *output_filename = NULL;
-        bool compile_only = false;
-        bool emit_c = false;
-        bool run_pipeline = false;
-
-        for (int i = 2; i < argc; i++) {
-            if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
-                output_filename = argv[i + 1];
-                run_pipeline = true;
-                i++;
-            } else if (strcmp(argv[i], "-c") == 0) {
-                compile_only = true;
-                run_pipeline = true;
-            } else if (strcmp(argv[i], "--emit-c") == 0) {
-                emit_c = true;
-                run_pipeline = true;
-            }
+    if (run_pipeline || (argc > 2 && !output_filename && !compile_only && !emit_c && !dump_ir)) {
+        if (!output_filename && !compile_only && !dump_ir) {
+            output_filename = "a.out";
         }
 
-        // 如果明确要求运行流水线，或者至少提供了一个输出文件名（默认 a.out 如果有其他参数）
-        if (run_pipeline || (argc > 2 && !output_filename && !compile_only && !emit_c)) {
-            if (!output_filename && !compile_only) {
-                output_filename = "a.out";
-            }
+        CnIrModule *ir_module = cn_ir_gen_program(program);
+        if (!ir_module) {
+            fprintf(stderr, "IR 生成失败\n");
+            goto cleanup;
+        }
 
-            CnIrModule *ir_module = cn_ir_gen_program(program);
-            if (!ir_module) {
-                fprintf(stderr, "IR 生成失败\n");
-                goto cleanup;
-            }
+        // 运行优化 Pass
+        cn_ir_run_default_passes(ir_module);
 
-            // 运行优化 Pass
-            cn_ir_run_default_passes(ir_module);
-
-            // 生成 C 代码文件名
-            char c_filename[1024];
-            strncpy(c_filename, filename, sizeof(c_filename) - 1);
-            c_filename[sizeof(c_filename) - 1] = '\0';
-            char *ext = strrchr(c_filename, '.');
-            if (ext && strcmp(ext, ".cn") == 0) {
-                strcpy(ext, ".c");
+        // 如果只是打印 IR
+        if (dump_ir) {
+            if (output_filename) {
+                FILE *f = fopen(output_filename, "w");
+                if (f) {
+                    cn_ir_dump_module_to_file(ir_module, f);
+                    fclose(f);
+                    printf("IR 已导出到: %s\n", output_filename);
+                } else {
+                    fprintf(stderr, "无法打开文件以导出 IR: %s\n", output_filename);
+                }
             } else {
-                strcat(c_filename, ".c");
+                cn_ir_dump_module(ir_module);
+            }
+            cn_ir_module_free(ir_module);
+            goto cleanup;
+        }
+
+        // 生成 C 代码文件名
+        char c_filename[1024];
+        strncpy(c_filename, filename, sizeof(c_filename) - 1);
+        c_filename[sizeof(c_filename) - 1] = '\0';
+        char *ext = strrchr(c_filename, '.');
+        if (ext && strcmp(ext, ".cn") == 0) {
+            strcpy(ext, ".c");
+        } else {
+            strcat(c_filename, ".c");
+        }
+
+        if (cn_cgen_module_to_file(ir_module, c_filename) != 0) {
+            fprintf(stderr, "C 代码生成失败\n");
+            cn_ir_module_free(ir_module);
+            goto cleanup;
+        }
+
+        if (emit_c || compile_only) {
+            printf("已生成 C 代码文件: %s\n", c_filename);
+        }
+
+        // 如果不是仅生成 C 代码，则调用外部编译器
+        if (!compile_only) {
+            char compile_cmd[4096];
+            const char *runtime_lib_path = get_runtime_lib_path();
+            const char *runtime_include_dir = get_runtime_include_dir();
+            const char *compiler = cc_override ? cc_override : cn_support_detect_c_compiler();
+
+            char extra_flags[256] = "";
+            if (debug_info) {
+                strcat(extra_flags, (strcmp(compiler, "cl") == 0) ? " /Zi" : " -g");
+            }
+            if (opt_level) {
+                if (strcmp(compiler, "cl") == 0) {
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), " /O%s", opt_level);
+                    strcat(extra_flags, buf);
+                } else {
+                    char buf[16];
+                    snprintf(buf, sizeof(buf), " -O%s", opt_level);
+                    strcat(extra_flags, buf);
+                }
             }
 
-            if (cn_cgen_module_to_file(ir_module, c_filename) != 0) {
-                fprintf(stderr, "C 代码生成失败\n");
+            #ifdef _WIN32
+            if (strcmp(compiler, "cl") == 0) {
+                snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /I%s /Fe:%s %s %s",
+                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe", 
+                         c_filename, runtime_lib_path);
+            } else {
+                snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
+                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
+                         c_filename, runtime_lib_path);
+            }
+            #else
+            snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
+                     compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
+                     c_filename, runtime_lib_path);
+            #endif
+
+            printf("正在执行编译命令: %s\n", compile_cmd);
+            int result;
+            bool success = cn_support_run_command(compile_cmd, &result);
+            if (!success || result != 0) {
+                fprintf(stderr, "编译失败，退出码: %d\n", result);
                 cn_ir_module_free(ir_module);
                 goto cleanup;
             }
 
-            if (emit_c || compile_only) {
-                printf("已生成 C 代码文件: %s\n", c_filename);
+            printf("编译成功! 输出文件: %s\n", output_filename ? output_filename : "a.out");
+
+            // 如果没有要求保留 C 文件，则删除它
+            if (!emit_c) {
+                remove(c_filename);
             }
-
-            // 如果不是仅生成 C 代码，则调用外部编译器
-            if (!compile_only) {
-                char compile_cmd[4096];
-                const char *runtime_lib_path = get_runtime_lib_path();
-                const char *runtime_include_dir = get_runtime_include_dir();
-                const char *compiler = cn_support_detect_c_compiler();
-
-                #ifdef _WIN32
-                if (strcmp(compiler, "cl") == 0) {
-                    snprintf(compile_cmd, sizeof(compile_cmd), "%s /I%s /Fe:%s %s %s",
-                             compiler, runtime_include_dir, output_filename ? output_filename : "a.exe", 
-                             c_filename, runtime_lib_path);
-                } else {
-                    snprintf(compile_cmd, sizeof(compile_cmd), "%s -I%s -o %s %s %s",
-                             compiler, runtime_include_dir, output_filename ? output_filename : "a.out", 
-                             c_filename, runtime_lib_path);
-                }
-                #else
-                snprintf(compile_cmd, sizeof(compile_cmd), "%s -I%s -o %s %s %s",
-                         compiler, runtime_include_dir, output_filename ? output_filename : "a.out", 
-                         c_filename, runtime_lib_path);
-                #endif
-
-                printf("正在执行编译命令: %s\n", compile_cmd);
-                int result;
-                bool success = cn_support_run_command(compile_cmd, &result);
-                if (!success || result != 0) {
-                    fprintf(stderr, "编译失败，退出码: %d\n", result);
-                    cn_ir_module_free(ir_module);
-                    goto cleanup;
-                }
-
-                printf("编译成功! 输出文件: %s\n", output_filename ? output_filename : "a.out");
-
-                // 如果没有要求保留 C 文件，则删除它
-                if (!emit_c) {
-                    remove(c_filename);
-                }
-            }
-
-            cn_ir_module_free(ir_module);
         }
+
+        cn_ir_module_free(ir_module);
     }
 
 cleanup:
