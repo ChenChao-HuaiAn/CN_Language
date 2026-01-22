@@ -1,0 +1,60 @@
+#include "cnlang/runtime/io.h"
+#include "cnlang/runtime/memory.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+/*
+ * CN Language 运行时 I/O 实现
+ */
+
+char* cn_rt_read_line(void) {
+    char buffer[1024];
+    if (fgets(buffer, sizeof(buffer), stdin) == NULL) {
+        return NULL;
+    }
+    
+    // 移除换行符
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len-1] == '\n') {
+        buffer[len-1] = '\0';
+        len--;
+    }
+    
+    char* result = (char*)cn_rt_malloc(len + 1);
+    if (result) {
+        memcpy(result, buffer, len + 1);
+    }
+    return result;
+}
+
+int cn_rt_read_int(long long* out_val) {
+    if (out_val == NULL) return 0;
+    return scanf("%lld", out_val) == 1;
+}
+
+CnRtFile cn_rt_file_open(const char* path, const char* mode) {
+    if (path == NULL || mode == NULL) return NULL;
+    return (CnRtFile)fopen(path, mode);
+}
+
+void cn_rt_file_close(CnRtFile file) {
+    if (file) {
+        fclose((FILE*)file);
+    }
+}
+
+size_t cn_rt_file_read(CnRtFile file, void* buffer, size_t size) {
+    if (file == NULL || buffer == NULL) return 0;
+    return fread(buffer, 1, size, (FILE*)file);
+}
+
+size_t cn_rt_file_write(CnRtFile file, const void* buffer, size_t size) {
+    if (file == NULL || buffer == NULL) return 0;
+    return fwrite(buffer, 1, size, (FILE*)file);
+}
+
+int cn_rt_file_eof(CnRtFile file) {
+    if (file == NULL) return 1;
+    return feof((FILE*)file);
+}

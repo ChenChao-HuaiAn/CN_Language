@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
+#include <ctype.h>
 #include "cnlang/runtime/runtime.h"
 #include "cnlang/runtime/memory.h"
 
@@ -48,6 +50,65 @@ int cn_rt_string_compare(const char *a, const char *b) {
         return 1;
     }
     return strcmp(a, b);
+}
+
+int cn_rt_string_index_of(const char *str, const char *target) {
+    if (str == NULL || target == NULL) return -1;
+    char *p = strstr(str, target);
+    if (p == NULL) return -1;
+    return (int)(p - str);
+}
+
+char* cn_rt_string_trim(const char *str) {
+    if (str == NULL) return NULL;
+    
+    const char *start = str;
+    while (*start && isspace((unsigned char)*start)) {
+        start++;
+    }
+    
+    if (*start == '\0') {
+        return cn_rt_string_dup("");
+    }
+    
+    const char *end = str + strlen(str) - 1;
+    while (end > start && isspace((unsigned char)*end)) {
+        end--;
+    }
+    
+    size_t len = (size_t)(end - start + 1);
+    char *result = (char*)cn_rt_malloc(len + 1);
+    if (result) {
+        memcpy(result, start, len);
+        result[len] = '\0';
+    }
+    return result;
+}
+
+char* cn_rt_string_format(const char *format, ...) {
+    if (format == NULL) return NULL;
+    
+    va_list args;
+    va_start(args, format);
+    
+    // 第一次调用确定长度
+    va_list args_copy;
+    va_copy(args_copy, args);
+    int len = vsnprintf(NULL, 0, format, args_copy);
+    va_end(args_copy);
+    
+    if (len < 0) {
+        va_end(args);
+        return NULL;
+    }
+    
+    char *result = (char*)cn_rt_malloc(len + 1);
+    if (result) {
+        vsnprintf(result, len + 1, format, args);
+    }
+    
+    va_end(args);
+    return result;
 }
 
 // 数组高级操作函数（如果需要）

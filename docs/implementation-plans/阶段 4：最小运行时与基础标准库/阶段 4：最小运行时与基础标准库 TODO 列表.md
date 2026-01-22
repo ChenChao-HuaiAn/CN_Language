@@ -19,15 +19,15 @@
 
 ## 4.3 基础标准库
 ### 字符串处理
-- [ ] **4.3.1 补充字符串函数**：添加 `cn_rt_string_index_of`, `cn_rt_string_trim` 等。
-- [ ] **4.3.2 字符串格式化**：实现简单格式化输出 `cn_rt_format`。
+- [x] **4.3.1 补充字符串函数**：添加 `cn_rt_string_index_of`, `cn_rt_string_trim` 等。
+- [x] **4.3.2 字符串格式化**：实现简单格式化输出 `cn_rt_format`。
 ### 简单 I/O
-- [ ] **4.3.3 设计 I/O 接口**：新建 `include/cnlang/runtime/io.h`。
-- [ ] **4.3.4 实现控制台输入**：实现 `cn_rt_read_line`, `cn_rt_read_int`。
-- [ ] **4.3.5 实现基础文件操作**：封装文件打开/读/写/关闭。
+- [x] **4.3.3 设计 I/O 接口**：新建 `include/cnlang/runtime/io.h`。
+- [x] **4.3.4 实现控制台输入**：实现 `cn_rt_read_line`, `cn_rt_read_int`。
+- [x] **4.3.5 实现基础文件操作**：封装文件打开/读/写/关闭。
 ### 数学函数
-- [ ] **4.3.6 设计数学接口**：新建 `include/cnlang/runtime/math.h`。
-- [ ] **4.3.7 实现数学函数**：封装 `cn_rt_abs`, `cn_rt_min`, `cn_rt_max`, `cn_rt_pow` 等。
+- [x] **4.3.6 设计数学接口**：新建 `include/cnlang/runtime/math.h`。
+- [x] **4.3.7 实现数学函数**：封装 `cn_rt_abs`, `cn_rt_min`, `cn_rt_max`, `cn_rt_pow` 等。
 
 ## 4.4 与语言特性绑定
 - [ ] **4.4.1 文档化运行时依赖**：明确哪些语言特性依赖运行时。
