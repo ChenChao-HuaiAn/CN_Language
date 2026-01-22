@@ -120,13 +120,21 @@ void cn_cgen_block(CnCCodeGenContext *ctx, CnIrBasicBlock *block) {
 void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     if (!ctx || !func) return;
     ctx->current_func = func;
-    fprintf(ctx->output_file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
+    const char *c_func_name = get_c_function_name(func->name);
+    bool is_main = strcmp(c_func_name, "main") == 0;
+    
+    fprintf(ctx->output_file, "%s %s(", get_c_type_string(func->return_type), c_func_name);
     for (size_t i = 0; i < func->param_count; i++) {
         fprintf(ctx->output_file, "%s %s", get_c_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
         if (i < func->param_count - 1) fprintf(ctx->output_file, ", ");
     }
     fprintf(ctx->output_file, ") {\n");
     
+    // 注入运行时初始化
+    if (is_main) {
+        fprintf(ctx->output_file, "  cn_rt_init();\n");
+    }
+
     // 声明虚拟寄存器
     if (func->next_reg_id > 0) {
         fprintf(ctx->output_file, "  long long ");
@@ -139,6 +147,12 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
 
     CnIrBasicBlock *block = func->first_block;
     while (block) { cn_cgen_block(ctx, block); block = block->next; }
+
+    // 注入运行时退出
+    if (is_main) {
+        fprintf(ctx->output_file, "  cn_rt_exit();\n");
+    }
+    
     fprintf(ctx->output_file, "}\n\n");
 }
 

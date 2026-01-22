@@ -8,6 +8,26 @@
  * 提供 CN Language 程序运行所需的基础函数
  */
 
+// 全局运行时状态
+static CnRuntimeState g_rt_state;
+
+// 运行时初始化实现
+void cn_rt_init(void) {
+    g_rt_state.exit_code = 0;
+    g_rt_state.total_allocations = 0;
+    g_rt_state.total_freed = 0;
+    // 初始化其他必要的子系统
+}
+
+// 运行时退出实现
+void cn_rt_exit(void) {
+    // 执行清理操作
+    // 如果有未释放的内存，可以在此处报告（如果启用了追踪）
+    
+    // 如果有明确的退出码，可以通过 exit() 退出，
+    // 但通常在 main 函数结束时由 C 运行时处理。
+}
+
 // 基础打印函数实现
 void cn_rt_print_int(long long val) {
     printf("%lld", val);

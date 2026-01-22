@@ -3,11 +3,11 @@
 根据 `CN_Language 开发计划.md` 第 137-158 行定义的阶段 4 目标，细分以下具体任务。
 
 ## 4.1 运行时初始化
-- [ ] **4.1.1 设计运行时初始化接口**：在 `include/cnlang/runtime/runtime.h` 中定义 `cn_rt_init()` 和 `cn_rt_exit()`。
-- [ ] **4.1.2 实现程序入口包装**：在 `src/runtime/core/runtime.c` 中实现 `cn_rt_init()` 全局初始化逻辑。
-- [ ] **4.1.3 实现退出流程**：在 `src/runtime/core/runtime.c` 中实现 `cn_rt_exit()` 资源清理。
-- [ ] **4.1.4 全局状态管理**：添加运行时全局状态结构体（如错误状态、堆统计）。
-- [ ] **4.1.5 C 后端集成**：确保 `cgen.c` 生成的代码在 `main()` 中调用 `cn_rt_init/exit`。
+- [x] **4.1.1 设计运行时初始化接口**：在 `include/cnlang/runtime/runtime.h` 中定义 `cn_rt_init()` 和 `cn_rt_exit()`。
+- [x] **4.1.2 实现程序入口包装**：在 `src/runtime/core/runtime.c` 中实现 `cn_rt_init()` 全局初始化逻辑。
+- [x] **4.1.3 实现退出流程**：在 `src/runtime/core/runtime.c` 中实现 `cn_rt_exit()` 资源清理。
+- [x] **4.1.4 全局状态管理**：添加运行时全局状态结构体（如错误状态、堆统计）。
+- [x] **4.1.5 C 后端集成**：确保 `cgen.c` 生成的代码在 `main()` 中调用 `cn_rt_init/exit`。
 
 ## 4.2 内存管理
 - [ ] **4.2.1 设计内存管理接口**：新建 `include/cnlang/runtime/memory.h` 定义统一内存分配接口。
