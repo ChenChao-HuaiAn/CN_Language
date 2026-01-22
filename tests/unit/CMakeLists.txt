@@ -229,3 +229,29 @@ add_executable(semantics_name_resolution_test
 )
 target_include_directories(semantics_name_resolution_test PRIVATE ../../include)
 add_test(NAME semantics_name_resolution_test COMMAND semantics_name_resolution_test)
+
+# 运行时单元测试
+add_executable(runtime_memory_test runtime/runtime_memory_test.c)
+target_link_libraries(runtime_memory_test PRIVATE cn_runtime)
+target_include_directories(runtime_memory_test PRIVATE ../../include)
+add_test(NAME runtime_memory_test COMMAND runtime_memory_test)
+
+add_executable(runtime_string_test runtime/runtime_string_test.c)
+target_link_libraries(runtime_string_test PRIVATE cn_runtime)
+target_include_directories(runtime_string_test PRIVATE ../../include)
+add_test(NAME runtime_string_test COMMAND runtime_string_test)
+
+add_executable(runtime_array_test runtime/runtime_array_test.c)
+target_link_libraries(runtime_array_test PRIVATE cn_runtime)
+target_include_directories(runtime_array_test PRIVATE ../../include)
+add_test(NAME runtime_array_test COMMAND runtime_array_test)
+
+add_executable(runtime_io_test runtime/runtime_io_test.c)
+target_link_libraries(runtime_io_test PRIVATE cn_runtime)
+target_include_directories(runtime_io_test PRIVATE ../../include)
+add_test(NAME runtime_io_test COMMAND runtime_io_test)
+
+add_executable(runtime_math_test runtime/runtime_math_test.c)
+target_link_libraries(runtime_math_test PRIVATE cn_runtime)
+target_include_directories(runtime_math_test PRIVATE ../../include)
+add_test(NAME runtime_math_test COMMAND runtime_math_test)

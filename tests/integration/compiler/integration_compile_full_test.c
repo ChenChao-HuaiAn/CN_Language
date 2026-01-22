@@ -90,6 +90,28 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // 测试 4: runtime_test_full.cn
+    snprintf(cmd, sizeof(cmd), "%s ../../../examples/runtime_test_full.cn -o runtime_full_test", cnc_path);
+    printf("正在运行: %s\n", cmd);
+    res = system(cmd);
+    if (res != 0) {
+        fprintf(stderr, "测试 4 编译失败: %d\n", res);
+        return 1;
+    }
+
+    #ifdef _WIN32
+    const char* runtime_full_exe = ".\\runtime_full_test.exe";
+    #else
+    const char* runtime_full_exe = "./runtime_full_test";
+    #endif
+
+    printf("正在运行生成的程序: %s\n", runtime_full_exe);
+    res = system(runtime_full_exe);
+    if (res != 0) {
+        fprintf(stderr, "测试 4 运行失败: %d\n", res);
+        return 1;
+    }
+
     printf("集成编译测试全部通过!\n");
     return 0;
 }
