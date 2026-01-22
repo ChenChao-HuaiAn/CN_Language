@@ -1,0 +1,19 @@
+Start testing: Jan 22 23:28 中国标准时间
+----------------------------------------------------------
+2/30 Testing: support_target_triple_test
+2/30 Test: support_target_triple_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/support_target_triple_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"support_target_triple_test" start time: Jan 22 23:28 中国标准时间
+Output:
+----------------------------------------------------------
+support_target_triple_test: OK
+<end of output>
+Test time =   0.10 sec
+----------------------------------------------------------
+Test Passed.
+"support_target_triple_test" end time: Jan 22 23:28 中国标准时间
+"support_target_triple_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jan 22 23:28 中国标准时间

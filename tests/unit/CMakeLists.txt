@@ -23,6 +23,18 @@ add_executable(sample_unit_test
 add_test(NAME sample_unit_test
          COMMAND sample_unit_test)
 
+add_executable(support_target_triple_test
+    support_target_triple_test.c
+    ../../src/support/config/target_triple.c
+)
+
+target_include_directories(support_target_triple_test PRIVATE
+    ../../include
+)
+
+add_test(NAME support_target_triple_test
+         COMMAND support_target_triple_test)
+
 add_executable(lexer_function_examples_test
     lexer_function_examples_test.c
     ../../src/frontend/lexer/lexer.c

@@ -1,0 +1,2335 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineSystem.cmake:212 (message)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      The system is: Windows - 10.0.19045 - AMD64
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeMinGWFindMake.cmake:5 (find_program)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_MAKE_PROGRAM"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "mingw32-make.exe"
+    candidate_directories:
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+      - "/REGISTRY-NOTFOUND/bin/"
+      - "c:/MinGW/bin/"
+      - "/MinGW/bin/"
+      - "/REGISTRY-NOTFOUND/MinGW/bin/"
+    searched_directories:
+      - "C:/Program Files/PowerShell/7/mingw32-make.exe.com"
+      - "C:/Program Files/PowerShell/7/mingw32-make.exe"
+      - "C:/Windows/System32/mingw32-make.exe.com"
+      - "C:/Windows/System32/mingw32-make.exe"
+      - "C:/Windows/mingw32-make.exe.com"
+      - "C:/Windows/mingw32-make.exe"
+      - "C:/Windows/System32/wbem/mingw32-make.exe.com"
+      - "C:/Windows/System32/wbem/mingw32-make.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/mingw32-make.exe.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/mingw32-make.exe"
+      - "C:/Windows/System32/OpenSSH/mingw32-make.exe.com"
+      - "C:/Windows/System32/OpenSSH/mingw32-make.exe"
+      - "C:/Program Files/Git/cmd/mingw32-make.exe.com"
+      - "C:/Program Files/Git/cmd/mingw32-make.exe"
+      - "C:/Program Files/dotnet/mingw32-make.exe.com"
+      - "C:/Program Files/dotnet/mingw32-make.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/mingw32-make.exe.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/mingw32-make.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/mingw32-make.exe.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/mingw32-make.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/mingw32-make.exe.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/mingw32-make.exe"
+      - "C:/Program Files/CMake/bin/mingw32-make.exe.com"
+      - "C:/Program Files/CMake/bin/mingw32-make.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/mingw32-make.exe.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/mingw32-make.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/mingw32-make.exe.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/mingw32-make.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/mingw32-make.exe.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/mingw32-make.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/mingw32-make.exe.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/mingw32-make.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/mingw32-make.exe.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/mingw32-make.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/mingw32-make.exe.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/mingw32-make.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/mingw32-make.exe.com"
+    found: "C:/Users/ChenChao/Documents/mingw64/bin/mingw32-make.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompiler.cmake:63 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:64 (_cmake_find_compiler)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_C_COMPILER"
+    description: "C compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: false
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "cc"
+      - "gcc"
+      - "cl"
+      - "bcc"
+      - "xlc"
+      - "icx"
+      - "clang"
+    candidate_directories:
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Program Files/PowerShell/7/cc.com"
+      - "C:/Program Files/PowerShell/7/cc.exe"
+      - "C:/Program Files/PowerShell/7/cc"
+      - "C:/Program Files/PowerShell/7/gcc.com"
+      - "C:/Program Files/PowerShell/7/gcc.exe"
+      - "C:/Program Files/PowerShell/7/gcc"
+      - "C:/Program Files/PowerShell/7/cl.com"
+      - "C:/Program Files/PowerShell/7/cl.exe"
+      - "C:/Program Files/PowerShell/7/cl"
+      - "C:/Program Files/PowerShell/7/bcc.com"
+      - "C:/Program Files/PowerShell/7/bcc.exe"
+      - "C:/Program Files/PowerShell/7/bcc"
+      - "C:/Program Files/PowerShell/7/xlc.com"
+      - "C:/Program Files/PowerShell/7/xlc.exe"
+      - "C:/Program Files/PowerShell/7/xlc"
+      - "C:/Program Files/PowerShell/7/icx.com"
+      - "C:/Program Files/PowerShell/7/icx.exe"
+      - "C:/Program Files/PowerShell/7/icx"
+      - "C:/Program Files/PowerShell/7/clang.com"
+      - "C:/Program Files/PowerShell/7/clang.exe"
+      - "C:/Program Files/PowerShell/7/clang"
+      - "C:/Windows/System32/cc.com"
+      - "C:/Windows/System32/cc.exe"
+      - "C:/Windows/System32/cc"
+      - "C:/Windows/System32/gcc.com"
+      - "C:/Windows/System32/gcc.exe"
+      - "C:/Windows/System32/gcc"
+      - "C:/Windows/System32/cl.com"
+      - "C:/Windows/System32/cl.exe"
+      - "C:/Windows/System32/cl"
+      - "C:/Windows/System32/bcc.com"
+      - "C:/Windows/System32/bcc.exe"
+      - "C:/Windows/System32/bcc"
+      - "C:/Windows/System32/xlc.com"
+      - "C:/Windows/System32/xlc.exe"
+      - "C:/Windows/System32/xlc"
+      - "C:/Windows/System32/icx.com"
+      - "C:/Windows/System32/icx.exe"
+      - "C:/Windows/System32/icx"
+      - "C:/Windows/System32/clang.com"
+      - "C:/Windows/System32/clang.exe"
+      - "C:/Windows/System32/clang"
+      - "C:/Windows/cc.com"
+      - "C:/Windows/cc.exe"
+      - "C:/Windows/cc"
+      - "C:/Windows/gcc.com"
+      - "C:/Windows/gcc.exe"
+      - "C:/Windows/gcc"
+      - "C:/Windows/cl.com"
+      - "C:/Windows/cl.exe"
+      - "C:/Windows/cl"
+      - "C:/Windows/bcc.com"
+      - "C:/Windows/bcc.exe"
+      - "C:/Windows/bcc"
+      - "C:/Windows/xlc.com"
+      - "C:/Windows/xlc.exe"
+      - "C:/Windows/xlc"
+      - "C:/Windows/icx.com"
+      - "C:/Windows/icx.exe"
+      - "C:/Windows/icx"
+      - "C:/Windows/clang.com"
+      - "C:/Windows/clang.exe"
+      - "C:/Windows/clang"
+      - "C:/Windows/System32/wbem/cc.com"
+      - "C:/Windows/System32/wbem/cc.exe"
+      - "C:/Windows/System32/wbem/cc"
+      - "C:/Windows/System32/wbem/gcc.com"
+      - "C:/Windows/System32/wbem/gcc.exe"
+      - "C:/Windows/System32/wbem/gcc"
+      - "C:/Windows/System32/wbem/cl.com"
+      - "C:/Windows/System32/wbem/cl.exe"
+      - "C:/Windows/System32/wbem/cl"
+      - "C:/Windows/System32/wbem/bcc.com"
+      - "C:/Windows/System32/wbem/bcc.exe"
+      - "C:/Windows/System32/wbem/bcc"
+      - "C:/Windows/System32/wbem/xlc.com"
+      - "C:/Windows/System32/wbem/xlc.exe"
+      - "C:/Windows/System32/wbem/xlc"
+      - "C:/Windows/System32/wbem/icx.com"
+      - "C:/Windows/System32/wbem/icx.exe"
+      - "C:/Windows/System32/wbem/icx"
+      - "C:/Windows/System32/wbem/clang.com"
+      - "C:/Windows/System32/wbem/clang.exe"
+      - "C:/Windows/System32/wbem/clang"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/cc.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/cc.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/cc"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/cl.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/cl.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/cl"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/bcc.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/bcc.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/bcc"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/xlc.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/xlc.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/xlc"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/icx.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/icx.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/icx"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/clang.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/clang.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/clang"
+      - "C:/Windows/System32/OpenSSH/cc.com"
+      - "C:/Windows/System32/OpenSSH/cc.exe"
+      - "C:/Windows/System32/OpenSSH/cc"
+      - "C:/Windows/System32/OpenSSH/gcc.com"
+      - "C:/Windows/System32/OpenSSH/gcc.exe"
+      - "C:/Windows/System32/OpenSSH/gcc"
+      - "C:/Windows/System32/OpenSSH/cl.com"
+      - "C:/Windows/System32/OpenSSH/cl.exe"
+      - "C:/Windows/System32/OpenSSH/cl"
+      - "C:/Windows/System32/OpenSSH/bcc.com"
+      - "C:/Windows/System32/OpenSSH/bcc.exe"
+      - "C:/Windows/System32/OpenSSH/bcc"
+      - "C:/Windows/System32/OpenSSH/xlc.com"
+      - "C:/Windows/System32/OpenSSH/xlc.exe"
+      - "C:/Windows/System32/OpenSSH/xlc"
+      - "C:/Windows/System32/OpenSSH/icx.com"
+      - "C:/Windows/System32/OpenSSH/icx.exe"
+      - "C:/Windows/System32/OpenSSH/icx"
+      - "C:/Windows/System32/OpenSSH/clang.com"
+      - "C:/Windows/System32/OpenSSH/clang.exe"
+      - "C:/Windows/System32/OpenSSH/clang"
+      - "C:/Program Files/Git/cmd/cc.com"
+      - "C:/Program Files/Git/cmd/cc.exe"
+      - "C:/Program Files/Git/cmd/cc"
+      - "C:/Program Files/Git/cmd/gcc.com"
+      - "C:/Program Files/Git/cmd/gcc.exe"
+      - "C:/Program Files/Git/cmd/gcc"
+      - "C:/Program Files/Git/cmd/cl.com"
+      - "C:/Program Files/Git/cmd/cl.exe"
+      - "C:/Program Files/Git/cmd/cl"
+      - "C:/Program Files/Git/cmd/bcc.com"
+      - "C:/Program Files/Git/cmd/bcc.exe"
+      - "C:/Program Files/Git/cmd/bcc"
+      - "C:/Program Files/Git/cmd/xlc.com"
+      - "C:/Program Files/Git/cmd/xlc.exe"
+      - "C:/Program Files/Git/cmd/xlc"
+      - "C:/Program Files/Git/cmd/icx.com"
+      - "C:/Program Files/Git/cmd/icx.exe"
+      - "C:/Program Files/Git/cmd/icx"
+      - "C:/Program Files/Git/cmd/clang.com"
+      - "C:/Program Files/Git/cmd/clang.exe"
+      - "C:/Program Files/Git/cmd/clang"
+      - "C:/Program Files/dotnet/cc.com"
+      - "C:/Program Files/dotnet/cc.exe"
+      - "C:/Program Files/dotnet/cc"
+      - "C:/Program Files/dotnet/gcc.com"
+      - "C:/Program Files/dotnet/gcc.exe"
+      - "C:/Program Files/dotnet/gcc"
+      - "C:/Program Files/dotnet/cl.com"
+      - "C:/Program Files/dotnet/cl.exe"
+      - "C:/Program Files/dotnet/cl"
+      - "C:/Program Files/dotnet/bcc.com"
+      - "C:/Program Files/dotnet/bcc.exe"
+      - "C:/Program Files/dotnet/bcc"
+      - "C:/Program Files/dotnet/xlc.com"
+      - "C:/Program Files/dotnet/xlc.exe"
+      - "C:/Program Files/dotnet/xlc"
+      - "C:/Program Files/dotnet/icx.com"
+      - "C:/Program Files/dotnet/icx.exe"
+      - "C:/Program Files/dotnet/icx"
+      - "C:/Program Files/dotnet/clang.com"
+      - "C:/Program Files/dotnet/clang.exe"
+      - "C:/Program Files/dotnet/clang"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/cc.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/cc.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/cc"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/cl.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/cl.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/cl"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/bcc.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/bcc.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/bcc"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/xlc.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/xlc.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/xlc"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/icx.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/icx.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/icx"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/clang.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/clang.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/clang"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/cc.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/cc.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/cc"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/cl.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/cl.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/cl"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/bcc.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/bcc.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/bcc"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/xlc.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/xlc.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/xlc"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/icx.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/icx.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/icx"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/clang.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/clang.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/clang"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/cc.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/cc.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/cc"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/cl.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/cl.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/cl"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/bcc.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/bcc.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/bcc"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/xlc.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/xlc.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/xlc"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/icx.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/icx.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/icx"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/clang.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/clang.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/clang"
+      - "C:/Program Files/CMake/bin/cc.com"
+      - "C:/Program Files/CMake/bin/cc.exe"
+      - "C:/Program Files/CMake/bin/cc"
+      - "C:/Program Files/CMake/bin/gcc.com"
+      - "C:/Program Files/CMake/bin/gcc.exe"
+      - "C:/Program Files/CMake/bin/gcc"
+      - "C:/Program Files/CMake/bin/cl.com"
+      - "C:/Program Files/CMake/bin/cl.exe"
+      - "C:/Program Files/CMake/bin/cl"
+      - "C:/Program Files/CMake/bin/bcc.com"
+      - "C:/Program Files/CMake/bin/bcc.exe"
+      - "C:/Program Files/CMake/bin/bcc"
+      - "C:/Program Files/CMake/bin/xlc.com"
+      - "C:/Program Files/CMake/bin/xlc.exe"
+      - "C:/Program Files/CMake/bin/xlc"
+      - "C:/Program Files/CMake/bin/icx.com"
+      - "C:/Program Files/CMake/bin/icx.exe"
+      - "C:/Program Files/CMake/bin/icx"
+      - "C:/Program Files/CMake/bin/clang.com"
+      - "C:/Program Files/CMake/bin/clang.exe"
+      - "C:/Program Files/CMake/bin/clang"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/cc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/cc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/cc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/cl.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/cl.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/cl"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/bcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/bcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/bcc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/xlc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/xlc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/xlc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/icx.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/icx.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/icx"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/clang.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/clang.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/clang"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/cc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/cc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/cc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/cl.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/cl.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/cl"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/bcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/bcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/bcc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/xlc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/xlc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/xlc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/icx.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/icx.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/icx"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/clang.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/clang.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/clang"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/cc.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/cc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/cc"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/cl.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/cl.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/cl"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/bcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/bcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/bcc"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/xlc.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/xlc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/xlc"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/icx.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/icx.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/icx"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/clang.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/clang.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/clang"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/cc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/cc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/cc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/cl.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/cl.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/cl"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/bcc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/bcc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/bcc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/xlc.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/xlc.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/xlc"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/icx.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/icx.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/icx"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/clang.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/clang.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/clang"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/cc.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/cc.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/cc"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:462 (find_file)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:500 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/"
+    found: "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler: C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc.exe 
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "a.exe"
+      
+      The C compiler identification is GNU, found in:
+        C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/4.2.1/CompilerIdC/a.exe
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_AR"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ar"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/ar.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/ar.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_RANLIB"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ranlib"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/ranlib.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/ranlib.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_STRIP"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "strip"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/strip.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/strip.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_LINKER"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "ld"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/ld.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/ld.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_NM"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "nm"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/nm.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/nm.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_OBJDUMP"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "objdump"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/objdump.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/objdump.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_OBJCOPY"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "objcopy"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/objcopy.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/objcopy.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_READELF"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "readelf"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/readelf.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/readelf.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_DLLTOOL"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "dlltool"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/dlltool.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/dlltool.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_ADDR2LINE"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "addr2line"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/addr2line.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/addr2line.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_TAPI"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "tapi"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/tapi.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/tapi.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/tapi"
+      - "C:/Program Files/PowerShell/7/tapi.com"
+      - "C:/Program Files/PowerShell/7/tapi.exe"
+      - "C:/Program Files/PowerShell/7/tapi"
+      - "C:/Windows/System32/tapi.com"
+      - "C:/Windows/System32/tapi.exe"
+      - "C:/Windows/System32/tapi"
+      - "C:/Windows/tapi.com"
+      - "C:/Windows/tapi.exe"
+      - "C:/Windows/tapi"
+      - "C:/Windows/System32/wbem/tapi.com"
+      - "C:/Windows/System32/wbem/tapi.exe"
+      - "C:/Windows/System32/wbem/tapi"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/tapi.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/tapi.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/tapi"
+      - "C:/Windows/System32/OpenSSH/tapi.com"
+      - "C:/Windows/System32/OpenSSH/tapi.exe"
+      - "C:/Windows/System32/OpenSSH/tapi"
+      - "C:/Program Files/Git/cmd/tapi.com"
+      - "C:/Program Files/Git/cmd/tapi.exe"
+      - "C:/Program Files/Git/cmd/tapi"
+      - "C:/Program Files/dotnet/tapi.com"
+      - "C:/Program Files/dotnet/tapi.exe"
+      - "C:/Program Files/dotnet/tapi"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/tapi.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/tapi.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/tapi"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/tapi.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/tapi.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/tapi"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/tapi.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/tapi.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/tapi"
+      - "C:/Program Files/CMake/bin/tapi.com"
+      - "C:/Program Files/CMake/bin/tapi.exe"
+      - "C:/Program Files/CMake/bin/tapi"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/tapi.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/tapi.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/tapi"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/tapi.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/tapi.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/tapi"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/tapi.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/tapi.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/tapi"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/tapi.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/tapi.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/tapi"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/tapi.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/tapi.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/tapi"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/tapi.com"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/tapi.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/tapi"
+      - "C:/Users/ChenChao/.dotnet/tools/tapi.com"
+      - "C:/Users/ChenChao/.dotnet/tools/tapi.exe"
+      - "C:/Users/ChenChao/.dotnet/tools/tapi"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/tapi.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/tapi.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/tapi"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-FindBinUtils.cmake:18 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:201 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_C_COMPILER_AR"
+    description: "A wrapper around 'ar' adding the appropriate '--plugin' option for the GCC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gcc-ar-15.2"
+      - "gcc-ar-15"
+      - "gcc-ar15"
+      - "gcc-ar"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar-15.2"
+      - "C:/Program Files/PowerShell/7/gcc-ar-15.2.com"
+      - "C:/Program Files/PowerShell/7/gcc-ar-15.2.exe"
+      - "C:/Program Files/PowerShell/7/gcc-ar-15.2"
+      - "C:/Windows/System32/gcc-ar-15.2.com"
+      - "C:/Windows/System32/gcc-ar-15.2.exe"
+      - "C:/Windows/System32/gcc-ar-15.2"
+      - "C:/Windows/gcc-ar-15.2.com"
+      - "C:/Windows/gcc-ar-15.2.exe"
+      - "C:/Windows/gcc-ar-15.2"
+      - "C:/Windows/System32/wbem/gcc-ar-15.2.com"
+      - "C:/Windows/System32/wbem/gcc-ar-15.2.exe"
+      - "C:/Windows/System32/wbem/gcc-ar-15.2"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar-15.2.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar-15.2.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar-15.2"
+      - "C:/Windows/System32/OpenSSH/gcc-ar-15.2.com"
+      - "C:/Windows/System32/OpenSSH/gcc-ar-15.2.exe"
+      - "C:/Windows/System32/OpenSSH/gcc-ar-15.2"
+      - "C:/Program Files/Git/cmd/gcc-ar-15.2.com"
+      - "C:/Program Files/Git/cmd/gcc-ar-15.2.exe"
+      - "C:/Program Files/Git/cmd/gcc-ar-15.2"
+      - "C:/Program Files/dotnet/gcc-ar-15.2.com"
+      - "C:/Program Files/dotnet/gcc-ar-15.2.exe"
+      - "C:/Program Files/dotnet/gcc-ar-15.2"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar-15.2.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar-15.2.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar-15.2"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar-15.2.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar-15.2.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar-15.2"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar-15.2.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar-15.2.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar-15.2"
+      - "C:/Program Files/CMake/bin/gcc-ar-15.2.com"
+      - "C:/Program Files/CMake/bin/gcc-ar-15.2.exe"
+      - "C:/Program Files/CMake/bin/gcc-ar-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar-15.2"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar-15.2.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar-15.2.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar-15.2"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar-15.2"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar-15.2"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar-15.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar-15"
+      - "C:/Program Files/PowerShell/7/gcc-ar-15.com"
+      - "C:/Program Files/PowerShell/7/gcc-ar-15.exe"
+      - "C:/Program Files/PowerShell/7/gcc-ar-15"
+      - "C:/Windows/System32/gcc-ar-15.com"
+      - "C:/Windows/System32/gcc-ar-15.exe"
+      - "C:/Windows/System32/gcc-ar-15"
+      - "C:/Windows/gcc-ar-15.com"
+      - "C:/Windows/gcc-ar-15.exe"
+      - "C:/Windows/gcc-ar-15"
+      - "C:/Windows/System32/wbem/gcc-ar-15.com"
+      - "C:/Windows/System32/wbem/gcc-ar-15.exe"
+      - "C:/Windows/System32/wbem/gcc-ar-15"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar-15.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar-15.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar-15"
+      - "C:/Windows/System32/OpenSSH/gcc-ar-15.com"
+      - "C:/Windows/System32/OpenSSH/gcc-ar-15.exe"
+      - "C:/Windows/System32/OpenSSH/gcc-ar-15"
+      - "C:/Program Files/Git/cmd/gcc-ar-15.com"
+      - "C:/Program Files/Git/cmd/gcc-ar-15.exe"
+      - "C:/Program Files/Git/cmd/gcc-ar-15"
+      - "C:/Program Files/dotnet/gcc-ar-15.com"
+      - "C:/Program Files/dotnet/gcc-ar-15.exe"
+      - "C:/Program Files/dotnet/gcc-ar-15"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar-15.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar-15.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar-15"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar-15.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar-15.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar-15"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar-15.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar-15.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar-15"
+      - "C:/Program Files/CMake/bin/gcc-ar-15.com"
+      - "C:/Program Files/CMake/bin/gcc-ar-15.exe"
+      - "C:/Program Files/CMake/bin/gcc-ar-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar-15"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar-15"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar-15.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar-15.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar-15"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar-15.com"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar-15"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar-15.com"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar-15"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar15.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar15.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar15"
+      - "C:/Program Files/PowerShell/7/gcc-ar15.com"
+      - "C:/Program Files/PowerShell/7/gcc-ar15.exe"
+      - "C:/Program Files/PowerShell/7/gcc-ar15"
+      - "C:/Windows/System32/gcc-ar15.com"
+      - "C:/Windows/System32/gcc-ar15.exe"
+      - "C:/Windows/System32/gcc-ar15"
+      - "C:/Windows/gcc-ar15.com"
+      - "C:/Windows/gcc-ar15.exe"
+      - "C:/Windows/gcc-ar15"
+      - "C:/Windows/System32/wbem/gcc-ar15.com"
+      - "C:/Windows/System32/wbem/gcc-ar15.exe"
+      - "C:/Windows/System32/wbem/gcc-ar15"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar15.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar15.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ar15"
+      - "C:/Windows/System32/OpenSSH/gcc-ar15.com"
+      - "C:/Windows/System32/OpenSSH/gcc-ar15.exe"
+      - "C:/Windows/System32/OpenSSH/gcc-ar15"
+      - "C:/Program Files/Git/cmd/gcc-ar15.com"
+      - "C:/Program Files/Git/cmd/gcc-ar15.exe"
+      - "C:/Program Files/Git/cmd/gcc-ar15"
+      - "C:/Program Files/dotnet/gcc-ar15.com"
+      - "C:/Program Files/dotnet/gcc-ar15.exe"
+      - "C:/Program Files/dotnet/gcc-ar15"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar15.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar15.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ar15"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar15.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar15.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ar15"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar15.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar15.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ar15"
+      - "C:/Program Files/CMake/bin/gcc-ar15.com"
+      - "C:/Program Files/CMake/bin/gcc-ar15.exe"
+      - "C:/Program Files/CMake/bin/gcc-ar15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ar15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ar15"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar15.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ar15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ar15"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar15.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar15.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ar15"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar15.com"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar15.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ar15"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar15.com"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar15.exe"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ar15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ar15"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ar.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Compiler/GNU-FindBinUtils.cmake:30 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCCompiler.cmake:201 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_C_COMPILER_RANLIB"
+    description: "A wrapper around 'ranlib' adding the appropriate '--plugin' option for the GCC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "gcc-ranlib-15.2"
+      - "gcc-ranlib-15"
+      - "gcc-ranlib15"
+      - "gcc-ranlib"
+    candidate_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+    searched_directories:
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib-15.2"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib-15.2.com"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib-15.2.exe"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib-15.2"
+      - "C:/Windows/System32/gcc-ranlib-15.2.com"
+      - "C:/Windows/System32/gcc-ranlib-15.2.exe"
+      - "C:/Windows/System32/gcc-ranlib-15.2"
+      - "C:/Windows/gcc-ranlib-15.2.com"
+      - "C:/Windows/gcc-ranlib-15.2.exe"
+      - "C:/Windows/gcc-ranlib-15.2"
+      - "C:/Windows/System32/wbem/gcc-ranlib-15.2.com"
+      - "C:/Windows/System32/wbem/gcc-ranlib-15.2.exe"
+      - "C:/Windows/System32/wbem/gcc-ranlib-15.2"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib-15.2.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib-15.2.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib-15.2"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib-15.2.com"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib-15.2.exe"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib-15.2"
+      - "C:/Program Files/Git/cmd/gcc-ranlib-15.2.com"
+      - "C:/Program Files/Git/cmd/gcc-ranlib-15.2.exe"
+      - "C:/Program Files/Git/cmd/gcc-ranlib-15.2"
+      - "C:/Program Files/dotnet/gcc-ranlib-15.2.com"
+      - "C:/Program Files/dotnet/gcc-ranlib-15.2.exe"
+      - "C:/Program Files/dotnet/gcc-ranlib-15.2"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib-15.2.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib-15.2.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib-15.2"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib-15.2.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib-15.2.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib-15.2"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib-15.2.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib-15.2.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib-15.2"
+      - "C:/Program Files/CMake/bin/gcc-ranlib-15.2.com"
+      - "C:/Program Files/CMake/bin/gcc-ranlib-15.2.exe"
+      - "C:/Program Files/CMake/bin/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib-15.2"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib-15.2.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib-15.2.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib-15.2.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib-15.2.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib-15.2"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib-15"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib-15.com"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib-15.exe"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib-15"
+      - "C:/Windows/System32/gcc-ranlib-15.com"
+      - "C:/Windows/System32/gcc-ranlib-15.exe"
+      - "C:/Windows/System32/gcc-ranlib-15"
+      - "C:/Windows/gcc-ranlib-15.com"
+      - "C:/Windows/gcc-ranlib-15.exe"
+      - "C:/Windows/gcc-ranlib-15"
+      - "C:/Windows/System32/wbem/gcc-ranlib-15.com"
+      - "C:/Windows/System32/wbem/gcc-ranlib-15.exe"
+      - "C:/Windows/System32/wbem/gcc-ranlib-15"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib-15.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib-15.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib-15"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib-15.com"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib-15.exe"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib-15"
+      - "C:/Program Files/Git/cmd/gcc-ranlib-15.com"
+      - "C:/Program Files/Git/cmd/gcc-ranlib-15.exe"
+      - "C:/Program Files/Git/cmd/gcc-ranlib-15"
+      - "C:/Program Files/dotnet/gcc-ranlib-15.com"
+      - "C:/Program Files/dotnet/gcc-ranlib-15.exe"
+      - "C:/Program Files/dotnet/gcc-ranlib-15"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib-15.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib-15.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib-15"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib-15.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib-15.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib-15"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib-15.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib-15.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib-15"
+      - "C:/Program Files/CMake/bin/gcc-ranlib-15.com"
+      - "C:/Program Files/CMake/bin/gcc-ranlib-15.exe"
+      - "C:/Program Files/CMake/bin/gcc-ranlib-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib-15"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib-15"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib-15.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib-15.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib-15"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib-15"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib-15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib-15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib-15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib-15"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib15"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib15.com"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib15.exe"
+      - "C:/Program Files/PowerShell/7/gcc-ranlib15"
+      - "C:/Windows/System32/gcc-ranlib15.com"
+      - "C:/Windows/System32/gcc-ranlib15.exe"
+      - "C:/Windows/System32/gcc-ranlib15"
+      - "C:/Windows/gcc-ranlib15.com"
+      - "C:/Windows/gcc-ranlib15.exe"
+      - "C:/Windows/gcc-ranlib15"
+      - "C:/Windows/System32/wbem/gcc-ranlib15.com"
+      - "C:/Windows/System32/wbem/gcc-ranlib15.exe"
+      - "C:/Windows/System32/wbem/gcc-ranlib15"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib15.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib15.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/gcc-ranlib15"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib15.com"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib15.exe"
+      - "C:/Windows/System32/OpenSSH/gcc-ranlib15"
+      - "C:/Program Files/Git/cmd/gcc-ranlib15.com"
+      - "C:/Program Files/Git/cmd/gcc-ranlib15.exe"
+      - "C:/Program Files/Git/cmd/gcc-ranlib15"
+      - "C:/Program Files/dotnet/gcc-ranlib15.com"
+      - "C:/Program Files/dotnet/gcc-ranlib15.exe"
+      - "C:/Program Files/dotnet/gcc-ranlib15"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib15.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib15.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/gcc-ranlib15"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib15.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib15.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/gcc-ranlib15"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib15.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib15.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/gcc-ranlib15"
+      - "C:/Program Files/CMake/bin/gcc-ranlib15.com"
+      - "C:/Program Files/CMake/bin/gcc-ranlib15.exe"
+      - "C:/Program Files/CMake/bin/gcc-ranlib15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/gcc-ranlib15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/gcc-ranlib15"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/gcc-ranlib15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/gcc-ranlib15"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib15.com"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib15.exe"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/gcc-ranlib15"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/gcc-ranlib15"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/.dotnet/tools/gcc-ranlib15"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib15.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib15.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/gcc-ranlib15"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/gcc-ranlib.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineRCCompiler.cmake:40 (find_program)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU.cmake:167 (enable_language)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Platform/Windows-GNU-C.cmake:2 (__windows_compiler_gnu)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeCInformation.cmake:48 (include)"
+      - "CMakeLists.txt:2 (project)"
+    mode: "program"
+    variable: "CMAKE_RC_COMPILER"
+    description: "RC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "windres"
+      - "windres"
+    candidate_directories:
+      - "C:/Program Files/PowerShell/7/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "C:/Program Files/dotnet/"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/"
+      - "C:/Program Files/JetBrains/CLion 2025.3.1/bin/"
+      - "C:/Users/ChenChao/Documents/mingw64/bin/"
+      - "C:/Users/ChenChao/.dotnet/tools/"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Qoder/bin/"
+      - "C:/Program Files/bin/"
+      - "C:/Program Files/sbin/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/bin/"
+      - "C:/Program Files (x86)/sbin/"
+      - "C:/Program Files (x86)/"
+      - "C:/Program Files/CMake/bin/"
+      - "C:/Program Files/CMake/sbin/"
+      - "C:/Program Files/CMake/"
+      - "C:/Program Files (x86)/CN_Language/bin/"
+      - "C:/Program Files (x86)/CN_Language/sbin/"
+      - "C:/Program Files (x86)/CN_Language/"
+    searched_directories:
+      - "C:/Program Files/PowerShell/7/windres.com"
+      - "C:/Program Files/PowerShell/7/windres.exe"
+      - "C:/Program Files/PowerShell/7/windres"
+      - "C:/Windows/System32/windres.com"
+      - "C:/Windows/System32/windres.exe"
+      - "C:/Windows/System32/windres"
+      - "C:/Windows/windres.com"
+      - "C:/Windows/windres.exe"
+      - "C:/Windows/windres"
+      - "C:/Windows/System32/wbem/windres.com"
+      - "C:/Windows/System32/wbem/windres.exe"
+      - "C:/Windows/System32/wbem/windres"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/windres.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/windres.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/windres"
+      - "C:/Windows/System32/OpenSSH/windres.com"
+      - "C:/Windows/System32/OpenSSH/windres.exe"
+      - "C:/Windows/System32/OpenSSH/windres"
+      - "C:/Program Files/Git/cmd/windres.com"
+      - "C:/Program Files/Git/cmd/windres.exe"
+      - "C:/Program Files/Git/cmd/windres"
+      - "C:/Program Files/dotnet/windres.com"
+      - "C:/Program Files/dotnet/windres.exe"
+      - "C:/Program Files/dotnet/windres"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/windres.com"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/windres.exe"
+      - "C:/Program Files (x86)/Windows Kits/10/Windows Performance Toolkit/windres"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/windres.com"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/windres.exe"
+      - "C:/Program Files/NVIDIA Corporation/NVIDIA App/NvDLISR/windres"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/windres.com"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/windres.exe"
+      - "C:/Program Files (x86)/NVIDIA Corporation/PhysX/Common/windres"
+      - "C:/Program Files/CMake/bin/windres.com"
+      - "C:/Program Files/CMake/bin/windres.exe"
+      - "C:/Program Files/CMake/bin/windres"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/windres.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/windres.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/Scripts/windres"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/windres.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/windres.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Python/Python313/windres"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/windres.com"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/windres.exe"
+      - "C:/Users/ChenChao/AppData/Local/Microsoft/WindowsApps/windres"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/windres.com"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/windres.exe"
+      - "C:/Users/ChenChao/AppData/Local/Programs/Microsoft VS Code/bin/windres"
+      - "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/windres.com"
+    found: "C:/Users/ChenChao/Documents/gcc-15.2.0/bin/windres.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Program Files\\PowerShell\\7"
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\"
+        - "C:\\Windows\\System32\\OpenSSH\\"
+        - "C:\\Program Files\\Git\\cmd"
+        - "C:\\Program Files\\PowerShell\\7\\"
+        - "C:\\Program Files\\dotnet\\"
+        - "C:\\Program Files (x86)\\Windows Kits\\10\\Windows Performance Toolkit\\"
+        - "C:\\Program Files\\NVIDIA Corporation\\NVIDIA App\\NvDLISR"
+        - "C:\\Program Files (x86)\\NVIDIA Corporation\\PhysX\\Common"
+        - "C:\\Program Files\\CMake\\bin"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\Scripts\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Python\\Python313\\"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Microsoft VS Code\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin"
+        - "C:\\Program Files\\JetBrains\\CLion 2025.3.1\\bin"
+        - "C:\\Users\\ChenChao\\Documents\\mingw64\\bin"
+        - "C:\\Users\\ChenChao\\.dotnet\\tools"
+        - "C:\\Users\\ChenChao\\AppData\\Local\\Programs\\Qoder\\bin"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files (x86)/CN_Language"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "C:/Program Files/CMake"
+        - "C:/Program Files (x86)/CN_Language"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-7doi7b"
+      binary: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-7doi7b"
+    cmakeVariables:
+      CMAKE_C_FLAGS: ""
+      CMAKE_C_FLAGS_DEBUG: "-g"
+      CMAKE_EXE_LINKER_FLAGS: ""
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-7doi7b'
+        
+        Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/ChenChao/Documents/mingw64/bin/mingw32-make.exe -f Makefile cmTC_13591/fast
+        C:/Users/ChenChao/Documents/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_13591.dir\\build.make CMakeFiles/cmTC_13591.dir/build
+        mingw32-make[1]: Entering directory 'C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-7doi7b'
+        Building C object CMakeFiles/cmTC_13591.dir/CMakeCCompilerABI.c.obj
+        C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\gcc.exe   -v -o CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj -c "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
+        Using built-in specs.
+        COLLECT_GCC=C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\gcc.exe
+        Target: x86_64-w64-mingw32
+        Configured with: ../gcc-src/configure --host=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --disable-bootstrap --enable-targets=all --enable-languages=c,c++,lto --enable-seh-exceptions --with-arch=core2 --with-tune=generic --enable-threads=posix --disable-nls --disable-libstdcxx-verbose --disable-libstdcxx-pch --enable-clocale=generic --enable-shared=libstdc++ --enable-static --enable-libatomic --enable-fully-dynamic-string --enable-lto --enable-plugins --enable-libgomp --with-dwarf2 --enable-mingw-wildcard=platform --disable-win32-registry --enable-version-specific-runtime-libs --enable-checking=release --enable-default-compressed-debug-sections-algorithm=zstd --disable-cloog-version-check --enable-cloog-backend=isl --with-gmp=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpfr=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpc=/home/vm/mingw/host/x86_64-w64-mingw32 --with-isl=/home/vm/mingw/host/x86_64-w64-mingw32 --with-cloog=/home/vm/mingw/host/x86_64-w64-mingw32 --with-system-zlib=/home/vm/mingw/host/x86_64-w64-mingw32 --with-zstd --prefix=/mingw64-64 --libdir=/mingw64-64/x86_64-w64-mingw32/lib --libexecdir=/mingw64-64/x86_64-w64-mingw32/lib --with-native-system-header-dir=/x86_64-w64-mingw32/include
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (GCC) 
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=generic' '-march=core2' '-dumpdir' 'CMakeFiles\\cmTC_13591.dir\\'
+         C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/cc1.exe -quiet -v -iprefix C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/ -D__USE_MINGW_ACCESS -D_REENTRANT C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles\\cmTC_13591.dir\\ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mtune=generic -march=core2 -version -o C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccf7KHva.s
+        GNU C23 (GCC) version 15.2.0 (x86_64-w64-mingw32)
+        	compiled by GNU C version 15.2.0, GMP version 6.3.0, MPFR version 4.2.2, MPC version 1.2.1, isl version isl-0.27-GMP
+        
+        GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+        ignoring duplicate directory "C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include"
+        ignoring duplicate directory "C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed"
+        ignoring duplicate directory "C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../include"
+        #include "..." search starts here:
+        #include <...> search starts here:
+         C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include
+         C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed
+         C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../include
+         C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/include
+        End of search list.
+        Compiler executable checksum: e289951444771f971aab2eb03d2c7161
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=generic' '-march=core2' '-dumpdir' 'CMakeFiles\\cmTC_13591.dir\\'
+         C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/as.exe -v -o CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccf7KHva.s
+        GNU assembler version 2.45 (x86_64-w64-mingw32) using BFD version (GNU Binutils) 2.45
+        COMPILER_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/
+        LIBRARY_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../
+        COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=generic' '-march=core2' '-dumpdir' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.'
+        Linking C executable cmTC_13591.exe
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_13591.dir\\link.txt --verbose=1
+        Using built-in specs.
+        COLLECT_GCC=C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\gcc.exe
+        COLLECT_LTO_WRAPPER=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/lto-wrapper.exe
+        Target: x86_64-w64-mingw32
+        Configured with: ../gcc-src/configure --host=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --disable-bootstrap --enable-targets=all --enable-languages=c,c++,lto --enable-seh-exceptions --with-arch=core2 --with-tune=generic --enable-threads=posix --disable-nls --disable-libstdcxx-verbose --disable-libstdcxx-pch --enable-clocale=generic --enable-shared=libstdc++ --enable-static --enable-libatomic --enable-fully-dynamic-string --enable-lto --enable-plugins --enable-libgomp --with-dwarf2 --enable-mingw-wildcard=platform --disable-win32-registry --enable-version-specific-runtime-libs --enable-checking=release --enable-default-compressed-debug-sections-algorithm=zstd --disable-cloog-version-check --enable-cloog-backend=isl --with-gmp=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpfr=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpc=/home/vm/mingw/host/x86_64-w64-mingw32 --with-isl=/home/vm/mingw/host/x86_64-w64-mingw32 --with-cloog=/home/vm/mingw/host/x86_64-w64-mingw32 --with-system-zlib=/home/vm/mingw/host/x86_64-w64-mingw32 --with-zstd --prefix=/mingw64-64 --libdir=/mingw64-64/x86_64-w64-mingw32/lib --libexecdir=/mingw64-64/x86_64-w64-mingw32/lib --with-native-system-header-dir=/x86_64-w64-mingw32/include
+        Thread model: posix
+        Supported LTO compression algorithms: zlib zstd
+        gcc version 15.2.0 (GCC) 
+        COMPILER_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/
+        LIBRARY_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib/;C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_13591.exe' '-mtune=generic' '-march=core2' '-dumpdir' 'cmTC_13591.'
+         C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/collect2.exe -plugin C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/liblto_plugin.dll -plugin-opt=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/lto-wrapper.exe -plugin-opt=-fresolution=C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccnD5uXo.res -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lpthread -plugin-opt=-pass-through=-ladvapi32 -plugin-opt=-pass-through=-lshell32 -plugin-opt=-pass-through=-luser32 -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -m i386pep -Bdynamic -o cmTC_13591.exe C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/crt2.o C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0 -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../.. -v --whole-archive CMakeFiles\\cmTC_13591.dir/objects.a --no-whole-archive --out-implib libcmTC_13591.dll.a --major-image-version 0 --minor-image-version 0 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 -lpthread -ladvapi32 -lshell32 -luser32 -lkernel32 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o
+        collect2 version 15.2.0
+        C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/ld.exe -plugin C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/liblto_plugin.dll -plugin-opt=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/lto-wrapper.exe -plugin-opt=-fresolution=C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccnD5uXo.res -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lpthread -plugin-opt=-pass-through=-ladvapi32 -plugin-opt=-pass-through=-lshell32 -plugin-opt=-pass-through=-luser32 -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -m i386pep -Bdynamic -o cmTC_13591.exe C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/crt2.o C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0 -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../.. -v --whole-archive CMakeFiles\\cmTC_13591.dir/objects.a --no-whole-archive --out-implib libcmTC_13591.dll.a --major-image-version 0 --minor-image-version 0 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 -lpthread -ladvapi32 -lshell32 -luser32 -lkernel32 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o
+        GNU ld (GNU Binutils) 2.45
+        COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_13591.exe' '-mtune=generic' '-march=core2' '-dumpdir' 'cmTC_13591.'
+        "C:\\Program Files\\CMake\\bin\\cmake.exe" -E rm -f CMakeFiles\\cmTC_13591.dir/objects.a
+        C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\ar.exe qc CMakeFiles\\cmTC_13591.dir/objects.a @CMakeFiles\\cmTC_13591.dir\\objects1.rsp
+        C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\gcc.exe  -v -Wl,-v -Wl,--whole-archive CMakeFiles\\cmTC_13591.dir/objects.a -Wl,--no-whole-archive -o cmTC_13591.exe -Wl,--out-implib,libcmTC_13591.dll.a -Wl,--major-image-version,0,--minor-image-version,0
+        mingw32-make[1]: Leaving directory 'C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-7doi7b'
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:217 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Parsed C implicit include dir info: rv=done
+        found start of include info
+        found start of implicit include info
+          add: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include]
+          add: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed]
+          add: [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../include]
+          add: [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/include]
+        end of search list found
+        collapse include dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include]
+        collapse include dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed]
+        collapse include dir [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../include] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/include]
+        collapse include dir [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/include] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/include]
+        implicit include dirs: [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include;C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed;C:/Users/ChenChao/Documents/gcc-15.2.0/include;C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/include]
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)))("|,| |$)]
+        ignore line: [Change Dir: 'C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-7doi7b']
+        ignore line: []
+        ignore line: [Run Build Command(s): "C:/Program Files/CMake/bin/cmake.exe" -E env VERBOSE=1 C:/Users/ChenChao/Documents/mingw64/bin/mingw32-make.exe -f Makefile cmTC_13591/fast]
+        ignore line: [C:/Users/ChenChao/Documents/mingw64/bin/mingw32-make.exe  -f CMakeFiles\\cmTC_13591.dir\\build.make CMakeFiles/cmTC_13591.dir/build]
+        ignore line: [mingw32-make[1]: Entering directory 'C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-7doi7b']
+        ignore line: [Building C object CMakeFiles/cmTC_13591.dir/CMakeCCompilerABI.c.obj]
+        ignore line: [C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\gcc.exe   -v -o CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj -c "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\gcc.exe]
+        ignore line: [Target: x86_64-w64-mingw32]
+        ignore line: [Configured with: ../gcc-src/configure --host=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --disable-bootstrap --enable-targets=all --enable-languages=c c++ lto --enable-seh-exceptions --with-arch=core2 --with-tune=generic --enable-threads=posix --disable-nls --disable-libstdcxx-verbose --disable-libstdcxx-pch --enable-clocale=generic --enable-shared=libstdc++ --enable-static --enable-libatomic --enable-fully-dynamic-string --enable-lto --enable-plugins --enable-libgomp --with-dwarf2 --enable-mingw-wildcard=platform --disable-win32-registry --enable-version-specific-runtime-libs --enable-checking=release --enable-default-compressed-debug-sections-algorithm=zstd --disable-cloog-version-check --enable-cloog-backend=isl --with-gmp=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpfr=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpc=/home/vm/mingw/host/x86_64-w64-mingw32 --with-isl=/home/vm/mingw/host/x86_64-w64-mingw32 --with-cloog=/home/vm/mingw/host/x86_64-w64-mingw32 --with-system-zlib=/home/vm/mingw/host/x86_64-w64-mingw32 --with-zstd --prefix=/mingw64-64 --libdir=/mingw64-64/x86_64-w64-mingw32/lib --libexecdir=/mingw64-64/x86_64-w64-mingw32/lib --with-native-system-header-dir=/x86_64-w64-mingw32/include]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 15.2.0 (GCC) ]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=generic' '-march=core2' '-dumpdir' 'CMakeFiles\\cmTC_13591.dir\\']
+        ignore line: [ C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/cc1.exe -quiet -v -iprefix C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/ -D__USE_MINGW_ACCESS -D_REENTRANT C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c -quiet -dumpdir CMakeFiles\\cmTC_13591.dir\\ -dumpbase CMakeCCompilerABI.c.c -dumpbase-ext .c -mtune=generic -march=core2 -version -o C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccf7KHva.s]
+        ignore line: [GNU C23 (GCC) version 15.2.0 (x86_64-w64-mingw32)]
+        ignore line: [	compiled by GNU C version 15.2.0  GMP version 6.3.0  MPFR version 4.2.2  MPC version 1.2.1  isl version isl-0.27-GMP]
+        ignore line: []
+        ignore line: [GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072]
+        ignore line: [ignoring duplicate directory "C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include"]
+        ignore line: [ignoring duplicate directory "C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed"]
+        ignore line: [ignoring duplicate directory "C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../include"]
+        ignore line: [#include "..." search starts here:]
+        ignore line: [#include <...> search starts here:]
+        ignore line: [ C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include]
+        ignore line: [ C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include-fixed]
+        ignore line: [ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../include]
+        ignore line: [ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/../../../x86_64-w64-mingw32/include]
+        ignore line: [End of search list.]
+        ignore line: [Compiler executable checksum: e289951444771f971aab2eb03d2c7161]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=generic' '-march=core2' '-dumpdir' 'CMakeFiles\\cmTC_13591.dir\\']
+        ignore line: [ C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/as.exe -v -o CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccf7KHva.s]
+        ignore line: [GNU assembler version 2.45 (x86_64-w64-mingw32) using BFD version (GNU Binutils) 2.45]
+        ignore line: [COMPILER_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/]
+        ignore line: [LIBRARY_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.obj' '-c' '-mtune=generic' '-march=core2' '-dumpdir' 'CMakeFiles\\cmTC_13591.dir\\CMakeCCompilerABI.c.']
+        ignore line: [Linking C executable cmTC_13591.exe]
+        ignore line: ["C:\\Program Files\\CMake\\bin\\cmake.exe" -E cmake_link_script CMakeFiles\\cmTC_13591.dir\\link.txt --verbose=1]
+        ignore line: [Using built-in specs.]
+        ignore line: [COLLECT_GCC=C:\\Users\\ChenChao\\Documents\\gcc-15.2.0\\bin\\gcc.exe]
+        ignore line: [COLLECT_LTO_WRAPPER=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/lto-wrapper.exe]
+        ignore line: [Target: x86_64-w64-mingw32]
+        ignore line: [Configured with: ../gcc-src/configure --host=x86_64-w64-mingw32 --target=x86_64-w64-mingw32 --disable-bootstrap --enable-targets=all --enable-languages=c c++ lto --enable-seh-exceptions --with-arch=core2 --with-tune=generic --enable-threads=posix --disable-nls --disable-libstdcxx-verbose --disable-libstdcxx-pch --enable-clocale=generic --enable-shared=libstdc++ --enable-static --enable-libatomic --enable-fully-dynamic-string --enable-lto --enable-plugins --enable-libgomp --with-dwarf2 --enable-mingw-wildcard=platform --disable-win32-registry --enable-version-specific-runtime-libs --enable-checking=release --enable-default-compressed-debug-sections-algorithm=zstd --disable-cloog-version-check --enable-cloog-backend=isl --with-gmp=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpfr=/home/vm/mingw/host/x86_64-w64-mingw32 --with-mpc=/home/vm/mingw/host/x86_64-w64-mingw32 --with-isl=/home/vm/mingw/host/x86_64-w64-mingw32 --with-cloog=/home/vm/mingw/host/x86_64-w64-mingw32 --with-system-zlib=/home/vm/mingw/host/x86_64-w64-mingw32 --with-zstd --prefix=/mingw64-64 --libdir=/mingw64-64/x86_64-w64-mingw32/lib --libexecdir=/mingw64-64/x86_64-w64-mingw32/lib --with-native-system-header-dir=/x86_64-w64-mingw32/include]
+        ignore line: [Thread model: posix]
+        ignore line: [Supported LTO compression algorithms: zlib zstd]
+        ignore line: [gcc version 15.2.0 (GCC) ]
+        ignore line: [COMPILER_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/]
+        ignore line: [LIBRARY_PATH=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib/]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../]
+        ignore line: [COLLECT_GCC_OPTIONS='-v' '-o' 'cmTC_13591.exe' '-mtune=generic' '-march=core2' '-dumpdir' 'cmTC_13591.']
+        link line: [ C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/collect2.exe -plugin C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/liblto_plugin.dll -plugin-opt=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/lto-wrapper.exe -plugin-opt=-fresolution=C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccnD5uXo.res -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lpthread -plugin-opt=-pass-through=-ladvapi32 -plugin-opt=-pass-through=-lshell32 -plugin-opt=-pass-through=-luser32 -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -m i386pep -Bdynamic -o cmTC_13591.exe C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/crt2.o C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0 -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../.. -v --whole-archive CMakeFiles\\cmTC_13591.dir/objects.a --no-whole-archive --out-implib libcmTC_13591.dll.a --major-image-version 0 --minor-image-version 0 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 -lpthread -ladvapi32 -lshell32 -luser32 -lkernel32 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o]
+          arg [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/collect2.exe] ==> ignore
+          arg [-plugin] ==> ignore
+          arg [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/liblto_plugin.dll] ==> ignore
+          arg [-plugin-opt=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/lto-wrapper.exe] ==> ignore
+          arg [-plugin-opt=-fresolution=C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccnD5uXo.res] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingw32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingwex] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmsvcrt] ==> ignore
+          arg [-plugin-opt=-pass-through=-lkernel32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lpthread] ==> ignore
+          arg [-plugin-opt=-pass-through=-ladvapi32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lshell32] ==> ignore
+          arg [-plugin-opt=-pass-through=-luser32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lkernel32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingw32] ==> ignore
+          arg [-plugin-opt=-pass-through=-lgcc] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmingwex] ==> ignore
+          arg [-plugin-opt=-pass-through=-lmsvcrt] ==> ignore
+          arg [-plugin-opt=-pass-through=-lkernel32] ==> ignore
+          arg [-m] ==> ignore
+          arg [i386pep] ==> ignore
+          arg [-Bdynamic] ==> search dynamic
+          arg [-o] ==> ignore
+          arg [cmTC_13591.exe] ==> ignore
+          arg [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/crt2.o] ==> obj [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/crt2.o]
+          arg [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o] ==> obj [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o]
+          arg [-LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0] ==> dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0]
+          arg [-LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc] ==> dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc]
+          arg [-LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib] ==> dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib]
+          arg [-LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib] ==> dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib]
+          arg [-LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib] ==> dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib]
+          arg [-LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..] ==> dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..]
+          arg [-v] ==> ignore
+          arg [--whole-archive] ==> ignore
+          arg [CMakeFiles\\cmTC_13591.dir/objects.a] ==> ignore
+          arg [--no-whole-archive] ==> ignore
+          arg [--out-implib] ==> ignore
+          arg [libcmTC_13591.dll.a] ==> ignore
+          arg [--major-image-version] ==> ignore
+          arg [0] ==> ignore
+          arg [--minor-image-version] ==> ignore
+          arg [0] ==> ignore
+          arg [-lmingw32] ==> lib [mingw32]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lmingwex] ==> lib [mingwex]
+          arg [-lmsvcrt] ==> lib [msvcrt]
+          arg [-lkernel32] ==> lib [kernel32]
+          arg [-lpthread] ==> lib [pthread]
+          arg [-ladvapi32] ==> lib [advapi32]
+          arg [-lshell32] ==> lib [shell32]
+          arg [-luser32] ==> lib [user32]
+          arg [-lkernel32] ==> lib [kernel32]
+          arg [-lmingw32] ==> lib [mingw32]
+          arg [-lgcc] ==> lib [gcc]
+          arg [-lmingwex] ==> lib [mingwex]
+          arg [-lmsvcrt] ==> lib [msvcrt]
+          arg [-lkernel32] ==> lib [kernel32]
+          arg [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o] ==> obj [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o]
+        ignore line: [collect2 version 15.2.0]
+        ignore line: [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/bin/ld.exe -plugin C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/liblto_plugin.dll -plugin-opt=C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/lto-wrapper.exe -plugin-opt=-fresolution=C:\\Users\\ChenChao\\AppData\\Local\\Temp\\ccnD5uXo.res -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lpthread -plugin-opt=-pass-through=-ladvapi32 -plugin-opt=-pass-through=-lshell32 -plugin-opt=-pass-through=-luser32 -plugin-opt=-pass-through=-lkernel32 -plugin-opt=-pass-through=-lmingw32 -plugin-opt=-pass-through=-lgcc -plugin-opt=-pass-through=-lmingwex -plugin-opt=-pass-through=-lmsvcrt -plugin-opt=-pass-through=-lkernel32 -m i386pep -Bdynamic -o cmTC_13591.exe C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/crt2.o C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0 -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib -LC:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../.. -v --whole-archive CMakeFiles\\cmTC_13591.dir/objects.a --no-whole-archive --out-implib libcmTC_13591.dll.a --major-image-version 0 --minor-image-version 0 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 -lpthread -ladvapi32 -lshell32 -luser32 -lkernel32 -lmingw32 -lgcc -lmingwex -lmsvcrt -lkernel32 C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o]
+        linker tool for 'C': C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/bin/ld.exe
+        remove lib [msvcrt]
+        remove lib [msvcrt]
+        collapse obj [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib/crt2.o] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/crt2.o]
+        collapse obj [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o]
+        collapse obj [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o]
+        collapse library dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0]
+        collapse library dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc]
+        collapse library dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib//../../x86_64-w64-mingw32/lib] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib]
+        collapse library dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..//../../x86_64-w64-mingw32/lib] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib]
+        collapse library dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../../../../x86_64-w64-mingw32/lib] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib]
+        collapse library dir [C:/Users/ChenChao/Documents/gcc-15.2.0/bin/../x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/../../..] ==> [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib]
+        implicit libs: [mingw32;gcc;mingwex;kernel32;pthread;advapi32;shell32;user32;kernel32;mingw32;gcc;mingwex;kernel32]
+        implicit objs: [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/crt2.o;C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtbegin.o;C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/crtend.o]
+        implicit dirs: [C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0;C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc;C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib]
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "C:/Program Files/CMake/share/cmake-4.2/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:2 (project)"
+    message: |
+      Running the C compiler's linker: "C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/bin/ld.exe" "-v"
+      GNU ld (GNU Binutils) 2.45
+...

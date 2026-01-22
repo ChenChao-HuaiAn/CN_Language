@@ -1,0 +1,26 @@
+sample_unit_test 1 0.0422932
+lexer_function_examples_test 1 0.0486778
+lexer_token_test 1 0.0455243
+lexer_error_test 1 0.0426109
+parser_minimal_test 1 0.0436035
+parser_comparison_test 1 0.0457248
+parser_loop_test 1 0.0424313
+parser_assign_test 1 0.0426286
+parser_logical_test 1 0.0445115
+parser_break_test 1 0.0428906
+parser_var_test 1 0.0431309
+parser_func_test 1 0.0439906
+parser_hello_world_test 1 0.0474624
+parser_diagnostics_test 1 0.0440611
+parser_error_syntax_test 1 0.043887
+semantic_check_test 1 0.0437008
+semantics_symbol_table_test 1 0.0432906
+semantics_type_system_test 1 0.044366
+semantics_name_resolution_test 1 0.0433289
+integration_parse_success_test 1 0.43357
+integration_parse_failure_test 1 0.417732
+integration_semantic_error_test 1 0.54109
+integration_full_frontend_test 1 0.467292
+integration_compile_full_test 2 2.15945
+support_target_triple_test 1 0.0959101
+---

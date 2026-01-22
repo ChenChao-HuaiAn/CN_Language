@@ -1,0 +1,2 @@
+C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ar.exe qc libcn_runtime.a CMakeFiles/cn_runtime.dir/core/runtime.c.obj CMakeFiles/cn_runtime.dir/collections/collections.c.obj CMakeFiles/cn_runtime.dir/memory/memory.c.obj CMakeFiles/cn_runtime.dir/io/io.c.obj CMakeFiles/cn_runtime.dir/math/math.c.obj
+C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ranlib.exe libcn_runtime.a
