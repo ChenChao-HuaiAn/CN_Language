@@ -112,6 +112,28 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // 测试 5: 显式指定目标三元组 --target=x86_64-elf
+    snprintf(cmd, sizeof(cmd), "%s ../../../examples/hello_compile.cn --target=x86_64-elf -o hello_target_test", cnc_path);
+    printf("正在运行: %s\n", cmd);
+    res = system(cmd);
+    if (res != 0) {
+        fprintf(stderr, "测试 5 编译失败: %d\n", res);
+        return 1;
+    }
+
+#ifdef _WIN32
+    const char* hello_target_exe = ".\\hello_target_test.exe";
+#else
+    const char* hello_target_exe = "./hello_target_test";
+#endif
+
+    printf("正在运行生成的程序: %s\n", hello_target_exe);
+    res = system(hello_target_exe);
+    if (res != 0) {
+        fprintf(stderr, "测试 5 运行失败: %d\n", res);
+        return 1;
+    }
+
     printf("集成编译测试全部通过!\n");
     return 0;
 }

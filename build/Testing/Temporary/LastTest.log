@@ -1,19 +1,85 @@
-Start testing: Jan 22 23:28 中国标准时间
+Start testing: Jan 23 07:29 中国标准时间
 ----------------------------------------------------------
-2/30 Testing: support_target_triple_test
-2/30 Test: support_target_triple_test
-Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/support_target_triple_test.exe"
-Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"support_target_triple_test" start time: Jan 22 23:28 中国标准时间
+30/30 Testing: integration_compile_full_test
+30/30 Test: integration_compile_full_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_compile_full_test.exe" "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
+"integration_compile_full_test" start time: Jan 23 07:29 中国标准时间
 Output:
 ----------------------------------------------------------
-support_target_triple_test: OK
+'clang' is not recognized as an internal or external command,
+operable program or batch file.
+gcc (GCC) 15.2.0
+Copyright (C) 2025 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+函数: 主程序，语句数: 2
+正在执行编译命令: gcc -I../../../include -o hello_test ../../../examples/hello_compile.c ../../../build/src/runtime/libcn_runtime.a
+编译成功! 输出文件: hello_test
+你好，世界
+'clang' is not recognized as an internal or external command,
+operable program or batch file.
+gcc (GCC) 15.2.0
+Copyright (C) 2025 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+函数: 主程序，语句数: 5
+正在执行编译命令: gcc -I../../../include -o arithmetic_test ../../../examples/arithmetic_compile.c ../../../build/src/runtime/libcn_runtime.a
+编译成功! 输出文件: arithmetic_test
+计算正确: 50
+'clang' is not recognized as an internal or external command,
+operable program or batch file.
+gcc (GCC) 15.2.0
+Copyright (C) 2025 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+函数: 主程序，语句数: 8
+正在执行编译命令: gcc -I../../../include -o control_flow_test ../../../examples/control_flow_compile.c ../../../build/src/runtime/libcn_runtime.a
+编译成功! 输出文件: control_flow_test
+循环测试通过: 55
+当循环测试通过
+'clang' is not recognized as an internal or external command,
+operable program or batch file.
+gcc (GCC) 15.2.0
+Copyright (C) 2025 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+函数: 主程序，语句数: 5
+正在执行编译命令: gcc -I../../../include -o runtime_full_test ../../../examples/runtime_test_full.c ../../../build/src/runtime/libcn_runtime.a
+编译成功! 输出文件: runtime_full_test
+  你好, CN_Language!  
+文本长度: 'clang' is not recognized as an internal or external command,
+operable program or batch file.
+gcc (GCC) 15.2.0
+Copyright (C) 2025 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+函数: 主程序，语句数: 2
+正在执行编译命令: gcc -I../../../include -o hello_target_test ../../../examples/hello_compile.c ../../../build/src/runtime/libcn_runtime.a
+编译成功! 输出文件: hello_target_test
+你好，世界
+正在运行: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe ../../../examples/hello_compile.cn -o hello_test
+正在运行生成的程序: .\hello_test.exe
+正在运行: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe ../../../examples/arithmetic_compile.cn -o arithmetic_test
+正在运行生成的程序: .\arithmetic_test.exe
+正在运行: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe ../../../examples/control_flow_compile.cn -o control_flow_test
+正在运行生成的程序: .\control_flow_test.exe
+正在运行: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe ../../../examples/runtime_test_full.cn -o runtime_full_test
+正在运行生成的程序: .\runtime_full_test.exe
+正在运行: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe ../../../examples/hello_compile.cn --target=x86_64-elf -o hello_target_test
+正在运行生成的程序: .\hello_target_test.exe
+集成编译测试全部通过!
 <end of output>
-Test time =   0.10 sec
+Test time =   7.10 sec
 ----------------------------------------------------------
 Test Passed.
-"support_target_triple_test" end time: Jan 22 23:28 中国标准时间
-"support_target_triple_test" time elapsed: 00:00:00
+"integration_compile_full_test" end time: Jan 23 07:29 中国标准时间
+"integration_compile_full_test" time elapsed: 00:00:07
 ----------------------------------------------------------
 
-End testing: Jan 22 23:28 中国标准时间
+End testing: Jan 23 07:29 中国标准时间

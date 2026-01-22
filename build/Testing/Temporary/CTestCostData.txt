@@ -21,6 +21,6 @@ integration_parse_success_test 1 0.43357
 integration_parse_failure_test 1 0.417732
 integration_semantic_error_test 1 0.54109
 integration_full_frontend_test 1 0.467292
-integration_compile_full_test 2 2.15945
-support_target_triple_test 1 0.0959101
+integration_compile_full_test 3 2.36559
+support_target_triple_test 2 0.0515543
 ---

@@ -299,13 +299,14 @@ src/CMakeFiles/cnc.dir/cli/cnc/main.c.obj: \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/token.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/parser.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
- C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/diagnostics.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdint.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/process/process.h \
+ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h \
+ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/irgen.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/backend/cgen.h

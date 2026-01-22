@@ -201,7 +201,15 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             // 变量声明：ALLOCA + 可选 STORE
             CnAstVarDecl *decl = &stmt->as.var_decl;
             char *name = copy_name(decl->name, decl->name_length);
-            CnIrOperand addr = cn_ir_op_symbol(name, decl->declared_type);
+            /*
+             * 对于使用 "变量" 关键字的声明，decl->declared_type 可能为 NULL，
+             * 此时我们优先使用已在语义分析阶段推断出的初始值类型。
+             */
+            CnType *decl_type = decl->declared_type;
+            if (!decl_type && decl->initializer && decl->initializer->type) {
+                decl_type = decl->initializer->type;
+            }
+            CnIrOperand addr = cn_ir_op_symbol(name, decl_type);
             free(name);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_ALLOCA, addr, cn_ir_op_none(), cn_ir_op_none()));
             if (decl->initializer) {
@@ -419,10 +427,13 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func) {
     }
 }
 
-CnIrModule *cn_ir_gen_program(CnAstProgram *program) {
+CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnTargetTriple target) {
     if (!program) return NULL;
 
     CnIrGenContext *ctx = cn_ir_gen_context_new();
+    if (ctx->module) {
+        ctx->module->target = target;
+    }
 
     for (size_t i = 0; i < program->function_count; i++) {
         cn_ir_gen_function(ctx, program->functions[i]);

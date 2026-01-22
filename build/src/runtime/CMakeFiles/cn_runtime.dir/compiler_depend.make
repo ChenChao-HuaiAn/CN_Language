@@ -6,10 +6,13 @@ src/runtime/CMakeFiles/cn_runtime.dir/collections/collections.c.obj: C:/Users/Ch
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_off_t.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_secapi.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_stdarg.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_stdio_config.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wctype.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wstdlib.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/ctype.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/errno.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/limits.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/malloc.h \
@@ -17,6 +20,7 @@ src/runtime/CMakeFiles/cn_runtime.dir/collections/collections.c.obj: C:/Users/Ch
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdio_s.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdlib_s.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/string_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdarg.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdint.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdio.h \
@@ -26,9 +30,11 @@ src/runtime/CMakeFiles/cn_runtime.dir/collections/collections.c.obj: C:/Users/Ch
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/limits.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/mm_malloc.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdarg.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/memory.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h
 
 src/runtime/CMakeFiles/cn_runtime.dir/core/runtime.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/core/runtime.c \
@@ -59,8 +65,83 @@ src/runtime/CMakeFiles/cn_runtime.dir/core/runtime.c.obj: C:/Users/ChenChao/Docu
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/memory.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h
 
+src/runtime/CMakeFiles/cn_runtime.dir/io/io.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/io/io.c \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_off_t.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_secapi.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_stdio_config.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wstdlib.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/errno.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/limits.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/malloc.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdio_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdlib_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/string_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdint.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdio.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdlib.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/string.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/swprintf.inl \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/limits.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/mm_malloc.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/io.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/memory.h
+
+src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/math/math.c \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_secapi.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/math.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/math.h
+
+src/runtime/CMakeFiles/cn_runtime.dir/memory/memory.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/memory/memory.c \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_off_t.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_secapi.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_stdio_config.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wstdlib.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/errno.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/limits.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/malloc.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdio_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdlib_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/string_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdint.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdio.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdlib.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/string.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/swprintf.inl \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/limits.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/mm_malloc.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/memory.h
+
+
+C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_stdarg.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h:
 
@@ -76,6 +157,8 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/include/string.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h:
 
+C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/math/math.c:
+
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/malloc.h:
@@ -88,7 +171,13 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/include/limits.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h:
 
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/io.h:
+
+C:/Users/ChenChao/Documents/gcc-15.2.0/include/ctype.h:
+
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_stdio_config.h:
+
+C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wctype.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdint.h:
 
@@ -106,6 +195,8 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdlib_s.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/string_s.h:
 
+C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdarg.h:
+
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h:
@@ -114,10 +205,22 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/include/swprintf.inl:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h:
 
+C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdarg.h:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/math.h:
+
 C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h:
 
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/memory.h:
+
 C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/core/runtime.c:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/io/io.c:
+
+C:/Users/ChenChao/Documents/gcc-15.2.0/include/math.h:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/memory/memory.c:

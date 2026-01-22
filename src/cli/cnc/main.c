@@ -433,7 +433,7 @@ int main(int argc, char **argv)
             output_filename = "a.out";
         }
 
-        CnIrModule *ir_module = cn_ir_gen_program(program);
+        CnIrModule *ir_module = cn_ir_gen_program(program, target_triple);
         if (!ir_module) {
             fprintf(stderr, "IR 生成失败\n");
             goto cleanup;

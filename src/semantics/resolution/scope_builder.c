@@ -38,6 +38,14 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         print_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
     }
 
+    // 注册内置函数：长度 (length)
+    CnSemSymbol *length_sym = cn_sem_scope_insert_symbol(global_scope, "长度", strlen("长度"), CN_SEM_SYMBOL_FUNCTION);
+    if (length_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        length_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+
     for (i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *function_decl = program->functions[i];
 

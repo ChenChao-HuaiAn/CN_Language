@@ -1,17 +1,26 @@
 #include "cnlang/backend/cgen.h"
 #include "cnlang/support/diagnostics.h"
+#include "cnlang/support/config.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
 
+static CnTargetDataLayout g_target_layout;
+static bool g_target_layout_valid = false;
+
 // --- 辅助函数 ---
 
 static const char *get_c_type_string(CnType *type) {
     if (!type) return "void";
     switch (type->kind) {
-        case CN_TYPE_INT: return "long long";
+        case CN_TYPE_INT:
+            if (g_target_layout_valid) {
+                if (g_target_layout.int_size_in_bits == 32) return "int";
+                if (g_target_layout.int_size_in_bits == 64) return "long long";
+            }
+            return "long long";
         case CN_TYPE_FLOAT: return "double";
         case CN_TYPE_BOOL: return "_Bool";
         case CN_TYPE_STRING: return "char*";
@@ -160,6 +169,17 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
 
 int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
     if (!module || !filename) return -1;
+
+    /* 根据 IR 模块上的目标三元组获取预设数据布局（若存在）。 */
+    CnTargetDataLayout layout;
+    bool layout_ok = cn_support_target_get_data_layout(&module->target, &layout);
+    if (layout_ok) {
+        g_target_layout = layout;
+        g_target_layout_valid = true;
+    } else {
+        g_target_layout_valid = false;
+    }
+
     FILE *file = fopen(filename, "w");
     if (!file) return -1;
     CnCCodeGenContext ctx = {0, .output_file = file};

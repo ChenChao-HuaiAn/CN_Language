@@ -8,6 +8,8 @@ CnIrModule *cn_ir_module_new() {
     if (module) {
         module->first_func = NULL;
         module->last_func = NULL;
+        /* 默认将目标三元组置零，具体值由前端/CLI 在生成 IR 前设置 */
+        memset(&module->target, 0, sizeof(module->target));
     }
     return module;
 }

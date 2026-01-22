@@ -33,6 +33,7 @@ src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj: C:/Users/ChenChao/Documents/gitc
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/diagnostics.h
 
 src/CMakeFiles/cnc.dir/cli/cnc/main.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/cli/cnc/main.c \
@@ -339,6 +340,7 @@ src/CMakeFiles/cnc.dir/cli/cnc/main.c.obj: C:/Users/ChenChao/Documents/gitcode/C
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/irgen.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/diagnostics.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/process/process.h
 
@@ -466,7 +468,8 @@ src/CMakeFiles/cnc.dir/ir/core/ir.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
-  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h
 
 src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/gen/irgen.c \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
@@ -498,7 +501,8 @@ src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj: C:/Users/ChenChao/Documents/gitcode/C
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h \
-  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/irgen.h
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/irgen.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h
 
 src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/passes/constant_folding.c \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
@@ -519,7 +523,8 @@ src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj: C:/Users/ChenChao/Docum
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h \
-  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h
 
 src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/passes/dead_code_elimination.c \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
@@ -549,7 +554,8 @@ src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj: C:/Users/ChenChao/
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h \
-  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h
 
 src/CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/checker/semantic_passes.c \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
@@ -650,6 +656,26 @@ src/CMakeFiles/cnc.dir/semantics/symbols/type_system.c.obj: C:/Users/ChenChao/Do
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h
+
+src/CMakeFiles/cnc.dir/support/config/target_triple.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/support/config/target_triple.c \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_off_t.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_secapi.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_stdio_config.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdio_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/string_s.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdio.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/string.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/swprintf.inl \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdbool.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h
 
 src/CMakeFiles/cnc.dir/support/diagnostics/diagnostics.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/support/diagnostics/diagnostics.c \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
@@ -1042,6 +1068,10 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_unicode.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/string_s.h:
 
+C:/Users/ChenChao/Documents/gcc-15.2.0/include/psdk_inc/_wsadata.h:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h:
+
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/support/process/process.c:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h:
@@ -1273,8 +1303,6 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-min
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/psdk_inc/_wsa_errnos.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/psdk_inc/_socket_types.h:
-
-C:/Users/ChenChao/Documents/gcc-15.2.0/include/psdk_inc/_wsadata.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/mwaitintrin.h:
 
@@ -1615,3 +1643,5 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/core/ir.c:
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/resolution/scope_builder.c:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/symbols/type_system.c:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/src/support/config/target_triple.c:
