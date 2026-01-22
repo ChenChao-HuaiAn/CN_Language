@@ -135,21 +135,21 @@
     - [ ] 检测顺序：`CC` 环境变量 -> `clang` -> `gcc` -> `cl`（Windows）。
 
 #### 5.4 运行时库设计与实现
-- [ ] **创建运行时库目录结构**：
-    - [ ] 创建 `src/runtime/` 目录。
-    - [ ] 创建 `include/cnlang/runtime/runtime.h` 作为运行时库公共头文件。
-- [ ] **实现基础运行时函数**：
-    - [ ] `cn_rt_print_int(long long val)`：打印整数。
-    - [ ] `cn_rt_print_bool(int val)`：打印布尔值。
-    - [ ] `cn_rt_print_string(const char *str)`：打印字符串。
-    - [ ] `cn_rt_print_newline()`：打印换行符。
-- [ ] **实现字符串支持函数**（如需要）：
-    - [ ] `cn_rt_string_concat(const char *a, const char *b)`：字符串拼接。
-    - [ ] `cn_rt_string_length(const char *str)`：获取字符串长度。
-- [ ] **实现数组支持函数**（如需要）：
-    - [ ] `cn_rt_array_alloc(size_t elem_size, size_t count)`：分配数组内存。
-    - [ ] `cn_rt_array_length(void *arr)`：获取数组长度。
-    - [ ] `cn_rt_array_bounds_check(void *arr, size_t index)`：边界检查。
+- [x] **创建运行时库目录结构**：
+    - [x] 创建 `src/runtime/` 目录。
+    - [x] 创建 `include/cnlang/runtime/runtime.h` 作为运行时库公共头文件。
+- [x] **实现基础运行时函数**：
+    - [x] `cn_rt_print_int(long long val)`：打印整数。
+    - [x] `cn_rt_print_bool(int val)`：打印布尔值。
+    - [x] `cn_rt_print_string(const char *str)`：打印字符串。
+    - [x] `cn_rt_print_newline()`：打印换行符。
+- [x] **实现字符串支持函数**（如需要）：
+    - [x] `cn_rt_string_concat(const char *a, const char *b)`：字符串拼接。
+    - [x] `cn_rt_string_length(const char *str)`：获取字符串长度。
+- [x] **实现数组支持函数**（如需要）：
+    - [x] `cn_rt_array_alloc(size_t elem_size, size_t count)`：分配数组内存。
+    - [x] `cn_rt_array_length(void *arr)`：获取数组长度。
+    - [x] `cn_rt_array_bounds_check(void *arr, size_t index)`：边界检查。
 
 #### 5.5 运行时库构建与链接
 - [ ] **配置运行时库构建**：

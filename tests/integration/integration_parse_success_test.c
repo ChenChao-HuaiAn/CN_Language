@@ -5,6 +5,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // 读取文件到缓冲区
 static char *read_file_to_buffer(const char *path, size_t *out_length)

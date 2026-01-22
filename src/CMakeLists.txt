@@ -11,8 +11,22 @@ add_executable(cnc
     semantics/checker/semantic_passes.c
 )
 
+# 运行时库
+add_library(cn_runtime STATIC
+    runtime/core/runtime.c
+    runtime/collections/collections.c
+)
+
+# 设置运行时库的包含目录
+target_include_directories(cn_runtime PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 target_include_directories(cnc PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
-# 后续可在此处链接各模块静态库（frontend/semantics/ir/backend/runtime/support 等）
+# 链接运行时库
+target_link_libraries(cnc PRIVATE cn_runtime)
+
+# 后续可在此处链接各模块静态库（frontend/semantics/ir/backend/support 等）
