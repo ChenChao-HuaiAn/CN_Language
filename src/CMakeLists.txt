@@ -6,6 +6,7 @@ add_executable(cnc
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
     semantics/symbols/symbol_table.c
+    semantics/resolution/scope_builder.c
 )
 
 target_include_directories(cnc PRIVATE
