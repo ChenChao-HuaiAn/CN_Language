@@ -30,6 +30,7 @@ static CnAstExpr *parse_postfix(CnParser *parser);
 static CnAstExpr *parse_factor(CnParser *parser);
 
 static CnAstExpr *make_integer_literal(long value);
+static CnAstExpr *make_string_literal(const char *value, size_t length);
 static CnAstExpr *make_identifier(const char *name, size_t length);
 static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *right);
 static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *right);
@@ -361,7 +362,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return make_continue_stmt();
     }
 
-    if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+    if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
+        parser->current.kind == CN_TOKEN_KEYWORD_INT) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -604,6 +606,9 @@ static CnAstExpr *parse_factor(CnParser *parser)
         long value = strtol(parser->current.lexeme_begin, NULL, 10);
         expr = make_integer_literal(value);
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
+        expr = make_string_literal(parser->current.lexeme_begin, parser->current.lexeme_length);
+        parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
         expr = make_identifier(parser->current.lexeme_begin, parser->current.lexeme_length);
         parser_advance(parser);
@@ -628,6 +633,19 @@ static CnAstExpr *make_integer_literal(long value)
 
     expr->kind = CN_AST_EXPR_INTEGER_LITERAL;
     expr->as.integer_literal.value = value;
+    return expr;
+}
+
+static CnAstExpr *make_string_literal(const char *value, size_t length)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_STRING_LITERAL;
+    expr->as.string_literal.value = value;
+    expr->as.string_literal.length = length;
     return expr;
 }
 

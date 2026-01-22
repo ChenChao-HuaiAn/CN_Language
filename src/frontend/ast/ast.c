@@ -25,6 +25,8 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
         break;
     case CN_AST_EXPR_INTEGER_LITERAL:
         break;
+    case CN_AST_EXPR_STRING_LITERAL:
+        break;
     case CN_AST_EXPR_ASSIGN:
         cn_frontend_ast_expr_free(expr->as.assign.target);
         cn_frontend_ast_expr_free(expr->as.assign.value);
