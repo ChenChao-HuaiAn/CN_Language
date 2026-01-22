@@ -30,6 +30,8 @@ static const char *get_c_function_name(const char *name) {
     // 使用 hex 编码匹配 UTF-8 标识符，避免编译器执行字符集干扰
     // 打印: \xe6\x89\x93\xe5\x8d\xb0
     if (strcmp(name, "\xe6\x89\x93\xe5\x8d\xb0") == 0) return "cn_rt_print_string";
+    // 长度: \xe9\x95\xbf\xe5\xba\xa6
+    if (strcmp(name, "\xe9\x95\xbf\xe5\xba\xa6") == 0) return "cn_rt_string_length";
     // 主程序: \xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f
     if (strcmp(name, "\xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f") == 0) return "main";
     static char buffer[256];
