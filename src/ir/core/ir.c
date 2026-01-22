@@ -1,6 +1,7 @@
 #include "cnlang/ir/ir.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 CnIrModule *cn_ir_module_new() {
     CnIrModule *module = (CnIrModule *)malloc(sizeof(CnIrModule));
@@ -181,4 +182,111 @@ CnIrOperand cn_ir_op_symbol(const char *name, CnType *type) {
     op.as.sym_name = name ? strdup(name) : NULL;
     op.type = type;
     return op;
+}
+
+static const char *inst_names[] = {
+    "add", "sub", "mul", "div", "mod", "and", "or", "xor", "shl", "shr", "neg", "not",
+    "eq", "ne", "lt", "le", "gt", "ge",
+    "alloca", "load", "store",
+    "label", "jump", "branch", "call", "ret",
+    "phi"
+};
+
+void cn_ir_dump_operand(CnIrOperand op) {
+    switch (op.kind) {
+        case CN_IR_OP_NONE: printf("none"); break;
+        case CN_IR_OP_REG: printf("%%r%d", op.as.reg_id); break;
+        case CN_IR_OP_IMM_INT: printf("%lld", op.as.imm_int); break;
+        case CN_IR_OP_IMM_STR: printf("\"%s\"", op.as.imm_str); break;
+        case CN_IR_OP_SYMBOL: printf("@%s", op.as.sym_name); break;
+        case CN_IR_OP_LABEL: printf("%s", op.as.label->name ? op.as.label->name : "unnamed"); break;
+        default: printf("unknown"); break;
+    }
+}
+
+void cn_ir_dump_inst(CnIrInst *inst) {
+    if (!inst) return;
+    printf("  ");
+    if (inst->kind == CN_IR_INST_LABEL) {
+        printf("%s:", inst->dest.as.sym_name);
+    } else if (inst->kind == CN_IR_INST_STORE) {
+        printf("store ");
+        cn_ir_dump_operand(inst->src1); // value
+        printf(", ");
+        cn_ir_dump_operand(inst->dest); // address
+    } else if (inst->kind == CN_IR_INST_JUMP) {
+        printf("jump ");
+        cn_ir_dump_operand(inst->dest);
+    } else if (inst->kind == CN_IR_INST_BRANCH) {
+        printf("branch ");
+        cn_ir_dump_operand(inst->src1); // cond
+        printf(", ");
+        cn_ir_dump_operand(inst->dest); // true label
+        printf(", ");
+        cn_ir_dump_operand(inst->src2); // false label
+    } else if (inst->kind == CN_IR_INST_RET) {
+        printf("ret ");
+        if (inst->src1.kind != CN_IR_OP_NONE) cn_ir_dump_operand(inst->src1);
+    } else if (inst->kind == CN_IR_INST_CALL) {
+        if (inst->dest.kind != CN_IR_OP_NONE) {
+            cn_ir_dump_operand(inst->dest);
+            printf(" = ");
+        }
+        printf("call ");
+        cn_ir_dump_operand(inst->src1); // callee
+        printf("(");
+        for (size_t i = 0; i < inst->extra_args_count; i++) {
+            cn_ir_dump_operand(inst->extra_args[i]);
+            if (i < inst->extra_args_count - 1) printf(", ");
+        }
+        printf(")");
+    } else {
+        // Default binary/unary format: dest = op src1 [, src2]
+        if (inst->dest.kind != CN_IR_OP_NONE) {
+            cn_ir_dump_operand(inst->dest);
+            printf(" = ");
+        }
+        printf("%s ", inst_names[inst->kind]);
+        cn_ir_dump_operand(inst->src1);
+        if (inst->src2.kind != CN_IR_OP_NONE) {
+            printf(", ");
+            cn_ir_dump_operand(inst->src2);
+        }
+    }
+    printf("\n");
+}
+
+void cn_ir_dump_block(CnIrBasicBlock *block) {
+    if (!block) return;
+    printf("%s:\n", block->name ? block->name : "unnamed");
+    CnIrInst *inst = block->first_inst;
+    while (inst) {
+        cn_ir_dump_inst(inst);
+        inst = inst->next;
+    }
+}
+
+void cn_ir_dump_function(CnIrFunction *func) {
+    if (!func) return;
+    printf("fn @%s(", func->name);
+    for (size_t i = 0; i < func->param_count; i++) {
+        cn_ir_dump_operand(func->params[i]);
+        if (i < func->param_count - 1) printf(", ");
+    }
+    printf(") {\n");
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        cn_ir_dump_block(block);
+        block = block->next;
+    }
+    printf("}\n\n");
+}
+
+void cn_ir_dump_module(CnIrModule *module) {
+    if (!module) return;
+    CnIrFunction *func = module->first_func;
+    while (func) {
+        cn_ir_dump_function(func);
+        func = func->next;
+    }
 }
