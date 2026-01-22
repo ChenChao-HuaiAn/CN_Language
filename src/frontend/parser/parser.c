@@ -1,4 +1,5 @@
 #include "cnlang/frontend/parser.h"
+#include "cnlang/support/diagnostics.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -8,6 +9,7 @@ typedef struct CnParser {
     CnToken current;
     int has_current;
     int error_count;
+    CnDiagnostics *diagnostics;
 } CnParser;
 
 static void parser_advance(CnParser *parser);
@@ -66,6 +68,7 @@ CnParser *cn_frontend_parser_new(CnLexer *lexer)
     parser->lexer = lexer;
     parser->has_current = 0;
     parser->error_count = 0;
+    parser->diagnostics = NULL;
 
     return parser;
 }
@@ -73,6 +76,15 @@ CnParser *cn_frontend_parser_new(CnLexer *lexer)
 void cn_frontend_parser_free(CnParser *parser)
 {
     free(parser);
+}
+
+void cn_frontend_parser_set_diagnostics(CnParser *parser, CnDiagnostics *diagnostics)
+{
+    if (!parser) {
+        return;
+    }
+
+    parser->diagnostics = diagnostics;
 }
 
 bool cn_frontend_parse_program(CnParser *parser, CnAstProgram **out_program)
@@ -126,6 +138,15 @@ static int parser_expect(CnParser *parser, CnTokenKind kind)
     }
 
     parser->error_count++;
+    if (parser->diagnostics) {
+        cn_support_diagnostics_report(parser->diagnostics,
+                                      CN_DIAG_SEVERITY_ERROR,
+                                      CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                      parser->lexer ? parser->lexer->filename : NULL,
+                                      parser->current.line,
+                                      parser->current.column,
+                                      "语法错误：缺少预期的标记");
+    }
     return 0;
 }
 
@@ -162,8 +183,18 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
         parser_advance(parser);
     }
 
-    if (parser->current.kind != CN_TOKEN_IDENT) {
+    if (parser->current.kind != CN_TOKEN_IDENT &&
+        parser->current.kind != CN_TOKEN_KEYWORD_MAIN) {
         parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：函数名无效");
+        }
         return NULL;
     }
 
@@ -194,6 +225,15 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
         do {
             if (parser->current.kind != CN_TOKEN_IDENT) {
                 parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：参数名无效");
+                }
                 free(params);
                 free(fn);
                 return NULL;
@@ -372,6 +412,15 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         if (parser->current.kind != CN_TOKEN_IDENT) {
             parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：变量名无效");
+            }
             return NULL;
         }
 
@@ -476,6 +525,15 @@ static CnAstExpr *parse_comparison(CnParser *parser)
             break;
         default:
             parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_COMPARISON_OP,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：比较运算符无效");
+            }
             return left;
         }
 
@@ -618,6 +676,15 @@ static CnAstExpr *parse_factor(CnParser *parser)
         parser_expect(parser, CN_TOKEN_RPAREN);
     } else {
         parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_EXPR,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：无法解析表达式");
+        }
         parser_advance(parser);
     }
 

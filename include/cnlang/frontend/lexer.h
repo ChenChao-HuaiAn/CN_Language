@@ -10,6 +10,8 @@
 extern "C" {
 #endif
 
+struct CnDiagnostics;
+
 typedef struct CnLexer {
     const char *source;
     const char *filename;
@@ -17,10 +19,12 @@ typedef struct CnLexer {
     size_t offset;
     int line;
     int column;
+    struct CnDiagnostics *diagnostics;
 } CnLexer;
 
 void cn_frontend_lexer_init(CnLexer *lexer, const char *source, size_t length, const char *filename);
 bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token);
+void cn_frontend_lexer_set_diagnostics(CnLexer *lexer, struct CnDiagnostics *diagnostics);
 
 #ifdef __cplusplus
 }

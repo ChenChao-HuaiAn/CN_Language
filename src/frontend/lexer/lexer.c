@@ -1,4 +1,5 @@
 #include "cnlang/frontend/lexer.h"
+#include "cnlang/support/diagnostics.h"
 
 #include <ctype.h>
 #include <string.h>
@@ -49,6 +50,21 @@ static void skip_whitespace(CnLexer *lexer)
         advance(lexer);
         c = current_char(lexer);
     }
+}
+
+static void report_lex_error(CnLexer *lexer, CnDiagCode code, const char *message)
+{
+    if (!lexer || !lexer->diagnostics) {
+        return;
+    }
+
+    cn_support_diagnostics_report(lexer->diagnostics,
+                                  CN_DIAG_SEVERITY_ERROR,
+                                  code,
+                                  lexer->filename,
+                                  lexer->line,
+                                  lexer->column,
+                                  message);
 }
 
 static int is_identifier_start(unsigned char c)
@@ -258,6 +274,16 @@ void cn_frontend_lexer_init(CnLexer *lexer, const char *source, size_t length, c
     lexer->offset = 0;
     lexer->line = 1;
     lexer->column = 1;
+    lexer->diagnostics = NULL;
+}
+
+void cn_frontend_lexer_set_diagnostics(CnLexer *lexer, struct CnDiagnostics *diagnostics)
+{
+    if (!lexer) {
+        return;
+    }
+
+    lexer->diagnostics = diagnostics;
 }
 
 bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
@@ -320,7 +346,7 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             advance(lexer);
             out_token->kind = CN_TOKEN_STRING_LITERAL;
         } else {
-            /* TODO: 接入诊断模块，报告未终止的字符串字面量 */
+            report_lex_error(lexer, CN_DIAG_CODE_LEX_UNTERMINATED_STRING, "未终止的字符串字面量");
             out_token->kind = CN_TOKEN_INVALID;
         }
     } else if (isdigit((unsigned char)c)) {
@@ -456,7 +482,7 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             out_token->kind = CN_TOKEN_DOT;
             break;
         default:
-            /* TODO: 接入诊断模块，报告非法字符（使用中文错误信息） */
+            report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_CHAR, "非法字符");
             advance(lexer);
             out_token->kind = CN_TOKEN_INVALID;
             break;

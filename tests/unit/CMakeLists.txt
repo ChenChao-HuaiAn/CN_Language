@@ -139,3 +139,33 @@ target_include_directories(parser_func_test PRIVATE
 
 add_test(NAME parser_func_test
          COMMAND parser_func_test)
+
+add_executable(parser_hello_world_test
+    parser_hello_world_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/parser/parser.c
+    ../../src/frontend/ast/ast.c
+)
+
+target_include_directories(parser_hello_world_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_hello_world_test
+         COMMAND parser_hello_world_test)
+
+add_executable(parser_diagnostics_test
+    parser_diagnostics_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/parser/parser.c
+    ../../src/frontend/ast/ast.c
+)
+
+target_include_directories(parser_diagnostics_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_diagnostics_test
+         COMMAND parser_diagnostics_test)
