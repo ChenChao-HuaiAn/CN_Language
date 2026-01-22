@@ -106,6 +106,42 @@ static int test_to_string_round_trip(void)
     return 0;
 }
 
+static int test_preset_x86_64_elf_layout(void)
+{
+    CnTargetTriple triple;
+    CnTargetDataLayout layout;
+    bool ok;
+
+    ok = cn_support_target_triple_parse("x86_64-elf", &triple);
+    if (!ok) {
+        fprintf(stderr,
+                "support_target_triple_test: 预设目标 x86_64-elf 解析失败\n");
+        return 1;
+    }
+
+    ok = cn_support_target_get_data_layout(&triple, &layout);
+    if (!ok) {
+        fprintf(stderr,
+                "support_target_triple_test: 未找到 x86_64-elf 的预设数据布局\n");
+        return 1;
+    }
+
+    if (layout.pointer_size_in_bits != 64 ||
+        layout.pointer_alignment_in_bits != 64 ||
+        layout.int_size_in_bits != 32 ||
+        layout.int_alignment_in_bits != 32 ||
+        layout.long_size_in_bits != 64 ||
+        layout.long_alignment_in_bits != 64 ||
+        layout.long_long_size_in_bits != 64 ||
+        layout.long_long_alignment_in_bits != 64) {
+        fprintf(stderr,
+                "support_target_triple_test: x86_64-elf 数据布局不符合预期\n");
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(void)
 {
     if (test_parse_simple_arch_abi() != 0) {
@@ -121,6 +157,10 @@ int main(void)
     }
 
     if (test_to_string_round_trip() != 0) {
+        return 1;
+    }
+
+    if (test_preset_x86_64_elf_layout() != 0) {
         return 1;
     }
 

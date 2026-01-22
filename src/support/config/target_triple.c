@@ -95,6 +95,29 @@ static CnTargetABI cn_support_target_abi_from_string(const char *str)
     return CN_TARGET_ABI_UNKNOWN;
 }
 
+static void cn_support_target_fill_default_layout(
+    const CnTargetTriple *triple,
+    CnTargetDataLayout *layout)
+{
+    /*
+     * 目前仅为常见的 64 位 OS 开发目标提供预设数据布局：
+     *   - x86_64-elf: 64 位指针，int 32、long 64、long long 64。
+     * 其他目标可以在未来按需扩展。
+     */
+    if (triple->arch == CN_TARGET_ARCH_X86_64 &&
+        triple->os == CN_TARGET_OS_NONE &&
+        triple->abi == CN_TARGET_ABI_ELF) {
+        layout->pointer_size_in_bits = 64;
+        layout->pointer_alignment_in_bits = 64;
+        layout->int_size_in_bits = 32;
+        layout->int_alignment_in_bits = 32;
+        layout->long_size_in_bits = 64;
+        layout->long_alignment_in_bits = 64;
+        layout->long_long_size_in_bits = 64;
+        layout->long_long_alignment_in_bits = 64;
+    }
+}
+
 static const char *cn_support_target_arch_to_string(CnTargetArch arch)
 {
     switch (arch) {
@@ -293,4 +316,30 @@ int cn_support_target_triple_to_string(
     }
 
     return written;
+}
+
+bool cn_support_target_get_data_layout(
+    const CnTargetTriple *triple,
+    CnTargetDataLayout *out_layout)
+{
+    CnTargetDataLayout layout;
+
+    if (!triple || !out_layout) {
+        return false;
+    }
+
+    /* 默认初始化为 0，表示未设置。 */
+    memset(&layout, 0, sizeof(layout));
+
+    cn_support_target_fill_default_layout(triple, &layout);
+
+    /*
+     * 当前实现很简单：如果 pointer_size_in_bits 仍为 0，说明没有匹配的预设目标。
+     */
+    if (layout.pointer_size_in_bits == 0) {
+        return false;
+    }
+
+    *out_layout = layout;
+    return true;
 }

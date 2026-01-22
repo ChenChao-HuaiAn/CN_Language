@@ -10,10 +10,10 @@
 #include "cnlang/frontend/lexer.h"
 #include "cnlang/frontend/parser.h"
 #include "cnlang/frontend/ast.h"
-#include "cnlang/frontend/semantics.h"
 #include "cnlang/support/diagnostics.h"
 #include "cnlang/runtime/runtime.h"
 #include "cnlang/support/process/process.h"
+#include "cnlang/support/config.h"
 #include "cnlang/ir/ir.h"
 #include "cnlang/ir/irgen.h"
 #include "cnlang/ir/pass.h"
@@ -253,6 +253,14 @@ int main(int argc, char **argv)
     CnSemScope *global_scope = NULL;
     CnDiagnostics diagnostics;
     bool ok;
+    CnTargetTriple target_triple;
+
+    /* 默认目标：后续可根据配置/命令行调整 */
+    target_triple = cn_support_target_triple_make(
+        CN_TARGET_ARCH_X86_64,
+        CN_TARGET_VENDOR_PC,
+        CN_TARGET_OS_NONE,
+        CN_TARGET_ABI_ELF);
 
     if (argc < 2) {
         fprintf(stderr, "用法: %s <源文件.cn> [选项]\n", argv[0]);
@@ -264,6 +272,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "  --cc <编译器>  指定外部 C 编译器路径\n");
         fprintf(stderr, "  -g            生成调试信息\n");
         fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
+        fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
         fprintf(stderr, "  --help         显示此帮助信息\n");
         return 1;
     }
@@ -291,6 +300,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "  --cc <编译器>  指定外部 C 编译器路径\n");
             fprintf(stderr, "  -g            生成调试信息\n");
             fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
+            fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
             fprintf(stderr, "  --help/-h      显示此帮助信息\n\n");
             fprintf(stderr, "环境变量:\n");
             fprintf(stderr, "  CN_RUNTIME_PATH        指定运行时库路径\n");
@@ -328,6 +338,16 @@ int main(int argc, char **argv)
             run_pipeline = true;
         } else if (strlen(argv[i]) == 3 && argv[i][0] == '-' && argv[i][1] == 'O' && isdigit(argv[i][2])) {
             opt_level = argv[i] + 2;
+            run_pipeline = true;
+        } else if (strncmp(argv[i], "--target=", 9) == 0) {
+            const char *triple_str = argv[i] + 9;
+            CnTargetTriple parsed_triple;
+            bool target_ok = cn_support_target_triple_parse(triple_str, &parsed_triple);
+            if (!target_ok) {
+                fprintf(stderr, "无效的目标三元组: %s\n", triple_str);
+                return 1;
+            }
+            target_triple = parsed_triple;
             run_pipeline = true;
         }
     }

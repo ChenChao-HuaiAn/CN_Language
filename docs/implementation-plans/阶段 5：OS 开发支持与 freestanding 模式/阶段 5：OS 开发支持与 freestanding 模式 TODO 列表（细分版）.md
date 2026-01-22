@@ -3,9 +3,9 @@
 #### 一、目标平台建模（`support/config`）
 
 - **1.1 目标三元组基础设施**
-  - [ ] 设计并确定目标三元组表示结构（如 `CnTargetTriple`），字段包括架构、厂商、OS、ABI 等  
-  - [ ] 在 `include/cnlang/support/` 下新增/扩展头文件，声明目标三元组 API  
-  - [ ] 在 `src/support/` 下实现目标三元组解析与构造函数（从字符串/预设枚举生成）
+  - [x] 设计并确定目标三元组表示结构（如 `CnTargetTriple`），字段包括架构、厂商、OS、ABI 等  
+  - [x] 在 `include/cnlang/support/` 下新增/扩展头文件，声明目标三元组 API  
+  - [x] 在 `src/support/` 下实现目标三元组解析与构造函数（从字符串/预设枚举生成）
 
 - **1.2 预设 OS 目标定义**
   - [ ] 定义 `x86_64-elf` 等用于 OS 开发的预设目标三元组  
