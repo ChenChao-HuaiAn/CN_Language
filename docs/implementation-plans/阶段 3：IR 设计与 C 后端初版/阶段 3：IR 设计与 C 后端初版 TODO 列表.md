@@ -152,16 +152,16 @@
     - [x] `cn_rt_array_bounds_check(void *arr, size_t index)`：边界检查。
 
 #### 5.5 运行时库构建与链接
-- [ ] **配置运行时库构建**：
-    - [ ] 在 `src/runtime/CMakeLists.txt` 中配置静态库构建（`libcnrt.a` 或 `cnrt.lib`）。
-    - [ ] 可选：配置动态库构建（`libcnrt.so` / `cnrt.dll`）。
-- [ ] **实现运行时库路径管理**：
-    - [ ] 在 `cnc` 中实现 `get_runtime_lib_path()` 函数，定位运行时库位置。
-    - [ ] 支持通过 `CN_RUNTIME_PATH` 环境变量自定义路径。
-    - [ ] 默认查找：与 `cnc` 同目录的 `lib/` 子目录。
-- [ ] **生成运行时头文件引用**：
-    - [ ] 在 `cn_cgen_module` 生成的 C 代码开头添加 `#include "cnrt.h"`。
-    - [ ] 确保生成的 C 代码能找到运行时头文件。
+- [x] **配置运行时库构建**：
+    - [x] 在 `src/runtime/CMakeLists.txt` 中配置静态库构建（`libcnrt.a` 或 `cnrt.lib`）。
+    - [x] 可选：配置动态库构建（`libcnrt.so` / `cnrt.dll`）。
+- [x] **实现运行时库路径管理**：
+    - [x] 在 `cnc` 中实现 `get_runtime_lib_path()` 函数，定位运行时库位置。
+    - [x] 支持通过 `CN_RUNTIME_PATH` 环境变量自定义路径。
+    - [x] 默认查找：与 `cnc` 同目录的 `lib/` 子目录。
+- [x] **生成运行时头文件引用**：
+    - [x] 在 `cn_cgen_module` 生成的 C 代码开头添加 `#include "cnrt.h"`。
+    - [x] 确保生成的 C 代码能找到运行时头文件。
 
 #### 5.6 端到端编译流程测试
 - [ ] **编写简单测试用例**：

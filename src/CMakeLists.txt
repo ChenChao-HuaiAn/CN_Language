@@ -5,22 +5,15 @@ add_executable(cnc
     frontend/ast/ast.c
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
+    support/process/process.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
     semantics/checker/semantic_passes.c
 )
 
-# 运行时库
-add_library(cn_runtime STATIC
-    runtime/core/runtime.c
-    runtime/collections/collections.c
-)
-
-# 设置运行时库的包含目录
-target_include_directories(cn_runtime PUBLIC
-    ${CMAKE_SOURCE_DIR}/include
-)
+# 包含运行时库子目录
+add_subdirectory(runtime)
 
 target_include_directories(cnc PRIVATE
     ${CMAKE_SOURCE_DIR}/include

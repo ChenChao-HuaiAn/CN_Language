@@ -573,7 +573,7 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
     ctx.temp_var_counter = 0;
 
     // 写入必要的 C 头文件
-    fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n");
+    fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
 
     // 遍历模块中的所有函数并生成 C 代码
     CnIrFunction *func = module->first_func;
@@ -599,7 +599,7 @@ int cn_cgen_header_to_file(CnIrModule *module, const char *filename) {
     fprintf(file, "#ifndef CN_MODULE_AUTOGEN_H\n#define CN_MODULE_AUTOGEN_H\n\n");
 
     // 写入必要的 C 头文件
-    fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n");
+    fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
 
     // 遍历模块中的所有函数并生成声明
     CnIrFunction *func = module->first_func;
