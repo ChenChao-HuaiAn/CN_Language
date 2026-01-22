@@ -123,16 +123,16 @@
     - [x] 调用 `cn_cgen_write_to_file(ir_module, output_c_path)` 生成 C 代码。（注：实现中为 `cn_cgen_module_to_file`）
 
 #### 5.3 外部 C 编译器调用
-- [ ] **设计编译器调用接口**：
-    - [ ] 在 `src/support/` 下新建 `process.h` 和 `process.c`，封装跨平台进程执行功能。
-    - [ ] 实现 `cn_support_run_command(const char *command, int *exit_code)` 函数。
-- [ ] **实现 C 编译器调用逻辑**：
-    - [ ] 构建编译命令字符串，如 `gcc -o output output.c -L<runtime_path> -lcnrt`。
-    - [ ] Windows 平台支持 `cl.exe` 命令格式（`cl /Fe:output.exe output.c cnrt.lib`）。
-    - [ ] 处理编译器输出，捕获错误/警告信息并转发给用户。
-- [ ] **编译器自动检测**：
-    - [ ] 实现 `cn_support_detect_c_compiler()` 函数，自动检测系统中可用的 C 编译器。
-    - [ ] 检测顺序：`CC` 环境变量 -> `clang` -> `gcc` -> `cl`（Windows）。
+- [x] **设计编译器调用接口**：
+    - [x] 在 `src/support/` 下新建 `process.h` 和 `process.c`，封装跨平台进程执行功能。
+    - [x] 实现 `cn_support_run_command(const char *command, int *exit_code)` 函数。
+- [x] **实现 C 编译器调用逻辑**：
+    - [x] 构建编译命令字符串，如 `gcc -o output output.c -L<runtime_path> -lcnrt`。
+    - [x] Windows 平台支持 `cl.exe` 命令格式（`cl /Fe:output.exe output.c cnrt.lib`）。
+    - [x] 处理编译器输出，捕获错误/警告信息并转发给用户。
+- [x] **编译器自动检测**：
+    - [x] 实现 `cn_support_detect_c_compiler()` 函数，自动检测系统中可用的 C 编译器。
+    - [x] 检测顺序：`CC` 环境变量 -> `clang` -> `gcc` -> `cl`（Windows）。
 
 #### 5.4 运行时库设计与实现
 - [x] **创建运行时库目录结构**：

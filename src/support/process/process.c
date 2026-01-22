@@ -42,47 +42,30 @@ const char* cn_support_detect_c_compiler(void) {
         return cc_env;
     }
 
-#ifdef _WIN32
-    // Windows 平台检测顺序：cl -> gcc -> clang
-    // 检查 cl (MSVC)
     int exit_code;
-    bool found = cn_support_run_command("cl /?", &exit_code);
-    if (found && (exit_code == 0 || exit_code == 1)) {  // cl 命令即使没有参数也会返回 1，而不是错误码
+
+    // 检查 clang
+    if (cn_support_run_command("clang --version", &exit_code) && exit_code == 0) {
+        return "clang";
+    }
+
+    // 检查 gcc
+    if (cn_support_run_command("gcc --version", &exit_code) && exit_code == 0) {
+        return "gcc";
+    }
+
+#ifdef _WIN32
+    // 检查 cl (MSVC)
+    if (cn_support_run_command("cl /?", &exit_code) && (exit_code == 0 || exit_code == 1)) {
         return "cl";
     }
-    
-    // 检查 gcc
-    found = cn_support_run_command("gcc --version", &exit_code);
-    if (found && exit_code == 0) {
-        return "gcc";
-    }
-    
-    // 检查 clang
-    found = cn_support_run_command("clang --version", &exit_code);
-    if (found && exit_code == 0) {
-        return "clang";
-    }
 #else
-    // Unix-like 平台检测顺序：gcc -> clang -> cl
-    // 检查 gcc
-    int exit_code;
-    bool found = cn_support_run_command("gcc --version", &exit_code);
-    if (found && exit_code == 0) {
-        return "gcc";
-    }
-    
-    // 检查 clang
-    found = cn_support_run_command("clang --version", &exit_code);
-    if (found && exit_code == 0) {
-        return "clang";
-    }
-    
-    // 检查 CC 环境变量的另一种形式
-    if (system("cc --version 2>/dev/null") == 0) {
+    // 检查 cc
+    if (cn_support_run_command("cc --version", &exit_code) && exit_code == 0) {
         return "cc";
     }
 #endif
 
     // 如果都没有找到，返回默认值
-    return "gcc";  // 默认返回 gcc
+    return "gcc";
 }
