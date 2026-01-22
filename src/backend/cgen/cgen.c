@@ -585,3 +585,45 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
     fclose(file);
     return 0;
 }
+
+int cn_cgen_header_to_file(CnIrModule *module, const char *filename) {
+    if (!module || !filename) return -1;
+
+    FILE *file = fopen(filename, "w");
+    if (!file) {
+        // TODO: 使用 diagnostics 报告错误
+        return -1;
+    }
+
+    // 写入头文件保护宏
+    fprintf(file, "#ifndef CN_MODULE_AUTOGEN_H\n#define CN_MODULE_AUTOGEN_H\n\n");
+
+    // 写入必要的 C 头文件
+    fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n");
+
+    // 遍历模块中的所有函数并生成声明
+    CnIrFunction *func = module->first_func;
+    while (func) {
+        // 生成函数返回类型
+        fprintf(file, "%s ", get_c_type_string(func->return_type));
+
+        // 生成函数名
+        fprintf(file, "%s(", get_c_function_name(func->name));
+
+        // 生成参数列表
+        for (size_t i = 0; i < func->param_count; i++) {
+            fprintf(file, "%s %s", get_c_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
+            if (i < func->param_count - 1) {
+                fprintf(file, ", ");
+            }
+        }
+        fprintf(file, ");\n");
+
+        func = func->next;
+    }
+
+    fprintf(file, "\n#endif // CN_MODULE_AUTOGEN_H\n");
+
+    fclose(file);
+    return 0;
+}

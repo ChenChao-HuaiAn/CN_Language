@@ -88,11 +88,11 @@
     - [x] 在 `cn_cgen_block` 中，根据 `JUMP` 和 `BRANCH` 指令构建 C 的 `if`/`else`/`while`/`for` 结构，而不仅仅是 `goto`。已初步实现 `if` 结构化转换，`while` 逻辑已预留。
 
 #### 4.3 输出模块
-- [ ] **实现文件写入**：
-    - [ ] 在 `cgen.c` 中添加 `cn_cgen_write_to_file(CnIrModule *module, const char *filename)` 函数。
-    - [ ] 该函数调用 `cn_cgen_module` 获取完整 C 代码字符串，然后将其写入指定的 `.c` 文件。
-- [ ] **生成头文件（可选）**：
-    - [ ] 可以考虑同时生成 `.h` 文件，导出模块内的公共函数声明。
+- [x] **实现文件写入**：
+    - [x] 在 `cgen.c` 中添加 `cn_cgen_write_to_file(CnIrModule *module, const char *filename)` 函数。
+    - [x] 该函数调用 `cn_cgen_module` 获取完整 C 代码字符串，然后将其写入指定的 `.c` 文件。
+- [x] **生成头文件（可选）**：
+    - [x] 可以考虑同时生成 `.h` 文件，导出模块内的公共函数声明。
 
 
 #### 5. 构建与集成
