@@ -4,6 +4,7 @@
 #include "cnlang/frontend/lexer.h"
 #include "cnlang/frontend/parser.h"
 #include "cnlang/frontend/ast.h"
+#include "cnlang/frontend/semantics.h"
 #include "cnlang/support/diagnostics.h"
 
 // 读取整个源文件到内存缓冲区
@@ -134,6 +135,7 @@ int main(int argc, char **argv)
     CnLexer lexer;
     CnParser *parser;
     CnAstProgram *program = NULL;
+    CnSemScope *global_scope = NULL;
     CnDiagnostics diagnostics;
     bool ok;
 
@@ -184,9 +186,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    global_scope = cn_sem_build_scopes(program);
+    if (!global_scope) {
+        fprintf(stderr, "构建作用域失败\n");
+        cn_frontend_ast_program_free(program);
+        cn_frontend_parser_free(parser);
+        cn_support_diagnostics_free(&diagnostics);
+        free(source);
+        return 1;
+    }
+
     print_function_summary(program);
     print_diagnostics(&diagnostics);
 
+    cn_sem_scope_free(global_scope);
     cn_frontend_ast_program_free(program);
     cn_frontend_parser_free(parser);
     cn_support_diagnostics_free(&diagnostics);
