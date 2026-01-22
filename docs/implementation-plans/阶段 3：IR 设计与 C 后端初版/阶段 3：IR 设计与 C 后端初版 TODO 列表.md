@@ -115,12 +115,12 @@
     - [ ] 新增 `-O0/-O1/-O2/-O3` 参数：传递优化级别给 C 编译器。
 
 #### 5.2 集成 IR 生成与 C 后端
-- [ ] **在 cnc 中引入 IR 和 cgen 模块**：
-    - [ ] 在 `main.c` 中添加 `#include "cnlang/ir/ir.h"`、`#include "cnlang/ir/irgen.h"`、`#include "cnlang/backend/cgen.h"`。
-- [ ] **实现编译流水线扩展**：
-    - [ ] 语义检查通过后，调用 `cn_ir_gen_module(program)` 生成 IR 模块。
-    - [ ] 可选：调用优化 Pass（常量折叠、死代码删除）。
-    - [ ] 调用 `cn_cgen_write_to_file(ir_module, output_c_path)` 生成 C 代码。
+- [x] **在 cnc 中引入 IR 和 cgen 模块**：
+    - [x] 在 `main.c` 中添加 `#include "cnlang/ir/ir.h"`、`#include "cnlang/ir/irgen.h"`、`#include "cnlang/backend/cgen.h"`。
+- [x] **实现编译流水线扩展**：
+    - [x] 语义检查通过后，调用 `cn_ir_gen_module(program)` 生成 IR 模块。（注：实现中为 `cn_ir_gen_program`）
+    - [x] 可选：调用优化 Pass（常量折叠、死代码删除）。
+    - [x] 调用 `cn_cgen_write_to_file(ir_module, output_c_path)` 生成 C 代码。（注：实现中为 `cn_cgen_module_to_file`）
 
 #### 5.3 外部 C 编译器调用
 - [ ] **设计编译器调用接口**：

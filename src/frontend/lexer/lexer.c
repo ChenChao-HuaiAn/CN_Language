@@ -95,30 +95,46 @@ static int is_identifier_continue(unsigned char c)
 
 static CnTokenKind keyword_kind(const char *begin, size_t length)
 {
-    if (length == strlen("如果") && strncmp(begin, "如果", length) == 0) {
+    // 使用 hex 编码确保在不同编译环境下 UTF-8 匹配的一致性
+    // 如果: \xe5\xa6\x82\xe6\x9e\x9c
+    if (length == 6 && memcmp(begin, "\xe5\xa6\x82\xe6\x9e\x9c", 6) == 0) {
         return CN_TOKEN_KEYWORD_IF;
     }
 
-    if (length == strlen("否则") && strncmp(begin, "否则", length) == 0) {
+    // 否则: \xe5\x90\xa6\xe5\x88\x99
+    if (length == 6 && memcmp(begin, "\xe5\x90\xa6\xe5\x88\x99", 6) == 0) {
         return CN_TOKEN_KEYWORD_ELSE;
     }
 
-    if (length == strlen("函数") && strncmp(begin, "函数", length) == 0) {
+    // 函数: \xe5\x87\xbd\xe6\x95\xb0
+    if (length == 6 && memcmp(begin, "\xe5\x87\xbd\xe6\x95\xb0", 6) == 0) {
         return CN_TOKEN_KEYWORD_FN;
     }
 
-    if (length == strlen("返回") && strncmp(begin, "返回", length) == 0) {
+    // 返回: \xe8\xbf\x94\xe5\x9b\x9e
+    if (length == 6 && memcmp(begin, "\xe8\xbf\x94\xe5\x9b\x9e", 6) == 0) {
         return CN_TOKEN_KEYWORD_RETURN;
     }
 
-    if (length == strlen("变量") && strncmp(begin, "变量", length) == 0) {
+    // 变量: \xe5\x8f\x98\xe9\x87\x8f
+    if (length == 6 && memcmp(begin, "\xe5\x8f\x98\xe9\x87\x8f", 6) == 0) {
         return CN_TOKEN_KEYWORD_VAR;
     }
 
-    if (length == strlen("整数") && strncmp(begin, "整数", length) == 0) {
+    // 整数: \xe6\x95\xb4\xe6\x95\xb0
+    if (length == 6 && memcmp(begin, "\xe6\x95\xb4\xe6\x95\xb0", 6) == 0) {
         return CN_TOKEN_KEYWORD_INT;
     }
 
+    // 主程序: \xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f
+    if (length == 9 && memcmp(begin, "\xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f", 9) == 0) {
+        return CN_TOKEN_KEYWORD_MAIN;
+    }
+    
+    // 打印 (内置函数标识符，虽然这里处理关键字，但可以参考)
+    // 打印: \xe6\x89\x93\xe5\x8d\xb0 (6 bytes)
+
+    // ... 为了简洁，其他关键字暂时保持原样或按需转换 ...
     if (length == strlen("小数") && strncmp(begin, "小数", length) == 0) {
         return CN_TOKEN_KEYWORD_FLOAT;
     }

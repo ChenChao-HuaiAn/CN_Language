@@ -30,6 +30,14 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         return NULL;
     }
 
+    // 注册内置函数：打印 (print)
+    CnSemSymbol *print_sym = cn_sem_scope_insert_symbol(global_scope, "打印", strlen("打印"), CN_SEM_SYMBOL_FUNCTION);
+    if (print_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        print_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+
     for (i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *function_decl = program->functions[i];
 

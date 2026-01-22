@@ -58,6 +58,14 @@ static CnIrInstKind binary_op_to_ir(CnAstBinaryOp op) {
     }
 }
 
+// 辅助函数：从 AST 标识符生成 null-terminated 字符串
+static char *copy_name(const char *name, size_t length) {
+    char *buf = malloc(length + 1);
+    memcpy(buf, name, length);
+    buf[length] = '\0';
+    return buf;
+}
+
 // 生成表达式的 IR，返回结果操作数
 CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
     if (!expr) return cn_ir_op_none();
@@ -72,7 +80,8 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 字符串字面量
             CnIrOperand op;
             op.kind = CN_IR_OP_IMM_STR;
-            op.as.imm_str = expr->as.string_literal.value;
+            char *str = copy_name(expr->as.string_literal.value, expr->as.string_literal.length);
+            op.as.imm_str = str; // 注意：IR 目前不负责释放这个字符串，可能存在泄露，阶段 3 暂不处理
             op.type = cn_type_new_primitive(CN_TYPE_STRING);
             return op;
         }
@@ -80,7 +89,9 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 标识符：生成 LOAD 指令从变量地址加载值
             int dest_reg = alloc_reg(ctx);
             CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
-            CnIrOperand src = cn_ir_op_symbol(expr->as.identifier.name, expr->type);
+            char *name = copy_name(expr->as.identifier.name, expr->as.identifier.name_length);
+            CnIrOperand src = cn_ir_op_symbol(name, expr->type);
+            free(name);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
             return dest;
         }
@@ -99,7 +110,9 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             CnIrOperand value = cn_ir_gen_expr(ctx, expr->as.assign.value);
             CnAstExpr *target = expr->as.assign.target;
             if (target->kind == CN_AST_EXPR_IDENTIFIER) {
-                CnIrOperand addr = cn_ir_op_symbol(target->as.identifier.name, target->type);
+                char *name = copy_name(target->as.identifier.name, target->as.identifier.name_length);
+                CnIrOperand addr = cn_ir_op_symbol(name, target->type);
+                free(name);
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
             }
             return value;
@@ -145,7 +158,17 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
         }
         case CN_AST_EXPR_CALL: {
             // 函数调用
-            CnIrOperand callee = cn_ir_gen_expr(ctx, expr->as.call.callee);
+            CnIrOperand callee;
+            if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
+                // 直接调用标识符，保留为符号操作数以便后端映射到运行时函数
+                char *name = copy_name(expr->as.call.callee->as.identifier.name,
+                                       expr->as.call.callee->as.identifier.name_length);
+                callee = cn_ir_op_symbol(name, expr->as.call.callee->type);
+                free(name);
+            } else {
+                callee = cn_ir_gen_expr(ctx, expr->as.call.callee);
+            }
+            
             CnIrInst *call_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
                                                   callee, cn_ir_op_none());
             // 处理参数
@@ -177,7 +200,9 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
         case CN_AST_STMT_VAR_DECL: {
             // 变量声明：ALLOCA + 可选 STORE
             CnAstVarDecl *decl = &stmt->as.var_decl;
-            CnIrOperand addr = cn_ir_op_symbol(decl->name, decl->declared_type);
+            char *name = copy_name(decl->name, decl->name_length);
+            CnIrOperand addr = cn_ir_op_symbol(name, decl->declared_type);
+            free(name);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_ALLOCA, addr, cn_ir_op_none(), cn_ir_op_none()));
             if (decl->initializer) {
                 CnIrOperand init_val = cn_ir_gen_expr(ctx, decl->initializer);
@@ -344,13 +369,21 @@ void cn_ir_gen_block(CnIrGenContext *ctx, CnAstBlockStmt *block) {
 void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func) {
     if (!func) return;
 
-    CnIrFunction *ir_func = cn_ir_function_new(func->name, NULL);
+    // 确保函数名是 null-terminated
+    char *name = malloc(func->name_length + 1);
+    memcpy(name, func->name, func->name_length);
+    name[func->name_length] = '\0';
+
+    CnIrFunction *ir_func = cn_ir_function_new(name, cn_type_new_primitive(CN_TYPE_INT));
+    free(name);
     ctx->current_func = ir_func;
 
     // 添加参数
     for (size_t i = 0; i < func->parameter_count; i++) {
-        CnIrOperand param = cn_ir_op_symbol(func->parameters[i].name,
+        char *param_name = copy_name(func->parameters[i].name, func->parameters[i].name_length);
+        CnIrOperand param = cn_ir_op_symbol(param_name,
                                             func->parameters[i].declared_type);
+        free(param_name);
         cn_ir_function_add_param(ir_func, param);
     }
 

@@ -54,6 +54,8 @@ CnIrFunction *cn_ir_function_new(const char *name, CnType *return_type) {
     CnIrFunction *func = (CnIrFunction *)malloc(sizeof(CnIrFunction));
     if (func) {
         func->name = name ? strdup(name) : NULL;
+        // 注意：这里的 name 应该是已经 null-terminated 的。
+        // 如果是从 AST 获取的，irgen 应该负责传递 null-terminated 的字符串。
         func->return_type = return_type;
         func->params = NULL;
         func->param_count = 0;
