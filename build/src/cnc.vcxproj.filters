@@ -16,6 +16,9 @@
     <ClCompile Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\parser\parser.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\src\support\diagnostics\diagnostics.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\src\CMakeLists.txt" />

@@ -373,6 +373,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\lexer\lexer.c" />
     <ClCompile Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\ast\ast.c" />
     <ClCompile Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\parser\parser.c" />
+    <ClCompile Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\src\support\diagnostics\diagnostics.c" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

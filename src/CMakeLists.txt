@@ -4,6 +4,7 @@ add_executable(cnc
     frontend/lexer/lexer.c
     frontend/ast/ast.c
     frontend/parser/parser.c
+    support/diagnostics/diagnostics.c
 )
 
 target_include_directories(cnc PRIVATE

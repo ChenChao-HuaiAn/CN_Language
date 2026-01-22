@@ -26,6 +26,7 @@ add_executable(parser_minimal_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_minimal_test PRIVATE
@@ -41,6 +42,7 @@ add_executable(parser_comparison_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_comparison_test PRIVATE
@@ -56,6 +58,7 @@ add_executable(parser_loop_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_loop_test PRIVATE
@@ -71,6 +74,7 @@ add_executable(parser_assign_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_assign_test PRIVATE
@@ -86,6 +90,7 @@ add_executable(parser_logical_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_logical_test PRIVATE
@@ -101,6 +106,7 @@ add_executable(parser_break_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_break_test PRIVATE
@@ -116,6 +122,7 @@ add_executable(parser_var_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_var_test PRIVATE
@@ -131,6 +138,7 @@ add_executable(parser_func_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_func_test PRIVATE
@@ -146,6 +154,7 @@ add_executable(parser_hello_world_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_hello_world_test PRIVATE
@@ -161,6 +170,7 @@ add_executable(parser_diagnostics_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
 )
 
 target_include_directories(parser_diagnostics_test PRIVATE
