@@ -5,6 +5,7 @@ add_executable(cnc
     frontend/ast/ast.c
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
+    semantics/symbols/symbol_table.c
 )
 
 target_include_directories(cnc PRIVATE
