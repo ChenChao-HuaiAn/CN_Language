@@ -99,6 +99,81 @@
 - [ ] **自动化编译流程**：在 `cnc` 中集成调用外部 C 编译器（如 `clang` 或 `gcc`）的功能。
 - [ ] **链接运行时库**：确保生成的代码能正确链接基础运行时支持。
 
+### 5. 构建与集成 (细分后的 TODO 列表)
+
+#### 5.1 cnc 命令行参数扩展
+- [ ] **添加编译模式参数**：
+    - [ ] 新增 `-o <output>` 参数：指定输出文件名。
+    - [ ] 新增 `-c` 参数：仅生成 `.c` 文件，不编译为可执行文件。
+    - [ ] 新增 `-S` 参数：仅生成 IR（用于调试），输出到标准输出或文件。
+    - [ ] 新增 `--emit-c` 参数：生成 C 代码后保留 `.c` 文件（默认编译完成后删除）。
+- [ ] **添加编译器选择参数**：
+    - [ ] 新增 `--cc <compiler>` 参数：指定外部 C 编译器路径（如 `clang`、`gcc`、`cl`）。
+    - [ ] 实现 Windows 下默认使用 `cl.exe`（MSVC），Linux/macOS 下默认使用 `gcc` 或 `clang`。
+- [ ] **添加调试/优化参数**：
+    - [ ] 新增 `-g` 参数：生成调试信息。
+    - [ ] 新增 `-O0/-O1/-O2/-O3` 参数：传递优化级别给 C 编译器。
+
+#### 5.2 集成 IR 生成与 C 后端
+- [ ] **在 cnc 中引入 IR 和 cgen 模块**：
+    - [ ] 在 `main.c` 中添加 `#include "cnlang/ir/ir.h"`、`#include "cnlang/ir/irgen.h"`、`#include "cnlang/backend/cgen.h"`。
+- [ ] **实现编译流水线扩展**：
+    - [ ] 语义检查通过后，调用 `cn_ir_gen_module(program)` 生成 IR 模块。
+    - [ ] 可选：调用优化 Pass（常量折叠、死代码删除）。
+    - [ ] 调用 `cn_cgen_write_to_file(ir_module, output_c_path)` 生成 C 代码。
+
+#### 5.3 外部 C 编译器调用
+- [ ] **设计编译器调用接口**：
+    - [ ] 在 `src/support/` 下新建 `process.h` 和 `process.c`，封装跨平台进程执行功能。
+    - [ ] 实现 `cn_support_run_command(const char *command, int *exit_code)` 函数。
+- [ ] **实现 C 编译器调用逻辑**：
+    - [ ] 构建编译命令字符串，如 `gcc -o output output.c -L<runtime_path> -lcnrt`。
+    - [ ] Windows 平台支持 `cl.exe` 命令格式（`cl /Fe:output.exe output.c cnrt.lib`）。
+    - [ ] 处理编译器输出，捕获错误/警告信息并转发给用户。
+- [ ] **编译器自动检测**：
+    - [ ] 实现 `cn_support_detect_c_compiler()` 函数，自动检测系统中可用的 C 编译器。
+    - [ ] 检测顺序：`CC` 环境变量 -> `clang` -> `gcc` -> `cl`（Windows）。
+
+#### 5.4 运行时库设计与实现
+- [ ] **创建运行时库目录结构**：
+    - [ ] 创建 `src/runtime/` 目录。
+    - [ ] 创建 `include/cnlang/runtime/runtime.h` 作为运行时库公共头文件。
+- [ ] **实现基础运行时函数**：
+    - [ ] `cn_rt_print_int(long long val)`：打印整数。
+    - [ ] `cn_rt_print_bool(int val)`：打印布尔值。
+    - [ ] `cn_rt_print_string(const char *str)`：打印字符串。
+    - [ ] `cn_rt_print_newline()`：打印换行符。
+- [ ] **实现字符串支持函数**（如需要）：
+    - [ ] `cn_rt_string_concat(const char *a, const char *b)`：字符串拼接。
+    - [ ] `cn_rt_string_length(const char *str)`：获取字符串长度。
+- [ ] **实现数组支持函数**（如需要）：
+    - [ ] `cn_rt_array_alloc(size_t elem_size, size_t count)`：分配数组内存。
+    - [ ] `cn_rt_array_length(void *arr)`：获取数组长度。
+    - [ ] `cn_rt_array_bounds_check(void *arr, size_t index)`：边界检查。
+
+#### 5.5 运行时库构建与链接
+- [ ] **配置运行时库构建**：
+    - [ ] 在 `src/runtime/CMakeLists.txt` 中配置静态库构建（`libcnrt.a` 或 `cnrt.lib`）。
+    - [ ] 可选：配置动态库构建（`libcnrt.so` / `cnrt.dll`）。
+- [ ] **实现运行时库路径管理**：
+    - [ ] 在 `cnc` 中实现 `get_runtime_lib_path()` 函数，定位运行时库位置。
+    - [ ] 支持通过 `CN_RUNTIME_PATH` 环境变量自定义路径。
+    - [ ] 默认查找：与 `cnc` 同目录的 `lib/` 子目录。
+- [ ] **生成运行时头文件引用**：
+    - [ ] 在 `cn_cgen_module` 生成的 C 代码开头添加 `#include "cnrt.h"`。
+    - [ ] 确保生成的 C 代码能找到运行时头文件。
+
+#### 5.6 端到端编译流程测试
+- [ ] **编写简单测试用例**：
+    - [ ] 创建 `examples/hello_compile.cn`：包含 `打印("你好，世界")` 的最简程序。
+    - [ ] 创建 `examples/arithmetic_compile.cn`：包含简单算术运算和打印。
+- [ ] **手动验证流程**：
+    - [ ] 运行 `cnc hello_compile.cn -o hello`，验证生成可执行文件。
+    - [ ] 运行生成的可执行文件，验证输出正确。
+- [ ] **集成测试**：
+    - [ ] 在 `tests/integration/` 下添加编译流程测试。
+    - [ ] 验证 `.cn` -> `.c` -> 可执行文件 -> 运行输出 的完整链路。
+
 #### 6. 验收与验证
 - [ ] **端到端测试**：在 `tests/integration/compiler/` 下新增测试用例，验证从 `.cn` 到可执行文件并运行结果正确。
 - [ ] **文档同步**：根据实现情况微调 `IR` 规范文档。
