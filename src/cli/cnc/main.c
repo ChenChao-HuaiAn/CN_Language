@@ -186,7 +186,7 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    global_scope = cn_sem_build_scopes(program);
+    global_scope = cn_sem_build_scopes(program, &diagnostics);
     if (!global_scope) {
         fprintf(stderr, "构建作用域失败\n");
         cn_frontend_ast_program_free(program);

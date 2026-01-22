@@ -3,20 +3,128 @@
 #include <stdlib.h>
 
 static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics);
-static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics);
-static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics);
+static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics, bool in_loop);
+static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics, bool in_loop);
+
+static void resolve_stmt_names(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics);
+static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics);
+
+static void resolve_block_names(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics);
 
 // 名称解析语义 pass
 bool cn_sem_resolve_names(CnSemScope *global_scope,
                           CnAstProgram *program,
                           struct CnDiagnostics *diagnostics)
 {
-    (void)global_scope;
-    (void)program;
-    (void)diagnostics;
+    if (!program || !global_scope) return true;
 
-    // 目前 scope_builder 已经完成了符号插入，简单的名称解析可以在这里进一步实现（如绑定标识符到符号）
-    return true;
+    for (size_t i = 0; i < program->function_count; ++i) {
+        CnAstFunctionDecl *fn = program->functions[i];
+        
+        // 进入函数作用域
+        CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, global_scope);
+        
+        // 插入参数以构建正确的函数内部作用域环境
+        for (size_t j = 0; j < fn->parameter_count; j++) {
+            cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
+        }
+
+        resolve_block_names(fn_scope, fn->body, diagnostics);
+        
+        cn_sem_scope_free(fn_scope);
+    }
+
+    return cn_support_diagnostics_error_count(diagnostics) == 0;
+}
+
+static void resolve_block_names(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics) {
+    if (!block) return;
+    CnSemScope *block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+    for (size_t i = 0; i < block->stmt_count; i++) {
+        resolve_stmt_names(block_scope, block->stmts[i], diagnostics);
+    }
+    cn_sem_scope_free(block_scope);
+}
+
+static void resolve_stmt_names(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics) {
+    if (!stmt) return;
+
+    switch (stmt->kind) {
+        case CN_AST_STMT_BLOCK:
+            resolve_block_names(scope, stmt->as.block, diagnostics);
+            break;
+        case CN_AST_STMT_VAR_DECL: {
+            CnAstVarDecl *decl = &stmt->as.var_decl;
+            resolve_expr_names(scope, decl->initializer, diagnostics);
+            // 插入变量名以便后续语句引用
+            cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+            break;
+        }
+        case CN_AST_STMT_EXPR:
+            resolve_expr_names(scope, stmt->as.expr.expr, diagnostics);
+            break;
+        case CN_AST_STMT_RETURN:
+            resolve_expr_names(scope, stmt->as.return_stmt.expr, diagnostics);
+            break;
+        case CN_AST_STMT_IF:
+            resolve_expr_names(scope, stmt->as.if_stmt.condition, diagnostics);
+            resolve_block_names(scope, stmt->as.if_stmt.then_block, diagnostics);
+            resolve_block_names(scope, stmt->as.if_stmt.else_block, diagnostics);
+            break;
+        case CN_AST_STMT_WHILE:
+            resolve_expr_names(scope, stmt->as.while_stmt.condition, diagnostics);
+            resolve_block_names(scope, stmt->as.while_stmt.body, diagnostics);
+            break;
+        case CN_AST_STMT_FOR: {
+            CnSemScope *for_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+            resolve_stmt_names(for_scope, stmt->as.for_stmt.init, diagnostics);
+            resolve_expr_names(for_scope, stmt->as.for_stmt.condition, diagnostics);
+            resolve_expr_names(for_scope, stmt->as.for_stmt.update, diagnostics);
+            resolve_block_names(for_scope, stmt->as.for_stmt.body, diagnostics);
+            cn_sem_scope_free(for_scope);
+            break;
+        }
+        case CN_AST_STMT_BREAK:
+        case CN_AST_STMT_CONTINUE:
+            break;
+        default:
+            break;
+    }
+}
+
+static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics) {
+    if (!expr) return;
+    switch (expr->kind) {
+        case CN_AST_EXPR_IDENTIFIER: {
+            CnSemSymbol *sym = cn_sem_scope_lookup(scope, expr->as.identifier.name, expr->as.identifier.name_length);
+            if (!sym) {
+                cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER, NULL, 0, 0, "未定义的标识符");
+            }
+            break;
+        }
+        case CN_AST_EXPR_BINARY:
+            resolve_expr_names(scope, expr->as.binary.left, diagnostics);
+            resolve_expr_names(scope, expr->as.binary.right, diagnostics);
+            break;
+        case CN_AST_EXPR_CALL:
+            resolve_expr_names(scope, expr->as.call.callee, diagnostics);
+            for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                resolve_expr_names(scope, expr->as.call.arguments[i], diagnostics);
+            }
+            break;
+        case CN_AST_EXPR_ASSIGN:
+            resolve_expr_names(scope, expr->as.assign.target, diagnostics);
+            resolve_expr_names(scope, expr->as.assign.value, diagnostics);
+            break;
+        case CN_AST_EXPR_LOGICAL:
+            resolve_expr_names(scope, expr->as.logical.left, diagnostics);
+            resolve_expr_names(scope, expr->as.logical.right, diagnostics);
+            break;
+        case CN_AST_EXPR_UNARY:
+            resolve_expr_names(scope, expr->as.unary.operand, diagnostics);
+            break;
+        default: break;
+    }
 }
 
 // 类型检查语义 pass
@@ -28,43 +136,36 @@ bool cn_sem_check_types(CnSemScope *global_scope,
 
     for (size_t i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *fn = program->functions[i];
-        // 查找函数作用域（在 scope_builder 中已经创建，这里简单起见重新进入）
-        // 实际上应该在 AST 中记录 scope，或者在这里按同样逻辑推导
-        // 为了演示，我们假设我们能找到函数对应的作用域
-        // 注意：目前 scope_builder.c 中 cn_sem_build_function_scope 创建了新作用域但没存回 AST
-        // 这里我们简化处理，假设我们重新构建或由 caller 保证
         
-        // 暂时假设我们遍历时同步维护作用域
         CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, global_scope);
-        // 重新插入参数到临时作用域（正式实现应当复用之前的 scope）
         for (size_t j = 0; j < fn->parameter_count; j++) {
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) sym->type = fn->parameters[j].declared_type;
         }
 
-        check_block_types(fn_scope, fn->body, diagnostics);
+        check_block_types(fn_scope, fn->body, diagnostics, false);
         
         cn_sem_scope_free(fn_scope);
     }
 
-    return true;
+    return cn_support_diagnostics_error_count(diagnostics) == 0;
 }
 
-static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics) {
+static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics, bool in_loop) {
     if (!block) return;
     CnSemScope *block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
     for (size_t i = 0; i < block->stmt_count; i++) {
-        check_stmt_types(block_scope, block->stmts[i], diagnostics);
+        check_stmt_types(block_scope, block->stmts[i], diagnostics, in_loop);
     }
     cn_sem_scope_free(block_scope);
 }
 
-static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics) {
+static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics, bool in_loop) {
     if (!stmt) return;
 
     switch (stmt->kind) {
         case CN_AST_STMT_BLOCK:
-            check_block_types(scope, stmt->as.block, diagnostics);
+            check_block_types(scope, stmt->as.block, diagnostics, in_loop);
             break;
         case CN_AST_STMT_VAR_DECL: {
             CnAstVarDecl *decl = &stmt->as.var_decl;
@@ -77,7 +178,7 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                     sym->type = decl->declared_type;
                     if (init_type && !cn_type_compatible(init_type, sym->type)) {
                         // 报错：类型不匹配
-                        cn_support_diagnostics_report(diagnostics, CN_DIAG_SEVERITY_ERROR, 0, NULL, 0, 0, "变量初始化类型不匹配");
+                        cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_TYPE_MISMATCH, NULL, 0, 0, "变量初始化类型不匹配");
                     }
                 } else {
                     // 类型推断：var a = 1;
@@ -94,12 +195,27 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             break;
         case CN_AST_STMT_IF:
             infer_expr_type(scope, stmt->as.if_stmt.condition, diagnostics);
-            check_block_types(scope, stmt->as.if_stmt.then_block, diagnostics);
-            check_block_types(scope, stmt->as.if_stmt.else_block, diagnostics);
+            check_block_types(scope, stmt->as.if_stmt.then_block, diagnostics, in_loop);
+            check_block_types(scope, stmt->as.if_stmt.else_block, diagnostics, in_loop);
             break;
         case CN_AST_STMT_WHILE:
             infer_expr_type(scope, stmt->as.while_stmt.condition, diagnostics);
-            check_block_types(scope, stmt->as.while_stmt.body, diagnostics);
+            check_block_types(scope, stmt->as.while_stmt.body, diagnostics, true);
+            break;
+        case CN_AST_STMT_FOR: {
+            CnSemScope *for_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+            check_stmt_types(for_scope, stmt->as.for_stmt.init, diagnostics, in_loop);
+            infer_expr_type(for_scope, stmt->as.for_stmt.condition, diagnostics);
+            infer_expr_type(for_scope, stmt->as.for_stmt.update, diagnostics);
+            check_block_types(for_scope, stmt->as.for_stmt.body, diagnostics, true);
+            cn_sem_scope_free(for_scope);
+            break;
+        }
+        case CN_AST_STMT_BREAK:
+        case CN_AST_STMT_CONTINUE:
+            if (!in_loop) {
+                cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_BREAK_CONTINUE_OUTSIDE_LOOP, NULL, 0, 0, "break 或 continue 语句不在循环内");
+            }
             break;
         default:
             break;
@@ -165,6 +281,30 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
             } else {
                 expr->type = inner;
+            }
+            break;
+        }
+        case CN_AST_EXPR_CALL: {
+            CnType *callee_type = infer_expr_type(scope, expr->as.call.callee, diagnostics);
+            if (callee_type && callee_type->kind == CN_TYPE_FUNCTION) {
+                // 检查参数个数
+                if (expr->as.call.argument_count != callee_type->as.function.param_count) {
+                    cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH, NULL, 0, 0, "函数调用参数个数不匹配");
+                } else {
+                    // 逐个检查参数类型
+                    for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                        CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
+                        if (arg_type && !cn_type_compatible(arg_type, callee_type->as.function.param_types[i])) {
+                            cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH, NULL, 0, 0, "函数调用参数类型不匹配");
+                        }
+                    }
+                }
+                expr->type = callee_type->as.function.return_type;
+            } else {
+                if (callee_type && callee_type->kind != CN_TYPE_UNKNOWN) {
+                    cn_support_diagnostics_report_error(diagnostics, CN_DIAG_CODE_SEM_TYPE_MISMATCH, NULL, 0, 0, "尝试调用非函数类型");
+                }
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
             break;
         }

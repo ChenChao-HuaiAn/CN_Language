@@ -9,6 +9,13 @@ set(PARSER_TEST_DEPENDENCIES
     ../../src/support/diagnostics/diagnostics.c
 )
 
+set(SEMANTIC_TEST_DEPENDENCIES
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/symbols/symbol_table.c
+)
+
 add_executable(sample_unit_test
     sample_unit_test.c
 )
@@ -188,3 +195,15 @@ target_include_directories(parser_error_syntax_test PRIVATE
 
 add_test(NAME parser_error_syntax_test
          COMMAND parser_error_syntax_test)
+
+add_executable(semantic_check_test
+    semantic_check_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+
+target_include_directories(semantic_check_test PRIVATE
+    ../../include
+)
+
+add_test(NAME semantic_check_test
+         COMMAND semantic_check_test)

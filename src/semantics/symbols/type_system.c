@@ -26,6 +26,16 @@ CnType *cn_type_new_array(CnType *element, size_t length) {
     return type;
 }
 
+CnType *cn_type_new_function(CnType *return_type, CnType **param_types, size_t param_count) {
+    CnType *type = (CnType *)malloc(sizeof(CnType));
+    if (!type) return NULL;
+    type->kind = CN_TYPE_FUNCTION;
+    type->as.function.return_type = return_type;
+    type->as.function.param_types = param_types;
+    type->as.function.param_count = param_count;
+    return type;
+}
+
 bool cn_type_equals(CnType *a, CnType *b) {
     if (a == b) return true;
     if (!a || !b) return false;
@@ -40,6 +50,13 @@ bool cn_type_equals(CnType *a, CnType *b) {
         case CN_TYPE_STRUCT:
             if (!a->as.struct_name || !b->as.struct_name) return false;
             return strcmp(a->as.struct_name, b->as.struct_name) == 0;
+        case CN_TYPE_FUNCTION:
+            if (a->as.function.param_count != b->as.function.param_count) return false;
+            if (!cn_type_equals(a->as.function.return_type, b->as.function.return_type)) return false;
+            for (size_t i = 0; i < a->as.function.param_count; i++) {
+                if (!cn_type_equals(a->as.function.param_types[i], b->as.function.param_types[i])) return false;
+            }
+            return true;
         default:
             return true;
     }
