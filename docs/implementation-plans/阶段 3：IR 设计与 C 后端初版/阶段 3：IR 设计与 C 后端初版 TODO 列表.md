@@ -68,24 +68,24 @@
     - [x] 确定如何处理 CN_Language 的字符串、数组等高级类型在 C 中的表示（是直接用 C 数组还是用结构体封装）。
 
 #### 4.2 IR 转换 C 代码逻辑
-- [ ] **创建 C 代码生成器模块**：
-    - [ ] 创建 `src/backend/cgen/` 目录。
-    - [ ] 创建 `include/cnlang/backend/cgen.h` 和 `src/backend/cgen/cgen.c`。
-- [ ] **实现基础代码生成函数**：
-    - [ ] `cn_cgen_module`: 生成整个模块的 C 代码（包含头文件、全局声明等）。
-    - [ ] `cn_cgen_function`: 生成单个函数的 C 代码（函数签名、参数、函数体）。
-    - [ ] `cn_cgen_block`: 生成基本块对应的 C 语句块。
-    - [ ] `cn_cgen_inst`: 核心函数，将每条 IR 指令翻译为对应的 C 语句。
-- [ ] **处理各类 IR 指令**：
-    - [ ] `ALLOCA`: 生成 C 的局部变量声明（`long long r0;`）。
-    - [ ] `LOAD`/`STORE`: 生成 C 的变量赋值（`r0 = @var;` / `@var = r0;`）。
-    - [ ] `ADD`/`SUB`/`MUL`/`DIV`/...: 生成 C 的二元运算符（`r2 = r0 + r1;`）。
-    - [ ] `EQ`/`NE`/`LT`/...: 生成 C 的比较运算符（`r2 = r0 == r1;`）。
-    - [ ] `JUMP`/`BRANCH`: 生成 C 的 `goto` 语句和标签（`goto label_0;` / `label_0:`）。
-    - [ ] `CALL`: 生成 C 的函数调用（`r0 = cn_func_被调函数名(r1, r2);`）。
-    - [ ] `RET`: 生成 C 的 `return` 语句。
-- [ ] **处理控制流结构**：
-    - [ ] 在 `cn_cgen_block` 中，根据 `JUMP` 和 `BRANCH` 指令构建 C 的 `if`/`else`/`while`/`for` 结构，而不仅仅是 `goto`。这比纯 `goto` 更优雅，但实现难度稍高。初期可以先用 `goto` 验证逻辑，后续再优化为结构化控制流。
+- [x] **创建 C 代码生成器模块**：
+    - [x] 创建 `src/backend/cgen/` 目录。
+    - [x] 创建 `include/cnlang/backend/cgen.h` 和 `src/backend/cgen/cgen.c`。
+- [x] **实现基础代码生成函数**：
+    - [x] `cn_cgen_module`: 生成整个模块的 C 代码（包含头文件、全局声明等）。
+    - [x] `cn_cgen_function`: 生成单个函数的 C 代码（函数签名、参数、函数体）。
+    - [x] `cn_cgen_block`: 生成基本块对应的 C 语句块。
+    - [x] `cn_cgen_inst`: 核心函数，将每条 IR 指令翻译为对应的 C 语句。
+- [x] **处理各类 IR 指令**：
+    - [x] `ALLOCA`: 生成 C 的局部变量声明（`long long r0;`）。
+    - [x] `LOAD`/`STORE`: 生成 C 的变量赋值（`r0 = @var;` / `@var = r0;`）。
+    - [x] `ADD`/`SUB`/`MUL`/`DIV`/...: 生成 C 的二元运算符（`r2 = r0 + r1;`）。
+    - [x] `EQ`/`NE`/`LT`/...: 生成 C 的比较运算符（`r2 = r0 == r1;`）。
+    - [x] `JUMP`/`BRANCH`: 生成 C 的 `goto` 语句和标签（`goto label_0;` / `label_0:`）。
+    - [x] `CALL`: 生成 C 的函数调用（`r0 = cn_func_被调函数名(r1, r2);`）。
+    - [x] `RET`: 生成 C 的 `return` 语句。
+- [x] **处理控制流结构**：
+    - [x] 在 `cn_cgen_block` 中，根据 `JUMP` 和 `BRANCH` 指令构建 C 的 `if`/`else`/`while`/`for` 结构，而不仅仅是 `goto`。已初步实现 `if` 结构化转换，`while` 逻辑已预留。
 
 #### 4.3 输出模块
 - [ ] **实现文件写入**：
