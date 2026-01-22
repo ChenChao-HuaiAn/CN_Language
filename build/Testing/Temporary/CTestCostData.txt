@@ -1,11 +1,12 @@
-sample_unit_test 12 0.0011303
-lexer_function_examples_test 12 0.00167594
-parser_minimal_test 11 0.00413401
-parser_comparison_test 9 0.00487101
-parser_loop_test 6 0.00703245
+sample_unit_test 13 0.00125917
+lexer_function_examples_test 13 0.00253845
+parser_minimal_test 12 0.00471239
+parser_comparison_test 10 0.0041978
+parser_loop_test 7 0.00646529
 debug_lexer_test 1 0.0135218
-parser_assign_test 4 0.0103447
-parser_logical_test 3 0.0146363
-parser_break_test 2 0.0225185
-parser_var_test 1 0.0935558
+parser_assign_test 5 0.00931062
+parser_logical_test 4 0.0131197
+parser_break_test 3 0.015834
+parser_var_test 2 0.0266308
+parser_func_test 1 0.0986725
 ---

@@ -105,11 +105,19 @@ typedef struct CnAstForStmt {
     CnAstBlockStmt *body;
 } CnAstForStmt;
 
+// 函数参数
+typedef struct CnAstParameter {
+    const char *name;
+    size_t name_length;
+} CnAstParameter;
+
 // 函数声明
 typedef struct CnAstFunctionDecl {
     const char *name;
     size_t name_length;
-    CnAstBlockStmt *body; // 函数体语句块
+    CnAstParameter *parameters;   // 参数列表
+    size_t parameter_count;       // 参数数量
+    CnAstBlockStmt *body;         // 函数体语句块
 } CnAstFunctionDecl;
 
 // 程序根节点

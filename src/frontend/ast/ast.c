@@ -103,6 +103,7 @@ void cn_frontend_ast_function_free(CnAstFunctionDecl *function_decl)
         return;
     }
 
+    free(function_decl->parameters);  // 释放参数数组
     cn_frontend_ast_block_free(function_decl->body);
     free(function_decl);
 }

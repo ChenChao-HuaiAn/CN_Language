@@ -26,6 +26,7 @@ static CnAstExpr *parse_comparison(CnParser *parser);
 static CnAstExpr *parse_additive(CnParser *parser);
 static CnAstExpr *parse_term(CnParser *parser);
 static CnAstExpr *parse_unary(CnParser *parser);
+static CnAstExpr *parse_postfix(CnParser *parser);
 static CnAstExpr *parse_factor(CnParser *parser);
 
 static CnAstExpr *make_integer_literal(long value);
@@ -34,6 +35,7 @@ static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *righ
 static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *right);
 static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand);
 static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value);
+static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t argument_count);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
@@ -147,6 +149,9 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 {
     CnAstFunctionDecl *fn;
     CnAstBlockStmt *body;
+    CnAstParameter *params = NULL;
+    size_t param_count = 0;
+    size_t param_capacity = 0;
 
     if (!parser_expect(parser, CN_TOKEN_KEYWORD_FN)) {
         return NULL;
@@ -168,12 +173,62 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 
     fn->name = parser->current.lexeme_begin;
     fn->name_length = parser->current.lexeme_length;
+    fn->parameters = NULL;
+    fn->parameter_count = 0;
     fn->body = NULL;
 
     parser_advance(parser);
 
     parser_expect(parser, CN_TOKEN_LPAREN);
+
+    // 解析参数列表
+    if (parser->current.kind != CN_TOKEN_RPAREN) {
+        param_capacity = 4;
+        params = (CnAstParameter *)malloc(sizeof(CnAstParameter) * param_capacity);
+        if (!params) {
+            free(fn);
+            return NULL;
+        }
+
+        do {
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                free(params);
+                free(fn);
+                return NULL;
+            }
+
+            if (param_count >= param_capacity) {
+                param_capacity *= 2;
+                CnAstParameter *new_params = (CnAstParameter *)realloc(
+                    params, sizeof(CnAstParameter) * param_capacity);
+                if (!new_params) {
+                    free(params);
+                    free(fn);
+                    return NULL;
+                }
+                params = new_params;
+            }
+
+            params[param_count].name = parser->current.lexeme_begin;
+            params[param_count].name_length = parser->current.lexeme_length;
+            param_count++;
+
+            parser_advance(parser);
+
+            if (parser->current.kind == CN_TOKEN_COMMA) {
+                parser_advance(parser);
+            } else {
+                break;
+            }
+        } while (parser->current.kind != CN_TOKEN_RPAREN &&
+                 parser->current.kind != CN_TOKEN_EOF);
+    }
+
     parser_expect(parser, CN_TOKEN_RPAREN);
+
+    fn->parameters = params;
+    fn->parameter_count = param_count;
 
     body = parse_block(parser);
     fn->body = body;
@@ -469,7 +524,72 @@ static CnAstExpr *parse_unary(CnParser *parser)
         return make_unary(CN_AST_UNARY_OP_NOT, operand);
     }
 
-    return parse_factor(parser);
+    return parse_postfix(parser);  // 支持后缀表达式（如函数调用）
+}
+
+// 解析后缀表达式（如函数调用）
+static CnAstExpr *parse_postfix(CnParser *parser)
+{
+    CnAstExpr *expr = parse_factor(parser);
+
+    while (parser->current.kind == CN_TOKEN_LPAREN) {
+        // 函数调用
+        parser_advance(parser);
+
+        CnAstExpr **args = NULL;
+        size_t arg_count = 0;
+        size_t arg_capacity = 0;
+
+        if (parser->current.kind != CN_TOKEN_RPAREN) {
+            arg_capacity = 4;
+            args = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * arg_capacity);
+            if (!args) {
+                cn_frontend_ast_expr_free(expr);
+                return NULL;
+            }
+
+            do {
+                if (arg_count >= arg_capacity) {
+                    arg_capacity *= 2;
+                    CnAstExpr **new_args = (CnAstExpr **)realloc(
+                        args, sizeof(CnAstExpr *) * arg_capacity);
+                    if (!new_args) {
+                        for (size_t i = 0; i < arg_count; i++) {
+                            cn_frontend_ast_expr_free(args[i]);
+                        }
+                        free(args);
+                        cn_frontend_ast_expr_free(expr);
+                        return NULL;
+                    }
+                    args = new_args;
+                }
+
+                args[arg_count] = parse_expression(parser);
+                if (!args[arg_count]) {
+                    for (size_t i = 0; i < arg_count; i++) {
+                        cn_frontend_ast_expr_free(args[i]);
+                    }
+                    free(args);
+                    cn_frontend_ast_expr_free(expr);
+                    return NULL;
+                }
+                arg_count++;
+
+                if (parser->current.kind == CN_TOKEN_COMMA) {
+                    parser_advance(parser);
+                } else {
+                    break;
+                }
+            } while (parser->current.kind != CN_TOKEN_RPAREN &&
+                     parser->current.kind != CN_TOKEN_EOF);
+        }
+
+        parser_expect(parser, CN_TOKEN_RPAREN);
+
+        expr = make_call(expr, args, arg_count);
+    }
+
+    return expr;
 }
 
 static CnAstExpr *parse_factor(CnParser *parser)
@@ -575,6 +695,20 @@ static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand)
     expr->kind = CN_AST_EXPR_UNARY;
     expr->as.unary.op = op;
     expr->as.unary.operand = operand;
+    return expr;
+}
+
+static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t argument_count)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_CALL;
+    expr->as.call.callee = callee;
+    expr->as.call.arguments = arguments;
+    expr->as.call.argument_count = argument_count;
     return expr;
 }
 

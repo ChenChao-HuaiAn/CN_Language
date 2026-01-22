@@ -124,3 +124,18 @@ target_include_directories(parser_var_test PRIVATE
 
 add_test(NAME parser_var_test
          COMMAND parser_var_test)
+
+add_executable(parser_func_test
+    parser_func_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/parser/parser.c
+    ../../src/frontend/ast/ast.c
+)
+
+target_include_directories(parser_func_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_func_test
+         COMMAND parser_func_test)
