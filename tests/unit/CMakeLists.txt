@@ -207,3 +207,25 @@ target_include_directories(semantic_check_test PRIVATE
 
 add_test(NAME semantic_check_test
          COMMAND semantic_check_test)
+
+# 语义分析细分单元测试
+add_executable(semantics_symbol_table_test
+    semantics/semantics_symbol_table_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_symbol_table_test PRIVATE ../../include)
+add_test(NAME semantics_symbol_table_test COMMAND semantics_symbol_table_test)
+
+add_executable(semantics_type_system_test
+    semantics/semantics_type_system_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_type_system_test PRIVATE ../../include)
+add_test(NAME semantics_type_system_test COMMAND semantics_type_system_test)
+
+add_executable(semantics_name_resolution_test
+    semantics/semantics_name_resolution_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_name_resolution_test PRIVATE ../../include)
+add_test(NAME semantics_name_resolution_test COMMAND semantics_name_resolution_test)
