@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cnlang/runtime/runtime.h"
+#include "cnlang/runtime/memory.h"
 
 /*
  * CN Language 运行时库 - 集合操作实现
@@ -17,7 +18,7 @@ char* cn_rt_string_substring(const char *str, size_t start, size_t length) {
     
     size_t str_len = strlen(str);
     if (start >= str_len) {
-        char *result = malloc(1);
+        char *result = cn_rt_malloc(1);
         if (result) result[0] = '\0';
         return result;
     }
@@ -26,7 +27,7 @@ char* cn_rt_string_substring(const char *str, size_t start, size_t length) {
         length = str_len - start;
     }
     
-    char *result = malloc(length + 1);
+    char *result = cn_rt_malloc(length + 1);
     if (result == NULL) {
         return NULL;  // 内存分配失败
     }
@@ -55,7 +56,7 @@ void cn_rt_array_free(void *arr) {
     if (arr != NULL) {
         // 由于数组内存是在长度信息之后分配的，我们需要获取完整的内存块指针
         size_t *full_ptr = ((size_t*)arr) - 1;
-        free(full_ptr);
+        cn_rt_free(full_ptr);
     }
 }
 

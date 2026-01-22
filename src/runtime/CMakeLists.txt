@@ -9,9 +9,14 @@ set(RUNTIME_COLLECTIONS_SOURCES
     collections/collections.c
 )
 
+set(RUNTIME_MEMORY_SOURCES
+    memory/memory.c
+)
+
 set(RUNTIME_SOURCES
     ${RUNTIME_CORE_SOURCES}
     ${RUNTIME_COLLECTIONS_SOURCES}
+    ${RUNTIME_MEMORY_SOURCES}
 )
 
 # 创建静态库
@@ -25,6 +30,7 @@ target_include_directories(cn_runtime
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/core
         ${CMAKE_CURRENT_SOURCE_DIR}/collections
+        ${CMAKE_CURRENT_SOURCE_DIR}/memory
 )
 
 # 设置库的输出名称

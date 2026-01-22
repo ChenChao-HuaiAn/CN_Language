@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "cnlang/runtime/runtime.h"
+#include "cnlang/runtime/memory.h"
 
 /*
  * CN Language 运行时库实现
@@ -16,13 +17,18 @@ void cn_rt_init(void) {
     g_rt_state.exit_code = 0;
     g_rt_state.total_allocations = 0;
     g_rt_state.total_freed = 0;
+    
+    // 初始化内存子系统
+    cn_rt_memory_init(NULL);
+    
     // 初始化其他必要的子系统
 }
 
 // 运行时退出实现
 void cn_rt_exit(void) {
     // 执行清理操作
-    // 如果有未释放的内存，可以在此处报告（如果启用了追踪）
+    // 如果有未释放的内存，报告统计信息
+    cn_rt_memory_dump_stats();
     
     // 如果有明确的退出码，可以通过 exit() 退出，
     // 但通常在 main 函数结束时由 C 运行时处理。
@@ -50,20 +56,20 @@ void cn_rt_print_newline() {
 // 字符串支持函数实现
 char* cn_rt_string_concat(const char *a, const char *b) {
     if (a == NULL && b == NULL) {
-        char *result = malloc(1);
+        char *result = cn_rt_malloc(1);
         if (result) result[0] = '\0';
         return result;
     }
     if (a == NULL) {
-        return strdup(b);
+        return cn_rt_string_dup(b);
     }
     if (b == NULL) {
-        return strdup(a);
+        return cn_rt_string_dup(a);
     }
     
     size_t len_a = strlen(a);
     size_t len_b = strlen(b);
-    char *result = malloc(len_a + len_b + 1);
+    char *result = cn_rt_malloc(len_a + len_b + 1);
     if (result == NULL) {
         return NULL;  // 内存分配失败
     }
@@ -87,7 +93,7 @@ void* cn_rt_array_alloc(size_t elem_size, size_t count) {
     }
     
     // 为了存储数组长度信息，在实际数据前面预留一个 size_t 大小的空间
-    size_t *ptr = malloc(sizeof(size_t) + elem_size * count);
+    size_t *ptr = cn_rt_malloc(sizeof(size_t) + elem_size * count);
     if (ptr == NULL) {
         return NULL;  // 内存分配失败
     }
