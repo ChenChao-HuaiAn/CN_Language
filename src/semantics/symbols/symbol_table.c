@@ -107,6 +107,7 @@ CnSemSymbol *cn_sem_scope_insert_symbol(CnSemScope *scope,
     node->symbol.name_length = name_length;
     node->symbol.kind = kind;
     node->symbol.decl_scope = scope;
+    node->symbol.type = NULL;
 
     node->next = scope->symbols;
     scope->symbols = node;

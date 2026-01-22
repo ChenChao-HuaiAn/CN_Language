@@ -9,7 +9,7 @@
 int main(void)
 {
     /* 测试函数参数和函数调用 */
-    const char *source = "函数 add(a, b) { 返回 a + b; } 函数 main() { 变量 result = add(1, 2); 返回 result; }";
+    const char *source = "函数 add(整数 a, 整数 b) { 返回 a + b; } 函数 main() { 变量 result = add(1, 2); 返回 result; }";
     size_t length = strlen(source);
     CnLexer lexer;
     CnParser *parser;

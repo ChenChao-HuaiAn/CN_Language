@@ -1,4 +1,5 @@
 #include "cnlang/frontend/parser.h"
+#include "cnlang/frontend/semantics.h"
 #include "cnlang/support/diagnostics.h"
 
 #include <stdlib.h>
@@ -46,7 +47,7 @@ static CnAstStmt *make_while_stmt(CnAstExpr *condition, CnAstBlockStmt *body);
 static CnAstStmt *make_for_stmt(CnAstStmt *init, CnAstExpr *condition, CnAstExpr *update, CnAstBlockStmt *body);
 static CnAstStmt *make_break_stmt(void);
 static CnAstStmt *make_continue_stmt(void);
-static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnAstExpr *initializer);
+static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer);
 static CnAstBlockStmt *make_block(void);
 static void block_add_stmt(CnAstBlockStmt *block, CnAstStmt *stmt);
 static CnAstProgram *make_program(void);
@@ -223,6 +224,28 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
         }
 
         do {
+            CnType *param_type = NULL;
+            if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+                param_type = cn_type_new_primitive(CN_TYPE_INT);
+                parser_advance(parser);
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+                parser_advance(parser);
+            } else {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少参数类型");
+                }
+                free(params);
+                free(fn);
+                return NULL;
+            }
+
             if (parser->current.kind != CN_TOKEN_IDENT) {
                 parser->error_count++;
                 if (parser->diagnostics) {
@@ -232,7 +255,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
                                                   parser->lexer ? parser->lexer->filename : NULL,
                                                   parser->current.line,
                                                   parser->current.column,
-                                                  "语法错误：参数名无效");
+                                                  "语法错误：缺少参数名");
                 }
                 free(params);
                 free(fn);
@@ -253,6 +276,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 
             params[param_count].name = parser->current.lexeme_begin;
             params[param_count].name_length = parser->current.lexeme_length;
+            params[param_count].declared_type = param_type;
             param_count++;
 
             parser_advance(parser);
@@ -407,6 +431,11 @@ static CnAstStmt *parse_statement(CnParser *parser)
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
+        CnType *declared_type = NULL;
+
+        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+            declared_type = cn_type_new_primitive(CN_TYPE_INT);
+        }
 
         parser_advance(parser);
 
@@ -435,7 +464,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         parser_expect(parser, CN_TOKEN_SEMICOLON);
 
-        return make_var_decl_stmt(var_name, var_name_length, initializer);
+        return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer);
     }
 
     expr = parse_expression(parser);
@@ -699,6 +728,7 @@ static CnAstExpr *make_integer_literal(long value)
     }
 
     expr->kind = CN_AST_EXPR_INTEGER_LITERAL;
+    expr->type = NULL;
     expr->as.integer_literal.value = value;
     return expr;
 }
@@ -711,6 +741,7 @@ static CnAstExpr *make_string_literal(const char *value, size_t length)
     }
 
     expr->kind = CN_AST_EXPR_STRING_LITERAL;
+    expr->type = NULL;
     expr->as.string_literal.value = value;
     expr->as.string_literal.length = length;
     return expr;
@@ -724,6 +755,7 @@ static CnAstExpr *make_identifier(const char *name, size_t length)
     }
 
     expr->kind = CN_AST_EXPR_IDENTIFIER;
+    expr->type = NULL;
     expr->as.identifier.name = name;
     expr->as.identifier.name_length = length;
     return expr;
@@ -737,6 +769,7 @@ static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *righ
     }
 
     expr->kind = CN_AST_EXPR_BINARY;
+    expr->type = NULL;
     expr->as.binary.op = op;
     expr->as.binary.left = left;
     expr->as.binary.right = right;
@@ -751,6 +784,7 @@ static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value)
     }
 
     expr->kind = CN_AST_EXPR_ASSIGN;
+    expr->type = NULL;
     expr->as.assign.target = target;
     expr->as.assign.value = value;
     return expr;
@@ -764,6 +798,7 @@ static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *ri
     }
 
     expr->kind = CN_AST_EXPR_LOGICAL;
+    expr->type = NULL;
     expr->as.logical.op = op;
     expr->as.logical.left = left;
     expr->as.logical.right = right;
@@ -778,6 +813,7 @@ static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand)
     }
 
     expr->kind = CN_AST_EXPR_UNARY;
+    expr->type = NULL;
     expr->as.unary.op = op;
     expr->as.unary.operand = operand;
     return expr;
@@ -791,6 +827,7 @@ static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t arg
     }
 
     expr->kind = CN_AST_EXPR_CALL;
+    expr->type = NULL;
     expr->as.call.callee = callee;
     expr->as.call.arguments = arguments;
     expr->as.call.argument_count = argument_count;
@@ -890,7 +927,7 @@ static CnAstStmt *make_continue_stmt(void)
     return stmt;
 }
 
-static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnAstExpr *initializer)
+static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer)
 {
     CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
     if (!stmt) {
@@ -900,6 +937,7 @@ static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnAst
     stmt->kind = CN_AST_STMT_VAR_DECL;
     stmt->as.var_decl.name = name;
     stmt->as.var_decl.name_length = name_length;
+    stmt->as.var_decl.declared_type = declared_type;
     stmt->as.var_decl.initializer = initializer;
     return stmt;
 }

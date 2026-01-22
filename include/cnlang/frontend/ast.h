@@ -58,6 +58,7 @@ typedef enum CnAstUnaryOp {
     CN_AST_UNARY_OP_MINUS   // - (负号，预留)
 } CnAstUnaryOp;
 
+struct CnType;
 struct CnAstExpr;
 struct CnAstStmt;
 struct CnAstBlockStmt;
@@ -66,6 +67,7 @@ struct CnAstBlockStmt;
 typedef struct CnAstVarDecl {
     const char *name;
     size_t name_length;
+    struct CnType *declared_type;  // 显式声明的类型，如果是“变量”则为 NULL 或特定类型
     struct CnAstExpr *initializer; // 可以为 NULL
 } CnAstVarDecl;
 
@@ -110,6 +112,7 @@ typedef struct CnAstForStmt {
 typedef struct CnAstParameter {
     const char *name;
     size_t name_length;
+    struct CnType *declared_type; // 参数声明类型
 } CnAstParameter;
 
 // 函数声明
@@ -177,6 +180,7 @@ typedef struct CnAstUnaryExpr {
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
+    struct CnType *type; // 语义分析阶段填充的类型信息
     union {
         CnAstBinaryExpr binary;
         CnAstCallExpr call;

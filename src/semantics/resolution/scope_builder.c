@@ -33,10 +33,14 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program)
             continue;
         }
 
-        cn_sem_scope_insert_symbol(global_scope,
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
                                    function_decl->name,
                                    function_decl->name_length,
                                    CN_SEM_SYMBOL_FUNCTION);
+        if (sym) {
+            // TODO: 为函数设置完整类型（参数与返回）
+            sym->type = cn_type_new_primitive(CN_TYPE_INT); // 暂定返回整数
+        }
 
         cn_sem_build_function_scope(global_scope, function_decl);
     }
@@ -62,10 +66,13 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
     for (i = 0; i < function_decl->parameter_count; ++i) {
         CnAstParameter *param = &function_decl->parameters[i];
 
-        cn_sem_scope_insert_symbol(function_scope,
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(function_scope,
                                    param->name,
                                    param->name_length,
                                    CN_SEM_SYMBOL_VARIABLE);
+        if (sym) {
+            sym->type = param->declared_type;
+        }
     }
 
     cn_sem_build_block_scope(function_scope, function_decl->body);
@@ -104,10 +111,13 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt)
     case CN_AST_STMT_VAR_DECL: {
         CnAstVarDecl *var_decl = &stmt->as.var_decl;
 
-        cn_sem_scope_insert_symbol(scope,
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope,
                                    var_decl->name,
                                    var_decl->name_length,
                                    CN_SEM_SYMBOL_VARIABLE);
+        if (sym) {
+            sym->type = var_decl->declared_type;
+        }
 
         cn_sem_build_expr(scope, var_decl->initializer);
         break;

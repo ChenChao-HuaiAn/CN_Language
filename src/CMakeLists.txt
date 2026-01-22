@@ -6,6 +6,7 @@ add_executable(cnc
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
     semantics/symbols/symbol_table.c
+    semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
     semantics/checker/semantic_passes.c
 )
