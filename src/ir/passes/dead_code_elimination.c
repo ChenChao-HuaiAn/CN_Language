@@ -60,5 +60,5 @@ void cn_ir_pass_dead_code_elimination(CnIrModule *module) {
 
 void cn_ir_run_default_passes(CnIrModule *module) {
     cn_ir_pass_constant_folding(module);
-    // cn_ir_pass_dead_code_elimination(module); // 暂时禁用，因为 irgen 尚未构建完整的 CFG (preds/succs)
+    cn_ir_pass_dead_code_elimination(module);
 }

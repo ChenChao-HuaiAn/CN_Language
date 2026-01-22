@@ -159,20 +159,29 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
         return CN_TOKEN_KEYWORD_ENUM;
     }
 
-    if (length == strlen("当") && strncmp(begin, "当", length) == 0) {
+    // 当: \xe5\xbd\x93
+    if (length == 3 && memcmp(begin, "\xe5\xbd\x93", 3) == 0) {
         return CN_TOKEN_KEYWORD_WHILE;
     }
 
-    if (length == strlen("循环") && strncmp(begin, "循环", length) == 0) {
+    // 循环: \xe5\xbe\xaa\xe7\x8e\xaf
+    if (length == 6 && memcmp(begin, "\xe5\xbe\xaa\xe7\x8e\xaf", 6) == 0) {
         return CN_TOKEN_KEYWORD_FOR;
     }
 
-    if (length == strlen("中断") && strncmp(begin, "中断", length) == 0) {
+    // 中断: \xe4\xb8\xad\xe6\x96\xad
+    if (length == 6 && memcmp(begin, "\xe4\xb8\xad\xe6\x96\xad", 6) == 0) {
         return CN_TOKEN_KEYWORD_BREAK;
     }
 
-    if (length == strlen("继续") && strncmp(begin, "继续", length) == 0) {
+    // 继续: \xe7\xbb\xa7\xe7\xbb\xad
+    if (length == 6 && memcmp(begin, "\xe7\xbb\xa7\xe7\xbb\xad", 6) == 0) {
         return CN_TOKEN_KEYWORD_CONTINUE;
+    }
+
+    // 从 (用于 for 循环): \xe4\xbb\x8e
+    if (length == 3 && memcmp(begin, "\xe4\xbb\x8e", 3) == 0) {
+        return CN_TOKEN_KEYWORD_FOR;
     }
 
     if (length == strlen("选择") && strncmp(begin, "选择", length) == 0) {

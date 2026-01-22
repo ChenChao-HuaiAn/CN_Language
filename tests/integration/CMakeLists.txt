@@ -62,7 +62,7 @@ add_test(NAME integration_full_frontend_test COMMAND integration_full_frontend_t
 
 # 端到端编译流程集成测试
 add_executable(integration_compile_full_test
-    integration_compile_full_test.c
+    compiler/integration_compile_full_test.c
 )
 # 注意：此测试不需要链接编译器源码，因为它通过运行编译出的 cnc 可执行文件进行测试
 add_test(NAME integration_compile_full_test 

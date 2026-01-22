@@ -238,17 +238,21 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             CnIrBasicBlock *false_target = else_block ? else_block : merge_block;
             emit(ctx, cn_ir_inst_new(CN_IR_INST_BRANCH, cn_ir_op_label(then_block),
                                      cond, cn_ir_op_label(false_target)));
+            cn_ir_basic_block_connect(ctx->current_block, then_block);
+            cn_ir_basic_block_connect(ctx->current_block, false_target);
 
             switch_to_block(ctx, then_block);
             cn_ir_gen_block(ctx, if_stmt->then_block);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(merge_block),
                                      cn_ir_op_none(), cn_ir_op_none()));
+            cn_ir_basic_block_connect(ctx->current_block, merge_block);
 
             if (else_block) {
                 switch_to_block(ctx, else_block);
                 cn_ir_gen_block(ctx, if_stmt->else_block);
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(merge_block),
                                          cn_ir_op_none(), cn_ir_op_none()));
+                cn_ir_basic_block_connect(ctx->current_block, merge_block);
             }
 
             switch_to_block(ctx, merge_block);
@@ -266,11 +270,14 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
 
             emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(cond_block),
                                      cn_ir_op_none(), cn_ir_op_none()));
+            cn_ir_basic_block_connect(ctx->current_block, cond_block);
 
             switch_to_block(ctx, cond_block);
             CnIrOperand cond = cn_ir_gen_expr(ctx, while_stmt->condition);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_BRANCH, cn_ir_op_label(body_block),
                                      cond, cn_ir_op_label(exit_block)));
+            cn_ir_basic_block_connect(ctx->current_block, body_block);
+            cn_ir_basic_block_connect(ctx->current_block, exit_block);
 
             CnIrBasicBlock *saved_exit = ctx->loop_exit;
             CnIrBasicBlock *saved_continue = ctx->loop_continue;
@@ -281,6 +288,7 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             cn_ir_gen_block(ctx, while_stmt->body);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(cond_block),
                                      cn_ir_op_none(), cn_ir_op_none()));
+            cn_ir_basic_block_connect(ctx->current_block, cond_block);
 
             ctx->loop_exit = saved_exit;
             ctx->loop_continue = saved_continue;
@@ -304,15 +312,19 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
 
             emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(cond_block),
                                      cn_ir_op_none(), cn_ir_op_none()));
+            cn_ir_basic_block_connect(ctx->current_block, cond_block);
 
             switch_to_block(ctx, cond_block);
             if (for_stmt->condition) {
                 CnIrOperand cond = cn_ir_gen_expr(ctx, for_stmt->condition);
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_BRANCH, cn_ir_op_label(body_block),
                                          cond, cn_ir_op_label(exit_block)));
+                cn_ir_basic_block_connect(ctx->current_block, body_block);
+                cn_ir_basic_block_connect(ctx->current_block, exit_block);
             } else {
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(body_block),
                                          cn_ir_op_none(), cn_ir_op_none()));
+                cn_ir_basic_block_connect(ctx->current_block, body_block);
             }
 
             CnIrBasicBlock *saved_exit = ctx->loop_exit;
@@ -324,11 +336,13 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             cn_ir_gen_block(ctx, for_stmt->body);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(update_block),
                                      cn_ir_op_none(), cn_ir_op_none()));
+            cn_ir_basic_block_connect(ctx->current_block, update_block);
 
             switch_to_block(ctx, update_block);
             if (for_stmt->update) cn_ir_gen_expr(ctx, for_stmt->update);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(cond_block),
                                      cn_ir_op_none(), cn_ir_op_none()));
+            cn_ir_basic_block_connect(ctx->current_block, cond_block);
 
             ctx->loop_exit = saved_exit;
             ctx->loop_continue = saved_continue;

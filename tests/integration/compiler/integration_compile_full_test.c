@@ -68,6 +68,28 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // 测试 3: control_flow_compile.cn
+    snprintf(cmd, sizeof(cmd), "%s ../../../examples/control_flow_compile.cn -o control_flow_test", cnc_path);
+    printf("正在运行: %s\n", cmd);
+    res = system(cmd);
+    if (res != 0) {
+        fprintf(stderr, "测试 3 编译失败: %d\n", res);
+        return 1;
+    }
+
+    #ifdef _WIN32
+    const char* control_flow_exe = ".\\control_flow_test.exe";
+    #else
+    const char* control_flow_exe = "./control_flow_test";
+    #endif
+
+    printf("正在运行生成的程序: %s\n", control_flow_exe);
+    res = system(control_flow_exe);
+    if (res != 0) {
+        fprintf(stderr, "测试 3 运行失败: %d\n", res);
+        return 1;
+    }
+
     printf("集成编译测试全部通过!\n");
     return 0;
 }
