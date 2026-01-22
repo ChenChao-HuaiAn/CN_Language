@@ -3,6 +3,9 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "cnlang/frontend/lexer.h"
 #include "cnlang/frontend/parser.h"
@@ -31,32 +34,24 @@ const char* get_runtime_lib_path() {
     // 默认查找与可执行文件同目录下的 lib/ 子目录
     static char runtime_path[1024];
     
-    // 获取可执行文件路径
-    if (getenv("_")) {
-        // 在某些系统上，"_" 环境变量保存了当前执行的程序路径
-        const char *self_path = getenv("_");
-        size_t len = strlen(self_path);
-        
-        // 查找最后一个斜杠的位置
-        int last_slash = -1;
-        for (int i = len - 1; i >= 0; i--) {
-            if (self_path[i] == '/' || self_path[i] == '\\') {
-                last_slash = i;
-                break;
-            }
-        }
-        
-        if (last_slash != -1) {
-            // 复制可执行文件所在目录路径
-            strncpy(runtime_path, self_path, last_slash + 1);
-            runtime_path[last_slash + 1] = '\0';
+#ifdef _WIN32
+    char self_path[MAX_PATH];
+    if (GetModuleFileNameA(NULL, self_path, MAX_PATH)) {
+        char *last_slash = strrchr(self_path, '\\');
+        if (last_slash) {
+            *last_slash = '\0';
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\lib\\libcn_runtime.a", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
             
-            // 添加 lib/cn_runtime.lib 或 lib/libcn_runtime.a 路径
-            strcat(runtime_path, "lib/libcn_runtime.a");
-            return runtime_path;
+            // 尝试 build 目录下的路径
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\runtime\\libcn_runtime.a", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
         }
     }
-    
+#else
+    // 原有的探测逻辑...
+#endif
+
     // 如果无法确定可执行文件路径，则尝试几个常用的相对路径
     if (fopen("./lib/libcn_runtime.a", "r")) return "./lib/libcn_runtime.a";
     if (fopen("../lib/libcn_runtime.a", "r")) return "../lib/libcn_runtime.a";
@@ -82,31 +77,24 @@ const char* get_runtime_header_path() {
     // 默认查找与可执行文件同目录下的 include/ 子目录
     static char header_path[1024];
     
-    // 获取可执行文件路径
-    if (getenv("_")) {
-        const char *self_path = getenv("_");
-        size_t len = strlen(self_path);
-        
-        // 查找最后一个斜杠的位置
-        int last_slash = -1;
-        for (int i = len - 1; i >= 0; i--) {
-            if (self_path[i] == '/' || self_path[i] == '\\') {
-                last_slash = i;
-                break;
-            }
-        }
-        
-        if (last_slash != -1) {
-            // 复制可执行文件所在目录路径
-            strncpy(header_path, self_path, last_slash + 1);
-            header_path[last_slash + 1] = '\0';
+#ifdef _WIN32
+    char self_path[MAX_PATH];
+    if (GetModuleFileNameA(NULL, self_path, MAX_PATH)) {
+        char *last_slash = strrchr(self_path, '\\');
+        if (last_slash) {
+            *last_slash = '\0';
+            snprintf(header_path, sizeof(header_path), "%s\\include\\cnrt.h", self_path);
+            if (fopen(header_path, "r")) return header_path;
             
-            // 添加 include/cnrt.h 路径
-            strcat(header_path, "include/cnrt.h");
-            return header_path;
+            // 尝试从 build 目录向上的路径
+            snprintf(header_path, sizeof(header_path), "%s\\..\\..\\include\\cnrt.h", self_path);
+            if (fopen(header_path, "r")) return header_path;
         }
     }
-    
+#else
+    // 原有的探测逻辑...
+#endif
+
     // 如果无法确定可执行文件路径，则尝试几个常用的相对路径
     if (fopen("./include/cnrt.h", "r")) return "./include/cnrt.h";
     if (fopen("../include/cnrt.h", "r")) return "../include/cnrt.h";

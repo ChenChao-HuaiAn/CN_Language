@@ -164,15 +164,15 @@
     - [x] 确保生成的 C 代码能找到运行时头文件。
 
 #### 5.6 端到端编译流程测试
-- [ ] **编写简单测试用例**：
-    - [ ] 创建 `examples/hello_compile.cn`：包含 `打印("你好，世界")` 的最简程序。
-    - [ ] 创建 `examples/arithmetic_compile.cn`：包含简单算术运算和打印。
-- [ ] **手动验证流程**：
-    - [ ] 运行 `cnc hello_compile.cn -o hello`，验证生成可执行文件。
-    - [ ] 运行生成的可执行文件，验证输出正确。
-- [ ] **集成测试**：
-    - [ ] 在 `tests/integration/` 下添加编译流程测试。
-    - [ ] 验证 `.cn` -> `.c` -> 可执行文件 -> 运行输出 的完整链路。
+- [x] **编写简单测试用例**：
+    - [x] 创建 `examples/hello_compile.cn`：包含 `打印("你好，世界")` 的最简程序。
+    - [x] 创建 `examples/arithmetic_compile.cn`：包含简单算术运算和打印。
+- [x] **手动验证流程**：
+    - [x] 运行 `cnc hello_compile.cn -o hello`，验证生成可执行文件。
+    - [x] 运行生成的可执行文件，验证输出正确。
+- [x] **集成测试**：
+    - [x] 在 `tests/integration/` 下添加编译流程测试。
+    - [x] 验证 `.cn` -> `.c` -> 可执行文件 -> 运行输出 的完整链路。
 
 #### 6. 验收与验证
 - [ ] **端到端测试**：在 `tests/integration/compiler/` 下新增测试用例，验证从 `.cn` 到可执行文件并运行结果正确。

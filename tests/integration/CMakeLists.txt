@@ -59,3 +59,12 @@ add_executable(integration_full_frontend_test
 )
 target_include_directories(integration_full_frontend_test PRIVATE ../../include)
 add_test(NAME integration_full_frontend_test COMMAND integration_full_frontend_test)
+
+# 端到端编译流程集成测试
+add_executable(integration_compile_full_test
+    integration_compile_full_test.c
+)
+# 注意：此测试不需要链接编译器源码，因为它通过运行编译出的 cnc 可执行文件进行测试
+add_test(NAME integration_compile_full_test 
+         COMMAND integration_compile_full_test $<TARGET_FILE:cnc>
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
