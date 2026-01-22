@@ -47,13 +47,53 @@
 - [x] **函数定义转换**：处理函数参数、局部变量作用域及返回值的 IR 生成。
 
 #### 3. IR 优化 (Optional/Initial)
-- [ ] **常量折叠 (Constant Folding)**：实现基础的编译时常量计算优化。
-- [ ] **死代码删除 (Dead Code Elimination)**：初步实现移除不可达代码或无用赋值的 Pass。
+- [x] **常量折叠 (Constant Folding)**：实现基础的编译时常量计算优化。
+- [x] **死代码删除 (Dead Code Elimination)**：初步实现移除不可达代码或无用赋值的 Pass。
 
 #### 4. C 代码后端实现
 - [ ] **约定 C 接口 ABI**：明确函数命名混淆规则、类型映射表（如 `CN int` -> `int32_t`）。
 - [ ] **IR 转换 C 代码逻辑**：编写将 IR 指令序列翻译为合法 C 语法的生成器。
 - [ ] **输出模块**：实现将生成的 C 代码写入 `.c` 文件的功能。
+
+### 4. C 代码后端实现 (细分后的 TODO 列表)
+
+#### 4.1 约定 C 接口 ABI
+- [ ] **确定类型映射**：
+    - [ ] 在 `docs/specifications/language_spec_draft.md` 中明确 CN_Language 基础类型与 C 语言类型的对应关系（如 `int` -> `long long`, `bool` -> `_Bool`, `string` -> `char*` 或自定义结构体）。
+    - [ ] 为指针类型设计 C 端表示（如 `int*` -> `long long*`）。
+- [ ] **函数命名规则**：
+    - [ ] 设计函数名混淆规则（如 `函数名` -> `cn_func_函数名` 或 UTF-8 编码转义），避免 C 编译器不支持中文标识符。
+    - [ ] 为函数参数和局部变量的命名也约定规则（如 `变量名` -> `cn_var_变量名`）。
+- [ ] **运行时约定**：
+    - [ ] 确定如何处理 CN_Language 的字符串、数组等高级类型在 C 中的表示（是直接用 C 数组还是用结构体封装）。
+
+#### 4.2 IR 转换 C 代码逻辑
+- [ ] **创建 C 代码生成器模块**：
+    - [ ] 创建 `src/backend/cgen/` 目录。
+    - [ ] 创建 `include/cnlang/backend/cgen.h` 和 `src/backend/cgen/cgen.c`。
+- [ ] **实现基础代码生成函数**：
+    - [ ] `cn_cgen_module`: 生成整个模块的 C 代码（包含头文件、全局声明等）。
+    - [ ] `cn_cgen_function`: 生成单个函数的 C 代码（函数签名、参数、函数体）。
+    - [ ] `cn_cgen_block`: 生成基本块对应的 C 语句块。
+    - [ ] `cn_cgen_inst`: 核心函数，将每条 IR 指令翻译为对应的 C 语句。
+- [ ] **处理各类 IR 指令**：
+    - [ ] `ALLOCA`: 生成 C 的局部变量声明（`long long r0;`）。
+    - [ ] `LOAD`/`STORE`: 生成 C 的变量赋值（`r0 = @var;` / `@var = r0;`）。
+    - [ ] `ADD`/`SUB`/`MUL`/`DIV`/...: 生成 C 的二元运算符（`r2 = r0 + r1;`）。
+    - [ ] `EQ`/`NE`/`LT`/...: 生成 C 的比较运算符（`r2 = r0 == r1;`）。
+    - [ ] `JUMP`/`BRANCH`: 生成 C 的 `goto` 语句和标签（`goto label_0;` / `label_0:`）。
+    - [ ] `CALL`: 生成 C 的函数调用（`r0 = cn_func_被调函数名(r1, r2);`）。
+    - [ ] `RET`: 生成 C 的 `return` 语句。
+- [ ] **处理控制流结构**：
+    - [ ] 在 `cn_cgen_block` 中，根据 `JUMP` 和 `BRANCH` 指令构建 C 的 `if`/`else`/`while`/`for` 结构，而不仅仅是 `goto`。这比纯 `goto` 更优雅，但实现难度稍高。初期可以先用 `goto` 验证逻辑，后续再优化为结构化控制流。
+
+#### 4.3 输出模块
+- [ ] **实现文件写入**：
+    - [ ] 在 `cgen.c` 中添加 `cn_cgen_write_to_file(CnIrModule *module, const char *filename)` 函数。
+    - [ ] 该函数调用 `cn_cgen_module` 获取完整 C 代码字符串，然后将其写入指定的 `.c` 文件。
+- [ ] **生成头文件（可选）**：
+    - [ ] 可以考虑同时生成 `.h` 文件，导出模块内的公共函数声明。
+
 
 #### 5. 构建与集成
 - [ ] **自动化编译流程**：在 `cnc` 中集成调用外部 C 编译器（如 `clang` 或 `gcc`）的功能。

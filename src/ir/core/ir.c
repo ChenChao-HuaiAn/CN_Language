@@ -187,7 +187,7 @@ CnIrOperand cn_ir_op_symbol(const char *name, CnType *type) {
 static const char *inst_names[] = {
     "add", "sub", "mul", "div", "mod", "and", "or", "xor", "shl", "shr", "neg", "not",
     "eq", "ne", "lt", "le", "gt", "ge",
-    "alloca", "load", "store",
+    "alloca", "load", "store", "mov",
     "label", "jump", "branch", "call", "ret",
     "phi"
 };
