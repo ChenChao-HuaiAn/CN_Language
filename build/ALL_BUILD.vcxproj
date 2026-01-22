@@ -178,6 +178,14 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{759F6B9E-9FA2-3361-9E49-115822F020F4}</Project>
       <Name>cnc</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_parse_failure_test.vcxproj">
+      <Project>{F1C3A343-07CC-35EF-8E38-2468945EA4B3}</Project>
+      <Name>integration_parse_failure_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_parse_success_test.vcxproj">
+      <Project>{6DD21F5B-EF2D-33D7-8111-47410DB9A0C8}</Project>
+      <Name>integration_parse_success_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\lexer_error_test.vcxproj">
       <Project>{B853804D-E61E-3B3A-8A23-AB13B1E4E9EB}</Project>
       <Name>lexer_error_test</Name>

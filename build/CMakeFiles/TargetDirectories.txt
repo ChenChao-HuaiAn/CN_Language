@@ -20,5 +20,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/pars
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/parser_diagnostics_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/parser_error_syntax_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/RUN_TESTS.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_parse_success_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_parse_failure_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/RUN_TESTS.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/system/CMakeFiles/RUN_TESTS.dir
