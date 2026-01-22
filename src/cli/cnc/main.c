@@ -273,6 +273,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "  -g            生成调试信息\n");
         fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
         fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
+        fprintf(stderr, "  --freestanding  启用 freestanding 编译模式（最小运行时/OS 开发场景）\n");
         fprintf(stderr, "  --help         显示此帮助信息\n");
         return 1;
     }
@@ -286,6 +287,7 @@ int main(int argc, char **argv)
     const char *cc_override = NULL;
     bool debug_info = false;
     const char *opt_level = NULL;
+    bool freestanding_mode = false;
 
     // 检查是否是帮助请求
     for (int i = 1; i < argc; i++) {
@@ -301,6 +303,7 @@ int main(int argc, char **argv)
             fprintf(stderr, "  -g            生成调试信息\n");
             fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
             fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
+            fprintf(stderr, "  --freestanding  启用 freestanding 编译模式（最小运行时/OS 开发场景）\n");
             fprintf(stderr, "  --help/-h      显示此帮助信息\n\n");
             fprintf(stderr, "环境变量:\n");
             fprintf(stderr, "  CN_RUNTIME_PATH        指定运行时库路径\n");
@@ -348,6 +351,9 @@ int main(int argc, char **argv)
                 return 1;
             }
             target_triple = parsed_triple;
+            run_pipeline = true;
+        } else if (strcmp(argv[i], "--freestanding") == 0) {
+            freestanding_mode = true;
             run_pipeline = true;
         }
     }
@@ -433,7 +439,7 @@ int main(int argc, char **argv)
             output_filename = "a.out";
         }
 
-        CnIrModule *ir_module = cn_ir_gen_program(program, target_triple);
+        CnIrModule *ir_module = cn_ir_gen_program(program, target_triple, freestanding_mode ? CN_COMPILE_MODE_FREESTANDING : CN_COMPILE_MODE_HOSTED);
         if (!ir_module) {
             fprintf(stderr, "IR 生成失败\n");
             goto cleanup;
@@ -502,6 +508,12 @@ int main(int argc, char **argv)
                     snprintf(buf, sizeof(buf), " -O%s", opt_level);
                     strcat(extra_flags, buf);
                 }
+            }
+            if (freestanding_mode) {
+                if (strcmp(compiler, "cl") != 0) {
+                    strcat(extra_flags, " -ffreestanding");
+                }
+                /* TODO: freestanding 模式下后续可根据目标追加 -nostdlib/-nostartfiles 等链接选项 */
             }
 
             #ifdef _WIN32

@@ -427,12 +427,13 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func) {
     }
 }
 
-CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnTargetTriple target) {
+CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnTargetTriple target, CnCompileMode mode) {
     if (!program) return NULL;
 
     CnIrGenContext *ctx = cn_ir_gen_context_new();
     if (ctx->module) {
         ctx->module->target = target;
+        ctx->module->compile_mode = mode;
     }
 
     for (size_t i = 0; i < program->function_count; i++) {

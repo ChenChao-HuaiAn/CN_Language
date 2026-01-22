@@ -183,7 +183,13 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
     FILE *file = fopen(filename, "w");
     if (!file) return -1;
     CnCCodeGenContext ctx = {0, .output_file = file};
-    fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
+
+    if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {
+        fprintf(file, "#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
+    } else {
+        fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
+    }
+
     CnIrFunction *func = module->first_func;
     while (func) { cn_cgen_function(&ctx, func); func = func->next; }
     fclose(file);

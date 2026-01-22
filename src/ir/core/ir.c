@@ -10,6 +10,8 @@ CnIrModule *cn_ir_module_new() {
         module->last_func = NULL;
         /* 默认将目标三元组置零，具体值由前端/CLI 在生成 IR 前设置 */
         memset(&module->target, 0, sizeof(module->target));
+        /* 默认编译模式为宿主环境，freestanding 由前端/CLI 显式开启 */
+        module->compile_mode = CN_COMPILE_MODE_HOSTED;
     }
     return module;
 }

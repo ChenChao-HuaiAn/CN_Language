@@ -1,10 +1,10 @@
-Start testing: Jan 23 07:29 中国标准时间
+Start testing: Jan 23 07:43 中国标准时间
 ----------------------------------------------------------
 30/30 Testing: integration_compile_full_test
 30/30 Test: integration_compile_full_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_compile_full_test.exe" "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_compile_full_test" start time: Jan 23 07:29 中国标准时间
+"integration_compile_full_test" start time: Jan 23 07:43 中国标准时间
 Output:
 ----------------------------------------------------------
 'clang' is not recognized as an internal or external command,
@@ -75,11 +75,11 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 正在运行生成的程序: .\hello_target_test.exe
 集成编译测试全部通过!
 <end of output>
-Test time =   7.10 sec
+Test time =   5.57 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_compile_full_test" end time: Jan 23 07:29 中国标准时间
-"integration_compile_full_test" time elapsed: 00:00:07
+"integration_compile_full_test" end time: Jan 23 07:43 中国标准时间
+"integration_compile_full_test" time elapsed: 00:00:05
 ----------------------------------------------------------
 
-End testing: Jan 23 07:29 中国标准时间
+End testing: Jan 23 07:43 中国标准时间
