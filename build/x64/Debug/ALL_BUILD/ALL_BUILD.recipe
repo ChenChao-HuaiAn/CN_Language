@@ -8,7 +8,13 @@
       <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\Debug\cnc.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
+      <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\lexer_error_test.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
       <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\lexer_function_examples_test.exe</FullPath>
+    </ProjectOutput>
+    <ProjectOutput>
+      <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\lexer_token_test.exe</FullPath>
     </ProjectOutput>
     <ProjectOutput>
       <FullPath>C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\Debug\parser_assign_test.exe</FullPath>

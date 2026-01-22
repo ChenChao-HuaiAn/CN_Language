@@ -178,9 +178,17 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{759F6B9E-9FA2-3361-9E49-115822F020F4}</Project>
       <Name>cnc</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\lexer_error_test.vcxproj">
+      <Project>{B853804D-E61E-3B3A-8A23-AB13B1E4E9EB}</Project>
+      <Name>lexer_error_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\lexer_function_examples_test.vcxproj">
       <Project>{DC84CD9C-6D75-3C9D-85D5-3F7E0C1FCABA}</Project>
       <Name>lexer_function_examples_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\lexer_token_test.vcxproj">
+      <Project>{7B33C6C9-6595-3143-9FB5-D89483E8256D}</Project>
+      <Name>lexer_token_test</Name>
     </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_assign_test.vcxproj">
       <Project>{FF19423D-8F66-3F2D-9A4C-89C315C747FC}</Project>
@@ -197,6 +205,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_diagnostics_test.vcxproj">
       <Project>{8BC495DD-934C-35F0-9C1D-0BE30E96A55A}</Project>
       <Name>parser_diagnostics_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_error_syntax_test.vcxproj">
+      <Project>{F24CE7BB-9A53-3E45-AECA-983D0F1B4F4C}</Project>
+      <Name>parser_error_syntax_test</Name>
     </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_func_test.vcxproj">
       <Project>{BD373FC8-4391-372D-8BFE-061C62C3B09B}</Project>

@@ -20,6 +20,34 @@ target_include_directories(lexer_function_examples_test PRIVATE
 add_test(NAME lexer_function_examples_test
          COMMAND lexer_function_examples_test)
 
+add_executable(lexer_token_test
+    lexer_token_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(lexer_token_test PRIVATE
+    ../../include
+)
+
+add_test(NAME lexer_token_test
+         COMMAND lexer_token_test)
+
+add_executable(lexer_error_test
+    lexer_error_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(lexer_error_test PRIVATE
+    ../../include
+)
+
+add_test(NAME lexer_error_test
+         COMMAND lexer_error_test)
+
 add_executable(parser_minimal_test
     parser_minimal_test.c
     ../../src/frontend/lexer/lexer.c
@@ -179,3 +207,19 @@ target_include_directories(parser_diagnostics_test PRIVATE
 
 add_test(NAME parser_diagnostics_test
          COMMAND parser_diagnostics_test)
+
+add_executable(parser_error_syntax_test
+    parser_error_syntax_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/parser/parser.c
+    ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(parser_error_syntax_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_error_syntax_test
+         COMMAND parser_error_syntax_test)

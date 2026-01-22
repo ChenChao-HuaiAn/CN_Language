@@ -28,6 +28,7 @@ int main(void)
         fprintf(stderr, "parser_hello_world_test: 创建解析器失败\n");
         return 1;
     }
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
 
     ok = cn_frontend_parse_program(parser, &program);
     if (!ok || !program) {
