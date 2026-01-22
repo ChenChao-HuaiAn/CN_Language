@@ -196,6 +196,28 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    if (!cn_sem_resolve_names(global_scope, program, &diagnostics)) {
+        fprintf(stderr, "名称解析失败\n");
+        print_diagnostics(&diagnostics);
+        cn_sem_scope_free(global_scope);
+        cn_frontend_ast_program_free(program);
+        cn_frontend_parser_free(parser);
+        cn_support_diagnostics_free(&diagnostics);
+        free(source);
+        return 1;
+    }
+
+    if (!cn_sem_check_types(global_scope, program, &diagnostics)) {
+        fprintf(stderr, "类型检查失败\n");
+        print_diagnostics(&diagnostics);
+        cn_sem_scope_free(global_scope);
+        cn_frontend_ast_program_free(program);
+        cn_frontend_parser_free(parser);
+        cn_support_diagnostics_free(&diagnostics);
+        free(source);
+        return 1;
+    }
+
     print_function_summary(program);
     print_diagnostics(&diagnostics);
 

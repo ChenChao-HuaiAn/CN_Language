@@ -7,6 +7,7 @@ add_executable(cnc
     support/diagnostics/diagnostics.c
     semantics/symbols/symbol_table.c
     semantics/resolution/scope_builder.c
+    semantics/checker/semantic_passes.c
 )
 
 target_include_directories(cnc PRIVATE
