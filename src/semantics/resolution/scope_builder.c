@@ -39,11 +39,13 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
     }
 
     // 注册内置函数：长度 (length)
+    // 注意：长度函数是特殊的，它可以接受字符串或数组参数
+    // 我们在符号表中标记它，但在 semantic_passes.c 中特殊处理其类型检查
+    // 为了避免类型冲突，我们将其标记为 UNKNOWN 类型，让特殊处理逻辑来判断
     CnSemSymbol *length_sym = cn_sem_scope_insert_symbol(global_scope, "长度", strlen("长度"), CN_SEM_SYMBOL_FUNCTION);
     if (length_sym) {
-        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
-        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
-        length_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理
+        length_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
     }
 
     for (i = 0; i < program->function_count; ++i) {

@@ -79,10 +79,11 @@ static bool build_kernel(const char *kernel_source, const char *output_image) {
 #ifdef _WIN32
     char cmd[1024];
     // 使用相对于 tests/integration/os 的路径
+    // Windows 使用 CMake 多配置生成器，cnc.exe 在 Debug/Release 子目录
     snprintf(cmd, sizeof(cmd), 
              "pwsh.exe -ExecutionPolicy Bypass -File scripts/build_kernel.ps1 "
              "-KernelSource \"%s\" -OutputImage \"%s\" "
-             "-CncPath \"../../../build/src/cnc.exe\"",
+             "-CncPath \"../../../build/src/Debug/cnc.exe\"",
              kernel_source, output_image);
     
     int result = system(cmd);
@@ -169,7 +170,7 @@ static bool test_kernel_with_output_validation(void) {
              "pwsh.exe -ExecutionPolicy Bypass -File scripts/build_kernel.ps1 "
              "-KernelSource \"%s\" -OutputImage \"%s\" "
              "-BootCode \"boot/boot_test.c\" "
-             "-CncPath \"../../../build/src/cnc.exe\"",
+             "-CncPath \"../../../build/src/Debug/cnc.exe\"",
              source, output);
     
     int result = system(cmd);
@@ -233,7 +234,7 @@ static bool test_hello_kernel_example() {
              "pwsh.exe -ExecutionPolicy Bypass -File scripts/build_kernel.ps1 "
              "-KernelSource \"%s\" -OutputImage \"%s\" "
              "-BootCode \"boot/boot_hello.c\" "
-             "-CncPath \"../../../build/src/cnc.exe\"",
+             "-CncPath \"../../../build/src/Debug/cnc.exe\"",
              source, output);
     
     int result = system(cmd);

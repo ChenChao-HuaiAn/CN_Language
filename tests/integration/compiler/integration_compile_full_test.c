@@ -20,7 +20,8 @@ int main(int argc, char** argv) {
 
     // 设置环境变量以便 cnc 找到运行时
 #ifdef _WIN32
-    _putenv("CN_RUNTIME_PATH=../../../build/src/runtime/libcn_runtime.a");
+    // Windows 使用 CMake 多配置生成器，库文件在 Debug/Release 子目录
+    _putenv("CN_RUNTIME_PATH=../../../build/src/runtime/Debug/cn_runtime.lib");
     _putenv("CN_RUNTIME_HEADER_PATH=../../../include/cnrt.h");
 #else
     setenv("CN_RUNTIME_PATH", "../../../build/src/runtime/libcn_runtime.a", 1);

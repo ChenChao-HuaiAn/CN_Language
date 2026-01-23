@@ -166,6 +166,7 @@ static int test_array_length_compilation(void) {
     
     if (cn_support_diagnostics_error_count(&diagnostics) > 0) {
         printf("[失败] 语义分析阶段有错误\n");
+        cn_support_diagnostics_print(&diagnostics);
         cn_sem_scope_free(global_scope);
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
