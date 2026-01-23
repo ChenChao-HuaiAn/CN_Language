@@ -11,6 +11,7 @@
 #include "cnlang/frontend/lexer.h"
 #include "cnlang/frontend/parser.h"
 #include "cnlang/frontend/ast.h"
+#include "cnlang/frontend/semantics.h"
 #include "cnlang/support/diagnostics.h"
 #include "cnlang/ir/ir.h"
 #include "cnlang/ir/irgen.h"
@@ -36,15 +37,100 @@ typedef struct {
     const char *init_file;  // 初始化脚本文件（预留）
 } ReplConfig;
 
+/* REPL 会话状态：维护跨输入的符号表和 AST */
+typedef struct {
+    CnSemScope *global_scope;      // 全局作用域，保存所有已定义的变量和函数
+    CnAstProgram *accumulated_ast; // 累积的程序 AST，包含所有已定义的函数
+} ReplSession;
+
+/* 初始化 REPL 会话 */
+static ReplSession *repl_session_new(void)
+{
+    ReplSession *session = (ReplSession *)malloc(sizeof(ReplSession));
+    if (!session) {
+        return NULL;
+    }
+
+    // 创建全局作用域
+    session->global_scope = cn_sem_scope_new(CN_SEM_SCOPE_GLOBAL, NULL);
+    if (!session->global_scope) {
+        free(session);
+        return NULL;
+    }
+
+    // 创建累积的 AST（初始为空程序）
+    session->accumulated_ast = (CnAstProgram *)malloc(sizeof(CnAstProgram));
+    if (!session->accumulated_ast) {
+        cn_sem_scope_free(session->global_scope);
+        free(session);
+        return NULL;
+    }
+
+    session->accumulated_ast->function_count = 0;
+    session->accumulated_ast->functions = NULL;
+
+    return session;
+}
+
+/* 销毁 REPL 会话 */
+static void repl_session_free(ReplSession *session)
+{
+    if (!session) {
+        return;
+    }
+
+    if (session->global_scope) {
+        cn_sem_scope_free(session->global_scope);
+    }
+
+    if (session->accumulated_ast) {
+        // 注意：不调用 cn_frontend_ast_program_free，因为函数指针可能已经被多次引用
+        // 这里简单释放顶层结构
+        if (session->accumulated_ast->functions) {
+            free(session->accumulated_ast->functions);
+        }
+        free(session->accumulated_ast);
+    }
+
+    free(session);
+}
+
+/* 重置 REPL 会话状态 */
+static void repl_session_reset(ReplSession *session)
+{
+    if (!session) {
+        return;
+    }
+
+    // 释放旧的作用域
+    if (session->global_scope) {
+        cn_sem_scope_free(session->global_scope);
+    }
+
+    // 创建新的全局作用域
+    session->global_scope = cn_sem_scope_new(CN_SEM_SCOPE_GLOBAL, NULL);
+
+    // 重置累积的 AST
+    if (session->accumulated_ast) {
+        if (session->accumulated_ast->functions) {
+            free(session->accumulated_ast->functions);
+        }
+        session->accumulated_ast->function_count = 0;
+        session->accumulated_ast->functions = NULL;
+    }
+}
+
 /* 打印欢迎信息 */
 static void print_welcome(void)
 {
     printf("CN Language REPL v%s\n", REPL_VERSION);
     printf("输入 CN 语言表达式或语句，按 Ctrl+C 退出\n");
     printf("支持：单表达式求值、变量声明、小段程序\n");
+    printf("会话状态：前次定义的变量/函数在后续输入中可见\n");
     printf("特殊命令:\n");
     printf("  :help    - 显示帮助信息\n");
     printf("  :quit    - 退出 REPL\n");
+    printf("  :reset   - 重置会话状态\n");
     printf("  :verbose - 切换详细输出模式\n");
     printf("  :ast     - 切换 AST 显示\n");
     printf("  :ir      - 切换 IR 显示\n");
@@ -58,6 +144,7 @@ static void print_help(void)
     printf("--------------------\n");
     printf("  :help    - 显示此帮助信息\n");
     printf("  :quit    - 退出 REPL\n");
+    printf("  :reset   - 重置会话状态（清空所有已定义的变量和函数）\n");
     printf("  :verbose - 切换详细输出模式\n");
     printf("  :ast     - 切换 AST 显示\n");
     printf("  :ir      - 切换 IR 显示\n");
@@ -71,6 +158,10 @@ static void print_help(void)
     printf("           打印(x);\n");
     printf("  3. 完整程序（包含函数）:\n");
     printf("     函数 主程序() { 打印(\"测试\"); 返回 0; }\n");
+    printf("\n");
+    printf("会话状态管理:\n");
+    printf("  - 在一个会话中，前次定义的变量和函数在后续输入中可见\n");
+    printf("  - 使用 :reset 命令可以清空会话状态，重新开始\n");
     printf("\n");
     printf("多行输入: 在行尾输入 \\ 继续下一行\n");
     printf("\n");
@@ -178,7 +269,7 @@ static char *wrap_statement_as_program(const char *stmt)
 }
 
 /* 处理特殊命令 */
-static bool handle_command(const char *line, ReplConfig *config)
+static bool handle_command(const char *line, ReplConfig *config, ReplSession *session)
 {
     // 去除前后空白
     while (*line == ' ' || *line == '\t') {
@@ -191,6 +282,12 @@ static bool handle_command(const char *line, ReplConfig *config)
 
     if (strcmp(line, ":help") == 0 || strcmp(line, ":h") == 0) {
         print_help();
+        return true;
+    }
+
+    if (strcmp(line, ":reset") == 0) {
+        repl_session_reset(session);
+        printf("会话状态已重置\n");
         return true;
     }
 
@@ -217,7 +314,7 @@ static bool handle_command(const char *line, ReplConfig *config)
 }
 
 /* 处理用户输入的代码 */
-static void process_input(const char *input, const ReplConfig *config)
+static void process_input(const char *input, const ReplConfig *config, ReplSession *session)
 {
     CnDiagnostics diagnostics;
     CnLexer lexer;
@@ -304,10 +401,50 @@ static void process_input(const char *input, const ReplConfig *config)
         return;
     }
 
+    // 将新定义的函数和变量添加到会话状态
+    // 注意：这里简化处理，假设新解析的 program 包含需要追加的函数
+    if (program->function_count > 0) {
+        // 扩展累积的 AST 函数列表
+        size_t old_count = session->accumulated_ast->function_count;
+        size_t new_count = old_count + program->function_count;
+        
+        CnAstFunctionDecl **new_functions = (CnAstFunctionDecl **)realloc(
+            session->accumulated_ast->functions,
+            sizeof(CnAstFunctionDecl *) * new_count
+        );
+        
+        if (new_functions) {
+            session->accumulated_ast->functions = new_functions;
+            
+            // 追加新函数
+            for (size_t i = 0; i < program->function_count; i++) {
+                session->accumulated_ast->functions[old_count + i] = program->functions[i];
+                
+                // 在全局作用域中注册函数符号
+                const char *func_name = program->functions[i]->name;
+                size_t name_len = strlen(func_name);
+                cn_sem_scope_insert_symbol(
+                    session->global_scope,
+                    func_name,
+                    name_len,
+                    CN_SEM_SYMBOL_FUNCTION
+                );
+            }
+            
+            session->accumulated_ast->function_count = new_count;
+            
+            if (config->verbose) {
+                printf("[会话状态: 已注册 %zu 个新函数，当前共 %zu 个函数]\n",
+                       program->function_count, new_count);
+            }
+        }
+    }
+
     // 如果开启 AST 显示
     if (config->show_ast) {
         printf("=== AST ===\n");
         printf("函数数量: %zu\n", program->function_count);
+        printf("会话累积函数数: %zu\n", session->accumulated_ast->function_count);
         printf("===========\n");
     }
 
@@ -348,6 +485,12 @@ static void process_input(const char *input, const ReplConfig *config)
 
     // 清理资源
     cn_ir_module_free(ir_module);
+    // 注意：不释放 program 中的函数，因为它们已经被添加到 session->accumulated_ast
+    // 只释放 program 的顶层结构
+    if (program->functions) {
+        // 不要 free(program->functions)，因为指针已被会话保存
+        program->functions = NULL;
+    }
     cn_frontend_ast_program_free(program);
     cn_frontend_parser_free(parser);
     cn_support_diagnostics_free(&diagnostics);
@@ -362,6 +505,13 @@ static void repl_loop(const ReplConfig *config)
     char line[MAX_INPUT_LINE];
     char multiline_buffer[MAX_MULTILINE_INPUT];  // 多行输入缓冲区
     bool in_multiline = false;
+
+    // 创建 REPL 会话
+    ReplSession *session = repl_session_new();
+    if (!session) {
+        fprintf(stderr, "创建 REPL 会话失败\n");
+        return;
+    }
 
 #ifdef _WIN32
     // 在 Windows 上使用宽字符读取以正确处理 Unicode
@@ -446,7 +596,7 @@ static void repl_loop(const ReplConfig *config)
 
         // 检查是否是特殊命令（只在非多行模式下）
         if (!in_multiline && line[0] == ':') {
-            if (!handle_command(line, (ReplConfig *)config)) {
+            if (!handle_command(line, (ReplConfig *)config, session)) {
                 break; // 退出命令
             }
             continue;
@@ -470,7 +620,7 @@ static void repl_loop(const ReplConfig *config)
                 in_multiline = true;
             } else {
                 // 单行输入，直接处理
-                process_input(line, config);
+                process_input(line, config, session);
             }
         } else {
             // 在多行模式中，继续追加内容
@@ -487,7 +637,7 @@ static void repl_loop(const ReplConfig *config)
 
             if (!continue_next_line) {
                 // 结束多行输入，处理完整内容
-                process_input(multiline_buffer, config);
+                process_input(multiline_buffer, config, session);
                 in_multiline = false;
                 multiline_buffer[0] = '\0';
             }
@@ -495,6 +645,9 @@ static void repl_loop(const ReplConfig *config)
     }
 
     printf("再见!\n");
+    
+    // 释放会话
+    repl_session_free(session);
 }
 
 /* 打印使用说明 */

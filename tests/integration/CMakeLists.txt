@@ -135,3 +135,10 @@ add_executable(integration_repl_statement_test
 )
 target_include_directories(integration_repl_statement_test PRIVATE ../../include)
 add_test(NAME integration_repl_statement_test COMMAND integration_repl_statement_test)
+
+# REPL 会话状态管理集成测试
+add_executable(integration_repl_session_test
+    integration_repl_session_test.c
+)
+target_include_directories(integration_repl_session_test PRIVATE ../../include)
+add_test(NAME integration_repl_session_test COMMAND integration_repl_session_test)

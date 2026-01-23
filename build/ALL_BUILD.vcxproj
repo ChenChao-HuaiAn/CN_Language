@@ -218,6 +218,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{12E482A5-8AB4-37DF-93D8-9D28467235DB}</Project>
       <Name>integration_repl_expr_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_repl_session_test.vcxproj">
+      <Project>{7DFC3A77-956B-3BF1-A8F3-665A6E84FD19}</Project>
+      <Name>integration_repl_session_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_repl_statement_test.vcxproj">
       <Project>{E0F877EA-9719-38A1-9F24-108258146FD0}</Project>
       <Name>integration_repl_statement_test</Name>
