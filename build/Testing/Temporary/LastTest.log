@@ -1,19 +1,48 @@
-Start testing: Jan 23 21:28 中国标准时间
+Start testing: Jan 23 21:35 中国标准时间
 ----------------------------------------------------------
 34/46 Testing: formatter_test
 34/46 Test: formatter_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/formatter_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"formatter_test" start time: Jan 23 21:28 中国标准时间
+"formatter_test" start time: Jan 23 21:35 中国标准时间
 Output:
 ----------------------------------------------------------
-Assertion failed: formatted != NULL, file C:\Users\ChenChao\Documents\gitcode\CN_Language\tests\unit\formatter_test.c, line 141
+=== CN Language 格式化器单元测试 ===
+
+测试: 简单函数格式化...
+  [通过] 简单函数格式化
+测试: 变量声明格式化...
+  [通过] 变量声明格式化
+测试: 表达式格式化...
+  [通过] 表达式格式化
+测试: if 语句格式化...
+  [通过] if 语句格式化
+测试: 循环语句格式化...
+  [通过] 循环语句格式化
+测试: 函数调用格式化...
+  [通过] 函数调用格式化
+测试: 数组格式化...
+  [通过] 数组格式化
+测试: 缩进一致性...
+  [通过] 缩进一致性
+测试: 幂等性...
+  [通过] 幂等性
+测试: 配置选项...
+  [通过] 配置选项
+测试: 括号位置配置...
+  [通过] 括号位置配置
+测试: 空格配置...
+  [通过] 空格配置
+测试: 函数间空行...
+  [通过] 函数间空行
+
+=== 所有测试通过! ===
 <end of output>
-Test time =   3.95 sec
+Test time =   0.03 sec
 ----------------------------------------------------------
-Test Failed.
-"formatter_test" end time: Jan 23 21:28 中国标准时间
-"formatter_test" time elapsed: 00:00:03
+Test Passed.
+"formatter_test" end time: Jan 23 21:35 中国标准时间
+"formatter_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 23 21:28 中国标准时间
+End testing: Jan 23 21:35 中国标准时间

@@ -255,9 +255,170 @@ static void test_config_options()
     assert(config.max_line_width == 100);
     assert(config.space_around_ops == true);
     assert(config.space_after_comma == true);
-    assert(config.brace_on_new_line == true);
+    assert(config.space_after_keywords == true);
+    assert(config.brace_on_new_line_func == true);
+    assert(config.brace_on_same_line_ctrl == true);
+    assert(config.always_use_braces == true);
+    assert(config.empty_line_between_funcs == true);
+    assert(config.max_consecutive_empty_lines == 1);
 
     printf("  [通过] 配置选项\n");
+}
+
+// 测试括号位置配置
+static void test_brace_position()
+{
+    printf("测试: 括号位置配置...\n");
+
+    const char *source = 
+        "函数 测试() {\n"
+        "  返回 42;\n"
+        "}\n";
+
+    size_t source_length = strlen(source);
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, source_length, "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    bool ok = cn_frontend_parse_program(parser, &program);
+    assert(ok && program);
+
+    // 测试函数大括号在新行
+    CnFormatConfig config1;
+    cn_format_config_init_default(&config1);
+    config1.brace_on_new_line_func = true;
+    char *formatted1 = cn_format_program_to_string(program, &config1, NULL);
+    assert(formatted1 != NULL);
+    assert(strstr(formatted1, ")\n{") != NULL);  // 大括号在新行
+    free(formatted1);
+
+    // 测试函数大括号在同一行
+    CnFormatConfig config2;
+    cn_format_config_init_default(&config2);
+    config2.brace_on_new_line_func = false;
+    char *formatted2 = cn_format_program_to_string(program, &config2, NULL);
+    assert(formatted2 != NULL);
+    assert(strstr(formatted2, ") {") != NULL);  // 大括号在同一行
+    free(formatted2);
+
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+
+    printf("  [通过] 括号位置配置\n");
+}
+
+// 测试空格配置
+static void test_space_config()
+{
+    printf("测试: 空格配置...\n");
+
+    const char *source = 
+        "函数 测试() {\n"
+        "  变量 x=1+2;\n"
+        "  返回 x;\n"
+        "}\n";
+
+    size_t source_length = strlen(source);
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, source_length, "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    bool ok = cn_frontend_parse_program(parser, &program);
+    assert(ok && program);
+
+    // 测试运算符周围有空格
+    CnFormatConfig config1;
+    cn_format_config_init_default(&config1);
+    config1.space_around_ops = true;
+    char *formatted1 = cn_format_program_to_string(program, &config1, NULL);
+    assert(formatted1 != NULL);
+    assert(strstr(formatted1, " = ") != NULL);
+    assert(strstr(formatted1, " + ") != NULL);
+    free(formatted1);
+
+    // 测试运算符周围无空格
+    CnFormatConfig config2;
+    cn_format_config_init_default(&config2);
+    config2.space_around_ops = false;
+    char *formatted2 = cn_format_program_to_string(program, &config2, NULL);
+    assert(formatted2 != NULL);
+    assert(strstr(formatted2, "=") != NULL);
+    free(formatted2);
+
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+
+    printf("  [通过] 空格配置\n");
+}
+
+// 测试函数间空行
+static void test_empty_lines_between_functions()
+{
+    printf("测试: 函数间空行...\n");
+
+    const char *source = 
+        "函数 测试1() {\n"
+        "  返回 1;\n"
+        "}\n"
+        "函数 测试2() {\n"
+        "  返回 2;\n"
+        "}\n";
+
+    size_t source_length = strlen(source);
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, source_length, "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    bool ok = cn_frontend_parse_program(parser, &program);
+    assert(ok && program);
+
+    // 测试函数间有空行
+    CnFormatConfig config1;
+    cn_format_config_init_default(&config1);
+    config1.empty_line_between_funcs = true;
+    char *formatted1 = cn_format_program_to_string(program, &config1, NULL);
+    assert(formatted1 != NULL);
+    assert(strstr(formatted1, "}\n\n函数 测试2") != NULL);  // 函数间有空行
+    free(formatted1);
+
+    // 测试函数间无空行
+    CnFormatConfig config2;
+    cn_format_config_init_default(&config2);
+    config2.empty_line_between_funcs = false;
+    char *formatted2 = cn_format_program_to_string(program, &config2, NULL);
+    assert(formatted2 != NULL);
+    // 验证没有连续两个换行符（函数间无空行）
+    assert(strstr(formatted2, "}\n函数 测试2") != NULL);  // 函数间无空行
+    free(formatted2);
+
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+
+    printf("  [通过] 函数间空行\n");
 }
 
 int main(void)
@@ -274,6 +435,9 @@ int main(void)
     test_indentation();
     test_idempotence();
     test_config_options();
+    test_brace_position();
+    test_space_config();
+    test_empty_lines_between_functions();
 
     printf("\n=== 所有测试通过! ===\n");
     return 0;

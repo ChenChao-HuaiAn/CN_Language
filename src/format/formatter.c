@@ -30,11 +30,23 @@ typedef struct FormatContext {
 // 初始化默认格式化配置
 void cn_format_config_init_default(CnFormatConfig *config)
 {
+    // 缩进与空白
     config->indent_size = 4;
     config->max_line_width = 100;
+    
+    // 空格规则
     config->space_around_ops = true;
     config->space_after_comma = true;
-    config->brace_on_new_line = true;
+    config->space_after_keywords = true;
+    
+    // 括号与大括号
+    config->brace_on_new_line_func = true;
+    config->brace_on_same_line_ctrl = true;
+    config->always_use_braces = true;
+    
+    // 空行使用
+    config->empty_line_between_funcs = true;
+    config->max_consecutive_empty_lines = 1;
 }
 
 // 初始化默认格式化选项
@@ -253,15 +265,34 @@ static void format_stmt(FormatContext *ctx, const CnAstStmt *stmt)
 
         case CN_AST_STMT_IF: {
             format_indent(ctx);
-            fprintf(ctx->output, "如果 (");
+            fprintf(ctx->output, "如果");
+            if (ctx->config->space_after_keywords) {
+                fprintf(ctx->output, " ");
+            }
+            fprintf(ctx->output, "(");
             format_expr(ctx, stmt->as.if_stmt.condition);
-            fprintf(ctx->output, ") {\n");
+            fprintf(ctx->output, ")");
+            if (ctx->config->brace_on_same_line_ctrl) {
+                fprintf(ctx->output, " {\n");
+            } else {
+                fprintf(ctx->output, "\n");
+                format_indent(ctx);
+                fprintf(ctx->output, "{\n");
+            }
             ctx->indent_level++;
             format_block(ctx, stmt->as.if_stmt.then_block);
             ctx->indent_level--;
             format_indent(ctx);
             if (stmt->as.if_stmt.else_block) {
-                fprintf(ctx->output, "} 否则 {\n");
+                if (ctx->config->brace_on_same_line_ctrl) {
+                    fprintf(ctx->output, "} 否则 {\n");
+                } else {
+                    fprintf(ctx->output, "}\n");
+                    format_indent(ctx);
+                    fprintf(ctx->output, "否则\n");
+                    format_indent(ctx);
+                    fprintf(ctx->output, "{\n");
+                }
                 ctx->indent_level++;
                 format_block(ctx, stmt->as.if_stmt.else_block);
                 ctx->indent_level--;
@@ -273,9 +304,20 @@ static void format_stmt(FormatContext *ctx, const CnAstStmt *stmt)
 
         case CN_AST_STMT_WHILE: {
             format_indent(ctx);
-            fprintf(ctx->output, "循环 (");
+            fprintf(ctx->output, "循环");
+            if (ctx->config->space_after_keywords) {
+                fprintf(ctx->output, " ");
+            }
+            fprintf(ctx->output, "(");
             format_expr(ctx, stmt->as.while_stmt.condition);
-            fprintf(ctx->output, ") {\n");
+            fprintf(ctx->output, ")");
+            if (ctx->config->brace_on_same_line_ctrl) {
+                fprintf(ctx->output, " {\n");
+            } else {
+                fprintf(ctx->output, "\n");
+                format_indent(ctx);
+                fprintf(ctx->output, "{\n");
+            }
             ctx->indent_level++;
             format_block(ctx, stmt->as.while_stmt.body);
             ctx->indent_level--;
@@ -286,7 +328,11 @@ static void format_stmt(FormatContext *ctx, const CnAstStmt *stmt)
 
         case CN_AST_STMT_FOR: {
             format_indent(ctx);
-            fprintf(ctx->output, "对于 (");
+            fprintf(ctx->output, "对于");
+            if (ctx->config->space_after_keywords) {
+                fprintf(ctx->output, " ");
+            }
+            fprintf(ctx->output, "(");
             if (stmt->as.for_stmt.init) {
                 // 对于 init 语句，不需要换行和缩进
                 if (stmt->as.for_stmt.init->kind == CN_AST_STMT_VAR_DECL) {
@@ -313,7 +359,14 @@ static void format_stmt(FormatContext *ctx, const CnAstStmt *stmt)
             if (stmt->as.for_stmt.update) {
                 format_expr(ctx, stmt->as.for_stmt.update);
             }
-            fprintf(ctx->output, ") {\n");
+            fprintf(ctx->output, ")");
+            if (ctx->config->brace_on_same_line_ctrl) {
+                fprintf(ctx->output, " {\n");
+            } else {
+                fprintf(ctx->output, "\n");
+                format_indent(ctx);
+                fprintf(ctx->output, "{\n");
+            }
             ctx->indent_level++;
             format_block(ctx, stmt->as.for_stmt.body);
             ctx->indent_level--;
@@ -372,8 +425,8 @@ static void format_function(FormatContext *ctx, const CnAstFunctionDecl *func)
     }
     fprintf(ctx->output, ")");
 
-    // 函数体
-    if (ctx->config->brace_on_new_line) {
+    // 函数体：根据配置决定大括号是否独立成行
+    if (ctx->config->brace_on_new_line_func) {
         fprintf(ctx->output, "\n{\n");
     } else {
         fprintf(ctx->output, " {\n");
@@ -405,7 +458,8 @@ bool cn_format_program_to_file(
 
     for (size_t i = 0; i < program->function_count; i++) {
         format_function(&ctx, program->functions[i]);
-        if (i < program->function_count - 1) {
+        // 根据配置在函数之间添加空行
+        if (config->empty_line_between_funcs && i < program->function_count - 1) {
             fprintf(output, "\n");
         }
     }
