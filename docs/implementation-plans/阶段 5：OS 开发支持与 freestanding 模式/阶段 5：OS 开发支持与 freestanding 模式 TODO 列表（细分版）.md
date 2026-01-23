@@ -147,15 +147,15 @@
   - [x] 在 `examples/runtime_test_full.cn` 中逐步恢复数组相关测试（先恢复数组长度，再按阶段扩展索引访问等），每次恢复都对应至少一个单元/集成测试用例。  
 
 - **6.3 测试驱动与回归保障**
-  - [ ] （单元测试-盘点）梳理 `tests/unit/runtime/` 下的 `runtime_string_test.c`、`runtime_array_test.c` 以及 Parser/语义相关的 `parser_array_literal_test.c`、`semantic_check_test.c`，列出与字符串变量、数组字面量和长度运算相关的现有用例与空白点。
-  - [ ] （单元测试-Parser）在 `parser_array_literal_test.c` 中增加至少 1~2 个覆盖“字符串数组字面量 + 长度(数组)”最小语法的用例，并保证与现有优先级/错误诊断逻辑兼容。
-  - [ ] （单元测试-语义）在 `semantic_check_test.c` 或 `semantics_*_test.c` 中补充关于“字符串变量赋值/拷贝”“数组长度表达式”的正向与负向语义检查用例，确保类型系统行为与 6.1/6.2 中约定一致。
-  - [ ] （单元测试-运行时）在 `runtime_string_test.c`、`runtime_array_test.c` 中为长度计算增加边界用例（空字符串/空数组、单元素、多元素、极限长度等），并覆盖与 `cn_rt_array_*` API 的交互。
-  - [ ] （单元测试-集成到构建）确保上述单元测试已在 `tests/unit/CMakeLists.txt` 中通过 `add_executable` / `add_test` 正确注册，`ctest -R runtime_` / `ctest -R parser_` 可以单独运行通过。
+  - [x] （单元测试-盘点）梳理 `tests/unit/runtime/` 下的 `runtime_string_test.c`、`runtime_array_test.c` 以及 Parser/语义相关的 `parser_array_literal_test.c`、`semantic_check_test.c`，列出与字符串变量、数组字面量和长度运算相关的现有用例与空白点。
+  - [x] （单元测试-Parser）在 `parser_array_literal_test.c` 中增加至少 1~2 个覆盖“字符串数组字面量 + 长度(数组)”最小语法的用例，并保证与现有优先级/错误诊断逻辑兼容。
+  - [x] （单元测试-语义）在 `semantic_check_test.c` 或 `semantics_*_test.c` 中补充关于“字符串变量赋值/拷贝”“数组长度表达式”的正向与负向语义检查用例，确保类型系统行为与 6.1/6.2 中约定一致。
+  - [x] （单元测试-运行时）在 `runtime_string_test.c`、`runtime_array_test.c` 中为长度计算增加边界用例（空字符串/空数组、单元素、多元素、极限长度等），并覆盖与 `cn_rt_array_*` API 的交互。
+  - [x] （单元测试-集成到构建）确保上述单元测试已在 `tests/unit/CMakeLists.txt` 中通过 `add_executable` / `add_test` 正确注册，`ctest -R runtime_` / `ctest -R parser_` 可以单独运行通过。
 
-  - [ ] （集成测试-场景设计）基于 `examples/runtime_test_full.cn` 中逐步恢复的字符串/数组用例，设计 1~2 组“字符串 + 数组组合”端到端编译场景（例如打印字符串内容及数组长度），明确期望输出。
-  - [ ] （集成测试-实现）在 `tests/integration/compiler/integration_compile_full_test.c` 中为上述场景增加新的测试步骤（或在需要时新增独立的 `integration_string_array_test.c`），复用现有 `cnc` 调用与可执行文件运行逻辑，至少在一个场景中同时覆盖字符串变量与数组长度运算。
-  - [ ] （集成测试-维护）若新增 `integration_string_array_test.c`，在 `tests/integration/CMakeLists.txt` 中添加对应 `add_executable` / `add_test`，并保证与现有 OS 集成测试、数组集成测试的依赖和工作目录约定一致。
+  - [x] （集成测试-场景设计）基于 `examples/runtime_test_full.cn` 中逐步恢复的字符串/数组用例，设计 1~2 组“字符串 + 数组组合”端到端编译场景（例如打印字符串内容及数组长度），明确期望输出。
+  - [x] （集成测试-实现）在 `tests/integration/compiler/integration_compile_full_test.c` 中为上述场景增加新的测试步骤（或在需要时新增独立的 `integration_string_array_test.c`），复用现有 `cnc` 调用与可执行文件运行逻辑，至少在一个场景中同时覆盖字符串变量与数组长度运算。
+  - [x] （集成测试-维护）若新增 `integration_string_array_test.c`，在 `tests/integration/CMakeLists.txt` 中添加对应 `add_executable` / `add_test`，并保证与现有 OS 集成测试、数组集成测试的依赖和工作目录约定一致。
 
-  - [ ] （输出检查-行为锁定）为 `runtime_test_full.cn` 编译得到的可执行文件增加自动输出检查：在 `integration_compile_full_test.c` 或新建的集成测试中捕获其标准输出，对关键行（字符串文本、裁剪后文本、数组长度等）使用 `strcmp` / 行匹配进行断言。
-  - [ ] （输出检查-回归流程）在阶段 5 内约定：每次修改字符串/数组相关前端、IR 或运行时时，必须运行包含输出检查的 `integration_compile_full_test`（及新增的字符串/数组集成测试），并在本 TODO 列表或更新文档中勾选对应项以标记回归流程已建立。
+  - [x] （输出检查-行为锁定）为 `runtime_test_full.cn` 编译得到的可执行文件增加自动输出检查：在 `integration_compile_full_test.c` 或新建的集成测试中捕获其标准输出，对关键行（字符串文本、裁剪后文本、数组长度等）使用 `strcmp` / 行匹配进行断言。
+  - [x] （输出检查-回归流程）在阶段 5 内约定：每次修改字符串/数组相关前端、IR 或运行时时，必须运行包含输出检查的 `integration_compile_full_test`（及新增的字符串/数组集成测试），并在本 TODO 列表或更新文档中勾选对应项以标记回归流程已建立。

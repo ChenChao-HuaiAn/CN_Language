@@ -78,6 +78,14 @@ add_executable(integration_array_test
 target_include_directories(integration_array_test PRIVATE ../../include)
 add_test(NAME integration_array_test COMMAND integration_array_test)
 
+# 字符串数组集成测试
+add_executable(integration_string_array_test
+    integration_string_array_test.c
+)
+add_test(NAME integration_string_array_test 
+         COMMAND integration_string_array_test $<TARGET_FILE:cnc>
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 # 端到端编译流程集成测试
 add_executable(integration_compile_full_test
     compiler/integration_compile_full_test.c

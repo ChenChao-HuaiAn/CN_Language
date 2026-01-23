@@ -14,16 +14,16 @@ parser_func_test 8 0.0109664
 parser_hello_world_test 8 0.012771
 parser_diagnostics_test 8 0.0113541
 parser_error_syntax_test 8 0.0128725
-parser_array_literal_test 11 0.00108816
-semantic_check_test 8 0.0118359
+parser_array_literal_test 11 0
+semantic_check_test 8 0
 semantics_symbol_table_test 8 0.0139722
 semantics_type_system_test 8 0.0138675
 semantics_name_resolution_test 8 0.0135181
 semantics_array_test 10 0.00916842
 freestanding_check_test 8 0.0118736
 runtime_memory_test 8 0.0121497
-runtime_string_test 8 0.0127779
-runtime_array_test 8 0.0120518
+runtime_string_test 8 0
+runtime_array_test 8 0
 runtime_io_test 8 0.0121702
 runtime_math_test 8 0.011711
 runtime_freestanding_test 8 0.0128886
@@ -38,4 +38,3 @@ integration_os_test 0 0
 parser_array_assign_test 2 0.0054984
 ---
 integration_compile_full_test
-integration_os_test

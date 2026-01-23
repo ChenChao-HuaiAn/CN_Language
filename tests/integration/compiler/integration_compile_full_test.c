@@ -107,9 +107,46 @@ int main(int argc, char** argv) {
     #endif
 
     printf("正在运行生成的程序: %s\n", runtime_full_exe);
-    res = system(runtime_full_exe);
+    
+    // 捕获输出并检查关键内容
+    #ifdef _WIN32
+    char capture_cmd[1024];
+    snprintf(capture_cmd, sizeof(capture_cmd), "%s > runtime_full_output.txt 2>&1", runtime_full_exe);
+    res = system(capture_cmd);
+    #else
+    char capture_cmd[1024];
+    snprintf(capture_cmd, sizeof(capture_cmd), "%s > runtime_full_output.txt 2>&1", runtime_full_exe);
+    res = system(capture_cmd);
+    #endif
+    
     if (res != 0) {
         fprintf(stderr, "测试 4 运行失败: %d\n", res);
+        return 1;
+    }
+    
+    // 读取输出并验证关键内容
+    FILE* output_file = fopen("runtime_full_output.txt", "r");
+    if (output_file) {
+        char line[256];
+        int found_hello = 0;
+        
+        while (fgets(line, sizeof(line), output_file)) {
+            // 检查是否包含“你好”
+            if (strstr(line, "你好") || strstr(line, "CN_Language")) {
+                found_hello = 1;
+                printf("检测到期望输出: %s", line);
+            }
+        }
+        fclose(output_file);
+        
+        if (!found_hello) {
+            fprintf(stderr, "测试 4 输出检查失败: 未找到期望的字符串内容\n");
+            return 1;
+        }
+        
+        printf("测试 4 输出检查通过!\n");
+    } else {
+        fprintf(stderr, "无法读取输出文件\n");
         return 1;
     }
 

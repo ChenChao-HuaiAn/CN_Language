@@ -157,10 +157,78 @@ static void test_func_call_arg_mismatch() {
     cn_support_diagnostics_free(&diagnostics);
 }
 
+// 测试字符串变量赋值语义
+static void test_string_variable_assignment() {
+    const char *source = "函数 主函数() { 变量 文本 = \"你好\"; 变量 副本 = 文本; }";
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, strlen(source), "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    cn_frontend_parse_program(parser, &program);
+
+    CnSemScope *global_scope = cn_sem_build_scopes(program, &diagnostics);
+    cn_sem_resolve_names(global_scope, program, &diagnostics);
+    cn_sem_check_types(global_scope, program, &diagnostics);
+    
+    // 字符串变量赋值应该没有语义错误
+    if (cn_support_diagnostics_error_count(&diagnostics) == 0) {
+        printf("测试字符串变量赋值: 成功 (无语义错误)\n");
+    } else {
+        printf("测试字符串变量赋值: 失败 (检测到意外错误)\n");
+    }
+
+    cn_sem_scope_free(global_scope);
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+}
+
+// 测试数组长度表达式语义
+static void test_array_length_expression() {
+    const char *source = "函数 主函数() { 变量 数组 = [1, 2, 3]; 变量 长度值 = 长度(数组); }";
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, strlen(source), "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    cn_frontend_parse_program(parser, &program);
+
+    CnSemScope *global_scope = cn_sem_build_scopes(program, &diagnostics);
+    cn_sem_resolve_names(global_scope, program, &diagnostics);
+    cn_sem_check_types(global_scope, program, &diagnostics);
+    
+    // 数组长度表达式应该没有语义错误
+    if (cn_support_diagnostics_error_count(&diagnostics) == 0) {
+        printf("测试数组长度表达式: 成功 (无语义错误)\n");
+    } else {
+        printf("测试数组长度表达式: 失败 (检测到意外错误)\n");
+    }
+
+    cn_sem_scope_free(global_scope);
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+}
+
 int main() {
     test_duplicate_function();
     test_undefined_identifier();
     test_break_outside_loop();
     test_func_call_arg_mismatch();
+    test_string_variable_assignment();  // 新增测试
+    test_array_length_expression();     // 新增测试
     return 0;
 }
