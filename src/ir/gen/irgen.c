@@ -159,12 +159,28 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
         case CN_AST_EXPR_CALL: {
             // 函数调用
             CnIrOperand callee;
+            const char *func_name = NULL;
+            
+            // 特殊处理：内置函数 "长度" 根据参数类型选择运行时函数
             if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
-                // 直接调用标识符，保留为符号操作数以便后端映射到运行时函数
                 char *name = copy_name(expr->as.call.callee->as.identifier.name,
                                        expr->as.call.callee->as.identifier.name_length);
-                callee = cn_ir_op_symbol(name, expr->as.call.callee->type);
-                free(name);
+                                       
+                // 检查是否是 "长度" 函数
+                if (strcmp(name, "长度") == 0 && expr->as.call.argument_count == 1) {
+                    // 根据第一个参数的类型决定调用哪个运行时函数
+                    CnType *arg_type = expr->as.call.arguments[0]->type;
+                    if (arg_type && arg_type->kind == CN_TYPE_ARRAY) {
+                        func_name = "cn_rt_array_length";
+                    } else {
+                        func_name = "cn_rt_string_length";
+                    }
+                    free(name);
+                    callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
+                } else {
+                    callee = cn_ir_op_symbol(name, expr->as.call.callee->type);
+                    free(name);
+                }
             } else {
                 callee = cn_ir_gen_expr(ctx, expr->as.call.callee);
             }
@@ -226,6 +242,27 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             }
             
             return cn_ir_op_reg(array_reg, expr->type);
+        }
+        case CN_AST_EXPR_INDEX: {
+            // 数组索引访问 arr[index]
+            CnIrOperand array_op = cn_ir_gen_expr(ctx, expr->as.index.array);
+            CnIrOperand index_op = cn_ir_gen_expr(ctx, expr->as.index.index);
+            
+            // 调用 cn_rt_array_get_element(数组, 索引, 元素大小)
+            CnIrInst *get_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                  cn_ir_op_symbol("cn_rt_array_get_element", NULL),
+                                                  cn_ir_op_none());
+            get_inst->extra_args_count = 3;
+            get_inst->extra_args = malloc(3 * sizeof(CnIrOperand));
+            get_inst->extra_args[0] = array_op;
+            get_inst->extra_args[1] = index_op;
+            get_inst->extra_args[2] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
+            
+            int result_reg = alloc_reg(ctx);
+            get_inst->dest = cn_ir_op_reg(result_reg, expr->type);
+            emit(ctx, get_inst);
+            
+            return cn_ir_op_reg(result_reg, expr->type);
         }
         default:
             return cn_ir_op_none();

@@ -17,7 +17,8 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_ASSIGN,
     CN_AST_EXPR_LOGICAL,
     CN_AST_EXPR_UNARY,
-    CN_AST_EXPR_ARRAY_LITERAL  // 数组字面量
+    CN_AST_EXPR_ARRAY_LITERAL,  // 数组字面量
+    CN_AST_EXPR_INDEX            // 数组索引访问 arr[index]
 } CnAstExprKind;
 
 // AST 节点种类（语句）
@@ -184,6 +185,12 @@ typedef struct CnAstArrayLiteralExpr {
     size_t element_count;         // 元素数量
 } CnAstArrayLiteralExpr;
 
+// 数组索引访问表达式 arr[index]
+typedef struct CnAstIndexExpr {
+    struct CnAstExpr *array;      // 数组表达式
+    struct CnAstExpr *index;      // 索引表达式
+} CnAstIndexExpr;
+
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
@@ -198,6 +205,7 @@ typedef struct CnAstExpr {
         CnAstLogicalExpr logical;
         CnAstUnaryExpr unary;
         CnAstArrayLiteralExpr array_literal;
+        CnAstIndexExpr index;  // 数组索引访问
     } as;
 } CnAstExpr;
 

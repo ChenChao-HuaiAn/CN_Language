@@ -41,6 +41,7 @@ static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand);
 static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value);
 static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t argument_count);
 static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count);
+static CnAstExpr *make_index(CnAstExpr *array, CnAstExpr *index);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
@@ -617,33 +618,46 @@ static CnAstExpr *parse_unary(CnParser *parser)
     return parse_postfix(parser);  // 支持后缀表达式（如函数调用）
 }
 
-// 解析后缀表达式（如函数调用）
+// 解析后缀表达式（如函数调用、数组索引）
 static CnAstExpr *parse_postfix(CnParser *parser)
 {
     CnAstExpr *expr = parse_factor(parser);
 
-    while (parser->current.kind == CN_TOKEN_LPAREN) {
-        // 函数调用
-        parser_advance(parser);
+    while (parser->current.kind == CN_TOKEN_LPAREN || parser->current.kind == CN_TOKEN_LBRACKET) {
+        if (parser->current.kind == CN_TOKEN_LPAREN) {
+            // 函数调用
+            parser_advance(parser);
 
-        CnAstExpr **args = NULL;
-        size_t arg_count = 0;
-        size_t arg_capacity = 0;
+            CnAstExpr **args = NULL;
+            size_t arg_count = 0;
+            size_t arg_capacity = 0;
 
-        if (parser->current.kind != CN_TOKEN_RPAREN) {
-            arg_capacity = 4;
-            args = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * arg_capacity);
-            if (!args) {
-                cn_frontend_ast_expr_free(expr);
-                return NULL;
-            }
+            if (parser->current.kind != CN_TOKEN_RPAREN) {
+                arg_capacity = 4;
+                args = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * arg_capacity);
+                if (!args) {
+                    cn_frontend_ast_expr_free(expr);
+                    return NULL;
+                }
 
-            do {
-                if (arg_count >= arg_capacity) {
-                    arg_capacity *= 2;
-                    CnAstExpr **new_args = (CnAstExpr **)realloc(
-                        args, sizeof(CnAstExpr *) * arg_capacity);
-                    if (!new_args) {
+                do {
+                    if (arg_count >= arg_capacity) {
+                        arg_capacity *= 2;
+                        CnAstExpr **new_args = (CnAstExpr **)realloc(
+                            args, sizeof(CnAstExpr *) * arg_capacity);
+                        if (!new_args) {
+                            for (size_t i = 0; i < arg_count; i++) {
+                                cn_frontend_ast_expr_free(args[i]);
+                            }
+                            free(args);
+                            cn_frontend_ast_expr_free(expr);
+                            return NULL;
+                        }
+                        args = new_args;
+                    }
+
+                    args[arg_count] = parse_expression(parser);
+                    if (!args[arg_count]) {
                         for (size_t i = 0; i < arg_count; i++) {
                             cn_frontend_ast_expr_free(args[i]);
                         }
@@ -651,32 +665,34 @@ static CnAstExpr *parse_postfix(CnParser *parser)
                         cn_frontend_ast_expr_free(expr);
                         return NULL;
                     }
-                    args = new_args;
-                }
+                    arg_count++;
 
-                args[arg_count] = parse_expression(parser);
-                if (!args[arg_count]) {
-                    for (size_t i = 0; i < arg_count; i++) {
-                        cn_frontend_ast_expr_free(args[i]);
+                    if (parser->current.kind == CN_TOKEN_COMMA) {
+                        parser_advance(parser);
+                    } else {
+                        break;
                     }
-                    free(args);
-                    cn_frontend_ast_expr_free(expr);
-                    return NULL;
-                }
-                arg_count++;
+                } while (parser->current.kind != CN_TOKEN_RPAREN &&
+                         parser->current.kind != CN_TOKEN_EOF);
+            }
 
-                if (parser->current.kind == CN_TOKEN_COMMA) {
-                    parser_advance(parser);
-                } else {
-                    break;
-                }
-            } while (parser->current.kind != CN_TOKEN_RPAREN &&
-                     parser->current.kind != CN_TOKEN_EOF);
+            parser_expect(parser, CN_TOKEN_RPAREN);
+
+            expr = make_call(expr, args, arg_count);
+        } else if (parser->current.kind == CN_TOKEN_LBRACKET) {
+            // 数组索引访问 arr[index]
+            parser_advance(parser);  // 跳过 [
+            
+            CnAstExpr *index_expr = parse_expression(parser);
+            if (!index_expr) {
+                cn_frontend_ast_expr_free(expr);
+                return NULL;
+            }
+            
+            parser_expect(parser, CN_TOKEN_RBRACKET);  // 期望 ]
+            
+            expr = make_index(expr, index_expr);
         }
-
-        parser_expect(parser, CN_TOKEN_RPAREN);
-
-        expr = make_call(expr, args, arg_count);
     }
 
     return expr;
@@ -888,6 +904,20 @@ static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count)
     expr->type = NULL;
     expr->as.array_literal.elements = elements;
     expr->as.array_literal.element_count = element_count;
+    return expr;
+}
+
+static CnAstExpr *make_index(CnAstExpr *array, CnAstExpr *index)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_INDEX;
+    expr->type = NULL;
+    expr->as.index.array = array;
+    expr->as.index.index = index;
     return expr;
 }
 

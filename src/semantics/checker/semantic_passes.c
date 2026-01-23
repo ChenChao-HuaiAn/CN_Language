@@ -131,6 +131,11 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 resolve_expr_names(scope, expr->as.array_literal.elements[i], diagnostics);
             }
             break;
+        case CN_AST_EXPR_INDEX:
+            // 解析索引访问表达式
+            resolve_expr_names(scope, expr->as.index.array, diagnostics);
+            resolve_expr_names(scope, expr->as.index.index, diagnostics);
+            break;
         default: break;
     }
 }
@@ -300,7 +305,30 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         }
         case CN_AST_EXPR_CALL: {
             CnType *callee_type = infer_expr_type(scope, expr->as.call.callee, diagnostics);
-            if (callee_type && callee_type->kind == CN_TYPE_FUNCTION) {
+            
+            // 特殊处理：内置函数 "长度" 可以接受字符串或数组
+            if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
+                strcmp(expr->as.call.callee->as.identifier.name, "长度") == 0) {
+                
+                if (expr->as.call.argument_count != 1) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：长度函数需要一个参数");
+                } else {
+                    CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[0], diagnostics);
+                    if (arg_type && arg_type->kind != CN_TYPE_STRING && arg_type->kind != CN_TYPE_ARRAY) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
+                            NULL, 0, 0,
+                            "语义错误：长度函数参数必须是字符串或数组类型");
+                    }
+                }
+                expr->type = cn_type_new_primitive(CN_TYPE_INT);
+            }
+            else if (callee_type && callee_type->kind == CN_TYPE_FUNCTION) {
                 // 检查参数个数
                 if (expr->as.call.argument_count != callee_type->as.function.param_count) {
                     cn_support_diag_semantic_error_generic(
@@ -357,6 +385,33 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             // 创建数组类型
             expr->type = cn_type_new_array(element_type, expr->as.array_literal.element_count);
+            break;
+        }
+        case CN_AST_EXPR_INDEX: {
+            // 数组索引访问类型推导 arr[index]
+            CnType *array_type = infer_expr_type(scope, expr->as.index.array, diagnostics);
+            CnType *index_type = infer_expr_type(scope, expr->as.index.index, diagnostics);
+            
+            // 检查数组类型
+            if (!array_type || array_type->kind != CN_TYPE_ARRAY) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：索引操作的对象必须是数组类型");
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+            } else if (!index_type || index_type->kind != CN_TYPE_INT) {
+                // 检查索引类型，必须是整数
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：数组索引必须是整数类型");
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+            } else {
+                // 索引表达式的类型是数组元素的类型
+                expr->type = array_type->as.array.element_type;
+            }
             break;
         }
         default:

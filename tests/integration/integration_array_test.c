@@ -319,8 +319,7 @@ int main(void) {
     int result = 0;
     
     result |= test_simple_array_compilation();
-    // TODO: 数组长度函数还需要完善语义分析支持
-    // result |= test_array_length_compilation();
+    result |= test_array_length_compilation();
     result |= test_empty_array_compilation();
     
     if (result == 0) {

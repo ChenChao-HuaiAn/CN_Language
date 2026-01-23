@@ -43,6 +43,11 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
         cn_frontend_ast_expr_array_free(expr->as.array_literal.elements, expr->as.array_literal.element_count);
         free(expr->as.array_literal.elements);
         break;
+    case CN_AST_EXPR_INDEX:
+        // 释放索引访问表达式
+        cn_frontend_ast_expr_free(expr->as.index.array);
+        cn_frontend_ast_expr_free(expr->as.index.index);
+        break;
     }
 
     free(expr);
