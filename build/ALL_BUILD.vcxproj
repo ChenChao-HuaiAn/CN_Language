@@ -214,6 +214,14 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{6DD21F5B-EF2D-33D7-8111-47410DB9A0C8}</Project>
       <Name>integration_parse_success_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_repl_expr_test.vcxproj">
+      <Project>{12E482A5-8AB4-37DF-93D8-9D28467235DB}</Project>
+      <Name>integration_repl_expr_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_repl_statement_test.vcxproj">
+      <Project>{E0F877EA-9719-38A1-9F24-108258146FD0}</Project>
+      <Name>integration_repl_statement_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_semantic_error_test.vcxproj">
       <Project>{2649E8F4-0ABD-38AC-82EC-E7F9B231F591}</Project>
       <Name>integration_semantic_error_test</Name>

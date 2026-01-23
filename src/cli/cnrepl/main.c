@@ -3,6 +3,11 @@
 #include <string.h>
 #include <stdbool.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#include <io.h>  // 为了 _isatty 和 _fileno
+#endif
+
 #include "cnlang/frontend/lexer.h"
 #include "cnlang/frontend/parser.h"
 #include "cnlang/frontend/ast.h"
@@ -14,6 +19,14 @@
 
 #define REPL_VERSION "0.1.0"
 #define MAX_INPUT_LINE 4096
+#define MAX_MULTILINE_INPUT 16384  // 多行输入最大缓冲区
+
+/* REPL 输入模式 */
+typedef enum {
+    REPL_INPUT_EXPRESSION,   // 单表达式（如：1 + 2）
+    REPL_INPUT_STATEMENT,    // 单语句（如：变量 x = 10;）
+    REPL_INPUT_PROGRAM       // 完整程序（包含函数定义）
+} ReplInputMode;
 
 /* REPL 配置结构 */
 typedef struct {
@@ -28,6 +41,7 @@ static void print_welcome(void)
 {
     printf("CN Language REPL v%s\n", REPL_VERSION);
     printf("输入 CN 语言表达式或语句，按 Ctrl+C 退出\n");
+    printf("支持：单表达式求值、变量声明、小段程序\n");
     printf("特殊命令:\n");
     printf("  :help    - 显示帮助信息\n");
     printf("  :quit    - 退出 REPL\n");
@@ -48,9 +62,17 @@ static void print_help(void)
     printf("  :ast     - 切换 AST 显示\n");
     printf("  :ir      - 切换 IR 显示\n");
     printf("\n");
-    printf("直接输入 CN 语言代码执行:\n");
-    printf("  例如: 变量 x = 10;\n");
-    printf("       打印(x);\n");
+    printf("支持的输入模式:\n");
+    printf("  1. 单表达式求值（自动包装）:\n");
+    printf("     例如: 1 + 2 * 3\n");
+    printf("           \"你好\" + \"世界\"\n");
+    printf("  2. 变量声明和简单语句:\n");
+    printf("     例如: 变量 x = 10;\n");
+    printf("           打印(x);\n");
+    printf("  3. 完整程序（包含函数）:\n");
+    printf("     函数 主程序() { 打印(\"测试\"); 返回 0; }\n");
+    printf("\n");
+    printf("多行输入: 在行尾输入 \\ 继续下一行\n");
     printf("\n");
 }
 
@@ -85,6 +107,74 @@ static bool diagnostics_has_error(const CnDiagnostics *diagnostics)
     }
 
     return false;
+}
+
+/* 检测输入的代码类型 */
+static ReplInputMode detect_input_mode(const char *input)
+{
+    // 如果包含 "函数" 关键字，认为是完整程序
+    if (strstr(input, "函数") != NULL) {
+        return REPL_INPUT_PROGRAM;
+    }
+
+    // 如果以 变量/整数/字符串 等类型关键字开头，或者包含语句结构，认为是语句
+    const char *stmt_keywords[] = {
+        "变量", "整数", "字符串", "数组",
+        "如果", "当", "循环", "返回", "打印"
+    };
+
+    for (size_t i = 0; i < sizeof(stmt_keywords) / sizeof(stmt_keywords[0]); ++i) {
+        if (strstr(input, stmt_keywords[i]) != NULL) {
+            // 检查是否包含分号或大括号（忽略末尾的空白字符）
+            size_t len = strlen(input);
+            for (size_t j = 0; j < len; j++) {
+                if (input[j] == ';' || input[j] == '}') {
+                    return REPL_INPUT_STATEMENT;
+                }
+            }
+        }
+    }
+
+    // 默认认为是表达式
+    return REPL_INPUT_EXPRESSION;
+}
+
+/* 将表达式包装为完整程序 */
+static char *wrap_expression_as_program(const char *expr)
+{
+    // 包装格式：函数 主程序() { 打印(<表达式>); 返回 0; }
+    size_t expr_len = strlen(expr);
+    size_t wrapper_size = 256 + expr_len;
+    char *wrapped = (char *)malloc(wrapper_size);
+
+    if (!wrapped) {
+        return NULL;
+    }
+
+    snprintf(wrapped, wrapper_size,
+             "函数 主程序() { 打印(%s); 返回 0; }",
+             expr);
+
+    return wrapped;
+}
+
+/* 将单语句包装为完整程序 */
+static char *wrap_statement_as_program(const char *stmt)
+{
+    // 包装格式：函数 主程序() { <语句> 返回 0; }
+    size_t stmt_len = strlen(stmt);
+    size_t wrapper_size = 256 + stmt_len;
+    char *wrapped = (char *)malloc(wrapper_size);
+
+    if (!wrapped) {
+        return NULL;
+    }
+
+    snprintf(wrapped, wrapper_size,
+             "函数 主程序() { %s 返回 0; }",
+             stmt);
+
+    return wrapped;
 }
 
 /* 处理特殊命令 */
@@ -134,12 +224,49 @@ static void process_input(const char *input, const ReplConfig *config)
     CnParser *parser = NULL;
     CnAstProgram *program = NULL;
     CnTargetTriple target_triple;
+    char *code_to_parse = NULL;
+    bool need_free_code = false;
+
+    // 检测输入模式
+    ReplInputMode mode = detect_input_mode(input);
+
+    // 根据模式准备要解析的代码
+    switch (mode) {
+    case REPL_INPUT_EXPRESSION:
+        if (config->verbose) {
+            printf("[模式: 表达式求值]\n");
+        }
+        code_to_parse = wrap_expression_as_program(input);
+        need_free_code = true;
+        break;
+
+    case REPL_INPUT_STATEMENT:
+        if (config->verbose) {
+            printf("[模式: 语句执行]\n");
+        }
+        code_to_parse = wrap_statement_as_program(input);
+        need_free_code = true;
+        break;
+
+    case REPL_INPUT_PROGRAM:
+        if (config->verbose) {
+            printf("[模式: 完整程序]\n");
+        }
+        code_to_parse = (char *)input;  // 直接使用原始输入
+        need_free_code = false;
+        break;
+    }
+
+    if (!code_to_parse) {
+        fprintf(stderr, "内存分配失败\n");
+        return;
+    }
 
     // 初始化诊断系统
     cn_support_diagnostics_init(&diagnostics);
 
     // 初始化词法分析器
-    cn_frontend_lexer_init(&lexer, input, strlen(input), "<repl>");
+    cn_frontend_lexer_init(&lexer, code_to_parse, strlen(code_to_parse), "<repl>");
     cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
 
     // 创建语法分析器
@@ -147,6 +274,9 @@ static void process_input(const char *input, const ReplConfig *config)
     if (!parser) {
         fprintf(stderr, "创建解析器失败\n");
         cn_support_diagnostics_free(&diagnostics);
+        if (need_free_code) {
+            free(code_to_parse);
+        }
         return;
     }
     cn_frontend_parser_set_diagnostics(parser, &diagnostics);
@@ -157,6 +287,9 @@ static void process_input(const char *input, const ReplConfig *config)
         print_diagnostics(&diagnostics);
         cn_frontend_parser_free(parser);
         cn_support_diagnostics_free(&diagnostics);
+        if (need_free_code) {
+            free(code_to_parse);
+        }
         return;
     }
 
@@ -165,6 +298,9 @@ static void process_input(const char *input, const ReplConfig *config)
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
         cn_support_diagnostics_free(&diagnostics);
+        if (need_free_code) {
+            free(code_to_parse);
+        }
         return;
     }
 
@@ -188,6 +324,9 @@ static void process_input(const char *input, const ReplConfig *config)
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
         cn_support_diagnostics_free(&diagnostics);
+        if (need_free_code) {
+            free(code_to_parse);
+        }
         return;
     }
 
@@ -200,6 +339,11 @@ static void process_input(const char *input, const ReplConfig *config)
 
     if (config->verbose) {
         printf("✓ 解析和编译成功\n");
+    } else {
+        // 在非详细模式下，表达式和语句模式提示执行成功
+        if (mode == REPL_INPUT_EXPRESSION || mode == REPL_INPUT_STATEMENT) {
+            printf("✓\n");
+        }
     }
 
     // 清理资源
@@ -207,23 +351,85 @@ static void process_input(const char *input, const ReplConfig *config)
     cn_frontend_ast_program_free(program);
     cn_frontend_parser_free(parser);
     cn_support_diagnostics_free(&diagnostics);
+    if (need_free_code) {
+        free(code_to_parse);
+    }
 }
 
 /* REPL 主循环 */
 static void repl_loop(const ReplConfig *config)
 {
     char line[MAX_INPUT_LINE];
+    char multiline_buffer[MAX_MULTILINE_INPUT];  // 多行输入缓冲区
+    bool in_multiline = false;
+
+#ifdef _WIN32
+    // 在 Windows 上使用宽字符读取以正确处理 Unicode
+    wchar_t wline[MAX_INPUT_LINE];
+    bool use_wide_input = _isatty(_fileno(stdin));
+#endif
 
     print_welcome();
 
     while (1) {
-        printf("cn> ");
+        // 根据是否在多行模式显示不同的提示符
+        if (in_multiline) {
+            printf("... ");
+        } else {
+            printf("cn> ");
+        }
         fflush(stdout);
 
+#ifdef _WIN32
+        // Windows: 如果是交互式终端，直接使用 Windows Console API
+        if (use_wide_input) {
+            HANDLE hStdin = GetStdHandle(STD_INPUT_HANDLE);
+            DWORD charsRead = 0;
+            
+            if (!ReadConsoleW(hStdin, wline, MAX_INPUT_LINE - 1, &charsRead, NULL)) {
+                printf("\n");
+                break;
+            }
+            
+            wline[charsRead] = L'\0';
+            
+            // DEBUG: 打印宽字符
+            if (config->verbose) {
+                printf("[DEBUG] 宽字符: ");
+                for (size_t i = 0; i < wcslen(wline) && i < 20; i++) {
+                    printf("%04X ", (unsigned int)wline[i]);
+                }
+                printf("\n");
+            }
+            
+            // 转换 UTF-16 到 UTF-8
+            int len = WideCharToMultiByte(CP_UTF8, 0, wline, -1, line, MAX_INPUT_LINE, NULL, NULL);
+            if (len <= 0) {
+                fprintf(stderr, "编码转换失败 (error code: %d)\n", GetLastError());
+                continue;
+            }
+        } else {
+            // 管道输入，使用普通 fgets
+            if (!fgets(line, sizeof(line), stdin)) {
+                printf("\n");
+                break;
+            }
+        }
+#else
         // 读取一行输入
         if (!fgets(line, sizeof(line), stdin)) {
             printf("\n");
             break;
+        }
+#endif
+
+        // DEBUG: 打印读取到的字节（前50个字符的十六进制）
+        if (config->verbose) {
+            printf("[DEBUG] 读取到的字节: ");
+            for (size_t i = 0; i < strlen(line) && i < 50; i++) {
+                printf("%02X ", (unsigned char)line[i]);
+            }
+            printf("\n");
         }
 
         // 去除末尾换行符
@@ -233,21 +439,59 @@ static void repl_loop(const ReplConfig *config)
             len--;
         }
 
-        // 跳过空行
-        if (len == 0) {
+        // 如果不在多行模式，跳过空行
+        if (!in_multiline && len == 0) {
             continue;
         }
 
-        // 检查是否是特殊命令
-        if (line[0] == ':') {
+        // 检查是否是特殊命令（只在非多行模式下）
+        if (!in_multiline && line[0] == ':') {
             if (!handle_command(line, (ReplConfig *)config)) {
                 break; // 退出命令
             }
             continue;
         }
 
-        // 处理代码输入
-        process_input(line, config);
+        // 检查是否以反斜杠结尾（表示继续下一行）
+        bool continue_next_line = false;
+        if (len > 0 && line[len - 1] == '\\') {
+            line[len - 1] = '\0';  // 移除反斜杠
+            len--;
+            continue_next_line = true;
+        }
+
+        // 处理多行输入
+        if (!in_multiline) {
+            // 开始新的输入
+            if (continue_next_line) {
+                // 进入多行模式
+                strncpy(multiline_buffer, line, MAX_MULTILINE_INPUT - 1);
+                multiline_buffer[MAX_MULTILINE_INPUT - 1] = '\0';
+                in_multiline = true;
+            } else {
+                // 单行输入，直接处理
+                process_input(line, config);
+            }
+        } else {
+            // 在多行模式中，继续追加内容
+            size_t current_len = strlen(multiline_buffer);
+            if (current_len + len + 2 < MAX_MULTILINE_INPUT) {
+                strncat(multiline_buffer, " ", MAX_MULTILINE_INPUT - current_len - 1);
+                strncat(multiline_buffer, line, MAX_MULTILINE_INPUT - current_len - 2);
+            } else {
+                fprintf(stderr, "错误：多行输入超过最大长度\n");
+                in_multiline = false;
+                multiline_buffer[0] = '\0';
+                continue;
+            }
+
+            if (!continue_next_line) {
+                // 结束多行输入，处理完整内容
+                process_input(multiline_buffer, config);
+                in_multiline = false;
+                multiline_buffer[0] = '\0';
+            }
+        }
     }
 
     printf("再见!\n");
@@ -267,6 +511,12 @@ static void print_usage(const char *prog_name)
 
 int main(int argc, char **argv)
 {
+#ifdef _WIN32
+    // 设置 Windows 控制台为 UTF-8 模式
+    SetConsoleOutputCP(CP_UTF8);
+    SetConsoleCP(CP_UTF8);
+#endif
+
     ReplConfig config = {
         .verbose = false,
         .show_ast = false,

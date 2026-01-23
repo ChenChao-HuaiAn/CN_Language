@@ -103,3 +103,35 @@ target_include_directories(integration_os_test PRIVATE ../../include)
 add_test(NAME integration_os_test
          COMMAND integration_os_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/os)
+
+# REPL 单表达式求值集成测试
+add_executable(integration_repl_expr_test
+    integration_repl_expr_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/backend/cgen/cgen.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(integration_repl_expr_test PRIVATE ../../include)
+add_test(NAME integration_repl_expr_test COMMAND integration_repl_expr_test)
+
+# REPL 小段程序集成测试
+add_executable(integration_repl_statement_test
+    integration_repl_statement_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/backend/cgen/cgen.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(integration_repl_statement_test PRIVATE ../../include)
+add_test(NAME integration_repl_statement_test COMMAND integration_repl_statement_test)

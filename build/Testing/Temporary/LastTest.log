@@ -1,19 +1,97 @@
-Start testing: Jan 23 18:23 中国标准时间
+Start testing: Jan 23 20:30 中国标准时间
 ----------------------------------------------------------
-Test not available without configuration.  (Missing "-C <config>"?)
-37/38 Testing: integration_compile_full_test
-37/38 Test: integration_compile_full_test
-Command: "NOT_AVAILABLE"
+40/41 Testing: integration_repl_expr_test
+40/41 Test: integration_repl_expr_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_expr_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_compile_full_test" start time: 
+"integration_repl_expr_test" start time: Jan 23 20:30 中国标准时间
 Output:
 ----------------------------------------------------------
+=== REPL 单表达式求值集成测试 ===
+
+测试: 简单加法
+  表达式: 1 + 2
+  ✓ 测试通过
+
+测试: 复杂算术表达式
+  表达式: 10 + 20 * 3 - 5
+  ✓ 测试通过
+
+测试: 带括号的表达式
+  表达式: (5 + 3) * 2
+  ✓ 测试通过
+
+测试: 字符串字面量
+  表达式: "你好，世界！"
+  ✓ 测试通过
+
+测试: 整数字面量
+  表达式: 42
+  ✓ 测试通过
+
+测试: 大整数
+  表达式: 999999
+  ✓ 测试通过
+
+测试: 大于比较
+  表达式: 10 > 5
+  ✓ 测试通过
+
+测试: 等于比较
+  表达式: 3 == 3
+  ✓ 测试通过
+
+=================================
+所有测试通过！
 <end of output>
-Test time =   0.00 sec
+Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_compile_full_test" end time: Jan 23 18:23 中国标准时间
-"integration_compile_full_test" time elapsed: 00:00:00
+"integration_repl_expr_test" end time: Jan 23 20:30 中国标准时间
+"integration_repl_expr_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 23 18:23 中国标准时间
+41/41 Testing: integration_repl_statement_test
+41/41 Test: integration_repl_statement_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_statement_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
+"integration_repl_statement_test" start time: Jan 23 20:30 中国标准时间
+Output:
+----------------------------------------------------------
+=== REPL 小段程序集成测试 ===
+
+测试: 整数变量声明
+  语句: 整数 x = 10;
+  ✓ 测试通过
+
+测试: 类型推断变量声明
+  语句: 变量 y = 42;
+  ✓ 测试通过
+
+测试: 打印函数调用
+  语句: 打印("Hello");
+  ✓ 测试通过
+
+测试: 打印整数
+  语句: 打印(100);
+  ✓ 测试通过
+
+测试: 变量声明和使用
+  语句: 变量 a = 5; 变量 b = 10; 打印(a + b);
+  ✓ 测试通过
+
+测试: 连续赋值
+  语句: 整数 x = 1; x = x + 2; 打印(x);
+  ✓ 测试通过
+
+=================================
+所有测试通过！
+<end of output>
+Test time =   0.01 sec
+----------------------------------------------------------
+Test Passed.
+"integration_repl_statement_test" end time: Jan 23 20:30 中国标准时间
+"integration_repl_statement_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jan 23 20:30 中国标准时间

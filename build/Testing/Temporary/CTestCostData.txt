@@ -36,5 +36,6 @@ integration_array_test 6 0.0202016
 integration_compile_full_test 0 0
 integration_os_test 0 0
 parser_array_assign_test 2 0.0054984
+integration_repl_expr_test 3 0.00323247
+integration_repl_statement_test 2 0.00557355
 ---
-integration_compile_full_test
