@@ -1,3 +1,0 @@
-C:\msys64\ucrt64\bin\cmake.exe -E rm -f CMakeFiles\runtime_io_test.dir/objects.a
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ar.exe qc CMakeFiles\runtime_io_test.dir/objects.a @CMakeFiles\runtime_io_test.dir\objects1.rsp
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe -Wl,--whole-archive CMakeFiles\runtime_io_test.dir/objects.a -Wl,--no-whole-archive -o runtime_io_test.exe -Wl,--out-implib,libruntime_io_test.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\runtime_io_test.dir\linkLibs.rsp

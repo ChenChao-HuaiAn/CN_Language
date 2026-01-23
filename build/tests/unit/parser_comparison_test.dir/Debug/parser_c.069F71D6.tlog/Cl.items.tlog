@@ -1,0 +1,7 @@
+C:\Users\ChenChao\Documents\gitcode\CN_Language\tests\unit\parser_comparison_test.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.dir\Debug\parser_comparison_test.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\lexer\lexer.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.dir\Debug\lexer.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\lexer\token.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.dir\Debug\token.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\parser\parser.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.dir\Debug\parser.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\ast\ast.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.dir\Debug\ast.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\type_system.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.dir\Debug\type_system.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\support\diagnostics\diagnostics.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_comparison_test.dir\Debug\diagnostics.obj

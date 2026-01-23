@@ -1,3 +1,0 @@
-C:\msys64\ucrt64\bin\cmake.exe -E rm -f CMakeFiles\sample_unit_test.dir/objects.a
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ar.exe qc CMakeFiles\sample_unit_test.dir/objects.a @CMakeFiles\sample_unit_test.dir\objects1.rsp
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe -Wl,--whole-archive CMakeFiles\sample_unit_test.dir/objects.a -Wl,--no-whole-archive -o sample_unit_test.exe -Wl,--out-implib,libsample_unit_test.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\sample_unit_test.dir\linkLibs.rsp

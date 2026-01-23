@@ -1,3 +1,0 @@
-C:\msys64\ucrt64\bin\cmake.exe -E rm -f CMakeFiles\support_target_triple_test.dir/objects.a
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ar.exe qc CMakeFiles\support_target_triple_test.dir/objects.a @CMakeFiles\support_target_triple_test.dir\objects1.rsp
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe -Wl,--whole-archive CMakeFiles\support_target_triple_test.dir/objects.a -Wl,--no-whole-archive -o support_target_triple_test.exe -Wl,--out-implib,libsupport_target_triple_test.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\support_target_triple_test.dir\linkLibs.rsp

@@ -1,3 +1,0 @@
-C:\msys64\ucrt64\bin\cmake.exe -E rm -f CMakeFiles\integration_parse_success_test.dir/objects.a
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ar.exe qc CMakeFiles\integration_parse_success_test.dir/objects.a @CMakeFiles\integration_parse_success_test.dir\objects1.rsp
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe -Wl,--whole-archive CMakeFiles\integration_parse_success_test.dir/objects.a -Wl,--no-whole-archive -o integration_parse_success_test.exe -Wl,--out-implib,libintegration_parse_success_test.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\integration_parse_success_test.dir\linkLibs.rsp

@@ -1,45 +1,83 @@
-Start testing: Jan 23 10:49 中国标准时间
+Start testing: Jan 23 15:30 中国标准时间
 ----------------------------------------------------------
-34/34 Testing: integration_os_test
-34/34 Test: integration_os_test
-Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_os_test.exe"
-Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/integration/os
-"integration_os_test" start time: Jan 23 10:49 中国标准时间
+Test not available without configuration.  (Missing "-C <config>"?)
+17/34 Testing: semantic_check_test
+17/34 Test: semantic_check_test
+Command: "NOT_AVAILABLE"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"semantic_check_test" start time: 
 Output:
 ----------------------------------------------------------
-=== CN Language 内核构建脚本 ===
-
-[1/4] 编译 CN 内核源文件...
-函数: kernel_main，语句数: 1
-已生成 C 代码文件: kernels/minimal_kernel.c
-  ✓ 生成 C 代码: temp_build\kernel.c
-[2/4] 编译启动代码...
-  ✓ 生成目标文件: temp_build\boot.o
-[3/4] 编译内核 C 代码...
-  ✓ 生成目标文件: temp_build\kernel.o
-[4/4] 链接内核镜像...
-  ⚠ Windows 上跳过链接步骤（需要交叉编译工具链）
-  ✓ 编译验证成功
-
-=== 构建成功！===
-内核镜像: test_kernel.elf
-=== CN Language OS 集成测试 ===
-
-=== 测试：最小内核编译 ===
-[测试] 编译内核: kernels/minimal_kernel.cn -> test_kernel.elf
-[成功] 内核编译成功，镜像: test_kernel.elf
-
-=== 测试：带输出验证的内核 ===
-[跳过] QEMU 未安装，跳过此测试
-
-=== 测试结果 ===
-[通过] 所有测试通过
 <end of output>
-Test time =   1.68 sec
+Test time =   0.00 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_os_test" end time: Jan 23 10:49 中国标准时间
-"integration_os_test" time elapsed: 00:00:01
+"semantic_check_test" end time: Jan 23 15:30 中国标准时间
+"semantic_check_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 23 10:49 中国标准时间
+Test not available without configuration.  (Missing "-C <config>"?)
+18/34 Testing: semantics_symbol_table_test
+18/34 Test: semantics_symbol_table_test
+Command: "NOT_AVAILABLE"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"semantics_symbol_table_test" start time: 
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"semantics_symbol_table_test" end time: Jan 23 15:30 中国标准时间
+"semantics_symbol_table_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+Test not available without configuration.  (Missing "-C <config>"?)
+19/34 Testing: semantics_type_system_test
+19/34 Test: semantics_type_system_test
+Command: "NOT_AVAILABLE"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"semantics_type_system_test" start time: 
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"semantics_type_system_test" end time: Jan 23 15:30 中国标准时间
+"semantics_type_system_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+Test not available without configuration.  (Missing "-C <config>"?)
+20/34 Testing: semantics_name_resolution_test
+20/34 Test: semantics_name_resolution_test
+Command: "NOT_AVAILABLE"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"semantics_name_resolution_test" start time: 
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"semantics_name_resolution_test" end time: Jan 23 15:30 中国标准时间
+"semantics_name_resolution_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+Test not available without configuration.  (Missing "-C <config>"?)
+31/34 Testing: integration_semantic_error_test
+31/34 Test: integration_semantic_error_test
+Command: "NOT_AVAILABLE"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
+"integration_semantic_error_test" start time: 
+Output:
+----------------------------------------------------------
+<end of output>
+Test time =   0.00 sec
+----------------------------------------------------------
+Test Passed.
+"integration_semantic_error_test" end time: Jan 23 15:30 中国标准时间
+"integration_semantic_error_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jan 23 15:30 中国标准时间

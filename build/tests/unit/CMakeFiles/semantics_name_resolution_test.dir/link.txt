@@ -1,3 +1,0 @@
-C:\msys64\ucrt64\bin\cmake.exe -E rm -f CMakeFiles\semantics_name_resolution_test.dir/objects.a
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ar.exe qc CMakeFiles\semantics_name_resolution_test.dir/objects.a @CMakeFiles\semantics_name_resolution_test.dir\objects1.rsp
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe -Wl,--whole-archive CMakeFiles\semantics_name_resolution_test.dir/objects.a -Wl,--no-whole-archive -o semantics_name_resolution_test.exe -Wl,--out-implib,libsemantics_name_resolution_test.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\semantics_name_resolution_test.dir\linkLibs.rsp

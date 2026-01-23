@@ -146,14 +146,49 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         fprintf(ctx->output_file, "  cn_rt_init();\n");
     }
 
-    // 声明虚拟寄存器
+    // 声明虚拟寄存器：根据IR指令中的类型信息收集寄存器类型
     if (func->next_reg_id > 0) {
-        fprintf(ctx->output_file, "  long long ");
-        for (int i = 0; i < func->next_reg_id; i++) {
-            fprintf(ctx->output_file, "r%d", i);
-            if (i < func->next_reg_id - 1) fprintf(ctx->output_file, ", ");
+        // 第一步：遍历所有指令收集寄存器类型信息
+        CnType **reg_types = calloc(func->next_reg_id, sizeof(CnType*));
+        CnIrBasicBlock *scan_block = func->first_block;
+        while (scan_block) {
+            CnIrInst *scan_inst = scan_block->first_inst;
+            while (scan_inst) {
+                // 收集目标寄存器类型
+                if (scan_inst->dest.kind == CN_IR_OP_REG && scan_inst->dest.as.reg_id < func->next_reg_id) {
+                    if (!reg_types[scan_inst->dest.as.reg_id] && scan_inst->dest.type) {
+                        reg_types[scan_inst->dest.as.reg_id] = scan_inst->dest.type;
+                    }
+                }
+                scan_inst = scan_inst->next;
+            }
+            scan_block = scan_block->next;
         }
-        fprintf(ctx->output_file, ";\n");
+        
+        // 第二步：按类型分组声明寄存器
+        // 声明整型寄存器
+        bool has_int_regs = false;
+        for (int i = 0; i < func->next_reg_id; i++) {
+            if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_INT) {
+                if (!has_int_regs) {
+                    fprintf(ctx->output_file, "  long long ");
+                    has_int_regs = true;
+                } else {
+                    fprintf(ctx->output_file, ", ");
+                }
+                fprintf(ctx->output_file, "r%d", i);
+            }
+        }
+        if (has_int_regs) fprintf(ctx->output_file, ";\n");
+        
+        // 声明字符串寄存器（每个寄存器单独声明以确保每个都是指针类型）
+        for (int i = 0; i < func->next_reg_id; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_STRING) {
+                fprintf(ctx->output_file, "  char* r%d;\n", i);
+            }
+        }
+        
+        free(reg_types);
     }
 
     CnIrBasicBlock *block = func->first_block;

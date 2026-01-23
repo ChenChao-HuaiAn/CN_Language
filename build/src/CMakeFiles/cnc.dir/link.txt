@@ -1,3 +1,0 @@
-C:\msys64\ucrt64\bin\cmake.exe -E rm -f CMakeFiles\cnc.dir/objects.a
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\ar.exe qc CMakeFiles\cnc.dir/objects.a @CMakeFiles\cnc.dir\objects1.rsp
-C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe -Wl,--whole-archive CMakeFiles\cnc.dir/objects.a -Wl,--no-whole-archive -o cnc.exe -Wl,--out-implib,libcnc.dll.a -Wl,--major-image-version,0,--minor-image-version,0 @CMakeFiles\cnc.dir\linkLibs.rsp
