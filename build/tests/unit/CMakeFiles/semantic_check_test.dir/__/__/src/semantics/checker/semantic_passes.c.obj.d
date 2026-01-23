@@ -12,6 +12,7 @@ tests/unit/CMakeFiles/semantic_check_test.dir/__/__/src/semantics/checker/semant
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdbool.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
+ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/semantics/freestanding_check.h \
  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/diagnostics.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdlib.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wstdlib.h \

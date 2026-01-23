@@ -251,11 +251,26 @@ src/CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.s"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\semantic_passes.c -o CMakeFiles\cnc.dir\semantics\checker\semantic_passes.c.s
 
+src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj: src/CMakeFiles/cnc.dir/flags.make
+src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj: src/CMakeFiles/cnc.dir/includes_C.rsp
+src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/checker/freestanding_check.c
+src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj: src/CMakeFiles/cnc.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building C object src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj -MF CMakeFiles\cnc.dir\semantics\checker\freestanding_check.c.obj.d -o CMakeFiles\cnc.dir\semantics\checker\freestanding_check.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c
+
+src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.i"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c > CMakeFiles\cnc.dir\semantics\checker\freestanding_check.c.i
+
+src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.s"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c -o CMakeFiles\cnc.dir\semantics\checker\freestanding_check.c.s
+
 src/CMakeFiles/cnc.dir/ir/core/ir.c.obj: src/CMakeFiles/cnc.dir/flags.make
 src/CMakeFiles/cnc.dir/ir/core/ir.c.obj: src/CMakeFiles/cnc.dir/includes_C.rsp
 src/CMakeFiles/cnc.dir/ir/core/ir.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/core/ir.c
 src/CMakeFiles/cnc.dir/ir/core/ir.c.obj: src/CMakeFiles/cnc.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_13) "Building C object src/CMakeFiles/cnc.dir/ir/core/ir.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building C object src/CMakeFiles/cnc.dir/ir/core/ir.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/CMakeFiles/cnc.dir/ir/core/ir.c.obj -MF CMakeFiles\cnc.dir\ir\core\ir.c.obj.d -o CMakeFiles\cnc.dir\ir\core\ir.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\ir\core\ir.c
 
 src/CMakeFiles/cnc.dir/ir/core/ir.c.i: cmake_force
@@ -270,7 +285,7 @@ src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj: src/CMakeFiles/cnc.dir/flags.make
 src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj: src/CMakeFiles/cnc.dir/includes_C.rsp
 src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/gen/irgen.c
 src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj: src/CMakeFiles/cnc.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_14) "Building C object src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building C object src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj -MF CMakeFiles\cnc.dir\ir\gen\irgen.c.obj.d -o CMakeFiles\cnc.dir\ir\gen\irgen.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\ir\gen\irgen.c
 
 src/CMakeFiles/cnc.dir/ir/gen/irgen.c.i: cmake_force
@@ -285,7 +300,7 @@ src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj: src/CMakeFiles/cnc.dir/
 src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj: src/CMakeFiles/cnc.dir/includes_C.rsp
 src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/passes/constant_folding.c
 src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj: src/CMakeFiles/cnc.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_15) "Building C object src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building C object src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj -MF CMakeFiles\cnc.dir\ir\passes\constant_folding.c.obj.d -o CMakeFiles\cnc.dir\ir\passes\constant_folding.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\ir\passes\constant_folding.c
 
 src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.i: cmake_force
@@ -300,7 +315,7 @@ src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj: src/CMakeFiles/cnc
 src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj: src/CMakeFiles/cnc.dir/includes_C.rsp
 src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/passes/dead_code_elimination.c
 src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj: src/CMakeFiles/cnc.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_16) "Building C object src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building C object src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj -MF CMakeFiles\cnc.dir\ir\passes\dead_code_elimination.c.obj.d -o CMakeFiles\cnc.dir\ir\passes\dead_code_elimination.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\ir\passes\dead_code_elimination.c
 
 src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.i: cmake_force
@@ -315,7 +330,7 @@ src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj: src/CMakeFiles/cnc.dir/flags.mak
 src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj: src/CMakeFiles/cnc.dir/includes_C.rsp
 src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/backend/cgen/cgen.c
 src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj: src/CMakeFiles/cnc.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_17) "Building C object src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Building C object src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.obj -MF CMakeFiles\cnc.dir\backend\cgen\cgen.c.obj.d -o CMakeFiles\cnc.dir\backend\cgen\cgen.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\backend\cgen\cgen.c
 
 src/CMakeFiles/cnc.dir/backend/cgen/cgen.c.i: cmake_force
@@ -340,6 +355,7 @@ cnc_OBJECTS = \
 "CMakeFiles/cnc.dir/semantics/symbols/type_system.c.obj" \
 "CMakeFiles/cnc.dir/semantics/resolution/scope_builder.c.obj" \
 "CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.obj" \
+"CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj" \
 "CMakeFiles/cnc.dir/ir/core/ir.c.obj" \
 "CMakeFiles/cnc.dir/ir/gen/irgen.c.obj" \
 "CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj" \
@@ -361,6 +377,7 @@ src/cnc.exe: src/CMakeFiles/cnc.dir/semantics/symbols/symbol_table.c.obj
 src/cnc.exe: src/CMakeFiles/cnc.dir/semantics/symbols/type_system.c.obj
 src/cnc.exe: src/CMakeFiles/cnc.dir/semantics/resolution/scope_builder.c.obj
 src/cnc.exe: src/CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.obj
+src/cnc.exe: src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj
 src/cnc.exe: src/CMakeFiles/cnc.dir/ir/core/ir.c.obj
 src/cnc.exe: src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj
 src/cnc.exe: src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj
@@ -371,7 +388,7 @@ src/cnc.exe: src/runtime/libcn_runtime.a
 src/cnc.exe: src/CMakeFiles/cnc.dir/linkLibs.rsp
 src/cnc.exe: src/CMakeFiles/cnc.dir/objects1.rsp
 src/cnc.exe: src/CMakeFiles/cnc.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_18) "Linking C executable cnc.exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_19) "Linking C executable cnc.exe"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\cnc.dir\link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

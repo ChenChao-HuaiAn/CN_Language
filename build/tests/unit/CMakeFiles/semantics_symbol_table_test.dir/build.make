@@ -206,11 +206,26 @@ tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checke
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/semantic_passes.c.s"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\semantic_passes.c -o CMakeFiles\semantics_symbol_table_test.dir\__\__\src\semantics\checker\semantic_passes.c.s
 
+tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/flags.make
+tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/includes_C.rsp
+tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/checker/freestanding_check.c
+tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj -MF CMakeFiles\semantics_symbol_table_test.dir\__\__\src\semantics\checker\freestanding_check.c.obj.d -o CMakeFiles\semantics_symbol_table_test.dir\__\__\src\semantics\checker\freestanding_check.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c
+
+tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.i"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c > CMakeFiles\semantics_symbol_table_test.dir\__\__\src\semantics\checker\freestanding_check.c.i
+
+tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.s"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c -o CMakeFiles\semantics_symbol_table_test.dir\__\__\src\semantics\checker\freestanding_check.c.s
+
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/flags.make
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/includes_C.rsp
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/symbols/symbol_table.c
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building C object tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj -MF CMakeFiles\semantics_symbol_table_test.dir\__\__\src\semantics\symbols\symbol_table.c.obj.d -o CMakeFiles\semantics_symbol_table_test.dir\__\__\src\semantics\symbols\symbol_table.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\symbol_table.c
 
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.i: cmake_force
@@ -232,6 +247,7 @@ semantics_symbol_table_test_OBJECTS = \
 "CMakeFiles/semantics_symbol_table_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj" \
 "CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj" \
 "CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj" \
+"CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj" \
 "CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj"
 
 # External object files for target semantics_symbol_table_test
@@ -246,12 +262,13 @@ tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symb
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj
+tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/build.make
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/linkLibs.rsp
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/objects1.rsp
 tests/unit/semantics_symbol_table_test.exe: tests/unit/CMakeFiles/semantics_symbol_table_test.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Linking C executable semantics_symbol_table_test.exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Linking C executable semantics_symbol_table_test.exe"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\semantics_symbol_table_test.dir\link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

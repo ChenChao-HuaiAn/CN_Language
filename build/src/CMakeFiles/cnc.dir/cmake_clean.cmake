@@ -19,6 +19,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj.d"
   "CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj"
   "CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj.d"
+  "CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj"
+  "CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj.d"
   "CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.obj"
   "CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.obj.d"
   "CMakeFiles/cnc.dir/semantics/resolution/scope_builder.c.obj"

@@ -7,6 +7,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/integration_semantic_error_test.dir/__/__/src/frontend/lexer/token.c.obj.d"
   "CMakeFiles/integration_semantic_error_test.dir/__/__/src/frontend/parser/parser.c.obj"
   "CMakeFiles/integration_semantic_error_test.dir/__/__/src/frontend/parser/parser.c.obj.d"
+  "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj"
+  "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj.d"
   "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj"
   "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj.d"
   "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj"

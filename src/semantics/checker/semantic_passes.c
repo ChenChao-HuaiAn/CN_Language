@@ -1,4 +1,5 @@
 #include "cnlang/frontend/semantics.h"
+#include "cnlang/semantics/freestanding_check.h"
 #include "cnlang/support/diagnostics.h"
 #include <stdlib.h>
 
@@ -330,4 +331,11 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
     }
 
     return expr->type;
+}
+
+// Freestanding 模式检查实现
+bool cn_sem_check_freestanding(CnAstProgram *program,
+                               struct CnDiagnostics *diagnostics,
+                               bool enable_check) {
+    return cn_fs_check_program(program, diagnostics, enable_check);
 }

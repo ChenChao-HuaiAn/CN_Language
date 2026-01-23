@@ -118,6 +118,7 @@ tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/seman
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/semantics/freestanding_check.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/diagnostics.h
 
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/resolution/scope_builder.c \
@@ -338,6 +339,8 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/src/frontend/parser/parser.c:
 C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/parser.h:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/semantics.h:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/semantics/freestanding_check.h:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/resolution/scope_builder.c:
 

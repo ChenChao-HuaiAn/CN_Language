@@ -63,9 +63,9 @@
 #### 三、编译器限制（freestanding 模式语义约束）
 
 - **3.1 语言/库特性白名单与黑名单**
-  - [ ] 列出在 freestanding 模式下禁止使用的语言特性和标准库函数（参考 `docs/specifications/CN_Language 语言规范草案（核心子集）.md`）  
-  - [ ] 在语义分析阶段（`src/semantics/checker/semantic_passes.c`）增加对 freestanding 模式的额外检查  
-  - [ ] 为被禁止特性设计统一的诊断信息（通过 `src/support/diagnostics`）
+  - [x] 列出在 freestanding 模式下禁止使用的语言特性和标准库函数（参考 `docs/specifications/CN_Language 语言规范草案（核心子集）.md`）  
+  - [x] 在语义分析阶段（`src/semantics/checker/semantic_passes.c`）增加对 freestanding 模式的额外检查  
+  - [x] 为被禁止特性设计统一的诊断信息（通过 `src/support/diagnostics`）
 
 - **3.2 编译选项与诊断**
   - [ ] 为 CLI 增加显式启用 freestanding 模式的选项（如 `--freestanding`）  

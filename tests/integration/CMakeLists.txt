@@ -42,6 +42,7 @@ add_executable(integration_semantic_error_test
     ${PARSER_TEST_DEPENDENCIES}
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
     ../../src/semantics/symbols/symbol_table.c
 )
 target_include_directories(integration_semantic_error_test PRIVATE ../../include)
@@ -55,6 +56,7 @@ add_executable(integration_full_frontend_test
     ${PARSER_TEST_DEPENDENCIES}
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
     ../../src/semantics/symbols/symbol_table.c
 )
 target_include_directories(integration_full_frontend_test PRIVATE ../../include)

@@ -18,6 +18,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/gen/irgen.c" "src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj" "gcc" "src/CMakeFiles/cnc.dir/ir/gen/irgen.c.obj.d"
   "C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/passes/constant_folding.c" "src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj" "gcc" "src/CMakeFiles/cnc.dir/ir/passes/constant_folding.c.obj.d"
   "C:/Users/ChenChao/Documents/gitcode/CN_Language/src/ir/passes/dead_code_elimination.c" "src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj" "gcc" "src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.obj.d"
+  "C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/checker/freestanding_check.c" "src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj" "gcc" "src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj.d"
   "C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/checker/semantic_passes.c" "src/CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.obj" "gcc" "src/CMakeFiles/cnc.dir/semantics/checker/semantic_passes.c.obj.d"
   "C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/resolution/scope_builder.c" "src/CMakeFiles/cnc.dir/semantics/resolution/scope_builder.c.obj" "gcc" "src/CMakeFiles/cnc.dir/semantics/resolution/scope_builder.c.obj.d"
   "C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/symbols/symbol_table.c" "src/CMakeFiles/cnc.dir/semantics/symbols/symbol_table.c.obj" "gcc" "src/CMakeFiles/cnc.dir/semantics/symbols/symbol_table.c.obj.d"

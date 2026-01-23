@@ -13,6 +13,7 @@ set(SEMANTIC_TEST_DEPENDENCIES
     ${PARSER_TEST_DEPENDENCIES}
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
     ../../src/semantics/symbols/symbol_table.c
 )
 

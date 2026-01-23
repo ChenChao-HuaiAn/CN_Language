@@ -1,0 +1,26 @@
+tests/integration/CMakeFiles/integration_full_frontend_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: \
+ C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c \
+ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/semantics/freestanding_check.h \
+ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/ast.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_secapi.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
+ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/diagnostics.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdlib.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wstdlib.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/limits.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/syslimits.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/limits.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/stdlib_s.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/malloc.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/mm_malloc.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/errno.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdbool.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/string.h \
+ C:/Users/ChenChao/Documents/gcc-15.2.0/include/sec_api/string_s.h

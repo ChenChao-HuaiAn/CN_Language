@@ -424,6 +424,30 @@ ir/passes/dead_code_elimination.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\CMakeFiles\cnc.dir\build.make src/CMakeFiles/cnc.dir/ir/passes/dead_code_elimination.c.s
 .PHONY : ir/passes/dead_code_elimination.c.s
 
+semantics/checker/freestanding_check.obj: semantics/checker/freestanding_check.c.obj
+.PHONY : semantics/checker/freestanding_check.obj
+
+# target to build an object file
+semantics/checker/freestanding_check.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\CMakeFiles\cnc.dir\build.make src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.obj
+.PHONY : semantics/checker/freestanding_check.c.obj
+
+semantics/checker/freestanding_check.i: semantics/checker/freestanding_check.c.i
+.PHONY : semantics/checker/freestanding_check.i
+
+# target to preprocess a source file
+semantics/checker/freestanding_check.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\CMakeFiles\cnc.dir\build.make src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.i
+.PHONY : semantics/checker/freestanding_check.c.i
+
+semantics/checker/freestanding_check.s: semantics/checker/freestanding_check.c.s
+.PHONY : semantics/checker/freestanding_check.s
+
+# target to generate assembly for a file
+semantics/checker/freestanding_check.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\CMakeFiles\cnc.dir\build.make src/CMakeFiles/cnc.dir/semantics/checker/freestanding_check.c.s
+.PHONY : semantics/checker/freestanding_check.c.s
+
 semantics/checker/semantic_passes.obj: semantics/checker/semantic_passes.c.obj
 .PHONY : semantics/checker/semantic_passes.obj
 
@@ -636,6 +660,9 @@ help:
 	@echo ... ir/passes/dead_code_elimination.obj
 	@echo ... ir/passes/dead_code_elimination.i
 	@echo ... ir/passes/dead_code_elimination.s
+	@echo ... semantics/checker/freestanding_check.obj
+	@echo ... semantics/checker/freestanding_check.i
+	@echo ... semantics/checker/freestanding_check.s
 	@echo ... semantics/checker/semantic_passes.obj
 	@echo ... semantics/checker/semantic_passes.i
 	@echo ... semantics/checker/semantic_passes.s

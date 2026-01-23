@@ -11,6 +11,7 @@ add_executable(cnc
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
     semantics/checker/semantic_passes.c
+    semantics/checker/freestanding_check.c
     ir/core/ir.c
     ir/gen/irgen.c
     ir/passes/constant_folding.c

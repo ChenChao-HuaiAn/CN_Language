@@ -206,11 +206,26 @@ tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/seman
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/semantic_passes.c.s"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\semantic_passes.c -o CMakeFiles\integration_semantic_error_test.dir\__\__\src\semantics\checker\semantic_passes.c.s
 
+tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: tests/integration/CMakeFiles/integration_semantic_error_test.dir/flags.make
+tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: tests/integration/CMakeFiles/integration_semantic_error_test.dir/includes_C.rsp
+tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/checker/freestanding_check.c
+tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj: tests/integration/CMakeFiles/integration_semantic_error_test.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj -MF CMakeFiles\integration_semantic_error_test.dir\__\__\src\semantics\checker\freestanding_check.c.obj.d -o CMakeFiles\integration_semantic_error_test.dir\__\__\src\semantics\checker\freestanding_check.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c
+
+tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.i"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c > CMakeFiles\integration_semantic_error_test.dir\__\__\src\semantics\checker\freestanding_check.c.i
+
+tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.s"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c -o CMakeFiles\integration_semantic_error_test.dir\__\__\src\semantics\checker\freestanding_check.c.s
+
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: tests/integration/CMakeFiles/integration_semantic_error_test.dir/flags.make
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: tests/integration/CMakeFiles/integration_semantic_error_test.dir/includes_C.rsp
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/semantics/symbols/symbol_table.c
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj: tests/integration/CMakeFiles/integration_semantic_error_test.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_10) "Building C object tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Building C object tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj -MF CMakeFiles\integration_semantic_error_test.dir\__\__\src\semantics\symbols\symbol_table.c.obj.d -o CMakeFiles\integration_semantic_error_test.dir\__\__\src\semantics\symbols\symbol_table.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\symbol_table.c
 
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.i: cmake_force
@@ -232,6 +247,7 @@ integration_semantic_error_test_OBJECTS = \
 "CMakeFiles/integration_semantic_error_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj" \
 "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj" \
 "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj" \
+"CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj" \
 "CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj"
 
 # External object files for target integration_semantic_error_test
@@ -246,12 +262,13 @@ tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFi
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj
+tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/build.make
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/linkLibs.rsp
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/objects1.rsp
 tests/integration/integration_semantic_error_test.exe: tests/integration/CMakeFiles/integration_semantic_error_test.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_11) "Linking C executable integration_semantic_error_test.exe"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_12) "Linking C executable integration_semantic_error_test.exe"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\integration_semantic_error_test.dir\link.txt --verbose=$(VERBOSE)
 
 # Rule to build all files generated by this target.

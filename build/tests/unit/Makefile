@@ -830,6 +830,39 @@ __/__/src/frontend/parser/parser.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/parser/parser.c.s
 .PHONY : __/__/src/frontend/parser/parser.c.s
 
+__/__/src/semantics/checker/freestanding_check.obj: __/__/src/semantics/checker/freestanding_check.c.obj
+.PHONY : __/__/src/semantics/checker/freestanding_check.obj
+
+# target to build an object file
+__/__/src/semantics/checker/freestanding_check.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantic_check_test.dir\build.make tests/unit/CMakeFiles/semantic_check_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
+.PHONY : __/__/src/semantics/checker/freestanding_check.c.obj
+
+__/__/src/semantics/checker/freestanding_check.i: __/__/src/semantics/checker/freestanding_check.c.i
+.PHONY : __/__/src/semantics/checker/freestanding_check.i
+
+# target to preprocess a source file
+__/__/src/semantics/checker/freestanding_check.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantic_check_test.dir\build.make tests/unit/CMakeFiles/semantic_check_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
+.PHONY : __/__/src/semantics/checker/freestanding_check.c.i
+
+__/__/src/semantics/checker/freestanding_check.s: __/__/src/semantics/checker/freestanding_check.c.s
+.PHONY : __/__/src/semantics/checker/freestanding_check.s
+
+# target to generate assembly for a file
+__/__/src/semantics/checker/freestanding_check.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantic_check_test.dir\build.make tests/unit/CMakeFiles/semantic_check_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
+.PHONY : __/__/src/semantics/checker/freestanding_check.c.s
+
 __/__/src/semantics/checker/semantic_passes.obj: __/__/src/semantics/checker/semantic_passes.c.obj
 .PHONY : __/__/src/semantics/checker/semantic_passes.obj
 
@@ -1791,6 +1824,9 @@ help:
 	@echo ... __/__/src/frontend/parser/parser.obj
 	@echo ... __/__/src/frontend/parser/parser.i
 	@echo ... __/__/src/frontend/parser/parser.s
+	@echo ... __/__/src/semantics/checker/freestanding_check.obj
+	@echo ... __/__/src/semantics/checker/freestanding_check.i
+	@echo ... __/__/src/semantics/checker/freestanding_check.s
 	@echo ... __/__/src/semantics/checker/semantic_passes.obj
 	@echo ... __/__/src/semantics/checker/semantic_passes.i
 	@echo ... __/__/src/semantics/checker/semantic_passes.s
