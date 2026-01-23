@@ -20,6 +20,58 @@
 #include <sys/wait.h>
 #endif
 
+// 执行 QEMU 测试（如果 QEMU 可用）
+static bool run_qemu_test(const char *kernel_image, const char *expected_output) {
+    printf("[\u6d4b\u8bd5] \u8fd0\u884c QEMU \u6d4b\u8bd5: %s\n", kernel_image);
+    
+#ifdef _WIN32
+    char cmd[1024];
+    if (expected_output && expected_output[0] != '\0') {
+        snprintf(cmd, sizeof(cmd), 
+                 "pwsh.exe -ExecutionPolicy Bypass -File scripts/run_qemu_test.ps1 "
+                 "-KernelImage \"%s\" -TimeoutSeconds 3 -ExpectedOutput \"%s\" "
+                 "> nul 2>&1",
+                 kernel_image, expected_output);
+    } else {
+        snprintf(cmd, sizeof(cmd), 
+                 "pwsh.exe -ExecutionPolicy Bypass -File scripts/run_qemu_test.ps1 "
+                 "-KernelImage \"%s\" -TimeoutSeconds 3 "
+                 "> nul 2>&1",
+                 kernel_image);
+    }
+    
+    int result = system(cmd);
+    return result == 0;
+#else
+    char cmd[1024];
+    if (expected_output && expected_output[0] != '\0') {
+        snprintf(cmd, sizeof(cmd), 
+                 "./scripts/run_qemu_test.ps1 '%s' -TimeoutSeconds 3 -ExpectedOutput '%s' "
+                 "> /dev/null 2>&1",
+                 kernel_image, expected_output);
+    } else {
+        snprintf(cmd, sizeof(cmd), 
+                 "./scripts/run_qemu_test.ps1 '%s' -TimeoutSeconds 3 "
+                 "> /dev/null 2>&1",
+                 kernel_image);
+    }
+    
+    int result = system(cmd);
+    return WIFEXITED(result) && WEXITSTATUS(result) == 0;
+#endif
+}
+
+// 检查 QEMU 是否可用
+static bool is_qemu_available(void) {
+#ifdef _WIN32
+    int result = system("where qemu-system-x86_64 > nul 2>&1");
+    return result == 0;
+#else
+    int result = system("which qemu-system-x86_64 > /dev/null 2>&1");
+    return WIFEXITED(result) && WEXITSTATUS(result) == 0;
+#endif
+}
+
 // 执行构建脚本
 static bool build_kernel(const char *kernel_source, const char *output_image) {
     printf("[测试] 编译内核: %s -> %s\n", kernel_source, output_image);
@@ -89,6 +141,76 @@ static bool test_minimal_kernel_build(void) {
     return true;
 }
 
+// 测试带输出验证的内核（需要 QEMU）
+static bool test_kernel_with_output_validation(void) {
+    printf("\n=== \u6d4b\u8bd5\uff1a\u5e26\u8f93\u51fa\u9a8c\u8bc1\u7684\u5185\u6838 ===\n");
+    
+    // 检查 QEMU 是否可用
+    if (!is_qemu_available()) {
+        printf("[\u8df3\u8fc7] QEMU \u672a\u5b89\u88c5\uff0c\u8df3\u8fc7\u6b64\u6d4b\u8bd5\n");
+        return true;  // 不影\u54cd\u6574体\u7ed3\u679c
+    }
+    
+    const char *source = "kernels/test_kernel.cn";
+    const char *output = "test_kernel_output.elf";
+    
+    // 检查源文件是否存在
+    if (!file_exists(source)) {
+        printf("[\u5931\u8d25] \u627e\u4e0d\u5230\u5185\u6838\u6e90\u6587\u4ef6: %s\n", source);
+        return false;
+    }
+    
+    // 构建内核（使用测试\u542f\u52a8\u4ee3\u7801）
+    printf("[\u6d4b\u8bd5] \u7f16\u8bd1\u5185\u6838: %s -> %s\n", source, output);
+    
+#ifdef _WIN32
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), 
+             "pwsh.exe -ExecutionPolicy Bypass -File scripts/build_kernel.ps1 "
+             "-KernelSource \"%s\" -OutputImage \"%s\" "
+             "-BootCode \"boot/boot_test.c\" "
+             "-CncPath \"../../../build/src/cnc.exe\"",
+             source, output);
+    
+    int result = system(cmd);
+    if (result != 0) {
+        printf("[\u5931\u8d25] \u5185\u6838\u7f16\u8bd1\u5931\u8d25\n");
+        return false;
+    }
+#else
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), 
+             "./scripts/build_kernel.ps1 '%s' '%s' -BootCode 'boot/boot_test.c'",
+             source, output);
+    
+    int result = system(cmd);
+    if (!(WIFEXITED(result) && WEXITSTATUS(result) == 0)) {
+        printf("[\u5931\u8d25] \u5185\u6838\u7f16\u8bd1\u5931\u8d25\n");
+        return false;
+    }
+#endif
+    
+    // 检查\u8f93\u51fa\u6587\u4ef6
+    if (!file_exists(output)) {
+        printf("[\u5931\u8d25] \u672a\u751f\u6210\u5185\u6838\u955c\u50cf: %s\n", output);
+        return false;
+    }
+    
+    // 运\u884c QEMU \u6d4b\u8bd5\uff0c\u9a8c\u8bc1\u8f93\u51fa
+    if (!run_qemu_test(output, "PASS")) {
+        printf("[\u5931\u8d25] QEMU \u6d4b\u8bd5\u5931\u8d25\u6216\u8f93\u51fa\u4e0d\u5339\u914d\n");
+        remove(output);
+        return false;
+    }
+    
+    printf("[\u6210\u529f] \u5185\u6838\u8f93\u51fa\u9a8c\u8bc1\u901a\u8fc7\n");
+    
+    // \u6e05\u7406\u8f93\u51fa\u6587\u4ef6
+    remove(output);
+    
+    return true;
+}
+
 int main(int argc, char **argv) {
     printf("=== CN Language OS 集成测试 ===\n");
     
@@ -98,6 +220,11 @@ int main(int argc, char **argv) {
     
     // 测试 1: 最小内核编译
     if (!test_minimal_kernel_build()) {
+        all_passed = false;
+    }
+    
+    // 测试 2: 带输出验证的内核（需要 QEMU）
+    if (!test_kernel_with_output_validation()) {
         all_passed = false;
     }
     

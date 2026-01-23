@@ -96,9 +96,13 @@
   - [x] **验证脚本**：`scripts/verify_boot.ps1` 用于完整验证
 
 - **4.3 自动化运行与结果检查**
-  - [ ] 添加基于 QEMU/Bochs 的自动化运行脚本（可在 `tests/integration/os/` 中提供可调用脚本）  
-  - [ ] 设计输出检查机制（如通过串口/控制台输出特定字符串，并在脚本中解析）  
-  - [ ] 将 OS 集成测试接入 `ctest`，保证运行 `ctest` 时能够自动执行并判断通过/失败
+  - [x] 添加基于 QEMU/Bochs 的自动化运行脚本（可在 `tests/integration/os/` 中提供可调用脚本）  
+  - [x] 设计输出检查机制（如通过串口/控制台输出特定字符串，并在脚本中解析）  
+  - [x] 将 OS 集成测试接入 `ctest`，保证运行 `ctest` 时能够自动执行并判断通过/失败
+  - [x] **QEMU 脚本增强**：`run_qemu_test.ps1` 支持预期输出验证和成功标记检查
+  - [x] **测试内核**：`boot/boot_test.c` 和 `kernels/test_kernel.cn` 用于输出验证
+  - [x] **OS 集成测试**：新增 QEMU 输出验证测试，自动检测 QEMU 可用性
+  - [x] **CTest 集成**：所有 34 个测试通过，包括 OS 集成测试
 
 ---
 

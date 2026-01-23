@@ -7,11 +7,13 @@
 - **boot/** - 启动代码和链接脚本
   - `boot.c` - x86_64 基本启动代码
   - `boot_with_io.c` - 带串口 I/O 回调的启动代码
+  - `boot_test.c` - 带输出验证的测试启动代码
   - `linker.ld` - 内核链接脚本
   
 - **kernels/** - 内核示例程序
   - `minimal_kernel.cn` - 最小内核示例
   - `kernel_with_io.cn` - 带 I/O 回调的内核示例
+  - `test_kernel.cn` - 用于自动化测试的内核（返回 42）
   
 - **scripts/** - 构建和测试脚本
   - `build_kernel.ps1` - PowerShell 构建脚本
@@ -107,6 +109,28 @@ gcc -c kernels/minimal_kernel.c -o kernel.o -ffreestanding -nostdlib
 cd tests/integration/os
 pwsh scripts/build_kernel.ps1 kernels/minimal_kernel.cn test_kernel.elf
 pwsh scripts/run_qemu_test.ps1 test_kernel.elf
+```
+
+### QEMU 输出验证
+
+`run_qemu_test.ps1` 脚本支持自动验证内核输出：
+
+```powershell
+# 验证串口输出包含特定字符串
+pwsh scripts/run_qemu_test.ps1 test_kernel.elf -ExpectedOutput "PASS"
+
+# 检查成功标记（SUCCESS/PASS/OK/[OK]）
+pwsh scripts/run_qemu_test.ps1 test_kernel.elf -CheckSuccess
+```
+
+**示例：使用测试启动代码**
+
+```powershell
+# 构建带输出验证的内核
+pwsh scripts/build_kernel.ps1 kernels/test_kernel.cn test.elf -BootCode "boot/boot_test.c"
+
+# 运行并验证输出
+pwsh scripts/run_qemu_test.ps1 test.elf -ExpectedOutput "PASS"
 ```
 
 ## 注意事项

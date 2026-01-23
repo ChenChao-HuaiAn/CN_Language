@@ -7,7 +7,9 @@ param(
     [string]$KernelImage,
     
     [int]$TimeoutSeconds = 5,
-    [string]$QemuPath = "qemu-system-x86_64"
+    [string]$QemuPath = "qemu-system-x86_64",
+    [string]$ExpectedOutput = "",  # 预期输出字符串（用于验证）
+    [switch]$CheckSuccess = $false  # 是否检查成功标记
 )
 
 $ErrorActionPreference = "Stop"
@@ -80,10 +82,11 @@ try {
     # 读取串口输出
     Write-Host ""
     Write-Host "=== 串口输出 ===" -ForegroundColor Cyan
+    $OutputContent = ""
     if (Test-Path $SerialOutput) {
-        $Output = Get-Content $SerialOutput -Raw
-        if ($Output) {
-            Write-Host $Output
+        $OutputContent = Get-Content $SerialOutput -Raw
+        if ($OutputContent) {
+            Write-Host $OutputContent
         } else {
             Write-Host "(无输出)" -ForegroundColor Gray
         }
@@ -91,8 +94,42 @@ try {
         Write-Host "(未生成串口输出文件)" -ForegroundColor Gray
     }
     
+    # 输出验证
+    $ValidationPassed = $true
+    if ($ExpectedOutput -ne "") {
+        Write-Host ""
+        Write-Host "=== 输出验证 ===" -ForegroundColor Cyan
+        Write-Host "预期字符串: $ExpectedOutput"
+        
+        if ($OutputContent -match [regex]::Escape($ExpectedOutput)) {
+            Write-Host "✓ 找到预期输出" -ForegroundColor Green
+        } else {
+            Write-Host "X 未找到预期输出" -ForegroundColor Red
+            $ValidationPassed = $false
+        }
+    }
+    
+    if ($CheckSuccess) {
+        Write-Host ""
+        Write-Host "=== 成功标记检查 ===" -ForegroundColor Cyan
+        
+        # 检查常见的成功标记
+        if ($OutputContent -match "SUCCESS|PASS|OK|\[OK\]") {
+            Write-Host "✓ 找到成功标记" -ForegroundColor Green
+        } else {
+            Write-Host "X 未找到成功标记" -ForegroundColor Red
+            $ValidationPassed = $false
+        }
+    }
+    
     Write-Host ""
-    Write-Host "=== 测试完成 ===" -ForegroundColor Green
+    if ($ValidationPassed) {
+        Write-Host "=== 测试通过 ===" -ForegroundColor Green
+        exit 0
+    } else {
+        Write-Host "=== 测试失败 ===" -ForegroundColor Red
+        exit 1
+    }
     
 } catch {
     Write-Host ""
