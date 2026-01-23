@@ -28,13 +28,18 @@ void cn_rt_init(void) {
 void cn_rt_exit(void) {
     // 执行清理操作
     // 如果有未释放的内存，报告统计信息
+#ifndef CN_RT_NO_MEMORY_STATS
     cn_rt_memory_dump_stats();
+#endif
     
     // 如果有明确的退出码，可以通过 exit() 退出，
     // 但通常在 main 函数结束时由 C 运行时处理。
 }
 
-// 基础打印函数实现
+// =============================================================================
+// 基础打印函数实现（仅在宿主模式或未禁用时可用）
+// =============================================================================
+#ifndef CN_RT_NO_PRINT
 void cn_rt_print_int(long long val) {
     printf("%lld", val);
 }
@@ -52,8 +57,11 @@ void cn_rt_print_string(const char *str) {
 void cn_rt_print_newline() {
     printf("\n");
 }
+#endif /* CN_RT_NO_PRINT */
 
-// 字符串支持函数实现
+// =============================================================================
+// 字符串支持函数实现 [FS - 核心子集]
+// =============================================================================
 char* cn_rt_string_concat(const char *a, const char *b) {
     if (a == NULL && b == NULL) {
         char *result = cn_rt_malloc(1);

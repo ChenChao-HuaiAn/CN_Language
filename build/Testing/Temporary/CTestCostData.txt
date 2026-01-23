@@ -23,4 +23,9 @@ integration_semantic_error_test 1 0.54109
 integration_full_frontend_test 1 0.467292
 integration_compile_full_test 4 1.39313
 support_target_triple_test 2 0.0515543
+runtime_memory_test 1 0.0963783
+runtime_string_test 1 0.0965939
+runtime_array_test 1 0.0898802
+runtime_io_test 1 0.0871162
+runtime_math_test 1 0.0808508
 ---

@@ -14,7 +14,9 @@ static CnRtMemoryConfig g_mem_config = {
     .user_data = NULL
 };
 
+#ifndef CN_RT_NO_MEMORY_STATS
 static CnRtMemoryStats g_mem_stats = {0};
+#endif
 
 void cn_rt_memory_init(CnRtMemoryConfig* config) {
     if (config) {
@@ -32,11 +34,13 @@ void* cn_rt_malloc(size_t size) {
         ptr = malloc(size);
     }
     
+#ifndef CN_RT_NO_MEMORY_STATS
     if (ptr) {
         g_mem_stats.total_allocated_bytes += size;
         g_mem_stats.current_allocated_bytes += size;
         g_mem_stats.allocation_count++;
     }
+#endif
     
     return ptr;
 }
@@ -66,10 +70,12 @@ void* cn_rt_realloc(void* ptr, size_t new_size) {
         new_ptr = realloc(ptr, new_size);
     }
     
+#ifndef CN_RT_NO_MEMORY_STATS
     if (new_ptr) {
         g_mem_stats.allocation_count++;
         // 无法准确更新 current_allocated_bytes，除非我们在每个块前面存大小
     }
+#endif
     
     return new_ptr;
 }
@@ -83,8 +89,10 @@ void cn_rt_free(void* ptr) {
         free(ptr);
     }
     
+#ifndef CN_RT_NO_MEMORY_STATS
     g_mem_stats.free_count++;
     // 同样，无法准确扣除 current_allocated_bytes，除非有元数据
+#endif
 }
 
 char* cn_rt_string_dup(const char* str) {
@@ -97,6 +105,7 @@ char* cn_rt_string_dup(const char* str) {
     return new_str;
 }
 
+#ifndef CN_RT_NO_MEMORY_STATS
 void cn_rt_memory_get_stats(CnRtMemoryStats* stats) {
     if (stats) {
         *stats = g_mem_stats;
@@ -110,3 +119,4 @@ void cn_rt_memory_dump_stats(void) {
     printf("Frees: %llu\n", (unsigned long long)g_mem_stats.free_count);
     printf("-------------------------------\n");
 }
+#endif /* CN_RT_NO_MEMORY_STATS */

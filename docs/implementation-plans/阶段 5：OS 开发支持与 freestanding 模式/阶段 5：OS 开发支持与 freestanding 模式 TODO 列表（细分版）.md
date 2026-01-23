@@ -8,43 +8,43 @@
   - [x] 在 `src/support/` 下实现目标三元组解析与构造函数（从字符串/预设枚举生成）
 
 - **1.2 预设 OS 目标定义**
-  - [ ] 定义 `x86_64-elf` 等用于 OS 开发的预设目标三元组  
-  - [ ] 为每个预设目标补充：指针大小、对齐约束、整数宽度等基本数据布局信息  
-  - [ ] 在 CLI (`src/cli/cnc/main.c`) 中增加命令行选项用于选择目标三元组（如 `--target=x86_64-elf`）
+  - [x] 定义 `x86_64-elf` 等用于 OS 开发的预设目标三元组  
+  - [x] 为每个预设目标补充：指针大小、对齐约束、整数宽度等基本数据布局信息  
+  - [x] 在 CLI (`src/cli/cnc/main.c`) 中增加命令行选项用于选择目标三元组（如 `--target=x86_64-elf`）
 
 - **1.3 freestanding 编译选项**
-  - [ ] 在配置/支持模块中定义“freestanding 模式”标志（如 `CnCompileModeFreestanding`）  
-  - [ ] 为 freestanding 目标提供默认编译选项：禁用宿主标准库、禁用异常/某些运行时依赖  
-  - [ ] 在 C 代码生成阶段（`src/backend/cgen/cgen.c`）接入目标配置：根据目标三元组和模式生成不同的编译选项（如编译器 flags、入口符号）
+  - [x] 在配置/支持模块中定义"freestanding 模式"标志（如 `CnCompileModeFreestanding`）  
+  - [x] 为 freestanding 目标提供默认编译选项：禁用宿主标准库、禁用异常/某些运行时依赖  
+  - [x] 在 C 代码生成阶段（`src/backend/cgen/cgen.c`）接入目标配置：根据目标三元组和模式生成不同的编译选项（如编译器 flags、入口符号）
 
 - **1.4 编译管线目标传递与后端集成**（建议新增小节）
 
- **[ ] 在前端 / IR 生成阶段接入 `CnTargetTriple`**
-  - **[ ]** 在 `cnc` 的编译主流程中，将 `target_triple` 作为参数传递给 IR 生成入口（如 `cn_ir_gen_program` 或后续扩展接口）。
-  - **[ ]** 在 IR 模块结构中预留“目标信息”字段（如 `CnIrModule` 内添加 `CnTargetTriple target` 或等效抽象）。
-  - **[ ]** 在 IR 生成实现中（`src/ir/gen/irgen.c`），确保创建 IR 模块时初始化目标信息。
+ **[x] 在前端 / IR 生成阶段接入 `CnTargetTriple`**
+  - **[x]** 在 `cnc` 的编译主流程中，将 `target_triple` 作为参数传递给 IR 生成入口（如 `cn_ir_gen_program` 或后续扩展接口）。
+  - **[x]** 在 IR 模块结构中预留“目标信息”字段（如 `CnIrModule` 内添加 `CnTargetTriple target` 或等效抽象）。
+  - **[x]** 在 IR 生成实现中（`src/ir/gen/irgen.c`），确保创建 IR 模块时初始化目标信息。
 
- **[ ] 在 C 后端接入目标与数据布局**
-  - **[ ]** 为 C 后端入口（`cn_cgen_module_to_file` 等）增加参数或配置结构，用于接收 `CnTargetTriple` / `CnTargetDataLayout`。
-  - **[ ]** 在调用 C 后端前，通过 `cn_support_target_get_data_layout` 获取目标的数据布局，并在获取失败时给出明确错误（后续可通过 Diagnostics 统一）。
-  - **[ ]** 在 C 代码生成实现中，根据数据布局信息调整类型映射（指针大小、整数类型映射等），为后续 ABI 约定打基础。
+ **[x] 在 C 后端接入目标与数据布局**
+  - **[x]** 为 C 后端入口（`cn_cgen_module_to_file` 等）增加参数或配置结构，用于接收 `CnTargetTriple` / `CnTargetDataLayout`。
+  - **[x]** 在调用 C 后端前，通过 `cn_support_target_get_data_layout` 获取目标的数据布局，并在获取失败时给出明确错误（后续可通过 Diagnostics 统一）。
+  - **[x]** 在 C 代码生成实现中，根据数据布局信息调整类型映射（指针大小、整数类型映射等），为后续 ABI 约定打基础。
 
- **[ ] 将目标信息用于外部 C 编译器调用**
-  - **[ ]** 在 `cnc` 构造外部编译命令时，预留基于目标的额外参数扩展点（如针对 `x86_64-elf` 的特定 `-target` 或架构选项，先以 TODO 注释形式标记）。
-  - **[ ]** 为 freestanding 场景预留“禁用宿主标准库”的选项挂接点（后续与运行时/链接脚本集成时填充具体 flag）。
-  - **[ ]** 在命令行帮助中标注“当前目标仅部分影响后端行为，完整 freestanding 支持将在后续小节实现”，避免语义不清。
+ **[x] 将目标信息用于外部 C 编译器调用**
+  - **[x]** 在 `cnc` 构造外部编译命令时，预留基于目标的额外参数扩展点（如针对 `x86_64-elf` 的特定 `-target` 或架构选项，先以 TODO 注释形式标记）。
+  - **[x]** 为 freestanding 场景预留“禁用宿主标准库”的选项挂接点（后续与运行时/链接脚本集成时填充具体 flag）。
+  - **[x]** 在命令行帮助中标注“当前目标仅部分影响后端行为，完整 freestanding 支持将在后续小节实现”，避免语义不清。
 
- **[ ] 测试与验证 TODO**
-  - **[ ]** 新增/扩展一个集成测试（可放在 `tests/integration/compiler/`），编译同一个 `.cn` 程序，分别使用默认目标与显式 `--target=x86_64-elf`，验证编译流程正常。
-  - **[ ]** 为 C 后端目标数据布局接入增加至少一个单元测试（例如检查 IR → C 的类型映射是否符合 `x86_64-elf` 的宽度预期）。
-  - **[ ]** 在 `ctest` 中通过相关测试，作为“目标信息贯通编译管线”的初步验收标准。
+ **[x] 测试与验证 TODO**
+  - **[x]** 新增/扩展一个集成测试（可放在 `tests/integration/compiler/`），编译同一个 `.cn` 程序，分别使用默认目标与显式 `--target=x86_64-elf`，验证编译流程正常。
+  - **[x]** 为 C 后端目标数据布局接入增加至少一个单元测试（例如检查 IR → C 的类型映射是否符合 `x86_64-elf` 的宽度预期）。
+  - **[x]** 在 `ctest` 中通过相关测试，作为“目标信息贯通编译管线”的初步验收标准。
 ---
 
 #### 二、freestanding 运行时
 
 - **2.1 运行时接口抽象**
-  - [ ] 盘点现有运行时接口（`src/runtime/*`、`include/cnlang/runtime/*`），标出需在 freestanding 下支持的最小子集  
-  - [ ] 为“可选依赖 OS”的功能增加抽象层或条件编译开关（如 I/O、内存分配）
+  - [x] 盘点现有运行时接口（`src/runtime/*`、`include/cnlang/runtime/*`），标出需在 freestanding 下支持的最小子集  
+  - [x] 为“可选依赖 OS”的功能增加抽象层或条件编译开关（如 I/O、内存分配）
 
 - **2.2 freestanding 版本实现**
   - [ ] 在 `runtime` 中为 freestanding 模式设计独立实现路径（可通过 `#ifdef CN_FREESTANDING` 或单独源文件组织）  
