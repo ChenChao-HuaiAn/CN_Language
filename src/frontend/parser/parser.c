@@ -40,6 +40,7 @@ static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *ri
 static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand);
 static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value);
 static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t argument_count);
+static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
@@ -703,6 +704,48 @@ static CnAstExpr *parse_factor(CnParser *parser)
         parser_advance(parser);
         expr = parse_expression(parser);
         parser_expect(parser, CN_TOKEN_RPAREN);
+    } else if (parser->current.kind == CN_TOKEN_LBRACKET) {
+        // 解析数组字面量 [1, 2, 3]
+        parser_advance(parser);  // 跳过 [
+        
+        // 动态分配元素数组
+        size_t elem_capacity = 8;
+        size_t elem_count = 0;
+        CnAstExpr **elements = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * elem_capacity);
+        if (!elements) {
+            return NULL;
+        }
+        
+        // 处理空数组 []
+        if (parser->current.kind != CN_TOKEN_RBRACKET) {
+            do {
+                // 如果容量不够，扩容
+                if (elem_count >= elem_capacity) {
+                    elem_capacity *= 2;
+                    CnAstExpr **new_elements = (CnAstExpr **)realloc(
+                        elements, sizeof(CnAstExpr *) * elem_capacity);
+                    if (!new_elements) {
+                        free(elements);
+                        return NULL;
+                    }
+                    elements = new_elements;
+                }
+                
+                // 解析元素表达式
+                elements[elem_count++] = parse_expression(parser);
+                
+                // 如果下一个是逗号，跳过它
+                if (parser->current.kind == CN_TOKEN_COMMA) {
+                    parser_advance(parser);
+                } else {
+                    break;
+                }
+            } while (parser->current.kind != CN_TOKEN_RBRACKET &&
+                     parser->current.kind != CN_TOKEN_EOF);
+        }
+        
+        parser_expect(parser, CN_TOKEN_RBRACKET);
+        expr = make_array_literal(elements, elem_count);
     } else {
         parser->error_count++;
         if (parser->diagnostics) {
@@ -831,6 +874,20 @@ static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t arg
     expr->as.call.callee = callee;
     expr->as.call.arguments = arguments;
     expr->as.call.argument_count = argument_count;
+    return expr;
+}
+
+static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_ARRAY_LITERAL;
+    expr->type = NULL;
+    expr->as.array_literal.elements = elements;
+    expr->as.array_literal.element_count = element_count;
     return expr;
 }
 

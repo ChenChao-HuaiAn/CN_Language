@@ -187,6 +187,46 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             emit(ctx, call_inst);
             return call_inst->dest;
         }
+        case CN_AST_EXPR_ARRAY_LITERAL: {
+            // 数组字面量：调用 cn_rt_array_alloc 分配数组，然后逐个设置元素
+            size_t elem_count = expr->as.array_literal.element_count;
+            
+            // 确定元素类型和大小
+            CnType *elem_type = expr->type->as.array.element_type;
+            size_t elem_size = 8;  // 默认大小，对于整数和指针
+            
+            // 生成对 cn_rt_array_alloc 的调用
+            CnIrInst *alloc_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                    cn_ir_op_symbol("cn_rt_array_alloc", NULL),
+                                                    cn_ir_op_none());
+            alloc_inst->extra_args_count = 2;
+            alloc_inst->extra_args = malloc(2 * sizeof(CnIrOperand));
+            alloc_inst->extra_args[0] = cn_ir_op_imm_int(elem_size, cn_type_new_primitive(CN_TYPE_INT));
+            alloc_inst->extra_args[1] = cn_ir_op_imm_int(elem_count, cn_type_new_primitive(CN_TYPE_INT));
+            
+            int array_reg = alloc_reg(ctx);
+            alloc_inst->dest = cn_ir_op_reg(array_reg, expr->type);
+            emit(ctx, alloc_inst);
+            
+            // 逐个设置数组元素
+            for (size_t i = 0; i < elem_count; i++) {
+                CnIrOperand elem_val = cn_ir_gen_expr(ctx, expr->as.array_literal.elements[i]);
+                
+                // 调用 cn_rt_array_set_element(数组, 索引, &元素, 元素大小)
+                CnIrInst *set_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                      cn_ir_op_symbol("cn_rt_array_set_element", NULL),
+                                                      cn_ir_op_none());
+                set_inst->extra_args_count = 4;
+                set_inst->extra_args = malloc(4 * sizeof(CnIrOperand));
+                set_inst->extra_args[0] = cn_ir_op_reg(array_reg, expr->type);
+                set_inst->extra_args[1] = cn_ir_op_imm_int(i, cn_type_new_primitive(CN_TYPE_INT));
+                set_inst->extra_args[2] = elem_val;
+                set_inst->extra_args[3] = cn_ir_op_imm_int(elem_size, cn_type_new_primitive(CN_TYPE_INT));
+                emit(ctx, set_inst);
+            }
+            
+            return cn_ir_op_reg(array_reg, expr->type);
+        }
         default:
             return cn_ir_op_none();
     }

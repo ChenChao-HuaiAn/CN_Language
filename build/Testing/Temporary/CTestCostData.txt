@@ -1,11 +1,37 @@
-semantic_check_test 0 0
-semantics_symbol_table_test 0 0
-semantics_type_system_test 0 0
-semantics_name_resolution_test 0 0
-integration_semantic_error_test 0 0
+sample_unit_test 1 0.0950932
+support_target_triple_test 1 0.117465
+lexer_function_examples_test 1 0.101775
+lexer_token_test 1 0.0909332
+lexer_error_test 1 0.0884606
+parser_minimal_test 1 0.091793
+parser_comparison_test 1 0.0921126
+parser_loop_test 1 0.0967869
+parser_assign_test 1 0.0889259
+parser_logical_test 1 0.0927879
+parser_break_test 1 0.0943544
+parser_var_test 1 0.0894424
+parser_func_test 1 0.0924141
+parser_hello_world_test 1 0.0927116
+parser_diagnostics_test 1 0.100473
+parser_error_syntax_test 1 0.0977875
+semantic_check_test 1 0.0972948
+semantics_symbol_table_test 1 0.100131
+semantics_type_system_test 1 0.0973195
+semantics_name_resolution_test 1 0.101317
+freestanding_check_test 1 0.0995519
+runtime_memory_test 1 0.107379
+runtime_string_test 1 0.131483
+runtime_array_test 1 0.0906676
+runtime_io_test 1 0.10539
+runtime_math_test 1 0.101766
+runtime_freestanding_test 1 0.104023
+runtime_kernel_io_test 1 0.0927204
+integration_parse_success_test 1 0.108643
+integration_parse_failure_test 1 0.106165
+integration_semantic_error_test 1 0.111255
+integration_full_frontend_test 1 0.107644
+integration_compile_full_test 0 0
+integration_os_test 0 0
 ---
-semantic_check_test
-semantics_symbol_table_test
-semantics_type_system_test
-semantics_name_resolution_test
-integration_semantic_error_test
+integration_compile_full_test
+integration_os_test

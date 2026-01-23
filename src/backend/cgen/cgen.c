@@ -188,6 +188,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
+        // 声明数组寄存器（void* 用于数组指针）
+        for (int i = 0; i < func->next_reg_id; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_ARRAY) {
+                fprintf(ctx->output_file, "  void* r%d;\n", i);
+            }
+        }
+        
         free(reg_types);
     }
 
@@ -228,7 +235,11 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
         fprintf(file, "// CN Language Runtime Function Declarations (Freestanding Mode)\n");
         fprintf(file, "void cn_rt_print_string(const char *str);\n");
         fprintf(file, "void cn_rt_print_int(long long val);\n");
-        fprintf(file, "size_t cn_rt_string_length(const char *str);\n\n");
+        fprintf(file, "size_t cn_rt_string_length(const char *str);\n");
+        fprintf(file, "void* cn_rt_array_alloc(size_t elem_size, size_t count);\n");
+        fprintf(file, "size_t cn_rt_array_length(void *arr);\n");
+        fprintf(file, "int cn_rt_array_set_element(void *arr, size_t index, const void *element, size_t elem_size);\n");
+        fprintf(file, "\n");
     } else {
         // Hosted 模式：包含完整运行时库
         fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");

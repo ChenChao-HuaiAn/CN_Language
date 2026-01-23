@@ -38,6 +38,11 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
     case CN_AST_EXPR_UNARY:
         cn_frontend_ast_expr_free(expr->as.unary.operand);
         break;
+    case CN_AST_EXPR_ARRAY_LITERAL:
+        // 释放数组字面量中的所有元素
+        cn_frontend_ast_expr_array_free(expr->as.array_literal.elements, expr->as.array_literal.element_count);
+        free(expr->as.array_literal.elements);
+        break;
     }
 
     free(expr);

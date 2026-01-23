@@ -125,6 +125,12 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_UNARY:
             resolve_expr_names(scope, expr->as.unary.operand, diagnostics);
             break;
+        case CN_AST_EXPR_ARRAY_LITERAL:
+            // 解析数组字面量中每个元素的名称
+            for (size_t i = 0; i < expr->as.array_literal.element_count; i++) {
+                resolve_expr_names(scope, expr->as.array_literal.elements[i], diagnostics);
+            }
+            break;
         default: break;
     }
 }
@@ -323,6 +329,34 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
+            break;
+        }
+        case CN_AST_EXPR_ARRAY_LITERAL: {
+            // 数组字面量类型推导
+            CnType *element_type = NULL;
+            
+            // 空数组 [] 默认为 int 数组
+            if (expr->as.array_literal.element_count == 0) {
+                element_type = cn_type_new_primitive(CN_TYPE_INT);
+            } else {
+                // 从第一个元素推导类型
+                element_type = infer_expr_type(scope, expr->as.array_literal.elements[0], diagnostics);
+                
+                // 检查所有元素类型一致
+                for (size_t i = 1; i < expr->as.array_literal.element_count; i++) {
+                    CnType *curr_type = infer_expr_type(scope, expr->as.array_literal.elements[i], diagnostics);
+                    if (curr_type && element_type && !cn_type_compatible(curr_type, element_type)) {
+                        cn_support_diag_semantic_error_type_mismatch(
+                            diagnostics, NULL, 0, 0, 
+                            "数组元素类型不一致", "数组元素类型");
+                        element_type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                        break;
+                    }
+                }
+            }
+            
+            // 创建数组类型
+            expr->type = cn_type_new_array(element_type, expr->as.array_literal.element_count);
             break;
         }
         default:

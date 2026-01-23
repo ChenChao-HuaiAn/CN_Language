@@ -1,5 +1,2 @@
-17:semantic_check_test
-18:semantics_symbol_table_test
-19:semantics_type_system_test
-20:semantics_name_resolution_test
-31:integration_semantic_error_test
+33:integration_compile_full_test
+34:integration_os_test
