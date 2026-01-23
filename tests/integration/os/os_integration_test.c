@@ -205,7 +205,80 @@ static bool test_kernel_with_output_validation(void) {
     
     printf("[\u6210\u529f] \u5185\u6838\u8f93\u51fa\u9a8c\u8bc1\u901a\u8fc7\n");
     
-    // \u6e05\u7406\u8f93\u51fa\u6587\u4ef6
+    // 清理输出文件
+    remove(output);
+    
+    return true;
+}
+
+// 测试 Hello Kernel 示例（验收用例）
+static bool test_hello_kernel_example() {
+    printf("\n=== 测试：Hello Kernel 示例（阶段 5 验收） ===\n");
+    
+    const char *source = "kernels/hello_kernel.cn";
+    const char *output = "test_hello_kernel.elf";
+    
+    // 检查源文件是否存在
+    if (!file_exists(source)) {
+        printf("[失败] 找不到内核源文件: %s\n", source);
+        return false;
+    }
+    
+    // 构建内核（使用 boot_hello.c 启动代码）
+    printf("[测试] 编译 Hello Kernel 示例...\n");
+    
+#ifdef _WIN32
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), 
+             "pwsh.exe -ExecutionPolicy Bypass -File scripts/build_kernel.ps1 "
+             "-KernelSource \"%s\" -OutputImage \"%s\" "
+             "-BootCode \"boot/boot_hello.c\" "
+             "-CncPath \"../../../build/src/cnc.exe\"",
+             source, output);
+    
+    int result = system(cmd);
+    if (result != 0) {
+        printf("[失败] Hello Kernel 编译失败\n");
+        return false;
+    }
+#else
+    char cmd[1024];
+    snprintf(cmd, sizeof(cmd), 
+             "./scripts/build_kernel.ps1 '%s' '%s' -BootCode 'boot/boot_hello.c'",
+             source, output);
+    
+    int result = system(cmd);
+    if (!(WIFEXITED(result) && WEXITSTATUS(result) == 0)) {
+        printf("[失败] Hello Kernel 编译失败\n");
+        return false;
+    }
+#endif
+    
+    // 检查输出文件
+    if (!file_exists(output)) {
+        printf("[失败] 未生成内核镜像: %s\n", output);
+        return false;
+    }
+    
+    printf("[成功] Hello Kernel 编译成功\n");
+    
+    // 如果 QEMU 可用，运行并验证输出
+    if (is_qemu_available()) {
+        printf("[测试] 在 QEMU 中验证输出...\n");
+        
+        // 验证关键输出："Hello from CN Kernel"
+        if (!run_qemu_test(output, "Hello from CN Kernel")) {
+            printf("[失败] QEMU 输出验证失败\n");
+            remove(output);
+            return false;
+        }
+        
+        printf("[成功] Hello Kernel 输出验证通过\n");
+    } else {
+        printf("[跳过] QEMU 未安装，跳过输出验证\n");
+    }
+    
+    // 清理输出文件
     remove(output);
     
     return true;
@@ -225,6 +298,11 @@ int main(int argc, char **argv) {
     
     // 测试 2: 带输出验证的内核（需要 QEMU）
     if (!test_kernel_with_output_validation()) {
+        all_passed = false;
+    }
+    
+    // 测试 3: Hello Kernel 示例（阶段 5 验收用例）
+    if (!test_hello_kernel_example()) {
         all_passed = false;
     }
     

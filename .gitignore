@@ -41,4 +41,13 @@
 # 取消忽略"更新文档.md"文件本身
 !/更新文档.md
 
+# 取消忽略".dockerignore"文件本身
+!/dockerignore
+# 取消忽略"docker_run.ps1"文件本身
+!/docker_run.ps1
+# 取消忽略"docker-compose.yml"文件本身
+!/docker-compose.yml
+# 取消忽略"Dockerfile"文件本身
+!/Dockerfile
+
 #############################################################################################################
