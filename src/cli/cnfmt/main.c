@@ -19,6 +19,9 @@ static void print_usage(const char *program_name)
     printf("  -i, --in-place       原地修改文件（默认输出到标准输出）\n");
     printf("  -o <文件>            指定输出文件路径\n");
     printf("  -r, --recursive      递归格式化目录下所有 .cn 文件\n");
+    printf("  --check              仅检查模式：检查文件是否需要格式化，不修改文件\n");
+    printf("                       如果文件需要格式化，返回非零退出码\n");
+    printf("  --verify-idempotence 验证格式化幂等性：检查多次格式化结果是否一致\n");
     printf("  --indent-size <n>    设置缩进空格数（默认 4）\n");
     printf("  --max-line-width <n> 设置最大行宽（默认 100）\n");
     printf("  --no-space-ops       运算符两侧不加空格\n");
@@ -30,6 +33,8 @@ static void print_usage(const char *program_name)
     printf("  %s -i hello.cn               # 原地修改文件\n", program_name);
     printf("  %s -o output.cn hello.cn     # 格式化并保存到指定文件\n", program_name);
     printf("  %s -r -i examples/           # 递归格式化目录下所有 .cn 文件\n", program_name);
+    printf("  %s --check hello.cn          # 检查文件是否需要格式化\n", program_name);
+    printf("  %s --verify-idempotence hello.cn  # 验证格式化幂等性\n", program_name);
 }
 
 // 检查路径是否为目录
@@ -75,6 +80,10 @@ int main(int argc, char **argv)
             options.output_file = argv[++i];
         } else if (strcmp(argv[i], "-r") == 0 || strcmp(argv[i], "--recursive") == 0) {
             recursive = true;
+        } else if (strcmp(argv[i], "--check") == 0) {
+            options.check_only = true;
+        } else if (strcmp(argv[i], "--verify-idempotence") == 0) {
+            options.verify_idempotence = true;
         } else if (strcmp(argv[i], "--indent-size") == 0) {
             if (i + 1 >= argc) {
                 fprintf(stderr, "错误: --indent-size 选项需要指定数值\n");
@@ -100,7 +109,7 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--no-space-comma") == 0) {
             options.config.space_after_comma = false;
         } else if (strcmp(argv[i], "--brace-same-line") == 0) {
-            options.config.brace_on_new_line = false;
+            options.config.brace_on_new_line_func = false;
         } else if (argv[i][0] != '-') {
             if (input_path != NULL) {
                 fprintf(stderr, "错误: 只能指定一个输入文件或目录\n");
@@ -126,7 +135,13 @@ int main(int argc, char **argv)
         return 1;
     }
 
-    if (!options.in_place && !options.output_file) {
+    // check_only 和 verify_idempotence 模式与输出选项不兼容
+    if ((options.check_only || options.verify_idempotence) && (options.in_place || options.output_file)) {
+        fprintf(stderr, "错误: --check 和 --verify-idempotence 模式不能与 -i/-o 选项同时使用\n");
+        return 1;
+    }
+
+    if (!options.in_place && !options.output_file && !options.check_only) {
         options.to_stdout = true;
     }
 

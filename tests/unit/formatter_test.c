@@ -237,9 +237,21 @@ static void test_idempotence()
     // 验证两次格式化结果相同
     assert(strcmp(formatted1, formatted2) == 0);
 
+    // 验证第三次格式化结果仍然相同
+    char *formatted3 = parse_and_format(formatted2);
+    assert(formatted3 != NULL);
+    assert(strcmp(formatted2, formatted3) == 0);
+
+    // 验证第四次格式化结果仍然相同
+    char *formatted4 = parse_and_format(formatted3);
+    assert(formatted4 != NULL);
+    assert(strcmp(formatted3, formatted4) == 0);
+
     free(formatted1);
     free(formatted2);
-    printf("  [通过] 幂等性\n");
+    free(formatted3);
+    free(formatted4);
+    printf("  [通过] 幂等性（验证了4次格式化）\n");
 }
 
 // 测试配置选项

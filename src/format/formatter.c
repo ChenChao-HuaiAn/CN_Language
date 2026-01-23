@@ -55,6 +55,8 @@ void cn_format_options_init_default(CnFormatOptions *options)
     options->in_place = false;
     options->to_stdout = false;
     options->output_file = NULL;
+    options->check_only = false;
+    options->verify_idempotence = false;
     cn_format_config_init_default(&options->config);
 }
 
@@ -610,6 +612,67 @@ bool cn_format_file(const char *input_file, const CnFormatOptions *options)
         return false;
     }
 
+    // 格式化第一次
+    char *formatted1 = cn_format_program_to_string(program, &options->config, NULL);
+    if (!formatted1) {
+        fprintf(stderr, "格式化失败: %s\n", input_file);
+        cn_frontend_ast_program_free(program);
+        cn_frontend_parser_free(parser);
+        cn_support_diagnostics_free(&diagnostics);
+        free(source);
+        return false;
+    }
+
+    // 验证幂等性
+    if (options->verify_idempotence) {
+        // 解析格式化后的结果
+        size_t formatted1_len = strlen(formatted1);
+        CnLexer lexer2;
+        cn_frontend_lexer_init(&lexer2, formatted1, formatted1_len, input_file);
+        CnParser *parser2 = cn_frontend_parser_new(&lexer2);
+        CnAstProgram *program2 = NULL;
+        bool ok2 = cn_frontend_parse_program(parser2, &program2);
+        
+        if (ok2 && program2) {
+            // 再次格式化
+            char *formatted2 = cn_format_program_to_string(program2, &options->config, NULL);
+            if (formatted2) {
+                // 比较两次结果
+                if (strcmp(formatted1, formatted2) != 0) {
+                    fprintf(stderr, "幂等性验证失败: %s\n", input_file);
+                    fprintf(stderr, "多次格式化结果不一致\n");
+                    free(formatted2);
+                    cn_frontend_ast_program_free(program2);
+                    cn_frontend_parser_free(parser2);
+                    free(formatted1);
+                    cn_frontend_ast_program_free(program);
+                    cn_frontend_parser_free(parser);
+                    cn_support_diagnostics_free(&diagnostics);
+                    free(source);
+                    return false;
+                }
+                free(formatted2);
+            }
+            cn_frontend_ast_program_free(program2);
+        }
+        cn_frontend_parser_free(parser2);
+    }
+
+    // 仅检查模式：比较原文件与格式化结果
+    if (options->check_only) {
+        bool needs_formatting = (strcmp(source, formatted1) != 0);
+        free(formatted1);
+        cn_frontend_ast_program_free(program);
+        cn_frontend_parser_free(parser);
+        cn_support_diagnostics_free(&diagnostics);
+        free(source);
+        // 如果需要格式化，返回false（表示检查失败）
+        if (needs_formatting) {
+            fprintf(stderr, "文件需要格式化: %s\n", input_file);
+        }
+        return !needs_formatting;
+    }
+
     // 格式化
     FILE *output = NULL;
     bool success = false;
@@ -628,10 +691,13 @@ bool cn_format_file(const char *input_file, const CnFormatOptions *options)
 
     if (!output) {
         fprintf(stderr, "无法打开输出文件\n");
+        free(formatted1);
         goto cleanup;
     }
 
-    success = cn_format_program_to_file(program, output, &options->config);
+    // 输出格式化结果
+    fputs(formatted1, output);
+    success = true;
 
     if (output != stdout) {
         fclose(output);
@@ -649,6 +715,8 @@ bool cn_format_file(const char *input_file, const CnFormatOptions *options)
             success = false;
         }
     }
+
+    free(formatted1);
 
 cleanup:
     cn_frontend_ast_program_free(program);

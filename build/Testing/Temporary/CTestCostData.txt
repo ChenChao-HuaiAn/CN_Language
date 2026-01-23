@@ -41,5 +41,5 @@ integration_repl_statement_test 4 0
 integration_repl_session_test 4 0.0138677
 repl_command_test 1 0.0895012
 repl_session_test 1 0.0884352
-formatter_test 1 0.0258402
+formatter_test 2 0.0126562
 ---

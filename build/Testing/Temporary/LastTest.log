@@ -1,10 +1,10 @@
-Start testing: Jan 23 21:35 中国标准时间
+Start testing: Jan 23 21:46 中国标准时间
 ----------------------------------------------------------
 34/46 Testing: formatter_test
 34/46 Test: formatter_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/formatter_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"formatter_test" start time: Jan 23 21:35 中国标准时间
+"formatter_test" start time: Jan 23 21:46 中国标准时间
 Output:
 ----------------------------------------------------------
 === CN Language 格式化器单元测试 ===
@@ -26,7 +26,7 @@ Output:
 测试: 缩进一致性...
   [通过] 缩进一致性
 测试: 幂等性...
-  [通过] 幂等性
+  [通过] 幂等性（验证了4次格式化）
 测试: 配置选项...
   [通过] 配置选项
 测试: 括号位置配置...
@@ -41,8 +41,8 @@ Output:
 Test time =   0.03 sec
 ----------------------------------------------------------
 Test Passed.
-"formatter_test" end time: Jan 23 21:35 中国标准时间
+"formatter_test" end time: Jan 23 21:46 中国标准时间
 "formatter_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 23 21:35 中国标准时间
+End testing: Jan 23 21:46 中国标准时间

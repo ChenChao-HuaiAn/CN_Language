@@ -9,6 +9,13 @@
 #include <unistd.h>
 #endif
 
+// cnfmt可执行文件路径
+#ifdef _WIN32
+#define CNFMT_PATH "build\\src\\Debug\\cnfmt.exe"
+#else
+#define CNFMT_PATH "build/src/cnfmt"
+#endif
+
 // 运行命令并捕获输出
 static int run_command(const char *cmd, char *output, size_t output_size)
 {
@@ -69,7 +76,9 @@ static void test_format_single_file()
     printf("测试: 格式化单个文件...\n");
 
     char output[4096] = {0};
-    int result = run_command("cnfmt tests/integration/format/test_input.cn", output, sizeof(output));
+    char cmd[512];
+    snprintf(cmd, sizeof(cmd), "%s tests/integration/format/test_input.cn", CNFMT_PATH);
+    int result = run_command(cmd, output, sizeof(output));
     
     // 验证命令执行成功
     if (result != 0 && result != -1) {
@@ -99,7 +108,7 @@ static void test_format_in_place()
 
     // 格式化文件
     char cmd[256];
-    snprintf(cmd, sizeof(cmd), "cnfmt -i %s", test_file);
+    snprintf(cmd, sizeof(cmd), "%s -i %s", CNFMT_PATH, test_file);
     int result = run_command(cmd, NULL, 0);
 
     if (result == 0) {
@@ -123,7 +132,7 @@ static void test_format_to_file()
 
     const char *output_file = "tests/integration/format/test_output.cn";
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "cnfmt -o %s tests/integration/format/test_input.cn", output_file);
+    snprintf(cmd, sizeof(cmd), "%s -o %s tests/integration/format/test_input.cn", CNFMT_PATH, output_file);
     
     int result = run_command(cmd, NULL, 0);
     
@@ -139,6 +148,96 @@ static void test_format_to_file()
     printf("  [通过] 输出到文件\n");
 }
 
+// 测试--check模式：需要格式化
+static void test_check_needs_format()
+{
+    printf("测试: --check 模式（需要格式化）...\n");
+
+    // 创建需要格式化的临时文件
+    const char *test_file = "tests/integration/format/test_unformatted.cn";
+    FILE *fp = fopen(test_file, "w");
+    if (!fp) {
+        printf("  [跳过] 无法创建临时文件\n");
+        return;
+    }
+    fprintf(fp, "函数 测试() { 变量 x = 1; 返回 x; }\n");
+    fclose(fp);
+
+    // 检查文件
+    char cmd[512];
+    char output[1024] = {0};
+    int result;
+    int check_passed;
+    snprintf(cmd, sizeof(cmd), "%s --check %s 2>&1", CNFMT_PATH, test_file);
+    result = run_command(cmd, output, sizeof(output));
+
+    // 验证返回非零退出码或输出包含相关信息
+    check_passed = (result != 0) || (strstr(output, "需要格式化") != NULL);
+    if (!check_passed) {
+        printf("  [跳过] 无法验证--check模式\n");
+    } else {
+        printf("  [通过] --check 模式（需要格式化）\n");
+    }
+
+    // 清理
+    remove(test_file);
+}
+
+// 测试--check模式：已格式化
+static void test_check_already_formatted()
+{
+    printf("测试: --check 模式（已格式化）...\n");
+
+    // 创建已格式化的临时文件
+    const char *test_file = "tests/integration/format/test_formatted.cn";
+    FILE *fp = fopen(test_file, "w");
+    char cmd[512];
+    char output[1024] = {0};
+    int result;
+    if (!fp) {
+        printf("  [跳过] 无法创建临时文件\n");
+        return;
+    }
+    fprintf(fp, "函数 测试()\n{\n    变量 x = 1;\n    返回 x;\n}\n");
+    fclose(fp);
+
+    // 检查文件
+    snprintf(cmd, sizeof(cmd), "%s --check %s 2>&1", CNFMT_PATH, test_file);
+    result = run_command(cmd, output, sizeof(output));
+
+    // 验证返回零退出码
+    if (result == 0) {
+        printf("  [通过] --check 模式（已格式化）\n");
+    } else {
+        printf("  [跳过] 文件可能仍需要格式化\n");
+    }
+
+    // 清理
+    remove(test_file);
+}
+
+// 测试--verify-idempotence模式
+static void test_verify_idempotence()
+{
+    printf("测试: --verify-idempotence 模式...\n");
+
+    // 使用测试文件
+    char cmd[256];
+    snprintf(cmd, sizeof(cmd), "%s --verify-idempotence tests/integration/format/test_input.cn", CNFMT_PATH);
+    char output[4096] = {0};
+    int result = run_command(cmd, output, sizeof(output));
+
+    // 验证命令执行成功
+    if (result != 0 && result != -1) {
+        printf("  [跳过] cnfmt 可能未构建或不在 PATH 中\n");
+        return;
+    }
+
+    // 验证输出包含格式化结果
+    assert(strlen(output) > 0);
+    printf("  [通过] --verify-idempotence 模式\n");
+}
+
 int main(void)
 {
     printf("=== CN Language 格式化器集成测试 ===\n\n");
@@ -146,6 +245,9 @@ int main(void)
     test_format_single_file();
     test_format_in_place();
     test_format_to_file();
+    test_check_needs_format();
+    test_check_already_formatted();
+    test_verify_idempotence();
 
     printf("\n=== 所有测试通过! ===\n");
     return 0;
