@@ -186,6 +186,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{3229EEBC-0AE6-3CF1-877B-838C4FF3EB7E}</Project>
       <Name>freestanding_check_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.vcxproj">
+      <Project>{79CEF37B-23EB-3912-AF6E-6AF3565967BC}</Project>
+      <Name>integration_array_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_compile_full_test.vcxproj">
       <Project>{007EC1AF-263B-3EC0-AAD9-0465EC5439E3}</Project>
       <Name>integration_compile_full_test</Name>
@@ -221,6 +225,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\lexer_token_test.vcxproj">
       <Project>{7B33C6C9-6595-3143-9FB5-D89483E8256D}</Project>
       <Name>lexer_token_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_array_literal_test.vcxproj">
+      <Project>{90078B6B-4834-3FCE-B10D-0E1718045A52}</Project>
+      <Name>parser_array_literal_test</Name>
     </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_assign_test.vcxproj">
       <Project>{FF19423D-8F66-3F2D-9A4C-89C315C747FC}</Project>
@@ -301,6 +309,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\semantic_check_test.vcxproj">
       <Project>{CF64310D-B141-301F-961D-41DB7B1D25AE}</Project>
       <Name>semantic_check_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\semantics_array_test.vcxproj">
+      <Project>{4BDFF166-9286-3FEF-83E2-C26CF04D371B}</Project>
+      <Name>semantics_array_test</Name>
     </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\semantics_name_resolution_test.vcxproj">
       <Project>{32643925-0482-3CB6-AD0D-36A4EDCC4D23}</Project>

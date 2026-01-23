@@ -26,10 +26,12 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/pars
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/parser_hello_world_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/parser_diagnostics_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/parser_error_syntax_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/parser_array_literal_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/semantic_check_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/semantics_symbol_table_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/semantics_type_system_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/semantics_name_resolution_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/semantics_array_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/freestanding_check_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_memory_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_string_test.dir
@@ -44,6 +46,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFil
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_parse_failure_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_semantic_error_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_full_frontend_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_array_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_compile_full_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_os_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/RUN_TESTS.dir

@@ -1,0 +1,15 @@
+C:\Users\ChenChao\Documents\gitcode\CN_Language\tests\integration\integration_array_test.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\integration_array_test.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\lexer\lexer.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\lexer.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\lexer\token.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\token.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\parser\parser.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\parser.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\ast\ast.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\ast.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\type_system.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\type_system.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\support\diagnostics\diagnostics.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\diagnostics.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\resolution\scope_builder.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\scope_builder.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\semantic_passes.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\semantic_passes.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\checker\freestanding_check.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\freestanding_check.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\symbol_table.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\symbol_table.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\ir\core\ir.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\ir.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\ir\gen\irgen.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\irgen.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\backend\cgen\cgen.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\cgen.obj
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src\support\config\target_triple.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_array_test.dir\Debug\target_triple.obj

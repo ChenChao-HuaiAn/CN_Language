@@ -209,6 +209,19 @@ target_include_directories(parser_error_syntax_test PRIVATE
 add_test(NAME parser_error_syntax_test
          COMMAND parser_error_syntax_test)
 
+# 数组字面量 Parser 测试
+add_executable(parser_array_literal_test
+    parser_array_literal_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_array_literal_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_array_literal_test
+         COMMAND parser_array_literal_test)
+
 add_executable(semantic_check_test
     semantic_check_test.c
     ${SEMANTIC_TEST_DEPENDENCIES}
@@ -242,6 +255,14 @@ add_executable(semantics_name_resolution_test
 )
 target_include_directories(semantics_name_resolution_test PRIVATE ../../include)
 add_test(NAME semantics_name_resolution_test COMMAND semantics_name_resolution_test)
+
+# 数组语义分析测试
+add_executable(semantics_array_test
+    semantics/semantics_array_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_array_test PRIVATE ../../include)
+add_test(NAME semantics_array_test COMMAND semantics_array_test)
 
 # Freestanding 模式检查测试
 add_executable(freestanding_check_test

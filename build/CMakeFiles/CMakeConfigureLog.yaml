@@ -75,7 +75,7 @@ events:
       The output was:
       0
       适用于 .NET Framework MSBuild 版本 17.14.23+b0019275e
-      生成启动时间为 2026/1/23 15:51:14。
+      生成启动时间为 2026/1/23 15:59:00。
       
       节点 1 上的项目“C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\4.2.1\\CompilerIdC\\CompilerIdC.vcxproj”(默认目标)。
       PrepareForBuild:
@@ -104,7 +104,7 @@ events:
           0 个警告
           0 个错误
       
-      已用时间 00:00:01.03
+      已用时间 00:00:00.77
       
       
       Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
@@ -831,8 +831,8 @@ events:
     checks:
       - "Detecting C compiler ABI info"
     directories:
-      source: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-ynk7c0"
-      binary: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-ynk7c0"
+      source: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-5tixfj"
+      binary: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-5tixfj"
     cmakeVariables:
       CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS"
       CMAKE_C_FLAGS_DEBUG: "/Zi /Ob0 /Od /RTC1"
@@ -841,39 +841,39 @@ events:
       variable: "CMAKE_C_ABI_COMPILED"
       cached: true
       stdout: |
-        Change Dir: 'C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-ynk7c0'
+        Change Dir: 'C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-5tixfj'
         
-        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_1be7d.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
+        Run Build Command(s): "C:/Program Files/Microsoft Visual Studio/2022/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_b1e94.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=17.0 /v:n
         适用于 .NET Framework MSBuild 版本 17.14.23+b0019275e
-        生成启动时间为 2026/1/23 15:51:15。
+        生成启动时间为 2026/1/23 15:59:01。
         
-        节点 1 上的项目“C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ynk7c0\\cmTC_1be7d.vcxproj”(默认目标)。
+        节点 1 上的项目“C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-5tixfj\\cmTC_b1e94.vcxproj”(默认目标)。
         PrepareForBuild:
           已启用结构化输出。编译器诊断的格式设置将反映错误层次结构。有关详细信息，请参阅 https://aka.ms/cpp/structured-output。
-          正在创建目录“C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ynk7c0\\Debug\\”。
-          正在创建目录“cmTC_1be7d.dir\\Debug\\cmTC_1be7d.tlog\\”。
+          正在创建目录“C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-5tixfj\\Debug\\”。
+          正在创建目录“cmTC_b1e94.dir\\Debug\\cmTC_b1e94.tlog\\”。
         InitializeBuildStatus:
-          正在创建“cmTC_1be7d.dir\\Debug\\cmTC_1be7d.tlog\\unsuccessfulbuild”，因为已指定“AlwaysCreate”。
-          正在对“cmTC_1be7d.dir\\Debug\\cmTC_1be7d.tlog\\unsuccessfulbuild”执行 Touch 任务。
+          正在创建“cmTC_b1e94.dir\\Debug\\cmTC_b1e94.tlog\\unsuccessfulbuild”，因为已指定“AlwaysCreate”。
+          正在对“cmTC_b1e94.dir\\Debug\\cmTC_b1e94.tlog\\unsuccessfulbuild”执行 Touch 任务。
         ClCompile:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_1be7d.dir\\Debug\\\\" /Fd"cmTC_1be7d.dir\\Debug\\vc143.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\CL.exe /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_b1e94.dir\\Debug\\\\" /Fd"cmTC_b1e94.dir\\Debug\\vc143.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
           用于 x64 的 Microsoft (R) C/C++ 优化编译器 19.38.33145 版
           版权所有(C) Microsoft Corporation。保留所有权利。
-          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_1be7d.dir\\Debug\\\\" /Fd"cmTC_1be7d.dir\\Debug\\vc143.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
+          cl /c /Zi /W1 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_b1e94.dir\\Debug\\\\" /Fd"cmTC_b1e94.dir\\Debug\\vc143.pdb" /external:W1 /TC /errorReport:queue "C:\\Program Files\\CMake\\share\\cmake-4.2\\Modules\\CMakeCCompilerABI.c"
           CMakeCCompilerABI.c
         Link:
-          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ynk7c0\\Debug\\cmTC_1be7d.exe" /INCREMENTAL /ILK:"cmTC_1be7d.dir\\Debug\\cmTC_1be7d.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-ynk7c0/Debug/cmTC_1be7d.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-ynk7c0/Debug/cmTC_1be7d.lib" /MACHINE:X64  /machine:x64 cmTC_1be7d.dir\\Debug\\CMakeCCompilerABI.obj
-          cmTC_1be7d.vcxproj -> C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ynk7c0\\Debug\\cmTC_1be7d.exe
+          C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.38.33130\\bin\\HostX64\\x64\\link.exe /OUT:"C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-5tixfj\\Debug\\cmTC_b1e94.exe" /INCREMENTAL /ILK:"cmTC_b1e94.dir\\Debug\\cmTC_b1e94.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-5tixfj/Debug/cmTC_b1e94.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/CMakeScratch/TryCompile-5tixfj/Debug/cmTC_b1e94.lib" /MACHINE:X64  /machine:x64 cmTC_b1e94.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_b1e94.vcxproj -> C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-5tixfj\\Debug\\cmTC_b1e94.exe
         FinalizeBuildStatus:
-          正在删除文件“cmTC_1be7d.dir\\Debug\\cmTC_1be7d.tlog\\unsuccessfulbuild”。
-          正在对“cmTC_1be7d.dir\\Debug\\cmTC_1be7d.tlog\\cmTC_1be7d.lastbuildstate”执行 Touch 任务。
-        已完成生成项目“C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-ynk7c0\\cmTC_1be7d.vcxproj”(默认目标)的操作。
+          正在删除文件“cmTC_b1e94.dir\\Debug\\cmTC_b1e94.tlog\\unsuccessfulbuild”。
+          正在对“cmTC_b1e94.dir\\Debug\\cmTC_b1e94.tlog\\cmTC_b1e94.lastbuildstate”执行 Touch 任务。
+        已完成生成项目“C:\\Users\\ChenChao\\Documents\\gitcode\\CN_Language\\build\\CMakeFiles\\CMakeScratch\\TryCompile-5tixfj\\cmTC_b1e94.vcxproj”(默认目标)的操作。
         
         已成功生成。
             0 个警告
             0 个错误
         
-        已用时间 00:00:00.76
+        已用时间 00:00:00.73
         
       exitCode: 0
   -

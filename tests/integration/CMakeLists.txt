@@ -62,6 +62,22 @@ add_executable(integration_full_frontend_test
 target_include_directories(integration_full_frontend_test PRIVATE ../../include)
 add_test(NAME integration_full_frontend_test COMMAND integration_full_frontend_test)
 
+# 数组字面量集成测试
+add_executable(integration_array_test
+    integration_array_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/backend/cgen/cgen.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(integration_array_test PRIVATE ../../include)
+add_test(NAME integration_array_test COMMAND integration_array_test)
+
 # 端到端编译流程集成测试
 add_executable(integration_compile_full_test
     compiler/integration_compile_full_test.c
