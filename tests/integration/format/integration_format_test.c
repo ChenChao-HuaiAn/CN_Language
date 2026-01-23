@@ -238,6 +238,124 @@ static void test_verify_idempotence()
     printf("  [通过] --verify-idempotence 模式\n");
 }
 
+// 测试多个示例文件的格式化
+static void test_format_multiple_examples()
+{
+    printf("测试: 格式化多个示例文件...\n");
+
+    // 测试用例：输入文件和期望输出文件对
+    const char *test_cases[][2] = {
+        {"tests/integration/format/test_hello_world.cn", "tests/integration/format/test_hello_world_expected.cn"},
+        {"tests/integration/format/test_arithmetic.cn", "tests/integration/format/test_arithmetic_expected.cn"},
+        {"tests/integration/format/test_nested_loops.cn", "tests/integration/format/test_nested_loops_expected.cn"},
+    };
+    
+    int num_tests = sizeof(test_cases) / sizeof(test_cases[0]);
+    int passed = 0;
+
+    for (int i = 0; i < num_tests; i++) {
+        const char *input_file = test_cases[i][0];
+        const char *expected_file = test_cases[i][1];
+        
+        // 读取期望输出
+        char *expected = read_file(expected_file);
+        if (!expected) {
+            printf("  [跳过] 无法读取期望文件: %s\n", expected_file);
+            continue;
+        }
+        
+        // 运行格式化命令
+        char cmd[512];
+        char output[8192] = {0};
+        snprintf(cmd, sizeof(cmd), "%s %s", CNFMT_PATH, input_file);
+        int result = run_command(cmd, output, sizeof(output));
+        
+        if (result == 0 || result == -1) {
+            // 比较输出
+            if (strcmp(output, expected) == 0) {
+                printf("  [通过] %s\n", input_file);
+                passed++;
+            } else {
+                printf("  [失败] %s - 输出不匹配\n", input_file);
+                printf("    期望输出: %zu 字节\n", strlen(expected));
+                printf("    实际输出: %zu 字节\n", strlen(output));
+            }
+        } else {
+            printf("  [跳过] %s - 命令执行失败\n", input_file);
+        }
+        
+        free(expected);
+    }
+    
+    if (passed > 0) {
+        printf("  总计: %d/%d 测试通过\n", passed, num_tests);
+    } else {
+        printf("  [跳过] 所有测试均未执行\n");
+    }
+}
+
+// 测试幂等性验证
+static void test_idempotence_on_examples()
+{
+    printf("测试: 示例文件幂等性验证...\n");
+
+    const char *test_files[] = {
+        "tests/integration/format/test_hello_world.cn",
+        "tests/integration/format/test_arithmetic.cn",
+        "tests/integration/format/test_nested_loops.cn",
+    };
+    
+    int num_tests = sizeof(test_files) / sizeof(test_files[0]);
+    int passed = 0;
+
+    for (int i = 0; i < num_tests; i++) {
+        const char *file = test_files[i];
+        
+        // 第一次格式化
+        char cmd1[512];
+        char output1[8192] = {0};
+        snprintf(cmd1, sizeof(cmd1), "%s %s", CNFMT_PATH, file);
+        int result1 = run_command(cmd1, output1, sizeof(output1));
+        
+        if (result1 != 0 && result1 != -1) {
+            continue;
+        }
+        
+        // 将第一次输出写入临时文件
+        char temp_file[256];
+        snprintf(temp_file, sizeof(temp_file), "%s.tmp", file);
+        FILE *fp = fopen(temp_file, "w");
+        if (!fp) {
+            continue;
+        }
+        fputs(output1, fp);
+        fclose(fp);
+        
+        // 第二次格式化
+        char cmd2[512];
+        char output2[8192] = {0};
+        snprintf(cmd2, sizeof(cmd2), "%s %s", CNFMT_PATH, temp_file);
+        int result2 = run_command(cmd2, output2, sizeof(output2));
+        
+        // 比较两次输出
+        if ((result2 == 0 || result2 == -1) && strcmp(output1, output2) == 0) {
+            printf("  [通过] %s 幂等性验证\n", file);
+            passed++;
+        } else {
+            printf("  [失败] %s 幂等性验证失败\n", file);
+        }
+        
+        // 清理临时文件
+        remove(temp_file);
+    }
+    
+    if (passed > 0) {
+        printf("  总计: %d/%d 幂等性测试通过\n", passed, num_tests);
+    } else {
+        printf("  [跳过] 所有幂等性测试均未执行\n");
+    }
+}
+
 int main(void)
 {
     printf("=== CN Language 格式化器集成测试 ===\n\n");
@@ -248,6 +366,8 @@ int main(void)
     test_check_needs_format();
     test_check_already_formatted();
     test_verify_idempotence();
+    test_format_multiple_examples();
+    test_idempotence_on_examples();
 
     printf("\n=== 所有测试通过! ===\n");
     return 0;

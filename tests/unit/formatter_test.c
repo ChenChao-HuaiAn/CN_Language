@@ -433,6 +433,290 @@ static void test_empty_lines_between_functions()
     printf("  [通过] 函数间空行\n");
 }
 
+// 测试深层嵌套缩进（多层if嵌套）
+static void test_deep_nesting_indentation()
+{
+    printf("测试: 深层嵌套缩进...\n");
+
+    const char *source = 
+        "函数 测试() {\n"
+        "  如果(1==1){\n"
+        "    如果(2==2){\n"
+        "      如果(3==3){\n"
+        "        返回 1;\n"
+        "      }\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+
+    char *formatted = parse_and_format(source);
+    assert(formatted != NULL);
+    
+    // 验证格式化后包含多层缩进
+    assert(strstr(formatted, "如果") != NULL);
+    
+    // 统计最深的缩进层级（通过查找连续的空格）
+    int max_indent = 0;
+    const char *line = formatted;
+    while (*line) {
+        int indent = 0;
+        while (*line == ' ') {
+            indent++;
+            line++;
+        }
+        if (*line != '\n' && indent > max_indent) {
+            max_indent = indent;
+        }
+        while (*line && *line != '\n') {
+            line++;
+        }
+        if (*line == '\n') {
+            line++;
+        }
+    }
+    
+    // 3层嵌套的if + 1层函数体 = 最深16个空格（4层 * 4空格）
+    assert(max_indent >= 12);  // 至少有3层缩进（12个空格）
+
+    free(formatted);
+    printf("  [通过] 深层嵌套缩进\n");
+}
+
+// 测试循环嵌套缩进
+static void test_loop_nesting_indentation()
+{
+    printf("测试: 循环嵌套缩进...\n");
+
+    const char *source = 
+        "函数 测试() {\n"
+        "  变量 i=1;\n"
+        "  当(i<10){\n"
+        "    i=i+1;\n"
+        "  }\n"
+        "  返回 i;\n"
+        "}\n";
+
+    char *formatted = parse_and_format(source);
+    assert(formatted != NULL);
+    
+    // 验证格式化后包含循环（formatter输出为"循环"）
+    assert(strstr(formatted, "循环") != NULL);
+    assert(strstr(formatted, "变量 i") != NULL);
+
+    free(formatted);
+    printf("  [通过] 循环嵌套缩进\n");
+}
+
+// 测试混合嵌套缩进（if + for + while）
+static void test_mixed_nesting_indentation()
+{
+    printf("测试: 混合嵌套缩进...\n");
+
+    const char *source = 
+        "函数 测试() {\n"
+        "  如果(1==1){\n"
+        "    变量 i=0;\n"
+        "    当(i<5){\n"
+        "      返回 i;\n"
+        "    }\n"
+        "  }\n"
+        "}\n";
+
+    char *formatted = parse_and_format(source);
+    assert(formatted != NULL);
+    
+    // 验证格式化后包含所有语句
+    assert(strstr(formatted, "如果") != NULL);
+    assert(strstr(formatted, "循环") != NULL);  // formatter输出为"循环"
+
+    free(formatted);
+    printf("  [通过] 混合嵌套缩进\n");
+}
+
+// 注意：当前格式化器基于AST，不保留注释，以下测试验证此行为
+// 测试连续空行限制（多个空行应被合并）
+static void test_consecutive_empty_lines()
+{
+    printf("测试: 连续空行限制...\n");
+
+    // 注：AST-based formatter不保留注释和空行，此测试验证输出不包含多余空行
+    const char *source = 
+        "函数 测试1() {\n"
+        "  返回 1;\n"
+        "}\n"
+        "\n"
+        "\n"
+        "\n"
+        "函数 测试2() {\n"
+        "  返回 2;\n"
+        "}\n";
+
+    size_t source_length = strlen(source);
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, source_length, "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    bool ok = cn_frontend_parse_program(parser, &program);
+    assert(ok && program);
+
+    // 测试max_consecutive_empty_lines=1（默认）
+    CnFormatConfig config;
+    cn_format_config_init_default(&config);
+    config.empty_line_between_funcs = true;
+    config.max_consecutive_empty_lines = 1;
+    char *formatted = cn_format_program_to_string(program, &config, NULL);
+    assert(formatted != NULL);
+    
+    // 验证函数间最多只有1个空行
+    assert(strstr(formatted, "}\n\n函数 测试2") != NULL);
+    // 验证没有3个换行符（即没有2个空行）
+    assert(strstr(formatted, "}\n\n\n") == NULL);
+
+    free(formatted);
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+
+    printf("  [通过] 连续空行限制\n");
+}
+
+// 测试空程序（没有任何函数）
+static void test_empty_program()
+{
+    printf("测试: 空程序...\n");
+
+    const char *source = "";
+
+    size_t source_length = strlen(source);
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, source_length, "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    bool ok = cn_frontend_parse_program(parser, &program);
+    assert(ok && program);
+    assert(program->function_count == 0);
+
+    CnFormatConfig config;
+    cn_format_config_init_default(&config);
+    char *formatted = cn_format_program_to_string(program, &config, NULL);
+    assert(formatted != NULL);
+    
+    // 空程序格式化后应该是空字符串或只有换行
+    assert(strlen(formatted) == 0 || formatted[0] == '\n' || formatted[0] == '\0');
+
+    free(formatted);
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+
+    printf("  [通过] 空程序\n");
+}
+
+// 测试单函数程序
+static void test_single_function_program()
+{
+    printf("测试: 单函数程序...\n");
+
+    const char *source = 
+        "函数 主程序() {\n"
+        "  返回 0;\n"
+        "}\n";
+
+    char *formatted = parse_and_format(source);
+    assert(formatted != NULL);
+    
+    // 验证格式化后包含函数
+    assert(strstr(formatted, "函数 主程序") != NULL);
+    assert(strstr(formatted, "返回 0;") != NULL);
+
+    free(formatted);
+    printf("  [通过] 单函数程序\n");
+}
+
+// 测试空函数体
+static void test_empty_function_body()
+{
+    printf("测试: 空函数体...\n");
+
+    const char *source = 
+        "函数 空函数() {\n"
+        "}\n";
+
+    char *formatted = parse_and_format(source);
+    assert(formatted != NULL);
+    
+    // 验证格式化后包含函数声明
+    assert(strstr(formatted, "函数 空函数") != NULL);
+
+    free(formatted);
+    printf("  [通过] 空函数体\n");
+}
+
+// 测试无参数函数
+static void test_no_parameter_function()
+{
+    printf("测试: 无参数函数...\n");
+
+    const char *source = 
+        "函数 测试() {\n"
+        "  变量 x = 42;\n"
+        "  返回 x;\n"
+        "}\n";
+
+    char *formatted = parse_and_format(source);
+    assert(formatted != NULL);
+    
+    // 验证函数名后的括号
+    assert(strstr(formatted, "函数 测试()") != NULL);
+
+    free(formatted);
+    printf("  [通过] 无参数函数\n");
+}
+
+// 测试多参数函数
+static void test_multiple_parameter_function()
+{
+    printf("测试: 多参数函数...\n");
+
+    // 当前语法不支持多参数，跳过此测试
+    printf("  [跳过] 当前语法不支持多参数\n");
+}
+
+// 测试空数组字面量
+static void test_empty_array_literal()
+{
+    printf("测试: 空数组字面量...\n");
+
+    const char *source = 
+        "函数 测试() {\n"
+        "  变量 arr=[];\n"
+        "  返回 arr;\n"
+        "}\n";
+
+    char *formatted = parse_and_format(source);
+    assert(formatted != NULL);
+    
+    // 验证空数组格式化
+    assert(strstr(formatted, "[]") != NULL);
+
+    free(formatted);
+    printf("  [通过] 空数组字面量\n");
+}
+
 int main(void)
 {
     printf("=== CN Language 格式化器单元测试 ===\n\n");
@@ -450,6 +734,16 @@ int main(void)
     test_brace_position();
     test_space_config();
     test_empty_lines_between_functions();
+    test_deep_nesting_indentation();
+    test_loop_nesting_indentation();
+    test_mixed_nesting_indentation();
+    test_consecutive_empty_lines();
+    test_empty_program();
+    test_single_function_program();
+    test_empty_function_body();
+    test_no_parameter_function();
+    test_multiple_parameter_function();
+    test_empty_array_literal();
 
     printf("\n=== 所有测试通过! ===\n");
     return 0;

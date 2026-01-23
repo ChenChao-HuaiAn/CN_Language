@@ -1,5 +1,0 @@
-C:\Users\ChenChao\Documents\gitcode\CN_Language\tests\unit\repl_session_test.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\repl_session_test.dir\Debug\repl_session_test.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\symbol_table.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\repl_session_test.dir\Debug\symbol_table.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\type_system.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\repl_session_test.dir\Debug\type_system.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\resolution\scope_builder.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\repl_session_test.dir\Debug\scope_builder.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\support\diagnostics\diagnostics.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\repl_session_test.dir\Debug\diagnostics.obj

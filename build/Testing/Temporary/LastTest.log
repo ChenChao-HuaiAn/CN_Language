@@ -1,10 +1,10 @@
-Start testing: Jan 23 21:46 中国标准时间
+Start testing: Jan 23 22:17 中国标准时间
 ----------------------------------------------------------
 34/46 Testing: formatter_test
 34/46 Test: formatter_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/formatter_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"formatter_test" start time: Jan 23 21:46 中国标准时间
+"formatter_test" start time: Jan 23 22:17 中国标准时间
 Output:
 ----------------------------------------------------------
 === CN Language 格式化器单元测试 ===
@@ -35,14 +35,34 @@ Output:
   [通过] 空格配置
 测试: 函数间空行...
   [通过] 函数间空行
+测试: 深层嵌套缩进...
+  [通过] 深层嵌套缩进
+测试: 循环嵌套缩进...
+  [通过] 循环嵌套缩进
+测试: 混合嵌套缩进...
+  [通过] 混合嵌套缩进
+测试: 连续空行限制...
+  [通过] 连续空行限制
+测试: 空程序...
+  [通过] 空程序
+测试: 单函数程序...
+  [通过] 单函数程序
+测试: 空函数体...
+  [通过] 空函数体
+测试: 无参数函数...
+  [通过] 无参数函数
+测试: 多参数函数...
+  [跳过] 当前语法不支持多参数
+测试: 空数组字面量...
+  [通过] 空数组字面量
 
 === 所有测试通过! ===
 <end of output>
-Test time =   0.03 sec
+Test time =   0.04 sec
 ----------------------------------------------------------
 Test Passed.
-"formatter_test" end time: Jan 23 21:46 中国标准时间
+"formatter_test" end time: Jan 23 22:17 中国标准时间
 "formatter_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 23 21:46 中国标准时间
+End testing: Jan 23 22:17 中国标准时间

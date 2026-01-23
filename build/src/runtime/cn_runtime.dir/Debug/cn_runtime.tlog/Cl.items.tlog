@@ -1,8 +1,0 @@
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\core\runtime.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\runtime.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\core\freestanding_builtins.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\freestanding_builtins.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\collections\collections.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\collections.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\memory\memory.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\memory.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\memory\freestanding_allocator.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\freestanding_allocator.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\io\io.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\io.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\io\kernel_io.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\kernel_io.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\math\math.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime\cn_runtime.dir\Debug\math.obj

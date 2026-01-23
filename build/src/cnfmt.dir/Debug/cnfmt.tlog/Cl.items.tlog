@@ -1,9 +1,0 @@
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\cli\cnfmt\main.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\main.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\format\formatter.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\formatter.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\lexer\token.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\token.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\lexer\lexer.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\lexer.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\ast\ast.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\ast.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\frontend\parser\parser.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\parser.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\support\diagnostics\diagnostics.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\diagnostics.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\symbol_table.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\symbol_table.obj
-C:\Users\ChenChao\Documents\gitcode\CN_Language\src\semantics\symbols\type_system.c;C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.dir\Debug\type_system.obj
