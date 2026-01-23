@@ -534,6 +534,20 @@ runtime_freestanding_test/fast:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_freestanding_test.dir\build.make tests/unit/CMakeFiles/runtime_freestanding_test.dir/build
 .PHONY : runtime_freestanding_test/fast
 
+# Convenience name for target.
+tests/unit/CMakeFiles/runtime_kernel_io_test.dir/rule:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/runtime_kernel_io_test.dir/rule
+.PHONY : tests/unit/CMakeFiles/runtime_kernel_io_test.dir/rule
+
+# Convenience name for target.
+runtime_kernel_io_test: tests/unit/CMakeFiles/runtime_kernel_io_test.dir/rule
+.PHONY : runtime_kernel_io_test
+
+# fast build rule for target.
+runtime_kernel_io_test/fast:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_kernel_io_test.dir\build.make tests/unit/CMakeFiles/runtime_kernel_io_test.dir/build
+.PHONY : runtime_kernel_io_test/fast
+
 __/__/src/frontend/ast/ast.obj: __/__/src/frontend/ast/ast.c.obj
 .PHONY : __/__/src/frontend/ast/ast.obj
 
@@ -1485,6 +1499,30 @@ runtime/runtime_io_test.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_io_test.dir\build.make tests/unit/CMakeFiles/runtime_io_test.dir/runtime/runtime_io_test.c.s
 .PHONY : runtime/runtime_io_test.c.s
 
+runtime/runtime_kernel_io_test.obj: runtime/runtime_kernel_io_test.c.obj
+.PHONY : runtime/runtime_kernel_io_test.obj
+
+# target to build an object file
+runtime/runtime_kernel_io_test.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_kernel_io_test.dir\build.make tests/unit/CMakeFiles/runtime_kernel_io_test.dir/runtime/runtime_kernel_io_test.c.obj
+.PHONY : runtime/runtime_kernel_io_test.c.obj
+
+runtime/runtime_kernel_io_test.i: runtime/runtime_kernel_io_test.c.i
+.PHONY : runtime/runtime_kernel_io_test.i
+
+# target to preprocess a source file
+runtime/runtime_kernel_io_test.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_kernel_io_test.dir\build.make tests/unit/CMakeFiles/runtime_kernel_io_test.dir/runtime/runtime_kernel_io_test.c.i
+.PHONY : runtime/runtime_kernel_io_test.c.i
+
+runtime/runtime_kernel_io_test.s: runtime/runtime_kernel_io_test.c.s
+.PHONY : runtime/runtime_kernel_io_test.s
+
+# target to generate assembly for a file
+runtime/runtime_kernel_io_test.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_kernel_io_test.dir\build.make tests/unit/CMakeFiles/runtime_kernel_io_test.dir/runtime/runtime_kernel_io_test.c.s
+.PHONY : runtime/runtime_kernel_io_test.c.s
+
 runtime/runtime_math_test.obj: runtime/runtime_math_test.c.obj
 .PHONY : runtime/runtime_math_test.obj
 
@@ -1731,6 +1769,7 @@ help:
 	@echo ... runtime_array_test
 	@echo ... runtime_freestanding_test
 	@echo ... runtime_io_test
+	@echo ... runtime_kernel_io_test
 	@echo ... runtime_math_test
 	@echo ... runtime_memory_test
 	@echo ... runtime_string_test
@@ -1821,6 +1860,9 @@ help:
 	@echo ... runtime/runtime_io_test.obj
 	@echo ... runtime/runtime_io_test.i
 	@echo ... runtime/runtime_io_test.s
+	@echo ... runtime/runtime_kernel_io_test.obj
+	@echo ... runtime/runtime_kernel_io_test.i
+	@echo ... runtime/runtime_kernel_io_test.s
 	@echo ... runtime/runtime_math_test.obj
 	@echo ... runtime/runtime_math_test.i
 	@echo ... runtime/runtime_math_test.s

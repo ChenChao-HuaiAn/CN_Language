@@ -535,6 +535,19 @@ runtime_freestanding_test/fast:
 .PHONY : runtime_freestanding_test/fast
 
 #=============================================================================
+# Target rules for targets named runtime_kernel_io_test
+
+# Build rule for target.
+runtime_kernel_io_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 runtime_kernel_io_test
+.PHONY : runtime_kernel_io_test
+
+# fast build rule for target.
+runtime_kernel_io_test/fast:
+	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_kernel_io_test.dir\build.make tests/unit/CMakeFiles/runtime_kernel_io_test.dir/build
+.PHONY : runtime_kernel_io_test/fast
+
+#=============================================================================
 # Target rules for targets named integration_parse_success_test
 
 # Build rule for target.
@@ -636,6 +649,7 @@ help:
 	@echo ... runtime_array_test
 	@echo ... runtime_freestanding_test
 	@echo ... runtime_io_test
+	@echo ... runtime_kernel_io_test
 	@echo ... runtime_math_test
 	@echo ... runtime_memory_test
 	@echo ... runtime_string_test

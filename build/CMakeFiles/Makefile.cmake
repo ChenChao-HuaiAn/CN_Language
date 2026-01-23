@@ -91,6 +91,7 @@ set(CMAKE_DEPEND_INFO_FILES
   "tests/unit/CMakeFiles/runtime_io_test.dir/DependInfo.cmake"
   "tests/unit/CMakeFiles/runtime_math_test.dir/DependInfo.cmake"
   "tests/unit/CMakeFiles/runtime_freestanding_test.dir/DependInfo.cmake"
+  "tests/unit/CMakeFiles/runtime_kernel_io_test.dir/DependInfo.cmake"
   "tests/integration/CMakeFiles/integration_parse_success_test.dir/DependInfo.cmake"
   "tests/integration/CMakeFiles/integration_parse_failure_test.dir/DependInfo.cmake"
   "tests/integration/CMakeFiles/integration_semantic_error_test.dir/DependInfo.cmake"

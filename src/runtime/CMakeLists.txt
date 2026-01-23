@@ -17,6 +17,7 @@ set(RUNTIME_MEMORY_SOURCES
 
 set(RUNTIME_IO_SOURCES
     io/io.c
+    io/kernel_io.c
 )
 
 set(RUNTIME_MATH_SOURCES

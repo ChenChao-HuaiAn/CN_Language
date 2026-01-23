@@ -7,6 +7,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/cn_runtime.dir/core/runtime.c.obj.d"
   "CMakeFiles/cn_runtime.dir/io/io.c.obj"
   "CMakeFiles/cn_runtime.dir/io/io.c.obj.d"
+  "CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj"
+  "CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj.d"
   "CMakeFiles/cn_runtime.dir/math/math.c.obj"
   "CMakeFiles/cn_runtime.dir/math/math.c.obj.d"
   "CMakeFiles/cn_runtime.dir/memory/freestanding_allocator.c.obj"

@@ -274,3 +274,10 @@ target_link_libraries(runtime_freestanding_test PRIVATE cn_runtime)
 target_include_directories(runtime_freestanding_test PRIVATE ../../include)
 target_compile_definitions(runtime_freestanding_test PRIVATE CN_FREESTANDING)
 add_test(NAME runtime_freestanding_test COMMAND runtime_freestanding_test)
+
+# 内核 I/O 回调测试
+add_executable(runtime_kernel_io_test runtime/runtime_kernel_io_test.c)
+target_link_libraries(runtime_kernel_io_test PRIVATE cn_runtime)
+target_include_directories(runtime_kernel_io_test PRIVATE ../../include)
+target_compile_definitions(runtime_kernel_io_test PRIVATE CN_FREESTANDING)
+add_test(NAME runtime_kernel_io_test COMMAND runtime_kernel_io_test)

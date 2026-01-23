@@ -114,6 +114,18 @@ src/runtime/CMakeFiles/cn_runtime.dir/io/io.c.obj: C:/Users/ChenChao/Documents/g
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/io.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/memory.h
 
+src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/io/kernel_io.c \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_secapi.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
+  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/kernel_io.h
+
 src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/math/math.c \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/_mingw_mac.h \
@@ -214,6 +226,8 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdint.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wstdlib.h:
 
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/kernel_io.h:
+
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/crtdefs.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/mm_malloc.h:
@@ -255,6 +269,8 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/core/freestanding_bu
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/core/runtime.c:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/io/io.c:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/io/kernel_io.c:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/include/math.h:
 

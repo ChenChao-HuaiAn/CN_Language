@@ -56,3 +56,5 @@ add_test(runtime_math_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/buil
 set_tests_properties(runtime_math_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;269;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
 add_test(runtime_freestanding_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_freestanding_test.exe")
 set_tests_properties(runtime_freestanding_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;276;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")
+add_test(runtime_kernel_io_test "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_kernel_io_test.exe")
+set_tests_properties(runtime_kernel_io_test PROPERTIES  _BACKTRACE_TRIPLES "C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;283;add_test;C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/unit/CMakeLists.txt;0;")

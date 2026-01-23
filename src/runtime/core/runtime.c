@@ -12,6 +12,12 @@
  * 提供 CN Language 程序运行所需的基础函数
  */
 
+// 前向声明内核 I/O 内部函数（在 kernel_io.c 中实现）
+void cn_rt_kernel_io_puts(const char* str);
+void cn_rt_kernel_io_print_int(long long val);
+void cn_rt_kernel_io_putchar(char c);
+int cn_rt_kernel_io_is_registered(void);
+
 // 全局运行时状态
 static CnRuntimeState g_rt_state;
 
@@ -45,26 +51,70 @@ void cn_rt_exit(void) {
 }
 
 // =============================================================================
-// 基础打印函数实现（仅在宿主模式或未禁用时可用）
+// 基础打印函数实现
 // =============================================================================
 #ifndef CN_RT_NO_PRINT
+
 void cn_rt_print_int(long long val) {
-    printf("%lld", val);
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：使用内核 I/O 回调
+    cn_rt_kernel_io_print_int(val);
+#else
+    // 宿主模式：检查是否注册了内核 I/O 回调
+    // 如果注册了，使用回调；否则使用标准 printf
+    if (cn_rt_kernel_io_is_registered()) {
+        cn_rt_kernel_io_print_int(val);
+    } else {
+        printf("%lld", val);
+    }
+#endif
 }
 
 void cn_rt_print_bool(int val) {
-    printf(val ? "真" : "假");
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：使用内核 I/O 回调
+    cn_rt_kernel_io_puts(val ? "真" : "假");
+#else
+    // 宿主模式：检查是否注册了内核 I/O 回调
+    if (cn_rt_kernel_io_is_registered()) {
+        cn_rt_kernel_io_puts(val ? "真" : "假");
+    } else {
+        printf(val ? "真" : "假");
+    }
+#endif
 }
 
 void cn_rt_print_string(const char *str) {
-    if (str != NULL) {
+    if (str == NULL) {
+        return;
+    }
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：使用内核 I/O 回调
+    cn_rt_kernel_io_puts(str);
+#else
+    // 宿主模式：检查是否注册了内核 I/O 回调
+    if (cn_rt_kernel_io_is_registered()) {
+        cn_rt_kernel_io_puts(str);
+    } else {
         printf("%s", str);
     }
+#endif
 }
 
 void cn_rt_print_newline() {
-    printf("\n");
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：使用内核 I/O 回调
+    cn_rt_kernel_io_putchar('\n');
+#else
+    // 宿主模式：检查是否注册了内核 I/O 回调
+    if (cn_rt_kernel_io_is_registered()) {
+        cn_rt_kernel_io_putchar('\n');
+    } else {
+        printf("\n");
+    }
+#endif
 }
+
 #endif /* CN_RT_NO_PRINT */
 
 // =============================================================================

@@ -280,6 +280,30 @@ io/io.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/io/io.c.s
 .PHONY : io/io.c.s
 
+io/kernel_io.obj: io/kernel_io.c.obj
+.PHONY : io/kernel_io.obj
+
+# target to build an object file
+io/kernel_io.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj
+.PHONY : io/kernel_io.c.obj
+
+io/kernel_io.i: io/kernel_io.c.i
+.PHONY : io/kernel_io.i
+
+# target to preprocess a source file
+io/kernel_io.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.i
+.PHONY : io/kernel_io.c.i
+
+io/kernel_io.s: io/kernel_io.c.s
+.PHONY : io/kernel_io.s
+
+# target to generate assembly for a file
+io/kernel_io.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.s
+.PHONY : io/kernel_io.c.s
+
 math/math.obj: math/math.c.obj
 .PHONY : math/math.obj
 
@@ -378,6 +402,9 @@ help:
 	@echo ... io/io.obj
 	@echo ... io/io.i
 	@echo ... io/io.s
+	@echo ... io/kernel_io.obj
+	@echo ... io/kernel_io.i
+	@echo ... io/kernel_io.s
 	@echo ... math/math.obj
 	@echo ... math/math.i
 	@echo ... math/math.s

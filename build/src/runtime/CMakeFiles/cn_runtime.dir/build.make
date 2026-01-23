@@ -161,11 +161,26 @@ src/runtime/CMakeFiles/cn_runtime.dir/io/io.c.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/cn_runtime.dir/io/io.c.s"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\io\io.c -o CMakeFiles\cn_runtime.dir\io\io.c.s
 
+src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj: src/runtime/CMakeFiles/cn_runtime.dir/flags.make
+src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj: src/runtime/CMakeFiles/cn_runtime.dir/includes_C.rsp
+src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/io/kernel_io.c
+src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj: src/runtime/CMakeFiles/cn_runtime.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj -MF CMakeFiles\cn_runtime.dir\io\kernel_io.c.obj.d -o CMakeFiles\cn_runtime.dir\io\kernel_io.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\io\kernel_io.c
+
+src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing C source to CMakeFiles/cn_runtime.dir/io/kernel_io.c.i"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -E C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\io\kernel_io.c > CMakeFiles\cn_runtime.dir\io\kernel_io.c.i
+
+src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling C source to assembly CMakeFiles/cn_runtime.dir/io/kernel_io.c.s"
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -S C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\io\kernel_io.c -o CMakeFiles\cn_runtime.dir\io\kernel_io.c.s
+
 src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj: src/runtime/CMakeFiles/cn_runtime.dir/flags.make
 src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj: src/runtime/CMakeFiles/cn_runtime.dir/includes_C.rsp
 src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj: C:/Users/ChenChao/Documents/gitcode/CN_Language/src/runtime/math/math.c
 src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj: src/runtime/CMakeFiles/cn_runtime.dir/compiler_depend.ts
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_7) "Building C object src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Building C object src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime && C:\Users\ChenChao\Documents\gcc-15.2.0\bin\gcc.exe $(C_DEFINES) $(C_INCLUDES) $(C_FLAGS) -MD -MT src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj -MF CMakeFiles\cn_runtime.dir\math\math.c.obj.d -o CMakeFiles\cn_runtime.dir\math\math.c.obj -c C:\Users\ChenChao\Documents\gitcode\CN_Language\src\runtime\math\math.c
 
 src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.i: cmake_force
@@ -184,6 +199,7 @@ cn_runtime_OBJECTS = \
 "CMakeFiles/cn_runtime.dir/memory/memory.c.obj" \
 "CMakeFiles/cn_runtime.dir/memory/freestanding_allocator.c.obj" \
 "CMakeFiles/cn_runtime.dir/io/io.c.obj" \
+"CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj" \
 "CMakeFiles/cn_runtime.dir/math/math.c.obj"
 
 # External object files for target cn_runtime
@@ -195,10 +211,11 @@ src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/collections/c
 src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/memory/memory.c.obj
 src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/memory/freestanding_allocator.c.obj
 src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/io/io.c.obj
+src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/io/kernel_io.c.obj
 src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.obj
 src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/build.make
 src/runtime/libcn_runtime.a: src/runtime/CMakeFiles/cn_runtime.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_8) "Linking C static library libcn_runtime.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=$(CMAKE_PROGRESS_9) "Linking C static library libcn_runtime.a"
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime && $(CMAKE_COMMAND) -P CMakeFiles\cn_runtime.dir\cmake_clean_target.cmake
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\runtime && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles\cn_runtime.dir\link.txt --verbose=$(VERBOSE)
 
