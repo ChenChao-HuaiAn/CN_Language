@@ -109,11 +109,29 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 赋值：先生成右值，再 STORE 到左值地址
             CnIrOperand value = cn_ir_gen_expr(ctx, expr->as.assign.value);
             CnAstExpr *target = expr->as.assign.target;
+            
             if (target->kind == CN_AST_EXPR_IDENTIFIER) {
+                // 普通变量赋值
                 char *name = copy_name(target->as.identifier.name, target->as.identifier.name_length);
                 CnIrOperand addr = cn_ir_op_symbol(name, target->type);
                 free(name);
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
+            } else if (target->kind == CN_AST_EXPR_INDEX) {
+                // 数组索引赋值 arr[index] = value
+                CnIrOperand array_op = cn_ir_gen_expr(ctx, target->as.index.array);
+                CnIrOperand index_op = cn_ir_gen_expr(ctx, target->as.index.index);
+                
+                // 调用 cn_rt_array_set_element(数组, 索引, &value, 元素大小)
+                CnIrInst *set_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                      cn_ir_op_symbol("cn_rt_array_set_element", NULL),
+                                                      cn_ir_op_none());
+                set_inst->extra_args_count = 4;
+                set_inst->extra_args = malloc(4 * sizeof(CnIrOperand));
+                set_inst->extra_args[0] = array_op;
+                set_inst->extra_args[1] = index_op;
+                set_inst->extra_args[2] = value;  // 直接传递值
+                set_inst->extra_args[3] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
+                emit(ctx, set_inst);
             }
             return value;
         }

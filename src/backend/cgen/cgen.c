@@ -30,12 +30,19 @@ static const char *get_c_type_string(CnType *type) {
             return buffer;
         }
         case CN_TYPE_VOID: return "void";
+        case CN_TYPE_ARRAY: return "void*";  // 数组在C后端用void*表示
         default: return "int";
     }
 }
 
 static const char *get_c_function_name(const char *name) {
     if (!name) return "unnamed_func";
+    
+    // 如果是运行时函数（以cn_rt_开头），直接返回
+    if (strncmp(name, "cn_rt_", 6) == 0) {
+        return name;
+    }
+    
     // 使用 hex 编码匹配 UTF-8 标识符，避免编译器执行字符集干扰
     // 打印: \xe6\x89\x93\xe5\x8d\xb0
     if (strcmp(name, "\xe6\x89\x93\xe5\x8d\xb0") == 0) return "cn_rt_print_string";
@@ -107,15 +114,79 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
         case CN_IR_INST_BRANCH: fprintf(ctx->output_file, "  if ("); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ") goto %s; else goto %s;\n", inst->dest.as.label->name, inst->src2.as.label->name); break;
         case CN_IR_INST_CALL:
             fprintf(ctx->output_file, "  ");
-            if (inst->dest.kind != CN_IR_OP_NONE) { print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); }
-            if (inst->src1.kind == CN_IR_OP_SYMBOL) {
+            
+            // 特殊处理 cn_rt_array_get_element：需要解引用返回的指针
+            if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_array_get_element") == 0 &&
+                inst->extra_args_count >= 3 &&
+                inst->dest.kind != CN_IR_OP_NONE) {
+                
+                // 生成: dest = *(type*)cn_rt_array_get_element(arr, idx, size)
+                print_operand(ctx, inst->dest);
+                fprintf(ctx->output_file, " = *(%s*)", get_c_type_string(inst->dest.type));
                 fprintf(ctx->output_file, "%s(", get_c_function_name(inst->src1.as.sym_name));
+                
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            } else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_array_set_element") == 0 &&
+                inst->extra_args_count >= 3) {
+                // 特殊处理 cn_rt_array_set_element：第3个参数需要是指针
+                
+                fprintf(ctx->output_file, "%s(", get_c_function_name(inst->src1.as.sym_name));
+                
+                // 第1个参数：数组指针
+                print_operand(ctx, inst->extra_args[0]);
+                fprintf(ctx->output_file, ", ");
+                
+                // 第2个参数：索引
+                print_operand(ctx, inst->extra_args[1]);
+                fprintf(ctx->output_file, ", ");
+                
+                // 第3个参数：元素值 - 需要取地址
+                CnIrOperand elem = inst->extra_args[2];
+                if (elem.kind == CN_IR_OP_IMM_INT || elem.kind == CN_IR_OP_REG) {
+                    // 生成临时变量
+                    static int temp_var_counter = 0;
+                    fprintf(ctx->output_file, "({");
+                    fprintf(ctx->output_file, "long long _tmp_%d = ", temp_var_counter);
+                    print_operand(ctx, elem);
+                    fprintf(ctx->output_file, "; &_tmp_%d;", temp_var_counter);
+                    fprintf(ctx->output_file, "})");
+                    temp_var_counter++;
+                } else {
+                    // 已经是符号类型，直接取地址
+                    fprintf(ctx->output_file, "&");
+                    print_operand(ctx, elem);
+                }
+                
+                // 第4个参数：元素大小
+                if (inst->extra_args_count >= 4) {
+                    fprintf(ctx->output_file, ", ");
+                    print_operand(ctx, inst->extra_args[3]);
+                }
+                
+                fprintf(ctx->output_file, ");\n");
             } else {
-                print_operand(ctx, inst->src1);
-                fprintf(ctx->output_file, "(");
+                // 普通函数调用
+                if (inst->dest.kind != CN_IR_OP_NONE) { print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); }
+                
+                if (inst->src1.kind == CN_IR_OP_SYMBOL) {
+                    fprintf(ctx->output_file, "%s(", get_c_function_name(inst->src1.as.sym_name));
+                } else {
+                    print_operand(ctx, inst->src1);
+                    fprintf(ctx->output_file, "(");
+                }
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
             }
-            for (size_t i = 0; i < inst->extra_args_count; i++) { print_operand(ctx, inst->extra_args[i]); if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); }
-            fprintf(ctx->output_file, ");\n"); break;
+            break;
         case CN_IR_INST_MOV: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         default: fprintf(ctx->output_file, "  /* Unsupported inst %d */\n", inst->kind); break;
     }

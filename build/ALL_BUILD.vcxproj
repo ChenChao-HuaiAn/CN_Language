@@ -226,6 +226,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{7B33C6C9-6595-3143-9FB5-D89483E8256D}</Project>
       <Name>lexer_token_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_array_assign_test.vcxproj">
+      <Project>{94B5307E-2602-3051-B874-F1959D982E4D}</Project>
+      <Name>parser_array_assign_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\parser_array_literal_test.vcxproj">
       <Project>{90078B6B-4834-3FCE-B10D-0E1718045A52}</Project>
       <Name>parser_array_literal_test</Name>

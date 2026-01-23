@@ -222,6 +222,19 @@ target_include_directories(parser_array_literal_test PRIVATE
 add_test(NAME parser_array_literal_test
          COMMAND parser_array_literal_test)
 
+# 数组索引赋值 Parser 测试
+add_executable(parser_array_assign_test
+    parser_array_assign_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_array_assign_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_array_assign_test
+         COMMAND parser_array_assign_test)
+
 add_executable(semantic_check_test
     semantic_check_test.c
     ${SEMANTIC_TEST_DEPENDENCIES}

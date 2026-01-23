@@ -279,8 +279,23 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_ASSIGN: {
+            // 赋值：先生成右值，再 STORE 到左值地址
             CnType *target = infer_expr_type(scope, expr->as.assign.target, diagnostics);
             CnType *val = infer_expr_type(scope, expr->as.assign.value, diagnostics);
+            
+            // 检查左值是否合法：只能是标识符或索引访问
+            CnAstExpr *target_expr = expr->as.assign.target;
+            if (target_expr->kind != CN_AST_EXPR_IDENTIFIER && 
+                target_expr->kind != CN_AST_EXPR_INDEX) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
+                    NULL, 0, 0,
+                    "语义错误：赋值目标必须是变量或数组索引访问");
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
+            
             if (target && val && cn_type_compatible(val, target)) {
                 expr->type = target;
             } else {
