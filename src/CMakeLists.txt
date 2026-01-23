@@ -74,4 +74,21 @@ target_include_directories(cnfmt PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
+# 静态检查工具可执行程序
+add_executable(cncheck
+    cli/cncheck/main.c
+    analysis/checker/static_check.c
+    frontend/lexer/token.c
+    frontend/lexer/lexer.c
+    frontend/ast/ast.c
+    frontend/parser/parser.c
+    support/diagnostics/diagnostics.c
+    semantics/symbols/symbol_table.c
+    semantics/symbols/type_system.c
+)
+
+target_include_directories(cncheck PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 # 后续可在此处链接各模块静态库（frontend/semantics/ir/backend/support 等）

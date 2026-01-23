@@ -151,3 +151,12 @@ target_include_directories(integration_format_test PRIVATE ../../include)
 add_test(NAME integration_format_test 
          COMMAND integration_format_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+
+# 静态检查工具集成测试
+add_executable(integration_check_test
+    check/integration_check_test.c
+)
+target_include_directories(integration_check_test PRIVATE ../../include)
+add_test(NAME integration_check_test 
+         COMMAND integration_check_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})

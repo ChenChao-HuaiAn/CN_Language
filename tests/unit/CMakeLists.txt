@@ -360,3 +360,23 @@ target_include_directories(formatter_test PRIVATE
 
 add_test(NAME formatter_test
          COMMAND formatter_test)
+
+# 静态检查工具单元测试
+add_executable(static_check_test
+    static_check_test.c
+    ../../src/analysis/checker/static_check.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/ast/ast.c
+    ../../src/frontend/parser/parser.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/semantics/symbols/type_system.c
+)
+
+target_include_directories(static_check_test PRIVATE
+    ../../include
+)
+
+add_test(NAME static_check_test
+         COMMAND static_check_test)
