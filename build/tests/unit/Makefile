@@ -451,6 +451,20 @@ semantics_name_resolution_test/fast:
 .PHONY : semantics_name_resolution_test/fast
 
 # Convenience name for target.
+tests/unit/CMakeFiles/freestanding_check_test.dir/rule:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/freestanding_check_test.dir/rule
+.PHONY : tests/unit/CMakeFiles/freestanding_check_test.dir/rule
+
+# Convenience name for target.
+freestanding_check_test: tests/unit/CMakeFiles/freestanding_check_test.dir/rule
+.PHONY : freestanding_check_test
+
+# fast build rule for target.
+freestanding_check_test/fast:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/build
+.PHONY : freestanding_check_test/fast
+
+# Convenience name for target.
 tests/unit/CMakeFiles/runtime_memory_test.dir/rule:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/runtime_memory_test.dir/rule
 .PHONY : tests/unit/CMakeFiles/runtime_memory_test.dir/rule
@@ -568,6 +582,7 @@ __/__/src/frontend/ast/ast.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/ast/ast.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/ast/ast.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/ast/ast.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/ast/ast.c.obj
 .PHONY : __/__/src/frontend/ast/ast.c.obj
 
 __/__/src/frontend/ast/ast.i: __/__/src/frontend/ast/ast.c.i
@@ -590,6 +605,7 @@ __/__/src/frontend/ast/ast.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/ast/ast.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/ast/ast.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/ast/ast.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/ast/ast.c.i
 .PHONY : __/__/src/frontend/ast/ast.c.i
 
 __/__/src/frontend/ast/ast.s: __/__/src/frontend/ast/ast.c.s
@@ -612,6 +628,7 @@ __/__/src/frontend/ast/ast.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/ast/ast.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/ast/ast.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/ast/ast.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/ast/ast.c.s
 .PHONY : __/__/src/frontend/ast/ast.c.s
 
 __/__/src/frontend/lexer/lexer.obj: __/__/src/frontend/lexer/lexer.c.obj
@@ -637,6 +654,7 @@ __/__/src/frontend/lexer/lexer.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/lexer/lexer.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/lexer/lexer.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/lexer/lexer.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/lexer/lexer.c.obj
 .PHONY : __/__/src/frontend/lexer/lexer.c.obj
 
 __/__/src/frontend/lexer/lexer.i: __/__/src/frontend/lexer/lexer.c.i
@@ -662,6 +680,7 @@ __/__/src/frontend/lexer/lexer.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/lexer/lexer.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/lexer/lexer.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/lexer/lexer.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/lexer/lexer.c.i
 .PHONY : __/__/src/frontend/lexer/lexer.c.i
 
 __/__/src/frontend/lexer/lexer.s: __/__/src/frontend/lexer/lexer.c.s
@@ -687,6 +706,7 @@ __/__/src/frontend/lexer/lexer.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/lexer/lexer.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/lexer/lexer.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/lexer/lexer.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/lexer/lexer.c.s
 .PHONY : __/__/src/frontend/lexer/lexer.c.s
 
 __/__/src/frontend/lexer/token.obj: __/__/src/frontend/lexer/token.c.obj
@@ -712,6 +732,7 @@ __/__/src/frontend/lexer/token.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/lexer/token.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/lexer/token.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/lexer/token.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/lexer/token.c.obj
 .PHONY : __/__/src/frontend/lexer/token.c.obj
 
 __/__/src/frontend/lexer/token.i: __/__/src/frontend/lexer/token.c.i
@@ -737,6 +758,7 @@ __/__/src/frontend/lexer/token.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/lexer/token.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/lexer/token.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/lexer/token.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/lexer/token.c.i
 .PHONY : __/__/src/frontend/lexer/token.c.i
 
 __/__/src/frontend/lexer/token.s: __/__/src/frontend/lexer/token.c.s
@@ -762,6 +784,7 @@ __/__/src/frontend/lexer/token.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/lexer/token.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/lexer/token.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/lexer/token.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/lexer/token.c.s
 .PHONY : __/__/src/frontend/lexer/token.c.s
 
 __/__/src/frontend/parser/parser.obj: __/__/src/frontend/parser/parser.c.obj
@@ -784,6 +807,7 @@ __/__/src/frontend/parser/parser.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/parser/parser.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/parser/parser.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/parser/parser.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/parser/parser.c.obj
 .PHONY : __/__/src/frontend/parser/parser.c.obj
 
 __/__/src/frontend/parser/parser.i: __/__/src/frontend/parser/parser.c.i
@@ -806,6 +830,7 @@ __/__/src/frontend/parser/parser.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/parser/parser.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/parser/parser.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/parser/parser.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/parser/parser.c.i
 .PHONY : __/__/src/frontend/parser/parser.c.i
 
 __/__/src/frontend/parser/parser.s: __/__/src/frontend/parser/parser.c.s
@@ -828,6 +853,7 @@ __/__/src/frontend/parser/parser.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/frontend/parser/parser.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/frontend/parser/parser.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/frontend/parser/parser.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/frontend/parser/parser.c.s
 .PHONY : __/__/src/frontend/parser/parser.c.s
 
 __/__/src/semantics/checker/freestanding_check.obj: __/__/src/semantics/checker/freestanding_check.c.obj
@@ -839,6 +865,7 @@ __/__/src/semantics/checker/freestanding_check.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/checker/freestanding_check.c.obj
 .PHONY : __/__/src/semantics/checker/freestanding_check.c.obj
 
 __/__/src/semantics/checker/freestanding_check.i: __/__/src/semantics/checker/freestanding_check.c.i
@@ -850,6 +877,7 @@ __/__/src/semantics/checker/freestanding_check.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/checker/freestanding_check.c.i
 .PHONY : __/__/src/semantics/checker/freestanding_check.c.i
 
 __/__/src/semantics/checker/freestanding_check.s: __/__/src/semantics/checker/freestanding_check.c.s
@@ -861,6 +889,7 @@ __/__/src/semantics/checker/freestanding_check.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/checker/freestanding_check.c.s
 .PHONY : __/__/src/semantics/checker/freestanding_check.c.s
 
 __/__/src/semantics/checker/semantic_passes.obj: __/__/src/semantics/checker/semantic_passes.c.obj
@@ -872,6 +901,7 @@ __/__/src/semantics/checker/semantic_passes.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/checker/semantic_passes.c.obj
 .PHONY : __/__/src/semantics/checker/semantic_passes.c.obj
 
 __/__/src/semantics/checker/semantic_passes.i: __/__/src/semantics/checker/semantic_passes.c.i
@@ -883,6 +913,7 @@ __/__/src/semantics/checker/semantic_passes.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/semantic_passes.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/semantic_passes.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/semantic_passes.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/checker/semantic_passes.c.i
 .PHONY : __/__/src/semantics/checker/semantic_passes.c.i
 
 __/__/src/semantics/checker/semantic_passes.s: __/__/src/semantics/checker/semantic_passes.c.s
@@ -894,6 +925,7 @@ __/__/src/semantics/checker/semantic_passes.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/checker/semantic_passes.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/checker/semantic_passes.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/checker/semantic_passes.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/checker/semantic_passes.c.s
 .PHONY : __/__/src/semantics/checker/semantic_passes.c.s
 
 __/__/src/semantics/resolution/scope_builder.obj: __/__/src/semantics/resolution/scope_builder.c.obj
@@ -905,6 +937,7 @@ __/__/src/semantics/resolution/scope_builder.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/resolution/scope_builder.c.obj
 .PHONY : __/__/src/semantics/resolution/scope_builder.c.obj
 
 __/__/src/semantics/resolution/scope_builder.i: __/__/src/semantics/resolution/scope_builder.c.i
@@ -916,6 +949,7 @@ __/__/src/semantics/resolution/scope_builder.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/resolution/scope_builder.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/resolution/scope_builder.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/resolution/scope_builder.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/resolution/scope_builder.c.i
 .PHONY : __/__/src/semantics/resolution/scope_builder.c.i
 
 __/__/src/semantics/resolution/scope_builder.s: __/__/src/semantics/resolution/scope_builder.c.s
@@ -927,6 +961,7 @@ __/__/src/semantics/resolution/scope_builder.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/resolution/scope_builder.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/resolution/scope_builder.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/resolution/scope_builder.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/resolution/scope_builder.c.s
 .PHONY : __/__/src/semantics/resolution/scope_builder.c.s
 
 __/__/src/semantics/symbols/symbol_table.obj: __/__/src/semantics/symbols/symbol_table.c.obj
@@ -938,6 +973,7 @@ __/__/src/semantics/symbols/symbol_table.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/symbols/symbol_table.c.obj
 .PHONY : __/__/src/semantics/symbols/symbol_table.c.obj
 
 __/__/src/semantics/symbols/symbol_table.i: __/__/src/semantics/symbols/symbol_table.c.i
@@ -949,6 +985,7 @@ __/__/src/semantics/symbols/symbol_table.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/symbols/symbol_table.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/symbols/symbol_table.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/symbols/symbol_table.c.i
 .PHONY : __/__/src/semantics/symbols/symbol_table.c.i
 
 __/__/src/semantics/symbols/symbol_table.s: __/__/src/semantics/symbols/symbol_table.c.s
@@ -960,6 +997,7 @@ __/__/src/semantics/symbols/symbol_table.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/symbol_table.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/symbols/symbol_table.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/symbols/symbol_table.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/symbols/symbol_table.c.s
 .PHONY : __/__/src/semantics/symbols/symbol_table.c.s
 
 __/__/src/semantics/symbols/type_system.obj: __/__/src/semantics/symbols/type_system.c.obj
@@ -982,6 +1020,7 @@ __/__/src/semantics/symbols/type_system.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/type_system.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/symbols/type_system.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/symbols/type_system.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/symbols/type_system.c.obj
 .PHONY : __/__/src/semantics/symbols/type_system.c.obj
 
 __/__/src/semantics/symbols/type_system.i: __/__/src/semantics/symbols/type_system.c.i
@@ -1004,6 +1043,7 @@ __/__/src/semantics/symbols/type_system.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/type_system.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/symbols/type_system.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/symbols/type_system.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/symbols/type_system.c.i
 .PHONY : __/__/src/semantics/symbols/type_system.c.i
 
 __/__/src/semantics/symbols/type_system.s: __/__/src/semantics/symbols/type_system.c.s
@@ -1026,6 +1066,7 @@ __/__/src/semantics/symbols/type_system.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/semantics/symbols/type_system.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/semantics/symbols/type_system.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/semantics/symbols/type_system.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/semantics/symbols/type_system.c.s
 .PHONY : __/__/src/semantics/symbols/type_system.c.s
 
 __/__/src/support/config/target_triple.obj: __/__/src/support/config/target_triple.c.obj
@@ -1074,6 +1115,7 @@ __/__/src/support/diagnostics/diagnostics.c.obj:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/support/diagnostics/diagnostics.c.obj
 .PHONY : __/__/src/support/diagnostics/diagnostics.c.obj
 
 __/__/src/support/diagnostics/diagnostics.i: __/__/src/support/diagnostics/diagnostics.c.i
@@ -1098,6 +1140,7 @@ __/__/src/support/diagnostics/diagnostics.c.i:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/support/diagnostics/diagnostics.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/support/diagnostics/diagnostics.c.i
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/support/diagnostics/diagnostics.c.i
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/support/diagnostics/diagnostics.c.i
 .PHONY : __/__/src/support/diagnostics/diagnostics.c.i
 
 __/__/src/support/diagnostics/diagnostics.s: __/__/src/support/diagnostics/diagnostics.c.s
@@ -1122,7 +1165,32 @@ __/__/src/support/diagnostics/diagnostics.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/__/__/src/support/diagnostics/diagnostics.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_type_system_test.dir\build.make tests/unit/CMakeFiles/semantics_type_system_test.dir/__/__/src/support/diagnostics/diagnostics.c.s
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/__/__/src/support/diagnostics/diagnostics.c.s
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/__/__/src/support/diagnostics/diagnostics.c.s
 .PHONY : __/__/src/support/diagnostics/diagnostics.c.s
+
+freestanding_check_test.obj: freestanding_check_test.c.obj
+.PHONY : freestanding_check_test.obj
+
+# target to build an object file
+freestanding_check_test.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/freestanding_check_test.c.obj
+.PHONY : freestanding_check_test.c.obj
+
+freestanding_check_test.i: freestanding_check_test.c.i
+.PHONY : freestanding_check_test.i
+
+# target to preprocess a source file
+freestanding_check_test.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/freestanding_check_test.c.i
+.PHONY : freestanding_check_test.c.i
+
+freestanding_check_test.s: freestanding_check_test.c.s
+.PHONY : freestanding_check_test.s
+
+# target to generate assembly for a file
+freestanding_check_test.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/freestanding_check_test.c.s
+.PHONY : freestanding_check_test.c.s
 
 lexer_error_test.obj: lexer_error_test.c.obj
 .PHONY : lexer_error_test.obj
@@ -1785,6 +1853,7 @@ help:
 	@echo ... list_install_components
 	@echo ... rebuild_cache
 	@echo ... test
+	@echo ... freestanding_check_test
 	@echo ... lexer_error_test
 	@echo ... lexer_function_examples_test
 	@echo ... lexer_token_test
@@ -1845,6 +1914,9 @@ help:
 	@echo ... __/__/src/support/diagnostics/diagnostics.obj
 	@echo ... __/__/src/support/diagnostics/diagnostics.i
 	@echo ... __/__/src/support/diagnostics/diagnostics.s
+	@echo ... freestanding_check_test.obj
+	@echo ... freestanding_check_test.i
+	@echo ... freestanding_check_test.s
 	@echo ... lexer_error_test.obj
 	@echo ... lexer_error_test.i
 	@echo ... lexer_error_test.s

@@ -85,6 +85,7 @@ set(CMAKE_DEPEND_INFO_FILES
   "tests/unit/CMakeFiles/semantics_symbol_table_test.dir/DependInfo.cmake"
   "tests/unit/CMakeFiles/semantics_type_system_test.dir/DependInfo.cmake"
   "tests/unit/CMakeFiles/semantics_name_resolution_test.dir/DependInfo.cmake"
+  "tests/unit/CMakeFiles/freestanding_check_test.dir/DependInfo.cmake"
   "tests/unit/CMakeFiles/runtime_memory_test.dir/DependInfo.cmake"
   "tests/unit/CMakeFiles/runtime_string_test.dir/DependInfo.cmake"
   "tests/unit/CMakeFiles/runtime_array_test.dir/DependInfo.cmake"

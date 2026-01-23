@@ -243,6 +243,14 @@ add_executable(semantics_name_resolution_test
 target_include_directories(semantics_name_resolution_test PRIVATE ../../include)
 add_test(NAME semantics_name_resolution_test COMMAND semantics_name_resolution_test)
 
+# Freestanding 模式检查测试
+add_executable(freestanding_check_test
+    freestanding_check_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(freestanding_check_test PRIVATE ../../include)
+add_test(NAME freestanding_check_test COMMAND freestanding_check_test)
+
 # 运行时单元测试
 add_executable(runtime_memory_test runtime/runtime_memory_test.c)
 target_link_libraries(runtime_memory_test PRIVATE cn_runtime)

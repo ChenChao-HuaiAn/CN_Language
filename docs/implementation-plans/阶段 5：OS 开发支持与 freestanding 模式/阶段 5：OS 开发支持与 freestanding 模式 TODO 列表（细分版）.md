@@ -68,11 +68,11 @@
   - [x] 为被禁止特性设计统一的诊断信息（通过 `src/support/diagnostics`）
 
 - **3.2 编译选项与诊断**
-  - [ ] 为 CLI 增加显式启用 freestanding 模式的选项（如 `--freestanding`）  
-  - [ ] 当 freestanding 模式启用时，确保：  
-    - [ ] 禁止链接宿主 OS 相关运行时  
-    - [ ] 对不被支持的库调用给出编译错误  
-  - [ ] 更新/扩展测试规范文档中关于 freestanding 模式的约束（只在你之后明确要求修改文档时再动 md 文件）
+  - [x] 为 CLI 增加显式启用 freestanding 模式的选项（如 `--freestanding`）  
+  - [x] 当 freestanding 模式启用时，确保：  
+    - [x] 禁止链接宿主 OS 相关运行时  
+    - [x] 对不被支持的库调用给出编译错误  
+  - [x] 更新/扩展测试规范文档中关于 freestanding 模式的约束
 
 ---
 

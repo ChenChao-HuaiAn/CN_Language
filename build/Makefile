@@ -457,6 +457,19 @@ semantics_name_resolution_test/fast:
 .PHONY : semantics_name_resolution_test/fast
 
 #=============================================================================
+# Target rules for targets named freestanding_check_test
+
+# Build rule for target.
+freestanding_check_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 freestanding_check_test
+.PHONY : freestanding_check_test
+
+# fast build rule for target.
+freestanding_check_test/fast:
+	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\freestanding_check_test.dir\build.make tests/unit/CMakeFiles/freestanding_check_test.dir/build
+.PHONY : freestanding_check_test/fast
+
+#=============================================================================
 # Target rules for targets named runtime_memory_test
 
 # Build rule for target.
@@ -627,6 +640,7 @@ help:
 	@echo ... test
 	@echo ... cn_runtime
 	@echo ... cnc
+	@echo ... freestanding_check_test
 	@echo ... integration_compile_full_test
 	@echo ... integration_full_frontend_test
 	@echo ... integration_parse_failure_test

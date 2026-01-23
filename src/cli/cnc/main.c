@@ -430,6 +430,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    // Freestanding 模式检查
+    if (freestanding_mode) {
+        if (!cn_sem_check_freestanding(program, &diagnostics, true)) {
+            fprintf(stderr, "Freestanding 模式检查失败\n");
+            print_diagnostics(&diagnostics);
+            cn_sem_scope_free(global_scope);
+            cn_frontend_ast_program_free(program);
+            cn_frontend_parser_free(parser);
+            cn_support_diagnostics_free(&diagnostics);
+            free(source);
+            return 1;
+        }
+    }
+
     print_function_summary(program);
     print_diagnostics(&diagnostics);
 
@@ -490,7 +504,7 @@ int main(int argc, char **argv)
         // 如果不是仅生成 C 代码，则调用外部编译器
         if (!compile_only) {
             char compile_cmd[4096];
-            const char *runtime_lib_path = get_runtime_lib_path();
+            const char *runtime_lib_path = freestanding_mode ? NULL : get_runtime_lib_path();
             const char *runtime_include_dir = get_runtime_include_dir();
             const char *compiler = cc_override ? cc_override : cn_support_detect_c_compiler();
 
@@ -511,25 +525,43 @@ int main(int argc, char **argv)
             }
             if (freestanding_mode) {
                 if (strcmp(compiler, "cl") != 0) {
-                    strcat(extra_flags, " -ffreestanding");
+                    strcat(extra_flags, " -ffreestanding -nostdlib");
                 }
-                /* TODO: freestanding 模式下后续可根据目标追加 -nostdlib/-nostartfiles 等链接选项 */
+                /* freestanding 模式下不链接宿主 OS 运行时库 */
             }
 
             #ifdef _WIN32
             if (strcmp(compiler, "cl") == 0) {
-                snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /I%s /Fe:%s %s %s",
-                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe", 
-                         c_filename, runtime_lib_path);
+                if (freestanding_mode) {
+                    snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /I%s /Fe:%s %s",
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe", 
+                             c_filename);
+                } else {
+                    snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /I%s /Fe:%s %s %s",
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe", 
+                             c_filename, runtime_lib_path);
+                }
+            } else {
+                if (freestanding_mode) {
+                    snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s",
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
+                             c_filename);
+                } else {
+                    snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
+                             c_filename, runtime_lib_path);
+                }
+            }
+            #else
+            if (freestanding_mode) {
+                snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s",
+                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
+                         c_filename);
             } else {
                 snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
                          compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
                          c_filename, runtime_lib_path);
             }
-            #else
-            snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
-                     compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
-                     c_filename, runtime_lib_path);
             #endif
 
             printf("正在执行编译命令: %s\n", compile_cmd);
