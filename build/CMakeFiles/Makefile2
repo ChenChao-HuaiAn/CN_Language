@@ -228,6 +228,7 @@ tests/unit/all: tests/unit/CMakeFiles/runtime_string_test.dir/all
 tests/unit/all: tests/unit/CMakeFiles/runtime_array_test.dir/all
 tests/unit/all: tests/unit/CMakeFiles/runtime_io_test.dir/all
 tests/unit/all: tests/unit/CMakeFiles/runtime_math_test.dir/all
+tests/unit/all: tests/unit/CMakeFiles/runtime_freestanding_test.dir/all
 .PHONY : tests/unit/all
 
 # Recursive "codegen" directory target.
@@ -256,6 +257,7 @@ tests/unit/codegen: tests/unit/CMakeFiles/runtime_string_test.dir/codegen
 tests/unit/codegen: tests/unit/CMakeFiles/runtime_array_test.dir/codegen
 tests/unit/codegen: tests/unit/CMakeFiles/runtime_io_test.dir/codegen
 tests/unit/codegen: tests/unit/CMakeFiles/runtime_math_test.dir/codegen
+tests/unit/codegen: tests/unit/CMakeFiles/runtime_freestanding_test.dir/codegen
 .PHONY : tests/unit/codegen
 
 # Recursive "preinstall" directory target.
@@ -288,6 +290,7 @@ tests/unit/clean: tests/unit/CMakeFiles/runtime_string_test.dir/clean
 tests/unit/clean: tests/unit/CMakeFiles/runtime_array_test.dir/clean
 tests/unit/clean: tests/unit/CMakeFiles/runtime_io_test.dir/clean
 tests/unit/clean: tests/unit/CMakeFiles/runtime_math_test.dir/clean
+tests/unit/clean: tests/unit/CMakeFiles/runtime_freestanding_test.dir/clean
 .PHONY : tests/unit/clean
 
 #=============================================================================
@@ -297,12 +300,12 @@ tests/unit/clean: tests/unit/CMakeFiles/runtime_math_test.dir/clean
 src/CMakeFiles/cnc.dir/all: src/runtime/CMakeFiles/cn_runtime.dir/all
 	$(MAKE) $(MAKESILENT) -f src\CMakeFiles\cnc.dir\build.make src/CMakeFiles/cnc.dir/depend
 	$(MAKE) $(MAKESILENT) -f src\CMakeFiles\cnc.dir\build.make src/CMakeFiles/cnc.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=3,4,5,6,7,8,9,10 "Built target cnc"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=4,5,6,7,8,9,10,11 "Built target cnc"
 .PHONY : src/CMakeFiles/cnc.dir/all
 
 # Build rule for subdir invocation for target.
 src/CMakeFiles/cnc.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 10
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 11
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 src/CMakeFiles/cnc.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : src/CMakeFiles/cnc.dir/rule
@@ -314,7 +317,7 @@ cnc: src/CMakeFiles/cnc.dir/rule
 # codegen rule for target.
 src/CMakeFiles/cnc.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f src\CMakeFiles\cnc.dir\build.make src/CMakeFiles/cnc.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=3,4,5,6,7,8,9,10 "Finished codegen for target cnc"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=4,5,6,7,8,9,10,11 "Finished codegen for target cnc"
 .PHONY : src/CMakeFiles/cnc.dir/codegen
 
 # clean rule for target.
@@ -329,12 +332,12 @@ src/CMakeFiles/cnc.dir/clean:
 src/runtime/CMakeFiles/cn_runtime.dir/all:
 	$(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/depend
 	$(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=1,2 "Built target cn_runtime"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=1,2,3 "Built target cn_runtime"
 .PHONY : src/runtime/CMakeFiles/cn_runtime.dir/all
 
 # Build rule for subdir invocation for target.
 src/runtime/CMakeFiles/cn_runtime.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 src/runtime/CMakeFiles/cn_runtime.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : src/runtime/CMakeFiles/cn_runtime.dir/rule
@@ -346,7 +349,7 @@ cn_runtime: src/runtime/CMakeFiles/cn_runtime.dir/rule
 # codegen rule for target.
 src/runtime/CMakeFiles/cn_runtime.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=1,2 "Finished codegen for target cn_runtime"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=1,2,3 "Finished codegen for target cn_runtime"
 .PHONY : src/runtime/CMakeFiles/cn_runtime.dir/codegen
 
 # clean rule for target.
@@ -425,12 +428,12 @@ tests/unit/CMakeFiles/support_target_triple_test.dir/clean:
 tests/unit/CMakeFiles/lexer_function_examples_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\lexer_function_examples_test.dir\build.make tests/unit/CMakeFiles/lexer_function_examples_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\lexer_function_examples_test.dir\build.make tests/unit/CMakeFiles/lexer_function_examples_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=31,32 "Built target lexer_function_examples_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=32 "Built target lexer_function_examples_test"
 .PHONY : tests/unit/CMakeFiles/lexer_function_examples_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/lexer_function_examples_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 1
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/lexer_function_examples_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/lexer_function_examples_test.dir/rule
@@ -442,7 +445,7 @@ lexer_function_examples_test: tests/unit/CMakeFiles/lexer_function_examples_test
 # codegen rule for target.
 tests/unit/CMakeFiles/lexer_function_examples_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\lexer_function_examples_test.dir\build.make tests/unit/CMakeFiles/lexer_function_examples_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=31,32 "Finished codegen for target lexer_function_examples_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=32 "Finished codegen for target lexer_function_examples_test"
 .PHONY : tests/unit/CMakeFiles/lexer_function_examples_test.dir/codegen
 
 # clean rule for target.
@@ -489,12 +492,12 @@ tests/unit/CMakeFiles/lexer_token_test.dir/clean:
 tests/unit/CMakeFiles/lexer_error_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\lexer_error_test.dir\build.make tests/unit/CMakeFiles/lexer_error_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\lexer_error_test.dir\build.make tests/unit/CMakeFiles/lexer_error_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=29,30 "Built target lexer_error_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=29,30,31 "Built target lexer_error_test"
 .PHONY : tests/unit/CMakeFiles/lexer_error_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/lexer_error_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 2
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/lexer_error_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/lexer_error_test.dir/rule
@@ -506,7 +509,7 @@ lexer_error_test: tests/unit/CMakeFiles/lexer_error_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/lexer_error_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\lexer_error_test.dir\build.make tests/unit/CMakeFiles/lexer_error_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=29,30 "Finished codegen for target lexer_error_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=29,30,31 "Finished codegen for target lexer_error_test"
 .PHONY : tests/unit/CMakeFiles/lexer_error_test.dir/codegen
 
 # clean rule for target.
@@ -521,12 +524,12 @@ tests/unit/CMakeFiles/lexer_error_test.dir/clean:
 tests/unit/CMakeFiles/parser_minimal_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_minimal_test.dir\build.make tests/unit/CMakeFiles/parser_minimal_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_minimal_test.dir\build.make tests/unit/CMakeFiles/parser_minimal_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=67,68,69,70 "Built target parser_minimal_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=67,68,69 "Built target parser_minimal_test"
 .PHONY : tests/unit/CMakeFiles/parser_minimal_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/parser_minimal_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/parser_minimal_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/parser_minimal_test.dir/rule
@@ -538,7 +541,7 @@ parser_minimal_test: tests/unit/CMakeFiles/parser_minimal_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/parser_minimal_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_minimal_test.dir\build.make tests/unit/CMakeFiles/parser_minimal_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=67,68,69,70 "Finished codegen for target parser_minimal_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=67,68,69 "Finished codegen for target parser_minimal_test"
 .PHONY : tests/unit/CMakeFiles/parser_minimal_test.dir/codegen
 
 # clean rule for target.
@@ -585,12 +588,12 @@ tests/unit/CMakeFiles/parser_comparison_test.dir/clean:
 tests/unit/CMakeFiles/parser_loop_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_loop_test.dir\build.make tests/unit/CMakeFiles/parser_loop_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_loop_test.dir\build.make tests/unit/CMakeFiles/parser_loop_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=64,65,66 "Built target parser_loop_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=63,64,65,66 "Built target parser_loop_test"
 .PHONY : tests/unit/CMakeFiles/parser_loop_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/parser_loop_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/parser_loop_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/parser_loop_test.dir/rule
@@ -602,7 +605,7 @@ parser_loop_test: tests/unit/CMakeFiles/parser_loop_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/parser_loop_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_loop_test.dir\build.make tests/unit/CMakeFiles/parser_loop_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=64,65,66 "Finished codegen for target parser_loop_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=63,64,65,66 "Finished codegen for target parser_loop_test"
 .PHONY : tests/unit/CMakeFiles/parser_loop_test.dir/codegen
 
 # clean rule for target.
@@ -649,12 +652,12 @@ tests/unit/CMakeFiles/parser_assign_test.dir/clean:
 tests/unit/CMakeFiles/parser_logical_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_logical_test.dir\build.make tests/unit/CMakeFiles/parser_logical_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_logical_test.dir\build.make tests/unit/CMakeFiles/parser_logical_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=60,61,62,63 "Built target parser_logical_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=60,61,62 "Built target parser_logical_test"
 .PHONY : tests/unit/CMakeFiles/parser_logical_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/parser_logical_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/parser_logical_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/parser_logical_test.dir/rule
@@ -666,7 +669,7 @@ parser_logical_test: tests/unit/CMakeFiles/parser_logical_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/parser_logical_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_logical_test.dir\build.make tests/unit/CMakeFiles/parser_logical_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=60,61,62,63 "Finished codegen for target parser_logical_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=60,61,62 "Finished codegen for target parser_logical_test"
 .PHONY : tests/unit/CMakeFiles/parser_logical_test.dir/codegen
 
 # clean rule for target.
@@ -713,12 +716,12 @@ tests/unit/CMakeFiles/parser_break_test.dir/clean:
 tests/unit/CMakeFiles/parser_var_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_var_test.dir\build.make tests/unit/CMakeFiles/parser_var_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_var_test.dir\build.make tests/unit/CMakeFiles/parser_var_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=71,72,73 "Built target parser_var_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=70,71,72,73 "Built target parser_var_test"
 .PHONY : tests/unit/CMakeFiles/parser_var_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/parser_var_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/parser_var_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/parser_var_test.dir/rule
@@ -730,7 +733,7 @@ parser_var_test: tests/unit/CMakeFiles/parser_var_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/parser_var_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_var_test.dir\build.make tests/unit/CMakeFiles/parser_var_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=71,72,73 "Finished codegen for target parser_var_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=70,71,72,73 "Finished codegen for target parser_var_test"
 .PHONY : tests/unit/CMakeFiles/parser_var_test.dir/codegen
 
 # clean rule for target.
@@ -745,12 +748,12 @@ tests/unit/CMakeFiles/parser_var_test.dir/clean:
 tests/unit/CMakeFiles/parser_func_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_func_test.dir\build.make tests/unit/CMakeFiles/parser_func_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_func_test.dir\build.make tests/unit/CMakeFiles/parser_func_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=53,54,55,56 "Built target parser_func_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=53,54,55 "Built target parser_func_test"
 .PHONY : tests/unit/CMakeFiles/parser_func_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/parser_func_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/parser_func_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/parser_func_test.dir/rule
@@ -762,7 +765,7 @@ parser_func_test: tests/unit/CMakeFiles/parser_func_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/parser_func_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_func_test.dir\build.make tests/unit/CMakeFiles/parser_func_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=53,54,55,56 "Finished codegen for target parser_func_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=53,54,55 "Finished codegen for target parser_func_test"
 .PHONY : tests/unit/CMakeFiles/parser_func_test.dir/codegen
 
 # clean rule for target.
@@ -777,12 +780,12 @@ tests/unit/CMakeFiles/parser_func_test.dir/clean:
 tests/unit/CMakeFiles/parser_hello_world_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_hello_world_test.dir\build.make tests/unit/CMakeFiles/parser_hello_world_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_hello_world_test.dir\build.make tests/unit/CMakeFiles/parser_hello_world_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=57,58,59 "Built target parser_hello_world_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=56,57,58,59 "Built target parser_hello_world_test"
 .PHONY : tests/unit/CMakeFiles/parser_hello_world_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/parser_hello_world_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/parser_hello_world_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/parser_hello_world_test.dir/rule
@@ -794,7 +797,7 @@ parser_hello_world_test: tests/unit/CMakeFiles/parser_hello_world_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/parser_hello_world_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\parser_hello_world_test.dir\build.make tests/unit/CMakeFiles/parser_hello_world_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=57,58,59 "Finished codegen for target parser_hello_world_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=56,57,58,59 "Finished codegen for target parser_hello_world_test"
 .PHONY : tests/unit/CMakeFiles/parser_hello_world_test.dir/codegen
 
 # clean rule for target.
@@ -905,12 +908,12 @@ tests/unit/CMakeFiles/semantic_check_test.dir/clean:
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=89,90,91,92,93 "Built target semantics_symbol_table_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=90,91,92,93 "Built target semantics_symbol_table_test"
 .PHONY : tests/unit/CMakeFiles/semantics_symbol_table_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 5
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/semantics_symbol_table_test.dir/rule
@@ -922,7 +925,7 @@ semantics_symbol_table_test: tests/unit/CMakeFiles/semantics_symbol_table_test.d
 # codegen rule for target.
 tests/unit/CMakeFiles/semantics_symbol_table_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_symbol_table_test.dir\build.make tests/unit/CMakeFiles/semantics_symbol_table_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=89,90,91,92,93 "Finished codegen for target semantics_symbol_table_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=90,91,92,93 "Finished codegen for target semantics_symbol_table_test"
 .PHONY : tests/unit/CMakeFiles/semantics_symbol_table_test.dir/codegen
 
 # clean rule for target.
@@ -969,12 +972,12 @@ tests/unit/CMakeFiles/semantics_type_system_test.dir/clean:
 tests/unit/CMakeFiles/semantics_name_resolution_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=85,86,87,88 "Built target semantics_name_resolution_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=85,86,87,88,89 "Built target semantics_name_resolution_test"
 .PHONY : tests/unit/CMakeFiles/semantics_name_resolution_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/semantics_name_resolution_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 5
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/semantics_name_resolution_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/semantics_name_resolution_test.dir/rule
@@ -986,7 +989,7 @@ semantics_name_resolution_test: tests/unit/CMakeFiles/semantics_name_resolution_
 # codegen rule for target.
 tests/unit/CMakeFiles/semantics_name_resolution_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\semantics_name_resolution_test.dir\build.make tests/unit/CMakeFiles/semantics_name_resolution_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=85,86,87,88 "Finished codegen for target semantics_name_resolution_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=85,86,87,88,89 "Finished codegen for target semantics_name_resolution_test"
 .PHONY : tests/unit/CMakeFiles/semantics_name_resolution_test.dir/codegen
 
 # clean rule for target.
@@ -1006,7 +1009,7 @@ tests/unit/CMakeFiles/runtime_memory_test.dir/all: src/runtime/CMakeFiles/cn_run
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/runtime_memory_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/runtime_memory_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/runtime_memory_test.dir/rule
@@ -1038,7 +1041,7 @@ tests/unit/CMakeFiles/runtime_string_test.dir/all: src/runtime/CMakeFiles/cn_run
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/runtime_string_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/runtime_string_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/runtime_string_test.dir/rule
@@ -1070,7 +1073,7 @@ tests/unit/CMakeFiles/runtime_array_test.dir/all: src/runtime/CMakeFiles/cn_runt
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/runtime_array_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/runtime_array_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/runtime_array_test.dir/rule
@@ -1097,7 +1100,7 @@ tests/unit/CMakeFiles/runtime_array_test.dir/clean:
 tests/unit/CMakeFiles/runtime_io_test.dir/all: src/runtime/CMakeFiles/cn_runtime.dir/all
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_io_test.dir\build.make tests/unit/CMakeFiles/runtime_io_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_io_test.dir\build.make tests/unit/CMakeFiles/runtime_io_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=75 "Built target runtime_io_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num= "Built target runtime_io_test"
 .PHONY : tests/unit/CMakeFiles/runtime_io_test.dir/all
 
 # Build rule for subdir invocation for target.
@@ -1114,7 +1117,7 @@ runtime_io_test: tests/unit/CMakeFiles/runtime_io_test.dir/rule
 # codegen rule for target.
 tests/unit/CMakeFiles/runtime_io_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_io_test.dir\build.make tests/unit/CMakeFiles/runtime_io_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=75 "Finished codegen for target runtime_io_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num= "Finished codegen for target runtime_io_test"
 .PHONY : tests/unit/CMakeFiles/runtime_io_test.dir/codegen
 
 # clean rule for target.
@@ -1134,7 +1137,7 @@ tests/unit/CMakeFiles/runtime_math_test.dir/all: src/runtime/CMakeFiles/cn_runti
 
 # Build rule for subdir invocation for target.
 tests/unit/CMakeFiles/runtime_math_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/runtime_math_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/unit/CMakeFiles/runtime_math_test.dir/rule
@@ -1155,18 +1158,50 @@ tests/unit/CMakeFiles/runtime_math_test.dir/clean:
 .PHONY : tests/unit/CMakeFiles/runtime_math_test.dir/clean
 
 #=============================================================================
+# Target rules for target tests/unit/CMakeFiles/runtime_freestanding_test.dir
+
+# All Build rule for target.
+tests/unit/CMakeFiles/runtime_freestanding_test.dir/all: src/runtime/CMakeFiles/cn_runtime.dir/all
+	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_freestanding_test.dir\build.make tests/unit/CMakeFiles/runtime_freestanding_test.dir/depend
+	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_freestanding_test.dir\build.make tests/unit/CMakeFiles/runtime_freestanding_test.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=75 "Built target runtime_freestanding_test"
+.PHONY : tests/unit/CMakeFiles/runtime_freestanding_test.dir/all
+
+# Build rule for subdir invocation for target.
+tests/unit/CMakeFiles/runtime_freestanding_test.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/unit/CMakeFiles/runtime_freestanding_test.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
+.PHONY : tests/unit/CMakeFiles/runtime_freestanding_test.dir/rule
+
+# Convenience name for target.
+runtime_freestanding_test: tests/unit/CMakeFiles/runtime_freestanding_test.dir/rule
+.PHONY : runtime_freestanding_test
+
+# codegen rule for target.
+tests/unit/CMakeFiles/runtime_freestanding_test.dir/codegen:
+	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_freestanding_test.dir\build.make tests/unit/CMakeFiles/runtime_freestanding_test.dir/codegen
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=75 "Finished codegen for target runtime_freestanding_test"
+.PHONY : tests/unit/CMakeFiles/runtime_freestanding_test.dir/codegen
+
+# clean rule for target.
+tests/unit/CMakeFiles/runtime_freestanding_test.dir/clean:
+	$(MAKE) $(MAKESILENT) -f tests\unit\CMakeFiles\runtime_freestanding_test.dir\build.make tests/unit/CMakeFiles/runtime_freestanding_test.dir/clean
+.PHONY : tests/unit/CMakeFiles/runtime_freestanding_test.dir/clean
+
+#=============================================================================
 # Target rules for target tests/integration/CMakeFiles/integration_parse_success_test.dir
 
 # All Build rule for target.
 tests/integration/CMakeFiles/integration_parse_success_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_parse_success_test.dir\build.make tests/integration/CMakeFiles/integration_parse_success_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_parse_success_test.dir\build.make tests/integration/CMakeFiles/integration_parse_success_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=21,22,23 "Built target integration_parse_success_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=21,22,23,24 "Built target integration_parse_success_test"
 .PHONY : tests/integration/CMakeFiles/integration_parse_success_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/integration/CMakeFiles/integration_parse_success_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/integration/CMakeFiles/integration_parse_success_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/integration/CMakeFiles/integration_parse_success_test.dir/rule
@@ -1178,7 +1213,7 @@ integration_parse_success_test: tests/integration/CMakeFiles/integration_parse_s
 # codegen rule for target.
 tests/integration/CMakeFiles/integration_parse_success_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_parse_success_test.dir\build.make tests/integration/CMakeFiles/integration_parse_success_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=21,22,23 "Finished codegen for target integration_parse_success_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=21,22,23,24 "Finished codegen for target integration_parse_success_test"
 .PHONY : tests/integration/CMakeFiles/integration_parse_success_test.dir/codegen
 
 # clean rule for target.
@@ -1193,12 +1228,12 @@ tests/integration/CMakeFiles/integration_parse_success_test.dir/clean:
 tests/integration/CMakeFiles/integration_parse_failure_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_parse_failure_test.dir\build.make tests/integration/CMakeFiles/integration_parse_failure_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_parse_failure_test.dir\build.make tests/integration/CMakeFiles/integration_parse_failure_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=17,18,19,20 "Built target integration_parse_failure_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=18,19,20 "Built target integration_parse_failure_test"
 .PHONY : tests/integration/CMakeFiles/integration_parse_failure_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/integration/CMakeFiles/integration_parse_failure_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 3
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/integration/CMakeFiles/integration_parse_failure_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/integration/CMakeFiles/integration_parse_failure_test.dir/rule
@@ -1210,7 +1245,7 @@ integration_parse_failure_test: tests/integration/CMakeFiles/integration_parse_f
 # codegen rule for target.
 tests/integration/CMakeFiles/integration_parse_failure_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_parse_failure_test.dir\build.make tests/integration/CMakeFiles/integration_parse_failure_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=17,18,19,20 "Finished codegen for target integration_parse_failure_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=18,19,20 "Finished codegen for target integration_parse_failure_test"
 .PHONY : tests/integration/CMakeFiles/integration_parse_failure_test.dir/codegen
 
 # clean rule for target.
@@ -1225,12 +1260,12 @@ tests/integration/CMakeFiles/integration_parse_failure_test.dir/clean:
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_semantic_error_test.dir\build.make tests/integration/CMakeFiles/integration_semantic_error_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_semantic_error_test.dir\build.make tests/integration/CMakeFiles/integration_semantic_error_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=24,25,26,27,28 "Built target integration_semantic_error_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=25,26,27,28 "Built target integration_semantic_error_test"
 .PHONY : tests/integration/CMakeFiles/integration_semantic_error_test.dir/all
 
 # Build rule for subdir invocation for target.
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/rule: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 5
+	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 4
 	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/integration/CMakeFiles/integration_semantic_error_test.dir/all
 	$(CMAKE_COMMAND) -E cmake_progress_start C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles 0
 .PHONY : tests/integration/CMakeFiles/integration_semantic_error_test.dir/rule
@@ -1242,7 +1277,7 @@ integration_semantic_error_test: tests/integration/CMakeFiles/integration_semant
 # codegen rule for target.
 tests/integration/CMakeFiles/integration_semantic_error_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_semantic_error_test.dir\build.make tests/integration/CMakeFiles/integration_semantic_error_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=24,25,26,27,28 "Finished codegen for target integration_semantic_error_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=25,26,27,28 "Finished codegen for target integration_semantic_error_test"
 .PHONY : tests/integration/CMakeFiles/integration_semantic_error_test.dir/codegen
 
 # clean rule for target.
@@ -1257,7 +1292,7 @@ tests/integration/CMakeFiles/integration_semantic_error_test.dir/clean:
 tests/integration/CMakeFiles/integration_full_frontend_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_full_frontend_test.dir\build.make tests/integration/CMakeFiles/integration_full_frontend_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_full_frontend_test.dir\build.make tests/integration/CMakeFiles/integration_full_frontend_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=12,13,14,15,16 "Built target integration_full_frontend_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=13,14,15,16,17 "Built target integration_full_frontend_test"
 .PHONY : tests/integration/CMakeFiles/integration_full_frontend_test.dir/all
 
 # Build rule for subdir invocation for target.
@@ -1274,7 +1309,7 @@ integration_full_frontend_test: tests/integration/CMakeFiles/integration_full_fr
 # codegen rule for target.
 tests/integration/CMakeFiles/integration_full_frontend_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_full_frontend_test.dir\build.make tests/integration/CMakeFiles/integration_full_frontend_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=12,13,14,15,16 "Finished codegen for target integration_full_frontend_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=13,14,15,16,17 "Finished codegen for target integration_full_frontend_test"
 .PHONY : tests/integration/CMakeFiles/integration_full_frontend_test.dir/codegen
 
 # clean rule for target.
@@ -1289,7 +1324,7 @@ tests/integration/CMakeFiles/integration_full_frontend_test.dir/clean:
 tests/integration/CMakeFiles/integration_compile_full_test.dir/all:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_compile_full_test.dir\build.make tests/integration/CMakeFiles/integration_compile_full_test.dir/depend
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_compile_full_test.dir\build.make tests/integration/CMakeFiles/integration_compile_full_test.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=11 "Built target integration_compile_full_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=12 "Built target integration_compile_full_test"
 .PHONY : tests/integration/CMakeFiles/integration_compile_full_test.dir/all
 
 # Build rule for subdir invocation for target.
@@ -1306,7 +1341,7 @@ integration_compile_full_test: tests/integration/CMakeFiles/integration_compile_
 # codegen rule for target.
 tests/integration/CMakeFiles/integration_compile_full_test.dir/codegen:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_compile_full_test.dir\build.make tests/integration/CMakeFiles/integration_compile_full_test.dir/codegen
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=11 "Finished codegen for target integration_compile_full_test"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=C:\Users\ChenChao\Documents\gitcode\CN_Language\build\CMakeFiles --progress-num=12 "Finished codegen for target integration_compile_full_test"
 .PHONY : tests/integration/CMakeFiles/integration_compile_full_test.dir/codegen
 
 # clean rule for target.

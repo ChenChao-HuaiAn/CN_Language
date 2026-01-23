@@ -12,6 +12,7 @@ src/runtime/CMakeFiles/cn_runtime.dir/memory/memory.c.obj: \
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/sdks/_mingw_ddk.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdint.h \
+ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/freestanding.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/stdlib.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/include/corecrt_wstdlib.h \
  C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/limits.h \

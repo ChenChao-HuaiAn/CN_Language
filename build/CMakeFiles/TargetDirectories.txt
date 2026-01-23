@@ -53,6 +53,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runt
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_array_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_io_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_math_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_freestanding_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/edit_cache.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/rebuild_cache.dir

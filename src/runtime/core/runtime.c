@@ -1,8 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+#ifndef CN_FREESTANDING
 #include <string.h>
+#endif
 #include "cnlang/runtime/runtime.h"
 #include "cnlang/runtime/memory.h"
+#include "cnlang/runtime/freestanding.h"
 
 /*
  * CN Language 运行时库实现
@@ -18,8 +21,13 @@ void cn_rt_init(void) {
     g_rt_state.total_allocations = 0;
     g_rt_state.total_freed = 0;
     
-    // 初始化内存子系统
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：使用静态分配器
+    cn_rt_freestanding_init_allocator();
+#else
+    // 初始化内存子系统（宿主模式使用标准 malloc/free）
     cn_rt_memory_init(NULL);
+#endif
     
     // 初始化其他必要的子系统
 }
@@ -75,15 +83,26 @@ char* cn_rt_string_concat(const char *a, const char *b) {
         return cn_rt_string_dup(a);
     }
     
-    size_t len_a = strlen(a);
-    size_t len_b = strlen(b);
+    size_t len_a, len_b;
+#ifdef CN_FREESTANDING
+    len_a = cn_rt_strlen(a);
+    len_b = cn_rt_strlen(b);
+#else
+    len_a = strlen(a);
+    len_b = strlen(b);
+#endif
     char *result = cn_rt_malloc(len_a + len_b + 1);
     if (result == NULL) {
         return NULL;  // 内存分配失败
     }
     
+#ifdef CN_FREESTANDING
+    cn_rt_strcpy(result, a);
+    cn_rt_strcat(result, b);
+#else
     strcpy(result, a);
     strcat(result, b);
+#endif
     return result;
 }
 
@@ -91,7 +110,11 @@ size_t cn_rt_string_length(const char *str) {
     if (str == NULL) {
         return 0;
     }
+#ifdef CN_FREESTANDING
+    return cn_rt_strlen(str);
+#else
     return strlen(str);
+#endif
 }
 
 // 数组支持函数实现

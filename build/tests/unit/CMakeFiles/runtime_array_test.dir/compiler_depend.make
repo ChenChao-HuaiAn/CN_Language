@@ -20,6 +20,7 @@ tests/unit/CMakeFiles/runtime_array_test.dir/runtime/runtime_array_test.c.obj: C
   C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h \
   C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/freestanding.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h
 
 
@@ -60,5 +61,7 @@ C:/Users/ChenChao/Documents/gcc-15.2.0/include/vadefs.h:
 C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stddef.h:
 
 C:/Users/ChenChao/Documents/gcc-15.2.0/x86_64-w64-mingw32/lib/gcc/x86_64-w64-mingw32/15.2.0/include/stdint.h:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/freestanding.h:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h:

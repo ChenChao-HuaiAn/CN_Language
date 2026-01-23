@@ -1,6 +1,9 @@
 #include "cnlang/runtime/memory.h"
+#include "cnlang/runtime/freestanding.h"
 #include <stdlib.h>
+#ifndef CN_FREESTANDING
 #include <string.h>
+#endif
 #include <stdio.h>
 
 /*

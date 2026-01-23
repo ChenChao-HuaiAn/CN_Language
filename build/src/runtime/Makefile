@@ -208,6 +208,30 @@ collections/collections.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/collections/collections.c.s
 .PHONY : collections/collections.c.s
 
+core/freestanding_builtins.obj: core/freestanding_builtins.c.obj
+.PHONY : core/freestanding_builtins.obj
+
+# target to build an object file
+core/freestanding_builtins.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/core/freestanding_builtins.c.obj
+.PHONY : core/freestanding_builtins.c.obj
+
+core/freestanding_builtins.i: core/freestanding_builtins.c.i
+.PHONY : core/freestanding_builtins.i
+
+# target to preprocess a source file
+core/freestanding_builtins.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/core/freestanding_builtins.c.i
+.PHONY : core/freestanding_builtins.c.i
+
+core/freestanding_builtins.s: core/freestanding_builtins.c.s
+.PHONY : core/freestanding_builtins.s
+
+# target to generate assembly for a file
+core/freestanding_builtins.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/core/freestanding_builtins.c.s
+.PHONY : core/freestanding_builtins.c.s
+
 core/runtime.obj: core/runtime.c.obj
 .PHONY : core/runtime.obj
 
@@ -280,6 +304,30 @@ math/math.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/math/math.c.s
 .PHONY : math/math.c.s
 
+memory/freestanding_allocator.obj: memory/freestanding_allocator.c.obj
+.PHONY : memory/freestanding_allocator.obj
+
+# target to build an object file
+memory/freestanding_allocator.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/memory/freestanding_allocator.c.obj
+.PHONY : memory/freestanding_allocator.c.obj
+
+memory/freestanding_allocator.i: memory/freestanding_allocator.c.i
+.PHONY : memory/freestanding_allocator.i
+
+# target to preprocess a source file
+memory/freestanding_allocator.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/memory/freestanding_allocator.c.i
+.PHONY : memory/freestanding_allocator.c.i
+
+memory/freestanding_allocator.s: memory/freestanding_allocator.c.s
+.PHONY : memory/freestanding_allocator.s
+
+# target to generate assembly for a file
+memory/freestanding_allocator.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f src\runtime\CMakeFiles\cn_runtime.dir\build.make src/runtime/CMakeFiles/cn_runtime.dir/memory/freestanding_allocator.c.s
+.PHONY : memory/freestanding_allocator.c.s
+
 memory/memory.obj: memory/memory.c.obj
 .PHONY : memory/memory.obj
 
@@ -321,6 +369,9 @@ help:
 	@echo ... collections/collections.obj
 	@echo ... collections/collections.i
 	@echo ... collections/collections.s
+	@echo ... core/freestanding_builtins.obj
+	@echo ... core/freestanding_builtins.i
+	@echo ... core/freestanding_builtins.s
 	@echo ... core/runtime.obj
 	@echo ... core/runtime.i
 	@echo ... core/runtime.s
@@ -330,6 +381,9 @@ help:
 	@echo ... math/math.obj
 	@echo ... math/math.i
 	@echo ... math/math.s
+	@echo ... memory/freestanding_allocator.obj
+	@echo ... memory/freestanding_allocator.i
+	@echo ... memory/freestanding_allocator.s
 	@echo ... memory/memory.obj
 	@echo ... memory/memory.i
 	@echo ... memory/memory.s

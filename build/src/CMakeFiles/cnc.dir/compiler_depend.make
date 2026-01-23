@@ -339,6 +339,7 @@ src/CMakeFiles/cnc.dir/cli/cnc/main.c.obj: C:/Users/ChenChao/Documents/gitcode/C
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/ir.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/irgen.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h \
+  C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/freestanding.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/runtime.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/config.h \
   C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/support/diagnostics.h \
@@ -1633,6 +1634,8 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/parser.h
 C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/frontend/token.h:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/ir/pass.h:
+
+C:/Users/ChenChao/Documents/gitcode/CN_Language/include/cnlang/runtime/freestanding.h:
 
 C:/Users/ChenChao/Documents/gitcode/CN_Language/src/frontend/ast/ast.c:
 

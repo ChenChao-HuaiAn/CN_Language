@@ -267,3 +267,10 @@ add_executable(runtime_math_test runtime/runtime_math_test.c)
 target_link_libraries(runtime_math_test PRIVATE cn_runtime)
 target_include_directories(runtime_math_test PRIVATE ../../include)
 add_test(NAME runtime_math_test COMMAND runtime_math_test)
+
+# Freestanding 模式测试
+add_executable(runtime_freestanding_test runtime/runtime_freestanding_test.c)
+target_link_libraries(runtime_freestanding_test PRIVATE cn_runtime)
+target_include_directories(runtime_freestanding_test PRIVATE ../../include)
+target_compile_definitions(runtime_freestanding_test PRIVATE CN_FREESTANDING)
+add_test(NAME runtime_freestanding_test COMMAND runtime_freestanding_test)

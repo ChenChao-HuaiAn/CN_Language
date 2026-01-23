@@ -47,11 +47,11 @@
   - [x] 为“可选依赖 OS”的功能增加抽象层或条件编译开关（如 I/O、内存分配）
 
 - **2.2 freestanding 版本实现**
-  - [ ] 在 `runtime` 中为 freestanding 模式设计独立实现路径（可通过 `#ifdef CN_FREESTANDING` 或单独源文件组织）  
-  - [ ] 实现不依赖宿主 OS 的基础功能：  
-    - [ ] 最简内存分配策略（可先支持静态/简单堆管理，允许后续替换）  
-    - [ ] 最基本的字符串和内存操作（如 `memcpy`、`memcmp` 等）  
-  - [ ] 确保 freestanding 运行时不直接依赖系统调用或 C 标准库中非 freestanding 保证的部分
+  - [x] 在 `runtime` 中为 freestanding 模式设计独立实现路径（可通过 `#ifdef CN_FREESTANDING` 或单独源文件组织）  
+  - [x] 实现不依赖宿主 OS 的基础功能：  
+    - [x] 最简内存分配策略（可先支持静态/简单堆管理，允许后续替换）  
+    - [x] 最基本的字符串和内存操作（如 `memcpy`、`memcmp` 等）  
+  - [x] 确保 freestanding 运行时不直接依赖系统调用或 C 标准库中非 freestanding 保证的部分
 
 - **2.3 OS 内核环境限制适配**
   - [ ] 设计无堆环境下的运行模式（例如：仅使用静态分配/栈分配的语言特性）  

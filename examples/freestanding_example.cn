@@ -1,0 +1,94 @@
+/*
+ * Freestanding 模式示例：裸机环境下的 CN Language 程序
+ * 
+ * 编译说明：
+ *   1. 定义 CN_FREESTANDING 宏启用 freestanding 模式
+ *   2. 使用 --freestanding 编译选项
+ *   3. 提供自定义输出函数（如串口输出）
+ * 
+ * 示例编译命令：
+ *   cnc freestanding_example.cn --freestanding -DCN_FREESTANDING -o kernel_module
+ */
+
+// 在实际 OS 内核中，需要提供自定义输出函数
+// 例如通过串口输出
+#ifdef CN_FREESTANDING
+
+// 假设在内核中定义了串口输出函数
+extern void uart_putc(char c);
+extern void uart_puts(const char* str);
+
+// 为运行时提供自定义打印实现
+void cn_rt_print_string(const char* str) {
+    if (str) {
+        uart_puts(str);
+    }
+}
+
+void cn_rt_print_int(long long val) {
+    char buffer[32];
+    int i = 0;
+    
+    if (val == 0) {
+        uart_putc('0');
+        return;
+    }
+    
+    int is_negative = 0;
+    if (val < 0) {
+        is_negative = 1;
+        val = -val;
+    }
+    
+    while (val > 0) {
+        buffer[i++] = '0' + (val % 10);
+        val /= 10;
+    }
+    
+    if (is_negative) {
+        uart_putc('-');
+    }
+    
+    while (i > 0) {
+        uart_putc(buffer[--i]);
+    }
+}
+
+void cn_rt_print_newline() {
+    uart_putc('\n');
+}
+
+#endif
+
+// CN Language 主程序
+函数 主程序(): 整数 {
+    // 在 freestanding 模式下，使用静态内存池
+    
+    // 测试基础字符串操作
+    字符串 问候 = "你好";
+    字符串 名字 = "内核";
+    字符串 完整问候 = 问候 + "，" + 名字 + "！";
+    
+    打印(完整问候);
+    打印行();
+    
+    // 测试基础算术
+    整数 数值1 = 10;
+    整数 数值2 = 20;
+    整数 结果 = 数值1 + 数值2;
+    
+    打印("计算结果: ");
+    打印(结果);
+    打印行();
+    
+    // 测试循环和控制流
+    整数 计数 = 0;
+    当 (计数 < 5) {
+        打印("循环迭代: ");
+        打印(计数);
+        打印行();
+        计数 = 计数 + 1;
+    }
+    
+    返回 0;
+}

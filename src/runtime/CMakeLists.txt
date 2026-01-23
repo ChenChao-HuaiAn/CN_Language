@@ -3,6 +3,7 @@
 # 定义运行时库源文件
 set(RUNTIME_CORE_SOURCES
     core/runtime.c
+    core/freestanding_builtins.c
 )
 
 set(RUNTIME_COLLECTIONS_SOURCES
@@ -11,6 +12,7 @@ set(RUNTIME_COLLECTIONS_SOURCES
 
 set(RUNTIME_MEMORY_SOURCES
     memory/memory.c
+    memory/freestanding_allocator.c
 )
 
 set(RUNTIME_IO_SOURCES
