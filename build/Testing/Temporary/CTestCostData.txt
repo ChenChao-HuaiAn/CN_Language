@@ -31,5 +31,5 @@ runtime_math_test 14 0.000748086
 runtime_freestanding_test 13 0.000780431
 runtime_kernel_io_test 12 0.000757242
 freestanding_check_test 9 0.00107474
-integration_os_test 6 0.177101
+integration_os_test 7 0.2405
 ---

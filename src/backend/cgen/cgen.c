@@ -188,8 +188,12 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
 
     // 根据编译模式生成不同的头文件
     if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {
-        // Freestanding 模式：不包含运行时库头文件
-        fprintf(file, "#include <stdbool.h>\n#include <stdint.h>\n\n");
+        // Freestanding 模式：不包含运行时库头文件，但声明必要的运行时函数
+        fprintf(file, "#include <stddef.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n");
+        fprintf(file, "// CN Language Runtime Function Declarations (Freestanding Mode)\n");
+        fprintf(file, "void cn_rt_print_string(const char *str);\n");
+        fprintf(file, "void cn_rt_print_int(long long val);\n");
+        fprintf(file, "size_t cn_rt_string_length(const char *str);\n\n");
     } else {
         // Hosted 模式：包含完整运行时库
         fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");

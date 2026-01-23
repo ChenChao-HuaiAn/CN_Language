@@ -12,15 +12,72 @@
   
 - **kernels/** - 内核示例程序
   - `minimal_kernel.cn` - 最小内核示例
+  - `hello_kernel.cn` - 带打印功能的简单内核示例
   - `kernel_with_io.cn` - 带 I/O 回调的内核示例
   - `test_kernel.cn` - 用于自动化测试的内核（返回 42）
   
 - **scripts/** - 构建和测试脚本
   - `build_kernel.ps1` - PowerShell 构建脚本
+  - `build_hello_kernel.ps1` - 快速构建 Hello Kernel 示例
   - `run_qemu_test.ps1` - QEMU 测试脚本
   - `verify_boot.ps1` - 启动代码与链接脚本验证
 
 - **os_integration_test.c** - C 驱动程序（自动化测试）
+
+## Hello Kernel 示例
+
+`hello_kernel.cn` 是一个最简单的 CN Language 内核程序，演示如何在 freestanding 模式下使用打印功能。
+
+### 源代码
+
+```cn
+函数 kernel_main() {
+    // 打印欢迎信息
+    打印("=== CN Language Kernel ===\n");
+    打印("Hello from CN Kernel!\n");
+    打印("Kernel initialization complete.\n");
+    打印("[OK] All tests passed.\n");
+    
+    // 返回成功代码
+    返回 0;
+}
+```
+
+### 构建与测试
+
+**快速构建**：
+
+```powershell
+cd tests/integration/os
+pwsh scripts/build_hello_kernel.ps1
+```
+
+**带 QEMU 测试**（需要安装 QEMU）：
+
+```powershell
+pwsh scripts/build_hello_kernel.ps1 -RunQemu
+```
+
+### 预期输出
+
+如果在 QEMU 中运行，会看到以下输出（通过串口）：
+
+```
+[BOOT] Starting CN Language Kernel...
+=== CN Language Kernel ===
+Hello from CN Kernel!
+Kernel initialization complete.
+[OK] All tests passed.
+[BOOT] Kernel returned with code: 0 (Success)
+[BOOT] System halted.
+```
+
+### 技术详情
+
+- **Freestanding 模式**：使用 `--freestanding` 编译，不依赖宿主操作系统
+- **I/O 回调**：通过 `boot_hello.c` 实现的串口输出回调（`cn_rt_kernel_print`）
+- **目标平台**：x86_64 ELF 格式
+- **运行时**：仅使用 freestanding 运行时函数，无需堆分配
 
 ## 内核 I/O 回调使用说明
 

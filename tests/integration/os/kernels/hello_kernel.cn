@@ -1,0 +1,13 @@
+// 简单内核示例 - 打印 "Hello from CN Kernel!"
+// 这是一个最小的 CN Language 内核程序，演示在 freestanding 模式下的打印功能
+
+函数 kernel_main() {
+    // 打印欢迎信息
+    打印("=== CN Language Kernel ===\n");
+    打印("Hello from CN Kernel!\n");
+    打印("Kernel initialization complete.\n");
+    打印("[OK] All tests passed.\n");
+    
+    // 返回成功代码
+    返回 0;
+}
