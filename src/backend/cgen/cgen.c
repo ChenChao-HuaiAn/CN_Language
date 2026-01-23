@@ -141,8 +141,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     }
     fprintf(ctx->output_file, ") {\n");
     
-    // 注入运行时初始化
-    if (is_main) {
+    // 注入运行时初始化（仅 hosted 模式）
+    if (is_main && ctx->module && ctx->module->compile_mode != CN_COMPILE_MODE_FREESTANDING) {
         fprintf(ctx->output_file, "  cn_rt_init();\n");
     }
 
@@ -159,8 +159,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     CnIrBasicBlock *block = func->first_block;
     while (block) { cn_cgen_block(ctx, block); block = block->next; }
 
-    // 注入运行时退出
-    if (is_main) {
+    // 注入运行时退出（仅 hosted 模式）
+    if (is_main && ctx->module && ctx->module->compile_mode != CN_COMPILE_MODE_FREESTANDING) {
         fprintf(ctx->output_file, "  cn_rt_exit();\n");
     }
     
@@ -182,11 +182,16 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
 
     FILE *file = fopen(filename, "w");
     if (!file) return -1;
-    CnCCodeGenContext ctx = {0, .output_file = file};
+    CnCCodeGenContext ctx = {0};
+    ctx.output_file = file;
+    ctx.module = module;  // 设置模块引用
 
+    // 根据编译模式生成不同的头文件
     if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {
-        fprintf(file, "#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
+        // Freestanding 模式：不包含运行时库头文件
+        fprintf(file, "#include <stdbool.h>\n#include <stdint.h>\n\n");
     } else {
+        // Hosted 模式：包含完整运行时库
         fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
     }
 

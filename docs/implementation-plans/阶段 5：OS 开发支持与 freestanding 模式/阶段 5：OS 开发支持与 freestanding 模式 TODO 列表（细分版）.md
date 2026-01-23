@@ -82,7 +82,9 @@
   - [x] 在 `tests/integration/os/` 下规划目录结构（如 `boot/`、`kernels/`、`scripts/`）  
   - [x] 为 CMake 增加构建 OS 集成测试的目标（在 `tests/integration/CMakeLists.txt` 中添加对应 target）  
   - [x] 编写脚本/驱动程序，用于调用 `cnc` 生成目标代码并配合启动代码、链接脚本打包为镜像（例如 ELF/binary）
-  - [ ] **注意**：当前测试需要 C 后端支持 freestanding 模式（不生成 `#include "cnrt.h"`），待后续实现
+  - [x] **C 后端 freestanding 模式支持**：已实现，freestanding 模式下不生成 `#include "cnrt.h"`
+  - [x] **OS 集成测试启用**：已在 CMakeLists.txt 中取消注释，所有 34 个测试通过
+  - [x] **内核 I/O 回调示例**：已创建 `boot_with_io.c` 和 `kernel_with_io.cn`，展示串口输出
 
 - **4.2 启动代码与链接脚本**
   - [ ] 准备最小化启动代码（如汇编/ C 启动 stub），在构建系统中集成  

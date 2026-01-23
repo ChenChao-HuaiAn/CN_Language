@@ -1,10 +1,10 @@
-Start testing: Jan 23 10:05 中国标准时间
+Start testing: Jan 23 10:17 中国标准时间
 ----------------------------------------------------------
-1/33 Testing: sample_unit_test
-1/33 Test: sample_unit_test
+1/34 Testing: sample_unit_test
+1/34 Test: sample_unit_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/sample_unit_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"sample_unit_test" start time: Jan 23 10:05 中国标准时间
+"sample_unit_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 sample_unit_test: OK
@@ -12,15 +12,15 @@ sample_unit_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"sample_unit_test" end time: Jan 23 10:05 中国标准时间
+"sample_unit_test" end time: Jan 23 10:17 中国标准时间
 "sample_unit_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-2/33 Testing: support_target_triple_test
-2/33 Test: support_target_triple_test
+2/34 Testing: support_target_triple_test
+2/34 Test: support_target_triple_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/support_target_triple_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"support_target_triple_test" start time: Jan 23 10:05 中国标准时间
+"support_target_triple_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 support_target_triple_test: OK
@@ -28,15 +28,15 @@ support_target_triple_test: OK
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"support_target_triple_test" end time: Jan 23 10:05 中国标准时间
+"support_target_triple_test" end time: Jan 23 10:17 中国标准时间
 "support_target_triple_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-3/33 Testing: lexer_function_examples_test
-3/33 Test: lexer_function_examples_test
+3/34 Testing: lexer_function_examples_test
+3/34 Test: lexer_function_examples_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/lexer_function_examples_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"lexer_function_examples_test" start time: Jan 23 10:05 中国标准时间
+"lexer_function_examples_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 Token(KEYWORD_FN, line=9, column=1)
@@ -1157,15 +1157,15 @@ Token(EOF, line=311, column=1)
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"lexer_function_examples_test" end time: Jan 23 10:05 中国标准时间
+"lexer_function_examples_test" end time: Jan 23 10:17 中国标准时间
 "lexer_function_examples_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-4/33 Testing: lexer_token_test
-4/33 Test: lexer_token_test
+4/34 Testing: lexer_token_test
+4/34 Test: lexer_token_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/lexer_token_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"lexer_token_test" start time: Jan 23 10:05 中国标准时间
+"lexer_token_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 lexer_token_test: OK
@@ -1173,15 +1173,15 @@ lexer_token_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"lexer_token_test" end time: Jan 23 10:05 中国标准时间
+"lexer_token_test" end time: Jan 23 10:17 中国标准时间
 "lexer_token_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-5/33 Testing: lexer_error_test
-5/33 Test: lexer_error_test
+5/34 Testing: lexer_error_test
+5/34 Test: lexer_error_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/lexer_error_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"lexer_error_test" start time: Jan 23 10:05 中国标准时间
+"lexer_error_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 lexer_error_test: OK
@@ -1189,15 +1189,15 @@ lexer_error_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"lexer_error_test" end time: Jan 23 10:05 中国标准时间
+"lexer_error_test" end time: Jan 23 10:17 中国标准时间
 "lexer_error_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-6/33 Testing: parser_minimal_test
-6/33 Test: parser_minimal_test
+6/34 Testing: parser_minimal_test
+6/34 Test: parser_minimal_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_minimal_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_minimal_test" start time: Jan 23 10:05 中国标准时间
+"parser_minimal_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_minimal_test: OK
@@ -1205,15 +1205,15 @@ parser_minimal_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_minimal_test" end time: Jan 23 10:05 中国标准时间
+"parser_minimal_test" end time: Jan 23 10:17 中国标准时间
 "parser_minimal_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-7/33 Testing: parser_comparison_test
-7/33 Test: parser_comparison_test
+7/34 Testing: parser_comparison_test
+7/34 Test: parser_comparison_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_comparison_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_comparison_test" start time: Jan 23 10:05 中国标准时间
+"parser_comparison_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_comparison_test: OK
@@ -1221,15 +1221,15 @@ parser_comparison_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_comparison_test" end time: Jan 23 10:05 中国标准时间
+"parser_comparison_test" end time: Jan 23 10:17 中国标准时间
 "parser_comparison_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-8/33 Testing: parser_loop_test
-8/33 Test: parser_loop_test
+8/34 Testing: parser_loop_test
+8/34 Test: parser_loop_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_loop_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_loop_test" start time: Jan 23 10:05 中国标准时间
+"parser_loop_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_loop_test: OK
@@ -1237,15 +1237,15 @@ parser_loop_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_loop_test" end time: Jan 23 10:05 中国标准时间
+"parser_loop_test" end time: Jan 23 10:17 中国标准时间
 "parser_loop_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-9/33 Testing: parser_assign_test
-9/33 Test: parser_assign_test
+9/34 Testing: parser_assign_test
+9/34 Test: parser_assign_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_assign_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_assign_test" start time: Jan 23 10:05 中国标准时间
+"parser_assign_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_assign_test: OK
@@ -1253,15 +1253,15 @@ parser_assign_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_assign_test" end time: Jan 23 10:05 中国标准时间
+"parser_assign_test" end time: Jan 23 10:17 中国标准时间
 "parser_assign_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-10/33 Testing: parser_logical_test
-10/33 Test: parser_logical_test
+10/34 Testing: parser_logical_test
+10/34 Test: parser_logical_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_logical_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_logical_test" start time: Jan 23 10:05 中国标准时间
+"parser_logical_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_logical_test: OK
@@ -1269,15 +1269,15 @@ parser_logical_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_logical_test" end time: Jan 23 10:05 中国标准时间
+"parser_logical_test" end time: Jan 23 10:17 中国标准时间
 "parser_logical_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-11/33 Testing: parser_break_test
-11/33 Test: parser_break_test
+11/34 Testing: parser_break_test
+11/34 Test: parser_break_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_break_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_break_test" start time: Jan 23 10:05 中国标准时间
+"parser_break_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_break_test: OK
@@ -1285,15 +1285,15 @@ parser_break_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_break_test" end time: Jan 23 10:05 中国标准时间
+"parser_break_test" end time: Jan 23 10:17 中国标准时间
 "parser_break_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-12/33 Testing: parser_var_test
-12/33 Test: parser_var_test
+12/34 Testing: parser_var_test
+12/34 Test: parser_var_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_var_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_var_test" start time: Jan 23 10:05 中国标准时间
+"parser_var_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_var_test: OK
@@ -1301,15 +1301,15 @@ parser_var_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_var_test" end time: Jan 23 10:05 中国标准时间
+"parser_var_test" end time: Jan 23 10:17 中国标准时间
 "parser_var_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-13/33 Testing: parser_func_test
-13/33 Test: parser_func_test
+13/34 Testing: parser_func_test
+13/34 Test: parser_func_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_func_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_func_test" start time: Jan 23 10:05 中国标准时间
+"parser_func_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_func_test: OK
@@ -1317,15 +1317,15 @@ parser_func_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_func_test" end time: Jan 23 10:05 中国标准时间
+"parser_func_test" end time: Jan 23 10:17 中国标准时间
 "parser_func_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-14/33 Testing: parser_hello_world_test
-14/33 Test: parser_hello_world_test
+14/34 Testing: parser_hello_world_test
+14/34 Test: parser_hello_world_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_hello_world_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_hello_world_test" start time: Jan 23 10:05 中国标准时间
+"parser_hello_world_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_hello_world_test: OK
@@ -1333,15 +1333,15 @@ parser_hello_world_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_hello_world_test" end time: Jan 23 10:05 中国标准时间
+"parser_hello_world_test" end time: Jan 23 10:17 中国标准时间
 "parser_hello_world_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-15/33 Testing: parser_diagnostics_test
-15/33 Test: parser_diagnostics_test
+15/34 Testing: parser_diagnostics_test
+15/34 Test: parser_diagnostics_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_diagnostics_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_diagnostics_test" start time: Jan 23 10:05 中国标准时间
+"parser_diagnostics_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_diagnostics_test: OK
@@ -1349,15 +1349,15 @@ parser_diagnostics_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_diagnostics_test" end time: Jan 23 10:05 中国标准时间
+"parser_diagnostics_test" end time: Jan 23 10:17 中国标准时间
 "parser_diagnostics_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-16/33 Testing: parser_error_syntax_test
-16/33 Test: parser_error_syntax_test
+16/34 Testing: parser_error_syntax_test
+16/34 Test: parser_error_syntax_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/parser_error_syntax_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"parser_error_syntax_test" start time: Jan 23 10:05 中国标准时间
+"parser_error_syntax_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 parser_error_syntax_test: OK
@@ -1365,15 +1365,15 @@ parser_error_syntax_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"parser_error_syntax_test" end time: Jan 23 10:05 中国标准时间
+"parser_error_syntax_test" end time: Jan 23 10:17 中国标准时间
 "parser_error_syntax_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-17/33 Testing: semantic_check_test
-17/33 Test: semantic_check_test
+17/34 Testing: semantic_check_test
+17/34 Test: semantic_check_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/semantic_check_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"semantic_check_test" start time: Jan 23 10:05 中国标准时间
+"semantic_check_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 测试重复函数定义: 成功 (检测到错误)
@@ -1384,15 +1384,15 @@ Output:
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"semantic_check_test" end time: Jan 23 10:05 中国标准时间
+"semantic_check_test" end time: Jan 23 10:17 中国标准时间
 "semantic_check_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-18/33 Testing: semantics_symbol_table_test
-18/33 Test: semantics_symbol_table_test
+18/34 Testing: semantics_symbol_table_test
+18/34 Test: semantics_symbol_table_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/semantics_symbol_table_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"semantics_symbol_table_test" start time: Jan 23 10:05 中国标准时间
+"semantics_symbol_table_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 test_scope_creation: PASSED
@@ -1401,15 +1401,15 @@ test_symbol_insertion_and_lookup: PASSED
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"semantics_symbol_table_test" end time: Jan 23 10:05 中国标准时间
+"semantics_symbol_table_test" end time: Jan 23 10:17 中国标准时间
 "semantics_symbol_table_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-19/33 Testing: semantics_type_system_test
-19/33 Test: semantics_type_system_test
+19/34 Testing: semantics_type_system_test
+19/34 Test: semantics_type_system_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/semantics_type_system_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"semantics_type_system_test" start time: Jan 23 10:05 中国标准时间
+"semantics_type_system_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 test_primitive_types: PASSED
@@ -1419,32 +1419,32 @@ test_function_types: PASSED
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"semantics_type_system_test" end time: Jan 23 10:05 中国标准时间
+"semantics_type_system_test" end time: Jan 23 10:17 中国标准时间
 "semantics_type_system_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-20/33 Testing: semantics_name_resolution_test
-20/33 Test: semantics_name_resolution_test
+20/34 Testing: semantics_name_resolution_test
+20/34 Test: semantics_name_resolution_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/semantics_name_resolution_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"semantics_name_resolution_test" start time: Jan 23 10:05 中国标准时间
+"semantics_name_resolution_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 test_name_resolution_success: PASSED
 test_undefined_variable: PASSED
 <end of output>
-Test time =   0.03 sec
+Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"semantics_name_resolution_test" end time: Jan 23 10:05 中国标准时间
+"semantics_name_resolution_test" end time: Jan 23 10:17 中国标准时间
 "semantics_name_resolution_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-21/33 Testing: freestanding_check_test
-21/33 Test: freestanding_check_test
+21/34 Testing: freestanding_check_test
+21/34 Test: freestanding_check_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/freestanding_check_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"freestanding_check_test" start time: Jan 23 10:05 中国标准时间
+"freestanding_check_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 === Freestanding 模式特性检查测试 ===
@@ -1461,15 +1461,15 @@ Output:
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"freestanding_check_test" end time: Jan 23 10:05 中国标准时间
+"freestanding_check_test" end time: Jan 23 10:17 中国标准时间
 "freestanding_check_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-22/33 Testing: runtime_memory_test
-22/33 Test: runtime_memory_test
+22/34 Testing: runtime_memory_test
+22/34 Test: runtime_memory_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_memory_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"runtime_memory_test" start time: Jan 23 10:05 中国标准时间
+"runtime_memory_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 runtime_memory_test: OK
@@ -1477,15 +1477,15 @@ runtime_memory_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"runtime_memory_test" end time: Jan 23 10:05 中国标准时间
+"runtime_memory_test" end time: Jan 23 10:17 中国标准时间
 "runtime_memory_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-23/33 Testing: runtime_string_test
-23/33 Test: runtime_string_test
+23/34 Testing: runtime_string_test
+23/34 Test: runtime_string_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_string_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"runtime_string_test" start time: Jan 23 10:05 中国标准时间
+"runtime_string_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 runtime_string_test: OK
@@ -1493,15 +1493,15 @@ runtime_string_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"runtime_string_test" end time: Jan 23 10:05 中国标准时间
+"runtime_string_test" end time: Jan 23 10:17 中国标准时间
 "runtime_string_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-24/33 Testing: runtime_array_test
-24/33 Test: runtime_array_test
+24/34 Testing: runtime_array_test
+24/34 Test: runtime_array_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_array_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"runtime_array_test" start time: Jan 23 10:05 中国标准时间
+"runtime_array_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 runtime_array_test: OK
@@ -1509,15 +1509,15 @@ runtime_array_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"runtime_array_test" end time: Jan 23 10:05 中国标准时间
+"runtime_array_test" end time: Jan 23 10:17 中国标准时间
 "runtime_array_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-25/33 Testing: runtime_io_test
-25/33 Test: runtime_io_test
+25/34 Testing: runtime_io_test
+25/34 Test: runtime_io_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_io_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"runtime_io_test" start time: Jan 23 10:05 中国标准时间
+"runtime_io_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 runtime_io_test: OK
@@ -1525,15 +1525,15 @@ runtime_io_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"runtime_io_test" end time: Jan 23 10:05 中国标准时间
+"runtime_io_test" end time: Jan 23 10:17 中国标准时间
 "runtime_io_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-26/33 Testing: runtime_math_test
-26/33 Test: runtime_math_test
+26/34 Testing: runtime_math_test
+26/34 Test: runtime_math_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_math_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"runtime_math_test" start time: Jan 23 10:05 中国标准时间
+"runtime_math_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 runtime_math_test: OK
@@ -1541,15 +1541,15 @@ runtime_math_test: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"runtime_math_test" end time: Jan 23 10:05 中国标准时间
+"runtime_math_test" end time: Jan 23 10:17 中国标准时间
 "runtime_math_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-27/33 Testing: runtime_freestanding_test
-27/33 Test: runtime_freestanding_test
+27/34 Testing: runtime_freestanding_test
+27/34 Test: runtime_freestanding_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_freestanding_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"runtime_freestanding_test" start time: Jan 23 10:05 中国标准时间
+"runtime_freestanding_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 运行 Freestanding 模式单元测试...
@@ -1571,15 +1571,15 @@ test_freestanding_runtime_init: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"runtime_freestanding_test" end time: Jan 23 10:05 中国标准时间
+"runtime_freestanding_test" end time: Jan 23 10:17 中国标准时间
 "runtime_freestanding_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-28/33 Testing: runtime_kernel_io_test
-28/33 Test: runtime_kernel_io_test
+28/34 Testing: runtime_kernel_io_test
+28/34 Test: runtime_kernel_io_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/runtime_kernel_io_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
-"runtime_kernel_io_test" start time: Jan 23 10:05 中国标准时间
+"runtime_kernel_io_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 运行内核 I/O 回调系统测试...
@@ -1601,31 +1601,31 @@ test_kernel_io_runtime_integration: OK
 Test time =   0.01 sec
 ----------------------------------------------------------
 Test Passed.
-"runtime_kernel_io_test" end time: Jan 23 10:05 中国标准时间
+"runtime_kernel_io_test" end time: Jan 23 10:17 中国标准时间
 "runtime_kernel_io_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-29/33 Testing: integration_parse_success_test
-29/33 Test: integration_parse_success_test
+29/34 Testing: integration_parse_success_test
+29/34 Test: integration_parse_success_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_parse_success_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_parse_success_test" start time: Jan 23 10:05 中国标准时间
+"integration_parse_success_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 integration_parse_success_test: OK
 <end of output>
-Test time =   0.03 sec
+Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_parse_success_test" end time: Jan 23 10:05 中国标准时间
+"integration_parse_success_test" end time: Jan 23 10:17 中国标准时间
 "integration_parse_success_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-30/33 Testing: integration_parse_failure_test
-30/33 Test: integration_parse_failure_test
+30/34 Testing: integration_parse_failure_test
+30/34 Test: integration_parse_failure_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_parse_failure_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/integration
-"integration_parse_failure_test" start time: Jan 23 10:05 中国标准时间
+"integration_parse_failure_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 integration_parse_failure_test: OK
@@ -1634,15 +1634,15 @@ integration_parse_failure_test: OK
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_parse_failure_test" end time: Jan 23 10:05 中国标准时间
+"integration_parse_failure_test" end time: Jan 23 10:17 中国标准时间
 "integration_parse_failure_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-31/33 Testing: integration_semantic_error_test
-31/33 Test: integration_semantic_error_test
+31/34 Testing: integration_semantic_error_test
+31/34 Test: integration_semantic_error_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_semantic_error_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/integration
-"integration_semantic_error_test" start time: Jan 23 10:05 中国标准时间
+"integration_semantic_error_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 语义分析集成测试结果：
@@ -1655,15 +1655,15 @@ integration_semantic_error_test: OK
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_semantic_error_test" end time: Jan 23 10:05 中国标准时间
+"integration_semantic_error_test" end time: Jan 23 10:17 中国标准时间
 "integration_semantic_error_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-32/33 Testing: integration_full_frontend_test
-32/33 Test: integration_full_frontend_test
+32/34 Testing: integration_full_frontend_test
+32/34 Test: integration_full_frontend_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_full_frontend_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_full_frontend_test" start time: Jan 23 10:05 中国标准时间
+"integration_full_frontend_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 test_full_frontend_type_info: PASSED
@@ -1671,15 +1671,15 @@ test_full_frontend_type_info: PASSED
 Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_full_frontend_test" end time: Jan 23 10:05 中国标准时间
+"integration_full_frontend_test" end time: Jan 23 10:17 中国标准时间
 "integration_full_frontend_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-33/33 Testing: integration_compile_full_test
-33/33 Test: integration_compile_full_test
+33/34 Testing: integration_compile_full_test
+33/34 Test: integration_compile_full_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_compile_full_test.exe" "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/cnc.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_compile_full_test" start time: Jan 23 10:05 中国标准时间
+"integration_compile_full_test" start time: Jan 23 10:17 中国标准时间
 Output:
 ----------------------------------------------------------
 'clang' is not recognized as an internal or external command,
@@ -1750,11 +1750,55 @@ warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 正在运行生成的程序: .\hello_target_test.exe
 集成编译测试全部通过!
 <end of output>
-Test time =   6.60 sec
+Test time =   7.85 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_compile_full_test" end time: Jan 23 10:06 中国标准时间
-"integration_compile_full_test" time elapsed: 00:00:06
+"integration_compile_full_test" end time: Jan 23 10:17 中国标准时间
+"integration_compile_full_test" time elapsed: 00:00:07
 ----------------------------------------------------------
 
-End testing: Jan 23 10:06 中国标准时间
+34/34 Testing: integration_os_test
+34/34 Test: integration_os_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/integration_os_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/tests/integration/os
+"integration_os_test" start time: Jan 23 10:17 中国标准时间
+Output:
+----------------------------------------------------------
+=== CN Language 内核构建脚本 ===
+
+[1/4] 编译 CN 内核源文件...
+函数: kernel_main，语句数: 1
+已生成 C 代码文件: kernels/minimal_kernel.c
+  ✓ 生成 C 代码: temp_build\kernel.c
+[2/4] 编译启动代码...
+boot/boot.c: In function '_start':
+boot/boot.c:19:5: warning: listing the stack pointer register 'rsp' in a clobber list is deprecated [-Wdeprecated]
+   19 |     __asm__ volatile (
+      |     ^~~~~~~
+boot/boot.c:19:5: note: the value of the stack pointer after an 'asm' statement must be the same as it was before the statement
+  ✓ 生成目标文件: temp_build\boot.o
+[3/4] 编译内核 C 代码...
+  ✓ 生成目标文件: temp_build\kernel.o
+[4/4] 链接内核镜像...
+  ⚠ Windows 上跳过链接步骤（需要交叉编译工具链）
+  ✓ 编译验证成功
+
+=== 构建成功！===
+内核镜像: test_kernel.elf
+=== CN Language OS 集成测试 ===
+
+=== 测试：最小内核编译 ===
+[测试] 编译内核: kernels/minimal_kernel.cn -> test_kernel.elf
+[成功] 内核编译成功，镜像: test_kernel.elf
+
+=== 测试结果 ===
+[通过] 所有测试通过
+<end of output>
+Test time =   0.93 sec
+----------------------------------------------------------
+Test Passed.
+"integration_os_test" end time: Jan 23 10:17 中国标准时间
+"integration_os_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+End testing: Jan 23 10:17 中国标准时间

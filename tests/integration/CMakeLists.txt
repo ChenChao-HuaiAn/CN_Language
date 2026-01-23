@@ -72,11 +72,10 @@ add_test(NAME integration_compile_full_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 # OS 集成测试
-# 注意：此测试当前被禁用，因为需要 C 后端支持 freestanding 模式
 add_executable(integration_os_test
     os/os_integration_test.c
 )
 target_include_directories(integration_os_test PRIVATE ../../include)
-# add_test(NAME integration_os_test
-#          COMMAND integration_os_test
-#          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/os)
+add_test(NAME integration_os_test
+         COMMAND integration_os_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/os)
