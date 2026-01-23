@@ -124,16 +124,16 @@ static void repl_session_reset(ReplSession *session)
 static void print_welcome(void)
 {
     printf("CN Language REPL v%s\n", REPL_VERSION);
-    printf("输入 CN 语言表达式或语句，按 Ctrl+C 退出\n");
+    printf("输入 CN 语言表达式或语句，或使用特殊命令\n");
     printf("支持：单表达式求值、变量声明、小段程序\n");
     printf("会话状态：前次定义的变量/函数在后续输入中可见\n");
     printf("特殊命令:\n");
-    printf("  :help    - 显示帮助信息\n");
-    printf("  :quit    - 退出 REPL\n");
-    printf("  :reset   - 重置会话状态\n");
-    printf("  :verbose - 切换详细输出模式\n");
-    printf("  :ast     - 切换 AST 显示\n");
-    printf("  :ir      - 切换 IR 显示\n");
+    printf("  :help/:h       - 显示帮助信息\n");
+    printf("  :quit/:q       - 退出 REPL\n");
+    printf("  :reset         - 重置会话状态\n");
+    printf("  :verbose/:v    - 切换详细输出模式\n");
+    printf("  :ast           - 切换 AST 显示\n");
+    printf("  :ir            - 切换 IR 显示\n");
     printf("\n");
 }
 
@@ -142,12 +142,13 @@ static void print_help(void)
 {
     printf("\nCN Language REPL 帮助:\n");
     printf("--------------------\n");
-    printf("  :help    - 显示此帮助信息\n");
-    printf("  :quit    - 退出 REPL\n");
-    printf("  :reset   - 重置会话状态（清空所有已定义的变量和函数）\n");
-    printf("  :verbose - 切换详细输出模式\n");
-    printf("  :ast     - 切换 AST 显示\n");
-    printf("  :ir      - 切换 IR 显示\n");
+    printf("特殊命令：\n");
+    printf("  :help/:h       - 显示此帮助信息\n");
+    printf("  :quit/:q       - 退出 REPL\n");
+    printf("  :reset         - 重置会话状态（清空所有已定义的变量和函数）\n");
+    printf("  :verbose/:v    - 切换详细输出模式\n");
+    printf("  :ast           - 切换 AST 显示\n");
+    printf("  :ir            - 切换 IR 显示\n");
     printf("\n");
     printf("支持的输入模式:\n");
     printf("  1. 单表达式求值（自动包装）:\n");
@@ -167,8 +168,10 @@ static void print_help(void)
     printf("\n");
 }
 
-/* 打印诊断信息 */
-static void print_diagnostics(const CnDiagnostics *diagnostics)
+/* 打印诊断信息（带代码片段的友好提示） */
+static void print_diagnostics_with_context(
+    const CnDiagnostics *diagnostics,
+    const char *source_code)
 {
     if (!diagnostics || diagnostics->count == 0) {
         return;
@@ -179,9 +182,71 @@ static void print_diagnostics(const CnDiagnostics *diagnostics)
         const char *severity_str = (d->severity == CN_DIAG_SEVERITY_ERROR) ? "错误" : "警告";
         const char *message = d->message ? d->message : "<无消息>";
 
-        fprintf(stderr, "%s: %s (行 %d, 列 %d)\n",
-                severity_str, message, d->line, d->column);
+        // 打印错误消息头
+        fprintf(stderr, "\n%s: %s\n", severity_str, message);
+        fprintf(stderr, "  位置: 行 %d, 列 %d\n", d->line, d->column);
+
+        // 显示代码片段（如果提供了源码）
+        if (source_code && d->line > 0) {
+            // 查找错误所在行
+            const char *line_start = source_code;
+            const char *line_end = source_code;
+            int current_line = 1;
+
+            // 定位到目标行
+            while (*line_end && current_line < d->line) {
+                if (*line_end == '\n') {
+                    current_line++;
+                    line_start = line_end + 1;
+                }
+                line_end++;
+            }
+
+            // 找到行尾
+            line_end = line_start;
+            while (*line_end && *line_end != '\n') {
+                line_end++;
+            }
+
+            // 显示该行代码
+            if (line_end > line_start) {
+                fprintf(stderr, "  代码: ");
+                fwrite(line_start, 1, line_end - line_start, stderr);
+                fprintf(stderr, "\n");
+
+                // 显示错误位置标记（用 ^ 符号）
+                if (d->column > 0) {
+                    fprintf(stderr, "        ");
+                    for (int j = 1; j < d->column; j++) {
+                        fprintf(stderr, " ");
+                    }
+                    fprintf(stderr, "^\n");
+                }
+            }
+        }
+
+        // 根据错误类型提供友好提示
+        switch (d->code) {
+        case CN_DIAG_CODE_LEX_UNTERMINATED_STRING:
+            fprintf(stderr, "  提示: 字符串字面量需要用引号闭合\n");
+            break;
+        case CN_DIAG_CODE_LEX_INVALID_CHAR:
+            fprintf(stderr, "  提示: 检查是否包含非法字符\n");
+            break;
+        case CN_DIAG_CODE_PARSE_EXPECTED_TOKEN:
+            fprintf(stderr, "  提示: 检查语法结构是否完整\n");
+            break;
+        case CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER:
+            fprintf(stderr, "  提示: 确保变量或函数在使用前已定义\n");
+            break;
+        case CN_DIAG_CODE_SEM_TYPE_MISMATCH:
+            fprintf(stderr, "  提示: 检查表达式两边的类型是否匹配\n");
+            break;
+        default:
+            break;
+        }
     }
+    fprintf(stderr, "\n");
 }
 
 /* 检查诊断中是否存在错误 */
@@ -355,7 +420,17 @@ static void process_input(const char *input, const ReplConfig *config, ReplSessi
     }
 
     if (!code_to_parse) {
-        fprintf(stderr, "内存分配失败\n");
+        // 使用诊断系统报告内部错误
+        CnDiagnostics temp_diag;
+        cn_support_diagnostics_init(&temp_diag);
+        cn_support_diagnostics_report_error(
+            &temp_diag,
+            CN_DIAG_CODE_UNKNOWN,
+            "<repl>",
+            0, 0,
+            "内存分配失败");
+        cn_support_diagnostics_print(&temp_diag);
+        cn_support_diagnostics_free(&temp_diag);
         return;
     }
 
@@ -369,7 +444,14 @@ static void process_input(const char *input, const ReplConfig *config, ReplSessi
     // 创建语法分析器
     parser = cn_frontend_parser_new(&lexer);
     if (!parser) {
-        fprintf(stderr, "创建解析器失败\n");
+        // 使用诊断系统报告内部错误
+        cn_support_diagnostics_report_error(
+            &diagnostics,
+            CN_DIAG_CODE_UNKNOWN,
+            "<repl>",
+            0, 0,
+            "创建解析器失败");
+        cn_support_diagnostics_print(&diagnostics);
         cn_support_diagnostics_free(&diagnostics);
         if (need_free_code) {
             free(code_to_parse);
@@ -381,7 +463,7 @@ static void process_input(const char *input, const ReplConfig *config, ReplSessi
     // 解析程序
     bool ok = cn_frontend_parse_program(parser, &program);
     if (!ok || !program) {
-        print_diagnostics(&diagnostics);
+        print_diagnostics_with_context(&diagnostics, code_to_parse);
         cn_frontend_parser_free(parser);
         cn_support_diagnostics_free(&diagnostics);
         if (need_free_code) {
@@ -391,7 +473,7 @@ static void process_input(const char *input, const ReplConfig *config, ReplSessi
     }
 
     if (diagnostics_has_error(&diagnostics)) {
-        print_diagnostics(&diagnostics);
+        print_diagnostics_with_context(&diagnostics, code_to_parse);
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
         cn_support_diagnostics_free(&diagnostics);
@@ -457,7 +539,14 @@ static void process_input(const char *input, const ReplConfig *config, ReplSessi
 
     CnIrModule *ir_module = cn_ir_gen_program(program, target_triple, CN_COMPILE_MODE_HOSTED);
     if (!ir_module) {
-        fprintf(stderr, "IR 生成失败\n");
+        // 使用诊断系统报告 IR 生成错误
+        cn_support_diagnostics_report_error(
+            &diagnostics,
+            CN_DIAG_CODE_UNKNOWN,
+            "<repl>",
+            0, 0,
+            "IR 生成失败");
+        cn_support_diagnostics_print(&diagnostics);
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
         cn_support_diagnostics_free(&diagnostics);
@@ -509,7 +598,17 @@ static void repl_loop(const ReplConfig *config)
     // 创建 REPL 会话
     ReplSession *session = repl_session_new();
     if (!session) {
-        fprintf(stderr, "创建 REPL 会话失败\n");
+        // 使用诊断系统报告会话创建错误
+        CnDiagnostics temp_diag;
+        cn_support_diagnostics_init(&temp_diag);
+        cn_support_diagnostics_report_error(
+            &temp_diag,
+            CN_DIAG_CODE_UNKNOWN,
+            "<repl>",
+            0, 0,
+            "创建 REPL 会话失败");
+        cn_support_diagnostics_print(&temp_diag);
+        cn_support_diagnostics_free(&temp_diag);
         return;
     }
 
@@ -555,7 +654,17 @@ static void repl_loop(const ReplConfig *config)
             // 转换 UTF-16 到 UTF-8
             int len = WideCharToMultiByte(CP_UTF8, 0, wline, -1, line, MAX_INPUT_LINE, NULL, NULL);
             if (len <= 0) {
-                fprintf(stderr, "编码转换失败 (error code: %d)\n", GetLastError());
+                // 使用诊断系统报告编码转换错误
+                CnDiagnostics temp_diag;
+                cn_support_diagnostics_init(&temp_diag);
+                cn_support_diagnostics_report_error(
+                    &temp_diag,
+                    CN_DIAG_CODE_UNKNOWN,
+                    "<repl>",
+                    0, 0,
+                    "编码转换失败");
+                cn_support_diagnostics_print(&temp_diag);
+                cn_support_diagnostics_free(&temp_diag);
                 continue;
             }
         } else {
@@ -629,7 +738,17 @@ static void repl_loop(const ReplConfig *config)
                 strncat(multiline_buffer, " ", MAX_MULTILINE_INPUT - current_len - 1);
                 strncat(multiline_buffer, line, MAX_MULTILINE_INPUT - current_len - 2);
             } else {
-                fprintf(stderr, "错误：多行输入超过最大长度\n");
+                // 使用诊断系统报告多行输入超长错误
+                CnDiagnostics temp_diag;
+                cn_support_diagnostics_init(&temp_diag);
+                cn_support_diagnostics_report_error(
+                    &temp_diag,
+                    CN_DIAG_CODE_UNKNOWN,
+                    "<repl>",
+                    0, 0,
+                    "错误：多行输入超过最大长度");
+                cn_support_diagnostics_print(&temp_diag);
+                cn_support_diagnostics_free(&temp_diag);
                 in_multiline = false;
                 multiline_buffer[0] = '\0';
                 continue;

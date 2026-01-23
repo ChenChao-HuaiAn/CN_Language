@@ -1,10 +1,10 @@
-Start testing: Jan 23 20:53 中国标准时间
+Start testing: Jan 23 21:03 中国标准时间
 ----------------------------------------------------------
 40/42 Testing: integration_repl_expr_test
 40/42 Test: integration_repl_expr_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_expr_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_repl_expr_test" start time: Jan 23 20:53 中国标准时间
+"integration_repl_expr_test" start time: Jan 23 21:03 中国标准时间
 Output:
 ----------------------------------------------------------
 === REPL 单表达式求值集成测试 ===
@@ -44,10 +44,10 @@ Output:
 =================================
 所有测试通过！
 <end of output>
-Test time =   0.01 sec
+Test time =   0.04 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_repl_expr_test" end time: Jan 23 20:53 中国标准时间
+"integration_repl_expr_test" end time: Jan 23 21:03 中国标准时间
 "integration_repl_expr_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -55,7 +55,7 @@ Test Passed.
 41/42 Test: integration_repl_statement_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_statement_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_repl_statement_test" start time: Jan 23 20:53 中国标准时间
+"integration_repl_statement_test" start time: Jan 23 21:03 中国标准时间
 Output:
 ----------------------------------------------------------
 === REPL 小段程序集成测试 ===
@@ -87,10 +87,10 @@ Output:
 =================================
 所有测试通过！
 <end of output>
-Test time =   0.01 sec
+Test time =   0.07 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_repl_statement_test" end time: Jan 23 20:53 中国标准时间
+"integration_repl_statement_test" end time: Jan 23 21:03 中国标准时间
 "integration_repl_statement_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
@@ -98,7 +98,7 @@ Test Passed.
 42/42 Test: integration_repl_session_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_session_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_repl_session_test" start time: Jan 23 20:53 中国标准时间
+"integration_repl_session_test" start time: Jan 23 21:03 中国标准时间
 Output:
 ----------------------------------------------------------
 =======================================
@@ -117,11 +117,11 @@ REPL 会话状态管理集成测试
 注意：部分测试已跳过，需要进一步完善测试基础设施
 =======================================
 <end of output>
-Test time =   0.01 sec
+Test time =   0.02 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_repl_session_test" end time: Jan 23 20:53 中国标准时间
+"integration_repl_session_test" end time: Jan 23 21:03 中国标准时间
 "integration_repl_session_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 23 20:53 中国标准时间
+End testing: Jan 23 21:03 中国标准时间
