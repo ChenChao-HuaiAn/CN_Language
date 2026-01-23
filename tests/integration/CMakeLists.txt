@@ -142,3 +142,12 @@ add_executable(integration_repl_session_test
 )
 target_include_directories(integration_repl_session_test PRIVATE ../../include)
 add_test(NAME integration_repl_session_test COMMAND integration_repl_session_test)
+
+# 格式化工具集成测试
+add_executable(integration_format_test
+    format/integration_format_test.c
+)
+target_include_directories(integration_format_test PRIVATE ../../include)
+add_test(NAME integration_format_test 
+         COMMAND integration_format_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..)

@@ -57,4 +57,21 @@ target_include_directories(cnrepl PRIVATE
 # 链接运行时库
 target_link_libraries(cnrepl PRIVATE cn_runtime)
 
+# 格式化工具可执行程序
+add_executable(cnfmt
+    cli/cnfmt/main.c
+    format/formatter.c
+    frontend/lexer/token.c
+    frontend/lexer/lexer.c
+    frontend/ast/ast.c
+    frontend/parser/parser.c
+    support/diagnostics/diagnostics.c
+    semantics/symbols/symbol_table.c
+    semantics/symbols/type_system.c
+)
+
+target_include_directories(cnfmt PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 # 后续可在此处链接各模块静态库（frontend/semantics/ir/backend/support 等）

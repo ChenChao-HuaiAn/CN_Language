@@ -340,3 +340,23 @@ add_executable(repl_session_test
 )
 target_include_directories(repl_session_test PRIVATE ../../include)
 add_test(NAME repl_session_test COMMAND repl_session_test)
+
+# 格式化器单元测试
+add_executable(formatter_test
+    formatter_test.c
+    ../../src/format/formatter.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/ast/ast.c
+    ../../src/frontend/parser/parser.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/semantics/symbols/type_system.c
+)
+
+target_include_directories(formatter_test PRIVATE
+    ../../include
+)
+
+add_test(NAME formatter_test
+         COMMAND formatter_test)

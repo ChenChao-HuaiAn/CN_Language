@@ -182,9 +182,17 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{759F6B9E-9FA2-3361-9E49-115822F020F4}</Project>
       <Name>cnc</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnfmt.vcxproj">
+      <Project>{A7E3D08A-0FEF-300C-BD1C-A59DD814C67E}</Project>
+      <Name>cnfmt</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnrepl.vcxproj">
       <Project>{F56B043E-1C55-303C-B41A-3D06913789EA}</Project>
       <Name>cnrepl</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\formatter_test.vcxproj">
+      <Project>{AA4893B5-D154-3F78-A0EF-3BB418EB5894}</Project>
+      <Name>formatter_test</Name>
     </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\freestanding_check_test.vcxproj">
       <Project>{3229EEBC-0AE6-3CF1-877B-838C4FF3EB7E}</Project>
@@ -197,6 +205,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_compile_full_test.vcxproj">
       <Project>{007EC1AF-263B-3EC0-AAD9-0465EC5439E3}</Project>
       <Name>integration_compile_full_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_format_test.vcxproj">
+      <Project>{26B45386-FA11-37FF-9509-B7BA5722C152}</Project>
+      <Name>integration_format_test</Name>
     </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_full_frontend_test.vcxproj">
       <Project>{CC3A6AE4-5C93-3247-ADDB-8F893E867381}</Project>

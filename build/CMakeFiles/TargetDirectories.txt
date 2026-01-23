@@ -4,6 +4,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/ALL_BUILD.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/ZERO_CHECK.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/cnc.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/cnrepl.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/cnfmt.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/RUN_TESTS.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/INSTALL.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/runtime/CMakeFiles/cn_runtime.dir
@@ -44,6 +45,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runt
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_kernel_io_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/repl_command_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/repl_session_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/formatter_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/RUN_TESTS.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/INSTALL.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_parse_success_test.dir
@@ -57,6 +59,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFil
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_repl_expr_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_repl_statement_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_repl_session_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_format_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/RUN_TESTS.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/INSTALL.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/system/CMakeFiles/RUN_TESTS.dir
