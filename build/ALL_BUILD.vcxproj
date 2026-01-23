@@ -182,6 +182,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{759F6B9E-9FA2-3361-9E49-115822F020F4}</Project>
       <Name>cnc</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\src\cnrepl.vcxproj">
+      <Project>{F56B043E-1C55-303C-B41A-3D06913789EA}</Project>
+      <Name>cnrepl</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\freestanding_check_test.vcxproj">
       <Project>{3229EEBC-0AE6-3CF1-877B-838C4FF3EB7E}</Project>
       <Name>freestanding_check_test</Name>
@@ -213,6 +217,10 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_semantic_error_test.vcxproj">
       <Project>{2649E8F4-0ABD-38AC-82EC-E7F9B231F591}</Project>
       <Name>integration_semantic_error_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\integration\integration_string_array_test.vcxproj">
+      <Project>{CE0D7157-05FB-3807-AE14-02660FEA1C31}</Project>
+      <Name>integration_string_array_test</Name>
     </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\lexer_error_test.vcxproj">
       <Project>{B853804D-E61E-3B3A-8A23-AB13B1E4E9EB}</Project>

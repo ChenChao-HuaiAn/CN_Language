@@ -3,6 +3,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/INSTALL.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/ALL_BUILD.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/CMakeFiles/ZERO_CHECK.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/cnc.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/cnrepl.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/RUN_TESTS.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/CMakeFiles/INSTALL.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/src/runtime/CMakeFiles/cn_runtime.dir
@@ -48,6 +49,7 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFil
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_semantic_error_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_full_frontend_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_array_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_string_array_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_compile_full_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_os_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/RUN_TESTS.dir

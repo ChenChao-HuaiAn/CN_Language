@@ -29,4 +29,32 @@ target_include_directories(cnc PRIVATE
 # 链接运行时库
 target_link_libraries(cnc PRIVATE cn_runtime)
 
+# REPL 可执行程序
+add_executable(cnrepl
+    cli/cnrepl/main.c
+    frontend/lexer/token.c
+    frontend/lexer/lexer.c
+    frontend/ast/ast.c
+    frontend/parser/parser.c
+    support/diagnostics/diagnostics.c
+    support/config/target_triple.c
+    semantics/symbols/symbol_table.c
+    semantics/symbols/type_system.c
+    semantics/resolution/scope_builder.c
+    semantics/checker/semantic_passes.c
+    semantics/checker/freestanding_check.c
+    ir/core/ir.c
+    ir/gen/irgen.c
+    ir/passes/constant_folding.c
+    ir/passes/dead_code_elimination.c
+    backend/cgen/cgen.c
+)
+
+target_include_directories(cnrepl PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# 链接运行时库
+target_link_libraries(cnrepl PRIVATE cn_runtime)
+
 # 后续可在此处链接各模块静态库（frontend/semantics/ir/backend/support 等）

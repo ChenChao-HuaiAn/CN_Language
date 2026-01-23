@@ -38,9 +38,6 @@
 !/README.md
 # 取消忽略"CMakeLists.txt"文件本身
 !/CMakeLists.txt
-# 取消忽略"更新文档.md"文件本身
-!/更新文档.md
-
 # 取消忽略".dockerignore"文件本身
 !/dockerignore
 # 取消忽略"docker_run.ps1"文件本身
