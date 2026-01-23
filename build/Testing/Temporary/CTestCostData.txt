@@ -1,2 +1,0 @@
-formatter_test 1 0.0360441
----
