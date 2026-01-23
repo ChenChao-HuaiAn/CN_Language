@@ -98,4 +98,5 @@ set(CMAKE_DEPEND_INFO_FILES
   "tests/integration/CMakeFiles/integration_semantic_error_test.dir/DependInfo.cmake"
   "tests/integration/CMakeFiles/integration_full_frontend_test.dir/DependInfo.cmake"
   "tests/integration/CMakeFiles/integration_compile_full_test.dir/DependInfo.cmake"
+  "tests/integration/CMakeFiles/integration_os_test.dir/DependInfo.cmake"
   )

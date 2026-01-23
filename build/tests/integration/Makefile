@@ -240,6 +240,20 @@ integration_compile_full_test/fast:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_compile_full_test.dir\build.make tests/integration/CMakeFiles/integration_compile_full_test.dir/build
 .PHONY : integration_compile_full_test/fast
 
+# Convenience name for target.
+tests/integration/CMakeFiles/integration_os_test.dir/rule:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 tests/integration/CMakeFiles/integration_os_test.dir/rule
+.PHONY : tests/integration/CMakeFiles/integration_os_test.dir/rule
+
+# Convenience name for target.
+integration_os_test: tests/integration/CMakeFiles/integration_os_test.dir/rule
+.PHONY : integration_os_test
+
+# fast build rule for target.
+integration_os_test/fast:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_os_test.dir\build.make tests/integration/CMakeFiles/integration_os_test.dir/build
+.PHONY : integration_os_test/fast
+
 __/__/src/frontend/ast/ast.obj: __/__/src/frontend/ast/ast.c.obj
 .PHONY : __/__/src/frontend/ast/ast.obj
 
@@ -666,6 +680,30 @@ integration_semantic_error_test.c.s:
 	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_semantic_error_test.dir\build.make tests/integration/CMakeFiles/integration_semantic_error_test.dir/integration_semantic_error_test.c.s
 .PHONY : integration_semantic_error_test.c.s
 
+os/os_integration_test.obj: os/os_integration_test.c.obj
+.PHONY : os/os_integration_test.obj
+
+# target to build an object file
+os/os_integration_test.c.obj:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_os_test.dir\build.make tests/integration/CMakeFiles/integration_os_test.dir/os/os_integration_test.c.obj
+.PHONY : os/os_integration_test.c.obj
+
+os/os_integration_test.i: os/os_integration_test.c.i
+.PHONY : os/os_integration_test.i
+
+# target to preprocess a source file
+os/os_integration_test.c.i:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_os_test.dir\build.make tests/integration/CMakeFiles/integration_os_test.dir/os/os_integration_test.c.i
+.PHONY : os/os_integration_test.c.i
+
+os/os_integration_test.s: os/os_integration_test.c.s
+.PHONY : os/os_integration_test.s
+
+# target to generate assembly for a file
+os/os_integration_test.c.s:
+	cd /d C:\Users\ChenChao\Documents\gitcode\CN_Language\build && $(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_os_test.dir\build.make tests/integration/CMakeFiles/integration_os_test.dir/os/os_integration_test.c.s
+.PHONY : os/os_integration_test.c.s
+
 # Help Target
 help:
 	@echo The following are some of the valid targets for this Makefile:
@@ -681,6 +719,7 @@ help:
 	@echo ... test
 	@echo ... integration_compile_full_test
 	@echo ... integration_full_frontend_test
+	@echo ... integration_os_test
 	@echo ... integration_parse_failure_test
 	@echo ... integration_parse_success_test
 	@echo ... integration_semantic_error_test
@@ -729,6 +768,9 @@ help:
 	@echo ... integration_semantic_error_test.obj
 	@echo ... integration_semantic_error_test.i
 	@echo ... integration_semantic_error_test.s
+	@echo ... os/os_integration_test.obj
+	@echo ... os/os_integration_test.i
+	@echo ... os/os_integration_test.s
 .PHONY : help
 
 

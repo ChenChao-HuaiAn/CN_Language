@@ -625,6 +625,19 @@ integration_compile_full_test/fast:
 	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_compile_full_test.dir\build.make tests/integration/CMakeFiles/integration_compile_full_test.dir/build
 .PHONY : integration_compile_full_test/fast
 
+#=============================================================================
+# Target rules for targets named integration_os_test
+
+# Build rule for target.
+integration_os_test: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles\Makefile2 integration_os_test
+.PHONY : integration_os_test
+
+# fast build rule for target.
+integration_os_test/fast:
+	$(MAKE) $(MAKESILENT) -f tests\integration\CMakeFiles\integration_os_test.dir\build.make tests/integration/CMakeFiles/integration_os_test.dir/build
+.PHONY : integration_os_test/fast
+
 # Help Target
 help:
 	@echo The following are some of the valid targets for this Makefile:
@@ -643,6 +656,7 @@ help:
 	@echo ... freestanding_check_test
 	@echo ... integration_compile_full_test
 	@echo ... integration_full_frontend_test
+	@echo ... integration_os_test
 	@echo ... integration_parse_failure_test
 	@echo ... integration_parse_success_test
 	@echo ... integration_semantic_error_test
