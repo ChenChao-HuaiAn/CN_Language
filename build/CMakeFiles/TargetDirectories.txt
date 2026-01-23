@@ -42,6 +42,8 @@ C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runt
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_math_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_freestanding_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/runtime_kernel_io_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/repl_command_test.dir
+C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/repl_session_test.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/RUN_TESTS.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/CMakeFiles/INSTALL.dir
 C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/CMakeFiles/integration_parse_success_test.dir

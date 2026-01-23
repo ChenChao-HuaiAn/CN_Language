@@ -132,10 +132,12 @@ int main(void)
     // 测试变量声明
     failed += test_statement("整数变量声明", "整数 x = 10;");
     failed += test_statement("类型推断变量声明", "变量 y = 42;");
+    failed += test_statement("字符串变量声明", "字符串 s = \"测试\";");
 
     // 测试函数调用
     failed += test_statement("打印函数调用", "打印(\"Hello\");");
     failed += test_statement("打印整数", "打印(100);");
+    failed += test_statement("打印表达式结果", "打印(1 + 2 * 3);");
 
     // 测试多条语句（通过多行输入模拟）
     failed += test_statement(
@@ -146,6 +148,33 @@ int main(void)
     failed += test_statement(
         "连续赋值",
         "整数 x = 1; x = x + 2; 打印(x);"
+    );
+
+    // 测试控制流语句
+    failed += test_statement(
+        "简单 if 语句",
+        "如果 (1 > 0) { 打印(\"true\"); }"
+    );
+
+    failed += test_statement(
+        "if-else 语句",
+        "如果 (0 > 1) { 打印(\"false\"); } 否则 { 打印(\"true\"); }"
+    );
+
+    failed += test_statement(
+        "while 循环",
+        "整数 i = 0; 当 (i < 3) { 打印(i); i = i + 1; }"
+    );
+
+    // 测试复杂语句组合
+    failed += test_statement(
+        "多种类型变量混合",
+        "整数 a = 10; 字符串 s = \"hello\"; 变量 b = 20; 打印(a + b);"
+    );
+
+    failed += test_statement(
+        "嵌套控制流",
+        "整数 x = 5; 如果 (x > 0) { 如果 (x > 3) { 打印(\"big\"); } }"
     );
 
     // 总结

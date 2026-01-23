@@ -133,17 +133,35 @@ int main(void)
     failed += test_expression("简单加法", "1 + 2");
     failed += test_expression("复杂算术表达式", "10 + 20 * 3 - 5");
     failed += test_expression("带括号的表达式", "(5 + 3) * 2");
+    failed += test_expression("除法表达式", "100 / 5");
+    failed += test_expression("取模运算", "17 % 5");
+    failed += test_expression("负数运算", "-10 + 5");
 
     // 测试字符串字面量
     failed += test_expression("字符串字面量", "\"你好，世界！\"");
+    failed += test_expression("空字符串", "\"\"");
     
     // 测试整数字面量
     failed += test_expression("整数字面量", "42");
     failed += test_expression("大整数", "999999");
+    failed += test_expression("零", "0");
 
     // 测试比较表达式
     failed += test_expression("大于比较", "10 > 5");
+    failed += test_expression("小于比较", "3 < 7");
     failed += test_expression("等于比较", "3 == 3");
+    failed += test_expression("不等于比较", "5 != 3");
+    failed += test_expression("大于等于", "10 >= 10");
+    failed += test_expression("小于等于", "5 <= 10");
+
+    // 测试逻辑表达式
+    failed += test_expression("逻辑与", "1 && 1");
+    failed += test_expression("逻辑或", "0 || 1");
+    failed += test_expression("复杂逻辑表达式", "(10 > 5) && (3 < 7)");
+
+    // 测试混合表达式
+    failed += test_expression("算术与比较混合", "(1 + 2) > (3 - 1)");
+    failed += test_expression("复杂嵌套表达式", "((10 + 5) * 2) / 3");
 
     // 总结
     printf("=================================\n");

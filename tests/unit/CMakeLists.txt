@@ -324,3 +324,19 @@ target_link_libraries(runtime_kernel_io_test PRIVATE cn_runtime)
 target_include_directories(runtime_kernel_io_test PRIVATE ../../include)
 target_compile_definitions(runtime_kernel_io_test PRIVATE CN_FREESTANDING)
 add_test(NAME runtime_kernel_io_test COMMAND runtime_kernel_io_test)
+
+# REPL 命令解析单元测试
+add_executable(repl_command_test repl_command_test.c)
+target_include_directories(repl_command_test PRIVATE ../../include)
+add_test(NAME repl_command_test COMMAND repl_command_test)
+
+# REPL 会话状态管理单元测试
+add_executable(repl_session_test 
+    repl_session_test.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/semantics/symbols/type_system.c
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+target_include_directories(repl_session_test PRIVATE ../../include)
+add_test(NAME repl_session_test COMMAND repl_session_test)

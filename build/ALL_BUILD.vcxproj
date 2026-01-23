@@ -298,6 +298,14 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <Project>{B91FFFFB-92AB-34C4-B132-601018052AA9}</Project>
       <Name>parser_var_test</Name>
     </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\repl_command_test.vcxproj">
+      <Project>{DE9B8CD2-F27B-32D0-92B6-FCFF6BBA326D}</Project>
+      <Name>repl_command_test</Name>
+    </ProjectReference>
+    <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\repl_session_test.vcxproj">
+      <Project>{3B1335D1-31FF-31EA-8899-200650AB416E}</Project>
+      <Name>repl_session_test</Name>
+    </ProjectReference>
     <ProjectReference Include="C:\Users\ChenChao\Documents\gitcode\CN_Language\build\tests\unit\runtime_array_test.vcxproj">
       <Project>{3937C969-CD43-3298-AEA1-0DB42170323C}</Project>
       <Name>runtime_array_test</Name>

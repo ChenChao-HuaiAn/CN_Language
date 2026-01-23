@@ -1,12 +1,88 @@
-Start testing: Jan 23 21:03 中国标准时间
+Start testing: Jan 23 21:10 中国标准时间
 ----------------------------------------------------------
-40/42 Testing: integration_repl_expr_test
-40/42 Test: integration_repl_expr_test
-Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_expr_test.exe"
-Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_repl_expr_test" start time: Jan 23 21:03 中国标准时间
+32/44 Testing: repl_command_test
+32/44 Test: repl_command_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/repl_command_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"repl_command_test" start time: Jan 23 21:10 中国标准时间
 Output:
 ----------------------------------------------------------
+=======================================
+REPL 命令解析单元测试
+=======================================
+
+测试: 基本命令识别...
+  ✓ 基本命令识别测试通过
+
+测试: 命令别名...
+  ✓ 命令别名测试通过
+
+测试: 配置切换命令...
+  ✓ 配置切换命令测试通过
+
+测试: 带前导空白的命令...
+  ✓ 带前导空白的命令测试通过
+
+测试: 未知命令处理...
+  ✓ 未知命令处理测试通过
+
+=======================================
+所有测试通过！
+=======================================
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"repl_command_test" end time: Jan 23 21:10 中国标准时间
+"repl_command_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+33/44 Testing: repl_session_test
+33/44 Test: repl_session_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit/Debug/repl_session_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/unit
+"repl_session_test" start time: Jan 23 21:10 中国标准时间
+Output:
+----------------------------------------------------------
+=======================================
+REPL 会话状态管理单元测试
+=======================================
+
+测试: 会话创建和销毁...
+  ✓ 会话生命周期测试通过
+
+测试: 符号注册和查找...
+  ✓ 符号注册和查找测试通过
+
+测试: 会话重置...
+  ✓ 会话重置测试通过
+
+测试: 多个符号管理...
+  ✓ 多个符号管理测试通过
+
+测试: NULL 安全检查...
+  ✓ NULL 安全检查测试通过
+
+=======================================
+所有测试通过！
+=======================================
+<end of output>
+Test time =   0.09 sec
+----------------------------------------------------------
+Test Passed.
+"repl_session_test" end time: Jan 23 21:10 中国标准时间
+"repl_session_test" time elapsed: 00:00:00
+----------------------------------------------------------
+
+42/44 Testing: integration_repl_expr_test
+42/44 Test: integration_repl_expr_test
+Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_expr_test.exe"
+Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
+"integration_repl_expr_test" start time: Jan 23 21:10 中国标准时间
+Output:
+----------------------------------------------------------
+  ✗ 解析失败
+  ✗ 解析失败
 === REPL 单表达式求值集成测试 ===
 
 测试: 简单加法
@@ -21,8 +97,20 @@ Output:
   表达式: (5 + 3) * 2
   ✓ 测试通过
 
+测试: 除法表达式
+  表达式: 100 / 5
+  ✓ 测试通过
+
+测试: 取模运算
+  表达式: 17 % 5
+测试: 负数运算
+  表达式: -10 + 5
 测试: 字符串字面量
   表达式: "你好，世界！"
+  ✓ 测试通过
+
+测试: 空字符串
+  表达式: ""
   ✓ 测试通过
 
 测试: 整数字面量
@@ -33,31 +121,73 @@ Output:
   表达式: 999999
   ✓ 测试通过
 
+测试: 零
+  表达式: 0
+  ✓ 测试通过
+
 测试: 大于比较
   表达式: 10 > 5
+  ✓ 测试通过
+
+测试: 小于比较
+  表达式: 3 < 7
   ✓ 测试通过
 
 测试: 等于比较
   表达式: 3 == 3
   ✓ 测试通过
 
+测试: 不等于比较
+  表达式: 5 != 3
+  ✓ 测试通过
+
+测试: 大于等于
+  表达式: 10 >= 10
+  ✓ 测试通过
+
+测试: 小于等于
+  表达式: 5 <= 10
+  ✓ 测试通过
+
+测试: 逻辑与
+  表达式: 1 && 1
+  ✓ 测试通过
+
+测试: 逻辑或
+  表达式: 0 || 1
+  ✓ 测试通过
+
+测试: 复杂逻辑表达式
+  表达式: (10 > 5) && (3 < 7)
+  ✓ 测试通过
+
+测试: 算术与比较混合
+  表达式: (1 + 2) > (3 - 1)
+  ✓ 测试通过
+
+测试: 复杂嵌套表达式
+  表达式: ((10 + 5) * 2) / 3
+  ✓ 测试通过
+
 =================================
-所有测试通过！
+失败测试数: 2
 <end of output>
-Test time =   0.04 sec
+Test time =   0.06 sec
 ----------------------------------------------------------
-Test Passed.
-"integration_repl_expr_test" end time: Jan 23 21:03 中国标准时间
+Test Failed.
+"integration_repl_expr_test" end time: Jan 23 21:10 中国标准时间
 "integration_repl_expr_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-41/42 Testing: integration_repl_statement_test
-41/42 Test: integration_repl_statement_test
+43/44 Testing: integration_repl_statement_test
+43/44 Test: integration_repl_statement_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_statement_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_repl_statement_test" start time: Jan 23 21:03 中国标准时间
+"integration_repl_statement_test" start time: Jan 23 21:10 中国标准时间
 Output:
 ----------------------------------------------------------
+  ✗ 解析失败
+  ✗ 解析失败
 === REPL 小段程序集成测试 ===
 
 测试: 整数变量声明
@@ -68,12 +198,18 @@ Output:
   语句: 变量 y = 42;
   ✓ 测试通过
 
+测试: 字符串变量声明
+  语句: 字符串 s = "测试";
 测试: 打印函数调用
   语句: 打印("Hello");
   ✓ 测试通过
 
 测试: 打印整数
   语句: 打印(100);
+  ✓ 测试通过
+
+测试: 打印表达式结果
+  语句: 打印(1 + 2 * 3);
   ✓ 测试通过
 
 测试: 变量声明和使用
@@ -84,21 +220,39 @@ Output:
   语句: 整数 x = 1; x = x + 2; 打印(x);
   ✓ 测试通过
 
+测试: 简单 if 语句
+  语句: 如果 (1 > 0) { 打印("true"); }
+  ✓ 测试通过
+
+测试: if-else 语句
+  语句: 如果 (0 > 1) { 打印("false"); } 否则 { 打印("true"); }
+  ✓ 测试通过
+
+测试: while 循环
+  语句: 整数 i = 0; 当 (i < 3) { 打印(i); i = i + 1; }
+  ✓ 测试通过
+
+测试: 多种类型变量混合
+  语句: 整数 a = 10; 字符串 s = "hello"; 变量 b = 20; 打印(a + b);
+测试: 嵌套控制流
+  语句: 整数 x = 5; 如果 (x > 0) { 如果 (x > 3) { 打印("big"); } }
+  ✓ 测试通过
+
 =================================
-所有测试通过！
+失败测试数: 2
 <end of output>
-Test time =   0.07 sec
+Test time =   0.06 sec
 ----------------------------------------------------------
-Test Passed.
-"integration_repl_statement_test" end time: Jan 23 21:03 中国标准时间
+Test Failed.
+"integration_repl_statement_test" end time: Jan 23 21:10 中国标准时间
 "integration_repl_statement_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-42/42 Testing: integration_repl_session_test
-42/42 Test: integration_repl_session_test
+44/44 Testing: integration_repl_session_test
+44/44 Test: integration_repl_session_test
 Command: "C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration/Debug/integration_repl_session_test.exe"
 Directory: C:/Users/ChenChao/Documents/gitcode/CN_Language/build/tests/integration
-"integration_repl_session_test" start time: Jan 23 21:03 中国标准时间
+"integration_repl_session_test" start time: Jan 23 21:10 中国标准时间
 Output:
 ----------------------------------------------------------
 =======================================
@@ -117,11 +271,11 @@ REPL 会话状态管理集成测试
 注意：部分测试已跳过，需要进一步完善测试基础设施
 =======================================
 <end of output>
-Test time =   0.02 sec
+Test time =   0.06 sec
 ----------------------------------------------------------
 Test Passed.
-"integration_repl_session_test" end time: Jan 23 21:03 中国标准时间
+"integration_repl_session_test" end time: Jan 23 21:10 中国标准时间
 "integration_repl_session_test" time elapsed: 00:00:00
 ----------------------------------------------------------
 
-End testing: Jan 23 21:03 中国标准时间
+End testing: Jan 23 21:10 中国标准时间
