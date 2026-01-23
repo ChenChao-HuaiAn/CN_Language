@@ -16,6 +16,7 @@
 - **scripts/** - 构建和测试脚本
   - `build_kernel.ps1` - PowerShell 构建脚本
   - `run_qemu_test.ps1` - QEMU 测试脚本
+  - `verify_boot.ps1` - 启动代码与链接脚本验证
 
 - **os_integration_test.c** - C 驱动程序（自动化测试）
 
@@ -77,6 +78,17 @@ void cn_rt_kernel_putchar(int ch) {
 - **RISC-V**: SBI 接口、UART
 
 ## 测试流程
+
+### 快速验证
+
+```powershell
+# 使用验证脚本快速检查整个流程
+cd tests/integration/os
+pwsh scripts/verify_boot.ps1
+
+# 如果安装了 QEMU，可以启用 QEMU 测试
+pwsh scripts/verify_boot.ps1 -RunQemu
+```
 
 ### Windows （当前平台）
 

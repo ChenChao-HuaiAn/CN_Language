@@ -87,9 +87,13 @@
   - [x] **内核 I/O 回调示例**：已创建 `boot_with_io.c` 和 `kernel_with_io.cn`，展示串口输出
 
 - **4.2 启动代码与链接脚本**
-  - [ ] 准备最小化启动代码（如汇编/ C 启动 stub），在构建系统中集成  
-  - [ ] 编写简单链接脚本以放置代码和数据段，适配 `x86_64-elf` 目标  
-  - [ ] 验证生成的镜像能被 QEMU/Bochs 等模拟器正常加载
+  - [x] 准备最小化启动代码（如汇编/ C 启动 stub），在构建系统中集成  
+  - [x] 编写简单链接脚本以放置代码和数据段，适配 `x86_64-elf` 目标  
+  - [x] 验证生成的镜像能被 QEMU/Bochs 等模拟器正常加载
+  - [x] **启动代码**：`boot/boot.c` 和 `boot/boot_with_io.c`，已修复编译警告
+  - [x] **链接脚本**：`boot/linker.ld`，x86_64 ELF 格式，代码段从 1MB 开始
+  - [x] **构建集成**：`scripts/build_kernel.ps1` 支持完整流程
+  - [x] **验证脚本**：`scripts/verify_boot.ps1` 用于完整验证
 
 - **4.3 自动化运行与结果检查**
   - [ ] 添加基于 QEMU/Bochs 的自动化运行脚本（可在 `tests/integration/os/` 中提供可调用脚本）  

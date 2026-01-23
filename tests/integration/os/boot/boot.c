@@ -20,7 +20,6 @@ void _start(void) {
         "mov %0, %%rsp\n"
         : 
         : "r"(stack + sizeof(stack))
-        : "rsp"
     );
     
     // 调用内核主函数
