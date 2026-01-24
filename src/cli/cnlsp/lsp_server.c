@@ -1,6 +1,8 @@
 #include "cnlang/cli/lsp.h"
 #include "cnlang/frontend/lsp_bridge.h"
 #include "cnlang/cli/lsp_jsonrpc.h"
+#include "cnlang/cli/lsp_document_manager.h"
+#include "cnlang/cli/lsp_handlers.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,12 +13,8 @@ struct CnLspServer {
     CnLspServerOptions options;
     bool is_running;
     bool is_initialized;
-    
-    // 文档缓存（简化：仅支持单个文档）
-    char *document_uri;
-    char *document_text;
-    size_t document_length;
-    CnLspDocumentAnalysis *current_analysis;
+
+    CnLspDocumentManager *document_manager;
 };
 
 // 获取默认服务器选项
@@ -47,10 +45,12 @@ CnLspServer *cn_lsp_server_new(const CnLspServerOptions *options)
 
     server->is_running = false;
     server->is_initialized = false;
-    server->document_uri = NULL;
-    server->document_text = NULL;
-    server->document_length = 0;
-    server->current_analysis = NULL;
+    server->document_manager = cn_lsp_document_manager_new();
+
+    if (!server->document_manager) {
+        free(server);
+        return NULL;
+    }
 
     return server;
 }
@@ -62,11 +62,8 @@ void cn_lsp_server_free(CnLspServer *server)
         return;
     }
 
-    free(server->document_uri);
-    free(server->document_text);
-    
-    if (server->current_analysis) {
-        cn_lsp_free_analysis(server->current_analysis);
+    if (server->document_manager) {
+        cn_lsp_document_manager_free(server->document_manager);
     }
 
     free(server);
@@ -92,50 +89,6 @@ static void lsp_write_response(int id, const char *result)
     fflush(stdout);
 }
 
-// 输出诊断通知
-static void lsp_publish_diagnostics(CnLspServer *server)
-{
-    if (!server || !server->options.enable_diagnostics || !server->document_uri) {
-        return;
-    }
-
-    // 开始构建诊断 JSON
-    fprintf(stdout, "Content-Length: ");
-    long content_length_pos = ftell(stdout);
-    fprintf(stdout, "     \r\n\r\n");  // 预留位置
-
-    long json_start = ftell(stdout);
-    fprintf(stdout, "{\"jsonrpc\":\"2.0\",\"method\":\"textDocument/publishDiagnostics\",\"params\":{\"uri\":\"%s\",\"diagnostics\":[",
-            server->document_uri);
-
-    // 输出诊断信息
-    if (server->current_analysis && server->current_analysis->diagnostic_count > 0) {
-        for (size_t i = 0; i < server->current_analysis->diagnostic_count; i++) {
-            const CnLspDiagnostic *diag = &server->current_analysis->diagnostics[i];
-            
-            if (i > 0) {
-                fprintf(stdout, ",");
-            }
-            
-            fprintf(stdout, "{\"range\":{\"start\":{\"line\":%d,\"character\":%d},\"end\":{\"line\":%d,\"character\":%d}},\"severity\":%d,\"message\":\"%s\",\"source\":\"%s\"}",
-                    diag->range.start.line, diag->range.start.column,
-                    diag->range.end.line, diag->range.end.column,
-                    diag->severity, diag->message, diag->source);
-        }
-    }
-
-    fprintf(stdout, "]}}");
-    long json_end = ftell(stdout);
-    fflush(stdout);
-
-    // 回填 Content-Length
-    long content_length = json_end - json_start;
-    fseek(stdout, content_length_pos, SEEK_SET);
-    fprintf(stdout, "%ld", content_length);
-    fseek(stdout, json_end, SEEK_SET);
-    fflush(stdout);
-}
-
 // 处理 initialize 请求
 static void handle_initialize(CnLspServer *server, int id)
 {
@@ -152,43 +105,39 @@ static void handle_initialize(CnLspServer *server, int id)
 // 处理 textDocument/didOpen 通知
 static void handle_did_open(CnLspServer *server, const char *uri, const char *text, size_t length)
 {
-    // 释放旧文档
-    free(server->document_uri);
-    free(server->document_text);
-    if (server->current_analysis) {
-        cn_lsp_free_analysis(server->current_analysis);
-        server->current_analysis = NULL;
+    if (!cn_lsp_document_open(server->document_manager, uri, text, length)) {
+        return;
     }
 
-    // 保存新文档
-    server->document_uri = strdup(uri);
-    server->document_text = (char *)malloc(length + 1);
-    if (server->document_text) {
-        memcpy(server->document_text, text, length);
-        server->document_text[length] = '\0';
-        server->document_length = length;
+    const CnLspDocumentAnalysis *analysis =
+        cn_lsp_document_get_analysis(server->document_manager, uri);
+    if (analysis) {
+        cn_lsp_publish_diagnostics_for_document(uri, analysis);
+    }
+}
+
+// 处理 textDocument/didChange 通知（当前实现：全文重载）
+static void handle_did_change(CnLspServer *server, const char *uri, const char *text, size_t length)
+{
+    if (!cn_lsp_document_change(server->document_manager, uri, text, length)) {
+        return;
     }
 
-    // 分析文档
-    server->current_analysis = cn_lsp_analyze_document(text, length, uri);
-    
-    // 发布诊断
-    lsp_publish_diagnostics(server);
+    const CnLspDocumentAnalysis *analysis =
+        cn_lsp_document_get_analysis(server->document_manager, uri);
+    if (analysis) {
+        cn_lsp_publish_diagnostics_for_document(uri, analysis);
+    }
 }
 
 // 处理 textDocument/didClose 通知
-static void handle_did_close(CnLspServer *server)
+static void handle_did_close(CnLspServer *server, const char *uri)
 {
-    free(server->document_uri);
-    free(server->document_text);
-    server->document_uri = NULL;
-    server->document_text = NULL;
-    server->document_length = 0;
+    cn_lsp_document_close(server->document_manager, uri);
 
-    if (server->current_analysis) {
-        cn_lsp_free_analysis(server->current_analysis);
-        server->current_analysis = NULL;
-    }
+    // 按 LSP 约定：关闭文档后可发送空诊断列表清除客户端错误显示
+    const CnLspDocumentAnalysis empty_analysis = {0};
+    cn_lsp_publish_diagnostics_for_document(uri, &empty_analysis);
 }
 
 // 简化的消息解析（仅处理最基本的 LSP 消息）
@@ -240,8 +189,55 @@ static void process_message(CnLspServer *server, const char *message)
             }
         }
     }
+    else if (strstr(message, "\"method\":\"textDocument/didChange\"")) {
+        // 极简解析 uri 和 text（假设使用全量同步，contentChanges[0].text）
+        const char *uri_start = strstr(message, "\"uri\":\"");
+        const char *text_start = strstr(message, "\"text\":\"");
+
+        if (uri_start && text_start) {
+            uri_start += 7;
+            const char *uri_end = strchr(uri_start, '"');
+
+            text_start += 8;
+            const char *text_end = strstr(text_start, "\"}]");
+
+            if (uri_end && text_end) {
+                size_t uri_len = uri_end - uri_start;
+                size_t text_len = text_end - text_start;
+
+                char *uri = (char *)malloc(uri_len + 1);
+                char *text = (char *)malloc(text_len + 1);
+
+                if (uri && text) {
+                    memcpy(uri, uri_start, uri_len);
+                    uri[uri_len] = '\0';
+                    memcpy(text, text_start, text_len);
+                    text[text_len] = '\0';
+
+                    handle_did_change(server, uri, text, text_len);
+                }
+
+                free(uri);
+                free(text);
+            }
+        }
+    }
     else if (strstr(message, "\"method\":\"textDocument/didClose\"")) {
-        handle_did_close(server);
+        const char *uri_start = strstr(message, "\"uri\":\"");
+        if (uri_start) {
+            uri_start += 7;
+            const char *uri_end = strchr(uri_start, '"');
+            if (uri_end) {
+                size_t uri_len = uri_end - uri_start;
+                char *uri = (char *)malloc(uri_len + 1);
+                if (uri) {
+                    memcpy(uri, uri_start, uri_len);
+                    uri[uri_len] = '\0';
+                    handle_did_close(server, uri);
+                    free(uri);
+                }
+            }
+        }
     }
     else if (strstr(message, "\"method\":\"shutdown\"")) {
         const char *id_str = strstr(message, "\"id\":");

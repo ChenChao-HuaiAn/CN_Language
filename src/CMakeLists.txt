@@ -96,6 +96,8 @@ add_executable(cnlsp
     cli/cnlsp/main.c
     cli/cnlsp/lsp_server.c
     cli/cnlsp/lsp_jsonrpc.c
+    cli/cnlsp/lsp_document_manager.c
+    cli/cnlsp/lsp_handlers.c
     frontend/lsp_bridge/lsp_bridge.c
     frontend/lexer/token.c
     frontend/lexer/lexer.c
