@@ -10,6 +10,7 @@ add_executable(cnc
     support/perf/perf.c
     support/memory/memory_profiler.c
     support/memory/memory_estimator.c
+    support/memory/arena.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c

@@ -435,4 +435,18 @@ target_include_directories(memory_profiler_test PRIVATE
 
 add_test(NAME memory_profiler_test
          COMMAND memory_profiler_test)
+
+# Arena 分配器单元测试
+add_executable(arena_allocator_test
+    arena_allocator_test.c
+    ../../src/support/memory/arena.c
+)
+
+target_include_directories(arena_allocator_test PRIVATE
+    ../../include
+)
+
+add_test(NAME arena_allocator_test
+         COMMAND arena_allocator_test)
+set_tests_properties(arena_allocator_test PROPERTIES LABELS "stage7;memory;unit")
 set_tests_properties(memory_profiler_test PROPERTIES LABELS "stage7;memory;unit")
