@@ -89,11 +89,14 @@ if ($CleanBuild -and (Test-Path $BuildDir)) {
     Write-Host "[1/6] 清理旧构建目录..." -ForegroundColor Yellow
     Remove-Item -Recurse -Force $BuildDir
     Write-Host "  ✓ 已清理" -ForegroundColor Green
-} elseif (-not (Test-Path $BuildDir)) {
+}
+
+# 确保构建目录存在
+if (-not (Test-Path $BuildDir)) {
     Write-Host "[1/6] 创建构建目录..." -ForegroundColor Yellow
     New-Item -ItemType Directory -Force -Path $BuildDir | Out-Null
     Write-Host "  ✓ 已创建" -ForegroundColor Green
-} else {
+} elseif (-not $CleanBuild) {
     Write-Host "[1/6] 使用现有构建目录..." -ForegroundColor Yellow
 }
 Write-Host ""

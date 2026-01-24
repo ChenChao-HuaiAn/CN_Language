@@ -323,7 +323,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             // 特殊处理：内置函数 "长度" 可以接受字符串或数组
             if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
-                strcmp(expr->as.call.callee->as.identifier.name, "长度") == 0) {
+                expr->as.call.callee->as.identifier.name_length == strlen("长度") &&
+                strncmp(expr->as.call.callee->as.identifier.name, "长度", 
+                        expr->as.call.callee->as.identifier.name_length) == 0) {
                 
                 if (expr->as.call.argument_count != 1) {
                     cn_support_diag_semantic_error_generic(

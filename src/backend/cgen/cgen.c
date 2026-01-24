@@ -52,9 +52,9 @@ static const char *get_c_function_name(const char *name) {
         const char *utf8_name;
         const char *c_name;
     } function_map[] = {
-        {"xe6x89x93xe5x8dxb0", "cn_rt_print_string"},  /* 打印 */
-        {"xe9x95xbfxe5xbaxa6", "cn_rt_string_length"}, /* 长度 */
-        {"xe4xb8xbbxe7xa8x8bxe5xbax8f", "main"},      /* 主程序 */
+        {"\xe6\x89\x93\xe5\x8d\xb0", "cn_rt_print_string"},  /* 打印 */
+        {"\xe9\x95\xbf\xe5\xba\xa6", "cn_rt_string_length"}, /* 长度 */
+        {"\xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f", "main"},      /* 主程序 */
         {NULL, NULL}
     };
     
@@ -264,11 +264,35 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         while (scan_block) {
             CnIrInst *scan_inst = scan_block->first_inst;
             while (scan_inst) {
+                // 收集dest寄存器类型
                 if (scan_inst->dest.kind == CN_IR_OP_REG && 
                     scan_inst->dest.as.reg_id < func->next_reg_id &&
                     !reg_types[scan_inst->dest.as.reg_id] && 
                     scan_inst->dest.type) {
                     reg_types[scan_inst->dest.as.reg_id] = scan_inst->dest.type;
+                }
+                // 收集src1寄存器类型
+                if (scan_inst->src1.kind == CN_IR_OP_REG && 
+                    scan_inst->src1.as.reg_id < func->next_reg_id &&
+                    !reg_types[scan_inst->src1.as.reg_id] && 
+                    scan_inst->src1.type) {
+                    reg_types[scan_inst->src1.as.reg_id] = scan_inst->src1.type;
+                }
+                // 收集src2寄存器类型
+                if (scan_inst->src2.kind == CN_IR_OP_REG && 
+                    scan_inst->src2.as.reg_id < func->next_reg_id &&
+                    !reg_types[scan_inst->src2.as.reg_id] && 
+                    scan_inst->src2.type) {
+                    reg_types[scan_inst->src2.as.reg_id] = scan_inst->src2.type;
+                }
+                // 收集extra_args中的寄存器类型
+                for (size_t i = 0; i < scan_inst->extra_args_count; i++) {
+                    if (scan_inst->extra_args[i].kind == CN_IR_OP_REG &&
+                        scan_inst->extra_args[i].as.reg_id < func->next_reg_id &&
+                        !reg_types[scan_inst->extra_args[i].as.reg_id] &&
+                        scan_inst->extra_args[i].type) {
+                        reg_types[scan_inst->extra_args[i].as.reg_id] = scan_inst->extra_args[i].type;
+                    }
                 }
                 scan_inst = scan_inst->next;
             }

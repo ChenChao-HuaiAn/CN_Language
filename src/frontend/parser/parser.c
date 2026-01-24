@@ -429,7 +429,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
     }
 
     if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
-        parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+        parser->current.kind == CN_TOKEN_KEYWORD_INT ||
+        parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -437,6 +438,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
             declared_type = cn_type_new_primitive(CN_TYPE_INT);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+            declared_type = cn_type_new_primitive(CN_TYPE_STRING);
         }
 
         parser_advance(parser);
@@ -596,10 +599,16 @@ static CnAstExpr *parse_term(CnParser *parser)
     CnAstExpr *left = parse_unary(parser);
 
     while (parser->current.kind == CN_TOKEN_STAR ||
-           parser->current.kind == CN_TOKEN_SLASH) {
-        CnAstBinaryOp op = (parser->current.kind == CN_TOKEN_STAR)
-                               ? CN_AST_BINARY_OP_MUL
-                               : CN_AST_BINARY_OP_DIV;
+           parser->current.kind == CN_TOKEN_SLASH ||
+           parser->current.kind == CN_TOKEN_PERCENT) {
+        CnAstBinaryOp op;
+        if (parser->current.kind == CN_TOKEN_STAR) {
+            op = CN_AST_BINARY_OP_MUL;
+        } else if (parser->current.kind == CN_TOKEN_SLASH) {
+            op = CN_AST_BINARY_OP_DIV;
+        } else {
+            op = CN_AST_BINARY_OP_MOD;
+        }
         parser_advance(parser);
         left = make_binary(op, left, parse_unary(parser));
     }
@@ -609,10 +618,18 @@ static CnAstExpr *parse_term(CnParser *parser)
 
 static CnAstExpr *parse_unary(CnParser *parser)
 {
+    // 处理逻辑非运算符 !
     if (parser->current.kind == CN_TOKEN_BANG) {
         parser_advance(parser);
         CnAstExpr *operand = parse_unary(parser);  // 递归处理多个 !
         return make_unary(CN_AST_UNARY_OP_NOT, operand);
+    }
+    
+    // 处理一元负号 -
+    if (parser->current.kind == CN_TOKEN_MINUS) {
+        parser_advance(parser);
+        CnAstExpr *operand = parse_unary(parser);  // 递归处理多个 -
+        return make_unary(CN_AST_UNARY_OP_MINUS, operand);
     }
 
     return parse_postfix(parser);  // 支持后缀表达式（如函数调用）

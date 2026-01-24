@@ -264,7 +264,7 @@ static void test_string_array_with_length(void) {
                 if (stmt1->kind == CN_AST_STMT_VAR_DECL) {
                     CnAstVarDecl *decl = &stmt1->as.var_decl;
                     if (decl->initializer && decl->initializer->kind == CN_AST_EXPR_CALL) {
-                        CnAstCall *call = &decl->initializer->as.call;
+                        CnAstCallExpr *call = &decl->initializer->as.call;
                         if (call->callee && call->callee->kind == CN_AST_EXPR_IDENTIFIER &&
                             call->argument_count == 1) {
                             printf("测试字符串数组+长度: 成功\n");

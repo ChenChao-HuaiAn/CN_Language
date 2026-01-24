@@ -48,6 +48,7 @@ static CnIrInstKind binary_op_to_ir(CnAstBinaryOp op) {
         case CN_AST_BINARY_OP_SUB: return CN_IR_INST_SUB;
         case CN_AST_BINARY_OP_MUL: return CN_IR_INST_MUL;
         case CN_AST_BINARY_OP_DIV: return CN_IR_INST_DIV;
+        case CN_AST_BINARY_OP_MOD: return CN_IR_INST_MOD;  // 取模运算
         case CN_AST_BINARY_OP_EQ:  return CN_IR_INST_EQ;
         case CN_AST_BINARY_OP_NE:  return CN_IR_INST_NE;
         case CN_AST_BINARY_OP_LT:  return CN_IR_INST_LT;
@@ -179,7 +180,7 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             CnIrOperand callee;
             const char *func_name = NULL;
             
-            // 特殊处理：内置函数 "长度" 根据参数类型选择运行时函数
+            // 特殊处理：内置函数根据参数类型选择运行时函数
             if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
                 char *name = copy_name(expr->as.call.callee->as.identifier.name,
                                        expr->as.call.callee->as.identifier.name_length);
@@ -192,6 +193,18 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                         func_name = "cn_rt_array_length";
                     } else {
                         func_name = "cn_rt_string_length";
+                    }
+                    free(name);
+                    callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
+                } 
+                // 检查是否是 "打印" 函数
+                else if (strcmp(name, "打印") == 0 && expr->as.call.argument_count == 1) {
+                    // 打印函数映射到 cn_rt_print_string 或 cn_rt_print_int
+                    CnType *arg_type = expr->as.call.arguments[0]->type;
+                    if (arg_type && arg_type->kind == CN_TYPE_INT) {
+                        func_name = "cn_rt_print_int";
+                    } else {
+                        func_name = "cn_rt_print_string";
                     }
                     free(name);
                     callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);

@@ -40,6 +40,7 @@ typedef enum CnAstBinaryOp {
     CN_AST_BINARY_OP_SUB,
     CN_AST_BINARY_OP_MUL,
     CN_AST_BINARY_OP_DIV,
+    CN_AST_BINARY_OP_MOD,   // 取模 %
     CN_AST_BINARY_OP_EQ,
     CN_AST_BINARY_OP_NE,
     CN_AST_BINARY_OP_LT,

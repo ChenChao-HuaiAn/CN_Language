@@ -3,10 +3,12 @@
 #include <stdint.h>
 #include "cnrt.h"
 
-int cn_func_主程序() {
+int main() {
+  cn_rt_init();
 
   entry:
-  cn_func_打印("你好，世界\n");
+  cn_rt_print_string("你好，世界\n");
   return 0;
+  cn_rt_exit();
 }
 

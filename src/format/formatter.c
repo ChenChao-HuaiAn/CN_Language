@@ -77,6 +77,7 @@ static const char *format_binary_op(CnAstBinaryOp op)
         case CN_AST_BINARY_OP_SUB: return "-";
         case CN_AST_BINARY_OP_MUL: return "*";
         case CN_AST_BINARY_OP_DIV: return "/";
+        case CN_AST_BINARY_OP_MOD: return "%";  // 取模运算符
         case CN_AST_BINARY_OP_EQ:  return "==";
         case CN_AST_BINARY_OP_NE:  return "!=";
         case CN_AST_BINARY_OP_LT:  return "<";
