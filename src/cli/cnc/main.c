@@ -568,7 +568,7 @@ int main(int argc, char **argv)
 
         /* 代码生成 */
         cn_perf_start(&perf_stats, CN_PERF_PHASE_CODEGEN);
-        if (cn_cgen_module_to_file(ir_module, c_filename) != 0) {
+        if (cn_cgen_module_with_structs_to_file(ir_module, program, c_filename) != 0) {
             cn_perf_end(&perf_stats, CN_PERF_PHASE_CODEGEN);
             fprintf(stderr, "C 代码生成失败\n");
             cn_ir_module_free(ir_module);

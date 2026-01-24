@@ -19,6 +19,7 @@ static int parser_expect(CnParser *parser, CnTokenKind kind);
 
 static CnAstProgram *parse_program_internal(CnParser *parser);
 static CnAstFunctionDecl *parse_function_decl(CnParser *parser);
+static CnAstStmt *parse_struct_decl(CnParser *parser);
 static CnAstBlockStmt *parse_block(CnParser *parser);
 static CnAstStmt *parse_statement(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
@@ -42,6 +43,8 @@ static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value);
 static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t argument_count);
 static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count);
 static CnAstExpr *make_index(CnAstExpr *array, CnAstExpr *index);
+static CnAstExpr *make_member_access(CnAstExpr *object, const char *member_name, size_t member_name_length, int is_arrow);
+static CnAstExpr *make_struct_literal(const char *struct_name, size_t struct_name_length, CnAstStructFieldInit *fields, size_t field_count);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
@@ -50,10 +53,12 @@ static CnAstStmt *make_for_stmt(CnAstStmt *init, CnAstExpr *condition, CnAstExpr
 static CnAstStmt *make_break_stmt(void);
 static CnAstStmt *make_continue_stmt(void);
 static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer);
+static CnAstStmt *make_struct_decl_stmt(const char *name, size_t name_length, CnAstStructField *fields, size_t field_count);
 static CnAstBlockStmt *make_block(void);
 static void block_add_stmt(CnAstBlockStmt *block, CnAstStmt *stmt);
 static CnAstProgram *make_program(void);
 static void program_add_function(CnAstProgram *program, CnAstFunctionDecl *function_decl);
+static void program_add_struct(CnAstProgram *program, CnAstStmt *struct_decl);
 
 CnParser *cn_frontend_parser_new(CnLexer *lexer)
 {
@@ -160,11 +165,25 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
     parser_advance(parser);
 
     while (parser->current.kind != CN_TOKEN_EOF) {
-        CnAstFunctionDecl *fn = parse_function_decl(parser);
-        if (!fn) {
-            break;
+        if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
+            // 解析结构体声明
+            CnAstStmt *struct_decl = parse_struct_decl(parser);
+            if (!struct_decl) {
+                break;
+            }
+            program_add_struct(program, struct_decl);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
+            // 解析函数声明
+            CnAstFunctionDecl *fn = parse_function_decl(parser);
+            if (!fn) {
+                break;
+            }
+            program_add_function(program, fn);
+        } else {
+            // 遇到无法识别的token，跳过
+            parser->error_count++;
+            parser_advance(parser);
         }
-        program_add_function(program, fn);
     }
 
     return program;
@@ -663,12 +682,15 @@ static CnAstExpr *parse_unary(CnParser *parser)
     return parse_postfix(parser);  // 支持后缀表达式（如函数调用、数组索引）
 }
 
-// 解析后缀表达式（如函数调用、数组索引）
+// 解析后缀表达式（如函数调用、数组索引、成员访问）
 static CnAstExpr *parse_postfix(CnParser *parser)
 {
     CnAstExpr *expr = parse_factor(parser);
 
-    while (parser->current.kind == CN_TOKEN_LPAREN || parser->current.kind == CN_TOKEN_LBRACKET) {
+    while (parser->current.kind == CN_TOKEN_LPAREN || 
+           parser->current.kind == CN_TOKEN_LBRACKET ||
+           parser->current.kind == CN_TOKEN_DOT ||
+           parser->current.kind == CN_TOKEN_ARROW) {
         if (parser->current.kind == CN_TOKEN_LPAREN) {
             // 函数调用
             parser_advance(parser);
@@ -737,6 +759,54 @@ static CnAstExpr *parse_postfix(CnParser *parser)
             parser_expect(parser, CN_TOKEN_RBRACKET);  // 期望 ]
             
             expr = make_index(expr, index_expr);
+        } else if (parser->current.kind == CN_TOKEN_DOT) {
+            // 结构体成员访问 obj.member
+            parser_advance(parser);  // 跳过 .
+            
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少成员名称");
+                }
+                cn_frontend_ast_expr_free(expr);
+                return NULL;
+            }
+            
+            const char *member_name = parser->current.lexeme_begin;
+            size_t member_name_length = parser->current.lexeme_length;
+            parser_advance(parser);
+            
+            expr = make_member_access(expr, member_name, member_name_length, 0);
+        } else if (parser->current.kind == CN_TOKEN_ARROW) {
+            // 结构体指针成员访问 ptr->member
+            parser_advance(parser);  // 跳过 ->
+            
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少成员名称");
+                }
+                cn_frontend_ast_expr_free(expr);
+                return NULL;
+            }
+            
+            const char *member_name = parser->current.lexeme_begin;
+            size_t member_name_length = parser->current.lexeme_length;
+            parser_advance(parser);
+            
+            expr = make_member_access(expr, member_name, member_name_length, 1);
         }
     }
 
@@ -1115,6 +1185,8 @@ static CnAstProgram *make_program(void)
 
     program->function_count = 0;
     program->functions = NULL;
+    program->struct_count = 0;
+    program->structs = NULL;
     return program;
 }
 
@@ -1137,4 +1209,190 @@ static void program_add_function(CnAstProgram *program, CnAstFunctionDecl *funct
     program->functions = new_array;
     program->functions[program->function_count] = function_decl;
     program->function_count = new_count;
+}
+
+// 添加结构体声明到program
+static void program_add_struct(CnAstProgram *program, CnAstStmt *struct_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !struct_decl) {
+        return;
+    }
+
+    new_count = program->struct_count + 1;
+    new_array = (CnAstStmt **)realloc(program->structs,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->structs = new_array;
+    program->structs[program->struct_count] = struct_decl;
+    program->struct_count = new_count;
+}
+
+// 解析结构体声明
+static CnAstStmt *parse_struct_decl(CnParser *parser)
+{
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_STRUCT)) {
+        return NULL;
+    }
+
+    // 读取结构体名称
+    if (parser->current.kind != CN_TOKEN_IDENT) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：结构体名称无效");
+        }
+        return NULL;
+    }
+
+    const char *struct_name = parser->current.lexeme_begin;
+    size_t struct_name_length = parser->current.lexeme_length;
+    parser_advance(parser);
+
+    // 期望 { 开始结构体定义
+    if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
+        return NULL;
+    }
+
+    // 解析字段列表
+    size_t field_capacity = 4;
+    size_t field_count = 0;
+    CnAstStructField *fields = (CnAstStructField *)malloc(sizeof(CnAstStructField) * field_capacity);
+    if (!fields) {
+        return NULL;
+    }
+
+    while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+        // 解析字段类型
+        CnType *field_type = NULL;
+        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+            field_type = cn_type_new_primitive(CN_TYPE_INT);
+            parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+            field_type = cn_type_new_primitive(CN_TYPE_STRING);
+            parser_advance(parser);
+        } else {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少字段类型");
+            }
+            free(fields);
+            return NULL;
+        }
+
+        // 支持指针类型
+        while (parser->current.kind == CN_TOKEN_STAR) {
+            field_type = cn_type_new_pointer(field_type);
+            parser_advance(parser);
+        }
+
+        // 解析字段名称
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少字段名称");
+            }
+            free(fields);
+            return NULL;
+        }
+
+        // 扩容字段数组
+        if (field_count >= field_capacity) {
+            field_capacity *= 2;
+            CnAstStructField *new_fields = (CnAstStructField *)realloc(
+                fields, sizeof(CnAstStructField) * field_capacity);
+            if (!new_fields) {
+                free(fields);
+                return NULL;
+            }
+            fields = new_fields;
+        }
+
+        fields[field_count].name = parser->current.lexeme_begin;
+        fields[field_count].name_length = parser->current.lexeme_length;
+        fields[field_count].field_type = field_type;
+        field_count++;
+
+        parser_advance(parser);
+
+        // 期望分号
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+    }
+
+    // 期望 } 结束结构体定义
+    parser_expect(parser, CN_TOKEN_RBRACE);
+
+    return make_struct_decl_stmt(struct_name, struct_name_length, fields, field_count);
+}
+
+// 创建结构体声明语句
+static CnAstStmt *make_struct_decl_stmt(const char *name, size_t name_length, CnAstStructField *fields, size_t field_count)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_STRUCT_DECL;
+    stmt->as.struct_decl.name = name;
+    stmt->as.struct_decl.name_length = name_length;
+    stmt->as.struct_decl.fields = fields;
+    stmt->as.struct_decl.field_count = field_count;
+    return stmt;
+}
+
+// 创建结构体成员访问表达式
+static CnAstExpr *make_member_access(CnAstExpr *object, const char *member_name, size_t member_name_length, int is_arrow)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_MEMBER_ACCESS;
+    expr->type = NULL;
+    expr->as.member.object = object;
+    expr->as.member.member_name = member_name;
+    expr->as.member.member_name_length = member_name_length;
+    expr->as.member.is_arrow = is_arrow;
+    return expr;
+}
+
+// 创建结构体字面量表达式
+static CnAstExpr *make_struct_literal(const char *struct_name, size_t struct_name_length, CnAstStructFieldInit *fields, size_t field_count)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_STRUCT_LITERAL;
+    expr->type = NULL;
+    expr->as.struct_lit.struct_name = struct_name;
+    expr->as.struct_lit.struct_name_length = struct_name_length;
+    expr->as.struct_lit.fields = fields;
+    expr->as.struct_lit.field_count = field_count;
+    return expr;
 }

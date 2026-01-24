@@ -48,6 +48,40 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         length_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
     }
 
+    // 注册结构体声明到全局作用域
+    for (i = 0; i < program->struct_count; ++i) {
+        CnAstStmt *struct_stmt = program->structs[i];
+        if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
+            continue;
+        }
+
+        CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   struct_decl->name,
+                                   struct_decl->name_length,
+                                   CN_SEM_SYMBOL_STRUCT);
+        if (sym) {
+            // 创建结构体类型，包含字段信息
+            CnStructField *fields = NULL;
+            if (struct_decl->field_count > 0) {
+                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+                for (size_t j = 0; j < struct_decl->field_count; j++) {
+                    fields[j].name = struct_decl->fields[j].name;
+                    fields[j].name_length = struct_decl->fields[j].name_length;
+                    fields[j].field_type = struct_decl->fields[j].field_type;
+                }
+            }
+            sym->type = cn_type_new_struct(struct_decl->name,
+                                          struct_decl->name_length,
+                                          fields,
+                                          struct_decl->field_count);
+        } else {
+            // 报告重复定义
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, struct_decl->name);
+        }
+    }
+
     for (i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *function_decl = program->functions[i];
 
@@ -186,6 +220,9 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
     case CN_AST_STMT_BREAK:
     case CN_AST_STMT_CONTINUE:
         break;
+    case CN_AST_STMT_STRUCT_DECL:
+        // 结构体声明已在全局作用域构建时处理，这里不需要额外操作
+        break;
     }
 }
 
@@ -262,6 +299,23 @@ static void cn_sem_build_expr(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics 
         break;
     case CN_AST_EXPR_UNARY:
         cn_sem_build_expr(scope, expr->as.unary.operand, diagnostics);
+        break;
+    case CN_AST_EXPR_ARRAY_LITERAL:
+        for (i = 0; i < expr->as.array_literal.element_count; ++i) {
+            cn_sem_build_expr(scope, expr->as.array_literal.elements[i], diagnostics);
+        }
+        break;
+    case CN_AST_EXPR_INDEX:
+        cn_sem_build_expr(scope, expr->as.index.array, diagnostics);
+        cn_sem_build_expr(scope, expr->as.index.index, diagnostics);
+        break;
+    case CN_AST_EXPR_MEMBER_ACCESS:
+        cn_sem_build_expr(scope, expr->as.member.object, diagnostics);
+        break;
+    case CN_AST_EXPR_STRUCT_LITERAL:
+        for (i = 0; i < expr->as.struct_lit.field_count; ++i) {
+            cn_sem_build_expr(scope, expr->as.struct_lit.fields[i].value, diagnostics);
+        }
         break;
     }
 }

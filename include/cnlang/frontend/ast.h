@@ -9,44 +9,47 @@ extern "C" {
 
 // AST 节点种类（表达式）
 typedef enum CnAstExprKind {
-    CN_AST_EXPR_BINARY,
-    CN_AST_EXPR_CALL,
-    CN_AST_EXPR_IDENTIFIER,
-    CN_AST_EXPR_INTEGER_LITERAL,
-    CN_AST_EXPR_STRING_LITERAL,
-    CN_AST_EXPR_ASSIGN,
-    CN_AST_EXPR_LOGICAL,
-    CN_AST_EXPR_UNARY,
+    CN_AST_EXPR_BINARY,     // 二元表达式
+    CN_AST_EXPR_CALL,       // 函数调用表达式
+    CN_AST_EXPR_IDENTIFIER,   // 标识符表达式
+    CN_AST_EXPR_INTEGER_LITERAL, // 整数字面量表达式
+    CN_AST_EXPR_STRING_LITERAL,  // 字符串字面量表达式
+    CN_AST_EXPR_ASSIGN,     // 赋值表达式
+    CN_AST_EXPR_LOGICAL,    // 逻辑表达式
+    CN_AST_EXPR_UNARY,      // 一元表达式
     CN_AST_EXPR_ARRAY_LITERAL,  // 数组字面量
-    CN_AST_EXPR_INDEX            // 数组索引访问 arr[index]
+    CN_AST_EXPR_INDEX,          // 数组索引访问 arr[index]
+    CN_AST_EXPR_MEMBER_ACCESS,  // 结构体成员访问 obj.member 或 ptr->member
+    CN_AST_EXPR_STRUCT_LITERAL  // 结构体字面量
 } CnAstExprKind;
 
 // AST 节点种类（语句）
 typedef enum CnAstStmtKind {
-    CN_AST_STMT_BLOCK,
-    CN_AST_STMT_VAR_DECL,
-    CN_AST_STMT_EXPR,
-    CN_AST_STMT_RETURN,
-    CN_AST_STMT_IF,
-    CN_AST_STMT_WHILE,
-    CN_AST_STMT_FOR,
-    CN_AST_STMT_BREAK,
-    CN_AST_STMT_CONTINUE
+    CN_AST_STMT_BLOCK,      // 语句块
+    CN_AST_STMT_VAR_DECL,   // 变量声明语句
+    CN_AST_STMT_EXPR,       // 表达式语句   
+    CN_AST_STMT_RETURN,     // 返回语句
+    CN_AST_STMT_IF,         // 条件语句 if
+    CN_AST_STMT_WHILE,      // while 循环语句
+    CN_AST_STMT_FOR,        // for 循环语句
+    CN_AST_STMT_BREAK,      // break 语句
+    CN_AST_STMT_CONTINUE,   // continue 语句
+    CN_AST_STMT_STRUCT_DECL // 结构体声明语句
 } CnAstStmtKind;
 
 // 二元运算符
 typedef enum CnAstBinaryOp {
-    CN_AST_BINARY_OP_ADD,
-    CN_AST_BINARY_OP_SUB,
-    CN_AST_BINARY_OP_MUL,
-    CN_AST_BINARY_OP_DIV,
-    CN_AST_BINARY_OP_MOD,   // 取模 %
-    CN_AST_BINARY_OP_EQ,
-    CN_AST_BINARY_OP_NE,
-    CN_AST_BINARY_OP_LT,
-    CN_AST_BINARY_OP_GT,
-    CN_AST_BINARY_OP_LE,
-    CN_AST_BINARY_OP_GE
+    CN_AST_BINARY_OP_ADD,     // +
+    CN_AST_BINARY_OP_SUB,     // -
+    CN_AST_BINARY_OP_MUL,     // *
+    CN_AST_BINARY_OP_DIV,     // /
+    CN_AST_BINARY_OP_MOD,   // % 取模
+    CN_AST_BINARY_OP_EQ,     // ==
+    CN_AST_BINARY_OP_NE,     // !=
+    CN_AST_BINARY_OP_LT,     // <
+    CN_AST_BINARY_OP_GT,     // >
+    CN_AST_BINARY_OP_LE,     // <=
+    CN_AST_BINARY_OP_GE      // >=
 } CnAstBinaryOp;
 
 // 逻辑运算符
@@ -113,6 +116,21 @@ typedef struct CnAstForStmt {
     CnAstBlockStmt *body;
 } CnAstForStmt;
 
+// 结构体字段声明
+typedef struct CnAstStructField {
+    const char *name;             // 字段名称
+    size_t name_length;           // 字段名称长度
+    struct CnType *field_type;    // 字段类型
+} CnAstStructField;
+
+// 结构体声明语句
+typedef struct CnAstStructDecl {
+    const char *name;             // 结构体名称
+    size_t name_length;           // 结构体名称长度
+    CnAstStructField *fields;     // 字段列表
+    size_t field_count;           // 字段数量
+} CnAstStructDecl;
+
 // 函数参数
 typedef struct CnAstParameter {
     const char *name;
@@ -133,6 +151,8 @@ typedef struct CnAstFunctionDecl {
 typedef struct CnAstProgram {
     size_t function_count;
     CnAstFunctionDecl **functions;
+    size_t struct_count;          // 结构体数量
+    struct CnAstStmt **structs;   // 结构体声明列表
 } CnAstProgram;
 
 // 各种表达式节点定义
@@ -194,6 +214,29 @@ typedef struct CnAstIndexExpr {
     struct CnAstExpr *index;      // 索引表达式
 } CnAstIndexExpr;
 
+// 结构体成员访问表达式 obj.member 或 ptr->member
+typedef struct CnAstMemberAccessExpr {
+    struct CnAstExpr *object;     // 对象表达式
+    const char *member_name;      // 成员名称
+    size_t member_name_length;    // 成员名称长度
+    int is_arrow;                 // 是否是箭头访问（-> vs .）
+} CnAstMemberAccessExpr;
+
+// 结构体字段初始化器
+typedef struct CnAstStructFieldInit {
+    const char *field_name;       // 字段名称
+    size_t field_name_length;     // 字段名称长度
+    struct CnAstExpr *value;      // 字段值表达式
+} CnAstStructFieldInit;
+
+// 结构体字面量表达式
+typedef struct CnAstStructLiteralExpr {
+    const char *struct_name;      // 结构体类型名称
+    size_t struct_name_length;    // 结构体类型名称长度
+    CnAstStructFieldInit *fields; // 字段初始化列表
+    size_t field_count;           // 字段数量
+} CnAstStructLiteralExpr;
+
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
@@ -208,7 +251,9 @@ typedef struct CnAstExpr {
         CnAstLogicalExpr logical;
         CnAstUnaryExpr unary;
         CnAstArrayLiteralExpr array_literal;
-        CnAstIndexExpr index;  // 数组索引访问
+        CnAstIndexExpr index;              // 数组索引访问
+        CnAstMemberAccessExpr member;      // 结构体成员访问
+        CnAstStructLiteralExpr struct_lit; // 结构体字面量
     } as;
 } CnAstExpr;
 
@@ -223,6 +268,7 @@ typedef struct CnAstStmt {
         CnAstIfStmt if_stmt;
         CnAstWhileStmt while_stmt;
         CnAstForStmt for_stmt;
+        CnAstStructDecl struct_decl; // 结构体声明
     } as;
 } CnAstStmt;
 

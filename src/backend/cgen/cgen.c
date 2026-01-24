@@ -35,6 +35,14 @@ static const char *get_c_type_string(CnType *type) {
         }
         case CN_TYPE_VOID: return "void";
         case CN_TYPE_ARRAY: return "void*";
+        case CN_TYPE_STRUCT: {
+            /* 结构体类型：返回结构体名 */
+            static _Thread_local char buffer[256];
+            snprintf(buffer, sizeof(buffer), "struct %.*s", 
+                     (int)type->as.struct_type.name_length, 
+                     type->as.struct_type.name);
+            return buffer;
+        }
         default: return "int";
     }
 }
@@ -206,6 +214,19 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
         case CN_IR_INST_MOV: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_ADDRESS_OF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = &"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_DEREF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = *"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
+        case CN_IR_INST_MEMBER_ACCESS: 
+            // 结构体成员访问：dest = obj.member
+            fprintf(ctx->output_file, "  "); 
+            print_operand(ctx, inst->dest); 
+            fprintf(ctx->output_file, " = "); 
+            print_operand(ctx, inst->src1);
+            fprintf(ctx->output_file, ".");
+            // src2 为成员名（符号类型）
+            if (inst->src2.kind == CN_IR_OP_SYMBOL) {
+                fprintf(ctx->output_file, "%s", inst->src2.as.sym_name);
+            }
+            fprintf(ctx->output_file, ";\n"); 
+            break;
         default: fprintf(ctx->output_file, "  /* Unsupported inst %d */\n", inst->kind); break;
     }
 }
@@ -355,7 +376,33 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     fprintf(ctx->output_file, "}\n\n");
 }
 
+// 生成结构体定义（从AST结构体声明）
+void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
+    if (!ctx || !struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) return;
+    
+    CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
+    
+    // 生成结构体定义
+    fprintf(ctx->output_file, "struct %.*s {\n", 
+            (int)decl->name_length, decl->name);
+    
+    // 生成字段
+    for (size_t i = 0; i < decl->field_count; i++) {
+        fprintf(ctx->output_file, "    %s %.*s;\n",
+                get_c_type_string(decl->fields[i].field_type),
+                (int)decl->fields[i].name_length,
+                decl->fields[i].name);
+    }
+    
+    fprintf(ctx->output_file, "};\n\n");
+}
+
 int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
+    return cn_cgen_module_with_structs_to_file(module, NULL, filename);
+}
+
+// 完整的代码生成函数，包含结构体定义
+int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *program, const char *filename) {
     if (!module || !filename) return -1;
 
     /* 根据 IR 模块上的目标三元组获取预设数据布局（若存在）。 */
@@ -396,6 +443,14 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename) {
     } else {
         // Hosted 模式：包含完整运行时库
         fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
+    }
+    
+    // 生成结构体定义（如果提供了AST）
+    if (program && program->struct_count > 0) {
+        fprintf(file, "// CN Language Struct Definitions\n");
+        for (size_t i = 0; i < program->struct_count; i++) {
+            cn_cgen_struct_decl(&ctx, program->structs[i]);
+        }
     }
 
     CnIrFunction *func = module->first_func;

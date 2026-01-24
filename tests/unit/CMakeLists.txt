@@ -235,6 +235,20 @@ target_include_directories(parser_array_assign_test PRIVATE
 add_test(NAME parser_array_assign_test
          COMMAND parser_array_assign_test)
 
+# 结构体 Parser 测试
+add_executable(parser_struct_test
+    parser_struct_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_struct_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_struct_test
+         COMMAND parser_struct_test)
+set_tests_properties(parser_struct_test PROPERTIES LABELS "stage8;struct;unit")
+
 add_executable(semantic_check_test
     semantic_check_test.c
     ${SEMANTIC_TEST_DEPENDENCIES}

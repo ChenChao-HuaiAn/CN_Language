@@ -88,6 +88,9 @@ static void resolve_stmt_names(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics
         case CN_AST_STMT_BREAK:
         case CN_AST_STMT_CONTINUE:
             break;
+        case CN_AST_STMT_STRUCT_DECL:
+            // 结构体声明在全局作用域构建时已处理
+            break;
         default:
             break;
     }
@@ -135,6 +138,16 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             // 解析索引访问表达式
             resolve_expr_names(scope, expr->as.index.array, diagnostics);
             resolve_expr_names(scope, expr->as.index.index, diagnostics);
+            break;
+        case CN_AST_EXPR_MEMBER_ACCESS:
+            // 解析结构体成员访问表达式
+            resolve_expr_names(scope, expr->as.member.object, diagnostics);
+            break;
+        case CN_AST_EXPR_STRUCT_LITERAL:
+            // 解析结构体字面量表达式
+            for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
+                resolve_expr_names(scope, expr->as.struct_lit.fields[i].value, diagnostics);
+            }
             break;
         default: break;
     }
@@ -469,6 +482,103 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 // 索引表达式的类型是数组元素的类型
                 expr->type = array_type->as.array.element_type;
             }
+            break;
+        }
+        case CN_AST_EXPR_MEMBER_ACCESS: {
+            // 结构体成员访问类型推导 obj.member 或 ptr->member
+            CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
+            
+            // 如果是箭头访问，对象必须是指针类型
+            if (expr->as.member.is_arrow) {
+                if (!object_type || object_type->kind != CN_TYPE_POINTER) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：箭头操作符->的左操作数必须是指针类型");
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
+                }
+                // 获取指针指向的类型
+                object_type = object_type->as.pointer_to;
+            }
+            
+            // 检查对象是否为结构体类型
+            if (!object_type || object_type->kind != CN_TYPE_STRUCT) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：成员访问操作的对象必须是结构体类型");
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
+            
+            // 在结构体类型中查找成员
+            CnStructField *field = cn_type_struct_find_field(
+                object_type,
+                expr->as.member.member_name,
+                expr->as.member.member_name_length);
+            
+            if (!field) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
+                    NULL, 0, 0,
+                    "语义错误：结构体中不存在该成员");
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+            } else {
+                // 成员访问表达式的类型是成员的类型
+                expr->type = field->field_type;
+            }
+            break;
+        }
+        case CN_AST_EXPR_STRUCT_LITERAL: {
+            // 结构体字面量类型推导
+            // 查找结构体类型定义
+            CnSemSymbol *struct_sym = cn_sem_scope_lookup(
+                scope,
+                expr->as.struct_lit.struct_name,
+                expr->as.struct_lit.struct_name_length);
+            
+            if (!struct_sym || struct_sym->kind != CN_SEM_SYMBOL_STRUCT) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                    NULL, 0, 0,
+                    "语义错误：未定义的结构体类型");
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
+            
+            // 检查字段初始化的类型
+            for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
+                CnStructField *field = cn_type_struct_find_field(
+                    struct_sym->type,
+                    expr->as.struct_lit.fields[i].field_name,
+                    expr->as.struct_lit.fields[i].field_name_length);
+                
+                if (!field) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
+                        NULL, 0, 0,
+                        "语义错误：结构体中不存在该成员");
+                } else {
+                    CnType *init_type = infer_expr_type(
+                        scope,
+                        expr->as.struct_lit.fields[i].value,
+                        diagnostics);
+                    
+                    if (init_type && !cn_type_compatible(init_type, field->field_type)) {
+                        cn_support_diag_semantic_error_type_mismatch(
+                            diagnostics, NULL, 0, 0,
+                            "结构体字段类型", "初始化值类型");
+                    }
+                }
+            }
+            
+            expr->type = struct_sym->type;
             break;
         }
         default:

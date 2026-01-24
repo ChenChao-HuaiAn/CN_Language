@@ -36,6 +36,18 @@ CnType *cn_type_new_function(CnType *return_type, CnType **param_types, size_t p
     return type;
 }
 
+// 创建结构体类型
+CnType *cn_type_new_struct(const char *name, size_t name_length, CnStructField *fields, size_t field_count) {
+    CnType *type = (CnType *)malloc(sizeof(CnType));
+    if (!type) return NULL;
+    type->kind = CN_TYPE_STRUCT;
+    type->as.struct_type.name = name;
+    type->as.struct_type.name_length = name_length;
+    type->as.struct_type.fields = fields;
+    type->as.struct_type.field_count = field_count;
+    return type;
+}
+
 bool cn_type_equals(CnType *a, CnType *b) {
     if (a == b) return true;
     if (!a || !b) return false;
@@ -48,8 +60,9 @@ bool cn_type_equals(CnType *a, CnType *b) {
             return (a->as.array.length == b->as.array.length) &&
                    cn_type_equals(a->as.array.element_type, b->as.array.element_type);
         case CN_TYPE_STRUCT:
-            if (!a->as.struct_name || !b->as.struct_name) return false;
-            return strcmp(a->as.struct_name, b->as.struct_name) == 0;
+            if (!a->as.struct_type.name || !b->as.struct_type.name) return false;
+            if (a->as.struct_type.name_length != b->as.struct_type.name_length) return false;
+            return memcmp(a->as.struct_type.name, b->as.struct_type.name, a->as.struct_type.name_length) == 0;
         case CN_TYPE_FUNCTION:
             if (a->as.function.param_count != b->as.function.param_count) return false;
             if (!cn_type_equals(a->as.function.return_type, b->as.function.return_type)) return false;
@@ -66,4 +79,27 @@ bool cn_type_compatible(CnType *a, CnType *b) {
     // 基础实现：等价即兼容
     // 后续可以增加隐式转换逻辑，例如 int -> float
     return cn_type_equals(a, b);
+}
+
+// 在结构体类型中查找成员字段
+CnStructField *cn_type_struct_find_field(CnType *struct_type,
+                                         const char *field_name,
+                                         size_t field_name_length) {
+    if (!struct_type || struct_type->kind != CN_TYPE_STRUCT) {
+        return NULL;
+    }
+    if (!field_name) {
+        return NULL;
+    }
+
+    // 遍历结构体的所有字段
+    for (size_t i = 0; i < struct_type->as.struct_type.field_count; i++) {
+        CnStructField *field = &struct_type->as.struct_type.fields[i];
+        if (field->name_length == field_name_length &&
+            memcmp(field->name, field_name, field_name_length) == 0) {
+            return field;
+        }
+    }
+
+    return NULL; // 未找到匹配的字段
 }

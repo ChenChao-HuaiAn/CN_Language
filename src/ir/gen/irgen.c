@@ -311,6 +311,35 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             
             return cn_ir_op_reg(result_reg, expr->type);
         }
+        case CN_AST_EXPR_MEMBER_ACCESS: {
+            // 结构体成员访问：obj.member 或 ptr->member
+            CnIrOperand object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
+            
+            // 如果是箭头访问，先解引用指针
+            if (expr->as.member.is_arrow) {
+                int deref_reg = alloc_reg(ctx);
+                CnIrOperand deref_op = cn_ir_op_reg(deref_reg, expr->as.member.object->type->as.pointer_to);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_DEREF, deref_op, object_op, cn_ir_op_none()));
+                object_op = deref_op;
+            }
+            
+            // 生成成员访问指令，dest操作数记录成员名
+            int result_reg = alloc_reg(ctx);
+            CnIrOperand result = cn_ir_op_reg(result_reg, expr->type);
+            
+            // 使用 MEMBER_ACCESS 指令，src1为对象，src2为成员名（作为符号）
+            char *member_name = copy_name(expr->as.member.member_name, expr->as.member.member_name_length);
+            CnIrOperand member_sym = cn_ir_op_symbol(member_name, NULL);
+            free(member_name);
+            
+            emit(ctx, cn_ir_inst_new(CN_IR_INST_MEMBER_ACCESS, result, object_op, member_sym));
+            return result;
+        }
+        case CN_AST_EXPR_STRUCT_LITERAL: {
+            // 结构体字面量：为简化实现，暂时不生成IR，留待后续完善
+            // TODO: 生成结构体初始化的IR代码
+            return cn_ir_op_none();
+        }
         default:
             return cn_ir_op_none();
     }
@@ -498,6 +527,11 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
         }
         case CN_AST_STMT_BLOCK: {
             cn_ir_gen_block(ctx, stmt->as.block);
+            break;
+        }
+        case CN_AST_STMT_STRUCT_DECL: {
+            // 结构体声明：在IR层面不需要特殊处理，类型信息已经在语义分析阶段处理
+            // 结构体定义不生成运行时代码，只是类型信息
             break;
         }
         default:

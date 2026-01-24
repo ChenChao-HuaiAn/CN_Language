@@ -48,6 +48,17 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
         cn_frontend_ast_expr_free(expr->as.index.array);
         cn_frontend_ast_expr_free(expr->as.index.index);
         break;
+    case CN_AST_EXPR_MEMBER_ACCESS:
+        // 释放结构体成员访问表达式
+        cn_frontend_ast_expr_free(expr->as.member.object);
+        break;
+    case CN_AST_EXPR_STRUCT_LITERAL:
+        // 释放结构体字面量表达式
+        for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
+            cn_frontend_ast_expr_free(expr->as.struct_lit.fields[i].value);
+        }
+        free(expr->as.struct_lit.fields);
+        break;
     }
 
     free(expr);
@@ -104,6 +115,10 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
     case CN_AST_STMT_CONTINUE:
         // continue 语句没有子节点
         break;
+    case CN_AST_STMT_STRUCT_DECL:
+        // 释放结构体声明
+        free(stmt->as.struct_decl.fields);
+        break;
     }
 
     free(stmt);
@@ -132,7 +147,12 @@ void cn_frontend_ast_program_free(CnAstProgram *program)
         cn_frontend_ast_function_free(program->functions[i]);
     }
 
+    for (i = 0; i < program->struct_count; ++i) {
+        cn_frontend_ast_stmt_free(program->structs[i]);
+    }
+
     free(program->functions);
+    free(program->structs);
     free(program);
 }
 

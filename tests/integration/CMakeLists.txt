@@ -215,3 +215,21 @@ target_include_directories(integration_multiplatform_test PRIVATE ../../include)
 add_test(NAME integration_multiplatform_test 
          COMMAND integration_multiplatform_test)
 set_tests_properties(integration_multiplatform_test PROPERTIES LABELS "stage7;multiplatform;integration")
+
+# 结构体编译集成测试
+add_executable(integration_struct_compile_test
+    compiler/struct_compile_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/backend/cgen/cgen.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(integration_struct_compile_test PRIVATE ../../include)
+add_test(NAME integration_struct_compile_test 
+         COMMAND integration_struct_compile_test)
+set_tests_properties(integration_struct_compile_test PROPERTIES LABELS "stage8;struct;integration")
