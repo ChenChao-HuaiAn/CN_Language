@@ -197,3 +197,21 @@ target_include_directories(integration_memory_analysis_test PRIVATE ../../includ
 add_test(NAME integration_memory_analysis_test 
          COMMAND integration_memory_analysis_test)
 set_tests_properties(integration_memory_analysis_test PROPERTIES LABELS "stage7;memory;integration")
+
+# 多平台构建与运行验证集成测试
+add_executable(integration_multiplatform_test
+    multiplatform_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/backend/cgen/cgen.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(integration_multiplatform_test PRIVATE ../../include)
+add_test(NAME integration_multiplatform_test 
+         COMMAND integration_multiplatform_test)
+set_tests_properties(integration_multiplatform_test PROPERTIES LABELS "stage7;multiplatform;integration")
