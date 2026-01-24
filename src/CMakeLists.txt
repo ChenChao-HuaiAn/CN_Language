@@ -91,4 +91,26 @@ target_include_directories(cncheck PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 
+# LSP 服务器可执行程序
+add_executable(cnlsp
+    cli/cnlsp/main.c
+    cli/cnlsp/lsp_server.c
+    cli/cnlsp/lsp_jsonrpc.c
+    frontend/lsp_bridge/lsp_bridge.c
+    frontend/lexer/token.c
+    frontend/lexer/lexer.c
+    frontend/ast/ast.c
+    frontend/parser/parser.c
+    support/diagnostics/diagnostics.c
+    semantics/symbols/symbol_table.c
+    semantics/symbols/type_system.c
+    semantics/resolution/scope_builder.c
+    semantics/checker/semantic_passes.c
+    semantics/checker/freestanding_check.c
+)
+
+target_include_directories(cnlsp PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
 # 后续可在此处链接各模块静态库（frontend/semantics/ir/backend/support 等）

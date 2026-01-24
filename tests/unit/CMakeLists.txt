@@ -380,3 +380,26 @@ target_include_directories(static_check_test PRIVATE
 
 add_test(NAME static_check_test
          COMMAND static_check_test)
+
+# LSP 桥接层单元测试
+add_executable(lsp_bridge_test
+    lsp_bridge_test.c
+    ../../src/frontend/lsp_bridge/lsp_bridge.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/ast/ast.c
+    ../../src/frontend/parser/parser.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/semantics/symbols/type_system.c
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+)
+
+target_include_directories(lsp_bridge_test PRIVATE
+    ../../include
+)
+
+add_test(NAME lsp_bridge_test
+         COMMAND lsp_bridge_test)
