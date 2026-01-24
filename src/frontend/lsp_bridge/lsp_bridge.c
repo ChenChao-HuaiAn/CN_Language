@@ -25,6 +25,8 @@ CnLspDocumentAnalysis *cn_lsp_analyze_document(
     analysis->global_scope = NULL;
     analysis->diagnostics = NULL;
     analysis->diagnostic_count = 0;
+    analysis->source = source;
+    analysis->source_length = source_length;
 
     // 初始化诊断系统
     CnDiagnostics diagnostics;
@@ -100,12 +102,50 @@ bool cn_lsp_find_definition(
     CnLspPosition position,
     CnLspSymbolInfo *out_symbol)
 {
-    // TODO: 实现符号查找逻辑（遍历 AST 和符号表）
-    // 当前为最小原型，暂不实现
-    (void)analysis;
-    (void)position;
-    (void)out_symbol;
-    return false;
+    if (!analysis || !analysis->source || !out_symbol) {
+        return false;
+    }
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, analysis->source, analysis->source_length, "<lsp>");
+
+    CnToken token;
+    CnToken ident_token;
+    int found = 0;
+
+    while (cn_frontend_lexer_next_token(&lexer, &token)) {
+        if (token.kind == CN_TOKEN_EOF) {
+            break;
+        }
+
+        int line0 = (token.line > 0) ? token.line - 1 : 0;
+        int col0 = (token.column > 0) ? token.column - 1 : 0;
+        int col1 = col0 + (int)token.lexeme_length;
+
+        if (position.line == line0 && position.column >= col0 && position.column < col1) {
+            if (token.kind != CN_TOKEN_IDENT) {
+                return false;
+            }
+            ident_token = token;
+            found = 1;
+            break;
+        }
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    out_symbol->name = ident_token.lexeme_begin;
+    out_symbol->kind = CN_SEM_SYMBOL_VARIABLE;
+    out_symbol->type = NULL;
+
+    out_symbol->definition_range.start.line = (ident_token.line > 0) ? ident_token.line - 1 : 0;
+    out_symbol->definition_range.start.column = (ident_token.column > 0) ? ident_token.column - 1 : 0;
+    out_symbol->definition_range.end.line = out_symbol->definition_range.start.line;
+    out_symbol->definition_range.end.column = out_symbol->definition_range.start.column + (int)ident_token.lexeme_length;
+
+    return true;
 }
 
 // 查找符号的所有引用
@@ -115,13 +155,92 @@ bool cn_lsp_find_references(
     CnLspRange **out_ranges,
     size_t *out_count)
 {
-    // TODO: 实现引用查找逻辑（遍历 AST）
-    // 当前为最小原型，暂不实现
-    (void)analysis;
-    (void)position;
-    (void)out_ranges;
-    (void)out_count;
-    return false;
+    if (!analysis || !analysis->source || !out_ranges || !out_count) {
+        return false;
+    }
+
+    *out_ranges = NULL;
+    *out_count = 0;
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, analysis->source, analysis->source_length, "<lsp>");
+
+    CnToken token;
+    CnToken ident_token;
+    int found = 0;
+
+    // 第一次遍历：找到光标所在的标识符
+    while (cn_frontend_lexer_next_token(&lexer, &token)) {
+        if (token.kind == CN_TOKEN_EOF) {
+            break;
+        }
+
+        int line0 = (token.line > 0) ? token.line - 1 : 0;
+        int col0 = (token.column > 0) ? token.column - 1 : 0;
+        int col1 = col0 + (int)token.lexeme_length;
+
+        if (position.line == line0 && position.column >= col0 && position.column < col1) {
+            if (token.kind != CN_TOKEN_IDENT) {
+                return false;
+            }
+            ident_token = token;
+            found = 1;
+            break;
+        }
+    }
+
+    if (!found) {
+        return false;
+    }
+
+    // 第二次遍历：收集所有同名标识符的位置
+    cn_frontend_lexer_init(&lexer, analysis->source, analysis->source_length, "<lsp>");
+
+    size_t capacity = 4;
+    CnLspRange *ranges = (CnLspRange *)malloc(capacity * sizeof(CnLspRange));
+    if (!ranges) {
+        return false;
+    }
+
+    size_t count = 0;
+
+    while (cn_frontend_lexer_next_token(&lexer, &token)) {
+        if (token.kind == CN_TOKEN_EOF) {
+            break;
+        }
+
+        if (token.kind != CN_TOKEN_IDENT) {
+            continue;
+        }
+
+        if (token.lexeme_length == ident_token.lexeme_length &&
+            memcmp(token.lexeme_begin, ident_token.lexeme_begin, ident_token.lexeme_length) == 0) {
+            if (count >= capacity) {
+                capacity *= 2;
+                CnLspRange *new_ranges = (CnLspRange *)realloc(ranges, capacity * sizeof(CnLspRange));
+                if (!new_ranges) {
+                    free(ranges);
+                    return false;
+                }
+                ranges = new_ranges;
+            }
+
+            CnLspRange *range = &ranges[count++];
+            range->start.line = (token.line > 0) ? token.line - 1 : 0;
+            range->start.column = (token.column > 0) ? token.column - 1 : 0;
+            range->end.line = range->start.line;
+            range->end.column = range->start.column + (int)token.lexeme_length;
+        }
+    }
+
+    if (count == 0) {
+        free(ranges);
+        return false;
+    }
+
+    *out_ranges = ranges;
+    *out_count = count;
+    return true;
 }
 
 // 获取文档符号列表
