@@ -230,6 +230,12 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
             if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
                 param_type = cn_type_new_primitive(CN_TYPE_INT);
                 parser_advance(parser);
+
+                // 支持指针参数类型：例如 "整数* 参数"
+                while (parser->current.kind == CN_TOKEN_STAR) {
+                    param_type = cn_type_new_pointer(param_type);
+                    parser_advance(parser);
+                }
             } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
                 parser_advance(parser);
             } else {
@@ -444,6 +450,14 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         parser_advance(parser);
 
+        // 显式类型后允许跟随若干个 '*' 表示指针层级，例如 "整数* 指针变量"
+        if (declared_type) {
+            while (parser->current.kind == CN_TOKEN_STAR) {
+                declared_type = cn_type_new_pointer(declared_type);
+                parser_advance(parser);
+            }
+        }
+
         if (parser->current.kind != CN_TOKEN_IDENT) {
             parser->error_count++;
             if (parser->diagnostics) {
@@ -618,6 +632,20 @@ static CnAstExpr *parse_term(CnParser *parser)
 
 static CnAstExpr *parse_unary(CnParser *parser)
 {
+    // 处理取地址运算符 &
+    if (parser->current.kind == CN_TOKEN_AMPERSAND) {
+        parser_advance(parser);
+        CnAstExpr *operand = parse_unary(parser);  // 递归支持连续 &
+        return make_unary(CN_AST_UNARY_OP_ADDRESS_OF, operand);
+    }
+
+    // 处理解引用运算符 *
+    if (parser->current.kind == CN_TOKEN_STAR) {
+        parser_advance(parser);
+        CnAstExpr *operand = parse_unary(parser);  // 递归支持连续 *
+        return make_unary(CN_AST_UNARY_OP_DEREFERENCE, operand);
+    }
+
     // 处理逻辑非运算符 !
     if (parser->current.kind == CN_TOKEN_BANG) {
         parser_advance(parser);
@@ -632,7 +660,7 @@ static CnAstExpr *parse_unary(CnParser *parser)
         return make_unary(CN_AST_UNARY_OP_MINUS, operand);
     }
 
-    return parse_postfix(parser);  // 支持后缀表达式（如函数调用）
+    return parse_postfix(parser);  // 支持后缀表达式（如函数调用、数组索引）
 }
 
 // 解析后缀表达式（如函数调用、数组索引）

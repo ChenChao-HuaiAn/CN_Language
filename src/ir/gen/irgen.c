@@ -170,9 +170,25 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             CnIrOperand operand = cn_ir_gen_expr(ctx, expr->as.unary.operand);
             int dest_reg = alloc_reg(ctx);
             CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
-            CnIrInstKind kind = (expr->as.unary.op == CN_AST_UNARY_OP_NOT) 
-                                ? CN_IR_INST_NOT : CN_IR_INST_NEG;
-            emit(ctx, cn_ir_inst_new(kind, dest, operand, cn_ir_op_none()));
+
+            if (expr->as.unary.op == CN_AST_UNARY_OP_NOT) {
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_NOT, dest, operand, cn_ir_op_none()));
+            } else if (expr->as.unary.op == CN_AST_UNARY_OP_MINUS) {
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_NEG, dest, operand, cn_ir_op_none()));
+            } else if (expr->as.unary.op == CN_AST_UNARY_OP_ADDRESS_OF) {
+                // 取地址运算符：使用 ADDRESS_OF 指令
+                if (expr->as.unary.operand->kind == CN_AST_EXPR_IDENTIFIER) {
+                    char *name = copy_name(expr->as.unary.operand->as.identifier.name,
+                                           expr->as.unary.operand->as.identifier.name_length);
+                    CnIrOperand addr = cn_ir_op_symbol(name, expr->type);
+                    free(name);
+                    emit(ctx, cn_ir_inst_new(CN_IR_INST_ADDRESS_OF, dest, addr, cn_ir_op_none()));
+                }
+                return dest;
+            } else if (expr->as.unary.op == CN_AST_UNARY_OP_DEREFERENCE) {
+                // 解引用：使用 DEREF 指令
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_DEREF, dest, operand, cn_ir_op_none()));
+            }
             return dest;
         }
         case CN_AST_EXPR_CALL: {

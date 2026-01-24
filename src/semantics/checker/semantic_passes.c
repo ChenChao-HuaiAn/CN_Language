@@ -266,6 +266,21 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *left = infer_expr_type(scope, expr->as.binary.left, diagnostics);
             CnType *right = infer_expr_type(scope, expr->as.binary.right, diagnostics);
             
+            // 指针加减运算：指针 +/- 整数
+            if ((expr->as.binary.op == CN_AST_BINARY_OP_ADD ||
+                 expr->as.binary.op == CN_AST_BINARY_OP_SUB) &&
+                left && right) {
+                if (left->kind == CN_TYPE_POINTER && right->kind == CN_TYPE_INT) {
+                    expr->type = left;
+                    break;
+                }
+                if (expr->as.binary.op == CN_AST_BINARY_OP_ADD &&
+                    left->kind == CN_TYPE_INT && right->kind == CN_TYPE_POINTER) {
+                    expr->type = right;
+                    break;
+                }
+            }
+            
             if (left && right && cn_type_compatible(left, right)) {
                 // 简单的算术运算结果类型
                 if (expr->as.binary.op >= CN_AST_BINARY_OP_EQ && expr->as.binary.op <= CN_AST_BINARY_OP_GE) {
@@ -311,10 +326,35 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         }
         case CN_AST_EXPR_UNARY: {
             CnType *inner = infer_expr_type(scope, expr->as.unary.operand, diagnostics);
-            if (expr->as.unary.op == CN_AST_UNARY_OP_NOT) {
-                expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
-            } else {
-                expr->type = inner;
+            switch (expr->as.unary.op) {
+                case CN_AST_UNARY_OP_NOT:
+                    expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
+                    break;
+                case CN_AST_UNARY_OP_MINUS:
+                    expr->type = inner;
+                    break;
+                case CN_AST_UNARY_OP_ADDRESS_OF:
+                    if (inner) {
+                        expr->type = cn_type_new_pointer(inner);
+                    } else {
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    }
+                    break;
+                case CN_AST_UNARY_OP_DEREFERENCE:
+                    if (inner && inner->kind == CN_TYPE_POINTER && inner->as.pointer_to) {
+                        expr->type = inner->as.pointer_to;
+                    } else {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                            NULL, 0, 0,
+                            "语义错误：解引用操作的对象必须是指针类型");
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    }
+                    break;
+                default:
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
             }
             break;
         }

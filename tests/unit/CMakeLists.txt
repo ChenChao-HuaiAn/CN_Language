@@ -277,6 +277,14 @@ add_executable(semantics_array_test
 target_include_directories(semantics_array_test PRIVATE ../../include)
 add_test(NAME semantics_array_test COMMAND semantics_array_test)
 
+# 指针语义分析测试
+add_executable(semantics_pointer_test
+    semantics/semantics_pointer_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_pointer_test PRIVATE ../../include)
+add_test(NAME semantics_pointer_test COMMAND semantics_pointer_test)
+
 # Freestanding 模式检查测试
 add_executable(freestanding_check_test
     freestanding_check_test.c

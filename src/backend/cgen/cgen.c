@@ -204,6 +204,8 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             }
             break;
         case CN_IR_INST_MOV: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
+        case CN_IR_INST_ADDRESS_OF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = &"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
+        case CN_IR_INST_DEREF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = *"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         default: fprintf(ctx->output_file, "  /* Unsupported inst %d */\n", inst->kind); break;
     }
 }
@@ -325,6 +327,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         for (int i = 0; i < func->next_reg_id; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_ARRAY) {
                 fprintf(ctx->output_file, "  void* r%d;\n", i);
+            }
+        }
+        
+        /* 声明指针寄存器 */
+        for (int i = 0; i < func->next_reg_id; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_POINTER) {
+                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
             }
         }
         

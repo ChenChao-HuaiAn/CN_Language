@@ -402,7 +402,12 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             break;
         case '-':
             advance(lexer);
-            out_token->kind = CN_TOKEN_MINUS;
+            if (current_char(lexer) == '>') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_ARROW;
+            } else {
+                out_token->kind = CN_TOKEN_MINUS;
+            }
             break;
         case '*':
             advance(lexer);

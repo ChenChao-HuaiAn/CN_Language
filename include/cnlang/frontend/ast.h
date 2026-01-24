@@ -57,8 +57,10 @@ typedef enum CnAstLogicalOp {
 
 // 一元运算符
 typedef enum CnAstUnaryOp {
-    CN_AST_UNARY_OP_NOT,    // !
-    CN_AST_UNARY_OP_MINUS   // - (负号，预留)
+    CN_AST_UNARY_OP_NOT,         // !
+    CN_AST_UNARY_OP_MINUS,       // - (数值取负)
+    CN_AST_UNARY_OP_ADDRESS_OF,  // 取地址 &
+    CN_AST_UNARY_OP_DEREFERENCE  // 解引用 *
 } CnAstUnaryOp;
 
 struct CnType;
