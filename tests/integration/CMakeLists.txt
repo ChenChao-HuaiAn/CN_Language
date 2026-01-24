@@ -176,3 +176,24 @@ add_test(NAME integration_perf_test
          COMMAND integration_perf_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 set_tests_properties(integration_perf_test PROPERTIES LABELS "stage7;perf;integration")
+
+# 内存分析集成测试
+add_executable(integration_memory_analysis_test
+    memory/integration_memory_analysis_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/support/memory/memory_profiler.c
+    ../../src/support/memory/memory_estimator.c
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/ir/passes/constant_folding.c
+    ../../src/ir/passes/dead_code_elimination.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(integration_memory_analysis_test PRIVATE ../../include)
+add_test(NAME integration_memory_analysis_test 
+         COMMAND integration_memory_analysis_test)
+set_tests_properties(integration_memory_analysis_test PROPERTIES LABELS "stage7;memory;integration")

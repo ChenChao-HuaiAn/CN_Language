@@ -422,3 +422,17 @@ target_include_directories(perf_test PRIVATE
 add_test(NAME perf_test
          COMMAND perf_test)
 set_tests_properties(perf_test PROPERTIES LABELS "stage7;perf;unit")
+
+# 内存分析模块测试
+add_executable(memory_profiler_test
+    memory_profiler_test.c
+    ../../src/support/memory/memory_profiler.c
+)
+
+target_include_directories(memory_profiler_test PRIVATE
+    ../../include
+)
+
+add_test(NAME memory_profiler_test
+         COMMAND memory_profiler_test)
+set_tests_properties(memory_profiler_test PROPERTIES LABELS "stage7;memory;unit")

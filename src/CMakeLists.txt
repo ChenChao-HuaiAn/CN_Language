@@ -8,6 +8,8 @@ add_executable(cnc
     support/process/process.c
     support/config/target_triple.c
     support/perf/perf.c
+    support/memory/memory_profiler.c
+    support/memory/memory_estimator.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c

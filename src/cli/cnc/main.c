@@ -15,6 +15,8 @@
 #include "cnlang/support/process/process.h"
 #include "cnlang/support/config.h"
 #include "cnlang/support/perf.h"
+#include "cnlang/support/memory_profiler.h"
+#include "cnlang/support/memory_estimator.h"
 #include "cnlang/ir/ir.h"
 #include "cnlang/ir/irgen.h"
 #include "cnlang/ir/pass.h"
@@ -254,6 +256,7 @@ int main(int argc, char **argv)
     CnSemScope *global_scope = NULL;
     CnDiagnostics diagnostics;
     CnPerfStats perf_stats;
+    CnMemStats mem_stats;
     bool ok;
     CnTargetTriple target_triple;
 
@@ -278,6 +281,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "  --freestanding  启用 freestanding 编译模式（最小运行时/OS 开发场景）\n");
         fprintf(stderr, "  --perf         启用编译性能分析\n");
         fprintf(stderr, "  --perf-output=<文件>  指定性能分析输出文件（支持 .json 或 .csv 格式）\n");
+        fprintf(stderr, "  --mem-profile  启用内存占用分析\n");
+        fprintf(stderr, "  --mem-output=<文件>  指定内存分析输出文件（支持 .json 或 .csv 格式）\n");
         fprintf(stderr, "  --help         显示此帮助信息\n");
         return 1;
     }
@@ -294,6 +299,8 @@ int main(int argc, char **argv)
     bool freestanding_mode = false;
     bool enable_perf = false;
     const char *perf_output = NULL;
+    bool enable_mem_profile = false;
+    const char *mem_output = NULL;
 
     // 检查是否是帮助请求
     for (int i = 1; i < argc; i++) {
@@ -312,6 +319,8 @@ int main(int argc, char **argv)
             fprintf(stderr, "  --freestanding  启用 freestanding 编译模式（最小运行时/OS 开发场景）\n");
             fprintf(stderr, "  --perf         启用编译性能分析\n");
             fprintf(stderr, "  --perf-output=<文件>  指定性能分析输出文件（支持 .json 或 .csv 格式）\n");
+            fprintf(stderr, "  --mem-profile  启用内存占用分析\n");
+            fprintf(stderr, "  --mem-output=<文件>  指定内存分析输出文件（支持 .json 或 .csv 格式）\n");
             fprintf(stderr, "  --help/-h      显示此帮助信息\n\n");
             fprintf(stderr, "环境变量:\n");
             fprintf(stderr, "  CN_RUNTIME_PATH        指定运行时库路径\n");
@@ -368,6 +377,11 @@ int main(int argc, char **argv)
         } else if (strncmp(argv[i], "--perf-output=", 14) == 0) {
             perf_output = argv[i] + 14;
             enable_perf = true;
+        } else if (strcmp(argv[i], "--mem-profile") == 0) {
+            enable_mem_profile = true;
+        } else if (strncmp(argv[i], "--mem-output=", 13) == 0) {
+            mem_output = argv[i] + 13;
+            enable_mem_profile = true;
         }
     }
 
@@ -380,6 +394,10 @@ int main(int argc, char **argv)
     /* 初始化性能统计 */
     cn_perf_stats_init(&perf_stats, filename, source_length);
     cn_perf_stats_set_enabled(&perf_stats, enable_perf);
+
+    /* 初始化内存统计 */
+    cn_mem_stats_init(&mem_stats);
+    cn_mem_stats_set_enabled(&mem_stats, enable_mem_profile);
 
     /* 开始总计时 */
     cn_perf_start(&perf_stats, CN_PERF_PHASE_TOTAL);
@@ -526,6 +544,13 @@ int main(int argc, char **argv)
             } else {
                 cn_ir_dump_module(ir_module);
             }
+            
+            /* 在释放 IR 前统计内存占用 */
+            if (enable_mem_profile) {
+                size_t ir_size = cn_mem_estimate_ir(ir_module);
+                cn_mem_stats_record_alloc(&mem_stats, CN_MEM_CATEGORY_IR, ir_size);
+            }
+            
             cn_ir_module_free(ir_module);
             goto cleanup;
         }
@@ -638,6 +663,12 @@ int main(int argc, char **argv)
             }
         }
 
+        /* 在释放 IR 前统计内存占用 */
+        if (enable_mem_profile) {
+            size_t ir_size = cn_mem_estimate_ir(ir_module);
+            cn_mem_stats_record_alloc(&mem_stats, CN_MEM_CATEGORY_IR, ir_size);
+        }
+
         cn_ir_module_free(ir_module);
     }
 
@@ -667,6 +698,44 @@ int main(int argc, char **argv)
         }
         /* 总是打印到控制台 */
         cn_perf_print_stats(&perf_stats, stdout);
+    }
+
+    /* 输出内存统计 */
+    if (enable_mem_profile) {
+        /* 估算各数据结构的内存占用 */
+        size_t ast_size = cn_mem_estimate_ast(program);
+        size_t symbol_size = cn_mem_estimate_symbol_table(global_scope);
+        size_t diag_size = cn_mem_estimate_diagnostics(&diagnostics);
+        
+        /* 记录到统计中 */
+        cn_mem_stats_record_alloc(&mem_stats, CN_MEM_CATEGORY_AST, ast_size);
+        cn_mem_stats_record_alloc(&mem_stats, CN_MEM_CATEGORY_SYMBOL, symbol_size);
+        cn_mem_stats_record_alloc(&mem_stats, CN_MEM_CATEGORY_DIAGNOSTICS, diag_size);
+        
+        /* IR 占用需要在 IR 生成后统计，这里可能已经释放了 */
+        /* 如果需要统计 IR，应在 IR 生成后、释放前调用 cn_mem_estimate_ir */
+        
+        if (mem_output) {
+            /* 根据文件扩展名判断输出格式 */
+            size_t len = strlen(mem_output);
+            if (len > 5 && strcmp(mem_output + len - 5, ".json") == 0) {
+                if (cn_mem_stats_export_json(&mem_stats, mem_output)) {
+                    printf("\n内存分析结果已导出到: %s\n", mem_output);
+                } else {
+                    fprintf(stderr, "\n无法导出内存分析结果到: %s\n", mem_output);
+                }
+            } else if (len > 4 && strcmp(mem_output + len - 4, ".csv") == 0) {
+                if (cn_mem_stats_export_csv(&mem_stats, mem_output)) {
+                    printf("\n内存分析结果已导出到: %s\n", mem_output);
+                } else {
+                    fprintf(stderr, "\n无法导出内存分析结果到: %s\n", mem_output);
+                }
+            } else {
+                fprintf(stderr, "\n不支持的内存分析输出格式: %s（仅支持 .json 或 .csv）\n", mem_output);
+            }
+        }
+        /* 总是打印到控制台 */
+        cn_mem_stats_print(&mem_stats, stdout);
     }
 
 cleanup:

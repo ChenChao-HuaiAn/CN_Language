@@ -69,8 +69,19 @@
 #### 二、内存管理优化
 
 - **7.3 编译器内部内存占用评估**
-  - [ ] 盘点编译器内部关键数据结构（AST、符号表、IR、诊断信息等）的内存占用情况，形成初步评估报告。
-  - [ ] 在典型编译场景下，统计这些数据结构的峰值内存使用量，为后续优化提供基线数据。
+  - [x] 盘点编译器内部关键数据结构（AST、符号表、IR、诊断信息等）的内存占用情况，形成初步评估报告。
+    - 实现了内存分析框架 (`cnlang/support/memory_profiler.h` 和 `src/support/memory/memory_profiler.c`)
+    - 实现了内存估算模块 (`cnlang/support/memory_estimator.h` 和 `src/support/memory/memory_estimator.c`)
+    - 支持按类别统计（AST、符号表、IR、诊断信息）
+    - 提供全局统计（分配次数、总字节数、峰值、当前占用）
+  - [x] 在典型编译场景下，统计这些数据结构的峰值内存使用量，为后续优化提供基线数据。
+    - 在 `cnc` 主程序中集成内存分析功能
+    - 添加 `--mem-profile` 命令行选项启用内存分析
+    - 添加 `--mem-output` 选项支持导出为 JSON/CSV 格式
+    - 在编译流程的关键点统计各数据结构内存占用
+    - 实现了控制台格式化输出（表格形式，自动转换为易读单位）
+    - 添加了完整的单元测试 (`tests/unit/memory_profiler_test.c`)
+    - 添加了集成测试 (`tests/integration/memory/integration_memory_analysis_test.c`)
 
 - **7.4 内存结构与分配策略优化**
   - [ ] 针对内存占用较高的数据结构，逐项评估是否可以通过结构压缩、复用或按需加载等方式降低占用。
