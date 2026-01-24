@@ -1,0 +1,39 @@
+{
+  "name": "cnlang-lsp",
+  "displayName": "CN_Language LSP",
+  "description": "Language Server Protocol client for CN_Language compiler.",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:cn"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "cn",
+        "aliases": ["CN Language", "cn"],
+        "extensions": [".cn"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "CN_Language",
+      "properties": {
+        "cnlang.lsp.serverPath": {
+          "type": "string",
+          "default": "",
+          "description": "路径到 cnlsp 可执行文件；留空时在当前工作区的 build 目录中自动探测。"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.0"
+  }
+}
