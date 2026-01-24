@@ -360,15 +360,15 @@ Content-Length: 123\r\n
   - 文档变更时自动触发分析（通过文档管理器 + 桥接层）；
   - 通过 `textDocument/publishDiagnostics` 推送错误（使用 JSON-RPC 封装输出）。
 
-#### 阶段 3：符号跳转与语法高亮（1 周）
+#### 阶段 3：符号跳转与语法高亮（1 周） ✅
 
-- [ ] 实现 `textDocument/definition` 处理器：
-  - 调用 `cn_lsp_find_definition` 查询符号；
-  - 返回符号定义位置；
-- [ ] 实现 `textDocument/references` 处理器：
-  - 遍历 AST 查找符号引用；
-- [ ] 实现 `textDocument/semanticTokens/full` 处理器：
-  - 基于 Lexer Token 类型生成语义高亮数据。
+- [x] 实现 `textDocument/definition` 处理器：
+  - [x] 调用 `cn_lsp_find_definition` 查询符号（基于词法重扫定位标识符范围）；
+  - [x] 返回符号定义位置（当前原型将标识符自身范围视为定义位置）。
+- [x] 实现 `textDocument/references` 处理器：
+  - [x] 遍历源码 token 查找同名标识符引用（近似 AST 引用集合）。
+- [x] 实现 `textDocument/semanticTokens/full` 处理器：
+  - [x] 基于 Lexer Token 类型生成语义高亮数据（关键字/变量，使用增量编码 data 数组）。
 
 #### 阶段 4：测试与验收（1 周）
 
