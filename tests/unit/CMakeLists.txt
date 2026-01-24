@@ -450,3 +450,64 @@ add_test(NAME arena_allocator_test
          COMMAND arena_allocator_test)
 set_tests_properties(arena_allocator_test PROPERTIES LABELS "stage7;memory;unit")
 set_tests_properties(memory_profiler_test PROPERTIES LABELS "stage7;memory;unit")
+
+# Arena 分配器压力与性能测试（阶段7）
+add_executable(arena_stress_test
+    arena_stress_test.c
+    ../../src/support/memory/arena.c
+)
+
+target_include_directories(arena_stress_test PRIVATE
+    ../../include
+)
+
+add_test(NAME arena_stress_test
+         COMMAND arena_stress_test)
+set_tests_properties(arena_stress_test PROPERTIES LABELS "stage7;performance;stress;unit")
+
+# 词法分析器性能测试（阶段7）
+add_executable(lexer_performance_test
+    lexer_performance_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/memory/arena.c
+)
+
+target_include_directories(lexer_performance_test PRIVATE
+    ../../include
+)
+
+add_test(NAME lexer_performance_test
+         COMMAND lexer_performance_test)
+set_tests_properties(lexer_performance_test PROPERTIES LABELS "stage7;performance;unit")
+
+# 内存泄漏检测与边界测试（阶段7）
+add_executable(memory_leak_test
+    memory_leak_test.c
+    ../../src/support/memory/memory_profiler.c
+)
+
+target_include_directories(memory_leak_test PRIVATE
+    ../../include
+)
+
+add_test(NAME memory_leak_test
+         COMMAND memory_leak_test)
+set_tests_properties(memory_leak_test PROPERTIES LABELS "stage7;memory;leak;unit")
+
+# 关键优化路径回归测试（阶段7）
+add_executable(regression_test
+    regression_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/memory/arena.c
+    ../../src/support/memory/memory_profiler.c
+)
+
+target_include_directories(regression_test PRIVATE
+    ../../include
+)
+
+add_test(NAME regression_test
+         COMMAND regression_test)
+set_tests_properties(regression_test PROPERTIES LABELS "stage7;regression;unit")
