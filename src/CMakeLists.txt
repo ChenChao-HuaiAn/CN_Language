@@ -7,6 +7,7 @@ add_executable(cnc
     support/diagnostics/diagnostics.c
     support/process/process.c
     support/config/target_triple.c
+    support/perf/perf.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
@@ -112,6 +113,16 @@ add_executable(cnlsp
 )
 
 target_include_directories(cnlsp PRIVATE
+    ${CMAKE_SOURCE_DIR}/include
+)
+
+# 性能分析工具可执行程序
+add_executable(cnperf
+    cli/cnperf/main.c
+    support/process/process.c
+)
+
+target_include_directories(cnperf PRIVATE
     ${CMAKE_SOURCE_DIR}/include
 )
 

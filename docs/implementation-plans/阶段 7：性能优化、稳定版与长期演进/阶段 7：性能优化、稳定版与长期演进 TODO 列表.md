@@ -7,8 +7,29 @@
 #### 一、性能分析与优化
 
 - **7.1 编译器整体性能分析**
-  - [ ] 基于真实或模拟的「大项目」构建场景，对编译器完整编译流程的总耗时进行测量与记录。
-  - [ ] 分解并记录各主要阶段（前端、IR 生成、后端、运行时代码生成等）的耗时占比，用于后续定位瓶颈。
+  - [x] 基于真实或模拟的「大项目」构建场景，对编译器完整编译流程的总耗时进行测量与记录。
+    - 实现了性能测量框架 (`cnlang/support/perf.h` 和 `src/support/perf/perf.c`)
+    - 支持微秒级精度的时间戳获取（Windows 使用 QueryPerformanceCounter，Linux 使用 gettimeofday）
+    - 可选启用性能测量（通过 `--perf` 命令行选项）
+  - [x] 分解并记录各主要阶段（前端、IR 生成、后端、运行时代码生成等）的耗时占比，用于后续定位瓶颈。
+    - 在 `cnc` 主程序中集成了各编译阶段的性能测量点：
+      - 词法分析 (CN_PERF_PHASE_LEXER)
+      - 语法分析 (CN_PERF_PHASE_PARSER)
+      - 语义分析 (CN_PERF_PHASE_SEMANTIC)，包含子阶段：
+        - 作用域构建 (CN_PERF_PHASE_SEMANTIC_SCOPE)
+        - 名称解析 (CN_PERF_PHASE_SEMANTIC_RESOLVE)
+        - 类型检查 (CN_PERF_PHASE_SEMANTIC_TYPECHECK)
+      - IR 生成 (CN_PERF_PHASE_IR_GEN)
+      - IR 优化 (CN_PERF_PHASE_IR_OPT)
+      - 代码生成 (CN_PERF_PHASE_CODEGEN)
+      - 后端编译 (CN_PERF_PHASE_BACKEND_COMPILE)
+    - 支持多种输出格式：
+      - 控制台格式化输出（表格形式，包含耗时和占比）
+      - JSON 格式导出（`--perf-output=file.json`）
+      - CSV 格式导出（`--perf-output=file.csv`）
+    - 实现了独立的性能分析工具 `cnperf`，可批量测试多个 .cn 文件的编译性能
+    - 添加了完整的单元测试 (`tests/unit/perf_test.c`)
+    - 添加了集成测试 (`tests/integration/perf/integration_perf_test.c`)
 
 - **7.2 IR / 后端 / 运行时热点优化**
   - [ ] 在 IR、后端和运行时模块中结合性能分析结果，识别函数级别或模块级别的性能热点。

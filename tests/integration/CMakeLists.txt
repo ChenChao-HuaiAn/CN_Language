@@ -165,3 +165,14 @@ add_test(NAME integration_check_test
          COMMAND integration_check_test $<TARGET_FILE:cncheck>
          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 set_tests_properties(integration_check_test PROPERTIES LABELS "stage6;check;integration")
+
+# 性能分析集成测试
+add_executable(integration_perf_test
+    perf/integration_perf_test.c
+    ../../src/support/process/process.c
+)
+target_include_directories(integration_perf_test PRIVATE ../../include)
+add_test(NAME integration_perf_test 
+         COMMAND integration_perf_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+set_tests_properties(integration_perf_test PROPERTIES LABELS "stage7;perf;integration")

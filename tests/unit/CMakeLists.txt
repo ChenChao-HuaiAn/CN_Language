@@ -408,3 +408,17 @@ target_include_directories(lsp_bridge_test PRIVATE
 add_test(NAME lsp_bridge_test
          COMMAND lsp_bridge_test)
 set_tests_properties(lsp_bridge_test PROPERTIES LABELS "stage6;lsp;unit")
+
+# 性能分析模块测试
+add_executable(perf_test
+    perf_test.c
+    ../../src/support/perf/perf.c
+)
+
+target_include_directories(perf_test PRIVATE
+    ../../include
+)
+
+add_test(NAME perf_test
+         COMMAND perf_test)
+set_tests_properties(perf_test PROPERTIES LABELS "stage7;perf;unit")

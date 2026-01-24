@@ -14,6 +14,7 @@
 #include "cnlang/runtime/runtime.h"
 #include "cnlang/support/process/process.h"
 #include "cnlang/support/config.h"
+#include "cnlang/support/perf.h"
 #include "cnlang/ir/ir.h"
 #include "cnlang/ir/irgen.h"
 #include "cnlang/ir/pass.h"
@@ -252,6 +253,7 @@ int main(int argc, char **argv)
     CnAstProgram *program = NULL;
     CnSemScope *global_scope = NULL;
     CnDiagnostics diagnostics;
+    CnPerfStats perf_stats;
     bool ok;
     CnTargetTriple target_triple;
 
@@ -274,6 +276,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
         fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
         fprintf(stderr, "  --freestanding  启用 freestanding 编译模式（最小运行时/OS 开发场景）\n");
+        fprintf(stderr, "  --perf         启用编译性能分析\n");
+        fprintf(stderr, "  --perf-output=<文件>  指定性能分析输出文件（支持 .json 或 .csv 格式）\n");
         fprintf(stderr, "  --help         显示此帮助信息\n");
         return 1;
     }
@@ -288,6 +292,8 @@ int main(int argc, char **argv)
     bool debug_info = false;
     const char *opt_level = NULL;
     bool freestanding_mode = false;
+    bool enable_perf = false;
+    const char *perf_output = NULL;
 
     // 检查是否是帮助请求
     for (int i = 1; i < argc; i++) {
@@ -304,6 +310,8 @@ int main(int argc, char **argv)
             fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
             fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
             fprintf(stderr, "  --freestanding  启用 freestanding 编译模式（最小运行时/OS 开发场景）\n");
+            fprintf(stderr, "  --perf         启用编译性能分析\n");
+            fprintf(stderr, "  --perf-output=<文件>  指定性能分析输出文件（支持 .json 或 .csv 格式）\n");
             fprintf(stderr, "  --help/-h      显示此帮助信息\n\n");
             fprintf(stderr, "环境变量:\n");
             fprintf(stderr, "  CN_RUNTIME_PATH        指定运行时库路径\n");
@@ -355,6 +363,11 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--freestanding") == 0) {
             freestanding_mode = true;
             run_pipeline = true;
+        } else if (strcmp(argv[i], "--perf") == 0) {
+            enable_perf = true;
+        } else if (strncmp(argv[i], "--perf-output=", 14) == 0) {
+            perf_output = argv[i] + 14;
+            enable_perf = true;
         }
     }
 
@@ -364,10 +377,20 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* 初始化性能统计 */
+    cn_perf_stats_init(&perf_stats, filename, source_length);
+    cn_perf_stats_set_enabled(&perf_stats, enable_perf);
+
+    /* 开始总计时 */
+    cn_perf_start(&perf_stats, CN_PERF_PHASE_TOTAL);
+
     cn_support_diagnostics_init(&diagnostics);
 
+    /* 词法分析 */
+    cn_perf_start(&perf_stats, CN_PERF_PHASE_LEXER);
     cn_frontend_lexer_init(&lexer, source, source_length, filename);
     cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+    cn_perf_end(&perf_stats, CN_PERF_PHASE_LEXER);
 
     parser = cn_frontend_parser_new(&lexer);
     if (!parser) {
@@ -378,7 +401,10 @@ int main(int argc, char **argv)
     }
     cn_frontend_parser_set_diagnostics(parser, &diagnostics);
 
+    /* 语法分析 */
+    cn_perf_start(&perf_stats, CN_PERF_PHASE_PARSER);
     ok = cn_frontend_parse_program(parser, &program);
+    cn_perf_end(&perf_stats, CN_PERF_PHASE_PARSER);
     if (!ok || !program) {
         fprintf(stderr, "解析失败\n");
         print_diagnostics(&diagnostics);
@@ -398,7 +424,11 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* 语义分析 - 作用域构建 */
+    cn_perf_start(&perf_stats, CN_PERF_PHASE_SEMANTIC);
+    cn_perf_start(&perf_stats, CN_PERF_PHASE_SEMANTIC_SCOPE);
     global_scope = cn_sem_build_scopes(program, &diagnostics);
+    cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_SCOPE);
     if (!global_scope) {
         fprintf(stderr, "构建作用域失败\n");
         cn_frontend_ast_program_free(program);
@@ -408,8 +438,14 @@ int main(int argc, char **argv)
         return 1;
     }
 
+    /* 语义分析 - 名称解析 */
+    cn_perf_start(&perf_stats, CN_PERF_PHASE_SEMANTIC_RESOLVE);
     if (!cn_sem_resolve_names(global_scope, program, &diagnostics)) {
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_RESOLVE);
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC);
         fprintf(stderr, "名称解析失败\n");
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_RESOLVE);
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC);
         print_diagnostics(&diagnostics);
         cn_sem_scope_free(global_scope);
         cn_frontend_ast_program_free(program);
@@ -418,9 +454,16 @@ int main(int argc, char **argv)
         free(source);
         return 1;
     }
+    cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_RESOLVE);
 
+    /* 语义分析 - 类型检查 */
+    cn_perf_start(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);
     if (!cn_sem_check_types(global_scope, program, &diagnostics)) {
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC);
         fprintf(stderr, "类型检查失败\n");
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC);
         print_diagnostics(&diagnostics);
         cn_sem_scope_free(global_scope);
         cn_frontend_ast_program_free(program);
@@ -429,6 +472,8 @@ int main(int argc, char **argv)
         free(source);
         return 1;
     }
+    cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);
+    cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC);
 
     // Freestanding 模式检查
     if (freestanding_mode) {
@@ -453,14 +498,19 @@ int main(int argc, char **argv)
             output_filename = "a.out";
         }
 
+        /* IR 生成 */
+        cn_perf_start(&perf_stats, CN_PERF_PHASE_IR_GEN);
         CnIrModule *ir_module = cn_ir_gen_program(program, target_triple, freestanding_mode ? CN_COMPILE_MODE_FREESTANDING : CN_COMPILE_MODE_HOSTED);
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_IR_GEN);
         if (!ir_module) {
             fprintf(stderr, "IR 生成失败\n");
             goto cleanup;
         }
 
-        // 运行优化 Pass
+        /* IR 优化 */
+        cn_perf_start(&perf_stats, CN_PERF_PHASE_IR_OPT);
         cn_ir_run_default_passes(ir_module);
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_IR_OPT);
 
         // 如果只是打印 IR
         if (dump_ir) {
@@ -491,11 +541,15 @@ int main(int argc, char **argv)
             strcat(c_filename, ".c");
         }
 
+        /* 代码生成 */
+        cn_perf_start(&perf_stats, CN_PERF_PHASE_CODEGEN);
         if (cn_cgen_module_to_file(ir_module, c_filename) != 0) {
+            cn_perf_end(&perf_stats, CN_PERF_PHASE_CODEGEN);
             fprintf(stderr, "C 代码生成失败\n");
             cn_ir_module_free(ir_module);
             goto cleanup;
         }
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_CODEGEN);
 
         if (emit_c || compile_only) {
             printf("已生成 C 代码文件: %s\n", c_filename);
@@ -564,9 +618,12 @@ int main(int argc, char **argv)
             }
             #endif
 
+            /* 后端编译 */
+            cn_perf_start(&perf_stats, CN_PERF_PHASE_BACKEND_COMPILE);
             printf("正在执行编译命令: %s\n", compile_cmd);
             int result;
             bool success = cn_support_run_command(compile_cmd, &result);
+            cn_perf_end(&perf_stats, CN_PERF_PHASE_BACKEND_COMPILE);
             if (!success || result != 0) {
                 fprintf(stderr, "编译失败，退出码: %d\n", result);
                 cn_ir_module_free(ir_module);
@@ -582,6 +639,34 @@ int main(int argc, char **argv)
         }
 
         cn_ir_module_free(ir_module);
+    }
+
+    /* 结束总计时 */
+    cn_perf_end(&perf_stats, CN_PERF_PHASE_TOTAL);
+
+    /* 输出性能统计 */
+    if (enable_perf) {
+        if (perf_output) {
+            /* 根据文件扩展名判断输出格式 */
+            size_t len = strlen(perf_output);
+            if (len > 5 && strcmp(perf_output + len - 5, ".json") == 0) {
+                if (cn_perf_export_json(&perf_stats, perf_output)) {
+                    printf("\n性能分析结果已导出到: %s\n", perf_output);
+                } else {
+                    fprintf(stderr, "\n无法导出性能分析结果到: %s\n", perf_output);
+                }
+            } else if (len > 4 && strcmp(perf_output + len - 4, ".csv") == 0) {
+                if (cn_perf_export_csv(&perf_stats, perf_output)) {
+                    printf("\n性能分析结果已导出到: %s\n", perf_output);
+                } else {
+                    fprintf(stderr, "\n无法导出性能分析结果到: %s\n", perf_output);
+                }
+            } else {
+                fprintf(stderr, "\n不支持的性能分析输出格式: %s（仅支持 .json 或 .csv）\n", perf_output);
+            }
+        }
+        /* 总是打印到控制台 */
+        cn_perf_print_stats(&perf_stats, stdout);
     }
 
 cleanup:
