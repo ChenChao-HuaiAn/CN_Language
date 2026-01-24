@@ -9,6 +9,9 @@
 #define pclose _pclose
 #endif
 
+// 全局变量：保存 cncheck 可执行文件路径
+static const char *g_cncheck_path = "cncheck";
+
 // 辅助函数：执行命令并获取返回码
 static int run_command(const char *cmd)
 {
@@ -38,12 +41,12 @@ static void test_check_file_with_issues(void)
         "    变量 未使用 = 10;\n"
         "    变量 使用了 = 20;\n"
         "    打印(使用了);\n"
-        "}\n";
+        "};\n";
     
     create_test_file(test_file, content);
     
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "cncheck %s", test_file);
+    snprintf(cmd, sizeof(cmd), "%s %s", g_cncheck_path, test_file);
     
     int result = run_command(cmd);
     
@@ -61,12 +64,12 @@ static void test_check_file_clean(void)
     const char *content = 
         "函数 计算(a: 整数) -> 整数 {\n"
         "    返回 a + 1;\n"
-        "}\n";
+        "};\n";
     
     create_test_file(test_file, content);
     
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "cncheck %s", test_file);
+    snprintf(cmd, sizeof(cmd), "%s %s", g_cncheck_path, test_file);
     
     int result = run_command(cmd);
     
@@ -89,7 +92,7 @@ static void test_check_only_mode(void)
     create_test_file(test_file, content);
     
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "cncheck --check-only %s", test_file);
+    snprintf(cmd, sizeof(cmd), "%s --check-only %s", g_cncheck_path, test_file);
     
     int result = run_command(cmd);
     
@@ -117,7 +120,7 @@ static void test_custom_thresholds(void)
     create_test_file(test_file, content);
     
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "cncheck --max-statements 3 %s", test_file);
+    snprintf(cmd, sizeof(cmd), "%s --max-statements 3 %s", g_cncheck_path, test_file);
     
     int result = run_command(cmd);
     
@@ -141,7 +144,7 @@ static void test_disable_rule(void)
     
     // 禁用未使用变量检查
     char cmd[512];
-    snprintf(cmd, sizeof(cmd), "cncheck --disable-unused-var %s", test_file);
+    snprintf(cmd, sizeof(cmd), "%s --disable-unused-var %s", g_cncheck_path, test_file);
     
     int result = run_command(cmd);
     
@@ -152,10 +155,15 @@ static void test_disable_rule(void)
     printf("测试 test_disable_rule: 通过\n");
 }
 
-int main(void)
+int main(int argc, char *argv[])
 {
+    // 如果提供了参数，使用它作为 cncheck 路径
+    if (argc > 1) {
+        g_cncheck_path = argv[1];
+    }
+    
     printf("=== 运行静态检查工具集成测试 ===\n\n");
-    printf("注意: 这些测试需要 cncheck 可执行文件在 PATH 中\n\n");
+    printf("使用 cncheck 路径: %s\n\n", g_cncheck_path);
 
     test_check_file_with_issues();
     test_check_file_clean();

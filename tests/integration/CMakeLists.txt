@@ -119,6 +119,7 @@ add_executable(integration_repl_expr_test
 )
 target_include_directories(integration_repl_expr_test PRIVATE ../../include)
 add_test(NAME integration_repl_expr_test COMMAND integration_repl_expr_test)
+set_tests_properties(integration_repl_expr_test PROPERTIES LABELS "stage6;repl;integration")
 
 # REPL 小段程序集成测试
 add_executable(integration_repl_statement_test
@@ -135,6 +136,7 @@ add_executable(integration_repl_statement_test
 )
 target_include_directories(integration_repl_statement_test PRIVATE ../../include)
 add_test(NAME integration_repl_statement_test COMMAND integration_repl_statement_test)
+set_tests_properties(integration_repl_statement_test PROPERTIES LABELS "stage6;repl;integration")
 
 # REPL 会话状态管理集成测试
 add_executable(integration_repl_session_test
@@ -142,6 +144,7 @@ add_executable(integration_repl_session_test
 )
 target_include_directories(integration_repl_session_test PRIVATE ../../include)
 add_test(NAME integration_repl_session_test COMMAND integration_repl_session_test)
+set_tests_properties(integration_repl_session_test PROPERTIES LABELS "stage6;repl;integration")
 
 # 格式化工具集成测试
 add_executable(integration_format_test
@@ -151,6 +154,7 @@ target_include_directories(integration_format_test PRIVATE ../../include)
 add_test(NAME integration_format_test 
          COMMAND integration_format_test
          WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../..)
+set_tests_properties(integration_format_test PROPERTIES LABELS "stage6;format;integration")
 
 # 静态检查工具集成测试
 add_executable(integration_check_test
@@ -158,5 +162,6 @@ add_executable(integration_check_test
 )
 target_include_directories(integration_check_test PRIVATE ../../include)
 add_test(NAME integration_check_test 
-         COMMAND integration_check_test
+         COMMAND integration_check_test $<TARGET_FILE:cncheck>
          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+set_tests_properties(integration_check_test PROPERTIES LABELS "stage6;check;integration")

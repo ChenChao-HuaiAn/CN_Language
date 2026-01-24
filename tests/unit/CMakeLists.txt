@@ -329,6 +329,7 @@ add_test(NAME runtime_kernel_io_test COMMAND runtime_kernel_io_test)
 add_executable(repl_command_test repl_command_test.c)
 target_include_directories(repl_command_test PRIVATE ../../include)
 add_test(NAME repl_command_test COMMAND repl_command_test)
+set_tests_properties(repl_command_test PROPERTIES LABELS "stage6;repl;unit")
 
 # REPL 会话状态管理单元测试
 add_executable(repl_session_test 
@@ -340,6 +341,7 @@ add_executable(repl_session_test
 )
 target_include_directories(repl_session_test PRIVATE ../../include)
 add_test(NAME repl_session_test COMMAND repl_session_test)
+set_tests_properties(repl_session_test PROPERTIES LABELS "stage6;repl;unit")
 
 # 格式化器单元测试
 add_executable(formatter_test
@@ -360,6 +362,7 @@ target_include_directories(formatter_test PRIVATE
 
 add_test(NAME formatter_test
          COMMAND formatter_test)
+set_tests_properties(formatter_test PROPERTIES LABELS "stage6;format;unit")
 
 # 静态检查工具单元测试
 add_executable(static_check_test
@@ -380,6 +383,7 @@ target_include_directories(static_check_test PRIVATE
 
 add_test(NAME static_check_test
          COMMAND static_check_test)
+set_tests_properties(static_check_test PROPERTIES LABELS "stage6;check;unit")
 
 # LSP 桥接层单元测试
 add_executable(lsp_bridge_test
@@ -403,3 +407,4 @@ target_include_directories(lsp_bridge_test PRIVATE
 
 add_test(NAME lsp_bridge_test
          COMMAND lsp_bridge_test)
+set_tests_properties(lsp_bridge_test PROPERTIES LABELS "stage6;lsp;unit")
