@@ -1,0 +1,11 @@
+# Docker 构建忽略文件
+build/
+*.o
+*.exe
+*.elf
+*.a
+.git/
+.vscode/
+*.md
+CMakeCache.txt
+CMakeFiles/

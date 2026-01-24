@@ -39,6 +39,10 @@
 #############################################################################################################
 # 取消忽略 .gitignore 文件本身
 !/.gitignore
+# 取消忽略 .dockerignore 文件本身
+!/.dockerignore
+# 取消忽略"CHANGELOG.md"文件本身
+!/CHANGELOG.md
 # 取消忽略"README.md"文件本身
 !/README.md
 # 取消忽略"CMakeLists.txt"文件本身
