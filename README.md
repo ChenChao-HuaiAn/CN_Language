@@ -242,6 +242,47 @@ cnc --target x86_64-elf --freestanding kernel.cn -o kernel.c
 
 查看 [OS 开发示例](tests/integration/os/) 了解更多。
 
+## 多平台验证
+
+CN_Language 支持多平台构建与运行验证，确保在不同操作系统和架构上的行为一致性。
+
+### 支持的平台
+
+| 平台 | 架构 | 编译器 | 状态 |
+|------|------|--------|------|
+| Windows | x86_64 | MSVC/GCC/Clang | ✅ 已验证 |
+| Linux | x86_64 | GCC/Clang | ✅ 已验证 |
+| Linux | aarch64 | GCC/Clang | ✅ 已验证 |
+| Freestanding | x86_64 | GCC/Clang | ✅ 已验证 |
+
+### 快速验证
+
+**Windows**:
+```powershell
+.\tools\multiplatform_test.ps1 -CleanBuild
+```
+
+**Linux**:
+```bash
+chmod +x tools/multiplatform_test.sh
+./tools/multiplatform_test.sh
+```
+
+**Docker**:
+```bash
+docker-compose run cn-lang-dev
+./tools/multiplatform_test.sh
+```
+
+验证脚本会自动执行：
+- ✓ 依赖工具检查
+- ✓ CMake 配置与构建
+- ✓ 单元测试和集成测试
+- ✓ 核心功能验证
+- ✓ 生成详细报告
+
+查看 [多平台构建与运行验证指南](docs/implementation-plans/阶段%207：性能优化、稳定版与长期演进/多平台构建与运行验证指南.md) 了解更多。
+
 ## 技术栈
 
 - **实现语言**：C (C11 标准)

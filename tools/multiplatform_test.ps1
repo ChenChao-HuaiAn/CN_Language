@@ -23,10 +23,16 @@ Write-Host "[检查] 验证依赖工具..." -ForegroundColor Yellow
 $tools_ok = $true
 
 # 检查 CMake
-$cmake_version = cmake --version 2>&1 | Select-String "cmake version" | ForEach-Object { $_.ToString() }
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "  ✓ CMake: $cmake_version" -ForegroundColor Green
-} else {
+$cmake_version = $null
+try {
+    $cmake_version = cmake --version 2>&1 | Select-String "cmake version" | ForEach-Object { $_.ToString() }
+    if ($cmake_version) {
+        Write-Host "  ✓ CMake: $cmake_version" -ForegroundColor Green
+    } else {
+        Write-Host "  ✗ CMake 未安装或不在 PATH 中" -ForegroundColor Red
+        $tools_ok = $false
+    }
+} catch {
     Write-Host "  ✗ CMake 未安装或不在 PATH 中" -ForegroundColor Red
     $tools_ok = $false
 }
@@ -95,8 +101,14 @@ Write-Host ""
 # 2. CMake 配置
 Write-Host "[2/6] CMake 配置..." -ForegroundColor Yellow
 Push-Location $BuildDir
-$cmake_config = cmake .. -DCMAKE_BUILD_TYPE=Release 2>&1 | Out-String
-$cmake_config_result = $LASTEXITCODE
+try {
+    $cmake_config = cmake .. -DCMAKE_BUILD_TYPE=Release 2>&1 | Out-String
+    $cmake_config_result = $LASTEXITCODE
+} catch {
+    Write-Host "❌ CMake 配置异常: $($_.Exception.Message)" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
 Pop-Location
 
 if ($cmake_config_result -ne 0) {
@@ -110,8 +122,14 @@ Write-Host ""
 # 3. 编译构建
 Write-Host "[3/6] 编译构建..." -ForegroundColor Yellow
 Push-Location $BuildDir
-$build_output = cmake --build . --config Release 2>&1 | Out-String
-$build_result = $LASTEXITCODE
+try {
+    $build_output = cmake --build . --config Release 2>&1 | Out-String
+    $build_result = $LASTEXITCODE
+} catch {
+    Write-Host "❌ 构建异常: $($_.Exception.Message)" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
 Pop-Location
 
 if ($build_result -ne 0) {
