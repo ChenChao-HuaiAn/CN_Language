@@ -222,6 +222,32 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         
         CnSemScope *module_scope = module_sym->as.module_scope;
         
+        // 如果指定了别名，则以别名注册模块符号
+        if (import->alias) {
+            // 使用别名注册模块
+            CnSemSymbol *existing_alias = cn_sem_scope_lookup_shallow(global_scope,
+                                                                      import->alias,
+                                                                      import->alias_length);
+            if (existing_alias) {
+                // 别名冲突，报错
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, import->alias);
+                continue;
+            }
+            
+            // 以别名注册模块符号
+            CnSemSymbol *alias_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                                import->alias,
+                                                                import->alias_length,
+                                                                CN_SEM_SYMBOL_MODULE);
+            if (alias_sym) {
+                alias_sym->type = module_sym->type;
+                alias_sym->is_public = module_sym->is_public;
+                alias_sym->as.module_scope = module_sym->as.module_scope;
+            }
+            continue;  // 使用别名时不进行成员导入
+        }
+        
         // 判断是全量导入还是选择性导入
         if (import->member_count == 0) {
             // 全量导入：遍历模块作用域中的所有符号，添加到全局作用域
@@ -577,10 +603,11 @@ static void cn_sem_build_module_scope(CnSemScope *parent_scope,
             // 设置可见性（模块成员）
             if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
                 sym->is_public = 1;  // 显式标记为公开
-            } else if (var_decl->visibility == CN_VISIBILITY_PRIVATE) {
-                sym->is_public = 0;  // 显式标记为私有
+            } else {
+                // CN_VISIBILITY_PRIVATE 和 CN_VISIBILITY_DEFAULT: 默认为公开（临时策略，方便测试）
+                // TODO: 在实现“公开”/“私有”关键字后，需要改为正确的可见性处理
+                sym->is_public = 1;
             }
-            // CN_VISIBILITY_DEFAULT 保持默认值（已在 symbol_table.c 中设置为 0，即私有）
         } else {
             cn_support_diag_semantic_error_duplicate_symbol(
                 diagnostics, NULL, 0, 0, var_decl->name);

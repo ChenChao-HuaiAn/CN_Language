@@ -194,6 +194,8 @@ typedef struct CnAstImportMember {
 typedef struct CnAstImportStmt {
     const char *module_name;      // 被导入的模块名称
     size_t module_name_length;    // 模块名称长度
+    const char *alias;            // 模块别名（NULL表示不使用别名）
+    size_t alias_length;          // 别名长度
     CnAstImportMember *members;   // 要导入的成员列表（NULL表示导入所有）
     size_t member_count;          // 成员数量（0表示导入所有）
 } CnAstImportStmt;

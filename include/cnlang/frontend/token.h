@@ -41,6 +41,7 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_VOID,     // 空类型
     CN_TOKEN_KEYWORD_MODULE,   // 模块
     CN_TOKEN_KEYWORD_IMPORT,   // 导入
+    CN_TOKEN_KEYWORD_AS,       // 为（用于模块别名）
     CN_TOKEN_KEYWORD_NAMESPACE, // 命名空间
     CN_TOKEN_KEYWORD_INTERFACE, // 接口
     CN_TOKEN_KEYWORD_CLASS,     // 类

@@ -224,6 +224,10 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
         return CN_TOKEN_KEYWORD_IMPORT;
     }
 
+    if (length == strlen("为") && strncmp(begin, "为", length) == 0) {
+        return CN_TOKEN_KEYWORD_AS;
+    }
+
     if (length == strlen("命名空间") && strncmp(begin, "命名空间", length) == 0) {
         return CN_TOKEN_KEYWORD_NAMESPACE;
     }
