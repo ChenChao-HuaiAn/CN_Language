@@ -265,3 +265,13 @@ target_include_directories(integration_module_comprehensive_test PRIVATE ../../i
 add_test(NAME integration_module_comprehensive_test 
          COMMAND integration_module_comprehensive_test)
 set_tests_properties(integration_module_comprehensive_test PROPERTIES LABELS "stage7;module;integration")
+
+# I/O系统集成测试
+add_executable(io_integration_test
+    io_integration_test.c
+)
+target_link_libraries(io_integration_test PRIVATE cn_runtime)
+target_include_directories(io_integration_test PRIVATE ../../include)
+add_test(NAME io_integration_test 
+         COMMAND io_integration_test)
+set_tests_properties(io_integration_test PROPERTIES LABELS "stage8;io;stdlib;integration")

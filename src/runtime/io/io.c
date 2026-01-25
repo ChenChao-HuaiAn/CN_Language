@@ -58,3 +58,24 @@ int cn_rt_file_eof(CnRtFile file) {
     if (file == NULL) return 1;
     return feof((FILE*)file);
 }
+
+int cn_rt_file_setbuf(CnRtFile file, char* buffer, int mode, size_t size) {
+    if (file == NULL) return -1;
+    
+    FILE* fp = (FILE*)file;
+    
+    // 根据缓冲模式设置
+    if (mode == 2) {  // 无缓冲
+        setvbuf(fp, NULL, _IONBF, 0);
+    } else if (mode == 1) {  // 行缓冲
+        setvbuf(fp, buffer, _IOLBF, size);
+    } else {  // 全缓冲
+        setvbuf(fp, buffer, _IOFBF, size);
+    }
+    
+    return 0;
+}
+
+int cn_rt_flush_all(void) {
+    return fflush(NULL);
+}

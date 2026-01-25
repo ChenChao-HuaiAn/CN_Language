@@ -727,3 +727,10 @@ target_link_libraries(allocator_test PRIVATE cn_runtime)
 target_include_directories(allocator_test PRIVATE ../../include)
 add_test(NAME allocator_test COMMAND allocator_test)
 set_tests_properties(allocator_test PROPERTIES LABELS "stage8;allocator;memory;unit")
+
+# I/O系统单元测试
+add_executable(io_test io_test.c)
+target_link_libraries(io_test PRIVATE cn_runtime)
+target_include_directories(io_test PRIVATE ../../include)
+add_test(NAME io_test COMMAND io_test)
+set_tests_properties(io_test PROPERTIES LABELS "stage8;io;stdlib;unit")

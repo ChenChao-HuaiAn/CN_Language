@@ -203,6 +203,63 @@ int 比较内存(const void* s1, const void* s2, size_t n)
 
 #ifndef CN_FREESTANDING
 
+// =============================================================================
+// 文件操作函数实现
+// =============================================================================
+
+void* 打开文件(const char* path, const char* mode)
+{
+    return cn_rt_file_open(path, mode);
+}
+
+void 关闭文件(void* file)
+{
+    cn_rt_file_close((CnRtFile)file);
+}
+
+size_t 读取文件(void* file, void* buffer, size_t size)
+{
+    return cn_rt_file_read((CnRtFile)file, buffer, size);
+}
+
+size_t 写入文件(void* file, const void* buffer, size_t size)
+{
+    return cn_rt_file_write((CnRtFile)file, buffer, size);
+}
+
+int 判断文件结束(void* file)
+{
+    return cn_rt_file_eof((CnRtFile)file);
+}
+
+int 文件定位(void* file, long offset, int whence)
+{
+    if (file == NULL) {
+        return -1;
+    }
+    return fseek((FILE*)file, offset, whence);
+}
+
+long 获取文件位置(void* file)
+{
+    if (file == NULL) {
+        return -1;
+    }
+    return ftell((FILE*)file);
+}
+
+int 刷新文件缓冲(void* file)
+{
+    if (file == NULL) {
+        return EOF;
+    }
+    return fflush((FILE*)file);
+}
+
+// =============================================================================
+// 标准I/O函数实现
+// =============================================================================
+
 int 打印字符串(const char* str)
 {
     if (str == NULL) {
@@ -226,6 +283,16 @@ int 打印行(const char* str)
 char* 读取行(void)
 {
     return cn_rt_read_line();
+}
+
+int 读取整数(long long* out_val)
+{
+    return cn_rt_read_int(out_val);
+}
+
+int 刷新输出(void)
+{
+    return fflush(stdout);
 }
 
 int 格式化打印(const char* format, ...)
