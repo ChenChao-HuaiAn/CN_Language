@@ -13,6 +13,7 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_CALL,       // 函数调用表达式
     CN_AST_EXPR_IDENTIFIER,   // 标识符表达式
     CN_AST_EXPR_INTEGER_LITERAL, // 整数字面量表达式
+    CN_AST_EXPR_FLOAT_LITERAL,   // 浮点数字面量表达式
     CN_AST_EXPR_STRING_LITERAL,  // 字符串字面量表达式
     CN_AST_EXPR_BOOL_LITERAL,    // 布尔字面量表达式
     CN_AST_EXPR_ASSIGN,     // 赋值表达式
@@ -197,6 +198,11 @@ typedef struct CnAstIntegerLiteralExpr {
     long value;
 } CnAstIntegerLiteralExpr;
 
+// 浮点数字面量
+typedef struct CnAstFloatLiteralExpr {
+    double value;
+} CnAstFloatLiteralExpr;
+
 // 字符串字面量
 typedef struct CnAstStringLiteralExpr {
     const char *value;
@@ -271,6 +277,7 @@ typedef struct CnAstExpr {
         CnAstCallExpr call;
         CnAstIdentifierExpr identifier;
         CnAstIntegerLiteralExpr integer_literal;
+        CnAstFloatLiteralExpr float_literal;
         CnAstStringLiteralExpr string_literal;
         CnAstBoolLiteralExpr bool_literal;
         CnAstAssignExpr assign;

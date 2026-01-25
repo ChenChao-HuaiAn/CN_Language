@@ -314,6 +314,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_INTEGER_LITERAL:
             expr->type = cn_type_new_primitive(CN_TYPE_INT);
             break;
+        case CN_AST_EXPR_FLOAT_LITERAL:
+            expr->type = cn_type_new_primitive(CN_TYPE_FLOAT);
+            break;
         case CN_AST_EXPR_STRING_LITERAL:
             expr->type = cn_type_new_primitive(CN_TYPE_STRING);
             break;
@@ -351,12 +354,35 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
             }
             
+            // 整数与浮点数混合运算：int + float -> float
+            if (left && right) {
+                CnTypeKind result_kind = CN_TYPE_UNKNOWN;
+                
+                if ((left->kind == CN_TYPE_INT || left->kind == CN_TYPE_FLOAT) &&
+                    (right->kind == CN_TYPE_INT || right->kind == CN_TYPE_FLOAT)) {
+                    // 如果任一操作数是 float，结果为 float；否则为 int
+                    if (left->kind == CN_TYPE_FLOAT || right->kind == CN_TYPE_FLOAT) {
+                        result_kind = CN_TYPE_FLOAT;
+                    } else {
+                        result_kind = CN_TYPE_INT;
+                    }
+                    
+                    // 比较运算符返回布尔类型
+                    if (expr->as.binary.op >= CN_AST_BINARY_OP_EQ && expr->as.binary.op <= CN_AST_BINARY_OP_GE) {
+                        expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
+                    } else {
+                        expr->type = cn_type_new_primitive(result_kind);
+                    }
+                    break;
+                }
+            }
+            
             if (left && right && cn_type_compatible(left, right)) {
                 // 简单的算术运算结果类型
                 if (expr->as.binary.op >= CN_AST_BINARY_OP_EQ && expr->as.binary.op <= CN_AST_BINARY_OP_GE) {
                     expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
                 } else {
-                    expr->type = left; // 假设 int + int -> int
+                    expr->type = left;
                 }
             } else {
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);

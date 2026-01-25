@@ -375,11 +375,21 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             out_token->kind = CN_TOKEN_INVALID;
         }
     } else if (isdigit((unsigned char)c)) {
+        // 扫描数字：支持整数和浮点数
         while (isdigit((unsigned char)current_char(lexer))) {
             advance(lexer);
         }
 
-        out_token->kind = CN_TOKEN_INTEGER;
+        // 检查是否为浮点数（有小数点）
+        if (current_char(lexer) == '.' && isdigit((unsigned char)peek_char(lexer))) {
+            advance(lexer);  // 跳过小数点
+            while (isdigit((unsigned char)current_char(lexer))) {
+                advance(lexer);
+            }
+            out_token->kind = CN_TOKEN_FLOAT_LITERAL;
+        } else {
+            out_token->kind = CN_TOKEN_INTEGER;
+        }
     } else if (is_identifier_start((unsigned char)c)) {
         CnTokenKind kind;
 

@@ -79,6 +79,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             return cn_ir_op_imm_int(expr->as.integer_literal.value,
                                     cn_type_new_primitive(CN_TYPE_INT));
         }
+        case CN_AST_EXPR_FLOAT_LITERAL: {
+            // 浮点数字面量直接返回立即数
+            return cn_ir_op_imm_float(expr->as.float_literal.value,
+                                      cn_type_new_primitive(CN_TYPE_FLOAT));
+        }
         case CN_AST_EXPR_STRING_LITERAL: {
             // 字符串字面量
             CnIrOperand op;

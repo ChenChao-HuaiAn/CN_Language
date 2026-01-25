@@ -35,6 +35,7 @@ static CnAstExpr *parse_postfix(CnParser *parser);
 static CnAstExpr *parse_factor(CnParser *parser);
 
 static CnAstExpr *make_integer_literal(long value);
+static CnAstExpr *make_float_literal(double value);
 static CnAstExpr *make_string_literal(const char *value, size_t length);
 static CnAstExpr *make_bool_literal(int value);
 static CnAstExpr *make_identifier(const char *name, size_t length);
@@ -266,6 +267,15 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
                     param_type = cn_type_new_pointer(param_type);
                     parser_advance(parser);
                 }
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+                param_type = cn_type_new_primitive(CN_TYPE_FLOAT);
+                parser_advance(parser);
+
+                // 支持指针参数类型：例如 "小数* 参数"
+                while (parser->current.kind == CN_TOKEN_STAR) {
+                    param_type = cn_type_new_pointer(param_type);
+                    parser_advance(parser);
+                }
             } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
                 param_type = cn_type_new_primitive(CN_TYPE_BOOL);
                 parser_advance(parser);
@@ -475,6 +485,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
     if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
+        parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
         parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
         const char *var_name;
@@ -484,6 +495,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
             declared_type = cn_type_new_primitive(CN_TYPE_INT);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+            declared_type = cn_type_new_primitive(CN_TYPE_FLOAT);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
             declared_type = cn_type_new_primitive(CN_TYPE_STRING);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
@@ -556,6 +569,14 @@ static CnAstStmt *parse_statement(CnParser *parser)
                             parser_advance(parser);
                             
                             // 支持指针参数类型
+                            while (parser->current.kind == CN_TOKEN_STAR) {
+                                param_type = cn_type_new_pointer(param_type);
+                                parser_advance(parser);
+                            }
+                        } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+                            param_type = cn_type_new_primitive(CN_TYPE_FLOAT);
+                            parser_advance(parser);
+                            
                             while (parser->current.kind == CN_TOKEN_STAR) {
                                 param_type = cn_type_new_pointer(param_type);
                                 parser_advance(parser);
@@ -1003,6 +1024,10 @@ static CnAstExpr *parse_factor(CnParser *parser)
         long value = strtol(parser->current.lexeme_begin, NULL, 10);
         expr = make_integer_literal(value);
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_FLOAT_LITERAL) {
+        double value = strtod(parser->current.lexeme_begin, NULL);
+        expr = make_float_literal(value);
+        parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
         expr = make_string_literal(parser->current.lexeme_begin, parser->current.lexeme_length);
         parser_advance(parser);
@@ -1088,6 +1113,19 @@ static CnAstExpr *make_integer_literal(long value)
     expr->kind = CN_AST_EXPR_INTEGER_LITERAL;
     expr->type = NULL;
     expr->as.integer_literal.value = value;
+    return expr;
+}
+
+static CnAstExpr *make_float_literal(double value)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_FLOAT_LITERAL;
+    expr->type = NULL;
+    expr->as.float_literal.value = value;
     return expr;
 }
 

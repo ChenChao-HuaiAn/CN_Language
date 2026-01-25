@@ -174,6 +174,14 @@ CnIrOperand cn_ir_op_imm_int(long long val, CnType *type) {
     return op;
 }
 
+CnIrOperand cn_ir_op_imm_float(double val, CnType *type) {
+    CnIrOperand op;
+    op.kind = CN_IR_OP_IMM_FLOAT;
+    op.as.imm_float = val;
+    op.type = type;
+    return op;
+}
+
 CnIrOperand cn_ir_op_label(CnIrBasicBlock *block) {
     CnIrOperand op;
     op.kind = CN_IR_OP_LABEL;
@@ -203,6 +211,7 @@ void cn_ir_dump_operand_to_file(CnIrOperand op, FILE *file) {
         case CN_IR_OP_NONE: fprintf(file, "none"); break;
         case CN_IR_OP_REG: fprintf(file, "%%r%d", op.as.reg_id); break;
         case CN_IR_OP_IMM_INT: fprintf(file, "%lld", op.as.imm_int); break;
+        case CN_IR_OP_IMM_FLOAT: fprintf(file, "%f", op.as.imm_float); break;
         case CN_IR_OP_IMM_STR: fprintf(file, "\"%s\"", op.as.imm_str); break;
         case CN_IR_OP_SYMBOL: fprintf(file, "@%s", op.as.sym_name); break;
         case CN_IR_OP_LABEL: fprintf(file, "%s", op.as.label->name ? op.as.label->name : "unnamed"); break;

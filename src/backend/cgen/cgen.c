@@ -125,6 +125,7 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
         case CN_IR_OP_NONE: fprintf(ctx->output_file, "/* NONE */"); break;
         case CN_IR_OP_REG: fprintf(ctx->output_file, "r%d", op.as.reg_id); break;
         case CN_IR_OP_IMM_INT: fprintf(ctx->output_file, "%lld", op.as.imm_int); break;
+        case CN_IR_OP_IMM_FLOAT: fprintf(ctx->output_file, "%f", op.as.imm_float); break;
         case CN_IR_OP_IMM_STR: fprintf(ctx->output_file, "%s", op.as.imm_str); break;
         case CN_IR_OP_SYMBOL: fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name)); break;
         case CN_IR_OP_LABEL: fprintf(ctx->output_file, "%s", op.as.label->name ? op.as.label->name : "unnamed_label"); break;
@@ -397,6 +398,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         for (int i = 0; i < func->next_reg_id; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_BOOL) {
                 fprintf(ctx->output_file, "  _Bool r%d;\n", i);
+            }
+        }
+        
+        /* 声明浮点寄存器 */
+        for (int i = 0; i < func->next_reg_id; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_FLOAT) {
+                fprintf(ctx->output_file, "  double r%d;\n", i);
             }
         }
         

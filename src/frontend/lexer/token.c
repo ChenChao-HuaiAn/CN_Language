@@ -11,6 +11,8 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "IDENT";
     case CN_TOKEN_INTEGER:
         return "INTEGER";
+    case CN_TOKEN_FLOAT_LITERAL:
+        return "FLOAT_LITERAL";
     case CN_TOKEN_STRING_LITERAL:
         return "STRING_LITERAL";
     case CN_TOKEN_KEYWORD_IF:

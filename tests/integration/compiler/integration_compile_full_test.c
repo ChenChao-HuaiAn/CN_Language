@@ -172,6 +172,50 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    // 测试 6: float_ops.cn - 浮点数基本运算
+    snprintf(cmd, sizeof(cmd), "%s ../../../examples/float_ops.cn -o float_ops_test", cnc_path);
+    printf("正在运行: %s\n", cmd);
+    res = system(cmd);
+    if (res != 0) {
+        fprintf(stderr, "测试 6 (浮点数基本运算) 编译失败: %d\n", res);
+        return 1;
+    }
+
+#ifdef _WIN32
+    const char* float_ops_exe = ".\\float_ops_test.exe";
+#else
+    const char* float_ops_exe = "./float_ops_test";
+#endif
+
+    printf("正在运行生成的程序: %s\n", float_ops_exe);
+    res = system(float_ops_exe);
+    if (res != 0) {
+        fprintf(stderr, "测试 6 运行失败: %d\n", res);
+        return 1;
+    }
+
+    // 测试 7: float_mixed.cn - 整数与浮点数混合运算
+    snprintf(cmd, sizeof(cmd), "%s ../../../examples/float_mixed.cn -o float_mixed_test", cnc_path);
+    printf("正在运行: %s\n", cmd);
+    res = system(cmd);
+    if (res != 0) {
+        fprintf(stderr, "测试 7 (整数浮点混合运算) 编译失败: %d\n", res);
+        return 1;
+    }
+
+#ifdef _WIN32
+    const char* float_mixed_exe = ".\\float_mixed_test.exe";
+#else
+    const char* float_mixed_exe = "./float_mixed_test";
+#endif
+
+    printf("正在运行生成的程序: %s\n", float_mixed_exe);
+    res = system(float_mixed_exe);
+    if (res != 0) {
+        fprintf(stderr, "测试 7 运行失败: %d\n", res);
+        return 1;
+    }
+
     printf("集成编译测试全部通过!\n");
     return 0;
 }

@@ -29,19 +29,27 @@
 
 #### 二、小数类型与浮点字面量（`小数`、`1.0` 等）
 
-- [ ] **语法层：类型声明支持 `小数`**  
-  - [ ] 在变量声明、结构体字段、函数参数解析中，新增对 `CN_TOKEN_KEYWORD_FLOAT` 的处理，构造 `CN_TYPE_FLOAT` 及其指针类型。  
-- [ ] **词法层：浮点字面量 token**  
-  - [ ] 在 `lexer.c` 中扩展数字扫描逻辑，识别 `digit+ '.' digit+` 形式为新的 `CN_TOKEN_FLOAT_LITERAL`。  
-  - [ ] 确保整数与浮点字面量在回溯和错误路径上行为一致，避免拆成 `INTEGER + DOT + INTEGER`。  
-- [ ] **语法层：浮点字面量表达式**  
-  - [ ] 在 AST 中为浮点字面量增加节点（如 `CN_AST_EXPR_FLOAT_LITERAL`），并在 `parse_factor` 中解析 `CN_TOKEN_FLOAT_LITERAL`。  
-- [ ] **语义层：整数与小数混合运算规则**  
-  - [ ] 在 `infer_expr_type` 中为二元算术运算添加 `int/float` 组合处理策略（如 `int + float -> float`）。  
-  - [ ] 扩展 `cn_type_compatible` 与相关类型比较函数，支持必要的隐式数值提升或在不支持时给出清晰错误。  
-- [ ] **测试与文档**  
-  - [ ] 新增 `examples/float_examples.cn`，覆盖浮点声明、算术运算、参数传递与返回值。  
-  - [ ] 在集成测试中加入浮点编译通过/失败用例，并在语言规范的字面量章节标注当前实现范围与未支持情况。
+- [x] **语法层：类型声明支持 `小数`**  
+  - [x] 在变量声明、结构体字段、函数参数解析中，新增对 `CN_TOKEN_KEYWORD_FLOAT` 的处理，构造 `CN_TYPE_FLOAT` 及其指针类型。  
+- [x] **词法层：浮点字面量 token**  
+  - [x] 在 `lexer.c` 中扩展数字扫描逻辑，识别 `digit+ '.' digit+` 形式为新的 `CN_TOKEN_FLOAT_LITERAL`。  
+  - [x] 确保整数与浮点字面量在回溯和错误路径上行为一致，避免拆成 `INTEGER + DOT + INTEGER`。  
+- [x] **语法层：浮点字面量表达式**  
+  - [x] 在 AST 中为浮点字面量增加节点（如 `CN_AST_EXPR_FLOAT_LITERAL`），并在 `parse_factor` 中解析 `CN_TOKEN_FLOAT_LITERAL`。  
+- [x] **语义层：整数与小数混合运算规则**  
+  - [x] 在 `infer_expr_type` 中为二元算术运算添加 `int/float` 组合处理策略（如 `int + float -> float`）。  
+  - [x] 扩展 `cn_type_compatible` 与相关类型比较函数，支持必要的隐式数值提升或在不支持时给出清晰错误。  
+- [x] **IR 层：浮点立即数支持**
+  - [x] 在 `ir.h` 中添加 `CN_IR_OP_IMM_FLOAT` 操作数类型。
+  - [x] 在 `ir.c` 中实现 `cn_ir_op_imm_float` 辅助函数。
+  - [x] 在 `irgen.c` 中处理 `CN_AST_EXPR_FLOAT_LITERAL` 表达式。
+- [x] **代码生成层：浮点寄存器支持**
+  - [x] 在 `cgen.c` 的 `print_operand` 中处理 `CN_IR_OP_IMM_FLOAT`。
+  - [x] 在 `cn_cgen_function` 中为浮点类型寄存器声明 `double`。
+- [x] **测试与文档**  
+  - [x] 新增 `examples/float_examples.cn`、`examples/float_ops.cn`、`examples/float_mixed.cn`，覆盖浮点声明、算术运算、混合运算。  
+  - [x] 在集成测试中加入浮点编译通过用例 (`integration_compile_full_test.c`)。  
+  - [ ] 在语言规范的字面量章节标注当前实现范围与未支持情况。
 
 ---
 
