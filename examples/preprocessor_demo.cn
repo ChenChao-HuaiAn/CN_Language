@@ -1,0 +1,61 @@
+// 预处理器系统演示示例
+
+// 定义对象宏
+#define MAX_SIZE 100
+#define MIN_SIZE 10
+#define DEFAULT_VALUE 42
+
+// 条件编译演示
+#define FEATURE_ENABLED
+
+#ifdef FEATURE_ENABLED
+// 此区域的代码会被保留
+函数 get_feature_flag() {
+    返回 1;
+}
+#else
+// 此区域的代码会被删除
+函数 get_feature_flag() {
+    返回 0;
+}
+#endif
+
+// 使用宏的函数
+函数 test_macros() {
+    变量 size = MAX_SIZE;
+    变量 min = MIN_SIZE;
+    变量 default_val = DEFAULT_VALUE;
+    
+    // 计算: (100 - 10) * 42 = 3780
+    变量 result = (size - min) * default_val;
+    
+    返回 result;
+}
+
+// 嵌套条件编译
+#define LEVEL1
+
+#ifdef LEVEL1
+#define LEVEL2
+
+#ifdef LEVEL2
+函数 nested_feature() {
+    返回 2;
+}
+#endif
+#endif
+
+// 取消定义
+#define TEMP_MACRO 999
+#undef TEMP_MACRO
+// TEMP_MACRO 现在不可用
+
+// 主程序
+函数 主程序() {
+    变量 feature = get_feature_flag();
+    变量 result = test_macros();
+    变量 nested = nested_feature();
+    
+    // 所有值计算正确
+    返回 0;
+}

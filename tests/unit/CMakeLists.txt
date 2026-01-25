@@ -3,6 +3,7 @@
 set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/lexer/lexer.c
     ../../src/frontend/lexer/token.c
+    ../../src/frontend/preprocessor/preprocessor.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
     ../../src/semantics/symbols/type_system.c
@@ -35,6 +36,43 @@ target_include_directories(support_target_triple_test PRIVATE
 
 add_test(NAME support_target_triple_test
          COMMAND support_target_triple_test)
+
+add_executable(preprocessor_test
+    preprocessor_test.c
+    ../../src/frontend/preprocessor/preprocessor.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(preprocessor_test PRIVATE
+    ../../include
+)
+
+add_test(NAME preprocessor_test
+         COMMAND preprocessor_test)
+
+add_executable(preprocessor_chinese_test
+    preprocessor_chinese_test.c
+    ../../src/frontend/preprocessor/preprocessor.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(preprocessor_chinese_test PRIVATE
+    ../../include
+)
+
+add_test(NAME preprocessor_chinese_test
+         COMMAND preprocessor_chinese_test)
+set_tests_properties(preprocessor_chinese_test PROPERTIES LABELS "stage8;preprocessor;chinese;unit")
+
+add_executable(preprocessor_debug
+    preprocessor_debug.c
+    ../../src/frontend/preprocessor/preprocessor.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(preprocessor_debug PRIVATE
+    ../../include
+)
 
 add_executable(lexer_function_examples_test
     lexer_function_examples_test.c

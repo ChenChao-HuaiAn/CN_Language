@@ -1,0 +1,24 @@
+// 测试嵌套条件编译的宏定义
+
+// 第一层定义
+#define FEATURE_A
+
+#ifdef FEATURE_A
+// FEATURE_A被定义,这个区域应该被保留
+
+#define FEATURE_B
+
+#ifdef FEATURE_B
+// FEATURE_B也被定义,这个函数应该被包含
+函数 test_nested() {
+    返回 1;
+}
+#endif
+
+#endif
+
+// 主程序
+函数 主程序() {
+    变量 x = test_nested();
+    返回 0;
+}

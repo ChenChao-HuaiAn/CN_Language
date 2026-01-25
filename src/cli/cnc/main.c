@@ -8,6 +8,7 @@
 #endif
 
 #include "cnlang/frontend/lexer.h"
+#include "cnlang/frontend/preprocessor.h"
 #include "cnlang/frontend/parser.h"
 #include "cnlang/frontend/ast.h"
 #include "cnlang/support/diagnostics.h"
@@ -250,6 +251,7 @@ int main(int argc, char **argv)
     const char *filename;
     char *source;
     size_t source_length = 0;
+    CnPreprocessor preprocessor;
     CnLexer lexer;
     CnParser *parser;
     CnAstProgram *program = NULL;
@@ -404,9 +406,23 @@ int main(int argc, char **argv)
 
     cn_support_diagnostics_init(&diagnostics);
 
-    /* 词法分析 */
+    /* 预处理阶段 */
     cn_perf_start(&perf_stats, CN_PERF_PHASE_LEXER);
-    cn_frontend_lexer_init(&lexer, source, source_length, filename);
+    cn_frontend_preprocessor_init(&preprocessor, source, source_length, filename);
+    cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
+    
+    if (!cn_frontend_preprocessor_process(&preprocessor)) {
+        cn_perf_end(&perf_stats, CN_PERF_PHASE_LEXER);
+        fprintf(stderr, "预处理失败\n");
+        print_diagnostics(&diagnostics);
+        cn_frontend_preprocessor_free(&preprocessor);
+        cn_support_diagnostics_free(&diagnostics);
+        free(source);
+        return 1;
+    }
+    
+    /* 词法分析 - 使用预处理后的输出 */
+    cn_frontend_lexer_init(&lexer, preprocessor.output, preprocessor.output_length, filename);
     cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
     cn_perf_end(&perf_stats, CN_PERF_PHASE_LEXER);
 
@@ -428,6 +444,7 @@ int main(int argc, char **argv)
         print_diagnostics(&diagnostics);
         cn_support_diagnostics_free(&diagnostics);
         cn_frontend_parser_free(parser);
+        cn_frontend_preprocessor_free(&preprocessor);
         free(source);
         return 1;
     }
@@ -437,6 +454,7 @@ int main(int argc, char **argv)
         print_diagnostics(&diagnostics);
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
+        cn_frontend_preprocessor_free(&preprocessor);
         cn_support_diagnostics_free(&diagnostics);
         free(source);
         return 1;
@@ -451,6 +469,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "构建作用域失败\n");
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
+        cn_frontend_preprocessor_free(&preprocessor);
         cn_support_diagnostics_free(&diagnostics);
         free(source);
         return 1;
@@ -468,6 +487,7 @@ int main(int argc, char **argv)
         cn_sem_scope_free(global_scope);
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
+        cn_frontend_preprocessor_free(&preprocessor);
         cn_support_diagnostics_free(&diagnostics);
         free(source);
         return 1;
@@ -486,6 +506,7 @@ int main(int argc, char **argv)
         cn_sem_scope_free(global_scope);
         cn_frontend_ast_program_free(program);
         cn_frontend_parser_free(parser);
+        cn_frontend_preprocessor_free(&preprocessor);
         cn_support_diagnostics_free(&diagnostics);
         free(source);
         return 1;
@@ -501,6 +522,7 @@ int main(int argc, char **argv)
             cn_sem_scope_free(global_scope);
             cn_frontend_ast_program_free(program);
             cn_frontend_parser_free(parser);
+            cn_frontend_preprocessor_free(&preprocessor);
             cn_support_diagnostics_free(&diagnostics);
             free(source);
             return 1;
@@ -742,6 +764,7 @@ cleanup:
     cn_sem_scope_free(global_scope);
     cn_frontend_ast_program_free(program);
     cn_frontend_parser_free(parser);
+    cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
     free(source);
 

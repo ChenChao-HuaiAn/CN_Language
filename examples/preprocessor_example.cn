@@ -1,0 +1,50 @@
+// 预处理器宏系统示例
+
+// 定义对象宏
+#define MAX_SIZE 100
+#define MIN_SIZE 10
+
+// 定义函数宏
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+
+// 字符串化宏
+#define STR(x) #x
+#define CONCAT_STR(a, b) STR(a) STR(b)
+
+// 条件编译
+#define DEBUG_MODE
+
+#ifdef DEBUG_MODE
+// 变量 debug_enabled = 1;  // 顶层变量声明不支持
+#else
+// 变量 debug_enabled = 0;
+#endif
+
+// 使用对象宏
+// 变量 max_size = MAX_SIZE;  // 顶层变量声明不支持
+// 变量 min_size = MIN_SIZE;
+
+// 使用函数宏
+函数 find_max(整数 x, 整数 y) {
+    返回 MAX(x, y);
+}
+
+函数 find_min(整数 x, 整数 y) {
+    返回 MIN(x, y);
+}
+
+// 主程序
+函数 主程序() {
+    变量 a = 50;
+    变量 b = 75;
+    
+    变量 max_value = find_max(a, b);
+    变量 min_value = find_min(a, b);
+    
+    #ifdef DEBUG_MODE
+    打印("调试模式已启用\n");
+    #endif
+    
+    返回 0;
+}
