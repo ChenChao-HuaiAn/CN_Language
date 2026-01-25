@@ -699,3 +699,10 @@ add_executable(parser_interrupt_test
 target_include_directories(parser_interrupt_test PRIVATE ../../include)
 add_test(NAME parser_interrupt_test COMMAND parser_interrupt_test)
 set_tests_properties(parser_interrupt_test PROPERTIES LABELS "stage8;interrupt;parser;unit")
+
+# 运行时内存访问安全检查测试
+add_executable(runtime_memory_safety_test runtime/runtime_memory_safety_test.c)
+target_link_libraries(runtime_memory_safety_test PRIVATE cn_runtime)
+target_include_directories(runtime_memory_safety_test PRIVATE ../../include)
+add_test(NAME runtime_memory_safety_test COMMAND runtime_memory_safety_test)
+set_tests_properties(runtime_memory_safety_test PROPERTIES LABELS "stage8;memory;safety;runtime;unit")
