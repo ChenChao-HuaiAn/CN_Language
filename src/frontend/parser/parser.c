@@ -16,6 +16,8 @@ typedef struct CnParser {
 static void parser_advance(CnParser *parser);
 static int parser_match(CnParser *parser, CnTokenKind kind);
 static int parser_expect(CnParser *parser, CnTokenKind kind);
+static void check_reserved_keyword(CnParser *parser);
+static int is_reserved_keyword(CnTokenKind kind);
 
 static CnAstProgram *parse_program_internal(CnParser *parser);
 static CnAstFunctionDecl *parse_function_decl(CnParser *parser);
@@ -169,6 +171,80 @@ static int parser_expect(CnParser *parser, CnTokenKind kind)
     return 0;
 }
 
+// 检查是否为预留关键字
+static int is_reserved_keyword(CnTokenKind kind)
+{
+    return kind == CN_TOKEN_KEYWORD_CLASS ||
+           kind == CN_TOKEN_KEYWORD_INTERFACE ||
+           kind == CN_TOKEN_KEYWORD_TEMPLATE ||
+           kind == CN_TOKEN_KEYWORD_NAMESPACE ||
+           kind == CN_TOKEN_KEYWORD_CONST ||
+           kind == CN_TOKEN_KEYWORD_STATIC ||
+           kind == CN_TOKEN_KEYWORD_PUBLIC ||
+           kind == CN_TOKEN_KEYWORD_PRIVATE ||
+           kind == CN_TOKEN_KEYWORD_PROTECTED ||
+           kind == CN_TOKEN_KEYWORD_VIRTUAL ||
+           kind == CN_TOKEN_KEYWORD_OVERRIDE ||
+           kind == CN_TOKEN_KEYWORD_ABSTRACT;
+}
+
+// 获取预留关键字的错误消息（静态字符串）
+static const char* get_reserved_keyword_error_msg(CnTokenKind kind)
+{
+    switch (kind) {
+    case CN_TOKEN_KEYWORD_CLASS:
+        return "语法错误：关键字 '类' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_INTERFACE:
+        return "语法错误：关键字 '接口' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_TEMPLATE:
+        return "语法错误：关键字 '模板' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_NAMESPACE:
+        return "语法错误：关键字 '命名空间' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_CONST:
+        return "语法错误：关键字 '常量' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_STATIC:
+        return "语法错误：关键字 '静态' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_PUBLIC:
+        return "语法错误：关键字 '公开' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_PRIVATE:
+        return "语法错误：关键字 '私有' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_PROTECTED:
+        return "语法错误：关键字 '保护' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_VIRTUAL:
+        return "语法错误：关键字 '虚拟' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_OVERRIDE:
+        return "语法错误：关键字 '重写' 为预留特性，当前版本暂不支持";
+    case CN_TOKEN_KEYWORD_ABSTRACT:
+        return "语法错误：关键字 '抽象' 为预留特性，当前版本暂不支持";
+    default:
+        return "语法错误：遇到未知的预留关键字";
+    }
+}
+
+// 检测并报告预留关键字错误
+static void check_reserved_keyword(CnParser *parser)
+{
+    if (!parser || !parser->has_current) {
+        return;
+    }
+
+    if (is_reserved_keyword(parser->current.kind)) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            const char *error_msg = get_reserved_keyword_error_msg(parser->current.kind);
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_RESERVED_FEATURE,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          error_msg);
+        }
+        // 跳过该关键字，继续解析
+        parser_advance(parser);
+    }
+}
+
 static CnAstProgram *parse_program_internal(CnParser *parser)
 {
     CnAstProgram *program = make_program();
@@ -176,6 +252,9 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
     parser_advance(parser);
 
     while (parser->current.kind != CN_TOKEN_EOF) {
+        // 检查是否为预留关键字
+        check_reserved_keyword(parser);
+
         if (parser->current.kind == CN_TOKEN_KEYWORD_IMPORT) {
             // 解析导入语句
             CnAstStmt *import_stmt = parse_import_stmt(parser);
