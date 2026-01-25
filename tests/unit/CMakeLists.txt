@@ -734,3 +734,15 @@ target_link_libraries(io_test PRIVATE cn_runtime)
 target_include_directories(io_test PRIVATE ../../include)
 add_test(NAME io_test COMMAND io_test)
 set_tests_properties(io_test PROPERTIES LABELS "stage8;io;stdlib;unit")
+
+# 阶段8示例程序验收测试
+add_executable(phase8_examples_validation_test 
+    phase8_examples_validation_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(phase8_examples_validation_test PRIVATE ../../include)
+add_test(NAME phase8_examples_validation_test COMMAND phase8_examples_validation_test)
+set_tests_properties(phase8_examples_validation_test PROPERTIES 
+    LABELS "stage8;validation;examples;acceptance;unit"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
