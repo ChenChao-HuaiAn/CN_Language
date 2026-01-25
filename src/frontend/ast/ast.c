@@ -142,7 +142,10 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
         free(stmt->as.module_decl.stmts);
         break;
     case CN_AST_STMT_IMPORT:
-        // 导入语句没有需要释放的子节点
+        // 释放导入语句的成员列表
+        if (stmt->as.import_stmt.members) {
+            free(stmt->as.import_stmt.members);
+        }
         break;
     }
 

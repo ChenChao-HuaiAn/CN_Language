@@ -2348,6 +2348,9 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
 }
 
 // 解析导入语句
+// 支持两种语法：
+// 1. 导入 模块名;  (导入所有)
+// 2. 导入 模块名 { 成员1, 成员2 };  (选择性导入)
 static CnAstStmt *parse_import_stmt(CnParser *parser)
 {
     if (!parser_expect(parser, CN_TOKEN_KEYWORD_IMPORT)) {
@@ -2373,17 +2376,100 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
     size_t module_name_length = parser->current.lexeme_length;
     parser_advance(parser);
 
+    // 检查是否有选择性导入
+    CnAstImportMember *members = NULL;
+    size_t member_count = 0;
+    
+    if (parser->current.kind == CN_TOKEN_LBRACE) {
+        // 选择性导入：导入 模块名 { 成员1, 成员2 };
+        parser_advance(parser);
+        
+        // 解析成员列表
+        size_t member_capacity = 4;
+        members = (CnAstImportMember *)malloc(sizeof(CnAstImportMember) * member_capacity);
+        if (!members) {
+            return NULL;
+        }
+        
+        while (parser->current.kind != CN_TOKEN_RBRACE && 
+               parser->current.kind != CN_TOKEN_EOF) {
+            // 读取成员名称
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少成员名称");
+                }
+                free(members);
+                return NULL;
+            }
+            
+            // 扩容检查
+            if (member_count >= member_capacity) {
+                member_capacity *= 2;
+                CnAstImportMember *new_members = (CnAstImportMember *)realloc(
+                    members, sizeof(CnAstImportMember) * member_capacity);
+                if (!new_members) {
+                    free(members);
+                    return NULL;
+                }
+                members = new_members;
+            }
+            
+            // 保存成员信息
+            members[member_count].name = parser->current.lexeme_begin;
+            members[member_count].name_length = parser->current.lexeme_length;
+            member_count++;
+            
+            parser_advance(parser);
+            
+            // 检查逗号
+            if (parser->current.kind == CN_TOKEN_COMMA) {
+                parser_advance(parser);
+            } else if (parser->current.kind != CN_TOKEN_RBRACE) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：期望 ',' 或 '}'");
+                }
+                free(members);
+                return NULL;
+            }
+        }
+        
+        // 期望右大括号
+        if (!parser_expect(parser, CN_TOKEN_RBRACE)) {
+            free(members);
+            return NULL;
+        }
+    }
+
     // 期望分号
     parser_expect(parser, CN_TOKEN_SEMICOLON);
 
     // 创建导入语句
     CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
     if (!stmt) {
+        if (members) {
+            free(members);
+        }
         return NULL;
     }
 
     stmt->kind = CN_AST_STMT_IMPORT;
     stmt->as.import_stmt.module_name = module_name;
     stmt->as.import_stmt.module_name_length = module_name_length;
+    stmt->as.import_stmt.members = members;
+    stmt->as.import_stmt.member_count = member_count;
     return stmt;
 }

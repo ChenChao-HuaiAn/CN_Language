@@ -184,10 +184,18 @@ typedef struct CnAstModuleDecl {
     size_t function_count;        // 函数数量
 } CnAstModuleDecl;
 
+// 导入成员项（用于选择性导入）
+typedef struct CnAstImportMember {
+    const char *name;             // 成员名称
+    size_t name_length;           // 成员名称长度
+} CnAstImportMember;
+
 // 导入语句
 typedef struct CnAstImportStmt {
     const char *module_name;      // 被导入的模块名称
     size_t module_name_length;    // 模块名称长度
+    CnAstImportMember *members;   // 要导入的成员列表（NULL表示导入所有）
+    size_t member_count;          // 成员数量（0表示导入所有）
 } CnAstImportStmt;
 
 // 函数参数

@@ -674,3 +674,12 @@ add_executable(method_style_length_test
 target_include_directories(method_style_length_test PRIVATE ../../include)
 add_test(NAME method_style_length_test COMMAND method_style_length_test)
 set_tests_properties(method_style_length_test PROPERTIES LABELS "stage7;builtin;method;unit")
+
+# 选择性导入测试
+add_executable(semantics_selective_import_test
+    semantics_selective_import_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_selective_import_test PRIVATE ../../include)
+add_test(NAME semantics_selective_import_test COMMAND semantics_selective_import_test)
+set_tests_properties(semantics_selective_import_test PROPERTIES LABELS "stage7;module;import;selective;unit")

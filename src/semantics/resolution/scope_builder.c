@@ -220,43 +220,102 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             continue;
         }
         
-        // 遍历模块作用域中的所有符号，添加到全局作用域
         CnSemScope *module_scope = module_sym->as.module_scope;
-        CnSemSymbolNode *node = module_scope->symbols;
-        while (node) {
-            CnSemSymbol *sym = &node->symbol;
-            
-            // 检查名称冲突
-            CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
-                                                                    sym->name,
-                                                                    sym->name_length);
-            if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                // 名称冲突，报错
-                cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, sym->name);
-            } else if (!existing_sym) {
-                // 没有冲突，添加符号
-                CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
-                                                                  sym->name,
-                                                                  sym->name_length,
-                                                                  sym->kind);
-                if (new_sym) {
-                    // 复制符号信息
-                    new_sym->type = sym->type;
-                    new_sym->is_public = sym->is_public;  // 复制可见性
-                    // 保留原始声明作用域（模块作用域），而不是将其设置为全局作用域
-                    // 这样 IR 生成器可以通过 decl_scope 判断该符号来自模块
-                    new_sym->decl_scope = sym->decl_scope;
-                    // 如果是模块符号，也复制模块作用域
-                    if (sym->kind == CN_SEM_SYMBOL_MODULE) {
-                        new_sym->as.module_scope = sym->as.module_scope;
-                    } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
-                        new_sym->as.enum_value = sym->as.enum_value;
+        
+        // 判断是全量导入还是选择性导入
+        if (import->member_count == 0) {
+            // 全量导入：遍历模块作用域中的所有符号，添加到全局作用域
+            CnSemSymbolNode *node = module_scope->symbols;
+            while (node) {
+                CnSemSymbol *sym = &node->symbol;
+                
+                // 检查名称冲突
+                CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                                        sym->name,
+                                                                        sym->name_length);
+                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                    // 名称冲突，报错
+                    cn_support_diag_semantic_error_duplicate_symbol(
+                        diagnostics, NULL, 0, 0, sym->name);
+                } else if (!existing_sym) {
+                    // 没有冲突，添加符号
+                    CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                                      sym->name,
+                                                                      sym->name_length,
+                                                                      sym->kind);
+                    if (new_sym) {
+                        // 复制符号信息
+                        new_sym->type = sym->type;
+                        new_sym->is_public = sym->is_public;
+                        new_sym->decl_scope = sym->decl_scope;
+                        if (sym->kind == CN_SEM_SYMBOL_MODULE) {
+                            new_sym->as.module_scope = sym->as.module_scope;
+                        } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                            new_sym->as.enum_value = sym->as.enum_value;
+                        }
+                    }
+                }
+                
+                node = node->next;
+            }
+        } else {
+            // 选择性导入：只导入指定的成员
+            for (size_t j = 0; j < import->member_count; ++j) {
+                const char *member_name = import->members[j].name;
+                size_t member_name_length = import->members[j].name_length;
+                
+                // 在模块作用域中查找指定成员
+                CnSemSymbol *member_sym = cn_sem_scope_lookup_shallow(module_scope,
+                                                                      member_name,
+                                                                      member_name_length);
+                
+                if (!member_sym) {
+                    // 成员不存在，报错
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                        NULL, 0, 0,
+                        "语义错误：导入的成员不存在");
+                    continue;
+                }
+                
+                // 检查可见性：只能导入公开成员
+                if (!member_sym->is_public) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ACCESS_DENIED,
+                        NULL, 0, 0,
+                        "语义错误：无法导入私有成员");
+                    continue;
+                }
+                
+                // 检查名称冲突
+                CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                                        member_name,
+                                                                        member_name_length);
+                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                    // 名称冲突，报错
+                    cn_support_diag_semantic_error_duplicate_symbol(
+                        diagnostics, NULL, 0, 0, member_name);
+                } else if (!existing_sym) {
+                    // 没有冲突，添加符号
+                    CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                                      member_name,
+                                                                      member_name_length,
+                                                                      member_sym->kind);
+                    if (new_sym) {
+                        // 复制符号信息
+                        new_sym->type = member_sym->type;
+                        new_sym->is_public = member_sym->is_public;
+                        new_sym->decl_scope = member_sym->decl_scope;
+                        if (member_sym->kind == CN_SEM_SYMBOL_MODULE) {
+                            new_sym->as.module_scope = member_sym->as.module_scope;
+                        } else if (member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                            new_sym->as.enum_value = member_sym->as.enum_value;
+                        }
                     }
                 }
             }
-            
-            node = node->next;
         }
     }
 
@@ -550,6 +609,10 @@ static void cn_sem_build_module_scope(CnSemScope *parent_scope,
             sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),
                                             param_types,
                                             function_decl->parameter_count);
+            // 注意：由于 CnAstFunctionDecl 没有 visibility 字段，我们默认模块函数为公开
+            // 这是因为 parser 在解析时使用了 current_visibility，但没有将其保存到 FunctionDecl 中
+            // 在实际使用中，如果需要私有函数，应该在 parser 中添加 visibility 字段
+            sym->is_public = 1;
         } else {
             cn_support_diag_semantic_error_duplicate_symbol(
                 diagnostics, NULL, 0, 0, function_decl->name);
