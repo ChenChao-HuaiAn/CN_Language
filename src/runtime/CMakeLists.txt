@@ -15,6 +15,7 @@ set(RUNTIME_COLLECTIONS_SOURCES
 set(RUNTIME_MEMORY_SOURCES
     memory/memory.c
     memory/freestanding_allocator.c
+    memory/allocator.c
 )
 
 set(RUNTIME_IO_SOURCES

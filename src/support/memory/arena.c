@@ -129,7 +129,10 @@ void *cn_arena_alloc_aligned(CnArena *arena, size_t size, size_t alignment)
     block = arena->current_block;
 
     // 计算对齐后的偏移
-    aligned_offset = align_up(block->used, alignment);
+    // 需要考虑block->data本身的地址可能不对齐的情况
+    size_t data_addr = (size_t)block->data;
+    size_t aligned_addr = align_up(data_addr + block->used, alignment);
+    aligned_offset = aligned_addr - data_addr;
     available = block->size - aligned_offset;
 
     // 当前块空间不足
@@ -148,7 +151,11 @@ void *cn_arena_alloc_aligned(CnArena *arena, size_t size, size_t alignment)
         arena->block_count++;
         
         block = new_block;
-        aligned_offset = 0;
+        
+        // 新块也需要计算对齐偏移
+        data_addr = (size_t)block->data;
+        aligned_addr = align_up(data_addr, alignment);
+        aligned_offset = aligned_addr - data_addr;
     }
 
     // 分配内存

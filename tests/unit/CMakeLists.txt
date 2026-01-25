@@ -720,3 +720,10 @@ target_link_libraries(stdlib_test PRIVATE cn_runtime)
 target_include_directories(stdlib_test PRIVATE ../../include)
 add_test(NAME stdlib_test COMMAND stdlib_test)
 set_tests_properties(stdlib_test PROPERTIES LABELS "stage8;stdlib;chinese;runtime;unit")
+
+# 内存分配器功能测试
+add_executable(allocator_test allocator_test.c)
+target_link_libraries(allocator_test PRIVATE cn_runtime)
+target_include_directories(allocator_test PRIVATE ../../include)
+add_test(NAME allocator_test COMMAND allocator_test)
+set_tests_properties(allocator_test PROPERTIES LABELS "stage8;allocator;memory;unit")
