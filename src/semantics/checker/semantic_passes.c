@@ -248,19 +248,45 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
         case CN_AST_STMT_RETURN:
             infer_expr_type(scope, stmt->as.return_stmt.expr, diagnostics);
             break;
-        case CN_AST_STMT_IF:
-            infer_expr_type(scope, stmt->as.if_stmt.condition, diagnostics);
+        case CN_AST_STMT_IF: {
+            CnType *cond_type = infer_expr_type(scope, stmt->as.if_stmt.condition, diagnostics);
+            // 检查条件表达式是否为布尔类型
+            if (cond_type && cond_type->kind != CN_TYPE_BOOL) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：if 语句条件必须为布尔类型");
+            }
             check_block_types(scope, stmt->as.if_stmt.then_block, diagnostics, in_loop);
             check_block_types(scope, stmt->as.if_stmt.else_block, diagnostics, in_loop);
             break;
-        case CN_AST_STMT_WHILE:
-            infer_expr_type(scope, stmt->as.while_stmt.condition, diagnostics);
+        }
+        case CN_AST_STMT_WHILE: {
+            CnType *cond_type = infer_expr_type(scope, stmt->as.while_stmt.condition, diagnostics);
+            // 检查条件表达式是否为布尔类型
+            if (cond_type && cond_type->kind != CN_TYPE_BOOL) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：while 语句条件必须为布尔类型");
+            }
             check_block_types(scope, stmt->as.while_stmt.body, diagnostics, true);
             break;
+        }
         case CN_AST_STMT_FOR: {
             CnSemScope *for_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
             check_stmt_types(for_scope, stmt->as.for_stmt.init, diagnostics, in_loop);
-            infer_expr_type(for_scope, stmt->as.for_stmt.condition, diagnostics);
+            CnType *cond_type = infer_expr_type(for_scope, stmt->as.for_stmt.condition, diagnostics);
+            // 检查条件表达式是否为布尔类型
+            if (cond_type && cond_type->kind != CN_TYPE_BOOL) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：for 语句条件必须为布尔类型");
+            }
             infer_expr_type(for_scope, stmt->as.for_stmt.update, diagnostics);
             check_block_types(for_scope, stmt->as.for_stmt.body, diagnostics, true);
             cn_sem_scope_free(for_scope);
@@ -290,6 +316,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         case CN_AST_EXPR_STRING_LITERAL:
             expr->type = cn_type_new_primitive(CN_TYPE_STRING);
+            break;
+        case CN_AST_EXPR_BOOL_LITERAL:
+            expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
             break;
         case CN_AST_EXPR_IDENTIFIER: {
             CnSemSymbol *sym = cn_sem_scope_lookup(scope, expr->as.identifier.name, expr->as.identifier.name_length);

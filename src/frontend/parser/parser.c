@@ -36,6 +36,7 @@ static CnAstExpr *parse_factor(CnParser *parser);
 
 static CnAstExpr *make_integer_literal(long value);
 static CnAstExpr *make_string_literal(const char *value, size_t length);
+static CnAstExpr *make_bool_literal(int value);
 static CnAstExpr *make_identifier(const char *name, size_t length);
 static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *right);
 static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *right);
@@ -265,6 +266,15 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
                     param_type = cn_type_new_pointer(param_type);
                     parser_advance(parser);
                 }
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+                param_type = cn_type_new_primitive(CN_TYPE_BOOL);
+                parser_advance(parser);
+
+                // 支持指针参数类型：例如 "布尔* 参数"
+                while (parser->current.kind == CN_TOKEN_STAR) {
+                    param_type = cn_type_new_pointer(param_type);
+                    parser_advance(parser);
+                }
             } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
                 parser_advance(parser);
             } else {
@@ -465,7 +475,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
     if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
-        parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+        parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
+        parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -475,6 +486,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
             declared_type = cn_type_new_primitive(CN_TYPE_INT);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
             declared_type = cn_type_new_primitive(CN_TYPE_STRING);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+            declared_type = cn_type_new_primitive(CN_TYPE_BOOL);
         }
 
         parser_advance(parser);
@@ -549,6 +562,14 @@ static CnAstStmt *parse_statement(CnParser *parser)
                             }
                         } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
                             param_type = cn_type_new_primitive(CN_TYPE_STRING);
+                            parser_advance(parser);
+                            
+                            while (parser->current.kind == CN_TOKEN_STAR) {
+                                param_type = cn_type_new_pointer(param_type);
+                                parser_advance(parser);
+                            }
+                        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+                            param_type = cn_type_new_primitive(CN_TYPE_BOOL);
                             parser_advance(parser);
                             
                             while (parser->current.kind == CN_TOKEN_STAR) {
@@ -985,6 +1006,12 @@ static CnAstExpr *parse_factor(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
         expr = make_string_literal(parser->current.lexeme_begin, parser->current.lexeme_length);
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_TRUE) {
+        expr = make_bool_literal(1);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_FALSE) {
+        expr = make_bool_literal(0);
+        parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
         expr = make_identifier(parser->current.lexeme_begin, parser->current.lexeme_length);
         parser_advance(parser);
@@ -1075,6 +1102,19 @@ static CnAstExpr *make_string_literal(const char *value, size_t length)
     expr->type = NULL;
     expr->as.string_literal.value = value;
     expr->as.string_literal.length = length;
+    return expr;
+}
+
+static CnAstExpr *make_bool_literal(int value)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_BOOL_LITERAL;
+    expr->type = NULL;
+    expr->as.bool_literal.value = value;
     return expr;
 }
 
@@ -1461,6 +1501,9 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
             parser_advance(parser);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
             field_type = cn_type_new_primitive(CN_TYPE_STRING);
+            parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+            field_type = cn_type_new_primitive(CN_TYPE_BOOL);
             parser_advance(parser);
         } else {
             parser->error_count++;

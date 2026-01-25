@@ -393,6 +393,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
+        /* 声明布尔寄存器 */
+        for (int i = 0; i < func->next_reg_id; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_BOOL) {
+                fprintf(ctx->output_file, "  _Bool r%d;\n", i);
+            }
+        }
+        
         if (use_heap) {
             free(reg_types);
         }

@@ -88,6 +88,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             op.type = cn_type_new_primitive(CN_TYPE_STRING);
             return op;
         }
+        case CN_AST_EXPR_BOOL_LITERAL: {
+            // 布尔字面量直接返回立即数（0 或 1）
+            return cn_ir_op_imm_int(expr->as.bool_literal.value ? 1 : 0,
+                                    cn_type_new_primitive(CN_TYPE_BOOL));
+        }
         case CN_AST_EXPR_IDENTIFIER: {
             // 标识符：首先检查是否为枚举成员
             if (ctx->current_scope) {

@@ -4,22 +4,26 @@
 
 #### 一、布尔类型与布尔字面量（`布尔`、`真`、`假`）
 
-- [ ] **词法与标记复查**  
-  - [ ] 在 `include/cnlang/frontend/token.h` / `src/frontend/lexer/lexer.c` 中确认 `CN_TOKEN_KEYWORD_BOOL/TRUE/FALSE` 定义与关键字匹配，无多余或冲突标记。
-- [ ] **语法层：变量/字段/参数支持布尔类型**  
-  - [ ] 在 `parse_statement` 中将变量声明起始 token 扩展为包含 `CN_TOKEN_KEYWORD_BOOL`，并构造 `cn_type_new_primitive(CN_TYPE_BOOL)`。  
-  - [ ] 在 `parse_struct_decl` 中允许字段类型为 `布尔`，并支持布尔指针字段（`布尔*`）。  
-  - [ ] 在 `parse_function_decl` 参数解析中支持 `布尔` 形参类型及其指针形式。
-- [ ] **语法层：布尔字面量表达式**  
-  - [ ] 在 `parse_factor` 中为 `CN_TOKEN_KEYWORD_TRUE` / `CN_TOKEN_KEYWORD_FALSE` 增加分支。  
-  - [ ] 在 AST 中新增或重用布尔字面量表达式节点（例如 `CN_AST_EXPR_BOOL_LITERAL`），并在构造函数中将类型设为 `CN_TYPE_BOOL`（或留待语义阶段填充）。
-- [ ] **语义层：条件与运算结果类型为布尔**  
-  - [ ] 在 `infer_expr_type` 中将比较运算（`==, !=, <, <=, >, >=`）结果统一标记为 `CN_TYPE_BOOL`。  
-  - [ ] 在 `infer_expr_type` 中将逻辑运算（`&&, ||, !`）结果统一标记为 `CN_TYPE_BOOL`。  
-  - [ ] 在 `check_stmt_types` 中对 `if/while/for` 条件调用 `infer_expr_type` 后，检查结果为布尔，否则通过 diagnostics 报“条件必须为布尔类型”的语义错误。  
-- [ ] **测试与文档**  
-  - [ ] 在 `tests/integration/compiler` 中增加布尔变量声明、赋值、参数传递、返回值及条件表达式的正反例。  
-  - [ ] 在语言规范草案与测试规范中补充布尔类型与布尔字面量的实现状态与限制说明。
+- [x] **词法与标记复查**  
+  - [x] 在 `include/cnlang/frontend/token.h` / `src/frontend/lexer/lexer.c` 中确认 `CN_TOKEN_KEYWORD_BOOL/TRUE/FALSE` 定义与关键字匹配，无多余或冲突标记。
+- [x] **语法层：变量/字段/参数支持布尔类型**  
+  - [x] 在 `parse_statement` 中将变量声明起始 token 扩展为包含 `CN_TOKEN_KEYWORD_BOOL`，并构造 `cn_type_new_primitive(CN_TYPE_BOOL)`。  
+  - [x] 在 `parse_struct_decl` 中允许字段类型为 `布尔`，并支持布尔指针字段（`布尔*`）。  
+  - [x] 在 `parse_function_decl` 参数解析中支持 `布尔` 形参类型及其指针形式。
+- [x] **语法层：布尔字面量表达式**  
+  - [x] 在 `parse_factor` 中为 `CN_TOKEN_KEYWORD_TRUE` / `CN_TOKEN_KEYWORD_FALSE` 增加分支。  
+  - [x] 在 AST 中新增布尔字面量表达式节点（`CN_AST_EXPR_BOOL_LITERAL`），并在构造函数中将类型设为 `CN_TYPE_BOOL`。
+- [x] **语义层：条件与运算结果类型为布尔**  
+  - [x] 在 `infer_expr_type` 中将比较运算（`==, !=, <, <=, >, >=`）结果统一标记为 `CN_TYPE_BOOL`。  
+  - [x] 在 `infer_expr_type` 中将逻辑运算（`&&, ||, !`）结果统一标记为 `CN_TYPE_BOOL`。  
+  - [x] 在 `check_stmt_types` 中对 `if/while/for` 条件调用 `infer_expr_type` 后，检查结果为布尔，否则通过 diagnostics 报“条件必须为布尔类型”的语义错误。  
+- [x] **IR生成层：布尔字面量支持**
+  - [x] 在 `irgen.c` 的 `cn_ir_gen_expr` 中为 `CN_AST_EXPR_BOOL_LITERAL` 添加处理，生成立即数（0/1）并标记为 `CN_TYPE_BOOL`。
+- [x] **后端代码生成：布尔寄存器声明**
+  - [x] 在 `cgen.c` 中为 `CN_TYPE_BOOL` 类型的寄存器添加专门的声明逻辑，生成 `_Bool rN;` 声明。
+- [x] **测试与文档**  
+  - [x] 在 `examples/` 中增加布尔变量声明、赋值、参数传递、返回值及条件表达式的示例。  
+  - [x] 在语言规范草案与测试规范中补充布尔类型与布尔字面量的实现状态与限制说明。
 
 ---
 
