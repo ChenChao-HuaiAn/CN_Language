@@ -249,6 +249,20 @@ add_test(NAME parser_struct_test
          COMMAND parser_struct_test)
 set_tests_properties(parser_struct_test PROPERTIES LABELS "stage8;struct;unit")
 
+# 枚举 Parser 测试
+add_executable(parser_enum_test
+    parser_enum_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_enum_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_enum_test
+         COMMAND parser_enum_test)
+set_tests_properties(parser_enum_test PROPERTIES LABELS "stage8;enum;unit")
+
 add_executable(semantic_check_test
     semantic_check_test.c
     ${SEMANTIC_TEST_DEPENDENCIES}

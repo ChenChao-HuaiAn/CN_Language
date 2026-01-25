@@ -43,6 +43,14 @@ static const char *get_c_type_string(CnType *type) {
                      type->as.struct_type.name);
             return buffer;
         }
+        case CN_TYPE_ENUM: {
+            /* 枚举类型：返回枚举名 */
+            static _Thread_local char buffer[256];
+            snprintf(buffer, sizeof(buffer), "enum %.*s", 
+                     (int)type->as.enum_type.name_length, 
+                     type->as.enum_type.name);
+            return buffer;
+        }
         default: return "int";
     }
 }
@@ -376,7 +384,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     fprintf(ctx->output_file, "}\n\n");
 }
 
-// 生成结构体定义（从AST结构体声明）
+// 生成结构体定义（从 AST 结构体声明）
 void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
     if (!ctx || !struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) return;
     
@@ -392,6 +400,38 @@ void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
                 get_c_type_string(decl->fields[i].field_type),
                 (int)decl->fields[i].name_length,
                 decl->fields[i].name);
+    }
+    
+    fprintf(ctx->output_file, "};\n\n");
+}
+
+// 生成枚举定义（从 AST 枚举声明）
+void cn_cgen_enum_decl(CnCCodeGenContext *ctx, CnAstStmt *enum_stmt) {
+    if (!ctx || !enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) return;
+    
+    CnAstEnumDecl *decl = &enum_stmt->as.enum_decl;
+    
+    // 生成枚举定义
+    fprintf(ctx->output_file, "enum %.*s {\n", 
+            (int)decl->name_length, decl->name);
+    
+    // 生成枚举成员
+    for (size_t i = 0; i < decl->member_count; i++) {
+        fprintf(ctx->output_file, "    %.*s",
+                (int)decl->members[i].name_length,
+                decl->members[i].name);
+        
+        // 如果有显式值，生成赋值
+        if (decl->members[i].has_value) {
+            fprintf(ctx->output_file, " = %ld", decl->members[i].value);
+        }
+        
+        // 添加逗号（最后一个除外）
+        if (i < decl->member_count - 1) {
+            fprintf(ctx->output_file, ",\n");
+        } else {
+            fprintf(ctx->output_file, "\n");
+        }
     }
     
     fprintf(ctx->output_file, "};\n\n");
@@ -445,11 +485,19 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
     }
     
-    // 生成结构体定义（如果提供了AST）
+    // 生成结构体定义（如果提供了 AST）
     if (program && program->struct_count > 0) {
         fprintf(file, "// CN Language Struct Definitions\n");
         for (size_t i = 0; i < program->struct_count; i++) {
             cn_cgen_struct_decl(&ctx, program->structs[i]);
+        }
+    }
+        
+    // 生成枚举定义（如果提供了 AST）
+    if (program && program->enum_count > 0) {
+        fprintf(file, "// CN Language Enum Definitions\n");
+        for (size_t i = 0; i < program->enum_count; i++) {
+            cn_cgen_enum_decl(&ctx, program->enums[i]);
         }
     }
 

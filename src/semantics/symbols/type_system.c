@@ -48,6 +48,16 @@ CnType *cn_type_new_struct(const char *name, size_t name_length, CnStructField *
     return type;
 }
 
+// 创建枚举类型
+CnType *cn_type_new_enum(const char *name, size_t name_length) {
+    CnType *type = (CnType *)malloc(sizeof(CnType));
+    if (!type) return NULL;
+    type->kind = CN_TYPE_ENUM;
+    type->as.enum_type.name = name;
+    type->as.enum_type.name_length = name_length;
+    return type;
+}
+
 bool cn_type_equals(CnType *a, CnType *b) {
     if (a == b) return true;
     if (!a || !b) return false;
@@ -63,6 +73,10 @@ bool cn_type_equals(CnType *a, CnType *b) {
             if (!a->as.struct_type.name || !b->as.struct_type.name) return false;
             if (a->as.struct_type.name_length != b->as.struct_type.name_length) return false;
             return memcmp(a->as.struct_type.name, b->as.struct_type.name, a->as.struct_type.name_length) == 0;
+        case CN_TYPE_ENUM:
+            if (!a->as.enum_type.name || !b->as.enum_type.name) return false;
+            if (a->as.enum_type.name_length != b->as.enum_type.name_length) return false;
+            return memcmp(a->as.enum_type.name, b->as.enum_type.name, a->as.enum_type.name_length) == 0;
         case CN_TYPE_FUNCTION:
             if (a->as.function.param_count != b->as.function.param_count) return false;
             if (!cn_type_equals(a->as.function.return_type, b->as.function.return_type)) return false;

@@ -34,7 +34,8 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_FOR,        // for 循环语句
     CN_AST_STMT_BREAK,      // break 语句
     CN_AST_STMT_CONTINUE,   // continue 语句
-    CN_AST_STMT_STRUCT_DECL // 结构体声明语句
+    CN_AST_STMT_STRUCT_DECL,// 结构体声明语句
+    CN_AST_STMT_ENUM_DECL   // 枚举声明语句
 } CnAstStmtKind;
 
 // 二元运算符
@@ -131,6 +132,22 @@ typedef struct CnAstStructDecl {
     size_t field_count;           // 字段数量
 } CnAstStructDecl;
 
+// 枚举成员
+typedef struct CnAstEnumMember {
+    const char *name;             // 枚举成员名称
+    size_t name_length;           // 枚举成员名称长度
+    int has_value;                // 是否有显式赋值
+    long value;                   // 枚举成员的值（如果有显式赋值）
+} CnAstEnumMember;
+
+// 枚举声明语句
+typedef struct CnAstEnumDecl {
+    const char *name;             // 枚举类型名称
+    size_t name_length;           // 枚举类型名称长度
+    CnAstEnumMember *members;     // 枚举成员列表
+    size_t member_count;          // 枚举成员数量
+} CnAstEnumDecl;
+
 // 函数参数
 typedef struct CnAstParameter {
     const char *name;
@@ -153,6 +170,8 @@ typedef struct CnAstProgram {
     CnAstFunctionDecl **functions;
     size_t struct_count;          // 结构体数量
     struct CnAstStmt **structs;   // 结构体声明列表
+    size_t enum_count;            // 枚举数量
+    struct CnAstStmt **enums;     // 枚举声明列表
 } CnAstProgram;
 
 // 各种表达式节点定义
@@ -269,6 +288,7 @@ typedef struct CnAstStmt {
         CnAstWhileStmt while_stmt;
         CnAstForStmt for_stmt;
         CnAstStructDecl struct_decl; // 结构体声明
+        CnAstEnumDecl enum_decl;     // 枚举声明
     } as;
 } CnAstStmt;
 

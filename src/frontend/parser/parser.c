@@ -20,6 +20,7 @@ static int parser_expect(CnParser *parser, CnTokenKind kind);
 static CnAstProgram *parse_program_internal(CnParser *parser);
 static CnAstFunctionDecl *parse_function_decl(CnParser *parser);
 static CnAstStmt *parse_struct_decl(CnParser *parser);
+static CnAstStmt *parse_enum_decl(CnParser *parser);
 static CnAstBlockStmt *parse_block(CnParser *parser);
 static CnAstStmt *parse_statement(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
@@ -54,11 +55,13 @@ static CnAstStmt *make_break_stmt(void);
 static CnAstStmt *make_continue_stmt(void);
 static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer);
 static CnAstStmt *make_struct_decl_stmt(const char *name, size_t name_length, CnAstStructField *fields, size_t field_count);
+static CnAstStmt *make_enum_decl_stmt(const char *name, size_t name_length, CnAstEnumMember *members, size_t member_count);
 static CnAstBlockStmt *make_block(void);
 static void block_add_stmt(CnAstBlockStmt *block, CnAstStmt *stmt);
 static CnAstProgram *make_program(void);
 static void program_add_function(CnAstProgram *program, CnAstFunctionDecl *function_decl);
 static void program_add_struct(CnAstProgram *program, CnAstStmt *struct_decl);
+static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl);
 
 CnParser *cn_frontend_parser_new(CnLexer *lexer)
 {
@@ -172,6 +175,13 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_struct(program, struct_decl);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_ENUM) {
+            // 解析枚举声明
+            CnAstStmt *enum_decl = parse_enum_decl(parser);
+            if (!enum_decl) {
+                break;
+            }
+            program_add_enum(program, enum_decl);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
             // 解析函数声明
             CnAstFunctionDecl *fn = parse_function_decl(parser);
@@ -1187,6 +1197,8 @@ static CnAstProgram *make_program(void)
     program->functions = NULL;
     program->struct_count = 0;
     program->structs = NULL;
+    program->enum_count = 0;
+    program->enums = NULL;
     return program;
 }
 
@@ -1231,6 +1243,28 @@ static void program_add_struct(CnAstProgram *program, CnAstStmt *struct_decl)
     program->structs = new_array;
     program->structs[program->struct_count] = struct_decl;
     program->struct_count = new_count;
+}
+
+// 添加枚举声明到program
+static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !enum_decl) {
+        return;
+    }
+
+    new_count = program->enum_count + 1;
+    new_array = (CnAstStmt **)realloc(program->enums,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->enums = new_array;
+    program->enums[program->enum_count] = enum_decl;
+    program->enum_count = new_count;
 }
 
 // 解析结构体声明
@@ -1360,6 +1394,162 @@ static CnAstStmt *make_struct_decl_stmt(const char *name, size_t name_length, Cn
     stmt->as.struct_decl.name_length = name_length;
     stmt->as.struct_decl.fields = fields;
     stmt->as.struct_decl.field_count = field_count;
+    return stmt;
+}
+
+// 解析枚举声明
+static CnAstStmt *parse_enum_decl(CnParser *parser)
+{
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_ENUM)) {
+        return NULL;
+    }
+
+    // 读取枚举名称
+    if (parser->current.kind != CN_TOKEN_IDENT) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：枚举名称无效");
+        }
+        return NULL;
+    }
+
+    const char *enum_name = parser->current.lexeme_begin;
+    size_t enum_name_length = parser->current.lexeme_length;
+    parser_advance(parser);
+
+    // 期望 { 开始枚举定义
+    if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
+        return NULL;
+    }
+
+    // 解析枚举成员列表
+    size_t member_capacity = 4;
+    size_t member_count = 0;
+    CnAstEnumMember *members = (CnAstEnumMember *)malloc(sizeof(CnAstEnumMember) * member_capacity);
+    if (!members) {
+        return NULL;
+    }
+
+    long next_value = 0; // 枚举默认值从0开始
+
+    while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+        // 解析枚举成员名称
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少枚举成员名称");
+            }
+            free(members);
+            return NULL;
+        }
+
+        // 扩容成员数组
+        if (member_count >= member_capacity) {
+            member_capacity *= 2;
+            CnAstEnumMember *new_members = (CnAstEnumMember *)realloc(
+                members, sizeof(CnAstEnumMember) * member_capacity);
+            if (!new_members) {
+                free(members);
+                return NULL;
+            }
+            members = new_members;
+        }
+
+        members[member_count].name = parser->current.lexeme_begin;
+        members[member_count].name_length = parser->current.lexeme_length;
+        members[member_count].has_value = 0;
+        members[member_count].value = next_value;
+
+        parser_advance(parser);
+
+        // 检查是否有显式赋值
+        if (parser->current.kind == CN_TOKEN_EQUAL) {
+            parser_advance(parser);
+            
+            if (parser->current.kind != CN_TOKEN_INTEGER) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：期望一个整数值");
+                }
+                free(members);
+                return NULL;
+            }
+
+            // 解析枚举值
+            long value = 0;
+            size_t i;
+            for (i = 0; i < parser->current.lexeme_length; i++) {
+                value = value * 10 + (parser->current.lexeme_begin[i] - '0');
+            }
+            
+            members[member_count].has_value = 1;
+            members[member_count].value = value;
+            next_value = value + 1;
+            
+            parser_advance(parser);
+        } else {
+            next_value++;
+        }
+
+        member_count++;
+
+        // 枚举成员之间用逗号分隔，最后一个可选
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+        } else if (parser->current.kind != CN_TOKEN_RBRACE) {
+            // 如果不是逗号也不是右大括号，则报错
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：期望逗号或右大括号");
+            }
+            free(members);
+            return NULL;
+        }
+    }
+
+    // 期望 } 结束枚举定义
+    parser_expect(parser, CN_TOKEN_RBRACE);
+
+    return make_enum_decl_stmt(enum_name, enum_name_length, members, member_count);
+}
+
+// 创建枚举声明语句
+static CnAstStmt *make_enum_decl_stmt(const char *name, size_t name_length, CnAstEnumMember *members, size_t member_count)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_ENUM_DECL;
+    stmt->as.enum_decl.name = name;
+    stmt->as.enum_decl.name_length = name_length;
+    stmt->as.enum_decl.members = members;
+    stmt->as.enum_decl.member_count = member_count;
     return stmt;
 }
 

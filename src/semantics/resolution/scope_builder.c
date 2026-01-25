@@ -82,6 +82,45 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         }
     }
 
+    // 注册枚举声明到全局作用域
+    for (i = 0; i < program->enum_count; ++i) {
+        CnAstStmt *enum_stmt = program->enums[i];
+        if (!enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) {
+            continue;
+        }
+
+        CnAstEnumDecl *enum_decl = &enum_stmt->as.enum_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   enum_decl->name,
+                                   enum_decl->name_length,
+                                   CN_SEM_SYMBOL_ENUM);
+        if (sym) {
+            // 创建枚举类型
+            sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+        } else {
+            // 报告重复定义
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, enum_decl->name);
+        }
+
+        // 注册枚举成员到全局作用域
+        for (size_t j = 0; j < enum_decl->member_count; j++) {
+            CnAstEnumMember *member = &enum_decl->members[j];
+            CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(global_scope,
+                                               member->name,
+                                               member->name_length,
+                                               CN_SEM_SYMBOL_ENUM_MEMBER);
+            if (member_sym) {
+                // 枚举成员的类型是整数
+                member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+            } else {
+                // 报告重复定义
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, member->name);
+            }
+        }
+    }
+
     for (i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *function_decl = program->functions[i];
 
@@ -222,6 +261,9 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
         break;
     case CN_AST_STMT_STRUCT_DECL:
         // 结构体声明已在全局作用域构建时处理，这里不需要额外操作
+        break;
+    case CN_AST_STMT_ENUM_DECL:
+        // 枚举声明已在全局作用域构建时处理，这里不需要额外操作
         break;
     }
 }

@@ -34,8 +34,8 @@ static size_t estimate_type(const CnType *type)
             }
             break;
         case CN_TYPE_STRUCT:
-            if (type->as.struct_name) {
-                size += strlen(type->as.struct_name) + 1;
+            if (type->as.struct_type.name) {
+                size += strlen(type->as.struct_type.name) + 1;
             }
             break;
         default:

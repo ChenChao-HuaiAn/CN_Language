@@ -119,6 +119,10 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
         // 释放结构体声明
         free(stmt->as.struct_decl.fields);
         break;
+    case CN_AST_STMT_ENUM_DECL:
+        // 释放枚举声明
+        free(stmt->as.enum_decl.members);
+        break;
     }
 
     free(stmt);
@@ -151,8 +155,13 @@ void cn_frontend_ast_program_free(CnAstProgram *program)
         cn_frontend_ast_stmt_free(program->structs[i]);
     }
 
+    for (i = 0; i < program->enum_count; ++i) {
+        cn_frontend_ast_stmt_free(program->enums[i]);
+    }
+
     free(program->functions);
     free(program->structs);
+    free(program->enums);
     free(program);
 }
 
