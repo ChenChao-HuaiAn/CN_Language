@@ -273,11 +273,12 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             const char *func_name = NULL;
             
             // 特殊处理：内置函数根据参数类型选择运行时函数
+            // 支持两种调用风格：长度(arr) 和 arr.长度()
             if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
                 char *name = copy_name(expr->as.call.callee->as.identifier.name,
                                        expr->as.call.callee->as.identifier.name_length);
                                        
-                // 检查是否是 "长度" 函数
+                // 检查是否是 "长度" 函数（函数风格）
                 if (strcmp(name, "长度") == 0 && expr->as.call.argument_count == 1) {
                     // 根据第一个参数的类型决定调用哪个运行时函数
                     CnType *arg_type = expr->as.call.arguments[0]->type;
@@ -362,7 +363,36 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                         free(name);
                     }
                 }
-            } else {
+            } 
+            // 特殊处理：方法风格调用 arr.长度()
+            else if (expr->as.call.callee->kind == CN_AST_EXPR_MEMBER_ACCESS &&
+                     expr->as.call.callee->as.member.member_name_length == strlen("长度") &&
+                     strncmp(expr->as.call.callee->as.member.member_name, "长度",
+                             expr->as.call.callee->as.member.member_name_length) == 0) {
+                // 将方法风格调用转换为函数风格：arr.长度() -> 长度(arr)
+                CnType *obj_type = expr->as.call.callee->as.member.object->type;
+                if (obj_type && obj_type->kind == CN_TYPE_ARRAY) {
+                    func_name = "cn_rt_array_length";
+                } else {
+                    func_name = "cn_rt_string_length";
+                }
+                callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
+                
+                // 生成调用指令，将 member.object 作为参数
+                CnIrInst *call_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                      callee, cn_ir_op_none());
+                call_inst->extra_args_count = 1;
+                call_inst->extra_args = malloc(sizeof(CnIrOperand));
+                call_inst->extra_args[0] = cn_ir_gen_expr(ctx, expr->as.call.callee->as.member.object);
+                
+                if (expr->type && expr->type->kind != CN_TYPE_VOID) {
+                    int dest_reg = alloc_reg(ctx);
+                    call_inst->dest = cn_ir_op_reg(dest_reg, expr->type);
+                }
+                emit(ctx, call_inst);
+                return call_inst->dest;
+            }
+            else {
                 callee = cn_ir_gen_expr(ctx, expr->as.call.callee);
             }
             

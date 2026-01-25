@@ -722,10 +722,16 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *callee_type = infer_expr_type(scope, expr->as.call.callee, diagnostics);
             
             // 特殊处理：内置函数 "长度" 可以接受字符串或数组
+            // 支持两种形式：长度(arr) 和 arr.长度()
+            bool is_length_builtin = false;
+            CnAstExpr *length_target = NULL;  // 用于存储要获取长度的对象
+            
+            // 检查函数风格：长度(arr)
             if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
                 expr->as.call.callee->as.identifier.name_length == strlen("长度") &&
                 strncmp(expr->as.call.callee->as.identifier.name, "长度", 
                         expr->as.call.callee->as.identifier.name_length) == 0) {
+                is_length_builtin = true;
                 
                 if (expr->as.call.argument_count != 1) {
                     cn_support_diag_semantic_error_generic(
@@ -734,14 +740,36 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         NULL, 0, 0,
                         "语义错误：长度函数需要一个参数");
                 } else {
-                    CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[0], diagnostics);
-                    if (arg_type && arg_type->kind != CN_TYPE_STRING && arg_type->kind != CN_TYPE_ARRAY) {
-                        cn_support_diag_semantic_error_generic(
-                            diagnostics,
-                            CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
-                            NULL, 0, 0,
-                            "语义错误：长度函数参数必须是字符串或数组类型");
-                    }
+                    length_target = expr->as.call.arguments[0];
+                }
+            }
+            // 检查方法风格：arr.长度()
+            else if (expr->as.call.callee->kind == CN_AST_EXPR_MEMBER_ACCESS &&
+                     expr->as.call.callee->as.member.member_name_length == strlen("长度") &&
+                     strncmp(expr->as.call.callee->as.member.member_name, "长度",
+                             expr->as.call.callee->as.member.member_name_length) == 0) {
+                is_length_builtin = true;
+                
+                if (expr->as.call.argument_count != 0) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：方法风格长度调用不接受参数");
+                } else {
+                    length_target = expr->as.call.callee->as.member.object;
+                }
+            }
+            
+            // 如果是长度内建函数，进行类型检查
+            if (is_length_builtin && length_target) {
+                CnType *target_type = infer_expr_type(scope, length_target, diagnostics);
+                if (target_type && target_type->kind != CN_TYPE_STRING && target_type->kind != CN_TYPE_ARRAY) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：长度函数参数必须是字符串或数组类型");
                 }
                 expr->type = cn_type_new_primitive(CN_TYPE_INT);
             }
@@ -860,7 +888,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
-            // 成员访问类型推导：支持结构体 obj.member 和模块 module.member
+            // 成员访问类型推导：支持结构体 obj.member、模块 module.member 和内建方法 arr.长度()
             // 首先检查左操作数是否为模块
             if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
                 CnSemSymbol *sym = cn_sem_scope_lookup(
@@ -894,6 +922,20 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             // 否则按照结构体成员访问处理
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
+            
+            // 特殊处理：内建方法 "长度"，支持数组和字符串
+            if (expr->as.member.member_name_length == strlen("长度") &&
+                strncmp(expr->as.member.member_name, "长度",
+                        expr->as.member.member_name_length) == 0) {
+                // 检查对象类型是否为数组或字符串
+                if (object_type && 
+                    (object_type->kind == CN_TYPE_ARRAY || object_type->kind == CN_TYPE_STRING)) {
+                    // "长度"内建方法访问，类型为函数（在调用时会特殊处理）
+                    // 暂时标记为 UNKNOWN，在 CALL 节点会特殊处理
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
+                }
+            }
             
             // 如果是箭头访问，对象必须是指针类型
             if (expr->as.member.is_arrow) {

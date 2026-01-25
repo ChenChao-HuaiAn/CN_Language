@@ -659,3 +659,18 @@ add_executable(semantics_import_test
 target_include_directories(semantics_import_test PRIVATE ../../include)
 add_test(NAME semantics_import_test COMMAND semantics_import_test)
 set_tests_properties(semantics_import_test PROPERTIES LABELS "stage7;module;import;unit")
+
+# 方法风格长度调用测试
+add_executable(method_style_length_test
+    method_style_length_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/ir/passes/constant_folding.c
+    ../../src/ir/passes/dead_code_elimination.c
+    ../../src/backend/cgen/cgen.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(method_style_length_test PRIVATE ../../include)
+add_test(NAME method_style_length_test COMMAND method_style_length_test)
+set_tests_properties(method_style_length_test PROPERTIES LABELS "stage7;builtin;method;unit")
