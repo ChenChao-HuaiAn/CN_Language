@@ -113,6 +113,8 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             if (member_sym) {
                 // 枚举成员的类型是整数
                 member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                // 保存枚举成员的值
+                member_sym->as.enum_value = member->value;
             } else {
                 // 报告重复定义
                 cn_support_diag_semantic_error_duplicate_symbol(

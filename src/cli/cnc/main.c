@@ -518,7 +518,7 @@ int main(int argc, char **argv)
 
         /* IR 生成 */
         cn_perf_start(&perf_stats, CN_PERF_PHASE_IR_GEN);
-        CnIrModule *ir_module = cn_ir_gen_program(program, target_triple, freestanding_mode ? CN_COMPILE_MODE_FREESTANDING : CN_COMPILE_MODE_HOSTED);
+        CnIrModule *ir_module = cn_ir_gen_program(program, global_scope, target_triple, freestanding_mode ? CN_COMPILE_MODE_FREESTANDING : CN_COMPILE_MODE_HOSTED);
         cn_perf_end(&perf_stats, CN_PERF_PHASE_IR_GEN);
         if (!ir_module) {
             fprintf(stderr, "IR 生成失败\n");

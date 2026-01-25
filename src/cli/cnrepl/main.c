@@ -537,7 +537,7 @@ static void process_input(const char *input, const ReplConfig *config, ReplSessi
         CN_TARGET_OS_NONE,
         CN_TARGET_ABI_ELF);
 
-    CnIrModule *ir_module = cn_ir_gen_program(program, target_triple, CN_COMPILE_MODE_HOSTED);
+    CnIrModule *ir_module = cn_ir_gen_program(program, session->global_scope, target_triple, CN_COMPILE_MODE_HOSTED);
     if (!ir_module) {
         // 使用诊断系统报告 IR 生成错误
         cn_support_diagnostics_report_error(

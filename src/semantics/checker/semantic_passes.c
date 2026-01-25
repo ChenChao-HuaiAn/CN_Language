@@ -91,6 +91,9 @@ static void resolve_stmt_names(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics
         case CN_AST_STMT_STRUCT_DECL:
             // 结构体声明在全局作用域构建时已处理
             break;
+        case CN_AST_STMT_ENUM_DECL:
+            // 枚举声明在全局作用域构建时已处理
+            break;
         default:
             break;
     }

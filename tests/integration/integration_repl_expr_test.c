@@ -91,6 +91,14 @@ static int test_expression(const char *expr_description, const char *expr)
             goto cleanup;
         }
     }
+    
+    // 语义分析
+    CnSemScope *global_scope = cn_sem_build_scopes(program, &diagnostics);
+    if (!global_scope) {
+        fprintf(stderr, "  ✗ 构建作用域失败\n");
+        result = 1;
+        goto cleanup;
+    }
 
     // 生成 IR
     target_triple = cn_support_target_triple_make(
@@ -99,7 +107,7 @@ static int test_expression(const char *expr_description, const char *expr)
         CN_TARGET_OS_NONE,
         CN_TARGET_ABI_ELF);
 
-    CnIrModule *ir_module = cn_ir_gen_program(program, target_triple, CN_COMPILE_MODE_HOSTED);
+    CnIrModule *ir_module = cn_ir_gen_program(program, global_scope, target_triple, CN_COMPILE_MODE_HOSTED);
     if (!ir_module) {
         fprintf(stderr, "  ✗ IR 生成失败\n");
         result = 1;
@@ -108,6 +116,7 @@ static int test_expression(const char *expr_description, const char *expr)
 
     printf("  ✓ 测试通过\n\n");
     cn_ir_module_free(ir_module);
+    cn_sem_scope_free(global_scope);
 
 cleanup:
     if (program) {

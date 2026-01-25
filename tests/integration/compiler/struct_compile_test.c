@@ -74,7 +74,7 @@ static int test_struct_compile() {
         CN_TARGET_VENDOR_PC,
         CN_TARGET_OS_NONE,
         CN_TARGET_ABI_ELF);
-    CnIrModule *ir_module = cn_ir_gen_program(program, target, CN_COMPILE_MODE_HOSTED);
+    CnIrModule *ir_module = cn_ir_gen_program(program, global_scope, target, CN_COMPILE_MODE_HOSTED);
     
     if (!ir_module) {
         printf("[失败] IR 生成失败\n");

@@ -201,7 +201,7 @@ static void test_full_pipeline_memory(void)
         CN_TARGET_ABI_ELF
     );
     
-    ir_module = cn_ir_gen_program(program, target, CN_COMPILE_MODE_HOSTED);
+    ir_module = cn_ir_gen_program(program, global_scope, target, CN_COMPILE_MODE_HOSTED);
     assert(ir_module != NULL);
     
     /* 估算内存占用 */

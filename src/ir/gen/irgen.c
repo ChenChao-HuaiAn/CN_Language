@@ -34,6 +34,8 @@ CnIrGenContext *cn_ir_gen_context_new() {
     ctx->current_block = NULL;
     ctx->loop_exit = NULL;
     ctx->loop_continue = NULL;
+    ctx->global_scope = NULL;
+    ctx->current_scope = NULL;
     return ctx;
 }
 
@@ -87,7 +89,18 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             return op;
         }
         case CN_AST_EXPR_IDENTIFIER: {
-            // 标识符：生成 LOAD 指令从变量地址加载值
+            // 标识符：首先检查是否为枚举成员
+            if (ctx->current_scope) {
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope, 
+                                                       expr->as.identifier.name,
+                                                       expr->as.identifier.name_length);
+                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                    // 枚举成员：直接返回其常量值
+                    return cn_ir_op_imm_int(sym->as.enum_value, cn_type_new_primitive(CN_TYPE_INT));
+                }
+            }
+            
+            // 普通变量：生成 LOAD 指令从变量地址加载值
             int dest_reg = alloc_reg(ctx);
             CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
             char *name = copy_name(expr->as.identifier.name, expr->as.identifier.name_length);
@@ -534,6 +547,11 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             // 结构体定义不生成运行时代码，只是类型信息
             break;
         }
+        case CN_AST_STMT_ENUM_DECL: {
+            // 枚举声明：在IR层面不需要特殊处理，类型信息已经在语义分析阶段处理
+            // 枚举成员作为常量值已经注册到符号表
+            break;
+        }
         default:
             break;
     }
@@ -571,9 +589,17 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func) {
     CnIrBasicBlock *entry = cn_ir_basic_block_new("entry");
     cn_ir_function_add_block(ir_func, entry);
     ctx->current_block = entry;
+    
+    // 为函数创建作用域
+    CnSemScope *func_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, ctx->global_scope);
+    ctx->current_scope = func_scope;
 
     // 生成函数体
     cn_ir_gen_block(ctx, func->body);
+    
+    // 恢复作用域
+    cn_sem_scope_free(func_scope);
+    ctx->current_scope = ctx->global_scope;
 
     // 添加到模块
     if (!ctx->module->first_func) {
@@ -585,10 +611,13 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func) {
     }
 }
 
-CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnTargetTriple target, CnCompileMode mode) {
+CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnSemScope *global_scope, CnTargetTriple target, CnCompileMode mode) {
     if (!program) return NULL;
 
     CnIrGenContext *ctx = cn_ir_gen_context_new();
+    ctx->global_scope = global_scope;
+    ctx->current_scope = global_scope;
+    
     if (ctx->module) {
         ctx->module->target = target;
         ctx->module->compile_mode = mode;
