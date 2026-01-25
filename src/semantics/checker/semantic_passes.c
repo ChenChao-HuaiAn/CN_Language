@@ -215,25 +215,43 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
                 if (decl->declared_type) {
-                    sym->type = decl->declared_type;
-                    
+                    // 特殊处理：显式数组类型与数组字面量类型的统一
+                    if (decl->declared_type->kind == CN_TYPE_ARRAY && init_type && init_type->kind == CN_TYPE_ARRAY) {
+                        // 如果显式类型的元素类型与初始化器的元素类型兼容，则使用初始化器的类型（包含长度信息）
+                        CnType *decl_elem = decl->declared_type->as.array.element_type;
+                        CnType *init_elem = init_type->as.array.element_type;
+                        
+                        if (decl_elem && init_elem && cn_type_compatible(decl_elem, init_elem)) {
+                            // 使用初始化器的数组类型（带有实际长度）
+                            sym->type = init_type;
+                        } else {
+                            // 元素类型不兼容，报错
+                            cn_support_diag_semantic_error_type_mismatch(
+                                diagnostics, NULL, 0, 0, "数组元素类型", "初始化器元素类型");
+                            sym->type = decl->declared_type;
+                        }
+                    }
                     // 特殊处理：允许将函数名赋值给函数指针变量
                     // 如果声明类型是函数指针，且初始化器类型是函数，则允许
-                    if (sym->type->kind == CN_TYPE_POINTER &&
-                        sym->type->as.pointer_to && sym->type->as.pointer_to->kind == CN_TYPE_FUNCTION &&
+                    else if (decl->declared_type->kind == CN_TYPE_POINTER &&
+                        decl->declared_type->as.pointer_to && decl->declared_type->as.pointer_to->kind == CN_TYPE_FUNCTION &&
                         init_type && init_type->kind == CN_TYPE_FUNCTION) {
                         // 检查函数类型是否匹配
-                        if (!cn_type_equals(sym->type->as.pointer_to, init_type)) {
+                        if (!cn_type_equals(decl->declared_type->as.pointer_to, init_type)) {
                             cn_support_diag_semantic_error_generic(
                                 diagnostics,
                                 CN_DIAG_CODE_SEM_TYPE_MISMATCH,
                                 NULL, 0, 0,
                                 "语义错误：函数类型与函数指针类型不匹配");
                         }
-                    } else if (init_type && !cn_type_compatible(init_type, sym->type)) {
+                        sym->type = decl->declared_type;
+                    } else if (init_type && !cn_type_compatible(init_type, decl->declared_type)) {
                         // 报错：类型不匹配
                         cn_support_diag_semantic_error_type_mismatch(
                             diagnostics, NULL, 0, 0, "变量声明类型", "初始值类型");
+                        sym->type = decl->declared_type;
+                    } else {
+                        sym->type = decl->declared_type;
                     }
                 } else {
                     // 类型推断：var a = 1;

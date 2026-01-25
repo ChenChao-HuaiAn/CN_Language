@@ -285,6 +285,31 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
                     param_type = cn_type_new_pointer(param_type);
                     parser_advance(parser);
                 }
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
+                // 数组参数类型：例如 "数组 整数 参数"
+                parser_advance(parser);
+                
+                // 检查是否有元素类型关键字（可选）
+                CnType *element_type = NULL;
+                if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+                    element_type = cn_type_new_primitive(CN_TYPE_INT);
+                    parser_advance(parser);
+                } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+                    element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
+                    parser_advance(parser);
+                } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+                    element_type = cn_type_new_primitive(CN_TYPE_STRING);
+                    parser_advance(parser);
+                } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+                    element_type = cn_type_new_primitive(CN_TYPE_BOOL);
+                    parser_advance(parser);
+                } else {
+                    // 没有元素类型，默认为泛型数组
+                    element_type = cn_type_new_primitive(CN_TYPE_INT);
+                }
+                
+                // 创建数组类型（长度为0表示未知）
+                param_type = cn_type_new_array(element_type, 0);
             } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
                 parser_advance(parser);
             } else {
@@ -487,7 +512,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
-        parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+        parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
+        parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -501,9 +527,38 @@ static CnAstStmt *parse_statement(CnParser *parser)
             declared_type = cn_type_new_primitive(CN_TYPE_STRING);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
             declared_type = cn_type_new_primitive(CN_TYPE_BOOL);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
+            // 数组关键字，后续可能跟元素类型关键字
+            parser_advance(parser);
+            
+            // 检查是否有元素类型关键字（可选）
+            CnType *element_type = NULL;
+            if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+                element_type = cn_type_new_primitive(CN_TYPE_INT);
+                parser_advance(parser);
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+                element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
+                parser_advance(parser);
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+                element_type = cn_type_new_primitive(CN_TYPE_STRING);
+                parser_advance(parser);
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+                element_type = cn_type_new_primitive(CN_TYPE_BOOL);
+                parser_advance(parser);
+            } else {
+                // 没有元素类型关键字，默认为泛型数组（后续从初始化器推导）
+                element_type = NULL;
+            }
+            
+            // 创建数组类型（长度为0表示未知或动态）
+            declared_type = cn_type_new_array(element_type ? element_type : cn_type_new_primitive(CN_TYPE_INT), 0);
+            
+            // 不再 advance，因为已经在上面处理了
+            goto skip_advance;
         }
 
         parser_advance(parser);
+        skip_advance:;
 
         // 显式类型后允许跟随若干个 '*' 表示指针层级，例如 "整数* 指针变量"
         if (declared_type) {
@@ -1543,6 +1598,31 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
             field_type = cn_type_new_primitive(CN_TYPE_BOOL);
             parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
+            // 数组字段类型：例如 "数组 整数 数据;"
+            parser_advance(parser);
+            
+            // 检查是否有元素类型关键字（可选）
+            CnType *element_type = NULL;
+            if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+                element_type = cn_type_new_primitive(CN_TYPE_INT);
+                parser_advance(parser);
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+                element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
+                parser_advance(parser);
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+                element_type = cn_type_new_primitive(CN_TYPE_STRING);
+                parser_advance(parser);
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+                element_type = cn_type_new_primitive(CN_TYPE_BOOL);
+                parser_advance(parser);
+            } else {
+                // 没有元素类型，默认为泛型数组
+                element_type = cn_type_new_primitive(CN_TYPE_INT);
+            }
+            
+            // 创建数组类型（长度为0表示未知）
+            field_type = cn_type_new_array(element_type, 0);
         } else {
             parser->error_count++;
             if (parser->diagnostics) {

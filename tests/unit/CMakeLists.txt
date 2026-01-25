@@ -273,6 +273,19 @@ target_include_directories(parser_array_assign_test PRIVATE
 add_test(NAME parser_array_assign_test
          COMMAND parser_array_assign_test)
 
+# 显式数组声明 Parser 测试
+add_executable(parser_explicit_array_test
+    parser_explicit_array_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_explicit_array_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_explicit_array_test
+         COMMAND parser_explicit_array_test)
+
 # 结构体 Parser 测试
 add_executable(parser_struct_test
     parser_struct_test.c
@@ -356,6 +369,14 @@ add_executable(semantics_array_test
 )
 target_include_directories(semantics_array_test PRIVATE ../../include)
 add_test(NAME semantics_array_test COMMAND semantics_array_test)
+
+# 数组错误场景测试
+add_executable(semantics_array_error_test
+    semantics/semantics_array_error_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_array_error_test PRIVATE ../../include)
+add_test(NAME semantics_array_error_test COMMAND semantics_array_error_test)
 
 # 指针语义分析测试
 add_executable(semantics_pointer_test
