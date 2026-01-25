@@ -638,3 +638,12 @@ target_include_directories(regression_test PRIVATE
 add_test(NAME regression_test
          COMMAND regression_test)
 set_tests_properties(regression_test PROPERTIES LABELS "stage7;regression;unit")
+
+# 导入语句自动符号导入测试
+add_executable(semantics_import_test
+    semantics_import_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_import_test PRIVATE ../../include)
+add_test(NAME semantics_import_test COMMAND semantics_import_test)
+set_tests_properties(semantics_import_test PROPERTIES LABELS "stage7;module;import;unit")

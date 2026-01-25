@@ -1992,11 +1992,20 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
         return NULL;
     }
 
-    // 解析模块内的语句列表（函数、变量等）
+    // 解析模块内的语句列表（变量等）
     size_t stmt_capacity = 4;
     size_t stmt_count = 0;
     CnAstStmt **stmts = (CnAstStmt **)malloc(sizeof(CnAstStmt *) * stmt_capacity);
     if (!stmts) {
+        return NULL;
+    }
+
+    // 解析模块内的函数声明列表
+    size_t func_capacity = 4;
+    size_t func_count = 0;
+    CnAstFunctionDecl **functions = (CnAstFunctionDecl **)malloc(sizeof(CnAstFunctionDecl *) * func_capacity);
+    if (!functions) {
+        free(stmts);
         return NULL;
     }
 
@@ -2005,15 +2014,43 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
         
         // 模块内可以包含函数、变量声明等
         if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
-            // 解析函数声明，将其转为语句
+            // 解析函数声明
             CnAstFunctionDecl *fn_decl = parse_function_decl(parser);
             if (!fn_decl) {
+                // 清理已分配的资源
+                for (size_t i = 0; i < func_count; i++) {
+                    free(functions[i]);
+                }
+                free(functions);
+                for (size_t i = 0; i < stmt_count; i++) {
+                    free(stmts[i]);
+                }
                 free(stmts);
                 return NULL;
             }
-            // 暂时跳过函数，因为函数不是语句类型
-            // TODO: 后续需要为模块内的函数创建专门的处理方式
-            free(fn_decl);
+            
+            // 扩容函数数组
+            if (func_count >= func_capacity) {
+                func_capacity *= 2;
+                CnAstFunctionDecl **new_functions = (CnAstFunctionDecl **)realloc(
+                    functions, sizeof(CnAstFunctionDecl *) * func_capacity);
+                if (!new_functions) {
+                    free(fn_decl);
+                    for (size_t i = 0; i < func_count; i++) {
+                        free(functions[i]);
+                    }
+                    free(functions);
+                    for (size_t i = 0; i < stmt_count; i++) {
+                        free(stmts[i]);
+                    }
+                    free(stmts);
+                    return NULL;
+                }
+                functions = new_functions;
+            }
+            
+            functions[func_count] = fn_decl;
+            func_count++;
             continue;
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR || 
                    parser->current.kind == CN_TOKEN_KEYWORD_INT ||
@@ -2022,6 +2059,10 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
             // 解析变量声明
             stmt = parse_statement(parser);
             if (!stmt) {
+                for (size_t i = 0; i < func_count; i++) {
+                    free(functions[i]);
+                }
+                free(functions);
                 free(stmts);
                 return NULL;
             }
@@ -2047,6 +2088,11 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
             CnAstStmt **new_stmts = (CnAstStmt **)realloc(
                 stmts, sizeof(CnAstStmt *) * stmt_capacity);
             if (!new_stmts) {
+                free(stmt);
+                for (size_t i = 0; i < func_count; i++) {
+                    free(functions[i]);
+                }
+                free(functions);
                 free(stmts);
                 return NULL;
             }
@@ -2063,6 +2109,10 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
     // 创建模块声明语句
     CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
     if (!stmt) {
+        for (size_t i = 0; i < func_count; i++) {
+            free(functions[i]);
+        }
+        free(functions);
         free(stmts);
         return NULL;
     }
@@ -2072,6 +2122,8 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
     stmt->as.module_decl.name_length = module_name_length;
     stmt->as.module_decl.stmts = stmts;
     stmt->as.module_decl.stmt_count = stmt_count;
+    stmt->as.module_decl.functions = functions;
+    stmt->as.module_decl.function_count = func_count;
     return stmt;
 }
 

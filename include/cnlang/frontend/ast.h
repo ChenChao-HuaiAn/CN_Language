@@ -156,8 +156,10 @@ typedef struct CnAstEnumDecl {
 typedef struct CnAstModuleDecl {
     const char *name;             // 模块名称
     size_t name_length;           // 模块名称长度
-    struct CnAstStmt **stmts;     // 模块内的语句列表（函数、变量等）
+    struct CnAstStmt **stmts;     // 模块内的语句列表（变量等）
     size_t stmt_count;            // 语句数量
+    struct CnAstFunctionDecl **functions; // 模块内的函数声明列表
+    size_t function_count;        // 函数数量
 } CnAstModuleDecl;
 
 // 导入语句

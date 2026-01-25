@@ -300,9 +300,67 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     }
                     free(name);
                     callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
-                } else {
-                    callee = cn_ir_op_symbol(name, expr->as.call.callee->type);
+                } 
+                // 检查是否是 "打印整数" 函数
+                else if (strcmp(name, "打印整数") == 0) {
+                    func_name = "cn_rt_print_int";
                     free(name);
+                    callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
+                } 
+                // 检查是否是 "打印字符串" 函数
+                else if (strcmp(name, "打印字符串") == 0) {
+                    func_name = "cn_rt_print_string";
+                    free(name);
+                    callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
+                } else {
+                    // 检查被调用函数是否来自模块
+                    bool handled = false;
+                    if (ctx->current_scope) {
+                        CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->current_scope,
+                                                                    expr->as.call.callee->as.identifier.name,
+                                                                    expr->as.call.callee->as.identifier.name_length);
+                        
+                        if (func_sym && func_sym->decl_scope && func_sym->decl_scope->kind == CN_SEM_SCOPE_MODULE) {
+                            // 函数来自模块：生成带模块前缀的名称
+                            CnSemScope *global = ctx->current_scope;
+                            while (global && global->parent) {
+                                global = global->parent;
+                            }
+                            
+                            if (global) {
+                                CnSemSymbolNode *node = global->symbols;
+                                while (node) {
+                                    if (node->symbol.kind == CN_SEM_SYMBOL_MODULE && 
+                                        node->symbol.as.module_scope == func_sym->decl_scope) {
+                                        // 找到模块，生成带模块前缀的名称
+                                        // 格式：cn_module_模块名__函数名（cgen会再加 cn_func_ 前缀）
+                                        size_t module_name_len = node->symbol.name_length;
+                                        size_t func_name_len = strlen(name);
+                                        size_t prefix_len = strlen("cn_module_");
+                                        size_t total_len = prefix_len + module_name_len + 2 + func_name_len + 1;
+                                        
+                                        char *qualified_name = malloc(total_len);
+                                        if (qualified_name) {
+                                            snprintf(qualified_name, total_len, "cn_module_%.*s__%s",
+                                                    (int)module_name_len, node->symbol.name, name);
+                                            free(name);
+                                            callee = cn_ir_op_symbol(qualified_name, expr->as.call.callee->type);
+                                            free(qualified_name);
+                                            handled = true;
+                                        }
+                                        break;
+                                    }
+                                    node = node->next;
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 如果没有特殊处理，使用普通名称
+                    if (!handled) {
+                        callee = cn_ir_op_symbol(name, expr->as.call.callee->type);
+                        free(name);
+                    }
                 }
             } else {
                 callee = cn_ir_gen_expr(ctx, expr->as.call.callee);
@@ -395,14 +453,15 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 expr->as.member.object->type->kind == CN_TYPE_VOID &&
                 expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
                 // 模块成员访问：生成带模块前缀的符号名
-                // 格式：模块名__成员名
+                // 格式：cn_module_模块名__成员名
                 size_t module_name_len = expr->as.member.object->as.identifier.name_length;
                 size_t member_name_len = expr->as.member.member_name_length;
-                size_t total_len = module_name_len + 2 + member_name_len + 1; // +2 for "__", +1 for '\0'
+                size_t prefix_len = strlen("cn_module_");
+                size_t total_len = prefix_len + module_name_len + 2 + member_name_len + 1; // +2 for "__", +1 for '\0'
                 
                 char *qualified_name = malloc(total_len);
                 if (qualified_name) {
-                    snprintf(qualified_name, total_len, "%.*s__%.*s",
+                    snprintf(qualified_name, total_len, "cn_module_%.*s__%.*s",
                             (int)module_name_len, expr->as.member.object->as.identifier.name,
                             (int)member_name_len, expr->as.member.member_name);
                     
@@ -652,8 +711,13 @@ void cn_ir_gen_block(CnIrGenContext *ctx, CnAstBlockStmt *block) {
     }
 }
 
-void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func) {
+void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope *parent_scope) {
     if (!func) return;
+    
+    // 使用 parent_scope 参数，如果没有提供则使用全局作用域
+    if (!parent_scope) {
+        parent_scope = ctx->global_scope;
+    }
 
     // 确保函数名是 null-terminated
     char *name = malloc(func->name_length + 1);
@@ -678,8 +742,8 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func) {
     cn_ir_function_add_block(ir_func, entry);
     ctx->current_block = entry;
     
-    // 为函数创建作用域
-    CnSemScope *func_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, ctx->global_scope);
+    // 为函数创建作用域（父级为传入的 parent_scope）
+    CnSemScope *func_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, parent_scope);
     ctx->current_scope = func_scope;
 
     // 生成函数体
@@ -711,8 +775,58 @@ CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnSemScope *global_scope, C
         ctx->module->compile_mode = mode;
     }
 
+    // 生成全局函数的 IR
     for (size_t i = 0; i < program->function_count; i++) {
-        cn_ir_gen_function(ctx, program->functions[i]);
+        cn_ir_gen_function(ctx, program->functions[i], NULL);
+    }
+
+    // 生成模块内函数的 IR
+    for (size_t i = 0; i < program->module_count; i++) {
+        CnAstStmt *module_stmt = program->modules[i];
+        if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
+            CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+            
+            // 查找模块作用域
+            CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                                  module_decl->name,
+                                                                  module_decl->name_length);
+            CnSemScope *module_scope = NULL;
+            if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE) {
+                module_scope = module_sym->as.module_scope;
+            }
+            
+            // 为模块内的每个函数生成 IR
+            for (size_t j = 0; j < module_decl->function_count; j++) {
+                CnAstFunctionDecl *func = module_decl->functions[j];
+                if (func) {
+                    // 生成带模块前缀的函数名：cn_module_模块名__函数名
+                    char *prefixed_name = (char *)malloc(14 + module_decl->name_length + 2 + func->name_length + 1);
+                    if (prefixed_name) {
+                        snprintf(prefixed_name, 14 + module_decl->name_length + 2 + func->name_length + 1,
+                                "cn_module_%.*s__%.*s",
+                                (int)module_decl->name_length, module_decl->name,
+                                (int)func->name_length, func->name);
+                        
+                        // 保存原函数名，生成IR时使用带前缀的名称
+                        const char *original_name = func->name;
+                        size_t original_length = func->name_length;
+                        
+                        // 临时替换函数名
+                        func->name = prefixed_name;
+                        func->name_length = strlen(prefixed_name);
+                        
+                        // 生成函数 IR，使用模块作用域作为父作用域
+                        cn_ir_gen_function(ctx, func, module_scope);
+                        
+                        // 恢复原函数名
+                        func->name = original_name;
+                        func->name_length = original_length;
+                        
+                        free(prefixed_name);
+                    }
+                }
+            }
+        }
     }
 
     CnIrModule *module = ctx->module;

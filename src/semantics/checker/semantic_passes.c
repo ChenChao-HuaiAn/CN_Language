@@ -20,6 +20,7 @@ bool cn_sem_resolve_names(CnSemScope *global_scope,
 {
     if (!program || !global_scope) return true;
 
+    // 处理全局函数
     for (size_t i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *fn = program->functions[i];
         
@@ -34,6 +35,44 @@ bool cn_sem_resolve_names(CnSemScope *global_scope,
         resolve_block_names(fn_scope, fn->body, diagnostics);
         
         cn_sem_scope_free(fn_scope);
+    }
+
+    // 处理模块内函数
+    for (size_t i = 0; i < program->module_count; ++i) {
+        CnAstStmt *module_stmt = program->modules[i];
+        if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
+            CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+            
+            // 获取模块符号
+            CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(
+                global_scope,
+                module_decl->name,
+                module_decl->name_length);
+            
+            if (!module_sym || module_sym->kind != CN_SEM_SYMBOL_MODULE || !module_sym->as.module_scope) {
+                continue;
+            }
+            
+            CnSemScope *module_scope = module_sym->as.module_scope;
+            
+            // 处理模块内的每个函数
+            for (size_t j = 0; j < module_decl->function_count; ++j) {
+                CnAstFunctionDecl *fn = module_decl->functions[j];
+                if (!fn) continue;
+                
+                // 进入函数作用域（父作用域是模块作用域）
+                CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, module_scope);
+                
+                // 插入参数
+                for (size_t k = 0; k < fn->parameter_count; k++) {
+                    cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
+                }
+                
+                resolve_block_names(fn_scope, fn->body, diagnostics);
+                
+                cn_sem_scope_free(fn_scope);
+            }
+        }
     }
 
     return cn_support_diagnostics_error_count(diagnostics) == 0;
@@ -144,8 +183,30 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             resolve_expr_names(scope, expr->as.index.index, diagnostics);
             break;
         case CN_AST_EXPR_MEMBER_ACCESS:
-            // 解析结构体成员访问表达式
+            // 解析成员访问表达式：支持结构体和模块成员访问
+            // 先解析对象部分
             resolve_expr_names(scope, expr->as.member.object, diagnostics);
+            
+            // 如果对象是模块，验证成员是否存在
+            if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                CnSemSymbol *obj_sym = cn_sem_scope_lookup(
+                    scope,
+                    expr->as.member.object->as.identifier.name,
+                    expr->as.member.object->as.identifier.name_length);
+                
+                // 如果对象是模块，检查成员是否在模块作用域中存在
+                if (obj_sym && obj_sym->kind == CN_SEM_SYMBOL_MODULE && obj_sym->as.module_scope) {
+                    CnSemSymbol *member_sym = cn_sem_scope_lookup_shallow(
+                        obj_sym->as.module_scope,
+                        expr->as.member.member_name,
+                        expr->as.member.member_name_length);
+                    
+                    if (!member_sym) {
+                        cn_support_diag_semantic_error_undefined_identifier(
+                            diagnostics, NULL, 0, 0, expr->as.member.member_name);
+                    }
+                }
+            }
             break;
         case CN_AST_EXPR_STRUCT_LITERAL:
             // 解析结构体字面量表达式
@@ -164,6 +225,10 @@ bool cn_sem_check_types(CnSemScope *global_scope,
 {
     if (!program || !global_scope) return true;
 
+    // 阶段1：仅推断所有函数的返回类型，不进行函数体内部的类型检查
+    // 这确保在检查函数调用时，所有函数的返回类型已知
+
+    // 推断全局函数的返回类型
     for (size_t i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *fn = program->functions[i];
         
@@ -172,8 +237,6 @@ bool cn_sem_check_types(CnSemScope *global_scope,
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) sym->type = fn->parameters[j].declared_type;
         }
-
-        check_block_types(fn_scope, fn->body, diagnostics, false);
         
         // 推断函数返回类型：遍历函数体中的return语句
         CnType *inferred_return_type = infer_function_return_type(fn_scope, fn->body, diagnostics);
@@ -186,6 +249,106 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         }
         
         cn_sem_scope_free(fn_scope);
+    }
+
+    // 推断模块函数的返回类型
+    for (size_t i = 0; i < program->module_count; ++i) {
+        CnAstStmt *module_stmt = program->modules[i];
+        if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
+            CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+            
+            // 获取模块符号
+            CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(
+                global_scope,
+                module_decl->name,
+                module_decl->name_length);
+            
+            if (!module_sym || module_sym->kind != CN_SEM_SYMBOL_MODULE || !module_sym->as.module_scope) {
+                continue;
+            }
+            
+            CnSemScope *module_scope = module_sym->as.module_scope;
+            
+            // 处理模块内的每个函数
+            for (size_t j = 0; j < module_decl->function_count; ++j) {
+                CnAstFunctionDecl *fn = module_decl->functions[j];
+                if (!fn) continue;
+                
+                // 进入函数作用域（父作用域是模块作用域）
+                CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, module_scope);
+                for (size_t k = 0; k < fn->parameter_count; k++) {
+                    CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
+                    if (sym) sym->type = fn->parameters[k].declared_type;
+                }
+                
+                // 推断函数返回类型
+                CnType *inferred_return_type = infer_function_return_type(fn_scope, fn->body, diagnostics);
+                if (inferred_return_type) {
+                    // 更新函数符号的返回类型
+                    CnSemSymbol *fn_sym = cn_sem_scope_lookup_shallow(module_scope, fn->name, fn->name_length);
+                    if (fn_sym && fn_sym->type && fn_sym->type->kind == CN_TYPE_FUNCTION) {
+                        fn_sym->type->as.function.return_type = inferred_return_type;
+                    }
+                }
+                
+                cn_sem_scope_free(fn_scope);
+            }
+        }
+    }
+
+    // 阶段2：进行函数体内部的完整类型检查
+    // 此时所有函数的返回类型已经推断完成
+
+    // 检查全局函数
+    for (size_t i = 0; i < program->function_count; ++i) {
+        CnAstFunctionDecl *fn = program->functions[i];
+        
+        CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, global_scope);
+        for (size_t j = 0; j < fn->parameter_count; j++) {
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
+            if (sym) sym->type = fn->parameters[j].declared_type;
+        }
+
+        check_block_types(fn_scope, fn->body, diagnostics, false);
+        
+        cn_sem_scope_free(fn_scope);
+    }
+
+    // 检查模块函数
+    for (size_t i = 0; i < program->module_count; ++i) {
+        CnAstStmt *module_stmt = program->modules[i];
+        if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
+            CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+            
+            // 获取模块符号
+            CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(
+                global_scope,
+                module_decl->name,
+                module_decl->name_length);
+            
+            if (!module_sym || module_sym->kind != CN_SEM_SYMBOL_MODULE || !module_sym->as.module_scope) {
+                continue;
+            }
+            
+            CnSemScope *module_scope = module_sym->as.module_scope;
+            
+            // 处理模块内的每个函数
+            for (size_t j = 0; j < module_decl->function_count; ++j) {
+                CnAstFunctionDecl *fn = module_decl->functions[j];
+                if (!fn) continue;
+                
+                // 进入函数作用域（父作用域是模块作用域）
+                CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, module_scope);
+                for (size_t k = 0; k < fn->parameter_count; k++) {
+                    CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
+                    if (sym) sym->type = fn->parameters[k].declared_type;
+                }
+                
+                check_block_types(fn_scope, fn->body, diagnostics, false);
+                
+                cn_sem_scope_free(fn_scope);
+            }
+        }
     }
 
     return cn_support_diagnostics_error_count(diagnostics) == 0;
@@ -795,24 +958,45 @@ bool cn_sem_check_freestanding(CnAstProgram *program,
 }
 
 // 推断函数返回类型：遍历函数体中的return语句
-static CnType *infer_return_from_stmt(CnAstStmt *stmt) {
+static CnType *infer_return_from_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics) {
     if (!stmt) return NULL;
     
     switch (stmt->kind) {
         case CN_AST_STMT_RETURN:
-            // 找到return语句,返回其表达式的类型
-            if (stmt->as.return_stmt.expr && stmt->as.return_stmt.expr->type) {
-                return stmt->as.return_stmt.expr->type;
+            // 找到return语句,推断并返回其表达式的类型
+            if (stmt->as.return_stmt.expr) {
+                CnType *ret_type = infer_expr_type(scope, stmt->as.return_stmt.expr, diagnostics);
+                if (ret_type) {
+                    return ret_type;
+                }
             }
             return cn_type_new_primitive(CN_TYPE_VOID);
         
         case CN_AST_STMT_BLOCK:
-            // 遍历块中的所有语句
+            // 需要创建块作用域并处理变量声明
             if (stmt->as.block) {
+                CnSemScope *block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
                 for (size_t i = 0; i < stmt->as.block->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(stmt->as.block->stmts[i]);
-                    if (ret) return ret;
+                    CnAstStmt *block_stmt = stmt->as.block->stmts[i];
+                    
+                    // 如果是变量声明，需要先添加到作用域
+                    if (block_stmt && block_stmt->kind == CN_AST_STMT_VAR_DECL) {
+                        CnAstVarDecl *decl = &block_stmt->as.var_decl;
+                        CnType *init_type = infer_expr_type(block_scope, decl->initializer, diagnostics);
+                        CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        if (sym) {
+                            sym->type = decl->declared_type ? decl->declared_type : init_type;
+                        }
+                    }
+                    
+                    // 查找return语句
+                    CnType *ret = infer_return_from_stmt(block_scope, block_stmt, diagnostics);
+                    if (ret) {
+                        cn_sem_scope_free(block_scope);
+                        return ret;
+                    }
                 }
+                cn_sem_scope_free(block_scope);
             }
             break;
         
@@ -820,14 +1004,14 @@ static CnType *infer_return_from_stmt(CnAstStmt *stmt) {
             // 检查then分支
             if (stmt->as.if_stmt.then_block) {
                 for (size_t i = 0; i < stmt->as.if_stmt.then_block->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(stmt->as.if_stmt.then_block->stmts[i]);
+                    CnType *ret = infer_return_from_stmt(scope, stmt->as.if_stmt.then_block->stmts[i], diagnostics);
                     if (ret) return ret;
                 }
             }
             // 检查else分支
             if (stmt->as.if_stmt.else_block) {
                 for (size_t i = 0; i < stmt->as.if_stmt.else_block->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(stmt->as.if_stmt.else_block->stmts[i]);
+                    CnType *ret = infer_return_from_stmt(scope, stmt->as.if_stmt.else_block->stmts[i], diagnostics);
                     if (ret) return ret;
                 }
             }
@@ -836,7 +1020,7 @@ static CnType *infer_return_from_stmt(CnAstStmt *stmt) {
         case CN_AST_STMT_WHILE:
             if (stmt->as.while_stmt.body) {
                 for (size_t i = 0; i < stmt->as.while_stmt.body->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(stmt->as.while_stmt.body->stmts[i]);
+                    CnType *ret = infer_return_from_stmt(scope, stmt->as.while_stmt.body->stmts[i], diagnostics);
                     if (ret) return ret;
                 }
             }
@@ -845,7 +1029,7 @@ static CnType *infer_return_from_stmt(CnAstStmt *stmt) {
         case CN_AST_STMT_FOR:
             if (stmt->as.for_stmt.body) {
                 for (size_t i = 0; i < stmt->as.for_stmt.body->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(stmt->as.for_stmt.body->stmts[i]);
+                    CnType *ret = infer_return_from_stmt(scope, stmt->as.for_stmt.body->stmts[i], diagnostics);
                     if (ret) return ret;
                 }
             }
@@ -861,14 +1045,32 @@ static CnType *infer_return_from_stmt(CnAstStmt *stmt) {
 static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics) {
     if (!block) return NULL;
     
-    // 遍历函数体中的所有语句，查找return语句
+    // 创建一个临时的块作用域用于推断过程
+    CnSemScope *block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+    
+    // 遍历函数体中的所有语句，处理变量声明并查找return语句
     for (size_t i = 0; i < block->stmt_count; i++) {
-        CnType *ret_type = infer_return_from_stmt(block->stmts[i]);
+        CnAstStmt *stmt = block->stmts[i];
+        
+        // 如果是变量声明，需要先添加到作用域
+        if (stmt && stmt->kind == CN_AST_STMT_VAR_DECL) {
+            CnAstVarDecl *decl = &stmt->as.var_decl;
+            CnType *init_type = infer_expr_type(block_scope, decl->initializer, diagnostics);
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+            if (sym) {
+                sym->type = decl->declared_type ? decl->declared_type : init_type;
+            }
+        }
+        
+        // 查找return语句
+        CnType *ret_type = infer_return_from_stmt(block_scope, stmt, diagnostics);
         if (ret_type) {
+            cn_sem_scope_free(block_scope);
             return ret_type;
         }
     }
     
+    cn_sem_scope_free(block_scope);
     // 如果没有找到return语句,返回int类型(默认)
     return cn_type_new_primitive(CN_TYPE_INT);
 }

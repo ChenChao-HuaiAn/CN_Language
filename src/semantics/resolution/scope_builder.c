@@ -56,6 +56,22 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         print_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
     }
 
+    // 注册内置函数：打印整数 (print_int)
+    CnSemSymbol *print_int_sym = cn_sem_scope_insert_symbol(global_scope, "打印整数", strlen("打印整数"), CN_SEM_SYMBOL_FUNCTION);
+    if (print_int_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);
+        print_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+
+    // 注册内置函数：打印字符串 (print_string)
+    CnSemSymbol *print_str_sym = cn_sem_scope_insert_symbol(global_scope, "打印字符串", strlen("打印字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (print_str_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        print_str_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+
     // 注册内置函数：长度 (length)
     // 注意：长度函数是特殊的，它可以接受字符串或数组参数
     // 我们在符号表中标记它，但在 semantic_passes.c 中特殊处理其类型检查
@@ -461,32 +477,75 @@ static void cn_sem_build_module_scope(CnSemScope *parent_scope,
         return;
     }
 
-    // 遍历模块内的语句，构建符号表
+    // 首先注册模块变量，然后注册模块函数，最后构建函数作用域
+    // 这确保在构建函数作用域时，模块内的所有成员已经可见
+
+    // 步骤1：注册模块变量
     for (size_t i = 0; i < module_decl->stmt_count; ++i) {
         CnAstStmt *stmt = module_decl->stmts[i];
-        if (!stmt) {
+        if (!stmt || stmt->kind != CN_AST_STMT_VAR_DECL) {
             continue;
         }
 
-        // 模块内可以有变量声明
-        if (stmt->kind == CN_AST_STMT_VAR_DECL) {
-            CnAstVarDecl *var_decl = &stmt->as.var_decl;
-            CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
-                                       var_decl->name,
-                                       var_decl->name_length,
-                                       CN_SEM_SYMBOL_VARIABLE);
-            if (sym) {
-                sym->type = var_decl->declared_type;
-            } else {
-                // 报告重复定义
-                cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, var_decl->name);
-            }
-            
-            // 构建初始化表达式的作用域
-            cn_sem_build_expr(module_scope, var_decl->initializer, diagnostics);
+        CnAstVarDecl *var_decl = &stmt->as.var_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
+                                   var_decl->name,
+                                   var_decl->name_length,
+                                   CN_SEM_SYMBOL_VARIABLE);
+        if (sym) {
+            sym->type = var_decl->declared_type;
+        } else {
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, var_decl->name);
         }
-        // TODO: 后续支持模块内的函数声明
+    }
+
+    // 步骤2：注册模块函数
+    for (size_t i = 0; i < module_decl->function_count; ++i) {
+        CnAstFunctionDecl *function_decl = module_decl->functions[i];
+        if (!function_decl) {
+            continue;
+        }
+
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
+                                   function_decl->name,
+                                   function_decl->name_length,
+                                   CN_SEM_SYMBOL_FUNCTION);
+        if (sym) {
+            CnType **param_types = NULL;
+            if (function_decl->parameter_count > 0) {
+                param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
+                for (size_t j = 0; j < function_decl->parameter_count; j++) {
+                    param_types[j] = function_decl->parameters[j].declared_type;
+                }
+            }
+            sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),
+                                            param_types,
+                                            function_decl->parameter_count);
+        } else {
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, function_decl->name);
+        }
+    }
+
+    // 步骤3：构建函数作用域
+    for (size_t i = 0; i < module_decl->function_count; ++i) {
+        CnAstFunctionDecl *function_decl = module_decl->functions[i];
+        if (!function_decl) {
+            continue;
+        }
+        cn_sem_build_function_scope(module_scope, function_decl, diagnostics);
+    }
+
+    // 步骤4：处理模块变量的初始化表达式
+    for (size_t i = 0; i < module_decl->stmt_count; ++i) {
+        CnAstStmt *stmt = module_decl->stmts[i];
+        if (!stmt || stmt->kind != CN_AST_STMT_VAR_DECL) {
+            continue;
+        }
+
+        CnAstVarDecl *var_decl = &stmt->as.var_decl;
+        cn_sem_build_expr(module_scope, var_decl->initializer, diagnostics);
     }
 }
 

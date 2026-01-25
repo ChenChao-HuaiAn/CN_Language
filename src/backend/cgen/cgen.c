@@ -98,6 +98,7 @@ static const char *get_c_function_name(const char *name) {
         {"\xe6\x89\x93\xe5\x8d\xb0", "cn_rt_print_string"},  /* 打印 */
         {"\xe9\x95\xbf\xe5\xba\xa6", "cn_rt_string_length"}, /* 长度 */
         {"\xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f", "main"},      /* 主程序 */
+        {"\xe4\xb8\xbb\xe5\x87\xbd\xe6\x95\xb0", "main"},      /* 主函数 */
         {NULL, NULL}
     };
     
@@ -597,8 +598,22 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
             }
         }
     }
-
+    
+    // 生成函数前置声明（Forward Declarations）
+    fprintf(file, "// Forward Declarations\n");
     CnIrFunction *func = module->first_func;
+    while (func) {
+        fprintf(file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
+        for (size_t i = 0; i < func->param_count; i++) {
+            fprintf(file, "%s", get_c_type_string(func->params[i].type));
+            if (i < func->param_count - 1) fprintf(file, ", ");
+        }
+        fprintf(file, ");\n");
+        func = func->next;
+    }
+    fprintf(file, "\n");
+
+    func = module->first_func;
     while (func) { cn_cgen_function(&ctx, func); func = func->next; }
     
     fclose(file);
