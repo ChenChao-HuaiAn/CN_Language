@@ -276,6 +276,10 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
         return CN_TOKEN_KEYWORD_ABSTRACT;
     }
 
+    if (length == strlen("内联汇编") && strncmp(begin, "内联汇编", length) == 0) {
+        return CN_TOKEN_KEYWORD_INLINE_ASM;
+    }
+
     if (length == strlen("内存地址") && strncmp(begin, "内存地址", length) == 0) {
         return CN_TOKEN_KEYWORD_MEMORY_ADDRESS;
     }

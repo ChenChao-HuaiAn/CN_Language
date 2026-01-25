@@ -59,6 +59,8 @@ static CnAstExpr *make_memory_copy(CnAstExpr *dest, CnAstExpr *src, CnAstExpr *s
 static CnAstExpr *make_memory_set(CnAstExpr *address, CnAstExpr *value, CnAstExpr *size);
 static CnAstExpr *make_memory_map(CnAstExpr *address, CnAstExpr *size, CnAstExpr *prot, CnAstExpr *flags);
 static CnAstExpr *make_memory_unmap(CnAstExpr *address, CnAstExpr *size);
+static CnAstExpr *make_inline_asm(CnAstExpr *asm_code, CnAstExpr **outputs, size_t output_count, 
+                                   CnAstExpr **inputs, size_t input_count, CnAstExpr *clobbers);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
@@ -1479,6 +1481,127 @@ static CnAstExpr *parse_factor(CnParser *parser)
         }
         
         expr = result;
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_INLINE_ASM) {
+        // 解析内联汇编: 内联汇编("asm code", outputs, inputs, clobbers)
+        parser_advance(parser);
+        
+        if (!parser_expect(parser, CN_TOKEN_LPAREN)) {
+            return NULL;
+        }
+        
+        // 解析汇编代码字符串
+        CnAstExpr *asm_code = parse_expression(parser);
+        if (!asm_code) {
+            return NULL;
+        }
+        
+        // 解析输出列表（可选）
+        CnAstExpr **outputs = NULL;
+        size_t output_count = 0;
+        
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+            
+            // 解析输出变量列表
+            size_t out_capacity = 4;
+            outputs = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * out_capacity);
+            if (!outputs) {
+                cn_frontend_ast_expr_free(asm_code);
+                return NULL;
+            }
+            
+            if (parser->current.kind != CN_TOKEN_RPAREN) {
+                do {
+                    if (output_count >= out_capacity) {
+                        out_capacity *= 2;
+                        CnAstExpr **new_outputs = (CnAstExpr **)realloc(
+                            outputs, sizeof(CnAstExpr *) * out_capacity);
+                        if (!new_outputs) {
+                            free(outputs);
+                            cn_frontend_ast_expr_free(asm_code);
+                            return NULL;
+                        }
+                        outputs = new_outputs;
+                    }
+                    
+                    outputs[output_count++] = parse_expression(parser);
+                    
+                    if (parser->current.kind == CN_TOKEN_COMMA) {
+                        parser_advance(parser);
+                    } else {
+                        break;
+                    }
+                } while (parser->current.kind != CN_TOKEN_RPAREN &&
+                         parser->current.kind != CN_TOKEN_EOF);
+            }
+        }
+        
+        // 解析输入列表（可选）
+        CnAstExpr **inputs = NULL;
+        size_t input_count = 0;
+        
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+            
+            // 解析输入变量列表
+            size_t in_capacity = 4;
+            inputs = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * in_capacity);
+            if (!inputs) {
+                cn_frontend_ast_expr_array_free(outputs, output_count);
+                free(outputs);
+                cn_frontend_ast_expr_free(asm_code);
+                return NULL;
+            }
+            
+            if (parser->current.kind != CN_TOKEN_RPAREN) {
+                do {
+                    if (input_count >= in_capacity) {
+                        in_capacity *= 2;
+                        CnAstExpr **new_inputs = (CnAstExpr **)realloc(
+                            inputs, sizeof(CnAstExpr *) * in_capacity);
+                        if (!new_inputs) {
+                            free(inputs);
+                            cn_frontend_ast_expr_array_free(outputs, output_count);
+                            free(outputs);
+                            cn_frontend_ast_expr_free(asm_code);
+                            return NULL;
+                        }
+                        inputs = new_inputs;
+                    }
+                    
+                    inputs[input_count++] = parse_expression(parser);
+                    
+                    if (parser->current.kind == CN_TOKEN_COMMA) {
+                        parser_advance(parser);
+                    } else {
+                        break;
+                    }
+                } while (parser->current.kind != CN_TOKEN_RPAREN &&
+                         parser->current.kind != CN_TOKEN_EOF);
+            }
+        }
+        
+        // 解析破坏列表（可选）
+        CnAstExpr *clobbers = NULL;
+        
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+            clobbers = parse_expression(parser);
+        }
+        
+        if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+            cn_frontend_ast_expr_array_free(inputs, input_count);
+            free(inputs);
+            cn_frontend_ast_expr_array_free(outputs, output_count);
+            free(outputs);
+            cn_frontend_ast_expr_free(asm_code);
+            if (clobbers) {
+                cn_frontend_ast_expr_free(clobbers);
+            }
+            return NULL;
+        }
+        
+        expr = make_inline_asm(asm_code, outputs, output_count, inputs, input_count, clobbers);
     } else if (parser->current.kind == CN_TOKEN_LPAREN) {
         parser_advance(parser);
         expr = parse_expression(parser);
@@ -2381,6 +2504,24 @@ static CnAstExpr *make_memory_unmap(CnAstExpr *address, CnAstExpr *size)
     expr->type = NULL;
     expr->as.memory_unmap.address = address;
     expr->as.memory_unmap.size = size;
+    return expr;
+}
+
+static CnAstExpr *make_inline_asm(CnAstExpr *asm_code, CnAstExpr **outputs, size_t output_count, 
+                                   CnAstExpr **inputs, size_t input_count, CnAstExpr *clobbers)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+    expr->kind = CN_AST_EXPR_INLINE_ASM;
+    expr->type = NULL;
+    expr->as.inline_asm.asm_code = asm_code;
+    expr->as.inline_asm.outputs = outputs;
+    expr->as.inline_asm.output_count = output_count;
+    expr->as.inline_asm.inputs = inputs;
+    expr->as.inline_asm.input_count = input_count;
+    expr->as.inline_asm.clobbers = clobbers;
     return expr;
 }
 

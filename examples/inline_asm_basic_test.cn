@@ -1,0 +1,71 @@
+/*
+ * 内联汇编基础测试示例
+ * 演示基本的内联汇编功能
+ */
+
+函数 主程序() {
+    // 测试1：简单的NOP指令
+    打印("测试1: 执行NOP指令");
+    内联汇编("nop");
+    打印("NOP指令执行完成");
+    
+    // 测试2：使用内联汇编读取CPU时间戳计数器（x86_64）
+    #ifdef __x86_64__
+    整数 tsc_low, tsc_high;
+    内联汇编("rdtsc", "tsc_low,tsc_high", "", "eax,edx");
+    打印("CPU时间戳计数器读取完成");
+    打印("低32位: ");
+    打印(tsc_low);
+    打印("高32位: ");
+    打印(tsc_high);
+    #endif
+    
+    // 测试3：使用内联汇编交换两个变量的值（x86_64）
+    #ifdef __x86_64__
+    整数 a = 10, b = 20;
+    打印("交换前: a=");
+    打印(a);
+    打印(", b=");
+    打印(b);
+    
+    内联汇编("xchg %0, %1", "", "a,b", "eax");
+    
+    打印("交换后: a=");
+    打印(a);
+    打印(", b=");
+    打印(b);
+    #endif
+    
+    // 测试4：使用内联汇编获取CPUID（x86_64）
+    #ifdef __x86_64__
+    整数 eax_out, ebx_out, ecx_out, edx_out;
+    内联汇编("cpuid", "eax_out,ebx_out,ecx_out,edx_out", "0", "eax,ebx,ecx,edx");
+    打印("CPUID指令执行完成");
+    打印("EAX: ");
+    打印(eax_out);
+    打印("EBX: ");
+    打印(ebx_out);
+    打印("ECX: ");
+    打印(ecx_out);
+    打印("EDX: ");
+    打印(edx_out);
+    #endif
+    
+    // 测试5：使用内联汇编进行简单的加法
+    #ifdef __x86_64__
+    整数 x = 5, y = 7, result;
+    内联汇编("mov eax, %0; add eax, %1; mov %2, eax", "result", "x,y", "eax");
+    打印("内联汇编加法结果: ");
+    打印(result);
+    #endif
+    
+    // 测试6：使用内联汇编读取段寄存器
+    #ifdef __x86_64__
+    整数 cs_value;
+    内联汇编("mov ax, cs", "cs_value", "", "ax");
+    打印("CS段寄存器值: ");
+    打印(cs_value);
+    #endif
+    
+    返回 0;
+}

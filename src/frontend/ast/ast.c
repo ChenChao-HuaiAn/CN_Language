@@ -96,6 +96,15 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
         cn_frontend_ast_expr_free(expr->as.memory_unmap.address);
         cn_frontend_ast_expr_free(expr->as.memory_unmap.size);
         break;
+    case CN_AST_EXPR_INLINE_ASM:
+        // 释放内联汇编表达式
+        cn_frontend_ast_expr_free(expr->as.inline_asm.asm_code);
+        cn_frontend_ast_expr_array_free(expr->as.inline_asm.outputs, expr->as.inline_asm.output_count);
+        free(expr->as.inline_asm.outputs);
+        cn_frontend_ast_expr_array_free(expr->as.inline_asm.inputs, expr->as.inline_asm.input_count);
+        free(expr->as.inline_asm.inputs);
+        cn_frontend_ast_expr_free(expr->as.inline_asm.clobbers);
+        break;
     }
 
     free(expr);

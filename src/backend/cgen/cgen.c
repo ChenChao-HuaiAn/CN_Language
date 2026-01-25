@@ -278,6 +278,49 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             cn_cgen_expr_simple(ctx, expr->as.memory_unmap.size);
             fprintf(ctx->output_file, ")");
             break;
+        case CN_AST_EXPR_INLINE_ASM:
+            // 内联汇编: inline_asm("code", outputs, inputs, clobbers)
+            fprintf(ctx->output_file, "asm volatile (");
+            cn_cgen_expr_simple(ctx, expr->as.inline_asm.asm_code);
+            fprintf(ctx->output_file, "\n");
+            
+            // 输出操作数
+            if (expr->as.inline_asm.outputs && expr->as.inline_asm.output_count > 0) {
+                fprintf(ctx->output_file, "    : ");
+                for (size_t i = 0; i < expr->as.inline_asm.output_count; i++) {
+                    if (i > 0) {
+                        fprintf(ctx->output_file, ", ");
+                    }
+                    fprintf(ctx->output_file, "\"=r\"(");
+                    cn_cgen_expr_simple(ctx, expr->as.inline_asm.outputs[i]);
+                    fprintf(ctx->output_file, ")");
+                }
+                fprintf(ctx->output_file, "\n");
+            }
+            
+            // 输入操作数
+            if (expr->as.inline_asm.inputs && expr->as.inline_asm.input_count > 0) {
+                fprintf(ctx->output_file, "    : ");
+                for (size_t i = 0; i < expr->as.inline_asm.input_count; i++) {
+                    if (i > 0) {
+                        fprintf(ctx->output_file, ", ");
+                    }
+                    fprintf(ctx->output_file, "\"r\"(");
+                    cn_cgen_expr_simple(ctx, expr->as.inline_asm.inputs[i]);
+                    fprintf(ctx->output_file, ")");
+                }
+                fprintf(ctx->output_file, "\n");
+            }
+            
+            // 破坏列表
+            if (expr->as.inline_asm.clobbers) {
+                fprintf(ctx->output_file, "    : ");
+                cn_cgen_expr_simple(ctx, expr->as.inline_asm.clobbers);
+                fprintf(ctx->output_file, "\n");
+            }
+            
+            fprintf(ctx->output_file, ");");
+            break;
         default:
             fprintf(ctx->output_file, "0"); // 不支持的表达式，用0作为默认值
             break;

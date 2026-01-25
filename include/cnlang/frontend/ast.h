@@ -28,7 +28,8 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_MEMORY_COPY,    // 内存复制 memory_copy(dest, src, size)
     CN_AST_EXPR_MEMORY_SET,     // 内存设置 memory_set(addr, value, size)
     CN_AST_EXPR_MEMORY_MAP,     // 内存映射 map_memory(addr, size, prot, flags)
-    CN_AST_EXPR_MEMORY_UNMAP    // 解除内存映射 unmap_memory(addr, size)
+    CN_AST_EXPR_MEMORY_UNMAP,   // 解除内存映射 unmap_memory(addr, size)
+    CN_AST_EXPR_INLINE_ASM     // 内联汇编 inline_asm("code", outputs, inputs, clobbers)
 } CnAstExprKind;
 
 // AST 节点种类（语句）
@@ -367,6 +368,16 @@ typedef struct CnAstMemoryUnmapExpr {
     struct CnAstExpr *size;       // 映射大小
 } CnAstMemoryUnmapExpr;
 
+// 内联汇编表达式 inline_asm("code", outputs, inputs, clobbers)
+typedef struct CnAstInlineAsmExpr {
+    struct CnAstExpr *asm_code;      // 汇编代码字符串
+    struct CnAstExpr **outputs;      // 输出变量列表
+    size_t output_count;              // 输出变量数量
+    struct CnAstExpr **inputs;       // 输入变量列表
+    size_t input_count;               // 输入变量数量
+    struct CnAstExpr *clobbers;     // 破坏列表（字符串字面量或标识符列表）
+} CnAstInlineAsmExpr;
+
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
@@ -392,6 +403,7 @@ typedef struct CnAstExpr {
         CnAstMemorySetExpr memory_set;     // 内存设置
         CnAstMemoryMapExpr memory_map;     // 内存映射
         CnAstMemoryUnmapExpr memory_unmap // 解除内存映射
+        CnAstInlineAsmExpr inline_asm     // 内联汇编
     } as;
 } CnAstExpr;
 
