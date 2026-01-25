@@ -55,6 +55,7 @@ static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
 static CnAstStmt *make_while_stmt(CnAstExpr *condition, CnAstBlockStmt *body);
 static CnAstStmt *make_for_stmt(CnAstStmt *init, CnAstExpr *condition, CnAstExpr *update, CnAstBlockStmt *body);
+static CnAstStmt *make_switch_stmt(CnAstExpr *expr, CnAstSwitchCase *cases, size_t case_count);
 static CnAstStmt *make_break_stmt(void);
 static CnAstStmt *make_continue_stmt(void);
 static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer);
@@ -524,6 +525,166 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser_advance(parser);
         parser_expect(parser, CN_TOKEN_SEMICOLON);
         return make_continue_stmt();
+    }
+
+    // 解析 switch 语句：选择 (表达式) { [情况 值: 块]* [默认: 块]? }
+    if (parser->current.kind == CN_TOKEN_KEYWORD_SWITCH) {
+        CnAstExpr *switch_expr;
+        CnAstSwitchCase *cases = NULL;
+        size_t case_count = 0;
+        size_t case_capacity = 4;
+
+        parser_advance(parser); // 跳过 '选择'
+
+        // 期望 '('
+        if (!parser_expect(parser, CN_TOKEN_LPAREN)) {
+            return NULL;
+        }
+
+        // 解析 switch 表达式
+        switch_expr = parse_expression(parser);
+        if (!switch_expr) {
+            return NULL;
+        }
+
+        // 期望 ')'
+        if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+            cn_frontend_ast_expr_free(switch_expr);
+            return NULL;
+        }
+
+        // 期望 '{'
+        if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
+            cn_frontend_ast_expr_free(switch_expr);
+            return NULL;
+        }
+
+        // 分配 case 数组
+        cases = (CnAstSwitchCase *)malloc(sizeof(CnAstSwitchCase) * case_capacity);
+        if (!cases) {
+            cn_frontend_ast_expr_free(switch_expr);
+            return NULL;
+        }
+
+        // 解析 case 和 default 分支
+        while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+            CnAstExpr *case_value = NULL;
+            CnAstBlockStmt *case_body = NULL;
+
+            if (parser->current.kind == CN_TOKEN_KEYWORD_CASE) {
+                // 解析 case 分支
+                parser_advance(parser); // 跳过 '情况'
+
+                // 解析 case 值表达式
+                case_value = parse_expression(parser);
+                if (!case_value) {
+                    // 清理已分配的资源
+                    for (size_t i = 0; i < case_count; i++) {
+                        cn_frontend_ast_expr_free(cases[i].value);
+                        cn_frontend_ast_block_free(cases[i].body);
+                    }
+                    free(cases);
+                    cn_frontend_ast_expr_free(switch_expr);
+                    return NULL;
+                }
+
+                // 期望 ':'
+                if (!parser_expect(parser, CN_TOKEN_SEMICOLON)) { // 使用分号作为分隔符
+                    cn_frontend_ast_expr_free(case_value);
+                    for (size_t i = 0; i < case_count; i++) {
+                        cn_frontend_ast_expr_free(cases[i].value);
+                        cn_frontend_ast_block_free(cases[i].body);
+                    }
+                    free(cases);
+                    cn_frontend_ast_expr_free(switch_expr);
+                    return NULL;
+                }
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_DEFAULT) {
+                // 解析 default 分支
+                parser_advance(parser); // 跳过 '默认'
+
+                // default 不需要值表达式
+                case_value = NULL;
+
+                // 期望 ':'
+                if (!parser_expect(parser, CN_TOKEN_SEMICOLON)) {
+                    for (size_t i = 0; i < case_count; i++) {
+                        cn_frontend_ast_expr_free(cases[i].value);
+                        cn_frontend_ast_block_free(cases[i].body);
+                    }
+                    free(cases);
+                    cn_frontend_ast_expr_free(switch_expr);
+                    return NULL;
+                }
+            } else {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：switch 语句中期望 'case' 或 'default'");
+                }
+                for (size_t i = 0; i < case_count; i++) {
+                    cn_frontend_ast_expr_free(cases[i].value);
+                    cn_frontend_ast_block_free(cases[i].body);
+                }
+                free(cases);
+                cn_frontend_ast_expr_free(switch_expr);
+                return NULL;
+            }
+
+            // 解析 case/default 的语句块
+            case_body = parse_block(parser);
+            if (!case_body) {
+                cn_frontend_ast_expr_free(case_value);
+                for (size_t i = 0; i < case_count; i++) {
+                    cn_frontend_ast_expr_free(cases[i].value);
+                    cn_frontend_ast_block_free(cases[i].body);
+                }
+                free(cases);
+                cn_frontend_ast_expr_free(switch_expr);
+                return NULL;
+            }
+
+            // 扩容 case 数组
+            if (case_count >= case_capacity) {
+                case_capacity *= 2;
+                CnAstSwitchCase *new_cases = (CnAstSwitchCase *)realloc(cases, sizeof(CnAstSwitchCase) * case_capacity);
+                if (!new_cases) {
+                    cn_frontend_ast_expr_free(case_value);
+                    cn_frontend_ast_block_free(case_body);
+                    for (size_t i = 0; i < case_count; i++) {
+                        cn_frontend_ast_expr_free(cases[i].value);
+                        cn_frontend_ast_block_free(cases[i].body);
+                    }
+                    free(cases);
+                    cn_frontend_ast_expr_free(switch_expr);
+                    return NULL;
+                }
+                cases = new_cases;
+            }
+
+            // 添加当前 case/default
+            cases[case_count].value = case_value;
+            cases[case_count].body = case_body;
+            case_count++;
+        }
+
+        // 期望 '}'
+        if (!parser_expect(parser, CN_TOKEN_RBRACE)) {
+            for (size_t i = 0; i < case_count; i++) {
+                cn_frontend_ast_expr_free(cases[i].value);
+                cn_frontend_ast_block_free(cases[i].body);
+            }
+            free(cases);
+            cn_frontend_ast_expr_free(switch_expr);
+            return NULL;
+        }
+
+        return make_switch_stmt(switch_expr, cases, case_count);
     }
 
     if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
@@ -1434,6 +1595,21 @@ static CnAstStmt *make_continue_stmt(void)
     }
 
     stmt->kind = CN_AST_STMT_CONTINUE;
+    return stmt;
+}
+
+// 创建 switch 语句节点
+static CnAstStmt *make_switch_stmt(CnAstExpr *expr, CnAstSwitchCase *cases, size_t case_count)
+{
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_SWITCH;
+    stmt->as.switch_stmt.expr = expr;
+    stmt->as.switch_stmt.cases = cases;
+    stmt->as.switch_stmt.case_count = case_count;
     return stmt;
 }
 

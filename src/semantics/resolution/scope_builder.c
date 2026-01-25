@@ -395,6 +395,19 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
     case CN_AST_STMT_FOR:
         cn_sem_build_for_stmt(scope, &stmt->as.for_stmt, diagnostics);
         break;
+    case CN_AST_STMT_SWITCH: {
+        // 解析 switch 表达式
+        cn_sem_build_expr(scope, stmt->as.switch_stmt.expr, diagnostics);
+        // 解析每个 case/default 分支
+        for (size_t i = 0; i < stmt->as.switch_stmt.case_count; i++) {
+            CnAstSwitchCase *case_stmt = &stmt->as.switch_stmt.cases[i];
+            // 解析 case 值表达式（如果有）
+            cn_sem_build_expr(scope, case_stmt->value, diagnostics);
+            // 解析 case 体
+            cn_sem_build_block_scope(scope, case_stmt->body, diagnostics);
+        }
+        break;
+    }
     case CN_AST_STMT_BREAK:
     case CN_AST_STMT_CONTINUE:
         break;

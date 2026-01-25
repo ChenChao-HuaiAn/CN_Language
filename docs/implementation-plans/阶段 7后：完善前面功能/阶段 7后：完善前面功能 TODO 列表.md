@@ -95,17 +95,17 @@
 
 #### 五、选择语句：`选择/情况/默认`（switch/case）
 
-- [ ] **AST 与语法实现**  
-  - [ ] 在 `ast.h` 中为 `switch` 语句新增节点定义（如 `CnAstSwitchCase`、`CnAstSwitchStmt` 与 `CN_AST_STMT_SWITCH`）。  
-  - [ ] 在 `parse_statement` 中识别 `CN_TOKEN_KEYWORD_SWITCH`，实现 `选择 (表达式) { [情况 值: 块]* [默认: 块]? }` 的解析逻辑。  
-- [ ] **语义层：选择语句约束**  
-  - [ ] 在 `resolve_stmt_names` / `check_stmt_types` 中增加 `switch` 分支：检查 `switch` 表达式类型为整数或枚举。  
-  - [ ] 检查每个 `case` 常量表达式类型与 `switch` 表达式一致，并处理重复 `case`、多重 `默认` 等错误。  
-- [ ] **IR / 后端生成**  
-  - [ ] 在 `cn_ir_gen_stmt` 中为 `CN_AST_STMT_SWITCH` 实现 lowering，初期可以生成一系列 `if`/`goto`，后续再考虑结构化为 C `switch`。  
-- [ ] **测试与文档**  
-  - [ ] 添加包含多个 `情况` 和 `默认` 分支的示例，覆盖正常流程与错误场景（如缺少 `默认`、重复 `case` 等）。  
-  - [ ] 在语言规范中补充 `选择/情况/默认` 的精确定义、支持的表达式类型与限制。
+- [x] **AST 与语法实现**  
+  - [x] 在 `ast.h` 中为 `switch` 语句新增节点定义（如 `CnAstSwitchCase`、`CnAstSwitchStmt` 与 `CN_AST_STMT_SWITCH`）。  
+  - [x] 在 `parse_statement` 中识别 `CN_TOKEN_KEYWORD_SWITCH`，实现 `选择 (表达式) { [情况 值: 块]* [默认: 块]? }` 的解析逻辑。  
+- [x] **语义层：选择语句约束**  
+  - [x] 在 `resolve_stmt_names` / `check_stmt_types` 中增加 `switch` 分支：检查 `switch` 表达式类型为整数或枚举。  
+  - [x] 检查每个 `case` 常量表达式类型与 `switch` 表达式一致，并处理重复 `case`、多重 `默认` 等错误。  
+- [x] **IR / 后端生成**  
+  - [x] 在 `cn_ir_gen_stmt` 中为 `CN_AST_STMT_SWITCH` 实现 lowering，初期可以生成一系列 `if`/`goto`，后续再考虑结构化为 C `switch`。  
+- [x] **测试与文档**  
+  - [x] 添加包含多个 `情况` 和 `默认` 分支的示例，覆盖正常流程与错误场景（如缺少 `默认`、重复 `case` 等）。  
+  - [x] 在语言规范中补充 `选择/情况/默认` 的精确定义、支持的表达式类型与限制。
 
 ---
 

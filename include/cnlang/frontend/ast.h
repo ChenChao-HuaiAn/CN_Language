@@ -36,6 +36,7 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_FOR,        // for 循环语句
     CN_AST_STMT_BREAK,      // break 语句
     CN_AST_STMT_CONTINUE,   // continue 语句
+    CN_AST_STMT_SWITCH,     // switch 选择语句
     CN_AST_STMT_STRUCT_DECL,// 结构体声明语句
     CN_AST_STMT_ENUM_DECL,  // 枚举声明语句
     CN_AST_STMT_MODULE_DECL,// 模块声明语句
@@ -120,6 +121,19 @@ typedef struct CnAstForStmt {
     struct CnAstExpr *update;    // 可以为 NULL
     CnAstBlockStmt *body;
 } CnAstForStmt;
+
+// switch 语句的单个 case 分支
+typedef struct CnAstSwitchCase {
+    struct CnAstExpr *value;     // case 的常量表达式，NULL 表示 default 分支
+    CnAstBlockStmt *body;        // case 分支的语句块
+} CnAstSwitchCase;
+
+// switch 选择语句
+typedef struct CnAstSwitchStmt {
+    struct CnAstExpr *expr;      // switch 的判断表达式
+    CnAstSwitchCase *cases;      // case 分支数组
+    size_t case_count;           // case 分支数量（包括 default）
+} CnAstSwitchStmt;
 
 // 结构体字段声明
 typedef struct CnAstStructField {
@@ -323,6 +337,7 @@ typedef struct CnAstStmt {
         CnAstIfStmt if_stmt;
         CnAstWhileStmt while_stmt;
         CnAstForStmt for_stmt;
+        CnAstSwitchStmt switch_stmt; // switch 选择语句
         CnAstStructDecl struct_decl; // 结构体声明
         CnAstEnumDecl enum_decl;     // 枚举声明
         CnAstModuleDecl module_decl; // 模块声明

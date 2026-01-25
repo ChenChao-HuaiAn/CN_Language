@@ -473,6 +473,52 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             cn_sem_scope_free(for_scope);
             break;
         }
+        case CN_AST_STMT_SWITCH: {
+            // 检查 switch 表达式的类型（必须是整数或枚举）
+            CnType *switch_type = infer_expr_type(scope, stmt->as.switch_stmt.expr, diagnostics);
+            if (switch_type && switch_type->kind != CN_TYPE_INT && switch_type->kind != CN_TYPE_ENUM) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：switch 表达式必须为整数或枚举类型");
+            }
+
+            // 检查每个 case 的值表达式是否为常量且类型匹配
+            int has_default = 0;
+            for (size_t i = 0; i < stmt->as.switch_stmt.case_count; i++) {
+                CnAstSwitchCase *case_stmt = &stmt->as.switch_stmt.cases[i];
+
+                if (case_stmt->value == NULL) {
+                    // default 分支
+                    if (has_default) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,
+                            NULL, 0, 0,
+                            "语义错误：switch 语句中有多个 default 分支");
+                    }
+                    has_default = 1;
+                } else {
+                    // case 分支：检查值表达式类型
+                    CnType *case_type = infer_expr_type(scope, case_stmt->value, diagnostics);
+                    if (case_type && switch_type && !cn_type_compatible(case_type, switch_type)) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                            NULL, 0, 0,
+                            "语义错误：case 值类型与 switch 表达式类型不匹配");
+                    }
+
+                    // TODO: 检查 case 值是否为常量表达式
+                    // TODO: 检查是否有重复的 case 值
+                }
+
+                // 检查 case 体的语句块（在 switch 中 break 是允许的）
+                check_block_types(scope, case_stmt->body, diagnostics, true);
+            }
+            break;
+        }
         case CN_AST_STMT_BREAK:
         case CN_AST_STMT_CONTINUE:
             if (!in_loop) {

@@ -113,6 +113,15 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
         cn_frontend_ast_expr_free(stmt->as.for_stmt.update);
         cn_frontend_ast_block_free(stmt->as.for_stmt.body);
         break;
+    case CN_AST_STMT_SWITCH:
+        // 释放 switch 语句
+        cn_frontend_ast_expr_free(stmt->as.switch_stmt.expr);
+        for (size_t i = 0; i < stmt->as.switch_stmt.case_count; i++) {
+            cn_frontend_ast_expr_free(stmt->as.switch_stmt.cases[i].value);
+            cn_frontend_ast_block_free(stmt->as.switch_stmt.cases[i].body);
+        }
+        free(stmt->as.switch_stmt.cases);
+        break;
     case CN_AST_STMT_BREAK:
         // break 语句没有子节点
         break;

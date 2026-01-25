@@ -685,6 +685,124 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             }
             break;
         }
+        case CN_AST_STMT_SWITCH: {
+            // switch 语句的 IR 生成：转换为一系列 if-else 语句
+            CnAstSwitchStmt *switch_stmt = &stmt->as.switch_stmt;
+            CnIrBasicBlock *merge_block = cn_ir_basic_block_new(make_block_name(ctx, "switch_merge"));
+            CnIrBasicBlock *old_break_target = ctx->loop_exit;
+            
+            // 生成 switch 表达式
+            CnIrOperand switch_val = cn_ir_gen_expr(ctx, switch_stmt->expr);
+            
+            // 设置 break 跳转目标
+            ctx->loop_exit = merge_block;
+            
+            // 为每个 case 创建基本块
+            CnIrBasicBlock **case_blocks = (CnIrBasicBlock **)malloc(sizeof(CnIrBasicBlock *) * switch_stmt->case_count);
+            CnIrBasicBlock *default_block = NULL;
+            
+            // 首先创建所有 case 块
+            for (size_t i = 0; i < switch_stmt->case_count; i++) {
+                if (switch_stmt->cases[i].value == NULL) {
+                    // default 分支
+                    default_block = cn_ir_basic_block_new(make_block_name(ctx, "case_default"));
+                    case_blocks[i] = default_block;
+                } else {
+                    case_blocks[i] = cn_ir_basic_block_new(make_block_name(ctx, "case_body"));
+                }
+            }
+            
+            // 生成比较和跳转指令（在当前块中）
+            CnIrBasicBlock *next_check_block = NULL;
+            size_t non_default_case_index = 0;
+            for (size_t i = 0; i < switch_stmt->case_count; i++) {
+                if (switch_stmt->cases[i].value == NULL) {
+                    // default 分支：跳过比较
+                    continue;
+                }
+                
+                // 生成 case 值
+                CnIrOperand case_val = cn_ir_gen_expr(ctx, switch_stmt->cases[i].value);
+                
+                // 比较 switch_val == case_val
+                int cmp_reg = alloc_reg(ctx);
+                CnIrOperand cmp_result = cn_ir_op_reg(cmp_reg, cn_type_new_primitive(CN_TYPE_BOOL));
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_EQ, cmp_result, switch_val, case_val));
+                
+                non_default_case_index++;
+                // 创建下一个检查块
+                size_t non_default_count = 0;
+                for (size_t j = 0; j < switch_stmt->case_count; j++) {
+                    if (switch_stmt->cases[j].value != NULL) non_default_count++;
+                }
+                
+                if (non_default_case_index < non_default_count) {
+                    next_check_block = cn_ir_basic_block_new(make_block_name(ctx, "switch_check"));
+                    cn_ir_function_add_block(ctx->current_func, next_check_block);
+                } else {
+                    // 最后一个 case：如果没有 default，跳到 merge；否则跳到 default
+                    next_check_block = default_block ? default_block : merge_block;
+                    // 注意：如果是 default_block，不要在这里 add，后面会统一添加
+                    // 如果是 merge_block，也不要在这里 add，后面会添加
+                }
+                
+                // 条件跳转：如果匹配则跳到 case 体，否则跳到下一个检查
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_BRANCH, cn_ir_op_label(case_blocks[i]),
+                                         cmp_result, cn_ir_op_label(next_check_block)));
+                cn_ir_basic_block_connect(ctx->current_block, case_blocks[i]);
+                cn_ir_basic_block_connect(ctx->current_block, next_check_block);
+                
+                // 切换到下一个检查块
+                switch_to_block(ctx, next_check_block);
+            }
+            
+            // 如果当前在 next_check_block 且没有 default，跳到 merge
+            if (!default_block && next_check_block != merge_block) {
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(merge_block),
+                                         cn_ir_op_none(), cn_ir_op_none()));
+                cn_ir_basic_block_connect(ctx->current_block, merge_block);  // 设置控制流连接
+            }
+            
+            // 生成每个 case 的代码体
+            for (size_t i = 0; i < switch_stmt->case_count; i++) {
+                // 先添加块到函数，然后切换并生成代码
+                // 注意：需要检查块是否已经在链表中，避免重复添加
+                bool already_added = false;
+                CnIrBasicBlock *check_block = ctx->current_func->first_block;
+                while (check_block) {
+                    if (check_block == case_blocks[i]) {
+                        already_added = true;
+                        break;
+                    }
+                    check_block = check_block->next;
+                }
+                
+                if (!already_added) {
+                    cn_ir_function_add_block(ctx->current_func, case_blocks[i]);
+                }
+                
+                switch_to_block(ctx, case_blocks[i]);
+                cn_ir_gen_block(ctx, switch_stmt->cases[i].body);
+                
+                // 如果 case 体没有显式 break，自动添加跳转到 merge
+                // （C 语言 switch 有 fall-through，但这里我们默认每个 case 自动 break）
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(merge_block),
+                                         cn_ir_op_none(), cn_ir_op_none()));
+                cn_ir_basic_block_connect(ctx->current_block, merge_block);  // 设置控制流连接
+            }
+            
+            // 添加 merge_block 到函数，确保它在最后
+            cn_ir_function_add_block(ctx->current_func, merge_block);
+            
+            free(case_blocks);
+            
+            // 切换到 merge 块，确保后续代码在 merge 块中生成
+            switch_to_block(ctx, merge_block);
+            
+            // 恢复 break 目标
+            ctx->loop_exit = old_break_target;
+            break;
+        }
         case CN_AST_STMT_BLOCK: {
             cn_ir_gen_block(ctx, stmt->as.block);
             break;
