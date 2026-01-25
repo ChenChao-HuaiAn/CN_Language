@@ -6,6 +6,7 @@
 static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics);
 static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics, bool in_loop);
 static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics, bool in_loop);
+static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics);
 
 static void resolve_stmt_names(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics);
 static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics);
@@ -174,6 +175,16 @@ bool cn_sem_check_types(CnSemScope *global_scope,
 
         check_block_types(fn_scope, fn->body, diagnostics, false);
         
+        // 推断函数返回类型：遍历函数体中的return语句
+        CnType *inferred_return_type = infer_function_return_type(fn_scope, fn->body, diagnostics);
+        if (inferred_return_type) {
+            // 更新函数符号的返回类型
+            CnSemSymbol *fn_sym = cn_sem_scope_lookup(global_scope, fn->name, fn->name_length);
+            if (fn_sym && fn_sym->type && fn_sym->type->kind == CN_TYPE_FUNCTION) {
+                fn_sym->type->as.function.return_type = inferred_return_type;
+            }
+        }
+        
         cn_sem_scope_free(fn_scope);
     }
 
@@ -205,7 +216,21 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             if (sym) {
                 if (decl->declared_type) {
                     sym->type = decl->declared_type;
-                    if (init_type && !cn_type_compatible(init_type, sym->type)) {
+                    
+                    // 特殊处理：允许将函数名赋值给函数指针变量
+                    // 如果声明类型是函数指针，且初始化器类型是函数，则允许
+                    if (sym->type->kind == CN_TYPE_POINTER &&
+                        sym->type->as.pointer_to && sym->type->as.pointer_to->kind == CN_TYPE_FUNCTION &&
+                        init_type && init_type->kind == CN_TYPE_FUNCTION) {
+                        // 检查函数类型是否匹配
+                        if (!cn_type_equals(sym->type->as.pointer_to, init_type)) {
+                            cn_support_diag_semantic_error_generic(
+                                diagnostics,
+                                CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                                NULL, 0, 0,
+                                "语义错误：函数类型与函数指针类型不匹配");
+                        }
+                    } else if (init_type && !cn_type_compatible(init_type, sym->type)) {
                         // 报错：类型不匹配
                         cn_support_diag_semantic_error_type_mismatch(
                             diagnostics, NULL, 0, 0, "变量声明类型", "初始值类型");
@@ -327,9 +352,46 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 break;
             }
             
+            // 特殊处理：允许将函数名赋值给函数指针
+            // 如果 target 是函数指针类型，且 val 是函数类型，则允许赋值
+            if (target && target->kind == CN_TYPE_POINTER &&
+                target->as.pointer_to && target->as.pointer_to->kind == CN_TYPE_FUNCTION) {
+                // target是函数指针类型
+                if (val && val->kind == CN_TYPE_FUNCTION) {
+                    // 检查函数类型是否匹配
+                    if (cn_type_equals(target->as.pointer_to, val)) {
+                        expr->type = target;
+                        break;
+                    } else {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                            NULL, 0, 0,
+                            "语义错误：函数类型与函数指针类型不匹配");
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                        break;
+                    }
+                } else {
+                    // 赋值的不是函数类型,报错
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：不能将非函数类型赋值给函数指针");
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
+                }
+            }
+            
             if (target && val && cn_type_compatible(val, target)) {
                 expr->type = target;
             } else {
+                // 类型不匹配,报错
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                    NULL, 0, 0,
+                    "语义错误：赋值类型不匹配");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
             break;
@@ -401,6 +463,34 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 expr->type = cn_type_new_primitive(CN_TYPE_INT);
             }
+            // 处理函数指针调用：函数指针是指向函数类型的指针
+            else if (callee_type && callee_type->kind == CN_TYPE_POINTER && 
+                     callee_type->as.pointer_to && 
+                     callee_type->as.pointer_to->kind == CN_TYPE_FUNCTION) {
+                CnType *func_type = callee_type->as.pointer_to;
+                
+                // 检查参数个数
+                if (expr->as.call.argument_count != func_type->as.function.param_count) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：函数指针调用参数个数不匹配");
+                } else {
+                    // 逐个检查参数类型
+                    for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                        CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
+                        if (arg_type && !cn_type_compatible(arg_type, func_type->as.function.param_types[i])) {
+                            cn_support_diag_semantic_error_generic(
+                                diagnostics,
+                                CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
+                                NULL, 0, 0,
+                                "语义错误：函数指针调用参数类型不匹配");
+                        }
+                    }
+                }
+                expr->type = func_type->as.function.return_type;
+            }
             else if (callee_type && callee_type->kind == CN_TYPE_FUNCTION) {
                 // 检查参数个数
                 if (expr->as.call.argument_count != callee_type->as.function.param_count) {
@@ -426,7 +516,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             } else {
                 if (callee_type && callee_type->kind != CN_TYPE_UNKNOWN) {
                     cn_support_diag_semantic_error_type_mismatch(
-                        diagnostics, NULL, 0, 0, "函数类型", "非函数类型");
+                        diagnostics, NULL, 0, 0, "函数或函数指针类型", "非函数类型");
                 }
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
@@ -597,4 +687,83 @@ bool cn_sem_check_freestanding(CnAstProgram *program,
                                struct CnDiagnostics *diagnostics,
                                bool enable_check) {
     return cn_fs_check_program(program, diagnostics, enable_check);
+}
+
+// 推断函数返回类型：遍历函数体中的return语句
+static CnType *infer_return_from_stmt(CnAstStmt *stmt) {
+    if (!stmt) return NULL;
+    
+    switch (stmt->kind) {
+        case CN_AST_STMT_RETURN:
+            // 找到return语句,返回其表达式的类型
+            if (stmt->as.return_stmt.expr && stmt->as.return_stmt.expr->type) {
+                return stmt->as.return_stmt.expr->type;
+            }
+            return cn_type_new_primitive(CN_TYPE_VOID);
+        
+        case CN_AST_STMT_BLOCK:
+            // 遍历块中的所有语句
+            if (stmt->as.block) {
+                for (size_t i = 0; i < stmt->as.block->stmt_count; i++) {
+                    CnType *ret = infer_return_from_stmt(stmt->as.block->stmts[i]);
+                    if (ret) return ret;
+                }
+            }
+            break;
+        
+        case CN_AST_STMT_IF:
+            // 检查then分支
+            if (stmt->as.if_stmt.then_block) {
+                for (size_t i = 0; i < stmt->as.if_stmt.then_block->stmt_count; i++) {
+                    CnType *ret = infer_return_from_stmt(stmt->as.if_stmt.then_block->stmts[i]);
+                    if (ret) return ret;
+                }
+            }
+            // 检查else分支
+            if (stmt->as.if_stmt.else_block) {
+                for (size_t i = 0; i < stmt->as.if_stmt.else_block->stmt_count; i++) {
+                    CnType *ret = infer_return_from_stmt(stmt->as.if_stmt.else_block->stmts[i]);
+                    if (ret) return ret;
+                }
+            }
+            break;
+        
+        case CN_AST_STMT_WHILE:
+            if (stmt->as.while_stmt.body) {
+                for (size_t i = 0; i < stmt->as.while_stmt.body->stmt_count; i++) {
+                    CnType *ret = infer_return_from_stmt(stmt->as.while_stmt.body->stmts[i]);
+                    if (ret) return ret;
+                }
+            }
+            break;
+        
+        case CN_AST_STMT_FOR:
+            if (stmt->as.for_stmt.body) {
+                for (size_t i = 0; i < stmt->as.for_stmt.body->stmt_count; i++) {
+                    CnType *ret = infer_return_from_stmt(stmt->as.for_stmt.body->stmts[i]);
+                    if (ret) return ret;
+                }
+            }
+            break;
+        
+        default:
+            break;
+    }
+    
+    return NULL;
+}
+
+static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics) {
+    if (!block) return NULL;
+    
+    // 遍历函数体中的所有语句，查找return语句
+    for (size_t i = 0; i < block->stmt_count; i++) {
+        CnType *ret_type = infer_return_from_stmt(block->stmts[i]);
+        if (ret_type) {
+            return ret_type;
+        }
+    }
+    
+    // 如果没有找到return语句,返回int类型(默认)
+    return cn_type_new_primitive(CN_TYPE_INT);
 }

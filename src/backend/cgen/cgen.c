@@ -28,6 +28,33 @@ static const char *get_c_type_string(CnType *type) {
         case CN_TYPE_BOOL: return "_Bool";
         case CN_TYPE_STRING: return "char*";
         case CN_TYPE_POINTER: {
+            // 检查是否是函数指针类型
+            if (type->as.pointer_to && type->as.pointer_to->kind == CN_TYPE_FUNCTION) {
+                // 函数指针类型：返回类型(*)(param1_type, param2_type, ...)
+                static _Thread_local char buffer[512];
+                CnType *func_type = type->as.pointer_to;
+                
+                char params_str[256] = {0};
+                if (func_type->as.function.param_count == 0) {
+                    snprintf(params_str, sizeof(params_str), "void");
+                } else {
+                    size_t offset = 0;
+                    for (size_t i = 0; i < func_type->as.function.param_count; i++) {
+                        const char *param_type = get_c_type_string(func_type->as.function.param_types[i]);
+                        offset += snprintf(params_str + offset, sizeof(params_str) - offset, "%s", param_type);
+                        if (i < func_type->as.function.param_count - 1) {
+                            offset += snprintf(params_str + offset, sizeof(params_str) - offset, ", ");
+                        }
+                    }
+                }
+                
+                snprintf(buffer, sizeof(buffer), "%s(*)(%s)", 
+                         get_c_type_string(func_type->as.function.return_type), 
+                         params_str);
+                return buffer;
+            }
+            
+            /* 普通指针类型 */
             /* 性能优化：使用线程局部缓冲区避免静态缓冲区竞争 */
             static _Thread_local char buffer[256];
             snprintf(buffer, sizeof(buffer), "%s*", get_c_type_string(type->as.pointer_to));

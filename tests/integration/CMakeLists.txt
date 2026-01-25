@@ -95,6 +95,20 @@ add_test(NAME integration_compile_full_test
          COMMAND integration_compile_full_test $<TARGET_FILE:cnc>
          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+# 函数指针集成编译测试
+add_executable(integration_function_pointer_compile_test
+    compiler/function_pointer_compile_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+)
+target_include_directories(integration_function_pointer_compile_test PRIVATE ../../include)
+add_test(NAME integration_function_pointer_compile_test 
+         COMMAND integration_function_pointer_compile_test)
+set_tests_properties(integration_function_pointer_compile_test PROPERTIES LABELS "stage8;function_pointer;integration")
+
 # OS 集成测试
 add_executable(integration_os_test
     os/os_integration_test.c

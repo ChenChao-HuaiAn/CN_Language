@@ -263,6 +263,20 @@ add_test(NAME parser_enum_test
          COMMAND parser_enum_test)
 set_tests_properties(parser_enum_test PROPERTIES LABELS "stage8;enum;unit")
 
+# 函数指针 Parser 测试
+add_executable(parser_function_pointer_test
+    parser_function_pointer_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_function_pointer_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_function_pointer_test
+         COMMAND parser_function_pointer_test)
+set_tests_properties(parser_function_pointer_test PROPERTIES LABELS "stage8;function_pointer;unit")
+
 add_executable(semantic_check_test
     semantic_check_test.c
     ${SEMANTIC_TEST_DEPENDENCIES}
@@ -312,6 +326,24 @@ add_executable(semantics_pointer_test
 )
 target_include_directories(semantics_pointer_test PRIVATE ../../include)
 add_test(NAME semantics_pointer_test COMMAND semantics_pointer_test)
+
+# 函数指针语义分析测试
+add_executable(semantics_function_pointer_test
+    semantics/semantics_function_pointer_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_function_pointer_test PRIVATE ../../include)
+add_test(NAME semantics_function_pointer_test COMMAND semantics_function_pointer_test)
+set_tests_properties(semantics_function_pointer_test PROPERTIES LABELS "stage8;function_pointer;unit")
+
+# 函数指针错误场景测试
+add_executable(semantics_function_pointer_error_test
+    semantics/semantics_function_pointer_error_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+target_include_directories(semantics_function_pointer_error_test PRIVATE ../../include)
+add_test(NAME semantics_function_pointer_error_test COMMAND semantics_function_pointer_error_test)
+set_tests_properties(semantics_function_pointer_error_test PROPERTIES LABELS "stage8;function_pointer;error;unit")
 
 # Freestanding 模式检查测试
 add_executable(freestanding_check_test

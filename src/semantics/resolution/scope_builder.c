@@ -143,8 +143,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     param_types[j] = function_decl->parameters[j].declared_type;
                 }
             }
-            // 目前假设返回类型为 int，后续可以从 AST 获取
-            sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT),
+            // TODO: 当前返回类型需要通过return语句推断，暂时使用UNKNOWN
+            // 后续在类型检查阶段会通过分析return语句来补充返回类型
+            sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),
                                             param_types,
                                             function_decl->parameter_count);
         } else {

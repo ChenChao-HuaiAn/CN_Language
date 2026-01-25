@@ -487,6 +487,153 @@ static CnAstStmt *parse_statement(CnParser *parser)
             }
         }
 
+        // 检查函数指针声明：形如 整数(*回调)(整数, 整数)
+        // 此时 declared_type 是返回类型, parser->current 应该是 LPAREN
+        if (declared_type && parser->current.kind == CN_TOKEN_LPAREN) {
+            parser_advance(parser); // 跳过 '('
+            
+            // 期望函数指针名前有 '*'
+            if (parser->current.kind == CN_TOKEN_STAR) {
+                parser_advance(parser); // 跳过 '*'
+                
+                // 读取函数指针变量名
+                if (parser->current.kind != CN_TOKEN_IDENT) {
+                    parser->error_count++;
+                    if (parser->diagnostics) {
+                        cn_support_diagnostics_report(parser->diagnostics,
+                                                      CN_DIAG_SEVERITY_ERROR,
+                                                      CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                                      parser->lexer ? parser->lexer->filename : NULL,
+                                                      parser->current.line,
+                                                      parser->current.column,
+                                                      "语法错误：函数指针名称无效");
+                    }
+                    return NULL;
+                }
+                
+                var_name = parser->current.lexeme_begin;
+                var_name_length = parser->current.lexeme_length;
+                parser_advance(parser);
+                
+                // 期望 ')'
+                if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+                    return NULL;
+                }
+                
+                // 解析参数列表类型：'(' 类型1, 类型2, ... ')'
+                if (!parser_expect(parser, CN_TOKEN_LPAREN)) {
+                    return NULL;
+                }
+                
+                // 解析函数参数类型列表
+                size_t param_capacity = 4;
+                size_t param_count = 0;
+                CnType **param_types = (CnType **)malloc(sizeof(CnType*) * param_capacity);
+                if (!param_types) {
+                    return NULL;
+                }
+                
+                // 解析参数类型，允许空参数列表
+                if (parser->current.kind != CN_TOKEN_RPAREN) {
+                    do {
+                        CnType *param_type = NULL;
+                        
+                        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+                            param_type = cn_type_new_primitive(CN_TYPE_INT);
+                            parser_advance(parser);
+                            
+                            // 支持指针参数类型
+                            while (parser->current.kind == CN_TOKEN_STAR) {
+                                param_type = cn_type_new_pointer(param_type);
+                                parser_advance(parser);
+                            }
+                        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+                            param_type = cn_type_new_primitive(CN_TYPE_STRING);
+                            parser_advance(parser);
+                            
+                            while (parser->current.kind == CN_TOKEN_STAR) {
+                                param_type = cn_type_new_pointer(param_type);
+                                parser_advance(parser);
+                            }
+                        } else {
+                            parser->error_count++;
+                            if (parser->diagnostics) {
+                                cn_support_diagnostics_report(parser->diagnostics,
+                                                              CN_DIAG_SEVERITY_ERROR,
+                                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                              parser->lexer ? parser->lexer->filename : NULL,
+                                                              parser->current.line,
+                                                              parser->current.column,
+                                                              "语法错误：函数指针参数类型无效");
+                            }
+                            free(param_types);
+                            return NULL;
+                        }
+                        
+                        // 参数名称是可选的，跳过如果存在
+                        if (parser->current.kind == CN_TOKEN_IDENT) {
+                            parser_advance(parser);
+                        }
+                        
+                        // 扩容
+                        if (param_count >= param_capacity) {
+                            param_capacity *= 2;
+                            CnType **new_param_types = (CnType **)realloc(
+                                param_types, sizeof(CnType*) * param_capacity);
+                            if (!new_param_types) {
+                                free(param_types);
+                                return NULL;
+                            }
+                            param_types = new_param_types;
+                        }
+                        
+                        param_types[param_count++] = param_type;
+                        
+                        if (parser->current.kind == CN_TOKEN_COMMA) {
+                            parser_advance(parser);
+                        } else {
+                            break;
+                        }
+                    } while (parser->current.kind != CN_TOKEN_RPAREN &&
+                             parser->current.kind != CN_TOKEN_EOF);
+                }
+                
+                if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+                    free(param_types);
+                    return NULL;
+                }
+                
+                // 创建函数类型
+                CnType *func_type = cn_type_new_function(declared_type, param_types, param_count);
+                
+                // 函数指针是指向函数类型的指针
+                declared_type = cn_type_new_pointer(func_type);
+                
+                // 解析可选的初始化表达式
+                if (parser->current.kind == CN_TOKEN_EQUAL) {
+                    parser_advance(parser);
+                    initializer = parse_expression(parser);
+                }
+                
+                parser_expect(parser, CN_TOKEN_SEMICOLON);
+                
+                return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer);
+            }
+            
+            // 如果不是函数指针，恢复解析普通变量（这里简化处理，实际可能需要回溯）
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：期望函数指针声明或变量名");
+            }
+            return NULL;
+        }
+
         if (parser->current.kind != CN_TOKEN_IDENT) {
             parser->error_count++;
             if (parser->diagnostics) {
