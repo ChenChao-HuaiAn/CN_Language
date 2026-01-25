@@ -308,6 +308,10 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
         return CN_TOKEN_KEYWORD_MEMORY_SET;
     }
 
+    if (length == strlen("中断处理") && strncmp(begin, "中断处理", length) == 0) {
+        return CN_TOKEN_KEYWORD_INTERRUPT_HANDLER;
+    }
+
     if (length == strlen("与") && strncmp(begin, "与", length) == 0) {
         return CN_TOKEN_KEYWORD_AND;
     }

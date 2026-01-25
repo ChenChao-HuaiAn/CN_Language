@@ -21,6 +21,7 @@ static int is_reserved_keyword(CnTokenKind kind);
 
 static CnAstProgram *parse_program_internal(CnParser *parser);
 static CnAstFunctionDecl *parse_function_decl(CnParser *parser);
+static CnAstFunctionDecl *parse_interrupt_handler(CnParser *parser);
 static CnAstStmt *parse_struct_decl(CnParser *parser);
 static CnAstStmt *parse_enum_decl(CnParser *parser);
 static CnAstStmt *parse_module_decl(CnParser *parser);
@@ -299,6 +300,13 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_function(program, fn);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_INTERRUPT_HANDLER) {
+            // 解析中断处理函数
+            CnAstFunctionDecl *isr = parse_interrupt_handler(parser);
+            if (!isr) {
+                break;
+            }
+            program_add_function(program, isr);
         } else {
             // 遇到无法识别的token，跳过
             parser->error_count++;
@@ -350,6 +358,8 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
     fn->parameters = NULL;
     fn->parameter_count = 0;
     fn->body = NULL;
+    fn->is_interrupt_handler = 0;  // 普通函数
+    fn->interrupt_vector = 0;
 
     parser_advance(parser);
 
@@ -433,6 +443,106 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
     fn->body = body;
 
     return fn;
+}
+
+// 解析中断处理函数声明
+// 语法：中断处理 向量号 () { ... }
+static CnAstFunctionDecl *parse_interrupt_handler(CnParser *parser)
+{
+    CnAstFunctionDecl *isr;
+    CnAstBlockStmt *body;
+    uint32_t vector_num = 0;
+
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_INTERRUPT_HANDLER)) {
+        return NULL;
+    }
+
+    if (!parser->has_current) {
+        parser_advance(parser);
+    }
+
+    // 中断向量号必须是整数字面量
+    if (parser->current.kind != CN_TOKEN_INTEGER) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：中断向量号必须是整数字面量");
+        }
+        return NULL;
+    }
+
+    // 获取中断向量号
+    vector_num = (uint32_t)strtol(parser->current.lexeme_begin, NULL, 10);
+
+    // 验证向量号范围（基本检查）
+    if (vector_num >= 256) {  // 大多数架构中断向量号 < 256
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：中断向量号超出范围 (0-255)");
+        }
+        return NULL;
+    }
+
+    isr = (CnAstFunctionDecl *)malloc(sizeof(CnAstFunctionDecl));
+    if (!isr) {
+        return NULL;
+    }
+
+    // 中断处理函数的名称为 "__isr_<向量号>"
+    char *isr_name = (char *)malloc(32);
+    if (!isr_name) {
+        free(isr);
+        return NULL;
+    }
+    snprintf(isr_name, 32, "__isr_%u", vector_num);
+
+    isr->name = isr_name;
+    isr->name_length = strlen(isr_name);
+    isr->parameters = NULL;      // 中断处理函数不允许有参数
+    isr->parameter_count = 0;
+    isr->body = NULL;
+    isr->is_interrupt_handler = 1;  // 标记为中断处理函数
+    isr->interrupt_vector = vector_num;
+
+    parser_advance(parser);
+
+    // 中断处理函数不允许有参数，必须是 ()
+    parser_expect(parser, CN_TOKEN_LPAREN);
+    
+    if (parser->current.kind != CN_TOKEN_RPAREN) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：中断处理函数不允许有参数");
+        }
+        free((void*)isr->name);
+        free(isr);
+        return NULL;
+    }
+
+    parser_expect(parser, CN_TOKEN_RPAREN);
+
+    // 解析函数体
+    body = parse_block(parser);
+    isr->body = body;
+
+    return isr;
 }
 
 static CnAstBlockStmt *parse_block(CnParser *parser)

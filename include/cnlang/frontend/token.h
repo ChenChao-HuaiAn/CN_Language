@@ -62,6 +62,7 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_WRITE_MEMORY, // 写入内存
     CN_TOKEN_KEYWORD_MEMORY_COPY, // 内存复制
     CN_TOKEN_KEYWORD_MEMORY_SET, // 内存设置
+    CN_TOKEN_KEYWORD_INTERRUPT_HANDLER, // 中断处理
     CN_TOKEN_PLUS,             // 加 +
     CN_TOKEN_MINUS,            // 减 -
     CN_TOKEN_STAR,             // 乘 *

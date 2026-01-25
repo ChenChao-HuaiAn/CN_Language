@@ -4,6 +4,7 @@
 set(RUNTIME_CORE_SOURCES
     core/runtime.c
     core/freestanding_builtins.c
+    core/interrupt.c
 )
 
 set(RUNTIME_COLLECTIONS_SOURCES

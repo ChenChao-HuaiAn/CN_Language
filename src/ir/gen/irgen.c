@@ -876,6 +876,13 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     free(name);
     ctx->current_func = ir_func;
 
+    // 中断处理函数特殊处理：添加自动注册逻辑
+    if (func->is_interrupt_handler) {
+        // 在main函数中调用 cn_rt_interrupt_register 自动注册中断处理函数
+        // 这里只是生成 IR，实际注册逻辑在 C 代码生成阶段处理
+        // 标记 IR 函数的中断属性（需要扩展 CnIrFunction 结构）
+    }
+
     // 添加参数
     for (size_t i = 0; i < func->parameter_count; i++) {
         char *param_name = copy_name(func->parameters[i].name, func->parameters[i].name_length);
