@@ -197,3 +197,43 @@ int cn_rt_strncmp(const char* s1, const char* s2, size_t n) {
     
     return 0;
 }
+
+/**
+ * 字符串有限复制：复制至多 n 个字符
+ */
+char* cn_rt_strncpy(char* dest, const char* src, size_t n) {
+    if (dest == NULL || src == NULL) {
+        return dest;
+    }
+    
+    size_t i;
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        dest[i] = src[i];
+    }
+    
+    // 填充剩余空间为\0（如果src比n短）
+    for (; i < n; i++) {
+        dest[i] = '\0';
+    }
+    
+    return dest;
+}
+
+/**
+ * 字符串有限拼接：将 src 的至多 n 个字符拼接到 dest 末尾
+ */
+char* cn_rt_strncat(char* dest, const char* src, size_t n) {
+    if (dest == NULL || src == NULL) {
+        return dest;
+    }
+    
+    size_t dest_len = cn_rt_strlen(dest);
+    size_t i;
+    
+    for (i = 0; i < n && src[i] != '\0'; i++) {
+        dest[dest_len + i] = src[i];
+    }
+    dest[dest_len + i] = '\0';
+    
+    return dest;
+}

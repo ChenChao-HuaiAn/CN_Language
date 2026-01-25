@@ -713,3 +713,10 @@ target_link_libraries(runtime_sync_test PRIVATE cn_runtime)
 target_include_directories(runtime_sync_test PRIVATE ../../include)
 add_test(NAME runtime_sync_test COMMAND runtime_sync_test)
 set_tests_properties(runtime_sync_test PROPERTIES LABELS "stage8;sync;atomic;lock;runtime;unit")
+
+# 标准库中文接口测试
+add_executable(stdlib_test runtime/stdlib_test.c)
+target_link_libraries(stdlib_test PRIVATE cn_runtime)
+target_include_directories(stdlib_test PRIVATE ../../include)
+add_test(NAME stdlib_test COMMAND stdlib_test)
+set_tests_properties(stdlib_test PROPERTIES LABELS "stage8;stdlib;chinese;runtime;unit")
