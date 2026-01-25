@@ -377,6 +377,7 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             // 插入符号到当前作用域
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
+                sym->is_const = decl->is_const;
                 if (decl->declared_type) {
                     // 特殊处理：显式数组类型与数组字面量类型的统一
                     if (decl->declared_type->kind == CN_TYPE_ARRAY && init_type && init_type->kind == CN_TYPE_ARRAY) {
@@ -632,6 +633,21 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     "语义错误：赋值目标必须是变量或数组索引访问");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
+            }
+            
+            // 检查是否向常量变量赋值
+            if (target_expr->kind == CN_AST_EXPR_IDENTIFIER) {
+                CnAstIdentifierExpr *id = &target_expr->as.identifier;
+                CnSemSymbol *sym = cn_sem_scope_lookup(scope, id->name, id->name_length);
+                if (sym && sym->kind == CN_SEM_SYMBOL_VARIABLE && sym->is_const) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
+                        NULL, 0, 0,
+                        "语义错误：不能给常量变量赋值");
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
+                }
             }
             
             // 特殊处理：允许将函数名赋值给函数指针

@@ -243,6 +243,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             if (alias_sym) {
                 alias_sym->type = module_sym->type;
                 alias_sym->is_public = module_sym->is_public;
+                alias_sym->is_const = module_sym->is_const;
                 alias_sym->as.module_scope = module_sym->as.module_scope;
             }
             continue;  // 使用别名时不进行成员导入
@@ -273,6 +274,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         // 复制符号信息
                         new_sym->type = sym->type;
                         new_sym->is_public = sym->is_public;
+                        new_sym->is_const = sym->is_const;
                         new_sym->decl_scope = sym->decl_scope;
                         if (sym->kind == CN_SEM_SYMBOL_MODULE) {
                             new_sym->as.module_scope = sym->as.module_scope;
@@ -457,6 +459,7 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
             sym->type = var_decl->declared_type;
+            sym->is_const = var_decl->is_const;
             // 设置可见性（根据 AST 中的可见性标志）
             if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
                 sym->is_public = 1;  // 显式标记为公开
@@ -600,6 +603,7 @@ static void cn_sem_build_module_scope(CnSemScope *parent_scope,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
             sym->type = var_decl->declared_type;
+            sym->is_const = var_decl->is_const;
             // 设置可见性（模块成员）
             if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
                 sym->is_public = 1;  // 显式标记为公开

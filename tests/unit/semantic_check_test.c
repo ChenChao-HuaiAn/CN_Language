@@ -223,6 +223,78 @@ static void test_array_length_expression() {
     cn_support_diagnostics_free(&diagnostics);
 }
 
+// 测试常量变量的正常使用
+static void test_const_variable_ok() {
+    const char *source = "函数 主函数() { 常量 整数 a = 1; 整数 b = a; }";
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, strlen(source), "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    cn_frontend_parse_program(parser, &program);
+
+    CnSemScope *global_scope = cn_sem_build_scopes(program, &diagnostics);
+    cn_sem_resolve_names(global_scope, program, &diagnostics);
+    cn_sem_check_types(global_scope, program, &diagnostics);
+
+    if (cn_support_diagnostics_error_count(&diagnostics) == 0) {
+        printf("测试常量变量正常使用: 成功 (无语义错误)\n");
+    } else {
+        printf("测试常量变量正常使用: 失败 (检测到意外错误)\n");
+    }
+
+    cn_sem_scope_free(global_scope);
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+}
+
+// 测试对常量变量赋值应报错
+static void test_const_assignment_error() {
+    const char *source = "函数 主函数() { 常量 整数 a = 1; a = 2; }";
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, strlen(source), "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    cn_frontend_parse_program(parser, &program);
+
+    CnSemScope *global_scope = cn_sem_build_scopes(program, &diagnostics);
+    cn_sem_resolve_names(global_scope, program, &diagnostics);
+    cn_sem_check_types(global_scope, program, &diagnostics);
+
+    bool found = false;
+    for (size_t i = 0; i < diagnostics.count; i++) {
+        if (diagnostics.items[i].code == CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT) {
+            found = true;
+            break;
+        }
+    }
+
+    if (found) {
+        printf("测试常量变量赋值错误: 成功 (检测到错误)\n");
+    } else {
+        printf("测试常量变量赋值错误: 失败 (未检测到错误)\n");
+    }
+
+    cn_sem_scope_free(global_scope);
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+}
+
 int main() {
     test_duplicate_function();
     test_undefined_identifier();
@@ -230,5 +302,7 @@ int main() {
     test_func_call_arg_mismatch();
     test_string_variable_assignment();  // 新增测试
     test_array_length_expression();     // 新增测试
+    test_const_variable_ok();           // 常量变量正常使用
+    test_const_assignment_error();      // 常量变量赋值错误
     return 0;
 }

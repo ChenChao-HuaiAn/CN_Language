@@ -106,7 +106,7 @@ static int test_simple_expression(void)
 // 测试中文关键字识别
 static int test_chinese_keywords(void)
 {
-    const char *source = "函数 主程序 返回 变量 整数";
+    const char *source = "函数 主程序 返回 变量 整数 常量";
     size_t length = strlen(source);
     CnLexer lexer;
     CnToken token;
@@ -116,7 +116,7 @@ static int test_chinese_keywords(void)
     cn_frontend_lexer_init(&lexer, source, length, "<test-keywords>");
     cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
 
-    // 期望: KEYWORD_FN KEYWORD_MAIN KEYWORD_RETURN KEYWORD_VAR KEYWORD_INT EOF
+    // 期望: KEYWORD_FN KEYWORD_MAIN KEYWORD_RETURN KEYWORD_VAR KEYWORD_INT KEYWORD_CONST EOF
 
     // Token 1: 函数
     if (!cn_frontend_lexer_next_token(&lexer, &token)) {
@@ -178,7 +178,19 @@ static int test_chinese_keywords(void)
         return 1;
     }
 
-    // Token 6: EOF
+    // Token 6: 常量
+    if (!cn_frontend_lexer_next_token(&lexer, &token)) {
+        fprintf(stderr, "lexer_token_test: 无法获取 token (常量)\n");
+        cn_support_diagnostics_free(&diagnostics);
+        return 1;
+    }
+    if (token.kind != CN_TOKEN_KEYWORD_CONST) {
+        fprintf(stderr, "lexer_token_test: '常量' 应为 KEYWORD_CONST，实际为 %d\n", token.kind);
+        cn_support_diagnostics_free(&diagnostics);
+        return 1;
+    }
+
+    // Token 7: EOF
     if (!cn_frontend_lexer_next_token(&lexer, &token)) {
         fprintf(stderr, "lexer_token_test: 无法获取 token (EOF)\n");
         cn_support_diagnostics_free(&diagnostics);

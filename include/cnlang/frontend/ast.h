@@ -105,6 +105,7 @@ typedef struct CnAstVarDecl {
     struct CnType *declared_type;  // 显式声明的类型，如果是"变量"则为 NULL 或特定类型
     struct CnAstExpr *initializer; // 可以为 NULL
     CnVisibility visibility;       // 可见性（用于模块成员）
+    int is_const;                  // 是否为常量声明（使用“常量”关键字）
 } CnAstVarDecl;
 
 // 表达式语句

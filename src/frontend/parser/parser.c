@@ -189,7 +189,7 @@ static int is_reserved_keyword(CnTokenKind kind)
            kind == CN_TOKEN_KEYWORD_INTERFACE ||
            kind == CN_TOKEN_KEYWORD_TEMPLATE ||
            kind == CN_TOKEN_KEYWORD_NAMESPACE ||
-           kind == CN_TOKEN_KEYWORD_CONST ||
+           /* 注意："常量" 关键字已在当前版本实现，不再视为预留关键字 */
            kind == CN_TOKEN_KEYWORD_STATIC ||
            kind == CN_TOKEN_KEYWORD_PUBLIC ||
            kind == CN_TOKEN_KEYWORD_PRIVATE ||
@@ -211,8 +211,6 @@ static const char* get_reserved_keyword_error_msg(CnTokenKind kind)
         return "语法错误：关键字 '模板' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_NAMESPACE:
         return "语法错误：关键字 '命名空间' 为预留特性，当前版本暂不支持";
-    case CN_TOKEN_KEYWORD_CONST:
-        return "语法错误：关键字 '常量' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_STATIC:
         return "语法错误：关键字 '静态' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_PUBLIC:
@@ -831,7 +829,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return make_switch_stmt(switch_expr, cases, case_count);
     }
 
-    if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
+    if (parser->current.kind == CN_TOKEN_KEYWORD_CONST ||
+        parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
@@ -842,9 +841,26 @@ static CnAstStmt *parse_statement(CnParser *parser)
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
         CnType *declared_type = NULL;
+        int is_const = 0;
 
-        // 处理 '变量' 关键字：无显式类型
-        if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+        // 处理 '常量' 关键字：常量变量声明
+        if (parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
+            is_const = 1;
+            parser_advance(parser);
+
+            // 支持：常量 变量 a = 1; 或 常量 整数 a = 1;
+            if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+                parser_advance(parser);
+                declared_type = NULL; // 后续通过类型推断
+            } else {
+                // 使用统一的 parse_type 解析类型
+                declared_type = parse_type(parser);
+                if (!declared_type) {
+                    return NULL;
+                }
+            }
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+            // 处理 '变量' 关键字：无显式类型
             parser_advance(parser);
             declared_type = NULL; // 后续通过类型推断
         } else {
@@ -968,7 +984,11 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 
                 parser_expect(parser, CN_TOKEN_SEMICOLON);
                 
-                return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
+                CnAstStmt *stmt = make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
+                if (stmt && is_const) {
+                    stmt->as.var_decl.is_const = 1;
+                }
+                return stmt;
             }
             
             // 如果不是函数指针，恢复解析普通变量（这里简化处理，实际可能需要回溯）
@@ -1010,7 +1030,11 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         parser_expect(parser, CN_TOKEN_SEMICOLON);
 
-        return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
+        CnAstStmt *stmt = make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
+        if (stmt && is_const) {
+            stmt->as.var_decl.is_const = 1;
+        }
+        return stmt;
     }
 
     expr = parse_expression(parser);
@@ -2106,6 +2130,7 @@ static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnTyp
     stmt->as.var_decl.declared_type = declared_type;
     stmt->as.var_decl.initializer = initializer;
     stmt->as.var_decl.visibility = visibility;
+    stmt->as.var_decl.is_const = 0; // 默认非常量，具体由解析器在需要时设置
     return stmt;
 }
 
