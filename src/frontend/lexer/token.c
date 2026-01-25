@@ -145,6 +145,8 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "COMMA";
     case CN_TOKEN_DOT:
         return "DOT";
+    case CN_TOKEN_COLON:
+        return "COLON";
     case CN_TOKEN_ARROW:
         return "ARROW";
     case CN_TOKEN_EOF:

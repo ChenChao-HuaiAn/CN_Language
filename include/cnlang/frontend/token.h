@@ -78,6 +78,7 @@ typedef enum CnTokenKind {
     CN_TOKEN_SEMICOLON,        // 分号 ;
     CN_TOKEN_COMMA,            // 逗号 ,
     CN_TOKEN_DOT,              // 点 .
+    CN_TOKEN_COLON,            // 冒号 :
     CN_TOKEN_ARROW,            // 箭头 ->
     CN_TOKEN_EOF,              // 文件结束
     

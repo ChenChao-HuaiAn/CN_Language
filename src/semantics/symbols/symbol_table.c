@@ -108,6 +108,7 @@ CnSemSymbol *cn_sem_scope_insert_symbol(CnSemScope *scope,
     node->symbol.kind = kind;
     node->symbol.decl_scope = scope;
     node->symbol.type = NULL;
+    node->symbol.is_public = 0; // 默认私有（模块成员需要显式标记为公开）
 
     node->next = scope->symbols;
     scope->symbols = node;

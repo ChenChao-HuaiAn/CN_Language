@@ -521,6 +521,10 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             advance(lexer);
             out_token->kind = CN_TOKEN_DOT;
             break;
+        case ':':
+            advance(lexer);
+            out_token->kind = CN_TOKEN_COLON;
+            break;
         default:
             report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_CHAR, "非法字符");
             advance(lexer);

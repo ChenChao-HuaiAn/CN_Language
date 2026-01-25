@@ -911,6 +911,17 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                             "语义错误：模块中不存在该成员");
                         expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                     } else {
+                        // 检查可见性：私有成员只能在模块内访问
+                        // 对于模块外部的访问（通过 模块名.成员名 的方式），
+                        // 检查成员是否为公开
+                        if (member_sym->is_public == 0) {
+                            // 私有成员，报错
+                            cn_support_diag_semantic_error_generic(
+                                diagnostics,
+                                CN_DIAG_CODE_SEM_ACCESS_DENIED,
+                                NULL, 0, 0,
+                                "语义错误：不能访问模块的私有成员");
+                        }
                         // 模块成员访问的类型是成员的类型
                         expr->type = member_sym->type;
                         // 设置对象表达式的类型（标记为 VOID，表示模块）

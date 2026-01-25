@@ -61,7 +61,7 @@ static CnAstStmt *make_for_stmt(CnAstStmt *init, CnAstExpr *condition, CnAstExpr
 static CnAstStmt *make_switch_stmt(CnAstExpr *expr, CnAstSwitchCase *cases, size_t case_count);
 static CnAstStmt *make_break_stmt(void);
 static CnAstStmt *make_continue_stmt(void);
-static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer);
+static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer, CnVisibility visibility);
 static CnAstStmt *make_struct_decl_stmt(const char *name, size_t name_length, CnAstStructField *fields, size_t field_count);
 static CnAstStmt *make_enum_decl_stmt(const char *name, size_t name_length, CnAstEnumMember *members, size_t member_count);
 static CnAstBlockStmt *make_block(void);
@@ -848,7 +848,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 
                 parser_expect(parser, CN_TOKEN_SEMICOLON);
                 
-                return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer);
+                return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
             }
             
             // 如果不是函数指针，恢复解析普通变量（这里简化处理，实际可能需要回溯）
@@ -890,7 +890,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         parser_expect(parser, CN_TOKEN_SEMICOLON);
 
-        return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer);
+        return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
     }
 
     expr = parse_expression(parser);
@@ -1650,7 +1650,7 @@ static CnAstStmt *make_switch_stmt(CnAstExpr *expr, CnAstSwitchCase *cases, size
     return stmt;
 }
 
-static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer)
+static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnType *declared_type, CnAstExpr *initializer, CnVisibility visibility)
 {
     CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
     if (!stmt) {
@@ -1662,6 +1662,7 @@ static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnTyp
     stmt->as.var_decl.name_length = name_length;
     stmt->as.var_decl.declared_type = declared_type;
     stmt->as.var_decl.initializer = initializer;
+    stmt->as.var_decl.visibility = visibility;
     return stmt;
 }
 
@@ -2182,8 +2183,50 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
         return NULL;
     }
 
+    // 当前可见性状态（块级），默认为私有
+    CnVisibility current_visibility = CN_VISIBILITY_PRIVATE;
+
     while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
         CnAstStmt *stmt = NULL;
+        
+        // 检查是否遇到可见性修饰符（块级切换）
+        if (parser->current.kind == CN_TOKEN_KEYWORD_PUBLIC) {
+            current_visibility = CN_VISIBILITY_PUBLIC;  // 切换到公开块
+            parser_advance(parser);
+            // 期望冒号
+            if (!parser_expect(parser, CN_TOKEN_COLON)) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：期望 ':' 在 '公开' 之后");
+                }
+                continue;
+            }
+            continue;  // 继续处理下一个成员
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_PRIVATE) {
+            current_visibility = CN_VISIBILITY_PRIVATE;  // 切换到私有块
+            parser_advance(parser);
+            // 期望冒号
+            if (!parser_expect(parser, CN_TOKEN_COLON)) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：期望 ':' 在 '私有' 之后");
+                }
+                continue;
+            }
+            continue;  // 继续处理下一个成员
+        }
         
         // 模块内可以包含函数、变量声明等
         if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
@@ -2238,6 +2281,10 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
                 free(functions);
                 free(stmts);
                 return NULL;
+            }
+            // 将当前可见性状态应用到变量声明
+            if (stmt->kind == CN_AST_STMT_VAR_DECL) {
+                stmt->as.var_decl.visibility = current_visibility;
             }
         } else {
             // 不支持的语句类型

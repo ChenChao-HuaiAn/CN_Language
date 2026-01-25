@@ -77,12 +77,20 @@ struct CnAstExpr;
 struct CnAstStmt;
 struct CnAstBlockStmt;
 
+// 可见性枚举
+typedef enum CnVisibility {
+    CN_VISIBILITY_DEFAULT,  // 默认可见性（用于非模块成员）
+    CN_VISIBILITY_PUBLIC,   // 公开
+    CN_VISIBILITY_PRIVATE   // 私有
+} CnVisibility;
+
 // 变量声明
 typedef struct CnAstVarDecl {
     const char *name;
     size_t name_length;
-    struct CnType *declared_type;  // 显式声明的类型，如果是“变量”则为 NULL 或特定类型
+    struct CnType *declared_type;  // 显式声明的类型，如果是"变量"则为 NULL 或特定类型
     struct CnAstExpr *initializer; // 可以为 NULL
+    CnVisibility visibility;       // 可见性（用于模块成员）
 } CnAstVarDecl;
 
 // 表达式语句

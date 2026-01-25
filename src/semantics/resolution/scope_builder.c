@@ -243,6 +243,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                 if (new_sym) {
                     // 复制符号信息
                     new_sym->type = sym->type;
+                    new_sym->is_public = sym->is_public;  // 复制可见性
                     // 保留原始声明作用域（模块作用域），而不是将其设置为全局作用域
                     // 这样 IR 生成器可以通过 decl_scope 判断该符号来自模块
                     new_sym->decl_scope = sym->decl_scope;
@@ -371,6 +372,13 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
             sym->type = var_decl->declared_type;
+            // 设置可见性（根据 AST 中的可见性标志）
+            if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
+                sym->is_public = 1;  // 显式标记为公开
+            } else if (var_decl->visibility == CN_VISIBILITY_PRIVATE) {
+                sym->is_public = 0;  // 显式标记为私有
+            }
+            // CN_VISIBILITY_DEFAULT 保持默认值（已在 symbol_table.c 中设置为 0，即私有）
         } else {
             // 报告重复定义
             cn_support_diag_semantic_error_duplicate_symbol(
@@ -507,6 +515,13 @@ static void cn_sem_build_module_scope(CnSemScope *parent_scope,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
             sym->type = var_decl->declared_type;
+            // 设置可见性（模块成员）
+            if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
+                sym->is_public = 1;  // 显式标记为公开
+            } else if (var_decl->visibility == CN_VISIBILITY_PRIVATE) {
+                sym->is_public = 0;  // 显式标记为私有
+            }
+            // CN_VISIBILITY_DEFAULT 保持默认值（已在 symbol_table.c 中设置为 0，即私有）
         } else {
             cn_support_diag_semantic_error_duplicate_symbol(
                 diagnostics, NULL, 0, 0, var_decl->name);
