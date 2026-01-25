@@ -6,6 +6,8 @@
 #include <string.h>
 #include <assert.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <sys/mman.h>
 
 /* 性能优化：输出缓冲区大小 */
 #define CGEN_BUFFER_SIZE 8192
@@ -77,6 +79,10 @@ static const char *get_c_type_string(CnType *type) {
                      (int)type->as.enum_type.name_length, 
                      type->as.enum_type.name);
             return buffer;
+        }
+        case CN_TYPE_MEMORY_ADDRESS: {
+            /* 内存地址类型：对应 uintptr_t */
+            return "uintptr_t";
         }
         default: return "int";
     }
@@ -215,6 +221,62 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                 default: break;
             }
             cn_cgen_expr_simple(ctx, expr->as.unary.operand);
+            break;
+        case CN_AST_EXPR_MEMORY_READ:
+            // 读取内存: 读取内存(地址) -> *(uintptr_t*)addr
+            fprintf(ctx->output_file, "*(uintptr_t*)");
+            cn_cgen_expr_simple(ctx, expr->as.memory_read.address);
+            break;
+        case CN_AST_EXPR_MEMORY_WRITE:
+            // 写入内存: 写入内存(地址, 值) -> *(uintptr_t*)addr = value
+            fprintf(ctx->output_file, "*(uintptr_t*)");
+            cn_cgen_expr_simple(ctx, expr->as.memory_write.address);
+            fprintf(ctx->output_file, " = ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_write.value);
+            break;
+        case CN_AST_EXPR_MEMORY_COPY:
+            // 内存复制: 内存复制(目标, 源, 大小) -> memcpy(dest, src, size)
+            fprintf(ctx->output_file, "memcpy(");
+            cn_cgen_expr_simple(ctx, expr->as.memory_copy.dest);
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_copy.src);
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_copy.size);
+            fprintf(ctx->output_file, ")");
+            break;
+        case CN_AST_EXPR_MEMORY_SET:
+            // 内存设置: 内存设置(地址, 值, 大小) -> memset(addr, value, size)
+            fprintf(ctx->output_file, "memset(");
+            cn_cgen_expr_simple(ctx, expr->as.memory_set.address);
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_set.value);
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_set.size);
+            fprintf(ctx->output_file, ")");
+            break;
+        case CN_AST_EXPR_MEMORY_MAP:
+            // 内存映射: 映射内存(地址, 大小, 保护, 标志) -> mmap(addr, size, prot, flags, -1, 0)
+            fprintf(ctx->output_file, "mmap(");
+            if (expr->as.memory_map.address) {
+                cn_cgen_expr_simple(ctx, expr->as.memory_map.address);
+            } else {
+                fprintf(ctx->output_file, "NULL");
+            }
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_map.size);
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_map.prot);
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_map.flags);
+            fprintf(ctx->output_file, ", -1, 0)");
+            break;
+        case CN_AST_EXPR_MEMORY_UNMAP:
+            // 解除内存映射: 解除映射(地址, 大小) -> munmap(addr, size)
+            fprintf(ctx->output_file, "munmap(");
+            cn_cgen_expr_simple(ctx, expr->as.memory_unmap.address);
+            fprintf(ctx->output_file, ", ");
+            cn_cgen_expr_simple(ctx, expr->as.memory_unmap.size);
+            fprintf(ctx->output_file, ")");
             break;
         default:
             fprintf(ctx->output_file, "0"); // 不支持的表达式，用0作为默认值

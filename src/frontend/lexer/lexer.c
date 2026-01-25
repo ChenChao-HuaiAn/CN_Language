@@ -276,6 +276,34 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
         return CN_TOKEN_KEYWORD_ABSTRACT;
     }
 
+    if (length == strlen("内存地址") && strncmp(begin, "内存地址", length) == 0) {
+        return CN_TOKEN_KEYWORD_MEMORY_ADDRESS;
+    }
+
+    if (length == strlen("映射内存") && strncmp(begin, "映射内存", length) == 0) {
+        return CN_TOKEN_KEYWORD_MAP_MEMORY;
+    }
+
+    if (length == strlen("解除映射") && strncmp(begin, "解除映射", length) == 0) {
+        return CN_TOKEN_KEYWORD_UNMAP_MEMORY;
+    }
+
+    if (length == strlen("读取内存") && strncmp(begin, "读取内存", length) == 0) {
+        return CN_TOKEN_KEYWORD_READ_MEMORY;
+    }
+
+    if (length == strlen("写入内存") && strncmp(begin, "写入内存", length) == 0) {
+        return CN_TOKEN_KEYWORD_WRITE_MEMORY;
+    }
+
+    if (length == strlen("内存复制") && strncmp(begin, "内存复制", length) == 0) {
+        return CN_TOKEN_KEYWORD_MEMORY_COPY;
+    }
+
+    if (length == strlen("内存设置") && strncmp(begin, "内存设置", length) == 0) {
+        return CN_TOKEN_KEYWORD_MEMORY_SET;
+    }
+
     if (length == strlen("与") && strncmp(begin, "与", length) == 0) {
         return CN_TOKEN_KEYWORD_AND;
     }

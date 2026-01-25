@@ -63,6 +63,39 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
         }
         free(expr->as.struct_lit.fields);
         break;
+    case CN_AST_EXPR_MEMORY_READ:
+        // 释放内存读取表达式
+        cn_frontend_ast_expr_free(expr->as.memory_read.address);
+        break;
+    case CN_AST_EXPR_MEMORY_WRITE:
+        // 释放内存写入表达式
+        cn_frontend_ast_expr_free(expr->as.memory_write.address);
+        cn_frontend_ast_expr_free(expr->as.memory_write.value);
+        break;
+    case CN_AST_EXPR_MEMORY_COPY:
+        // 释放内存复制表达式
+        cn_frontend_ast_expr_free(expr->as.memory_copy.dest);
+        cn_frontend_ast_expr_free(expr->as.memory_copy.src);
+        cn_frontend_ast_expr_free(expr->as.memory_copy.size);
+        break;
+    case CN_AST_EXPR_MEMORY_SET:
+        // 释放内存设置表达式
+        cn_frontend_ast_expr_free(expr->as.memory_set.address);
+        cn_frontend_ast_expr_free(expr->as.memory_set.value);
+        cn_frontend_ast_expr_free(expr->as.memory_set.size);
+        break;
+    case CN_AST_EXPR_MEMORY_MAP:
+        // 释放内存映射表达式
+        cn_frontend_ast_expr_free(expr->as.memory_map.address);
+        cn_frontend_ast_expr_free(expr->as.memory_map.size);
+        cn_frontend_ast_expr_free(expr->as.memory_map.prot);
+        cn_frontend_ast_expr_free(expr->as.memory_map.flags);
+        break;
+    case CN_AST_EXPR_MEMORY_UNMAP:
+        // 释放解除内存映射表达式
+        cn_frontend_ast_expr_free(expr->as.memory_unmap.address);
+        cn_frontend_ast_expr_free(expr->as.memory_unmap.size);
+        break;
     }
 
     free(expr);

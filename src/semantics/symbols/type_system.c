@@ -58,6 +58,13 @@ CnType *cn_type_new_enum(const char *name, size_t name_length) {
     return type;
 }
 
+CnType *cn_type_new_memory_address(void) {
+    CnType *type = (CnType *)malloc(sizeof(CnType));
+    if (!type) return NULL;
+    type->kind = CN_TYPE_MEMORY_ADDRESS;
+    return type;
+}
+
 bool cn_type_equals(CnType *a, CnType *b) {
     if (a == b) return true;
     if (!a || !b) return false;

@@ -53,6 +53,12 @@ static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count)
 static CnAstExpr *make_index(CnAstExpr *array, CnAstExpr *index);
 static CnAstExpr *make_member_access(CnAstExpr *object, const char *member_name, size_t member_name_length, int is_arrow);
 static CnAstExpr *make_struct_literal(const char *struct_name, size_t struct_name_length, CnAstStructFieldInit *fields, size_t field_count);
+static CnAstExpr *make_memory_read(CnAstExpr *address);
+static CnAstExpr *make_memory_write(CnAstExpr *address, CnAstExpr *value);
+static CnAstExpr *make_memory_copy(CnAstExpr *dest, CnAstExpr *src, CnAstExpr *size);
+static CnAstExpr *make_memory_set(CnAstExpr *address, CnAstExpr *value, CnAstExpr *size);
+static CnAstExpr *make_memory_map(CnAstExpr *address, CnAstExpr *size, CnAstExpr *prot, CnAstExpr *flags);
+static CnAstExpr *make_memory_unmap(CnAstExpr *address, CnAstExpr *size);
 static CnAstStmt *make_expr_stmt(CnAstExpr *expr);
 static CnAstStmt *make_return_stmt(CnAstExpr *expr);
 static CnAstStmt *make_if_stmt(CnAstExpr *condition, CnAstBlockStmt *then_block, CnAstBlockStmt *else_block);
@@ -1224,6 +1230,9 @@ static CnType *parse_type(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
         type = cn_type_new_primitive(CN_TYPE_STRING);
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_ADDRESS) {
+        type = cn_type_new_memory_address();
+        parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
         // 数组类型：例如 "数组 整数" 或 "数组 小数"
         parser_advance(parser);
@@ -1311,6 +1320,165 @@ static CnAstExpr *parse_factor(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
         expr = make_identifier(parser->current.lexeme_begin, parser->current.lexeme_length);
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_READ_MEMORY ||
+               parser->current.kind == CN_TOKEN_KEYWORD_WRITE_MEMORY ||
+               parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_COPY ||
+               parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_SET ||
+               parser->current.kind == CN_TOKEN_KEYWORD_MAP_MEMORY ||
+               parser->current.kind == CN_TOKEN_KEYWORD_UNMAP_MEMORY) {
+        // 解析内存访问内置函数
+        CnTokenKind kind = parser->current.kind;
+        parser_advance(parser);
+        
+        if (!parser_expect(parser, CN_TOKEN_LPAREN)) {
+            return NULL;
+        }
+        
+        CnAstExpr *result = NULL;
+        
+        if (kind == CN_TOKEN_KEYWORD_READ_MEMORY) {
+            // 读取内存: 读取内存(地址)
+            CnAstExpr *address = parse_expression(parser);
+            if (!address) {
+                return NULL;
+            }
+            result = make_memory_read(address);
+        } else if (kind == CN_TOKEN_KEYWORD_WRITE_MEMORY) {
+            // 写入内存: 写入内存(地址, 值)
+            CnAstExpr *address = parse_expression(parser);
+            if (!address) {
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            CnAstExpr *value = parse_expression(parser);
+            if (!value) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            result = make_memory_write(address, value);
+        } else if (kind == CN_TOKEN_KEYWORD_MEMORY_COPY) {
+            // 内存复制: 内存复制(目标, 源, 大小)
+            CnAstExpr *dest = parse_expression(parser);
+            if (!dest) {
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(dest);
+                return NULL;
+            }
+            CnAstExpr *src = parse_expression(parser);
+            if (!src) {
+                cn_frontend_ast_expr_free(dest);
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(dest);
+                cn_frontend_ast_expr_free(src);
+                return NULL;
+            }
+            CnAstExpr *size = parse_expression(parser);
+            if (!size) {
+                cn_frontend_ast_expr_free(dest);
+                cn_frontend_ast_expr_free(src);
+                return NULL;
+            }
+            result = make_memory_copy(dest, src, size);
+        } else if (kind == CN_TOKEN_KEYWORD_MEMORY_SET) {
+            // 内存设置: 内存设置(地址, 值, 大小)
+            CnAstExpr *address = parse_expression(parser);
+            if (!address) {
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            CnAstExpr *value = parse_expression(parser);
+            if (!value) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(address);
+                cn_frontend_ast_expr_free(value);
+                return NULL;
+            }
+            CnAstExpr *size = parse_expression(parser);
+            if (!size) {
+                cn_frontend_ast_expr_free(address);
+                cn_frontend_ast_expr_free(value);
+                return NULL;
+            }
+            result = make_memory_set(address, value, size);
+        } else if (kind == CN_TOKEN_KEYWORD_MAP_MEMORY) {
+            // 内存映射: 映射内存(地址, 大小, 保护, 标志)
+            CnAstExpr *address = parse_expression(parser);
+            if (!address) {
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            CnAstExpr *size = parse_expression(parser);
+            if (!size) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(address);
+                cn_frontend_ast_expr_free(size);
+                return NULL;
+            }
+            CnAstExpr *prot = parse_expression(parser);
+            if (!prot) {
+                cn_frontend_ast_expr_free(address);
+                cn_frontend_ast_expr_free(size);
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(address);
+                cn_frontend_ast_expr_free(size);
+                cn_frontend_ast_expr_free(prot);
+                return NULL;
+            }
+            CnAstExpr *flags = parse_expression(parser);
+            if (!flags) {
+                cn_frontend_ast_expr_free(address);
+                cn_frontend_ast_expr_free(size);
+                cn_frontend_ast_expr_free(prot);
+                return NULL;
+            }
+            result = make_memory_map(address, size, prot, flags);
+        } else if (kind == CN_TOKEN_KEYWORD_UNMAP_MEMORY) {
+            // 解除内存映射: 解除映射(地址, 大小)
+            CnAstExpr *address = parse_expression(parser);
+            if (!address) {
+                return NULL;
+            }
+            if (!parser_expect(parser, CN_TOKEN_COMMA)) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            CnAstExpr *size = parse_expression(parser);
+            if (!size) {
+                cn_frontend_ast_expr_free(address);
+                return NULL;
+            }
+            result = make_memory_unmap(address, size);
+        }
+        
+        if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+            if (result) {
+                cn_frontend_ast_expr_free(result);
+            }
+            return NULL;
+        }
+        
+        expr = result;
     } else if (parser->current.kind == CN_TOKEN_LPAREN) {
         parser_advance(parser);
         expr = parse_expression(parser);
@@ -2132,6 +2300,87 @@ static CnAstExpr *make_struct_literal(const char *struct_name, size_t struct_nam
     expr->as.struct_lit.struct_name_length = struct_name_length;
     expr->as.struct_lit.fields = fields;
     expr->as.struct_lit.field_count = field_count;
+    return expr;
+}
+
+static CnAstExpr *make_memory_read(CnAstExpr *address)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+    expr->kind = CN_AST_EXPR_MEMORY_READ;
+    expr->type = NULL;
+    expr->as.memory_read.address = address;
+    return expr;
+}
+
+static CnAstExpr *make_memory_write(CnAstExpr *address, CnAstExpr *value)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+    expr->kind = CN_AST_EXPR_MEMORY_WRITE;
+    expr->type = NULL;
+    expr->as.memory_write.address = address;
+    expr->as.memory_write.value = value;
+    return expr;
+}
+
+static CnAstExpr *make_memory_copy(CnAstExpr *dest, CnAstExpr *src, CnAstExpr *size)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+    expr->kind = CN_AST_EXPR_MEMORY_COPY;
+    expr->type = NULL;
+    expr->as.memory_copy.dest = dest;
+    expr->as.memory_copy.src = src;
+    expr->as.memory_copy.size = size;
+    return expr;
+}
+
+static CnAstExpr *make_memory_set(CnAstExpr *address, CnAstExpr *value, CnAstExpr *size)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+    expr->kind = CN_AST_EXPR_MEMORY_SET;
+    expr->type = NULL;
+    expr->as.memory_set.address = address;
+    expr->as.memory_set.value = value;
+    expr->as.memory_set.size = size;
+    return expr;
+}
+
+static CnAstExpr *make_memory_map(CnAstExpr *address, CnAstExpr *size, CnAstExpr *prot, CnAstExpr *flags)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+    expr->kind = CN_AST_EXPR_MEMORY_MAP;
+    expr->type = NULL;
+    expr->as.memory_map.address = address;
+    expr->as.memory_map.size = size;
+    expr->as.memory_map.prot = prot;
+    expr->as.memory_map.flags = flags;
+    return expr;
+}
+
+static CnAstExpr *make_memory_unmap(CnAstExpr *address, CnAstExpr *size)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+    expr->kind = CN_AST_EXPR_MEMORY_UNMAP;
+    expr->type = NULL;
+    expr->as.memory_unmap.address = address;
+    expr->as.memory_unmap.size = size;
     return expr;
 }
 

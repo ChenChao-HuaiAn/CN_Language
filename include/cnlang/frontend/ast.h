@@ -22,7 +22,13 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_ARRAY_LITERAL,  // 数组字面量
     CN_AST_EXPR_INDEX,          // 数组索引访问 arr[index]
     CN_AST_EXPR_MEMBER_ACCESS,  // 结构体成员访问 obj.member 或 ptr->member
-    CN_AST_EXPR_STRUCT_LITERAL  // 结构体字面量
+    CN_AST_EXPR_STRUCT_LITERAL, // 结构体字面量
+    CN_AST_EXPR_MEMORY_READ,    // 读取内存 read_memory(addr)
+    CN_AST_EXPR_MEMORY_WRITE,   // 写入内存 write_memory(addr, value)
+    CN_AST_EXPR_MEMORY_COPY,    // 内存复制 memory_copy(dest, src, size)
+    CN_AST_EXPR_MEMORY_SET,     // 内存设置 memory_set(addr, value, size)
+    CN_AST_EXPR_MEMORY_MAP,     // 内存映射 map_memory(addr, size, prot, flags)
+    CN_AST_EXPR_MEMORY_UNMAP    // 解除内存映射 unmap_memory(addr, size)
 } CnAstExprKind;
 
 // AST 节点种类（语句）
@@ -322,6 +328,45 @@ typedef struct CnAstStructLiteralExpr {
     size_t field_count;           // 字段数量
 } CnAstStructLiteralExpr;
 
+// 内存读取表达式 read_memory(addr)
+typedef struct CnAstMemoryReadExpr {
+    struct CnAstExpr *address;    // 内存地址
+} CnAstMemoryReadExpr;
+
+// 内存写入表达式 write_memory(addr, value)
+typedef struct CnAstMemoryWriteExpr {
+    struct CnAstExpr *address;    // 内存地址
+    struct CnAstExpr *value;      // 要写入的值
+} CnAstMemoryWriteExpr;
+
+// 内存复制表达式 memory_copy(dest, src, size)
+typedef struct CnAstMemoryCopyExpr {
+    struct CnAstExpr *dest;       // 目标地址
+    struct CnAstExpr *src;        // 源地址
+    struct CnAstExpr *size;       // 复制大小
+} CnAstMemoryCopyExpr;
+
+// 内存设置表达式 memory_set(addr, value, size)
+typedef struct CnAstMemorySetExpr {
+    struct CnAstExpr *address;    // 内存地址
+    struct CnAstExpr *value;      // 设置值
+    struct CnAstExpr *size;       // 设置大小
+} CnAstMemorySetExpr;
+
+// 内存映射表达式 map_memory(addr, size, prot, flags)
+typedef struct CnAstMemoryMapExpr {
+    struct CnAstExpr *address;    // 映射地址（可为NULL表示自动分配）
+    struct CnAstExpr *size;       // 映射大小
+    struct CnAstExpr *prot;       // 保护标志
+    struct CnAstExpr *flags;      // 映射标志
+} CnAstMemoryMapExpr;
+
+// 解除内存映射表达式 unmap_memory(addr, size)
+typedef struct CnAstMemoryUnmapExpr {
+    struct CnAstExpr *address;    // 映射地址
+    struct CnAstExpr *size;       // 映射大小
+} CnAstMemoryUnmapExpr;
+
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
@@ -341,6 +386,12 @@ typedef struct CnAstExpr {
         CnAstIndexExpr index;              // 数组索引访问
         CnAstMemberAccessExpr member;      // 结构体成员访问
         CnAstStructLiteralExpr struct_lit; // 结构体字面量
+        CnAstMemoryReadExpr memory_read;   // 内存读取
+        CnAstMemoryWriteExpr memory_write; // 内存写入
+        CnAstMemoryCopyExpr memory_copy;   // 内存复制
+        CnAstMemorySetExpr memory_set;     // 内存设置
+        CnAstMemoryMapExpr memory_map;     // 内存映射
+        CnAstMemoryUnmapExpr memory_unmap // 解除内存映射
     } as;
 } CnAstExpr;
 

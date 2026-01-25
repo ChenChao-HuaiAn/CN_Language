@@ -54,6 +54,13 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_VIRTUAL,   // 虚拟
     CN_TOKEN_KEYWORD_OVERRIDE, // 重写
     CN_TOKEN_KEYWORD_ABSTRACT, // 抽象
+    CN_TOKEN_KEYWORD_MEMORY_ADDRESS, // 内存地址
+    CN_TOKEN_KEYWORD_MAP_MEMORY, // 映射内存
+    CN_TOKEN_KEYWORD_UNMAP_MEMORY, // 解除映射
+    CN_TOKEN_KEYWORD_READ_MEMORY, // 读取内存
+    CN_TOKEN_KEYWORD_WRITE_MEMORY, // 写入内存
+    CN_TOKEN_KEYWORD_MEMORY_COPY, // 内存复制
+    CN_TOKEN_KEYWORD_MEMORY_SET, // 内存设置
     CN_TOKEN_PLUS,             // 加 +
     CN_TOKEN_MINUS,            // 减 -
     CN_TOKEN_STAR,             // 乘 *

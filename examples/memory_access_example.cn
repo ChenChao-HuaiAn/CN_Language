@@ -1,0 +1,118 @@
+/*
+ * 内存访问功能测试示例
+ * 演示直接内存访问和内存映射I/O功能
+ */
+
+函数 主程序() {
+    // 测试1：基本的内存读取和写入
+    整数 value = 42;
+    整数* ptr = &value;
+    
+    // 使用解引用运算符读取内存
+    整数 read_value = *ptr;
+    打印("读取的值: ");
+    打印(read_value);
+    
+    // 使用解引用运算符写入内存
+    *ptr = 100;
+    打印("写入后的值: ");
+    打印(value);
+    
+    // 测试2：使用内存访问函数
+    内存地址 addr = (内存地址)ptr;
+    
+    // 读取内存
+    整数 mem_read = 读取内存(addr);
+    打印("通过函数读取的值: ");
+    打印(mem_read);
+    
+    // 写入内存
+    写入内存(addr, 200);
+    打印("通过函数写入后的值: ");
+    打印(value);
+    
+    // 测试3：内存复制
+    整数 source = 12345;
+    整数 destination = 0;
+    内存复制(&destination, &source, sizeof(整数));
+    打印("复制后的值: ");
+    打印(destination);
+    
+    // 测试4：内存设置
+    整数 buffer[10];
+    内存设置(buffer, 0, sizeof(buffer));
+    打印("内存设置完成");
+    
+    // 测试5：内存映射（仅在支持的平台上）
+    #ifndef CN_FREESTANDING
+    内存地址 mapped_addr = 映射内存(NULL, 4096, 3, 0x22);
+    如果 (mapped_addr != 0) {
+        打印("内存映射成功");
+        写入内存(mapped_addr, 999);
+        整数 mapped_value = 读取内存(mapped_addr);
+        打印("映射内存中的值: ");
+        打印(mapped_value);
+        解除映射(mapped_addr, 4096);
+        打印("解除内存映射完成");
+    } 否则 {
+        打印("内存映射失败");
+    }
+    #endif
+    
+    // 测试6：内存安全检查
+    cn_rt_memory_set_safety_check(1);
+    
+    // 测试对齐检查
+    整数 aligned_value;
+    内存地址 aligned_addr = (内存地址)&aligned_value;
+    如果 (cn_rt_memory_check_alignment(aligned_addr, 4)) {
+        打印("地址对齐检查通过");
+    }
+    
+    // 测试可读性检查
+    如果 (cn_rt_memory_check_readable(aligned_addr, 4)) {
+        打印("可读性检查通过");
+    }
+    
+    // 测试可写性检查
+    如果 (cn_rt_memory_check_writable(aligned_addr, 4)) {
+        打印("可写性检查通过");
+    }
+    
+    // 测试7：安全内存访问
+    整数 safe_value = 777;
+    内存地址 safe_addr = (内存地址)&safe_value;
+    
+    // 安全读取
+    整数 safe_read = cn_rt_memory_read_safe(safe_addr, 4);
+    打印("安全读取的值: ");
+    打印(safe_read);
+    
+    // 安全写入
+    cn_rt_memory_write_safe(safe_addr, 888, 4);
+    打印("安全写入后的值: ");
+    打印(safe_value);
+    
+    // 测试8：安全内存复制
+    整数 safe_source = 555;
+    整数 safe_dest = 0;
+    cn_rt_memory_copy_safe(&safe_dest, &safe_source, 4);
+    打印("安全复制后的值: ");
+    打印(safe_dest);
+    
+    // 测试9：安全内存设置
+    整数 safe_buffer[5];
+    cn_rt_memory_set_safe(safe_buffer, 0, sizeof(safe_buffer));
+    打印("安全内存设置完成");
+    
+    // 测试10：多级指针访问
+    整数 x = 1;
+    整数* p1 = &x;
+    整数** p2 = &p1;
+    整数*** p3 = &p2;
+    
+    打印("多级指针访问: ");
+    打印(***p3);
+    
+    返回 0;
+}

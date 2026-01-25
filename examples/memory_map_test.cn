@@ -1,0 +1,99 @@
+/*
+ * 内存映射I/O测试示例
+ * 演示内存映射功能（仅在支持的平台上工作）
+ */
+
+函数 主程序() {
+    #ifndef CN_FREESTANDING
+    // 测试内存映射
+    打印("测试内存映射功能");
+    
+    // 映射4KB内存
+    内存地址 mapped_addr = 映射内存(NULL, 4096, 3, 0x22);
+    
+    如果 (mapped_addr != 0) {
+        打印("内存映射成功");
+        
+        // 写入数据到映射的内存
+        写入内存(mapped_addr, 12345);
+        打印("写入值到映射内存: 12345");
+        
+        // 从映射的内存读取数据
+        整数 read_value = 读取内存(mapped_addr);
+        打印("从映射内存读取的值: ");
+        打印(read_value);
+        
+        // 使用内存复制
+        整数 local_value = 0;
+        内存复制(&local_value, (void*)mapped_addr, 4);
+        打印("复制到本地变量的值: ");
+        打印(local_value);
+        
+        // 使用内存设置
+        内存设置((void*)mapped_addr, 0, 4096);
+        打印("已将映射内存清零");
+        
+        // 验证清零
+        整数 zero_check = 读取内存(mapped_addr);
+        打印("清零后的值: ");
+        打印(zero_check);
+        
+        // 解除内存映射
+        解除映射(mapped_addr, 4096);
+        打印("解除内存映射完成");
+    } 否则 {
+        打印("内存映射失败");
+    }
+    
+    // 测试内存安全检查
+    打印("测试内存安全检查");
+    
+    // 启用安全检查
+    cn_rt_memory_set_safety_check(1);
+    
+    // 创建一个测试变量
+    整数 test_value = 999;
+    内存地址 test_addr = (内存地址)&test_value;
+    
+    // 测试对齐检查
+    如果 (cn_rt_memory_check_alignment(test_addr, 4)) {
+        打印("地址对齐检查通过");
+    }
+    
+    // 测试可读性检查
+    如果 (cn_rt_memory_check_readable(test_addr, 4)) {
+        打印("可读性检查通过");
+    }
+    
+    // 测试可写性检查
+    如果 (cn_rt_memory_check_writable(test_addr, 4)) {
+        打印("可写性检查通过");
+    }
+    
+    // 测试安全内存访问
+    整数 safe_read = cn_rt_memory_read_safe(test_addr, 4);
+    打印("安全读取的值: ");
+    打印(safe_read);
+    
+    cn_rt_memory_write_safe(test_addr, 888, 4);
+    打印("安全写入后的值: ");
+    打印(test_value);
+    
+    // 测试安全内存复制
+    整数 safe_source = 777;
+    整数 safe_dest = 0;
+    cn_rt_memory_copy_safe(&safe_dest, &safe_source, 4);
+    打印("安全复制后的值: ");
+    打印(safe_dest);
+    
+    // 测试安全内存设置
+    整数 safe_buffer[10];
+    cn_rt_memory_set_safe(safe_buffer, 0, sizeof(safe_buffer));
+    打印("安全内存设置完成");
+    
+    #else
+    打印("freestanding 模式不支持内存映射");
+    #endif
+    
+    返回 0;
+}
