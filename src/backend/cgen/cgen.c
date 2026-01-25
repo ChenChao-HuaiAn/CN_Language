@@ -118,6 +118,11 @@ static const char *get_c_variable_name(const char *name) {
     /* 性能优化：使用线程局部缓冲区 */
     static _Thread_local char buffer[256];
     
+    // 检查是否已经有 cn_module_ 或 cn_var_ 前缀（避免重复加前缀）
+    if (strncmp(name, "cn_module_", 10) == 0 || strncmp(name, "cn_var_", 7) == 0) {
+        return name;
+    }
+    
     // 检查是否为模块成员名（包含双下划线 "__"）
     const char *delimiter = strstr(name, "__");
     if (delimiter) {
@@ -140,6 +145,80 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
         case CN_IR_OP_SYMBOL: fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name)); break;
         case CN_IR_OP_LABEL: fprintf(ctx->output_file, "%s", op.as.label->name ? op.as.label->name : "unnamed_label"); break;
         default: fprintf(ctx->output_file, "/* UNKNOWN */"); break;
+    }
+}
+
+// 生成简单表达式的 C 代码（用于模块变量初始化）
+static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
+    if (!ctx || !expr) return;
+    
+    switch (expr->kind) {
+        case CN_AST_EXPR_INTEGER_LITERAL:
+            fprintf(ctx->output_file, "%lld", expr->as.integer_literal.value);
+            break;
+        case CN_AST_EXPR_FLOAT_LITERAL:
+            fprintf(ctx->output_file, "%f", expr->as.float_literal.value);
+            break;
+        case CN_AST_EXPR_STRING_LITERAL:
+            // 输出字符串字面量，需要处理转义
+            fprintf(ctx->output_file, "\"");
+            for (const char *p = expr->as.string_literal.value; *p; p++) {
+                switch (*p) {
+                    case '\\': fprintf(ctx->output_file, "\\\\"); break;
+                    case '\"': fprintf(ctx->output_file, "\\\""); break;
+                    case '\n': fprintf(ctx->output_file, "\\n"); break;
+                    case '\r': fprintf(ctx->output_file, "\\r"); break;
+                    case '\t': fprintf(ctx->output_file, "\\t"); break;
+                    default: fprintf(ctx->output_file, "%c", *p); break;
+                }
+            }
+            fprintf(ctx->output_file, "\"");
+            break;
+        case CN_AST_EXPR_BOOL_LITERAL:
+            fprintf(ctx->output_file, "%s", expr->as.bool_literal.value ? "true" : "false");
+            break;
+        case CN_AST_EXPR_IDENTIFIER:
+            // 支持引用其他模块变量
+            // 先简单处理：直接输出变量名（需要结合符号表处理模块前缀）
+            fprintf(ctx->output_file, "cn_var_%.*s",
+                    (int)expr->as.identifier.name_length,
+                    expr->as.identifier.name);
+            break;
+        case CN_AST_EXPR_BINARY:
+            fprintf(ctx->output_file, "(");
+            cn_cgen_expr_simple(ctx, expr->as.binary.left);
+            
+            // 生成运算符
+            switch (expr->as.binary.op) {
+                case CN_AST_BINARY_OP_ADD: fprintf(ctx->output_file, " + "); break;
+                case CN_AST_BINARY_OP_SUB: fprintf(ctx->output_file, " - "); break;
+                case CN_AST_BINARY_OP_MUL: fprintf(ctx->output_file, " * "); break;
+                case CN_AST_BINARY_OP_DIV: fprintf(ctx->output_file, " / "); break;
+                case CN_AST_BINARY_OP_MOD: fprintf(ctx->output_file, " %% "); break;
+                case CN_AST_BINARY_OP_EQ: fprintf(ctx->output_file, " == "); break;
+                case CN_AST_BINARY_OP_NE: fprintf(ctx->output_file, " != "); break;
+                case CN_AST_BINARY_OP_LT: fprintf(ctx->output_file, " < "); break;
+                case CN_AST_BINARY_OP_GT: fprintf(ctx->output_file, " > "); break;
+                case CN_AST_BINARY_OP_LE: fprintf(ctx->output_file, " <= "); break;
+                case CN_AST_BINARY_OP_GE: fprintf(ctx->output_file, " >= "); break;
+                default: fprintf(ctx->output_file, " ? "); break;
+            }
+            
+            cn_cgen_expr_simple(ctx, expr->as.binary.right);
+            fprintf(ctx->output_file, ")");
+            break;
+        case CN_AST_EXPR_UNARY:
+            // 一元运算
+            switch (expr->as.unary.op) {
+                case CN_AST_UNARY_OP_MINUS: fprintf(ctx->output_file, "-"); break;
+                case CN_AST_UNARY_OP_NOT: fprintf(ctx->output_file, "!"); break;
+                default: break;
+            }
+            cn_cgen_expr_simple(ctx, expr->as.unary.operand);
+            break;
+        default:
+            fprintf(ctx->output_file, "0"); // 不支持的表达式，用0作为默认值
+            break;
     }
 }
 
@@ -300,6 +379,23 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     // 注入运行时初始化（仅 hosted 模式）
     if (is_main && ctx->module && ctx->module->compile_mode != CN_COMPILE_MODE_FREESTANDING) {
         fprintf(ctx->output_file, "  cn_rt_init();\n");
+    }
+    
+    // 在 main 函数中调用模块初始化函数
+    if (is_main && ctx->module_init_infos && ctx->module_init_count > 0) {
+        typedef struct {
+            CnAstModuleDecl *module_decl;
+            bool has_complex_init;
+        } ModuleInitInfo;
+        
+        ModuleInitInfo *infos = (ModuleInitInfo *)ctx->module_init_infos;
+        for (size_t i = 0; i < ctx->module_init_count; i++) {
+            if (infos[i].has_complex_init && infos[i].module_decl) {
+                fprintf(ctx->output_file, "  __cn_init_module_%.*s();\n",
+                        (int)infos[i].module_decl->name_length, 
+                        infos[i].module_decl->name);
+            }
+        }
     }
 
     // 声明虚拟寄存器：根据IR指令中的类型信息收集寄存器类型
@@ -554,12 +650,24 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     }
     
     // 生成模块变量定义（如果提供了 AST）
+    // 同时收集需要复杂初始化的模块
+    typedef struct {
+        CnAstModuleDecl *module_decl;
+        bool has_complex_init;
+    } ModuleInitInfo;
+    
+    ModuleInitInfo *module_init_infos = NULL;
+    size_t module_init_count = 0;
+    
     if (program && program->module_count > 0) {
         fprintf(file, "// CN Language Module Variables\n");
+        module_init_infos = calloc(program->module_count, sizeof(ModuleInitInfo));
+        
         for (size_t i = 0; i < program->module_count; i++) {
             CnAstStmt *module_stmt = program->modules[i];
             if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
                 CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+                bool has_complex = false;
                 
                 // 遍历模块中的语句，生成变量声明
                 for (size_t j = 0; j < module_decl->stmt_count; j++) {
@@ -576,18 +684,37 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
                         
                         // 如果有初始化表达式，生成初始化值
                         if (var_decl->initializer) {
-                            fprintf(file, " = ");
-                            // 简化处理：只支持字面量初始化
+                            // 检查是否是字面量初始化
+                            bool is_literal = false;
+                            
                             if (var_decl->initializer->kind == CN_AST_EXPR_INTEGER_LITERAL) {
-                                fprintf(file, "%lld", var_decl->initializer->as.integer_literal.value);
+                                fprintf(file, " = %lld", var_decl->initializer->as.integer_literal.value);
+                                is_literal = true;
                             } else if (var_decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL) {
-                                fprintf(file, "%f", var_decl->initializer->as.float_literal.value);
+                                fprintf(file, " = %f", var_decl->initializer->as.float_literal.value);
+                                is_literal = true;
                             } else if (var_decl->initializer->kind == CN_AST_EXPR_STRING_LITERAL) {
-                                fprintf(file, "\"%s\"", var_decl->initializer->as.string_literal.value);
+                                // 字符串字面量：需要处理转义字符
+                                fprintf(file, " = \"");
+                                for (const char *p = var_decl->initializer->as.string_literal.value; *p; p++) {
+                                    switch (*p) {
+                                        case '\\': fprintf(file, "\\\\"); break;
+                                        case '\"': fprintf(file, "\\\""); break;
+                                        case '\n': fprintf(file, "\\n"); break;
+                                        case '\r': fprintf(file, "\\r"); break;
+                                        case '\t': fprintf(file, "\\t"); break;
+                                        default: fprintf(file, "%c", *p); break;
+                                    }
+                                }
+                                fprintf(file, "\"");
+                                is_literal = true;
                             } else if (var_decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
-                                fprintf(file, "%s", var_decl->initializer->as.bool_literal.value ? "true" : "false");
+                                fprintf(file, " = %s", var_decl->initializer->as.bool_literal.value ? "true" : "false");
+                                is_literal = true;
                             } else {
-                                fprintf(file, "0");  // 默认值
+                                // 复杂表达式：先用默认值0，稍后在初始化函数中赋值
+                                fprintf(file, " = 0");
+                                has_complex = true;
                             }
                         }
                         
@@ -595,8 +722,28 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
                     }
                 }
                 fprintf(file, "\n");
+                
+                // 记录模块信息
+                if (module_init_infos) {
+                    module_init_infos[module_init_count].module_decl = module_decl;
+                    module_init_infos[module_init_count].has_complex_init = has_complex;
+                    module_init_count++;
+                }
             }
         }
+    }
+    
+    // 生成模块初始化函数（如果需要）
+    if (module_init_infos && module_init_count > 0) {
+        for (size_t i = 0; i < module_init_count; i++) {
+            if (module_init_infos[i].has_complex_init) {
+                CnAstModuleDecl *module_decl = module_init_infos[i].module_decl;
+                fprintf(file, "void __cn_init_module_%.*s();", 
+                        (int)module_decl->name_length, module_decl->name);
+                fprintf(file, "\n");
+            }
+        }
+        fprintf(file, "\n");
     }
     
     // 生成函数前置声明（Forward Declarations）
@@ -613,8 +760,63 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     }
     fprintf(file, "\n");
 
+    // 生成模块初始化函数实现
+    if (module_init_infos && module_init_count > 0) {
+        for (size_t i = 0; i < module_init_count; i++) {
+            if (module_init_infos[i].has_complex_init) {
+                CnAstModuleDecl *module_decl = module_init_infos[i].module_decl;
+                
+                fprintf(file, "void __cn_init_module_%.*s() {\n",
+                        (int)module_decl->name_length, module_decl->name);
+                
+                // 遍历模块变量，生成复杂初始化代码
+                for (size_t j = 0; j < module_decl->stmt_count; j++) {
+                    CnAstStmt *stmt = module_decl->stmts[j];
+                    if (stmt && stmt->kind == CN_AST_STMT_VAR_DECL) {
+                        CnAstVarDecl *var_decl = &stmt->as.var_decl;
+                        
+                        if (var_decl->initializer) {
+                            // 检查是否是非字面量表达式
+                            bool is_complex = true;
+                            if (var_decl->initializer->kind == CN_AST_EXPR_INTEGER_LITERAL ||
+                                var_decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL ||
+                                var_decl->initializer->kind == CN_AST_EXPR_STRING_LITERAL ||
+                                var_decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
+                                is_complex = false;
+                            }
+                            
+                            if (is_complex) {
+                                // 生成赋值语句
+                                fprintf(file, "  cn_module_%.*s__%.*s = ",
+                                        (int)module_decl->name_length, module_decl->name,
+                                        (int)var_decl->name_length, var_decl->name);
+                                
+                                // 生成表达式代码（简化版：只支持二元运算）
+                                cn_cgen_expr_simple(&ctx, var_decl->initializer);
+                                fprintf(file, ";\n");
+                            }
+                        }
+                    }
+                }
+                
+                fprintf(file, "}\n\n");
+            }
+        }
+    }
+
     func = module->first_func;
-    while (func) { cn_cgen_function(&ctx, func); func = func->next; }
+    while (func) { 
+        // 传递模块初始化信息到函数生成
+        ctx.module_init_infos = module_init_infos;
+        ctx.module_init_count = module_init_count;
+        cn_cgen_function(&ctx, func); 
+        func = func->next; 
+    }
+    
+    // 释放模块初始化信息
+    if (module_init_infos) {
+        free(module_init_infos);
+    }
     
     fclose(file);
     
