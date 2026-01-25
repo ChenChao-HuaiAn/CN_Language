@@ -127,6 +127,14 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
         // 释放枚举声明
         free(stmt->as.enum_decl.members);
         break;
+    case CN_AST_STMT_MODULE_DECL:
+        // 释放模块声明
+        cn_frontend_ast_stmt_array_free(stmt->as.module_decl.stmts, stmt->as.module_decl.stmt_count);
+        free(stmt->as.module_decl.stmts);
+        break;
+    case CN_AST_STMT_IMPORT:
+        // 导入语句没有需要释放的子节点
+        break;
     }
 
     free(stmt);
@@ -163,9 +171,19 @@ void cn_frontend_ast_program_free(CnAstProgram *program)
         cn_frontend_ast_stmt_free(program->enums[i]);
     }
 
+    for (i = 0; i < program->module_count; ++i) {
+        cn_frontend_ast_stmt_free(program->modules[i]);
+    }
+
+    for (i = 0; i < program->import_count; ++i) {
+        cn_frontend_ast_stmt_free(program->imports[i]);
+    }
+
     free(program->functions);
     free(program->structs);
     free(program->enums);
+    free(program->modules);
+    free(program->imports);
     free(program);
 }
 

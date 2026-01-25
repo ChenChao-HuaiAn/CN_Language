@@ -651,7 +651,39 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
-            // 结构体成员访问类型推导 obj.member 或 ptr->member
+            // 成员访问类型推导：支持结构体 obj.member 和模块 module.member
+            // 首先检查左操作数是否为模块
+            if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                CnSemSymbol *sym = cn_sem_scope_lookup(
+                    scope,
+                    expr->as.member.object->as.identifier.name,
+                    expr->as.member.object->as.identifier.name_length);
+                
+                // 如果是模块符号，在模块作用域中查找成员
+                if (sym && sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+                    CnSemSymbol *member_sym = cn_sem_scope_lookup_shallow(
+                        sym->as.module_scope,
+                        expr->as.member.member_name,
+                        expr->as.member.member_name_length);
+                    
+                    if (!member_sym) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
+                            NULL, 0, 0,
+                            "语义错误：模块中不存在该成员");
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    } else {
+                        // 模块成员访问的类型是成员的类型
+                        expr->type = member_sym->type;
+                        // 设置对象表达式的类型（标记为 VOID，表示模块）
+                        expr->as.member.object->type = cn_type_new_primitive(CN_TYPE_VOID);
+                    }
+                    break;
+                }
+            }
+            
+            // 否则按照结构体成员访问处理
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
             
             // 如果是箭头访问，对象必须是指针类型

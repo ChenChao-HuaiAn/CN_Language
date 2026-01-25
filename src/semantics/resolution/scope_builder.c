@@ -10,6 +10,9 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
 static void cn_sem_build_block_scope(CnSemScope *parent_scope,
                                      CnAstBlockStmt *block,
                                      CnDiagnostics *diagnostics);
+static void cn_sem_build_module_scope(CnSemScope *parent_scope,
+                                      CnAstStmt *module_stmt,
+                                      CnDiagnostics *diagnostics);
 static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics);
 static void cn_sem_build_expr(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics);
 static void cn_sem_build_if_stmt(CnSemScope *scope, CnAstIfStmt *if_stmt, CnDiagnostics *diagnostics);
@@ -120,6 +123,35 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                 cn_support_diag_semantic_error_duplicate_symbol(
                     diagnostics, NULL, 0, 0, member->name);
             }
+        }
+    }
+
+    // 注册模块声明到全局作用域
+    for (i = 0; i < program->module_count; ++i) {
+        CnAstStmt *module_stmt = program->modules[i];
+        if (!module_stmt || module_stmt->kind != CN_AST_STMT_MODULE_DECL) {
+            continue;
+        }
+
+        CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   module_decl->name,
+                                   module_decl->name_length,
+                                   CN_SEM_SYMBOL_MODULE);
+        if (sym) {
+            // 为模块创建一个新的作用域
+            CnSemScope *module_scope = cn_sem_scope_new(CN_SEM_SCOPE_MODULE, global_scope);
+            if (module_scope) {
+                sym->as.module_scope = module_scope;
+                // 构建模块内的符号
+                cn_sem_build_module_scope(global_scope, module_stmt, diagnostics);
+            }
+            // 模块符号本身不需要类型
+            sym->type = cn_type_new_primitive(CN_TYPE_VOID);
+        } else {
+            // 报告重复定义
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, module_decl->name);
         }
     }
 
@@ -268,6 +300,12 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
     case CN_AST_STMT_ENUM_DECL:
         // 枚举声明已在全局作用域构建时处理，这里不需要额外操作
         break;
+    case CN_AST_STMT_MODULE_DECL:
+        // 模块声明已在全局作用域构建时处理，这里不需要额外操作
+        break;
+    case CN_AST_STMT_IMPORT:
+        // 导入语句在后续的名称解析阶段处理
+        break;
     }
 }
 
@@ -309,6 +347,59 @@ static void cn_sem_build_for_stmt(CnSemScope *scope, CnAstForStmt *for_stmt, CnD
     cn_sem_build_expr(for_scope, for_stmt->condition, diagnostics);
     cn_sem_build_expr(for_scope, for_stmt->update, diagnostics);
     cn_sem_build_block_scope(for_scope, for_stmt->body, diagnostics);
+}
+
+// 构建模块作用域
+static void cn_sem_build_module_scope(CnSemScope *parent_scope,
+                                      CnAstStmt *module_stmt,
+                                      CnDiagnostics *diagnostics)
+{
+    if (!parent_scope || !module_stmt || module_stmt->kind != CN_AST_STMT_MODULE_DECL) {
+        return;
+    }
+
+    CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+    
+    // 获取模块符号
+    CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(parent_scope,
+                                                          module_decl->name,
+                                                          module_decl->name_length);
+    if (!module_sym || module_sym->kind != CN_SEM_SYMBOL_MODULE) {
+        return;
+    }
+
+    CnSemScope *module_scope = module_sym->as.module_scope;
+    if (!module_scope) {
+        return;
+    }
+
+    // 遍历模块内的语句，构建符号表
+    for (size_t i = 0; i < module_decl->stmt_count; ++i) {
+        CnAstStmt *stmt = module_decl->stmts[i];
+        if (!stmt) {
+            continue;
+        }
+
+        // 模块内可以有变量声明
+        if (stmt->kind == CN_AST_STMT_VAR_DECL) {
+            CnAstVarDecl *var_decl = &stmt->as.var_decl;
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
+                                       var_decl->name,
+                                       var_decl->name_length,
+                                       CN_SEM_SYMBOL_VARIABLE);
+            if (sym) {
+                sym->type = var_decl->declared_type;
+            } else {
+                // 报告重复定义
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, var_decl->name);
+            }
+            
+            // 构建初始化表达式的作用域
+            cn_sem_build_expr(module_scope, var_decl->initializer, diagnostics);
+        }
+        // TODO: 后续支持模块内的函数声明
+    }
 }
 
 static void cn_sem_build_expr(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics)

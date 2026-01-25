@@ -37,7 +37,9 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_BREAK,      // break 语句
     CN_AST_STMT_CONTINUE,   // continue 语句
     CN_AST_STMT_STRUCT_DECL,// 结构体声明语句
-    CN_AST_STMT_ENUM_DECL   // 枚举声明语句
+    CN_AST_STMT_ENUM_DECL,  // 枚举声明语句
+    CN_AST_STMT_MODULE_DECL,// 模块声明语句
+    CN_AST_STMT_IMPORT      // 导入语句
 } CnAstStmtKind;
 
 // 二元运算符
@@ -150,6 +152,20 @@ typedef struct CnAstEnumDecl {
     size_t member_count;          // 枚举成员数量
 } CnAstEnumDecl;
 
+// 模块声明语句
+typedef struct CnAstModuleDecl {
+    const char *name;             // 模块名称
+    size_t name_length;           // 模块名称长度
+    struct CnAstStmt **stmts;     // 模块内的语句列表（函数、变量等）
+    size_t stmt_count;            // 语句数量
+} CnAstModuleDecl;
+
+// 导入语句
+typedef struct CnAstImportStmt {
+    const char *module_name;      // 被导入的模块名称
+    size_t module_name_length;    // 模块名称长度
+} CnAstImportStmt;
+
 // 函数参数
 typedef struct CnAstParameter {
     const char *name;
@@ -174,6 +190,10 @@ typedef struct CnAstProgram {
     struct CnAstStmt **structs;   // 结构体声明列表
     size_t enum_count;            // 枚举数量
     struct CnAstStmt **enums;     // 枚举声明列表
+    size_t module_count;          // 模块数量
+    struct CnAstStmt **modules;   // 模块声明列表
+    size_t import_count;          // 导入语句数量
+    struct CnAstStmt **imports;   // 导入语句列表
 } CnAstProgram;
 
 // 各种表达式节点定义
@@ -303,6 +323,8 @@ typedef struct CnAstStmt {
         CnAstForStmt for_stmt;
         CnAstStructDecl struct_decl; // 结构体声明
         CnAstEnumDecl enum_decl;     // 枚举声明
+        CnAstModuleDecl module_decl; // 模块声明
+        CnAstImportStmt import_stmt; // 导入语句
     } as;
 } CnAstStmt;
 

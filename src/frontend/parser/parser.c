@@ -21,6 +21,8 @@ static CnAstProgram *parse_program_internal(CnParser *parser);
 static CnAstFunctionDecl *parse_function_decl(CnParser *parser);
 static CnAstStmt *parse_struct_decl(CnParser *parser);
 static CnAstStmt *parse_enum_decl(CnParser *parser);
+static CnAstStmt *parse_module_decl(CnParser *parser);
+static CnAstStmt *parse_import_stmt(CnParser *parser);
 static CnAstBlockStmt *parse_block(CnParser *parser);
 static CnAstStmt *parse_statement(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
@@ -64,6 +66,8 @@ static CnAstProgram *make_program(void);
 static void program_add_function(CnAstProgram *program, CnAstFunctionDecl *function_decl);
 static void program_add_struct(CnAstProgram *program, CnAstStmt *struct_decl);
 static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl);
+static void program_add_module(CnAstProgram *program, CnAstStmt *module_decl);
+static void program_add_import(CnAstProgram *program, CnAstStmt *import_stmt);
 
 CnParser *cn_frontend_parser_new(CnLexer *lexer)
 {
@@ -170,7 +174,21 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
     parser_advance(parser);
 
     while (parser->current.kind != CN_TOKEN_EOF) {
-        if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
+        if (parser->current.kind == CN_TOKEN_KEYWORD_IMPORT) {
+            // 解析导入语句
+            CnAstStmt *import_stmt = parse_import_stmt(parser);
+            if (!import_stmt) {
+                break;
+            }
+            program_add_import(program, import_stmt);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_MODULE) {
+            // 解析模块声明
+            CnAstStmt *module_decl = parse_module_decl(parser);
+            if (!module_decl) {
+                break;
+            }
+            program_add_module(program, module_decl);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
             // 解析结构体声明
             CnAstStmt *struct_decl = parse_struct_decl(parser);
             if (!struct_decl) {
@@ -1479,6 +1497,10 @@ static CnAstProgram *make_program(void)
     program->structs = NULL;
     program->enum_count = 0;
     program->enums = NULL;
+    program->module_count = 0;
+    program->modules = NULL;
+    program->import_count = 0;
+    program->imports = NULL;
     return program;
 }
 
@@ -1545,6 +1567,50 @@ static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl)
     program->enums = new_array;
     program->enums[program->enum_count] = enum_decl;
     program->enum_count = new_count;
+}
+
+// 添加模块声明到program
+static void program_add_module(CnAstProgram *program, CnAstStmt *module_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !module_decl) {
+        return;
+    }
+
+    new_count = program->module_count + 1;
+    new_array = (CnAstStmt **)realloc(program->modules,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->modules = new_array;
+    program->modules[program->module_count] = module_decl;
+    program->module_count = new_count;
+}
+
+// 添加导入语句到program
+static void program_add_import(CnAstProgram *program, CnAstStmt *import_stmt)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !import_stmt) {
+        return;
+    }
+
+    new_count = program->import_count + 1;
+    new_array = (CnAstStmt **)realloc(program->imports,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->imports = new_array;
+    program->imports[program->import_count] = import_stmt;
+    program->import_count = new_count;
 }
 
 // 解析结构体声明
@@ -1893,4 +1959,159 @@ static CnAstExpr *make_struct_literal(const char *struct_name, size_t struct_nam
     expr->as.struct_lit.fields = fields;
     expr->as.struct_lit.field_count = field_count;
     return expr;
+}
+
+// 解析模块声明
+static CnAstStmt *parse_module_decl(CnParser *parser)
+{
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_MODULE)) {
+        return NULL;
+    }
+
+    // 读取模块名称
+    if (parser->current.kind != CN_TOKEN_IDENT) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：模块名称无效");
+        }
+        return NULL;
+    }
+
+    const char *module_name = parser->current.lexeme_begin;
+    size_t module_name_length = parser->current.lexeme_length;
+    parser_advance(parser);
+
+    // 期望 { 开始模块定义
+    if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
+        return NULL;
+    }
+
+    // 解析模块内的语句列表（函数、变量等）
+    size_t stmt_capacity = 4;
+    size_t stmt_count = 0;
+    CnAstStmt **stmts = (CnAstStmt **)malloc(sizeof(CnAstStmt *) * stmt_capacity);
+    if (!stmts) {
+        return NULL;
+    }
+
+    while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+        CnAstStmt *stmt = NULL;
+        
+        // 模块内可以包含函数、变量声明等
+        if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
+            // 解析函数声明，将其转为语句
+            CnAstFunctionDecl *fn_decl = parse_function_decl(parser);
+            if (!fn_decl) {
+                free(stmts);
+                return NULL;
+            }
+            // 暂时跳过函数，因为函数不是语句类型
+            // TODO: 后续需要为模块内的函数创建专门的处理方式
+            free(fn_decl);
+            continue;
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR || 
+                   parser->current.kind == CN_TOKEN_KEYWORD_INT ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+            // 解析变量声明
+            stmt = parse_statement(parser);
+            if (!stmt) {
+                free(stmts);
+                return NULL;
+            }
+        } else {
+            // 不支持的语句类型
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：模块内不支持此类型的声明");
+            }
+            parser_advance(parser); // 跳过错误 token
+            continue;
+        }
+
+        // 扩容语句数组
+        if (stmt_count >= stmt_capacity) {
+            stmt_capacity *= 2;
+            CnAstStmt **new_stmts = (CnAstStmt **)realloc(
+                stmts, sizeof(CnAstStmt *) * stmt_capacity);
+            if (!new_stmts) {
+                free(stmts);
+                return NULL;
+            }
+            stmts = new_stmts;
+        }
+
+        stmts[stmt_count] = stmt;
+        stmt_count++;
+    }
+
+    // 期望 } 结束模块定义
+    parser_expect(parser, CN_TOKEN_RBRACE);
+
+    // 创建模块声明语句
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        free(stmts);
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_MODULE_DECL;
+    stmt->as.module_decl.name = module_name;
+    stmt->as.module_decl.name_length = module_name_length;
+    stmt->as.module_decl.stmts = stmts;
+    stmt->as.module_decl.stmt_count = stmt_count;
+    return stmt;
+}
+
+// 解析导入语句
+static CnAstStmt *parse_import_stmt(CnParser *parser)
+{
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_IMPORT)) {
+        return NULL;
+    }
+
+    // 读取模块名称
+    if (parser->current.kind != CN_TOKEN_IDENT) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：缺少模块名称");
+        }
+        return NULL;
+    }
+
+    const char *module_name = parser->current.lexeme_begin;
+    size_t module_name_length = parser->current.lexeme_length;
+    parser_advance(parser);
+
+    // 期望分号
+    parser_expect(parser, CN_TOKEN_SEMICOLON);
+
+    // 创建导入语句
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        return NULL;
+    }
+
+    stmt->kind = CN_AST_STMT_IMPORT;
+    stmt->as.import_stmt.module_name = module_name;
+    stmt->as.import_stmt.module_name_length = module_name_length;
+    return stmt;
 }

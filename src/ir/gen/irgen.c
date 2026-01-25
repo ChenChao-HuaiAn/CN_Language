@@ -335,6 +335,31 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             return cn_ir_op_reg(result_reg, expr->type);
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
+            // 成员访问：支持结构体 obj.member 和模块 module.member
+            
+            // 检查是否为模块成员访问（对象类型为 VOID 表示模块）
+            if (expr->as.member.object->type && 
+                expr->as.member.object->type->kind == CN_TYPE_VOID &&
+                expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                // 模块成员访问：生成带模块前缀的符号名
+                // 格式：模块名__成员名
+                size_t module_name_len = expr->as.member.object->as.identifier.name_length;
+                size_t member_name_len = expr->as.member.member_name_length;
+                size_t total_len = module_name_len + 2 + member_name_len + 1; // +2 for "__", +1 for '\0'
+                
+                char *qualified_name = malloc(total_len);
+                if (qualified_name) {
+                    snprintf(qualified_name, total_len, "%.*s__%.*s",
+                            (int)module_name_len, expr->as.member.object->as.identifier.name,
+                            (int)member_name_len, expr->as.member.member_name);
+                    
+                    CnIrOperand result = cn_ir_op_symbol(qualified_name, expr->type);
+                    free(qualified_name);
+                    return result;
+                }
+                // 如果分配失败，继续使用默认处理
+            }
+            
             // 结构体成员访问：obj.member 或 ptr->member
             CnIrOperand object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
             

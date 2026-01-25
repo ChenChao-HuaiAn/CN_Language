@@ -116,7 +116,16 @@ static const char *get_c_function_name(const char *name) {
 static const char *get_c_variable_name(const char *name) {
     /* 性能优化：使用线程局部缓冲区 */
     static _Thread_local char buffer[256];
-    snprintf(buffer, sizeof(buffer), "cn_var_%s", name);
+    
+    // 检查是否为模块成员名（包含双下划线 "__"）
+    const char *delimiter = strstr(name, "__");
+    if (delimiter) {
+        // 模块成员名：模块名__成员名 -> cn_module_模块名__成员名
+        snprintf(buffer, sizeof(buffer), "cn_module_%s", name);
+    } else {
+        // 普通变量名
+        snprintf(buffer, sizeof(buffer), "cn_var_%s", name);
+    }
     return buffer;
 }
 
@@ -540,6 +549,52 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "// CN Language Enum Definitions\n");
         for (size_t i = 0; i < program->enum_count; i++) {
             cn_cgen_enum_decl(&ctx, program->enums[i]);
+        }
+    }
+    
+    // 生成模块变量定义（如果提供了 AST）
+    if (program && program->module_count > 0) {
+        fprintf(file, "// CN Language Module Variables\n");
+        for (size_t i = 0; i < program->module_count; i++) {
+            CnAstStmt *module_stmt = program->modules[i];
+            if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
+                CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+                
+                // 遍历模块中的语句，生成变量声明
+                for (size_t j = 0; j < module_decl->stmt_count; j++) {
+                    CnAstStmt *stmt = module_decl->stmts[j];
+                    if (stmt && stmt->kind == CN_AST_STMT_VAR_DECL) {
+                        CnAstVarDecl *var_decl = &stmt->as.var_decl;
+                        
+                        // 生成带模块前缀的变量名
+                        fprintf(file, "%s cn_module_%.*s__%.*s",
+                                get_c_type_string(var_decl->declared_type ? var_decl->declared_type : 
+                                                  (var_decl->initializer ? var_decl->initializer->type : NULL)),
+                                (int)module_decl->name_length, module_decl->name,
+                                (int)var_decl->name_length, var_decl->name);
+                        
+                        // 如果有初始化表达式，生成初始化值
+                        if (var_decl->initializer) {
+                            fprintf(file, " = ");
+                            // 简化处理：只支持字面量初始化
+                            if (var_decl->initializer->kind == CN_AST_EXPR_INTEGER_LITERAL) {
+                                fprintf(file, "%lld", var_decl->initializer->as.integer_literal.value);
+                            } else if (var_decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL) {
+                                fprintf(file, "%f", var_decl->initializer->as.float_literal.value);
+                            } else if (var_decl->initializer->kind == CN_AST_EXPR_STRING_LITERAL) {
+                                fprintf(file, "\"%s\"", var_decl->initializer->as.string_literal.value);
+                            } else if (var_decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
+                                fprintf(file, "%s", var_decl->initializer->as.bool_literal.value ? "true" : "false");
+                            } else {
+                                fprintf(file, "0");  // 默认值
+                            }
+                        }
+                        
+                        fprintf(file, ";\n");
+                    }
+                }
+                fprintf(file, "\n");
+            }
         }
     }
 
