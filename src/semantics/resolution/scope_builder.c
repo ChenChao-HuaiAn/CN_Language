@@ -4,6 +4,21 @@
 #include <stdlib.h>
 #include <string.h>
 
+// 符号链表节点，用于在作用域中维护符号列表
+// （与 symbol_table.c 中的定义保持一致）
+typedef struct CnSemSymbolNode {
+    CnSemSymbol symbol;
+    struct CnSemSymbolNode *next;
+} CnSemSymbolNode;
+
+// 作用域结构体的内部实现
+// （与 symbol_table.c 中的定义保持一致）
+struct CnSemScope {
+    CnSemScopeKind kind;
+    CnSemScope *parent;
+    CnSemSymbolNode *symbols;
+};
+
 static void cn_sem_build_function_scope(CnSemScope *parent_scope,
                                          CnAstFunctionDecl *function_decl,
                                          CnDiagnostics *diagnostics);
@@ -152,6 +167,79 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             // 报告重复定义
             cn_support_diag_semantic_error_duplicate_symbol(
                 diagnostics, NULL, 0, 0, module_decl->name);
+        }
+    }
+    
+    // 处理导入语句：将被导入模块的符号添加到全局作用域
+    for (i = 0; i < program->import_count; ++i) {
+        CnAstStmt *import_stmt = program->imports[i];
+        if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
+            continue;
+        }
+
+        CnAstImportStmt *import = &import_stmt->as.import_stmt;
+        
+        // 查找被导入的模块
+        CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                              import->module_name,
+                                                              import->module_name_length);
+        
+        if (!module_sym) {
+            // 模块不存在，报错
+            cn_support_diag_semantic_error_generic(
+                diagnostics,
+                CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                NULL, 0, 0,
+                "语义错误：导入的模块不存在");
+            continue;
+        }
+        
+        if (module_sym->kind != CN_SEM_SYMBOL_MODULE || !module_sym->as.module_scope) {
+            // 符号不是模块，报错
+            cn_support_diag_semantic_error_generic(
+                diagnostics,
+                CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                NULL, 0, 0,
+                "语义错误：导入的符号不是模块");
+            continue;
+        }
+        
+        // 遍历模块作用域中的所有符号，添加到全局作用域
+        CnSemScope *module_scope = module_sym->as.module_scope;
+        CnSemSymbolNode *node = module_scope->symbols;
+        while (node) {
+            CnSemSymbol *sym = &node->symbol;
+            
+            // 检查名称冲突
+            CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                                    sym->name,
+                                                                    sym->name_length);
+            if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                // 名称冲突，报错
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, sym->name);
+            } else if (!existing_sym) {
+                // 没有冲突，添加符号
+                CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                                  sym->name,
+                                                                  sym->name_length,
+                                                                  sym->kind);
+                if (new_sym) {
+                    // 复制符号信息
+                    new_sym->type = sym->type;
+                    // 保留原始声明作用域（模块作用域），而不是将其设置为全局作用域
+                    // 这样 IR 生成器可以通过 decl_scope 判断该符号来自模块
+                    new_sym->decl_scope = sym->decl_scope;
+                    // 如果是模块符号，也复制模块作用域
+                    if (sym->kind == CN_SEM_SYMBOL_MODULE) {
+                        new_sym->as.module_scope = sym->as.module_scope;
+                    } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                        new_sym->as.enum_value = sym->as.enum_value;
+                    }
+                }
+            }
+            
+            node = node->next;
         }
     }
 

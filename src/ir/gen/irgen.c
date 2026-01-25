@@ -4,6 +4,19 @@
 #include <string.h>
 #include <stdio.h>
 
+// 符号链表节点（与 symbol_table.c 中的定义保持一致）
+typedef struct CnSemSymbolNode {
+    CnSemSymbol symbol;
+    struct CnSemSymbolNode *next;
+} CnSemSymbolNode;
+
+// 作用域结构体的内部实现（与 symbol_table.c 中的定义保持一致）
+struct CnSemScope {
+    CnSemScopeKind kind;
+    CnSemScope *parent;
+    CnSemSymbolNode *symbols;
+};
+
 // 生成新的虚拟寄存器
 static int alloc_reg(CnIrGenContext *ctx) {
     return ctx->current_func->next_reg_id++;
@@ -107,6 +120,46 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                     // 枚举成员：直接返回其常量值
                     return cn_ir_op_imm_int(sym->as.enum_value, cn_type_new_primitive(CN_TYPE_INT));
+                }
+                
+                // 检查是否来自模块：如果 decl_scope 是模块作用域，生成带模块前缀的名称
+                if (sym && sym->decl_scope && sym->decl_scope->kind == CN_SEM_SCOPE_MODULE) {
+                    // 需要找到模块名：遍历全局作用域找到拥有该模块作用域的模块符号
+                    // 这里使用简化的方法：直接从模块作用域的父作用域查找
+                    CnSemScope *global = ctx->current_scope;
+                    while (global && global->parent) {
+                        global = global->parent;
+                    }
+                    
+                    if (global) {
+                        // 在全局作用域中查找拥有该模块作用域的模块
+                        CnSemSymbolNode *node = global->symbols;
+                        while (node) {
+                            if (node->symbol.kind == CN_SEM_SYMBOL_MODULE && 
+                                node->symbol.as.module_scope == sym->decl_scope) {
+                                // 找到模块，生成带模块前缀的名称
+                                size_t module_name_len = node->symbol.name_length;
+                                size_t var_name_len = expr->as.identifier.name_length;
+                                size_t total_len = module_name_len + 2 + var_name_len + 1; // "__" + \0
+                                
+                                char *qualified_name = malloc(total_len);
+                                if (qualified_name) {
+                                    snprintf(qualified_name, total_len, "%.*s__%.*s",
+                                            (int)module_name_len, node->symbol.name,
+                                            (int)var_name_len, expr->as.identifier.name);
+                                    
+                                    int dest_reg = alloc_reg(ctx);
+                                    CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
+                                    CnIrOperand src = cn_ir_op_symbol(qualified_name, expr->type);
+                                    free(qualified_name);
+                                    emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
+                                    return dest;
+                                }
+                                break;
+                            }
+                            node = node->next;
+                        }
+                    }
                 }
             }
             
