@@ -199,6 +199,18 @@ target_include_directories(parser_var_test PRIVATE
 add_test(NAME parser_var_test
          COMMAND parser_var_test)
 
+add_executable(parser_type_coverage_test
+    parser_type_coverage_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_type_coverage_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_type_coverage_test
+         COMMAND parser_type_coverage_test)
+
 add_executable(parser_func_test
     parser_func_test.c
     ${PARSER_TEST_DEPENDENCIES}

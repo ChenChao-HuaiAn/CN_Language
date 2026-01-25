@@ -25,6 +25,7 @@ static CnAstStmt *parse_module_decl(CnParser *parser);
 static CnAstStmt *parse_import_stmt(CnParser *parser);
 static CnAstBlockStmt *parse_block(CnParser *parser);
 static CnAstStmt *parse_statement(CnParser *parser);
+static CnType *parse_type(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
 static CnAstExpr *parse_assignment(CnParser *parser);
 static CnAstExpr *parse_logical_or(CnParser *parser);
@@ -276,75 +277,19 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
         }
 
         do {
-            CnType *param_type = NULL;
-            if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-                param_type = cn_type_new_primitive(CN_TYPE_INT);
-                parser_advance(parser);
-
-                // 支持指针参数类型：例如 "整数* 参数"
-                while (parser->current.kind == CN_TOKEN_STAR) {
-                    param_type = cn_type_new_pointer(param_type);
-                    parser_advance(parser);
-                }
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
-                param_type = cn_type_new_primitive(CN_TYPE_FLOAT);
-                parser_advance(parser);
-
-                // 支持指针参数类型：例如 "小数* 参数"
-                while (parser->current.kind == CN_TOKEN_STAR) {
-                    param_type = cn_type_new_pointer(param_type);
-                    parser_advance(parser);
-                }
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-                param_type = cn_type_new_primitive(CN_TYPE_BOOL);
-                parser_advance(parser);
-
-                // 支持指针参数类型：例如 "布尔* 参数"
-                while (parser->current.kind == CN_TOKEN_STAR) {
-                    param_type = cn_type_new_pointer(param_type);
-                    parser_advance(parser);
-                }
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
-                // 数组参数类型：例如 "数组 整数 参数"
-                parser_advance(parser);
-                
-                // 检查是否有元素类型关键字（可选）
-                CnType *element_type = NULL;
-                if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-                    element_type = cn_type_new_primitive(CN_TYPE_INT);
-                    parser_advance(parser);
-                } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
-                    element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
-                    parser_advance(parser);
-                } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-                    element_type = cn_type_new_primitive(CN_TYPE_STRING);
-                    parser_advance(parser);
-                } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-                    element_type = cn_type_new_primitive(CN_TYPE_BOOL);
+            // 使用统一的 parse_type 解析参数类型
+            CnType *param_type = parse_type(parser);
+            if (!param_type) {
+                // 类型解析失败，尝试容错：允许 '变量' 关键字
+                if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+                    param_type = NULL; // 无显式类型，后续通过类型推断
                     parser_advance(parser);
                 } else {
-                    // 没有元素类型，默认为泛型数组
-                    element_type = cn_type_new_primitive(CN_TYPE_INT);
+                    // 类型解析失败且不是 '变量' 关键字
+                    free(params);
+                    free(fn);
+                    return NULL;
                 }
-                
-                // 创建数组类型（长度为0表示未知）
-                param_type = cn_type_new_array(element_type, 0);
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
-                parser_advance(parser);
-            } else {
-                parser->error_count++;
-                if (parser->diagnostics) {
-                    cn_support_diagnostics_report(parser->diagnostics,
-                                                  CN_DIAG_SEVERITY_ERROR,
-                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
-                                                  parser->lexer ? parser->lexer->filename : NULL,
-                                                  parser->current.line,
-                                                  parser->current.column,
-                                                  "语法错误：缺少参数类型");
-                }
-                free(params);
-                free(fn);
-                return NULL;
             }
 
             if (parser->current.kind != CN_TOKEN_IDENT) {
@@ -692,58 +637,22 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
         parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
-        parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
+        parser->current.kind == CN_TOKEN_KEYWORD_ARRAY ||
+        parser->current.kind == CN_TOKEN_IDENT) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
         CnType *declared_type = NULL;
 
-        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-            declared_type = cn_type_new_primitive(CN_TYPE_INT);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
-            declared_type = cn_type_new_primitive(CN_TYPE_FLOAT);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-            declared_type = cn_type_new_primitive(CN_TYPE_STRING);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-            declared_type = cn_type_new_primitive(CN_TYPE_BOOL);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
-            // 数组关键字，后续可能跟元素类型关键字
+        // 处理 '变量' 关键字：无显式类型
+        if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
             parser_advance(parser);
-            
-            // 检查是否有元素类型关键字（可选）
-            CnType *element_type = NULL;
-            if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-                element_type = cn_type_new_primitive(CN_TYPE_INT);
-                parser_advance(parser);
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
-                element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
-                parser_advance(parser);
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-                element_type = cn_type_new_primitive(CN_TYPE_STRING);
-                parser_advance(parser);
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-                element_type = cn_type_new_primitive(CN_TYPE_BOOL);
-                parser_advance(parser);
-            } else {
-                // 没有元素类型关键字，默认为泛型数组（后续从初始化器推导）
-                element_type = NULL;
-            }
-            
-            // 创建数组类型（长度为0表示未知或动态）
-            declared_type = cn_type_new_array(element_type ? element_type : cn_type_new_primitive(CN_TYPE_INT), 0);
-            
-            // 不再 advance，因为已经在上面处理了
-            goto skip_advance;
-        }
-
-        parser_advance(parser);
-        skip_advance:;
-
-        // 显式类型后允许跟随若干个 '*' 表示指针层级，例如 "整数* 指针变量"
-        if (declared_type) {
-            while (parser->current.kind == CN_TOKEN_STAR) {
-                declared_type = cn_type_new_pointer(declared_type);
-                parser_advance(parser);
+            declared_type = NULL; // 后续通过类型推断
+        } else {
+            // 使用统一的 parse_type 解析类型
+            declared_type = parse_type(parser);
+            if (!declared_type) {
+                return NULL;
             }
         }
 
@@ -796,42 +705,9 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 // 解析参数类型，允许空参数列表
                 if (parser->current.kind != CN_TOKEN_RPAREN) {
                     do {
-                        CnType *param_type = NULL;
-                        
-                        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-                            param_type = cn_type_new_primitive(CN_TYPE_INT);
-                            parser_advance(parser);
-                            
-                            // 支持指针参数类型
-                            while (parser->current.kind == CN_TOKEN_STAR) {
-                                param_type = cn_type_new_pointer(param_type);
-                                parser_advance(parser);
-                            }
-                        } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
-                            param_type = cn_type_new_primitive(CN_TYPE_FLOAT);
-                            parser_advance(parser);
-                            
-                            while (parser->current.kind == CN_TOKEN_STAR) {
-                                param_type = cn_type_new_pointer(param_type);
-                                parser_advance(parser);
-                            }
-                        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-                            param_type = cn_type_new_primitive(CN_TYPE_STRING);
-                            parser_advance(parser);
-                            
-                            while (parser->current.kind == CN_TOKEN_STAR) {
-                                param_type = cn_type_new_pointer(param_type);
-                                parser_advance(parser);
-                            }
-                        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-                            param_type = cn_type_new_primitive(CN_TYPE_BOOL);
-                            parser_advance(parser);
-                            
-                            while (parser->current.kind == CN_TOKEN_STAR) {
-                                param_type = cn_type_new_pointer(param_type);
-                                parser_advance(parser);
-                            }
-                        } else {
+                        // 使用统一的 parse_type 解析参数类型
+                        CnType *param_type = parse_type(parser);
+                        if (!param_type) {
                             parser->error_count++;
                             if (parser->diagnostics) {
                                 cn_support_diagnostics_report(parser->diagnostics,
@@ -1244,6 +1120,88 @@ static CnAstExpr *parse_postfix(CnParser *parser)
     }
 
     return expr;
+}
+
+// 统一的类型解析函数，支持所有类型组合
+// 解析：整数/小数/布尔/字符串/数组/结构体/枚举/指针等类型
+static CnType *parse_type(CnParser *parser)
+{
+    CnType *type = NULL;
+
+    if (!parser->has_current) {
+        parser_advance(parser);
+    }
+
+    // 解析基础类型
+    if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+        type = cn_type_new_primitive(CN_TYPE_INT);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+        type = cn_type_new_primitive(CN_TYPE_FLOAT);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+        type = cn_type_new_primitive(CN_TYPE_BOOL);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+        type = cn_type_new_primitive(CN_TYPE_STRING);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
+        // 数组类型：例如 "数组 整数" 或 "数组 小数"
+        parser_advance(parser);
+
+        // 解析元素类型（可选）
+        CnType *element_type = NULL;
+        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
+            element_type = cn_type_new_primitive(CN_TYPE_INT);
+            parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
+            element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
+            parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+            element_type = cn_type_new_primitive(CN_TYPE_STRING);
+            parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+            element_type = cn_type_new_primitive(CN_TYPE_BOOL);
+            parser_advance(parser);
+        } else {
+            // 没有元素类型，默认为整数数组
+            element_type = cn_type_new_primitive(CN_TYPE_INT);
+        }
+
+        // 创建数组类型（长度为0表示未知或动态）
+        type = cn_type_new_array(element_type, 0);
+    } else if (parser->current.kind == CN_TOKEN_IDENT) {
+        // 可能是结构体类型或枚举类型（自定义类型）
+        // 目前简化处理：将标识符视为结构体类型名
+        // TODO: 未来可以通过符号表区分结构体和枚举
+        const char *type_name = parser->current.lexeme_begin;
+        size_t type_name_length = parser->current.lexeme_length;
+        parser_advance(parser);
+
+        // 创建结构体类型（字段列表留空，后续语义分析填充）
+        type = cn_type_new_struct(type_name, type_name_length, NULL, 0);
+    } else {
+        // 无法识别的类型
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：期望类型名称");
+        }
+        return NULL;
+    }
+
+    // 解析指针层级：支持多级指针，例如 "整数*" 或 "整数**"
+    while (parser->current.kind == CN_TOKEN_STAR) {
+        type = cn_type_new_pointer(type);
+        parser_advance(parser);
+    }
+
+    return type;
 }
 
 static CnAstExpr *parse_factor(CnParser *parser)
@@ -1829,43 +1787,9 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
     }
 
     while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
-        // 解析字段类型
-        CnType *field_type = NULL;
-        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-            field_type = cn_type_new_primitive(CN_TYPE_INT);
-            parser_advance(parser);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-            field_type = cn_type_new_primitive(CN_TYPE_STRING);
-            parser_advance(parser);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-            field_type = cn_type_new_primitive(CN_TYPE_BOOL);
-            parser_advance(parser);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
-            // 数组字段类型：例如 "数组 整数 数据;"
-            parser_advance(parser);
-            
-            // 检查是否有元素类型关键字（可选）
-            CnType *element_type = NULL;
-            if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-                element_type = cn_type_new_primitive(CN_TYPE_INT);
-                parser_advance(parser);
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
-                element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
-                parser_advance(parser);
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-                element_type = cn_type_new_primitive(CN_TYPE_STRING);
-                parser_advance(parser);
-            } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-                element_type = cn_type_new_primitive(CN_TYPE_BOOL);
-                parser_advance(parser);
-            } else {
-                // 没有元素类型，默认为泛型数组
-                element_type = cn_type_new_primitive(CN_TYPE_INT);
-            }
-            
-            // 创建数组类型（长度为0表示未知）
-            field_type = cn_type_new_array(element_type, 0);
-        } else {
+        // 使用统一的 parse_type 解析字段类型
+        CnType *field_type = parse_type(parser);
+        if (!field_type) {
             parser->error_count++;
             if (parser->diagnostics) {
                 cn_support_diagnostics_report(parser->diagnostics,
@@ -1878,12 +1802,6 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
             }
             free(fields);
             return NULL;
-        }
-
-        // 支持指针类型
-        while (parser->current.kind == CN_TOKEN_STAR) {
-            field_type = cn_type_new_pointer(field_type);
-            parser_advance(parser);
         }
 
         // 解析字段名称
