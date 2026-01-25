@@ -683,3 +683,19 @@ add_executable(semantics_selective_import_test
 target_include_directories(semantics_selective_import_test PRIVATE ../../include)
 add_test(NAME semantics_selective_import_test COMMAND semantics_selective_import_test)
 set_tests_properties(semantics_selective_import_test PROPERTIES LABELS "stage7;module;import;selective;unit")
+
+# 中断处理运行时测试
+add_executable(interrupt_test runtime/interrupt_test.c)
+target_link_libraries(interrupt_test PRIVATE cn_runtime)
+target_include_directories(interrupt_test PRIVATE ../../include)
+add_test(NAME interrupt_test COMMAND interrupt_test)
+set_tests_properties(interrupt_test PROPERTIES LABELS "stage8;interrupt;runtime;unit")
+
+# 中断处理解析器测试
+add_executable(parser_interrupt_test
+    parser_interrupt_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(parser_interrupt_test PRIVATE ../../include)
+add_test(NAME parser_interrupt_test COMMAND parser_interrupt_test)
+set_tests_properties(parser_interrupt_test PROPERTIES LABELS "stage8;interrupt;parser;unit")

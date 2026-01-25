@@ -4,6 +4,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 typedef struct CnParser {
     CnLexer *lexer;
@@ -1690,7 +1691,9 @@ static CnAstExpr *parse_factor(CnParser *parser)
             size_t in_capacity = 4;
             inputs = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * in_capacity);
             if (!inputs) {
-                cn_frontend_ast_expr_array_free(outputs, output_count);
+                for (size_t i = 0; i < output_count; i++) {
+                    cn_frontend_ast_expr_free(outputs[i]);
+                }
                 free(outputs);
                 cn_frontend_ast_expr_free(asm_code);
                 return NULL;
@@ -1704,7 +1707,9 @@ static CnAstExpr *parse_factor(CnParser *parser)
                             inputs, sizeof(CnAstExpr *) * in_capacity);
                         if (!new_inputs) {
                             free(inputs);
-                            cn_frontend_ast_expr_array_free(outputs, output_count);
+                            for (size_t i = 0; i < output_count; i++) {
+                                cn_frontend_ast_expr_free(outputs[i]);
+                            }
                             free(outputs);
                             cn_frontend_ast_expr_free(asm_code);
                             return NULL;
@@ -1733,9 +1738,13 @@ static CnAstExpr *parse_factor(CnParser *parser)
         }
         
         if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
-            cn_frontend_ast_expr_array_free(inputs, input_count);
+            for (size_t i = 0; i < input_count; i++) {
+                cn_frontend_ast_expr_free(inputs[i]);
+            }
             free(inputs);
-            cn_frontend_ast_expr_array_free(outputs, output_count);
+            for (size_t i = 0; i < output_count; i++) {
+                cn_frontend_ast_expr_free(outputs[i]);
+            }
             free(outputs);
             cn_frontend_ast_expr_free(asm_code);
             if (clobbers) {

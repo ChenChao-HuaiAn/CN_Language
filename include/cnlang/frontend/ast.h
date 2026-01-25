@@ -2,6 +2,7 @@
 #define CN_FRONTEND_AST_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -410,8 +411,8 @@ typedef struct CnAstExpr {
         CnAstMemoryCopyExpr memory_copy;   // 内存复制
         CnAstMemorySetExpr memory_set;     // 内存设置
         CnAstMemoryMapExpr memory_map;     // 内存映射
-        CnAstMemoryUnmapExpr memory_unmap // 解除内存映射
-        CnAstInlineAsmExpr inline_asm     // 内联汇编
+        CnAstMemoryUnmapExpr memory_unmap; // 解除内存映射
+        CnAstInlineAsmExpr inline_asm;     // 内联汇编
     } as;
 } CnAstExpr;
 

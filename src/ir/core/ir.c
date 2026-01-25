@@ -68,6 +68,8 @@ CnIrFunction *cn_ir_function_new(const char *name, CnType *return_type) {
         func->first_block = NULL;
         func->last_block = NULL;
         func->next_reg_id = 0;
+        func->is_interrupt_handler = 0;  // 默认不是中断处理函数
+        func->interrupt_vector = 0;
         func->next = NULL;
     }
     return func;

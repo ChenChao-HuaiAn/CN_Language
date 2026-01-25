@@ -7,7 +7,9 @@
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <sys/mman.h>
+#endif
 
 /* 性能优化：输出缓冲区大小 */
 #define CGEN_BUFFER_SIZE 8192
@@ -480,6 +482,11 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     const char *c_func_name = get_c_function_name(func->name);
     bool is_main = strcmp(c_func_name, "main") == 0;
     
+    // 中断处理函数：生成注释和属性
+    if (func->is_interrupt_handler) {
+        fprintf(ctx->output_file, "// 中断处理函数 (ISR) - 中断向量号: %u\n", func->interrupt_vector);
+    }
+    
     fprintf(ctx->output_file, "%s %s(", get_c_type_string(func->return_type), c_func_name);
     for (size_t i = 0; i < func->param_count; i++) {
         fprintf(ctx->output_file, "%s %s", get_c_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
@@ -490,6 +497,17 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     // 注入运行时初始化（仅 hosted 模式）
     if (is_main && ctx->module && ctx->module->compile_mode != CN_COMPILE_MODE_FREESTANDING) {
         fprintf(ctx->output_file, "  cn_rt_init();\n");
+        
+        // 自动注册ISR函数
+        CnIrFunction *isr_func = ctx->module->first_func;
+        while (isr_func) {
+            if (isr_func->is_interrupt_handler) {
+                const char *isr_c_name = get_c_function_name(isr_func->name);
+                fprintf(ctx->output_file, "  cn_rt_interrupt_register(%u, %s, \"%s\");\n",
+                        isr_func->interrupt_vector, isr_c_name, isr_c_name);
+            }
+            isr_func = isr_func->next;
+        }
     }
     
     // 在 main 函数中调用模块初始化函数
@@ -634,6 +652,11 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
 
     CnIrBasicBlock *block = func->first_block;
     while (block) { cn_cgen_block(ctx, block); block = block->next; }
+
+    // 中断处理函数默认返回0（如果没有显式return）
+    if (func->is_interrupt_handler) {
+        fprintf(ctx->output_file, "  return 0;\n");
+    }
 
     // 注入运行时退出（仅 hosted 模式）
     if (is_main && ctx->module && ctx->module->compile_mode != CN_COMPILE_MODE_FREESTANDING) {

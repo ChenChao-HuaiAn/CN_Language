@@ -4,7 +4,9 @@
 #ifndef CN_FREESTANDING
 #include <string.h>
 #include <stdint.h>
+#if !defined(_WIN32) && !defined(_WIN64)
 #include <sys/mman.h>
+#endif
 #endif
 #include <stdio.h>
 
@@ -293,9 +295,10 @@ void cn_rt_memory_set_safe(void* addr, int value, size_t size) {
 // 内存映射（带安全检查）
 void* cn_rt_memory_map_safe(void* addr, size_t size, int prot, int flags) {
     if (!g_memory_safety_enabled) {
-#ifndef CN_FREESTANDING
+#if !defined(CN_FREESTANDING) && !defined(_WIN32) && !defined(_WIN64)
         return mmap(addr, size, prot, flags, -1, 0);
 #else
+        (void)addr; (void)size; (void)prot; (void)flags; // 避免未使用参数警告
         return NULL;
 #endif
     }
@@ -305,7 +308,7 @@ void* cn_rt_memory_map_safe(void* addr, size_t size, int prot, int flags) {
         return NULL;
     }
     
-#ifndef CN_FREESTANDING
+#if !defined(CN_FREESTANDING) && !defined(_WIN32) && !defined(_WIN64)
     void* result = mmap(addr, size, prot, flags, -1, 0);
     
     if (result == MAP_FAILED) {
@@ -315,7 +318,8 @@ void* cn_rt_memory_map_safe(void* addr, size_t size, int prot, int flags) {
     
     return result;
 #else
-    fprintf(stderr, "内存映射错误：freestanding 模式不支持 mmap\n");
+    fprintf(stderr, "内存映射错误：当前平台不支持 mmap\n");
+    (void)addr; (void)prot; (void)flags; // 避免未使用参数警告
     return NULL;
 #endif
 }
@@ -323,9 +327,10 @@ void* cn_rt_memory_map_safe(void* addr, size_t size, int prot, int flags) {
 // 解除内存映射（带安全检查）
 int cn_rt_memory_unmap_safe(void* addr, size_t size) {
     if (!g_memory_safety_enabled) {
-#ifndef CN_FREESTANDING
+#if !defined(CN_FREESTANDING) && !defined(_WIN32) && !defined(_WIN64)
         return munmap(addr, size);
 #else
+        (void)addr; (void)size; // 避免未使用参数警告
         return -1;
 #endif
     }
@@ -340,7 +345,7 @@ int cn_rt_memory_unmap_safe(void* addr, size_t size) {
         return -1;
     }
     
-#ifndef CN_FREESTANDING
+#if !defined(CN_FREESTANDING) && !defined(_WIN32) && !defined(_WIN64)
     int result = munmap(addr, size);
     
     if (result != 0) {
@@ -350,7 +355,8 @@ int cn_rt_memory_unmap_safe(void* addr, size_t size) {
     
     return 0;
 #else
-    fprintf(stderr, "解除内存映射错误：freestanding 模式不支持 munmap\n");
+    fprintf(stderr, "解除内存映射错误：当前平台不支持 munmap\n");
+    (void)addr; (void)size; // 避免未使用参数警告
     return -1;
 #endif
 }
