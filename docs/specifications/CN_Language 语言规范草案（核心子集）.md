@@ -600,6 +600,145 @@ ArgList      = Expr { "," Expr } ;
 3. 并发原语（协程、通道等）；
 4. 增强的模块/包管理（跨文件、跨工程依赖）。
 
+### 8.3 原子操作与锁机制（阶段8已实现）
+
+为支持系统编程和并发控制，CN_Language 提供了原子操作和锁机制的运行时支持。这些功能通过运行时库提供，无需特殊语法支持。
+
+#### 8.3.1 原子操作
+
+**设计目标**：
+- 提供无锁的原子操作，支持多线程安全访问共享变量
+- 支持多种内存顺序模型，平衡性能与一致性
+- 跨平台实现，在Windows、Linux、macOS等平台上提供一致接口
+
+**支持的原子类型**：
+1. **CnAtomic32**：32位原子整数
+2. **CnAtomic64**：64位原子整数
+3. **CnAtomicPtr**：原子指针
+
+**原子操作接口**：
+- `cn_rt_atomic32_load()`：原子读取
+- `cn_rt_atomic32_store()`：原子写入
+- `cn_rt_atomic32_exchange()`：原子交换
+- `cn_rt_atomic32_compare_exchange()`：原子比较并交换（CAS）
+- `cn_rt_atomic32_fetch_add()`：原子加法（返回旧值）
+- `cn_rt_atomic32_fetch_sub()`：原子减法（返回旧值）
+- `cn_rt_atomic32_fetch_or()`：原子按位或
+- `cn_rt_atomic32_fetch_and()`：原子按位与
+- `cn_rt_atomic32_fetch_xor()`：原子按位异或
+
+**内存顺序**：
+- `CN_MEMORY_ORDER_RELAXED`：松弛顺序，最弱保证，性能最高
+- `CN_MEMORY_ORDER_ACQUIRE`：获取顺序，用于读操作
+- `CN_MEMORY_ORDER_RELEASE`：释放顺序，用于写操作
+- `CN_MEMORY_ORDER_SEQ_CST`：顺序一致性，最强保证，性能较低
+
+**使用示例**（C代码层面）：
+```c
+// 声明原子变量
+CnAtomic32 counter;
+cn_rt_atomic32_init(&counter, 0);
+
+// 原子加法
+int32_t old_val = cn_rt_atomic32_fetch_add(&counter, 1, CN_MEMORY_ORDER_SEQ_CST);
+
+// 原子CAS
+int32_t expected = 10;
+int32_t desired = 20;
+if (cn_rt_atomic32_compare_exchange(&counter, &expected, desired, CN_MEMORY_ORDER_SEQ_CST)) {
+    // CAS成功
+}
+```
+
+#### 8.3.2 锁机制
+
+**互斥锁（Mutex）**：
+- 用于保护临界区，确保同一时刻只有一个线程访问共享资源
+- 支持可重入性，同一线程可多次加锁
+- 提供阻塞式加锁和非阻塞式尝试加锁
+
+**接口**：
+- `cn_rt_mutex_init()`：初始化互斥锁
+- `cn_rt_mutex_lock()`：加锁（阻塞）
+- `cn_rt_mutex_trylock()`：尝试加锁（非阻塞）
+- `cn_rt_mutex_unlock()`：解锁
+- `cn_rt_mutex_destroy()`：销毁互斥锁
+
+**自旋锁（Spinlock）**：
+- 用于保护短时间临界区，通过自旋等待避免线程切换开销
+- 适合临界区执行时间很短的场景
+- 不支持可重入
+
+**接口**：
+- `cn_rt_spinlock_init()`：初始化自旋锁
+- `cn_rt_spinlock_lock()`：加锁（自旋等待）
+- `cn_rt_spinlock_trylock()`：尝试加锁（非阻塞）
+- `cn_rt_spinlock_unlock()`：解锁
+- `cn_rt_spinlock_destroy()`：销毁自旋锁
+
+**读写锁（RWLock）**：
+- 支持多读者-单写者模式
+- 多个线程可同时持有读锁
+- 写锁是独占的，与读锁和其他写锁互斥
+
+**接口**：
+- `cn_rt_rwlock_init()`：初始化读写锁
+- `cn_rt_rwlock_read_lock()`：读锁定
+- `cn_rt_rwlock_try_read_lock()`：尝试读锁定
+- `cn_rt_rwlock_read_unlock()`：读解锁
+- `cn_rt_rwlock_write_lock()`：写锁定
+- `cn_rt_rwlock_try_write_lock()`：尝试写锁定
+- `cn_rt_rwlock_write_unlock()`：写解锁
+- `cn_rt_rwlock_destroy()`：销毁读写锁
+
+**使用示例**（C代码层面）：
+```c
+// 互斥锁保护临界区
+CnMutex mutex;
+cn_rt_mutex_init(&mutex);
+
+cn_rt_mutex_lock(&mutex);
+// 临界区代码
+shared_counter++;
+cn_rt_mutex_unlock(&mutex);
+
+// 读写锁
+CnRwLock rwlock;
+cn_rt_rwlock_init(&rwlock);
+
+// 读者
+cn_rt_rwlock_read_lock(&rwlock);
+int value = shared_data;
+cn_rt_rwlock_read_unlock(&rwlock);
+
+// 写者
+cn_rt_rwlock_write_lock(&rwlock);
+shared_data = new_value;
+cn_rt_rwlock_write_unlock(&rwlock);
+```
+
+#### 8.3.3 实现特性
+
+**跨平台支持**：
+- Windows：使用 `InterlockedXxx` 系列API和内存屏障
+- Linux/macOS：使用 GCC/Clang 的 `__atomic_xxx` 内建函数
+- 支持 x86_64 和 ARM64 架构
+
+**性能优化**：
+- 使用 CPU pause 指令优化自旋锁性能
+- 支持不同内存顺序，允许根据场景选择合适的内存模型
+- 避免不必要的内存屏障，减少性能开销
+
+**线程安全**：
+- 所有原子操作保证线程安全
+- 锁机制正确处理竞态条件
+- 支持可重入互斥锁，避免死锁
+
+**Freestanding 模式支持**：
+- 所有同步原语在 freestanding 模式下可用
+- 适用于操作系统内核开发和嵌入式系统
+- 不依赖标准库的线程API
+
 ---
 
 本语言规范草案主要面向 **阶段 1（前端基础）和阶段 2（语义分析）** 的实现需要。

@@ -706,3 +706,10 @@ target_link_libraries(runtime_memory_safety_test PRIVATE cn_runtime)
 target_include_directories(runtime_memory_safety_test PRIVATE ../../include)
 add_test(NAME runtime_memory_safety_test COMMAND runtime_memory_safety_test)
 set_tests_properties(runtime_memory_safety_test PROPERTIES LABELS "stage8;memory;safety;runtime;unit")
+
+# 原子操作和锁机制测试
+add_executable(runtime_sync_test runtime/runtime_sync_test.c)
+target_link_libraries(runtime_sync_test PRIVATE cn_runtime)
+target_include_directories(runtime_sync_test PRIVATE ../../include)
+add_test(NAME runtime_sync_test COMMAND runtime_sync_test)
+set_tests_properties(runtime_sync_test PROPERTIES LABELS "stage8;sync;atomic;lock;runtime;unit")
