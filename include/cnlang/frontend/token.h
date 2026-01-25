@@ -78,6 +78,12 @@ typedef enum CnTokenKind {
     CN_TOKEN_LOGICAL_AND,      // 逻辑与 &&
     CN_TOKEN_LOGICAL_OR,       // 逻辑或 ||
     CN_TOKEN_AMPERSAND,        // 取地址 &
+    CN_TOKEN_BITWISE_AND,       // 按位与 &
+    CN_TOKEN_BITWISE_OR,        // 按位或 |
+    CN_TOKEN_BITWISE_XOR,       // 按位异或 ^
+    CN_TOKEN_BITWISE_NOT,       // 按位取反 ~
+    CN_TOKEN_LEFT_SHIFT,        // 左移 <<
+    CN_TOKEN_RIGHT_SHIFT,       // 右移 >>
     CN_TOKEN_LPAREN,           // 左括号 (
     CN_TOKEN_RPAREN,           // 右括号 )
     CN_TOKEN_LBRACE,           // 左大括号 {

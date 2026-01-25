@@ -33,6 +33,7 @@ static CnAstExpr *parse_assignment(CnParser *parser);
 static CnAstExpr *parse_logical_or(CnParser *parser);
 static CnAstExpr *parse_logical_and(CnParser *parser);
 static CnAstExpr *parse_comparison(CnParser *parser);
+static CnAstExpr *parse_shift(CnParser *parser);
 static CnAstExpr *parse_additive(CnParser *parser);
 static CnAstExpr *parse_term(CnParser *parser);
 static CnAstExpr *parse_unary(CnParser *parser);
@@ -955,9 +956,25 @@ static CnAstExpr *parse_logical_and(CnParser *parser)
     return left;
 }
 
-static CnAstExpr *parse_comparison(CnParser *parser)
+static CnAstExpr *parse_shift(CnParser *parser)
 {
     CnAstExpr *left = parse_additive(parser);
+
+    while (parser->current.kind == CN_TOKEN_LEFT_SHIFT ||
+           parser->current.kind == CN_TOKEN_RIGHT_SHIFT) {
+        CnAstBinaryOp op = (parser->current.kind == CN_TOKEN_LEFT_SHIFT)
+                               ? CN_AST_BINARY_OP_LEFT_SHIFT
+                               : CN_AST_BINARY_OP_RIGHT_SHIFT;
+        parser_advance(parser);
+        left = make_binary(op, left, parse_additive(parser));
+    }
+
+    return left;
+}
+
+static CnAstExpr *parse_comparison(CnParser *parser)
+{
+    CnAstExpr *left = parse_shift(parser);
 
     while (parser->current.kind == CN_TOKEN_EQUAL_EQUAL ||
            parser->current.kind == CN_TOKEN_BANG_EQUAL ||
@@ -1029,14 +1046,23 @@ static CnAstExpr *parse_term(CnParser *parser)
 
     while (parser->current.kind == CN_TOKEN_STAR ||
            parser->current.kind == CN_TOKEN_SLASH ||
-           parser->current.kind == CN_TOKEN_PERCENT) {
+           parser->current.kind == CN_TOKEN_PERCENT ||
+           parser->current.kind == CN_TOKEN_BITWISE_AND ||
+           parser->current.kind == CN_TOKEN_BITWISE_OR ||
+           parser->current.kind == CN_TOKEN_BITWISE_XOR) {
         CnAstBinaryOp op;
         if (parser->current.kind == CN_TOKEN_STAR) {
             op = CN_AST_BINARY_OP_MUL;
         } else if (parser->current.kind == CN_TOKEN_SLASH) {
             op = CN_AST_BINARY_OP_DIV;
-        } else {
+        } else if (parser->current.kind == CN_TOKEN_PERCENT) {
             op = CN_AST_BINARY_OP_MOD;
+        } else if (parser->current.kind == CN_TOKEN_BITWISE_AND) {
+            op = CN_AST_BINARY_OP_BITWISE_AND;
+        } else if (parser->current.kind == CN_TOKEN_BITWISE_OR) {
+            op = CN_AST_BINARY_OP_BITWISE_OR;
+        } else {
+            op = CN_AST_BINARY_OP_BITWISE_XOR;
         }
         parser_advance(parser);
         left = make_binary(op, left, parse_unary(parser));
@@ -1067,7 +1093,14 @@ static CnAstExpr *parse_unary(CnParser *parser)
         CnAstExpr *operand = parse_unary(parser);  // 递归处理多个 !
         return make_unary(CN_AST_UNARY_OP_NOT, operand);
     }
-    
+
+    // 处理按位取反运算符 ~
+    if (parser->current.kind == CN_TOKEN_BITWISE_NOT) {
+        parser_advance(parser);
+        CnAstExpr *operand = parse_unary(parser);  // 递归处理多个 ~
+        return make_unary(CN_AST_UNARY_OP_BITWISE_NOT, operand);
+    }
+
     // 处理一元负号 -
     if (parser->current.kind == CN_TOKEN_MINUS) {
         parser_advance(parser);

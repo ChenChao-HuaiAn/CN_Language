@@ -207,6 +207,11 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                 case CN_AST_BINARY_OP_GT: fprintf(ctx->output_file, " > "); break;
                 case CN_AST_BINARY_OP_LE: fprintf(ctx->output_file, " <= "); break;
                 case CN_AST_BINARY_OP_GE: fprintf(ctx->output_file, " >= "); break;
+                case CN_AST_BINARY_OP_BITWISE_AND: fprintf(ctx->output_file, " & "); break;
+                case CN_AST_BINARY_OP_BITWISE_OR: fprintf(ctx->output_file, " | "); break;
+                case CN_AST_BINARY_OP_BITWISE_XOR: fprintf(ctx->output_file, " ^ "); break;
+                case CN_AST_BINARY_OP_LEFT_SHIFT: fprintf(ctx->output_file, " << "); break;
+                case CN_AST_BINARY_OP_RIGHT_SHIFT: fprintf(ctx->output_file, " >> "); break;
                 default: fprintf(ctx->output_file, " ? "); break;
             }
             
@@ -218,6 +223,7 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             switch (expr->as.unary.op) {
                 case CN_AST_UNARY_OP_MINUS: fprintf(ctx->output_file, "-"); break;
                 case CN_AST_UNARY_OP_NOT: fprintf(ctx->output_file, "!"); break;
+                case CN_AST_UNARY_OP_BITWISE_NOT: fprintf(ctx->output_file, "~"); break;
                 default: break;
             }
             cn_cgen_expr_simple(ctx, expr->as.unary.operand);

@@ -56,13 +56,18 @@ typedef enum CnAstBinaryOp {
     CN_AST_BINARY_OP_SUB,     // -
     CN_AST_BINARY_OP_MUL,     // *
     CN_AST_BINARY_OP_DIV,     // /
-    CN_AST_BINARY_OP_MOD,   // % 取模
-    CN_AST_BINARY_OP_EQ,     // ==
-    CN_AST_BINARY_OP_NE,     // !=
-    CN_AST_BINARY_OP_LT,     // <
-    CN_AST_BINARY_OP_GT,     // >
-    CN_AST_BINARY_OP_LE,     // <=
-    CN_AST_BINARY_OP_GE      // >=
+    CN_AST_BINARY_OP_MOD,     // % 取模
+    CN_AST_BINARY_OP_EQ,      // ==
+    CN_AST_BINARY_OP_NE,      // !=
+    CN_AST_BINARY_OP_LT,      // <
+    CN_AST_BINARY_OP_GT,      // >
+    CN_AST_BINARY_OP_LE,      // <=
+    CN_AST_BINARY_OP_GE,      // >=
+    CN_AST_BINARY_OP_BITWISE_AND, // & 按位与
+    CN_AST_BINARY_OP_BITWISE_OR,  // | 按位或
+    CN_AST_BINARY_OP_BITWISE_XOR, // ^ 按位异或
+    CN_AST_BINARY_OP_LEFT_SHIFT,  // << 左移
+    CN_AST_BINARY_OP_RIGHT_SHIFT // >> 右移
 } CnAstBinaryOp;
 
 // 逻辑运算符
@@ -76,7 +81,8 @@ typedef enum CnAstUnaryOp {
     CN_AST_UNARY_OP_NOT,         // !
     CN_AST_UNARY_OP_MINUS,       // - (数值取负)
     CN_AST_UNARY_OP_ADDRESS_OF,  // 取地址 &
-    CN_AST_UNARY_OP_DEREFERENCE  // 解引用 *
+    CN_AST_UNARY_OP_DEREFERENCE, // 解引用 *
+    CN_AST_UNARY_OP_BITWISE_NOT  // ~ 按位取反
 } CnAstUnaryOp;
 
 struct CnType;

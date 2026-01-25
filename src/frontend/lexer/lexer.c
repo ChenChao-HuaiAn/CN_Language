@@ -518,7 +518,39 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                 advance(lexer);
                 out_token->kind = CN_TOKEN_LOGICAL_OR;
             } else {
-                out_token->kind = CN_TOKEN_INVALID;
+                out_token->kind = CN_TOKEN_BITWISE_OR;
+            }
+            break;
+        case '^':
+            advance(lexer);
+            out_token->kind = CN_TOKEN_BITWISE_XOR;
+            break;
+        case '~':
+            advance(lexer);
+            out_token->kind = CN_TOKEN_BITWISE_NOT;
+            break;
+        case '<':
+            advance(lexer);
+            if (current_char(lexer) == '<') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_LEFT_SHIFT;
+            } else if (current_char(lexer) == '=') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_LESS_EQUAL;
+            } else {
+                out_token->kind = CN_TOKEN_LESS;
+            }
+            break;
+        case '>':
+            advance(lexer);
+            if (current_char(lexer) == '>') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_RIGHT_SHIFT;
+            } else if (current_char(lexer) == '=') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_GREATER_EQUAL;
+            } else {
+                out_token->kind = CN_TOKEN_GREATER;
             }
             break;
         case '(':

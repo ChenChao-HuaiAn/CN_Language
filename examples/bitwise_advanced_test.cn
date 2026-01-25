@@ -1,0 +1,203 @@
+/*
+ * 位操作高级测试示例
+ * 演示位操作的高级应用
+ */
+
+函数 主程序() {
+    // 测试1：使用位操作实现标志位操作
+    整数 flags = 0;
+    整数 FLAG_READ = 0b00000001;  // 1
+    整数 FLAG_WRITE = 0b00000010; // 2
+    整数 FLAG_EXECUTE = 0b00000100; // 4
+    整数 FLAG_DELETE = 0b00001000; // 8
+    
+    打印("测试1: 标志位操作");
+    打印("初始flags = ");
+    打印(flags);
+    
+    // 设置多个标志
+    flags = flags | FLAG_READ | FLAG_WRITE;
+    打印("设置READ和WRITE后: ");
+    打印(flags);
+    打印(" (0b00000011 = 3)");
+    
+    // 检查特定标志是否设置
+    如果 ((flags & FLAG_EXECUTE) != 0) {
+        打印("EXECUTE标志已设置");
+    } 否则 {
+        打印("EXECUTE标志未设置");
+    }
+    
+    // 清除特定标志
+    flags = flags & ~FLAG_DELETE;
+    打印("清除DELETE后: ");
+    打印(flags);
+    打印(" (0b00000111 = 7)");
+    
+    // 测试2：使用位操作实现掩码操作
+    整数 value = 0b10101010;  // 0xAA = 170
+    整数 mask = 0b11110000;  // 0xF0 = 240
+    
+    打印("\n测试2: 掩码操作");
+    打印("value = ");
+    打印(value);
+    打印(" (0b10101010)");
+    打印("mask = ");
+    打印(mask);
+    打印(" (0b11110000)");
+    
+    // 保留高4位，清除低4位
+    整数 masked_value = value & mask;
+    打印("value & mask = ");
+    打印(masked_value);
+    打印(" (0b10100000 = 160)");
+    
+    // 测试3：使用位操作交换字节
+    整数 num = 0b1111000011110000;  // 0xF1E0 = 61952
+    整数 byte1 = num & 0b11111111;  // 低字节 0xE0 = 224
+    整数 byte2 = (num >> 8) & 0b11111111;  // 高字节 0xF1 = 241
+    
+    打印("\n测试3: 交换字节");
+    打印("原始值 = ");
+    打印(num);
+    打印(" (0b1111000011110000)");
+    打印("byte1 = ");
+    打印(byte1);
+    打印(" (0b11100000)");
+    打印("byte2 = ");
+    打印(byte2);
+    打印(" (0b11110001)");
+    
+    // 交换字节
+    整数 swapped = (byte1 << 8) | byte2;
+    打印("交换后 = ");
+    打印(swapped);
+    打印(" (0b1111000111100000)");
+    
+    // 测试4：使用位操作实现循环移位
+    整数 original = 0b00001111;  // 7
+    整数 shifted_left = 0;
+    整数 shifted_right = 0;
+    
+    打印("\n测试4: 循环移位");
+    打印("原始值 = ");
+    打印(original);
+    打印(" (0b00001111)");
+    
+    // 左移4位
+    shifted_left = (original << 4) | (original >> (32 - 4));
+    打印("循环左移4位 = ");
+    打印(shifted_left);
+    打印(" (0b11110000)");
+    
+    // 右移4位
+    shifted_right = (original >> 4) | (original << (32 - 4));
+    打印("循环右移4位 = ");
+    打印(shifted_right);
+    打印(" (0b11110000)");
+    
+    // 测试5：使用位操作实现绝对值
+    整数 num1 = -42;
+    整数 num2 = 42;
+    
+    打印("\n测试5: 绝对值");
+    打印("num1 = ");
+    打印(num1);
+    打印("num2 = ");
+    打印(num2);
+    
+    // 计算绝对值
+    整数 abs_num1 = num1 ^ (num1 >> 31);
+    整数 abs_num2 = num2 ^ (num2 >> 31);
+    
+    打印("|num1| = ");
+    打印(abs_num1);
+    打印("|num2| = ");
+    打印(abs_num2);
+    
+    // 测试6：使用位操作判断奇偶性
+    整数 test_num = 15;
+    
+    打印("\n测试6: 判断奇偶性");
+    打印("test_num = ");
+    打印(test_num);
+    
+    如果 ((test_num & 1) == 0) {
+        打印("偶数");
+    } 否则 {
+        打印("奇数");
+    }
+    
+    // 测试7：使用位操作判断2的幂次
+    整数 power_test = 16;
+    
+    打印("\n测试7: 判断2的幂次");
+    打印("power_test = ");
+    打印(power_test);
+    
+    如果 ((power_test & (power_test - 1)) == 0) {
+        打印("是2的幂次");
+    } 否则 {
+        打印("不是2的幂次");
+    }
+    
+    // 测试8：使用位操作实现快速乘法（左移）
+    整数 base = 5;
+    整数 multiplier = 4;
+    
+    打印("\n测试8: 快速乘法（左移）");
+    打印("base = ");
+    打印(base);
+    打印("multiplier = ");
+    打印(multiplier);
+    
+    // 使用左移实现乘法
+    整数 fast_mult = base << multiplier;
+    打印("base << multiplier = ");
+    打印(fast_mult);
+    打印(" (5 << 4 = 80)");
+    
+    // 验证
+    整数 normal_mult = base * multiplier;
+    打印("base * multiplier = ");
+    打印(normal_mult);
+    打印(" (5 * 4 = 20)");
+    
+    // 测试9：使用位操作实现快速除法（右移）
+    整数 dividend = 32;
+    整数 divisor = 4;
+    
+    打印("\n测试9: 快速除法（右移）");
+    打印("dividend = ");
+    打印(dividend);
+    打印("divisor = ");
+    打印(divisor);
+    
+    // 使用右移实现除法
+    整数 fast_div = dividend >> divisor;
+    打印("dividend >> divisor = ");
+    打印(fast_div);
+    打印(" (32 >> 4 = 2)");
+    
+    // 验证
+    整数 normal_div = dividend / divisor;
+    打印("dividend / divisor = ");
+    打印(normal_div);
+    打印(" (32 / 4 = 8)");
+    
+    // 测试10：使用位操作实现格雷码
+    整数 binary_num = 0b00001010;  // 10
+    整数 gray_code = binary_num ^ (binary_num >> 1);
+    
+    打印("\n测试10: 格雷码转换");
+    打印("二进制数 = ");
+    打印(binary_num);
+    打印(" (0b00001010)");
+    打印("格雷码 = ");
+    打印(gray_code);
+    打印(" (0b00001111 = 15)");
+    
+    打印("\n所有位操作高级测试完成");
+    
+    返回 0;
+}
