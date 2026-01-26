@@ -163,6 +163,7 @@ typedef struct CnAstStructField {
     const char *name;             // 字段名称
     size_t name_length;           // 字段名称长度
     struct CnType *field_type;    // 字段类型
+    int is_const;                 // 是否为常量字段（使用"常量"关键字）
 } CnAstStructField;
 
 // 结构体声明语句
@@ -220,6 +221,7 @@ typedef struct CnAstParameter {
     const char *name;
     size_t name_length;
     struct CnType *declared_type; // 参数声明类型
+    int is_const;                 // 是否为常量参数（使用"常量"关键字）
 } CnAstParameter;
 
 // 函数声明

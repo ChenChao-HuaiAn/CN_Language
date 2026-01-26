@@ -374,6 +374,14 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
         }
 
         do {
+            int param_is_const = 0;
+            
+            // 处理 '常量' 关键字：常量参数声明
+            if (parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
+                param_is_const = 1;
+                parser_advance(parser);
+            }
+            
             // 使用统一的 parse_type 解析参数类型
             CnType *param_type = parse_type(parser);
             if (!param_type) {
@@ -420,6 +428,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
             params[param_count].name = parser->current.lexeme_begin;
             params[param_count].name_length = parser->current.lexeme_length;
             params[param_count].declared_type = param_type;
+            params[param_count].is_const = param_is_const;
             param_count++;
 
             parser_advance(parser);
@@ -835,8 +844,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
         parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
-        parser->current.kind == CN_TOKEN_KEYWORD_ARRAY ||
-        parser->current.kind == CN_TOKEN_IDENT) {
+        parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -2335,6 +2343,14 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
     }
 
     while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+        int field_is_const = 0;
+        
+        // 处理 '常量' 关键字：常量字段声明
+        if (parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
+            field_is_const = 1;
+            parser_advance(parser);
+        }
+        
         // 使用统一的 parse_type 解析字段类型
         CnType *field_type = parse_type(parser);
         if (!field_type) {
@@ -2383,6 +2399,7 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
         fields[field_count].name = parser->current.lexeme_begin;
         fields[field_count].name_length = parser->current.lexeme_length;
         fields[field_count].field_type = field_type;
+        fields[field_count].is_const = field_is_const;  // 设置常量字段标记
         field_count++;
 
         parser_advance(parser);

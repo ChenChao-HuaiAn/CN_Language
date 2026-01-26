@@ -29,7 +29,10 @@ bool cn_sem_resolve_names(CnSemScope *global_scope,
         
         // 插入参数以构建正确的函数内部作用域环境
         for (size_t j = 0; j < fn->parameter_count; j++) {
-            cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
+            if (sym) {
+                sym->is_const = fn->parameters[j].is_const;  // 传递常量参数标记
+            }
         }
 
         resolve_block_names(fn_scope, fn->body, diagnostics);
@@ -65,7 +68,10 @@ bool cn_sem_resolve_names(CnSemScope *global_scope,
                 
                 // 插入参数
                 for (size_t k = 0; k < fn->parameter_count; k++) {
-                    cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
+                    CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
+                    if (sym) {
+                        sym->is_const = fn->parameters[k].is_const;  // 传递常量参数标记
+                    }
                 }
                 
                 resolve_block_names(fn_scope, fn->body, diagnostics);
@@ -235,7 +241,10 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, global_scope);
         for (size_t j = 0; j < fn->parameter_count; j++) {
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
-            if (sym) sym->type = fn->parameters[j].declared_type;
+            if (sym) {
+                sym->type = fn->parameters[j].declared_type;
+                sym->is_const = fn->parameters[j].is_const;  // 传递常量参数标记
+            }
         }
         
         // 推断函数返回类型：遍历函数体中的return语句
@@ -278,7 +287,10 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                 CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, module_scope);
                 for (size_t k = 0; k < fn->parameter_count; k++) {
                     CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
-                    if (sym) sym->type = fn->parameters[k].declared_type;
+                    if (sym) {
+                        sym->type = fn->parameters[k].declared_type;
+                        sym->is_const = fn->parameters[k].is_const;  // 传递常量参数标记
+                    }
                 }
                 
                 // 推断函数返回类型
@@ -306,7 +318,10 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, global_scope);
         for (size_t j = 0; j < fn->parameter_count; j++) {
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
-            if (sym) sym->type = fn->parameters[j].declared_type;
+            if (sym) {
+                sym->type = fn->parameters[j].declared_type;
+                sym->is_const = fn->parameters[j].is_const;  // 传递常量参数标记
+            }
         }
 
         check_block_types(fn_scope, fn->body, diagnostics, false);
@@ -341,7 +356,10 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                 CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, module_scope);
                 for (size_t k = 0; k < fn->parameter_count; k++) {
                     CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
-                    if (sym) sym->type = fn->parameters[k].declared_type;
+                    if (sym) {
+                        sym->type = fn->parameters[k].declared_type;
+                        sym->is_const = fn->parameters[k].is_const;  // 传递常量参数标记
+                    }
                 }
                 
                 check_block_types(fn_scope, fn->body, diagnostics, false);
@@ -622,15 +640,16 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *target = infer_expr_type(scope, expr->as.assign.target, diagnostics);
             CnType *val = infer_expr_type(scope, expr->as.assign.value, diagnostics);
             
-            // 检查左值是否合法：只能是标识符或索引访问
+            // 检查左值是否合法：只能是标识符、索引访问或成员访问
             CnAstExpr *target_expr = expr->as.assign.target;
             if (target_expr->kind != CN_AST_EXPR_IDENTIFIER && 
-                target_expr->kind != CN_AST_EXPR_INDEX) {
+                target_expr->kind != CN_AST_EXPR_INDEX &&
+                target_expr->kind != CN_AST_EXPR_MEMBER_ACCESS) {
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
                     NULL, 0, 0,
-                    "语义错误：赋值目标必须是变量或数组索引访问");
+                    "语义错误：赋值目标必须是变量、数组索引访问或结构体成员访问");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }
@@ -647,6 +666,34 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         "语义错误：不能给常量变量赋值");
                     expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                     break;
+                }
+            }
+            // 检查是否向常量字段赋值
+            else if (target_expr->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+                // 先计算对象类型
+                CnType *object_type = infer_expr_type(scope, target_expr->as.member.object, diagnostics);
+                
+                // 如果是箭头访问，获取指针指向的类型
+                if (target_expr->as.member.is_arrow && object_type && object_type->kind == CN_TYPE_POINTER) {
+                    object_type = object_type->as.pointer_to;
+                }
+                
+                // 检查是否为结构体类型
+                if (object_type && object_type->kind == CN_TYPE_STRUCT) {
+                    CnStructField *field = cn_type_struct_find_field(
+                        object_type,
+                        target_expr->as.member.member_name,
+                        target_expr->as.member.member_name_length);
+                    
+                    if (field && field->is_const) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
+                            NULL, 0, 0,
+                            "语义错误：不能给常量字段赋值");
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                        break;
+                    }
                 }
             }
             

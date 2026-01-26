@@ -103,6 +103,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     fields[j].name = struct_decl->fields[j].name;
                     fields[j].name_length = struct_decl->fields[j].name_length;
                     fields[j].field_type = struct_decl->fields[j].field_type;
+                    fields[j].is_const = struct_decl->fields[j].is_const;  // 传递常量字段标记
                 }
             }
             sym->type = cn_type_new_struct(struct_decl->name,
@@ -409,6 +410,7 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
             sym->type = param->declared_type;
+            sym->is_const = param->is_const;  // 传递常量参数标记
         } else {
             // 报告重复定义
             cn_support_diag_semantic_error_duplicate_symbol(
