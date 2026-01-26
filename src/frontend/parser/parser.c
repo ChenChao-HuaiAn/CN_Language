@@ -715,7 +715,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return make_continue_stmt();
     }
 
-    // 解析 switch 语句：选择 (表达式) { [情况 值: 块]* [默认: 块]? }
+    // 解析 switch 语句：选择 (表达式) { [情况 值: 语句...]* [默认: 语句...]? }
     if (parser->current.kind == CN_TOKEN_KEYWORD_SWITCH) {
         CnAstExpr *switch_expr;
         CnAstSwitchCase *cases = NULL;
@@ -777,7 +777,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 }
 
                 // 期望 ':'
-                if (!parser_expect(parser, CN_TOKEN_SEMICOLON)) { // 使用分号作为分隔符
+                if (!parser_expect(parser, CN_TOKEN_COLON)) {
                     cn_frontend_ast_expr_free(case_value);
                     for (size_t i = 0; i < case_count; i++) {
                         cn_frontend_ast_expr_free(cases[i].value);
@@ -795,7 +795,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 case_value = NULL;
 
                 // 期望 ':'
-                if (!parser_expect(parser, CN_TOKEN_SEMICOLON)) {
+                if (!parser_expect(parser, CN_TOKEN_COLON)) {
                     for (size_t i = 0; i < case_count; i++) {
                         cn_frontend_ast_expr_free(cases[i].value);
                         cn_frontend_ast_block_free(cases[i].body);
@@ -824,8 +824,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 return NULL;
             }
 
-            // 解析 case/default 的语句块
-            case_body = parse_block(parser);
+            // 解析 case/default 的语句序列（不需要大括号）
+            case_body = make_block();
             if (!case_body) {
                 cn_frontend_ast_expr_free(case_value);
                 for (size_t i = 0; i < case_count; i++) {
@@ -835,6 +835,26 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 free(cases);
                 cn_frontend_ast_expr_free(switch_expr);
                 return NULL;
+            }
+
+            // 解析语句，直到遇到下一个 case/default 或 }
+            while (parser->current.kind != CN_TOKEN_KEYWORD_CASE &&
+                   parser->current.kind != CN_TOKEN_KEYWORD_DEFAULT &&
+                   parser->current.kind != CN_TOKEN_RBRACE &&
+                   parser->current.kind != CN_TOKEN_EOF) {
+                CnAstStmt *stmt = parse_statement(parser);
+                if (!stmt) {
+                    cn_frontend_ast_expr_free(case_value);
+                    cn_frontend_ast_block_free(case_body);
+                    for (size_t i = 0; i < case_count; i++) {
+                        cn_frontend_ast_expr_free(cases[i].value);
+                        cn_frontend_ast_block_free(cases[i].body);
+                    }
+                    free(cases);
+                    cn_frontend_ast_expr_free(switch_expr);
+                    return NULL;
+                }
+                block_add_stmt(case_body, stmt);
             }
 
             // 扩容 case 数组
