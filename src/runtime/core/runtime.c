@@ -183,6 +183,91 @@ size_t cn_rt_string_length(const char *str) {
 #endif
 }
 
+// 整数转字符串
+char* cn_rt_int_to_string(long long val) {
+    // 最多需要 21 字节（包括符号和\0）
+    char *buffer = cn_rt_malloc(32);
+    if (buffer == NULL) {
+        return NULL;
+    }
+    
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：手动实现整数转字符串
+    int i = 0;
+    int is_negative = 0;
+    
+    if (val == 0) {
+        buffer[0] = '0';
+        buffer[1] = '\0';
+        return buffer;
+    }
+    
+    if (val < 0) {
+        is_negative = 1;
+        val = -val;
+    }
+    
+    // 逆序生成数字
+    char temp[32];
+    while (val > 0) {
+        temp[i++] = '0' + (val % 10);
+        val /= 10;
+    }
+    
+    int j = 0;
+    if (is_negative) {
+        buffer[j++] = '-';
+    }
+    
+    // 正序复制
+    while (i > 0) {
+        buffer[j++] = temp[--i];
+    }
+    buffer[j] = '\0';
+#else
+    snprintf(buffer, 32, "%lld", val);
+#endif
+    
+    return buffer;
+}
+
+// 布尔转字符串
+char* cn_rt_bool_to_string(int val) {
+    const char *str = val ? "真" : "假";
+    size_t len = strlen(str);
+    char *result = cn_rt_malloc(len + 1);
+    if (result) {
+#ifdef CN_FREESTANDING
+        cn_rt_strcpy(result, str);
+#else
+        strcpy(result, str);
+#endif
+    }
+    return result;
+}
+
+// 浮点数转字符串
+char* cn_rt_float_to_string(double val) {
+    char *buffer = cn_rt_malloc(64);
+    if (buffer == NULL) {
+        return NULL;
+    }
+    
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：简化实现，只输出整数部分
+    long long int_part = (long long)val;
+    char *int_str = cn_rt_int_to_string(int_part);
+    if (int_str) {
+        cn_rt_strcpy(buffer, int_str);
+        cn_rt_free(int_str);
+    }
+#else
+    snprintf(buffer, 64, "%f", val);
+#endif
+    
+    return buffer;
+}
+
 // 数组支持函数实现
 void* cn_rt_array_alloc(size_t elem_size, size_t count) {
     if (elem_size == 0 || count == 0) {

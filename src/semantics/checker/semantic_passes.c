@@ -649,6 +649,15 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
             }
             
+            // 特殊处理：字符串拼接（字符串 + 任何类型）
+            if (expr->as.binary.op == CN_AST_BINARY_OP_ADD) {
+                // 如果任一操作数是字符串，则结果为字符串类型
+                if ((left && left->kind == CN_TYPE_STRING) || (right && right->kind == CN_TYPE_STRING)) {
+                    expr->type = cn_type_new_primitive(CN_TYPE_STRING);
+                    break;
+                }
+            }
+            
             if (left && right && cn_type_compatible(left, right)) {
                 // 简单的算术运算结果类型
                 if (expr->as.binary.op >= CN_AST_BINARY_OP_EQ && expr->as.binary.op <= CN_AST_BINARY_OP_GE) {

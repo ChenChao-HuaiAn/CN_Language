@@ -44,6 +44,7 @@ static CnAstExpr *parse_factor(CnParser *parser);
 
 static CnAstExpr *make_integer_literal(long value);
 static CnAstExpr *make_float_literal(double value);
+static char* process_string_escapes(const char *raw_string, size_t raw_length, size_t *out_length);
 static CnAstExpr *make_string_literal(const char *value, size_t length);
 static CnAstExpr *make_bool_literal(int value);
 static CnAstExpr *make_identifier(const char *name, size_t length);
@@ -1521,7 +1522,17 @@ static CnAstExpr *parse_factor(CnParser *parser)
         expr = make_float_literal(value);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
-        expr = make_string_literal(parser->current.lexeme_begin, parser->current.lexeme_length);
+        // 处理字符串转义序列
+        size_t processed_length = 0;
+        char *processed_string = process_string_escapes(parser->current.lexeme_begin, 
+                                                         parser->current.lexeme_length,
+                                                         &processed_length);
+        if (processed_string) {
+            expr = make_string_literal(processed_string, processed_length);
+        } else {
+            // 处理失败，使用原始字符串
+            expr = make_string_literal(parser->current.lexeme_begin, parser->current.lexeme_length);
+        }
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_TRUE) {
         expr = make_bool_literal(1);
@@ -2004,6 +2015,50 @@ static CnAstExpr *make_float_literal(double value)
     expr->type = NULL;
     expr->as.float_literal.value = value;
     return expr;
+}
+
+// 处理字符串转义序列
+static char* process_string_escapes(const char *raw_string, size_t raw_length, size_t *out_length)
+{
+    // 跳过开头和结尾的引号
+    if (raw_length < 2 || raw_string[0] != '"' || raw_string[raw_length - 1] != '"') {
+        *out_length = 0;
+        return NULL;
+    }
+    
+    // 分配足够的空间（最坏情况：没有转义，长度相同）
+    char *result = (char *)malloc(raw_length);
+    if (!result) {
+        *out_length = 0;
+        return NULL;
+    }
+    
+    size_t write_pos = 0;
+    // 从第1个字符开始（跳过开头的"），到倒数第2个字符结束（跳过结尾的"）
+    for (size_t i = 1; i < raw_length - 1; i++) {
+        if (raw_string[i] == '\\' && i + 1 < raw_length - 1) {
+            // 处理转义序列
+            char next = raw_string[i + 1];
+            switch (next) {
+                case 'n':  result[write_pos++] = '\n'; i++; break;
+                case 'r':  result[write_pos++] = '\r'; i++; break;
+                case 't':  result[write_pos++] = '\t'; i++; break;
+                case '\\': result[write_pos++] = '\\'; i++; break;
+                case '"':  result[write_pos++] = '"'; i++; break;
+                case '0':  result[write_pos++] = '\0'; i++; break;
+                default:
+                    // 未知转义序列，保留反斜杠
+                    result[write_pos++] = '\\';
+                    break;
+            }
+        } else {
+            result[write_pos++] = raw_string[i];
+        }
+    }
+    
+    result[write_pos] = '\0';
+    *out_length = write_pos;
+    return result;
 }
 
 static CnAstExpr *make_string_literal(const char *value, size_t length)

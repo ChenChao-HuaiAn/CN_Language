@@ -2,9 +2,9 @@
 
 ✔ 1. 打印函数可能只支持打印字符串，不支持打印数字、布尔字面量等。（"examples\basic\print_only.cn"）
 
-2. 字符串拼接功能可能未实现。（examples\basic\test_simple.cn.back）
+✔ 2. 字符串拼接功能可能未实现。（"examples\basic\test_simple.cn"）
 
-3. cn语言可能不支持“0x1000”形式的数字。（examples\os-kernel\device_driver_demo.cn.back）
+3. cn语言可能不支持“0x1000”形式的数字。（"examples\os-kernel\device_driver_demo.cn.back"）
 
 4. 
 

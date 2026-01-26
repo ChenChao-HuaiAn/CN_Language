@@ -174,6 +174,87 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
         }
         case CN_AST_EXPR_BINARY: {
             // 二元运算：先递归生成左右操作数，再生成运算指令
+            
+            // 特殊处理：字符串拼接（字符串 + 任何类型）
+            if (expr->as.binary.op == CN_AST_BINARY_OP_ADD && 
+                expr->type && expr->type->kind == CN_TYPE_STRING) {
+                
+                CnIrOperand left = cn_ir_gen_expr(ctx, expr->as.binary.left);
+                CnIrOperand right = cn_ir_gen_expr(ctx, expr->as.binary.right);
+                
+                // 将非字符串类型转换为字符串
+                CnType *left_type = expr->as.binary.left->type;
+                CnType *right_type = expr->as.binary.right->type;
+                
+                // 转换左操作数
+                if (left_type && left_type->kind != CN_TYPE_STRING) {
+                    const char *convert_func = NULL;
+                    if (left_type->kind == CN_TYPE_INT) {
+                        convert_func = "cn_rt_int_to_string";
+                    } else if (left_type->kind == CN_TYPE_BOOL) {
+                        convert_func = "cn_rt_bool_to_string";
+                    } else if (left_type->kind == CN_TYPE_FLOAT) {
+                        convert_func = "cn_rt_float_to_string";
+                    }
+                    
+                    if (convert_func) {
+                        CnIrInst *conv_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                              cn_ir_op_symbol(convert_func, NULL),
+                                                              cn_ir_op_none());
+                        conv_inst->extra_args_count = 1;
+                        conv_inst->extra_args = malloc(sizeof(CnIrOperand));
+                        conv_inst->extra_args[0] = left;
+                        
+                        int str_reg = alloc_reg(ctx);
+                        conv_inst->dest = cn_ir_op_reg(str_reg, cn_type_new_primitive(CN_TYPE_STRING));
+                        emit(ctx, conv_inst);
+                        left = conv_inst->dest;
+                    }
+                }
+                
+                // 转换右操作数
+                if (right_type && right_type->kind != CN_TYPE_STRING) {
+                    const char *convert_func = NULL;
+                    if (right_type->kind == CN_TYPE_INT) {
+                        convert_func = "cn_rt_int_to_string";
+                    } else if (right_type->kind == CN_TYPE_BOOL) {
+                        convert_func = "cn_rt_bool_to_string";
+                    } else if (right_type->kind == CN_TYPE_FLOAT) {
+                        convert_func = "cn_rt_float_to_string";
+                    }
+                    
+                    if (convert_func) {
+                        CnIrInst *conv_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                              cn_ir_op_symbol(convert_func, NULL),
+                                                              cn_ir_op_none());
+                        conv_inst->extra_args_count = 1;
+                        conv_inst->extra_args = malloc(sizeof(CnIrOperand));
+                        conv_inst->extra_args[0] = right;
+                        
+                        int str_reg = alloc_reg(ctx);
+                        conv_inst->dest = cn_ir_op_reg(str_reg, cn_type_new_primitive(CN_TYPE_STRING));
+                        emit(ctx, conv_inst);
+                        right = conv_inst->dest;
+                    }
+                }
+                
+                // 调用 cn_rt_string_concat
+                CnIrInst *concat_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                        cn_ir_op_symbol("cn_rt_string_concat", NULL),
+                                                        cn_ir_op_none());
+                concat_inst->extra_args_count = 2;
+                concat_inst->extra_args = malloc(2 * sizeof(CnIrOperand));
+                concat_inst->extra_args[0] = left;
+                concat_inst->extra_args[1] = right;
+                
+                int dest_reg = alloc_reg(ctx);
+                concat_inst->dest = cn_ir_op_reg(dest_reg, expr->type);
+                emit(ctx, concat_inst);
+                
+                return concat_inst->dest;
+            }
+            
+            // 普通二元运算
             CnIrOperand left = cn_ir_gen_expr(ctx, expr->as.binary.left);
             CnIrOperand right = cn_ir_gen_expr(ctx, expr->as.binary.right);
             int dest_reg = alloc_reg(ctx);

@@ -149,7 +149,21 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
         case CN_IR_OP_REG: fprintf(ctx->output_file, "r%d", op.as.reg_id); break;
         case CN_IR_OP_IMM_INT: fprintf(ctx->output_file, "%lld", op.as.imm_int); break;
         case CN_IR_OP_IMM_FLOAT: fprintf(ctx->output_file, "%f", op.as.imm_float); break;
-        case CN_IR_OP_IMM_STR: fprintf(ctx->output_file, "%s", op.as.imm_str); break;
+        case CN_IR_OP_IMM_STR: 
+            // 字符串字面量：需要加引号并处理转义
+            fprintf(ctx->output_file, "\"");
+            for (const char *p = op.as.imm_str; p && *p; p++) {
+                switch (*p) {
+                    case '\\': fprintf(ctx->output_file, "\\\\"); break;
+                    case '\"': fprintf(ctx->output_file, "\\\""); break;
+                    case '\n': fprintf(ctx->output_file, "\\n"); break;
+                    case '\r': fprintf(ctx->output_file, "\\r"); break;
+                    case '\t': fprintf(ctx->output_file, "\\t"); break;
+                    default: fprintf(ctx->output_file, "%c", *p); break;
+                }
+            }
+            fprintf(ctx->output_file, "\"");
+            break;
         case CN_IR_OP_SYMBOL: fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name)); break;
         case CN_IR_OP_LABEL: fprintf(ctx->output_file, "%s", op.as.label->name ? op.as.label->name : "unnamed_label"); break;
         default: fprintf(ctx->output_file, "/* UNKNOWN */"); break;
@@ -792,6 +806,10 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "void cn_rt_print_float(double val);\n");
         fprintf(file, "void cn_rt_print_bool(int val);\n");
         fprintf(file, "size_t cn_rt_string_length(const char *str);\n");
+        fprintf(file, "char* cn_rt_string_concat(const char *a, const char *b);\n");
+        fprintf(file, "char* cn_rt_int_to_string(long long val);\n");
+        fprintf(file, "char* cn_rt_bool_to_string(int val);\n");
+        fprintf(file, "char* cn_rt_float_to_string(double val);\n");
         fprintf(file, "void* cn_rt_array_alloc(size_t elem_size, size_t count);\n");
         fprintf(file, "size_t cn_rt_array_length(void *arr);\n");
         fprintf(file, "int cn_rt_array_set_element(void *arr, size_t index, const void *element, size_t elem_size);\n");
