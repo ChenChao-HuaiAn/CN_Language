@@ -333,6 +333,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
     CnAstParameter *params = NULL;
     size_t param_count = 0;
     size_t param_capacity = 0;
+    CnType *return_type = NULL;
 
     if (!parser_expect(parser, CN_TOKEN_KEYWORD_FN)) {
         return NULL;
@@ -367,6 +368,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
     fn->name_length = parser->current.lexeme_length;
     fn->parameters = NULL;
     fn->parameter_count = 0;
+    fn->return_type = NULL;
     fn->body = NULL;
     fn->is_interrupt_handler = 0;  // 普通函数
     fn->interrupt_vector = 0;
@@ -457,6 +459,30 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 
     fn->parameters = params;
     fn->parameter_count = param_count;
+
+    // 解析返回类型（可选）：-> 类型
+    if (parser->current.kind == CN_TOKEN_ARROW) {
+        parser_advance(parser); // 跳过 '->'
+        
+        return_type = parse_type(parser);
+        if (!return_type) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：'->' 后必须指定返回类型");
+            }
+            free(params);
+            free(fn);
+            return NULL;
+        }
+    }
+
+    fn->return_type = return_type;
 
     body = parse_block(parser);
     fn->body = body;
@@ -1519,6 +1545,9 @@ static CnType *parse_type(CnParser *parser)
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
         type = cn_type_new_primitive(CN_TYPE_STRING);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
+        type = cn_type_new_primitive(CN_TYPE_VOID);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_ADDRESS) {
         type = cn_type_new_memory_address();

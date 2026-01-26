@@ -990,7 +990,14 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     memcpy(name, func->name, func->name_length);
     name[func->name_length] = '\0';
 
-    CnIrFunction *ir_func = cn_ir_function_new(name, cn_type_new_primitive(CN_TYPE_INT));
+    // 使用显式声明的返回类型，如果没有则默认为整数类型
+    CnType *return_type = func->return_type;
+    if (!return_type) {
+        // 如果没有显式声明返回类型，默认为整数类型（后续可通过返回语句推断）
+        return_type = cn_type_new_primitive(CN_TYPE_INT);
+    }
+
+    CnIrFunction *ir_func = cn_ir_function_new(name, return_type);
     free(name);
     ctx->current_func = ir_func;
 
