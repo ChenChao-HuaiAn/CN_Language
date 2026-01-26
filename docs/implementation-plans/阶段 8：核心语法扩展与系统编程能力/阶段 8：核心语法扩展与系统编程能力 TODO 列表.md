@@ -186,6 +186,26 @@
   - [x] 创建QEMU测试指南（examples/QEMU_TESTING_GUIDE.md）
   - [x] 在Linux/WSL2环境下验证QEMU运行（已安装并生成ELF内核）
   - [ ] 调试并修复复杂内核代码的解析问题（当前编译器限制）
+  
+  **调试进展**（202601-26）：
+  - ✓ 发现问题1：函数声明语法错误使用
+    - 错误：`函数 kernel_main() 整数 { ... }`
+    - 正确：`函数 kernel_main() { ... }`（返回类型由`返回`语句推断）
+  - ✓ 确认语法标准：`docs/design/CN_Language 语法标准.md` 第159-163行
+  - ✓ **发现问题2：解析器不支持全局变量声明（核心问题）**
+    - 文件位置：`src/frontend/parser/parser.c` 第257-317行
+    - 问题描述：`parse_program_internal` 函数的顶层解析循环没有处理 `CN_TOKEN_KEYWORD_VAR`
+    - 当前支持：import, module, struct, enum, 函数, 中断处理
+    - **缺失**：全局`变量`声明的处理
+    - 影响：所有包含全局变量的文件都无法解析
+  - ✓ **发现问题3：函数名限制问题**
+    - 文件位置：`src/frontend/parser/parser.c` 第335-336行
+    - 问题：只接受 `CN_TOKEN_IDENT` 或 `CN_TOKEN_KEYWORD_MAIN` 作为函数名
+    - 影响：只有`主程序`可以作为函数名，其他中文或英文标识符均被拒绝
+  - ⌛ **需要修复（优先级：高）**：
+    1. 在`parse_program_internal`中添加全局变量声明的处理
+    2. 扩展函数名验证逻辑，支持任意标识符
+    3. 添加相关测试用例
 
   **进展说明**：
   - ✓ 已创建完整的内核示例代码（os_kernel_demo.cn, 363行）
