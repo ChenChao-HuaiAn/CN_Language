@@ -324,11 +324,16 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 } 
                 // 检查是否是 "打印" 函数
                 else if (strcmp(name, "打印") == 0 && expr->as.call.argument_count == 1) {
-                    // 打印函数映射到 cn_rt_print_string 或 cn_rt_print_int
+                    // 打印函数根据参数类型映射到不同的运行时函数
                     CnType *arg_type = expr->as.call.arguments[0]->type;
                     if (arg_type && arg_type->kind == CN_TYPE_INT) {
                         func_name = "cn_rt_print_int";
+                    } else if (arg_type && arg_type->kind == CN_TYPE_BOOL) {
+                        func_name = "cn_rt_print_bool";
+                    } else if (arg_type && arg_type->kind == CN_TYPE_FLOAT) {
+                        func_name = "cn_rt_print_float";
                     } else {
+                        // 默认为字符串打印（包括 STRING 类型和其他类型）
                         func_name = "cn_rt_print_string";
                     }
                     free(name);

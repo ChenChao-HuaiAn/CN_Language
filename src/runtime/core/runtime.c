@@ -70,6 +70,22 @@ void cn_rt_print_int(long long val) {
 #endif
 }
 
+void cn_rt_print_float(double val) {
+#ifdef CN_FREESTANDING
+    // Freestanding 模式：使用内核 I/O 回调（需要手动格式化浮点数）
+    // 简化实现：只打印整数部分
+    cn_rt_kernel_io_print_int((long long)val);
+#else
+    // 宿主模式：检查是否注册了内核 I/O 回调
+    if (cn_rt_kernel_io_is_registered()) {
+        // 简化实现：只打印整数部分
+        cn_rt_kernel_io_print_int((long long)val);
+    } else {
+        printf("%f", val);
+    }
+#endif
+}
+
 void cn_rt_print_bool(int val) {
 #ifdef CN_FREESTANDING
     // Freestanding 模式：使用内核 I/O 回调

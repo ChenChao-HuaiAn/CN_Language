@@ -866,6 +866,30 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
             }
             
+            // 特殊处理：内置函数 "打印" 可以接受任何类型（根据参数类型调用不同的运行时函数）
+            bool is_print_builtin = false;
+            if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
+                expr->as.call.callee->as.identifier.name_length == strlen("打印") &&
+                strncmp(expr->as.call.callee->as.identifier.name, "打印",
+                        expr->as.call.callee->as.identifier.name_length) == 0) {
+                is_print_builtin = true;
+                
+                if (expr->as.call.argument_count != 1) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：打印函数需要一个参数");
+                } else {
+                    // 推断参数类型
+                    CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[0], diagnostics);
+                    // 打印函数接受任何类型，无需类型检查
+                    (void)arg_type;  // 避免未使用变量警告
+                }
+                // 打印函数返回 void 类型
+                expr->type = cn_type_new_primitive(CN_TYPE_VOID);
+            }
+            
             // 如果是长度内建函数，进行类型检查
             if (is_length_builtin && length_target) {
                 CnType *target_type = infer_expr_type(scope, length_target, diagnostics);
@@ -877,6 +901,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         "语义错误：长度函数参数必须是字符串或数组类型");
                 }
                 expr->type = cn_type_new_primitive(CN_TYPE_INT);
+            }
+            // 如果是打印内建函数，已经处理完毕
+            else if (is_print_builtin) {
+                // 已经设置了 expr->type = CN_TYPE_VOID，无需额外处理
             }
             // 处理函数指针调用：函数指针是指向函数类型的指针
             else if (callee_type && callee_type->kind == CN_TYPE_POINTER && 

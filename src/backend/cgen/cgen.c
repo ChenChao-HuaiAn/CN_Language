@@ -789,6 +789,8 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "// CN Language Runtime Function Declarations (Freestanding Mode)\n");
         fprintf(file, "void cn_rt_print_string(const char *str);\n");
         fprintf(file, "void cn_rt_print_int(long long val);\n");
+        fprintf(file, "void cn_rt_print_float(double val);\n");
+        fprintf(file, "void cn_rt_print_bool(int val);\n");
         fprintf(file, "size_t cn_rt_string_length(const char *str);\n");
         fprintf(file, "void* cn_rt_array_alloc(size_t elem_size, size_t count);\n");
         fprintf(file, "size_t cn_rt_array_length(void *arr);\n");
