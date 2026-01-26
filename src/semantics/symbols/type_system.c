@@ -55,6 +55,7 @@ CnType *cn_type_new_enum(const char *name, size_t name_length) {
     type->kind = CN_TYPE_ENUM;
     type->as.enum_type.name = name;
     type->as.enum_type.name_length = name_length;
+    type->as.enum_type.enum_scope = NULL; // 作用域将在scope_builder中创建
     return type;
 }
 
@@ -123,4 +124,21 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
     }
 
     return NULL; // 未找到匹配的字段
+}
+
+// 在枚举类型中查找成员
+CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
+                                      const char *member_name,
+                                      size_t member_name_length) {
+    if (!enum_type || enum_type->kind != CN_TYPE_ENUM) {
+        return NULL;
+    }
+    if (!member_name || !enum_type->as.enum_type.enum_scope) {
+        return NULL;
+    }
+
+    // 在枚举作用域中查找成员
+    return cn_sem_scope_lookup_shallow(enum_type->as.enum_type.enum_scope,
+                                       member_name,
+                                       member_name_length);
 }

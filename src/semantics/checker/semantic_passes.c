@@ -1030,8 +1030,8 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
-            // 成员访问类型推导：支持结构体 obj.member、模块 module.member 和内建方法 arr.长度()
-            // 首先检查左操作数是否为模块
+            // 成员访问类型推导：支持结构体 obj.member、模块 module.member、枚举 enum.member 和内建方法 arr.长度()
+            // 首先检查左操作数是否为模块或枚举
             if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
                 CnSemSymbol *sym = cn_sem_scope_lookup(
                     scope,
@@ -1068,6 +1068,30 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         expr->type = member_sym->type;
                         // 设置对象表达式的类型（标记为 VOID，表示模块）
                         expr->as.member.object->type = cn_type_new_primitive(CN_TYPE_VOID);
+                    }
+                    break;
+                }
+                
+                // 如果是枚举符号，在枚举作用域中查找成员
+                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM && sym->type && 
+                    sym->type->kind == CN_TYPE_ENUM && sym->type->as.enum_type.enum_scope) {
+                    CnSemSymbol *member_sym = cn_type_enum_find_member(
+                        sym->type,
+                        expr->as.member.member_name,
+                        expr->as.member.member_name_length);
+                    
+                    if (!member_sym) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
+                            NULL, 0, 0,
+                            "语义错误：枚举中不存在该成员");
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    } else {
+                        // 枚举成员访问的类型是成员的类型（整数）
+                        expr->type = member_sym->type;
+                        // 设置对象表达式的类型（标记为枚举类型）
+                        expr->as.member.object->type = sym->type;
                     }
                     break;
                 }

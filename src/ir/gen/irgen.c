@@ -594,7 +594,25 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             return cn_ir_op_reg(result_reg, expr->type);
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
-            // 成员访问：支持结构体 obj.member 和模块 module.member
+            // 成员访问：支持结构体 obj.member、模块 module.member 和枚举 enum.member
+            
+            // 检查是否为枚举成员访问（对象类型为 ENUM 表示枚举）
+            if (expr->as.member.object->type && 
+                expr->as.member.object->type->kind == CN_TYPE_ENUM &&
+                expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                // 枚举成员访问：查找枚举成员的值
+                CnSemSymbol *member_sym = cn_type_enum_find_member(
+                    expr->as.member.object->type,
+                    expr->as.member.member_name,
+                    expr->as.member.member_name_length);
+                
+                if (member_sym && member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                    // 直接返回枚举成员的常量值
+                    return cn_ir_op_imm_int(member_sym->as.enum_value, expr->type);
+                }
+                // 如果找不到，返回错误操作数
+                return cn_ir_op_none();
+            }
             
             // 检查是否为模块成员访问（对象类型为 VOID 表示模块）
             if (expr->as.member.object->type && 

@@ -132,29 +132,35 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         if (sym) {
             // 创建枚举类型
             sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+            
+            // 为枚举创建一个作用域来存储其成员
+            CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, global_scope);
+            if (enum_scope && sym->type) {
+                sym->type->as.enum_type.enum_scope = enum_scope;
+                
+                // 注册枚举成员到枚举作用域（而非全局作用域）
+                for (size_t j = 0; j < enum_decl->member_count; j++) {
+                    CnAstEnumMember *member = &enum_decl->members[j];
+                    CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
+                                                       member->name,
+                                                       member->name_length,
+                                                       CN_SEM_SYMBOL_ENUM_MEMBER);
+                    if (member_sym) {
+                        // 枚举成员的类型是整数
+                        member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 保存枚举成员的值
+                        member_sym->as.enum_value = member->value;
+                    } else {
+                        // 报告重复定义
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, member->name);
+                    }
+                }
+            }
         } else {
             // 报告重复定义
             cn_support_diag_semantic_error_duplicate_symbol(
                 diagnostics, NULL, 0, 0, enum_decl->name);
-        }
-
-        // 注册枚举成员到全局作用域
-        for (size_t j = 0; j < enum_decl->member_count; j++) {
-            CnAstEnumMember *member = &enum_decl->members[j];
-            CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(global_scope,
-                                               member->name,
-                                               member->name_length,
-                                               CN_SEM_SYMBOL_ENUM_MEMBER);
-            if (member_sym) {
-                // 枚举成员的类型是整数
-                member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
-                // 保存枚举成员的值
-                member_sym->as.enum_value = member->value;
-            } else {
-                // 报告重复定义
-                cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, member->name);
-            }
         }
     }
 

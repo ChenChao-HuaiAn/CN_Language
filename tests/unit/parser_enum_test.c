@@ -139,7 +139,7 @@ void test_enum_semantic_analysis() {
         "    绿色\n"
         "}\n"
         "函数 主程序() {\n"
-        "    变量 c = 红色;\n"
+        "    变量 c = 颜色.红色;\n"
         "    返回 0;\n"
         "}\n";
     
@@ -168,12 +168,18 @@ void test_enum_semantic_analysis() {
     assert(color_sym->type != NULL);
     assert(color_sym->type->kind == CN_TYPE_ENUM);
     
-    // 检查枚举成员符号
-    CnSemSymbol *red_sym = cn_sem_scope_lookup(global_scope, "红色", strlen("红色"));
+    // 检查枚举成员是否在枚举作用域中（而非全局作用域）
+    assert(color_sym->type->as.enum_type.enum_scope != NULL);
+    CnSemSymbol *red_sym = cn_type_enum_find_member(color_sym->type, "红色", strlen("红色"));
     assert(red_sym != NULL);
     assert(red_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER);
     assert(red_sym->type != NULL);
     assert(red_sym->type->kind == CN_TYPE_INT);
+    assert(red_sym->as.enum_value == 0);
+    
+    // 确认枚举成员不在全局作用域中
+    CnSemSymbol *red_global = cn_sem_scope_lookup(global_scope, "红色", strlen("红色"));
+    assert(red_global == NULL); // 应该找不到，因为枚举成员不在全局作用域
     
     cn_sem_scope_free(global_scope);
     cn_support_diagnostics_free(&diagnostics);
