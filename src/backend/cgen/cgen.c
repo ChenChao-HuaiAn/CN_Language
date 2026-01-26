@@ -226,6 +226,22 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                 case CN_AST_UNARY_OP_MINUS: fprintf(ctx->output_file, "-"); break;
                 case CN_AST_UNARY_OP_NOT: fprintf(ctx->output_file, "!"); break;
                 case CN_AST_UNARY_OP_BITWISE_NOT: fprintf(ctx->output_file, "~"); break;
+                case CN_AST_UNARY_OP_PRE_INC:
+                    fprintf(ctx->output_file, "++");
+                    cn_cgen_expr_simple(ctx, expr->as.unary.operand);
+                    return;
+                case CN_AST_UNARY_OP_PRE_DEC:
+                    fprintf(ctx->output_file, "--");
+                    cn_cgen_expr_simple(ctx, expr->as.unary.operand);
+                    return;
+                case CN_AST_UNARY_OP_POST_INC:
+                    cn_cgen_expr_simple(ctx, expr->as.unary.operand);
+                    fprintf(ctx->output_file, "++");
+                    return;
+                case CN_AST_UNARY_OP_POST_DEC:
+                    cn_cgen_expr_simple(ctx, expr->as.unary.operand);
+                    fprintf(ctx->output_file, "--");
+                    return;
                 default: break;
             }
             cn_cgen_expr_simple(ctx, expr->as.unary.operand);
@@ -328,6 +344,22 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             }
             
             fprintf(ctx->output_file, ");");
+            break;
+        case CN_AST_EXPR_STRUCT_LITERAL:
+            // 结构体字面量：点 { x: 10, y: 20 } -> (struct 点){.x = 10, .y = 20}
+            fprintf(ctx->output_file, "(struct %.*s){",
+                    (int)expr->as.struct_lit.struct_name_length,
+                    expr->as.struct_lit.struct_name);
+            for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
+                if (i > 0) {
+                    fprintf(ctx->output_file, ", ");
+                }
+                fprintf(ctx->output_file, ".%.*s = ",
+                        (int)expr->as.struct_lit.fields[i].field_name_length,
+                        expr->as.struct_lit.fields[i].field_name);
+                cn_cgen_expr_simple(ctx, expr->as.struct_lit.fields[i].value);
+            }
+            fprintf(ctx->output_file, "}");
             break;
         default:
             fprintf(ctx->output_file, "0"); // 不支持的表达式，用0作为默认值

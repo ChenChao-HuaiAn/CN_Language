@@ -64,7 +64,9 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_MEMORY_SET, // 内存设置
     CN_TOKEN_KEYWORD_INTERRUPT_HANDLER, // 中断处理
     CN_TOKEN_PLUS,             // 加 +
+    CN_TOKEN_PLUS_PLUS,        // 自增 ++
     CN_TOKEN_MINUS,            // 减 -
+    CN_TOKEN_MINUS_MINUS,      // 自减 --
     CN_TOKEN_STAR,             // 乘 *
     CN_TOKEN_SLASH,            // 除 /
     CN_TOKEN_PERCENT,          // 取模 %

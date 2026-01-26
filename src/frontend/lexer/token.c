@@ -97,8 +97,12 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_ABSTRACT";
     case CN_TOKEN_PLUS:
         return "PLUS";
+    case CN_TOKEN_PLUS_PLUS:
+        return "PLUS_PLUS";
     case CN_TOKEN_MINUS:
         return "MINUS";
+    case CN_TOKEN_MINUS_MINUS:
+        return "MINUS_MINUS";
     case CN_TOKEN_STAR:
         return "STAR";
     case CN_TOKEN_SLASH:

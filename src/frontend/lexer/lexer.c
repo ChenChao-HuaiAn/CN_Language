@@ -448,13 +448,21 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
         switch (c) {
         case '+':
             advance(lexer);
-            out_token->kind = CN_TOKEN_PLUS;
+            if (current_char(lexer) == '+') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_PLUS_PLUS;
+            } else {
+                out_token->kind = CN_TOKEN_PLUS;
+            }
             break;
         case '-':
             advance(lexer);
             if (current_char(lexer) == '>') {
                 advance(lexer);
                 out_token->kind = CN_TOKEN_ARROW;
+            } else if (current_char(lexer) == '-') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_MINUS_MINUS;
             } else {
                 out_token->kind = CN_TOKEN_MINUS;
             }

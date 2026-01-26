@@ -190,7 +190,7 @@ static int is_reserved_keyword(CnTokenKind kind)
            kind == CN_TOKEN_KEYWORD_INTERFACE ||
            kind == CN_TOKEN_KEYWORD_TEMPLATE ||
            kind == CN_TOKEN_KEYWORD_NAMESPACE ||
-           /* 注意："常量" 关键字已在当前版本实现，不再视为预留关键字 */
+           /* 注意：“常量” 关键字已在当前版本实现，不再视为预留关键字 */
            kind == CN_TOKEN_KEYWORD_STATIC ||
            kind == CN_TOKEN_KEYWORD_PUBLIC ||
            kind == CN_TOKEN_KEYWORD_PRIVATE ||
@@ -201,7 +201,7 @@ static int is_reserved_keyword(CnTokenKind kind)
 }
 
 // 获取预留关键字的错误消息（静态字符串）
-static const char* get_reserved_keyword_error_msg(CnTokenKind kind)
+static const char *get_reserved_keyword_error_msg(CnTokenKind kind)
 {
     switch (kind) {
     case CN_TOKEN_KEYWORD_CLASS:
@@ -1226,6 +1226,20 @@ static CnAstExpr *parse_term(CnParser *parser)
 
 static CnAstExpr *parse_unary(CnParser *parser)
 {
+    // 处理前置自增运算符 ++
+    if (parser->current.kind == CN_TOKEN_PLUS_PLUS) {
+        parser_advance(parser);
+        CnAstExpr *operand = parse_unary(parser);
+        return make_unary(CN_AST_UNARY_OP_PRE_INC, operand);
+    }
+
+    // 处理前置自减运算符 --
+    if (parser->current.kind == CN_TOKEN_MINUS_MINUS) {
+        parser_advance(parser);
+        CnAstExpr *operand = parse_unary(parser);
+        return make_unary(CN_AST_UNARY_OP_PRE_DEC, operand);
+    }
+
     // 处理取地址运算符 &
     if (parser->current.kind == CN_TOKEN_AMPERSAND) {
         parser_advance(parser);
@@ -1264,7 +1278,7 @@ static CnAstExpr *parse_unary(CnParser *parser)
     return parse_postfix(parser);  // 支持后缀表达式（如函数调用、数组索引）
 }
 
-// 解析后缀表达式（如函数调用、数组索引、成员访问）
+// 解析后缀表达式（如函数调用、数组索引、成员访问、后置自增/自减）
 static CnAstExpr *parse_postfix(CnParser *parser)
 {
     CnAstExpr *expr = parse_factor(parser);
@@ -1272,7 +1286,9 @@ static CnAstExpr *parse_postfix(CnParser *parser)
     while (parser->current.kind == CN_TOKEN_LPAREN || 
            parser->current.kind == CN_TOKEN_LBRACKET ||
            parser->current.kind == CN_TOKEN_DOT ||
-           parser->current.kind == CN_TOKEN_ARROW) {
+           parser->current.kind == CN_TOKEN_ARROW ||
+           parser->current.kind == CN_TOKEN_PLUS_PLUS ||
+           parser->current.kind == CN_TOKEN_MINUS_MINUS) {
         if (parser->current.kind == CN_TOKEN_LPAREN) {
             // 函数调用
             parser_advance(parser);
@@ -1389,6 +1405,14 @@ static CnAstExpr *parse_postfix(CnParser *parser)
             parser_advance(parser);
             
             expr = make_member_access(expr, member_name, member_name_length, 1);
+        } else if (parser->current.kind == CN_TOKEN_PLUS_PLUS) {
+            // 后置自增 i++
+            parser_advance(parser);
+            expr = make_unary(CN_AST_UNARY_OP_POST_INC, expr);
+        } else if (parser->current.kind == CN_TOKEN_MINUS_MINUS) {
+            // 后置自减 i--
+            parser_advance(parser);
+            expr = make_unary(CN_AST_UNARY_OP_POST_DEC, expr);
         }
     }
 
@@ -1505,9 +1529,106 @@ static CnAstExpr *parse_factor(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_FALSE) {
         expr = make_bool_literal(0);
         parser_advance(parser);
-    } else if (parser->current.kind == CN_TOKEN_IDENT) {
-        expr = make_identifier(parser->current.lexeme_begin, parser->current.lexeme_length);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_NULL) {
+        // NULL 关键字：生成空指针字面量
+        expr = make_integer_literal(0);  // 简化处理：将NULL表示为0
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_IDENT) {
+        // 保存标识符信息
+        const char *ident_name = parser->current.lexeme_begin;
+        size_t ident_name_length = parser->current.lexeme_length;
+        parser_advance(parser);
+        
+        // 检查是否是结构体字面量：标识符 { ... }
+        if (parser->current.kind == CN_TOKEN_LBRACE) {
+            // 解析结构体字面量：点 { x: 10, y: 20 }
+            parser_advance(parser);  // 跳过 {
+            
+            // 解析字段初始化列表
+            size_t field_capacity = 4;
+            size_t field_count = 0;
+            CnAstStructFieldInit *fields = (CnAstStructFieldInit *)malloc(
+                sizeof(CnAstStructFieldInit) * field_capacity);
+            if (!fields) {
+                return NULL;
+            }
+            
+            // 处理空结构体 {}
+            if (parser->current.kind != CN_TOKEN_RBRACE) {
+                do {
+                    // 容量检查与扩容
+                    if (field_count >= field_capacity) {
+                        field_capacity *= 2;
+                        CnAstStructFieldInit *new_fields = (CnAstStructFieldInit *)realloc(
+                            fields, sizeof(CnAstStructFieldInit) * field_capacity);
+                        if (!new_fields) {
+                            free(fields);
+                            return NULL;
+                        }
+                        fields = new_fields;
+                    }
+                    
+                    // 解析字段名
+                    if (parser->current.kind != CN_TOKEN_IDENT) {
+                        parser->error_count++;
+                        if (parser->diagnostics) {
+                            cn_support_diagnostics_report(parser->diagnostics,
+                                                          CN_DIAG_SEVERITY_ERROR,
+                                                          CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                          parser->lexer ? parser->lexer->filename : NULL,
+                                                          parser->current.line,
+                                                          parser->current.column,
+                                                          "语法错误：结构体字面量中缺少字段名");
+                        }
+                        free(fields);
+                        return NULL;
+                    }
+                    
+                    fields[field_count].field_name = parser->current.lexeme_begin;
+                    fields[field_count].field_name_length = parser->current.lexeme_length;
+                    parser_advance(parser);
+                    
+                    // 期望冒号
+                    if (!parser_expect(parser, CN_TOKEN_COLON)) {
+                        free(fields);
+                        return NULL;
+                    }
+                    
+                    // 解析字段值表达式
+                    fields[field_count].value = parse_expression(parser);
+                    if (!fields[field_count].value) {
+                        free(fields);
+                        return NULL;
+                    }
+                    field_count++;
+                    
+                    // 处理逗号分隔符
+                    if (parser->current.kind == CN_TOKEN_COMMA) {
+                        parser_advance(parser);
+                    } else {
+                        break;
+                    }
+                } while (parser->current.kind != CN_TOKEN_RBRACE &&
+                         parser->current.kind != CN_TOKEN_EOF);
+            }
+            
+            // 期望右花括号
+            if (!parser_expect(parser, CN_TOKEN_RBRACE)) {
+                // 清理已分配的资源
+                for (size_t i = 0; i < field_count; i++) {
+                    if (fields[i].value) {
+                        cn_frontend_ast_expr_free(fields[i].value);
+                    }
+                }
+                free(fields);
+                return NULL;
+            }
+            
+            expr = make_struct_literal(ident_name, ident_name_length, fields, field_count);
+        } else {
+            // 普通标识符
+            expr = make_identifier(ident_name, ident_name_length);
+        }
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_READ_MEMORY ||
                parser->current.kind == CN_TOKEN_KEYWORD_WRITE_MEMORY ||
                parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_COPY ||

@@ -264,6 +264,38 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             } else if (expr->as.unary.op == CN_AST_UNARY_OP_DEREFERENCE) {
                 // 解引用：使用 DEREF 指令
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_DEREF, dest, operand, cn_ir_op_none()));
+            } else if (expr->as.unary.op == CN_AST_UNARY_OP_PRE_INC) {
+                // 前置自增：++i -> i = i + 1, 返回 i
+                CnIrOperand one = cn_ir_op_imm_int(1, expr->type);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_ADD, dest, operand, one));
+                // 将结果存回变量
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, operand, dest, cn_ir_op_none()));
+                return dest;
+            } else if (expr->as.unary.op == CN_AST_UNARY_OP_PRE_DEC) {
+                // 前置自减：--i -> i = i - 1, 返回 i
+                CnIrOperand one = cn_ir_op_imm_int(1, expr->type);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_SUB, dest, operand, one));
+                // 将结果存回变量
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, operand, dest, cn_ir_op_none()));
+                return dest;
+            } else if (expr->as.unary.op == CN_AST_UNARY_OP_POST_INC) {
+                // 后置自增：i++ -> temp = i, i = i + 1, 返回 temp
+                int temp_reg = alloc_reg(ctx);
+                CnIrOperand temp = cn_ir_op_reg(temp_reg, expr->type);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_MOV, temp, operand, cn_ir_op_none()));
+                CnIrOperand one = cn_ir_op_imm_int(1, expr->type);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_ADD, dest, operand, one));
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, operand, dest, cn_ir_op_none()));
+                return temp;
+            } else if (expr->as.unary.op == CN_AST_UNARY_OP_POST_DEC) {
+                // 后置自减：i-- -> temp = i, i = i - 1, 返回 temp
+                int temp_reg = alloc_reg(ctx);
+                CnIrOperand temp = cn_ir_op_reg(temp_reg, expr->type);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_MOV, temp, operand, cn_ir_op_none()));
+                CnIrOperand one = cn_ir_op_imm_int(1, expr->type);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_SUB, dest, operand, one));
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, operand, dest, cn_ir_op_none()));
+                return temp;
             }
             return dest;
         }

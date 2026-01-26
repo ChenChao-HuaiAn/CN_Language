@@ -83,7 +83,11 @@ typedef enum CnAstUnaryOp {
     CN_AST_UNARY_OP_MINUS,       // - (数值取负)
     CN_AST_UNARY_OP_ADDRESS_OF,  // 取地址 &
     CN_AST_UNARY_OP_DEREFERENCE, // 解引用 *
-    CN_AST_UNARY_OP_BITWISE_NOT  // ~ 按位取反
+    CN_AST_UNARY_OP_BITWISE_NOT, // ~ 按位取反
+    CN_AST_UNARY_OP_PRE_INC,     // ++i 前置自增
+    CN_AST_UNARY_OP_PRE_DEC,     // --i 前置自减
+    CN_AST_UNARY_OP_POST_INC,    // i++ 后置自增
+    CN_AST_UNARY_OP_POST_DEC     // i-- 后置自减
 } CnAstUnaryOp;
 
 struct CnType;

@@ -801,6 +801,22 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                     }
                     break;
+                case CN_AST_UNARY_OP_PRE_INC:
+                case CN_AST_UNARY_OP_PRE_DEC:
+                case CN_AST_UNARY_OP_POST_INC:
+                case CN_AST_UNARY_OP_POST_DEC:
+                    // 自增/自减运算符：要求操作数是数值类型，返回相同类型
+                    if (inner && (inner->kind == CN_TYPE_INT || inner->kind == CN_TYPE_FLOAT)) {
+                        expr->type = inner;
+                    } else {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                            NULL, 0, 0,
+                            "语义错误：自增/自减运算符的操作数必须是数值类型");
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    }
+                    break;
                 default:
                     expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                     break;
