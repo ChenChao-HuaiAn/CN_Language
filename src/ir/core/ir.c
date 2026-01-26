@@ -8,6 +8,8 @@ CnIrModule *cn_ir_module_new() {
     if (module) {
         module->first_func = NULL;
         module->last_func = NULL;
+        module->first_global = NULL;
+        module->last_global = NULL;
         /* 默认将目标三元组置零，具体值由前端/CLI 在生成 IR 前设置 */
         memset(&module->target, 0, sizeof(module->target));
         /* 默认编译模式为宿主环境，freestanding 由前端/CLI 显式开启 */
@@ -26,6 +28,17 @@ static void cn_ir_block_list_free(CnIrBasicBlockList *list) {
 
 void cn_ir_module_free(CnIrModule *module) {
     if (!module) return;
+    
+    // 释放全局变量
+    CnIrGlobalVar *global = module->first_global;
+    while (global) {
+        CnIrGlobalVar *next = global->next;
+        if (global->name) free((void *)global->name);
+        free(global);
+        global = next;
+    }
+    
+    // 释放函数
     CnIrFunction *func = module->first_func;
     while (func) {
         CnIrFunction *next = func->next;

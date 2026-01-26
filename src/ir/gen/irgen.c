@@ -929,6 +929,67 @@ CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnSemScope *global_scope, C
         ctx->module->compile_mode = mode;
     }
 
+    // 生成全局变量的 IR
+    for (size_t i = 0; i < program->global_var_count; i++) {
+        CnAstStmt *var_stmt = program->global_vars[i];
+        if (!var_stmt || var_stmt->kind != CN_AST_STMT_VAR_DECL) {
+            continue;
+        }
+        
+        CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
+        CnIrGlobalVar *global = (CnIrGlobalVar *)malloc(sizeof(CnIrGlobalVar));
+        if (global) {
+            // 为变量名分配并复制字符串
+            char *name_copy = (char *)malloc(var_decl->name_length + 1);
+            if (name_copy) {
+                memcpy(name_copy, var_decl->name, var_decl->name_length);
+                name_copy[var_decl->name_length] = '\0';
+                global->name = name_copy;
+            } else {
+                global->name = NULL;
+            }
+            
+            // 获取类型：优先使用显式声明的类型，否则使用初始化表达式的类型
+            CnType *var_type = var_decl->declared_type;
+            if (!var_type && var_decl->initializer) {
+                var_type = var_decl->initializer->type;
+            }
+            global->type = var_type;
+            global->is_const = var_decl->is_const;
+            
+            // 处理初始化表达式
+            if (var_decl->initializer) {
+                // 对于全局变量，只支持常量表达式初始化
+                if (var_decl->initializer->kind == CN_AST_EXPR_INTEGER_LITERAL) {
+                    global->initializer = cn_ir_op_imm_int(
+                        var_decl->initializer->as.integer_literal.value,
+                        var_type);
+                } else if (var_decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL) {
+                    global->initializer = cn_ir_op_imm_float(
+                        var_decl->initializer->as.float_literal.value,
+                        var_type);
+                } else {
+                    // 其他类型的初始化表达式暂不支持，使用0初始化
+                    global->initializer = cn_ir_op_imm_int(0, var_type);
+                }
+            } else {
+                // 没有初始化表达式，默认为0
+                global->initializer = cn_ir_op_imm_int(0, var_type);
+            }
+            
+            global->next = NULL;
+            
+            // 添加到模块
+            if (!ctx->module->first_global) {
+                ctx->module->first_global = global;
+                ctx->module->last_global = global;
+            } else {
+                ctx->module->last_global->next = global;
+                ctx->module->last_global = global;
+            }
+        }
+    }
+
     // 生成全局函数的 IR
     for (size_t i = 0; i < program->function_count; i++) {
         cn_ir_gen_function(ctx, program->functions[i], NULL);

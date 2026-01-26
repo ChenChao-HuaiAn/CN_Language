@@ -231,6 +231,32 @@ bool cn_sem_check_types(CnSemScope *global_scope,
 {
     if (!program || !global_scope) return true;
 
+    // 推断全局变量的类型
+    for (size_t i = 0; i < program->global_var_count; ++i) {
+        CnAstStmt *var_stmt = program->global_vars[i];
+        if (!var_stmt || var_stmt->kind != CN_AST_STMT_VAR_DECL) {
+            continue;
+        }
+        
+        CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
+        
+        // 如果没有显式类型且有初始化表达式，从初始化表达式推断类型
+        if (!var_decl->declared_type && var_decl->initializer) {
+            CnType *init_type = infer_expr_type(global_scope, var_decl->initializer, diagnostics);
+            if (init_type) {
+                var_decl->declared_type = init_type;
+                
+                // 同时更新全局作用域中该变量的类型
+                CnSemSymbol *sym = cn_sem_scope_lookup_shallow(global_scope, 
+                                                               var_decl->name, 
+                                                               var_decl->name_length);
+                if (sym) {
+                    sym->type = init_type;
+                }
+            }
+        }
+    }
+
     // 阶段1：仅推断所有函数的返回类型，不进行函数体内部的类型检查
     // 这确保在检查函数调用时，所有函数的返回类型已知
 

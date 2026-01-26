@@ -880,6 +880,29 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "\n");
     }
     
+    // 生成全局变量声明
+    fprintf(file, "// Global Variables\n");
+    CnIrGlobalVar *global = module->first_global;
+    while (global) {
+        fprintf(file, "%s cn_var_%s",
+                get_c_type_string(global->type),
+                global->name);
+        
+        // 生成初始化值
+        if (global->initializer.kind != CN_IR_OP_NONE) {
+            fprintf(file, " = ");
+            if (global->initializer.kind == CN_IR_OP_IMM_INT) {
+                fprintf(file, "%lld", global->initializer.as.imm_int);
+            } else if (global->initializer.kind == CN_IR_OP_IMM_FLOAT) {
+                fprintf(file, "%f", global->initializer.as.imm_float);
+            }
+        }
+        
+        fprintf(file, ";\n");
+        global = global->next;
+    }
+    fprintf(file, "\n");
+    
     // 生成函数前置声明（Forward Declarations）
     fprintf(file, "// Forward Declarations\n");
     CnIrFunction *func = module->first_func;

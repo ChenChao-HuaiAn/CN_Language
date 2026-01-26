@@ -83,6 +83,7 @@ static void program_add_struct(CnAstProgram *program, CnAstStmt *struct_decl);
 static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl);
 static void program_add_module(CnAstProgram *program, CnAstStmt *module_decl);
 static void program_add_import(CnAstProgram *program, CnAstStmt *import_stmt);
+static void program_add_global_var(CnAstProgram *program, CnAstStmt *var_decl);
 
 CnParser *cn_frontend_parser_new(CnLexer *lexer)
 {
@@ -306,6 +307,14 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_function(program, isr);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR || 
+                   parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
+            // 解析全局变量声明
+            CnAstStmt *var_decl = parse_statement(parser);
+            if (!var_decl) {
+                break;
+            }
+            program_add_global_var(program, var_decl);
         } else {
             // 遇到无法识别的token，跳过
             parser->error_count++;
@@ -332,6 +341,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
         parser_advance(parser);
     }
 
+    // 函数名可以是任意标识符，或特殊的 '主程序' 关键字
     if (parser->current.kind != CN_TOKEN_IDENT &&
         parser->current.kind != CN_TOKEN_KEYWORD_MAIN) {
         parser->error_count++;
@@ -342,7 +352,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
                                           parser->lexer ? parser->lexer->filename : NULL,
                                           parser->current.line,
                                           parser->current.column,
-                                          "语法错误：函数名无效");
+                                          "语法错误：函数名无效，期望标识符或'主程序'");
         }
         return NULL;
     }
@@ -2191,6 +2201,8 @@ static CnAstProgram *make_program(void)
     program->modules = NULL;
     program->import_count = 0;
     program->imports = NULL;
+    program->global_var_count = 0;
+    program->global_vars = NULL;
     return program;
 }
 
@@ -2301,6 +2313,28 @@ static void program_add_import(CnAstProgram *program, CnAstStmt *import_stmt)
     program->imports = new_array;
     program->imports[program->import_count] = import_stmt;
     program->import_count = new_count;
+}
+
+// 添加全局变量声明到program
+static void program_add_global_var(CnAstProgram *program, CnAstStmt *var_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !var_decl) {
+        return;
+    }
+
+    new_count = program->global_var_count + 1;
+    new_array = (CnAstStmt **)realloc(program->global_vars,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->global_vars = new_array;
+    program->global_vars[program->global_var_count] = var_decl;
+    program->global_var_count = new_count;
 }
 
 // 解析结构体声明

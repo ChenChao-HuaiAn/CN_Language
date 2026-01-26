@@ -233,11 +233,17 @@ void cn_frontend_ast_program_free(CnAstProgram *program)
         cn_frontend_ast_stmt_free(program->imports[i]);
     }
 
+    // 释放全局变量声明
+    for (i = 0; i < program->global_var_count; ++i) {
+        cn_frontend_ast_stmt_free(program->global_vars[i]);
+    }
+
     free(program->functions);
     free(program->structs);
     free(program->enums);
     free(program->modules);
     free(program->imports);
+    free(program->global_vars);
     free(program);
 }
 

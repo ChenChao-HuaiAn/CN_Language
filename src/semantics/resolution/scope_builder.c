@@ -348,6 +348,28 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         }
     }
 
+    // 注册全局变量声明到全局作用域
+    for (i = 0; i < program->global_var_count; ++i) {
+        CnAstStmt *var_stmt = program->global_vars[i];
+        if (!var_stmt || var_stmt->kind != CN_AST_STMT_VAR_DECL) {
+            continue;
+        }
+
+        CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   var_decl->name,
+                                   var_decl->name_length,
+                                   CN_SEM_SYMBOL_VARIABLE);
+        if (sym) {
+            sym->type = var_decl->declared_type;
+            sym->is_const = var_decl->is_const;
+        } else {
+            // 报告重复定义
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, var_decl->name);
+        }
+    }
+
     for (i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *function_decl = program->functions[i];
 

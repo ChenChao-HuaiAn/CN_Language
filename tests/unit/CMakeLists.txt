@@ -199,6 +199,20 @@ target_include_directories(parser_var_test PRIVATE
 add_test(NAME parser_var_test
          COMMAND parser_var_test)
 
+# 全局变量 Parser 测试
+add_executable(parser_global_var_test
+    parser_global_var_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_global_var_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_global_var_test
+         COMMAND parser_global_var_test)
+set_tests_properties(parser_global_var_test PROPERTIES LABELS "parser;global_var;unit")
+
 add_executable(parser_type_coverage_test
     parser_type_coverage_test.c
     ${PARSER_TEST_DEPENDENCIES}

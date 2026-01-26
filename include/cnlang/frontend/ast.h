@@ -247,6 +247,8 @@ typedef struct CnAstProgram {
     struct CnAstStmt **modules;   // 模块声明列表
     size_t import_count;          // 导入语句数量
     struct CnAstStmt **imports;   // 导入语句列表
+    size_t global_var_count;      // 全局变量数量
+    struct CnAstStmt **global_vars; // 全局变量声明列表
 } CnAstProgram;
 
 // 各种表达式节点定义
