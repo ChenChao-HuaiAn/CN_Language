@@ -230,6 +230,37 @@ add_test(NAME integration_multiplatform_test
          COMMAND integration_multiplatform_test)
 set_tests_properties(integration_multiplatform_test PROPERTIES LABELS "stage7;multiplatform;integration")
 
+# 阶段8多平台兼容性测试
+add_executable(integration_multiplatform_stage8_test
+    multiplatform_stage8_test.c
+)
+target_include_directories(integration_multiplatform_stage8_test PRIVATE ../../include)
+add_test(NAME integration_multiplatform_stage8_test 
+         COMMAND integration_multiplatform_stage8_test)
+set_tests_properties(integration_multiplatform_stage8_test PROPERTIES LABELS "stage8;multiplatform;compatibility;integration")
+
+# 阶段8性能基准测试
+add_executable(integration_stage8_perf_benchmark_test
+    perf/stage8_perf_benchmark_test.c
+    ../../src/support/process/process.c
+)
+target_include_directories(integration_stage8_perf_benchmark_test PRIVATE ../../include)
+add_test(NAME integration_stage8_perf_benchmark_test 
+         COMMAND integration_stage8_perf_benchmark_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+set_tests_properties(integration_stage8_perf_benchmark_test PROPERTIES LABELS "stage8;perf;benchmark;integration")
+
+# 阶段8回归性能测试
+add_executable(integration_stage8_regression_perf_test
+    perf/stage8_regression_perf_test.c
+    ../../src/support/process/process.c
+)
+target_include_directories(integration_stage8_regression_perf_test PRIVATE ../../include)
+add_test(NAME integration_stage8_regression_perf_test 
+         COMMAND integration_stage8_regression_perf_test
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+set_tests_properties(integration_stage8_regression_perf_test PROPERTIES LABELS "stage8;perf;regression;integration")
+
 # 结构体编译集成测试
 add_executable(integration_struct_compile_test
     compiler/struct_compile_test.c

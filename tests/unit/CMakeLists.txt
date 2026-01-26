@@ -760,3 +760,15 @@ set_tests_properties(phase8_examples_validation_test PROPERTIES
     LABELS "stage8;validation;examples;acceptance;unit"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+
+# 阶段8设计规范一致性验证测试
+add_executable(stage8_design_compliance_test 
+    stage8_design_compliance_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(stage8_design_compliance_test PRIVATE ../../include)
+add_test(NAME stage8_design_compliance_test COMMAND stage8_design_compliance_test)
+set_tests_properties(stage8_design_compliance_test PROPERTIES 
+    LABELS "stage8;design;compliance;unit"
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
