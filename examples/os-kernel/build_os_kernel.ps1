@@ -22,24 +22,25 @@ Write-Host ""
 
 # 定义路径
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$ExamplesDir = $ScriptDir
-$ProjectRoot = Split-Path -Parent $ExamplesDir
+$OsKernelDir = $ScriptDir  # 当前在 examples/os-kernel 目录
+$ExamplesDir = Split-Path -Parent $OsKernelDir  # examples 目录
+$ProjectRoot = Split-Path -Parent $ExamplesDir  # 项目根目录
 $BuildDir = Join-Path $ProjectRoot "build"
 $CncExe = Join-Path $BuildDir "src\Release\cnc.exe"
 $RuntimeLibDir = Join-Path $BuildDir "src\runtime\Release"
 
-# 源文件
-$KernelSource = Join-Path $ExamplesDir "os_kernel_demo.cn"
-$BootCode = Join-Path $ExamplesDir "boot_kernel_demo.c"
+# 源文件（都在 os-kernel 目录）
+$KernelSource = Join-Path $OsKernelDir "os_kernel_demo.cn"
+$BootCode = Join-Path $OsKernelDir "boot_kernel_demo.c"
 $LinkerScript = Join-Path $ProjectRoot "tests\integration\os\boot\linker.ld"
 
-# 输出文件
-$KernelC = Join-Path $ExamplesDir "os_kernel_demo.c"
-$KernelObj = Join-Path $ExamplesDir "os_kernel_demo.o"
-$BootObj = Join-Path $ExamplesDir "boot_kernel_demo.o"
-$KernelElf = Join-Path $ExamplesDir "os_kernel_demo.elf"
+# 输出文件（放在 os-kernel 目录）
+$KernelC = Join-Path $OsKernelDir "os_kernel_demo.c"
+$KernelObj = Join-Path $OsKernelDir "os_kernel_demo.o"
+$BootObj = Join-Path $OsKernelDir "boot_kernel_demo.o"
+$KernelElf = Join-Path $OsKernelDir "os_kernel_demo.elf"
 
-Write-Host "[信息] 工作目录: $ExamplesDir" -ForegroundColor Gray
+Write-Host "[\u4fe1\u606f] \u5de5\u4f5c\u76ee\u5f55: $OsKernelDir" -ForegroundColor Gray
 Write-Host "[信息] 编译器: $CncExe" -ForegroundColor Gray
 Write-Host ""
 

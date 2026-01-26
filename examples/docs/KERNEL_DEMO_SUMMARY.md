@@ -7,13 +7,13 @@
 ## 创建的文件
 
 ### 1. 内核源代码
-- **[os_kernel_demo.cn](os_kernel_demo.cn)** (363行)
+- **[os_kernel_demo.cn](../os-kernel/os_kernel_demo.cn)** (363行)
   - 完整的操作系统内核演示程序
   - 包含7个全局变量、4个中断处理程序、20+个函数
   - 展示内存管理、中断处理、设备驱动、任务调度等功能
 
 ### 2. 启动代码
-- **[boot_kernel_demo.c](boot_kernel_demo.c)** (231行)
+- **[boot_kernel_demo.c](../os-kernel/boot_kernel_demo.c)** (231行)
   - x86_64架构启动代码
   - 串口I/O回调实现（COM1端口）
   - CN运行时初始化（freestanding模式）
@@ -21,15 +21,15 @@
   - 32KB栈空间分配
 
 ### 3. 构建脚本
-- **[build_os_kernel.ps1](build_os_kernel.ps1)** (291行)
+- **[build_os_kernel.ps1](../os-kernel/build_os_kernel.ps1)** (291行)
   - Windows/Linux跨平台构建支持
   - 编译验证模式（Windows MinGW）
   - 完整构建模式（Linux GCC）
   - 可选QEMU运行测试
 
 ### 4. 测试文件
-- **[os_kernel_simple.cn](os_kernel_simple.cn)** (67行) - 简化版本
-- **[kernel_enhanced.cn](kernel_enhanced.cn)** (22行) - 逐步测试版本
+- **[os_kernel_simple.cn](../os-kernel/os_kernel_simple.cn)** (67行) - 简化版本
+- **[kernel_enhanced.cn](../os-kernel/kernel_enhanced.cn)** (22行) - 逐步测试版本
 
 ## 技术特性
 
@@ -82,7 +82,7 @@
 
 ### Windows（编译验证）
 ```powershell
-cd examples
+cd examples/os-kernel
 pwsh build_os_kernel.ps1
 ```
 
@@ -90,12 +90,13 @@ pwsh build_os_kernel.ps1
 
 ### Linux（完整构建）
 ```bash
-cd examples  
+cd examples/os-kernel
 pwsh build_os_kernel.ps1 -Build
 ```
 
 ### QEMU测试
 ```bash
+cd examples/os-kernel
 pwsh build_os_kernel.ps1 -Build -RunQemu
 ```
 
