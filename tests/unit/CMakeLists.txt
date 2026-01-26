@@ -312,6 +312,55 @@ target_include_directories(parser_explicit_array_test PRIVATE
 add_test(NAME parser_explicit_array_test
          COMMAND parser_explicit_array_test)
 
+# C风格数组声明 Parser 测试
+add_executable(parser_c_style_array_test
+    parser_c_style_array_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_c_style_array_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_c_style_array_test
+         COMMAND parser_c_style_array_test)
+
+# C风格数组增强测试
+add_executable(parser_c_array_enhancement_test
+    parser_c_array_enhancement_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_c_array_enhancement_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_c_array_enhancement_test
+         COMMAND parser_c_array_enhancement_test)
+
+# 多维数组 Parser 测试
+add_executable(parser_multidim_array_test
+    parser_multidim_array_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_multidim_array_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_multidim_array_test
+         COMMAND parser_multidim_array_test)
+
+# 数组类型调试工具
+add_executable(debug_array_type
+    debug_array_type.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(debug_array_type PRIVATE
+    ../../include
+)
+
 # 结构体 Parser 测试
 add_executable(parser_struct_test
     parser_struct_test.c

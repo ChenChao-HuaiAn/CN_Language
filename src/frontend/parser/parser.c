@@ -1038,9 +1038,86 @@ static CnAstStmt *parse_statement(CnParser *parser)
             return NULL;
         }
 
-        var_name = parser->current.lexeme_begin;
+       var_name = parser->current.lexeme_begin;
         var_name_length = parser->current.lexeme_length;
         parser_advance(parser);
+
+        // C风格数组声明支持（包括多维数组）：类型 名称[大小1][大小2]... = {...}
+        // 首先收集所有维度信息
+        size_t dimension_capacity = 4;
+        size_t dimension_count = 0;
+        size_t *dimensions = NULL;
+                
+        if (parser->current.kind == CN_TOKEN_LBRACKET) {
+            dimensions = (size_t *)malloc(sizeof(size_t) * dimension_capacity);
+            if (!dimensions) {
+                return NULL;
+            }
+                    
+            while (parser->current.kind == CN_TOKEN_LBRACKET) {
+                parser_advance(parser);  // 跳过 '['
+                        
+                size_t array_size = 0;
+                        
+                // 检查是否指定了数组大小
+                if (parser->current.kind != CN_TOKEN_RBRACKET) {
+                    // 解析数组大小表达式（这里简化为只接受整数字面量）
+                    if (parser->current.kind == CN_TOKEN_INTEGER) {
+                        array_size = (size_t)strtol(parser->current.lexeme_begin, NULL, 10);
+                        parser_advance(parser);
+                    } else {
+                        parser->error_count++;
+                        if (parser->diagnostics) {
+                            cn_support_diagnostics_report(parser->diagnostics,
+                                                          CN_DIAG_SEVERITY_ERROR,
+                                                          CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                                          parser->lexer ? parser->lexer->filename : NULL,
+                                                          parser->current.line,
+                                                          parser->current.column,
+                                                          "语法错误：数组大小必须是整数字面量");
+                        }
+                        free(dimensions);
+                        return NULL;
+                    }
+                }
+                        
+                if (!parser_expect(parser, CN_TOKEN_RBRACKET)) {
+                    free(dimensions);
+                    return NULL;
+                }
+                        
+                // 扩容检查
+                if (dimension_count >= dimension_capacity) {
+                    dimension_capacity *= 2;
+                    size_t *new_dimensions = (size_t *)realloc(dimensions, sizeof(size_t) * dimension_capacity);
+                    if (!new_dimensions) {
+                        free(dimensions);
+                        return NULL;
+                    }
+                    dimensions = new_dimensions;
+                }
+                        
+                dimensions[dimension_count++] = array_size;
+            }
+                    
+            // 从右向左构建数组类型
+            // 例如：整数 arr[3][4] -> array(3, array(4, int))
+            // dimensions = [3, 4]，从右向左：先array(4, int)，再array(3, ...)
+            if (declared_type) {
+                // 从最右边的维度开始
+                for (int i = (int)dimension_count - 1; i >= 0; i--) {
+                    declared_type = cn_type_new_array(declared_type, dimensions[i]);
+                }
+            } else {
+                // 如果使用"变量"关键字，先创建默认整数类型
+                declared_type = cn_type_new_primitive(CN_TYPE_INT);
+                for (int i = (int)dimension_count - 1; i >= 0; i--) {
+                    declared_type = cn_type_new_array(declared_type, dimensions[i]);
+                }
+            }
+                    
+            free(dimensions);
+        }
 
         if (parser->current.kind == CN_TOKEN_EQUAL) {
             parser_advance(parser);
@@ -1973,6 +2050,48 @@ static CnAstExpr *parse_factor(CnParser *parser)
         }
         
         parser_expect(parser, CN_TOKEN_RBRACKET);
+        expr = make_array_literal(elements, elem_count);
+    } else if (parser->current.kind == CN_TOKEN_LBRACE) {
+        // C风格数组初始化列表 {1, 2, 3}
+        parser_advance(parser);  // 跳过 {
+        
+        // 动态分配元素数组
+        size_t elem_capacity = 8;
+        size_t elem_count = 0;
+        CnAstExpr **elements = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * elem_capacity);
+        if (!elements) {
+            return NULL;
+        }
+        
+        // 处理空数组 {}
+        if (parser->current.kind != CN_TOKEN_RBRACE) {
+            do {
+                // 如果容量不够，扩容
+                if (elem_count >= elem_capacity) {
+                    elem_capacity *= 2;
+                    CnAstExpr **new_elements = (CnAstExpr **)realloc(
+                        elements, sizeof(CnAstExpr *) * elem_capacity);
+                    if (!new_elements) {
+                        free(elements);
+                        return NULL;
+                    }
+                    elements = new_elements;
+                }
+                
+                // 解析元素表达式
+                elements[elem_count++] = parse_expression(parser);
+                
+                // 如果下一个是逗号，跳过它
+                if (parser->current.kind == CN_TOKEN_COMMA) {
+                    parser_advance(parser);
+                } else {
+                    break;
+                }
+            } while (parser->current.kind != CN_TOKEN_RBRACE &&
+                     parser->current.kind != CN_TOKEN_EOF);
+        }
+        
+        parser_expect(parser, CN_TOKEN_RBRACE);
         expr = make_array_literal(elements, elem_count);
     } else {
         parser->error_count++;
