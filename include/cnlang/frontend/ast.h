@@ -8,6 +8,13 @@
 extern "C" {
 #endif
 
+// 源位置信息
+typedef struct CnSourceLocation {
+    const char *filename;  // 文件名，可为 NULL
+    int line;              // 行号，从 1 开始；0 表示未知
+    int column;            // 列号，从 1 开始；0 表示未知
+} CnSourceLocation;
+
 // AST 节点种类（表达式）
 typedef enum CnAstExprKind {
     CN_AST_EXPR_BINARY,     // 二元表达式
@@ -401,6 +408,7 @@ typedef struct CnAstInlineAsmExpr {
 typedef struct CnAstExpr {
     CnAstExprKind kind;
     struct CnType *type; // 语义分析阶段填充的类型信息
+    CnSourceLocation loc; // 源位置信息
     union {
         CnAstBinaryExpr binary;
         CnAstCallExpr call;
@@ -429,6 +437,7 @@ typedef struct CnAstExpr {
 // 语句统一节点
 typedef struct CnAstStmt {
     CnAstStmtKind kind;
+    CnSourceLocation loc; // 源位置信息
     union {
         CnAstBlockStmt *block;
         CnAstVarDecl var_decl;

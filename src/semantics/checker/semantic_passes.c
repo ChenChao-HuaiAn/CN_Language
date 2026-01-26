@@ -675,16 +675,22 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *target = infer_expr_type(scope, expr->as.assign.target, diagnostics);
             CnType *val = infer_expr_type(scope, expr->as.assign.value, diagnostics);
             
-            // 检查左值是否合法：只能是标识符、索引访问或成员访问
+            // 检查左值是否合法：只能是标识符、索引访问、成员访问或解引用表达式
             CnAstExpr *target_expr = expr->as.assign.target;
-            if (target_expr->kind != CN_AST_EXPR_IDENTIFIER && 
-                target_expr->kind != CN_AST_EXPR_INDEX &&
-                target_expr->kind != CN_AST_EXPR_MEMBER_ACCESS) {
+            bool is_valid_lvalue = (target_expr->kind == CN_AST_EXPR_IDENTIFIER) ||
+                                    (target_expr->kind == CN_AST_EXPR_INDEX) ||
+                                    (target_expr->kind == CN_AST_EXPR_MEMBER_ACCESS) ||
+                                    (target_expr->kind == CN_AST_EXPR_UNARY && 
+                                     target_expr->as.unary.op == CN_AST_UNARY_OP_DEREFERENCE);
+            
+            if (!is_valid_lvalue) {
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
-                    NULL, 0, 0,
-                    "语义错误：赋值目标必须是变量、数组索引访问或结构体成员访问");
+                    expr->loc.filename,
+                    expr->loc.line,
+                    expr->loc.column,
+                    "语义错误：赋值目标必须是变量、数组索引访问、结构体成员访问或解引用表达式");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }
@@ -697,7 +703,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     cn_support_diag_semantic_error_generic(
                         diagnostics,
                         CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
-                        NULL, 0, 0,
+                        expr->loc.filename,
+                        expr->loc.line,
+                        expr->loc.column,
                         "语义错误：不能给常量变量赋值");
                     expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                     break;
@@ -724,7 +732,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         cn_support_diag_semantic_error_generic(
                             diagnostics,
                             CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
-                            NULL, 0, 0,
+                            expr->loc.filename,
+                            expr->loc.line,
+                            expr->loc.column,
                             "语义错误：不能给常量字段赋值");
                         expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                         break;
@@ -746,7 +756,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         cn_support_diag_semantic_error_generic(
                             diagnostics,
                             CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                            NULL, 0, 0,
+                            expr->loc.filename,
+                            expr->loc.line,
+                            expr->loc.column,
                             "语义错误：函数类型与函数指针类型不匹配");
                         expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                         break;
@@ -756,7 +768,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     cn_support_diag_semantic_error_generic(
                         diagnostics,
                         CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                        NULL, 0, 0,
+                        expr->loc.filename,
+                        expr->loc.line,
+                        expr->loc.column,
                         "语义错误：不能将非函数类型赋值给函数指针");
                     expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                     break;
@@ -770,7 +784,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    NULL, 0, 0,
+                    expr->loc.filename,
+                    expr->loc.line,
+                    expr->loc.column,
                     "语义错误：赋值类型不匹配");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }

@@ -1199,9 +1199,18 @@ static CnAstExpr *parse_assignment(CnParser *parser)
     CnAstExpr *expr = parse_logical_or(parser);
 
     if (parser->current.kind == CN_TOKEN_EQUAL) {
+        // 保存赋值符号的位置信息
+        CnToken assign_token = parser->current;
         parser_advance(parser);
         CnAstExpr *value = parse_assignment(parser);  // 右结合
-        return make_assign(expr, value);
+        CnAstExpr *assign_expr = make_assign(expr, value);
+        if (assign_expr) {
+            // 设置赋值表达式的位置信息为赋值符号的位置
+            assign_expr->loc.filename = parser->lexer ? parser->lexer->filename : NULL;
+            assign_expr->loc.line = assign_token.line;
+            assign_expr->loc.column = assign_token.column;
+        }
+        return assign_expr;
     }
 
     return expr;
@@ -2168,6 +2177,9 @@ static CnAstExpr *make_integer_literal(long value)
 
     expr->kind = CN_AST_EXPR_INTEGER_LITERAL;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.integer_literal.value = value;
     return expr;
 }
@@ -2181,6 +2193,9 @@ static CnAstExpr *make_float_literal(double value)
 
     expr->kind = CN_AST_EXPR_FLOAT_LITERAL;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.float_literal.value = value;
     return expr;
 }
@@ -2238,6 +2253,9 @@ static CnAstExpr *make_string_literal(const char *value, size_t length)
 
     expr->kind = CN_AST_EXPR_STRING_LITERAL;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.string_literal.value = value;
     expr->as.string_literal.length = length;
     return expr;
@@ -2252,6 +2270,9 @@ static CnAstExpr *make_bool_literal(int value)
 
     expr->kind = CN_AST_EXPR_BOOL_LITERAL;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.bool_literal.value = value;
     return expr;
 }
@@ -2265,6 +2286,9 @@ static CnAstExpr *make_identifier(const char *name, size_t length)
 
     expr->kind = CN_AST_EXPR_IDENTIFIER;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.identifier.name = name;
     expr->as.identifier.name_length = length;
     return expr;
@@ -2279,6 +2303,9 @@ static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *righ
 
     expr->kind = CN_AST_EXPR_BINARY;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.binary.op = op;
     expr->as.binary.left = left;
     expr->as.binary.right = right;
@@ -2294,6 +2321,10 @@ static CnAstExpr *make_assign(CnAstExpr *target, CnAstExpr *value)
 
     expr->kind = CN_AST_EXPR_ASSIGN;
     expr->type = NULL;
+    // 初始化位置信息为未知
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.assign.target = target;
     expr->as.assign.value = value;
     return expr;
@@ -2308,6 +2339,9 @@ static CnAstExpr *make_logical(CnAstLogicalOp op, CnAstExpr *left, CnAstExpr *ri
 
     expr->kind = CN_AST_EXPR_LOGICAL;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.logical.op = op;
     expr->as.logical.left = left;
     expr->as.logical.right = right;
@@ -2323,6 +2357,9 @@ static CnAstExpr *make_unary(CnAstUnaryOp op, CnAstExpr *operand)
 
     expr->kind = CN_AST_EXPR_UNARY;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.unary.op = op;
     expr->as.unary.operand = operand;
     return expr;
@@ -2337,6 +2374,9 @@ static CnAstExpr *make_call(CnAstExpr *callee, CnAstExpr **arguments, size_t arg
 
     expr->kind = CN_AST_EXPR_CALL;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.call.callee = callee;
     expr->as.call.arguments = arguments;
     expr->as.call.argument_count = argument_count;
@@ -2352,6 +2392,9 @@ static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count)
 
     expr->kind = CN_AST_EXPR_ARRAY_LITERAL;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.array_literal.elements = elements;
     expr->as.array_literal.element_count = element_count;
     return expr;
@@ -2366,6 +2409,9 @@ static CnAstExpr *make_index(CnAstExpr *array, CnAstExpr *index)
 
     expr->kind = CN_AST_EXPR_INDEX;
     expr->type = NULL;
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
     expr->as.index.array = array;
     expr->as.index.index = index;
     return expr;
@@ -2379,6 +2425,9 @@ static CnAstStmt *make_expr_stmt(CnAstExpr *expr)
     }
 
     stmt->kind = CN_AST_STMT_EXPR;
+    stmt->loc.filename = NULL;
+    stmt->loc.line = 0;
+    stmt->loc.column = 0;
     stmt->as.expr.expr = expr;
     return stmt;
 }
