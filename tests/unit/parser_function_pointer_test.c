@@ -155,11 +155,55 @@ static void test_function_pointer_with_initializer(void) {
     printf("  ✓ 带初始化的函数指针声明解析测试通过\n");
 }
 
+// 测试省略返回类型的函数声明解析
+static void test_function_decl_omitted_return_type(void) {
+    const char *source = 
+        "函数 加法(整数 左, 整数 右) { 返回 左 + 右; }\n"
+        "函数 主程序() {\n"
+        "    整数 结果 = 加法(1, 2);\n"
+        "    返回 0;\n"
+        "}\n";
+
+    printf("测试: 省略返回类型的函数声明解析\n");
+
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, strlen(source), "test.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
+
+    assert(success);
+    assert(program != NULL);
+    assert(program->function_count == 2);
+
+    CnAstFunctionDecl *add_fn = program->functions[0];
+    assert(add_fn != NULL);
+    assert(add_fn->parameter_count == 2);
+
+    CnAstFunctionDecl *main_fn = program->functions[1];
+    assert(main_fn != NULL);
+    assert(main_fn->parameter_count == 0);
+
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+
+    printf("  ✓ 省略返回类型的函数声明解析测试通过\n");
+}
+
 int main(void) {
     printf("=== 函数指针Parser单元测试 ===\n");
     test_function_pointer_declaration();
     test_function_pointer_assignment();
     test_function_pointer_with_initializer();
+    test_function_decl_omitted_return_type();
     printf("parser_function_pointer_test: 测试完成\n");
     return 0;
 }

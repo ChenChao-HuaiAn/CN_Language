@@ -1233,6 +1233,6 @@ static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *blo
     }
     
     cn_sem_scope_free(block_scope);
-    // 如果没有找到return语句,返回int类型(默认)
-    return cn_type_new_primitive(CN_TYPE_INT);
+    // 如果没有找到return语句,返回void类型(默认)
+    return cn_type_new_primitive(CN_TYPE_VOID);
 }
