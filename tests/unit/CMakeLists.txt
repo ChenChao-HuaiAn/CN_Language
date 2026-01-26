@@ -772,3 +772,36 @@ set_tests_properties(stage8_design_compliance_test PROPERTIES
     LABELS "stage8;design;compliance;unit"
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
+
+# 阶段8边界测试：指针
+add_executable(stage8_pointer_boundary_test 
+    stage8_pointer_boundary_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(stage8_pointer_boundary_test PRIVATE ../../include)
+add_test(NAME stage8_pointer_boundary_test COMMAND stage8_pointer_boundary_test)
+set_tests_properties(stage8_pointer_boundary_test PROPERTIES 
+    LABELS "stage8;pointer;boundary;unit"
+)
+
+# 阶段8边界测试：结构体
+add_executable(stage8_struct_boundary_test 
+    stage8_struct_boundary_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(stage8_struct_boundary_test PRIVATE ../../include)
+add_test(NAME stage8_struct_boundary_test COMMAND stage8_struct_boundary_test)
+set_tests_properties(stage8_struct_boundary_test PROPERTIES 
+    LABELS "stage8;struct;boundary;unit"
+)
+
+# 阶段8边界测试：枚举
+add_executable(stage8_enum_boundary_test 
+    stage8_enum_boundary_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(stage8_enum_boundary_test PRIVATE ../../include)
+add_test(NAME stage8_enum_boundary_test COMMAND stage8_enum_boundary_test)
+set_tests_properties(stage8_enum_boundary_test PROPERTIES 
+    LABELS "stage8;enum;boundary;unit"
+)
