@@ -195,10 +195,9 @@ static int is_reserved_keyword(CnTokenKind kind)
            kind == CN_TOKEN_KEYWORD_INTERFACE ||
            kind == CN_TOKEN_KEYWORD_TEMPLATE ||
            kind == CN_TOKEN_KEYWORD_NAMESPACE ||
-           /* 注意：“常量” 关键字已在当前版本实现，不再视为预留关键字 */
+           /* 注意："常量" 关键字已在当前版本实现，不再视为预留关键字 */
            kind == CN_TOKEN_KEYWORD_STATIC ||
-           kind == CN_TOKEN_KEYWORD_PUBLIC ||
-           kind == CN_TOKEN_KEYWORD_PRIVATE ||
+           /* 注意："公开"、"私有" 关键字已在模块系统中实现，不再视为预留关键字 */
            kind == CN_TOKEN_KEYWORD_PROTECTED ||
            kind == CN_TOKEN_KEYWORD_VIRTUAL ||
            kind == CN_TOKEN_KEYWORD_OVERRIDE ||
@@ -219,10 +218,6 @@ static const char *get_reserved_keyword_error_msg(CnTokenKind kind)
         return "语法错误：关键字 '命名空间' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_STATIC:
         return "语法错误：关键字 '静态' 为预留特性，当前版本暂不支持";
-    case CN_TOKEN_KEYWORD_PUBLIC:
-        return "语法错误：关键字 '公开' 为预留特性，当前版本暂不支持";
-    case CN_TOKEN_KEYWORD_PRIVATE:
-        return "语法错误：关键字 '私有' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_PROTECTED:
         return "语法错误：关键字 '保护' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_VIRTUAL:
