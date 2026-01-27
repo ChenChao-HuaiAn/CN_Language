@@ -23,7 +23,7 @@ static const CnKeywordEntry g_keywords[] = {
     {"小数", CN_TOKEN_KEYWORD_FLOAT, "类型关键字"},
     {"字符串", CN_TOKEN_KEYWORD_STRING, "类型关键字"},
     {"布尔值", CN_TOKEN_KEYWORD_BOOL, "类型关键字"},
-    {"无", CN_TOKEN_KEYWORD_VOID, "类型关键字"},  // 注意：空类型关键字是“无”
+    {"空类型", CN_TOKEN_KEYWORD_VOID, "类型关键字"},  // 注意：空类型关键字是"空类型"
     {"结构体", CN_TOKEN_KEYWORD_STRUCT, "类型关键字"},
     {"枚举", CN_TOKEN_KEYWORD_ENUM, "类型关键字"},
 
@@ -38,7 +38,7 @@ static const CnKeywordEntry g_keywords[] = {
     // 常量关键字 (3个)
     {"真", CN_TOKEN_KEYWORD_TRUE, "常量关键字"},
     {"假", CN_TOKEN_KEYWORD_FALSE, "常量关键字"},
-    {"空", CN_TOKEN_KEYWORD_NULL, "常量关键字"},  // 注意：空值常量是“空”
+    {"无", CN_TOKEN_KEYWORD_NULL, "常量关键字"},  // 注意：空值常量是"无"
 
     // 预留关键字 (7个)
     {"命名空间", CN_TOKEN_KEYWORD_NAMESPACE, "预留关键字"},
