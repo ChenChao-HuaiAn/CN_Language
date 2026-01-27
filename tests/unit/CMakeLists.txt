@@ -7,6 +7,8 @@ set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
     ../../src/semantics/symbols/type_system.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/semantics/resolution/scope_builder.c
     ../../src/support/diagnostics/diagnostics.c
 )
 
@@ -400,7 +402,7 @@ add_test(NAME parser_multidim_array_test
 # 数组类型调试工具
 add_executable(debug_array_type
     debug_array_type.c
-    ${PARSER_TEST_DEPENDENCIES}
+    ${SEMANTIC_TEST_DEPENDENCIES}
 )
 
 target_include_directories(debug_array_type PRIVATE
@@ -871,7 +873,7 @@ set_tests_properties(stage8_design_compliance_test PROPERTIES
 # 阶段8边界测试：指针
 add_executable(stage8_pointer_boundary_test 
     stage8_pointer_boundary_test.c
-    ${PARSER_TEST_DEPENDENCIES}
+    ${SEMANTIC_TEST_DEPENDENCIES}
 )
 target_include_directories(stage8_pointer_boundary_test PRIVATE ../../include)
 add_test(NAME stage8_pointer_boundary_test COMMAND stage8_pointer_boundary_test)
@@ -882,7 +884,7 @@ set_tests_properties(stage8_pointer_boundary_test PROPERTIES
 # 阶段8边界测试：结构体
 add_executable(stage8_struct_boundary_test 
     stage8_struct_boundary_test.c
-    ${PARSER_TEST_DEPENDENCIES}
+    ${SEMANTIC_TEST_DEPENDENCIES}
 )
 target_include_directories(stage8_struct_boundary_test PRIVATE ../../include)
 add_test(NAME stage8_struct_boundary_test COMMAND stage8_struct_boundary_test)
@@ -893,7 +895,7 @@ set_tests_properties(stage8_struct_boundary_test PROPERTIES
 # 阶段8边界测试：枚举
 add_executable(stage8_enum_boundary_test 
     stage8_enum_boundary_test.c
-    ${PARSER_TEST_DEPENDENCIES}
+    ${SEMANTIC_TEST_DEPENDENCIES}
 )
 target_include_directories(stage8_enum_boundary_test PRIVATE ../../include)
 add_test(NAME stage8_enum_boundary_test COMMAND stage8_enum_boundary_test)

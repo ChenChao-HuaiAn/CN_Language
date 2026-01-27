@@ -33,13 +33,13 @@ static void test_empty_struct(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_empty_struct.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 空结构体解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试2: 深度嵌套结构体 */
@@ -76,13 +76,13 @@ static void test_deeply_nested_struct(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_nested_struct.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 深度嵌套结构体解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试3: 大型结构体（多字段） */
@@ -123,13 +123,13 @@ static void test_large_struct(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_large_struct.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 大型结构体解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试4: 结构体对齐 */
@@ -153,13 +153,13 @@ static void test_struct_alignment(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_struct_align.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 结构体对齐解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试5: 匿名结构体成员 */
@@ -185,13 +185,13 @@ static void test_anonymous_struct_member(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_anon_struct.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 匿名结构体成员解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试6: 结构体前向声明 */
@@ -218,13 +218,13 @@ static void test_struct_forward_declaration(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_forward_decl.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 结构体前向声明解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试7: 结构体数组 */
@@ -250,13 +250,13 @@ static void test_struct_array(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_struct_array.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 结构体数组解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试8: 位字段结构体 */
@@ -282,13 +282,13 @@ static void test_bitfield_struct(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_bitfield.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 位字段结构体解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 int main(void)

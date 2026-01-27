@@ -58,7 +58,7 @@ static int test_reserved_keyword_error(void)
     // 检查错误消息是否包含"预留"
     int found_reserved_error = 0;
     for (size_t i = 0; i < diagnostics.count; i++) {
-        if (strstr(diagnostics.entries[i].message, "预留") != NULL) {
+        if (strstr(diagnostics.items[i].message, "预留") != NULL) {
             found_reserved_error = 1;
             break;
         }
@@ -115,7 +115,7 @@ static int test_deleted_keywords_as_normal_identifiers(void)
         fprintf(stderr, "parser_reserved_keyword_test: 使用已删除关键字作为标识符应该成功\n");
         fprintf(stderr, "诊断错误数量: %zu\n", diagnostics.count);
         for (size_t i = 0; i < diagnostics.count; i++) {
-            fprintf(stderr, "  错误 %zu: %s\n", i + 1, diagnostics.entries[i].message);
+            fprintf(stderr, "  错误 %zu: %s\n", i + 1, diagnostics.items[i].message);
         }
         if (program) {
             cn_frontend_ast_program_free(program);
@@ -129,7 +129,7 @@ static int test_deleted_keywords_as_normal_identifiers(void)
     if (diagnostics.count > 0) {
         fprintf(stderr, "parser_reserved_keyword_test: 不应该产生诊断错误\n");
         for (size_t i = 0; i < diagnostics.count; i++) {
-            fprintf(stderr, "  错误 %zu: %s\n", i + 1, diagnostics.entries[i].message);
+            fprintf(stderr, "  错误 %zu: %s\n", i + 1, diagnostics.items[i].message);
         }
         if (program) {
             cn_frontend_ast_program_free(program);
@@ -181,7 +181,7 @@ static int test_main_as_identifier(void)
         if (diagnostics.count > 0) {
             fprintf(stderr, "诊断错误:\n");
             for (size_t i = 0; i < diagnostics.count; i++) {
-                fprintf(stderr, "  %s\n", diagnostics.entries[i].message);
+                fprintf(stderr, "  %s\n", diagnostics.items[i].message);
             }
         }
         if (program) {

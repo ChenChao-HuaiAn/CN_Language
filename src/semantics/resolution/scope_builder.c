@@ -3,6 +3,12 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
+
+// MSVC 兼容性：较旧版本的 MSVC (< VS2015) 中 snprintf 未定义
+#if defined(_MSC_VER) && _MSC_VER < 1900
+#define snprintf _snprintf
+#endif
 
 // 符号链表节点，用于在作用域中维护符号列表
 // （与 symbol_table.c 中的定义保持一致）

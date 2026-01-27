@@ -38,13 +38,13 @@ static void test_negative_enum_values(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_negative_enum.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 负数枚举值解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试2: 大范围枚举值 */
@@ -67,13 +67,13 @@ static void test_large_enum_values(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_large_enum.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 大范围枚举值解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试3: 十六进制枚举值 */
@@ -97,13 +97,13 @@ static void test_hex_enum_values(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_hex_enum.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 十六进制枚举值解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试4: 自动递增枚举值 */
@@ -129,13 +129,13 @@ static void test_auto_increment_enum(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_auto_enum.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 自动递增枚举值解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试5: 枚举作为函数参数和返回值 */
@@ -165,13 +165,13 @@ static void test_enum_as_parameter_and_return(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_enum_param.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 枚举作为参数和返回值解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试6: 枚举与switch语句 */
@@ -207,13 +207,13 @@ static void test_enum_with_switch(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_enum_switch.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 枚举switch语句解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试7: 枚举数组 */
@@ -239,13 +239,13 @@ static void test_enum_array(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_enum_array.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 枚举数组解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试8: 枚举作为结构体成员 */
@@ -276,13 +276,13 @@ static void test_enum_in_struct(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_enum_struct.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 枚举结构体成员解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 int main(void)

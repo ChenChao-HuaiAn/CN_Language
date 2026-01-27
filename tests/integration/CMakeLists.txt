@@ -6,6 +6,8 @@ set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
     ../../src/semantics/symbols/type_system.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/semantics/resolution/scope_builder.c
     ../../src/support/diagnostics/diagnostics.c
 )
 
@@ -233,6 +235,7 @@ set_tests_properties(integration_multiplatform_test PROPERTIES LABELS "stage7;mu
 # 阶段8多平台兼容性测试
 add_executable(integration_multiplatform_stage8_test
     multiplatform_stage8_test.c
+    ../../src/support/config/target_triple.c
 )
 target_include_directories(integration_multiplatform_stage8_test PRIVATE ../../include)
 add_test(NAME integration_multiplatform_stage8_test 

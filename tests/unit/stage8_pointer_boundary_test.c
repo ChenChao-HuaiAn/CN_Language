@@ -15,7 +15,6 @@
 
 #include "cnlang/frontend/lexer.h"
 #include "cnlang/frontend/parser.h"
-#include "cnlang/semantics/checker.h"
 
 /* 测试1: 多级指针（最多3级） */
 static void test_multilevel_pointers(void)
@@ -34,15 +33,15 @@ static void test_multilevel_pointers(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_multilevel_ptr.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     assert(program->function_count == 1);
     
     printf("    ✓ 多级指针解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试2: 空指针常量 */
@@ -61,13 +60,13 @@ static void test_null_pointer(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_null_ptr.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 空指针常量解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试3: 指针运算边界 */
@@ -91,13 +90,13 @@ static void test_pointer_arithmetic_bounds(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_ptr_arithmetic.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 指针运算边界解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试4: void指针 */
@@ -118,13 +117,13 @@ static void test_void_pointer(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_void_ptr.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ void指针解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试5: 指针与数组的关系 */
@@ -146,13 +145,13 @@ static void test_pointer_array_relationship(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_ptr_array.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 指针数组关系解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试6: 函数指针与NULL */
@@ -174,13 +173,13 @@ static void test_function_pointer_null(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_funcptr_null.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 函数指针NULL检查解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试7: 指针比较边界 */
@@ -208,13 +207,13 @@ static void test_pointer_comparison_bounds(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_ptr_comparison.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ 指针比较边界解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 /* 测试8: const指针 */
@@ -239,13 +238,13 @@ static void test_const_pointer(void)
     CnLexer lexer;
     cn_frontend_lexer_init(&lexer, source, strlen(source), "test_const_ptr.cn");
     
-    CnParser parser;
-    cn_frontend_parser_init(&parser, &lexer);
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
     
-    CnAstProgram *program = cn_frontend_parser_parse_program(&parser);
-    
-    assert(program != NULL);
+    assert(success && program != NULL);
     printf("    ✓ const指针解析成功\n");
+    cn_frontend_parser_free(parser);
 }
 
 int main(void)
