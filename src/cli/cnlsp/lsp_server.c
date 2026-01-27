@@ -460,7 +460,7 @@ static void handle_completion(CnLspServer *server, int id, const char *uri, int 
         // 控制流关键字
         "如果", "否则", "当", "循环", "返回", "中断", "继续", "选择", "情况", "默认",
         // 类型关键字
-        "整数", "浮点数", "字符串", "布尔值", "空类型", "结构体", "枚举",
+        "整数", "小数", "字符串", "布尔值", "空", "结构体", "枚举",
         // 声明关键字
         "函数", "变量", "模块", "导入", "公开", "私有",
         // 常量关键字
@@ -513,9 +513,9 @@ static void handle_completion(CnLspServer *server, int id, const char *uri, int 
             detail = "控制流关键字";
         }
         // 类型关键字
-        else if (strcmp(keywords[i], "整数") == 0 || strcmp(keywords[i], "浮点数") == 0 ||
+        else if (strcmp(keywords[i], "整数") == 0 || strcmp(keywords[i], "小数") == 0 ||
                  strcmp(keywords[i], "字符串") == 0 || strcmp(keywords[i], "布尔值") == 0 ||
-                 strcmp(keywords[i], "空类型") == 0 || strcmp(keywords[i], "结构体") == 0 ||
+                 strcmp(keywords[i], "空") == 0 || strcmp(keywords[i], "结构体") == 0 ||
                  strcmp(keywords[i], "枚举") == 0) {
             detail = "类型关键字";
         }
