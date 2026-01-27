@@ -1,0 +1,25 @@
+// 测试数字字面量后缀支持
+
+函数 主程序() {
+    // 测试整数后缀
+    变量 a = 100L;        // long (int32)
+    变量 b = 200LL;       // long long (int64)
+    变量 c = 300U;        // unsigned int (uint32)
+    变量 d = 400UL;       // unsigned long (uint64)
+    变量 e = 500ULL;      // unsigned long long (uint64)
+    
+    // 测试浮点后缀
+    变量 f = 3.14f;       // float (float32)
+    变量 g = 2.718;       // double (float64, 默认)
+    
+    // 测试打印
+    打印(a);
+    打印(b);
+    打印(c);
+    打印(d);
+    打印(e);
+    打印(f);
+    打印(g);
+    
+    返回 0;
+}

@@ -1740,10 +1740,42 @@ static CnAstExpr *parse_factor(CnParser *parser)
         }
         
         expr = make_integer_literal(value);
+        
+        // 根据后缀设置类型
+        if (parser->current.number_suffix == 0) {
+            // 无后缀，默认为 CN_TYPE_INT
+            expr->type = cn_type_new_primitive(CN_TYPE_INT);
+        } else if (parser->current.number_suffix == 2) {
+            // L 后缀 -> int32
+            expr->type = cn_type_new_primitive(CN_TYPE_INT32);
+        } else if (parser->current.number_suffix == 3) {
+            // LL 后缀 -> int64
+            expr->type = cn_type_new_primitive(CN_TYPE_INT64);
+        } else if (parser->current.number_suffix == 4) {
+            // U 后缀 -> uint32
+            expr->type = cn_type_new_primitive(CN_TYPE_UINT32);
+        } else if (parser->current.number_suffix == 5) {
+            // UL 后缀 -> uint64
+            expr->type = cn_type_new_primitive(CN_TYPE_UINT64);
+        } else if (parser->current.number_suffix == 6) {
+            // ULL 后缀 -> uint64
+            expr->type = cn_type_new_primitive(CN_TYPE_UINT64_LL);
+        }
+        
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_FLOAT_LITERAL) {
         double value = strtod(parser->current.lexeme_begin, NULL);
         expr = make_float_literal(value);
+        
+        // 根据后缀设置类型
+        if (parser->current.number_suffix == 1) {
+            // f/F 后缀 -> float32
+            expr->type = cn_type_new_primitive(CN_TYPE_FLOAT32);
+        } else {
+            // 无后缀或其他，默认为 CN_TYPE_FLOAT (double)
+            expr->type = cn_type_new_primitive(CN_TYPE_FLOAT);
+        }
+        
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
         // 处理字符串转义序列

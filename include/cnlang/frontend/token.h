@@ -109,6 +109,9 @@ typedef struct CnToken {
     size_t lexeme_length;
     int line;
     int column;
+    // 数字字面量后缀信息（0=无后缀, 1=float(f/F), 2=long(L), 3=long long(LL),
+    //                    4=unsigned(U), 5=unsigned long(UL), 6=unsigned long long(ULL)）
+    int number_suffix;
 } CnToken;
 
 const char *cn_frontend_token_kind_name(CnTokenKind kind);

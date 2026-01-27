@@ -220,15 +220,15 @@
   - **完成时间**：2026-01-27
   - **说明**：词法层面支持完成，后缀被正确识别并包含在 Token 中
 
-- [ ] **任务 4.2**：类型系统支持单精度浮点 ⚠️ 待实现
-  - **文件**：`include/cnlang/frontend/semantics.h`、`src/semantics/checker/type_checker.c`
+- [x] **任务 4.2**：类型系统支持单精度浮点 ✅ 已实现
+  - **文件**：`include/cnlang/frontend/semantics.h`、`src/semantics/symbols/type_system.c`
   - **实现要点**：
-    - 添加 `CN_TYPE_FLOAT32` 或 `float` 类型标识
+    - 添加 `CN_TYPE_FLOAT32` 类型标识
     - 与现有 `CN_TYPE_FLOAT` (double) 类型区分
     - Parser 中根据后缀生成不同的类型
     - C 代码生成器生成 `float` 而非 `double`
-  - **验证**：类型检查器能正确识别单精度类型
-  - **注意**：这需要扩展 CnTypeKind 枚举和相关的类型处理逻辑
+  - **验证**：类型检查器能正确识别单精度类型 ✅
+  - **注意**：已扩展 CnTypeKind 枚举和相关的类型处理逻辑
 
 ### 11. 整数后缀 ✅ 词法支持完成
 
@@ -244,14 +244,14 @@
   - **完成时间**：2026-01-27
   - **说明**：词法层面支持完成，所有后缀组合都被正确识别
 
-- [ ] **任务 4.4**：类型系统支持不同整数大小 ⚠️ 待实现
+- [x] **任务 4.4**：类型系统支持不同整数大小 ✅ 已实现
   - **文件**：类型系统相关文件
   - **实现要点**：
-    - 添加 `CN_TYPE_INT32`、`CN_TYPE_INT64`、`CN_TYPE_UINT32`、`CN_TYPE_UINT64` 等类型
+    - 添加 `CN_TYPE_INT32`、`CN_TYPE_INT64`、`CN_TYPE_UINT32`、`CN_TYPE_UINT64`、`CN_TYPE_UINT64_LL` 等类型
     - Parser 中根据后缀生成不同的类型
-    - 后端生成对应的 C 类型（`int`, `long`, `long long`, `unsigned`, `unsigned long`, `unsigned long long`）
-  - **验证**：不同整数类型能正确处理
-  - **注意**：这是一个较大的类型系统重构，需要谨慎处理
+    - 后端生成对应的 C 类型（`int`, `long long`, `unsigned int`, `unsigned long long`）
+  - **验证**：不同整数类型能正确处理 ✅
+  - **注意**：已完成类型系统重构，包括类型兼容性检查
 
 ### 12. 测试覆盖 ✅
 

@@ -32,6 +32,16 @@ static const char *get_c_type_string(CnType *type) {
         case CN_TYPE_FLOAT: return "double";
         case CN_TYPE_BOOL: return "_Bool";
         case CN_TYPE_STRING: return "char*";
+        
+        // 新增的数字类型（支持数字字面量后缀）
+        case CN_TYPE_INT32: return "int";
+        case CN_TYPE_INT64: return "long long";
+        case CN_TYPE_UINT32: return "unsigned int";
+        case CN_TYPE_UINT64: return "unsigned long long";
+        case CN_TYPE_UINT64_LL: return "unsigned long long";
+        case CN_TYPE_FLOAT32: return "float";
+        case CN_TYPE_FLOAT64: return "double";
+        
         case CN_TYPE_POINTER: {
             // 检查是否是函数指针类型
             if (type->as.pointer_to && type->as.pointer_to->kind == CN_TYPE_FUNCTION) {

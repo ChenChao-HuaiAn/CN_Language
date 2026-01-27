@@ -523,6 +523,8 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                     while (isxdigit((unsigned char)current_char(lexer))) {
                         advance(lexer);
                     }
+                    // 检查整数后缀
+                    out_token->number_suffix = scan_number_suffix(lexer);
                     out_token->kind = CN_TOKEN_INTEGER;
                 }
             }
@@ -548,6 +550,8 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                                        "二进制字面量只能包含0和1");
                         out_token->kind = CN_TOKEN_INVALID;
                     } else {
+                        // 检查整数后缀
+                        out_token->number_suffix = scan_number_suffix(lexer);
                         out_token->kind = CN_TOKEN_INTEGER;
                     }
                 }
@@ -574,6 +578,8 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                                        "八进制字面量只能包含0-7");
                         out_token->kind = CN_TOKEN_INVALID;
                     } else {
+                        // 检查整数后缀
+                        out_token->number_suffix = scan_number_suffix(lexer);
                         out_token->kind = CN_TOKEN_INTEGER;
                     }
                 }
@@ -595,18 +601,18 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                     scan_exponent(lexer);
                     
                     // 检查浮点后缀 f/F
-                    scan_number_suffix(lexer);
+                    out_token->number_suffix = scan_number_suffix(lexer);
                     
                     out_token->kind = CN_TOKEN_FLOAT_LITERAL;
                 } else {
                     // 检查整数是否有科学计数法（如 1e10）
                     if (scan_exponent(lexer)) {
                         // 有科学计数法，变成浮点数
-                        scan_number_suffix(lexer);  // 检查 f/F 后缀
+                        out_token->number_suffix = scan_number_suffix(lexer);  // 检查 f/F 后缀
                         out_token->kind = CN_TOKEN_FLOAT_LITERAL;
                     } else {
                         // 普通整数，检查整数后缀 L/LL/U/UL/ULL
-                        scan_number_suffix(lexer);
+                        out_token->number_suffix = scan_number_suffix(lexer);
                         out_token->kind = CN_TOKEN_INTEGER;
                     }
                 }
@@ -629,18 +635,18 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                 scan_exponent(lexer);
                 
                 // 检查浮点后缀 f/F
-                scan_number_suffix(lexer);
+                out_token->number_suffix = scan_number_suffix(lexer);
                 
                 out_token->kind = CN_TOKEN_FLOAT_LITERAL;
             } else {
                 // 检查整数是否有科学计数法（如 1e10）
                 if (scan_exponent(lexer)) {
                     // 有科学计数法，变成浮点数
-                    scan_number_suffix(lexer);  // 检查 f/F 后缀
+                    out_token->number_suffix = scan_number_suffix(lexer);  // 检查 f/F 后缀
                     out_token->kind = CN_TOKEN_FLOAT_LITERAL;
                 } else {
                     // 普通整数，检查整数后缀 L/LL/U/UL/ULL
-                    scan_number_suffix(lexer);
+                    out_token->number_suffix = scan_number_suffix(lexer);
                     out_token->kind = CN_TOKEN_INTEGER;
                 }
             }
@@ -847,6 +853,10 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
     out_token->lexeme_length = lexer->offset - start_offset;
     out_token->line = start_line;
     out_token->column = start_column;
+    // 对于非数字token，确保 number_suffix 为 0
+    if (out_token->kind != CN_TOKEN_INTEGER && out_token->kind != CN_TOKEN_FLOAT_LITERAL) {
+        out_token->number_suffix = 0;
+    }
 
     return true;
 }

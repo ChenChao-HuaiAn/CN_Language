@@ -22,6 +22,25 @@ static int alloc_reg(CnIrGenContext *ctx) {
     return ctx->current_func->next_reg_id++;
 }
 
+// 判断类型是否为整数类型
+static bool is_integer_type(CnType *type) {
+    if (!type) return false;
+    return (type->kind == CN_TYPE_INT || 
+            type->kind == CN_TYPE_INT32 || 
+            type->kind == CN_TYPE_INT64 || 
+            type->kind == CN_TYPE_UINT32 || 
+            type->kind == CN_TYPE_UINT64 || 
+            type->kind == CN_TYPE_UINT64_LL);
+}
+
+// 判断类型是否为浮点类型
+static bool is_float_type(CnType *type) {
+    if (!type) return false;
+    return (type->kind == CN_TYPE_FLOAT || 
+            type->kind == CN_TYPE_FLOAT32 || 
+            type->kind == CN_TYPE_FLOAT64);
+}
+
 // 生成唯一的基本块名称
 static char *make_block_name(CnIrGenContext *ctx, const char *hint) {
     static int block_counter = 0;
@@ -189,11 +208,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 // 转换左操作数
                 if (left_type && left_type->kind != CN_TYPE_STRING) {
                     const char *convert_func = NULL;
-                    if (left_type->kind == CN_TYPE_INT) {
+                    if (is_integer_type(left_type)) {
                         convert_func = "cn_rt_int_to_string";
                     } else if (left_type->kind == CN_TYPE_BOOL) {
                         convert_func = "cn_rt_bool_to_string";
-                    } else if (left_type->kind == CN_TYPE_FLOAT) {
+                    } else if (is_float_type(left_type)) {
                         convert_func = "cn_rt_float_to_string";
                     }
                     
@@ -215,11 +234,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 // 转换右操作数
                 if (right_type && right_type->kind != CN_TYPE_STRING) {
                     const char *convert_func = NULL;
-                    if (right_type->kind == CN_TYPE_INT) {
+                    if (is_integer_type(right_type)) {
                         convert_func = "cn_rt_int_to_string";
                     } else if (right_type->kind == CN_TYPE_BOOL) {
                         convert_func = "cn_rt_bool_to_string";
-                    } else if (right_type->kind == CN_TYPE_FLOAT) {
+                    } else if (is_float_type(right_type)) {
                         convert_func = "cn_rt_float_to_string";
                     }
                     
@@ -429,15 +448,15 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     free(name);
                     callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
                 } 
-                // 检查是否是 "打印" 函数
+                // 检查是否是 “打印” 函数
                 else if (strcmp(name, "打印") == 0 && expr->as.call.argument_count == 1) {
                     // 打印函数根据参数类型映射到不同的运行时函数
                     CnType *arg_type = expr->as.call.arguments[0]->type;
-                    if (arg_type && arg_type->kind == CN_TYPE_INT) {
+                    if (arg_type && is_integer_type(arg_type)) {
                         func_name = "cn_rt_print_int";
                     } else if (arg_type && arg_type->kind == CN_TYPE_BOOL) {
                         func_name = "cn_rt_print_bool";
-                    } else if (arg_type && arg_type->kind == CN_TYPE_FLOAT) {
+                    } else if (arg_type && is_float_type(arg_type)) {
                         func_name = "cn_rt_print_float";
                     } else {
                         // 默认为字符串打印（包括 STRING 类型和其他类型）
@@ -445,7 +464,7 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     }
                     free(name);
                     callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
-                } 
+                }
                 // 检查是否是 "打印整数" 函数
                 else if (strcmp(name, "打印整数") == 0) {
                     func_name = "cn_rt_print_int";

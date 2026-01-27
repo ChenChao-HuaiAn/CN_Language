@@ -102,8 +102,41 @@ bool cn_type_equals(CnType *a, CnType *b) {
 
 bool cn_type_compatible(CnType *a, CnType *b) {
     // 基础实现：等价即兼容
-    // 后续可以增加隐式转换逻辑，例如 int -> float
-    return cn_type_equals(a, b);
+    if (cn_type_equals(a, b)) {
+        return true;
+    }
+    
+    // 扩展兼容性检查：支持数字类型之间的隐式转换
+    if (!a || !b) return false;
+    
+    // 整数类型之间的兼容性
+    bool a_is_int = (a->kind == CN_TYPE_INT || a->kind == CN_TYPE_INT32 || 
+                     a->kind == CN_TYPE_INT64 || a->kind == CN_TYPE_UINT32 || 
+                     a->kind == CN_TYPE_UINT64 || a->kind == CN_TYPE_UINT64_LL);
+    bool b_is_int = (b->kind == CN_TYPE_INT || b->kind == CN_TYPE_INT32 || 
+                     b->kind == CN_TYPE_INT64 || b->kind == CN_TYPE_UINT32 || 
+                     b->kind == CN_TYPE_UINT64 || b->kind == CN_TYPE_UINT64_LL);
+    
+    if (a_is_int && b_is_int) {
+        return true;  // 所有整数类型之间可以隐式转换
+    }
+    
+    // 浮点类型之间的兼容性
+    bool a_is_float = (a->kind == CN_TYPE_FLOAT || a->kind == CN_TYPE_FLOAT32 || 
+                       a->kind == CN_TYPE_FLOAT64);
+    bool b_is_float = (b->kind == CN_TYPE_FLOAT || b->kind == CN_TYPE_FLOAT32 || 
+                       b->kind == CN_TYPE_FLOAT64);
+    
+    if (a_is_float && b_is_float) {
+        return true;  // 所有浮点类型之间可以隐式转换
+    }
+    
+    // 整数到浮点的隐式转换
+    if (a_is_int && b_is_float) {
+        return true;
+    }
+    
+    return false;
 }
 
 // 在结构体类型中查找成员字段
