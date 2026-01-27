@@ -452,6 +452,11 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
         case CN_IR_INST_GT:
         case CN_IR_INST_LE:
         case CN_IR_INST_GE:
+        case CN_IR_INST_AND:
+        case CN_IR_INST_OR:
+        case CN_IR_INST_XOR:
+        case CN_IR_INST_SHL:
+        case CN_IR_INST_SHR:
             fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); print_operand(ctx, inst->src1);
             switch (inst->kind) {
                 case CN_IR_INST_ADD: fprintf(ctx->output_file, " + "); break;
@@ -465,6 +470,11 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 case CN_IR_INST_GT: fprintf(ctx->output_file, " > "); break;
                 case CN_IR_INST_LE: fprintf(ctx->output_file, " <= "); break;
                 case CN_IR_INST_GE: fprintf(ctx->output_file, " >= "); break;
+                case CN_IR_INST_AND: fprintf(ctx->output_file, " & "); break;
+                case CN_IR_INST_OR: fprintf(ctx->output_file, " | "); break;
+                case CN_IR_INST_XOR: fprintf(ctx->output_file, " ^ "); break;
+                case CN_IR_INST_SHL: fprintf(ctx->output_file, " << "); break;
+                case CN_IR_INST_SHR: fprintf(ctx->output_file, " >> "); break;
                 default: break;
             }
             print_operand(ctx, inst->src2); fprintf(ctx->output_file, ";\n"); break;

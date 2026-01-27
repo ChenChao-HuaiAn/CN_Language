@@ -89,6 +89,12 @@ static CnIrInstKind binary_op_to_ir(CnAstBinaryOp op) {
         case CN_AST_BINARY_OP_GT:  return CN_IR_INST_GT;
         case CN_AST_BINARY_OP_LE:  return CN_IR_INST_LE;
         case CN_AST_BINARY_OP_GE:  return CN_IR_INST_GE;
+        // 位运算符
+        case CN_AST_BINARY_OP_BITWISE_AND: return CN_IR_INST_AND;
+        case CN_AST_BINARY_OP_BITWISE_OR:  return CN_IR_INST_OR;
+        case CN_AST_BINARY_OP_BITWISE_XOR: return CN_IR_INST_XOR;
+        case CN_AST_BINARY_OP_LEFT_SHIFT:  return CN_IR_INST_SHL;
+        case CN_AST_BINARY_OP_RIGHT_SHIFT: return CN_IR_INST_SHR;
         default: return CN_IR_INST_ADD;
     }
 }
