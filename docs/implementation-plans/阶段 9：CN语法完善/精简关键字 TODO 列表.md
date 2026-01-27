@@ -262,7 +262,7 @@
       - `test_deleted_keywords_as_normal_identifiers`: 验证已删除关键字(如"数组")可作为变量名
       - `test_main_as_identifier`: 验证"主程序"可作为函数名正常工作
     - ✅ **lexer_token_test.c**：已在任务3.1中更新,"主程序"期望改为CN_TOKEN_IDENT
-    - ⚠️ **需要将测试添加到CMakeLists.txt**以便通过ctest执行
+    - ✅ **CMakeLists.txt**：已将两个新测试添加到构建系统，标签为stage9;keyword;unit
 
 ### 9. 示例与集成测试
 

@@ -101,6 +101,22 @@ target_include_directories(lexer_token_test PRIVATE
 add_test(NAME lexer_token_test
          COMMAND lexer_token_test)
 
+# 精简关键字测试：验证已删除关键字被识别为标识符，保留关键字和预留关键字正确识别
+add_executable(lexer_keyword_refined_test
+    lexer_keyword_refined_test.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/token.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(lexer_keyword_refined_test PRIVATE
+    ../../include
+)
+
+add_test(NAME lexer_keyword_refined_test
+         COMMAND lexer_keyword_refined_test)
+set_tests_properties(lexer_keyword_refined_test PROPERTIES LABELS "stage9;lexer;keyword;unit")
+
 add_executable(lexer_error_test
     lexer_error_test.c
     ../../src/frontend/lexer/lexer.c
@@ -198,6 +214,36 @@ target_include_directories(parser_var_test PRIVATE
 
 add_test(NAME parser_var_test
          COMMAND parser_var_test)
+
+# 精简关键字语法测试：验证预留关键字触发错误，已删除关键字可作为标识符
+add_executable(parser_reserved_keyword_test
+    parser_reserved_keyword_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(parser_reserved_keyword_test PRIVATE
+    ../../include
+)
+
+add_test(NAME parser_reserved_keyword_test
+         COMMAND parser_reserved_keyword_test)
+set_tests_properties(parser_reserved_keyword_test PROPERTIES LABELS "stage9;parser;keyword;unit")
+
+# 运行时系统API测试：验证替代已删除关键字的运行时函数
+add_executable(runtime_system_api_test
+    runtime_system_api_test.c
+    ../../src/runtime/memory/memory.c
+    ../../src/runtime/core/interrupt.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+
+target_include_directories(runtime_system_api_test PRIVATE
+    ../../include
+)
+
+add_test(NAME runtime_system_api_test
+         COMMAND runtime_system_api_test)
+set_tests_properties(runtime_system_api_test PROPERTIES LABELS "stage9;runtime;system_api;unit")
 
 # 全局变量 Parser 测试
 add_executable(parser_global_var_test
