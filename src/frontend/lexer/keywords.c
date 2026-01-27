@@ -22,7 +22,7 @@ static const CnKeywordEntry g_keywords[] = {
     {"整数", CN_TOKEN_KEYWORD_INT, "类型关键字"},
     {"小数", CN_TOKEN_KEYWORD_FLOAT, "类型关键字"},
     {"字符串", CN_TOKEN_KEYWORD_STRING, "类型关键字"},
-    {"布尔值", CN_TOKEN_KEYWORD_BOOL, "类型关键字"},
+    {"布尔", CN_TOKEN_KEYWORD_BOOL, "类型关键字"},
     {"空类型", CN_TOKEN_KEYWORD_VOID, "类型关键字"},  // 注意：空类型关键字是"空类型"
     {"结构体", CN_TOKEN_KEYWORD_STRUCT, "类型关键字"},
     {"枚举", CN_TOKEN_KEYWORD_ENUM, "类型关键字"},

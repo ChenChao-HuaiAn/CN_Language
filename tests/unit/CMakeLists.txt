@@ -2,6 +2,7 @@
 
 set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/frontend/parser/parser.c
@@ -79,6 +80,7 @@ target_include_directories(preprocessor_debug PRIVATE
 add_executable(lexer_function_examples_test
     lexer_function_examples_test.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
 )
 
@@ -92,6 +94,7 @@ add_test(NAME lexer_function_examples_test
 add_executable(lexer_token_test
     lexer_token_test.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/support/diagnostics/diagnostics.c
 )
@@ -107,6 +110,7 @@ add_test(NAME lexer_token_test
 add_executable(lexer_keyword_refined_test
     lexer_keyword_refined_test.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/support/diagnostics/diagnostics.c
 )
@@ -122,6 +126,7 @@ set_tests_properties(lexer_keyword_refined_test PROPERTIES LABELS "stage9;lexer;
 add_executable(lexer_error_test
     lexer_error_test.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/support/diagnostics/diagnostics.c
 )
@@ -598,6 +603,7 @@ add_executable(formatter_test
     formatter_test.c
     ../../src/format/formatter.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/ast/ast.c
     ../../src/frontend/parser/parser.c
@@ -619,6 +625,7 @@ add_executable(static_check_test
     static_check_test.c
     ../../src/analysis/checker/static_check.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/ast/ast.c
     ../../src/frontend/parser/parser.c
@@ -640,6 +647,7 @@ add_executable(lsp_bridge_test
     lsp_bridge_test.c
     ../../src/frontend/lsp_bridge/lsp_bridge.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/ast/ast.c
     ../../src/frontend/parser/parser.c
@@ -719,6 +727,7 @@ set_tests_properties(arena_stress_test PROPERTIES LABELS "stage7;performance;str
 add_executable(lexer_performance_test
     lexer_performance_test.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/support/diagnostics/diagnostics.c
     ../../src/support/memory/arena.c
 )
@@ -749,6 +758,7 @@ set_tests_properties(memory_leak_test PROPERTIES LABELS "stage7;memory;leak;unit
 add_executable(regression_test
     regression_test.c
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/support/diagnostics/diagnostics.c
     ../../src/support/memory/arena.c
     ../../src/support/memory/memory_profiler.c

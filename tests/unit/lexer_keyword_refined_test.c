@@ -100,7 +100,7 @@ static int test_deleted_keywords_as_identifiers(void)
 // 测试保留关键字仍然被正确识别
 static int test_preserved_keywords(void)
 {
-    const char *source = "函数 返回 变量 整数 小数 布尔 字符串 结构体 枚举 常量 模块 导入 如果 否则 当 循环 选择 情况 默认 中断 继续 真 假 空 无 公开 私有";
+    const char *source = "函数 返回 变量 整数 小数 布尔 字符串 结构体 枚举 常量 模块 导入 如果 否则 当 循环 选择 情况 默认 中断 继续 真 假 无 空类型 公开 私有";
     size_t length = strlen(source);
     CnLexer lexer;
     CnToken token;

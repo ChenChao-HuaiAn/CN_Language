@@ -2,6 +2,7 @@
 
 set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
