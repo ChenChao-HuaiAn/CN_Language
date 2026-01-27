@@ -14,6 +14,8 @@ struct CnSemScope {
     CnSemScopeKind kind;
     CnSemScope *parent;
     CnSemSymbolNode *symbols;
+    const char *name;          // 作用域名称(对于函数作用域为函数名)
+    size_t name_length;        // 作用域名称长度
 };
 
 static int cn_sem_symbol_name_equals(const CnSemSymbol *symbol,
@@ -51,6 +53,8 @@ CnSemScope *cn_sem_scope_new(CnSemScopeKind kind, CnSemScope *parent)
     scope->kind = kind;
     scope->parent = parent;
     scope->symbols = NULL;
+    scope->name = NULL;
+    scope->name_length = 0;
 
     return scope;
 }
@@ -81,6 +85,36 @@ CnSemScope *cn_sem_scope_parent(CnSemScope *scope)
     }
 
     return scope->parent;
+}
+
+CnSemScopeKind cn_sem_scope_get_kind(CnSemScope *scope)
+{
+    if (!scope) {
+        return CN_SEM_SCOPE_GLOBAL;  // 默认返回全局作用域类型
+    }
+
+    return scope->kind;
+}
+
+void cn_sem_scope_set_name(CnSemScope *scope, const char *name, size_t name_length)
+{
+    if (!scope) {
+        return;
+    }
+    scope->name = name;
+    scope->name_length = name_length;
+}
+
+const char *cn_sem_scope_get_name(CnSemScope *scope, size_t *out_length)
+{
+    if (!scope) {
+        if (out_length) *out_length = 0;
+        return NULL;
+    }
+    if (out_length) {
+        *out_length = scope->name_length;
+    }
+    return scope->name;
 }
 
 CnSemSymbol *cn_sem_scope_insert_symbol(CnSemScope *scope,

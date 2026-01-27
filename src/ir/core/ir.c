@@ -1,4 +1,5 @@
 #include "cnlang/ir/ir.h"
+#include "cnlang/frontend/ast.h"  // 用于 CnAstExpr 类型
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -209,6 +210,14 @@ CnIrOperand cn_ir_op_symbol(const char *name, CnType *type) {
     CnIrOperand op;
     op.kind = CN_IR_OP_SYMBOL;
     op.as.sym_name = name ? strdup(name) : NULL;
+    op.type = type;
+    return op;
+}
+
+CnIrOperand cn_ir_op_ast_expr(CnAstExpr *expr, CnType *type) {
+    CnIrOperand op;
+    op.kind = CN_IR_OP_AST_EXPR;
+    op.as.ast_expr = expr;
     op.type = type;
     return op;
 }

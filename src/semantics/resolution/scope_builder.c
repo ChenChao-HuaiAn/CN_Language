@@ -109,7 +109,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             sym->type = cn_type_new_struct(struct_decl->name,
                                           struct_decl->name_length,
                                           fields,
-                                          struct_decl->field_count);
+                                          struct_decl->field_count,
+                                          global_scope,
+                                          NULL, 0);  // 全局结构体，无所属函数
         } else {
             // 报告重复定义
             cn_support_diag_semantic_error_duplicate_symbol(
@@ -428,6 +430,9 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
     if (!function_scope) {
         return;
     }
+    
+    // 设置函数作用域的名称为函数名
+    cn_sem_scope_set_name(function_scope, function_decl->name, function_decl->name_length);
 
     for (i = 0; i < function_decl->parameter_count; ++i) {
         CnAstParameter *param = &function_decl->parameters[i];
@@ -488,7 +493,23 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                                    var_decl->name_length,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
-            sym->type = var_decl->declared_type;
+            // 如果声明类型是结构体,需要从符号表查找真实的结构体定义(含有正确的decl_scope)
+            if (var_decl->declared_type && var_decl->declared_type->kind == CN_TYPE_STRUCT) {
+                // 从符号表中查找结构体类型定义
+                CnSemSymbol *struct_sym = cn_sem_scope_lookup(scope,
+                                        var_decl->declared_type->as.struct_type.name,
+                                        var_decl->declared_type->as.struct_type.name_length);
+                if (struct_sym && struct_sym->kind == CN_SEM_SYMBOL_STRUCT && struct_sym->type) {
+                    // 使用从符号表查找到的结构体类型(含有正确的decl_scope)
+                    sym->type = struct_sym->type;
+                } else {
+                    // 找不到结构体定义,使用原始类型
+                    sym->type = var_decl->declared_type;
+                }
+            } else {
+                // 非结构体类型,直接使用
+                sym->type = var_decl->declared_type;
+            }
             sym->is_const = var_decl->is_const;
             // 设置可见性（根据 AST 中的可见性标志）
             if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
@@ -556,10 +577,29 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                     fields[j].is_const = struct_decl->fields[j].is_const;
                 }
             }
+            
+            // 局部结构体应该绑定到函数作用域,向上查找直到函数作用域
+            CnSemScope *decl_scope = scope;
+            while (decl_scope && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_FUNCTION 
+                   && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_GLOBAL
+                   && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_MODULE) {
+                decl_scope = cn_sem_scope_parent(decl_scope);
+            }
+            
+            // 获取函数名(如果是局部结构体)
+            const char *owner_func_name = NULL;
+            size_t owner_func_name_length = 0;
+            if (decl_scope && cn_sem_scope_get_kind(decl_scope) == CN_SEM_SCOPE_FUNCTION) {
+                owner_func_name = cn_sem_scope_get_name(decl_scope, &owner_func_name_length);
+            }
+            
             sym->type = cn_type_new_struct(struct_decl->name,
                                           struct_decl->name_length,
                                           fields,
-                                          struct_decl->field_count);
+                                          struct_decl->field_count,
+                                          decl_scope,
+                                          owner_func_name,
+                                          owner_func_name_length);
         } else {
             // 报告重复定义
             cn_support_diag_semantic_error_duplicate_symbol(

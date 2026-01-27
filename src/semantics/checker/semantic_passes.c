@@ -342,6 +342,7 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         CnAstFunctionDecl *fn = program->functions[i];
         
         CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, global_scope);
+        cn_sem_scope_set_name(fn_scope, fn->name, fn->name_length);  // 设置函数作用域名称
         for (size_t j = 0; j < fn->parameter_count; j++) {
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
@@ -380,6 +381,7 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                 
                 // 进入函数作用域（父作用域是模块作用域）
                 CnSemScope *fn_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, module_scope);
+                cn_sem_scope_set_name(fn_scope, fn->name, fn->name_length);  // 设置函数作用域名称
                 for (size_t k = 0; k < fn->parameter_count; k++) {
                     CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[k].name, fn->parameters[k].name_length, CN_SEM_SYMBOL_VARIABLE);
                     if (sym) {
@@ -593,10 +595,29 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                         fields[j].is_const = struct_decl->fields[j].is_const;
                     }
                 }
+                
+                // 局部结构体应该绑定到函数作用域,向上查找直到函数作用域
+                CnSemScope *decl_scope = scope;
+                while (decl_scope && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_FUNCTION 
+                       && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_GLOBAL
+                       && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_MODULE) {
+                    decl_scope = cn_sem_scope_parent(decl_scope);
+                }
+                
+                // 获取函数名(如果是局部结构体)
+                const char *owner_func_name = NULL;
+                size_t owner_func_name_length = 0;
+                if (decl_scope && cn_sem_scope_get_kind(decl_scope) == CN_SEM_SCOPE_FUNCTION) {
+                    owner_func_name = cn_sem_scope_get_name(decl_scope, &owner_func_name_length);
+                }
+                
                 sym->type = cn_type_new_struct(struct_decl->name,
                                               struct_decl->name_length,
                                               fields,
-                                              struct_decl->field_count);
+                                              struct_decl->field_count,
+                                              decl_scope,
+                                              owner_func_name,
+                                              owner_func_name_length);
             } else {
                 // 报告重复定义
                 cn_support_diag_semantic_error_duplicate_symbol(
@@ -1432,10 +1453,29 @@ static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *blo
                         fields[j].is_const = struct_decl->fields[j].is_const;
                     }
                 }
+                
+                // 局部结构体应该绑定到函数作用域,向上查找直到函数作用域
+                CnSemScope *decl_scope = block_scope;
+                while (decl_scope && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_FUNCTION 
+                       && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_GLOBAL
+                       && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_MODULE) {
+                    decl_scope = cn_sem_scope_parent(decl_scope);
+                }
+                
+                // 获取函数名(如果是局部结构体)
+                const char *owner_func_name = NULL;
+                size_t owner_func_name_length = 0;
+                if (decl_scope && cn_sem_scope_get_kind(decl_scope) == CN_SEM_SCOPE_FUNCTION) {
+                    owner_func_name = cn_sem_scope_get_name(decl_scope, &owner_func_name_length);
+                }
+                
                 sym->type = cn_type_new_struct(struct_decl->name,
                                               struct_decl->name_length,
                                               fields,
-                                              struct_decl->field_count);
+                                              struct_decl->field_count,
+                                              decl_scope,
+                                              owner_func_name,
+                                              owner_func_name_length);
             }
         }
         // 如果是枚举定义，需要先注册到作用域

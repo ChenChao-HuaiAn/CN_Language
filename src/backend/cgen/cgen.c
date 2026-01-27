@@ -1,6 +1,7 @@
 #include "cnlang/backend/cgen.h"
 #include "cnlang/support/diagnostics.h"
 #include "cnlang/support/config.h"
+#include "cnlang/frontend/semantics.h"  // 引入作用域和类型信息
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -67,11 +68,24 @@ static const char *get_c_type_string(CnType *type) {
         case CN_TYPE_VOID: return "void";
         case CN_TYPE_ARRAY: return "void*";
         case CN_TYPE_STRUCT: {
-            /* 结构体类型：返回结构体名 */
-            static _Thread_local char buffer[256];
-            snprintf(buffer, sizeof(buffer), "struct %.*s", 
-                     (int)type->as.struct_type.name_length, 
-                     type->as.struct_type.name);
+            /* 结构体类型：检查是否是局部结构体 */
+            static _Thread_local char buffer[512];
+            
+            // 检查是否是局部结构体（通过owner_func_name判断）
+            // 注意：不再依赖decl_scope指针，因为它可能指向已释放的内存
+            if (type->as.struct_type.owner_func_name) {
+                // 局部结构体：生成 __local_函数名_结构体名
+                snprintf(buffer, sizeof(buffer), "struct __local_%.*s_%.*s", 
+                         (int)type->as.struct_type.owner_func_name_length, 
+                         type->as.struct_type.owner_func_name,
+                         (int)type->as.struct_type.name_length, 
+                         type->as.struct_type.name);
+            } else {
+                // 全局/模块结构体
+                snprintf(buffer, sizeof(buffer), "struct %.*s", 
+                         (int)type->as.struct_type.name_length, 
+                         type->as.struct_type.name);
+            }
             return buffer;
         }
         case CN_TYPE_ENUM: {
@@ -143,6 +157,9 @@ static const char *get_c_variable_name(const char *name) {
     return buffer;
 }
 
+// 前向声明
+static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr);
+
 static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
     switch (op.kind) {
         case CN_IR_OP_NONE: fprintf(ctx->output_file, "/* NONE */"); break;
@@ -166,6 +183,10 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
             break;
         case CN_IR_OP_SYMBOL: fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name)); break;
         case CN_IR_OP_LABEL: fprintf(ctx->output_file, "%s", op.as.label->name ? op.as.label->name : "unnamed_label"); break;
+        case CN_IR_OP_AST_EXPR:
+            // AST表达式：直接生成 C 代码（用于结构体字面量等）
+            cn_cgen_expr_simple(ctx, op.as.ast_expr);
+            break;
         default: fprintf(ctx->output_file, "/* UNKNOWN */"); break;
     }
 }
@@ -371,19 +392,29 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             break;
         case CN_AST_EXPR_STRUCT_LITERAL:
             // 结构体字面量：点 { x: 10, y: 20 } -> (struct 点){.x = 10, .y = 20}
-            fprintf(ctx->output_file, "(struct %.*s){",
-                    (int)expr->as.struct_lit.struct_name_length,
-                    expr->as.struct_lit.struct_name);
-            for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
-                if (i > 0) {
-                    fprintf(ctx->output_file, ", ");
+            // 使用expr->type中的类型信息来决定如何生成
+            {
+                if (expr->type && expr->type->kind == CN_TYPE_STRUCT) {
+                    // 使用get_c_type_string来生成结构体类型名（已经考虑了局部/全局区分）
+                    const char *c_type = get_c_type_string(expr->type);
+                    fprintf(ctx->output_file, "(%s){", c_type);
+                } else {
+                    // fallback: 使用结构体名
+                    fprintf(ctx->output_file, "(struct %.*s){",
+                            (int)expr->as.struct_lit.struct_name_length,
+                            expr->as.struct_lit.struct_name);
                 }
-                fprintf(ctx->output_file, ".%.*s = ",
-                        (int)expr->as.struct_lit.fields[i].field_name_length,
-                        expr->as.struct_lit.fields[i].field_name);
-                cn_cgen_expr_simple(ctx, expr->as.struct_lit.fields[i].value);
+                for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
+                    if (i > 0) {
+                        fprintf(ctx->output_file, ", ");
+                    }
+                    fprintf(ctx->output_file, ".%.*s = ",
+                            (int)expr->as.struct_lit.fields[i].field_name_length,
+                            expr->as.struct_lit.fields[i].field_name);
+                    cn_cgen_expr_simple(ctx, expr->as.struct_lit.fields[i].value);
+                }
+                fprintf(ctx->output_file, "}");
             }
-            fprintf(ctx->output_file, "}");
             break;
         default:
             fprintf(ctx->output_file, "0"); // 不支持的表达式，用0作为默认值
@@ -750,6 +781,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
+        /* 声明结构体寄存器 */
+        for (int i = 0; i < actual_reg_count; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_STRUCT) {
+                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
+            }
+        }
+        
         if (use_heap) {
             free(reg_types);
         }
@@ -773,56 +811,95 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     fprintf(ctx->output_file, "}\n\n");
 }
 
-// 递归收集函数体内的结构体定义
-static void collect_local_structs_from_block(CnAstBlockStmt *block, CnAstStmt ***structs, size_t *count, size_t *capacity) {
-    if (!block || !structs || !count || !capacity) return;
+// 用于存储局部结构体与其所属函数的映射关系
+typedef struct {
+    CnAstStmt *struct_stmt;      // 结构体定义语句
+    const char *function_name;   // 所属函数名
+    size_t function_name_length;
+    const char *struct_name;     // 结构体名
+    size_t struct_name_length;
+} LocalStructInfo;
+
+// 全局局部结构体信息表（用于 C 代码生成时查找）
+static LocalStructInfo *g_local_struct_infos = NULL;
+static size_t g_local_struct_count = 0;
+
+// 查找局部结构体信息
+static LocalStructInfo *find_local_struct_info(const char *struct_name, size_t struct_name_len) {
+    for (size_t i = 0; i < g_local_struct_count; i++) {
+        if (g_local_struct_infos[i].struct_name_length == struct_name_len &&
+            strncmp(g_local_struct_infos[i].struct_name, struct_name, struct_name_len) == 0) {
+            return &g_local_struct_infos[i];
+        }
+    }
+    return NULL;
+}
+
+// 递归收集函数体内的结构体定义，记录所属函数
+static void collect_local_structs_from_block(CnAstBlockStmt *block, LocalStructInfo **struct_infos, size_t *count, size_t *capacity, const char *func_name, size_t func_name_len) {
+    if (!block || !struct_infos || !count || !capacity) return;
     
     for (size_t i = 0; i < block->stmt_count; i++) {
         CnAstStmt *stmt = block->stmts[i];
         if (!stmt) continue;
         
-        // 如果是结构体定义，添加到列表
+        // 如果是结构体定义，添加到列表并记录所属函数
         if (stmt->kind == CN_AST_STMT_STRUCT_DECL) {
             if (*count >= *capacity) {
                 *capacity = (*capacity == 0) ? 4 : (*capacity * 2);
-                CnAstStmt **new_array = (CnAstStmt **)realloc(*structs, *capacity * sizeof(CnAstStmt *));
+                LocalStructInfo *new_array = (LocalStructInfo *)realloc(*struct_infos, *capacity * sizeof(LocalStructInfo));
                 if (!new_array) return;
-                *structs = new_array;
+                *struct_infos = new_array;
             }
-            (*structs)[(*count)++] = stmt;
+            (*struct_infos)[*count].struct_stmt = stmt;
+            (*struct_infos)[*count].function_name = func_name;
+            (*struct_infos)[*count].function_name_length = func_name_len;
+            // 保存结构体名称
+            (*struct_infos)[*count].struct_name = stmt->as.struct_decl.name;
+            (*struct_infos)[*count].struct_name_length = stmt->as.struct_decl.name_length;
+            (*count)++;
         }
         
         // 递归处理嵌套块
         if (stmt->kind == CN_AST_STMT_IF) {
-            collect_local_structs_from_block(stmt->as.if_stmt.then_block, structs, count, capacity);
-            collect_local_structs_from_block(stmt->as.if_stmt.else_block, structs, count, capacity);
+            collect_local_structs_from_block(stmt->as.if_stmt.then_block, struct_infos, count, capacity, func_name, func_name_len);
+            collect_local_structs_from_block(stmt->as.if_stmt.else_block, struct_infos, count, capacity, func_name, func_name_len);
         } else if (stmt->kind == CN_AST_STMT_WHILE) {
-            collect_local_structs_from_block(stmt->as.while_stmt.body, structs, count, capacity);
+            collect_local_structs_from_block(stmt->as.while_stmt.body, struct_infos, count, capacity, func_name, func_name_len);
         } else if (stmt->kind == CN_AST_STMT_FOR) {
-            collect_local_structs_from_block(stmt->as.for_stmt.body, structs, count, capacity);
+            collect_local_structs_from_block(stmt->as.for_stmt.body, struct_infos, count, capacity, func_name, func_name_len);
         } else if (stmt->kind == CN_AST_STMT_SWITCH) {
             for (size_t j = 0; j < stmt->as.switch_stmt.case_count; j++) {
-                collect_local_structs_from_block(stmt->as.switch_stmt.cases[j].body, structs, count, capacity);
+                collect_local_structs_from_block(stmt->as.switch_stmt.cases[j].body, struct_infos, count, capacity, func_name, func_name_len);
             }
         }
     }
 }
 
 // 从函数声明中收集局部结构体定义
-static void collect_local_structs_from_function(CnAstFunctionDecl *func, CnAstStmt ***structs, size_t *count, size_t *capacity) {
+static void collect_local_structs_from_function(CnAstFunctionDecl *func, LocalStructInfo **struct_infos, size_t *count, size_t *capacity) {
     if (!func || !func->body) return;
-    collect_local_structs_from_block(func->body, structs, count, capacity);
+    collect_local_structs_from_block(func->body, struct_infos, count, capacity, func->name, func->name_length);
 }
 
 // 生成结构体定义（从 AST 结构体声明）
-void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
+// 如果提供了函数名前缀，则生成局部结构体的唯一名称
+void cn_cgen_struct_decl_with_prefix(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt, const char *func_prefix, size_t func_prefix_len) {
     if (!ctx || !struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) return;
     
     CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
     
     // 生成结构体定义
-    fprintf(ctx->output_file, "struct %.*s {\n", 
-            (int)decl->name_length, decl->name);
+    // 如果有函数前缀，生成: struct __local_函数名_结构体名
+    // 否则生成: struct 结构体名
+    if (func_prefix && func_prefix_len > 0) {
+        fprintf(ctx->output_file, "struct __local_%.*s_%.*s {\n", 
+                (int)func_prefix_len, func_prefix,
+                (int)decl->name_length, decl->name);
+    } else {
+        fprintf(ctx->output_file, "struct %.*s {\n", 
+                (int)decl->name_length, decl->name);
+    }
     
     // 生成字段
     for (size_t i = 0; i < decl->field_count; i++) {
@@ -833,6 +910,11 @@ void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
     }
     
     fprintf(ctx->output_file, "};\n\n");
+}
+
+// 兼容旧接口：生成全局结构体定义
+void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
+    cn_cgen_struct_decl_with_prefix(ctx, struct_stmt, NULL, 0);
 }
 
 // 生成枚举定义（从 AST 枚举声明）
@@ -923,24 +1005,22 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     
     // 生成结构体定义（如果提供了 AST）
     // 首先收集全局结构体和局部结构体
-    CnAstStmt **all_structs = NULL;
-    size_t all_struct_count = 0;
-    size_t all_struct_capacity = 0;
+    LocalStructInfo *local_struct_infos = NULL;
+    size_t local_struct_count = 0;
+    size_t local_struct_capacity = 0;
     
     if (program) {
-        // 添加全局结构体
+        // 输出全局结构体定义
         if (program->struct_count > 0) {
-            all_struct_capacity = program->struct_count + 10; // 预留一些空间给局部结构体
-            all_structs = (CnAstStmt **)malloc(all_struct_capacity * sizeof(CnAstStmt *));
-            if (all_structs) {
-                memcpy(all_structs, program->structs, program->struct_count * sizeof(CnAstStmt *));
-                all_struct_count = program->struct_count;
+            fprintf(file, "// CN Language Global Struct Definitions\n");
+            for (size_t i = 0; i < program->struct_count; i++) {
+                cn_cgen_struct_decl(&ctx, program->structs[i]);
             }
         }
         
-        // 收集所有函数中的局部结构体
+        // 收集所有函数中的局部结构体（带函数名信息）
         for (size_t i = 0; i < program->function_count; i++) {
-            collect_local_structs_from_function(program->functions[i], &all_structs, &all_struct_count, &all_struct_capacity);
+            collect_local_structs_from_function(program->functions[i], &local_struct_infos, &local_struct_count, &local_struct_capacity);
         }
         
         // 收集模块内函数中的局部结构体
@@ -949,17 +1029,25 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
             if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
                 CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
                 for (size_t j = 0; j < module_decl->function_count; j++) {
-                    collect_local_structs_from_function(module_decl->functions[j], &all_structs, &all_struct_count, &all_struct_capacity);
+                    collect_local_structs_from_function(module_decl->functions[j], &local_struct_infos, &local_struct_count, &local_struct_capacity);
                 }
             }
         }
         
-        // 输出所有结构体定义
-        if (all_struct_count > 0) {
-            fprintf(file, "// CN Language Struct Definitions\n");
-            for (size_t i = 0; i < all_struct_count; i++) {
-                cn_cgen_struct_decl(&ctx, all_structs[i]);
+        // 输出局部结构体定义（提升到全局，但使用特殊命名）
+        if (local_struct_count > 0) {
+            fprintf(file, "// CN Language Local Struct Definitions (hoisted for C compatibility)\n");
+            fprintf(file, "// Note: These are local to their respective functions in CN semantics\n");
+            for (size_t i = 0; i < local_struct_count; i++) {
+                cn_cgen_struct_decl_with_prefix(&ctx, 
+                                               local_struct_infos[i].struct_stmt,
+                                               local_struct_infos[i].function_name,
+                                               local_struct_infos[i].function_name_length);
             }
+            
+            // 设置全局查找表
+            g_local_struct_infos = local_struct_infos;
+            g_local_struct_count = local_struct_count;
         }
     }
         
@@ -1163,9 +1251,13 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         free(module_init_infos);
     }
     
-    // 释放结构体列表
-    if (all_structs) {
-        free(all_structs);
+    // 清理全局查找表
+    g_local_struct_infos = NULL;
+    g_local_struct_count = 0;
+    
+    // 释放局部结构体信息列表
+    if (local_struct_infos) {
+        free(local_struct_infos);
     }
     
     fclose(file);

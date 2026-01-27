@@ -37,7 +37,7 @@ CnType *cn_type_new_function(CnType *return_type, CnType **param_types, size_t p
 }
 
 // 创建结构体类型
-CnType *cn_type_new_struct(const char *name, size_t name_length, CnStructField *fields, size_t field_count) {
+CnType *cn_type_new_struct(const char *name, size_t name_length, CnStructField *fields, size_t field_count, CnSemScope *decl_scope, const char *owner_func_name, size_t owner_func_name_length) {
     CnType *type = (CnType *)malloc(sizeof(CnType));
     if (!type) return NULL;
     type->kind = CN_TYPE_STRUCT;
@@ -45,6 +45,9 @@ CnType *cn_type_new_struct(const char *name, size_t name_length, CnStructField *
     type->as.struct_type.name_length = name_length;
     type->as.struct_type.fields = fields;
     type->as.struct_type.field_count = field_count;
+    type->as.struct_type.decl_scope = decl_scope;
+    type->as.struct_type.owner_func_name = owner_func_name;
+    type->as.struct_type.owner_func_name_length = owner_func_name_length;
     return type;
 }
 

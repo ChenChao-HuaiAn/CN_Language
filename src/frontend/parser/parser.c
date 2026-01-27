@@ -1677,7 +1677,8 @@ static CnType *parse_type(CnParser *parser)
         parser_advance(parser);
 
         // 创建结构体类型（字段列表留空，后续语义分析填充）
-        type = cn_type_new_struct(type_name, type_name_length, NULL, 0);
+        // 注意：解析阶段还不知道作用域，传入NULL
+        type = cn_type_new_struct(type_name, type_name_length, NULL, 0, NULL, NULL, 0);
     } else {
         // 无法识别的类型
         parser->error_count++;

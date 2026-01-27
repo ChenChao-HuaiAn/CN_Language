@@ -688,9 +688,8 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             return result;
         }
         case CN_AST_EXPR_STRUCT_LITERAL: {
-            // 结构体字面量：为简化实现，暂时不生成IR，留待后续完善
-            // TODO: 生成结构体初始化的IR代码
-            return cn_ir_op_none();
+            // 结构体字面量：使用 AST 表达式操作数，在 cgen 阶段生成 C 复合字面量
+            return cn_ir_op_ast_expr(expr, expr->type);
         }
         default:
             return cn_ir_op_none();
