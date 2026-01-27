@@ -23,3 +23,34 @@
 
 ✔ 11. 完善了二进制和八进制字面量以及位运算功能
 
+12. 精简关键字
+    要删除的关键字：
+
+    “主程序”
+    
+- **`数组`** → `CN_TOKEN_KEYWORD_ARRAY`
+
+- **`从`** → 映射成 `CN_TOKEN_KEYWORD_FOR`（`keyword_kind` 里把 `从` 也当作 for）
+
+- **`与`** → `CN_TOKEN_KEYWORD_AND`（注释说明为“与”）
+- **`或`** → `CN_TOKEN_KEYWORD_OR`
+
+- **`为`**（模块别名）→ `CN_TOKEN_KEYWORD_AS`
+
+- **`内联汇编`** → `CN_TOKEN_KEYWORD_INLINE_ASM`
+- **`内存地址`** → `CN_TOKEN_KEYWORD_MEMORY_ADDRESS`
+- **`映射内存`** → `CN_TOKEN_KEYWORD_MAP_MEMORY`
+- **`解除映射`** → `CN_TOKEN_KEYWORD_UNMAP_MEMORY`
+- **`读取内存`** → `CN_TOKEN_KEYWORD_READ_MEMORY`
+- **`写入内存`** → `CN_TOKEN_KEYWORD_WRITE_MEMORY`
+- **`内存复制`** → `CN_TOKEN_KEYWORD_MEMORY_COPY`
+- **`内存设置`** → `CN_TOKEN_KEYWORD_MEMORY_SET`
+- **`中断处理`** → `CN_TOKEN_KEYWORD_INTERRUPT_HANDLER`（用于声明中断处理函数）
+
+
+
+保留的关键字：
+
+ `函数、返回、变量、整数、小数、布尔、字符串、结构体、枚举、常量、模块、导入、如果、否则、当、循环、选择、情况、默认、中断、继续、真、假`（以及为指针/空值预留的 `空、无`）。
+
+ **预留关键字（类、接口、模板、命名空间、静态、公开、私有、保护、虚拟、重写、抽象）**
