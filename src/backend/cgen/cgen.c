@@ -484,8 +484,179 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
         case CN_IR_INST_CALL:
             fprintf(ctx->output_file, "  ");
             
-            // 特殊处理 cn_rt_array_get_element：需要解引用返回的指针
+            // 特殊处理运行时系统API函数
+            // 这些函数替代了已删除的关键字(读取内存、写入内存、内存复制等)
+            
+            // 1. cn_rt_mem_read: 内存读取 (替代"读取内存"关键字)
             if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_mem_read") == 0) {
+                // 生成: dest = (type)cn_rt_mem_read(addr, size)
+                if (inst->dest.kind != CN_IR_OP_NONE) {
+                    print_operand(ctx, inst->dest);
+                    fprintf(ctx->output_file, " = (%s)", get_c_type_string(inst->dest.type));
+                }
+                fprintf(ctx->output_file, "cn_rt_mem_read(");
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 2. cn_rt_mem_write: 内存写入 (替代"写入内存"关键字)
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_mem_write") == 0) {
+                // 生成: cn_rt_mem_write(addr, value, size)
+                fprintf(ctx->output_file, "cn_rt_mem_write(");
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 3. cn_rt_mem_copy: 内存复制 (替代"内存复制"关键字)
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_mem_copy") == 0) {
+                // 生成: cn_rt_mem_copy(dest, src, size)
+                fprintf(ctx->output_file, "cn_rt_mem_copy(");
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 4. cn_rt_mem_set: 内存设置 (替代"内存设置"关键字)
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_mem_set") == 0) {
+                // 生成: cn_rt_mem_set(addr, value, size)
+                fprintf(ctx->output_file, "cn_rt_mem_set(");
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 5. cn_rt_mem_map: 内存映射 (替代"映射内存"关键字)
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_mem_map") == 0) {
+                // 生成: dest = cn_rt_mem_map(addr, size, prot, flags)
+                if (inst->dest.kind != CN_IR_OP_NONE) {
+                    print_operand(ctx, inst->dest);
+                    fprintf(ctx->output_file, " = ");
+                }
+                fprintf(ctx->output_file, "cn_rt_mem_map(");
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 6. cn_rt_mem_unmap: 解除内存映射 (替代"解除映射"关键字)
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_mem_unmap") == 0) {
+                // 生成: result = cn_rt_mem_unmap(addr, size)
+                if (inst->dest.kind != CN_IR_OP_NONE) {
+                    print_operand(ctx, inst->dest);
+                    fprintf(ctx->output_file, " = ");
+                }
+                fprintf(ctx->output_file, "cn_rt_mem_unmap(");
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 7. cn_rt_inline_asm: 内联汇编 (替代"内联汇编"关键字)
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_inline_asm") == 0) {
+                // 生成平台特定的内联汇编代码
+                // 参数: asm_code, outputs, inputs, clobbers
+                if (inst->extra_args_count >= 1 && 
+                    inst->extra_args[0].kind == CN_IR_OP_IMM_STR) {
+                    // 使用GCC内联汇编语法
+                    fprintf(ctx->output_file, "__asm__ volatile (");
+                    fprintf(ctx->output_file, "\"");
+                    // 打印汇编代码(第一个参数)
+                    for (const char *p = inst->extra_args[0].as.imm_str; p && *p; p++) {
+                        if (*p == '\\') fprintf(ctx->output_file, "\\\\");
+                        else if (*p == '\"') fprintf(ctx->output_file, "\\\"");
+                        else fprintf(ctx->output_file, "%c", *p);
+                    }
+                    fprintf(ctx->output_file, "\"\n");
+                    
+                    // outputs (第二个参数)
+                    fprintf(ctx->output_file, "  : ");
+                    if (inst->extra_args_count >= 2 && 
+                        inst->extra_args[1].kind == CN_IR_OP_IMM_STR &&
+                        inst->extra_args[1].as.imm_str != NULL) {
+                        fprintf(ctx->output_file, "\"%s\"", inst->extra_args[1].as.imm_str);
+                    }
+                    fprintf(ctx->output_file, "\n");
+                    
+                    // inputs (第三个参数)
+                    fprintf(ctx->output_file, "  : ");
+                    if (inst->extra_args_count >= 3 && 
+                        inst->extra_args[2].kind == CN_IR_OP_IMM_STR &&
+                        inst->extra_args[2].as.imm_str != NULL) {
+                        fprintf(ctx->output_file, "\"%s\"", inst->extra_args[2].as.imm_str);
+                    }
+                    fprintf(ctx->output_file, "\n");
+                    
+                    // clobbers (第四个参数)
+                    fprintf(ctx->output_file, "  : ");
+                    if (inst->extra_args_count >= 4 && 
+                        inst->extra_args[3].kind == CN_IR_OP_IMM_STR &&
+                        inst->extra_args[3].as.imm_str != NULL) {
+                        fprintf(ctx->output_file, "\"%s\"", inst->extra_args[3].as.imm_str);
+                    }
+                    fprintf(ctx->output_file, "\n);");
+                } else {
+                    // 汇编代码不是字符串字面量,生成占位注释
+                    fprintf(ctx->output_file, "/* 内联汇编: 参数类型错误 */");
+                }
+                fprintf(ctx->output_file, "\n");
+            }
+            // 8. cn_rt_interrupt_register: 中断注册 (替代"中断处理"关键字)
+            // 注意: 这个函数在main函数中自动生成(见L630),这里只处理显式调用
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_register") == 0) {
+                // 生成: result = cn_rt_interrupt_register(vector, handler, name)
+                if (inst->dest.kind != CN_IR_OP_NONE) {
+                    print_operand(ctx, inst->dest);
+                    fprintf(ctx->output_file, " = ");
+                }
+                fprintf(ctx->output_file, "cn_rt_interrupt_register(");
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 9. 其他中断管理函数
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+                (strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_init") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_enable") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_disable") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_enable_all") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_disable_all") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_trigger") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_unregister") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_is_enabled") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_is_pending") == 0 ||
+                 strcmp(inst->src1.as.sym_name, "cn_rt_interrupt_get_current") == 0)) {
+                // 标准运行时函数调用,直接透传
+                if (inst->dest.kind != CN_IR_OP_NONE) {
+                    print_operand(ctx, inst->dest);
+                    fprintf(ctx->output_file, " = ");
+                }
+                fprintf(ctx->output_file, "%s(", inst->src1.as.sym_name);
+                for (size_t i = 0; i < inst->extra_args_count; i++) { 
+                    print_operand(ctx, inst->extra_args[i]); 
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                }
+                fprintf(ctx->output_file, ");\n");
+            }
+            // 特殊处理 cn_rt_array_get_element：需要解引用返回的指针
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
                 strcmp(inst->src1.as.sym_name, "cn_rt_array_get_element") == 0 &&
                 inst->extra_args_count >= 3 &&
                 inst->dest.kind != CN_IR_OP_NONE) {
@@ -1020,7 +1191,9 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "\n");
     } else {
         // Hosted 模式：包含完整运行时库
-        fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n\n");
+        fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n");
+        // 包含系统API头文件(替代已删除关键字的运行时函数)
+        fprintf(file, "#include \"cnlang/runtime/system_api.h\"\n\n");
     }
     
     // 生成结构体定义（如果提供了 AST）
