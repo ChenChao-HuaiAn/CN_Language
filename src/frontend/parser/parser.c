@@ -497,12 +497,16 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 
 // 解析中断处理函数声明
 // 语法：中断处理 向量号 () { ... }
+// 注意：parse_interrupt_handler 函数已废弃
+// 中断处理功能已迁移到运行时库函数
+/* 已禁用的中断处理解析函数
 static CnAstFunctionDecl *parse_interrupt_handler(CnParser *parser)
 {
     CnAstFunctionDecl *isr;
     CnAstBlockStmt *body;
     uint32_t vector_num = 0;
 
+    // CN_TOKEN_KEYWORD_INTERRUPT_HANDLER 已删除
     if (!parser_expect(parser, CN_TOKEN_KEYWORD_INTERRUPT_HANDLER)) {
         return NULL;
     }
@@ -594,6 +598,7 @@ static CnAstFunctionDecl *parse_interrupt_handler(CnParser *parser)
 
     return isr;
 }
+*/
 
 static CnAstBlockStmt *parse_block(CnParser *parser)
 {
@@ -1677,11 +1682,12 @@ static CnType *parse_type(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
         type = cn_type_new_primitive(CN_TYPE_VOID);
         parser_advance(parser);
+    /* 已禁用：CN_TOKEN_KEYWORD_MEMORY_ADDRESS 已删除
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_ADDRESS) {
-        // 注意：CN_TOKEN_KEYWORD_MEMORY_ADDRESS 已删除，此分支仅作为预留
-        // 当词法层移除该Token后，此分支将不再触发
+        // 注意：CN_TOKEN_KEYWORD_MEMORY_ADDRESS 已删除
         type = cn_type_new_memory_address();
         parser_advance(parser);
+    */
     // 注意：CN_TOKEN_KEYWORD_ARRAY 已删除
     // 数组类型现在使用 "类型[大小]" 或 "类型[]" 语法，在后续指针解析后处理
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
@@ -3539,15 +3545,13 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
     size_t module_name_length = parser->current.lexeme_length;
     parser_advance(parser);
 
-    // 注意:CN_TOKEN_KEYWORD_AS ("为") 关键字已删除
-    // 模块别名功能暂时禁用,等待新语法设计
-    // 原语法: 导入 模块名 为 别名;
-    // 新语法待定,可能使用: 导入 模块名(别名); 或其他形式
+    // 模块别名支持：导入 模块名(别名);
+    // 使用括号语法，不需要"为"关键字
     const char *alias = NULL;
     size_t alias_length = 0;
     
-    /* 已禁用的模块别名解析
-    if (parser->current.kind == CN_TOKEN_KEYWORD_AS) {
+    if (parser->current.kind == CN_TOKEN_LPAREN) {
+        // 解析别名：(别名)
         parser_advance(parser);
         
         // 读取别名
@@ -3568,8 +3572,12 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
         alias = parser->current.lexeme_begin;
         alias_length = parser->current.lexeme_length;
         parser_advance(parser);
+        
+        // 期望右括号
+        if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+            return NULL;
+        }
     }
-    */
 
     // 检查是否有选择性导入
     CnAstImportMember *members = NULL;

@@ -671,15 +671,60 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
                 // 模块成员访问：生成带模块前缀的符号名
                 // 格式：cn_module_模块名__成员名
-                size_t module_name_len = expr->as.member.object->as.identifier.name_length;
+                // 注意：如果使用别名访问，需要解析到原模块名
+                
+                const char *actual_module_name = expr->as.member.object->as.identifier.name;
+                size_t actual_module_name_len = expr->as.member.object->as.identifier.name_length;
+                
+                // 查找符号表，判断是否为别名
+                if (ctx->current_scope) {
+                    CnSemSymbol *module_sym = cn_sem_scope_lookup(ctx->current_scope,
+                                                                  actual_module_name,
+                                                                  actual_module_name_len);
+                    
+                    // 如果找到模块符号，且有模块作用域，则查找原模块名
+                    if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && 
+                        module_sym->as.module_scope) {
+                        // 在全局作用域中查找拥有该模块作用域的原始模块名
+                        CnSemScope *global = ctx->current_scope;
+                        while (global && global->parent) {
+                            global = global->parent;
+                        }
+                        
+                        if (global) {
+                            // 符号链表使用头插法，新添加的在前，原模块名在后
+                            // 需要遍历整个链表，找到最后一个匹配的（即最早注册的原模块名）
+                            CnSemSymbolNode *node = global->symbols;
+                            const char *found_name = NULL;
+                            size_t found_name_len = 0;
+                            
+                            while (node) {
+                                if (node->symbol.kind == CN_SEM_SYMBOL_MODULE &&
+                                    node->symbol.as.module_scope == module_sym->as.module_scope) {
+                                    // 记录这个匹配，继续遍历找更早注册的
+                                    found_name = node->symbol.name;
+                                    found_name_len = node->symbol.name_length;
+                                }
+                                node = node->next;
+                            }
+                            
+                            // 使用找到的最后一个（最早注册的原模块名）
+                            if (found_name) {
+                                actual_module_name = found_name;
+                                actual_module_name_len = found_name_len;
+                            }
+                        }
+                    }
+                }
+                
                 size_t member_name_len = expr->as.member.member_name_length;
                 size_t prefix_len = strlen("cn_module_");
-                size_t total_len = prefix_len + module_name_len + 2 + member_name_len + 1; // +2 for "__", +1 for '\0'
+                size_t total_len = prefix_len + actual_module_name_len + 2 + member_name_len + 1; // +2 for "__", +1 for '\0'
                 
                 char *qualified_name = malloc(total_len);
                 if (qualified_name) {
                     snprintf(qualified_name, total_len, "cn_module_%.*s__%.*s",
-                            (int)module_name_len, expr->as.member.object->as.identifier.name,
+                            (int)actual_module_name_len, actual_module_name,
                             (int)member_name_len, expr->as.member.member_name);
                     
                     CnIrOperand result = cn_ir_op_symbol(qualified_name, expr->type);

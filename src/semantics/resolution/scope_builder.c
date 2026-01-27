@@ -238,9 +238,27 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                       import->alias,
                                                                       import->alias_length);
             if (existing_alias) {
-                // 别名冲突，报错
-                cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, import->alias);
+                // 别名冲突，输出详细诊断信息
+                char alias_name[256];
+                size_t copy_len = import->alias_length < 255 ? import->alias_length : 255;
+                memcpy(alias_name, import->alias, copy_len);
+                alias_name[copy_len] = '\0';
+                
+                char module_name[256];
+                copy_len = import->module_name_length < 255 ? import->module_name_length : 255;
+                memcpy(module_name, import->module_name, copy_len);
+                module_name[copy_len] = '\0';
+                
+                char error_msg[512];
+                snprintf(error_msg, sizeof(error_msg),
+                        "语义错误：模块别名 '%s' 已存在（导入模块 '%s' 时发生冲突）",
+                        alias_name, module_name);
+                        
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,
+                    NULL, 0, 0,
+                    error_msg);
                 continue;
             }
             
