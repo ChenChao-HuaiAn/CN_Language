@@ -295,6 +295,7 @@ int main(int argc, char **argv)
     bool emit_c = false;
     bool run_pipeline = false;
     bool dump_ir = false;
+    bool dump_preprocessed = false;
     const char *cc_override = NULL;
     bool debug_info = false;
     const char *opt_level = NULL;
@@ -384,6 +385,8 @@ int main(int argc, char **argv)
         } else if (strncmp(argv[i], "--mem-output=", 13) == 0) {
             mem_output = argv[i] + 13;
             enable_mem_profile = true;
+        } else if (strcmp(argv[i], "--dump-preprocessed") == 0 || strcmp(argv[i], "-E") == 0) {
+            dump_preprocessed = true;
         }
     }
 
@@ -419,6 +422,49 @@ int main(int argc, char **argv)
         cn_support_diagnostics_free(&diagnostics);
         free(source);
         return 1;
+    }
+    
+    /* 如果只是导出预处理结果，直接输出并退出 */
+    if (dump_preprocessed) {
+        printf("=== 预处理后的输出 ===\n");
+        
+        const char *p = preprocessor.output;
+        int line = 1;
+        int col = 1;
+        printf("Line %3d: ", line);
+        
+        for (size_t i = 0; i < preprocessor.output_length; i++) {
+            char c = p[i];
+            if (c == '\n') {
+                printf(" [行结束于第%d列]\n", col - 1);
+                line++;
+                col = 1;
+                if (i + 1 < preprocessor.output_length) {
+                    printf("Line %3d: ", line);
+                }
+            } else if (c == '#') {
+                printf("[#]<列%d>", col);
+                col++;
+            } else if (c >= 32 && c < 127) {
+                putchar(c);
+                col++;
+            } else if ((unsigned char)c >= 0x80) {
+                /* UTF-8字符，完整输出 */
+                putchar(c);
+                col++;
+            } else {
+                printf("[0x%02X]", (unsigned char)c);
+                col++;
+            }
+        }
+        
+        printf("\n=== 输出结束 (总长度: %zu 字节, %d 行) ===\n", 
+               preprocessor.output_length, line - 1);
+        
+        cn_frontend_preprocessor_free(&preprocessor);
+        cn_support_diagnostics_free(&diagnostics);
+        free(source);
+        return 0;
     }
     
     /* 词法分析 - 使用预处理后的输出 */

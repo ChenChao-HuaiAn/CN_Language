@@ -131,12 +131,43 @@ bool cn_frontend_preprocessor_process(CnPreprocessor *preprocessor)
             continue;
         }
         
-        /* 检查是否是预处理指令 (行首的 #) */
-        if (c == '#' && preprocessor->current_column == 1) {
-            if (!process_directive(preprocessor)) {
-                return false;
+        /* 检查是否是预处理指令 (#可以前有空白字符) */
+        if (c == '#') {
+            /* 保存当前位置 */
+            size_t save_offset = preprocessor->current_offset;
+            int save_line = preprocessor->current_line;
+            int save_column = preprocessor->current_column;
+            
+            /* 向前扫描到行首，检查是否只有空白字符 */
+            size_t check_offset = save_offset;
+            bool only_whitespace_before = true;
+            
+            /* 向前回溯到行首或文件开头 */
+            while (check_offset > 0) {
+                check_offset--;
+                char prev = preprocessor->source[check_offset];
+                if (prev == '\n') {
+                    /* 找到上一行的结尾 */
+                    break;
+                } else if (prev != ' ' && prev != '\t' && prev != '\r') {
+                    /* 找到非空白字符 */
+                    only_whitespace_before = false;
+                    break;
+                }
             }
-            continue;
+            
+            /* 如果 # 前只有空白，则处理为预处理指令 */
+            if (only_whitespace_before || check_offset == 0) {
+                /* 跳过 # 前面的空白字符 */
+                while (check_offset < save_offset) {
+                    check_offset++;
+                }
+                
+                if (!process_directive(preprocessor)) {
+                    return false;
+                }
+                continue;
+            }
         }
         
         /* 跳过条件编译不活跃的代码 */

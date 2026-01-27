@@ -3,6 +3,7 @@
 
 #include <ctype.h>
 #include <string.h>
+#include <stdio.h>
 
 static char current_char(const CnLexer *lexer)
 {
@@ -587,8 +588,41 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             advance(lexer);
             out_token->kind = CN_TOKEN_COLON;
             break;
+        case '?':
+            advance(lexer);
+            out_token->kind = CN_TOKEN_QUESTION;
+            break;
         default:
-            report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_CHAR, "非法字符");
+            {
+                char error_msg[256];
+                unsigned char invalid_ch = (unsigned char)c;
+                if (invalid_ch == '#') {
+                    snprintf(error_msg, sizeof(error_msg), 
+                            "意外的预处理指令符 '#' (行 %d:列 %d，这可能表示预处理器未正确处理该指令)", 
+                            lexer->line, lexer->column);
+                } else if (invalid_ch >= 32 && invalid_ch < 127) {
+                    snprintf(error_msg, sizeof(error_msg), "非法字符 '%c' (ASCII: %d, 行 %d:列 %d)", 
+                            invalid_ch, invalid_ch, lexer->line, lexer->column);
+                } else if (invalid_ch >= 0x80) {
+                    /* UTF-8 多字节字符的开始 */
+                    size_t remaining = lexer->length - lexer->offset;
+                    size_t utf8_len = 1;
+                    if ((invalid_ch & 0xE0) == 0xC0 && remaining >= 2) utf8_len = 2;
+                    else if ((invalid_ch & 0xF0) == 0xE0 && remaining >= 3) utf8_len = 3;
+                    else if ((invalid_ch & 0xF8) == 0xF0 && remaining >= 4) utf8_len = 4;
+                    
+                    char utf8_bytes[16] = {0};
+                    for (size_t i = 0; i < utf8_len && i < 8; i++) {
+                        sprintf(utf8_bytes + i*5, "0x%02X ", (unsigned char)lexer->source[lexer->offset + i]);
+                    }
+                    snprintf(error_msg, sizeof(error_msg), "非法UTF-8字符 [%s] (行 %d:列 %d)", 
+                            utf8_bytes, lexer->line, lexer->column);
+                } else {
+                    snprintf(error_msg, sizeof(error_msg), "非法字符 0x%02X (行 %d:列 %d)", 
+                            invalid_ch, lexer->line, lexer->column);
+                }
+                report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_CHAR, error_msg);
+            }
             advance(lexer);
             out_token->kind = CN_TOKEN_INVALID;
             break;

@@ -260,6 +260,16 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             }
             cn_cgen_expr_simple(ctx, expr->as.unary.operand);
             break;
+        case CN_AST_EXPR_TERNARY:
+            // 三元运算符: condition ? true_expr : false_expr
+            fprintf(ctx->output_file, "(");
+            cn_cgen_expr_simple(ctx, expr->as.ternary.condition);
+            fprintf(ctx->output_file, " ? ");
+            cn_cgen_expr_simple(ctx, expr->as.ternary.true_expr);
+            fprintf(ctx->output_file, " : ");
+            cn_cgen_expr_simple(ctx, expr->as.ternary.false_expr);
+            fprintf(ctx->output_file, ")");
+            break;
         case CN_AST_EXPR_MEMORY_READ:
             // 读取内存: 读取内存(地址) -> *(uintptr_t*)addr
             fprintf(ctx->output_file, "*(uintptr_t*)");

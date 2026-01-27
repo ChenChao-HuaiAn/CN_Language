@@ -27,6 +27,7 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_ASSIGN,     // 赋值表达式
     CN_AST_EXPR_LOGICAL,    // 逻辑表达式
     CN_AST_EXPR_UNARY,      // 一元表达式
+    CN_AST_EXPR_TERNARY,    // 三元表达式 (condition ? true_expr : false_expr)
     CN_AST_EXPR_ARRAY_LITERAL,  // 数组字面量
     CN_AST_EXPR_INDEX,          // 数组索引访问 arr[index]
     CN_AST_EXPR_MEMBER_ACCESS,  // 结构体成员访问 obj.member 或 ptr->member
@@ -320,6 +321,13 @@ typedef struct CnAstUnaryExpr {
     struct CnAstExpr *operand;
 } CnAstUnaryExpr;
 
+// 三元表达式 (condition ? true_expr : false_expr)
+typedef struct CnAstTernaryExpr {
+    struct CnAstExpr *condition;   // 条件表达式
+    struct CnAstExpr *true_expr;   // 条件为真时的表达式
+    struct CnAstExpr *false_expr;  // 条件为假时的表达式
+} CnAstTernaryExpr;
+
 // 数组字面量表达式
 typedef struct CnAstArrayLiteralExpr {
     struct CnAstExpr **elements;  // 数组元素列表
@@ -420,6 +428,7 @@ typedef struct CnAstExpr {
         CnAstAssignExpr assign;
         CnAstLogicalExpr logical;
         CnAstUnaryExpr unary;
+        CnAstTernaryExpr ternary;          // 三元表达式
         CnAstArrayLiteralExpr array_literal;
         CnAstIndexExpr index;              // 数组索引访问
         CnAstMemberAccessExpr member;      // 结构体成员访问

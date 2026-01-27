@@ -32,6 +32,7 @@ static CnAstStmt *parse_statement(CnParser *parser);
 static CnType *parse_type(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
 static CnAstExpr *parse_assignment(CnParser *parser);
+static CnAstExpr *parse_ternary(CnParser *parser);
 static CnAstExpr *parse_logical_or(CnParser *parser);
 static CnAstExpr *parse_logical_and(CnParser *parser);
 static CnAstExpr *parse_comparison(CnParser *parser);
@@ -1196,7 +1197,7 @@ static CnAstExpr *parse_expression(CnParser *parser)
 
 static CnAstExpr *parse_assignment(CnParser *parser)
 {
-    CnAstExpr *expr = parse_logical_or(parser);
+    CnAstExpr *expr = parse_ternary(parser);  // 三元运算符优先级低于赋值
 
     if (parser->current.kind == CN_TOKEN_EQUAL) {
         // 保存赋值符号的位置信息
@@ -1214,6 +1215,57 @@ static CnAstExpr *parse_assignment(CnParser *parser)
     }
 
     return expr;
+}
+
+// 解析三元运算符表达式 (condition ? true_expr : false_expr)
+// 三元运算符优先级介于赋值和逻辑或之间，且是右结合
+static CnAstExpr *parse_ternary(CnParser *parser)
+{
+    CnAstExpr *condition = parse_logical_or(parser);
+
+    if (parser->current.kind == CN_TOKEN_QUESTION) {
+        CnToken question_token = parser->current;
+        parser_advance(parser);
+        
+        CnAstExpr *true_expr = parse_expression(parser);  // 递归调用 parse_expression 以支持嵌套
+        
+        if (parser->current.kind != CN_TOKEN_COLON) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：三元运算符需要 \":\" 分隔真假分支");
+            }
+            return condition;
+        }
+        
+        parser_advance(parser);  // 跳过 ':'
+        
+        CnAstExpr *false_expr = parse_ternary(parser);  // 右结合，递归调用 parse_ternary
+        
+        // 创建三元表达式节点
+        CnAstExpr *ternary_expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+        if (!ternary_expr) {
+            return condition;
+        }
+        
+        ternary_expr->kind = CN_AST_EXPR_TERNARY;
+        ternary_expr->type = NULL;
+        ternary_expr->loc.filename = parser->lexer ? parser->lexer->filename : NULL;
+        ternary_expr->loc.line = question_token.line;
+        ternary_expr->loc.column = question_token.column;
+        ternary_expr->as.ternary.condition = condition;
+        ternary_expr->as.ternary.true_expr = true_expr;
+        ternary_expr->as.ternary.false_expr = false_expr;
+        
+        return ternary_expr;
+    }
+
+    return condition;
 }
 
 static CnAstExpr *parse_logical_or(CnParser *parser)
