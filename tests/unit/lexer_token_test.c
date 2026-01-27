@@ -130,14 +130,14 @@ static int test_chinese_keywords(void)
         return 1;
     }
 
-    // Token 2: 主程序
+    // Token 2: 主程序（现为普通标识符）
     if (!cn_frontend_lexer_next_token(&lexer, &token)) {
         fprintf(stderr, "lexer_token_test: 无法获取 token (主程序)\n");
         cn_support_diagnostics_free(&diagnostics);
         return 1;
     }
-    if (token.kind != CN_TOKEN_KEYWORD_MAIN) {
-        fprintf(stderr, "lexer_token_test: '主程序' 应为 KEYWORD_MAIN，实际为 %d\n", token.kind);
+    if (token.kind != CN_TOKEN_IDENT) {
+        fprintf(stderr, "lexer_token_test: '主程序' 应为 IDENT，实际为 %d\n", token.kind);
         cn_support_diagnostics_free(&diagnostics);
         return 1;
     }

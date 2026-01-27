@@ -300,6 +300,12 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_function(program, fn);
+        /* 注意:CN_TOKEN_KEYWORD_INTERRUPT_HANDLER 已删除
+         * 中断处理功能将通过运行时库函数提供
+         * 原语法: 中断处理 向量号 () { ... }
+         * 新方式: 使用运行时API注册中断处理函数
+         */
+        /* 已禁用的中断处理解析
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_INTERRUPT_HANDLER) {
             // 解析中断处理函数
             CnAstFunctionDecl *isr = parse_interrupt_handler(parser);
@@ -307,6 +313,7 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_function(program, isr);
+        */
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR || 
                    parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
             // 解析全局变量声明
@@ -342,9 +349,8 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
         parser_advance(parser);
     }
 
-    // 函数名可以是任意标识符，或特殊的 '主程序' 关键字
-    if (parser->current.kind != CN_TOKEN_IDENT &&
-        parser->current.kind != CN_TOKEN_KEYWORD_MAIN) {
+    // 函数名必须是标识符（"主程序"现在作为普通标识符而非关键字）
+    if (parser->current.kind != CN_TOKEN_IDENT) {
         parser->error_count++;
         if (parser->diagnostics) {
             cn_support_diagnostics_report(parser->diagnostics,
@@ -353,7 +359,7 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
                                           parser->lexer ? parser->lexer->filename : NULL,
                                           parser->current.line,
                                           parser->current.column,
-                                          "语法错误：函数名无效，期望标识符或'主程序'");
+                                          "语法错误：函数名无效，期望标识符");
         }
         return NULL;
     }
@@ -909,8 +915,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
-        parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
-        parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
+        parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -1673,33 +1678,12 @@ static CnType *parse_type(CnParser *parser)
         type = cn_type_new_primitive(CN_TYPE_VOID);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_ADDRESS) {
+        // 注意：CN_TOKEN_KEYWORD_MEMORY_ADDRESS 已删除，此分支仅作为预留
+        // 当词法层移除该Token后，此分支将不再触发
         type = cn_type_new_memory_address();
         parser_advance(parser);
-    } else if (parser->current.kind == CN_TOKEN_KEYWORD_ARRAY) {
-        // 数组类型：例如 "数组 整数" 或 "数组 小数"
-        parser_advance(parser);
-
-        // 解析元素类型（可选）
-        CnType *element_type = NULL;
-        if (parser->current.kind == CN_TOKEN_KEYWORD_INT) {
-            element_type = cn_type_new_primitive(CN_TYPE_INT);
-            parser_advance(parser);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
-            element_type = cn_type_new_primitive(CN_TYPE_FLOAT);
-            parser_advance(parser);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-            element_type = cn_type_new_primitive(CN_TYPE_STRING);
-            parser_advance(parser);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
-            element_type = cn_type_new_primitive(CN_TYPE_BOOL);
-            parser_advance(parser);
-        } else {
-            // 没有元素类型，默认为整数数组
-            element_type = cn_type_new_primitive(CN_TYPE_INT);
-        }
-
-        // 创建数组类型（长度为0表示未知或动态）
-        type = cn_type_new_array(element_type, 0);
+    // 注意：CN_TOKEN_KEYWORD_ARRAY 已删除
+    // 数组类型现在使用 "类型[大小]" 或 "类型[]" 语法，在后续指针解析后处理
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
         // 可能是结构体类型或枚举类型（自定义类型）
         // 目前简化处理：将标识符视为结构体类型名
@@ -1928,6 +1912,12 @@ static CnAstExpr *parse_factor(CnParser *parser)
             // 普通标识符
             expr = make_identifier(ident_name, ident_name_length);
         }
+    /* 注意:CN_TOKEN_KEYWORD_READ/WRITE/COPY/SET/MAP/UNMAP_MEMORY 已删除
+     * 内存操作功能将通过运行时库函数提供
+     * 原语法: 读取内存(地址)  写入内存(地址,值) 等
+     * 新方式: 使用运行时API,如 cn_rt_mem_read(), cn_rt_mem_write() 等
+     */
+    /* 已禁用的内存操作解析
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_READ_MEMORY ||
                parser->current.kind == CN_TOKEN_KEYWORD_WRITE_MEMORY ||
                parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_COPY ||
@@ -2087,6 +2077,13 @@ static CnAstExpr *parse_factor(CnParser *parser)
         }
         
         expr = result;
+    */  // 结束已禁用的内存操作解析
+    /* 注意:CN_TOKEN_KEYWORD_INLINE_ASM 已删除
+     * 内联汇编功能将通过运行时库函数提供
+     * 原语法: 内联汇编("asm code", outputs, inputs, clobbers)
+     * 新方式: 使用运行时API,如 cn_rt_inline_asm()
+     */
+    /* 已禁用的内联汇编解析
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_INLINE_ASM) {
         // 解析内联汇编: 内联汇编("asm code", outputs, inputs, clobbers)
         parser_advance(parser);
@@ -2216,6 +2213,7 @@ static CnAstExpr *parse_factor(CnParser *parser)
         }
         
         expr = make_inline_asm(asm_code, outputs, output_count, inputs, input_count, clobbers);
+    */  // 结束已禁用的内联汇编解析
     } else if (parser->current.kind == CN_TOKEN_LPAREN) {
         parser_advance(parser);
         expr = parse_expression(parser);
@@ -3541,10 +3539,14 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
     size_t module_name_length = parser->current.lexeme_length;
     parser_advance(parser);
 
-    // 检查是否有别名："为 别名"
+    // 注意:CN_TOKEN_KEYWORD_AS ("为") 关键字已删除
+    // 模块别名功能暂时禁用,等待新语法设计
+    // 原语法: 导入 模块名 为 别名;
+    // 新语法待定,可能使用: 导入 模块名(别名); 或其他形式
     const char *alias = NULL;
     size_t alias_length = 0;
     
+    /* 已禁用的模块别名解析
     if (parser->current.kind == CN_TOKEN_KEYWORD_AS) {
         parser_advance(parser);
         
@@ -3567,6 +3569,7 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
         alias_length = parser->current.lexeme_length;
         parser_advance(parser);
     }
+    */
 
     // 检查是否有选择性导入
     CnAstImportMember *members = NULL;
