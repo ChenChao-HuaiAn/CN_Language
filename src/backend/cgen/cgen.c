@@ -506,6 +506,23 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             }
             break;
         case CN_IR_INST_MOV: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
+        case CN_IR_INST_SELECT: 
+            // 三元运算符：dest = condition ? true_val : false_val
+            // 指令格式：dest, src1=condition, src2=true_val, extra_args[0]=false_val
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = (");
+            print_operand(ctx, inst->src1);  // condition
+            fprintf(ctx->output_file, " ? ");
+            print_operand(ctx, inst->src2);  // true_val
+            fprintf(ctx->output_file, " : ");
+            if (inst->extra_args_count > 0) {
+                print_operand(ctx, inst->extra_args[0]);  // false_val
+            } else {
+                fprintf(ctx->output_file, "0");  // fallback
+            }
+            fprintf(ctx->output_file, ");\n");
+            break;
         case CN_IR_INST_ADDRESS_OF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = &"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_DEREF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = *"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_MEMBER_ACCESS: 
@@ -585,23 +602,52 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
 
     // 声明虚拟寄存器：根据IR指令中的类型信息收集寄存器类型
     if (func->next_reg_id > 0) {
+        /* 首先扫描所有指令以找出实际使用的最大寄存器ID */
+        int max_reg_id = -1;
+        CnIrBasicBlock *prescan_block = func->first_block;
+        while (prescan_block) {
+            CnIrInst *prescan_inst = prescan_block->first_inst;
+            while (prescan_inst) {
+                if (prescan_inst->dest.kind == CN_IR_OP_REG && prescan_inst->dest.as.reg_id > max_reg_id) {
+                    max_reg_id = prescan_inst->dest.as.reg_id;
+                }
+                if (prescan_inst->src1.kind == CN_IR_OP_REG && prescan_inst->src1.as.reg_id > max_reg_id) {
+                    max_reg_id = prescan_inst->src1.as.reg_id;
+                }
+                if (prescan_inst->src2.kind == CN_IR_OP_REG && prescan_inst->src2.as.reg_id > max_reg_id) {
+                    max_reg_id = prescan_inst->src2.as.reg_id;
+                }
+                for (size_t i = 0; i < prescan_inst->extra_args_count; i++) {
+                    if (prescan_inst->extra_args[i].kind == CN_IR_OP_REG && prescan_inst->extra_args[i].as.reg_id > max_reg_id) {
+                        max_reg_id = prescan_inst->extra_args[i].as.reg_id;
+                    }
+                }
+                prescan_inst = prescan_inst->next;
+            }
+            prescan_block = prescan_block->next;
+        }
+        
+        // 使用实际的最大寄存器ID+1或func->next_reg_id中的较大值
+        int scan_reg_count = (max_reg_id >= 0) ? (max_reg_id + 1) : 0;
+        int actual_reg_count = (scan_reg_count > func->next_reg_id) ? scan_reg_count : func->next_reg_id;
+        
         /* 性能优化：使用栈分配替代 calloc，避免堆分配开销 */
         CnType *reg_types_stack[256];  /* 大多数函数的寄存器数量 < 256 */
         CnType **reg_types = NULL;
         bool use_heap = false;
         
-        if (func->next_reg_id <= 256) {
+        if (actual_reg_count <= 256) {
             /* 小寄存器集合使用栈分配 */
-            memset(reg_types_stack, 0, func->next_reg_id * sizeof(CnType*));
+            memset(reg_types_stack, 0, actual_reg_count * sizeof(CnType*));
             reg_types = reg_types_stack;
         } else {
             /* 大寄存器集合使用堆分配 */
-            reg_types = calloc(func->next_reg_id, sizeof(CnType*));
+            reg_types = calloc(actual_reg_count, sizeof(CnType*));
             use_heap = true;
             if (!reg_types) {
                 /* 内存分配失败，使用默认类型 */
                 fprintf(ctx->output_file, "  long long r0");
-                for (int i = 1; i < func->next_reg_id; i++) {
+                for (int i = 1; i < actual_reg_count; i++) {
                     fprintf(ctx->output_file, ", r%d", i);
                 }
                 fprintf(ctx->output_file, ";\n");
@@ -615,33 +661,37 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             CnIrInst *scan_inst = scan_block->first_inst;
             while (scan_inst) {
                 // 收集dest寄存器类型
-                if (scan_inst->dest.kind == CN_IR_OP_REG && 
-                    scan_inst->dest.as.reg_id < func->next_reg_id &&
-                    !reg_types[scan_inst->dest.as.reg_id] && 
-                    scan_inst->dest.type) {
-                    reg_types[scan_inst->dest.as.reg_id] = scan_inst->dest.type;
+                if (scan_inst->dest.kind == CN_IR_OP_REG) {
+                    if (scan_inst->dest.as.reg_id < actual_reg_count &&
+                        !reg_types[scan_inst->dest.as.reg_id] && 
+                        scan_inst->dest.type) {
+                        reg_types[scan_inst->dest.as.reg_id] = scan_inst->dest.type;
+                    }
                 }
                 // 收集src1寄存器类型
-                if (scan_inst->src1.kind == CN_IR_OP_REG && 
-                    scan_inst->src1.as.reg_id < func->next_reg_id &&
-                    !reg_types[scan_inst->src1.as.reg_id] && 
-                    scan_inst->src1.type) {
-                    reg_types[scan_inst->src1.as.reg_id] = scan_inst->src1.type;
+                if (scan_inst->src1.kind == CN_IR_OP_REG) {
+                    if (scan_inst->src1.as.reg_id < actual_reg_count &&
+                        !reg_types[scan_inst->src1.as.reg_id] && 
+                        scan_inst->src1.type) {
+                        reg_types[scan_inst->src1.as.reg_id] = scan_inst->src1.type;
+                    }
                 }
                 // 收集src2寄存器类型
-                if (scan_inst->src2.kind == CN_IR_OP_REG && 
-                    scan_inst->src2.as.reg_id < func->next_reg_id &&
-                    !reg_types[scan_inst->src2.as.reg_id] && 
-                    scan_inst->src2.type) {
-                    reg_types[scan_inst->src2.as.reg_id] = scan_inst->src2.type;
+                if (scan_inst->src2.kind == CN_IR_OP_REG) {
+                    if (scan_inst->src2.as.reg_id < actual_reg_count &&
+                        !reg_types[scan_inst->src2.as.reg_id] && 
+                        scan_inst->src2.type) {
+                        reg_types[scan_inst->src2.as.reg_id] = scan_inst->src2.type;
+                    }
                 }
                 // 收集extra_args中的寄存器类型
                 for (size_t i = 0; i < scan_inst->extra_args_count; i++) {
-                    if (scan_inst->extra_args[i].kind == CN_IR_OP_REG &&
-                        scan_inst->extra_args[i].as.reg_id < func->next_reg_id &&
-                        !reg_types[scan_inst->extra_args[i].as.reg_id] &&
-                        scan_inst->extra_args[i].type) {
-                        reg_types[scan_inst->extra_args[i].as.reg_id] = scan_inst->extra_args[i].type;
+                    if (scan_inst->extra_args[i].kind == CN_IR_OP_REG) {
+                        if (scan_inst->extra_args[i].as.reg_id < actual_reg_count &&
+                            !reg_types[scan_inst->extra_args[i].as.reg_id] &&
+                            scan_inst->extra_args[i].type) {
+                            reg_types[scan_inst->extra_args[i].as.reg_id] = scan_inst->extra_args[i].type;
+                        }
                     }
                 }
                 scan_inst = scan_inst->next;
@@ -651,8 +701,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         
         /* 性能优化：按类型分组声明寄存器，减少 fprintf 调用 */
         bool has_int_regs = false;
-        for (int i = 0; i < func->next_reg_id; i++) {
-            if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_INT) {
+        for (int i = 0; i < actual_reg_count; i++) {
+            // 对于NULL、CN_TYPE_INT或CN_TYPE_UNKNOWN类型，都使用long long
+            if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_INT || reg_types[i]->kind == CN_TYPE_UNKNOWN) {
                 if (!has_int_regs) {
                     fprintf(ctx->output_file, "  long long ");
                     has_int_regs = true;
@@ -665,35 +716,35 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         if (has_int_regs) fprintf(ctx->output_file, ";\n");
         
         /* 声明字符串寄存器（每个寄存器单独声明以确保每个都是指针类型） */
-        for (int i = 0; i < func->next_reg_id; i++) {
+        for (int i = 0; i < actual_reg_count; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_STRING) {
                 fprintf(ctx->output_file, "  char* r%d;\n", i);
             }
         }
         
         /* 声明数组寄存器（void* 用于数组指针） */
-        for (int i = 0; i < func->next_reg_id; i++) {
+        for (int i = 0; i < actual_reg_count; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_ARRAY) {
                 fprintf(ctx->output_file, "  void* r%d;\n", i);
             }
         }
         
         /* 声明指针寄存器 */
-        for (int i = 0; i < func->next_reg_id; i++) {
+        for (int i = 0; i < actual_reg_count; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_POINTER) {
                 fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
             }
         }
         
         /* 声明布尔寄存器 */
-        for (int i = 0; i < func->next_reg_id; i++) {
+        for (int i = 0; i < actual_reg_count; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_BOOL) {
                 fprintf(ctx->output_file, "  _Bool r%d;\n", i);
             }
         }
         
         /* 声明浮点寄存器 */
-        for (int i = 0; i < func->next_reg_id; i++) {
+        for (int i = 0; i < actual_reg_count; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_FLOAT) {
                 fprintf(ctx->output_file, "  double r%d;\n", i);
             }
