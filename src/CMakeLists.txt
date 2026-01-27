@@ -2,6 +2,7 @@ add_executable(cnc
     cli/cnc/main.c
     frontend/lexer/token.c
     frontend/lexer/lexer.c
+    frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c
@@ -39,6 +40,7 @@ add_executable(cnrepl
     cli/cnrepl/main.c
     frontend/lexer/token.c
     frontend/lexer/lexer.c
+    frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c
@@ -69,6 +71,7 @@ add_executable(cnfmt
     format/formatter.c
     frontend/lexer/token.c
     frontend/lexer/lexer.c
+    frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c
@@ -87,6 +90,7 @@ add_executable(cncheck
     analysis/checker/static_check.c
     frontend/lexer/token.c
     frontend/lexer/lexer.c
+    frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c
@@ -109,6 +113,7 @@ add_executable(cnlsp
     frontend/lsp_bridge/lsp_bridge.c
     frontend/lexer/token.c
     frontend/lexer/lexer.c
+    frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c

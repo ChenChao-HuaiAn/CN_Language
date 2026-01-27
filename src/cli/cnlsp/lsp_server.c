@@ -1,5 +1,6 @@
 #include "cnlang/cli/lsp.h"
 #include "cnlang/frontend/lsp_bridge.h"
+#include "cnlang/frontend/keywords.h"
 #include "cnlang/cli/lsp_jsonrpc.h"
 #include "cnlang/cli/lsp_document_manager.h"
 #include "cnlang/cli/lsp_handlers.h"
@@ -455,20 +456,9 @@ static void handle_completion(CnLspServer *server, int id, const char *uri, int 
         return;
     }
 
-    // CN_Language 关键字列表（基于 token.h 和 lexer.c 的实际定义）
-    const char *keywords[] = {
-        // 控制流关键字
-        "如果", "否则", "当", "循环", "返回", "中断", "继续", "选择", "情况", "默认",
-        // 类型关键字
-        "整数", "小数", "字符串", "布尔值", "空", "结构体", "枚举",
-        // 声明关键字
-        "函数", "变量", "模块", "导入", "公开", "私有",
-        // 常量关键字
-        "真", "假", "无",
-        // 预留关键字
-        "命名空间", "接口", "类", "模板", "常量", "静态", "保护", "虚拟", "重写", "抽象"
-    };
-    const int keyword_count = sizeof(keywords) / sizeof(keywords[0]);
+    // 使用统一的关键字定义
+    size_t keyword_count = 0;
+    const CnKeywordEntry *keywords = cn_frontend_get_keywords(&keyword_count);
 
     // 构建 JSON 响应
     size_t json_capacity = 4096;
@@ -486,7 +476,7 @@ static void handle_completion(CnLspServer *server, int id, const char *uri, int 
     }
 
     // 添加关键字补全项
-    for (int i = 0; i < keyword_count; i++) {
+    for (size_t i = 0; i < keyword_count; i++) {
         if (i > 0) {
             if ((size_t)written + 1 >= json_capacity) {
                 json_capacity *= 2;
@@ -500,45 +490,14 @@ static void handle_completion(CnLspServer *server, int id, const char *uri, int 
             json[written++] = ',';
         }
 
-        // 确定关键字类型（用于排序优先级）
+        // 使用关键字表中的分类信息
         int kind = 14; // Keyword
-        const char *detail = "关键字";
-        
-        // 控制流关键字
-        if (strcmp(keywords[i], "如果") == 0 || strcmp(keywords[i], "否则") == 0 ||
-            strcmp(keywords[i], "当") == 0 || strcmp(keywords[i], "循环") == 0 ||
-            strcmp(keywords[i], "返回") == 0 || strcmp(keywords[i], "中断") == 0 ||
-            strcmp(keywords[i], "继续") == 0 || strcmp(keywords[i], "选择") == 0 ||
-            strcmp(keywords[i], "情况") == 0 || strcmp(keywords[i], "默认") == 0) {
-            detail = "控制流关键字";
-        }
-        // 类型关键字
-        else if (strcmp(keywords[i], "整数") == 0 || strcmp(keywords[i], "小数") == 0 ||
-                 strcmp(keywords[i], "字符串") == 0 || strcmp(keywords[i], "布尔值") == 0 ||
-                 strcmp(keywords[i], "空") == 0 || strcmp(keywords[i], "结构体") == 0 ||
-                 strcmp(keywords[i], "枚举") == 0) {
-            detail = "类型关键字";
-        }
-        // 声明关键字
-        else if (strcmp(keywords[i], "函数") == 0 || strcmp(keywords[i], "变量") == 0 ||
-                 strcmp(keywords[i], "模块") == 0 || strcmp(keywords[i], "导入") == 0 ||
-                 strcmp(keywords[i], "公开") == 0 || strcmp(keywords[i], "私有") == 0) {
-            detail = "声明关键字";
-        }
-        // 常量关键字
-        else if (strcmp(keywords[i], "真") == 0 || strcmp(keywords[i], "假") == 0 ||
-                 strcmp(keywords[i], "无") == 0) {
-            detail = "常量关键字";
-        }
-        // 预留关键字
-        else {
-            detail = "预留关键字";
-        }
+        const char *detail = keywords[i].category;
 
         // 构建补全项 JSON
         int n = snprintf(json + written, json_capacity - (size_t)written,
             "{\"label\":\"%s\",\"kind\":%d,\"detail\":\"%s\",\"insertText\":\"%s\"}",
-            keywords[i], kind, detail, keywords[i]);
+            keywords[i].text, kind, detail, keywords[i].text);
         
         if (n < 0) {
             free(json);
