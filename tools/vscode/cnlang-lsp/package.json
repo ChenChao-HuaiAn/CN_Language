@@ -21,6 +21,13 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "grammars": [
+      {
+        "language": "cn",
+        "scopeName": "source.cn",
+        "path": "./cnlang.tmLanguage.json"
+      }
+    ],
     "configuration": {
       "type": "object",
       "title": "CN_Language",

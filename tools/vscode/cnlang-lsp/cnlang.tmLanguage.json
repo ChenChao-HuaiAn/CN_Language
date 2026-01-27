@@ -1,0 +1,169 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "CN Language",
+  "scopeName": "source.cn",
+  "fileTypes": [".cn"],
+  "patterns": [
+    {
+      "include": "#comments"
+    },
+    {
+      "include": "#strings"
+    },
+    {
+      "include": "#numbers"
+    },
+    {
+      "include": "#keywords"
+    },
+    {
+      "include": "#types"
+    },
+    {
+      "include": "#constants"
+    },
+    {
+      "include": "#operators"
+    },
+    {
+      "include": "#functions"
+    },
+    {
+      "include": "#punctuation"
+    }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "name": "comment.line.double-slash.cn",
+          "match": "//.*$"
+        },
+        {
+          "name": "comment.block.cn",
+          "begin": "/\\*",
+          "end": "\\*/"
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.cn",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            {
+              "name": "constant.character.escape.cn",
+              "match": "\\\\(n|r|t|\\\\|\"|')"
+            }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "name": "constant.numeric.hex.cn",
+          "match": "\\b0[xX][0-9a-fA-F]+([uU]|[lL]|[uU][lL]|[lL][uU]|[lL][lL]|[uU][lL][lL])?\\b"
+        },
+        {
+          "name": "constant.numeric.octal.cn",
+          "match": "\\b0[0-7]+([uU]|[lL]|[uU][lL]|[lL][uU]|[lL][lL]|[uU][lL][lL])?\\b"
+        },
+        {
+          "name": "constant.numeric.float.cn",
+          "match": "\\b[0-9]+\\.[0-9]+([eE][+-]?[0-9]+)?[fF]?\\b"
+        },
+        {
+          "name": "constant.numeric.integer.cn",
+          "match": "\\b[0-9]+([uU]|[lL]|[uU][lL]|[lL][uU]|[lL][lL]|[uU][lL][lL])?\\b"
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        {
+          "name": "keyword.control.cn",
+          "match": "\\b(如果|否则|当|循环|返回|中断|继续|选择|情况|默认)\\b"
+        },
+        {
+          "name": "keyword.other.cn",
+          "match": "\\b(函数|变量|模块|导入|公开|私有)\\b"
+        },
+        {
+          "name": "keyword.reserved.cn",
+          "match": "\\b(命名空间|接口|类|模板|常量|静态|保护|虚拟|重写|抽象)\\b"
+        }
+      ]
+    },
+    "types": {
+      "patterns": [
+        {
+          "name": "storage.type.cn",
+          "match": "\\b(整数|小数|字符串|布尔值|空类型|结构体|枚举)\\b"
+        }
+      ]
+    },
+    "constants": {
+      "patterns": [
+        {
+          "name": "constant.language.cn",
+          "match": "\\b(真|假|无)\\b"
+        }
+      ]
+    },
+    "operators": {
+      "patterns": [
+        {
+          "name": "keyword.operator.arithmetic.cn",
+          "match": "\\+\\+|--|\\+|-|\\*|/|%"
+        },
+        {
+          "name": "keyword.operator.comparison.cn",
+          "match": "==|!=|<=|>=|<|>"
+        },
+        {
+          "name": "keyword.operator.logical.cn",
+          "match": "&&|\\|\\||!"
+        },
+        {
+          "name": "keyword.operator.bitwise.cn",
+          "match": "&|\\||\\^|~|<<|>>"
+        },
+        {
+          "name": "keyword.operator.assignment.cn",
+          "match": "="
+        }
+      ]
+    },
+    "functions": {
+      "patterns": [
+        {
+          "name": "entity.name.function.cn",
+          "match": "\\b([a-zA-Z_\u4e00-\u9fa5][a-zA-Z0-9_\u4e00-\u9fa5]*)\\s*(?=\\()"
+        }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        {
+          "name": "punctuation.separator.cn",
+          "match": "[,;:]"
+        },
+        {
+          "name": "punctuation.section.cn",
+          "match": "[\\[\\]{}()]"
+        },
+        {
+          "name": "punctuation.accessor.cn",
+          "match": "\\."
+        },
+        {
+          "name": "punctuation.accessor.arrow.cn",
+          "match": "->"
+        }
+      ]
+    }
+  }
+}

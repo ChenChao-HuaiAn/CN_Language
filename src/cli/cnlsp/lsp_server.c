@@ -100,6 +100,7 @@ static void handle_initialize(CnLspServer *server, int id)
         "\"textDocumentSync\":2,"  /* Incremental */
         "\"definitionProvider\":true,"
         "\"referencesProvider\":true,"
+        "\"completionProvider\":{\"triggerCharacters\":[]},"
         "\"semanticTokensProvider\":{"
         "\"legend\":{"
         "\"tokenTypes\":[\"keyword\",\"variable\",\"function\",\"type\"],"
@@ -447,6 +448,131 @@ static void handle_semantic_tokens_full(CnLspServer *server, int id, const char 
     free(data);
 }
 
+// 处理 textDocument/completion 请求
+static void handle_completion(CnLspServer *server, int id, const char *uri, int line, int character)
+{
+    if (!server || !uri) {
+        return;
+    }
+
+    // CN_Language 关键字列表（基于 token.h 和 lexer.c 的实际定义）
+    const char *keywords[] = {
+        // 控制流关键字
+        "如果", "否则", "当", "循环", "返回", "中断", "继续", "选择", "情况", "默认",
+        // 类型关键字
+        "整数", "浮点数", "字符串", "布尔值", "空类型", "结构体", "枚举",
+        // 声明关键字
+        "函数", "变量", "模块", "导入", "公开", "私有",
+        // 常量关键字
+        "真", "假", "无",
+        // 预留关键字
+        "命名空间", "接口", "类", "模板", "常量", "静态", "保护", "虚拟", "重写", "抽象"
+    };
+    const int keyword_count = sizeof(keywords) / sizeof(keywords[0]);
+
+    // 构建 JSON 响应
+    size_t json_capacity = 4096;
+    char *json = (char *)malloc(json_capacity);
+    if (!json) {
+        return;
+    }
+
+    int written = snprintf(json, json_capacity,
+        "{\"jsonrpc\":\"2.0\",\"id\":%d,\"result\":{\"isIncomplete\":false,\"items\":[",
+        id);
+    if (written < 0) {
+        free(json);
+        return;
+    }
+
+    // 添加关键字补全项
+    for (int i = 0; i < keyword_count; i++) {
+        if (i > 0) {
+            if ((size_t)written + 1 >= json_capacity) {
+                json_capacity *= 2;
+                char *new_json = (char *)realloc(json, json_capacity);
+                if (!new_json) {
+                    free(json);
+                    return;
+                }
+                json = new_json;
+            }
+            json[written++] = ',';
+        }
+
+        // 确定关键字类型（用于排序优先级）
+        int kind = 14; // Keyword
+        const char *detail = "关键字";
+        
+        // 控制流关键字
+        if (strcmp(keywords[i], "如果") == 0 || strcmp(keywords[i], "否则") == 0 ||
+            strcmp(keywords[i], "当") == 0 || strcmp(keywords[i], "循环") == 0 ||
+            strcmp(keywords[i], "返回") == 0 || strcmp(keywords[i], "中断") == 0 ||
+            strcmp(keywords[i], "继续") == 0 || strcmp(keywords[i], "选择") == 0 ||
+            strcmp(keywords[i], "情况") == 0 || strcmp(keywords[i], "默认") == 0) {
+            detail = "控制流关键字";
+        }
+        // 类型关键字
+        else if (strcmp(keywords[i], "整数") == 0 || strcmp(keywords[i], "浮点数") == 0 ||
+                 strcmp(keywords[i], "字符串") == 0 || strcmp(keywords[i], "布尔值") == 0 ||
+                 strcmp(keywords[i], "空类型") == 0 || strcmp(keywords[i], "结构体") == 0 ||
+                 strcmp(keywords[i], "枚举") == 0) {
+            detail = "类型关键字";
+        }
+        // 声明关键字
+        else if (strcmp(keywords[i], "函数") == 0 || strcmp(keywords[i], "变量") == 0 ||
+                 strcmp(keywords[i], "模块") == 0 || strcmp(keywords[i], "导入") == 0 ||
+                 strcmp(keywords[i], "公开") == 0 || strcmp(keywords[i], "私有") == 0) {
+            detail = "声明关键字";
+        }
+        // 常量关键字
+        else if (strcmp(keywords[i], "真") == 0 || strcmp(keywords[i], "假") == 0 ||
+                 strcmp(keywords[i], "无") == 0) {
+            detail = "常量关键字";
+        }
+        // 预留关键字
+        else {
+            detail = "预留关键字";
+        }
+
+        // 构建补全项 JSON
+        int n = snprintf(json + written, json_capacity - (size_t)written,
+            "{\"label\":\"%s\",\"kind\":%d,\"detail\":\"%s\",\"insertText\":\"%s\"}",
+            keywords[i], kind, detail, keywords[i]);
+        
+        if (n < 0) {
+            free(json);
+            return;
+        }
+        written += n;
+        if ((size_t)written >= json_capacity) {
+            json_capacity *= 2;
+            char *new_json = (char *)realloc(json, json_capacity);
+            if (!new_json) {
+                free(json);
+                return;
+            }
+            json = new_json;
+        }
+    }
+
+    // 结束 JSON
+    if ((size_t)written + 4 >= json_capacity) {
+        json_capacity += 4;
+        char *new_json = (char *)realloc(json, json_capacity);
+        if (!new_json) {
+            free(json);
+            return;
+        }
+        json = new_json;
+    }
+    memcpy(json + written, "]}}", 4);
+    written += 4;
+
+    cn_lsp_jsonrpc_write_message(stdout, json, (size_t)written);
+    free(json);
+}
+
 // 简化的消息解析（仅处理最基本的 LSP 消息）
 static void process_message(CnLspServer *server, const char *message)
 {
@@ -627,6 +753,38 @@ static void process_message(CnLspServer *server, const char *message)
                     memcpy(uri, uri_start, uri_len);
                     uri[uri_len] = '\0';
                     handle_semantic_tokens_full(server, id, uri);
+                    free(uri);
+                }
+            }
+        }
+    }
+    else if (strstr(message, "\"method\":\"textDocument/completion\"")) {
+        const char *id_str = strstr(message, "\"id\":");
+        const char *uri_start = strstr(message, "\"uri\":\"");
+        const char *line_start = strstr(message, "\"line\":");
+        const char *char_start = strstr(message, "\"character\":");
+        int id = 0;
+        int line = 0;
+        int character = 0;
+        if (id_str) {
+            sscanf(id_str + 5, "%d", &id);
+        }
+        if (line_start) {
+            sscanf(line_start + 8, "%d", &line);
+        }
+        if (char_start) {
+            sscanf(char_start + 12, "%d", &character);
+        }
+        if (uri_start) {
+            uri_start += 7;
+            const char *uri_end = strchr(uri_start, '"');
+            if (uri_end) {
+                size_t uri_len = uri_end - uri_start;
+                char *uri = (char *)malloc(uri_len + 1);
+                if (uri) {
+                    memcpy(uri, uri_start, uri_len);
+                    uri[uri_len] = '\0';
+                    handle_completion(server, id, uri, line, character);
                     free(uri);
                 }
             }
