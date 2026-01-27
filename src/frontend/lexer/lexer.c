@@ -85,6 +85,60 @@ static int scan_exponent(CnLexer *lexer)
     return 1;
 }
 
+// 扫描数字字面量的类型后缀
+// 返回值：0=无后缀, 1=float(f/F), 2=long(L/l), 3=long long(LL/ll), 
+//         4=unsigned(U/u), 5=unsigned long(UL/ul), 6=unsigned long long(ULL/ull)
+static int scan_number_suffix(CnLexer *lexer)
+{
+    char c = current_char(lexer);
+    
+    // 浮点后缀：f 或 F
+    if (c == 'f' || c == 'F') {
+        advance(lexer);
+        return 1;  // float suffix
+    }
+    
+    // 整数后缀：U/u, L/l, LL/ll 及其组合
+    int has_unsigned = 0;
+    int long_count = 0;
+    
+    // 可以是 U L LL UL ULL 等组合
+    for (int i = 0; i < 3; i++) {  // 最多3个字符（ULL）
+        c = current_char(lexer);
+        
+        if (c == 'u' || c == 'U') {
+            if (has_unsigned) {
+                break;  // 已经有 U 了
+            }
+            has_unsigned = 1;
+            advance(lexer);
+        } else if (c == 'l' || c == 'L') {
+            if (long_count >= 2) {
+                break;  // 最多两个 L
+            }
+            long_count++;
+            advance(lexer);
+        } else {
+            break;
+        }
+    }
+    
+    // 根据组合返回类型标记
+    if (has_unsigned && long_count == 2) {
+        return 6;  // ULL
+    } else if (has_unsigned && long_count == 1) {
+        return 5;  // UL
+    } else if (has_unsigned) {
+        return 4;  // U
+    } else if (long_count == 2) {
+        return 3;  // LL
+    } else if (long_count == 1) {
+        return 2;  // L
+    }
+    
+    return 0;  // 无后缀
+}
+
 static void report_lex_error(CnLexer *lexer, CnDiagCode code, const char *message)
 {
     if (!lexer || !lexer->diagnostics) {
@@ -540,12 +594,19 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                     // 检查科学计数法：e[+|-]digits
                     scan_exponent(lexer);
                     
+                    // 检查浮点后缀 f/F
+                    scan_number_suffix(lexer);
+                    
                     out_token->kind = CN_TOKEN_FLOAT_LITERAL;
                 } else {
                     // 检查整数是否有科学计数法（如 1e10）
                     if (scan_exponent(lexer)) {
+                        // 有科学计数法，变成浮点数
+                        scan_number_suffix(lexer);  // 检查 f/F 后缀
                         out_token->kind = CN_TOKEN_FLOAT_LITERAL;
                     } else {
+                        // 普通整数，检查整数后缀 L/LL/U/UL/ULL
+                        scan_number_suffix(lexer);
                         out_token->kind = CN_TOKEN_INTEGER;
                     }
                 }
@@ -567,12 +628,19 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                 // 检查科学计数法：e[+|-]digits
                 scan_exponent(lexer);
                 
+                // 检查浮点后缀 f/F
+                scan_number_suffix(lexer);
+                
                 out_token->kind = CN_TOKEN_FLOAT_LITERAL;
             } else {
                 // 检查整数是否有科学计数法（如 1e10）
                 if (scan_exponent(lexer)) {
+                    // 有科学计数法，变成浮点数
+                    scan_number_suffix(lexer);  // 检查 f/F 后缀
                     out_token->kind = CN_TOKEN_FLOAT_LITERAL;
                 } else {
+                    // 普通整数，检查整数后缀 L/LL/U/UL/ULL
+                    scan_number_suffix(lexer);
                     out_token->kind = CN_TOKEN_INTEGER;
                 }
             }
