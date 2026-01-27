@@ -6,20 +6,24 @@
  * 
  * 编译命令：
  *   cnc os_kernel_simple.cn --freestanding -o kernel.c
+ * 
+ * 更新说明 (2026-01-27):
+ *   - 迁移至新的运行时API (精简关键字后)
+ *   - "中断处理" 关键字已删除，改用 cn_rt_interrupt_register()
  */
 
 // 全局状态变量
 变量 中断计数 = 0;
 变量 系统时间 = 0;
 
-// 中断处理程序：定时器
-中断处理 0 () {
+// 中断处理程序：定时器 (向量0)
+函数 定时器中断处理() {
     系统时间 = 系统时间 + 1;
     中断计数 = 中断计数 + 1;
 }
 
-// 中断处理程序：键盘
-中断处理 1 () {
+// 中断处理程序：键盘 (向量1)
+函数 键盘中断处理() {
     中断计数 = 中断计数 + 1;
 }
 
@@ -27,6 +31,12 @@
 函数 初始化内核() {
     打印("[INIT] CN Language Kernel Starting\n");
     打印("[INIT] Memory: 64KB Pool\n");
+    
+    // 注册中断处理程序 (使用新的运行时API)
+    打印("[INIT] Registering interrupt handlers...\n");
+    cn_rt_interrupt_register(0, 定时器中断处理);  // 向量0: 定时器
+    cn_rt_interrupt_register(1, 键盘中断处理);    // 向量1: 键盘
+    
     打印("[INIT] Interrupt System Ready\n");
     打印("[INIT] Device Drivers Loaded\n");
     打印("[INIT] Kernel Ready\n");
