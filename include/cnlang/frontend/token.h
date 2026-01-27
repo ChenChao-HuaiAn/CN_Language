@@ -17,14 +17,11 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_ELSE,    // 否则
     CN_TOKEN_KEYWORD_FN,      // 函数
     CN_TOKEN_KEYWORD_RETURN,  // 返回
-    CN_TOKEN_KEYWORD_AND,    // 与
-    CN_TOKEN_KEYWORD_OR,     // 或
     CN_TOKEN_KEYWORD_VAR,     // 变量
     CN_TOKEN_KEYWORD_INT,      // 整数
     CN_TOKEN_KEYWORD_FLOAT,    // 浮点数
     CN_TOKEN_KEYWORD_STRING,  // 字符串
     CN_TOKEN_KEYWORD_BOOL,    // 布尔值
-    CN_TOKEN_KEYWORD_ARRAY,   // 数组
     CN_TOKEN_KEYWORD_STRUCT,  // 结构体
     CN_TOKEN_KEYWORD_ENUM,    // 枚举
     CN_TOKEN_KEYWORD_WHILE,   // 当
@@ -34,35 +31,25 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_SWITCH,   // 选择
     CN_TOKEN_KEYWORD_CASE,     // 情况
     CN_TOKEN_KEYWORD_DEFAULT,  // 默认
-    CN_TOKEN_KEYWORD_MAIN,      // 主程序
     CN_TOKEN_KEYWORD_TRUE,     // 真
     CN_TOKEN_KEYWORD_FALSE,    // 假
     CN_TOKEN_KEYWORD_NULL,     // 无
     CN_TOKEN_KEYWORD_VOID,     // 空类型
     CN_TOKEN_KEYWORD_MODULE,   // 模块
     CN_TOKEN_KEYWORD_IMPORT,   // 导入
-    CN_TOKEN_KEYWORD_AS,       // 为（用于模块别名）
+    // 预留关键字（仅占位，未实现功能）
     CN_TOKEN_KEYWORD_NAMESPACE, // 命名空间
     CN_TOKEN_KEYWORD_INTERFACE, // 接口
     CN_TOKEN_KEYWORD_CLASS,     // 类
     CN_TOKEN_KEYWORD_TEMPLATE, // 模板
     CN_TOKEN_KEYWORD_CONST,    // 常量
     CN_TOKEN_KEYWORD_STATIC,   // 静态
-    CN_TOKEN_KEYWORD_PUBLIC,   // 公开
-    CN_TOKEN_KEYWORD_PRIVATE,   // 私有
+    CN_TOKEN_KEYWORD_PUBLIC,   // 公开（已在模块系统实现）
+    CN_TOKEN_KEYWORD_PRIVATE,   // 私有（已在模块系统实现）
     CN_TOKEN_KEYWORD_PROTECTED, // 保护
     CN_TOKEN_KEYWORD_VIRTUAL,   // 虚拟
     CN_TOKEN_KEYWORD_OVERRIDE, // 重写
     CN_TOKEN_KEYWORD_ABSTRACT, // 抽象
-    CN_TOKEN_KEYWORD_INLINE_ASM, // 内联汇编
-    CN_TOKEN_KEYWORD_MEMORY_ADDRESS, // 内存地址
-    CN_TOKEN_KEYWORD_MAP_MEMORY, // 映射内存
-    CN_TOKEN_KEYWORD_UNMAP_MEMORY, // 解除映射
-    CN_TOKEN_KEYWORD_READ_MEMORY, // 读取内存
-    CN_TOKEN_KEYWORD_WRITE_MEMORY, // 写入内存
-    CN_TOKEN_KEYWORD_MEMORY_COPY, // 内存复制
-    CN_TOKEN_KEYWORD_MEMORY_SET, // 内存设置
-    CN_TOKEN_KEYWORD_INTERRUPT_HANDLER, // 中断处理
     CN_TOKEN_PLUS,             // 加 +
     CN_TOKEN_PLUS_PLUS,        // 自增 ++
     CN_TOKEN_MINUS,            // 减 -

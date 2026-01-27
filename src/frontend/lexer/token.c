@@ -23,10 +23,6 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_FN";
     case CN_TOKEN_KEYWORD_RETURN:
         return "KEYWORD_RETURN";
-    case CN_TOKEN_KEYWORD_AND:
-        return "KEYWORD_AND";
-    case CN_TOKEN_KEYWORD_OR:
-        return "KEYWORD_OR";
     case CN_TOKEN_KEYWORD_VAR:
         return "KEYWORD_VAR";
     case CN_TOKEN_KEYWORD_INT:
@@ -37,8 +33,6 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_STRING";
     case CN_TOKEN_KEYWORD_BOOL:
         return "KEYWORD_BOOL";
-    case CN_TOKEN_KEYWORD_ARRAY:
-        return "KEYWORD_ARRAY";
     case CN_TOKEN_KEYWORD_STRUCT:
         return "KEYWORD_STRUCT";
     case CN_TOKEN_KEYWORD_ENUM:
@@ -57,8 +51,6 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_CASE";
     case CN_TOKEN_KEYWORD_DEFAULT:
         return "KEYWORD_DEFAULT";
-    case CN_TOKEN_KEYWORD_MAIN:
-        return "KEYWORD_MAIN";
     case CN_TOKEN_KEYWORD_TRUE:
         return "KEYWORD_TRUE";
     case CN_TOKEN_KEYWORD_FALSE:
@@ -71,6 +63,7 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_MODULE";
     case CN_TOKEN_KEYWORD_IMPORT:
         return "KEYWORD_IMPORT";
+    // 预留关键字
     case CN_TOKEN_KEYWORD_NAMESPACE:
         return "KEYWORD_NAMESPACE";
     case CN_TOKEN_KEYWORD_INTERFACE:

@@ -47,10 +47,10 @@
 
 ### 2. 词法枚举与名称映射
 
-- [ ] **任务 2.1**：在 Token 枚举中删除不再需要的关键字枚举值
-  - **文件**：`include/cnlang/frontend/token.h`
-  - **操作要点**：
-    - 删除或重命名以下枚举项：
+- [x] **任务 2.1**:在 Token 枚举中删除不再需要的关键字枚举值
+  - **文件**:`include/cnlang/frontend/token.h`
+  - **操作要点**:
+    - 删除或重命名以下枚举项:
       - `CN_TOKEN_KEYWORD_MAIN`
       - `CN_TOKEN_KEYWORD_ARRAY`
       - `CN_TOKEN_KEYWORD_AND`
@@ -65,40 +65,56 @@
       - `CN_TOKEN_KEYWORD_MEMORY_COPY`
       - `CN_TOKEN_KEYWORD_MEMORY_SET`
       - `CN_TOKEN_KEYWORD_INTERRUPT_HANDLER`
-    - 保留并标注预留关键字枚举项：`CN_TOKEN_KEYWORD_CLASS`、`CN_TOKEN_KEYWORD_INTERFACE`、`CN_TOKEN_KEYWORD_TEMPLATE`、`CN_TOKEN_KEYWORD_NAMESPACE`、`CN_TOKEN_KEYWORD_STATIC`、`CN_TOKEN_KEYWORD_PUBLIC`、`CN_TOKEN_KEYWORD_PRIVATE`、`CN_TOKEN_KEYWORD_PROTECTED`、`CN_TOKEN_KEYWORD_VIRTUAL`、`CN_TOKEN_KEYWORD_OVERRIDE`、`CN_TOKEN_KEYWORD_ABSTRACT`。
-    - 确保删除后枚举值顺序仍然合理，不破坏现有序列持久化假设（如有）。
-  - **验收**：编译通过，`cn_frontend_token_kind_name` 中不再引用已删除的枚举值。
+    - 保留并标注预留关键字枚举项:`CN_TOKEN_KEYWORD_CLASS`、`CN_TOKEN_KEYWORD_INTERFACE`、`CN_TOKEN_KEYWORD_TEMPLATE`、`CN_TOKEN_KEYWORD_NAMESPACE`、`CN_TOKEN_KEYWORD_STATIC`、`CN_TOKEN_KEYWORD_PUBLIC`、`CN_TOKEN_KEYWORD_PRIVATE`、`CN_TOKEN_KEYWORD_PROTECTED`、`CN_TOKEN_KEYWORD_VIRTUAL`、`CN_TOKEN_KEYWORD_OVERRIDE`、`CN_TOKEN_KEYWORD_ABSTRACT`。
+    - 确保删除后枚举值顺序仍然合理,不破坏现有序列持久化假设(如有)。
+  - **验收**:编译通过,`cn_frontend_token_kind_name` 中不再引用已删除的枚举值。
+  - **完成情况**:✅ 已完成
+    - 已删除所有不需要的关键字枚举项
+    - 保留并添加注释说明预留关键字的状态
+    - 标注 `CN_TOKEN_KEYWORD_PUBLIC` 和 `CN_TOKEN_KEYWORD_PRIVATE` 为已实现功能
 
-- [ ] **任务 2.2**：更新 Token 名称打印函数
-  - **文件**：`src/frontend/lexer/token.c`
-  - **操作要点**：
-    - 删除对应 case：`CN_TOKEN_KEYWORD_MAIN`、`CN_TOKEN_KEYWORD_ARRAY`、`CN_TOKEN_KEYWORD_AND`、`CN_TOKEN_KEYWORD_OR`、所有内存/中断相关关键字。
-    - 确认预留关键字的名称映射仍然存在且正确（例如 `KEYWORD_CLASS` 等）。
-  - **验收**：打印 Token 时不会出现已删除关键字，预留关键字仍可打印用于诊断输出。
+- [x] **任务 2.2**:更新 Token 名称打印函数
+  - **文件**:`src/frontend/lexer/token.c`
+  - **操作要点**:
+    - 删除对应 case:`CN_TOKEN_KEYWORD_MAIN`、`CN_TOKEN_KEYWORD_ARRAY`、`CN_TOKEN_KEYWORD_AND`、`CN_TOKEN_KEYWORD_OR`、所有内存/中断相关关键字。
+    - 确认预留关键字的名称映射仍然存在且正确(例如 `KEYWORD_CLASS` 等)。
+  - **验收**:打印 Token 时不会出现已删除关键字,预留关键字仍可打印用于诊断输出。
+  - **完成情况**:✅ 已完成
+    - 已删除所有不需要的关键字case分支
+    - 预留关键字映射保持完好,添加了注释标记
 
 ### 3. 关键字识别逻辑
 
-- [ ] **任务 2.3**：更新 `keyword_kind` 中的关键字匹配表
-  - **文件**：`src/frontend/lexer/lexer.c`
-  - **位置**：`static CnTokenKind keyword_kind(const char *begin, size_t length)`
-  - **操作要点**：
-    - 移除对以下中文词汇的匹配分支：
-      - `主程序` → 不再返回 `CN_TOKEN_KEYWORD_MAIN`，而是让其作为普通标识符处理。
+- [x] **任务 2.3**:更新 `keyword_kind` 中的关键字匹配表
+  - **文件**:`src/frontend/lexer/lexer.c`
+  - **位置**:`static CnTokenKind keyword_kind(const char *begin, size_t length)`
+  - **操作要点**:
+    - 移除对以下中文词汇的匹配分支:
+      - `主程序` → 不再返回 `CN_TOKEN_KEYWORD_MAIN`,而是让其作为普通标识符处理。
       - `数组` → 不再返回 `CN_TOKEN_KEYWORD_ARRAY`。
       - `从`、`与`、`或`、`为`。
       - `内联汇编`、`内存地址`、`映射内存`、`解除映射`、`读取内存`、`写入内存`、`内存复制`、`内存设置`、`中断处理`。
-    - 保留并整理其余保留/预留关键字的匹配逻辑，例如：`函数`、`返回`、`变量`、`整数` 等。
-  - **验收**：
-    - 词法分析后不再生成对应的关键字 Token；
-    - 相同源码经扫 Token 时，“删除组”词汇均以 `CN_TOKEN_IDENT` 形式出现。
+    - 保留并整理其余保留/预留关键字的匹配逻辑,例如:`函数`、`返回`、`变量`、`整数` 等。
+  - **验收**:
+    - 词法分析后不再生成对应的关键字 Token;
+    - 相同源码经扫 Token 时,"删除组"词汇均以 `CN_TOKEN_IDENT` 形式出现。
+  - **完成情况**:✅ 已完成
+    - 已删除所有不需要的关键字匹配分支
+    - 包括 hex 编码形式和 strncmp 形式的匹配
+    - `主程序`、`数组`、`与`、`或`、`为`、`从` 等词汇现在将被识别为普通标识符
+    - 所有内存操作和内联汇编相关关键字已删除
 
-- [ ] **任务 2.4**:为预留关键字保留词法识别
+- [x] **任务 2.4**:为预留关键字保留词法识别
   - **文件**:同上
   - **操作要点**:
     - 确保 `类`、`接口`、`模板`、`命名空间`、`静态`、`保护`、`虚拟`、`重写`、`抽象` 仍然在 `keyword_kind` 中返回对应 `CN_TOKEN_KEYWORD_*`。
     - **注意**:`公开`、`私有` 已实现功能,不再属于预留关键字,应从预留关键字检查(`is_reserved_keyword`)中移除。
     - 不引入新的预留关键字。
   - **验收**:使用这些预留关键字时,词法层仍能识别,为后续语法报错提供基础。
+  - **完成情况**:✅ 已完成
+    - 所有预留关键字的词法识别保持完好
+    - `公开`、`私有` 已从 parser.c 中的 `is_reserved_keyword` 函数移除(之前已完成)
+    - 添加注释标记预留关键字区域
 
 ---
 

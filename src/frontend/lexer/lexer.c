@@ -212,30 +212,24 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
     if (length == 6 && memcmp(begin, "\xe6\x95\xb4\xe6\x95\xb0", 6) == 0) {
         return CN_TOKEN_KEYWORD_INT;
     }
-
-    // 主程序: \xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f
-    if (length == 9 && memcmp(begin, "\xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f", 9) == 0) {
-        return CN_TOKEN_KEYWORD_MAIN;
-    }
     
     // 打印 (内置函数标识符，虽然这里处理关键字，但可以参考)
     // 打印: \xe6\x89\x93\xe5\x8d\xb0 (6 bytes)
 
     // ... 为了简洁，其他关键字暂时保持原样或按需转换 ...
-    if (length == strlen("小数") && strncmp(begin, "小数", length) == 0) {
+    // 小数: \xe5\xb0\x8f\xe6\x95\xb0
+    if (length == 6 && memcmp(begin, "\xe5\xb0\x8f\xe6\x95\xb0", 6) == 0) {
         return CN_TOKEN_KEYWORD_FLOAT;
     }
 
-    if (length == strlen("字符串") && strncmp(begin, "字符串", length) == 0) {
+    // 字符串: \xe5\xad\x97\xe7\xac\xa6\xe4\xb8\xb2
+    if (length == 9 && memcmp(begin, "\xe5\xad\x97\xe7\xac\xa6\xe4\xb8\xb2", 9) == 0) {
         return CN_TOKEN_KEYWORD_STRING;
     }
 
-    if (length == strlen("布尔") && strncmp(begin, "布尔", length) == 0) {
+    // 布尔: \xe5\xb8\x83\xe5\xb0\x94
+    if (length == 6 && memcmp(begin, "\xe5\xb8\x83\xe5\xb0\x94", 6) == 0) {
         return CN_TOKEN_KEYWORD_BOOL;
-    }
-
-    if (length == strlen("数组") && strncmp(begin, "数组", length) == 0) {
-        return CN_TOKEN_KEYWORD_ARRAY;
     }
 
     if (length == strlen("结构体") && strncmp(begin, "结构体", length) == 0) {
@@ -266,11 +260,6 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
         return CN_TOKEN_KEYWORD_CONTINUE;
     }
 
-    // 从 (用于 for 循环): \xe4\xbb\x8e
-    if (length == 3 && memcmp(begin, "\xe4\xbb\x8e", 3) == 0) {
-        return CN_TOKEN_KEYWORD_FOR;
-    }
-
     if (length == strlen("选择") && strncmp(begin, "选择", length) == 0) {
         return CN_TOKEN_KEYWORD_SWITCH;
     }
@@ -281,10 +270,6 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
 
     if (length == strlen("默认") && strncmp(begin, "默认", length) == 0) {
         return CN_TOKEN_KEYWORD_DEFAULT;
-    }
-
-    if (length == strlen("主程序") && strncmp(begin, "主程序", length) == 0) {
-        return CN_TOKEN_KEYWORD_MAIN;
     }
 
     if (length == strlen("真") && strncmp(begin, "真", length) == 0) {
@@ -311,10 +296,7 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
         return CN_TOKEN_KEYWORD_IMPORT;
     }
 
-    if (length == strlen("为") && strncmp(begin, "为", length) == 0) {
-        return CN_TOKEN_KEYWORD_AS;
-    }
-
+    // 预留关键字（仅为语法检查保留）
     if (length == strlen("命名空间") && strncmp(begin, "命名空间", length) == 0) {
         return CN_TOKEN_KEYWORD_NAMESPACE;
     }
@@ -361,54 +343,6 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
 
     if (length == strlen("抽象") && strncmp(begin, "抽象", length) == 0) {
         return CN_TOKEN_KEYWORD_ABSTRACT;
-    }
-
-    if (length == strlen("内联汇编") && strncmp(begin, "内联汇编", length) == 0) {
-        return CN_TOKEN_KEYWORD_INLINE_ASM;
-    }
-
-    if (length == strlen("内存地址") && strncmp(begin, "内存地址", length) == 0) {
-        return CN_TOKEN_KEYWORD_MEMORY_ADDRESS;
-    }
-
-    if (length == strlen("映射内存") && strncmp(begin, "映射内存", length) == 0) {
-        return CN_TOKEN_KEYWORD_MAP_MEMORY;
-    }
-
-    if (length == strlen("解除映射") && strncmp(begin, "解除映射", length) == 0) {
-        return CN_TOKEN_KEYWORD_UNMAP_MEMORY;
-    }
-
-    if (length == strlen("读取内存") && strncmp(begin, "读取内存", length) == 0) {
-        return CN_TOKEN_KEYWORD_READ_MEMORY;
-    }
-
-    if (length == strlen("写入内存") && strncmp(begin, "写入内存", length) == 0) {
-        return CN_TOKEN_KEYWORD_WRITE_MEMORY;
-    }
-
-    if (length == strlen("内存复制") && strncmp(begin, "内存复制", length) == 0) {
-        return CN_TOKEN_KEYWORD_MEMORY_COPY;
-    }
-
-    if (length == strlen("内存设置") && strncmp(begin, "内存设置", length) == 0) {
-        return CN_TOKEN_KEYWORD_MEMORY_SET;
-    }
-
-    if (length == strlen("中断处理") && strncmp(begin, "中断处理", length) == 0) {
-        return CN_TOKEN_KEYWORD_INTERRUPT_HANDLER;
-    }
-
-    if (length == strlen("与") && strncmp(begin, "与", length) == 0) {
-        return CN_TOKEN_KEYWORD_AND;
-    }
-
-    if (length == strlen("且") && strncmp(begin, "且", length) == 0) {
-        return CN_TOKEN_KEYWORD_AND;
-    }
-
-    if (length == strlen("或") && strncmp(begin, "或", length) == 0) {
-        return CN_TOKEN_KEYWORD_OR;
     }
 
     return CN_TOKEN_INVALID;
