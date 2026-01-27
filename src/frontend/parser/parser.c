@@ -1712,7 +1712,33 @@ static CnAstExpr *parse_factor(CnParser *parser)
     }
 
     if (parser->current.kind == CN_TOKEN_INTEGER) {
-        long value = strtol(parser->current.lexeme_begin, NULL, 10);
+        // 自动检测进制：十六进制(0x/0X)、二进制(0b/0B)、八进制(0o/0O)、十进制
+        long value;
+        const char *str = parser->current.lexeme_begin;
+        
+        if (str[0] == '0' && parser->current.lexeme_length > 2) {
+            char prefix = str[1];
+            if (prefix == 'x' || prefix == 'X') {
+                // 十六进制
+                value = strtol(str, NULL, 16);
+            } else if (prefix == 'b' || prefix == 'B') {
+                // 二进制：需要手动解析（strtol不支持二进制）
+                value = 0;
+                for (size_t i = 2; i < parser->current.lexeme_length; i++) {
+                    value = value * 2 + (str[i] - '0');
+                }
+            } else if (prefix == 'o' || prefix == 'O') {
+                // 八进制
+                value = strtol(str + 2, NULL, 8);
+            } else {
+                // 其他以0开头的数字，使用自动检测
+                value = strtol(str, NULL, 0);
+            }
+        } else {
+            // 普通十进制数字
+            value = strtol(str, NULL, 10);
+        }
+        
         expr = make_integer_literal(value);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_FLOAT_LITERAL) {

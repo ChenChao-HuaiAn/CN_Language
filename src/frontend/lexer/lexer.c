@@ -416,20 +416,116 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             out_token->kind = CN_TOKEN_INVALID;
         }
     } else if (isdigit((unsigned char)c)) {
-        // 扫描数字：支持整数和浮点数
-        while (isdigit((unsigned char)current_char(lexer))) {
-            advance(lexer);
+        // 扫描数字：支持整数、浮点数、十六进制、二进制、八进制
+        
+        // 检查是否为特殊进制前缀（0x, 0X, 0b, 0B, 0o, 0O）
+        if (c == '0') {
+            char next = peek_char(lexer);
+            
+            // 十六进制：0x 或 0X
+            if (next == 'x' || next == 'X') {
+                advance(lexer);  // 跳过 '0'
+                advance(lexer);  // 跳过 'x' 或 'X'
+                
+                // 必须至少有一个十六进制数字
+                if (!isxdigit((unsigned char)current_char(lexer))) {
+                    report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_HEX, 
+                                   "十六进制字面量必须包含至少一个有效数字（0-9, a-f, A-F）");
+                    out_token->kind = CN_TOKEN_INVALID;
+                } else {
+                    // 扫描所有十六进制数字
+                    while (isxdigit((unsigned char)current_char(lexer))) {
+                        advance(lexer);
+                    }
+                    out_token->kind = CN_TOKEN_INTEGER;
+                }
+            }
+            // 二进制：0b 或 0B
+            else if (next == 'b' || next == 'B') {
+                advance(lexer);  // 跳过 '0'
+                advance(lexer);  // 跳过 'b' 或 'B'
+                
+                // 必须至少有一个二进制数字
+                char bin_c = current_char(lexer);
+                if (bin_c != '0' && bin_c != '1') {
+                    report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_BINARY,
+                                   "二进制字面量必须包含至少一个有效数字（0或1）");
+                    out_token->kind = CN_TOKEN_INVALID;
+                } else {
+                    // 扫描所有二进制数字
+                    while ((bin_c = current_char(lexer)) == '0' || bin_c == '1') {
+                        advance(lexer);
+                    }
+                    // 检查是否有非法字符
+                    if (isdigit((unsigned char)bin_c)) {
+                        report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_BINARY,
+                                       "二进制字面量只能包含0和1");
+                        out_token->kind = CN_TOKEN_INVALID;
+                    } else {
+                        out_token->kind = CN_TOKEN_INTEGER;
+                    }
+                }
+            }
+            // 八进制：0o 或 0O
+            else if (next == 'o' || next == 'O') {
+                advance(lexer);  // 跳过 '0'
+                advance(lexer);  // 跳过 'o' 或 'O'
+                
+                // 必须至少有一个八进制数字
+                char oct_c = current_char(lexer);
+                if (oct_c < '0' || oct_c > '7') {
+                    report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_OCTAL,
+                                   "八进制字面量必须包含至少一个有效数字（0-7）");
+                    out_token->kind = CN_TOKEN_INVALID;
+                } else {
+                    // 扫描所有八进制数字
+                    while ((oct_c = current_char(lexer)) >= '0' && oct_c <= '7') {
+                        advance(lexer);
+                    }
+                    // 检查是否有非法字符
+                    if (isdigit((unsigned char)oct_c)) {
+                        report_lex_error(lexer, CN_DIAG_CODE_LEX_INVALID_OCTAL,
+                                       "八进制字面量只能包含0-7");
+                        out_token->kind = CN_TOKEN_INVALID;
+                    } else {
+                        out_token->kind = CN_TOKEN_INTEGER;
+                    }
+                }
+            }
+            // 普通数字（以0开头）
+            else {
+                while (isdigit((unsigned char)current_char(lexer))) {
+                    advance(lexer);
+                }
+                
+                // 检查是否为浮点数（有小数点）
+                if (current_char(lexer) == '.' && isdigit((unsigned char)peek_char(lexer))) {
+                    advance(lexer);  // 跳过小数点
+                    while (isdigit((unsigned char)current_char(lexer))) {
+                        advance(lexer);
+                    }
+                    out_token->kind = CN_TOKEN_FLOAT_LITERAL;
+                } else {
+                    out_token->kind = CN_TOKEN_INTEGER;
+                }
+            }
         }
-
-        // 检查是否为浮点数（有小数点）
-        if (current_char(lexer) == '.' && isdigit((unsigned char)peek_char(lexer))) {
-            advance(lexer);  // 跳过小数点
+        // 非0开头的普通数字
+        else {
             while (isdigit((unsigned char)current_char(lexer))) {
                 advance(lexer);
             }
-            out_token->kind = CN_TOKEN_FLOAT_LITERAL;
-        } else {
-            out_token->kind = CN_TOKEN_INTEGER;
+
+            // 检查是否为浮点数（有小数点）
+            if (current_char(lexer) == '.' && isdigit((unsigned char)peek_char(lexer))) {
+                advance(lexer);  // 跳过小数点
+                while (isdigit((unsigned char)current_char(lexer))) {
+                    advance(lexer);
+                }
+                out_token->kind = CN_TOKEN_FLOAT_LITERAL;
+            } else {
+                out_token->kind = CN_TOKEN_INTEGER;
+            }
         }
     } else if (is_identifier_start((unsigned char)c)) {
         CnTokenKind kind;
