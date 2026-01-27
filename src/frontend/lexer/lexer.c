@@ -53,6 +53,38 @@ static void skip_whitespace(CnLexer *lexer)
     }
 }
 
+// 处理科学计数法的指数部分：e[+|-]digits
+// 返回 1 表示成功识别指数部分，0 表示没有指数部分
+static int scan_exponent(CnLexer *lexer)
+{
+    char c = current_char(lexer);
+    
+    // 检查是否有 e 或 E
+    if (c != 'e' && c != 'E') {
+        return 0;
+    }
+    
+    advance(lexer);  // 跳过 'e' 或 'E'
+    
+    // 检查可选的正负号
+    c = current_char(lexer);
+    if (c == '+' || c == '-') {
+        advance(lexer);
+    }
+    
+    // 必须至少有一个数字
+    if (!isdigit((unsigned char)current_char(lexer))) {
+        return 0;  // 无效的科学计数法
+    }
+    
+    // 扫描所有指数数字
+    while (isdigit((unsigned char)current_char(lexer))) {
+        advance(lexer);
+    }
+    
+    return 1;
+}
+
 static void report_lex_error(CnLexer *lexer, CnDiagCode code, const char *message)
 {
     if (!lexer || !lexer->diagnostics) {
@@ -504,9 +536,18 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                     while (isdigit((unsigned char)current_char(lexer))) {
                         advance(lexer);
                     }
+                    
+                    // 检查科学计数法：e[+|-]digits
+                    scan_exponent(lexer);
+                    
                     out_token->kind = CN_TOKEN_FLOAT_LITERAL;
                 } else {
-                    out_token->kind = CN_TOKEN_INTEGER;
+                    // 检查整数是否有科学计数法（如 1e10）
+                    if (scan_exponent(lexer)) {
+                        out_token->kind = CN_TOKEN_FLOAT_LITERAL;
+                    } else {
+                        out_token->kind = CN_TOKEN_INTEGER;
+                    }
                 }
             }
         }
@@ -522,9 +563,18 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
                 while (isdigit((unsigned char)current_char(lexer))) {
                     advance(lexer);
                 }
+                
+                // 检查科学计数法：e[+|-]digits
+                scan_exponent(lexer);
+                
                 out_token->kind = CN_TOKEN_FLOAT_LITERAL;
             } else {
-                out_token->kind = CN_TOKEN_INTEGER;
+                // 检查整数是否有科学计数法（如 1e10）
+                if (scan_exponent(lexer)) {
+                    out_token->kind = CN_TOKEN_FLOAT_LITERAL;
+                } else {
+                    out_token->kind = CN_TOKEN_INTEGER;
+                }
             }
         }
     } else if (is_identifier_start((unsigned char)c)) {
