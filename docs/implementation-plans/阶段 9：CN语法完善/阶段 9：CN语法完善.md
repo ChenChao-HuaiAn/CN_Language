@@ -5,6 +5,7 @@
 ✔ 2. 字符串拼接功能可能未实现。（"examples\basic\test_simple.cn"）
 
 3. cn语言可能不支持“0x1000”形式的数字。（"examples\os-kernel\device_driver_demo.cn.back"）
+    希望添加科学计数法、单精度标记等支持。
 
 ✔ 4. 数组声明形式.
 
