@@ -273,7 +273,7 @@ static void test_selective_import(void) {
 }
 
 /*
- * 测试6: 模块别名
+ * 测试6: 模块别名（使用括号语法）
  */
 static void test_module_alias(void) {
     TEST_START("模块别名 - 使用别名访问");
@@ -282,7 +282,7 @@ static void test_module_alias(void) {
         "模块 非常长的模块名称 {\n"
         "    公开: 整数 数据 = 100;\n"
         "}\n"
-        "导入 非常长的模块名称 为 短名;\n"
+        "导入 非常长的模块名称(短名);\n"
         "函数 主程序() {\n"
         "    变量 x = 短名.数据;\n"
         "    返回 0;\n"

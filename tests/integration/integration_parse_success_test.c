@@ -61,7 +61,7 @@ static char *read_file_to_buffer(const char *path, size_t *out_length)
 int main(void)
 {
     /* 集成测试：读取真实的 hello_world.cn 文件并完整解析 */
-    const char *filename = "../../../examples/hello_world.cn";
+    const char *filename = "../../../examples/basic/hello_world.cn";
     char *source;
     size_t length;
     CnLexer lexer;

@@ -226,15 +226,14 @@ int main(void) {
     printf("CN Language 中断处理语法解析测试\n");
     printf("========================================\n\n");
     
-    test_basic_interrupt_handler();
-    test_multiple_interrupt_handlers();
-    test_mixed_functions();
-    test_error_non_integer_vector();
-    test_error_vector_out_of_range();
-    test_error_handler_with_parameters();
+    // 注意：'中断处理' 关键字已在阶段9中被删除
+    // 中断处理功能已迁移到运行时函数 cn_rt_interrupt_register()
+    // 详见 docs/api/runtime/system_api.md
+    printf("跳过: '中断处理' 关键字已废弃\n");
+    printf("中断处理已迁移到运行时API: cn_rt_interrupt_register()\n");
     
     printf("\n========================================\n");
-    printf("所有测试通过！✓\n");
+    printf("测试跳过（功能已迁移到运行时API）\n");
     printf("========================================\n");
     
     return 0;

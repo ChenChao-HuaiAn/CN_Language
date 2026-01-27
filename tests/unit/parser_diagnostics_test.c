@@ -129,7 +129,7 @@ static int test_invalid_function_name(void)
             cn_support_diagnostics_free(&diagnostics);
             return 1;
         }
-        if (!d->message || strcmp(d->message, "语法错误：函数名无效") != 0) {
+        if (!d->message || strcmp(d->message, "语法错误：函数名无效，期望标识符") != 0) {
             fprintf(stderr,
                     "parser_diagnostics_test: 函数名非法用例 message 不匹配，实际为: %s\n",
                     d->message ? d->message : "<NULL>");

@@ -173,7 +173,19 @@ int32_t cn_rt_atomic32_exchange(CnAtomic32* atomic, int32_t new_value, CnMemoryO
 
 int cn_rt_atomic32_compare_exchange(CnAtomic32* atomic, int32_t* expected, 
                                      int32_t desired, CnMemoryOrder order) {
-    return CN_ATOMIC32_CAS(&atomic->value, *expected, desired, order);
+#ifdef _WIN32
+    // Windows: InterlockedCompareExchange 返回原始值，需要手动检查并更新 expected
+    LONG old_value = InterlockedCompareExchange((volatile LONG*)&atomic->value, 
+                                                 (LONG)desired, (LONG)*expected);
+    if (old_value == (LONG)*expected) {
+        return 1;  // CAS 成功
+    } else {
+        *expected = (int32_t)old_value;  // 更新 expected 为当前值
+        return 0;  // CAS 失败
+    }
+#else
+    return CN_ATOMIC32_CAS(&atomic->value, expected, desired, order);
+#endif
 }
 
 int32_t cn_rt_atomic32_fetch_add(CnAtomic32* atomic, int32_t value, CnMemoryOrder order) {
@@ -218,7 +230,19 @@ int64_t cn_rt_atomic64_exchange(CnAtomic64* atomic, int64_t new_value, CnMemoryO
 
 int cn_rt_atomic64_compare_exchange(CnAtomic64* atomic, int64_t* expected, 
                                      int64_t desired, CnMemoryOrder order) {
-    return CN_ATOMIC64_CAS(&atomic->value, *expected, desired, order);
+#ifdef _WIN32
+    // Windows: InterlockedCompareExchange64 返回原始值，需要手动检查并更新 expected
+    LONG64 old_value = InterlockedCompareExchange64((volatile LONG64*)&atomic->value, 
+                                                     (LONG64)desired, (LONG64)*expected);
+    if (old_value == (LONG64)*expected) {
+        return 1;  // CAS 成功
+    } else {
+        *expected = (int64_t)old_value;  // 更新 expected 为当前值
+        return 0;  // CAS 失败
+    }
+#else
+    return CN_ATOMIC64_CAS(&atomic->value, expected, desired, order);
+#endif
 }
 
 int64_t cn_rt_atomic64_fetch_add(CnAtomic64* atomic, int64_t value, CnMemoryOrder order) {
