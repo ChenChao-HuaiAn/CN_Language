@@ -716,6 +716,16 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return make_continue_stmt();
     }
 
+    // 解析局部结构体定义（支持在函数内部定义结构体）
+    if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
+        return parse_struct_decl(parser);
+    }
+
+    // 解析局部枚举定义（支持在函数内部定义枚举）
+    if (parser->current.kind == CN_TOKEN_KEYWORD_ENUM) {
+        return parse_enum_decl(parser);
+    }
+
     // 解析 switch 语句：选择 (表达式) { [情况 值: 语句...]* [默认: 语句...]? }
     if (parser->current.kind == CN_TOKEN_KEYWORD_SWITCH) {
         CnAstExpr *switch_expr;

@@ -537,12 +537,78 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
     case CN_AST_STMT_BREAK:
     case CN_AST_STMT_CONTINUE:
         break;
-    case CN_AST_STMT_STRUCT_DECL:
-        // 结构体声明已在全局作用域构建时处理，这里不需要额外操作
+    case CN_AST_STMT_STRUCT_DECL: {
+        // 局部结构体定义：注册到当前作用域
+        CnAstStructDecl *struct_decl = &stmt->as.struct_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope,
+                                   struct_decl->name,
+                                   struct_decl->name_length,
+                                   CN_SEM_SYMBOL_STRUCT);
+        if (sym) {
+            // 创建结构体类型，包含字段信息
+            CnStructField *fields = NULL;
+            if (struct_decl->field_count > 0) {
+                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+                for (size_t j = 0; j < struct_decl->field_count; j++) {
+                    fields[j].name = struct_decl->fields[j].name;
+                    fields[j].name_length = struct_decl->fields[j].name_length;
+                    fields[j].field_type = struct_decl->fields[j].field_type;
+                    fields[j].is_const = struct_decl->fields[j].is_const;
+                }
+            }
+            sym->type = cn_type_new_struct(struct_decl->name,
+                                          struct_decl->name_length,
+                                          fields,
+                                          struct_decl->field_count);
+        } else {
+            // 报告重复定义
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, struct_decl->name);
+        }
         break;
-    case CN_AST_STMT_ENUM_DECL:
-        // 枚举声明已在全局作用域构建时处理，这里不需要额外操作
+    }
+    case CN_AST_STMT_ENUM_DECL: {
+        // 局部枚举定义：注册到当前作用域
+        CnAstEnumDecl *enum_decl = &stmt->as.enum_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope,
+                                   enum_decl->name,
+                                   enum_decl->name_length,
+                                   CN_SEM_SYMBOL_ENUM);
+        if (sym) {
+            // 创建枚举类型
+            sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+            
+            // 为枚举创建一个作用域来存储其成员
+            CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, scope);
+            if (enum_scope && sym->type) {
+                sym->type->as.enum_type.enum_scope = enum_scope;
+                
+                // 注册枚举成员到枚举作用域
+                for (size_t j = 0; j < enum_decl->member_count; j++) {
+                    CnAstEnumMember *member = &enum_decl->members[j];
+                    CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
+                                                       member->name,
+                                                       member->name_length,
+                                                       CN_SEM_SYMBOL_ENUM_MEMBER);
+                    if (member_sym) {
+                        // 枚举成员的类型是整数
+                        member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 保存枚举成员的值
+                        member_sym->as.enum_value = member->value;
+                    } else {
+                        // 报告重复定义
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, member->name);
+                    }
+                }
+            }
+        } else {
+            // 报告重复定义
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, enum_decl->name);
+        }
         break;
+    }
     case CN_AST_STMT_MODULE_DECL:
         // 模块声明已在全局作用域构建时处理，这里不需要额外操作
         break;

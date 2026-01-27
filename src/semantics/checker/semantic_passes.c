@@ -574,6 +574,78 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                     "语义错误：break 或 continue 语句不在循环内");
             }
             break;
+        case CN_AST_STMT_STRUCT_DECL: {
+            // 局部结构体定义：注册到当前作用域
+            CnAstStructDecl *struct_decl = &stmt->as.struct_decl;
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope,
+                                       struct_decl->name,
+                                       struct_decl->name_length,
+                                       CN_SEM_SYMBOL_STRUCT);
+            if (sym) {
+                // 创建结构体类型，包含字段信息
+                CnStructField *fields = NULL;
+                if (struct_decl->field_count > 0) {
+                    fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+                    for (size_t j = 0; j < struct_decl->field_count; j++) {
+                        fields[j].name = struct_decl->fields[j].name;
+                        fields[j].name_length = struct_decl->fields[j].name_length;
+                        fields[j].field_type = struct_decl->fields[j].field_type;
+                        fields[j].is_const = struct_decl->fields[j].is_const;
+                    }
+                }
+                sym->type = cn_type_new_struct(struct_decl->name,
+                                              struct_decl->name_length,
+                                              fields,
+                                              struct_decl->field_count);
+            } else {
+                // 报告重复定义
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, struct_decl->name);
+            }
+            break;
+        }
+        case CN_AST_STMT_ENUM_DECL: {
+            // 局部枚举定义：注册到当前作用域
+            CnAstEnumDecl *enum_decl = &stmt->as.enum_decl;
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope,
+                                       enum_decl->name,
+                                       enum_decl->name_length,
+                                       CN_SEM_SYMBOL_ENUM);
+            if (sym) {
+                // 创建枚举类型
+                sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+                
+                // 为枚举创建一个作用域来存储其成员
+                CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, scope);
+                if (enum_scope && sym->type) {
+                    sym->type->as.enum_type.enum_scope = enum_scope;
+                    
+                    // 注册枚举成员到枚举作用域
+                    for (size_t j = 0; j < enum_decl->member_count; j++) {
+                        CnAstEnumMember *member = &enum_decl->members[j];
+                        CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
+                                                           member->name,
+                                                           member->name_length,
+                                                           CN_SEM_SYMBOL_ENUM_MEMBER);
+                        if (member_sym) {
+                            // 枚举成员的类型是整数
+                            member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                            // 保存枚举成员的值
+                            member_sym->as.enum_value = member->value;
+                        } else {
+                            // 报告重复定义
+                            cn_support_diag_semantic_error_duplicate_symbol(
+                                diagnostics, NULL, 0, 0, member->name);
+                        }
+                    }
+                }
+            } else {
+                // 报告重复定义
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, enum_decl->name);
+            }
+            break;
+        }
         default:
             break;
     }
@@ -1329,7 +1401,7 @@ static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *blo
     // 创建一个临时的块作用域用于推断过程
     CnSemScope *block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
     
-    // 遍历函数体中的所有语句，处理变量声明并查找return语句
+    // 遍历函数体中的所有语句，处理变量声明、结构体/枚举定义并查找return语句
     for (size_t i = 0; i < block->stmt_count; i++) {
         CnAstStmt *stmt = block->stmts[i];
         
@@ -1340,6 +1412,56 @@ static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *blo
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
                 sym->type = decl->declared_type ? decl->declared_type : init_type;
+            }
+        }
+        // 如果是结构体定义，需要先注册到作用域
+        else if (stmt && stmt->kind == CN_AST_STMT_STRUCT_DECL) {
+            CnAstStructDecl *struct_decl = &stmt->as.struct_decl;
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope,
+                                       struct_decl->name,
+                                       struct_decl->name_length,
+                                       CN_SEM_SYMBOL_STRUCT);
+            if (sym) {
+                CnStructField *fields = NULL;
+                if (struct_decl->field_count > 0) {
+                    fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+                    for (size_t j = 0; j < struct_decl->field_count; j++) {
+                        fields[j].name = struct_decl->fields[j].name;
+                        fields[j].name_length = struct_decl->fields[j].name_length;
+                        fields[j].field_type = struct_decl->fields[j].field_type;
+                        fields[j].is_const = struct_decl->fields[j].is_const;
+                    }
+                }
+                sym->type = cn_type_new_struct(struct_decl->name,
+                                              struct_decl->name_length,
+                                              fields,
+                                              struct_decl->field_count);
+            }
+        }
+        // 如果是枚举定义，需要先注册到作用域
+        else if (stmt && stmt->kind == CN_AST_STMT_ENUM_DECL) {
+            CnAstEnumDecl *enum_decl = &stmt->as.enum_decl;
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope,
+                                       enum_decl->name,
+                                       enum_decl->name_length,
+                                       CN_SEM_SYMBOL_ENUM);
+            if (sym) {
+                sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+                CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, block_scope);
+                if (enum_scope && sym->type) {
+                    sym->type->as.enum_type.enum_scope = enum_scope;
+                    for (size_t j = 0; j < enum_decl->member_count; j++) {
+                        CnAstEnumMember *member = &enum_decl->members[j];
+                        CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
+                                                           member->name,
+                                                           member->name_length,
+                                                           CN_SEM_SYMBOL_ENUM_MEMBER);
+                        if (member_sym) {
+                            member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                            member_sym->as.enum_value = member->value;
+                        }
+                    }
+                }
             }
         }
         
