@@ -453,11 +453,61 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 
             params[param_count].name = parser->current.lexeme_begin;
             params[param_count].name_length = parser->current.lexeme_length;
-            params[param_count].declared_type = param_type;
             params[param_count].is_const = param_is_const;
-            param_count++;
 
             parser_advance(parser);
+
+            // 检查参数名后是否有 [] 语法（如：整数 arr[] 或 整数 arr[10]）
+            // 这表示该参数是数组参数，在 C 中实际上会退化为指针
+            if (parser->current.kind == CN_TOKEN_LBRACKET) {
+                parser_advance(parser);  // 跳过 '['
+                
+                size_t array_size = 0;
+                
+                // 检查是否指定了数组大小
+                if (parser->current.kind != CN_TOKEN_RBRACKET) {
+                    // 解析数组大小（简化为只接受整数字面量）
+                    if (parser->current.kind == CN_TOKEN_INTEGER) {
+                        array_size = (size_t)strtol(parser->current.lexeme_begin, NULL, 10);
+                        parser_advance(parser);
+                    } else {
+                        parser->error_count++;
+                        if (parser->diagnostics) {
+                            cn_support_diagnostics_report(parser->diagnostics,
+                                                          CN_DIAG_SEVERITY_ERROR,
+                                                          CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                                          parser->lexer ? parser->lexer->filename : NULL,
+                                                          parser->current.line,
+                                                          parser->current.column,
+                                                          "语法错误：数组参数大小必须是整数字面量或省略");
+                        }
+                        free(params);
+                        free(fn);
+                        return NULL;
+                    }
+                }
+                
+                if (!parser_expect(parser, CN_TOKEN_RBRACKET)) {
+                    free(params);
+                    free(fn);
+                    return NULL;
+                }
+                
+                // 将参数类型转换为指针类型（C 语言中数组参数会退化为指针）
+                // 如果指定了大小，也记录为数组类型（虽然在 C 中仍是指针，但保留语义信息）
+                if (param_type) {
+                    if (array_size > 0) {
+                        // 保留数组语义信息
+                        param_type = cn_type_new_array(param_type, array_size);
+                    } else {
+                        // 无大小的数组参数，转换为指针类型
+                        param_type = cn_type_new_pointer(param_type);
+                    }
+                }
+            }
+            
+            params[param_count].declared_type = param_type;
+            param_count++;
 
             if (parser->current.kind == CN_TOKEN_COMMA) {
                 parser_advance(parser);

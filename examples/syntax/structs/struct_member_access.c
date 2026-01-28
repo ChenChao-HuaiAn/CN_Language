@@ -6,16 +6,16 @@
 
 // CN Language Global Struct Definitions
 struct 点 {
-    int x;
-    int y;
+    long long x;
+    long long y;
 };
 
 // Global Variables
 
 // Forward Declarations
-int main();
+long long main();
 
-int main() {
+long long main() {
   cn_rt_init();
   long long r1;
   struct 点 r0;
@@ -29,7 +29,7 @@ int main() {
   cn_var_p3 = (struct 点){.x = 30, .y = 40};
   struct 点 cn_var_p4;
   cn_var_p4 = (struct 点){.x = 50, .y = 60};
-  int cn_var_px;
+  long long cn_var_px;
   r0 = cn_var_p1;
   r1 = r0.x;
   cn_var_px = r1;

@@ -924,3 +924,14 @@ add_test(NAME stage8_enum_boundary_test COMMAND stage8_enum_boundary_test)
 set_tests_properties(stage8_enum_boundary_test PROPERTIES 
     LABELS "stage8;enum;boundary;unit"
 )
+
+# 阶段9：函数参数数组语法测试
+add_executable(parser_array_param_test
+    parser_array_param_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(parser_array_param_test PRIVATE ../../include)
+add_test(NAME parser_array_param_test COMMAND parser_array_param_test)
+set_tests_properties(parser_array_param_test PROPERTIES 
+    LABELS "stage9;parser;array;param;unit"
+)

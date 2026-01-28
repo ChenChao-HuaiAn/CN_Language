@@ -1116,13 +1116,13 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *array_type = infer_expr_type(scope, expr->as.index.array, diagnostics);
             CnType *index_type = infer_expr_type(scope, expr->as.index.index, diagnostics);
             
-            // 检查数组类型
-            if (!array_type || array_type->kind != CN_TYPE_ARRAY) {
+            // 检查数组/指针类型（数组和指针都支持索引操作）
+            if (!array_type || (array_type->kind != CN_TYPE_ARRAY && array_type->kind != CN_TYPE_POINTER)) {
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
                     NULL, 0, 0,
-                    "语义错误：索引操作的对象必须是数组类型");
+                    "语义错误：索引操作的对象必须是数组或指针类型");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             } else if (!index_type || index_type->kind != CN_TYPE_INT) {
                 // 检查索引类型，必须是整数
@@ -1133,8 +1133,13 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     "语义错误：数组索引必须是整数类型");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             } else {
-                // 索引表达式的类型是数组元素的类型
-                expr->type = array_type->as.array.element_type;
+                // 索引表达式的类型是数组元素的类型或指针指向的类型
+                if (array_type->kind == CN_TYPE_ARRAY) {
+                    expr->type = array_type->as.array.element_type;
+                } else {
+                    // 指针类型
+                    expr->type = array_type->as.pointer_to;
+                }
             }
             break;
         }

@@ -136,6 +136,24 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         return true;
     }
     
+    // 数组到指针的隐式转换（C语言中数组参数退化为指针）
+    // 数组类型传递给指针参数
+    if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_POINTER) {
+        // 检查数组元素类型与指针指向类型是否兼容
+        return cn_type_compatible(a->as.array.element_type, b->as.pointer_to);
+    }
+    
+    // 数组类型传递给数组参数（不同大小的数组之间的兼容性）
+    if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_ARRAY) {
+        // 元素类型必须兼容
+        return cn_type_compatible(a->as.array.element_type, b->as.array.element_type);
+    }
+    
+    // 指针类型传递给数组参数（反向兼容）
+    if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_ARRAY) {
+        return cn_type_compatible(a->as.pointer_to, b->as.array.element_type);
+    }
+    
     return false;
 }
 

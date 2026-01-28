@@ -7,9 +7,9 @@
 // Global Variables
 
 // Forward Declarations
-int main();
+long long main();
 
-int main() {
+long long main() {
   cn_rt_init();
 
   entry:
