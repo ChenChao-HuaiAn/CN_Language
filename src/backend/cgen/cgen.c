@@ -24,10 +24,7 @@ static const char *get_c_type_string(CnType *type) {
     if (!type) return "void";
     switch (type->kind) {
         case CN_TYPE_INT:
-            if (g_target_layout_valid) {
-                if (g_target_layout.int_size_in_bits == 32) return "int";
-                if (g_target_layout.int_size_in_bits == 64) return "long long";
-            }
+            // CN语言规范：整数类型建议对应 C 的 long long 以保证 64 位
             return "long long";
         case CN_TYPE_FLOAT: return "double";
         case CN_TYPE_BOOL: return "_Bool";
@@ -131,6 +128,12 @@ static const char *get_c_function_name(const char *name) {
         {"\xe9\x95\xbf\xe5\xba\xa6", "cn_rt_string_length"}, /* 长度 */
         {"\xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f", "main"},      /* 主程序 */
         {"\xe4\xb8\xbb\xe5\x87\xbd\xe6\x95\xb0", "main"},      /* 主函数 */
+        /* 输入函数映射 */
+        {"\xe8\xaf\xbb\xe5\x8f\x96\xe8\xa1\x8c", "cn_rt_read_line"},         /* 读取行 */
+        {"\xe8\xaf\xbb\xe5\x8f\x96\xe6\x95\xb4\xe6\x95\xb0", "cn_rt_read_int"},     /* 读取整数 */
+        {"\xe8\xaf\xbb\xe5\x8f\x96\xe5\xb0\x8f\xe6\x95\xb0", "cn_rt_read_float"},   /* 读取小数 */
+        {"\xe8\xaf\xbb\xe5\x8f\x96\xe5\xad\x97\xe7\xac\xa6\xe4\xb8\xb2", "cn_rt_read_string"}, /* 读取字符串 */
+        {"\xe8\xaf\xbb\xe5\x8f\x96\xe5\xad\x97\xe7\xac\xa6", "cn_rt_read_char"},   /* 读取字符 */
         {NULL, NULL}
     };
     

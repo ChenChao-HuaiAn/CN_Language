@@ -88,6 +88,54 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         length_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
     }
 
+    // =============================================================================
+    // 注册输入函数
+    // =============================================================================
+    
+    // 注册内置函数：读取行 (read_line)
+    // 返回字符串，无参数
+    CnSemSymbol *read_line_sym = cn_sem_scope_insert_symbol(global_scope, "读取行", strlen("读取行"), CN_SEM_SYMBOL_FUNCTION);
+    if (read_line_sym) {
+        read_line_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), NULL, 0);
+    }
+    
+    // 注册内置函数：读取整数 (read_int)
+    // 返回整数，参数为整数指针（传递地址）
+    CnSemSymbol *read_int_sym = cn_sem_scope_insert_symbol(global_scope, "读取整数", strlen("读取整数"), CN_SEM_SYMBOL_FUNCTION);
+    if (read_int_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_INT));
+        read_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：读取小数 (read_float)
+    // 返回整数（成功/失败），参数为小数指针（传递地址）
+    CnSemSymbol *read_float_sym = cn_sem_scope_insert_symbol(global_scope, "读取小数", strlen("读取小数"), CN_SEM_SYMBOL_FUNCTION);
+    if (read_float_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_FLOAT));
+        read_float_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：读取字符串 (read_string)
+    // 返回整数（成功/失败），参数为字符串缓冲区和大小
+    CnSemSymbol *read_string_sym = cn_sem_scope_insert_symbol(global_scope, "读取字符串", strlen("读取字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (read_string_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);  // char* buffer
+        param_types[1] = cn_type_new_primitive(CN_TYPE_INT);     // size_t size
+        read_string_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 2);
+    }
+    
+    // 注册内置函数：读取字符 (read_char)
+    // 返回整数（成功/失败），参数为字符指针
+    CnSemSymbol *read_char_sym = cn_sem_scope_insert_symbol(global_scope, "读取字符", strlen("读取字符"), CN_SEM_SYMBOL_FUNCTION);
+    if (read_char_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_INT));  // char* 简化为 int*
+        read_char_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+
     // 注册结构体声明到全局作用域
     for (i = 0; i < program->struct_count; ++i) {
         CnAstStmt *struct_stmt = program->structs[i];

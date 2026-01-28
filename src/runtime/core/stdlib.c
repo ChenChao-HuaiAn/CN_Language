@@ -290,6 +290,21 @@ int 读取整数(long long* out_val)
     return cn_rt_read_int(out_val);
 }
 
+int 读取小数(double* out_val)
+{
+    return cn_rt_read_float(out_val);
+}
+
+int 读取字符串(char* buffer, size_t size)
+{
+    return cn_rt_read_string(buffer, size);
+}
+
+int 读取字符(char* out_char)
+{
+    return cn_rt_read_char(out_char);
+}
+
 int 刷新输出(void)
 {
     return fflush(stdout);

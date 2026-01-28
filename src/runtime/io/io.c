@@ -33,6 +33,38 @@ int cn_rt_read_int(long long* out_val) {
     return scanf("%lld", out_val) == 1;
 }
 
+int cn_rt_read_float(double* out_val) {
+    if (out_val == NULL) return 0;
+    return scanf("%lf", out_val) == 1;
+}
+
+int cn_rt_read_string(char* buffer, size_t size) {
+    if (buffer == NULL || size == 0) return 0;
+    
+    // 读取一行到缓冲区，最多读取 size-1 个字符
+    if (fgets(buffer, (int)size, stdin) == NULL) {
+        buffer[0] = '\0';
+        return 0;
+    }
+    
+    // 移除末尾的换行符
+    size_t len = strlen(buffer);
+    if (len > 0 && buffer[len-1] == '\n') {
+        buffer[len-1] = '\0';
+        len--;
+    }
+    
+    return 1;
+}
+
+int cn_rt_read_char(char* out_char) {
+    if (out_char == NULL) return 0;
+    int c = getchar();
+    if (c == EOF) return 0;
+    *out_char = (char)c;
+    return 1;
+}
+
 CnRtFile cn_rt_file_open(const char* path, const char* mode) {
     if (path == NULL || mode == NULL) return NULL;
     return (CnRtFile)fopen(path, mode);
