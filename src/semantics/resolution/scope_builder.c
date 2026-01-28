@@ -135,6 +135,119 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_INT));  // char* 简化为 int*
         read_char_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
     }
+    
+    // =============================================================================
+    // 注册通用输入函数（自动类型识别）
+    // =============================================================================
+    
+    // 注册内置函数：读取 (read)
+    // 返回输入值结构体，无参数
+    CnSemSymbol *read_sym = cn_sem_scope_insert_symbol(global_scope, "读取", strlen("读取"), CN_SEM_SYMBOL_FUNCTION);
+    if (read_sym) {
+        // 返回类型为通用输入值（在运行时是结构体）
+        read_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), NULL, 0);
+    }
+    
+    // 注册内置函数：是整数 (is_int)
+    // 返回整数（布尔值），参数为输入值指针
+    CnSemSymbol *is_int_sym = cn_sem_scope_insert_symbol(global_scope, "是整数", strlen("是整数"), CN_SEM_SYMBOL_FUNCTION);
+    if (is_int_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        is_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：是小数 (is_float)
+    CnSemSymbol *is_float_sym = cn_sem_scope_insert_symbol(global_scope, "是小数", strlen("是小数"), CN_SEM_SYMBOL_FUNCTION);
+    if (is_float_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        is_float_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：是字符串 (is_string)
+    CnSemSymbol *is_string_sym = cn_sem_scope_insert_symbol(global_scope, "是字符串", strlen("是字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (is_string_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        is_string_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：是数值 (is_number)
+    CnSemSymbol *is_number_sym = cn_sem_scope_insert_symbol(global_scope, "是数值", strlen("是数值"), CN_SEM_SYMBOL_FUNCTION);
+    if (is_number_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        is_number_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：取整数 (to_int)
+    CnSemSymbol *to_int_sym = cn_sem_scope_insert_symbol(global_scope, "取整数", strlen("取整数"), CN_SEM_SYMBOL_FUNCTION);
+    if (to_int_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        to_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：取小数 (to_float)
+    CnSemSymbol *to_float_sym = cn_sem_scope_insert_symbol(global_scope, "取小数", strlen("取小数"), CN_SEM_SYMBOL_FUNCTION);
+    if (to_float_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        to_float_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_FLOAT), param_types, 1);
+    }
+    
+    // 注册内置函数：取文本 (to_string)
+    CnSemSymbol *to_string_sym = cn_sem_scope_insert_symbol(global_scope, "取文本", strlen("取文本"), CN_SEM_SYMBOL_FUNCTION);
+    if (to_string_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        to_string_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), param_types, 1);
+    }
+    
+    // 注册内置函数：释放输入 (free_input)
+    CnSemSymbol *free_input_sym = cn_sem_scope_insert_symbol(global_scope, "释放输入", strlen("释放输入"), CN_SEM_SYMBOL_FUNCTION);
+    if (free_input_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        free_input_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+    
+    // =============================================================================
+    // 注册字符串转换函数（简化版，直接用于 CN 语言）
+    // =============================================================================
+    
+    // 注册内置函数：转整数 (str_to_int)
+    CnSemSymbol *str_to_int_sym = cn_sem_scope_insert_symbol(global_scope, "转整数", strlen("转整数"), CN_SEM_SYMBOL_FUNCTION);
+    if (str_to_int_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        str_to_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：转小数 (str_to_float)
+    CnSemSymbol *str_to_float_sym = cn_sem_scope_insert_symbol(global_scope, "转小数", strlen("转小数"), CN_SEM_SYMBOL_FUNCTION);
+    if (str_to_float_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        str_to_float_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_FLOAT), param_types, 1);
+    }
+    
+    // 注册内置函数：是数字文本 (is_numeric_str)
+    CnSemSymbol *is_numeric_sym = cn_sem_scope_insert_symbol(global_scope, "是数字文本", strlen("是数字文本"), CN_SEM_SYMBOL_FUNCTION);
+    if (is_numeric_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        is_numeric_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：是整数文本 (is_int_str)
+    CnSemSymbol *is_int_str_sym = cn_sem_scope_insert_symbol(global_scope, "是整数文本", strlen("是整数文本"), CN_SEM_SYMBOL_FUNCTION);
+    if (is_int_str_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        is_int_str_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
 
     // 注册结构体声明到全局作用域
     for (i = 0; i < program->struct_count; ++i) {

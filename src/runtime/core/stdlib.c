@@ -305,6 +305,134 @@ int 读取字符(char* out_char)
     return cn_rt_read_char(out_char);
 }
 
+// =============================================================================
+// 通用输入函数实现（自动类型识别）
+// =============================================================================
+
+输入值 读取(void)
+{
+    return cn_rt_read();
+}
+
+int 是整数(const 输入值* val)
+{
+    return cn_rt_input_is_int(val);
+}
+
+int 是小数(const 输入值* val)
+{
+    return cn_rt_input_is_float(val);
+}
+
+int 是字符串(const 输入值* val)
+{
+    return cn_rt_input_is_string(val);
+}
+
+int 是数值(const 输入值* val)
+{
+    return cn_rt_input_is_number(val);
+}
+
+long long 取整数(const 输入值* val)
+{
+    return cn_rt_input_to_int(val);
+}
+
+double 取小数(const 输入值* val)
+{
+    return cn_rt_input_to_float(val);
+}
+
+const char* 取文本(const 输入值* val)
+{
+    return cn_rt_input_to_string(val);
+}
+
+void 释放输入(输入值* val)
+{
+    cn_rt_input_free(val);
+}
+
+// =============================================================================
+// 简化版字符串转换函数实现
+// =============================================================================
+
+long long 转整数(const char* str)
+{
+    if (str == NULL) return 0;
+    return strtoll(str, NULL, 10);
+}
+
+double 转小数(const char* str)
+{
+    if (str == NULL) return 0.0;
+    return strtod(str, NULL);
+}
+
+int 是数字文本(const char* str)
+{
+    if (str == NULL || *str == '\0') return 0;
+    
+    // 跳过前导空白
+    while (*str && isspace((unsigned char)*str)) str++;
+    if (*str == '\0') return 0;
+    
+    // 检查可选的负号
+    if (*str == '-' || *str == '+') str++;
+    if (*str == '\0') return 0;
+    
+    int has_digit = 0;
+    int has_dot = 0;
+    
+    while (*str) {
+        if (isdigit((unsigned char)*str)) {
+            has_digit = 1;
+        } else if (*str == '.' && !has_dot) {
+            has_dot = 1;
+        } else if (isspace((unsigned char)*str)) {
+            // 跳过尾部空白
+            while (*str && isspace((unsigned char)*str)) str++;
+            return *str == '\0' && has_digit;
+        } else {
+            return 0;
+        }
+        str++;
+    }
+    
+    return has_digit;
+}
+
+int 是整数文本(const char* str)
+{
+    if (str == NULL || *str == '\0') return 0;
+    
+    // 跳过前导空白
+    while (*str && isspace((unsigned char)*str)) str++;
+    if (*str == '\0') return 0;
+    
+    // 检查可选的负号
+    if (*str == '-' || *str == '+') str++;
+    if (*str == '\0') return 0;
+    
+    int has_digit = 0;
+    
+    while (*str) {
+        if (isdigit((unsigned char)*str)) {
+            has_digit = 1;
+        } else if (isspace((unsigned char)*str)) {
+            // 跳过尾部空白
+            while (*str && isspace((unsigned char)*str)) str++;
+            return *str == '\0' && has_digit;
+        } else {
+            return 0;  // 包含非数字字符（包括小数点）
+        }
+        str++;
+    }
+    
+    return has_digit;
+}
+
 int 刷新输出(void)
 {
     return fflush(stdout);
