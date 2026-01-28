@@ -669,7 +669,29 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         if (parser->current.kind == CN_TOKEN_KEYWORD_ELSE) {
             parser_advance(parser);
-            else_block = parse_block(parser);
+            
+            // 支持 "否则 如果" (else if) 语法
+            if (parser->current.kind == CN_TOKEN_KEYWORD_IF) {
+                // 将 "否则 如果" 处理为 else { if ... }
+                // 递归解析 if 语句
+                CnAstStmt *nested_if = parse_statement(parser);
+                if (nested_if && nested_if->kind == CN_AST_STMT_IF) {
+                    // 创建一个只包含 if 语句的 else 块
+                    else_block = make_block();
+                    block_add_stmt(else_block, nested_if);
+                } else {
+                    // 解析失败，返回 NULL
+                    if (nested_if) {
+                        cn_frontend_ast_stmt_free(nested_if);
+                    }
+                    cn_frontend_ast_expr_free(condition);
+                    cn_frontend_ast_block_free(then_block);
+                    return NULL;
+                }
+            } else {
+                // 普通的 else 块
+                else_block = parse_block(parser);
+            }
         }
 
         return make_if_stmt(condition, then_block, else_block);

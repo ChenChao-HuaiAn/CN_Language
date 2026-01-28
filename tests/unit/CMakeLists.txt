@@ -210,6 +210,18 @@ target_include_directories(parser_break_test PRIVATE
 add_test(NAME parser_break_test
          COMMAND parser_break_test)
 
+add_executable(else_if_test
+    else_if_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+
+target_include_directories(else_if_test PRIVATE
+    ../../include
+)
+
+add_test(NAME else_if_test
+         COMMAND else_if_test)
+
 add_executable(parser_var_test
     parser_var_test.c
     ${PARSER_TEST_DEPENDENCIES}
