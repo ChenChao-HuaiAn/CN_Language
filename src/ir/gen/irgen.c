@@ -329,20 +329,31 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             CnIrOperand result = cn_ir_op_reg(result_reg, cn_type_new_primitive(CN_TYPE_BOOL));
             CnIrOperand left = cn_ir_gen_expr(ctx, expr->as.logical.left);
 
+            // 保存当前块，用于后续设置控制流连接
+            CnIrBasicBlock *cond_block = ctx->current_block;
+
             if (expr->as.logical.op == CN_AST_LOGICAL_OP_AND) {
                 // AND: 左为假则短路
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_BRANCH, cn_ir_op_label(rhs_block),
                                          left, cn_ir_op_label(merge_block)));
+                // 设置控制流连接：条件块 -> rhs_block 和 merge_block
+                cn_ir_basic_block_connect(cond_block, rhs_block);
+                cn_ir_basic_block_connect(cond_block, merge_block);
             } else {
                 // OR: 左为真则短路
                 emit(ctx, cn_ir_inst_new(CN_IR_INST_BRANCH, cn_ir_op_label(merge_block),
                                          left, cn_ir_op_label(rhs_block)));
+                // 设置控制流连接：条件块 -> merge_block 和 rhs_block
+                cn_ir_basic_block_connect(cond_block, merge_block);
+                cn_ir_basic_block_connect(cond_block, rhs_block);
             }
 
             switch_to_block(ctx, rhs_block);
             CnIrOperand right = cn_ir_gen_expr(ctx, expr->as.logical.right);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_JUMP, cn_ir_op_label(merge_block),
                                      cn_ir_op_none(), cn_ir_op_none()));
+            // 设置控制流连接：rhs_block -> merge_block
+            cn_ir_basic_block_connect(rhs_block, merge_block);
 
             switch_to_block(ctx, merge_block);
             // 简化处理：PHI 指令预留，此处返回右操作数

@@ -935,3 +935,20 @@ add_test(NAME parser_array_param_test COMMAND parser_array_param_test)
 set_tests_properties(parser_array_param_test PROPERTIES 
     LABELS "stage9;parser;array;param;unit"
 )
+
+# 阶段9：逻辑操作符测试（&& 和 ||）
+add_executable(logical_operators_test
+    logical_operators_test.c
+    ${SEMANTIC_TEST_DEPENDENCIES}
+    ../../src/ir/core/ir.c
+    ../../src/ir/gen/irgen.c
+    ../../src/ir/passes/constant_folding.c
+    ../../src/ir/passes/dead_code_elimination.c
+    ../../src/backend/cgen/cgen.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(logical_operators_test PRIVATE ../../include)
+add_test(NAME logical_operators_test COMMAND logical_operators_test)
+set_tests_properties(logical_operators_test PROPERTIES 
+    LABELS "stage9;ir;cgen;logical;unit"
+)
