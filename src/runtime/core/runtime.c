@@ -66,6 +66,7 @@ void cn_rt_print_int(long long val) {
         cn_rt_kernel_io_print_int(val);
     } else {
         printf("%lld", val);
+        fflush(stdout);  // 立即刷新输出缓冲区
     }
 #endif
 }
@@ -82,6 +83,7 @@ void cn_rt_print_float(double val) {
         cn_rt_kernel_io_print_int((long long)val);
     } else {
         printf("%f", val);
+        fflush(stdout);  // 立即刷新输出缓冲区
     }
 #endif
 }
@@ -113,6 +115,7 @@ void cn_rt_print_string(const char *str) {
         cn_rt_kernel_io_puts(str);
     } else {
         printf("%s", str);
+        fflush(stdout);  // 立即刷新输出缓冲区
     }
 #endif
 }
@@ -127,6 +130,7 @@ void cn_rt_print_newline() {
         cn_rt_kernel_io_putchar('\n');
     } else {
         printf("\n");
+        fflush(stdout);  // 立即刷新输出缓冲区
     }
 #endif
 }
