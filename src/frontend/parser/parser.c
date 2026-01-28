@@ -45,6 +45,7 @@ static CnAstExpr *parse_term(CnParser *parser);
 static CnAstExpr *parse_unary(CnParser *parser);
 static CnAstExpr *parse_postfix(CnParser *parser);
 static CnAstExpr *parse_factor(CnParser *parser);
+static CnAstExpr *parse_struct_literal_with_name(CnParser *parser, const char *struct_name, size_t struct_name_length);
 
 static CnAstExpr *make_integer_literal(long value);
 static CnAstExpr *make_float_literal(double value);
@@ -280,12 +281,19 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
             }
             program_add_module(program, module_decl);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
-            // 解析结构体声明
-            CnAstStmt *struct_decl = parse_struct_decl(parser);
-            if (!struct_decl) {
+            // 解析结构体声明或结构体类型的全局变量声明
+            CnAstStmt *stmt = parse_struct_decl(parser);
+            if (!stmt) {
                 break;
             }
-            program_add_struct(program, struct_decl);
+            if (stmt->kind == CN_AST_STMT_STRUCT_DECL) {
+                program_add_struct(program, stmt);
+            } else if (stmt->kind == CN_AST_STMT_VAR_DECL) {
+                program_add_global_var(program, stmt);
+            } else {
+                // 其他情况视为错误，终止解析
+                break;
+            }
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_ENUM) {
             // 解析枚举声明
             CnAstStmt *enum_decl = parse_enum_decl(parser);
@@ -1725,6 +1733,101 @@ static CnType *parse_type(CnParser *parser)
     return type;
 }
 
+static CnAstExpr *parse_struct_literal_with_name(CnParser *parser, const char *struct_name, size_t struct_name_length)
+{
+    // 当前 token 应该是 '{'
+    if (parser->current.kind != CN_TOKEN_LBRACE) {
+        return NULL;
+    }
+
+    parser_advance(parser);  // 跳过 '{'
+
+    size_t field_capacity = 4;
+    size_t field_count = 0;
+    CnAstStructFieldInit *fields = (CnAstStructFieldInit *)malloc(
+        sizeof(CnAstStructFieldInit) * field_capacity);
+    if (!fields) {
+        return NULL;
+    }
+
+    // 处理空结构体 {}
+    if (parser->current.kind != CN_TOKEN_RBRACE) {
+        do {
+            // 容量检查与扩容
+            if (field_count >= field_capacity) {
+                field_capacity *= 2;
+                CnAstStructFieldInit *new_fields = (CnAstStructFieldInit *)realloc(
+                    fields, sizeof(CnAstStructFieldInit) * field_capacity);
+                if (!new_fields) {
+                    free(fields);
+                    return NULL;
+                }
+                fields = new_fields;
+            }
+
+            // 初始化当前字段条目
+            fields[field_count].field_name = NULL;
+            fields[field_count].field_name_length = 0;
+            fields[field_count].value = NULL;
+
+            if (parser->current.kind == CN_TOKEN_IDENT) {
+                // 可能是“指定成员初始化”或“位置初始化的标识符”
+                const char *name = parser->current.lexeme_begin;
+                size_t name_length = parser->current.lexeme_length;
+                parser_advance(parser);
+
+                if (parser->current.kind == CN_TOKEN_COLON ||
+                    parser->current.kind == CN_TOKEN_EQUAL) {
+                    // 指定成员初始化：字段名[:|=] 值
+                    parser_advance(parser); // 跳过 ':' 或 '='
+                    CnAstExpr *value = parse_expression(parser);
+                    if (!value) {
+                        free(fields);
+                        return NULL;
+                    }
+                    fields[field_count].field_name = name;
+                    fields[field_count].field_name_length = name_length;
+                    fields[field_count].value = value;
+                } else {
+                    // 位置初始化：标识符本身作为表达式
+                    fields[field_count].value = make_identifier(name, name_length);
+                }
+            } else {
+                // 其他情况统一按“表达式”解析，作为位置初始化
+                CnAstExpr *value = parse_expression(parser);
+                if (!value) {
+                    free(fields);
+                    return NULL;
+                }
+                fields[field_count].value = value;
+            }
+
+            field_count++;
+
+            // 处理逗号分隔符
+            if (parser->current.kind == CN_TOKEN_COMMA) {
+                parser_advance(parser);
+            } else {
+                break;
+            }
+        } while (parser->current.kind != CN_TOKEN_RBRACE &&
+                 parser->current.kind != CN_TOKEN_EOF);
+    }
+
+    // 期望右花括号
+    if (!parser_expect(parser, CN_TOKEN_RBRACE)) {
+        for (size_t i = 0; i < field_count; i++) {
+            if (fields[i].value) {
+                cn_frontend_ast_expr_free(fields[i].value);
+            }
+        }
+        free(fields);
+        return NULL;
+    }
+
+    return make_struct_literal(struct_name, struct_name_length, fields, field_count);
+}
+
 static CnAstExpr *parse_factor(CnParser *parser)
 {
     CnAstExpr *expr = NULL;
@@ -1830,90 +1933,7 @@ static CnAstExpr *parse_factor(CnParser *parser)
         
         // 检查是否是结构体字面量：标识符 { ... }
         if (parser->current.kind == CN_TOKEN_LBRACE) {
-            // 解析结构体字面量：点 { x: 10, y: 20 }
-            parser_advance(parser);  // 跳过 {
-            
-            // 解析字段初始化列表
-            size_t field_capacity = 4;
-            size_t field_count = 0;
-            CnAstStructFieldInit *fields = (CnAstStructFieldInit *)malloc(
-                sizeof(CnAstStructFieldInit) * field_capacity);
-            if (!fields) {
-                return NULL;
-            }
-            
-            // 处理空结构体 {}
-            if (parser->current.kind != CN_TOKEN_RBRACE) {
-                do {
-                    // 容量检查与扩容
-                    if (field_count >= field_capacity) {
-                        field_capacity *= 2;
-                        CnAstStructFieldInit *new_fields = (CnAstStructFieldInit *)realloc(
-                            fields, sizeof(CnAstStructFieldInit) * field_capacity);
-                        if (!new_fields) {
-                            free(fields);
-                            return NULL;
-                        }
-                        fields = new_fields;
-                    }
-                    
-                    // 解析字段名
-                    if (parser->current.kind != CN_TOKEN_IDENT) {
-                        parser->error_count++;
-                        if (parser->diagnostics) {
-                            cn_support_diagnostics_report(parser->diagnostics,
-                                                          CN_DIAG_SEVERITY_ERROR,
-                                                          CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
-                                                          parser->lexer ? parser->lexer->filename : NULL,
-                                                          parser->current.line,
-                                                          parser->current.column,
-                                                          "语法错误：结构体字面量中缺少字段名");
-                        }
-                        free(fields);
-                        return NULL;
-                    }
-                    
-                    fields[field_count].field_name = parser->current.lexeme_begin;
-                    fields[field_count].field_name_length = parser->current.lexeme_length;
-                    parser_advance(parser);
-                    
-                    // 期望冒号
-                    if (!parser_expect(parser, CN_TOKEN_COLON)) {
-                        free(fields);
-                        return NULL;
-                    }
-                    
-                    // 解析字段值表达式
-                    fields[field_count].value = parse_expression(parser);
-                    if (!fields[field_count].value) {
-                        free(fields);
-                        return NULL;
-                    }
-                    field_count++;
-                    
-                    // 处理逗号分隔符
-                    if (parser->current.kind == CN_TOKEN_COMMA) {
-                        parser_advance(parser);
-                    } else {
-                        break;
-                    }
-                } while (parser->current.kind != CN_TOKEN_RBRACE &&
-                         parser->current.kind != CN_TOKEN_EOF);
-            }
-            
-            // 期望右花括号
-            if (!parser_expect(parser, CN_TOKEN_RBRACE)) {
-                // 清理已分配的资源
-                for (size_t i = 0; i < field_count; i++) {
-                    if (fields[i].value) {
-                        cn_frontend_ast_expr_free(fields[i].value);
-                    }
-                }
-                free(fields);
-                return NULL;
-            }
-            
-            expr = make_struct_literal(ident_name, ident_name_length, fields, field_count);
+            expr = parse_struct_literal_with_name(parser, ident_name, ident_name_length);
         } else {
             // 普通标识符
             expr = make_identifier(ident_name, ident_name_length);
@@ -2887,7 +2907,7 @@ static void program_add_global_var(CnAstProgram *program, CnAstStmt *var_decl)
     program->global_var_count = new_count;
 }
 
-// 解析结构体声明
+// 解析结构体声明或“结构体 类型 变量”声明
 static CnAstStmt *parse_struct_decl(CnParser *parser)
 {
     if (!parser_expect(parser, CN_TOKEN_KEYWORD_STRUCT)) {
@@ -2913,89 +2933,200 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
     size_t struct_name_length = parser->current.lexeme_length;
     parser_advance(parser);
 
-    // 期望 { 开始结构体定义
-    if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
-        return NULL;
-    }
+    // 分支1：结构体类型后直接跟 '{' -> 结构体定义
+    if (parser->current.kind == CN_TOKEN_LBRACE) {
+        // 期望 { 开始结构体定义
+        parser_advance(parser);
 
-    // 解析字段列表
-    size_t field_capacity = 4;
-    size_t field_count = 0;
-    CnAstStructField *fields = (CnAstStructField *)malloc(sizeof(CnAstStructField) * field_capacity);
-    if (!fields) {
-        return NULL;
-    }
-
-    while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
-        int field_is_const = 0;
-        
-        // 处理 '常量' 关键字：常量字段声明
-        if (parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
-            field_is_const = 1;
-            parser_advance(parser);
-        }
-        
-        // 使用统一的 parse_type 解析字段类型
-        CnType *field_type = parse_type(parser);
-        if (!field_type) {
-            parser->error_count++;
-            if (parser->diagnostics) {
-                cn_support_diagnostics_report(parser->diagnostics,
-                                              CN_DIAG_SEVERITY_ERROR,
-                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
-                                              parser->lexer ? parser->lexer->filename : NULL,
-                                              parser->current.line,
-                                              parser->current.column,
-                                              "语法错误：缺少字段类型");
-            }
-            free(fields);
+        // 解析字段列表
+        size_t field_capacity = 4;
+        size_t field_count = 0;
+        CnAstStructField *fields = (CnAstStructField *)malloc(sizeof(CnAstStructField) * field_capacity);
+        if (!fields) {
             return NULL;
         }
 
-        // 解析字段名称
-        if (parser->current.kind != CN_TOKEN_IDENT) {
-            parser->error_count++;
-            if (parser->diagnostics) {
-                cn_support_diagnostics_report(parser->diagnostics,
-                                              CN_DIAG_SEVERITY_ERROR,
-                                              CN_DIAG_CODE_PARSE_INVALID_PARAM,
-                                              parser->lexer ? parser->lexer->filename : NULL,
-                                              parser->current.line,
-                                              parser->current.column,
-                                              "语法错误：缺少字段名称");
+        while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+            int field_is_const = 0;
+            
+            // 处理 '常量' 关键字：常量字段声明
+            if (parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
+                field_is_const = 1;
+                parser_advance(parser);
             }
-            free(fields);
-            return NULL;
-        }
-
-        // 扩容字段数组
-        if (field_count >= field_capacity) {
-            field_capacity *= 2;
-            CnAstStructField *new_fields = (CnAstStructField *)realloc(
-                fields, sizeof(CnAstStructField) * field_capacity);
-            if (!new_fields) {
+            
+            // 使用统一的 parse_type 解析字段类型
+            CnType *field_type = parse_type(parser);
+            if (!field_type) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少字段类型");
+                }
                 free(fields);
                 return NULL;
             }
-            fields = new_fields;
+
+            // 解析字段名称
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少字段名称");
+                }
+                free(fields);
+                return NULL;
+            }
+
+            // 扩容字段数组
+            if (field_count >= field_capacity) {
+                field_capacity *= 2;
+                CnAstStructField *new_fields = (CnAstStructField *)realloc(
+                    fields, sizeof(CnAstStructField) * field_capacity);
+                if (!new_fields) {
+                    free(fields);
+                    return NULL;
+                }
+                fields = new_fields;
+            }
+
+            fields[field_count].name = parser->current.lexeme_begin;
+            fields[field_count].name_length = parser->current.lexeme_length;
+            fields[field_count].field_type = field_type;
+            fields[field_count].is_const = field_is_const;  // 设置常量字段标记
+            field_count++;
+
+            parser_advance(parser);
+
+            // 期望分号
+            parser_expect(parser, CN_TOKEN_SEMICOLON);
         }
 
-        fields[field_count].name = parser->current.lexeme_begin;
-        fields[field_count].name_length = parser->current.lexeme_length;
-        fields[field_count].field_type = field_type;
-        fields[field_count].is_const = field_is_const;  // 设置常量字段标记
-        field_count++;
+        // 期望 } 结束结构体定义
+        parser_expect(parser, CN_TOKEN_RBRACE);
 
-        parser_advance(parser);
-
-        // 期望分号
-        parser_expect(parser, CN_TOKEN_SEMICOLON);
+        return make_struct_decl_stmt(struct_name, struct_name_length, fields, field_count);
     }
 
-    // 期望 } 结束结构体定义
-    parser_expect(parser, CN_TOKEN_RBRACE);
+    // 分支2：结构体声明 + 变量：结构体 Point p = { ... };
+    // 构造结构体类型（与 parse_type 中 IDENT 分支保持一致）
+    CnType *declared_type = cn_type_new_struct(struct_name,
+                                               struct_name_length,
+                                               NULL,
+                                               0,
+                                               NULL,
+                                               NULL,
+                                               0);
 
-    return make_struct_decl_stmt(struct_name, struct_name_length, fields, field_count);
+    // 解析变量名
+    if (parser->current.kind != CN_TOKEN_IDENT) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：结构体变量名称无效");
+        }
+        return NULL;
+    }
+
+    const char *var_name = parser->current.lexeme_begin;
+    size_t var_name_length = parser->current.lexeme_length;
+    parser_advance(parser);
+
+    // 支持 C 风格数组声明：结构体 Point p[10];
+    size_t dimension_capacity = 4;
+    size_t dimension_count = 0;
+    size_t *dimensions = NULL;
+
+    if (parser->current.kind == CN_TOKEN_LBRACKET) {
+        dimensions = (size_t *)malloc(sizeof(size_t) * dimension_capacity);
+        if (!dimensions) {
+            return NULL;
+        }
+
+        while (parser->current.kind == CN_TOKEN_LBRACKET) {
+            parser_advance(parser);  // 跳过 '['
+
+            size_t array_size = 0;
+
+            // 检查是否指定了数组大小
+            if (parser->current.kind != CN_TOKEN_RBRACKET) {
+                if (parser->current.kind == CN_TOKEN_INTEGER) {
+                    array_size = (size_t)strtol(parser->current.lexeme_begin, NULL, 10);
+                    parser_advance(parser);
+                } else {
+                    parser->error_count++;
+                    if (parser->diagnostics) {
+                        cn_support_diagnostics_report(parser->diagnostics,
+                                                      CN_DIAG_SEVERITY_ERROR,
+                                                      CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                                      parser->lexer ? parser->lexer->filename : NULL,
+                                                      parser->current.line,
+                                                      parser->current.column,
+                                                      "语法错误：数组大小必须是整数字面量");
+                    }
+                    free(dimensions);
+                    return NULL;
+                }
+            }
+
+            if (!parser_expect(parser, CN_TOKEN_RBRACKET)) {
+                free(dimensions);
+                return NULL;
+            }
+
+            if (dimension_count >= dimension_capacity) {
+                dimension_capacity *= 2;
+                size_t *new_dimensions = (size_t *)realloc(dimensions, sizeof(size_t) * dimension_capacity);
+                if (!new_dimensions) {
+                    free(dimensions);
+                    return NULL;
+                }
+                dimensions = new_dimensions;
+            }
+
+            dimensions[dimension_count++] = array_size;
+        }
+
+        // 从右向左构建数组类型
+        if (!declared_type) {
+            declared_type = cn_type_new_primitive(CN_TYPE_INT);
+        }
+        for (int i = (int)dimension_count - 1; i >= 0; i--) {
+            declared_type = cn_type_new_array(declared_type, dimensions[i]);
+        }
+        free(dimensions);
+    }
+
+    // 可选初始化：= {...} 或一般表达式
+    CnAstExpr *initializer = NULL;
+    if (parser->current.kind == CN_TOKEN_EQUAL) {
+        parser_advance(parser);
+        if (parser->current.kind == CN_TOKEN_LBRACE) {
+            // 使用已知结构体类型名解析初始化列表
+            initializer = parse_struct_literal_with_name(parser, struct_name, struct_name_length);
+        } else {
+            initializer = parse_expression(parser);
+        }
+    }
+
+    parser_expect(parser, CN_TOKEN_SEMICOLON);
+
+    return make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
 }
 
 // 创建结构体声明语句

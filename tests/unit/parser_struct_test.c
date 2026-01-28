@@ -56,7 +56,6 @@ static void test_struct_declaration(void) {
     printf("  ✓ 结构体声明解析测试通过\n");
 }
 
-// 测试结构体成员访问解析
 static void test_struct_member_access(void) {
     const char *source = 
         "函数 测试() {\n"
@@ -103,10 +102,64 @@ static void test_struct_member_access(void) {
     cn_support_diagnostics_free(&diagnostics);
 }
 
+static void test_struct_declaration_with_init(void) {
+    const char *source =
+        "结构体 点 {\n"
+        "    整数 x;\n"
+        "    整数 y;\n"
+        "}\n"
+        "结构体 点 p = {10, 20};\n"
+        "函数 主程序() { 返回 0; }\n";
+
+    printf("测试: 结构体声明并初始化解析\n");
+
+    CnDiagnostics diagnostics;
+    cn_support_diagnostics_init(&diagnostics);
+
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, source, strlen(source), "test_struct_init.cn");
+    cn_frontend_lexer_set_diagnostics(&lexer, &diagnostics);
+
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    cn_frontend_parser_set_diagnostics(parser, &diagnostics);
+
+    CnAstProgram *program = NULL;
+    bool success = cn_frontend_parse_program(parser, &program);
+
+    assert(success);
+    assert(program != NULL);
+    assert(cn_support_diagnostics_error_count(&diagnostics) == 0);
+
+    printf("调试: struct_count=%zu, global_var_count=%zu\n", program->struct_count, program->global_var_count);
+    fflush(stdout);
+    assert(program->struct_count == 1);
+    assert(program->global_var_count == 1);
+
+    CnAstStmt *var_stmt = program->global_vars[0];
+    assert(var_stmt->kind == CN_AST_STMT_VAR_DECL);
+
+    CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
+    assert(var_decl->declared_type != NULL);
+    assert(var_decl->declared_type->kind == CN_TYPE_STRUCT);
+    assert(var_decl->initializer != NULL);
+    assert(var_decl->initializer->kind == CN_AST_EXPR_STRUCT_LITERAL);
+
+    CnAstStructLiteralExpr *lit = &var_decl->initializer->as.struct_lit;
+    assert(lit->field_count == 2);
+    // 位置初始化：在解析阶段字段名可以为空，由语义阶段按顺序绑定
+    assert(lit->fields[0].value != NULL);
+    assert(lit->fields[0].value->kind == CN_AST_EXPR_INTEGER_LITERAL);
+
+    cn_frontend_ast_program_free(program);
+    cn_frontend_parser_free(parser);
+    cn_support_diagnostics_free(&diagnostics);
+}
+
 int main(void) {
     printf("=== 结构体Parser单元测试 ===\n");
     test_struct_declaration();
     test_struct_member_access();
+    test_struct_declaration_with_init();
     printf("parser_struct_test: 测试完成\n");
     return 0;
 }

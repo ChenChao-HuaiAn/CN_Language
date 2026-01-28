@@ -98,6 +98,15 @@ add_test(NAME integration_compile_full_test
          COMMAND integration_compile_full_test $<TARGET_FILE:cnc>
          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+# 结构体声明初始化端到端编译运行集成测试
+add_executable(integration_struct_init_compile_test
+    compiler/struct_init_compile_test.c
+)
+add_test(NAME integration_struct_init_compile_test
+         COMMAND integration_struct_init_compile_test $<TARGET_FILE:cnc>
+         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+set_tests_properties(integration_struct_init_compile_test PROPERTIES LABELS "stage9;struct;integration")
+
 # 函数指针集成编译测试
 add_executable(integration_function_pointer_compile_test
     compiler/function_pointer_compile_test.c

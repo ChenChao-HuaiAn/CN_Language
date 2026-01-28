@@ -1287,11 +1287,44 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             }
             
             // 检查字段初始化的类型
+            size_t positional_index = 0;
+            int saw_named = 0;
+            CnType *struct_type = struct_sym->type;
             for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
-                CnStructField *field = cn_type_struct_find_field(
-                    struct_sym->type,
-                    expr->as.struct_lit.fields[i].field_name,
-                    expr->as.struct_lit.fields[i].field_name_length);
+                CnAstStructFieldInit *init = &expr->as.struct_lit.fields[i];
+                CnStructField *field = NULL;
+
+                if (init->field_name && init->field_name_length > 0) {
+                    // 指定成员初始化：按名称查找字段
+                    saw_named = 1;
+                    field = cn_type_struct_find_field(
+                        struct_type,
+                        init->field_name,
+                        init->field_name_length);
+                } else {
+                    // 位置初始化：按结构体定义顺序匹配字段
+                    if (saw_named) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                            NULL, 0, 0,
+                            "语义错误：不能在指定成员初始化之后使用位置初始化");
+                    }
+
+                    if (!struct_type || struct_type->kind != CN_TYPE_STRUCT ||
+                        positional_index >= struct_type->as.struct_type.field_count) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
+                            NULL, 0, 0,
+                            "语义错误：结构体位置初始化的字段数量超出定义");
+                    } else {
+                        field = &struct_type->as.struct_type.fields[positional_index++];
+                        // 将位置初始化回写成具名初始化，方便后续 C 代码生成
+                        init->field_name = field->name;
+                        init->field_name_length = field->name_length;
+                    }
+                }
                 
                 if (!field) {
                     cn_support_diag_semantic_error_generic(
@@ -1302,7 +1335,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 } else {
                     CnType *init_type = infer_expr_type(
                         scope,
-                        expr->as.struct_lit.fields[i].value,
+                        init->value,
                         diagnostics);
                     
                     if (init_type && !cn_type_compatible(init_type, field->field_type)) {
