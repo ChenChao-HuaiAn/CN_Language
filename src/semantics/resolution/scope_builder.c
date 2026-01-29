@@ -14,6 +14,54 @@
 #define snprintf _snprintf
 #endif
 
+// 辅助函数：检查两个符号是否是同一个符号（同一个作用域、同一个类型、同一个名字）
+static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym2) {
+    if (!sym1 || !sym2) {
+        return 0;
+    }
+    
+    // 检查符号种类是否相同
+    if (sym1->kind != sym2->kind) {
+        return 0;
+    }
+    
+    // 检查名字是否相同
+    if (sym1->name_length != sym2->name_length) {
+        return 0;
+    }
+    if (memcmp(sym1->name, sym2->name, sym1->name_length) != 0) {
+        return 0;
+    }
+    
+    // 检查是否来自同一个声明作用域（最关键的判断）
+    if (sym1->decl_scope && sym2->decl_scope) {
+        // 两个符号都有声明作用域，比较作用域指针
+        return (sym1->decl_scope == sym2->decl_scope) ? 1 : 0;
+    }
+    
+    // 如果至少有一个符号没有 decl_scope，回退到比较类型指针
+    // 同一个模块的同一个函数应该共享同一个类型对象
+    if (sym1->type && sym2->type) {
+        if (sym1->type == sym2->type) {
+            return 1;  // 类型指针相同，认为是同一个符号
+        }
+        // 对于函数类型，延迟到类型结构比较
+        if (sym1->type->kind == CN_TYPE_FUNCTION && sym2->type->kind == CN_TYPE_FUNCTION) {
+            // 比较函数类型的结构：参数数量
+            if (sym1->type->as.function.param_count != sym2->type->as.function.param_count) {
+                return 0;
+            }
+            // 参数类型和返回类型在这里不进一步比较，
+            // 因为同名同种类的符号且参数数量相同，极有可能是同一函数
+            return 1;
+        }
+    }
+    
+    // 默认情况：同名同种类的符号认为是同一个符号
+    // 这种情况主要适用于从不同路径导入同一个模块的符号
+    return 1;
+}
+
 // 符号链表节点，用于在作用域中维护符号列表
 // （与 symbol_table.c 中的定义保持一致）
 typedef struct CnSemSymbolNode {
@@ -529,6 +577,12 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             continue;  // 使用别名时不进行成员导入
         }
         
+        // 如果不是「从 ... 导入」语法，则不进行成员导入
+        // 「导入 xxx;」 语法只注册模块符号，不导入其成员
+        if (!import->use_from_syntax) {
+            continue;
+        }
+        
         // 判断是全量导入还是选择性导入
         if (import->member_count == 0) {
             // 全量导入：遍历模块作用域中的所有符号，添加到全局作用域
@@ -540,12 +594,23 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                 CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
                                                                         sym->name,
                                                                         sym->name_length);
-                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                    // 名称冲突，报错
-                    cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, sym->name);
-                } else if (!existing_sym) {
-                    // 没有冲突，添加符号
+                if (existing_sym) {
+                    // 检查是否是同一个符号（同一模块的同一成员）
+                    if (cn_sem_is_same_symbol(existing_sym, sym)) {
+                        // 同一符号，静默忽略，不报错也不重复添加
+                        node = node->next;
+                        continue;
+                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 不同符号但名字冲突，报错
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, sym->name);
+                        node = node->next;
+                        continue;
+                    }
+                }
+                
+                // 没有冲突，添加符号
+                if (!existing_sym) {
                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
                                                                       sym->name,
                                                                       sym->name_length,
@@ -601,12 +666,21 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                 CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
                                                                         member_name,
                                                                         member_name_length);
-                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                    // 名称冲突，报错
-                    cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, member_name);
-                } else if (!existing_sym) {
-                    // 没有冲突，添加符号
+                if (existing_sym) {
+                    // 检查是否是同一个符号（同一模块的同一成员）
+                    if (cn_sem_is_same_symbol(existing_sym, member_sym)) {
+                        // 同一符号，静默忽略，不报错也不重复添加
+                        continue;
+                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 不同符号但名字冲突，报错
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, member_name);
+                        continue;
+                    }
+                }
+                
+                // 没有冲突，添加符号
+                if (!existing_sym) {
                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
                                                                       member_name,
                                                                       member_name_length,
@@ -2023,6 +2097,12 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             continue;  // 使用别名时不进行成员导入
         }
         
+        // 如果不是「从 ... 导入」语法，则不进行成员导入
+        // 「导入 xxx;」 语法只注册模块符号，不导入其成员
+        if (!import->use_from_syntax) {
+            continue;
+        }
+        
         // 判断是全量导入还是选择性导入
         if (import->member_count == 0) {
             // 全量导入：遍历模块作用域中的所有符号，添加到全局作用域
@@ -2034,12 +2114,23 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
                                                                         sym->name,
                                                                         sym->name_length);
-                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                    // 名称冲突，报错
-                    cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, sym->name);
-                } else if (!existing_sym) {
-                    // 没有冲突，添加符号
+                if (existing_sym) {
+                    // 检查是否是同一个符号（同一模块的同一成员）
+                    if (cn_sem_is_same_symbol(existing_sym, sym)) {
+                        // 同一符号，静默忽略，不报错也不重复添加
+                        node = node->next;
+                        continue;
+                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 不同符号但名字冲突，报错
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, sym->name);
+                        node = node->next;
+                        continue;
+                    }
+                }
+                
+                // 没有冲突，添加符号
+                if (!existing_sym) {
                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
                                                                       sym->name,
                                                                       sym->name_length,
@@ -2095,12 +2186,21 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
                                                                         member_name,
                                                                         member_name_length);
-                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                    // 名称冲突，报错
-                    cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, member_name);
-                } else if (!existing_sym) {
-                    // 没有冲突，添加符号
+                if (existing_sym) {
+                    // 检查是否是同一个符号（同一模块的同一成员）
+                    if (cn_sem_is_same_symbol(existing_sym, member_sym)) {
+                        // 同一符号，静默忽略，不报错也不重复添加
+                        continue;
+                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 不同符号但名字冲突，报错
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, member_name);
+                        continue;
+                    }
+                }
+                
+                // 没有冲突，添加符号
+                if (!existing_sym) {
                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
                                                                       member_name,
                                                                       member_name_length,
