@@ -226,6 +226,12 @@ typedef enum CnAstImportKind {
     CN_IMPORT_FROM_MODULE         // 从包导入模块：从 包 导入 模块;
 } CnAstImportKind;
 
+// 导入目标类型枚举（区分包导入和模块导入）
+typedef enum CnAstImportTargetType {
+    CN_IMPORT_TARGET_MODULE,      // 模块导入：导入 模块名; （查找 .cn 文件）
+    CN_IMPORT_TARGET_PACKAGE      // 包导入：导入 ./包名; （查找目录中的 __包__.cn）
+} CnAstImportTargetType;
+
 // 模块路径段（用于点分模块路径，如「工具.数学.高级」）
 typedef struct CnAstModulePathSegment {
     const char *name;             // 路径段名称
@@ -264,6 +270,7 @@ typedef struct CnAstImportStmt {
     CnAstModulePath *module_path; // 模块路径（点分路径，如 工具.数学）
     int is_wildcard;              // 是否为通配符导入（*）
     int use_from_syntax;          // 是否使用「从...导入」语法
+    CnAstImportTargetType target_type; // 导入目标类型：包或模块
 } CnAstImportStmt;
 
 // 文件模块声明（一个 .cn 文件即一个模块）

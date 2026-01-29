@@ -1276,6 +1276,43 @@ int cn_module_loader_resolve_path(CnModuleLoader *loader,
 }
 
 /**
+ * @brief 解析模块路径为文件路径（带目标类型）
+ * @param target_type 0 = 模块（.cn文件），1 = 包（目录中的__包__.cn）
+ */
+int cn_module_loader_resolve_path_typed(CnModuleLoader *loader, 
+                                         const CnModuleId *module_id,
+                                         char **out_path,
+                                         int target_type)
+{
+    if (!loader || !module_id || !out_path) {
+        return 0;
+    }
+    
+    if (target_type == 0) {
+        // 模块导入：只查找 .cn 文件
+        char *file_path = find_module_file(loader->search_config, module_id);
+        if (file_path) {
+            *out_path = file_path;
+            return 1;
+        }
+        return 0;
+    } else {
+        // 包导入：只查找目录中的 __包__.cn
+        char *pkg_dir = find_package_dir(loader->search_config, module_id);
+        if (pkg_dir) {
+            char *init_path = path_join(pkg_dir, CN_PACKAGE_INIT_FILENAME);
+            free(pkg_dir);
+            if (init_path && file_exists(init_path)) {
+                *out_path = init_path;
+                return 1;
+            }
+            free(init_path);
+        }
+        return 0;
+    }
+}
+
+/**
  * @brief 加载模块
  */
 CnModuleMetadata *cn_module_loader_load(CnModuleLoader *loader, const CnModuleId *module_id)
@@ -1503,35 +1540,39 @@ CnModuleMetadata *cn_module_loader_load_relative(CnModuleLoader *loader,
         module_path = new_path;
     }
     
-    // 添加 .cn 后缀
-    size_t path_len = strlen(module_path);
-    char *file_path = (char *)malloc(path_len + 4);  // .cn + null
-    if (!file_path) {
-        free(module_path);
-        return NULL;
-    }
-    sprintf(file_path, "%s.cn", module_path);
-    
-    // 检查文件是否存在,如果不存在则尝试查找包初始化文件
-    if (!file_exists(file_path)) {
-        // 尝试查找 module_path/__包__.cn
-        free(file_path);
-        char *package_init_path = path_join(module_path, "__包__.cn");
-        free(module_path);
-        
-        if (!package_init_path) {
-            return NULL;
-        }
-        
-        if (!file_exists(package_init_path)) {
-            free(package_init_path);
-            return NULL;
-        }
-        
+    // 基于 module_path 识别包或模块
+    CnModuleType module_type = CN_MODULE_TYPE_FILE;
+    char *file_path = NULL;
+
+    // 1. 优先尝试包初始化文件: module_path/__包__.cn
+    char *package_init_path = path_join(module_path, CN_PACKAGE_INIT_FILENAME);
+    if (package_init_path && file_exists(package_init_path)) {
         file_path = package_init_path;
+        module_type = CN_MODULE_TYPE_PACKAGE;
     } else {
-        free(module_path);
+        if (package_init_path) {
+            free(package_init_path);
+        }
+
+        // 2. 再尝试模块文件: module_path.cn
+        size_t path_len = strlen(module_path);
+        file_path = (char *)malloc(path_len + 4);  // .cn + null
+        if (!file_path) {
+            free(module_path);
+            return NULL;
+        }
+        sprintf(file_path, "%s.cn", module_path);
+
+        if (!file_exists(file_path)) {
+            free(file_path);
+            free(module_path);
+            return NULL;
+        }
+
+        module_type = CN_MODULE_TYPE_FILE;
     }
+
+    free(module_path);
     
     // 从文件路径创建模块 ID
     // 使用最后一段作为模块名
@@ -1577,13 +1618,156 @@ CnModuleMetadata *cn_module_loader_load_relative(CnModuleLoader *loader,
         metadata->file_path_length = strlen(file_path);
         metadata->file_mtime = get_file_mtime(file_path);
         metadata->state = CN_MODULE_STATE_LOADING;
-        metadata->type = CN_MODULE_TYPE_FILE;
+        metadata->type = module_type;
         
         // 添加到缓存
         cn_module_cache_put(loader->cache, metadata);
         
         // TODO: 实际解析文件内容
         
+        metadata->state = CN_MODULE_STATE_LOADED;
+        return metadata;
+    }
+    
+    free(file_path);
+    return NULL;
+}
+
+/**
+ * @brief 加载相对模块（带目标类型）
+ * @param target_type 0 = 模块（.cn文件），1 = 包（目录中的__包__.cn）
+ */
+CnModuleMetadata *cn_module_loader_load_relative_typed(CnModuleLoader *loader, 
+                                                        const char *base_path,
+                                                        const struct CnAstModulePath *relative_path,
+                                                        int target_type)
+{
+    if (!loader || !base_path || !relative_path) {
+        return NULL;
+    }
+    
+    // 获取基准文件所在目录
+    char *base_dir = get_directory_from_path(base_path);
+    if (!base_dir) {
+        return NULL;
+    }
+    
+    // 解析相对目录
+    char *target_dir = base_dir;
+    if (relative_path->is_relative && relative_path->relative_level > 0) {
+        target_dir = resolve_relative_dir(base_dir, relative_path->relative_level);
+        free(base_dir);
+        if (!target_dir) {
+            return NULL;
+        }
+    }
+    
+    // 构建目标模块路径
+    char *module_path = target_dir;
+    for (size_t i = 0; i < relative_path->segment_count; i++) {
+        const char *segment = relative_path->segments[i].name;
+        size_t segment_len = relative_path->segments[i].name_length;
+        
+        char *segment_str = (char *)malloc(segment_len + 1);
+        if (!segment_str) {
+            free(module_path);
+            return NULL;
+        }
+        memcpy(segment_str, segment, segment_len);
+        segment_str[segment_len] = '\0';
+        
+        char *new_path = path_join(module_path, segment_str);
+        free(segment_str);
+        free(module_path);
+        
+        if (!new_path) {
+            return NULL;
+        }
+        module_path = new_path;
+    }
+    
+    // 根据 target_type 决定查找逻辑
+    CnModuleType module_type;
+    char *file_path = NULL;
+    
+    if (target_type == 1) {
+        // 包导入：只查找目录中的 __包__.cn
+        char *package_init_path = path_join(module_path, CN_PACKAGE_INIT_FILENAME);
+        if (package_init_path && file_exists(package_init_path)) {
+            file_path = package_init_path;
+            module_type = CN_MODULE_TYPE_PACKAGE;
+        } else {
+            if (package_init_path) {
+                free(package_init_path);
+            }
+            free(module_path);
+            return NULL;  // 包不存在
+        }
+    } else {
+        // 模块导入：只查找 .cn 文件
+        size_t path_len = strlen(module_path);
+        file_path = (char *)malloc(path_len + 4);  // .cn + null
+        if (!file_path) {
+            free(module_path);
+            return NULL;
+        }
+        sprintf(file_path, "%s.cn", module_path);
+        
+        if (!file_exists(file_path)) {
+            free(file_path);
+            free(module_path);
+            return NULL;  // 模块不存在
+        }
+        module_type = CN_MODULE_TYPE_FILE;
+    }
+    
+    free(module_path);
+    
+    // 创建模块元数据
+    if (relative_path->segment_count > 0) {
+        size_t last_idx = relative_path->segment_count - 1;
+        const char *module_name = relative_path->segments[last_idx].name;
+        size_t module_name_len = relative_path->segments[last_idx].name_length;
+        
+        char *module_name_str = (char *)malloc(module_name_len + 1);
+        if (!module_name_str) {
+            free(file_path);
+            return NULL;
+        }
+        memcpy(module_name_str, module_name, module_name_len);
+        module_name_str[module_name_len] = '\0';
+        
+        CnModuleId *module_id = cn_module_id_create(module_name_str);
+        free(module_name_str);
+        
+        if (!module_id) {
+            free(file_path);
+            return NULL;
+        }
+        
+        // 检查缓存
+        CnModuleMetadata *cached = cn_module_cache_get(loader->cache, module_id);
+        if (cached) {
+            cn_module_id_free(module_id);
+            free(file_path);
+            return cached;
+        }
+        
+        CnModuleMetadata *metadata = cn_module_metadata_create();
+        if (!metadata) {
+            cn_module_id_free(module_id);
+            free(file_path);
+            return NULL;
+        }
+        
+        metadata->id = module_id;
+        metadata->file_path = file_path;
+        metadata->file_path_length = strlen(file_path);
+        metadata->file_mtime = get_file_mtime(file_path);
+        metadata->state = CN_MODULE_STATE_LOADING;
+        metadata->type = module_type;
+        
+        cn_module_cache_put(loader->cache, metadata);
         metadata->state = CN_MODULE_STATE_LOADED;
         return metadata;
     }

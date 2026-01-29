@@ -974,3 +974,14 @@ add_test(NAME module_loader_test COMMAND module_loader_test)
 set_tests_properties(module_loader_test PROPERTIES 
     LABELS "stage11;module;loader;unit"
 )
+
+# 包导入与模块导入识别功能测试
+add_executable(package_module_import_test
+    package_module_import_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(package_module_import_test PRIVATE ../../include)
+add_test(NAME package_module_import_test COMMAND package_module_import_test)
+set_tests_properties(package_module_import_test PROPERTIES 
+    LABELS "stage11;import;package;module;unit"
+)

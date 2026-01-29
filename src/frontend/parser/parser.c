@@ -3861,6 +3861,8 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
         stmt->as.import_stmt.kind = alias ? CN_IMPORT_ALIAS : CN_IMPORT_FULL;
         stmt->as.import_stmt.is_wildcard = 0;
         stmt->as.import_stmt.use_from_syntax = 0;
+        // ./ 前缀表示包导入
+        stmt->as.import_stmt.target_type = CN_IMPORT_TARGET_PACKAGE;
         // 传统字段（兼容）
         stmt->as.import_stmt.module_name = NULL;
         stmt->as.import_stmt.module_name_length = 0;
@@ -4022,6 +4024,8 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
     stmt->as.import_stmt.module_path = NULL;
     stmt->as.import_stmt.is_wildcard = 0;
     stmt->as.import_stmt.use_from_syntax = 0;
+    // 无 ./ 前缀表示模块导入
+    stmt->as.import_stmt.target_type = CN_IMPORT_TARGET_MODULE;
     return stmt;
 }
 
@@ -4391,6 +4395,10 @@ static CnAstStmt *parse_from_import_stmt(CnParser *parser)
     stmt->as.import_stmt.module_path = module_path;
     stmt->as.import_stmt.is_wildcard = is_wildcard;
     stmt->as.import_stmt.use_from_syntax = 1;
+    // 根据路径是否为相对路径来决定目标类型
+    // 从 ./xxx 导入 -> 包导入，从 模块名 导入 -> 模块导入
+    stmt->as.import_stmt.target_type = module_path->is_relative ? 
+        CN_IMPORT_TARGET_PACKAGE : CN_IMPORT_TARGET_MODULE;
     
     return stmt;
 }

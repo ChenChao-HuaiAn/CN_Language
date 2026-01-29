@@ -1343,8 +1343,9 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             // 只处理路径导入（module_path）
             if (import->module_path && import->module_path->is_relative) {
                 // 使用相对路径加载器（以当前模块文件为基准）
-                CnModuleMetadata *metadata = cn_module_loader_load_relative(
-                    loader, file_path, import->module_path);
+                // 根据 target_type 决定查找包还是模块
+                CnModuleMetadata *metadata = cn_module_loader_load_relative_typed(
+                    loader, file_path, import->module_path, import->target_type);
                 
                 if (metadata && metadata->file_path) {
                     // 递归加载外部模块
@@ -1595,8 +1596,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             // 处理相对路径导入
             if (module_path->is_relative) {
                 // 使用相对路径加载器
-                CnModuleMetadata *metadata = cn_module_loader_load_relative(
-                    loader, source_file, module_path);
+                // 根据 target_type 决定查找包还是模块
+                CnModuleMetadata *metadata = cn_module_loader_load_relative_typed(
+                    loader, source_file, module_path, import->target_type);
                 
                 if (metadata && metadata->file_path) {
                     // 加载外部模块（支持嵌套导入）
@@ -1714,8 +1716,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 }
                 
                 // 使用模块加载器解析文件路径
+                // 根据 target_type 决定查找包还是模块
                 char *resolved_path = NULL;
-                if (cn_module_loader_resolve_path(loader, module_id, &resolved_path)) {
+                if (cn_module_loader_resolve_path_typed(loader, module_id, &resolved_path, import->target_type)) {
                     // 加载外部模块（支持嵌套导入）
                     CnSemScope *external_scope = compile_external_module_recursive(resolved_path, 
                                                                           diagnostics, 
@@ -1811,10 +1814,52 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             continue;
         }
         
-        // 传统导入：查找同文件内的模块
+        // 传统导入：优先查找同文件内模块，如果不存在则通过模块加载器从搜索路径加载文件模块/包
         CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(global_scope,
                                                               import->module_name,
                                                               import->module_name_length);
+
+        // 如果当前文件中没有内联模块定义，且存在模块加载器，则尝试跨文件加载
+        if (!module_sym && loader && source_file &&
+            import->module_name && import->module_name_length > 0) {
+            char *module_name_str = (char *)malloc(import->module_name_length + 1);
+            if (module_name_str) {
+                memcpy(module_name_str, import->module_name, import->module_name_length);
+                module_name_str[import->module_name_length] = '\0';
+
+                CnModuleId *module_id = cn_module_id_create(module_name_str);
+                free(module_name_str);
+
+                if (module_id) {
+                    // 传统导入：根据 target_type 决定查找包还是模块
+                    char *resolved_path = NULL;
+                    if (cn_module_loader_resolve_path_typed(loader, module_id, &resolved_path, import->target_type)) {
+                        CnSemScope *external_scope = compile_external_module_recursive(
+                            resolved_path,
+                            diagnostics,
+                            global_scope,
+                            loader,
+                            source_file);
+                        free(resolved_path);
+
+                        if (external_scope) {
+                            module_sym = cn_sem_scope_insert_symbol(
+                                global_scope,
+                                import->module_name,
+                                import->module_name_length,
+                                CN_SEM_SYMBOL_MODULE);
+                            if (module_sym) {
+                                module_sym->type = cn_type_new_primitive(CN_TYPE_VOID);
+                                module_sym->is_public = 1;
+                                module_sym->as.module_scope = external_scope;
+                            }
+                        }
+                    }
+
+                    cn_module_id_free(module_id);
+                }
+            }
+        }
         
         if (!module_sym) {
             cn_support_diag_semantic_error_generic(
