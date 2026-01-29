@@ -319,3 +319,18 @@ target_include_directories(io_integration_test PRIVATE ../../include)
 add_test(NAME io_integration_test 
          COMMAND io_integration_test)
 set_tests_properties(io_integration_test PROPERTIES LABELS "stage8;io;stdlib;integration")
+
+# 阶段11：模块导入集成测试（G3, G4, G5, G6）
+add_executable(module_import_integration_test
+    module_import_integration_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/frontend/module_loader/module_loader.c
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/checker/semantic_passes.c
+    ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/symbols/symbol_table.c
+)
+target_include_directories(module_import_integration_test PRIVATE ../../include)
+add_test(NAME module_import_integration_test 
+         COMMAND module_import_integration_test)
+set_tests_properties(module_import_integration_test PROPERTIES LABELS "stage11;module;import;integration")

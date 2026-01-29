@@ -3950,7 +3950,11 @@ static CnAstStmt *parse_import_stmt(CnParser *parser)
     return stmt;
 }
 
-// 解析点分模块路径（如 工具.数学 或 .子模块 或 ..父模块）
+// 解析模块路径（支持斜杠和点分隔符）
+// 支持语法：
+//   1. 斜杠路径：工具/数学/高级
+//   2. 点分路径：工具.数学.高级
+//   3. 相对导入：./兄弟模块、../父级模块、../../祖父模块
 // 返回值需要由调用者释放
 static CnAstModulePath *parse_module_path(CnParser *parser)
 {
@@ -3964,11 +3968,21 @@ static CnAstModulePath *parse_module_path(CnParser *parser)
     path->is_relative = 0;
     path->relative_level = 0;
     
-    // 检查相对导入（以点开头）
+    // 检查相对导入：./ 或 ../ 语法
+    // 支持：./模块、../模块、../../模块
     while (parser->current.kind == CN_TOKEN_DOT) {
         path->is_relative = 1;
         path->relative_level++;
         parser_advance(parser);
+        
+        // 检查是否跟着斜杠（如 ./、../）
+        if (parser->current.kind == CN_TOKEN_SLASH) {
+            parser_advance(parser);
+            // 如果不是继续的点，则退出循环
+            if (parser->current.kind != CN_TOKEN_DOT) {
+                break;
+            }
+        }
     }
     
     // 解析模块路径段
@@ -4001,7 +4015,7 @@ static CnAstModulePath *parse_module_path(CnParser *parser)
         return NULL;
     }
     
-    // 解析所有路径段：包.子包.模块
+    // 解析所有路径段：包/子包/模块 或 包.子包.模块
     while (parser->current.kind == CN_TOKEN_IDENT) {
         // 扩容检查
         if (path->segment_count >= capacity) {
@@ -4023,8 +4037,9 @@ static CnAstModulePath *parse_module_path(CnParser *parser)
         
         parser_advance(parser);
         
-        // 检查是否还有更多路径段
-        if (parser->current.kind == CN_TOKEN_DOT) {
+        // 检查是否还有更多路径段（支持斜杠和点作为分隔符）
+        if (parser->current.kind == CN_TOKEN_SLASH || 
+            parser->current.kind == CN_TOKEN_DOT) {
             parser_advance(parser);
             // 期望下一个标识符
             if (parser->current.kind != CN_TOKEN_IDENT) {
@@ -4036,7 +4051,7 @@ static CnAstModulePath *parse_module_path(CnParser *parser)
                                                   parser->lexer ? parser->lexer->filename : NULL,
                                                   parser->current.line,
                                                   parser->current.column,
-                                                  "语法错误：'.' 后期望模块名称");
+                                                  "语法错误：路径分隔符后期望模块名称");
                 }
                 free(path->segments);
                 free(path);

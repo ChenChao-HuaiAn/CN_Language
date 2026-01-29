@@ -952,3 +952,15 @@ add_test(NAME logical_operators_test COMMAND logical_operators_test)
 set_tests_properties(logical_operators_test PROPERTIES 
     LABELS "stage9;ir;cgen;logical;unit"
 )
+
+# 阶段11：模块加载器单元测试（G1, G2）
+add_executable(module_loader_test
+    module_loader_test.c
+    ../../src/frontend/module_loader/module_loader.c
+    ../../src/support/diagnostics/diagnostics.c
+)
+target_include_directories(module_loader_test PRIVATE ../../include)
+add_test(NAME module_loader_test COMMAND module_loader_test)
+set_tests_properties(module_loader_test PROPERTIES 
+    LABELS "stage11;module;loader;unit"
+)
