@@ -16,6 +16,7 @@ struct CnSemScope {
     CnSemSymbolNode *symbols;
     const char *name;          // 作用域名称(对于函数作用域为函数名)
     size_t name_length;        // 作用域名称长度
+    CnFileModuleSemInfo *file_module_info;  // 文件模块信息（仅当kind==CN_SEM_SCOPE_FILE_MODULE时有效）
 };
 
 static int cn_sem_symbol_name_equals(const CnSemSymbol *symbol,
@@ -55,6 +56,7 @@ CnSemScope *cn_sem_scope_new(CnSemScopeKind kind, CnSemScope *parent)
     scope->symbols = NULL;
     scope->name = NULL;
     scope->name_length = 0;
+    scope->file_module_info = NULL;
 
     return scope;
 }

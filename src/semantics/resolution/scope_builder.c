@@ -23,6 +23,9 @@ struct CnSemScope {
     CnSemScopeKind kind;
     CnSemScope *parent;
     CnSemSymbolNode *symbols;
+    const char *name;
+    size_t name_length;
+    CnFileModuleSemInfo *file_module_info;  // 文件模块信息（仅当kind==CN_SEM_SCOPE_FILE_MODULE时有效）
 };
 
 static void cn_sem_build_function_scope(CnSemScope *parent_scope,

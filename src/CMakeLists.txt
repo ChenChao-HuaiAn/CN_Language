@@ -17,6 +17,7 @@ add_executable(cnc
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
+    semantics/resolution/module_semantics.c
     semantics/checker/semantic_passes.c
     semantics/checker/freestanding_check.c
     ir/core/ir.c
@@ -45,11 +46,13 @@ add_executable(cnrepl
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c
+    frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
     support/config/target_triple.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
+    semantics/resolution/module_semantics.c
     semantics/checker/semantic_passes.c
     semantics/checker/freestanding_check.c
     ir/core/ir.c
@@ -118,10 +121,12 @@ add_executable(cnlsp
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c
+    frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
+    semantics/resolution/module_semantics.c
     semantics/checker/semantic_passes.c
     semantics/checker/freestanding_check.c
 )
