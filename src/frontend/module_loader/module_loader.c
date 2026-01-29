@@ -1687,6 +1687,7 @@ CnModuleMetadata *cn_module_loader_load_relative_typed(CnModuleLoader *loader,
     }
     
     // 根据 target_type 决定查找逻辑
+    // 优先按指定类型查找，如果失败则尝试另一种类型（模块/包自动回退）
     CnModuleType module_type;
     char *file_path = NULL;
     
@@ -1704,7 +1705,7 @@ CnModuleMetadata *cn_module_loader_load_relative_typed(CnModuleLoader *loader,
             return NULL;  // 包不存在
         }
     } else {
-        // 模块导入：只查找 .cn 文件
+        // 模块导入：先查找 .cn 文件
         size_t path_len = strlen(module_path);
         file_path = (char *)malloc(path_len + 4);  // .cn + null
         if (!file_path) {
@@ -1713,12 +1714,26 @@ CnModuleMetadata *cn_module_loader_load_relative_typed(CnModuleLoader *loader,
         }
         sprintf(file_path, "%s.cn", module_path);
         
-        if (!file_exists(file_path)) {
+        if (file_exists(file_path)) {
+            module_type = CN_MODULE_TYPE_FILE;
+        } else {
+            // 模块文件不存在，尝试回退到包目录查找
+            // 这支持「从 ./工具 导入 { 成员 };」语法，当 ./工具.cn 不存在但 ./工具/__包__.cn 存在时
             free(file_path);
-            free(module_path);
-            return NULL;  // 模块不存在
+            file_path = NULL;
+            
+            char *package_init_path = path_join(module_path, CN_PACKAGE_INIT_FILENAME);
+            if (package_init_path && file_exists(package_init_path)) {
+                file_path = package_init_path;
+                module_type = CN_MODULE_TYPE_PACKAGE;
+            } else {
+                if (package_init_path) {
+                    free(package_init_path);
+                }
+                free(module_path);
+                return NULL;  // 模块和包都不存在
+            }
         }
-        module_type = CN_MODULE_TYPE_FILE;
     }
     
     free(module_path);
