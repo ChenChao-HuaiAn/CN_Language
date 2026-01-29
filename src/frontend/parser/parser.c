@@ -3782,17 +3782,92 @@ static CnAstStmt *parse_module_decl(CnParser *parser)
 }
 
 // 解析导入语句
-// 支持三种语法：
-// 1. 导入 模块名;  (导入所有)
+// 支持以下语法：
+// 1. 导入 模块名;  (全量导入)
 // 2. 导入 模块名 { 成员1, 成员2 };  (选择性导入)
-// 3. 导入 模块名 为 别名;  (使用别名)
+// 3. 导入 模块名(别名);  (别名导入)
+// 4. 导入 ./相对路径;  (相对路径导入)
+// 5. 导入 工具/数学;  (斜杠路径导入)
+// 6. 导入 工具.数学;  (点分路径导入)
 static CnAstStmt *parse_import_stmt(CnParser *parser)
 {
     if (!parser_expect(parser, CN_TOKEN_KEYWORD_IMPORT)) {
         return NULL;
     }
 
-    // 读取模块名称
+    // 检查是否是路径语法（相对路径 ./ 或点/斜杠路径）
+    // 相对路径：以点开始
+    // 点斜杠路径：需要在标识符后看是否有点或斜杠
+    int use_path_syntax = 0;
+    if (parser->current.kind == CN_TOKEN_DOT) {
+        use_path_syntax = 1;  // 相对路径：./xxx 或 ../xxx
+    }
+
+    // 如果是路径语法，使用 parse_module_path
+    if (use_path_syntax) {
+        // 解析模块路径
+        CnAstModulePath *module_path = parse_module_path(parser);
+        if (!module_path) {
+            return NULL;
+        }
+
+        // 检查别名
+        const char *alias = NULL;
+        size_t alias_length = 0;
+        if (parser->current.kind == CN_TOKEN_LPAREN) {
+            parser_advance(parser);
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少别名");
+                }
+                free(module_path->segments);
+                free(module_path);
+                return NULL;
+            }
+            alias = parser->current.lexeme_begin;
+            alias_length = parser->current.lexeme_length;
+            parser_advance(parser);
+            if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+                free(module_path->segments);
+                free(module_path);
+                return NULL;
+            }
+        }
+
+        // 期望分号
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+
+        // 创建导入语句
+        CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+        if (!stmt) {
+            free(module_path->segments);
+            free(module_path);
+            return NULL;
+        }
+
+        stmt->kind = CN_AST_STMT_IMPORT;
+        stmt->as.import_stmt.module_path = module_path;
+        stmt->as.import_stmt.alias = alias;
+        stmt->as.import_stmt.alias_length = alias_length;
+        stmt->as.import_stmt.members = NULL;
+        stmt->as.import_stmt.member_count = 0;
+        stmt->as.import_stmt.kind = alias ? CN_IMPORT_ALIAS : CN_IMPORT_FULL;
+        stmt->as.import_stmt.is_wildcard = 0;
+        stmt->as.import_stmt.use_from_syntax = 0;
+        // 传统字段（兼容）
+        stmt->as.import_stmt.module_name = NULL;
+        stmt->as.import_stmt.module_name_length = 0;
+        return stmt;
+    }
+
+    // 传统语法：简单的模块名（不含路径）
     if (parser->current.kind != CN_TOKEN_IDENT) {
         parser->error_count++;
         if (parser->diagnostics) {

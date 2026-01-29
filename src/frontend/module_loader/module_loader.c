@@ -9,6 +9,7 @@
  */
 
 #include "cnlang/frontend/module_loader.h"
+#include "cnlang/frontend/ast.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -1368,6 +1369,89 @@ int cn_module_loader_get_init_order(CnModuleLoader *loader,
 // ============================================================================
 
 /**
+ * @brief 获取文件所在目录
+ */
+static char *get_directory_from_path(const char *file_path)
+{
+    if (!file_path) {
+        return NULL;
+    }
+    
+    // 查找最后一个路径分隔符
+    const char *last_sep = strrchr(file_path, PATH_SEPARATOR);
+    
+#ifdef _WIN32
+    // Windows 也支持正斜杠
+    const char *last_forward_sep = strrchr(file_path, '/');
+    if (last_forward_sep > last_sep) {
+        last_sep = last_forward_sep;
+    }
+#endif
+    
+    if (!last_sep) {
+        // 没有路径分隔符，返回当前目录
+        return strdup(".");
+    }
+    
+    // 复制目录部分
+    size_t dir_len = last_sep - file_path;
+    char *dir = (char *)malloc(dir_len + 1);
+    if (!dir) {
+        return NULL;
+    }
+    memcpy(dir, file_path, dir_len);
+    dir[dir_len] = '\0';
+    
+    return dir;
+}
+
+/**
+ * @brief 解析相对路径
+ * @param base_dir 基准目录
+ * @param relative_level 相对层级（1 = ./，2 = ../）
+ * @return 解析后的目录（调用者负责释放）
+ */
+static char *resolve_relative_dir(const char *base_dir, size_t relative_level)
+{
+    if (!base_dir || relative_level == 0) {
+        return NULL;
+    }
+    
+    // 复制基准目录
+    char *result = strdup(base_dir);
+    if (!result) {
+        return NULL;
+    }
+    
+    // relative_level = 1 表示 ./（同级）
+    // relative_level = 2 表示 ../（父级）
+    // 所以需要向上 relative_level - 1 层
+    size_t up_levels = relative_level - 1;
+    
+    for (size_t i = 0; i < up_levels; i++) {
+        // 查找最后一个路径分隔符
+        char *last_sep = strrchr(result, PATH_SEPARATOR);
+        
+#ifdef _WIN32
+        char *last_forward_sep = strrchr(result, '/');
+        if (last_forward_sep > last_sep) {
+            last_sep = last_forward_sep;
+        }
+#endif
+        
+        if (last_sep) {
+            *last_sep = '\0';  // 截断到父目录
+        } else {
+            // 已经到达根目录，无法再向上
+            free(result);
+            return strdup(".");
+        }
+    }
+    
+    return result;
+}
+
+/**
  * @brief 加载相对模块
  */
 CnModuleMetadata *cn_module_loader_load_relative(CnModuleLoader *loader, 
@@ -1378,10 +1462,134 @@ CnModuleMetadata *cn_module_loader_load_relative(CnModuleLoader *loader,
         return NULL;
     }
     
-    // TODO: 实现相对路径解析
-    // 这需要根据 base_path 和 relative_path 中的相对层级计算实际路径
+    // 获取基准文件所在目录
+    char *base_dir = get_directory_from_path(base_path);
+    if (!base_dir) {
+        return NULL;
+    }
     
-    return NULL;  // 待实现
+    // 解析相对目录
+    char *target_dir = base_dir;
+    if (relative_path->is_relative && relative_path->relative_level > 0) {
+        target_dir = resolve_relative_dir(base_dir, relative_path->relative_level);
+        free(base_dir);
+        if (!target_dir) {
+            return NULL;
+        }
+    }
+    
+    // 构建目标模块路径
+    char *module_path = target_dir;
+    for (size_t i = 0; i < relative_path->segment_count; i++) {
+        const char *segment = relative_path->segments[i].name;
+        size_t segment_len = relative_path->segments[i].name_length;
+        
+        // 复制段名（因为 segment 不以 null 结尾）
+        char *segment_str = (char *)malloc(segment_len + 1);
+        if (!segment_str) {
+            free(module_path);
+            return NULL;
+        }
+        memcpy(segment_str, segment, segment_len);
+        segment_str[segment_len] = '\0';
+        
+        char *new_path = path_join(module_path, segment_str);
+        free(segment_str);
+        free(module_path);
+        
+        if (!new_path) {
+            return NULL;
+        }
+        module_path = new_path;
+    }
+    
+    // 添加 .cn 后缀
+    size_t path_len = strlen(module_path);
+    char *file_path = (char *)malloc(path_len + 4);  // .cn + null
+    if (!file_path) {
+        free(module_path);
+        return NULL;
+    }
+    sprintf(file_path, "%s.cn", module_path);
+    
+    // 检查文件是否存在,如果不存在则尝试查找包初始化文件
+    if (!file_exists(file_path)) {
+        // 尝试查找 module_path/__包__.cn
+        free(file_path);
+        char *package_init_path = path_join(module_path, "__包__.cn");
+        free(module_path);
+        
+        if (!package_init_path) {
+            return NULL;
+        }
+        
+        if (!file_exists(package_init_path)) {
+            free(package_init_path);
+            return NULL;
+        }
+        
+        file_path = package_init_path;
+    } else {
+        free(module_path);
+    }
+    
+    // 从文件路径创建模块 ID
+    // 使用最后一段作为模块名
+    if (relative_path->segment_count > 0) {
+        size_t last_idx = relative_path->segment_count - 1;
+        const char *module_name = relative_path->segments[last_idx].name;
+        size_t module_name_len = relative_path->segments[last_idx].name_length;
+        
+        char *module_name_str = (char *)malloc(module_name_len + 1);
+        if (!module_name_str) {
+            free(file_path);
+            return NULL;
+        }
+        memcpy(module_name_str, module_name, module_name_len);
+        module_name_str[module_name_len] = '\0';
+        
+        CnModuleId *module_id = cn_module_id_create(module_name_str);
+        free(module_name_str);
+        
+        if (!module_id) {
+            free(file_path);
+            return NULL;
+        }
+        
+        // 检查缓存
+        CnModuleMetadata *cached = cn_module_cache_get(loader->cache, module_id);
+        if (cached) {
+            cn_module_id_free(module_id);
+            free(file_path);
+            return cached;
+        }
+        
+        // 创建模块元数据
+        CnModuleMetadata *metadata = cn_module_metadata_create();
+        if (!metadata) {
+            cn_module_id_free(module_id);
+            free(file_path);
+            return NULL;
+        }
+        
+        metadata->id = module_id;
+        metadata->file_path = file_path;
+        metadata->file_path_length = strlen(file_path);
+        metadata->file_mtime = get_file_mtime(file_path);
+        metadata->state = CN_MODULE_STATE_LOADING;
+        metadata->type = CN_MODULE_TYPE_FILE;
+        
+        // 添加到缓存
+        cn_module_cache_put(loader->cache, metadata);
+        
+        // TODO: 实际解析文件内容
+        
+        metadata->state = CN_MODULE_STATE_LOADED;
+        return metadata;
+    }
+    
+    free(file_path);
+    return NULL;
 }
 
 /**
