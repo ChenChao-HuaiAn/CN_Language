@@ -848,7 +848,15 @@ static bool add_macro(CnPreprocessor *pp, CnMacro *macro)
         new_capacity = pp->macro_capacity == 0 ? 16 : pp->macro_capacity * 2;
         new_macros = (CnMacro *)realloc(pp->macros, new_capacity * sizeof(CnMacro));
         if (!new_macros) {
-            free_macro(macro);
+            /* 内存分配失败,释放宏的成员但不释放macro本身(因为它是栈变量) */
+            free(macro->name);
+            free(macro->replacement);
+            if (macro->params) {
+                for (size_t i = 0; i < macro->param_count; ++i) {
+                    free(macro->params[i]);
+                }
+                free(macro->params);
+            }
             return false;
         }
         pp->macros = new_macros;

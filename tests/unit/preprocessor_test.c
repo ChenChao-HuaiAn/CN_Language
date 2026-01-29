@@ -4,7 +4,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
+
+/* 自定义断言宏,在 Release 模式下也能工作 */
+#define TEST_ASSERT(cond, msg) do { \
+    if (!(cond)) { \
+        fprintf(stderr, "断言失败: %s\n  条件: %s\n  文件: %s:%d\n", (msg), #cond, __FILE__, __LINE__); \
+        exit(1); \
+    } \
+} while(0)
 
 /* 测试对象宏定义和展开 */
 static void test_simple_macro(void)
@@ -20,14 +27,15 @@ static void test_simple_macro(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
     
     /* 调试:打印实际输出 */
     printf("test_simple_macro output (length=%zu):\n[%s]\n", 
-           preprocessor.output_length, preprocessor.output);
+           preprocessor.output_length, preprocessor.output ? preprocessor.output : "(null)");
     
     /* 检查输出包含展开后的值 */
-    assert(strstr(preprocessor.output, "100") != NULL);
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
+    TEST_ASSERT(strstr(preprocessor.output, "100") != NULL, "宏 MAX 应被展开为 100");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -53,12 +61,13 @@ static void test_ifdef(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* 应该包含 x = 1 */
-    assert(strstr(preprocessor.output, "变量 x = 1") != NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "变量 x = 1") != NULL, "#ifdef DEBUG 应包含 x = 1");
     /* 不应该包含 x = 0 */
-    assert(strstr(preprocessor.output, "变量 x = 0") == NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "变量 x = 0") == NULL, "#ifdef DEBUG 不应包含 x = 0");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -83,12 +92,13 @@ static void test_ifndef(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* RELEASE 未定义,应该包含 debug_mode = 1 */
-    assert(strstr(preprocessor.output, "debug_mode = 1") != NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "debug_mode = 1") != NULL, "#ifndef RELEASE 应包含 debug_mode = 1");
     /* 不应该包含 debug_mode = 0 */
-    assert(strstr(preprocessor.output, "debug_mode = 0") == NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "debug_mode = 0") == NULL, "#ifndef RELEASE 不应包含 debug_mode = 0");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -115,10 +125,11 @@ static void test_nested_ifdef(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* 两个条件都满足,应该包含 x = 1 */
-    assert(strstr(preprocessor.output, "变量 x = 1") != NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "变量 x = 1") != NULL, "嵌套 #ifdef 应包含 x = 1");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -140,10 +151,11 @@ static void test_function_macro(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* 检查展开结果 */
-    assert(strstr(preprocessor.output, "((10) > (20) ? (10) : (20))") != NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "((10) > (20) ? (10) : (20))") != NULL, "函数宏 MAX 应正确展开");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -165,10 +177,11 @@ static void test_macro_stringification(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* 检查字符串化结果 */
-    assert(strstr(preprocessor.output, "\"hello\"") != NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "\"hello\"") != NULL, "字符串化应生成 \"hello\"");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -193,19 +206,20 @@ static void test_undef(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* 第一次 FOO 应该是 42,第二次应该是 100 */
     const char *output = preprocessor.output;
     const char *first_foo = strstr(output, "变量 a = ");
     const char *second_foo = strstr(output, "变量 b = ");
     
-    assert(first_foo != NULL);
-    assert(second_foo != NULL);
+    TEST_ASSERT(first_foo != NULL, "#undef 测试应包含 '变量 a = '");
+    TEST_ASSERT(second_foo != NULL, "#undef 测试应包含 '变量 b = '");
     
     /* 验证值 */
-    assert(strstr(first_foo, "42") != NULL);
-    assert(strstr(second_foo, "100") != NULL);
+    TEST_ASSERT(strstr(first_foo, "42") != NULL, "#undef 前 FOO 应为 42");
+    TEST_ASSERT(strstr(second_foo, "100") != NULL, "#undef 后 FOO 应为 100");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -227,10 +241,11 @@ static void test_multi_param_macro(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* 检查展开结果 */
-    assert(strstr(preprocessor.output, "((1) + (2) + (3))") != NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "((1) + (2) + (3))") != NULL, "多参数宏应正确展开");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
@@ -252,10 +267,11 @@ static void test_empty_macro(void)
     cn_frontend_preprocessor_init(&preprocessor, source, strlen(source), "test.cn");
     cn_frontend_preprocessor_set_diagnostics(&preprocessor, &diagnostics);
     
-    assert(cn_frontend_preprocessor_process(&preprocessor));
+    TEST_ASSERT(cn_frontend_preprocessor_process(&preprocessor), "预处理失败");
+    TEST_ASSERT(preprocessor.output != NULL, "输出缓冲区为空");
     
     /* 空宏应该被替换为空 */
-    assert(strstr(preprocessor.output, "变量 x =  42") != NULL);
+    TEST_ASSERT(strstr(preprocessor.output, "变量 x =  42") != NULL, "空宏应被替换为空");
     
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);

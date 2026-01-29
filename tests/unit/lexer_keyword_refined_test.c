@@ -8,8 +8,9 @@
 // 测试已删除的关键字应被识别为普通标识符
 static int test_deleted_keywords_as_identifiers(void)
 {
-    // 测试已删除的关键字: 主程序、数组、与、或、为、从
-    const char *source = "主程序 数组 与 或 为 从";
+    // 测试已删除的关键字: 主程序、数组、与、或、为
+    // 注意: "从" 是阶段11新增的关键字,用于"从...导入"语法,不在此列表中
+    const char *source = "主程序 数组 与 或 为";
     size_t length = strlen(source);
     CnLexer lexer;
     CnToken token;
@@ -77,18 +78,6 @@ static int test_deleted_keywords_as_identifiers(void)
     }
     if (token.kind != CN_TOKEN_IDENT) {
         fprintf(stderr, "lexer_keyword_refined_test: '为' 应为 IDENT，实际为 %d\n", token.kind);
-        cn_support_diagnostics_free(&diagnostics);
-        return 1;
-    }
-
-    // Token 6: 从
-    if (!cn_frontend_lexer_next_token(&lexer, &token)) {
-        fprintf(stderr, "lexer_keyword_refined_test: 无法获取 token (从)\n");
-        cn_support_diagnostics_free(&diagnostics);
-        return 1;
-    }
-    if (token.kind != CN_TOKEN_IDENT) {
-        fprintf(stderr, "lexer_keyword_refined_test: '从' 应为 IDENT，实际为 %d\n", token.kind);
         cn_support_diagnostics_free(&diagnostics);
         return 1;
     }

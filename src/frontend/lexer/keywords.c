@@ -32,7 +32,7 @@ static const CnKeywordEntry g_keywords[] = {
     {"变量", CN_TOKEN_KEYWORD_VAR, "声明关键字"},
     {"模块", CN_TOKEN_KEYWORD_MODULE, "声明关键字"},
     {"导入", CN_TOKEN_KEYWORD_IMPORT, "声明关键字"},
-    {"从", CN_TOKEN_KEYWORD_FROM, "声明关键字"},  // 用于 从...导入 语法
+    {"从", CN_TOKEN_KEYWORD_FROM, "声明关键字"},  // 阶段11: 从...导入 语法
     {"公开", CN_TOKEN_KEYWORD_PUBLIC, "声明关键字"},
     {"私有", CN_TOKEN_KEYWORD_PRIVATE, "声明关键字"},
 

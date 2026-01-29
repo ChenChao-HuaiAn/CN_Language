@@ -6,6 +6,8 @@ set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/preprocessor/preprocessor.c
+    ../../src/frontend/module_loader/module_loader.c
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/resolution/scope_builder.c
