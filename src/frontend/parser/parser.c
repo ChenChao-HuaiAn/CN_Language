@@ -4395,10 +4395,8 @@ static CnAstStmt *parse_from_import_stmt(CnParser *parser)
     stmt->as.import_stmt.module_path = module_path;
     stmt->as.import_stmt.is_wildcard = is_wildcard;
     stmt->as.import_stmt.use_from_syntax = 1;
-    // 根据路径是否为相对路径来决定目标类型
-    // 从 ./xxx 导入 -> 包导入，从 模块名 导入 -> 模块导入
-    stmt->as.import_stmt.target_type = module_path->is_relative ? 
-        CN_IMPORT_TARGET_PACKAGE : CN_IMPORT_TARGET_MODULE;
+    // 「从 ... 导入」语法总是查找模块文件（.cn），不管是相对路径还是绝对路径
+    stmt->as.import_stmt.target_type = CN_IMPORT_TARGET_MODULE;
     
     return stmt;
 }
