@@ -6,6 +6,7 @@ add_executable(cnc
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
     frontend/parser/parser.c
+    frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
     support/process/process.c
     support/config/target_triple.c

@@ -63,6 +63,8 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_MODULE";
     case CN_TOKEN_KEYWORD_IMPORT:
         return "KEYWORD_IMPORT";
+    case CN_TOKEN_KEYWORD_FROM:
+        return "KEYWORD_FROM";
     // 预留关键字
     case CN_TOKEN_KEYWORD_NAMESPACE:
         return "KEYWORD_NAMESPACE";

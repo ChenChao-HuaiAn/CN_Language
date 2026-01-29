@@ -326,6 +326,7 @@ typedef struct CnAstFunctionDecl {
     size_t parameter_count;       // 参数数量
     struct CnType *return_type;   // 返回类型（NULL 表示无显式声明，根据返回语句推断）
     CnAstBlockStmt *body;         // 函数体语句块
+    CnVisibility visibility;      // 可见性（用于模块成员）
     int is_interrupt_handler;     // 是否是中断服务程序
     uint32_t interrupt_vector;    // 中断向量号（仅中断处理有效）
 } CnAstFunctionDecl;
