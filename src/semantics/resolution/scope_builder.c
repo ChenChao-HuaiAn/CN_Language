@@ -1827,36 +1827,95 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 memcpy(module_name_str, import->module_name, import->module_name_length);
                 module_name_str[import->module_name_length] = '\0';
 
-                CnModuleId *module_id = cn_module_id_create(module_name_str);
-                free(module_name_str);
-
-                if (module_id) {
-                    // 传统导入：根据 target_type 决定查找包还是模块
-                    char *resolved_path = NULL;
-                    if (cn_module_loader_resolve_path_typed(loader, module_id, &resolved_path, import->target_type)) {
-                        CnSemScope *external_scope = compile_external_module_recursive(
-                            resolved_path,
-                            diagnostics,
-                            global_scope,
-                            loader,
-                            source_file);
-                        free(resolved_path);
-
-                        if (external_scope) {
-                            module_sym = cn_sem_scope_insert_symbol(
-                                global_scope,
-                                import->module_name,
-                                import->module_name_length,
-                                CN_SEM_SYMBOL_MODULE);
-                            if (module_sym) {
-                                module_sym->type = cn_type_new_primitive(CN_TYPE_VOID);
-                                module_sym->is_public = 1;
-                                module_sym->as.module_scope = external_scope;
+                char *resolved_path = NULL;
+                
+                // 1. 首先尝试在当前文件目录中查找
+                // 获取源文件目录
+                const char *last_sep = strrchr(source_file, '\\');
+                const char *last_fwd_sep = strrchr(source_file, '/');
+                if (last_fwd_sep > last_sep) {
+                    last_sep = last_fwd_sep;
+                }
+                
+                if (last_sep) {
+                    // 构建当前目录路径
+                    size_t dir_len = last_sep - source_file;
+                    
+                    if (import->target_type == CN_IMPORT_TARGET_MODULE) {
+                        // 模块导入：查找 dir/模块名.cn
+                        size_t path_len = dir_len + 1 + import->module_name_length + 3 + 1;
+                        resolved_path = (char *)malloc(path_len);
+                        if (resolved_path) {
+                            memcpy(resolved_path, source_file, dir_len);
+                            resolved_path[dir_len] = '\\';
+                            memcpy(resolved_path + dir_len + 1, import->module_name, import->module_name_length);
+                            strcpy(resolved_path + dir_len + 1 + import->module_name_length, ".cn");
+                            
+                            // 检查文件是否存在
+                            FILE *test_file = fopen(resolved_path, "r");
+                            if (test_file) {
+                                fclose(test_file);
+                            } else {
+                                free(resolved_path);
+                                resolved_path = NULL;
+                            }
+                        }
+                    } else {
+                        // 包导入：查找 dir/包名/__包__.cn
+                        size_t path_len = dir_len + 1 + import->module_name_length + 1 + 12 + 1;
+                        resolved_path = (char *)malloc(path_len);
+                        if (resolved_path) {
+                            memcpy(resolved_path, source_file, dir_len);
+                            resolved_path[dir_len] = '\\';
+                            memcpy(resolved_path + dir_len + 1, import->module_name, import->module_name_length);
+                            resolved_path[dir_len + 1 + import->module_name_length] = '\\';
+                            strcpy(resolved_path + dir_len + 2 + import->module_name_length, "__\xe5\x8c\x85__.cn");
+                            
+                            // 检查文件是否存在
+                            FILE *test_file = fopen(resolved_path, "r");
+                            if (test_file) {
+                                fclose(test_file);
+                            } else {
+                                free(resolved_path);
+                                resolved_path = NULL;
                             }
                         }
                     }
+                }
+                
+                // 2. 如果当前目录没找到，再通过模块加载器在搜索路径中查找
+                if (!resolved_path) {
+                    CnModuleId *module_id = cn_module_id_create(module_name_str);
+                    if (module_id) {
+                        cn_module_loader_resolve_path_typed(loader, module_id, &resolved_path, import->target_type);
+                        cn_module_id_free(module_id);
+                    }
+                }
+                
+                free(module_name_str);
+                
+                // 3. 如果找到路径，编译外部模块
+                if (resolved_path) {
+                    CnSemScope *external_scope = compile_external_module_recursive(
+                        resolved_path,
+                        diagnostics,
+                        global_scope,
+                        loader,
+                        source_file);
+                    free(resolved_path);
 
-                    cn_module_id_free(module_id);
+                    if (external_scope) {
+                        module_sym = cn_sem_scope_insert_symbol(
+                            global_scope,
+                            import->module_name,
+                            import->module_name_length,
+                            CN_SEM_SYMBOL_MODULE);
+                        if (module_sym) {
+                            module_sym->type = cn_type_new_primitive(CN_TYPE_VOID);
+                            module_sym->is_public = 1;
+                            module_sym->as.module_scope = external_scope;
+                        }
+                    }
                 }
             }
         }
