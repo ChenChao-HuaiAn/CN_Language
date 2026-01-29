@@ -1116,9 +1116,26 @@ static char *read_file_content(const char *filename, size_t *out_size)
 }
 
 // 编译外部模块文件，返回其作用域
+// 注意：为了支持嵌套导入，需要传入loader和source_file
+static CnSemScope *compile_external_module_recursive(const char *file_path,
+                                                     CnDiagnostics *diagnostics,
+                                                     CnSemScope *global_scope,
+                                                     CnModuleLoader *loader,
+                                                     const char *importing_file);
+
 static CnSemScope *compile_external_module(const char *file_path,
                                             CnDiagnostics *diagnostics,
                                             CnSemScope *global_scope)
+{
+    // 调用递归版本，但不支持嵌套导入（loader=NULL）
+    return compile_external_module_recursive(file_path, diagnostics, global_scope, NULL, NULL);
+}
+
+static CnSemScope *compile_external_module_recursive(const char *file_path,
+                                                     CnDiagnostics *diagnostics,
+                                                     CnSemScope *global_scope,
+                                                     CnModuleLoader *loader,
+                                                     const char *importing_file)
 {
     // 读取文件内容
     size_t file_size = 0;
@@ -1218,6 +1235,71 @@ static CnSemScope *compile_external_module(const char *file_path,
             sym->is_const = var_decl->is_const;
             // 根据AST中的visibility字段设置可见性
             sym->is_public = (var_decl->visibility == CN_VISIBILITY_PUBLIC) ? 1 : 0;
+        }
+    }
+    
+    // 如果提供了loader,则处理模块内部的导入语句（支持嵌套导入）
+    if (loader && importing_file && module_program->import_count > 0) {
+        for (size_t i = 0; i < module_program->import_count; ++i) {
+            CnAstStmt *import_stmt = module_program->imports[i];
+            if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
+                continue;
+            }
+            
+            CnAstImportStmt *import = &import_stmt->as.import_stmt;
+            
+            // 只处理路径导入（module_path）
+            if (import->module_path && import->module_path->is_relative) {
+                // 使用相对路径加载器（以当前模块文件为基准）
+                CnModuleMetadata *metadata = cn_module_loader_load_relative(
+                    loader, file_path, import->module_path);
+                
+                if (metadata && metadata->file_path) {
+                    // 递归加载外部模块
+                    CnSemScope *nested_scope = compile_external_module_recursive(
+                        metadata->file_path, diagnostics, module_scope, loader, file_path);
+                    
+                    if (nested_scope && import->use_from_syntax) {
+                        // 处理导入逻辑：将嵌套模块的符号添加到当前模块作用域
+                        if (import->is_wildcard) {
+                            // 通配符导入
+                            CnSemSymbolNode *node = nested_scope->symbols;
+                            while (node) {
+                                CnSemSymbol *sym = &node->symbol;
+                                if (sym->is_public) {
+                                    CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
+                                        module_scope, sym->name, sym->name_length, sym->kind);
+                                    if (new_sym) {
+                                        new_sym->type = sym->type;
+                                        new_sym->is_public = sym->is_public;
+                                        new_sym->is_const = sym->is_const;
+                                    }
+                                }
+                                node = node->next;
+                            }
+                        } else if (import->member_count > 0) {
+                            // 选择性导入
+                            for (size_t j = 0; j < import->member_count; ++j) {
+                                const char *member_name = import->members[j].name;
+                                size_t member_name_length = import->members[j].name_length;
+                                
+                                CnSemSymbol *member_sym = cn_sem_scope_lookup_shallow(
+                                    nested_scope, member_name, member_name_length);
+                                
+                                if (member_sym && member_sym->is_public) {
+                                    CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
+                                        module_scope, member_name, member_name_length, member_sym->kind);
+                                    if (new_sym) {
+                                        new_sym->type = member_sym->type;
+                                        new_sym->is_public = member_sym->is_public;
+                                        new_sym->is_const = member_sym->is_const;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
     
@@ -1419,9 +1501,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     loader, source_file, module_path);
                 
                 if (metadata && metadata->file_path) {
-                    // 加载外部模块
-                    CnSemScope *external_scope = compile_external_module(
-                        metadata->file_path, diagnostics, global_scope);
+                    // 加载外部模块（支持嵌套导入）
+                    CnSemScope *external_scope = compile_external_module_recursive(
+                        metadata->file_path, diagnostics, global_scope, loader, source_file);
                     
                     if (external_scope) {
                         // 处理导入逻辑
@@ -1536,10 +1618,12 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 // 使用模块加载器解析文件路径
                 char *resolved_path = NULL;
                 if (cn_module_loader_resolve_path(loader, module_id, &resolved_path)) {
-                    // 加载外部模块
-                    CnSemScope *external_scope = compile_external_module(resolved_path, 
+                    // 加载外部模块（支持嵌套导入）
+                    CnSemScope *external_scope = compile_external_module_recursive(resolved_path, 
                                                                           diagnostics, 
-                                                                          global_scope);
+                                                                          global_scope,
+                                                                          loader,
+                                                                          source_file);
                     
                     if (external_scope) {
                         // 处理导入逻辑（同相对路径）
