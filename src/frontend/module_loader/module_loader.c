@@ -1692,7 +1692,7 @@ CnModuleMetadata *cn_module_loader_load_relative_typed(CnModuleLoader *loader,
     char *file_path = NULL;
     
     if (target_type == 1) {
-        // 包导入：只查找目录中的 __包__.cn
+        // 包导入（相对路径 ./xxx）：优先查找目录中的 __包__.cn，找不到再查找 .cn 文件
         char *package_init_path = path_join(module_path, CN_PACKAGE_INIT_FILENAME);
         if (package_init_path && file_exists(package_init_path)) {
             file_path = package_init_path;
@@ -1701,8 +1701,25 @@ CnModuleMetadata *cn_module_loader_load_relative_typed(CnModuleLoader *loader,
             if (package_init_path) {
                 free(package_init_path);
             }
-            free(module_path);
-            return NULL;  // 包不存在
+            
+            // 包不存在，尝试回退到模块文件查找
+            size_t path_len = strlen(module_path);
+            file_path = (char *)malloc(path_len + 4);  // .cn + null
+            if (file_path) {
+                sprintf(file_path, "%s.cn", module_path);
+                
+                if (file_exists(file_path)) {
+                    module_type = CN_MODULE_TYPE_FILE;
+                } else {
+                    free(file_path);
+                    file_path = NULL;
+                    free(module_path);
+                    return NULL;  // 包和模块都不存在
+                }
+            } else {
+                free(module_path);
+                return NULL;
+            }
         }
     } else {
         // 模块导入：先查找 .cn 文件

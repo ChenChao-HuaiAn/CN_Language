@@ -1842,7 +1842,7 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     size_t dir_len = last_sep - source_file;
                     
                     if (import->target_type == CN_IMPORT_TARGET_MODULE) {
-                        // 模块导入：查找 dir/模块名.cn
+                        // 模块导入（导入 xxx;）：优先查找 .cn 文件，找不到再查找包
                         size_t path_len = dir_len + 1 + import->module_name_length + 3 + 1;
                         resolved_path = (char *)malloc(path_len);
                         if (resolved_path) {
@@ -1858,10 +1858,29 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                             } else {
                                 free(resolved_path);
                                 resolved_path = NULL;
+                                
+                                // 模块文件不存在，回退到包目录查找
+                                size_t pkg_path_len = dir_len + 1 + import->module_name_length + 1 + 12 + 1;
+                                resolved_path = (char *)malloc(pkg_path_len);
+                                if (resolved_path) {
+                                    memcpy(resolved_path, source_file, dir_len);
+                                    resolved_path[dir_len] = '\\';
+                                    memcpy(resolved_path + dir_len + 1, import->module_name, import->module_name_length);
+                                    resolved_path[dir_len + 1 + import->module_name_length] = '\\';
+                                    strcpy(resolved_path + dir_len + 2 + import->module_name_length, "__\xe5\x8c\x85__.cn");
+                                    
+                                    FILE *pkg_file = fopen(resolved_path, "r");
+                                    if (pkg_file) {
+                                        fclose(pkg_file);
+                                    } else {
+                                        free(resolved_path);
+                                        resolved_path = NULL;
+                                    }
+                                }
                             }
                         }
                     } else {
-                        // 包导入：查找 dir/包名/__包__.cn
+                        // 包导入（导入 ./xxx;）：优先查找包目录，找不到再查找 .cn 文件
                         size_t path_len = dir_len + 1 + import->module_name_length + 1 + 12 + 1;
                         resolved_path = (char *)malloc(path_len);
                         if (resolved_path) {
@@ -1878,6 +1897,24 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                             } else {
                                 free(resolved_path);
                                 resolved_path = NULL;
+                                
+                                // 包不存在，回退到模块文件查找
+                                size_t mod_path_len = dir_len + 1 + import->module_name_length + 3 + 1;
+                                resolved_path = (char *)malloc(mod_path_len);
+                                if (resolved_path) {
+                                    memcpy(resolved_path, source_file, dir_len);
+                                    resolved_path[dir_len] = '\\';
+                                    memcpy(resolved_path + dir_len + 1, import->module_name, import->module_name_length);
+                                    strcpy(resolved_path + dir_len + 1 + import->module_name_length, ".cn");
+                                    
+                                    FILE *mod_file = fopen(resolved_path, "r");
+                                    if (mod_file) {
+                                        fclose(mod_file);
+                                    } else {
+                                        free(resolved_path);
+                                        resolved_path = NULL;
+                                    }
+                                }
                             }
                         }
                     }

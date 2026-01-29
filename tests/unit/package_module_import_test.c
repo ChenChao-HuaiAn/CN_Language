@@ -2,9 +2,17 @@
  * @file package_module_import_test.c
  * @brief 测试包导入与模块导入的识别功能
  * 
- * 验证：
- * 1. `导入 ./包名;` 被解析为包导入 (target_type = CN_IMPORT_TARGET_PACKAGE)
- * 2. `导入 模块名;` 被解析为模块导入 (target_type = CN_IMPORT_TARGET_MODULE)
+ * 验证导入语法的解析和 target_type 设置：
+ * 
+ * 1. `导入 ./包名;` - 相对路径导入，设置 target_type = CN_IMPORT_TARGET_PACKAGE
+ *    查找策略：先查找包（目录/__包__.cn），再查找模块（.cn文件）
+ * 
+ * 2. `导入 模块名;` - 普通模块导入，设置 target_type = CN_IMPORT_TARGET_MODULE
+ *    查找策略：先查找模块（.cn文件），再查找包（目录/__包__.cn）
+ * 
+ * 3. `从 ./xxx 导入` - 相对路径从导入，设置 target_type = CN_IMPORT_TARGET_PACKAGE
+ * 
+ * 4. `从 xxx 导入` - 普通从导入，设置 target_type = CN_IMPORT_TARGET_MODULE
  */
 
 #include <stdio.h>
@@ -156,6 +164,7 @@ static void test_module_import_syntax(void) {
 }
 
 // 测试：从包导入语法 (从 ./包名 导入 { 成员 };)
+// 相对路径应该设置 target_type = CN_IMPORT_TARGET_PACKAGE
 static void test_from_package_import_syntax(void) {
     TEST_START("从包导入语法解析 (从 ./包名 导入 { 成员 };)");
     
@@ -186,7 +195,8 @@ static void test_from_package_import_syntax(void) {
     CnAstStmt *import_stmt = program->imports[0];
     CnAstImportStmt *import = &import_stmt->as.import_stmt;
     
-    // 验证：应该是包导入 (target_type = CN_IMPORT_TARGET_PACKAGE = 1)
+    // 验证：相对路径应该是包导入 (target_type = CN_IMPORT_TARGET_PACKAGE = 1)
+    // 查找策略：先查找包（目录/__包__.cn），再查找模块（.cn文件）
     if (import->target_type != CN_IMPORT_TARGET_PACKAGE) {
         TEST_FAIL("target_type 应该是 CN_IMPORT_TARGET_PACKAGE");
         cn_frontend_ast_program_free(program);
@@ -202,12 +212,21 @@ static void test_from_package_import_syntax(void) {
         return;
     }
     
+    // 验证：模块路径应该是相对路径
+    if (!import->module_path || !import->module_path->is_relative) {
+        TEST_FAIL("应该是相对路径导入");
+        cn_frontend_ast_program_free(program);
+        cn_support_diagnostics_free(&diag);
+        return;
+    }
+    
     TEST_PASS();
     cn_frontend_ast_program_free(program);
     cn_support_diagnostics_free(&diag);
 }
 
 // 测试：从模块导入语法 (从 模块名 导入 { 成员 };)
+// 普通路径应该设置 target_type = CN_IMPORT_TARGET_MODULE
 static void test_from_module_import_syntax(void) {
     TEST_START("从模块导入语法解析 (从 模块名 导入 { 成员 };)");
     
@@ -238,7 +257,8 @@ static void test_from_module_import_syntax(void) {
     CnAstStmt *import_stmt = program->imports[0];
     CnAstImportStmt *import = &import_stmt->as.import_stmt;
     
-    // 验证：应该是模块导入 (target_type = CN_IMPORT_TARGET_MODULE = 0)
+    // 验证：普通路径应该是模块导入 (target_type = CN_IMPORT_TARGET_MODULE = 0)
+    // 查找策略：先查找模块（.cn文件），再查找包（目录/__包__.cn）
     if (import->target_type != CN_IMPORT_TARGET_MODULE) {
         TEST_FAIL("target_type 应该是 CN_IMPORT_TARGET_MODULE");
         cn_frontend_ast_program_free(program);
@@ -254,6 +274,14 @@ static void test_from_module_import_syntax(void) {
         return;
     }
     
+    // 验证：不应该是相对路径
+    if (import->module_path && import->module_path->is_relative) {
+        TEST_FAIL("不应该是相对路径导入");
+        cn_frontend_ast_program_free(program);
+        cn_support_diagnostics_free(&diag);
+        return;
+    }
+    
     TEST_PASS();
     cn_frontend_ast_program_free(program);
     cn_support_diagnostics_free(&diag);
@@ -262,6 +290,11 @@ static void test_from_module_import_syntax(void) {
 int main(void) {
     printf("\n============================================\n");
     printf("包导入与模块导入识别功能测试\n");
+    printf("查找策略：\n");
+    printf("  - 导入 ./xxx;  -> 先查包，再查模块\n");
+    printf("  - 导入 xxx;    -> 先查模块，再查包\n");
+    printf("从 ./xxx 导入 -> 先查包，再查模块\n");
+    printf("从 xxx 导入   -> 先查模块，再查包\n");
     printf("============================================\n\n");
     
     test_package_import_syntax();
