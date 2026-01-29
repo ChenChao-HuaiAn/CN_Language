@@ -22,6 +22,7 @@
 #include "cnlang/ir/irgen.h"
 #include "cnlang/ir/pass.h"
 #include "cnlang/backend/cgen.h"
+#include "cnlang/frontend/module_loader.h"
 
 /*
  * 运行时库路径管理函数
@@ -270,13 +271,16 @@ int main(int argc, char **argv)
         CN_TARGET_ABI_ELF);
 
     if (argc < 2) {
-        fprintf(stderr, "用法: %s <源文件.cn> [选项]\n", argv[0]);
+        fprintf(stderr, "用法: %s <源文件.cn> [源文件...] [选项]\n", argv[0]);
         fprintf(stderr, "选项:\n");
         fprintf(stderr, "  -o <文件名>    指定输出文件名\n");
         fprintf(stderr, "  -c            仅生成 .c 文件，不编译为可执行文件\n");
         fprintf(stderr, "  -S            仅生成 IR 描述，输出到标准输出或文件 (-o)\n");
         fprintf(stderr, "  --emit-c       生成 C 代码后保留 .c 文件\n");
         fprintf(stderr, "  --cc <编译器>  指定外部 C 编译器路径\n");
+        fprintf(stderr, "  -I <路径>      添加模块搜索路径\n");
+        fprintf(stderr, "  --main <文件>  指定入口文件\n");
+        fprintf(stderr, "  --project <目录> 编译整个项目目录\n");
         fprintf(stderr, "  -g            生成调试信息\n");
         fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
         fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
@@ -304,18 +308,31 @@ int main(int argc, char **argv)
     const char *perf_output = NULL;
     bool enable_mem_profile = false;
     const char *mem_output = NULL;
+    
+    // 多文件模块编译参数
+    const char **source_files = NULL;
+    size_t source_file_count = 0;
+    size_t source_file_capacity = 0;
+    const char **include_paths = NULL;
+    size_t include_path_count = 0;
+    size_t include_path_capacity = 0;
+    const char *main_entry = NULL;
+    const char *project_dir = NULL;
 
     // 检查是否是帮助请求
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
             fprintf(stderr, "CN Compiler (cnc) - CN Language 编译器\n\n");
-            fprintf(stderr, "用法: %s <源文件.cn> [选项]\n\n", argv[0]);
+            fprintf(stderr, "用法: %s <源文件.cn> [源文件...] [选项]\n\n", argv[0]);
             fprintf(stderr, "选项:\n");
             fprintf(stderr, "  -o <文件名>    指定输出文件名\n");
             fprintf(stderr, "  -c            仅生成 .c 文件，不编译为可执行文件\n");
             fprintf(stderr, "  -S            仅生成 IR 描述，输出到标准输出或文件 (-o)\n");
             fprintf(stderr, "  --emit-c       生成 C 代码后保留 .c 文件\n");
             fprintf(stderr, "  --cc <编译器>  指定外部 C 编译器路径\n");
+            fprintf(stderr, "  -I <路径>      添加模块搜索路径\n");
+            fprintf(stderr, "  --main <文件>  指定入口文件\n");
+            fprintf(stderr, "  --project <目录> 编译整个项目目录\n");
             fprintf(stderr, "  -g            生成调试信息\n");
             fprintf(stderr, "  -O<n>         设置优化级别 (0, 1, 2, 3)\n");
             fprintf(stderr, "  --target=<三元组>  指定编译目标 (例如 --target=x86_64-elf)\n");
@@ -327,20 +344,22 @@ int main(int argc, char **argv)
             fprintf(stderr, "  --help/-h      显示此帮助信息\n\n");
             fprintf(stderr, "环境变量:\n");
             fprintf(stderr, "  CN_RUNTIME_PATH        指定运行时库路径\n");
-            fprintf(stderr, "  CN_RUNTIME_HEADER_PATH 指定运行时头文件路径\n\n");
+            fprintf(stderr, "  CN_RUNTIME_HEADER_PATH 指定运行时头文件路径\n");
+            fprintf(stderr, "  CN_MODULE_PATH         指定模块搜索路径\n\n");
             fprintf(stderr, "示例:\n");
             fprintf(stderr, "  %s hello.cn                    # 仅进行语法和语义检查\n", argv[0]);
             fprintf(stderr, "  %s hello.cn -o hello            # 编译并生成 hello 可执行文件\n", argv[0]);
-            fprintf(stderr, "  %s hello.cn -S                  # 打印 IR 描述到 stdout\n", argv[0]);
-            fprintf(stderr, "  %s hello.cn -O2 -o hello        # 开启优化并编译\n", argv[0]);
+            fprintf(stderr, "  %s a.cn b.cn -o app             # 编译多个源文件\n", argv[0]);
+            fprintf(stderr, "  %s main.cn -I./lib -o app       # 指定模块搜索路径\n", argv[0]);
+            fprintf(stderr, "  %s --project ./src -o app       # 编译整个项目\n", argv[0]);
             return 0;
         }
     }
 
-    filename = argv[1];
+    filename = NULL;  // 将在参数解析中设置
 
-    // 解析其余参数
-    for (int i = 2; i < argc; i++) {
+    // 解析所有参数
+    for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "-o") == 0 && i + 1 < argc) {
             output_filename = argv[++i];
             run_pipeline = true;
@@ -356,6 +375,38 @@ int main(int argc, char **argv)
         } else if (strcmp(argv[i], "--cc") == 0 && i + 1 < argc) {
             cc_override = argv[++i];
             run_pipeline = true;
+        } else if (strcmp(argv[i], "-I") == 0 && i + 1 < argc) {
+            // F2: 添加 -I 参数
+            if (include_path_count >= include_path_capacity) {
+                size_t new_cap = include_path_capacity == 0 ? 8 : include_path_capacity * 2;
+                const char **new_paths = realloc((void*)include_paths, new_cap * sizeof(const char*));
+                if (new_paths) {
+                    include_paths = new_paths;
+                    include_path_capacity = new_cap;
+                }
+            }
+            if (include_path_count < include_path_capacity) {
+                include_paths[include_path_count++] = argv[++i];
+            }
+        } else if (strncmp(argv[i], "-I", 2) == 0 && strlen(argv[i]) > 2) {
+            // 支持 -I/path/to/dir 格式
+            if (include_path_count >= include_path_capacity) {
+                size_t new_cap = include_path_capacity == 0 ? 8 : include_path_capacity * 2;
+                const char **new_paths = realloc((void*)include_paths, new_cap * sizeof(const char*));
+                if (new_paths) {
+                    include_paths = new_paths;
+                    include_path_capacity = new_cap;
+                }
+            }
+            if (include_path_count < include_path_capacity) {
+                include_paths[include_path_count++] = argv[i] + 2;
+            }
+        } else if (strcmp(argv[i], "--main") == 0 && i + 1 < argc) {
+            // F3: 添加 --main 参数
+            main_entry = argv[++i];
+        } else if (strcmp(argv[i], "--project") == 0 && i + 1 < argc) {
+            // F5: 添加 --project 参数
+            project_dir = argv[++i];
         } else if (strcmp(argv[i], "-g") == 0) {
             debug_info = true;
             run_pipeline = true;
@@ -387,7 +438,31 @@ int main(int argc, char **argv)
             enable_mem_profile = true;
         } else if (strcmp(argv[i], "--dump-preprocessed") == 0 || strcmp(argv[i], "-E") == 0) {
             dump_preprocessed = true;
+        } else if (argv[i][0] != '-') {
+            // F1: 支持多个源文件
+            if (source_file_count >= source_file_capacity) {
+                size_t new_cap = source_file_capacity == 0 ? 8 : source_file_capacity * 2;
+                const char **new_files = realloc((void*)source_files, new_cap * sizeof(const char*));
+                if (new_files) {
+                    source_files = new_files;
+                    source_file_capacity = new_cap;
+                }
+            }
+            if (source_file_count < source_file_capacity) {
+                source_files[source_file_count++] = argv[i];
+            }
         }
+    }
+    
+    // 设置主文件名（向后兼容）
+    if (source_file_count > 0) {
+        // 如果指定了 --main，使用它；否则使用第一个源文件
+        filename = main_entry ? main_entry : source_files[0];
+    } else if (main_entry) {
+        filename = main_entry;
+    } else if (!project_dir) {
+        fprintf(stderr, "错误: 未指定源文件\n");
+        return 1;
     }
 
     source = read_file_to_buffer(filename, &source_length);
@@ -813,6 +888,8 @@ cleanup:
     cn_frontend_preprocessor_free(&preprocessor);
     cn_support_diagnostics_free(&diagnostics);
     free(source);
+    free((void*)source_files);
+    free((void*)include_paths);
 
     return 0;
 }
