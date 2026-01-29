@@ -212,21 +212,103 @@ typedef struct CnAstModuleDecl {
     size_t function_count;        // 函数数量
 } CnAstModuleDecl;
 
+// ============================================================================
+// Python 风格模块系统 AST 节点定义（阶段11）
+// ============================================================================
+
+// 导入类型枚举
+typedef enum CnAstImportKind {
+    CN_IMPORT_FULL,               // 全量导入：导入 模块;
+    CN_IMPORT_SELECTIVE,          // 选择性导入：导入 模块 { 成员 };
+    CN_IMPORT_ALIAS,              // 别名导入：导入 模块(别名);
+    CN_IMPORT_FROM_SELECTIVE,     // 从模块导入：从 模块 导入 { 成员 };
+    CN_IMPORT_FROM_WILDCARD,      // 通配符导入：从 模块 导入 *;
+    CN_IMPORT_FROM_MODULE         // 从包导入模块：从 包 导入 模块;
+} CnAstImportKind;
+
+// 模块路径段（用于点分模块路径，如「工具.数学.高级」）
+typedef struct CnAstModulePathSegment {
+    const char *name;             // 路径段名称
+    size_t name_length;           // 路径段名称长度
+} CnAstModulePathSegment;
+
+// 模块路径（完全限定名：包.子包.模块）
+typedef struct CnAstModulePath {
+    CnAstModulePathSegment *segments; // 路径段列表
+    size_t segment_count;             // 路径段数量
+    int is_relative;                  // 是否为相对导入
+    int relative_level;               // 相对导入层级（. = 1, .. = 2, ...）
+} CnAstModulePath;
+
 // 导入成员项（用于选择性导入）
 typedef struct CnAstImportMember {
     const char *name;             // 成员名称
     size_t name_length;           // 成员名称长度
+    const char *alias;            // 成员别名（可选，NULL表示不使用别名）
+    size_t alias_length;          // 成员别名长度
 } CnAstImportMember;
 
-// 导入语句
+// 导入语句（扩展版，支持 Python 风格导入）
 typedef struct CnAstImportStmt {
-    const char *module_name;      // 被导入的模块名称
+    CnAstImportKind kind;         // 导入类型
+    
+    // 传统字段（保持向后兼容）
+    const char *module_name;      // 被导入的模块名称（简单名称）
     size_t module_name_length;    // 模块名称长度
     const char *alias;            // 模块别名（NULL表示不使用别名）
     size_t alias_length;          // 别名长度
     CnAstImportMember *members;   // 要导入的成员列表（NULL表示导入所有）
     size_t member_count;          // 成员数量（0表示导入所有）
+    
+    // 扩展字段（Python 风格模块系统）
+    CnAstModulePath *module_path; // 模块路径（点分路径，如 工具.数学）
+    int is_wildcard;              // 是否为通配符导入（*）
+    int use_from_syntax;          // 是否使用「从...导入」语法
 } CnAstImportStmt;
+
+// 文件模块声明（一个 .cn 文件即一个模块）
+typedef struct CnAstFileModule {
+    const char *file_path;        // 源文件绝对路径
+    size_t file_path_length;      // 文件路径长度
+    const char *module_name;      // 模块名（从文件名派生，不含扩展名）
+    size_t module_name_length;    // 模块名长度
+    
+    // 模块成员（按可见性分组）
+    struct CnAstStmt **public_stmts;   // 公开成员列表
+    size_t public_stmt_count;          // 公开成员数量
+    struct CnAstStmt **private_stmts;  // 私有成员列表
+    size_t private_stmt_count;         // 私有成员数量
+    
+    // 模块内函数
+    struct CnAstFunctionDecl **public_functions;  // 公开函数列表
+    size_t public_function_count;                 // 公开函数数量
+    struct CnAstFunctionDecl **private_functions; // 私有函数列表
+    size_t private_function_count;                // 私有函数数量
+    
+    // 导入语句
+    struct CnAstStmt **imports;   // 导入语句列表
+    size_t import_count;          // 导入语句数量
+    
+    // 元数据
+    int is_package_init;          // 是否为包初始化文件（__包__.cn）
+} CnAstFileModule;
+
+// 包声明（包含 __包__.cn 的目录）
+typedef struct CnAstPackageDecl {
+    const char *package_name;     // 包名称
+    size_t package_name_length;   // 包名称长度
+    const char *package_path;     // 包目录绝对路径
+    size_t package_path_length;   // 包目录路径长度
+    
+    // 包内子模块和子包
+    CnAstModulePath **submodules; // 子模块路径列表
+    size_t submodule_count;       // 子模块数量
+    struct CnAstPackageDecl **subpackages; // 子包列表
+    size_t subpackage_count;      // 子包数量
+    
+    // 包初始化模块
+    CnAstFileModule *init_module; // __包__.cn 的 AST（可为 NULL）
+} CnAstPackageDecl;
 
 // 函数参数
 typedef struct CnAstParameter {
