@@ -32,6 +32,37 @@ struct CnSemScope {
     CnFileModuleSemInfo *file_module_info;  // 文件模块信息（仅当kind==CN_SEM_SCOPE_FILE_MODULE时有效）
 };
 
+// 模块编译栈，用于检测循环导入
+#define MAX_MODULE_COMPILE_DEPTH 64
+static const char *g_compiling_modules[MAX_MODULE_COMPILE_DEPTH];
+static int g_compile_depth = 0;
+
+// 检查是否正在编译该模块（循环导入检测）
+static int is_module_compiling(const char *file_path) {
+    for (int i = 0; i < g_compile_depth; i++) {
+        if (strcmp(g_compiling_modules[i], file_path) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// 将模块压入编译栈
+static int push_compiling_module(const char *file_path) {
+    if (g_compile_depth >= MAX_MODULE_COMPILE_DEPTH) {
+        return 0;  // 栈溢出
+    }
+    g_compiling_modules[g_compile_depth++] = file_path;
+    return 1;
+}
+
+// 将模块弹出编译栈
+static void pop_compiling_module(void) {
+    if (g_compile_depth > 0) {
+        g_compile_depth--;
+    }
+}
+
 static void cn_sem_build_function_scope(CnSemScope *parent_scope,
                                          CnAstFunctionDecl *function_decl,
                                          CnDiagnostics *diagnostics);
@@ -1137,10 +1168,31 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                                      CnModuleLoader *loader,
                                                      const char *importing_file)
 {
+    // 检测循环导入
+    if (is_module_compiling(file_path)) {
+        cn_support_diag_semantic_error_generic(
+            diagnostics,
+            CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+            NULL, 0, 0,
+            "语义错误：检测到循环导入");
+        return NULL;
+    }
+    
+    // 压入编译栈
+    if (!push_compiling_module(file_path)) {
+        cn_support_diag_semantic_error_generic(
+            diagnostics,
+            CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+            NULL, 0, 0,
+            "语义错误：模块导入嵌套层级太深");
+        return NULL;
+    }
+    
     // 读取文件内容
     size_t file_size = 0;
     char *source = read_file_content(file_path, &file_size);
     if (!source) {
+        pop_compiling_module();
         return NULL;
     }
     
@@ -1151,6 +1203,7 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     if (!cn_frontend_preprocessor_process(&preprocessor)) {
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
+        pop_compiling_module();
         return NULL;
     }
     
@@ -1163,6 +1216,7 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     if (!parser) {
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
+        pop_compiling_module();
         return NULL;
     }
     
@@ -1173,6 +1227,7 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         cn_frontend_parser_free(parser);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
+        pop_compiling_module();
         return NULL;
     }
     
@@ -1183,6 +1238,7 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         cn_frontend_parser_free(parser);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
+        pop_compiling_module();
         return NULL;
     }
     
@@ -1310,6 +1366,9 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     // 注意：不能释放 source，因为 preprocessor 可能引用 source
     // free(source);  // 不释放，避免悬空指针
     // 注意：module_program 也不能释放，因为符号可能引用 AST 节点
+    
+    // 弹出编译栈
+    pop_compiling_module();
     
     return module_scope;
 }
