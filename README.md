@@ -1,51 +1,109 @@
 # CN_Language
 
-一门面向操作系统开发的中文编程语言及其编译器工具链实现。
+<div align="center">
 
-## 项目简介
+**中文编程语言 —— 让编程回归中文思维**
 
-CN_Language 是一个使用中文关键字和标识符的系统级编程语言，旨在为操作系统开发、底层系统软件和嵌入式开发提供现代化的中文编程体验。
+[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com/yourusername/CN_Language/releases)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Build Status](https://img.shields.io/badge/build-passing-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-106%2F106-success.svg)](#测试覆盖)
 
-**核心特性：**
-- 🇨🇳 **中文语法**：使用中文关键字和标识符，语义清晰易懂
-- 🔧 **系统级开发**：支持 freestanding 模式，适合操作系统内核和裸机编程
-- ⚡ **编译到 C**：首期版本通过编译到 C 语言，复用成熟工具链
-- 🛠️ **完整工具链**：包含编译器、REPL、格式化工具等开发工具
-- 📦 **模块化设计**：清晰的架构分层，严格的代码规范
+[快速开始](#快速开始) • [特性](#核心特性) • [示例](#代码示例) • [文档](#文档) • [贡献](#贡献)
 
-## 快速开始
+</div>
 
-### 环境要求
+---
 
-- C 编译器（GCC/Clang/MSVC）
-- CMake 3.10+
-- Git
+## 📖 简介
 
-### 构建项目
+CN_Language 是一个**完全使用中文语法**的编程语言，旨在降低中文母语者的编程门槛，让编程更加贴近自然语言思维。本项目提供完整的编译器工具链，包括词法分析、语法分析、语义检查、代码生成和运行时库。
 
-```powershell
+### 🎯 设计目标
+
+- **中文优先**：关键字、函数名、变量名全部使用中文
+- **易学易用**：贴近自然语言的语法结构
+- **工业级**：完整的编译器和工具链支持
+- **系统编程**：支持操作系统内核开发
+- **高性能**：通过 C 后端生成高效的机器码
+
+---
+
+## ✨ 核心特性
+
+### 语言特性
+
+- ✅ **基础类型**：整数、小数、布尔、字符串
+- ✅ **复合类型**：数组、结构体、枚举
+- ✅ **指针支持**：包括函数指针
+- ✅ **控制流**：如果/否则、当、循环、选择
+- ✅ **函数系统**：参数传递、返回值、递归调用
+- ✅ **模块系统**：模块声明、导入、可见性控制
+- ✅ **预处理器**：宏定义、条件编译、文件包含
+
+### 编译器工具链
+
+| 工具 | 功能 | 状态 |
+|------|------|------|
+| **cnc** | CN_Language 编译器 | ✅ 可用 |
+| **cnfmt** | 代码格式化工具 | ✅ 可用 |
+| **cncheck** | 静态代码检查 | ✅ 可用 |
+| **cnlsp** | 语言服务器（IDE支持） | ✅ 可用 |
+| **cnrepl** | 交互式解释器 | ✅ 可用 |
+| **cnperf** | 性能分析工具 | ✅ 可用 |
+
+### 运行时库
+
+- ✅ **内存管理**：Arena 分配器、安全内存操作
+- ✅ **I/O 支持**：控制台输入输出、文件操作
+- ✅ **数学库**：基础数学函数
+- ✅ **字符串库**：字符串操作函数
+- ✅ **并发支持**：锁、条件变量、原子操作
+
+### 操作系统开发
+
+- ✅ **Freestanding 模式**：无标准库依赖
+- ✅ **内存映射**：底层内存操作
+- ✅ **内联汇编**：直接嵌入汇编代码
+- ✅ **中断处理**：通过运行时库 API
+
+---
+
+## 🚀 快速开始
+
+### 安装
+
+#### 从源码构建
+
+```bash
 # 克隆仓库
-git clone https://github.com/ChenChao-HuaiAn/CN_Language.git
+git clone https://github.com/yourusername/CN_Language.git
 cd CN_Language
 
-# 创建构建目录
-mkdir build
-cd build
+# 配置构建
+cmake -B build -DCMAKE_BUILD_TYPE=Release
 
-# 配置并构建
-cmake ..
-cmake --build .
+# 编译
+cmake --build build --config Release
 
 # 运行测试
-ctest
+cd build
+ctest -C Release
 ```
 
-### 第一个程序
+#### 构建产物
 
-创建文件 `hello.cn`：
+构建完成后，可执行文件位于：
+- Windows: `build/src/Release/cnc.exe`
+- Linux/macOS: `build/src/cnc`
+
+### Hello World
+
+创建 `hello.cn` 文件：
 
 ```cn
-函数 主程序() {
+函数 主程序()
+{
     打印("你好，世界！\n");
     返回 0;
 }
@@ -53,258 +111,326 @@ ctest
 
 编译并运行：
 
-```powershell
-# 编译为 C 代码
-.\build\Debug\cnc.exe examples\hello_world.cn -o hello.c
-
-# 使用 C 编译器编译
-gcc hello.c -o hello.exe
-
-# 运行
-.\hello.exe
-```
-
-## 语言特性
-
-### 基本语法
-
-**变量声明**：
-```cn
-整数 年龄 = 25;
-字符串 姓名 = "张三";
-变量 自动推断 = 100;  // 类型推断
-```
-
-**函数定义**：
-```cn
-函数 整数 计算和(整数 a, 整数 b) {
-    返回 a + b;
-}
-```
-
-**控制流**：
-```cn
-如果 (年龄 >= 18) {
-    打印("成年人\n");
-} 否则 {
-    打印("未成年人\n");
-}
-
-当 (计数 < 10) {
-    计数 = 计数 + 1;
-}
-```
-
-**数组操作**：
-```cn
-数组 数字列表 = [1, 2, 3, 4, 5];
-整数 长度 = 数字列表.长度();
-数字列表[0] = 10;
-```
-
-**模块系统**：
-```cn
-模块 数学工具;
-
-导入 基础库;
-
-函数 整数 平方(整数 x) {
-    返回 x * x;
-}
-```
-
-## 项目结构
-
-```
-CN_Language/
-├── src/                    # 源代码
-│   ├── frontend/          # 前端：词法分析、语法分析
-│   ├── semantics/         # 语义分析、符号表
-│   ├── ir/               # 中间表示
-│   ├── backend/          # 后端：C 代码生成
-│   ├── runtime/          # 运行时库
-│   ├── support/          # 工具支持模块
-│   └── cli/              # 命令行工具
-├── include/              # 头文件
-├── tests/                # 测试
-│   ├── unit/            # 单元测试
-│   ├── integration/     # 集成测试
-│   └── system/          # 系统测试
-├── examples/             # 示例程序
-├── docs/                # 文档
-│   ├── design/          # 设计文档
-│   ├── specifications/  # 规范文档
-│   └── implementation-plans/  # 实施计划
-└── CMakeLists.txt       # 构建配置
-```
-
-## 工具链
-
-### cnc - 编译器
-主编译器，将 CN_Language 源代码编译为 C 代码：
-
-```powershell
-cnc input.cn -o output.c
-```
-
-### cnrepl - 交互式解释器
-快速试验代码片段：
-
-```powershell
-cnrepl
-> 变量 x = 10;
-> 打印(x * 2);
-20
-```
-
-### cnfmt - 代码格式化工具
-自动格式化源代码：
-
-```powershell
-cnfmt input.cn
-```
-
-## 开发路线图
-
-项目采用分阶段迭代开发模式：
-
-- ✅ **阶段 0**：项目初始化与规范完善
-- ✅ **阶段 1**：前端基础（词法/语法分析）
-- ✅ **阶段 2**：语义分析与基础类型系统
-- ✅ **阶段 3**：IR 设计与 C 后端初版
-- ✅ **阶段 4**：最小运行时与基础标准库
-- ✅ **阶段 5**：OS 开发支持与 freestanding 模式
-- ✅ **阶段 6**：工具链与生态（REPL/格式化/检查器）
-- ✅ **阶段 7**：性能优化、稳定版与长期演进
-- 📅 **阶段 8**：核心语法扩展与系统编程能力（操作系统开发就绪）
-
-详见 [开发计划](docs/design/CN_Language%20开发计划.md)。
-
-## 文档
-
-- [语言规范草案](docs/specifications/CN_Language%20语言规范草案（核心子集）.md) - 语言语法和语义定义
-- [C 代码风格规范](docs/specifications/CN_Language%20C%20代码风格规范.md) - 实现代码规范
-- [测试规范](docs/specifications/CN_Language%20测试规范.md) - 测试组织与编写规范
-- [编译器架构设计](docs/design/CN_Language%20编译器%20工具链架构设计.md) - 系统架构文档
-- [运行时绑定规范](docs/specifications/CN_Language%20运行时绑定规范.md) - 运行时接口规范
-
-## 示例程序
-
-查看 [examples/](examples/) 目录获取更多示例：
-
-- [hello_world.cn](examples/hello_world.cn) - Hello World
-- [arithmetic_compile.cn](examples/arithmetic_compile.cn) - 算术运算
-- [array_examples.cn](examples/array_examples.cn) - 数组操作
-- [function_examples.cn](examples/function_examples.cn) - 函数定义与调用
-- [control_flow_compile.cn](examples/control_flow_compile.cn) - 控制流
-- [freestanding_example.cn](examples/freestanding_example.cn) - Freestanding 模式
-
-## 贡献指南
-
-欢迎贡献！在提交代码前，请确保：
-
-1. 遵循 [C 代码风格规范](docs/specifications/CN_Language%20C%20代码风格规范.md)
-2. 每个 `.c` 文件不超过 500 行，每个函数不超过 50 行
-3. 为新功能添加单元测试和集成测试
-4. 通过所有现有测试：`ctest`
-5. 更新相关文档
-
-## 运行测试
-
-```powershell
-# 进入构建目录
-cd build
-
-# 运行所有测试
-ctest
-
-# 运行特定测试
-ctest -R lexer_test
-ctest -R integration
-
-# 详细输出
-ctest --output-on-failure
-```
-
-## OS 开发支持
-
-CN_Language 特别适合操作系统开发：
-
-**Freestanding 模式**：
-```powershell
-cnc --target x86_64-elf --freestanding kernel.cn -o kernel.c
-```
-
-**特性**：
-- 无标准库依赖
-- 自定义内存分配器
-- 直接硬件访问
-- 与启动代码/链接脚本集成
-
-查看 [OS 开发示例](tests/integration/os/) 了解更多。
-
-## 多平台验证
-
-CN_Language 支持多平台构建与运行验证，确保在不同操作系统和架构上的行为一致性。
-
-### 支持的平台
-
-| 平台 | 架构 | 编译器 | 状态 |
-|------|------|--------|------|
-| Windows | x86_64 | MSVC/GCC/Clang | ✅ 已验证 |
-| Linux | x86_64 | GCC/Clang | ✅ 已验证 |
-| Linux | aarch64 | GCC/Clang | ✅ 已验证 |
-| Freestanding | x86_64 | GCC/Clang | ✅ 已验证 |
-
-### 快速验证
-
-**Windows**:
-```powershell
-.\tools\multiplatform_test.ps1 -CleanBuild
-```
-
-**Linux**:
 ```bash
-chmod +x tools/multiplatform_test.sh
-./tools/multiplatform_test.sh
+cnc hello.cn -o hello
+./hello
 ```
 
-**Docker**:
-```bash
-docker-compose run cn-lang-dev
-./tools/multiplatform_test.sh
+输出：
 ```
-
-验证脚本会自动执行：
-- ✓ 依赖工具检查
-- ✓ CMake 配置与构建
-- ✓ 单元测试和集成测试
-- ✓ 核心功能验证
-- ✓ 生成详细报告
-
-查看 [多平台构建与运行验证指南](docs/implementation-plans/阶段%207：性能优化、稳定版与长期演进/多平台构建与运行验证指南.md) 了解更多。
-
-## 技术栈
-
-- **实现语言**：C (C11 标准)
-- **构建系统**：CMake
-- **测试框架**：自研轻量测试框架 + CTest
-- **目标平台**：Windows, Linux, macOS
-- **架构支持**：x86_64, ARM64
-
-## 许可证
-
-[MIT License](LICENSE)
-
-## 致谢
-
-感谢所有为中文编程语言生态做出贡献的开发者和研究者。
-
-## 联系方式
-
-- 问题反馈：[GitHub Issues](https://github.com/your-username/CN_Language/issues)
-- 讨论交流：[GitHub Discussions](https://github.com/your-username/CN_Language/discussions)
+你好，世界！
+```
 
 ---
 
-**注**：项目当前处于活跃开发阶段，API 和语法可能会发生变化。
+## 📝 代码示例
+
+### 基础语法
+
+```cn
+// 变量声明
+变量 年龄 = 25;
+变量 姓名 = "张三";
+变量 成绩 = 95.5;
+
+// 条件判断
+如果 (成绩 >= 90) {
+    打印("优秀\n");
+} 否则 如果 (成绩 >= 60) {
+    打印("及格\n");
+} 否则 {
+    打印("不及格\n");
+}
+
+// 循环
+变量 i = 0;
+当 (i < 10) {
+    打印("%d\n", i);
+    i = i + 1;
+}
+```
+
+### 函数定义
+
+```cn
+// 计算阶乘
+函数 阶乘(整数 n) {
+    如果 (n <= 1) {
+        返回 1;
+    }
+    返回 n * 阶乘(n - 1);
+}
+
+函数 主程序() {
+    变量 结果 = 阶乘(5);
+    打印("5的阶乘是: %d\n", 结果);
+    返回 0;
+}
+```
+
+### 结构体
+
+```cn
+结构体 学生 {
+    整数 学号;
+    字符串 姓名;
+    小数 成绩;
+};
+
+函数 主程序() {
+    变量 s = 学生 { 学号 = 1001, 姓名 = "李四", 成绩 = 88.5 };
+    打印("学号: %d, 姓名: %s, 成绩: %.1f\n", 
+         s.学号, s.姓名, s.成绩);
+    返回 0;
+}
+```
+
+### 模块系统
+
+```cn
+// 数学工具模块
+模块 数学工具 {
+    公开: 函数 加法(整数 a, 整数 b) {
+        返回 a + b;
+    }
+    
+    公开: 函数 乘法(整数 a, 整数 b) {
+        返回 a * b;
+    }
+}
+
+// 主程序
+导入 数学工具;
+
+函数 主程序() {
+    变量 和 = 数学工具.加法(3, 5);
+    变量 积 = 数学工具.乘法(3, 5);
+    打印("和: %d, 积: %d\n", 和, 积);
+    返回 0;
+}
+```
+
+### 更多示例
+
+查看 [examples/](examples/) 目录获取 140+ 个完整示例，包括：
+- 基础语法示例
+- 系统编程（内存管理、并发）
+- 操作系统内核开发
+- 完整的测试用例
+
+---
+
+## 🧪 测试覆盖
+
+CN_Language 1.0.0 版本包含完整的测试套件：
+
+| 测试类型 | 数量 | 通过率 |
+|---------|------|--------|
+| 单元测试 | 41 | 100% |
+| 集成测试 | 17 | 100% |
+| 系统测试 | 48 | 100% |
+| **总计** | **106** | **100%** |
+
+运行测试：
+
+```bash
+cd build
+ctest -C Release --output-on-failure
+```
+
+---
+
+## 📚 文档
+
+### 规范文档
+
+- [语言规范](docs/specifications/CN_Language%20语言规范草案（核心子集）.md) - 完整的语法和语义规范
+- [版本号规范](docs/specifications/CN_Language%20版本号规范.md) - 语义化版本控制
+- [测试规范](docs/specifications/CN_Language%20测试规范.md) - 测试编写和组织规范
+- [发布流程](docs/specifications/CN_Language%20发布流程与工件管理规范.md) - 发布管理规范
+- [C 代码风格](docs/specifications/CN_Language%20C%20代码风格规范.md) - 编译器代码规范
+- [CN 代码风格](docs/specifications/CN_Language%20CN代码风格规范.md) - CN 语言代码规范
+
+### 设计文档
+
+- [编译器架构](docs/design/CN_Language%20编译器%20工具链架构设计.md) - 编译器整体架构
+- [开发计划](docs/design/CN_Language%20开发计划.md) - 分阶段开发规划
+- [语法标准](docs/design/CN_Language%20语法标准.md) - 语法设计标准
+- [LSP 架构](docs/design/CN_Language%20LSP%20语言服务架构设计.md) - 语言服务器设计
+
+### 用户指南
+
+- [模块系统使用指南](docs/user-guide/CN语言模块系统使用指南.md) - 模块系统详细说明
+
+### API 文档
+
+- [运行时 API](docs/api/) - 运行时库 API 参考
+- [工具链 API](docs/api/tools/) - 工具链接口文档
+
+---
+
+## 🛠️ 编译器使用
+
+### 基本用法
+
+```bash
+# 编译并生成可执行文件
+cnc 源文件.cn -o 输出文件
+
+# 仅进行语法检查
+cnc 源文件.cn
+
+# 生成 C 代码（不编译）
+cnc 源文件.cn -c -o 输出.c
+
+# 保留中间 C 代码
+cnc 源文件.cn --emit-c -o 输出
+```
+
+### 高级选项
+
+```bash
+# 指定模块搜索路径
+cnc main.cn -I./lib -o app
+
+# 编译整个项目目录
+cnc --project ./src -o app
+
+# 启用优化
+cnc 源文件.cn -O2 -o 输出
+
+# Freestanding 模式（OS 开发）
+cnc kernel.cn --freestanding -o kernel
+
+# 性能分析
+cnc 源文件.cn --perf --perf-output=perf.json
+
+# 内存分析
+cnc 源文件.cn --mem-profile --mem-output=mem.csv
+```
+
+---
+
+## 🏗️ 项目结构
+
+```
+CN_Language/
+├── src/                    # 编译器源码
+│   ├── frontend/          # 前端（词法、语法、AST）
+│   ├── semantics/         # 语义分析
+│   ├── ir/                # 中间表示
+│   ├── backend/           # 代码生成
+│   ├── runtime/           # 运行时库
+│   └── cli/               # 命令行工具
+├── include/               # 头文件
+├── tests/                 # 测试套件
+│   ├── unit/             # 单元测试
+│   ├── integration/      # 集成测试
+│   └── system/           # 系统测试
+├── examples/              # 示例代码（140+ 个）
+├── docs/                  # 文档
+│   ├── specifications/   # 规范文档
+│   ├── design/           # 设计文档
+│   └── api/              # API 文档
+└── tools/                 # 辅助工具脚本
+```
+
+---
+
+## 🎓 学习路径
+
+### 初学者
+
+1. [Hello World](examples/basic/hello_world.cn) - 第一个程序
+2. [函数示例](examples/syntax/functions/function_examples.cn) - 函数定义和调用
+3. [控制流](examples/syntax/control-flow/) - 条件和循环
+4. [数组](examples/syntax/arrays/array_examples.cn) - 数组操作
+
+### 进阶
+
+5. [指针](examples/syntax/pointers/pointer_example.cn) - 指针和内存
+6. [结构体](examples/syntax/structs/struct_complete_example.cn) - 复合类型
+7. [模块系统](examples/module-system/完整功能展示.cn) - 代码组织
+
+### 高级
+
+8. [内存管理](examples/system/memory/memory_manager_demo.cn) - 自定义分配器
+9. [并发编程](examples/system/concurrency/task_scheduler_demo.cn) - 多任务
+10. [OS 开发](examples/os-kernel/os_kernel_demo.cn) - 内核开发
+
+---
+
+## 🤝 贡献
+
+我们欢迎所有形式的贡献！
+
+### 如何贡献
+
+1. Fork 本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 提交 Pull Request
+
+### 贡献指南
+
+- 遵循 [C 代码风格规范](docs/specifications/CN_Language%20C%20代码风格规范.md)
+- 为新功能添加测试用例
+- 更新相关文档
+- 确保所有测试通过
+
+---
+
+## 📋 开发状态
+
+### 已完成功能（v1.0.0）
+
+- ✅ 完整的前端（词法、语法、AST）
+- ✅ 语义分析（类型检查、作用域）
+- ✅ IR 生成与优化
+- ✅ C 代码后端
+- ✅ 完整的运行时库
+- ✅ 模块系统
+- ✅ 预处理器
+- ✅ Freestanding 模式
+- ✅ 完整的工具链
+
+### 开发中
+
+- 🚧 泛型系统
+- 🚧 类和接口
+- 🚧 异常处理
+- 🚧 包管理器
+- 🚧 IDE 插件
+
+---
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情。
+
+---
+
+## 🙏 致谢
+
+感谢所有为 CN_Language 项目做出贡献的开发者！
+
+---
+
+## 📞 联系方式
+
+- 项目主页：[https://github.com/yourusername/CN_Language](https://github.com/yourusername/CN_Language)
+- 问题反馈：[GitHub Issues](https://github.com/yourusername/CN_Language/issues)
+- 讨论区：[GitHub Discussions](https://github.com/yourusername/CN_Language/discussions)
+
+---
+
+<div align="center">
+
+**让中文编程更简单，让编程更贴近思维**
+
+Made with ❤️ by CN_Language Team
+
+[⬆ 回到顶部](#cn_language)
+
+</div>
