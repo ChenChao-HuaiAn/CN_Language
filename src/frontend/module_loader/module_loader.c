@@ -377,3 +377,1050 @@ void cn_search_config_set_stdlib_path(CnModuleSearchConfig *config, const char *
         config->stdlib_path_length = 0;
     }
 }
+
+// ============================================================================
+// 阶段 C：模块解析与加载
+// ============================================================================
+
+// --- 辅助函数 ---
+
+/**
+ * @brief 检查文件是否存在
+ */
+static int file_exists(const char *path)
+{
+    if (!path) {
+        return 0;
+    }
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path);
+    return (attrs != INVALID_FILE_ATTRIBUTES && !(attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISREG(st.st_mode));
+#endif
+}
+
+/**
+ * @brief 检查目录是否存在
+ */
+static int dir_exists(const char *path)
+{
+    if (!path) {
+        return 0;
+    }
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path);
+    return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+#endif
+}
+
+/**
+ * @brief 拼接路径
+ */
+static char *path_join(const char *base, const char *name)
+{
+    if (!base || !name) {
+        return NULL;
+    }
+    
+    size_t base_len = strlen(base);
+    size_t name_len = strlen(name);
+    
+    // 移除末尾分隔符
+    while (base_len > 0 && (base[base_len - 1] == '/' || base[base_len - 1] == '\\')) {
+        base_len--;
+    }
+    
+    size_t total_len = base_len + 1 + name_len + 1;
+    char *result = (char *)malloc(total_len);
+    if (!result) {
+        return NULL;
+    }
+    
+    memcpy(result, base, base_len);
+    result[base_len] = PATH_SEPARATOR;
+    strcpy(result + base_len + 1, name);
+    
+    return result;
+}
+
+/**
+ * @brief 获取文件修改时间
+ */
+static uint64_t get_file_mtime(const char *path)
+{
+    if (!path) {
+        return 0;
+    }
+#ifdef _WIN32
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    if (GetFileAttributesExA(path, GetFileExInfoStandard, &fad)) {
+        ULARGE_INTEGER ull;
+        ull.LowPart = fad.ftLastWriteTime.dwLowDateTime;
+        ull.HighPart = fad.ftLastWriteTime.dwHighDateTime;
+        return ull.QuadPart;
+    }
+    return 0;
+#else
+    struct stat st;
+    if (stat(path, &st) == 0) {
+        return (uint64_t)st.st_mtime;
+    }
+    return 0;
+#endif
+}
+
+// ============================================================================
+// C1: 模块文件发现
+// ============================================================================
+
+/**
+ * @brief 在指定目录中查找模块文件
+ * @param search_dir 搜索目录
+ * @param module_name 模块名（单个段）
+ * @return 找到的文件路径（调用者负责释放），未找到返回 NULL
+ */
+static char *find_module_file_in_dir(const char *search_dir, const char *module_name)
+{
+    if (!search_dir || !module_name) {
+        return NULL;
+    }
+    
+    // 构建模块文件名：模块名.cn
+    size_t name_len = strlen(module_name);
+    char *filename = (char *)malloc(name_len + 4);  // .cn + null
+    if (!filename) {
+        return NULL;
+    }
+    sprintf(filename, "%s.cn", module_name);
+    
+    // 拼接完整路径
+    char *full_path = path_join(search_dir, filename);
+    free(filename);
+    
+    if (!full_path) {
+        return NULL;
+    }
+    
+    // 检查文件是否存在
+    if (file_exists(full_path)) {
+        return full_path;
+    }
+    
+    free(full_path);
+    return NULL;
+}
+
+/**
+ * @brief 根据模块标识符查找模块文件
+ */
+static char *find_module_file(CnModuleSearchConfig *config, const CnModuleId *id)
+{
+    if (!config || !id || id->segment_count == 0) {
+        return NULL;
+    }
+    
+    // 构建相对路径：包/子包/模块.cn
+    char *relative_path = NULL;
+    size_t path_len = 0;
+    
+    // 计算路径长度
+    for (size_t i = 0; i < id->segment_count; i++) {
+        path_len += strlen(id->segments[i]);
+        if (i < id->segment_count - 1) {
+            path_len += 1;  // 路径分隔符
+        }
+    }
+    path_len += 4;  // .cn + null
+    
+    relative_path = (char *)malloc(path_len);
+    if (!relative_path) {
+        return NULL;
+    }
+    
+    // 构建路径
+    char *ptr = relative_path;
+    for (size_t i = 0; i < id->segment_count; i++) {
+        size_t seg_len = strlen(id->segments[i]);
+        memcpy(ptr, id->segments[i], seg_len);
+        ptr += seg_len;
+        if (i < id->segment_count - 1) {
+            *ptr++ = PATH_SEPARATOR;
+        }
+    }
+    strcpy(ptr, ".cn");
+    
+    // 在搜索路径中查找
+    // 1. 先检查项目根目录
+    if (config->project_root) {
+        char *full_path = path_join(config->project_root, relative_path);
+        if (full_path && file_exists(full_path)) {
+            free(relative_path);
+            return full_path;
+        }
+        free(full_path);
+    }
+    
+    // 2. 检查自定义搜索路径（按优先级排序）
+    for (size_t i = 0; i < config->path_count; i++) {
+        char *full_path = path_join(config->paths[i].path, relative_path);
+        if (full_path && file_exists(full_path)) {
+            free(relative_path);
+            return full_path;
+        }
+        free(full_path);
+    }
+    
+    // 3. 检查标准库路径
+    if (config->stdlib_path) {
+        char *full_path = path_join(config->stdlib_path, relative_path);
+        if (full_path && file_exists(full_path)) {
+            free(relative_path);
+            return full_path;
+        }
+        free(full_path);
+    }
+    
+    free(relative_path);
+    return NULL;
+}
+
+// ============================================================================
+// C2: 包目录发现
+// ============================================================================
+
+/**
+ * @brief 根据模块标识符查找包目录
+ */
+static char *find_package_dir(CnModuleSearchConfig *config, const CnModuleId *id)
+{
+    if (!config || !id || id->segment_count == 0) {
+        return NULL;
+    }
+    
+    // 构建相对路径：包/子包/模块
+    char *relative_path = NULL;
+    size_t path_len = 0;
+    
+    // 计算路径长度
+    for (size_t i = 0; i < id->segment_count; i++) {
+        path_len += strlen(id->segments[i]);
+        if (i < id->segment_count - 1) {
+            path_len += 1;
+        }
+    }
+    path_len += 1;  // null
+    
+    relative_path = (char *)malloc(path_len);
+    if (!relative_path) {
+        return NULL;
+    }
+    
+    // 构建路径
+    char *ptr = relative_path;
+    for (size_t i = 0; i < id->segment_count; i++) {
+        size_t seg_len = strlen(id->segments[i]);
+        memcpy(ptr, id->segments[i], seg_len);
+        ptr += seg_len;
+        if (i < id->segment_count - 1) {
+            *ptr++ = PATH_SEPARATOR;
+        }
+    }
+    *ptr = '\0';
+    
+    // 在搜索路径中查找
+    // 1. 先检查项目根目录
+    if (config->project_root) {
+        char *full_path = path_join(config->project_root, relative_path);
+        if (full_path && cn_is_package_directory(full_path)) {
+            free(relative_path);
+            return full_path;
+        }
+        free(full_path);
+    }
+    
+    // 2. 检查自定义搜索路径
+    for (size_t i = 0; i < config->path_count; i++) {
+        char *full_path = path_join(config->paths[i].path, relative_path);
+        if (full_path && cn_is_package_directory(full_path)) {
+            free(relative_path);
+            return full_path;
+        }
+        free(full_path);
+    }
+    
+    // 3. 检查标准库路径
+    if (config->stdlib_path) {
+        char *full_path = path_join(config->stdlib_path, relative_path);
+        if (full_path && cn_is_package_directory(full_path)) {
+            free(relative_path);
+            return full_path;
+        }
+        free(full_path);
+    }
+    
+    free(relative_path);
+    return NULL;
+}
+
+// ============================================================================
+// C3: 模块搜索路径管理器
+// ============================================================================
+
+/**
+ * @brief 从环境变量加载搜索路径
+ */
+int cn_search_config_load_from_env(CnModuleSearchConfig *config, const char *env_var)
+{
+    if (!config || !env_var) {
+        return 0;
+    }
+    
+    const char *env_value = getenv(env_var);
+    if (!env_value || *env_value == '\0') {
+        return 1;  // 环境变量未设置，不算失败
+    }
+    
+    // 解析路径列表（用 ; 或 : 分隔）
+#ifdef _WIN32
+    const char path_list_sep = ';';
+#else
+    const char path_list_sep = ':';
+#endif
+    
+    const char *start = env_value;
+    const char *ptr = env_value;
+    int priority = 100;  // 环境变量路径的默认优先级
+    
+    while (*ptr != '\0') {
+        if (*ptr == path_list_sep) {
+            if (ptr > start) {
+                // 提取路径
+                size_t path_len = ptr - start;
+                char *path = (char *)malloc(path_len + 1);
+                if (path) {
+                    memcpy(path, start, path_len);
+                    path[path_len] = '\0';
+                    cn_search_config_add_path(config, path, priority);
+                    free(path);
+                }
+            }
+            start = ptr + 1;
+        }
+        ptr++;
+    }
+    
+    // 处理最后一个路径
+    if (ptr > start) {
+        cn_search_config_add_path(config, start, priority);
+    }
+    
+    return 1;
+}
+
+// ============================================================================
+// C4: 模块缓存系统
+// ============================================================================
+
+/**
+ * @brief 创建模块缓存
+ */
+CnModuleCache *cn_module_cache_create(size_t initial_bucket_count)
+{
+    if (initial_bucket_count == 0) {
+        initial_bucket_count = 64;
+    }
+    
+    CnModuleCache *cache = (CnModuleCache *)malloc(sizeof(CnModuleCache));
+    if (!cache) {
+        return NULL;
+    }
+    
+    cache->buckets = (CnModuleCacheEntry **)calloc(initial_bucket_count, sizeof(CnModuleCacheEntry *));
+    if (!cache->buckets) {
+        free(cache);
+        return NULL;
+    }
+    
+    cache->bucket_count = initial_bucket_count;
+    cache->entry_count = 0;
+    
+    return cache;
+}
+
+/**
+ * @brief 释放模块缓存
+ */
+void cn_module_cache_free(CnModuleCache *cache)
+{
+    if (!cache) {
+        return;
+    }
+    
+    // 释放所有条目
+    for (size_t i = 0; i < cache->bucket_count; i++) {
+        CnModuleCacheEntry *entry = cache->buckets[i];
+        while (entry) {
+            CnModuleCacheEntry *next = entry->next;
+            // 注意：id 和 metadata 由外部管理，这里不释放
+            free(entry);
+            entry = next;
+        }
+    }
+    
+    free(cache->buckets);
+    free(cache);
+}
+
+/**
+ * @brief 在缓存中查找模块
+ */
+CnModuleMetadata *cn_module_cache_get(CnModuleCache *cache, const CnModuleId *id)
+{
+    if (!cache || !id) {
+        return NULL;
+    }
+    
+    uint32_t hash = cn_module_id_hash(id);
+    size_t bucket_idx = hash % cache->bucket_count;
+    
+    CnModuleCacheEntry *entry = cache->buckets[bucket_idx];
+    while (entry) {
+        if (cn_module_id_equals(entry->id, id)) {
+            return entry->metadata;
+        }
+        entry = entry->next;
+    }
+    
+    return NULL;
+}
+
+/**
+ * @brief 将模块添加到缓存
+ */
+int cn_module_cache_put(CnModuleCache *cache, CnModuleMetadata *metadata)
+{
+    if (!cache || !metadata || !metadata->id) {
+        return 0;
+    }
+    
+    // 检查是否已存在
+    if (cn_module_cache_get(cache, metadata->id)) {
+        return 1;  // 已存在
+    }
+    
+    // 创建新条目
+    CnModuleCacheEntry *entry = (CnModuleCacheEntry *)malloc(sizeof(CnModuleCacheEntry));
+    if (!entry) {
+        return 0;
+    }
+    
+    entry->id = metadata->id;
+    entry->metadata = metadata;
+    
+    // 插入到哈希桶
+    uint32_t hash = cn_module_id_hash(metadata->id);
+    size_t bucket_idx = hash % cache->bucket_count;
+    
+    entry->next = cache->buckets[bucket_idx];
+    cache->buckets[bucket_idx] = entry;
+    cache->entry_count++;
+    
+    return 1;
+}
+
+// ============================================================================
+// C5: 循环导入检测
+// ============================================================================
+
+/**
+ * @brief 检测循环导入（DFS 检测环）
+ */
+static int detect_cycle_dfs(CnDependencyGraph *graph, CnDependencyNode *node, 
+                             CnModuleId **cycle_path, size_t *cycle_len)
+{
+    if (!node || node->visited) {
+        return 0;
+    }
+    
+    if (node->in_stack) {
+        // 发现循环
+        if (cycle_path && cycle_len) {
+            // 记录循环路径（简化处理）
+            *cycle_path = node->id;
+            *cycle_len = 1;
+        }
+        return 1;
+    }
+    
+    node->in_stack = 1;
+    
+    for (size_t i = 0; i < node->edge_count; i++) {
+        if (detect_cycle_dfs(graph, node->edges[i], cycle_path, cycle_len)) {
+            return 1;
+        }
+    }
+    
+    node->in_stack = 0;
+    node->visited = 1;
+    
+    return 0;
+}
+
+// ============================================================================
+// C6: 模块依赖图构建
+// ============================================================================
+
+/**
+ * @brief 创建依赖图
+ */
+CnDependencyGraph *cn_dependency_graph_create(void)
+{
+    CnDependencyGraph *graph = (CnDependencyGraph *)malloc(sizeof(CnDependencyGraph));
+    if (!graph) {
+        return NULL;
+    }
+    
+    graph->nodes = NULL;
+    graph->node_count = 0;
+    graph->node_capacity = 0;
+    
+    return graph;
+}
+
+/**
+ * @brief 释放依赖图
+ */
+void cn_dependency_graph_free(CnDependencyGraph *graph)
+{
+    if (!graph) {
+        return;
+    }
+    
+    for (size_t i = 0; i < graph->node_count; i++) {
+        CnDependencyNode *node = graph->nodes[i];
+        if (node) {
+            free(node->edges);
+            // 注意：id 由外部管理
+            free(node);
+        }
+    }
+    
+    free(graph->nodes);
+    free(graph);
+}
+
+/**
+ * @brief 在图中查找或创建节点
+ */
+static CnDependencyNode *get_or_create_node(CnDependencyGraph *graph, const CnModuleId *id)
+{
+    if (!graph || !id) {
+        return NULL;
+    }
+    
+    // 查找现有节点
+    for (size_t i = 0; i < graph->node_count; i++) {
+        if (cn_module_id_equals(graph->nodes[i]->id, id)) {
+            return graph->nodes[i];
+        }
+    }
+    
+    // 创建新节点
+    CnDependencyNode *node = (CnDependencyNode *)malloc(sizeof(CnDependencyNode));
+    if (!node) {
+        return NULL;
+    }
+    
+    node->id = (CnModuleId *)id;  // 假设 id 由外部管理
+    node->edges = NULL;
+    node->edge_count = 0;
+    node->visited = 0;
+    node->in_stack = 0;
+    
+    // 添加到图
+    if (graph->node_count >= graph->node_capacity) {
+        size_t new_capacity = graph->node_capacity == 0 ? 16 : graph->node_capacity * 2;
+        CnDependencyNode **new_nodes = (CnDependencyNode **)realloc(
+            graph->nodes, sizeof(CnDependencyNode *) * new_capacity);
+        if (!new_nodes) {
+            free(node);
+            return NULL;
+        }
+        graph->nodes = new_nodes;
+        graph->node_capacity = new_capacity;
+    }
+    
+    graph->nodes[graph->node_count++] = node;
+    return node;
+}
+
+/**
+ * @brief 添加依赖边
+ */
+int cn_dependency_graph_add_edge(CnDependencyGraph *graph,
+                                  const CnModuleId *from,
+                                  const CnModuleId *to)
+{
+    if (!graph || !from || !to) {
+        return 0;
+    }
+    
+    CnDependencyNode *from_node = get_or_create_node(graph, from);
+    CnDependencyNode *to_node = get_or_create_node(graph, to);
+    
+    if (!from_node || !to_node) {
+        return 0;
+    }
+    
+    // 检查边是否已存在
+    for (size_t i = 0; i < from_node->edge_count; i++) {
+        if (from_node->edges[i] == to_node) {
+            return 1;  // 边已存在
+        }
+    }
+    
+    // 添加边
+    CnDependencyNode **new_edges = (CnDependencyNode **)realloc(
+        from_node->edges, sizeof(CnDependencyNode *) * (from_node->edge_count + 1));
+    if (!new_edges) {
+        return 0;
+    }
+    
+    from_node->edges = new_edges;
+    from_node->edges[from_node->edge_count++] = to_node;
+    
+    return 1;
+}
+
+/**
+ * @brief 拓扑排序 DFS 辅助函数
+ */
+static int topo_sort_dfs(CnDependencyNode *node, CnModuleId **result, size_t *idx, size_t max_count)
+{
+    if (!node || node->visited) {
+        return 1;
+    }
+    
+    if (node->in_stack) {
+        // 存在循环
+        return 0;
+    }
+    
+    node->in_stack = 1;
+    
+    for (size_t i = 0; i < node->edge_count; i++) {
+        if (!topo_sort_dfs(node->edges[i], result, idx, max_count)) {
+            return 0;
+        }
+    }
+    
+    node->in_stack = 0;
+    node->visited = 1;
+    
+    if (*idx < max_count) {
+        result[*idx] = node->id;
+        (*idx)++;
+    }
+    
+    return 1;
+}
+
+/**
+ * @brief 执行拓扑排序
+ */
+int cn_dependency_graph_topological_sort(CnDependencyGraph *graph,
+                                          CnModuleId ***out_order,
+                                          size_t *out_count)
+{
+    if (!graph || !out_order || !out_count) {
+        return 0;
+    }
+    
+    if (graph->node_count == 0) {
+        *out_order = NULL;
+        *out_count = 0;
+        return 1;
+    }
+    
+    // 重置所有节点的访问标记
+    for (size_t i = 0; i < graph->node_count; i++) {
+        graph->nodes[i]->visited = 0;
+        graph->nodes[i]->in_stack = 0;
+    }
+    
+    // 分配结果数组
+    CnModuleId **result = (CnModuleId **)malloc(sizeof(CnModuleId *) * graph->node_count);
+    if (!result) {
+        return 0;
+    }
+    
+    size_t idx = 0;
+    
+    // 对每个未访问的节点进行 DFS
+    for (size_t i = 0; i < graph->node_count; i++) {
+        if (!graph->nodes[i]->visited) {
+            if (!topo_sort_dfs(graph->nodes[i], result, &idx, graph->node_count)) {
+                free(result);
+                return 0;  // 存在循环
+            }
+        }
+    }
+    
+    *out_order = result;
+    *out_count = idx;
+    return 1;
+}
+
+// ============================================================================
+// C7: 模块加载器
+// ============================================================================
+
+/**
+ * @brief 创建模块元数据
+ */
+CnModuleMetadata *cn_module_metadata_create(void)
+{
+    CnModuleMetadata *metadata = (CnModuleMetadata *)malloc(sizeof(CnModuleMetadata));
+    if (!metadata) {
+        return NULL;
+    }
+    
+    memset(metadata, 0, sizeof(CnModuleMetadata));
+    metadata->state = CN_MODULE_STATE_UNLOADED;
+    
+    return metadata;
+}
+
+/**
+ * @brief 释放模块元数据
+ */
+void cn_module_metadata_free(CnModuleMetadata *metadata)
+{
+    if (!metadata) {
+        return;
+    }
+    
+    cn_module_id_free(metadata->id);
+    free(metadata->file_path);
+    
+    // 释放导出符号
+    if (metadata->exports) {
+        for (size_t i = 0; i < metadata->export_count; i++) {
+            free(metadata->exports[i].name);
+        }
+        free(metadata->exports);
+    }
+    
+    // 释放依赖列表
+    if (metadata->dependencies) {
+        for (size_t i = 0; i < metadata->dependency_count; i++) {
+            cn_module_id_free(metadata->dependencies[i].module_id);
+        }
+        free(metadata->dependencies);
+    }
+    
+    free(metadata);
+}
+
+/**
+ * @brief 添加导出符号
+ */
+int cn_module_metadata_add_export(CnModuleMetadata *metadata,
+                                   const char *name,
+                                   int is_function,
+                                   int is_constant)
+{
+    if (!metadata || !name) {
+        return 0;
+    }
+    
+    // 扩容
+    CnExportedSymbol *new_exports = (CnExportedSymbol *)realloc(
+        metadata->exports, sizeof(CnExportedSymbol) * (metadata->export_count + 1));
+    if (!new_exports) {
+        return 0;
+    }
+    metadata->exports = new_exports;
+    
+    // 添加符号
+    size_t name_len = strlen(name);
+    metadata->exports[metadata->export_count].name = (char *)malloc(name_len + 1);
+    if (!metadata->exports[metadata->export_count].name) {
+        return 0;
+    }
+    strcpy(metadata->exports[metadata->export_count].name, name);
+    metadata->exports[metadata->export_count].name_length = name_len;
+    metadata->exports[metadata->export_count].is_function = is_function;
+    metadata->exports[metadata->export_count].is_constant = is_constant;
+    metadata->exports[metadata->export_count].symbol_info = NULL;
+    
+    metadata->export_count++;
+    return 1;
+}
+
+/**
+ * @brief 添加模块依赖
+ */
+int cn_module_metadata_add_dependency(CnModuleMetadata *metadata, const CnModuleId *dep_id)
+{
+    if (!metadata || !dep_id) {
+        return 0;
+    }
+    
+    // 扩容
+    CnModuleDependency *new_deps = (CnModuleDependency *)realloc(
+        metadata->dependencies, sizeof(CnModuleDependency) * (metadata->dependency_count + 1));
+    if (!new_deps) {
+        return 0;
+    }
+    metadata->dependencies = new_deps;
+    
+    // 复制依赖 ID
+    metadata->dependencies[metadata->dependency_count].module_id = cn_module_id_create(dep_id->qualified_name);
+    metadata->dependencies[metadata->dependency_count].is_required = 1;
+    metadata->dependencies[metadata->dependency_count].is_circular = 0;
+    
+    metadata->dependency_count++;
+    return 1;
+}
+
+/**
+ * @brief 创建模块加载器
+ */
+CnModuleLoader *cn_module_loader_create(void)
+{
+    CnModuleLoader *loader = (CnModuleLoader *)malloc(sizeof(CnModuleLoader));
+    if (!loader) {
+        return NULL;
+    }
+    
+    loader->search_config = cn_search_config_create();
+    loader->cache = cn_module_cache_create(64);
+    loader->dep_graph = cn_dependency_graph_create();
+    loader->diagnostics = NULL;
+    loader->current_file = NULL;
+    loader->current_file_length = 0;
+    
+    if (!loader->search_config || !loader->cache || !loader->dep_graph) {
+        cn_module_loader_free(loader);
+        return NULL;
+    }
+    
+    return loader;
+}
+
+/**
+ * @brief 释放模块加载器
+ */
+void cn_module_loader_free(CnModuleLoader *loader)
+{
+    if (!loader) {
+        return;
+    }
+    
+    cn_search_config_free(loader->search_config);
+    cn_module_cache_free(loader->cache);
+    cn_dependency_graph_free(loader->dep_graph);
+    free(loader->current_file);
+    free(loader);
+}
+
+/**
+ * @brief 设置诊断信息对象
+ */
+void cn_module_loader_set_diagnostics(CnModuleLoader *loader, struct CnDiagnostics *diagnostics)
+{
+    if (loader) {
+        loader->diagnostics = diagnostics;
+    }
+}
+
+/**
+ * @brief 解析模块路径为文件路径
+ */
+int cn_module_loader_resolve_path(CnModuleLoader *loader, 
+                                   const CnModuleId *module_id,
+                                   char **out_path)
+{
+    if (!loader || !module_id || !out_path) {
+        return 0;
+    }
+    
+    // 先尝试查找模块文件
+    char *file_path = find_module_file(loader->search_config, module_id);
+    if (file_path) {
+        *out_path = file_path;
+        return 1;
+    }
+    
+    // 再尝试查找包目录
+    char *pkg_dir = find_package_dir(loader->search_config, module_id);
+    if (pkg_dir) {
+        // 返回包初始化文件路径
+        char *init_path = path_join(pkg_dir, CN_PACKAGE_INIT_FILENAME);
+        free(pkg_dir);
+        if (init_path && file_exists(init_path)) {
+            *out_path = init_path;
+            return 1;
+        }
+        free(init_path);
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief 加载模块
+ */
+CnModuleMetadata *cn_module_loader_load(CnModuleLoader *loader, const CnModuleId *module_id)
+{
+    if (!loader || !module_id) {
+        return NULL;
+    }
+    
+    // 检查缓存
+    CnModuleMetadata *cached = cn_module_cache_get(loader->cache, module_id);
+    if (cached) {
+        // 检查是否正在加载（循环导入）
+        if (cached->state == CN_MODULE_STATE_LOADING) {
+            // 循环导入检测
+            return NULL;
+        }
+        return cached;
+    }
+    
+    // 解析文件路径
+    char *file_path = NULL;
+    if (!cn_module_loader_resolve_path(loader, module_id, &file_path)) {
+        // 模块未找到
+        return NULL;
+    }
+    
+    // 创建模块元数据
+    CnModuleMetadata *metadata = cn_module_metadata_create();
+    if (!metadata) {
+        free(file_path);
+        return NULL;
+    }
+    
+    // 设置基本信息
+    metadata->id = cn_module_id_create(module_id->qualified_name);
+    metadata->file_path = file_path;
+    metadata->file_path_length = strlen(file_path);
+    metadata->file_mtime = get_file_mtime(file_path);
+    metadata->state = CN_MODULE_STATE_LOADING;
+    
+    // 确定模块类型
+    if (cn_is_package_init_path(file_path)) {
+        metadata->type = CN_MODULE_TYPE_PACKAGE;
+    } else {
+        metadata->type = CN_MODULE_TYPE_FILE;
+    }
+    
+    // 添加到缓存
+    cn_module_cache_put(loader->cache, metadata);
+    
+    // TODO: 实际解析文件内容，提取导出符号和依赖
+    // 这部分需要调用解析器，属于阶段 D 的内容
+    
+    metadata->state = CN_MODULE_STATE_LOADED;
+    return metadata;
+}
+
+/**
+ * @brief 检测循环导入
+ */
+int cn_module_loader_check_circular(CnModuleLoader *loader, const CnModuleId *module_id)
+{
+    if (!loader || !module_id || !loader->cache) {
+        return 0;
+    }
+    
+    CnModuleMetadata *metadata = cn_module_cache_get(loader->cache, module_id);
+    if (metadata && metadata->state == CN_MODULE_STATE_LOADING) {
+        return 1;  // 循环导入
+    }
+    
+    return 0;
+}
+
+/**
+ * @brief 获取模块初始化顺序
+ */
+int cn_module_loader_get_init_order(CnModuleLoader *loader,
+                                     CnModuleId ***out_order,
+                                     size_t *out_count)
+{
+    if (!loader || !loader->dep_graph) {
+        return 0;
+    }
+    
+    return cn_dependency_graph_topological_sort(loader->dep_graph, out_order, out_count);
+}
+
+// ============================================================================
+// C8: 延迟加载机制
+// ============================================================================
+
+/**
+ * @brief 加载相对模块
+ */
+CnModuleMetadata *cn_module_loader_load_relative(CnModuleLoader *loader, 
+                                                  const char *base_path,
+                                                  const struct CnAstModulePath *relative_path)
+{
+    if (!loader || !base_path || !relative_path) {
+        return NULL;
+    }
+    
+    // TODO: 实现相对路径解析
+    // 这需要根据 base_path 和 relative_path 中的相对层级计算实际路径
+    
+    return NULL;  // 待实现
+}
+
+/**
+ * @brief 从路径段创建模块标识符
+ */
+CnModuleId *cn_module_id_create_from_segments(const char **segments, size_t segment_count)
+{
+    if (!segments || segment_count == 0) {
+        return NULL;
+    }
+    
+    // 计算完全限定名长度
+    size_t total_len = 0;
+    for (size_t i = 0; i < segment_count; i++) {
+        total_len += strlen(segments[i]);
+        if (i < segment_count - 1) {
+            total_len += 1;  // 点号
+        }
+    }
+    
+    // 构建完全限定名
+    char *qualified_name = (char *)malloc(total_len + 1);
+    if (!qualified_name) {
+        return NULL;
+    }
+    
+    char *ptr = qualified_name;
+    for (size_t i = 0; i < segment_count; i++) {
+        size_t seg_len = strlen(segments[i]);
+        memcpy(ptr, segments[i], seg_len);
+        ptr += seg_len;
+        if (i < segment_count - 1) {
+            *ptr++ = '.';
+        }
+    }
+    *ptr = '\0';
+    
+    CnModuleId *id = cn_module_id_create(qualified_name);
+    free(qualified_name);
+    
+    return id;
+}
