@@ -1,4 +1,8 @@
 #include "cnlang/frontend/semantics.h"
+#include "cnlang/frontend/module_loader.h"
+#include "cnlang/frontend/lexer.h"
+#include "cnlang/frontend/parser.h"
+#include "cnlang/frontend/preprocessor.h"
 #include "cnlang/support/diagnostics.h"
 
 #include <stdlib.h>
@@ -1047,4 +1051,636 @@ static void cn_sem_build_expr(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics 
         }
         break;
     }
+}
+
+// ============================================================================
+// 跨文件模块加载支持
+// ============================================================================
+
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <sys/stat.h>
+#endif
+
+// 读取文件内容
+static char *read_file_content(const char *filename, size_t *out_size)
+{
+    FILE *fp = fopen(filename, "rb");
+    if (!fp) {
+        return NULL;
+    }
+    
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    
+    if (file_size <= 0) {
+        fclose(fp);
+        return NULL;
+    }
+    
+    char *content = (char *)malloc((size_t)file_size + 1);
+    if (!content) {
+        fclose(fp);
+        return NULL;
+    }
+    
+    size_t read_size = fread(content, 1, (size_t)file_size, fp);
+    fclose(fp);
+    
+    content[read_size] = '\0';
+    if (out_size) {
+        *out_size = read_size;
+    }
+    
+    return content;
+}
+
+// 编译外部模块文件，返回其作用域
+static CnSemScope *compile_external_module(const char *file_path,
+                                            CnDiagnostics *diagnostics,
+                                            CnSemScope *global_scope)
+{
+    // 读取文件内容
+    size_t file_size = 0;
+    char *source = read_file_content(file_path, &file_size);
+    if (!source) {
+        return NULL;
+    }
+    
+    // 预处理
+    CnPreprocessor preprocessor;
+    cn_frontend_preprocessor_init(&preprocessor, source, file_size, file_path);
+    
+    if (!cn_frontend_preprocessor_process(&preprocessor)) {
+        cn_frontend_preprocessor_free(&preprocessor);
+        free(source);
+        return NULL;
+    }
+    
+    // 词法分析
+    CnLexer lexer;
+    cn_frontend_lexer_init(&lexer, preprocessor.output, preprocessor.output_length, file_path);
+    
+    // 语法分析
+    CnParser *parser = cn_frontend_parser_new(&lexer);
+    if (!parser) {
+        cn_frontend_preprocessor_free(&preprocessor);
+        free(source);
+        return NULL;
+    }
+    
+    CnAstProgram *module_program = NULL;
+    int ok = cn_frontend_parse_program(parser, &module_program);
+    
+    if (!ok || !module_program) {
+        cn_frontend_parser_free(parser);
+        cn_frontend_preprocessor_free(&preprocessor);
+        free(source);
+        return NULL;
+    }
+    
+    // 为外部模块创建作用域
+    CnSemScope *module_scope = cn_sem_scope_new(CN_SEM_SCOPE_FILE_MODULE, global_scope);
+    if (!module_scope) {
+        cn_frontend_ast_program_free(module_program);
+        cn_frontend_parser_free(parser);
+        cn_frontend_preprocessor_free(&preprocessor);
+        free(source);
+        return NULL;
+    }
+    
+    // 注册模块中的函数到模块作用域
+    for (size_t i = 0; i < module_program->function_count; ++i) {
+        CnAstFunctionDecl *function_decl = module_program->functions[i];
+        if (!function_decl) {
+            continue;
+        }
+        
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
+                                   function_decl->name,
+                                   function_decl->name_length,
+                                   CN_SEM_SYMBOL_FUNCTION);
+        if (sym) {
+            CnType **param_types = NULL;
+            if (function_decl->parameter_count > 0) {
+                param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
+                for (size_t j = 0; j < function_decl->parameter_count; j++) {
+                    param_types[j] = function_decl->parameters[j].declared_type;
+                }
+            }
+            sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),
+                                            param_types,
+                                            function_decl->parameter_count);
+            sym->is_public = 1;  // 默认为公开
+        }
+    }
+    
+    // 注册模块中的全局变量
+    for (size_t i = 0; i < module_program->global_var_count; ++i) {
+        CnAstStmt *var_stmt = module_program->global_vars[i];
+        if (!var_stmt || var_stmt->kind != CN_AST_STMT_VAR_DECL) {
+            continue;
+        }
+        
+        CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
+                                   var_decl->name,
+                                   var_decl->name_length,
+                                   CN_SEM_SYMBOL_VARIABLE);
+        if (sym) {
+            sym->type = var_decl->declared_type;
+            sym->is_const = var_decl->is_const;
+            sym->is_public = 1;  // 默认为公开
+        }
+    }
+    
+    // 清理（注意：符号表需要保持，不能释放 program）
+    cn_frontend_parser_free(parser);
+    cn_frontend_preprocessor_free(&preprocessor);
+    free(source);
+    // 注意：module_program 不能释放，因为符号的名称指针指向 AST 中的字符串
+    
+    return module_scope;
+}
+
+// 获取父目录路径
+static char *get_parent_dir(const char *file_path)
+{
+    if (!file_path) {
+        return NULL;
+    }
+    
+    size_t len = strlen(file_path);
+    if (len == 0) {
+        return NULL;
+    }
+    
+    // 查找最后一个路径分隔符
+    const char *last_sep = NULL;
+    for (size_t i = len; i > 0; --i) {
+        if (file_path[i - 1] == '/' || file_path[i - 1] == '\\') {
+            last_sep = &file_path[i - 1];
+            break;
+        }
+    }
+    
+    if (!last_sep) {
+        // 没有路径分隔符，返回当前目录
+        return strdup(".");
+    }
+    
+    size_t dir_len = last_sep - file_path;
+    char *dir = (char *)malloc(dir_len + 1);
+    if (!dir) {
+        return NULL;
+    }
+    
+    memcpy(dir, file_path, dir_len);
+    dir[dir_len] = '\0';
+    
+    return dir;
+}
+
+// 带模块加载器的作用域构建
+CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program, 
+                                             CnDiagnostics *diagnostics,
+                                             CnModuleLoader *loader,
+                                             const char *source_file)
+{
+    CnSemScope *global_scope;
+    size_t i;
+
+    if (!program) {
+        return NULL;
+    }
+
+    global_scope = cn_sem_scope_new(CN_SEM_SCOPE_GLOBAL, NULL);
+    if (!global_scope) {
+        return NULL;
+    }
+
+    // 注册内置函数：打印 (print)
+    CnSemSymbol *print_sym = cn_sem_scope_insert_symbol(global_scope, "打印", strlen("打印"), CN_SEM_SYMBOL_FUNCTION);
+    if (print_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        print_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+
+    // 注册其他内置函数（简化，复用 cn_sem_build_scopes 的逻辑）
+    CnSemSymbol *print_int_sym = cn_sem_scope_insert_symbol(global_scope, "打印整数", strlen("打印整数"), CN_SEM_SYMBOL_FUNCTION);
+    if (print_int_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);
+        print_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+
+    // 设置模块加载器的搜索路径
+    if (loader && source_file) {
+        char *parent_dir = get_parent_dir(source_file);
+        if (parent_dir) {
+            cn_search_config_set_project_root(loader->search_config, parent_dir);
+            free(parent_dir);
+        }
+    }
+
+    // 处理结构体声明
+    for (i = 0; i < program->struct_count; ++i) {
+        CnAstStmt *struct_stmt = program->structs[i];
+        if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
+            continue;
+        }
+
+        CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   struct_decl->name,
+                                   struct_decl->name_length,
+                                   CN_SEM_SYMBOL_STRUCT);
+        if (sym) {
+            CnStructField *fields = NULL;
+            if (struct_decl->field_count > 0) {
+                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+                for (size_t j = 0; j < struct_decl->field_count; j++) {
+                    fields[j].name = struct_decl->fields[j].name;
+                    fields[j].name_length = struct_decl->fields[j].name_length;
+                    fields[j].field_type = struct_decl->fields[j].field_type;
+                    fields[j].is_const = struct_decl->fields[j].is_const;
+                }
+            }
+            sym->type = cn_type_new_struct(struct_decl->name,
+                                          struct_decl->name_length,
+                                          fields,
+                                          struct_decl->field_count,
+                                          global_scope,
+                                          NULL, 0);
+        }
+    }
+
+    // 处理枚举声明
+    for (i = 0; i < program->enum_count; ++i) {
+        CnAstStmt *enum_stmt = program->enums[i];
+        if (!enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) {
+            continue;
+        }
+
+        CnAstEnumDecl *enum_decl = &enum_stmt->as.enum_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   enum_decl->name,
+                                   enum_decl->name_length,
+                                   CN_SEM_SYMBOL_ENUM);
+        if (sym) {
+            sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+            CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, global_scope);
+            if (enum_scope && sym->type) {
+                sym->type->as.enum_type.enum_scope = enum_scope;
+                for (size_t j = 0; j < enum_decl->member_count; j++) {
+                    CnAstEnumMember *member = &enum_decl->members[j];
+                    CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
+                                                       member->name,
+                                                       member->name_length,
+                                                       CN_SEM_SYMBOL_ENUM_MEMBER);
+                    if (member_sym) {
+                        member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        member_sym->as.enum_value = member->value;
+                    }
+                }
+            }
+        }
+    }
+
+    // 处理内联模块声明
+    for (i = 0; i < program->module_count; ++i) {
+        CnAstStmt *module_stmt = program->modules[i];
+        if (!module_stmt || module_stmt->kind != CN_AST_STMT_MODULE_DECL) {
+            continue;
+        }
+
+        CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   module_decl->name,
+                                   module_decl->name_length,
+                                   CN_SEM_SYMBOL_MODULE);
+        if (sym) {
+            CnSemScope *module_scope = cn_sem_scope_new(CN_SEM_SCOPE_MODULE, global_scope);
+            if (module_scope) {
+                sym->as.module_scope = module_scope;
+                cn_sem_build_module_scope(global_scope, module_stmt, diagnostics);
+            }
+            sym->type = cn_type_new_primitive(CN_TYPE_VOID);
+        }
+    }
+    
+    // 处理导入语句：支持 Python 风格跨文件导入
+    for (i = 0; i < program->import_count; ++i) {
+        CnAstStmt *import_stmt = program->imports[i];
+        if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
+            continue;
+        }
+
+        CnAstImportStmt *import = &import_stmt->as.import_stmt;
+        
+        // 检查是否为 Python 风格导入（使用「从...导入」语法）
+        if (import->use_from_syntax && import->module_path && loader) {
+            // Python 风格跨文件导入
+            CnAstModulePath *module_path = import->module_path;
+            
+            // 构建模块标识符
+            char qualified_name[1024];
+            size_t offset = 0;
+            for (size_t j = 0; j < module_path->segment_count && offset < sizeof(qualified_name) - 1; j++) {
+                if (j > 0) {
+                    qualified_name[offset++] = '.';
+                }
+                size_t seg_len = module_path->segments[j].name_length;
+                if (offset + seg_len >= sizeof(qualified_name)) {
+                    break;
+                }
+                memcpy(qualified_name + offset, module_path->segments[j].name, seg_len);
+                offset += seg_len;
+            }
+            qualified_name[offset] = '\0';
+            
+            CnModuleId *module_id = cn_module_id_create(qualified_name);
+            if (!module_id) {
+                continue;
+            }
+            
+            // 使用模块加载器解析文件路径
+            char *resolved_path = NULL;
+            if (cn_module_loader_resolve_path(loader, module_id, &resolved_path)) {
+                // 加载外部模块
+                CnSemScope *external_scope = compile_external_module(resolved_path, 
+                                                                      diagnostics, 
+                                                                      global_scope);
+                
+                if (external_scope) {
+                    // 导入符号到全局作用域
+                    if (import->member_count > 0) {
+                        // 选择性导入
+                        for (size_t j = 0; j < import->member_count; ++j) {
+                            const char *member_name = import->members[j].name;
+                            size_t member_name_length = import->members[j].name_length;
+                            
+                            CnSemSymbol *member_sym = cn_sem_scope_lookup_shallow(
+                                external_scope, member_name, member_name_length);
+                            
+                            if (member_sym) {
+                                // 添加到全局作用域
+                                CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
+                                    global_scope, member_name, member_name_length, member_sym->kind);
+                                if (new_sym) {
+                                    new_sym->type = member_sym->type;
+                                    new_sym->is_public = member_sym->is_public;
+                                    new_sym->is_const = member_sym->is_const;
+                                }
+                            } else {
+                                cn_support_diag_semantic_error_generic(
+                                    diagnostics,
+                                    CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                                    NULL, 0, 0,
+                                    "语义错误：导入的成员不存在");
+                            }
+                        }
+                    } else if (import->is_wildcard) {
+                        // 通配符导入：导入所有公开符号
+                        // TODO: 遍历外部模块的所有符号
+                    }
+                } else {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                        NULL, 0, 0,
+                        "语义错误：无法编译外部模块");
+                }
+                
+                free(resolved_path);
+            } else {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                    NULL, 0, 0,
+                    "语义错误：导入的模块不存在");
+            }
+            
+            cn_module_id_free(module_id);
+            continue;
+        }
+        
+        // 传统导入：查找同文件内的模块
+        CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                              import->module_name,
+                                                              import->module_name_length);
+        
+        if (!module_sym) {
+            cn_support_diag_semantic_error_generic(
+                diagnostics,
+                CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                NULL, 0, 0,
+                "语义错误：导入的模块不存在");
+            continue;
+        }
+        
+        if (module_sym->kind != CN_SEM_SYMBOL_MODULE || !module_sym->as.module_scope) {
+            cn_support_diag_semantic_error_generic(
+                diagnostics,
+                CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                NULL, 0, 0,
+                "语义错误：导入的符号不是模块");
+            continue;
+        }
+        
+        // 处理传统导入（复用原来的逻辑）
+        CnSemScope *module_scope = module_sym->as.module_scope;
+        
+        // 如果指定了别名，则以别名注册模块符号
+        if (import->alias) {
+            // 使用别名注册模块
+            CnSemSymbol *existing_alias = cn_sem_scope_lookup_shallow(global_scope,
+                                                                      import->alias,
+                                                                      import->alias_length);
+            if (existing_alias) {
+                // 别名冲突，输出详细诊断信息
+                char alias_name[256];
+                size_t copy_len = import->alias_length < 255 ? import->alias_length : 255;
+                memcpy(alias_name, import->alias, copy_len);
+                alias_name[copy_len] = '\0';
+                
+                char module_name[256];
+                copy_len = import->module_name_length < 255 ? import->module_name_length : 255;
+                memcpy(module_name, import->module_name, copy_len);
+                module_name[copy_len] = '\0';
+                
+                char error_msg[512];
+                snprintf(error_msg, sizeof(error_msg),
+                        "语义错误：模块别名 '%s' 已存在（导入模块 '%s' 时发生冲突）",
+                        alias_name, module_name);
+                        
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,
+                    NULL, 0, 0,
+                    error_msg);
+                continue;
+            }
+            
+            // 以别名注册模块符号
+            CnSemSymbol *alias_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                                import->alias,
+                                                                import->alias_length,
+                                                                CN_SEM_SYMBOL_MODULE);
+            if (alias_sym) {
+                alias_sym->type = module_sym->type;
+                alias_sym->is_public = module_sym->is_public;
+                alias_sym->is_const = module_sym->is_const;
+                alias_sym->as.module_scope = module_sym->as.module_scope;
+            }
+            continue;  // 使用别名时不进行成员导入
+        }
+        
+        // 判断是全量导入还是选择性导入
+        if (import->member_count == 0) {
+            // 全量导入：遍历模块作用域中的所有符号，添加到全局作用域
+            CnSemSymbolNode *node = module_scope->symbols;
+            while (node) {
+                CnSemSymbol *sym = &node->symbol;
+                
+                // 检查名称冲突
+                CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                                        sym->name,
+                                                                        sym->name_length);
+                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                    // 名称冲突，报错
+                    cn_support_diag_semantic_error_duplicate_symbol(
+                        diagnostics, NULL, 0, 0, sym->name);
+                } else if (!existing_sym) {
+                    // 没有冲突，添加符号
+                    CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                                      sym->name,
+                                                                      sym->name_length,
+                                                                      sym->kind);
+                    if (new_sym) {
+                        // 复制符号信息
+                        new_sym->type = sym->type;
+                        new_sym->is_public = sym->is_public;
+                        new_sym->is_const = sym->is_const;
+                        new_sym->decl_scope = sym->decl_scope;
+                        if (sym->kind == CN_SEM_SYMBOL_MODULE) {
+                            new_sym->as.module_scope = sym->as.module_scope;
+                        } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                            new_sym->as.enum_value = sym->as.enum_value;
+                        }
+                    }
+                }
+                
+                node = node->next;
+            }
+        } else {
+            // 选择性导入：只导入指定的成员
+            for (size_t j = 0; j < import->member_count; ++j) {
+                const char *member_name = import->members[j].name;
+                size_t member_name_length = import->members[j].name_length;
+                
+                // 在模块作用域中查找指定成员
+                CnSemSymbol *member_sym = cn_sem_scope_lookup_shallow(module_scope,
+                                                                      member_name,
+                                                                      member_name_length);
+                
+                if (!member_sym) {
+                    // 成员不存在，报错
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                        NULL, 0, 0,
+                        "语义错误：导入的成员不存在");
+                    continue;
+                }
+                
+                // 检查可见性：只能导入公开成员
+                if (!member_sym->is_public) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_ACCESS_DENIED,
+                        NULL, 0, 0,
+                        "语义错误：无法导入私有成员");
+                    continue;
+                }
+                
+                // 检查名称冲突
+                CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                                        member_name,
+                                                                        member_name_length);
+                if (existing_sym && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                    // 名称冲突，报错
+                    cn_support_diag_semantic_error_duplicate_symbol(
+                        diagnostics, NULL, 0, 0, member_name);
+                } else if (!existing_sym) {
+                    // 没有冲突，添加符号
+                    CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                                      member_name,
+                                                                      member_name_length,
+                                                                      member_sym->kind);
+                    if (new_sym) {
+                        // 复制符号信息
+                        new_sym->type = member_sym->type;
+                        new_sym->is_public = member_sym->is_public;
+                        new_sym->decl_scope = member_sym->decl_scope;
+                        if (member_sym->kind == CN_SEM_SYMBOL_MODULE) {
+                            new_sym->as.module_scope = member_sym->as.module_scope;
+                        } else if (member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                            new_sym->as.enum_value = member_sym->as.enum_value;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 注册全局变量
+    for (i = 0; i < program->global_var_count; ++i) {
+        CnAstStmt *var_stmt = program->global_vars[i];
+        if (!var_stmt || var_stmt->kind != CN_AST_STMT_VAR_DECL) {
+            continue;
+        }
+
+        CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   var_decl->name,
+                                   var_decl->name_length,
+                                   CN_SEM_SYMBOL_VARIABLE);
+        if (sym) {
+            sym->type = var_decl->declared_type;
+            sym->is_const = var_decl->is_const;
+        }
+    }
+
+    // 注册函数并构建函数作用域
+    for (i = 0; i < program->function_count; ++i) {
+        CnAstFunctionDecl *function_decl = program->functions[i];
+        if (!function_decl) {
+            continue;
+        }
+
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   function_decl->name,
+                                   function_decl->name_length,
+                                   CN_SEM_SYMBOL_FUNCTION);
+        if (sym) {
+            CnType **param_types = NULL;
+            if (function_decl->parameter_count > 0) {
+                param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
+                for (size_t j = 0; j < function_decl->parameter_count; j++) {
+                    param_types[j] = function_decl->parameters[j].declared_type;
+                }
+            }
+            sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),
+                                            param_types,
+                                            function_decl->parameter_count);
+        }
+
+        cn_sem_build_function_scope(global_scope, function_decl, diagnostics);
+    }
+
+    return global_scope;
 }

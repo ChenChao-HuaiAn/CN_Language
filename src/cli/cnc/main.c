@@ -257,6 +257,7 @@ int main(int argc, char **argv)
     CnParser *parser;
     CnAstProgram *program = NULL;
     CnSemScope *global_scope = NULL;
+    CnModuleLoader *module_loader = NULL;  // 模块加载器（支持跨文件导入）
     CnDiagnostics diagnostics;
     CnPerfStats perf_stats;
     CnMemStats mem_stats;
@@ -584,7 +585,17 @@ int main(int argc, char **argv)
     /* 语义分析 - 作用域构建 */
     cn_perf_start(&perf_stats, CN_PERF_PHASE_SEMANTIC);
     cn_perf_start(&perf_stats, CN_PERF_PHASE_SEMANTIC_SCOPE);
-    global_scope = cn_sem_build_scopes(program, &diagnostics);
+    
+    // 创建模块加载器以支持 Python 风格跨文件模块导入
+    module_loader = cn_module_loader_create();
+    if (module_loader) {
+        cn_module_loader_set_diagnostics(module_loader, &diagnostics);
+        global_scope = cn_sem_build_scopes_with_loader(program, &diagnostics, module_loader, filename);
+    } else {
+        // 回退到不带模块加载器的版本
+        global_scope = cn_sem_build_scopes(program, &diagnostics);
+    }
+    
     cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_SCOPE);
     if (!global_scope) {
         fprintf(stderr, "构建作用域失败\n");
@@ -882,6 +893,9 @@ int main(int argc, char **argv)
     }
 
 cleanup:
+    if (module_loader) {
+        cn_module_loader_free(module_loader);
+    }
     cn_sem_scope_free(global_scope);
     cn_frontend_ast_program_free(program);
     cn_frontend_parser_free(parser);

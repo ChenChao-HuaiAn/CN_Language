@@ -7,6 +7,7 @@ set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/module_loader/module_loader.c
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/resolution/scope_builder.c
@@ -604,6 +605,13 @@ add_executable(repl_session_test
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/resolution/scope_builder.c
+    ../../src/frontend/module_loader/module_loader.c
+    ../../src/frontend/preprocessor/preprocessor.c
+    ../../src/frontend/lexer/lexer.c
+    ../../src/frontend/lexer/keywords.c
+    ../../src/frontend/lexer/token.c
+    ../../src/frontend/parser/parser.c
+    ../../src/frontend/ast/ast.c
     ../../src/support/diagnostics/diagnostics.c
 )
 target_include_directories(repl_session_test PRIVATE ../../include)
@@ -667,6 +675,8 @@ add_executable(lsp_bridge_test
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/resolution/scope_builder.c
+    ../../src/frontend/module_loader/module_loader.c
+    ../../src/frontend/preprocessor/preprocessor.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
 )
