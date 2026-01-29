@@ -37,6 +37,36 @@ struct CnSemScope {
 static const char *g_compiling_modules[MAX_MODULE_COMPILE_DEPTH];
 static int g_compile_depth = 0;
 
+// 模块缓存结构
+#define MAX_CACHED_MODULES 256
+typedef struct {
+    char *file_path;
+    CnSemScope *scope;
+} CachedModule;
+
+static CachedModule g_module_cache[MAX_CACHED_MODULES];
+static int g_cached_module_count = 0;
+
+// 查找缓存的模块
+static CnSemScope *find_cached_module(const char *file_path) {
+    for (int i = 0; i < g_cached_module_count; i++) {
+        if (strcmp(g_module_cache[i].file_path, file_path) == 0) {
+            return g_module_cache[i].scope;
+        }
+    }
+    return NULL;
+}
+
+// 缓存模块
+static void cache_module(const char *file_path, CnSemScope *scope) {
+    if (g_cached_module_count >= MAX_CACHED_MODULES) {
+        return;  // 缓存已满
+    }
+    g_module_cache[g_cached_module_count].file_path = strdup(file_path);
+    g_module_cache[g_cached_module_count].scope = scope;
+    g_cached_module_count++;
+}
+
 // 检查是否正在编译该模块（循环导入检测）
 static int is_module_compiling(const char *file_path) {
     for (int i = 0; i < g_compile_depth; i++) {
@@ -1168,6 +1198,12 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                                      CnModuleLoader *loader,
                                                      const char *importing_file)
 {
+    // 检查缓存
+    CnSemScope *cached = find_cached_module(file_path);
+    if (cached) {
+        return cached;  // 返回缓存的作用域
+    }
+    
     // 检测循环导入
     if (is_module_compiling(file_path)) {
         cn_support_diag_semantic_error_generic(
@@ -1369,6 +1405,9 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     
     // 弹出编译栈
     pop_compiling_module();
+    
+    // 缓存模块作用域
+    cache_module(file_path, module_scope);
     
     return module_scope;
 }
