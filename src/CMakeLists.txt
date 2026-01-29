@@ -25,6 +25,7 @@ add_executable(cnc
     ir/passes/constant_folding.c
     ir/passes/dead_code_elimination.c
     backend/cgen/cgen.c
+    backend/cgen/module_cgen.c
 )
 
 # 包含运行时库子目录
@@ -60,6 +61,7 @@ add_executable(cnrepl
     ir/passes/constant_folding.c
     ir/passes/dead_code_elimination.c
     backend/cgen/cgen.c
+    backend/cgen/module_cgen.c
 )
 
 target_include_directories(cnrepl PRIVATE
