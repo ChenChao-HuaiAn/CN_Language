@@ -226,6 +226,8 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
     
     for (;;) {
         c = current_char(lexer);
+        
+        // 单行注释处理：// 注释内容
         if (c == '/' && peek_char(lexer) == '/') {
             while (c != '\n' && c != '\0') {
                 advance(lexer);
@@ -234,6 +236,34 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
             skip_whitespace(lexer);
             continue;
         }
+        
+        // 块注释处理：/* 注释内容 */
+        if (c == '/' && peek_char(lexer) == '*') {
+            advance(lexer);  // 跳过 '/'
+            advance(lexer);  // 跳过 '*'
+            c = current_char(lexer);
+            
+            // 查找块注释结束标记 */
+            while (c != '\0') {
+                if (c == '*' && peek_char(lexer) == '/') {
+                    advance(lexer);  // 跳过 '*'
+                    advance(lexer);  // 跳过 '/'
+                    break;
+                }
+                advance(lexer);
+                c = current_char(lexer);
+            }
+            
+            // 检查是否未闭合（到达文件末尾仍未找到 */）
+            if (c == '\0') {
+                report_lex_error(lexer, CN_DIAG_CODE_LEX_UNTERMINATED_BLOCK_COMMENT,
+                               "未终止的块注释");
+            }
+            
+            skip_whitespace(lexer);
+            continue;
+        }
+        
         break;
     }
     
