@@ -68,7 +68,7 @@
 | `假` | `CN_TOKEN_KEYWORD_FALSE` | 布尔假值 | [`keywords.c:41`](src/frontend/lexer/keywords.c:41) |
 | `无` | `CN_TOKEN_KEYWORD_NULL` | 空值常量 | [`keywords.c:42`](src/frontend/lexer/keywords.c:42) |
 
-### 1.5 预留关键字（10个）
+### 1.5 预留关键字（8个）
 
 | 关键字 | Token类型 | 说明 | 代码来源 |
 |--------|-----------|------|----------|
@@ -77,7 +77,7 @@
 | `类` | `CN_TOKEN_KEYWORD_CLASS` | 预留 | [`keywords.c:47`](src/frontend/lexer/keywords.c:47) |
 | `模板` | `CN_TOKEN_KEYWORD_TEMPLATE` | 预留 | [`keywords.c:48`](src/frontend/lexer/keywords.c:48) |
 | `常量` | `CN_TOKEN_KEYWORD_CONST` | 已实现 | [`keywords.c:49`](src/frontend/lexer/keywords.c:49) |
-| `静态` | `CN_TOKEN_KEYWORD_STATIC` | 预留 | [`keywords.c:50`](src/frontend/lexer/keywords.c:50) |
+| `静态` | `CN_TOKEN_KEYWORD_STATIC` | 已实现 | [`keywords.c:50`](src/frontend/lexer/keywords.c:50) |
 | `保护` | `CN_TOKEN_KEYWORD_PROTECTED` | 预留 | [`keywords.c:51`](src/frontend/lexer/keywords.c:51) |
 | `虚拟` | `CN_TOKEN_KEYWORD_VIRTUAL` | 预留 | [`keywords.c:52`](src/frontend/lexer/keywords.c:52) |
 | `重写` | `CN_TOKEN_KEYWORD_OVERRIDE` | 预留 | [`keywords.c:53`](src/frontend/lexer/keywords.c:53) |
@@ -792,11 +792,11 @@ case分支 ::= "情况" 整数 ":" 语句* | "默认" ":" 语句*
 **已实现关键字（27个）**：
 - 控制流：`如果`、`否则`、`当`、`循环`、`返回`、`中断`、`继续`、`选择`、`情况`、`默认`
 - 类型：`整数`、`小数`、`字符串`、`布尔`、`空类型`、`结构体`、`枚举`
-- 声明：`函数`、`变量`、`模块`、`导入`、`从`、`公开`、`私有`、`常量`
+- 声明：`函数`、`变量`、`模块`、`导入`、`从`、`公开`、`私有`、`常量`、`静态`
 - 常量：`真`、`假`、`无`
 
-**预留关键字（10个）**：
-`命名空间`、`接口`、`类`、`模板`、`静态`、`保护`、`虚拟`、`重写`、`抽象`
+**预留关键字（8个）**：
+`命名空间`、`接口`、`类`、`模板`、`保护`、`虚拟`、`重写`、`抽象`
 
 ### 10.2 源代码文件索引
 

@@ -13,6 +13,7 @@ typedef struct CnParser {
     int error_count;
     CnDiagnostics *diagnostics;
     CnVisibility current_visibility;  // 当前可见性（用于文件级块声明）
+    int in_function_body;             // 是否在函数体内（用于静态变量作用域检查）
 } CnParser;
 
 static void parser_advance(CnParser *parser);
@@ -112,6 +113,7 @@ CnParser *cn_frontend_parser_new(CnLexer *lexer)
     parser->error_count = 0;
     parser->diagnostics = NULL;
     parser->current_visibility = CN_VISIBILITY_PRIVATE;  // 默认私有
+    parser->in_function_body = 0;  // 初始不在函数体内
 
     return parser;
 }
@@ -201,7 +203,7 @@ static int is_reserved_keyword(CnTokenKind kind)
            kind == CN_TOKEN_KEYWORD_TEMPLATE ||
            kind == CN_TOKEN_KEYWORD_NAMESPACE ||
            /* 注意："常量" 关键字已在当前版本实现，不再视为预留关键字 */
-           kind == CN_TOKEN_KEYWORD_STATIC ||
+           /* 注意："静态" 关键字已在当前版本实现，用于函数内静态局部变量 */
            /* 注意："公开"、"私有" 关键字已在模块系统中实现，不再视为预留关键字 */
            kind == CN_TOKEN_KEYWORD_PROTECTED ||
            kind == CN_TOKEN_KEYWORD_VIRTUAL ||
@@ -221,8 +223,7 @@ static const char *get_reserved_keyword_error_msg(CnTokenKind kind)
         return "语法错误：关键字 '模板' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_NAMESPACE:
         return "语法错误：关键字 '命名空间' 为预留特性，当前版本暂不支持";
-    case CN_TOKEN_KEYWORD_STATIC:
-        return "语法错误：关键字 '静态' 为预留特性，当前版本暂不支持";
+    /* 注意："静态" 关键字已实现，用于函数内静态局部变量 */
     case CN_TOKEN_KEYWORD_PROTECTED:
         return "语法错误：关键字 '保护' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_VIRTUAL:
@@ -610,7 +611,10 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 
     fn->return_type = return_type;
 
+    // 设置函数体上下文标志，用于静态变量作用域检查
+    parser->in_function_body = 1;
     body = parse_block(parser);
+    parser->in_function_body = 0;  // 解析完成后恢复
     fn->body = body;
 
     return fn;
@@ -1058,7 +1062,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return make_switch_stmt(switch_expr, cases, case_count);
     }
 
-    if (parser->current.kind == CN_TOKEN_KEYWORD_CONST ||
+    if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC ||
+        parser->current.kind == CN_TOKEN_KEYWORD_CONST ||
         parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
@@ -1069,9 +1074,67 @@ static CnAstStmt *parse_statement(CnParser *parser)
         CnAstExpr *initializer = NULL;
         CnType *declared_type = NULL;
         int is_const = 0;
+        int is_static = 0;  // 静态变量标记
 
+        // 处理 '静态' 关键字：静态局部变量声明
+        if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC) {
+            // 检查是否在函数内部
+            if (!parser->in_function_body) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：静态关键字只能在函数内部使用");
+                }
+                // 跳过该声明，继续解析
+                parser_advance(parser);
+                while (parser->current.kind != CN_TOKEN_SEMICOLON &&
+                       parser->current.kind != CN_TOKEN_EOF) {
+                    parser_advance(parser);
+                }
+                if (parser->current.kind == CN_TOKEN_SEMICOLON) {
+                    parser_advance(parser);
+                }
+                return NULL;
+            }
+            
+            is_static = 1;
+            parser_advance(parser);
+            
+            // 静态变量后可以跟类型关键字或 '变量' 关键字
+            // 支持：静态 整数 x = 0; 或 静态 变量 x = 0;
+            if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
+                parser_advance(parser);
+                declared_type = NULL;  // 后续通过类型推断
+            } else if (parser->current.kind == CN_TOKEN_KEYWORD_INT ||
+                       parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
+                       parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
+                       parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+                declared_type = parse_type(parser);
+                if (!declared_type) {
+                    return NULL;
+                }
+            } else {
+                // 静态关键字后必须有类型或变量关键字
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：静态关键字后必须有类型或变量关键字");
+                }
+                return NULL;
+            }
+        }
         // 处理 '常量' 关键字：常量变量声明
-        if (parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
+        else if (parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
             is_const = 1;
             parser_advance(parser);
 
@@ -1212,8 +1275,13 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 parser_expect(parser, CN_TOKEN_SEMICOLON);
                 
                 CnAstStmt *stmt = make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
-                if (stmt && is_const) {
-                    stmt->as.var_decl.is_const = 1;
+                if (stmt) {
+                    if (is_const) {
+                        stmt->as.var_decl.is_const = 1;
+                    }
+                    if (is_static) {
+                        stmt->as.var_decl.is_static = 1;
+                    }
                 }
                 return stmt;
             }
@@ -1335,8 +1403,13 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser_expect(parser, CN_TOKEN_SEMICOLON);
 
         CnAstStmt *stmt = make_var_decl_stmt(var_name, var_name_length, declared_type, initializer, CN_VISIBILITY_DEFAULT);
-        if (stmt && is_const) {
-            stmt->as.var_decl.is_const = 1;
+        if (stmt) {
+            if (is_const) {
+                stmt->as.var_decl.is_const = 1;
+            }
+            if (is_static) {
+                stmt->as.var_decl.is_static = 1;
+            }
         }
         return stmt;
     }
@@ -2853,7 +2926,8 @@ static CnAstStmt *make_var_decl_stmt(const char *name, size_t name_length, CnTyp
     stmt->as.var_decl.declared_type = declared_type;
     stmt->as.var_decl.initializer = initializer;
     stmt->as.var_decl.visibility = visibility;
-    stmt->as.var_decl.is_const = 0; // 默认非常量，具体由解析器在需要时设置
+    stmt->as.var_decl.is_const = 0;   // 默认非常量，具体由解析器在需要时设置
+    stmt->as.var_decl.is_static = 0;  // 默认非静态，具体由解析器在需要时设置
     return stmt;
 }
 

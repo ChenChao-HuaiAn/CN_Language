@@ -461,12 +461,34 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                 }
             }
             
+            // 静态变量语义检查
+            if (decl->is_static) {
+                // 检查1：静态变量初始化表达式必须是编译时常量
+                if (decl->initializer != NULL && !cn_sem_is_const_expr(scope, decl->initializer)) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_STATIC_NON_CONST_INIT,
+                        NULL, 0, 0,
+                        "语义错误：静态变量的初始化表达式必须是编译时常量");
+                }
+                
+                // 检查2：静态变量不能为 void 类型
+                if (decl->declared_type && decl->declared_type->kind == CN_TYPE_VOID) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_STATIC_VOID_TYPE,
+                        NULL, 0, 0,
+                        "语义错误：静态变量不能为空类型");
+                }
+            }
+            
             CnType *init_type = infer_expr_type(scope, decl->initializer, diagnostics);
             
             // 插入符号到当前作用域
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
                 sym->is_const = decl->is_const;
+                sym->is_static = decl->is_static;  // 传递静态变量标记
                 if (decl->declared_type) {
                     // 特殊处理：显式数组类型与数组字面量类型的统一
                     if (decl->declared_type->kind == CN_TYPE_ARRAY && init_type && init_type->kind == CN_TYPE_ARRAY) {

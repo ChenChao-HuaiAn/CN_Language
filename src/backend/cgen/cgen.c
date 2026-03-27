@@ -164,12 +164,21 @@ static const char *get_c_function_name(const char *name) {
     return buffer;
 }
 
+// 获取静态变量的C名称
+static const char *get_static_var_name(const char *func_name, const char *var_name) {
+    static _Thread_local char buffer[256];
+    snprintf(buffer, sizeof(buffer), "cn_static_%s_%s", func_name, var_name);
+    return buffer;
+}
+
 static const char *get_c_variable_name(const char *name) {
     /* 性能优化：使用线程局部缓冲区 */
     static _Thread_local char buffer[256];
     
-    // 检查是否已经有 cn_module_ 或 cn_var_ 前缀（避免重复加前缀）
-    if (strncmp(name, "cn_module_", 10) == 0 || strncmp(name, "cn_var_", 7) == 0) {
+    // 检查是否已经有 cn_module_、cn_var_ 或 cn_static_ 前缀（避免重复加前缀）
+    if (strncmp(name, "cn_module_", 10) == 0 ||
+        strncmp(name, "cn_var_", 7) == 0 ||
+        strncmp(name, "cn_static_", 10) == 0) {
         return name;
     }
     
@@ -806,6 +815,45 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         if (i < func->param_count - 1) fprintf(ctx->output_file, ", ");
     }
     fprintf(ctx->output_file, ") {\n");
+    
+    // 生成静态局部变量声明（在函数体开头）
+    if (func->first_static_var) {
+        fprintf(ctx->output_file, "    /* 静态局部变量 */\n");
+        CnIrStaticVar *static_var = func->first_static_var;
+        while (static_var) {
+            const char *type_str = get_c_type_string(static_var->type);
+            // 生成静态变量名：cn_static_{函数名}_{变量名}
+            fprintf(ctx->output_file, "    static %s cn_static_%s_%s",
+                    type_str, func->name, static_var->name);
+            
+            // 如果有初始化值，生成初始化
+            if (static_var->initializer.kind != CN_IR_OP_NONE) {
+                fprintf(ctx->output_file, " = ");
+                if (static_var->initializer.kind == CN_IR_OP_IMM_INT) {
+                    fprintf(ctx->output_file, "%lld", static_var->initializer.as.imm_int);
+                } else if (static_var->initializer.kind == CN_IR_OP_IMM_FLOAT) {
+                    fprintf(ctx->output_file, "%f", static_var->initializer.as.imm_float);
+                } else if (static_var->initializer.kind == CN_IR_OP_IMM_STR) {
+                    // 字符串字面量：需要加引号并处理转义
+                    fprintf(ctx->output_file, "\"");
+                    for (const char *p = static_var->initializer.as.imm_str; p && *p; p++) {
+                        switch (*p) {
+                            case '\\': fprintf(ctx->output_file, "\\\\"); break;
+                            case '\"': fprintf(ctx->output_file, "\\\""); break;
+                            case '\n': fprintf(ctx->output_file, "\\n"); break;
+                            case '\r': fprintf(ctx->output_file, "\\r"); break;
+                            case '\t': fprintf(ctx->output_file, "\\t"); break;
+                            default: fprintf(ctx->output_file, "%c", *p); break;
+                        }
+                    }
+                    fprintf(ctx->output_file, "\"");
+                }
+            }
+            fprintf(ctx->output_file, ";\n");
+            static_var = static_var->next;
+        }
+        fprintf(ctx->output_file, "\n");
+    }
     
     // 注入运行时初始化（仅 hosted 模式）
     if (is_main && ctx->module && ctx->module->compile_mode != CN_COMPILE_MODE_FREESTANDING) {

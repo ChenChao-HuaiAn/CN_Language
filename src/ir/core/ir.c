@@ -43,6 +43,16 @@ void cn_ir_module_free(CnIrModule *module) {
     CnIrFunction *func = module->first_func;
     while (func) {
         CnIrFunction *next = func->next;
+        
+        // 释放静态变量
+        CnIrStaticVar *static_var = func->first_static_var;
+        while (static_var) {
+            CnIrStaticVar *next_sv = static_var->next;
+            if (static_var->name) free((void *)static_var->name);
+            free(static_var);
+            static_var = next_sv;
+        }
+        
         CnIrBasicBlock *block = func->first_block;
         while (block) {
             CnIrBasicBlock *next_b = block->next;
@@ -79,6 +89,8 @@ CnIrFunction *cn_ir_function_new(const char *name, CnType *return_type) {
         func->param_count = 0;
         func->locals = NULL;
         func->local_count = 0;
+        func->first_static_var = NULL;  // 初始化静态变量链表
+        func->last_static_var = NULL;
         func->first_block = NULL;
         func->last_block = NULL;
         func->next_reg_id = 0;
@@ -110,6 +122,18 @@ void cn_ir_function_add_block(CnIrFunction *func, CnIrBasicBlock *block) {
         func->last_block->next = block;
         block->prev = func->last_block;
         func->last_block = block;
+    }
+}
+
+// 添加静态局部变量到函数
+void cn_ir_function_add_static_var(CnIrFunction *func, CnIrStaticVar *static_var) {
+    if (!func || !static_var) return;
+    if (!func->first_static_var) {
+        func->first_static_var = static_var;
+        func->last_static_var = static_var;
+    } else {
+        func->last_static_var->next = static_var;
+        func->last_static_var = static_var;
     }
 }
 
@@ -194,6 +218,14 @@ CnIrOperand cn_ir_op_imm_float(double val, CnType *type) {
     CnIrOperand op;
     op.kind = CN_IR_OP_IMM_FLOAT;
     op.as.imm_float = val;
+    op.type = type;
+    return op;
+}
+
+CnIrOperand cn_ir_op_imm_str(const char *val, CnType *type) {
+    CnIrOperand op;
+    op.kind = CN_IR_OP_IMM_STR;
+    op.as.imm_str = val ? strdup(val) : NULL;
     op.type = type;
     return op;
 }

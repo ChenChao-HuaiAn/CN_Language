@@ -27,7 +27,7 @@ static const CnKeywordEntry g_keywords[] = {
     {"结构体", CN_TOKEN_KEYWORD_STRUCT, "类型关键字"},
     {"枚举", CN_TOKEN_KEYWORD_ENUM, "类型关键字"},
 
-    // 声明关键字 (7个)
+    // 声明关键字 (8个)
     {"函数", CN_TOKEN_KEYWORD_FN, "声明关键字"},
     {"变量", CN_TOKEN_KEYWORD_VAR, "声明关键字"},
     {"模块", CN_TOKEN_KEYWORD_MODULE, "声明关键字"},
@@ -35,19 +35,19 @@ static const CnKeywordEntry g_keywords[] = {
     {"从", CN_TOKEN_KEYWORD_FROM, "声明关键字"},  // 阶段11: 从...导入 语法
     {"公开", CN_TOKEN_KEYWORD_PUBLIC, "声明关键字"},
     {"私有", CN_TOKEN_KEYWORD_PRIVATE, "声明关键字"},
+    {"静态", CN_TOKEN_KEYWORD_STATIC, "声明关键字"},  // 静态局部变量声明
 
     // 常量关键字 (3个)
     {"真", CN_TOKEN_KEYWORD_TRUE, "常量关键字"},
     {"假", CN_TOKEN_KEYWORD_FALSE, "常量关键字"},
     {"无", CN_TOKEN_KEYWORD_NULL, "常量关键字"},  // 注意：空值常量是"无"
 
-    // 预留关键字 (7个)
+    // 预留关键字 (6个)
     {"命名空间", CN_TOKEN_KEYWORD_NAMESPACE, "预留关键字"},
     {"接口", CN_TOKEN_KEYWORD_INTERFACE, "预留关键字"},
     {"类", CN_TOKEN_KEYWORD_CLASS, "预留关键字"},
     {"模板", CN_TOKEN_KEYWORD_TEMPLATE, "预留关键字"},
     {"常量", CN_TOKEN_KEYWORD_CONST, "预留关键字"},
-    {"静态", CN_TOKEN_KEYWORD_STATIC, "预留关键字"},
     {"保护", CN_TOKEN_KEYWORD_PROTECTED, "预留关键字"},
     {"虚拟", CN_TOKEN_KEYWORD_VIRTUAL, "预留关键字"},
     {"重写", CN_TOKEN_KEYWORD_OVERRIDE, "预留关键字"},

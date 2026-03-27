@@ -59,6 +59,13 @@ static void switch_to_block(CnIrGenContext *ctx, CnIrBasicBlock *block) {
     ctx->current_block = block;
 }
 
+// 静态变量跟踪结构
+typedef struct CnIrGenStaticVar {
+    char *name;
+    size_t name_length;
+    struct CnIrGenStaticVar *next;
+} CnIrGenStaticVar;
+
 CnIrGenContext *cn_ir_gen_context_new() {
     CnIrGenContext *ctx = malloc(sizeof(CnIrGenContext));
     ctx->module = cn_ir_module_new();
@@ -68,6 +75,7 @@ CnIrGenContext *cn_ir_gen_context_new() {
     ctx->loop_continue = NULL;
     ctx->global_scope = NULL;
     ctx->current_scope = NULL;
+    ctx->current_static_vars = NULL;  // 初始化静态变量列表
     return ctx;
 }
 
@@ -188,6 +196,34 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 }
             }
             
+            // 检查是否为静态局部变量（通过上下文中的静态变量列表）
+            CnIrGenStaticVar *static_var = ctx->current_static_vars;
+            while (static_var) {
+                if (static_var->name_length == expr->as.identifier.name_length &&
+                    strncmp(static_var->name, expr->as.identifier.name, expr->as.identifier.name_length) == 0) {
+                    // 找到静态变量：生成带函数名前缀的符号名
+                    // 格式：cn_static_{函数名}_{变量名}
+                    size_t func_name_len = strlen(ctx->current_func->name);
+                    size_t var_name_len = expr->as.identifier.name_length;
+                    size_t total_len = 10 + func_name_len + 1 + var_name_len + 1; // "cn_static_" + "_" + \0
+                    
+                    char *static_name = malloc(total_len);
+                    if (static_name) {
+                        snprintf(static_name, total_len, "cn_static_%s_%.*s",
+                                ctx->current_func->name,
+                                (int)var_name_len, expr->as.identifier.name);
+                        
+                        int dest_reg = alloc_reg(ctx);
+                        CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
+                        CnIrOperand src = cn_ir_op_symbol(static_name, expr->type);
+                        free(static_name);
+                        emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
+                        return dest;
+                    }
+                }
+                static_var = static_var->next;
+            }
+            
             // 普通变量：生成 LOAD 指令从变量地址加载值
             int dest_reg = alloc_reg(ctx);
             CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
@@ -294,11 +330,40 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             CnAstExpr *target = expr->as.assign.target;
             
             if (target->kind == CN_AST_EXPR_IDENTIFIER) {
-                // 普通变量赋值
-                char *name = copy_name(target->as.identifier.name, target->as.identifier.name_length);
-                CnIrOperand addr = cn_ir_op_symbol(name, target->type);
-                free(name);
-                emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
+                // 检查是否为静态局部变量（通过上下文中的静态变量列表）
+                int is_static = 0;
+                CnIrGenStaticVar *static_var = ctx->current_static_vars;
+                while (static_var) {
+                    if (static_var->name_length == target->as.identifier.name_length &&
+                        strncmp(static_var->name, target->as.identifier.name, target->as.identifier.name_length) == 0) {
+                        is_static = 1;
+                        break;
+                    }
+                    static_var = static_var->next;
+                }
+                
+                if (is_static) {
+                    // 静态变量赋值：生成带函数名前缀的符号名
+                    size_t func_name_len = strlen(ctx->current_func->name);
+                    size_t var_name_len = target->as.identifier.name_length;
+                    size_t total_len = 10 + func_name_len + 1 + var_name_len + 1;
+                    
+                    char *static_name = malloc(total_len);
+                    if (static_name) {
+                        snprintf(static_name, total_len, "cn_static_%s_%.*s",
+                                ctx->current_func->name,
+                                (int)var_name_len, target->as.identifier.name);
+                        CnIrOperand addr = cn_ir_op_symbol(static_name, target->type);
+                        free(static_name);
+                        emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
+                    }
+                } else {
+                    // 普通变量赋值
+                    char *name = copy_name(target->as.identifier.name, target->as.identifier.name_length);
+                    CnIrOperand addr = cn_ir_op_symbol(name, target->type);
+                    free(name);
+                    emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
+                }
             } else if (target->kind == CN_AST_EXPR_INDEX) {
                 // 数组索引赋值 arr[index] = value
                 CnIrOperand array_op = cn_ir_gen_expr(ctx, target->as.index.array);
@@ -794,6 +859,58 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             if (!decl_type && decl->initializer && decl->initializer->type) {
                 decl_type = decl->initializer->type;
             }
+            
+            // 检查是否为静态局部变量
+            if (decl->is_static) {
+                // 静态变量：创建静态变量结构并添加到函数
+                CnIrStaticVar *static_var = (CnIrStaticVar *)malloc(sizeof(CnIrStaticVar));
+                if (static_var) {
+                    static_var->name = strdup(name);
+                    static_var->name_length = decl->name_length;
+                    static_var->type = decl_type;
+                    static_var->next = NULL;
+                    
+                    // 处理初始化值
+                    if (decl->initializer) {
+                        // 静态变量的初始化必须是编译时常量
+                        // 直接从AST表达式获取常量值
+                        if (decl->initializer->kind == CN_AST_EXPR_INTEGER_LITERAL) {
+                            static_var->initializer = cn_ir_op_imm_int(
+                                decl->initializer->as.integer_literal.value, decl_type);
+                        } else if (decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL) {
+                            static_var->initializer = cn_ir_op_imm_float(
+                                decl->initializer->as.float_literal.value, decl_type);
+                        } else if (decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
+                            static_var->initializer = cn_ir_op_imm_int(
+                                decl->initializer->as.bool_literal.value ? 1 : 0, decl_type);
+                        } else if (decl->initializer->kind == CN_AST_EXPR_STRING_LITERAL) {
+                            static_var->initializer = cn_ir_op_imm_str(
+                                decl->initializer->as.string_literal.value, decl_type);
+                        } else {
+                            // 其他情况（应该已经被语义检查拒绝）
+                            static_var->initializer = cn_ir_op_none();
+                        }
+                    } else {
+                        // 无初始化，使用零值
+                        static_var->initializer = cn_ir_op_none();
+                    }
+                    
+                    cn_ir_function_add_static_var(ctx->current_func, static_var);
+                    
+                    // 同时添加到上下文的静态变量列表（用于标识符查找）
+                    CnIrGenStaticVar *gen_static_var = (CnIrGenStaticVar *)malloc(sizeof(CnIrGenStaticVar));
+                    if (gen_static_var) {
+                        gen_static_var->name = strdup(name);
+                        gen_static_var->name_length = decl->name_length;
+                        gen_static_var->next = ctx->current_static_vars;
+                        ctx->current_static_vars = gen_static_var;
+                    }
+                }
+                free(name);
+                break;
+            }
+            
+            // 普通局部变量：ALLOCA + 可选 STORE
             CnIrOperand addr = cn_ir_op_symbol(name, decl_type);
             free(name);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_ALLOCA, addr, cn_ir_op_none(), cn_ir_op_none()));
@@ -1155,6 +1272,16 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     // 恢复作用域
     cn_sem_scope_free(func_scope);
     ctx->current_scope = ctx->global_scope;
+    
+    // 清理静态变量列表
+    CnIrGenStaticVar *sv = ctx->current_static_vars;
+    while (sv) {
+        CnIrGenStaticVar *next = sv->next;
+        if (sv->name) free(sv->name);
+        free(sv);
+        sv = next;
+    }
+    ctx->current_static_vars = NULL;
 
     // 添加到模块
     if (!ctx->module->first_func) {

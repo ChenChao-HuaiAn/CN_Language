@@ -856,6 +856,7 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                 sym->type = var_decl->declared_type;
             }
             sym->is_const = var_decl->is_const;
+            sym->is_static = var_decl->is_static;  // 传递静态变量标记
             // 设置可见性（根据 AST 中的可见性标志）
             if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
                 sym->is_public = 1;  // 显式标记为公开
