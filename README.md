@@ -209,7 +209,7 @@ cnc hello.cn -o hello
     返回 a + b;
 }
 
-// 带返回值的函数
+// 带返回值类型的函数
 函数 计算加法2(整数 a, 整数 b) -> 整数
 {
     返回 a + b;
@@ -554,9 +554,9 @@ CN_Language/
 
 ## 📞 联系方式
 
-- 项目主页：[https://github.com/yourusername/CN_Language](https://github.com/yourusername/CN_Language)
-- 问题反馈：[GitHub Issues](https://github.com/yourusername/CN_Language/issues)
-- 讨论区：[GitHub Discussions](https://github.com/yourusername/CN_Language/discussions)
+- 项目主页：[https://github.com/ChenChao-HuaiAn/CN_Language](https://github.com/ChenChao-HuaiAn/CN_Language)
+- 问题反馈：[GitHub Issues](https://github.com/ChenChao-HuaiAn/CN_Language/issues)
+- 讨论区：[GitHub Discussions](https://github.com/ChenChao-HuaiAn/CN_Language/discussions)
 
 ---
 
