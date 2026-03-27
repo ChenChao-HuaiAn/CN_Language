@@ -181,7 +181,7 @@ CnSemSymbol *cn_sem_scope_lookup(CnSemScope *scope,
 {
     CnSemSymbol *symbol;
 
-    if (!name || name_length == 0) {
+    if (!scope || !name || name_length == 0) {
         return NULL;
     }
 

@@ -4,7 +4,11 @@
 
 CnType *cn_type_new_primitive(CnTypeKind kind) {
     CnType *type = (CnType *)malloc(sizeof(CnType));
-    if (!type) return NULL;
+    if (!type) {
+        // 内存分配失败时返回一个静态的未知类型，避免 NULL 指针
+        static CnType unknown_type = { .kind = CN_TYPE_UNKNOWN };
+        return &unknown_type;
+    }
     type->kind = kind;
     return type;
 }
@@ -101,13 +105,13 @@ bool cn_type_equals(CnType *a, CnType *b) {
 }
 
 bool cn_type_compatible(CnType *a, CnType *b) {
+    // 空指针检查
+    if (!a || !b) return false;
+    
     // 基础实现：等价即兼容
     if (cn_type_equals(a, b)) {
         return true;
     }
-    
-    // 扩展兼容性检查：支持数字类型之间的隐式转换
-    if (!a || !b) return false;
     
     // 整数类型之间的兼容性
     bool a_is_int = (a->kind == CN_TYPE_INT || a->kind == CN_TYPE_INT32 || 
@@ -169,9 +173,12 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
     }
 
     // 遍历结构体的所有字段
+    if (!struct_type->as.struct_type.fields) {
+        return NULL;
+    }
     for (size_t i = 0; i < struct_type->as.struct_type.field_count; i++) {
         CnStructField *field = &struct_type->as.struct_type.fields[i];
-        if (field->name_length == field_name_length &&
+        if (field && field->name && field->name_length == field_name_length &&
             memcmp(field->name, field_name, field_name_length) == 0) {
             return field;
         }
@@ -184,10 +191,10 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
 CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                       const char *member_name,
                                       size_t member_name_length) {
-    if (!enum_type || enum_type->kind != CN_TYPE_ENUM) {
+    if (!enum_type || enum_type->kind != CN_TYPE_ENUM || !member_name) {
         return NULL;
     }
-    if (!member_name || !enum_type->as.enum_type.enum_scope) {
+    if (!enum_type->as.enum_type.enum_scope) {
         return NULL;
     }
 

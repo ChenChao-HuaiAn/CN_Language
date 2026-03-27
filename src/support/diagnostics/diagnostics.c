@@ -85,10 +85,11 @@ void cn_support_diag_semantic_error_undefined_identifier(
     const char *identifier)
 {
     (void)identifier; // 目前尚不支持动态消息，忽略标识符名
+    if (!diagnostics) return;
     cn_support_diagnostics_report_error(
         diagnostics,
         CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
-        filename,
+        filename ? filename : "<未知文件>",
         line,
         column,
         "语义错误：未定义的标识符");
@@ -138,13 +139,82 @@ void cn_support_diag_semantic_error_generic(
     int column,
     const char *message)
 {
+    if (!diagnostics) return;
     cn_support_diagnostics_report_error(
         diagnostics,
         code,
+        filename ? filename : "<未知文件>",
+        line,
+        column,
+        message ? message : "语义错误");
+}
+
+// 常量相关语义错误诊断接口
+
+void cn_support_diag_semantic_error_const_no_initializer(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column,
+    const char *const_name)
+{
+    (void)const_name;
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_CONST_NO_INITIALIZER,
         filename,
         line,
         column,
-        message);
+        "语义错误：常量声明必须包含初始化表达式");
+}
+
+void cn_support_diag_semantic_error_const_non_const_init(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column,
+    const char *const_name)
+{
+    (void)const_name;
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_CONST_NON_CONST_INIT,
+        filename,
+        line,
+        column,
+        "语义错误：常量初始化表达式必须是编译时常量");
+}
+
+void cn_support_diag_semantic_error_switch_case_non_const(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column)
+{
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_SWITCH_CASE_NON_CONST,
+        filename,
+        line,
+        column,
+        "语义错误：switch case 值必须是常量表达式");
+}
+
+void cn_support_diag_semantic_error_switch_case_duplicate(
+    CnDiagnostics *diagnostics,
+    const char *filename,
+    int line,
+    int column,
+    int case_value)
+{
+    (void)case_value;
+    cn_support_diagnostics_report_error(
+        diagnostics,
+        CN_DIAG_CODE_SEM_SWITCH_CASE_DUPLICATE,
+        filename,
+        line,
+        column,
+        "语义错误：switch case 值重复");
 }
 
 // 便利函数：打印所有诊断信息到标准错误输出

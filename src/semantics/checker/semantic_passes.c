@@ -13,6 +13,9 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
 
 static void resolve_block_names(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics);
 
+// 前向声明：常量表达式判断函数
+static int cn_sem_is_const_expr(CnSemScope *scope, CnAstExpr *expr);
+
 // 名称解析语义 pass
 bool cn_sem_resolve_names(CnSemScope *global_scope,
                           CnAstProgram *program,
@@ -231,7 +234,7 @@ bool cn_sem_check_types(CnSemScope *global_scope,
 {
     if (!program || !global_scope) return true;
 
-    // 推断全局变量的类型
+    // 推断全局变量的类型并进行常量语义检查
     for (size_t i = 0; i < program->global_var_count; ++i) {
         CnAstStmt *var_stmt = program->global_vars[i];
         if (!var_stmt || var_stmt->kind != CN_AST_STMT_VAR_DECL) {
@@ -240,6 +243,25 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         
         CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
         
+        // 常量声明检查：常量必须有初始化表达式
+        if (var_decl->is_const) {
+            if (var_decl->initializer == NULL) {
+                // 常量声明缺少初始化表达式
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_CONST_NO_INITIALIZER,
+                    NULL, 0, 0,
+                    "语义错误：常量声明必须有初始化表达式");
+            } else if (!cn_sem_is_const_expr(global_scope, var_decl->initializer)) {
+                // 常量初始化表达式不是编译时常量
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_CONST_NON_CONST_INIT,
+                    NULL, 0, 0,
+                    "语义错误：常量初始化表达式必须是编译时常量");
+            }
+        }
+        
         // 如果没有显式类型且有初始化表达式，从初始化表达式推断类型
         if (!var_decl->declared_type && var_decl->initializer) {
             CnType *init_type = infer_expr_type(global_scope, var_decl->initializer, diagnostics);
@@ -247,8 +269,8 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                 var_decl->declared_type = init_type;
                 
                 // 同时更新全局作用域中该变量的类型
-                CnSemSymbol *sym = cn_sem_scope_lookup_shallow(global_scope, 
-                                                               var_decl->name, 
+                CnSemSymbol *sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                               var_decl->name,
                                                                var_decl->name_length);
                 if (sym) {
                     sym->type = init_type;
@@ -401,8 +423,9 @@ bool cn_sem_check_types(CnSemScope *global_scope,
 }
 
 static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics, bool in_loop) {
-    if (!block) return;
+    if (!block || !scope) return;
     CnSemScope *block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+    if (!block_scope) return;
     for (size_t i = 0; i < block->stmt_count; i++) {
         check_stmt_types(block_scope, block->stmts[i], diagnostics, in_loop);
     }
@@ -418,6 +441,26 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             break;
         case CN_AST_STMT_VAR_DECL: {
             CnAstVarDecl *decl = &stmt->as.var_decl;
+            
+            // 常量声明检查：常量必须有初始化表达式
+            if (decl->is_const) {
+                if (decl->initializer == NULL) {
+                    // 常量声明缺少初始化表达式
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_CONST_NO_INITIALIZER,
+                        NULL, 0, 0,
+                        "语义错误：常量声明必须有初始化表达式");
+                } else if (!cn_sem_is_const_expr(scope, decl->initializer)) {
+                    // 常量初始化表达式不是编译时常量
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_CONST_NON_CONST_INIT,
+                        NULL, 0, 0,
+                        "语义错误：常量初始化表达式必须是编译时常量");
+                }
+            }
+            
             CnType *init_type = infer_expr_type(scope, decl->initializer, diagnostics);
             
             // 插入符号到当前作用域
@@ -533,6 +576,14 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
 
             // 检查每个 case 的值表达式是否为常量且类型匹配
             int has_default = 0;
+            
+            // ========== 用于检测重复 case 值的数据结构 ==========
+            // 简化实现：使用固定大小的数组存储已见过的 case 值
+            #define MAX_CASE_VALUES 256
+            long seen_case_values[MAX_CASE_VALUES];
+            size_t seen_case_count = 0;
+            // ========== 重复检测数据结构结束 ==========
+            
             for (size_t i = 0; i < stmt->as.switch_stmt.case_count; i++) {
                 CnAstSwitchCase *case_stmt = &stmt->as.switch_stmt.cases[i];
 
@@ -557,12 +608,64 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                             "语义错误：case 值类型与 switch 表达式类型不匹配");
                     }
 
-                    // TODO: 检查 case 值是否为常量表达式
-                    // TODO: 检查是否有重复的 case 值
+                    // ========== 检查 case 值是否为常量表达式 ==========
+                    if (!cn_sem_is_const_expr(scope, case_stmt->value)) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_SWITCH_CASE_NON_CONST,
+                            NULL,  // 不使用 stmt->loc.filename，因为它可能是无效指针
+                            0,
+                            0,
+                            "语义错误：case 值必须是常量表达式");
+                    }
+                    // ========== 常量检查结束 ==========
+                    
+                    // ========== 检查是否有重复的 case 值 ==========
+                    // 尝试获取 case 的常量值（仅对整数字面量和枚举成员有效）
+                    long case_value = 0;
+                    int can_get_value = 0;
+                    
+                    if (case_stmt->value->kind == CN_AST_EXPR_INTEGER_LITERAL) {
+                        case_value = case_stmt->value->as.integer_literal.value;
+                        can_get_value = 1;
+                    } else if (case_stmt->value->kind == CN_AST_EXPR_IDENTIFIER) {
+                        const char *name = case_stmt->value->as.identifier.name;
+                        size_t name_len = case_stmt->value->as.identifier.name_length;
+                        if (name && name_len > 0) {
+                            CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
+                            if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                                case_value = sym->as.enum_value;
+                                can_get_value = 1;
+                            }
+                        }
+                    }
+                    
+                    if (can_get_value) {
+                        // 检查是否重复
+                        for (size_t j = 0; j < seen_case_count; j++) {
+                            if (seen_case_values[j] == case_value) {
+                                cn_support_diag_semantic_error_generic(
+                                    diagnostics,
+                                    CN_DIAG_CODE_SEM_SWITCH_CASE_DUPLICATE,
+                                    stmt->loc.filename,
+                                    stmt->loc.line,
+                                    stmt->loc.column,
+                                    "语义错误：switch 语句中有重复的 case 值");
+                                break;
+                            }
+                        }
+                        // 记录已见过的值
+                        if (seen_case_count < MAX_CASE_VALUES) {
+                            seen_case_values[seen_case_count++] = case_value;
+                        }
+                    }
+                    // ========== 重复检查结束 ==========
                 }
 
                 // 检查 case 体的语句块（在 switch 中 break 是允许的）
-                check_block_types(scope, case_stmt->body, diagnostics, true);
+                if (case_stmt->body) {
+                    check_block_types(scope, case_stmt->body, diagnostics, true);
+                }
             }
             break;
         }
@@ -672,8 +775,142 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
     }
 }
 
+/**
+ * @brief 判断表达式是否为编译时常量表达式
+ *
+ * 常量表达式的定义：
+ * 1. 整数字面量、浮点字面量、布尔字面量、字符串字面量
+ * 2. 枚举成员引用
+ * 3. 常量变量的引用（使用"常量"关键字声明）
+ * 4. 由常量表达式通过运算符组合而成的表达式
+ *
+ * @param scope 当前作用域，用于查找符号
+ * @param expr 要判断的表达式
+ * @return 1 表示是常量表达式，0 表示不是
+ */
+static int cn_sem_is_const_expr(CnSemScope *scope, CnAstExpr *expr) {
+    // 空表达式或空作用域不是常量
+    if (!expr || !scope) return 0;
+    
+    switch (expr->kind) {
+        // 1. 字面量都是常量
+        case CN_AST_EXPR_INTEGER_LITERAL:  // 整数字面量
+        case CN_AST_EXPR_FLOAT_LITERAL:    // 浮点字面量
+        case CN_AST_EXPR_BOOL_LITERAL:     // 布尔字面量
+        case CN_AST_EXPR_STRING_LITERAL:   // 字符串字面量
+            return 1;
+            
+        // 2. 标识符：检查是否为常量变量或枚举成员
+        case CN_AST_EXPR_IDENTIFIER: {
+            const char *name = expr->as.identifier.name;
+            size_t name_len = expr->as.identifier.name_length;
+            
+            // 空名称不是常量
+            if (!name || name_len == 0) return 0;
+            
+            CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
+            
+            // 未定义的符号不是常量
+            if (!sym) return 0;
+            
+            // 枚举成员是常量
+            if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                return 1;
+            }
+            
+            // 常量变量是常量（使用"常量"关键字声明）
+            if (sym->kind == CN_SEM_SYMBOL_VARIABLE && sym->is_const) {
+                return 1;
+            }
+            
+            return 0;
+        }
+        
+        // 3. 二元运算：两个操作数都是常量则为常量
+        // 包括：算术运算（加减乘除取模）、位运算（与或非异或移位）、比较运算
+        case CN_AST_EXPR_BINARY: {
+            return expr->as.binary.left && expr->as.binary.right &&
+                   cn_sem_is_const_expr(scope, expr->as.binary.left) &&
+                   cn_sem_is_const_expr(scope, expr->as.binary.right);
+        }
+        
+        // 4. 一元运算：操作数是常量则为常量
+        // 包括：正负号、逻辑非、位取反
+        case CN_AST_EXPR_UNARY: {
+            // 取地址运算符的结果通常不是编译时常量
+            if (expr->as.unary.op == CN_AST_UNARY_OP_ADDRESS_OF) {
+                return 0;
+            }
+            // 解引用运算符的结果不是编译时常量
+            if (expr->as.unary.op == CN_AST_UNARY_OP_DEREFERENCE) {
+                return 0;
+            }
+            // 自增自减运算符会修改值，不是常量
+            if (expr->as.unary.op == CN_AST_UNARY_OP_PRE_INC ||
+                expr->as.unary.op == CN_AST_UNARY_OP_PRE_DEC ||
+                expr->as.unary.op == CN_AST_UNARY_OP_POST_INC ||
+                expr->as.unary.op == CN_AST_UNARY_OP_POST_DEC) {
+                return 0;
+            }
+            return expr->as.unary.operand && cn_sem_is_const_expr(scope, expr->as.unary.operand);
+        }
+        
+        // 5. 三元表达式：条件和两个分支都是常量则为常量
+        case CN_AST_EXPR_TERNARY: {
+            return expr->as.ternary.condition && expr->as.ternary.true_expr && expr->as.ternary.false_expr &&
+                   cn_sem_is_const_expr(scope, expr->as.ternary.condition) &&
+                   cn_sem_is_const_expr(scope, expr->as.ternary.true_expr) &&
+                   cn_sem_is_const_expr(scope, expr->as.ternary.false_expr);
+        }
+        
+        // 6. 逻辑运算：两个操作数都是常量则为常量
+        case CN_AST_EXPR_LOGICAL: {
+            return expr->as.logical.left && expr->as.logical.right &&
+                   cn_sem_is_const_expr(scope, expr->as.logical.left) &&
+                   cn_sem_is_const_expr(scope, expr->as.logical.right);
+        }
+        
+        // 7. 成员访问：枚举成员访问是常量
+        case CN_AST_EXPR_MEMBER_ACCESS: {
+            // 检查是否为枚举成员访问（如：枚举名.成员名）
+            if (expr->as.member.object && expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                const char *name = expr->as.member.object->as.identifier.name;
+                size_t name_len = expr->as.member.object->as.identifier.name_length;
+                if (name && name_len > 0) {
+                    CnSemSymbol *obj_sym = cn_sem_scope_lookup(scope, name, name_len);
+                    
+                    // 如果对象是枚举类型，则成员访问是常量
+                    if (obj_sym && obj_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                        return 1;
+                    }
+                }
+            }
+            return 0;
+        }
+        
+        // 8. 以下表达式类型不是常量
+        case CN_AST_EXPR_CALL:           // 函数调用
+        case CN_AST_EXPR_ASSIGN:         // 赋值表达式
+        case CN_AST_EXPR_ARRAY_LITERAL:  // 数组字面量（暂不认为是常量）
+        case CN_AST_EXPR_INDEX:          // 数组索引
+        case CN_AST_EXPR_STRUCT_LITERAL: // 结构体字面量
+        case CN_AST_EXPR_MEMORY_READ:    // 内存读取
+        case CN_AST_EXPR_MEMORY_WRITE:   // 内存写入
+        case CN_AST_EXPR_MEMORY_COPY:    // 内存复制
+        case CN_AST_EXPR_MEMORY_SET:     // 内存设置
+        case CN_AST_EXPR_MEMORY_MAP:     // 内存映射
+        case CN_AST_EXPR_MEMORY_UNMAP:   // 内存解除映射
+        case CN_AST_EXPR_INLINE_ASM:     // 内联汇编
+            return 0;
+            
+        // 未知类型默认不是常量
+        default:
+            return 0;
+    }
+}
+
 static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics) {
-    if (!expr) return NULL;
+    if (!expr || !scope) return NULL;
 
     switch (expr->kind) {
         case CN_AST_EXPR_INTEGER_LITERAL:
@@ -689,18 +926,30 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
             break;
         case CN_AST_EXPR_IDENTIFIER: {
-            CnSemSymbol *sym = cn_sem_scope_lookup(scope, expr->as.identifier.name, expr->as.identifier.name_length);
+            const char *name = expr->as.identifier.name;
+            size_t name_len = expr->as.identifier.name_length;
+            
+            if (!name || name_len == 0) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
+            
+            CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
             if (sym) {
                 expr->type = sym->type;
             } else {
                 // 报错：未定义标识符
                 cn_support_diag_semantic_error_undefined_identifier(
-                    diagnostics, NULL, 0, 0, expr->as.identifier.name);
+                    diagnostics, NULL, 0, 0, name);
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
             break;
         }
         case CN_AST_EXPR_BINARY: {
+            if (!expr->as.binary.left || !expr->as.binary.right) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
             CnType *left = infer_expr_type(scope, expr->as.binary.left, diagnostics);
             CnType *right = infer_expr_type(scope, expr->as.binary.right, diagnostics);
             
@@ -765,15 +1014,19 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         }
         case CN_AST_EXPR_ASSIGN: {
             // 赋值：先生成右值，再 STORE 到左值地址
-            CnType *target = infer_expr_type(scope, expr->as.assign.target, diagnostics);
+            CnAstExpr *target_expr = expr->as.assign.target;
+            if (!target_expr || !expr->as.assign.value) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
+            CnType *target = infer_expr_type(scope, target_expr, diagnostics);
             CnType *val = infer_expr_type(scope, expr->as.assign.value, diagnostics);
             
             // 检查左值是否合法：只能是标识符、索引访问、成员访问或解引用表达式
-            CnAstExpr *target_expr = expr->as.assign.target;
             bool is_valid_lvalue = (target_expr->kind == CN_AST_EXPR_IDENTIFIER) ||
                                     (target_expr->kind == CN_AST_EXPR_INDEX) ||
                                     (target_expr->kind == CN_AST_EXPR_MEMBER_ACCESS) ||
-                                    (target_expr->kind == CN_AST_EXPR_UNARY && 
+                                    (target_expr->kind == CN_AST_EXPR_UNARY &&
                                      target_expr->as.unary.op == CN_AST_UNARY_OP_DEREFERENCE);
             
             if (!is_valid_lvalue) {
@@ -791,17 +1044,19 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             // 检查是否向常量变量赋值
             if (target_expr->kind == CN_AST_EXPR_IDENTIFIER) {
                 CnAstIdentifierExpr *id = &target_expr->as.identifier;
-                CnSemSymbol *sym = cn_sem_scope_lookup(scope, id->name, id->name_length);
-                if (sym && sym->kind == CN_SEM_SYMBOL_VARIABLE && sym->is_const) {
-                    cn_support_diag_semantic_error_generic(
-                        diagnostics,
-                        CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
-                        expr->loc.filename,
-                        expr->loc.line,
-                        expr->loc.column,
-                        "语义错误：不能给常量变量赋值");
-                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
-                    break;
+                if (id->name && id->name_length > 0) {
+                    CnSemSymbol *sym = cn_sem_scope_lookup(scope, id->name, id->name_length);
+                    if (sym && sym->kind == CN_SEM_SYMBOL_VARIABLE && sym->is_const) {
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_INVALID_ASSIGNMENT,
+                            expr->loc.filename,
+                            expr->loc.line,
+                            expr->loc.column,
+                            "语义错误：不能给常量变量赋值");
+                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                        break;
+                    }
                 }
             }
             // 检查是否向常量字段赋值
@@ -886,12 +1141,20 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_LOGICAL: {
-            infer_expr_type(scope, expr->as.logical.left, diagnostics);
-            infer_expr_type(scope, expr->as.logical.right, diagnostics);
+            if (expr->as.logical.left) {
+                infer_expr_type(scope, expr->as.logical.left, diagnostics);
+            }
+            if (expr->as.logical.right) {
+                infer_expr_type(scope, expr->as.logical.right, diagnostics);
+            }
             expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
             break;
         }
         case CN_AST_EXPR_UNARY: {
+            if (!expr->as.unary.operand) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
             CnType *inner = infer_expr_type(scope, expr->as.unary.operand, diagnostics);
             switch (expr->as.unary.op) {
                 case CN_AST_UNARY_OP_NOT:
@@ -942,6 +1205,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_CALL: {
+            if (!expr->as.call.callee) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
             CnType *callee_type = infer_expr_type(scope, expr->as.call.callee, diagnostics);
             
             // 特殊处理：内置函数 "长度" 可以接受字符串或数组
@@ -951,8 +1218,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             // 检查函数风格：长度(arr)
             if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
+                expr->as.call.callee->as.identifier.name &&
                 expr->as.call.callee->as.identifier.name_length == strlen("长度") &&
-                strncmp(expr->as.call.callee->as.identifier.name, "长度", 
+                strncmp(expr->as.call.callee->as.identifier.name, "长度",
                         expr->as.call.callee->as.identifier.name_length) == 0) {
                 is_length_builtin = true;
                 
@@ -1040,8 +1308,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 } else {
                     // 逐个检查参数类型
                     for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                        if (!expr->as.call.arguments[i]) continue;
                         CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
-                        if (arg_type && !cn_type_compatible(arg_type, func_type->as.function.param_types[i])) {
+                        if (arg_type && func_type->as.function.param_types && func_type->as.function.param_types[i] &&
+                            !cn_type_compatible(arg_type, func_type->as.function.param_types[i])) {
                             cn_support_diag_semantic_error_generic(
                                 diagnostics,
                                 CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
@@ -1063,8 +1333,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 } else {
                     // 逐个检查参数类型
                     for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                        if (!expr->as.call.arguments[i]) continue;
                         CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
-                        if (arg_type && !cn_type_compatible(arg_type, callee_type->as.function.param_types[i])) {
+                        if (arg_type && callee_type->as.function.param_types && callee_type->as.function.param_types[i] &&
+                            !cn_type_compatible(arg_type, callee_type->as.function.param_types[i])) {
                             cn_support_diag_semantic_error_generic(
                                 diagnostics,
                                 CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
@@ -1088,14 +1360,19 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *element_type = NULL;
             
             // 空数组 [] 默认为 int 数组
-            if (expr->as.array_literal.element_count == 0) {
+            if (expr->as.array_literal.element_count == 0 || !expr->as.array_literal.elements) {
                 element_type = cn_type_new_primitive(CN_TYPE_INT);
             } else {
                 // 从第一个元素推导类型
-                element_type = infer_expr_type(scope, expr->as.array_literal.elements[0], diagnostics);
+                if (!expr->as.array_literal.elements[0]) {
+                    element_type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                } else {
+                    element_type = infer_expr_type(scope, expr->as.array_literal.elements[0], diagnostics);
+                }
                 
                 // 检查所有元素类型一致
                 for (size_t i = 1; i < expr->as.array_literal.element_count; i++) {
+                    if (!expr->as.array_literal.elements[i]) continue;
                     CnType *curr_type = infer_expr_type(scope, expr->as.array_literal.elements[i], diagnostics);
                     if (curr_type && element_type && !cn_type_compatible(curr_type, element_type)) {
                         cn_support_diag_semantic_error_type_mismatch(
@@ -1113,6 +1390,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         }
         case CN_AST_EXPR_INDEX: {
             // 数组索引访问类型推导 arr[index]
+            if (!expr->as.index.array || !expr->as.index.index) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
             CnType *array_type = infer_expr_type(scope, expr->as.index.array, diagnostics);
             CnType *index_type = infer_expr_type(scope, expr->as.index.index, diagnostics);
             
@@ -1146,11 +1427,18 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_MEMBER_ACCESS: {
             // 成员访问类型推导：支持结构体 obj.member、模块 module.member、枚举 enum.member 和内建方法 arr.长度()
             // 首先检查左操作数是否为模块或枚举
+            if (!expr->as.member.object) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
             if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
-                CnSemSymbol *sym = cn_sem_scope_lookup(
-                    scope,
-                    expr->as.member.object->as.identifier.name,
-                    expr->as.member.object->as.identifier.name_length);
+                const char *name = expr->as.member.object->as.identifier.name;
+                size_t name_len = expr->as.member.object->as.identifier.name_length;
+                if (!name || name_len == 0) {
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
+                }
+                CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
                 
                 // 如果是模块符号，在模块作用域中查找成员
                 if (sym && sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
@@ -1215,7 +1503,8 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
             
             // 特殊处理：内建方法 "长度"，支持数组和字符串
-            if (expr->as.member.member_name_length == strlen("长度") &&
+            if (expr->as.member.member_name &&
+                expr->as.member.member_name_length == strlen("长度") &&
                 strncmp(expr->as.member.member_name, "长度",
                         expr->as.member.member_name_length) == 0) {
                 // 检查对象类型是否为数组或字符串
@@ -1276,10 +1565,13 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_STRUCT_LITERAL: {
             // 结构体字面量类型推导
             // 查找结构体类型定义
-            CnSemSymbol *struct_sym = cn_sem_scope_lookup(
-                scope,
-                expr->as.struct_lit.struct_name,
-                expr->as.struct_lit.struct_name_length);
+            const char *struct_name = expr->as.struct_lit.struct_name;
+            size_t struct_name_len = expr->as.struct_lit.struct_name_length;
+            if (!struct_name || struct_name_len == 0) {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                break;
+            }
+            CnSemSymbol *struct_sym = cn_sem_scope_lookup(scope, struct_name, struct_name_len);
             
             if (!struct_sym || struct_sym->kind != CN_SEM_SYMBOL_STRUCT) {
                 cn_support_diag_semantic_error_generic(
@@ -1297,6 +1589,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *struct_type = struct_sym->type;
             for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
                 CnAstStructFieldInit *init = &expr->as.struct_lit.fields[i];
+                if (!init) continue;
                 CnStructField *field = NULL;
 
                 if (init->field_name && init->field_name_length > 0) {
@@ -1338,6 +1631,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         NULL, 0, 0,
                         "语义错误：结构体中不存在该成员");
                 } else {
+                    if (!init->value) continue;
                     CnType *init_type = infer_expr_type(
                         scope,
                         init->value,
