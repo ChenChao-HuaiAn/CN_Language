@@ -48,7 +48,7 @@
 | `结构体` | `CN_TOKEN_KEYWORD_STRUCT` | 结构体类型 | [`keywords.c:27`](src/frontend/lexer/keywords.c:27) |
 | `枚举` | `CN_TOKEN_KEYWORD_ENUM` | 枚举类型 | [`keywords.c:28`](src/frontend/lexer/keywords.c:28) |
 
-### 1.3 声明关键字（7个）
+### 1.3 声明关键字（9个）
 
 | 关键字 | Token类型 | 说明 | 代码来源 |
 |--------|-----------|------|----------|
@@ -59,6 +59,8 @@
 | `从` | `CN_TOKEN_KEYWORD_FROM` | 从...导入 | [`keywords.c:35`](src/frontend/lexer/keywords.c:35) |
 | `公开` | `CN_TOKEN_KEYWORD_PUBLIC` | 公开可见性 | [`keywords.c:36`](src/frontend/lexer/keywords.c:36) |
 | `私有` | `CN_TOKEN_KEYWORD_PRIVATE` | 私有可见性 | [`keywords.c:37`](src/frontend/lexer/keywords.c:37) |
+| `常量` | `CN_TOKEN_KEYWORD_CONST` | 常量声明 | [`keywords.c:49`](src/frontend/lexer/keywords.c:49) |
+| `静态` | `CN_TOKEN_KEYWORD_STATIC` | 静态局部变量 | [`keywords.c:50`](src/frontend/lexer/keywords.c:50) |
 
 ### 1.4 常量关键字（3个）
 
@@ -76,8 +78,6 @@
 | `接口` | `CN_TOKEN_KEYWORD_INTERFACE` | 预留 | [`keywords.c:46`](src/frontend/lexer/keywords.c:46) |
 | `类` | `CN_TOKEN_KEYWORD_CLASS` | 预留 | [`keywords.c:47`](src/frontend/lexer/keywords.c:47) |
 | `模板` | `CN_TOKEN_KEYWORD_TEMPLATE` | 预留 | [`keywords.c:48`](src/frontend/lexer/keywords.c:48) |
-| `常量` | `CN_TOKEN_KEYWORD_CONST` | 已实现 | [`keywords.c:49`](src/frontend/lexer/keywords.c:49) |
-| `静态` | `CN_TOKEN_KEYWORD_STATIC` | 已实现 | [`keywords.c:50`](src/frontend/lexer/keywords.c:50) |
 | `保护` | `CN_TOKEN_KEYWORD_PROTECTED` | 预留 | [`keywords.c:51`](src/frontend/lexer/keywords.c:51) |
 | `虚拟` | `CN_TOKEN_KEYWORD_VIRTUAL` | 预留 | [`keywords.c:52`](src/frontend/lexer/keywords.c:52) |
 | `重写` | `CN_TOKEN_KEYWORD_OVERRIDE` | 预留 | [`keywords.c:53`](src/frontend/lexer/keywords.c:53) |
@@ -390,6 +390,50 @@ static CnType *parse_type(CnParser *parser)
 
 **代码来源**：[`parser.c:1050-1352`](src/frontend/parser/parser.c:1050)
 
+### 5.3.1 静态局部变量
+
+**语法**：
+```
+静态变量声明 ::= "静态" 类型 标识符 ("=" 表达式)? ";"
+```
+
+**说明**：
+- `静态` 关键字用于声明函数内部的静态局部变量
+- 静态变量在程序启动时分配内存，生命周期贯穿整个程序运行期
+- 静态变量只在首次执行到声明语句时初始化一次
+- 后续函数调用保持上次的值
+
+**示例**：
+```cn
+函数 计数器() -> 整数 {
+    静态 整数 计数 = 0;  // 只初始化一次
+    计数 = 计数 + 1;
+    返回 计数;
+}
+
+函数 斐波那契() -> 整数 {
+    静态 整数 a = 0;     // 保持状态
+    静态 整数 b = 1;
+    整数 结果 = a;
+    整数 temp = a + b;
+    a = b;
+    b = temp;
+    返回 结果;
+}
+```
+
+**语义规则**：
+1. 静态变量必须显式指定类型（不支持类型推断）
+2. 静态变量只能声明在函数内部
+3. 静态变量的初始化表达式必须是编译时常量
+4. 静态变量不能与 `常量` 关键字同时使用
+
+**代码来源**：
+- 词法定义：[`keywords.c:50`](src/frontend/lexer/keywords.c:50)
+- 语法解析：[`parser.c:1061-1100`](src/frontend/parser/parser.c:1061)
+- AST节点：[`ast.h:114`](include/cnlang/frontend/ast.h:114)
+- 语义检查：[`semantic_passes.c:246`](src/semantics/checker/semantic_passes.c:246)
+
 ### 5.4 结构体声明
 
 **语法**：
@@ -698,7 +742,6 @@ case分支 ::= "情况" 整数 ":" 语句* | "默认" ":" 语句*
 | `接口` | 关键字 '接口' 为预留特性，当前版本暂不支持 | [`parser.c:220`](src/frontend/parser/parser.c:220) |
 | `模板` | 关键字 '模板' 为预留特性，当前版本暂不支持 | [`parser.c:223`](src/frontend/parser/parser.c:223) |
 | `命名空间` | 关键字 '命名空间' 为预留特性，当前版本暂不支持 | [`parser.c:226`](src/frontend/parser/parser.c:226) |
-| `静态` | 关键字 '静态' 为预留特性，当前版本暂不支持 | [`parser.c:229`](src/frontend/parser/parser.c:229) |
 | `保护` | 关键字 '保护' 为预留特性，当前版本暂不支持 | [`parser.c:232`](src/frontend/parser/parser.c:232) |
 | `虚拟` | 关键字 '虚拟' 为预留特性，当前版本暂不支持 | [`parser.c:235`](src/frontend/parser/parser.c:235) |
 | `重写` | 关键字 '重写' 为预留特性，当前版本暂不支持 | [`parser.c:238`](src/frontend/parser/parser.c:238) |
