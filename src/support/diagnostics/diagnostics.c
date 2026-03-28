@@ -1,5 +1,204 @@
+/**
+ * @file diagnostics.c
+ * @brief 诊断系统实现
+ *
+ * 实现诊断信息的收集、管理和输出功能。
+ * 支持中英文双语消息、参数化消息和修复建议。
+ */
+
 #include "cnlang/support/diagnostics.h"
+#include "cnlang/support/diag_message_table.h"
 #include <stdio.h>
+#include <string.h>
+
+/* ==================== 全局诊断配置 ==================== */
+
+/**
+ * @brief 全局诊断配置
+ *
+ * 存储诊断系统的全局设置，包括语言、错误限制等
+ */
+static CnDiagConfig g_diag_config = {
+    CN_DIAG_LANG_ZH,  /* 默认中文 */
+    0,                /* 无错误限制 */
+    1,                /* 启用建议 */
+    1                 /* 启用恢复 */
+};
+
+/**
+ * @brief 错误计数器
+ *
+ * 记录当前编译过程中遇到的错误数量
+ */
+static int g_error_count = 0;
+
+/* ==================== 配置函数实现 ==================== */
+
+/**
+ * @brief 获取诊断配置
+ */
+CnDiagConfig* cn_diag_get_config(void) {
+    return &g_diag_config;
+}
+
+/**
+ * @brief 设置诊断配置
+ */
+void cn_diag_set_config(const CnDiagConfig *config) {
+    if (config) {
+        g_diag_config = *config;
+        /* 同步语言设置 */
+        cn_diag_set_language(config->language);
+    }
+}
+
+/* ==================== 增强诊断函数实现 ==================== */
+
+/**
+ * @brief 报告增强诊断信息
+ *
+ * 支持参数化消息和修复建议的诊断报告接口
+ */
+void cn_diag_report_ex(void *ctx,
+                       CnDiagSeverity severity,
+                       CnDiagCode code,
+                       const char *filename,
+                       int line,
+                       int column,
+                       const CnDiagArgs *args,
+                       const char *suggestion) {
+    const CnDiagMessageTemplate *tmpl;
+    char message[512];
+    CnDiagnosticEx diag;
+    CnDiagArgs empty_args = {NULL, 0};
+    
+    /* 1. 检查错误计数 */
+    if (severity == CN_DIAG_SEVERITY_ERROR) {
+        g_error_count++;
+        if (g_diag_config.max_errors > 0 &&
+            g_error_count > g_diag_config.max_errors) {
+            return; /* 达到最大错误数，停止报告 */
+        }
+    }
+    
+    /* 2. 获取消息模板 */
+    tmpl = cn_diag_get_template(code);
+    
+    /* 3. 格式化消息 */
+    if (tmpl) {
+        cn_diag_format_message(tmpl, args, g_diag_config.language,
+                               message, sizeof(message));
+    } else {
+        snprintf(message, sizeof(message), "未知错误 (代码: %d)", code);
+    }
+    
+    /* 4. 构建诊断结构并输出 */
+    diag.severity = severity;
+    diag.code = code;
+    diag.filename = filename;
+    diag.line = line;
+    diag.column = column;
+    diag.end_line = line;
+    diag.end_column = column;
+    diag.args = args ? (CnDiagArgs*)args : &empty_args;
+    diag.suggestion = suggestion;
+    
+    /* 5. 如果有上下文，也添加到诊断集合 */
+    if (ctx) {
+        CnDiagnostics *diagnostics = (CnDiagnostics *)ctx;
+        cn_support_diagnostics_report(
+            diagnostics,
+            severity,
+            code,
+            filename,
+            line,
+            column,
+            message);
+    }
+    
+    /* 6. 打印诊断信息 */
+    cn_diag_print_ex(&diag);
+}
+
+/**
+ * @brief 打印增强诊断信息
+ *
+ * 格式化输出增强诊断信息，支持双语消息
+ */
+void cn_diag_print_ex(const CnDiagnosticEx *diag) {
+    const char *severity_str;
+    const CnDiagMessageTemplate *tmpl;
+    char message[512];
+    const char *hint;
+    
+    if (!diag) return;
+    
+    /* 确定严重级别字符串 */
+    severity_str = (diag->severity == CN_DIAG_SEVERITY_ERROR) ? "错误" : "警告";
+    
+    /* 输出位置信息 */
+    if (diag->filename && diag->line > 0 && diag->column > 0) {
+        fprintf(stderr, "%s:%d:%d: %s: ",
+                diag->filename,
+                diag->line,
+                diag->column,
+                severity_str);
+    } else if (diag->filename && diag->line > 0) {
+        fprintf(stderr, "%s:%d: %s: ",
+                diag->filename,
+                diag->line,
+                severity_str);
+    } else if (diag->filename) {
+        fprintf(stderr, "%s: %s: ",
+                diag->filename,
+                severity_str);
+    } else {
+        fprintf(stderr, "%s: ", severity_str);
+    }
+    
+    /* 获取并格式化消息 */
+    tmpl = cn_diag_get_template(diag->code);
+    if (tmpl) {
+        cn_diag_format_message(tmpl, diag->args, g_diag_config.language,
+                               message, sizeof(message));
+        fprintf(stderr, "%s\n", message);
+        
+        /* 输出提示信息 */
+        hint = (g_diag_config.language == CN_DIAG_LANG_ZH)
+               ? tmpl->hint_zh : tmpl->hint_en;
+        if (hint && g_diag_config.enable_suggestions) {
+            fprintf(stderr, "  提示: %s\n", hint);
+        }
+    } else {
+        fprintf(stderr, "未知错误 (代码: %d)\n", diag->code);
+    }
+    
+    /* 输出修复建议 */
+    if (diag->suggestion && g_diag_config.enable_suggestions) {
+        fprintf(stderr, "  建议: %s\n", diag->suggestion);
+    }
+}
+
+/**
+ * @brief 检查是否应继续诊断
+ *
+ * 根据错误计数判断是否应继续编译
+ */
+int cn_diag_should_continue(void) {
+    if (g_diag_config.max_errors <= 0) return 1;
+    return g_error_count < g_diag_config.max_errors;
+}
+
+/**
+ * @brief 重置诊断状态
+ *
+ * 清空错误计数器，重置诊断系统状态
+ */
+void cn_diag_reset(void) {
+    g_error_count = 0;
+}
+
+/* ==================== 原有便利函数实现 ==================== */
 
 // 便利函数：报告错误
 void cn_support_diagnostics_report_error(

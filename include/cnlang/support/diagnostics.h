@@ -8,13 +8,25 @@
 extern "C" {
 #endif
 
-// 诊断严重级别
+/* ==================== 诊断严重级别 ==================== */
+
+/**
+ * @brief 诊断严重级别枚举
+ *
+ * 定义诊断信息的严重程度
+ */
 typedef enum CnDiagSeverity {
-    CN_DIAG_SEVERITY_ERROR = 0,
-    CN_DIAG_SEVERITY_WARNING = 1
+    CN_DIAG_SEVERITY_ERROR = 0,     /**< 错误：阻止编译继续 */
+    CN_DIAG_SEVERITY_WARNING = 1    /**< 警告：不影响编译 */
 } CnDiagSeverity;
 
-// 诊断错误码（雏形）
+/* ==================== 诊断错误码 ==================== */
+
+/**
+ * @brief 诊断错误码枚举
+ *
+ * 定义所有支持的诊断错误码，用于消息表查找
+ */
 typedef enum CnDiagCode {
     CN_DIAG_CODE_UNKNOWN = 0,
     CN_DIAG_CODE_LEX_UNTERMINATED_STRING,
@@ -54,15 +66,70 @@ typedef enum CnDiagCode {
     CN_DIAG_CODE_SEM_STATIC_VOID_TYPE         // 静态变量为 void 类型
 } CnDiagCode;
 
-// 单条诊断信息
+/* ==================== 前向声明 ==================== */
+
+/**
+ * @brief 语言类型枚举（前向声明）
+ *
+ * 完整定义在 diag_message_table.h 中
+ */
+typedef enum CnDiagLanguage CnDiagLanguage;
+
+/**
+ * @brief 参数数组结构（前向声明）
+ *
+ * 完整定义在 diag_message_table.h 中
+ */
+typedef struct CnDiagArgs CnDiagArgs;
+
+/* ==================== 基础诊断结构 ==================== */
+
+/**
+ * @brief 单条诊断信息结构
+ *
+ * 基础诊断信息，用于简单的错误报告
+ */
 typedef struct CnDiagnostic {
-    CnDiagSeverity severity;
-    CnDiagCode code;
-    const char *filename; // 可为 NULL，表示未知文件
-    int line;             // 行号，从 1 开始；0 表示未知
-    int column;           // 列号，从 1 开始；0 表示未知
-    const char *message;  // 不拥有所有权，一般为静态字符串
+    CnDiagSeverity severity;    /**< 严重级别 */
+    CnDiagCode code;            /**< 错误码 */
+    const char *filename;       /**< 文件名（可为NULL，表示未知文件） */
+    int line;                   /**< 行号，从1开始；0表示未知 */
+    int column;                 /**< 列号，从1开始；0表示未知 */
+    const char *message;        /**< 消息（不拥有所有权，一般为静态字符串） */
 } CnDiagnostic;
+
+/* ==================== 增强诊断结构 ==================== */
+
+/**
+ * @brief 增强的诊断信息结构
+ *
+ * 支持双语消息、参数化消息和修复建议
+ */
+typedef struct CnDiagnosticEx {
+    CnDiagSeverity severity;    /**< 严重级别 */
+    CnDiagCode code;            /**< 错误码 */
+    const char *filename;       /**< 文件名 */
+    int line;                   /**< 行号 */
+    int column;                 /**< 列号 */
+    int end_line;               /**< 结束行号（用于多行错误） */
+    int end_column;             /**< 结束列号 */
+    CnDiagArgs *args;           /**< 参数化消息参数（可为NULL） */
+    const char *suggestion;     /**< 修复建议（可为NULL） */
+} CnDiagnosticEx;
+
+/* ==================== 诊断配置结构 ==================== */
+
+/**
+ * @brief 诊断配置结构
+ *
+ * 控制诊断系统的行为
+ */
+typedef struct CnDiagConfig {
+    CnDiagLanguage language;    /**< 输出语言 */
+    int max_errors;             /**< 最大错误数（0表示无限制） */
+    int enable_suggestions;     /**< 是否启用修复建议 */
+    int enable_recovery;        /**< 是否启用智能恢复 */
+} CnDiagConfig;
 
 // 诊断集合
 struct CnDiagnostics {
@@ -221,8 +288,79 @@ void cn_support_diag_semantic_error_switch_case_duplicate(
     int column,
     int case_value);
 
-// 便利函数：打印所有诊断信息
+/**
+ * @brief 便利函数：打印所有诊断信息
+ * @param diagnostics 诊断集合
+ */
 void cn_support_diagnostics_print(const CnDiagnostics *diagnostics);
+
+/* ==================== 增强诊断接口 ==================== */
+
+/**
+ * @brief 报告增强诊断信息
+ *
+ * 支持参数化消息和修复建议的诊断报告接口
+ *
+ * @param ctx 诊断上下文（CnDiagnostics指针）
+ * @param severity 严重级别
+ * @param code 错误码
+ * @param filename 文件名
+ * @param line 行号
+ * @param column 列号
+ * @param args 参数数组（可为NULL）
+ * @param suggestion 修复建议（可为NULL）
+ */
+void cn_diag_report_ex(void *ctx,
+                       CnDiagSeverity severity,
+                       CnDiagCode code,
+                       const char *filename,
+                       int line,
+                       int column,
+                       const CnDiagArgs *args,
+                       const char *suggestion);
+
+/**
+ * @brief 获取诊断配置
+ *
+ * 返回当前诊断系统的配置信息
+ *
+ * @return 诊断配置指针
+ */
+CnDiagConfig* cn_diag_get_config(void);
+
+/**
+ * @brief 设置诊断配置
+ *
+ * 更新诊断系统的配置信息
+ *
+ * @param config 新配置
+ */
+void cn_diag_set_config(const CnDiagConfig *config);
+
+/**
+ * @brief 打印增强诊断信息
+ *
+ * 格式化输出增强诊断信息，支持双语消息
+ *
+ * @param diag 增强诊断信息
+ */
+void cn_diag_print_ex(const CnDiagnosticEx *diag);
+
+/**
+ * @brief 检查是否应继续诊断
+ *
+ * 根据错误计数判断是否应继续编译
+ *
+ * @return 1表示继续，0表示应停止
+ */
+int cn_diag_should_continue(void);
+
+/**
+ * @brief 重置诊断状态
+ *
+ * 清空错误计数器，重置诊断系统状态
+ */
+void cn_diag_reset(void);
 
 #ifdef __cplusplus
 }

@@ -1038,3 +1038,17 @@ add_test(NAME collections_test COMMAND collections_test)
 set_tests_properties(collections_test PROPERTIES
     LABELS "runtime;collections;vector;list;hashmap;unit"
 )
+
+# 错误诊断增强功能单元测试
+add_executable(diag_test
+    diag_test.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
+    ../../src/support/diagnostics/diag_recovery.c
+    ../../src/support/diagnostics/diag_fixes.c
+)
+target_include_directories(diag_test PRIVATE ../../include)
+add_test(NAME diag_test COMMAND diag_test)
+set_tests_properties(diag_test PROPERTIES
+    LABELS "support;diagnostics;message;recovery;fixes;unit"
+)

@@ -8,6 +8,9 @@ add_executable(cnc
     frontend/parser/parser.c
     frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
+    support/diagnostics/diag_message_table.c
+    support/diagnostics/diag_recovery.c
+    support/diagnostics/diag_fixes.c
     support/process/process.c
     support/config/target_triple.c
     support/perf/perf.c
@@ -55,6 +58,9 @@ add_executable(cnrepl
     frontend/parser/parser.c
     frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
+    support/diagnostics/diag_message_table.c
+    support/diagnostics/diag_recovery.c
+    support/diagnostics/diag_fixes.c
     support/config/target_triple.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
@@ -94,6 +100,9 @@ add_executable(cnfmt
     frontend/ast/ast.c
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
+    support/diagnostics/diag_message_table.c
+    support/diagnostics/diag_recovery.c
+    support/diagnostics/diag_fixes.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
 )
@@ -113,6 +122,9 @@ add_executable(cncheck
     frontend/ast/ast.c
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
+    support/diagnostics/diag_message_table.c
+    support/diagnostics/diag_recovery.c
+    support/diagnostics/diag_fixes.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
 )
@@ -137,6 +149,9 @@ add_executable(cnlsp
     frontend/parser/parser.c
     frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
+    support/diagnostics/diag_message_table.c
+    support/diagnostics/diag_recovery.c
+    support/diagnostics/diag_fixes.c
     semantics/symbols/symbol_table.c
     semantics/symbols/type_system.c
     semantics/resolution/scope_builder.c
