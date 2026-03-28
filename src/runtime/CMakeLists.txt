@@ -10,6 +10,9 @@ set(RUNTIME_CORE_SOURCES
 
 set(RUNTIME_COLLECTIONS_SOURCES
     collections/collections.c
+    collections/vector.c
+    collections/list.c
+    collections/hashmap.c
 )
 
 set(RUNTIME_MEMORY_SOURCES
@@ -21,6 +24,7 @@ set(RUNTIME_MEMORY_SOURCES
 set(RUNTIME_IO_SOURCES
     io/io.c
     io/kernel_io.c
+    io/file_ext.c
 )
 
 set(RUNTIME_MATH_SOURCES

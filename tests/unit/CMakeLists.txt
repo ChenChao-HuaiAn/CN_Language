@@ -1027,3 +1027,14 @@ add_test(NAME ir_passes_test COMMAND ir_passes_test)
 set_tests_properties(ir_passes_test PROPERTIES
     LABELS "ir;passes;optimization;unit"
 )
+
+# 集合数据结构单元测试
+add_executable(collections_test
+    collections_test.c
+)
+target_include_directories(collections_test PRIVATE ../../include)
+target_link_libraries(collections_test PRIVATE cn_runtime)
+add_test(NAME collections_test COMMAND collections_test)
+set_tests_properties(collections_test PROPERTIES
+    LABELS "runtime;collections;vector;list;hashmap;unit"
+)

@@ -86,11 +86,89 @@ int   cn_rt_read_char(char* out_char);
 // 文件操作
 typedef void* CnRtFile;
 
+// 基础文件操作
 CnRtFile cn_rt_file_open(const char* path, const char* mode);
 void     cn_rt_file_close(CnRtFile file);
 size_t   cn_rt_file_read(CnRtFile file, void* buffer, size_t size);
 size_t   cn_rt_file_write(CnRtFile file, const void* buffer, size_t size);
 int      cn_rt_file_eof(CnRtFile file);
+
+// =============================================================================
+// 文件操作扩展函数（高优先级）
+// =============================================================================
+
+/**
+ * 检查文件是否存在
+ * @param path 文件路径
+ * @return 1表示存在，0表示不存在，-1表示错误
+ */
+int cn_rt_file_exists(const char* path);
+
+/**
+ * 获取文件大小（字节数）
+ * @param file 文件句柄
+ * @return 文件大小（字节数），失败返回 -1
+ */
+long long cn_rt_file_size(CnRtFile file);
+
+/**
+ * 从文件读取一行
+ * @param file 文件句柄
+ * @param buffer 缓冲区
+ * @param size 缓冲区大小
+ * @return 读取的字符数，失败返回 -1，EOF返回 0
+ */
+int cn_rt_file_read_line(CnRtFile file, char* buffer, size_t size);
+
+/**
+ * 写入一行到文件（自动添加换行符）
+ * @param file 文件句柄
+ * @param str 要写入的字符串
+ * @return 成功写入的字符数，失败返回 -1
+ */
+int cn_rt_file_write_line(CnRtFile file, const char* str);
+
+/**
+ * 移动文件指针位置
+ * @param file 文件句柄
+ * @param offset 偏移量
+ * @param origin 起始位置（0:文件头, 1:当前位置, 2:文件尾）
+ * @return 成功返回 0，失败返回 -1
+ */
+int cn_rt_file_seek(CnRtFile file, long long offset, int origin);
+
+/**
+ * 获取当前文件指针位置
+ * @param file 文件句柄
+ * @return 当前位置，失败返回 -1
+ */
+long long cn_rt_file_tell(CnRtFile file);
+
+// =============================================================================
+// 文件操作扩展函数（中优先级）
+// =============================================================================
+
+/**
+ * 检查文件操作错误
+ * @param file 文件句柄
+ * @return 0表示无错误，非0表示有错误
+ */
+int cn_rt_file_error(CnRtFile file);
+
+/**
+ * 删除指定文件
+ * @param path 文件路径
+ * @return 成功返回 0，失败返回 -1
+ */
+int cn_rt_file_remove(const char* path);
+
+/**
+ * 重命名文件
+ * @param old_path 原文件路径
+ * @param new_path 新文件路径
+ * @return 成功返回 0，失败返回 -1
+ */
+int cn_rt_file_rename(const char* old_path, const char* new_path);
 
 // 缓冲区管理
 
@@ -186,12 +264,32 @@ int cn_rt_flush_all(void);
 // =============================================================================
 // 中文函数名别名 (Chinese Function Name Aliases)
 // 默认启用，可通过定义 CN_NO_CHINESE_NAMES 禁用
+//
+// 注意：为避免与 stdlib.h 中的中文函数名冲突，文件操作扩展函数使用
+// "文件"前缀或更具体的名称来区分
 // =============================================================================
 #ifndef CN_NO_CHINESE_NAMES
 
 #ifndef CN_FREESTANDING
+
+// 基础文件操作中文别名
 #define 设置文件缓冲 cn_rt_file_setbuf
-#endif
+
+// 文件操作扩展函数中文别名（高优先级）
+// 注意：使用"文件"前缀区分，避免与 stdlib.h 中的同名函数冲突
+#define 文件存在 cn_rt_file_exists
+#define 文件大小 cn_rt_file_size
+#define 文件读取行 cn_rt_file_read_line      // 从文件读取一行（区别于 stdlib.h 的 读取行）
+#define 文件写入行 cn_rt_file_write_line     // 写入一行到文件
+#define 文件指针定位 cn_rt_file_seek         // 移动文件指针（区别于 stdlib.h 的 文件定位）
+#define 获取文件指针位置 cn_rt_file_tell     // 获取文件指针位置（区别于 stdlib.h 的 获取文件位置）
+
+// 文件操作扩展函数中文别名（中优先级）
+#define 文件错误 cn_rt_file_error
+#define 删除文件 cn_rt_file_remove
+#define 重命名文件 cn_rt_file_rename
+
+#endif // CN_FREESTANDING
 
 #endif // CN_NO_CHINESE_NAMES
 
