@@ -1,0 +1,116 @@
+/**
+ * @file version.h.in
+ * @brief CN_Language 版本号定义（CMake 配置模板）
+ * 
+ * 本文件由 CMake 根据 CMakeLists.txt 中的版本号定义自动生成 version.h
+ */
+
+#ifndef CN_LANG_SUPPORT_VERSION_H
+#define CN_LANG_SUPPORT_VERSION_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief CN_Language 主版本号
+ * 
+ * 主版本号变更表示不兼容的 API/语言特性变更
+ */
+#define CN_LANG_VERSION_MAJOR 1
+
+/**
+ * @brief CN_Language 次版本号
+ * 
+ * 次版本号变更表示向后兼容的功能新增
+ */
+#define CN_LANG_VERSION_MINOR 0
+
+/**
+ * @brief CN_Language 修订号
+ * 
+ * 修订号变更表示向后兼容的问题修正
+ */
+#define CN_LANG_VERSION_PATCH 0
+
+/**
+ * @brief CN_Language 预发布标识（可选）
+ * 
+ * 示例: "alpha.1", "beta.2", "rc.1"
+ * 正式发布版本此字段为空字符串
+ */
+#define CN_LANG_VERSION_PRERELEASE ""
+
+/**
+ * @brief CN_Language 完整版本号字符串
+ * 
+ * 格式: "主版本号.次版本号.修订号[-预发布标识]"
+ * 示例: "0.9.0-beta.1", "1.0.0"
+ */
+#define CN_LANG_VERSION_STRING "1.0.0"
+
+/**
+ * @brief 获取 CN_Language 版本号字符串
+ * 
+ * @return 版本号字符串常量指针
+ */
+static inline const char* cn_lang_version_string(void)
+{
+    return CN_LANG_VERSION_STRING;
+}
+
+/**
+ * @brief 获取 CN_Language 主版本号
+ * 
+ * @return 主版本号
+ */
+static inline int cn_lang_version_major(void)
+{
+    return CN_LANG_VERSION_MAJOR;
+}
+
+/**
+ * @brief 获取 CN_Language 次版本号
+ * 
+ * @return 次版本号
+ */
+static inline int cn_lang_version_minor(void)
+{
+    return CN_LANG_VERSION_MINOR;
+}
+
+/**
+ * @brief 获取 CN_Language 修订号
+ * 
+ * @return 修订号
+ */
+static inline int cn_lang_version_patch(void)
+{
+    return CN_LANG_VERSION_PATCH;
+}
+
+/**
+ * @brief 获取 CN_Language 预发布标识
+ * 
+ * @return 预发布标识字符串常量指针（正式版本为空字符串）
+ */
+static inline const char* cn_lang_version_prerelease(void)
+{
+    return CN_LANG_VERSION_PRERELEASE;
+}
+
+/**
+ * @brief 检查是否为预发布版本
+ * 
+ * @return 如果是预发布版本返回 1，否则返回 0
+ */
+static inline int cn_lang_is_prerelease(void)
+{
+    return CN_LANG_VERSION_PRERELEASE[0] != '\0';
+}
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* CN_LANG_SUPPORT_VERSION_H */
