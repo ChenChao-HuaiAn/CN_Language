@@ -810,6 +810,8 @@ add_executable(method_style_length_test
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/ir/passes/constant_folding.c
+    ../../src/ir/passes/cse.c
+    ../../src/ir/passes/copy_propagation.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
     ../../src/support/config/target_triple.c
@@ -953,6 +955,8 @@ add_executable(logical_operators_test
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/ir/passes/constant_folding.c
+    ../../src/ir/passes/cse.c
+    ../../src/ir/passes/copy_propagation.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
     ../../src/support/config/target_triple.c
@@ -982,6 +986,29 @@ add_executable(package_module_import_test
 )
 target_include_directories(package_module_import_test PRIVATE ../../include)
 add_test(NAME package_module_import_test COMMAND package_module_import_test)
-set_tests_properties(package_module_import_test PROPERTIES 
+set_tests_properties(package_module_import_test PROPERTIES
     LABELS "stage11;import;package;module;unit"
+)
+
+# IR优化Pass单元测试
+add_executable(ir_passes_test
+    ir_passes_test.c
+    ../../src/ir/core/ir.c
+    ../../src/ir/passes/constant_folding.c
+    ../../src/ir/passes/cse.c
+    ../../src/ir/passes/copy_propagation.c
+    ../../src/ir/passes/dead_code_elimination.c
+    ../../src/ir/passes/loop_invariant.c
+    ../../src/ir/passes/inlining.c
+    ../../src/ir/passes/strength_reduction.c
+    ../../src/ir/passes/tail_call_opt.c
+    ../../src/semantics/symbols/type_system.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/config/target_triple.c
+)
+target_include_directories(ir_passes_test PRIVATE ../../include)
+add_test(NAME ir_passes_test COMMAND ir_passes_test)
+set_tests_properties(ir_passes_test PROPERTIES
+    LABELS "ir;passes;optimization;unit"
 )

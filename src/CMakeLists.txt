@@ -23,6 +23,12 @@ add_executable(cnc
     ir/core/ir.c
     ir/gen/irgen.c
     ir/passes/constant_folding.c
+    ir/passes/cse.c
+    ir/passes/copy_propagation.c
+    ir/passes/loop_invariant.c
+    ir/passes/inlining.c
+    ir/passes/strength_reduction.c
+    ir/passes/tail_call_opt.c
     ir/passes/dead_code_elimination.c
     backend/cgen/cgen.c
     backend/cgen/module_cgen.c
@@ -59,6 +65,12 @@ add_executable(cnrepl
     ir/core/ir.c
     ir/gen/irgen.c
     ir/passes/constant_folding.c
+    ir/passes/cse.c
+    ir/passes/copy_propagation.c
+    ir/passes/loop_invariant.c
+    ir/passes/inlining.c
+    ir/passes/strength_reduction.c
+    ir/passes/tail_call_opt.c
     ir/passes/dead_code_elimination.c
     backend/cgen/cgen.c
     backend/cgen/module_cgen.c

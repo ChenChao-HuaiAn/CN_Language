@@ -218,6 +218,8 @@ add_executable(integration_memory_analysis_test
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/ir/passes/constant_folding.c
+    ../../src/ir/passes/cse.c
+    ../../src/ir/passes/copy_propagation.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/support/config/target_triple.c
 )

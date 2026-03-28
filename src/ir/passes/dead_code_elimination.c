@@ -59,6 +59,12 @@ void cn_ir_pass_dead_code_elimination(CnIrModule *module) {
 }
 
 void cn_ir_run_default_passes(CnIrModule *module) {
-    cn_ir_pass_constant_folding(module);
-    cn_ir_pass_dead_code_elimination(module);
+    cn_ir_pass_constant_folding(module);          // 1. 常量折叠
+    cn_ir_pass_inline(module);                    // 2. 函数内联展开
+    cn_ir_pass_loop_invariant_code_motion(module);// 3. 循环不变量外提
+    cn_ir_pass_cse(module);                       // 4. 公共子表达式消除
+    cn_ir_pass_copy_propagation(module);          // 5. 复写传播
+    cn_ir_pass_strength_reduction(module);        // 6. 强度削弱
+    cn_ir_pass_tail_call_opt(module);             // 7. 尾递归优化
+    cn_ir_pass_dead_code_elimination(module);     // 8. 死代码消除
 }
