@@ -579,6 +579,13 @@ target_link_libraries(runtime_math_test PRIVATE cn_runtime)
 target_include_directories(runtime_math_test PRIVATE ../../include)
 add_test(NAME runtime_math_test COMMAND runtime_math_test)
 
+# 中文函数名测试
+add_executable(runtime_chinese_names_test runtime/runtime_chinese_names_test.c)
+target_link_libraries(runtime_chinese_names_test PRIVATE cn_runtime)
+target_include_directories(runtime_chinese_names_test PRIVATE ../../include)
+add_test(NAME runtime_chinese_names_test COMMAND runtime_chinese_names_test)
+set_tests_properties(runtime_chinese_names_test PROPERTIES LABELS "runtime;chinese;unit")
+
 # Freestanding 模式测试
 add_executable(runtime_freestanding_test runtime/runtime_freestanding_test.c)
 target_link_libraries(runtime_freestanding_test PRIVATE cn_runtime)
@@ -812,6 +819,10 @@ add_executable(method_style_length_test
     ../../src/ir/passes/constant_folding.c
     ../../src/ir/passes/cse.c
     ../../src/ir/passes/copy_propagation.c
+    ../../src/ir/passes/loop_invariant.c
+    ../../src/ir/passes/inlining.c
+    ../../src/ir/passes/strength_reduction.c
+    ../../src/ir/passes/tail_call_opt.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
     ../../src/support/config/target_triple.c
@@ -957,6 +968,10 @@ add_executable(logical_operators_test
     ../../src/ir/passes/constant_folding.c
     ../../src/ir/passes/cse.c
     ../../src/ir/passes/copy_propagation.c
+    ../../src/ir/passes/loop_invariant.c
+    ../../src/ir/passes/inlining.c
+    ../../src/ir/passes/strength_reduction.c
+    ../../src/ir/passes/tail_call_opt.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
     ../../src/support/config/target_triple.c

@@ -220,6 +220,10 @@ add_executable(integration_memory_analysis_test
     ../../src/ir/passes/constant_folding.c
     ../../src/ir/passes/cse.c
     ../../src/ir/passes/copy_propagation.c
+    ../../src/ir/passes/loop_invariant.c
+    ../../src/ir/passes/inlining.c
+    ../../src/ir/passes/strength_reduction.c
+    ../../src/ir/passes/tail_call_opt.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/support/config/target_triple.c
 )
