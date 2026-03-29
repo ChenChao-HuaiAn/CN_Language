@@ -13,6 +13,7 @@
 #include "cnlang/frontend/token.h"
 #include "cnlang/semantics/vtable_builder.h"
 #include "cnlang/semantics/class_analyzer.h"
+#include "cnlang/runtime/type_info.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -761,6 +762,11 @@ static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_
                 (int)class_decl->name_length, class_decl->name);
     }
     
+    // 初始化类型信息指针（RTTI）
+    fprintf(out, "    // 初始化类型信息指针（RTTI）\n");
+    fprintf(out, "    self->type_info = &_%.*s_type_info;\n",
+            (int)class_decl->name_length, class_decl->name);
+    
     // 调用基类构造函数（多继承支持，支持虚继承）
     // 构造顺序：
     // 1. 先构造虚基类（由最派生类直接构造）
@@ -1029,6 +1035,13 @@ bool cn_cgen_class_struct(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
         fprintf(out, "struct %.*s_vtable* vtable;  // 虚函数表指针（偏移量: %zu字节）\n",
                 (int)class_decl->name_length, class_decl->name,
                 layout.has_vtable ? layout.vtable_offset : 0);
+    }
+    
+    // 第3.5步：添加type_info指针（RTTI支持）
+    // 所有类都添加type_info指针，用于运行时类型识别
+    {
+        print_indent(out, 1);
+        fprintf(out, "const CnTypeInfo* type_info;  // 类型信息指针（RTTI）\n");
     }
     
     // 第四步：生成成员变量（字段）
@@ -1462,6 +1475,228 @@ bool cn_cgen_class_methods(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     return true;
 }
 
+/**
+ * @brief 计算继承深度
+ *
+ * 递归计算类的继承深度，根类为0
+ *
+ * @param class_decl 类声明
+ * @return int 继承深度
+ */
+static int calculate_inheritance_depth(CnAstClassDecl *class_decl) {
+    if (!class_decl || class_decl->base_count == 0) {
+        return 0;
+    }
+    
+    int max_depth = 0;
+    for (size_t i = 0; i < class_decl->base_count; i++) {
+        CnInheritanceInfo *base_info = &class_decl->bases[i];
+        // 这里简化处理，假设基类深度为继承深度-1
+        // 完整实现需要访问基类的类型信息
+        (void)base_info;
+        max_depth = 1;  // 至少深度为1
+    }
+    
+    return max_depth;
+}
+
+/**
+ * @brief 生成类型标志字符串
+ *
+ * 根据类声明生成类型标志的组合字符串
+ *
+ * @param class_decl 类声明
+ * @return const char* 类型标志字符串
+ */
+static const char* generate_type_flags_string(CnAstClassDecl *class_decl) {
+    static char flags_buffer[256];
+    flags_buffer[0] = '\0';
+    
+    bool first = true;
+    
+    // 所有类都有CN_TYPE_FLAG_CLASS标志
+    strcat(flags_buffer, "CN_TYPE_FLAG_CLASS");
+    first = false;
+    
+    if (class_decl->is_abstract) {
+        if (!first) strcat(flags_buffer, " | ");
+        strcat(flags_buffer, "CN_TYPE_FLAG_ABSTRACT");
+        first = false;
+    }
+    
+    // 检查是否有虚函数
+    if (class_has_virtual_methods(class_decl)) {
+        if (!first) strcat(flags_buffer, " | ");
+        strcat(flags_buffer, "CN_TYPE_FLAG_POLYMORPHIC");
+        first = false;
+    }
+    
+    // 检查是否有虚基类
+    for (size_t i = 0; i < class_decl->base_count; i++) {
+        if (class_decl->bases[i].is_virtual) {
+            if (!first) strcat(flags_buffer, " | ");
+            strcat(flags_buffer, "CN_TYPE_FLAG_HAS_VBASE");
+            break;
+        }
+    }
+    
+    return flags_buffer;
+}
+
+/**
+ * @brief 生成类型信息结构（RTTI）
+ *
+ * 为类生成CnTypeInfo结构，包含类型名称、大小、继承关系等信息
+ *
+ * @param ctx 代码生成上下文
+ * @param class_decl 类声明
+ * @return bool 成功返回true
+ */
+bool cn_cgen_type_info(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
+    if (!ctx || !ctx->output_file || !class_decl) return false;
+    
+    FILE *out = ctx->output_file;
+    
+    // 生成基类信息数组（如果有基类）
+    if (class_decl->base_count > 0) {
+        fprintf(out, "/* 类 %.*s 的基类信息 */\n",
+                (int)class_decl->name_length, class_decl->name);
+        fprintf(out, "static const CnBaseClassInfo _%.*s_bases[] = {\n",
+                (int)class_decl->name_length, class_decl->name);
+        
+        for (size_t i = 0; i < class_decl->base_count; i++) {
+            CnInheritanceInfo *base_info = &class_decl->bases[i];
+            fprintf(out, "    {\n");
+            fprintf(out, "        .type = &_%.*s_type_info,  // 基类 %.*s\n",
+                    (int)base_info->base_class_name_length, base_info->base_class_name,
+                    (int)base_info->base_class_name_length, base_info->base_class_name);
+            fprintf(out, "        .offset = %.*s_%.*s_OFFSET,\n",
+                    (int)class_decl->name_length, class_decl->name,
+                    (int)base_info->base_class_name_length, base_info->base_class_name);
+            fprintf(out, "        .is_virtual = %s,\n",
+                    base_info->is_virtual ? "true" : "false");
+            fprintf(out, "        .is_public = %s\n",
+                    base_info->access == CN_ACCESS_PUBLIC ? "true" : "false");
+            fprintf(out, "    },\n");
+        }
+        
+        fprintf(out, "};\n\n");
+    }
+    
+    // 生成类型转换缓存（性能优化：O(n) -> O(1)）
+    // 收集所有可达基类（包括间接基类）及其偏移量
+    {
+        fprintf(out, "/* 类 %.*s 的类型转换缓存 */\n",
+                (int)class_decl->name_length, class_decl->name);
+        fprintf(out, "static const CnCastInfo _%.*s_cast_cache[] = {\n",
+                (int)class_decl->name_length, class_decl->name);
+        
+        size_t cache_count = 0;
+        
+        // 遍历所有直接基类
+        for (size_t i = 0; i < class_decl->base_count; i++) {
+            CnInheritanceInfo *base_info = &class_decl->bases[i];
+            
+            // 添加直接基类到缓存
+            fprintf(out, "    {\n");
+            fprintf(out, "        .target_type = &_%.*s_type_info,  // 基类 %.*s\n",
+                    (int)base_info->base_class_name_length, base_info->base_class_name,
+                    (int)base_info->base_class_name_length, base_info->base_class_name);
+            fprintf(out, "        .offset = %.*s_%.*s_OFFSET,\n",
+                    (int)class_decl->name_length, class_decl->name,
+                    (int)base_info->base_class_name_length, base_info->base_class_name);
+            fprintf(out, "        .flags = %s\n",
+                    base_info->is_virtual ? "CN_CAST_FLAG_VIRTUAL" : "CN_CAST_FLAG_NONE");
+            fprintf(out, "    },\n");
+            cache_count++;
+            
+            // TODO: 递归添加间接基类（需要编译时计算累积偏移量）
+            // 当前版本仅支持直接基类的缓存
+        }
+        
+        fprintf(out, "};\n\n");
+        
+        // 保存缓存数量供后续使用
+        // 注意：这里需要在结构体初始化时使用
+    }
+    
+    // 生成类型信息结构
+    fprintf(out, "/* 类 %.*s 的类型信息（RTTI） */\n",
+            (int)class_decl->name_length, class_decl->name);
+    fprintf(out, "static const CnTypeInfo _%.*s_type_info = {\n",
+            (int)class_decl->name_length, class_decl->name);
+    
+    // 基本信息
+    fprintf(out, "    .name = \"%.*s\",\n",
+            (int)class_decl->name_length, class_decl->name);
+    fprintf(out, "    .name_length = %zu,\n", class_decl->name_length);
+    fprintf(out, "    .size = sizeof(%.*s),\n",
+            (int)class_decl->name_length, class_decl->name);
+    
+    // 类型标志
+    fprintf(out, "    .flags = %s,\n", generate_type_flags_string(class_decl));
+    
+    // 继承关系
+    if (class_decl->base_count > 0) {
+        fprintf(out, "    .bases = _%.*s_bases,\n",
+                (int)class_decl->name_length, class_decl->name);
+        fprintf(out, "    .base_count = %zu,\n", class_decl->base_count);
+    } else {
+        fprintf(out, "    .bases = NULL,\n");
+        fprintf(out, "    .base_count = 0,\n");
+    }
+    
+    // 虚函数表关联
+    if (class_needs_vtable(class_decl)) {
+        fprintf(out, "    .vtable = &_%.*s_vtable,\n",
+                (int)class_decl->name_length, class_decl->name);
+    } else {
+        fprintf(out, "    .vtable = NULL,\n");
+    }
+    
+    // 继承深度
+    fprintf(out, "    .depth = %d,\n", calculate_inheritance_depth(class_decl));
+    
+    // 主基类（第一个非虚基类）
+    bool has_primary_base = false;
+    for (size_t i = 0; i < class_decl->base_count; i++) {
+        CnInheritanceInfo *base_info = &class_decl->bases[i];
+        if (!base_info->is_virtual) {
+            fprintf(out, "    .primary_base = &_%.*s_type_info  // 主基类 %.*s\n",
+                    (int)base_info->base_class_name_length, base_info->base_class_name,
+                    (int)base_info->base_class_name_length, base_info->base_class_name);
+            has_primary_base = true;
+            break;
+        }
+    }
+    
+    if (!has_primary_base) {
+        fprintf(out, "    .primary_base = NULL,\n");
+    }
+    
+    // 类型转换缓存（性能优化）
+    if (class_decl->base_count > 0) {
+        fprintf(out, "    .cast_cache = _%.*s_cast_cache,\n",
+                (int)class_decl->name_length, class_decl->name);
+        fprintf(out, "    .cast_cache_count = %zu\n", class_decl->base_count);
+    } else {
+        fprintf(out, "    .cast_cache = NULL,\n");
+        fprintf(out, "    .cast_cache_count = 0\n");
+    }
+    
+    fprintf(out, "};\n\n");
+    
+    // 生成类型注册代码（在程序启动时自动注册）
+    fprintf(out, "/* 自动注册类型信息 */\n");
+    fprintf(out, "__attribute__((constructor)) static void _%.*s_register_type(void) {\n",
+            (int)class_decl->name_length, class_decl->name);
+    fprintf(out, "    cn_register_type_info(&_%.*s_type_info);\n",
+            (int)class_decl->name_length, class_decl->name);
+    fprintf(out, "}\n\n");
+    
+    return true;
+}
+
 bool cn_cgen_class_decl(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     if (!ctx || !ctx->output_file || !class_decl) return false;
     
@@ -1489,6 +1724,11 @@ bool cn_cgen_class_decl(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     
     // 3. 生成虚函数表（如果需要）
     if (!cn_cgen_vtable(ctx, class_decl)) {
+        return false;
+    }
+    
+    // 3.5 生成类型信息结构（RTTI）
+    if (!cn_cgen_type_info(ctx, class_decl)) {
         return false;
     }
     

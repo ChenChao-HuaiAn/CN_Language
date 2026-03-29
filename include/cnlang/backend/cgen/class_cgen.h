@@ -91,6 +91,18 @@ bool cn_cgen_class_methods(struct CnCCodeGenContext *ctx, struct CnAstClassDecl 
 bool cn_cgen_vtable(struct CnCCodeGenContext *ctx, struct CnAstClassDecl *class_decl);
 
 /**
+ * @brief 生成类型信息结构（RTTI）
+ *
+ * 为类生成CnTypeInfo结构，包含类型名称、大小、继承关系等信息
+ * 用于运行时类型识别（RTTI）和dynamic_cast支持
+ *
+ * @param ctx 代码生成上下文
+ * @param class_decl 类声明AST节点
+ * @return true 成功，false 失败
+ */
+bool cn_cgen_type_info(struct CnCCodeGenContext *ctx, struct CnAstClassDecl *class_decl);
+
+/**
  * @brief 生成初始化列表代码
  *
  * 将构造函数的初始化列表转换为成员赋值语句

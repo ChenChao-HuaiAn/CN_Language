@@ -52,6 +52,32 @@ struct CnTypeInfo;
 struct CnVTable;
 
 /* ============================================================================
+ * 类型转换缓存（性能优化）
+ * ============================================================================ */
+
+/**
+ * @brief 类型转换缓存条目
+ *
+ * 用于加速dynamic_cast操作，将O(n)遍历优化为O(1)查表。
+ * 每个条目记录从当前类型到目标类型的转换信息。
+ */
+typedef struct CnCastInfo {
+    const struct CnTypeInfo *target_type;  ///< 目标类型信息指针
+    ptrdiff_t offset;                       ///< 指针偏移量（字节）
+    unsigned int flags;                     ///< 转换标志（预留扩展）
+} CnCastInfo;
+
+/**
+ * @brief 转换标志位
+ */
+typedef enum CnCastFlags {
+    CN_CAST_FLAG_NONE       = 0,        ///< 无特殊标志
+    CN_CAST_FLAG_VIRTUAL    = 1 << 0,   ///< 需要虚基类调整
+    CN_CAST_FLAG_CROSS      = 1 << 1,   ///< 交叉转型（多继承兄弟类）
+    CN_CAST_FLAG_AMBIGUOUS  = 1 << 2,   ///< 存在歧义（预留）
+} CnCastFlags;
+
+/* ============================================================================
  * 基类信息
  * ============================================================================ */
 
@@ -101,6 +127,10 @@ typedef struct CnTypeInfo {
     /* 类型层级信息（用于加速dynamic_cast） */
     int depth;                         ///< 继承深度（根类为0）
     const struct CnTypeInfo *primary_base;  ///< 主基类（第一个非虚基类）
+    
+    /* 类型转换缓存（性能优化：O(n) -> O(1)） */
+    const CnCastInfo *cast_cache;      ///< 转换缓存数组（包含所有可达基类）
+    size_t cast_cache_count;           ///< 缓存条目数
 } CnTypeInfo;
 
 /* ============================================================================

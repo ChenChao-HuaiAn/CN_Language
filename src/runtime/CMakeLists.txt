@@ -7,6 +7,7 @@ set(RUNTIME_CORE_SOURCES
     core/interrupt.c
     core/stdlib.c
     core/rtti.c
+    core/exception.c
 )
 
 set(RUNTIME_COLLECTIONS_SOURCES

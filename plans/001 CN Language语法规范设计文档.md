@@ -2,8 +2,9 @@
 
 > **文档说明**：本文档严格基于 `src` 目录下的实际源代码编写，每个语法规则都标注了代码来源。未在代码中实现的功能标注为"预留"或"未实现"。
 >
-> **生成时间**：2026-03-27
+> **生成时间**：2026-03-29
 > **代码版本**：基于当前 src 目录源码
+> **更新记录**：将`常量`关键字从"预留"更新为"已实现"，移动至声明关键字章节
 
 ---
 
@@ -15,7 +16,11 @@
 4. [类型系统](#4-类型系统)
 5. [语法规则](#5-语法规则)
 6. [模块系统](#6-模块系统)
-7. [预留特性](#7-预留特性)
+7. [面向对象编程（OOP）语法](#7-面向对象编程oop语法)
+8. [预留特性](#8-预留特性)
+9. [已移除的特性](#9-已移除的特性)
+10. [代码引用示例](#10-代码引用示例)
+11. [附录](#11-附录)
 
 ---
 
@@ -48,7 +53,7 @@
 | `结构体` | `CN_TOKEN_KEYWORD_STRUCT` | 结构体类型 | [`keywords.c:27`](src/frontend/lexer/keywords.c:27) |
 | `枚举` | `CN_TOKEN_KEYWORD_ENUM` | 枚举类型 | [`keywords.c:28`](src/frontend/lexer/keywords.c:28) |
 
-### 1.3 声明关键字（9个）
+### 1.3 声明关键字（8个）
 
 | 关键字 | Token类型 | 说明 | 代码来源 |
 |--------|-----------|------|----------|
@@ -59,8 +64,7 @@
 | `从` | `CN_TOKEN_KEYWORD_FROM` | 从...导入 | [`keywords.c:35`](src/frontend/lexer/keywords.c:35) |
 | `公开` | `CN_TOKEN_KEYWORD_PUBLIC` | 公开可见性 | [`keywords.c:36`](src/frontend/lexer/keywords.c:36) |
 | `私有` | `CN_TOKEN_KEYWORD_PRIVATE` | 私有可见性 | [`keywords.c:37`](src/frontend/lexer/keywords.c:37) |
-| `常量` | `CN_TOKEN_KEYWORD_CONST` | 常量声明 | [`keywords.c:49`](src/frontend/lexer/keywords.c:49) |
-| `静态` | `CN_TOKEN_KEYWORD_STATIC` | 静态局部变量 | [`keywords.c:50`](src/frontend/lexer/keywords.c:50) |
+| `静态` | `CN_TOKEN_KEYWORD_STATIC` | 静态局部变量 | [`keywords.c:38`](src/frontend/lexer/keywords.c:38) |
 
 ### 1.4 常量关键字（3个）
 
@@ -70,18 +74,36 @@
 | `假` | `CN_TOKEN_KEYWORD_FALSE` | 布尔假值 | [`keywords.c:41`](src/frontend/lexer/keywords.c:41) |
 | `无` | `CN_TOKEN_KEYWORD_NULL` | 空值常量 | [`keywords.c:42`](src/frontend/lexer/keywords.c:42) |
 
-### 1.5 预留关键字（8个）
+### 1.5 异常处理关键字（4个）
 
 | 关键字 | Token类型 | 说明 | 代码来源 |
 |--------|-----------|------|----------|
-| `命名空间` | `CN_TOKEN_KEYWORD_NAMESPACE` | 预留 | [`keywords.c:45`](src/frontend/lexer/keywords.c:45) |
-| `接口` | `CN_TOKEN_KEYWORD_INTERFACE` | 预留 | [`keywords.c:46`](src/frontend/lexer/keywords.c:46) |
-| `类` | `CN_TOKEN_KEYWORD_CLASS` | 预留 | [`keywords.c:47`](src/frontend/lexer/keywords.c:47) |
-| `模板` | `CN_TOKEN_KEYWORD_TEMPLATE` | 预留 | [`keywords.c:48`](src/frontend/lexer/keywords.c:48) |
-| `保护` | `CN_TOKEN_KEYWORD_PROTECTED` | 预留 | [`keywords.c:51`](src/frontend/lexer/keywords.c:51) |
-| `虚拟` | `CN_TOKEN_KEYWORD_VIRTUAL` | 预留 | [`keywords.c:52`](src/frontend/lexer/keywords.c:52) |
-| `重写` | `CN_TOKEN_KEYWORD_OVERRIDE` | 预留 | [`keywords.c:53`](src/frontend/lexer/keywords.c:53) |
-| `抽象` | `CN_TOKEN_KEYWORD_ABSTRACT` | 预留 | [`keywords.c:54`](src/frontend/lexer/keywords.c:54) |
+| `尝试` | `CN_TOKEN_KEYWORD_TRY` | try块 | [`keywords.c:64`](src/frontend/lexer/keywords.c:64) |
+| `捕获` | `CN_TOKEN_KEYWORD_CATCH` | catch块 | [`keywords.c:65`](src/frontend/lexer/keywords.c:65) |
+| `抛出` | `CN_TOKEN_KEYWORD_THROW` | 抛出异常 | [`keywords.c:66`](src/frontend/lexer/keywords.c:66) |
+| `最终` | `CN_TOKEN_KEYWORD_FINALLY` | finally块 | [`keywords.c:67`](src/frontend/lexer/keywords.c:67) |
+
+### 1.6 OOP关键字（9个）
+
+| 关键字 | Token类型 | 说明 | 代码来源 |
+|--------|-----------|------|----------|
+| `类` | `CN_TOKEN_KEYWORD_CLASS` | 类声明（已实现） | [`keywords.c:51`](src/frontend/lexer/keywords.c:51) |
+| `接口` | `CN_TOKEN_KEYWORD_INTERFACE` | 接口声明（已实现） | [`keywords.c:52`](src/frontend/lexer/keywords.c:52) |
+| `保护` | `CN_TOKEN_KEYWORD_PROTECTED` | 保护成员 | [`keywords.c:53`](src/frontend/lexer/keywords.c:53) |
+| `虚拟` | `CN_TOKEN_KEYWORD_VIRTUAL` | 虚函数 | [`keywords.c:54`](src/frontend/lexer/keywords.c:54) |
+| `重写` | `CN_TOKEN_KEYWORD_OVERRIDE` | 重写方法 | [`keywords.c:55`](src/frontend/lexer/keywords.c:55) |
+| `抽象` | `CN_TOKEN_KEYWORD_ABSTRACT` | 抽象类/方法 | [`keywords.c:56`](src/frontend/lexer/keywords.c:56) |
+| `实现` | `CN_TOKEN_KEYWORD_IMPLEMENTS` | 实现接口 | [`keywords.c:57`](src/frontend/lexer/keywords.c:57) |
+| `自身` | `CN_TOKEN_KEYWORD_THIS` | this指针 | [`keywords.c:58`](src/frontend/lexer/keywords.c:58) |
+| `基类` | `CN_TOKEN_KEYWORD_BASE` | 基类访问 | [`keywords.c:59`](src/frontend/lexer/keywords.c:59) |
+
+### 1.7 预留关键字（3个）
+
+| 关键字 | Token类型 | 说明 | 代码来源 |
+|--------|-----------|------|----------|
+| `命名空间` | `CN_TOKEN_KEYWORD_NAMESPACE` | 预留 | [`keywords.c:46`](src/frontend/lexer/keywords.c:46) |
+| `模板` | `CN_TOKEN_KEYWORD_TEMPLATE` | 预留 | [`keywords.c:47`](src/frontend/lexer/keywords.c:47) |
+| `常量` | `CN_TOKEN_KEYWORD_CONST` | 预留 | [`keywords.c:48`](src/frontend/lexer/keywords.c:48) |
 
 ---
 
@@ -385,7 +407,9 @@ static CnType *parse_type(CnParser *parser)
 整数 y = 20;           // 显式类型
 整数 arr[10];          // 数组
 整数 matrix[3][4];     // 多维数组
-常量 PI = 3.14159;     // 常量
+常量 PI = 3.14159;     // 常量（类型推断）
+常量 整数 MAX = 100;   // 常量（显式类型）
+常量 字符串 NAME = "CN"; // 字符串常量
 ```
 
 **代码来源**：[`parser.c:1050-1352`](src/frontend/parser/parser.c:1050)
@@ -433,6 +457,59 @@ static CnType *parse_type(CnParser *parser)
 - 语法解析：[`parser.c:1061-1100`](src/frontend/parser/parser.c:1061)
 - AST节点：[`ast.h:114`](include/cnlang/frontend/ast.h:114)
 - 语义检查：[`semantic_passes.c:246`](src/semantics/checker/semantic_passes.c:246)
+
+### 5.3.2 异常处理语句
+
+**语法**：
+```
+try语句 ::= "尝试" 代码块 catch子句* finally子句?
+catch子句 ::= "捕获" "(" (类型名 标识符?)? ")" 代码块
+finally子句 ::= "最终" 代码块
+throw语句 ::= "抛出" (表达式 | 字符串字面量 字符串字面量?) ";"
+```
+
+**说明**：
+- `尝试` 关键字开始一个try块，用于捕获异常
+- `捕获` 关键字定义catch块，可以指定异常类型和变量名
+- `抛出` 关键字抛出异常
+- `最终` 关键字定义finally块，无论是否发生异常都会执行
+
+**示例**：
+```cn
+// 基本try-catch
+尝试 {
+    可能抛出异常的代码();
+} 捕获 (运行时异常 e) {
+    打印("捕获到异常: " + e.消息);
+}
+
+// try-catch-finally
+尝试 {
+    打开文件("data.txt");
+} 捕获 (输入输出异常 e) {
+    打印("IO错误: " + e.消息);
+} 最终 {
+    关闭文件();
+}
+
+// 抛出异常
+抛出 "运行时异常" "发生错误";
+
+// 捕获所有异常
+尝试 {
+    危险操作();
+} 捕获 (e) {
+    打印("捕获任意异常");
+}
+```
+
+**代码来源**：
+- 词法定义：[`keywords.c:64-67`](src/frontend/lexer/keywords.c:64)
+- Token类型：[`token.h:59-62`](include/cnlang/frontend/token.h:59)
+- AST节点：[`ast.h:213-254`](include/cnlang/frontend/ast.h:213)
+- 语法解析：[`parser.c:1078-1230`](src/frontend/parser/parser.c:1078)
+- 运行时支持：[`exception.h`](include/cnlang/runtime/exception.h)
+- 代码生成：[`exception_cgen.c`](src/backend/cgen/exception_cgen.c)
 
 ### 5.4 结构体声明
 
@@ -732,20 +809,177 @@ case分支 ::= "情况" 整数 ":" 语句* | "默认" ":" 语句*
 
 ---
 
-## 7. 预留特性
+## 7. 面向对象编程（OOP）语法
+
+### 7.1 类声明
+
+**语法**：
+```
+类声明 ::= ("抽象"? "类") 标识符 (":" 基类列表)? "{" 类成员* "}"
+基类列表 ::= 标识符 ("," 标识符)*
+类成员 ::= 访问级别标签? (字段声明 | 方法声明 | 构造函数)
+访问级别标签 ::= ("公开" | "私有" | "保护") ":"
+```
+
+**示例**：
+```cn
+// 基本类
+类 动物 {
+    字符串 名称;
+    
+    函数 发声() {
+        打印("动物发声");
+    }
+}
+
+// 继承
+类 狗 : 动物 {
+    函数 发声() {
+        打印("汪汪");
+    }
+}
+
+// 抽象类
+抽象 类 形状 {
+    公开:
+    函数 获取面积() -> 小数;  // 抽象方法
+    私有:
+    小数 面积;
+}
+```
+
+**代码来源**：[`parser.c:5473-5578`](src/frontend/parser/parser.c:5473)
+
+### 7.2 接口声明
+
+**语法**：
+```
+接口声明 ::= "接口" 标识符 (":" 接口列表)? "{" 接口成员* "}"
+接口成员 ::= 方法签名
+方法签名 ::= "函数" 标识符 "(" 参数列表? ")" ("->" 类型)? ";"
+```
+
+**示例**：
+```cn
+接口 可序列化 {
+    函数 序列化() -> 字符串;
+    函数 反序列化(字符串 数据);
+}
+
+// 接口继承
+接口 可比较 : 可序列化 {
+    函数 比较(自身 其他) -> 整数;
+}
+```
+
+**代码来源**：[`parser.c:5580-5670`](src/frontend/parser/parser.c:5580)
+
+### 7.3 类实现接口
+
+**语法**：
+```
+类声明 ::= "类" 标识符 (":" 基类)? ("实现" 接口列表)? "{" 类成员* "}"
+接口列表 ::= 标识符 ("," 标识符)*
+```
+
+**示例**：
+```cn
+类 学生 : 人员 实现 可序列化, 可比较 {
+    公开:
+    函数 序列化() -> 字符串 {
+        返回 "学生数据";
+    }
+    
+    函数 比较(自身 其他) -> 整数 {
+        返回 0;
+    }
+}
+```
+
+**代码来源**：[`parser.c:5514-5536`](src/frontend/parser/parser.c:5514)
+
+### 7.4 访问控制
+
+**语法**：
+```
+访问级别 ::= "公开" | "私有" | "保护"
+```
+
+| 关键字 | 说明 | 代码来源 |
+|--------|------|----------|
+| `公开` | 公开成员，外部可访问 | [`keywords.c:36`](src/frontend/lexer/keywords.c:36) |
+| `私有` | 私有成员，仅类内部可访问 | [`keywords.c:37`](src/frontend/lexer/keywords.c:37) |
+| `保护` | 保护成员，类及子类可访问 | [`keywords.c:53`](src/frontend/lexer/keywords.c:53) |
+
+### 7.5 虚函数与重写
+
+**语法**：
+```
+虚函数声明 ::= "虚拟" 函数声明
+重写函数声明 ::= "重写" 函数声明
+```
+
+**示例**：
+```cn
+类 动物 {
+    虚拟 函数 发声() {
+        打印("动物发声");
+    }
+}
+
+类 猫 : 动物 {
+    函数 发声() 重写 {
+        打印("喵喵");
+    }
+}
+```
+
+**代码来源**：
+- 虚函数：[`keywords.c:54`](src/frontend/lexer/keywords.c:54)
+- 重写：[`keywords.c:55`](src/frontend/lexer/keywords.c:55)
+
+### 7.6 自身与基类访问
+
+**语法**：
+```
+自身访问 ::= "自身" "." 标识符 | "自身" "->" 标识符
+基类访问 ::= "基类" "." 标识符 | "基类" "->" 标识符
+```
+
+**示例**：
+```cn
+类 学生 {
+    字符串 姓名;
+    
+    函数 打印姓名() {
+        打印(自身.姓名);  // 访问自身成员
+    }
+}
+
+类 研究生 : 学生 {
+    字符串 导师;
+    
+    函数 打印信息() {
+        基类.打印姓名();  // 调用基类方法
+        打印(自身.导师);
+    }
+}
+```
+
+**代码来源**：
+- `自身`：[`keywords.c:58`](src/frontend/lexer/keywords.c:58)
+- `基类`：[`keywords.c:59`](src/frontend/lexer/keywords.c:59)
+
+---
+
+## 8. 预留特性
 
 以下关键字已定义但功能未实现，使用时会报错：
 
 | 关键字 | 错误信息 | 代码来源 |
 |--------|----------|----------|
-| `类` | 关键字 '类' 为预留特性，当前版本暂不支持 | [`parser.c:217`](src/frontend/parser/parser.c:217) |
-| `接口` | 关键字 '接口' 为预留特性，当前版本暂不支持 | [`parser.c:220`](src/frontend/parser/parser.c:220) |
 | `模板` | 关键字 '模板' 为预留特性，当前版本暂不支持 | [`parser.c:223`](src/frontend/parser/parser.c:223) |
 | `命名空间` | 关键字 '命名空间' 为预留特性，当前版本暂不支持 | [`parser.c:226`](src/frontend/parser/parser.c:226) |
-| `保护` | 关键字 '保护' 为预留特性，当前版本暂不支持 | [`parser.c:232`](src/frontend/parser/parser.c:232) |
-| `虚拟` | 关键字 '虚拟' 为预留特性，当前版本暂不支持 | [`parser.c:235`](src/frontend/parser/parser.c:235) |
-| `重写` | 关键字 '重写' 为预留特性，当前版本暂不支持 | [`parser.c:238`](src/frontend/parser/parser.c:238) |
-| `抽象` | 关键字 '抽象' 为预留特性，当前版本暂不支持 | [`parser.c:241`](src/frontend/parser/parser.c:241) |
 
 **预留关键字检测函数**：[`parser.c:197-210`](src/frontend/parser/parser.c:197)
 
@@ -828,20 +1062,32 @@ case分支 ::= "情况" 整数 ":" 语句* | "默认" ":" 语句*
 
 ---
 
-## 10. 附录
+## 11. 附录
 
-### 10.1 完整关键字列表（37个）
+### 11.1 完整关键字列表（44个）
 
-**已实现关键字（27个）**：
-- 控制流：`如果`、`否则`、`当`、`循环`、`返回`、`中断`、`继续`、`选择`、`情况`、`默认`
-- 类型：`整数`、`小数`、`字符串`、`布尔`、`空类型`、`结构体`、`枚举`
-- 声明：`函数`、`变量`、`模块`、`导入`、`从`、`公开`、`私有`、`常量`、`静态`
-- 常量：`真`、`假`、`无`
+**控制流关键字（10个）**：
+`如果`、`否则`、`当`、`循环`、`返回`、`中断`、`继续`、`选择`、`情况`、`默认`
 
-**预留关键字（8个）**：
-`命名空间`、`接口`、`类`、`模板`、`保护`、`虚拟`、`重写`、`抽象`
+**类型关键字（7个）**：
+`整数`、`小数`、`字符串`、`布尔`、`空类型`、`结构体`、`枚举`
 
-### 10.2 源代码文件索引
+**声明关键字（8个）**：
+`函数`、`变量`、`模块`、`导入`、`从`、`公开`、`私有`、`静态`
+
+**常量关键字（3个）**：
+`真`、`假`、`无`
+
+**异常处理关键字（4个）**：
+`尝试`、`捕获`、`抛出`、`最终`
+
+**OOP关键字（9个）**：
+`类`、`接口`、`保护`、`虚拟`、`重写`、`抽象`、`实现`、`自身`、`基类`
+
+**预留关键字（3个）**：
+`命名空间`、`模板`、`常量`
+
+### 11.2 源代码文件索引
 
 | 文件路径 | 主要功能 |
 |----------|----------|

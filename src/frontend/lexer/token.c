@@ -92,6 +92,24 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_ABSTRACT";
     case CN_TOKEN_KEYWORD_IMPLEMENTS:
         return "KEYWORD_IMPLEMENTS";
+    // OOP关键字
+    case CN_TOKEN_KEYWORD_THIS:
+        return "KEYWORD_THIS";
+    case CN_TOKEN_KEYWORD_BASE:
+        return "KEYWORD_BASE";
+    case CN_TOKEN_KEYWORD_NEW:
+        return "KEYWORD_NEW";
+    case CN_TOKEN_KEYWORD_DELETE:
+        return "KEYWORD_DELETE";
+    // 异常处理关键字
+    case CN_TOKEN_KEYWORD_TRY:
+        return "KEYWORD_TRY";
+    case CN_TOKEN_KEYWORD_CATCH:
+        return "KEYWORD_CATCH";
+    case CN_TOKEN_KEYWORD_THROW:
+        return "KEYWORD_THROW";
+    case CN_TOKEN_KEYWORD_FINALLY:
+        return "KEYWORD_FINALLY";
     case CN_TOKEN_PLUS:
         return "PLUS";
     case CN_TOKEN_PLUS_PLUS:

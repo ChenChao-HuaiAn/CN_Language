@@ -59,7 +59,12 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_IMPORT,     // 导入语句
     // OOP相关语句类型（阶段11 - 面向对象编程支持）
     CN_AST_STMT_CLASS_DECL,     // 类声明语句
-    CN_AST_STMT_INTERFACE_DECL  // 接口声明语句
+    CN_AST_STMT_INTERFACE_DECL, // 接口声明语句
+    // 异常处理语句类型
+    CN_AST_STMT_TRY,            // try语句
+    CN_AST_STMT_CATCH,          // catch语句
+    CN_AST_STMT_THROW,          // throw语句
+    CN_AST_STMT_FINALLY         // finally语句
 } CnAstStmtKind;
 
 // 二元运算符
@@ -205,6 +210,57 @@ typedef struct CnAstEnumDecl {
     CnAstEnumMember *members;     // 枚举成员列表
     size_t member_count;          // 枚举成员数量
 } CnAstEnumDecl;
+
+/* ============================================================================
+ * 异常处理语句定义
+ * ============================================================================ */
+
+/**
+ * @brief catch子句结构
+ *
+ * 表示一个catch块，捕获特定类型的异常
+ */
+typedef struct CnAstCatchClause {
+    const char *exception_type;       // 异常类型名（NULL表示捕获所有异常）
+    size_t exception_type_length;     // 异常类型名长度
+    const char *var_name;             // 异常变量名（可选）
+    size_t var_name_length;           // 变量名长度
+    CnAstBlockStmt *body;             // catch块体
+} CnAstCatchClause;
+
+/**
+ * @brief try语句结构
+ *
+ * 表示完整的try-catch-finally语句
+ */
+typedef struct CnAstTryStmt {
+    CnAstBlockStmt *try_block;        // try块体
+    CnAstCatchClause *catches;        // catch子句数组
+    size_t catch_count;               // catch子句数量
+    CnAstBlockStmt *finally_block;    // finally块体（可选，可为NULL）
+} CnAstTryStmt;
+
+/**
+ * @brief throw语句结构
+ *
+ * 表示抛出异常的语句
+ */
+typedef struct CnAstThrowStmt {
+    struct CnAstExpr *exception_expr; // 异常表达式（创建异常对象）
+    const char *exception_type;       // 异常类型名（用于简单抛出）
+    size_t exception_type_length;     // 异常类型名长度
+    const char *message;              // 异常消息（可选）
+    size_t message_length;            // 消息长度
+} CnAstThrowStmt;
+
+/**
+ * @brief finally语句结构
+ *
+ * 表示finally块（作为独立节点，用于代码生成）
+ */
+typedef struct CnAstFinallyStmt {
+    CnAstBlockStmt *body;             // finally块体
+} CnAstFinallyStmt;
 
 // 模块声明语句
 typedef struct CnAstModuleDecl {
@@ -570,6 +626,10 @@ typedef struct CnAstStmt {
         // OOP相关语句类型（阶段11 - 面向对象编程支持）
         struct CnAstClassDecl *class_decl;         // 类声明
         struct CnAstInterfaceDecl *interface_decl; // 接口声明
+        // 异常处理语句类型
+        CnAstTryStmt *try_stmt;                    // try语句
+        CnAstThrowStmt throw_stmt;                 // throw语句
+        CnAstFinallyStmt *finally_stmt;            // finally语句
     } as;
 } CnAstStmt;
 

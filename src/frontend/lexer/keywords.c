@@ -57,6 +57,12 @@ static const CnKeywordEntry g_keywords[] = {
     {"实现", CN_TOKEN_KEYWORD_IMPLEMENTS, "OOP关键字"},
     {"自身", CN_TOKEN_KEYWORD_THIS, "OOP关键字"},
     {"基类", CN_TOKEN_KEYWORD_BASE, "OOP关键字"},
+    
+    // 异常处理关键字 (4个) - 异常处理支持
+    {"尝试", CN_TOKEN_KEYWORD_TRY, "异常处理关键字"},
+    {"捕获", CN_TOKEN_KEYWORD_CATCH, "异常处理关键字"},
+    {"抛出", CN_TOKEN_KEYWORD_THROW, "异常处理关键字"},
+    {"最终", CN_TOKEN_KEYWORD_FINALLY, "异常处理关键字"},
 };
 
 const CnKeywordEntry *cn_frontend_get_keywords(size_t *out_count)

@@ -7,6 +7,9 @@
 // Freestanding 模式内置函数（在定义 CN_FREESTANDING 时可用）
 #include "cnlang/runtime/freestanding.h"
 
+// RTTI支持（运行时类型信息）
+#include "cnlang/runtime/type_info.h"
+
 /*
  * CN Language 运行时库头文件
  * 提供 CN Language 程序运行所需的基础函数

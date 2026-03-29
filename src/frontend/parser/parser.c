@@ -1075,6 +1075,212 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return make_switch_stmt(switch_expr, cases, case_count);
     }
 
+    // 解析 try-catch-finally 语句：尝试 { ... } 捕获 (类型 变量) { ... } [最终 { ... }]
+    if (parser->current.kind == CN_TOKEN_KEYWORD_TRY) {
+        CnAstBlockStmt *try_block = NULL;
+        CnAstCatchClause *catches = NULL;
+        size_t catch_count = 0;
+        size_t catch_capacity = 2;
+        CnAstBlockStmt *finally_block = NULL;
+
+        parser_advance(parser); // 跳过 '尝试'
+
+        // 解析 try 块
+        try_block = parse_block(parser);
+        if (!try_block) {
+            return NULL;
+        }
+
+        // 分配 catch 数组
+        catches = (CnAstCatchClause *)malloc(sizeof(CnAstCatchClause) * catch_capacity);
+        if (!catches) {
+            cn_frontend_ast_block_free(try_block);
+            return NULL;
+        }
+
+        // 解析一个或多个 catch 子句
+        while (parser->current.kind == CN_TOKEN_KEYWORD_CATCH) {
+            const char *exception_type = NULL;
+            size_t exception_type_length = 0;
+            const char *var_name = NULL;
+            size_t var_name_length = 0;
+            CnAstBlockStmt *catch_body = NULL;
+
+            parser_advance(parser); // 跳过 '捕获'
+
+            // 检查是否有异常类型声明
+            if (parser->current.kind == CN_TOKEN_LPAREN) {
+                parser_advance(parser); // 跳过 '('
+
+                // 解析异常类型（可选）
+                if (parser->current.kind == CN_TOKEN_IDENT) {
+                    exception_type = parser->current.lexeme_begin;
+                    exception_type_length = parser->current.lexeme_length;
+                    parser_advance(parser);
+
+                    // 检查是否有异常变量
+                    if (parser->current.kind == CN_TOKEN_IDENT) {
+                        var_name = parser->current.lexeme_begin;
+                        var_name_length = parser->current.lexeme_length;
+                        parser_advance(parser);
+                    }
+                }
+                // 如果是 ')' 则表示捕获所有异常
+
+                if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+                    // 清理资源
+                    for (size_t i = 0; i < catch_count; i++) {
+                        cn_frontend_ast_block_free(catches[i].body);
+                    }
+                    free(catches);
+                    cn_frontend_ast_block_free(try_block);
+                    return NULL;
+                }
+            }
+
+            // 解析 catch 块
+            catch_body = parse_block(parser);
+            if (!catch_body) {
+                for (size_t i = 0; i < catch_count; i++) {
+                    cn_frontend_ast_block_free(catches[i].body);
+                }
+                free(catches);
+                cn_frontend_ast_block_free(try_block);
+                return NULL;
+            }
+
+            // 扩容 catch 数组
+            if (catch_count >= catch_capacity) {
+                catch_capacity *= 2;
+                CnAstCatchClause *new_catches = (CnAstCatchClause *)realloc(catches,
+                    sizeof(CnAstCatchClause) * catch_capacity);
+                if (!new_catches) {
+                    cn_frontend_ast_block_free(catch_body);
+                    for (size_t i = 0; i < catch_count; i++) {
+                        cn_frontend_ast_block_free(catches[i].body);
+                    }
+                    free(catches);
+                    cn_frontend_ast_block_free(try_block);
+                    return NULL;
+                }
+                catches = new_catches;
+            }
+
+            // 添加当前 catch 子句
+            catches[catch_count].exception_type = exception_type;
+            catches[catch_count].exception_type_length = exception_type_length;
+            catches[catch_count].var_name = var_name;
+            catches[catch_count].var_name_length = var_name_length;
+            catches[catch_count].body = catch_body;
+            catch_count++;
+        }
+
+        // 解析 finally 子句（可选）
+        if (parser->current.kind == CN_TOKEN_KEYWORD_FINALLY) {
+            parser_advance(parser); // 跳过 '最终'
+            finally_block = parse_block(parser);
+            if (!finally_block) {
+                for (size_t i = 0; i < catch_count; i++) {
+                    cn_frontend_ast_block_free(catches[i].body);
+                }
+                free(catches);
+                cn_frontend_ast_block_free(try_block);
+                return NULL;
+            }
+        }
+
+        // 创建 try 语句节点
+        CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+        if (!stmt) {
+            if (finally_block) cn_frontend_ast_block_free(finally_block);
+            for (size_t i = 0; i < catch_count; i++) {
+                cn_frontend_ast_block_free(catches[i].body);
+            }
+            free(catches);
+            cn_frontend_ast_block_free(try_block);
+            return NULL;
+        }
+
+        stmt->kind = CN_AST_STMT_TRY;
+        stmt->loc.filename = parser->lexer ? parser->lexer->filename : NULL;
+        stmt->loc.line = parser->current.line;
+        stmt->loc.column = parser->current.column;
+
+        CnAstTryStmt *try_stmt = (CnAstTryStmt *)malloc(sizeof(CnAstTryStmt));
+        if (!try_stmt) {
+            free(stmt);
+            if (finally_block) cn_frontend_ast_block_free(finally_block);
+            for (size_t i = 0; i < catch_count; i++) {
+                cn_frontend_ast_block_free(catches[i].body);
+            }
+            free(catches);
+            cn_frontend_ast_block_free(try_block);
+            return NULL;
+        }
+
+        try_stmt->try_block = try_block;
+        try_stmt->catches = catches;
+        try_stmt->catch_count = catch_count;
+        try_stmt->finally_block = finally_block;
+
+        stmt->as.try_stmt = try_stmt;
+        return stmt;
+    }
+
+    // 解析 throw 语句：抛出 表达式; 或 抛出 "类型名" "消息";
+    if (parser->current.kind == CN_TOKEN_KEYWORD_THROW) {
+        CnAstExpr *exception_expr = NULL;
+        const char *exception_type = NULL;
+        size_t exception_type_length = 0;
+        const char *message = NULL;
+        size_t message_length = 0;
+
+        parser_advance(parser); // 跳过 '抛出'
+
+        // 检查是否是字符串字面量（简单异常抛出）
+        if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
+            // 简单形式：抛出 "异常类型" "消息";
+            exception_type = parser->current.lexeme_begin;
+            exception_type_length = parser->current.lexeme_length;
+            parser_advance(parser);
+
+            // 可选的消息
+            if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
+                message = parser->current.lexeme_begin;
+                message_length = parser->current.lexeme_length;
+                parser_advance(parser);
+            }
+        } else {
+            // 表达式形式：抛出 表达式;
+            exception_expr = parse_expression(parser);
+            if (!exception_expr) {
+                return NULL;
+            }
+        }
+
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+
+        // 创建 throw 语句节点
+        CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+        if (!stmt) {
+            if (exception_expr) cn_frontend_ast_expr_free(exception_expr);
+            return NULL;
+        }
+
+        stmt->kind = CN_AST_STMT_THROW;
+        stmt->loc.filename = parser->lexer ? parser->lexer->filename : NULL;
+        stmt->loc.line = parser->current.line;
+        stmt->loc.column = parser->current.column;
+
+        stmt->as.throw_stmt.exception_expr = exception_expr;
+        stmt->as.throw_stmt.exception_type = exception_type;
+        stmt->as.throw_stmt.exception_type_length = exception_type_length;
+        stmt->as.throw_stmt.message = message;
+        stmt->as.throw_stmt.message_length = message_length;
+
+        return stmt;
+    }
+
     if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC ||
         parser->current.kind == CN_TOKEN_KEYWORD_CONST ||
         parser->current.kind == CN_TOKEN_KEYWORD_VAR ||

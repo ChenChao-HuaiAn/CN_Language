@@ -57,6 +57,11 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_BASE,     // 基类访问
     CN_TOKEN_KEYWORD_NEW,      // 新建对象
     CN_TOKEN_KEYWORD_DELETE,   // 删除对象
+    // 异常处理关键字
+    CN_TOKEN_KEYWORD_TRY,      // 尝试
+    CN_TOKEN_KEYWORD_CATCH,    // 捕获
+    CN_TOKEN_KEYWORD_THROW,    // 抛出
+    CN_TOKEN_KEYWORD_FINALLY,  // 最终
     CN_TOKEN_PLUS,             // 加 +
     CN_TOKEN_PLUS_PLUS,        // 自增 ++
     CN_TOKEN_MINUS,            // 减 -

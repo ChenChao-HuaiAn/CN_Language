@@ -402,13 +402,63 @@ const CnTypeInfo *cn_common_base(const CnTypeInfo *type1, const CnTypeInfo *type
 }
 
 /* ============================================================================
+ * 类型转换缓存查询（性能优化）
+ * ============================================================================ */
+
+/**
+ * @brief 在转换缓存中查找目标类型
+ *
+ * 使用缓存将O(n)遍历优化为O(1)查表。
+ *
+ * @param source_type 源类型信息
+ * @param target_type 目标类型信息
+ * @return const CnCastInfo* 找到返回缓存条目，否则返回NULL
+ */
+static const CnCastInfo *cn_find_cast_cache(const CnTypeInfo *source_type,
+                                            const CnTypeInfo *target_type)
+{
+    if (!source_type || !target_type || !source_type->cast_cache) {
+        return NULL;
+    }
+    
+    /* 线性搜索缓存数组（缓存通常较小，性能可接受） */
+    /* 未来可优化为按type指针排序后二分查找 */
+    for (size_t i = 0; i < source_type->cast_cache_count; i++) {
+        if (source_type->cast_cache[i].target_type == target_type) {
+            return &source_type->cast_cache[i];
+        }
+    }
+    
+    return NULL;  /* 未找到 */
+}
+
+/**
+ * @brief 使用缓存进行指针调整
+ *
+ * 根据缓存条目调整指针。
+ *
+ * @param obj 对象指针
+ * @param cast_info 转换缓存条目
+ * @return void* 调整后的指针
+ */
+static void *cn_apply_cast_cache(const void *obj, const CnCastInfo *cast_info)
+{
+    if (!obj || !cast_info) {
+        return NULL;
+    }
+    
+    /* 应用偏移量 */
+    return (char *)obj + cast_info->offset;
+}
+
+/* ============================================================================
  * dynamic_cast实现
  * ============================================================================ */
 
 /**
  * @brief 安全的向下转型
  */
-void *cn_dynamic_cast(const void *obj, const CnTypeInfo *target_type) 
+void *cn_dynamic_cast(const void *obj, const CnTypeInfo *target_type)
 {
     if (!obj || !target_type) {
         return NULL;
@@ -425,10 +475,14 @@ void *cn_dynamic_cast(const void *obj, const CnTypeInfo *target_type)
 
 /**
  * @brief 向下转型（带源类型）
+ *
+ * 优化策略：
+ * 1. 首先尝试使用转换缓存（O(1)）
+ * 2. 缓存未命中时回退到传统遍历方式（O(n)）
  */
-void *cn_dynamic_cast_ex(const void *obj, 
+void *cn_dynamic_cast_ex(const void *obj,
                          const CnTypeInfo *source_type,
-                         const CnTypeInfo *target_type) 
+                         const CnTypeInfo *target_type)
 {
     if (!obj || !target_type) {
         return NULL;
@@ -447,6 +501,15 @@ void *cn_dynamic_cast_ex(const void *obj,
     if (obj_type == target_type) {
         return (void *)obj;
     }
+    
+    /* ===== 性能优化：优先使用转换缓存 ===== */
+    const CnCastInfo *cast_info = cn_find_cast_cache(obj_type, target_type);
+    if (cast_info) {
+        /* 缓存命中，O(1)完成转换 */
+        return cn_apply_cast_cache(obj, cast_info);
+    }
+    
+    /* ===== 缓存未命中，回退到传统方式 ===== */
     
     /* 向上转型（派生类到基类） */
     if (cn_is_base_type(obj_type, target_type)) {

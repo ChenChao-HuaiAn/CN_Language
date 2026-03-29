@@ -40,6 +40,7 @@ add_executable(cnc
     backend/cgen/cgen.c
     backend/cgen/module_cgen.c
     backend/cgen/class_cgen.c
+    backend/cgen/exception_cgen.c
 )
 
 # 包含运行时库子目录
@@ -90,6 +91,7 @@ add_executable(cnrepl
     backend/cgen/cgen.c
     backend/cgen/module_cgen.c
     backend/cgen/class_cgen.c
+    backend/cgen/exception_cgen.c
 )
 
 target_include_directories(cnrepl PRIVATE
