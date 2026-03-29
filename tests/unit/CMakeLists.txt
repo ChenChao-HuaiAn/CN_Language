@@ -849,6 +849,7 @@ add_executable(method_style_length_test
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
     ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(method_style_length_test PRIVATE ../../include)
@@ -999,6 +1000,7 @@ add_executable(logical_operators_test
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
     ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(logical_operators_test PRIVATE ../../include)
@@ -1135,4 +1137,76 @@ target_include_directories(constructor_destructor_cgen_test PRIVATE ../../includ
 add_test(NAME constructor_destructor_cgen_test COMMAND constructor_destructor_cgen_test)
 set_tests_properties(constructor_destructor_cgen_test PROPERTIES
     LABELS "stage11;oop;constructor;destructor;cgen;unit"
+)
+
+# 阶段11：虚函数调用代码生成测试（OOP支持）
+add_executable(virtual_call_cgen_test
+    virtual_call_cgen_test.c
+    ${CGEN_TEST_DEPENDENCIES}
+)
+target_include_directories(virtual_call_cgen_test PRIVATE ../../include)
+add_test(NAME virtual_call_cgen_test COMMAND virtual_call_cgen_test)
+set_tests_properties(virtual_call_cgen_test PROPERTIES
+    LABELS "stage11;oop;virtual;vtable;cgen;unit"
+)
+
+# vtable API简化测试
+add_executable(vtable_api_test
+    vtable_api_test.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/frontend/ast/class_node.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
+)
+target_include_directories(vtable_api_test PRIVATE ../../include)
+add_test(NAME vtable_api_test COMMAND vtable_api_test)
+set_tests_properties(vtable_api_test PROPERTIES
+    LABELS "stage11;oop;vtable;unit"
+)
+
+# 阶段11：抽象类代码生成测试（OOP支持）
+add_executable(abstract_class_cgen_test
+    abstract_class_cgen_test.c
+    ../../src/frontend/ast/class_node.c
+    ../../src/frontend/ast/ast.c
+    ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
+)
+target_include_directories(abstract_class_cgen_test PRIVATE ../../include)
+add_test(NAME abstract_class_cgen_test COMMAND abstract_class_cgen_test)
+set_tests_properties(abstract_class_cgen_test PROPERTIES
+    LABELS "stage11;oop;abstract;pure_virtual;cgen;unit"
+)
+
+# 阶段11：接口代码生成测试（OOP支持）
+add_executable(interface_cgen_test
+    interface_cgen_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(interface_cgen_test PRIVATE ../../include)
+add_test(NAME interface_cgen_test COMMAND interface_cgen_test)
+set_tests_properties(interface_cgen_test PROPERTIES
+    LABELS "stage11;oop;interface;cgen;unit"
+)
+
+# 阶段11：静态成员代码生成测试（OOP支持）
+add_executable(static_member_cgen_test
+    static_member_cgen_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(static_member_cgen_test PRIVATE ../../include)
+add_test(NAME static_member_cgen_test COMMAND static_member_cgen_test)
+set_tests_properties(static_member_cgen_test PROPERTIES
+    LABELS "stage11;oop;static;member;cgen;unit"
+)
+
+# 阶段12：RTTI（运行时类型信息）单元测试
+add_executable(rtti_test
+    rtti_test.c
+    ../../src/runtime/core/rtti.c
+)
+target_include_directories(rtti_test PRIVATE ../../include)
+add_test(NAME rtti_test COMMAND rtti_test)
+set_tests_properties(rtti_test PROPERTIES
+    LABELS "stage12;rtti;oop;unit"
 )

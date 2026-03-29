@@ -8,8 +8,9 @@
 // 测试预留关键字在语法层触发错误
 static int test_reserved_keyword_error(void)
 {
-    // 测试使用预留关键字 '类' 应该触发语法错误
-    const char *source = "类 测试类 { }";
+    // 测试使用预留关键字 '模板' 应该触发语法错误
+    // 注意：'类'、'保护'、'虚拟'、'抽象' 已在阶段11实现，不再是预留关键字
+    const char *source = "模板 测试模板 { }";
     size_t length = strlen(source);
     
     CnLexer lexer;

@@ -1523,6 +1523,18 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     }
                     break;
                 }
+                
+                // 检查是否为类符号（静态成员访问）
+                if (sym && sym->kind == CN_SEM_SYMBOL_CLASS) {
+                    // 静态成员访问：类名.静态成员
+                    // 标记为静态成员访问
+                    expr->as.member.is_static_member = 1;
+                    expr->as.member.class_name = name;
+                    expr->as.member.class_name_length = name_len;
+                    // 类型暂时设为未知，后续在类分析阶段会处理
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
+                }
             }
             
             // 否则按照结构体成员访问处理

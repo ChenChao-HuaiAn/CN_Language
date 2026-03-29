@@ -273,11 +273,17 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             }
             break;
         case CN_AST_EXPR_MEMBER_ACCESS:
-            // 成员访问表达式：obj.member 或 ptr->member
-            // 对于自身.成员，生成 self->member
+            // 成员访问表达式：obj.member 或 ptr->member 或 类名.静态成员
             {
+                // 检查是否为静态成员访问
+                if (expr->as.member.is_static_member && expr->as.member.class_name) {
+                    // 静态成员访问：生成 类名_成员名
+                    fprintf(ctx->output_file, "%.*s_%.*s",
+                            (int)expr->as.member.class_name_length, expr->as.member.class_name,
+                            (int)expr->as.member.member_name_length, expr->as.member.member_name);
+                }
                 // 检查对象是否为自身指针
-                if (expr->as.member.object &&
+                else if (expr->as.member.object &&
                     expr->as.member.object->is_this_pointer) {
                     // 自身.成员 -> self->成员
                     fprintf(ctx->output_file, "self->%.*s",

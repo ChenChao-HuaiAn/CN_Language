@@ -168,9 +168,14 @@ CnClassMember *cn_ast_class_member_create(const char *name, size_t name_length,
  * ============================================================================ */
 
 /**
- * @brief 销毁类成员
+ * @brief 清理类成员内容（不释放结构体本身）
+ *
+ * 用于释放类成员内部的动态分配资源，但不释放成员结构体本身。
+ * 适用于数组元素的清理，因为数组元素是连续分配的，不能单独释放。
+ *
+ * @param member 要清理的类成员
  */
-void cn_ast_class_member_destroy(CnClassMember *member)
+static void cn_ast_class_member_cleanup(CnClassMember *member)
 {
     if (!member) {
         return;
@@ -195,6 +200,25 @@ void cn_ast_class_member_destroy(CnClassMember *member)
         member->parameters = NULL;
     }
     
+    /* 注意：不释放 member 本身，因为可能是数组元素 */
+}
+
+/**
+ * @brief 销毁类成员
+ *
+ * 释放类成员的所有资源，包括结构体本身。
+ * 仅用于单独分配的类成员，不适用于数组元素。
+ */
+void cn_ast_class_member_destroy(CnClassMember *member)
+{
+    if (!member) {
+        return;
+    }
+    
+    /* 清理成员内容 */
+    cn_ast_class_member_cleanup(member);
+    
+    /* 释放结构体本身 */
     free(member);
 }
 
@@ -227,7 +251,8 @@ void cn_ast_class_decl_destroy(CnAstClassDecl *class_decl)
     /* 释放成员数组 */
     if (class_decl->members) {
         for (size_t i = 0; i < class_decl->member_count; i++) {
-            cn_ast_class_member_destroy(&class_decl->members[i]);
+            /* 使用 cleanup 函数，因为成员是数组元素，不能单独释放 */
+            cn_ast_class_member_cleanup(&class_decl->members[i]);
         }
         free(class_decl->members);
         class_decl->members = NULL;
@@ -265,7 +290,8 @@ void cn_ast_interface_decl_destroy(CnAstInterfaceDecl *interface_decl)
     /* 释放方法数组 */
     if (interface_decl->methods) {
         for (size_t i = 0; i < interface_decl->method_count; i++) {
-            cn_ast_class_member_destroy(&interface_decl->methods[i]);
+            /* 使用 cleanup 函数，因为方法是数组元素，不能单独释放 */
+            cn_ast_class_member_cleanup(&interface_decl->methods[i]);
         }
         free(interface_decl->methods);
         interface_decl->methods = NULL;

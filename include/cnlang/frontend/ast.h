@@ -445,6 +445,9 @@ typedef struct CnAstMemberAccessExpr {
     const char *member_name;      // 成员名称
     size_t member_name_length;    // 成员名称长度
     int is_arrow;                 // 是否是箭头访问（-> vs .）
+    int is_static_member;         // 是否是静态成员访问（类名.静态成员）
+    const char *class_name;       // 静态成员所属类名（静态成员访问时使用）
+    size_t class_name_length;     // 类名长度
 } CnAstMemberAccessExpr;
 
 // 结构体字段初始化器

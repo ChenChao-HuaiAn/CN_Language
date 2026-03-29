@@ -230,7 +230,7 @@ bool cn_vtable_merge_base(CnVTable *derived, CnVTable *base) {
         CnVTableEntry *base_entry = &base->entries[i];
 
         // 检查派生类是否已重写该方法
-        int derived_idx = cn_vtable_find_entry(derived, 
+        int derived_idx = cn_vtable_find_entry(derived,
                                                 base_entry->method_name,
                                                 base_entry->method_name_length);
 
@@ -244,7 +244,7 @@ bool cn_vtable_merge_base(CnVTable *derived, CnVTable *base) {
 
             // 添加基类方法条目
             CnVTableEntry *new_entry = &derived->entries[derived->entry_count];
-            new_entry->method_name = str_dup_len(base_entry->method_name, 
+            new_entry->method_name = str_dup_len(base_entry->method_name,
                                                   base_entry->method_name_length);
             new_entry->method_name_length = base_entry->method_name_length;
             new_entry->method = base_entry->method;
@@ -261,8 +261,16 @@ bool cn_vtable_merge_base(CnVTable *derived, CnVTable *base) {
             if (base_entry->is_pure_virtual) {
                 derived->is_complete = false;
             }
+        } else {
+            // 派生类已重写该方法，标记为override
+            CnVTableEntry *derived_entry = &derived->entries[derived_idx];
+            derived_entry->is_override = true;
+            
+            // 如果基类方法是纯虚函数且派生类不是，则类变得更完整
+            if (base_entry->is_pure_virtual && !derived_entry->is_pure_virtual) {
+                // 派生类提供了实现，检查是否所有纯虚函数都已实现
+            }
         }
-        // 如果派生类已重写，则保留派生类的版本（已在vtable中）
     }
 
     return true;

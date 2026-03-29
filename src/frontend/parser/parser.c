@@ -211,34 +211,26 @@ static int parser_expect(CnParser *parser, CnTokenKind kind)
 static int is_reserved_keyword(CnTokenKind kind)
 {
     return kind == CN_TOKEN_KEYWORD_TEMPLATE ||
-           kind == CN_TOKEN_KEYWORD_NAMESPACE ||
+           kind == CN_TOKEN_KEYWORD_NAMESPACE;
            /* 注意："常量" 关键字已在当前版本实现，不再视为预留关键字 */
            /* 注意："静态" 关键字已在当前版本实现，用于函数内静态局部变量 */
            /* 注意："公开"、"私有" 关键字已在模块系统中实现，不再视为预留关键字 */
            /* 注意："类"、"接口" 关键字已在阶段11实现，不再视为预留关键字 */
            /* 注意："重写" 关键字已在阶段11实现，用于标记重写基类方法 */
-           kind == CN_TOKEN_KEYWORD_PROTECTED ||
-           kind == CN_TOKEN_KEYWORD_VIRTUAL ||
-           kind == CN_TOKEN_KEYWORD_ABSTRACT;
+           /* 注意："保护" 关键字已在阶段11实现，用于类成员访问控制 */
+           /* 注意："虚拟" 关键字已在阶段11实现，用于虚函数声明 */
+           /* 注意："抽象" 关键字已在阶段11实现，用于抽象类和纯虚函数 */
 }
 
 // 获取预留关键字的错误消息（静态字符串）
 static const char *get_reserved_keyword_error_msg(CnTokenKind kind)
 {
     switch (kind) {
-    /* 注意："类"、"接口" 关键字已在阶段11实现，不再视为预留关键字 */
     case CN_TOKEN_KEYWORD_TEMPLATE:
         return "语法错误：关键字 '模板' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_NAMESPACE:
         return "语法错误：关键字 '命名空间' 为预留特性，当前版本暂不支持";
-    /* 注意："静态" 关键字已实现，用于函数内静态局部变量 */
-    case CN_TOKEN_KEYWORD_PROTECTED:
-        return "语法错误：关键字 '保护' 为预留特性，当前版本暂不支持";
-    case CN_TOKEN_KEYWORD_VIRTUAL:
-        return "语法错误：关键字 '虚拟' 为预留特性，当前版本暂不支持";
-    /* 注意："重写" 关键字已在阶段11实现，不再视为预留关键字 */
-    case CN_TOKEN_KEYWORD_ABSTRACT:
-        return "语法错误：关键字 '抽象' 为预留特性，当前版本暂不支持";
+    /* 注意："保护"、"虚拟"、"抽象" 关键字已在阶段11实现，不再视为预留关键字 */
     default:
         return "语法错误：遇到未知的预留关键字";
     }
@@ -3600,6 +3592,10 @@ static CnAstExpr *make_member_access(CnAstExpr *object, const char *member_name,
     expr->as.member.member_name = member_name;
     expr->as.member.member_name_length = member_name_length;
     expr->as.member.is_arrow = is_arrow;
+    // 初始化静态成员访问相关字段
+    expr->as.member.is_static_member = 0;
+    expr->as.member.class_name = NULL;
+    expr->as.member.class_name_length = 0;
     return expr;
 }
 
@@ -4802,12 +4798,19 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
     
     CnAccessLevel current_access = default_access;
     bool is_static_member = false;  // 静态成员标记
+    bool is_virtual_member = false; // 虚函数标记
     
     // 注意：访问级别标签已在 parse_class_decl 中处理，这里不再重复处理
     // 检查是否为静态成员（语法：静态 类型 成员名; 或 静态 函数 方法名()）
     if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC) {
         is_static_member = true;
         parser_advance(parser);  // 消费 '静态'
+    }
+    
+    // 检查是否为虚函数（语法：虚拟 函数 方法名() { 实现 }）
+    if (parser->current.kind == CN_TOKEN_KEYWORD_VIRTUAL) {
+        is_virtual_member = true;
+        parser_advance(parser);  // 消费 '虚拟'
     }
     
     // 检查是否为函数声明（方法、构造函数、析构函数）
@@ -4884,8 +4887,11 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
         // 设置静态标志
         member->is_static = is_static_member;
         
+        // 设置虚函数标志
+        member->is_virtual = is_virtual_member;
+        
         // 静态方法不能是虚函数
-        if (is_static_member && member->is_virtual) {
+        if (is_static_member && is_virtual_member) {
             parser->error_count++;
             if (parser->diagnostics) {
                 cn_support_diagnostics_report(parser->diagnostics,
@@ -5096,8 +5102,40 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
             parser_advance(parser);  // 消费 '重写'
         }
         
+        // 解析抽象关键字（纯虚函数：虚拟 函数 方法名() 抽象;）
+        if (parser->current.kind == CN_TOKEN_KEYWORD_ABSTRACT) {
+            // 只有虚函数才能标记为抽象
+            if (!is_virtual_member) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语义错误：只有虚函数才能标记为抽象");
+                }
+            }
+            member->is_pure_virtual = true;
+            parser_advance(parser);  // 消费 '抽象'
+        }
+        
         // 解析函数体
         if (parser->current.kind == CN_TOKEN_LBRACE) {
+            // 纯虚函数不能有函数体
+            if (member->is_pure_virtual) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语义错误：纯虚函数不能有函数体");
+                }
+            }
             member->body = parse_block(parser);
         } else {
             // 期望分号（纯声明）

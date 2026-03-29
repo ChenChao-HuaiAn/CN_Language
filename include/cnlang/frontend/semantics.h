@@ -16,7 +16,8 @@ typedef enum CnSemSymbolKind {
     CN_SEM_SYMBOL_STRUCT,   // 结构体类型
     CN_SEM_SYMBOL_ENUM,     // 枚举类型
     CN_SEM_SYMBOL_ENUM_MEMBER, // 枚举成员
-    CN_SEM_SYMBOL_MODULE    // 模块
+    CN_SEM_SYMBOL_MODULE,   // 模块
+    CN_SEM_SYMBOL_CLASS     // 类类型（用于静态成员访问）
 } CnSemSymbolKind;
 
 // 类型种类

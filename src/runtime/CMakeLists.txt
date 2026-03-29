@@ -6,6 +6,7 @@ set(RUNTIME_CORE_SOURCES
     core/freestanding_builtins.c
     core/interrupt.c
     core/stdlib.c
+    core/rtti.c
 )
 
 set(RUNTIME_COLLECTIONS_SOURCES
