@@ -1217,3 +1217,22 @@ add_test(NAME rtti_test COMMAND rtti_test)
 set_tests_properties(rtti_test PROPERTIES
     LABELS "stage12;rtti;oop;unit"
 )
+
+# 阶段13：泛型编程模板功能单元测试
+set(TEMPLATE_TEST_DEPENDENCIES
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/semantics/template/template_cache.c
+    ../../src/semantics/template/template_instantiation.c
+    ../../src/semantics/template/type_substitution.c
+    ../../src/semantics/symbols/type_system.c
+)
+
+add_executable(template_test
+    template_test.c
+    ${TEMPLATE_TEST_DEPENDENCIES}
+)
+target_include_directories(template_test PRIVATE ../../include)
+add_test(NAME template_test COMMAND template_test)
+set_tests_properties(template_test PROPERTIES
+    LABELS "stage13;template;generic;instantiation;unit"
+)

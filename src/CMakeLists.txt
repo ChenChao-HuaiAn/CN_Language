@@ -27,6 +27,9 @@ add_executable(cnc
     semantics/checker/class_analyzer.c
     semantics/resolution/inheritance_resolver.c
     semantics/types/vtable_builder.c
+    semantics/template/template_cache.c
+    semantics/template/template_instantiation.c
+    semantics/template/type_substitution.c
     ir/core/ir.c
     ir/gen/irgen.c
     ir/passes/constant_folding.c
@@ -41,6 +44,7 @@ add_executable(cnc
     backend/cgen/module_cgen.c
     backend/cgen/class_cgen.c
     backend/cgen/exception_cgen.c
+    backend/cgen/template_cgen.c
 )
 
 # 包含运行时库子目录
@@ -78,6 +82,9 @@ add_executable(cnrepl
     semantics/checker/class_analyzer.c
     semantics/resolution/inheritance_resolver.c
     semantics/types/vtable_builder.c
+    semantics/template/template_cache.c
+    semantics/template/template_instantiation.c
+    semantics/template/type_substitution.c
     ir/core/ir.c
     ir/gen/irgen.c
     ir/passes/constant_folding.c
@@ -92,6 +99,7 @@ add_executable(cnrepl
     backend/cgen/module_cgen.c
     backend/cgen/class_cgen.c
     backend/cgen/exception_cgen.c
+    backend/cgen/template_cgen.c
 )
 
 target_include_directories(cnrepl PRIVATE

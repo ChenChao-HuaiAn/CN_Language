@@ -38,7 +38,9 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_MEMORY_SET,     // 内存设置 memory_set(addr, value, size)
     CN_AST_EXPR_MEMORY_MAP,     // 内存映射 map_memory(addr, size, prot, flags)
     CN_AST_EXPR_MEMORY_UNMAP,   // 解除内存映射 unmap_memory(addr, size)
-    CN_AST_EXPR_INLINE_ASM     // 内联汇编 inline_asm("code", outputs, inputs, clobbers)
+    CN_AST_EXPR_INLINE_ASM,     // 内联汇编 inline_asm("code", outputs, inputs, clobbers)
+    // 泛型编程支持（阶段13 - 模板支持）
+    CN_AST_EXPR_TEMPLATE_INSTANTIATION  // 模板实例化 名称<类型参数>
 } CnAstExprKind;
 
 // AST 节点种类（语句）
@@ -64,7 +66,10 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_TRY,            // try语句
     CN_AST_STMT_CATCH,          // catch语句
     CN_AST_STMT_THROW,          // throw语句
-    CN_AST_STMT_FINALLY         // finally语句
+    CN_AST_STMT_FINALLY,        // finally语句
+    // 泛型编程支持（阶段13 - 模板支持）
+    CN_AST_STMT_TEMPLATE_FUNCTION_DECL,  // 模板函数声明
+    CN_AST_STMT_TEMPLATE_STRUCT_DECL     // 模板结构体声明
 } CnAstStmtKind;
 
 // 二元运算符
@@ -210,6 +215,65 @@ typedef struct CnAstEnumDecl {
     CnAstEnumMember *members;     // 枚举成员列表
     size_t member_count;          // 枚举成员数量
 } CnAstEnumDecl;
+
+/* ============================================================================
+ * 泛型编程支持 - 模板AST节点定义（阶段13）
+ * ============================================================================ */
+
+/**
+ * @brief 模板参数定义
+ *
+ * 表示模板参数列表中的单个类型参数，如 T、K、V 等
+ */
+typedef struct CnAstTemplateParam {
+    const char *name;             // 参数名称（如 "T"）
+    size_t name_length;           // 名称长度
+    struct CnType *constraint;    // 类型约束（预留，可为NULL）
+    struct CnType *default_type;  // 默认类型（预留，可为NULL）
+} CnAstTemplateParam;
+
+/**
+ * @brief 模板参数列表
+ *
+ * 表示模板声明中的参数列表，如 <T, K, V>
+ */
+typedef struct CnAstTemplateParams {
+    CnAstTemplateParam *params;   // 参数数组
+    size_t param_count;           // 参数数量
+} CnAstTemplateParams;
+
+/**
+ * @brief 模板函数声明
+ *
+ * 语法：模板<T> 函数 函数名(参数列表) -> 返回类型 { 函数体 }
+ */
+typedef struct CnAstTemplateFunctionDecl {
+    CnAstTemplateParams *template_params;  // 模板参数
+    struct CnAstFunctionDecl *function;    // 函数声明（复用现有结构）
+} CnAstTemplateFunctionDecl;
+
+/**
+ * @brief 模板结构体声明
+ *
+ * 语法：模板<T> 结构体 结构体名 { 字段列表 }
+ */
+typedef struct CnAstTemplateStructDecl {
+    CnAstTemplateParams *template_params;  // 模板参数
+    CnAstStructDecl *struct_decl;          // 结构体声明（复用现有结构）
+} CnAstTemplateStructDecl;
+
+/**
+ * @brief 模板实例化表达式
+ *
+ * 用于表示 名称<类型参数列表> 的实例化语法
+ * 例如：最大值<整数>、数组<小数>、映射<字符串, 整数>
+ */
+typedef struct CnAstTemplateInstantiationExpr {
+    const char *template_name;        // 模板名称
+    size_t template_name_length;      // 名称长度
+    struct CnType **type_args;        // 类型实参数组
+    size_t type_arg_count;            // 类型实参数量
+} CnAstTemplateInstantiationExpr;
 
 /* ============================================================================
  * 异常处理语句定义
@@ -417,6 +481,11 @@ typedef struct CnAstProgram {
     struct CnAstStmt **classes;   // 类声明列表
     size_t interface_count;       // 接口数量
     struct CnAstStmt **interfaces; // 接口声明列表
+    // 泛型编程支持（阶段13 - 模板支持）
+    size_t template_func_count;   // 模板函数数量
+    struct CnAstStmt **template_funcs; // 模板函数声明列表
+    size_t template_struct_count; // 模板结构体数量
+    struct CnAstStmt **template_structs; // 模板结构体声明列表
 } CnAstProgram;
 
 // 各种表达式节点定义
@@ -599,6 +668,7 @@ typedef struct CnAstExpr {
         CnAstMemoryMapExpr memory_map;     // 内存映射
         CnAstMemoryUnmapExpr memory_unmap; // 解除内存映射
         CnAstInlineAsmExpr inline_asm;     // 内联汇编
+        CnAstTemplateInstantiationExpr template_inst; // 模板实例化
     } as;
 } CnAstExpr;
 
@@ -630,6 +700,9 @@ typedef struct CnAstStmt {
         CnAstTryStmt *try_stmt;                    // try语句
         CnAstThrowStmt throw_stmt;                 // throw语句
         CnAstFinallyStmt *finally_stmt;            // finally语句
+        // 泛型编程支持（阶段13 - 模板支持）
+        CnAstTemplateFunctionDecl *template_func_decl; // 模板函数声明
+        CnAstTemplateStructDecl *template_struct_decl; // 模板结构体声明
     } as;
 } CnAstStmt;
 

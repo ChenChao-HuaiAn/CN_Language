@@ -1,5 +1,6 @@
 #include "cnlang/backend/cgen.h"
 #include "cnlang/backend/cgen/class_cgen.h"  // 类代码生成接口
+#include "cnlang/backend/template_cgen.h"    // 模板代码生成接口
 #include "cnlang/support/diagnostics.h"
 #include "cnlang/support/config.h"
 #include "cnlang/frontend/semantics.h"  // 引入作用域和类型信息

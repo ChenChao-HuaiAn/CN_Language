@@ -106,6 +106,15 @@ static void program_add_global_var(CnAstProgram *program, CnAstStmt *var_decl);
 /* 类和接口添加函数（阶段11 - 面向对象编程支持） */
 static void program_add_class(CnAstProgram *program, CnAstStmt *class_decl);
 static void program_add_interface(CnAstProgram *program, CnAstStmt *interface_decl);
+/* 模板添加函数（阶段13 - 泛型编程支持） */
+static void program_add_template_func(CnAstProgram *program, CnAstStmt *template_func_decl);
+static void program_add_template_struct(CnAstProgram *program, CnAstStmt *template_struct_decl);
+/* 模板解析函数（阶段13 - 泛型编程支持） */
+static CnAstTemplateParams *parse_template_params(CnParser *parser);
+static CnAstStmt *parse_template_declaration(CnParser *parser);
+static CnAstStmt *parse_template_function_decl_with_params(CnParser *parser, CnAstTemplateParams *params);
+static CnAstStmt *parse_template_struct_decl_with_params(CnParser *parser, CnAstTemplateParams *params);
+static CnAstExpr *parse_template_instantiation(CnParser *parser, const char *name, size_t name_len);
 
 CnParser *cn_frontend_parser_new(CnLexer *lexer)
 {
@@ -373,6 +382,18 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_interface(program, interface_decl);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_TEMPLATE) {
+            // 解析模板声明（阶段13 - 泛型编程支持）
+            CnAstStmt *template_decl = parse_template_declaration(parser);
+            if (!template_decl) {
+                break;
+            }
+            // 根据类型添加到对应列表
+            if (template_decl->kind == CN_AST_STMT_TEMPLATE_FUNCTION_DECL) {
+                program_add_template_func(program, template_decl);
+            } else if (template_decl->kind == CN_AST_STMT_TEMPLATE_STRUCT_DECL) {
+                program_add_template_struct(program, template_decl);
+            }
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
             // 解析函数声明
             CnAstFunctionDecl *fn = parse_function_decl(parser);
@@ -2364,8 +2385,27 @@ static CnAstExpr *parse_factor(CnParser *parser)
         size_t ident_name_length = parser->current.lexeme_length;
         parser_advance(parser);
         
-        // 检查是否是结构体字面量：标识符 { ... }
-        if (parser->current.kind == CN_TOKEN_LBRACE) {
+        // 检查是否是模板实例化：标识符 < ... >
+        // 注意：需要区分模板实例化和比较表达式
+        if (parser->current.kind == CN_TOKEN_LESS) {
+            // 尝试解析模板实例化
+            // 先保存当前状态，以便在不是模板实例化时回退
+            CnToken saved_token = parser->current;
+            int saved_has_current = parser->has_current;
+            
+            // 尝试解析模板实例化
+            expr = parse_template_instantiation(parser, ident_name, ident_name_length);
+            if (expr) {
+                // 成功解析模板实例化
+            } else {
+                // 不是模板实例化，回退并创建普通标识符
+                // 注意：parse_template_instantiation 可能已经消耗了 '<'，需要恢复状态
+                parser->current = saved_token;
+                parser->has_current = saved_has_current;
+                expr = make_identifier(ident_name, ident_name_length);
+            }
+        } else if (parser->current.kind == CN_TOKEN_LBRACE) {
+            // 检查是否是结构体字面量：标识符 { ... }
             expr = parse_struct_literal_with_name(parser, ident_name, ident_name_length);
         } else {
             // 普通标识符
@@ -3212,6 +3252,11 @@ static CnAstProgram *make_program(void)
     program->classes = NULL;
     program->interface_count = 0;
     program->interfaces = NULL;
+    /* 泛型编程支持（阶段13 - 模板支持） */
+    program->template_func_count = 0;
+    program->template_funcs = NULL;
+    program->template_struct_count = 0;
+    program->template_structs = NULL;
     return program;
 }
 
@@ -3344,6 +3389,50 @@ static void program_add_interface(CnAstProgram *program, CnAstStmt *interface_de
     program->interfaces = new_array;
     program->interfaces[program->interface_count] = interface_decl;
     program->interface_count = new_count;
+}
+
+// 添加模板函数声明到program（阶段13 - 泛型编程支持）
+static void program_add_template_func(CnAstProgram *program, CnAstStmt *template_func_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !template_func_decl) {
+        return;
+    }
+
+    new_count = program->template_func_count + 1;
+    new_array = (CnAstStmt **)realloc(program->template_funcs,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->template_funcs = new_array;
+    program->template_funcs[program->template_func_count] = template_func_decl;
+    program->template_func_count = new_count;
+}
+
+// 添加模板结构体声明到program（阶段13 - 泛型编程支持）
+static void program_add_template_struct(CnAstProgram *program, CnAstStmt *template_struct_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !template_struct_decl) {
+        return;
+    }
+
+    new_count = program->template_struct_count + 1;
+    new_array = (CnAstStmt **)realloc(program->template_structs,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->template_structs = new_array;
+    program->template_structs[program->template_struct_count] = template_struct_decl;
+    program->template_struct_count = new_count;
 }
 
 // 添加导入语句到program
@@ -5797,4 +5886,425 @@ static CnAstStmt *parse_interface_decl(CnParser *parser)
     stmt->as.interface_decl = interface_decl;
     
     return stmt;
+}
+
+/* ============================================================================
+ * 模板解析函数（阶段13 - 泛型编程支持）
+ * ============================================================================ */
+
+/**
+ * @brief 解析模板参数列表
+ *
+ * 语法：模板<参数1, 参数2, ...>
+ * 例如：模板<T>、模板<K, V>
+ *
+ * @param parser 解析器上下文
+ * @return CnAstTemplateParams* 解析后的参数列表，失败返回NULL
+ */
+static CnAstTemplateParams *parse_template_params(CnParser *parser)
+{
+    CnAstTemplateParams *params;
+    size_t capacity = 4;  // 初始容量
+    
+    if (!parser) {
+        return NULL;
+    }
+    
+    // 期望 '模板' 关键字
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_TEMPLATE)) {
+        return NULL;
+    }
+    
+    // 期望 '<'
+    if (!parser_expect(parser, CN_TOKEN_LESS)) {
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：期望 '<' 开始模板参数列表");
+        }
+        return NULL;
+    }
+    
+    // 分配参数列表结构
+    params = (CnAstTemplateParams *)malloc(sizeof(CnAstTemplateParams));
+    if (!params) {
+        return NULL;
+    }
+    
+    params->params = (CnAstTemplateParam *)malloc(sizeof(CnAstTemplateParam) * capacity);
+    if (!params->params) {
+        free(params);
+        return NULL;
+    }
+    params->param_count = 0;
+    
+    // 确保有当前token
+    if (!parser->has_current) {
+        parser_advance(parser);
+    }
+    
+    // 解析参数列表
+    do {
+        // 检查是否为空参数列表
+        if (parser->current.kind == CN_TOKEN_GREATER) {
+            break;
+        }
+        
+        // 期望标识符作为类型参数名
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：期望类型参数名称");
+            }
+            free(params->params);
+            free(params);
+            return NULL;
+        }
+        
+        // 扩容检查
+        if (params->param_count >= capacity) {
+            capacity *= 2;
+            CnAstTemplateParam *new_params = (CnAstTemplateParam *)realloc(params->params,
+                                            sizeof(CnAstTemplateParam) * capacity);
+            if (!new_params) {
+                free(params->params);
+                free(params);
+                return NULL;
+            }
+            params->params = new_params;
+        }
+        
+        // 记录参数信息
+        params->params[params->param_count].name = parser->current.lexeme_begin;
+        params->params[params->param_count].name_length = parser->current.lexeme_length;
+        params->params[params->param_count].constraint = NULL;    // 第一期不支持
+        params->params[params->param_count].default_type = NULL;  // 第一期不支持
+        params->param_count++;
+        
+        parser_advance(parser);
+        
+        // 检查是否有逗号分隔
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+        } else {
+            break;
+        }
+    } while (1);
+    
+    // 期望 '>'
+    if (!parser_expect(parser, CN_TOKEN_GREATER)) {
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：期望 '>' 结束模板参数列表");
+        }
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    return params;
+}
+
+/**
+ * @brief 解析模板声明
+ *
+ * 根据模板后的关键字判断是模板函数还是模板结构体
+ * 语法：模板<T> 函数 ... 或 模板<T> 结构体 ...
+ */
+static CnAstStmt *parse_template_declaration(CnParser *parser)
+{
+    CnAstTemplateParams *params;
+    
+    if (!parser) {
+        return NULL;
+    }
+    
+    // 解析模板参数
+    params = parse_template_params(parser);
+    if (!params) {
+        return NULL;
+    }
+    
+    // 确保有当前token
+    if (!parser->has_current) {
+        parser_advance(parser);
+    }
+    
+    // 判断是模板函数还是模板结构体
+    if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
+        // 模板函数
+        return parse_template_function_decl_with_params(parser, params);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
+        // 模板结构体
+        return parse_template_struct_decl_with_params(parser, params);
+    } else {
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：模板声明后期望 '函数' 或 '结构体'");
+        }
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+}
+
+/**
+ * @brief 解析模板函数声明（带已有参数）
+ *
+ * 语法：模板<T> 函数 函数名(参数列表) -> 返回类型 { 函数体 }
+ */
+static CnAstStmt *parse_template_function_decl_with_params(CnParser *parser, CnAstTemplateParams *params)
+{
+    CnAstFunctionDecl *function;
+    CnAstTemplateFunctionDecl *template_func;
+    CnAstStmt *stmt;
+    
+    if (!parser || !params) {
+        return NULL;
+    }
+    
+    // 解析函数声明（复用现有函数解析逻辑）
+    function = parse_function_decl(parser);
+    if (!function) {
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    // 创建模板函数节点
+    template_func = (CnAstTemplateFunctionDecl *)malloc(sizeof(CnAstTemplateFunctionDecl));
+    if (!template_func) {
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    template_func->template_params = params;
+    template_func->function = function;
+    
+    // 包装为语句节点
+    stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        free(template_func);
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    stmt->kind = CN_AST_STMT_TEMPLATE_FUNCTION_DECL;
+    stmt->as.template_func_decl = template_func;
+    
+    return stmt;
+}
+
+/**
+ * @brief 解析模板结构体声明（带已有参数）
+ *
+ * 语法：模板<T> 结构体 结构体名 { 字段列表 }
+ */
+static CnAstStmt *parse_template_struct_decl_with_params(CnParser *parser, CnAstTemplateParams *params)
+{
+    CnAstStmt *struct_stmt;
+    CnAstTemplateStructDecl *template_struct;
+    CnAstStmt *stmt;
+    
+    if (!parser || !params) {
+        return NULL;
+    }
+    
+    // 解析结构体声明（复用现有结构体解析逻辑）
+    struct_stmt = parse_struct_decl(parser);
+    if (!struct_stmt) {
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    // 确保是结构体声明
+    if (struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
+        free(struct_stmt);
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    // 创建模板结构体节点
+    template_struct = (CnAstTemplateStructDecl *)malloc(sizeof(CnAstTemplateStructDecl));
+    if (!template_struct) {
+        free(struct_stmt);
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    template_struct->template_params = params;
+    template_struct->struct_decl = &struct_stmt->as.struct_decl;
+    
+    // 包装为语句节点
+    stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        free(template_struct);
+        free(struct_stmt);
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    stmt->kind = CN_AST_STMT_TEMPLATE_STRUCT_DECL;
+    stmt->as.template_struct_decl = template_struct;
+    
+    // 释放原始结构体语句节点（但保留其内容）
+    free(struct_stmt);
+    
+    return stmt;
+}
+
+/**
+ * @brief 解析模板实例化表达式
+ *
+ * 语法：模板名<类型1, 类型2, ...>
+ * 例如：最大值<整数>、数组<小数>、映射<字符串, 整数>
+ *
+ * @param parser 解析器上下文
+ * @param name 模板名称
+ * @param name_len 名称长度
+ * @return CnAstExpr* 模板实例化表达式，失败返回NULL
+ */
+static CnAstExpr *parse_template_instantiation(CnParser *parser, const char *name, size_t name_len)
+{
+    CnAstTemplateInstantiationExpr *inst;
+    CnAstExpr *expr;
+    size_t capacity = 4;  // 初始容量
+    
+    if (!parser || !name) {
+        return NULL;
+    }
+    
+    // 期望 '<'
+    if (!parser_expect(parser, CN_TOKEN_LESS)) {
+        return NULL;  // 不是模板实例化，可能是比较表达式
+    }
+    
+    // 分配实例化结构
+    inst = (CnAstTemplateInstantiationExpr *)malloc(sizeof(CnAstTemplateInstantiationExpr));
+    if (!inst) {
+        return NULL;
+    }
+    
+    inst->template_name = name;
+    inst->template_name_length = name_len;
+    inst->type_args = (CnType **)malloc(sizeof(CnType *) * capacity);
+    if (!inst->type_args) {
+        free(inst);
+        return NULL;
+    }
+    inst->type_arg_count = 0;
+    
+    // 确保有当前token
+    if (!parser->has_current) {
+        parser_advance(parser);
+    }
+    
+    // 解析类型实参列表
+    do {
+        // 检查是否为空参数列表
+        if (parser->current.kind == CN_TOKEN_GREATER) {
+            break;
+        }
+        
+        // 解析类型
+        CnType *type_arg = parse_type(parser);
+        if (!type_arg) {
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：期望类型参数");
+            }
+            free(inst->type_args);
+            free(inst);
+            return NULL;
+        }
+        
+        // 扩容检查
+        if (inst->type_arg_count >= capacity) {
+            capacity *= 2;
+            CnType **new_args = (CnType **)realloc(inst->type_args,
+                                                    sizeof(CnType *) * capacity);
+            if (!new_args) {
+                free(inst->type_args);
+                free(inst);
+                return NULL;
+            }
+            inst->type_args = new_args;
+        }
+        
+        inst->type_args[inst->type_arg_count] = type_arg;
+        inst->type_arg_count++;
+        
+        // 检查是否有逗号分隔
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+        } else {
+            break;
+        }
+    } while (1);
+    
+    // 期望 '>'
+    if (!parser_expect(parser, CN_TOKEN_GREATER)) {
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：期望 '>' 结束模板实参列表");
+        }
+        free(inst->type_args);
+        free(inst);
+        return NULL;
+    }
+    
+    // 包装为表达式节点
+    expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        free(inst->type_args);
+        free(inst);
+        return NULL;
+    }
+    
+    expr->kind = CN_AST_EXPR_TEMPLATE_INSTANTIATION;
+    expr->type = NULL;  // 语义分析阶段填充
+    expr->is_this_pointer = 0;
+    // 复制内容而不是指针（union中是值类型）
+    expr->as.template_inst.template_name = inst->template_name;
+    expr->as.template_inst.template_name_length = inst->template_name_length;
+    expr->as.template_inst.type_args = inst->type_args;
+    expr->as.template_inst.type_arg_count = inst->type_arg_count;
+    free(inst);  // 释放临时结构，但保留其内部指针指向的内容
+    
+    return expr;
 }

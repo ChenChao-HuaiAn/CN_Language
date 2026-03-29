@@ -105,6 +105,13 @@ void cn_frontend_ast_expr_free(CnAstExpr *expr)
         free(expr->as.inline_asm.inputs);
         cn_frontend_ast_expr_free(expr->as.inline_asm.clobbers);
         break;
+    case CN_AST_EXPR_TEMPLATE_INSTANTIATION:
+        // 释放模板实例化表达式
+        // 注意：类型对象由语义分析模块管理，这里只释放数组指针
+        if (expr->as.template_inst.type_args) {
+            free(expr->as.template_inst.type_args);
+        }
+        break;
     }
 
     free(expr);
@@ -189,6 +196,30 @@ void cn_frontend_ast_stmt_free(CnAstStmt *stmt)
             free(stmt->as.import_stmt.members);
         }
         break;
+    case CN_AST_STMT_TEMPLATE_FUNCTION_DECL:
+        // 释放模板函数声明
+        if (stmt->as.template_func_decl) {
+            if (stmt->as.template_func_decl->template_params) {
+                free(stmt->as.template_func_decl->template_params->params);
+                free(stmt->as.template_func_decl->template_params);
+            }
+            cn_frontend_ast_function_free(stmt->as.template_func_decl->function);
+            free(stmt->as.template_func_decl);
+        }
+        break;
+    case CN_AST_STMT_TEMPLATE_STRUCT_DECL:
+        // 释放模板结构体声明
+        if (stmt->as.template_struct_decl) {
+            if (stmt->as.template_struct_decl->template_params) {
+                free(stmt->as.template_struct_decl->template_params->params);
+                free(stmt->as.template_struct_decl->template_params);
+            }
+            if (stmt->as.template_struct_decl->struct_decl) {
+                free(stmt->as.template_struct_decl->struct_decl->fields);
+            }
+            free(stmt->as.template_struct_decl);
+        }
+        break;
     }
 
     free(stmt);
@@ -237,6 +268,16 @@ void cn_frontend_ast_program_free(CnAstProgram *program)
     for (i = 0; i < program->global_var_count; ++i) {
         cn_frontend_ast_stmt_free(program->global_vars[i]);
     }
+    
+    // 释放模板函数声明（阶段13 - 泛型编程支持）
+    for (i = 0; i < program->template_func_count; ++i) {
+        cn_frontend_ast_stmt_free(program->template_funcs[i]);
+    }
+    
+    // 释放模板结构体声明（阶段13 - 泛型编程支持）
+    for (i = 0; i < program->template_struct_count; ++i) {
+        cn_frontend_ast_stmt_free(program->template_structs[i]);
+    }
 
     free(program->functions);
     free(program->structs);
@@ -244,6 +285,8 @@ void cn_frontend_ast_program_free(CnAstProgram *program)
     free(program->modules);
     free(program->imports);
     free(program->global_vars);
+    free(program->template_funcs);
+    free(program->template_structs);
     free(program);
 }
 
