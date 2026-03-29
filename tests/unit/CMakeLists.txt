@@ -7,11 +7,13 @@ set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/ast/class_node.c
     ../../src/frontend/module_loader/module_loader.c
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/resolution/scope_builder.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 set(SEMANTIC_TEST_DEPENDENCIES
@@ -19,7 +21,10 @@ set(SEMANTIC_TEST_DEPENDENCIES
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
+    ../../src/frontend/ast/class_node.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 add_executable(sample_unit_test
@@ -45,6 +50,7 @@ add_executable(preprocessor_test
     preprocessor_test.c
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 target_include_directories(preprocessor_test PRIVATE
@@ -58,6 +64,7 @@ add_executable(preprocessor_chinese_test
     preprocessor_chinese_test.c
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 target_include_directories(preprocessor_chinese_test PRIVATE
@@ -72,6 +79,7 @@ add_executable(preprocessor_debug
     preprocessor_debug.c
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 target_include_directories(preprocessor_debug PRIVATE
@@ -98,6 +106,7 @@ add_executable(lexer_token_test
     ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 target_include_directories(lexer_token_test PRIVATE
@@ -114,6 +123,7 @@ add_executable(lexer_keyword_refined_test
     ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 target_include_directories(lexer_keyword_refined_test PRIVATE
@@ -130,6 +140,7 @@ add_executable(lexer_error_test
     ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 target_include_directories(lexer_error_test PRIVATE
@@ -255,6 +266,7 @@ add_executable(runtime_system_api_test
     ../../src/runtime/memory/memory.c
     ../../src/runtime/core/interrupt.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 target_include_directories(runtime_system_api_test PRIVATE
@@ -607,7 +619,7 @@ add_test(NAME repl_command_test COMMAND repl_command_test)
 set_tests_properties(repl_command_test PROPERTIES LABELS "stage6;repl;unit")
 
 # REPL 会话状态管理单元测试
-add_executable(repl_session_test 
+add_executable(repl_session_test
     repl_session_test.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/symbols/type_system.c
@@ -619,7 +631,9 @@ add_executable(repl_session_test
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/ast/class_node.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 target_include_directories(repl_session_test PRIVATE ../../include)
 add_test(NAME repl_session_test COMMAND repl_session_test)
@@ -633,8 +647,10 @@ add_executable(formatter_test
     ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/ast/class_node.c
     ../../src/frontend/parser/parser.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/symbols/type_system.c
 )
@@ -655,8 +671,10 @@ add_executable(static_check_test
     ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/ast/class_node.c
     ../../src/frontend/parser/parser.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/symbols/type_system.c
 )
@@ -677,8 +695,10 @@ add_executable(lsp_bridge_test
     ../../src/frontend/lexer/keywords.c
     ../../src/frontend/lexer/token.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/ast/class_node.c
     ../../src/frontend/parser/parser.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/resolution/scope_builder.c
@@ -686,6 +706,7 @@ add_executable(lsp_bridge_test
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
 )
 
 target_include_directories(lsp_bridge_test PRIVATE
@@ -758,6 +779,7 @@ add_executable(lexer_performance_test
     ../../src/frontend/lexer/lexer.c
     ../../src/frontend/lexer/keywords.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
     ../../src/support/memory/arena.c
 )
 
@@ -789,6 +811,7 @@ add_executable(regression_test
     ../../src/frontend/lexer/lexer.c
     ../../src/frontend/lexer/keywords.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
     ../../src/support/memory/arena.c
     ../../src/support/memory/memory_profiler.c
 )
@@ -825,6 +848,7 @@ add_executable(method_style_length_test
     ../../src/ir/passes/tail_call_opt.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(method_style_length_test PRIVATE ../../include)
@@ -974,6 +998,7 @@ add_executable(logical_operators_test
     ../../src/ir/passes/tail_call_opt.c
     ../../src/ir/passes/dead_code_elimination.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(logical_operators_test PRIVATE ../../include)
@@ -987,6 +1012,7 @@ add_executable(module_loader_test
     module_loader_test.c
     ../../src/frontend/module_loader/module_loader.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 target_include_directories(module_loader_test PRIVATE ../../include)
 add_test(NAME module_loader_test COMMAND module_loader_test)
@@ -1020,6 +1046,7 @@ add_executable(ir_passes_test
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(ir_passes_test PRIVATE ../../include)
@@ -1039,6 +1066,17 @@ set_tests_properties(collections_test PROPERTIES
     LABELS "runtime;collections;vector;list;hashmap;unit"
 )
 
+# 类解析调试测试
+add_executable(class_debug_test
+    class_debug_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(class_debug_test PRIVATE ../../include)
+add_test(NAME class_debug_test COMMAND class_debug_test)
+set_tests_properties(class_debug_test PROPERTIES
+    LABELS "stage11;oop;class;debug;unit"
+)
+
 # 错误诊断增强功能单元测试
 add_executable(diag_test
     diag_test.c
@@ -1051,4 +1089,50 @@ target_include_directories(diag_test PRIVATE ../../include)
 add_test(NAME diag_test COMMAND diag_test)
 set_tests_properties(diag_test PROPERTIES
     LABELS "support;diagnostics;message;recovery;fixes;unit"
+)
+
+# 阶段11：类解析单元测试（OOP支持）
+add_executable(parser_class_test
+    parser_class_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(parser_class_test PRIVATE ../../include)
+add_test(NAME parser_class_test COMMAND parser_class_test)
+set_tests_properties(parser_class_test PROPERTIES
+    LABELS "stage11;oop;class;parser;inheritance;virtual;interface;unit"
+)
+
+# 阶段11：继承功能单元测试（OOP支持）
+add_executable(class_inheritance_test
+    class_inheritance_test.c
+    ${PARSER_TEST_DEPENDENCIES}
+)
+target_include_directories(class_inheritance_test PRIVATE ../../include)
+add_test(NAME class_inheritance_test COMMAND class_inheritance_test)
+set_tests_properties(class_inheritance_test PROPERTIES
+    LABELS "stage11;oop;inheritance;virtual;diamond;unit"
+)
+
+# 阶段11：构造函数/析构函数代码生成测试（OOP支持）
+set(CGEN_TEST_DEPENDENCIES
+    ${PARSER_TEST_DEPENDENCIES}
+    ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/checker/class_analyzer.c
+    ../../src/semantics/symbols/type_system.c
+    ../../src/semantics/symbols/symbol_table.c
+    ../../src/semantics/resolution/scope_builder.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/semantics/resolution/inheritance_resolver.c
+    ../../src/support/config/target_triple.c
+)
+
+add_executable(constructor_destructor_cgen_test
+    constructor_destructor_cgen_test.c
+    ${CGEN_TEST_DEPENDENCIES}
+)
+target_include_directories(constructor_destructor_cgen_test PRIVATE ../../include)
+add_test(NAME constructor_destructor_cgen_test COMMAND constructor_destructor_cgen_test)
+set_tests_properties(constructor_destructor_cgen_test PROPERTIES
+    LABELS "stage11;oop;constructor;destructor;cgen;unit"
 )

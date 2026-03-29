@@ -45,7 +45,7 @@ typedef enum CnAstExprKind {
 typedef enum CnAstStmtKind {
     CN_AST_STMT_BLOCK,      // 语句块
     CN_AST_STMT_VAR_DECL,   // 变量声明语句
-    CN_AST_STMT_EXPR,       // 表达式语句   
+    CN_AST_STMT_EXPR,       // 表达式语句
     CN_AST_STMT_RETURN,     // 返回语句
     CN_AST_STMT_IF,         // 条件语句 if
     CN_AST_STMT_WHILE,      // while 循环语句
@@ -56,7 +56,10 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_STRUCT_DECL,// 结构体声明语句
     CN_AST_STMT_ENUM_DECL,  // 枚举声明语句
     CN_AST_STMT_MODULE_DECL,// 模块声明语句
-    CN_AST_STMT_IMPORT      // 导入语句
+    CN_AST_STMT_IMPORT,     // 导入语句
+    // OOP相关语句类型（阶段11 - 面向对象编程支持）
+    CN_AST_STMT_CLASS_DECL,     // 类声明语句
+    CN_AST_STMT_INTERFACE_DECL  // 接口声明语句
 } CnAstStmtKind;
 
 // 二元运算符
@@ -353,6 +356,11 @@ typedef struct CnAstProgram {
     struct CnAstStmt **imports;   // 导入语句列表
     size_t global_var_count;      // 全局变量数量
     struct CnAstStmt **global_vars; // 全局变量声明列表
+    // OOP支持（阶段11 - 面向对象编程支持）
+    size_t class_count;           // 类数量
+    struct CnAstStmt **classes;   // 类声明列表
+    size_t interface_count;       // 接口数量
+    struct CnAstStmt **interfaces; // 接口声明列表
 } CnAstProgram;
 
 // 各种表达式节点定义
@@ -508,6 +516,7 @@ typedef struct CnAstExpr {
     CnAstExprKind kind;
     struct CnType *type; // 语义分析阶段填充的类型信息
     CnSourceLocation loc; // 源位置信息
+    int is_this_pointer;  // 标记是否为自身指针（this/self），用于语义检查和代码生成
     union {
         CnAstBinaryExpr binary;
         CnAstCallExpr call;
@@ -534,6 +543,10 @@ typedef struct CnAstExpr {
     } as;
 } CnAstExpr;
 
+// 前向声明（OOP相关类型）
+struct CnAstClassDecl;
+struct CnAstInterfaceDecl;
+
 // 语句统一节点
 typedef struct CnAstStmt {
     CnAstStmtKind kind;
@@ -551,6 +564,9 @@ typedef struct CnAstStmt {
         CnAstEnumDecl enum_decl;     // 枚举声明
         CnAstModuleDecl module_decl; // 模块声明
         CnAstImportStmt import_stmt; // 导入语句
+        // OOP相关语句类型（阶段11 - 面向对象编程支持）
+        struct CnAstClassDecl *class_decl;         // 类声明
+        struct CnAstInterfaceDecl *interface_decl; // 接口声明
     } as;
 } CnAstStmt;
 

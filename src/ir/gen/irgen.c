@@ -1,5 +1,7 @@
 #include "cnlang/ir/irgen.h"
 #include "cnlang/frontend/semantics.h"
+#include "cnlang/frontend/ast/class_node.h"  // 类AST节点定义
+#include "cnlang/semantics/vtable_builder.h" // 虚函数表支持
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -636,6 +638,68 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 }
                 emit(ctx, call_inst);
                 return call_inst->dest;
+            }
+            // 处理类成员方法调用（包括虚函数调用）
+            else if (expr->as.call.callee->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+                // 成员访问调用：obj.method(args)
+                // 需要判断是否为虚函数调用
+                
+                // 获取对象表达式和方法名
+                CnAstExpr *object_expr = expr->as.call.callee->as.member.object;
+                const char *method_name = expr->as.call.callee->as.member.member_name;
+                size_t method_name_len = expr->as.call.callee->as.member.member_name_length;
+                
+                // 尝试从对象类型获取类声明（如果对象是类实例）
+                // 注意：目前类型系统中没有直接存储类声明引用，需要通过符号表查找
+                // 这里简化处理：检查对象类型是否为结构体类型（类在C代码生成时映射为结构体）
+                
+                // 生成对象表达式
+                CnIrOperand obj_operand = cn_ir_gen_expr(ctx, object_expr);
+                
+                // 构建方法调用函数名：类名_方法名
+                // 由于编译时需要知道类名，这里使用简化方案：
+                // 对于虚函数调用，生成特殊的IR指令标记
+                
+                // 检查是否标记为虚函数调用（通过AST节点中的标记）
+                // 如果是虚函数，生成虚函数调用指令
+                if (expr->as.call.callee->as.member.object->type) {
+                    CnType *obj_type = expr->as.call.callee->as.member.object->type;
+                    // 检查类型是否为类类型（通过结构体类型模拟）
+                    // 在类型系统中，类类型使用 CN_TYPE_STRUCT 表示
+                    // 完整实现需要扩展类型系统添加 CN_TYPE_CLASS
+                    
+                    // 目前简化处理：生成普通成员函数调用
+                    // 格式：类名_方法名(self, args...)
+                    
+                    // 生成调用指令
+                    CnIrInst *call_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                          cn_ir_op_none(), cn_ir_op_none());
+                    
+                    // 参数数量 = self + 原始参数
+                    size_t total_args = 1 + expr->as.call.argument_count;
+                    call_inst->extra_args_count = total_args;
+                    call_inst->extra_args = malloc(total_args * sizeof(CnIrOperand));
+                    
+                    // 第一个参数是 self 指针
+                    call_inst->extra_args[0] = obj_operand;
+                    
+                    // 其他参数
+                    for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                        call_inst->extra_args[i + 1] = cn_ir_gen_expr(ctx, expr->as.call.arguments[i]);
+                    }
+                    
+                    // 如果有返回值，分配结果寄存器
+                    if (expr->type && expr->type->kind != CN_TYPE_VOID) {
+                        int dest_reg = alloc_reg(ctx);
+                        call_inst->dest = cn_ir_op_reg(dest_reg, expr->type);
+                    }
+                    
+                    emit(ctx, call_inst);
+                    return call_inst->dest;
+                }
+                
+                // 默认：生成普通调用
+                callee = cn_ir_gen_expr(ctx, expr->as.call.callee);
             }
             else {
                 callee = cn_ir_gen_expr(ctx, expr->as.call.callee);

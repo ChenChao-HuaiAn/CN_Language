@@ -6,12 +6,14 @@ set(PARSER_TEST_DEPENDENCIES
     ../../src/frontend/lexer/token.c
     ../../src/frontend/parser/parser.c
     ../../src/frontend/ast/ast.c
+    ../../src/frontend/ast/class_node.c
     ../../src/frontend/preprocessor/preprocessor.c
     ../../src/frontend/module_loader/module_loader.c
     ../../src/semantics/symbols/type_system.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/semantics/resolution/scope_builder.c
     ../../src/support/diagnostics/diagnostics.c
+    ../../src/support/diagnostics/diag_message_table.c
 )
 
 # 正向集成测试：解析成功
@@ -48,6 +50,7 @@ add_executable(integration_semantic_error_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
 )
 target_include_directories(integration_semantic_error_test PRIVATE ../../include)
@@ -62,6 +65,7 @@ add_executable(integration_full_frontend_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
 )
 target_include_directories(integration_full_frontend_test PRIVATE ../../include)
@@ -74,10 +78,14 @@ add_executable(integration_array_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/semantics/resolution/inheritance_resolver.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(integration_array_test PRIVATE ../../include)
@@ -116,6 +124,7 @@ add_executable(integration_function_pointer_compile_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
 )
 target_include_directories(integration_function_pointer_compile_test PRIVATE ../../include)
@@ -139,10 +148,14 @@ add_executable(integration_repl_expr_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/semantics/resolution/inheritance_resolver.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(integration_repl_expr_test PRIVATE ../../include)
@@ -156,10 +169,14 @@ add_executable(integration_repl_statement_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/semantics/resolution/inheritance_resolver.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(integration_repl_statement_test PRIVATE ../../include)
@@ -214,6 +231,7 @@ add_executable(integration_memory_analysis_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
@@ -239,10 +257,14 @@ add_executable(integration_multiplatform_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/semantics/resolution/inheritance_resolver.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(integration_multiplatform_test PRIVATE ../../include)
@@ -289,10 +311,14 @@ add_executable(integration_struct_compile_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/semantics/resolution/inheritance_resolver.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(integration_struct_compile_test PRIVATE ../../include)
@@ -307,10 +333,14 @@ add_executable(integration_module_comprehensive_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
     ../../src/ir/core/ir.c
     ../../src/ir/gen/irgen.c
     ../../src/backend/cgen/cgen.c
+    ../../src/backend/cgen/class_cgen.c
+    ../../src/semantics/types/vtable_builder.c
+    ../../src/semantics/resolution/inheritance_resolver.c
     ../../src/support/config/target_triple.c
 )
 target_include_directories(integration_module_comprehensive_test PRIVATE ../../include)
@@ -336,6 +366,7 @@ add_executable(module_import_integration_test
     ../../src/semantics/resolution/scope_builder.c
     ../../src/semantics/checker/semantic_passes.c
     ../../src/semantics/checker/freestanding_check.c
+    ../../src/semantics/checker/class_analyzer.c
     ../../src/semantics/symbols/symbol_table.c
 )
 target_include_directories(module_import_integration_test PRIVATE ../../include)

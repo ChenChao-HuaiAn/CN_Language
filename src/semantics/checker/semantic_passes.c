@@ -1,5 +1,6 @@
 #include "cnlang/frontend/semantics.h"
 #include "cnlang/semantics/freestanding_check.h"
+#include "cnlang/semantics/class_analyzer.h"
 #include "cnlang/support/diagnostics.h"
 #include <stdlib.h>
 
@@ -233,6 +234,9 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                         struct CnDiagnostics *diagnostics)
 {
     if (!program || !global_scope) return true;
+
+    // 分析所有类的成员变量（阶段二 - 类语义分析）
+    cn_analyze_all_classes(global_scope, program, diagnostics);
 
     // 推断全局变量的类型并进行常量语义检查
     for (size_t i = 0; i < program->global_var_count; ++i) {

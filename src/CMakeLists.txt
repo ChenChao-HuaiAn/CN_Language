@@ -5,6 +5,7 @@ add_executable(cnc
     frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
+    frontend/ast/class_node.c
     frontend/parser/parser.c
     frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
@@ -23,6 +24,9 @@ add_executable(cnc
     semantics/resolution/module_semantics.c
     semantics/checker/semantic_passes.c
     semantics/checker/freestanding_check.c
+    semantics/checker/class_analyzer.c
+    semantics/resolution/inheritance_resolver.c
+    semantics/types/vtable_builder.c
     ir/core/ir.c
     ir/gen/irgen.c
     ir/passes/constant_folding.c
@@ -35,6 +39,7 @@ add_executable(cnc
     ir/passes/dead_code_elimination.c
     backend/cgen/cgen.c
     backend/cgen/module_cgen.c
+    backend/cgen/class_cgen.c
 )
 
 # 包含运行时库子目录
@@ -55,6 +60,7 @@ add_executable(cnrepl
     frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
+    frontend/ast/class_node.c
     frontend/parser/parser.c
     frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
@@ -68,6 +74,9 @@ add_executable(cnrepl
     semantics/resolution/module_semantics.c
     semantics/checker/semantic_passes.c
     semantics/checker/freestanding_check.c
+    semantics/checker/class_analyzer.c
+    semantics/resolution/inheritance_resolver.c
+    semantics/types/vtable_builder.c
     ir/core/ir.c
     ir/gen/irgen.c
     ir/passes/constant_folding.c
@@ -80,6 +89,7 @@ add_executable(cnrepl
     ir/passes/dead_code_elimination.c
     backend/cgen/cgen.c
     backend/cgen/module_cgen.c
+    backend/cgen/class_cgen.c
 )
 
 target_include_directories(cnrepl PRIVATE
@@ -98,6 +108,7 @@ add_executable(cnfmt
     frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
+    frontend/ast/class_node.c
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
     support/diagnostics/diag_message_table.c
@@ -120,6 +131,7 @@ add_executable(cncheck
     frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
+    frontend/ast/class_node.c
     frontend/parser/parser.c
     support/diagnostics/diagnostics.c
     support/diagnostics/diag_message_table.c
@@ -146,6 +158,7 @@ add_executable(cnlsp
     frontend/lexer/keywords.c
     frontend/preprocessor/preprocessor.c
     frontend/ast/ast.c
+    frontend/ast/class_node.c
     frontend/parser/parser.c
     frontend/module_loader/module_loader.c
     support/diagnostics/diagnostics.c
@@ -158,6 +171,7 @@ add_executable(cnlsp
     semantics/resolution/module_semantics.c
     semantics/checker/semantic_passes.c
     semantics/checker/freestanding_check.c
+    semantics/checker/class_analyzer.c
 )
 
 target_include_directories(cnlsp PRIVATE

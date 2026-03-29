@@ -42,16 +42,21 @@ static const CnKeywordEntry g_keywords[] = {
     {"假", CN_TOKEN_KEYWORD_FALSE, "常量关键字"},
     {"无", CN_TOKEN_KEYWORD_NULL, "常量关键字"},  // 注意：空值常量是"无"
 
-    // 预留关键字 (6个)
+    // 预留关键字 (4个)
     {"命名空间", CN_TOKEN_KEYWORD_NAMESPACE, "预留关键字"},
-    {"接口", CN_TOKEN_KEYWORD_INTERFACE, "预留关键字"},
-    {"类", CN_TOKEN_KEYWORD_CLASS, "预留关键字"},
     {"模板", CN_TOKEN_KEYWORD_TEMPLATE, "预留关键字"},
     {"常量", CN_TOKEN_KEYWORD_CONST, "预留关键字"},
-    {"保护", CN_TOKEN_KEYWORD_PROTECTED, "预留关键字"},
-    {"虚拟", CN_TOKEN_KEYWORD_VIRTUAL, "预留关键字"},
-    {"重写", CN_TOKEN_KEYWORD_OVERRIDE, "预留关键字"},
-    {"抽象", CN_TOKEN_KEYWORD_ABSTRACT, "预留关键字"},
+
+    // OOP关键字 (9个) - 面向对象编程支持
+    {"类", CN_TOKEN_KEYWORD_CLASS, "OOP关键字"},
+    {"接口", CN_TOKEN_KEYWORD_INTERFACE, "OOP关键字"},
+    {"保护", CN_TOKEN_KEYWORD_PROTECTED, "OOP关键字"},
+    {"虚拟", CN_TOKEN_KEYWORD_VIRTUAL, "OOP关键字"},
+    {"重写", CN_TOKEN_KEYWORD_OVERRIDE, "OOP关键字"},
+    {"抽象", CN_TOKEN_KEYWORD_ABSTRACT, "OOP关键字"},
+    {"实现", CN_TOKEN_KEYWORD_IMPLEMENTS, "OOP关键字"},
+    {"自身", CN_TOKEN_KEYWORD_THIS, "OOP关键字"},
+    {"基类", CN_TOKEN_KEYWORD_BASE, "OOP关键字"},
 };
 
 const CnKeywordEntry *cn_frontend_get_keywords(size_t *out_count)

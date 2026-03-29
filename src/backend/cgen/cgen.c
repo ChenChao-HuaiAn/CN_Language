@@ -1,7 +1,9 @@
 #include "cnlang/backend/cgen.h"
+#include "cnlang/backend/cgen/class_cgen.h"  // 类代码生成接口
 #include "cnlang/support/diagnostics.h"
 #include "cnlang/support/config.h"
 #include "cnlang/frontend/semantics.h"  // 引入作用域和类型信息
+#include "cnlang/frontend/ast/class_node.h"  // 类AST节点定义
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -20,7 +22,7 @@ static bool g_target_layout_valid = false;
 
 // --- 辅助函数 ---
 
-static const char *get_c_type_string(CnType *type) {
+const char *get_c_type_string(CnType *type) {
     if (!type) return "void";
     switch (type->kind) {
         case CN_TYPE_INT:
@@ -258,11 +260,42 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             fprintf(ctx->output_file, "%s", expr->as.bool_literal.value ? "true" : "false");
             break;
         case CN_AST_EXPR_IDENTIFIER:
-            // 支持引用其他模块变量
-            // 先简单处理：直接输出变量名（需要结合符号表处理模块前缀）
-            fprintf(ctx->output_file, "cn_var_%.*s",
-                    (int)expr->as.identifier.name_length,
-                    expr->as.identifier.name);
+            // 检查是否为自身指针（this/self）
+            if (expr->is_this_pointer) {
+                // 自身指针直接输出 "self"
+                fprintf(ctx->output_file, "self");
+            } else {
+                // 支持引用其他模块变量
+                // 先简单处理：直接输出变量名（需要结合符号表处理模块前缀）
+                fprintf(ctx->output_file, "cn_var_%.*s",
+                        (int)expr->as.identifier.name_length,
+                        expr->as.identifier.name);
+            }
+            break;
+        case CN_AST_EXPR_MEMBER_ACCESS:
+            // 成员访问表达式：obj.member 或 ptr->member
+            // 对于自身.成员，生成 self->member
+            {
+                // 检查对象是否为自身指针
+                if (expr->as.member.object &&
+                    expr->as.member.object->is_this_pointer) {
+                    // 自身.成员 -> self->成员
+                    fprintf(ctx->output_file, "self->%.*s",
+                            (int)expr->as.member.member_name_length,
+                            expr->as.member.member_name);
+                } else {
+                    // 普通成员访问
+                    cn_cgen_expr_simple(ctx, expr->as.member.object);
+                    if (expr->as.member.is_arrow) {
+                        fprintf(ctx->output_file, "->");
+                    } else {
+                        fprintf(ctx->output_file, ".");
+                    }
+                    fprintf(ctx->output_file, "%.*s",
+                            (int)expr->as.member.member_name_length,
+                            expr->as.member.member_name);
+                }
+            }
             break;
         case CN_AST_EXPR_BINARY:
             fprintf(ctx->output_file, "(");
@@ -1315,6 +1348,28 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "// CN Language Enum Definitions\n");
         for (size_t i = 0; i < program->enum_count; i++) {
             cn_cgen_enum_decl(&ctx, program->enums[i]);
+        }
+    }
+    
+    // 生成类定义（如果提供了 AST）- 阶段11 面向对象编程支持
+    if (program && program->class_count > 0) {
+        fprintf(file, "// CN Language Class Definitions\n\n");
+        for (size_t i = 0; i < program->class_count; i++) {
+            CnAstStmt *class_stmt = program->classes[i];
+            if (class_stmt && class_stmt->kind == CN_AST_STMT_CLASS_DECL) {
+                cn_cgen_class_decl(&ctx, class_stmt->as.class_decl);
+            }
+        }
+    }
+    
+    // 生成接口定义（如果提供了 AST）- 阶段11 面向对象编程支持
+    if (program && program->interface_count > 0) {
+        fprintf(file, "// CN Language Interface Definitions\n\n");
+        for (size_t i = 0; i < program->interface_count; i++) {
+            CnAstStmt *interface_stmt = program->interfaces[i];
+            if (interface_stmt && interface_stmt->kind == CN_AST_STMT_INTERFACE_DECL) {
+                cn_cgen_interface_decl(&ctx, interface_stmt->as.interface_decl);
+            }
         }
     }
     

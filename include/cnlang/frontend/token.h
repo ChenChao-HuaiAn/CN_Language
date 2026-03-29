@@ -51,6 +51,12 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_VIRTUAL,   // 虚拟
     CN_TOKEN_KEYWORD_OVERRIDE, // 重写
     CN_TOKEN_KEYWORD_ABSTRACT, // 抽象
+    CN_TOKEN_KEYWORD_IMPLEMENTS, // 实现（用于类实现接口）
+    // OOP关键字（面向对象编程支持）
+    CN_TOKEN_KEYWORD_THIS,     // 自身指针（this）
+    CN_TOKEN_KEYWORD_BASE,     // 基类访问
+    CN_TOKEN_KEYWORD_NEW,      // 新建对象
+    CN_TOKEN_KEYWORD_DELETE,   // 删除对象
     CN_TOKEN_PLUS,             // 加 +
     CN_TOKEN_PLUS_PLUS,        // 自增 ++
     CN_TOKEN_MINUS,            // 减 -

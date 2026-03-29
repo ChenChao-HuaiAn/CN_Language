@@ -90,6 +90,8 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_OVERRIDE";
     case CN_TOKEN_KEYWORD_ABSTRACT:
         return "KEYWORD_ABSTRACT";
+    case CN_TOKEN_KEYWORD_IMPLEMENTS:
+        return "KEYWORD_IMPLEMENTS";
     case CN_TOKEN_PLUS:
         return "PLUS";
     case CN_TOKEN_PLUS_PLUS:

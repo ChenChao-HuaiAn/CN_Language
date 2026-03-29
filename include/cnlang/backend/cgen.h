@@ -86,11 +86,21 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst);
 
 /**
  * @brief 生成结构体定义的 C 代码
- * 
+ *
  * @param ctx 生成器上下文
  * @param struct_stmt AST 结构体声明语句
  */
 void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt);
+
+/**
+ * @brief 获取C类型字符串
+ *
+ * 将CN语言的类型转换为C语言的类型字符串
+ *
+ * @param type CN语言类型
+ * @return const char* C语言类型字符串
+ */
+const char *get_c_type_string(CnType *type);
 
 // ============================================================================
 // 阶段E：多文件模块代码生成 API

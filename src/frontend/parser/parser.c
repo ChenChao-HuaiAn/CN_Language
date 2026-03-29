@@ -1,6 +1,7 @@
 #include "cnlang/frontend/parser.h"
 #include "cnlang/frontend/semantics.h"
 #include "cnlang/support/diagnostics.h"
+#include "cnlang/frontend/ast/class_node.h"  // 类和接口AST节点
 
 #include <stdlib.h>
 #include <string.h>
@@ -33,6 +34,14 @@ static CnAstStmt *parse_from_import_stmt(CnParser *parser);  // 从...导入 语
 static CnAstModulePath *parse_module_path(CnParser *parser);  // 解析点分模块路径
 static CnAstBlockStmt *parse_block(CnParser *parser);
 static CnAstStmt *parse_statement(CnParser *parser);
+
+/* 类和接口解析函数（阶段11 - 面向对象编程支持） */
+static CnAstStmt *parse_class_decl(CnParser *parser);
+static CnAstStmt *parse_interface_decl(CnParser *parser);
+static void parse_base_class_list(CnParser *parser, CnAstClassDecl *class_decl);
+static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default_access,
+                                          const char *class_name, size_t class_name_length);
+static CnAccessLevel parse_access_label(CnParser *parser);
 static CnType *parse_type(CnParser *parser);
 static CnAstExpr *parse_expression(CnParser *parser);
 static CnAstExpr *parse_assignment(CnParser *parser);
@@ -94,6 +103,9 @@ static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl);
 static void program_add_module(CnAstProgram *program, CnAstStmt *module_decl);
 static void program_add_import(CnAstProgram *program, CnAstStmt *import_stmt);
 static void program_add_global_var(CnAstProgram *program, CnAstStmt *var_decl);
+/* 类和接口添加函数（阶段11 - 面向对象编程支持） */
+static void program_add_class(CnAstProgram *program, CnAstStmt *class_decl);
+static void program_add_interface(CnAstProgram *program, CnAstStmt *interface_decl);
 
 CnParser *cn_frontend_parser_new(CnLexer *lexer)
 {
@@ -198,16 +210,15 @@ static int parser_expect(CnParser *parser, CnTokenKind kind)
 // 检查是否为预留关键字
 static int is_reserved_keyword(CnTokenKind kind)
 {
-    return kind == CN_TOKEN_KEYWORD_CLASS ||
-           kind == CN_TOKEN_KEYWORD_INTERFACE ||
-           kind == CN_TOKEN_KEYWORD_TEMPLATE ||
+    return kind == CN_TOKEN_KEYWORD_TEMPLATE ||
            kind == CN_TOKEN_KEYWORD_NAMESPACE ||
            /* 注意："常量" 关键字已在当前版本实现，不再视为预留关键字 */
            /* 注意："静态" 关键字已在当前版本实现，用于函数内静态局部变量 */
            /* 注意："公开"、"私有" 关键字已在模块系统中实现，不再视为预留关键字 */
+           /* 注意："类"、"接口" 关键字已在阶段11实现，不再视为预留关键字 */
+           /* 注意："重写" 关键字已在阶段11实现，用于标记重写基类方法 */
            kind == CN_TOKEN_KEYWORD_PROTECTED ||
            kind == CN_TOKEN_KEYWORD_VIRTUAL ||
-           kind == CN_TOKEN_KEYWORD_OVERRIDE ||
            kind == CN_TOKEN_KEYWORD_ABSTRACT;
 }
 
@@ -215,10 +226,7 @@ static int is_reserved_keyword(CnTokenKind kind)
 static const char *get_reserved_keyword_error_msg(CnTokenKind kind)
 {
     switch (kind) {
-    case CN_TOKEN_KEYWORD_CLASS:
-        return "语法错误：关键字 '类' 为预留特性，当前版本暂不支持";
-    case CN_TOKEN_KEYWORD_INTERFACE:
-        return "语法错误：关键字 '接口' 为预留特性，当前版本暂不支持";
+    /* 注意："类"、"接口" 关键字已在阶段11实现，不再视为预留关键字 */
     case CN_TOKEN_KEYWORD_TEMPLATE:
         return "语法错误：关键字 '模板' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_NAMESPACE:
@@ -228,8 +236,7 @@ static const char *get_reserved_keyword_error_msg(CnTokenKind kind)
         return "语法错误：关键字 '保护' 为预留特性，当前版本暂不支持";
     case CN_TOKEN_KEYWORD_VIRTUAL:
         return "语法错误：关键字 '虚拟' 为预留特性，当前版本暂不支持";
-    case CN_TOKEN_KEYWORD_OVERRIDE:
-        return "语法错误：关键字 '重写' 为预留特性，当前版本暂不支持";
+    /* 注意："重写" 关键字已在阶段11实现，不再视为预留关键字 */
     case CN_TOKEN_KEYWORD_ABSTRACT:
         return "语法错误：关键字 '抽象' 为预留特性，当前版本暂不支持";
     default:
@@ -360,6 +367,20 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_enum(program, enum_decl);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_CLASS) {
+            // 解析类声明（阶段11 - 面向对象编程支持）
+            CnAstStmt *class_decl = parse_class_decl(parser);
+            if (!class_decl) {
+                break;
+            }
+            program_add_class(program, class_decl);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_INTERFACE) {
+            // 解析接口声明（阶段11 - 面向对象编程支持）
+            CnAstStmt *interface_decl = parse_interface_decl(parser);
+            if (!interface_decl) {
+                break;
+            }
+            program_add_interface(program, interface_decl);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
             // 解析函数声明
             CnAstFunctionDecl *fn = parse_function_decl(parser);
@@ -2133,6 +2154,12 @@ static CnAstExpr *parse_factor(CnParser *parser)
         // NULL 关键字：生成空指针字面量
         expr = make_integer_literal(0);  // 简化处理：将NULL表示为0
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_THIS) {
+        // 自身 关键字：生成标识符表达式 "self"
+        // 在代码生成阶段会转换为 C 代码中的 self 参数
+        expr = make_identifier("self", 4);
+        expr->is_this_pointer = 1;  // 标记为自身指针，用于语义检查
+        parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
         // 保存标识符信息
         const char *ident_name = parser->current.lexeme_begin;
@@ -2982,6 +3009,11 @@ static CnAstProgram *make_program(void)
     program->imports = NULL;
     program->global_var_count = 0;
     program->global_vars = NULL;
+    /* OOP支持（阶段11 - 面向对象编程支持） */
+    program->class_count = 0;
+    program->classes = NULL;
+    program->interface_count = 0;
+    program->interfaces = NULL;
     return program;
 }
 
@@ -3070,6 +3102,50 @@ static void program_add_module(CnAstProgram *program, CnAstStmt *module_decl)
     program->modules = new_array;
     program->modules[program->module_count] = module_decl;
     program->module_count = new_count;
+}
+
+// 添加类声明到program（阶段11 - 面向对象编程支持）
+static void program_add_class(CnAstProgram *program, CnAstStmt *class_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !class_decl) {
+        return;
+    }
+
+    new_count = program->class_count + 1;
+    new_array = (CnAstStmt **)realloc(program->classes,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->classes = new_array;
+    program->classes[program->class_count] = class_decl;
+    program->class_count = new_count;
+}
+
+// 添加接口声明到program（阶段11 - 面向对象编程支持）
+static void program_add_interface(CnAstProgram *program, CnAstStmt *interface_decl)
+{
+    size_t new_count;
+    CnAstStmt **new_array;
+
+    if (!program || !interface_decl) {
+        return;
+    }
+
+    new_count = program->interface_count + 1;
+    new_array = (CnAstStmt **)realloc(program->interfaces,
+                                      new_count * sizeof(CnAstStmt *));
+    if (!new_array) {
+        return;
+    }
+
+    program->interfaces = new_array;
+    program->interfaces[program->interface_count] = interface_decl;
+    program->interface_count = new_count;
 }
 
 // 添加导入语句到program
@@ -4477,6 +4553,1004 @@ static CnAstStmt *parse_from_import_stmt(CnParser *parser)
     } else {
         stmt->as.import_stmt.target_type = CN_IMPORT_TARGET_MODULE;
     }
+    
+    return stmt;
+}
+
+/* ============================================================================
+ * 类和接口解析函数实现（阶段11 - 面向对象编程支持）
+ * ============================================================================ */
+
+/**
+ * @brief 解析访问级别标签
+ *
+ * 语法：公开: | 私有: | 保护:
+ *
+ * @param parser 解析器上下文
+ * @return CnAccessLevel 解析到的访问级别，默认返回私有
+ */
+static CnAccessLevel parse_access_label(CnParser *parser)
+{
+    if (!parser || !parser->has_current) {
+        return CN_ACCESS_PRIVATE;
+    }
+    
+    if (parser->current.kind == CN_TOKEN_KEYWORD_PUBLIC) {
+        parser_advance(parser);  // 消费 '公开'
+        if (parser->current.kind == CN_TOKEN_COLON) {
+            parser_advance(parser);  // 消费 ':'
+            return CN_ACCESS_PUBLIC;
+        } else {
+            // 错误：缺少冒号
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：'公开' 后期望 ':'");
+            }
+            return CN_ACCESS_PUBLIC;  // 容错返回
+        }
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_PRIVATE) {
+        parser_advance(parser);  // 消费 '私有'
+        if (parser->current.kind == CN_TOKEN_COLON) {
+            parser_advance(parser);  // 消费 ':'
+            return CN_ACCESS_PRIVATE;
+        } else {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：'私有' 后期望 ':'");
+            }
+            return CN_ACCESS_PRIVATE;
+        }
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_PROTECTED) {
+        parser_advance(parser);  // 消费 '保护'
+        if (parser->current.kind == CN_TOKEN_COLON) {
+            parser_advance(parser);  // 消费 ':'
+            return CN_ACCESS_PROTECTED;
+        } else {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：'保护' 后期望 ':'");
+            }
+            return CN_ACCESS_PROTECTED;
+        }
+    }
+    
+    return CN_ACCESS_PRIVATE;  // 默认私有
+}
+
+/**
+ * @brief 解析基类列表
+ *
+ * 语法：基类1, 基类2, ... 或 虚拟 基类1, ...
+ *
+ * @param parser 解析器上下文
+ * @param class_decl 类声明节点
+ */
+
+/**
+ * @brief 解析接口实现列表
+ *
+ * 语法：实现 接口名 [, 接口名2, ...]
+ *
+ * @param parser 解析器上下文
+ * @param class_decl 类声明节点
+ */
+static void parse_interface_list(CnParser *parser, CnAstClassDecl *class_decl)
+{
+    if (!parser || !class_decl) {
+        return;
+    }
+    
+    // 期望 '实现' 关键字
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_IMPLEMENTS)) {
+        return;
+    }
+    
+    // 解析接口列表
+    do {
+        // 期望接口名称
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少接口名称");
+            }
+            return;
+        }
+        
+        // 添加实现的接口
+        cn_ast_class_decl_add_interface(class_decl,
+                                        parser->current.lexeme_begin,
+                                        parser->current.lexeme_length);
+        
+        parser_advance(parser);
+        
+        // 检查是否有更多接口（用逗号分隔）
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+            continue;
+        } else {
+            break;
+        }
+    } while (1);
+}
+
+static void parse_base_class_list(CnParser *parser, CnAstClassDecl *class_decl)
+{
+    if (!parser || !class_decl) {
+        return;
+    }
+    
+    // 期望 ':' 开始基类列表
+    if (!parser_expect(parser, CN_TOKEN_COLON)) {
+        return;
+    }
+    
+    // 解析基类列表（支持多继承）
+    // 语法：: [公开|私有|保护] 基类名 [, 基类名2, ...] [实现 接口列表]
+    do {
+        // 检查是否是 '实现' 关键字（接口实现）
+        if (parser->current.kind == CN_TOKEN_KEYWORD_IMPLEMENTS) {
+            parse_interface_list(parser, class_decl);
+            break;
+        }
+        
+        bool is_virtual = false;
+        CnAccessLevel inheritance_access = CN_ACCESS_PUBLIC;  // 默认公开继承
+        
+        // 检查是否有 '虚拟' 关键字
+        if (parser->current.kind == CN_TOKEN_KEYWORD_VIRTUAL) {
+            is_virtual = true;
+            parser_advance(parser);
+        }
+        
+        // 解析继承方式（可选）
+        // 语法：公开 | 私有 | 保护
+        if (parser->current.kind == CN_TOKEN_KEYWORD_PUBLIC) {
+            inheritance_access = CN_ACCESS_PUBLIC;
+            parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_PRIVATE) {
+            inheritance_access = CN_ACCESS_PRIVATE;
+            parser_advance(parser);
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_PROTECTED) {
+            inheritance_access = CN_ACCESS_PROTECTED;
+            parser_advance(parser);
+        }
+        
+        // 检查是否是 '实现' 关键字（接口实现）
+        if (parser->current.kind == CN_TOKEN_KEYWORD_IMPLEMENTS) {
+            parse_interface_list(parser, class_decl);
+            break;
+        }
+        
+        // 期望基类名称
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少基类名称");
+            }
+            return;
+        }
+        
+        // 添加基类（包含继承方式）
+        cn_ast_class_decl_add_base(class_decl,
+                                   parser->current.lexeme_begin,
+                                   parser->current.lexeme_length,
+                                   inheritance_access,
+                                   is_virtual);
+        
+        parser_advance(parser);
+        
+        // 检查是否有更多基类（多继承支持，用逗号分隔）
+        if (parser->current.kind == CN_TOKEN_COMMA) {
+            parser_advance(parser);
+            continue;
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_IMPLEMENTS) {
+            // 解析接口实现列表
+            parse_interface_list(parser, class_decl);
+            break;
+        } else {
+            break;
+        }
+    } while (1);
+}
+/**
+ * @brief 解析类成员
+ *
+ * 语法：访问标签 | 字段声明 | 方法声明 | 构造函数 | 析构函数
+ *
+ * @param parser 解析器上下文
+ * @param default_access 默认访问级别
+ * @param class_name 类名（用于识别构造函数）
+ * @param class_name_length 类名长度
+ * @return CnClassMember* 解析到的类成员，失败返回NULL
+ */
+static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default_access,
+                                          const char *class_name, size_t class_name_length)
+{
+    if (!parser || !parser->has_current) {
+        return NULL;
+    }
+    
+    CnAccessLevel current_access = default_access;
+    bool is_static_member = false;  // 静态成员标记
+    
+    // 注意：访问级别标签已在 parse_class_decl 中处理，这里不再重复处理
+    // 检查是否为静态成员（语法：静态 类型 成员名; 或 静态 函数 方法名()）
+    if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC) {
+        is_static_member = true;
+        parser_advance(parser);  // 消费 '静态'
+    }
+    
+    // 检查是否为函数声明（方法、构造函数、析构函数）
+    if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
+        parser_advance(parser);  // 消费 '函数'
+        
+        // 检查是否为析构函数（以 ~ 开头）
+        bool is_destructor = false;
+        if (parser->current.kind == CN_TOKEN_BITWISE_NOT) {
+            is_destructor = true;
+            parser_advance(parser);  // 消费 '~'
+        }
+        
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              is_destructor ? "语法错误：析构函数缺少类名" : "语法错误：缺少方法名称");
+            }
+            return NULL;
+        }
+        
+        const char *method_name = parser->current.lexeme_begin;
+        size_t method_name_length = parser->current.lexeme_length;
+        parser_advance(parser);
+        
+        // 检查是否为构造函数（函数名与类名相同）
+        bool is_constructor = false;
+        if (!is_destructor && class_name && class_name_length > 0 &&
+            method_name_length == class_name_length &&
+            memcmp(method_name, class_name, class_name_length) == 0) {
+            is_constructor = true;
+        }
+        
+        // 验证析构函数名必须与类名相同
+        if (is_destructor) {
+            if (!class_name || class_name_length == 0 ||
+                method_name_length != class_name_length ||
+                memcmp(method_name, class_name, class_name_length) != 0) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语义错误：析构函数名必须与类名相同");
+                }
+                // 继续解析，但标记为错误
+            }
+        }
+        
+        // 创建成员（构造函数、析构函数或方法）
+        CnMemberKind member_kind;
+        if (is_destructor) {
+            member_kind = CN_MEMBER_DESTRUCTOR;
+        } else if (is_constructor) {
+            member_kind = CN_MEMBER_CONSTRUCTOR;
+        } else {
+            member_kind = CN_MEMBER_METHOD;
+        }
+        CnClassMember *member = cn_ast_class_member_create(method_name, method_name_length,
+                                                           member_kind, current_access);
+        if (!member) {
+            return NULL;
+        }
+        
+        // 设置静态标志
+        member->is_static = is_static_member;
+        
+        // 静态方法不能是虚函数
+        if (is_static_member && member->is_virtual) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语义错误：静态方法不能是虚函数");
+            }
+        }
+        
+        // 解析参数列表
+        if (parser_expect(parser, CN_TOKEN_LPAREN)) {
+            // 解析参数
+            if (parser->current.kind != CN_TOKEN_RPAREN) {
+                size_t param_capacity = 4;
+                size_t param_count = 0;
+                CnAstParameter *params = (CnAstParameter *)malloc(sizeof(CnAstParameter) * param_capacity);
+                if (!params) {
+                    cn_ast_class_member_destroy(member);
+                    return NULL;
+                }
+                
+                do {
+                    // 解析参数类型
+                    CnType *param_type = parse_type(parser);
+                    if (!param_type) {
+                        free(params);
+                        cn_ast_class_member_destroy(member);
+                        return NULL;
+                    }
+                    
+                    // 解析参数名
+                    if (parser->current.kind != CN_TOKEN_IDENT) {
+                        parser->error_count++;
+                        if (parser->diagnostics) {
+                            cn_support_diagnostics_report(parser->diagnostics,
+                                                          CN_DIAG_SEVERITY_ERROR,
+                                                          CN_DIAG_CODE_PARSE_INVALID_PARAM,
+                                                          parser->lexer ? parser->lexer->filename : NULL,
+                                                          parser->current.line,
+                                                          parser->current.column,
+                                                          "语法错误：缺少参数名称");
+                        }
+                        free(params);
+                        cn_ast_class_member_destroy(member);
+                        return NULL;
+                    }
+                    
+                    // 扩容
+                    if (param_count >= param_capacity) {
+                        param_capacity *= 2;
+                        CnAstParameter *new_params = (CnAstParameter *)realloc(params,
+                            sizeof(CnAstParameter) * param_capacity);
+                        if (!new_params) {
+                            free(params);
+                            cn_ast_class_member_destroy(member);
+                            return NULL;
+                        }
+                        params = new_params;
+                    }
+                    
+                    params[param_count].name = parser->current.lexeme_begin;
+                    params[param_count].name_length = parser->current.lexeme_length;
+                    params[param_count].declared_type = param_type;
+                    params[param_count].is_const = false;
+                    param_count++;
+                    
+                    parser_advance(parser);
+                    
+                    // 检查是否有更多参数
+                    if (parser->current.kind == CN_TOKEN_COMMA) {
+                        parser_advance(parser);
+                    } else {
+                        break;
+                    }
+                } while (1);
+                
+                member->parameters = params;
+                member->parameter_count = param_count;
+            }
+            
+            parser_expect(parser, CN_TOKEN_RPAREN);
+        }
+        
+        // 解析返回类型（构造函数不能有返回类型）
+        if (parser->current.kind == CN_TOKEN_COLON) {
+            if (is_constructor) {
+                // 构造函数不能有返回类型，报告错误
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语义错误：构造函数不能有返回类型");
+                }
+                // 跳过返回类型，继续解析
+                parser_advance(parser);
+                parse_type(parser);
+            } else {
+                parser_advance(parser);
+                member->type = parse_type(parser);
+            }
+        }
+        
+        // 解析初始化列表（仅构造函数支持）
+        // 语法：: 成员名(表达式), 成员名(表达式), ...
+        // 注意：需要区分返回类型的冒号和初始化列表的冒号
+        // 初始化列表的冒号出现在参数列表之后、函数体之前
+        if (is_constructor && parser->current.kind == CN_TOKEN_COLON) {
+            parser_advance(parser);  // 消费 ':'
+            
+            // 解析初始化列表
+            size_t init_capacity = 4;
+            size_t init_count = 0;
+            CnAstStructFieldInit *init_list = (CnAstStructFieldInit *)malloc(
+                sizeof(CnAstStructFieldInit) * init_capacity);
+            if (!init_list) {
+                cn_ast_class_member_destroy(member);
+                return NULL;
+            }
+            
+            do {
+                // 解析成员名
+                if (parser->current.kind != CN_TOKEN_IDENT) {
+                    parser->error_count++;
+                    if (parser->diagnostics) {
+                        cn_support_diagnostics_report(parser->diagnostics,
+                                                      CN_DIAG_SEVERITY_ERROR,
+                                                      CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                                      parser->lexer ? parser->lexer->filename : NULL,
+                                                      parser->current.line,
+                                                      parser->current.column,
+                                                      "语法错误：初始化列表中缺少成员名称");
+                    }
+                    free(init_list);
+                    cn_ast_class_member_destroy(member);
+                    return NULL;
+                }
+                
+                const char *member_name = parser->current.lexeme_begin;
+                size_t member_name_length = parser->current.lexeme_length;
+                parser_advance(parser);
+                
+                // 期望 '('
+                if (!parser_expect(parser, CN_TOKEN_LPAREN)) {
+                    free(init_list);
+                    cn_ast_class_member_destroy(member);
+                    return NULL;
+                }
+                
+                // 解析初始化表达式
+                CnAstExpr *init_expr = NULL;
+                if (parser->current.kind != CN_TOKEN_RPAREN) {
+                    init_expr = parse_expression(parser);
+                }
+                
+                // 期望 ')'
+                if (!parser_expect(parser, CN_TOKEN_RPAREN)) {
+                    free(init_list);
+                    cn_ast_class_member_destroy(member);
+                    return NULL;
+                }
+                
+                // 扩容
+                if (init_count >= init_capacity) {
+                    init_capacity *= 2;
+                    CnAstStructFieldInit *new_init_list = (CnAstStructFieldInit *)realloc(init_list,
+                        sizeof(CnAstStructFieldInit) * init_capacity);
+                    if (!new_init_list) {
+                        free(init_list);
+                        cn_ast_class_member_destroy(member);
+                        return NULL;
+                    }
+                    init_list = new_init_list;
+                }
+                
+                init_list[init_count].field_name = member_name;
+                init_list[init_count].field_name_length = member_name_length;
+                init_list[init_count].value = init_expr;
+                init_count++;
+                
+                // 检查是否有更多初始化项
+                if (parser->current.kind == CN_TOKEN_COMMA) {
+                    parser_advance(parser);
+                } else {
+                    break;
+                }
+            } while (1);
+            
+            // 将初始化列表存储到成员的扩展数据中
+            // 注意：CnClassMember 没有专门的初始化列表字段，我们暂时使用 init_expr 存储
+            // 这是一个简化处理，完整实现应该扩展 CnClassMember 结构
+            // TODO: 扩展 CnClassMember 添加 initializer_list 字段
+            (void)init_list;  // 暂时避免未使用警告
+            (void)init_count;
+            // 注意：这里存在内存泄漏，需要在 CnClassMember 中添加字段来存储
+        }
+        
+        // 解析重写关键字（语法：函数 函数名() 重写 { ... }）
+        // 重写关键字应该在函数签名之后、函数体之前
+        if (parser->current.kind == CN_TOKEN_KEYWORD_OVERRIDE) {
+            member->is_override = true;
+            parser_advance(parser);  // 消费 '重写'
+        }
+        
+        // 解析函数体
+        if (parser->current.kind == CN_TOKEN_LBRACE) {
+            member->body = parse_block(parser);
+        } else {
+            // 期望分号（纯声明）
+            parser_expect(parser, CN_TOKEN_SEMICOLON);
+        }
+        
+        return member;
+    }
+    
+    // 检查是否为字段声明（变量声明）
+    if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
+        parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
+        bool is_const = (parser->current.kind == CN_TOKEN_KEYWORD_CONST);
+        parser_advance(parser);
+        
+        // 解析字段类型
+        CnType *field_type = parse_type(parser);
+        if (!field_type) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少字段类型");
+            }
+            return NULL;
+        }
+        
+        // 解析字段名
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少字段名称");
+            }
+            return NULL;
+        }
+        
+        const char *field_name = parser->current.lexeme_begin;
+        size_t field_name_length = parser->current.lexeme_length;
+        parser_advance(parser);
+        
+        // 创建字段成员
+        CnClassMember *member = cn_ast_class_member_create(field_name, field_name_length,
+                                                           CN_MEMBER_FIELD, current_access);
+        if (!member) {
+            return NULL;
+        }
+        
+        member->type = field_type;
+        member->is_const = is_const;
+        member->is_static = is_static_member;  // 设置静态标志
+        
+        // 解析初始化表达式
+        if (parser->current.kind == CN_TOKEN_EQUAL) {
+            parser_advance(parser);
+            member->init_expr = parse_expression(parser);
+        }
+        
+        // 期望分号
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+        
+        return member;
+    }
+    
+    // 尝试解析类型开头的字段声明（如：整数 年龄;）
+    CnType *field_type = parse_type(parser);
+    if (field_type) {
+        // 解析字段名
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少字段名称");
+            }
+            return NULL;
+        }
+        
+        const char *field_name = parser->current.lexeme_begin;
+        size_t field_name_length = parser->current.lexeme_length;
+        parser_advance(parser);
+        
+        // 创建字段成员
+        CnClassMember *member = cn_ast_class_member_create(field_name, field_name_length,
+                                                           CN_MEMBER_FIELD, current_access);
+        if (!member) {
+            return NULL;
+        }
+        
+        member->type = field_type;
+        member->is_static = is_static_member;  // 设置静态标志
+        
+        // 解析初始化表达式
+        if (parser->current.kind == CN_TOKEN_EQUAL) {
+            parser_advance(parser);
+            member->init_expr = parse_expression(parser);
+        }
+        
+        // 期望分号
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+        
+        return member;
+    }
+    
+    return NULL;
+}
+
+/**
+ * @brief 解析类定义
+ *
+ * 语法：类 类名 [: 基类列表] { 成员列表 }
+ *
+ * @param parser 解析器上下文
+ * @return CnAstStmt* 类声明语句节点
+ */
+static CnAstStmt *parse_class_decl(CnParser *parser)
+{
+    // 检查是否为抽象类（抽象 类 ...）
+    bool is_abstract = false;
+    if (parser->current.kind == CN_TOKEN_KEYWORD_ABSTRACT) {
+        is_abstract = true;
+        parser_advance(parser);  // 消费 '抽象' 关键字
+    }
+    
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_CLASS)) {
+        return NULL;
+    }
+    
+    // 读取类名
+    if (parser->current.kind != CN_TOKEN_IDENT) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：缺少类名称");
+        }
+        return NULL;
+    }
+    
+    const char *class_name = parser->current.lexeme_begin;
+    size_t class_name_length = parser->current.lexeme_length;
+    parser_advance(parser);
+    
+    // 创建类声明节点
+    CnAstClassDecl *class_decl = cn_ast_class_decl_create(class_name, class_name_length);
+    if (!class_decl) {
+        return NULL;
+    }
+    
+    // 设置抽象类标记
+    class_decl->is_abstract = is_abstract;
+    
+    // 解析基类列表（可选）
+    if (parser->current.kind == CN_TOKEN_COLON) {
+        parse_base_class_list(parser, class_decl);
+    }
+    
+    // 期望 '{' 开始类体
+    if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
+        cn_ast_class_decl_destroy(class_decl);
+        return NULL;
+    }
+    
+    // 解析成员列表
+    CnAccessLevel current_access = CN_ACCESS_PRIVATE;  // 默认私有
+    
+    while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+        // 检查访问级别标签
+        if (parser->current.kind == CN_TOKEN_KEYWORD_PUBLIC ||
+            parser->current.kind == CN_TOKEN_KEYWORD_PRIVATE ||
+            parser->current.kind == CN_TOKEN_KEYWORD_PROTECTED) {
+            current_access = parse_access_label(parser);
+            continue;
+        }
+        
+        // 解析成员（传入类名用于识别构造函数）
+        CnClassMember *member = parse_class_member(parser, current_access,
+                                                    class_name, class_name_length);
+        if (member) {
+            cn_ast_class_decl_add_member(class_decl, member);
+        } else {
+            // 如果解析失败且不是访问标签，跳过当前token
+            if (parser->current.kind != CN_TOKEN_KEYWORD_PUBLIC &&
+                parser->current.kind != CN_TOKEN_KEYWORD_PRIVATE &&
+                parser->current.kind != CN_TOKEN_KEYWORD_PROTECTED &&
+                parser->current.kind != CN_TOKEN_RBRACE) {
+                parser_advance(parser);
+            }
+        }
+    }
+    
+    // 期望 '}' 结束类体
+    if (!parser_expect(parser, CN_TOKEN_RBRACE)) {
+        cn_ast_class_decl_destroy(class_decl);
+        return NULL;
+    }
+    
+    // 包装为语句节点
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        cn_ast_class_decl_destroy(class_decl);
+        return NULL;
+    }
+    
+    stmt->kind = CN_AST_STMT_CLASS_DECL;
+    stmt->as.class_decl = class_decl;
+    
+    return stmt;
+}
+
+/**
+ * @brief 解析接口定义
+ *
+ * 语法：接口 接口名 [: 基接口列表] { 方法签名列表 }
+ *
+ * @param parser 解析器上下文
+ * @return CnAstStmt* 接口声明语句节点
+ */
+static CnAstStmt *parse_interface_decl(CnParser *parser)
+{
+    if (!parser_expect(parser, CN_TOKEN_KEYWORD_INTERFACE)) {
+        return NULL;
+    }
+    
+    // 读取接口名
+    if (parser->current.kind != CN_TOKEN_IDENT) {
+        parser->error_count++;
+        if (parser->diagnostics) {
+            cn_support_diagnostics_report(parser->diagnostics,
+                                          CN_DIAG_SEVERITY_ERROR,
+                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                          parser->lexer ? parser->lexer->filename : NULL,
+                                          parser->current.line,
+                                          parser->current.column,
+                                          "语法错误：缺少接口名称");
+        }
+        return NULL;
+    }
+    
+    const char *interface_name = parser->current.lexeme_begin;
+    size_t interface_name_length = parser->current.lexeme_length;
+    parser_advance(parser);
+    
+    // 创建接口声明节点
+    CnAstInterfaceDecl *interface_decl = cn_ast_interface_decl_create(interface_name, interface_name_length);
+    if (!interface_decl) {
+        return NULL;
+    }
+    
+    // 解析基接口列表（可选）
+    // 语法：: 基接口名 [, 基接口名2, ...]
+    if (parser->current.kind == CN_TOKEN_COLON) {
+        parser_advance(parser);  // 消费 ':'
+        
+        do {
+            // 期望基接口名称
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：缺少基接口名称");
+                }
+                cn_ast_interface_decl_destroy(interface_decl);
+                return NULL;
+            }
+            
+            // 添加基接口
+            cn_ast_interface_decl_add_base_interface(interface_decl,
+                                                     parser->current.lexeme_begin,
+                                                     parser->current.lexeme_length);
+            
+            parser_advance(parser);
+            
+            // 检查是否有更多基接口（用逗号分隔）
+            if (parser->current.kind == CN_TOKEN_COMMA) {
+                parser_advance(parser);
+                continue;
+            } else {
+                break;
+            }
+        } while (1);
+    }
+    
+    // 期望 '{' 开始接口体
+    if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
+        cn_ast_interface_decl_destroy(interface_decl);
+        return NULL;
+    }
+    
+    // 解析方法签名列表
+    while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
+        // 期望 '函数' 关键字
+        if (parser->current.kind != CN_TOKEN_KEYWORD_FN) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：接口中只能包含方法声明");
+            }
+            parser_advance(parser);
+            continue;
+        }
+        
+        parser_advance(parser);  // 消费 '函数'
+        
+        // 读取方法名
+        if (parser->current.kind != CN_TOKEN_IDENT) {
+            parser->error_count++;
+            if (parser->diagnostics) {
+                cn_support_diagnostics_report(parser->diagnostics,
+                                              CN_DIAG_SEVERITY_ERROR,
+                                              CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                              parser->lexer ? parser->lexer->filename : NULL,
+                                              parser->current.line,
+                                              parser->current.column,
+                                              "语法错误：缺少方法名称");
+            }
+            cn_ast_interface_decl_destroy(interface_decl);
+            return NULL;
+        }
+        
+        const char *method_name = parser->current.lexeme_begin;
+        size_t method_name_length = parser->current.lexeme_length;
+        parser_advance(parser);
+        
+        // 创建方法成员
+        CnClassMember *method = cn_ast_class_member_create(method_name, method_name_length,
+                                                           CN_MEMBER_METHOD, CN_ACCESS_PUBLIC);
+        if (!method) {
+            cn_ast_interface_decl_destroy(interface_decl);
+            return NULL;
+        }
+        
+        method->is_pure_virtual = true;  // 接口方法都是纯虚函数
+        
+        // 解析参数列表
+        if (parser_expect(parser, CN_TOKEN_LPAREN)) {
+            if (parser->current.kind != CN_TOKEN_RPAREN) {
+                size_t param_capacity = 4;
+                size_t param_count = 0;
+                CnAstParameter *params = (CnAstParameter *)malloc(sizeof(CnAstParameter) * param_capacity);
+                if (!params) {
+                    cn_ast_class_member_destroy(method);
+                    cn_ast_interface_decl_destroy(interface_decl);
+                    return NULL;
+                }
+                
+                do {
+                    CnType *param_type = parse_type(parser);
+                    if (!param_type) {
+                        free(params);
+                        cn_ast_class_member_destroy(method);
+                        cn_ast_interface_decl_destroy(interface_decl);
+                        return NULL;
+                    }
+                    
+                    if (parser->current.kind != CN_TOKEN_IDENT) {
+                        parser->error_count++;
+                        free(params);
+                        cn_ast_class_member_destroy(method);
+                        cn_ast_interface_decl_destroy(interface_decl);
+                        return NULL;
+                    }
+                    
+                    if (param_count >= param_capacity) {
+                        param_capacity *= 2;
+                        CnAstParameter *new_params = (CnAstParameter *)realloc(params,
+                            sizeof(CnAstParameter) * param_capacity);
+                        if (!new_params) {
+                            free(params);
+                            cn_ast_class_member_destroy(method);
+                            cn_ast_interface_decl_destroy(interface_decl);
+                            return NULL;
+                        }
+                        params = new_params;
+                    }
+                    
+                    params[param_count].name = parser->current.lexeme_begin;
+                    params[param_count].name_length = parser->current.lexeme_length;
+                    params[param_count].declared_type = param_type;
+                    params[param_count].is_const = false;
+                    param_count++;
+                    
+                    parser_advance(parser);
+                    
+                    if (parser->current.kind == CN_TOKEN_COMMA) {
+                        parser_advance(parser);
+                    } else {
+                        break;
+                    }
+                } while (1);
+                
+                method->parameters = params;
+                method->parameter_count = param_count;
+            }
+            
+            parser_expect(parser, CN_TOKEN_RPAREN);
+        }
+        
+        // 解析返回类型
+        if (parser->current.kind == CN_TOKEN_COLON) {
+            parser_advance(parser);
+            method->type = parse_type(parser);
+        }
+        
+        // 期望分号
+        parser_expect(parser, CN_TOKEN_SEMICOLON);
+        
+        // 添加方法到接口
+        cn_ast_interface_decl_add_method(interface_decl, method);
+    }
+    
+    // 期望 '}' 结束接口体
+    if (!parser_expect(parser, CN_TOKEN_RBRACE)) {
+        cn_ast_interface_decl_destroy(interface_decl);
+        return NULL;
+    }
+    
+    // 包装为语句节点
+    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
+    if (!stmt) {
+        cn_ast_interface_decl_destroy(interface_decl);
+        return NULL;
+    }
+    
+    stmt->kind = CN_AST_STMT_INTERFACE_DECL;
+    stmt->as.interface_decl = interface_decl;
     
     return stmt;
 }

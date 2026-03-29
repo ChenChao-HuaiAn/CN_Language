@@ -63,7 +63,13 @@ typedef enum CnDiagCode {
     CN_DIAG_CODE_SEM_SWITCH_CASE_DUPLICATE,   // switch case 值重复
     // 静态变量相关语义错误
     CN_DIAG_CODE_SEM_STATIC_NON_CONST_INIT,   // 静态变量初始化表达式不是编译时常量
-    CN_DIAG_CODE_SEM_STATIC_VOID_TYPE         // 静态变量为 void 类型
+    CN_DIAG_CODE_SEM_STATIC_VOID_TYPE,        // 静态变量为 void 类型
+    // 自身指针相关语义错误
+    CN_DIAG_CODE_SEM_INVALID_THIS_USAGE,      // 自身指针使用无效（在静态方法或全局函数中使用）
+    // 抽象类相关语义错误
+    CN_DIAG_CODE_SEM_ABSTRACT_INSTANTIATION,  // 尝试实例化抽象类
+    CN_DIAG_CODE_SEM_PURE_VIRTUAL_NOT_IMPL,   // 派生类未实现所有纯虚函数
+    CN_DIAG_CODE_SEM_PURE_VIRTUAL_CALL        // 调用纯虚函数
 } CnDiagCode;
 
 /* ==================== 前向声明 ==================== */
