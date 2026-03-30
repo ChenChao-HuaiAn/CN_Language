@@ -5,6 +5,7 @@
 #include "cnlang/support/config.h"
 #include "cnlang/frontend/semantics.h"  // 引入作用域和类型信息
 #include "cnlang/frontend/ast/class_node.h"  // 类AST节点定义
+#include "cnlang/runtime/cli.h"              // 命令行参数接口
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

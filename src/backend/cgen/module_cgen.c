@@ -11,6 +11,7 @@
 #include "cnlang/frontend/ast.h"
 #include "cnlang/ir/ir.h"
 #include "cnlang/support/diagnostics.h"
+#include "cnlang/runtime/cli.h"  // 命令行参数接口
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -585,6 +586,7 @@ int cn_multi_compile_execute(CnMultiFileCompileContext *ctx) {
                 
                 // 生成 main 函数
                 fprintf(main_file, "int main(int argc, char **argv) {\n");
+                fprintf(main_file, "    cn_rt_cli_init(argc, argv);\n");  // 初始化命令行参数
                 fprintf(main_file, "    __cn_init_all_modules__();\n");
                 
                 // 调用入口模块的 main 函数

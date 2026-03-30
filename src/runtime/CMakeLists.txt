@@ -37,6 +37,10 @@ set(RUNTIME_SYNC_SOURCES
     sync/sync.c
 )
 
+set(RUNTIME_CLI_SOURCES
+    cli/cli.c
+)
+
 set(RUNTIME_SOURCES
     ${RUNTIME_CORE_SOURCES}
     ${RUNTIME_COLLECTIONS_SOURCES}
@@ -44,6 +48,7 @@ set(RUNTIME_SOURCES
     ${RUNTIME_IO_SOURCES}
     ${RUNTIME_MATH_SOURCES}
     ${RUNTIME_SYNC_SOURCES}
+    ${RUNTIME_CLI_SOURCES}
 )
 
 # 创建静态库
@@ -61,6 +66,7 @@ target_include_directories(cn_runtime
         ${CMAKE_CURRENT_SOURCE_DIR}/io
         ${CMAKE_CURRENT_SOURCE_DIR}/math
         ${CMAKE_CURRENT_SOURCE_DIR}/sync
+        ${CMAKE_CURRENT_SOURCE_DIR}/cli
 )
 
 # 设置库的输出名称

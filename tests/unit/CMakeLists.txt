@@ -909,6 +909,13 @@ target_include_directories(stdlib_test PRIVATE ../../include)
 add_test(NAME stdlib_test COMMAND stdlib_test)
 set_tests_properties(stdlib_test PROPERTIES LABELS "stage8;stdlib;chinese;runtime;unit")
 
+# 命令行参数运行时库测试
+add_executable(runtime_cli_test runtime/runtime_cli_test.c)
+target_link_libraries(runtime_cli_test PRIVATE cn_runtime)
+target_include_directories(runtime_cli_test PRIVATE ../../include)
+add_test(NAME runtime_cli_test COMMAND runtime_cli_test)
+set_tests_properties(runtime_cli_test PROPERTIES LABELS "stage8;cli;runtime;unit")
+
 # 内存分配器功能测试
 add_executable(allocator_test allocator_test.c)
 target_link_libraries(allocator_test PRIVATE cn_runtime)
