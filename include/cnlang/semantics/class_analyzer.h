@@ -431,12 +431,24 @@ CnClassMember *cn_find_class_member_in_hierarchy(CnAstClassDecl *class_decl,
 
 /**
  * @brief 查找类中的虚函数成员
- * 
+ *
  * @param class_decl 类声明节点
  * @param name 成员名称
  * @return CnClassMember* 找到的虚函数成员，未找到返回NULL
  */
 CnClassMember *cn_find_virtual_member(CnAstClassDecl *class_decl, const char *name);
+
+/**
+ * @brief 查找类中的方法成员（不限于虚函数）
+ *
+ * 根据CN语言语法规范，"重写"关键字可以重写任何父类方法，
+ * 不要求被重写的方法必须是虚函数。
+ *
+ * @param class_decl 类声明节点
+ * @param name 成员名称
+ * @return CnClassMember* 找到的方法成员，未找到返回NULL
+ */
+CnClassMember *cn_find_base_method_member(CnAstClassDecl *class_decl, const char *name);
 
 /* ============================================================================
  * 冲突检测函数

@@ -228,7 +228,35 @@ CnClassMember *cn_find_virtual_member(CnAstClassDecl *class_decl, const char *na
     /* 遍历所有成员查找虚函数 */
     for (size_t i = 0; i < class_decl->member_count; i++) {
         CnClassMember *member = &class_decl->members[i];
-        if (member->is_virtual && 
+        if (member->is_virtual &&
+            cn_name_equals(member->name, member->name_length, name, strlen(name))) {
+            return member;
+        }
+    }
+    
+    return NULL;
+}
+
+/**
+ * @brief 在类中查找指定名称的方法成员（不限于虚函数）
+ *
+ * 根据CN语言语法规范，"重写"关键字可以重写任何父类方法，
+ * 不要求被重写的方法必须是虚函数。
+ *
+ * @param class_decl 类声明
+ * @param name 方法名称
+ * @return 找到的成员指针，未找到返回NULL
+ */
+CnClassMember *cn_find_base_method_member(CnAstClassDecl *class_decl, const char *name)
+{
+    if (!class_decl || !name) {
+        return NULL;
+    }
+    
+    /* 遍历所有成员查找方法（不限于虚函数） */
+    for (size_t i = 0; i < class_decl->member_count; i++) {
+        CnClassMember *member = &class_decl->members[i];
+        if (member->kind == CN_MEMBER_METHOD &&
             cn_name_equals(member->name, member->name_length, name, strlen(name))) {
             return member;
         }
@@ -758,7 +786,7 @@ bool cn_check_method_override(CnClassAnalyzerContext *ctx, CnClassMember *member
         return false;
     }
     
-    /* 在基类中查找同名虚函数 */
+    /* 在基类中查找同名虚函数（与C++语义一致：重写必须是虚函数才能参与多态） */
     CnClassMember *base_method = cn_find_virtual_member(ctx->current_class, member->name);
     if (!base_method) {
         report_error(ctx, "重写的函数在基类中不是虚函数", member->name, member->name_length);

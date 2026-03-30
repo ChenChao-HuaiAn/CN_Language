@@ -10,3 +10,5 @@ trigger: always_on
 2. **任务完成后检查清单**：AI 必须遵守 `.ai-coder/checklists/error-checklist.md` 中的检查清单，在调用 attempt_completion 前执行验证。
 
 3. 建立任务开始和结束的检查清单，确保遵守项目规范。
+
+4. 编写任何CN语言源代码，必须严格按照“plans\001 CN Language语法规范设计文档.md”里的语法规范，其它文件只做参考，不一定正确。

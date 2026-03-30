@@ -5337,10 +5337,18 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
     }
     
     CnAccessLevel current_access = default_access;
+    bool is_override_member = false; // 重写成员标记
     bool is_static_member = false;  // 静态成员标记
     bool is_virtual_member = false; // 虚函数标记
     
     // 注意：访问级别标签已在 parse_class_decl 中处理，这里不再重复处理
+    // 检查是否为重写成员（语法：重写 函数 方法名() 或 重写 静态 函数 方法名()）
+    // 新语法：重写关键字移到函数签名开头
+    if (parser->current.kind == CN_TOKEN_KEYWORD_OVERRIDE) {
+        is_override_member = true;
+        parser_advance(parser);  // 消费 '重写'
+    }
+    
     // 检查是否为静态成员（语法：静态 类型 成员名; 或 静态 函数 方法名()）
     if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC) {
         is_static_member = true;
@@ -5430,6 +5438,9 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
         // 设置虚函数标志
         member->is_virtual = is_virtual_member;
         
+        // 设置重写标志（新语法：重写关键字在函数签名开头）
+        member->is_override = is_override_member;
+        
         // 静态方法不能是虚函数
         if (is_static_member && is_virtual_member) {
             parser->error_count++;
@@ -5443,6 +5454,11 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
                                               "语义错误：静态方法不能是虚函数");
             }
         }
+        
+        // 注意：根据语法规范文档（plans/001 CN Language语法规范设计文档.md 第954-974行示例），
+        // 子类重写函数时只需要"重写"关键字，不需要"虚拟"关键字。
+        // 重写方法会自动继承基类虚函数的虚函数特性，无需重复声明。
+        // 因此移除了"重写方法必须声明为虚函数"的检查。
         
         // 解析参数列表
         if (parser_expect(parser, CN_TOKEN_LPAREN)) {
@@ -5519,7 +5535,8 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
         }
         
         // 解析返回类型（构造函数不能有返回类型）
-        if (parser->current.kind == CN_TOKEN_COLON) {
+        // 新语法：使用箭头 -> 代替冒号 : 表示返回类型
+        if (parser->current.kind == CN_TOKEN_ARROW) {
             if (is_constructor) {
                 // 构造函数不能有返回类型，报告错误
                 parser->error_count++;
@@ -5633,13 +5650,6 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
             (void)init_list;  // 暂时避免未使用警告
             (void)init_count;
             // 注意：这里存在内存泄漏，需要在 CnClassMember 中添加字段来存储
-        }
-        
-        // 解析重写关键字（语法：函数 函数名() 重写 { ... }）
-        // 重写关键字应该在函数签名之后、函数体之前
-        if (parser->current.kind == CN_TOKEN_KEYWORD_OVERRIDE) {
-            member->is_override = true;
-            parser_advance(parser);  // 消费 '重写'
         }
         
         // 解析抽象关键字（纯虚函数：虚拟 函数 方法名() 抽象;）
