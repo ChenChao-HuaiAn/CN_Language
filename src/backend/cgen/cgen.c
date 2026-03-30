@@ -164,7 +164,9 @@ static const char *get_c_function_name(const char *name) {
     
     /* 性能优化：使用线程局部缓冲区 */
     static _Thread_local char buffer[256];
-    snprintf(buffer, sizeof(buffer), "cn_func_%s", name);
+    /* 方案C：未映射的中文函数直接使用原名称，不添加 cn_func_ 前缀 */
+    /* 这样 stdlib.h 中定义的中文函数（如 分配内存、释放内存）可以直接被调用 */
+    snprintf(buffer, sizeof(buffer), "%s", name);
     return buffer;
 }
 

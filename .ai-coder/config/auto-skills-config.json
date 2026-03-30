@@ -1,0 +1,35 @@
+{
+  "autoSkills": {
+    "enabled": true,
+    "triggerPoints": {
+      "taskStart": [
+        "begin-checklist",
+        "self-reflection"
+      ],
+      "taskEnd": [
+        "error-checklist",
+        "ai-error-record",
+        "self-reflection"
+      ],
+      "errorOccurred": [
+        "ai-error-record",
+        "self-reflection"
+      ],
+      "knowledgeGap": [
+        "capability-extension",
+        "knowledge-accumulation"
+      ]
+    },
+    "mandatorySkills": [
+      "begin-checklist",
+      "error-checklist",
+      "ai-error-record"
+    ],
+    "skillPriority": [
+      "流程技能",
+      "错误处理技能", 
+      "自我反思技能",
+      "能力扩展技能"
+    ]
+  }
+}

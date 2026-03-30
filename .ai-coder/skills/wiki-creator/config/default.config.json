@@ -1,0 +1,17 @@
+{
+  "wikiRoot": ".qoder/repowiki/zh",
+  "sourcePatterns": ["src/**/*.c", "src/**/*.h", "include/**/*.h"],
+  "exclusionPatterns": ["**/build/**", "**/*.o", "**/*.exe", "**/*.back", "**/.gitkeep"],
+  "contentTemplates": {
+    "default": "./templates/default.md",
+    "architecture": "./templates/architecture.md",
+    "api": "./templates/api.md"
+  },
+  "syncStrategy": "realtime",
+  "scheduledInterval": 3600000,
+  "metadataFile": "meta/repowiki-metadata.json",
+  "generateCitations": true,
+  "generateMermaidDiagrams": true,
+  "maxLineLength": 100,
+  "indentSize": 2
+}

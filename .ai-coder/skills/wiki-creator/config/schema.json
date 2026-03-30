@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "wiki-creator-config.schema.json",
+  "title": "Wiki Creator 配置 Schema",
+  "description": "Wiki Creator 技能的配置验证 Schema",
+  "type": "object",
+  "required": [
+    "wikiRoot",
+    "sourcePatterns",
+    "contentTemplates",
+    "syncStrategy",
+    "metadataFile"
+  ],
+  "properties": {
+    "wikiRoot": {
+      "type": "string",
+      "description": "Wiki 根目录路径",
+      "minLength": 1
+    },
+    "sourcePatterns": {
+      "type": "array",
+      "description": "源文件匹配模式",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "minItems": 1
+    },
+    "exclusionPatterns": {
+      "type": "array",
+      "description": "排除文件模式",
+      "items": {
+        "type": "string"
+      }
+    },
+    "contentTemplates": {
+      "type": "object",
+      "description": "内容模板配置",
+      "required": ["default"],
+      "properties": {
+        "default": {
+          "type": "string",
+          "description": "默认模板路径"
+        },
+        "architecture": {
+          "type": "string",
+          "description": "架构文档模板路径"
+        },
+        "api": {
+          "type": "string",
+          "description": "API 文档模板路径"
+        }
+      },
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "syncStrategy": {
+      "type": "string",
+      "description": "同步策略",
+      "enum": ["realtime", "manual", "scheduled"]
+    },
+    "scheduledInterval": {
+      "type": "number",
+      "description": "定时同步间隔（毫秒）",
+      "minimum": 1000
+    },
+    "metadataFile": {
+      "type": "string",
+      "description": "元数据文件路径",
+      "minLength": 1
+    },
+    "generateCitations": {
+      "type": "boolean",
+      "description": "是否生成引用",
+      "default": true
+    },
+    "generateMermaidDiagrams": {
+      "type": "boolean",
+      "description": "是否生成 Mermaid 图表",
+      "default": true
+    },
+    "maxLineLength": {
+      "type": "integer",
+      "description": "最大行长度",
+      "minimum": 40,
+      "maximum": 200,
+      "default": 100
+    },
+    "indentSize": {
+      "type": "integer",
+      "description": "缩进大小",
+      "minimum": 2,
+      "maximum": 8,
+      "default": 2
+    }
+  },
+  "additionalProperties": false
+}
