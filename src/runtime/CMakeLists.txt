@@ -54,6 +54,10 @@ set(RUNTIME_SOURCES
 # 创建静态库
 add_library(cn_runtime STATIC ${RUNTIME_SOURCES})
 
+# 设置运行时库选项 - 使用动态链接 CRT（与 /MDd 或 /MD 兼容）
+# 这样可以避免 CRT 链接冲突
+set_property(TARGET cn_runtime PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+
 # 设置运行时库的包含目录
 target_include_directories(cn_runtime
     PUBLIC

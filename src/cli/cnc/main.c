@@ -45,30 +45,72 @@ const char* get_runtime_lib_path() {
         char *last_slash = strrchr(self_path, '\\');
         if (last_slash) {
             *last_slash = '\0';
-            snprintf(runtime_path, sizeof(runtime_path), "%s\\lib\\libcn_runtime.a", self_path);
+            
+            // Windows: 优先查找 .lib 文件 (MSVC 构建)
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\runtime\\cn_runtime.lib", self_path);
             if (fopen(runtime_path, "r")) return runtime_path;
             
-            // 尝试 build 目录下的路径
-            snprintf(runtime_path, sizeof(runtime_path), "%s\\runtime\\libcn_runtime.a", self_path);
+            // 尝试 Debug 子目录
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\runtime\\Debug\\cn_runtime.lib", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
+            
+            // 尝试从 build 目录向上查找
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\..\\runtime\\Debug\\cn_runtime.lib", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
+            
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\..\\..\\src\\runtime\\Debug\\cn_runtime.lib", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
+            
+            // 尝试 lib 目录
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\lib\\cn_runtime.lib", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
+            
+            // 兼容 MinGW 的 .a 文件
+            snprintf(runtime_path, sizeof(runtime_path), "%s\\lib\\libcn_runtime.a", self_path);
             if (fopen(runtime_path, "r")) return runtime_path;
         }
     }
 #else
-    // 原有的探测逻辑...
+    // Linux/macOS: 查找 .a 文件
+    char self_path[1024];
+    ssize_t len = readlink("/proc/self/exe", self_path, sizeof(self_path) - 1);
+    if (len > 0) {
+        self_path[len] = '\0';
+        char *last_slash = strrchr(self_path, '/');
+        if (last_slash) {
+            *last_slash = '\0';
+            snprintf(runtime_path, sizeof(runtime_path), "%s/lib/libcn_runtime.a", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
+            
+            snprintf(runtime_path, sizeof(runtime_path), "%s/../lib/libcn_runtime.a", self_path);
+            if (fopen(runtime_path, "r")) return runtime_path;
+        }
+    }
 #endif
 
     // 如果无法确定可执行文件路径，则尝试几个常用的相对路径
+#ifdef _WIN32
+    // Windows 相对路径 - 优先 .lib
+    if (fopen("./build/src/runtime/Debug/cn_runtime.lib", "r")) return "./build/src/runtime/Debug/cn_runtime.lib";
+    if (fopen("./build/src/runtime/cn_runtime.lib", "r")) return "./build/src/runtime/cn_runtime.lib";
+    if (fopen("./lib/cn_runtime.lib", "r")) return "./lib/cn_runtime.lib";
+    if (fopen("../lib/cn_runtime.lib", "r")) return "../lib/cn_runtime.lib";
+    if (fopen("../../lib/cn_runtime.lib", "r")) return "../../lib/cn_runtime.lib";
+    // 兼容 MinGW
+    if (fopen("./lib/libcn_runtime.a", "r")) return "./lib/libcn_runtime.a";
+#else
+    // Linux/macOS 相对路径
     if (fopen("./lib/libcn_runtime.a", "r")) return "./lib/libcn_runtime.a";
     if (fopen("../lib/libcn_runtime.a", "r")) return "../lib/libcn_runtime.a";
     if (fopen("../../lib/libcn_runtime.a", "r")) return "../../lib/libcn_runtime.a";
-    if (fopen("./src/runtime/libcn_runtime.a", "r")) return "./src/runtime/libcn_runtime.a";
-    if (fopen("../src/runtime/libcn_runtime.a", "r")) return "../src/runtime/libcn_runtime.a";
     if (fopen("./build/src/runtime/libcn_runtime.a", "r")) return "./build/src/runtime/libcn_runtime.a";
-    if (fopen("../build/src/runtime/libcn_runtime.a", "r")) return "../build/src/runtime/libcn_runtime.a";
-    if (fopen("./build/src/runtime/libcn_runtime.a", "r")) return "./build/src/runtime/libcn_runtime.a";
-    if (fopen("../build/src/runtime/libcn_runtime.a", "r")) return "../build/src/runtime/libcn_runtime.a";
+#endif
 
+#ifdef _WIN32
+    return "./build/src/runtime/Debug/cn_runtime.lib";
+#else
     return "./lib/libcn_runtime.a";
+#endif
 }
 
 // 获取运行时头文件路径
@@ -768,21 +810,23 @@ int main(int argc, char **argv)
             if (strcmp(compiler, "cl") == 0) {
                 if (freestanding_mode) {
                     snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /I%s /Fe:%s %s",
-                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe", 
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe",
                              c_filename);
                 } else {
-                    snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /I%s /Fe:%s %s %s",
-                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe", 
+                    // 使用 /MDd 匹配 Debug 版本运行时库的 CRT 链接方式（动态链接 Debug CRT）
+                    // 不需要额外链接 ucrt.lib，因为 /MDd 会自动处理
+                    snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /MDd /I%s /Fe:%s %s %s",
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe",
                              c_filename, runtime_lib_path);
                 }
             } else {
                 if (freestanding_mode) {
                     snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s",
-                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out",
                              c_filename);
                 } else {
                     snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
-                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
+                             compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out",
                              c_filename, runtime_lib_path);
                 }
             }
