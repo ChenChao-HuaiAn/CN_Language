@@ -114,6 +114,43 @@ static CnAstStmt *parse_template_function_decl_with_params(CnParser *parser, CnA
 static CnAstStmt *parse_template_struct_decl_with_params(CnParser *parser, CnAstTemplateParams *params);
 static CnAstExpr *parse_template_instantiation(CnParser *parser, const char *name, size_t name_len);
 
+/**
+ * @brief 判断当前 token 是否可能是类型名的开始
+ *
+ * 用于区分模板实例化和比较表达式。
+ * 当遇到 "标识符 <" 时，需要判断 < 后面是否是类型名：
+ * - 如果是类型名，则可能是模板实例化
+ * - 如果不是类型名，则一定是比较表达式
+ *
+ * 注意：在解析阶段无法区分标识符是类型名还是变量名，
+ * 因此只判断明确的类型关键字。用户定义的类型名作为模板参数
+ * 的情况较少见，可以在语义分析阶段处理。
+ *
+ * @param parser 解析器实例
+ * @return true 如果当前 token 是明确的类型关键字，false 否则
+ */
+static bool is_type_start(CnParser *parser)
+{
+    if (!parser || !parser->has_current) {
+        return false;
+    }
+
+    switch (parser->current.kind) {
+        case CN_TOKEN_KEYWORD_INT:      // 整数
+        case CN_TOKEN_KEYWORD_FLOAT:    // 浮点
+        case CN_TOKEN_KEYWORD_STRING:   // 字符串
+        case CN_TOKEN_KEYWORD_BOOL:     // 布尔
+        case CN_TOKEN_KEYWORD_VOID:     // 空类型
+        case CN_TOKEN_KEYWORD_STRUCT:   // 结构体
+        case CN_TOKEN_KEYWORD_ENUM:     // 枚举
+            // 注意：不包含 CN_TOKEN_IDENT，因为在解析阶段
+            // 无法区分标识符是类型名还是变量名
+            return true;
+        default:
+            return false;
+    }
+}
+
 CnParser *cn_frontend_parser_new(CnLexer *lexer)
 {
     CnParser *parser;
@@ -2497,20 +2534,35 @@ static CnAstExpr *parse_factor(CnParser *parser)
         // 检查是否是模板实例化：标识符 < ... >
         // 注意：需要区分模板实例化和比较表达式
         if (parser->current.kind == CN_TOKEN_LESS) {
-            // 尝试解析模板实例化
-            // 先保存当前状态，以便在不是模板实例化时回退
+            // 前瞻判断：检查 < 后面是否是类型名
+            // 如果不是类型名，则一定是比较表达式，不需要尝试模板解析
+            // 需要保存词法分析器的完整状态，因为 parser_advance 会修改它
             CnToken saved_token = parser->current;
             int saved_has_current = parser->has_current;
-            
-            // 尝试解析模板实例化
-            expr = parse_template_instantiation(parser, ident_name, ident_name_length);
-            if (expr) {
-                // 成功解析模板实例化
+            CnLexer saved_lexer_state = *parser->lexer;  // 保存词法分析器状态
+
+            parser_advance(parser);  // 临时消耗 '<' 进行前瞻
+
+            bool is_template = is_type_start(parser);
+
+            // 恢复状态（包括词法分析器状态）
+            parser->current = saved_token;
+            parser->has_current = saved_has_current;
+            *parser->lexer = saved_lexer_state;  // 恢复词法分析器状态
+
+            if (is_template) {
+                // 可能是模板实例化，尝试解析
+                expr = parse_template_instantiation(parser, ident_name, ident_name_length);
+                if (!expr) {
+                    // 模板实例化解析失败，回退并创建普通标识符
+                    parser->current = saved_token;
+                    parser->has_current = saved_has_current;
+                    *parser->lexer = saved_lexer_state;
+                    expr = make_identifier(ident_name, ident_name_length);
+                }
             } else {
-                // 不是模板实例化，回退并创建普通标识符
-                // 注意：parse_template_instantiation 可能已经消耗了 '<'，需要恢复状态
-                parser->current = saved_token;
-                parser->has_current = saved_has_current;
+                // 不是模板实例化（< 后面不是类型名），创建普通标识符
+                // 让后续的比较表达式解析器处理 '<' 运算符
                 expr = make_identifier(ident_name, ident_name_length);
             }
         } else if (parser->current.kind == CN_TOKEN_LBRACE) {
