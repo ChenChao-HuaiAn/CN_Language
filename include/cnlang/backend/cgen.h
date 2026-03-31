@@ -5,6 +5,10 @@
 #include "cnlang/frontend/ast.h"
 #include <stdio.h>
 
+// 前向声明
+struct CnModuleLoader;
+struct CnSemScope;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -42,6 +46,21 @@ int cn_cgen_module_to_file(CnIrModule *module, const char *filename);
  * @return 0 成功，非 0 失败
  */
 int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *program, const char *filename);
+
+/**
+ * @brief 将 IR 模块和结构体定义转换为 C 代码，支持模块加载器
+ *
+ * @param module IR 模块
+ * @param program AST 程序（包含结构体定义和导入语句）
+ * @param loader 模块加载器（可为 NULL）
+ * @param global_scope 全局作用域（用于获取导入符号的类型信息）
+ * @param filename 输出的 C 文件名
+ * @return 0 成功，非 0 失败
+ */
+int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *program,
+                                         struct CnModuleLoader *loader,
+                                         struct CnSemScope *global_scope,
+                                         const char *filename);
 
 /**
  * @brief 将 IR 模块的函数声明生成为 C 头文件并写入指定文件

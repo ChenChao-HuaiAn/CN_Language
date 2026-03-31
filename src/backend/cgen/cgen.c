@@ -6,6 +6,7 @@
 #include "cnlang/frontend/semantics.h"  // 引入作用域和类型信息
 #include "cnlang/frontend/ast/class_node.h"  // 类AST节点定义
 #include "cnlang/runtime/cli.h"              // 命令行参数接口
+#include "cnlang/frontend/module_loader.h"   // 模块加载器接口
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1438,3 +1439,290 @@ int cn_cgen_header_to_file(CnIrModule *module, const char *filename) {
 }
 
 char *cn_cgen_module_to_string(CnIrModule *module) { return strdup("// Not implemented"); }
+
+// ============================================================================
+// 导入模块前向声明生成
+// ============================================================================
+
+/**
+ * @brief 生成单个函数的前向声明
+ *
+ * @param file 输出文件
+ * @param func_name 函数名称
+ * @param func_type 函数类型
+ */
+static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, CnType *func_type) {
+    if (!file || !func_name || !func_type || func_type->kind != CN_TYPE_FUNCTION) {
+        return;
+    }
+    
+    // 返回类型
+    const char *ret_type = get_c_type_string(func_type->as.function.return_type);
+    fprintf(file, "%s %s(", ret_type, func_name);
+    
+    // 参数列表
+    if (func_type->as.function.param_count == 0) {
+        fprintf(file, "void");
+    } else {
+        for (size_t i = 0; i < func_type->as.function.param_count; i++) {
+            if (i > 0) fprintf(file, ", ");
+            const char *param_type = get_c_type_string(func_type->as.function.param_types[i]);
+            fprintf(file, "%s", param_type);
+        }
+    }
+    
+    fprintf(file, ");\n");
+}
+
+/**
+ * @brief 从全局作用域获取导入符号的类型信息并生成前向声明
+ *
+ * @param file 输出文件
+ * @param program AST程序节点
+ * @param global_scope 全局作用域
+ */
+static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *program, CnSemScope *global_scope) {
+    if (!file || !program || !global_scope) {
+        return;
+    }
+    
+    // 如果没有导入语句，直接返回
+    if (program->import_count == 0) {
+        return;
+    }
+    
+    fprintf(file, "// Forward Declarations - 从导入模块\n");
+    
+    // 遍历所有导入语句
+    for (size_t i = 0; i < program->import_count; i++) {
+        CnAstStmt *import_stmt = program->imports[i];
+        if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
+            continue;
+        }
+        
+        CnAstImportStmt *import = &import_stmt->as.import_stmt;
+        
+        // 处理选择性导入（从 模块 导入 { 成员1, 成员2 }）
+        if (import->kind == CN_IMPORT_FROM_SELECTIVE && import->members && import->member_count > 0) {
+            // 遍历导入的成员
+            for (size_t j = 0; j < import->member_count; j++) {
+                CnAstImportMember *member = &import->members[j];
+                const char *symbol_name = member->name;
+                size_t symbol_name_len = member->name_length;
+                
+                // 从全局作用域查找符号
+                CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, symbol_name, symbol_name_len);
+                if (symbol && symbol->kind == CN_SEM_SYMBOL_FUNCTION && symbol->type) {
+                    // 生成函数前向声明
+                    cn_cgen_function_forward_declaration(file, symbol_name, symbol->type);
+                }
+            }
+        }
+        // 处理通配符导入（从 模块 导入 *）
+        else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
+            // 通配符导入：需要从模块元数据获取所有公开符号
+            // 目前简化处理：查找模块名对应的作用域中的所有公开符号
+            if (import->module_name && import->module_name_length > 0) {
+                // 尝试查找模块符号
+                CnSemSymbol *module_symbol = cn_sem_scope_lookup(global_scope, import->module_name, import->module_name_length);
+                if (module_symbol && module_symbol->kind == CN_SEM_SYMBOL_MODULE && module_symbol->as.module_scope) {
+                    // 遍历模块作用域中的所有公开符号
+                    CnSemScope *module_scope = module_symbol->as.module_scope;
+                    // 注意：这里需要遍历模块作用域中的符号
+                    // 由于作用域结构可能不直接支持遍历，我们暂时跳过
+                    // TODO: 实现作用域符号遍历
+                }
+            }
+        }
+        // 处理全量导入（导入 模块）
+        else if (import->kind == CN_IMPORT_FULL) {
+            // 全量导入：模块名作为前缀访问成员
+            // 不需要生成前向声明，因为访问时使用模块名.成员的方式
+        }
+    }
+    
+    fprintf(file, "\n");
+}
+
+/**
+ * @brief 带导入支持的完整代码生成函数
+ */
+int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *program,
+                                         CnModuleLoader *loader,
+                                         CnSemScope *global_scope,
+                                         const char *filename) {
+    // 首先调用原有的生成函数（不包含导入声明）
+    // 然后在适当位置插入导入声明
+    // 为了简化实现，我们直接修改现有函数的行为
+    
+    if (!module || !filename) return -1;
+
+    /* 根据 IR 模块上的目标三元组获取预设数据布局（若存在）。 */
+    CnTargetDataLayout layout;
+    bool layout_ok = cn_support_target_get_data_layout(&module->target, &layout);
+    if (layout_ok) {
+        g_target_layout = layout;
+        g_target_layout_valid = true;
+    } else {
+        g_target_layout_valid = false;
+    }
+
+    FILE *file = fopen(filename, "w");
+    if (!file) return -1;
+    
+    /* 性能优化：设置较大的缓冲区，减少系统调用 */
+    char *buffer = malloc(CGEN_BUFFER_SIZE);
+    if (buffer) {
+        setvbuf(file, buffer, _IOFBF, CGEN_BUFFER_SIZE);
+    }
+    
+    CnCCodeGenContext ctx = {0};
+    ctx.output_file = file;
+    ctx.module = module;
+
+    // 根据编译模式生成不同的头文件
+    if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {
+        fprintf(file, "#include <stddef.h>\n#include <stdbool.h>\n#include <stdint.h>\n\n");
+        fprintf(file, "// CN Language Runtime Function Declarations (Freestanding Mode)\n");
+        fprintf(file, "void cn_rt_print_string(const char *str);\n");
+        fprintf(file, "void cn_rt_print_int(long long val);\n");
+        fprintf(file, "void cn_rt_print_float(double val);\n");
+        fprintf(file, "void cn_rt_print_bool(int val);\n");
+        fprintf(file, "size_t cn_rt_string_length(const char *str);\n");
+        fprintf(file, "char* cn_rt_string_concat(const char *a, const char *b);\n");
+        fprintf(file, "char* cn_rt_int_to_string(long long val);\n");
+        fprintf(file, "char* cn_rt_bool_to_string(int val);\n");
+        fprintf(file, "char* cn_rt_float_to_string(double val);\n");
+        fprintf(file, "void* cn_rt_array_alloc(size_t elem_size, size_t count);\n");
+        fprintf(file, "size_t cn_rt_array_length(void *arr);\n");
+        fprintf(file, "int cn_rt_array_set_element(void *arr, size_t index, const void *element, size_t elem_size);\n");
+        fprintf(file, "\n");
+    } else {
+        fprintf(file, "#include <stdio.h>\n#include <stdbool.h>\n#include <stdint.h>\n#include \"cnrt.h\"\n");
+        fprintf(file, "#include \"cnlang/runtime/system_api.h\"\n\n");
+    }
+    
+    // 生成结构体定义（如果提供了 AST）
+    LocalStructInfo *local_struct_infos = NULL;
+    size_t local_struct_count = 0;
+    size_t local_struct_capacity = 0;
+    
+    if (program) {
+        if (program->struct_count > 0) {
+            fprintf(file, "// CN Language Global Struct Definitions\n");
+            for (size_t i = 0; i < program->struct_count; i++) {
+                cn_cgen_struct_decl(&ctx, program->structs[i]);
+            }
+        }
+        
+        for (size_t i = 0; i < program->function_count; i++) {
+            collect_local_structs_from_function(program->functions[i], &local_struct_infos, &local_struct_count, &local_struct_capacity);
+        }
+        
+        if (local_struct_count > 0) {
+            fprintf(file, "// CN Language Local Struct Definitions (hoisted for C compatibility)\n");
+            fprintf(file, "// Note: These are local to their respective functions in CN semantics\n");
+            for (size_t i = 0; i < local_struct_count; i++) {
+                cn_cgen_struct_decl_with_prefix(&ctx,
+                                               local_struct_infos[i].struct_stmt,
+                                               local_struct_infos[i].function_name,
+                                               local_struct_infos[i].function_name_length);
+            }
+            
+            g_local_struct_infos = local_struct_infos;
+            g_local_struct_count = local_struct_count;
+        }
+    }
+        
+    if (program && program->enum_count > 0) {
+        fprintf(file, "// CN Language Enum Definitions\n");
+        for (size_t i = 0; i < program->enum_count; i++) {
+            cn_cgen_enum_decl(&ctx, program->enums[i]);
+        }
+    }
+    
+    if (program && program->class_count > 0) {
+        fprintf(file, "// CN Language Class Definitions\n\n");
+        for (size_t i = 0; i < program->class_count; i++) {
+            CnAstStmt *class_stmt = program->classes[i];
+            if (class_stmt && class_stmt->kind == CN_AST_STMT_CLASS_DECL) {
+                cn_cgen_class_decl(&ctx, class_stmt->as.class_decl);
+            }
+        }
+    }
+    
+    if (program && program->interface_count > 0) {
+        fprintf(file, "// CN Language Interface Definitions\n\n");
+        for (size_t i = 0; i < program->interface_count; i++) {
+            CnAstStmt *interface_stmt = program->interfaces[i];
+            if (interface_stmt && interface_stmt->kind == CN_AST_STMT_INTERFACE_DECL) {
+                cn_cgen_interface_decl(&ctx, interface_stmt->as.interface_decl);
+            }
+        }
+    }
+    
+    // 生成全局变量声明
+    fprintf(file, "// Global Variables\n");
+    CnIrGlobalVar *global = module->first_global;
+    while (global) {
+        fprintf(file, "%s cn_var_%s",
+                get_c_type_string(global->type),
+                global->name);
+        
+        if (global->initializer.kind != CN_IR_OP_NONE) {
+            fprintf(file, " = ");
+            if (global->initializer.kind == CN_IR_OP_IMM_INT) {
+                fprintf(file, "%lld", global->initializer.as.imm_int);
+            } else if (global->initializer.kind == CN_IR_OP_IMM_FLOAT) {
+                fprintf(file, "%f", global->initializer.as.imm_float);
+            }
+        }
+        
+        fprintf(file, ";\n");
+        global = global->next;
+    }
+    fprintf(file, "\n");
+    
+    // 生成导入模块的前向声明（新增功能）
+    if (program && global_scope) {
+        cn_cgen_import_forward_declarations(file, program, global_scope);
+    }
+    
+    // 生成函数前置声明（Forward Declarations）
+    fprintf(file, "// Forward Declarations\n");
+    CnIrFunction *func = module->first_func;
+    while (func) {
+        fprintf(file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
+        for (size_t i = 0; i < func->param_count; i++) {
+            fprintf(file, "%s", get_c_type_string(func->params[i].type));
+            if (i < func->param_count - 1) fprintf(file, ", ");
+        }
+        fprintf(file, ");\n");
+        func = func->next;
+    }
+    fprintf(file, "\n");
+
+    func = module->first_func;
+    while (func) {
+        cn_cgen_function(&ctx, func);
+        func = func->next;
+    }
+    
+    // 清理全局查找表
+    g_local_struct_infos = NULL;
+    g_local_struct_count = 0;
+    
+    // 释放局部结构体信息列表
+    if (local_struct_infos) {
+        free(local_struct_infos);
+    }
+    
+    fclose(file);
+    
+    /* 释放缓冲区 */
+    if (buffer) {
+        free(buffer);
+    }
+    
+    return 0;
+}
