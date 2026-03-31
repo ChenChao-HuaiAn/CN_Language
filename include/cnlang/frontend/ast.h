@@ -57,7 +57,6 @@ typedef enum CnAstStmtKind {
     CN_AST_STMT_SWITCH,     // switch 选择语句
     CN_AST_STMT_STRUCT_DECL,// 结构体声明语句
     CN_AST_STMT_ENUM_DECL,  // 枚举声明语句
-    CN_AST_STMT_MODULE_DECL,// 模块声明语句
     CN_AST_STMT_IMPORT,     // 导入语句
     // OOP相关语句类型（阶段11 - 面向对象编程支持）
     CN_AST_STMT_CLASS_DECL,     // 类声明语句
@@ -326,16 +325,6 @@ typedef struct CnAstFinallyStmt {
     CnAstBlockStmt *body;             // finally块体
 } CnAstFinallyStmt;
 
-// 模块声明语句
-typedef struct CnAstModuleDecl {
-    const char *name;             // 模块名称
-    size_t name_length;           // 模块名称长度
-    struct CnAstStmt **stmts;     // 模块内的语句列表（变量等）
-    size_t stmt_count;            // 语句数量
-    struct CnAstFunctionDecl **functions; // 模块内的函数声明列表
-    size_t function_count;        // 函数数量
-} CnAstModuleDecl;
-
 // ============================================================================
 // Python 风格模块系统 AST 节点定义（阶段11）
 // ============================================================================
@@ -470,8 +459,6 @@ typedef struct CnAstProgram {
     struct CnAstStmt **structs;   // 结构体声明列表
     size_t enum_count;            // 枚举数量
     struct CnAstStmt **enums;     // 枚举声明列表
-    size_t module_count;          // 模块数量
-    struct CnAstStmt **modules;   // 模块声明列表
     size_t import_count;          // 导入语句数量
     struct CnAstStmt **imports;   // 导入语句列表
     size_t global_var_count;      // 全局变量数量
@@ -691,7 +678,6 @@ typedef struct CnAstStmt {
         CnAstSwitchStmt switch_stmt; // switch 选择语句
         CnAstStructDecl struct_decl; // 结构体声明
         CnAstEnumDecl enum_decl;     // 枚举声明
-        CnAstModuleDecl module_decl; // 模块声明
         CnAstImportStmt import_stmt; // 导入语句
         // OOP相关语句类型（阶段11 - 面向对象编程支持）
         struct CnAstClassDecl *class_decl;         // 类声明

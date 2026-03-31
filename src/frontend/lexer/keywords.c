@@ -27,10 +27,9 @@ static const CnKeywordEntry g_keywords[] = {
     {"结构体", CN_TOKEN_KEYWORD_STRUCT, "类型关键字"},
     {"枚举", CN_TOKEN_KEYWORD_ENUM, "类型关键字"},
 
-    // 声明关键字 (8个)
+    // 声明关键字 (7个)
     {"函数", CN_TOKEN_KEYWORD_FN, "声明关键字"},
     {"变量", CN_TOKEN_KEYWORD_VAR, "声明关键字"},
-    {"模块", CN_TOKEN_KEYWORD_MODULE, "声明关键字"},
     {"导入", CN_TOKEN_KEYWORD_IMPORT, "声明关键字"},
     {"从", CN_TOKEN_KEYWORD_FROM, "声明关键字"},  // 阶段11: 从...导入 语法
     {"公开", CN_TOKEN_KEYWORD_PUBLIC, "声明关键字"},

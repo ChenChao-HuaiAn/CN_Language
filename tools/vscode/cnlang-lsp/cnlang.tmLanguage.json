@@ -89,7 +89,7 @@
         },
         {
           "name": "keyword.other.cn",
-          "match": "\\b(函数|变量|模块|导入|公开|私有)\\b"
+          "match": "\\b(函数|变量|导入|公开|私有)\\b"
         },
         {
           "name": "keyword.reserved.cn",

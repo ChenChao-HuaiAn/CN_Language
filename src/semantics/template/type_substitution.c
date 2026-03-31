@@ -548,8 +548,7 @@ bool cn_type_substitute_stmt(CnAstStmt *stmt, const CnTypeMap *type_map) {
         case CN_AST_STMT_ENUM_DECL:
             return true;
             
-        // 模块和导入语句不需要类型替换
-        case CN_AST_STMT_MODULE_DECL:
+        // 导入语句不需要类型替换
         case CN_AST_STMT_IMPORT:
             return true;
             

@@ -914,23 +914,6 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         }
     }
     
-    // 在 main 函数中调用模块初始化函数
-    if (is_main && ctx->module_init_infos && ctx->module_init_count > 0) {
-        typedef struct {
-            CnAstModuleDecl *module_decl;
-            bool has_complex_init;
-        } ModuleInitInfo;
-        
-        ModuleInitInfo *infos = (ModuleInitInfo *)ctx->module_init_infos;
-        for (size_t i = 0; i < ctx->module_init_count; i++) {
-            if (infos[i].has_complex_init && infos[i].module_decl) {
-                fprintf(ctx->output_file, "  __cn_init_module_%.*s();\n",
-                        (int)infos[i].module_decl->name_length, 
-                        infos[i].module_decl->name);
-            }
-        }
-    }
-
     // 声明虚拟寄存器：根据IR指令中的类型信息收集寄存器类型
     if (func->next_reg_id > 0) {
         /* 首先扫描所有指令以找出实际使用的最大寄存器ID */
@@ -1325,17 +1308,6 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
             collect_local_structs_from_function(program->functions[i], &local_struct_infos, &local_struct_count, &local_struct_capacity);
         }
         
-        // 收集模块内函数中的局部结构体
-        for (size_t i = 0; i < program->module_count; i++) {
-            CnAstStmt *module_stmt = program->modules[i];
-            if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
-                CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
-                for (size_t j = 0; j < module_decl->function_count; j++) {
-                    collect_local_structs_from_function(module_decl->functions[j], &local_struct_infos, &local_struct_count, &local_struct_capacity);
-                }
-            }
-        }
-        
         // 输出局部结构体定义（提升到全局，但使用特殊命名）
         if (local_struct_count > 0) {
             fprintf(file, "// CN Language Local Struct Definitions (hoisted for C compatibility)\n");
@@ -1383,103 +1355,6 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         }
     }
     
-    // 生成模块变量定义（如果提供了 AST）
-    // 同时收集需要复杂初始化的模块
-    typedef struct {
-        CnAstModuleDecl *module_decl;
-        bool has_complex_init;
-    } ModuleInitInfo;
-    
-    ModuleInitInfo *module_init_infos = NULL;
-    size_t module_init_count = 0;
-    
-    if (program && program->module_count > 0) {
-        fprintf(file, "// CN Language Module Variables\n");
-        module_init_infos = calloc(program->module_count, sizeof(ModuleInitInfo));
-        
-        for (size_t i = 0; i < program->module_count; i++) {
-            CnAstStmt *module_stmt = program->modules[i];
-            if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
-                CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
-                bool has_complex = false;
-                
-                // 遍历模块中的语句，生成变量声明
-                for (size_t j = 0; j < module_decl->stmt_count; j++) {
-                    CnAstStmt *stmt = module_decl->stmts[j];
-                    if (stmt && stmt->kind == CN_AST_STMT_VAR_DECL) {
-                        CnAstVarDecl *var_decl = &stmt->as.var_decl;
-                        
-                        // 生成带模块前缀的变量名
-                        fprintf(file, "%s cn_module_%.*s__%.*s",
-                                get_c_type_string(var_decl->declared_type ? var_decl->declared_type : 
-                                                  (var_decl->initializer ? var_decl->initializer->type : NULL)),
-                                (int)module_decl->name_length, module_decl->name,
-                                (int)var_decl->name_length, var_decl->name);
-                        
-                        // 如果有初始化表达式，生成初始化值
-                        if (var_decl->initializer) {
-                            // 检查是否是字面量初始化
-                            bool is_literal = false;
-                            
-                            if (var_decl->initializer->kind == CN_AST_EXPR_INTEGER_LITERAL) {
-                                fprintf(file, " = %lld", var_decl->initializer->as.integer_literal.value);
-                                is_literal = true;
-                            } else if (var_decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL) {
-                                fprintf(file, " = %f", var_decl->initializer->as.float_literal.value);
-                                is_literal = true;
-                            } else if (var_decl->initializer->kind == CN_AST_EXPR_STRING_LITERAL) {
-                                // 字符串字面量：需要处理转义字符
-                                fprintf(file, " = \"");
-                                for (const char *p = var_decl->initializer->as.string_literal.value; *p; p++) {
-                                    switch (*p) {
-                                        case '\\': fprintf(file, "\\\\"); break;
-                                        case '\"': fprintf(file, "\\\""); break;
-                                        case '\n': fprintf(file, "\\n"); break;
-                                        case '\r': fprintf(file, "\\r"); break;
-                                        case '\t': fprintf(file, "\\t"); break;
-                                        default: fprintf(file, "%c", *p); break;
-                                    }
-                                }
-                                fprintf(file, "\"");
-                                is_literal = true;
-                            } else if (var_decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
-                                fprintf(file, " = %s", var_decl->initializer->as.bool_literal.value ? "true" : "false");
-                                is_literal = true;
-                            } else {
-                                // 复杂表达式：先用默认值0，稍后在初始化函数中赋值
-                                fprintf(file, " = 0");
-                                has_complex = true;
-                            }
-                        }
-                        
-                        fprintf(file, ";\n");
-                    }
-                }
-                fprintf(file, "\n");
-                
-                // 记录模块信息
-                if (module_init_infos) {
-                    module_init_infos[module_init_count].module_decl = module_decl;
-                    module_init_infos[module_init_count].has_complex_init = has_complex;
-                    module_init_count++;
-                }
-            }
-        }
-    }
-    
-    // 生成模块初始化函数（如果需要）
-    if (module_init_infos && module_init_count > 0) {
-        for (size_t i = 0; i < module_init_count; i++) {
-            if (module_init_infos[i].has_complex_init) {
-                CnAstModuleDecl *module_decl = module_init_infos[i].module_decl;
-                fprintf(file, "void __cn_init_module_%.*s();", 
-                        (int)module_decl->name_length, module_decl->name);
-                fprintf(file, "\n");
-            }
-        }
-        fprintf(file, "\n");
-    }
-    
     // 生成全局变量声明
     fprintf(file, "// Global Variables\n");
     CnIrGlobalVar *global = module->first_global;
@@ -1517,62 +1392,10 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     }
     fprintf(file, "\n");
 
-    // 生成模块初始化函数实现
-    if (module_init_infos && module_init_count > 0) {
-        for (size_t i = 0; i < module_init_count; i++) {
-            if (module_init_infos[i].has_complex_init) {
-                CnAstModuleDecl *module_decl = module_init_infos[i].module_decl;
-                
-                fprintf(file, "void __cn_init_module_%.*s() {\n",
-                        (int)module_decl->name_length, module_decl->name);
-                
-                // 遍历模块变量，生成复杂初始化代码
-                for (size_t j = 0; j < module_decl->stmt_count; j++) {
-                    CnAstStmt *stmt = module_decl->stmts[j];
-                    if (stmt && stmt->kind == CN_AST_STMT_VAR_DECL) {
-                        CnAstVarDecl *var_decl = &stmt->as.var_decl;
-                        
-                        if (var_decl->initializer) {
-                            // 检查是否是非字面量表达式
-                            bool is_complex = true;
-                            if (var_decl->initializer->kind == CN_AST_EXPR_INTEGER_LITERAL ||
-                                var_decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL ||
-                                var_decl->initializer->kind == CN_AST_EXPR_STRING_LITERAL ||
-                                var_decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
-                                is_complex = false;
-                            }
-                            
-                            if (is_complex) {
-                                // 生成赋值语句
-                                fprintf(file, "  cn_module_%.*s__%.*s = ",
-                                        (int)module_decl->name_length, module_decl->name,
-                                        (int)var_decl->name_length, var_decl->name);
-                                
-                                // 生成表达式代码（简化版：只支持二元运算）
-                                cn_cgen_expr_simple(&ctx, var_decl->initializer);
-                                fprintf(file, ";\n");
-                            }
-                        }
-                    }
-                }
-                
-                fprintf(file, "}\n\n");
-            }
-        }
-    }
-
     func = module->first_func;
-    while (func) { 
-        // 传递模块初始化信息到函数生成
-        ctx.module_init_infos = module_init_infos;
-        ctx.module_init_count = module_init_count;
-        cn_cgen_function(&ctx, func); 
-        func = func->next; 
-    }
-    
-    // 释放模块初始化信息
-    if (module_init_infos) {
-        free(module_init_infos);
+    while (func) {
+        cn_cgen_function(&ctx, func);
+        func = func->next;
     }
     
     // 清理全局查找表

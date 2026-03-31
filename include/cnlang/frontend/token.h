@@ -35,7 +35,6 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_FALSE,    // 假
     CN_TOKEN_KEYWORD_NULL,     // 无
     CN_TOKEN_KEYWORD_VOID,     // 空类型
-    CN_TOKEN_KEYWORD_MODULE,   // 模块
     CN_TOKEN_KEYWORD_IMPORT,   // 导入
     CN_TOKEN_KEYWORD_FROM,     // 从（用于 从...导入 语法）
     // 预留关键字（仅占位，未实现功能）

@@ -449,35 +449,6 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         }
     }
 
-    // 注册模块声明到全局作用域
-    for (i = 0; i < program->module_count; ++i) {
-        CnAstStmt *module_stmt = program->modules[i];
-        if (!module_stmt || module_stmt->kind != CN_AST_STMT_MODULE_DECL) {
-            continue;
-        }
-
-        CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
-        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
-                                   module_decl->name,
-                                   module_decl->name_length,
-                                   CN_SEM_SYMBOL_MODULE);
-        if (sym) {
-            // 为模块创建一个新的作用域
-            CnSemScope *module_scope = cn_sem_scope_new(CN_SEM_SCOPE_MODULE, global_scope);
-            if (module_scope) {
-                sym->as.module_scope = module_scope;
-                // 构建模块内的符号
-                cn_sem_build_module_scope(global_scope, module_stmt, diagnostics);
-            }
-            // 模块符号本身不需要类型
-            sym->type = cn_type_new_primitive(CN_TYPE_VOID);
-        } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, module_decl->name);
-        }
-    }
-    
     // 处理导入语句：将被导入模块的符号添加到全局作用域
     for (i = 0; i < program->import_count; ++i) {
         CnAstStmt *import_stmt = program->imports[i];
@@ -995,9 +966,6 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
         }
         break;
     }
-    case CN_AST_STMT_MODULE_DECL:
-        // 模块声明已在全局作用域构建时处理，这里不需要额外操作
-        break;
     case CN_AST_STMT_IMPORT:
         // 导入语句在后续的名称解析阶段处理
         break;
@@ -1042,115 +1010,6 @@ static void cn_sem_build_for_stmt(CnSemScope *scope, CnAstForStmt *for_stmt, CnD
     cn_sem_build_expr(for_scope, for_stmt->condition, diagnostics);
     cn_sem_build_expr(for_scope, for_stmt->update, diagnostics);
     cn_sem_build_block_scope(for_scope, for_stmt->body, diagnostics);
-}
-
-// 构建模块作用域
-static void cn_sem_build_module_scope(CnSemScope *parent_scope,
-                                      CnAstStmt *module_stmt,
-                                      CnDiagnostics *diagnostics)
-{
-    if (!parent_scope || !module_stmt || module_stmt->kind != CN_AST_STMT_MODULE_DECL) {
-        return;
-    }
-
-    CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
-    
-    // 获取模块符号
-    CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(parent_scope,
-                                                          module_decl->name,
-                                                          module_decl->name_length);
-    if (!module_sym || module_sym->kind != CN_SEM_SYMBOL_MODULE) {
-        return;
-    }
-
-    CnSemScope *module_scope = module_sym->as.module_scope;
-    if (!module_scope) {
-        return;
-    }
-
-    // 首先注册模块变量，然后注册模块函数，最后构建函数作用域
-    // 这确保在构建函数作用域时，模块内的所有成员已经可见
-
-    // 步骤1：注册模块变量
-    for (size_t i = 0; i < module_decl->stmt_count; ++i) {
-        CnAstStmt *stmt = module_decl->stmts[i];
-        if (!stmt || stmt->kind != CN_AST_STMT_VAR_DECL) {
-            continue;
-        }
-
-        CnAstVarDecl *var_decl = &stmt->as.var_decl;
-        CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
-                                   var_decl->name,
-                                   var_decl->name_length,
-                                   CN_SEM_SYMBOL_VARIABLE);
-        if (sym) {
-            sym->type = var_decl->declared_type;
-            sym->is_const = var_decl->is_const;
-            // 设置可见性（模块成员）
-            if (var_decl->visibility == CN_VISIBILITY_PUBLIC) {
-                sym->is_public = 1;  // 显式标记为公开
-            } else {
-                // CN_VISIBILITY_PRIVATE 和 CN_VISIBILITY_DEFAULT: 默认为公开（临时策略，方便测试）
-                // TODO: 在实现“公开”/“私有”关键字后，需要改为正确的可见性处理
-                sym->is_public = 1;
-            }
-        } else {
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, var_decl->name);
-        }
-    }
-
-    // 步骤2：注册模块函数
-    for (size_t i = 0; i < module_decl->function_count; ++i) {
-        CnAstFunctionDecl *function_decl = module_decl->functions[i];
-        if (!function_decl) {
-            continue;
-        }
-
-        CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
-                                   function_decl->name,
-                                   function_decl->name_length,
-                                   CN_SEM_SYMBOL_FUNCTION);
-        if (sym) {
-            CnType **param_types = NULL;
-            if (function_decl->parameter_count > 0) {
-                param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
-                for (size_t j = 0; j < function_decl->parameter_count; j++) {
-                    param_types[j] = function_decl->parameters[j].declared_type;
-                }
-            }
-            sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),
-                                            param_types,
-                                            function_decl->parameter_count);
-            // 注意：由于 CnAstFunctionDecl 没有 visibility 字段，我们默认模块函数为公开
-            // 这是因为 parser 在解析时使用了 current_visibility，但没有将其保存到 FunctionDecl 中
-            // 在实际使用中，如果需要私有函数，应该在 parser 中添加 visibility 字段
-            sym->is_public = 1;
-        } else {
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, function_decl->name);
-        }
-    }
-
-    // 步骤3：构建函数作用域
-    for (size_t i = 0; i < module_decl->function_count; ++i) {
-        CnAstFunctionDecl *function_decl = module_decl->functions[i];
-        if (!function_decl) {
-            continue;
-        }
-        cn_sem_build_function_scope(module_scope, function_decl, diagnostics);
-    }
-
-    // 步骤4：处理模块变量的初始化表达式
-    for (size_t i = 0; i < module_decl->stmt_count; ++i) {
-        CnAstStmt *stmt = module_decl->stmts[i];
-        if (!stmt || stmt->kind != CN_AST_STMT_VAR_DECL) {
-            continue;
-        }
-
-        CnAstVarDecl *var_decl = &stmt->as.var_decl;
-        cn_sem_build_expr(module_scope, var_decl->initializer, diagnostics);
-    }
 }
 
 static void cn_sem_build_expr(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics *diagnostics)
@@ -1633,28 +1492,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
         }
     }
 
-    // 处理内联模块声明
-    for (i = 0; i < program->module_count; ++i) {
-        CnAstStmt *module_stmt = program->modules[i];
-        if (!module_stmt || module_stmt->kind != CN_AST_STMT_MODULE_DECL) {
-            continue;
-        }
-
-        CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
-        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
-                                   module_decl->name,
-                                   module_decl->name_length,
-                                   CN_SEM_SYMBOL_MODULE);
-        if (sym) {
-            CnSemScope *module_scope = cn_sem_scope_new(CN_SEM_SCOPE_MODULE, global_scope);
-            if (module_scope) {
-                sym->as.module_scope = module_scope;
-                cn_sem_build_module_scope(global_scope, module_stmt, diagnostics);
-            }
-            sym->type = cn_type_new_primitive(CN_TYPE_VOID);
-        }
-    }
-    
     // 处理导入语句：支持 Python 风格跨文件导入
     for (i = 0; i < program->import_count; ++i) {
         CnAstStmt *import_stmt = program->imports[i];

@@ -28,7 +28,6 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser);
 static CnAstFunctionDecl *parse_interrupt_handler(CnParser *parser);
 static CnAstStmt *parse_struct_decl(CnParser *parser);
 static CnAstStmt *parse_enum_decl(CnParser *parser);
-static CnAstStmt *parse_module_decl(CnParser *parser);
 static CnAstStmt *parse_import_stmt(CnParser *parser);
 static CnAstStmt *parse_from_import_stmt(CnParser *parser);  // 从...导入 语法
 static CnAstModulePath *parse_module_path(CnParser *parser);  // 解析点分模块路径
@@ -100,7 +99,6 @@ static CnAstProgram *make_program(void);
 static void program_add_function(CnAstProgram *program, CnAstFunctionDecl *function_decl);
 static void program_add_struct(CnAstProgram *program, CnAstStmt *struct_decl);
 static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl);
-static void program_add_module(CnAstProgram *program, CnAstStmt *module_decl);
 static void program_add_import(CnAstProgram *program, CnAstStmt *import_stmt);
 static void program_add_global_var(CnAstProgram *program, CnAstStmt *var_decl);
 /* 类和接口添加函数（阶段11 - 面向对象编程支持） */
@@ -340,13 +338,6 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 break;
             }
             program_add_import(program, import_stmt);
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_MODULE) {
-            // 解析模块声明
-            CnAstStmt *module_decl = parse_module_decl(parser);
-            if (!module_decl) {
-                break;
-            }
-            program_add_module(program, module_decl);
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
             // 解析结构体声明或结构体类型的全局变量声明
             CnAstStmt *stmt = parse_struct_decl(parser);
@@ -3359,8 +3350,6 @@ static CnAstProgram *make_program(void)
     program->structs = NULL;
     program->enum_count = 0;
     program->enums = NULL;
-    program->module_count = 0;
-    program->modules = NULL;
     program->import_count = 0;
     program->imports = NULL;
     program->global_var_count = 0;
@@ -3441,28 +3430,6 @@ static void program_add_enum(CnAstProgram *program, CnAstStmt *enum_decl)
     program->enums = new_array;
     program->enums[program->enum_count] = enum_decl;
     program->enum_count = new_count;
-}
-
-// 添加模块声明到program
-static void program_add_module(CnAstProgram *program, CnAstStmt *module_decl)
-{
-    size_t new_count;
-    CnAstStmt **new_array;
-
-    if (!program || !module_decl) {
-        return;
-    }
-
-    new_count = program->module_count + 1;
-    new_array = (CnAstStmt **)realloc(program->modules,
-                                      new_count * sizeof(CnAstStmt *));
-    if (!new_array) {
-        return;
-    }
-
-    program->modules = new_array;
-    program->modules[program->module_count] = module_decl;
-    program->module_count = new_count;
 }
 
 // 添加类声明到program（阶段11 - 面向对象编程支持）
@@ -4253,218 +4220,6 @@ static CnAstExpr *make_inline_asm(CnAstExpr *asm_code, CnAstExpr **outputs, size
     expr->as.inline_asm.input_count = input_count;
     expr->as.inline_asm.clobbers = clobbers;
     return expr;
-}
-
-// 解析模块声明
-static CnAstStmt *parse_module_decl(CnParser *parser)
-{
-    if (!parser_expect(parser, CN_TOKEN_KEYWORD_MODULE)) {
-        return NULL;
-    }
-
-    // 读取模块名称
-    if (parser->current.kind != CN_TOKEN_IDENT) {
-        parser->error_count++;
-        if (parser->diagnostics) {
-            cn_support_diagnostics_report(parser->diagnostics,
-                                          CN_DIAG_SEVERITY_ERROR,
-                                          CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
-                                          parser->lexer ? parser->lexer->filename : NULL,
-                                          parser->current.line,
-                                          parser->current.column,
-                                          "语法错误：模块名称无效");
-        }
-        return NULL;
-    }
-
-    const char *module_name = parser->current.lexeme_begin;
-    size_t module_name_length = parser->current.lexeme_length;
-    parser_advance(parser);
-
-    // 期望 { 开始模块定义
-    if (!parser_expect(parser, CN_TOKEN_LBRACE)) {
-        return NULL;
-    }
-
-    // 解析模块内的语句列表（变量等）
-    size_t stmt_capacity = 4;
-    size_t stmt_count = 0;
-    CnAstStmt **stmts = (CnAstStmt **)malloc(sizeof(CnAstStmt *) * stmt_capacity);
-    if (!stmts) {
-        return NULL;
-    }
-
-    // 解析模块内的函数声明列表
-    size_t func_capacity = 4;
-    size_t func_count = 0;
-    CnAstFunctionDecl **functions = (CnAstFunctionDecl **)malloc(sizeof(CnAstFunctionDecl *) * func_capacity);
-    if (!functions) {
-        free(stmts);
-        return NULL;
-    }
-
-    // 当前可见性状态（块级），默认为私有
-    CnVisibility current_visibility = CN_VISIBILITY_PRIVATE;
-
-    while (parser->current.kind != CN_TOKEN_RBRACE && parser->current.kind != CN_TOKEN_EOF) {
-        CnAstStmt *stmt = NULL;
-        
-        // 检查是否遇到可见性修饰符（块级切换）
-        if (parser->current.kind == CN_TOKEN_KEYWORD_PUBLIC) {
-            current_visibility = CN_VISIBILITY_PUBLIC;  // 切换到公开块
-            parser_advance(parser);
-            // 期望冒号
-            if (!parser_expect(parser, CN_TOKEN_COLON)) {
-                parser->error_count++;
-                if (parser->diagnostics) {
-                    cn_support_diagnostics_report(parser->diagnostics,
-                                                  CN_DIAG_SEVERITY_ERROR,
-                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
-                                                  parser->lexer ? parser->lexer->filename : NULL,
-                                                  parser->current.line,
-                                                  parser->current.column,
-                                                  "语法错误：期望 ':' 在 '公开' 之后");
-                }
-                continue;
-            }
-            continue;  // 继续处理下一个成员
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_PRIVATE) {
-            current_visibility = CN_VISIBILITY_PRIVATE;  // 切换到私有块
-            parser_advance(parser);
-            // 期望冒号
-            if (!parser_expect(parser, CN_TOKEN_COLON)) {
-                parser->error_count++;
-                if (parser->diagnostics) {
-                    cn_support_diagnostics_report(parser->diagnostics,
-                                                  CN_DIAG_SEVERITY_ERROR,
-                                                  CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
-                                                  parser->lexer ? parser->lexer->filename : NULL,
-                                                  parser->current.line,
-                                                  parser->current.column,
-                                                  "语法错误：期望 ':' 在 '私有' 之后");
-                }
-                continue;
-            }
-            continue;  // 继续处理下一个成员
-        }
-        
-        // 模块内可以包含函数、变量声明等
-        if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
-            // 解析函数声明
-            CnAstFunctionDecl *fn_decl = parse_function_decl(parser);
-            if (!fn_decl) {
-                // 清理已分配的资源
-                for (size_t i = 0; i < func_count; i++) {
-                    free(functions[i]);
-                }
-                free(functions);
-                for (size_t i = 0; i < stmt_count; i++) {
-                    free(stmts[i]);
-                }
-                free(stmts);
-                return NULL;
-            }
-            
-            // 扩容函数数组
-            if (func_count >= func_capacity) {
-                func_capacity *= 2;
-                CnAstFunctionDecl **new_functions = (CnAstFunctionDecl **)realloc(
-                    functions, sizeof(CnAstFunctionDecl *) * func_capacity);
-                if (!new_functions) {
-                    free(fn_decl);
-                    for (size_t i = 0; i < func_count; i++) {
-                        free(functions[i]);
-                    }
-                    free(functions);
-                    for (size_t i = 0; i < stmt_count; i++) {
-                        free(stmts[i]);
-                    }
-                    free(stmts);
-                    return NULL;
-                }
-                functions = new_functions;
-            }
-            
-            functions[func_count] = fn_decl;
-            func_count++;
-            continue;
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR || 
-                   parser->current.kind == CN_TOKEN_KEYWORD_INT ||
-                   parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
-                   parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
-            // 解析变量声明
-            stmt = parse_statement(parser);
-            if (!stmt) {
-                for (size_t i = 0; i < func_count; i++) {
-                    free(functions[i]);
-                }
-                free(functions);
-                free(stmts);
-                return NULL;
-            }
-            // 将当前可见性状态应用到变量声明
-            if (stmt->kind == CN_AST_STMT_VAR_DECL) {
-                stmt->as.var_decl.visibility = current_visibility;
-            }
-        } else {
-            // 不支持的语句类型
-            parser->error_count++;
-            if (parser->diagnostics) {
-                cn_support_diagnostics_report(parser->diagnostics,
-                                              CN_DIAG_SEVERITY_ERROR,
-                                              CN_DIAG_CODE_PARSE_EXPECTED_TOKEN,
-                                              parser->lexer ? parser->lexer->filename : NULL,
-                                              parser->current.line,
-                                              parser->current.column,
-                                              "语法错误：模块内不支持此类型的声明");
-            }
-            parser_advance(parser); // 跳过错误 token
-            continue;
-        }
-
-        // 扩容语句数组
-        if (stmt_count >= stmt_capacity) {
-            stmt_capacity *= 2;
-            CnAstStmt **new_stmts = (CnAstStmt **)realloc(
-                stmts, sizeof(CnAstStmt *) * stmt_capacity);
-            if (!new_stmts) {
-                free(stmt);
-                for (size_t i = 0; i < func_count; i++) {
-                    free(functions[i]);
-                }
-                free(functions);
-                free(stmts);
-                return NULL;
-            }
-            stmts = new_stmts;
-        }
-
-        stmts[stmt_count] = stmt;
-        stmt_count++;
-    }
-
-    // 期望 } 结束模块定义
-    parser_expect(parser, CN_TOKEN_RBRACE);
-
-    // 创建模块声明语句
-    CnAstStmt *stmt = (CnAstStmt *)malloc(sizeof(CnAstStmt));
-    if (!stmt) {
-        for (size_t i = 0; i < func_count; i++) {
-            free(functions[i]);
-        }
-        free(functions);
-        free(stmts);
-        return NULL;
-    }
-
-    stmt->kind = CN_AST_STMT_MODULE_DECL;
-    stmt->as.module_decl.name = module_name;
-    stmt->as.module_decl.name_length = module_name_length;
-    stmt->as.module_decl.stmts = stmts;
-    stmt->as.module_decl.stmt_count = stmt_count;
-    stmt->as.module_decl.functions = functions;
-    stmt->as.module_decl.function_count = func_count;
-    return stmt;
 }
 
 // 解析导入语句

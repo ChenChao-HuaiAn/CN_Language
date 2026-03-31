@@ -1435,55 +1435,6 @@ CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnSemScope *global_scope, C
         cn_ir_gen_function(ctx, program->functions[i], NULL);
     }
 
-    // 生成模块内函数的 IR
-    for (size_t i = 0; i < program->module_count; i++) {
-        CnAstStmt *module_stmt = program->modules[i];
-        if (module_stmt && module_stmt->kind == CN_AST_STMT_MODULE_DECL) {
-            CnAstModuleDecl *module_decl = &module_stmt->as.module_decl;
-            
-            // 查找模块作用域
-            CnSemSymbol *module_sym = cn_sem_scope_lookup_shallow(global_scope,
-                                                                  module_decl->name,
-                                                                  module_decl->name_length);
-            CnSemScope *module_scope = NULL;
-            if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE) {
-                module_scope = module_sym->as.module_scope;
-            }
-            
-            // 为模块内的每个函数生成 IR
-            for (size_t j = 0; j < module_decl->function_count; j++) {
-                CnAstFunctionDecl *func = module_decl->functions[j];
-                if (func) {
-                    // 生成带模块前缀的函数名：cn_module_模块名__函数名
-                    char *prefixed_name = (char *)malloc(14 + module_decl->name_length + 2 + func->name_length + 1);
-                    if (prefixed_name) {
-                        snprintf(prefixed_name, 14 + module_decl->name_length + 2 + func->name_length + 1,
-                                "cn_module_%.*s__%.*s",
-                                (int)module_decl->name_length, module_decl->name,
-                                (int)func->name_length, func->name);
-                        
-                        // 保存原函数名，生成IR时使用带前缀的名称
-                        const char *original_name = func->name;
-                        size_t original_length = func->name_length;
-                        
-                        // 临时替换函数名
-                        func->name = prefixed_name;
-                        func->name_length = strlen(prefixed_name);
-                        
-                        // 生成函数 IR，使用模块作用域作为父作用域
-                        cn_ir_gen_function(ctx, func, module_scope);
-                        
-                        // 恢复原函数名
-                        func->name = original_name;
-                        func->name_length = original_length;
-                        
-                        free(prefixed_name);
-                    }
-                }
-            }
-        }
-    }
-
     CnIrModule *module = ctx->module;
     ctx->module = NULL;
     cn_ir_gen_context_free(ctx);

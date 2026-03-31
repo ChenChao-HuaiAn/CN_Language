@@ -59,8 +59,6 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_NULL";
     case CN_TOKEN_KEYWORD_VOID:
         return "KEYWORD_VOID";
-    case CN_TOKEN_KEYWORD_MODULE:
-        return "KEYWORD_MODULE";
     case CN_TOKEN_KEYWORD_IMPORT:
         return "KEYWORD_IMPORT";
     case CN_TOKEN_KEYWORD_FROM:
