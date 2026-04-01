@@ -845,7 +845,11 @@ void cn_cgen_block(CnCCodeGenContext *ctx, CnIrBasicBlock *block) {
 void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     if (!ctx || !func) return;
     ctx->current_func = func;
+    
+    // 生成函数名：直接使用原始函数名（不再使用模块前缀编码）
+    // 模块系统通过作用域管理避免命名冲突
     const char *c_func_name = get_c_function_name(func->name);
+    
     bool is_main = strcmp(c_func_name, "main") == 0;
     
     // 中断处理函数：生成注释和属性
@@ -1450,6 +1454,8 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
 // 通配符导入回调上下文结构
 typedef struct {
     FILE *file;
+    const char *module_name;      // 模块名（用于生成前缀）
+    size_t module_name_len;       // 模块名长度
 } WildcardImportContext;
 
 // 通配符导入回调函数（遍历模块作用域符号时调用）
@@ -1457,6 +1463,26 @@ static void wildcard_import_callback(CnSemSymbol *sym, void *user_data) {
     WildcardImportContext *ctx = (WildcardImportContext *)user_data;
     // 只导出公开的函数符号
     if (sym->is_public && sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
+        // 直接使用原始函数名生成前向声明（不再使用编码名称）
+        // 模块系统通过作用域管理避免命名冲突
+        cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type);
+    }
+}
+
+// 全量导入回调上下文结构
+typedef struct {
+    FILE *file;
+    const char *module_name;
+    size_t module_name_len;
+} FullImportContext;
+
+// 全量导入回调函数（遍历模块作用域符号时调用）
+static void full_import_callback(CnSemSymbol *sym, void *user_data) {
+    FullImportContext *ctx = (FullImportContext *)user_data;
+    // 只导出公开的函数符号
+    if (sym->is_public && sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
+        // 直接使用原始函数名生成前向声明（不再使用编码名称）
+        // 模块系统通过作用域管理避免命名冲突
         cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type);
     }
 }
@@ -1528,26 +1554,42 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
                 const char *symbol_name = member->name;
                 size_t symbol_name_len = member->name_length;
                 
-                // 从全局作用域查找符号
+                // 直接使用原始函数名生成前向声明（不再使用编码名称）
+                // 从全局作用域查找符号获取类型信息
                 CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, symbol_name, symbol_name_len);
                 if (symbol && symbol->kind == CN_SEM_SYMBOL_FUNCTION && symbol->type) {
-                    // 生成函数前向声明
                     cn_cgen_function_forward_declaration(file, symbol_name, symbol_name_len, symbol->type);
                 }
             }
         }
         // 处理通配符导入（从 模块 导入 *）
         else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
-            // 通配符导入的符号已经在语义分析阶段被插入到全局作用域
-            // 需要遍历全局作用域，为所有函数符号生成前向声明
-            // 使用 cn_sem_scope_foreach_symbol 遍历全局作用域中的所有符号
-            WildcardImportContext ctx = { file };
-            cn_sem_scope_foreach_symbol(global_scope, wildcard_import_callback, &ctx);
+            // 通配符导入：需要为模块中的公开函数生成带模块前缀的前向声明
+            const char *module_name = import->module_name;
+            size_t module_name_len = import->module_name_length;
+            
+            // 从全局作用域查找模块符号
+            CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
+            if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && module_sym->as.module_scope) {
+                // 使用回调遍历模块作用域中的所有符号
+                WildcardImportContext ctx = { file, module_name, module_name_len };
+                cn_sem_scope_foreach_symbol(module_sym->as.module_scope, wildcard_import_callback, &ctx);
+            }
         }
         // 处理全量导入（导入 模块）
         else if (import->kind == CN_IMPORT_FULL) {
             // 全量导入：模块名作为前缀访问成员
-            // 不需要生成前向声明，因为访问时使用模块名.成员的方式
+            // 需要为模块中的公开函数生成前向声明，格式：cn_module_模块名__成员名
+            const char *module_name = import->module_name;
+            size_t module_name_len = import->module_name_length;
+            
+            // 从全局作用域查找模块符号
+            CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
+            if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && module_sym->as.module_scope) {
+                // 使用回调遍历模块作用域中的所有符号
+                FullImportContext fctx = { file, module_name, module_name_len };
+                cn_sem_scope_foreach_symbol(module_sym->as.module_scope, full_import_callback, &fctx);
+            }
         }
     }
     
@@ -1560,6 +1602,7 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
 int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *program,
                                          CnModuleLoader *loader,
                                          CnSemScope *global_scope,
+                                         CnModuleId *module_id,
                                          const char *filename) {
     // 首先调用原有的生成函数（不包含导入声明）
     // 然后在适当位置插入导入声明
@@ -1589,6 +1632,7 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     CnCCodeGenContext ctx = {0};
     ctx.output_file = file;
     ctx.module = module;
+    ctx.module_id = module_id;  // 设置模块ID用于生成带前缀的函数名
 
     // 根据编译模式生成不同的头文件
     if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {
@@ -1702,7 +1746,10 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     fprintf(file, "// Forward Declarations\n");
     CnIrFunction *func = module->first_func;
     while (func) {
-        fprintf(file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
+        // 直接使用原始函数名（不再使用编码名称）
+        const char *c_func_name = get_c_function_name(func->name);
+        
+        fprintf(file, "%s %s(", get_c_type_string(func->return_type), c_func_name);
         for (size_t i = 0; i < func->param_count; i++) {
             fprintf(file, "%s", get_c_type_string(func->params[i].type));
             if (i < func->param_count - 1) fprintf(file, ", ");

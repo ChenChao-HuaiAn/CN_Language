@@ -159,6 +159,14 @@ CnSemSymbol *cn_sem_scope_lookup_shallow(CnSemScope *scope,
                                          const char *name,
                                          size_t name_length);
 
+// 遍历作用域符号的回调函数类型
+typedef void (*CnSemScopeSymbolCallback)(CnSemSymbol *symbol, void *user_data);
+
+// 遍历作用域中的所有符号
+void cn_sem_scope_foreach_symbol(CnSemScope *scope,
+                                  CnSemScopeSymbolCallback callback,
+                                  void *user_data);
+
 // 结构体成员查找：在结构体类型中查找成员字段
 CnStructField *cn_type_struct_find_field(CnType *struct_type,
                                          const char *field_name,

@@ -561,54 +561,10 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     free(name);
                     callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
                 } else {
-                    // 检查被调用函数是否来自模块
-                    bool handled = false;
-                    if (ctx->current_scope) {
-                        CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->current_scope,
-                                                                    expr->as.call.callee->as.identifier.name,
-                                                                    expr->as.call.callee->as.identifier.name_length);
-                        
-                        if (func_sym && func_sym->decl_scope && func_sym->decl_scope->kind == CN_SEM_SCOPE_MODULE) {
-                            // 函数来自模块：生成带模块前缀的名称
-                            CnSemScope *global = ctx->current_scope;
-                            while (global && global->parent) {
-                                global = global->parent;
-                            }
-                            
-                            if (global) {
-                                CnSemSymbolNode *node = global->symbols;
-                                while (node) {
-                                    if (node->symbol.kind == CN_SEM_SYMBOL_MODULE && 
-                                        node->symbol.as.module_scope == func_sym->decl_scope) {
-                                        // 找到模块，生成带模块前缀的名称
-                                        // 格式：cn_module_模块名__函数名（cgen会再加 cn_func_ 前缀）
-                                        size_t module_name_len = node->symbol.name_length;
-                                        size_t func_name_len = strlen(name);
-                                        size_t prefix_len = strlen("cn_module_");
-                                        size_t total_len = prefix_len + module_name_len + 2 + func_name_len + 1;
-                                        
-                                        char *qualified_name = malloc(total_len);
-                                        if (qualified_name) {
-                                            snprintf(qualified_name, total_len, "cn_module_%.*s__%s",
-                                                    (int)module_name_len, node->symbol.name, name);
-                                            free(name);
-                                            callee = cn_ir_op_symbol(qualified_name, expr->as.call.callee->type);
-                                            free(qualified_name);
-                                            handled = true;
-                                        }
-                                        break;
-                                    }
-                                    node = node->next;
-                                }
-                            }
-                        }
-                    }
-                    
-                    // 如果没有特殊处理，使用普通名称
-                    if (!handled) {
-                        callee = cn_ir_op_symbol(name, expr->as.call.callee->type);
-                        free(name);
-                    }
+                    // 直接使用原始函数名（不再生成带模块前缀的名称）
+                    // 模块系统通过作用域管理避免命名冲突
+                    callee = cn_ir_op_symbol(name, expr->as.call.callee->type);
+                    free(name);
                 }
             } 
             // 特殊处理：方法风格调用 arr.长度()
@@ -649,24 +605,23 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 const char *method_name = expr->as.call.callee->as.member.member_name;
                 size_t method_name_len = expr->as.call.callee->as.member.member_name_length;
                 
-                // 尝试从对象类型获取类声明（如果对象是类实例）
-                // 注意：目前类型系统中没有直接存储类声明引用，需要通过符号表查找
-                // 这里简化处理：检查对象类型是否为结构体类型（类在C代码生成时映射为结构体）
-                
-                // 生成对象表达式
-                CnIrOperand obj_operand = cn_ir_gen_expr(ctx, object_expr);
-                
-                // 构建方法调用函数名：类名_方法名
-                // 由于编译时需要知道类名，这里使用简化方案：
-                // 对于虚函数调用，生成特殊的IR指令标记
-                
+                // 检查是否为模块成员调用（模块类型为 VOID）
+                // 模块成员调用：直接使用原始函数名（不再生成带模块前缀的名称）
+                if (object_expr->type && object_expr->type->kind == CN_TYPE_VOID) {
+                    // 模块成员函数调用：直接生成对模块函数的调用
+                    // cn_ir_gen_expr 会处理 CN_AST_EXPR_MEMBER_ACCESS 并生成原始函数名
+                    callee = cn_ir_gen_expr(ctx, expr->as.call.callee);
+                }
                 // 检查是否标记为虚函数调用（通过AST节点中的标记）
                 // 如果是虚函数，生成虚函数调用指令
-                if (expr->as.call.callee->as.member.object->type) {
+                else if (expr->as.call.callee->as.member.object->type) {
                     CnType *obj_type = expr->as.call.callee->as.member.object->type;
                     // 检查类型是否为类类型（通过结构体类型模拟）
                     // 在类型系统中，类类型使用 CN_TYPE_STRUCT 表示
                     // 完整实现需要扩展类型系统添加 CN_TYPE_CLASS
+                    
+                    // 生成对象表达式
+                    CnIrOperand obj_operand = cn_ir_gen_expr(ctx, object_expr);
                     
                     // 目前简化处理：生成普通成员函数调用
                     // 格式：类名_方法名(self, args...)
@@ -806,69 +761,18 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             }
             
             // 检查是否为模块成员访问（对象类型为 VOID 表示模块）
-            if (expr->as.member.object->type && 
+            if (expr->as.member.object->type &&
                 expr->as.member.object->type->kind == CN_TYPE_VOID &&
                 expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
-                // 模块成员访问：生成带模块前缀的符号名
-                // 格式：cn_module_模块名__成员名
-                // 注意：如果使用别名访问，需要解析到原模块名
-                
-                const char *actual_module_name = expr->as.member.object->as.identifier.name;
-                size_t actual_module_name_len = expr->as.member.object->as.identifier.name_length;
-                
-                // 查找符号表，判断是否为别名
-                if (ctx->current_scope) {
-                    CnSemSymbol *module_sym = cn_sem_scope_lookup(ctx->current_scope,
-                                                                  actual_module_name,
-                                                                  actual_module_name_len);
-                    
-                    // 如果找到模块符号，且有模块作用域，则查找原模块名
-                    if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && 
-                        module_sym->as.module_scope) {
-                        // 在全局作用域中查找拥有该模块作用域的原始模块名
-                        CnSemScope *global = ctx->current_scope;
-                        while (global && global->parent) {
-                            global = global->parent;
-                        }
-                        
-                        if (global) {
-                            // 符号链表使用头插法，新添加的在前，原模块名在后
-                            // 需要遍历整个链表，找到最后一个匹配的（即最早注册的原模块名）
-                            CnSemSymbolNode *node = global->symbols;
-                            const char *found_name = NULL;
-                            size_t found_name_len = 0;
-                            
-                            while (node) {
-                                if (node->symbol.kind == CN_SEM_SYMBOL_MODULE &&
-                                    node->symbol.as.module_scope == module_sym->as.module_scope) {
-                                    // 记录这个匹配，继续遍历找更早注册的
-                                    found_name = node->symbol.name;
-                                    found_name_len = node->symbol.name_length;
-                                }
-                                node = node->next;
-                            }
-                            
-                            // 使用找到的最后一个（最早注册的原模块名）
-                            if (found_name) {
-                                actual_module_name = found_name;
-                                actual_module_name_len = found_name_len;
-                            }
-                        }
-                    }
-                }
-                
+                // 模块成员访问：直接使用成员名称（不再生成带模块前缀的名称）
+                // 模块系统通过作用域管理避免命名冲突
                 size_t member_name_len = expr->as.member.member_name_length;
-                size_t prefix_len = strlen("cn_module_");
-                size_t total_len = prefix_len + actual_module_name_len + 2 + member_name_len + 1; // +2 for "__", +1 for '\0'
-                
-                char *qualified_name = malloc(total_len);
-                if (qualified_name) {
-                    snprintf(qualified_name, total_len, "cn_module_%.*s__%.*s",
-                            (int)actual_module_name_len, actual_module_name,
+                char *member_name = malloc(member_name_len + 1);
+                if (member_name) {
+                    snprintf(member_name, member_name_len + 1, "%.*s",
                             (int)member_name_len, expr->as.member.member_name);
-                    
-                    CnIrOperand result = cn_ir_op_symbol(qualified_name, expr->type);
-                    free(qualified_name);
+                    CnIrOperand result = cn_ir_op_symbol(member_name, expr->type);
+                    free(member_name);
                     return result;
                 }
                 // 如果分配失败，继续使用默认处理

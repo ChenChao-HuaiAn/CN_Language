@@ -228,17 +228,12 @@ int cn_cgen_module_header(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *u
                 continue;
             }
             
-            // 生成限定名称
-            char qualified_name[512];
-            cn_cgen_qualified_symbol_name(unit->module_id, 
-                                           func->name, 
-                                           strlen(func->name),
-                                           qualified_name, 
-                                           sizeof(qualified_name));
+            // 直接使用原始函数名（不再使用编码名称）
+            // 模块系统通过作用域管理避免命名冲突
             
             // 返回类型
             const char *ret_type = get_c_type_str(func->return_type);
-            fprintf(f, "%s %s(", ret_type, qualified_name);
+            fprintf(f, "%s %s(", ret_type, func->name);
             
             // 参数列表
             if (func->param_count == 0) {
@@ -302,7 +297,8 @@ int cn_cgen_module_impl(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *uni
         .label_counter = 0,
         .temp_var_counter = 0,
         .module_init_infos = ctx,
-        .module_init_count = ctx->unit_count
+        .module_init_count = ctx->unit_count,
+        .module_id = unit->module_id  // 传递模块ID用于生成带前缀的函数名
     };
     
     // 生成模块初始化函数
@@ -313,16 +309,9 @@ int cn_cgen_module_impl(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *uni
     if (global) {
         fprintf(f, "/* 全局变量 */\n");
         while (global) {
-            // 使用限定名称
-            char qualified_name[512];
-            cn_cgen_qualified_symbol_name(unit->module_id,
-                                           global->name,
-                                           strlen(global->name),
-                                           qualified_name,
-                                           sizeof(qualified_name));
-            
+            // 直接使用原始变量名（不再使用编码名称）
             const char *type_str = get_c_type_str(global->type);
-            fprintf(f, "static %s %s;\n", type_str, qualified_name);
+            fprintf(f, "static %s %s;\n", type_str, global->name);
             
             global = global->next;
         }
@@ -370,22 +359,17 @@ void cn_cgen_module_init_func(CnCCodeGenContext *ctx, CnModuleCompileUnit *unit)
         fprintf(f, "    /* 初始化全局变量 */\n");
         CnIrGlobalVar *global = unit->ir_module->first_global;
         while (global) {
-            char qualified_name[512];
-            cn_cgen_qualified_symbol_name(unit->module_id,
-                                           global->name,
-                                           strlen(global->name),
-                                           qualified_name,
-                                           sizeof(qualified_name));
+            // 直接使用原始变量名（不再使用编码名称）
             
             // 根据初始化值类型生成初始化代码
             CnIrOperand *init = &global->initializer;
             switch (init->kind) {
                 case CN_IR_OP_IMM_INT:
-                    fprintf(f, "    %s = %lld;\n", qualified_name, 
+                    fprintf(f, "    %s = %lld;\n", global->name,
                             (long long)init->as.imm_int);
                     break;
                 case CN_IR_OP_IMM_FLOAT:
-                    fprintf(f, "    %s = %f;\n", qualified_name, 
+                    fprintf(f, "    %s = %f;\n", global->name,
                             init->as.imm_float);
                     break;
                 default:

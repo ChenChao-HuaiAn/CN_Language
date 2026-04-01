@@ -7,17 +7,13 @@
 // Global Variables
 
 // Forward Declarations - 从导入模块
-long long 测试函数(void);
 
 // Forward Declarations
-long long 使用测试();
+long long 获取版本();
 
-long long 使用测试() {
-  long long r0, r1;
+long long 获取版本() {
 
   entry:
-  r0 = 测试函数();
-  r1 = r0 << 1;
-  return r1;
+  return 1;
 }
 

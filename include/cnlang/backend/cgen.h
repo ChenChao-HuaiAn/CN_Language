@@ -26,6 +26,7 @@ typedef struct CnCCodeGenContext {
     int temp_var_counter;       ///< 用于生成唯一临时变量名称的计数器
     void *module_init_infos;    ///< 模块初始化信息（内部使用）
     size_t module_init_count;   ///< 模块初始化信息数量
+    struct CnModuleId *module_id; ///< 当前模块ID（用于生成带模块前缀的函数名）
 } CnCCodeGenContext;
 
 /**
@@ -54,12 +55,14 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
  * @param program AST 程序（包含结构体定义和导入语句）
  * @param loader 模块加载器（可为 NULL）
  * @param global_scope 全局作用域（用于获取导入符号的类型信息）
+ * @param module_id 当前模块ID（用于生成带模块前缀的函数名，可为 NULL）
  * @param filename 输出的 C 文件名
  * @return 0 成功，非 0 失败
  */
 int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *program,
                                          struct CnModuleLoader *loader,
                                          struct CnSemScope *global_scope,
+                                         struct CnModuleId *module_id,
                                          const char *filename);
 
 /**

@@ -764,8 +764,28 @@ int main(int argc, char **argv)
 
         /* 代码生成 */
         cn_perf_start(&perf_stats, CN_PERF_PHASE_CODEGEN);
+        
+        // 从文件名创建模块ID以支持带模块前缀的函数名
+        CnModuleId *current_module_id = NULL;
+        if (filename) {
+            // 提取文件名（不含路径和扩展名）作为模块名
+            const char *base_name = strrchr(filename, '/');
+            if (!base_name) base_name = strrchr(filename, '\\');
+            if (base_name) base_name++; else base_name = filename;
+            
+            // 去掉扩展名
+            char module_name[256];
+            strncpy(module_name, base_name, sizeof(module_name) - 1);
+            module_name[sizeof(module_name) - 1] = '\0';
+            char *dot = strrchr(module_name, '.');
+            if (dot) *dot = '\0';
+            
+            // 创建模块ID
+            current_module_id = cn_module_id_create(module_name);
+        }
+        
         // 使用带导入支持的代码生成函数
-        if (cn_cgen_module_with_imports_to_file(ir_module, program, module_loader, global_scope, c_filename) != 0) {
+        if (cn_cgen_module_with_imports_to_file(ir_module, program, module_loader, global_scope, current_module_id, c_filename) != 0) {
             cn_perf_end(&perf_stats, CN_PERF_PHASE_CODEGEN);
             fprintf(stderr, "C 代码生成失败\n");
             cn_ir_module_free(ir_module);

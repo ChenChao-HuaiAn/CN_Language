@@ -196,3 +196,18 @@ CnSemSymbol *cn_sem_scope_lookup(CnSemScope *scope,
 
     return NULL;
 }
+
+void cn_sem_scope_foreach_symbol(CnSemScope *scope,
+                                  CnSemScopeSymbolCallback callback,
+                                  void *user_data)
+{
+    if (!scope || !callback) {
+        return;
+    }
+
+    CnSemSymbolNode *node = scope->symbols;
+    while (node) {
+        callback(&node->symbol, user_data);
+        node = node->next;
+    }
+}
