@@ -140,6 +140,12 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         return true;
     }
     
+    // 整数到指针的隐式转换（用于空指针常量：整数0可以赋值给任何指针类型）
+    // 在CN语言中，"无"关键字被解析为整数0，需要能够赋值给任何指针类型
+    if (a_is_int && b->kind == CN_TYPE_POINTER) {
+        return true;
+    }
+    
     // 数组到指针的隐式转换（C语言中数组参数退化为指针）
     // 数组类型传递给指针参数
     if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_POINTER) {

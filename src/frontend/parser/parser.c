@@ -1451,7 +1451,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
-        parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+        parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
+        parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -1496,7 +1497,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
             } else if (parser->current.kind == CN_TOKEN_KEYWORD_INT ||
                        parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
                        parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
-                       parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
+                       parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
+                       parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
                 declared_type = parse_type(parser);
                 if (!declared_type) {
                     return NULL;
