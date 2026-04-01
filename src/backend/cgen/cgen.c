@@ -742,45 +742,101 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
                 }
                 fprintf(ctx->output_file, ");\n");
-            } else if (inst->src1.kind == CN_IR_OP_SYMBOL && 
+            } else if (inst->src1.kind == CN_IR_OP_SYMBOL &&
                 strcmp(inst->src1.as.sym_name, "cn_rt_array_set_element") == 0 &&
                 inst->extra_args_count >= 3) {
                 // 特殊处理 cn_rt_array_set_element：第3个参数需要是指针
+                // 使用MSVC兼容的方式：先声明临时变量，再取地址
                 
-                fprintf(ctx->output_file, "%s(", get_c_function_name(inst->src1.as.sym_name));
-                
-                // 第1个参数：数组指针
-                print_operand(ctx, inst->extra_args[0]);
-                fprintf(ctx->output_file, ", ");
-                
-                // 第2个参数：索引
-                print_operand(ctx, inst->extra_args[1]);
-                fprintf(ctx->output_file, ", ");
-                
-                // 第3个参数：元素值 - 需要取地址
                 CnIrOperand elem = inst->extra_args[2];
-                if (elem.kind == CN_IR_OP_IMM_INT || elem.kind == CN_IR_OP_REG) {
-                    // 生成临时变量
-                    static int temp_var_counter = 0;
-                    fprintf(ctx->output_file, "({");
-                    fprintf(ctx->output_file, "long long _tmp_%d = ", temp_var_counter);
+                
+                // 根据元素类型生成临时变量并赋值
+                if (elem.kind == CN_IR_OP_IMM_INT) {
+                    // 整数常量：使用long long临时变量
+                    static int temp_int_counter = 0;
+                    fprintf(ctx->output_file, "  { long long _tmp_i%d = ", temp_int_counter);
                     print_operand(ctx, elem);
-                    fprintf(ctx->output_file, "; &_tmp_%d;", temp_var_counter);
-                    fprintf(ctx->output_file, "})");
-                    temp_var_counter++;
+                    fprintf(ctx->output_file, "; %s(", get_c_function_name(inst->src1.as.sym_name));
+                    print_operand(ctx, inst->extra_args[0]);
+                    fprintf(ctx->output_file, ", ");
+                    print_operand(ctx, inst->extra_args[1]);
+                    fprintf(ctx->output_file, ", &_tmp_i%d", temp_int_counter);
+                    if (inst->extra_args_count >= 4) {
+                        fprintf(ctx->output_file, ", ");
+                        print_operand(ctx, inst->extra_args[3]);
+                    }
+                    fprintf(ctx->output_file, "); }\n");
+                    temp_int_counter++;
+                } else if (elem.kind == CN_IR_OP_IMM_FLOAT) {
+                    // 浮点常量：使用double临时变量
+                    static int temp_float_counter = 0;
+                    fprintf(ctx->output_file, "  { double _tmp_f%d = ", temp_float_counter);
+                    print_operand(ctx, elem);
+                    fprintf(ctx->output_file, "; %s(", get_c_function_name(inst->src1.as.sym_name));
+                    print_operand(ctx, inst->extra_args[0]);
+                    fprintf(ctx->output_file, ", ");
+                    print_operand(ctx, inst->extra_args[1]);
+                    fprintf(ctx->output_file, ", &_tmp_f%d", temp_float_counter);
+                    if (inst->extra_args_count >= 4) {
+                        fprintf(ctx->output_file, ", ");
+                        print_operand(ctx, inst->extra_args[3]);
+                    }
+                    fprintf(ctx->output_file, "); }\n");
+                    temp_float_counter++;
+                } else if (elem.kind == CN_IR_OP_IMM_STR) {
+                    // 字符串常量：使用char*临时变量
+                    static int temp_str_counter = 0;
+                    fprintf(ctx->output_file, "  { char* _tmp_s%d = ", temp_str_counter);
+                    print_operand(ctx, elem);
+                    fprintf(ctx->output_file, "; %s(", get_c_function_name(inst->src1.as.sym_name));
+                    print_operand(ctx, inst->extra_args[0]);
+                    fprintf(ctx->output_file, ", ");
+                    print_operand(ctx, inst->extra_args[1]);
+                    fprintf(ctx->output_file, ", &_tmp_s%d", temp_str_counter);
+                    if (inst->extra_args_count >= 4) {
+                        fprintf(ctx->output_file, ", ");
+                        print_operand(ctx, inst->extra_args[3]);
+                    }
+                    fprintf(ctx->output_file, "); }\n");
+                    temp_str_counter++;
+                } else if (elem.kind == CN_IR_OP_REG) {
+                    // 寄存器变量：根据类型生成临时变量
+                    static int temp_reg_counter = 0;
+                    const char *tmp_type = "long long";
+                    if (elem.type) {
+                        switch (elem.type->kind) {
+                            case CN_TYPE_FLOAT: tmp_type = "double"; break;
+                            case CN_TYPE_STRING: tmp_type = "char*"; break;
+                            default: tmp_type = "long long"; break;
+                        }
+                    }
+                    fprintf(ctx->output_file, "  { %s _tmp_r%d = ", tmp_type, temp_reg_counter);
+                    print_operand(ctx, elem);
+                    fprintf(ctx->output_file, "; %s(", get_c_function_name(inst->src1.as.sym_name));
+                    print_operand(ctx, inst->extra_args[0]);
+                    fprintf(ctx->output_file, ", ");
+                    print_operand(ctx, inst->extra_args[1]);
+                    fprintf(ctx->output_file, ", &_tmp_r%d", temp_reg_counter);
+                    if (inst->extra_args_count >= 4) {
+                        fprintf(ctx->output_file, ", ");
+                        print_operand(ctx, inst->extra_args[3]);
+                    }
+                    fprintf(ctx->output_file, "); }\n");
+                    temp_reg_counter++;
                 } else {
                     // 已经是符号类型，直接取地址
-                    fprintf(ctx->output_file, "&");
-                    print_operand(ctx, elem);
-                }
-                
-                // 第4个参数：元素大小
-                if (inst->extra_args_count >= 4) {
+                    fprintf(ctx->output_file, "  %s(", get_c_function_name(inst->src1.as.sym_name));
+                    print_operand(ctx, inst->extra_args[0]);
                     fprintf(ctx->output_file, ", ");
-                    print_operand(ctx, inst->extra_args[3]);
+                    print_operand(ctx, inst->extra_args[1]);
+                    fprintf(ctx->output_file, ", &");
+                    print_operand(ctx, elem);
+                    if (inst->extra_args_count >= 4) {
+                        fprintf(ctx->output_file, ", ");
+                        print_operand(ctx, inst->extra_args[3]);
+                    }
+                    fprintf(ctx->output_file, ");\n");
                 }
-                
-                fprintf(ctx->output_file, ");\n");
             } else {
                 // 普通函数调用
                 if (inst->dest.kind != CN_IR_OP_NONE) { print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); }

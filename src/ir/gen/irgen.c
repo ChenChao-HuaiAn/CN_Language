@@ -878,6 +878,57 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
                 break;
             }
             
+            // 检查是否为数组类型
+            if (decl_type && decl_type->kind == CN_TYPE_ARRAY) {
+                // 数组类型：先声明变量，再调用 cn_rt_array_alloc 分配内存
+                CnIrOperand addr = cn_ir_op_symbol(name, decl_type);
+                
+                // 先发出ALLOCA指令声明变量
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_ALLOCA, addr, cn_ir_op_none(), cn_ir_op_none()));
+                
+                // 获取数组大小和元素大小
+                size_t array_size = decl_type->as.array.length;
+                size_t elem_size = 8; // 默认8字节
+                
+                // 根据元素类型确定元素大小
+                CnType *elem_type = decl_type->as.array.element_type;
+                if (elem_type) {
+                    switch (elem_type->kind) {
+                        case CN_TYPE_INT:
+                        case CN_TYPE_UNKNOWN:
+                            elem_size = sizeof(long long);
+                            break;
+                        case CN_TYPE_FLOAT:
+                            elem_size = sizeof(double);
+                            break;
+                        case CN_TYPE_STRING:
+                            elem_size = sizeof(char*);
+                            break;
+                        case CN_TYPE_BOOL:
+                            elem_size = sizeof(int);
+                            break;
+                        case CN_TYPE_POINTER:
+                            elem_size = sizeof(void*);
+                            break;
+                        default:
+                            elem_size = 8;
+                            break;
+                    }
+                }
+                
+                // 生成: addr = cn_rt_array_alloc(elem_size, array_size)
+                CnIrInst *alloc_inst = cn_ir_inst_new(CN_IR_INST_CALL, addr,
+                    cn_ir_op_symbol("cn_rt_array_alloc", NULL), cn_ir_op_none());
+                alloc_inst->extra_args_count = 2;
+                alloc_inst->extra_args = malloc(2 * sizeof(CnIrOperand));
+                alloc_inst->extra_args[0] = cn_ir_op_imm_int(elem_size, NULL);
+                alloc_inst->extra_args[1] = cn_ir_op_imm_int(array_size, NULL);
+                emit(ctx, alloc_inst);
+                
+                free(name);
+                break;
+            }
+            
             // 普通局部变量：ALLOCA + 可选 STORE
             CnIrOperand addr = cn_ir_op_symbol(name, decl_type);
             free(name);
