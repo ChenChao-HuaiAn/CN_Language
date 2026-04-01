@@ -12,6 +12,7 @@ extern "C" {
 
 // 前向声明
 struct CnIrGenStaticVar;
+struct CnIrLocalVarEntry;
 
 // IR 生成上下文
 typedef struct CnIrGenContext {
@@ -29,6 +30,9 @@ typedef struct CnIrGenContext {
     
     // 当前函数中的静态变量列表（用于跟踪静态变量名）
     struct CnIrGenStaticVar *current_static_vars;
+    
+    // 当前函数中的局部变量名映射表（原始名 -> 唯一名）
+    struct CnIrLocalVarEntry *local_var_map;
 } CnIrGenContext;
 
 // 主入口：将 AST 程序转换为 IR 模块

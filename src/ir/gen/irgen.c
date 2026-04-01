@@ -68,6 +68,66 @@ typedef struct CnIrGenStaticVar {
     struct CnIrGenStaticVar *next;
 } CnIrGenStaticVar;
 
+// 局部变量名映射节点（用于变量名唯一化）
+typedef struct CnIrLocalVarEntry {
+    char *original_name;      // 原始变量名
+    char *unique_name;        // 唯一变量名
+    struct CnIrLocalVarEntry *next;
+} CnIrLocalVarEntry;
+
+// 局部变量名唯一化计数器（每个函数重置）
+static int s_local_var_counter = 0;
+
+// 重置局部变量计数器（在每个函数开始时调用）
+static void reset_local_var_counter(void) {
+    s_local_var_counter = 0;
+}
+
+// 生成唯一的局部变量名
+// 格式：原名_序号（如 i_0, i_1, j_0 等）
+static char *make_unique_local_name(const char *original_name) {
+    char buf[256];
+    snprintf(buf, sizeof(buf), "%s_%d", original_name, s_local_var_counter++);
+    return strdup(buf);
+}
+
+// 查找局部变量的唯一名称
+// 返回：如果找到返回唯一名称（需要调用者释放），否则返回 NULL
+static char *lookup_local_var_unique_name(CnIrGenContext *ctx, const char *original_name) {
+    CnIrLocalVarEntry *entry = ctx->local_var_map;
+    while (entry) {
+        if (strcmp(entry->original_name, original_name) == 0) {
+            return strdup(entry->unique_name);
+        }
+        entry = entry->next;
+    }
+    return NULL;
+}
+
+// 添加局部变量名映射
+static void add_local_var_mapping(CnIrGenContext *ctx, const char *original_name, const char *unique_name) {
+    CnIrLocalVarEntry *entry = (CnIrLocalVarEntry *)malloc(sizeof(CnIrLocalVarEntry));
+    if (entry) {
+        entry->original_name = strdup(original_name);
+        entry->unique_name = strdup(unique_name);
+        entry->next = ctx->local_var_map;
+        ctx->local_var_map = entry;
+    }
+}
+
+// 释放局部变量映射表
+static void free_local_var_map(CnIrGenContext *ctx) {
+    CnIrLocalVarEntry *entry = ctx->local_var_map;
+    while (entry) {
+        CnIrLocalVarEntry *next = entry->next;
+        free(entry->original_name);
+        free(entry->unique_name);
+        free(entry);
+        entry = next;
+    }
+    ctx->local_var_map = NULL;
+}
+
 CnIrGenContext *cn_ir_gen_context_new() {
     CnIrGenContext *ctx = malloc(sizeof(CnIrGenContext));
     ctx->module = cn_ir_module_new();
@@ -78,11 +138,15 @@ CnIrGenContext *cn_ir_gen_context_new() {
     ctx->global_scope = NULL;
     ctx->current_scope = NULL;
     ctx->current_static_vars = NULL;  // 初始化静态变量列表
+    ctx->local_var_map = NULL;        // 初始化局部变量映射表
     return ctx;
 }
 
 void cn_ir_gen_context_free(CnIrGenContext *ctx) {
-    if (ctx) free(ctx);
+    if (ctx) {
+        free_local_var_map(ctx);
+        free(ctx);
+    }
 }
 
 // 映射 AST 二元运算符到 IR 指令类型
@@ -230,6 +294,19 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             int dest_reg = alloc_reg(ctx);
             CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
             char *name = copy_name(expr->as.identifier.name, expr->as.identifier.name_length);
+            
+            // 查找局部变量的唯一名称
+            char *unique_name = lookup_local_var_unique_name(ctx, name);
+            if (unique_name) {
+                // 找到映射，使用唯一名称
+                CnIrOperand src = cn_ir_op_symbol(unique_name, expr->type);
+                free(unique_name);
+                free(name);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
+                return dest;
+            }
+            
+            // 未找到映射，使用原始名称（可能是全局变量或参数）
             CnIrOperand src = cn_ir_op_symbol(name, expr->type);
             free(name);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
@@ -362,9 +439,20 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 } else {
                     // 普通变量赋值
                     char *name = copy_name(target->as.identifier.name, target->as.identifier.name_length);
-                    CnIrOperand addr = cn_ir_op_symbol(name, target->type);
-                    free(name);
-                    emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
+                    // 查找局部变量的唯一名称
+                    char *unique_name = lookup_local_var_unique_name(ctx, name);
+                    if (unique_name) {
+                        // 找到映射，使用唯一名称
+                        CnIrOperand addr = cn_ir_op_symbol(unique_name, target->type);
+                        free(unique_name);
+                        free(name);
+                        emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
+                    } else {
+                        // 未找到映射，使用原始名称（可能是全局变量或参数）
+                        CnIrOperand addr = cn_ir_op_symbol(name, target->type);
+                        free(name);
+                        emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, value, cn_ir_op_none()));
+                    }
                 }
             } else if (target->kind == CN_AST_EXPR_INDEX) {
                 // 数组索引赋值 arr[index] = value
@@ -930,8 +1018,13 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             }
             
             // 普通局部变量：ALLOCA + 可选 STORE
-            CnIrOperand addr = cn_ir_op_symbol(name, decl_type);
+            // 使用唯一变量名避免同一函数内不同作用域的同名变量冲突
+            char *unique_name = make_unique_local_name(name);
+            // 添加变量名映射（原始名 -> 唯一名）
+            add_local_var_mapping(ctx, name, unique_name);
             free(name);
+            CnIrOperand addr = cn_ir_op_symbol(unique_name, decl_type);
+            free(unique_name);
             emit(ctx, cn_ir_inst_new(CN_IR_INST_ALLOCA, addr, cn_ir_op_none(), cn_ir_op_none()));
             if (decl->initializer) {
                 CnIrOperand init_val = cn_ir_gen_expr(ctx, decl->initializer);
@@ -1260,6 +1353,10 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     CnIrFunction *ir_func = cn_ir_function_new(name, return_type);
     free(name);
     ctx->current_func = ir_func;
+    
+    // 重置局部变量计数器和清空映射表（每个函数独立）
+    reset_local_var_counter();
+    free_local_var_map(ctx);
 
     // 中断处理函数特殊处理：设置中断属性
     if (func->is_interrupt_handler) {
