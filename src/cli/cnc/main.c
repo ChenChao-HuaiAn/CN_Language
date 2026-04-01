@@ -864,9 +864,56 @@ int main(int argc, char **argv)
 
             /* 后端编译 */
             cn_perf_start(&perf_stats, CN_PERF_PHASE_BACKEND_COMPILE);
+            
+            // Windows上使用MSVC时，需要通过vcvarsall.bat设置环境
+            #ifdef _WIN32
+            char full_cmd[8192];
+            if (strcmp(compiler, "cl") == 0) {
+                // 查找Visual Studio安装路径并设置环境
+                // 不带引号的路径用于fopen检测
+                const char *vcvarsall_check_paths[] = {
+                    "C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+                    "C:\\Program Files\\Microsoft Visual Studio\\2022\\Professional\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+                    "C:\\Program Files\\Microsoft Visual Studio\\2022\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+                    "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Community\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+                    "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Professional\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+                    "C:\\Program Files (x86)\\Microsoft Visual Studio\\2019\\Enterprise\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+                    "C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Auxiliary\\Build\\vcvarsall.bat",
+                    NULL
+                };
+                
+                const char *vcvarsall = NULL;
+                for (int i = 0; vcvarsall_check_paths[i] != NULL; i++) {
+                    FILE *f = fopen(vcvarsall_check_paths[i], "r");
+                    if (f) {
+                        fclose(f);
+                        vcvarsall = vcvarsall_check_paths[i];
+                        break;
+                    }
+                }
+                
+                if (vcvarsall) {
+                    snprintf(full_cmd, sizeof(full_cmd), "cmd /c \"call \"%s\" x64 && %s\"", vcvarsall, compile_cmd);
+                    printf("正在执行编译命令: %s\n", full_cmd);
+                } else {
+                    // 未找到vcvarsall.bat，直接尝试编译（可能在开发者命令行中运行）
+                    snprintf(full_cmd, sizeof(full_cmd), "cmd /c \"%s\"", compile_cmd);
+                    printf("正在执行编译命令: %s\n", full_cmd);
+                    printf("提示: 未找到vcvarsall.bat，请确保在Visual Studio开发者命令行中运行\n");
+                }
+            } else {
+                snprintf(full_cmd, sizeof(full_cmd), "cmd /c \"%s\"", compile_cmd);
+                printf("正在执行编译命令: %s\n", full_cmd);
+            }
+            
+            int result;
+            bool success = cn_support_run_command(full_cmd, &result);
+            #else
             printf("正在执行编译命令: %s\n", compile_cmd);
             int result;
             bool success = cn_support_run_command(compile_cmd, &result);
+            #endif
+            
             cn_perf_end(&perf_stats, CN_PERF_PHASE_BACKEND_COMPILE);
             if (!success || result != 0) {
                 fprintf(stderr, "编译失败，退出码: %d\n", result);

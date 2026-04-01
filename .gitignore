@@ -16,10 +16,10 @@
 # 确保 include/ 文件夹里的所有文件不被忽略
 !include/**
 
-# 取消忽略 examples/ 目录及其内容
-!examples/
-# 确保 examples/ 文件夹里的所有文件不被忽略
-!examples/**
+# 取消忽略 CN语言验收/ 目录及其内容
+!CN语言验收/
+# 确保 CN语言验收/ 文件夹里的所有文件不被忽略
+!CN语言验收/**
 
 # 取消忽略 plans/ 目录及其内容
 !plans/
