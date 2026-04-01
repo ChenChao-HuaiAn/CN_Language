@@ -218,6 +218,38 @@ static void parser_advance(CnParser *parser)
     parser->has_current = 1;
 }
 
+// 向前看下一个token（不消耗当前token）
+static CnTokenKind parser_peek(CnParser *parser)
+{
+    if (!parser || !parser->lexer) {
+        return CN_TOKEN_EOF;
+    }
+    
+    // 保存当前lexer状态
+    const char *saved_source = parser->lexer->source;
+    const char *saved_filename = parser->lexer->filename;
+    size_t saved_length = parser->lexer->length;
+    size_t saved_offset = parser->lexer->offset;
+    int saved_line = parser->lexer->line;
+    int saved_column = parser->lexer->column;
+    
+    // 读取下一个token
+    CnToken next_token;
+    if (!cn_frontend_lexer_next_token(parser->lexer, &next_token)) {
+        next_token.kind = CN_TOKEN_EOF;
+    }
+    
+    // 恢复lexer状态
+    parser->lexer->source = saved_source;
+    parser->lexer->filename = saved_filename;
+    parser->lexer->length = saved_length;
+    parser->lexer->offset = saved_offset;
+    parser->lexer->line = saved_line;
+    parser->lexer->column = saved_column;
+    
+    return next_token.kind;
+}
+
 static int parser_match(CnParser *parser, CnTokenKind kind)
 {
     if (!parser->has_current) {
@@ -1445,6 +1477,11 @@ static CnAstStmt *parse_statement(CnParser *parser)
         return stmt;
     }
 
+    // 支持变量声明：静态/常量/变量/基础类型/自定义类型(枚举/结构体)
+    // 注意：当遇到标识符时，需要向前看判断是变量声明还是赋值语句
+    // 变量声明格式：类型名 变量名 = 初始值; （标识符后跟另一个标识符）
+    // 赋值语句格式：变量名 = 表达式; （标识符后跟 = 或其他操作符）
+    int is_var_decl = 0;
     if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC ||
         parser->current.kind == CN_TOKEN_KEYWORD_CONST ||
         parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
@@ -1453,6 +1490,20 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
         parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
         parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
+        is_var_decl = 1;
+    } else if (parser->current.kind == CN_TOKEN_IDENT) {
+        // 向前看判断是变量声明还是赋值语句
+        // 变量声明：标识符(类型名) 标识符(变量名) ...
+        // 赋值语句：标识符(变量名) = ...
+        CnTokenKind next_kind = parser_peek(parser);
+        if (next_kind == CN_TOKEN_IDENT) {
+            // 类型名后跟标识符，是变量声明
+            is_var_decl = 1;
+        }
+        // 否则不是变量声明，可能是赋值语句
+    }
+    
+    if (is_var_decl) {
         const char *var_name;
         size_t var_name_length;
         CnAstExpr *initializer = NULL;
@@ -4064,6 +4115,13 @@ static CnAstStmt *parse_enum_decl(CnParser *parser)
         if (parser->current.kind == CN_TOKEN_EQUAL) {
             parser_advance(parser);
             
+            // 检查是否有负号
+            int is_negative = 0;
+            if (parser->current.kind == CN_TOKEN_MINUS) {
+                is_negative = 1;
+                parser_advance(parser);
+            }
+            
             if (parser->current.kind != CN_TOKEN_INTEGER) {
                 parser->error_count++;
                 if (parser->diagnostics) {
@@ -4084,6 +4142,11 @@ static CnAstStmt *parse_enum_decl(CnParser *parser)
             size_t i;
             for (i = 0; i < parser->current.lexeme_length; i++) {
                 value = value * 10 + (parser->current.lexeme_begin[i] - '0');
+            }
+            
+            // 应用负号
+            if (is_negative) {
+                value = -value;
             }
             
             members[member_count].has_value = 1;

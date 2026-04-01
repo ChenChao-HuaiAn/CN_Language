@@ -364,6 +364,18 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                 sym->is_const = decl->is_const;
                 sym->is_static = decl->is_static;  // 传递静态变量标记
                 if (decl->declared_type) {
+                    // 特殊处理：如果声明类型是结构体类型，可能是枚举类型
+                    // 需要从符号表查找真实类型
+                    if (decl->declared_type->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                                decl->declared_type->as.struct_type.name,
+                                                decl->declared_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->kind == CN_SEM_SYMBOL_ENUM && type_sym->type) {
+                            // 替换为枚举类型
+                            decl->declared_type = type_sym->type;
+                        }
+                    }
+                    
                     // 特殊处理：显式数组类型与数组字面量类型的统一
                     if (decl->declared_type->kind == CN_TYPE_ARRAY && init_type && init_type->kind == CN_TYPE_ARRAY) {
                         // 如果显式类型的元素类型与初始化器的元素类型兼容，则使用初始化器的类型（包含长度信息）
@@ -640,9 +652,12 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                 if (enum_scope && sym->type) {
                     sym->type->as.enum_type.enum_scope = enum_scope;
                     
-                    // 注册枚举成员到枚举作用域
+                    // 注册枚举成员到枚举作用域和当前作用域
+                    // 这样可以直接通过成员名访问枚举成员（如：红、绿、蓝）
                     for (size_t j = 0; j < enum_decl->member_count; j++) {
                         CnAstEnumMember *member = &enum_decl->members[j];
+                        
+                        // 先注册到枚举作用域
                         CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
                                                            member->name,
                                                            member->name_length,
@@ -656,6 +671,16 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                             // 报告重复定义
                             cn_support_diag_semantic_error_duplicate_symbol(
                                 diagnostics, NULL, 0, 0, member->name);
+                        }
+                        
+                        // 同时注册到当前作用域（如果不存在同名符号）
+                        CnSemSymbol *scope_member_sym = cn_sem_scope_insert_symbol(scope,
+                                                           member->name,
+                                                           member->name_length,
+                                                           CN_SEM_SYMBOL_ENUM_MEMBER);
+                        if (scope_member_sym) {
+                            scope_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                            scope_member_sym->as.enum_value = member->value;
                         }
                     }
                 }
@@ -864,12 +889,15 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
             }
             
-            // 整数与浮点数混合运算：int + float -> float
+            // 整数、浮点数、枚举类型的混合运算
             if (left && right) {
                 CnTypeKind result_kind = CN_TYPE_UNKNOWN;
                 
-                if ((left->kind == CN_TYPE_INT || left->kind == CN_TYPE_FLOAT) &&
-                    (right->kind == CN_TYPE_INT || right->kind == CN_TYPE_FLOAT)) {
+                // 检查是否为数值类型（整数、浮点、枚举）
+                bool left_is_numeric = (left->kind == CN_TYPE_INT || left->kind == CN_TYPE_FLOAT || left->kind == CN_TYPE_ENUM);
+                bool right_is_numeric = (right->kind == CN_TYPE_INT || right->kind == CN_TYPE_FLOAT || right->kind == CN_TYPE_ENUM);
+                
+                if (left_is_numeric && right_is_numeric) {
                     // 如果任一操作数是 float，结果为 float；否则为 int
                     if (left->kind == CN_TYPE_FLOAT || right->kind == CN_TYPE_FLOAT) {
                         result_kind = CN_TYPE_FLOAT;

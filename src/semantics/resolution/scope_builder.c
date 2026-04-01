@@ -423,9 +423,12 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             if (enum_scope && sym->type) {
                 sym->type->as.enum_type.enum_scope = enum_scope;
                 
-                // 注册枚举成员到枚举作用域（而非全局作用域）
+                // 注册枚举成员到枚举作用域和全局作用域
+                // 这样可以直接通过成员名访问枚举成员（如：红、绿、蓝）
                 for (size_t j = 0; j < enum_decl->member_count; j++) {
                     CnAstEnumMember *member = &enum_decl->members[j];
+                    
+                    // 先注册到枚举作用域
                     CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
                                                        member->name,
                                                        member->name_length,
@@ -439,6 +442,16 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         // 报告重复定义
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, member->name);
+                    }
+                    
+                    // 同时注册到全局作用域（如果不存在同名符号）
+                    CnSemSymbol *global_member_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                       member->name,
+                                                       member->name_length,
+                                                       CN_SEM_SYMBOL_ENUM_MEMBER);
+                    if (global_member_sym) {
+                        global_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        global_member_sym->as.enum_value = member->value;
                     }
                 }
             }
@@ -809,17 +822,26 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                                    var_decl->name_length,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
-            // 如果声明类型是结构体,需要从符号表查找真实的结构体定义(含有正确的decl_scope)
+            // 如果声明类型是结构体或枚举,需要从符号表查找真实的类型定义(含有正确的decl_scope)
             if (var_decl->declared_type && var_decl->declared_type->kind == CN_TYPE_STRUCT) {
-                // 从符号表中查找结构体类型定义
-                CnSemSymbol *struct_sym = cn_sem_scope_lookup(scope,
+                // 从符号表中查找类型定义（可能是结构体或枚举）
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
                                         var_decl->declared_type->as.struct_type.name,
                                         var_decl->declared_type->as.struct_type.name_length);
-                if (struct_sym && struct_sym->kind == CN_SEM_SYMBOL_STRUCT && struct_sym->type) {
-                    // 使用从符号表查找到的结构体类型(含有正确的decl_scope)
-                    sym->type = struct_sym->type;
+                if (type_sym && type_sym->type) {
+                    // 根据符号类型使用对应的类型定义
+                    if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 结构体类型(含有正确的decl_scope)
+                        sym->type = type_sym->type;
+                    } else if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                        // 枚举类型
+                        sym->type = type_sym->type;
+                    } else {
+                        // 其他类型,使用原始类型
+                        sym->type = var_decl->declared_type;
+                    }
                 } else {
-                    // 找不到结构体定义,使用原始类型
+                    // 找不到类型定义,使用原始类型
                     sym->type = var_decl->declared_type;
                 }
             } else {
@@ -940,9 +962,12 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             if (enum_scope && sym->type) {
                 sym->type->as.enum_type.enum_scope = enum_scope;
                 
-                // 注册枚举成员到枚举作用域
+                // 注册枚举成员到枚举作用域和当前作用域
+                // 这样可以直接通过成员名访问枚举成员（如：红、绿、蓝）
                 for (size_t j = 0; j < enum_decl->member_count; j++) {
                     CnAstEnumMember *member = &enum_decl->members[j];
+                    
+                    // 先注册到枚举作用域
                     CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
                                                        member->name,
                                                        member->name_length,
@@ -956,6 +981,16 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                         // 报告重复定义
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, member->name);
+                    }
+                    
+                    // 同时注册到当前作用域（如果不存在同名符号）
+                    CnSemSymbol *scope_member_sym = cn_sem_scope_insert_symbol(scope,
+                                                       member->name,
+                                                       member->name_length,
+                                                       CN_SEM_SYMBOL_ENUM_MEMBER);
+                    if (scope_member_sym) {
+                        scope_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        scope_member_sym->as.enum_value = member->value;
                     }
                 }
             }
@@ -1477,8 +1512,12 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, global_scope);
             if (enum_scope && sym->type) {
                 sym->type->as.enum_type.enum_scope = enum_scope;
+                // 注册枚举成员到枚举作用域和全局作用域
+                // 这样可以直接通过成员名访问枚举成员（如：红、绿、蓝）
                 for (size_t j = 0; j < enum_decl->member_count; j++) {
                     CnAstEnumMember *member = &enum_decl->members[j];
+                    
+                    // 先注册到枚举作用域
                     CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
                                                        member->name,
                                                        member->name_length,
@@ -1486,6 +1525,16 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     if (member_sym) {
                         member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                         member_sym->as.enum_value = member->value;
+                    }
+                    
+                    // 同时注册到全局作用域（如果不存在同名符号）
+                    CnSemSymbol *global_member_sym = cn_sem_scope_insert_symbol(global_scope,
+                                                       member->name,
+                                                       member->name_length,
+                                                       CN_SEM_SYMBOL_ENUM_MEMBER);
+                    if (global_member_sym) {
+                        global_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        global_member_sym->as.enum_value = member->value;
                     }
                 }
             }

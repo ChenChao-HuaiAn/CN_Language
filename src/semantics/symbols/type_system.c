@@ -114,15 +114,25 @@ bool cn_type_compatible(CnType *a, CnType *b) {
     }
     
     // 整数类型之间的兼容性
-    bool a_is_int = (a->kind == CN_TYPE_INT || a->kind == CN_TYPE_INT32 || 
-                     a->kind == CN_TYPE_INT64 || a->kind == CN_TYPE_UINT32 || 
+    bool a_is_int = (a->kind == CN_TYPE_INT || a->kind == CN_TYPE_INT32 ||
+                     a->kind == CN_TYPE_INT64 || a->kind == CN_TYPE_UINT32 ||
                      a->kind == CN_TYPE_UINT64 || a->kind == CN_TYPE_UINT64_LL);
-    bool b_is_int = (b->kind == CN_TYPE_INT || b->kind == CN_TYPE_INT32 || 
-                     b->kind == CN_TYPE_INT64 || b->kind == CN_TYPE_UINT32 || 
+    bool b_is_int = (b->kind == CN_TYPE_INT || b->kind == CN_TYPE_INT32 ||
+                     b->kind == CN_TYPE_INT64 || b->kind == CN_TYPE_UINT32 ||
                      b->kind == CN_TYPE_UINT64 || b->kind == CN_TYPE_UINT64_LL);
     
     if (a_is_int && b_is_int) {
         return true;  // 所有整数类型之间可以隐式转换
+    }
+    
+    // 枚举类型与整数类型的兼容性
+    // 枚举类型可以与整数类型互相赋值
+    // 枚举类型也可以与其他枚举类型赋值（都视为整数）
+    bool a_is_enum_or_int = a_is_int || (a->kind == CN_TYPE_ENUM);
+    bool b_is_enum_or_int = b_is_int || (b->kind == CN_TYPE_ENUM);
+    
+    if (a_is_enum_or_int && b_is_enum_or_int) {
+        return true;  // 枚举类型与整数类型之间可以隐式转换
     }
     
     // 浮点类型之间的兼容性
