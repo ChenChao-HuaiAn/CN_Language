@@ -4879,8 +4879,18 @@ static CnAstStmt *parse_from_import_stmt(CnParser *parser)
     
     stmt->kind = CN_AST_STMT_IMPORT;
     stmt->as.import_stmt.kind = kind;
-    stmt->as.import_stmt.module_name = NULL;  // 使用 module_path 代替
-    stmt->as.import_stmt.module_name_length = 0;
+    
+    // 从 module_path 提取模块名（最后一个路径段）
+    // 同时设置 module_name 和 module_path，保持向后兼容
+    if (module_path && module_path->segment_count > 0) {
+        size_t last_idx = module_path->segment_count - 1;
+        stmt->as.import_stmt.module_name = module_path->segments[last_idx].name;
+        stmt->as.import_stmt.module_name_length = module_path->segments[last_idx].name_length;
+    } else {
+        stmt->as.import_stmt.module_name = NULL;
+        stmt->as.import_stmt.module_name_length = 0;
+    }
+    
     stmt->as.import_stmt.alias = NULL;
     stmt->as.import_stmt.alias_length = 0;
     stmt->as.import_stmt.members = members;

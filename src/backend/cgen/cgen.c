@@ -1444,21 +1444,39 @@ char *cn_cgen_module_to_string(CnIrModule *module) { return strdup("// Not imple
 // 导入模块前向声明生成
 // ============================================================================
 
+// 前向声明
+static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, size_t func_name_len, CnType *func_type);
+
+// 通配符导入回调上下文结构
+typedef struct {
+    FILE *file;
+} WildcardImportContext;
+
+// 通配符导入回调函数（遍历模块作用域符号时调用）
+static void wildcard_import_callback(CnSemSymbol *sym, void *user_data) {
+    WildcardImportContext *ctx = (WildcardImportContext *)user_data;
+    // 只导出公开的函数符号
+    if (sym->is_public && sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
+        cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type);
+    }
+}
+
 /**
  * @brief 生成单个函数的前向声明
  *
  * @param file 输出文件
- * @param func_name 函数名称
+ * @param func_name 函数名称（非空字符结尾）
+ * @param func_name_len 函数名称长度
  * @param func_type 函数类型
  */
-static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, CnType *func_type) {
+static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, size_t func_name_len, CnType *func_type) {
     if (!file || !func_name || !func_type || func_type->kind != CN_TYPE_FUNCTION) {
         return;
     }
     
     // 返回类型
     const char *ret_type = get_c_type_string(func_type->as.function.return_type);
-    fprintf(file, "%s %s(", ret_type, func_name);
+    fprintf(file, "%s %.*s(", ret_type, (int)func_name_len, func_name);
     
     // 参数列表
     if (func_type->as.function.param_count == 0) {
@@ -1514,25 +1532,17 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
                 CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, symbol_name, symbol_name_len);
                 if (symbol && symbol->kind == CN_SEM_SYMBOL_FUNCTION && symbol->type) {
                     // 生成函数前向声明
-                    cn_cgen_function_forward_declaration(file, symbol_name, symbol->type);
+                    cn_cgen_function_forward_declaration(file, symbol_name, symbol_name_len, symbol->type);
                 }
             }
         }
         // 处理通配符导入（从 模块 导入 *）
         else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
-            // 通配符导入：需要从模块元数据获取所有公开符号
-            // 目前简化处理：查找模块名对应的作用域中的所有公开符号
-            if (import->module_name && import->module_name_length > 0) {
-                // 尝试查找模块符号
-                CnSemSymbol *module_symbol = cn_sem_scope_lookup(global_scope, import->module_name, import->module_name_length);
-                if (module_symbol && module_symbol->kind == CN_SEM_SYMBOL_MODULE && module_symbol->as.module_scope) {
-                    // 遍历模块作用域中的所有公开符号
-                    CnSemScope *module_scope = module_symbol->as.module_scope;
-                    // 注意：这里需要遍历模块作用域中的符号
-                    // 由于作用域结构可能不直接支持遍历，我们暂时跳过
-                    // TODO: 实现作用域符号遍历
-                }
-            }
+            // 通配符导入的符号已经在语义分析阶段被插入到全局作用域
+            // 需要遍历全局作用域，为所有函数符号生成前向声明
+            // 使用 cn_sem_scope_foreach_symbol 遍历全局作用域中的所有符号
+            WildcardImportContext ctx = { file };
+            cn_sem_scope_foreach_symbol(global_scope, wildcard_import_callback, &ctx);
         }
         // 处理全量导入（导入 模块）
         else if (import->kind == CN_IMPORT_FULL) {
