@@ -146,6 +146,20 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         return true;
     }
     
+    // 指针类型之间的兼容性
+    if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_POINTER) {
+        // 特殊处理：空类型指针（void*）可以接受任何类型的指针
+        if (b->as.pointer_to->kind == CN_TYPE_VOID) {
+            return true;  // 任何指针都可以赋值给 void*
+        }
+        // 特殊处理：任何类型的指针可以赋值给空类型指针（void*）
+        if (a->as.pointer_to->kind == CN_TYPE_VOID) {
+            return true;  // void* 可以赋值给任何指针类型（C语言中需要显式转换，但CN语言允许）
+        }
+        // 普通情况：检查指向的类型是否兼容
+        return cn_type_compatible(a->as.pointer_to, b->as.pointer_to);
+    }
+    
     // 数组到指针的隐式转换（C语言中数组参数退化为指针）
     // 数组类型传递给指针参数
     if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_POINTER) {
