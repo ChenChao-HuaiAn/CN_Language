@@ -652,24 +652,119 @@ static void cgen_expr_in_method(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             cgen_expr_in_method(ctx, expr->as.unary.operand);
             break;
         case CN_AST_EXPR_CALL:
-            // 函数调用 - 检查是否为基类方法调用
+            // 函数调用 - 检查是否为方法调用
             if (expr->as.call.callee->kind == CN_AST_EXPR_MEMBER_ACCESS &&
-                expr->as.call.callee->as.member.object &&
-                expr->as.call.callee->as.member.object->is_base_pointer) {
-                // 基类方法调用：基类.方法名(参数)
-                if (ctx->current_class && ctx->current_class->base_count > 0) {
-                    CnInheritanceInfo *base_info = &ctx->current_class->bases[0];
-                    const char *method_name = expr->as.call.callee->as.member.member_name;
-                    size_t method_name_len = expr->as.call.callee->as.member.member_name_length;
+                expr->as.call.callee->as.member.object) {
+                
+                const char *method_name = expr->as.call.callee->as.member.member_name;
+                size_t method_name_len = expr->as.call.callee->as.member.member_name_length;
+                
+                // 检查是否为基类方法调用（base.方法名）
+                if (expr->as.call.callee->as.member.object->is_base_pointer) {
+                    // 基类方法调用：基类.方法名(参数)
+                    if (ctx->current_class && ctx->current_class->base_count > 0) {
+                        CnInheritanceInfo *base_info = &ctx->current_class->bases[0];
+                        
+                        // 生成基类方法调用（直接转换this指针）
+                        fprintf(out, "%.*s_%.*s((struct %.*s*)((char*)self + %.*s_%.*s_OFFSET)",
+                                (int)base_info->base_class_name_length, base_info->base_class_name,
+                                (int)method_name_len, method_name,
+                                (int)base_info->base_class_name_length, base_info->base_class_name,
+                                (int)ctx->current_class->name_length, ctx->current_class->name,
+                                (int)base_info->base_class_name_length, base_info->base_class_name);
+                        
+                        // 输出参数
+                        for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                            fprintf(out, ", ");
+                            cgen_expr_in_method(ctx, expr->as.call.arguments[i]);
+                        }
+                        
+                        fprintf(out, ")");
+                    } else {
+                        // 没有基类，生成错误占位符
+                        fprintf(out, "/* 错误: 当前类没有基类 */ 0");
+                    }
+                }
+                // 检查是否为自身方法调用（自身.方法名）
+                else if (expr->as.call.callee->as.member.object->is_this_pointer) {
+                    // 自身方法调用：需要查找方法属于哪个类
+                    // 首先在当前类查找，如果没有则在基类查找
+                    bool found_in_current = false;
+                    bool found_in_base = false;
+                    char base_class_name[128] = {0};
+                    size_t base_class_name_len = 0;
                     
-                    // 生成基类方法调用（直接转换this指针）
-                    // 使用内联转换：((struct 基类*)((char*)self + OFFSET))->方法(转换后的指针)
-                    fprintf(out, "%.*s_%.*s((struct %.*s*)((char*)self + %.*s_%.*s_OFFSET)",
-                            (int)base_info->base_class_name_length, base_info->base_class_name,
-                            (int)method_name_len, method_name,
-                            (int)base_info->base_class_name_length, base_info->base_class_name,
-                            (int)ctx->current_class->name_length, ctx->current_class->name,
-                            (int)base_info->base_class_name_length, base_info->base_class_name);
+                    // 在当前类查找方法
+                    if (ctx->current_class) {
+                        for (size_t i = 0; i < ctx->current_class->member_count; i++) {
+                            CnClassMember *member = &ctx->current_class->members[i];
+                            if (member->kind == CN_MEMBER_METHOD && !member->is_static) {
+                                if (member->name_length == method_name_len &&
+                                    memcmp(member->name, method_name, method_name_len) == 0) {
+                                    found_in_current = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 如果当前类没有，在基类链中查找
+                        if (!found_in_current && ctx->current_class->base_count > 0) {
+                            CnAstClassDecl *search_class = ctx->current_class;
+                            while (!found_in_base && search_class && search_class->base_count > 0) {
+                                CnInheritanceInfo *base_info = &search_class->bases[0];
+                                
+                                // 在程序中查找基类定义
+                                if (ctx->program) {
+                                    for (size_t j = 0; j < ctx->program->class_count; j++) {
+                                        CnAstStmt *stmt = ctx->program->classes[j];
+                                        if (stmt->kind == CN_AST_STMT_CLASS_DECL) {
+                                            CnAstClassDecl *base_class = stmt->as.class_decl;
+                                            if (base_class->name_length == base_info->base_class_name_length &&
+                                                memcmp(base_class->name, base_info->base_class_name, base_class->name_length) == 0) {
+                                                // 在基类中查找方法
+                                                for (size_t k = 0; k < base_class->member_count; k++) {
+                                                    CnClassMember *m = &base_class->members[k];
+                                                    if (m->kind == CN_MEMBER_METHOD && !m->is_static) {
+                                                        if (m->name_length == method_name_len &&
+                                                            memcmp(m->name, method_name, method_name_len) == 0) {
+                                                            found_in_base = true;
+                                                            base_class_name_len = base_info->base_class_name_length;
+                                                            memcpy(base_class_name, base_info->base_class_name, base_class_name_len);
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if (!found_in_base) {
+                                                    // 继续在更深的基类中查找
+                                                    search_class = base_class;
+                                                }
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if (found_in_base) break;
+                            }
+                        }
+                    }
+                    
+                    if (found_in_current) {
+                        // 当前类的方法：类名_方法名(self, 参数...)
+                        fprintf(out, "%.*s_%.*s(self",
+                                (int)ctx->current_class->name_length, ctx->current_class->name,
+                                (int)method_name_len, method_name);
+                    } else if (found_in_base) {
+                        // 基类的方法：基类名_方法名(&self->基类名_base, 参数...)
+                        fprintf(out, "%.*s_%.*s(&self->%.*s_base",
+                                (int)base_class_name_len, base_class_name,
+                                (int)method_name_len, method_name,
+                                (int)base_class_name_len, base_class_name);
+                    } else {
+                        // 未找到方法，使用当前类名生成（可能后续会报错）
+                        fprintf(out, "%.*s_%.*s(self",
+                                (int)ctx->current_class->name_length, ctx->current_class->name,
+                                (int)method_name_len, method_name);
+                    }
                     
                     // 输出参数
                     for (size_t i = 0; i < expr->as.call.argument_count; i++) {
@@ -679,8 +774,14 @@ static void cgen_expr_in_method(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                     
                     fprintf(out, ")");
                 } else {
-                    // 没有基类，生成错误占位符
-                    fprintf(out, "/* 错误: 当前类没有基类 */ 0");
+                    // 其他成员访问调用（如 obj.method()）
+                    cgen_expr_in_method(ctx, expr->as.call.callee);
+                    fprintf(out, "(");
+                    for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                        if (i > 0) fprintf(out, ", ");
+                        cgen_expr_in_method(ctx, expr->as.call.arguments[i]);
+                    }
+                    fprintf(out, ")");
                 }
             } else {
                 // 普通函数调用
@@ -1051,35 +1152,42 @@ static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_
             }
         }
         
-        // 生成基类构造函数调用
-        fprintf(out, "    %.*s_construct(&self->%.*s_base",
-                (int)base_info->base_class_name_length, base_info->base_class_name,
-                (int)base_info->base_class_name_length, base_info->base_class_name);
-        
-        // 【修复问题3】传递基类构造函数需要的参数
-        // 策略：从当前构造函数参数中按名称匹配传递
-        if (base_constructor && constructor) {
-            for (size_t pi = 0; pi < base_constructor->parameter_count; pi++) {
-                CnAstParameter *base_param = &base_constructor->parameters[pi];
-                // 在当前构造函数参数中查找同名参数
-                bool found = false;
-                for (size_t ci = 0; ci < constructor->parameter_count; ci++) {
-                    CnAstParameter *cur_param = &constructor->parameters[ci];
-                    if (cur_param->name_length == base_param->name_length &&
-                        memcmp(cur_param->name, base_param->name, cur_param->name_length) == 0) {
-                        fprintf(out, ", %.*s", (int)cur_param->name_length, cur_param->name);
-                        found = true;
-                        break;
+        // 只有当基类有显式构造函数时才生成调用
+        if (base_constructor) {
+            // 生成基类构造函数调用
+            fprintf(out, "    %.*s_construct(&self->%.*s_base",
+                    (int)base_info->base_class_name_length, base_info->base_class_name,
+                    (int)base_info->base_class_name_length, base_info->base_class_name);
+            
+            // 【修复问题3】传递基类构造函数需要的参数
+            // 策略：从当前构造函数参数中按名称匹配传递
+            if (constructor) {
+                for (size_t pi = 0; pi < base_constructor->parameter_count; pi++) {
+                    CnAstParameter *base_param = &base_constructor->parameters[pi];
+                    // 在当前构造函数参数中查找同名参数
+                    bool found = false;
+                    for (size_t ci = 0; ci < constructor->parameter_count; ci++) {
+                        CnAstParameter *cur_param = &constructor->parameters[ci];
+                        if (cur_param->name_length == base_param->name_length &&
+                            memcmp(cur_param->name, cur_param->name, cur_param->name_length) == 0) {
+                            fprintf(out, ", %.*s", (int)cur_param->name_length, cur_param->name);
+                            found = true;
+                            break;
+                        }
+                    }
+                    if (!found) {
+                        // 如果找不到同名参数，传递默认值0
+                        fprintf(out, ", 0 /* 缺少参数 %.*s */", (int)base_param->name_length, base_param->name);
                     }
                 }
-                if (!found) {
-                    // 如果找不到同名参数，传递默认值0
-                    fprintf(out, ", 0 /* 缺少参数 %.*s */", (int)base_param->name_length, base_param->name);
-                }
             }
+            
+            fprintf(out, ");  // 调用基类构造函数\n");
+        } else {
+            // 基类没有显式构造函数，只生成注释
+            fprintf(out, "    // 基类 %.*s 没有显式构造函数，跳过调用\n",
+                    (int)base_info->base_class_name_length, base_info->base_class_name);
         }
-        
-        fprintf(out, ");  // 调用基类构造函数\n");
     }
     
     // 生成初始化列表代码
@@ -1318,9 +1426,11 @@ bool cn_cgen_class_struct(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     }
     
     // 第四步：生成成员变量（字段）
+    // 注意：C语言没有访问控制机制，所有成员都必须生成
+    // 访问控制在语义分析阶段检查，而不是代码生成阶段
     for (size_t i = 0; i < class_decl->member_count; i++) {
         CnClassMember *member = &class_decl->members[i];
-        if (member->kind == CN_MEMBER_FIELD && member->access != CN_ACCESS_PRIVATE) {
+        if (member->kind == CN_MEMBER_FIELD) {
             cgen_member_field(out, member, 1);
         }
     }
@@ -1645,10 +1755,18 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     }
     
     // 遍历vtable条目，生成函数指针
+    bool has_entries = false;
     for (size_t i = 0; i < vtable->entry_count; i++) {
         CnVTableEntry *entry = &vtable->entries[i];
         print_indent(out, 1);
         cgen_vtable_entry_decl(out, entry, class_decl->name, class_decl->name_length);
+        has_entries = true;
+    }
+    
+    // 如果没有任何条目，添加一个占位符成员（C语言不允许空结构体）
+    if (!has_entries && !class_implements_interfaces(class_decl)) {
+        print_indent(out, 1);
+        fprintf(out, "void* _reserved;  // 占位符（空vtable）\n");
     }
     
     fprintf(out, "} %.*s_vtable;\n\n",
@@ -1684,12 +1802,14 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     }
     
     // 初始化虚函数表
+    bool has_vtable_entries = false;
     for (size_t i = 0; i < vtable->entry_count; i++) {
         CnVTableEntry *entry = &vtable->entries[i];
         if (!first) {
             fprintf(out, ",\n");
         }
         first = false;
+        has_vtable_entries = true;
         
         print_indent(out, 1);
         
@@ -1707,6 +1827,15 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
                     (int)entry->defined_in_class_len, entry->defined_in_class,
                     (int)entry->method_name_length, entry->method_name);
         }
+    }
+    
+    // 如果没有任何条目且没有接口，初始化占位符成员
+    if (!has_vtable_entries && !class_implements_interfaces(class_decl)) {
+        if (!first) {
+            fprintf(out, ",\n");
+        }
+        print_indent(out, 1);
+        fprintf(out, "._reserved = NULL");
     }
     
     fprintf(out, "\n};\n\n");

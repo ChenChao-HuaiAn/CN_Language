@@ -772,12 +772,144 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     // 生成普通成员函数调用
                     // 格式：类名_方法名(self, args...)
                     
-                    // 从对象类型中获取类名
+                    // 需要查找方法实际定义在哪个类中（可能在基类中）
                     const char *class_name = NULL;
                     size_t class_name_len = 0;
+                    
+                    // 从对象类型中获取类名
                     if (obj_type->kind == CN_TYPE_STRUCT && obj_type->as.struct_type.name) {
-                        class_name = obj_type->as.struct_type.name;
-                        class_name_len = obj_type->as.struct_type.name_length;
+                        const char *obj_class_name = obj_type->as.struct_type.name;
+                        size_t obj_class_name_len = obj_type->as.struct_type.name_length;
+                        
+                        // 首先在当前类中查找方法
+                        bool found_in_current = false;
+                        if (ctx->program) {
+                            for (size_t i = 0; i < ctx->program->class_count; i++) {
+                                CnAstStmt *stmt = ctx->program->classes[i];
+                                if (stmt->kind == CN_AST_STMT_CLASS_DECL) {
+                                    CnAstClassDecl *class_decl = stmt->as.class_decl;
+                                    if (class_decl->name_length == obj_class_name_len &&
+                                        memcmp(class_decl->name, obj_class_name, obj_class_name_len) == 0) {
+                                        // 在当前类中查找方法
+                                        for (size_t j = 0; j < class_decl->member_count; j++) {
+                                            CnClassMember *member = &class_decl->members[j];
+                                            if (member->kind == CN_MEMBER_METHOD && !member->is_static) {
+                                                if (member->name_length == method_name_len &&
+                                                    memcmp(member->name, method_name, method_name_len) == 0) {
+                                                    found_in_current = true;
+                                                    class_name = obj_class_name;
+                                                    class_name_len = obj_class_name_len;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                        
+                                        // 如果当前类没有，在基类链中查找
+                                        if (!found_in_current && class_decl->base_count > 0) {
+                                            CnAstClassDecl *search_class = class_decl;
+                                            while (!found_in_current && search_class && search_class->base_count > 0) {
+                                                CnInheritanceInfo *base_info = &search_class->bases[0];
+                                                
+                                                // 在程序中查找基类定义
+                                                for (size_t k = 0; k < ctx->program->class_count; k++) {
+                                                    CnAstStmt *base_stmt = ctx->program->classes[k];
+                                                    if (base_stmt->kind == CN_AST_STMT_CLASS_DECL) {
+                                                        CnAstClassDecl *base_class = base_stmt->as.class_decl;
+                                                        if (base_class->name_length == base_info->base_class_name_length &&
+                                                            memcmp(base_class->name, base_info->base_class_name, base_class->name_length) == 0) {
+                                                            // 在基类中查找方法
+                                                            for (size_t m = 0; m < base_class->member_count; m++) {
+                                                                CnClassMember *base_member = &base_class->members[m];
+                                                                if (base_member->kind == CN_MEMBER_METHOD && !base_member->is_static) {
+                                                                    if (base_member->name_length == method_name_len &&
+                                                                        memcmp(base_member->name, method_name, method_name_len) == 0) {
+                                                                        found_in_current = true;
+                                                                        class_name = base_class->name;
+                                                                        class_name_len = base_class->name_length;
+                                                                        
+                                                                        // 更新表达式类型为方法的返回类型
+                                                                        // base_member->type 就是方法的返回类型
+                                                                        // 如果 type 为 NULL，表示方法返回 void
+                                                                        if (base_member->type) {
+                                                                            expr->type = base_member->type;
+                                                                        } else {
+                                                                            // void 返回类型
+                                                                            expr->type = cn_type_new_primitive(CN_TYPE_VOID);
+                                                                        }
+                                                                        
+                                                                        // 生成基类指针转换
+                                                                        // 需要将派生类指针转换为基类指针
+                                                                        // 格式：&obj.基类名_base
+                                                                        if (object_expr->kind == CN_AST_EXPR_IDENTIFIER) {
+                                                                            // 重新生成正确的基类指针
+                                                                            char *obj_name = copy_name(object_expr->as.identifier.name,
+                                                                                                       object_expr->as.identifier.name_length);
+                                                                            char *unique_name = lookup_local_var_unique_name(ctx, obj_name);
+                                                                            if (unique_name) {
+                                                                                free(obj_name);
+                                                                                obj_name = unique_name;
+                                                                            }
+                                                                            
+                                                                            // 创建基类类型（用于类型声明）
+                                                                            CnType *base_class_type = cn_type_new_struct(
+                                                                                base_class->name,
+                                                                                base_class->name_length,
+                                                                                NULL, 0,  // fields, field_count
+                                                                                NULL,     // decl_scope
+                                                                                NULL, 0); // owner_func_name, owner_func_name_length
+                                                                            
+                                                                            // 生成基类指针：&obj.基类名_base
+                                                                            // 步骤1：生成成员访问指令获取基类成员
+                                                                            int member_reg = alloc_reg(ctx);
+                                                                            CnIrOperand member_operand = cn_ir_op_reg(member_reg, base_class_type);
+                                                                            
+                                                                            char base_member_name[128];
+                                                                            snprintf(base_member_name, sizeof(base_member_name), "%.*s_base",
+                                                                                     (int)base_info->base_class_name_length, base_info->base_class_name);
+                                                                            
+                                                                            CnIrInst *member_inst = cn_ir_inst_new(
+                                                                                CN_IR_INST_MEMBER_ACCESS, member_operand,
+                                                                                cn_ir_op_symbol(obj_name, object_expr->type),
+                                                                                cn_ir_op_symbol(base_member_name, object_expr->type));
+                                                                            emit(ctx, member_inst);
+                                                                            
+                                                                            // 步骤2：生成取地址指令
+                                                                            int base_ptr_reg = alloc_reg(ctx);
+                                                                            CnType *base_ptr_type = cn_type_new_pointer(base_class_type);
+                                                                            obj_operand = cn_ir_op_reg(base_ptr_reg, base_ptr_type);
+                                                                            
+                                                                            CnIrInst *addr_inst = cn_ir_inst_new(
+                                                                                CN_IR_INST_ADDRESS_OF, obj_operand,
+                                                                                member_operand, cn_ir_op_none());
+                                                                            emit(ctx, addr_inst);
+                                                                            free(obj_name);
+                                                                        }
+                                                                        break;
+                                                                    }
+                                                                }
+                                                            }
+                                                            if (!found_in_current) {
+                                                                // 继续在更深的基类中查找
+                                                                search_class = base_class;
+                                                            }
+                                                            break;
+                                                        }
+                                                    }
+                                                }
+                                                if (found_in_current) break;
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 如果没找到，使用对象类型名（可能后续会报错）
+                        if (!found_in_current) {
+                            class_name = obj_class_name;
+                            class_name_len = obj_class_name_len;
+                        }
                     }
                     
                     // 生成函数名：类名_方法名
@@ -819,6 +951,8 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     // 如果有返回值，分配结果寄存器
                     // 注意：对于方法调用，expr->type 已经是返回类型（不是函数类型）
                     // 因为在语义分析中，成员访问表达式的类型被设置为方法的返回类型
+                    fprintf(stderr, "[DEBUG IR] Method call: func_name='%s', expr->type=%p, kind=%d\n",
+                            func_name ? func_name : "(null)", (void*)expr->type, expr->type ? expr->type->kind : -1);
                     if (expr->type && expr->type->kind != CN_TYPE_VOID) {
                         int dest_reg = alloc_reg(ctx);
                         call_inst->dest = cn_ir_op_reg(dest_reg, expr->type);
@@ -1502,6 +1636,7 @@ CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnSemScope *global_scope, C
     CnIrGenContext *ctx = cn_ir_gen_context_new();
     ctx->global_scope = global_scope;
     ctx->current_scope = global_scope;
+    ctx->program = program;  // 保存程序指针，用于查找类定义
     
     if (ctx->module) {
         ctx->module->target = target;
