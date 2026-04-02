@@ -2666,8 +2666,10 @@ static CnAstExpr *parse_factor(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_THIS) {
         // 自身 关键字：生成标识符表达式 "self"
         // 在代码生成阶段会转换为 C 代码中的 self 参数
+        fprintf(stderr, "[DEBUG PARSER] Found CN_TOKEN_KEYWORD_THIS, creating self identifier\n");
         expr = make_identifier("self", 4);
         expr->is_this_pointer = 1;  // 标记为自身指针，用于语义检查
+        fprintf(stderr, "[DEBUG PARSER] expr=%p, is_this_pointer=%d\n", (void*)expr, expr->is_this_pointer);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_BASE) {
         // 基类 关键字：生成标识符表达式 "base"
@@ -4311,6 +4313,8 @@ static CnAstExpr *make_member_access(CnAstExpr *object, const char *member_name,
 
     expr->kind = CN_AST_EXPR_MEMBER_ACCESS;
     expr->type = NULL;
+    expr->is_this_pointer = 0;  // 成员访问表达式本身不是this指针
+    expr->is_base_pointer = 0;  // 成员访问表达式本身不是base指针
     expr->as.member.object = object;
     expr->as.member.member_name = member_name;
     expr->as.member.member_name_length = member_name_length;

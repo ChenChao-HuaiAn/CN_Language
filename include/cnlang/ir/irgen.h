@@ -28,6 +28,9 @@ typedef struct CnIrGenContext {
     CnSemScope *global_scope;
     CnSemScope *current_scope;
     
+    // AST程序（用于查找类定义）
+    CnAstProgram *program;
+    
     // 当前函数中的静态变量列表（用于跟踪静态变量名）
     struct CnIrGenStaticVar *current_static_vars;
     

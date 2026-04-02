@@ -184,7 +184,10 @@ static int is_identifier_continue(unsigned char c)
 static CnTokenKind keyword_kind(const char *begin, size_t length)
 {
     // 使用统一的关键字查找函数
-    return cn_frontend_lookup_keyword(begin, length);
+    CnTokenKind kind = cn_frontend_lookup_keyword(begin, length);
+    fprintf(stderr, "[DEBUG LEXER] keyword_kind: '%.*s' (len=%zu) -> kind=%d\n",
+            (int)length, begin, length, kind);
+    return kind;
 }
 
 void cn_frontend_lexer_init(CnLexer *lexer, const char *source, size_t length, const char *filename)
