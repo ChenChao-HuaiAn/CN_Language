@@ -700,6 +700,44 @@ bool cn_add_class_to_symbol_table(CnClassAnalyzerContext *ctx, CnAstClassDecl *c
         return false;
     }
     
+    /* 创建类类型，包含成员字段信息（类似于结构体声明处理） */
+    CnStructField *fields = NULL;
+    size_t field_count = 0;
+    
+    /* 统计成员变量数量并创建字段数组 */
+    for (size_t i = 0; i < class_decl->member_count; i++) {
+        if (class_decl->members[i].kind == CN_MEMBER_FIELD) {
+            field_count++;
+        }
+    }
+    
+    if (field_count > 0) {
+        fields = (CnStructField *)malloc(sizeof(CnStructField) * field_count);
+        if (fields) {
+            size_t field_idx = 0;
+            for (size_t i = 0; i < class_decl->member_count; i++) {
+                CnClassMember *member = &class_decl->members[i];
+                if (member->kind == CN_MEMBER_FIELD) {
+                    fields[field_idx].name = member->name;
+                    fields[field_idx].name_length = member->name_length;
+                    fields[field_idx].field_type = member->type;
+                    fields[field_idx].is_const = member->is_const;
+                    field_idx++;
+                }
+            }
+        }
+    }
+    
+    /* 设置类符号的类型 */
+    sym->type = cn_type_new_struct(
+        class_decl->name,
+        class_decl->name_length,
+        fields,
+        field_count,
+        ctx->symbol_table,  /* 声明作用域 */
+        NULL, 0             /* 无所属函数 */
+    );
+    
     return true;
 }
 
@@ -900,6 +938,11 @@ bool cn_add_method_to_symbol_table(CnClassAnalyzerContext *ctx, CnClassMember *m
         return false;
     }
     
+    /* 必须有当前类上下文 */
+    if (!ctx->current_class) {
+        return false;
+    }
+    
     /* 确定符号类型 */
     CnSemSymbolKind sym_kind;
     switch (member->kind) {
@@ -916,15 +959,38 @@ bool cn_add_method_to_symbol_table(CnClassAnalyzerContext *ctx, CnClassMember *m
             return false;
     }
     
+    /* 构建带类名前缀的方法名：类名_方法名 */
+    /* 这样可以避免不同类的同名方法在全局符号表中冲突 */
+    size_t class_name_len = ctx->current_class->name_length;
+    size_t method_name_len = member->name_length;
+    size_t full_name_len = class_name_len + 1 + method_name_len;  /* 类名_方法名 */
+    
+    char *full_name = (char *)malloc(full_name_len + 1);
+    if (!full_name) {
+        return false;
+    }
+    
+    /* 构建完整方法名 */
+    memcpy(full_name, ctx->current_class->name, class_name_len);
+    full_name[class_name_len] = '_';
+    memcpy(full_name + class_name_len + 1, member->name, method_name_len);
+    full_name[full_name_len] = '\0';
+    
     /* 插入符号表 */
     CnSemSymbol *sym = cn_sem_scope_insert_symbol(
         ctx->symbol_table,
-        member->name,
-        member->name_length,
+        full_name,
+        full_name_len,
         sym_kind
     );
     
     if (!sym) {
+        free(full_name);
+        /* 如果插入失败，可能是因为符号已存在（如重写方法），这是正常情况 */
+        /* 对于重写方法，基类的方法已经在符号表中，我们不需要再次添加 */
+        if (member->is_override) {
+            return true;  /* 重写方法不需要在符号表中添加新条目 */
+        }
         return false;
     }
     
@@ -932,6 +998,8 @@ bool cn_add_method_to_symbol_table(CnClassAnalyzerContext *ctx, CnClassMember *m
     sym->type = member->type;
     sym->is_public = (member->access == CN_ACCESS_PUBLIC);
     sym->is_const = false;  /* 方法本身不是常量 */
+    
+    /* 注意：full_name 的内存由符号表管理，不需要在这里释放 */
     
     /* 设置方法特有属性（如果符号结构支持） */
     /* 注意：需要在 CnSemSymbol 结构中添加相应字段 */

@@ -1405,6 +1405,7 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     CnCCodeGenContext ctx = {0};
     ctx.output_file = file;
     ctx.module = module;
+    ctx.program = program;  // 设置程序AST，用于查找类定义
 
     // 根据编译模式生成不同的头文件
     if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {
@@ -1802,6 +1803,7 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     ctx.output_file = file;
     ctx.module = module;
     ctx.module_id = module_id;  // 设置模块ID用于生成带前缀的函数名
+    ctx.program = program;      // 设置程序AST，用于查找类定义
 
     // 根据编译模式生成不同的头文件
     if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {

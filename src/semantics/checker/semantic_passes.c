@@ -1271,11 +1271,18 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 expr->type = callee_type->as.function.return_type;
             } else {
-                if (callee_type && callee_type->kind != CN_TYPE_UNKNOWN) {
-                    cn_support_diag_semantic_error_type_mismatch(
-                        diagnostics, NULL, 0, 0, "函数或函数指针类型", "非函数类型");
+                // 检查是否是方法调用（成员访问表达式）
+                // 对于方法调用，callee_type 已经是返回类型
+                if (expr->as.call.callee->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+                    // 方法调用：callee_type 已经是返回类型
+                    expr->type = callee_type;
+                } else {
+                    if (callee_type && callee_type->kind != CN_TYPE_UNKNOWN) {
+                        cn_support_diag_semantic_error_type_mismatch(
+                            diagnostics, NULL, 0, 0, "函数或函数指针类型", "非函数类型");
+                    }
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 }
-                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
             break;
         }
@@ -1479,22 +1486,52 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 break;
             }
             
-            // 在结构体类型中查找成员
+            // 在结构体类型中查找成员字段
             CnStructField *field = cn_type_struct_find_field(
                 object_type,
                 expr->as.member.member_name,
                 expr->as.member.member_name_length);
             
-            if (!field) {
+            if (field) {
+                // 成员访问表达式的类型是成员的类型
+                expr->type = field->field_type;
+            } else {
+                // 字段未找到，可能是类方法调用
+                // 从结构体类型中获取类名
+                if (object_type->kind == CN_TYPE_STRUCT && object_type->as.struct_type.name) {
+                    const char *class_name = object_type->as.struct_type.name;
+                    size_t class_name_len = object_type->as.struct_type.name_length;
+                    
+                    // 查找带类名前缀的方法符号：类名_方法名
+                    size_t method_name_len = expr->as.member.member_name_length;
+                    size_t full_name_len = class_name_len + 1 + method_name_len;
+                    char *full_method_name = (char *)malloc(full_name_len + 1);
+                    if (full_method_name) {
+                        memcpy(full_method_name, class_name, class_name_len);
+                        full_method_name[class_name_len] = '_';
+                        memcpy(full_method_name + class_name_len + 1,
+                               expr->as.member.member_name, method_name_len);
+                        full_method_name[full_name_len] = '\0';
+                        
+                        CnSemSymbol *method_sym = cn_sem_scope_lookup(scope, full_method_name, full_name_len);
+                        free(full_method_name);
+                        
+                        if (method_sym && method_sym->kind == CN_SEM_SYMBOL_FUNCTION) {
+                            // 找到方法，设置表达式类型为方法的返回类型
+                            // 注意：method_sym->type 是方法的返回类型
+                            expr->type = method_sym->type;
+                            break;
+                        }
+                    }
+                }
+                
+                // 既不是字段也不是方法，报错
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
                     NULL, 0, 0,
                     "语义错误：结构体中不存在该成员");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
-            } else {
-                // 成员访问表达式的类型是成员的类型
-                expr->type = field->field_type;
             }
             break;
         }

@@ -708,15 +708,66 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     // 在类型系统中，类类型使用 CN_TYPE_STRUCT 表示
                     // 完整实现需要扩展类型系统添加 CN_TYPE_CLASS
                     
-                    // 生成对象表达式
-                    CnIrOperand obj_operand = cn_ir_gen_expr(ctx, object_expr);
+                    // 生成对象表达式 - 对于方法调用，需要获取变量的地址而不是值
+                    CnIrOperand obj_operand;
+                    bool need_address = true;  // 方法调用需要传递对象地址
                     
-                    // 目前简化处理：生成普通成员函数调用
+                    // 如果对象是标识符，直接获取变量名用于取地址
+                    if (object_expr->kind == CN_AST_EXPR_IDENTIFIER) {
+                        char *name = copy_name(object_expr->as.identifier.name,
+                                               object_expr->as.identifier.name_length);
+                        // 查找局部变量的唯一名称
+                        char *unique_name = lookup_local_var_unique_name(ctx, name);
+                        if (unique_name) {
+                            free(name);
+                            name = unique_name;
+                        }
+                        // 生成取地址指令
+                        int addr_reg = alloc_reg(ctx);
+                        CnType *ptr_type = cn_type_new_pointer(object_expr->type);
+                        obj_operand = cn_ir_op_reg(addr_reg, ptr_type);
+                        emit(ctx, cn_ir_inst_new(CN_IR_INST_ADDRESS_OF, obj_operand,
+                                                     cn_ir_op_symbol(name, object_expr->type),
+                                                     cn_ir_op_none()));
+                        free(name);
+                    } else {
+                        // 其他情况（如成员访问、表达式等），正常生成
+                        obj_operand = cn_ir_gen_expr(ctx, object_expr);
+                        need_address = false;
+                    }
+                    
+                    // 生成普通成员函数调用
                     // 格式：类名_方法名(self, args...)
+                    
+                    // 从对象类型中获取类名
+                    const char *class_name = NULL;
+                    size_t class_name_len = 0;
+                    if (obj_type->kind == CN_TYPE_STRUCT && obj_type->as.struct_type.name) {
+                        class_name = obj_type->as.struct_type.name;
+                        class_name_len = obj_type->as.struct_type.name_length;
+                    }
+                    
+                    // 生成函数名：类名_方法名
+                    char *func_name = NULL;
+                    if (class_name && method_name) {
+                        // 分配足够的空间：类名 + "_" + 方法名 + "\0"
+                        func_name = malloc(class_name_len + 1 + method_name_len + 1);
+                        if (func_name) {
+                            memcpy(func_name, class_name, class_name_len);
+                            func_name[class_name_len] = '_';
+                            memcpy(func_name + class_name_len + 1, method_name, method_name_len);
+                            func_name[class_name_len + 1 + method_name_len] = '\0';
+                        }
+                    }
+                    
+                    // 创建被调用函数的操作数
+                    CnIrOperand callee_op = func_name ?
+                        cn_ir_op_symbol(func_name, expr->as.call.callee->type) :
+                        cn_ir_op_none();
                     
                     // 生成调用指令
                     CnIrInst *call_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
-                                                          cn_ir_op_none(), cn_ir_op_none());
+                                                          callee_op, cn_ir_op_none());
                     
                     // 参数数量 = self + 原始参数
                     size_t total_args = 1 + expr->as.call.argument_count;
@@ -724,6 +775,7 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     call_inst->extra_args = malloc(total_args * sizeof(CnIrOperand));
                     
                     // 第一个参数是 self 指针
+                    // obj_operand 已经是地址（对于标识符）或者值（对于其他表达式）
                     call_inst->extra_args[0] = obj_operand;
                     
                     // 其他参数
@@ -732,6 +784,8 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     }
                     
                     // 如果有返回值，分配结果寄存器
+                    // 注意：对于方法调用，expr->type 已经是返回类型（不是函数类型）
+                    // 因为在语义分析中，成员访问表达式的类型被设置为方法的返回类型
                     if (expr->type && expr->type->kind != CN_TYPE_VOID) {
                         int dest_reg = alloc_reg(ctx);
                         call_inst->dest = cn_ir_op_reg(dest_reg, expr->type);

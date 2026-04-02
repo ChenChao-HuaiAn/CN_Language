@@ -1314,20 +1314,29 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     if (!vtable) return false;
     
     // 收集基类虚函数（深度优先，确保基类方法在前）
-    // 简化实现：直接按继承顺序添加基类方法
-    for (size_t i = 0; i < class_decl->base_count; i++) {
-        CnInheritanceInfo *base_info = &class_decl->bases[i];
-        
-        // 为基类创建临时vtable条目
-        // 注意：这里假设基类已在前面的代码生成阶段处理
-        // 我们需要生成基类虚函数的占位符，以便保持vtable布局一致
-        
-        // 基类虚函数条目将由基类的vtable定义提供
-        // 这里只记录基类信息，实际函数指针在vtable实例化时填充
-        (void)base_info;  // 暂时标记为使用
+    if (ctx->program && class_decl->base_count > 0) {
+        for (size_t i = 0; i < class_decl->base_count; i++) {
+            CnInheritanceInfo *base_info = &class_decl->bases[i];
+            
+            // 从程序AST中查找基类声明
+            CnAstClassDecl *base_class = cn_find_class_in_program(ctx->program,
+                                                                   base_info->base_class_name,
+                                                                   base_info->base_class_name_length);
+            if (base_class) {
+                // 递归收集基类的虚函数
+                for (size_t j = 0; j < base_class->member_count; j++) {
+                    CnClassMember *base_member = &base_class->members[j];
+                    if (base_member->kind == CN_MEMBER_METHOD && base_member->is_virtual) {
+                        // 添加基类虚函数到vtable，保持基类名称作为定义类
+                        cn_vtable_add_entry_ex(vtable, base_member,
+                                                base_class->name, base_class->name_length);
+                    }
+                }
+            }
+        }
     }
     
-    // 添加当前类的虚函数
+    // 添加当前类的虚函数（可能会覆盖基类的虚函数）
     for (size_t i = 0; i < class_decl->member_count; i++) {
         CnClassMember *member = &class_decl->members[i];
         if (member->kind == CN_MEMBER_METHOD && member->is_virtual) {
@@ -1588,33 +1597,37 @@ bool cn_cgen_type_info(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     {
         fprintf(out, "/* 类 %.*s 的类型转换缓存 */\n",
                 (int)class_decl->name_length, class_decl->name);
-        fprintf(out, "static const CnCastInfo _%.*s_cast_cache[] = {\n",
-                (int)class_decl->name_length, class_decl->name);
         
-        size_t cache_count = 0;
-        
-        // 遍历所有直接基类
-        for (size_t i = 0; i < class_decl->base_count; i++) {
-            CnInheritanceInfo *base_info = &class_decl->bases[i];
+        // 如果没有基类，生成一个空条目以避免空数组问题
+        if (class_decl->base_count == 0) {
+            fprintf(out, "static const CnCastInfo _%.*s_cast_cache[1] = {{0}};\n\n",
+                    (int)class_decl->name_length, class_decl->name);
+        } else {
+            fprintf(out, "static const CnCastInfo _%.*s_cast_cache[] = {\n",
+                    (int)class_decl->name_length, class_decl->name);
             
-            // 添加直接基类到缓存
-            fprintf(out, "    {\n");
-            fprintf(out, "        .target_type = &_%.*s_type_info,  // 基类 %.*s\n",
-                    (int)base_info->base_class_name_length, base_info->base_class_name,
-                    (int)base_info->base_class_name_length, base_info->base_class_name);
-            fprintf(out, "        .offset = %.*s_%.*s_OFFSET,\n",
-                    (int)class_decl->name_length, class_decl->name,
-                    (int)base_info->base_class_name_length, base_info->base_class_name);
-            fprintf(out, "        .flags = %s\n",
-                    base_info->is_virtual ? "CN_CAST_FLAG_VIRTUAL" : "CN_CAST_FLAG_NONE");
-            fprintf(out, "    },\n");
-            cache_count++;
+            // 遍历所有直接基类
+            for (size_t i = 0; i < class_decl->base_count; i++) {
+                CnInheritanceInfo *base_info = &class_decl->bases[i];
+                
+                // 添加直接基类到缓存
+                fprintf(out, "    {\n");
+                fprintf(out, "        .target_type = &_%.*s_type_info,  // 基类 %.*s\n",
+                        (int)base_info->base_class_name_length, base_info->base_class_name,
+                        (int)base_info->base_class_name_length, base_info->base_class_name);
+                fprintf(out, "        .offset = %.*s_%.*s_OFFSET,\n",
+                        (int)class_decl->name_length, class_decl->name,
+                        (int)base_info->base_class_name_length, base_info->base_class_name);
+                fprintf(out, "        .flags = %s\n",
+                        base_info->is_virtual ? "CN_CAST_FLAG_VIRTUAL" : "CN_CAST_FLAG_NONE");
+                fprintf(out, "    },\n");
+                
+                // TODO: 递归添加间接基类（需要编译时计算累积偏移量）
+                // 当前版本仅支持直接基类的缓存
+            }
             
-            // TODO: 递归添加间接基类（需要编译时计算累积偏移量）
-            // 当前版本仅支持直接基类的缓存
+            fprintf(out, "};\n\n");
         }
-        
-        fprintf(out, "};\n\n");
         
         // 保存缓存数量供后续使用
         // 注意：这里需要在结构体初始化时使用
@@ -1662,7 +1675,7 @@ bool cn_cgen_type_info(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     for (size_t i = 0; i < class_decl->base_count; i++) {
         CnInheritanceInfo *base_info = &class_decl->bases[i];
         if (!base_info->is_virtual) {
-            fprintf(out, "    .primary_base = &_%.*s_type_info  // 主基类 %.*s\n",
+            fprintf(out, "    .primary_base = &_%.*s_type_info,  // 主基类 %.*s\n",
                     (int)base_info->base_class_name_length, base_info->base_class_name,
                     (int)base_info->base_class_name_length, base_info->base_class_name);
             has_primary_base = true;
@@ -1687,8 +1700,19 @@ bool cn_cgen_type_info(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     fprintf(out, "};\n\n");
     
     // 生成类型注册代码（在程序启动时自动注册）
+    // 使用条件编译支持MSVC和GCC/Clang
     fprintf(out, "/* 自动注册类型信息 */\n");
-    fprintf(out, "__attribute__((constructor)) static void _%.*s_register_type(void) {\n",
+    fprintf(out, "#if defined(_MSC_VER)\n");
+    fprintf(out, "static void _%.*s_register_type(void);\n",
+            (int)class_decl->name_length, class_decl->name);
+    fprintf(out, "#pragma section(\".CRT$XCU\", read)\n");
+    fprintf(out, "__declspec(allocate(\".CRT$XCU\")) static void (*_%.*s_register_type_ptr)(void) = _%.*s_register_type;\n",
+            (int)class_decl->name_length, class_decl->name,
+            (int)class_decl->name_length, class_decl->name);
+    fprintf(out, "#else\n");
+    fprintf(out, "__attribute__((constructor))\n");
+    fprintf(out, "#endif\n");
+    fprintf(out, "static void _%.*s_register_type(void) {\n",
             (int)class_decl->name_length, class_decl->name);
     fprintf(out, "    cn_register_type_info(&_%.*s_type_info);\n",
             (int)class_decl->name_length, class_decl->name);
@@ -1722,17 +1746,32 @@ bool cn_cgen_class_decl(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
         return false;
     }
     
-    // 3. 生成虚函数表（如果需要）
+    // 3. 生成方法前向声明（必须在vtable之前，因为vtable初始化引用这些函数）
+    fprintf(out, "// 类 %.*s 的方法前向声明\n",
+            (int)class_decl->name_length, class_decl->name);
+    for (size_t i = 0; i < class_decl->member_count; i++) {
+        CnClassMember *member = &class_decl->members[i];
+        if (member->kind == CN_MEMBER_METHOD) {
+            cgen_method_forward_decl(out, class_decl, member);
+        } else if (member->kind == CN_MEMBER_CONSTRUCTOR) {
+            cgen_constructor_forward_decl(out, class_decl, member);
+        } else if (member->kind == CN_MEMBER_DESTRUCTOR) {
+            cgen_destructor_forward_decl(out, class_decl, member);
+        }
+    }
+    fprintf(out, "\n");
+    
+    // 4. 生成虚函数表（如果需要）
     if (!cn_cgen_vtable(ctx, class_decl)) {
         return false;
     }
     
-    // 3.5 生成类型信息结构（RTTI）
+    // 5. 生成类型信息结构（RTTI）
     if (!cn_cgen_type_info(ctx, class_decl)) {
         return false;
     }
     
-    // 4. 生成成员函数
+    // 6. 生成成员函数实现
     if (!cn_cgen_class_methods(ctx, class_decl)) {
         return false;
     }

@@ -5323,6 +5323,11 @@ static CnClassMember *parse_class_member(CnParser *parser, CnAccessLevel default
         // 设置重写标志（新语法：重写关键字在函数签名开头）
         member->is_override = is_override_member;
         
+        // 重写方法自动继承基类虚函数特性，设置为虚函数
+        if (is_override_member) {
+            member->is_virtual = true;
+        }
+        
         // 静态方法不能是虚函数
         if (is_static_member && is_virtual_member) {
             parser->error_count++;
