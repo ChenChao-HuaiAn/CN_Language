@@ -31,6 +31,63 @@
 extern const char *get_c_type_string(CnType *type);
 
 /**
+ * @brief 检查表达式是否为字符串类型
+ *
+ * 检查表达式本身的类型，或者对于二元表达式检查操作数类型
+ */
+static bool is_string_expr(CnAstExpr *expr) {
+    if (!expr) return false;
+    
+    // 检查表达式本身的类型
+    if (expr->type && expr->type->kind == CN_TYPE_STRING) {
+        return true;
+    }
+    
+    // 对于字符串字面量，直接返回true
+    if (expr->kind == CN_AST_EXPR_STRING_LITERAL) {
+        return true;
+    }
+    
+    // 对于成员访问，检查成员类型
+    if (expr->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+        // 成员访问的类型可能在 type 字段中
+        if (expr->type && expr->type->kind == CN_TYPE_STRING) {
+            return true;
+        }
+    }
+    
+    // 对于二元表达式（加法），递归检查是否为字符串拼接
+    if (expr->kind == CN_AST_EXPR_BINARY && expr->as.binary.op == CN_AST_BINARY_OP_ADD) {
+        // 如果任一操作数是字符串，则结果也是字符串
+        if (is_string_expr(expr->as.binary.left) || is_string_expr(expr->as.binary.right)) {
+            return true;
+        }
+    }
+    
+    return false;
+}
+
+/**
+ * @brief 检查二元表达式是否为字符串拼接
+ */
+static bool is_string_concat(CnAstExpr *expr) {
+    if (!expr || expr->kind != CN_AST_EXPR_BINARY) return false;
+    if (expr->as.binary.op != CN_AST_BINARY_OP_ADD) return false;
+    
+    // 检查表达式类型
+    if (expr->type && expr->type->kind == CN_TYPE_STRING) {
+        return true;
+    }
+    
+    // 检查任一操作数是否为字符串（包括嵌套的字符串拼接）
+    if (is_string_expr(expr->as.binary.left) || is_string_expr(expr->as.binary.right)) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
  * @brief 生成初始化表达式的C代码（简化版）
  *
  * 前向声明，实现在后面
@@ -360,6 +417,15 @@ static void cgen_init_expr_simple(FILE *out, CnAstExpr *expr) {
             fprintf(out, "%.*s", (int)expr->as.identifier.name_length, expr->as.identifier.name);
             break;
         case CN_AST_EXPR_BINARY:
+            // 检查是否为字符串拼接
+            if (is_string_concat(expr)) {
+                fprintf(out, "cn_rt_string_concat(");
+                cgen_init_expr_simple(out, expr->as.binary.left);
+                fprintf(out, ", ");
+                cgen_init_expr_simple(out, expr->as.binary.right);
+                fprintf(out, ")");
+                break;
+            }
             // 二元表达式
             fprintf(out, "(");
             cgen_init_expr_simple(out, expr->as.binary.left);
@@ -596,6 +662,28 @@ static void cgen_expr_in_method(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             }
             break;
         case CN_AST_EXPR_BINARY:
+            // 检查是否为字符串拼接
+            if (is_string_concat(expr)) {
+                // 生成 cn_rt_string_concat 调用
+                // 对于嵌套的字符串拼接，需要递归处理
+                fprintf(out, "cn_rt_string_concat(");
+                // 左操作数：如果是字符串拼接，递归生成；否则直接生成
+                if (is_string_concat(expr->as.binary.left)) {
+                    cgen_expr_in_method(ctx, expr->as.binary.left);
+                } else {
+                    cgen_expr_in_method(ctx, expr->as.binary.left);
+                }
+                fprintf(out, ", ");
+                // 右操作数：如果是字符串拼接，递归生成；否则直接生成
+                if (is_string_concat(expr->as.binary.right)) {
+                    cgen_expr_in_method(ctx, expr->as.binary.right);
+                } else {
+                    cgen_expr_in_method(ctx, expr->as.binary.right);
+                }
+                fprintf(out, ")");
+                break;
+            }
+            // 原有的数值运算逻辑
             fprintf(out, "(");
             cgen_expr_in_method(ctx, expr->as.binary.left);
             switch (expr->as.binary.op) {
@@ -1792,12 +1880,67 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
             print_indent(out, 1);
             fprintf(out, ".%.*s_iface = {\n", (int)iface_name_len, iface_name);
             
+            // 查找接口定义以获取接口方法列表
+            CnAstInterfaceDecl *interface_def = NULL;
+            if (ctx && ctx->program) {
+                for (size_t j = 0; j < ctx->program->interface_count; j++) {
+                    CnAstStmt *iface_stmt = ctx->program->interfaces[j];
+                    if (iface_stmt && iface_stmt->kind == CN_AST_STMT_INTERFACE_DECL) {
+                        CnAstInterfaceDecl *iface = iface_stmt->as.interface_decl;
+                        if (iface->name_length == iface_name_len &&
+                            strncmp(iface->name, iface_name, iface_name_len) == 0) {
+                            interface_def = iface;
+                            break;
+                        }
+                    }
+                }
+            }
+            
             // 初始化接口方法：查找类中实现的接口方法
-            // 简化实现：假设接口方法与类方法同名
-            // 完整实现需要通过符号表查找接口定义
-            print_indent(out, 2);
-            fprintf(out, "// 接口 %.*s 的方法初始化\n", (int)iface_name_len, iface_name);
-            fprintf(out, "    },  // end interface %.*s\n", (int)iface_name_len, iface_name);
+            bool iface_first = true;
+            if (interface_def) {
+                for (size_t m = 0; m < interface_def->method_count; m++) {
+                    CnClassMember *iface_method = &interface_def->methods[m];
+                    
+                    // 在类中查找同名方法
+                    CnClassMember *impl_method = NULL;
+                    for (size_t k = 0; k < class_decl->member_count; k++) {
+                        CnClassMember *member = &class_decl->members[k];
+                        if (member->kind == CN_MEMBER_METHOD &&
+                            member->name_length == iface_method->name_length &&
+                            strncmp(member->name, iface_method->name, member->name_length) == 0) {
+                            impl_method = member;
+                            break;
+                        }
+                    }
+                    
+                    if (!iface_first) {
+                        fprintf(out, ",\n");
+                    }
+                    iface_first = false;
+                    
+                    print_indent(out, 2);
+                    if (impl_method) {
+                        // 找到实现方法，绑定到类方法
+                        fprintf(out, ".%.*s = %.*s_%.*s",
+                                (int)iface_method->name_length, iface_method->name,
+                                (int)class_decl->name_length, class_decl->name,
+                                (int)iface_method->name_length, iface_method->name);
+                    } else {
+                        // 未找到实现方法，使用占位符（这不应该发生，语义检查应该已经验证）
+                        fprintf(out, ".%.*s = %.*s_%.*s_interface_pure_virtual_error  // 警告: 未找到实现",
+                                (int)iface_method->name_length, iface_method->name,
+                                (int)iface_name_len, iface_name,
+                                (int)iface_method->name_length, iface_method->name);
+                    }
+                }
+            }
+            
+            if (!iface_first) {
+                fprintf(out, "\n");
+            }
+            print_indent(out, 1);
+            fprintf(out, "},  // end interface %.*s\n", (int)iface_name_len, iface_name);
         }
     }
     
@@ -2512,6 +2655,15 @@ static void cgen_expr_for_arg(FILE *out, CnAstExpr *expr) {
             }
             break;
         case CN_AST_EXPR_BINARY:
+            // 检查是否为字符串拼接
+            if (is_string_concat(expr)) {
+                fprintf(out, "cn_rt_string_concat(");
+                cgen_expr_for_arg(out, expr->as.binary.left);
+                fprintf(out, ", ");
+                cgen_expr_for_arg(out, expr->as.binary.right);
+                fprintf(out, ")");
+                break;
+            }
             fprintf(out, "(");
             cgen_expr_for_arg(out, expr->as.binary.left);
             switch (expr->as.binary.op) {

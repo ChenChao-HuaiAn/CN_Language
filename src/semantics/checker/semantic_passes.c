@@ -1385,6 +1385,13 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 if (expr->as.call.callee->kind == CN_AST_EXPR_MEMBER_ACCESS) {
                     // 方法调用：callee_type 已经是返回类型
                     expr->type = callee_type;
+                    
+                    // 推断所有参数类型（修复：方法调用参数也需要类型推断）
+                    for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                        if (expr->as.call.arguments[i]) {
+                            infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
+                        }
+                    }
                 } else {
                     if (callee_type && callee_type->kind != CN_TYPE_UNKNOWN) {
                         cn_support_diag_semantic_error_type_mismatch(

@@ -53,6 +53,7 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_IMPLEMENTS, // 实现（用于类实现接口）
     // OOP关键字（面向对象编程支持）
     CN_TOKEN_KEYWORD_THIS,     // 自身指针（this）
+    CN_TOKEN_KEYWORD_SELF_TYPE, // 自身类型（表示当前类/接口的类型）
     CN_TOKEN_KEYWORD_BASE,     // 基类访问
     CN_TOKEN_KEYWORD_NEW,      // 新建对象
     CN_TOKEN_KEYWORD_DELETE,   // 删除对象

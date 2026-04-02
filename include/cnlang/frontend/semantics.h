@@ -43,6 +43,7 @@ typedef enum CnTypeKind {
     CN_TYPE_FLOAT32,    // 单精度浮点数（f/F后缀）
     CN_TYPE_FLOAT64,    // 双精度浮点数（等价于 CN_TYPE_FLOAT）
     
+    CN_TYPE_SELF,       // 自身类型（表示当前类/接口的类型）
     CN_TYPE_UNKNOWN // 未知类型
 } CnTypeKind;
 

@@ -45,6 +45,45 @@ static bool is_runtime_macro_conflict(const char *func_name) {
     return false;
 }
 
+/**
+ * @brief 检查表达式是否为字符串类型
+ */
+static bool cgen_is_string_expr(CnAstExpr *expr) {
+    if (!expr) return false;
+    
+    // 检查表达式本身的类型
+    if (expr->type && expr->type->kind == CN_TYPE_STRING) {
+        return true;
+    }
+    
+    // 对于字符串字面量，直接返回true
+    if (expr->kind == CN_AST_EXPR_STRING_LITERAL) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * @brief 检查二元表达式是否为字符串拼接
+ */
+static bool cgen_is_string_concat(CnAstExpr *expr) {
+    if (!expr || expr->kind != CN_AST_EXPR_BINARY) return false;
+    if (expr->as.binary.op != CN_AST_BINARY_OP_ADD) return false;
+    
+    // 检查表达式类型
+    if (expr->type && expr->type->kind == CN_TYPE_STRING) {
+        return true;
+    }
+    
+    // 检查任一操作数是否为字符串
+    if (cgen_is_string_expr(expr->as.binary.left) || cgen_is_string_expr(expr->as.binary.right)) {
+        return true;
+    }
+    
+    return false;
+}
+
 // --- 辅助函数 ---
 
 const char *get_c_type_string(CnType *type) {
@@ -134,6 +173,9 @@ const char *get_c_type_string(CnType *type) {
             /* 内存地址类型：对应 uintptr_t */
             return "uintptr_t";
         }
+        case CN_TYPE_SELF:
+            /* 自身类型：接口方法中使用 void* 作为占位符 */
+            return "void*";
         default: return "int";
     }
 }
@@ -354,6 +396,15 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             }
             break;
         case CN_AST_EXPR_BINARY:
+            // 检查是否为字符串拼接
+            if (cgen_is_string_concat(expr)) {
+                fprintf(ctx->output_file, "cn_rt_string_concat(");
+                cn_cgen_expr_simple(ctx, expr->as.binary.left);
+                fprintf(ctx->output_file, ", ");
+                cn_cgen_expr_simple(ctx, expr->as.binary.right);
+                fprintf(ctx->output_file, ")");
+                break;
+            }
             fprintf(ctx->output_file, "(");
             cn_cgen_expr_simple(ctx, expr->as.binary.left);
             
@@ -1517,6 +1568,17 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         }
     }
     
+    // 生成接口定义（如果提供了 AST）- 必须在类定义之前，因为类的vtable引用接口vtable
+    if (program && program->interface_count > 0) {
+        fprintf(file, "// CN Language Interface Definitions\n\n");
+        for (size_t i = 0; i < program->interface_count; i++) {
+            CnAstStmt *interface_stmt = program->interfaces[i];
+            if (interface_stmt && interface_stmt->kind == CN_AST_STMT_INTERFACE_DECL) {
+                cn_cgen_interface_decl(&ctx, interface_stmt->as.interface_decl);
+            }
+        }
+    }
+    
     // 生成类定义（如果提供了 AST）- 阶段11 面向对象编程支持
     if (program && program->class_count > 0) {
         fprintf(file, "// CN Language Class Definitions\n\n");
@@ -1524,17 +1586,6 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
             CnAstStmt *class_stmt = program->classes[i];
             if (class_stmt && class_stmt->kind == CN_AST_STMT_CLASS_DECL) {
                 cn_cgen_class_decl(&ctx, class_stmt->as.class_decl);
-            }
-        }
-    }
-    
-    // 生成接口定义（如果提供了 AST）- 阶段11 面向对象编程支持
-    if (program && program->interface_count > 0) {
-        fprintf(file, "// CN Language Interface Definitions\n\n");
-        for (size_t i = 0; i < program->interface_count; i++) {
-            CnAstStmt *interface_stmt = program->interfaces[i];
-            if (interface_stmt && interface_stmt->kind == CN_AST_STMT_INTERFACE_DECL) {
-                cn_cgen_interface_decl(&ctx, interface_stmt->as.interface_decl);
             }
         }
     }
@@ -1906,22 +1957,23 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
         }
     }
     
-    if (program && program->class_count > 0) {
-        fprintf(file, "// CN Language Class Definitions\n\n");
-        for (size_t i = 0; i < program->class_count; i++) {
-            CnAstStmt *class_stmt = program->classes[i];
-            if (class_stmt && class_stmt->kind == CN_AST_STMT_CLASS_DECL) {
-                cn_cgen_class_decl(&ctx, class_stmt->as.class_decl);
-            }
-        }
-    }
-    
+    // 生成接口定义（必须在类定义之前，因为类的vtable引用接口vtable）
     if (program && program->interface_count > 0) {
         fprintf(file, "// CN Language Interface Definitions\n\n");
         for (size_t i = 0; i < program->interface_count; i++) {
             CnAstStmt *interface_stmt = program->interfaces[i];
             if (interface_stmt && interface_stmt->kind == CN_AST_STMT_INTERFACE_DECL) {
                 cn_cgen_interface_decl(&ctx, interface_stmt->as.interface_decl);
+            }
+        }
+    }
+    
+    if (program && program->class_count > 0) {
+        fprintf(file, "// CN Language Class Definitions\n\n");
+        for (size_t i = 0; i < program->class_count; i++) {
+            CnAstStmt *class_stmt = program->classes[i];
+            if (class_stmt && class_stmt->kind == CN_AST_STMT_CLASS_DECL) {
+                cn_cgen_class_decl(&ctx, class_stmt->as.class_decl);
             }
         }
     }

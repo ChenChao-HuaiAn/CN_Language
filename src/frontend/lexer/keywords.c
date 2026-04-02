@@ -55,6 +55,7 @@ static const CnKeywordEntry g_keywords[] = {
     {"抽象", CN_TOKEN_KEYWORD_ABSTRACT, "OOP关键字"},
     {"实现", CN_TOKEN_KEYWORD_IMPLEMENTS, "OOP关键字"},
     {"自身", CN_TOKEN_KEYWORD_THIS, "OOP关键字"},
+    {"自身类型", CN_TOKEN_KEYWORD_SELF_TYPE, "OOP关键字"},
     {"基类", CN_TOKEN_KEYWORD_BASE, "OOP关键字"},
     
     // 异常处理关键字 (4个) - 异常处理支持

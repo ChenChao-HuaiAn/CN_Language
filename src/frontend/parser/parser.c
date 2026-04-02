@@ -2425,6 +2425,10 @@ static CnType *parse_type(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
         type = cn_type_new_primitive(CN_TYPE_VOID);
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_SELF_TYPE) {
+        // 自身类型：表示当前类/接口的类型
+        type = cn_type_new_primitive(CN_TYPE_SELF);
+        parser_advance(parser);
     /* 已禁用：CN_TOKEN_KEYWORD_MEMORY_ADDRESS 已删除
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_MEMORY_ADDRESS) {
         // 注意：CN_TOKEN_KEYWORD_MEMORY_ADDRESS 已删除
@@ -6101,9 +6105,9 @@ static CnAstStmt *parse_interface_decl(CnParser *parser)
             parser_expect(parser, CN_TOKEN_RPAREN);
         }
         
-        // 解析返回类型
-        if (parser->current.kind == CN_TOKEN_COLON) {
-            parser_advance(parser);
+        // 解析返回类型（使用 -> 语法，与语法规范一致）
+        if (parser->current.kind == CN_TOKEN_ARROW) {
+            parser_advance(parser);  // 跳过 '->'
             method->type = parse_type(parser);
         }
         
