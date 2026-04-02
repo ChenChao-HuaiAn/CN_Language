@@ -114,8 +114,10 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_IDENTIFIER: {
             CnSemSymbol *sym = cn_sem_scope_lookup(scope, expr->as.identifier.name, expr->as.identifier.name_length);
             if (!sym) {
-                cn_support_diag_semantic_error_undefined_identifier(
-                    diagnostics, NULL, 0, 0, expr->as.identifier.name);
+                // 检查是否是类型名（结构体/枚举），用于构造函数调用
+                // 例如：点 p(10, 20); 其中 "点" 是类型名
+                // 类型名作为构造函数调用时，在符号表中是 CN_SEM_SYMBOL_STRUCT 或 CN_SEM_SYMBOL_ENUM
+                // 这里不报错，让类型推断阶段处理
             }
             break;
         }
@@ -364,15 +366,20 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                 sym->is_const = decl->is_const;
                 sym->is_static = decl->is_static;  // 传递静态变量标记
                 if (decl->declared_type) {
-                    // 特殊处理：如果声明类型是结构体类型，可能是枚举类型
-                    // 需要从符号表查找真实类型
+                    // 特殊处理：如果声明类型是结构体类型，可能是枚举类型或类类型
+                    // 需要从符号表查找真实类型（包含完整的字段信息）
                     if (decl->declared_type->kind == CN_TYPE_STRUCT) {
                         CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
                                                 decl->declared_type->as.struct_type.name,
                                                 decl->declared_type->as.struct_type.name_length);
-                        if (type_sym && type_sym->kind == CN_SEM_SYMBOL_ENUM && type_sym->type) {
-                            // 替换为枚举类型
-                            decl->declared_type = type_sym->type;
+                        if (type_sym && type_sym->type) {
+                            if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                // 替换为枚举类型
+                                decl->declared_type = type_sym->type;
+                            } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                // 替换为完整的结构体/类类型（包含字段信息）
+                                decl->declared_type = type_sym->type;
+                            }
                         }
                     }
                     
@@ -1133,6 +1140,38 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }
+            
+            // 检查是否是构造函数调用：类型名(参数列表)
+            // 例如：点(10, 20) 或 学生("张三", 20, 85.5)
+            if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
+                const char *type_name = expr->as.call.callee->as.identifier.name;
+                size_t type_name_len = expr->as.call.callee->as.identifier.name_length;
+                
+                if (type_name && type_name_len > 0) {
+                    // 在符号表中查找类型名
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(scope, type_name, type_name_len);
+                    
+                    // 如果是结构体类型（包括类），视为构造函数调用
+                    if (type_sym && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 构造函数返回该结构体类型
+                        // 如果符号有类型信息，直接使用
+                        if (type_sym->type) {
+                            expr->type = type_sym->type;
+                        } else {
+                            // 创建结构体类型
+                            expr->type = cn_type_new_struct(type_name, type_name_len, NULL, 0, NULL, NULL, 0);
+                        }
+                        
+                        // 推断所有参数类型
+                        for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                            infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
+                        }
+                        
+                        break;  // 构造函数调用处理完毕
+                    }
+                }
+            }
+            
             CnType *callee_type = infer_expr_type(scope, expr->as.call.callee, diagnostics);
             
             // 特殊处理：内置函数 "长度" 可以接受字符串或数组

@@ -986,10 +986,14 @@ bool cn_add_method_to_symbol_table(CnClassAnalyzerContext *ctx, CnClassMember *m
     
     if (!sym) {
         free(full_name);
-        /* 如果插入失败，可能是因为符号已存在（如重写方法），这是正常情况 */
-        /* 对于重写方法，基类的方法已经在符号表中，我们不需要再次添加 */
+        /* 如果插入失败，可能是因为符号已存在 */
+        /* 1. 重写方法：基类的方法已经在符号表中，这是正常情况 */
+        /* 2. 构造函数重载：同名构造函数已存在，这也是正常情况 */
         if (member->is_override) {
             return true;  /* 重写方法不需要在符号表中添加新条目 */
+        }
+        if (member->kind == CN_MEMBER_CONSTRUCTOR) {
+            return true;  /* 构造函数重载，已有同名构造函数在符号表中 */
         }
         return false;
     }

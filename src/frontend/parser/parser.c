@@ -1510,6 +1510,10 @@ static CnAstStmt *parse_statement(CnParser *parser)
         CnType *declared_type = NULL;
         int is_const = 0;
         int is_static = 0;  // 静态变量标记
+        
+        // 保存类型名，用于构造函数调用
+        const char *type_name = NULL;
+        size_t type_name_length = 0;
 
         // 处理 '静态' 关键字：静态局部变量声明
         if (parser->current.kind == CN_TOKEN_KEYWORD_STATIC) {
@@ -1590,10 +1594,21 @@ static CnAstStmt *parse_statement(CnParser *parser)
             parser_advance(parser);
             declared_type = NULL; // 后续通过类型推断
         } else {
+            // 保存类型名（用于构造函数调用）
+            // 如果当前是标识符，保存其名称
+            if (parser->current.kind == CN_TOKEN_IDENT) {
+                type_name = parser->current.lexeme_begin;
+                type_name_length = parser->current.lexeme_length;
+            }
             // 使用统一的 parse_type 解析类型
             declared_type = parse_type(parser);
             if (!declared_type) {
                 return NULL;
+            }
+            // 如果类型是结构体类型，更新类型名
+            if (declared_type && declared_type->kind == CN_TYPE_STRUCT) {
+                type_name = declared_type->as.struct_type.name;
+                type_name_length = declared_type->as.struct_type.name_length;
             }
         }
 
@@ -1829,6 +1844,82 @@ static CnAstStmt *parse_statement(CnParser *parser)
             }
                     
             free(dimensions);
+        }
+
+        // 支持带参数构造函数调用语法：类型 变量名(参数列表);
+        // 例如：学生 学生2("张三", 20, 85.5);
+        if (parser->current.kind == CN_TOKEN_LPAREN) {
+            parser_advance(parser);  // 跳过 '('
+
+            // 解析参数列表
+            CnAstExpr **args = NULL;
+            size_t arg_count = 0;
+            size_t arg_capacity = 0;
+
+            if (parser->current.kind != CN_TOKEN_RPAREN) {
+                arg_capacity = 4;
+                args = (CnAstExpr **)malloc(sizeof(CnAstExpr *) * arg_capacity);
+                if (!args) {
+                    return NULL;
+                }
+
+                do {
+                    if (arg_count >= arg_capacity) {
+                        arg_capacity *= 2;
+                        CnAstExpr **new_args = (CnAstExpr **)realloc(
+                            args, sizeof(CnAstExpr *) * arg_capacity);
+                        if (!new_args) {
+                            for (size_t i = 0; i < arg_count; i++) {
+                                cn_frontend_ast_expr_free(args[i]);
+                            }
+                            free(args);
+                            return NULL;
+                        }
+                        args = new_args;
+                    }
+
+                    args[arg_count] = parse_expression(parser);
+                    if (!args[arg_count]) {
+                        for (size_t i = 0; i < arg_count; i++) {
+                            cn_frontend_ast_expr_free(args[i]);
+                        }
+                        free(args);
+                        return NULL;
+                    }
+                    arg_count++;
+
+                    if (parser->current.kind == CN_TOKEN_COMMA) {
+                        parser_advance(parser);
+                    } else {
+                        break;
+                    }
+                } while (parser->current.kind != CN_TOKEN_RPAREN &&
+                         parser->current.kind != CN_TOKEN_EOF);
+            }
+
+            parser_expect(parser, CN_TOKEN_RPAREN);
+
+            // 创建构造函数调用表达式作为初始化器
+            // 构造函数名为类型名，例如：学生("张三", 20, 85.5)
+            CnAstExpr *type_name_expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+            if (!type_name_expr) {
+                for (size_t i = 0; i < arg_count; i++) {
+                    cn_frontend_ast_expr_free(args[i]);
+                }
+                free(args);
+                return NULL;
+            }
+            type_name_expr->kind = CN_AST_EXPR_IDENTIFIER;
+            type_name_expr->type = NULL;
+            type_name_expr->loc.filename = parser->lexer ? parser->lexer->filename : NULL;
+            type_name_expr->loc.line = parser->current.line;
+            type_name_expr->loc.column = parser->current.column;
+            // 使用保存的类型名
+            type_name_expr->as.identifier.name = type_name;
+            type_name_expr->as.identifier.name_length = type_name_length;
+
+            // 创建函数调用表达式
+            initializer = make_call(type_name_expr, args, arg_count);
         }
 
         if (parser->current.kind == CN_TOKEN_EQUAL) {

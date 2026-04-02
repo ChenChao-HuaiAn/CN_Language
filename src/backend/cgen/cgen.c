@@ -907,7 +907,24 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             if (inst->src2.kind == CN_IR_OP_SYMBOL) {
                 fprintf(ctx->output_file, "%s", inst->src2.as.sym_name);
             }
-            fprintf(ctx->output_file, ";\n"); 
+            fprintf(ctx->output_file, ";\n");
+            break;
+        case CN_IR_INST_STRUCT_INIT:
+            // 结构体初始化（构造函数调用）：dest = (struct 类型名){arg1, arg2, ...}
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = (struct ");
+            // src1 为类型名（符号类型）
+            if (inst->src1.kind == CN_IR_OP_SYMBOL) {
+                fprintf(ctx->output_file, "%s", inst->src1.as.sym_name);
+            }
+            fprintf(ctx->output_file, "){");
+            // 打印参数
+            for (size_t i = 0; i < inst->extra_args_count; i++) {
+                if (i > 0) fprintf(ctx->output_file, ", ");
+                print_operand(ctx, inst->extra_args[i]);
+            }
+            fprintf(ctx->output_file, "};\n");
             break;
         case CN_IR_INST_NEG:
             // 一元负号：dest = -src1

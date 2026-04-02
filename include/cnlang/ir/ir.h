@@ -54,6 +54,7 @@ typedef enum CnIrInstKind {
     // 结构体操作指令
     CN_IR_INST_GET_ELEMENT_PTR,  // 获取结构体成员地址
     CN_IR_INST_MEMBER_ACCESS,    // 结构体成员访问
+    CN_IR_INST_STRUCT_INIT,      // 结构体初始化（构造函数调用）
 
     // 其他
     CN_IR_INST_PHI,    // SSA 形式下的 PHI 指令（预留）

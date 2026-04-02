@@ -607,7 +607,40 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
                 char *name = copy_name(expr->as.call.callee->as.identifier.name,
                                        expr->as.call.callee->as.identifier.name_length);
-                                       
+                
+                // 检查是否是构造函数调用（类型名作为函数名）
+                // 例如：点(10, 20) 或 学生("张三", 20, 85.5)
+                // 判断依据：callee是标识符，且expr->type是结构体类型
+                if (expr->type && expr->type->kind == CN_TYPE_STRUCT) {
+                    // 构造函数调用：生成复合字面量
+                    // 在C99中：(struct 类型名){.字段1 = 值1, .字段2 = 值2, ...}
+                    // 但由于我们不知道字段名，使用位置初始化：
+                    // (struct 类型名){值1, 值2, ...}
+                    
+                    // 分配结果寄存器
+                    int dest_reg = alloc_reg(ctx);
+                    CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
+                    
+                    // 生成 STRUCT_INIT 指令
+                    // 格式：dest = STRUCT_INIT 类型名, 参数...
+                    CnIrInst *init_inst = cn_ir_inst_new(CN_IR_INST_STRUCT_INIT, dest,
+                                                          cn_ir_op_symbol(name, expr->type),
+                                                          cn_ir_op_none());
+                    
+                    // 收集参数
+                    if (expr->as.call.argument_count > 0) {
+                        init_inst->extra_args_count = expr->as.call.argument_count;
+                        init_inst->extra_args = malloc(sizeof(CnIrOperand) * expr->as.call.argument_count);
+                        for (size_t i = 0; i < expr->as.call.argument_count; i++) {
+                            init_inst->extra_args[i] = cn_ir_gen_expr(ctx, expr->as.call.arguments[i]);
+                        }
+                    }
+                    
+                    emit(ctx, init_inst);
+                    free(name);
+                    return dest;
+                }
+                                        
                 // 检查是否是 "长度" 函数（函数风格）
                 if (strcmp(name, "长度") == 0 && expr->as.call.argument_count == 1) {
                     // 根据第一个参数的类型决定调用哪个运行时函数
