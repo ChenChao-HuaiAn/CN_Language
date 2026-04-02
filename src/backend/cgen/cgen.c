@@ -23,6 +23,28 @@
 static CnTargetDataLayout g_target_layout;
 static bool g_target_layout_valid = false;
 
+/* 运行时宏冲突检测：检测函数名是否与运行时宏定义冲突 */
+static bool is_runtime_macro_conflict(const char *func_name) {
+    if (!func_name) return false;
+    
+    /* 运行时宏定义的中文函数名列表（来自 runtime.h） */
+    static const char *runtime_macros[] = {
+        "初始化运行时", "退出运行时",
+        "打印整数", "打印小数", "打印布尔", "打印换行",
+        "连接字符串新", "字符串长度", "整数转字符串", "小数转字符串", "布尔转字符串",
+        "分配数组", "获取数组长度", "检查数组越界", "释放数组", "设置数组元素", "获取数组元素",
+        "取子串", "字符串比较", "查找子串位置", "去除空白", "格式化字符串新",
+        NULL
+    };
+    
+    for (int i = 0; runtime_macros[i]; i++) {
+        if (strcmp(func_name, runtime_macros[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // --- 辅助函数 ---
 
 const char *get_c_type_string(CnType *type) {
@@ -908,6 +930,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     
     bool is_main = strcmp(c_func_name, "main") == 0;
     
+    // 注意：运行时宏冲突的 #undef 已在前向声明之前统一处理，此处不再重复
+    
     // 中断处理函数：生成注释和属性
     if (func->is_interrupt_handler) {
         fprintf(ctx->output_file, "// 中断处理函数 (ISR) - 中断向量号: %u\n", func->interrupt_vector);
@@ -1142,9 +1166,51 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     CnIrBasicBlock *block = func->first_block;
     while (block) { cn_cgen_block(ctx, block); block = block->next; }
 
-    // 中断处理函数默认返回0（如果没有显式return）
-    if (func->is_interrupt_handler) {
-        fprintf(ctx->output_file, "  return 0;\n");
+    // 检查函数是否以返回语句结束
+    bool has_return = false;
+    if (func->last_block && func->last_block->last_inst) {
+        has_return = (func->last_block->last_inst->kind == CN_IR_INST_RET);
+    }
+
+    // 如果函数没有返回语句，添加默认返回
+    if (!has_return) {
+        // 中断处理函数默认返回0
+        if (func->is_interrupt_handler) {
+            fprintf(ctx->output_file, "  return 0;\n");
+        }
+        // 根据返回类型添加默认返回
+        else if (func->return_type) {
+            switch (func->return_type->kind) {
+                case CN_TYPE_VOID:
+                    // void函数不需要返回值
+                    fprintf(ctx->output_file, "  return;\n");
+                    break;
+                case CN_TYPE_INT:
+                case CN_TYPE_INT32:
+                case CN_TYPE_INT64:
+                case CN_TYPE_UINT32:
+                case CN_TYPE_UINT64_LL:
+                case CN_TYPE_BOOL:
+                    fprintf(ctx->output_file, "  return 0;\n");
+                    break;
+                case CN_TYPE_FLOAT:
+                case CN_TYPE_FLOAT32:
+                case CN_TYPE_FLOAT64:
+                    fprintf(ctx->output_file, "  return 0.0;\n");
+                    break;
+                case CN_TYPE_STRING:
+                case CN_TYPE_POINTER:
+                    fprintf(ctx->output_file, "  return NULL;\n");
+                    break;
+                default:
+                    // 其他类型默认返回0
+                    fprintf(ctx->output_file, "  return 0;\n");
+                    break;
+            }
+        } else {
+            // 无返回类型声明的函数，默认返回0
+            fprintf(ctx->output_file, "  return 0;\n");
+        }
     }
 
     // 注入运行时退出（仅 hosted 模式）
@@ -1442,6 +1508,26 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     // 生成函数前置声明（Forward Declarations）
     fprintf(file, "// Forward Declarations\n");
     CnIrFunction *func = module->first_func;
+    
+    // 首先收集所有需要 #undef 的运行时宏冲突函数名
+    // 在前向声明之前统一生成 #undef，避免宏展开导致重定义
+    bool has_macro_conflict = false;
+    CnIrFunction *temp_func = func;
+    while (temp_func) {
+        if (is_runtime_macro_conflict(temp_func->name)) {
+            if (!has_macro_conflict) {
+                fprintf(file, "// 取消运行时宏定义，避免与用户函数名冲突\n");
+                has_macro_conflict = true;
+            }
+            fprintf(file, "#undef %s\n", temp_func->name);
+        }
+        temp_func = temp_func->next;
+    }
+    if (has_macro_conflict) {
+        fprintf(file, "\n");
+    }
+    
+    // 生成前向声明
     while (func) {
         fprintf(file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
         for (size_t i = 0; i < func->param_count; i++) {
@@ -1554,6 +1640,17 @@ static void full_import_callback(CnSemSymbol *sym, void *user_data) {
 static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, size_t func_name_len, CnType *func_type) {
     if (!file || !func_name || !func_type || func_type->kind != CN_TYPE_FUNCTION) {
         return;
+    }
+    
+    // 检测运行时宏冲突：如果函数名与运行时宏同名，需要先 #undef 取消宏定义
+    // 创建临时空字符结尾的字符串用于检测
+    char temp_name[256];
+    size_t safe_len = func_name_len < sizeof(temp_name) - 1 ? func_name_len : sizeof(temp_name) - 1;
+    memcpy(temp_name, func_name, safe_len);
+    temp_name[safe_len] = '\0';
+    
+    if (is_runtime_macro_conflict(temp_name)) {
+        fprintf(file, "#undef %s\n", temp_name);
     }
     
     // 返回类型
@@ -1801,6 +1898,26 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     // 生成函数前置声明（Forward Declarations）
     fprintf(file, "// Forward Declarations\n");
     CnIrFunction *func = module->first_func;
+    
+    // 首先收集所有需要 #undef 的运行时宏冲突函数名
+    // 在前向声明之前统一生成 #undef，避免宏展开导致重定义
+    bool has_macro_conflict = false;
+    CnIrFunction *temp_func = func;
+    while (temp_func) {
+        if (is_runtime_macro_conflict(temp_func->name)) {
+            if (!has_macro_conflict) {
+                fprintf(file, "// 取消运行时宏定义，避免与用户函数名冲突\n");
+                has_macro_conflict = true;
+            }
+            fprintf(file, "#undef %s\n", temp_func->name);
+        }
+        temp_func = temp_func->next;
+    }
+    if (has_macro_conflict) {
+        fprintf(file, "\n");
+    }
+    
+    // 生成前向声明
     while (func) {
         // 直接使用原始函数名（不再使用编码名称）
         const char *c_func_name = get_c_function_name(func->name);

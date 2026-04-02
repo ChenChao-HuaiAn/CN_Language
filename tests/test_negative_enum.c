@@ -4,6 +4,14 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Enum Definitions
+enum 状态 {
+    待处理 = 0,
+    处理中 = 1,
+    已完成 = 2,
+    已取消 = -1
+};
+
 // Global Variables
 
 // Forward Declarations
@@ -11,21 +19,8 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r0;
-  _Bool r1;
 
   entry:
-  long long cn_var_n_0;
-  cn_var_n_0 = 5;
-  r0 = cn_var_n_0;
-  r1 = r0 < 10;
-  if (r1) goto if_then_0; else goto if_merge_1;
-
-  if_then_0:
-  return 1;
-  goto if_merge_1;
-
-  if_merge_1:
   return 0;
   cn_rt_exit();
 }

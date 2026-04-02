@@ -329,6 +329,9 @@ static void build_argument_mapping(CnIrInlineContext *ctx) {
  * 4. 不是中断处理函数
  */
 static bool should_inline(CnIrFunction *caller, CnIrFunction *callee, CnIrInlineConfig *config) {
+    // 暂时禁用内联优化（存在基本块链接问题）
+    return false;
+    
     // 被调用函数不存在
     if (!callee) return false;
     
@@ -341,8 +344,11 @@ static bool should_inline(CnIrFunction *caller, CnIrFunction *callee, CnIrInline
     // 不内联中断处理函数
     if (callee->is_interrupt_handler) return false;
     
-    // 检查函数体大小
+    // 不内联空函数体（没有指令的函数）
     int inst_count = count_instructions(callee);
+    if (inst_count == 0) return false;
+    
+    // 检查函数体大小
     if (inst_count > config->max_inst_count) return false;
     
     return true;
@@ -395,11 +401,23 @@ static bool inline_function(CnIrInlineContext *ctx) {
     CnIrBasicBlock *first_copied = NULL;
     CnIrBasicBlock *last_copied = NULL;
     
+    // 保存调用块的下一个块（用于后续插入）
+    CnIrBasicBlock *insert_after = ctx->call_block;
+    
     for (CnIrBasicBlock *block = ctx->callee->first_block; block; block = block->next) {
         CnIrBasicBlock *copied = copy_basic_block(block, ctx);
         
-        // 添加到调用者函数
-        cn_ir_function_add_block(ctx->caller, copied);
+        // 插入到调用块之后（而不是添加到函数末尾）
+        copied->prev = insert_after;
+        copied->next = insert_after->next;
+        if (insert_after->next) {
+            insert_after->next->prev = copied;
+        } else {
+            // 如果insert_after是最后一个块，更新函数的last_block
+            ctx->caller->last_block = copied;
+        }
+        insert_after->next = copied;
+        insert_after = copied;
         
         if (!first_copied) first_copied = copied;
         last_copied = copied;
@@ -456,6 +474,23 @@ static bool inline_function(CnIrInlineContext *ctx) {
         }
     }
     
+    // 5.5 处理空函数体（没有返回指令的情况）
+    // 如果最后一个基本块没有返回指令或为空，添加跳转到after_block
+    if (last_copied) {
+        if (!last_copied->last_inst ||
+            (last_copied->last_inst->kind != CN_IR_INST_RET &&
+             last_copied->last_inst->kind != CN_IR_INST_JUMP)) {
+            // 添加跳转到after_block
+            CnIrInst *jump_to_after = cn_ir_inst_new(
+                CN_IR_INST_JUMP,
+                cn_ir_op_label(after_block),
+                cn_ir_op_none(),
+                cn_ir_op_none()
+            );
+            cn_ir_basic_block_add_inst(last_copied, jump_to_after);
+        }
+    }
+    
     // 6. 连接基本块
     // 在CALL指令位置插入跳转到内联代码
     CnIrInst *jump_to_inline = cn_ir_inst_new(
@@ -477,8 +512,16 @@ static bool inline_function(CnIrInlineContext *ctx) {
     }
     free(jump_to_inline);
     
-    // 添加after_block到函数
-    cn_ir_function_add_block(ctx->caller, after_block);
+    // 插入after_block到最后一个内联块之后
+    after_block->prev = last_copied;
+    after_block->next = last_copied->next;
+    if (last_copied->next) {
+        last_copied->next->prev = after_block;
+    } else {
+        // 如果last_copied是最后一个块，更新函数的last_block
+        ctx->caller->last_block = after_block;
+    }
+    last_copied->next = after_block;
     
     return true;
 }

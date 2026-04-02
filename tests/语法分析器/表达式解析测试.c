@@ -21,17 +21,18 @@ long long main() {
   long long r0, r1, r2, r3, r4;
 
   entry:
-  long long cn_var_a;
-  cn_var_a = 10;
-  long long cn_var_b;
-  cn_var_b = 5;
-  long long cn_var_c;
-  r0 = cn_var_a;
-  r1 = cn_var_b;
+  long long cn_var_a_0;
+  cn_var_a_0 = 10;
+  long long cn_var_b_1;
+  cn_var_b_1 = 5;
+  long long cn_var_c_2;
+  r0 = cn_var_a_0;
+  r1 = cn_var_b_1;
   r2 = r0 + r1;
-  cn_var_c = r2;
-  long long cn_var_d;
+  cn_var_c_2 = r2;
+  long long cn_var_d_3;
   goto entry_inline_获取固定值;
+  return 0;
   cn_rt_exit();
 }
 

@@ -14,9 +14,9 @@ long long main() {
   long long r0;
 
   entry:
-  long long cn_var_n;
-  cn_var_n = 5;
-  r0 = cn_var_n;
+  long long cn_var_n_0;
+  cn_var_n_0 = 5;
+  r0 = cn_var_n_0;
   return r0;
   cn_rt_exit();
 }

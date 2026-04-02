@@ -20,12 +20,12 @@ long long 测试比较运算符() {
   _Bool r17;
 
   entry:
-  long long cn_var_a;
-  cn_var_a = 10;
-  long long cn_var_b;
-  cn_var_b = 20;
-  r0 = cn_var_a;
-  r1 = cn_var_b;
+  long long cn_var_a_0;
+  cn_var_a_0 = 10;
+  long long cn_var_b_1;
+  cn_var_b_1 = 20;
+  r0 = cn_var_a_0;
+  r1 = cn_var_b_1;
   r2 = r0 < r1;
   if (r2) goto if_then_0; else goto if_merge_1;
 
@@ -34,8 +34,8 @@ long long 测试比较运算符() {
   goto if_merge_1;
 
   if_merge_1:
-  r3 = cn_var_a;
-  r4 = cn_var_b;
+  r3 = cn_var_a_0;
+  r4 = cn_var_b_1;
   r5 = r3 <= r4;
   if (r5) goto if_then_2; else goto if_merge_3;
 
@@ -44,8 +44,8 @@ long long 测试比较运算符() {
   goto if_merge_3;
 
   if_merge_3:
-  r6 = cn_var_a;
-  r7 = cn_var_b;
+  r6 = cn_var_a_0;
+  r7 = cn_var_b_1;
   r8 = r6 > r7;
   if (r8) goto if_then_4; else goto if_merge_5;
 
@@ -54,8 +54,8 @@ long long 测试比较运算符() {
   goto if_merge_5;
 
   if_merge_5:
-  r9 = cn_var_a;
-  r10 = cn_var_b;
+  r9 = cn_var_a_0;
+  r10 = cn_var_b_1;
   r11 = r9 >= r10;
   if (r11) goto if_then_6; else goto if_merge_7;
 
@@ -64,8 +64,8 @@ long long 测试比较运算符() {
   goto if_merge_7;
 
   if_merge_7:
-  r12 = cn_var_a;
-  r13 = cn_var_b;
+  r12 = cn_var_a_0;
+  r13 = cn_var_b_1;
   r14 = r12 == r13;
   if (r14) goto if_then_8; else goto if_merge_9;
 
@@ -74,8 +74,8 @@ long long 测试比较运算符() {
   goto if_merge_9;
 
   if_merge_9:
-  r15 = cn_var_a;
-  r16 = cn_var_b;
+  r15 = cn_var_a_0;
+  r16 = cn_var_b_1;
   r17 = r15 != r16;
   if (r17) goto if_then_10; else goto if_merge_11;
 
@@ -95,14 +95,14 @@ long long 测试复杂表达式() {
   _Bool r13;
 
   entry:
-  long long cn_var_x;
-  cn_var_x = 5;
-  long long cn_var_y;
-  cn_var_y = 10;
-  long long cn_var_z;
-  cn_var_z = 15;
-  r1 = cn_var_x;
-  r2 = cn_var_y;
+  long long cn_var_x_0;
+  cn_var_x_0 = 5;
+  long long cn_var_y_1;
+  cn_var_y_1 = 10;
+  long long cn_var_z_2;
+  cn_var_z_2 = 15;
+  r1 = cn_var_x_0;
+  r2 = cn_var_y_1;
   r3 = r1 < r2;
   if (r3) goto logic_rhs_14; else goto logic_merge_15;
 
@@ -111,14 +111,14 @@ long long 测试复杂表达式() {
   goto if_merge_13;
 
   if_merge_13:
-  r8 = cn_var_x;
-  r9 = cn_var_y;
+  r8 = cn_var_x_0;
+  r9 = cn_var_y_1;
   r10 = r8 < r9;
   if (r10) goto logic_merge_19; else goto logic_rhs_18;
 
   logic_rhs_14:
-  r4 = cn_var_y;
-  r5 = cn_var_z;
+  r4 = cn_var_y_1;
+  r5 = cn_var_z_2;
   r6 = r4 < r5;
   goto logic_merge_15;
 
@@ -133,12 +133,13 @@ long long 测试复杂表达式() {
   return 0;
 
   logic_rhs_18:
-  r11 = cn_var_x;
-  r12 = cn_var_z;
+  r11 = cn_var_x_0;
+  r12 = cn_var_z_2;
   r13 = r11 > r12;
   goto logic_merge_19;
 
   logic_merge_19:
   if (r13) goto if_then_16; else goto if_merge_17;
+  return 0;
 }
 
