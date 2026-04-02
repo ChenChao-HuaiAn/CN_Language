@@ -632,6 +632,7 @@ typedef struct CnAstExpr {
     struct CnType *type; // 语义分析阶段填充的类型信息
     CnSourceLocation loc; // 源位置信息
     int is_this_pointer;  // 标记是否为自身指针（this/self），用于语义检查和代码生成
+    int is_base_pointer;  // 标记是否为基类指针（base），用于语义检查和代码生成
     union {
         CnAstBinaryExpr binary;
         CnAstCallExpr call;

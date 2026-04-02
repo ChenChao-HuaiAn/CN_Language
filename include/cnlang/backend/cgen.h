@@ -28,6 +28,10 @@ typedef struct CnCCodeGenContext {
     size_t module_init_count;   ///< 模块初始化信息数量
     struct CnModuleId *module_id; ///< 当前模块ID（用于生成带模块前缀的函数名）
     struct CnAstProgram *program; ///< AST程序（用于查找类定义，支持继承vtable生成）
+    struct CnAstClassDecl *current_class; ///< 当前正在处理的类声明（用于基类访问代码生成）
+    
+    /* 类成员代码生成专用字段 */
+    struct CnClassMember *current_method; ///< 当前正在处理的方法/构造函数（用于参数查找）
 } CnCCodeGenContext;
 
 /**

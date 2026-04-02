@@ -2669,6 +2669,12 @@ static CnAstExpr *parse_factor(CnParser *parser)
         expr = make_identifier("self", 4);
         expr->is_this_pointer = 1;  // 标记为自身指针，用于语义检查
         parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_BASE) {
+        // 基类 关键字：生成标识符表达式 "base"
+        // 在代码生成阶段会转换为对父类方法的调用
+        expr = make_identifier("base", 4);
+        expr->is_base_pointer = 1;  // 标记为基类指针，用于语义检查和代码生成
+        parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
         // 保存标识符信息
         const char *ident_name = parser->current.lexeme_begin;
@@ -3244,6 +3250,8 @@ static CnAstExpr *make_identifier(const char *name, size_t length)
     expr->loc.filename = NULL;
     expr->loc.line = 0;
     expr->loc.column = 0;
+    expr->is_this_pointer = 0;  // 【修复】初始化为非自身指针
+    expr->is_base_pointer = 0;  // 【修复】初始化为非基类指针
     expr->as.identifier.name = name;
     expr->as.identifier.name_length = length;
     return expr;

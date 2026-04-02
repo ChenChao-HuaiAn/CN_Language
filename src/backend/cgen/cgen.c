@@ -291,6 +291,9 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             if (expr->is_this_pointer) {
                 // 自身指针直接输出 "self"
                 fprintf(ctx->output_file, "self");
+            } else if (expr->is_base_pointer) {
+                // 基类指针：输出 "base" 标识符
+                fprintf(ctx->output_file, "base");
             } else {
                 // 支持引用其他模块变量
                 // 先简单处理：直接输出变量名（需要结合符号表处理模块前缀）
@@ -300,7 +303,7 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             }
             break;
         case CN_AST_EXPR_MEMBER_ACCESS:
-            // 成员访问表达式：obj.member 或 ptr->member 或 类名.静态成员
+            // 成员访问表达式：obj.member 或 ptr->member 或 类名.静态成员 或 基类.成员
             {
                 // 检查是否为静态成员访问
                 if (expr->as.member.is_static_member && expr->as.member.class_name) {
@@ -316,6 +319,26 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                     fprintf(ctx->output_file, "self->%.*s",
                             (int)expr->as.member.member_name_length,
                             expr->as.member.member_name);
+                }
+                // 检查对象是否为基类指针
+                else if (expr->as.member.object &&
+                    expr->as.member.object->is_base_pointer) {
+                    // 基类访问：base->member
+                    // 生成基类指针转换代码
+                    if (ctx->current_class && ctx->current_class->base_count > 0) {
+                        CnInheritanceInfo *base_info = &ctx->current_class->bases[0];
+                        fprintf(ctx->output_file, "((struct %.*s*)((char*)self + %.*s_%.*s_OFFSET))->%.*s",
+                                (int)base_info->base_class_name_length, base_info->base_class_name,
+                                (int)ctx->current_class->name_length, ctx->current_class->name,
+                                (int)base_info->base_class_name_length, base_info->base_class_name,
+                                (int)expr->as.member.member_name_length,
+                                expr->as.member.member_name);
+                    } else {
+                        // 没有基类，生成错误占位符
+                        fprintf(ctx->output_file, "/* 错误: 当前类没有基类 */ %.*s",
+                                (int)expr->as.member.member_name_length,
+                                expr->as.member.member_name);
+                    }
                 } else {
                     // 普通成员访问
                     cn_cgen_expr_simple(ctx, expr->as.member.object);
