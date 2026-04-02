@@ -138,7 +138,8 @@ static void report_protected_access_error(CnClassAnalyzerContext *ctx, CnClassMe
 
 bool cn_class_analyzer_context_init(CnClassAnalyzerContext *ctx,
                                      CnSemScope *symbol_table,
-                                     CnDiagnostics *diagnostics)
+                                     CnDiagnostics *diagnostics,
+                                     CnAstProgram *program)
 {
     if (!ctx) {
         return false;
@@ -149,6 +150,7 @@ bool cn_class_analyzer_context_init(CnClassAnalyzerContext *ctx,
     ctx->current_member = NULL;
     ctx->current_access = CN_ACCESS_PRIVATE;  /* 类成员默认私有 */
     ctx->diagnostics = diagnostics;
+    ctx->program = program;
     
     return true;
 }
@@ -219,18 +221,42 @@ CnClassMember *cn_find_class_member_in_hierarchy(CnAstClassDecl *class_decl,
     return NULL;
 }
 
-CnClassMember *cn_find_virtual_member(CnAstClassDecl *class_decl, const char *name)
+CnClassMember *cn_find_virtual_member(CnAstClassDecl *class_decl,
+                                       const char *name,
+                                       CnAstProgram *program)
 {
     if (!class_decl || !name) {
         return NULL;
     }
     
-    /* 遍历所有成员查找虚函数 */
+    /* 1. 首先在当前类中查找虚函数 */
     for (size_t i = 0; i < class_decl->member_count; i++) {
         CnClassMember *member = &class_decl->members[i];
         if (member->is_virtual &&
             cn_name_equals(member->name, member->name_length, name, strlen(name))) {
             return member;
+        }
+    }
+    
+    /* 2. 递归在基类中查找虚函数 */
+    if (program && class_decl->base_count > 0) {
+        for (size_t i = 0; i < class_decl->base_count; i++) {
+            CnInheritanceInfo *base_info = &class_decl->bases[i];
+            
+            /* 查找基类声明 */
+            CnAstClassDecl *base_class = cn_find_class_in_program(
+                program,
+                base_info->base_class_name,
+                base_info->base_class_name_length
+            );
+            
+            if (base_class) {
+                /* 递归查找基类中的虚函数 */
+                CnClassMember *found = cn_find_virtual_member(base_class, name, program);
+                if (found) {
+                    return found;
+                }
+            }
         }
     }
     
@@ -787,7 +813,7 @@ bool cn_check_method_override(CnClassAnalyzerContext *ctx, CnClassMember *member
     }
     
     /* 在基类中查找同名虚函数（与C++语义一致：重写必须是虚函数才能参与多态） */
-    CnClassMember *base_method = cn_find_virtual_member(ctx->current_class, member->name);
+    CnClassMember *base_method = cn_find_virtual_member(ctx->current_class, member->name, ctx->program);
     if (!base_method) {
         report_error(ctx, "重写的函数在基类中不是虚函数", member->name, member->name_length);
         return false;
@@ -1105,7 +1131,7 @@ bool cn_analyze_all_classes(CnSemScope *global_scope,
     
     /* 初始化分析上下文 */
     CnClassAnalyzerContext ctx;
-    if (!cn_class_analyzer_context_init(&ctx, global_scope, diagnostics)) {
+    if (!cn_class_analyzer_context_init(&ctx, global_scope, diagnostics, program)) {
         return false;
     }
     

@@ -37,6 +37,7 @@ typedef struct CnClassAnalyzerContext {
     CnClassMember *current_member;  ///< 当前正在分析的成员
     CnAccessLevel current_access;   ///< 当前访问级别上下文
     CnDiagnostics *diagnostics;     ///< 诊断信息收集器
+    struct CnAstProgram *program;   ///< 程序AST（用于查找基类）
 } CnClassAnalyzerContext;
 
 /* ============================================================================
@@ -45,15 +46,17 @@ typedef struct CnClassAnalyzerContext {
 
 /**
  * @brief 初始化类分析上下文
- * 
+ *
  * @param ctx 要初始化的上下文指针
  * @param symbol_table 符号表作用域
  * @param diagnostics 诊断信息收集器
+ * @param program 程序AST（用于查找基类）
  * @return bool 成功返回true
  */
 bool cn_class_analyzer_context_init(CnClassAnalyzerContext *ctx,
                                      CnSemScope *symbol_table,
-                                     CnDiagnostics *diagnostics);
+                                     CnDiagnostics *diagnostics,
+                                     struct CnAstProgram *program);
 
 /**
  * @brief 清理类分析上下文
@@ -430,13 +433,16 @@ CnClassMember *cn_find_class_member_in_hierarchy(CnAstClassDecl *class_decl,
                                                   CnAstClassDecl **out_base_class);
 
 /**
- * @brief 查找类中的虚函数成员
+ * @brief 查找类中的虚函数成员（递归查找基类）
  *
  * @param class_decl 类声明节点
  * @param name 成员名称
+ * @param program 程序AST（用于查找基类）
  * @return CnClassMember* 找到的虚函数成员，未找到返回NULL
  */
-CnClassMember *cn_find_virtual_member(CnAstClassDecl *class_decl, const char *name);
+CnClassMember *cn_find_virtual_member(CnAstClassDecl *class_decl,
+                                       const char *name,
+                                       struct CnAstProgram *program);
 
 /**
  * @brief 查找类中的方法成员（不限于虚函数）

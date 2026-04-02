@@ -909,6 +909,22 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             }
             fprintf(ctx->output_file, ";\n"); 
             break;
+        case CN_IR_INST_NEG:
+            // 一元负号：dest = -src1
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = -");
+            print_operand(ctx, inst->src1);
+            fprintf(ctx->output_file, ";\n");
+            break;
+        case CN_IR_INST_NOT:
+            // 逻辑非：dest = !src1
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = !");
+            print_operand(ctx, inst->src1);
+            fprintf(ctx->output_file, ";\n");
+            break;
         default: fprintf(ctx->output_file, "  /* Unsupported inst %d */\n", inst->kind); break;
     }
 }
