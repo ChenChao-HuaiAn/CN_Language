@@ -256,7 +256,24 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         for (size_t j = 0; j < fn->parameter_count; j++) {
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
-                sym->type = fn->parameters[j].declared_type;
+                CnType *param_type = fn->parameters[j].declared_type;
+                // 特殊处理：如果参数类型是结构体类型，可能是枚举类型或类类型
+                // 需要从符号表查找真实类型
+                if (param_type && param_type->kind == CN_TYPE_STRUCT) {
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                            param_type->as.struct_type.name,
+                                            param_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type) {
+                        if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                            // 替换为枚举类型
+                            param_type = type_sym->type;
+                        } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            // 替换为完整的结构体/类类型
+                            param_type = type_sym->type;
+                        }
+                    }
+                }
+                sym->type = param_type;
                 sym->is_const = fn->parameters[j].is_const;  // 传递常量参数标记
             }
         }
@@ -286,7 +303,24 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         for (size_t j = 0; j < fn->parameter_count; j++) {
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(fn_scope, fn->parameters[j].name, fn->parameters[j].name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
-                sym->type = fn->parameters[j].declared_type;
+                CnType *param_type = fn->parameters[j].declared_type;
+                // 特殊处理：如果参数类型是结构体类型，可能是枚举类型或类类型
+                // 需要从符号表查找真实类型
+                if (param_type && param_type->kind == CN_TYPE_STRUCT) {
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                            param_type->as.struct_type.name,
+                                            param_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type) {
+                        if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                            // 替换为枚举类型
+                            param_type = type_sym->type;
+                        } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            // 替换为完整的结构体/类类型
+                            param_type = type_sym->type;
+                        }
+                    }
+                }
+                sym->type = param_type;
                 sym->is_const = fn->parameters[j].is_const;  // 传递常量参数标记
             }
         }

@@ -379,44 +379,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         is_int_str_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
     }
 
-    // 注册结构体声明到全局作用域
-    for (i = 0; i < program->struct_count; ++i) {
-        CnAstStmt *struct_stmt = program->structs[i];
-        if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
-            continue;
-        }
-
-        CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
-        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
-                                   struct_decl->name,
-                                   struct_decl->name_length,
-                                   CN_SEM_SYMBOL_STRUCT);
-        if (sym) {
-            // 创建结构体类型，包含字段信息
-            CnStructField *fields = NULL;
-            if (struct_decl->field_count > 0) {
-                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
-                for (size_t j = 0; j < struct_decl->field_count; j++) {
-                    fields[j].name = struct_decl->fields[j].name;
-                    fields[j].name_length = struct_decl->fields[j].name_length;
-                    fields[j].field_type = struct_decl->fields[j].field_type;
-                    fields[j].is_const = struct_decl->fields[j].is_const;  // 传递常量字段标记
-                }
-            }
-            sym->type = cn_type_new_struct(struct_decl->name,
-                                          struct_decl->name_length,
-                                          fields,
-                                          struct_decl->field_count,
-                                          global_scope,
-                                          NULL, 0);  // 全局结构体，无所属函数
-        } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, struct_decl->name);
-        }
-    }
-
-    // 注册枚举声明到全局作用域
+    // =============================================================================
+    // 先注册枚举声明到全局作用域（必须在结构体之前，因为结构体可能使用枚举类型）
+    // =============================================================================
     for (i = 0; i < program->enum_count; ++i) {
         CnAstStmt *enum_stmt = program->enums[i];
         if (!enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) {
@@ -473,6 +438,57 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             // 报告重复定义
             cn_support_diag_semantic_error_duplicate_symbol(
                 diagnostics, NULL, 0, 0, enum_decl->name);
+        }
+    }
+
+    // =============================================================================
+    // 注册结构体声明到全局作用域（在枚举之后，支持结构体使用枚举类型字段）
+    // =============================================================================
+    for (i = 0; i < program->struct_count; ++i) {
+        CnAstStmt *struct_stmt = program->structs[i];
+        if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
+            continue;
+        }
+
+        CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   struct_decl->name,
+                                   struct_decl->name_length,
+                                   CN_SEM_SYMBOL_STRUCT);
+        if (sym) {
+            // 创建结构体类型，包含字段信息
+            CnStructField *fields = NULL;
+            if (struct_decl->field_count > 0) {
+                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+                for (size_t j = 0; j < struct_decl->field_count; j++) {
+                    fields[j].name = struct_decl->fields[j].name;
+                    fields[j].name_length = struct_decl->fields[j].name_length;
+                    
+                    // 解析字段类型：如果是自定义类型（结构体类型表示），从符号表查找真实类型
+                    CnType *field_type = struct_decl->fields[j].field_type;
+                    if (field_type && field_type->kind == CN_TYPE_STRUCT && field_type->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.struct_type.name,
+                                                    field_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            // 使用符号表中的真实类型（可能是枚举或结构体）
+                            field_type = type_sym->type;
+                        }
+                    }
+                    fields[j].field_type = field_type;
+                    fields[j].is_const = struct_decl->fields[j].is_const;  // 传递常量字段标记
+                }
+            }
+            sym->type = cn_type_new_struct(struct_decl->name,
+                                          struct_decl->name_length,
+                                          fields,
+                                          struct_decl->field_count,
+                                          global_scope,
+                                          NULL, 0);  // 全局结构体，无所属函数
+        } else {
+            // 报告重复定义
+            cn_support_diag_semantic_error_duplicate_symbol(
+                diagnostics, NULL, 0, 0, struct_decl->name);
         }
     }
 
@@ -738,7 +754,24 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             if (function_decl->parameter_count > 0) {
                 param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
                 for (size_t j = 0; j < function_decl->parameter_count; j++) {
-                    param_types[j] = function_decl->parameters[j].declared_type;
+                    CnType *param_type = function_decl->parameters[j].declared_type;
+                    // 特殊处理：如果参数类型是结构体类型，可能是枚举类型或类类型
+                    // 需要从符号表查找真实类型
+                    if (param_type && param_type->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                param_type->as.struct_type.name,
+                                                param_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                // 替换为枚举类型
+                                param_type = type_sym->type;
+                            } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                // 替换为完整的结构体/类类型
+                                param_type = type_sym->type;
+                            }
+                        }
+                    }
+                    param_types[j] = param_type;
                 }
             }
             // TODO: 当前返回类型需要通过return语句推断，暂时使用UNKNOWN
@@ -1292,7 +1325,22 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             if (function_decl->parameter_count > 0) {
                 param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
                 for (size_t j = 0; j < function_decl->parameter_count; j++) {
-                    param_types[j] = function_decl->parameters[j].declared_type;
+                    CnType *param_type = function_decl->parameters[j].declared_type;
+                    // 特殊处理：如果参数类型是结构体类型，可能是枚举类型或类类型
+                    // 需要从符号表查找真实类型
+                    if (param_type && param_type->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                param_type->as.struct_type.name,
+                                                param_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                param_type = type_sym->type;
+                            } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                param_type = type_sym->type;
+                            }
+                        }
+                    }
+                    param_types[j] = param_type;
                 }
             }
             // 使用函数声明中的返回类型,如果没有则使用VOID
@@ -1507,39 +1555,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
         }
     }
 
-    // 处理结构体声明
-    for (i = 0; i < program->struct_count; ++i) {
-        CnAstStmt *struct_stmt = program->structs[i];
-        if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
-            continue;
-        }
-
-        CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
-        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
-                                   struct_decl->name,
-                                   struct_decl->name_length,
-                                   CN_SEM_SYMBOL_STRUCT);
-        if (sym) {
-            CnStructField *fields = NULL;
-            if (struct_decl->field_count > 0) {
-                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
-                for (size_t j = 0; j < struct_decl->field_count; j++) {
-                    fields[j].name = struct_decl->fields[j].name;
-                    fields[j].name_length = struct_decl->fields[j].name_length;
-                    fields[j].field_type = struct_decl->fields[j].field_type;
-                    fields[j].is_const = struct_decl->fields[j].is_const;
-                }
-            }
-            sym->type = cn_type_new_struct(struct_decl->name,
-                                          struct_decl->name_length,
-                                          fields,
-                                          struct_decl->field_count,
-                                          global_scope,
-                                          NULL, 0);
-        }
-    }
-
-    // 处理枚举声明
+    // =============================================================================
+    // 先处理枚举声明（必须在结构体之前，因为结构体可能使用枚举类型）
+    // =============================================================================
     for (i = 0; i < program->enum_count; ++i) {
         CnAstStmt *enum_stmt = program->enums[i];
         if (!enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) {
@@ -1582,6 +1600,52 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     }
                 }
             }
+        }
+    }
+
+    // =============================================================================
+    // 处理结构体声明（在枚举之后，支持结构体使用枚举类型字段）
+    // =============================================================================
+    for (i = 0; i < program->struct_count; ++i) {
+        CnAstStmt *struct_stmt = program->structs[i];
+        if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
+            continue;
+        }
+
+        CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(global_scope,
+                                   struct_decl->name,
+                                   struct_decl->name_length,
+                                   CN_SEM_SYMBOL_STRUCT);
+        if (sym) {
+            CnStructField *fields = NULL;
+            if (struct_decl->field_count > 0) {
+                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+                for (size_t j = 0; j < struct_decl->field_count; j++) {
+                    fields[j].name = struct_decl->fields[j].name;
+                    fields[j].name_length = struct_decl->fields[j].name_length;
+                    
+                    // 解析字段类型：如果是自定义类型（结构体类型表示），从符号表查找真实类型
+                    CnType *field_type = struct_decl->fields[j].field_type;
+                    if (field_type && field_type->kind == CN_TYPE_STRUCT && field_type->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.struct_type.name,
+                                                    field_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            // 使用符号表中的真实类型（可能是枚举或结构体）
+                            field_type = type_sym->type;
+                        }
+                    }
+                    fields[j].field_type = field_type;
+                    fields[j].is_const = struct_decl->fields[j].is_const;
+                }
+            }
+            sym->type = cn_type_new_struct(struct_decl->name,
+                                          struct_decl->name_length,
+                                          fields,
+                                          struct_decl->field_count,
+                                          global_scope,
+                                          NULL, 0);
         }
     }
 
@@ -2202,7 +2266,22 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             if (function_decl->parameter_count > 0) {
                 param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
                 for (size_t j = 0; j < function_decl->parameter_count; j++) {
-                    param_types[j] = function_decl->parameters[j].declared_type;
+                    CnType *param_type = function_decl->parameters[j].declared_type;
+                    // 特殊处理：如果参数类型是结构体类型，可能是枚举类型或类类型
+                    // 需要从符号表查找真实类型
+                    if (param_type && param_type->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                param_type->as.struct_type.name,
+                                                param_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                param_type = type_sym->type;
+                            } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                param_type = type_sym->type;
+                            }
+                        }
+                    }
+                    param_types[j] = param_type;
                 }
             }
             sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),

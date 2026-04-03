@@ -4,15 +4,6 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
-// CN Language Global Struct Definitions
-struct 词元 {
-    long long 类型;
-    char* 值;
-    long long 行号;
-    long long 列号;
-    long long 长度;
-};
-
 // CN Language Enum Definitions
 enum 词元类型枚举 {
     关键字_如果,
@@ -99,18 +90,26 @@ enum 词元类型枚举 {
     错误
 };
 
+// CN Language Global Struct Definitions
+struct 词元 {
+    enum 词元类型枚举 类型;
+    char* 值;
+    long long 行号;
+    long long 列号;
+    long long 长度;
+};
+
 // Global Variables
 
 // Forward Declarations
-char* 词元类型名称(long long);
-struct 词元 创建词元(long long, char*, long long, long long, long long);
-_Bool 是关键字(long long);
-_Bool 是字面量(long long);
-_Bool 是运算符(long long);
-_Bool 是分隔符(long long);
+char* 词元类型名称(enum 词元类型枚举);
+struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
+_Bool 是关键字(enum 词元类型枚举);
+_Bool 是字面量(enum 词元类型枚举);
+_Bool 是运算符(enum 词元类型枚举);
+_Bool 是分隔符(enum 词元类型枚举);
 
-char* 词元类型名称(long long cn_var_词元类型值) {
-  long long r0, r2, r4, r6, r8, r10, r12, r14, r16, r18, r20, r22, r24, r26, r28, r30, r32, r34, r36, r38, r40, r42, r44, r46, r48, r50, r52, r54, r56, r58, r60, r62, r64, r66, r68, r70, r72, r74, r76, r78, r80, r82, r84, r86, r88, r90, r92, r94, r96, r98, r100, r102, r104, r106, r108, r110, r112, r114, r116, r118, r120, r122, r124, r126, r128, r130, r132, r134, r136, r138, r140, r142, r144, r146, r148, r150, r152, r154, r156, r158, r160, r162;
+char* 词元类型名称(enum 词元类型枚举 cn_var_类型) {
   _Bool r1;
   _Bool r3;
   _Bool r5;
@@ -193,9 +192,91 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   _Bool r159;
   _Bool r161;
   _Bool r163;
+  enum 词元类型枚举 r0;
+  enum 词元类型枚举 r2;
+  enum 词元类型枚举 r4;
+  enum 词元类型枚举 r6;
+  enum 词元类型枚举 r8;
+  enum 词元类型枚举 r10;
+  enum 词元类型枚举 r12;
+  enum 词元类型枚举 r14;
+  enum 词元类型枚举 r16;
+  enum 词元类型枚举 r18;
+  enum 词元类型枚举 r20;
+  enum 词元类型枚举 r22;
+  enum 词元类型枚举 r24;
+  enum 词元类型枚举 r26;
+  enum 词元类型枚举 r28;
+  enum 词元类型枚举 r30;
+  enum 词元类型枚举 r32;
+  enum 词元类型枚举 r34;
+  enum 词元类型枚举 r36;
+  enum 词元类型枚举 r38;
+  enum 词元类型枚举 r40;
+  enum 词元类型枚举 r42;
+  enum 词元类型枚举 r44;
+  enum 词元类型枚举 r46;
+  enum 词元类型枚举 r48;
+  enum 词元类型枚举 r50;
+  enum 词元类型枚举 r52;
+  enum 词元类型枚举 r54;
+  enum 词元类型枚举 r56;
+  enum 词元类型枚举 r58;
+  enum 词元类型枚举 r60;
+  enum 词元类型枚举 r62;
+  enum 词元类型枚举 r64;
+  enum 词元类型枚举 r66;
+  enum 词元类型枚举 r68;
+  enum 词元类型枚举 r70;
+  enum 词元类型枚举 r72;
+  enum 词元类型枚举 r74;
+  enum 词元类型枚举 r76;
+  enum 词元类型枚举 r78;
+  enum 词元类型枚举 r80;
+  enum 词元类型枚举 r82;
+  enum 词元类型枚举 r84;
+  enum 词元类型枚举 r86;
+  enum 词元类型枚举 r88;
+  enum 词元类型枚举 r90;
+  enum 词元类型枚举 r92;
+  enum 词元类型枚举 r94;
+  enum 词元类型枚举 r96;
+  enum 词元类型枚举 r98;
+  enum 词元类型枚举 r100;
+  enum 词元类型枚举 r102;
+  enum 词元类型枚举 r104;
+  enum 词元类型枚举 r106;
+  enum 词元类型枚举 r108;
+  enum 词元类型枚举 r110;
+  enum 词元类型枚举 r112;
+  enum 词元类型枚举 r114;
+  enum 词元类型枚举 r116;
+  enum 词元类型枚举 r118;
+  enum 词元类型枚举 r120;
+  enum 词元类型枚举 r122;
+  enum 词元类型枚举 r124;
+  enum 词元类型枚举 r126;
+  enum 词元类型枚举 r128;
+  enum 词元类型枚举 r130;
+  enum 词元类型枚举 r132;
+  enum 词元类型枚举 r134;
+  enum 词元类型枚举 r136;
+  enum 词元类型枚举 r138;
+  enum 词元类型枚举 r140;
+  enum 词元类型枚举 r142;
+  enum 词元类型枚举 r144;
+  enum 词元类型枚举 r146;
+  enum 词元类型枚举 r148;
+  enum 词元类型枚举 r150;
+  enum 词元类型枚举 r152;
+  enum 词元类型枚举 r154;
+  enum 词元类型枚举 r156;
+  enum 词元类型枚举 r158;
+  enum 词元类型枚举 r160;
+  enum 词元类型枚举 r162;
 
   entry:
-  r0 = cn_var_词元类型值;
+  r0 = cn_var_类型;
   r1 = r0 == 0;
   if (r1) goto if_then_0; else goto if_merge_1;
 
@@ -204,7 +285,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_1;
 
   if_merge_1:
-  r2 = cn_var_词元类型值;
+  r2 = cn_var_类型;
   r3 = r2 == 1;
   if (r3) goto if_then_2; else goto if_merge_3;
 
@@ -213,7 +294,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_3;
 
   if_merge_3:
-  r4 = cn_var_词元类型值;
+  r4 = cn_var_类型;
   r5 = r4 == 2;
   if (r5) goto if_then_4; else goto if_merge_5;
 
@@ -222,7 +303,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_5;
 
   if_merge_5:
-  r6 = cn_var_词元类型值;
+  r6 = cn_var_类型;
   r7 = r6 == 3;
   if (r7) goto if_then_6; else goto if_merge_7;
 
@@ -231,7 +312,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_7;
 
   if_merge_7:
-  r8 = cn_var_词元类型值;
+  r8 = cn_var_类型;
   r9 = r8 == 4;
   if (r9) goto if_then_8; else goto if_merge_9;
 
@@ -240,7 +321,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_9;
 
   if_merge_9:
-  r10 = cn_var_词元类型值;
+  r10 = cn_var_类型;
   r11 = r10 == 5;
   if (r11) goto if_then_10; else goto if_merge_11;
 
@@ -249,7 +330,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_11;
 
   if_merge_11:
-  r12 = cn_var_词元类型值;
+  r12 = cn_var_类型;
   r13 = r12 == 6;
   if (r13) goto if_then_12; else goto if_merge_13;
 
@@ -258,7 +339,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_13;
 
   if_merge_13:
-  r14 = cn_var_词元类型值;
+  r14 = cn_var_类型;
   r15 = r14 == 7;
   if (r15) goto if_then_14; else goto if_merge_15;
 
@@ -267,7 +348,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_15;
 
   if_merge_15:
-  r16 = cn_var_词元类型值;
+  r16 = cn_var_类型;
   r17 = r16 == 8;
   if (r17) goto if_then_16; else goto if_merge_17;
 
@@ -276,7 +357,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_17;
 
   if_merge_17:
-  r18 = cn_var_词元类型值;
+  r18 = cn_var_类型;
   r19 = r18 == 9;
   if (r19) goto if_then_18; else goto if_merge_19;
 
@@ -285,7 +366,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_19;
 
   if_merge_19:
-  r20 = cn_var_词元类型值;
+  r20 = cn_var_类型;
   r21 = r20 == 10;
   if (r21) goto if_then_20; else goto if_merge_21;
 
@@ -294,7 +375,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_21;
 
   if_merge_21:
-  r22 = cn_var_词元类型值;
+  r22 = cn_var_类型;
   r23 = r22 == 11;
   if (r23) goto if_then_22; else goto if_merge_23;
 
@@ -303,7 +384,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_23;
 
   if_merge_23:
-  r24 = cn_var_词元类型值;
+  r24 = cn_var_类型;
   r25 = r24 == 12;
   if (r25) goto if_then_24; else goto if_merge_25;
 
@@ -312,7 +393,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_25;
 
   if_merge_25:
-  r26 = cn_var_词元类型值;
+  r26 = cn_var_类型;
   r27 = r26 == 13;
   if (r27) goto if_then_26; else goto if_merge_27;
 
@@ -321,7 +402,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_27;
 
   if_merge_27:
-  r28 = cn_var_词元类型值;
+  r28 = cn_var_类型;
   r29 = r28 == 14;
   if (r29) goto if_then_28; else goto if_merge_29;
 
@@ -330,7 +411,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_29;
 
   if_merge_29:
-  r30 = cn_var_词元类型值;
+  r30 = cn_var_类型;
   r31 = r30 == 15;
   if (r31) goto if_then_30; else goto if_merge_31;
 
@@ -339,7 +420,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_31;
 
   if_merge_31:
-  r32 = cn_var_词元类型值;
+  r32 = cn_var_类型;
   r33 = r32 == 16;
   if (r33) goto if_then_32; else goto if_merge_33;
 
@@ -348,7 +429,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_33;
 
   if_merge_33:
-  r34 = cn_var_词元类型值;
+  r34 = cn_var_类型;
   r35 = r34 == 17;
   if (r35) goto if_then_34; else goto if_merge_35;
 
@@ -357,7 +438,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_35;
 
   if_merge_35:
-  r36 = cn_var_词元类型值;
+  r36 = cn_var_类型;
   r37 = r36 == 18;
   if (r37) goto if_then_36; else goto if_merge_37;
 
@@ -366,7 +447,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_37;
 
   if_merge_37:
-  r38 = cn_var_词元类型值;
+  r38 = cn_var_类型;
   r39 = r38 == 19;
   if (r39) goto if_then_38; else goto if_merge_39;
 
@@ -375,7 +456,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_39;
 
   if_merge_39:
-  r40 = cn_var_词元类型值;
+  r40 = cn_var_类型;
   r41 = r40 == 20;
   if (r41) goto if_then_40; else goto if_merge_41;
 
@@ -384,7 +465,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_41;
 
   if_merge_41:
-  r42 = cn_var_词元类型值;
+  r42 = cn_var_类型;
   r43 = r42 == 21;
   if (r43) goto if_then_42; else goto if_merge_43;
 
@@ -393,7 +474,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_43;
 
   if_merge_43:
-  r44 = cn_var_词元类型值;
+  r44 = cn_var_类型;
   r45 = r44 == 22;
   if (r45) goto if_then_44; else goto if_merge_45;
 
@@ -402,7 +483,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_45;
 
   if_merge_45:
-  r46 = cn_var_词元类型值;
+  r46 = cn_var_类型;
   r47 = r46 == 23;
   if (r47) goto if_then_46; else goto if_merge_47;
 
@@ -411,7 +492,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_47;
 
   if_merge_47:
-  r48 = cn_var_词元类型值;
+  r48 = cn_var_类型;
   r49 = r48 == 24;
   if (r49) goto if_then_48; else goto if_merge_49;
 
@@ -420,7 +501,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_49;
 
   if_merge_49:
-  r50 = cn_var_词元类型值;
+  r50 = cn_var_类型;
   r51 = r50 == 25;
   if (r51) goto if_then_50; else goto if_merge_51;
 
@@ -429,7 +510,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_51;
 
   if_merge_51:
-  r52 = cn_var_词元类型值;
+  r52 = cn_var_类型;
   r53 = r52 == 26;
   if (r53) goto if_then_52; else goto if_merge_53;
 
@@ -438,7 +519,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_53;
 
   if_merge_53:
-  r54 = cn_var_词元类型值;
+  r54 = cn_var_类型;
   r55 = r54 == 27;
   if (r55) goto if_then_54; else goto if_merge_55;
 
@@ -447,7 +528,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_55;
 
   if_merge_55:
-  r56 = cn_var_词元类型值;
+  r56 = cn_var_类型;
   r57 = r56 == 28;
   if (r57) goto if_then_56; else goto if_merge_57;
 
@@ -456,7 +537,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_57;
 
   if_merge_57:
-  r58 = cn_var_词元类型值;
+  r58 = cn_var_类型;
   r59 = r58 == 29;
   if (r59) goto if_then_58; else goto if_merge_59;
 
@@ -465,7 +546,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_59;
 
   if_merge_59:
-  r60 = cn_var_词元类型值;
+  r60 = cn_var_类型;
   r61 = r60 == 30;
   if (r61) goto if_then_60; else goto if_merge_61;
 
@@ -474,7 +555,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_61;
 
   if_merge_61:
-  r62 = cn_var_词元类型值;
+  r62 = cn_var_类型;
   r63 = r62 == 31;
   if (r63) goto if_then_62; else goto if_merge_63;
 
@@ -483,7 +564,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_63;
 
   if_merge_63:
-  r64 = cn_var_词元类型值;
+  r64 = cn_var_类型;
   r65 = r64 == 32;
   if (r65) goto if_then_64; else goto if_merge_65;
 
@@ -492,7 +573,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_65;
 
   if_merge_65:
-  r66 = cn_var_词元类型值;
+  r66 = cn_var_类型;
   r67 = r66 == 33;
   if (r67) goto if_then_66; else goto if_merge_67;
 
@@ -501,7 +582,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_67;
 
   if_merge_67:
-  r68 = cn_var_词元类型值;
+  r68 = cn_var_类型;
   r69 = r68 == 34;
   if (r69) goto if_then_68; else goto if_merge_69;
 
@@ -510,7 +591,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_69;
 
   if_merge_69:
-  r70 = cn_var_词元类型值;
+  r70 = cn_var_类型;
   r71 = r70 == 35;
   if (r71) goto if_then_70; else goto if_merge_71;
 
@@ -519,7 +600,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_71;
 
   if_merge_71:
-  r72 = cn_var_词元类型值;
+  r72 = cn_var_类型;
   r73 = r72 == 36;
   if (r73) goto if_then_72; else goto if_merge_73;
 
@@ -528,7 +609,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_73;
 
   if_merge_73:
-  r74 = cn_var_词元类型值;
+  r74 = cn_var_类型;
   r75 = r74 == 37;
   if (r75) goto if_then_74; else goto if_merge_75;
 
@@ -537,7 +618,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_75;
 
   if_merge_75:
-  r76 = cn_var_词元类型值;
+  r76 = cn_var_类型;
   r77 = r76 == 38;
   if (r77) goto if_then_76; else goto if_merge_77;
 
@@ -546,7 +627,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_77;
 
   if_merge_77:
-  r78 = cn_var_词元类型值;
+  r78 = cn_var_类型;
   r79 = r78 == 39;
   if (r79) goto if_then_78; else goto if_merge_79;
 
@@ -555,7 +636,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_79;
 
   if_merge_79:
-  r80 = cn_var_词元类型值;
+  r80 = cn_var_类型;
   r81 = r80 == 40;
   if (r81) goto if_then_80; else goto if_merge_81;
 
@@ -564,7 +645,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_81;
 
   if_merge_81:
-  r82 = cn_var_词元类型值;
+  r82 = cn_var_类型;
   r83 = r82 == 41;
   if (r83) goto if_then_82; else goto if_merge_83;
 
@@ -573,7 +654,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_83;
 
   if_merge_83:
-  r84 = cn_var_词元类型值;
+  r84 = cn_var_类型;
   r85 = r84 == 42;
   if (r85) goto if_then_84; else goto if_merge_85;
 
@@ -582,7 +663,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_85;
 
   if_merge_85:
-  r86 = cn_var_词元类型值;
+  r86 = cn_var_类型;
   r87 = r86 == 43;
   if (r87) goto if_then_86; else goto if_merge_87;
 
@@ -591,7 +672,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_87;
 
   if_merge_87:
-  r88 = cn_var_词元类型值;
+  r88 = cn_var_类型;
   r89 = r88 == 44;
   if (r89) goto if_then_88; else goto if_merge_89;
 
@@ -600,7 +681,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_89;
 
   if_merge_89:
-  r90 = cn_var_词元类型值;
+  r90 = cn_var_类型;
   r91 = r90 == 45;
   if (r91) goto if_then_90; else goto if_merge_91;
 
@@ -609,7 +690,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_91;
 
   if_merge_91:
-  r92 = cn_var_词元类型值;
+  r92 = cn_var_类型;
   r93 = r92 == 46;
   if (r93) goto if_then_92; else goto if_merge_93;
 
@@ -618,7 +699,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_93;
 
   if_merge_93:
-  r94 = cn_var_词元类型值;
+  r94 = cn_var_类型;
   r95 = r94 == 47;
   if (r95) goto if_then_94; else goto if_merge_95;
 
@@ -627,7 +708,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_95;
 
   if_merge_95:
-  r96 = cn_var_词元类型值;
+  r96 = cn_var_类型;
   r97 = r96 == 48;
   if (r97) goto if_then_96; else goto if_merge_97;
 
@@ -636,7 +717,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_97;
 
   if_merge_97:
-  r98 = cn_var_词元类型值;
+  r98 = cn_var_类型;
   r99 = r98 == 49;
   if (r99) goto if_then_98; else goto if_merge_99;
 
@@ -645,7 +726,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_99;
 
   if_merge_99:
-  r100 = cn_var_词元类型值;
+  r100 = cn_var_类型;
   r101 = r100 == 50;
   if (r101) goto if_then_100; else goto if_merge_101;
 
@@ -654,7 +735,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_101;
 
   if_merge_101:
-  r102 = cn_var_词元类型值;
+  r102 = cn_var_类型;
   r103 = r102 == 51;
   if (r103) goto if_then_102; else goto if_merge_103;
 
@@ -663,7 +744,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_103;
 
   if_merge_103:
-  r104 = cn_var_词元类型值;
+  r104 = cn_var_类型;
   r105 = r104 == 52;
   if (r105) goto if_then_104; else goto if_merge_105;
 
@@ -672,7 +753,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_105;
 
   if_merge_105:
-  r106 = cn_var_词元类型值;
+  r106 = cn_var_类型;
   r107 = r106 == 53;
   if (r107) goto if_then_106; else goto if_merge_107;
 
@@ -681,7 +762,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_107;
 
   if_merge_107:
-  r108 = cn_var_词元类型值;
+  r108 = cn_var_类型;
   r109 = r108 == 54;
   if (r109) goto if_then_108; else goto if_merge_109;
 
@@ -690,7 +771,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_109;
 
   if_merge_109:
-  r110 = cn_var_词元类型值;
+  r110 = cn_var_类型;
   r111 = r110 == 55;
   if (r111) goto if_then_110; else goto if_merge_111;
 
@@ -699,7 +780,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_111;
 
   if_merge_111:
-  r112 = cn_var_词元类型值;
+  r112 = cn_var_类型;
   r113 = r112 == 56;
   if (r113) goto if_then_112; else goto if_merge_113;
 
@@ -708,7 +789,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_113;
 
   if_merge_113:
-  r114 = cn_var_词元类型值;
+  r114 = cn_var_类型;
   r115 = r114 == 57;
   if (r115) goto if_then_114; else goto if_merge_115;
 
@@ -717,7 +798,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_115;
 
   if_merge_115:
-  r116 = cn_var_词元类型值;
+  r116 = cn_var_类型;
   r117 = r116 == 58;
   if (r117) goto if_then_116; else goto if_merge_117;
 
@@ -726,7 +807,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_117;
 
   if_merge_117:
-  r118 = cn_var_词元类型值;
+  r118 = cn_var_类型;
   r119 = r118 == 59;
   if (r119) goto if_then_118; else goto if_merge_119;
 
@@ -735,7 +816,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_119;
 
   if_merge_119:
-  r120 = cn_var_词元类型值;
+  r120 = cn_var_类型;
   r121 = r120 == 60;
   if (r121) goto if_then_120; else goto if_merge_121;
 
@@ -744,7 +825,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_121;
 
   if_merge_121:
-  r122 = cn_var_词元类型值;
+  r122 = cn_var_类型;
   r123 = r122 == 61;
   if (r123) goto if_then_122; else goto if_merge_123;
 
@@ -753,7 +834,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_123;
 
   if_merge_123:
-  r124 = cn_var_词元类型值;
+  r124 = cn_var_类型;
   r125 = r124 == 62;
   if (r125) goto if_then_124; else goto if_merge_125;
 
@@ -762,7 +843,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_125;
 
   if_merge_125:
-  r126 = cn_var_词元类型值;
+  r126 = cn_var_类型;
   r127 = r126 == 63;
   if (r127) goto if_then_126; else goto if_merge_127;
 
@@ -771,7 +852,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_127;
 
   if_merge_127:
-  r128 = cn_var_词元类型值;
+  r128 = cn_var_类型;
   r129 = r128 == 64;
   if (r129) goto if_then_128; else goto if_merge_129;
 
@@ -780,7 +861,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_129;
 
   if_merge_129:
-  r130 = cn_var_词元类型值;
+  r130 = cn_var_类型;
   r131 = r130 == 65;
   if (r131) goto if_then_130; else goto if_merge_131;
 
@@ -789,7 +870,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_131;
 
   if_merge_131:
-  r132 = cn_var_词元类型值;
+  r132 = cn_var_类型;
   r133 = r132 == 66;
   if (r133) goto if_then_132; else goto if_merge_133;
 
@@ -798,7 +879,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_133;
 
   if_merge_133:
-  r134 = cn_var_词元类型值;
+  r134 = cn_var_类型;
   r135 = r134 == 67;
   if (r135) goto if_then_134; else goto if_merge_135;
 
@@ -807,7 +888,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_135;
 
   if_merge_135:
-  r136 = cn_var_词元类型值;
+  r136 = cn_var_类型;
   r137 = r136 == 68;
   if (r137) goto if_then_136; else goto if_merge_137;
 
@@ -816,7 +897,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_137;
 
   if_merge_137:
-  r138 = cn_var_词元类型值;
+  r138 = cn_var_类型;
   r139 = r138 == 69;
   if (r139) goto if_then_138; else goto if_merge_139;
 
@@ -825,7 +906,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_139;
 
   if_merge_139:
-  r140 = cn_var_词元类型值;
+  r140 = cn_var_类型;
   r141 = r140 == 70;
   if (r141) goto if_then_140; else goto if_merge_141;
 
@@ -834,7 +915,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_141;
 
   if_merge_141:
-  r142 = cn_var_词元类型值;
+  r142 = cn_var_类型;
   r143 = r142 == 71;
   if (r143) goto if_then_142; else goto if_merge_143;
 
@@ -843,7 +924,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_143;
 
   if_merge_143:
-  r144 = cn_var_词元类型值;
+  r144 = cn_var_类型;
   r145 = r144 == 72;
   if (r145) goto if_then_144; else goto if_merge_145;
 
@@ -852,7 +933,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_145;
 
   if_merge_145:
-  r146 = cn_var_词元类型值;
+  r146 = cn_var_类型;
   r147 = r146 == 73;
   if (r147) goto if_then_146; else goto if_merge_147;
 
@@ -861,7 +942,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_147;
 
   if_merge_147:
-  r148 = cn_var_词元类型值;
+  r148 = cn_var_类型;
   r149 = r148 == 74;
   if (r149) goto if_then_148; else goto if_merge_149;
 
@@ -870,7 +951,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_149;
 
   if_merge_149:
-  r150 = cn_var_词元类型值;
+  r150 = cn_var_类型;
   r151 = r150 == 75;
   if (r151) goto if_then_150; else goto if_merge_151;
 
@@ -879,7 +960,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_151;
 
   if_merge_151:
-  r152 = cn_var_词元类型值;
+  r152 = cn_var_类型;
   r153 = r152 == 76;
   if (r153) goto if_then_152; else goto if_merge_153;
 
@@ -888,7 +969,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_153;
 
   if_merge_153:
-  r154 = cn_var_词元类型值;
+  r154 = cn_var_类型;
   r155 = r154 == 77;
   if (r155) goto if_then_154; else goto if_merge_155;
 
@@ -897,7 +978,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_155;
 
   if_merge_155:
-  r156 = cn_var_词元类型值;
+  r156 = cn_var_类型;
   r157 = r156 == 78;
   if (r157) goto if_then_156; else goto if_merge_157;
 
@@ -906,7 +987,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_157;
 
   if_merge_157:
-  r158 = cn_var_词元类型值;
+  r158 = cn_var_类型;
   r159 = r158 == 79;
   if (r159) goto if_then_158; else goto if_merge_159;
 
@@ -915,7 +996,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_159;
 
   if_merge_159:
-  r160 = cn_var_词元类型值;
+  r160 = cn_var_类型;
   r161 = r160 == 80;
   if (r161) goto if_then_160; else goto if_merge_161;
 
@@ -924,7 +1005,7 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   goto if_merge_161;
 
   if_merge_161:
-  r162 = cn_var_词元类型值;
+  r162 = cn_var_类型;
   r163 = r162 == 81;
   if (r163) goto if_then_162; else goto if_merge_163;
 
@@ -936,14 +1017,15 @@ char* 词元类型名称(long long cn_var_词元类型值) {
   return "未知词元类型";
 }
 
-struct 词元 创建词元(long long cn_var_词元类型值, char* cn_var_值, long long cn_var_行号, long long cn_var_列号, long long cn_var_长度值) {
-  long long r0, r2, r3, r4;
+struct 词元 创建词元(enum 词元类型枚举 cn_var_类型, char* cn_var_值, long long cn_var_行号, long long cn_var_列号, long long cn_var_长度值) {
+  long long r2, r3, r4;
   char* r1;
   struct 词元 r5;
+  enum 词元类型枚举 r0;
 
   entry:
   struct 词元 cn_var_新词元_0;
-  r0 = cn_var_词元类型值;
+  r0 = cn_var_类型;
   r1 = cn_var_值;
   r2 = cn_var_行号;
   r3 = cn_var_列号;
@@ -952,8 +1034,8 @@ struct 词元 创建词元(long long cn_var_词元类型值, char* cn_var_值, l
   return r5;
 }
 
-_Bool 是关键字(long long cn_var_词元类型值) {
-  long long r0, r1, r3, r5, r6, r8, r10, r11, r13, r15, r16, r18, r20, r21, r23, r25, r26, r28;
+_Bool 是关键字(enum 词元类型枚举 cn_var_类型) {
+  long long r0, r5, r10, r15, r20, r25;
   _Bool r2;
   _Bool r4;
   _Bool r7;
@@ -966,9 +1048,21 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   _Bool r24;
   _Bool r27;
   _Bool r29;
+  enum 词元类型枚举 r1;
+  enum 词元类型枚举 r3;
+  enum 词元类型枚举 r6;
+  enum 词元类型枚举 r8;
+  enum 词元类型枚举 r11;
+  enum 词元类型枚举 r13;
+  enum 词元类型枚举 r16;
+  enum 词元类型枚举 r18;
+  enum 词元类型枚举 r21;
+  enum 词元类型枚举 r23;
+  enum 词元类型枚举 r26;
+  enum 词元类型枚举 r28;
 
   entry:
-  r1 = cn_var_词元类型值;
+  r1 = cn_var_类型;
   r2 = r1 >= 0;
   if (r2) goto logic_rhs_166; else goto logic_merge_167;
 
@@ -977,12 +1071,12 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   goto if_merge_165;
 
   if_merge_165:
-  r6 = cn_var_词元类型值;
+  r6 = cn_var_类型;
   r7 = r6 >= 10;
   if (r7) goto logic_rhs_170; else goto logic_merge_171;
 
   logic_rhs_166:
-  r3 = cn_var_词元类型值;
+  r3 = cn_var_类型;
   r4 = r3 <= 9;
   goto logic_merge_167;
 
@@ -994,12 +1088,12 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   goto if_merge_169;
 
   if_merge_169:
-  r11 = cn_var_词元类型值;
+  r11 = cn_var_类型;
   r12 = r11 >= 17;
   if (r12) goto logic_rhs_174; else goto logic_merge_175;
 
   logic_rhs_170:
-  r8 = cn_var_词元类型值;
+  r8 = cn_var_类型;
   r9 = r8 <= 16;
   goto logic_merge_171;
 
@@ -1011,12 +1105,12 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   goto if_merge_173;
 
   if_merge_173:
-  r16 = cn_var_词元类型值;
+  r16 = cn_var_类型;
   r17 = r16 >= 24;
   if (r17) goto logic_rhs_178; else goto logic_merge_179;
 
   logic_rhs_174:
-  r13 = cn_var_词元类型值;
+  r13 = cn_var_类型;
   r14 = r13 <= 23;
   goto logic_merge_175;
 
@@ -1028,12 +1122,12 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   goto if_merge_177;
 
   if_merge_177:
-  r21 = cn_var_词元类型值;
+  r21 = cn_var_类型;
   r22 = r21 >= 27;
   if (r22) goto logic_rhs_182; else goto logic_merge_183;
 
   logic_rhs_178:
-  r18 = cn_var_词元类型值;
+  r18 = cn_var_类型;
   r19 = r18 <= 26;
   goto logic_merge_179;
 
@@ -1045,12 +1139,12 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   goto if_merge_181;
 
   if_merge_181:
-  r26 = cn_var_词元类型值;
+  r26 = cn_var_类型;
   r27 = r26 >= 36;
   if (r27) goto logic_rhs_186; else goto logic_merge_187;
 
   logic_rhs_182:
-  r23 = cn_var_词元类型值;
+  r23 = cn_var_类型;
   r24 = r23 <= 35;
   goto logic_merge_183;
 
@@ -1065,7 +1159,7 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   return 0;
 
   logic_rhs_186:
-  r28 = cn_var_词元类型值;
+  r28 = cn_var_类型;
   r29 = r28 <= 39;
   goto logic_merge_187;
 
@@ -1074,18 +1168,20 @@ _Bool 是关键字(long long cn_var_词元类型值) {
   return 0;
 }
 
-_Bool 是字面量(long long cn_var_词元类型值) {
-  long long r0, r1, r3;
+_Bool 是字面量(enum 词元类型枚举 cn_var_类型) {
+  long long r0;
   _Bool r2;
   _Bool r4;
+  enum 词元类型枚举 r1;
+  enum 词元类型枚举 r3;
 
   entry:
-  r1 = cn_var_词元类型值;
+  r1 = cn_var_类型;
   r2 = r1 >= 40;
   if (r2) goto logic_rhs_188; else goto logic_merge_189;
 
   logic_rhs_188:
-  r3 = cn_var_词元类型值;
+  r3 = cn_var_类型;
   r4 = r3 <= 44;
   goto logic_merge_189;
 
@@ -1093,18 +1189,20 @@ _Bool 是字面量(long long cn_var_词元类型值) {
   return r4;
 }
 
-_Bool 是运算符(long long cn_var_词元类型值) {
-  long long r0, r1, r3;
+_Bool 是运算符(enum 词元类型枚举 cn_var_类型) {
+  long long r0;
   _Bool r2;
   _Bool r4;
+  enum 词元类型枚举 r1;
+  enum 词元类型枚举 r3;
 
   entry:
-  r1 = cn_var_词元类型值;
+  r1 = cn_var_类型;
   r2 = r1 >= 45;
   if (r2) goto logic_rhs_190; else goto logic_merge_191;
 
   logic_rhs_190:
-  r3 = cn_var_词元类型值;
+  r3 = cn_var_类型;
   r4 = r3 <= 68;
   goto logic_merge_191;
 
@@ -1112,18 +1210,20 @@ _Bool 是运算符(long long cn_var_词元类型值) {
   return r4;
 }
 
-_Bool 是分隔符(long long cn_var_词元类型值) {
-  long long r0, r1, r3;
+_Bool 是分隔符(enum 词元类型枚举 cn_var_类型) {
+  long long r0;
   _Bool r2;
   _Bool r4;
+  enum 词元类型枚举 r1;
+  enum 词元类型枚举 r3;
 
   entry:
-  r1 = cn_var_词元类型值;
+  r1 = cn_var_类型;
   r2 = r1 >= 69;
   if (r2) goto logic_rhs_192; else goto logic_merge_193;
 
   logic_rhs_192:
-  r3 = cn_var_词元类型值;
+  r3 = cn_var_类型;
   r4 = r3 <= 79;
   goto logic_merge_193;
 

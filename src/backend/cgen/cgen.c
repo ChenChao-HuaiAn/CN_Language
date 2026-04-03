@@ -1434,8 +1434,31 @@ void cn_cgen_struct_decl_with_prefix(CnCCodeGenContext *ctx, CnAstStmt *struct_s
     
     // 生成字段
     for (size_t i = 0; i < decl->field_count; i++) {
+        // 获取字段类型
+        CnType *field_type = decl->fields[i].field_type;
+        
+        // 如果字段类型是结构体类型，需要检查是否实际上是枚举类型
+        // （因为解析器将所有自定义类型都创建为结构体类型）
+        if (field_type && field_type->kind == CN_TYPE_STRUCT &&
+            field_type->as.struct_type.name && ctx->program) {
+            // 在程序的枚举列表中查找是否有同名枚举
+            for (size_t j = 0; j < ctx->program->enum_count; j++) {
+                CnAstStmt *enum_stmt = ctx->program->enums[j];
+                if (enum_stmt && enum_stmt->kind == CN_AST_STMT_ENUM_DECL) {
+                    CnAstEnumDecl *enum_decl = &enum_stmt->as.enum_decl;
+                    if (enum_decl->name_length == field_type->as.struct_type.name_length &&
+                        memcmp(enum_decl->name, field_type->as.struct_type.name,
+                               enum_decl->name_length) == 0) {
+                        // 找到匹配的枚举，创建枚举类型
+                        field_type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+                        break;
+                    }
+                }
+            }
+        }
+        
         fprintf(ctx->output_file, "    %s %.*s;\n",
-                get_c_type_string(decl->fields[i].field_type),
+                get_c_type_string(field_type),
                 (int)decl->fields[i].name_length,
                 decl->fields[i].name);
     }
@@ -1544,7 +1567,19 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     size_t local_struct_capacity = 0;
     
     if (program) {
-        // 输出全局结构体定义
+        // =============================================================================
+        // 先输出枚举定义（必须在结构体之前，因为结构体可能使用枚举类型）
+        // =============================================================================
+        if (program->enum_count > 0) {
+            fprintf(file, "// CN Language Enum Definitions\n");
+            for (size_t i = 0; i < program->enum_count; i++) {
+                cn_cgen_enum_decl(&ctx, program->enums[i]);
+            }
+        }
+        
+        // =============================================================================
+        // 输出全局结构体定义（在枚举之后）
+        // =============================================================================
         if (program->struct_count > 0) {
             fprintf(file, "// CN Language Global Struct Definitions\n");
             for (size_t i = 0; i < program->struct_count; i++) {
@@ -1562,7 +1597,7 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
             fprintf(file, "// CN Language Local Struct Definitions (hoisted for C compatibility)\n");
             fprintf(file, "// Note: These are local to their respective functions in CN semantics\n");
             for (size_t i = 0; i < local_struct_count; i++) {
-                cn_cgen_struct_decl_with_prefix(&ctx, 
+                cn_cgen_struct_decl_with_prefix(&ctx,
                                                local_struct_infos[i].struct_stmt,
                                                local_struct_infos[i].function_name,
                                                local_struct_infos[i].function_name_length);
@@ -1571,14 +1606,6 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
             // 设置全局查找表
             g_local_struct_infos = local_struct_infos;
             g_local_struct_count = local_struct_count;
-        }
-    }
-        
-    // 生成枚举定义（如果提供了 AST）
-    if (program && program->enum_count > 0) {
-        fprintf(file, "// CN Language Enum Definitions\n");
-        for (size_t i = 0; i < program->enum_count; i++) {
-            cn_cgen_enum_decl(&ctx, program->enums[i]);
         }
     }
     
@@ -1960,6 +1987,19 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     size_t local_struct_capacity = 0;
     
     if (program) {
+        // =============================================================================
+        // 先输出枚举定义（必须在结构体之前，因为结构体可能使用枚举类型）
+        // =============================================================================
+        if (program->enum_count > 0) {
+            fprintf(file, "// CN Language Enum Definitions\n");
+            for (size_t i = 0; i < program->enum_count; i++) {
+                cn_cgen_enum_decl(&ctx, program->enums[i]);
+            }
+        }
+        
+        // =============================================================================
+        // 输出全局结构体定义（在枚举之后）
+        // =============================================================================
         if (program->struct_count > 0) {
             fprintf(file, "// CN Language Global Struct Definitions\n");
             for (size_t i = 0; i < program->struct_count; i++) {
@@ -1983,13 +2023,6 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
             
             g_local_struct_infos = local_struct_infos;
             g_local_struct_count = local_struct_count;
-        }
-    }
-        
-    if (program && program->enum_count > 0) {
-        fprintf(file, "// CN Language Enum Definitions\n");
-        for (size_t i = 0; i < program->enum_count; i++) {
-            cn_cgen_enum_decl(&ctx, program->enums[i]);
         }
     }
     

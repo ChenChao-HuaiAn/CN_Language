@@ -1596,8 +1596,24 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     // 添加参数
     for (size_t i = 0; i < func->parameter_count; i++) {
         char *param_name = copy_name(func->parameters[i].name, func->parameters[i].name_length);
-        CnIrOperand param = cn_ir_op_symbol(param_name,
-                                            func->parameters[i].declared_type);
+        CnType *param_type = func->parameters[i].declared_type;
+        
+        // 特殊处理：如果参数类型是结构体类型，可能是枚举类型或类类型
+        // 需要从符号表查找真实类型
+        if (param_type && param_type->kind == CN_TYPE_STRUCT && ctx->global_scope) {
+            CnSemSymbol *type_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                    param_type->as.struct_type.name,
+                                    param_type->as.struct_type.name_length);
+            if (type_sym && type_sym->type) {
+                if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                    param_type = type_sym->type;
+                } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                    param_type = type_sym->type;
+                }
+            }
+        }
+        
+        CnIrOperand param = cn_ir_op_symbol(param_name, param_type);
         free(param_name);
         cn_ir_function_add_param(ir_func, param);
     }
