@@ -476,9 +476,14 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
             }
             program_add_function(program, isr);
         */
-        } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR || 
-                   parser->current.kind == CN_TOKEN_KEYWORD_CONST) {
-            // 解析全局变量声明
+        } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_CONST ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_INT ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
+            // 解析全局变量声明（使用类型关键字开头）
             CnAstStmt *var_decl = parse_statement(parser);
             if (!var_decl) {
                 break;
@@ -488,12 +493,36 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                 var_decl->as.var_decl.visibility = parser->current_visibility;
             }
             program_add_global_var(program, var_decl);
+        } else if (parser->current.kind == CN_TOKEN_IDENT) {
+            // 可能是自定义类型的全局变量声明，如：MyType var = value;
+            // 需要向前看判断是变量声明还是其他
+            CnTokenKind next_kind = parser_peek(parser);
+            if (next_kind == CN_TOKEN_IDENT || next_kind == CN_TOKEN_STAR) {
+                // 类型名后跟标识符或指针符号，是变量声明
+                CnAstStmt *var_decl = parse_statement(parser);
+                if (!var_decl) {
+                    break;
+                }
+                // 应用当前块的可见性
+                if (var_decl->kind == CN_AST_STMT_VAR_DECL) {
+                    var_decl->as.var_decl.visibility = parser->current_visibility;
+                }
+                program_add_global_var(program, var_decl);
+            } else {
+                // 无法识别的标识符开头语句
+                fprintf(stderr, "[DEBUG PARSER] 无法识别的token: kind=%d, line=%d, col=%d, error_count=%d\n",
+                        parser->current.kind, parser->current.line, parser->current.column, parser->error_count + 1);
+                parser->error_count++;
+                parser_advance(parser);
+            }
         } else if (parser->current.kind == CN_TOKEN_SEMICOLON) {
             // 跳过结构体/枚举声明后的可选分号
             // 例如: 结构体 Foo { ... };
             parser_advance(parser);
         } else {
             // 遇到无法识别的token，跳过
+            fprintf(stderr, "[DEBUG PARSER] 无法识别的token: kind=%d, line=%d, col=%d, error_count=%d\n",
+                    parser->current.kind, parser->current.line, parser->current.column, parser->error_count + 1);
             parser->error_count++;
             parser_advance(parser);
         }
@@ -1505,8 +1534,8 @@ static CnAstStmt *parse_statement(CnParser *parser)
     }
     
     if (is_var_decl) {
-        const char *var_name;
-        size_t var_name_length;
+        const char *var_name = NULL;
+        size_t var_name_length = 0;
         CnAstExpr *initializer = NULL;
         CnType *declared_type = NULL;
         int is_const = 0;
@@ -1579,10 +1608,29 @@ static CnAstStmt *parse_statement(CnParser *parser)
             is_const = 1;
             parser_advance(parser);
 
-            // 支持：常量 变量 a = 1; 或 常量 整数 a = 1;
+            // 支持：常量 变量 a = 1; 或 常量 整数 a = 1; 或 常量 a = 1;（类型推断）
             if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
                 parser_advance(parser);
                 declared_type = NULL; // 后续通过类型推断
+            } else if (parser->current.kind == CN_TOKEN_IDENT) {
+                // 检查是否是类型推断形式：常量 变量名 = 值;
+                // 需要向前看判断：如果标识符后跟 '=' 或 ';'，则是变量名（类型推断）
+                // 如果标识符后跟另一个标识符，则是类型名
+                CnTokenKind next_kind = parser_peek(parser);
+                if (next_kind == CN_TOKEN_EQUAL || next_kind == CN_TOKEN_SEMICOLON) {
+                    // 类型推断形式：常量 变量名 = 值;
+                    // 当前标识符就是变量名，保存它
+                    var_name = parser->current.lexeme_begin;
+                    var_name_length = parser->current.lexeme_length;
+                    parser_advance(parser);  // 消费变量名
+                    declared_type = NULL; // 后续通过类型推断
+                } else {
+                    // 显式类型形式：常量 类型名 变量名 = 值;
+                    declared_type = parse_type(parser);
+                    if (!declared_type) {
+                        return NULL;
+                    }
+                }
             } else {
                 // 使用统一的 parse_type 解析类型
                 declared_type = parse_type(parser);
@@ -1752,23 +1800,26 @@ static CnAstStmt *parse_statement(CnParser *parser)
             return NULL;
         }
 
-        if (parser->current.kind != CN_TOKEN_IDENT) {
-            parser->error_count++;
-            if (parser->diagnostics) {
-                cn_support_diagnostics_report(parser->diagnostics,
-                                              CN_DIAG_SEVERITY_ERROR,
-                                              CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
-                                              parser->lexer ? parser->lexer->filename : NULL,
-                                              parser->current.line,
-                                              parser->current.column,
-                                              "语法错误：变量名无效");
+        // 如果变量名还没有被设置（类型推断形式已经设置了变量名）
+        if (var_name == NULL) {
+            if (parser->current.kind != CN_TOKEN_IDENT) {
+                parser->error_count++;
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：变量名无效");
+                }
+                return NULL;
             }
-            return NULL;
-        }
 
-       var_name = parser->current.lexeme_begin;
-        var_name_length = parser->current.lexeme_length;
-        parser_advance(parser);
+            var_name = parser->current.lexeme_begin;
+            var_name_length = parser->current.lexeme_length;
+            parser_advance(parser);
+        }
 
         // C风格数组声明支持（包括多维数组）：类型 名称[大小1][大小2]... = {...}
         // 首先收集所有维度信息

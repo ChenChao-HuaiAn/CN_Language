@@ -834,6 +834,44 @@ int cn_module_cache_put(CnModuleCache *cache, CnModuleMetadata *metadata)
     return 1;
 }
 
+/**
+ * @brief 遍历缓存中的所有模块
+ */
+size_t cn_module_cache_foreach(CnModuleCache *cache,
+                                int (*callback)(CnModuleMetadata *metadata, void *user_data),
+                                void *user_data)
+{
+    if (!cache || !callback) {
+        return 0;
+    }
+    
+    size_t count = 0;
+    for (size_t i = 0; i < cache->bucket_count; i++) {
+        CnModuleCacheEntry *entry = cache->buckets[i];
+        while (entry) {
+            if (callback(entry->metadata, user_data) != 0) {
+                // 回调返回非0，停止遍历
+                return count + 1;
+            }
+            count++;
+            entry = entry->next;
+        }
+    }
+    
+    return count;
+}
+
+/**
+ * @brief 获取缓存中的模块数量
+ */
+size_t cn_module_cache_count(CnModuleCache *cache)
+{
+    if (!cache) {
+        return 0;
+    }
+    return cache->entry_count;
+}
+
 // ============================================================================
 // C5: 循环导入检测
 // ============================================================================

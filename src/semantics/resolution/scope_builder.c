@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <errno.h>
 
 // MSVC 兼容性：较旧版本的 MSVC (< VS2015) 中 snprintf 未定义
 #if defined(_MSC_VER) && _MSC_VER < 1900
@@ -113,6 +114,19 @@ static void cache_module(const char *file_path, CnSemScope *scope) {
     g_module_cache[g_cached_module_count].file_path = strdup(file_path);
     g_module_cache[g_cached_module_count].scope = scope;
     g_cached_module_count++;
+}
+
+// 获取缓存的模块数量
+int cn_sem_get_cached_module_count(void) {
+    return g_cached_module_count;
+}
+
+// 获取缓存的模块文件路径
+const char *cn_sem_get_cached_module_path(int index) {
+    if (index < 0 || index >= g_cached_module_count) {
+        return NULL;
+    }
+    return g_module_cache[index].file_path;
 }
 
 // 检查是否正在编译该模块（循环导入检测）
@@ -1170,11 +1184,15 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     // 检查缓存
     CnSemScope *cached = find_cached_module(file_path);
     if (cached) {
+        fprintf(stderr, "[DEBUG] 模块缓存命中: %s\n", file_path);
         return cached;  // 返回缓存的作用域
     }
     
+    fprintf(stderr, "[DEBUG] 开始编译外部模块: %s\n", file_path);
+    
     // 检测循环导入
     if (is_module_compiling(file_path)) {
+        fprintf(stderr, "[DEBUG] 检测到循环导入: %s\n", file_path);
         cn_support_diag_semantic_error_generic(
             diagnostics,
             CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
@@ -1185,6 +1203,7 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     
     // 压入编译栈
     if (!push_compiling_module(file_path)) {
+        fprintf(stderr, "[DEBUG] 模块导入嵌套层级太深: %s\n", file_path);
         cn_support_diag_semantic_error_generic(
             diagnostics,
             CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
@@ -1197,20 +1216,24 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     size_t file_size = 0;
     char *source = read_file_content(file_path, &file_size);
     if (!source) {
+        fprintf(stderr, "[DEBUG] 读取文件失败: %s, errno: %d\n", file_path, errno);
         pop_compiling_module();
         return NULL;
     }
+    fprintf(stderr, "[DEBUG] 文件读取成功，大小: %zu 字节\n", file_size);
     
     // 预处理
     CnPreprocessor preprocessor;
     cn_frontend_preprocessor_init(&preprocessor, source, file_size, file_path);
     
     if (!cn_frontend_preprocessor_process(&preprocessor)) {
+        fprintf(stderr, "[DEBUG] 预处理失败: %s\n", file_path);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
         pop_compiling_module();
         return NULL;
     }
+    fprintf(stderr, "[DEBUG] 预处理成功\n");
     
     // 词法分析
     CnLexer lexer;
@@ -1219,6 +1242,7 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     // 语法分析
     CnParser *parser = cn_frontend_parser_new(&lexer);
     if (!parser) {
+        fprintf(stderr, "[DEBUG] 创建解析器失败: %s\n", file_path);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
         pop_compiling_module();
@@ -1229,16 +1253,20 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     int ok = cn_frontend_parse_program(parser, &module_program);
     
     if (!ok || !module_program) {
+        fprintf(stderr, "[DEBUG] 语法分析失败: %s, ok=%d, module_program=%p\n", file_path, ok, (void*)module_program);
         cn_frontend_parser_free(parser);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
         pop_compiling_module();
         return NULL;
     }
+    fprintf(stderr, "[DEBUG] 语法分析成功，函数数: %zu, 全局变量数: %zu\n",
+            module_program->function_count, module_program->global_var_count);
     
     // 为外部模块创建作用域
     CnSemScope *module_scope = cn_sem_scope_new(CN_SEM_SCOPE_FILE_MODULE, global_scope);
     if (!module_scope) {
+        fprintf(stderr, "[DEBUG] 创建模块作用域失败: %s\n", file_path);
         cn_frontend_ast_program_free(module_program);
         cn_frontend_parser_free(parser);
         cn_frontend_preprocessor_free(&preprocessor);
@@ -1246,6 +1274,7 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         pop_compiling_module();
         return NULL;
     }
+    fprintf(stderr, "[DEBUG] 模块作用域创建成功: %p\n", (void*)module_scope);
     
     // 注册模块中的函数到模块作用域
     for (size_t i = 0; i < module_program->function_count; ++i) {
@@ -1296,6 +1325,21 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             sym->is_const = var_decl->is_const;
             // 根据AST中的visibility字段设置可见性
             sym->is_public = (var_decl->visibility == CN_VISIBILITY_PUBLIC) ? 1 : 0;
+            
+            // 如果没有显式类型，从初始化表达式推断类型
+            if (!sym->type && var_decl->initializer) {
+                // 简单类型推断：根据初始化表达式的类型
+                CnAstExpr *init = var_decl->initializer;
+                if (init->kind == CN_AST_EXPR_STRING_LITERAL) {
+                    sym->type = cn_type_new_primitive(CN_TYPE_STRING);
+                } else if (init->kind == CN_AST_EXPR_INTEGER_LITERAL) {
+                    sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                } else if (init->kind == CN_AST_EXPR_FLOAT_LITERAL) {
+                    sym->type = cn_type_new_primitive(CN_TYPE_FLOAT);
+                } else if (init->kind == CN_AST_EXPR_BOOL_LITERAL) {
+                    sym->type = cn_type_new_primitive(CN_TYPE_BOOL);
+                }
+            }
         }
     }
     
@@ -1788,6 +1832,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 memcpy(module_name_str, import->module_name, import->module_name_length);
                 module_name_str[import->module_name_length] = '\0';
 
+                // [DEBUG] 调试输出
+                fprintf(stderr, "[DEBUG] 尝试加载模块: %s\n", module_name_str);
+                fprintf(stderr, "[DEBUG] 源文件: %s\n", source_file);
+
                 char *resolved_path = NULL;
                 
                 // 1. 首先尝试在当前文件目录中查找
@@ -1797,6 +1845,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 if (last_fwd_sep > last_sep) {
                     last_sep = last_fwd_sep;
                 }
+                
+                fprintf(stderr, "[DEBUG] last_sep: %s\n", last_sep ? last_sep : "NULL");
                 
                 if (last_sep) {
                     // 构建当前目录路径
@@ -1812,11 +1862,15 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                             memcpy(resolved_path + dir_len + 1, import->module_name, import->module_name_length);
                             strcpy(resolved_path + dir_len + 1 + import->module_name_length, ".cn");
                             
+                            fprintf(stderr, "[DEBUG] 构建路径: %s\n", resolved_path);
+                            
                             // 检查文件是否存在
                             FILE *test_file = fopen(resolved_path, "r");
                             if (test_file) {
+                                fprintf(stderr, "[DEBUG] 文件打开成功\n");
                                 fclose(test_file);
                             } else {
+                                fprintf(stderr, "[DEBUG] 文件打开失败，errno: %d\n", errno);
                                 free(resolved_path);
                                 resolved_path = NULL;
                                 
@@ -1894,6 +1948,7 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 
                 // 3. 如果找到路径，编译外部模块
                 if (resolved_path) {
+                    fprintf(stderr, "[DEBUG] 调用 compile_external_module_recursive: %s\n", resolved_path);
                     CnSemScope *external_scope = compile_external_module_recursive(
                         resolved_path,
                         diagnostics,
@@ -1902,6 +1957,7 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         source_file);
                     free(resolved_path);
 
+                    fprintf(stderr, "[DEBUG] external_scope: %p\n", (void*)external_scope);
                     if (external_scope) {
                         module_sym = cn_sem_scope_insert_symbol(
                             global_scope,
@@ -1984,18 +2040,22 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             continue;  // 使用别名时不进行成员导入
         }
         
-        // 如果不是「从 ... 导入」语法，则不进行成员导入
-        // 「导入 xxx;」 语法只注册模块符号，不导入其成员
-        if (!import->use_from_syntax) {
-            continue;
-        }
+        // 「导入 xxx;」 语法：全量导入模块的所有公开成员
+        // 「从 xxx 导入 ...」 语法：选择性导入成员
+        // 两种语法都需要导入成员到当前作用域
         
         // 判断是全量导入还是选择性导入
         if (import->member_count == 0) {
-            // 全量导入：遍历模块作用域中的所有符号，添加到全局作用域
+            // 全量导入：遍历模块作用域中的所有公开符号，添加到全局作用域
             CnSemSymbolNode *node = module_scope->symbols;
             while (node) {
                 CnSemSymbol *sym = &node->symbol;
+                
+                // 只导入公开成员
+                if (!sym->is_public) {
+                    node = node->next;
+                    continue;
+                }
                 
                 // 检查名称冲突
                 CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,

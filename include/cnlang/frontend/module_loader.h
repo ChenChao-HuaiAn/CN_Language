@@ -329,6 +329,24 @@ CnModuleMetadata *cn_module_cache_get(CnModuleCache *cache, const CnModuleId *id
  */
 int cn_module_cache_put(CnModuleCache *cache, CnModuleMetadata *metadata);
 
+/**
+ * @brief 遍历缓存中的所有模块
+ * @param cache 缓存对象
+ * @param callback 回调函数，参数为模块元数据，返回 0 继续遍历，非 0 停止
+ * @param user_data 用户数据指针
+ * @return 遍历的模块数量
+ */
+size_t cn_module_cache_foreach(CnModuleCache *cache,
+                                int (*callback)(CnModuleMetadata *metadata, void *user_data),
+                                void *user_data);
+
+/**
+ * @brief 获取缓存中的模块数量
+ * @param cache 缓存对象
+ * @return 模块数量
+ */
+size_t cn_module_cache_count(CnModuleCache *cache);
+
 // --- 模块加载器操作 ---
 
 /**

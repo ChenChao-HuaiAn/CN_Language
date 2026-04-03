@@ -361,6 +361,11 @@ int main(int argc, char **argv)
     size_t include_path_capacity = 0;
     const char *main_entry = NULL;
     const char *project_dir = NULL;
+    
+    // 收集所有需要编译的 C 文件（包括导入模块）
+    char **c_files = NULL;
+    size_t c_file_count = 0;
+    size_t c_file_capacity = 0;
 
     // 检查是否是帮助请求
     for (int i = 1; i < argc; i++) {
@@ -797,9 +802,65 @@ int main(int argc, char **argv)
             printf("已生成 C 代码文件: %s\n", c_filename);
         }
 
+        // 收集所有需要编译的 C 文件（包括导入模块）
+        // 添加主文件的 C 文件
+        c_file_capacity = 8;
+        c_files = (char **)malloc(c_file_capacity * sizeof(char *));
+        if (c_files) {
+            c_files[c_file_count] = strdup(c_filename);
+            if (c_files[c_file_count]) {
+                c_file_count++;
+            }
+        }
+        
+        // 遍历语义分析模块缓存，收集导入模块的 C 文件路径
+        int cached_count = cn_sem_get_cached_module_count();
+        for (int i = 0; i < cached_count; i++) {
+            const char *module_path = cn_sem_get_cached_module_path(i);
+            if (module_path) {
+                // 将 .cn 文件路径转换为 .c 文件路径
+                char module_c_path[1024];
+                strncpy(module_c_path, module_path, sizeof(module_c_path) - 1);
+                module_c_path[sizeof(module_c_path) - 1] = '\0';
+                
+                // 替换扩展名
+                char *ext = strrchr(module_c_path, '.');
+                if (ext && strcmp(ext, ".cn") == 0) {
+                    strcpy(ext, ".c");
+                    
+                    // 检查是否与主文件相同（避免重复）
+                    if (strcmp(module_c_path, c_filename) != 0) {
+                        // 检查文件是否存在
+                        FILE *test = fopen(module_c_path, "r");
+                        if (test) {
+                            fclose(test);
+                            
+                            // 扩容检查
+                            if (c_file_count >= c_file_capacity) {
+                                size_t new_cap = c_file_capacity * 2;
+                                char **new_files = (char **)realloc(c_files, new_cap * sizeof(char *));
+                                if (new_files) {
+                                    c_files = new_files;
+                                    c_file_capacity = new_cap;
+                                }
+                            }
+                            
+                            // 添加到列表
+                            if (c_file_count < c_file_capacity) {
+                                c_files[c_file_count] = strdup(module_c_path);
+                                if (c_files[c_file_count]) {
+                                    c_file_count++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // 如果不是仅生成 C 代码，则调用外部编译器
         if (!compile_only) {
-            char compile_cmd[4096];
+            char compile_cmd[8192];  // 增大缓冲区以容纳多个文件
             const char *runtime_lib_path = freestanding_mode ? NULL : get_runtime_lib_path();
             const char *runtime_include_dir = get_runtime_include_dir();
             const char *compiler = cc_override ? cc_override : cn_support_detect_c_compiler();
@@ -825,40 +886,49 @@ int main(int argc, char **argv)
                 }
                 /* freestanding 模式下不链接宿主 OS 运行时库 */
             }
+            
+            // 构建所有 C 文件的参数字符串
+            char c_files_arg[4096] = "";
+            for (size_t i = 0; i < c_file_count; i++) {
+                if (i > 0) {
+                    strcat(c_files_arg, " ");
+                }
+                strcat(c_files_arg, c_files[i]);
+            }
 
             #ifdef _WIN32
             if (strcmp(compiler, "cl") == 0) {
                 if (freestanding_mode) {
                     snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /I%s /Fe:%s %s",
                              compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe",
-                             c_filename);
+                             c_files_arg);
                 } else {
                     // 使用 /MDd 匹配 Debug 版本运行时库的 CRT 链接方式（动态链接 Debug CRT）
                     // 不需要额外链接 ucrt.lib，因为 /MDd 会自动处理
                     snprintf(compile_cmd, sizeof(compile_cmd), "%s%s /MDd /I%s /Fe:%s %s %s",
                              compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.exe",
-                             c_filename, runtime_lib_path);
+                             c_files_arg, runtime_lib_path);
                 }
             } else {
                 if (freestanding_mode) {
                     snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s",
                              compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out",
-                             c_filename);
+                             c_files_arg);
                 } else {
                     snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
                              compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out",
-                             c_filename, runtime_lib_path);
+                             c_files_arg, runtime_lib_path);
                 }
             }
             #else
             if (freestanding_mode) {
                 snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s",
-                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
-                         c_filename);
+                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out",
+                         c_files_arg);
             } else {
                 snprintf(compile_cmd, sizeof(compile_cmd), "%s%s -I%s -o %s %s %s",
-                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out", 
-                         c_filename, runtime_lib_path);
+                         compiler, extra_flags, runtime_include_dir, output_filename ? output_filename : "a.out",
+                         c_files_arg, runtime_lib_path);
             }
             #endif
 
@@ -1005,6 +1075,13 @@ int main(int argc, char **argv)
     }
 
 cleanup:
+    // 释放 C 文件列表
+    if (c_files) {
+        for (size_t i = 0; i < c_file_count; i++) {
+            free(c_files[i]);
+        }
+        free(c_files);
+    }
     if (module_loader) {
         cn_module_loader_free(module_loader);
     }

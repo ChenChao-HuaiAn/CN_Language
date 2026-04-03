@@ -1729,11 +1729,19 @@ typedef struct {
 // 全量导入回调函数（遍历模块作用域符号时调用）
 static void full_import_callback(CnSemSymbol *sym, void *user_data) {
     FullImportContext *ctx = (FullImportContext *)user_data;
-    // 只导出公开的函数符号
-    if (sym->is_public && sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
+    // 只导出公开的符号
+    if (!sym->is_public) {
+        return;
+    }
+    
+    if (sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
         // 直接使用原始函数名生成前向声明（不再使用编码名称）
         // 模块系统通过作用域管理避免命名冲突
         cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type);
+    } else if (sym->kind == CN_SEM_SYMBOL_VARIABLE && sym->type) {
+        // 生成变量的 extern 声明
+        const char *var_type = get_c_type_string(sym->type);
+        fprintf(ctx->file, "extern %s cn_var_%.*s;\n", var_type, (int)sym->name_length, sym->name);
     }
 }
 
