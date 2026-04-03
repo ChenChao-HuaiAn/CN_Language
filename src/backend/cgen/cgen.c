@@ -1263,6 +1263,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
+        /* 声明枚举寄存器 */
+        for (int i = 0; i < actual_reg_count; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_ENUM) {
+                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
+            }
+        }
+        
         if (use_heap) {
             free(reg_types);
         }

@@ -285,15 +285,20 @@ static void cgen_static_fields(FILE *out, CnAstClassDecl *class_decl) {
 
 /**
  * @brief 生成构造函数的前向声明
+ *
+ * 构造函数名格式：类名_construct_N（N为参数数量，不含self参数）
+ * 这样可以支持构造函数重载，因为C语言不支持函数重载
  */
 static void cgen_constructor_forward_decl(FILE *out, CnAstClassDecl *class_decl,
                                            CnClassMember *constructor) {
     if (!constructor || constructor->kind != CN_MEMBER_CONSTRUCTOR) return;
     
     // 构造函数返回类指针类型
-    fprintf(out, "%.*s* %.*s_construct(",
+    // 使用参数数量作为后缀，支持构造函数重载
+    fprintf(out, "%.*s* %.*s_construct_%zu(",
             (int)class_decl->name_length, class_decl->name,
-            (int)class_decl->name_length, class_decl->name);
+            (int)class_decl->name_length, class_decl->name,
+            constructor->parameter_count);
     
     // 第一个参数是 self 指针（构造函数需要返回新对象）
     fprintf(out, "%.*s* self",
@@ -1114,6 +1119,9 @@ static bool class_has_unimplemented_pure_virtual(CnAstClassDecl *class_decl) {
 
 /**
  * @brief 生成构造函数的实现
+ *
+ * 构造函数名格式：类名_construct_N（N为参数数量，不含self参数）
+ * 这样可以支持构造函数重载，因为C语言不支持函数重载
  */
 static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl,
                                    CnClassMember *constructor) {
@@ -1127,9 +1135,11 @@ static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_
     ctx->current_method = constructor;
     
     // 构造函数返回类指针类型
-    fprintf(out, "%.*s* %.*s_construct(",
+    // 使用参数数量作为后缀，支持构造函数重载
+    fprintf(out, "%.*s* %.*s_construct_%zu(",
             (int)class_decl->name_length, class_decl->name,
-            (int)class_decl->name_length, class_decl->name);
+            (int)class_decl->name_length, class_decl->name,
+            constructor->parameter_count);
     
     // 第一个参数是 self 指针
     fprintf(out, "%.*s* self",
@@ -1194,7 +1204,8 @@ static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_
                 (int)base_info->base_class_name_length, base_info->base_class_name,
                 (int)base_info->base_class_name_length, base_info->base_class_name,
                 (int)base_info->base_class_name_length, base_info->base_class_name);
-        fprintf(out, "        %.*s_construct(vbptr_%.*s);\n",
+        // 虚基类默认调用无参构造函数（参数数量为0）
+        fprintf(out, "        %.*s_construct_0(vbptr_%.*s);\n",
                 (int)base_info->base_class_name_length, base_info->base_class_name,
                 (int)base_info->base_class_name_length, base_info->base_class_name);
         fprintf(out, "    }\n");
@@ -1243,9 +1254,10 @@ static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_
         
         // 只有当基类有显式构造函数时才生成调用
         if (base_constructor) {
-            // 生成基类构造函数调用
-            fprintf(out, "    %.*s_construct(&self->%.*s_base",
+            // 生成基类构造函数调用（使用参数数量后缀）
+            fprintf(out, "    %.*s_construct_%zu(&self->%.*s_base",
                     (int)base_info->base_class_name_length, base_info->base_class_name,
+                    base_constructor->parameter_count,
                     (int)base_info->base_class_name_length, base_info->base_class_name);
             
             // 【修复问题3】传递基类构造函数需要的参数
@@ -1258,7 +1270,7 @@ static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_
                     for (size_t ci = 0; ci < constructor->parameter_count; ci++) {
                         CnAstParameter *cur_param = &constructor->parameters[ci];
                         if (cur_param->name_length == base_param->name_length &&
-                            memcmp(cur_param->name, cur_param->name, cur_param->name_length) == 0) {
+                            memcmp(cur_param->name, base_param->name, base_param->name_length) == 0) {
                             fprintf(out, ", %.*s", (int)cur_param->name_length, cur_param->name);
                             found = true;
                             break;

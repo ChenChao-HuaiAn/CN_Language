@@ -528,6 +528,14 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 if (expr->as.unary.operand->kind == CN_AST_EXPR_IDENTIFIER) {
                     char *name = copy_name(expr->as.unary.operand->as.identifier.name,
                                            expr->as.unary.operand->as.identifier.name_length);
+                    
+                    // 查找局部变量的唯一名称（如 "值" -> "值_0"）
+                    char *unique_name = lookup_local_var_unique_name(ctx, name);
+                    if (unique_name) {
+                        free(name);
+                        name = unique_name;
+                    }
+                    
                     CnIrOperand addr = cn_ir_op_symbol(name, expr->type);
                     free(name);
                     emit(ctx, cn_ir_inst_new(CN_IR_INST_ADDRESS_OF, dest, addr, cn_ir_op_none()));
