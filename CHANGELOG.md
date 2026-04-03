@@ -1,27 +1,21 @@
-# CHANGELOG
-
-本文档记录 CN_Language 编译器和工具链的版本变更历史。
-格式遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.0.0/)。
-
----
-
 ## 功能完善总结
 
-### 块注释功能实现
+**完成时间**: 2026-04-03 10:33
 
-**新增功能**：
-- 词法分析器支持块注释 `/* */` 格式
-- 支持多行块注释
-- 未闭合块注释错误诊断
+### 修复内容
 
-**修改文件**：
-- `src/frontend/lexer/lexer.c` - 添加块注释处理逻辑
-- `include/cnlang/support/diagnostics.h` - 添加错误码
-- `plans/001 CN Language语法规范设计文档.md` - 更新注释规范
-- `tools/vscode/cnlang-lsp/cnlang.tmLanguage.json` - 语法高亮配置（已存在）
-- `examples/tests/features/test_block_comment.cn` - 测试用例
-- `examples/tests/features/test_unterminated_block_comment.cn` - 未闭合测试用例
+#### 06_异常处理模块编译错误修复
 
-**测试结果**：
-- 词法分析器测试：5/5 通过
-- 块注释测试文件编译成功
+| 文件 | 问题 | 解决方案 |
+|------|------|---------|
+| `尝试捕获.cn` | 使用了未定义的 `或` 关键字 | 替换为 `||` 符号 |
+| `抛出异常.cn` | 使用了未定义的 `或` 关键字 | 替换为 `||` 符号 |
+| `抛出异常.cn` | `打开文件` 函数名与运行时库冲突 | 重命名为 `尝试打开文件` |
+
+### 编译验证结果
+- ✅ `尝试捕获.cn` → `尝试捕获.exe`
+- ✅ `抛出异常.cn` → `抛出异常.exe`
+
+### 经验教训
+1. CN语言语法规范中逻辑运算符使用符号 `&&` 和 `||`，而非中文关键字
+2. 定义函数时应避免使用与运行时库相同的函数名
