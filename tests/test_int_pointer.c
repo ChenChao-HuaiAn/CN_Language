@@ -19,7 +19,7 @@ long long main() {
   cn_var_值_0 = 42;
   long long* cn_var_指针_1;
   r0 = cn_var_值_0;
-  r1 = &cn_var_值;
+  r1 = &cn_var_值_0;
   cn_var_指针_1 = r1;
   return 0;
   cn_rt_exit();
