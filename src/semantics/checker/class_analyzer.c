@@ -11,6 +11,7 @@
 
 #include "cnlang/semantics/class_analyzer.h"
 #include "cnlang/frontend/ast.h"
+#include "cnlang/semantics/template.h"  // 阶段17 - 接口模板参数支持
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -2180,6 +2181,201 @@ bool cn_get_unimplemented_pure_virtuals(CnAstClassDecl *class_decl,
  * ============================================================================ */
 
 /**
+ * @brief 检查接口模板参数数量是否匹配
+ *
+ * 验证类实现接口时提供的类型参数数量是否与接口定义的模板参数数量一致
+ *
+ * @param interface_decl 接口声明节点
+ * @param iface_inst 接口实例化节点
+ * @return true 参数数量匹配，false 不匹配
+ */
+static bool cn_check_interface_template_param_count(
+    CnAstInterfaceDecl *interface_decl,
+    CnAstInterfaceInstantiation *iface_inst)
+{
+    if (!interface_decl || !iface_inst) {
+        return false;
+    }
+
+    /* 获取接口定义的模板参数数量 */
+    size_t template_param_count = 0;
+    if (interface_decl->template_params) {
+        template_param_count = interface_decl->template_params->param_count;
+    }
+
+    /* 获取实例化时提供的类型参数数量 */
+    size_t type_arg_count = iface_inst->type_arg_count;
+
+    /* 无模板参数的接口，不需要类型实参 */
+    if (template_param_count == 0) {
+        if (type_arg_count > 0) {
+            /* 普通接口不应该有类型参数 */
+            return false;
+        }
+        return true;
+    }
+
+    /* 模板接口必须有类型实参，且数量匹配 */
+    return type_arg_count == template_param_count;
+}
+
+/**
+ * @brief 构建接口模板参数到实际类型的映射表
+ *
+ * 将接口定义的模板参数（如 T, K, V）映射到类实现时提供的具体类型
+ *
+ * @param interface_decl 接口声明节点
+ * @param iface_inst 接口实例化节点
+ * @return CnTypeMap* 类型映射表，调用者需释放
+ */
+static CnTypeMap *cn_build_interface_type_map(
+    CnAstInterfaceDecl *interface_decl,
+    CnAstInterfaceInstantiation *iface_inst)
+{
+    if (!interface_decl || !iface_inst) {
+        return NULL;
+    }
+
+    /* 无模板参数的接口，返回空映射表 */
+    if (!interface_decl->template_params ||
+        interface_decl->template_params->param_count == 0) {
+        return cn_type_map_new();
+    }
+
+    CnTypeMap *type_map = cn_type_map_new();
+    if (!type_map) {
+        return NULL;
+    }
+
+    /* 遍历模板参数，建立映射 */
+    CnAstTemplateParams *params = interface_decl->template_params;
+    for (size_t i = 0; i < params->param_count && i < iface_inst->type_arg_count; i++) {
+        const char *param_name = params->params[i].name;
+        size_t param_name_len = params->params[i].name_length;
+        CnType *concrete_type = iface_inst->type_args[i];
+
+        if (param_name && concrete_type) {
+            cn_type_map_insert(type_map, param_name, param_name_len, concrete_type);
+        }
+    }
+
+    return type_map;
+}
+
+/**
+ * @brief 替换方法参数类型中的模板参数
+ *
+ * 将接口方法签名中的模板参数（如 T）替换为实际类型
+ *
+ * @param param_type 参数类型
+ * @param type_map 类型映射表
+ * @return CnType* 替换后的类型
+ */
+static CnType *cn_substitute_param_type(CnType *param_type, const CnTypeMap *type_map)
+{
+    if (!param_type || !type_map) {
+        return param_type;
+    }
+
+    /* 使用模板系统的类型替换函数 */
+    return cn_type_substitute(param_type, type_map);
+}
+
+/**
+ * @brief 检查接口方法签名是否匹配（支持模板参数替换）
+ *
+ * 在检查签名时，将接口方法中的模板参数替换为实际类型后再比较
+ *
+ * @param class_method 类方法
+ * @param interface_method 接口方法
+ * @param type_map 类型映射表（可为NULL，表示无模板参数）
+ * @return true 签名匹配，false 不匹配
+ */
+static bool cn_check_interface_method_signature_with_substitution(
+    CnClassMember *class_method,
+    CnClassMember *interface_method,
+    const CnTypeMap *type_map)
+{
+    if (!class_method || !interface_method) {
+        return false;
+    }
+
+    /* 检查参数数量 */
+    if (class_method->parameter_count != interface_method->parameter_count) {
+        return false;
+    }
+
+    /* 检查返回类型 */
+    CnType *interface_return_type = interface_method->type;
+    CnType *class_return_type = class_method->type;
+
+    if (interface_return_type && class_return_type) {
+        /* 如果有类型映射，替换接口方法的返回类型 */
+        CnType *substituted_return = interface_return_type;
+        if (type_map) {
+            substituted_return = cn_type_substitute(interface_return_type, type_map);
+        }
+
+        /* 比较类型种类 */
+        if (substituted_return->kind != class_return_type->kind) {
+            return false;
+        }
+
+        /* 对于结构体类型，还需要比较名称 */
+        if (substituted_return->kind == CN_TYPE_STRUCT &&
+            class_return_type->kind == CN_TYPE_STRUCT) {
+            const char *sub_name = substituted_return->as.struct_type.name;
+            size_t sub_len = substituted_return->as.struct_type.name_length;
+            const char *cls_name = class_return_type->as.struct_type.name;
+            size_t cls_len = class_return_type->as.struct_type.name_length;
+
+            if (!cn_name_equals(sub_name, sub_len, cls_name, cls_len)) {
+                return false;
+            }
+        }
+    } else if (interface_return_type != class_return_type) {
+        /* 一个有返回类型，一个没有 */
+        return false;
+    }
+
+    /* 检查参数类型 */
+    for (size_t i = 0; i < class_method->parameter_count; i++) {
+        CnAstParameter *class_param = &class_method->parameters[i];
+        CnAstParameter *interface_param = &interface_method->parameters[i];
+
+        if (class_param->declared_type && interface_param->declared_type) {
+            /* 替换接口方法的参数类型 */
+            CnType *substituted_param = interface_param->declared_type;
+            if (type_map) {
+                substituted_param = cn_type_substitute(interface_param->declared_type, type_map);
+            }
+
+            /* 比较类型种类 */
+            if (substituted_param->kind != class_param->declared_type->kind) {
+                return false;
+            }
+
+            /* 对于结构体类型，比较名称 */
+            if (substituted_param->kind == CN_TYPE_STRUCT &&
+                class_param->declared_type->kind == CN_TYPE_STRUCT) {
+                const char *sub_name = substituted_param->as.struct_type.name;
+                size_t sub_len = substituted_param->as.struct_type.name_length;
+                const char *cls_name = class_param->declared_type->as.struct_type.name;
+                size_t cls_len = class_param->declared_type->as.struct_type.name_length;
+
+                if (!cn_name_equals(sub_name, sub_len, cls_name, cls_len)) {
+                    return false;
+                }
+            }
+        } else if (class_param->declared_type != interface_param->declared_type) {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+/**
  * @brief 查找接口定义
  */
 CnAstInterfaceDecl *cn_find_interface(CnAstProgram *program,
@@ -2253,34 +2449,43 @@ bool cn_check_interface_method_signature(CnClassMember *class_method,
 }
 
 /**
- * @brief 检查类是否实现了指定接口的所有方法
+ * @brief 检查类是否实现了指定接口的所有方法（支持模板参数替换）
+ *
+ * @param ctx 分析上下文
+ * @param class_decl 类声明节点
+ * @param interface_decl 接口声明节点
+ * @param type_map 类型映射表（可为NULL，表示无模板参数）
+ * @return true 所有方法都已实现，false 有方法未实现
  */
-bool cn_check_interface_methods_implemented(CnClassAnalyzerContext *ctx,
-                                             CnAstClassDecl *class_decl,
-                                             CnAstInterfaceDecl *interface_decl)
+static bool cn_check_interface_methods_implemented_ex(
+    CnClassAnalyzerContext *ctx,
+    CnAstClassDecl *class_decl,
+    CnAstInterfaceDecl *interface_decl,
+    const CnTypeMap *type_map)
 {
     if (!ctx || !class_decl || !interface_decl) {
         return false;
     }
-    
+
     bool all_implemented = true;
-    
+
     /* 遍历接口的所有方法 */
     for (size_t i = 0; i < interface_decl->method_count; i++) {
         CnClassMember *interface_method = &interface_decl->methods[i];
-        
+
         /* 在类中查找同名方法 */
         bool found = false;
         for (size_t j = 0; j < class_decl->member_count; j++) {
             CnClassMember *class_method = &class_decl->members[j];
-            
+
             /* 检查方法名是否匹配 */
             if (class_method->kind == CN_MEMBER_METHOD &&
                 cn_name_equals(class_method->name, class_method->name_length,
                               interface_method->name, interface_method->name_length)) {
-                
-                /* 检查方法签名是否匹配 */
-                if (cn_check_interface_method_signature(class_method, interface_method)) {
+
+                /* 检查方法签名是否匹配（支持模板参数替换） */
+                if (cn_check_interface_method_signature_with_substitution(
+                        class_method, interface_method, type_map)) {
                     found = true;
                     break;
                 } else {
@@ -2298,7 +2503,7 @@ bool cn_check_interface_methods_implemented(CnClassAnalyzerContext *ctx,
                 }
             }
         }
-        
+
         if (!found) {
             /* 未找到实现，报告错误 */
             char error_msg[256];
@@ -2316,7 +2521,12 @@ bool cn_check_interface_methods_implemented(CnClassAnalyzerContext *ctx,
 }
 
 /**
- * @brief 检查类是否实现了所有接口方法
+ * @brief 检查类是否实现了所有接口方法（支持模板接口）
+ *
+ * 对于模板接口，会：
+ * 1. 验证类型参数数量匹配
+ * 2. 构建模板参数到实际类型的映射
+ * 3. 在检查方法签名时替换模板参数
  */
 bool cn_check_interface_implementation(CnClassAnalyzerContext *ctx,
                                         CnAstClassDecl *class_decl,
@@ -2325,19 +2535,20 @@ bool cn_check_interface_implementation(CnClassAnalyzerContext *ctx,
     if (!ctx || !class_decl || !program) {
         return false;
     }
-    
+
     /* 如果类没有实现任何接口，直接返回成功 */
     if (class_decl->implemented_interface_count == 0) {
         return true;
     }
-    
+
     bool all_implemented = true;
-    
+
     /* 遍历类实现的所有接口 */
     for (size_t i = 0; i < class_decl->implemented_interface_count; i++) {
-        const char *interface_name = class_decl->implemented_interfaces[i];
-        size_t interface_name_length = class_decl->implemented_interface_lengths[i];
-        
+        CnAstInterfaceInstantiation *iface_inst = class_decl->implemented_interfaces[i];
+        const char *interface_name = iface_inst->interface_name;
+        size_t interface_name_length = iface_inst->interface_name_length;
+
         /* 查找接口定义 */
         CnAstInterfaceDecl *interface_decl = cn_find_interface(program,
                                                                 interface_name,
@@ -2352,14 +2563,52 @@ bool cn_check_interface_implementation(CnClassAnalyzerContext *ctx,
             all_implemented = false;
             continue;
         }
-        
-        /* 检查接口方法是否都已实现 */
-        if (!cn_check_interface_methods_implemented(ctx, class_decl, interface_decl)) {
+
+        /* 阶段17：检查模板参数数量是否匹配 */
+        if (!cn_check_interface_template_param_count(interface_decl, iface_inst)) {
+            /* 模板参数数量不匹配，报告错误 */
+            char error_msg[256];
+            size_t expected_count = interface_decl->template_params ?
+                                    interface_decl->template_params->param_count : 0;
+            size_t actual_count = iface_inst->type_arg_count;
+
+            snprintf(error_msg, sizeof(error_msg),
+                     "接口 '%.*s' 需要 %zu 个类型参数，但提供了 %zu 个",
+                     (int)interface_name_length, interface_name,
+                     expected_count, actual_count);
+            report_error(ctx, error_msg, interface_name, interface_name_length);
+            all_implemented = false;
+            continue;
+        }
+
+        /* 阶段17：构建模板参数到实际类型的映射表 */
+        CnTypeMap *type_map = cn_build_interface_type_map(interface_decl, iface_inst);
+
+        /* 检查接口方法是否都已实现（使用类型映射表） */
+        if (!cn_check_interface_methods_implemented_ex(ctx, class_decl, interface_decl, type_map)) {
             all_implemented = false;
         }
+
+        /* 释放类型映射表 */
+        if (type_map) {
+            cn_type_map_free(type_map);
+        }
     }
-    
+
     return all_implemented;
+}
+
+/**
+ * @brief 检查类是否实现了指定接口的所有方法（兼容旧接口）
+ *
+ * 保留此函数以保持向后兼容性，内部调用带类型映射表的版本
+ */
+bool cn_check_interface_methods_implemented(CnClassAnalyzerContext *ctx,
+                                             CnAstClassDecl *class_decl,
+                                             CnAstInterfaceDecl *interface_decl)
+{
+    /* 调用带类型映射表的版本，传入NULL表示无模板参数 */
+    return cn_check_interface_methods_implemented_ex(ctx, class_decl, interface_decl, NULL);
 }
 
 /* ============================================================================

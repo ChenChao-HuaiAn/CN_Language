@@ -112,6 +112,7 @@ static CnAstTemplateParams *parse_template_params(CnParser *parser);
 static CnAstStmt *parse_template_declaration(CnParser *parser);
 static CnAstStmt *parse_template_function_decl_with_params(CnParser *parser, CnAstTemplateParams *params);
 static CnAstStmt *parse_template_struct_decl_with_params(CnParser *parser, CnAstTemplateParams *params);
+static CnAstStmt *parse_template_interface_decl_with_params(CnParser *parser, CnAstTemplateParams *params);
 static CnAstExpr *parse_template_instantiation(CnParser *parser, const char *name, size_t name_len);
 
 /**
@@ -286,8 +287,7 @@ static int parser_expect(CnParser *parser, CnTokenKind kind)
 // 检查是否为预留关键字
 static int is_reserved_keyword(CnTokenKind kind)
 {
-    return kind == CN_TOKEN_KEYWORD_TEMPLATE ||
-           kind == CN_TOKEN_KEYWORD_NAMESPACE;
+    return kind == CN_TOKEN_KEYWORD_NAMESPACE;
            /* 注意："常量" 关键字已在当前版本实现，不再视为预留关键字 */
            /* 注意："静态" 关键字已在当前版本实现，用于函数内静态局部变量 */
            /* 注意："公开"、"私有" 关键字已在模块系统中实现，不再视为预留关键字 */
@@ -296,6 +296,7 @@ static int is_reserved_keyword(CnTokenKind kind)
            /* 注意："保护" 关键字已在阶段11实现，用于类成员访问控制 */
            /* 注意："虚拟" 关键字已在阶段11实现，用于虚函数声明 */
            /* 注意："抽象" 关键字已在阶段11实现，用于抽象类和纯虚函数 */
+           /* 注意："模板" 关键字已在阶段13/17实现，用于泛型编程和接口模板参数 */
 }
 
 // 获取预留关键字的错误消息（静态字符串）
@@ -5205,12 +5206,91 @@ static void parse_interface_list(CnParser *parser, CnAstClassDecl *class_decl)
             return;
         }
         
-        // 添加实现的接口
-        cn_ast_class_decl_add_interface(class_decl,
-                                        parser->current.lexeme_begin,
-                                        parser->current.lexeme_length);
+        // 记录接口名称和位置
+        const char *interface_name = parser->current.lexeme_begin;
+        size_t interface_name_length = parser->current.lexeme_length;
+        int line = parser->current.line;
+        int column = parser->current.column;
         
         parser_advance(parser);
+        
+        // 创建接口实例化节点
+        CnAstInterfaceInstantiation *iface_inst = cn_ast_interface_instantiation_create(
+            interface_name,
+            interface_name_length,
+            line,
+            column
+        );
+        
+        if (!iface_inst) {
+            return;  // 内存分配失败
+        }
+        
+        // 检查是否有类型参数（阶段17 - 接口模板参数支持）
+        // 语法：接口名<类型1, 类型2, ...>
+        if (parser->current.kind == CN_TOKEN_LESS) {
+            parser_advance(parser);  // 消费 '<'
+            
+            // 确保有当前token
+            if (!parser->has_current) {
+                parser_advance(parser);
+            }
+            
+            // 解析类型实参列表
+            do {
+                // 检查是否为空参数列表
+                if (parser->current.kind == CN_TOKEN_GREATER) {
+                    break;
+                }
+                
+                // 解析类型实参
+                CnType *type_arg = parse_type(parser);
+                if (!type_arg) {
+                    if (parser->diagnostics) {
+                        cn_support_diagnostics_report(parser->diagnostics,
+                                                      CN_DIAG_SEVERITY_ERROR,
+                                                      CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                      parser->lexer ? parser->lexer->filename : NULL,
+                                                      parser->current.line,
+                                                      parser->current.column,
+                                                      "语法错误：期望类型参数");
+                    }
+                    cn_ast_interface_instantiation_destroy(iface_inst);
+                    return;
+                }
+                
+                // 添加类型实参到接口实例化节点
+                if (cn_ast_interface_instantiation_add_type_arg(iface_inst, type_arg) != 0) {
+                    cn_ast_interface_instantiation_destroy(iface_inst);
+                    return;
+                }
+                
+                // 检查是否有逗号分隔
+                if (parser->current.kind == CN_TOKEN_COMMA) {
+                    parser_advance(parser);
+                } else {
+                    break;
+                }
+            } while (1);
+            
+            // 期望 '>'
+            if (!parser_expect(parser, CN_TOKEN_GREATER)) {
+                if (parser->diagnostics) {
+                    cn_support_diagnostics_report(parser->diagnostics,
+                                                  CN_DIAG_SEVERITY_ERROR,
+                                                  CN_DIAG_CODE_PARSE_INVALID_FUNCTION_NAME,
+                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                  parser->current.line,
+                                                  parser->current.column,
+                                                  "语法错误：期望 '>' 结束接口类型参数列表");
+                }
+                cn_ast_interface_instantiation_destroy(iface_inst);
+                return;
+            }
+        }
+        
+        // 添加实现的接口到类声明
+        cn_ast_class_decl_add_interface(class_decl, iface_inst);
         
         // 检查是否有更多接口（用逗号分隔）
         if (parser->current.kind == CN_TOKEN_COMMA) {
@@ -6293,13 +6373,16 @@ static CnAstStmt *parse_template_declaration(CnParser *parser)
         parser_advance(parser);
     }
     
-    // 判断是模板函数还是模板结构体
+    // 判断是模板函数、模板结构体还是模板接口
     if (parser->current.kind == CN_TOKEN_KEYWORD_FN) {
         // 模板函数
         return parse_template_function_decl_with_params(parser, params);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRUCT) {
         // 模板结构体
         return parse_template_struct_decl_with_params(parser, params);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_INTERFACE) {
+        // 模板接口（阶段17 - 接口模板参数支持）
+        return parse_template_interface_decl_with_params(parser, params);
     } else {
         if (parser->diagnostics) {
             cn_support_diagnostics_report(parser->diagnostics,
@@ -6308,7 +6391,7 @@ static CnAstStmt *parse_template_declaration(CnParser *parser)
                                           parser->lexer ? parser->lexer->filename : NULL,
                                           parser->current.line,
                                           parser->current.column,
-                                          "语法错误：模板声明后期望 '函数' 或 '结构体'");
+                                          "语法错误：模板声明后期望 '函数'、'结构体' 或 '接口'");
         }
         free(params->params);
         free(params);
@@ -6556,4 +6639,44 @@ static CnAstExpr *parse_template_instantiation(CnParser *parser, const char *nam
     free(inst);  // 释放临时结构，但保留其内部指针指向的内容
     
     return expr;
+}
+
+/**
+ * @brief 解析模板接口声明（带已有参数）
+ *
+ * 语法：模板<T> 接口 接口名 { 方法列表 }
+ * 例如：模板<T> 接口 可比较 { 函数 比较(T 其他) -> 整数; }
+ *
+ * @param parser 解析器上下文
+ * @param params 已解析的模板参数
+ * @return CnAstStmt* 模板接口声明语句节点，失败返回NULL
+ */
+static CnAstStmt *parse_template_interface_decl_with_params(CnParser *parser, CnAstTemplateParams *params)
+{
+    CnAstStmt *interface_stmt;
+    
+    if (!parser || !params) {
+        return NULL;
+    }
+    
+    // 解析接口声明（复用现有接口解析逻辑）
+    interface_stmt = parse_interface_decl(parser);
+    if (!interface_stmt) {
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    // 确保是接口声明
+    if (interface_stmt->kind != CN_AST_STMT_INTERFACE_DECL) {
+        free(interface_stmt);
+        free(params->params);
+        free(params);
+        return NULL;
+    }
+    
+    // 设置模板参数到接口声明节点
+    interface_stmt->as.interface_decl->template_params = params;
+    
+    return interface_stmt;
 }

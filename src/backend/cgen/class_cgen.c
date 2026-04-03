@@ -13,6 +13,7 @@
 #include "cnlang/frontend/token.h"
 #include "cnlang/semantics/vtable_builder.h"
 #include "cnlang/semantics/class_analyzer.h"
+#include "cnlang/semantics/template.h"
 #include "cnlang/runtime/type_info.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -1760,6 +1761,196 @@ static bool class_implements_interfaces(CnAstClassDecl *class_decl) {
     return class_decl && class_decl->implemented_interface_count > 0;
 }
 
+/* ============================================================================
+ * 接口模板参数支持（阶段17）
+ * ============================================================================ */
+
+/**
+ * @brief 生成接口vtable名称（支持模板参数）
+ *
+ * 对于模板接口，名称格式为：接口名_类型参数_vtable
+ * 例如：可比较<数据项> -> 可比较_数据项_vtable
+ *
+ * @param buffer 输出缓冲区
+ * @param buffer_size 缓冲区大小
+ * @param interface_decl 接口声明
+ * @param iface_inst 接口实例化（包含类型实参，可为NULL）
+ * @return 生成的名称长度
+ */
+static size_t generate_interface_vtable_name(char *buffer, size_t buffer_size,
+                                              CnAstInterfaceDecl *interface_decl,
+                                              CnAstInterfaceInstantiation *iface_inst) {
+    if (!buffer || buffer_size == 0) return 0;
+    
+    size_t offset = 0;
+    
+    // 添加接口名
+    if (interface_decl && interface_decl->name) {
+        offset += snprintf(buffer + offset, buffer_size - offset,
+                          "%.*s", (int)interface_decl->name_length, interface_decl->name);
+    }
+    
+    // 如果有类型实参，添加到名称中
+    if (iface_inst && iface_inst->type_arg_count > 0) {
+        for (size_t i = 0; i < iface_inst->type_arg_count && offset < buffer_size - 1; i++) {
+            CnType *type_arg = iface_inst->type_args[i];
+            if (type_arg) {
+                // 添加下划线分隔符
+                if (offset < buffer_size - 1) {
+                    buffer[offset++] = '_';
+                }
+                // 添加类型名
+                const char *type_str = get_c_type_string(type_arg);
+                offset += snprintf(buffer + offset, buffer_size - offset, "%s", type_str);
+            }
+        }
+    }
+    
+    // 添加 _vtable 后缀
+    if (offset < buffer_size) {
+        offset += snprintf(buffer + offset, buffer_size - offset, "_vtable");
+    }
+    
+    return offset;
+}
+
+/**
+ * @brief 构建接口模板参数的类型映射表
+ *
+ * 将接口的模板形参与类实现时提供的类型实参关联起来
+ *
+ * @param interface_decl 接口声明（包含模板形参）
+ * @param iface_inst 接口实例化（包含类型实参）
+ * @return CnTypeMap* 类型映射表，调用者负责释放
+ */
+static CnTypeMap *build_interface_type_map(CnAstInterfaceDecl *interface_decl,
+                                            CnAstInterfaceInstantiation *iface_inst) {
+    if (!interface_decl || !iface_inst) return NULL;
+    
+    // 检查接口是否有模板参数
+    if (!interface_decl->template_params || interface_decl->template_params->param_count == 0) {
+        return NULL;
+    }
+    
+    // 创建类型映射表
+    CnTypeMap *type_map = cn_type_map_new();
+    if (!type_map) return NULL;
+    
+    // 遍历模板形参，匹配类型实参
+    CnAstTemplateParams *tparams = interface_decl->template_params;
+    for (size_t i = 0; i < tparams->param_count && i < iface_inst->type_arg_count; i++) {
+        const char *param_name = tparams->params[i].name;
+        size_t param_name_len = tparams->params[i].name_length;
+        CnType *type_arg = iface_inst->type_args[i];
+        
+        if (param_name && type_arg) {
+            cn_type_map_insert(type_map, param_name, param_name_len, type_arg);
+        }
+    }
+    
+    return type_map;
+}
+
+/**
+ * @brief 获取接口方法的C类型字符串（支持模板参数替换）
+ *
+ * @param type 原始类型
+ * @param type_map 类型映射表（可为NULL）
+ * @return C类型字符串
+ */
+static const char *get_interface_method_c_type(CnType *type, const CnTypeMap *type_map) {
+    if (!type) return "void";
+    
+    // 如果是模板参数类型，进行替换
+    if (cn_type_is_template_param(type) && type_map) {
+        // 获取模板参数名
+        const char *param_name = NULL;
+        size_t param_name_len = 0;
+        
+        if (type->kind == CN_TYPE_STRUCT && type->as.struct_type.name) {
+            param_name = type->as.struct_type.name;
+            param_name_len = type->as.struct_type.name_length;
+        }
+        
+        if (param_name) {
+            CnType *concrete_type = cn_type_map_lookup(type_map, param_name, param_name_len);
+            if (concrete_type) {
+                return get_c_type_string(concrete_type);
+            }
+        }
+    }
+    
+    // 非模板参数类型，直接返回C类型字符串
+    return get_c_type_string(type);
+}
+
+/**
+ * @brief 生成接口vtable结构体定义
+ *
+ * @param ctx 代码生成上下文
+ * @param interface_decl 接口声明
+ * @param iface_inst 接口实例化（可为NULL，表示非模板接口）
+ */
+static void cgen_interface_vtable_struct(CnCCodeGenContext *ctx,
+                                          CnAstInterfaceDecl *interface_decl,
+                                          CnAstInterfaceInstantiation *iface_inst) {
+    if (!ctx || !ctx->output_file || !interface_decl) return;
+    
+    FILE *out = ctx->output_file;
+    
+    // 生成vtable名称
+    char vtable_name[256];
+    generate_interface_vtable_name(vtable_name, sizeof(vtable_name), interface_decl, iface_inst);
+    
+    // 构建类型映射表（用于模板参数替换）
+    CnTypeMap *type_map = build_interface_type_map(interface_decl, iface_inst);
+    
+    // 生成vtable结构体定义
+    fprintf(out, "typedef struct %s {\n", vtable_name);
+    
+    // 生成方法指针
+    for (size_t i = 0; i < interface_decl->method_count; i++) {
+        CnClassMember *method = &interface_decl->methods[i];
+        
+        // 获取返回类型（可能需要模板参数替换）
+        const char *return_type = "void";
+        if (method->type) {
+            return_type = get_interface_method_c_type(method->type, type_map);
+        }
+        
+        // 生成方法指针
+        print_indent(out, 1);
+        fprintf(out, "%s (*%.*s)(void* self",
+                return_type,
+                (int)method->name_length, method->name);
+        
+        // 生成参数列表
+        for (size_t j = 0; j < method->parameter_count; j++) {
+            CnAstParameter *param = &method->parameters[j];
+            const char *param_type = "int";
+            if (param->declared_type) {
+                param_type = get_interface_method_c_type(param->declared_type, type_map);
+            }
+            fprintf(out, ", %s", param_type);
+        }
+        
+        fprintf(out, ");\n");
+    }
+    
+    // 如果没有方法，添加占位符
+    if (interface_decl->method_count == 0) {
+        print_indent(out, 1);
+        fprintf(out, "void* _reserved;  // 占位符（空接口）\n");
+    }
+    
+    fprintf(out, "} %s;\n\n", vtable_name);
+    
+    // 释放类型映射表
+    if (type_map) {
+        cn_type_map_free(type_map);
+    }
+}
+
 /**
  * @brief 使用vtable_builder生成虚函数表
  *
@@ -1832,13 +2023,58 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     // 如果实现了接口，先包含接口vtable
     if (class_implements_interfaces(class_decl)) {
         for (size_t i = 0; i < class_decl->implemented_interface_count; i++) {
-            const char *iface_name = class_decl->implemented_interfaces[i];
-            size_t iface_name_len = class_decl->implemented_interface_lengths[i];
+            CnAstInterfaceInstantiation *iface_inst = class_decl->implemented_interfaces[i];
+            
+            // 查找接口定义
+            CnAstInterfaceDecl *interface_def = NULL;
+            if (ctx && ctx->program) {
+                for (size_t j = 0; j < ctx->program->interface_count; j++) {
+                    CnAstStmt *iface_stmt = ctx->program->interfaces[j];
+                    if (iface_stmt && iface_stmt->kind == CN_AST_STMT_INTERFACE_DECL) {
+                        CnAstInterfaceDecl *iface = iface_stmt->as.interface_decl;
+                        if (iface->name_length == iface_inst->interface_name_length &&
+                            strncmp(iface->name, iface_inst->interface_name, iface->name_length) == 0) {
+                            interface_def = iface;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // 生成接口vtable名称（支持模板参数）
+            char iface_vtable_name[256];
+            if (interface_def) {
+                generate_interface_vtable_name(iface_vtable_name, sizeof(iface_vtable_name),
+                                               interface_def, iface_inst);
+            } else {
+                // 未找到接口定义，使用默认名称
+                snprintf(iface_vtable_name, sizeof(iface_vtable_name), "%.*s_vtable",
+                        (int)iface_inst->interface_name_length, iface_inst->interface_name);
+            }
+            
+            // 生成接口vtable结构体定义（如果接口有模板参数）
+            if (interface_def && interface_def->template_params &&
+                interface_def->template_params->param_count > 0 && iface_inst->type_arg_count > 0) {
+                // 先生成接口vtable结构体定义
+                cgen_interface_vtable_struct(ctx, interface_def, iface_inst);
+            }
+            
             print_indent(out, 1);
-            fprintf(out, "struct %.*s_vtable %.*s_iface;  // 实现的接口 %.*s\n",
-                    (int)iface_name_len, iface_name,
-                    (int)iface_name_len, iface_name,
-                    (int)iface_name_len, iface_name);
+            fprintf(out, "struct %s %.*s_iface;  // 实现的接口 %.*s",
+                    iface_vtable_name,
+                    (int)iface_inst->interface_name_length, iface_inst->interface_name,
+                    (int)iface_inst->interface_name_length, iface_inst->interface_name);
+            
+            // 如果有类型参数，显示它们
+            if (iface_inst->type_arg_count > 0) {
+                fprintf(out, "<");
+                for (size_t t = 0; t < iface_inst->type_arg_count; t++) {
+                    if (t > 0) fprintf(out, ", ");
+                    fprintf(out, "%s", get_c_type_string(iface_inst->type_args[t]));
+                }
+                fprintf(out, ">");
+            }
+            fprintf(out, "\n");
         }
     }
     
@@ -1869,8 +2105,9 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
     bool first = true;
     if (class_implements_interfaces(class_decl)) {
         for (size_t i = 0; i < class_decl->implemented_interface_count; i++) {
-            const char *iface_name = class_decl->implemented_interfaces[i];
-            size_t iface_name_len = class_decl->implemented_interface_lengths[i];
+            CnAstInterfaceInstantiation *iface_inst = class_decl->implemented_interfaces[i];
+            const char *iface_name = iface_inst->interface_name;
+            size_t iface_name_len = iface_inst->interface_name_length;
             
             if (!first) {
                 fprintf(out, ",\n");
@@ -1895,6 +2132,9 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
                     }
                 }
             }
+            
+            // 构建类型映射表（用于模板参数替换）
+            CnTypeMap *type_map = build_interface_type_map(interface_def, iface_inst);
             
             // 初始化接口方法：查找类中实现的接口方法
             bool iface_first = true;
@@ -1936,11 +2176,27 @@ bool cn_cgen_vtable(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl) {
                 }
             }
             
+            // 释放类型映射表
+            if (type_map) {
+                cn_type_map_free(type_map);
+            }
+            
             if (!iface_first) {
                 fprintf(out, "\n");
             }
             print_indent(out, 1);
-            fprintf(out, "},  // end interface %.*s\n", (int)iface_name_len, iface_name);
+            fprintf(out, "},  // end interface %.*s", (int)iface_name_len, iface_name);
+            
+            // 如果有类型参数，显示它们
+            if (iface_inst->type_arg_count > 0) {
+                fprintf(out, "<");
+                for (size_t t = 0; t < iface_inst->type_arg_count; t++) {
+                    if (t > 0) fprintf(out, ", ");
+                    fprintf(out, "%s", get_c_type_string(iface_inst->type_args[t]));
+                }
+                fprintf(out, ">");
+            }
+            fprintf(out, "\n");
         }
     }
     

@@ -4,6 +4,7 @@
  */
 
 #include "cnlang/frontend/ast/class_node.h"
+#include "cnlang/frontend/semantics.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -74,7 +75,6 @@ CnAstClassDecl *cn_ast_class_decl_create(const char *name, size_t name_length)
     
     /* 初始化实现的接口列表 */
     class_decl->implemented_interfaces = NULL;
-    class_decl->implemented_interface_lengths = NULL;
     class_decl->implemented_interface_count = 0;
     
     /* 初始化属性标志 */
@@ -116,7 +116,73 @@ CnAstInterfaceDecl *cn_ast_interface_decl_create(const char *name, size_t name_l
     interface_decl->base_interfaces = NULL;
     interface_decl->base_interface_count = 0;
     
+    /* 初始化模板参数 */
+    interface_decl->template_params = NULL;
+    
     return interface_decl;
+}
+
+/**
+ * @brief 创建接口实例化节点
+ */
+CnAstInterfaceInstantiation *cn_ast_interface_instantiation_create(
+    const char *interface_name, size_t interface_name_length,
+    int line, int column)
+{
+    if (!interface_name || interface_name_length == 0) {
+        return NULL;
+    }
+    
+    CnAstInterfaceInstantiation *inst = (CnAstInterfaceInstantiation *)calloc(1, sizeof(CnAstInterfaceInstantiation));
+    if (!inst) {
+        return NULL;
+    }
+    
+    /* 复制接口名 */
+    inst->interface_name = cn_strndup(interface_name, interface_name_length);
+    if (!inst->interface_name) {
+        free(inst);
+        return NULL;
+    }
+    inst->interface_name_length = interface_name_length;
+    
+    /* 初始化类型实参 */
+    inst->type_args = NULL;
+    inst->type_arg_count = 0;
+    
+    /* 设置源码位置 */
+    inst->line = line;
+    inst->column = column;
+    
+    return inst;
+}
+
+/**
+ * @brief 向接口实例化添加类型实参
+ */
+int cn_ast_interface_instantiation_add_type_arg(
+    CnAstInterfaceInstantiation *instantiation, CnType *type_arg)
+{
+    if (!instantiation || !type_arg) {
+        return -1;
+    }
+    
+    /* 扩展类型实参数组 */
+    size_t new_count = instantiation->type_arg_count + 1;
+    CnType **new_args = (CnType **)realloc(
+        instantiation->type_args,
+        new_count * sizeof(CnType *)
+    );
+    if (!new_args) {
+        return -1;
+    }
+    instantiation->type_args = new_args;
+    
+    /* 添加类型实参 */
+    instantiation->type_args[instantiation->type_arg_count] = type_arg;
+    instantiation->type_arg_count = new_count;
+    
+    return 0;
 }
 
 /**
@@ -300,6 +366,30 @@ void cn_ast_interface_decl_destroy(CnAstInterfaceDecl *interface_decl)
     free(interface_decl);
 }
 
+/**
+ * @brief 销毁接口实例化节点
+ */
+void cn_ast_interface_instantiation_destroy(CnAstInterfaceInstantiation *instantiation)
+{
+    if (!instantiation) {
+        return;
+    }
+    
+    /* 释放接口名 */
+    if (instantiation->interface_name) {
+        free((void *)instantiation->interface_name);
+        instantiation->interface_name = NULL;
+    }
+    
+    /* 释放类型实参数组（不释放类型本身，由类型系统管理） */
+    if (instantiation->type_args) {
+        free(instantiation->type_args);
+        instantiation->type_args = NULL;
+    }
+    
+    free(instantiation);
+}
+
 /* ============================================================================
  * 操作函数实现
  * ============================================================================ */
@@ -376,46 +466,28 @@ int cn_ast_class_decl_add_base(CnAstClassDecl *class_decl,
 }
 
 /**
- * @brief 向类声明添加实现的接口
+ * @brief 向类声明添加实现的接口（支持模板参数）
  */
 int cn_ast_class_decl_add_interface(CnAstClassDecl *class_decl,
-                                    const char *interface_name,
-                                    size_t interface_name_length)
+                                    CnAstInterfaceInstantiation *interface_inst)
 {
-    if (!class_decl || !interface_name || interface_name_length == 0) {
+    if (!class_decl || !interface_inst) {
         return -1;
     }
     
-    /* 扩展接口名数组 */
+    /* 扩展接口实例化数组 */
     size_t new_count = class_decl->implemented_interface_count + 1;
-    char **new_interfaces = (char **)realloc(
+    CnAstInterfaceInstantiation **new_interfaces = (CnAstInterfaceInstantiation **)realloc(
         class_decl->implemented_interfaces,
-        new_count * sizeof(char *)
+        new_count * sizeof(CnAstInterfaceInstantiation *)
     );
     if (!new_interfaces) {
         return -1;
     }
     class_decl->implemented_interfaces = new_interfaces;
     
-    /* 扩展接口名长度数组 */
-    size_t *new_lengths = (size_t *)realloc(
-        class_decl->implemented_interface_lengths,
-        new_count * sizeof(size_t)
-    );
-    if (!new_lengths) {
-        return -1;
-    }
-    class_decl->implemented_interface_lengths = new_lengths;
-    
-    /* 复制接口名 */
-    class_decl->implemented_interfaces[class_decl->implemented_interface_count] =
-        cn_strndup(interface_name, interface_name_length);
-    if (!class_decl->implemented_interfaces[class_decl->implemented_interface_count]) {
-        return -1;
-    }
-    class_decl->implemented_interface_lengths[class_decl->implemented_interface_count] =
-        interface_name_length;
-    
+    /* 添加接口实例化节点 */
+    class_decl->implemented_interfaces[class_decl->implemented_interface_count] = interface_inst;
     class_decl->implemented_interface_count = new_count;
     
     return 0;
