@@ -285,7 +285,7 @@
         诊断错误码.语义_缺少返回语句,
         "函数 '{0}' 缺少返回语句",
         "Function '{0}' is missing a return statement",
-        "非 空类型 函数必须在所有执行路径上返回值",
+        "!空类型 函数必须在所有执行路径上返回值",
         "Non-void functions must return a value on all execution paths"
     },
     

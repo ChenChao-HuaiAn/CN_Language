@@ -4015,7 +4015,77 @@ static CnAstStmt *parse_struct_decl(CnParser *parser)
                     return NULL;
                 }
             } else {
-                // 普通字段：类型 字段名
+                // 普通字段：类型 [维度]* 字段名
+                // 支持数组字段语法：整数[] 数组字段; 整数*[] 指针数组字段;
+                
+                // 解析数组维度：类型[] 或 类型[N] 或 类型[][] 等
+                if (parser->current.kind == CN_TOKEN_LBRACKET) {
+                    size_t dimension_capacity = 4;
+                    size_t dimension_count = 0;
+                    size_t *dimensions = (size_t *)malloc(sizeof(size_t) * dimension_capacity);
+                    if (!dimensions) {
+                        free(fields);
+                        return NULL;
+                    }
+                    
+                    while (parser->current.kind == CN_TOKEN_LBRACKET) {
+                        parser_advance(parser);  // 跳过 '['
+                        
+                        size_t array_size = 0;
+                        
+                        // 检查是否指定了数组大小
+                        if (parser->current.kind != CN_TOKEN_RBRACKET) {
+                            // 解析数组大小表达式（这里简化为只接受整数字面量）
+                            if (parser->current.kind == CN_TOKEN_INTEGER) {
+                                array_size = (size_t)strtol(parser->current.lexeme_begin, NULL, 10);
+                                parser_advance(parser);
+                            } else {
+                                parser->error_count++;
+                                if (parser->diagnostics) {
+                                    cn_support_diagnostics_report(parser->diagnostics,
+                                                                  CN_DIAG_SEVERITY_ERROR,
+                                                                  CN_DIAG_CODE_PARSE_INVALID_VAR_DECL,
+                                                                  parser->lexer ? parser->lexer->filename : NULL,
+                                                                  parser->current.line,
+                                                                  parser->current.column,
+                                                                  "语法错误：数组字段大小必须是整数字面量");
+                                }
+                                free(dimensions);
+                                free(fields);
+                                return NULL;
+                            }
+                        }
+                        
+                        if (!parser_expect(parser, CN_TOKEN_RBRACKET)) {
+                            free(dimensions);
+                            free(fields);
+                            return NULL;
+                        }
+                        
+                        // 扩容检查
+                        if (dimension_count >= dimension_capacity) {
+                            dimension_capacity *= 2;
+                            size_t *new_dimensions = (size_t *)realloc(dimensions, sizeof(size_t) * dimension_capacity);
+                            if (!new_dimensions) {
+                                free(dimensions);
+                                free(fields);
+                                return NULL;
+                            }
+                            dimensions = new_dimensions;
+                        }
+                        
+                        dimensions[dimension_count++] = array_size;
+                    }
+                    
+                    // 从右向左构建数组类型
+                    for (int i = (int)dimension_count - 1; i >= 0; i--) {
+                        field_type = cn_type_new_array(field_type, dimensions[i]);
+                    }
+                    
+                    free(dimensions);
+                }
+                
+                // 读取字段名
                 if (parser->current.kind != CN_TOKEN_IDENT) {
                     parser->error_count++;
                     if (parser->diagnostics) {

@@ -139,7 +139,14 @@ const char *get_c_type_string(CnType *type) {
             return buffer;
         }
         case CN_TYPE_VOID: return "void";
-        case CN_TYPE_ARRAY: return "void*";
+        case CN_TYPE_ARRAY: {
+            /* 数组类型：生成元素指针类型 */
+            /* 对于结构体字段，动态数组（长度为0）生成指针类型 */
+            /* 固定大小数组也生成指针类型，因为C结构体不支持变长数组字段 */
+            static _Thread_local char buffer[256];
+            snprintf(buffer, sizeof(buffer), "%s*", get_c_type_string(type->as.array.element_type));
+            return buffer;
+        }
         case CN_TYPE_STRUCT: {
             /* 结构体类型：检查是否是局部结构体 */
             static _Thread_local char buffer[512];
