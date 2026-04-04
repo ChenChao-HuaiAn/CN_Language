@@ -733,6 +733,8 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                             new_sym->as.enum_value = sym->as.enum_value;
                         }
+                        // 注意：CN_SEM_SYMBOL_ENUM 不需要特殊处理，
+                        // 因为枚举作用域已经存储在 sym->type->as.enum_type.enum_scope 中
                     }
                 }
                 
@@ -1578,6 +1580,52 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                     sym->type = cn_type_new_primitive(CN_TYPE_BOOL);
                 }
             }
+        }
+    }
+    
+    // 注册模块中的枚举声明
+    for (size_t i = 0; i < module_program->enum_count; ++i) {
+        CnAstStmt *enum_stmt = module_program->enums[i];
+        if (!enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) {
+            continue;
+        }
+        
+        CnAstEnumDecl *enum_decl = &enum_stmt->as.enum_decl;
+        CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
+                                   enum_decl->name,
+                                   enum_decl->name_length,
+                                   CN_SEM_SYMBOL_ENUM);
+        if (sym) {
+            // 创建枚举类型
+            sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
+            
+            // 为枚举创建一个作用域来存储其成员
+            CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, module_scope);
+            if (enum_scope && sym->type) {
+                sym->type->as.enum_type.enum_scope = enum_scope;
+                
+                // 注册枚举成员到枚举作用域
+                for (size_t j = 0; j < enum_decl->member_count; j++) {
+                    CnAstEnumMember *member = &enum_decl->members[j];
+                    
+                    // 注册到枚举作用域
+                    CnSemSymbol *member_sym = cn_sem_scope_insert_symbol(enum_scope,
+                                                       member->name,
+                                                       member->name_length,
+                                                       CN_SEM_SYMBOL_ENUM_MEMBER);
+                    if (member_sym) {
+                        member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        member_sym->as.enum_value = member->value;
+                        // 枚举成员继承枚举的可见性
+                        member_sym->is_public = 1;  // 枚举成员默认公开
+                    }
+                }
+            }
+            
+            // 枚举在"公开:"块中声明时设置为公开
+            // 由于CN语言使用"公开:"块声明，所有在公开块后的枚举都应该是公开的
+            // 这里暂时默认设置为公开（后续可以通过AST扩展支持可见性）
+            sym->is_public = 1;  // 枚举类型默认公开
         }
     }
     

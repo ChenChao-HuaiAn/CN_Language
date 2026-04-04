@@ -7,14 +7,7 @@
 // Global Variables
 
 // Forward Declarations
-void* 分配内存(long long);
 long long main();
-
-void* 分配内存(long long cn_var_大小) {
-
-  entry:
-  return 0;
-}
 
 long long main() {
   cn_rt_init();
