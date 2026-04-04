@@ -51,9 +51,29 @@ static bool is_runtime_function_conflict(const char *func_name) {
     
     /* 运行时库中已定义的中文函数名列表（来自 stdlib.h） */
     static const char *runtime_functions[] = {
+        /* 内存管理函数 */
         "分配内存", "释放内存", "重新分配内存", "分配清零内存",
-        "比较字符串", "限长比较字符串", "字符串长度", "复制字符串", "限长复制字符串", "连接字符串",
+        /* 内存操作函数 */
+        "设置内存", "复制内存", "比较内存",
+        /* 字符串函数 */
+        "比较字符串", "限长比较字符串", "获取字符串长度",
+        "复制字符串", "限长复制字符串", "连接字符串", "限长连接字符串",
+        "查找字符", "反向查找字符", "查找子串",
+        /* 文件操作函数 */
+        "打开文件", "关闭文件", "读取文件", "写入文件",
+        "判断文件结束", "文件定位", "获取文件位置", "刷新文件缓冲",
+        /* 控制台输入输出函数 */
+        "打印字符串", "打印行", "读取整数", "读取小数", "读取字符串", "读取字符",
+        "刷新输出", "格式化打印", "格式化字符串", "安全格式化字符串",
+        /* 类型检查函数 */
+        "是整数", "是小数", "是字符串", "是数值", "取小数", "释放输入",
+        /* 类型转换函数 */
         "转整数", "转小数", "是数字文本", "是整数文本",
+        /* 动态数组函数 */
+        "创建数组", "销毁数组", "数组添加", "数组长度", "清空数组",
+        /* 哈希表函数 */
+        "创建哈希表", "销毁哈希表", "哈希表插入", "哈希表获取",
+        "哈希表包含", "哈希表大小", "清空哈希表",
         NULL
     };
     
@@ -105,6 +125,9 @@ static bool cgen_is_string_concat(CnAstExpr *expr) {
 }
 
 // --- 辅助函数 ---
+
+// 前向声明
+static bool is_enum_type_name(const char *name, size_t name_len);
 
 const char *get_c_type_string(CnType *type) {
     if (!type) return "void";
@@ -176,16 +199,23 @@ const char *get_c_type_string(CnType *type) {
             // 注意：不再依赖decl_scope指针，因为它可能指向已释放的内存
             if (type->as.struct_type.owner_func_name) {
                 // 局部结构体：生成 __local_函数名_结构体名
-                snprintf(buffer, sizeof(buffer), "struct __local_%.*s_%.*s", 
-                         (int)type->as.struct_type.owner_func_name_length, 
+                snprintf(buffer, sizeof(buffer), "struct __local_%.*s_%.*s",
+                         (int)type->as.struct_type.owner_func_name_length,
                          type->as.struct_type.owner_func_name,
-                         (int)type->as.struct_type.name_length, 
+                         (int)type->as.struct_type.name_length,
                          type->as.struct_type.name);
             } else {
                 // 全局/模块结构体
-                snprintf(buffer, sizeof(buffer), "struct %.*s", 
-                         (int)type->as.struct_type.name_length, 
-                         type->as.struct_type.name);
+                // 检查是否是枚举类型名称（语义分析可能将枚举错误标记为结构体）
+                if (is_enum_type_name(type->as.struct_type.name, type->as.struct_type.name_length)) {
+                    snprintf(buffer, sizeof(buffer), "enum %.*s",
+                             (int)type->as.struct_type.name_length,
+                             type->as.struct_type.name);
+                } else {
+                    snprintf(buffer, sizeof(buffer), "struct %.*s",
+                             (int)type->as.struct_type.name_length,
+                             type->as.struct_type.name);
+                }
             }
             return buffer;
         }
@@ -998,13 +1028,18 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             break;
         case CN_IR_INST_ADDRESS_OF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = &"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_DEREF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = *"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
-        case CN_IR_INST_MEMBER_ACCESS: 
-            // 结构体成员访问：dest = obj.member
-            fprintf(ctx->output_file, "  "); 
-            print_operand(ctx, inst->dest); 
-            fprintf(ctx->output_file, " = "); 
+        case CN_IR_INST_MEMBER_ACCESS:
+            // 结构体成员访问：dest = obj.member 或 dest = ptr->member
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = ");
             print_operand(ctx, inst->src1);
-            fprintf(ctx->output_file, ".");
+            // 检查对象是否为指针类型，决定使用 -> 还是 .
+            if (inst->src1.type && inst->src1.type->kind == CN_TYPE_POINTER) {
+                fprintf(ctx->output_file, "->");
+            } else {
+                fprintf(ctx->output_file, ".");
+            }
             // src2 为成员名（符号类型）
             if (inst->src2.kind == CN_IR_OP_SYMBOL) {
                 fprintf(ctx->output_file, "%s", inst->src2.as.sym_name);
@@ -1808,6 +1843,163 @@ typedef struct {
     size_t module_name_len;       // 模块名长度
 } WildcardImportContext;
 
+// 枚举成员收集回调上下文
+typedef struct {
+    FILE *file;
+    bool *first;
+} EnumMemberContext;
+
+// 枚举成员收集回调函数
+static void enum_member_callback(CnSemSymbol *sym, void *user_data) {
+    EnumMemberContext *ctx = (EnumMemberContext *)user_data;
+    if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+        if (!(*ctx->first)) fprintf(ctx->file, ",\n");
+        fprintf(ctx->file, "    %.*s = %ld", (int)sym->name_length, sym->name, sym->as.enum_value);
+        *ctx->first = false;
+    }
+}
+
+// 已生成类型名称集合（用于避免重复生成）
+#define MAX_GENERATED_TYPES 256
+static const char *g_generated_type_names[MAX_GENERATED_TYPES];
+static size_t g_generated_type_count = 0;
+
+// 已生成枚举类型名称集合（用于区分枚举和结构体）
+static const char *g_enum_type_names[MAX_GENERATED_TYPES];
+static size_t g_enum_type_count = 0;
+
+// 检查类型是否已生成
+static bool is_type_already_generated(const char *name, size_t name_len) {
+    for (size_t i = 0; i < g_generated_type_count; i++) {
+        if (strncmp(g_generated_type_names[i], name, name_len) == 0 &&
+            g_generated_type_names[i][name_len] == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 检查是否是枚举类型名称
+static bool is_enum_type_name(const char *name, size_t name_len) {
+    for (size_t i = 0; i < g_enum_type_count; i++) {
+        if (strncmp(g_enum_type_names[i], name, name_len) == 0 &&
+            g_enum_type_names[i][name_len] == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 标记类型已生成
+static void mark_type_as_generated(const char *name, size_t name_len) {
+    if (g_generated_type_count >= MAX_GENERATED_TYPES) return;
+    
+    // 分配内存并复制名称
+    char *name_copy = malloc(name_len + 1);
+    if (!name_copy) return;
+    memcpy(name_copy, name, name_len);
+    name_copy[name_len] = '\0';
+    
+    g_generated_type_names[g_generated_type_count++] = name_copy;
+}
+
+// 标记枚举类型已生成
+static void mark_enum_type_as_generated(const char *name, size_t name_len) {
+    if (g_enum_type_count >= MAX_GENERATED_TYPES) return;
+    
+    // 分配内存并复制名称
+    char *name_copy = malloc(name_len + 1);
+    if (!name_copy) return;
+    memcpy(name_copy, name, name_len);
+    name_copy[name_len] = '\0';
+    
+    g_enum_type_names[g_enum_type_count++] = name_copy;
+}
+
+// 重置已生成类型集合（每个文件编译开始时调用）
+static void reset_generated_types(void) {
+    for (size_t i = 0; i < g_generated_type_count; i++) {
+        free((void*)g_generated_type_names[i]);
+    }
+    for (size_t i = 0; i < g_enum_type_count; i++) {
+        free((void*)g_enum_type_names[i]);
+    }
+    g_generated_type_count = 0;
+    g_enum_type_count = 0;
+}
+
+// 前向声明
+static void cn_cgen_enum_type_definition(FILE *file, CnType *type);
+
+// 生成结构体类型定义（从 CnType 生成）
+static void cn_cgen_struct_type_definition(FILE *file, CnType *type) {
+    if (!file || !type || type->kind != CN_TYPE_STRUCT) return;
+    
+    // 结构体名称
+    const char *name = type->as.struct_type.name;
+    size_t name_len = type->as.struct_type.name_length;
+    if (!name) return;
+    
+    // 检查是否已生成
+    if (is_type_already_generated(name, name_len)) return;
+    
+    // 先生成依赖的枚举类型定义
+    for (size_t i = 0; i < type->as.struct_type.field_count; i++) {
+        CnStructField *field = &type->as.struct_type.fields[i];
+        if (field->field_type && field->field_type->kind == CN_TYPE_ENUM) {
+            // 字段类型是枚举，需要先生成枚举定义
+            cn_cgen_enum_type_definition(file, field->field_type);
+        }
+    }
+    
+    // 标记为已生成
+    mark_type_as_generated(name, name_len);
+    
+    // 生成结构体定义
+    fprintf(file, "struct %.*s {\n", (int)name_len, name);
+    
+    // 生成字段
+    for (size_t i = 0; i < type->as.struct_type.field_count; i++) {
+        CnStructField *field = &type->as.struct_type.fields[i];
+        const char *field_type_str = get_c_type_string(field->field_type);
+        fprintf(file, "    %s %.*s;\n", field_type_str, (int)field->name_length, field->name);
+    }
+    
+    fprintf(file, "};\n");
+}
+
+// 生成枚举类型定义（从 CnType 生成）
+static void cn_cgen_enum_type_definition(FILE *file, CnType *type) {
+    if (!file || !type || type->kind != CN_TYPE_ENUM) return;
+    
+    // 枚举名称
+    const char *name = type->as.enum_type.name;
+    size_t name_len = type->as.enum_type.name_length;
+    if (!name) return;
+    
+    // 检查是否已生成
+    if (is_type_already_generated(name, name_len)) return;
+    
+    // 标记为已生成（普通类型集合）
+    mark_type_as_generated(name, name_len);
+    // 同时标记为枚举类型（用于区分枚举和结构体）
+    mark_enum_type_as_generated(name, name_len);
+    
+    // 枚举作用域
+    CnSemScope *enum_scope = type->as.enum_type.enum_scope;
+    if (!enum_scope) return;
+    
+    // 生成枚举定义
+    fprintf(file, "enum %.*s {\n", (int)name_len, name);
+    
+    // 使用回调遍历枚举成员
+    bool first = true;
+    EnumMemberContext ctx = { file, &first };
+    cn_sem_scope_foreach_symbol(enum_scope, enum_member_callback, &ctx);
+    
+    fprintf(file, "\n};\n");
+}
+
 // 通配符导入回调函数（遍历模块作用域符号时调用）
 static void wildcard_import_callback(CnSemSymbol *sym, void *user_data) {
     WildcardImportContext *ctx = (WildcardImportContext *)user_data;
@@ -1824,6 +2016,12 @@ static void wildcard_import_callback(CnSemSymbol *sym, void *user_data) {
         // 生成变量的 extern 声明
         const char *var_type = get_c_type_string(sym->type);
         fprintf(ctx->file, "extern %s cn_var_%.*s;\n", var_type, (int)sym->name_length, sym->name);
+    } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
+        // 生成结构体定义
+        cn_cgen_struct_type_definition(ctx->file, sym->type);
+    } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
+        // 生成枚举定义
+        cn_cgen_enum_type_definition(ctx->file, sym->type);
     }
 }
 
@@ -1850,6 +2048,12 @@ static void full_import_callback(CnSemSymbol *sym, void *user_data) {
         // 生成变量的 extern 声明
         const char *var_type = get_c_type_string(sym->type);
         fprintf(ctx->file, "extern %s cn_var_%.*s;\n", var_type, (int)sym->name_length, sym->name);
+    } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
+        // 生成结构体定义
+        cn_cgen_struct_type_definition(ctx->file, sym->type);
+    } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
+        // 生成枚举定义
+        cn_cgen_enum_type_definition(ctx->file, sym->type);
     }
 }
 
@@ -1866,13 +2070,19 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
         return;
     }
     
-    // 检测运行时宏冲突：如果函数名与运行时宏同名，需要先 #undef 取消宏定义
     // 创建临时空字符结尾的字符串用于检测
     char temp_name[256];
     size_t safe_len = func_name_len < sizeof(temp_name) - 1 ? func_name_len : sizeof(temp_name) - 1;
     memcpy(temp_name, func_name, safe_len);
     temp_name[safe_len] = '\0';
     
+    // 检测运行时函数冲突：如果函数名与运行时库函数同名，跳过前向声明
+    // 运行时库已提供这些函数的实现，无需重复声明
+    if (is_runtime_function_conflict(temp_name)) {
+        return;
+    }
+    
+    // 检测运行时宏冲突：如果函数名与运行时宏同名，需要先 #undef 取消宏定义
     if (is_runtime_macro_conflict(temp_name)) {
         fprintf(file, "#undef %s\n", temp_name);
     }
@@ -1941,6 +2151,12 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
                         // 生成变量的 extern 声明
                         const char *var_type = get_c_type_string(symbol->type);
                         fprintf(file, "extern %s cn_var_%.*s;\n", var_type, (int)symbol_name_len, symbol_name);
+                    } else if (symbol->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 生成结构体定义
+                        cn_cgen_struct_type_definition(file, symbol->type);
+                    } else if (symbol->kind == CN_SEM_SYMBOL_ENUM) {
+                        // 生成枚举定义
+                        cn_cgen_enum_type_definition(file, symbol->type);
                     }
                 }
             }
@@ -1959,19 +2175,67 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
                 cn_sem_scope_foreach_symbol(module_sym->as.module_scope, wildcard_import_callback, &ctx);
             }
         }
-        // 处理全量导入（导入 模块）
+        // 处理全量导入（导入 模块 或 导入 ./模块）
         else if (import->kind == CN_IMPORT_FULL) {
             // 全量导入：模块名作为前缀访问成员
             // 需要为模块中的公开函数生成前向声明，格式：cn_module_模块名__成员名
             const char *module_name = import->module_name;
             size_t module_name_len = import->module_name_length;
             
-            // 从全局作用域查找模块符号
-            CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
-            if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && module_sym->as.module_scope) {
-                // 使用回调遍历模块作用域中的所有符号
-                FullImportContext fctx = { file, module_name, module_name_len };
-                cn_sem_scope_foreach_symbol(module_sym->as.module_scope, full_import_callback, &fctx);
+            // 如果 module_name 为空，尝试从 module_path 获取最后一个段
+            if (!module_name && import->module_path && import->module_path->segment_count > 0) {
+                CnAstModulePathSegment *last_seg = &import->module_path->segments[import->module_path->segment_count - 1];
+                module_name = last_seg->name;
+                module_name_len = last_seg->name_length;
+            }
+            
+            if (!module_name) continue;
+            
+            // 从全局作用域查找符号
+            CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
+            if (sym) {
+                if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+                    // 模块符号：遍历模块作用域中的所有符号
+                    FullImportContext fctx = { file, module_name, module_name_len };
+                    cn_sem_scope_foreach_symbol(sym->as.module_scope, full_import_callback, &fctx);
+                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
+                    // 结构体类型：直接生成结构体定义
+                    cn_cgen_struct_type_definition(file, sym->type);
+                } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
+                    // 枚举类型：直接生成枚举定义
+                    cn_cgen_enum_type_definition(file, sym->type);
+                }
+            }
+        }
+        // 处理从模块导入（导入 ./模块 或 导入 ../模块）
+        else if (import->kind == CN_IMPORT_FROM_MODULE) {
+            // 从模块导入：需要为模块中的公开符号生成定义
+            const char *module_name = import->module_name;
+            size_t module_name_len = import->module_name_length;
+            
+            // 如果 module_name 为空，尝试从 module_path 获取最后一个段
+            if (!module_name && import->module_path && import->module_path->segment_count > 0) {
+                CnAstModulePathSegment *last_seg = &import->module_path->segments[import->module_path->segment_count - 1];
+                module_name = last_seg->name;
+                module_name_len = last_seg->name_length;
+            }
+            
+            if (!module_name) continue;
+            
+            // 从全局作用域查找符号
+            CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
+            if (sym) {
+                if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+                    // 模块符号：遍历模块作用域中的所有符号
+                    FullImportContext fctx = { file, module_name, module_name_len };
+                    cn_sem_scope_foreach_symbol(sym->as.module_scope, full_import_callback, &fctx);
+                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
+                    // 结构体类型：直接生成结构体定义
+                    cn_cgen_struct_type_definition(file, sym->type);
+                } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
+                    // 枚举类型：直接生成枚举定义
+                    cn_cgen_enum_type_definition(file, sym->type);
+                }
             }
         }
     }
@@ -1992,6 +2256,9 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     // 为了简化实现，我们直接修改现有函数的行为
     
     if (!module || !filename) return -1;
+    
+    // 重置已生成类型集合，避免重复生成
+    reset_generated_types();
 
     /* 根据 IR 模块上的目标三元组获取预设数据布局（若存在）。 */
     CnTargetDataLayout layout;
@@ -2046,6 +2313,13 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     size_t local_struct_capacity = 0;
     
     if (program) {
+        // =============================================================================
+        // 先输出导入模块的枚举和结构体定义（必须在当前模块定义之前）
+        // =============================================================================
+        if (global_scope) {
+            cn_cgen_import_forward_declarations(file, program, global_scope);
+        }
+        
         // =============================================================================
         // 先输出枚举定义（必须在结构体之前，因为结构体可能使用枚举类型）
         // =============================================================================
@@ -2127,11 +2401,6 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
         global = global->next;
     }
     fprintf(file, "\n");
-    
-    // 生成导入模块的前向声明（新增功能）
-    if (program && global_scope) {
-        cn_cgen_import_forward_declarations(file, program, global_scope);
-    }
     
     // 生成函数前置声明（Forward Declarations）
     fprintf(file, "// Forward Declarations\n");

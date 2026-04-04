@@ -1,6 +1,7 @@
 #include "cnlang/frontend/semantics.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
 CnType *cn_type_new_primitive(CnTypeKind kind) {
     CnType *type = (CnType *)malloc(sizeof(CnType));
@@ -206,6 +207,15 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         }
     }
     
+    // 字符[] 到 字符串 的隐式转换
+    // 根据设计文档：字符[] 可以隐式转换为字符串（安全转换）
+    if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_STRING) {
+        // 检查是否是 字符[] (char[])
+        if (a->as.array.element_type && a->as.array.element_type->kind == CN_TYPE_CHAR) {
+            return true;  // 字符[] 可以隐式转换为字符串
+        }
+    }
+    
     // 字符串 到 字符* 需要显式转换（根据设计文档标记为 ⚠️）
     // 但为了便利性，我们允许隐式转换（编译器可以发出警告）
     if (a->kind == CN_TYPE_STRING && b->kind == CN_TYPE_POINTER) {
@@ -222,6 +232,7 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
                                          const char *field_name,
                                          size_t field_name_length) {
     if (!struct_type || struct_type->kind != CN_TYPE_STRUCT) {
+        fprintf(stderr, "[DEBUG] cn_type_struct_find_field: 类型错误, kind=%d\n", struct_type ? struct_type->kind : -1);
         return NULL;
     }
     if (!field_name) {
@@ -230,8 +241,14 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
 
     // 遍历结构体的所有字段
     if (!struct_type->as.struct_type.fields) {
+        fprintf(stderr, "[DEBUG] cn_type_struct_find_field: 结构体 %.*s 没有字段信息\n",
+                (int)struct_type->as.struct_type.name_length, struct_type->as.struct_type.name);
         return NULL;
     }
+    fprintf(stderr, "[DEBUG] cn_type_struct_find_field: 结构体 %.*s 有 %zu 个字段, 查找 %.*s\n",
+            (int)struct_type->as.struct_type.name_length, struct_type->as.struct_type.name,
+            struct_type->as.struct_type.field_count,
+            (int)field_name_length, field_name);
     for (size_t i = 0; i < struct_type->as.struct_type.field_count; i++) {
         CnStructField *field = &struct_type->as.struct_type.fields[i];
         if (field && field->name && field->name_length == field_name_length &&

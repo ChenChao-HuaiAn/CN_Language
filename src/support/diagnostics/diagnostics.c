@@ -283,15 +283,24 @@ void cn_support_diag_semantic_error_undefined_identifier(
     int column,
     const char *identifier)
 {
-    (void)identifier; // 目前尚不支持动态消息，忽略标识符名
     if (!diagnostics) return;
+    
+    // 使用静态缓冲区存储错误消息（避免局部变量被释放）
+    static char error_msg[256];
+    
+    if (identifier && identifier[0] != '\0') {
+        snprintf(error_msg, sizeof(error_msg), "语义错误：未定义的标识符 '%s'", identifier);
+    } else {
+        snprintf(error_msg, sizeof(error_msg), "语义错误：未定义的标识符");
+    }
+    
     cn_support_diagnostics_report_error(
         diagnostics,
         CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
         filename ? filename : "<未知文件>",
         line,
         column,
-        "语义错误：未定义的标识符");
+        error_msg);
 }
 
 void cn_support_diag_semantic_error_type_mismatch(
@@ -422,6 +431,7 @@ void cn_support_diagnostics_print(const CnDiagnostics *diagnostics)
     size_t i;
     const CnDiagnostic *diag;
     const char *severity_str;
+    const char *msg;
 
     if (!diagnostics) {
         return;
@@ -432,6 +442,12 @@ void cn_support_diagnostics_print(const CnDiagnostics *diagnostics)
 
         // 确定严重级别字符串
         severity_str = (diag->severity == CN_DIAG_SEVERITY_ERROR) ? "错误" : "警告";
+        
+        // 确定消息：处理 NULL 和空字符串的情况
+        msg = diag->message;
+        if (!msg || msg[0] == '\0') {
+            msg = "未知错误";
+        }
 
         // 打印诊断信息（中文格式）
         if (diag->filename && diag->line > 0 && diag->column > 0) {
@@ -440,25 +456,25 @@ void cn_support_diagnostics_print(const CnDiagnostics *diagnostics)
                     diag->line,
                     diag->column,
                     severity_str,
-                    diag->message ? diag->message : "未知错误",
+                    msg,
                     diag->code);
         } else if (diag->filename && diag->line > 0) {
             fprintf(stderr, "%s:%d: %s: %s (代码: %d)\n",
                     diag->filename,
                     diag->line,
                     severity_str,
-                    diag->message ? diag->message : "未知错误",
+                    msg,
                     diag->code);
         } else if (diag->filename) {
             fprintf(stderr, "%s: %s: %s (代码: %d)\n",
                     diag->filename,
                     severity_str,
-                    diag->message ? diag->message : "未知错误",
+                    msg,
                     diag->code);
         } else {
             fprintf(stderr, "%s: %s (代码: %d)\n",
                     severity_str,
-                    diag->message ? diag->message : "未知错误",
+                    msg,
                     diag->code);
         }
     }

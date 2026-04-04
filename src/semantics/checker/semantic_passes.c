@@ -1148,6 +1148,20 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
             }
             
+            // 特殊处理：字符串比较运算（字符串 == 字符串 等）
+            if (left && right) {
+                bool left_is_string = (left->kind == CN_TYPE_STRING);
+                bool right_is_string = (right->kind == CN_TYPE_STRING);
+                
+                // 如果两个操作数都是字符串，比较运算符返回布尔类型
+                if (left_is_string && right_is_string) {
+                    if (expr->as.binary.op >= CN_AST_BINARY_OP_EQ && expr->as.binary.op <= CN_AST_BINARY_OP_GE) {
+                        expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
+                        break;
+                    }
+                }
+            }
+            
             // 特殊处理：字符串拼接（字符串 + 任何类型）
             if (expr->as.binary.op == CN_AST_BINARY_OP_ADD) {
                 // 如果任一操作数是字符串，则结果为字符串类型
@@ -1165,7 +1179,12 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     expr->type = left;
                 }
             } else {
-                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                // 比较运算符总是返回布尔类型（即使类型不兼容）
+                if (expr->as.binary.op >= CN_AST_BINARY_OP_EQ && expr->as.binary.op <= CN_AST_BINARY_OP_GE) {
+                    expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
+                } else {
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                }
             }
             break;
         }
@@ -1285,6 +1304,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             if (target && val && cn_type_compatible(val, target)) {
                 expr->type = target;
             } else {
+                // 调试：输出类型不匹配的详细信息
+                fprintf(stderr, "[DEBUG] 赋值类型不匹配: target kind=%d, val kind=%d\n",
+                        target ? target->kind : -1, val ? val->kind : -1);
                 // 类型不匹配,报错
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
@@ -1534,7 +1556,24 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         }
                     }
                 }
-                expr->type = callee_type->as.function.return_type;
+                // 处理返回类型：如果返回类型是结构体类型，可能是枚举类型
+                CnType *return_type = callee_type->as.function.return_type;
+                if (return_type && return_type->kind == CN_TYPE_STRUCT) {
+                    // 在全局作用域查找类型定义
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            return_type->as.struct_type.name,
+                                            return_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type) {
+                        if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                            // 替换为枚举类型
+                            return_type = type_sym->type;
+                        } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            // 替换为完整的结构体类型
+                            return_type = type_sym->type;
+                        }
+                    }
+                }
+                expr->type = return_type;
             } else {
                 // 检查是否是方法调用（成员访问表达式）
                 // 对于方法调用，callee_type 已经是返回类型
@@ -1600,8 +1639,8 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             CnType *array_type = infer_expr_type(scope, expr->as.index.array, diagnostics);
             CnType *index_type = infer_expr_type(scope, expr->as.index.index, diagnostics);
             
-            // 检查数组/指针类型（数组和指针都支持索引操作）
-            if (!array_type || (array_type->kind != CN_TYPE_ARRAY && array_type->kind != CN_TYPE_POINTER)) {
+            // 检查数组/指针/字符串类型（数组、指针和字符串都支持索引操作）
+            if (!array_type || (array_type->kind != CN_TYPE_ARRAY && array_type->kind != CN_TYPE_POINTER && array_type->kind != CN_TYPE_STRING)) {
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
@@ -1620,6 +1659,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 // 索引表达式的类型是数组元素的类型或指针指向的类型
                 if (array_type->kind == CN_TYPE_ARRAY) {
                     expr->type = array_type->as.array.element_type;
+                } else if (array_type->kind == CN_TYPE_STRING) {
+                    // 字符串索引返回字符类型
+                    expr->type = cn_type_new_primitive(CN_TYPE_CHAR);
                 } else {
                     // 指针类型
                     expr->type = array_type->as.pointer_to;
@@ -1678,12 +1720,17 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 
                 // 如果是枚举符号，在枚举作用域中查找成员
-                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM && sym->type && 
+                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM && sym->type &&
                     sym->type->kind == CN_TYPE_ENUM && sym->type->as.enum_type.enum_scope) {
                     CnSemSymbol *member_sym = cn_type_enum_find_member(
                         sym->type,
                         expr->as.member.member_name,
                         expr->as.member.member_name_length);
+                    
+                    fprintf(stderr, "[DEBUG] 枚举成员访问: %.*s.%.*s, member_sym=%p\n",
+                            (int)sym->name_length, sym->name,
+                            (int)expr->as.member.member_name_length, expr->as.member.member_name,
+                            (void*)member_sym);
                     
                     if (!member_sym) {
                         cn_support_diag_semantic_error_generic(
@@ -1697,6 +1744,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         expr->type = member_sym->type;
                         // 设置对象表达式的类型（标记为枚举类型）
                         expr->as.member.object->type = sym->type;
+                        fprintf(stderr, "[DEBUG] 枚举成员类型 kind=%d\n", member_sym->type ? member_sym->type->kind : -1);
                     }
                     break;
                 }
@@ -1768,6 +1816,12 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 object_type,
                 expr->as.member.member_name,
                 expr->as.member.member_name_length);
+            
+            fprintf(stderr, "[DEBUG] 成员访问: 对象类型 kind=%d, 成员 %.*s, 字段找到: %s, 字段类型 kind=%d\n",
+                    object_type->kind,
+                    (int)expr->as.member.member_name_length, expr->as.member.member_name,
+                    field ? "是" : "否",
+                    field && field->field_type ? field->field_type->kind : -1);
             
             if (field) {
                 // 成员访问表达式的类型是成员的类型
@@ -1932,6 +1986,32 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             }
             
             expr->type = struct_sym->type;
+            break;
+        }
+        case CN_AST_EXPR_TERNARY: {
+            // 三元表达式：条件 ? 真值 : 假值
+            if (expr->as.ternary.condition) {
+                infer_expr_type(scope, expr->as.ternary.condition, diagnostics);
+            }
+            CnType *true_type = NULL;
+            CnType *false_type = NULL;
+            if (expr->as.ternary.true_expr) {
+                true_type = infer_expr_type(scope, expr->as.ternary.true_expr, diagnostics);
+            }
+            if (expr->as.ternary.false_expr) {
+                false_type = infer_expr_type(scope, expr->as.ternary.false_expr, diagnostics);
+            }
+            // 三元表达式的类型：如果两个分支类型兼容，使用真值分支的类型
+            if (true_type && false_type && cn_type_compatible(true_type, false_type)) {
+                expr->type = true_type;
+            } else if (true_type) {
+                // 如果类型不兼容，使用真值分支的类型（可能会有警告）
+                expr->type = true_type;
+            } else if (false_type) {
+                expr->type = false_type;
+            } else {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+            }
             break;
         }
         default:
