@@ -63,6 +63,7 @@ static CnAstExpr *make_integer_literal(long value);
 static CnAstExpr *make_float_literal(double value);
 static char* process_string_escapes(const char *raw_string, size_t raw_length, size_t *out_length);
 static CnAstExpr *make_string_literal(const char *value, size_t length);
+static CnAstExpr *make_char_literal(char value);
 static CnAstExpr *make_bool_literal(int value);
 static CnAstExpr *make_identifier(const char *name, size_t length);
 static CnAstExpr *make_binary(CnAstBinaryOp op, CnAstExpr *left, CnAstExpr *right);
@@ -850,6 +851,21 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
 
     fn->return_type = return_type;
 
+    // 初始化新增字段
+    fn->is_prototype = 0;  // 默认为函数定义
+    fn->is_override = 0;   // 默认非重写函数
+    fn->is_static = 0;     // 默认非静态方法
+
+    // 检查是否为函数原型声明（以分号结尾，无函数体）
+    if (parser->current.kind == CN_TOKEN_SEMICOLON) {
+        // 函数原型声明：函数 名(参数) -> 返回类型;
+        fn->is_prototype = 1;
+        fn->body = NULL;
+        parser_advance(parser);  // 消费分号
+        return fn;
+    }
+
+    // 函数定义：解析函数体
     // 设置函数体上下文标志，用于静态变量作用域检查
     parser->in_function_body = 1;
     body = parse_block(parser);
@@ -1524,11 +1540,43 @@ static CnAstStmt *parse_statement(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_IDENT) {
         // 向前看判断是变量声明还是赋值语句
         // 变量声明：标识符(类型名) 标识符(变量名) ...
+        //          标识符(类型名)* 标识符(变量名) ... (指针类型)
         // 赋值语句：标识符(变量名) = ...
         CnTokenKind next_kind = parser_peek(parser);
         if (next_kind == CN_TOKEN_IDENT) {
             // 类型名后跟标识符，是变量声明
             is_var_decl = 1;
+        } else if (next_kind == CN_TOKEN_STAR) {
+            // 类型名后跟 *，可能是指针类型声明
+            // 需要进一步检查 * 后面是否是标识符
+            // 保存当前状态，向前看两个token
+            const char *saved_source = parser->lexer->source;
+            const char *saved_filename = parser->lexer->filename;
+            size_t saved_length = parser->lexer->length;
+            size_t saved_offset = parser->lexer->offset;
+            int saved_line = parser->lexer->line;
+            int saved_column = parser->lexer->column;
+            
+            // 跳过 * token
+            CnToken star_token;
+            if (cn_frontend_lexer_next_token(parser->lexer, &star_token)) {
+                // 检查 * 后面的token
+                CnToken after_star_token;
+                if (cn_frontend_lexer_next_token(parser->lexer, &after_star_token)) {
+                    if (after_star_token.kind == CN_TOKEN_IDENT) {
+                        // 类型名* 标识符，是指针类型变量声明
+                        is_var_decl = 1;
+                    }
+                }
+            }
+            
+            // 恢复lexer状态
+            parser->lexer->source = saved_source;
+            parser->lexer->filename = saved_filename;
+            parser->lexer->length = saved_length;
+            parser->lexer->offset = saved_offset;
+            parser->lexer->line = saved_line;
+            parser->lexer->column = saved_column;
         }
         // 否则不是变量声明，可能是赋值语句
     }
@@ -2699,7 +2747,7 @@ static CnAstExpr *parse_factor(CnParser *parser)
     } else if (parser->current.kind == CN_TOKEN_STRING_LITERAL) {
         // 处理字符串转义序列
         size_t processed_length = 0;
-        char *processed_string = process_string_escapes(parser->current.lexeme_begin, 
+        char *processed_string = process_string_escapes(parser->current.lexeme_begin,
                                                          parser->current.lexeme_length,
                                                          &processed_length);
         if (processed_string) {
@@ -2708,6 +2756,34 @@ static CnAstExpr *parse_factor(CnParser *parser)
             // 处理失败，使用原始字符串
             expr = make_string_literal(parser->current.lexeme_begin, parser->current.lexeme_length);
         }
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_CHAR_LITERAL) {
+        // 处理字符字面量
+        const char *str = parser->current.lexeme_begin;
+        size_t len = parser->current.lexeme_length;
+        char char_value = '\0';
+        
+        // 字符字面量格式：'x' 或 '\n'（lexeme包含引号）
+        if (len >= 3 && str[0] == '\'' && str[len-1] == '\'') {
+            if (str[1] == '\\' && len >= 4) {
+                // 转义字符
+                switch (str[2]) {
+                    case 'n': char_value = '\n'; break;
+                    case 't': char_value = '\t'; break;
+                    case 'r': char_value = '\r'; break;
+                    case '\\': char_value = '\\'; break;
+                    case '\'': char_value = '\''; break;
+                    case '"': char_value = '"'; break;
+                    case '0': char_value = '\0'; break;
+                    default: char_value = str[2]; break;
+                }
+            } else {
+                // 普通字符
+                char_value = str[1];
+            }
+        }
+        
+        expr = make_char_literal(char_value);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_TRUE) {
         expr = make_bool_literal(1);
@@ -3277,6 +3353,22 @@ static CnAstExpr *make_string_literal(const char *value, size_t length)
     expr->loc.column = 0;
     expr->as.string_literal.value = value;
     expr->as.string_literal.length = length;
+    return expr;
+}
+
+static CnAstExpr *make_char_literal(char value)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_CHAR_LITERAL;
+    expr->type = cn_type_new_primitive(CN_TYPE_INT);  // 字符类型在C中本质是整数
+    expr->loc.filename = NULL;
+    expr->loc.line = 0;
+    expr->loc.column = 0;
+    expr->as.char_literal.value = value;
     return expr;
 }
 

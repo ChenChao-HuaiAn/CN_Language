@@ -15,7 +15,7 @@ long long main() {
   void* r1;
 
   entry:
-  void* cn_var_一维数组;
+  long long* cn_var_一维数组;
   cn_var_一维数组 = cn_rt_array_alloc(8, 5);
   r0 = cn_var_一维数组;
     { long long _tmp_i0 = 10; cn_rt_array_set_element(r0, 0, &_tmp_i0, 8); }

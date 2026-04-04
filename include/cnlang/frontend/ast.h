@@ -23,6 +23,7 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_INTEGER_LITERAL, // 整数字面量表达式
     CN_AST_EXPR_FLOAT_LITERAL,   // 浮点数字面量表达式
     CN_AST_EXPR_STRING_LITERAL,  // 字符串字面量表达式
+    CN_AST_EXPR_CHAR_LITERAL,    // 字符字面量表达式
     CN_AST_EXPR_BOOL_LITERAL,    // 布尔字面量表达式
     CN_AST_EXPR_ASSIGN,     // 赋值表达式
     CN_AST_EXPR_LOGICAL,    // 逻辑表达式
@@ -445,10 +446,13 @@ typedef struct CnAstFunctionDecl {
     CnAstParameter *parameters;   // 参数列表
     size_t parameter_count;       // 参数数量
     struct CnType *return_type;   // 返回类型（NULL 表示无显式声明，根据返回语句推断）
-    CnAstBlockStmt *body;         // 函数体语句块
+    CnAstBlockStmt *body;         // 函数体语句块（函数原型声明时为NULL）
     CnVisibility visibility;      // 可见性（用于模块成员）
     int is_interrupt_handler;     // 是否是中断服务程序
     uint32_t interrupt_vector;    // 中断向量号（仅中断处理有效）
+    int is_prototype;             // 是否为函数原型声明（无函数体，以分号结尾）
+    int is_override;              // 是否为重写函数（使用"重写"关键字）
+    int is_static;                // 是否为静态方法（使用"静态"关键字）
 } CnAstFunctionDecl;
 
 // 程序根节点
@@ -507,6 +511,11 @@ typedef struct CnAstStringLiteralExpr {
     const char *value;
     size_t length;
 } CnAstStringLiteralExpr;
+
+// 字符字面量
+typedef struct CnAstCharLiteralExpr {
+    char value;  // 字符值
+} CnAstCharLiteralExpr;
 
 // 布尔字面量
 typedef struct CnAstBoolLiteralExpr {
@@ -640,6 +649,7 @@ typedef struct CnAstExpr {
         CnAstIntegerLiteralExpr integer_literal;
         CnAstFloatLiteralExpr float_literal;
         CnAstStringLiteralExpr string_literal;
+        CnAstCharLiteralExpr char_literal;
         CnAstBoolLiteralExpr bool_literal;
         CnAstAssignExpr assign;
         CnAstLogicalExpr logical;

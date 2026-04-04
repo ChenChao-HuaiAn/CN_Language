@@ -205,6 +205,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             op.type = cn_type_new_primitive(CN_TYPE_STRING);
             return op;
         }
+        case CN_AST_EXPR_CHAR_LITERAL: {
+            // 字符字面量：作为整数值处理
+            return cn_ir_op_imm_int(expr->as.char_literal.value,
+                                    cn_type_new_primitive(CN_TYPE_INT));
+        }
         case CN_AST_EXPR_BOOL_LITERAL: {
             // 布尔字面量直接返回立即数（0 或 1）
             return cn_ir_op_imm_int(expr->as.bool_literal.value ? 1 : 0,
@@ -1165,6 +1170,10 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
                         } else if (decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL) {
                             static_var->initializer = cn_ir_op_imm_float(
                                 decl->initializer->as.float_literal.value, decl_type);
+                        } else if (decl->initializer->kind == CN_AST_EXPR_CHAR_LITERAL) {
+                            // 字符字面量：作为整数值处理
+                            static_var->initializer = cn_ir_op_imm_int(
+                                decl->initializer->as.char_literal.value, decl_type);
                         } else if (decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
                             static_var->initializer = cn_ir_op_imm_int(
                                 decl->initializer->as.bool_literal.value ? 1 : 0, decl_type);
@@ -1618,21 +1627,28 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
         cn_ir_function_add_param(ir_func, param);
     }
 
-    // 创建入口基本块
-    CnIrBasicBlock *entry = cn_ir_basic_block_new("entry");
-    cn_ir_function_add_block(ir_func, entry);
-    ctx->current_block = entry;
-    
-    // 为函数创建作用域（父级为传入的 parent_scope）
-    CnSemScope *func_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, parent_scope);
-    ctx->current_scope = func_scope;
+    // 检查是否为函数原型声明（无函数体）
+    if (func->is_prototype) {
+        // 函数原型声明：只声明不定义，不生成函数体
+        ir_func->is_prototype = 1;
+    } else if (func->body) {
+        // 函数定义：生成函数体
+        // 创建入口基本块
+        CnIrBasicBlock *entry = cn_ir_basic_block_new("entry");
+        cn_ir_function_add_block(ir_func, entry);
+        ctx->current_block = entry;
+        
+        // 为函数创建作用域（父级为传入的 parent_scope）
+        CnSemScope *func_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, parent_scope);
+        ctx->current_scope = func_scope;
 
-    // 生成函数体
-    cn_ir_gen_block(ctx, func->body);
-    
-    // 恢复作用域
-    cn_sem_scope_free(func_scope);
-    ctx->current_scope = ctx->global_scope;
+        // 生成函数体
+        cn_ir_gen_block(ctx, func->body);
+        
+        // 恢复作用域
+        cn_sem_scope_free(func_scope);
+        ctx->current_scope = ctx->global_scope;
+    }
     
     // 清理静态变量列表
     CnIrGenStaticVar *sv = ctx->current_static_vars;
@@ -1705,6 +1721,21 @@ CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnSemScope *global_scope, C
                 } else if (var_decl->initializer->kind == CN_AST_EXPR_FLOAT_LITERAL) {
                     global->initializer = cn_ir_op_imm_float(
                         var_decl->initializer->as.float_literal.value,
+                        var_type);
+                } else if (var_decl->initializer->kind == CN_AST_EXPR_CHAR_LITERAL) {
+                    // 字符字面量：作为整数值处理
+                    global->initializer = cn_ir_op_imm_int(
+                        var_decl->initializer->as.char_literal.value,
+                        var_type);
+                } else if (var_decl->initializer->kind == CN_AST_EXPR_BOOL_LITERAL) {
+                    // 布尔字面量：作为整数值处理
+                    global->initializer = cn_ir_op_imm_int(
+                        var_decl->initializer->as.bool_literal.value ? 1 : 0,
+                        var_type);
+                } else if (var_decl->initializer->kind == CN_AST_EXPR_STRING_LITERAL) {
+                    // 字符串字面量
+                    global->initializer = cn_ir_op_imm_str(
+                        var_decl->initializer->as.string_literal.value,
                         var_type);
                 } else {
                     // 其他类型的初始化表达式暂不支持，使用0初始化

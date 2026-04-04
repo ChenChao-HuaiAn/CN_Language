@@ -13,6 +13,7 @@ typedef enum CnTokenKind {
     CN_TOKEN_INTEGER,       // 整数
     CN_TOKEN_FLOAT_LITERAL, // 浮点数字面量
     CN_TOKEN_STRING_LITERAL, // 字符串字面量
+    CN_TOKEN_CHAR_LITERAL,  // 字符字面量
     CN_TOKEN_KEYWORD_IF,      // 如果
     CN_TOKEN_KEYWORD_ELSE,    // 否则
     CN_TOKEN_KEYWORD_FN,      // 函数

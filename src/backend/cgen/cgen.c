@@ -1051,11 +1051,20 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         fprintf(ctx->output_file, "// 中断处理函数 (ISR) - 中断向量号: %u\n", func->interrupt_vector);
     }
     
+    // 生成函数签名
     fprintf(ctx->output_file, "%s %s(", get_c_type_string(func->return_type), c_func_name);
     for (size_t i = 0; i < func->param_count; i++) {
         fprintf(ctx->output_file, "%s %s", get_c_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
         if (i < func->param_count - 1) fprintf(ctx->output_file, ", ");
     }
+    
+    // 检查是否为函数原型声明（无函数体）
+    if (func->is_prototype) {
+        // 函数原型声明：只生成声明，不生成函数体
+        fprintf(ctx->output_file, ");\n");
+        return;
+    }
+    
     fprintf(ctx->output_file, ") {\n");
     
     // 生成静态局部变量声明（在函数体开头）

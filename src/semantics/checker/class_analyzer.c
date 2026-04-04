@@ -690,9 +690,6 @@ bool cn_add_class_to_symbol_table(CnClassAnalyzerContext *ctx, CnAstClassDecl *c
         return false;
     }
     
-    fprintf(stderr, "[DEBUG] cn_add_class_to_symbol_table: class='%.*s', member_count=%zu\n",
-            (int)class_decl->name_length, class_decl->name, class_decl->member_count);
-    
     /* 类作为结构体类型添加到符号表 */
     CnSemSymbol *sym = cn_sem_scope_insert_symbol(
         ctx->symbol_table,
@@ -702,7 +699,6 @@ bool cn_add_class_to_symbol_table(CnClassAnalyzerContext *ctx, CnAstClassDecl *c
     );
     
     if (!sym) {
-        fprintf(stderr, "[DEBUG] cn_add_class_to_symbol_table: symbol insert failed\n");
         return false;
     }
     
@@ -712,9 +708,6 @@ bool cn_add_class_to_symbol_table(CnClassAnalyzerContext *ctx, CnAstClassDecl *c
     
     /* 统计成员变量数量并创建字段数组 */
     for (size_t i = 0; i < class_decl->member_count; i++) {
-        fprintf(stderr, "[DEBUG]   member[%zu]: name='%.*s', kind=%d\n",
-                i, (int)class_decl->members[i].name_length, class_decl->members[i].name,
-                class_decl->members[i].kind);
         if (class_decl->members[i].kind == CN_MEMBER_FIELD) {
             field_count++;
         }

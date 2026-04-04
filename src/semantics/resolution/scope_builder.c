@@ -335,6 +335,44 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         to_string_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), param_types, 1);
     }
     
+    // =============================================================================
+    // 注册内存管理函数
+    // =============================================================================
+    
+    // 注册内置函数：分配内存 (malloc)
+    CnSemSymbol *malloc_sym = cn_sem_scope_insert_symbol(global_scope, "分配内存", strlen("分配内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (malloc_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // size_t 简化为 int
+        malloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 1);
+    }
+    
+    // 注册内置函数：释放内存 (free)
+    CnSemSymbol *free_sym = cn_sem_scope_insert_symbol(global_scope, "释放内存", strlen("释放内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (free_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        free_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+    
+    // 注册内置函数：重新分配内存 (realloc)
+    CnSemSymbol *realloc_sym = cn_sem_scope_insert_symbol(global_scope, "重新分配内存", strlen("重新分配内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (realloc_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // size_t 简化为 int
+        realloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+    
+    // 注册内置函数：分配清零内存 (calloc)
+    CnSemSymbol *calloc_sym = cn_sem_scope_insert_symbol(global_scope, "分配清零内存", strlen("分配清零内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (calloc_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // count
+        param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // size
+        calloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+    
     // 注册内置函数：释放输入 (free_input)
     CnSemSymbol *free_input_sym = cn_sem_scope_insert_symbol(global_scope, "释放输入", strlen("释放输入"), CN_SEM_SYMBOL_FUNCTION);
     if (free_input_sym) {
@@ -377,6 +415,45 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         CnType **param_types = (CnType **)malloc(sizeof(CnType *));
         param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
         is_int_str_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // =============================================================================
+    // 注册字符串操作函数
+    // =============================================================================
+    
+    // 注册内置函数：比较字符串 (strcmp)
+    CnSemSymbol *strcmp_sym = cn_sem_scope_insert_symbol(global_scope, "比较字符串", strlen("比较字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (strcmp_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        param_types[1] = cn_type_new_primitive(CN_TYPE_STRING);
+        strcmp_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 2);
+    }
+    
+    // 注册内置函数：字符串长度 (strlen)
+    CnSemSymbol *strlen_sym = cn_sem_scope_insert_symbol(global_scope, "字符串长度", strlen("字符串长度"), CN_SEM_SYMBOL_FUNCTION);
+    if (strlen_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        strlen_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：复制字符串 (strcpy)
+    CnSemSymbol *strcpy_sym = cn_sem_scope_insert_symbol(global_scope, "复制字符串", strlen("复制字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (strcpy_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);  // dest
+        param_types[1] = cn_type_new_primitive(CN_TYPE_STRING);  // src
+        strcpy_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), param_types, 2);
+    }
+    
+    // 注册内置函数：连接字符串 (strcat)
+    CnSemSymbol *strcat_sym = cn_sem_scope_insert_symbol(global_scope, "连接字符串", strlen("连接字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (strcat_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);  // dest
+        param_types[1] = cn_type_new_primitive(CN_TYPE_STRING);  // src
+        strcat_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), param_types, 2);
     }
 
     // =============================================================================
@@ -887,6 +964,23 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                         // 其他类型,使用原始类型
                         sym->type = var_decl->declared_type;
                     }
+                } else {
+                    // 找不到类型定义,使用原始类型
+                    sym->type = var_decl->declared_type;
+                }
+            } else if (var_decl->declared_type && var_decl->declared_type->kind == CN_TYPE_POINTER &&
+                       var_decl->declared_type->as.pointer_to &&
+                       var_decl->declared_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                // 指向结构体的指针类型：需要查找结构体定义并更新指针指向的类型
+                CnType *ptr_type = var_decl->declared_type;
+                CnType *pointee_type = ptr_type->as.pointer_to;
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                        pointee_type->as.struct_type.name,
+                                        pointee_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    // 创建新的指针类型，指向完整的结构体类型
+                    sym->type = cn_type_new_pointer(type_sym->type);
                 } else {
                     // 找不到类型定义,使用原始类型
                     sym->type = var_decl->declared_type;
@@ -1544,6 +1638,83 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
         CnType **param_types = (CnType **)malloc(sizeof(CnType *));
         param_types[0] = cn_type_new_primitive(CN_TYPE_INT);
         print_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+
+    // =============================================================================
+    // 注册内存管理函数
+    // =============================================================================
+    
+    // 注册内置函数：分配内存 (malloc)
+    CnSemSymbol *malloc_sym = cn_sem_scope_insert_symbol(global_scope, "分配内存", strlen("分配内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (malloc_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // size_t 简化为 int
+        malloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 1);
+    }
+    
+    // 注册内置函数：释放内存 (free)
+    CnSemSymbol *free_sym = cn_sem_scope_insert_symbol(global_scope, "释放内存", strlen("释放内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (free_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        free_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
+    }
+    
+    // 注册内置函数：重新分配内存 (realloc)
+    CnSemSymbol *realloc_sym = cn_sem_scope_insert_symbol(global_scope, "重新分配内存", strlen("重新分配内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (realloc_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+        param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // size_t 简化为 int
+        realloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+    
+    // 注册内置函数：分配清零内存 (calloc)
+    CnSemSymbol *calloc_sym = cn_sem_scope_insert_symbol(global_scope, "分配清零内存", strlen("分配清零内存"), CN_SEM_SYMBOL_FUNCTION);
+    if (calloc_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // count
+        param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // size
+        calloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+    
+    // =============================================================================
+    // 注册字符串操作函数
+    // =============================================================================
+    
+    // 注册内置函数：比较字符串 (strcmp)
+    CnSemSymbol *strcmp_sym = cn_sem_scope_insert_symbol(global_scope, "比较字符串", strlen("比较字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (strcmp_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        param_types[1] = cn_type_new_primitive(CN_TYPE_STRING);
+        strcmp_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 2);
+    }
+    
+    // 注册内置函数：字符串长度 (strlen)
+    CnSemSymbol *strlen_sym = cn_sem_scope_insert_symbol(global_scope, "字符串长度", strlen("字符串长度"), CN_SEM_SYMBOL_FUNCTION);
+    if (strlen_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);
+        strlen_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
+    }
+    
+    // 注册内置函数：复制字符串 (strcpy)
+    CnSemSymbol *strcpy_sym = cn_sem_scope_insert_symbol(global_scope, "复制字符串", strlen("复制字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (strcpy_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);  // dest
+        param_types[1] = cn_type_new_primitive(CN_TYPE_STRING);  // src
+        strcpy_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), param_types, 2);
+    }
+    
+    // 注册内置函数：连接字符串 (strcat)
+    CnSemSymbol *strcat_sym = cn_sem_scope_insert_symbol(global_scope, "连接字符串", strlen("连接字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (strcat_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_STRING);  // dest
+        param_types[1] = cn_type_new_primitive(CN_TYPE_STRING);  // src
+        strcat_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), param_types, 2);
     }
 
     // 设置模块加载器的搜索路径

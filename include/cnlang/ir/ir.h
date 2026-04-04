@@ -154,6 +154,9 @@ typedef struct CnIrFunction {
     int is_interrupt_handler;  // 是否是中断服务程序
     uint32_t interrupt_vector; // 中断向量号（仅is_interrupt_handler=1时有效）
     
+    // 函数原型声明相关
+    int is_prototype;          // 是否为函数原型声明（无函数体）
+    
     struct CnIrFunction *next;
 } CnIrFunction;
 

@@ -335,6 +335,7 @@ bool cn_sem_check_types(CnSemScope *global_scope,
 
 static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagnostics *diagnostics, bool in_loop) {
     if (!block || !scope) return;
+    // 创建新的块作用域，用于存储局部变量
     CnSemScope *block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
     if (!block_scope) return;
     for (size_t i = 0; i < block->stmt_count; i++) {
@@ -345,7 +346,7 @@ static void check_block_types(CnSemScope *scope, CnAstBlockStmt *block, CnDiagno
 
 static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics, bool in_loop) {
     if (!stmt) return;
-
+    
     switch (stmt->kind) {
         case CN_AST_STMT_BLOCK:
             check_block_types(scope, stmt->as.block, diagnostics, in_loop);
@@ -393,14 +394,17 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                 }
             }
             
+            // 查找或插入符号
+            // 由于作用域构建和类型检查使用不同的作用域实例，需要在这里重新插入变量符号
+            // 注意：必须在推断初始化表达式类型之前插入变量符号，以便初始化表达式可以引用该变量
+            CnSemSymbol *sym = cn_sem_scope_lookup_shallow(scope, decl->name, decl->name_length);
+            if (!sym) {
+                // 符号不存在，插入新的符号
+                sym = cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+            }
+            
+            // 在变量符号插入后推断初始化表达式的类型
             CnType *init_type = infer_expr_type(scope, decl->initializer, diagnostics);
-            
-            fprintf(stderr, "[DEBUG] VAR_DECL: name='%.*s', declared_type=%p, kind=%d\n",
-                    (int)decl->name_length, decl->name,
-                    (void*)decl->declared_type, decl->declared_type ? decl->declared_type->kind : -1);
-            
-            // 插入符号到当前作用域
-            CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
             if (sym) {
                 sym->is_const = decl->is_const;
                 sym->is_static = decl->is_static;  // 传递静态变量标记
@@ -408,25 +412,33 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                     // 特殊处理：如果声明类型是结构体类型，可能是枚举类型或类类型
                     // 需要从符号表查找真实类型（包含完整的字段信息）
                     if (decl->declared_type->kind == CN_TYPE_STRUCT) {
-                        fprintf(stderr, "[DEBUG] VAR_DECL: looking up type '%.*s'\n",
-                                (int)decl->declared_type->as.struct_type.name_length,
-                                decl->declared_type->as.struct_type.name);
                         CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
                                                 decl->declared_type->as.struct_type.name,
                                                 decl->declared_type->as.struct_type.name_length);
-                        fprintf(stderr, "[DEBUG] VAR_DECL: type_sym=%p, kind=%d, type=%p\n",
-                                (void*)type_sym, type_sym ? type_sym->kind : -1,
-                                type_sym ? (void*)type_sym->type : NULL);
                         if (type_sym && type_sym->type) {
                             if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
                                 // 替换为枚举类型
                                 decl->declared_type = type_sym->type;
                             } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
                                 // 替换为完整的结构体/类类型（包含字段信息）
-                                fprintf(stderr, "[DEBUG] VAR_DECL: replacing with struct type, field_count=%zu\n",
-                                        type_sym->type->as.struct_type.field_count);
                                 decl->declared_type = type_sym->type;
                             }
+                        }
+                    }
+                    
+                    // 特殊处理：如果声明类型是指向结构体的指针，需要更新指针指向的类型
+                    if (decl->declared_type->kind == CN_TYPE_POINTER &&
+                        decl->declared_type->as.pointer_to &&
+                        decl->declared_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                        CnType *ptr_type = decl->declared_type;
+                        CnType *pointee_type = ptr_type->as.pointer_to;
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                                pointee_type->as.struct_type.name,
+                                                pointee_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                            // 创建新的指针类型，指向完整的结构体类型
+                            decl->declared_type = cn_type_new_pointer(type_sym->type);
                         }
                     }
                     
@@ -589,6 +601,10 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                     
                     if (case_stmt->value->kind == CN_AST_EXPR_INTEGER_LITERAL) {
                         case_value = case_stmt->value->as.integer_literal.value;
+                        can_get_value = 1;
+                    } else if (case_stmt->value->kind == CN_AST_EXPR_CHAR_LITERAL) {
+                        // 字符字面量作为 case 值
+                        case_value = (long)case_stmt->value->as.char_literal.value;
                         can_get_value = 1;
                     } else if (case_stmt->value->kind == CN_AST_EXPR_IDENTIFIER) {
                         const char *name = case_stmt->value->as.identifier.name;
@@ -773,6 +789,7 @@ static int cn_sem_is_const_expr(CnSemScope *scope, CnAstExpr *expr) {
         case CN_AST_EXPR_FLOAT_LITERAL:    // 浮点字面量
         case CN_AST_EXPR_BOOL_LITERAL:     // 布尔字面量
         case CN_AST_EXPR_STRING_LITERAL:   // 字符串字面量
+        case CN_AST_EXPR_CHAR_LITERAL:     // 字符字面量
             return 1;
             
         // 2. 标识符：检查是否为常量变量或枚举成员
@@ -891,6 +908,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_INTEGER_LITERAL:
             expr->type = cn_type_new_primitive(CN_TYPE_INT);
             break;
+        case CN_AST_EXPR_CHAR_LITERAL:
+            // 字符字面量的类型是整数
+            expr->type = cn_type_new_primitive(CN_TYPE_INT);
+            break;
         case CN_AST_EXPR_FLOAT_LITERAL:
             expr->type = cn_type_new_primitive(CN_TYPE_FLOAT);
             break;
@@ -903,9 +924,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_IDENTIFIER: {
             const char *name = expr->as.identifier.name;
             size_t name_len = expr->as.identifier.name_length;
-            
-            fprintf(stderr, "[DEBUG] IDENTIFIER: name='%.*s', is_this_pointer=%d\n",
-                    (int)name_len, name ? name : "(null)", expr->is_this_pointer);
             
             if (!name || name_len == 0) {
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
@@ -925,29 +943,16 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     size_t func_name_len = 0;
                     const char *func_name = cn_sem_scope_get_name(func_scope, &func_name_len);
                     
-                    fprintf(stderr, "[DEBUG] is_this_pointer: func_name='%.*s', len=%zu\n",
-                            (int)func_name_len, func_name ? func_name : "(null)", func_name_len);
-                    
                     if (func_name && func_name_len > 0) {
                         // 从方法名中提取类名（查找第一个下划线）
                         const char *underscore = (const char *)memchr(func_name, '_', func_name_len);
                         if (underscore) {
                             size_t class_name_len = underscore - func_name;
                             
-                            fprintf(stderr, "[DEBUG] class_name='%.*s', len=%zu\n",
-                                    (int)class_name_len, func_name, class_name_len);
-                            
                             // 从符号表中查找类类型（包含完整的字段信息）
                             CnSemSymbol *class_sym = cn_sem_scope_lookup(scope, func_name, class_name_len);
                             
-                            fprintf(stderr, "[DEBUG] class_sym=%p, type=%p, kind=%d\n",
-                                    (void*)class_sym,
-                                    class_sym ? (void*)class_sym->type : NULL,
-                                    class_sym && class_sym->type ? class_sym->type->kind : -1);
-                            
                             if (class_sym && class_sym->type && class_sym->type->kind == CN_TYPE_STRUCT) {
-                                fprintf(stderr, "[DEBUG] Found class type with %zu fields\n",
-                                        class_sym->type->as.struct_type.field_count);
                                 // 自身指针的类型是类类型的指针
                                 expr->type = cn_type_new_pointer(class_sym->type);
                                 break;
@@ -996,6 +1001,23 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 if (expr->as.binary.op == CN_AST_BINARY_OP_ADD &&
                     left->kind == CN_TYPE_INT && right->kind == CN_TYPE_POINTER) {
                     expr->type = right;
+                    break;
+                }
+            }
+            
+            // 指针与整数的比较运算（特别是指针与"无"的比较）
+            // 比较运算符（==, !=, <, >, <=, >=）在指针与整数之间应该返回布尔类型
+            if ((expr->as.binary.op >= CN_AST_BINARY_OP_EQ && expr->as.binary.op <= CN_AST_BINARY_OP_GE) &&
+                left && right) {
+                bool left_is_pointer_or_int = (left->kind == CN_TYPE_POINTER || left->kind == CN_TYPE_INT);
+                bool right_is_pointer_or_int = (right->kind == CN_TYPE_POINTER || right->kind == CN_TYPE_INT);
+                bool left_is_pointer = (left->kind == CN_TYPE_POINTER);
+                bool right_is_pointer = (right->kind == CN_TYPE_POINTER);
+                
+                // 如果一个是指针，另一个是整数或指针，比较结果为布尔类型
+                if ((left_is_pointer && right_is_pointer_or_int) ||
+                    (right_is_pointer && left_is_pointer_or_int)) {
+                    expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
                     break;
                 }
             }
@@ -1593,13 +1615,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             }
             
             // 否则按照结构体成员访问处理
-            // 检查对象表达式是否为自身指针
-            if (expr->as.member.object && expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
-                fprintf(stderr, "[DEBUG] member_access object: name='%.*s', is_this_pointer=%d\n",
-                        (int)expr->as.member.object->as.identifier.name_length,
-                        expr->as.member.object->as.identifier.name,
-                        expr->as.member.object->is_this_pointer);
-            }
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
             
             // 特殊处理：内建方法 "长度"，支持数组和字符串
@@ -1649,21 +1664,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             }
             
             // 在结构体类型中查找成员字段
-            fprintf(stderr, "[DEBUG] member_access: member='%.*s', object_type=%p, kind=%d\n",
-                    (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                    (void*)object_type, object_type ? object_type->kind : -1);
-            if (object_type && object_type->kind == CN_TYPE_STRUCT) {
-                fprintf(stderr, "[DEBUG] struct_name='%.*s', field_count=%zu\n",
-                        (int)object_type->as.struct_type.name_length,
-                        object_type->as.struct_type.name ? object_type->as.struct_type.name : "(null)",
-                        object_type->as.struct_type.field_count);
-                // 打印所有字段名称
-                for (size_t i = 0; i < object_type->as.struct_type.field_count; i++) {
-                    CnStructField *f = &object_type->as.struct_type.fields[i];
-                    fprintf(stderr, "[DEBUG]   field[%zu]: '%.*s'\n", i,
-                            (int)f->name_length, f->name ? f->name : "(null)");
-                }
-            }
             CnStructField *field = cn_type_struct_find_field(
                 object_type,
                 expr->as.member.member_name,
@@ -1690,9 +1690,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                                expr->as.member.member_name, method_name_len);
                         full_method_name[full_name_len] = '\0';
                         
-                        fprintf(stderr, "[DEBUG] Looking up method: '%s' (len=%zu)\n", full_method_name, full_name_len);
                         CnSemSymbol *method_sym = cn_sem_scope_lookup(scope, full_method_name, full_name_len);
-                        fprintf(stderr, "[DEBUG] method_sym=%p, kind=%d\n", (void*)method_sym, method_sym ? method_sym->kind : -1);
                         
                         if (method_sym && method_sym->kind == CN_SEM_SYMBOL_FUNCTION) {
                             // 找到方法，设置表达式类型为方法的返回类型
@@ -1876,8 +1874,9 @@ static CnType *infer_return_from_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiag
                     // 如果是变量声明，需要先添加到作用域
                     if (block_stmt && block_stmt->kind == CN_AST_STMT_VAR_DECL) {
                         CnAstVarDecl *decl = &block_stmt->as.var_decl;
-                        CnType *init_type = infer_expr_type(block_scope, decl->initializer, diagnostics);
+                        // 先插入变量符号，然后再推断初始化表达式的类型
                         CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        CnType *init_type = infer_expr_type(block_scope, decl->initializer, diagnostics);
                         if (sym) {
                             // 如果声明类型是结构体类型，需要从符号表查找真实类型（包含完整的字段信息）
                             CnType *var_type = decl->declared_type;
@@ -1959,8 +1958,9 @@ static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *blo
         // 如果是变量声明，需要先添加到作用域
         if (stmt && stmt->kind == CN_AST_STMT_VAR_DECL) {
             CnAstVarDecl *decl = &stmt->as.var_decl;
-            CnType *init_type = infer_expr_type(block_scope, decl->initializer, diagnostics);
+            // 先插入变量符号，然后再推断初始化表达式的类型
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+            CnType *init_type = infer_expr_type(block_scope, decl->initializer, diagnostics);
             if (sym) {
                 // 如果声明类型是结构体类型，需要从符号表查找真实类型（包含完整的字段信息）
                 CnType *var_type = decl->declared_type;

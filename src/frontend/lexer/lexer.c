@@ -185,8 +185,6 @@ static CnTokenKind keyword_kind(const char *begin, size_t length)
 {
     // 使用统一的关键字查找函数
     CnTokenKind kind = cn_frontend_lookup_keyword(begin, length);
-    fprintf(stderr, "[DEBUG LEXER] keyword_kind: '%.*s' (len=%zu) -> kind=%d\n",
-            (int)length, begin, length, kind);
     return kind;
 }
 
@@ -306,6 +304,42 @@ bool cn_frontend_lexer_next_token(CnLexer *lexer, CnToken *out_token)
         } else {
             report_lex_error(lexer, CN_DIAG_CODE_LEX_UNTERMINATED_STRING, "未终止的字符串字面量");
             out_token->kind = CN_TOKEN_INVALID;
+        }
+    } else if (c == '\'') {
+        // 扫描字符字面量：'x' 或 '\n'
+        advance(lexer);  // 跳过开始的单引号
+        c = current_char(lexer);
+        
+        if (c == '\0') {
+            report_lex_error(lexer, CN_DIAG_CODE_LEX_UNTERMINATED_STRING, "未终止的字符字面量");
+            out_token->kind = CN_TOKEN_INVALID;
+        } else if (c == '\'') {
+            // 空字符 ''
+            advance(lexer);
+            out_token->kind = CN_TOKEN_CHAR_LITERAL;
+        } else {
+            // 处理转义字符
+            if (c == '\\') {
+                advance(lexer);
+                c = current_char(lexer);
+                if (c == '\0') {
+                    report_lex_error(lexer, CN_DIAG_CODE_LEX_UNTERMINATED_STRING, "未终止的字符字面量");
+                    out_token->kind = CN_TOKEN_INVALID;
+                } else {
+                    advance(lexer);  // 跳过转义字符
+                }
+            } else {
+                advance(lexer);  // 跳过普通字符
+            }
+            
+            // 期望结束的单引号
+            if (current_char(lexer) == '\'') {
+                advance(lexer);
+                out_token->kind = CN_TOKEN_CHAR_LITERAL;
+            } else {
+                report_lex_error(lexer, CN_DIAG_CODE_LEX_UNTERMINATED_STRING, "未终止的字符字面量");
+                out_token->kind = CN_TOKEN_INVALID;
+            }
         }
     } else if (isdigit((unsigned char)c)) {
         // 扫描数字：支持整数、浮点数、十六进制、二进制、八进制
