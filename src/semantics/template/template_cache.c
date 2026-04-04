@@ -389,6 +389,7 @@ const char *cn_type_get_name(CnType *type) {
         case CN_TYPE_VOID:       return "空类型";
         case CN_TYPE_INT:        return "整数";
         case CN_TYPE_FLOAT:      return "小数";
+        case CN_TYPE_CHAR:       return "字符";
         case CN_TYPE_BOOL:       return "布尔";
         case CN_TYPE_STRING:     return "字符串";
         case CN_TYPE_INT32:      return "整数32";

@@ -552,6 +552,22 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                             field_type = type_sym->type;
                         }
                     }
+                    // 处理指针类型：如果字段是指针指向自定义类型，需要解析指针指向的类型
+                    // 注意：字符* 等基础类型指针不需要解析，只有指向自定义类型的指针需要
+                    // 例如：结构体* 字段 需要解析 结构体 类型
+                    // 但 字符* 不需要解析，因为 CHAR 是基础类型
+                    else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                             field_type->as.pointer_to &&
+                             field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                             field_type->as.pointer_to->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.pointer_to->as.struct_type.name,
+                                                    field_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            // 创建新的指针类型，指向解析后的类型
+                            field_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    }
                     fields[j].field_type = field_type;
                     fields[j].is_const = struct_decl->fields[j].is_const;  // 传递常量字段标记
                 }
@@ -805,7 +821,52 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                    var_decl->name_length,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
-            sym->type = var_decl->declared_type;
+            // 全局变量类型处理：需要对结构体、结构体指针、结构体数组进行特殊处理
+            if (var_decl->declared_type && var_decl->declared_type->kind == CN_TYPE_STRUCT) {
+                // 结构体类型：需要查找结构体定义
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        var_decl->declared_type->as.struct_type.name,
+                                        var_decl->declared_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    sym->type = type_sym->type;
+                } else {
+                    sym->type = var_decl->declared_type;
+                }
+            } else if (var_decl->declared_type && var_decl->declared_type->kind == CN_TYPE_POINTER &&
+                       var_decl->declared_type->as.pointer_to &&
+                       var_decl->declared_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                // 指向结构体的指针类型
+                CnType *ptr_type = var_decl->declared_type;
+                CnType *pointee_type = ptr_type->as.pointer_to;
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        pointee_type->as.struct_type.name,
+                                        pointee_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    sym->type = cn_type_new_pointer(type_sym->type);
+                } else {
+                    sym->type = var_decl->declared_type;
+                }
+            } else if (var_decl->declared_type && var_decl->declared_type->kind == CN_TYPE_ARRAY &&
+                       var_decl->declared_type->as.array.element_type &&
+                       var_decl->declared_type->as.array.element_type->kind == CN_TYPE_STRUCT) {
+                // 结构体数组类型：需要查找结构体定义并更新元素类型
+                CnType *arr_type = var_decl->declared_type;
+                CnType *elem_type = arr_type->as.array.element_type;
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        elem_type->as.struct_type.name,
+                                        elem_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    // 创建新的数组类型，元素类型为完整的结构体类型
+                    sym->type = cn_type_new_array(type_sym->type, arr_type->as.array.length);
+                } else {
+                    sym->type = var_decl->declared_type;
+                }
+            } else {
+                sym->type = var_decl->declared_type;
+            }
             sym->is_const = var_decl->is_const;
         } else {
             // 报告重复定义
@@ -851,9 +912,27 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     param_types[j] = param_type;
                 }
             }
-            // TODO: 当前返回类型需要通过return语句推断，暂时使用UNKNOWN
-            // 后续在类型检查阶段会通过分析return语句来补充返回类型
-            sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_UNKNOWN),
+            // 使用函数声明中的返回类型，如果没有则使用UNKNOWN（后续通过return语句推断）
+            CnType *return_type = function_decl->return_type;
+            if (!return_type) {
+                return_type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+            } else if (return_type->kind == CN_TYPE_STRUCT) {
+                // 特殊处理：如果返回类型是结构体类型，可能是枚举类型或类类型
+                // 需要从符号表查找真实类型
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        return_type->as.struct_type.name,
+                                        return_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type) {
+                    if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                        // 替换为枚举类型
+                        return_type = type_sym->type;
+                    } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 替换为完整的结构体/类类型
+                        return_type = type_sym->type;
+                    }
+                }
+            }
+            sym->type = cn_type_new_function(return_type,
                                             param_types,
                                             function_decl->parameter_count);
         } else {
@@ -981,6 +1060,23 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                     (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
                     // 创建新的指针类型，指向完整的结构体类型
                     sym->type = cn_type_new_pointer(type_sym->type);
+                } else {
+                    // 找不到类型定义,使用原始类型
+                    sym->type = var_decl->declared_type;
+                }
+            } else if (var_decl->declared_type && var_decl->declared_type->kind == CN_TYPE_ARRAY &&
+                       var_decl->declared_type->as.array.element_type &&
+                       var_decl->declared_type->as.array.element_type->kind == CN_TYPE_STRUCT) {
+                // 结构体数组类型：需要查找结构体定义并更新元素类型
+                CnType *arr_type = var_decl->declared_type;
+                CnType *elem_type = arr_type->as.array.element_type;
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                        elem_type->as.struct_type.name,
+                                        elem_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    // 创建新的数组类型，元素类型为完整的结构体类型
+                    sym->type = cn_type_new_array(type_sym->type, arr_type->as.array.length);
                 } else {
                     // 找不到类型定义,使用原始类型
                     sym->type = var_decl->declared_type;

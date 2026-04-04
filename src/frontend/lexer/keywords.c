@@ -18,9 +18,10 @@ static const CnKeywordEntry g_keywords[] = {
     {"情况", CN_TOKEN_KEYWORD_CASE, "控制流关键字"},
     {"默认", CN_TOKEN_KEYWORD_DEFAULT, "控制流关键字"},
 
-    // 类型关键字 (7个)
+    // 类型关键字 (8个)
     {"整数", CN_TOKEN_KEYWORD_INT, "类型关键字"},
     {"小数", CN_TOKEN_KEYWORD_FLOAT, "类型关键字"},
+    {"字符", CN_TOKEN_KEYWORD_CHAR, "类型关键字"},
     {"字符串", CN_TOKEN_KEYWORD_STRING, "类型关键字"},
     {"布尔", CN_TOKEN_KEYWORD_BOOL, "类型关键字"},
     {"空类型", CN_TOKEN_KEYWORD_VOID, "类型关键字"},  // 注意：空类型关键字是"空类型"

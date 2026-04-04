@@ -25,6 +25,7 @@ typedef enum CnTypeKind {
     CN_TYPE_VOID,   // 无类型
     CN_TYPE_INT,    // 整型（默认，等价于 int32）
     CN_TYPE_FLOAT,  // 浮点型（默认，等价于 double）
+    CN_TYPE_CHAR,   // 字符型
     CN_TYPE_BOOL,   // 布尔型
     CN_TYPE_STRING, // 字符串型
     CN_TYPE_POINTER,// 指针类型

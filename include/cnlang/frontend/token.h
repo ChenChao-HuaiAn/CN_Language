@@ -21,6 +21,7 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_VAR,     // 变量
     CN_TOKEN_KEYWORD_INT,      // 整数
     CN_TOKEN_KEYWORD_FLOAT,    // 浮点数
+    CN_TOKEN_KEYWORD_CHAR,     // 字符
     CN_TOKEN_KEYWORD_STRING,  // 字符串
     CN_TOKEN_KEYWORD_BOOL,    // 布尔值
     CN_TOKEN_KEYWORD_STRUCT,  // 结构体

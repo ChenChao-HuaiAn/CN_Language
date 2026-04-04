@@ -417,6 +417,7 @@ bool cn_is_valid_member_type(CnClassAnalyzerContext *ctx, CnType *type)
         case CN_TYPE_FLOAT:
         case CN_TYPE_FLOAT32:
         case CN_TYPE_FLOAT64:
+        case CN_TYPE_CHAR:
         case CN_TYPE_BOOL:
         case CN_TYPE_STRING:
             return true;
@@ -1462,6 +1463,7 @@ static bool cn_check_initializer_type_internal(CnClassAnalyzerContext *ctx,
                 case CN_TYPE_UINT32:
                 case CN_TYPE_UINT64:
                 case CN_TYPE_UINT64_LL:
+                case CN_TYPE_CHAR:
                     switch (init_expr->type->kind) {
                         case CN_TYPE_INT:
                         case CN_TYPE_INT32:
@@ -1469,6 +1471,7 @@ static bool cn_check_initializer_type_internal(CnClassAnalyzerContext *ctx,
                         case CN_TYPE_UINT32:
                         case CN_TYPE_UINT64:
                         case CN_TYPE_UINT64_LL:
+                        case CN_TYPE_CHAR:
                             is_int_compatible = true;
                             break;
                         default:
@@ -2625,6 +2628,8 @@ size_t cn_type_get_alignment(const CnType *type) {
     switch (type->kind) {
         case CN_TYPE_VOID:
             return 1;
+        case CN_TYPE_CHAR:
+            return 1;
         case CN_TYPE_INT:
         case CN_TYPE_INT32:
             return 4;
@@ -2664,6 +2669,8 @@ size_t cn_type_get_size(const CnType *type) {
     switch (type->kind) {
         case CN_TYPE_VOID:
             return 0;
+        case CN_TYPE_CHAR:
+            return 1;
         case CN_TYPE_INT:
         case CN_TYPE_INT32:
             return 4;

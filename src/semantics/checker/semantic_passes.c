@@ -228,6 +228,56 @@ bool cn_sem_check_types(CnSemScope *global_scope,
             }
         }
         
+        // 处理全局变量的类型：需要对结构体、结构体指针、结构体数组进行特殊处理
+        if (var_decl->declared_type) {
+            // 特殊处理：如果声明类型是结构体类型，可能是枚举类型或类类型
+            if (var_decl->declared_type->kind == CN_TYPE_STRUCT) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        var_decl->declared_type->as.struct_type.name,
+                                        var_decl->declared_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    var_decl->declared_type = type_sym->type;
+                }
+            }
+            // 特殊处理：如果声明类型是指向结构体的指针
+            else if (var_decl->declared_type->kind == CN_TYPE_POINTER &&
+                     var_decl->declared_type->as.pointer_to &&
+                     var_decl->declared_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                CnType *ptr_type = var_decl->declared_type;
+                CnType *pointee_type = ptr_type->as.pointer_to;
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        pointee_type->as.struct_type.name,
+                                        pointee_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    var_decl->declared_type = cn_type_new_pointer(type_sym->type);
+                }
+            }
+            // 特殊处理：如果声明类型是结构体数组，需要更新元素类型
+            else if (var_decl->declared_type->kind == CN_TYPE_ARRAY &&
+                     var_decl->declared_type->as.array.element_type &&
+                     var_decl->declared_type->as.array.element_type->kind == CN_TYPE_STRUCT) {
+                CnType *arr_type = var_decl->declared_type;
+                CnType *elem_type = arr_type->as.array.element_type;
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        elem_type->as.struct_type.name,
+                                        elem_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    var_decl->declared_type = cn_type_new_array(type_sym->type, arr_type->as.array.length);
+                }
+            }
+            
+            // 更新全局作用域中该变量的类型
+            CnSemSymbol *sym = cn_sem_scope_lookup_shallow(global_scope,
+                                                           var_decl->name,
+                                                           var_decl->name_length);
+            if (sym) {
+                sym->type = var_decl->declared_type;
+            }
+        }
+        
         // 如果没有显式类型且有初始化表达式，从初始化表达式推断类型
         if (!var_decl->declared_type && var_decl->initializer) {
             CnType *init_type = infer_expr_type(global_scope, var_decl->initializer, diagnostics);
@@ -273,6 +323,23 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                         }
                     }
                 }
+                
+                // 特殊处理：如果参数类型是指向结构体的指针，需要更新指针指向的类型
+                if (param_type && param_type->kind == CN_TYPE_POINTER &&
+                    param_type->as.pointer_to &&
+                    param_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                    CnType *ptr_type = param_type;
+                    CnType *pointee_type = ptr_type->as.pointer_to;
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                            pointee_type->as.struct_type.name,
+                                            pointee_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        // 创建新的指针类型，指向完整的结构体类型
+                        param_type = cn_type_new_pointer(type_sym->type);
+                    }
+                }
+                
                 sym->type = param_type;
                 sym->is_const = fn->parameters[j].is_const;  // 传递常量参数标记
             }
@@ -320,6 +387,23 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                         }
                     }
                 }
+                
+                // 特殊处理：如果参数类型是指向结构体的指针，需要更新指针指向的类型
+                if (param_type && param_type->kind == CN_TYPE_POINTER &&
+                    param_type->as.pointer_to &&
+                    param_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                    CnType *ptr_type = param_type;
+                    CnType *pointee_type = ptr_type->as.pointer_to;
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                            pointee_type->as.struct_type.name,
+                                            pointee_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        // 创建新的指针类型，指向完整的结构体类型
+                        param_type = cn_type_new_pointer(type_sym->type);
+                    }
+                }
+                
                 sym->type = param_type;
                 sym->is_const = fn->parameters[j].is_const;  // 传递常量参数标记
             }
@@ -439,6 +523,22 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                             (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
                             // 创建新的指针类型，指向完整的结构体类型
                             decl->declared_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    }
+                    
+                    // 特殊处理：如果声明类型是结构体数组，需要更新元素类型
+                    if (decl->declared_type->kind == CN_TYPE_ARRAY &&
+                        decl->declared_type->as.array.element_type &&
+                        decl->declared_type->as.array.element_type->kind == CN_TYPE_STRUCT) {
+                        CnType *arr_type = decl->declared_type;
+                        CnType *elem_type = arr_type->as.array.element_type;
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                                elem_type->as.struct_type.name,
+                                                elem_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                            // 创建新的数组类型，元素类型为完整的结构体类型
+                            decl->declared_type = cn_type_new_array(type_sym->type, arr_type->as.array.length);
                         }
                     }
                     
@@ -977,7 +1077,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             } else {
                 // 报错：未定义标识符
                 cn_support_diag_semantic_error_undefined_identifier(
-                    diagnostics, NULL, 0, 0, name);
+                    diagnostics, expr->loc.filename, expr->loc.line, expr->loc.column, name);
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             }
             break;
@@ -1505,7 +1605,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    NULL, 0, 0,
+                    expr->loc.filename, expr->loc.line, expr->loc.column,
                     "语义错误：索引操作的对象必须是数组或指针类型");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             } else if (!index_type || index_type->kind != CN_TYPE_INT) {
@@ -1513,7 +1613,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    NULL, 0, 0,
+                    expr->loc.filename, expr->loc.line, expr->loc.column,
                     "语义错误：数组索引必须是整数类型");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             } else {
@@ -1657,7 +1757,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    NULL, 0, 0,
+                    expr->loc.filename, expr->loc.line, expr->loc.column,
                     "语义错误：成员访问操作的对象必须是结构体类型");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
@@ -1903,40 +2003,95 @@ static CnType *infer_return_from_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiag
             }
             break;
         
-        case CN_AST_STMT_IF:
+        case CN_AST_STMT_IF: {
+            // 创建 if 块作用域
+            CnSemScope *if_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+            
             // 检查then分支
             if (stmt->as.if_stmt.then_block) {
                 for (size_t i = 0; i < stmt->as.if_stmt.then_block->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(scope, stmt->as.if_stmt.then_block->stmts[i], diagnostics);
-                    if (ret) return ret;
+                    CnAstStmt *then_stmt = stmt->as.if_stmt.then_block->stmts[i];
+                    // 处理变量声明
+                    if (then_stmt && then_stmt->kind == CN_AST_STMT_VAR_DECL) {
+                        CnAstVarDecl *decl = &then_stmt->as.var_decl;
+                        cn_sem_scope_insert_symbol(if_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                    }
+                    CnType *ret = infer_return_from_stmt(if_scope, then_stmt, diagnostics);
+                    if (ret) {
+                        cn_sem_scope_free(if_scope);
+                        return ret;
+                    }
                 }
             }
             // 检查else分支
             if (stmt->as.if_stmt.else_block) {
                 for (size_t i = 0; i < stmt->as.if_stmt.else_block->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(scope, stmt->as.if_stmt.else_block->stmts[i], diagnostics);
-                    if (ret) return ret;
+                    CnAstStmt *else_stmt = stmt->as.if_stmt.else_block->stmts[i];
+                    // 处理变量声明
+                    if (else_stmt && else_stmt->kind == CN_AST_STMT_VAR_DECL) {
+                        CnAstVarDecl *decl = &else_stmt->as.var_decl;
+                        cn_sem_scope_insert_symbol(if_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                    }
+                    CnType *ret = infer_return_from_stmt(if_scope, else_stmt, diagnostics);
+                    if (ret) {
+                        cn_sem_scope_free(if_scope);
+                        return ret;
+                    }
                 }
             }
+            cn_sem_scope_free(if_scope);
             break;
+        }
         
-        case CN_AST_STMT_WHILE:
+        case CN_AST_STMT_WHILE: {
+            // 创建 while 块作用域
+            CnSemScope *while_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+            
             if (stmt->as.while_stmt.body) {
                 for (size_t i = 0; i < stmt->as.while_stmt.body->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(scope, stmt->as.while_stmt.body->stmts[i], diagnostics);
-                    if (ret) return ret;
+                    CnAstStmt *body_stmt = stmt->as.while_stmt.body->stmts[i];
+                    // 处理变量声明
+                    if (body_stmt && body_stmt->kind == CN_AST_STMT_VAR_DECL) {
+                        CnAstVarDecl *decl = &body_stmt->as.var_decl;
+                        cn_sem_scope_insert_symbol(while_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                    }
+                    CnType *ret = infer_return_from_stmt(while_scope, body_stmt, diagnostics);
+                    if (ret) {
+                        cn_sem_scope_free(while_scope);
+                        return ret;
+                    }
                 }
             }
+            cn_sem_scope_free(while_scope);
             break;
+        }
         
-        case CN_AST_STMT_FOR:
+        case CN_AST_STMT_FOR: {
+            // 创建 for 循环作用域
+            CnSemScope *for_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
+            
+            // 处理 for 循环的 init 语句（声明循环变量）
+            if (stmt->as.for_stmt.init && stmt->as.for_stmt.init->kind == CN_AST_STMT_VAR_DECL) {
+                CnAstVarDecl *decl = &stmt->as.for_stmt.init->as.var_decl;
+                CnSemSymbol *sym = cn_sem_scope_insert_symbol(for_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                if (sym) {
+                    sym->type = decl->declared_type;
+                }
+            }
+            
+            // 遍历 for 循环体
             if (stmt->as.for_stmt.body) {
                 for (size_t i = 0; i < stmt->as.for_stmt.body->stmt_count; i++) {
-                    CnType *ret = infer_return_from_stmt(scope, stmt->as.for_stmt.body->stmts[i], diagnostics);
-                    if (ret) return ret;
+                    CnType *ret = infer_return_from_stmt(for_scope, stmt->as.for_stmt.body->stmts[i], diagnostics);
+                    if (ret) {
+                        cn_sem_scope_free(for_scope);
+                        return ret;
+                    }
                 }
             }
+            cn_sem_scope_free(for_scope);
             break;
+        }
         
         default:
             break;
@@ -1960,6 +2115,31 @@ static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *blo
             CnAstVarDecl *decl = &stmt->as.var_decl;
             // 先插入变量符号，然后再推断初始化表达式的类型
             CnSemSymbol *sym = cn_sem_scope_insert_symbol(block_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+            
+            // 在推断初始化表达式之前，先设置变量类型
+            // 这样在初始化表达式中可以正确引用该变量
+            if (sym && decl->declared_type) {
+                CnType *var_type = decl->declared_type;
+                
+                // 特殊处理：如果声明类型是指向结构体的指针，需要更新指针指向的类型
+                if (var_type->kind == CN_TYPE_POINTER &&
+                    var_type->as.pointer_to &&
+                    var_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                    CnType *ptr_type = var_type;
+                    CnType *pointee_type = ptr_type->as.pointer_to;
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(block_scope,
+                                            pointee_type->as.struct_type.name,
+                                            pointee_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        // 创建新的指针类型，指向完整的结构体类型
+                        var_type = cn_type_new_pointer(type_sym->type);
+                    }
+                }
+                
+                sym->type = var_type;
+            }
+            
             CnType *init_type = infer_expr_type(block_scope, decl->initializer, diagnostics);
             if (sym) {
                 // 如果声明类型是结构体类型，需要从符号表查找真实类型（包含完整的字段信息）
@@ -1972,6 +2152,23 @@ static CnType *infer_function_return_type(CnSemScope *scope, CnAstBlockStmt *blo
                         var_type = type_sym->type;  // 替换为完整的结构体类型
                     }
                 }
+                
+                // 特殊处理：如果声明类型是指向结构体的指针，需要更新指针指向的类型
+                if (var_type && var_type->kind == CN_TYPE_POINTER &&
+                    var_type->as.pointer_to &&
+                    var_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                    CnType *ptr_type = var_type;
+                    CnType *pointee_type = ptr_type->as.pointer_to;
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(block_scope,
+                                            pointee_type->as.struct_type.name,
+                                            pointee_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        // 创建新的指针类型，指向完整的结构体类型
+                        var_type = cn_type_new_pointer(type_sym->type);
+                    }
+                }
+                
                 sym->type = var_type ? var_type : init_type;
             }
         }

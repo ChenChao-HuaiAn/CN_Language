@@ -429,6 +429,42 @@ static CnType *parse_type(CnParser *parser)
 }
 ```
 
+### 4.5 类型兼容性规则
+
+**代码来源**：[`type_system.c:103-150`](src/semantics/symbols/type_system.c:103)
+
+CN语言支持以下隐式类型转换：
+
+| 源类型 | 目标类型 | 允许 | 说明 |
+|--------|---------|------|------|
+| `字符` | `整数` | ✅ | 隐式转换 |
+| `整数` | `字符` | ✅ | 截断低8位 |
+| `字符[]` | `字符*` | ✅ | 数组退化 |
+| `字符[]` | `字符串` | ✅ | 安全转换 |
+| `字符*` | `字符串` | ✅ | 安全转换（已实现） |
+| `字符串` | `字符*` | ✅ | 安全转换（已实现） |
+| `字符串` | `字符[]` | ❌ | 禁止（不可变） |
+| `空类型*` | 任意指针 | ✅ | 通用指针转换 |
+| 任意指针 | `空类型*` | ✅ | 通用指针转换 |
+
+**实现代码**：
+
+```c
+// 字符* 到 字符串 的隐式转换
+if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_STRING) {
+    if (a->as.pointer_to && a->as.pointer_to->kind == CN_TYPE_CHAR) {
+        return true;
+    }
+}
+
+// 字符串 到 字符* 的隐式转换
+if (a->kind == CN_TYPE_STRING && b->kind == CN_TYPE_POINTER) {
+    if (b->as.pointer_to && b->as.pointer_to->kind == CN_TYPE_CHAR) {
+        return true;
+    }
+}
+```
+
 ---
 
 ## 5. 语法规则

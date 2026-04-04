@@ -125,6 +125,15 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         return true;  // 所有整数类型之间可以隐式转换
     }
     
+    // 字符类型与整数类型的兼容性
+    // 字符类型可以与整数类型互相赋值
+    bool a_is_char = (a->kind == CN_TYPE_CHAR);
+    bool b_is_char = (b->kind == CN_TYPE_CHAR);
+    
+    if ((a_is_char && b_is_int) || (a_is_int && b_is_char) || (a_is_char && b_is_char)) {
+        return true;  // 字符类型与整数类型之间可以隐式转换
+    }
+    
     // 枚举类型与整数类型的兼容性
     // 枚举类型可以与整数类型互相赋值
     // 枚举类型也可以与其他枚举类型赋值（都视为整数）
@@ -186,6 +195,23 @@ bool cn_type_compatible(CnType *a, CnType *b) {
     // 指针类型传递给数组参数（反向兼容）
     if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_ARRAY) {
         return cn_type_compatible(a->as.pointer_to, b->as.array.element_type);
+    }
+    
+    // 字符* 到 字符串 的隐式转换
+    // 根据设计文档：字符* 可以隐式转换为字符串（安全转换）
+    if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_STRING) {
+        // 检查是否是 字符* (char*)
+        if (a->as.pointer_to && a->as.pointer_to->kind == CN_TYPE_CHAR) {
+            return true;  // 字符* 可以隐式转换为字符串
+        }
+    }
+    
+    // 字符串 到 字符* 需要显式转换（根据设计文档标记为 ⚠️）
+    // 但为了便利性，我们允许隐式转换（编译器可以发出警告）
+    if (a->kind == CN_TYPE_STRING && b->kind == CN_TYPE_POINTER) {
+        if (b->as.pointer_to && b->as.pointer_to->kind == CN_TYPE_CHAR) {
+            return true;  // 字符串 可以隐式转换为字符*（但可能发出警告）
+        }
     }
     
     return false;

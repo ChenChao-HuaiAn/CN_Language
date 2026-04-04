@@ -45,6 +45,26 @@ static bool is_runtime_macro_conflict(const char *func_name) {
     return false;
 }
 
+/* 运行时库函数冲突检测：检测函数名是否与运行时库函数冲突 */
+static bool is_runtime_function_conflict(const char *func_name) {
+    if (!func_name) return false;
+    
+    /* 运行时库中已定义的中文函数名列表（来自 stdlib.h） */
+    static const char *runtime_functions[] = {
+        "分配内存", "释放内存", "重新分配内存", "分配清零内存",
+        "比较字符串", "限长比较字符串", "字符串长度", "复制字符串", "限长复制字符串", "连接字符串",
+        "转整数", "转小数", "是数字文本", "是整数文本",
+        NULL
+    };
+    
+    for (int i = 0; runtime_functions[i]; i++) {
+        if (strcmp(func_name, runtime_functions[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * @brief 检查表达式是否为字符串类型
  */
@@ -93,6 +113,7 @@ const char *get_c_type_string(CnType *type) {
             // CN语言规范：整数类型建议对应 C 的 long long 以保证 64 位
             return "long long";
         case CN_TYPE_FLOAT: return "double";
+        case CN_TYPE_CHAR: return "char";
         case CN_TYPE_BOOL: return "_Bool";
         case CN_TYPE_STRING: return "char*";
         
@@ -1265,6 +1286,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
+        /* 声明字符寄存器 */
+        for (int i = 0; i < actual_reg_count; i++) {
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_CHAR) {
+                fprintf(ctx->output_file, "  char r%d;\n", i);
+            }
+        }
+        
         /* 声明浮点寄存器 */
         for (int i = 0; i < actual_reg_count; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_FLOAT) {
@@ -1321,6 +1349,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                 case CN_TYPE_UINT32:
                 case CN_TYPE_UINT64_LL:
                 case CN_TYPE_BOOL:
+                case CN_TYPE_CHAR:
                     fprintf(ctx->output_file, "  return 0;\n");
                     break;
                 case CN_TYPE_FLOAT:
@@ -1331,6 +1360,17 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                 case CN_TYPE_STRING:
                 case CN_TYPE_POINTER:
                     fprintf(ctx->output_file, "  return NULL;\n");
+                    break;
+                case CN_TYPE_STRUCT:
+                    // 结构体类型：返回零初始化的结构体
+                    fprintf(ctx->output_file, "  {\n");
+                    fprintf(ctx->output_file, "    static %s _zero = {0};\n", get_c_type_string(func->return_type));
+                    fprintf(ctx->output_file, "    return _zero;\n");
+                    fprintf(ctx->output_file, "  }\n");
+                    break;
+                case CN_TYPE_ENUM:
+                    // 枚举类型：返回0
+                    fprintf(ctx->output_file, "  return 0;\n");
                     break;
                 default:
                     // 其他类型默认返回0
@@ -1685,8 +1725,13 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "\n");
     }
     
-    // 生成前向声明
+    // 生成前向声明（跳过运行时库已定义的函数）
     while (func) {
+        // 跳过与运行时库函数冲突的函数声明
+        if (is_runtime_function_conflict(func->name)) {
+            func = func->next;
+            continue;
+        }
         fprintf(file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
         for (size_t i = 0; i < func->param_count; i++) {
             fprintf(file, "%s", get_c_type_string(func->params[i].type));
@@ -1699,6 +1744,11 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
 
     func = module->first_func;
     while (func) {
+        // 跳过与运行时库函数冲突的函数定义（它们已在运行时库中实现）
+        if (is_runtime_function_conflict(func->name)) {
+            func = func->next;
+            continue;
+        }
         cn_cgen_function(&ctx, func);
         func = func->next;
     }
@@ -2105,8 +2155,13 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
         fprintf(file, "\n");
     }
     
-    // 生成前向声明
+    // 生成前向声明（跳过运行时库已定义的函数）
     while (func) {
+        // 跳过与运行时库函数冲突的函数声明
+        if (is_runtime_function_conflict(func->name)) {
+            func = func->next;
+            continue;
+        }
         // 直接使用原始函数名（不再使用编码名称）
         const char *c_func_name = get_c_function_name(func->name);
         
@@ -2122,6 +2177,11 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
 
     func = module->first_func;
     while (func) {
+        // 跳过与运行时库函数冲突的函数定义（它们已在运行时库中实现）
+        if (is_runtime_function_conflict(func->name)) {
+            func = func->next;
+            continue;
+        }
         cn_cgen_function(&ctx, func);
         func = func->next;
     }

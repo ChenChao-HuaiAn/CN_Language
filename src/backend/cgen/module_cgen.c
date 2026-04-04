@@ -147,6 +147,7 @@ static const char *get_c_type_str(CnType *type) {
     switch (type->kind) {
         case CN_TYPE_INT: return "long long";
         case CN_TYPE_FLOAT: return "double";
+        case CN_TYPE_CHAR: return "char";
         case CN_TYPE_BOOL: return "_Bool";
         case CN_TYPE_STRING: return "char*";
         case CN_TYPE_INT32: return "int";

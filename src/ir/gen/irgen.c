@@ -623,8 +623,18 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 
                 // 检查是否是构造函数调用（类型名作为函数名）
                 // 例如：点(10, 20) 或 学生("张三", 20, 85.5)
-                // 判断依据：callee是标识符，且expr->type是结构体类型
-                if (expr->type && expr->type->kind == CN_TYPE_STRUCT) {
+                // 判断依据：callee是标识符，且该标识符是结构体类型名（不是函数名）
+                // 需要在符号表中查找该名称，确认它是类型而不是函数
+                bool is_constructor = false;
+                if (expr->type && expr->type->kind == CN_TYPE_STRUCT && ctx->global_scope) {
+                    CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope, name, strlen(name));
+                    // 只有当符号是结构体类型时才是构造函数调用
+                    // 如果符号是函数，则不是构造函数
+                    if (sym && (sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_CLASS)) {
+                        is_constructor = true;
+                    }
+                }
+                if (is_constructor) {
                     // 构造函数调用：生成复合字面量
                     // 在C99中：(struct 类型名){.字段1 = 值1, .字段2 = 值2, ...}
                     // 但由于我们不知道字段名，使用位置初始化：
@@ -1586,6 +1596,21 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     if (!return_type) {
         // 如果没有显式声明返回类型，默认为整数类型（后续可通过返回语句推断）
         return_type = cn_type_new_primitive(CN_TYPE_INT);
+    } else if (return_type->kind == CN_TYPE_STRUCT && ctx->global_scope) {
+        // 特殊处理：如果返回类型是结构体类型，可能是枚举类型或类类型
+        // 需要从符号表查找真实类型
+        CnSemSymbol *type_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                return_type->as.struct_type.name,
+                                return_type->as.struct_type.name_length);
+        if (type_sym && type_sym->type) {
+            if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                // 替换为枚举类型
+                return_type = type_sym->type;
+            } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                // 替换为完整的结构体/类类型
+                return_type = type_sym->type;
+            }
+        }
     }
 
     CnIrFunction *ir_func = cn_ir_function_new(name, return_type);

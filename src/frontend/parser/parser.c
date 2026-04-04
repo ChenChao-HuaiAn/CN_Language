@@ -140,6 +140,7 @@ static bool is_type_start(CnParser *parser)
     switch (parser->current.kind) {
         case CN_TOKEN_KEYWORD_INT:      // 整数
         case CN_TOKEN_KEYWORD_FLOAT:    // 浮点
+        case CN_TOKEN_KEYWORD_CHAR:     // 字符
         case CN_TOKEN_KEYWORD_STRING:   // 字符串
         case CN_TOKEN_KEYWORD_BOOL:     // 布尔
         case CN_TOKEN_KEYWORD_VOID:     // 空类型
@@ -481,6 +482,7 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                    parser->current.kind == CN_TOKEN_KEYWORD_CONST ||
                    parser->current.kind == CN_TOKEN_KEYWORD_INT ||
                    parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_CHAR ||
                    parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
                    parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
                    parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
@@ -1533,6 +1535,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_VAR ||
         parser->current.kind == CN_TOKEN_KEYWORD_INT ||
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
+        parser->current.kind == CN_TOKEN_KEYWORD_CHAR ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
         parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
         parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
@@ -1629,6 +1632,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
                 declared_type = NULL;  // 后续通过类型推断
             } else if (parser->current.kind == CN_TOKEN_KEYWORD_INT ||
                        parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
+                       parser->current.kind == CN_TOKEN_KEYWORD_CHAR ||
                        parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
                        parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
                        parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
@@ -2515,6 +2519,9 @@ static CnType *parse_type(CnParser *parser)
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_FLOAT) {
         type = cn_type_new_primitive(CN_TYPE_FLOAT);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_CHAR) {
+        type = cn_type_new_primitive(CN_TYPE_CHAR);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_BOOL) {
         type = cn_type_new_primitive(CN_TYPE_BOOL);
