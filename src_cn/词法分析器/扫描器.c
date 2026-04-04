@@ -98,8 +98,9 @@ struct 词元 {
 };
 struct 关键字条目 {
     char* 名称;
-    enum 词元类型枚举 类型;
+    long long 类型;
 };
+extern _Bool cn_var_关键字表已初始化;
 extern struct 关键字条目* cn_var_关键字表;
 extern long long cn_var_关键字表大小;
 void 初始化关键字表(void);
