@@ -253,6 +253,21 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
         CnStructField *field = &struct_type->as.struct_type.fields[i];
         if (field && field->name && field->name_length == field_name_length &&
             memcmp(field->name, field_name, field_name_length) == 0) {
+            // 调试输出：显示找到的字段类型
+            fprintf(stderr, "[DEBUG] 找到字段 %.*s, 字段类型 kind=%d\n",
+                    (int)field->name_length, field->name,
+                    field->field_type ? field->field_type->kind : -1);
+            if (field->field_type && field->field_type->kind == CN_TYPE_POINTER &&
+                field->field_type->as.pointer_to) {
+                fprintf(stderr, "[DEBUG] 字段指针指向类型 kind=%d\n",
+                        field->field_type->as.pointer_to->kind);
+                if (field->field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                    field->field_type->as.pointer_to->as.struct_type.name) {
+                    fprintf(stderr, "[DEBUG] 字段指针指向结构体='%.*s'\n",
+                            (int)field->field_type->as.pointer_to->as.struct_type.name_length,
+                            field->field_type->as.pointer_to->as.struct_type.name);
+                }
+            }
             return field;
         }
     }
@@ -260,7 +275,48 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
     return NULL; // 未找到匹配的字段
 }
 
+// 枚举成员查找回调上下文
+typedef struct {
+    const char *member_name;
+    size_t member_name_length;
+    CnSemSymbol *found_sym;
+} EnumMemberFindContext;
+
+// 枚举成员查找回调函数
+static void enum_member_find_callback(CnSemSymbol *symbol, void *user_data) {
+    EnumMemberFindContext *ctx = (EnumMemberFindContext *)user_data;
+    
+    // 如果已经找到，直接返回
+    if (ctx->found_sym) return;
+    
+    if (symbol && symbol->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+        // 检查成员名是否以 "_" + member_name 结尾
+        size_t s_name_len = symbol->name_length;
+        if (s_name_len > ctx->member_name_length + 1) {
+            // 查找最后一个下划线的位置
+            const char *last_underscore = NULL;
+            for (size_t j = 0; j < s_name_len; j++) {
+                if (symbol->name[j] == '_') {
+                    last_underscore = symbol->name + j;
+                }
+            }
+            if (last_underscore) {
+                // 比较下划线后的部分
+                size_t suffix_len = s_name_len - (last_underscore - symbol->name) - 1;
+                if (suffix_len == ctx->member_name_length &&
+                    memcmp(last_underscore + 1, ctx->member_name, ctx->member_name_length) == 0) {
+                    ctx->found_sym = symbol;
+                }
+            }
+        }
+    }
+}
+
 // 在枚举类型中查找成员
+// 支持多种查找方式：
+// 1. 直接使用成员名查找（如 "错误"）
+// 2. 使用带枚举类型名前缀的成员名查找（如 "诊断严重级别_错误"）
+// 3. 遍历所有成员，查找以 "_" + 成员名 结尾的成员（如 "诊断_错误" 匹配 "错误"）
 CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                       const char *member_name,
                                       size_t member_name_length) {
@@ -271,8 +327,44 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
         return NULL;
     }
 
-    // 在枚举作用域中查找成员
-    return cn_sem_scope_lookup_shallow(enum_type->as.enum_type.enum_scope,
-                                       member_name,
-                                       member_name_length);
+    // 首先尝试直接查找成员名
+    CnSemSymbol *sym = cn_sem_scope_lookup_shallow(enum_type->as.enum_type.enum_scope,
+                                                   member_name,
+                                                   member_name_length);
+    if (sym) {
+        return sym;
+    }
+
+    // 如果直接查找失败，尝试使用枚举类型名作为前缀查找
+    // 例如：成员名 "错误" 尝试查找 "诊断严重级别_错误"
+    const char *enum_name = enum_type->as.enum_type.name;
+    size_t enum_name_len = enum_type->as.enum_type.name_length;
+    
+    if (enum_name && enum_name_len > 0) {
+        // 构建带前缀的成员名：枚举类型名_成员名
+        size_t prefixed_name_len = enum_name_len + 1 + member_name_length; // 枚举名 + "_" + 成员名
+        char *prefixed_name = malloc(prefixed_name_len + 1);
+        if (prefixed_name) {
+            memcpy(prefixed_name, enum_name, enum_name_len);
+            prefixed_name[enum_name_len] = '_';
+            memcpy(prefixed_name + enum_name_len + 1, member_name, member_name_length);
+            prefixed_name[prefixed_name_len] = '\0';
+            
+            sym = cn_sem_scope_lookup_shallow(enum_type->as.enum_type.enum_scope,
+                                              prefixed_name,
+                                              prefixed_name_len);
+            free(prefixed_name);
+            if (sym) {
+                return sym;
+            }
+        }
+    }
+
+    // 如果仍然找不到，遍历枚举作用域中所有符号，查找以 "_" + 成员名 结尾的成员
+    // 例如：成员名 "错误" 匹配 "诊断_错误" 或 "错误类型_错误"
+    EnumMemberFindContext ctx = { member_name, member_name_length, NULL };
+    cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
+                                enum_member_find_callback, &ctx);
+
+    return ctx.found_sym;
 }

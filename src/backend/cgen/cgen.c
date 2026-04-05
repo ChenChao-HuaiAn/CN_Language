@@ -1556,18 +1556,21 @@ void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
 }
 
 // 生成枚举定义（从 AST 枚举声明）
+// 为枚举成员自动添加枚举类型名称作为前缀，避免C语言中枚举成员全局命名空间冲突
 void cn_cgen_enum_decl(CnCCodeGenContext *ctx, CnAstStmt *enum_stmt) {
     if (!ctx || !enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) return;
     
     CnAstEnumDecl *decl = &enum_stmt->as.enum_decl;
     
     // 生成枚举定义
-    fprintf(ctx->output_file, "enum %.*s {\n", 
+    fprintf(ctx->output_file, "enum %.*s {\n",
             (int)decl->name_length, decl->name);
     
-    // 生成枚举成员
+    // 生成枚举成员（添加枚举类型名作为前缀）
     for (size_t i = 0; i < decl->member_count; i++) {
-        fprintf(ctx->output_file, "    %.*s",
+        // 输出格式：枚举类型名_成员名
+        fprintf(ctx->output_file, "    %.*s_%.*s",
+                (int)decl->name_length, decl->name,
                 (int)decl->members[i].name_length,
                 decl->members[i].name);
         
@@ -1847,14 +1850,21 @@ typedef struct {
 typedef struct {
     FILE *file;
     bool *first;
+    const char *enum_name;      // 枚举类型名称（用于添加前缀）
+    size_t enum_name_len;       // 枚举类型名称长度
 } EnumMemberContext;
 
 // 枚举成员收集回调函数
+// 为枚举成员自动添加枚举类型名称作为前缀，避免C语言中枚举成员全局命名空间冲突
 static void enum_member_callback(CnSemSymbol *sym, void *user_data) {
     EnumMemberContext *ctx = (EnumMemberContext *)user_data;
     if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
         if (!(*ctx->first)) fprintf(ctx->file, ",\n");
-        fprintf(ctx->file, "    %.*s = %ld", (int)sym->name_length, sym->name, sym->as.enum_value);
+        // 输出格式：枚举类型名_成员名 = 值
+        fprintf(ctx->file, "    %.*s_%.*s = %ld",
+                (int)ctx->enum_name_len, ctx->enum_name,
+                (int)sym->name_length, sym->name,
+                sym->as.enum_value);
         *ctx->first = false;
     }
 }
@@ -1931,8 +1941,18 @@ static void reset_generated_types(void) {
 // 前向声明
 static void cn_cgen_enum_type_definition(FILE *file, CnType *type);
 
+// 前向声明
+static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type, bool emit_forward);
+
 // 生成结构体类型定义（从 CnType 生成）
+// 这个版本会先输出前向声明，然后输出定义
 static void cn_cgen_struct_type_definition(FILE *file, CnType *type) {
+    cn_cgen_struct_type_definition_with_forward(file, type, true);
+}
+
+// 生成结构体类型定义（内部实现）
+// emit_forward: 是否在定义前输出前向声明
+static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type, bool emit_forward) {
     if (!file || !type || type->kind != CN_TYPE_STRUCT) return;
     
     // 结构体名称
@@ -1943,17 +1963,27 @@ static void cn_cgen_struct_type_definition(FILE *file, CnType *type) {
     // 检查是否已生成
     if (is_type_already_generated(name, name_len)) return;
     
-    // 先生成依赖的枚举类型定义
+    // 先生成依赖的类型定义（枚举和结构体）
     for (size_t i = 0; i < type->as.struct_type.field_count; i++) {
         CnStructField *field = &type->as.struct_type.fields[i];
-        if (field->field_type && field->field_type->kind == CN_TYPE_ENUM) {
-            // 字段类型是枚举，需要先生成枚举定义
-            cn_cgen_enum_type_definition(file, field->field_type);
+        if (field->field_type) {
+            if (field->field_type->kind == CN_TYPE_ENUM) {
+                // 字段类型是枚举，需要先生成枚举定义
+                cn_cgen_enum_type_definition(file, field->field_type);
+            } else if (field->field_type->kind == CN_TYPE_STRUCT) {
+                // 字段类型是结构体，需要先生成该结构体定义（不输出前向声明）
+                cn_cgen_struct_type_definition_with_forward(file, field->field_type, false);
+            }
         }
     }
     
     // 标记为已生成
     mark_type_as_generated(name, name_len);
+    
+    // 如果需要，输出前向声明（用于解决循环依赖）
+    if (emit_forward) {
+        fprintf(file, "struct %.*s;\n", (int)name_len, name);
+    }
     
     // 生成结构体定义
     fprintf(file, "struct %.*s {\n", (int)name_len, name);
@@ -1994,13 +2024,50 @@ static void cn_cgen_enum_type_definition(FILE *file, CnType *type) {
     
     // 使用回调遍历枚举成员
     bool first = true;
-    EnumMemberContext ctx = { file, &first };
+    EnumMemberContext ctx = { file, &first, name, name_len };
     cn_sem_scope_foreach_symbol(enum_scope, enum_member_callback, &ctx);
     
     fprintf(file, "\n};\n");
 }
 
+// 枚举优先遍历回调上下文结构（第一阶段：只输出枚举）
+typedef struct {
+    FILE *file;
+} EnumFirstPassContext;
+
+// 枚举优先遍历回调函数（只输出枚举定义）
+static void enum_first_pass_callback(CnSemSymbol *sym, void *user_data) {
+    EnumFirstPassContext *ctx = (EnumFirstPassContext *)user_data;
+    // 只导出公开的符号
+    if (!sym->is_public) {
+        return;
+    }
+    
+    if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
+        cn_cgen_enum_type_definition(ctx->file, sym->type);
+    }
+}
+
+// 结构体优先遍历回调上下文结构（第二阶段：只输出结构体）
+typedef struct {
+    FILE *file;
+} StructFirstPassContext;
+
+// 结构体优先遍历回调函数（只输出结构体定义）
+static void struct_first_pass_callback(CnSemSymbol *sym, void *user_data) {
+    StructFirstPassContext *ctx = (StructFirstPassContext *)user_data;
+    // 只导出公开的符号
+    if (!sym->is_public) {
+        return;
+    }
+    
+    if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
+        cn_cgen_struct_type_definition(ctx->file, sym->type);
+    }
+}
+
 // 通配符导入回调函数（遍历模块作用域符号时调用）
+// 注意：此回调只输出函数前向声明和变量声明，不再输出类型定义
 static void wildcard_import_callback(CnSemSymbol *sym, void *user_data) {
     WildcardImportContext *ctx = (WildcardImportContext *)user_data;
     // 只导出公开的符号
@@ -2016,13 +2083,8 @@ static void wildcard_import_callback(CnSemSymbol *sym, void *user_data) {
         // 生成变量的 extern 声明
         const char *var_type = get_c_type_string(sym->type);
         fprintf(ctx->file, "extern %s cn_var_%.*s;\n", var_type, (int)sym->name_length, sym->name);
-    } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
-        // 生成结构体定义
-        cn_cgen_struct_type_definition(ctx->file, sym->type);
-    } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
-        // 生成枚举定义
-        cn_cgen_enum_type_definition(ctx->file, sym->type);
     }
+    // 注意：结构体和枚举定义已在第一、二阶段输出，此处不再输出
 }
 
 // 全量导入回调上下文结构
@@ -2033,6 +2095,7 @@ typedef struct {
 } FullImportContext;
 
 // 全量导入回调函数（遍历模块作用域符号时调用）
+// 注意：此回调只输出函数前向声明和变量声明，不再输出类型定义
 static void full_import_callback(CnSemSymbol *sym, void *user_data) {
     FullImportContext *ctx = (FullImportContext *)user_data;
     // 只导出公开的符号
@@ -2048,13 +2111,8 @@ static void full_import_callback(CnSemSymbol *sym, void *user_data) {
         // 生成变量的 extern 声明
         const char *var_type = get_c_type_string(sym->type);
         fprintf(ctx->file, "extern %s cn_var_%.*s;\n", var_type, (int)sym->name_length, sym->name);
-    } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
-        // 生成结构体定义
-        cn_cgen_struct_type_definition(ctx->file, sym->type);
-    } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
-        // 生成枚举定义
-        cn_cgen_enum_type_definition(ctx->file, sym->type);
     }
+    // 注意：结构体和枚举定义已在第一、二阶段输出，此处不再输出
 }
 
 /**
@@ -2108,6 +2166,11 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
 /**
  * @brief 从全局作用域获取导入符号的类型信息并生成前向声明
  *
+ * 修复：分三个阶段输出，确保类型依赖顺序正确：
+ * 1. 先输出所有枚举定义（枚举不依赖其他类型）
+ * 2. 再输出所有结构体定义（结构体可能依赖枚举）
+ * 3. 最后输出函数前向声明（函数可能依赖结构体和枚举）
+ *
  * @param file 输出文件
  * @param program AST程序节点
  * @param global_scope 全局作用域
@@ -2122,9 +2185,11 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
         return;
     }
     
-    fprintf(file, "// Forward Declarations - 从导入模块\n");
+    // =========================================================================
+    // 第一阶段：输出所有枚举定义（枚举不依赖其他类型，必须最先输出）
+    // =========================================================================
+    fprintf(file, "// Enum Definitions - 从导入模块\n");
     
-    // 遍历所有导入语句
     for (size_t i = 0; i < program->import_count; i++) {
         CnAstStmt *import_stmt = program->imports[i];
         if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
@@ -2133,56 +2198,150 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
         
         CnAstImportStmt *import = &import_stmt->as.import_stmt;
         
-        // 处理选择性导入（从 模块 导入 { 成员1, 成员2 }）
+        // 处理选择性导入
         if (import->kind == CN_IMPORT_FROM_SELECTIVE && import->members && import->member_count > 0) {
-            // 遍历导入的成员
+            for (size_t j = 0; j < import->member_count; j++) {
+                CnAstImportMember *member = &import->members[j];
+                CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, member->name, member->name_length);
+                if (symbol && symbol->kind == CN_SEM_SYMBOL_ENUM && symbol->type) {
+                    cn_cgen_enum_type_definition(file, symbol->type);
+                }
+            }
+        }
+        // 处理通配符导入
+        else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
+            CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, import->module_name, import->module_name_length);
+            if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && module_sym->as.module_scope) {
+                // 只输出枚举定义
+                EnumFirstPassContext ctx = { file };
+                cn_sem_scope_foreach_symbol(module_sym->as.module_scope, enum_first_pass_callback, &ctx);
+            }
+        }
+        // 处理全量导入和从模块导入
+        else if (import->kind == CN_IMPORT_FULL || import->kind == CN_IMPORT_FROM_MODULE) {
+            const char *module_name = import->module_name;
+            size_t module_name_len = import->module_name_length;
+            
+            if (!module_name && import->module_path && import->module_path->segment_count > 0) {
+                CnAstModulePathSegment *last_seg = &import->module_path->segments[import->module_path->segment_count - 1];
+                module_name = last_seg->name;
+                module_name_len = last_seg->name_length;
+            }
+            
+            if (!module_name) continue;
+            
+            CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
+            if (sym) {
+                if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+                    EnumFirstPassContext ctx = { file };
+                    cn_sem_scope_foreach_symbol(sym->as.module_scope, enum_first_pass_callback, &ctx);
+                } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
+                    cn_cgen_enum_type_definition(file, sym->type);
+                }
+            }
+        }
+    }
+    
+    // =========================================================================
+    // 第二阶段：输出所有结构体定义（结构体可能依赖枚举）
+    // =========================================================================
+    fprintf(file, "\n// Struct Definitions - 从导入模块\n");
+    
+    for (size_t i = 0; i < program->import_count; i++) {
+        CnAstStmt *import_stmt = program->imports[i];
+        if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
+            continue;
+        }
+        
+        CnAstImportStmt *import = &import_stmt->as.import_stmt;
+        
+        // 处理选择性导入
+        if (import->kind == CN_IMPORT_FROM_SELECTIVE && import->members && import->member_count > 0) {
+            for (size_t j = 0; j < import->member_count; j++) {
+                CnAstImportMember *member = &import->members[j];
+                CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, member->name, member->name_length);
+                if (symbol && symbol->kind == CN_SEM_SYMBOL_STRUCT && symbol->type) {
+                    cn_cgen_struct_type_definition(file, symbol->type);
+                }
+            }
+        }
+        // 处理通配符导入
+        else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
+            CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, import->module_name, import->module_name_length);
+            if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && module_sym->as.module_scope) {
+                StructFirstPassContext ctx = { file };
+                cn_sem_scope_foreach_symbol(module_sym->as.module_scope, struct_first_pass_callback, &ctx);
+            }
+        }
+        // 处理全量导入和从模块导入
+        else if (import->kind == CN_IMPORT_FULL || import->kind == CN_IMPORT_FROM_MODULE) {
+            const char *module_name = import->module_name;
+            size_t module_name_len = import->module_name_length;
+            
+            if (!module_name && import->module_path && import->module_path->segment_count > 0) {
+                CnAstModulePathSegment *last_seg = &import->module_path->segments[import->module_path->segment_count - 1];
+                module_name = last_seg->name;
+                module_name_len = last_seg->name_length;
+            }
+            
+            if (!module_name) continue;
+            
+            CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
+            if (sym) {
+                if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+                    StructFirstPassContext ctx = { file };
+                    cn_sem_scope_foreach_symbol(sym->as.module_scope, struct_first_pass_callback, &ctx);
+                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
+                    cn_cgen_struct_type_definition(file, sym->type);
+                }
+            }
+        }
+    }
+    
+    // =========================================================================
+    // 第三阶段：输出函数前向声明和变量声明（可能依赖结构体和枚举）
+    // =========================================================================
+    fprintf(file, "\n// Forward Declarations - 从导入模块\n");
+    
+    for (size_t i = 0; i < program->import_count; i++) {
+        CnAstStmt *import_stmt = program->imports[i];
+        if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
+            continue;
+        }
+        
+        CnAstImportStmt *import = &import_stmt->as.import_stmt;
+        
+        // 处理选择性导入
+        if (import->kind == CN_IMPORT_FROM_SELECTIVE && import->members && import->member_count > 0) {
             for (size_t j = 0; j < import->member_count; j++) {
                 CnAstImportMember *member = &import->members[j];
                 const char *symbol_name = member->name;
                 size_t symbol_name_len = member->name_length;
                 
-                // 从全局作用域查找符号获取类型信息
                 CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, symbol_name, symbol_name_len);
                 if (symbol && symbol->type) {
                     if (symbol->kind == CN_SEM_SYMBOL_FUNCTION) {
-                        // 生成函数前向声明
                         cn_cgen_function_forward_declaration(file, symbol_name, symbol_name_len, symbol->type);
                     } else if (symbol->kind == CN_SEM_SYMBOL_VARIABLE) {
-                        // 生成变量的 extern 声明
                         const char *var_type = get_c_type_string(symbol->type);
                         fprintf(file, "extern %s cn_var_%.*s;\n", var_type, (int)symbol_name_len, symbol_name);
-                    } else if (symbol->kind == CN_SEM_SYMBOL_STRUCT) {
-                        // 生成结构体定义
-                        cn_cgen_struct_type_definition(file, symbol->type);
-                    } else if (symbol->kind == CN_SEM_SYMBOL_ENUM) {
-                        // 生成枚举定义
-                        cn_cgen_enum_type_definition(file, symbol->type);
                     }
                 }
             }
         }
-        // 处理通配符导入（从 模块 导入 *）
+        // 处理通配符导入
         else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
-            // 通配符导入：需要为模块中的公开函数生成带模块前缀的前向声明
-            const char *module_name = import->module_name;
-            size_t module_name_len = import->module_name_length;
-            
-            // 从全局作用域查找模块符号
-            CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
+            CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, import->module_name, import->module_name_length);
             if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && module_sym->as.module_scope) {
-                // 使用回调遍历模块作用域中的所有符号
-                WildcardImportContext ctx = { file, module_name, module_name_len };
+                WildcardImportContext ctx = { file, import->module_name, import->module_name_length };
                 cn_sem_scope_foreach_symbol(module_sym->as.module_scope, wildcard_import_callback, &ctx);
             }
         }
-        // 处理全量导入（导入 模块 或 导入 ./模块）
-        else if (import->kind == CN_IMPORT_FULL) {
-            // 全量导入：模块名作为前缀访问成员
-            // 需要为模块中的公开函数生成前向声明，格式：cn_module_模块名__成员名
+        // 处理全量导入和从模块导入
+        else if (import->kind == CN_IMPORT_FULL || import->kind == CN_IMPORT_FROM_MODULE) {
             const char *module_name = import->module_name;
             size_t module_name_len = import->module_name_length;
             
-            // 如果 module_name 为空，尝试从 module_path 获取最后一个段
             if (!module_name && import->module_path && import->module_path->segment_count > 0) {
                 CnAstModulePathSegment *last_seg = &import->module_path->segments[import->module_path->segment_count - 1];
                 module_name = last_seg->name;
@@ -2191,51 +2350,10 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
             
             if (!module_name) continue;
             
-            // 从全局作用域查找符号
             CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
-            if (sym) {
-                if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
-                    // 模块符号：遍历模块作用域中的所有符号
-                    FullImportContext fctx = { file, module_name, module_name_len };
-                    cn_sem_scope_foreach_symbol(sym->as.module_scope, full_import_callback, &fctx);
-                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
-                    // 结构体类型：直接生成结构体定义
-                    cn_cgen_struct_type_definition(file, sym->type);
-                } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
-                    // 枚举类型：直接生成枚举定义
-                    cn_cgen_enum_type_definition(file, sym->type);
-                }
-            }
-        }
-        // 处理从模块导入（导入 ./模块 或 导入 ../模块）
-        else if (import->kind == CN_IMPORT_FROM_MODULE) {
-            // 从模块导入：需要为模块中的公开符号生成定义
-            const char *module_name = import->module_name;
-            size_t module_name_len = import->module_name_length;
-            
-            // 如果 module_name 为空，尝试从 module_path 获取最后一个段
-            if (!module_name && import->module_path && import->module_path->segment_count > 0) {
-                CnAstModulePathSegment *last_seg = &import->module_path->segments[import->module_path->segment_count - 1];
-                module_name = last_seg->name;
-                module_name_len = last_seg->name_length;
-            }
-            
-            if (!module_name) continue;
-            
-            // 从全局作用域查找符号
-            CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
-            if (sym) {
-                if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
-                    // 模块符号：遍历模块作用域中的所有符号
-                    FullImportContext fctx = { file, module_name, module_name_len };
-                    cn_sem_scope_foreach_symbol(sym->as.module_scope, full_import_callback, &fctx);
-                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
-                    // 结构体类型：直接生成结构体定义
-                    cn_cgen_struct_type_definition(file, sym->type);
-                } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
-                    // 枚举类型：直接生成枚举定义
-                    cn_cgen_enum_type_definition(file, sym->type);
-                }
+            if (sym && sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+                FullImportContext fctx = { file, module_name, module_name_len };
+                cn_sem_scope_foreach_symbol(sym->as.module_scope, full_import_callback, &fctx);
             }
         }
     }

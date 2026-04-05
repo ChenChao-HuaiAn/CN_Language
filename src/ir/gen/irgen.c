@@ -544,6 +544,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     CnIrOperand addr = cn_ir_op_symbol(name, expr->type);
                     free(name);
                     emit(ctx, cn_ir_inst_new(CN_IR_INST_ADDRESS_OF, dest, addr, cn_ir_op_none()));
+                } else if (expr->as.unary.operand->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+                    // 成员访问取地址：&obj.member
+                    // 先生成成员访问获取成员值，然后取地址
+                    CnIrOperand member = cn_ir_gen_expr(ctx, expr->as.unary.operand);
+                    emit(ctx, cn_ir_inst_new(CN_IR_INST_ADDRESS_OF, dest, member, cn_ir_op_none()));
                 }
                 return dest;
             } else if (expr->as.unary.op == CN_AST_UNARY_OP_DEREFERENCE) {

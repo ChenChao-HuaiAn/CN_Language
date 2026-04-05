@@ -251,11 +251,31 @@ static void print_diagnostics(const CnDiagnostics *diagnostics)
         return;
     }
 
+    fprintf(stderr, "[DEBUG] print_diagnostics: count=%zu, items=%p\n",
+            diagnostics->count, (void*)diagnostics->items);
+    fflush(stderr);
+
     for (i = 0; i < diagnostics->count; ++i) {
+        fprintf(stderr, "[DEBUG] 处理第 %zu 条诊断信息\n", i);
+        fflush(stderr);
+        
         const CnDiagnostic *d = &diagnostics->items[i];
+        
+        fprintf(stderr, "[DEBUG] d=%p, severity=%d, code=%d\n",
+                (void*)d, (int)d->severity, (int)d->code);
+        fflush(stderr);
+        
         const char *severity_str = (d->severity == CN_DIAG_SEVERITY_ERROR) ? "错误" : "警告";
         const char *filename = d->filename ? d->filename : "<未知文件>";
+        
+        fprintf(stderr, "[DEBUG] filename=%s\n", filename);
+        fflush(stderr);
+        
         const char *message = d->message ? d->message : "<无消息>";
+        
+        fprintf(stderr, "[DEBUG] message=%s\n", message);
+        fflush(stderr);
+        
         int line = d->line;
         int column = d->column;
 
@@ -267,7 +287,10 @@ static void print_diagnostics(const CnDiagnostics *diagnostics)
                 line,
                 column,
                 message);
+        fflush(stderr);
     }
+    fprintf(stderr, "[DEBUG] print_diagnostics 完成\n");
+    fflush(stderr);
 }
 
 // 检查诊断中是否存在错误
@@ -682,12 +705,20 @@ int main(int argc, char **argv)
         cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);
         cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC);
         print_diagnostics(&diagnostics);
+        fprintf(stderr, "[DEBUG] 开始清理资源...\n");
+        fprintf(stderr, "[DEBUG] 释放 global_scope: %p\n", (void*)global_scope);
         cn_sem_scope_free(global_scope);
+        fprintf(stderr, "[DEBUG] 释放 program: %p\n", (void*)program);
         cn_frontend_ast_program_free(program);
+        fprintf(stderr, "[DEBUG] 释放 parser: %p\n", (void*)parser);
         cn_frontend_parser_free(parser);
+        fprintf(stderr, "[DEBUG] 释放 preprocessor\n");
         cn_frontend_preprocessor_free(&preprocessor);
+        fprintf(stderr, "[DEBUG] 释放 diagnostics\n");
         cn_support_diagnostics_free(&diagnostics);
+        fprintf(stderr, "[DEBUG] 释放 source\n");
         free(source);
+        fprintf(stderr, "[DEBUG] 清理完成\n");
         return 1;
     }
     cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);

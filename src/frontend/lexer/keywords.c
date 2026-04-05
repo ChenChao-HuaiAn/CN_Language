@@ -46,6 +46,7 @@ static const CnKeywordEntry g_keywords[] = {
     {"命名空间", CN_TOKEN_KEYWORD_NAMESPACE, "预留关键字"},
     {"模板", CN_TOKEN_KEYWORD_TEMPLATE, "预留关键字"},
     {"常量", CN_TOKEN_KEYWORD_CONST, "预留关键字"},
+    {"常量字符串", CN_TOKEN_KEYWORD_CONST_STRING, "类型别名关键字"},
 
     // OOP关键字 (9个) - 面向对象编程支持
     {"类", CN_TOKEN_KEYWORD_CLASS, "OOP关键字"},

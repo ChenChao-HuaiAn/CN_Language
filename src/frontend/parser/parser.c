@@ -142,6 +142,7 @@ static bool is_type_start(CnParser *parser)
         case CN_TOKEN_KEYWORD_FLOAT:    // 浮点
         case CN_TOKEN_KEYWORD_CHAR:     // 字符
         case CN_TOKEN_KEYWORD_STRING:   // 字符串
+        case CN_TOKEN_KEYWORD_CONST_STRING: // 常量字符串
         case CN_TOKEN_KEYWORD_BOOL:     // 布尔
         case CN_TOKEN_KEYWORD_VOID:     // 空类型
         case CN_TOKEN_KEYWORD_STRUCT:   // 结构体
@@ -484,6 +485,7 @@ static CnAstProgram *parse_program_internal(CnParser *parser)
                    parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
                    parser->current.kind == CN_TOKEN_KEYWORD_CHAR ||
                    parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
+                   parser->current.kind == CN_TOKEN_KEYWORD_CONST_STRING ||
                    parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
                    parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
             // 解析全局变量声明（使用类型关键字开头）
@@ -1537,6 +1539,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
         parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
         parser->current.kind == CN_TOKEN_KEYWORD_CHAR ||
         parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
+        parser->current.kind == CN_TOKEN_KEYWORD_CONST_STRING ||
         parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
         parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
         is_var_decl = 1;
@@ -1634,6 +1637,7 @@ static CnAstStmt *parse_statement(CnParser *parser)
                        parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
                        parser->current.kind == CN_TOKEN_KEYWORD_CHAR ||
                        parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
+                       parser->current.kind == CN_TOKEN_KEYWORD_CONST_STRING ||
                        parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
                        parser->current.kind == CN_TOKEN_KEYWORD_VOID) {
                 declared_type = parse_type(parser);
@@ -2527,6 +2531,10 @@ static CnType *parse_type(CnParser *parser)
         type = cn_type_new_primitive(CN_TYPE_BOOL);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_STRING) {
+        type = cn_type_new_primitive(CN_TYPE_STRING);
+        parser_advance(parser);
+    } else if (parser->current.kind == CN_TOKEN_KEYWORD_CONST_STRING) {
+        // 常量字符串 类型别名，等同于 字符串 类型
         type = cn_type_new_primitive(CN_TYPE_STRING);
         parser_advance(parser);
     } else if (parser->current.kind == CN_TOKEN_KEYWORD_VOID) {

@@ -3,6 +3,14 @@
 
 #include <stddef.h>
 #include <stdlib.h>
+#include <string.h>
+
+/* 跨平台 strdup 支持 */
+#ifdef _MSC_VER
+#define cn_strdup _strdup
+#else
+#define cn_strdup strdup
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -160,8 +168,18 @@ static inline void cn_support_diagnostics_init(CnDiagnostics *diagnostics)
 // 释放诊断集合内部资源
 static inline void cn_support_diagnostics_free(CnDiagnostics *diagnostics)
 {
+    size_t i;
     if (!diagnostics) {
         return;
+    }
+    // 释放每个诊断项的文件名和消息字符串
+    for (i = 0; i < diagnostics->count; i++) {
+        if (diagnostics->items[i].filename) {
+            free((void*)diagnostics->items[i].filename);
+        }
+        if (diagnostics->items[i].message) {
+            free((void*)diagnostics->items[i].message);
+        }
     }
     free(diagnostics->items);
     diagnostics->items = NULL;
@@ -199,10 +217,11 @@ static inline void cn_support_diagnostics_report(
 
     diagnostics->items[diagnostics->count].severity = severity;
     diagnostics->items[diagnostics->count].code = code;
-    diagnostics->items[diagnostics->count].filename = filename;
+    // 使用 cn_strdup 复制文件名和消息字符串，避免指针悬空问题
+    diagnostics->items[diagnostics->count].filename = filename ? cn_strdup(filename) : NULL;
     diagnostics->items[diagnostics->count].line = line;
     diagnostics->items[diagnostics->count].column = column;
-    diagnostics->items[diagnostics->count].message = message;
+    diagnostics->items[diagnostics->count].message = message ? cn_strdup(message) : NULL;
     diagnostics->count += 1;
 }
 
