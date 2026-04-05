@@ -1064,7 +1064,7 @@ struct 程序节点* 创建程序节点(void);
 struct 解析器* 创建解析器(struct 扫描器*, struct 诊断集合*);
 void 销毁解析器(struct 解析器*);
 struct 程序节点* 解析程序(struct 解析器*);
-void 前进(struct 解析器*);
+void 前进词元(struct 解析器*);
 _Bool 期望(struct 解析器*, enum 词元类型枚举);
 _Bool 检查(struct 解析器*, enum 词元类型枚举);
 _Bool 匹配(struct 解析器*, enum 词元类型枚举);
@@ -1242,7 +1242,7 @@ struct 程序节点* 解析程序(struct 解析器* cn_var_实例) {
   return NULL;
 }
 
-void 前进(struct 解析器* cn_var_实例) {
+void 前进词元(struct 解析器* cn_var_实例) {
   struct 解析器* r0;
   struct 解析器* r2;
   struct 解析器* r4;
@@ -1296,7 +1296,7 @@ _Bool 期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
 
   if_then_21:
   r5 = cn_var_实例;
-  前进(r5);
+  前进词元(r5);
   return 1;
   goto if_merge_22;
 
@@ -1348,7 +1348,7 @@ _Bool 匹配(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
 
   if_then_25:
   r3 = cn_var_实例;
-  前进(r3);
+  前进词元(r3);
   return 1;
   goto if_merge_26;
 
@@ -1425,7 +1425,7 @@ _Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_
 
   if_then_37:
   r16 = cn_var_实例;
-  前进(r16);
+  前进词元(r16);
   return 1;
   goto if_merge_38;
 
@@ -1712,7 +1712,7 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
 
   if_merge_61:
   r81 = cn_var_实例;
-  前进(r81);
+  前进词元(r81);
   goto while_cond_51;
 
   logic_rhs_62:
