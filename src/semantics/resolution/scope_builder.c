@@ -1905,7 +1905,16 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         }
     }
     
-    // 注册模块中的结构体声明
+    // =============================================================================
+    // 两阶段结构体类型解析
+    // =============================================================================
+    // 问题：结构体可能包含自引用指针（如 struct A { A* next; }）或相互引用
+    // 解决方案：
+    //   第一阶段：注册所有结构体名称到符号表（前向声明），创建不完整类型
+    //   第二阶段：遍历所有结构体，解析字段类型并构建完整类型
+    // =============================================================================
+    
+    // 第一阶段：注册所有结构体名称（前向声明）
     for (size_t i = 0; i < module_program->struct_count; ++i) {
         CnAstStmt *struct_stmt = module_program->structs[i];
         if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
@@ -1913,77 +1922,98 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         }
         
         CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
+        
+        // 检查是否已存在同名符号
+        CnSemSymbol *existing = cn_sem_scope_lookup(module_scope,
+                                    struct_decl->name,
+                                    struct_decl->name_length);
+        if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT) {
+            // 已存在，跳过
+            continue;
+        }
+        
+        // 创建不完整的结构体类型（只有名称，没有字段）
+        CnType *incomplete_type = cn_type_new_struct(struct_decl->name,
+                                                      struct_decl->name_length,
+                                                      NULL, 0,  // 暂时没有字段
+                                                      module_scope,
+                                                      NULL, 0);
+        
+        // 注册到符号表
         CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
                                    struct_decl->name,
                                    struct_decl->name_length,
                                    CN_SEM_SYMBOL_STRUCT);
         if (sym) {
-            // 构建结构体类型
-            CnStructField *fields = NULL;
-            if (struct_decl->field_count > 0) {
-                fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
-                for (size_t j = 0; j < struct_decl->field_count; j++) {
-                    fields[j].name = struct_decl->fields[j].name;
-                    fields[j].name_length = struct_decl->fields[j].name_length;
-                    
-                    // 解析字段类型：如果是自定义类型（结构体类型表示），从符号表查找真实类型
-                    CnType *field_type = struct_decl->fields[j].field_type;
-                    fprintf(stderr, "[DEBUG] 结构体 %.*s 字段 %.*s 原始类型 kind=%d\n",
-                            (int)struct_decl->name_length, struct_decl->name,
-                            (int)fields[j].name_length, fields[j].name,
-                            field_type ? field_type->kind : -1);
-                    if (field_type && field_type->kind == CN_TYPE_STRUCT && field_type->as.struct_type.name) {
-                        // 先在模块作用域查找
-                        CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
-                                                    field_type->as.struct_type.name,
-                                                    field_type->as.struct_type.name_length);
-                        fprintf(stderr, "[DEBUG] 查找类型 %.*s, 找到: %s, kind=%d\n",
-                                (int)field_type->as.struct_type.name_length, field_type->as.struct_type.name,
-                                type_sym ? "是" : "否",
-                                type_sym ? type_sym->kind : -1);
-                        if (type_sym && type_sym->type) {
-                            // 可能是枚举类型或结构体类型
-                            if (type_sym->kind == CN_SEM_SYMBOL_ENUM || type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
-                                field_type = type_sym->type;
-                                fprintf(stderr, "[DEBUG] 字段类型更新为 kind=%d\n", field_type->kind);
-                            }
-                        }
-                    }
-                    // 处理指针类型：如果字段是指针指向自定义类型
-                    else if (field_type && field_type->kind == CN_TYPE_POINTER &&
-                             field_type->as.pointer_to &&
-                             field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
-                             field_type->as.pointer_to->as.struct_type.name) {
-                        fprintf(stderr, "[DEBUG] 字段指针类型解析: 字段 %.*s, 指向结构体='%.*s'\n",
-                                (int)fields[j].name_length, fields[j].name,
-                                (int)field_type->as.pointer_to->as.struct_type.name_length,
-                                field_type->as.pointer_to->as.struct_type.name);
-                        CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
-                                                    field_type->as.pointer_to->as.struct_type.name,
-                                                    field_type->as.pointer_to->as.struct_type.name_length);
-                        fprintf(stderr, "[DEBUG] 查找指针指向类型: 找到=%s, kind=%d, type=%p\n",
-                                type_sym ? "是" : "否", type_sym ? type_sym->kind : -1,
-                                type_sym ? (void*)type_sym->type : NULL);
-                        if (type_sym && type_sym->type) {
-                            field_type = cn_type_new_pointer(type_sym->type);
-                            fprintf(stderr, "[DEBUG] 字段指针类型解析成功: 新指针指向类型 kind=%d\n",
-                                    field_type->as.pointer_to->kind);
-                        } else if (type_sym && !type_sym->type) {
-                            fprintf(stderr, "[DEBUG] 字段指针类型解析失败: type_sym->type 为 NULL\n");
-                        }
-                    }
-                    fields[j].field_type = field_type;
-                    fields[j].is_const = struct_decl->fields[j].is_const;
-                }
-            }
-            sym->type = cn_type_new_struct(struct_decl->name,
-                                          struct_decl->name_length,
-                                          fields,
-                                          struct_decl->field_count,
-                                          module_scope,
-                                          NULL, 0);
+            sym->type = incomplete_type;
             sym->is_public = 1;  // 结构体类型默认公开
         }
+    }
+    
+    // 第二阶段：构建完整的结构体类型（解析字段类型）
+    for (size_t i = 0; i < module_program->struct_count; ++i) {
+        CnAstStmt *struct_stmt = module_program->structs[i];
+        if (!struct_stmt || struct_stmt->kind != CN_AST_STMT_STRUCT_DECL) {
+            continue;
+        }
+        
+        CnAstStructDecl *struct_decl = &struct_stmt->as.struct_decl;
+        
+        // 查找已注册的符号
+        CnSemSymbol *sym = cn_sem_scope_lookup(module_scope,
+                                struct_decl->name,
+                                struct_decl->name_length);
+        if (!sym || sym->kind != CN_SEM_SYMBOL_STRUCT || !sym->type) {
+            continue;
+        }
+        
+        // 构建结构体字段
+        CnStructField *fields = NULL;
+        if (struct_decl->field_count > 0) {
+            fields = (CnStructField *)malloc(sizeof(CnStructField) * struct_decl->field_count);
+            for (size_t j = 0; j < struct_decl->field_count; j++) {
+                fields[j].name = struct_decl->fields[j].name;
+                fields[j].name_length = struct_decl->fields[j].name_length;
+                
+                // 解析字段类型：如果是自定义类型（结构体类型表示），从符号表查找真实类型
+                CnType *field_type = struct_decl->fields[j].field_type;
+                if (field_type && field_type->kind == CN_TYPE_STRUCT && field_type->as.struct_type.name) {
+                    // 先在模块作用域查找
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                                field_type->as.struct_type.name,
+                                                field_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type) {
+                        // 可能是枚举类型或结构体类型
+                        if (type_sym->kind == CN_SEM_SYMBOL_ENUM || type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            field_type = type_sym->type;
+                        }
+                    }
+                }
+                // 处理指针类型：如果字段是指针指向自定义类型
+                else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                         field_type->as.pointer_to &&
+                         field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                         field_type->as.pointer_to->as.struct_type.name) {
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                                field_type->as.pointer_to->as.struct_type.name,
+                                                field_type->as.pointer_to->as.struct_type.name_length);
+                    if (type_sym && type_sym->type) {
+                        // 找到了完整类型，创建新的指针类型
+                        field_type = cn_type_new_pointer(type_sym->type);
+                    } else if (type_sym && !type_sym->type) {
+                        // 符号存在但类型不完整 - 这不应该发生，因为我们已经完成了第一阶段
+                        // 但为了安全，保留原来的不完整指针类型
+                    }
+                    // 如果 type_sym 不存在，保留原来的不完整指针类型
+                }
+                fields[j].field_type = field_type;
+                fields[j].is_const = struct_decl->fields[j].is_const;
+            }
+        }
+        
+        // 更新结构体类型（添加字段信息）
+        sym->type->as.struct_type.fields = fields;
+        sym->type->as.struct_type.field_count = struct_decl->field_count;
     }
     
     // =============================================================================
