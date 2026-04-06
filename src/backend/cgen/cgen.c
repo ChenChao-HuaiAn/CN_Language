@@ -721,7 +721,15 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             print_operand(ctx, inst->src2); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_RET: fprintf(ctx->output_file, "  return"); if (inst->src1.kind != CN_IR_OP_NONE) { fprintf(ctx->output_file, " "); print_operand(ctx, inst->src1); } fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_JUMP: fprintf(ctx->output_file, "  goto %s;\n", inst->dest.as.label->name); break;
-        case CN_IR_INST_BRANCH: fprintf(ctx->output_file, "  if ("); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ") goto %s; else goto %s;\n", inst->dest.as.label->name, inst->src2.as.label->name); break;
+        case CN_IR_INST_BRANCH:
+            // 检查条件操作数是否有效
+            if (inst->src1.kind == CN_IR_OP_NONE) {
+                // 无条件分支，直接跳转到 true 分支
+                fprintf(ctx->output_file, "  goto %s;\n", inst->dest.as.label->name);
+            } else {
+                fprintf(ctx->output_file, "  if ("); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ") goto %s; else goto %s;\n", inst->dest.as.label->name, inst->src2.as.label->name);
+            }
+            break;
         case CN_IR_INST_CALL:
             fprintf(ctx->output_file, "  ");
             
@@ -1769,6 +1777,9 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
                 fprintf(file, "%lld", global->initializer.as.imm_int);
             } else if (global->initializer.kind == CN_IR_OP_IMM_FLOAT) {
                 fprintf(file, "%f", global->initializer.as.imm_float);
+            } else if (global->initializer.kind == CN_IR_OP_IMM_STR) {
+                // 字符串字面量初始化
+                fprintf(file, "\"%s\"", global->initializer.as.imm_str ? global->initializer.as.imm_str : "");
             }
         }
         
@@ -2175,6 +2186,89 @@ static void full_import_callback(CnSemSymbol *sym, void *user_data) {
 }
 
 /**
+ * @brief 收集函数类型中需要前向声明的结构体
+ *
+ * @param func_type 函数类型
+ * @param struct_names 结构体名称数组（输出）
+ * @param struct_name_lens 结构体名称长度数组（输出）
+ * @param max_count 最大数量
+ * @param count 实际数量（输出）
+ */
+static void collect_struct_forward_decls_from_func_type(CnType *func_type,
+                                                         const char **struct_names,
+                                                         size_t *struct_name_lens,
+                                                         size_t max_count,
+                                                         size_t *count) {
+    if (!func_type || func_type->kind != CN_TYPE_FUNCTION || !struct_names || !struct_name_lens || !count) {
+        *count = 0;
+        return;
+    }
+    
+    *count = 0;
+    
+    // 检查返回类型
+    CnType *ret_type = func_type->as.function.return_type;
+    if (ret_type) {
+        if (ret_type->kind == CN_TYPE_STRUCT) {
+            if (*count < max_count) {
+                struct_names[*count] = ret_type->as.struct_type.name;
+                struct_name_lens[*count] = ret_type->as.struct_type.name_length;
+                (*count)++;
+            }
+        } else if (ret_type->kind == CN_TYPE_POINTER && ret_type->as.pointer_to &&
+                   ret_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+            // 指针指向结构体，需要前向声明
+            if (*count < max_count) {
+                struct_names[*count] = ret_type->as.pointer_to->as.struct_type.name;
+                struct_name_lens[*count] = ret_type->as.pointer_to->as.struct_type.name_length;
+                (*count)++;
+            }
+        }
+    }
+    
+    // 检查参数类型
+    for (size_t i = 0; i < func_type->as.function.param_count; i++) {
+        CnType *param_type = func_type->as.function.param_types[i];
+        if (param_type) {
+            if (param_type->kind == CN_TYPE_STRUCT) {
+                // 检查是否已存在
+                bool exists = false;
+                for (size_t j = 0; j < *count; j++) {
+                    if (struct_name_lens[j] == param_type->as.struct_type.name_length &&
+                        strncmp(struct_names[j], param_type->as.struct_type.name, struct_name_lens[j]) == 0) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists && *count < max_count) {
+                    struct_names[*count] = param_type->as.struct_type.name;
+                    struct_name_lens[*count] = param_type->as.struct_type.name_length;
+                    (*count)++;
+                }
+            } else if (param_type->kind == CN_TYPE_POINTER && param_type->as.pointer_to &&
+                       param_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                // 指针指向结构体，需要前向声明
+                CnType *pointee = param_type->as.pointer_to;
+                // 检查是否已存在
+                bool exists = false;
+                for (size_t j = 0; j < *count; j++) {
+                    if (struct_name_lens[j] == pointee->as.struct_type.name_length &&
+                        strncmp(struct_names[j], pointee->as.struct_type.name, struct_name_lens[j]) == 0) {
+                        exists = true;
+                        break;
+                    }
+                }
+                if (!exists && *count < max_count) {
+                    struct_names[*count] = pointee->as.struct_type.name;
+                    struct_name_lens[*count] = pointee->as.struct_type.name_length;
+                    (*count)++;
+                }
+            }
+        }
+    }
+}
+
+/**
  * @brief 生成单个函数的前向声明
  *
  * @param file 输出文件
@@ -2356,6 +2450,73 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
             }
         }
     }
+    
+    // =========================================================================
+    // 第2.5阶段：输出结构体前向声明（用于函数参数中的结构体指针）
+    // =========================================================================
+    // 收集所有函数参数和返回值中使用的结构体类型
+    #define MAX_STRUCT_FORWARD_DECLS 256
+    const char *struct_forward_names[MAX_STRUCT_FORWARD_DECLS];
+    size_t struct_forward_name_lens[MAX_STRUCT_FORWARD_DECLS];
+    size_t struct_forward_count = 0;
+    
+    for (size_t i = 0; i < program->import_count; i++) {
+        CnAstStmt *import_stmt = program->imports[i];
+        if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
+            continue;
+        }
+        
+        CnAstImportStmt *import = &import_stmt->as.import_stmt;
+        
+        // 收集函数类型中的结构体
+        // 处理选择性导入
+        if (import->kind == CN_IMPORT_FROM_SELECTIVE && import->members && import->member_count > 0) {
+            for (size_t j = 0; j < import->member_count; j++) {
+                CnAstImportMember *member = &import->members[j];
+                CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, member->name, member->name_length);
+                if (symbol && symbol->kind == CN_SEM_SYMBOL_FUNCTION && symbol->type) {
+                    size_t count = 0;
+                    collect_struct_forward_decls_from_func_type(symbol->type,
+                                                                struct_forward_names + struct_forward_count,
+                                                                struct_forward_name_lens + struct_forward_count,
+                                                                MAX_STRUCT_FORWARD_DECLS - struct_forward_count,
+                                                                &count);
+                    struct_forward_count += count;
+                }
+            }
+        }
+        // 处理通配符导入 - 使用回调函数遍历
+        // 注意：通配符导入的结构体前向声明已在 struct_first_pass_callback 中处理
+        // 这里不需要额外处理，因为结构体定义已在第二阶段输出
+        else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
+            // 结构体定义已在第二阶段输出，无需额外处理
+        }
+        // 处理全量导入和从模块导入 - 使用回调函数遍历
+        // 注意：全量导入的结构体前向声明已在 struct_first_pass_callback 中处理
+        else if (import->kind == CN_IMPORT_FULL || import->kind == CN_IMPORT_FROM_MODULE) {
+            // 结构体定义已在第二阶段输出，无需额外处理
+        }
+    }
+    
+    // 输出结构体前向声明（去重）
+    if (struct_forward_count > 0) {
+        fprintf(file, "\n// Struct Forward Declarations - 用于函数参数\n");
+        for (size_t i = 0; i < struct_forward_count; i++) {
+            // 检查是否已输出过
+            bool already_output = false;
+            for (size_t j = 0; j < i; j++) {
+                if (struct_forward_name_lens[j] == struct_forward_name_lens[i] &&
+                    strncmp(struct_forward_names[j], struct_forward_names[i], struct_forward_name_lens[i]) == 0) {
+                    already_output = true;
+                    break;
+                }
+            }
+            if (!already_output) {
+                fprintf(file, "struct %.*s;\n", (int)struct_forward_name_lens[i], struct_forward_names[i]);
+            }
+        }
+    }
+    #undef MAX_STRUCT_FORWARD_DECLS
     
     // =========================================================================
     // 第三阶段：输出函数前向声明和变量声明（可能依赖结构体和枚举）
@@ -2571,6 +2732,9 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
                 fprintf(file, "%lld", global->initializer.as.imm_int);
             } else if (global->initializer.kind == CN_IR_OP_IMM_FLOAT) {
                 fprintf(file, "%f", global->initializer.as.imm_float);
+            } else if (global->initializer.kind == CN_IR_OP_IMM_STR) {
+                // 字符串字面量初始化
+                fprintf(file, "\"%s\"", global->initializer.as.imm_str ? global->initializer.as.imm_str : "");
             }
         }
         

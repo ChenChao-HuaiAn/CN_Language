@@ -411,8 +411,11 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
     // 参数：类型名（编译时计算）
     CnSemSymbol *sizeof_sym = cn_sem_scope_insert_symbol(global_scope, "类型大小", strlen("类型大小"), CN_SEM_SYMBOL_FUNCTION);
     if (sizeof_sym) {
-        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理
-        sizeof_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+        // 类型大小 接受任意类型参数，返回整数类型
+        // 使用 UNKNOWN 类型表示接受任意类型
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_UNKNOWN);  // 接受任意类型
+        sizeof_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
     }
     
     // 注册内置函数：释放输入 (free_input)
@@ -1023,6 +1026,10 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             }
             // 使用函数声明中的返回类型，如果没有则使用UNKNOWN（后续通过return语句推断）
             CnType *return_type = function_decl->return_type;
+            // 调试输出：显示函数返回类型
+            fprintf(stderr, "[DEBUG] 函数声明 '%.*s': return_type=%p, kind=%d\n",
+                    (int)function_decl->name_length, function_decl->name,
+                    (void*)return_type, return_type ? return_type->kind : -1);
             if (!return_type) {
                 return_type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             } else if (return_type->kind == CN_TYPE_STRUCT) {
@@ -1054,8 +1061,12 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                 fprintf(stderr, "[DEBUG] 函数 '%.*s' 插入失败，existing_sym->decl_scope=%p, global_scope=%p\n",
                         (int)function_decl->name_length, function_decl->name,
                         (void*)existing_sym->decl_scope, (void*)global_scope);
-                // 检查是否是导入的符号（decl_scope 不同表示来自其他模块）
-                if (existing_sym->decl_scope != global_scope) {
+                // 检查是否是函数原型声明（无函数体）
+                if (function_decl->is_prototype) {
+                    // 函数原型声明：允许重复声明，不报错
+                    fprintf(stderr, "[DEBUG] 函数原型声明 '%.*s' 允许重复\n", (int)function_decl->name_length, function_decl->name);
+                    // 不需要做任何事情，保留现有符号
+                } else if (existing_sym->decl_scope != global_scope) {
                     // 这是导入的函数，用当前模块定义的函数覆盖它
                     // 构建完整的函数类型
                     CnType **param_types = NULL;
@@ -2231,7 +2242,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
     // 注册内置函数：类型大小 (sizeof)
     CnSemSymbol *sizeof_sym = cn_sem_scope_insert_symbol(global_scope, "类型大小", strlen("类型大小"), CN_SEM_SYMBOL_FUNCTION);
     if (sizeof_sym) {
-        sizeof_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+        // 类型大小 接受任意类型参数，返回整数类型
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *));
+        param_types[0] = cn_type_new_primitive(CN_TYPE_UNKNOWN);  // 接受任意类型
+        sizeof_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), param_types, 1);
     }
     
     // =============================================================================
@@ -3248,8 +3262,13 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     (void*)existing_sym, existing_sym ? existing_sym->kind : -1,
                     existing_sym ? (void*)existing_sym->decl_scope : NULL, (void*)global_scope);
             if (existing_sym && existing_sym->kind == CN_SEM_SYMBOL_FUNCTION) {
-                // 检查是否是导入的符号（decl_scope 不同表示来自其他模块）
-                if (existing_sym->decl_scope != global_scope) {
+                // 检查是否是函数原型声明（无函数体）
+                if (function_decl->is_prototype) {
+                    // 函数原型声明：允许重复声明，不报错
+                    fprintf(stderr, "[DEBUG] 函数原型声明 '%.*s' 允许重复\n", (int)function_decl->name_length, function_decl->name);
+                    // 不需要做任何事情，保留现有符号
+                } else if (existing_sym->decl_scope != global_scope) {
+                    // 检查是否是导入的符号（decl_scope 不同表示来自其他模块）
                     fprintf(stderr, "[DEBUG] 覆盖导入函数 '%.*s' 的类型\n", (int)function_decl->name_length, function_decl->name);
                     // 这是导入的函数，用当前模块定义的函数覆盖它
                     // 构建完整的函数类型

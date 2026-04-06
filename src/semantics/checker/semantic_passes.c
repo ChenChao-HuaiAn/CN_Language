@@ -355,12 +355,16 @@ bool cn_sem_check_types(CnSemScope *global_scope,
         }
         
         // 推断函数返回类型：遍历函数体中的return语句
-        CnType *inferred_return_type = infer_function_return_type(fn_scope, fn->body, diagnostics);
-        if (inferred_return_type) {
-            // 更新函数符号的返回类型
-            CnSemSymbol *fn_sym = cn_sem_scope_lookup(global_scope, fn->name, fn->name_length);
-            if (fn_sym && fn_sym->type && fn_sym->type->kind == CN_TYPE_FUNCTION) {
-                fn_sym->type->as.function.return_type = inferred_return_type;
+        // 只有当函数没有显式指定返回类型，或返回类型是UNKNOWN时，才使用推断的返回类型
+        CnType *declared_return_type = fn->return_type;
+        if (!declared_return_type || declared_return_type->kind == CN_TYPE_UNKNOWN) {
+            CnType *inferred_return_type = infer_function_return_type(fn_scope, fn->body, diagnostics);
+            if (inferred_return_type) {
+                // 更新函数符号的返回类型
+                CnSemSymbol *fn_sym = cn_sem_scope_lookup(global_scope, fn->name, fn->name_length);
+                if (fn_sym && fn_sym->type && fn_sym->type->kind == CN_TYPE_FUNCTION) {
+                    fn_sym->type->as.function.return_type = inferred_return_type;
+                }
             }
         }
         
@@ -1579,11 +1583,24 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             else if (callee_type && callee_type->kind == CN_TYPE_FUNCTION) {
                 // 检查参数个数
                 if (expr->as.call.argument_count != callee_type->as.function.param_count) {
+                    // 获取函数名用于错误报告
+                    char func_name[256] = {0};
+                    if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
+                        snprintf(func_name, sizeof(func_name), "'%.*s'",
+                            (int)expr->as.call.callee->as.identifier.name_length,
+                            expr->as.call.callee->as.identifier.name);
+                    } else {
+                        strcpy(func_name, "<未知函数>");
+                    }
+                    char error_msg[512];
+                    snprintf(error_msg, sizeof(error_msg),
+                        "语义错误：函数 %s 参数个数不匹配: 期望 %zu 个, 实际 %zu 个",
+                        func_name, callee_type->as.function.param_count, expr->as.call.argument_count);
                     cn_support_diag_semantic_error_generic(
                         diagnostics,
                         CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH,
                         NULL, 0, 0,
-                        "语义错误：函数调用参数个数不匹配");
+                        error_msg);
                 } else {
                     // 逐个检查参数类型
                     for (size_t i = 0; i < expr->as.call.argument_count; i++) {
@@ -1636,11 +1653,18 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                                             (int)param_pointee->as.struct_type.name_length, param_pointee->as.struct_type.name);
                                 }
                             }
+                            // 构建详细的错误消息
+                            char error_msg[512];
+                            const char *fn = func_name ? func_name : "(unknown)";
+                            size_t fn_len = func_name ? func_name_len : 9;
+                            snprintf(error_msg, sizeof(error_msg),
+                                "语义错误：函数 '%.*s' 参数 %zu 类型不匹配 (arg_kind=%d, param_kind=%d)",
+                                (int)fn_len, fn, i, arg_type->kind, callee_type->as.function.param_types[i]->kind);
                             cn_support_diag_semantic_error_generic(
                                 diagnostics,
                                 CN_DIAG_CODE_SEM_ARGUMENT_TYPE_MISMATCH,
                                 NULL, 0, 0,
-                                "语义错误：函数调用参数类型不匹配");
+                                error_msg);
                         }
                     }
                 }

@@ -311,15 +311,21 @@ void cn_support_diag_semantic_error_type_mismatch(
     const char *expected_type,
     const char *actual_type)
 {
-    (void)expected_type;
-    (void)actual_type;
+    char error_msg[512];
+    if (expected_type && actual_type) {
+        snprintf(error_msg, sizeof(error_msg),
+            "语义错误：类型不匹配 (期望: %s, 实际: %s)",
+            expected_type, actual_type);
+    } else {
+        strcpy(error_msg, "语义错误：类型不匹配");
+    }
     cn_support_diagnostics_report_error(
         diagnostics,
         CN_DIAG_CODE_SEM_TYPE_MISMATCH,
         filename,
         line,
         column,
-        "语义错误：类型不匹配");
+        error_msg);
 }
 
 void cn_support_diag_semantic_error_missing_return(

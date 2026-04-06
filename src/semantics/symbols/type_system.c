@@ -166,6 +166,12 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         return true;
     }
     
+    // 整数到字符串的隐式转换（用于空指针常量：整数0可以赋值给字符串类型）
+    // 在CN语言中，"无"关键字被解析为整数0，需要能够赋值给字符串类型
+    if (a_is_int && b->kind == CN_TYPE_STRING) {
+        return true;
+    }
+    
     // 指针类型之间的兼容性
     if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_POINTER) {
         // 特殊处理：空类型指针（void*）可以接受任何类型的指针
@@ -222,6 +228,67 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         if (b->as.pointer_to && b->as.pointer_to->kind == CN_TYPE_CHAR) {
             return true;  // 字符串 可以隐式转换为字符*（但可能发出警告）
         }
+    }
+    
+    // 字符串 到 空类型* 的隐式转换
+    // 字符串类型可以隐式转换为 void* 指针
+    if (a->kind == CN_TYPE_STRING && b->kind == CN_TYPE_POINTER) {
+        if (b->as.pointer_to && b->as.pointer_to->kind == CN_TYPE_VOID) {
+            return true;  // 字符串 可以隐式转换为 void*
+        }
+    }
+    
+    // 任何指针 到 空类型* 的隐式转换
+    // 这是C语言的标准行为
+    if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_POINTER) {
+        if (b->as.pointer_to && b->as.pointer_to->kind == CN_TYPE_VOID) {
+            return true;  // 任何指针都可以隐式转换为 void*
+        }
+    }
+    
+    // 任何数组 到 空类型* 的隐式转换
+    // 数组可以退化为指针，然后转换为 void*
+    if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_POINTER) {
+        if (b->as.pointer_to && b->as.pointer_to->kind == CN_TYPE_VOID) {
+            return true;  // 任何数组都可以隐式转换为 void*
+        }
+    }
+    
+    // 任何指针 到 字符串 的隐式转换
+    // 如果指针指向的是整数类型（可能是字符），允许转换为字符串
+    if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_STRING) {
+        // 允许任何指针类型转换为字符串（C语言中指针可以赋值给字符串）
+        return true;
+    }
+    
+    // 任何数组 到 字符串 的隐式转换
+    // 如果数组元素是整数类型（可能是字符），允许转换为字符串
+    if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_STRING) {
+        // 允许任何数组类型转换为字符串（C语言中数组可以退化为字符串）
+        return true;
+    }
+    
+    // UNKNOWN 类型可以接受任何类型（用于内置函数如 类型大小）
+    if (b->kind == CN_TYPE_UNKNOWN) {
+        return true;
+    }
+    
+    // 整数类型之间的隐式转换
+    // 所有整数类型都可以隐式转换为整数
+    if (b->kind == CN_TYPE_INT) {
+        if (a->kind == CN_TYPE_INT32 || a->kind == CN_TYPE_INT64 ||
+            a->kind == CN_TYPE_UINT32 || a->kind == CN_TYPE_UINT64 ||
+            a->kind == CN_TYPE_UINT64_LL) {
+            return true;
+        }
+    }
+    
+    // 整数类型之间可以相互转换
+    if ((a->kind == CN_TYPE_INT || a->kind == CN_TYPE_INT32 || a->kind == CN_TYPE_INT64 ||
+         a->kind == CN_TYPE_UINT32 || a->kind == CN_TYPE_UINT64 || a->kind == CN_TYPE_UINT64_LL) &&
+        (b->kind == CN_TYPE_INT || b->kind == CN_TYPE_INT32 || b->kind == CN_TYPE_INT64 ||
+         b->kind == CN_TYPE_UINT32 || b->kind == CN_TYPE_UINT64 || b->kind == CN_TYPE_UINT64_LL)) {
+        return true;
     }
     
     return false;
