@@ -635,6 +635,55 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                 diagnostics, NULL, 0, 0, struct_decl->name);
         }
     }
+    
+    // =============================================================================
+    // 延迟解析：更新所有不完整的结构体字段类型（主程序）
+    // 解决结构体指针前向引用问题
+    // =============================================================================
+    {
+        CnSemSymbolNode *node = global_scope->symbols;
+        while (node) {
+            CnSemSymbol *sym = &node->symbol;
+            if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type &&
+                sym->type->kind == CN_TYPE_STRUCT &&
+                sym->type->as.struct_type.fields) {
+                for (size_t j = 0; j < sym->type->as.struct_type.field_count; j++) {
+                    CnStructField *field = &sym->type->as.struct_type.fields[j];
+                    CnType *field_type = field->field_type;
+                    
+                    // 情况1：字段类型是结构体但没有字段信息
+                    if (field_type && field_type->kind == CN_TYPE_STRUCT &&
+                        !field_type->as.struct_type.fields &&
+                        field_type->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.struct_type.name,
+                                                    field_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            type_sym->type->as.struct_type.fields) {
+                            field->field_type = type_sym->type;
+                        }
+                    }
+                    // 情况2：字段类型是指针，指向的结构体没有字段信息
+                    else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                             field_type->as.pointer_to &&
+                             field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                             !field_type->as.pointer_to->as.struct_type.fields &&
+                             field_type->as.pointer_to->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.pointer_to->as.struct_type.name,
+                                                    field_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            type_sym->type->as.struct_type.fields) {
+                            field->field_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    }
+                }
+            }
+            node = node->next;
+        }
+    }
 
     // 处理导入语句：将被导入模块的符号添加到全局作用域
     for (i = 0; i < program->import_count; ++i) {
@@ -1937,6 +1986,64 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         }
     }
     
+    // =============================================================================
+    // 延迟解析：更新所有不完整的结构体字段类型
+    // 解决结构体指针前向引用问题：当结构体A引用结构体B（B*），而B在A之后定义时，
+    // 字段类型会指向一个不完整的结构体类型（没有字段信息）
+    // 这里遍历所有结构体，更新这些不完整的字段类型
+    // =============================================================================
+    {
+        CnSemSymbolNode *node = module_scope->symbols;
+        while (node) {
+            CnSemSymbol *sym = &node->symbol;
+            if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type &&
+                sym->type->kind == CN_TYPE_STRUCT &&
+                sym->type->as.struct_type.fields) {
+                // 遍历结构体的所有字段
+                for (size_t j = 0; j < sym->type->as.struct_type.field_count; j++) {
+                    CnStructField *field = &sym->type->as.struct_type.fields[j];
+                    CnType *field_type = field->field_type;
+                    
+                    // 情况1：字段类型是结构体但没有字段信息（前向引用）
+                    if (field_type && field_type->kind == CN_TYPE_STRUCT &&
+                        !field_type->as.struct_type.fields &&
+                        field_type->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                                    field_type->as.struct_type.name,
+                                                    field_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            type_sym->type->as.struct_type.fields) {
+                            field->field_type = type_sym->type;
+                            fprintf(stderr, "[DEBUG] 延迟解析字段类型: %.*s.%.*s -> 完整类型\n",
+                                    (int)sym->name_length, sym->name,
+                                    (int)field->name_length, field->name);
+                        }
+                    }
+                    // 情况2：字段类型是指针，指向的结构体没有字段信息
+                    else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                             field_type->as.pointer_to &&
+                             field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                             !field_type->as.pointer_to->as.struct_type.fields &&
+                             field_type->as.pointer_to->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                                    field_type->as.pointer_to->as.struct_type.name,
+                                                    field_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            type_sym->type->as.struct_type.fields) {
+                            field->field_type = cn_type_new_pointer(type_sym->type);
+                            fprintf(stderr, "[DEBUG] 延迟解析指针字段类型: %.*s.%.*s -> 完整指针类型\n",
+                                    (int)sym->name_length, sym->name,
+                                    (int)field->name_length, field->name);
+                        }
+                    }
+                }
+            }
+            node = node->next;
+        }
+    }
+    
     // 清理（注意：符号表需要保持，不能释放 program）
     cn_frontend_parser_free(parser);
     // 注意：不能释放 preprocessor，因为 lexer 中的 token 指向 preprocessor.output！
@@ -2236,6 +2343,55 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                           struct_decl->field_count,
                                           global_scope,
                                           NULL, 0);
+        }
+    }
+    
+    // =============================================================================
+    // 延迟解析：更新所有不完整的结构体字段类型（主程序第四个位置）
+    // 解决结构体指针前向引用问题
+    // =============================================================================
+    {
+        CnSemSymbolNode *node = global_scope->symbols;
+        while (node) {
+            CnSemSymbol *sym = &node->symbol;
+            if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type &&
+                sym->type->kind == CN_TYPE_STRUCT &&
+                sym->type->as.struct_type.fields) {
+                for (size_t j = 0; j < sym->type->as.struct_type.field_count; j++) {
+                    CnStructField *field = &sym->type->as.struct_type.fields[j];
+                    CnType *field_type = field->field_type;
+                    
+                    // 情况1：字段类型是结构体但没有字段信息
+                    if (field_type && field_type->kind == CN_TYPE_STRUCT &&
+                        !field_type->as.struct_type.fields &&
+                        field_type->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.struct_type.name,
+                                                    field_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            type_sym->type->as.struct_type.fields) {
+                            field->field_type = type_sym->type;
+                        }
+                    }
+                    // 情况2：字段类型是指针，指向的结构体没有字段信息
+                    else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                             field_type->as.pointer_to &&
+                             field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                             !field_type->as.pointer_to->as.struct_type.fields &&
+                             field_type->as.pointer_to->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.pointer_to->as.struct_type.name,
+                                                    field_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            type_sym->type->as.struct_type.fields) {
+                            field->field_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    }
+                }
+            }
+            node = node->next;
         }
     }
 

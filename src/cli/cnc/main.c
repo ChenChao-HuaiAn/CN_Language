@@ -589,7 +589,7 @@ int main(int argc, char **argv)
                     printf("Line %3d: ", line);
                 }
             } else if (c == '#') {
-                printf("[#]<列%d>", col);
+                putchar(c);
                 col++;
             } else if (c >= 32 && c < 127) {
                 putchar(c);

@@ -265,6 +265,8 @@ enum 词元类型枚举 {
 };
 
 // Struct Definitions - 从导入模块
+struct 扫描器;
+struct 诊断集合;
 struct 词元 {
     enum 词元类型枚举 类型;
     char* 值;
@@ -303,15 +305,7 @@ struct 诊断信息 {
     struct 源位置 位置;
     char* 消息;
 };
-struct 诊断集合;
-struct 诊断集合 {
-    struct 诊断信息* 诊断数组;
-    long long 容量;
-    long long 长度;
-    long long 错误计数;
-    long long 警告计数;
-    long long 最大错误数;
-};
+struct 类型节点;
 struct 类型节点;
 struct 类型节点 {
     enum 节点类型 类型;
@@ -328,11 +322,32 @@ struct AST节点 {
     struct 源位置 位置;
 };
 struct 表达式节点;
+struct 表达式节点;
 struct 表达式节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
-    struct 类型节点* 结果类型;
+    struct 类型节点* 类型信息;
     _Bool 是自身指针;
+    long long 整数值;
+    double 小数值;
+    char* 字符串值;
+    _Bool 布尔值;
+    char* 标识符名称;
+    struct 表达式节点* 左操作数;
+    struct 表达式节点* 右操作数;
+    long long 运算符;
+    struct 表达式节点* 操作数;
+    struct 表达式节点* 被调函数;
+    struct 表达式节点* 参数列表;
+    long long 参数个数;
+    struct 表达式节点* 对象;
+    char* 成员名;
+    long long 成员索引;
+    struct 表达式节点* 数组;
+    struct 表达式节点* 索引;
+    struct 表达式节点* 左侧表达式;
+    struct 表达式节点* 值;
+    struct 表达式节点* 指针;
 };
 struct 结构体字段初始化;
 struct 结构体字段初始化 {
@@ -344,6 +359,7 @@ struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
 };
+struct 块语句;
 struct 捕获子句;
 struct 捕获子句 {
     char* 异常类型;
@@ -378,6 +394,8 @@ struct 接口方法 {
     long long 参数个数;
     struct 类型节点* 返回类型;
 };
+struct 变量声明;
+struct 函数声明;
 struct 类成员;
 struct 类成员 {
     char* 名称;
@@ -415,14 +433,6 @@ struct 关键字条目;
 struct 关键字条目 {
     char* 名称;
     long long 类型;
-};
-struct 扫描器;
-struct 扫描器 {
-    char* 源码;
-    long long 位置;
-    long long 行号;
-    long long 列号;
-    long long 源码长度;
 };
 
 // Forward Declarations - 从导入模块
@@ -477,6 +487,11 @@ struct 关键字条目* 获取关键字表(void);
 long long 关键字总数(void);
 _Bool 是关键字字符串(char*);
 enum 词元类型枚举 查找关键字(char*);
+void* 分配内存数组(long long, long long);
+long long 类型大小(long long);
+long long 打印格式(char*);
+char* 字符串格式(char*);
+long long 字符串格式化(char*, long long, char*);
 char* 读取行(void);
 long long 获取绝对值(long long);
 long long 求最大值(long long, long long);
@@ -627,6 +642,11 @@ long long 求最小值(long long, long long);
 long long 求最大值(long long, long long);
 long long 获取绝对值(long long);
 char* 读取行(void);
+long long 字符串格式化(char*, long long, char*);
+char* 字符串格式(char*);
+long long 打印格式(char*);
+long long 类型大小(long long);
+void* 分配内存数组(long long, long long);
 enum 词元类型枚举 查找关键字(char*);
 _Bool 是关键字字符串(char*);
 long long 关键字总数(void);
@@ -758,6 +778,11 @@ long long 求最小值(long long, long long);
 long long 求最大值(long long, long long);
 long long 获取绝对值(long long);
 char* 读取行(void);
+long long 字符串格式化(char*, long long, char*);
+char* 字符串格式(char*);
+long long 打印格式(char*);
+long long 类型大小(long long);
+void* 分配内存数组(long long, long long);
 enum 词元类型枚举 查找关键字(char*);
 _Bool 是关键字字符串(char*);
 long long 关键字总数(void);
@@ -883,6 +908,11 @@ long long 求最小值(long long, long long);
 long long 求最大值(long long, long long);
 long long 获取绝对值(long long);
 char* 读取行(void);
+long long 字符串格式化(char*, long long, char*);
+char* 字符串格式(char*);
+long long 打印格式(char*);
+long long 类型大小(long long);
+void* 分配内存数组(long long, long long);
 enum 词元类型枚举 查找关键字(char*);
 _Bool 是关键字字符串(char*);
 long long 关键字总数(void);
@@ -1006,6 +1036,11 @@ long long 求最小值(long long, long long);
 long long 求最大值(long long, long long);
 long long 获取绝对值(long long);
 char* 读取行(void);
+long long 字符串格式化(char*, long long, char*);
+char* 字符串格式(char*);
+long long 打印格式(char*);
+long long 类型大小(long long);
+void* 分配内存数组(long long, long long);
 enum 词元类型枚举 查找关键字(char*);
 _Bool 是关键字字符串(char*);
 long long 关键字总数(void);

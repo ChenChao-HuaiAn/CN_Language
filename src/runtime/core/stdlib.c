@@ -1,5 +1,6 @@
 #include "cnlang/runtime/stdlib.h"
 #include "cnlang/runtime/freestanding.h"
+#include "cnlang/runtime/collections.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -513,4 +514,39 @@ long long 求最大值(long long a, long long b)
 long long 求最小值(long long a, long long b)
 {
     return cn_rt_min(a, b);
+}
+
+// =============================================================================
+// 动态数组中文接口实现
+// 注意：为了与CN语言生成的代码兼容，参数使用void*而非CnVector*
+// =============================================================================
+
+CnVector* 创建数组(size_t 初始容量)
+{
+    return cn_rt_vector_create(初始容量);
+}
+
+void 销毁数组(void* 数组)
+{
+    cn_rt_vector_destroy((CnVector*)数组);
+}
+
+int 数组添加(void* 数组, void* 元素)
+{
+    return cn_rt_vector_push((CnVector*)数组, 元素);
+}
+
+void* 数组获取(void* 数组, long long 索引)
+{
+    return cn_rt_vector_get((CnVector*)数组, (size_t)索引);
+}
+
+long long 数组长度(void* 数组)
+{
+    return (long long)cn_rt_vector_size((CnVector*)数组);
+}
+
+void 清空数组(void* 数组)
+{
+    cn_rt_vector_clear((CnVector*)数组);
 }

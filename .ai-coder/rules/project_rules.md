@@ -13,4 +13,6 @@ trigger: always_on
 
 4. 编写任何CN语言源代码，必须严格按照“plans\001 CN Language语法规范设计文档.md”里的语法规范，其它文件只做参考，不一定正确。
 
-5. 所有CN语言语法规则必须以语法规范文档“plans\001 CN Language语法规范设计文档.md”为基准，任何涉及语法规范的修改必须先征求用户同意
+5. 所有CN语言语法规则必须以语法规范文档“plans\001 CN Language语法规范设计文档.md”为基准，任何涉及语法规范的修改必须先征求用户同意。
+
+6. 修改CN语言编译器后，同步更新“plans\001 CN Language语法规范设计文档.md”和“.ai-coder\skills\cn-coding-standards\SKILL.md”里相应的语法规范。

@@ -169,6 +169,9 @@ void cn_sem_scope_foreach_symbol(CnSemScope *scope,
                                   CnSemScopeSymbolCallback callback,
                                   void *user_data);
 
+// 设置动态解析的作用域（供 semantic_passes.c 调用）
+void cn_type_set_resolution_scope(CnSemScope *scope);
+
 // 结构体成员查找：在结构体类型中查找成员字段
 CnStructField *cn_type_struct_find_field(CnType *struct_type,
                                          const char *field_name,

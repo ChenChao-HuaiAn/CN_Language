@@ -604,28 +604,18 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             break;
         case CN_AST_STMT_IF: {
             CnType *cond_type = infer_expr_type(scope, stmt->as.if_stmt.condition, diagnostics);
-            // 检查条件表达式是否为布尔类型
-            if (cond_type && cond_type->kind != CN_TYPE_BOOL) {
-                cn_support_diag_semantic_error_generic(
-                    diagnostics,
-                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    NULL, 0, 0,
-                    "语义错误：if 语句条件必须为布尔类型");
-            }
+            // 条件表达式可以是布尔、整数或指针类型（与C语言兼容）
+            // 不再强制要求布尔类型
+            (void)cond_type;  // 避免未使用警告
             check_block_types(scope, stmt->as.if_stmt.then_block, diagnostics, in_loop);
             check_block_types(scope, stmt->as.if_stmt.else_block, diagnostics, in_loop);
             break;
         }
         case CN_AST_STMT_WHILE: {
             CnType *cond_type = infer_expr_type(scope, stmt->as.while_stmt.condition, diagnostics);
-            // 检查条件表达式是否为布尔类型
-            if (cond_type && cond_type->kind != CN_TYPE_BOOL) {
-                cn_support_diag_semantic_error_generic(
-                    diagnostics,
-                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    NULL, 0, 0,
-                    "语义错误：while 语句条件必须为布尔类型");
-            }
+            // 条件表达式可以是布尔、整数或指针类型（与C语言兼容）
+            // 不再强制要求布尔类型
+            (void)cond_type;  // 避免未使用警告
             check_block_types(scope, stmt->as.while_stmt.body, diagnostics, true);
             break;
         }
@@ -633,14 +623,9 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             CnSemScope *for_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, scope);
             check_stmt_types(for_scope, stmt->as.for_stmt.init, diagnostics, in_loop);
             CnType *cond_type = infer_expr_type(for_scope, stmt->as.for_stmt.condition, diagnostics);
-            // 检查条件表达式是否为布尔类型
-            if (cond_type && cond_type->kind != CN_TYPE_BOOL) {
-                cn_support_diag_semantic_error_generic(
-                    diagnostics,
-                    CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    NULL, 0, 0,
-                    "语义错误：for 语句条件必须为布尔类型");
-            }
+            // 条件表达式可以是布尔、整数或指针类型（与C语言兼容）
+            // 不再强制要求布尔类型
+            (void)cond_type;  // 避免未使用警告
             infer_expr_type(for_scope, stmt->as.for_stmt.update, diagnostics);
             check_block_types(for_scope, stmt->as.for_stmt.body, diagnostics, true);
             cn_sem_scope_free(for_scope);
@@ -1365,11 +1350,20 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_UNARY: {
+            fprintf(stderr, "[DEBUG] infer_expr_type: 处理一元表达式, op=%d, expr=%p\n", expr->as.unary.op, (void*)expr);
             if (!expr->as.unary.operand) {
+                fprintf(stderr, "[DEBUG] infer_expr_type: 一元表达式操作数为NULL\n");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }
+            fprintf(stderr, "[DEBUG] infer_expr_type: 一元表达式操作数 kind=%d, operand=%p\n",
+                    expr->as.unary.operand->kind, (void*)expr->as.unary.operand);
+            fprintf(stderr, "[DEBUG] infer_expr_type: 开始递归推断操作数类型...\n");
+            fflush(stderr);
             CnType *inner = infer_expr_type(scope, expr->as.unary.operand, diagnostics);
+            fprintf(stderr, "[DEBUG] infer_expr_type: 一元表达式操作数类型推断完成, inner=%p, kind=%d\n",
+                    (void*)inner, inner ? inner->kind : -1);
+            fflush(stderr);
             switch (expr->as.unary.op) {
                 case CN_AST_UNARY_OP_NOT:
                     expr->type = cn_type_new_primitive(CN_TYPE_BOOL);
@@ -1765,6 +1759,9 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
             // 成员访问类型推导：支持结构体 obj.member、模块 module.member、枚举 enum.member 和内建方法 arr.长度()
+            // 设置当前作用域，用于动态解析结构体字段类型
+            cn_type_set_resolution_scope(scope);
+            
             // 首先检查左操作数是否为模块或枚举
             if (!expr->as.member.object) {
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);

@@ -99,6 +99,86 @@ bool cn_frontend_preprocessor_process(CnPreprocessor *preprocessor)
     while (preprocessor->current_offset < preprocessor->source_length) {
         char c = current_char(preprocessor);
         
+        /* 处理字符串字面量 - 必须在处理 # 之前 */
+        if (c == '"') {
+            /* 复制开头的引号 */
+            append_char(preprocessor, c);
+            advance(preprocessor);
+            
+            /* 处理字符串内容 */
+            while (preprocessor->current_offset < preprocessor->source_length) {
+                char sc = current_char(preprocessor);
+                
+                if (sc == '"') {
+                    /* 找到结束引号 */
+                    append_char(preprocessor, sc);
+                    advance(preprocessor);
+                    break;
+                }
+                
+                if (sc == '\\') {
+                    /* 处理转义字符 */
+                    append_char(preprocessor, sc);
+                    advance(preprocessor);
+                    if (preprocessor->current_offset < preprocessor->source_length) {
+                        append_char(preprocessor, current_char(preprocessor));
+                        advance(preprocessor);
+                    }
+                    continue;
+                }
+                
+                if (sc == '\0') {
+                    /* 未终止的字符串 */
+                    break;
+                }
+                
+                /* 复制普通字符 */
+                append_char(preprocessor, sc);
+                advance(preprocessor);
+            }
+            continue;
+        }
+        
+        /* 处理字符字面量 */
+        if (c == '\'') {
+            /* 复制开头的单引号 */
+            append_char(preprocessor, c);
+            advance(preprocessor);
+            
+            /* 处理字符内容 */
+            while (preprocessor->current_offset < preprocessor->source_length) {
+                char sc = current_char(preprocessor);
+                
+                if (sc == '\'') {
+                    /* 找到结束单引号 */
+                    append_char(preprocessor, sc);
+                    advance(preprocessor);
+                    break;
+                }
+                
+                if (sc == '\\') {
+                    /* 处理转义字符 */
+                    append_char(preprocessor, sc);
+                    advance(preprocessor);
+                    if (preprocessor->current_offset < preprocessor->source_length) {
+                        append_char(preprocessor, current_char(preprocessor));
+                        advance(preprocessor);
+                    }
+                    continue;
+                }
+                
+                if (sc == '\0') {
+                    /* 未终止的字符字面量 */
+                    break;
+                }
+                
+                /* 复制普通字符 */
+                append_char(preprocessor, sc);
+                advance(preprocessor);
+            }
+            continue;
+        }
+        
         /* 处理行注释 */
         if (c == '/' && peek_char(preprocessor, 1) == '/') {
             /* 跳过注释内容,保留换行 */

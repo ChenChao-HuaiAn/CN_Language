@@ -570,7 +570,7 @@ CnVector* 创建数组(size_t 初始容量);
  * 销毁数组：释放动态数组内存
  * @param 数组 要销毁的数组指针
  */
-void 销毁数组(CnVector* 数组);
+void 销毁数组(void* 数组);
 
 /**
  * 数组添加：向数组末尾添加元素
@@ -578,7 +578,7 @@ void 销毁数组(CnVector* 数组);
  * @param 元素 要添加的元素指针
  * @return 成功返回 1，失败返回 0
  */
-int 数组添加(CnVector* 数组, void* 元素);
+int 数组添加(void* 数组, void* 元素);
 
 /**
  * 数组获取：获取数组中指定索引的元素
@@ -586,20 +586,20 @@ int 数组添加(CnVector* 数组, void* 元素);
  * @param 索引 元素索引
  * @return 指向元素的指针，索引越界返回 NULL
  */
-void* 数组获取(CnVector* 数组, size_t 索引);
+void* 数组获取(void* 数组, long long 索引);
 
 /**
  * 数组长度：获取数组中元素个数
  * @param 数组 目标数组
  * @return 元素个数
  */
-size_t 数组长度(CnVector* 数组);
+long long 数组长度(void* 数组);
 
 /**
  * 清空数组：清空数组中的所有元素
  * @param 数组 目标数组
  */
-void 清空数组(CnVector* 数组);
+void 清空数组(void* 数组);
 
 // =============================================================================
 // 哈希表函数 - 中文接口

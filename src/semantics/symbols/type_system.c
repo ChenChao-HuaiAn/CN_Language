@@ -227,6 +227,18 @@ bool cn_type_compatible(CnType *a, CnType *b) {
     return false;
 }
 
+// 前向声明：符号查找函数（来自 symbol_table.c）
+extern CnSemSymbol *cn_sem_scope_lookup(CnSemScope *scope, const char *name, size_t name_length);
+
+// 全局变量：用于动态解析的当前作用域
+// 这是在 semantic_passes.c 中设置的
+static CnSemScope *g_current_scope_for_resolution = NULL;
+
+// 设置当前作用域（供 semantic_passes.c 调用）
+void cn_type_set_resolution_scope(CnSemScope *scope) {
+    g_current_scope_for_resolution = scope;
+}
+
 // 在结构体类型中查找成员字段
 CnStructField *cn_type_struct_find_field(CnType *struct_type,
                                          const char *field_name,
@@ -237,6 +249,49 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
     }
     if (!field_name) {
         return NULL;
+    }
+
+    // 动态解析：如果结构体没有字段信息，尝试从声明作用域或全局作用域查找真实类型
+    // 这解决了模块导入时结构体字段信息丢失的问题
+    if (!struct_type->as.struct_type.fields &&
+        struct_type->as.struct_type.name) {
+        fprintf(stderr, "[DEBUG] cn_type_struct_find_field: 结构体 %.*s 没有字段信息，尝试动态解析\n",
+                (int)struct_type->as.struct_type.name_length, struct_type->as.struct_type.name);
+        
+        CnSemSymbol *type_sym = NULL;
+        
+        // 首先尝试从声明作用域查找
+        if (struct_type->as.struct_type.decl_scope) {
+            type_sym = cn_sem_scope_lookup(
+                struct_type->as.struct_type.decl_scope,
+                struct_type->as.struct_type.name,
+                struct_type->as.struct_type.name_length);
+        }
+        
+        // 如果没找到，尝试从全局作用域查找
+        if (!type_sym && g_current_scope_for_resolution) {
+            type_sym = cn_sem_scope_lookup(
+                g_current_scope_for_resolution,
+                struct_type->as.struct_type.name,
+                struct_type->as.struct_type.name_length);
+        }
+        
+        if (type_sym && type_sym->type &&
+            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+            type_sym->type->as.struct_type.fields) {
+            fprintf(stderr, "[DEBUG] 动态解析成功: 结构体 %.*s 找到字段信息, field_count=%zu\n",
+                    (int)struct_type->as.struct_type.name_length, struct_type->as.struct_type.name,
+                    type_sym->type->as.struct_type.field_count);
+            // 更新结构体类型的字段信息
+            struct_type->as.struct_type.fields = type_sym->type->as.struct_type.fields;
+            struct_type->as.struct_type.field_count = type_sym->type->as.struct_type.field_count;
+            // 同时更新声明作用域
+            struct_type->as.struct_type.decl_scope = type_sym->type->as.struct_type.decl_scope;
+        } else {
+            fprintf(stderr, "[DEBUG] 动态解析失败: 结构体 %.*s 未找到字段信息\n",
+                    (int)struct_type->as.struct_type.name_length, struct_type->as.struct_type.name);
+            return NULL;
+        }
     }
 
     // 遍历结构体的所有字段
@@ -266,6 +321,39 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
                     fprintf(stderr, "[DEBUG] 字段指针指向结构体='%.*s'\n",
                             (int)field->field_type->as.pointer_to->as.struct_type.name_length,
                             field->field_type->as.pointer_to->as.struct_type.name);
+                    
+                    // 动态解析：如果指针指向的结构体没有字段信息，尝试从声明作用域或全局作用域查找真实类型
+                    CnType *pointee_type = field->field_type->as.pointer_to;
+                    if (!pointee_type->as.struct_type.fields) {
+                        CnSemSymbol *pointee_sym = NULL;
+                        
+                        // 首先尝试从声明作用域查找
+                        if (pointee_type->as.struct_type.decl_scope) {
+                            pointee_sym = cn_sem_scope_lookup(
+                                pointee_type->as.struct_type.decl_scope,
+                                pointee_type->as.struct_type.name,
+                                pointee_type->as.struct_type.name_length);
+                        }
+                        
+                        // 如果没找到，尝试从全局作用域查找
+                        if (!pointee_sym && g_current_scope_for_resolution) {
+                            pointee_sym = cn_sem_scope_lookup(
+                                g_current_scope_for_resolution,
+                                pointee_type->as.struct_type.name,
+                                pointee_type->as.struct_type.name_length);
+                        }
+                        
+                        if (pointee_sym && pointee_sym->type &&
+                            pointee_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            pointee_sym->type->as.struct_type.fields) {
+                            fprintf(stderr, "[DEBUG] 动态解析指针指向类型成功: %.*s -> fields=%p\n",
+                                    (int)pointee_type->as.struct_type.name_length,
+                                    pointee_type->as.struct_type.name,
+                                    (void*)pointee_sym->type->as.struct_type.fields);
+                            // 更新指针指向的类型
+                            field->field_type->as.pointer_to = pointee_sym->type;
+                        }
+                    }
                 }
             }
             return field;
