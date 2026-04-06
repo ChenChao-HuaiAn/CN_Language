@@ -121,6 +121,7 @@ enum 节点类型 {
 
 // Struct Definitions - 从导入模块
 struct 类型节点;
+struct 类型节点;
 struct 类型节点 {
     enum 节点类型 类型;
     char* 名称;
