@@ -128,6 +128,8 @@ static bool cgen_is_string_concat(CnAstExpr *expr) {
 
 // 前向声明
 static bool is_enum_type_name(const char *name, size_t name_len);
+static bool is_type_already_generated(const char *name, size_t name_len);
+static void mark_type_as_generated(const char *name, size_t name_len);
 
 const char *get_c_type_string(CnType *type) {
     if (!type) return "void";
@@ -1518,15 +1520,35 @@ void cn_cgen_struct_decl_with_prefix(CnCCodeGenContext *ctx, CnAstStmt *struct_s
     
     CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
     
+    // 第一步：收集所有需要前向声明的结构体类型（指针字段引用的结构体）
+    // 对于指针类型，只需要前向声明，不需要完整定义
+    for (size_t i = 0; i < decl->field_count; i++) {
+        CnType *field_type = decl->fields[i].field_type;
+        if (field_type && field_type->kind == CN_TYPE_POINTER &&
+            field_type->as.pointer_to &&
+            field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+            // 指针指向结构体：只需要前向声明
+            CnType *pointee = field_type->as.pointer_to;
+            const char *pointee_name = pointee->as.struct_type.name;
+            size_t pointee_name_len = pointee->as.struct_type.name_length;
+            if (pointee_name && !is_type_already_generated(pointee_name, pointee_name_len)) {
+                // 输出前向声明
+                fprintf(ctx->output_file, "struct %.*s;\n", (int)pointee_name_len, pointee_name);
+                // 标记为已生成前向声明
+                mark_type_as_generated(pointee_name, pointee_name_len);
+            }
+        }
+    }
+    
     // 生成结构体定义
     // 如果有函数前缀，生成: struct __local_函数名_结构体名
     // 否则生成: struct 结构体名
     if (func_prefix && func_prefix_len > 0) {
-        fprintf(ctx->output_file, "struct __local_%.*s_%.*s {\n", 
+        fprintf(ctx->output_file, "struct __local_%.*s_%.*s {\n",
                 (int)func_prefix_len, func_prefix,
                 (int)decl->name_length, decl->name);
     } else {
-        fprintf(ctx->output_file, "struct %.*s {\n", 
+        fprintf(ctx->output_file, "struct %.*s {\n",
                 (int)decl->name_length, decl->name);
     }
     
@@ -1977,7 +1999,29 @@ static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type
     // 检查是否已生成
     if (is_type_already_generated(name, name_len)) return;
     
-    // 先生成依赖的类型定义（枚举和结构体）
+    // 第一步：收集所有需要前向声明的结构体类型（指针字段引用的结构体）
+    // 对于指针类型，只需要前向声明，不需要完整定义
+    for (size_t i = 0; i < type->as.struct_type.field_count; i++) {
+        CnStructField *field = &type->as.struct_type.fields[i];
+        if (field->field_type) {
+            if (field->field_type->kind == CN_TYPE_POINTER &&
+                field->field_type->as.pointer_to &&
+                field->field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                // 指针指向结构体：只需要前向声明
+                CnType *pointee = field->field_type->as.pointer_to;
+                const char *pointee_name = pointee->as.struct_type.name;
+                size_t pointee_name_len = pointee->as.struct_type.name_length;
+                if (pointee_name && !is_type_already_generated(pointee_name, pointee_name_len)) {
+                    // 输出前向声明
+                    fprintf(file, "struct %.*s;\n", (int)pointee_name_len, pointee_name);
+                    // 标记为已生成前向声明（但不标记为完整定义）
+                    mark_type_as_generated(pointee_name, pointee_name_len);
+                }
+            }
+        }
+    }
+    
+    // 第二步：生成依赖的类型定义（枚举和非指针结构体）
     for (size_t i = 0; i < type->as.struct_type.field_count; i++) {
         CnStructField *field = &type->as.struct_type.fields[i];
         if (field->field_type) {
@@ -1985,9 +2029,10 @@ static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type
                 // 字段类型是枚举，需要先生成枚举定义
                 cn_cgen_enum_type_definition(file, field->field_type);
             } else if (field->field_type->kind == CN_TYPE_STRUCT) {
-                // 字段类型是结构体，需要先生成该结构体定义（不输出前向声明）
+                // 字段类型是结构体（非指针），需要先生成该结构体定义（不输出前向声明）
                 cn_cgen_struct_type_definition_with_forward(file, field->field_type, false);
             }
+            // 注意：指针类型已在第一步处理，这里不需要再处理
         }
     }
     

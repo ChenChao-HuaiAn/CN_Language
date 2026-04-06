@@ -208,6 +208,30 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         print_str_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
     }
 
+    // 注册内置函数：打印格式 (printf)
+    // 特殊处理：支持可变参数，返回整数
+    CnSemSymbol *printf_sym = cn_sem_scope_insert_symbol(global_scope, "打印格式", strlen("打印格式"), CN_SEM_SYMBOL_FUNCTION);
+    if (printf_sym) {
+        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理可变参数
+        printf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
+    // 注册内置函数：字符串格式 (sprintf)
+    // 特殊处理：支持可变参数，返回字符串
+    CnSemSymbol *sprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式", strlen("字符串格式"), CN_SEM_SYMBOL_FUNCTION);
+    if (sprintf_sym) {
+        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理可变参数
+        sprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
+    // 注册内置函数：字符串格式化 (snprintf)
+    // 特殊处理：支持可变参数，返回整数
+    CnSemSymbol *snprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式化", strlen("字符串格式化"), CN_SEM_SYMBOL_FUNCTION);
+    if (snprintf_sym) {
+        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理可变参数
+        snprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
     // 注册内置函数：长度 (length)
     // 注意：长度函数是特殊的，它可以接受字符串或数组参数
     // 我们在符号表中标记它，但在 semantic_passes.c 中特殊处理其类型检查
@@ -371,6 +395,24 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // count
         param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // size
         calloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+
+    // 注册内置函数：分配内存数组 (malloc array)
+    // 参数：类型大小, 数量
+    CnSemSymbol *malloc_array_sym = cn_sem_scope_insert_symbol(global_scope, "分配内存数组", strlen("分配内存数组"), CN_SEM_SYMBOL_FUNCTION);
+    if (malloc_array_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // type_size
+        param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // count
+        malloc_array_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+
+    // 注册内置函数：类型大小 (sizeof)
+    // 参数：类型名（编译时计算）
+    CnSemSymbol *sizeof_sym = cn_sem_scope_insert_symbol(global_scope, "类型大小", strlen("类型大小"), CN_SEM_SYMBOL_FUNCTION);
+    if (sizeof_sym) {
+        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理
+        sizeof_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
     }
     
     // 注册内置函数：释放输入 (free_input)
@@ -1984,6 +2026,24 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
         print_int_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_VOID), param_types, 1);
     }
 
+    // 注册内置函数：打印格式 (printf) - 支持可变参数
+    CnSemSymbol *printf_sym = cn_sem_scope_insert_symbol(global_scope, "打印格式", strlen("打印格式"), CN_SEM_SYMBOL_FUNCTION);
+    if (printf_sym) {
+        printf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
+    // 注册内置函数：字符串格式 (sprintf) - 支持可变参数
+    CnSemSymbol *sprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式", strlen("字符串格式"), CN_SEM_SYMBOL_FUNCTION);
+    if (sprintf_sym) {
+        sprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
+    // 注册内置函数：字符串格式化 (snprintf) - 支持可变参数
+    CnSemSymbol *snprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式化", strlen("字符串格式化"), CN_SEM_SYMBOL_FUNCTION);
+    if (snprintf_sym) {
+        snprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
     // =============================================================================
     // 注册内存管理函数
     // =============================================================================
@@ -2020,6 +2080,21 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
         param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // count
         param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // size
         calloc_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+
+    // 注册内置函数：分配内存数组 (malloc array)
+    CnSemSymbol *malloc_array_sym = cn_sem_scope_insert_symbol(global_scope, "分配内存数组", strlen("分配内存数组"), CN_SEM_SYMBOL_FUNCTION);
+    if (malloc_array_sym) {
+        CnType **param_types = (CnType **)malloc(sizeof(CnType *) * 2);
+        param_types[0] = cn_type_new_primitive(CN_TYPE_INT);  // type_size
+        param_types[1] = cn_type_new_primitive(CN_TYPE_INT);  // count
+        malloc_array_sym->type = cn_type_new_function(cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID)), param_types, 2);
+    }
+
+    // 注册内置函数：类型大小 (sizeof)
+    CnSemSymbol *sizeof_sym = cn_sem_scope_insert_symbol(global_scope, "类型大小", strlen("类型大小"), CN_SEM_SYMBOL_FUNCTION);
+    if (sizeof_sym) {
+        sizeof_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
     }
     
     // =============================================================================
