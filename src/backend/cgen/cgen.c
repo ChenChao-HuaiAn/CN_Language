@@ -651,6 +651,20 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                 fprintf(ctx->output_file, "}");
             }
             break;
+        case CN_AST_EXPR_CAST:
+            // 类型转换表达式：(目标类型)操作数
+            {
+                fprintf(ctx->output_file, "(");
+                if (expr->as.cast.target_type) {
+                    const char *c_type = get_c_type_string(expr->as.cast.target_type);
+                    fprintf(ctx->output_file, "%s", c_type);
+                } else {
+                    fprintf(ctx->output_file, "void*");  // 默认使用 void*
+                }
+                fprintf(ctx->output_file, ")");
+                cn_cgen_expr_simple(ctx, expr->as.cast.operand);
+            }
+            break;
         default:
             fprintf(ctx->output_file, "0"); // 不支持的表达式，用0作为默认值
             break;

@@ -1142,6 +1142,16 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 结构体字面量：使用 AST 表达式操作数，在 cgen 阶段生成 C 复合字面量
             return cn_ir_op_ast_expr(expr, expr->type);
         }
+        case CN_AST_EXPR_CAST: {
+            // 类型转换表达式：生成操作数的IR，然后标记类型转换
+            // 在cgen阶段生成C语言的类型转换语法
+            CnIrOperand operand = cn_ir_gen_expr(ctx, expr->as.cast.operand);
+            if (operand.kind == CN_IR_OP_NONE) {
+                return cn_ir_op_none();
+            }
+            // 使用AST表达式操作数，在cgen阶段生成类型转换
+            return cn_ir_op_ast_expr(expr, expr->as.cast.target_type);
+        }
         default:
             return cn_ir_op_none();
     }

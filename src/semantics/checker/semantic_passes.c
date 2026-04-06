@@ -1269,6 +1269,19 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 
                 // 检查是否为结构体类型
                 if (object_type && object_type->kind == CN_TYPE_STRUCT) {
+                    // 动态解析对象类型：如果对象类型是结构体但没有字段信息，
+                    // 尝试从符号表查找真实类型（解决模块导入时结构体字段信息丢失问题）
+                    if (!object_type->as.struct_type.fields &&
+                        object_type->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                                    object_type->as.struct_type.name,
+                                                    object_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            object_type = type_sym->type;
+                        }
+                    }
+                    
                     CnStructField *field = cn_type_struct_find_field(
                         object_type,
                         target_expr->as.member.member_name,
@@ -1892,6 +1905,26 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 break;
             }
             
+            // 动态解析对象类型：如果对象类型是结构体但没有字段信息，
+            // 尝试从符号表查找真实类型（解决模块导入时结构体字段信息丢失问题）
+            if (!object_type->as.struct_type.fields &&
+                object_type->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            object_type->as.struct_type.name,
+                                            object_type->as.struct_type.name_length);
+                fprintf(stderr, "[DEBUG] 动态解析对象类型: %.*s, 找到=%s, type=%p\n",
+                        (int)object_type->as.struct_type.name_length, object_type->as.struct_type.name,
+                        type_sym ? "是" : "否", type_sym ? (void*)type_sym->type : NULL);
+                if (type_sym && type_sym->type &&
+                    type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                    // 更新对象类型为符号表中的真实类型
+                    object_type = type_sym->type;
+                    fprintf(stderr, "[DEBUG] 对象类型解析成功: fields=%p, field_count=%zu\n",
+                            (void*)object_type->as.struct_type.fields,
+                            object_type->as.struct_type.field_count);
+                }
+            }
+            
             // 在结构体类型中查找成员字段
             CnStructField *field = cn_type_struct_find_field(
                 object_type,
@@ -2067,6 +2100,21 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             size_t positional_index = 0;
             int saw_named = 0;
             CnType *struct_type = struct_sym->type;
+            
+            // 动态解析结构体类型：如果结构体类型没有字段信息，
+            // 尝试从符号表查找真实类型（解决模块导入时结构体字段信息丢失问题）
+            if (struct_type && struct_type->kind == CN_TYPE_STRUCT &&
+                !struct_type->as.struct_type.fields &&
+                struct_type->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            struct_type->as.struct_type.name,
+                                            struct_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                    struct_type = type_sym->type;
+                }
+            }
+            
             for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
                 CnAstStructFieldInit *init = &expr->as.struct_lit.fields[i];
                 if (!init) continue;

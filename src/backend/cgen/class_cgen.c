@@ -457,6 +457,18 @@ static void cgen_init_expr_simple(FILE *out, CnAstExpr *expr) {
             cgen_init_expr_simple(out, expr->as.binary.right);
             fprintf(out, ")");
             break;
+        case CN_AST_EXPR_CAST:
+            // 类型转换表达式：(目标类型)操作数
+            fprintf(out, "(");
+            if (expr->as.cast.target_type) {
+                const char *c_type = get_c_type_string(expr->as.cast.target_type);
+                fprintf(out, "%s", c_type);
+            } else {
+                fprintf(out, "void*");  // 默认使用 void*
+            }
+            fprintf(out, ")");
+            cgen_init_expr_simple(out, expr->as.cast.operand);
+            break;
         default:
             fprintf(out, "0");
             break;
@@ -902,6 +914,18 @@ static void cgen_expr_in_method(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             fprintf(out, " : ");
             cgen_expr_in_method(ctx, expr->as.ternary.false_expr);
             fprintf(out, ")");
+            break;
+        case CN_AST_EXPR_CAST:
+            // 类型转换表达式：(目标类型)操作数
+            fprintf(out, "(");
+            if (expr->as.cast.target_type) {
+                const char *c_type = get_c_type_string(expr->as.cast.target_type);
+                fprintf(out, "%s", c_type);
+            } else {
+                fprintf(out, "void*");  // 默认使用 void*
+            }
+            fprintf(out, ")");
+            cgen_expr_in_method(ctx, expr->as.cast.operand);
             break;
         default:
             fprintf(out, "0");
@@ -2950,6 +2974,18 @@ static void cgen_expr_for_arg(FILE *out, CnAstExpr *expr) {
             }
             cgen_expr_for_arg(out, expr->as.binary.right);
             fprintf(out, ")");
+            break;
+        case CN_AST_EXPR_CAST:
+            // 类型转换表达式：(目标类型)操作数
+            fprintf(out, "(");
+            if (expr->as.cast.target_type) {
+                const char *c_type = get_c_type_string(expr->as.cast.target_type);
+                fprintf(out, "%s", c_type);
+            } else {
+                fprintf(out, "void*");  // 默认使用 void*
+            }
+            fprintf(out, ")");
+            cgen_expr_for_arg(out, expr->as.cast.operand);
             break;
         default:
             fprintf(out, "0");

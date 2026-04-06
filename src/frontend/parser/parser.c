@@ -75,6 +75,7 @@ static CnAstExpr *make_array_literal(CnAstExpr **elements, size_t element_count)
 static CnAstExpr *make_index(CnAstExpr *array, CnAstExpr *index);
 static CnAstExpr *make_member_access(CnAstExpr *object, const char *member_name, size_t member_name_length, int is_arrow);
 static CnAstExpr *make_struct_literal(const char *struct_name, size_t struct_name_length, CnAstStructFieldInit *fields, size_t field_count);
+static CnAstExpr *make_cast(CnType *target_type, CnAstExpr *operand);
 static CnAstExpr *make_memory_read(CnAstExpr *address);
 static CnAstExpr *make_memory_write(CnAstExpr *address, CnAstExpr *value);
 static CnAstExpr *make_memory_copy(CnAstExpr *dest, CnAstExpr *src, CnAstExpr *size);
@@ -3174,9 +3175,62 @@ static CnAstExpr *parse_factor(CnParser *parser)
         expr = make_inline_asm(asm_code, outputs, output_count, inputs, input_count, clobbers);
     */  // 结束已禁用的内联汇编解析
     } else if (parser->current.kind == CN_TOKEN_LPAREN) {
-        parser_advance(parser);
-        expr = parse_expression(parser);
-        parser_expect(parser, CN_TOKEN_RPAREN);
+        // 可能是类型转换表达式 (类型)表达式 或 普通括号表达式 (表达式)
+        // 需要前瞻判断
+        
+        // 保存当前状态
+        CnToken saved_token = parser->current;
+        int saved_has_current = parser->has_current;
+        CnLexer saved_lexer_state = *parser->lexer;
+        int saved_error_count = parser->error_count;
+        
+        parser_advance(parser);  // 跳过 '('
+        
+        // 检查下一个token是否可能是类型名的开始
+        // 类型名可以是：基础类型关键字（整数、小数等）或标识符（结构体名）
+        bool could_be_type = (parser->current.kind == CN_TOKEN_KEYWORD_INT ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_FLOAT ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_CHAR ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_STRING ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_CONST_STRING ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_BOOL ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_VOID ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_STRUCT ||
+                              parser->current.kind == CN_TOKEN_KEYWORD_ENUM ||
+                              parser->current.kind == CN_TOKEN_IDENT);
+        
+        if (could_be_type) {
+            // 尝试解析类型
+            CnType *cast_type = parse_type(parser);
+            
+            if (cast_type && parser->current.kind == CN_TOKEN_RPAREN) {
+                // 成功解析类型且下一个是 ')'，这是类型转换表达式
+                parser_advance(parser);  // 跳过 ')'
+                
+                // 解析要转换的表达式
+                CnAstExpr *operand = parse_unary(parser);
+                if (!operand) {
+                    // 注意：cast_type 会被后续代码使用或由AST管理生命周期
+                    return NULL;
+                }
+                
+                expr = make_cast(cast_type, operand);
+            } else {
+                // 不是类型转换，回退并解析普通括号表达式
+                parser->current = saved_token;
+                parser->has_current = saved_has_current;
+                *parser->lexer = saved_lexer_state;
+                parser->error_count = saved_error_count;  // 恢复错误计数
+                
+                parser_advance(parser);  // 跳过 '('
+                expr = parse_expression(parser);
+                parser_expect(parser, CN_TOKEN_RPAREN);
+            }
+        } else {
+            // 不是类型转换，解析普通括号表达式
+            expr = parse_expression(parser);
+            parser_expect(parser, CN_TOKEN_RPAREN);
+        }
     } else if (parser->current.kind == CN_TOKEN_LBRACKET) {
         // 解析数组字面量 [1, 2, 3]
         parser_advance(parser);  // 跳过 [
@@ -4573,6 +4627,21 @@ static CnAstExpr *make_struct_literal(const char *struct_name, size_t struct_nam
     expr->as.struct_lit.struct_name_length = struct_name_length;
     expr->as.struct_lit.fields = fields;
     expr->as.struct_lit.field_count = field_count;
+    return expr;
+}
+
+// 创建类型转换表达式
+static CnAstExpr *make_cast(CnType *target_type, CnAstExpr *operand)
+{
+    CnAstExpr *expr = (CnAstExpr *)malloc(sizeof(CnAstExpr));
+    if (!expr) {
+        return NULL;
+    }
+
+    expr->kind = CN_AST_EXPR_CAST;
+    expr->type = target_type;  // 类型转换表达式的类型就是目标类型
+    expr->as.cast.target_type = target_type;
+    expr->as.cast.operand = operand;
     return expr;
 }
 

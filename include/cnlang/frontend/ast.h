@@ -41,7 +41,9 @@ typedef enum CnAstExprKind {
     CN_AST_EXPR_MEMORY_UNMAP,   // 解除内存映射 unmap_memory(addr, size)
     CN_AST_EXPR_INLINE_ASM,     // 内联汇编 inline_asm("code", outputs, inputs, clobbers)
     // 泛型编程支持（阶段13 - 模板支持）
-    CN_AST_EXPR_TEMPLATE_INSTANTIATION  // 模板实例化 名称<类型参数>
+    CN_AST_EXPR_TEMPLATE_INSTANTIATION,  // 模板实例化 名称<类型参数>
+    // 类型转换表达式
+    CN_AST_EXPR_CAST            // 类型转换表达式 (类型)表达式
 } CnAstExprKind;
 
 // AST 节点种类（语句）
@@ -635,6 +637,12 @@ typedef struct CnAstInlineAsmExpr {
     struct CnAstExpr *clobbers;     // 破坏列表（字符串字面量或标识符列表）
 } CnAstInlineAsmExpr;
 
+// 类型转换表达式 (类型)表达式
+typedef struct CnAstCastExpr {
+    struct CnType *target_type;      // 目标类型
+    struct CnAstExpr *operand;       // 要转换的表达式
+} CnAstCastExpr;
+
 // 表达式统一节点
 typedef struct CnAstExpr {
     CnAstExprKind kind;
@@ -667,6 +675,7 @@ typedef struct CnAstExpr {
         CnAstMemoryUnmapExpr memory_unmap; // 解除内存映射
         CnAstInlineAsmExpr inline_asm;     // 内联汇编
         CnAstTemplateInstantiationExpr template_inst; // 模板实例化
+        CnAstCastExpr cast;                // 类型转换
     } as;
 } CnAstExpr;
 

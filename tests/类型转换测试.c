@@ -4,16 +4,9 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
-// CN Language Enum Definitions
-enum 测试枚举 {
-    测试枚举_值一,
-    测试枚举_值二,
-    测试枚举_值三
-};
-
 // CN Language Global Struct Definitions
-struct 测试结构 {
-    enum 测试枚举 值;
+struct 类型信息 {
+    long long 大小;
 };
 
 // Global Variables
@@ -23,9 +16,14 @@ long long main();
 
 long long main() {
   cn_rt_init();
+  long long r0;
 
   entry:
-  struct 测试结构 cn_var_obj_0;
+  void* cn_var_ptr_0;
+  cn_var_ptr_0 = (void*)0;
+  struct 类型信息* cn_var_类型_1;
+  r0 = cn_var_ptr_0;
+  cn_var_类型_1 = (struct 类型信息*)cn_var_ptr;
   return 0;
   cn_rt_exit();
 }
