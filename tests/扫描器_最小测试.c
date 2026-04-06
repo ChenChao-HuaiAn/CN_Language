@@ -6,13 +6,13 @@
 
 // CN Language Enum Definitions
 enum 词元类型 {
-    标识符,
-    整数字面量,
-    加号,
-    减号,
-    分号,
-    结束,
-    错误
+    词元类型_标识符,
+    词元类型_整数字面量,
+    词元类型_加号,
+    词元类型_减号,
+    词元类型_分号,
+    词元类型_结束,
+    词元类型_错误
 };
 
 // CN Language Global Struct Definitions

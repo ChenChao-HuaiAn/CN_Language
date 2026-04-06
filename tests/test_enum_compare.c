@@ -6,10 +6,10 @@
 
 // CN Language Enum Definitions
 enum 颜色 {
-    红,
-    绿,
-    蓝,
-    黄
+    颜色_红,
+    颜色_绿,
+    颜色_蓝,
+    颜色_黄
 };
 
 // Global Variables

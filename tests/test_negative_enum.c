@@ -6,10 +6,10 @@
 
 // CN Language Enum Definitions
 enum 状态 {
-    待处理 = 0,
-    处理中 = 1,
-    已完成 = 2,
-    已取消 = -1
+    状态_待处理 = 0,
+    状态_处理中 = 1,
+    状态_已完成 = 2,
+    状态_已取消 = -1
 };
 
 // Global Variables

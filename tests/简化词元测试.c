@@ -6,11 +6,11 @@
 
 // CN Language Enum Definitions
 enum 托肯类型 {
-    托肯如果,
-    托肯否则,
-    托肯标识符,
-    托肯结束,
-    托肯错误
+    托肯类型_托肯如果,
+    托肯类型_托肯否则,
+    托肯类型_托肯标识符,
+    托肯类型_托肯结束,
+    托肯类型_托肯错误
 };
 
 // CN Language Global Struct Definitions
