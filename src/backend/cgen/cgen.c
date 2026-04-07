@@ -1706,27 +1706,8 @@ void cn_cgen_struct_decl_with_prefix(CnCCodeGenContext *ctx, CnAstStmt *struct_s
     
     CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
     
-    // 第一步：收集所有需要前向声明的结构体类型（指针字段引用的结构体）
-    // 对于指针类型，只需要前向声明，不需要完整定义
-    for (size_t i = 0; i < decl->field_count; i++) {
-        CnType *field_type = decl->fields[i].field_type;
-        if (field_type && field_type->kind == CN_TYPE_POINTER &&
-            field_type->as.pointer_to &&
-            field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
-            // 指针指向结构体：只需要前向声明
-            CnType *pointee = field_type->as.pointer_to;
-            const char *pointee_name = pointee->as.struct_type.name;
-            size_t pointee_name_len = pointee->as.struct_type.name_length;
-            if (pointee_name && !is_type_already_generated(pointee_name, pointee_name_len)) {
-                // 输出前向声明
-                fprintf(ctx->output_file, "struct %.*s;\n", (int)pointee_name_len, pointee_name);
-                // 标记为已生成前向声明
-                mark_type_as_generated(pointee_name, pointee_name_len);
-            }
-        }
-    }
-    
     // 生成结构体定义
+    // 注意：前向声明已在第一遍扫描中统一输出，此处不再重复输出
     // 如果有函数前缀，生成: struct __local_函数名_结构体名
     // 否则生成: struct 结构体名
     if (func_prefix && func_prefix_len > 0) {
