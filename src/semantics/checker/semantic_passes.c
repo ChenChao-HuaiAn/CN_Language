@@ -1880,6 +1880,12 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             // 否则按照结构体成员访问处理
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
             
+            // 【关键修复】确保对象表达式的类型被正确设置
+            // 代码生成器依赖 expr->as.member.object->type 来判断是否使用 "->" 操作符
+            if (object_type && expr->as.member.object) {
+                expr->as.member.object->type = object_type;
+            }
+            
             // 特殊处理：内建方法 "长度"，支持数组和字符串
             if (expr->as.member.member_name &&
                 expr->as.member.member_name_length == strlen("长度") &&
@@ -2303,7 +2309,29 @@ static CnType *infer_return_from_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiag
                     // 处理变量声明
                     if (then_stmt && then_stmt->kind == CN_AST_STMT_VAR_DECL) {
                         CnAstVarDecl *decl = &then_stmt->as.var_decl;
-                        cn_sem_scope_insert_symbol(if_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        CnSemSymbol *sym = cn_sem_scope_insert_symbol(if_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        // 设置变量类型
+                        if (sym) {
+                            CnType *var_type = decl->declared_type;
+                            // 如果是指针类型，需要特殊处理
+                            if (var_type && var_type->kind == CN_TYPE_POINTER &&
+                                var_type->as.pointer_to && var_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                                CnSemSymbol *type_sym = cn_sem_scope_lookup(if_scope,
+                                                        var_type->as.pointer_to->as.struct_type.name,
+                                                        var_type->as.pointer_to->as.struct_type.name_length);
+                                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                    var_type = cn_type_new_pointer(type_sym->type);
+                                }
+                            } else if (var_type && var_type->kind == CN_TYPE_STRUCT) {
+                                CnSemSymbol *type_sym = cn_sem_scope_lookup(if_scope,
+                                                        var_type->as.struct_type.name,
+                                                        var_type->as.struct_type.name_length);
+                                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                    var_type = type_sym->type;
+                                }
+                            }
+                            sym->type = var_type;
+                        }
                     }
                     CnType *ret = infer_return_from_stmt(if_scope, then_stmt, diagnostics);
                     if (ret) {
@@ -2319,7 +2347,29 @@ static CnType *infer_return_from_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiag
                     // 处理变量声明
                     if (else_stmt && else_stmt->kind == CN_AST_STMT_VAR_DECL) {
                         CnAstVarDecl *decl = &else_stmt->as.var_decl;
-                        cn_sem_scope_insert_symbol(if_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        CnSemSymbol *sym = cn_sem_scope_insert_symbol(if_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        // 设置变量类型
+                        if (sym) {
+                            CnType *var_type = decl->declared_type;
+                            // 如果是指针类型，需要特殊处理
+                            if (var_type && var_type->kind == CN_TYPE_POINTER &&
+                                var_type->as.pointer_to && var_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                                CnSemSymbol *type_sym = cn_sem_scope_lookup(if_scope,
+                                                        var_type->as.pointer_to->as.struct_type.name,
+                                                        var_type->as.pointer_to->as.struct_type.name_length);
+                                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                    var_type = cn_type_new_pointer(type_sym->type);
+                                }
+                            } else if (var_type && var_type->kind == CN_TYPE_STRUCT) {
+                                CnSemSymbol *type_sym = cn_sem_scope_lookup(if_scope,
+                                                        var_type->as.struct_type.name,
+                                                        var_type->as.struct_type.name_length);
+                                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                    var_type = type_sym->type;
+                                }
+                            }
+                            sym->type = var_type;
+                        }
                     }
                     CnType *ret = infer_return_from_stmt(if_scope, else_stmt, diagnostics);
                     if (ret) {
@@ -2342,7 +2392,29 @@ static CnType *infer_return_from_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiag
                     // 处理变量声明
                     if (body_stmt && body_stmt->kind == CN_AST_STMT_VAR_DECL) {
                         CnAstVarDecl *decl = &body_stmt->as.var_decl;
-                        cn_sem_scope_insert_symbol(while_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        CnSemSymbol *sym = cn_sem_scope_insert_symbol(while_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+                        // 设置变量类型
+                        if (sym) {
+                            CnType *var_type = decl->declared_type;
+                            // 如果是指针类型，需要特殊处理
+                            if (var_type && var_type->kind == CN_TYPE_POINTER &&
+                                var_type->as.pointer_to && var_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                                CnSemSymbol *type_sym = cn_sem_scope_lookup(while_scope,
+                                                        var_type->as.pointer_to->as.struct_type.name,
+                                                        var_type->as.pointer_to->as.struct_type.name_length);
+                                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                    var_type = cn_type_new_pointer(type_sym->type);
+                                }
+                            } else if (var_type && var_type->kind == CN_TYPE_STRUCT) {
+                                CnSemSymbol *type_sym = cn_sem_scope_lookup(while_scope,
+                                                        var_type->as.struct_type.name,
+                                                        var_type->as.struct_type.name_length);
+                                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                    var_type = type_sym->type;
+                                }
+                            }
+                            sym->type = var_type;
+                        }
                     }
                     CnType *ret = infer_return_from_stmt(while_scope, body_stmt, diagnostics);
                     if (ret) {
@@ -2364,7 +2436,25 @@ static CnType *infer_return_from_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiag
                 CnAstVarDecl *decl = &stmt->as.for_stmt.init->as.var_decl;
                 CnSemSymbol *sym = cn_sem_scope_insert_symbol(for_scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
                 if (sym) {
-                    sym->type = decl->declared_type;
+                    CnType *var_type = decl->declared_type;
+                    // 如果是指针类型，需要特殊处理
+                    if (var_type && var_type->kind == CN_TYPE_POINTER &&
+                        var_type->as.pointer_to && var_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(for_scope,
+                                                var_type->as.pointer_to->as.struct_type.name,
+                                                var_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            var_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    } else if (var_type && var_type->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(for_scope,
+                                                var_type->as.struct_type.name,
+                                                var_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            var_type = type_sym->type;
+                        }
+                    }
+                    sym->type = var_type;
                 }
             }
             

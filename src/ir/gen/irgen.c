@@ -1181,13 +1181,35 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
         case CN_AST_EXPR_MEMBER_ACCESS: {
             // 成员访问：支持结构体 obj.member、模块 module.member 和枚举 enum.member
             
-            // 检查是否为枚举成员访问（对象类型为 ENUM 表示枚举）
-            if (expr->as.member.object->type && 
+            // 检查是否为枚举成员访问
+            // 方式1：对象类型为 ENUM 表示枚举（语义分析器已设置）
+            // 方式2：通过符号表查找对象标识符，确认是否为枚举类型
+            bool is_enum_access = false;
+            CnSemSymbol *enum_sym = NULL;
+            
+            if (expr->as.member.object->type &&
                 expr->as.member.object->type->kind == CN_TYPE_ENUM &&
                 expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                // 方式1：语义分析器已正确设置类型
+                is_enum_access = true;
+            } else if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER && ctx->current_scope) {
+                // 方式2：通过符号表查找确认是否为枚举类型
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
+                    expr->as.member.object->as.identifier.name,
+                    expr->as.member.object->as.identifier.name_length);
+                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
+                    is_enum_access = true;
+                    enum_sym = sym;
+                    // 修正对象类型
+                    expr->as.member.object->type = sym->type;
+                }
+            }
+            
+            if (is_enum_access) {
                 // 枚举成员访问：查找枚举成员的值
+                CnType *enum_type = enum_sym ? enum_sym->type : expr->as.member.object->type;
                 CnSemSymbol *member_sym = cn_type_enum_find_member(
-                    expr->as.member.object->type,
+                    enum_type,
                     expr->as.member.member_name,
                     expr->as.member.member_name_length);
                 
