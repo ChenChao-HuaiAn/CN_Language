@@ -13,6 +13,9 @@ enum 托肯类型 {
     托肯类型_托肯错误
 };
 
+// CN Language Global Struct Forward Declarations
+struct 托肯;
+
 // CN Language Global Struct Definitions
 struct 托肯 {
     long long 类型字段;

@@ -4,6 +4,9 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Global Struct Forward Declarations
+struct 数组字段测试;
+
 // CN Language Global Struct Definitions
 struct 数组字段测试 {
     long long* 数组字段;

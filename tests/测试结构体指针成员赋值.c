@@ -4,6 +4,9 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Global Struct Forward Declarations
+struct 扫描器;
+
 // CN Language Global Struct Definitions
 struct 扫描器 {
     long long 位置;

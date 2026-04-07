@@ -11,6 +11,9 @@ enum 颜色 {
     颜色_蓝
 };
 
+// CN Language Global Struct Forward Declarations
+struct 物体;
+
 // CN Language Global Struct Definitions
 struct 物体 {
     long long 颜色值;

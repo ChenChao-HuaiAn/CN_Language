@@ -4,6 +4,10 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Global Struct Forward Declarations
+struct 内层;
+struct 外层;
+
 // CN Language Global Struct Definitions
 struct 内层 {
     long long 值;

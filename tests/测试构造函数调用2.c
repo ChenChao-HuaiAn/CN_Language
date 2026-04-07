@@ -4,6 +4,9 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Global Struct Forward Declarations
+struct 学生;
+
 // CN Language Global Struct Definitions
 struct 学生 {
     char* 姓名;

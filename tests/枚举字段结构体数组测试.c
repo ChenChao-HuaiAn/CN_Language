@@ -11,6 +11,9 @@ enum 测试枚举 {
     测试枚举_值三
 };
 
+// CN Language Global Struct Forward Declarations
+struct 测试结构;
+
 // CN Language Global Struct Definitions
 struct 测试结构 {
     char* 名称;

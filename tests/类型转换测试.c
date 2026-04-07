@@ -4,6 +4,9 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Global Struct Forward Declarations
+struct 类型信息;
+
 // CN Language Global Struct Definitions
 struct 类型信息 {
     long long 大小;
@@ -16,7 +19,7 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r0;
+  void* r0;
 
   entry:
   void* cn_var_ptr_0;

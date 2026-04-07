@@ -4,6 +4,10 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Global Struct Forward Declarations
+struct 基础信息;
+struct 声明节点;
+
 // CN Language Global Struct Definitions
 struct 基础信息 {
     long long 类型;

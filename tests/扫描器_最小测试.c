@@ -15,6 +15,10 @@ enum 词元类型 {
     词元类型_错误
 };
 
+// CN Language Global Struct Forward Declarations
+struct 词元;
+struct 扫描器;
+
 // CN Language Global Struct Definitions
 struct 词元 {
     enum 词元类型 类型;

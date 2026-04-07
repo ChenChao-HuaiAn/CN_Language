@@ -4,6 +4,9 @@
 #include "cnrt.h"
 #include "cnlang/runtime/system_api.h"
 
+// CN Language Global Struct Forward Declarations
+struct 测试结构;
+
 // CN Language Global Struct Definitions
 struct 测试结构 {
     long long 位置;

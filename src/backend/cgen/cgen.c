@@ -1888,8 +1888,22 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         
         // =============================================================================
         // 输出全局结构体定义（在枚举之后）
+        // 采用两遍扫描：第一遍输出前向声明，第二遍输出完整定义
+        // 这样可以解决结构体之间的依赖问题
         // =============================================================================
         if (program->struct_count > 0) {
+            // 第一遍：输出所有结构体的前向声明
+            fprintf(file, "// CN Language Global Struct Forward Declarations\n");
+            for (size_t i = 0; i < program->struct_count; i++) {
+                CnAstStmt *struct_stmt = program->structs[i];
+                if (struct_stmt && struct_stmt->kind == CN_AST_STMT_STRUCT_DECL) {
+                    CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
+                    fprintf(file, "struct %.*s;\n", (int)decl->name_length, decl->name);
+                }
+            }
+            fprintf(file, "\n");
+            
+            // 第二遍：输出所有结构体的完整定义
             fprintf(file, "// CN Language Global Struct Definitions\n");
             for (size_t i = 0; i < program->struct_count; i++) {
                 cn_cgen_struct_decl(&ctx, program->structs[i]);
@@ -1902,7 +1916,24 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         }
         
         // 输出局部结构体定义（提升到全局，但使用特殊命名）
+        // 同样采用两遍扫描：先输出前向声明，再输出完整定义
         if (local_struct_count > 0) {
+            // 第一遍：输出所有局部结构体的前向声明
+            fprintf(file, "// CN Language Local Struct Forward Declarations (hoisted for C compatibility)\n");
+            for (size_t i = 0; i < local_struct_count; i++) {
+                CnAstStmt *struct_stmt = local_struct_infos[i].struct_stmt;
+                const char *func_name = local_struct_infos[i].function_name;
+                size_t func_name_len = local_struct_infos[i].function_name_length;
+                if (struct_stmt && struct_stmt->kind == CN_AST_STMT_STRUCT_DECL) {
+                    CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
+                    fprintf(file, "struct __local_%.*s_%.*s;\n",
+                            (int)func_name_len, func_name,
+                            (int)decl->name_length, decl->name);
+                }
+            }
+            fprintf(file, "\n");
+            
+            // 第二遍：输出所有局部结构体的完整定义
             fprintf(file, "// CN Language Local Struct Definitions (hoisted for C compatibility)\n");
             fprintf(file, "// Note: These are local to their respective functions in CN semantics\n");
             for (size_t i = 0; i < local_struct_count; i++) {
@@ -2869,8 +2900,22 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
         
         // =============================================================================
         // 输出全局结构体定义（在枚举之后）
+        // 采用两遍扫描：第一遍输出前向声明，第二遍输出完整定义
+        // 这样可以解决结构体之间的依赖问题
         // =============================================================================
         if (program->struct_count > 0) {
+            // 第一遍：输出所有结构体的前向声明
+            fprintf(file, "// CN Language Global Struct Forward Declarations\n");
+            for (size_t i = 0; i < program->struct_count; i++) {
+                CnAstStmt *struct_stmt = program->structs[i];
+                if (struct_stmt && struct_stmt->kind == CN_AST_STMT_STRUCT_DECL) {
+                    CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
+                    fprintf(file, "struct %.*s;\n", (int)decl->name_length, decl->name);
+                }
+            }
+            fprintf(file, "\n");
+            
+            // 第二遍：输出所有结构体的完整定义
             fprintf(file, "// CN Language Global Struct Definitions\n");
             for (size_t i = 0; i < program->struct_count; i++) {
                 cn_cgen_struct_decl(&ctx, program->structs[i]);
@@ -2881,7 +2926,25 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
             collect_local_structs_from_function(program->functions[i], &local_struct_infos, &local_struct_count, &local_struct_capacity);
         }
         
+        // 输出局部结构体定义（提升到全局，但使用特殊命名）
+        // 同样采用两遍扫描：先输出前向声明，再输出完整定义
         if (local_struct_count > 0) {
+            // 第一遍：输出所有局部结构体的前向声明
+            fprintf(file, "// CN Language Local Struct Forward Declarations (hoisted for C compatibility)\n");
+            for (size_t i = 0; i < local_struct_count; i++) {
+                CnAstStmt *struct_stmt = local_struct_infos[i].struct_stmt;
+                const char *func_name = local_struct_infos[i].function_name;
+                size_t func_name_len = local_struct_infos[i].function_name_length;
+                if (struct_stmt && struct_stmt->kind == CN_AST_STMT_STRUCT_DECL) {
+                    CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
+                    fprintf(file, "struct __local_%.*s_%.*s;\n",
+                            (int)func_name_len, func_name,
+                            (int)decl->name_length, decl->name);
+                }
+            }
+            fprintf(file, "\n");
+            
+            // 第二遍：输出所有局部结构体的完整定义
             fprintf(file, "// CN Language Local Struct Definitions (hoisted for C compatibility)\n");
             fprintf(file, "// Note: These are local to their respective functions in CN semantics\n");
             for (size_t i = 0; i < local_struct_count; i++) {
