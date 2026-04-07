@@ -445,11 +445,25 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                 } else {
                     // 普通成员访问
                     cn_cgen_expr_simple(ctx, expr->as.member.object);
-                    if (expr->as.member.is_arrow) {
+                    
+                    // 【修改点】根据对象类型判断使用 "." 还是 "->"
+                    // CN语言中，指针类型的成员访问使用 "." 语法，但生成C代码时需要转换为 "->"
+                    bool use_arrow = expr->as.member.is_arrow;  // 显式使用箭头语法
+                    
+                    // 【新增】检查对象类型是否为指针
+                    if (!use_arrow && expr->as.member.object && expr->as.member.object->type) {
+                        CnType *obj_type = expr->as.member.object->type;
+                        if (obj_type->kind == CN_TYPE_POINTER) {
+                            use_arrow = true;  // 指针类型自动使用箭头
+                        }
+                    }
+                    
+                    if (use_arrow) {
                         fprintf(ctx->output_file, "->");
                     } else {
                         fprintf(ctx->output_file, ".");
                     }
+                    
                     fprintf(ctx->output_file, "%.*s",
                             (int)expr->as.member.member_name_length,
                             expr->as.member.member_name);
@@ -2048,13 +2062,14 @@ char *cn_cgen_module_to_string(CnIrModule *module) { return strdup("// Not imple
 // ============================================================================
 
 // 前向声明
-static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, size_t func_name_len, CnType *func_type);
+static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, size_t func_name_len, CnType *func_type, CnMap *declared_functions);
 
 // 通配符导入回调上下文结构
 typedef struct {
     FILE *file;
     const char *module_name;      // 模块名（用于生成前缀）
     size_t module_name_len;       // 模块名长度
+    CnMap *declared_functions;    // 已声明函数集合（用于去重）
 } WildcardImportContext;
 
 // 枚举成员收集回调上下文
@@ -2312,7 +2327,7 @@ static void wildcard_import_callback(CnSemSymbol *sym, void *user_data) {
     if (sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
         // 直接使用原始函数名生成前向声明（不再使用编码名称）
         // 模块系统通过作用域管理避免命名冲突
-        cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type);
+        cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type, ctx->declared_functions);
     } else if (sym->kind == CN_SEM_SYMBOL_VARIABLE && sym->type) {
         // 生成变量的 extern 声明
         const char *var_type = get_c_type_string(sym->type);
@@ -2326,6 +2341,7 @@ typedef struct {
     FILE *file;
     const char *module_name;
     size_t module_name_len;
+    CnMap *declared_functions;    // 已声明函数集合（用于去重）
 } FullImportContext;
 
 // 全量导入回调函数（遍历模块作用域符号时调用）
@@ -2340,7 +2356,7 @@ static void full_import_callback(CnSemSymbol *sym, void *user_data) {
     if (sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
         // 直接使用原始函数名生成前向声明（不再使用编码名称）
         // 模块系统通过作用域管理避免命名冲突
-        cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type);
+        cn_cgen_function_forward_declaration(ctx->file, sym->name, sym->name_length, sym->type, ctx->declared_functions);
     } else if (sym->kind == CN_SEM_SYMBOL_VARIABLE && sym->type) {
         // 生成变量的 extern 声明
         const char *var_type = get_c_type_string(sym->type);
@@ -2433,14 +2449,15 @@ static void collect_struct_forward_decls_from_func_type(CnType *func_type,
 }
 
 /**
- * @brief 生成单个函数的前向声明
+ * @brief 生成单个函数的前向声明（带去重检查）
  *
  * @param file 输出文件
  * @param func_name 函数名称（非空字符结尾）
  * @param func_name_len 函数名称长度
  * @param func_type 函数类型
+ * @param declared_functions 已声明函数集合（用于去重，可为NULL）
  */
-static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, size_t func_name_len, CnType *func_type) {
+static void cn_cgen_function_forward_declaration(FILE *file, const char *func_name, size_t func_name_len, CnType *func_type, CnMap *declared_functions) {
     if (!file || !func_name || !func_type || func_type->kind != CN_TYPE_FUNCTION) {
         return;
     }
@@ -2454,6 +2471,11 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
     // 检测运行时函数冲突：如果函数名与运行时库函数同名，跳过前向声明
     // 运行时库已提供这些函数的实现，无需重复声明
     if (is_runtime_function_conflict(temp_name)) {
+        return;
+    }
+    
+    // 去重检查：如果已声明过该函数，跳过
+    if (declared_functions && cn_rt_map_contains(declared_functions, temp_name)) {
         return;
     }
     
@@ -2478,6 +2500,15 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
     }
     
     fprintf(file, ");\n");
+    
+    // 记录已声明的函数
+    if (declared_functions) {
+        // 使用strdup复制键名，因为哈希表会持有该指针
+        char *key = strdup(temp_name);
+        if (key) {
+            cn_rt_map_insert(declared_functions, key, (void*)1);
+        }
+    }
 }
 
 /**
@@ -2491,8 +2522,9 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
  * @param file 输出文件
  * @param program AST程序节点
  * @param global_scope 全局作用域
+ * @param declared_functions 已声明函数集合（用于去重）
  */
-static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *program, CnSemScope *global_scope) {
+static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *program, CnSemScope *global_scope, CnMap *declared_functions) {
     if (!file || !program || !global_scope) {
         return;
     }
@@ -2705,7 +2737,7 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
                 CnSemSymbol *symbol = cn_sem_scope_lookup(global_scope, symbol_name, symbol_name_len);
                 if (symbol && symbol->type) {
                     if (symbol->kind == CN_SEM_SYMBOL_FUNCTION) {
-                        cn_cgen_function_forward_declaration(file, symbol_name, symbol_name_len, symbol->type);
+                        cn_cgen_function_forward_declaration(file, symbol_name, symbol_name_len, symbol->type, declared_functions);
                     } else if (symbol->kind == CN_SEM_SYMBOL_VARIABLE) {
                         const char *var_type = get_c_type_string(symbol->type);
                         fprintf(file, "extern %s cn_var_%.*s;\n", var_type, (int)symbol_name_len, symbol_name);
@@ -2717,7 +2749,7 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
         else if (import->kind == CN_IMPORT_FROM_WILDCARD) {
             CnSemSymbol *module_sym = cn_sem_scope_lookup(global_scope, import->module_name, import->module_name_length);
             if (module_sym && module_sym->kind == CN_SEM_SYMBOL_MODULE && module_sym->as.module_scope) {
-                WildcardImportContext ctx = { file, import->module_name, import->module_name_length };
+                WildcardImportContext ctx = { file, import->module_name, import->module_name_length, declared_functions };
                 cn_sem_scope_foreach_symbol(module_sym->as.module_scope, wildcard_import_callback, &ctx);
             }
         }
@@ -2736,7 +2768,7 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
             
             CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
             if (sym && sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
-                FullImportContext fctx = { file, module_name, module_name_len };
+                FullImportContext fctx = { file, module_name, module_name_len, declared_functions };
                 cn_sem_scope_foreach_symbol(sym->as.module_scope, full_import_callback, &fctx);
             }
         }
@@ -2786,6 +2818,9 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     ctx.module = module;
     ctx.module_id = module_id;  // 设置模块ID用于生成带前缀的函数名
     ctx.program = program;      // 设置程序AST，用于查找类定义
+    
+    // 初始化已声明函数集合（用于去重）
+    ctx.declared_functions = cn_rt_map_create(64);
 
     // 根据编译模式生成不同的头文件
     if (module->compile_mode == CN_COMPILE_MODE_FREESTANDING) {
@@ -2819,7 +2854,7 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
         // 先输出导入模块的枚举和结构体定义（必须在当前模块定义之前）
         // =============================================================================
         if (global_scope) {
-            cn_cgen_import_forward_declarations(file, program, global_scope);
+            cn_cgen_import_forward_declarations(file, program, global_scope, ctx.declared_functions);
         }
         
         // =============================================================================
@@ -2967,6 +3002,12 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     // 释放局部结构体信息列表
     if (local_struct_infos) {
         free(local_struct_infos);
+    }
+    
+    // 释放已声明函数集合
+    if (ctx.declared_functions) {
+        cn_rt_map_destroy(ctx.declared_functions);
+        ctx.declared_functions = NULL;
     }
     
     fclose(file);

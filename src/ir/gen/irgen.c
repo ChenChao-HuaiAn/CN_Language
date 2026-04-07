@@ -297,24 +297,50 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             
             // 普通变量：生成 LOAD 指令从变量地址加载值
             int dest_reg = alloc_reg(ctx);
-            CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
+            
+            // 获取变量类型：优先使用 expr->type，如果为 NULL 则从符号表查找
+            CnType *var_type = expr->type;
+            if (!var_type && ctx->current_scope) {
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
+                                                       expr->as.identifier.name,
+                                                       expr->as.identifier.name_length);
+                if (sym && sym->type) {
+                    var_type = sym->type;
+                    fprintf(stderr, "[DEBUG IR IDENTIFIER] 从符号表获取类型: 变量名=%.*s, type=%p, kind=%d\n",
+                            (int)expr->as.identifier.name_length, expr->as.identifier.name,
+                            (void*)var_type, var_type->kind);
+                }
+            }
+            
+            CnIrOperand dest = cn_ir_op_reg(dest_reg, var_type);
             char *name = copy_name(expr->as.identifier.name, expr->as.identifier.name_length);
+            
+            // 调试输出：检查变量类型
+            fprintf(stderr, "[DEBUG IR IDENTIFIER] 变量名=%.*s, expr->type=%p, kind=%d, dest_reg=%d\n",
+                    (int)expr->as.identifier.name_length, expr->as.identifier.name,
+                    (void*)expr->type, expr->type ? expr->type->kind : -1, dest_reg);
             
             // 查找局部变量的唯一名称
             char *unique_name = lookup_local_var_unique_name(ctx, name);
             if (unique_name) {
                 // 找到映射，使用唯一名称
-                CnIrOperand src = cn_ir_op_symbol(unique_name, expr->type);
+                CnIrOperand src = cn_ir_op_symbol(unique_name, var_type);
                 free(unique_name);
                 free(name);
-                emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
+                CnIrInst *load_inst = cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none());
+                fprintf(stderr, "[DEBUG IR LOAD] 创建LOAD指令: dest_reg=%d, dest.type=%p, kind=%d\n",
+                        dest_reg, (void*)load_inst->dest.type, load_inst->dest.type ? load_inst->dest.type->kind : -1);
+                emit(ctx, load_inst);
                 return dest;
             }
             
             // 未找到映射，使用原始名称（可能是全局变量或参数）
-            CnIrOperand src = cn_ir_op_symbol(name, expr->type);
+            CnIrOperand src = cn_ir_op_symbol(name, var_type);
             free(name);
-            emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
+            CnIrInst *load_inst = cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none());
+            fprintf(stderr, "[DEBUG IR LOAD] 创建LOAD指令: dest_reg=%d, dest.type=%p, kind=%d\n",
+                    dest_reg, (void*)load_inst->dest.type, load_inst->dest.type ? load_inst->dest.type->kind : -1);
+            emit(ctx, load_inst);
             return dest;
         }
         case CN_AST_EXPR_BINARY: {
@@ -1165,14 +1191,42 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             }
             
             // 结构体成员访问：obj.member 或 ptr->member
+            // CN语言中，指针成员访问可以使用"."语法，但生成C代码时需要转换为"->"
             CnIrOperand object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
             
-            // 如果是箭头访问，先解引用指针
-            if (expr->as.member.is_arrow) {
-                int deref_reg = alloc_reg(ctx);
-                CnIrOperand deref_op = cn_ir_op_reg(deref_reg, expr->as.member.object->type->as.pointer_to);
-                emit(ctx, cn_ir_inst_new(CN_IR_INST_DEREF, deref_op, object_op, cn_ir_op_none()));
-                object_op = deref_op;
+            // 判断对象是否为指针类型
+            bool object_is_pointer = (expr->as.member.object->type &&
+                                      expr->as.member.object->type->kind == CN_TYPE_POINTER);
+            
+            // 调试输出
+            fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] object expr type=%p, kind=%d, is_pointer=%d\n",
+                    (void*)expr->as.member.object->type,
+                    expr->as.member.object->type ? expr->as.member.object->type->kind : -1,
+                    object_is_pointer);
+            fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] object_op kind=%d, type=%p, type_kind=%d\n",
+                    object_op.kind, (void*)object_op.type,
+                    object_op.type ? object_op.type->kind : -1);
+            
+            // 重要：将对象的类型信息设置到object_op中，以便代码生成器判断是否使用"->"
+            if (expr->as.member.object->type) {
+                object_op.type = expr->as.member.object->type;
+                fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] 设置后 object_op.type=%p, kind=%d\n",
+                        (void*)object_op.type, object_op.type->kind);
+            }
+            
+            // 如果是箭头访问或对象是指针类型，先解引用指针
+            if (expr->as.member.is_arrow || object_is_pointer) {
+                // 对于指针类型，生成解引用指令
+                if (object_is_pointer && !expr->as.member.is_arrow) {
+                    // CN语言中指针使用"."语法，但需要生成"->"访问
+                    // 这里不解引用，而是在代码生成时使用"->"
+                } else if (expr->as.member.is_arrow) {
+                    // 显式使用"->"语法，解引用指针
+                    int deref_reg = alloc_reg(ctx);
+                    CnIrOperand deref_op = cn_ir_op_reg(deref_reg, expr->as.member.object->type->as.pointer_to);
+                    emit(ctx, cn_ir_inst_new(CN_IR_INST_DEREF, deref_op, object_op, cn_ir_op_none()));
+                    object_op = deref_op;
+                }
             }
             
             // 生成成员访问指令，dest操作数记录成员名

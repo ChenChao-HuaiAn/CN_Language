@@ -3,6 +3,7 @@
 
 #include "cnlang/ir/ir.h"
 #include "cnlang/frontend/ast.h"
+#include "cnlang/runtime/collections.h"  // CnMap 用于函数声明去重
 #include <stdio.h>
 
 // 前向声明
@@ -32,6 +33,13 @@ typedef struct CnCCodeGenContext {
     
     /* 类成员代码生成专用字段 */
     struct CnClassMember *current_method; ///< 当前正在处理的方法/构造函数（用于参数查找）
+    
+    /* 寄存器类型信息（用于成员访问时判断指针类型） */
+    struct CnType **reg_types;  ///< 寄存器类型数组
+    int reg_types_count;        ///< 寄存器类型数组大小
+    
+    /* 函数声明去重（避免多个模块导入同一函数时重复声明） */
+    CnMap *declared_functions;  ///< 已声明的函数签名集合
 } CnCCodeGenContext;
 
 /**
