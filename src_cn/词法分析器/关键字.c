@@ -150,10 +150,10 @@ long long 关键字总数();
 struct 关键字条目* 获取关键字表();
 void 初始化关键字表();
 enum 词元类型枚举 查找关键字(char* cn_var_名称) {
-  long long r1, r2, r3, r4, r7, r8, r9, r10, r12, r13, r14, r15, r16;
+  long long r1, r2, r3, r4, r7, r8, r9, r10, r11, r13, r14, r15, r16, r17;
   char* r5;
   void* r6;
-  void* r11;
+  void* r12;
   _Bool r0;
 
   entry:
@@ -182,25 +182,25 @@ enum 词元类型枚举 查找关键字(char* cn_var_名称) {
   r7 = cn_var_i_0;
   r8 = *(void*)cn_rt_array_get_element(r6, r7, 8);
   r9 = r8.名称;
-  比较字符串(r5, r9);
-  r10 = /* NONE */ == 0;
-  if (r10) goto if_then_379; else goto if_merge_380;
+  r10 = 比较字符串(r5, r9);
+  r11 = r10 == 0;
+  if (r11) goto if_then_379; else goto if_merge_380;
 
   for_update_377:
-  r15 = cn_var_i_0;
-  r16 = r15 + 1;
-  cn_var_i_0 = r16;
+  r16 = cn_var_i_0;
+  r17 = r16 + 1;
+  cn_var_i_0 = r17;
   goto for_cond_375;
 
   for_exit_378:
   return 40;
 
   if_then_379:
-  r11 = cn_var_关键字表;
-  r12 = cn_var_i_0;
-  r13 = *(void*)cn_rt_array_get_element(r11, r12, 8);
-  r14 = r13.类型;
-  return r14;
+  r12 = cn_var_关键字表;
+  r13 = cn_var_i_0;
+  r14 = *(void*)cn_rt_array_get_element(r12, r13, 8);
+  r15 = r14.类型;
+  return r15;
   goto if_merge_380;
 
   if_merge_380:
@@ -209,18 +209,19 @@ enum 词元类型枚举 查找关键字(char* cn_var_名称) {
 }
 
 _Bool 是关键字字符串(char* cn_var_名称) {
-  long long r2;
+  long long r3;
   char* r0;
   enum 词元类型枚举 r1;
+  enum 词元类型枚举 r2;
 
   entry:
   enum 词元类型枚举 cn_var_类型_0;
   r0 = cn_var_名称;
-  查找关键字(r0);
-  cn_var_类型_0 = /* NONE */;
-  r1 = cn_var_类型_0;
-  r2 = r1 != 40;
-  return r2;
+  r1 = 查找关键字(r0);
+  cn_var_类型_0 = r1;
+  r2 = cn_var_类型_0;
+  r3 = r2 != 40;
+  return r3;
 }
 
 long long 关键字总数() {

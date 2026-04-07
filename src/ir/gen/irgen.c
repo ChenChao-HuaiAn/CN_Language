@@ -1088,10 +1088,31 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     call_inst->extra_args[i] = cn_ir_gen_expr(ctx, expr->as.call.arguments[i]);
                 }
             }
+            
+            // 确定函数返回类型
+            CnType *return_type = expr->type;
+            
+            // 如果 expr->type 不可靠（NULL 或 VOID），尝试从函数符号获取返回类型
+            if ((!return_type || return_type->kind == CN_TYPE_VOID) &&
+                expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
+                char *func_name = copy_name(expr->as.call.callee->as.identifier.name,
+                                            expr->as.call.callee->as.identifier.name_length);
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope, func_name, strlen(func_name));
+                if (sym && sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
+                    // 函数符号的 type 是函数类型，需要从中提取返回类型
+                    if (sym->type->kind == CN_TYPE_FUNCTION && sym->type->as.function.return_type) {
+                        return_type = sym->type->as.function.return_type;
+                        fprintf(stderr, "[DEBUG IR] 从符号表获取返回类型: func='%s', return_type_kind=%d\n",
+                                func_name, return_type->kind);
+                    }
+                }
+                free(func_name);
+            }
+            
             // 如果有返回值，分配结果寄存器
-            if (expr->type && expr->type->kind != CN_TYPE_VOID) {
+            if (return_type && return_type->kind != CN_TYPE_VOID) {
                 int dest_reg = alloc_reg(ctx);
-                call_inst->dest = cn_ir_op_reg(dest_reg, expr->type);
+                call_inst->dest = cn_ir_op_reg(dest_reg, return_type);
             }
             emit(ctx, call_inst);
             return call_inst->dest;

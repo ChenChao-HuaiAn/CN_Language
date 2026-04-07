@@ -275,21 +275,23 @@ _Bool 是字母(long long cn_var_c) {
 }
 
 _Bool 是字母或数字(long long cn_var_c) {
-  long long r0, r1;
+  long long r0, r2;
+  _Bool r1;
+  _Bool r3;
 
   entry:
   r0 = cn_var_c;
-  是字母(r0);
-  goto if_then_427;
+  r1 = 是字母(r0);
+  if (r1) goto if_then_427; else goto if_merge_428;
 
   if_then_427:
   return 1;
   goto if_merge_428;
 
   if_merge_428:
-  r1 = cn_var_c;
-  是数字(r1);
-  goto if_then_429;
+  r2 = cn_var_c;
+  r3 = 是数字(r2);
+  if (r3) goto if_then_429; else goto if_merge_430;
 
   if_then_429:
   return 1;
@@ -328,7 +330,8 @@ _Bool 是中文字符(long long cn_var_c) {
 }
 
 _Bool 是标识符开头(long long cn_var_c) {
-  long long r0, r1, r2, r3, r4, r5;
+  long long r0, r1, r2, r4, r5, r6;
+  _Bool r3;
 
   entry:
   r0 = cn_var_c;
@@ -341,8 +344,8 @@ _Bool 是标识符开头(long long cn_var_c) {
 
   if_merge_436:
   r2 = cn_var_c;
-  是字母(r2);
-  goto if_then_437;
+  r3 = 是字母(r2);
+  if (r3) goto if_then_437; else goto if_merge_438;
 
   if_then_437:
   return 1;
@@ -350,11 +353,11 @@ _Bool 是标识符开头(long long cn_var_c) {
 
   if_merge_438:
   void cn_var_整数值_0;
-  r3 = cn_var_c;
-  cn_var_整数值_0 = r3;
-  r4 = cn_var_整数值_0;
-  r5 = r4 >= 128;
-  if (r5) goto if_then_439; else goto if_merge_440;
+  r4 = cn_var_c;
+  cn_var_整数值_0 = r4;
+  r5 = cn_var_整数值_0;
+  r6 = r5 >= 128;
+  if (r6) goto if_then_439; else goto if_merge_440;
 
   if_then_439:
   return 1;
@@ -365,7 +368,8 @@ _Bool 是标识符开头(long long cn_var_c) {
 }
 
 _Bool 是标识符字符(long long cn_var_c) {
-  long long r0, r1, r2, r3, r4, r5;
+  long long r0, r1, r2, r4, r5, r6;
+  _Bool r3;
 
   entry:
   r0 = cn_var_c;
@@ -378,8 +382,8 @@ _Bool 是标识符字符(long long cn_var_c) {
 
   if_merge_442:
   r2 = cn_var_c;
-  是字母或数字(r2);
-  goto if_then_443;
+  r3 = 是字母或数字(r2);
+  if (r3) goto if_then_443; else goto if_merge_444;
 
   if_then_443:
   return 1;
@@ -387,11 +391,11 @@ _Bool 是标识符字符(long long cn_var_c) {
 
   if_merge_444:
   void cn_var_整数值_0;
-  r3 = cn_var_c;
-  cn_var_整数值_0 = r3;
-  r4 = cn_var_整数值_0;
-  r5 = r4 >= 128;
-  if (r5) goto if_then_445; else goto if_merge_446;
+  r4 = cn_var_c;
+  cn_var_整数值_0 = r4;
+  r5 = cn_var_整数值_0;
+  r6 = r5 >= 128;
+  if (r6) goto if_then_445; else goto if_merge_446;
 
   if_then_445:
   return 1;

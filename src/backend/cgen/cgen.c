@@ -257,7 +257,6 @@ static const char *get_c_function_name(const char *name) {
         {"\xe6\x89\x93\xe5\x8d\xb0", "cn_rt_print_string"},  /* 打印 */
         {"\xe9\x95\xbf\xe5\xba\xa6", "cn_rt_string_length"}, /* 长度 */
         {"\xe4\xb8\xbb\xe7\xa8\x8b\xe5\xba\x8f", "main"},      /* 主程序 */
-        {"\xe4\xb8\xbb\xe5\x87\xbd\xe6\x95\xb0", "main"},      /* 主函数 */
         /* 输入函数映射 */
         {"\xe8\xaf\xbb\xe5\x8f\x96\xe8\xa1\x8c", "cn_rt_read_line"},         /* 读取行 */
         {"\xe8\xaf\xbb\xe5\x8f\x96\xe6\x95\xb4\xe6\x95\xb0", "cn_rt_read_int"},     /* 读取整数 */
@@ -1480,37 +1479,62 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             if (should_update) {
                                 reg_types[reg_id] = new_type;
                             }
+                        } else {
+                            // 修复：即使无法推断类型，也要标记寄存器为已使用（使用默认类型）
+                            if (!reg_types[reg_id]) {
+                                reg_types[reg_id] = cn_type_new_primitive(CN_TYPE_INT);
+                                types_changed = true;
+                            }
                         }
                     }
                 }
                 // 收集src1寄存器类型
+                // 修复：即使类型为NULL，也要标记寄存器为已使用（使用默认类型）
                 if (scan_inst->src1.kind == CN_IR_OP_REG) {
-                    if (scan_inst->src1.as.reg_id < actual_reg_count && scan_inst->src1.type) {
-                        // 如果新类型是指针类型，或者之前没有类型，则更新
-                        if (scan_inst->src1.type->kind == CN_TYPE_POINTER ||
-                            !reg_types[scan_inst->src1.as.reg_id]) {
-                            reg_types[scan_inst->src1.as.reg_id] = scan_inst->src1.type;
+                    if (scan_inst->src1.as.reg_id < actual_reg_count) {
+                        if (scan_inst->src1.type) {
+                            // 如果新类型是指针类型，或者之前没有类型，则更新
+                            if (scan_inst->src1.type->kind == CN_TYPE_POINTER ||
+                                !reg_types[scan_inst->src1.as.reg_id]) {
+                                reg_types[scan_inst->src1.as.reg_id] = scan_inst->src1.type;
+                            }
+                        } else if (!reg_types[scan_inst->src1.as.reg_id]) {
+                            // 类型为NULL，但寄存器被使用，标记为INT类型（默认）
+                            reg_types[scan_inst->src1.as.reg_id] = cn_type_new_primitive(CN_TYPE_INT);
+                            types_changed = true;
                         }
                     }
                 }
                 // 收集src2寄存器类型
                 if (scan_inst->src2.kind == CN_IR_OP_REG) {
-                    if (scan_inst->src2.as.reg_id < actual_reg_count && scan_inst->src2.type) {
-                        // 如果新类型是指针类型，或者之前没有类型，则更新
-                        if (scan_inst->src2.type->kind == CN_TYPE_POINTER ||
-                            !reg_types[scan_inst->src2.as.reg_id]) {
-                            reg_types[scan_inst->src2.as.reg_id] = scan_inst->src2.type;
+                    if (scan_inst->src2.as.reg_id < actual_reg_count) {
+                        if (scan_inst->src2.type) {
+                            // 如果新类型是指针类型，或者之前没有类型，则更新
+                            if (scan_inst->src2.type->kind == CN_TYPE_POINTER ||
+                                !reg_types[scan_inst->src2.as.reg_id]) {
+                                reg_types[scan_inst->src2.as.reg_id] = scan_inst->src2.type;
+                            }
+                        } else if (!reg_types[scan_inst->src2.as.reg_id]) {
+                            // 类型为NULL，但寄存器被使用，标记为INT类型（默认）
+                            reg_types[scan_inst->src2.as.reg_id] = cn_type_new_primitive(CN_TYPE_INT);
+                            types_changed = true;
                         }
                     }
                 }
                 // 收集extra_args中的寄存器类型
                 for (size_t i = 0; i < scan_inst->extra_args_count; i++) {
                     if (scan_inst->extra_args[i].kind == CN_IR_OP_REG) {
-                        if (scan_inst->extra_args[i].as.reg_id < actual_reg_count && scan_inst->extra_args[i].type) {
-                            // 如果新类型是指针类型，或者之前没有类型，则更新
-                            if (scan_inst->extra_args[i].type->kind == CN_TYPE_POINTER ||
-                                !reg_types[scan_inst->extra_args[i].as.reg_id]) {
-                                reg_types[scan_inst->extra_args[i].as.reg_id] = scan_inst->extra_args[i].type;
+                        if (scan_inst->extra_args[i].as.reg_id < actual_reg_count) {
+                            if (scan_inst->extra_args[i].type) {
+                                // 如果新类型是指针类型，或者之前没有类型，则更新
+                                if (scan_inst->extra_args[i].type->kind == CN_TYPE_POINTER ||
+                                    !reg_types[scan_inst->extra_args[i].as.reg_id]) {
+                                    reg_types[scan_inst->extra_args[i].as.reg_id] = scan_inst->extra_args[i].type;
+                                }
+                            } else if (!reg_types[scan_inst->extra_args[i].as.reg_id]) {
+                                // 类型为NULL，但寄存器被使用，标记为INT类型（默认）
+                                reg_types[scan_inst->extra_args[i].as.reg_id] = cn_type_new_primitive(CN_TYPE_INT);
+                                types_changed = true;
                             }
                         }
                     }
@@ -1522,9 +1546,11 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         }  // 结束多遍扫描循环
         
         /* 性能优化：按类型分组声明寄存器，减少 fprintf 调用 */
+        /* 修复：确保所有使用的寄存器都被声明，即使类型信息缺失 */
         bool has_int_regs = false;
         for (int i = 0; i < actual_reg_count; i++) {
             // 对于NULL、CN_TYPE_INT或CN_TYPE_UNKNOWN类型，都使用long long
+            // 注意：NULL类型表示类型信息缺失，但仍需声明寄存器
             if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_INT || reg_types[i]->kind == CN_TYPE_UNKNOWN) {
                 if (!has_int_regs) {
                     fprintf(ctx->output_file, "  long long ");

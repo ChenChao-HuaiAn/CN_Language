@@ -99,29 +99,30 @@ struct 程序节点* 创建程序节点();
 void 程序添加声明(struct 程序节点*, struct 声明节点*);
 
 struct 程序节点* 创建程序节点() {
-  long long r1, r3;
-  struct 程序节点* r0;
-  struct 程序节点* r4;
-  enum 节点类型 r2;
+  long long r2, r4;
+  void* r0;
+  struct 程序节点* r1;
+  struct 程序节点* r5;
+  enum 节点类型 r3;
 
   entry:
   struct 程序节点* cn_var_节点_0;
   程序节点大小();
-  分配内存(/* NONE */);
-  cn_var_节点_0 = /* NONE */;
-  r0 = cn_var_节点_0;
-  r1 = r0 == 0;
-  if (r1) goto if_then_758; else goto if_merge_759;
+  r0 = 分配内存(/* NONE */);
+  cn_var_节点_0 = r0;
+  r1 = cn_var_节点_0;
+  r2 = r1 == 0;
+  if (r2) goto if_then_758; else goto if_merge_759;
 
   if_then_758:
   return 0;
   goto if_merge_759;
 
   if_merge_759:
-  r2 = cn_var_节点类型;
-  r3 = r2.程序节点;
-  r4 = cn_var_节点_0;
-  return r4;
+  r3 = cn_var_节点类型;
+  r4 = r3.程序节点;
+  r5 = cn_var_节点_0;
+  return r5;
 }
 
 void 程序添加声明(struct 程序节点* cn_var_程序, struct 声明节点* cn_var_声明) {
