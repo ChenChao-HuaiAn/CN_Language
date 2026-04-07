@@ -730,6 +730,50 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 fprintf(ctx->output_file, "  if ("); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ") goto %s; else goto %s;\n", inst->dest.as.label->name, inst->src2.as.label->name);
             }
             break;
+        case CN_IR_INST_SIZEOF:
+            // sizeof 运算符：生成 sizeof(type) 或 sizeof(变量)
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = sizeof(");
+            
+            // 检查是否是类型名（通过 extra_args_count 标记）
+            bool is_type_name = (inst->extra_args_count > 0);
+            
+            if (is_type_name && inst->src1.kind == CN_IR_OP_SYMBOL) {
+                // 参数是类型名：生成 sizeof(struct 类型名) 或 sizeof(enum 类型名)
+                // 需要确定是结构体还是枚举
+                const char *type_name = inst->src1.as.sym_name;
+                
+                // 检查是否是枚举类型名（通过类型信息判断）
+                if (inst->src1.type) {
+                    if (inst->src1.type->kind == CN_TYPE_ENUM) {
+                        fprintf(ctx->output_file, "enum %s", type_name);
+                    } else if (inst->src1.type->kind == CN_TYPE_STRUCT) {
+                        fprintf(ctx->output_file, "struct %s", type_name);
+                    } else {
+                        // 其他类型直接使用类型名
+                        fprintf(ctx->output_file, "%s", get_c_type_string(inst->src1.type));
+                    }
+                } else {
+                    // 没有类型信息，默认当作结构体
+                    fprintf(ctx->output_file, "struct %s", type_name);
+                }
+            } else if (inst->src1.kind == CN_IR_OP_SYMBOL) {
+                // 参数是变量名：生成 sizeof(变量类型)
+                // 需要从变量类型推断
+                if (inst->src1.type) {
+                    fprintf(ctx->output_file, "%s", get_c_type_string(inst->src1.type));
+                } else {
+                    // 没有类型信息，使用变量名
+                    print_operand(ctx, inst->src1);
+                }
+            } else {
+                // 其他情况：直接打印操作数
+                print_operand(ctx, inst->src1);
+            }
+            
+            fprintf(ctx->output_file, ");\n");
+            break;
         case CN_IR_INST_CALL:
             fprintf(ctx->output_file, "  ");
             

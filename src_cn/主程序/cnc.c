@@ -575,17 +575,16 @@ struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
 };
-struct 块语句;
 struct 捕获子句;
 struct 捕获子句 {
     char* 异常类型;
     char* 变量名;
-    struct 块语句* 语句体;
+    long long* 语句体;
 };
 struct 情况分支;
 struct 情况分支 {
     struct 表达式节点* 匹配值;
-    struct 块语句* 语句体;
+    long long* 语句体;
 };
 struct 声明节点;
 struct 声明节点 {
@@ -610,14 +609,12 @@ struct 接口方法 {
     long long 参数个数;
     struct 类型节点* 返回类型;
 };
-struct 变量声明;
-struct 函数声明;
 struct 类成员;
 struct 类成员 {
     char* 名称;
     enum 节点类型 类型;
-    struct 变量声明* 字段;
-    struct 函数声明* 方法;
+    long long* 字段;
+    long long* 方法;
     enum 可见性 可见性;
     _Bool 是静态;
     _Bool 是虚拟;

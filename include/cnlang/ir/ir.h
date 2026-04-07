@@ -56,6 +56,9 @@ typedef enum CnIrInstKind {
     CN_IR_INST_MEMBER_ACCESS,    // 结构体成员访问
     CN_IR_INST_STRUCT_INIT,      // 结构体初始化（构造函数调用）
 
+    // 类型操作指令
+    CN_IR_INST_SIZEOF, // sizeof 运算符：获取类型大小
+
     // 其他
     CN_IR_INST_PHI,    // SSA 形式下的 PHI 指令（预留）
     CN_IR_INST_SELECT  // 选择指令：dest = condition ? true_val : false_val (三元运算符)

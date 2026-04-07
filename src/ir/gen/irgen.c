@@ -709,6 +709,55 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     func_name = "cn_rt_print_string";
                     free(name);
                     callee = cn_ir_op_symbol(func_name, expr->as.call.callee->type);
+                }
+                // 检查是否是 "类型大小" 函数（sizeof）
+                else if (strcmp(name, "类型大小") == 0 && expr->as.call.argument_count == 1) {
+                    // 类型大小 函数需要特殊处理：
+                    // 参数可以是类型名或变量名
+                    // 生成 CN_IR_INST_SIZEOF 指令
+                    
+                    CnAstExpr *arg = expr->as.call.arguments[0];
+                    
+                    // 分配结果寄存器
+                    int dest_reg = alloc_reg(ctx);
+                    CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
+                    
+                    // 检查参数是否是类型名（标识符且在符号表中是类型）
+                    bool is_type_name = false;
+                    if (arg->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
+                        char *arg_name = copy_name(arg->as.identifier.name, arg->as.identifier.name_length);
+                        CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope, arg_name, strlen(arg_name));
+                        if (sym && (sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                    sym->kind == CN_SEM_SYMBOL_CLASS ||
+                                    sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                            is_type_name = true;
+                        }
+                        free(arg_name);
+                    }
+                    
+                    // 生成 SIZEOF 指令
+                    // src1 存储类型信息或变量
+                    CnIrOperand sizeof_arg;
+                    if (is_type_name) {
+                        // 参数是类型名：直接使用类型信息
+                        sizeof_arg = cn_ir_op_symbol(
+                            copy_name(arg->as.identifier.name, arg->as.identifier.name_length),
+                            arg->type);
+                    } else {
+                        // 参数是变量或表达式：生成表达式代码
+                        sizeof_arg = cn_ir_gen_expr(ctx, arg);
+                    }
+                    
+                    CnIrInst *sizeof_inst = cn_ir_inst_new(CN_IR_INST_SIZEOF, dest, sizeof_arg, cn_ir_op_none());
+                    sizeof_inst->extra_args_count = is_type_name ? 1 : 0;  // 标记是否是类型名
+                    if (is_type_name) {
+                        sizeof_inst->extra_args = malloc(sizeof(CnIrOperand));
+                        sizeof_inst->extra_args[0] = cn_ir_op_imm_int(1, NULL);  // 1 表示类型名
+                    }
+                    
+                    emit(ctx, sizeof_inst);
+                    free(name);
+                    return dest;
                 } else {
                     // 直接使用原始函数名（不再生成带模块前缀的名称）
                     // 模块系统通过作用域管理避免命名冲突
