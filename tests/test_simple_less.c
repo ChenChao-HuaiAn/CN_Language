@@ -7,10 +7,9 @@
 // Global Variables
 
 // Forward Declarations
-long long main();
+long long 主函数();
 
-long long main() {
-  cn_rt_init();
+long long 主函数() {
   long long r0;
 
   entry:
@@ -18,6 +17,5 @@ long long main() {
   cn_var_n_0 = 5;
   r0 = cn_var_n_0;
   return r0;
-  cn_rt_exit();
 }
 

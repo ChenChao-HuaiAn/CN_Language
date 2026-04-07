@@ -8,7 +8,7 @@
 
 // Forward Declarations
 _Bool 是正数(long long);
-long long main();
+long long 主函数();
 
 _Bool 是正数(long long cn_var_值) {
   long long r0;
@@ -20,8 +20,7 @@ _Bool 是正数(long long cn_var_值) {
   return r1;
 }
 
-long long main() {
-  cn_rt_init();
+long long 主函数() {
   long long r0;
   _Bool r1;
 
@@ -42,6 +41,5 @@ long long main() {
 
   if_merge_2:
   return 0;
-  cn_rt_exit();
 }
 

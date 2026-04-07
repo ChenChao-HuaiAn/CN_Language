@@ -10,7 +10,7 @@
 long long 测试字符字面量比较();
 _Bool 测试字符范围检查(long long);
 long long 测试多个比较();
-long long main();
+long long 主函数();
 
 long long 测试字符字面量比较() {
   long long r0;
@@ -113,8 +113,7 @@ long long 测试多个比较() {
   return 0;
 }
 
-long long main() {
-  cn_rt_init();
+long long 主函数() {
   long long r0, r2, r5, r6, r7;
   _Bool r1;
   _Bool r3;
@@ -143,6 +142,5 @@ long long main() {
 
   if_merge_15:
   return 0;
-  cn_rt_exit();
 }
 

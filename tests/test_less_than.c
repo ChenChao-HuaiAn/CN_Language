@@ -7,10 +7,9 @@
 // Global Variables
 
 // Forward Declarations
-long long main();
+long long 主函数();
 
-long long main() {
-  cn_rt_init();
+long long 主函数() {
   long long r0;
   _Bool r1;
 
@@ -27,6 +26,5 @@ long long main() {
 
   if_merge_1:
   return 0;
-  cn_rt_exit();
 }
 

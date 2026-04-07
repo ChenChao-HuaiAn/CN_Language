@@ -52,6 +52,18 @@ enum 节点类型 {
     节点类型_接口类型
 };
 
+enum 可见性 {
+    可见性_私有级别,
+    可见性_保护级别,
+    可见性_公开级别
+};
+
+enum 导入类型 {
+    导入类型_标准导入,
+    导入类型_相对导入,
+    导入类型_模块导入
+};
+
 // CN Language Global Struct Forward Declarations
 struct 源位置;
 struct AST节点;

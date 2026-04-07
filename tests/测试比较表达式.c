@@ -9,7 +9,7 @@
 // Forward Declarations
 long long 测试比较();
 long long 测试字符比较();
-long long main();
+long long 主函数();
 
 long long 测试比较() {
   long long r0, r1;
@@ -52,8 +52,7 @@ long long 测试字符比较() {
   return 0;
 }
 
-long long main() {
-  cn_rt_init();
+long long 主函数() {
   long long r0, r1, r2, r3, r4;
 
   entry:
@@ -67,6 +66,5 @@ long long main() {
   r3 = cn_var_结果2_1;
   r4 = r2 + r3;
   return r4;
-  cn_rt_exit();
 }
 

@@ -153,6 +153,12 @@ struct 诊断集合 {
     long long 警告计数;
     long long 最大错误数;
 };
+struct 源位置;
+struct 源位置 {
+    char* 文件名;
+    long long 行号;
+    long long 列号;
+};
 
 // Forward Declarations - 从导入模块
 void 诊断集合添加(struct 诊断集合*, struct 诊断信息);

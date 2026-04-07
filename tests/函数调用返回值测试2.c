@@ -10,7 +10,7 @@
 long long 获取值();
 _Bool 是偶数(long long);
 long long 打印消息(long long);
-long long main();
+long long 主函数();
 
 long long 获取值() {
 
@@ -38,8 +38,7 @@ long long 打印消息(long long cn_var_消息) {
   return 0;
 }
 
-long long main() {
-  cn_rt_init();
+long long 主函数() {
   long long r1, r2, r4, r5, r6, r7, r8, r9, r10;
   _Bool r0;
   _Bool r3;
@@ -89,6 +88,5 @@ long long main() {
 
   if_merge_6:
   return 0;
-  cn_rt_exit();
 }
 
