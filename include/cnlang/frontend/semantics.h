@@ -224,6 +224,27 @@ int cn_sem_get_cached_module_count(void);
  */
 const char *cn_sem_get_cached_module_path(int index);
 
+/**
+ * @brief 获取缓存的模块AST程序
+ * @param index 模块索引
+ * @return AST程序指针，索引无效时返回 NULL
+ */
+CnAstProgram *cn_sem_get_cached_module_program(int index);
+
+/**
+ * @brief 获取缓存的模块IR
+ * @param index 模块索引
+ * @return IR模块指针，索引无效时返回 NULL
+ */
+struct CnIrModule *cn_sem_get_cached_module_ir(int index);
+
+/**
+ * @brief 设置缓存的模块IR
+ * @param index 模块索引
+ * @param ir_module IR模块指针
+ */
+void cn_sem_set_cached_module_ir(int index, struct CnIrModule *ir_module);
+
 // ============================================================================
 // 阶段D：跨文件模块语义分析 API
 // ============================================================================

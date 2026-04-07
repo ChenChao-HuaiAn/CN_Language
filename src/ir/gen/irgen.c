@@ -216,13 +216,75 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                                     cn_type_new_primitive(CN_TYPE_BOOL));
         }
         case CN_AST_EXPR_IDENTIFIER: {
-            // 标识符：首先检查是否为枚举成员
+            // 标识符：首先检查是否为局部变量或参数（优先级最高）
+            // 这样可以避免枚举成员覆盖同名的局部变量/参数
+            
+            // 检查是否为静态局部变量（通过上下文中的静态变量列表）
+            CnIrGenStaticVar *static_var = ctx->current_static_vars;
+            while (static_var) {
+                if (static_var->name_length == expr->as.identifier.name_length &&
+                    strncmp(static_var->name, expr->as.identifier.name, expr->as.identifier.name_length) == 0) {
+                    // 找到静态变量：生成带函数名前缀的符号名
+                    // 格式：cn_static_{函数名}_{变量名}
+                    size_t func_name_len = strlen(ctx->current_func->name);
+                    size_t var_name_len = expr->as.identifier.name_length;
+                    size_t total_len = 10 + func_name_len + 1 + var_name_len + 1; // "cn_static_" + "_" + \0
+                    
+                    char *static_name = malloc(total_len);
+                    if (static_name) {
+                        snprintf(static_name, total_len, "cn_static_%s_%.*s",
+                                ctx->current_func->name,
+                                (int)var_name_len, expr->as.identifier.name);
+                        
+                        int dest_reg = alloc_reg(ctx);
+                        CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
+                        CnIrOperand src = cn_ir_op_symbol(static_name, expr->type);
+                        free(static_name);
+                        emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
+                        return dest;
+                    }
+                }
+                static_var = static_var->next;
+            }
+            
+            // 查找局部变量的唯一名称
+            char *name = copy_name(expr->as.identifier.name, expr->as.identifier.name_length);
+            char *unique_name = lookup_local_var_unique_name(ctx, name);
+            if (unique_name) {
+                // 找到局部变量映射，生成LOAD指令
+                int dest_reg = alloc_reg(ctx);
+                
+                // 获取变量类型
+                CnType *var_type = expr->type;
+                if (!var_type && ctx->current_scope) {
+                    CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
+                                                           expr->as.identifier.name,
+                                                           expr->as.identifier.name_length);
+                    if (sym && sym->type) {
+                        var_type = sym->type;
+                    }
+                }
+                
+                CnIrOperand dest = cn_ir_op_reg(dest_reg, var_type);
+                CnIrOperand src = cn_ir_op_symbol(unique_name, var_type);
+                free(unique_name);
+                free(name);
+                emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
+                return dest;
+            }
+            
+            // 检查符号表中的符号类型
             if (ctx->current_scope) {
-                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope, 
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
                                                        expr->as.identifier.name,
                                                        expr->as.identifier.name_length);
+                
+                // 只有当符号是枚举成员且不是变量时才返回枚举值
+                // 注意：枚举成员符号的 kind 是 CN_SEM_SYMBOL_ENUM_MEMBER
+                // 而变量符号的 kind 是 CN_SEM_SYMBOL_VAR 或 CN_SEM_SYMBOL_PARAM
                 if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                     // 枚举成员：直接返回其常量值
+                    free(name);
                     return cn_ir_op_imm_int(sym->as.enum_value, cn_type_new_primitive(CN_TYPE_INT));
                 }
                 
@@ -267,38 +329,10 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 }
             }
             
-            // 检查是否为静态局部变量（通过上下文中的静态变量列表）
-            CnIrGenStaticVar *static_var = ctx->current_static_vars;
-            while (static_var) {
-                if (static_var->name_length == expr->as.identifier.name_length &&
-                    strncmp(static_var->name, expr->as.identifier.name, expr->as.identifier.name_length) == 0) {
-                    // 找到静态变量：生成带函数名前缀的符号名
-                    // 格式：cn_static_{函数名}_{变量名}
-                    size_t func_name_len = strlen(ctx->current_func->name);
-                    size_t var_name_len = expr->as.identifier.name_length;
-                    size_t total_len = 10 + func_name_len + 1 + var_name_len + 1; // "cn_static_" + "_" + \0
-                    
-                    char *static_name = malloc(total_len);
-                    if (static_name) {
-                        snprintf(static_name, total_len, "cn_static_%s_%.*s",
-                                ctx->current_func->name,
-                                (int)var_name_len, expr->as.identifier.name);
-                        
-                        int dest_reg = alloc_reg(ctx);
-                        CnIrOperand dest = cn_ir_op_reg(dest_reg, expr->type);
-                        CnIrOperand src = cn_ir_op_symbol(static_name, expr->type);
-                        free(static_name);
-                        emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
-                        return dest;
-                    }
-                }
-                static_var = static_var->next;
-            }
-            
-            // 普通变量：生成 LOAD 指令从变量地址加载值
+            // 未找到局部变量映射，使用原始名称（可能是全局变量或参数）
             int dest_reg = alloc_reg(ctx);
             
-            // 获取变量类型：优先使用 expr->type，如果为 NULL 则从符号表查找
+            // 获取变量类型
             CnType *var_type = expr->type;
             if (!var_type && ctx->current_scope) {
                 CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
@@ -306,41 +340,13 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                                                        expr->as.identifier.name_length);
                 if (sym && sym->type) {
                     var_type = sym->type;
-                    fprintf(stderr, "[DEBUG IR IDENTIFIER] 从符号表获取类型: 变量名=%.*s, type=%p, kind=%d\n",
-                            (int)expr->as.identifier.name_length, expr->as.identifier.name,
-                            (void*)var_type, var_type->kind);
                 }
             }
             
             CnIrOperand dest = cn_ir_op_reg(dest_reg, var_type);
-            char *name = copy_name(expr->as.identifier.name, expr->as.identifier.name_length);
-            
-            // 调试输出：检查变量类型
-            fprintf(stderr, "[DEBUG IR IDENTIFIER] 变量名=%.*s, expr->type=%p, kind=%d, dest_reg=%d\n",
-                    (int)expr->as.identifier.name_length, expr->as.identifier.name,
-                    (void*)expr->type, expr->type ? expr->type->kind : -1, dest_reg);
-            
-            // 查找局部变量的唯一名称
-            char *unique_name = lookup_local_var_unique_name(ctx, name);
-            if (unique_name) {
-                // 找到映射，使用唯一名称
-                CnIrOperand src = cn_ir_op_symbol(unique_name, var_type);
-                free(unique_name);
-                free(name);
-                CnIrInst *load_inst = cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none());
-                fprintf(stderr, "[DEBUG IR LOAD] 创建LOAD指令: dest_reg=%d, dest.type=%p, kind=%d\n",
-                        dest_reg, (void*)load_inst->dest.type, load_inst->dest.type ? load_inst->dest.type->kind : -1);
-                emit(ctx, load_inst);
-                return dest;
-            }
-            
-            // 未找到映射，使用原始名称（可能是全局变量或参数）
             CnIrOperand src = cn_ir_op_symbol(name, var_type);
             free(name);
-            CnIrInst *load_inst = cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none());
-            fprintf(stderr, "[DEBUG IR LOAD] 创建LOAD指令: dest_reg=%d, dest.type=%p, kind=%d\n",
-                    dest_reg, (void*)load_inst->dest.type, load_inst->dest.type ? load_inst->dest.type->kind : -1);
-            emit(ctx, load_inst);
+            emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, dest, src, cn_ir_op_none()));
             return dest;
         }
         case CN_AST_EXPR_BINARY: {
@@ -1231,6 +1237,17 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             
             // 生成成员访问指令，dest操作数记录成员名
             int result_reg = alloc_reg(ctx);
+            
+            // 调试输出：检查 expr->type 是否正确
+            fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] expr->type=%p, kind=%d, member=%.*s\n",
+                    (void*)expr->type, expr->type ? expr->type->kind : -1,
+                    (int)expr->as.member.member_name_length, expr->as.member.member_name);
+            if (expr->type && expr->type->kind == CN_TYPE_STRUCT) {
+                fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] struct name=%.*s, fields=%p, field_count=%zu\n",
+                        (int)expr->type->as.struct_type.name_length, expr->type->as.struct_type.name,
+                        (void*)expr->type->as.struct_type.fields, expr->type->as.struct_type.field_count);
+            }
+            
             CnIrOperand result = cn_ir_op_reg(result_reg, expr->type);
             
             // 使用 MEMBER_ACCESS 指令，src1为对象，src2为成员名（作为符号）
@@ -1765,7 +1782,18 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
             }
         }
         
-        CnIrOperand param = cn_ir_op_symbol(param_name, param_type);
+        // 为参数生成唯一名称（使用 cn_var_ 前缀）
+        size_t param_name_len = strlen(param_name);
+        char *unique_param_name = malloc(7 + param_name_len + 1); // "cn_var_" + name + "\0"
+        if (unique_param_name) {
+            snprintf(unique_param_name, 7 + param_name_len + 1, "cn_var_%s", param_name);
+            
+            // 添加参数到局部变量映射表，这样在标识符查找时能优先找到参数
+            add_local_var_mapping(ctx, param_name, unique_param_name);
+        }
+        
+        CnIrOperand param = cn_ir_op_symbol(unique_param_name ? unique_param_name : param_name, param_type);
+        if (unique_param_name) free(unique_param_name);
         free(param_name);
         cn_ir_function_add_param(ir_func, param);
     }

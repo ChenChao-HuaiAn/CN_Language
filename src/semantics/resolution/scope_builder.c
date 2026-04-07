@@ -4,6 +4,7 @@
 #include "cnlang/frontend/parser.h"
 #include "cnlang/frontend/preprocessor.h"
 #include "cnlang/support/diagnostics.h"
+#include "cnlang/ir/ir.h"  // CnIrModule 类型定义
 
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +92,8 @@ static int g_compile_depth = 0;
 typedef struct {
     char *file_path;
     CnSemScope *scope;
+    CnAstProgram *program;    // AST程序（用于代码生成）
+    CnIrModule *ir_module;    // IR模块（用于代码生成）
 } CachedModule;
 
 static CachedModule g_module_cache[MAX_CACHED_MODULES];
@@ -106,14 +109,21 @@ static CnSemScope *find_cached_module(const char *file_path) {
     return NULL;
 }
 
-// 缓存模块
-static void cache_module(const char *file_path, CnSemScope *scope) {
+// 缓存模块（带AST）
+static void cache_module_with_program(const char *file_path, CnSemScope *scope, CnAstProgram *program) {
     if (g_cached_module_count >= MAX_CACHED_MODULES) {
         return;  // 缓存已满
     }
     g_module_cache[g_cached_module_count].file_path = strdup(file_path);
     g_module_cache[g_cached_module_count].scope = scope;
+    g_module_cache[g_cached_module_count].program = program;  // 缓存AST
+    g_module_cache[g_cached_module_count].ir_module = NULL;   // IR稍后填充
     g_cached_module_count++;
+}
+
+// 缓存模块（兼容旧接口）
+static void cache_module(const char *file_path, CnSemScope *scope) {
+    cache_module_with_program(file_path, scope, NULL);
 }
 
 // 获取缓存的模块数量
@@ -127,6 +137,29 @@ const char *cn_sem_get_cached_module_path(int index) {
         return NULL;
     }
     return g_module_cache[index].file_path;
+}
+
+// 获取缓存的模块AST程序
+CnAstProgram *cn_sem_get_cached_module_program(int index) {
+    if (index < 0 || index >= g_cached_module_count) {
+        return NULL;
+    }
+    return g_module_cache[index].program;
+}
+
+// 获取缓存的模块IR
+CnIrModule *cn_sem_get_cached_module_ir(int index) {
+    if (index < 0 || index >= g_cached_module_count) {
+        return NULL;
+    }
+    return g_module_cache[index].ir_module;
+}
+
+// 设置缓存的模块IR
+void cn_sem_set_cached_module_ir(int index, CnIrModule *ir_module) {
+    if (index >= 0 && index < g_cached_module_count) {
+        g_module_cache[index].ir_module = ir_module;
+    }
 }
 
 // 检查是否正在编译该模块（循环导入检测）
@@ -2096,8 +2129,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     // 弹出编译栈
     pop_compiling_module();
     
-    // 缓存模块作用域
-    cache_module(file_path, module_scope);
+    // 缓存模块作用域和AST（用于后续代码生成）
+    cache_module_with_program(file_path, module_scope, module_program);
     
     return module_scope;
 }

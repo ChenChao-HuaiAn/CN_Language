@@ -833,6 +833,90 @@ int main(int argc, char **argv)
             printf("已生成 C 代码文件: %s\n", c_filename);
         }
 
+        // =====================================================================
+        // 为缓存的导入模块生成IR和C代码
+        // =====================================================================
+        int cached_count = cn_sem_get_cached_module_count();
+        fprintf(stderr, "[DEBUG] 缓存的模块数量: %d\n", cached_count);
+        
+        for (int i = 0; i < cached_count; i++) {
+            const char *module_path = cn_sem_get_cached_module_path(i);
+            CnAstProgram *module_program = cn_sem_get_cached_module_program(i);
+            CnIrModule *module_ir = cn_sem_get_cached_module_ir(i);
+            
+            fprintf(stderr, "[DEBUG] 处理缓存模块 %d: %s, program=%p, ir=%p\n",
+                    i, module_path ? module_path : "NULL",
+                    (void*)module_program, (void*)module_ir);
+            
+            if (!module_path || !module_program) {
+                continue;
+            }
+            
+            // 如果模块还没有IR，生成IR
+            if (!module_ir) {
+                fprintf(stderr, "[DEBUG] 为模块生成IR: %s\n", module_path);
+                
+                // 获取模块作用域
+                CnSemScope *module_scope = NULL;
+                // 从缓存中查找作用域（需要添加获取作用域的API）
+                // 暂时使用全局作用域
+                module_scope = global_scope;
+                
+                module_ir = cn_ir_gen_program(module_program, module_scope, target_triple,
+                                              freestanding_mode ? CN_COMPILE_MODE_FREESTANDING : CN_COMPILE_MODE_HOSTED);
+                if (module_ir) {
+                    // IR优化
+                    cn_ir_run_default_passes(module_ir);
+                    // 缓存IR
+                    cn_sem_set_cached_module_ir(i, module_ir);
+                    fprintf(stderr, "[DEBUG] 模块IR生成成功: %s\n", module_path);
+                } else {
+                    fprintf(stderr, "[DEBUG] 模块IR生成失败: %s\n", module_path);
+                    continue;
+                }
+            }
+            
+            // 生成C代码文件路径
+            char module_c_path[1024];
+            strncpy(module_c_path, module_path, sizeof(module_c_path) - 1);
+            module_c_path[sizeof(module_c_path) - 1] = '\0';
+            
+            // 替换扩展名 .cn -> .c
+            char *ext = strrchr(module_c_path, '.');
+            if (ext && strcmp(ext, ".cn") == 0) {
+                strcpy(ext, ".c");
+            } else {
+                strcat(module_c_path, ".c");
+            }
+            
+            // 检查是否与主文件相同（避免重复）
+            if (strcmp(module_c_path, c_filename) == 0) {
+                continue;
+            }
+            
+            fprintf(stderr, "[DEBUG] 为模块生成C代码: %s -> %s\n", module_path, module_c_path);
+            
+            // 从模块路径提取模块名
+            const char *base_name = strrchr(module_path, '/');
+            if (!base_name) base_name = strrchr(module_path, '\\');
+            if (base_name) base_name++; else base_name = module_path;
+            
+            char module_name[256];
+            strncpy(module_name, base_name, sizeof(module_name) - 1);
+            module_name[sizeof(module_name) - 1] = '\0';
+            char *dot = strrchr(module_name, '.');
+            if (dot) *dot = '\0';
+            
+            CnModuleId *module_id = cn_module_id_create(module_name);
+            
+            // 生成C代码
+            if (module_ir && cn_cgen_module_with_imports_to_file(module_ir, module_program, module_loader, global_scope, module_id, module_c_path) == 0) {
+                fprintf(stderr, "[DEBUG] 模块C代码生成成功: %s\n", module_c_path);
+            } else {
+                fprintf(stderr, "[DEBUG] 模块C代码生成失败: %s\n", module_c_path);
+            }
+        }
+
         // 收集所有需要编译的 C 文件（包括导入模块）
         // 添加主文件的 C 文件
         c_file_capacity = 8;
@@ -845,7 +929,6 @@ int main(int argc, char **argv)
         }
         
         // 遍历语义分析模块缓存，收集导入模块的 C 文件路径
-        int cached_count = cn_sem_get_cached_module_count();
         for (int i = 0; i < cached_count; i++) {
             const char *module_path = cn_sem_get_cached_module_path(i);
             if (module_path) {
@@ -861,7 +944,7 @@ int main(int argc, char **argv)
                     
                     // 检查是否与主文件相同（避免重复）
                     if (strcmp(module_c_path, c_filename) != 0) {
-                        // 检查文件是否存在
+                        // 检查文件是否存在（现在应该已经生成了）
                         FILE *test = fopen(module_c_path, "r");
                         if (test) {
                             fclose(test);
@@ -883,6 +966,8 @@ int main(int argc, char **argv)
                                     c_file_count++;
                                 }
                             }
+                        } else {
+                            fprintf(stderr, "[DEBUG] 模块C文件不存在: %s\n", module_c_path);
                         }
                     }
                 }

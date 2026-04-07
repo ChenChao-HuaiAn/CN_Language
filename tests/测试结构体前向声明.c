@@ -9,7 +9,6 @@ struct A;
 struct B;
 
 // CN Language Global Struct Definitions
-struct B;
 struct A {
     struct B* 指针;
 };

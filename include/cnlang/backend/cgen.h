@@ -38,6 +38,9 @@ typedef struct CnCCodeGenContext {
     struct CnType **reg_types;  ///< 寄存器类型数组
     int reg_types_count;        ///< 寄存器类型数组大小
     
+    /* 全局作用域（用于查找结构体类型的完整定义） */
+    struct CnSemScope *global_scope; ///< 全局作用域
+    
     /* 函数声明去重（避免多个模块导入同一函数时重复声明） */
     CnMap *declared_functions;  ///< 已声明的函数签名集合
 } CnCCodeGenContext;
