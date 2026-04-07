@@ -1375,10 +1375,12 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
                                 // 首先检查函数参数
                                 for (size_t p = 0; p < func->param_count; p++) {
-                                    if (func->params[p].as.sym_name &&
-                                        strcmp(func->params[p].as.sym_name, sym_name) == 0) {
-                                        new_type = func->params[p].type;
-                                        break;
+                                    if (func->params[p].as.sym_name) {
+                                        // 直接匹配（参数名称可能已经是 cn_var_xxx 格式）
+                                        if (strcmp(func->params[p].as.sym_name, sym_name) == 0) {
+                                            new_type = func->params[p].type;
+                                            break;
+                                        }
                                     }
                                 }
                                 // 如果不是函数参数，检查局部变量（通过 ALLOCA 指令）
@@ -1399,6 +1401,51 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                         alloca_block = alloca_block->next;
                                     }
                                 }
+                            }
+                        }
+                        
+                        // 对于 MOV 指令，如果 dest.type 为 NULL，尝试从 src1.type 获取类型
+                        if (!new_type && scan_inst->kind == CN_IR_INST_MOV) {
+                            // src1 可能是寄存器、立即数或符号
+                            if (scan_inst->src1.type) {
+                                new_type = scan_inst->src1.type;
+                            }
+                            // 如果 src1 是符号，尝试从函数参数中获取类型
+                            else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
+                                const char *sym_name = scan_inst->src1.as.sym_name;
+                                // 首先检查函数参数
+                                for (size_t p = 0; p < func->param_count; p++) {
+                                    if (func->params[p].as.sym_name) {
+                                        // 直接匹配（参数名称可能已经是 cn_var_xxx 格式）
+                                        if (strcmp(func->params[p].as.sym_name, sym_name) == 0) {
+                                            new_type = func->params[p].type;
+                                            break;
+                                        }
+                                    }
+                                }
+                                // 如果不是函数参数，检查局部变量（通过 ALLOCA 指令）
+                                if (!new_type) {
+                                    CnIrBasicBlock *alloca_block = func->first_block;
+                                    while (alloca_block && !new_type) {
+                                        CnIrInst *alloca_inst = alloca_block->first_inst;
+                                        while (alloca_inst && !new_type) {
+                                            if (alloca_inst->kind == CN_IR_INST_ALLOCA &&
+                                                alloca_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                                alloca_inst->dest.as.sym_name &&
+                                                strcmp(alloca_inst->dest.as.sym_name, sym_name) == 0) {
+                                                new_type = alloca_inst->dest.type;
+                                                break;
+                                            }
+                                            alloca_inst = alloca_inst->next;
+                                        }
+                                        alloca_block = alloca_block->next;
+                                    }
+                                }
+                            }
+                            // 如果 src1 是寄存器，尝试从 reg_types 中获取
+                            else if (scan_inst->src1.kind == CN_IR_OP_REG &&
+                                     scan_inst->src1.as.reg_id < actual_reg_count) {
+                                new_type = reg_types[scan_inst->src1.as.reg_id];
                             }
                         }
                         
@@ -1549,9 +1596,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         /* 修复：确保所有使用的寄存器都被声明，即使类型信息缺失 */
         bool has_int_regs = false;
         for (int i = 0; i < actual_reg_count; i++) {
-            // 对于NULL、CN_TYPE_INT或CN_TYPE_UNKNOWN类型，都使用long long
-            // 注意：NULL类型表示类型信息缺失，但仍需声明寄存器
-            if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_INT || reg_types[i]->kind == CN_TYPE_UNKNOWN) {
+            // 对于NULL、CN_TYPE_VOID、CN_TYPE_INT或CN_TYPE_UNKNOWN类型，都使用long long
+            // 注意：NULL类型表示类型信息缺失，VOID类型可能是函数调用返回值未正确设置，但仍需声明寄存器
+            if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_VOID || reg_types[i]->kind == CN_TYPE_INT || reg_types[i]->kind == CN_TYPE_UNKNOWN) {
                 if (!has_int_regs) {
                     fprintf(ctx->output_file, "  long long ");
                     has_int_regs = true;
