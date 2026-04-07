@@ -499,6 +499,16 @@ int 刷新输出(void);
 int 格式化打印(const char* format, ...);
 
 /**
+ * 打印格式：格式化打印的别名
+ * @param format 格式字符串
+ * @param ... 可变参数
+ * @return 输出的字符数，失败返回负数
+ *
+ * 说明：为CN语言自托管编译器提供的兼容函数名
+ */
+#define 打印格式 格式化打印
+
+/**
  * 格式化字符串：格式化输出到字符串缓冲区
  * @param str 目标缓冲区
  * @param format 格式字符串

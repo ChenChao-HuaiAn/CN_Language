@@ -65,6 +65,7 @@ static bool is_runtime_function_conflict(const char *func_name) {
         /* 控制台输入输出函数 */
         "打印字符串", "打印行", "读取整数", "读取小数", "读取字符串", "读取字符",
         "刷新输出", "格式化打印", "格式化字符串", "安全格式化字符串",
+        "打印格式",  /* 格式化打印的别名 */
         /* 类型检查函数 */
         "是整数", "是小数", "是字符串", "是数值", "取小数", "释放输入",
         /* 类型转换函数 */
@@ -680,7 +681,18 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
     switch (inst->kind) {
         case CN_IR_INST_LABEL: fprintf(ctx->output_file, "  %s:\n", inst->dest.as.sym_name); break;
         case CN_IR_INST_ALLOCA: fprintf(ctx->output_file, "  %s %s;\n", get_c_type_string(inst->dest.type), get_c_variable_name(inst->dest.as.sym_name)); break;
-        case CN_IR_INST_LOAD: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
+        case CN_IR_INST_LOAD:
+            // 调试输出
+            if (inst->dest.kind == CN_IR_OP_REG && inst->dest.type) {
+                fprintf(stderr, "[DEBUG LOAD] dest reg_id=%d, type=%p, kind=%d\n",
+                        inst->dest.as.reg_id, (void*)inst->dest.type, inst->dest.type->kind);
+            }
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = ");
+            print_operand(ctx, inst->src1);
+            fprintf(ctx->output_file, ";\n");
+            break;
         case CN_IR_INST_STORE: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_ADD:
         case CN_IR_INST_SUB:
@@ -1096,14 +1108,26 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             break;
         case CN_IR_INST_ADDRESS_OF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = &"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_DEREF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = *"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
-        case CN_IR_INST_MEMBER_ACCESS:
+        case CN_IR_INST_MEMBER_ACCESS: {
             // 结构体成员访问：dest = obj.member 或 dest = ptr->member
             fprintf(ctx->output_file, "  ");
             print_operand(ctx, inst->dest);
             fprintf(ctx->output_file, " = ");
             print_operand(ctx, inst->src1);
+            
             // 检查对象是否为指针类型，决定使用 -> 还是 .
+            bool is_pointer = false;
             if (inst->src1.type && inst->src1.type->kind == CN_TYPE_POINTER) {
+                is_pointer = true;
+            } else if (inst->src1.kind == CN_IR_OP_REG && ctx->reg_types) {
+                // 对于寄存器操作数，从reg_types中获取类型信息
+                int reg_id = inst->src1.as.reg_id;
+                if (reg_id < ctx->reg_types_count && ctx->reg_types[reg_id]) {
+                    is_pointer = (ctx->reg_types[reg_id]->kind == CN_TYPE_POINTER);
+                }
+            }
+            
+            if (is_pointer) {
                 fprintf(ctx->output_file, "->");
             } else {
                 fprintf(ctx->output_file, ".");
@@ -1114,6 +1138,7 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             }
             fprintf(ctx->output_file, ";\n");
             break;
+        }
         case CN_IR_INST_STRUCT_INIT:
             // 结构体初始化（构造函数调用）：dest = (struct 类型名){arg1, arg2, ...}
             fprintf(ctx->output_file, "  ");
@@ -1307,36 +1332,110 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             CnIrInst *scan_inst = scan_block->first_inst;
             while (scan_inst) {
                 // 收集dest寄存器类型
+                // 注意：指针类型优先于整型类型，因为指针类型需要正确的成员访问语法
+                // 同时，结构体类型也优先于整型类型
                 if (scan_inst->dest.kind == CN_IR_OP_REG) {
-                    if (scan_inst->dest.as.reg_id < actual_reg_count &&
-                        !reg_types[scan_inst->dest.as.reg_id] && 
-                        scan_inst->dest.type) {
-                        reg_types[scan_inst->dest.as.reg_id] = scan_inst->dest.type;
+                    if (scan_inst->dest.as.reg_id < actual_reg_count) {
+                        int reg_id = scan_inst->dest.as.reg_id;
+                        // 对于 LOAD 指令，如果 dest.type 为 NULL，尝试从 src1.type 获取类型
+                        CnType *new_type = scan_inst->dest.type;
+                        if (!new_type && scan_inst->kind == CN_IR_INST_LOAD) {
+                            // 首先尝试从 src1.type 获取
+                            if (scan_inst->src1.type) {
+                                new_type = scan_inst->src1.type;
+                                fprintf(stderr, "[DEBUG REG_TYPES] LOAD指令从src1获取类型: reg_id=%d, src1.type=%p, kind=%d\n",
+                                        reg_id, (void*)new_type, new_type ? new_type->kind : -1);
+                            }
+                            // 如果 src1.type 也为 NULL，尝试从函数参数中获取类型
+                            else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
+                                const char *sym_name = scan_inst->src1.as.sym_name;
+                                // 首先检查函数参数
+                                for (size_t p = 0; p < func->param_count; p++) {
+                                    if (func->params[p].as.sym_name &&
+                                        strcmp(func->params[p].as.sym_name, sym_name) == 0) {
+                                        new_type = func->params[p].type;
+                                        fprintf(stderr, "[DEBUG REG_TYPES] LOAD指令从函数参数获取类型: reg_id=%d, param=%s, type=%p, kind=%d\n",
+                                                reg_id, sym_name, (void*)new_type, new_type ? new_type->kind : -1);
+                                        break;
+                                    }
+                                }
+                                // 如果不是函数参数，检查局部变量（通过 ALLOCA 指令）
+                                if (!new_type) {
+                                    CnIrBasicBlock *alloca_block = func->first_block;
+                                    while (alloca_block && !new_type) {
+                                        CnIrInst *alloca_inst = alloca_block->first_inst;
+                                        while (alloca_inst && !new_type) {
+                                            if (alloca_inst->kind == CN_IR_INST_ALLOCA &&
+                                                alloca_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                                alloca_inst->dest.as.sym_name &&
+                                                strcmp(alloca_inst->dest.as.sym_name, sym_name) == 0) {
+                                                new_type = alloca_inst->dest.type;
+                                                fprintf(stderr, "[DEBUG REG_TYPES] LOAD指令从局部变量获取类型: reg_id=%d, var=%s, type=%p, kind=%d\n",
+                                                        reg_id, sym_name, (void*)new_type, new_type ? new_type->kind : -1);
+                                                break;
+                                            }
+                                            alloca_inst = alloca_inst->next;
+                                        }
+                                        alloca_block = alloca_block->next;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if (new_type) {
+                            CnType *old_type = reg_types[reg_id];
+                            
+                            // 判断是否应该更新类型
+                            bool should_update = false;
+                            if (!old_type) {
+                                // 之前没有类型，直接更新
+                                should_update = true;
+                            } else if (new_type->kind == CN_TYPE_POINTER && old_type->kind != CN_TYPE_POINTER) {
+                                // 新类型是指针类型，旧类型不是指针类型，更新
+                                should_update = true;
+                            } else if (new_type->kind == CN_TYPE_STRUCT && old_type->kind == CN_TYPE_INT) {
+                                // 新类型是结构体类型，旧类型是整型，更新
+                                should_update = true;
+                            }
+                            
+                            if (should_update) {
+                                reg_types[reg_id] = new_type;
+                                // 调试输出
+                                fprintf(stderr, "[DEBUG REG_TYPES] 更新类型: reg_id=%d, old_kind=%d, new_kind=%d, reg_types[%d]=%p\n",
+                                        reg_id, old_type ? old_type->kind : -1, new_type->kind, reg_id, (void*)reg_types[reg_id]);
+                            }
+                        }
                     }
                 }
                 // 收集src1寄存器类型
                 if (scan_inst->src1.kind == CN_IR_OP_REG) {
-                    if (scan_inst->src1.as.reg_id < actual_reg_count &&
-                        !reg_types[scan_inst->src1.as.reg_id] && 
-                        scan_inst->src1.type) {
-                        reg_types[scan_inst->src1.as.reg_id] = scan_inst->src1.type;
+                    if (scan_inst->src1.as.reg_id < actual_reg_count && scan_inst->src1.type) {
+                        // 如果新类型是指针类型，或者之前没有类型，则更新
+                        if (scan_inst->src1.type->kind == CN_TYPE_POINTER ||
+                            !reg_types[scan_inst->src1.as.reg_id]) {
+                            reg_types[scan_inst->src1.as.reg_id] = scan_inst->src1.type;
+                        }
                     }
                 }
                 // 收集src2寄存器类型
                 if (scan_inst->src2.kind == CN_IR_OP_REG) {
-                    if (scan_inst->src2.as.reg_id < actual_reg_count &&
-                        !reg_types[scan_inst->src2.as.reg_id] && 
-                        scan_inst->src2.type) {
-                        reg_types[scan_inst->src2.as.reg_id] = scan_inst->src2.type;
+                    if (scan_inst->src2.as.reg_id < actual_reg_count && scan_inst->src2.type) {
+                        // 如果新类型是指针类型，或者之前没有类型，则更新
+                        if (scan_inst->src2.type->kind == CN_TYPE_POINTER ||
+                            !reg_types[scan_inst->src2.as.reg_id]) {
+                            reg_types[scan_inst->src2.as.reg_id] = scan_inst->src2.type;
+                        }
                     }
                 }
                 // 收集extra_args中的寄存器类型
                 for (size_t i = 0; i < scan_inst->extra_args_count; i++) {
                     if (scan_inst->extra_args[i].kind == CN_IR_OP_REG) {
-                        if (scan_inst->extra_args[i].as.reg_id < actual_reg_count &&
-                            !reg_types[scan_inst->extra_args[i].as.reg_id] &&
-                            scan_inst->extra_args[i].type) {
-                            reg_types[scan_inst->extra_args[i].as.reg_id] = scan_inst->extra_args[i].type;
+                        if (scan_inst->extra_args[i].as.reg_id < actual_reg_count && scan_inst->extra_args[i].type) {
+                            // 如果新类型是指针类型，或者之前没有类型，则更新
+                            if (scan_inst->extra_args[i].type->kind == CN_TYPE_POINTER ||
+                                !reg_types[scan_inst->extra_args[i].as.reg_id]) {
+                                reg_types[scan_inst->extra_args[i].as.reg_id] = scan_inst->extra_args[i].type;
+                            }
                         }
                     }
                 }
@@ -1350,6 +1449,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         for (int i = 0; i < actual_reg_count; i++) {
             // 对于NULL、CN_TYPE_INT或CN_TYPE_UNKNOWN类型，都使用long long
             if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_INT || reg_types[i]->kind == CN_TYPE_UNKNOWN) {
+                // 调试输出
+                fprintf(stderr, "[DEBUG REG_DECL] 声明整型寄存器: r%d, type=%p, kind=%d\n",
+                        i, (void*)reg_types[i], reg_types[i] ? reg_types[i]->kind : -1);
                 if (!has_int_regs) {
                     fprintf(ctx->output_file, "  long long ");
                     has_int_regs = true;
@@ -1417,8 +1519,19 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
-        if (use_heap) {
-            free(reg_types);
+        // 将reg_types保存到ctx中，供指令生成时使用
+        // 注意：如果是栈分配的reg_types，需要复制到堆上以便在函数生成期间保持有效
+        if (!use_heap && actual_reg_count > 0) {
+            // 栈分配的reg_types需要复制到堆上
+            CnType **heap_reg_types = malloc(actual_reg_count * sizeof(CnType*));
+            if (heap_reg_types) {
+                memcpy(heap_reg_types, reg_types, actual_reg_count * sizeof(CnType*));
+                ctx->reg_types = heap_reg_types;
+                ctx->reg_types_count = actual_reg_count;
+            }
+        } else {
+            ctx->reg_types = reg_types;
+            ctx->reg_types_count = actual_reg_count;
         }
         
     skip_register_type_scan:;
@@ -1426,6 +1539,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
 
     CnIrBasicBlock *block = func->first_block;
     while (block) { cn_cgen_block(ctx, block); block = block->next; }
+    
+    // 清除ctx中的reg_types（总是释放，因为要么是堆分配的，要么是从栈复制的）
+    if (ctx->reg_types) {
+        free(ctx->reg_types);
+    }
+    ctx->reg_types = NULL;
+    ctx->reg_types_count = 0;
 
     // 检查函数是否以返回语句结束
     bool has_return = false;
