@@ -1332,10 +1332,20 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             /*
              * 对于使用 "变量" 关键字的声明，decl->declared_type 可能为 NULL，
              * 此时我们优先使用已在语义分析阶段推断出的初始值类型。
+             * 如果仍然没有类型，尝试从符号表获取。
              */
             CnType *decl_type = decl->declared_type;
             if (!decl_type && decl->initializer && decl->initializer->type) {
                 decl_type = decl->initializer->type;
+            }
+            // 如果仍然没有类型，尝试从符号表获取
+            if (!decl_type && ctx->current_scope) {
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
+                                                       decl->name,
+                                                       decl->name_length);
+                if (sym && sym->type) {
+                    decl_type = sym->type;
+                }
             }
             
             // 检查是否为静态局部变量

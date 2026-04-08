@@ -1543,7 +1543,7 @@ struct IR操作数 生成表达式IR(struct IR生成上下文* cn_var_上下文,
   if (r12) goto case_body_2944; else goto switch_check_2958;
 
   switch_check_2958:
-  r13 = r4 == 0;
+  r13 = r4 == -842150451;
   if (r13) goto case_body_2945; else goto switch_check_2959;
 
   switch_check_2959:
@@ -1557,19 +1557,19 @@ struct IR操作数 生成表达式IR(struct IR生成上下文* cn_var_上下文,
   if (r17) goto case_body_2947; else goto switch_check_2961;
 
   switch_check_2961:
-  r18 = r4 == 0;
+  r18 = r4 == -842150451;
   if (r18) goto case_body_2948; else goto switch_check_2962;
 
   switch_check_2962:
-  r19 = r4 == 0;
+  r19 = r4 == -842150451;
   if (r19) goto case_body_2949; else goto switch_check_2963;
 
   switch_check_2963:
-  r20 = r4 == 0;
+  r20 = r4 == -842150451;
   if (r20) goto case_body_2950; else goto switch_check_2964;
 
   switch_check_2964:
-  r21 = r4 == 0;
+  r21 = r4 == -842150451;
   if (r21) goto case_body_2951; else goto switch_check_2965;
 
   switch_check_2965:
@@ -2380,7 +2380,7 @@ struct IR操作数 生成赋值IR(struct IR生成上下文* cn_var_上下文, st
   r10 = cn_var_表达式;
   r11 = r10->左侧表达式;
   r12 = r11->类型;
-  r13 = r12 == 0;
+  r13 = r12 == -842150451;
   if (r13) goto if_then_3014; else goto if_else_3015;
 
   logic_rhs_3012:
@@ -2644,7 +2644,7 @@ void 生成语句IR(struct IR生成上下文* cn_var_上下文, struct 语句节
   if_merge_3028:
   r5 = cn_var_语句;
   r6 = r5->类型;
-  r7 = r6 == 0;
+  r7 = r6 == -842150451;
   if (r7) goto case_body_3032; else goto switch_check_3042;
 
   logic_rhs_3029:
@@ -2661,7 +2661,7 @@ void 生成语句IR(struct IR生成上下文* cn_var_上下文, struct 语句节
   if (r9) goto case_body_3033; else goto switch_check_3043;
 
   switch_check_3043:
-  r10 = r6 == 0;
+  r10 = r6 == -842150451;
   if (r10) goto case_body_3034; else goto switch_check_3044;
 
   switch_check_3044:
@@ -2670,23 +2670,23 @@ void 生成语句IR(struct IR生成上下文* cn_var_上下文, struct 语句节
   if (r12) goto case_body_3035; else goto switch_check_3045;
 
   switch_check_3045:
-  r13 = r6 == 0;
+  r13 = r6 == -842150451;
   if (r13) goto case_body_3036; else goto switch_check_3046;
 
   switch_check_3046:
-  r14 = r6 == 0;
+  r14 = r6 == -842150451;
   if (r14) goto case_body_3037; else goto switch_check_3047;
 
   switch_check_3047:
-  r15 = r6 == 0;
+  r15 = r6 == -842150451;
   if (r15) goto case_body_3038; else goto switch_check_3048;
 
   switch_check_3048:
-  r16 = r6 == 0;
+  r16 = r6 == -842150451;
   if (r16) goto case_body_3039; else goto switch_check_3049;
 
   switch_check_3049:
-  r17 = r6 == 0;
+  r17 = r6 == -842150451;
   if (r17) goto case_body_3040; else goto case_default_3041;
 
   case_body_3032:
@@ -3928,13 +3928,13 @@ void 生成程序IR(struct IR生成上下文* cn_var_上下文, struct 程序节
   while_body_3108:
   r8 = cn_var_声明_0;
   r9 = r8->类型;
-  r10 = r9 == 0;
+  r10 = r9 == -842150451;
   if (r10) goto case_body_3111; else goto switch_check_3114;
 
   while_exit_3109:
 
   switch_check_3114:
-  r11 = r9 == 0;
+  r11 = r9 == -842150451;
   if (r11) goto case_body_3112; else goto case_default_3113;
 
   case_body_3111:
