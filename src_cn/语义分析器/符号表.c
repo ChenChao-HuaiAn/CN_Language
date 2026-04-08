@@ -1069,7 +1069,7 @@ struct 作用域* 创建作用域(enum 作用域类型 cn_var_类型, char* cn_v
 }
 
 void 销毁作用域(struct 作用域* cn_var_作用域指针) {
-  long long r1, r2, r4, r5, r8, r9, r10, r11, r12, r14, r15, r18, r19, r20, r21;
+  long long r1, r2, r4, r5, r8, r10, r11, r12, r14, r15, r18, r20, r21;
   void* r7;
   void* r17;
   void* r23;
@@ -1077,8 +1077,10 @@ void 销毁作用域(struct 作用域* cn_var_作用域指针) {
   struct 作用域* r0;
   struct 作用域* r3;
   struct 作用域* r6;
+  void* r9;
   struct 作用域* r13;
   struct 作用域* r16;
+  void* r19;
   struct 作用域* r22;
   struct 作用域* r24;
   struct 作用域* r26;
@@ -1108,7 +1110,7 @@ void 销毁作用域(struct 作用域* cn_var_作用域指针) {
   r6 = cn_var_作用域指针;
   r7 = r6->子作用域列表;
   r8 = cn_var_i_0;
-  r9 = *(void*)cn_rt_array_get_element(r7, r8, 8);
+  r9 = *(void**)cn_rt_array_get_element(r7, r8, 8);
   销毁作用域(r9);
   goto for_update_1709;
 
@@ -1134,7 +1136,7 @@ void 销毁作用域(struct 作用域* cn_var_作用域指针) {
   r16 = cn_var_作用域指针;
   r17 = r16->符号表;
   r18 = cn_var_i_1;
-  r19 = *(void*)cn_rt_array_get_element(r17, r18, 8);
+  r19 = *(void**)cn_rt_array_get_element(r17, r18, 8);
   释放内存(r19);
   goto for_update_1713;
 
@@ -1231,7 +1233,7 @@ void 进入作用域(struct 符号表管理器* cn_var_管理器, enum 作用域
   enum 作用域类型 r0;
 
   entry:
-  void cn_var_新作用域_0;
+  long long cn_var_新作用域_0;
   r0 = cn_var_类型;
   r1 = cn_var_名称;
   r2 = cn_var_管理器;
@@ -1326,7 +1328,7 @@ _Bool 在循环体内(struct 符号表管理器* cn_var_管理器) {
   struct 作用域* r1;
 
   entry:
-  void cn_var_作用域指针_0;
+  long long cn_var_作用域指针_0;
   r0 = cn_var_管理器;
   r1 = r0->当前作用域;
   cn_var_作用域指针_0 = r1;
@@ -1388,7 +1390,7 @@ _Bool 插入符号(struct 符号表管理器* cn_var_管理器, struct 符号* c
   struct 作用域* r41;
 
   entry:
-  void cn_var_已存在_0;
+  long long cn_var_已存在_0;
   r0 = cn_var_管理器;
   r1 = cn_var_符号指针;
   r2 = r1->名称;
@@ -1450,13 +1452,14 @@ _Bool 插入符号(struct 符号表管理器* cn_var_管理器, struct 符号* c
 }
 
 _Bool 在作用域插入符号(struct 作用域* cn_var_目标作用域, struct 符号* cn_var_符号指针) {
-  long long r0, r2, r3, r6, r7, r8, r11, r12, r13, r14, r16, r18, r19, r21, r22, r26, r27, r28, r34, r36, r37;
+  long long r0, r2, r3, r6, r8, r11, r12, r13, r14, r16, r18, r19, r21, r22, r26, r27, r28, r34, r36, r37;
   char* r10;
   void* r5;
   void* r24;
   void* r32;
   struct 作用域* r1;
   struct 作用域* r4;
+  void* r7;
   struct 符号* r9;
   struct 作用域* r15;
   struct 作用域* r17;
@@ -1486,8 +1489,8 @@ _Bool 在作用域插入符号(struct 作用域* cn_var_目标作用域, struct 
   r4 = cn_var_目标作用域;
   r5 = r4->符号表;
   r6 = cn_var_i_0;
-  r7 = *(void*)cn_rt_array_get_element(r5, r6, 8);
-  r8 = r7.名称;
+  r7 = *(void**)cn_rt_array_get_element(r5, r6, 8);
+  r8 = r7->名称;
   r9 = cn_var_符号指针;
   r10 = r9->名称;
   r11 = 比较字符串(r8, r10);
@@ -1543,7 +1546,7 @@ _Bool 在作用域插入符号(struct 作用域* cn_var_目标作用域, struct 
 }
 
 struct 符号* 查找当前作用域符号(struct 符号表管理器* cn_var_管理器, char* cn_var_名称) {
-  long long r0, r3, r4, r8, r9, r10, r12, r13, r17, r18, r19, r20;
+  long long r0, r3, r4, r8, r10, r12, r13, r17, r19, r20;
   char* r11;
   void* r7;
   void* r16;
@@ -1551,8 +1554,10 @@ struct 符号* 查找当前作用域符号(struct 符号表管理器* cn_var_管
   struct 作用域* r2;
   struct 符号表管理器* r5;
   struct 作用域* r6;
+  void* r9;
   struct 符号表管理器* r14;
   struct 作用域* r15;
+  void* r18;
 
   entry:
   long long cn_var_i_0;
@@ -1572,8 +1577,8 @@ struct 符号* 查找当前作用域符号(struct 符号表管理器* cn_var_管
   r6 = r5->当前作用域;
   r7 = r6->符号表;
   r8 = cn_var_i_0;
-  r9 = *(void*)cn_rt_array_get_element(r7, r8, 8);
-  r10 = r9.名称;
+  r9 = *(void**)cn_rt_array_get_element(r7, r8, 8);
+  r10 = r9->名称;
   r11 = cn_var_名称;
   r12 = 比较字符串(r10, r11);
   r13 = r12 == 0;
@@ -1593,7 +1598,7 @@ struct 符号* 查找当前作用域符号(struct 符号表管理器* cn_var_管
   r15 = r14->当前作用域;
   r16 = r15->符号表;
   r17 = cn_var_i_0;
-  r18 = *(void*)cn_rt_array_get_element(r16, r17, 8);
+  r18 = *(void**)cn_rt_array_get_element(r16, r17, 8);
   return r18;
   goto if_merge_1743;
 
@@ -1603,13 +1608,15 @@ struct 符号* 查找当前作用域符号(struct 符号表管理器* cn_var_管
 }
 
 struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, char* cn_var_名称) {
-  long long r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23;
+  long long r2, r3, r4, r5, r6, r7, r8, r9, r10, r12, r14, r15, r16, r17, r18, r20, r21, r22, r23;
   char* r13;
   struct 符号表管理器* r0;
   struct 作用域* r1;
+  void* r11;
+  void* r19;
 
   entry:
-  void cn_var_作用域指针_0;
+  long long cn_var_作用域指针_0;
   r0 = cn_var_管理器;
   r1 = r0->当前作用域;
   cn_var_作用域指针_0 = r1;
@@ -1639,8 +1646,8 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, char* c
   r8 = cn_var_作用域指针_0;
   r9 = r8.符号表;
   r10 = cn_var_i_1;
-  r11 = *(void*)cn_rt_array_get_element(r9, r10, 8);
-  r12 = r11.名称;
+  r11 = *(void**)cn_rt_array_get_element(r9, r10, 8);
+  r12 = r11->名称;
   r13 = cn_var_名称;
   r14 = 比较字符串(r12, r13);
   r15 = r14 == 0;
@@ -1662,7 +1669,7 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, char* c
   r16 = cn_var_作用域指针_0;
   r17 = r16.符号表;
   r18 = cn_var_i_1;
-  r19 = *(void*)cn_rt_array_get_element(r17, r18, 8);
+  r19 = *(void**)cn_rt_array_get_element(r17, r18, 8);
   return r19;
   goto if_merge_1752;
 
@@ -1672,7 +1679,7 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, char* c
 }
 
 struct 符号* 查找全局符号(struct 符号表管理器* cn_var_管理器, char* cn_var_名称) {
-  long long r0, r3, r4, r8, r9, r10, r12, r13, r17, r18, r19, r20;
+  long long r0, r3, r4, r8, r10, r12, r13, r17, r19, r20;
   char* r11;
   void* r7;
   void* r16;
@@ -1680,8 +1687,10 @@ struct 符号* 查找全局符号(struct 符号表管理器* cn_var_管理器, c
   struct 作用域* r2;
   struct 符号表管理器* r5;
   struct 作用域* r6;
+  void* r9;
   struct 符号表管理器* r14;
   struct 作用域* r15;
+  void* r18;
 
   entry:
   long long cn_var_i_0;
@@ -1701,8 +1710,8 @@ struct 符号* 查找全局符号(struct 符号表管理器* cn_var_管理器, c
   r6 = r5->全局作用域;
   r7 = r6->符号表;
   r8 = cn_var_i_0;
-  r9 = *(void*)cn_rt_array_get_element(r7, r8, 8);
-  r10 = r9.名称;
+  r9 = *(void**)cn_rt_array_get_element(r7, r8, 8);
+  r10 = r9->名称;
   r11 = cn_var_名称;
   r12 = 比较字符串(r10, r11);
   r13 = r12 == 0;
@@ -1722,7 +1731,7 @@ struct 符号* 查找全局符号(struct 符号表管理器* cn_var_管理器, c
   r15 = r14->全局作用域;
   r16 = r15->符号表;
   r17 = cn_var_i_0;
-  r18 = *(void*)cn_rt_array_get_element(r16, r17, 8);
+  r18 = *(void**)cn_rt_array_get_element(r16, r17, 8);
   return r18;
   goto if_merge_1758;
 
@@ -1732,13 +1741,15 @@ struct 符号* 查找全局符号(struct 符号表管理器* cn_var_管理器, c
 }
 
 struct 符号* 在作用域查找符号(struct 作用域* cn_var_目标作用域, char* cn_var_名称) {
-  long long r0, r2, r3, r6, r7, r8, r10, r11, r14, r15, r16, r17;
+  long long r0, r2, r3, r6, r8, r10, r11, r14, r16, r17;
   char* r9;
   void* r5;
   void* r13;
   struct 作用域* r1;
   struct 作用域* r4;
+  void* r7;
   struct 作用域* r12;
+  void* r15;
 
   entry:
   long long cn_var_i_0;
@@ -1756,8 +1767,8 @@ struct 符号* 在作用域查找符号(struct 作用域* cn_var_目标作用域
   r4 = cn_var_目标作用域;
   r5 = r4->符号表;
   r6 = cn_var_i_0;
-  r7 = *(void*)cn_rt_array_get_element(r5, r6, 8);
-  r8 = r7.名称;
+  r7 = *(void**)cn_rt_array_get_element(r5, r6, 8);
+  r8 = r7->名称;
   r9 = cn_var_名称;
   r10 = 比较字符串(r8, r9);
   r11 = r10 == 0;
@@ -1776,7 +1787,7 @@ struct 符号* 在作用域查找符号(struct 作用域* cn_var_目标作用域
   r12 = cn_var_目标作用域;
   r13 = r12->符号表;
   r14 = cn_var_i_0;
-  r15 = *(void*)cn_rt_array_get_element(r13, r14, 8);
+  r15 = *(void**)cn_rt_array_get_element(r13, r14, 8);
   return r15;
   goto if_merge_1764;
 
@@ -2046,7 +2057,7 @@ _Bool 检查符号可访问性(struct 符号* cn_var_符号指针, struct 作用
   if (r12) goto if_then_1823; else goto if_merge_1824;
 
   if_then_1823:
-  void cn_var_当前_0;
+  long long cn_var_当前_0;
   r13 = cn_var_访问者作用域;
   cn_var_当前_0 = r13;
   goto while_cond_1825;

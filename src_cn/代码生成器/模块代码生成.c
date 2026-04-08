@@ -1396,13 +1396,13 @@ void 生成头文件开头(struct 模块代码生成上下文* cn_var_上下文)
   entry:
   r0 = cn_var_上下文;
   r1 = !r0;
-  if (r1) goto if_then_3405; else goto if_merge_3406;
+  if (r1) goto if_then_3395; else goto if_merge_3396;
 
-  if_then_3405:
+  if_then_3395:
   return;
-  goto if_merge_3406;
+  goto if_merge_3396;
 
-  if_merge_3406:
+  if_merge_3396:
   struct 输出缓冲区* cn_var_缓冲区_0;
   r2 = cn_var_上下文;
   r3 = r2->头文件缓冲区;
@@ -1421,7 +1421,7 @@ void 生成头文件开头(struct 模块代码生成上下文* cn_var_上下文)
   r14 = 追加字符串(r13, "// ========================================\n");
   r15 = cn_var_缓冲区_0;
   追加换行(r15);
-  void cn_var_保护宏_1;
+  long long cn_var_保护宏_1;
   r16 = 创建输出缓冲区(256);
   cn_var_保护宏_1 = r16;
   r17 = cn_var_上下文;
@@ -1470,13 +1470,13 @@ void 生成头文件结尾(struct 模块代码生成上下文* cn_var_上下文)
   entry:
   r0 = cn_var_上下文;
   r1 = !r0;
-  if (r1) goto if_then_3407; else goto if_merge_3408;
+  if (r1) goto if_then_3397; else goto if_merge_3398;
 
-  if_then_3407:
+  if_then_3397:
   return;
-  goto if_merge_3408;
+  goto if_merge_3398;
 
-  if_merge_3408:
+  if_merge_3398:
   struct 输出缓冲区* cn_var_缓冲区_0;
   r2 = cn_var_上下文;
   r3 = r2->头文件缓冲区;
@@ -1485,7 +1485,7 @@ void 生成头文件结尾(struct 模块代码生成上下文* cn_var_上下文)
   追加换行(r4);
   r5 = cn_var_缓冲区_0;
   r6 = 追加字符串(r5, "#endif // ");
-  void cn_var_保护宏_1;
+  long long cn_var_保护宏_1;
   r7 = 创建输出缓冲区(256);
   cn_var_保护宏_1 = r7;
   r8 = cn_var_上下文;
@@ -1542,13 +1542,13 @@ void 生成源文件开头(struct 模块代码生成上下文* cn_var_上下文)
   entry:
   r0 = cn_var_上下文;
   r1 = !r0;
-  if (r1) goto if_then_3409; else goto if_merge_3410;
+  if (r1) goto if_then_3399; else goto if_merge_3400;
 
-  if_then_3409:
+  if_then_3399:
   return;
-  goto if_merge_3410;
+  goto if_merge_3400;
 
-  if_merge_3410:
+  if_merge_3400:
   struct 输出缓冲区* cn_var_缓冲区_0;
   r2 = cn_var_上下文;
   r3 = r2->源文件缓冲区;
@@ -1591,7 +1591,7 @@ void 生成源文件开头(struct 模块代码生成上下文* cn_var_上下文)
 }
 
 void 生成结构体定义(struct 类型信息* cn_var_类型, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r0, r2, r5, r14, r16, r17, r21, r22, r30, r31, r35, r36;
+  long long r0, r2, r5, r14, r16, r17, r21, r30, r35, r36;
   char* r10;
   char* r24;
   void* r20;
@@ -1605,10 +1605,12 @@ void 生成结构体定义(struct 类型信息* cn_var_类型, struct 输出缓�
   struct 类型信息* r15;
   struct 输出缓冲区* r18;
   struct 类型信息* r19;
+  void* r22;
   struct 输出缓冲区* r23;
   struct 输出缓冲区* r25;
   struct 输出缓冲区* r27;
   struct 类型信息* r28;
+  void* r31;
   struct 输出缓冲区* r33;
   struct 输出缓冲区* r37;
   struct 输出缓冲区* r39;
@@ -1624,13 +1626,13 @@ void 生成结构体定义(struct 类型信息* cn_var_类型, struct 输出缓�
   entry:
   r1 = cn_var_类型;
   r2 = !r1;
-  if (r2) goto logic_merge_3414; else goto logic_rhs_3413;
+  if (r2) goto logic_merge_3404; else goto logic_rhs_3403;
 
-  if_then_3411:
+  if_then_3401:
   return;
-  goto if_merge_3412;
+  goto if_merge_3402;
 
-  if_merge_3412:
+  if_merge_3402:
   r6 = cn_var_缓冲区;
   r7 = 追加字符串(r6, "struct ");
   r8 = cn_var_缓冲区;
@@ -1641,31 +1643,31 @@ void 生成结构体定义(struct 类型信息* cn_var_类型, struct 输出缓�
   r13 = 追加字符串(r12, " {\n");
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3415;
+  goto for_cond_3405;
 
-  logic_rhs_3413:
+  logic_rhs_3403:
   r3 = cn_var_类型;
   r4 = r3->种类;
   r5 = r4 != 8;
-  goto logic_merge_3414;
+  goto logic_merge_3404;
 
-  logic_merge_3414:
-  if (r5) goto if_then_3411; else goto if_merge_3412;
+  logic_merge_3404:
+  if (r5) goto if_then_3401; else goto if_merge_3402;
 
-  for_cond_3415:
+  for_cond_3405:
   r14 = cn_var_i_0;
   r15 = cn_var_类型;
   r16 = r15->成员个数;
   r17 = r14 < r16;
-  if (r17) goto for_body_3416; else goto for_exit_3418;
+  if (r17) goto for_body_3406; else goto for_exit_3408;
 
-  for_body_3416:
+  for_body_3406:
   r18 = cn_var_缓冲区;
   追加缩进(r18, 4);
   r19 = cn_var_类型;
   r20 = r19->成员类型列表;
   r21 = cn_var_i_0;
-  r22 = *(void*)cn_rt_array_get_element(r20, r21, 8);
+  r22 = *(void**)cn_rt_array_get_element(r20, r21, 8);
   r23 = cn_var_缓冲区;
   r24 = 类型到C类型(r22, r23);
   r25 = cn_var_缓冲区;
@@ -1674,19 +1676,19 @@ void 生成结构体定义(struct 类型信息* cn_var_类型, struct 输出缓�
   r28 = cn_var_类型;
   r29 = r28->成员名称列表;
   r30 = cn_var_i_0;
-  r31 = *(void*)cn_rt_array_get_element(r29, r30, 8);
+  r31 = *(void**)cn_rt_array_get_element(r29, r30, 8);
   r32 = 追加字符串(r27, r31);
   r33 = cn_var_缓冲区;
   r34 = 追加字符串(r33, ";\n");
-  goto for_update_3417;
+  goto for_update_3407;
 
-  for_update_3417:
+  for_update_3407:
   r35 = cn_var_i_0;
   r36 = r35 + 1;
   cn_var_i_0 = r36;
-  goto for_cond_3415;
+  goto for_cond_3405;
 
-  for_exit_3418:
+  for_exit_3408:
   r37 = cn_var_缓冲区;
   r38 = 追加字符串(r37, "};\n");
   r39 = cn_var_缓冲区;
@@ -1711,13 +1713,13 @@ void 生成结构体前向声明(struct 类型信息* cn_var_类型, struct 输�
   entry:
   r1 = cn_var_类型;
   r2 = !r1;
-  if (r2) goto logic_merge_3422; else goto logic_rhs_3421;
+  if (r2) goto logic_merge_3412; else goto logic_rhs_3411;
 
-  if_then_3419:
+  if_then_3409:
   return;
-  goto if_merge_3420;
+  goto if_merge_3410;
 
-  if_merge_3420:
+  if_merge_3410:
   r6 = cn_var_缓冲区;
   r7 = 追加字符串(r6, "struct ");
   r8 = cn_var_缓冲区;
@@ -1727,14 +1729,14 @@ void 生成结构体前向声明(struct 类型信息* cn_var_类型, struct 输�
   r12 = cn_var_缓冲区;
   r13 = 追加字符串(r12, ";\n");
 
-  logic_rhs_3421:
+  logic_rhs_3411:
   r3 = cn_var_类型;
   r4 = r3->种类;
   r5 = r4 != 8;
-  goto logic_merge_3422;
+  goto logic_merge_3412;
 
-  logic_merge_3422:
-  if (r5) goto if_then_3419; else goto if_merge_3420;
+  logic_merge_3412:
+  if (r5) goto if_then_3409; else goto if_merge_3410;
   return;
 }
 
@@ -1775,13 +1777,13 @@ void 生成枚举定义(struct 类型信息* cn_var_类型, struct 符号* cn_va
   entry:
   r1 = cn_var_类型;
   r2 = !r1;
-  if (r2) goto logic_merge_3426; else goto logic_rhs_3425;
+  if (r2) goto logic_merge_3416; else goto logic_rhs_3415;
 
-  if_then_3423:
+  if_then_3413:
   return;
-  goto if_merge_3424;
+  goto if_merge_3414;
 
-  if_merge_3424:
+  if_merge_3414:
   r6 = cn_var_缓冲区;
   r7 = 追加字符串(r6, "enum ");
   r8 = cn_var_缓冲区;
@@ -1796,64 +1798,64 @@ void 生成枚举定义(struct 类型信息* cn_var_类型, struct 符号* cn_va
   cn_var_成员_0 = r15;
   long long cn_var_索引_1;
   cn_var_索引_1 = 0;
-  goto while_cond_3427;
+  goto while_cond_3417;
 
-  logic_rhs_3425:
+  logic_rhs_3415:
   r3 = cn_var_类型;
   r4 = r3->种类;
   r5 = r4 != 9;
-  goto logic_merge_3426;
+  goto logic_merge_3416;
 
-  logic_merge_3426:
-  if (r5) goto if_then_3423; else goto if_merge_3424;
+  logic_merge_3416:
+  if (r5) goto if_then_3413; else goto if_merge_3414;
 
-  while_cond_3427:
+  while_cond_3417:
   r16 = cn_var_成员_0;
-  if (r16) goto while_body_3428; else goto while_exit_3429;
+  if (r16) goto while_body_3418; else goto while_exit_3419;
 
-  while_body_3428:
+  while_body_3418:
   r17 = cn_var_缓冲区;
   追加缩进(r17, 4);
   r18 = cn_var_缓冲区;
   r19 = cn_var_成员_0;
   r20 = r19->名称;
   r21 = 追加字符串(r18, r20);
-  if (0) goto if_then_3430; else goto if_merge_3431;
+  if (0) goto if_then_3420; else goto if_merge_3421;
 
-  while_exit_3429:
+  while_exit_3419:
   r36 = cn_var_缓冲区;
   r37 = 追加字符串(r36, "};\n");
   r38 = cn_var_缓冲区;
   追加换行(r38);
 
-  if_then_3430:
+  if_then_3420:
   r22 = cn_var_缓冲区;
   r23 = 追加字符串(r22, " = ");
   r24 = cn_var_缓冲区;
   r25 = cn_var_成员_0;
   r26 = r25->值;
   r27 = 追加整数(r24, r26);
-  goto if_merge_3431;
+  goto if_merge_3421;
 
-  if_merge_3431:
+  if_merge_3421:
   r28 = cn_var_成员_0;
   r29 = r28->下一个成员;
   cn_var_成员_0 = r29;
   r30 = cn_var_成员_0;
-  if (r30) goto if_then_3432; else goto if_merge_3433;
+  if (r30) goto if_then_3422; else goto if_merge_3423;
 
-  if_then_3432:
+  if_then_3422:
   r31 = cn_var_缓冲区;
   r32 = 追加字符串(r31, ",");
-  goto if_merge_3433;
+  goto if_merge_3423;
 
-  if_merge_3433:
+  if_merge_3423:
   r33 = cn_var_缓冲区;
   追加换行(r33);
   r34 = cn_var_索引_1;
   r35 = r34 + 1;
   cn_var_索引_1 = r35;
-  goto while_cond_3427;
+  goto while_cond_3417;
   return;
 }
 
@@ -1874,13 +1876,13 @@ void 生成枚举前向声明(struct 类型信息* cn_var_类型, struct 输出�
   entry:
   r1 = cn_var_类型;
   r2 = !r1;
-  if (r2) goto logic_merge_3437; else goto logic_rhs_3436;
+  if (r2) goto logic_merge_3427; else goto logic_rhs_3426;
 
-  if_then_3434:
+  if_then_3424:
   return;
-  goto if_merge_3435;
+  goto if_merge_3425;
 
-  if_merge_3435:
+  if_merge_3425:
   r6 = cn_var_缓冲区;
   r7 = 追加字符串(r6, "enum ");
   r8 = cn_var_缓冲区;
@@ -1890,19 +1892,19 @@ void 生成枚举前向声明(struct 类型信息* cn_var_类型, struct 输出�
   r12 = cn_var_缓冲区;
   r13 = 追加字符串(r12, ";\n");
 
-  logic_rhs_3436:
+  logic_rhs_3426:
   r3 = cn_var_类型;
   r4 = r3->种类;
   r5 = r4 != 9;
-  goto logic_merge_3437;
+  goto logic_merge_3427;
 
-  logic_merge_3437:
-  if (r5) goto if_then_3434; else goto if_merge_3435;
+  logic_merge_3427:
+  if (r5) goto if_then_3424; else goto if_merge_3425;
   return;
 }
 
 void 生成类定义(struct 类型信息* cn_var_类型, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r0, r2, r5, r14, r16, r17, r21, r22, r30, r31, r35, r36;
+  long long r0, r2, r5, r14, r16, r17, r21, r30, r35, r36;
   char* r10;
   char* r24;
   void* r20;
@@ -1916,10 +1918,12 @@ void 生成类定义(struct 类型信息* cn_var_类型, struct 输出缓冲区*
   struct 类型信息* r15;
   struct 输出缓冲区* r18;
   struct 类型信息* r19;
+  void* r22;
   struct 输出缓冲区* r23;
   struct 输出缓冲区* r25;
   struct 输出缓冲区* r27;
   struct 类型信息* r28;
+  void* r31;
   struct 输出缓冲区* r33;
   struct 输出缓冲区* r37;
   struct 输出缓冲区* r39;
@@ -1935,13 +1939,13 @@ void 生成类定义(struct 类型信息* cn_var_类型, struct 输出缓冲区*
   entry:
   r1 = cn_var_类型;
   r2 = !r1;
-  if (r2) goto logic_merge_3441; else goto logic_rhs_3440;
+  if (r2) goto logic_merge_3431; else goto logic_rhs_3430;
 
-  if_then_3438:
+  if_then_3428:
   return;
-  goto if_merge_3439;
+  goto if_merge_3429;
 
-  if_merge_3439:
+  if_merge_3429:
   r6 = cn_var_缓冲区;
   r7 = 追加字符串(r6, "struct ");
   r8 = cn_var_缓冲区;
@@ -1952,31 +1956,31 @@ void 生成类定义(struct 类型信息* cn_var_类型, struct 输出缓冲区*
   r13 = 追加字符串(r12, " {\n");
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3442;
+  goto for_cond_3432;
 
-  logic_rhs_3440:
+  logic_rhs_3430:
   r3 = cn_var_类型;
   r4 = r3->种类;
   r5 = r4 != 10;
-  goto logic_merge_3441;
+  goto logic_merge_3431;
 
-  logic_merge_3441:
-  if (r5) goto if_then_3438; else goto if_merge_3439;
+  logic_merge_3431:
+  if (r5) goto if_then_3428; else goto if_merge_3429;
 
-  for_cond_3442:
+  for_cond_3432:
   r14 = cn_var_i_0;
   r15 = cn_var_类型;
   r16 = r15->成员个数;
   r17 = r14 < r16;
-  if (r17) goto for_body_3443; else goto for_exit_3445;
+  if (r17) goto for_body_3433; else goto for_exit_3435;
 
-  for_body_3443:
+  for_body_3433:
   r18 = cn_var_缓冲区;
   追加缩进(r18, 4);
   r19 = cn_var_类型;
   r20 = r19->成员类型列表;
   r21 = cn_var_i_0;
-  r22 = *(void*)cn_rt_array_get_element(r20, r21, 8);
+  r22 = *(void**)cn_rt_array_get_element(r20, r21, 8);
   r23 = cn_var_缓冲区;
   r24 = 类型到C类型(r22, r23);
   r25 = cn_var_缓冲区;
@@ -1985,19 +1989,19 @@ void 生成类定义(struct 类型信息* cn_var_类型, struct 输出缓冲区*
   r28 = cn_var_类型;
   r29 = r28->成员名称列表;
   r30 = cn_var_i_0;
-  r31 = *(void*)cn_rt_array_get_element(r29, r30, 8);
+  r31 = *(void**)cn_rt_array_get_element(r29, r30, 8);
   r32 = 追加字符串(r27, r31);
   r33 = cn_var_缓冲区;
   r34 = 追加字符串(r33, ";\n");
-  goto for_update_3444;
+  goto for_update_3434;
 
-  for_update_3444:
+  for_update_3434:
   r35 = cn_var_i_0;
   r36 = r35 + 1;
   cn_var_i_0 = r36;
-  goto for_cond_3442;
+  goto for_cond_3432;
 
-  for_exit_3445:
+  for_exit_3435:
   r37 = cn_var_缓冲区;
   r38 = 追加字符串(r37, "};\n");
   r39 = cn_var_缓冲区;
@@ -2022,13 +2026,13 @@ void 生成类前向声明(struct 类型信息* cn_var_类型, struct 输出缓�
   entry:
   r1 = cn_var_类型;
   r2 = !r1;
-  if (r2) goto logic_merge_3449; else goto logic_rhs_3448;
+  if (r2) goto logic_merge_3439; else goto logic_rhs_3438;
 
-  if_then_3446:
+  if_then_3436:
   return;
-  goto if_merge_3447;
+  goto if_merge_3437;
 
-  if_merge_3447:
+  if_merge_3437:
   r6 = cn_var_缓冲区;
   r7 = 追加字符串(r6, "struct ");
   r8 = cn_var_缓冲区;
@@ -2038,14 +2042,14 @@ void 生成类前向声明(struct 类型信息* cn_var_类型, struct 输出缓�
   r12 = cn_var_缓冲区;
   r13 = 追加字符串(r12, ";\n");
 
-  logic_rhs_3448:
+  logic_rhs_3438:
   r3 = cn_var_类型;
   r4 = r3->种类;
   r5 = r4 != 10;
-  goto logic_merge_3449;
+  goto logic_merge_3439;
 
-  logic_merge_3449:
-  if (r5) goto if_then_3446; else goto if_merge_3447;
+  logic_merge_3439:
+  if (r5) goto if_then_3436; else goto if_merge_3437;
   return;
 }
 
@@ -2070,13 +2074,13 @@ void 生成全局变量声明(struct 全局变量* cn_var_全局变量信息, st
   entry:
   r0 = cn_var_全局变量信息;
   r1 = !r0;
-  if (r1) goto if_then_3450; else goto if_merge_3451;
+  if (r1) goto if_then_3440; else goto if_merge_3441;
 
-  if_then_3450:
+  if_then_3440:
   return;
-  goto if_merge_3451;
+  goto if_merge_3441;
 
-  if_merge_3451:
+  if_merge_3441:
   r2 = cn_var_缓冲区;
   r3 = 追加字符串(r2, "extern ");
   r4 = cn_var_全局变量信息;
@@ -2122,13 +2126,13 @@ void 生成全局变量定义(struct 全局变量* cn_var_全局变量信息, st
   entry:
   r0 = cn_var_全局变量信息;
   r1 = !r0;
-  if (r1) goto if_then_3452; else goto if_merge_3453;
+  if (r1) goto if_then_3442; else goto if_merge_3443;
 
-  if_then_3452:
+  if_then_3442:
   return;
-  goto if_merge_3453;
+  goto if_merge_3443;
 
-  if_merge_3453:
+  if_merge_3443:
   r2 = cn_var_全局变量信息;
   r3 = r2->类型信息;
   r4 = cn_var_缓冲区;
@@ -2143,25 +2147,25 @@ void 生成全局变量定义(struct 全局变量* cn_var_全局变量信息, st
   r13 = r12->初始值;
   r14 = r13.种类;
   r15 = r14 != 0;
-  if (r15) goto if_then_3454; else goto if_merge_3455;
+  if (r15) goto if_then_3444; else goto if_merge_3445;
 
-  if_then_3454:
+  if_then_3444:
   r16 = cn_var_缓冲区;
   r17 = 追加字符串(r16, " = ");
   r18 = cn_var_全局变量信息;
   r19 = r18->初始值;
   r20 = cn_var_缓冲区;
   r21 = 生成操作数代码(r19, r20);
-  goto if_merge_3455;
+  goto if_merge_3445;
 
-  if_merge_3455:
+  if_merge_3445:
   r22 = cn_var_缓冲区;
   r23 = 追加字符串(r22, ";\n");
   return;
 }
 
 void 生成函数声明(struct IR函数* cn_var_函数指针, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r1, r14, r16, r17, r18, r19, r24, r25, r27, r30, r31;
+  long long r1, r14, r16, r17, r18, r19, r24, r27, r30, r31;
   char* r5;
   char* r10;
   char* r29;
@@ -2177,6 +2181,7 @@ void 生成函数声明(struct IR函数* cn_var_函数指针, struct 输出缓�
   struct IR函数* r15;
   struct 输出缓冲区* r20;
   struct IR函数* r22;
+  void* r25;
   struct 输出缓冲区* r28;
   struct 输出缓冲区* r32;
   struct 输出缓冲区* r34;
@@ -2191,13 +2196,13 @@ void 生成函数声明(struct IR函数* cn_var_函数指针, struct 输出缓�
   entry:
   r0 = cn_var_函数指针;
   r1 = !r0;
-  if (r1) goto if_then_3456; else goto if_merge_3457;
+  if (r1) goto if_then_3446; else goto if_merge_3447;
 
-  if_then_3456:
+  if_then_3446:
   return;
-  goto if_merge_3457;
+  goto if_merge_3447;
 
-  if_merge_3457:
+  if_merge_3447:
   r2 = cn_var_函数指针;
   r3 = r2->返回类型;
   r4 = cn_var_缓冲区;
@@ -2212,53 +2217,53 @@ void 生成函数声明(struct IR函数* cn_var_函数指针, struct 输出缓�
   r13 = 追加字符串(r12, "(");
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3458;
+  goto for_cond_3448;
 
-  for_cond_3458:
+  for_cond_3448:
   r14 = cn_var_i_0;
   r15 = cn_var_函数指针;
   r16 = r15->参数数量;
   r17 = r14 < r16;
-  if (r17) goto for_body_3459; else goto for_exit_3461;
+  if (r17) goto for_body_3449; else goto for_exit_3451;
 
-  for_body_3459:
+  for_body_3449:
   r18 = cn_var_i_0;
   r19 = r18 > 0;
-  if (r19) goto if_then_3462; else goto if_merge_3463;
+  if (r19) goto if_then_3452; else goto if_merge_3453;
 
-  for_update_3460:
+  for_update_3450:
   r30 = cn_var_i_0;
   r31 = r30 + 1;
   cn_var_i_0 = r31;
-  goto for_cond_3458;
+  goto for_cond_3448;
 
-  for_exit_3461:
-  if (0) goto if_then_3464; else goto if_merge_3465;
+  for_exit_3451:
+  if (0) goto if_then_3454; else goto if_merge_3455;
 
-  if_then_3462:
+  if_then_3452:
   r20 = cn_var_缓冲区;
   r21 = 追加字符串(r20, ", ");
-  goto if_merge_3463;
+  goto if_merge_3453;
 
-  if_merge_3463:
+  if_merge_3453:
   struct IR操作数 cn_var_参数_1;
   r22 = cn_var_函数指针;
   r23 = r22->参数列表;
   r24 = cn_var_i_0;
-  r25 = *(void*)cn_rt_array_get_element(r23, r24, 8);
+  r25 = *(void**)cn_rt_array_get_element(r23, r24, 8);
   cn_var_参数_1 = r25;
   r26 = cn_var_参数_1;
   r27 = r26.类型信息;
   r28 = cn_var_缓冲区;
   r29 = 类型到C类型(r27, r28);
-  goto for_update_3460;
+  goto for_update_3450;
 
-  if_then_3464:
+  if_then_3454:
   r32 = cn_var_缓冲区;
   r33 = 追加字符串(r32, "void");
-  goto if_merge_3465;
+  goto if_merge_3455;
 
-  if_merge_3465:
+  if_merge_3455:
   r34 = cn_var_缓冲区;
   r35 = 追加字符串(r34, ");\n");
   return;
@@ -2290,9 +2295,9 @@ struct 模块代码生成上下文* 创建模块代码生成上下文(struct IR�
   r1 = 分配内存(r0);
   cn_var_上下文_0 = r1;
   r2 = cn_var_上下文_0;
-  if (r2) goto if_then_3466; else goto if_merge_3467;
+  if (r2) goto if_then_3456; else goto if_merge_3457;
 
-  if_then_3466:
+  if_then_3456:
   r3 = cn_var_模块;
   r4 = cn_var_默认缓冲区大小;
   r5 = 创建输出缓冲区(r4);
@@ -2315,9 +2320,9 @@ struct 模块代码生成上下文* 创建模块代码生成上下文(struct IR�
   r22 = 复制字符串(r21);
   r23 = cn_var_模块名;
   r24 = 复制字符串(r23);
-  goto if_merge_3467;
+  goto if_merge_3457;
 
-  if_merge_3467:
+  if_merge_3457:
   r25 = cn_var_上下文_0;
   return r25;
 }
@@ -2352,9 +2357,9 @@ void 释放模块代码生成上下文(struct 模块代码生成上下文* cn_va
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3468; else goto if_merge_3469;
+  if (r0) goto if_then_3458; else goto if_merge_3459;
 
-  if_then_3468:
+  if_then_3458:
   r1 = cn_var_上下文;
   r2 = r1->头文件缓冲区;
   释放输出缓冲区(r2);
@@ -2381,31 +2386,31 @@ void 释放模块代码生成上下文(struct 模块代码生成上下文* cn_va
   释放输出缓冲区(r16);
   r17 = cn_var_上下文;
   r18 = r17->模块名称;
-  if (r18) goto if_then_3470; else goto if_merge_3471;
+  if (r18) goto if_then_3460; else goto if_merge_3461;
 
-  if_merge_3469:
+  if_merge_3459:
 
-  if_then_3470:
+  if_then_3460:
   r19 = cn_var_上下文;
   r20 = r19->模块名称;
   释放内存(r20);
-  goto if_merge_3471;
+  goto if_merge_3461;
 
-  if_merge_3471:
+  if_merge_3461:
   r21 = cn_var_上下文;
   r22 = r21->输出文件名;
-  if (r22) goto if_then_3472; else goto if_merge_3473;
+  if (r22) goto if_then_3462; else goto if_merge_3463;
 
-  if_then_3472:
+  if_then_3462:
   r23 = cn_var_上下文;
   r24 = r23->输出文件名;
   释放内存(r24);
-  goto if_merge_3473;
+  goto if_merge_3463;
 
-  if_merge_3473:
+  if_merge_3463:
   r25 = cn_var_上下文;
   释放内存(r25);
-  goto if_merge_3469;
+  goto if_merge_3459;
   return;
 }
 
@@ -2447,13 +2452,13 @@ void 生成模块代码(struct 模块代码生成上下文* cn_var_上下文) {
   entry:
   r1 = cn_var_上下文;
   r2 = !r1;
-  if (r2) goto logic_merge_3477; else goto logic_rhs_3476;
+  if (r2) goto logic_merge_3467; else goto logic_rhs_3466;
 
-  if_then_3474:
+  if_then_3464:
   return;
-  goto if_merge_3475;
+  goto if_merge_3465;
 
-  if_merge_3475:
+  if_merge_3465:
   r6 = cn_var_上下文;
   生成头文件开头(r6);
   r7 = cn_var_上下文;
@@ -2463,22 +2468,22 @@ void 生成模块代码(struct 模块代码生成上下文* cn_var_上下文) {
   r9 = r8->模块;
   r10 = r9->首个全局;
   cn_var_全局_0 = r10;
-  goto while_cond_3478;
+  goto while_cond_3468;
 
-  logic_rhs_3476:
+  logic_rhs_3466:
   r3 = cn_var_上下文;
   r4 = r3->模块;
   r5 = !r4;
-  goto logic_merge_3477;
+  goto logic_merge_3467;
 
-  logic_merge_3477:
-  if (r5) goto if_then_3474; else goto if_merge_3475;
+  logic_merge_3467:
+  if (r5) goto if_then_3464; else goto if_merge_3465;
 
-  while_cond_3478:
+  while_cond_3468:
   r11 = cn_var_全局_0;
-  if (r11) goto while_body_3479; else goto while_exit_3480;
+  if (r11) goto while_body_3469; else goto while_exit_3470;
 
-  while_body_3479:
+  while_body_3469:
   r12 = cn_var_全局_0;
   r13 = cn_var_上下文;
   r14 = r13->头文件缓冲区;
@@ -2493,21 +2498,21 @@ void 生成模块代码(struct 模块代码生成上下文* cn_var_上下文) {
   r20 = cn_var_上下文;
   r21 = r20->生成的全局变量数量;
   r22 = r21 + 1;
-  goto while_cond_3478;
+  goto while_cond_3468;
 
-  while_exit_3480:
+  while_exit_3470:
   struct IR函数* cn_var_函数指针_1;
   r23 = cn_var_上下文;
   r24 = r23->模块;
   r25 = r24->首个函数;
   cn_var_函数指针_1 = r25;
-  goto while_cond_3481;
+  goto while_cond_3471;
 
-  while_cond_3481:
+  while_cond_3471:
   r26 = cn_var_函数指针_1;
-  if (r26) goto while_body_3482; else goto while_exit_3483;
+  if (r26) goto while_body_3472; else goto while_exit_3473;
 
-  while_body_3482:
+  while_body_3472:
   r27 = cn_var_函数指针_1;
   r28 = cn_var_上下文;
   r29 = r28->头文件缓冲区;
@@ -2522,9 +2527,9 @@ void 生成模块代码(struct 模块代码生成上下文* cn_var_上下文) {
   r35 = cn_var_上下文;
   r36 = r35->生成的函数数量;
   r37 = r36 + 1;
-  goto while_cond_3481;
+  goto while_cond_3471;
 
-  while_exit_3483:
+  while_exit_3473:
   r38 = cn_var_上下文;
   生成头文件结尾(r38);
   return;
@@ -2541,25 +2546,25 @@ char* 获取头文件内容(struct 模块代码生成上下文* cn_var_上下文
 
   entry:
   r1 = cn_var_上下文;
-  if (r1) goto logic_rhs_3486; else goto logic_merge_3487;
+  if (r1) goto logic_rhs_3476; else goto logic_merge_3477;
 
-  if_then_3484:
+  if_then_3474:
   r4 = cn_var_上下文;
   r5 = r4->头文件缓冲区;
   r6 = r5->数据;
   return r6;
-  goto if_merge_3485;
+  goto if_merge_3475;
 
-  if_merge_3485:
+  if_merge_3475:
   return 0;
 
-  logic_rhs_3486:
+  logic_rhs_3476:
   r2 = cn_var_上下文;
   r3 = r2->头文件缓冲区;
-  goto logic_merge_3487;
+  goto logic_merge_3477;
 
-  logic_merge_3487:
-  if (r3) goto if_then_3484; else goto if_merge_3485;
+  logic_merge_3477:
+  if (r3) goto if_then_3474; else goto if_merge_3475;
   return NULL;
 }
 
@@ -2574,25 +2579,25 @@ char* 获取源文件内容(struct 模块代码生成上下文* cn_var_上下文
 
   entry:
   r1 = cn_var_上下文;
-  if (r1) goto logic_rhs_3490; else goto logic_merge_3491;
+  if (r1) goto logic_rhs_3480; else goto logic_merge_3481;
 
-  if_then_3488:
+  if_then_3478:
   r4 = cn_var_上下文;
   r5 = r4->源文件缓冲区;
   r6 = r5->数据;
   return r6;
-  goto if_merge_3489;
+  goto if_merge_3479;
 
-  if_merge_3489:
+  if_merge_3479:
   return 0;
 
-  logic_rhs_3490:
+  logic_rhs_3480:
   r2 = cn_var_上下文;
   r3 = r2->源文件缓冲区;
-  goto logic_merge_3491;
+  goto logic_merge_3481;
 
-  logic_merge_3491:
-  if (r3) goto if_then_3488; else goto if_merge_3489;
+  logic_merge_3481:
+  if (r3) goto if_then_3478; else goto if_merge_3479;
   return NULL;
 }
 
@@ -2637,14 +2642,14 @@ _Bool 写入代码文件(struct 模块代码生成上下文* cn_var_上下文, c
   entry:
   r0 = cn_var_上下文;
   r1 = !r0;
-  if (r1) goto if_then_3492; else goto if_merge_3493;
+  if (r1) goto if_then_3482; else goto if_merge_3483;
 
-  if_then_3492:
+  if_then_3482:
   return 0;
-  goto if_merge_3493;
+  goto if_merge_3483;
 
-  if_merge_3493:
-  void cn_var_头文件路径_0;
+  if_merge_3483:
+  long long cn_var_头文件路径_0;
   r2 = cn_var_输出目录;
   r3 = 获取字符串长度(r2);
   r4 = cn_var_上下文;
@@ -2665,7 +2670,7 @@ _Bool 写入代码文件(struct 模块代码生成上下文* cn_var_上下文, c
   r18 = 连接字符串(r15, r17);
   r19 = cn_var_头文件路径_0;
   r20 = 连接字符串(r19, ".h");
-  void cn_var_源文件路径_1;
+  long long cn_var_源文件路径_1;
   r21 = cn_var_输出目录;
   r22 = 获取字符串长度(r21);
   r23 = cn_var_上下文;
@@ -2686,14 +2691,14 @@ _Bool 写入代码文件(struct 模块代码生成上下文* cn_var_上下文, c
   r37 = 连接字符串(r34, r36);
   r38 = cn_var_源文件路径_1;
   r39 = 连接字符串(r38, ".c");
-  void cn_var_头文件_2;
+  long long cn_var_头文件_2;
   r40 = cn_var_头文件路径_0;
   r41 = 打开文件(r40, "w");
   cn_var_头文件_2 = r41;
   r42 = cn_var_头文件_2;
-  if (r42) goto if_then_3494; else goto if_merge_3495;
+  if (r42) goto if_then_3484; else goto if_merge_3485;
 
-  if_then_3494:
+  if_then_3484:
   r43 = cn_var_头文件_2;
   r44 = cn_var_上下文;
   r45 = r44->头文件缓冲区;
@@ -2704,17 +2709,17 @@ _Bool 写入代码文件(struct 模块代码生成上下文* cn_var_上下文, c
   r50 = 写入文件(r43, r46, r49);
   r51 = cn_var_头文件_2;
   关闭文件(r51);
-  goto if_merge_3495;
+  goto if_merge_3485;
 
-  if_merge_3495:
-  void cn_var_源文件_3;
+  if_merge_3485:
+  long long cn_var_源文件_3;
   r52 = cn_var_源文件路径_1;
   r53 = 打开文件(r52, "w");
   cn_var_源文件_3 = r53;
   r54 = cn_var_源文件_3;
-  if (r54) goto if_then_3496; else goto if_merge_3497;
+  if (r54) goto if_then_3486; else goto if_merge_3487;
 
-  if_then_3496:
+  if_then_3486:
   r55 = cn_var_源文件_3;
   r56 = cn_var_上下文;
   r57 = r56->源文件缓冲区;
@@ -2725,9 +2730,9 @@ _Bool 写入代码文件(struct 模块代码生成上下文* cn_var_上下文, c
   r62 = 写入文件(r55, r58, r61);
   r63 = cn_var_源文件_3;
   关闭文件(r63);
-  goto if_merge_3497;
+  goto if_merge_3487;
 
-  if_merge_3497:
+  if_merge_3487:
   r64 = cn_var_头文件路径_0;
   释放内存(r64);
   r65 = cn_var_源文件路径_1;
@@ -2742,15 +2747,15 @@ long long 获取生成结构体数量(struct 模块代码生成上下文* cn_var
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3498; else goto if_merge_3499;
+  if (r0) goto if_then_3488; else goto if_merge_3489;
 
-  if_then_3498:
+  if_then_3488:
   r1 = cn_var_上下文;
   r2 = r1->生成的结构体数量;
   return r2;
-  goto if_merge_3499;
+  goto if_merge_3489;
 
-  if_merge_3499:
+  if_merge_3489:
   return 0;
 }
 
@@ -2761,15 +2766,15 @@ long long 获取生成枚举数量(struct 模块代码生成上下文* cn_var_�
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3500; else goto if_merge_3501;
+  if (r0) goto if_then_3490; else goto if_merge_3491;
 
-  if_then_3500:
+  if_then_3490:
   r1 = cn_var_上下文;
   r2 = r1->生成的枚举数量;
   return r2;
-  goto if_merge_3501;
+  goto if_merge_3491;
 
-  if_merge_3501:
+  if_merge_3491:
   return 0;
 }
 
@@ -2780,15 +2785,15 @@ long long 获取生成全局变量数量(struct 模块代码生成上下文* cn_
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3502; else goto if_merge_3503;
+  if (r0) goto if_then_3492; else goto if_merge_3493;
 
-  if_then_3502:
+  if_then_3492:
   r1 = cn_var_上下文;
   r2 = r1->生成的全局变量数量;
   return r2;
-  goto if_merge_3503;
+  goto if_merge_3493;
 
-  if_merge_3503:
+  if_merge_3493:
   return 0;
 }
 
@@ -2799,15 +2804,15 @@ long long 获取生成函数数量(struct 模块代码生成上下文* cn_var_�
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3504; else goto if_merge_3505;
+  if (r0) goto if_then_3494; else goto if_merge_3495;
 
-  if_then_3504:
+  if_then_3494:
   r1 = cn_var_上下文;
   r2 = r1->生成的函数数量;
   return r2;
-  goto if_merge_3505;
+  goto if_merge_3495;
 
-  if_merge_3505:
+  if_merge_3495:
   return 0;
 }
 
@@ -2818,15 +2823,15 @@ long long 获取错误计数(struct 模块代码生成上下文* cn_var_上下�
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3506; else goto if_merge_3507;
+  if (r0) goto if_then_3496; else goto if_merge_3497;
 
-  if_then_3506:
+  if_then_3496:
   r1 = cn_var_上下文;
   r2 = r1->错误计数;
   return r2;
-  goto if_merge_3507;
+  goto if_merge_3497;
 
-  if_merge_3507:
+  if_merge_3497:
   return 0;
 }
 
@@ -2837,15 +2842,15 @@ long long 获取警告计数(struct 模块代码生成上下文* cn_var_上下�
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3508; else goto if_merge_3509;
+  if (r0) goto if_then_3498; else goto if_merge_3499;
 
-  if_then_3508:
+  if_then_3498:
   r1 = cn_var_上下文;
   r2 = r1->警告计数;
   return r2;
-  goto if_merge_3509;
+  goto if_merge_3499;
 
-  if_merge_3509:
+  if_merge_3499:
   return 0;
 }
 

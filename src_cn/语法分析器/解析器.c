@@ -1254,11 +1254,12 @@ _Bool 匹配(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
 }
 
 _Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_var_类型数组, long long cn_var_数量) {
-  long long r0, r1, r3, r5, r6, r7, r8, r9, r10, r13, r14, r17, r18;
+  long long r0, r1, r3, r5, r6, r7, r8, r9, r10, r13, r17, r18;
   struct 解析器* r2;
   enum 词元类型枚举* r4;
   struct 解析器* r11;
   enum 词元类型枚举* r12;
+  void* r14;
   struct 解析器* r16;
   _Bool r15;
 
@@ -1302,7 +1303,7 @@ _Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_
   r11 = cn_var_实例;
   r12 = cn_var_类型数组;
   r13 = cn_var_i_0;
-  r14 = *(void*)cn_rt_array_get_element(r12, r13, 8);
+  r14 = *(void**)cn_rt_array_get_element(r12, r13, 8);
   r15 = 检查(r11, r14);
   if (r15) goto if_then_1652; else goto if_merge_1653;
 

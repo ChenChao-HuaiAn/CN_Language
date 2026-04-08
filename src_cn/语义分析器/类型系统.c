@@ -972,7 +972,7 @@ struct 类型信息* 创建空类型() {
   struct 类型信息* r3;
 
   entry:
-  void cn_var_内存指针_0;
+  long long cn_var_内存指针_0;
   r0 = sizeof(struct 类型信息);
   r1 = 分配清零内存(1, r0);
   cn_var_内存指针_0 = r1;
@@ -1080,11 +1080,12 @@ struct 类型信息* 创建指针类型(struct 类型信息* cn_var_指向类型
 }
 
 struct 类型信息* 创建数组类型(struct 类型信息* cn_var_元素类型, long long* cn_var_维度大小, long long cn_var_维度) {
-  long long r0, r3, r5, r6, r7, r8, r10, r11, r12, r13, r14, r15, r16, r18, r19, r21;
+  long long r0, r3, r5, r6, r7, r8, r10, r12, r13, r14, r15, r16, r18, r19, r21;
   void* r1;
   struct 类型信息* r2;
   long long* r4;
   long long* r9;
+  void* r11;
   struct 类型信息* r17;
   struct 类型信息* r20;
   struct 类型信息* r22;
@@ -1113,7 +1114,7 @@ struct 类型信息* 创建数组类型(struct 类型信息* cn_var_元素类型
   r8 = cn_var_总数_1;
   r9 = cn_var_维度大小;
   r10 = cn_var_i_2;
-  r11 = *(void*)cn_rt_array_get_element(r9, r10, 8);
+  r11 = *(void**)cn_rt_array_get_element(r9, r10, 8);
   r12 = r8 * r11;
   cn_var_总数_1 = r12;
   goto for_update_1832;
@@ -1522,7 +1523,7 @@ _Bool 是派生类(struct 类型信息* cn_var_子类, struct 类型信息* cn_v
   goto if_merge_1924;
 
   if_merge_1924:
-  void cn_var_当前_0;
+  long long cn_var_当前_0;
   r12 = cn_var_子类;
   r13 = r12->类型符号;
   cn_var_当前_0 = r13;
@@ -1958,7 +1959,7 @@ struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节
   struct 类型信息* r53;
 
   entry:
-  void cn_var_名称_0;
+  long long cn_var_名称_0;
   r0 = cn_var_类型节点指针;
   r1 = r0->名称;
   cn_var_名称_0 = r1;
@@ -2019,7 +2020,7 @@ struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节
   goto if_merge_2002;
 
   if_merge_2002:
-  void cn_var_符号指针_1;
+  long long cn_var_符号指针_1;
   r24 = cn_var_上下文;
   r25 = r24->符号表;
   r26 = cn_var_名称_0;
@@ -2100,7 +2101,7 @@ struct 类型信息* 从指针类型推断(struct 类型节点* cn_var_类型节
   struct 类型信息* r13;
 
   entry:
-  void cn_var_指向类型_0;
+  long long cn_var_指向类型_0;
   r0 = cn_var_类型节点指针;
   r1 = r0->元素类型;
   r2 = cn_var_上下文;
@@ -2115,7 +2116,7 @@ struct 类型信息* 从指针类型推断(struct 类型节点* cn_var_类型节
   goto if_merge_2014;
 
   if_merge_2014:
-  void cn_var_结果_1;
+  long long cn_var_结果_1;
   r6 = cn_var_指向类型_0;
   r7 = 创建指针类型(r6);
   cn_var_结果_1 = r7;
@@ -2162,7 +2163,7 @@ struct 类型信息* 从数组类型推断(struct 类型节点* cn_var_类型节
   struct 类型信息* r18;
 
   entry:
-  void cn_var_元素类型_0;
+  long long cn_var_元素类型_0;
   r0 = cn_var_类型节点指针;
   r1 = r0->元素类型;
   r2 = cn_var_上下文;
@@ -2208,7 +2209,7 @@ struct 类型信息* 从结构体类型推断(struct 类型节点* cn_var_类型
   struct 类型信息* r14;
 
   entry:
-  void cn_var_符号指针_0;
+  long long cn_var_符号指针_0;
   r0 = cn_var_上下文;
   r1 = r0->符号表;
   r2 = cn_var_类型节点指针;
@@ -2253,7 +2254,7 @@ struct 类型信息* 从枚举类型推断(struct 类型节点* cn_var_类型节
   struct 类型信息* r14;
 
   entry:
-  void cn_var_符号指针_0;
+  long long cn_var_符号指针_0;
   r0 = cn_var_上下文;
   r1 = r0->符号表;
   r2 = cn_var_类型节点指针;
@@ -2298,7 +2299,7 @@ struct 类型信息* 从类类型推断(struct 类型节点* cn_var_类型节点
   struct 类型信息* r14;
 
   entry:
-  void cn_var_符号指针_0;
+  long long cn_var_符号指针_0;
   r0 = cn_var_上下文;
   r1 = r0->符号表;
   r2 = cn_var_类型节点指针;
@@ -2343,7 +2344,7 @@ struct 类型信息* 从接口类型推断(struct 类型节点* cn_var_类型节
   struct 类型信息* r14;
 
   entry:
-  void cn_var_符号指针_0;
+  long long cn_var_符号指针_0;
   r0 = cn_var_上下文;
   r1 = r0->符号表;
   r2 = cn_var_类型节点指针;

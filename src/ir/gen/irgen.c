@@ -1332,6 +1332,11 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
                     decl_type = sym->type;
                 }
             }
+            // 如果仍然没有类型，使用默认的整数类型
+            // 这避免了生成 "void 变量名;" 的错误
+            if (!decl_type) {
+                decl_type = cn_type_new_primitive(CN_TYPE_INT);
+            }
             
             // 检查是否为静态局部变量
             if (decl->is_static) {

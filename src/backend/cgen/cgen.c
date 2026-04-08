@@ -1144,6 +1144,28 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     is_pointer = (ctx->reg_types[reg_id]->kind == CN_TYPE_POINTER);
                 }
             }
+            // 【新增】如果src1是符号（变量名），检查变量声明是否为指针类型
+            // 这处理了LOAD指令后类型信息丢失的情况
+            else if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                // 检查变量名是否在当前函数的ALLOCA指令中声明为指针类型
+                const char *sym_name = inst->src1.as.sym_name;
+                CnIrBasicBlock *block = ctx->current_func->first_block;
+                while (block && !is_pointer) {
+                    CnIrInst *alloca_inst = block->first_inst;
+                    while (alloca_inst && !is_pointer) {
+                        if (alloca_inst->kind == CN_IR_INST_ALLOCA &&
+                            alloca_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                            alloca_inst->dest.as.sym_name &&
+                            strcmp(alloca_inst->dest.as.sym_name, sym_name) == 0 &&
+                            alloca_inst->dest.type &&
+                            alloca_inst->dest.type->kind == CN_TYPE_POINTER) {
+                            is_pointer = true;
+                        }
+                        alloca_inst = alloca_inst->next;
+                    }
+                    block = block->next;
+                }
+            }
             
             if (is_pointer) {
                 fprintf(ctx->output_file, "->");
@@ -1366,20 +1388,22 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         // 对于 MEMBER_ACCESS 指令，结果类型应该是成员的类型
                         CnType *new_type = scan_inst->dest.type;
                         if (scan_inst->kind == CN_IR_INST_LOAD) {
-                            // 首先尝试从 dest.type 获取（优先使用目标类型）
-                            if (scan_inst->dest.type) {
-                                new_type = scan_inst->dest.type;
-                            }
-                            // 然后尝试从 src1.type 获取
-                            else if (scan_inst->src1.type) {
+                            // 【修复】优先从 src1.type 获取（这是最可靠的类型来源）
+                            // 因为IR生成器在生成LOAD指令时会设置src1的类型
+                            // 这对于指针类型变量特别重要，因为我们需要保留指针类型信息
+                            if (scan_inst->src1.type) {
                                 new_type = scan_inst->src1.type;
+                            }
+                            // 首先尝试从 dest.type 获取
+                            else if (scan_inst->dest.type) {
+                                new_type = scan_inst->dest.type;
                             }
                             // 如果 src1 是寄存器，尝试从 reg_types 中获取
                             else if (scan_inst->src1.kind == CN_IR_OP_REG &&
                                      scan_inst->src1.as.reg_id < actual_reg_count) {
                                 new_type = reg_types[scan_inst->src1.as.reg_id];
                             }
-                            // 【修复】如果 src1.type 也为 NULL，尝试从函数参数中获取类型
+                            // 如果 src1.type 也为 NULL，尝试从函数参数中获取类型
                             // 同时检查全局作用域中的变量类型
                             else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
