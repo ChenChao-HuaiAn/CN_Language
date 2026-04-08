@@ -1365,33 +1365,29 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         // 对于 LOAD 指令，如果 dest.type 为 NULL，尝试从 src1.type 获取类型
                         // 对于 MEMBER_ACCESS 指令，结果类型应该是成员的类型
                         CnType *new_type = scan_inst->dest.type;
-                        if (!new_type && scan_inst->kind == CN_IR_INST_LOAD) {
-                            // 首先尝试从 src1.type 获取
-                            if (scan_inst->src1.type) {
+                        if (scan_inst->kind == CN_IR_INST_LOAD) {
+                            // 首先尝试从 dest.type 获取（优先使用目标类型）
+                            if (scan_inst->dest.type) {
+                                new_type = scan_inst->dest.type;
+                            }
+                            // 然后尝试从 src1.type 获取
+                            else if (scan_inst->src1.type) {
                                 new_type = scan_inst->src1.type;
-                                fprintf(stderr, "[DEBUG CGEN] LOAD reg%d: got type from src1.type, kind=%d\n",
-                                        reg_id, new_type ? new_type->kind : -1);
                             }
                             // 如果 src1 是寄存器，尝试从 reg_types 中获取
                             else if (scan_inst->src1.kind == CN_IR_OP_REG &&
                                      scan_inst->src1.as.reg_id < actual_reg_count) {
                                 new_type = reg_types[scan_inst->src1.as.reg_id];
-                                fprintf(stderr, "[DEBUG CGEN] LOAD reg%d: got type from reg_types[%d], kind=%d\n",
-                                        reg_id, scan_inst->src1.as.reg_id, new_type ? new_type->kind : -1);
                             }
                             // 如果 src1.type 也为 NULL，尝试从函数参数中获取类型
                             else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
-                                fprintf(stderr, "[DEBUG CGEN] LOAD reg%d: src1.sym_name=%s, looking up...\n",
-                                        reg_id, sym_name);
                                 // 首先检查函数参数
                                 for (size_t p = 0; p < func->param_count; p++) {
                                     if (func->params[p].as.sym_name) {
                                         // 直接匹配（参数名称可能已经是 cn_var_xxx 格式）
                                         if (strcmp(func->params[p].as.sym_name, sym_name) == 0) {
                                             new_type = func->params[p].type;
-                                            fprintf(stderr, "[DEBUG CGEN] LOAD reg%d: found in params, type kind=%d\n",
-                                                    reg_id, new_type ? new_type->kind : -1);
                                             break;
                                         }
                                     }
@@ -1407,18 +1403,12 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                                 alloca_inst->dest.as.sym_name &&
                                                 strcmp(alloca_inst->dest.as.sym_name, sym_name) == 0) {
                                                 new_type = alloca_inst->dest.type;
-                                                fprintf(stderr, "[DEBUG CGEN] LOAD reg%d: found in ALLOCA, sym=%s, type kind=%d\n",
-                                                        reg_id, sym_name, new_type ? new_type->kind : -1);
                                                 break;
                                             }
                                             alloca_inst = alloca_inst->next;
                                         }
                                         alloca_block = alloca_block->next;
                                     }
-                                }
-                                if (!new_type) {
-                                    fprintf(stderr, "[DEBUG CGEN] LOAD reg%d: type not found for sym=%s\n",
-                                            reg_id, sym_name);
                                 }
                             }
                         }
@@ -1537,7 +1527,6 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 // 新类型是指针类型，旧类型不是指针类型，更新
                                 should_update = true;
                                 types_changed = true;  // 标记类型发生变化
-                                fprintf(stderr, "[DEBUG CGEN] reg%d: updating from kind=%d to POINTER\n", reg_id, old_type->kind);
                             } else if (new_type->kind == CN_TYPE_STRUCT && old_type->kind != CN_TYPE_STRUCT) {
                                 // 新类型是结构体类型，旧类型不是结构体类型，更新
                                 should_update = true;
@@ -1546,20 +1535,26 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             // 防止指针类型被降级为INT类型
                             else if (old_type->kind == CN_TYPE_POINTER && new_type->kind != CN_TYPE_POINTER) {
                                 // 旧类型是指针类型，新类型不是指针类型，不更新
-                                fprintf(stderr, "[DEBUG CGEN] reg%d: keeping POINTER type, ignoring kind=%d\n", reg_id, new_type->kind);
                                 should_update = false;
                             }
                             // 防止结构体类型被降级为INT类型
                             else if (old_type->kind == CN_TYPE_STRUCT && new_type->kind != CN_TYPE_STRUCT) {
                                 // 旧类型是结构体类型，新类型不是结构体类型，不更新
-                                fprintf(stderr, "[DEBUG CGEN] reg%d: keeping STRUCT type, ignoring kind=%d\n", reg_id, new_type->kind);
                                 should_update = false;
                             }
-                            // 注意：不再有default分支，防止指针类型被覆盖
+                            // 新增：如果新旧类型相同，也更新（确保类型信息正确传播）
+                            else if (new_type->kind == old_type->kind) {
+                                should_update = true;
+                                // 不设置 types_changed，因为类型没有变化
+                            }
+                            // 新增：其他情况（如从INT到其他类型），允许更新
+                            else {
+                                should_update = true;
+                                types_changed = true;
+                            }
                             
                             if (should_update) {
                                 reg_types[reg_id] = new_type;
-                                fprintf(stderr, "[DEBUG CGEN] reg%d: type updated to kind=%d\n", reg_id, new_type->kind);
                             }
                         } else {
                             // 修复：即使无法推断类型，也要标记寄存器为已使用（使用默认类型）

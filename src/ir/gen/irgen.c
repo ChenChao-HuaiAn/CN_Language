@@ -1060,8 +1060,6 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     // 如果有返回值，分配结果寄存器
                     // 注意：对于方法调用，expr->type 已经是返回类型（不是函数类型）
                     // 因为在语义分析中，成员访问表达式的类型被设置为方法的返回类型
-                    fprintf(stderr, "[DEBUG IR] Method call: func_name='%s', expr->type=%p, kind=%d\n",
-                            func_name ? func_name : "(null)", (void*)expr->type, expr->type ? expr->type->kind : -1);
                     if (expr->type && expr->type->kind != CN_TYPE_VOID) {
                         int dest_reg = alloc_reg(ctx);
                         call_inst->dest = cn_ir_op_reg(dest_reg, expr->type);
@@ -1102,8 +1100,6 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     // 函数符号的 type 是函数类型，需要从中提取返回类型
                     if (sym->type->kind == CN_TYPE_FUNCTION && sym->type->as.function.return_type) {
                         return_type = sym->type->as.function.return_type;
-                        fprintf(stderr, "[DEBUG IR] 从符号表获取返回类型: func='%s', return_type_kind=%d\n",
-                                func_name, return_type->kind);
                     }
                 }
                 free(func_name);
@@ -1247,20 +1243,9 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             bool object_is_pointer = (expr->as.member.object->type &&
                                       expr->as.member.object->type->kind == CN_TYPE_POINTER);
             
-            // 调试输出
-            fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] object expr type=%p, kind=%d, is_pointer=%d\n",
-                    (void*)expr->as.member.object->type,
-                    expr->as.member.object->type ? expr->as.member.object->type->kind : -1,
-                    object_is_pointer);
-            fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] object_op kind=%d, type=%p, type_kind=%d\n",
-                    object_op.kind, (void*)object_op.type,
-                    object_op.type ? object_op.type->kind : -1);
-            
             // 重要：将对象的类型信息设置到object_op中，以便代码生成器判断是否使用"->"
             if (expr->as.member.object->type) {
                 object_op.type = expr->as.member.object->type;
-                fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] 设置后 object_op.type=%p, kind=%d\n",
-                        (void*)object_op.type, object_op.type->kind);
             }
             
             // 如果是箭头访问或对象是指针类型，先解引用指针
@@ -1280,16 +1265,6 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             
             // 生成成员访问指令，dest操作数记录成员名
             int result_reg = alloc_reg(ctx);
-            
-            // 调试输出：检查 expr->type 是否正确
-            fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] expr->type=%p, kind=%d, member=%.*s\n",
-                    (void*)expr->type, expr->type ? expr->type->kind : -1,
-                    (int)expr->as.member.member_name_length, expr->as.member.member_name);
-            if (expr->type && expr->type->kind == CN_TYPE_STRUCT) {
-                fprintf(stderr, "[DEBUG IR MEMBER_ACCESS] struct name=%.*s, fields=%p, field_count=%zu\n",
-                        (int)expr->type->as.struct_type.name_length, expr->type->as.struct_type.name,
-                        (void*)expr->type->as.struct_type.fields, expr->type->as.struct_type.field_count);
-            }
             
             CnIrOperand result = cn_ir_op_reg(result_reg, expr->type);
             
