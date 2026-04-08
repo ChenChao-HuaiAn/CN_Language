@@ -290,6 +290,215 @@ enum 诊断错误码 {
 };
 
 // Struct Definitions - 从导入模块
+struct 类型节点;
+struct 参数;
+struct 参数 {
+    char* 名称;
+    struct 类型节点* 类型;
+    _Bool 是常量;
+    _Bool 是数组;
+    long long 数组维度;
+};
+struct 结构体成员;
+struct 结构体成员 {
+    char* 名称;
+    struct 类型节点* 类型;
+    _Bool 是常量;
+    enum 可见性 可见性;
+};
+struct 枚举成员;
+struct 枚举成员 {
+    char* 名称;
+    long long 值;
+    _Bool 有显式值;
+};
+struct 类成员;
+struct 类成员 {
+    char* 名称;
+    enum 节点类型 类型;
+    long long* 字段;
+    long long* 方法;
+    enum 可见性 可见性;
+    _Bool 是静态;
+    _Bool 是虚拟;
+    _Bool 是重写;
+    _Bool 是抽象;
+};
+struct 接口方法;
+struct 接口方法 {
+    char* 名称;
+    struct 参数** 参数列表;
+    long long 参数个数;
+    struct 类型节点* 返回类型;
+};
+struct 模板参数;
+struct 模板参数 {
+    char* 名称;
+    struct 类型节点* 约束;
+    struct 类型节点* 默认类型;
+};
+struct 导入成员;
+struct 导入成员 {
+    char* 名称;
+    char* 别名;
+};
+struct 声明节点;
+struct 声明节点列表;
+struct 声明节点列表;
+struct 声明节点列表 {
+    struct 声明节点* 节点;
+    struct 声明节点列表* 下一个;
+};
+struct 声明节点;
+struct 声明节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+    _Bool 是否公开;
+    long long* 作为函数声明;
+    long long* 作为变量声明;
+    long long* 作为常量声明;
+    long long* 作为结构体声明;
+    long long* 作为枚举声明;
+    long long* 作为类声明;
+    long long* 作为接口声明;
+    long long* 作为导入语句;
+    long long* 作为模板函数声明;
+    long long* 作为模板结构体声明;
+    struct 声明节点* 下一个;
+};
+struct 表达式节点;
+struct 情况分支;
+struct 情况分支 {
+    struct 表达式节点* 匹配值;
+    long long* 语句体;
+};
+struct 捕获子句;
+struct 捕获子句 {
+    char* 异常类型;
+    char* 变量名;
+    long long* 语句体;
+};
+struct 语句节点;
+struct 语句节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+};
+struct 结构体字段初始化;
+struct 结构体字段初始化 {
+    char* 字段名;
+    struct 表达式节点* 值;
+};
+struct 表达式节点;
+struct 表达式节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+    struct 类型节点* 类型信息;
+    _Bool 是自身指针;
+    long long 整数值;
+    double 小数值;
+    char* 字符串值;
+    _Bool 布尔值;
+    char* 标识符名称;
+    struct 表达式节点* 左操作数;
+    struct 表达式节点* 右操作数;
+    long long 运算符;
+    struct 表达式节点* 操作数;
+    struct 表达式节点* 被调函数;
+    struct 表达式节点* 参数列表;
+    long long 参数个数;
+    struct 表达式节点* 对象;
+    char* 成员名;
+    long long 成员索引;
+    struct 表达式节点* 数组;
+    struct 表达式节点* 索引;
+    struct 表达式节点* 左侧表达式;
+    struct 表达式节点* 值;
+    struct 表达式节点* 指针;
+};
+struct 类型节点;
+struct 类型节点 {
+    enum 节点类型 类型;
+    char* 名称;
+    struct 类型节点* 元素类型;
+    long long 指针层级;
+    long long 数组维度;
+    long long 数组大小;
+    _Bool 是常量;
+};
+struct 作用域;
+struct 符号表管理器;
+struct 符号表管理器 {
+    struct 作用域* 全局作用域;
+    struct 作用域* 当前作用域;
+    long long 作用域深度;
+    long long 错误计数;
+};
+struct 符号;
+struct 符号标志 {
+    _Bool 是常量;
+    _Bool 是静态;
+    _Bool 是公开;
+    _Bool 是私有;
+    _Bool 是保护;
+    _Bool 是虚拟;
+    _Bool 是重写;
+    _Bool 是抽象;
+    _Bool 已初始化;
+    _Bool 已使用;
+};
+struct 符号;
+struct 符号 {
+    enum 符号类型 种类;
+    char* 名称;
+    struct 类型节点* 类型信息;
+    struct 源位置 定义位置;
+    enum 可见性 访问级别;
+    struct 符号标志 标志;
+    struct 参数** 参数列表;
+    long long 参数个数;
+    struct 类型节点* 返回类型;
+    struct 符号** 成员列表;
+    long long 成员个数;
+    struct 符号* 父类符号;
+    struct 符号** 实现接口;
+    long long 接口个数;
+    long long 枚举值;
+    _Bool 有显式值;
+    struct 作用域* 所属作用域;
+    struct 作用域* 子作用域;
+};
+struct 作用域;
+struct 作用域 {
+    enum 作用域类型 种类;
+    char* 名称;
+    struct 源位置 起始位置;
+    struct 源位置 结束位置;
+    struct 作用域* 父作用域;
+    struct 符号* 关联符号;
+    struct 符号** 符号表;
+    long long 符号数量;
+    long long 符号容量;
+    struct 作用域** 子作用域列表;
+    long long 子作用域数量;
+    long long 子作用域容量;
+    _Bool 是循环体;
+};
+struct 诊断信息;
+struct 诊断信息 {
+    enum 诊断严重级别 严重级别;
+    enum 诊断错误码 错误码;
+    struct 源位置 位置;
+    char* 消息;
+};
+struct 诊断集合;
+struct 诊断集合 {
+    struct 诊断信息* 诊断数组;
+    long long 容量;
+    long long 长度;
+    long long 错误计数;
+    long long 警告计数;
+    long long 最大错误数;
+};
 
 // Forward Declarations - 从导入模块
 extern long long cn_var_初始子作用域容量;

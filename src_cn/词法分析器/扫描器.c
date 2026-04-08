@@ -99,6 +99,11 @@ struct 词元 {
 };
 
 // Struct Definitions - 从导入模块
+struct 关键字条目;
+struct 关键字条目 {
+    char* 名称;
+    long long 类型;
+};
 
 // Forward Declarations - 从导入模块
 extern _Bool cn_var_关键字表已初始化;

@@ -1775,6 +1775,22 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                             while (node) {
                                 CnSemSymbol *sym = &node->symbol;
                                 if (sym->is_public) {
+                                    // 检查是否已存在同名符号
+                                    CnSemSymbol *existing = cn_sem_scope_lookup_shallow(module_scope,
+                                            sym->name, sym->name_length);
+                                    if (existing) {
+                                        // 特殊处理：如果新符号是结构体/枚举类型，而现有符号是枚举成员
+                                        // 则用结构体/枚举类型替换枚举成员（结构体定义更重要）
+                                        if ((sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
+                                            existing->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                                            existing->kind = sym->kind;
+                                            existing->type = sym->type;
+                                            existing->as.module_scope = sym->as.module_scope;
+                                        }
+                                        node = node->next;
+                                        continue;
+                                    }
+                                    
                                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                         module_scope, sym->name, sym->name_length, sym->kind);
                                     if (new_sym) {
@@ -1960,8 +1976,27 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         CnSemSymbol *existing = cn_sem_scope_lookup(module_scope,
                                     struct_decl->name,
                                     struct_decl->name_length);
-        if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT) {
-            // 已存在，跳过
+        if (existing) {
+            // 如果已存在的是结构体，跳过
+            if (existing->kind == CN_SEM_SYMBOL_STRUCT) {
+                continue;
+            }
+            // 如果已存在的是枚举成员，用结构体替换它
+            if (existing->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                // 创建不完整的结构体类型（只有名称，没有字段）
+                CnType *incomplete_type = cn_type_new_struct(struct_decl->name,
+                                                              struct_decl->name_length,
+                                                              NULL, 0,  // 暂时没有字段
+                                                              module_scope,
+                                                              NULL, 0);
+                // 更新现有符号
+                existing->kind = CN_SEM_SYMBOL_STRUCT;
+                existing->type = incomplete_type;
+                existing->is_public = 1;
+                existing->as.module_scope = NULL;
+                continue;
+            }
+            // 其他类型的符号冲突，跳过
             continue;
         }
         
@@ -2796,6 +2831,15 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                                                         sym->name,
                                                                                         sym->name_length);
                                 if (existing_sym) {
+                                    // 特殊处理：如果新符号是结构体/枚举类型，而现有符号是枚举成员
+                                    // 则用结构体/枚举类型替换枚举成员（结构体定义更重要）
+                                    if ((sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
+                                        existing_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                                        // 更新现有符号的类型和属性
+                                        existing_sym->kind = sym->kind;
+                                        existing_sym->type = sym->type;
+                                        existing_sym->as.module_scope = sym->as.module_scope;
+                                    }
                                     node = node->next;
                                     continue;  // 已存在，跳过
                                 }

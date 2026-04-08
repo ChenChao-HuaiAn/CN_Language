@@ -157,22 +157,31 @@ struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
 };
+struct 函数声明;
+struct 变量声明;
+struct 结构体声明;
+struct 枚举声明;
+struct 类声明;
+struct 接口声明;
+struct 导入声明;
+struct 模板函数声明;
+struct 模板结构体声明;
 struct 声明节点;
 struct 声明节点;
 struct 声明节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
     _Bool 是否公开;
-    long long* 作为函数声明;
-    long long* 作为变量声明;
-    long long* 作为常量声明;
-    long long* 作为结构体声明;
-    long long* 作为枚举声明;
-    long long* 作为类声明;
-    long long* 作为接口声明;
-    long long* 作为导入语句;
-    long long* 作为模板函数声明;
-    long long* 作为模板结构体声明;
+    struct 函数声明* 作为函数声明;
+    struct 变量声明* 作为变量声明;
+    struct 变量声明* 作为常量声明;
+    struct 结构体声明* 作为结构体声明;
+    struct 枚举声明* 作为枚举声明;
+    struct 类声明* 作为类声明;
+    struct 接口声明* 作为接口声明;
+    struct 导入声明* 作为导入语句;
+    struct 模板函数声明* 作为模板函数声明;
+    struct 模板结构体声明* 作为模板结构体声明;
     struct 声明节点* 下一个;
 };
 
@@ -197,16 +206,181 @@ struct 结构体字段初始化 {
     char* 字段名;
     struct 表达式节点* 值;
 };
+struct 二元表达式;
+struct 二元表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 左操作数;
+    struct 表达式节点* 右操作数;
+    enum 二元运算符 运算符;
+};
+struct 一元表达式;
+struct 一元表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 操作数;
+    enum 一元运算符 运算符;
+    _Bool 是前缀;
+};
+struct 字面量表达式;
+struct 字面量表达式 {
+    struct AST节点 节点基类;
+    enum 字面量类型 类型;
+    char* 值;
+    long long 整数值;
+    double 浮点值;
+    _Bool 布尔值;
+};
+struct 标识符表达式;
+struct 标识符表达式 {
+    struct AST节点 节点基类;
+    char* 名称;
+};
+struct 函数调用表达式;
+struct 函数调用表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 被调函数;
+    struct 表达式节点** 参数;
+    long long 参数个数;
+};
+struct 成员访问表达式;
+struct 成员访问表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 对象;
+    char* 成员名;
+    _Bool 是指针访问;
+    _Bool 是静态成员;
+    char* 类名;
+};
+struct 数组访问表达式;
+struct 数组访问表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 数组;
+    struct 表达式节点* 索引;
+};
+struct 赋值表达式;
+struct 赋值表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 目标;
+    struct 表达式节点* 值;
+    enum 赋值运算符 运算符;
+};
+struct 三元表达式;
+struct 三元表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 条件;
+    struct 表达式节点* 真值;
+    struct 表达式节点* 假值;
+};
+struct 数组字面量表达式;
+struct 数组字面量表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点** 元素;
+    long long 元素个数;
+};
+struct 结构体字面量表达式;
+struct 结构体字面量表达式 {
+    struct AST节点 节点基类;
+    char* 结构体名;
+    struct 结构体字段初始化** 字段;
+    long long 字段个数;
+};
+struct 逻辑表达式;
+struct 逻辑表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 左操作数;
+    struct 表达式节点* 右操作数;
+    enum 逻辑运算符 运算符;
+};
+struct 模板实例化表达式;
+struct 模板实例化表达式 {
+    struct AST节点 节点基类;
+    char* 模板名;
+    struct 类型节点** 类型参数;
+    long long 参数个数;
+};
+struct 块语句;
 struct 捕获子句;
 struct 捕获子句 {
     char* 异常类型;
     char* 变量名;
-    long long* 语句体;
+    struct 块语句* 语句体;
 };
 struct 情况分支;
 struct 情况分支 {
     struct 表达式节点* 匹配值;
-    long long* 语句体;
+    struct 块语句* 语句体;
+};
+struct 表达式语句;
+struct 表达式语句 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 表达式;
+};
+struct 块语句;
+struct 块语句 {
+    struct AST节点 节点基类;
+    struct 语句节点** 语句;
+    long long 语句个数;
+};
+struct 如果语句;
+struct 如果语句 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 条件;
+    struct 块语句* 真分支;
+    struct 语句节点* 假分支;
+};
+struct 当语句;
+struct 当语句 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 条件;
+    struct 块语句* 循环体;
+};
+struct 循环语句;
+struct 循环语句 {
+    struct AST节点 节点基类;
+    struct 语句节点* 初始化;
+    struct 表达式节点* 条件;
+    struct 表达式节点* 更新;
+    struct 块语句* 循环体;
+};
+struct 返回语句;
+struct 返回语句 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 返回值;
+};
+struct 中断语句;
+struct 中断语句 {
+    struct AST节点 节点基类;
+};
+struct 继续语句;
+struct 继续语句 {
+    struct AST节点 节点基类;
+};
+struct 选择语句;
+struct 选择语句 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 选择值;
+    struct 情况分支** 情况分支列表;
+    long long 情况个数;
+    struct 块语句* 默认分支;
+};
+struct 尝试语句;
+struct 尝试语句 {
+    struct AST节点 节点基类;
+    struct 块语句* 尝试块;
+    struct 捕获子句** 捕获子句列表;
+    long long 捕获个数;
+    struct 块语句* 最终块;
+};
+struct 抛出语句;
+struct 抛出语句 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 异常表达式;
+    char* 异常类型;
+    char* 消息;
+};
+struct 最终语句;
+struct 最终语句 {
+    struct AST节点 节点基类;
+    struct 块语句* 语句体;
 };
 struct 声明节点列表;
 struct 声明节点列表;
@@ -236,8 +410,8 @@ struct 类成员;
 struct 类成员 {
     char* 名称;
     enum 节点类型 类型;
-    long long* 字段;
-    long long* 方法;
+    struct 变量声明* 字段;
+    struct 函数声明* 方法;
     enum 可见性 可见性;
     _Bool 是静态;
     _Bool 是虚拟;
@@ -264,6 +438,93 @@ struct 参数 {
     _Bool 是常量;
     _Bool 是数组;
     long long 数组维度;
+};
+struct 函数声明;
+struct 函数声明 {
+    struct AST节点 节点基类;
+    char* 名称;
+    struct 参数** 参数列表;
+    long long 参数个数;
+    struct 类型节点* 返回类型;
+    struct 块语句* 函数体;
+    enum 可见性 可见性;
+    _Bool 是静态;
+    _Bool 是重写;
+    _Bool 是虚拟;
+    _Bool 是抽象;
+    _Bool 是中断处理;
+    long long 中断向量;
+};
+struct 变量声明;
+struct 变量声明 {
+    struct AST节点 节点基类;
+    char* 名称;
+    struct 类型节点* 类型;
+    struct 表达式节点* 初始值;
+    _Bool 是常量;
+    _Bool 是静态;
+    _Bool 是数组;
+    long long 数组维度;
+    long long* 数组大小;
+    enum 可见性 可见性;
+};
+struct 结构体声明;
+struct 结构体声明 {
+    struct AST节点 节点基类;
+    char* 名称;
+    struct 结构体成员** 成员;
+    long long 成员个数;
+};
+struct 枚举声明;
+struct 枚举声明 {
+    struct AST节点 节点基类;
+    char* 名称;
+    struct 枚举成员** 成员;
+    long long 成员个数;
+};
+struct 导入声明;
+struct 导入声明 {
+    struct AST节点 节点基类;
+    enum 导入类型 类型;
+    char* 模块名;
+    char* 别名;
+    struct 导入成员** 成员;
+    long long 成员个数;
+    _Bool 是通配符;
+    _Bool 是相对导入;
+    long long 相对层级;
+};
+struct 类声明;
+struct 类声明 {
+    struct AST节点 节点基类;
+    char* 名称;
+    char* 基类名称;
+    char** 实现接口;
+    long long 接口个数;
+    struct 类成员** 成员;
+    long long 成员个数;
+    _Bool 是抽象;
+};
+struct 接口声明;
+struct 接口声明 {
+    struct AST节点 节点基类;
+    char* 名称;
+    struct 接口方法** 方法;
+    long long 方法个数;
+};
+struct 模板函数声明;
+struct 模板函数声明 {
+    struct AST节点 节点基类;
+    struct 模板参数** 模板参数;
+    long long 参数个数;
+    struct 函数声明* 函数声明节点;
+};
+struct 模板结构体声明;
+struct 模板结构体声明 {
+    struct AST节点 节点基类;
+    struct 模板参数** 模板参数;
+    long long 参数个数;
+    struct 结构体声明* 结构体声明节点;
 };
 
 // Forward Declarations - 从导入模块
