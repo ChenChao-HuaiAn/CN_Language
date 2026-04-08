@@ -1379,7 +1379,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                      scan_inst->src1.as.reg_id < actual_reg_count) {
                                 new_type = reg_types[scan_inst->src1.as.reg_id];
                             }
-                            // 如果 src1.type 也为 NULL，尝试从函数参数中获取类型
+                            // 【修复】如果 src1.type 也为 NULL，尝试从函数参数中获取类型
+                            // 同时检查全局作用域中的变量类型
                             else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
                                 // 首先检查函数参数
@@ -1408,6 +1409,20 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                             alloca_inst = alloca_inst->next;
                                         }
                                         alloca_block = alloca_block->next;
+                                    }
+                                }
+                                // 【新增】如果仍然没有找到，尝试从全局作用域获取变量类型
+                                if (!new_type && ctx->global_scope) {
+                                    // 去掉 cn_var_ 前缀后查找原始变量名
+                                    const char *var_name = sym_name;
+                                    size_t var_name_len = strlen(sym_name);
+                                    if (strncmp(sym_name, "cn_var_", 7) == 0) {
+                                        var_name = sym_name + 7;
+                                        var_name_len -= 7;
+                                    }
+                                    CnSemSymbol *global_sym = cn_sem_scope_lookup(ctx->global_scope, var_name, var_name_len);
+                                    if (global_sym && global_sym->kind == CN_SEM_SYMBOL_VARIABLE && global_sym->type) {
+                                        new_type = global_sym->type;
                                     }
                                 }
                             }
@@ -1568,6 +1583,17 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             // 【修复】对于MEMBER_ACCESS指令，如果dest.type是指针类型，强制更新
                             // 这确保成员访问的指针类型正确传播
                             if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS &&
+                                scan_inst->dest.type &&
+                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                should_update = true;
+                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
+                                    types_changed = true;
+                                }
+                            }
+                            
+                            // 【修复】对于CALL指令，如果dest.type是指针类型，强制更新
+                            // 这确保函数调用的指针返回类型正确传播
+                            if (scan_inst->kind == CN_IR_INST_CALL &&
                                 scan_inst->dest.type &&
                                 scan_inst->dest.type->kind == CN_TYPE_POINTER) {
                                 should_update = true;

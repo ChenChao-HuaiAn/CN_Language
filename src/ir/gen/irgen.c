@@ -343,15 +343,6 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 }
             }
             
-            // [DEBUG] 跟踪LOAD指令的类型信息
-            fprintf(stderr, "[DEBUG IR LOAD] 标识符: %.*s, expr->type=%p (kind=%d), var_type=%p (kind=%d)\n",
-                    (int)expr->as.identifier.name_length, expr->as.identifier.name,
-                    (void*)expr->type, expr->type ? expr->type->kind : -1,
-                    (void*)var_type, var_type ? var_type->kind : -1);
-            if (var_type && var_type->kind == CN_TYPE_POINTER && var_type->as.pointer_to) {
-                fprintf(stderr, "[DEBUG IR LOAD] 指针指向类型 kind=%d\n", var_type->as.pointer_to->kind);
-            }
-            
             CnIrOperand dest = cn_ir_op_reg(dest_reg, var_type);
             CnIrOperand src = cn_ir_op_symbol(name, var_type);
             free(name);
@@ -1178,10 +1169,20 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             get_inst->extra_args[2] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
             
             int result_reg = alloc_reg(ctx);
-            get_inst->dest = cn_ir_op_reg(result_reg, expr->type);
+            // 【修复】cn_rt_array_get_element 返回 void*（指针类型）
+            // 所以返回类型应该是指向元素类型的指针，而不是元素类型本身
+            CnType *result_type = expr->type;
+            if (!result_type) {
+                // 如果元素类型未知，默认使用 void* 指针类型
+                result_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+            } else if (result_type->kind != CN_TYPE_POINTER) {
+                // 如果元素类型不是指针，则创建指向元素类型的指针
+                result_type = cn_type_new_pointer(result_type);
+            }
+            get_inst->dest = cn_ir_op_reg(result_reg, result_type);
             emit(ctx, get_inst);
             
-            return cn_ir_op_reg(result_reg, expr->type);
+            return cn_ir_op_reg(result_reg, result_type);
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
             // 成员访问：支持结构体 obj.member、模块 module.member 和枚举 enum.member

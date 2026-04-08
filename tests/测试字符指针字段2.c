@@ -23,7 +23,7 @@ long long 主() {
   struct 测试* r1;
   char* r3;
   char* r4;
-  char r5;
+  char* r5;
   struct 测试 r2;
 
   entry:
@@ -37,7 +37,7 @@ long long 主() {
   cn_var_p_1 = r3;
   long long cn_var_c_2;
   r4 = cn_var_p_1;
-  r5 = *(char*)cn_rt_array_get_element(r4, 0, 8);
+  r5 = *(char**)cn_rt_array_get_element(r4, 0, 8);
   cn_var_c_2 = r5;
   r6 = cn_var_c_2;
   return r6;

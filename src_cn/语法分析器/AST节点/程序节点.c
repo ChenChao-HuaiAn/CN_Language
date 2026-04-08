@@ -61,38 +61,6 @@ enum 节点类型 {
     节点类型_函数声明 = 1,
     节点类型_程序节点 = 0
 };
-struct 函数声明;
-struct 变量声明;
-struct 结构体声明;
-struct 枚举声明;
-struct 类声明;
-struct 接口声明;
-struct 导入声明;
-struct 模板函数声明;
-struct 模板结构体声明;
-struct 声明节点;
-struct 源位置 {
-    char* 文件名;
-    long long 行号;
-    long long 列号;
-};
-struct 声明节点;
-struct 声明节点 {
-    enum 节点类型 类型;
-    struct 源位置 位置;
-    _Bool 是否公开;
-    struct 函数声明* 作为函数声明;
-    struct 变量声明* 作为变量声明;
-    struct 变量声明* 作为常量声明;
-    struct 结构体声明* 作为结构体声明;
-    struct 枚举声明* 作为枚举声明;
-    struct 类声明* 作为类声明;
-    struct 接口声明* 作为接口声明;
-    struct 导入声明* 作为导入语句;
-    struct 模板函数声明* 作为模板函数声明;
-    struct 模板结构体声明* 作为模板结构体声明;
-    struct 声明节点* 下一个;
-};
 enum 字面量类型 {
     字面量类型_字面量_字符 = 5,
     字面量类型_字面量_空 = 4,
@@ -160,16 +128,48 @@ struct 类型节点 {
     long long 数组大小;
     _Bool 是常量;
 };
+struct 源位置 {
+    char* 文件名;
+    long long 行号;
+    long long 列号;
+};
 struct AST节点;
 struct AST节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
 };
+struct 声明节点;
 struct 声明节点列表;
 struct 声明节点列表;
 struct 声明节点列表 {
     struct 声明节点* 节点;
     struct 声明节点列表* 下一个;
+};
+struct 函数声明;
+struct 变量声明;
+struct 结构体声明;
+struct 枚举声明;
+struct 类声明;
+struct 接口声明;
+struct 导入声明;
+struct 模板函数声明;
+struct 模板结构体声明;
+struct 声明节点;
+struct 声明节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+    _Bool 是否公开;
+    struct 函数声明* 作为函数声明;
+    struct 变量声明* 作为变量声明;
+    struct 变量声明* 作为常量声明;
+    struct 结构体声明* 作为结构体声明;
+    struct 枚举声明* 作为枚举声明;
+    struct 类声明* 作为类声明;
+    struct 接口声明* 作为接口声明;
+    struct 导入声明* 作为导入语句;
+    struct 模板函数声明* 作为模板函数声明;
+    struct 模板结构体声明* 作为模板结构体声明;
+    struct 声明节点* 下一个;
 };
 struct 导入成员;
 struct 导入成员 {
@@ -572,13 +572,13 @@ struct 程序节点* 创建程序节点() {
   cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 == 0;
-  if (r2) goto if_then_0; else goto if_merge_1;
+  if (r2) goto if_then_758; else goto if_merge_759;
 
-  if_then_0:
+  if_then_758:
   return 0;
-  goto if_merge_1;
+  goto if_merge_759;
 
-  if_merge_1:
+  if_merge_759:
   r3 = cn_var_节点_0;
   return r3;
 }
@@ -591,21 +591,21 @@ void 程序添加声明(struct 程序节点* cn_var_程序, struct 声明节点*
   entry:
   r1 = cn_var_程序;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_5; else goto logic_rhs_4;
+  if (r2) goto logic_merge_763; else goto logic_rhs_762;
 
-  if_then_2:
+  if_then_760:
   return;
-  goto if_merge_3;
+  goto if_merge_761;
 
-  if_merge_3:
+  if_merge_761:
 
-  logic_rhs_4:
+  logic_rhs_762:
   r3 = cn_var_声明;
   r4 = r3 == 0;
-  goto logic_merge_5;
+  goto logic_merge_763;
 
-  logic_merge_5:
-  if (r4) goto if_then_2; else goto if_merge_3;
+  logic_merge_763:
+  if (r4) goto if_then_760; else goto if_merge_761;
   return;
 }
 
