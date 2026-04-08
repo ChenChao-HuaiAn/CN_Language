@@ -1463,6 +1463,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             // src1 是对象，src2 是成员名
                             // 需要从对象的类型中推断成员的类型
                             CnType *obj_type = scan_inst->src1.type;
+                            
                             // 如果 src1.type 为 NULL，尝试从 reg_types 中获取
                             if (!obj_type && scan_inst->src1.kind == CN_IR_OP_REG &&
                                 scan_inst->src1.as.reg_id < actual_reg_count) {
@@ -1551,6 +1552,28 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             else {
                                 should_update = true;
                                 types_changed = true;
+                            }
+                            
+                            // 【修复】对于LOAD指令，如果dest.type是指针类型，强制更新
+                            // 这确保LOAD指令的目标寄存器类型正确传播
+                            if (scan_inst->kind == CN_IR_INST_LOAD &&
+                                scan_inst->dest.type &&
+                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                should_update = true;
+                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
+                                    types_changed = true;
+                                }
+                            }
+                            
+                            // 【修复】对于MEMBER_ACCESS指令，如果dest.type是指针类型，强制更新
+                            // 这确保成员访问的指针类型正确传播
+                            if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS &&
+                                scan_inst->dest.type &&
+                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                should_update = true;
+                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
+                                    types_changed = true;
+                                }
                             }
                             
                             if (should_update) {
@@ -2278,20 +2301,35 @@ static void enum_member_callback(CnSemSymbol *sym, void *user_data) {
     }
 }
 
-// 已生成类型名称集合（用于避免重复生成）
+// 已生成类型名称集合（用于避免重复生成完整定义）
 #define MAX_GENERATED_TYPES 256
 static const char *g_generated_type_names[MAX_GENERATED_TYPES];
 static size_t g_generated_type_count = 0;
+
+// 已生成前向声明的类型名称集合（用于区分前向声明和完整定义）
+static const char *g_forward_decl_types[MAX_GENERATED_TYPES];
+static size_t g_forward_decl_count = 0;
 
 // 已生成枚举类型名称集合（用于区分枚举和结构体）
 static const char *g_enum_type_names[MAX_GENERATED_TYPES];
 static size_t g_enum_type_count = 0;
 
-// 检查类型是否已生成
+// 检查类型是否已生成完整定义
 static bool is_type_already_generated(const char *name, size_t name_len) {
     for (size_t i = 0; i < g_generated_type_count; i++) {
         if (strncmp(g_generated_type_names[i], name, name_len) == 0 &&
             g_generated_type_names[i][name_len] == '\0') {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 检查类型是否已生成前向声明
+static bool is_type_forward_declared(const char *name, size_t name_len) {
+    for (size_t i = 0; i < g_forward_decl_count; i++) {
+        if (strncmp(g_forward_decl_types[i], name, name_len) == 0 &&
+            g_forward_decl_types[i][name_len] == '\0') {
             return true;
         }
     }
@@ -2309,7 +2347,7 @@ static bool is_enum_type_name(const char *name, size_t name_len) {
     return false;
 }
 
-// 标记类型已生成
+// 标记类型已生成完整定义
 static void mark_type_as_generated(const char *name, size_t name_len) {
     if (g_generated_type_count >= MAX_GENERATED_TYPES) return;
     
@@ -2320,6 +2358,19 @@ static void mark_type_as_generated(const char *name, size_t name_len) {
     name_copy[name_len] = '\0';
     
     g_generated_type_names[g_generated_type_count++] = name_copy;
+}
+
+// 标记类型已生成前向声明
+static void mark_type_as_forward_declared(const char *name, size_t name_len) {
+    if (g_forward_decl_count >= MAX_GENERATED_TYPES) return;
+    
+    // 分配内存并复制名称
+    char *name_copy = malloc(name_len + 1);
+    if (!name_copy) return;
+    memcpy(name_copy, name, name_len);
+    name_copy[name_len] = '\0';
+    
+    g_forward_decl_types[g_forward_decl_count++] = name_copy;
 }
 
 // 标记枚举类型已生成
@@ -2340,10 +2391,14 @@ static void reset_generated_types(void) {
     for (size_t i = 0; i < g_generated_type_count; i++) {
         free((void*)g_generated_type_names[i]);
     }
+    for (size_t i = 0; i < g_forward_decl_count; i++) {
+        free((void*)g_forward_decl_types[i]);
+    }
     for (size_t i = 0; i < g_enum_type_count; i++) {
         free((void*)g_enum_type_names[i]);
     }
     g_generated_type_count = 0;
+    g_forward_decl_count = 0;
     g_enum_type_count = 0;
 }
 
@@ -2362,7 +2417,9 @@ static void cn_cgen_struct_type_definition(FILE *file, CnType *type) {
 // 生成结构体类型定义（内部实现）
 // emit_forward: 是否在定义前输出前向声明
 static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type, bool emit_forward) {
-    if (!file || !type || type->kind != CN_TYPE_STRUCT) return;
+    if (!file || !type || type->kind != CN_TYPE_STRUCT) {
+        return;
+    }
     
     // 结构体名称
     const char *name = type->as.struct_type.name;
@@ -2370,7 +2427,9 @@ static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type
     if (!name) return;
     
     // 检查是否已生成
-    if (is_type_already_generated(name, name_len)) return;
+    if (is_type_already_generated(name, name_len)) {
+        return;
+    }
     
     // 第一步：收集所有需要前向声明的结构体类型（指针字段引用的结构体）
     // 对于指针类型，只需要前向声明，不需要完整定义
@@ -2384,11 +2443,13 @@ static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type
                 CnType *pointee = field->field_type->as.pointer_to;
                 const char *pointee_name = pointee->as.struct_type.name;
                 size_t pointee_name_len = pointee->as.struct_type.name_length;
-                if (pointee_name && !is_type_already_generated(pointee_name, pointee_name_len)) {
+                // 只有在没有生成前向声明和完整定义时才输出前向声明
+                if (pointee_name && !is_type_forward_declared(pointee_name, pointee_name_len) &&
+                    !is_type_already_generated(pointee_name, pointee_name_len)) {
                     // 输出前向声明
                     fprintf(file, "struct %.*s;\n", (int)pointee_name_len, pointee_name);
                     // 标记为已生成前向声明（但不标记为完整定义）
-                    mark_type_as_generated(pointee_name, pointee_name_len);
+                    mark_type_as_forward_declared(pointee_name, pointee_name_len);
                 }
             }
         }
@@ -2462,12 +2523,56 @@ static void cn_cgen_enum_type_definition(FILE *file, CnType *type) {
     fprintf(file, "\n};\n");
 }
 
+// 已访问模块作用域集合（用于防止无限递归）
+#define MAX_VISITED_SCOPES 256
+static CnSemScope *g_visited_scopes[MAX_VISITED_SCOPES];
+static size_t g_visited_scope_count = 0;
+
+// 检查作用域是否已访问
+static bool is_scope_visited(CnSemScope *scope) {
+    for (size_t i = 0; i < g_visited_scope_count; i++) {
+        if (g_visited_scopes[i] == scope) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 标记作用域为已访问
+static void mark_scope_visited(CnSemScope *scope) {
+    if (g_visited_scope_count < MAX_VISITED_SCOPES) {
+        g_visited_scopes[g_visited_scope_count++] = scope;
+    }
+}
+
+// 重置已访问作用域集合
+static void reset_visited_scopes(void) {
+    g_visited_scope_count = 0;
+}
+
 // 枚举优先遍历回调上下文结构（第一阶段：只输出枚举）
 typedef struct {
     FILE *file;
 } EnumFirstPassContext;
 
 // 枚举优先遍历回调函数（只输出枚举定义）
+// 前向声明，用于递归调用
+static void enum_first_pass_callback(CnSemSymbol *sym, void *user_data);
+
+// 递归遍历模块作用域输出枚举定义
+static void enum_first_pass_recursive(FILE *file, CnSemScope *scope) {
+    if (!scope) return;
+    
+    // 防止无限递归：检查是否已访问过此作用域
+    if (is_scope_visited(scope)) {
+        return;
+    }
+    mark_scope_visited(scope);
+    
+    EnumFirstPassContext ctx = { file };
+    cn_sem_scope_foreach_symbol(scope, enum_first_pass_callback, &ctx);
+}
+
 static void enum_first_pass_callback(CnSemSymbol *sym, void *user_data) {
     EnumFirstPassContext *ctx = (EnumFirstPassContext *)user_data;
     // 只导出公开的符号
@@ -2477,6 +2582,14 @@ static void enum_first_pass_callback(CnSemSymbol *sym, void *user_data) {
     
     if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
         cn_cgen_enum_type_definition(ctx->file, sym->type);
+        // 如果枚举符号有 module_scope，说明它是由模块符号替换而来的
+        // 需要递归处理嵌套导入的模块
+        if (sym->as.module_scope) {
+            enum_first_pass_recursive(ctx->file, sym->as.module_scope);
+        }
+    } else if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+        // 递归处理嵌套导入的模块
+        enum_first_pass_recursive(ctx->file, sym->as.module_scope);
     }
 }
 
@@ -2485,9 +2598,27 @@ typedef struct {
     FILE *file;
 } StructFirstPassContext;
 
+// 前向声明，用于递归调用
+static void struct_first_pass_callback(CnSemSymbol *sym, void *user_data);
+
+// 递归遍历模块作用域输出结构体定义
+static void struct_first_pass_recursive(FILE *file, CnSemScope *scope) {
+    if (!scope) return;
+    
+    // 防止无限递归：检查是否已访问过此作用域
+    if (is_scope_visited(scope)) {
+        return;
+    }
+    mark_scope_visited(scope);
+    
+    StructFirstPassContext ctx = { file };
+    cn_sem_scope_foreach_symbol(scope, struct_first_pass_callback, &ctx);
+}
+
 // 结构体优先遍历回调函数（只输出结构体定义）
 static void struct_first_pass_callback(CnSemSymbol *sym, void *user_data) {
     StructFirstPassContext *ctx = (StructFirstPassContext *)user_data;
+    
     // 只导出公开的符号
     if (!sym->is_public) {
         return;
@@ -2495,6 +2626,14 @@ static void struct_first_pass_callback(CnSemSymbol *sym, void *user_data) {
     
     if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
         cn_cgen_struct_type_definition(ctx->file, sym->type);
+        // 如果结构体符号有 module_scope，说明它是由模块符号替换而来的
+        // 需要递归处理嵌套导入的模块
+        if (sym->as.module_scope) {
+            struct_first_pass_recursive(ctx->file, sym->as.module_scope);
+        }
+    } else if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+        // 递归处理嵌套导入的模块
+        struct_first_pass_recursive(ctx->file, sym->as.module_scope);
     }
 }
 
@@ -2712,6 +2851,9 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
         return;
     }
     
+    // 重置已访问作用域集合（防止无限递归）
+    reset_visited_scopes();
+    
     // 如果没有导入语句，直接返回
     if (program->import_count == 0) {
         return;
@@ -2765,10 +2907,16 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
             CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
             if (sym) {
                 if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
-                    EnumFirstPassContext ctx = { file };
-                    cn_sem_scope_foreach_symbol(sym->as.module_scope, enum_first_pass_callback, &ctx);
+                    // 使用递归函数处理嵌套导入
+                    enum_first_pass_recursive(file, sym->as.module_scope);
                 } else if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->type) {
                     cn_cgen_enum_type_definition(file, sym->type);
+                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
+                    // 如果符号是结构体，检查是否有 module_scope（嵌套导入）
+                    cn_cgen_struct_type_definition(file, sym->type);
+                    if (sym->as.module_scope) {
+                        enum_first_pass_recursive(file, sym->as.module_scope);
+                    }
                 }
             }
         }
@@ -2777,6 +2925,9 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
     // =========================================================================
     // 第二阶段：输出所有结构体定义（结构体可能依赖枚举）
     // =========================================================================
+    // 重置已访问作用域集合，允许结构体阶段重新访问枚举阶段已访问的作用域
+    reset_visited_scopes();
+    
     fprintf(file, "\n// Struct Definitions - 从导入模块\n");
     
     for (size_t i = 0; i < program->import_count; i++) {
@@ -2821,10 +2972,16 @@ static void cn_cgen_import_forward_declarations(FILE *file, CnAstProgram *progra
             CnSemSymbol *sym = cn_sem_scope_lookup(global_scope, module_name, module_name_len);
             if (sym) {
                 if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
-                    StructFirstPassContext ctx = { file };
-                    cn_sem_scope_foreach_symbol(sym->as.module_scope, struct_first_pass_callback, &ctx);
-                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->type) {
-                    cn_cgen_struct_type_definition(file, sym->type);
+                    // 使用递归函数处理嵌套导入
+                    struct_first_pass_recursive(file, sym->as.module_scope);
+                } else if (sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                    if (sym->type) {
+                        cn_cgen_struct_type_definition(file, sym->type);
+                    }
+                    // 如果结构体有 module_scope，递归处理嵌套导入
+                    if (sym->as.module_scope) {
+                        struct_first_pass_recursive(file, sym->as.module_scope);
+                    }
                 }
             }
         }

@@ -5,8 +5,6 @@
 #include "cnlang/runtime/system_api.h"
 
 // Enum Definitions - 从导入模块
-
-// Struct Definitions - 从导入模块
 enum 词元类型枚举 {
     词元类型枚举_错误 = 81,
     词元类型枚举_结束 = 80,
@@ -99,6 +97,8 @@ struct 词元 {
     long long 列号;
     long long 长度;
 };
+
+// Struct Definitions - 从导入模块
 
 // Forward Declarations - 从导入模块
 

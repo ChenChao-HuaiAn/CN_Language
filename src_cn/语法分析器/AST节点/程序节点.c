@@ -5,9 +5,16 @@
 #include "cnlang/runtime/system_api.h"
 
 // Enum Definitions - 从导入模块
-
-// Struct Definitions - 从导入模块
-struct 声明节点;
+enum 导入类型 {
+    导入类型_模块导入 = 2,
+    导入类型_相对导入 = 1,
+    导入类型_标准导入 = 0
+};
+enum 可见性 {
+    可见性_公开级别 = 2,
+    可见性_保护级别 = 1,
+    可见性_私有级别 = 0
+};
 enum 节点类型 {
     节点类型_接口类型 = 43,
     节点类型_类类型 = 42,
@@ -54,6 +61,7 @@ enum 节点类型 {
     节点类型_函数声明 = 1,
     节点类型_程序节点 = 0
 };
+struct 声明节点;
 struct 源位置 {
     char* 文件名;
     long long 行号;
@@ -75,6 +83,184 @@ struct 声明节点 {
     long long* 作为模板函数声明;
     long long* 作为模板结构体声明;
     struct 声明节点* 下一个;
+};
+enum 字面量类型 {
+    字面量类型_字面量_字符 = 5,
+    字面量类型_字面量_空 = 4,
+    字面量类型_字面量_布尔 = 3,
+    字面量类型_字面量_字符串 = 2,
+    字面量类型_字面量_浮点 = 1,
+    字面量类型_字面量_整数 = 0
+};
+enum 赋值运算符 {
+    赋值运算符_赋值_右移 = 10,
+    赋值运算符_赋值_左移 = 9,
+    赋值运算符_赋值_位异或 = 8,
+    赋值运算符_赋值_位或 = 7,
+    赋值运算符_赋值_位与 = 6,
+    赋值运算符_赋值_取模 = 5,
+    赋值运算符_赋值_除法 = 4,
+    赋值运算符_赋值_乘法 = 3,
+    赋值运算符_赋值_减法 = 2,
+    赋值运算符_赋值_加法 = 1,
+    赋值运算符_赋值_简单 = 0
+};
+enum 一元运算符 {
+    一元运算符_一元_后置自减 = 8,
+    一元运算符_一元_后置自增 = 7,
+    一元运算符_一元_前置自减 = 6,
+    一元运算符_一元_前置自增 = 5,
+    一元运算符_一元_位取反 = 4,
+    一元运算符_一元_解引用 = 3,
+    一元运算符_一元_取地址 = 2,
+    一元运算符_一元_取负 = 1,
+    一元运算符_一元_逻辑非 = 0
+};
+enum 逻辑运算符 {
+    逻辑运算符_逻辑_或 = 1,
+    逻辑运算符_逻辑_与 = 0
+};
+enum 二元运算符 {
+    二元运算符_二元_右移 = 15,
+    二元运算符_二元_左移 = 14,
+    二元运算符_二元_位异或 = 13,
+    二元运算符_二元_位或 = 12,
+    二元运算符_二元_位与 = 11,
+    二元运算符_二元_大于等于 = 10,
+    二元运算符_二元_小于等于 = 9,
+    二元运算符_二元_大于 = 8,
+    二元运算符_二元_小于 = 7,
+    二元运算符_二元_不等于 = 6,
+    二元运算符_二元_等于 = 5,
+    二元运算符_二元_取模 = 4,
+    二元运算符_二元_除 = 3,
+    二元运算符_二元_乘 = 2,
+    二元运算符_二元_减 = 1,
+    二元运算符_二元_加 = 0
+};
+
+// Struct Definitions - 从导入模块
+struct 类型节点;
+struct 类型节点;
+struct 类型节点 {
+    enum 节点类型 类型;
+    char* 名称;
+    struct 类型节点* 元素类型;
+    long long 指针层级;
+    long long 数组维度;
+    long long 数组大小;
+    _Bool 是常量;
+};
+struct AST节点;
+struct AST节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+};
+struct 声明节点列表;
+struct 声明节点列表;
+struct 声明节点列表 {
+    struct 声明节点* 节点;
+    struct 声明节点列表* 下一个;
+};
+struct 导入成员;
+struct 导入成员 {
+    char* 名称;
+    char* 别名;
+};
+struct 模板参数;
+struct 模板参数 {
+    char* 名称;
+    struct 类型节点* 约束;
+    struct 类型节点* 默认类型;
+};
+struct 接口方法;
+struct 接口方法 {
+    char* 名称;
+    struct 参数** 参数列表;
+    long long 参数个数;
+    struct 类型节点* 返回类型;
+};
+struct 类成员;
+struct 类成员 {
+    char* 名称;
+    enum 节点类型 类型;
+    long long* 字段;
+    long long* 方法;
+    enum 可见性 可见性;
+    _Bool 是静态;
+    _Bool 是虚拟;
+    _Bool 是重写;
+    _Bool 是抽象;
+};
+struct 枚举成员;
+struct 枚举成员 {
+    char* 名称;
+    long long 值;
+    _Bool 有显式值;
+};
+struct 结构体成员;
+struct 结构体成员 {
+    char* 名称;
+    struct 类型节点* 类型;
+    _Bool 是常量;
+    enum 可见性 可见性;
+};
+struct 参数;
+struct 参数 {
+    char* 名称;
+    struct 类型节点* 类型;
+    _Bool 是常量;
+    _Bool 是数组;
+    long long 数组维度;
+};
+struct 表达式节点;
+struct 情况分支;
+struct 情况分支 {
+    struct 表达式节点* 匹配值;
+    long long* 语句体;
+};
+struct 捕获子句;
+struct 捕获子句 {
+    char* 异常类型;
+    char* 变量名;
+    long long* 语句体;
+};
+struct 语句节点;
+struct 语句节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+};
+struct 结构体字段初始化;
+struct 结构体字段初始化 {
+    char* 字段名;
+    struct 表达式节点* 值;
+};
+struct 表达式节点;
+struct 表达式节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+    struct 类型节点* 类型信息;
+    _Bool 是自身指针;
+    long long 整数值;
+    double 小数值;
+    char* 字符串值;
+    _Bool 布尔值;
+    char* 标识符名称;
+    struct 表达式节点* 左操作数;
+    struct 表达式节点* 右操作数;
+    long long 运算符;
+    struct 表达式节点* 操作数;
+    struct 表达式节点* 被调函数;
+    struct 表达式节点* 参数列表;
+    long long 参数个数;
+    struct 表达式节点* 对象;
+    char* 成员名;
+    long long 成员索引;
+    struct 表达式节点* 数组;
+    struct 表达式节点* 索引;
+    struct 表达式节点* 左侧表达式;
+    struct 表达式节点* 值;
+    struct 表达式节点* 指针;
 };
 
 // Forward Declarations - 从导入模块
@@ -125,13 +311,13 @@ struct 程序节点* 创建程序节点() {
   cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 == 0;
-  if (r2) goto if_then_758; else goto if_merge_759;
+  if (r2) goto if_then_0; else goto if_merge_1;
 
-  if_then_758:
+  if_then_0:
   return 0;
-  goto if_merge_759;
+  goto if_merge_1;
 
-  if_merge_759:
+  if_merge_1:
   r3 = cn_var_节点_0;
   return r3;
 }
@@ -144,21 +330,21 @@ void 程序添加声明(struct 程序节点* cn_var_程序, struct 声明节点*
   entry:
   r1 = cn_var_程序;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_763; else goto logic_rhs_762;
+  if (r2) goto logic_merge_5; else goto logic_rhs_4;
 
-  if_then_760:
+  if_then_2:
   return;
-  goto if_merge_761;
+  goto if_merge_3;
 
-  if_merge_761:
+  if_merge_3:
 
-  logic_rhs_762:
+  logic_rhs_4:
   r3 = cn_var_声明;
   r4 = r3 == 0;
-  goto logic_merge_763;
+  goto logic_merge_5;
 
-  logic_merge_763:
-  if (r4) goto if_then_760; else goto if_merge_761;
+  logic_merge_5:
+  if (r4) goto if_then_2; else goto if_merge_3;
   return;
 }
 

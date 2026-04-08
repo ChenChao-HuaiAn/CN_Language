@@ -5,52 +5,23 @@
 #include "cnlang/runtime/system_api.h"
 
 // Enum Definitions - 从导入模块
-enum 诊断错误码 {
-    诊断错误码_语义_纯虚函数调用 = 43,
-    诊断错误码_语义_纯虚函数未实现 = 42,
-    诊断错误码_语义_抽象类实例化 = 41,
-    诊断错误码_语义_无效自身使用 = 40,
-    诊断错误码_语义_静态空类型 = 39,
-    诊断错误码_语义_静态非常量初始化 = 38,
-    诊断错误码_语义_开关重复情况 = 37,
-    诊断错误码_语义_开关非常量情况 = 36,
-    诊断错误码_语义_常量非常量初始化 = 35,
-    诊断错误码_语义_常量缺少初始化 = 34,
-    诊断错误码_语义_访问被拒绝 = 33,
-    诊断错误码_语义_成员未找到 = 32,
-    诊断错误码_语义_非结构体类型 = 31,
-    诊断错误码_语义_不可调用 = 30,
-    诊断错误码_语义_无效赋值 = 29,
-    诊断错误码_语义_缺少返回语句 = 28,
-    诊断错误码_语义_中断继续在循环外 = 27,
-    诊断错误码_语义_返回语句在函数外 = 26,
-    诊断错误码_语义_参数类型不匹配 = 25,
-    诊断错误码_语义_参数数量不匹配 = 24,
-    诊断错误码_语义_类型不匹配 = 23,
-    诊断错误码_语义_未定义标识符 = 22,
-    诊断错误码_语义_重复符号 = 21,
-    诊断错误码_语法_无效表达式 = 17,
-    诊断错误码_语法_无效比较运算符 = 16,
-    诊断错误码_语法_无效变量声明 = 15,
-    诊断错误码_语法_无效参数 = 14,
-    诊断错误码_语法_无效函数名 = 13,
-    诊断错误码_语法_预留特性 = 12,
-    诊断错误码_语法_期望标记 = 11,
-    诊断错误码_词法_未终止块注释 = 7,
-    诊断错误码_词法_字面量溢出 = 6,
-    诊断错误码_词法_无效八进制 = 5,
-    诊断错误码_词法_无效二进制 = 4,
-    诊断错误码_词法_无效十六进制 = 3,
-    诊断错误码_词法_无效字符 = 2,
-    诊断错误码_词法_未终止字符串 = 1,
-    诊断错误码_未知错误 = 0
+enum 同步点类型 {
+    同步点类型_同步点_声明关键字 = 7,
+    同步点类型_同步点_类型关键字 = 6,
+    同步点类型_同步点_关键字 = 5,
+    同步点类型_同步点_逗号 = 4,
+    同步点类型_同步点_右中括号 = 3,
+    同步点类型_同步点_右小括号 = 2,
+    同步点类型_同步点_右大括号 = 1,
+    同步点类型_同步点_分号 = 0
 };
-enum 诊断严重级别 {
-    诊断严重级别_诊断_警告 = 1,
-    诊断严重级别_诊断_错误 = 0
+enum 语法恢复策略 {
+    语法恢复策略_同步到关键字 = 4,
+    语法恢复策略_同步到大括号 = 3,
+    语法恢复策略_同步到分号 = 2,
+    语法恢复策略_跳过词元 = 1,
+    语法恢复策略_不恢复 = 0
 };
-
-// Struct Definitions - 从导入模块
 enum 词元类型枚举 {
     词元类型枚举_错误 = 81,
     词元类型枚举_结束 = 80,
@@ -135,6 +106,163 @@ enum 词元类型枚举 {
     词元类型枚举_关键字_否则 = 1,
     词元类型枚举_关键字_如果 = 0
 };
+enum 诊断严重级别 {
+    诊断严重级别_诊断_警告 = 1,
+    诊断严重级别_诊断_错误 = 0
+};
+enum 诊断错误码 {
+    诊断错误码_语义_纯虚函数调用 = 43,
+    诊断错误码_语义_纯虚函数未实现 = 42,
+    诊断错误码_语义_抽象类实例化 = 41,
+    诊断错误码_语义_无效自身使用 = 40,
+    诊断错误码_语义_静态空类型 = 39,
+    诊断错误码_语义_静态非常量初始化 = 38,
+    诊断错误码_语义_开关重复情况 = 37,
+    诊断错误码_语义_开关非常量情况 = 36,
+    诊断错误码_语义_常量非常量初始化 = 35,
+    诊断错误码_语义_常量缺少初始化 = 34,
+    诊断错误码_语义_访问被拒绝 = 33,
+    诊断错误码_语义_成员未找到 = 32,
+    诊断错误码_语义_非结构体类型 = 31,
+    诊断错误码_语义_不可调用 = 30,
+    诊断错误码_语义_无效赋值 = 29,
+    诊断错误码_语义_缺少返回语句 = 28,
+    诊断错误码_语义_中断继续在循环外 = 27,
+    诊断错误码_语义_返回语句在函数外 = 26,
+    诊断错误码_语义_参数类型不匹配 = 25,
+    诊断错误码_语义_参数数量不匹配 = 24,
+    诊断错误码_语义_类型不匹配 = 23,
+    诊断错误码_语义_未定义标识符 = 22,
+    诊断错误码_语义_重复符号 = 21,
+    诊断错误码_语法_无效表达式 = 17,
+    诊断错误码_语法_无效比较运算符 = 16,
+    诊断错误码_语法_无效变量声明 = 15,
+    诊断错误码_语法_无效参数 = 14,
+    诊断错误码_语法_无效函数名 = 13,
+    诊断错误码_语法_预留特性 = 12,
+    诊断错误码_语法_期望标记 = 11,
+    诊断错误码_词法_未终止块注释 = 7,
+    诊断错误码_词法_字面量溢出 = 6,
+    诊断错误码_词法_无效八进制 = 5,
+    诊断错误码_词法_无效二进制 = 4,
+    诊断错误码_词法_无效十六进制 = 3,
+    诊断错误码_词法_无效字符 = 2,
+    诊断错误码_词法_未终止字符串 = 1,
+    诊断错误码_未知错误 = 0
+};
+enum 导入类型 {
+    导入类型_导入_从包导入模块 = 5,
+    导入类型_导入_从模块通配符 = 4,
+    导入类型_导入_从模块选择性 = 3,
+    导入类型_导入_别名 = 2,
+    导入类型_导入_选择性 = 1,
+    导入类型_导入_全量 = 0
+};
+enum 可见性 {
+    可见性_可见性_私有 = 2,
+    可见性_可见性_公开 = 1,
+    可见性_可见性_默认 = 0
+};
+enum 字面量类型 {
+    字面量类型_字面量_字符 = 5,
+    字面量类型_字面量_空 = 4,
+    字面量类型_字面量_布尔 = 3,
+    字面量类型_字面量_字符串 = 2,
+    字面量类型_字面量_浮点 = 1,
+    字面量类型_字面量_整数 = 0
+};
+enum 赋值运算符 {
+    赋值运算符_赋值_右移 = 10,
+    赋值运算符_赋值_左移 = 9,
+    赋值运算符_赋值_位异或 = 8,
+    赋值运算符_赋值_位或 = 7,
+    赋值运算符_赋值_位与 = 6,
+    赋值运算符_赋值_取模 = 5,
+    赋值运算符_赋值_除法 = 4,
+    赋值运算符_赋值_乘法 = 3,
+    赋值运算符_赋值_减法 = 2,
+    赋值运算符_赋值_加法 = 1,
+    赋值运算符_赋值_简单 = 0
+};
+enum 一元运算符 {
+    一元运算符_一元_后置自减 = 8,
+    一元运算符_一元_后置自增 = 7,
+    一元运算符_一元_前置自减 = 6,
+    一元运算符_一元_前置自增 = 5,
+    一元运算符_一元_位取反 = 4,
+    一元运算符_一元_解引用 = 3,
+    一元运算符_一元_取地址 = 2,
+    一元运算符_一元_取负 = 1,
+    一元运算符_一元_逻辑非 = 0
+};
+enum 逻辑运算符 {
+    逻辑运算符_逻辑_或 = 1,
+    逻辑运算符_逻辑_与 = 0
+};
+enum 二元运算符 {
+    二元运算符_二元_右移 = 15,
+    二元运算符_二元_左移 = 14,
+    二元运算符_二元_位异或 = 13,
+    二元运算符_二元_位或 = 12,
+    二元运算符_二元_位与 = 11,
+    二元运算符_二元_大于等于 = 10,
+    二元运算符_二元_小于等于 = 9,
+    二元运算符_二元_大于 = 8,
+    二元运算符_二元_小于 = 7,
+    二元运算符_二元_不等于 = 6,
+    二元运算符_二元_等于 = 5,
+    二元运算符_二元_取模 = 4,
+    二元运算符_二元_除 = 3,
+    二元运算符_二元_乘 = 2,
+    二元运算符_二元_减 = 1,
+    二元运算符_二元_加 = 0
+};
+enum 节点类型 {
+    节点类型_接口类型 = 43,
+    节点类型_类类型 = 42,
+    节点类型_枚举类型 = 41,
+    节点类型_结构体类型 = 40,
+    节点类型_函数类型 = 39,
+    节点类型_数组类型 = 38,
+    节点类型_指针类型 = 37,
+    节点类型_基础类型 = 36,
+    节点类型_模板实例化表达式 = 35,
+    节点类型_逻辑表达式 = 34,
+    节点类型_结构体字面量表达式 = 33,
+    节点类型_数组字面量表达式 = 32,
+    节点类型_三元表达式 = 31,
+    节点类型_赋值表达式 = 30,
+    节点类型_数组访问表达式 = 29,
+    节点类型_成员访问表达式 = 28,
+    节点类型_函数调用表达式 = 27,
+    节点类型_标识符表达式 = 26,
+    节点类型_字面量表达式 = 25,
+    节点类型_一元表达式 = 24,
+    节点类型_二元表达式 = 23,
+    节点类型_最终语句 = 22,
+    节点类型_抛出语句 = 21,
+    节点类型_尝试语句 = 20,
+    节点类型_选择语句 = 19,
+    节点类型_继续语句 = 18,
+    节点类型_中断语句 = 17,
+    节点类型_返回语句 = 16,
+    节点类型_循环语句 = 15,
+    节点类型_当语句 = 14,
+    节点类型_如果语句 = 13,
+    节点类型_块语句 = 12,
+    节点类型_表达式语句 = 11,
+    节点类型_模板结构体声明 = 10,
+    节点类型_模板函数声明 = 9,
+    节点类型_接口声明 = 8,
+    节点类型_类声明 = 7,
+    节点类型_导入声明 = 6,
+    节点类型_模块声明 = 5,
+    节点类型_枚举声明 = 4,
+    节点类型_结构体声明 = 3,
+    节点类型_变量声明 = 2,
+    节点类型_函数声明 = 1,
+    节点类型_程序节点 = 0
+};
 struct 词元;
 struct 词元 {
     enum 词元类型枚举 类型;
@@ -143,43 +271,224 @@ struct 词元 {
     long long 列号;
     long long 长度;
 };
-struct 诊断信息;
-struct 诊断集合;
-struct 诊断集合 {
-    struct 诊断信息* 诊断数组;
-    long long 容量;
-    long long 长度;
-    long long 错误计数;
-    long long 警告计数;
-    long long 最大错误数;
-};
+
+// Struct Definitions - 从导入模块
 
 // Forward Declarations - 从导入模块
-void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
-void 报告无效字符错误(struct 诊断集合*, struct 源位置, char*);
-void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
-void 报告期望标记错误(struct 诊断集合*, struct 源位置, char*);
-void 报告常量缺少初始化错误(struct 诊断集合*, struct 源位置, char*);
-void 报告缺少返回语句错误(struct 诊断集合*, struct 源位置, char*);
-void 报告类型不匹配错误(struct 诊断集合*, struct 源位置, char*, char*);
-void 报告未定义标识符错误(struct 诊断集合*, struct 源位置, char*);
-void 报告重复符号错误(struct 诊断集合*, struct 源位置, char*);
-struct 源位置 创建未知位置(void);
-struct 源位置 创建源位置(char*, long long, long long);
-void 清空诊断集合(struct 诊断集合*);
-void 打印所有诊断(struct 诊断集合*);
-void 打印诊断信息(struct 诊断信息*);
-char* 获取严重级别字符串(enum 诊断严重级别);
-_Bool 应该继续(struct 诊断集合*);
-long long 获取警告计数(struct 诊断集合*);
-long long 获取错误计数(struct 诊断集合*);
-_Bool 有错误(struct 诊断集合*);
-void 报告警告(struct 诊断集合*, enum 诊断错误码, struct 源位置, char*);
-void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, char*);
-void 报告诊断(struct 诊断集合*, enum 诊断严重级别, enum 诊断错误码, struct 源位置, char*);
-_Bool 扩展诊断数组(struct 诊断集合*);
-void 释放诊断集合(struct 诊断集合*);
+extern long long cn_var_最大错误恢复次数;
+extern long long cn_var_解析器大小;
+_Bool 初始化错误恢复(struct 语法错误恢复上下文*);
+void 销毁错误恢复上下文(struct 语法错误恢复上下文*);
+long long 是同步点(enum 词元类型枚举, enum 同步点类型);
+long long 是任意同步点(enum 词元类型枚举);
+long long 跳转到同步点(struct 语法错误恢复上下文*, enum 词元类型枚举, enum 同步点类型);
+_Bool 应该抑制错误(struct 语法错误恢复上下文*);
+void 记录错误(struct 语法错误恢复上下文*, long long);
+void 重置错误计数(struct 语法错误恢复上下文*);
+enum 语法恢复策略 选择恢复策略(long long);
+char* 同步点类型名称(enum 同步点类型);
+char* 恢复策略名称(enum 语法恢复策略);
+extern long long cn_var_默认最大连续错误;
+extern long long cn_var_默认最大恢复次数;
+extern long long cn_var_语法错误恢复上下文大小;
 struct 诊断集合* 创建诊断集合(long long);
+void 释放诊断集合(struct 诊断集合*);
+_Bool 扩展诊断数组(struct 诊断集合*);
+void 报告诊断(struct 诊断集合*, enum 诊断严重级别, enum 诊断错误码, struct 源位置, char*);
+void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, char*);
+void 报告警告(struct 诊断集合*, enum 诊断错误码, struct 源位置, char*);
+_Bool 有错误(struct 诊断集合*);
+long long 获取错误计数(struct 诊断集合*);
+long long 获取警告计数(struct 诊断集合*);
+_Bool 应该继续(struct 诊断集合*);
+char* 获取严重级别字符串(enum 诊断严重级别);
+void 打印诊断信息(struct 诊断信息*);
+void 打印所有诊断(struct 诊断集合*);
+void 清空诊断集合(struct 诊断集合*);
+struct 源位置 创建源位置(char*, long long, long long);
+struct 源位置 创建未知位置(void);
+void 报告重复符号错误(struct 诊断集合*, struct 源位置, char*);
+void 报告未定义标识符错误(struct 诊断集合*, struct 源位置, char*);
+void 报告类型不匹配错误(struct 诊断集合*, struct 源位置, char*, char*);
+void 报告缺少返回语句错误(struct 诊断集合*, struct 源位置, char*);
+void 报告常量缺少初始化错误(struct 诊断集合*, struct 源位置, char*);
+void 报告期望标记错误(struct 诊断集合*, struct 源位置, char*);
+void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
+void 报告无效字符错误(struct 诊断集合*, struct 源位置, char*);
+void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
+void 程序添加声明(struct 程序节点*, struct 声明节点*);
+struct 程序节点* 创建程序节点(void);
+extern _Bool cn_var_关键字表已初始化;
+extern struct 关键字条目* cn_var_关键字表;
+extern long long cn_var_关键字表大小;
+void 初始化关键字表(void);
+struct 关键字条目* 获取关键字表(void);
+long long 关键字总数(void);
+_Bool 是关键字字符串(char*);
+enum 词元类型枚举 查找关键字(char*);
+void* 分配内存数组(long long, long long);
+long long 类型大小(long long);
+char* 字符串格式(char*);
+long long 字符串格式化(char*, long long, char*);
+char* 读取行(void);
+long long 获取绝对值(long long);
+long long 求最大值(long long, long long);
+long long 求最小值(long long, long long);
+long long 获取参数个数(void);
+char* 获取参数(long long);
+char* 获取程序名称(void);
+char* 查找选项(char*);
+long long 选项存在(char*);
+char* 获取位置参数(long long);
+long long 获取位置参数个数(void);
+void* 数组获取(void*, long long);
+_Bool 是块注释结束(long long, long long);
+_Bool 是块注释开始(long long, long long);
+_Bool 是单行注释开始(long long, long long);
+_Bool 是八进制前缀(long long, long long);
+_Bool 是二进制前缀(long long, long long);
+_Bool 是十六进制前缀(long long, long long);
+_Bool 是可打印字符(long long);
+long long 转大写(long long);
+long long 转小写(long long);
+_Bool 是分隔符字符(long long);
+_Bool 是运算符字符(long long);
+_Bool 是标识符字符(long long);
+_Bool 是标识符开头(long long);
+_Bool 是中文字符(long long);
+_Bool 是字母或数字(long long);
+_Bool 是字母(long long);
+_Bool 是八进制数字(long long);
+_Bool 是二进制数字(long long);
+_Bool 是十六进制数字(long long);
+_Bool 是数字(long long);
+_Bool 是换行符(long long);
+_Bool 是空白字符(long long);
+struct 扫描器* 创建扫描器(char*, long long);
+void 销毁扫描器(struct 扫描器*);
+struct 词元 下一个词元(struct 扫描器*);
+struct 词元 预览词元(struct 扫描器*);
+long long 当前字符(struct 扫描器*);
+long long 预览字符(struct 扫描器*, long long);
+long long 前进(struct 扫描器*);
+_Bool 是否结束(struct 扫描器*);
+void 跳过空白字符(struct 扫描器*);
+void 跳过单行注释(struct 扫描器*);
+_Bool 跳过块注释(struct 扫描器*);
+struct 词元 扫描标识符(struct 扫描器*);
+struct 词元 扫描数字(struct 扫描器*);
+struct 词元 扫描字符串(struct 扫描器*);
+struct 词元 扫描字符(struct 扫描器*);
+struct 词元 扫描运算符(struct 扫描器*);
+extern long long cn_var_最大标识符长度;
+extern long long cn_var_最大字符串长度;
+extern long long cn_var_最大数字长度;
+extern long long cn_var_扫描器大小;
+char* 词元类型名称(enum 词元类型枚举);
+struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
+_Bool 是关键字(enum 词元类型枚举);
+_Bool 是字面量(enum 词元类型枚举);
+_Bool 是运算符(enum 词元类型枚举);
+_Bool 是分隔符(enum 词元类型枚举);
+struct 类型节点* 解析函数类型(struct 解析器*);
+struct 类型节点* 解析数组类型(struct 解析器*, struct 类型节点*);
+struct 类型节点* 解析指针类型(struct 解析器*, struct 类型节点*);
+struct 类型节点* 解析基础类型(struct 解析器*);
+struct 类型节点* 解析类型(struct 解析器*);
+extern long long cn_var_扫描器大小;
+extern long long cn_var_最大数字长度;
+extern long long cn_var_最大字符串长度;
+extern long long cn_var_最大标识符长度;
+extern long long cn_var_关键字表大小;
+extern struct 关键字条目* cn_var_关键字表;
+extern _Bool cn_var_关键字表已初始化;
+extern long long cn_var_语法错误恢复上下文大小;
+extern long long cn_var_默认最大恢复次数;
+extern long long cn_var_默认最大连续错误;
+extern long long cn_var_解析器大小;
+extern long long cn_var_最大错误恢复次数;
+struct 表达式列表* 解析函数调用参数(struct 解析器*);
+struct 表达式节点* 解析括号表达式(struct 解析器*);
+struct 表达式节点* 解析标识符表达式(struct 解析器*);
+struct 表达式节点* 解析字面量(struct 解析器*);
+struct 表达式节点* 解析基础表达式(struct 解析器*);
+struct 表达式节点* 解析后缀表达式(struct 解析器*);
+struct 表达式节点* 解析一元表达式(struct 解析器*);
+struct 表达式节点* 解析乘除表达式(struct 解析器*);
+struct 表达式节点* 解析加减表达式(struct 解析器*);
+struct 表达式节点* 解析位移表达式(struct 解析器*);
+struct 表达式节点* 解析比较表达式(struct 解析器*);
+struct 表达式节点* 解析相等表达式(struct 解析器*);
+struct 表达式节点* 解析按位与表达式(struct 解析器*);
+struct 表达式节点* 解析按位异或表达式(struct 解析器*);
+struct 表达式节点* 解析按位或表达式(struct 解析器*);
+struct 表达式节点* 解析逻辑与表达式(struct 解析器*);
+struct 表达式节点* 解析逻辑或表达式(struct 解析器*);
+struct 表达式节点* 解析三元表达式(struct 解析器*);
+struct 表达式节点* 解析赋值表达式(struct 解析器*);
+struct 表达式节点* 解析表达式(struct 解析器*);
+extern long long cn_var_扫描器大小;
+extern long long cn_var_最大数字长度;
+extern long long cn_var_最大字符串长度;
+extern long long cn_var_最大标识符长度;
+extern long long cn_var_关键字表大小;
+extern struct 关键字条目* cn_var_关键字表;
+extern _Bool cn_var_关键字表已初始化;
+extern long long cn_var_语法错误恢复上下文大小;
+extern long long cn_var_默认最大恢复次数;
+extern long long cn_var_默认最大连续错误;
+extern long long cn_var_解析器大小;
+extern long long cn_var_最大错误恢复次数;
+struct 语句节点* 解析变量声明语句(struct 解析器*);
+struct 语句节点* 解析表达式语句(struct 解析器*);
+struct 语句节点* 解析抛出语句(struct 解析器*);
+struct 语句节点* 解析尝试语句(struct 解析器*);
+void* 解析情况列表(struct 解析器*);
+struct 语句节点* 解析选择语句(struct 解析器*);
+struct 语句节点* 解析继续语句(struct 解析器*);
+struct 语句节点* 解析中断语句(struct 解析器*);
+struct 语句节点* 解析返回语句(struct 解析器*);
+struct 语句节点* 解析循环语句(struct 解析器*);
+struct 语句节点* 解析当语句(struct 解析器*);
+struct 语句节点* 解析如果语句(struct 解析器*);
+struct 块语句节点* 解析块语句(struct 解析器*);
+struct 语句节点* 解析语句(struct 解析器*);
+extern long long cn_var_扫描器大小;
+extern long long cn_var_最大数字长度;
+extern long long cn_var_最大字符串长度;
+extern long long cn_var_最大标识符长度;
+extern long long cn_var_关键字表大小;
+extern struct 关键字条目* cn_var_关键字表;
+extern _Bool cn_var_关键字表已初始化;
+extern long long cn_var_语法错误恢复上下文大小;
+extern long long cn_var_默认最大恢复次数;
+extern long long cn_var_默认最大连续错误;
+extern long long cn_var_解析器大小;
+extern long long cn_var_最大错误恢复次数;
+enum 可见性 解析可见性修饰符(struct 解析器*);
+struct 声明节点* 解析导入声明(struct 解析器*);
+struct 声明节点* 解析模块声明(struct 解析器*);
+struct 声明节点* 解析接口声明(struct 解析器*);
+struct 声明节点* 解析类声明(struct 解析器*);
+struct 声明节点* 解析枚举声明(struct 解析器*);
+struct 声明节点* 解析结构体声明(struct 解析器*);
+struct 声明节点* 解析变量声明(struct 解析器*);
+struct 参数节点* 解析参数(struct 解析器*);
+struct 参数列表* 解析参数列表(struct 解析器*);
+struct 声明节点* 解析函数声明(struct 解析器*);
+struct 声明节点* 解析顶层声明(struct 解析器*);
+extern long long cn_var_扫描器大小;
+extern long long cn_var_最大数字长度;
+extern long long cn_var_最大字符串长度;
+extern long long cn_var_最大标识符长度;
+extern long long cn_var_关键字表大小;
+extern struct 关键字条目* cn_var_关键字表;
+extern _Bool cn_var_关键字表已初始化;
+extern long long cn_var_语法错误恢复上下文大小;
+extern long long cn_var_默认最大恢复次数;
+extern long long cn_var_默认最大连续错误;
+extern long long cn_var_解析器大小;
+extern long long cn_var_最大错误恢复次数;
 
 // Global Variables
 

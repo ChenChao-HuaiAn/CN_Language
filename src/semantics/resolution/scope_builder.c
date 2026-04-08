@@ -621,9 +621,6 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     
                     // 解析字段类型：如果是自定义类型（结构体类型表示），从符号表查找真实类型
                     CnType *field_type = struct_decl->fields[j].field_type;
-                    fprintf(stderr, "[DEBUG] 字段类型解析: 字段 %.*s, 原始类型 kind=%d\n",
-                            (int)fields[j].name_length, fields[j].name,
-                            field_type ? field_type->kind : -1);
                     if (field_type && field_type->kind == CN_TYPE_STRUCT && field_type->as.struct_type.name) {
                         CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
                                                     field_type->as.struct_type.name,
@@ -641,18 +638,12 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                              field_type->as.pointer_to &&
                              field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
                              field_type->as.pointer_to->as.struct_type.name) {
-                        fprintf(stderr, "[DEBUG] 字段指针类型解析: 字段 %.*s, 指向结构体='%.*s'\n",
-                                (int)fields[j].name_length, fields[j].name,
-                                (int)field_type->as.pointer_to->as.struct_type.name_length,
-                                field_type->as.pointer_to->as.struct_type.name);
                         CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
                                                     field_type->as.pointer_to->as.struct_type.name,
                                                     field_type->as.pointer_to->as.struct_type.name_length);
                         if (type_sym && type_sym->type) {
                             // 创建新的指针类型，指向解析后的类型
                             field_type = cn_type_new_pointer(type_sym->type);
-                            fprintf(stderr, "[DEBUG] 字段指针类型解析成功: 新指针指向类型 kind=%d\n",
-                                    field_type->as.pointer_to->kind);
                         }
                     }
                     fields[j].field_type = field_type;
@@ -865,13 +856,10 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         new_sym->is_const = sym->is_const;
                         // 保留原始 decl_scope 以便区分导入符号
                         new_sym->decl_scope = sym->decl_scope;
-                        // 调试输出
-                        if (sym->kind == CN_SEM_SYMBOL_FUNCTION) {
-                            fprintf(stderr, "[DEBUG] 导入函数 '%.*s': decl_scope=%p (原始), global_scope=%p\n",
-                                    (int)sym->name_length, sym->name,
-                                    (void*)sym->decl_scope, (void*)global_scope);
-                        }
-                        if (sym->kind == CN_SEM_SYMBOL_MODULE) {
+                        // 复制 module_scope 以支持递归处理嵌套导入
+                        if (sym->kind == CN_SEM_SYMBOL_MODULE ||
+                            sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                            sym->kind == CN_SEM_SYMBOL_ENUM) {
                             new_sym->as.module_scope = sym->as.module_scope;
                         } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                             new_sym->as.enum_value = sym->as.enum_value;
@@ -1059,10 +1047,6 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             }
             // 使用函数声明中的返回类型，如果没有则使用UNKNOWN（后续通过return语句推断）
             CnType *return_type = function_decl->return_type;
-            // 调试输出：显示函数返回类型
-            fprintf(stderr, "[DEBUG] 函数声明 '%.*s': return_type=%p, kind=%d\n",
-                    (int)function_decl->name_length, function_decl->name,
-                    (void*)return_type, return_type ? return_type->kind : -1);
             if (!return_type) {
                 return_type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             } else if (return_type->kind == CN_TYPE_STRUCT) {
@@ -1090,14 +1074,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                     function_decl->name,
                                                                     function_decl->name_length);
             if (existing_sym && existing_sym->kind == CN_SEM_SYMBOL_FUNCTION) {
-                // 调试输出
-                fprintf(stderr, "[DEBUG] 函数 '%.*s' 插入失败，existing_sym->decl_scope=%p, global_scope=%p\n",
-                        (int)function_decl->name_length, function_decl->name,
-                        (void*)existing_sym->decl_scope, (void*)global_scope);
                 // 检查是否是函数原型声明（无函数体）
                 if (function_decl->is_prototype) {
                     // 函数原型声明：允许重复声明，不报错
-                    fprintf(stderr, "[DEBUG] 函数原型声明 '%.*s' 允许重复\n", (int)function_decl->name_length, function_decl->name);
                     // 不需要做任何事情，保留现有符号
                 } else if (existing_sym->decl_scope != global_scope) {
                     // 这是导入的函数，用当前模块定义的函数覆盖它
@@ -1621,15 +1600,11 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     // 检查缓存
     CnSemScope *cached = find_cached_module(file_path);
     if (cached) {
-        fprintf(stderr, "[DEBUG] 模块缓存命中: %s\n", file_path);
         return cached;  // 返回缓存的作用域
     }
     
-    fprintf(stderr, "[DEBUG] 开始编译外部模块: %s\n", file_path);
-    
     // 检测循环导入
     if (is_module_compiling(file_path)) {
-        fprintf(stderr, "[DEBUG] 检测到循环导入: %s\n", file_path);
         cn_support_diag_semantic_error_generic(
             diagnostics,
             CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
@@ -1640,7 +1615,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     
     // 压入编译栈
     if (!push_compiling_module(file_path)) {
-        fprintf(stderr, "[DEBUG] 模块导入嵌套层级太深: %s\n", file_path);
         cn_support_diag_semantic_error_generic(
             diagnostics,
             CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
@@ -1653,24 +1627,20 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     size_t file_size = 0;
     char *source = read_file_content(file_path, &file_size);
     if (!source) {
-        fprintf(stderr, "[DEBUG] 读取文件失败: %s, errno: %d\n", file_path, errno);
         pop_compiling_module();
         return NULL;
     }
-    fprintf(stderr, "[DEBUG] 文件读取成功，大小: %zu 字节\n", file_size);
     
     // 预处理
     CnPreprocessor preprocessor;
     cn_frontend_preprocessor_init(&preprocessor, source, file_size, file_path);
     
     if (!cn_frontend_preprocessor_process(&preprocessor)) {
-        fprintf(stderr, "[DEBUG] 预处理失败: %s\n", file_path);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
         pop_compiling_module();
         return NULL;
     }
-    fprintf(stderr, "[DEBUG] 预处理成功\n");
     
     // 词法分析
     CnLexer lexer;
@@ -1679,7 +1649,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     // 语法分析
     CnParser *parser = cn_frontend_parser_new(&lexer);
     if (!parser) {
-        fprintf(stderr, "[DEBUG] 创建解析器失败: %s\n", file_path);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
         pop_compiling_module();
@@ -1690,20 +1659,16 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     int ok = cn_frontend_parse_program(parser, &module_program);
     
     if (!ok || !module_program) {
-        fprintf(stderr, "[DEBUG] 语法分析失败: %s, ok=%d, module_program=%p\n", file_path, ok, (void*)module_program);
         cn_frontend_parser_free(parser);
         cn_frontend_preprocessor_free(&preprocessor);
         free(source);
         pop_compiling_module();
         return NULL;
     }
-    fprintf(stderr, "[DEBUG] 语法分析成功，函数数: %zu, 全局变量数: %zu\n",
-            module_program->function_count, module_program->global_var_count);
     
     // 为外部模块创建作用域
     CnSemScope *module_scope = cn_sem_scope_new(CN_SEM_SCOPE_FILE_MODULE, global_scope);
     if (!module_scope) {
-        fprintf(stderr, "[DEBUG] 创建模块作用域失败: %s\n", file_path);
         cn_frontend_ast_program_free(module_program);
         cn_frontend_parser_free(parser);
         cn_frontend_preprocessor_free(&preprocessor);
@@ -1711,19 +1676,14 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         pop_compiling_module();
         return NULL;
     }
-    fprintf(stderr, "[DEBUG] 模块作用域创建成功: %p\n", (void*)module_scope);
     
     // =============================================================================
     // 重要：先处理导入语句，再注册结构体
     // 这样被导入模块中的类型才能在结构体字段类型解析时被找到
     // =============================================================================
     
-    fprintf(stderr, "[DEBUG] 检查导入处理条件: loader=%p, importing_file=%p, import_count=%zu\n",
-            (void*)loader, (void*)importing_file, module_program->import_count);
-    
     // 如果提供了loader,则处理模块内部的导入语句（支持嵌套导入）
     if (loader && importing_file && module_program->import_count > 0) {
-        fprintf(stderr, "[DEBUG] 开始处理模块内部导入语句，模块: %s\n", file_path);
         for (size_t i = 0; i < module_program->import_count; ++i) {
             CnAstStmt *import_stmt = module_program->imports[i];
             if (!import_stmt || import_stmt->kind != CN_AST_STMT_IMPORT) {
@@ -1759,6 +1719,12 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                             new_sym->type = sym->type;
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
+                                            // 复制 module_scope 以支持递归处理嵌套导入
+                                            if (sym->kind == CN_SEM_SYMBOL_MODULE ||
+                                                sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                                sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                                new_sym->as.module_scope = sym->as.module_scope;
+                                            }
                                         }
                                     }
                                     node = node->next;
@@ -1779,13 +1745,32 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                             new_sym->type = member_sym->type;
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
+                                            // 复制 module_scope 以支持递归处理嵌套导入
+                                            if (member_sym->kind == CN_SEM_SYMBOL_MODULE ||
+                                                member_sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                                member_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                                new_sym->as.module_scope = member_sym->as.module_scope;
+                                            }
                                         }
                                     }
                                 }
                             }
                         } else {
                             // 纯「导入 路径」语法：全量导入模块的所有公开成员
-                            fprintf(stderr, "[DEBUG] 纯路径导入，将所有公开符号导入到模块作用域\n");
+                            // 首先创建一个模块符号，用于保存整个模块的作用域
+                            if (import->module_path && import->module_path->segment_count > 0) {
+                                const char *module_name = import->module_path->segments[import->module_path->segment_count - 1].name;
+                                size_t module_name_len = import->module_path->segments[import->module_path->segment_count - 1].name_length;
+                                
+                                CnSemSymbol *module_sym = cn_sem_scope_insert_symbol(
+                                    module_scope, module_name, module_name_len, CN_SEM_SYMBOL_MODULE);
+                                if (module_sym) {
+                                    module_sym->is_public = 1;
+                                    module_sym->as.module_scope = nested_scope;
+                                }
+                            }
+                            
+                            // 然后导入所有公开成员
                             CnSemSymbolNode *node = nested_scope->symbols;
                             while (node) {
                                 CnSemSymbol *sym = &node->symbol;
@@ -1796,8 +1781,12 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                         new_sym->type = sym->type;
                                         new_sym->is_public = sym->is_public;
                                         new_sym->is_const = sym->is_const;
-                                        fprintf(stderr, "[DEBUG] 导入符号: %.*s, kind=%d\n",
-                                                (int)sym->name_length, sym->name, sym->kind);
+                                        // 复制 module_scope 以支持递归处理嵌套导入
+                                        if (sym->kind == CN_SEM_SYMBOL_MODULE ||
+                                            sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                            sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                            new_sym->as.module_scope = sym->as.module_scope;
+                                        }
                                     }
                                 }
                                 node = node->next;
@@ -2089,9 +2078,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                             type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
                             type_sym->type->as.struct_type.fields) {
                             field->field_type = type_sym->type;
-                            fprintf(stderr, "[DEBUG] 延迟解析字段类型: %.*s.%.*s -> 完整类型\n",
-                                    (int)sym->name_length, sym->name,
-                                    (int)field->name_length, field->name);
                         }
                     }
                     // 情况2：字段类型是指针，指向的结构体没有字段信息
@@ -2107,9 +2093,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                             type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
                             type_sym->type->as.struct_type.fields) {
                             field->field_type = cn_type_new_pointer(type_sym->type);
-                            fprintf(stderr, "[DEBUG] 延迟解析指针字段类型: %.*s.%.*s -> 完整指针类型\n",
-                                    (int)sym->name_length, sym->name,
-                                    (int)field->name_length, field->name);
                         }
                     }
                 }
@@ -2530,11 +2513,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             new_sym->is_const = member_sym->is_const;
                                             // 调试：检查导入的结构体类型是否有字段信息
                                             if (member_sym->kind == CN_SEM_SYMBOL_STRUCT && member_sym->type) {
-                                                fprintf(stderr, "[DEBUG] 导入结构体 %.*s, type=%p, fields=%p, field_count=%zu\n",
-                                                        (int)member_name_length, member_name,
-                                                        (void*)member_sym->type,
-                                                        (void*)member_sym->type->as.struct_type.fields,
-                                                        member_sym->type->as.struct_type.field_count);
                                             }
                                         }
                                     } else {
@@ -2558,6 +2536,12 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             new_sym->type = sym->type;
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
+                                            // 复制 module_scope 以支持递归处理嵌套导入
+                                            if (sym->kind == CN_SEM_SYMBOL_MODULE ||
+                                                sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                                sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                                new_sym->as.module_scope = sym->as.module_scope;
+                                            }
                                         }
                                     }
                                     node = node->next;
@@ -2589,8 +2573,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     size_t copy_len = sym->name_length < 255 ? sym->name_length : 255;
                                     memcpy(debug_name, sym->name, copy_len);
                                     debug_name[copy_len] = '\0';
-                                    fprintf(stderr, "[DEBUG] 相对路径导入符号: %s, kind=%d, is_public=%d\n",
-                                            debug_name, sym->kind, sym->is_public);
                                 }
                                 
                                 // 只导入公开成员
@@ -2606,17 +2588,28 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                 if (existing_sym) {
                                     // 特殊处理：如果现有符号是模块符号，而新符号是结构体或枚举类型，
                                     // 则用新符号替换模块符号（因为类型定义比模块符号更重要）
+                                    // 但需要保留 module_scope 以便递归处理嵌套导入
                                     if (existing_sym->kind == CN_SEM_SYMBOL_MODULE &&
                                         (sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                                        // 保存 module_scope 以便递归处理嵌套导入
+                                        CnSemScope *saved_module_scope = existing_sym->as.module_scope;
+                                        
                                         // 更新现有符号的类型和属性
                                         existing_sym->kind = sym->kind;
                                         existing_sym->type = sym->type;
                                         existing_sym->is_public = sym->is_public;
                                         existing_sym->is_const = sym->is_const;
                                         existing_sym->decl_scope = sym->decl_scope;
+                                        
+                                        // 如果新符号也是模块，使用新符号的 module_scope
+                                        // 否则保留原来的 module_scope（用于递归处理嵌套导入）
+                                        if (sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
+                                            existing_sym->as.module_scope = sym->as.module_scope;
+                                        } else {
+                                            existing_sym->as.module_scope = saved_module_scope;
+                                        }
+                                        
                                         // 调试：检查替换时的类型信息
-                                        fprintf(stderr, "[DEBUG] 模块符号 %.*s 被替换为类型定义, kind=%d, type=%p",
-                                                (int)sym->name_length, sym->name, sym->kind, (void*)sym->type);
                                         if (sym->type && sym->kind == CN_SEM_SYMBOL_STRUCT) {
                                             fprintf(stderr, ", fields=%p, field_count=%zu\n",
                                                     (void*)sym->type->as.struct_type.fields,
@@ -2643,15 +2636,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     new_sym->decl_scope = sym->decl_scope;
                                     // 调试输出
                                     if (sym->kind == CN_SEM_SYMBOL_FUNCTION) {
-                                        fprintf(stderr, "[DEBUG] 相对路径导入函数 '%.*s': decl_scope=%p, global_scope=%p\n",
-                                                (int)sym->name_length, sym->name,
-                                                (void*)sym->decl_scope, (void*)global_scope);
                                     }
                                     // 调试：检查导入的结构体类型是否有字段信息
                                     if (sym->kind == CN_SEM_SYMBOL_STRUCT) {
-                                        fprintf(stderr, "[DEBUG] 导入结构体符号 %.*s, type=%p",
-                                                (int)sym->name_length, sym->name,
-                                                (void*)sym->type);
                                         if (sym->type) {
                                             fprintf(stderr, ", fields=%p, field_count=%zu\n",
                                                     (void*)sym->type->as.struct_type.fields,
@@ -2660,9 +2647,13 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             fprintf(stderr, " (type is NULL!)\n");
                                         }
                                     }
-                                    if (sym->kind == CN_SEM_SYMBOL_MODULE) {
-                                        new_sym->as.module_scope = sym->as.module_scope;
-                                    } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                                    // 复制 module_scope（对于模块符号和被替换为结构体的模块符号）
+                                    if (sym->kind == CN_SEM_SYMBOL_MODULE || sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                        if (sym->as.module_scope) {
+                                            new_sym->as.module_scope = sym->as.module_scope;
+                                        }
+                                    }
+                                    if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                                         new_sym->as.enum_value = sym->as.enum_value;
                                     }
                                 }
@@ -2765,6 +2756,12 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             new_sym->type = sym->type;
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
+                                            // 复制 module_scope 以支持递归处理嵌套导入
+                                            if (sym->kind == CN_SEM_SYMBOL_MODULE ||
+                                                sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                                sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                                new_sym->as.module_scope = sym->as.module_scope;
+                                            }
                                         }
                                     }
                                     node = node->next;
@@ -2811,7 +2808,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     new_sym->is_public = sym->is_public;
                                     new_sym->is_const = sym->is_const;
                                     new_sym->decl_scope = sym->decl_scope;
-                                    if (sym->kind == CN_SEM_SYMBOL_MODULE) {
+                                    // 复制 module_scope 以支持递归处理嵌套导入
+                                    if (sym->kind == CN_SEM_SYMBOL_MODULE ||
+                                        sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                        sym->kind == CN_SEM_SYMBOL_ENUM) {
                                         new_sym->as.module_scope = sym->as.module_scope;
                                     } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                                         new_sym->as.enum_value = sym->as.enum_value;
@@ -2857,10 +2857,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 memcpy(module_name_str, import->module_name, import->module_name_length);
                 module_name_str[import->module_name_length] = '\0';
 
-                // [DEBUG] 调试输出
-                fprintf(stderr, "[DEBUG] 尝试加载模块: %s\n", module_name_str);
-                fprintf(stderr, "[DEBUG] 源文件: %s\n", source_file);
-
                 char *resolved_path = NULL;
                 
                 // 1. 首先尝试在当前文件目录中查找
@@ -2870,8 +2866,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 if (last_fwd_sep > last_sep) {
                     last_sep = last_fwd_sep;
                 }
-                
-                fprintf(stderr, "[DEBUG] last_sep: %s\n", last_sep ? last_sep : "NULL");
                 
                 if (last_sep) {
                     // 构建当前目录路径
@@ -2887,15 +2881,11 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                             memcpy(resolved_path + dir_len + 1, import->module_name, import->module_name_length);
                             strcpy(resolved_path + dir_len + 1 + import->module_name_length, ".cn");
                             
-                            fprintf(stderr, "[DEBUG] 构建路径: %s\n", resolved_path);
-                            
                             // 检查文件是否存在
                             FILE *test_file = fopen(resolved_path, "r");
                             if (test_file) {
-                                fprintf(stderr, "[DEBUG] 文件打开成功\n");
                                 fclose(test_file);
                             } else {
-                                fprintf(stderr, "[DEBUG] 文件打开失败，errno: %d\n", errno);
                                 free(resolved_path);
                                 resolved_path = NULL;
                                 
@@ -2973,7 +2963,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 
                 // 3. 如果找到路径，编译外部模块
                 if (resolved_path) {
-                    fprintf(stderr, "[DEBUG] 调用 compile_external_module_recursive: %s\n", resolved_path);
                     CnSemScope *external_scope = compile_external_module_recursive(
                         resolved_path,
                         diagnostics,
@@ -2981,8 +2970,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         loader,
                         source_file);
                     free(resolved_path);
-
-                    fprintf(stderr, "[DEBUG] external_scope: %p\n", (void*)external_scope);
                     if (external_scope) {
                         module_sym = cn_sem_scope_insert_symbol(
                             global_scope,
@@ -3082,8 +3069,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     size_t copy_len = sym->name_length < 255 ? sym->name_length : 255;
                     memcpy(debug_name, sym->name, copy_len);
                     debug_name[copy_len] = '\0';
-                    fprintf(stderr, "[DEBUG] 导入符号: %s, kind=%d, is_public=%d\n",
-                            debug_name, sym->kind, sym->is_public);
                 }
                 
                 // 只导入公开成员
@@ -3123,13 +3108,13 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         new_sym->is_public = sym->is_public;
                         new_sym->is_const = sym->is_const;
                         new_sym->decl_scope = sym->decl_scope;
-                        if (sym->kind == CN_SEM_SYMBOL_MODULE) {
+                        // 复制 module_scope 以支持递归处理嵌套导入
+                        if (sym->kind == CN_SEM_SYMBOL_MODULE ||
+                            sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                            sym->kind == CN_SEM_SYMBOL_ENUM) {
                             new_sym->as.module_scope = sym->as.module_scope;
                         } else if (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                             new_sym->as.enum_value = sym->as.enum_value;
-                        } else if (sym->kind == CN_SEM_SYMBOL_ENUM) {
-                            // 枚举类型：确保类型信息完整（包含枚举作用域）
-                            // 注意：sym->type 已经包含 enum_scope，直接复制即可
                         }
                     }
                 }
@@ -3225,7 +3210,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
     }
 
     // 注册函数并构建函数作用域
-    fprintf(stderr, "[DEBUG] cn_sem_build_scopes_with_loader: 主模块函数数量=%zu\n", program->function_count);
     for (i = 0; i < program->function_count; ++i) {
         CnAstFunctionDecl *function_decl = program->functions[i];
         if (!function_decl) {
@@ -3290,19 +3274,13 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             CnSemSymbol *existing_sym = cn_sem_scope_lookup_shallow(global_scope,
                                                                     function_decl->name,
                                                                     function_decl->name_length);
-            fprintf(stderr, "[DEBUG] cn_sem_build_scopes_with_loader: 函数 '%.*s' 插入失败，existing_sym=%p, kind=%d, decl_scope=%p, global_scope=%p\n",
-                    (int)function_decl->name_length, function_decl->name,
-                    (void*)existing_sym, existing_sym ? existing_sym->kind : -1,
-                    existing_sym ? (void*)existing_sym->decl_scope : NULL, (void*)global_scope);
             if (existing_sym && existing_sym->kind == CN_SEM_SYMBOL_FUNCTION) {
                 // 检查是否是函数原型声明（无函数体）
                 if (function_decl->is_prototype) {
                     // 函数原型声明：允许重复声明，不报错
-                    fprintf(stderr, "[DEBUG] 函数原型声明 '%.*s' 允许重复\n", (int)function_decl->name_length, function_decl->name);
                     // 不需要做任何事情，保留现有符号
                 } else if (existing_sym->decl_scope != global_scope) {
                     // 检查是否是导入的符号（decl_scope 不同表示来自其他模块）
-                    fprintf(stderr, "[DEBUG] 覆盖导入函数 '%.*s' 的类型\n", (int)function_decl->name_length, function_decl->name);
                     // 这是导入的函数，用当前模块定义的函数覆盖它
                     // 构建完整的函数类型
                     CnType **param_types = NULL;

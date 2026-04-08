@@ -5,8 +5,6 @@
 #include "cnlang/runtime/system_api.h"
 
 // Enum Definitions - 从导入模块
-
-// Struct Definitions - 从导入模块
 enum 词元类型枚举 {
     词元类型枚举_错误 = 81,
     词元类型枚举_结束 = 80,
@@ -100,23 +98,61 @@ struct 词元 {
     long long 长度;
 };
 
+// Struct Definitions - 从导入模块
+
 // Forward Declarations - 从导入模块
-void* 数组获取(void*, long long);
-long long 获取位置参数个数(void);
-char* 获取位置参数(long long);
-long long 选项存在(char*);
-char* 查找选项(char*);
-char* 获取程序名称(void);
-char* 获取参数(long long);
-long long 获取参数个数(void);
-long long 求最小值(long long, long long);
-long long 求最大值(long long, long long);
-long long 获取绝对值(long long);
-char* 读取行(void);
-long long 字符串格式化(char*, long long, char*);
-char* 字符串格式(char*);
-long long 类型大小(long long);
+extern _Bool cn_var_关键字表已初始化;
+extern struct 关键字条目* cn_var_关键字表;
+extern long long cn_var_关键字表大小;
+void 初始化关键字表(void);
+struct 关键字条目* 获取关键字表(void);
+long long 关键字总数(void);
+_Bool 是关键字字符串(char*);
+enum 词元类型枚举 查找关键字(char*);
 void* 分配内存数组(long long, long long);
+long long 类型大小(long long);
+char* 字符串格式(char*);
+long long 字符串格式化(char*, long long, char*);
+char* 读取行(void);
+long long 获取绝对值(long long);
+long long 求最大值(long long, long long);
+long long 求最小值(long long, long long);
+long long 获取参数个数(void);
+char* 获取参数(long long);
+char* 获取程序名称(void);
+char* 查找选项(char*);
+long long 选项存在(char*);
+char* 获取位置参数(long long);
+long long 获取位置参数个数(void);
+void* 数组获取(void*, long long);
+char* 词元类型名称(enum 词元类型枚举);
+struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
+_Bool 是关键字(enum 词元类型枚举);
+_Bool 是字面量(enum 词元类型枚举);
+_Bool 是运算符(enum 词元类型枚举);
+_Bool 是分隔符(enum 词元类型枚举);
+_Bool 是块注释结束(long long, long long);
+_Bool 是块注释开始(long long, long long);
+_Bool 是单行注释开始(long long, long long);
+_Bool 是八进制前缀(long long, long long);
+_Bool 是二进制前缀(long long, long long);
+_Bool 是十六进制前缀(long long, long long);
+_Bool 是可打印字符(long long);
+long long 转大写(long long);
+long long 转小写(long long);
+_Bool 是分隔符字符(long long);
+_Bool 是运算符字符(long long);
+_Bool 是标识符字符(long long);
+_Bool 是标识符开头(long long);
+_Bool 是中文字符(long long);
+_Bool 是字母或数字(long long);
+_Bool 是字母(long long);
+_Bool 是八进制数字(long long);
+_Bool 是二进制数字(long long);
+_Bool 是十六进制数字(long long);
+_Bool 是数字(long long);
+_Bool 是换行符(long long);
+_Bool 是空白字符(long long);
 
 // CN Language Global Struct Forward Declarations
 struct 扫描器;

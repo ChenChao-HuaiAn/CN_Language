@@ -343,6 +343,15 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 }
             }
             
+            // [DEBUG] 跟踪LOAD指令的类型信息
+            fprintf(stderr, "[DEBUG IR LOAD] 标识符: %.*s, expr->type=%p (kind=%d), var_type=%p (kind=%d)\n",
+                    (int)expr->as.identifier.name_length, expr->as.identifier.name,
+                    (void*)expr->type, expr->type ? expr->type->kind : -1,
+                    (void*)var_type, var_type ? var_type->kind : -1);
+            if (var_type && var_type->kind == CN_TYPE_POINTER && var_type->as.pointer_to) {
+                fprintf(stderr, "[DEBUG IR LOAD] 指针指向类型 kind=%d\n", var_type->as.pointer_to->kind);
+            }
+            
             CnIrOperand dest = cn_ir_op_reg(dest_reg, var_type);
             CnIrOperand src = cn_ir_op_symbol(name, var_type);
             free(name);

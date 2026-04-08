@@ -180,9 +180,6 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                             ? expr->as.member.member_name_length : sizeof(member_name_buf) - 1;
                         memcpy(member_name_buf, expr->as.member.member_name, copy_len);
                         member_name_buf[copy_len] = '\0';
-                        fprintf(stderr, "[DEBUG] 模块成员未找到: '%.*s' (len=%zu, copy_len=%zu)\n",
-                                (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                                expr->as.member.member_name_length, copy_len);
                         cn_support_diag_semantic_error_undefined_identifier(
                             diagnostics, NULL, 0, 0, member_name_buf);
                     }
@@ -1004,8 +1001,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
     
     // 缓存检查：如果表达式已经有类型，直接返回
     if (expr->type && expr->type->kind != CN_TYPE_UNKNOWN) {
-        fprintf(stderr, "[DEBUG] 缓存命中: 表达式类型 kind=%d, 已有类型 kind=%d\n",
-                expr->kind, expr->type->kind);
         return expr->type;
     }
 
@@ -1329,8 +1324,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 expr->type = target;
             } else {
                 // 调试：输出类型不匹配的详细信息
-                fprintf(stderr, "[DEBUG] 赋值类型不匹配: target kind=%d, val kind=%d\n",
-                        target ? target->kind : -1, val ? val->kind : -1);
                 // 类型不匹配,报错
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
@@ -1354,19 +1347,12 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             break;
         }
         case CN_AST_EXPR_UNARY: {
-            fprintf(stderr, "[DEBUG] infer_expr_type: 处理一元表达式, op=%d, expr=%p\n", expr->as.unary.op, (void*)expr);
             if (!expr->as.unary.operand) {
-                fprintf(stderr, "[DEBUG] infer_expr_type: 一元表达式操作数为NULL\n");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }
-            fprintf(stderr, "[DEBUG] infer_expr_type: 一元表达式操作数 kind=%d, operand=%p\n",
-                    expr->as.unary.operand->kind, (void*)expr->as.unary.operand);
-            fprintf(stderr, "[DEBUG] infer_expr_type: 开始递归推断操作数类型...\n");
             fflush(stderr);
             CnType *inner = infer_expr_type(scope, expr->as.unary.operand, diagnostics);
-            fprintf(stderr, "[DEBUG] infer_expr_type: 一元表达式操作数类型推断完成, inner=%p, kind=%d\n",
-                    (void*)inner, inner ? inner->kind : -1);
             fflush(stderr);
             switch (expr->as.unary.op) {
                 case CN_AST_UNARY_OP_NOT:
@@ -1378,19 +1364,11 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 case CN_AST_UNARY_OP_ADDRESS_OF:
                     if (inner) {
                         // 调试输出：取地址操作符的类型
-                        fprintf(stderr, "[DEBUG] 取地址操作符: 操作数类型 kind=%d\n", inner->kind);
                         if (inner->kind == CN_TYPE_STRUCT && inner->as.struct_type.name) {
-                            fprintf(stderr, "[DEBUG] 取地址操作符: 结构体名称='%.*s'\n",
-                                    (int)inner->as.struct_type.name_length, inner->as.struct_type.name);
                         }
                         expr->type = cn_type_new_pointer(inner);
                         // 调试输出：结果类型
-                        fprintf(stderr, "[DEBUG] 取地址操作符: 结果类型 kind=%d, 指向类型 kind=%d\n",
-                                expr->type->kind, expr->type->as.pointer_to->kind);
                         if (expr->type->as.pointer_to->kind == CN_TYPE_STRUCT && expr->type->as.pointer_to->as.struct_type.name) {
-                            fprintf(stderr, "[DEBUG] 取地址操作符: 指向结构体名称='%.*s'\n",
-                                    (int)expr->type->as.pointer_to->as.struct_type.name_length,
-                                    expr->type->as.pointer_to->as.struct_type.name);
                         }
                     } else {
                         expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
@@ -1606,16 +1584,11 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     for (size_t i = 0; i < expr->as.call.argument_count; i++) {
                         if (!expr->as.call.arguments[i]) continue;
                         // 调试输出：显示参数表达式类型
-                        fprintf(stderr, "[DEBUG] 参数 %zu: 表达式类型 kind=%d\n", i, expr->as.call.arguments[i]->kind);
                         // 检查表达式是否已有类型
                         if (expr->as.call.arguments[i]->type) {
-                            fprintf(stderr, "[DEBUG] 参数 %zu: 表达式已有类型 kind=%d\n", i, expr->as.call.arguments[i]->type->kind);
                             if (expr->as.call.arguments[i]->type->kind == CN_TYPE_POINTER &&
                                 expr->as.call.arguments[i]->type->as.pointer_to &&
                                 expr->as.call.arguments[i]->type->as.pointer_to->kind == CN_TYPE_STRUCT) {
-                                fprintf(stderr, "[DEBUG] 参数 %zu: 已有类型指向结构体='%.*s'\n", i,
-                                        (int)expr->as.call.arguments[i]->type->as.pointer_to->as.struct_type.name_length,
-                                        expr->as.call.arguments[i]->type->as.pointer_to->as.struct_type.name);
                             }
                         }
                         CnType *arg_type = infer_expr_type(scope, expr->as.call.arguments[i], diagnostics);
@@ -1626,31 +1599,17 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                             func_name = expr->as.call.callee->as.identifier.name;
                             func_name_len = expr->as.call.callee->as.identifier.name_length;
                         }
-                        fprintf(stderr, "[DEBUG] 函数 '%.*s' 参数 %zu: arg_type kind=%d, param_type kind=%d\n",
-                                (int)func_name_len, func_name ? func_name : "(unknown)",
-                                i, arg_type ? arg_type->kind : -1,
-                                (callee_type->as.function.param_types && callee_type->as.function.param_types[i])
-                                    ? callee_type->as.function.param_types[i]->kind : -1);
                         // 检查推断后的类型是否一致
                         if (arg_type && expr->as.call.arguments[i]->type && arg_type != expr->as.call.arguments[i]->type) {
-                            fprintf(stderr, "[DEBUG] 参数 %zu: 类型不一致! arg_type=%p, expr->type=%p\n", i, (void*)arg_type, (void*)expr->as.call.arguments[i]->type);
                         }
                         if (arg_type && callee_type->as.function.param_types && callee_type->as.function.param_types[i] &&
                             !cn_type_compatible(arg_type, callee_type->as.function.param_types[i])) {
                             // 调试输出：显示类型不匹配的详细信息
-                            fprintf(stderr, "[DEBUG] 类型不匹配: arg_type kind=%d, param_type kind=%d\n",
-                                    arg_type->kind, callee_type->as.function.param_types[i]->kind);
                             // 如果是指针类型，显示指向的类型
                             if (arg_type->kind == CN_TYPE_POINTER && callee_type->as.function.param_types[i]->kind == CN_TYPE_POINTER) {
                                 CnType *arg_pointee = arg_type->as.pointer_to;
                                 CnType *param_pointee = callee_type->as.function.param_types[i]->as.pointer_to;
-                                fprintf(stderr, "[DEBUG] 指针指向类型: arg_pointee kind=%d, param_pointee kind=%d\n",
-                                        arg_pointee ? arg_pointee->kind : -1,
-                                        param_pointee ? param_pointee->kind : -1);
                                 if (arg_pointee && param_pointee && arg_pointee->kind == CN_TYPE_STRUCT && param_pointee->kind == CN_TYPE_STRUCT) {
-                                    fprintf(stderr, "[DEBUG] 结构体名称: arg='%.*s', param='%.*s'\n",
-                                            (int)arg_pointee->as.struct_type.name_length, arg_pointee->as.struct_type.name,
-                                            (int)param_pointee->as.struct_type.name_length, param_pointee->as.struct_type.name);
                                 }
                             }
                             // 构建详细的错误消息
@@ -1842,11 +1801,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         expr->as.member.member_name,
                         expr->as.member.member_name_length);
                     
-                    fprintf(stderr, "[DEBUG] 枚举成员访问: %.*s.%.*s, member_sym=%p\n",
-                            (int)sym->name_length, sym->name,
-                            (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                            (void*)member_sym);
-                    
                     if (!member_sym) {
                         cn_support_diag_semantic_error_generic(
                             diagnostics,
@@ -1859,7 +1813,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         expr->type = member_sym->type;
                         // 设置对象表达式的类型（标记为枚举类型）
                         expr->as.member.object->type = sym->type;
-                        fprintf(stderr, "[DEBUG] 枚举成员类型 kind=%d\n", member_sym->type ? member_sym->type->kind : -1);
                     }
                     break;
                 }
@@ -1939,16 +1892,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
                                             object_type->as.struct_type.name,
                                             object_type->as.struct_type.name_length);
-                fprintf(stderr, "[DEBUG] 动态解析对象类型: %.*s, 找到=%s, type=%p\n",
-                        (int)object_type->as.struct_type.name_length, object_type->as.struct_type.name,
-                        type_sym ? "是" : "否", type_sym ? (void*)type_sym->type : NULL);
                 if (type_sym && type_sym->type &&
                     type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
                     // 更新对象类型为符号表中的真实类型
                     object_type = type_sym->type;
-                    fprintf(stderr, "[DEBUG] 对象类型解析成功: fields=%p, field_count=%zu\n",
-                            (void*)object_type->as.struct_type.fields,
-                            object_type->as.struct_type.field_count);
                 }
             }
             
@@ -1958,26 +1905,12 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 expr->as.member.member_name,
                 expr->as.member.member_name_length);
             
-            fprintf(stderr, "[DEBUG] 成员访问: 对象类型 kind=%d, 成员 %.*s, 字段找到: %s, 字段类型 kind=%d\n",
-                    object_type->kind,
-                    (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                    field ? "是" : "否",
-                    field && field->field_type ? field->field_type->kind : -1);
-            
             if (field) {
                 // 成员访问表达式的类型是成员的类型
                 CnType *field_type = field->field_type;
-                fprintf(stderr, "[DEBUG] 成员访问设置类型: 成员 %.*s, 字段类型 kind=%d\n",
-                        (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                        field_type ? field_type->kind : -1);
                 // 如果字段类型是指针，显示指向的类型
                 if (field_type && field_type->kind == CN_TYPE_POINTER && field_type->as.pointer_to) {
-                    fprintf(stderr, "[DEBUG] 字段指针指向类型 kind=%d\n", field_type->as.pointer_to->kind);
                     if (field_type->as.pointer_to->kind == CN_TYPE_STRUCT && field_type->as.pointer_to->as.struct_type.name) {
-                        fprintf(stderr, "[DEBUG] 字段指针指向结构体='%.*s', fields=%p\n",
-                                (int)field_type->as.pointer_to->as.struct_type.name_length,
-                                field_type->as.pointer_to->as.struct_type.name,
-                                (void*)field_type->as.pointer_to->as.struct_type.fields);
                     }
                 }
                 
@@ -1994,9 +1927,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         // 更新字段类型为符号表中的真实类型
                         field->field_type = type_sym->type;
                         field_type = type_sym->type;
-                        fprintf(stderr, "[DEBUG] 动态解析字段类型: %.*s -> kind=%d, fields=%p\n",
-                                (int)field_type->as.struct_type.name_length, field_type->as.struct_type.name,
-                                field_type->kind, (void*)field_type->as.struct_type.fields);
                     }
                 }
                 
@@ -2010,22 +1940,15 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
                                                 field_type->as.pointer_to->as.struct_type.name,
                                                 field_type->as.pointer_to->as.struct_type.name_length);
-                    fprintf(stderr, "[DEBUG] 动态解析指针字段类型: %.*s, 找到=%s, type=%p\n",
-                            (int)field_type->as.pointer_to->as.struct_type.name_length,
-                            field_type->as.pointer_to->as.struct_type.name,
-                            type_sym ? "是" : "否", type_sym ? (void*)type_sym->type : NULL);
                     if (type_sym && type_sym->type &&
                         (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
                         // 创建新的指针类型，指向解析后的类型
                         field->field_type = cn_type_new_pointer(type_sym->type);
                         field_type = field->field_type;
-                        fprintf(stderr, "[DEBUG] 动态解析指针字段类型成功: 指向类型 kind=%d\n",
-                                field_type->as.pointer_to->kind);
                     }
                 }
                 
                 expr->type = field_type;
-                fprintf(stderr, "[DEBUG] 成员访问完成: expr->type kind=%d\n", expr->type ? expr->type->kind : -1);
             } else {
                 // 字段未找到，可能是类方法调用
                 // 从结构体类型中获取类名
