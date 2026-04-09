@@ -1883,16 +1883,82 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             
             // 如果没有显式类型，从初始化表达式推断类型
             if (!sym->type && var_decl->initializer) {
-                // 简单类型推断：根据初始化表达式的类型
+                // 增强类型推断：支持更多表达式类型
                 CnAstExpr *init = var_decl->initializer;
-                if (init->kind == CN_AST_EXPR_STRING_LITERAL) {
-                    sym->type = cn_type_new_primitive(CN_TYPE_STRING);
-                } else if (init->kind == CN_AST_EXPR_INTEGER_LITERAL) {
-                    sym->type = cn_type_new_primitive(CN_TYPE_INT);
-                } else if (init->kind == CN_AST_EXPR_FLOAT_LITERAL) {
-                    sym->type = cn_type_new_primitive(CN_TYPE_FLOAT);
-                } else if (init->kind == CN_AST_EXPR_BOOL_LITERAL) {
-                    sym->type = cn_type_new_primitive(CN_TYPE_BOOL);
+                
+                switch (init->kind) {
+                    case CN_AST_EXPR_STRING_LITERAL:
+                        sym->type = cn_type_new_primitive(CN_TYPE_STRING);
+                        break;
+                    case CN_AST_EXPR_INTEGER_LITERAL:
+                        sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        break;
+                    case CN_AST_EXPR_FLOAT_LITERAL:
+                        sym->type = cn_type_new_primitive(CN_TYPE_FLOAT);
+                        break;
+                    case CN_AST_EXPR_BOOL_LITERAL:
+                        sym->type = cn_type_new_primitive(CN_TYPE_BOOL);
+                        break;
+                    case CN_AST_EXPR_CHAR_LITERAL:
+                        sym->type = cn_type_new_primitive(CN_TYPE_CHAR);
+                        break;
+                    case CN_AST_EXPR_CAST:
+                        // 强制类型转换表达式：直接使用目标类型
+                        // 例如：变量 符号指针 = (符号*)分配内存(...)
+                        if (init->as.cast.target_type) {
+                            sym->type = init->as.cast.target_type;
+                        }
+                        break;
+                    case CN_AST_EXPR_CALL:
+                        // 函数调用表达式：查找函数返回类型
+                        // 例如：变量 缓冲区 = 创建输出缓冲区(256)
+                        if (init->as.call.callee &&
+                            init->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
+                            const char *func_name = init->as.call.callee->as.identifier.name;
+                            size_t func_name_len = init->as.call.callee->as.identifier.name_length;
+                            CnSemSymbol *func_sym = cn_sem_scope_lookup(module_scope, func_name, func_name_len);
+                            if (func_sym && func_sym->type &&
+                                func_sym->type->kind == CN_TYPE_FUNCTION) {
+                                sym->type = func_sym->type->as.function.return_type;
+                            }
+                        }
+                        break;
+                    case CN_AST_EXPR_MEMBER_ACCESS:
+                        // 成员访问表达式：从结构体/类定义获取成员类型
+                        // 例如：变量 值 = 对象.成员
+                        if (init->as.member.object &&
+                            init->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                            const char *obj_name = init->as.member.object->as.identifier.name;
+                            size_t obj_name_len = init->as.member.object->as.identifier.name_length;
+                            CnSemSymbol *obj_sym = cn_sem_scope_lookup(module_scope, obj_name, obj_name_len);
+                            if (obj_sym && obj_sym->type &&
+                                obj_sym->type->kind == CN_TYPE_STRUCT) {
+                                // 在结构体中查找成员
+                                CnStructField *field = cn_type_struct_find_field(
+                                    obj_sym->type,
+                                    init->as.member.member_name,
+                                    init->as.member.member_name_length);
+                                if (field) {
+                                    sym->type = field->field_type;
+                                }
+                            }
+                        }
+                        break;
+                    case CN_AST_EXPR_IDENTIFIER:
+                        // 标识符引用：从符号表查找变量类型
+                        // 例如：变量 新变量 = 已有变量
+                        {
+                            const char *ident_name = init->as.identifier.name;
+                            size_t ident_name_len = init->as.identifier.name_length;
+                            CnSemSymbol *ident_sym = cn_sem_scope_lookup(module_scope, ident_name, ident_name_len);
+                            if (ident_sym) {
+                                sym->type = ident_sym->type;
+                            }
+                        }
+                        break;
+                    default:
+                        // 其他表达式类型暂不处理
+                        break;
                 }
             }
         }

@@ -2172,6 +2172,24 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             }
             break;
         }
+        case CN_AST_EXPR_CAST: {
+            // 强制类型转换表达式：(目标类型)表达式
+            // 类型推断：直接使用目标类型作为表达式类型
+            // 例如：(符号*)分配内存(...) 的类型是 符号*
+            
+            // 先推断操作数的类型（用于类型检查）
+            if (expr->as.cast.operand) {
+                infer_expr_type(scope, expr->as.cast.operand, diagnostics);
+            }
+            
+            // 使用目标类型作为表达式类型
+            if (expr->as.cast.target_type) {
+                expr->type = expr->as.cast.target_type;
+            } else {
+                expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+            }
+            break;
+        }
         default:
             expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
             break;

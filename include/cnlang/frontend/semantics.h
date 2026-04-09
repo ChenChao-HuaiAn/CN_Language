@@ -182,6 +182,53 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                       const char *member_name,
                                       size_t member_name_length);
 
+// ============================================================================
+// 类型推断辅助函数
+// ============================================================================
+
+/**
+ * @brief 从表达式推断类型（简化版本，用于变量声明初始化）
+ *
+ * 支持的表达式类型：
+ * - 字面量表达式（整数、浮点、字符串、布尔、字符）
+ * - 强制类型转换表达式
+ * - 函数调用表达式
+ * - 成员访问表达式
+ * - 标识符引用
+ *
+ * @param scope 当前作用域
+ * @param expr 表达式节点
+ * @return 推断出的类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_from_expr(CnSemScope *scope, struct CnAstExpr *expr);
+
+/**
+ * @brief 推断函数调用表达式的返回类型
+ *
+ * @param scope 当前作用域
+ * @param call_expr 函数调用表达式
+ * @return 函数返回类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_call_expr(CnSemScope *scope, struct CnAstExpr *call_expr);
+
+/**
+ * @brief 推断成员访问表达式的类型
+ *
+ * @param scope 当前作用域
+ * @param member_expr 成员访问表达式
+ * @return 成员类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_member_access(CnSemScope *scope, struct CnAstExpr *member_expr);
+
+/**
+ * @brief 推断标识符表达式的类型
+ *
+ * @param scope 当前作用域
+ * @param ident_expr 标识符表达式
+ * @return 变量类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_identifier(CnSemScope *scope, struct CnAstExpr *ident_expr);
+
 // 基于当前 AST 构建作用域链，返回全局作用域指针；失败时返回 NULL
 CnSemScope *cn_sem_build_scopes(CnAstProgram *program, struct CnDiagnostics *diagnostics);
 

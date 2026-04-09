@@ -499,3 +499,149 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
 
     return ctx.found_sym;
 }
+
+// =============================================================================
+// 类型推断辅助函数
+// =============================================================================
+
+/**
+ * @brief 从表达式推断类型（简化版本，用于变量声明初始化）
+ *
+ * 支持的表达式类型：
+ * - 字面量表达式（整数、浮点、字符串、布尔、字符）
+ * - 强制类型转换表达式
+ * - 函数调用表达式
+ * - 成员访问表达式
+ * - 标识符引用
+ *
+ * @param scope 当前作用域
+ * @param expr 表达式节点
+ * @return 推断出的类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_from_expr(CnSemScope *scope, CnAstExpr *expr) {
+    if (!expr || !scope) return NULL;
+    
+    // 如果表达式已经有类型信息，直接返回
+    if (expr->type && expr->type->kind != CN_TYPE_UNKNOWN) {
+        return expr->type;
+    }
+    
+    switch (expr->kind) {
+        case CN_AST_EXPR_INTEGER_LITERAL:
+            return cn_type_new_primitive(CN_TYPE_INT);
+        case CN_AST_EXPR_FLOAT_LITERAL:
+            return cn_type_new_primitive(CN_TYPE_FLOAT);
+        case CN_AST_EXPR_STRING_LITERAL:
+            return cn_type_new_primitive(CN_TYPE_STRING);
+        case CN_AST_EXPR_BOOL_LITERAL:
+            return cn_type_new_primitive(CN_TYPE_BOOL);
+        case CN_AST_EXPR_CHAR_LITERAL:
+            return cn_type_new_primitive(CN_TYPE_CHAR);
+        case CN_AST_EXPR_CAST:
+            // 强制类型转换：直接使用目标类型
+            return expr->as.cast.target_type;
+        case CN_AST_EXPR_CALL:
+            // 函数调用：返回函数返回类型
+            return cn_type_infer_call_expr(scope, expr);
+        case CN_AST_EXPR_MEMBER_ACCESS:
+            // 成员访问：返回成员类型
+            return cn_type_infer_member_access(scope, expr);
+        case CN_AST_EXPR_IDENTIFIER:
+            // 标识符引用：返回变量类型
+            return cn_type_infer_identifier(scope, expr);
+        default:
+            return NULL;
+    }
+}
+
+/**
+ * @brief 推断函数调用表达式的返回类型
+ *
+ * @param scope 当前作用域
+ * @param call_expr 函数调用表达式
+ * @return 函数返回类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_call_expr(CnSemScope *scope, CnAstExpr *call_expr) {
+    if (!call_expr || call_expr->kind != CN_AST_EXPR_CALL) return NULL;
+    if (!call_expr->as.call.callee) return NULL;
+    
+    // 只处理标识符形式的函数调用
+    if (call_expr->as.call.callee->kind != CN_AST_EXPR_IDENTIFIER) return NULL;
+    
+    const char *func_name = call_expr->as.call.callee->as.identifier.name;
+    size_t func_name_len = call_expr->as.call.callee->as.identifier.name_length;
+    
+    if (!func_name || func_name_len == 0) return NULL;
+    
+    // 在作用域中查找函数符号
+    CnSemSymbol *func_sym = cn_sem_scope_lookup(scope, func_name, func_name_len);
+    if (!func_sym || !func_sym->type) return NULL;
+    
+    // 检查是否为函数类型
+    if (func_sym->type->kind == CN_TYPE_FUNCTION) {
+        return func_sym->type->as.function.return_type;
+    }
+    
+    // 检查是否为函数指针类型
+    if (func_sym->type->kind == CN_TYPE_POINTER &&
+        func_sym->type->as.pointer_to &&
+        func_sym->type->as.pointer_to->kind == CN_TYPE_FUNCTION) {
+        return func_sym->type->as.pointer_to->as.function.return_type;
+    }
+    
+    return NULL;
+}
+
+/**
+ * @brief 推断成员访问表达式的类型
+ *
+ * @param scope 当前作用域
+ * @param member_expr 成员访问表达式
+ * @return 成员类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_member_access(CnSemScope *scope, CnAstExpr *member_expr) {
+    if (!member_expr || member_expr->kind != CN_AST_EXPR_MEMBER_ACCESS) return NULL;
+    if (!member_expr->as.member.object) return NULL;
+    
+    // 获取对象类型
+    CnType *object_type = cn_type_infer_from_expr(scope, member_expr->as.member.object);
+    if (!object_type) return NULL;
+    
+    // 处理指针类型（自动解引用）
+    if (object_type->kind == CN_TYPE_POINTER) {
+        object_type = object_type->as.pointer_to;
+        if (!object_type) return NULL;
+    }
+    
+    // 只处理结构体类型
+    if (object_type->kind != CN_TYPE_STRUCT) return NULL;
+    
+    // 在结构体中查找成员
+    CnStructField *field = cn_type_struct_find_field(
+        object_type,
+        member_expr->as.member.member_name,
+        member_expr->as.member.member_name_length);
+    
+    return field ? field->field_type : NULL;
+}
+
+/**
+ * @brief 推断标识符表达式的类型
+ *
+ * @param scope 当前作用域
+ * @param ident_expr 标识符表达式
+ * @return 变量类型，如果无法推断则返回 NULL
+ */
+CnType *cn_type_infer_identifier(CnSemScope *scope, CnAstExpr *ident_expr) {
+    if (!ident_expr || ident_expr->kind != CN_AST_EXPR_IDENTIFIER) return NULL;
+    
+    const char *name = ident_expr->as.identifier.name;
+    size_t name_len = ident_expr->as.identifier.name_length;
+    
+    if (!name || name_len == 0) return NULL;
+    
+    // 在作用域中查找符号
+    CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
+    
+    return sym ? sym->type : NULL;
+}
