@@ -980,20 +980,24 @@ _Bool 同步恢复(struct 解析器*);
 _Bool 是否类型关键字(enum 词元类型枚举);
 
 struct 解析器* 创建解析器(struct 扫描器* cn_var_扫描器实例, struct 诊断集合* cn_var_诊断集合指针) {
-  long long r1, r2, r5, r10, r15;
+  long long r2;
   struct 扫描器* r0;
   void* r3;
   struct 解析器* r4;
   struct 扫描器* r6;
   struct 诊断集合* r7;
   struct 解析器* r8;
+  struct 语法错误恢复上下文* r10;
   struct 解析器* r11;
   struct 解析器* r16;
   struct 扫描器* r17;
   struct 扫描器* r19;
   struct 解析器* r21;
+  _Bool r1;
+  _Bool r5;
   _Bool r13;
   _Bool r14;
+  _Bool r15;
   struct 语法错误恢复上下文 r9;
   struct 语法错误恢复上下文 r12;
   struct 词元 r18;
@@ -1002,26 +1006,26 @@ struct 解析器* 创建解析器(struct 扫描器* cn_var_扫描器实例, stru
   entry:
   r0 = cn_var_扫描器实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1615; else goto if_merge_1616;
+  if (r1) goto if_then_0; else goto if_merge_1;
 
-  if_then_1615:
+  if_then_0:
   return 0;
-  goto if_merge_1616;
+  goto if_merge_1;
 
-  if_merge_1616:
+  if_merge_1:
   struct 解析器* cn_var_实例_0;
   r2 = cn_var_解析器大小;
   r3 = 分配内存(r2);
   cn_var_实例_0 = r3;
   r4 = cn_var_实例_0;
   r5 = r4 == 0;
-  if (r5) goto if_then_1617; else goto if_merge_1618;
+  if (r5) goto if_then_2; else goto if_merge_3;
 
-  if_then_1617:
+  if_then_2:
   return 0;
-  goto if_merge_1618;
+  goto if_merge_3;
 
-  if_merge_1618:
+  if_merge_3:
   r6 = cn_var_扫描器实例;
   r7 = cn_var_诊断集合指针;
   _Bool cn_var_初始化结果_1;
@@ -1034,15 +1038,15 @@ struct 解析器* 创建解析器(struct 扫描器* cn_var_扫描器实例, stru
   cn_var_初始化结果_1 = r13;
   r14 = cn_var_初始化结果_1;
   r15 = r14 == 0;
-  if (r15) goto if_then_1619; else goto if_merge_1620;
+  if (r15) goto if_then_4; else goto if_merge_5;
 
-  if_then_1619:
+  if_then_4:
   r16 = cn_var_实例_0;
   释放内存(r16);
   return 0;
-  goto if_merge_1620;
+  goto if_merge_5;
 
-  if_merge_1620:
+  if_merge_5:
   r17 = cn_var_扫描器实例;
   r18 = 下一个词元(r17);
   r19 = cn_var_扫描器实例;
@@ -1052,26 +1056,25 @@ struct 解析器* 创建解析器(struct 扫描器* cn_var_扫描器实例, stru
 }
 
 void 销毁解析器(struct 解析器* cn_var_实例) {
-  long long r1;
   struct 解析器* r0;
   struct 解析器* r2;
+  _Bool r1;
 
   entry:
   r0 = cn_var_实例;
   r1 = r0 != 0;
-  if (r1) goto if_then_1621; else goto if_merge_1622;
+  if (r1) goto if_then_6; else goto if_merge_7;
 
-  if_then_1621:
+  if_then_6:
   r2 = cn_var_实例;
   释放内存(r2);
-  goto if_merge_1622;
+  goto if_merge_7;
 
-  if_merge_1622:
+  if_merge_7:
   return;
 }
 
 struct 程序节点* 解析程序(struct 解析器* cn_var_实例) {
-  long long r1, r4, r8, r12;
   struct 解析器* r0;
   struct 程序节点* r2;
   struct 程序节点* r3;
@@ -1082,83 +1085,87 @@ struct 程序节点* 解析程序(struct 解析器* cn_var_实例) {
   struct 程序节点* r13;
   struct 声明节点* r14;
   struct 程序节点* r15;
+  _Bool r1;
+  _Bool r4;
+  _Bool r8;
+  _Bool r12;
   struct 词元 r6;
   enum 词元类型枚举 r7;
 
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1623; else goto if_merge_1624;
+  if (r1) goto if_then_8; else goto if_merge_9;
 
-  if_then_1623:
+  if_then_8:
   return 0;
-  goto if_merge_1624;
+  goto if_merge_9;
 
-  if_merge_1624:
+  if_merge_9:
   struct 程序节点* cn_var_程序_0;
   r2 = 创建程序节点();
   cn_var_程序_0 = r2;
   r3 = cn_var_程序_0;
   r4 = r3 == 0;
-  if (r4) goto if_then_1625; else goto if_merge_1626;
+  if (r4) goto if_then_10; else goto if_merge_11;
 
-  if_then_1625:
+  if_then_10:
   return 0;
-  goto if_merge_1626;
+  goto if_merge_11;
 
-  if_merge_1626:
-  goto while_cond_1627;
+  if_merge_11:
+  goto while_cond_12;
 
-  while_cond_1627:
+  while_cond_12:
   r5 = cn_var_实例;
   r6 = r5->当前词元;
   r7 = r6.类型;
   r8 = r7 != 80;
-  if (r8) goto while_body_1628; else goto while_exit_1629;
+  if (r8) goto while_body_13; else goto while_exit_14;
 
-  while_body_1628:
+  while_body_13:
   struct 声明节点* cn_var_声明_1;
   r9 = cn_var_实例;
   r10 = 解析顶层声明(r9);
   cn_var_声明_1 = r10;
   r11 = cn_var_声明_1;
   r12 = r11 != 0;
-  if (r12) goto if_then_1630; else goto if_merge_1631;
+  if (r12) goto if_then_15; else goto if_merge_16;
 
-  while_exit_1629:
+  while_exit_14:
   r15 = cn_var_程序_0;
   return r15;
 
-  if_then_1630:
+  if_then_15:
   r13 = cn_var_程序_0;
   r14 = cn_var_声明_1;
   程序添加声明(r13, r14);
-  goto if_merge_1631;
+  goto if_merge_16;
 
-  if_merge_1631:
-  goto while_cond_1627;
+  if_merge_16:
+  goto while_cond_12;
   return NULL;
 }
 
 void 前进词元(struct 解析器* cn_var_实例) {
-  long long r1;
   struct 解析器* r0;
   struct 解析器* r2;
   struct 解析器* r4;
   struct 扫描器* r5;
+  _Bool r1;
   struct 词元 r3;
   struct 词元 r6;
 
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1632; else goto if_merge_1633;
+  if (r1) goto if_then_17; else goto if_merge_18;
 
-  if_then_1632:
+  if_then_17:
   return;
-  goto if_merge_1633;
+  goto if_merge_18;
 
-  if_merge_1633:
+  if_merge_18:
   r2 = cn_var_实例;
   r3 = r2->下一个词元;
   r4 = cn_var_实例;
@@ -1168,11 +1175,11 @@ void 前进词元(struct 解析器* cn_var_实例) {
 }
 
 _Bool 期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类型) {
-  long long r1;
   struct 解析器* r0;
   struct 解析器* r2;
   struct 解析器* r5;
   struct 解析器* r6;
+  _Bool r1;
   _Bool r4;
   enum 词元类型枚举 r3;
   enum 词元类型枚举 r7;
@@ -1180,25 +1187,25 @@ _Bool 期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1634; else goto if_merge_1635;
+  if (r1) goto if_then_19; else goto if_merge_20;
 
-  if_then_1634:
+  if_then_19:
   return 0;
-  goto if_merge_1635;
+  goto if_merge_20;
 
-  if_merge_1635:
+  if_merge_20:
   r2 = cn_var_实例;
   r3 = cn_var_类型;
   r4 = 检查(r2, r3);
-  if (r4) goto if_then_1636; else goto if_merge_1637;
+  if (r4) goto if_then_21; else goto if_merge_22;
 
-  if_then_1636:
+  if_then_21:
   r5 = cn_var_实例;
   前进词元(r5);
   return 1;
-  goto if_merge_1637;
+  goto if_merge_22;
 
-  if_merge_1637:
+  if_merge_22:
   r6 = cn_var_实例;
   r7 = cn_var_类型;
   报告错误期望(r6, r7);
@@ -1206,9 +1213,10 @@ _Bool 期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
 }
 
 _Bool 检查(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类型) {
-  long long r1, r6;
   struct 解析器* r0;
   struct 解析器* r2;
+  _Bool r1;
+  _Bool r6;
   struct 词元 r3;
   enum 词元类型枚举 r4;
   enum 词元类型枚举 r5;
@@ -1216,13 +1224,13 @@ _Bool 检查(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1638; else goto if_merge_1639;
+  if (r1) goto if_then_23; else goto if_merge_24;
 
-  if_then_1638:
+  if_then_23:
   return 0;
-  goto if_merge_1639;
+  goto if_merge_24;
 
-  if_merge_1639:
+  if_merge_24:
   r2 = cn_var_实例;
   r3 = r2->当前词元;
   r4 = r3.类型;
@@ -1241,94 +1249,98 @@ _Bool 匹配(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
   r0 = cn_var_实例;
   r1 = cn_var_类型;
   r2 = 检查(r0, r1);
-  if (r2) goto if_then_1640; else goto if_merge_1641;
+  if (r2) goto if_then_25; else goto if_merge_26;
 
-  if_then_1640:
+  if_then_25:
   r3 = cn_var_实例;
   前进词元(r3);
   return 1;
-  goto if_merge_1641;
+  goto if_merge_26;
 
-  if_merge_1641:
+  if_merge_26:
   return 0;
 }
 
 _Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_var_类型数组, long long cn_var_数量) {
-  long long r0, r1, r3, r5, r6, r7, r8, r9, r10, r13, r17, r18;
+  long long r0, r1, r6, r8, r9, r13, r17, r18;
   struct 解析器* r2;
   enum 词元类型枚举* r4;
   struct 解析器* r11;
   enum 词元类型枚举* r12;
-  void* r14;
+  enum 词元类型枚举* r14;
   struct 解析器* r16;
+  _Bool r3;
+  _Bool r5;
+  _Bool r7;
+  _Bool r10;
   _Bool r15;
 
   entry:
   r2 = cn_var_实例;
   r3 = r2 == 0;
-  if (r3) goto logic_merge_1647; else goto logic_rhs_1646;
+  if (r3) goto logic_merge_32; else goto logic_rhs_31;
 
-  if_then_1642:
+  if_then_27:
   return 0;
-  goto if_merge_1643;
+  goto if_merge_28;
 
-  if_merge_1643:
+  if_merge_28:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_1648;
+  goto for_cond_33;
 
-  logic_rhs_1644:
+  logic_rhs_29:
   r6 = cn_var_数量;
   r7 = r6 <= 0;
-  goto logic_merge_1645;
+  goto logic_merge_30;
 
-  logic_merge_1645:
-  if (r7) goto if_then_1642; else goto if_merge_1643;
+  logic_merge_30:
+  if (r7) goto if_then_27; else goto if_merge_28;
 
-  logic_rhs_1646:
+  logic_rhs_31:
   r4 = cn_var_类型数组;
   r5 = r4 == 0;
-  goto logic_merge_1647;
+  goto logic_merge_32;
 
-  logic_merge_1647:
-  if (r5) goto logic_merge_1645; else goto logic_rhs_1644;
+  logic_merge_32:
+  if (r5) goto logic_merge_30; else goto logic_rhs_29;
 
-  for_cond_1648:
+  for_cond_33:
   r8 = cn_var_i_0;
   r9 = cn_var_数量;
   r10 = r8 < r9;
-  if (r10) goto for_body_1649; else goto for_exit_1651;
+  if (r10) goto for_body_34; else goto for_exit_36;
 
-  for_body_1649:
+  for_body_34:
   r11 = cn_var_实例;
   r12 = cn_var_类型数组;
   r13 = cn_var_i_0;
-  r14 = *(void**)cn_rt_array_get_element(r12, r13, 8);
+  r14 = *(enum 词元类型枚举**)cn_rt_array_get_element(r12, r13, 8);
   r15 = 检查(r11, r14);
-  if (r15) goto if_then_1652; else goto if_merge_1653;
+  if (r15) goto if_then_37; else goto if_merge_38;
 
-  for_update_1650:
+  for_update_35:
   r17 = cn_var_i_0;
   r18 = r17 + 1;
   cn_var_i_0 = r18;
-  goto for_cond_1648;
+  goto for_cond_33;
 
-  for_exit_1651:
+  for_exit_36:
   return 0;
 
-  if_then_1652:
+  if_then_37:
   r16 = cn_var_实例;
   前进词元(r16);
   return 1;
-  goto if_merge_1653;
+  goto if_merge_38;
 
-  if_merge_1653:
-  goto for_update_1650;
+  if_merge_38:
+  goto for_update_35;
   return 0;
 }
 
 void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_错误码, char* cn_var_消息) {
-  long long r1, r3, r4, r7, r12, r15;
+  long long r3, r4, r12, r15;
   char* r16;
   struct 解析器* r0;
   struct 解析器* r2;
@@ -1338,6 +1350,8 @@ void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_�
   struct 解析器* r13;
   struct 解析器* r17;
   struct 诊断集合* r18;
+  _Bool r1;
+  _Bool r7;
   struct 源位置 r9;
   struct 词元 r11;
   struct 词元 r14;
@@ -1347,22 +1361,22 @@ void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_�
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1654; else goto if_merge_1655;
+  if (r1) goto if_then_39; else goto if_merge_40;
 
-  if_then_1654:
+  if_then_39:
   return;
-  goto if_merge_1655;
+  goto if_merge_40;
 
-  if_merge_1655:
+  if_merge_40:
   r2 = cn_var_实例;
   r3 = r2->错误计数;
   r4 = r3 + 1;
   r5 = cn_var_实例;
   r6 = r5->诊断集合指针;
   r7 = r6 != 0;
-  if (r7) goto if_then_1656; else goto if_merge_1657;
+  if (r7) goto if_then_41; else goto if_merge_42;
 
-  if_then_1656:
+  if_then_41:
   struct 诊断信息 cn_var_信息_0;
   r8 = cn_var_错误码;
   r9 = 创建未知位置();
@@ -1377,59 +1391,76 @@ void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_�
   r18 = r17->诊断集合指针;
   r19 = cn_var_信息_0;
   诊断集合添加(r18, r19);
-  goto if_merge_1657;
+  goto if_merge_42;
 
-  if_merge_1657:
+  if_merge_42:
   return;
 }
 
 void 报告错误期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_期望类型) {
-  long long r1;
   struct 解析器* r0;
   struct 解析器* r2;
+  _Bool r1;
 
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1658; else goto if_merge_1659;
+  if (r1) goto if_then_43; else goto if_merge_44;
 
-  if_then_1658:
+  if_then_43:
   return;
-  goto if_merge_1659;
+  goto if_merge_44;
 
-  if_merge_1659:
+  if_merge_44:
   r2 = cn_var_实例;
   报告错误(r2, 11, "期望的词元类型不匹配");
   return;
 }
 
 _Bool 同步恢复(struct 解析器* cn_var_实例) {
-  long long r1, r4, r9, r10, r12, r13, r14, r17, r22, r26, r30, r33, r40, r47, r53, r54, r55, r56, r57, r58, r59, r61, r63, r65, r67, r69, r71, r73, r75, r78;
+  long long r9, r10, r12, r13, r22, r30, r53, r54, r55, r56, r57, r58, r59;
   struct 解析器* r0;
   struct 解析器* r2;
+  struct 语法错误恢复上下文* r4;
   struct 解析器* r5;
   struct 解析器* r8;
   struct 解析器* r11;
   struct 解析器* r15;
+  struct 语法错误恢复上下文* r17;
   struct 解析器* r18;
   struct 解析器* r20;
   struct 解析器* r23;
   struct 解析器* r27;
   struct 解析器* r31;
+  struct 语法错误恢复上下文* r33;
   struct 解析器* r34;
   struct 解析器* r36;
   struct 解析器* r38;
+  struct 语法错误恢复上下文* r40;
   struct 解析器* r41;
   struct 解析器* r43;
   struct 解析器* r45;
+  struct 语法错误恢复上下文* r47;
   struct 解析器* r48;
   struct 解析器* r50;
   struct 解析器* r76;
+  struct 语法错误恢复上下文* r78;
   struct 解析器* r79;
   struct 解析器* r81;
+  _Bool r1;
   _Bool r7;
+  _Bool r14;
+  _Bool r26;
   _Bool r37;
   _Bool r44;
+  _Bool r61;
+  _Bool r63;
+  _Bool r65;
+  _Bool r67;
+  _Bool r69;
+  _Bool r71;
+  _Bool r73;
+  _Bool r75;
   struct 语法错误恢复上下文 r3;
   struct 语法错误恢复上下文 r6;
   struct 语法错误恢复上下文 r16;
@@ -1444,6 +1475,11 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   struct 语法错误恢复上下文 r46;
   struct 语法错误恢复上下文 r49;
   struct 词元 r51;
+  struct 语法错误恢复上下文 r77;
+  struct 语法错误恢复上下文 r80;
+  enum 词元类型枚举 r25;
+  enum 词元类型枚举 r29;
+  enum 词元类型枚举 r52;
   enum 词元类型枚举 r60;
   enum 词元类型枚举 r62;
   enum 词元类型枚举 r64;
@@ -1452,35 +1488,30 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   enum 词元类型枚举 r70;
   enum 词元类型枚举 r72;
   enum 词元类型枚举 r74;
-  struct 语法错误恢复上下文 r77;
-  struct 语法错误恢复上下文 r80;
-  enum 词元类型枚举 r25;
-  enum 词元类型枚举 r29;
-  enum 词元类型枚举 r52;
 
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1660; else goto if_merge_1661;
+  if (r1) goto if_then_45; else goto if_merge_46;
 
-  if_then_1660:
+  if_then_45:
   return 0;
-  goto if_merge_1661;
+  goto if_merge_46;
 
-  if_merge_1661:
+  if_merge_46:
   r2 = cn_var_实例;
   r3 = r2->恢复上下文;
   r5 = cn_var_实例;
   r6 = r5->恢复上下文;
   r4 = &r6;
   r7 = 应该抑制错误(r4);
-  if (r7) goto if_then_1662; else goto if_merge_1663;
+  if (r7) goto if_then_47; else goto if_merge_48;
 
-  if_then_1662:
+  if_then_47:
   return 0;
-  goto if_merge_1663;
+  goto if_merge_48;
 
-  if_merge_1663:
+  if_merge_48:
   r8 = cn_var_实例;
   r9 = r8->恢复计数;
   r10 = r9 + 1;
@@ -1488,13 +1519,13 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   r12 = r11->恢复计数;
   r13 = cn_var_最大错误恢复次数;
   r14 = r12 > r13;
-  if (r14) goto if_then_1664; else goto if_merge_1665;
+  if (r14) goto if_then_49; else goto if_merge_50;
 
-  if_then_1664:
+  if_then_49:
   return 0;
-  goto if_merge_1665;
+  goto if_merge_50;
 
-  if_merge_1665:
+  if_merge_50:
   r15 = cn_var_实例;
   r16 = r15->恢复上下文;
   r18 = cn_var_实例;
@@ -1504,26 +1535,26 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   r21 = r20->当前词元;
   r22 = r21.行号;
   记录错误(r17, r22);
-  goto while_cond_1666;
+  goto while_cond_51;
 
-  while_cond_1666:
+  while_cond_51:
   r23 = cn_var_实例;
   r24 = r23->当前词元;
   r25 = r24.类型;
   r26 = r25 != 80;
-  if (r26) goto while_body_1667; else goto while_exit_1668;
+  if (r26) goto while_body_52; else goto while_exit_53;
 
-  while_body_1667:
+  while_body_52:
   r27 = cn_var_实例;
   r28 = r27->当前词元;
   r29 = r28.类型;
   r30 = 是任意同步点(r29);
-  if (r30) goto if_then_1669; else goto if_merge_1670;
+  if (r30) goto if_then_54; else goto if_merge_55;
 
-  while_exit_1668:
+  while_exit_53:
   return 0;
 
-  if_then_1669:
+  if_then_54:
   r31 = cn_var_实例;
   r32 = r31->恢复上下文;
   r34 = cn_var_实例;
@@ -1531,14 +1562,14 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   r33 = &r35;
   重置错误计数(r33);
   return 1;
-  goto if_merge_1670;
+  goto if_merge_55;
 
-  if_merge_1670:
+  if_merge_55:
   r36 = cn_var_实例;
   r37 = 匹配(r36, 75);
-  if (r37) goto if_then_1671; else goto if_merge_1672;
+  if (r37) goto if_then_56; else goto if_merge_57;
 
-  if_then_1671:
+  if_then_56:
   r38 = cn_var_实例;
   r39 = r38->恢复上下文;
   r41 = cn_var_实例;
@@ -1546,14 +1577,14 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   r40 = &r42;
   重置错误计数(r40);
   return 1;
-  goto if_merge_1672;
+  goto if_merge_57;
 
-  if_merge_1672:
+  if_merge_57:
   r43 = cn_var_实例;
   r44 = 检查(r43, 72);
-  if (r44) goto if_then_1673; else goto if_merge_1674;
+  if (r44) goto if_then_58; else goto if_merge_59;
 
-  if_then_1673:
+  if_then_58:
   r45 = cn_var_实例;
   r46 = r45->恢复上下文;
   r48 = cn_var_实例;
@@ -1561,9 +1592,9 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   r47 = &r49;
   重置错误计数(r47);
   return 1;
-  goto if_merge_1674;
+  goto if_merge_59;
 
-  if_merge_1674:
+  if_merge_59:
   enum 词元类型枚举 cn_var_类型_0;
   r50 = cn_var_实例;
   r51 = r50->当前词元;
@@ -1571,9 +1602,9 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   cn_var_类型_0 = r52;
   r60 = cn_var_类型_0;
   r61 = r60 == 17;
-  if (r61) goto logic_merge_1690; else goto logic_rhs_1689;
+  if (r61) goto logic_merge_75; else goto logic_rhs_74;
 
-  if_then_1675:
+  if_then_60:
   r76 = cn_var_实例;
   r77 = r76->恢复上下文;
   r79 = cn_var_实例;
@@ -1581,73 +1612,81 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   r78 = &r80;
   重置错误计数(r78);
   return 1;
-  goto if_merge_1676;
+  goto if_merge_61;
 
-  if_merge_1676:
+  if_merge_61:
   r81 = cn_var_实例;
   前进词元(r81);
-  goto while_cond_1666;
+  goto while_cond_51;
 
-  logic_rhs_1677:
+  logic_rhs_62:
   r74 = cn_var_类型_0;
   r75 = r74 == 22;
-  goto logic_merge_1678;
+  goto logic_merge_63;
 
-  logic_merge_1678:
-  if (r75) goto if_then_1675; else goto if_merge_1676;
+  logic_merge_63:
+  if (r75) goto if_then_60; else goto if_merge_61;
 
-  logic_rhs_1679:
+  logic_rhs_64:
   r72 = cn_var_类型_0;
   r73 = r72 == 21;
-  goto logic_merge_1680;
+  goto logic_merge_65;
 
-  logic_merge_1680:
-  if (r73) goto logic_merge_1678; else goto logic_rhs_1677;
+  logic_merge_65:
+  if (r73) goto logic_merge_63; else goto logic_rhs_62;
 
-  logic_rhs_1681:
+  logic_rhs_66:
   r70 = cn_var_类型_0;
   r71 = r70 == 19;
-  goto logic_merge_1682;
+  goto logic_merge_67;
 
-  logic_merge_1682:
-  if (r71) goto logic_merge_1680; else goto logic_rhs_1679;
+  logic_merge_67:
+  if (r71) goto logic_merge_65; else goto logic_rhs_64;
 
-  logic_rhs_1683:
+  logic_rhs_68:
   r68 = cn_var_类型_0;
   r69 = r68 == 28;
-  goto logic_merge_1684;
+  goto logic_merge_69;
 
-  logic_merge_1684:
-  if (r69) goto logic_merge_1682; else goto logic_rhs_1681;
+  logic_merge_69:
+  if (r69) goto logic_merge_67; else goto logic_rhs_66;
 
-  logic_rhs_1685:
+  logic_rhs_70:
   r66 = cn_var_类型_0;
   r67 = r66 == 16;
-  goto logic_merge_1686;
+  goto logic_merge_71;
 
-  logic_merge_1686:
-  if (r67) goto logic_merge_1684; else goto logic_rhs_1683;
+  logic_merge_71:
+  if (r67) goto logic_merge_69; else goto logic_rhs_68;
 
-  logic_rhs_1687:
+  logic_rhs_72:
   r64 = cn_var_类型_0;
   r65 = r64 == 15;
-  goto logic_merge_1688;
+  goto logic_merge_73;
 
-  logic_merge_1688:
-  if (r65) goto logic_merge_1686; else goto logic_rhs_1685;
+  logic_merge_73:
+  if (r65) goto logic_merge_71; else goto logic_rhs_70;
 
-  logic_rhs_1689:
+  logic_rhs_74:
   r62 = cn_var_类型_0;
   r63 = r62 == 27;
-  goto logic_merge_1690;
+  goto logic_merge_75;
 
-  logic_merge_1690:
-  if (r63) goto logic_merge_1688; else goto logic_rhs_1687;
+  logic_merge_75:
+  if (r63) goto logic_merge_73; else goto logic_rhs_72;
   return 0;
 }
 
 _Bool 是否类型关键字(enum 词元类型枚举 cn_var_类型) {
-  long long r0, r1, r2, r3, r4, r5, r6, r8, r10, r12, r14, r16, r18, r20, r22;
+  long long r0, r1, r2, r3, r4, r5, r6;
+  _Bool r8;
+  _Bool r10;
+  _Bool r12;
+  _Bool r14;
+  _Bool r16;
+  _Bool r18;
+  _Bool r20;
+  _Bool r22;
   enum 词元类型枚举 r7;
   enum 词元类型枚举 r9;
   enum 词元类型枚举 r11;
@@ -1660,63 +1699,63 @@ _Bool 是否类型关键字(enum 词元类型枚举 cn_var_类型) {
   entry:
   r7 = cn_var_类型;
   r8 = r7 == 10;
-  if (r8) goto logic_merge_1704; else goto logic_rhs_1703;
+  if (r8) goto logic_merge_89; else goto logic_rhs_88;
 
-  logic_rhs_1691:
+  logic_rhs_76:
   r21 = cn_var_类型;
   r22 = r21 == 40;
-  goto logic_merge_1692;
+  goto logic_merge_77;
 
-  logic_merge_1692:
+  logic_merge_77:
   return r22;
 
-  logic_rhs_1693:
+  logic_rhs_78:
   r19 = cn_var_类型;
   r20 = r19 == 16;
-  goto logic_merge_1694;
+  goto logic_merge_79;
 
-  logic_merge_1694:
-  if (r20) goto logic_merge_1692; else goto logic_rhs_1691;
+  logic_merge_79:
+  if (r20) goto logic_merge_77; else goto logic_rhs_76;
 
-  logic_rhs_1695:
+  logic_rhs_80:
   r17 = cn_var_类型;
   r18 = r17 == 15;
-  goto logic_merge_1696;
+  goto logic_merge_81;
 
-  logic_merge_1696:
-  if (r18) goto logic_merge_1694; else goto logic_rhs_1693;
+  logic_merge_81:
+  if (r18) goto logic_merge_79; else goto logic_rhs_78;
 
-  logic_rhs_1697:
+  logic_rhs_82:
   r15 = cn_var_类型;
   r16 = r15 == 14;
-  goto logic_merge_1698;
+  goto logic_merge_83;
 
-  logic_merge_1698:
-  if (r16) goto logic_merge_1696; else goto logic_rhs_1695;
+  logic_merge_83:
+  if (r16) goto logic_merge_81; else goto logic_rhs_80;
 
-  logic_rhs_1699:
+  logic_rhs_84:
   r13 = cn_var_类型;
   r14 = r13 == 13;
-  goto logic_merge_1700;
+  goto logic_merge_85;
 
-  logic_merge_1700:
-  if (r14) goto logic_merge_1698; else goto logic_rhs_1697;
+  logic_merge_85:
+  if (r14) goto logic_merge_83; else goto logic_rhs_82;
 
-  logic_rhs_1701:
+  logic_rhs_86:
   r11 = cn_var_类型;
   r12 = r11 == 12;
-  goto logic_merge_1702;
+  goto logic_merge_87;
 
-  logic_merge_1702:
-  if (r12) goto logic_merge_1700; else goto logic_rhs_1699;
+  logic_merge_87:
+  if (r12) goto logic_merge_85; else goto logic_rhs_84;
 
-  logic_rhs_1703:
+  logic_rhs_88:
   r9 = cn_var_类型;
   r10 = r9 == 11;
-  goto logic_merge_1704;
+  goto logic_merge_89;
 
-  logic_merge_1704:
-  if (r10) goto logic_merge_1702; else goto logic_rhs_1701;
+  logic_merge_89:
+  if (r10) goto logic_merge_87; else goto logic_rhs_86;
   return 0;
 }
 

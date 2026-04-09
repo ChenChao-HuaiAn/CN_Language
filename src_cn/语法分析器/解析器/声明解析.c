@@ -97,70 +97,6 @@ struct 词元 {
     long long 列号;
     long long 长度;
 };
-struct 扫描器;
-struct 扫描器 {
-    char* 源码;
-    long long 位置;
-    long long 行号;
-    long long 列号;
-    long long 源码长度;
-};
-enum 节点类型 {
-    节点类型_接口类型 = 43,
-    节点类型_类类型 = 42,
-    节点类型_枚举类型 = 41,
-    节点类型_结构体类型 = 40,
-    节点类型_函数类型 = 39,
-    节点类型_数组类型 = 38,
-    节点类型_指针类型 = 37,
-    节点类型_基础类型 = 36,
-    节点类型_模板实例化表达式 = 35,
-    节点类型_逻辑表达式 = 34,
-    节点类型_结构体字面量表达式 = 33,
-    节点类型_数组字面量表达式 = 32,
-    节点类型_三元表达式 = 31,
-    节点类型_赋值表达式 = 30,
-    节点类型_数组访问表达式 = 29,
-    节点类型_成员访问表达式 = 28,
-    节点类型_函数调用表达式 = 27,
-    节点类型_标识符表达式 = 26,
-    节点类型_字面量表达式 = 25,
-    节点类型_一元表达式 = 24,
-    节点类型_二元表达式 = 23,
-    节点类型_最终语句 = 22,
-    节点类型_抛出语句 = 21,
-    节点类型_尝试语句 = 20,
-    节点类型_选择语句 = 19,
-    节点类型_继续语句 = 18,
-    节点类型_中断语句 = 17,
-    节点类型_返回语句 = 16,
-    节点类型_循环语句 = 15,
-    节点类型_当语句 = 14,
-    节点类型_如果语句 = 13,
-    节点类型_块语句 = 12,
-    节点类型_表达式语句 = 11,
-    节点类型_模板结构体声明 = 10,
-    节点类型_模板函数声明 = 9,
-    节点类型_接口声明 = 8,
-    节点类型_类声明 = 7,
-    节点类型_导入声明 = 6,
-    节点类型_模块声明 = 5,
-    节点类型_枚举声明 = 4,
-    节点类型_结构体声明 = 3,
-    节点类型_变量声明 = 2,
-    节点类型_函数声明 = 1,
-    节点类型_程序节点 = 0
-};
-struct 源位置 {
-    char* 文件名;
-    long long 行号;
-    long long 列号;
-};
-struct AST节点;
-struct AST节点 {
-    enum 节点类型 类型;
-    struct 源位置 位置;
-};
 enum 导入类型 {
     导入类型_导入_从包导入模块 = 5,
     导入类型_导入_从模块通配符 = 4,
@@ -228,6 +164,52 @@ enum 二元运算符 {
     二元运算符_二元_减 = 1,
     二元运算符_二元_加 = 0
 };
+enum 节点类型 {
+    节点类型_接口类型 = 43,
+    节点类型_类类型 = 42,
+    节点类型_枚举类型 = 41,
+    节点类型_结构体类型 = 40,
+    节点类型_函数类型 = 39,
+    节点类型_数组类型 = 38,
+    节点类型_指针类型 = 37,
+    节点类型_基础类型 = 36,
+    节点类型_模板实例化表达式 = 35,
+    节点类型_逻辑表达式 = 34,
+    节点类型_结构体字面量表达式 = 33,
+    节点类型_数组字面量表达式 = 32,
+    节点类型_三元表达式 = 31,
+    节点类型_赋值表达式 = 30,
+    节点类型_数组访问表达式 = 29,
+    节点类型_成员访问表达式 = 28,
+    节点类型_函数调用表达式 = 27,
+    节点类型_标识符表达式 = 26,
+    节点类型_字面量表达式 = 25,
+    节点类型_一元表达式 = 24,
+    节点类型_二元表达式 = 23,
+    节点类型_最终语句 = 22,
+    节点类型_抛出语句 = 21,
+    节点类型_尝试语句 = 20,
+    节点类型_选择语句 = 19,
+    节点类型_继续语句 = 18,
+    节点类型_中断语句 = 17,
+    节点类型_返回语句 = 16,
+    节点类型_循环语句 = 15,
+    节点类型_当语句 = 14,
+    节点类型_如果语句 = 13,
+    节点类型_块语句 = 12,
+    节点类型_表达式语句 = 11,
+    节点类型_模板结构体声明 = 10,
+    节点类型_模板函数声明 = 9,
+    节点类型_接口声明 = 8,
+    节点类型_类声明 = 7,
+    节点类型_导入声明 = 6,
+    节点类型_模块声明 = 5,
+    节点类型_枚举声明 = 4,
+    节点类型_结构体声明 = 3,
+    节点类型_变量声明 = 2,
+    节点类型_函数声明 = 1,
+    节点类型_程序节点 = 0
+};
 enum 同步点类型 {
     同步点类型_同步点_声明关键字 = 7,
     同步点类型_同步点_类型关键字 = 6,
@@ -291,6 +273,14 @@ enum 诊断错误码 {
 };
 
 // Struct Definitions - 从导入模块
+struct 扫描器;
+struct 扫描器 {
+    char* 源码;
+    long long 位置;
+    long long 行号;
+    long long 列号;
+    long long 源码长度;
+};
 struct 关键字条目;
 struct 关键字条目 {
     char* 名称;
@@ -364,6 +354,11 @@ struct 接口声明;
 struct 导入声明;
 struct 模板函数声明;
 struct 模板结构体声明;
+struct 源位置 {
+    char* 文件名;
+    long long 行号;
+    long long 列号;
+};
 struct 声明节点;
 struct 声明节点 {
     enum 节点类型 类型;
@@ -430,6 +425,10 @@ struct 表达式节点 {
     struct 表达式节点* 左侧表达式;
     struct 表达式节点* 值;
     struct 表达式节点* 指针;
+};
+struct AST节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
 };
 struct 二元表达式;
 struct 二元表达式 {
@@ -753,6 +752,80 @@ struct 诊断集合 {
 };
 
 // Forward Declarations - 从导入模块
+extern long long cn_var_扫描器大小;
+extern long long cn_var_最大数字长度;
+extern long long cn_var_最大字符串长度;
+extern long long cn_var_最大标识符长度;
+struct 词元 扫描运算符(struct 扫描器*);
+struct 词元 扫描字符(struct 扫描器*);
+struct 词元 扫描字符串(struct 扫描器*);
+struct 词元 扫描数字(struct 扫描器*);
+struct 词元 扫描标识符(struct 扫描器*);
+_Bool 跳过块注释(struct 扫描器*);
+void 跳过单行注释(struct 扫描器*);
+void 跳过空白字符(struct 扫描器*);
+_Bool 是否结束(struct 扫描器*);
+long long 前进(struct 扫描器*);
+long long 预览字符(struct 扫描器*, long long);
+long long 当前字符(struct 扫描器*);
+struct 词元 预览词元(struct 扫描器*);
+struct 词元 下一个词元(struct 扫描器*);
+void 销毁扫描器(struct 扫描器*);
+struct 扫描器* 创建扫描器(char*, long long);
+_Bool 是空白字符(long long);
+_Bool 是换行符(long long);
+_Bool 是数字(long long);
+_Bool 是十六进制数字(long long);
+_Bool 是二进制数字(long long);
+_Bool 是八进制数字(long long);
+_Bool 是字母(long long);
+_Bool 是字母或数字(long long);
+_Bool 是中文字符(long long);
+_Bool 是标识符开头(long long);
+_Bool 是标识符字符(long long);
+_Bool 是运算符字符(long long);
+_Bool 是分隔符字符(long long);
+long long 转小写(long long);
+long long 转大写(long long);
+_Bool 是可打印字符(long long);
+_Bool 是十六进制前缀(long long, long long);
+_Bool 是二进制前缀(long long, long long);
+_Bool 是八进制前缀(long long, long long);
+_Bool 是单行注释开始(long long, long long);
+_Bool 是块注释开始(long long, long long);
+_Bool 是块注释结束(long long, long long);
+void* 数组获取(void*, long long);
+long long 获取位置参数个数(void);
+char* 获取位置参数(long long);
+long long 选项存在(char*);
+char* 查找选项(char*);
+char* 获取程序名称(void);
+char* 获取参数(long long);
+long long 获取参数个数(void);
+long long 求最小值(long long, long long);
+long long 求最大值(long long, long long);
+long long 获取绝对值(long long);
+char* 读取行(void);
+long long 字符串格式化(char*, long long, char*);
+char* 字符串格式(char*);
+long long 类型大小(long long);
+void* 分配内存数组(long long, long long);
+enum 词元类型枚举 查找关键字(char*);
+_Bool 是关键字字符串(char*);
+long long 关键字总数(void);
+struct 关键字条目* 获取关键字表(void);
+void 初始化关键字表(void);
+extern long long cn_var_关键字表大小;
+extern struct 关键字条目* cn_var_关键字表;
+extern _Bool cn_var_关键字表已初始化;
+char* 词元类型名称(enum 词元类型枚举);
+struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
+_Bool 是关键字(enum 词元类型枚举);
+_Bool 是字面量(enum 词元类型枚举);
+_Bool 是运算符(enum 词元类型枚举);
+_Bool 是分隔符(enum 词元类型枚举);
+struct 程序节点* 创建程序节点(void);
+void 程序添加声明(struct 程序节点*, struct 声明节点*);
 extern long long cn_var_最大错误恢复次数;
 extern long long cn_var_解析器大小;
 _Bool 初始化错误恢复(struct 语法错误恢复上下文*);
@@ -794,80 +867,13 @@ void 报告期望标记错误(struct 诊断集合*, struct 源位置, char*);
 void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
 void 报告无效字符错误(struct 诊断集合*, struct 源位置, char*);
 void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
-void 程序添加声明(struct 程序节点*, struct 声明节点*);
-struct 程序节点* 创建程序节点(void);
 extern _Bool cn_var_关键字表已初始化;
 extern struct 关键字条目* cn_var_关键字表;
 extern long long cn_var_关键字表大小;
-void 初始化关键字表(void);
-struct 关键字条目* 获取关键字表(void);
-long long 关键字总数(void);
-_Bool 是关键字字符串(char*);
-enum 词元类型枚举 查找关键字(char*);
-void* 分配内存数组(long long, long long);
-long long 类型大小(long long);
-char* 字符串格式(char*);
-long long 字符串格式化(char*, long long, char*);
-char* 读取行(void);
-long long 获取绝对值(long long);
-long long 求最大值(long long, long long);
-long long 求最小值(long long, long long);
-long long 获取参数个数(void);
-char* 获取参数(long long);
-char* 获取程序名称(void);
-char* 查找选项(char*);
-long long 选项存在(char*);
-char* 获取位置参数(long long);
-long long 获取位置参数个数(void);
-void* 数组获取(void*, long long);
-_Bool 是块注释结束(long long, long long);
-_Bool 是块注释开始(long long, long long);
-_Bool 是单行注释开始(long long, long long);
-_Bool 是八进制前缀(long long, long long);
-_Bool 是二进制前缀(long long, long long);
-_Bool 是十六进制前缀(long long, long long);
-_Bool 是可打印字符(long long);
-long long 转大写(long long);
-long long 转小写(long long);
-_Bool 是分隔符字符(long long);
-_Bool 是运算符字符(long long);
-_Bool 是标识符字符(long long);
-_Bool 是标识符开头(long long);
-_Bool 是中文字符(long long);
-_Bool 是字母或数字(long long);
-_Bool 是字母(long long);
-_Bool 是八进制数字(long long);
-_Bool 是二进制数字(long long);
-_Bool 是十六进制数字(long long);
-_Bool 是数字(long long);
-_Bool 是换行符(long long);
-_Bool 是空白字符(long long);
-struct 扫描器* 创建扫描器(char*, long long);
-void 销毁扫描器(struct 扫描器*);
-struct 词元 下一个词元(struct 扫描器*);
-struct 词元 预览词元(struct 扫描器*);
-long long 当前字符(struct 扫描器*);
-long long 预览字符(struct 扫描器*, long long);
-long long 前进(struct 扫描器*);
-_Bool 是否结束(struct 扫描器*);
-void 跳过空白字符(struct 扫描器*);
-void 跳过单行注释(struct 扫描器*);
-_Bool 跳过块注释(struct 扫描器*);
-struct 词元 扫描标识符(struct 扫描器*);
-struct 词元 扫描数字(struct 扫描器*);
-struct 词元 扫描字符串(struct 扫描器*);
-struct 词元 扫描字符(struct 扫描器*);
-struct 词元 扫描运算符(struct 扫描器*);
 extern long long cn_var_最大标识符长度;
 extern long long cn_var_最大字符串长度;
 extern long long cn_var_最大数字长度;
 extern long long cn_var_扫描器大小;
-char* 词元类型名称(enum 词元类型枚举);
-struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
-_Bool 是关键字(enum 词元类型枚举);
-_Bool 是字面量(enum 词元类型枚举);
-_Bool 是运算符(enum 词元类型枚举);
-_Bool 是分隔符(enum 词元类型枚举);
 
 // Global Variables
 
@@ -958,13 +964,13 @@ struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1441; else goto if_merge_1442;
+  if (r1) goto if_then_1352; else goto if_merge_1353;
 
-  if_then_1441:
+  if_then_1352:
   return 0;
-  goto if_merge_1442;
+  goto if_merge_1353;
 
-  if_merge_1442:
+  if_merge_1353:
   enum 可见性 cn_var_当前可见性_0;
   r2 = cn_var_实例;
   r3 = 解析可见性修饰符(r2);
@@ -973,113 +979,113 @@ struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
   r5 = r4->当前词元;
   r6 = r5.类型;
   r7 = r6 == 17;
-  if (r7) goto case_body_1444; else goto switch_check_1455;
+  if (r7) goto case_body_1355; else goto switch_check_1366;
 
-  switch_check_1455:
+  switch_check_1366:
   r8 = r6 == 15;
-  if (r8) goto case_body_1445; else goto switch_check_1456;
+  if (r8) goto case_body_1356; else goto switch_check_1367;
 
-  switch_check_1456:
+  switch_check_1367:
   r9 = r6 == 16;
-  if (r9) goto case_body_1446; else goto switch_check_1457;
+  if (r9) goto case_body_1357; else goto switch_check_1368;
 
-  switch_check_1457:
+  switch_check_1368:
   r10 = r6 == 27;
-  if (r10) goto case_body_1447; else goto switch_check_1458;
+  if (r10) goto case_body_1358; else goto switch_check_1369;
 
-  switch_check_1458:
+  switch_check_1369:
   r11 = r6 == 28;
-  if (r11) goto case_body_1448; else goto switch_check_1459;
+  if (r11) goto case_body_1359; else goto switch_check_1370;
 
-  switch_check_1459:
+  switch_check_1370:
   r12 = cn_var_关键字_模块;
   r13 = r6 == r12;
-  if (r13) goto case_body_1449; else goto switch_check_1460;
+  if (r13) goto case_body_1360; else goto switch_check_1371;
 
-  switch_check_1460:
+  switch_check_1371:
   r14 = r6 == 19;
-  if (r14) goto case_body_1450; else goto switch_check_1461;
+  if (r14) goto case_body_1361; else goto switch_check_1372;
 
-  switch_check_1461:
+  switch_check_1372:
   r15 = r6 == 18;
-  if (r15) goto case_body_1451; else goto switch_check_1462;
+  if (r15) goto case_body_1362; else goto switch_check_1373;
 
-  switch_check_1462:
+  switch_check_1373:
   r16 = r6 == /* NONE */;
-  if (r16) goto case_body_1452; else goto switch_check_1463;
+  if (r16) goto case_body_1363; else goto switch_check_1374;
 
-  switch_check_1463:
+  switch_check_1374:
   r17 = r6 == 23;
-  if (r17) goto case_body_1453; else goto case_default_1454;
+  if (r17) goto case_body_1364; else goto case_default_1365;
 
-  case_body_1444:
+  case_body_1355:
   r18 = cn_var_实例;
   r19 = 解析函数声明(r18);
   return r19;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_body_1445:
+  case_body_1356:
   r20 = cn_var_实例;
   r21 = 解析结构体声明(r20);
   return r21;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_body_1446:
+  case_body_1357:
   r22 = cn_var_实例;
   r23 = 解析枚举声明(r22);
   return r23;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_body_1447:
+  case_body_1358:
   r24 = cn_var_实例;
   r25 = 解析类声明(r24);
   return r25;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_body_1448:
+  case_body_1359:
   r26 = cn_var_实例;
   r27 = 解析接口声明(r26);
   return r27;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_body_1449:
+  case_body_1360:
   r28 = cn_var_实例;
   r29 = 解析模块声明(r28);
   return r29;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_body_1450:
+  case_body_1361:
   r30 = cn_var_实例;
   r31 = 解析导入声明(r30);
   return r31;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_body_1451:
-  goto switch_merge_1443;
+  case_body_1362:
+  goto switch_merge_1354;
 
-  case_body_1452:
-  goto switch_merge_1443;
+  case_body_1363:
+  goto switch_merge_1354;
 
-  case_body_1453:
+  case_body_1364:
   r32 = cn_var_实例;
   r33 = 解析变量声明(r32);
   return r33;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  case_default_1454:
+  case_default_1365:
   r34 = cn_var_实例;
   r35 = r34->当前词元;
   r36 = r35.类型;
   r37 = 是否类型关键字(r36);
-  if (r37) goto if_then_1464; else goto if_merge_1465;
+  if (r37) goto if_then_1375; else goto if_merge_1376;
 
-  if_then_1464:
+  if_then_1375:
   r38 = cn_var_实例;
   r39 = 解析变量声明(r38);
   return r39;
-  goto if_merge_1465;
+  goto if_merge_1376;
 
-  if_merge_1465:
+  if_merge_1376:
   r40 = cn_var_实例;
   r41 = cn_var_实例;
   r42 = r41->当前词元;
@@ -1089,9 +1095,9 @@ struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
   r45 = cn_var_实例;
   前进词元(r45);
   return 0;
-  goto switch_merge_1443;
+  goto switch_merge_1354;
 
-  switch_merge_1443:
+  switch_merge_1354:
   return NULL;
 }
 
@@ -1142,40 +1148,40 @@ struct 声明节点* 解析函数声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1466; else goto if_merge_1467;
+  if (r1) goto if_then_1377; else goto if_merge_1378;
 
-  if_then_1466:
+  if_then_1377:
   return 0;
-  goto if_merge_1467;
+  goto if_merge_1378;
 
-  if_merge_1467:
+  if_merge_1378:
   struct 声明节点* cn_var_节点_0;
   创建函数声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1468; else goto if_merge_1469;
+  if (r3) goto if_then_1379; else goto if_merge_1380;
 
-  if_then_1468:
+  if_then_1379:
   return 0;
-  goto if_merge_1469;
+  goto if_merge_1380;
 
-  if_merge_1469:
-  goto while_cond_1470;
+  if_merge_1380:
+  goto while_cond_1381;
 
-  while_cond_1470:
+  while_cond_1381:
   r7 = cn_var_实例;
   r8 = 检查(r7, 31);
-  if (r8) goto logic_merge_1478; else goto logic_rhs_1477;
+  if (r8) goto logic_merge_1389; else goto logic_rhs_1388;
 
-  while_body_1471:
+  while_body_1382:
   r15 = cn_var_实例;
   r16 = r15->当前词元;
   r17 = r16.类型;
   r18 = r17 == 31;
-  if (r18) goto case_body_1480; else goto switch_check_1484;
+  if (r18) goto case_body_1391; else goto switch_check_1395;
 
-  while_exit_1472:
+  while_exit_1383:
   r23 = cn_var_实例;
   r24 = 期望(r23, 17);
   r25 = cn_var_实例;
@@ -1191,86 +1197,86 @@ struct 声明节点* 解析函数声明(struct 解析器* cn_var_实例) {
   r35 = 期望(r34, 70);
   r36 = cn_var_实例;
   r37 = 检查(r36, 68);
-  if (r37) goto if_then_1487; else goto if_merge_1488;
+  if (r37) goto if_then_1398; else goto if_merge_1399;
 
-  logic_rhs_1473:
+  logic_rhs_1384:
   r13 = cn_var_实例;
   r14 = 检查(r13, 32);
-  goto logic_merge_1474;
+  goto logic_merge_1385;
 
-  logic_merge_1474:
-  if (r14) goto while_body_1471; else goto while_exit_1472;
+  logic_merge_1385:
+  if (r14) goto while_body_1382; else goto while_exit_1383;
 
-  logic_rhs_1475:
+  logic_rhs_1386:
   r11 = cn_var_实例;
   r12 = 检查(r11, 23);
-  goto logic_merge_1476;
+  goto logic_merge_1387;
 
-  logic_merge_1476:
-  if (r12) goto logic_merge_1474; else goto logic_rhs_1473;
+  logic_merge_1387:
+  if (r12) goto logic_merge_1385; else goto logic_rhs_1384;
 
-  logic_rhs_1477:
+  logic_rhs_1388:
   r9 = cn_var_实例;
   r10 = 检查(r9, 30);
-  goto logic_merge_1478;
+  goto logic_merge_1389;
 
-  logic_merge_1478:
-  if (r10) goto logic_merge_1476; else goto logic_rhs_1475;
+  logic_merge_1389:
+  if (r10) goto logic_merge_1387; else goto logic_rhs_1386;
 
-  switch_check_1484:
+  switch_check_1395:
   r19 = r17 == 30;
-  if (r19) goto case_body_1481; else goto switch_check_1485;
+  if (r19) goto case_body_1392; else goto switch_check_1396;
 
-  switch_check_1485:
+  switch_check_1396:
   r20 = r17 == 23;
-  if (r20) goto case_body_1482; else goto switch_check_1486;
+  if (r20) goto case_body_1393; else goto switch_check_1397;
 
-  switch_check_1486:
+  switch_check_1397:
   r21 = r17 == 32;
-  if (r21) goto case_body_1483; else goto switch_merge_1479;
+  if (r21) goto case_body_1394; else goto switch_merge_1390;
 
-  case_body_1480:
-  goto switch_merge_1479;
-  goto switch_merge_1479;
+  case_body_1391:
+  goto switch_merge_1390;
+  goto switch_merge_1390;
 
-  case_body_1481:
-  goto switch_merge_1479;
-  goto switch_merge_1479;
+  case_body_1392:
+  goto switch_merge_1390;
+  goto switch_merge_1390;
 
-  case_body_1482:
-  goto switch_merge_1479;
-  goto switch_merge_1479;
+  case_body_1393:
+  goto switch_merge_1390;
+  goto switch_merge_1390;
 
-  case_body_1483:
-  goto switch_merge_1479;
-  goto switch_merge_1479;
+  case_body_1394:
+  goto switch_merge_1390;
+  goto switch_merge_1390;
 
-  switch_merge_1479:
+  switch_merge_1390:
   r22 = cn_var_实例;
   前进词元(r22);
-  goto while_cond_1470;
+  goto while_cond_1381;
 
-  if_then_1487:
+  if_then_1398:
   r38 = cn_var_实例;
   前进词元(r38);
   r39 = cn_var_实例;
   r40 = 解析类型(r39);
-  goto if_merge_1488;
+  goto if_merge_1399;
 
-  if_merge_1488:
+  if_merge_1399:
   r41 = cn_var_实例;
   r42 = 检查(r41, 71);
-  if (r42) goto if_then_1489; else goto if_else_1490;
+  if (r42) goto if_then_1400; else goto if_else_1401;
 
-  if_then_1489:
+  if_then_1400:
   r43 = cn_var_实例;
   r44 = 解析块语句(r43);
-  goto if_merge_1491;
+  goto if_merge_1402;
 
-  if_else_1490:
-  goto if_merge_1491;
+  if_else_1401:
+  goto if_merge_1402;
 
-  if_merge_1491:
+  if_merge_1402:
   r45 = cn_var_节点_0;
   return r45;
 }
@@ -1293,64 +1299,64 @@ struct 参数列表* 解析参数列表(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1492; else goto if_merge_1493;
+  if (r1) goto if_then_1403; else goto if_merge_1404;
 
-  if_then_1492:
+  if_then_1403:
   return 0;
-  goto if_merge_1493;
+  goto if_merge_1404;
 
-  if_merge_1493:
+  if_merge_1404:
   struct 参数列表* cn_var_列表_0;
   创建参数列表();
   cn_var_列表_0 = /* NONE */;
   r2 = cn_var_列表_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1494; else goto if_merge_1495;
+  if (r3) goto if_then_1405; else goto if_merge_1406;
 
-  if_then_1494:
+  if_then_1405:
   return 0;
-  goto if_merge_1495;
+  goto if_merge_1406;
 
-  if_merge_1495:
-  goto while_cond_1496;
+  if_merge_1406:
+  goto while_cond_1407;
 
-  while_cond_1496:
+  while_cond_1407:
   r4 = cn_var_实例;
   r5 = 检查(r4, 70);
   r6 = !r5;
-  if (r6) goto while_body_1497; else goto while_exit_1498;
+  if (r6) goto while_body_1408; else goto while_exit_1409;
 
-  while_body_1497:
+  while_body_1408:
   struct 参数节点* cn_var_参数_1;
   r7 = cn_var_实例;
   r8 = 解析参数(r7);
   cn_var_参数_1 = r8;
   r9 = cn_var_参数_1;
   r10 = r9 != 0;
-  if (r10) goto if_then_1499; else goto if_merge_1500;
+  if (r10) goto if_then_1410; else goto if_merge_1411;
 
-  while_exit_1498:
+  while_exit_1409:
   r16 = cn_var_列表_0;
   return r16;
 
-  if_then_1499:
+  if_then_1410:
   r11 = cn_var_列表_0;
   r12 = cn_var_参数_1;
   参数列表添加(r11, r12);
-  goto if_merge_1500;
+  goto if_merge_1411;
 
-  if_merge_1500:
+  if_merge_1411:
   r13 = cn_var_实例;
   r14 = 匹配(r13, 76);
   r15 = !r14;
-  if (r15) goto if_then_1501; else goto if_merge_1502;
+  if (r15) goto if_then_1412; else goto if_merge_1413;
 
-  if_then_1501:
-  goto while_exit_1498;
-  goto if_merge_1502;
+  if_then_1412:
+  goto while_exit_1409;
+  goto if_merge_1413;
 
-  if_merge_1502:
-  goto while_cond_1496;
+  if_merge_1413:
+  goto while_cond_1407;
   return NULL;
 }
 
@@ -1379,25 +1385,25 @@ struct 参数节点* 解析参数(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1503; else goto if_merge_1504;
+  if (r1) goto if_then_1414; else goto if_merge_1415;
 
-  if_then_1503:
+  if_then_1414:
   return 0;
-  goto if_merge_1504;
+  goto if_merge_1415;
 
-  if_merge_1504:
+  if_merge_1415:
   struct 参数节点* cn_var_参数_0;
   创建参数节点();
   cn_var_参数_0 = /* NONE */;
   r2 = cn_var_参数_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1505; else goto if_merge_1506;
+  if (r3) goto if_then_1416; else goto if_merge_1417;
 
-  if_then_1505:
+  if_then_1416:
   return 0;
-  goto if_merge_1506;
+  goto if_merge_1417;
 
-  if_merge_1506:
+  if_merge_1417:
   r4 = cn_var_实例;
   r5 = 解析类型(r4);
   r6 = cn_var_实例;
@@ -1405,14 +1411,14 @@ struct 参数节点* 解析参数(struct 解析器* cn_var_实例) {
   r8 = r7.值;
   r9 = cn_var_实例;
   r10 = 期望(r9, 40);
-  goto while_cond_1507;
+  goto while_cond_1418;
 
-  while_cond_1507:
+  while_cond_1418:
   r11 = cn_var_实例;
   r12 = 检查(r11, 73);
-  if (r12) goto while_body_1508; else goto while_exit_1509;
+  if (r12) goto while_body_1419; else goto while_exit_1420;
 
-  while_body_1508:
+  while_body_1419:
   r13 = cn_var_实例;
   前进词元(r13);
   r14 = cn_var_参数_0;
@@ -1420,21 +1426,21 @@ struct 参数节点* 解析参数(struct 解析器* cn_var_实例) {
   r16 = r15 + 1;
   r17 = cn_var_实例;
   r18 = 检查(r17, 41);
-  if (r18) goto if_then_1510; else goto if_merge_1511;
+  if (r18) goto if_then_1421; else goto if_merge_1422;
 
-  while_exit_1509:
+  while_exit_1420:
   r22 = cn_var_参数_0;
   return r22;
 
-  if_then_1510:
+  if_then_1421:
   r19 = cn_var_实例;
   前进词元(r19);
-  goto if_merge_1511;
+  goto if_merge_1422;
 
-  if_merge_1511:
+  if_merge_1422:
   r20 = cn_var_实例;
   r21 = 期望(r20, 74);
-  goto while_cond_1507;
+  goto while_cond_1418;
   return NULL;
 }
 
@@ -1486,83 +1492,83 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1512; else goto if_merge_1513;
+  if (r1) goto if_then_1423; else goto if_merge_1424;
 
-  if_then_1512:
+  if_then_1423:
   return 0;
-  goto if_merge_1513;
+  goto if_merge_1424;
 
-  if_merge_1513:
+  if_merge_1424:
   struct 声明节点* cn_var_节点_0;
   创建变量声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1514; else goto if_merge_1515;
+  if (r3) goto if_then_1425; else goto if_merge_1426;
 
-  if_then_1514:
+  if_then_1425:
   return 0;
-  goto if_merge_1515;
+  goto if_merge_1426;
 
-  if_merge_1515:
+  if_merge_1426:
   r4 = cn_var_实例;
   r5 = 检查(r4, 23);
-  if (r5) goto if_then_1516; else goto if_merge_1517;
+  if (r5) goto if_then_1427; else goto if_merge_1428;
 
-  if_then_1516:
+  if_then_1427:
   r6 = cn_var_实例;
   前进词元(r6);
-  goto if_merge_1517;
+  goto if_merge_1428;
 
-  if_merge_1517:
+  if_merge_1428:
   r7 = cn_var_实例;
   r8 = 检查(r7, /* NONE */);
-  if (r8) goto if_then_1518; else goto if_merge_1519;
+  if (r8) goto if_then_1429; else goto if_merge_1430;
 
-  if_then_1518:
+  if_then_1429:
   r9 = cn_var_实例;
   前进词元(r9);
-  goto if_merge_1519;
+  goto if_merge_1430;
 
-  if_merge_1519:
+  if_merge_1430:
   r10 = cn_var_实例;
   r11 = r10->当前词元;
   r12 = r11.类型;
   r13 = 是否类型关键字(r12);
-  if (r13) goto if_then_1520; else goto if_else_1521;
+  if (r13) goto if_then_1431; else goto if_else_1432;
 
-  if_then_1520:
+  if_then_1431:
   r14 = cn_var_实例;
   r15 = 解析类型(r14);
-  goto if_merge_1522;
+  goto if_merge_1433;
 
-  if_else_1521:
+  if_else_1432:
   r16 = cn_var_实例;
   r17 = 检查(r16, 18);
-  if (r17) goto if_then_1523; else goto if_merge_1524;
+  if (r17) goto if_then_1434; else goto if_merge_1435;
 
-  if_merge_1522:
+  if_merge_1433:
   r19 = cn_var_实例;
   r20 = r19->当前词元;
   r21 = r20.值;
   r22 = cn_var_实例;
   r23 = 期望(r22, 40);
-  goto while_cond_1525;
+  goto while_cond_1436;
 
-  if_then_1523:
+  if_then_1434:
   r18 = cn_var_实例;
   前进词元(r18);
-  goto if_merge_1524;
+  goto if_merge_1435;
 
-  if_merge_1524:
-  goto if_merge_1522;
+  if_merge_1435:
+  goto if_merge_1433;
 
-  while_cond_1525:
+  while_cond_1436:
   r24 = cn_var_实例;
   r25 = 检查(r24, 73);
-  if (r25) goto while_body_1526; else goto while_exit_1527;
+  if (r25) goto while_body_1437; else goto while_exit_1438;
 
-  while_body_1526:
+  while_body_1437:
   r26 = cn_var_实例;
   前进词元(r26);
   r27 = cn_var_节点_0;
@@ -1571,14 +1577,14 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
   r30 = r29 + 1;
   r31 = cn_var_实例;
   r32 = 检查(r31, 41);
-  if (r32) goto if_then_1528; else goto if_merge_1529;
+  if (r32) goto if_then_1439; else goto if_merge_1440;
 
-  while_exit_1527:
+  while_exit_1438:
   r42 = cn_var_实例;
   r43 = 匹配(r42, 51);
-  if (r43) goto if_then_1530; else goto if_merge_1531;
+  if (r43) goto if_then_1441; else goto if_merge_1442;
 
-  if_then_1528:
+  if_then_1439:
   r33 = cn_var_节点_0;
   r34 = r33->变量声明;
   r35 = r34.数组大小;
@@ -1589,19 +1595,19 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
   数组大小列表添加(r35, /* NONE */);
   r39 = cn_var_实例;
   前进词元(r39);
-  goto if_merge_1529;
+  goto if_merge_1440;
 
-  if_merge_1529:
+  if_merge_1440:
   r40 = cn_var_实例;
   r41 = 期望(r40, 74);
-  goto while_cond_1525;
+  goto while_cond_1436;
 
-  if_then_1530:
+  if_then_1441:
   r44 = cn_var_实例;
   r45 = 解析表达式(r44);
-  goto if_merge_1531;
+  goto if_merge_1442;
 
-  if_merge_1531:
+  if_merge_1442:
   r46 = cn_var_实例;
   r47 = 期望(r46, 75);
   r48 = cn_var_节点_0;
@@ -1634,25 +1640,25 @@ struct 声明节点* 解析结构体声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1532; else goto if_merge_1533;
+  if (r1) goto if_then_1443; else goto if_merge_1444;
 
-  if_then_1532:
+  if_then_1443:
   return 0;
-  goto if_merge_1533;
+  goto if_merge_1444;
 
-  if_merge_1533:
+  if_merge_1444:
   struct 声明节点* cn_var_节点_0;
   创建结构体声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1534; else goto if_merge_1535;
+  if (r3) goto if_then_1445; else goto if_merge_1446;
 
-  if_then_1534:
+  if_then_1445:
   return 0;
-  goto if_merge_1535;
+  goto if_merge_1446;
 
-  if_merge_1535:
+  if_merge_1446:
   r4 = cn_var_实例;
   前进词元(r4);
   r5 = cn_var_实例;
@@ -1662,37 +1668,37 @@ struct 声明节点* 解析结构体声明(struct 解析器* cn_var_实例) {
   r9 = 期望(r8, 40);
   r10 = cn_var_实例;
   r11 = 期望(r10, 71);
-  goto while_cond_1536;
+  goto while_cond_1447;
 
-  while_cond_1536:
+  while_cond_1447:
   r12 = cn_var_实例;
   r13 = 检查(r12, 72);
   r14 = !r13;
-  if (r14) goto while_body_1537; else goto while_exit_1538;
+  if (r14) goto while_body_1448; else goto while_exit_1449;
 
-  while_body_1537:
+  while_body_1448:
   struct 声明节点* cn_var_成员_1;
   r15 = cn_var_实例;
   r16 = 解析变量声明(r15);
   cn_var_成员_1 = r16;
   r17 = cn_var_成员_1;
   r18 = r17 != 0;
-  if (r18) goto if_then_1539; else goto if_merge_1540;
+  if (r18) goto if_then_1450; else goto if_merge_1451;
 
-  while_exit_1538:
+  while_exit_1449:
   r21 = cn_var_实例;
   r22 = 期望(r21, 72);
   r23 = cn_var_节点_0;
   return r23;
 
-  if_then_1539:
+  if_then_1450:
   r19 = cn_var_节点_0;
   r20 = cn_var_成员_1;
   结构体添加成员(r19, r20);
-  goto if_merge_1540;
+  goto if_merge_1451;
 
-  if_merge_1540:
-  goto while_cond_1536;
+  if_merge_1451:
+  goto while_cond_1447;
   return NULL;
 }
 
@@ -1735,25 +1741,25 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1541; else goto if_merge_1542;
+  if (r1) goto if_then_1452; else goto if_merge_1453;
 
-  if_then_1541:
+  if_then_1452:
   return 0;
-  goto if_merge_1542;
+  goto if_merge_1453;
 
-  if_merge_1542:
+  if_merge_1453:
   struct 声明节点* cn_var_节点_0;
   创建枚举声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1543; else goto if_merge_1544;
+  if (r3) goto if_then_1454; else goto if_merge_1455;
 
-  if_then_1543:
+  if_then_1454:
   return 0;
-  goto if_merge_1544;
+  goto if_merge_1455;
 
-  if_merge_1544:
+  if_merge_1455:
   r4 = cn_var_实例;
   前进词元(r4);
   r5 = cn_var_实例;
@@ -1765,33 +1771,33 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   r11 = 期望(r10, 71);
   long long cn_var_当前值_1;
   cn_var_当前值_1 = 0;
-  goto while_cond_1545;
+  goto while_cond_1456;
 
-  while_cond_1545:
+  while_cond_1456:
   r12 = cn_var_实例;
   r13 = 检查(r12, 72);
   r14 = !r13;
-  if (r14) goto while_body_1546; else goto while_exit_1547;
+  if (r14) goto while_body_1457; else goto while_exit_1458;
 
-  while_body_1546:
+  while_body_1457:
   struct 枚举成员* cn_var_成员_2;
   创建枚举成员();
   cn_var_成员_2 = /* NONE */;
   r15 = cn_var_成员_2;
   r16 = r15 == 0;
-  if (r16) goto if_then_1548; else goto if_merge_1549;
+  if (r16) goto if_then_1459; else goto if_merge_1460;
 
-  while_exit_1547:
+  while_exit_1458:
   r38 = cn_var_实例;
   r39 = 期望(r38, 72);
   r40 = cn_var_节点_0;
   return r40;
 
-  if_then_1548:
-  goto while_exit_1547;
-  goto if_merge_1549;
+  if_then_1459:
+  goto while_exit_1458;
+  goto if_merge_1460;
 
-  if_merge_1549:
+  if_merge_1460:
   r17 = cn_var_实例;
   r18 = r17->当前词元;
   r19 = r18.值;
@@ -1799,9 +1805,9 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   r21 = 期望(r20, 40);
   r22 = cn_var_实例;
   r23 = 匹配(r22, 51);
-  if (r23) goto if_then_1550; else goto if_else_1551;
+  if (r23) goto if_then_1461; else goto if_else_1462;
 
-  if_then_1550:
+  if_then_1461:
   r24 = cn_var_实例;
   r25 = r24->当前词元;
   r26 = r25.值;
@@ -1811,13 +1817,13 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   cn_var_当前值_1 = r28;
   r29 = cn_var_实例;
   r30 = 期望(r29, 41);
-  goto if_merge_1552;
+  goto if_merge_1463;
 
-  if_else_1551:
+  if_else_1462:
   r31 = cn_var_当前值_1;
-  goto if_merge_1552;
+  goto if_merge_1463;
 
-  if_merge_1552:
+  if_merge_1463:
   r32 = cn_var_当前值_1;
   r33 = r32 + 1;
   cn_var_当前值_1 = r33;
@@ -1826,7 +1832,7 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   枚举添加成员(r34, r35);
   r36 = cn_var_实例;
   r37 = 匹配(r36, 76);
-  goto while_cond_1545;
+  goto while_cond_1456;
   return NULL;
 }
 
@@ -1890,35 +1896,35 @@ struct 声明节点* 解析类声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1553; else goto if_merge_1554;
+  if (r1) goto if_then_1464; else goto if_merge_1465;
 
-  if_then_1553:
+  if_then_1464:
   return 0;
-  goto if_merge_1554;
+  goto if_merge_1465;
 
-  if_merge_1554:
+  if_merge_1465:
   struct 声明节点* cn_var_节点_0;
   创建类声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1555; else goto if_merge_1556;
+  if (r3) goto if_then_1466; else goto if_merge_1467;
 
-  if_then_1555:
+  if_then_1466:
   return 0;
-  goto if_merge_1556;
+  goto if_merge_1467;
 
-  if_merge_1556:
+  if_merge_1467:
   r4 = cn_var_实例;
   r5 = 检查(r4, 32);
-  if (r5) goto if_then_1557; else goto if_merge_1558;
+  if (r5) goto if_then_1468; else goto if_merge_1469;
 
-  if_then_1557:
+  if_then_1468:
   r6 = cn_var_实例;
   前进词元(r6);
-  goto if_merge_1558;
+  goto if_merge_1469;
 
-  if_merge_1558:
+  if_merge_1469:
   r7 = cn_var_实例;
   r8 = 期望(r7, 27);
   r9 = cn_var_实例;
@@ -1928,35 +1934,35 @@ struct 声明节点* 解析类声明(struct 解析器* cn_var_实例) {
   r13 = 期望(r12, 40);
   r14 = cn_var_实例;
   r15 = 匹配(r14, 78);
-  if (r15) goto if_then_1559; else goto if_merge_1560;
+  if (r15) goto if_then_1470; else goto if_merge_1471;
 
-  if_then_1559:
+  if_then_1470:
   r16 = cn_var_实例;
   r17 = r16->当前词元;
   r18 = r17.值;
   r19 = cn_var_实例;
   r20 = 期望(r19, 40);
-  goto if_merge_1560;
+  goto if_merge_1471;
 
-  if_merge_1560:
+  if_merge_1471:
   r21 = cn_var_实例;
   r22 = 检查(r21, 33);
-  if (r22) goto if_then_1561; else goto if_merge_1562;
+  if (r22) goto if_then_1472; else goto if_merge_1473;
 
-  if_then_1561:
+  if_then_1472:
   r23 = cn_var_实例;
   前进词元(r23);
-  goto while_cond_1563;
+  goto while_cond_1474;
 
-  if_merge_1562:
+  if_merge_1473:
   r34 = cn_var_实例;
   r35 = 期望(r34, 71);
-  goto while_cond_1568;
+  goto while_cond_1479;
 
-  while_cond_1563:
-  if (1) goto while_body_1564; else goto while_exit_1565;
+  while_cond_1474:
+  if (1) goto while_body_1475; else goto while_exit_1476;
 
-  while_body_1564:
+  while_body_1475:
   char* cn_var_接口名_1;
   r24 = cn_var_实例;
   r25 = r24->当前词元;
@@ -1970,79 +1976,79 @@ struct 声明节点* 解析类声明(struct 解析器* cn_var_实例) {
   r31 = cn_var_实例;
   r32 = 匹配(r31, 76);
   r33 = !r32;
-  if (r33) goto if_then_1566; else goto if_merge_1567;
+  if (r33) goto if_then_1477; else goto if_merge_1478;
 
-  while_exit_1565:
-  goto if_merge_1562;
+  while_exit_1476:
+  goto if_merge_1473;
 
-  if_then_1566:
-  goto while_exit_1565;
-  goto if_merge_1567;
+  if_then_1477:
+  goto while_exit_1476;
+  goto if_merge_1478;
 
-  if_merge_1567:
-  goto while_cond_1563;
+  if_merge_1478:
+  goto while_cond_1474;
 
-  while_cond_1568:
+  while_cond_1479:
   r36 = cn_var_实例;
   r37 = 检查(r36, 72);
   r38 = !r37;
-  if (r38) goto while_body_1569; else goto while_exit_1570;
+  if (r38) goto while_body_1480; else goto while_exit_1481;
 
-  while_body_1569:
+  while_body_1480:
   enum 可见性 cn_var_成员可见性_2;
   r39 = cn_var_实例;
   r40 = 解析可见性修饰符(r39);
   cn_var_成员可见性_2 = r40;
   r41 = cn_var_实例;
   r42 = 检查(r41, 17);
-  if (r42) goto if_then_1571; else goto if_else_1572;
+  if (r42) goto if_then_1482; else goto if_else_1483;
 
-  while_exit_1570:
+  while_exit_1481:
   r57 = cn_var_实例;
   r58 = 期望(r57, 72);
   r59 = cn_var_节点_0;
   return r59;
 
-  if_then_1571:
+  if_then_1482:
   struct 声明节点* cn_var_方法_3;
   r43 = cn_var_实例;
   r44 = 解析函数声明(r43);
   cn_var_方法_3 = r44;
   r45 = cn_var_方法_3;
   r46 = r45 != 0;
-  if (r46) goto if_then_1574; else goto if_merge_1575;
+  if (r46) goto if_then_1485; else goto if_merge_1486;
 
-  if_else_1572:
+  if_else_1483:
   struct 声明节点* cn_var_字段_4;
   r50 = cn_var_实例;
   r51 = 解析变量声明(r50);
   cn_var_字段_4 = r51;
   r52 = cn_var_字段_4;
   r53 = r52 != 0;
-  if (r53) goto if_then_1576; else goto if_merge_1577;
+  if (r53) goto if_then_1487; else goto if_merge_1488;
 
-  if_merge_1573:
-  goto while_cond_1568;
+  if_merge_1484:
+  goto while_cond_1479;
 
-  if_then_1574:
+  if_then_1485:
   r47 = cn_var_成员可见性_2;
   r48 = cn_var_节点_0;
   r49 = cn_var_方法_3;
   类添加方法(r48, r49);
-  goto if_merge_1575;
+  goto if_merge_1486;
 
-  if_merge_1575:
-  goto if_merge_1573;
+  if_merge_1486:
+  goto if_merge_1484;
 
-  if_then_1576:
+  if_then_1487:
   r54 = cn_var_成员可见性_2;
   r55 = cn_var_节点_0;
   r56 = cn_var_字段_4;
   类添加字段(r55, r56);
-  goto if_merge_1577;
+  goto if_merge_1488;
 
-  if_merge_1577:
-  goto if_merge_1573;
+  if_merge_1488:
+  goto if_merge_1484;
   return NULL;
 }
 
@@ -2075,25 +2081,25 @@ struct 声明节点* 解析接口声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1578; else goto if_merge_1579;
+  if (r1) goto if_then_1489; else goto if_merge_1490;
 
-  if_then_1578:
+  if_then_1489:
   return 0;
-  goto if_merge_1579;
+  goto if_merge_1490;
 
-  if_merge_1579:
+  if_merge_1490:
   struct 声明节点* cn_var_节点_0;
   创建接口声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1580; else goto if_merge_1581;
+  if (r3) goto if_then_1491; else goto if_merge_1492;
 
-  if_then_1580:
+  if_then_1491:
   return 0;
-  goto if_merge_1581;
+  goto if_merge_1492;
 
-  if_merge_1581:
+  if_merge_1492:
   r4 = cn_var_实例;
   前进词元(r4);
   r5 = cn_var_实例;
@@ -2103,50 +2109,50 @@ struct 声明节点* 解析接口声明(struct 解析器* cn_var_实例) {
   r9 = 期望(r8, 40);
   r10 = cn_var_实例;
   r11 = 期望(r10, 71);
-  goto while_cond_1582;
+  goto while_cond_1493;
 
-  while_cond_1582:
+  while_cond_1493:
   r12 = cn_var_实例;
   r13 = 检查(r12, 72);
   r14 = !r13;
-  if (r14) goto while_body_1583; else goto while_exit_1584;
+  if (r14) goto while_body_1494; else goto while_exit_1495;
 
-  while_body_1583:
+  while_body_1494:
   r15 = cn_var_实例;
   r16 = 检查(r15, 17);
-  if (r16) goto if_then_1585; else goto if_else_1586;
+  if (r16) goto if_then_1496; else goto if_else_1497;
 
-  while_exit_1584:
+  while_exit_1495:
   r24 = cn_var_实例;
   r25 = 期望(r24, 72);
   r26 = cn_var_节点_0;
   return r26;
 
-  if_then_1585:
+  if_then_1496:
   struct 声明节点* cn_var_方法_1;
   r17 = cn_var_实例;
   r18 = 解析函数声明(r17);
   cn_var_方法_1 = r18;
   r19 = cn_var_方法_1;
   r20 = r19 != 0;
-  if (r20) goto if_then_1588; else goto if_merge_1589;
+  if (r20) goto if_then_1499; else goto if_merge_1500;
 
-  if_else_1586:
+  if_else_1497:
   r23 = cn_var_实例;
   前进词元(r23);
-  goto if_merge_1587;
+  goto if_merge_1498;
 
-  if_merge_1587:
-  goto while_cond_1582;
+  if_merge_1498:
+  goto while_cond_1493;
 
-  if_then_1588:
+  if_then_1499:
   r21 = cn_var_节点_0;
   r22 = cn_var_方法_1;
   接口添加方法(r21, r22);
-  goto if_merge_1589;
+  goto if_merge_1500;
 
-  if_merge_1589:
-  goto if_merge_1587;
+  if_merge_1500:
+  goto if_merge_1498;
   return NULL;
 }
 
@@ -2160,25 +2166,25 @@ struct 声明节点* 解析模块声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1590; else goto if_merge_1591;
+  if (r1) goto if_then_1501; else goto if_merge_1502;
 
-  if_then_1590:
+  if_then_1501:
   return 0;
-  goto if_merge_1591;
+  goto if_merge_1502;
 
-  if_merge_1591:
+  if_merge_1502:
   struct 声明节点* cn_var_节点_0;
   创建模块声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1592; else goto if_merge_1593;
+  if (r3) goto if_then_1503; else goto if_merge_1504;
 
-  if_then_1592:
+  if_then_1503:
   return 0;
-  goto if_merge_1593;
+  goto if_merge_1504;
 
-  if_merge_1593:
+  if_merge_1504:
   r4 = cn_var_实例;
   前进词元(r4);
   r5 = cn_var_实例;
@@ -2229,25 +2235,25 @@ struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1594; else goto if_merge_1595;
+  if (r1) goto if_then_1505; else goto if_merge_1506;
 
-  if_then_1594:
+  if_then_1505:
   return 0;
-  goto if_merge_1595;
+  goto if_merge_1506;
 
-  if_merge_1595:
+  if_merge_1506:
   struct 声明节点* cn_var_节点_0;
   创建导入声明();
   cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1596; else goto if_merge_1597;
+  if (r3) goto if_then_1507; else goto if_merge_1508;
 
-  if_then_1596:
+  if_then_1507:
   return 0;
-  goto if_merge_1597;
+  goto if_merge_1508;
 
-  if_merge_1597:
+  if_merge_1508:
   r4 = cn_var_实例;
   前进词元(r4);
   r5 = cn_var_实例;
@@ -2257,25 +2263,25 @@ struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例) {
   r9 = 期望(r8, 40);
   r10 = cn_var_实例;
   r11 = 检查(r10, 71);
-  if (r11) goto if_then_1598; else goto if_merge_1599;
+  if (r11) goto if_then_1509; else goto if_merge_1510;
 
-  if_then_1598:
+  if_then_1509:
   r12 = cn_var_实例;
   前进词元(r12);
-  goto while_cond_1600;
+  goto while_cond_1511;
 
-  if_merge_1599:
+  if_merge_1510:
   r28 = cn_var_实例;
   r29 = 检查(r28, 69);
-  if (r29) goto if_then_1605; else goto if_merge_1606;
+  if (r29) goto if_then_1516; else goto if_merge_1517;
 
-  while_cond_1600:
+  while_cond_1511:
   r13 = cn_var_实例;
   r14 = 检查(r13, 72);
   r15 = !r14;
-  if (r15) goto while_body_1601; else goto while_exit_1602;
+  if (r15) goto while_body_1512; else goto while_exit_1513;
 
-  while_body_1601:
+  while_body_1512:
   char* cn_var_成员名_1;
   r16 = cn_var_实例;
   r17 = r16->当前词元;
@@ -2289,21 +2295,21 @@ struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例) {
   r23 = cn_var_实例;
   r24 = 匹配(r23, 76);
   r25 = !r24;
-  if (r25) goto if_then_1603; else goto if_merge_1604;
+  if (r25) goto if_then_1514; else goto if_merge_1515;
 
-  while_exit_1602:
+  while_exit_1513:
   r26 = cn_var_实例;
   r27 = 期望(r26, 72);
-  goto if_merge_1599;
+  goto if_merge_1510;
 
-  if_then_1603:
-  goto while_exit_1602;
-  goto if_merge_1604;
+  if_then_1514:
+  goto while_exit_1513;
+  goto if_merge_1515;
 
-  if_merge_1604:
-  goto while_cond_1600;
+  if_merge_1515:
+  goto while_cond_1511;
 
-  if_then_1605:
+  if_then_1516:
   r30 = cn_var_实例;
   前进词元(r30);
   r31 = cn_var_实例;
@@ -2313,9 +2319,9 @@ struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例) {
   r35 = 期望(r34, 40);
   r36 = cn_var_实例;
   r37 = 期望(r36, 70);
-  goto if_merge_1606;
+  goto if_merge_1517;
 
-  if_merge_1606:
+  if_merge_1517:
   r38 = cn_var_实例;
   r39 = 期望(r38, 75);
   r40 = cn_var_节点_0;
@@ -2338,50 +2344,50 @@ enum 可见性 解析可见性修饰符(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1607; else goto if_merge_1608;
+  if (r1) goto if_then_1518; else goto if_merge_1519;
 
-  if_then_1607:
+  if_then_1518:
   r2 = cn_var_私有可见;
   return r2;
-  goto if_merge_1608;
+  goto if_merge_1519;
 
-  if_merge_1608:
+  if_merge_1519:
   r3 = cn_var_实例;
   r4 = 检查(r3, 21);
-  if (r4) goto if_then_1609; else goto if_merge_1610;
+  if (r4) goto if_then_1520; else goto if_merge_1521;
 
-  if_then_1609:
+  if_then_1520:
   r5 = cn_var_实例;
   前进词元(r5);
   r6 = cn_var_公开可见;
   return r6;
-  goto if_merge_1610;
+  goto if_merge_1521;
 
-  if_merge_1610:
+  if_merge_1521:
   r7 = cn_var_实例;
   r8 = 检查(r7, 22);
-  if (r8) goto if_then_1611; else goto if_merge_1612;
+  if (r8) goto if_then_1522; else goto if_merge_1523;
 
-  if_then_1611:
+  if_then_1522:
   r9 = cn_var_实例;
   前进词元(r9);
   r10 = cn_var_私有可见;
   return r10;
-  goto if_merge_1612;
+  goto if_merge_1523;
 
-  if_merge_1612:
+  if_merge_1523:
   r11 = cn_var_实例;
   r12 = 检查(r11, 29);
-  if (r12) goto if_then_1613; else goto if_merge_1614;
+  if (r12) goto if_then_1524; else goto if_merge_1525;
 
-  if_then_1613:
+  if_then_1524:
   r13 = cn_var_实例;
   前进词元(r13);
   r14 = cn_var_默认可见;
   return r14;
-  goto if_merge_1614;
+  goto if_merge_1525;
 
-  if_merge_1614:
+  if_merge_1525:
   r15 = cn_var_私有可见;
   return r15;
 }

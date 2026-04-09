@@ -1384,28 +1384,35 @@ void 构建函数声明作用域(struct 作用域构建器* cn_var_构建器, st
 }
 
 struct 符号标志 创建符号标志(struct 函数声明* cn_var_函数节点) {
-  long long r8;
-  struct 函数声明* r0;
-  struct 函数声明* r2;
+  long long r1, r2;
+  void* r3;
   struct 函数声明* r4;
   struct 函数声明* r6;
-  _Bool r1;
-  _Bool r3;
+  struct 函数声明* r8;
+  struct 函数声明* r10;
   _Bool r5;
   _Bool r7;
+  _Bool r9;
+  _Bool r11;
+  struct 符号标志 r0;
+  struct 符号标志 r12;
 
   entry:
-  long long cn_var_标志_0;
-  r0 = cn_var_函数节点;
-  r1 = r0->是静态;
-  r2 = cn_var_函数节点;
-  r3 = r2->是虚拟;
+  struct 符号标志 cn_var_标志_0;
+  r0 = cn_var_标志_0;
+  r1 = &cn_var_标志_0;
+  r2 = sizeof(struct 符号标志);
+  r3 = 设置内存((void*)cn_var_标志, 0, r2);
   r4 = cn_var_函数节点;
-  r5 = r4->是重写;
+  r5 = r4->是静态;
   r6 = cn_var_函数节点;
-  r7 = r6->是抽象;
-  r8 = cn_var_标志_0;
-  return r8;
+  r7 = r6->是虚拟;
+  r8 = cn_var_函数节点;
+  r9 = r8->是重写;
+  r10 = cn_var_函数节点;
+  r11 = r10->是抽象;
+  r12 = cn_var_标志_0;
+  return r12;
 }
 
 void 构建参数作用域(struct 作用域构建器* cn_var_构建器, struct 参数* cn_var_参数节点) {

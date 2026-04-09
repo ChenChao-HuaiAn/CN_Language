@@ -36,40 +36,40 @@ _Bool 是空白字符(long long cn_var_c) {
   entry:
   r0 = cn_var_c;
   r1 = r0 == 32;
-  if (r1) goto if_then_383; else goto if_merge_384;
+  if (r1) goto if_then_204; else goto if_merge_205;
 
-  if_then_383:
+  if_then_204:
   return 1;
-  goto if_merge_384;
+  goto if_merge_205;
 
-  if_merge_384:
+  if_merge_205:
   r2 = cn_var_c;
   r3 = r2 == 9;
-  if (r3) goto if_then_385; else goto if_merge_386;
+  if (r3) goto if_then_206; else goto if_merge_207;
 
-  if_then_385:
+  if_then_206:
   return 1;
-  goto if_merge_386;
+  goto if_merge_207;
 
-  if_merge_386:
+  if_merge_207:
   r4 = cn_var_c;
   r5 = r4 == 10;
-  if (r5) goto if_then_387; else goto if_merge_388;
+  if (r5) goto if_then_208; else goto if_merge_209;
 
-  if_then_387:
+  if_then_208:
   return 1;
-  goto if_merge_388;
+  goto if_merge_209;
 
-  if_merge_388:
+  if_merge_209:
   r6 = cn_var_c;
   r7 = r6 == 13;
-  if (r7) goto if_then_389; else goto if_merge_390;
+  if (r7) goto if_then_210; else goto if_merge_211;
 
-  if_then_389:
+  if_then_210:
   return 1;
-  goto if_merge_390;
+  goto if_merge_211;
 
-  if_merge_390:
+  if_merge_211:
   return 0;
 }
 
@@ -79,22 +79,22 @@ _Bool 是换行符(long long cn_var_c) {
   entry:
   r0 = cn_var_c;
   r1 = r0 == 10;
-  if (r1) goto if_then_391; else goto if_merge_392;
+  if (r1) goto if_then_212; else goto if_merge_213;
 
-  if_then_391:
+  if_then_212:
   return 1;
-  goto if_merge_392;
+  goto if_merge_213;
 
-  if_merge_392:
+  if_merge_213:
   r2 = cn_var_c;
   r3 = r2 == 13;
-  if (r3) goto if_then_393; else goto if_merge_394;
+  if (r3) goto if_then_214; else goto if_merge_215;
 
-  if_then_393:
+  if_then_214:
   return 1;
-  goto if_merge_394;
+  goto if_merge_215;
 
-  if_merge_394:
+  if_merge_215:
   return 0;
 }
 
@@ -104,22 +104,22 @@ _Bool 是数字(long long cn_var_c) {
   entry:
   r1 = cn_var_c;
   r2 = r1 >= 48;
-  if (r2) goto logic_rhs_397; else goto logic_merge_398;
+  if (r2) goto logic_rhs_218; else goto logic_merge_219;
 
-  if_then_395:
+  if_then_216:
   return 1;
-  goto if_merge_396;
+  goto if_merge_217;
 
-  if_merge_396:
+  if_merge_217:
   return 0;
 
-  logic_rhs_397:
+  logic_rhs_218:
   r3 = cn_var_c;
   r4 = r3 <= 57;
-  goto logic_merge_398;
+  goto logic_merge_219;
 
-  logic_merge_398:
-  if (r4) goto if_then_395; else goto if_merge_396;
+  logic_merge_219:
+  if (r4) goto if_then_216; else goto if_merge_217;
   return 0;
 }
 
@@ -129,56 +129,56 @@ _Bool 是十六进制数字(long long cn_var_c) {
   entry:
   r1 = cn_var_c;
   r2 = r1 >= 48;
-  if (r2) goto logic_rhs_401; else goto logic_merge_402;
+  if (r2) goto logic_rhs_222; else goto logic_merge_223;
 
-  if_then_399:
+  if_then_220:
   return 1;
-  goto if_merge_400;
+  goto if_merge_221;
 
-  if_merge_400:
+  if_merge_221:
   r6 = cn_var_c;
   r7 = r6 >= 97;
-  if (r7) goto logic_rhs_405; else goto logic_merge_406;
+  if (r7) goto logic_rhs_226; else goto logic_merge_227;
 
-  logic_rhs_401:
+  logic_rhs_222:
   r3 = cn_var_c;
   r4 = r3 <= 57;
-  goto logic_merge_402;
+  goto logic_merge_223;
 
-  logic_merge_402:
-  if (r4) goto if_then_399; else goto if_merge_400;
+  logic_merge_223:
+  if (r4) goto if_then_220; else goto if_merge_221;
 
-  if_then_403:
+  if_then_224:
   return 1;
-  goto if_merge_404;
+  goto if_merge_225;
 
-  if_merge_404:
+  if_merge_225:
   r11 = cn_var_c;
   r12 = r11 >= 65;
-  if (r12) goto logic_rhs_409; else goto logic_merge_410;
+  if (r12) goto logic_rhs_230; else goto logic_merge_231;
 
-  logic_rhs_405:
+  logic_rhs_226:
   r8 = cn_var_c;
   r9 = r8 <= 102;
-  goto logic_merge_406;
+  goto logic_merge_227;
 
-  logic_merge_406:
-  if (r9) goto if_then_403; else goto if_merge_404;
+  logic_merge_227:
+  if (r9) goto if_then_224; else goto if_merge_225;
 
-  if_then_407:
+  if_then_228:
   return 1;
-  goto if_merge_408;
+  goto if_merge_229;
 
-  if_merge_408:
+  if_merge_229:
   return 0;
 
-  logic_rhs_409:
+  logic_rhs_230:
   r13 = cn_var_c;
   r14 = r13 <= 70;
-  goto logic_merge_410;
+  goto logic_merge_231;
 
-  logic_merge_410:
-  if (r14) goto if_then_407; else goto if_merge_408;
+  logic_merge_231:
+  if (r14) goto if_then_228; else goto if_merge_229;
   return 0;
 }
 
@@ -188,22 +188,22 @@ _Bool 是二进制数字(long long cn_var_c) {
   entry:
   r1 = cn_var_c;
   r2 = r1 == 48;
-  if (r2) goto logic_merge_414; else goto logic_rhs_413;
+  if (r2) goto logic_merge_235; else goto logic_rhs_234;
 
-  if_then_411:
+  if_then_232:
   return 1;
-  goto if_merge_412;
+  goto if_merge_233;
 
-  if_merge_412:
+  if_merge_233:
   return 0;
 
-  logic_rhs_413:
+  logic_rhs_234:
   r3 = cn_var_c;
   r4 = r3 == 49;
-  goto logic_merge_414;
+  goto logic_merge_235;
 
-  logic_merge_414:
-  if (r4) goto if_then_411; else goto if_merge_412;
+  logic_merge_235:
+  if (r4) goto if_then_232; else goto if_merge_233;
   return 0;
 }
 
@@ -213,22 +213,22 @@ _Bool 是八进制数字(long long cn_var_c) {
   entry:
   r1 = cn_var_c;
   r2 = r1 >= 48;
-  if (r2) goto logic_rhs_417; else goto logic_merge_418;
+  if (r2) goto logic_rhs_238; else goto logic_merge_239;
 
-  if_then_415:
+  if_then_236:
   return 1;
-  goto if_merge_416;
+  goto if_merge_237;
 
-  if_merge_416:
+  if_merge_237:
   return 0;
 
-  logic_rhs_417:
+  logic_rhs_238:
   r3 = cn_var_c;
   r4 = r3 <= 55;
-  goto logic_merge_418;
+  goto logic_merge_239;
 
-  logic_merge_418:
-  if (r4) goto if_then_415; else goto if_merge_416;
+  logic_merge_239:
+  if (r4) goto if_then_236; else goto if_merge_237;
   return 0;
 }
 
@@ -238,39 +238,39 @@ _Bool 是字母(long long cn_var_c) {
   entry:
   r1 = cn_var_c;
   r2 = r1 >= 97;
-  if (r2) goto logic_rhs_421; else goto logic_merge_422;
+  if (r2) goto logic_rhs_242; else goto logic_merge_243;
 
-  if_then_419:
+  if_then_240:
   return 1;
-  goto if_merge_420;
+  goto if_merge_241;
 
-  if_merge_420:
+  if_merge_241:
   r6 = cn_var_c;
   r7 = r6 >= 65;
-  if (r7) goto logic_rhs_425; else goto logic_merge_426;
+  if (r7) goto logic_rhs_246; else goto logic_merge_247;
 
-  logic_rhs_421:
+  logic_rhs_242:
   r3 = cn_var_c;
   r4 = r3 <= 122;
-  goto logic_merge_422;
+  goto logic_merge_243;
 
-  logic_merge_422:
-  if (r4) goto if_then_419; else goto if_merge_420;
+  logic_merge_243:
+  if (r4) goto if_then_240; else goto if_merge_241;
 
-  if_then_423:
+  if_then_244:
   return 1;
-  goto if_merge_424;
+  goto if_merge_245;
 
-  if_merge_424:
+  if_merge_245:
   return 0;
 
-  logic_rhs_425:
+  logic_rhs_246:
   r8 = cn_var_c;
   r9 = r8 <= 90;
-  goto logic_merge_426;
+  goto logic_merge_247;
 
-  logic_merge_426:
-  if (r9) goto if_then_423; else goto if_merge_424;
+  logic_merge_247:
+  if (r9) goto if_then_244; else goto if_merge_245;
   return 0;
 }
 
@@ -282,22 +282,22 @@ _Bool 是字母或数字(long long cn_var_c) {
   entry:
   r0 = cn_var_c;
   r1 = 是字母(r0);
-  if (r1) goto if_then_427; else goto if_merge_428;
+  if (r1) goto if_then_248; else goto if_merge_249;
 
-  if_then_427:
+  if_then_248:
   return 1;
-  goto if_merge_428;
+  goto if_merge_249;
 
-  if_merge_428:
+  if_merge_249:
   r2 = cn_var_c;
   r3 = 是数字(r2);
-  if (r3) goto if_then_429; else goto if_merge_430;
+  if (r3) goto if_then_250; else goto if_merge_251;
 
-  if_then_429:
+  if_then_250:
   return 1;
-  goto if_merge_430;
+  goto if_merge_251;
 
-  if_merge_430:
+  if_merge_251:
   return 0;
 }
 
@@ -310,22 +310,22 @@ _Bool 是中文字符(long long cn_var_c) {
   cn_var_整数值_0 = r0;
   r2 = cn_var_整数值_0;
   r3 = r2 >= 228;
-  if (r3) goto logic_rhs_433; else goto logic_merge_434;
+  if (r3) goto logic_rhs_254; else goto logic_merge_255;
 
-  if_then_431:
+  if_then_252:
   return 1;
-  goto if_merge_432;
+  goto if_merge_253;
 
-  if_merge_432:
+  if_merge_253:
   return 0;
 
-  logic_rhs_433:
+  logic_rhs_254:
   r4 = cn_var_整数值_0;
   r5 = r4 <= 233;
-  goto logic_merge_434;
+  goto logic_merge_255;
 
-  logic_merge_434:
-  if (r5) goto if_then_431; else goto if_merge_432;
+  logic_merge_255:
+  if (r5) goto if_then_252; else goto if_merge_253;
   return 0;
 }
 
@@ -336,34 +336,34 @@ _Bool 是标识符开头(long long cn_var_c) {
   entry:
   r0 = cn_var_c;
   r1 = r0 == 95;
-  if (r1) goto if_then_435; else goto if_merge_436;
+  if (r1) goto if_then_256; else goto if_merge_257;
 
-  if_then_435:
+  if_then_256:
   return 1;
-  goto if_merge_436;
+  goto if_merge_257;
 
-  if_merge_436:
+  if_merge_257:
   r2 = cn_var_c;
   r3 = 是字母(r2);
-  if (r3) goto if_then_437; else goto if_merge_438;
+  if (r3) goto if_then_258; else goto if_merge_259;
 
-  if_then_437:
+  if_then_258:
   return 1;
-  goto if_merge_438;
+  goto if_merge_259;
 
-  if_merge_438:
+  if_merge_259:
   long long cn_var_整数值_0;
   r4 = cn_var_c;
   cn_var_整数值_0 = r4;
   r5 = cn_var_整数值_0;
   r6 = r5 >= 128;
-  if (r6) goto if_then_439; else goto if_merge_440;
+  if (r6) goto if_then_260; else goto if_merge_261;
 
-  if_then_439:
+  if_then_260:
   return 1;
-  goto if_merge_440;
+  goto if_merge_261;
 
-  if_merge_440:
+  if_merge_261:
   return 0;
 }
 
@@ -374,34 +374,34 @@ _Bool 是标识符字符(long long cn_var_c) {
   entry:
   r0 = cn_var_c;
   r1 = r0 == 95;
-  if (r1) goto if_then_441; else goto if_merge_442;
+  if (r1) goto if_then_262; else goto if_merge_263;
 
-  if_then_441:
+  if_then_262:
   return 1;
-  goto if_merge_442;
+  goto if_merge_263;
 
-  if_merge_442:
+  if_merge_263:
   r2 = cn_var_c;
   r3 = 是字母或数字(r2);
-  if (r3) goto if_then_443; else goto if_merge_444;
+  if (r3) goto if_then_264; else goto if_merge_265;
 
-  if_then_443:
+  if_then_264:
   return 1;
-  goto if_merge_444;
+  goto if_merge_265;
 
-  if_merge_444:
+  if_merge_265:
   long long cn_var_整数值_0;
   r4 = cn_var_c;
   cn_var_整数值_0 = r4;
   r5 = cn_var_整数值_0;
   r6 = r5 >= 128;
-  if (r6) goto if_then_445; else goto if_merge_446;
+  if (r6) goto if_then_266; else goto if_merge_267;
 
-  if_then_445:
+  if_then_266:
   return 1;
-  goto if_merge_446;
+  goto if_merge_267;
 
-  if_merge_446:
+  if_merge_267:
   return 0;
 }
 
@@ -411,121 +411,121 @@ _Bool 是运算符字符(long long cn_var_c) {
   entry:
   r0 = cn_var_c;
   r1 = r0 == 43;
-  if (r1) goto if_then_447; else goto if_merge_448;
+  if (r1) goto if_then_268; else goto if_merge_269;
 
-  if_then_447:
+  if_then_268:
   return 1;
-  goto if_merge_448;
+  goto if_merge_269;
 
-  if_merge_448:
+  if_merge_269:
   r2 = cn_var_c;
   r3 = r2 == 45;
-  if (r3) goto if_then_449; else goto if_merge_450;
+  if (r3) goto if_then_270; else goto if_merge_271;
 
-  if_then_449:
+  if_then_270:
   return 1;
-  goto if_merge_450;
+  goto if_merge_271;
 
-  if_merge_450:
+  if_merge_271:
   r4 = cn_var_c;
   r5 = r4 == 42;
-  if (r5) goto if_then_451; else goto if_merge_452;
+  if (r5) goto if_then_272; else goto if_merge_273;
 
-  if_then_451:
+  if_then_272:
   return 1;
-  goto if_merge_452;
+  goto if_merge_273;
 
-  if_merge_452:
+  if_merge_273:
   r6 = cn_var_c;
   r7 = r6 == 47;
-  if (r7) goto if_then_453; else goto if_merge_454;
+  if (r7) goto if_then_274; else goto if_merge_275;
 
-  if_then_453:
+  if_then_274:
   return 1;
-  goto if_merge_454;
+  goto if_merge_275;
 
-  if_merge_454:
+  if_merge_275:
   r8 = cn_var_c;
   r9 = r8 == 37;
-  if (r9) goto if_then_455; else goto if_merge_456;
+  if (r9) goto if_then_276; else goto if_merge_277;
 
-  if_then_455:
+  if_then_276:
   return 1;
-  goto if_merge_456;
+  goto if_merge_277;
 
-  if_merge_456:
+  if_merge_277:
   r10 = cn_var_c;
   r11 = r10 == 61;
-  if (r11) goto if_then_457; else goto if_merge_458;
+  if (r11) goto if_then_278; else goto if_merge_279;
 
-  if_then_457:
+  if_then_278:
   return 1;
-  goto if_merge_458;
+  goto if_merge_279;
 
-  if_merge_458:
+  if_merge_279:
   r12 = cn_var_c;
   r13 = r12 == 33;
-  if (r13) goto if_then_459; else goto if_merge_460;
+  if (r13) goto if_then_280; else goto if_merge_281;
 
-  if_then_459:
+  if_then_280:
   return 1;
-  goto if_merge_460;
+  goto if_merge_281;
 
-  if_merge_460:
+  if_merge_281:
   r14 = cn_var_c;
   r15 = r14 == 60;
-  if (r15) goto if_then_461; else goto if_merge_462;
+  if (r15) goto if_then_282; else goto if_merge_283;
 
-  if_then_461:
+  if_then_282:
   return 1;
-  goto if_merge_462;
+  goto if_merge_283;
 
-  if_merge_462:
+  if_merge_283:
   r16 = cn_var_c;
   r17 = r16 == 62;
-  if (r17) goto if_then_463; else goto if_merge_464;
+  if (r17) goto if_then_284; else goto if_merge_285;
 
-  if_then_463:
+  if_then_284:
   return 1;
-  goto if_merge_464;
+  goto if_merge_285;
 
-  if_merge_464:
+  if_merge_285:
   r18 = cn_var_c;
   r19 = r18 == 38;
-  if (r19) goto if_then_465; else goto if_merge_466;
+  if (r19) goto if_then_286; else goto if_merge_287;
 
-  if_then_465:
+  if_then_286:
   return 1;
-  goto if_merge_466;
+  goto if_merge_287;
 
-  if_merge_466:
+  if_merge_287:
   r20 = cn_var_c;
   r21 = r20 == 124;
-  if (r21) goto if_then_467; else goto if_merge_468;
+  if (r21) goto if_then_288; else goto if_merge_289;
 
-  if_then_467:
+  if_then_288:
   return 1;
-  goto if_merge_468;
+  goto if_merge_289;
 
-  if_merge_468:
+  if_merge_289:
   r22 = cn_var_c;
   r23 = r22 == 94;
-  if (r23) goto if_then_469; else goto if_merge_470;
+  if (r23) goto if_then_290; else goto if_merge_291;
 
-  if_then_469:
+  if_then_290:
   return 1;
-  goto if_merge_470;
+  goto if_merge_291;
 
-  if_merge_470:
+  if_merge_291:
   r24 = cn_var_c;
   r25 = r24 == 126;
-  if (r25) goto if_then_471; else goto if_merge_472;
+  if (r25) goto if_then_292; else goto if_merge_293;
 
-  if_then_471:
+  if_then_292:
   return 1;
-  goto if_merge_472;
+  goto if_merge_293;
 
-  if_merge_472:
+  if_merge_293:
   return 0;
 }
 
@@ -535,103 +535,103 @@ _Bool 是分隔符字符(long long cn_var_c) {
   entry:
   r0 = cn_var_c;
   r1 = r0 == 40;
-  if (r1) goto if_then_473; else goto if_merge_474;
+  if (r1) goto if_then_294; else goto if_merge_295;
 
-  if_then_473:
+  if_then_294:
   return 1;
-  goto if_merge_474;
+  goto if_merge_295;
 
-  if_merge_474:
+  if_merge_295:
   r2 = cn_var_c;
   r3 = r2 == 41;
-  if (r3) goto if_then_475; else goto if_merge_476;
+  if (r3) goto if_then_296; else goto if_merge_297;
 
-  if_then_475:
+  if_then_296:
   return 1;
-  goto if_merge_476;
+  goto if_merge_297;
 
-  if_merge_476:
+  if_merge_297:
   r4 = cn_var_c;
   r5 = r4 == 123;
-  if (r5) goto if_then_477; else goto if_merge_478;
+  if (r5) goto if_then_298; else goto if_merge_299;
 
-  if_then_477:
+  if_then_298:
   return 1;
-  goto if_merge_478;
+  goto if_merge_299;
 
-  if_merge_478:
+  if_merge_299:
   r6 = cn_var_c;
   r7 = r6 == 125;
-  if (r7) goto if_then_479; else goto if_merge_480;
+  if (r7) goto if_then_300; else goto if_merge_301;
 
-  if_then_479:
+  if_then_300:
   return 1;
-  goto if_merge_480;
+  goto if_merge_301;
 
-  if_merge_480:
+  if_merge_301:
   r8 = cn_var_c;
   r9 = r8 == 91;
-  if (r9) goto if_then_481; else goto if_merge_482;
+  if (r9) goto if_then_302; else goto if_merge_303;
 
-  if_then_481:
+  if_then_302:
   return 1;
-  goto if_merge_482;
+  goto if_merge_303;
 
-  if_merge_482:
+  if_merge_303:
   r10 = cn_var_c;
   r11 = r10 == 93;
-  if (r11) goto if_then_483; else goto if_merge_484;
+  if (r11) goto if_then_304; else goto if_merge_305;
 
-  if_then_483:
+  if_then_304:
   return 1;
-  goto if_merge_484;
+  goto if_merge_305;
 
-  if_merge_484:
+  if_merge_305:
   r12 = cn_var_c;
   r13 = r12 == 59;
-  if (r13) goto if_then_485; else goto if_merge_486;
+  if (r13) goto if_then_306; else goto if_merge_307;
 
-  if_then_485:
+  if_then_306:
   return 1;
-  goto if_merge_486;
+  goto if_merge_307;
 
-  if_merge_486:
+  if_merge_307:
   r14 = cn_var_c;
   r15 = r14 == 44;
-  if (r15) goto if_then_487; else goto if_merge_488;
+  if (r15) goto if_then_308; else goto if_merge_309;
 
-  if_then_487:
+  if_then_308:
   return 1;
-  goto if_merge_488;
+  goto if_merge_309;
 
-  if_merge_488:
+  if_merge_309:
   r16 = cn_var_c;
   r17 = r16 == 46;
-  if (r17) goto if_then_489; else goto if_merge_490;
+  if (r17) goto if_then_310; else goto if_merge_311;
 
-  if_then_489:
+  if_then_310:
   return 1;
-  goto if_merge_490;
+  goto if_merge_311;
 
-  if_merge_490:
+  if_merge_311:
   r18 = cn_var_c;
   r19 = r18 == 58;
-  if (r19) goto if_then_491; else goto if_merge_492;
+  if (r19) goto if_then_312; else goto if_merge_313;
 
-  if_then_491:
+  if_then_312:
   return 1;
-  goto if_merge_492;
+  goto if_merge_313;
 
-  if_merge_492:
+  if_merge_313:
   r20 = cn_var_c;
   r21 = r20 == 63;
-  if (r21) goto if_then_493; else goto if_merge_494;
+  if (r21) goto if_then_314; else goto if_merge_315;
 
-  if_then_493:
+  if_then_314:
   return 1;
-  goto if_merge_494;
+  goto if_merge_315;
 
-  if_merge_494:
+  if_merge_315:
   return 0;
 }
 
@@ -641,26 +641,26 @@ long long 转小写(long long cn_var_c) {
   entry:
   r1 = cn_var_c;
   r2 = r1 >= 65;
-  if (r2) goto logic_rhs_497; else goto logic_merge_498;
+  if (r2) goto logic_rhs_318; else goto logic_merge_319;
 
-  if_then_495:
+  if_then_316:
   r5 = cn_var_c;
   r6 = 32;
   r7 = r5 + r6;
   return r7;
-  goto if_merge_496;
+  goto if_merge_317;
 
-  if_merge_496:
+  if_merge_317:
   r8 = cn_var_c;
   return r8;
 
-  logic_rhs_497:
+  logic_rhs_318:
   r3 = cn_var_c;
   r4 = r3 <= 90;
-  goto logic_merge_498;
+  goto logic_merge_319;
 
-  logic_merge_498:
-  if (r4) goto if_then_495; else goto if_merge_496;
+  logic_merge_319:
+  if (r4) goto if_then_316; else goto if_merge_317;
   return 0;
 }
 
@@ -670,26 +670,26 @@ long long 转大写(long long cn_var_c) {
   entry:
   r1 = cn_var_c;
   r2 = r1 >= 97;
-  if (r2) goto logic_rhs_501; else goto logic_merge_502;
+  if (r2) goto logic_rhs_322; else goto logic_merge_323;
 
-  if_then_499:
+  if_then_320:
   r5 = cn_var_c;
   r6 = 32;
   r7 = r5 - r6;
   return r7;
-  goto if_merge_500;
+  goto if_merge_321;
 
-  if_merge_500:
+  if_merge_321:
   r8 = cn_var_c;
   return r8;
 
-  logic_rhs_501:
+  logic_rhs_322:
   r3 = cn_var_c;
   r4 = r3 <= 122;
-  goto logic_merge_502;
+  goto logic_merge_323;
 
-  logic_merge_502:
-  if (r4) goto if_then_499; else goto if_merge_500;
+  logic_merge_323:
+  if (r4) goto if_then_320; else goto if_merge_321;
   return 0;
 }
 
@@ -702,22 +702,22 @@ _Bool 是可打印字符(long long cn_var_c) {
   cn_var_整数值_0 = r0;
   r2 = cn_var_整数值_0;
   r3 = r2 >= 32;
-  if (r3) goto logic_rhs_505; else goto logic_merge_506;
+  if (r3) goto logic_rhs_326; else goto logic_merge_327;
 
-  if_then_503:
+  if_then_324:
   return 1;
-  goto if_merge_504;
+  goto if_merge_325;
 
-  if_merge_504:
+  if_merge_325:
   return 0;
 
-  logic_rhs_505:
+  logic_rhs_326:
   r4 = cn_var_整数值_0;
   r5 = r4 <= 126;
-  goto logic_merge_506;
+  goto logic_merge_327;
 
-  logic_merge_506:
-  if (r5) goto if_then_503; else goto if_merge_504;
+  logic_merge_327:
+  if (r5) goto if_then_324; else goto if_merge_325;
   return 0;
 }
 
@@ -727,30 +727,30 @@ _Bool 是十六进制前缀(long long cn_var_c1, long long cn_var_c2) {
   entry:
   r1 = cn_var_c1;
   r2 = r1 == 48;
-  if (r2) goto logic_rhs_509; else goto logic_merge_510;
+  if (r2) goto logic_rhs_330; else goto logic_merge_331;
 
-  if_then_507:
+  if_then_328:
   return 1;
-  goto if_merge_508;
+  goto if_merge_329;
 
-  if_merge_508:
+  if_merge_329:
   return 0;
 
-  logic_rhs_509:
+  logic_rhs_330:
   r4 = cn_var_c2;
   r5 = r4 == 120;
-  if (r5) goto logic_merge_512; else goto logic_rhs_511;
+  if (r5) goto logic_merge_333; else goto logic_rhs_332;
 
-  logic_merge_510:
-  if (r7) goto if_then_507; else goto if_merge_508;
+  logic_merge_331:
+  if (r7) goto if_then_328; else goto if_merge_329;
 
-  logic_rhs_511:
+  logic_rhs_332:
   r6 = cn_var_c2;
   r7 = r6 == 88;
-  goto logic_merge_512;
+  goto logic_merge_333;
 
-  logic_merge_512:
-  goto logic_merge_510;
+  logic_merge_333:
+  goto logic_merge_331;
   return 0;
 }
 
@@ -760,30 +760,30 @@ _Bool 是二进制前缀(long long cn_var_c1, long long cn_var_c2) {
   entry:
   r1 = cn_var_c1;
   r2 = r1 == 48;
-  if (r2) goto logic_rhs_515; else goto logic_merge_516;
+  if (r2) goto logic_rhs_336; else goto logic_merge_337;
 
-  if_then_513:
+  if_then_334:
   return 1;
-  goto if_merge_514;
+  goto if_merge_335;
 
-  if_merge_514:
+  if_merge_335:
   return 0;
 
-  logic_rhs_515:
+  logic_rhs_336:
   r4 = cn_var_c2;
   r5 = r4 == 98;
-  if (r5) goto logic_merge_518; else goto logic_rhs_517;
+  if (r5) goto logic_merge_339; else goto logic_rhs_338;
 
-  logic_merge_516:
-  if (r7) goto if_then_513; else goto if_merge_514;
+  logic_merge_337:
+  if (r7) goto if_then_334; else goto if_merge_335;
 
-  logic_rhs_517:
+  logic_rhs_338:
   r6 = cn_var_c2;
   r7 = r6 == 66;
-  goto logic_merge_518;
+  goto logic_merge_339;
 
-  logic_merge_518:
-  goto logic_merge_516;
+  logic_merge_339:
+  goto logic_merge_337;
   return 0;
 }
 
@@ -793,30 +793,30 @@ _Bool 是八进制前缀(long long cn_var_c1, long long cn_var_c2) {
   entry:
   r1 = cn_var_c1;
   r2 = r1 == 48;
-  if (r2) goto logic_rhs_521; else goto logic_merge_522;
+  if (r2) goto logic_rhs_342; else goto logic_merge_343;
 
-  if_then_519:
+  if_then_340:
   return 1;
-  goto if_merge_520;
+  goto if_merge_341;
 
-  if_merge_520:
+  if_merge_341:
   return 0;
 
-  logic_rhs_521:
+  logic_rhs_342:
   r4 = cn_var_c2;
   r5 = r4 == 111;
-  if (r5) goto logic_merge_524; else goto logic_rhs_523;
+  if (r5) goto logic_merge_345; else goto logic_rhs_344;
 
-  logic_merge_522:
-  if (r7) goto if_then_519; else goto if_merge_520;
+  logic_merge_343:
+  if (r7) goto if_then_340; else goto if_merge_341;
 
-  logic_rhs_523:
+  logic_rhs_344:
   r6 = cn_var_c2;
   r7 = r6 == 79;
-  goto logic_merge_524;
+  goto logic_merge_345;
 
-  logic_merge_524:
-  goto logic_merge_522;
+  logic_merge_345:
+  goto logic_merge_343;
   return 0;
 }
 
@@ -826,22 +826,22 @@ _Bool 是单行注释开始(long long cn_var_c1, long long cn_var_c2) {
   entry:
   r1 = cn_var_c1;
   r2 = r1 == 47;
-  if (r2) goto logic_rhs_527; else goto logic_merge_528;
+  if (r2) goto logic_rhs_348; else goto logic_merge_349;
 
-  if_then_525:
+  if_then_346:
   return 1;
-  goto if_merge_526;
+  goto if_merge_347;
 
-  if_merge_526:
+  if_merge_347:
   return 0;
 
-  logic_rhs_527:
+  logic_rhs_348:
   r3 = cn_var_c2;
   r4 = r3 == 47;
-  goto logic_merge_528;
+  goto logic_merge_349;
 
-  logic_merge_528:
-  if (r4) goto if_then_525; else goto if_merge_526;
+  logic_merge_349:
+  if (r4) goto if_then_346; else goto if_merge_347;
   return 0;
 }
 
@@ -851,22 +851,22 @@ _Bool 是块注释开始(long long cn_var_c1, long long cn_var_c2) {
   entry:
   r1 = cn_var_c1;
   r2 = r1 == 47;
-  if (r2) goto logic_rhs_531; else goto logic_merge_532;
+  if (r2) goto logic_rhs_352; else goto logic_merge_353;
 
-  if_then_529:
+  if_then_350:
   return 1;
-  goto if_merge_530;
+  goto if_merge_351;
 
-  if_merge_530:
+  if_merge_351:
   return 0;
 
-  logic_rhs_531:
+  logic_rhs_352:
   r3 = cn_var_c2;
   r4 = r3 == 42;
-  goto logic_merge_532;
+  goto logic_merge_353;
 
-  logic_merge_532:
-  if (r4) goto if_then_529; else goto if_merge_530;
+  logic_merge_353:
+  if (r4) goto if_then_350; else goto if_merge_351;
   return 0;
 }
 
@@ -876,22 +876,22 @@ _Bool 是块注释结束(long long cn_var_c1, long long cn_var_c2) {
   entry:
   r1 = cn_var_c1;
   r2 = r1 == 42;
-  if (r2) goto logic_rhs_535; else goto logic_merge_536;
+  if (r2) goto logic_rhs_356; else goto logic_merge_357;
 
-  if_then_533:
+  if_then_354:
   return 1;
-  goto if_merge_534;
+  goto if_merge_355;
 
-  if_merge_534:
+  if_merge_355:
   return 0;
 
-  logic_rhs_535:
+  logic_rhs_356:
   r3 = cn_var_c2;
   r4 = r3 == 47;
-  goto logic_merge_536;
+  goto logic_merge_357;
 
-  logic_merge_536:
-  if (r4) goto if_then_533; else goto if_merge_534;
+  logic_merge_357:
+  if (r4) goto if_then_354; else goto if_merge_355;
   return 0;
 }
 

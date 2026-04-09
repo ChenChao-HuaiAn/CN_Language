@@ -61,6 +61,40 @@ enum 节点类型 {
     节点类型_函数声明 = 1,
     节点类型_程序节点 = 0
 };
+struct 类型节点;
+struct 表达式节点;
+struct 源位置 {
+    char* 文件名;
+    long long 行号;
+    long long 列号;
+};
+struct 表达式节点;
+struct 表达式节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
+    struct 类型节点* 类型信息;
+    _Bool 是自身指针;
+    long long 整数值;
+    double 小数值;
+    char* 字符串值;
+    _Bool 布尔值;
+    char* 标识符名称;
+    struct 表达式节点* 左操作数;
+    struct 表达式节点* 右操作数;
+    long long 运算符;
+    struct 表达式节点* 操作数;
+    struct 表达式节点* 被调函数;
+    struct 表达式节点* 参数列表;
+    long long 参数个数;
+    struct 表达式节点* 对象;
+    char* 成员名;
+    long long 成员索引;
+    struct 表达式节点* 数组;
+    struct 表达式节点* 索引;
+    struct 表达式节点* 左侧表达式;
+    struct 表达式节点* 值;
+    struct 表达式节点* 指针;
+};
 enum 二元运算符 {
     二元运算符_二元_右移 = 15,
     二元运算符_二元_左移 = 14,
@@ -118,7 +152,6 @@ enum 字面量类型 {
 
 // Struct Definitions - 从导入模块
 struct 类型节点;
-struct 类型节点;
 struct 类型节点 {
     enum 节点类型 类型;
     char* 名称;
@@ -128,43 +161,10 @@ struct 类型节点 {
     long long 数组大小;
     _Bool 是常量;
 };
-struct 源位置 {
-    char* 文件名;
-    long long 行号;
-    long long 列号;
-};
 struct AST节点;
 struct AST节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
-};
-struct 表达式节点;
-struct 表达式节点;
-struct 表达式节点 {
-    enum 节点类型 类型;
-    struct 源位置 位置;
-    struct 类型节点* 类型信息;
-    _Bool 是自身指针;
-    long long 整数值;
-    double 小数值;
-    char* 字符串值;
-    _Bool 布尔值;
-    char* 标识符名称;
-    struct 表达式节点* 左操作数;
-    struct 表达式节点* 右操作数;
-    long long 运算符;
-    struct 表达式节点* 操作数;
-    struct 表达式节点* 被调函数;
-    struct 表达式节点* 参数列表;
-    long long 参数个数;
-    struct 表达式节点* 对象;
-    char* 成员名;
-    long long 成员索引;
-    struct 表达式节点* 数组;
-    struct 表达式节点* 索引;
-    struct 表达式节点* 左侧表达式;
-    struct 表达式节点* 值;
-    struct 表达式节点* 指针;
 };
 struct 结构体字段初始化;
 struct 结构体字段初始化 {

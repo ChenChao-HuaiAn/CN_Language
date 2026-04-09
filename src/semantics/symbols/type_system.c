@@ -189,6 +189,10 @@ bool cn_type_compatible(CnType *a, CnType *b) {
     // 数组到指针的隐式转换（C语言中数组参数退化为指针）
     // 数组类型传递给指针参数
     if (a->kind == CN_TYPE_ARRAY && b->kind == CN_TYPE_POINTER) {
+        // 特殊处理：任何数组都可以隐式转换为 void*
+        if (b->as.pointer_to && b->as.pointer_to->kind == CN_TYPE_VOID) {
+            return true;  // 数组可以退化为 void*
+        }
         // 检查数组元素类型与指针指向类型是否兼容
         return cn_type_compatible(a->as.array.element_type, b->as.pointer_to);
     }

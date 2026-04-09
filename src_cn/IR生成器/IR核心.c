@@ -1199,13 +1199,15 @@ void 添加函数(struct IR模块*, struct IR函数*);
 struct 静态变量* 创建静态变量(char*, struct 类型节点*, struct IR操作数);
 
 struct IR模块* 创建IR模块() {
-  long long r0, r5;
+  long long r0, r5, r8;
   void* r1;
   struct IR模块* r2;
   struct IR模块* r3;
-  void* r6;
-  struct IR模块* r7;
+  struct IR模块* r6;
+  void* r9;
+  struct IR模块* r10;
   struct 目标三元组 r4;
+  struct 目标三元组 r7;
 
   entry:
   struct IR模块* cn_var_模块_0;
@@ -1218,13 +1220,16 @@ struct IR模块* 创建IR模块() {
   if_then_2760:
   r3 = cn_var_模块_0;
   r4 = r3->目标信息;
-  r5 = sizeof(struct 目标三元组);
-  r6 = 设置内存(r4, 0, r5);
+  r6 = cn_var_模块_0;
+  r7 = r6->目标信息;
+  r5 = &r7;
+  r8 = sizeof(struct 目标三元组);
+  r9 = 设置内存((void*)cn_var_模块.目标信息, 0, r8);
   goto if_merge_2761;
 
   if_merge_2761:
-  r7 = cn_var_模块_0;
-  return r7;
+  r10 = cn_var_模块_0;
+  return r10;
 }
 
 void 释放IR模块(struct IR模块* cn_var_模块) {
