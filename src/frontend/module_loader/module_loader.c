@@ -1498,10 +1498,11 @@ static char *resolve_relative_dir(const char *base_dir, size_t relative_level)
         return NULL;
     }
     
-    // relative_level = 1 表示 ./（同级）
-    // relative_level = 2 表示 ../（父级）
-    // 所以需要向上 relative_level - 1 层
-    size_t up_levels = relative_level - 1;
+    // relative_level = 0 表示 ./（同级目录）
+    // relative_level = 1 表示 ../（父级目录）
+    // relative_level = 2 表示 ../../（祖父级目录）
+    // 所以需要向上 relative_level 层
+    size_t up_levels = relative_level;
     
     for (size_t i = 0; i < up_levels; i++) {
         // 查找最后一个路径分隔符

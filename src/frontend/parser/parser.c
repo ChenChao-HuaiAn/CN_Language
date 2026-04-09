@@ -5012,18 +5012,40 @@ static CnAstModulePath *parse_module_path(CnParser *parser)
     
     // 检查相对导入：./ 或 ../ 语法
     // 支持：./模块、../模块、../../模块
+    // 语义定义：
+    //   relative_level = 0 表示 ./（同级目录）
+    //   relative_level = 1 表示 ../（父级目录）
+    //   relative_level = 2 表示 ../../（祖父级目录）
     while (parser->current.kind == CN_TOKEN_DOT) {
-        path->is_relative = 1;
-        path->relative_level++;
-        parser_advance(parser);
+        parser_advance(parser);  // 消费第一个点
         
-        // 检查是否跟着斜杠（如 ./、../）
         if (parser->current.kind == CN_TOKEN_SLASH) {
-            parser_advance(parser);
-            // 如果不是继续的点，则退出循环
-            if (parser->current.kind != CN_TOKEN_DOT) {
+            // ./ 情况：当前目录，relative_level = 0
+            path->is_relative = 1;
+            // relative_level 保持为 0
+            parser_advance(parser);  // 消费斜杠
+            break;  // 退出循环
+        } else if (parser->current.kind == CN_TOKEN_DOT) {
+            // .. 情况：上级目录，需要继续解析
+            parser_advance(parser);  // 消费第二个点
+            
+            if (parser->current.kind == CN_TOKEN_SLASH) {
+                // ../ 情况：向上一级
+                path->is_relative = 1;
+                path->relative_level++;
+                parser_advance(parser);  // 消费斜杠
+                // 继续循环，检查是否有更多的 ../
+            } else {
+                // .. 后面没有斜杠，语法错误，回退处理
+                // 这里不应该发生，但为了健壮性，标记为相对路径并退出
+                path->is_relative = 1;
+                path->relative_level++;
                 break;
             }
+        } else {
+            // 单个点后面没有斜杠也不是点，可能是其他语法
+            // 回退并退出
+            break;
         }
     }
     
