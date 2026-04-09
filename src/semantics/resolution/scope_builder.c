@@ -48,7 +48,9 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
             return 1;  // 类型指针相同，认为是同一个符号
         }
         // 对于函数类型，延迟到类型结构比较
-        if (sym1->type->kind == CN_TYPE_FUNCTION && sym2->type->kind == CN_TYPE_FUNCTION) {
+        // 【修复】添加空指针检查，防止 type 为 NULL 时崩溃
+        if (sym1->type && sym2->type &&
+            sym1->type->kind == CN_TYPE_FUNCTION && sym2->type->kind == CN_TYPE_FUNCTION) {
             // 比较函数类型的结构：参数数量
             if (sym1->type->as.function.param_count != sym2->type->as.function.param_count) {
                 return 0;
@@ -2080,8 +2082,11 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         }
         
         // 更新结构体类型（添加字段信息）
-        sym->type->as.struct_type.fields = fields;
-        sym->type->as.struct_type.field_count = struct_decl->field_count;
+        // 【修复】添加空指针检查，防止 sym->type 为 NULL 时崩溃
+        if (sym->type && sym->type->kind == CN_TYPE_STRUCT) {
+            sym->type->as.struct_type.fields = fields;
+            sym->type->as.struct_type.field_count = struct_decl->field_count;
+        }
     }
     
     // =============================================================================
@@ -2713,6 +2718,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             } else {
                 // 绝对路径导入：使用模块加载器解析
                 // 构建模块标识符
+                // 【修复】添加空指针检查，防止 module_path->segments 为 NULL 时崩溃
+                if (!module_path->segments || module_path->segment_count == 0) {
+                    continue;
+                }
                 char qualified_name[1024];
                 size_t offset = 0;
                 for (size_t j = 0; j < module_path->segment_count && offset < sizeof(qualified_name) - 1; j++) {
@@ -2781,6 +2790,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     }
                                 }
                             } else if (import->is_wildcard) {
+                                // 【修复】添加空指针检查，防止 external_scope 为 NULL 时崩溃
+                                if (!external_scope) {
+                                    continue;
+                                }
                                 CnSemSymbolNode *node = external_scope->symbols;
                                 while (node) {
                                     CnSemSymbol *sym = &node->symbol;
@@ -2804,6 +2817,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                             }
                         } else {
                             // 纯导入语法：全量导入模块的所有公开成员
+                            // 【修复】添加空指针检查，防止 module_path->segments 为 NULL 时崩溃
+                            if (!module_path->segments || module_path->segment_count == 0) {
+                                continue;
+                            }
                             const char *module_name = module_path->segments[module_path->segment_count - 1].name;
                             size_t module_name_length = module_path->segments[module_path->segment_count - 1].name_length;
                             
@@ -2816,6 +2833,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                             }
                             
                             // 同时导入所有公开成员到当前作用域
+                            // 【修复】添加空指针检查，防止 external_scope->symbols 为 NULL 时崩溃
+                            if (!external_scope) {
+                                continue;
+                            }
                             CnSemSymbolNode *node = external_scope->symbols;
                             while (node) {
                                 CnSemSymbol *sym = &node->symbol;
@@ -3103,6 +3124,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
         // 判断是全量导入还是选择性导入
         if (import->member_count == 0) {
             // 全量导入：遍历模块作用域中的所有公开符号，添加到全局作用域
+            // 【修复】添加空指针检查，防止 module_scope 为 NULL 时崩溃
+            if (!module_scope) {
+                continue;
+            }
             CnSemSymbolNode *node = module_scope->symbols;
             while (node) {
                 CnSemSymbol *sym = &node->symbol;
@@ -3167,6 +3192,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             }
         } else {
             // 选择性导入：只导入指定的成员
+            // 【修复】添加空指针检查，防止 module_scope 为 NULL 时崩溃
+            if (!module_scope) {
+                continue;
+            }
             for (size_t j = 0; j < import->member_count; ++j) {
                 const char *member_name = import->members[j].name;
                 size_t member_name_length = import->members[j].name_length;

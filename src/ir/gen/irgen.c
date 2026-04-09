@@ -803,7 +803,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                      strncmp(expr->as.call.callee->as.member.member_name, "长度",
                              expr->as.call.callee->as.member.member_name_length) == 0) {
                 // 将方法风格调用转换为函数风格：arr.长度() -> 长度(arr)
-                CnType *obj_type = expr->as.call.callee->as.member.object->type;
+                // 【修复】添加空指针检查，防止 object 为 NULL 时崩溃
+                CnType *obj_type = NULL;
+                if (expr->as.call.callee->as.member.object) {
+                    obj_type = expr->as.call.callee->as.member.object->type;
+                }
                 if (obj_type && obj_type->kind == CN_TYPE_ARRAY) {
                     func_name = "cn_rt_array_length";
                 } else {
@@ -844,7 +848,9 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 }
                 // 检查是否标记为虚函数调用（通过AST节点中的标记）
                 // 如果是虚函数，生成虚函数调用指令
-                else if (expr->as.call.callee->as.member.object->type) {
+                // 【修复】添加空指针检查，防止 object 为 NULL 时崩溃
+                else if (expr->as.call.callee->as.member.object &&
+                         expr->as.call.callee->as.member.object->type) {
                     CnType *obj_type = expr->as.call.callee->as.member.object->type;
                     // 检查类型是否为类类型（通过结构体类型模拟）
                     // 在类型系统中，类类型使用 CN_TYPE_STRUCT 表示
@@ -1117,8 +1123,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 数组字面量：调用 cn_rt_array_alloc 分配数组，然后逐个设置元素
             size_t elem_count = expr->as.array_literal.element_count;
             
-            // 确定元素类型和大小
-            CnType *elem_type = expr->type->as.array.element_type;
+            // 【修复】添加空指针检查，防止 expr->type 为 NULL 时崩溃
+            CnType *elem_type = NULL;
+            if (expr->type && expr->type->kind == CN_TYPE_ARRAY) {
+                elem_type = expr->type->as.array.element_type;
+            }
             size_t elem_size = 8;  // 默认大小，对于整数和指针
             
             // 生成对 cn_rt_array_alloc 的调用
@@ -1193,12 +1202,15 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             bool is_enum_access = false;
             CnSemSymbol *enum_sym = NULL;
             
-            if (expr->as.member.object->type &&
+            // 【修复】添加空指针检查，防止 object 为 NULL 时崩溃
+            if (expr->as.member.object &&
+                expr->as.member.object->type &&
                 expr->as.member.object->type->kind == CN_TYPE_ENUM &&
                 expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
                 // 方式1：语义分析器已正确设置类型
                 is_enum_access = true;
-            } else if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER && ctx->current_scope) {
+            } else if (expr->as.member.object &&
+                       expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER && ctx->current_scope) {
                 // 方式2：通过符号表查找确认是否为枚举类型
                 CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
                     expr->as.member.object->as.identifier.name,
@@ -1228,7 +1240,9 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             }
             
             // 检查是否为模块成员访问（对象类型为 VOID 表示模块）
-            if (expr->as.member.object->type &&
+            // 【修复】添加空指针检查，防止 object 为 NULL 时崩溃
+            if (expr->as.member.object &&
+                expr->as.member.object->type &&
                 expr->as.member.object->type->kind == CN_TYPE_VOID &&
                 expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
                 // 模块成员访问：直接使用成员名称（不再生成带模块前缀的名称）
@@ -1247,6 +1261,10 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             
             // 结构体成员访问：obj.member 或 ptr->member
             // CN语言中，指针成员访问可以使用"."语法，但生成C代码时需要转换为"->"
+            // 【修复】添加空指针检查，防止 object 为 NULL 时崩溃
+            if (!expr->as.member.object) {
+                return cn_ir_op_none();
+            }
             CnIrOperand object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
             
             // 判断对象是否为指针类型
@@ -1266,10 +1284,15 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     // 这里不解引用，而是在代码生成时使用"->"
                 } else if (expr->as.member.is_arrow) {
                     // 显式使用"->"语法，解引用指针
-                    int deref_reg = alloc_reg(ctx);
-                    CnIrOperand deref_op = cn_ir_op_reg(deref_reg, expr->as.member.object->type->as.pointer_to);
-                    emit(ctx, cn_ir_inst_new(CN_IR_INST_DEREF, deref_op, object_op, cn_ir_op_none()));
-                    object_op = deref_op;
+                    // 【修复】添加空指针检查，防止 type 或 pointer_to 为 NULL 时崩溃
+                    CnType *pointer_type = expr->as.member.object->type;
+                    if (pointer_type && pointer_type->kind == CN_TYPE_POINTER && pointer_type->as.pointer_to) {
+                        int deref_reg = alloc_reg(ctx);
+                        CnIrOperand deref_op = cn_ir_op_reg(deref_reg, pointer_type->as.pointer_to);
+                        emit(ctx, cn_ir_inst_new(CN_IR_INST_DEREF, deref_op, object_op, cn_ir_op_none()));
+                        object_op = deref_op;
+                    }
+                    // 如果类型信息不完整，跳过解引用（后续代码生成会处理）
                 }
             }
             

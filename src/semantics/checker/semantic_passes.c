@@ -157,6 +157,15 @@ static void resolve_expr_names(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
         case CN_AST_EXPR_MEMBER_ACCESS:
             // 解析成员访问表达式：支持结构体和模块成员访问
             // 先解析对象部分
+            // 【修复】添加空指针检查，防止访问违规崩溃
+            if (!expr->as.member.object) {
+                cn_support_diag_semantic_error_generic(
+                    diagnostics,
+                    CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,
+                    NULL, 0, 0,
+                    "语义错误：成员访问表达式的对象为空");
+                break;
+            }
             resolve_expr_names(scope, expr->as.member.object, diagnostics);
             
             // 如果对象是模块，验证成员是否存在
@@ -592,7 +601,18 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                     }
                 } else {
                     // 类型推断：var a = 1;
-                    sym->type = init_type;
+                    // 【修复】添加空指针检查，防止 init_type 为 NULL 时导致后续崩溃
+                    if (init_type) {
+                        sym->type = init_type;
+                    } else {
+                        // 无法推断类型，报告错误
+                        cn_support_diag_semantic_error_generic(
+                            diagnostics,
+                            CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                            NULL, 0, 0,
+                            "语义错误：无法推断变量类型，请提供显式类型声明");
+                        sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    }
                 }
             }
             break;
