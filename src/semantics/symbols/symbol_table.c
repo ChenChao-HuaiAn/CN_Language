@@ -266,3 +266,68 @@ void cn_sem_scope_foreach_symbol(CnSemScope *scope,
         node = node->next;
     }
 }
+
+/**
+ * @brief 深度复制枚举作用域
+ *
+ * 用于模块导入时复制枚举成员信息，确保导入的枚举成员信息不会因为
+ * 原模块被重新编译或跨编译会话而丢失。
+ *
+ * @param src_scope 源枚举作用域
+ * @return 新分配的枚举作用域，失败返回 NULL
+ */
+CnSemScope *cn_sem_scope_deep_copy_enum(CnSemScope *src_scope) {
+    if (!src_scope) {
+        return NULL;
+    }
+
+    // 只处理枚举作用域
+    if (src_scope->kind != CN_SEM_SCOPE_ENUM) {
+        return NULL;
+    }
+
+    // 创建新的枚举作用域（父作用域设为NULL，因为导入后作用域链不同）
+    CnSemScope *dst_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, NULL);
+    if (!dst_scope) {
+        return NULL;
+    }
+
+    // 复制作用域名称
+    if (src_scope->name && src_scope->name_length > 0) {
+        cn_sem_scope_set_name(dst_scope, src_scope->name, src_scope->name_length);
+    }
+
+    // 遍历源作用域中的所有符号，复制枚举成员
+    CnSemSymbolNode *node = src_scope->symbols;
+    while (node) {
+        CnSemSymbol *src_sym = &node->symbol;
+
+        // 在目标作用域中插入新符号
+        CnSemSymbol *dst_sym = cn_sem_scope_insert_symbol(
+            dst_scope,
+            src_sym->name,
+            src_sym->name_length,
+            src_sym->kind);
+
+        if (dst_sym) {
+            // 复制符号属性
+            dst_sym->is_public = src_sym->is_public;
+            dst_sym->is_const = src_sym->is_const;
+            dst_sym->is_static = src_sym->is_static;
+            dst_sym->source_module_path = src_sym->source_module_path;
+            dst_sym->source_module_path_length = src_sym->source_module_path_length;
+
+            // 复制类型信息（枚举成员的类型是整数，可以直接复制）
+            dst_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+
+            // 复制枚举值
+            if (src_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                dst_sym->as.enum_value = src_sym->as.enum_value;
+            }
+        }
+
+        node = node->next;
+    }
+
+    return dst_scope;
+}

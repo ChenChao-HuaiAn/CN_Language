@@ -769,13 +769,15 @@ CnType *cn_type_deep_copy(CnType *src) {
         }
         
         case CN_TYPE_ENUM: {
-            // 枚举类型：复制名称和作用域
+            // 枚举类型：深度复制名称和枚举作用域
             CnType *dst = cn_type_new_enum(
                 src->as.enum_type.name,
                 src->as.enum_type.name_length);
             
             if (dst) {
-                dst->as.enum_type.enum_scope = src->as.enum_type.enum_scope;
+                // 【关键修复】深度复制枚举作用域，避免跨模块访问时野指针崩溃
+                // 原来只是复制指针，当原模块被重新编译时，枚举作用域可能被释放
+                dst->as.enum_type.enum_scope = cn_sem_scope_deep_copy_enum(src->as.enum_type.enum_scope);
             }
             
             return dst;

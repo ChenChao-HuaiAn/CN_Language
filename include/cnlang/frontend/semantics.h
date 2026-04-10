@@ -193,6 +193,9 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                       const char *member_name,
                                       size_t member_name_length);
 
+// 枚举作用域深度复制：用于模块导入时复制枚举成员信息
+CnSemScope *cn_sem_scope_deep_copy_enum(CnSemScope *src_scope);
+
 // ============================================================================
 // 类型推断辅助函数
 // ============================================================================
