@@ -1273,6 +1273,7 @@ void 增加缩进(struct 输出缓冲区*);
 void 减少缩进(struct 输出缓冲区*);
 char* 类型到C类型(struct 类型信息*, struct 输出缓冲区*);
 char* 生成类型声明(struct 类型信息*, char*, struct 输出缓冲区*);
+char* 类型节点到C类型(struct 类型节点*, struct 输出缓冲区*);
 char* 生成操作数代码(struct IR操作数, struct 输出缓冲区*);
 void 生成算术指令(struct IR指令*, struct 输出缓冲区*);
 void 生成一元指令(struct IR指令*, struct 输出缓冲区*);
@@ -1307,28 +1308,28 @@ struct 输出缓冲区* 创建输出缓冲区(long long cn_var_初始容量) {
   r1 = 分配内存(r0);
   cn_var_缓冲区_0 = r1;
   r2 = cn_var_缓冲区_0;
-  if (r2) goto if_then_3151; else goto if_merge_3152;
+  if (r2) goto if_then_0; else goto if_merge_1;
 
-  if_then_3151:
+  if_then_0:
   r3 = cn_var_初始容量;
   r4 = 分配内存(r3);
   r5 = cn_var_初始容量;
   r6 = cn_var_缓冲区_0;
   r7 = r6->数据;
-  if (r7) goto if_then_3153; else goto if_merge_3154;
+  if (r7) goto if_then_2; else goto if_merge_3;
 
-  if_merge_3152:
+  if_merge_1:
   r10 = cn_var_缓冲区_0;
   return r10;
 
-  if_then_3153:
+  if_then_2:
   r8 = cn_var_缓冲区_0;
   r9 = r8->数据;
-    { long long _tmp_i3 = 0; cn_rt_array_set_element(r9, 0, &_tmp_i3, 8); }
-  goto if_merge_3154;
+    { long long _tmp_i0 = 0; cn_rt_array_set_element(r9, 0, &_tmp_i0, 8); }
+  goto if_merge_3;
 
-  if_merge_3154:
-  goto if_merge_3152;
+  if_merge_3:
+  goto if_merge_1;
   return NULL;
 }
 
@@ -1342,30 +1343,30 @@ void 释放输出缓冲区(struct 输出缓冲区* cn_var_缓冲区) {
 
   entry:
   r0 = cn_var_缓冲区;
-  if (r0) goto if_then_3155; else goto if_merge_3156;
+  if (r0) goto if_then_4; else goto if_merge_5;
 
-  if_then_3155:
+  if_then_4:
   r1 = cn_var_缓冲区;
   r2 = r1->数据;
-  if (r2) goto if_then_3157; else goto if_merge_3158;
+  if (r2) goto if_then_6; else goto if_merge_7;
 
-  if_merge_3156:
+  if_merge_5:
 
-  if_then_3157:
+  if_then_6:
   r3 = cn_var_缓冲区;
   r4 = r3->数据;
   释放内存(r4);
-  goto if_merge_3158;
+  goto if_merge_7;
 
-  if_merge_3158:
+  if_merge_7:
   r5 = cn_var_缓冲区;
   释放内存(r5);
-  goto if_merge_3156;
+  goto if_merge_5;
   return;
 }
 
 _Bool 扩展缓冲区(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_新容量) {
-  long long r0, r2, r3, r5, r6, r9, r13;
+  long long r0, r3, r5, r9, r13;
   char* r8;
   char* r11;
   char* r12;
@@ -1373,17 +1374,19 @@ _Bool 扩展缓冲区(struct 输出缓冲区* cn_var_缓冲区, long long cn_var
   struct 输出缓冲区* r4;
   struct 输出缓冲区* r7;
   void* r10;
+  _Bool r2;
+  _Bool r6;
 
   entry:
   r1 = cn_var_缓冲区;
   r2 = !r1;
-  if (r2) goto logic_merge_3162; else goto logic_rhs_3161;
+  if (r2) goto logic_merge_11; else goto logic_rhs_10;
 
-  if_then_3159:
+  if_then_8:
   return 0;
-  goto if_merge_3160;
+  goto if_merge_9;
 
-  if_merge_3160:
+  if_merge_9:
   char* cn_var_新数据_0;
   r7 = cn_var_缓冲区;
   r8 = r7->数据;
@@ -1391,35 +1394,37 @@ _Bool 扩展缓冲区(struct 输出缓冲区* cn_var_缓冲区, long long cn_var
   r10 = 重新分配内存(r8, r9);
   cn_var_新数据_0 = r10;
   r11 = cn_var_新数据_0;
-  if (r11) goto if_then_3163; else goto if_merge_3164;
+  if (r11) goto if_then_12; else goto if_merge_13;
 
-  logic_rhs_3161:
+  logic_rhs_10:
   r3 = cn_var_新容量;
   r4 = cn_var_缓冲区;
   r5 = r4->容量;
   r6 = r3 <= r5;
-  goto logic_merge_3162;
+  goto logic_merge_11;
 
-  logic_merge_3162:
-  if (r6) goto if_then_3159; else goto if_merge_3160;
+  logic_merge_11:
+  if (r6) goto if_then_8; else goto if_merge_9;
 
-  if_then_3163:
+  if_then_12:
   r12 = cn_var_新数据_0;
   r13 = cn_var_新容量;
   return 1;
-  goto if_merge_3164;
+  goto if_merge_13;
 
-  if_merge_3164:
+  if_merge_13:
   return 0;
 }
 
 _Bool 追加字符串(struct 输出缓冲区* cn_var_缓冲区, char* cn_var_字符串值) {
-  long long r0, r2, r4, r6, r8, r10, r11, r12, r14, r15, r17, r18, r19, r20, r21, r22, r23, r25, r27, r31, r32, r37, r39, r43;
+  long long r0, r6, r8, r9, r10, r11, r12, r14, r17, r18, r19, r20, r22, r23, r25, r31, r35, r38, r39, r40, r44;
   char* r3;
   char* r5;
   char* r29;
+  char* r32;
   char* r33;
-  char* r41;
+  char* r34;
+  char* r42;
   struct 输出缓冲区* r1;
   struct 输出缓冲区* r7;
   struct 输出缓冲区* r13;
@@ -1427,22 +1432,27 @@ _Bool 追加字符串(struct 输出缓冲区* cn_var_缓冲区, char* cn_var_字
   struct 输出缓冲区* r24;
   struct 输出缓冲区* r28;
   struct 输出缓冲区* r30;
-  void* r35;
-  struct 输出缓冲区* r36;
-  struct 输出缓冲区* r40;
-  struct 输出缓冲区* r42;
+  void* r36;
+  struct 输出缓冲区* r37;
+  struct 输出缓冲区* r41;
+  struct 输出缓冲区* r43;
+  _Bool r2;
+  _Bool r4;
+  _Bool r15;
+  _Bool r21;
   _Bool r26;
+  _Bool r27;
 
   entry:
   r1 = cn_var_缓冲区;
   r2 = !r1;
-  if (r2) goto logic_merge_3168; else goto logic_rhs_3167;
+  if (r2) goto logic_merge_17; else goto logic_rhs_16;
 
-  if_then_3165:
+  if_then_14:
   return 0;
-  goto if_merge_3166;
+  goto if_merge_15;
 
-  if_merge_3166:
+  if_merge_15:
   long long cn_var_字符串长度_0;
   r5 = cn_var_字符串值;
   r6 = 获取字符串长度(r5);
@@ -1458,74 +1468,75 @@ _Bool 追加字符串(struct 输出缓冲区* cn_var_缓冲区, char* cn_var_字
   r13 = cn_var_缓冲区;
   r14 = r13->容量;
   r15 = r12 > r14;
-  if (r15) goto if_then_3169; else goto if_merge_3170;
+  if (r15) goto if_then_18; else goto if_merge_19;
 
-  logic_rhs_3167:
+  logic_rhs_16:
   r3 = cn_var_字符串值;
   r4 = !r3;
-  goto logic_merge_3168;
+  goto logic_merge_17;
 
-  logic_merge_3168:
-  if (r4) goto if_then_3165; else goto if_merge_3166;
+  logic_merge_17:
+  if (r4) goto if_then_14; else goto if_merge_15;
 
-  if_then_3169:
+  if_then_18:
   long long cn_var_新容量_2;
   r16 = cn_var_缓冲区;
   r17 = r16->容量;
   r18 = r17 << 1;
   cn_var_新容量_2 = r18;
-  goto while_cond_3171;
+  goto while_cond_20;
 
-  if_merge_3170:
+  if_merge_19:
   r28 = cn_var_缓冲区;
   r29 = r28->数据;
   r30 = cn_var_缓冲区;
   r31 = r30->长度;
-  r32 = r29 + r31;
-  r33 = cn_var_字符串值;
-  r34 = cn_var_字符串长度_0;
-  r35 = 复制内存(r32, r33, r34);
-  r36 = cn_var_缓冲区;
-  r37 = r36->长度;
-  r38 = cn_var_字符串长度_0;
-  r39 = r37 + r38;
-  r40 = cn_var_缓冲区;
-  r41 = r40->数据;
-  r42 = cn_var_缓冲区;
-  r43 = r42->长度;
-    { long long _tmp_i4 = 0; cn_rt_array_set_element(r41, r43, &_tmp_i4, 8); }
+  r32 = cn_rt_int_to_string(r31);
+  r33 = cn_rt_string_concat(r29, r32);
+  r34 = cn_var_字符串值;
+  r35 = cn_var_字符串长度_0;
+  r36 = 复制内存(r33, r34, r35);
+  r37 = cn_var_缓冲区;
+  r38 = r37->长度;
+  r39 = cn_var_字符串长度_0;
+  r40 = r38 + r39;
+  r41 = cn_var_缓冲区;
+  r42 = r41->数据;
+  r43 = cn_var_缓冲区;
+  r44 = r43->长度;
+    { long long _tmp_i1 = 0; cn_rt_array_set_element(r42, r44, &_tmp_i1, 8); }
   return 1;
 
-  while_cond_3171:
+  while_cond_20:
   r19 = cn_var_新容量_2;
   r20 = cn_var_需要容量_1;
   r21 = r19 < r20;
-  if (r21) goto while_body_3172; else goto while_exit_3173;
+  if (r21) goto while_body_21; else goto while_exit_22;
 
-  while_body_3172:
+  while_body_21:
   r22 = cn_var_新容量_2;
   r23 = r22 << 1;
   cn_var_新容量_2 = r23;
-  goto while_cond_3171;
+  goto while_cond_20;
 
-  while_exit_3173:
+  while_exit_22:
   r24 = cn_var_缓冲区;
   r25 = cn_var_新容量_2;
   r26 = 扩展缓冲区(r24, r25);
   r27 = !r26;
-  if (r27) goto if_then_3174; else goto if_merge_3175;
+  if (r27) goto if_then_23; else goto if_merge_24;
 
-  if_then_3174:
+  if_then_23:
   return 0;
-  goto if_merge_3175;
+  goto if_merge_24;
 
-  if_merge_3175:
-  goto if_merge_3170;
+  if_merge_24:
+  goto if_merge_19;
   return 0;
 }
 
 _Bool 追加字符(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_字符值) {
-  long long r1, r8;
+  long long r1;
   char* r2;
   char* r3;
   char* r5;
@@ -1533,6 +1544,7 @@ _Bool 追加字符(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_�
   void* r0;
   struct 输出缓冲区* r4;
   _Bool r6;
+  _Bool r8;
 
   entry:
   char* cn_var_字符串缓冲_0;
@@ -1540,10 +1552,10 @@ _Bool 追加字符(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_�
   cn_var_字符串缓冲_0 = (char*)0;
   r1 = cn_var_字符值;
   r2 = cn_var_字符串缓冲_0;
-    { long long _tmp_r14 = r1; cn_rt_array_set_element(r2, 0, &_tmp_r14, 8); }
+    { long long _tmp_r0 = r1; cn_rt_array_set_element(r2, 0, &_tmp_r0, 8); }
   r3 = cn_var_字符串缓冲_0;
-    { long long _tmp_i5 = 0; cn_rt_array_set_element(r3, 1, &_tmp_i5, 8); }
-  long long cn_var_结果_1;
+    { long long _tmp_i2 = 0; cn_rt_array_set_element(r3, 1, &_tmp_i2, 8); }
+  _Bool cn_var_结果_1;
   r4 = cn_var_缓冲区;
   r5 = cn_var_字符串缓冲_0;
   r6 = 追加字符串(r4, r5);
@@ -1555,13 +1567,14 @@ _Bool 追加字符(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_�
 }
 
 _Bool 追加整数(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_数值) {
-  long long r2, r7;
+  long long r2;
   char* r1;
   char* r4;
   char* r6;
   void* r0;
   struct 输出缓冲区* r3;
   _Bool r5;
+  _Bool r7;
 
   entry:
   char* cn_var_字符串缓冲_0;
@@ -1570,7 +1583,7 @@ _Bool 追加整数(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_�
   r1 = cn_var_字符串缓冲_0;
   r2 = cn_var_数值;
   格式化整数(r1, 32, r2);
-  long long cn_var_结果_1;
+  _Bool cn_var_结果_1;
   r3 = cn_var_缓冲区;
   r4 = cn_var_字符串缓冲_0;
   r5 = 追加字符串(r3, r4);
@@ -1582,47 +1595,49 @@ _Bool 追加整数(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_�
 }
 
 void 追加缩进(struct 输出缓冲区* cn_var_缓冲区, long long cn_var_缩进宽度) {
-  long long r1, r2, r4, r5, r6, r7, r10, r11;
+  long long r2, r4, r5, r6, r10, r11;
   struct 输出缓冲区* r0;
   struct 输出缓冲区* r3;
   struct 输出缓冲区* r8;
+  _Bool r1;
+  _Bool r7;
   _Bool r9;
 
   entry:
   r0 = cn_var_缓冲区;
   r1 = !r0;
-  if (r1) goto if_then_3176; else goto if_merge_3177;
+  if (r1) goto if_then_25; else goto if_merge_26;
 
-  if_then_3176:
+  if_then_25:
   return;
-  goto if_merge_3177;
+  goto if_merge_26;
 
-  if_merge_3177:
+  if_merge_26:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3178;
+  goto for_cond_27;
 
-  for_cond_3178:
+  for_cond_27:
   r2 = cn_var_i_0;
   r3 = cn_var_缓冲区;
   r4 = r3->缩进级别;
   r5 = cn_var_缩进宽度;
   r6 = r4 * r5;
   r7 = r2 < r6;
-  if (r7) goto for_body_3179; else goto for_exit_3181;
+  if (r7) goto for_body_28; else goto for_exit_30;
 
-  for_body_3179:
+  for_body_28:
   r8 = cn_var_缓冲区;
   r9 = 追加字符(r8, 32);
-  goto for_update_3180;
+  goto for_update_29;
 
-  for_update_3180:
+  for_update_29:
   r10 = cn_var_i_0;
   r11 = r10 + 1;
   cn_var_i_0 = r11;
-  goto for_cond_3178;
+  goto for_cond_27;
 
-  for_exit_3181:
+  for_exit_30:
   return;
 }
 
@@ -1637,83 +1652,85 @@ void 追加换行(struct 输出缓冲区* cn_var_缓冲区) {
 }
 
 void 增加缩进(struct 输出缓冲区* cn_var_缓冲区) {
-  long long r0, r3, r4, r5, r7, r8;
+  long long r0, r3, r4, r7, r8;
   struct 输出缓冲区* r1;
   struct 输出缓冲区* r2;
   struct 输出缓冲区* r6;
+  _Bool r5;
 
   entry:
   r1 = cn_var_缓冲区;
-  if (r1) goto logic_rhs_3184; else goto logic_merge_3185;
+  if (r1) goto logic_rhs_33; else goto logic_merge_34;
 
-  if_then_3182:
+  if_then_31:
   r6 = cn_var_缓冲区;
   r7 = r6->缩进级别;
   r8 = r7 + 1;
-  goto if_merge_3183;
+  goto if_merge_32;
 
-  if_merge_3183:
+  if_merge_32:
 
-  logic_rhs_3184:
+  logic_rhs_33:
   r2 = cn_var_缓冲区;
   r3 = r2->缩进级别;
   r4 = cn_var_最大缩进级别;
   r5 = r3 < r4;
-  goto logic_merge_3185;
+  goto logic_merge_34;
 
-  logic_merge_3185:
-  if (r5) goto if_then_3182; else goto if_merge_3183;
+  logic_merge_34:
+  if (r5) goto if_then_31; else goto if_merge_32;
   return;
 }
 
 void 减少缩进(struct 输出缓冲区* cn_var_缓冲区) {
-  long long r0, r3, r4, r6, r7;
+  long long r0, r3, r6, r7;
   struct 输出缓冲区* r1;
   struct 输出缓冲区* r2;
   struct 输出缓冲区* r5;
+  _Bool r4;
 
   entry:
   r1 = cn_var_缓冲区;
-  if (r1) goto logic_rhs_3188; else goto logic_merge_3189;
+  if (r1) goto logic_rhs_37; else goto logic_merge_38;
 
-  if_then_3186:
+  if_then_35:
   r5 = cn_var_缓冲区;
   r6 = r5->缩进级别;
   r7 = r6 - 1;
-  goto if_merge_3187;
+  goto if_merge_36;
 
-  if_merge_3187:
+  if_merge_36:
 
-  logic_rhs_3188:
+  logic_rhs_37:
   r2 = cn_var_缓冲区;
   r3 = r2->缩进级别;
   r4 = r3 > 0;
-  goto logic_merge_3189;
+  goto logic_merge_38;
 
-  logic_merge_3189:
-  if (r4) goto if_then_3186; else goto if_merge_3187;
+  logic_merge_38:
+  if (r4) goto if_then_35; else goto if_merge_36;
   return;
 }
 
 char* 类型到C类型(struct 类型信息* cn_var_类型, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r1, r80, r82, r83, r84, r85, r90, r94, r95;
+  long long r35, r81, r83, r85, r91, r95, r96;
   char* r20;
   char* r24;
   char* r28;
-  char* r39;
-  char* r44;
-  char* r47;
-  char* r52;
-  char* r55;
-  char* r60;
-  char* r63;
-  char* r68;
-  char* r73;
-  char* r77;
-  char* r93;
-  char* r99;
+  char* r40;
+  char* r45;
+  char* r48;
+  char* r53;
+  char* r56;
+  char* r61;
+  char* r64;
+  char* r69;
+  char* r74;
+  char* r78;
+  char* r94;
+  char* r100;
   void* r33;
-  void* r89;
+  void* r90;
   struct 类型信息* r0;
   struct 类型信息* r2;
   struct 类型信息* r17;
@@ -1727,37 +1744,38 @@ char* 类型到C类型(struct 类型信息* cn_var_类型, struct 输出缓冲�
   struct 输出缓冲区* r29;
   struct 输出缓冲区* r31;
   struct 类型信息* r32;
-  void* r34;
-  struct 输出缓冲区* r36;
-  struct 输出缓冲区* r38;
-  struct 输出缓冲区* r40;
-  struct 输出缓冲区* r42;
-  struct 类型信息* r43;
-  struct 输出缓冲区* r46;
-  struct 输出缓冲区* r48;
-  struct 输出缓冲区* r50;
-  struct 类型信息* r51;
-  struct 输出缓冲区* r54;
-  struct 输出缓冲区* r56;
-  struct 输出缓冲区* r58;
-  struct 类型信息* r59;
-  struct 输出缓冲区* r62;
-  struct 输出缓冲区* r64;
-  struct 输出缓冲区* r66;
-  struct 类型信息* r67;
-  struct 输出缓冲区* r70;
-  struct 输出缓冲区* r72;
-  struct 类型信息* r74;
+  long long* r34;
+  struct 输出缓冲区* r37;
+  struct 输出缓冲区* r39;
+  struct 输出缓冲区* r41;
+  struct 输出缓冲区* r43;
+  struct 类型信息* r44;
+  struct 输出缓冲区* r47;
+  struct 输出缓冲区* r49;
+  struct 输出缓冲区* r51;
+  struct 类型信息* r52;
+  struct 输出缓冲区* r55;
+  struct 输出缓冲区* r57;
+  struct 输出缓冲区* r59;
+  struct 类型信息* r60;
+  struct 输出缓冲区* r63;
+  struct 输出缓冲区* r65;
+  struct 输出缓冲区* r67;
+  struct 类型信息* r68;
+  struct 输出缓冲区* r71;
+  struct 输出缓冲区* r73;
   struct 类型信息* r75;
-  struct 输出缓冲区* r76;
-  struct 输出缓冲区* r78;
-  struct 类型信息* r81;
-  struct 输出缓冲区* r86;
-  struct 类型信息* r88;
-  void* r91;
-  struct 输出缓冲区* r92;
-  struct 输出缓冲区* r96;
-  struct 输出缓冲区* r98;
+  struct 类型信息* r76;
+  struct 输出缓冲区* r77;
+  struct 输出缓冲区* r79;
+  struct 类型信息* r82;
+  struct 输出缓冲区* r87;
+  struct 类型信息* r89;
+  struct 类型信息* r92;
+  struct 输出缓冲区* r93;
+  struct 输出缓冲区* r97;
+  struct 输出缓冲区* r99;
+  _Bool r1;
   _Bool r4;
   _Bool r5;
   _Bool r6;
@@ -1773,110 +1791,112 @@ char* 类型到C类型(struct 类型信息* cn_var_类型, struct 输出缓冲�
   _Bool r16;
   _Bool r22;
   _Bool r30;
-  _Bool r35;
-  _Bool r37;
-  _Bool r41;
-  _Bool r45;
-  _Bool r49;
-  _Bool r53;
-  _Bool r57;
-  _Bool r61;
-  _Bool r65;
-  _Bool r69;
-  _Bool r71;
-  _Bool r79;
-  _Bool r87;
-  _Bool r97;
+  _Bool r36;
+  _Bool r38;
+  _Bool r42;
+  _Bool r46;
+  _Bool r50;
+  _Bool r54;
+  _Bool r58;
+  _Bool r62;
+  _Bool r66;
+  _Bool r70;
+  _Bool r72;
+  _Bool r80;
+  _Bool r84;
+  _Bool r86;
+  _Bool r88;
+  _Bool r98;
   enum 类型种类 r3;
 
   entry:
   r0 = cn_var_类型;
   r1 = !r0;
-  if (r1) goto if_then_3190; else goto if_merge_3191;
+  if (r1) goto if_then_39; else goto if_merge_40;
 
-  if_then_3190:
+  if_then_39:
   return "void";
-  goto if_merge_3191;
+  goto if_merge_40;
 
-  if_merge_3191:
+  if_merge_40:
   r2 = cn_var_类型;
   r3 = r2->种类;
   r4 = r3 == 0;
-  if (r4) goto case_body_3193; else goto switch_check_3207;
+  if (r4) goto case_body_42; else goto switch_check_56;
 
-  switch_check_3207:
+  switch_check_56:
   r5 = r3 == 1;
-  if (r5) goto case_body_3194; else goto switch_check_3208;
+  if (r5) goto case_body_43; else goto switch_check_57;
 
-  switch_check_3208:
+  switch_check_57:
   r6 = r3 == 2;
-  if (r6) goto case_body_3195; else goto switch_check_3209;
+  if (r6) goto case_body_44; else goto switch_check_58;
 
-  switch_check_3209:
+  switch_check_58:
   r7 = r3 == 3;
-  if (r7) goto case_body_3196; else goto switch_check_3210;
+  if (r7) goto case_body_45; else goto switch_check_59;
 
-  switch_check_3210:
+  switch_check_59:
   r8 = r3 == 4;
-  if (r8) goto case_body_3197; else goto switch_check_3211;
+  if (r8) goto case_body_46; else goto switch_check_60;
 
-  switch_check_3211:
+  switch_check_60:
   r9 = r3 == 5;
-  if (r9) goto case_body_3198; else goto switch_check_3212;
+  if (r9) goto case_body_47; else goto switch_check_61;
 
-  switch_check_3212:
+  switch_check_61:
   r10 = r3 == 6;
-  if (r10) goto case_body_3199; else goto switch_check_3213;
+  if (r10) goto case_body_48; else goto switch_check_62;
 
-  switch_check_3213:
+  switch_check_62:
   r11 = r3 == 7;
-  if (r11) goto case_body_3200; else goto switch_check_3214;
+  if (r11) goto case_body_49; else goto switch_check_63;
 
-  switch_check_3214:
+  switch_check_63:
   r12 = r3 == 8;
-  if (r12) goto case_body_3201; else goto switch_check_3215;
+  if (r12) goto case_body_50; else goto switch_check_64;
 
-  switch_check_3215:
+  switch_check_64:
   r13 = r3 == 9;
-  if (r13) goto case_body_3202; else goto switch_check_3216;
+  if (r13) goto case_body_51; else goto switch_check_65;
 
-  switch_check_3216:
+  switch_check_65:
   r14 = r3 == 10;
-  if (r14) goto case_body_3203; else goto switch_check_3217;
+  if (r14) goto case_body_52; else goto switch_check_66;
 
-  switch_check_3217:
+  switch_check_66:
   r15 = r3 == 11;
-  if (r15) goto case_body_3204; else goto switch_check_3218;
+  if (r15) goto case_body_53; else goto switch_check_67;
 
-  switch_check_3218:
+  switch_check_67:
   r16 = r3 == 12;
-  if (r16) goto case_body_3205; else goto case_default_3206;
+  if (r16) goto case_body_54; else goto case_default_55;
 
-  case_body_3193:
+  case_body_42:
   return "void";
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  case_body_3194:
+  case_body_43:
   return "int";
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  case_body_3195:
+  case_body_44:
   return "double";
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  case_body_3196:
+  case_body_45:
   return "_Bool";
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  case_body_3197:
+  case_body_46:
   return "cn_string_t";
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  case_body_3198:
+  case_body_47:
   return "char";
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  case_body_3199:
+  case_body_48:
   r17 = cn_var_类型;
   r18 = r17->指向类型;
   r19 = cn_var_缓冲区;
@@ -1886,9 +1906,9 @@ char* 类型到C类型(struct 类型信息* cn_var_类型, struct 输出缓冲�
   r23 = cn_var_缓冲区;
   r24 = r23->数据;
   return r24;
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  case_body_3200:
+  case_body_49:
   r25 = cn_var_类型;
   r26 = r25->元素类型;
   r27 = cn_var_缓冲区;
@@ -1898,135 +1918,136 @@ char* 类型到C类型(struct 类型信息* cn_var_类型, struct 输出缓冲�
   r31 = cn_var_缓冲区;
   r32 = cn_var_类型;
   r33 = r32->维度大小;
-  r34 = *(void**)cn_rt_array_get_element(r33, 0, 8);
-  r35 = 追加整数(r31, r34);
-  r36 = cn_var_缓冲区;
-  r37 = 追加字符串(r36, "]");
-  r38 = cn_var_缓冲区;
-  r39 = r38->数据;
-  return r39;
-  goto switch_merge_3192;
+  r34 = *(long long**)cn_rt_array_get_element(r33, 0, 8);
+  r35 = 0 + r34;
+  r36 = 追加整数(r31, r35);
+  r37 = cn_var_缓冲区;
+  r38 = 追加字符串(r37, "]");
+  r39 = cn_var_缓冲区;
+  r40 = r39->数据;
+  return r40;
+  goto switch_merge_41;
 
-  case_body_3201:
-  r40 = cn_var_缓冲区;
-  r41 = 追加字符串(r40, "struct ");
-  r42 = cn_var_缓冲区;
-  r43 = cn_var_类型;
-  r44 = r43->名称;
-  r45 = 追加字符串(r42, r44);
-  r46 = cn_var_缓冲区;
-  r47 = r46->数据;
-  return r47;
-  goto switch_merge_3192;
+  case_body_50:
+  r41 = cn_var_缓冲区;
+  r42 = 追加字符串(r41, "struct ");
+  r43 = cn_var_缓冲区;
+  r44 = cn_var_类型;
+  r45 = r44->名称;
+  r46 = 追加字符串(r43, r45);
+  r47 = cn_var_缓冲区;
+  r48 = r47->数据;
+  return r48;
+  goto switch_merge_41;
 
-  case_body_3202:
-  r48 = cn_var_缓冲区;
-  r49 = 追加字符串(r48, "enum ");
-  r50 = cn_var_缓冲区;
-  r51 = cn_var_类型;
-  r52 = r51->名称;
-  r53 = 追加字符串(r50, r52);
-  r54 = cn_var_缓冲区;
-  r55 = r54->数据;
-  return r55;
-  goto switch_merge_3192;
+  case_body_51:
+  r49 = cn_var_缓冲区;
+  r50 = 追加字符串(r49, "enum ");
+  r51 = cn_var_缓冲区;
+  r52 = cn_var_类型;
+  r53 = r52->名称;
+  r54 = 追加字符串(r51, r53);
+  r55 = cn_var_缓冲区;
+  r56 = r55->数据;
+  return r56;
+  goto switch_merge_41;
 
-  case_body_3203:
-  r56 = cn_var_缓冲区;
-  r57 = 追加字符串(r56, "struct ");
-  r58 = cn_var_缓冲区;
-  r59 = cn_var_类型;
-  r60 = r59->名称;
-  r61 = 追加字符串(r58, r60);
-  r62 = cn_var_缓冲区;
-  r63 = r62->数据;
-  return r63;
-  goto switch_merge_3192;
+  case_body_52:
+  r57 = cn_var_缓冲区;
+  r58 = 追加字符串(r57, "struct ");
+  r59 = cn_var_缓冲区;
+  r60 = cn_var_类型;
+  r61 = r60->名称;
+  r62 = 追加字符串(r59, r61);
+  r63 = cn_var_缓冲区;
+  r64 = r63->数据;
+  return r64;
+  goto switch_merge_41;
 
-  case_body_3204:
-  r64 = cn_var_缓冲区;
-  r65 = 追加字符串(r64, "struct ");
-  r66 = cn_var_缓冲区;
-  r67 = cn_var_类型;
-  r68 = r67->名称;
-  r69 = 追加字符串(r66, r68);
-  r70 = cn_var_缓冲区;
-  r71 = 追加字符串(r70, "_vtable");
-  r72 = cn_var_缓冲区;
-  r73 = r72->数据;
-  return r73;
-  goto switch_merge_3192;
+  case_body_53:
+  r65 = cn_var_缓冲区;
+  r66 = 追加字符串(r65, "struct ");
+  r67 = cn_var_缓冲区;
+  r68 = cn_var_类型;
+  r69 = r68->名称;
+  r70 = 追加字符串(r67, r69);
+  r71 = cn_var_缓冲区;
+  r72 = 追加字符串(r71, "_vtable");
+  r73 = cn_var_缓冲区;
+  r74 = r73->数据;
+  return r74;
+  goto switch_merge_41;
 
-  case_body_3205:
-  r74 = cn_var_类型;
-  r75 = r74->返回类型;
-  r76 = cn_var_缓冲区;
-  r77 = 类型到C类型(r75, r76);
-  r78 = cn_var_缓冲区;
-  r79 = 追加字符串(r78, " (*)(");
+  case_body_54:
+  r75 = cn_var_类型;
+  r76 = r75->返回类型;
+  r77 = cn_var_缓冲区;
+  r78 = 类型到C类型(r76, r77);
+  r79 = cn_var_缓冲区;
+  r80 = 追加字符串(r79, " (*)(");
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3219;
+  goto for_cond_68;
 
-  for_cond_3219:
-  r80 = cn_var_i_0;
-  r81 = cn_var_类型;
-  r82 = r81->参数个数;
-  r83 = r80 < r82;
-  if (r83) goto for_body_3220; else goto for_exit_3222;
+  for_cond_68:
+  r81 = cn_var_i_0;
+  r82 = cn_var_类型;
+  r83 = r82->参数个数;
+  r84 = r81 < r83;
+  if (r84) goto for_body_69; else goto for_exit_71;
 
-  for_body_3220:
-  r84 = cn_var_i_0;
-  r85 = r84 > 0;
-  if (r85) goto if_then_3223; else goto if_merge_3224;
+  for_body_69:
+  r85 = cn_var_i_0;
+  r86 = r85 > 0;
+  if (r86) goto if_then_72; else goto if_merge_73;
 
-  for_update_3221:
-  r94 = cn_var_i_0;
-  r95 = r94 + 1;
-  cn_var_i_0 = r95;
-  goto for_cond_3219;
+  for_update_70:
+  r95 = cn_var_i_0;
+  r96 = r95 + 1;
+  cn_var_i_0 = r96;
+  goto for_cond_68;
 
-  for_exit_3222:
-  r96 = cn_var_缓冲区;
-  r97 = 追加字符串(r96, ")");
-  r98 = cn_var_缓冲区;
-  r99 = r98->数据;
-  return r99;
-  goto switch_merge_3192;
+  for_exit_71:
+  r97 = cn_var_缓冲区;
+  r98 = 追加字符串(r97, ")");
+  r99 = cn_var_缓冲区;
+  r100 = r99->数据;
+  return r100;
+  goto switch_merge_41;
 
-  if_then_3223:
-  r86 = cn_var_缓冲区;
-  r87 = 追加字符串(r86, ", ");
-  goto if_merge_3224;
+  if_then_72:
+  r87 = cn_var_缓冲区;
+  r88 = 追加字符串(r87, ", ");
+  goto if_merge_73;
 
-  if_merge_3224:
-  r88 = cn_var_类型;
-  r89 = r88->参数类型列表;
-  r90 = cn_var_i_0;
-  r91 = *(void**)cn_rt_array_get_element(r89, r90, 8);
-  r92 = cn_var_缓冲区;
-  r93 = 类型到C类型(r91, r92);
-  goto for_update_3221;
+  if_merge_73:
+  r89 = cn_var_类型;
+  r90 = r89->参数类型列表;
+  r91 = cn_var_i_0;
+  r92 = *(struct 类型信息**)cn_rt_array_get_element(r90, r91, 8);
+  r93 = cn_var_缓冲区;
+  r94 = 类型到C类型(r92, r93);
+  goto for_update_70;
 
-  case_default_3206:
+  case_default_55:
   return "void";
-  goto switch_merge_3192;
+  goto switch_merge_41;
 
-  switch_merge_3192:
+  switch_merge_41:
   return NULL;
 }
 
 char* 生成类型声明(struct 类型信息* cn_var_类型, char* cn_var_名称, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r1, r22, r24, r25, r31, r36, r37;
+  long long r22, r24, r31, r33, r37, r38;
   char* r5;
   char* r9;
   char* r12;
   char* r16;
   char* r20;
-  char* r39;
-  char* r42;
-  char* r46;
-  char* r49;
+  char* r40;
+  char* r43;
+  char* r47;
+  char* r50;
   void* r30;
   struct 类型信息* r0;
   struct 类型信息* r2;
@@ -2044,37 +2065,39 @@ char* 生成类型声明(struct 类型信息* cn_var_类型, char* cn_var_名称
   struct 输出缓冲区* r26;
   struct 输出缓冲区* r28;
   struct 类型信息* r29;
-  void* r32;
-  struct 输出缓冲区* r34;
-  struct 输出缓冲区* r38;
-  struct 类型信息* r40;
-  struct 输出缓冲区* r41;
-  struct 输出缓冲区* r43;
-  struct 输出缓冲区* r45;
-  struct 输出缓冲区* r48;
+  long long* r32;
+  struct 输出缓冲区* r35;
+  struct 输出缓冲区* r39;
+  struct 类型信息* r41;
+  struct 输出缓冲区* r42;
+  struct 输出缓冲区* r44;
+  struct 输出缓冲区* r46;
+  struct 输出缓冲区* r49;
+  _Bool r1;
   _Bool r7;
   _Bool r10;
   _Bool r18;
   _Bool r21;
+  _Bool r25;
   _Bool r27;
-  _Bool r33;
-  _Bool r35;
-  _Bool r44;
-  _Bool r47;
+  _Bool r34;
+  _Bool r36;
+  _Bool r45;
+  _Bool r48;
 
   entry:
   r0 = cn_var_类型;
   r1 = !r0;
-  if (r1) goto if_then_3225; else goto if_merge_3226;
+  if (r1) goto if_then_74; else goto if_merge_75;
 
-  if_then_3225:
+  if_then_74:
   return "void";
-  goto if_merge_3226;
+  goto if_merge_75;
 
-  if_merge_3226:
-  if (6) goto if_then_3227; else goto if_merge_3228;
+  if_merge_75:
+  if (6) goto if_then_76; else goto if_merge_77;
 
-  if_then_3227:
+  if_then_76:
   r2 = cn_var_类型;
   r3 = r2->指向类型;
   r4 = cn_var_缓冲区;
@@ -2087,12 +2110,12 @@ char* 生成类型声明(struct 类型信息* cn_var_类型, char* cn_var_名称
   r11 = cn_var_缓冲区;
   r12 = r11->数据;
   return r12;
-  goto if_merge_3228;
+  goto if_merge_77;
 
-  if_merge_3228:
-  if (7) goto if_then_3229; else goto if_merge_3230;
+  if_merge_77:
+  if (7) goto if_then_78; else goto if_merge_79;
 
-  if_then_3229:
+  if_then_78:
   r13 = cn_var_类型;
   r14 = r13->元素类型;
   r15 = cn_var_缓冲区;
@@ -2104,52 +2127,389 @@ char* 生成类型声明(struct 类型信息* cn_var_类型, char* cn_var_名称
   r21 = 追加字符串(r19, r20);
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3231;
+  goto for_cond_80;
 
-  if_merge_3230:
-  r40 = cn_var_类型;
-  r41 = cn_var_缓冲区;
-  r42 = 类型到C类型(r40, r41);
-  r43 = cn_var_缓冲区;
-  r44 = 追加字符串(r43, " ");
-  r45 = cn_var_缓冲区;
-  r46 = cn_var_名称;
-  r47 = 追加字符串(r45, r46);
-  r48 = cn_var_缓冲区;
-  r49 = r48->数据;
-  return r49;
+  if_merge_79:
+  r41 = cn_var_类型;
+  r42 = cn_var_缓冲区;
+  r43 = 类型到C类型(r41, r42);
+  r44 = cn_var_缓冲区;
+  r45 = 追加字符串(r44, " ");
+  r46 = cn_var_缓冲区;
+  r47 = cn_var_名称;
+  r48 = 追加字符串(r46, r47);
+  r49 = cn_var_缓冲区;
+  r50 = r49->数据;
+  return r50;
 
-  for_cond_3231:
+  for_cond_80:
   r22 = cn_var_i_0;
   r23 = cn_var_类型;
   r24 = r23->数组维度;
   r25 = r22 < r24;
-  if (r25) goto for_body_3232; else goto for_exit_3234;
+  if (r25) goto for_body_81; else goto for_exit_83;
 
-  for_body_3232:
+  for_body_81:
   r26 = cn_var_缓冲区;
   r27 = 追加字符串(r26, "[");
   r28 = cn_var_缓冲区;
   r29 = cn_var_类型;
   r30 = r29->维度大小;
   r31 = cn_var_i_0;
-  r32 = *(void**)cn_rt_array_get_element(r30, r31, 8);
-  r33 = 追加整数(r28, r32);
-  r34 = cn_var_缓冲区;
-  r35 = 追加字符串(r34, "]");
-  goto for_update_3233;
+  r32 = *(long long**)cn_rt_array_get_element(r30, r31, 8);
+  r33 = 0 + r32;
+  r34 = 追加整数(r28, r33);
+  r35 = cn_var_缓冲区;
+  r36 = 追加字符串(r35, "]");
+  goto for_update_82;
 
-  for_update_3233:
-  r36 = cn_var_i_0;
-  r37 = r36 + 1;
-  cn_var_i_0 = r37;
-  goto for_cond_3231;
+  for_update_82:
+  r37 = cn_var_i_0;
+  r38 = r37 + 1;
+  cn_var_i_0 = r38;
+  goto for_cond_80;
 
-  for_exit_3234:
-  r38 = cn_var_缓冲区;
-  r39 = r38->数据;
-  return r39;
-  goto if_merge_3230;
+  for_exit_83:
+  r39 = cn_var_缓冲区;
+  r40 = r39->数据;
+  return r40;
+  goto if_merge_79;
+  return NULL;
+}
+
+char* 类型节点到C类型(struct 类型节点* cn_var_类型节点指针, struct 输出缓冲区* cn_var_缓冲区) {
+  long long r14, r18, r22, r26, r30, r34, r58, r59;
+  char* r13;
+  char* r17;
+  char* r21;
+  char* r25;
+  char* r29;
+  char* r33;
+  char* r38;
+  char* r41;
+  char* r45;
+  char* r49;
+  char* r53;
+  char* r64;
+  char* r69;
+  char* r72;
+  char* r77;
+  char* r80;
+  char* r85;
+  char* r88;
+  char* r93;
+  char* r96;
+  char* r100;
+  char* r102;
+  char* r105;
+  char* r108;
+  struct 类型节点* r0;
+  struct 类型节点* r2;
+  struct 类型节点* r12;
+  struct 类型节点* r16;
+  struct 类型节点* r20;
+  struct 类型节点* r24;
+  struct 类型节点* r28;
+  struct 类型节点* r32;
+  struct 输出缓冲区* r36;
+  struct 类型节点* r37;
+  struct 输出缓冲区* r40;
+  struct 类型节点* r42;
+  struct 类型节点* r43;
+  struct 输出缓冲区* r44;
+  struct 输出缓冲区* r46;
+  struct 输出缓冲区* r48;
+  struct 类型节点* r50;
+  struct 类型节点* r51;
+  struct 输出缓冲区* r52;
+  struct 输出缓冲区* r54;
+  struct 输出缓冲区* r56;
+  struct 类型节点* r57;
+  struct 输出缓冲区* r61;
+  struct 输出缓冲区* r63;
+  struct 输出缓冲区* r65;
+  struct 输出缓冲区* r67;
+  struct 类型节点* r68;
+  struct 输出缓冲区* r71;
+  struct 输出缓冲区* r73;
+  struct 输出缓冲区* r75;
+  struct 类型节点* r76;
+  struct 输出缓冲区* r79;
+  struct 输出缓冲区* r81;
+  struct 输出缓冲区* r83;
+  struct 类型节点* r84;
+  struct 输出缓冲区* r87;
+  struct 输出缓冲区* r89;
+  struct 输出缓冲区* r91;
+  struct 类型节点* r92;
+  struct 输出缓冲区* r95;
+  struct 输出缓冲区* r97;
+  struct 输出缓冲区* r99;
+  struct 类型节点* r101;
+  struct 输出缓冲区* r103;
+  struct 类型节点* r104;
+  struct 输出缓冲区* r107;
+  _Bool r1;
+  _Bool r4;
+  _Bool r5;
+  _Bool r6;
+  _Bool r7;
+  _Bool r8;
+  _Bool r9;
+  _Bool r10;
+  _Bool r11;
+  _Bool r15;
+  _Bool r19;
+  _Bool r23;
+  _Bool r27;
+  _Bool r31;
+  _Bool r35;
+  _Bool r39;
+  _Bool r47;
+  _Bool r55;
+  _Bool r60;
+  _Bool r62;
+  _Bool r66;
+  _Bool r70;
+  _Bool r74;
+  _Bool r78;
+  _Bool r82;
+  _Bool r86;
+  _Bool r90;
+  _Bool r94;
+  _Bool r98;
+  _Bool r106;
+  enum 节点类型 r3;
+
+  entry:
+  r0 = cn_var_类型节点指针;
+  r1 = !r0;
+  if (r1) goto if_then_84; else goto if_merge_85;
+
+  if_then_84:
+  return "void";
+  goto if_merge_85;
+
+  if_merge_85:
+  r2 = cn_var_类型节点指针;
+  r3 = r2->类型;
+  r4 = r3 == 36;
+  if (r4) goto case_body_87; else goto switch_check_96;
+
+  switch_check_96:
+  r5 = r3 == 37;
+  if (r5) goto case_body_88; else goto switch_check_97;
+
+  switch_check_97:
+  r6 = r3 == 38;
+  if (r6) goto case_body_89; else goto switch_check_98;
+
+  switch_check_98:
+  r7 = r3 == 40;
+  if (r7) goto case_body_90; else goto switch_check_99;
+
+  switch_check_99:
+  r8 = r3 == 41;
+  if (r8) goto case_body_91; else goto switch_check_100;
+
+  switch_check_100:
+  r9 = r3 == 42;
+  if (r9) goto case_body_92; else goto switch_check_101;
+
+  switch_check_101:
+  r10 = r3 == 43;
+  if (r10) goto case_body_93; else goto switch_check_102;
+
+  switch_check_102:
+  r11 = r3 == 39;
+  if (r11) goto case_body_94; else goto case_default_95;
+
+  case_body_87:
+  r12 = cn_var_类型节点指针;
+  r13 = r12->名称;
+  r14 = 比较字符串(r13, "整数");
+  r15 = r14 == 0;
+  if (r15) goto if_then_103; else goto if_merge_104;
+
+  if_then_103:
+  return "long long";
+  goto if_merge_104;
+
+  if_merge_104:
+  r16 = cn_var_类型节点指针;
+  r17 = r16->名称;
+  r18 = 比较字符串(r17, "小数");
+  r19 = r18 == 0;
+  if (r19) goto if_then_105; else goto if_merge_106;
+
+  if_then_105:
+  return "double";
+  goto if_merge_106;
+
+  if_merge_106:
+  r20 = cn_var_类型节点指针;
+  r21 = r20->名称;
+  r22 = 比较字符串(r21, "布尔");
+  r23 = r22 == 0;
+  if (r23) goto if_then_107; else goto if_merge_108;
+
+  if_then_107:
+  return "_Bool";
+  goto if_merge_108;
+
+  if_merge_108:
+  r24 = cn_var_类型节点指针;
+  r25 = r24->名称;
+  r26 = 比较字符串(r25, "字符串");
+  r27 = r26 == 0;
+  if (r27) goto if_then_109; else goto if_merge_110;
+
+  if_then_109:
+  return "cn_string_t";
+  goto if_merge_110;
+
+  if_merge_110:
+  r28 = cn_var_类型节点指针;
+  r29 = r28->名称;
+  r30 = 比较字符串(r29, "字符");
+  r31 = r30 == 0;
+  if (r31) goto if_then_111; else goto if_merge_112;
+
+  if_then_111:
+  return "char";
+  goto if_merge_112;
+
+  if_merge_112:
+  r32 = cn_var_类型节点指针;
+  r33 = r32->名称;
+  r34 = 比较字符串(r33, "空类型");
+  r35 = r34 == 0;
+  if (r35) goto if_then_113; else goto if_merge_114;
+
+  if_then_113:
+  return "void";
+  goto if_merge_114;
+
+  if_merge_114:
+  r36 = cn_var_缓冲区;
+  r37 = cn_var_类型节点指针;
+  r38 = r37->名称;
+  r39 = 追加字符串(r36, r38);
+  r40 = cn_var_缓冲区;
+  r41 = r40->数据;
+  return r41;
+  goto switch_merge_86;
+
+  case_body_88:
+  r42 = cn_var_类型节点指针;
+  r43 = r42->元素类型;
+  r44 = cn_var_缓冲区;
+  r45 = 类型节点到C类型(r43, r44);
+  r46 = cn_var_缓冲区;
+  r47 = 追加字符串(r46, "*");
+  r48 = cn_var_缓冲区;
+  r49 = r48->数据;
+  return r49;
+  goto switch_merge_86;
+
+  case_body_89:
+  r50 = cn_var_类型节点指针;
+  r51 = r50->元素类型;
+  r52 = cn_var_缓冲区;
+  r53 = 类型节点到C类型(r51, r52);
+  r54 = cn_var_缓冲区;
+  r55 = 追加字符串(r54, "[");
+  r56 = cn_var_缓冲区;
+  r57 = cn_var_类型节点指针;
+  r58 = r57->数组大小;
+  r59 = 0 + r58;
+  r60 = 追加整数(r56, r59);
+  r61 = cn_var_缓冲区;
+  r62 = 追加字符串(r61, "]");
+  r63 = cn_var_缓冲区;
+  r64 = r63->数据;
+  return r64;
+  goto switch_merge_86;
+
+  case_body_90:
+  r65 = cn_var_缓冲区;
+  r66 = 追加字符串(r65, "struct ");
+  r67 = cn_var_缓冲区;
+  r68 = cn_var_类型节点指针;
+  r69 = r68->名称;
+  r70 = 追加字符串(r67, r69);
+  r71 = cn_var_缓冲区;
+  r72 = r71->数据;
+  return r72;
+  goto switch_merge_86;
+
+  case_body_91:
+  r73 = cn_var_缓冲区;
+  r74 = 追加字符串(r73, "enum ");
+  r75 = cn_var_缓冲区;
+  r76 = cn_var_类型节点指针;
+  r77 = r76->名称;
+  r78 = 追加字符串(r75, r77);
+  r79 = cn_var_缓冲区;
+  r80 = r79->数据;
+  return r80;
+  goto switch_merge_86;
+
+  case_body_92:
+  r81 = cn_var_缓冲区;
+  r82 = 追加字符串(r81, "struct ");
+  r83 = cn_var_缓冲区;
+  r84 = cn_var_类型节点指针;
+  r85 = r84->名称;
+  r86 = 追加字符串(r83, r85);
+  r87 = cn_var_缓冲区;
+  r88 = r87->数据;
+  return r88;
+  goto switch_merge_86;
+
+  case_body_93:
+  r89 = cn_var_缓冲区;
+  r90 = 追加字符串(r89, "struct ");
+  r91 = cn_var_缓冲区;
+  r92 = cn_var_类型节点指针;
+  r93 = r92->名称;
+  r94 = 追加字符串(r91, r93);
+  r95 = cn_var_缓冲区;
+  r96 = r95->数据;
+  return r96;
+  goto switch_merge_86;
+
+  case_body_94:
+  r97 = cn_var_缓冲区;
+  r98 = 追加字符串(r97, "void*");
+  r99 = cn_var_缓冲区;
+  r100 = r99->数据;
+  return r100;
+  goto switch_merge_86;
+
+  case_default_95:
+  r101 = cn_var_类型节点指针;
+  r102 = r101->名称;
+  if (r102) goto if_then_115; else goto if_else_116;
+
+  if_then_115:
+  r103 = cn_var_缓冲区;
+  r104 = cn_var_类型节点指针;
+  r105 = r104->名称;
+  r106 = 追加字符串(r103, r105);
+  goto if_merge_117;
+
+  if_else_116:
+  return "void";
+  goto if_merge_117;
+
+  if_merge_117:
+  r107 = cn_var_缓冲区;
+  r108 = r107->数据;
+  return r108;
+  goto switch_merge_86;
+
+  switch_merge_86:
   return NULL;
 }
 
@@ -2206,29 +2566,29 @@ char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出�
   r0 = cn_var_操作数;
   r1 = r0.种类;
   r2 = r1 == 1;
-  if (r2) goto case_body_3236; else goto switch_check_3243;
+  if (r2) goto case_body_119; else goto switch_check_126;
 
-  switch_check_3243:
+  switch_check_126:
   r3 = r1 == 2;
-  if (r3) goto case_body_3237; else goto switch_check_3244;
+  if (r3) goto case_body_120; else goto switch_check_127;
 
-  switch_check_3244:
+  switch_check_127:
   r4 = r1 == 3;
-  if (r4) goto case_body_3238; else goto switch_check_3245;
+  if (r4) goto case_body_121; else goto switch_check_128;
 
-  switch_check_3245:
+  switch_check_128:
   r5 = r1 == 4;
-  if (r5) goto case_body_3239; else goto switch_check_3246;
+  if (r5) goto case_body_122; else goto switch_check_129;
 
-  switch_check_3246:
+  switch_check_129:
   r6 = r1 == 5;
-  if (r6) goto case_body_3240; else goto switch_check_3247;
+  if (r6) goto case_body_123; else goto switch_check_130;
 
-  switch_check_3247:
+  switch_check_130:
   r7 = r1 == 6;
-  if (r7) goto case_body_3241; else goto case_default_3242;
+  if (r7) goto case_body_124; else goto case_default_125;
 
-  case_body_3236:
+  case_body_119:
   r8 = cn_var_缓冲区;
   r9 = 追加字符串(r8, "r");
   r10 = cn_var_缓冲区;
@@ -2238,9 +2598,9 @@ char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出�
   r14 = cn_var_缓冲区;
   r15 = r14->数据;
   return r15;
-  goto switch_merge_3235;
+  goto switch_merge_118;
 
-  case_body_3237:
+  case_body_120:
   r16 = cn_var_缓冲区;
   r17 = cn_var_操作数;
   r18 = r17.整数值;
@@ -2248,9 +2608,9 @@ char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出�
   r20 = cn_var_缓冲区;
   r21 = r20->数据;
   return r21;
-  goto switch_merge_3235;
+  goto switch_merge_118;
 
-  case_body_3238:
+  case_body_121:
   r22 = cn_var_缓冲区;
   r23 = cn_var_操作数;
   r24 = r23.小数值;
@@ -2258,9 +2618,9 @@ char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出�
   r25 = cn_var_缓冲区;
   r26 = r25->数据;
   return r26;
-  goto switch_merge_3235;
+  goto switch_merge_118;
 
-  case_body_3239:
+  case_body_122:
   r27 = cn_var_缓冲区;
   r28 = 追加字符串(r27, "_str_");
   r29 = cn_var_缓冲区;
@@ -2270,9 +2630,9 @@ char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出�
   r33 = cn_var_缓冲区;
   r34 = r33->数据;
   return r34;
-  goto switch_merge_3235;
+  goto switch_merge_118;
 
-  case_body_3240:
+  case_body_123:
   r35 = cn_var_缓冲区;
   r36 = cn_var_操作数;
   r37 = r36.符号名;
@@ -2280,9 +2640,9 @@ char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出�
   r39 = cn_var_缓冲区;
   r40 = r39->数据;
   return r40;
-  goto switch_merge_3235;
+  goto switch_merge_118;
 
-  case_body_3241:
+  case_body_124:
   r41 = cn_var_缓冲区;
   r42 = 追加字符串(r41, "L");
   r43 = cn_var_缓冲区;
@@ -2293,13 +2653,13 @@ char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出�
   r48 = cn_var_缓冲区;
   r49 = r48->数据;
   return r49;
-  goto switch_merge_3235;
+  goto switch_merge_118;
 
-  case_default_3242:
+  case_default_125:
   return "";
-  goto switch_merge_3235;
+  goto switch_merge_118;
 
-  switch_merge_3235:
+  switch_merge_118:
   return NULL;
 }
 
@@ -2373,110 +2733,110 @@ void 生成算术指令(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   r11 = cn_var_指令;
   r12 = r11->操作码;
   r13 = r12 == 0;
-  if (r13) goto case_body_3249; else goto switch_check_3260;
+  if (r13) goto case_body_132; else goto switch_check_143;
 
-  switch_check_3260:
+  switch_check_143:
   r14 = r12 == 1;
-  if (r14) goto case_body_3250; else goto switch_check_3261;
+  if (r14) goto case_body_133; else goto switch_check_144;
 
-  switch_check_3261:
+  switch_check_144:
   r15 = r12 == 2;
-  if (r15) goto case_body_3251; else goto switch_check_3262;
+  if (r15) goto case_body_134; else goto switch_check_145;
 
-  switch_check_3262:
+  switch_check_145:
   r16 = r12 == 3;
-  if (r16) goto case_body_3252; else goto switch_check_3263;
+  if (r16) goto case_body_135; else goto switch_check_146;
 
-  switch_check_3263:
+  switch_check_146:
   r17 = r12 == 4;
-  if (r17) goto case_body_3253; else goto switch_check_3264;
+  if (r17) goto case_body_136; else goto switch_check_147;
 
-  switch_check_3264:
+  switch_check_147:
   r18 = r12 == 5;
-  if (r18) goto case_body_3254; else goto switch_check_3265;
+  if (r18) goto case_body_137; else goto switch_check_148;
 
-  switch_check_3265:
+  switch_check_148:
   r19 = r12 == 6;
-  if (r19) goto case_body_3255; else goto switch_check_3266;
+  if (r19) goto case_body_138; else goto switch_check_149;
 
-  switch_check_3266:
+  switch_check_149:
   r20 = r12 == 7;
-  if (r20) goto case_body_3256; else goto switch_check_3267;
+  if (r20) goto case_body_139; else goto switch_check_150;
 
-  switch_check_3267:
+  switch_check_150:
   r21 = r12 == 8;
-  if (r21) goto case_body_3257; else goto switch_check_3268;
+  if (r21) goto case_body_140; else goto switch_check_151;
 
-  switch_check_3268:
+  switch_check_151:
   r22 = r12 == 9;
-  if (r22) goto case_body_3258; else goto case_default_3259;
+  if (r22) goto case_body_141; else goto case_default_142;
 
-  case_body_3249:
+  case_body_132:
   r23 = cn_var_缓冲区;
   r24 = 追加字符串(r23, " + ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3250:
+  case_body_133:
   r25 = cn_var_缓冲区;
   r26 = 追加字符串(r25, " - ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3251:
+  case_body_134:
   r27 = cn_var_缓冲区;
   r28 = 追加字符串(r27, " * ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3252:
+  case_body_135:
   r29 = cn_var_缓冲区;
   r30 = 追加字符串(r29, " / ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3253:
+  case_body_136:
   r31 = cn_var_缓冲区;
   r32 = 追加字符串(r31, " % ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3254:
+  case_body_137:
   r33 = cn_var_缓冲区;
   r34 = 追加字符串(r33, " & ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3255:
+  case_body_138:
   r35 = cn_var_缓冲区;
   r36 = 追加字符串(r35, " | ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3256:
+  case_body_139:
   r37 = cn_var_缓冲区;
   r38 = 追加字符串(r37, " ^ ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3257:
+  case_body_140:
   r39 = cn_var_缓冲区;
   r40 = 追加字符串(r39, " << ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_body_3258:
+  case_body_141:
   r41 = cn_var_缓冲区;
   r42 = 追加字符串(r41, " >> ");
-  goto switch_merge_3248;
-  goto switch_merge_3248;
+  goto switch_merge_131;
+  goto switch_merge_131;
 
-  case_default_3259:
+  case_default_142:
   r43 = cn_var_缓冲区;
   r44 = 追加字符串(r43, " ? ");
-  goto switch_merge_3248;
+  goto switch_merge_131;
 
-  switch_merge_3248:
+  switch_merge_131:
   r45 = cn_var_指令;
   r46 = r45->源操作数2;
   r47 = cn_var_缓冲区;
@@ -2529,40 +2889,40 @@ void 生成一元指令(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   r7 = cn_var_指令;
   r8 = r7->操作码;
   r9 = r8 == 10;
-  if (r9) goto case_body_3270; else goto switch_check_3274;
+  if (r9) goto case_body_153; else goto switch_check_157;
 
-  switch_check_3274:
+  switch_check_157:
   r10 = r8 == 11;
-  if (r10) goto case_body_3271; else goto switch_check_3275;
+  if (r10) goto case_body_154; else goto switch_check_158;
 
-  switch_check_3275:
+  switch_check_158:
   r11 = r8 == 12;
-  if (r11) goto case_body_3272; else goto case_default_3273;
+  if (r11) goto case_body_155; else goto case_default_156;
 
-  case_body_3270:
+  case_body_153:
   r12 = cn_var_缓冲区;
   r13 = 追加字符串(r12, "-");
-  goto switch_merge_3269;
-  goto switch_merge_3269;
+  goto switch_merge_152;
+  goto switch_merge_152;
 
-  case_body_3271:
+  case_body_154:
   r14 = cn_var_缓冲区;
   r15 = 追加字符串(r14, "~");
-  goto switch_merge_3269;
-  goto switch_merge_3269;
+  goto switch_merge_152;
+  goto switch_merge_152;
 
-  case_body_3272:
+  case_body_155:
   r16 = cn_var_缓冲区;
   r17 = 追加字符串(r16, "!");
-  goto switch_merge_3269;
-  goto switch_merge_3269;
+  goto switch_merge_152;
+  goto switch_merge_152;
 
-  case_default_3273:
+  case_default_156:
   r18 = cn_var_缓冲区;
   r19 = 追加字符串(r18, "");
-  goto switch_merge_3269;
+  goto switch_merge_152;
 
-  switch_merge_3269:
+  switch_merge_152:
   r20 = cn_var_指令;
   r21 = r20->源操作数1;
   r22 = cn_var_缓冲区;
@@ -2632,70 +2992,70 @@ void 生成比较指令(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   r11 = cn_var_指令;
   r12 = r11->操作码;
   r13 = r12 == 13;
-  if (r13) goto case_body_3277; else goto switch_check_3284;
+  if (r13) goto case_body_160; else goto switch_check_167;
 
-  switch_check_3284:
+  switch_check_167:
   r14 = r12 == 14;
-  if (r14) goto case_body_3278; else goto switch_check_3285;
+  if (r14) goto case_body_161; else goto switch_check_168;
 
-  switch_check_3285:
+  switch_check_168:
   r15 = r12 == 15;
-  if (r15) goto case_body_3279; else goto switch_check_3286;
+  if (r15) goto case_body_162; else goto switch_check_169;
 
-  switch_check_3286:
+  switch_check_169:
   r16 = r12 == 16;
-  if (r16) goto case_body_3280; else goto switch_check_3287;
+  if (r16) goto case_body_163; else goto switch_check_170;
 
-  switch_check_3287:
+  switch_check_170:
   r17 = r12 == 17;
-  if (r17) goto case_body_3281; else goto switch_check_3288;
+  if (r17) goto case_body_164; else goto switch_check_171;
 
-  switch_check_3288:
+  switch_check_171:
   r18 = r12 == 18;
-  if (r18) goto case_body_3282; else goto case_default_3283;
+  if (r18) goto case_body_165; else goto case_default_166;
 
-  case_body_3277:
+  case_body_160:
   r19 = cn_var_缓冲区;
   r20 = 追加字符串(r19, " == ");
-  goto switch_merge_3276;
-  goto switch_merge_3276;
+  goto switch_merge_159;
+  goto switch_merge_159;
 
-  case_body_3278:
+  case_body_161:
   r21 = cn_var_缓冲区;
   r22 = 追加字符串(r21, " != ");
-  goto switch_merge_3276;
-  goto switch_merge_3276;
+  goto switch_merge_159;
+  goto switch_merge_159;
 
-  case_body_3279:
+  case_body_162:
   r23 = cn_var_缓冲区;
   r24 = 追加字符串(r23, " < ");
-  goto switch_merge_3276;
-  goto switch_merge_3276;
+  goto switch_merge_159;
+  goto switch_merge_159;
 
-  case_body_3280:
+  case_body_163:
   r25 = cn_var_缓冲区;
   r26 = 追加字符串(r25, " <= ");
-  goto switch_merge_3276;
-  goto switch_merge_3276;
+  goto switch_merge_159;
+  goto switch_merge_159;
 
-  case_body_3281:
+  case_body_164:
   r27 = cn_var_缓冲区;
   r28 = 追加字符串(r27, " > ");
-  goto switch_merge_3276;
-  goto switch_merge_3276;
+  goto switch_merge_159;
+  goto switch_merge_159;
 
-  case_body_3282:
+  case_body_165:
   r29 = cn_var_缓冲区;
   r30 = 追加字符串(r29, " >= ");
-  goto switch_merge_3276;
-  goto switch_merge_3276;
+  goto switch_merge_159;
+  goto switch_merge_159;
 
-  case_default_3283:
+  case_default_166:
   r31 = cn_var_缓冲区;
   r32 = 追加字符串(r31, " ? ");
-  goto switch_merge_3276;
+  goto switch_merge_159;
 
-  switch_merge_3276:
+  switch_merge_159:
   r33 = cn_var_指令;
   r34 = r33->源操作数2;
   r35 = cn_var_缓冲区;
@@ -2708,18 +3068,18 @@ void 生成比较指令(struct IR指令* cn_var_指令, struct 输出缓冲区* 
 }
 
 void 生成内存指令(struct IR指令* cn_var_指令, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r19;
+  long long r19, r20;
   char* r12;
-  char* r28;
-  char* r34;
-  char* r44;
-  char* r50;
-  char* r58;
-  char* r64;
-  char* r72;
-  char* r78;
-  char* r86;
-  char* r92;
+  char* r29;
+  char* r35;
+  char* r45;
+  char* r51;
+  char* r59;
+  char* r65;
+  char* r73;
+  char* r79;
+  char* r87;
+  char* r93;
   struct IR指令* r0;
   struct 输出缓冲区* r8;
   struct IR指令* r9;
@@ -2728,49 +3088,49 @@ void 生成内存指令(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   struct 输出缓冲区* r15;
   struct IR指令* r16;
   struct 类型节点* r18;
-  struct 输出缓冲区* r21;
-  struct 输出缓冲区* r23;
+  struct 输出缓冲区* r22;
   struct 输出缓冲区* r24;
-  struct IR指令* r25;
-  struct 输出缓冲区* r27;
-  struct 输出缓冲区* r29;
-  struct IR指令* r31;
-  struct 输出缓冲区* r33;
-  struct 输出缓冲区* r35;
-  struct 输出缓冲区* r37;
+  struct 输出缓冲区* r25;
+  struct IR指令* r26;
+  struct 输出缓冲区* r28;
+  struct 输出缓冲区* r30;
+  struct IR指令* r32;
+  struct 输出缓冲区* r34;
+  struct 输出缓冲区* r36;
   struct 输出缓冲区* r38;
   struct 输出缓冲区* r39;
-  struct IR指令* r41;
-  struct 输出缓冲区* r43;
-  struct 输出缓冲区* r45;
-  struct IR指令* r47;
-  struct 输出缓冲区* r49;
-  struct 输出缓冲区* r51;
-  struct 输出缓冲区* r53;
+  struct 输出缓冲区* r40;
+  struct IR指令* r42;
+  struct 输出缓冲区* r44;
+  struct 输出缓冲区* r46;
+  struct IR指令* r48;
+  struct 输出缓冲区* r50;
+  struct 输出缓冲区* r52;
   struct 输出缓冲区* r54;
-  struct IR指令* r55;
-  struct 输出缓冲区* r57;
-  struct 输出缓冲区* r59;
-  struct IR指令* r61;
-  struct 输出缓冲区* r63;
-  struct 输出缓冲区* r65;
-  struct 输出缓冲区* r67;
+  struct 输出缓冲区* r55;
+  struct IR指令* r56;
+  struct 输出缓冲区* r58;
+  struct 输出缓冲区* r60;
+  struct IR指令* r62;
+  struct 输出缓冲区* r64;
+  struct 输出缓冲区* r66;
   struct 输出缓冲区* r68;
-  struct IR指令* r69;
-  struct 输出缓冲区* r71;
-  struct 输出缓冲区* r73;
-  struct IR指令* r75;
-  struct 输出缓冲区* r77;
-  struct 输出缓冲区* r79;
-  struct 输出缓冲区* r81;
+  struct 输出缓冲区* r69;
+  struct IR指令* r70;
+  struct 输出缓冲区* r72;
+  struct 输出缓冲区* r74;
+  struct IR指令* r76;
+  struct 输出缓冲区* r78;
+  struct 输出缓冲区* r80;
   struct 输出缓冲区* r82;
-  struct IR指令* r83;
-  struct 输出缓冲区* r85;
-  struct 输出缓冲区* r87;
-  struct IR指令* r89;
-  struct 输出缓冲区* r91;
-  struct 输出缓冲区* r93;
-  struct 输出缓冲区* r95;
+  struct 输出缓冲区* r83;
+  struct IR指令* r84;
+  struct 输出缓冲区* r86;
+  struct 输出缓冲区* r88;
+  struct IR指令* r90;
+  struct 输出缓冲区* r92;
+  struct 输出缓冲区* r94;
+  struct 输出缓冲区* r96;
   _Bool r2;
   _Bool r3;
   _Bool r4;
@@ -2778,60 +3138,60 @@ void 生成内存指令(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   _Bool r6;
   _Bool r7;
   _Bool r14;
-  _Bool r20;
-  _Bool r22;
-  _Bool r30;
-  _Bool r36;
-  _Bool r40;
-  _Bool r46;
-  _Bool r52;
-  _Bool r60;
-  _Bool r66;
-  _Bool r74;
-  _Bool r80;
-  _Bool r88;
-  _Bool r94;
+  _Bool r21;
+  _Bool r23;
+  _Bool r31;
+  _Bool r37;
+  _Bool r41;
+  _Bool r47;
+  _Bool r53;
+  _Bool r61;
+  _Bool r67;
+  _Bool r75;
+  _Bool r81;
+  _Bool r89;
+  _Bool r95;
   struct IR操作数 r10;
   struct IR操作数 r17;
-  struct IR操作数 r26;
-  struct IR操作数 r32;
-  struct IR操作数 r42;
-  struct IR操作数 r48;
-  struct IR操作数 r56;
-  struct IR操作数 r62;
-  struct IR操作数 r70;
-  struct IR操作数 r76;
-  struct IR操作数 r84;
-  struct IR操作数 r90;
+  struct IR操作数 r27;
+  struct IR操作数 r33;
+  struct IR操作数 r43;
+  struct IR操作数 r49;
+  struct IR操作数 r57;
+  struct IR操作数 r63;
+  struct IR操作数 r71;
+  struct IR操作数 r77;
+  struct IR操作数 r85;
+  struct IR操作数 r91;
   enum IR操作码 r1;
 
   entry:
   r0 = cn_var_指令;
   r1 = r0->操作码;
   r2 = r1 == 19;
-  if (r2) goto case_body_3290; else goto switch_check_3297;
+  if (r2) goto case_body_173; else goto switch_check_180;
 
-  switch_check_3297:
+  switch_check_180:
   r3 = r1 == 20;
-  if (r3) goto case_body_3291; else goto switch_check_3298;
+  if (r3) goto case_body_174; else goto switch_check_181;
 
-  switch_check_3298:
+  switch_check_181:
   r4 = r1 == 21;
-  if (r4) goto case_body_3292; else goto switch_check_3299;
+  if (r4) goto case_body_175; else goto switch_check_182;
 
-  switch_check_3299:
+  switch_check_182:
   r5 = r1 == 22;
-  if (r5) goto case_body_3293; else goto switch_check_3300;
+  if (r5) goto case_body_176; else goto switch_check_183;
 
-  switch_check_3300:
+  switch_check_183:
   r6 = r1 == 23;
-  if (r6) goto case_body_3294; else goto switch_check_3301;
+  if (r6) goto case_body_177; else goto switch_check_184;
 
-  switch_check_3301:
+  switch_check_184:
   r7 = r1 == 24;
-  if (r7) goto case_body_3295; else goto case_default_3296;
+  if (r7) goto case_body_178; else goto case_default_179;
 
-  case_body_3290:
+  case_body_173:
   r8 = cn_var_缓冲区;
   追加缩进(r8, 4);
   r9 = cn_var_指令;
@@ -2845,126 +3205,127 @@ void 生成内存指令(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   r17 = r16->目标;
   r18 = r17.类型信息;
   r19 = r18->大小;
-  r20 = 追加整数(r15, r19);
-  r21 = cn_var_缓冲区;
-  r22 = 追加字符串(r21, ");");
-  r23 = cn_var_缓冲区;
-  追加换行(r23);
-  goto switch_merge_3289;
-  goto switch_merge_3289;
-
-  case_body_3291:
+  r20 = 0 + r19;
+  r21 = 追加整数(r15, r20);
+  r22 = cn_var_缓冲区;
+  r23 = 追加字符串(r22, ");");
   r24 = cn_var_缓冲区;
-  追加缩进(r24, 4);
-  r25 = cn_var_指令;
-  r26 = r25->目标;
-  r27 = cn_var_缓冲区;
-  r28 = 生成操作数代码(r26, r27);
-  r29 = cn_var_缓冲区;
-  r30 = 追加字符串(r29, " = *");
-  r31 = cn_var_指令;
-  r32 = r31->源操作数1;
-  r33 = cn_var_缓冲区;
-  r34 = 生成操作数代码(r32, r33);
-  r35 = cn_var_缓冲区;
-  r36 = 追加字符串(r35, ";");
-  r37 = cn_var_缓冲区;
-  追加换行(r37);
-  goto switch_merge_3289;
-  goto switch_merge_3289;
+  追加换行(r24);
+  goto switch_merge_172;
+  goto switch_merge_172;
 
-  case_body_3292:
+  case_body_174:
+  r25 = cn_var_缓冲区;
+  追加缩进(r25, 4);
+  r26 = cn_var_指令;
+  r27 = r26->目标;
+  r28 = cn_var_缓冲区;
+  r29 = 生成操作数代码(r27, r28);
+  r30 = cn_var_缓冲区;
+  r31 = 追加字符串(r30, " = *");
+  r32 = cn_var_指令;
+  r33 = r32->源操作数1;
+  r34 = cn_var_缓冲区;
+  r35 = 生成操作数代码(r33, r34);
+  r36 = cn_var_缓冲区;
+  r37 = 追加字符串(r36, ";");
   r38 = cn_var_缓冲区;
-  追加缩进(r38, 4);
+  追加换行(r38);
+  goto switch_merge_172;
+  goto switch_merge_172;
+
+  case_body_175:
   r39 = cn_var_缓冲区;
-  r40 = 追加字符串(r39, "*");
-  r41 = cn_var_指令;
-  r42 = r41->源操作数2;
-  r43 = cn_var_缓冲区;
-  r44 = 生成操作数代码(r42, r43);
-  r45 = cn_var_缓冲区;
-  r46 = 追加字符串(r45, " = ");
-  r47 = cn_var_指令;
-  r48 = r47->源操作数1;
-  r49 = cn_var_缓冲区;
-  r50 = 生成操作数代码(r48, r49);
-  r51 = cn_var_缓冲区;
-  r52 = 追加字符串(r51, ";");
-  r53 = cn_var_缓冲区;
-  追加换行(r53);
-  goto switch_merge_3289;
-  goto switch_merge_3289;
-
-  case_body_3293:
+  追加缩进(r39, 4);
+  r40 = cn_var_缓冲区;
+  r41 = 追加字符串(r40, "*");
+  r42 = cn_var_指令;
+  r43 = r42->源操作数2;
+  r44 = cn_var_缓冲区;
+  r45 = 生成操作数代码(r43, r44);
+  r46 = cn_var_缓冲区;
+  r47 = 追加字符串(r46, " = ");
+  r48 = cn_var_指令;
+  r49 = r48->源操作数1;
+  r50 = cn_var_缓冲区;
+  r51 = 生成操作数代码(r49, r50);
+  r52 = cn_var_缓冲区;
+  r53 = 追加字符串(r52, ";");
   r54 = cn_var_缓冲区;
-  追加缩进(r54, 4);
-  r55 = cn_var_指令;
-  r56 = r55->目标;
-  r57 = cn_var_缓冲区;
-  r58 = 生成操作数代码(r56, r57);
-  r59 = cn_var_缓冲区;
-  r60 = 追加字符串(r59, " = ");
-  r61 = cn_var_指令;
-  r62 = r61->源操作数1;
-  r63 = cn_var_缓冲区;
-  r64 = 生成操作数代码(r62, r63);
-  r65 = cn_var_缓冲区;
-  r66 = 追加字符串(r65, ";");
-  r67 = cn_var_缓冲区;
-  追加换行(r67);
-  goto switch_merge_3289;
-  goto switch_merge_3289;
+  追加换行(r54);
+  goto switch_merge_172;
+  goto switch_merge_172;
 
-  case_body_3294:
+  case_body_176:
+  r55 = cn_var_缓冲区;
+  追加缩进(r55, 4);
+  r56 = cn_var_指令;
+  r57 = r56->目标;
+  r58 = cn_var_缓冲区;
+  r59 = 生成操作数代码(r57, r58);
+  r60 = cn_var_缓冲区;
+  r61 = 追加字符串(r60, " = ");
+  r62 = cn_var_指令;
+  r63 = r62->源操作数1;
+  r64 = cn_var_缓冲区;
+  r65 = 生成操作数代码(r63, r64);
+  r66 = cn_var_缓冲区;
+  r67 = 追加字符串(r66, ";");
   r68 = cn_var_缓冲区;
-  追加缩进(r68, 4);
-  r69 = cn_var_指令;
-  r70 = r69->目标;
-  r71 = cn_var_缓冲区;
-  r72 = 生成操作数代码(r70, r71);
-  r73 = cn_var_缓冲区;
-  r74 = 追加字符串(r73, " = &");
-  r75 = cn_var_指令;
-  r76 = r75->源操作数1;
-  r77 = cn_var_缓冲区;
-  r78 = 生成操作数代码(r76, r77);
-  r79 = cn_var_缓冲区;
-  r80 = 追加字符串(r79, ";");
-  r81 = cn_var_缓冲区;
-  追加换行(r81);
-  goto switch_merge_3289;
-  goto switch_merge_3289;
+  追加换行(r68);
+  goto switch_merge_172;
+  goto switch_merge_172;
 
-  case_body_3295:
+  case_body_177:
+  r69 = cn_var_缓冲区;
+  追加缩进(r69, 4);
+  r70 = cn_var_指令;
+  r71 = r70->目标;
+  r72 = cn_var_缓冲区;
+  r73 = 生成操作数代码(r71, r72);
+  r74 = cn_var_缓冲区;
+  r75 = 追加字符串(r74, " = &");
+  r76 = cn_var_指令;
+  r77 = r76->源操作数1;
+  r78 = cn_var_缓冲区;
+  r79 = 生成操作数代码(r77, r78);
+  r80 = cn_var_缓冲区;
+  r81 = 追加字符串(r80, ";");
   r82 = cn_var_缓冲区;
-  追加缩进(r82, 4);
-  r83 = cn_var_指令;
-  r84 = r83->目标;
-  r85 = cn_var_缓冲区;
-  r86 = 生成操作数代码(r84, r85);
-  r87 = cn_var_缓冲区;
-  r88 = 追加字符串(r87, " = *");
-  r89 = cn_var_指令;
-  r90 = r89->源操作数1;
-  r91 = cn_var_缓冲区;
-  r92 = 生成操作数代码(r90, r91);
-  r93 = cn_var_缓冲区;
-  r94 = 追加字符串(r93, ";");
-  r95 = cn_var_缓冲区;
-  追加换行(r95);
-  goto switch_merge_3289;
-  goto switch_merge_3289;
+  追加换行(r82);
+  goto switch_merge_172;
+  goto switch_merge_172;
 
-  case_default_3296:
-  goto switch_merge_3289;
-  goto switch_merge_3289;
+  case_body_178:
+  r83 = cn_var_缓冲区;
+  追加缩进(r83, 4);
+  r84 = cn_var_指令;
+  r85 = r84->目标;
+  r86 = cn_var_缓冲区;
+  r87 = 生成操作数代码(r85, r86);
+  r88 = cn_var_缓冲区;
+  r89 = 追加字符串(r88, " = *");
+  r90 = cn_var_指令;
+  r91 = r90->源操作数1;
+  r92 = cn_var_缓冲区;
+  r93 = 生成操作数代码(r91, r92);
+  r94 = cn_var_缓冲区;
+  r95 = 追加字符串(r94, ";");
+  r96 = cn_var_缓冲区;
+  追加换行(r96);
+  goto switch_merge_172;
+  goto switch_merge_172;
 
-  switch_merge_3289:
+  case_default_179:
+  goto switch_merge_172;
+  goto switch_merge_172;
+
+  switch_merge_172:
   return;
 }
 
 void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r13, r25, r43, r51, r60, r73, r75, r76, r77, r78, r83, r87, r88, r98;
+  long long r13, r25, r43, r51, r73, r75, r77, r83, r87, r88;
   char* r36;
   char* r64;
   char* r70;
@@ -3010,7 +3371,7 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   struct 输出缓冲区* r79;
   struct IR指令* r81;
   struct IR操作数* r82;
-  void* r84;
+  struct IR操作数* r84;
   struct 输出缓冲区* r85;
   struct 输出缓冲区* r89;
   struct 输出缓冲区* r91;
@@ -3039,11 +3400,15 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   _Bool r46;
   _Bool r52;
   _Bool r54;
+  _Bool r60;
   _Bool r66;
   _Bool r72;
+  _Bool r76;
+  _Bool r78;
   _Bool r80;
   _Bool r90;
   _Bool r94;
+  _Bool r98;
   _Bool r100;
   _Bool r106;
   struct IR操作数 r11;
@@ -3064,25 +3429,25 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r0 = cn_var_指令;
   r1 = r0->操作码;
   r2 = r1 == 25;
-  if (r2) goto case_body_3303; else goto switch_check_3309;
+  if (r2) goto case_body_186; else goto switch_check_192;
 
-  switch_check_3309:
+  switch_check_192:
   r3 = r1 == 26;
-  if (r3) goto case_body_3304; else goto switch_check_3310;
+  if (r3) goto case_body_187; else goto switch_check_193;
 
-  switch_check_3310:
+  switch_check_193:
   r4 = r1 == 27;
-  if (r4) goto case_body_3305; else goto switch_check_3311;
+  if (r4) goto case_body_188; else goto switch_check_194;
 
-  switch_check_3311:
+  switch_check_194:
   r5 = r1 == 28;
-  if (r5) goto case_body_3306; else goto switch_check_3312;
+  if (r5) goto case_body_189; else goto switch_check_195;
 
-  switch_check_3312:
+  switch_check_195:
   r6 = r1 == 29;
-  if (r6) goto case_body_3307; else goto case_default_3308;
+  if (r6) goto case_body_190; else goto case_default_191;
 
-  case_body_3303:
+  case_body_186:
   r7 = cn_var_缓冲区;
   r8 = 追加字符串(r7, "L");
   r9 = cn_var_缓冲区;
@@ -3095,10 +3460,10 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r16 = 追加字符串(r15, ":");
   r17 = cn_var_缓冲区;
   追加换行(r17);
-  goto switch_merge_3302;
-  goto switch_merge_3302;
+  goto switch_merge_185;
+  goto switch_merge_185;
 
-  case_body_3304:
+  case_body_187:
   r18 = cn_var_缓冲区;
   追加缩进(r18, 4);
   r19 = cn_var_缓冲区;
@@ -3113,10 +3478,10 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r28 = 追加字符串(r27, ";");
   r29 = cn_var_缓冲区;
   追加换行(r29);
-  goto switch_merge_3302;
-  goto switch_merge_3302;
+  goto switch_merge_185;
+  goto switch_merge_185;
 
-  case_body_3305:
+  case_body_188:
   r30 = cn_var_缓冲区;
   追加缩进(r30, 4);
   r31 = cn_var_缓冲区;
@@ -3145,28 +3510,28 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r54 = 追加字符串(r53, ";");
   r55 = cn_var_缓冲区;
   追加换行(r55);
-  goto switch_merge_3302;
-  goto switch_merge_3302;
+  goto switch_merge_185;
+  goto switch_merge_185;
 
-  case_body_3306:
+  case_body_189:
   r56 = cn_var_缓冲区;
   追加缩进(r56, 4);
   r57 = cn_var_指令;
   r58 = r57->目标;
   r59 = r58.种类;
   r60 = r59 != 0;
-  if (r60) goto if_then_3313; else goto if_merge_3314;
+  if (r60) goto if_then_196; else goto if_merge_197;
 
-  if_then_3313:
+  if_then_196:
   r61 = cn_var_指令;
   r62 = r61->目标;
   r63 = cn_var_缓冲区;
   r64 = 生成操作数代码(r62, r63);
   r65 = cn_var_缓冲区;
   r66 = 追加字符串(r65, " = ");
-  goto if_merge_3314;
+  goto if_merge_197;
 
-  if_merge_3314:
+  if_merge_197:
   r67 = cn_var_指令;
   r68 = r67->源操作数1;
   r69 = cn_var_缓冲区;
@@ -3175,49 +3540,49 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r72 = 追加字符串(r71, "(");
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3315;
+  goto for_cond_198;
 
-  for_cond_3315:
+  for_cond_198:
   r73 = cn_var_i_0;
   r74 = cn_var_指令;
   r75 = r74->额外参数数量;
   r76 = r73 < r75;
-  if (r76) goto for_body_3316; else goto for_exit_3318;
+  if (r76) goto for_body_199; else goto for_exit_201;
 
-  for_body_3316:
+  for_body_199:
   r77 = cn_var_i_0;
   r78 = r77 > 0;
-  if (r78) goto if_then_3319; else goto if_merge_3320;
+  if (r78) goto if_then_202; else goto if_merge_203;
 
-  for_update_3317:
+  for_update_200:
   r87 = cn_var_i_0;
   r88 = r87 + 1;
   cn_var_i_0 = r88;
-  goto for_cond_3315;
+  goto for_cond_198;
 
-  for_exit_3318:
+  for_exit_201:
   r89 = cn_var_缓冲区;
   r90 = 追加字符串(r89, ");");
   r91 = cn_var_缓冲区;
   追加换行(r91);
-  goto switch_merge_3302;
-  goto switch_merge_3302;
+  goto switch_merge_185;
+  goto switch_merge_185;
 
-  if_then_3319:
+  if_then_202:
   r79 = cn_var_缓冲区;
   r80 = 追加字符串(r79, ", ");
-  goto if_merge_3320;
+  goto if_merge_203;
 
-  if_merge_3320:
+  if_merge_203:
   r81 = cn_var_指令;
   r82 = r81->额外参数;
   r83 = cn_var_i_0;
-  r84 = *(void**)cn_rt_array_get_element(r82, r83, 8);
+  r84 = *(struct IR操作数**)cn_rt_array_get_element(r82, r83, 8);
   r85 = cn_var_缓冲区;
   r86 = 生成操作数代码(r84, r85);
-  goto for_update_3317;
+  goto for_update_200;
 
-  case_body_3307:
+  case_body_190:
   r92 = cn_var_缓冲区;
   追加缩进(r92, 4);
   r93 = cn_var_缓冲区;
@@ -3226,30 +3591,30 @@ void 生成控制流指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r96 = r95->目标;
   r97 = r96.种类;
   r98 = r97 != 0;
-  if (r98) goto if_then_3321; else goto if_merge_3322;
+  if (r98) goto if_then_204; else goto if_merge_205;
 
-  if_then_3321:
+  if_then_204:
   r99 = cn_var_缓冲区;
   r100 = 追加字符串(r99, " ");
   r101 = cn_var_指令;
   r102 = r101->目标;
   r103 = cn_var_缓冲区;
   r104 = 生成操作数代码(r102, r103);
-  goto if_merge_3322;
+  goto if_merge_205;
 
-  if_merge_3322:
+  if_merge_205:
   r105 = cn_var_缓冲区;
   r106 = 追加字符串(r105, ";");
   r107 = cn_var_缓冲区;
   追加换行(r107);
-  goto switch_merge_3302;
-  goto switch_merge_3302;
+  goto switch_merge_185;
+  goto switch_merge_185;
 
-  case_default_3308:
-  goto switch_merge_3302;
-  goto switch_merge_3302;
+  case_default_191:
+  goto switch_merge_185;
+  goto switch_merge_185;
 
-  switch_merge_3302:
+  switch_merge_185:
   return;
 }
 
@@ -3322,17 +3687,17 @@ void 生成结构体指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r0 = cn_var_指令;
   r1 = r0->操作码;
   r2 = r1 == 30;
-  if (r2) goto case_body_3324; else goto switch_check_3328;
+  if (r2) goto case_body_207; else goto switch_check_211;
 
-  switch_check_3328:
+  switch_check_211:
   r3 = r1 == 31;
-  if (r3) goto case_body_3325; else goto switch_check_3329;
+  if (r3) goto case_body_208; else goto switch_check_212;
 
-  switch_check_3329:
+  switch_check_212:
   r4 = r1 == 32;
-  if (r4) goto case_body_3326; else goto case_default_3327;
+  if (r4) goto case_body_209; else goto case_default_210;
 
-  case_body_3324:
+  case_body_207:
   r5 = cn_var_缓冲区;
   追加缩进(r5, 4);
   r6 = cn_var_指令;
@@ -3356,10 +3721,10 @@ void 生成结构体指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r24 = 追加字符串(r23, ";");
   r25 = cn_var_缓冲区;
   追加换行(r25);
-  goto switch_merge_3323;
-  goto switch_merge_3323;
+  goto switch_merge_206;
+  goto switch_merge_206;
 
-  case_body_3325:
+  case_body_208:
   r26 = cn_var_缓冲区;
   追加缩进(r26, 4);
   r27 = cn_var_指令;
@@ -3383,10 +3748,10 @@ void 生成结构体指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r45 = 追加字符串(r44, ";");
   r46 = cn_var_缓冲区;
   追加换行(r46);
-  goto switch_merge_3323;
-  goto switch_merge_3323;
+  goto switch_merge_206;
+  goto switch_merge_206;
 
-  case_body_3326:
+  case_body_209:
   r47 = cn_var_缓冲区;
   追加缩进(r47, 4);
   r48 = cn_var_缓冲区;
@@ -3405,19 +3770,18 @@ void 生成结构体指令(struct IR指令* cn_var_指令, struct 输出缓冲�
   r61 = 追加字符串(r60, "));");
   r62 = cn_var_缓冲区;
   追加换行(r62);
-  goto switch_merge_3323;
-  goto switch_merge_3323;
+  goto switch_merge_206;
+  goto switch_merge_206;
 
-  case_default_3327:
-  goto switch_merge_3323;
-  goto switch_merge_3323;
+  case_default_210:
+  goto switch_merge_206;
+  goto switch_merge_206;
 
-  switch_merge_3323:
+  switch_merge_206:
   return;
 }
 
 void 生成指令代码(struct IR指令* cn_var_指令, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r1;
   char* r55;
   char* r61;
   char* r67;
@@ -3450,6 +3814,7 @@ void 生成指令代码(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   struct 输出缓冲区* r72;
   struct 输出缓冲区* r74;
   struct 输出缓冲区* r76;
+  _Bool r1;
   _Bool r4;
   _Bool r5;
   _Bool r6;
@@ -3498,282 +3863,282 @@ void 生成指令代码(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   entry:
   r0 = cn_var_指令;
   r1 = !r0;
-  if (r1) goto if_then_3330; else goto if_merge_3331;
+  if (r1) goto if_then_213; else goto if_merge_214;
 
-  if_then_3330:
+  if_then_213:
   return;
-  goto if_merge_3331;
+  goto if_merge_214;
 
-  if_merge_3331:
+  if_merge_214:
   r2 = cn_var_指令;
   r3 = r2->操作码;
   r4 = r3 == 0;
-  if (r4) goto case_body_3333; else goto switch_check_3369;
+  if (r4) goto case_body_216; else goto switch_check_252;
 
-  switch_check_3369:
+  switch_check_252:
   r5 = r3 == 1;
-  if (r5) goto case_body_3334; else goto switch_check_3370;
+  if (r5) goto case_body_217; else goto switch_check_253;
 
-  switch_check_3370:
+  switch_check_253:
   r6 = r3 == 2;
-  if (r6) goto case_body_3335; else goto switch_check_3371;
+  if (r6) goto case_body_218; else goto switch_check_254;
 
-  switch_check_3371:
+  switch_check_254:
   r7 = r3 == 3;
-  if (r7) goto case_body_3336; else goto switch_check_3372;
+  if (r7) goto case_body_219; else goto switch_check_255;
 
-  switch_check_3372:
+  switch_check_255:
   r8 = r3 == 4;
-  if (r8) goto case_body_3337; else goto switch_check_3373;
+  if (r8) goto case_body_220; else goto switch_check_256;
 
-  switch_check_3373:
+  switch_check_256:
   r9 = r3 == 5;
-  if (r9) goto case_body_3338; else goto switch_check_3374;
+  if (r9) goto case_body_221; else goto switch_check_257;
 
-  switch_check_3374:
+  switch_check_257:
   r10 = r3 == 6;
-  if (r10) goto case_body_3339; else goto switch_check_3375;
+  if (r10) goto case_body_222; else goto switch_check_258;
 
-  switch_check_3375:
+  switch_check_258:
   r11 = r3 == 7;
-  if (r11) goto case_body_3340; else goto switch_check_3376;
+  if (r11) goto case_body_223; else goto switch_check_259;
 
-  switch_check_3376:
+  switch_check_259:
   r12 = r3 == 8;
-  if (r12) goto case_body_3341; else goto switch_check_3377;
+  if (r12) goto case_body_224; else goto switch_check_260;
 
-  switch_check_3377:
+  switch_check_260:
   r13 = r3 == 9;
-  if (r13) goto case_body_3342; else goto switch_check_3378;
+  if (r13) goto case_body_225; else goto switch_check_261;
 
-  switch_check_3378:
+  switch_check_261:
   r14 = r3 == 10;
-  if (r14) goto case_body_3343; else goto switch_check_3379;
+  if (r14) goto case_body_226; else goto switch_check_262;
 
-  switch_check_3379:
+  switch_check_262:
   r15 = r3 == 11;
-  if (r15) goto case_body_3344; else goto switch_check_3380;
+  if (r15) goto case_body_227; else goto switch_check_263;
 
-  switch_check_3380:
+  switch_check_263:
   r16 = r3 == 12;
-  if (r16) goto case_body_3345; else goto switch_check_3381;
+  if (r16) goto case_body_228; else goto switch_check_264;
 
-  switch_check_3381:
+  switch_check_264:
   r17 = r3 == 13;
-  if (r17) goto case_body_3346; else goto switch_check_3382;
+  if (r17) goto case_body_229; else goto switch_check_265;
 
-  switch_check_3382:
+  switch_check_265:
   r18 = r3 == 14;
-  if (r18) goto case_body_3347; else goto switch_check_3383;
+  if (r18) goto case_body_230; else goto switch_check_266;
 
-  switch_check_3383:
+  switch_check_266:
   r19 = r3 == 15;
-  if (r19) goto case_body_3348; else goto switch_check_3384;
+  if (r19) goto case_body_231; else goto switch_check_267;
 
-  switch_check_3384:
+  switch_check_267:
   r20 = r3 == 16;
-  if (r20) goto case_body_3349; else goto switch_check_3385;
+  if (r20) goto case_body_232; else goto switch_check_268;
 
-  switch_check_3385:
+  switch_check_268:
   r21 = r3 == 17;
-  if (r21) goto case_body_3350; else goto switch_check_3386;
+  if (r21) goto case_body_233; else goto switch_check_269;
 
-  switch_check_3386:
+  switch_check_269:
   r22 = r3 == 18;
-  if (r22) goto case_body_3351; else goto switch_check_3387;
+  if (r22) goto case_body_234; else goto switch_check_270;
 
-  switch_check_3387:
+  switch_check_270:
   r23 = r3 == 19;
-  if (r23) goto case_body_3352; else goto switch_check_3388;
+  if (r23) goto case_body_235; else goto switch_check_271;
 
-  switch_check_3388:
+  switch_check_271:
   r24 = r3 == 20;
-  if (r24) goto case_body_3353; else goto switch_check_3389;
+  if (r24) goto case_body_236; else goto switch_check_272;
 
-  switch_check_3389:
+  switch_check_272:
   r25 = r3 == 21;
-  if (r25) goto case_body_3354; else goto switch_check_3390;
+  if (r25) goto case_body_237; else goto switch_check_273;
 
-  switch_check_3390:
+  switch_check_273:
   r26 = r3 == 22;
-  if (r26) goto case_body_3355; else goto switch_check_3391;
+  if (r26) goto case_body_238; else goto switch_check_274;
 
-  switch_check_3391:
+  switch_check_274:
   r27 = r3 == 23;
-  if (r27) goto case_body_3356; else goto switch_check_3392;
+  if (r27) goto case_body_239; else goto switch_check_275;
 
-  switch_check_3392:
+  switch_check_275:
   r28 = r3 == 24;
-  if (r28) goto case_body_3357; else goto switch_check_3393;
+  if (r28) goto case_body_240; else goto switch_check_276;
 
-  switch_check_3393:
+  switch_check_276:
   r29 = r3 == 25;
-  if (r29) goto case_body_3358; else goto switch_check_3394;
+  if (r29) goto case_body_241; else goto switch_check_277;
 
-  switch_check_3394:
+  switch_check_277:
   r30 = r3 == 26;
-  if (r30) goto case_body_3359; else goto switch_check_3395;
+  if (r30) goto case_body_242; else goto switch_check_278;
 
-  switch_check_3395:
+  switch_check_278:
   r31 = r3 == 27;
-  if (r31) goto case_body_3360; else goto switch_check_3396;
+  if (r31) goto case_body_243; else goto switch_check_279;
 
-  switch_check_3396:
+  switch_check_279:
   r32 = r3 == 28;
-  if (r32) goto case_body_3361; else goto switch_check_3397;
+  if (r32) goto case_body_244; else goto switch_check_280;
 
-  switch_check_3397:
+  switch_check_280:
   r33 = r3 == 29;
-  if (r33) goto case_body_3362; else goto switch_check_3398;
+  if (r33) goto case_body_245; else goto switch_check_281;
 
-  switch_check_3398:
+  switch_check_281:
   r34 = r3 == 30;
-  if (r34) goto case_body_3363; else goto switch_check_3399;
+  if (r34) goto case_body_246; else goto switch_check_282;
 
-  switch_check_3399:
+  switch_check_282:
   r35 = r3 == 31;
-  if (r35) goto case_body_3364; else goto switch_check_3400;
+  if (r35) goto case_body_247; else goto switch_check_283;
 
-  switch_check_3400:
+  switch_check_283:
   r36 = r3 == 32;
-  if (r36) goto case_body_3365; else goto switch_check_3401;
+  if (r36) goto case_body_248; else goto switch_check_284;
 
-  switch_check_3401:
+  switch_check_284:
   r37 = r3 == 33;
-  if (r37) goto case_body_3366; else goto switch_check_3402;
+  if (r37) goto case_body_249; else goto switch_check_285;
 
-  switch_check_3402:
+  switch_check_285:
   r38 = r3 == 34;
-  if (r38) goto case_body_3367; else goto case_default_3368;
+  if (r38) goto case_body_250; else goto case_default_251;
 
-  case_body_3333:
-  goto switch_merge_3332;
+  case_body_216:
+  goto switch_merge_215;
 
-  case_body_3334:
-  goto switch_merge_3332;
+  case_body_217:
+  goto switch_merge_215;
 
-  case_body_3335:
-  goto switch_merge_3332;
+  case_body_218:
+  goto switch_merge_215;
 
-  case_body_3336:
-  goto switch_merge_3332;
+  case_body_219:
+  goto switch_merge_215;
 
-  case_body_3337:
-  goto switch_merge_3332;
+  case_body_220:
+  goto switch_merge_215;
 
-  case_body_3338:
-  goto switch_merge_3332;
+  case_body_221:
+  goto switch_merge_215;
 
-  case_body_3339:
-  goto switch_merge_3332;
+  case_body_222:
+  goto switch_merge_215;
 
-  case_body_3340:
-  goto switch_merge_3332;
+  case_body_223:
+  goto switch_merge_215;
 
-  case_body_3341:
-  goto switch_merge_3332;
+  case_body_224:
+  goto switch_merge_215;
 
-  case_body_3342:
+  case_body_225:
   r39 = cn_var_指令;
   r40 = cn_var_缓冲区;
   生成算术指令(r39, r40);
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_body_3343:
-  goto switch_merge_3332;
+  case_body_226:
+  goto switch_merge_215;
 
-  case_body_3344:
-  goto switch_merge_3332;
+  case_body_227:
+  goto switch_merge_215;
 
-  case_body_3345:
+  case_body_228:
   r41 = cn_var_指令;
   r42 = cn_var_缓冲区;
   生成一元指令(r41, r42);
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_body_3346:
-  goto switch_merge_3332;
+  case_body_229:
+  goto switch_merge_215;
 
-  case_body_3347:
-  goto switch_merge_3332;
+  case_body_230:
+  goto switch_merge_215;
 
-  case_body_3348:
-  goto switch_merge_3332;
+  case_body_231:
+  goto switch_merge_215;
 
-  case_body_3349:
-  goto switch_merge_3332;
+  case_body_232:
+  goto switch_merge_215;
 
-  case_body_3350:
-  goto switch_merge_3332;
+  case_body_233:
+  goto switch_merge_215;
 
-  case_body_3351:
+  case_body_234:
   r43 = cn_var_指令;
   r44 = cn_var_缓冲区;
   生成比较指令(r43, r44);
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_body_3352:
-  goto switch_merge_3332;
+  case_body_235:
+  goto switch_merge_215;
 
-  case_body_3353:
-  goto switch_merge_3332;
+  case_body_236:
+  goto switch_merge_215;
 
-  case_body_3354:
-  goto switch_merge_3332;
+  case_body_237:
+  goto switch_merge_215;
 
-  case_body_3355:
-  goto switch_merge_3332;
+  case_body_238:
+  goto switch_merge_215;
 
-  case_body_3356:
-  goto switch_merge_3332;
+  case_body_239:
+  goto switch_merge_215;
 
-  case_body_3357:
+  case_body_240:
   r45 = cn_var_指令;
   r46 = cn_var_缓冲区;
   生成内存指令(r45, r46);
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_body_3358:
-  goto switch_merge_3332;
+  case_body_241:
+  goto switch_merge_215;
 
-  case_body_3359:
-  goto switch_merge_3332;
+  case_body_242:
+  goto switch_merge_215;
 
-  case_body_3360:
-  goto switch_merge_3332;
+  case_body_243:
+  goto switch_merge_215;
 
-  case_body_3361:
-  goto switch_merge_3332;
+  case_body_244:
+  goto switch_merge_215;
 
-  case_body_3362:
+  case_body_245:
   r47 = cn_var_指令;
   r48 = cn_var_缓冲区;
   生成控制流指令(r47, r48);
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_body_3363:
-  goto switch_merge_3332;
+  case_body_246:
+  goto switch_merge_215;
 
-  case_body_3364:
-  goto switch_merge_3332;
+  case_body_247:
+  goto switch_merge_215;
 
-  case_body_3365:
+  case_body_248:
   r49 = cn_var_指令;
   r50 = cn_var_缓冲区;
   生成结构体指令(r49, r50);
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_body_3366:
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  case_body_249:
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_body_3367:
+  case_body_250:
   r51 = cn_var_缓冲区;
   追加缩进(r51, 4);
   r52 = cn_var_指令;
@@ -3802,19 +4167,19 @@ void 生成指令代码(struct IR指令* cn_var_指令, struct 输出缓冲区* 
   r75 = 追加字符串(r74, ";");
   r76 = cn_var_缓冲区;
   追加换行(r76);
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  case_default_3368:
-  goto switch_merge_3332;
-  goto switch_merge_3332;
+  case_default_251:
+  goto switch_merge_215;
+  goto switch_merge_215;
 
-  switch_merge_3332:
+  switch_merge_215:
   return;
 }
 
 void 生成基本块代码(struct 基本块* cn_var_块, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r1, r6;
+  long long r6;
   struct 基本块* r0;
   struct 输出缓冲区* r2;
   struct 输出缓冲区* r4;
@@ -3828,6 +4193,7 @@ void 生成基本块代码(struct 基本块* cn_var_块, struct 输出缓冲区*
   struct 输出缓冲区* r15;
   struct IR指令* r16;
   struct IR指令* r17;
+  _Bool r1;
   _Bool r3;
   _Bool r7;
   _Bool r9;
@@ -3835,13 +4201,13 @@ void 生成基本块代码(struct 基本块* cn_var_块, struct 输出缓冲区*
   entry:
   r0 = cn_var_块;
   r1 = !r0;
-  if (r1) goto if_then_3403; else goto if_merge_3404;
+  if (r1) goto if_then_286; else goto if_merge_287;
 
-  if_then_3403:
+  if_then_286:
   return;
-  goto if_merge_3404;
+  goto if_merge_287;
 
-  if_merge_3404:
+  if_merge_287:
   r2 = cn_var_缓冲区;
   r3 = 追加字符串(r2, "L");
   r4 = cn_var_缓冲区;
@@ -3856,33 +4222,33 @@ void 生成基本块代码(struct 基本块* cn_var_块, struct 输出缓冲区*
   r11 = cn_var_块;
   r12 = r11->首条指令;
   cn_var_指令_0 = r12;
-  goto while_cond_3405;
+  goto while_cond_288;
 
-  while_cond_3405:
+  while_cond_288:
   r13 = cn_var_指令_0;
-  if (r13) goto while_body_3406; else goto while_exit_3407;
+  if (r13) goto while_body_289; else goto while_exit_290;
 
-  while_body_3406:
+  while_body_289:
   r14 = cn_var_指令_0;
   r15 = cn_var_缓冲区;
   生成指令代码(r14, r15);
   r16 = cn_var_指令_0;
   r17 = r16->下一条;
   cn_var_指令_0 = r17;
-  goto while_cond_3405;
+  goto while_cond_288;
 
-  while_exit_3407:
+  while_exit_290:
   return;
 }
 
 void 生成局部变量声明(struct IR函数* cn_var_函数指针, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r1, r2, r4, r5, r8, r19, r24, r25;
+  long long r2, r4, r8, r19, r24, r25;
   char* r14;
   struct IR函数* r0;
   struct IR函数* r3;
   struct IR函数* r6;
   struct IR操作数* r7;
-  void* r9;
+  struct IR操作数* r9;
   struct 输出缓冲区* r10;
   struct 类型节点* r12;
   struct 输出缓冲区* r13;
@@ -3890,6 +4256,8 @@ void 生成局部变量声明(struct IR函数* cn_var_函数指针, struct 输�
   struct 输出缓冲区* r17;
   struct 输出缓冲区* r21;
   struct 输出缓冲区* r23;
+  _Bool r1;
+  _Bool r5;
   _Bool r16;
   _Bool r20;
   _Bool r22;
@@ -3899,37 +4267,37 @@ void 生成局部变量声明(struct IR函数* cn_var_函数指针, struct 输�
   entry:
   r0 = cn_var_函数指针;
   r1 = !r0;
-  if (r1) goto if_then_3408; else goto if_merge_3409;
+  if (r1) goto if_then_291; else goto if_merge_292;
 
-  if_then_3408:
+  if_then_291:
   return;
-  goto if_merge_3409;
+  goto if_merge_292;
 
-  if_merge_3409:
+  if_merge_292:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3410;
+  goto for_cond_293;
 
-  for_cond_3410:
+  for_cond_293:
   r2 = cn_var_i_0;
   r3 = cn_var_函数指针;
   r4 = r3->局部变量数量;
   r5 = r2 < r4;
-  if (r5) goto for_body_3411; else goto for_exit_3413;
+  if (r5) goto for_body_294; else goto for_exit_296;
 
-  for_body_3411:
+  for_body_294:
   struct IR操作数 cn_var_局部变量_1;
   r6 = cn_var_函数指针;
   r7 = r6->局部变量;
   r8 = cn_var_i_0;
-  r9 = *(void**)cn_rt_array_get_element(r7, r8, 8);
+  r9 = *(struct IR操作数**)cn_rt_array_get_element(r7, r8, 8);
   cn_var_局部变量_1 = r9;
   r10 = cn_var_缓冲区;
   追加缩进(r10, 4);
   r11 = cn_var_局部变量_1;
   r12 = r11.类型信息;
   r13 = cn_var_缓冲区;
-  r14 = 类型到C类型(r12, r13);
+  r14 = 类型节点到C类型(r12, r13);
   r15 = cn_var_缓冲区;
   r16 = 追加字符串(r15, " r");
   r17 = cn_var_缓冲区;
@@ -3940,20 +4308,20 @@ void 生成局部变量声明(struct IR函数* cn_var_函数指针, struct 输�
   r22 = 追加字符串(r21, ";");
   r23 = cn_var_缓冲区;
   追加换行(r23);
-  goto for_update_3412;
+  goto for_update_295;
 
-  for_update_3412:
+  for_update_295:
   r24 = cn_var_i_0;
   r25 = r24 + 1;
   cn_var_i_0 = r25;
-  goto for_cond_3410;
+  goto for_cond_293;
 
-  for_exit_3413:
+  for_exit_296:
   return;
 }
 
 void 生成函数代码(struct IR函数* cn_var_函数指针, struct 输出缓冲区* cn_var_缓冲区) {
-  long long r1, r14, r16, r17, r18, r19, r24, r27, r33, r35, r36;
+  long long r14, r16, r18, r24, r33, r35, r36;
   char* r5;
   char* r10;
   char* r29;
@@ -3969,7 +4337,8 @@ void 生成函数代码(struct IR函数* cn_var_函数指针, struct 输出缓�
   struct 输出缓冲区* r20;
   struct IR函数* r22;
   struct IR操作数* r23;
-  void* r25;
+  struct IR操作数* r25;
+  struct 类型节点* r27;
   struct 输出缓冲区* r28;
   struct 输出缓冲区* r30;
   struct 输出缓冲区* r32;
@@ -3989,31 +4358,34 @@ void 生成函数代码(struct IR函数* cn_var_函数指针, struct 输出缓�
   struct 输出缓冲区* r52;
   struct 输出缓冲区* r54;
   struct 输出缓冲区* r55;
+  _Bool r1;
   _Bool r7;
   _Bool r11;
   _Bool r13;
+  _Bool r17;
+  _Bool r19;
   _Bool r21;
   _Bool r31;
   _Bool r34;
   _Bool r38;
   _Bool r40;
   _Bool r53;
-  struct 参数 r26;
+  struct IR操作数 r26;
 
   entry:
   r0 = cn_var_函数指针;
   r1 = !r0;
-  if (r1) goto if_then_3414; else goto if_merge_3415;
+  if (r1) goto if_then_297; else goto if_merge_298;
 
-  if_then_3414:
+  if_then_297:
   return;
-  goto if_merge_3415;
+  goto if_merge_298;
 
-  if_merge_3415:
+  if_merge_298:
   r2 = cn_var_函数指针;
   r3 = r2->返回类型;
   r4 = cn_var_缓冲区;
-  r5 = 类型到C类型(r3, r4);
+  r5 = 类型节点到C类型(r3, r4);
   r6 = cn_var_缓冲区;
   r7 = 追加字符串(r6, " ");
   r8 = cn_var_缓冲区;
@@ -4024,58 +4396,58 @@ void 生成函数代码(struct IR函数* cn_var_函数指针, struct 输出缓�
   r13 = 追加字符串(r12, "(");
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_3416;
+  goto for_cond_299;
 
-  for_cond_3416:
+  for_cond_299:
   r14 = cn_var_i_0;
   r15 = cn_var_函数指针;
   r16 = r15->参数数量;
   r17 = r14 < r16;
-  if (r17) goto for_body_3417; else goto for_exit_3419;
+  if (r17) goto for_body_300; else goto for_exit_302;
 
-  for_body_3417:
+  for_body_300:
   r18 = cn_var_i_0;
   r19 = r18 > 0;
-  if (r19) goto if_then_3420; else goto if_merge_3421;
+  if (r19) goto if_then_303; else goto if_merge_304;
 
-  for_update_3418:
+  for_update_301:
   r35 = cn_var_i_0;
   r36 = r35 + 1;
   cn_var_i_0 = r36;
-  goto for_cond_3416;
+  goto for_cond_299;
 
-  for_exit_3419:
-  if (0) goto if_then_3422; else goto if_merge_3423;
+  for_exit_302:
+  if (0) goto if_then_305; else goto if_merge_306;
 
-  if_then_3420:
+  if_then_303:
   r20 = cn_var_缓冲区;
   r21 = 追加字符串(r20, ", ");
-  goto if_merge_3421;
+  goto if_merge_304;
 
-  if_merge_3421:
+  if_merge_304:
   struct IR操作数 cn_var_参数_1;
   r22 = cn_var_函数指针;
   r23 = r22->参数列表;
   r24 = cn_var_i_0;
-  r25 = *(void**)cn_rt_array_get_element(r23, r24, 8);
+  r25 = *(struct IR操作数**)cn_rt_array_get_element(r23, r24, 8);
   cn_var_参数_1 = r25;
   r26 = cn_var_参数_1;
   r27 = r26.类型信息;
   r28 = cn_var_缓冲区;
-  r29 = 类型到C类型(r27, r28);
+  r29 = 类型节点到C类型(r27, r28);
   r30 = cn_var_缓冲区;
   r31 = 追加字符串(r30, " p");
   r32 = cn_var_缓冲区;
   r33 = cn_var_i_0;
   r34 = 追加整数(r32, r33);
-  goto for_update_3418;
+  goto for_update_301;
 
-  if_then_3422:
+  if_then_305:
   r37 = cn_var_缓冲区;
   r38 = 追加字符串(r37, "void");
-  goto if_merge_3423;
+  goto if_merge_306;
 
-  if_merge_3423:
+  if_merge_306:
   r39 = cn_var_缓冲区;
   r40 = 追加字符串(r39, ") {");
   r41 = cn_var_缓冲区;
@@ -4089,22 +4461,22 @@ void 生成函数代码(struct IR函数* cn_var_函数指针, struct 输出缓�
   r45 = cn_var_函数指针;
   r46 = r45->首个块;
   cn_var_块_2 = r46;
-  goto while_cond_3424;
+  goto while_cond_307;
 
-  while_cond_3424:
+  while_cond_307:
   r47 = cn_var_块_2;
-  if (r47) goto while_body_3425; else goto while_exit_3426;
+  if (r47) goto while_body_308; else goto while_exit_309;
 
-  while_body_3425:
+  while_body_308:
   r48 = cn_var_块_2;
   r49 = cn_var_缓冲区;
   生成基本块代码(r48, r49);
   r50 = cn_var_块_2;
   r51 = r50->下一个;
   cn_var_块_2 = r51;
-  goto while_cond_3424;
+  goto while_cond_307;
 
-  while_exit_3426:
+  while_exit_309:
   r52 = cn_var_缓冲区;
   r53 = 追加字符串(r52, "}");
   r54 = cn_var_缓冲区;
@@ -4131,9 +4503,9 @@ struct C代码生成上下文* 创建C代码生成上下文(struct IR模块* cn_
   r1 = 分配内存(r0);
   cn_var_上下文_0 = r1;
   r2 = cn_var_上下文_0;
-  if (r2) goto if_then_3427; else goto if_merge_3428;
+  if (r2) goto if_then_310; else goto if_merge_311;
 
-  if_then_3427:
+  if_then_310:
   r3 = cn_var_模块;
   r4 = cn_var_默认缓冲区大小;
   r5 = 创建输出缓冲区(r4);
@@ -4142,9 +4514,9 @@ struct C代码生成上下文* 创建C代码生成上下文(struct IR模块* cn_
   r8 = cn_var_默认缓冲区大小;
   r9 = 创建输出缓冲区(r8);
   r10 = cn_var_选项;
-  goto if_merge_3428;
+  goto if_merge_311;
 
-  if_merge_3428:
+  if_merge_311:
   r11 = cn_var_上下文_0;
   return r11;
 }
@@ -4161,9 +4533,9 @@ void 释放C代码生成上下文(struct C代码生成上下文* cn_var_上下�
 
   entry:
   r0 = cn_var_上下文;
-  if (r0) goto if_then_3429; else goto if_merge_3430;
+  if (r0) goto if_then_312; else goto if_merge_313;
 
-  if_then_3429:
+  if_then_312:
   r1 = cn_var_上下文;
   r2 = r1->头文件缓冲区;
   释放输出缓冲区(r2);
@@ -4175,9 +4547,9 @@ void 释放C代码生成上下文(struct C代码生成上下文* cn_var_上下�
   释放输出缓冲区(r6);
   r7 = cn_var_上下文;
   释放内存(r7);
-  goto if_merge_3430;
+  goto if_merge_313;
 
-  if_merge_3430:
+  if_merge_313:
   return;
 }
 
@@ -4185,7 +4557,7 @@ struct 代码生成选项 获取默认生成选项() {
   long long r0;
   void* r1;
   struct 代码生成选项* r2;
-  void* r3;
+  struct 代码生成选项* r3;
 
   entry:
   struct 代码生成选项* cn_var_选项_0;
@@ -4193,12 +4565,12 @@ struct 代码生成选项 获取默认生成选项() {
   r1 = 分配清零内存(1, r0);
   cn_var_选项_0 = (struct 代码生成选项*)0;
   r2 = cn_var_选项_0;
-  r3 = *(void**)cn_rt_array_get_element(r2, 0, 8);
+  r3 = *(struct 代码生成选项**)cn_rt_array_get_element(r2, 0, 8);
   return r3;
 }
 
 void 格式化整数(char* cn_var_缓冲区, long long cn_var_缓冲区大小, long long cn_var_数值) {
-  long long r3, r4, r5, r6, r7, r8, r9, r10, r11, r13, r14, r15, r16, r17, r18, r20, r21, r22, r23, r24, r25, r26, r28, r31, r32, r33, r35;
+  long long r3, r5, r6, r7, r9, r10, r11, r13, r14, r15, r16, r17, r20, r21, r22, r23, r25, r26, r28, r31, r32, r33, r35;
   char* r0;
   char* r1;
   char* r12;
@@ -4208,111 +4580,115 @@ void 格式化整数(char* cn_var_缓冲区, long long cn_var_缓冲区大小, l
   char* r34;
   char* r36;
   void* r2;
-  void* r29;
+  char* r29;
+  _Bool r4;
+  _Bool r8;
+  _Bool r18;
+  _Bool r24;
 
   entry:
   cn_var_数值 = 0;
-  if (0) goto if_then_3431; else goto if_merge_3432;
+  if (0) goto if_then_314; else goto if_merge_315;
 
-  if_then_3431:
+  if_then_314:
   r0 = cn_var_缓冲区;
-    { long long _tmp_i6 = 48; cn_rt_array_set_element(r0, 0, &_tmp_i6, 8); }
+    { long long _tmp_i3 = 48; cn_rt_array_set_element(r0, 0, &_tmp_i3, 8); }
   r1 = cn_var_缓冲区;
-    { long long _tmp_i7 = 0; cn_rt_array_set_element(r1, 1, &_tmp_i7, 8); }
+    { long long _tmp_i4 = 0; cn_rt_array_set_element(r1, 1, &_tmp_i4, 8); }
   return;
-  goto if_merge_3432;
+  goto if_merge_315;
 
-  if_merge_3432:
+  if_merge_315:
   char* cn_var_临时_0;
   r2 = 分配内存(32);
   cn_var_临时_0 = (char*)0;
   long long cn_var_索引_1;
   cn_var_索引_1 = 0;
-  long long cn_var_负数_2;
+  _Bool cn_var_负数_2;
   cn_var_负数_2 = 0;
   r3 = cn_var_数值;
   r4 = r3 < 0;
-  if (r4) goto if_then_3433; else goto if_merge_3434;
+  if (r4) goto if_then_316; else goto if_merge_317;
 
-  if_then_3433:
+  if_then_316:
   cn_var_负数_2 = 1;
   r5 = cn_var_数值;
   r6 = -r5;
   cn_var_数值 = r6;
-  goto if_merge_3434;
+  goto if_merge_317;
 
-  if_merge_3434:
-  goto while_cond_3435;
+  if_merge_317:
+  goto while_cond_318;
 
-  while_cond_3435:
+  while_cond_318:
   r7 = cn_var_数值;
   r8 = r7 > 0;
-  if (r8) goto while_body_3436; else goto while_exit_3437;
+  if (r8) goto while_body_319; else goto while_exit_320;
 
-  while_body_3436:
+  while_body_319:
   r9 = cn_var_数值;
   r10 = r9 % 10;
   r11 = 48 + r10;
   r12 = cn_var_临时_0;
   r13 = cn_var_索引_1;
-    { long long _tmp_r15 = r11; cn_rt_array_set_element(r12, r13, &_tmp_r15, 8); }
+    { long long _tmp_r1 = r11; cn_rt_array_set_element(r12, r13, &_tmp_r1, 8); }
   r14 = cn_var_索引_1;
   r15 = r14 + 1;
   cn_var_索引_1 = r15;
   r16 = cn_var_数值;
   r17 = r16 / 10;
   cn_var_数值 = r17;
-  goto while_cond_3435;
+  goto while_cond_318;
 
-  while_exit_3437:
+  while_exit_320:
   long long cn_var_输出索引_3;
   cn_var_输出索引_3 = 0;
   r18 = cn_var_负数_2;
-  if (r18) goto if_then_3438; else goto if_merge_3439;
+  if (r18) goto if_then_321; else goto if_merge_322;
 
-  if_then_3438:
+  if_then_321:
   r19 = cn_var_缓冲区;
   r20 = cn_var_输出索引_3;
-    { long long _tmp_i8 = 45; cn_rt_array_set_element(r19, r20, &_tmp_i8, 8); }
+    { long long _tmp_i5 = 45; cn_rt_array_set_element(r19, r20, &_tmp_i5, 8); }
   r21 = cn_var_输出索引_3;
   r22 = r21 + 1;
   cn_var_输出索引_3 = r22;
-  goto if_merge_3439;
+  goto if_merge_322;
 
-  if_merge_3439:
-  goto while_cond_3440;
+  if_merge_322:
+  goto while_cond_323;
 
-  while_cond_3440:
+  while_cond_323:
   r23 = cn_var_索引_1;
   r24 = r23 > 0;
-  if (r24) goto while_body_3441; else goto while_exit_3442;
+  if (r24) goto while_body_324; else goto while_exit_325;
 
-  while_body_3441:
+  while_body_324:
   r25 = cn_var_索引_1;
   r26 = r25 - 1;
   cn_var_索引_1 = r26;
   r27 = cn_var_临时_0;
   r28 = cn_var_索引_1;
-  r29 = *(void**)cn_rt_array_get_element(r27, r28, 8);
+  r29 = *(char**)cn_rt_array_get_element(r27, r28, 8);
   r30 = cn_var_缓冲区;
   r31 = cn_var_输出索引_3;
-    { long long _tmp_r16 = r29; cn_rt_array_set_element(r30, r31, &_tmp_r16, 8); }
+    { long long _tmp_r2 = r29; cn_rt_array_set_element(r30, r31, &_tmp_r2, 8); }
   r32 = cn_var_输出索引_3;
   r33 = r32 + 1;
   cn_var_输出索引_3 = r33;
-  goto while_cond_3440;
+  goto while_cond_323;
 
-  while_exit_3442:
+  while_exit_325:
   r34 = cn_var_缓冲区;
   r35 = cn_var_输出索引_3;
-    { long long _tmp_i9 = 0; cn_rt_array_set_element(r34, r35, &_tmp_i9, 8); }
+    { long long _tmp_i6 = 0; cn_rt_array_set_element(r34, r35, &_tmp_i6, 8); }
   r36 = cn_var_临时_0;
   释放内存(r36);
   return;
 }
 
 void 追加小数(struct 输出缓冲区* cn_var_缓冲区, double cn_var_数值) {
-  long long r2, r3, r5, r7, r12;
+  long long r2, r5, r7, r12;
   struct 输出缓冲区* r6;
   struct 输出缓冲区* r9;
   struct 输出缓冲区* r11;
@@ -4321,6 +4697,7 @@ void 追加小数(struct 输出缓冲区* cn_var_缓冲区, double cn_var_数值
   _Bool r13;
   double r0;
   double r1;
+  double r3;
   double r4;
 
   entry:

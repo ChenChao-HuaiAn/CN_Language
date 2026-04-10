@@ -1220,9 +1220,9 @@ struct IR模块* 创建IR模块() {
   r1 = 分配内存(r0);
   cn_var_模块_0 = r1;
   r2 = cn_var_模块_0;
-  if (r2) goto if_then_2808; else goto if_merge_2809;
+  if (r2) goto if_then_995; else goto if_merge_996;
 
-  if_then_2808:
+  if_then_995:
   r3 = cn_var_模块_0;
   r4 = r3->目标信息;
   r6 = cn_var_模块_0;
@@ -1230,9 +1230,9 @@ struct IR模块* 创建IR模块() {
   r5 = &r7;
   r8 = sizeof(struct 目标三元组);
   r9 = 设置内存((void*)cn_var_模块.目标信息, 0, r8);
-  goto if_merge_2809;
+  goto if_merge_996;
 
-  if_merge_2809:
+  if_merge_996:
   r10 = cn_var_模块_0;
   return r10;
 }
@@ -1263,57 +1263,57 @@ void 释放IR模块(struct IR模块* cn_var_模块) {
   entry:
   r0 = cn_var_模块;
   r1 = !r0;
-  if (r1) goto if_then_2810; else goto if_merge_2811;
+  if (r1) goto if_then_997; else goto if_merge_998;
 
-  if_then_2810:
+  if_then_997:
   return;
-  goto if_merge_2811;
+  goto if_merge_998;
 
-  if_merge_2811:
+  if_merge_998:
   struct 全局变量* cn_var_全局_0;
   r2 = cn_var_模块;
   r3 = r2->首个全局;
   cn_var_全局_0 = r3;
-  goto while_cond_2812;
+  goto while_cond_999;
 
-  while_cond_2812:
+  while_cond_999:
   r4 = cn_var_全局_0;
-  if (r4) goto while_body_2813; else goto while_exit_2814;
+  if (r4) goto while_body_1000; else goto while_exit_1001;
 
-  while_body_2813:
+  while_body_1000:
   struct 全局变量* cn_var_下个_1;
   r5 = cn_var_全局_0;
   r6 = r5->下一个;
   cn_var_下个_1 = r6;
   r7 = cn_var_全局_0;
   r8 = r7->名称;
-  if (r8) goto if_then_2815; else goto if_merge_2816;
+  if (r8) goto if_then_1002; else goto if_merge_1003;
 
-  while_exit_2814:
+  while_exit_1001:
   struct IR函数* cn_var_函数指针_2;
   r13 = cn_var_模块;
   r14 = r13->首个函数;
   cn_var_函数指针_2 = r14;
-  goto while_cond_2817;
+  goto while_cond_1004;
 
-  if_then_2815:
+  if_then_1002:
   r9 = cn_var_全局_0;
   r10 = r9->名称;
   释放内存(r10);
-  goto if_merge_2816;
+  goto if_merge_1003;
 
-  if_merge_2816:
+  if_merge_1003:
   r11 = cn_var_全局_0;
   释放内存(r11);
   r12 = cn_var_下个_1;
   cn_var_全局_0 = r12;
-  goto while_cond_2812;
+  goto while_cond_999;
 
-  while_cond_2817:
+  while_cond_1004:
   r15 = cn_var_函数指针_2;
-  if (r15) goto while_body_2818; else goto while_exit_2819;
+  if (r15) goto while_body_1005; else goto while_exit_1006;
 
-  while_body_2818:
+  while_body_1005:
   struct IR函数* cn_var_下个函数_3;
   r16 = cn_var_函数指针_2;
   r17 = r16->下一个;
@@ -1322,9 +1322,9 @@ void 释放IR模块(struct IR模块* cn_var_模块) {
   释放IR函数(r18);
   r19 = cn_var_下个函数_3;
   cn_var_函数指针_2 = r19;
-  goto while_cond_2817;
+  goto while_cond_1004;
 
-  while_exit_2819:
+  while_exit_1006:
   r20 = cn_var_模块;
   释放内存(r20);
   return;
@@ -1345,15 +1345,15 @@ struct IR函数* 创建IR函数(char* cn_var_名称, struct 类型节点* cn_var
   r1 = 分配内存(r0);
   cn_var_函数指针_0 = r1;
   r2 = cn_var_函数指针_0;
-  if (r2) goto if_then_2820; else goto if_merge_2821;
+  if (r2) goto if_then_1007; else goto if_merge_1008;
 
-  if_then_2820:
+  if_then_1007:
   r3 = cn_var_名称;
   r4 = 复制字符串副本(r3);
   r5 = cn_var_返回类型;
-  goto if_merge_2821;
+  goto if_merge_1008;
 
-  if_merge_2821:
+  if_merge_1008:
   r6 = cn_var_函数指针_0;
   return r6;
 }
@@ -1396,57 +1396,57 @@ void 释放IR函数(struct IR函数* cn_var_函数指针) {
   entry:
   r0 = cn_var_函数指针;
   r1 = !r0;
-  if (r1) goto if_then_2822; else goto if_merge_2823;
+  if (r1) goto if_then_1009; else goto if_merge_1010;
 
-  if_then_2822:
+  if_then_1009:
   return;
-  goto if_merge_2823;
+  goto if_merge_1010;
 
-  if_merge_2823:
+  if_merge_1010:
   struct 静态变量* cn_var_当前静态_0;
   r2 = cn_var_函数指针;
   r3 = r2->首个静态变量;
   cn_var_当前静态_0 = r3;
-  goto while_cond_2824;
+  goto while_cond_1011;
 
-  while_cond_2824:
+  while_cond_1011:
   r4 = cn_var_当前静态_0;
-  if (r4) goto while_body_2825; else goto while_exit_2826;
+  if (r4) goto while_body_1012; else goto while_exit_1013;
 
-  while_body_2825:
+  while_body_1012:
   struct 静态变量* cn_var_下个_1;
   r5 = cn_var_当前静态_0;
   r6 = r5->下一个;
   cn_var_下个_1 = r6;
   r7 = cn_var_当前静态_0;
   r8 = r7->名称;
-  if (r8) goto if_then_2827; else goto if_merge_2828;
+  if (r8) goto if_then_1014; else goto if_merge_1015;
 
-  while_exit_2826:
+  while_exit_1013:
   struct 基本块* cn_var_块_2;
   r13 = cn_var_函数指针;
   r14 = r13->首个块;
   cn_var_块_2 = r14;
-  goto while_cond_2829;
+  goto while_cond_1016;
 
-  if_then_2827:
+  if_then_1014:
   r9 = cn_var_当前静态_0;
   r10 = r9->名称;
   释放内存(r10);
-  goto if_merge_2828;
+  goto if_merge_1015;
 
-  if_merge_2828:
+  if_merge_1015:
   r11 = cn_var_当前静态_0;
   释放内存(r11);
   r12 = cn_var_下个_1;
   cn_var_当前静态_0 = r12;
-  goto while_cond_2824;
+  goto while_cond_1011;
 
-  while_cond_2829:
+  while_cond_1016:
   r15 = cn_var_块_2;
-  if (r15) goto while_body_2830; else goto while_exit_2831;
+  if (r15) goto while_body_1017; else goto while_exit_1018;
 
-  while_body_2830:
+  while_body_1017:
   struct 基本块* cn_var_下个块_3;
   r16 = cn_var_块_2;
   r17 = r16->下一个;
@@ -1455,42 +1455,42 @@ void 释放IR函数(struct IR函数* cn_var_函数指针) {
   释放基本块(r18);
   r19 = cn_var_下个块_3;
   cn_var_块_2 = r19;
-  goto while_cond_2829;
+  goto while_cond_1016;
 
-  while_exit_2831:
+  while_exit_1018:
   r20 = cn_var_函数指针;
   r21 = r20->参数列表;
-  if (r21) goto if_then_2832; else goto if_merge_2833;
+  if (r21) goto if_then_1019; else goto if_merge_1020;
 
-  if_then_2832:
+  if_then_1019:
   r22 = cn_var_函数指针;
   r23 = r22->参数列表;
   释放内存(r23);
-  goto if_merge_2833;
+  goto if_merge_1020;
 
-  if_merge_2833:
+  if_merge_1020:
   r24 = cn_var_函数指针;
   r25 = r24->局部变量;
-  if (r25) goto if_then_2834; else goto if_merge_2835;
+  if (r25) goto if_then_1021; else goto if_merge_1022;
 
-  if_then_2834:
+  if_then_1021:
   r26 = cn_var_函数指针;
   r27 = r26->局部变量;
   释放内存(r27);
-  goto if_merge_2835;
+  goto if_merge_1022;
 
-  if_merge_2835:
+  if_merge_1022:
   r28 = cn_var_函数指针;
   r29 = r28->名称;
-  if (r29) goto if_then_2836; else goto if_merge_2837;
+  if (r29) goto if_then_1023; else goto if_merge_1024;
 
-  if_then_2836:
+  if_then_1023:
   r30 = cn_var_函数指针;
   r31 = r30->名称;
   释放内存(r31);
-  goto if_merge_2837;
+  goto if_merge_1024;
 
-  if_merge_2837:
+  if_merge_1024:
   r32 = cn_var_函数指针;
   释放内存(r32);
   return;
@@ -1512,13 +1512,13 @@ void 添加函数参数(struct IR函数* cn_var_函数指针, struct IR操作数
   entry:
   r0 = cn_var_函数指针;
   r1 = !r0;
-  if (r1) goto if_then_2838; else goto if_merge_2839;
+  if (r1) goto if_then_1025; else goto if_merge_1026;
 
-  if_then_2838:
+  if_then_1025:
   return;
-  goto if_merge_2839;
+  goto if_merge_1026;
 
-  if_merge_2839:
+  if_merge_1026:
   r2 = cn_var_函数指针;
   r3 = r2->参数列表;
   r4 = cn_var_函数指针;
@@ -1532,7 +1532,7 @@ void 添加函数参数(struct IR函数* cn_var_函数指针, struct IR操作数
   r12 = r11->参数列表;
   r13 = cn_var_函数指针;
   r14 = r13->参数数量;
-    { long long _tmp_r11 = r10; cn_rt_array_set_element(r12, r14, &_tmp_r11, 8); }
+    { long long _tmp_r8 = r10; cn_rt_array_set_element(r12, r14, &_tmp_r8, 8); }
   r15 = cn_var_函数指针;
   r16 = r15->参数数量;
   r17 = r16 + 1;
@@ -1555,13 +1555,13 @@ void 添加局部变量(struct IR函数* cn_var_函数指针, struct IR操作数
   entry:
   r0 = cn_var_函数指针;
   r1 = !r0;
-  if (r1) goto if_then_2840; else goto if_merge_2841;
+  if (r1) goto if_then_1027; else goto if_merge_1028;
 
-  if_then_2840:
+  if_then_1027:
   return;
-  goto if_merge_2841;
+  goto if_merge_1028;
 
-  if_merge_2841:
+  if_merge_1028:
   r2 = cn_var_函数指针;
   r3 = r2->局部变量;
   r4 = cn_var_函数指针;
@@ -1575,7 +1575,7 @@ void 添加局部变量(struct IR函数* cn_var_函数指针, struct IR操作数
   r12 = r11->局部变量;
   r13 = cn_var_函数指针;
   r14 = r13->局部变量数量;
-    { long long _tmp_r12 = r10; cn_rt_array_set_element(r12, r14, &_tmp_r12, 8); }
+    { long long _tmp_r9 = r10; cn_rt_array_set_element(r12, r14, &_tmp_r9, 8); }
   r15 = cn_var_函数指针;
   r16 = r15->局部变量数量;
   r17 = r16 + 1;
@@ -1598,39 +1598,39 @@ void 添加基本块(struct IR函数* cn_var_函数指针, struct 基本块* cn_
   entry:
   r1 = cn_var_函数指针;
   r2 = !r1;
-  if (r2) goto logic_merge_2845; else goto logic_rhs_2844;
+  if (r2) goto logic_merge_1032; else goto logic_rhs_1031;
 
-  if_then_2842:
+  if_then_1029:
   return;
-  goto if_merge_2843;
+  goto if_merge_1030;
 
-  if_merge_2843:
+  if_merge_1030:
   r5 = cn_var_函数指针;
   r6 = r5->首个块;
   r7 = !r6;
-  if (r7) goto if_then_2846; else goto if_else_2847;
+  if (r7) goto if_then_1033; else goto if_else_1034;
 
-  logic_rhs_2844:
+  logic_rhs_1031:
   r3 = cn_var_块;
   r4 = !r3;
-  goto logic_merge_2845;
+  goto logic_merge_1032;
 
-  logic_merge_2845:
-  if (r4) goto if_then_2842; else goto if_merge_2843;
+  logic_merge_1032:
+  if (r4) goto if_then_1029; else goto if_merge_1030;
 
-  if_then_2846:
+  if_then_1033:
   r8 = cn_var_块;
   r9 = cn_var_块;
-  goto if_merge_2848;
+  goto if_merge_1035;
 
-  if_else_2847:
+  if_else_1034:
   r10 = cn_var_块;
   r11 = cn_var_函数指针;
   r12 = r11->末个块;
   r13 = cn_var_块;
-  goto if_merge_2848;
+  goto if_merge_1035;
 
-  if_merge_2848:
+  if_merge_1035:
   return;
 }
 
@@ -1648,37 +1648,37 @@ void 添加静态变量(struct IR函数* cn_var_函数指针, struct 静态变�
   entry:
   r1 = cn_var_函数指针;
   r2 = !r1;
-  if (r2) goto logic_merge_2852; else goto logic_rhs_2851;
+  if (r2) goto logic_merge_1039; else goto logic_rhs_1038;
 
-  if_then_2849:
+  if_then_1036:
   return;
-  goto if_merge_2850;
+  goto if_merge_1037;
 
-  if_merge_2850:
+  if_merge_1037:
   r5 = cn_var_函数指针;
   r6 = r5->首个静态变量;
   r7 = !r6;
-  if (r7) goto if_then_2853; else goto if_else_2854;
+  if (r7) goto if_then_1040; else goto if_else_1041;
 
-  logic_rhs_2851:
+  logic_rhs_1038:
   r3 = cn_var_静态变量指针;
   r4 = !r3;
-  goto logic_merge_2852;
+  goto logic_merge_1039;
 
-  logic_merge_2852:
-  if (r4) goto if_then_2849; else goto if_merge_2850;
+  logic_merge_1039:
+  if (r4) goto if_then_1036; else goto if_merge_1037;
 
-  if_then_2853:
+  if_then_1040:
   r8 = cn_var_静态变量指针;
   r9 = cn_var_静态变量指针;
-  goto if_merge_2855;
+  goto if_merge_1042;
 
-  if_else_2854:
+  if_else_1041:
   r10 = cn_var_静态变量指针;
   r11 = cn_var_静态变量指针;
-  goto if_merge_2855;
+  goto if_merge_1042;
 
-  if_merge_2855:
+  if_merge_1042:
   return;
 }
 
@@ -1691,14 +1691,14 @@ long long 分配寄存器(struct IR函数* cn_var_函数指针) {
   entry:
   r0 = cn_var_函数指针;
   r1 = !r0;
-  if (r1) goto if_then_2856; else goto if_merge_2857;
+  if (r1) goto if_then_1043; else goto if_merge_1044;
 
-  if_then_2856:
+  if_then_1043:
   r2 = -1;
   return r2;
-  goto if_merge_2857;
+  goto if_merge_1044;
 
-  if_merge_2857:
+  if_merge_1044:
   long long cn_var_编号_0;
   r3 = cn_var_函数指针;
   r4 = r3->下个寄存器编号;
@@ -1725,16 +1725,16 @@ struct 基本块* 创建基本块(char* cn_var_名称提示) {
   r1 = 分配内存(r0);
   cn_var_块_0 = r1;
   r2 = cn_var_块_0;
-  if (r2) goto if_then_2858; else goto if_merge_2859;
+  if (r2) goto if_then_1045; else goto if_merge_1046;
 
-  if_then_2858:
+  if_then_1045:
   r3 = cn_var_名称提示;
   r4 = cn_var_名称提示;
   r5 = 复制字符串副本(r4);
   r6 = (r3 ? r5 : 0);
-  goto if_merge_2859;
+  goto if_merge_1046;
 
-  if_merge_2859:
+  if_merge_1046:
   r7 = cn_var_块_0;
   return r7;
 }
@@ -1762,24 +1762,24 @@ void 释放基本块(struct 基本块* cn_var_块) {
   entry:
   r0 = cn_var_块;
   r1 = !r0;
-  if (r1) goto if_then_2860; else goto if_merge_2861;
+  if (r1) goto if_then_1047; else goto if_merge_1048;
 
-  if_then_2860:
+  if_then_1047:
   return;
-  goto if_merge_2861;
+  goto if_merge_1048;
 
-  if_merge_2861:
+  if_merge_1048:
   struct IR指令* cn_var_指令_0;
   r2 = cn_var_块;
   r3 = r2->首条指令;
   cn_var_指令_0 = r3;
-  goto while_cond_2862;
+  goto while_cond_1049;
 
-  while_cond_2862:
+  while_cond_1049:
   r4 = cn_var_指令_0;
-  if (r4) goto while_body_2863; else goto while_exit_2864;
+  if (r4) goto while_body_1050; else goto while_exit_1051;
 
-  while_body_2863:
+  while_body_1050:
   struct IR指令* cn_var_下条_1;
   r5 = cn_var_指令_0;
   r6 = r5->下一条;
@@ -1788,9 +1788,9 @@ void 释放基本块(struct 基本块* cn_var_块) {
   释放IR指令(r7);
   r8 = cn_var_下条_1;
   cn_var_指令_0 = r8;
-  goto while_cond_2862;
+  goto while_cond_1049;
 
-  while_exit_2864:
+  while_exit_1051:
   r9 = cn_var_块;
   r10 = r9->前驱列表;
   释放基本块列表(r10);
@@ -1799,15 +1799,15 @@ void 释放基本块(struct 基本块* cn_var_块) {
   释放基本块列表(r12);
   r13 = cn_var_块;
   r14 = r13->名称;
-  if (r14) goto if_then_2865; else goto if_merge_2866;
+  if (r14) goto if_then_1052; else goto if_merge_1053;
 
-  if_then_2865:
+  if_then_1052:
   r15 = cn_var_块;
   r16 = r15->名称;
   释放内存(r16);
-  goto if_merge_2866;
+  goto if_merge_1053;
 
-  if_merge_2866:
+  if_merge_1053:
   r17 = cn_var_块;
   释放内存(r17);
   return;
@@ -1821,13 +1821,13 @@ void 释放基本块列表(struct 基本块节点* cn_var_列表) {
   struct 基本块节点* r4;
 
   entry:
-  goto while_cond_2867;
+  goto while_cond_1054;
 
-  while_cond_2867:
+  while_cond_1054:
   r0 = cn_var_列表;
-  if (r0) goto while_body_2868; else goto while_exit_2869;
+  if (r0) goto while_body_1055; else goto while_exit_1056;
 
-  while_body_2868:
+  while_body_1055:
   struct 基本块节点* cn_var_下个_0;
   r1 = cn_var_列表;
   r2 = r1->下一个;
@@ -1836,9 +1836,9 @@ void 释放基本块列表(struct 基本块节点* cn_var_列表) {
   释放内存(r3);
   r4 = cn_var_下个_0;
   cn_var_列表 = r4;
-  goto while_cond_2867;
+  goto while_cond_1054;
 
-  while_exit_2869:
+  while_exit_1056:
   return;
 }
 
@@ -1858,39 +1858,39 @@ void 添加指令(struct 基本块* cn_var_块, struct IR指令* cn_var_指令) 
   entry:
   r1 = cn_var_块;
   r2 = !r1;
-  if (r2) goto logic_merge_2873; else goto logic_rhs_2872;
+  if (r2) goto logic_merge_1060; else goto logic_rhs_1059;
 
-  if_then_2870:
+  if_then_1057:
   return;
-  goto if_merge_2871;
+  goto if_merge_1058;
 
-  if_merge_2871:
+  if_merge_1058:
   r5 = cn_var_块;
   r6 = r5->首条指令;
   r7 = !r6;
-  if (r7) goto if_then_2874; else goto if_else_2875;
+  if (r7) goto if_then_1061; else goto if_else_1062;
 
-  logic_rhs_2872:
+  logic_rhs_1059:
   r3 = cn_var_指令;
   r4 = !r3;
-  goto logic_merge_2873;
+  goto logic_merge_1060;
 
-  logic_merge_2873:
-  if (r4) goto if_then_2870; else goto if_merge_2871;
+  logic_merge_1060:
+  if (r4) goto if_then_1057; else goto if_merge_1058;
 
-  if_then_2874:
+  if_then_1061:
   r8 = cn_var_指令;
   r9 = cn_var_指令;
-  goto if_merge_2876;
+  goto if_merge_1063;
 
-  if_else_2875:
+  if_else_1062:
   r10 = cn_var_指令;
   r11 = cn_var_块;
   r12 = r11->末条指令;
   r13 = cn_var_指令;
-  goto if_merge_2876;
+  goto if_merge_1063;
 
-  if_merge_2876:
+  if_merge_1063:
   return;
 }
 
@@ -1912,13 +1912,13 @@ void 连接基本块(struct 基本块* cn_var_源块, struct 基本块* cn_var_�
   entry:
   r1 = cn_var_源块;
   r2 = !r1;
-  if (r2) goto logic_merge_2880; else goto logic_rhs_2879;
+  if (r2) goto logic_merge_1067; else goto logic_rhs_1066;
 
-  if_then_2877:
+  if_then_1064:
   return;
-  goto if_merge_2878;
+  goto if_merge_1065;
 
-  if_merge_2878:
+  if_merge_1065:
   struct 基本块节点* cn_var_后继节点_0;
   r5 = sizeof(struct 基本块节点);
   r6 = 分配内存(r5);
@@ -1936,13 +1936,13 @@ void 连接基本块(struct 基本块* cn_var_源块, struct 基本块* cn_var_�
   r15 = r14->前驱列表;
   r16 = cn_var_前驱节点_1;
 
-  logic_rhs_2879:
+  logic_rhs_1066:
   r3 = cn_var_目标块;
   r4 = !r3;
-  goto logic_merge_2880;
+  goto logic_merge_1067;
 
-  logic_merge_2880:
-  if (r4) goto if_then_2877; else goto if_merge_2878;
+  logic_merge_1067:
+  if (r4) goto if_then_1064; else goto if_merge_1065;
   return;
 }
 
@@ -1962,16 +1962,16 @@ struct IR指令* 创建IR指令(enum IR操作码 cn_var_操作码, struct IR操�
   r1 = 分配内存(r0);
   cn_var_指令_0 = r1;
   r2 = cn_var_指令_0;
-  if (r2) goto if_then_2881; else goto if_merge_2882;
+  if (r2) goto if_then_1068; else goto if_merge_1069;
 
-  if_then_2881:
+  if_then_1068:
   r3 = cn_var_操作码;
   r4 = cn_var_目标;
   r5 = cn_var_源1;
   r6 = cn_var_源2;
-  goto if_merge_2882;
+  goto if_merge_1069;
 
-  if_merge_2882:
+  if_merge_1069:
   r7 = cn_var_指令_0;
   return r7;
 }
@@ -1988,24 +1988,24 @@ void 释放IR指令(struct IR指令* cn_var_指令) {
   entry:
   r0 = cn_var_指令;
   r1 = !r0;
-  if (r1) goto if_then_2883; else goto if_merge_2884;
+  if (r1) goto if_then_1070; else goto if_merge_1071;
 
-  if_then_2883:
+  if_then_1070:
   return;
-  goto if_merge_2884;
+  goto if_merge_1071;
 
-  if_merge_2884:
+  if_merge_1071:
   r2 = cn_var_指令;
   r3 = r2->额外参数;
-  if (r3) goto if_then_2885; else goto if_merge_2886;
+  if (r3) goto if_then_1072; else goto if_merge_1073;
 
-  if_then_2885:
+  if_then_1072:
   r4 = cn_var_指令;
   r5 = r4->额外参数;
   释放内存(r5);
-  goto if_merge_2886;
+  goto if_merge_1073;
 
-  if_merge_2886:
+  if_merge_1073:
   r6 = cn_var_指令;
   释放内存(r6);
   return;
@@ -2113,17 +2113,17 @@ struct 全局变量* 创建全局变量(char* cn_var_名称, struct 类型节点
   r1 = 分配内存(r0);
   cn_var_全局变量指针_0 = r1;
   r2 = cn_var_全局变量指针_0;
-  if (r2) goto if_then_2887; else goto if_merge_2888;
+  if (r2) goto if_then_1074; else goto if_merge_1075;
 
-  if_then_2887:
+  if_then_1074:
   r3 = cn_var_名称;
   r4 = 复制字符串副本(r3);
   r5 = cn_var_类型;
   r6 = cn_var_初始值;
   r7 = cn_var_是常量;
-  goto if_merge_2888;
+  goto if_merge_1075;
 
-  if_merge_2888:
+  if_merge_1075:
   r8 = cn_var_全局变量指针_0;
   return r8;
 }
@@ -2142,37 +2142,37 @@ void 添加全局变量(struct IR模块* cn_var_模块, struct 全局变量* cn_
   entry:
   r1 = cn_var_模块;
   r2 = !r1;
-  if (r2) goto logic_merge_2892; else goto logic_rhs_2891;
+  if (r2) goto logic_merge_1079; else goto logic_rhs_1078;
 
-  if_then_2889:
+  if_then_1076:
   return;
-  goto if_merge_2890;
+  goto if_merge_1077;
 
-  if_merge_2890:
+  if_merge_1077:
   r5 = cn_var_模块;
   r6 = r5->首个全局;
   r7 = !r6;
-  if (r7) goto if_then_2893; else goto if_else_2894;
+  if (r7) goto if_then_1080; else goto if_else_1081;
 
-  logic_rhs_2891:
+  logic_rhs_1078:
   r3 = cn_var_全局变量指针;
   r4 = !r3;
-  goto logic_merge_2892;
+  goto logic_merge_1079;
 
-  logic_merge_2892:
-  if (r4) goto if_then_2889; else goto if_merge_2890;
+  logic_merge_1079:
+  if (r4) goto if_then_1076; else goto if_merge_1077;
 
-  if_then_2893:
+  if_then_1080:
   r8 = cn_var_全局变量指针;
   r9 = cn_var_全局变量指针;
-  goto if_merge_2895;
+  goto if_merge_1082;
 
-  if_else_2894:
+  if_else_1081:
   r10 = cn_var_全局变量指针;
   r11 = cn_var_全局变量指针;
-  goto if_merge_2895;
+  goto if_merge_1082;
 
-  if_merge_2895:
+  if_merge_1082:
   return;
 }
 
@@ -2190,37 +2190,37 @@ void 添加函数(struct IR模块* cn_var_模块, struct IR函数* cn_var_函数
   entry:
   r1 = cn_var_模块;
   r2 = !r1;
-  if (r2) goto logic_merge_2899; else goto logic_rhs_2898;
+  if (r2) goto logic_merge_1086; else goto logic_rhs_1085;
 
-  if_then_2896:
+  if_then_1083:
   return;
-  goto if_merge_2897;
+  goto if_merge_1084;
 
-  if_merge_2897:
+  if_merge_1084:
   r5 = cn_var_模块;
   r6 = r5->首个函数;
   r7 = !r6;
-  if (r7) goto if_then_2900; else goto if_else_2901;
+  if (r7) goto if_then_1087; else goto if_else_1088;
 
-  logic_rhs_2898:
+  logic_rhs_1085:
   r3 = cn_var_函数指针;
   r4 = !r3;
-  goto logic_merge_2899;
+  goto logic_merge_1086;
 
-  logic_merge_2899:
-  if (r4) goto if_then_2896; else goto if_merge_2897;
+  logic_merge_1086:
+  if (r4) goto if_then_1083; else goto if_merge_1084;
 
-  if_then_2900:
+  if_then_1087:
   r8 = cn_var_函数指针;
   r9 = cn_var_函数指针;
-  goto if_merge_2902;
+  goto if_merge_1089;
 
-  if_else_2901:
+  if_else_1088:
   r10 = cn_var_函数指针;
   r11 = cn_var_函数指针;
-  goto if_merge_2902;
+  goto if_merge_1089;
 
-  if_merge_2902:
+  if_merge_1089:
   return;
 }
 
@@ -2241,18 +2241,18 @@ struct 静态变量* 创建静态变量(char* cn_var_名称, struct 类型节点
   r1 = 分配内存(r0);
   cn_var_静态变量指针_0 = r1;
   r2 = cn_var_静态变量指针_0;
-  if (r2) goto if_then_2903; else goto if_merge_2904;
+  if (r2) goto if_then_1090; else goto if_merge_1091;
 
-  if_then_2903:
+  if_then_1090:
   r3 = cn_var_名称;
   r4 = 复制字符串副本(r3);
   r5 = cn_var_名称;
   r6 = 获取字符串长度(r5);
   r7 = cn_var_类型;
   r8 = cn_var_初始值;
-  goto if_merge_2904;
+  goto if_merge_1091;
 
-  if_merge_2904:
+  if_merge_1091:
   r9 = cn_var_静态变量指针_0;
   return r9;
 }

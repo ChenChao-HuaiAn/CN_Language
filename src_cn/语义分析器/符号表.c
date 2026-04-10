@@ -1090,65 +1090,65 @@ void 销毁作用域(struct 作用域* cn_var_作用域指针) {
   entry:
   r0 = cn_var_作用域指针;
   r1 = r0 == 0;
-  if (r1) goto if_then_1705; else goto if_merge_1706;
+  if (r1) goto if_then_589; else goto if_merge_590;
 
-  if_then_1705:
+  if_then_589:
   return;
-  goto if_merge_1706;
+  goto if_merge_590;
 
-  if_merge_1706:
+  if_merge_590:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_1707;
+  goto for_cond_591;
 
-  for_cond_1707:
+  for_cond_591:
   r2 = cn_var_i_0;
   r3 = cn_var_作用域指针;
   r4 = r3->子作用域数量;
   r5 = r2 < r4;
-  if (r5) goto for_body_1708; else goto for_exit_1710;
+  if (r5) goto for_body_592; else goto for_exit_594;
 
-  for_body_1708:
+  for_body_592:
   r6 = cn_var_作用域指针;
   r7 = r6->子作用域列表;
   r8 = cn_var_i_0;
   r9 = *(void**)cn_rt_array_get_element(r7, r8, 8);
   销毁作用域(r9);
-  goto for_update_1709;
+  goto for_update_593;
 
-  for_update_1709:
+  for_update_593:
   r10 = cn_var_i_0;
   r11 = r10 + 1;
   cn_var_i_0 = r11;
-  goto for_cond_1707;
+  goto for_cond_591;
 
-  for_exit_1710:
+  for_exit_594:
   long long cn_var_i_1;
   cn_var_i_1 = 0;
-  goto for_cond_1711;
+  goto for_cond_595;
 
-  for_cond_1711:
+  for_cond_595:
   r12 = cn_var_i_1;
   r13 = cn_var_作用域指针;
   r14 = r13->符号数量;
   r15 = r12 < r14;
-  if (r15) goto for_body_1712; else goto for_exit_1714;
+  if (r15) goto for_body_596; else goto for_exit_598;
 
-  for_body_1712:
+  for_body_596:
   r16 = cn_var_作用域指针;
   r17 = r16->符号表;
   r18 = cn_var_i_1;
   r19 = *(void**)cn_rt_array_get_element(r17, r18, 8);
   释放内存(r19);
-  goto for_update_1713;
+  goto for_update_597;
 
-  for_update_1713:
+  for_update_597:
   r20 = cn_var_i_1;
   r21 = r20 + 1;
   cn_var_i_1 = r21;
-  goto for_cond_1711;
+  goto for_cond_595;
 
-  for_exit_1714:
+  for_exit_598:
   r22 = cn_var_作用域指针;
   r23 = r22->符号表;
   释放内存(r23);
@@ -1190,13 +1190,13 @@ void 销毁符号表管理器(struct 符号表管理器* cn_var_管理器) {
   entry:
   r0 = cn_var_管理器;
   r1 = r0 == 0;
-  if (r1) goto if_then_1715; else goto if_merge_1716;
+  if (r1) goto if_then_599; else goto if_merge_600;
 
-  if_then_1715:
+  if_then_599:
   return;
-  goto if_merge_1716;
+  goto if_merge_600;
 
-  if_merge_1716:
+  if_merge_600:
   r2 = cn_var_管理器;
   r3 = r2->全局作用域;
   销毁作用域(r3);
@@ -1250,9 +1250,9 @@ void 进入作用域(struct 符号表管理器* cn_var_管理器, enum 作用域
   r10 = r9->当前作用域;
   r11 = r10->子作用域容量;
   r12 = r8 >= r11;
-  if (r12) goto if_then_1717; else goto if_merge_1718;
+  if (r12) goto if_then_601; else goto if_merge_602;
 
-  if_then_1717:
+  if_then_601:
   r13 = cn_var_管理器;
   r14 = r13->当前作用域;
   r15 = r14->子作用域容量;
@@ -1266,9 +1266,9 @@ void 进入作用域(struct 符号表管理器* cn_var_管理器, enum 作用域
   r23 = cn_var_作用域指针大小;
   r24 = r22 * r23;
   r25 = 重新分配内存(r19, r24);
-  goto if_merge_1718;
+  goto if_merge_602;
 
-  if_merge_1718:
+  if_merge_602:
   r26 = cn_var_新作用域_0;
   r27 = cn_var_管理器;
   r28 = r27->当前作用域;
@@ -1276,7 +1276,7 @@ void 进入作用域(struct 符号表管理器* cn_var_管理器, enum 作用域
   r30 = cn_var_管理器;
   r31 = r30->当前作用域;
   r32 = r31->子作用域数量;
-    { long long _tmp_r2 = r26; cn_rt_array_set_element(r29, r32, &_tmp_r2, 8); }
+    { long long _tmp_r4 = r26; cn_rt_array_set_element(r29, r32, &_tmp_r4, 8); }
   r33 = cn_var_管理器;
   r34 = r33->当前作用域;
   r35 = r34->子作用域数量;
@@ -1303,18 +1303,18 @@ void 离开作用域(struct 符号表管理器* cn_var_管理器) {
   r1 = r0->当前作用域;
   r2 = r1->父作用域;
   r3 = r2 != 0;
-  if (r3) goto if_then_1719; else goto if_merge_1720;
+  if (r3) goto if_then_603; else goto if_merge_604;
 
-  if_then_1719:
+  if_then_603:
   r4 = cn_var_管理器;
   r5 = r4->当前作用域;
   r6 = r5->父作用域;
   r7 = cn_var_管理器;
   r8 = r7->作用域深度;
   r9 = r8 - 1;
-  goto if_merge_1720;
+  goto if_merge_604;
 
-  if_merge_1720:
+  if_merge_604:
   return;
 }
 
@@ -1334,30 +1334,30 @@ _Bool 在循环体内(struct 符号表管理器* cn_var_管理器) {
   r0 = cn_var_管理器;
   r1 = r0->当前作用域;
   cn_var_作用域指针_0 = r1;
-  goto while_cond_1721;
+  goto while_cond_605;
 
-  while_cond_1721:
+  while_cond_605:
   r2 = cn_var_作用域指针_0;
   r3 = r2 != 0;
-  if (r3) goto while_body_1722; else goto while_exit_1723;
+  if (r3) goto while_body_606; else goto while_exit_607;
 
-  while_body_1722:
+  while_body_606:
   r4 = cn_var_作用域指针_0;
   r5 = r4.是循环体;
-  if (r5) goto if_then_1724; else goto if_merge_1725;
+  if (r5) goto if_then_608; else goto if_merge_609;
 
-  while_exit_1723:
+  while_exit_607:
   return 0;
 
-  if_then_1724:
+  if_then_608:
   return 1;
-  goto if_merge_1725;
+  goto if_merge_609;
 
-  if_merge_1725:
+  if_merge_609:
   r6 = cn_var_作用域指针_0;
   r7 = r6.父作用域;
   cn_var_作用域指针_0 = r7;
-  goto while_cond_1721;
+  goto while_cond_605;
   return 0;
 }
 
@@ -1400,16 +1400,16 @@ _Bool 插入符号(struct 符号表管理器* cn_var_管理器, struct 符号* c
   cn_var_已存在_0 = r3;
   r4 = cn_var_已存在_0;
   r5 = r4 != 0;
-  if (r5) goto if_then_1726; else goto if_merge_1727;
+  if (r5) goto if_then_610; else goto if_merge_611;
 
-  if_then_1726:
+  if_then_610:
   r6 = cn_var_管理器;
   r7 = r6->错误计数;
   r8 = r7 + 1;
   return 0;
-  goto if_merge_1727;
+  goto if_merge_611;
 
-  if_merge_1727:
+  if_merge_611:
   r9 = cn_var_管理器;
   r10 = r9->当前作用域;
   r11 = r10->符号数量;
@@ -1417,9 +1417,9 @@ _Bool 插入符号(struct 符号表管理器* cn_var_管理器, struct 符号* c
   r13 = r12->当前作用域;
   r14 = r13->符号容量;
   r15 = r11 >= r14;
-  if (r15) goto if_then_1728; else goto if_merge_1729;
+  if (r15) goto if_then_612; else goto if_merge_613;
 
-  if_then_1728:
+  if_then_612:
   r16 = cn_var_管理器;
   r17 = r16->当前作用域;
   r18 = r17->符号容量;
@@ -1433,9 +1433,9 @@ _Bool 插入符号(struct 符号表管理器* cn_var_管理器, struct 符号* c
   r26 = cn_var_符号指针大小;
   r27 = r25 * r26;
   r28 = 重新分配内存(r22, r27);
-  goto if_merge_1729;
+  goto if_merge_613;
 
-  if_merge_1729:
+  if_merge_613:
   r29 = cn_var_符号指针;
   r30 = cn_var_管理器;
   r31 = r30->当前作用域;
@@ -1443,7 +1443,7 @@ _Bool 插入符号(struct 符号表管理器* cn_var_管理器, struct 符号* c
   r33 = cn_var_管理器;
   r34 = r33->当前作用域;
   r35 = r34->符号数量;
-    { long long _tmp_r3 = r29; cn_rt_array_set_element(r32, r35, &_tmp_r3, 8); }
+    { long long _tmp_r5 = r29; cn_rt_array_set_element(r32, r35, &_tmp_r5, 8); }
   r36 = cn_var_管理器;
   r37 = r36->当前作用域;
   r38 = r37->符号数量;
@@ -1478,16 +1478,16 @@ _Bool 在作用域插入符号(struct 作用域* cn_var_目标作用域, struct 
   entry:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_1730;
+  goto for_cond_614;
 
-  for_cond_1730:
+  for_cond_614:
   r0 = cn_var_i_0;
   r1 = cn_var_目标作用域;
   r2 = r1->符号数量;
   r3 = r0 < r2;
-  if (r3) goto for_body_1731; else goto for_exit_1733;
+  if (r3) goto for_body_615; else goto for_exit_617;
 
-  for_body_1731:
+  for_body_615:
   r4 = cn_var_目标作用域;
   r5 = r4->符号表;
   r6 = cn_var_i_0;
@@ -1497,30 +1497,30 @@ _Bool 在作用域插入符号(struct 作用域* cn_var_目标作用域, struct 
   r10 = r9->名称;
   r11 = 比较字符串(r8, r10);
   r12 = r11 == 0;
-  if (r12) goto if_then_1734; else goto if_merge_1735;
+  if (r12) goto if_then_618; else goto if_merge_619;
 
-  for_update_1732:
+  for_update_616:
   r13 = cn_var_i_0;
   r14 = r13 + 1;
   cn_var_i_0 = r14;
-  goto for_cond_1730;
+  goto for_cond_614;
 
-  for_exit_1733:
+  for_exit_617:
   r15 = cn_var_目标作用域;
   r16 = r15->符号数量;
   r17 = cn_var_目标作用域;
   r18 = r17->符号容量;
   r19 = r16 >= r18;
-  if (r19) goto if_then_1736; else goto if_merge_1737;
+  if (r19) goto if_then_620; else goto if_merge_621;
 
-  if_then_1734:
+  if_then_618:
   return 0;
-  goto if_merge_1735;
+  goto if_merge_619;
 
-  if_merge_1735:
-  goto for_update_1732;
+  if_merge_619:
+  goto for_update_616;
 
-  if_then_1736:
+  if_then_620:
   r20 = cn_var_目标作用域;
   r21 = r20->符号容量;
   r22 = r21 << 1;
@@ -1531,15 +1531,15 @@ _Bool 在作用域插入符号(struct 作用域* cn_var_目标作用域, struct 
   r27 = cn_var_符号指针大小;
   r28 = r26 * r27;
   r29 = 重新分配内存(r24, r28);
-  goto if_merge_1737;
+  goto if_merge_621;
 
-  if_merge_1737:
+  if_merge_621:
   r30 = cn_var_符号指针;
   r31 = cn_var_目标作用域;
   r32 = r31->符号表;
   r33 = cn_var_目标作用域;
   r34 = r33->符号数量;
-    { long long _tmp_r4 = r30; cn_rt_array_set_element(r32, r34, &_tmp_r4, 8); }
+    { long long _tmp_r6 = r30; cn_rt_array_set_element(r32, r34, &_tmp_r6, 8); }
   r35 = cn_var_目标作用域;
   r36 = r35->符号数量;
   r37 = r36 + 1;
@@ -1564,17 +1564,17 @@ struct 符号* 查找当前作用域符号(struct 符号表管理器* cn_var_管
   entry:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_1738;
+  goto for_cond_622;
 
-  for_cond_1738:
+  for_cond_622:
   r0 = cn_var_i_0;
   r1 = cn_var_管理器;
   r2 = r1->当前作用域;
   r3 = r2->符号数量;
   r4 = r0 < r3;
-  if (r4) goto for_body_1739; else goto for_exit_1741;
+  if (r4) goto for_body_623; else goto for_exit_625;
 
-  for_body_1739:
+  for_body_623:
   r5 = cn_var_管理器;
   r6 = r5->当前作用域;
   r7 = r6->符号表;
@@ -1584,28 +1584,28 @@ struct 符号* 查找当前作用域符号(struct 符号表管理器* cn_var_管
   r11 = cn_var_名称;
   r12 = 比较字符串(r10, r11);
   r13 = r12 == 0;
-  if (r13) goto if_then_1742; else goto if_merge_1743;
+  if (r13) goto if_then_626; else goto if_merge_627;
 
-  for_update_1740:
+  for_update_624:
   r19 = cn_var_i_0;
   r20 = r19 + 1;
   cn_var_i_0 = r20;
-  goto for_cond_1738;
+  goto for_cond_622;
 
-  for_exit_1741:
+  for_exit_625:
   return 0;
 
-  if_then_1742:
+  if_then_626:
   r14 = cn_var_管理器;
   r15 = r14->当前作用域;
   r16 = r15->符号表;
   r17 = cn_var_i_0;
   r18 = *(void**)cn_rt_array_get_element(r16, r17, 8);
   return r18;
-  goto if_merge_1743;
+  goto if_merge_627;
 
-  if_merge_1743:
-  goto for_update_1740;
+  if_merge_627:
+  goto for_update_624;
   return NULL;
 }
 
@@ -1622,29 +1622,29 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, char* c
   r0 = cn_var_管理器;
   r1 = r0->当前作用域;
   cn_var_作用域指针_0 = r1;
-  goto while_cond_1744;
+  goto while_cond_628;
 
-  while_cond_1744:
+  while_cond_628:
   r2 = cn_var_作用域指针_0;
   r3 = r2 != 0;
-  if (r3) goto while_body_1745; else goto while_exit_1746;
+  if (r3) goto while_body_629; else goto while_exit_630;
 
-  while_body_1745:
+  while_body_629:
   long long cn_var_i_1;
   cn_var_i_1 = 0;
-  goto for_cond_1747;
+  goto for_cond_631;
 
-  while_exit_1746:
+  while_exit_630:
   return 0;
 
-  for_cond_1747:
+  for_cond_631:
   r4 = cn_var_i_1;
   r5 = cn_var_作用域指针_0;
   r6 = r5.符号数量;
   r7 = r4 < r6;
-  if (r7) goto for_body_1748; else goto for_exit_1750;
+  if (r7) goto for_body_632; else goto for_exit_634;
 
-  for_body_1748:
+  for_body_632:
   r8 = cn_var_作用域指针_0;
   r9 = r8.符号表;
   r10 = cn_var_i_1;
@@ -1653,30 +1653,30 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, char* c
   r13 = cn_var_名称;
   r14 = 比较字符串(r12, r13);
   r15 = r14 == 0;
-  if (r15) goto if_then_1751; else goto if_merge_1752;
+  if (r15) goto if_then_635; else goto if_merge_636;
 
-  for_update_1749:
+  for_update_633:
   r20 = cn_var_i_1;
   r21 = r20 + 1;
   cn_var_i_1 = r21;
-  goto for_cond_1747;
+  goto for_cond_631;
 
-  for_exit_1750:
+  for_exit_634:
   r22 = cn_var_作用域指针_0;
   r23 = r22.父作用域;
   cn_var_作用域指针_0 = r23;
-  goto while_cond_1744;
+  goto while_cond_628;
 
-  if_then_1751:
+  if_then_635:
   r16 = cn_var_作用域指针_0;
   r17 = r16.符号表;
   r18 = cn_var_i_1;
   r19 = *(void**)cn_rt_array_get_element(r17, r18, 8);
   return r19;
-  goto if_merge_1752;
+  goto if_merge_636;
 
-  if_merge_1752:
-  goto for_update_1749;
+  if_merge_636:
+  goto for_update_633;
   return NULL;
 }
 
@@ -1697,17 +1697,17 @@ struct 符号* 查找全局符号(struct 符号表管理器* cn_var_管理器, c
   entry:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_1753;
+  goto for_cond_637;
 
-  for_cond_1753:
+  for_cond_637:
   r0 = cn_var_i_0;
   r1 = cn_var_管理器;
   r2 = r1->全局作用域;
   r3 = r2->符号数量;
   r4 = r0 < r3;
-  if (r4) goto for_body_1754; else goto for_exit_1756;
+  if (r4) goto for_body_638; else goto for_exit_640;
 
-  for_body_1754:
+  for_body_638:
   r5 = cn_var_管理器;
   r6 = r5->全局作用域;
   r7 = r6->符号表;
@@ -1717,28 +1717,28 @@ struct 符号* 查找全局符号(struct 符号表管理器* cn_var_管理器, c
   r11 = cn_var_名称;
   r12 = 比较字符串(r10, r11);
   r13 = r12 == 0;
-  if (r13) goto if_then_1757; else goto if_merge_1758;
+  if (r13) goto if_then_641; else goto if_merge_642;
 
-  for_update_1755:
+  for_update_639:
   r19 = cn_var_i_0;
   r20 = r19 + 1;
   cn_var_i_0 = r20;
-  goto for_cond_1753;
+  goto for_cond_637;
 
-  for_exit_1756:
+  for_exit_640:
   return 0;
 
-  if_then_1757:
+  if_then_641:
   r14 = cn_var_管理器;
   r15 = r14->全局作用域;
   r16 = r15->符号表;
   r17 = cn_var_i_0;
   r18 = *(void**)cn_rt_array_get_element(r16, r17, 8);
   return r18;
-  goto if_merge_1758;
+  goto if_merge_642;
 
-  if_merge_1758:
-  goto for_update_1755;
+  if_merge_642:
+  goto for_update_639;
   return NULL;
 }
 
@@ -1756,16 +1756,16 @@ struct 符号* 在作用域查找符号(struct 作用域* cn_var_目标作用域
   entry:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_1759;
+  goto for_cond_643;
 
-  for_cond_1759:
+  for_cond_643:
   r0 = cn_var_i_0;
   r1 = cn_var_目标作用域;
   r2 = r1->符号数量;
   r3 = r0 < r2;
-  if (r3) goto for_body_1760; else goto for_exit_1762;
+  if (r3) goto for_body_644; else goto for_exit_646;
 
-  for_body_1760:
+  for_body_644:
   r4 = cn_var_目标作用域;
   r5 = r4->符号表;
   r6 = cn_var_i_0;
@@ -1774,27 +1774,27 @@ struct 符号* 在作用域查找符号(struct 作用域* cn_var_目标作用域
   r9 = cn_var_名称;
   r10 = 比较字符串(r8, r9);
   r11 = r10 == 0;
-  if (r11) goto if_then_1763; else goto if_merge_1764;
+  if (r11) goto if_then_647; else goto if_merge_648;
 
-  for_update_1761:
+  for_update_645:
   r16 = cn_var_i_0;
   r17 = r16 + 1;
   cn_var_i_0 = r17;
-  goto for_cond_1759;
+  goto for_cond_643;
 
-  for_exit_1762:
+  for_exit_646:
   return 0;
 
-  if_then_1763:
+  if_then_647:
   r12 = cn_var_目标作用域;
   r13 = r12->符号表;
   r14 = cn_var_i_0;
   r15 = *(void**)cn_rt_array_get_element(r13, r14, 8);
   return r15;
-  goto if_merge_1764;
+  goto if_merge_648;
 
-  if_merge_1764:
-  goto for_update_1761;
+  if_merge_648:
+  goto for_update_645;
   return NULL;
 }
 
@@ -1824,105 +1824,105 @@ char* 获取符号类型名称(enum 符号类型 cn_var_类型) {
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto case_body_1778; else goto switch_check_1791;
+  if (r1) goto case_body_662; else goto switch_check_675;
 
-  switch_check_1791:
+  switch_check_675:
   r2 = r0 == 1;
-  if (r2) goto case_body_1779; else goto switch_check_1792;
+  if (r2) goto case_body_663; else goto switch_check_676;
 
-  switch_check_1792:
+  switch_check_676:
   r3 = r0 == 2;
-  if (r3) goto case_body_1780; else goto switch_check_1793;
+  if (r3) goto case_body_664; else goto switch_check_677;
 
-  switch_check_1793:
+  switch_check_677:
   r4 = r0 == 3;
-  if (r4) goto case_body_1781; else goto switch_check_1794;
+  if (r4) goto case_body_665; else goto switch_check_678;
 
-  switch_check_1794:
+  switch_check_678:
   r5 = r0 == 4;
-  if (r5) goto case_body_1782; else goto switch_check_1795;
+  if (r5) goto case_body_666; else goto switch_check_679;
 
-  switch_check_1795:
+  switch_check_679:
   r6 = r0 == 5;
-  if (r6) goto case_body_1783; else goto switch_check_1796;
+  if (r6) goto case_body_667; else goto switch_check_680;
 
-  switch_check_1796:
+  switch_check_680:
   r7 = r0 == 6;
-  if (r7) goto case_body_1784; else goto switch_check_1797;
+  if (r7) goto case_body_668; else goto switch_check_681;
 
-  switch_check_1797:
+  switch_check_681:
   r8 = r0 == 7;
-  if (r8) goto case_body_1785; else goto switch_check_1798;
+  if (r8) goto case_body_669; else goto switch_check_682;
 
-  switch_check_1798:
+  switch_check_682:
   r9 = r0 == 8;
-  if (r9) goto case_body_1786; else goto switch_check_1799;
+  if (r9) goto case_body_670; else goto switch_check_683;
 
-  switch_check_1799:
+  switch_check_683:
   r10 = r0 == 9;
-  if (r10) goto case_body_1787; else goto switch_check_1800;
+  if (r10) goto case_body_671; else goto switch_check_684;
 
-  switch_check_1800:
+  switch_check_684:
   r11 = r0 == 10;
-  if (r11) goto case_body_1788; else goto switch_check_1801;
+  if (r11) goto case_body_672; else goto switch_check_685;
 
-  switch_check_1801:
+  switch_check_685:
   r12 = r0 == 11;
-  if (r12) goto case_body_1789; else goto case_default_1790;
+  if (r12) goto case_body_673; else goto case_default_674;
 
-  case_body_1778:
+  case_body_662:
   return "变量";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1779:
+  case_body_663:
   return "函数";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1780:
+  case_body_664:
   return "参数";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1781:
+  case_body_665:
   return "结构体";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1782:
+  case_body_666:
   return "枚举";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1783:
+  case_body_667:
   return "枚举成员";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1784:
+  case_body_668:
   return "类";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1785:
+  case_body_669:
   return "接口";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1786:
+  case_body_670:
   return "类成员";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1787:
+  case_body_671:
   return "模块";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1788:
+  case_body_672:
   return "导入";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_body_1789:
+  case_body_673:
   return "类型参数";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  case_default_1790:
+  case_default_674:
   return "未知";
-  goto switch_merge_1777;
+  goto switch_merge_661;
 
-  switch_merge_1777:
+  switch_merge_661:
   return NULL;
 }
 
@@ -1940,73 +1940,73 @@ char* 获取作用域类型名称(enum 作用域类型 cn_var_类型) {
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto case_body_1803; else goto switch_check_1812;
+  if (r1) goto case_body_687; else goto switch_check_696;
 
-  switch_check_1812:
+  switch_check_696:
   r2 = r0 == 1;
-  if (r2) goto case_body_1804; else goto switch_check_1813;
+  if (r2) goto case_body_688; else goto switch_check_697;
 
-  switch_check_1813:
+  switch_check_697:
   r3 = r0 == 2;
-  if (r3) goto case_body_1805; else goto switch_check_1814;
+  if (r3) goto case_body_689; else goto switch_check_698;
 
-  switch_check_1814:
+  switch_check_698:
   r4 = r0 == 3;
-  if (r4) goto case_body_1806; else goto switch_check_1815;
+  if (r4) goto case_body_690; else goto switch_check_699;
 
-  switch_check_1815:
+  switch_check_699:
   r5 = r0 == 4;
-  if (r5) goto case_body_1807; else goto switch_check_1816;
+  if (r5) goto case_body_691; else goto switch_check_700;
 
-  switch_check_1816:
+  switch_check_700:
   r6 = r0 == 5;
-  if (r6) goto case_body_1808; else goto switch_check_1817;
+  if (r6) goto case_body_692; else goto switch_check_701;
 
-  switch_check_1817:
+  switch_check_701:
   r7 = r0 == 6;
-  if (r7) goto case_body_1809; else goto switch_check_1818;
+  if (r7) goto case_body_693; else goto switch_check_702;
 
-  switch_check_1818:
+  switch_check_702:
   r8 = r0 == 7;
-  if (r8) goto case_body_1810; else goto case_default_1811;
+  if (r8) goto case_body_694; else goto case_default_695;
 
-  case_body_1803:
+  case_body_687:
   return "全局";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_body_1804:
+  case_body_688:
   return "函数";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_body_1805:
+  case_body_689:
   return "块";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_body_1806:
+  case_body_690:
   return "类";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_body_1807:
+  case_body_691:
   return "结构体";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_body_1808:
+  case_body_692:
   return "枚举";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_body_1809:
+  case_body_693:
   return "模块";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_body_1810:
+  case_body_694:
   return "循环";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  case_default_1811:
+  case_default_695:
   return "未知";
-  goto switch_merge_1802;
+  goto switch_merge_686;
 
-  switch_merge_1802:
+  switch_merge_686:
   return NULL;
 }
 
@@ -2032,66 +2032,66 @@ _Bool 检查符号可访问性(struct 符号* cn_var_符号指针, struct 作用
   r0 = cn_var_符号指针;
   r1 = r0->标志;
   r2 = r1.是公开;
-  if (r2) goto if_then_1819; else goto if_merge_1820;
+  if (r2) goto if_then_703; else goto if_merge_704;
 
-  if_then_1819:
+  if_then_703:
   return 1;
-  goto if_merge_1820;
+  goto if_merge_704;
 
-  if_merge_1820:
+  if_merge_704:
   r3 = cn_var_符号指针;
   r4 = r3->标志;
   r5 = r4.是私有;
-  if (r5) goto if_then_1821; else goto if_merge_1822;
+  if (r5) goto if_then_705; else goto if_merge_706;
 
-  if_then_1821:
+  if_then_705:
   r6 = cn_var_符号指针;
   r7 = r6->所属作用域;
   r8 = cn_var_访问者作用域;
   r9 = r7 == r8;
   return r9;
-  goto if_merge_1822;
+  goto if_merge_706;
 
-  if_merge_1822:
+  if_merge_706:
   r10 = cn_var_符号指针;
   r11 = r10->标志;
   r12 = r11.是保护;
-  if (r12) goto if_then_1823; else goto if_merge_1824;
+  if (r12) goto if_then_707; else goto if_merge_708;
 
-  if_then_1823:
+  if_then_707:
   long long cn_var_当前_0;
   r13 = cn_var_访问者作用域;
   cn_var_当前_0 = r13;
-  goto while_cond_1825;
+  goto while_cond_709;
 
-  if_merge_1824:
+  if_merge_708:
   return 1;
 
-  while_cond_1825:
+  while_cond_709:
   r14 = cn_var_当前_0;
   r15 = r14 != 0;
-  if (r15) goto while_body_1826; else goto while_exit_1827;
+  if (r15) goto while_body_710; else goto while_exit_711;
 
-  while_body_1826:
+  while_body_710:
   r16 = cn_var_当前_0;
   r17 = cn_var_符号指针;
   r18 = r17->所属作用域;
   r19 = r16 == r18;
-  if (r19) goto if_then_1828; else goto if_merge_1829;
+  if (r19) goto if_then_712; else goto if_merge_713;
 
-  while_exit_1827:
+  while_exit_711:
   return 0;
-  goto if_merge_1824;
+  goto if_merge_708;
 
-  if_then_1828:
+  if_then_712:
   return 1;
-  goto if_merge_1829;
+  goto if_merge_713;
 
-  if_merge_1829:
+  if_merge_713:
   r20 = cn_var_当前_0;
   r21 = r20.父作用域;
   cn_var_当前_0 = r21;
-  goto while_cond_1825;
+  goto while_cond_709;
   return 0;
 }
 

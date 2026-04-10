@@ -273,7 +273,8 @@ bool cn_type_compatible(CnType *a, CnType *b) {
     }
     
     // UNKNOWN 类型可以接受任何类型（用于内置函数如 类型大小）
-    if (b->kind == CN_TYPE_UNKNOWN) {
+    // 同时允许 UNKNOWN 类型作为实际参数类型（临时方案，解决模块导入时类型信息丢失问题）
+    if (a->kind == CN_TYPE_UNKNOWN || b->kind == CN_TYPE_UNKNOWN) {
         return true;
     }
     
