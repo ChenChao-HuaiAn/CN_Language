@@ -5,7 +5,7 @@
 #include "cnlang/runtime/system_api.h"
 
 // Global Variables
-char* cn_var_模块版本 = 0;
+void cn_var_模块版本 = "1.0.0";
 long long cn_var_最大值 = 100;
 long long cn_var_内部计数 = 0;
 
@@ -49,8 +49,7 @@ long long 乘法(long long cn_var_a, long long cn_var_b) {
 }
 
 long long 除法(long long cn_var_a, long long cn_var_b) {
-  long long r0, r2, r3, r4;
-  _Bool r1;
+  long long r0, r1, r2, r3, r4;
 
   entry:
   r0 = cn_var_b;
@@ -79,8 +78,7 @@ long long 平方(long long cn_var_x) {
 }
 
 long long 绝对值(long long cn_var_x) {
-  long long r0, r2, r3, r4;
-  _Bool r1;
+  long long r0, r1, r2, r3, r4;
 
   entry:
   r0 = cn_var_x;

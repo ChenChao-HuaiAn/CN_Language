@@ -1603,10 +1603,13 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 // 已经设置了 expr->type = CN_TYPE_VOID，无需额外处理
             }
             // 处理函数指针调用：函数指针是指向函数类型的指针
-            else if (callee_type && callee_type->kind == CN_TYPE_POINTER && 
-                     callee_type->as.pointer_to && 
+            else if (callee_type && callee_type->kind == CN_TYPE_POINTER &&
+                     callee_type->as.pointer_to &&
                      callee_type->as.pointer_to->kind == CN_TYPE_FUNCTION) {
                 CnType *func_type = callee_type->as.pointer_to;
+                
+                // 设置当前作用域，用于动态解析结构体字段类型
+                cn_type_set_resolution_scope(scope);
                 
                 // 检查参数个数
                 if (expr->as.call.argument_count != func_type->as.function.param_count) {
@@ -1633,6 +1636,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 expr->type = func_type->as.function.return_type;
             }
             else if (callee_type && callee_type->kind == CN_TYPE_FUNCTION) {
+                // 设置当前作用域，用于动态解析结构体字段类型
+                // 这确保在函数调用参数类型检查时能正确解析导入的结构体类型
+                cn_type_set_resolution_scope(scope);
+                
                 // 检查参数个数
                 if (expr->as.call.argument_count != callee_type->as.function.param_count) {
                     // 获取函数名用于错误报告

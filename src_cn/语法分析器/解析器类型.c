@@ -97,71 +97,6 @@ struct 词元 {
     long long 列号;
     long long 长度;
 };
-struct 扫描器;
-struct 扫描器 {
-    char* 源码;
-    long long 位置;
-    long long 行号;
-    long long 列号;
-    long long 源码长度;
-};
-enum 节点类型 {
-    节点类型_标识符类型 = 44,
-    节点类型_接口类型 = 43,
-    节点类型_类类型 = 42,
-    节点类型_枚举类型 = 41,
-    节点类型_结构体类型 = 40,
-    节点类型_函数类型 = 39,
-    节点类型_数组类型 = 38,
-    节点类型_指针类型 = 37,
-    节点类型_基础类型 = 36,
-    节点类型_模板实例化表达式 = 35,
-    节点类型_逻辑表达式 = 34,
-    节点类型_结构体字面量表达式 = 33,
-    节点类型_数组字面量表达式 = 32,
-    节点类型_三元表达式 = 31,
-    节点类型_赋值表达式 = 30,
-    节点类型_数组访问表达式 = 29,
-    节点类型_成员访问表达式 = 28,
-    节点类型_函数调用表达式 = 27,
-    节点类型_标识符表达式 = 26,
-    节点类型_字面量表达式 = 25,
-    节点类型_一元表达式 = 24,
-    节点类型_二元表达式 = 23,
-    节点类型_最终语句 = 22,
-    节点类型_抛出语句 = 21,
-    节点类型_尝试语句 = 20,
-    节点类型_选择语句 = 19,
-    节点类型_继续语句 = 18,
-    节点类型_中断语句 = 17,
-    节点类型_返回语句 = 16,
-    节点类型_循环语句 = 15,
-    节点类型_当语句 = 14,
-    节点类型_如果语句 = 13,
-    节点类型_块语句 = 12,
-    节点类型_表达式语句 = 11,
-    节点类型_模板结构体声明 = 10,
-    节点类型_模板函数声明 = 9,
-    节点类型_接口声明 = 8,
-    节点类型_类声明 = 7,
-    节点类型_导入声明 = 6,
-    节点类型_模块声明 = 5,
-    节点类型_枚举声明 = 4,
-    节点类型_结构体声明 = 3,
-    节点类型_变量声明 = 2,
-    节点类型_函数声明 = 1,
-    节点类型_程序节点 = 0
-};
-struct 源位置 {
-    char* 文件名;
-    long long 行号;
-    long long 列号;
-};
-struct AST节点;
-struct AST节点 {
-    enum 节点类型 类型;
-    struct 源位置 位置;
-};
 enum 导入类型 {
     导入类型_导入_从包导入模块 = 5,
     导入类型_导入_从模块通配符 = 4,
@@ -229,6 +164,53 @@ enum 二元运算符 {
     二元运算符_二元_减 = 1,
     二元运算符_二元_加 = 0
 };
+enum 节点类型 {
+    节点类型_标识符类型 = 44,
+    节点类型_接口类型 = 43,
+    节点类型_类类型 = 42,
+    节点类型_枚举类型 = 41,
+    节点类型_结构体类型 = 40,
+    节点类型_函数类型 = 39,
+    节点类型_数组类型 = 38,
+    节点类型_指针类型 = 37,
+    节点类型_基础类型 = 36,
+    节点类型_模板实例化表达式 = 35,
+    节点类型_逻辑表达式 = 34,
+    节点类型_结构体字面量表达式 = 33,
+    节点类型_数组字面量表达式 = 32,
+    节点类型_三元表达式 = 31,
+    节点类型_赋值表达式 = 30,
+    节点类型_数组访问表达式 = 29,
+    节点类型_成员访问表达式 = 28,
+    节点类型_函数调用表达式 = 27,
+    节点类型_标识符表达式 = 26,
+    节点类型_字面量表达式 = 25,
+    节点类型_一元表达式 = 24,
+    节点类型_二元表达式 = 23,
+    节点类型_最终语句 = 22,
+    节点类型_抛出语句 = 21,
+    节点类型_尝试语句 = 20,
+    节点类型_选择语句 = 19,
+    节点类型_继续语句 = 18,
+    节点类型_中断语句 = 17,
+    节点类型_返回语句 = 16,
+    节点类型_循环语句 = 15,
+    节点类型_当语句 = 14,
+    节点类型_如果语句 = 13,
+    节点类型_块语句 = 12,
+    节点类型_表达式语句 = 11,
+    节点类型_模板结构体声明 = 10,
+    节点类型_模板函数声明 = 9,
+    节点类型_接口声明 = 8,
+    节点类型_类声明 = 7,
+    节点类型_导入声明 = 6,
+    节点类型_模块声明 = 5,
+    节点类型_枚举声明 = 4,
+    节点类型_结构体声明 = 3,
+    节点类型_变量声明 = 2,
+    节点类型_函数声明 = 1,
+    节点类型_程序节点 = 0
+};
 enum 诊断错误码 {
     诊断错误码_语义_纯虚函数调用 = 43,
     诊断错误码_语义_纯虚函数未实现 = 42,
@@ -292,6 +274,14 @@ enum 同步点类型 {
 };
 
 // Struct Definitions - 从导入模块
+struct 扫描器;
+struct 扫描器 {
+    char* 源码;
+    long long 位置;
+    long long 行号;
+    long long 列号;
+    long long 源码长度;
+};
 struct 关键字条目;
 struct 关键字条目 {
     char* 名称;
@@ -365,6 +355,11 @@ struct 接口声明;
 struct 导入声明;
 struct 模板函数声明;
 struct 模板结构体声明;
+struct 源位置 {
+    char* 文件名;
+    long long 行号;
+    long long 列号;
+};
 struct 声明节点;
 struct 声明节点 {
     enum 节点类型 类型;
@@ -431,6 +426,10 @@ struct 表达式节点 {
     struct 表达式节点* 左侧表达式;
     struct 表达式节点* 值;
     struct 表达式节点* 指针;
+};
+struct AST节点 {
+    enum 节点类型 类型;
+    struct 源位置 位置;
 };
 struct 二元表达式;
 struct 二元表达式 {
@@ -745,6 +744,81 @@ struct 语法错误恢复上下文 {
 };
 
 // Forward Declarations - 从导入模块
+extern long long cn_var_扫描器大小;
+extern long long cn_var_最大数字长度;
+extern long long cn_var_最大字符串长度;
+extern long long cn_var_最大标识符长度;
+struct 词元 扫描运算符(struct 扫描器*);
+struct 词元 扫描字符(struct 扫描器*);
+struct 词元 扫描字符串(struct 扫描器*);
+struct 词元 扫描数字(struct 扫描器*);
+struct 词元 扫描标识符(struct 扫描器*);
+_Bool 跳过块注释(struct 扫描器*);
+void 跳过单行注释(struct 扫描器*);
+void 跳过空白字符(struct 扫描器*);
+_Bool 是否结束(struct 扫描器*);
+long long 前进(struct 扫描器*);
+long long 预览字符(struct 扫描器*, long long);
+long long 当前字符(struct 扫描器*);
+struct 词元 预览词元(struct 扫描器*);
+struct 词元 下一个词元(struct 扫描器*);
+void 销毁扫描器(struct 扫描器*);
+struct 扫描器* 创建扫描器(char*, long long);
+_Bool 是空白字符(long long);
+_Bool 是换行符(long long);
+_Bool 是数字(long long);
+_Bool 是十六进制数字(long long);
+_Bool 是二进制数字(long long);
+_Bool 是八进制数字(long long);
+_Bool 是字母(long long);
+_Bool 是字母或数字(long long);
+_Bool 是中文字符(long long);
+_Bool 是标识符开头(long long);
+_Bool 是标识符字符(long long);
+_Bool 是运算符字符(long long);
+_Bool 是分隔符字符(long long);
+long long 转小写(long long);
+long long 转大写(long long);
+_Bool 是可打印字符(long long);
+_Bool 是十六进制前缀(long long, long long);
+_Bool 是二进制前缀(long long, long long);
+_Bool 是八进制前缀(long long, long long);
+_Bool 是单行注释开始(long long, long long);
+_Bool 是块注释开始(long long, long long);
+_Bool 是块注释结束(long long, long long);
+void* 数组获取(void*, long long);
+long long 获取位置参数个数(void);
+char* 获取位置参数(long long);
+long long 选项存在(char*);
+char* 查找选项(char*);
+char* 获取程序名称(void);
+char* 获取参数(long long);
+long long 获取参数个数(void);
+long long 求最小值(long long, long long);
+long long 求最大值(long long, long long);
+long long 获取绝对值(long long);
+char* 读取行(void);
+long long 字符串格式化(char*, long long, char*);
+char* 字符串格式(char*);
+char* 复制字符串副本(char*);
+long long 类型大小(long long);
+void* 分配内存数组(long long, long long);
+enum 词元类型枚举 查找关键字(char*);
+_Bool 是关键字字符串(char*);
+long long 关键字总数(void);
+struct 关键字条目* 获取关键字表(void);
+void 初始化关键字表(void);
+extern long long cn_var_关键字表大小;
+extern struct 关键字条目* cn_var_关键字表;
+extern _Bool cn_var_关键字表已初始化;
+char* 词元类型名称(enum 词元类型枚举);
+struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
+_Bool 是关键字(enum 词元类型枚举);
+_Bool 是字面量(enum 词元类型枚举);
+_Bool 是运算符(enum 词元类型枚举);
+_Bool 是分隔符(enum 词元类型枚举);
+struct 程序节点* 创建程序节点(void);
+void 程序添加声明(struct 程序节点*, struct 声明节点*);
 void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
 void 报告无效字符错误(struct 诊断集合*, struct 源位置, char*);
 void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
@@ -784,12 +858,6 @@ long long 是任意同步点(enum 词元类型枚举);
 long long 是同步点(enum 词元类型枚举, enum 同步点类型);
 void 销毁错误恢复上下文(struct 语法错误恢复上下文*);
 _Bool 初始化错误恢复(struct 语法错误恢复上下文*);
-char* 词元类型名称(enum 词元类型枚举);
-struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
-_Bool 是关键字(enum 词元类型枚举);
-_Bool 是字面量(enum 词元类型枚举);
-_Bool 是运算符(enum 词元类型枚举);
-_Bool 是分隔符(enum 词元类型枚举);
 
 // CN Language Global Struct Forward Declarations
 struct 解析器;
@@ -810,4 +878,22 @@ long long cn_var_解析器大小 = 48;
 long long cn_var_最大错误恢复次数 = 10;
 
 // Forward Declarations
+void 前进词元(struct 解析器*);
+_Bool 期望(struct 解析器*, enum 词元类型枚举);
+_Bool 检查(struct 解析器*, enum 词元类型枚举);
+_Bool 匹配(struct 解析器*, enum 词元类型枚举);
+_Bool 匹配多种(struct 解析器*, enum 词元类型枚举*, long long);
+void 报告错误(struct 解析器*, enum 诊断错误码, char*);
+void 报告错误期望(struct 解析器*, enum 词元类型枚举);
+_Bool 同步恢复(struct 解析器*);
+_Bool 是否类型关键字(enum 词元类型枚举);
 
+void 前进词元(struct 解析器* cn_var_实例);
+_Bool 期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类型);
+_Bool 检查(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类型);
+_Bool 匹配(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类型);
+_Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_var_类型数组, long long cn_var_数量);
+void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_错误码, char* cn_var_消息);
+void 报告错误期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_期望类型);
+_Bool 同步恢复(struct 解析器* cn_var_实例);
+_Bool 是否类型关键字(enum 词元类型枚举 cn_var_类型);

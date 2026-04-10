@@ -3762,7 +3762,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
                         new_sym->source_module_path = member_sym->source_module_path;
                         new_sym->source_module_path_length = member_sym->source_module_path_length;
-                        if (member_sym->kind == CN_SEM_SYMBOL_MODULE) {
+                        // 复制 module_scope 以支持结构体和枚举类型的成员访问
+                        if (member_sym->kind == CN_SEM_SYMBOL_MODULE ||
+                            member_sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                            member_sym->kind == CN_SEM_SYMBOL_ENUM) {
                             new_sym->as.module_scope = member_sym->as.module_scope;
                         } else if (member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                             new_sym->as.enum_value = member_sym->as.enum_value;

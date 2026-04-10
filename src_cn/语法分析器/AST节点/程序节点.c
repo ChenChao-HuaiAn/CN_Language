@@ -573,13 +573,13 @@ struct 程序节点* 创建程序节点() {
   cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 == 0;
-  if (r2) goto if_then_520; else goto if_merge_521;
+  if (r2) goto if_then_669; else goto if_merge_670;
 
-  if_then_520:
+  if_then_669:
   return 0;
-  goto if_merge_521;
+  goto if_merge_670;
 
-  if_merge_521:
+  if_merge_670:
   r3 = cn_var_节点_0;
   return r3;
 }
@@ -592,21 +592,21 @@ void 程序添加声明(struct 程序节点* cn_var_程序, struct 声明节点*
   entry:
   r1 = cn_var_程序;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_525; else goto logic_rhs_524;
+  if (r2) goto logic_merge_674; else goto logic_rhs_673;
 
-  if_then_522:
+  if_then_671:
   return;
-  goto if_merge_523;
+  goto if_merge_672;
 
-  if_merge_523:
+  if_merge_672:
 
-  logic_rhs_524:
+  logic_rhs_673:
   r3 = cn_var_声明;
   r4 = r3 == 0;
-  goto logic_merge_525;
+  goto logic_merge_674;
 
-  logic_merge_525:
-  if (r4) goto if_then_522; else goto if_merge_523;
+  logic_merge_674:
+  if (r4) goto if_then_671; else goto if_merge_672;
   return;
 }
 
