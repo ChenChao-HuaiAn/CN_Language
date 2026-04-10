@@ -2095,21 +2095,27 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                             while (node) {
                                 CnSemSymbol *sym = &node->symbol;
                                 if (sym->is_public) {
-                                    // 检查是否已存在同名符号
-                                    CnSemSymbol *existing = cn_sem_scope_lookup_shallow(module_scope,
-                                            sym->name, sym->name_length);
-                                    if (existing) {
-                                        // 特殊处理：如果新符号是结构体/枚举类型，而现有符号是枚举成员
-                                        // 则用结构体/枚举类型替换枚举成员（结构体定义更重要）
-                                        if ((sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
-                                            existing->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
-                                            existing->kind = sym->kind;
-                                            existing->type = sym->type;
-                                            existing->as.module_scope = sym->as.module_scope;
+                                        // 检查是否已存在同名符号
+                                        CnSemSymbol *existing = cn_sem_scope_lookup_shallow(module_scope,
+                                                sym->name, sym->name_length);
+                                        if (existing) {
+                                            // 【关键修复】检查是否是同一个符号（来自同一模块）
+                                            // 如果是同一个符号，静默跳过，不报错
+                                            if (cn_sem_is_same_symbol(existing, sym)) {
+                                                node = node->next;
+                                                continue;
+                                            }
+                                            // 特殊处理：如果新符号是结构体/枚举类型，而现有符号是枚举成员
+                                            // 则用结构体/枚举类型替换枚举成员（结构体定义更重要）
+                                            if ((sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
+                                                existing->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                                                existing->kind = sym->kind;
+                                                existing->type = sym->type;
+                                                existing->as.module_scope = sym->as.module_scope;
+                                            }
+                                            node = node->next;
+                                            continue;
                                         }
-                                        node = node->next;
-                                        continue;
-                                    }
                                     
                                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                         module_scope, sym->name, sym->name_length, sym->kind);
@@ -3889,9 +3895,25 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                     function_decl->parameter_count);
                     existing_sym->decl_scope = global_scope;  // 标记为当前模块定义
                 } else {
-                    // 真正的重复定义（同一模块内）
-                    cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
+                    // 检查是否是同一个符号（来自同一模块）
+                    // 如果是同一个符号，静默跳过，不报错
+                    // 注意：这里需要创建一个临时符号来比较
+                    CnSemSymbol temp_sym;
+                    memset(&temp_sym, 0, sizeof(CnSemSymbol));
+                    temp_sym.name = function_decl->name;
+                    temp_sym.name_length = function_decl->name_length;
+                    temp_sym.kind = CN_SEM_SYMBOL_FUNCTION;
+                    temp_sym.type = existing_sym->type;  // 使用现有符号的类型进行比较
+                    temp_sym.decl_scope = existing_sym->decl_scope;
+                    temp_sym.source_module_path = existing_sym->source_module_path;
+                    temp_sym.source_module_path_length = existing_sym->source_module_path_length;
+                    
+                    if (!cn_sem_is_same_symbol(existing_sym, &temp_sym)) {
+                        // 真正的重复定义（不同模块的同名符号）
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
+                    }
+                    // 如果是同一个符号，静默跳过
                 }
             } else {
                 // 其他类型的符号冲突
