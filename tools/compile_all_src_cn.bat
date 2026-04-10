@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-set COMPILER=build\src\Debug\cnc.exe
+set COMPILER=build\src\Release\cnc.exe
 set SUCCESS_COUNT=0
 set FAIL_COUNT=0
 set TOTAL=0

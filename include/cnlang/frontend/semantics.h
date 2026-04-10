@@ -113,6 +113,9 @@ struct CnSemSymbol {
     int is_public; // 是否为公开成员（用于模块成员）
     int is_const;  // 是否为常量变量（使用"常量"关键字声明）
     int is_static; // 是否为静态局部变量（使用"静态"关键字声明）
+    // 新增：符号来源模块的规范化路径（用于跨编译会话的符号唯一性判断）
+    const char *source_module_path;
+    size_t source_module_path_length;
     // 枚举成员的常量值和模块作用域
     union {
         long enum_value; // 当kind为CN_SEM_SYMBOL_ENUM_MEMBER时，存储枚举值
@@ -160,6 +163,10 @@ CnSemSymbol *cn_sem_scope_lookup(CnSemScope *scope,
 CnSemSymbol *cn_sem_scope_lookup_shallow(CnSemScope *scope,
                                          const char *name,
                                          size_t name_length);
+
+// 检查两个符号是否是同一个符号（来自同一模块的同一声明）
+// 用于解决跨编译会话的符号唯一性问题
+int cn_sem_symbol_is_same(const CnSemSymbol *sym1, const CnSemSymbol *sym2);
 
 // 遍历作用域符号的回调函数类型
 typedef void (*CnSemScopeSymbolCallback)(CnSemSymbol *symbol, void *user_data);

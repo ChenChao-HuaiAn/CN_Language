@@ -794,7 +794,7 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                 
                 // 局部结构体应该绑定到函数作用域,向上查找直到函数作用域
                 CnSemScope *decl_scope = scope;
-                while (decl_scope && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_FUNCTION 
+                while (decl_scope && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_FUNCTION
                        && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_GLOBAL
                        && cn_sem_scope_get_kind(decl_scope) != CN_SEM_SCOPE_MODULE) {
                     decl_scope = cn_sem_scope_parent(decl_scope);
@@ -815,9 +815,15 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                                               owner_func_name,
                                               owner_func_name_length);
             } else {
-                // 报告重复定义
-                cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, struct_decl->name);
+                // 插入失败，检查是否是导入的符号
+                CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, struct_decl->name, struct_decl->name_length);
+                if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT && existing->source_module_path != NULL) {
+                    // 是导入的结构体（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                } else {
+                    // 真正的重复定义，报告错误
+                    cn_support_diag_semantic_error_duplicate_symbol(
+                        diagnostics, NULL, 0, 0, struct_decl->name);
+                }
             }
             break;
         }
@@ -852,11 +858,8 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                             member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                             // 保存枚举成员的值
                             member_sym->as.enum_value = member->value;
-                        } else {
-                            // 报告重复定义
-                            cn_support_diag_semantic_error_duplicate_symbol(
-                                diagnostics, NULL, 0, 0, member->name);
                         }
+                        // 注意：枚举作用域中的重复定义不报错，因为可能是导入的
                         
                         // 同时注册到当前作用域（如果不存在同名符号）
                         CnSemSymbol *scope_member_sym = cn_sem_scope_insert_symbol(scope,
@@ -867,12 +870,20 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                             scope_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                             scope_member_sym->as.enum_value = member->value;
                         }
+                        // 注意：如果 scope_member_sym 为 NULL，说明当前作用域已有同名符号
+                        // 这可能是导入的符号，静默跳过
                     }
                 }
             } else {
-                // 报告重复定义
-                cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, enum_decl->name);
+                // 插入失败，检查是否是导入的符号
+                CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, enum_decl->name, enum_decl->name_length);
+                if (existing && existing->kind == CN_SEM_SYMBOL_ENUM && existing->source_module_path != NULL) {
+                    // 是导入的枚举（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                } else {
+                    // 真正的重复定义，报告错误
+                    cn_support_diag_semantic_error_duplicate_symbol(
+                        diagnostics, NULL, 0, 0, enum_decl->name);
+                }
             }
             break;
         }

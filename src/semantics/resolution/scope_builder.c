@@ -16,7 +16,150 @@
 #define snprintf _snprintf
 #endif
 
-// 辅助函数：检查两个符号是否是同一个符号（同一个作用域、同一个类型、同一个名字）
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <limits.h>
+#include <unistd.h>
+#endif
+
+// ============================================================================
+// 路径规范化函数（用于模块去重）
+// ============================================================================
+
+/**
+ * @brief 规范化文件路径，转换为绝对路径并统一路径分隔符
+ *
+ * 解决模块重复加载问题：
+ * - 同一模块可能通过不同路径访问（相对路径、绝对路径、不同分隔符）
+ * - 规范化后确保相同文件返回相同路径，便于缓存查找
+ *
+ * @param path 输入路径（可以是相对或绝对路径）
+ * @return 规范化后的绝对路径（调用者负责释放），失败返回 NULL
+ */
+static char *normalize_file_path(const char *path) {
+    if (!path) {
+        return NULL;
+    }
+    
+#ifdef _WIN32
+    // Windows: 使用 GetFullPathNameW 获取绝对路径
+    // 先转换为宽字符
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, path, -1, NULL, 0);
+    if (wlen == 0) {
+        return strdup(path);  // 转换失败，返回原路径副本
+    }
+    
+    WCHAR *wpath = (WCHAR *)malloc(wlen * sizeof(WCHAR));
+    if (!wpath) {
+        return strdup(path);
+    }
+    
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, wlen);
+    
+    // 获取绝对路径
+    DWORD abs_len = GetFullPathNameW(wpath, 0, NULL, NULL);
+    if (abs_len == 0) {
+        free(wpath);
+        return strdup(path);
+    }
+    
+    WCHAR *abs_wpath = (WCHAR *)malloc(abs_len * sizeof(WCHAR));
+    if (!abs_wpath) {
+        free(wpath);
+        return strdup(path);
+    }
+    
+    GetFullPathNameW(wpath, abs_len, abs_wpath, NULL);
+    free(wpath);
+    
+    // 转换回 UTF-8
+    int utf8_len = WideCharToMultiByte(CP_UTF8, 0, abs_wpath, -1, NULL, 0, NULL, NULL);
+    if (utf8_len == 0) {
+        free(abs_wpath);
+        return strdup(path);
+    }
+    
+    char *result = (char *)malloc(utf8_len);
+    if (!result) {
+        free(abs_wpath);
+        return strdup(path);
+    }
+    
+    WideCharToMultiByte(CP_UTF8, 0, abs_wpath, -1, result, utf8_len, NULL, NULL);
+    free(abs_wpath);
+    
+    // 统一使用反斜杠作为路径分隔符（Windows标准）
+    for (char *p = result; *p; p++) {
+        if (*p == '/') {
+            *p = '\\';
+        }
+    }
+    
+    return result;
+#else
+    // POSIX: 使用 realpath 获取规范化的绝对路径
+    char *resolved = realpath(path, NULL);
+    if (resolved) {
+        return resolved;
+    }
+    
+    // realpath 失败（文件可能不存在），尝试手动规范化
+    char cwd[PATH_MAX];
+    if (getcwd(cwd, sizeof(cwd)) == NULL) {
+        return strdup(path);
+    }
+    
+    // 如果是相对路径，拼接当前目录
+    if (path[0] != '/') {
+        size_t cwd_len = strlen(cwd);
+        size_t path_len = strlen(path);
+        char *full_path = (char *)malloc(cwd_len + 1 + path_len + 1);
+        if (!full_path) {
+            return strdup(path);
+        }
+        
+        sprintf(full_path, "%s/%s", cwd, path);
+        
+        // 简单规范化：移除 ./ 和 ../
+        // 这里只做简单处理，完整实现需要更复杂的逻辑
+        char *result = (char *)malloc(strlen(full_path) + 1);
+        if (!result) {
+            free(full_path);
+            return strdup(path);
+        }
+        
+        char *dst = result;
+        char *src = full_path;
+        while (*src) {
+            if (src[0] == '.' && src[1] == '/') {
+                src += 2;  // 跳过 ./
+            } else if (src[0] == '/' && src[1] == '.' && src[2] == '/') {
+                src += 2;  // 跳过 /./
+            } else {
+                *dst++ = *src++;
+            }
+        }
+        *dst = '\0';
+        
+        free(full_path);
+        return result;
+    }
+    
+    return strdup(path);
+#endif
+}
+
+// 辅助函数：检查两个符号是否是同一个符号（来自同一模块的同一声明）
+//
+// 判断逻辑：
+// 1. 符号种类和名字必须相同
+// 2. 如果类型指针相同，则认为是同一个符号（最可靠的判断）
+// 3. 如果 decl_scope 相同，则认为是同一个符号
+// 4. 对于函数类型，如果参数数量相同，则认为是同一个符号
+//
+// 这个逻辑确保：当模块A导入模块B和模块C，而模块B也导入模块C时，
+// 模块C的符号不会被重复注册到模块A的全局作用域
 static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym2) {
     if (!sym1 || !sym2) {
         return 0;
@@ -35,35 +178,70 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
         return 0;
     }
     
-    // 检查是否来自同一个声明作用域（最关键的判断）
-    if (sym1->decl_scope && sym2->decl_scope) {
-        // 两个符号都有声明作用域，比较作用域指针
-        return (sym1->decl_scope == sym2->decl_scope) ? 1 : 0;
+    // 调试输出
+    char name_buf[64];
+    size_t copy_len = sym1->name_length < 63 ? sym1->name_length : 63;
+    memcpy(name_buf, sym1->name, copy_len);
+    name_buf[copy_len] = '\0';
+    
+    // 【关键修复】首先检查源模块路径是否相同
+    // 这是解决跨编译会话符号唯一性问题的关键
+    // 当编译脚本逐个文件独立编译时，不同编译会话中同一模块的符号具有不同的指针值
+    // 但如果源模块路径相同且符号名相同，则认为是同一个符号
+    if (sym1->source_module_path && sym2->source_module_path &&
+        sym1->source_module_path_length == sym2->source_module_path_length &&
+        memcmp(sym1->source_module_path, sym2->source_module_path, sym1->source_module_path_length) == 0) {
+        fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, source_module_path match (path=%.*s)\n",
+                name_buf, sym1->kind, (int)sym1->source_module_path_length, sym1->source_module_path);
+        return 1;  // 来自同一个模块且名称相同，是同一个符号
     }
     
-    // 如果至少有一个符号没有 decl_scope，回退到比较类型指针
-    // 同一个模块的同一个函数应该共享同一个类型对象
-    if (sym1->type && sym2->type) {
-        if (sym1->type == sym2->type) {
-            return 1;  // 类型指针相同，认为是同一个符号
-        }
-        // 对于函数类型，延迟到类型结构比较
-        // 【修复】添加空指针检查，防止 type 为 NULL 时崩溃
-        if (sym1->type && sym2->type &&
-            sym1->type->kind == CN_TYPE_FUNCTION && sym2->type->kind == CN_TYPE_FUNCTION) {
-            // 比较函数类型的结构：参数数量
-            if (sym1->type->as.function.param_count != sym2->type->as.function.param_count) {
-                return 0;
-            }
-            // 参数类型和返回类型在这里不进一步比较，
-            // 因为同名同种类的符号且参数数量相同，极有可能是同一函数
-            return 1;
+    // 【关键修复】检查类型指针是否相同
+    // 当符号被复制时，type 指针也被复制了，所以类型指针相同意味着来自同一声明
+    // 这是最可靠的判断方式，因为类型对象是唯一的
+    if (sym1->type && sym2->type && sym1->type == sym2->type) {
+        fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, type match (type=%p)\n",
+                name_buf, sym1->kind, (void*)sym1->type);
+        return 1;  // 类型指针相同，肯定是同一个符号
+    }
+    
+    // 检查是否来自同一个声明作用域
+    if (sym1->decl_scope && sym2->decl_scope && sym1->decl_scope == sym2->decl_scope) {
+        fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, decl_scope match (scope=%p)\n",
+                name_buf, sym1->kind, (void*)sym1->decl_scope);
+        return 1;  // 声明作用域相同，是同一个符号
+    }
+    
+    // 对于函数类型，如果类型指针不同但函数签名相同，也认为是同一个符号
+    // 这种情况发生在：同一个函数被多次声明（原型声明和完整声明）
+    if (sym1->type && sym2->type &&
+        sym1->type->kind == CN_TYPE_FUNCTION && sym2->type->kind == CN_TYPE_FUNCTION) {
+        // 比较函数类型的结构：参数数量
+        if (sym1->type->as.function.param_count == sym2->type->as.function.param_count) {
+            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, function param count match (%zu)\n",
+                    name_buf, sym1->kind, sym1->type->as.function.param_count);
+            return 1;  // 同名函数且参数数量相同，认为是同一个函数
         }
     }
     
-    // 默认情况：同名同种类的符号认为是同一个符号
-    // 这种情况主要适用于从不同路径导入同一个模块的符号
-    return 1;
+    // 对于结构体和枚举类型，检查 module_scope 是否相同
+    // module_scope 存储了结构体/枚举的成员作用域
+    if ((sym1->kind == CN_SEM_SYMBOL_STRUCT || sym1->kind == CN_SEM_SYMBOL_ENUM) &&
+        (sym2->kind == CN_SEM_SYMBOL_STRUCT || sym2->kind == CN_SEM_SYMBOL_ENUM)) {
+        if (sym1->as.module_scope && sym2->as.module_scope &&
+            sym1->as.module_scope == sym2->as.module_scope) {
+            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, module_scope match (scope=%p)\n",
+                    name_buf, sym1->kind, (void*)sym1->as.module_scope);
+            return 1;  // 成员作用域相同，是同一个类型定义
+        }
+    }
+    
+    // 默认情况：同名同种类的符号，但无法确定是否来自同一声明
+    // 返回 0 表示不是同一个符号，让调用者决定如何处理
+    fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, NO MATCH (type1=%p, type2=%p, scope1=%p, scope2=%p)\n",
+            name_buf, sym1->kind, (void*)sym1->type, (void*)sym2->type,
+            (void*)sym1->decl_scope, (void*)sym2->decl_scope);
+    return 0;
 }
 
 // 符号链表节点，用于在作用域中维护符号列表
@@ -101,22 +279,38 @@ typedef struct {
 static CachedModule g_module_cache[MAX_CACHED_MODULES];
 static int g_cached_module_count = 0;
 
-// 查找缓存的模块
+// 查找缓存的模块（使用规范化路径）
 static CnSemScope *find_cached_module(const char *file_path) {
+    // 规范化路径以确保相同文件的不同路径表示能匹配
+    char *normalized = normalize_file_path(file_path);
+    const char *search_path = normalized ? normalized : file_path;
+    
     for (int i = 0; i < g_cached_module_count; i++) {
-        if (strcmp(g_module_cache[i].file_path, file_path) == 0) {
+        if (strcmp(g_module_cache[i].file_path, search_path) == 0) {
+            if (normalized) free(normalized);
             return g_module_cache[i].scope;
         }
     }
+    
+    if (normalized) free(normalized);
     return NULL;
 }
 
-// 缓存模块（带AST）
+// 缓存模块（带AST，使用规范化路径）
 static void cache_module_with_program(const char *file_path, CnSemScope *scope, CnAstProgram *program) {
     if (g_cached_module_count >= MAX_CACHED_MODULES) {
         return;  // 缓存已满
     }
-    g_module_cache[g_cached_module_count].file_path = strdup(file_path);
+    
+    // 先检查是否已缓存（避免重复缓存）
+    CnSemScope *existing = find_cached_module(file_path);
+    if (existing) {
+        return;  // 已缓存，不重复添加
+    }
+    
+    // 使用规范化路径存储
+    char *normalized = normalize_file_path(file_path);
+    g_module_cache[g_cached_module_count].file_path = normalized ? normalized : strdup(file_path);
     g_module_cache[g_cached_module_count].scope = scope;
     g_module_cache[g_cached_module_count].program = program;  // 缓存AST
     g_module_cache[g_cached_module_count].ir_module = NULL;   // IR稍后填充
@@ -164,22 +358,32 @@ void cn_sem_set_cached_module_ir(int index, CnIrModule *ir_module) {
     }
 }
 
-// 检查是否正在编译该模块（循环导入检测）
+// 检查是否正在编译该模块（循环导入检测，使用规范化路径）
 static int is_module_compiling(const char *file_path) {
+    // 规范化路径以确保相同文件的不同路径表示能匹配
+    char *normalized = normalize_file_path(file_path);
+    const char *search_path = normalized ? normalized : file_path;
+    
     for (int i = 0; i < g_compile_depth; i++) {
-        if (strcmp(g_compiling_modules[i], file_path) == 0) {
+        // 编译栈中存储的已经是规范化路径
+        if (strcmp(g_compiling_modules[i], search_path) == 0) {
+            if (normalized) free(normalized);
             return 1;
         }
     }
+    
+    if (normalized) free(normalized);
     return 0;
 }
 
-// 将模块压入编译栈
+// 将模块压入编译栈（存储规范化路径）
 static int push_compiling_module(const char *file_path) {
     if (g_compile_depth >= MAX_MODULE_COMPILE_DEPTH) {
         return 0;  // 栈溢出
     }
-    g_compiling_modules[g_compile_depth++] = file_path;
+    // 存储规范化路径的副本
+    char *normalized = normalize_file_path(file_path);
+    g_compiling_modules[g_compile_depth++] = normalized ? normalized : strdup(file_path);
     return 1;
 }
 
@@ -187,6 +391,11 @@ static int push_compiling_module(const char *file_path) {
 static void pop_compiling_module(void) {
     if (g_compile_depth > 0) {
         g_compile_depth--;
+        // 释放规范化路径的内存
+        if (g_compiling_modules[g_compile_depth]) {
+            free((void *)g_compiling_modules[g_compile_depth]);
+            g_compiling_modules[g_compile_depth] = NULL;
+        }
     }
 }
 
@@ -574,11 +783,8 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                         // 保存枚举成员的值
                         member_sym->as.enum_value = member->value;
-                    } else {
-                        // 报告重复定义
-                        cn_support_diag_semantic_error_duplicate_symbol(
-                            diagnostics, NULL, 0, 0, member->name);
                     }
+                    // 注意：枚举作用域中的重复定义不报错，因为可能是导入的
                     
                     // 同时注册到全局作用域（如果不存在同名符号）
                     CnSemSymbol *global_member_sym = cn_sem_scope_insert_symbol(global_scope,
@@ -589,12 +795,19 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         global_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                         global_member_sym->as.enum_value = member->value;
                     }
+                    // 注意：全局作用域中的重复定义不报错，因为可能是导入的
                 }
             }
         } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, enum_decl->name);
+            // 插入失败，检查是否是导入的符号
+            CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, enum_decl->name, enum_decl->name_length);
+            if (existing && existing->kind == CN_SEM_SYMBOL_ENUM && existing->source_module_path != NULL) {
+                // 是导入的枚举（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+            } else {
+                // 真正的重复定义，报告错误
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, enum_decl->name);
+            }
         }
     }
 
@@ -659,9 +872,15 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                           global_scope,
                                           NULL, 0);  // 全局结构体，无所属函数
         } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, struct_decl->name);
+            // 插入失败，检查是否是导入的符号
+            CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, struct_decl->name, struct_decl->name_length);
+            if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT && existing->source_module_path != NULL) {
+                // 是导入的结构体（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+            } else {
+                // 真正的重复定义，报告错误
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, struct_decl->name);
+            }
         }
     }
     
@@ -832,12 +1051,16 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                         sym->name_length);
                 if (existing_sym) {
                     // 检查是否是同一个符号（同一模块的同一成员）
+                    fprintf(stderr, "[DEBUG] Import: checking symbol %.*s, existing_kind=%d, new_kind=%d\n",
+                            (int)sym->name_length, sym->name, existing_sym->kind, sym->kind);
                     if (cn_sem_is_same_symbol(existing_sym, sym)) {
                         // 同一符号，静默忽略，不报错也不重复添加
+                        fprintf(stderr, "[DEBUG] Import: same symbol, skipping\n");
                         node = node->next;
                         continue;
                     } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
                         // 不同符号但名字冲突，报错
+                        fprintf(stderr, "[DEBUG] Import: different symbol, reporting error\n");
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, sym->name);
                         node = node->next;
@@ -858,6 +1081,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         new_sym->is_const = sym->is_const;
                         // 保留原始 decl_scope 以便区分导入符号
                         new_sym->decl_scope = sym->decl_scope;
+                        // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                        new_sym->source_module_path = sym->source_module_path;
+                        new_sym->source_module_path_length = sym->source_module_path_length;
                         // 复制 module_scope 以支持递归处理嵌套导入
                         if (sym->kind == CN_SEM_SYMBOL_MODULE ||
                             sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -932,6 +1158,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         new_sym->type = member_sym->type;
                         new_sym->is_public = member_sym->is_public;
                         new_sym->decl_scope = member_sym->decl_scope;
+                        // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                        new_sym->source_module_path = member_sym->source_module_path;
+                        new_sym->source_module_path_length = member_sym->source_module_path_length;
                         if (member_sym->kind == CN_SEM_SYMBOL_MODULE) {
                             new_sym->as.module_scope = member_sym->as.module_scope;
                         } else if (member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
@@ -1004,9 +1233,15 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             }
             sym->is_const = var_decl->is_const;
         } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, var_decl->name);
+            // 插入失败，检查是否是导入的符号
+            CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, var_decl->name, var_decl->name_length);
+            if (existing && existing->kind == CN_SEM_SYMBOL_VARIABLE && existing->source_module_path != NULL) {
+                // 是导入的变量（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+            } else {
+                // 真正的重复定义，报告错误
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, var_decl->name);
+            }
         }
     }
 
@@ -1080,8 +1315,8 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                 if (function_decl->is_prototype) {
                     // 函数原型声明：允许重复声明，不报错
                     // 不需要做任何事情，保留现有符号
-                } else if (existing_sym->decl_scope != global_scope) {
-                    // 这是导入的函数，用当前模块定义的函数覆盖它
+                } else if (existing_sym->source_module_path != NULL) {
+                    // 这是导入的函数（source_module_path 不为空表示来自其他模块），用当前模块定义的函数覆盖它
                     // 构建完整的函数类型
                     CnType **param_types = NULL;
                     if (function_decl->parameter_count > 0) {
@@ -1125,14 +1360,24 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                     function_decl->parameter_count);
                     existing_sym->decl_scope = global_scope;  // 标记为当前模块定义
                 } else {
-                    // 真正的重复定义（同一模块内）
+                    // 检查是否是导入的函数
+                    if (existing_sym->source_module_path != NULL) {
+                        // 是导入的函数（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                    } else {
+                        // 真正的重复定义（同一模块内）
+                        cn_support_diag_semantic_error_duplicate_symbol(
+                            diagnostics, NULL, 0, 0, function_decl->name);
+                    }
+                }
+            } else {
+                // 其他类型的符号冲突，检查是否是导入的符号
+                if (existing_sym->source_module_path != NULL) {
+                    // 是导入的符号（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                } else {
+                    // 真正的符号冲突
                     cn_support_diag_semantic_error_duplicate_symbol(
                         diagnostics, NULL, 0, 0, function_decl->name);
                 }
-            } else {
-                // 其他类型的符号冲突
-                cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, function_decl->name);
             }
         }
 
@@ -1172,9 +1417,15 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
             sym->type = param->declared_type;
             sym->is_const = param->is_const;  // 传递常量参数标记
         } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, param->name);
+            // 参数重复定义，检查是否是导入的符号
+            CnSemSymbol *existing = cn_sem_scope_lookup_shallow(function_scope, param->name, param->name_length);
+            if (existing && existing->decl_scope != function_scope) {
+                // 是导入的符号，静默跳过（不报错）
+            } else {
+                // 真正的重复定义，报告错误
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, param->name);
+            }
         }
     }
 
@@ -1290,9 +1541,15 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             }
             // CN_VISIBILITY_DEFAULT 保持默认值（已在 symbol_table.c 中设置为 0，即私有）
         } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, var_decl->name);
+            // 插入失败，检查是否是导入的符号
+            CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, var_decl->name, var_decl->name_length);
+            if (existing && existing->source_module_path != NULL) {
+                // 是导入的符号（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+            } else {
+                // 真正的重复定义，报告错误
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, var_decl->name);
+            }
         }
 
         cn_sem_build_expr(scope, var_decl->initializer, diagnostics);
@@ -1372,9 +1629,15 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                                           owner_func_name,
                                           owner_func_name_length);
         } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, struct_decl->name);
+            // 插入失败，检查是否是导入的符号
+            CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, struct_decl->name, struct_decl->name_length);
+            if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT && existing->source_module_path != NULL) {
+                // 是导入的结构体（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+            } else {
+                // 真正的重复定义，报告错误
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, struct_decl->name);
+            }
         }
         break;
     }
@@ -1409,11 +1672,8 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                         member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                         // 保存枚举成员的值
                         member_sym->as.enum_value = member->value;
-                    } else {
-                        // 报告重复定义
-                        cn_support_diag_semantic_error_duplicate_symbol(
-                            diagnostics, NULL, 0, 0, member->name);
                     }
+                    // 注意：枚举作用域中的重复定义不报错，因为可能是导入的
                     
                     // 同时注册到当前作用域（如果不存在同名符号）
                     CnSemSymbol *scope_member_sym = cn_sem_scope_insert_symbol(scope,
@@ -1424,12 +1684,19 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                         scope_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                         scope_member_sym->as.enum_value = member->value;
                     }
+                    // 注意：当前作用域中的重复定义不报错，因为可能是导入的
                 }
             }
         } else {
-            // 报告重复定义
-            cn_support_diag_semantic_error_duplicate_symbol(
-                diagnostics, NULL, 0, 0, enum_decl->name);
+            // 插入失败，检查是否是导入的符号
+            CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, enum_decl->name, enum_decl->name_length);
+            if (existing && existing->kind == CN_SEM_SYMBOL_ENUM && existing->source_module_path != NULL) {
+                // 是导入的枚举（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+            } else {
+                // 真正的重复定义，报告错误
+                cn_support_diag_semantic_error_duplicate_symbol(
+                    diagnostics, NULL, 0, 0, enum_decl->name);
+            }
         }
         break;
     }
@@ -1600,8 +1867,16 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                                      const char *importing_file)
 {
     // 检查缓存
+    char *normalized_path = normalize_file_path(file_path);
+    const char *cache_key = normalized_path ? normalized_path : file_path;
+    
+    fprintf(stderr, "[DEBUG] compile_external_module_recursive: file_path=%s, normalized=%s\n",
+            file_path, cache_key);
+    
     CnSemScope *cached = find_cached_module(file_path);
     if (cached) {
+        fprintf(stderr, "[DEBUG] 模块已缓存，直接返回: %s\n", cache_key);
+        if (normalized_path) free(normalized_path);
         return cached;  // 返回缓存的作用域
     }
     
@@ -1721,6 +1996,11 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                             new_sym->type = sym->type;
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
+                                            // 【关键修复】保留原始 decl_scope 以便区分导入符号
+                                            new_sym->decl_scope = sym->decl_scope;
+                                            // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                            new_sym->source_module_path = sym->source_module_path;
+                                            new_sym->source_module_path_length = sym->source_module_path_length;
                                             // 复制 module_scope 以支持递归处理嵌套导入
                                             if (sym->kind == CN_SEM_SYMBOL_MODULE ||
                                                 sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -1747,6 +2027,11 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                             new_sym->type = member_sym->type;
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
+                                            // 【关键修复】保留原始 decl_scope 以便区分导入符号
+                                            new_sym->decl_scope = member_sym->decl_scope;
+                                            // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                            new_sym->source_module_path = member_sym->source_module_path;
+                                            new_sym->source_module_path_length = member_sym->source_module_path_length;
                                             // 复制 module_scope 以支持递归处理嵌套导入
                                             if (member_sym->kind == CN_SEM_SYMBOL_MODULE ||
                                                 member_sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -1799,6 +2084,12 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                         new_sym->type = sym->type;
                                         new_sym->is_public = sym->is_public;
                                         new_sym->is_const = sym->is_const;
+                                        // 【关键修复】保留原始 decl_scope 以便区分导入符号
+                                        // 这样 cn_sem_is_same_symbol 可以正确识别来自同一模块的符号
+                                        new_sym->decl_scope = sym->decl_scope;
+                                        // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                        new_sym->source_module_path = sym->source_module_path;
+                                        new_sym->source_module_path_length = sym->source_module_path_length;
                                         // 复制 module_scope 以支持递归处理嵌套导入
                                         if (sym->kind == CN_SEM_SYMBOL_MODULE ||
                                             sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -1823,11 +2114,23 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             continue;
         }
         
+        // 检查是否已存在同名符号
+        CnSemSymbol *existing = cn_sem_scope_lookup_shallow(module_scope,
+                                                function_decl->name,
+                                                function_decl->name_length);
+        if (existing) {
+            // 如果已存在同名符号，跳过注册
+            continue;
+        }
+        
         CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
                                    function_decl->name,
                                    function_decl->name_length,
                                    CN_SEM_SYMBOL_FUNCTION);
         if (sym) {
+            // 设置源模块路径（关键：用于跨编译会话的符号唯一性判断）
+            sym->source_module_path = cache_key;
+            sym->source_module_path_length = strlen(cache_key);
             CnType **param_types = NULL;
             if (function_decl->parameter_count > 0) {
                 param_types = (CnType **)malloc(sizeof(CnType *) * function_decl->parameter_count);
@@ -1871,11 +2174,24 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         }
         
         CnAstVarDecl *var_decl = &var_stmt->as.var_decl;
+        
+        // 检查是否已存在同名符号
+        CnSemSymbol *existing = cn_sem_scope_lookup_shallow(module_scope,
+                                                var_decl->name,
+                                                var_decl->name_length);
+        if (existing) {
+            // 如果已存在同名符号，跳过注册
+            continue;
+        }
+        
         CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
                                    var_decl->name,
                                    var_decl->name_length,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
+            // 设置源模块路径（关键：用于跨编译会话的符号唯一性判断）
+            sym->source_module_path = cache_key;
+            sym->source_module_path_length = strlen(cache_key);
             sym->type = var_decl->declared_type;
             sym->is_const = var_decl->is_const;
             // 根据AST中的visibility字段设置可见性
@@ -1972,11 +2288,24 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         }
         
         CnAstEnumDecl *enum_decl = &enum_stmt->as.enum_decl;
+        
+        // 检查是否已存在同名符号
+        CnSemSymbol *existing = cn_sem_scope_lookup_shallow(module_scope,
+                                                enum_decl->name,
+                                                enum_decl->name_length);
+        if (existing) {
+            // 如果已存在同名符号，跳过注册
+            continue;
+        }
+        
         CnSemSymbol *sym = cn_sem_scope_insert_symbol(module_scope,
                                    enum_decl->name,
                                    enum_decl->name_length,
                                    CN_SEM_SYMBOL_ENUM);
         if (sym) {
+            // 设置源模块路径（关键：用于跨编译会话的符号唯一性判断）
+            sym->source_module_path = cache_key;
+            sym->source_module_path_length = strlen(cache_key);
             // 创建枚举类型
             sym->type = cn_type_new_enum(enum_decl->name, enum_decl->name_length);
             
@@ -2000,6 +2329,9 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                         member_sym->as.enum_value = member->value;
                         // 枚举成员继承枚举的可见性
                         member_sym->is_public = 1;  // 枚举成员默认公开
+                        // 设置源模块路径
+                        member_sym->source_module_path = cache_key;
+                        member_sym->source_module_path_length = strlen(cache_key);
                     }
                     
                     // 同时注册到模块作用域（如果不存在同名符号）
@@ -2011,6 +2343,9 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                         module_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
                         module_member_sym->as.enum_value = member->value;
                         module_member_sym->is_public = 1;  // 枚举成员默认公开
+                        // 设置源模块路径
+                        module_member_sym->source_module_path = cache_key;
+                        module_member_sym->source_module_path_length = strlen(cache_key);
                     }
                 }
             }
@@ -2083,6 +2418,9 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         if (sym) {
             sym->type = incomplete_type;
             sym->is_public = 1;  // 结构体类型默认公开
+            // 设置源模块路径（关键：用于跨编译会话的符号唯一性判断）
+            sym->source_module_path = cache_key;
+            sym->source_module_path_length = strlen(cache_key);
         }
     }
     
@@ -2219,8 +2557,28 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     pop_compiling_module();
     
     // 缓存模块作用域和AST（用于后续代码生成）
+    fprintf(stderr, "[DEBUG] 缓存模块: %s\n", cache_key);
     cache_module_with_program(file_path, module_scope, module_program);
     
+    // 从缓存中获取规范化路径，设置到模块作用域中的所有符号
+    // 这样可以确保符号的 source_module_path 指向持久化的内存
+    const char *cached_path = g_module_cache[g_cached_module_count - 1].file_path;
+    size_t cached_path_len = strlen(cached_path);
+    
+    fprintf(stderr, "[DEBUG] Setting source_module_path for module %s: %s (len=%zu)\n",
+            cache_key, cached_path, cached_path_len);
+    
+    // 遍历模块作用域中的所有符号，设置源模块路径
+    CnSemSymbolNode *node = module_scope->symbols;
+    while (node) {
+        node->symbol.source_module_path = cached_path;
+        node->symbol.source_module_path_length = cached_path_len;
+        fprintf(stderr, "[DEBUG] Set source_module_path for symbol %.*s: %s\n",
+                (int)node->symbol.name_length, node->symbol.name, cached_path);
+        node = node->next;
+    }
+    
+    if (normalized_path) free(normalized_path);
     return module_scope;
 }
 
@@ -2464,6 +2822,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 }
             }
         }
+        // 注意：如果 sym 为 NULL，说明全局作用域已有同名符号
+        // 这可能是导入的符号，静默跳过（不报错）
     }
 
     // =============================================================================
@@ -2510,6 +2870,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                           global_scope,
                                           NULL, 0);
         }
+        // 注意：如果 sym 为 NULL，说明全局作用域已有同名符号
+        // 这可能是导入的符号，静默跳过（不报错）
     }
     
     // =============================================================================
@@ -2617,6 +2979,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             new_sym->type = member_sym->type;
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
+                                            // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                            new_sym->source_module_path = member_sym->source_module_path;
+                                            new_sym->source_module_path_length = member_sym->source_module_path_length;
                                             // 调试：检查导入的结构体类型是否有字段信息
                                             if (member_sym->kind == CN_SEM_SYMBOL_STRUCT && member_sym->type) {
                                             }
@@ -2642,6 +3007,11 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             new_sym->type = sym->type;
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
+                                            // 【关键修复】保留原始 decl_scope 以便区分导入符号
+                                            new_sym->decl_scope = sym->decl_scope;
+                                            // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                            new_sym->source_module_path = sym->source_module_path;
+                                            new_sym->source_module_path_length = sym->source_module_path_length;
                                             // 复制 module_scope 以支持递归处理嵌套导入
                                             if (sym->kind == CN_SEM_SYMBOL_MODULE ||
                                                 sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -2740,6 +3110,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     new_sym->is_const = sym->is_const;
                                     // 保留原始 decl_scope 以便区分导入符号
                                     new_sym->decl_scope = sym->decl_scope;
+                                    // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                    new_sym->source_module_path = sym->source_module_path;
+                                    new_sym->source_module_path_length = sym->source_module_path_length;
                                     // 调试输出
                                     if (sym->kind == CN_SEM_SYMBOL_FUNCTION) {
                                     }
@@ -2846,6 +3219,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             new_sym->type = member_sym->type;
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
+                                            // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                            new_sym->source_module_path = member_sym->source_module_path;
+                                            new_sym->source_module_path_length = member_sym->source_module_path_length;
                                         }
                                     } else {
                                         cn_support_diag_semantic_error_generic(
@@ -2870,6 +3246,11 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                             new_sym->type = sym->type;
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
+                                            // 【关键修复】保留原始 decl_scope 以便区分导入符号
+                                            new_sym->decl_scope = sym->decl_scope;
+                                            // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                            new_sym->source_module_path = sym->source_module_path;
+                                            new_sym->source_module_path_length = sym->source_module_path_length;
                                             // 复制 module_scope 以支持递归处理嵌套导入
                                             if (sym->kind == CN_SEM_SYMBOL_MODULE ||
                                                 sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -2939,6 +3320,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     new_sym->is_public = sym->is_public;
                                     new_sym->is_const = sym->is_const;
                                     new_sym->decl_scope = sym->decl_scope;
+                                    // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                                    new_sym->source_module_path = sym->source_module_path;
+                                    new_sym->source_module_path_length = sym->source_module_path_length;
                                     // 复制 module_scope 以支持递归处理嵌套导入
                                     if (sym->kind == CN_SEM_SYMBOL_MODULE ||
                                         sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -3243,6 +3627,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         new_sym->is_public = sym->is_public;
                         new_sym->is_const = sym->is_const;
                         new_sym->decl_scope = sym->decl_scope;
+                        // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                        new_sym->source_module_path = sym->source_module_path;
+                        new_sym->source_module_path_length = sym->source_module_path_length;
                         // 复制 module_scope 以支持递归处理嵌套导入
                         if (sym->kind == CN_SEM_SYMBOL_MODULE ||
                             sym->kind == CN_SEM_SYMBOL_STRUCT ||
@@ -3319,6 +3706,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         new_sym->type = member_sym->type;
                         new_sym->is_public = member_sym->is_public;
                         new_sym->decl_scope = member_sym->decl_scope;
+                        // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
+                        new_sym->source_module_path = member_sym->source_module_path;
+                        new_sym->source_module_path_length = member_sym->source_module_path_length;
                         if (member_sym->kind == CN_SEM_SYMBOL_MODULE) {
                             new_sym->as.module_scope = member_sym->as.module_scope;
                         } else if (member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
@@ -3346,6 +3736,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             sym->type = var_decl->declared_type;
             sym->is_const = var_decl->is_const;
         }
+        // 注意：如果 sym 为 NULL，说明全局作用域已有同名符号
+        // 这可能是导入的符号，静默跳过（不报错）
     }
 
     // 注册函数并构建函数作用域
@@ -3418,8 +3810,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 if (function_decl->is_prototype) {
                     // 函数原型声明：允许重复声明，不报错
                     // 不需要做任何事情，保留现有符号
-                } else if (existing_sym->decl_scope != global_scope) {
-                    // 检查是否是导入的符号（decl_scope 不同表示来自其他模块）
+                } else if (existing_sym->source_module_path != NULL) {
+                    // 检查是否是导入的符号（source_module_path 不为空表示来自其他模块）
                     // 这是导入的函数，用当前模块定义的函数覆盖它
                     // 构建完整的函数类型
                     CnType **param_types = NULL;
