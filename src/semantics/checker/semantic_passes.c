@@ -1451,6 +1451,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 case CN_AST_UNARY_OP_DEREFERENCE:
                     if (inner && inner->kind == CN_TYPE_POINTER && inner->as.pointer_to) {
                         expr->type = inner->as.pointer_to;
+                    } else if (inner && inner->kind == CN_TYPE_STRING) {
+                        // 字符串类型（常量字符串/字符串）在语义上等同于 char*
+                        // 解引用后得到字符类型
+                        expr->type = cn_type_new_primitive(CN_TYPE_CHAR);
                     } else {
                         cn_support_diag_semantic_error_generic(
                             diagnostics,
