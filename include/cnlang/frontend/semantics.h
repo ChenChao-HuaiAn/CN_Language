@@ -134,6 +134,10 @@ CnType *cn_type_new_memory_address(void);
 bool cn_type_equals(CnType *a, CnType *b);
 bool cn_type_compatible(CnType *a, CnType *b); // 检查 a 是否可以隐式转换为 b 或等价
 
+// 类型深度复制：用于模块导入时复制完整的类型信息
+// 确保导入的类型信息不会因为原模块被重新编译而丢失
+CnType *cn_type_deep_copy(CnType *src);
+
 // 创建 / 销毁作用域
 CnSemScope *cn_sem_scope_new(CnSemScopeKind kind, CnSemScope *parent);
 void cn_sem_scope_free(CnSemScope *scope);

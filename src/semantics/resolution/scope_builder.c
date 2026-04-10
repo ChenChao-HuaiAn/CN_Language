@@ -1090,7 +1090,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                       sym->kind);
                     if (new_sym) {
                         // 复制符号信息
-                        new_sym->type = sym->type;
+                        // 【关键修复】使用深度复制确保类型信息完整保留
+                        // 解决模块导入时结构体字段信息丢失问题
+                        new_sym->type = cn_type_deep_copy(sym->type);
                         new_sym->is_public = sym->is_public;
                         new_sym->is_const = sym->is_const;
                         // 保留原始 decl_scope 以便区分导入符号
@@ -1169,7 +1171,8 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                       member_sym->kind);
                     if (new_sym) {
                         // 复制符号信息
-                        new_sym->type = member_sym->type;
+                        // 【关键修复】使用深度复制确保类型信息完整保留
+                        new_sym->type = cn_type_deep_copy(member_sym->type);
                         new_sym->is_public = member_sym->is_public;
                         new_sym->decl_scope = member_sym->decl_scope;
                         // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
@@ -2026,7 +2029,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             module_scope, sym->name, sym->name_length, sym->kind);
                                         if (new_sym) {
-                                            new_sym->type = sym->type;
+                                            // 【关键修复】使用深度复制确保类型信息完整保留
+                                            new_sym->type = cn_type_deep_copy(sym->type);
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -2057,7 +2061,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             module_scope, member_name, member_name_length, member_sym->kind);
                                         if (new_sym) {
-                                            new_sym->type = member_sym->type;
+                                            // 【关键修复】使用深度复制确保类型信息完整保留
+                                            new_sym->type = cn_type_deep_copy(member_sym->type);
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -2120,7 +2125,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                         module_scope, sym->name, sym->name_length, sym->kind);
                                     if (new_sym) {
-                                        new_sym->type = sym->type;
+                                        // 【关键修复】使用深度复制确保类型信息完整保留
+                                        new_sym->type = cn_type_deep_copy(sym->type);
                                         new_sym->is_public = sym->is_public;
                                         new_sym->is_const = sym->is_const;
                                         // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -3015,7 +3021,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, member_name, member_name_length, member_sym->kind);
                                         if (new_sym) {
-                                            new_sym->type = member_sym->type;
+                                            // 【关键修复】使用深度复制确保类型信息完整保留
+                                            new_sym->type = cn_type_deep_copy(member_sym->type);
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
                                             // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
@@ -3043,7 +3050,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, sym->name, sym->name_length, sym->kind);
                                         if (new_sym) {
-                                            new_sym->type = sym->type;
+                                            // 【关键修复】使用深度复制确保类型信息完整保留
+                                            new_sym->type = cn_type_deep_copy(sym->type);
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -3144,7 +3152,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                 CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                     global_scope, sym->name, sym->name_length, sym->kind);
                                 if (new_sym) {
-                                    new_sym->type = sym->type;
+                                    // 【关键修复】使用深度复制确保类型信息完整保留
+                                    new_sym->type = cn_type_deep_copy(sym->type);
                                     new_sym->is_public = sym->is_public;
                                     new_sym->is_const = sym->is_const;
                                     // 保留原始 decl_scope 以便区分导入符号
@@ -3255,7 +3264,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, member_name, member_name_length, member_sym->kind);
                                         if (new_sym) {
-                                            new_sym->type = member_sym->type;
+                                            // 【关键修复】使用深度复制确保类型信息完整保留
+                                            new_sym->type = cn_type_deep_copy(member_sym->type);
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
                                             // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
@@ -3282,7 +3292,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, sym->name, sym->name_length, sym->kind);
                                         if (new_sym) {
-                                            new_sym->type = sym->type;
+                                            // 【关键修复】使用深度复制确保类型信息完整保留
+                                            new_sym->type = cn_type_deep_copy(sym->type);
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -3355,7 +3366,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                 CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                     global_scope, sym->name, sym->name_length, sym->kind);
                                 if (new_sym) {
-                                    new_sym->type = sym->type;
+                                    // 【关键修复】使用深度复制确保类型信息完整保留
+                                    new_sym->type = cn_type_deep_copy(sym->type);
                                     new_sym->is_public = sym->is_public;
                                     new_sym->is_const = sym->is_const;
                                     new_sym->decl_scope = sym->decl_scope;
@@ -3662,7 +3674,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                                       sym->kind);
                     if (new_sym) {
                         // 复制符号信息
-                        new_sym->type = sym->type;
+                        // 【关键修复】使用深度复制确保类型信息完整保留
+                        new_sym->type = cn_type_deep_copy(sym->type);
                         new_sym->is_public = sym->is_public;
                         new_sym->is_const = sym->is_const;
                         new_sym->decl_scope = sym->decl_scope;
@@ -3742,7 +3755,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                                       member_sym->kind);
                     if (new_sym) {
                         // 复制符号信息
-                        new_sym->type = member_sym->type;
+                        // 【关键修复】使用深度复制确保类型信息完整保留
+                        new_sym->type = cn_type_deep_copy(member_sym->type);
                         new_sym->is_public = member_sym->is_public;
                         new_sym->decl_scope = member_sym->decl_scope;
                         // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）

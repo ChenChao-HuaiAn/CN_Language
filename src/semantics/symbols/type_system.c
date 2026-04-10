@@ -646,3 +646,154 @@ CnType *cn_type_infer_identifier(CnSemScope *scope, CnAstExpr *ident_expr) {
     
     return sym ? sym->type : NULL;
 }
+
+// ============================================================================
+// 类型深度复制：用于模块导入时复制完整的类型信息
+// ============================================================================
+
+/**
+ * @brief 深度复制结构体字段数组
+ *
+ * @param src_fields 源字段数组
+ * @param field_count 字段数量
+ * @return 新分配的字段数组，失败返回 NULL
+ */
+static CnStructField *cn_type_deep_copy_fields(CnStructField *src_fields, size_t field_count) {
+    if (!src_fields || field_count == 0) {
+        return NULL;
+    }
+    
+    CnStructField *dst_fields = (CnStructField *)malloc(sizeof(CnStructField) * field_count);
+    if (!dst_fields) {
+        return NULL;
+    }
+    
+    for (size_t i = 0; i < field_count; i++) {
+        // 复制字段基本信息
+        dst_fields[i].name = src_fields[i].name;
+        dst_fields[i].name_length = src_fields[i].name_length;
+        dst_fields[i].is_const = src_fields[i].is_const;
+        
+        // 深度复制字段类型
+        dst_fields[i].field_type = cn_type_deep_copy(src_fields[i].field_type);
+    }
+    
+    return dst_fields;
+}
+
+/**
+ * @brief 深度复制函数参数类型数组
+ *
+ * @param src_params 源参数类型数组
+ * @param param_count 参数数量
+ * @return 新分配的参数类型数组，失败返回 NULL
+ */
+static CnType **cn_type_deep_copy_param_types(CnType **src_params, size_t param_count) {
+    if (!src_params || param_count == 0) {
+        return NULL;
+    }
+    
+    CnType **dst_params = (CnType **)malloc(sizeof(CnType *) * param_count);
+    if (!dst_params) {
+        return NULL;
+    }
+    
+    for (size_t i = 0; i < param_count; i++) {
+        dst_params[i] = cn_type_deep_copy(src_params[i]);
+    }
+    
+    return dst_params;
+}
+
+/**
+ * @brief 深度复制类型信息
+ *
+ * 用于模块导入时复制完整的类型信息，确保导入的类型信息不会因为
+ * 原模块被重新编译或跨编译会话而丢失。
+ *
+ * @param src 源类型
+ * @return 新分配的类型对象，失败返回 NULL
+ */
+CnType *cn_type_deep_copy(CnType *src) {
+    if (!src) {
+        return NULL;
+    }
+    
+    switch (src->kind) {
+        case CN_TYPE_UNKNOWN:
+        case CN_TYPE_VOID:
+        case CN_TYPE_INT:
+        case CN_TYPE_INT32:
+        case CN_TYPE_INT64:
+        case CN_TYPE_UINT32:
+        case CN_TYPE_UINT64:
+        case CN_TYPE_UINT64_LL:
+        case CN_TYPE_FLOAT:
+        case CN_TYPE_FLOAT32:
+        case CN_TYPE_FLOAT64:
+        case CN_TYPE_CHAR:
+        case CN_TYPE_STRING:
+        case CN_TYPE_BOOL:
+        case CN_TYPE_MEMORY_ADDRESS:
+            // 基本类型：直接创建新对象
+            return cn_type_new_primitive(src->kind);
+            
+        case CN_TYPE_POINTER: {
+            // 指针类型：递归复制指向的类型
+            CnType *base_copy = cn_type_deep_copy(src->as.pointer_to);
+            return cn_type_new_pointer(base_copy);
+        }
+        
+        case CN_TYPE_ARRAY: {
+            // 数组类型：递归复制元素类型
+            CnType *element_copy = cn_type_deep_copy(src->as.array.element_type);
+            return cn_type_new_array(element_copy, src->as.array.length);
+        }
+        
+        case CN_TYPE_STRUCT: {
+            // 结构体类型：深度复制字段信息
+            CnStructField *fields_copy = cn_type_deep_copy_fields(
+                src->as.struct_type.fields,
+                src->as.struct_type.field_count);
+            
+            CnType *dst = cn_type_new_struct(
+                src->as.struct_type.name,
+                src->as.struct_type.name_length,
+                fields_copy,
+                src->as.struct_type.field_count,
+                src->as.struct_type.decl_scope,
+                src->as.struct_type.owner_func_name,
+                src->as.struct_type.owner_func_name_length);
+            
+            return dst;
+        }
+        
+        case CN_TYPE_ENUM: {
+            // 枚举类型：复制名称和作用域
+            CnType *dst = cn_type_new_enum(
+                src->as.enum_type.name,
+                src->as.enum_type.name_length);
+            
+            if (dst) {
+                dst->as.enum_type.enum_scope = src->as.enum_type.enum_scope;
+            }
+            
+            return dst;
+        }
+        
+        case CN_TYPE_FUNCTION: {
+            // 函数类型：深度复制返回类型和参数类型
+            CnType *return_copy = cn_type_deep_copy(src->as.function.return_type);
+            CnType **params_copy = cn_type_deep_copy_param_types(
+                src->as.function.param_types,
+                src->as.function.param_count);
+            
+            return cn_type_new_function(return_copy, params_copy, src->as.function.param_count);
+        }
+        
+        default:
+            // 未知类型：返回 NULL
+            fprintf(stderr, "[WARNING] cn_type_deep_copy: unknown type kind %d\n", src->kind);
+            return NULL;
+    }
+}
