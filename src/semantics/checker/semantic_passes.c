@@ -1037,6 +1037,13 @@ static int cn_sem_is_const_expr(CnSemScope *scope, CnAstExpr *expr) {
                     if (obj_sym && obj_sym->kind == CN_SEM_SYMBOL_ENUM) {
                         return 1;
                     }
+                    
+                    // 【容错处理】如果符号查找失败，检查对象表达式的已有类型
+                    // 这种情况可能发生在模块导入后符号查找链断裂时
+                    if (!obj_sym && expr->as.member.object->type &&
+                        expr->as.member.object->type->kind == CN_TYPE_ENUM) {
+                        return 1;
+                    }
                 }
             }
             return 0;
@@ -1882,6 +1889,23 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         expr->as.member.object->type = sym->type;
                     }
                     break;
+                }
+                
+                // 【容错处理】如果符号查找失败，但对象表达式已有枚举类型，直接使用已有类型
+                // 这种情况可能发生在模块导入后符号查找链断裂时
+                if (!sym && expr->as.member.object->type &&
+                    expr->as.member.object->type->kind == CN_TYPE_ENUM &&
+                    expr->as.member.object->type->as.enum_type.enum_scope) {
+                    CnSemSymbol *member_sym = cn_type_enum_find_member(
+                        expr->as.member.object->type,
+                        expr->as.member.member_name,
+                        expr->as.member.member_name_length);
+                    
+                    if (member_sym) {
+                        // 枚举成员访问的类型是成员的类型（整数）
+                        expr->type = member_sym->type;
+                        break;
+                    }
                 }
                 
                 // 检查是否为类符号（静态成员访问）
