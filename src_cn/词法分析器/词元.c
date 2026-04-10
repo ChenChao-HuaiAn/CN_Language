@@ -113,88 +113,7 @@ _Bool 是运算符(enum 词元类型枚举);
 _Bool 是分隔符(enum 词元类型枚举);
 
 char* 词元类型名称(enum 词元类型枚举 cn_var_类型) {
-  _Bool r1;
-  _Bool r3;
-  _Bool r5;
-  _Bool r7;
-  _Bool r9;
-  _Bool r11;
-  _Bool r13;
-  _Bool r15;
-  _Bool r17;
-  _Bool r19;
-  _Bool r21;
-  _Bool r23;
-  _Bool r25;
-  _Bool r27;
-  _Bool r29;
-  _Bool r31;
-  _Bool r33;
-  _Bool r35;
-  _Bool r37;
-  _Bool r39;
-  _Bool r41;
-  _Bool r43;
-  _Bool r45;
-  _Bool r47;
-  _Bool r49;
-  _Bool r51;
-  _Bool r53;
-  _Bool r55;
-  _Bool r57;
-  _Bool r59;
-  _Bool r61;
-  _Bool r63;
-  _Bool r65;
-  _Bool r67;
-  _Bool r69;
-  _Bool r71;
-  _Bool r73;
-  _Bool r75;
-  _Bool r77;
-  _Bool r79;
-  _Bool r81;
-  _Bool r83;
-  _Bool r85;
-  _Bool r87;
-  _Bool r89;
-  _Bool r91;
-  _Bool r93;
-  _Bool r95;
-  _Bool r97;
-  _Bool r99;
-  _Bool r101;
-  _Bool r103;
-  _Bool r105;
-  _Bool r107;
-  _Bool r109;
-  _Bool r111;
-  _Bool r113;
-  _Bool r115;
-  _Bool r117;
-  _Bool r119;
-  _Bool r121;
-  _Bool r123;
-  _Bool r125;
-  _Bool r127;
-  _Bool r129;
-  _Bool r131;
-  _Bool r133;
-  _Bool r135;
-  _Bool r137;
-  _Bool r139;
-  _Bool r141;
-  _Bool r143;
-  _Bool r145;
-  _Bool r147;
-  _Bool r149;
-  _Bool r151;
-  _Bool r153;
-  _Bool r155;
-  _Bool r157;
-  _Bool r159;
-  _Bool r161;
-  _Bool r163;
+  long long r1, r3, r5, r7, r9, r11, r13, r15, r17, r19, r21, r23, r25, r27, r29, r31, r33, r35, r37, r39, r41, r43, r45, r47, r49, r51, r53, r55, r57, r59, r61, r63, r65, r67, r69, r71, r73, r75, r77, r79, r81, r83, r85, r87, r89, r91, r93, r95, r97, r99, r101, r103, r105, r107, r109, r111, r113, r115, r117, r119, r121, r123, r125, r127, r129, r131, r133, r135, r137, r139, r141, r143, r145, r147, r149, r151, r153, r155, r157, r159, r161, r163;
   enum 词元类型枚举 r0;
   enum 词元类型枚举 r2;
   enum 词元类型枚举 r4;
@@ -1038,19 +957,7 @@ struct 词元 创建词元(enum 词元类型枚举 cn_var_类型, char* cn_var_�
 }
 
 _Bool 是关键字(enum 词元类型枚举 cn_var_类型) {
-  long long r0, r5, r10, r15, r20, r25;
-  _Bool r2;
-  _Bool r4;
-  _Bool r7;
-  _Bool r9;
-  _Bool r12;
-  _Bool r14;
-  _Bool r17;
-  _Bool r19;
-  _Bool r22;
-  _Bool r24;
-  _Bool r27;
-  _Bool r29;
+  long long r0, r2, r4, r5, r7, r9, r10, r12, r14, r15, r17, r19, r20, r22, r24, r25, r27, r29;
   enum 词元类型枚举 r1;
   enum 词元类型枚举 r3;
   enum 词元类型枚举 r6;
@@ -1172,9 +1079,7 @@ _Bool 是关键字(enum 词元类型枚举 cn_var_类型) {
 }
 
 _Bool 是字面量(enum 词元类型枚举 cn_var_类型) {
-  long long r0;
-  _Bool r2;
-  _Bool r4;
+  long long r0, r2, r4;
   enum 词元类型枚举 r1;
   enum 词元类型枚举 r3;
 
@@ -1193,9 +1098,7 @@ _Bool 是字面量(enum 词元类型枚举 cn_var_类型) {
 }
 
 _Bool 是运算符(enum 词元类型枚举 cn_var_类型) {
-  long long r0;
-  _Bool r2;
-  _Bool r4;
+  long long r0, r2, r4;
   enum 词元类型枚举 r1;
   enum 词元类型枚举 r3;
 
@@ -1214,9 +1117,7 @@ _Bool 是运算符(enum 词元类型枚举 cn_var_类型) {
 }
 
 _Bool 是分隔符(enum 词元类型枚举 cn_var_类型) {
-  long long r0;
-  _Bool r2;
-  _Bool r4;
+  long long r0, r2, r4;
   enum 词元类型枚举 r1;
   enum 词元类型枚举 r3;
 

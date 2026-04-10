@@ -297,15 +297,17 @@ static CnSemScope *find_cached_module(const char *file_path) {
 }
 
 // 缓存模块（带AST，使用规范化路径）
-static void cache_module_with_program(const char *file_path, CnSemScope *scope, CnAstProgram *program) {
+// 返回值：1 表示成功缓存，0 表示失败（缓存已满或已存在）
+static int cache_module_with_program(const char *file_path, CnSemScope *scope, CnAstProgram *program) {
     if (g_cached_module_count >= MAX_CACHED_MODULES) {
-        return;  // 缓存已满
+        fprintf(stderr, "[WARNING] 模块缓存已满，无法缓存: %s\n", file_path);
+        return 0;  // 缓存已满
     }
     
     // 先检查是否已缓存（避免重复缓存）
     CnSemScope *existing = find_cached_module(file_path);
     if (existing) {
-        return;  // 已缓存，不重复添加
+        return 0;  // 已缓存，不重复添加
     }
     
     // 使用规范化路径存储
@@ -315,6 +317,7 @@ static void cache_module_with_program(const char *file_path, CnSemScope *scope, 
     g_module_cache[g_cached_module_count].program = program;  // 缓存AST
     g_module_cache[g_cached_module_count].ir_module = NULL;   // IR稍后填充
     g_cached_module_count++;
+    return 1;  // 缓存成功
 }
 
 // 缓存模块（兼容旧接口）
@@ -2603,12 +2606,24 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     
     // 缓存模块作用域和AST（用于后续代码生成）
     fprintf(stderr, "[DEBUG] 缓存模块: %s\n", cache_key);
-    cache_module_with_program(file_path, module_scope, module_program);
+    int cache_result = cache_module_with_program(file_path, module_scope, module_program);
     
-    // 从缓存中获取规范化路径，设置到模块作用域中的所有符号
-    // 这样可以确保符号的 source_module_path 指向持久化的内存
-    const char *cached_path = g_module_cache[g_cached_module_count - 1].file_path;
-    size_t cached_path_len = strlen(cached_path);
+    // 设置模块作用域中所有符号的源模块路径
+    // 【修复】如果缓存成功，使用缓存中的规范化路径；否则使用当前的 cache_key
+    const char *cached_path;
+    size_t cached_path_len;
+    
+    if (cache_result) {
+        // 缓存成功，从缓存中获取规范化路径
+        cached_path = g_module_cache[g_cached_module_count - 1].file_path;
+        cached_path_len = strlen(cached_path);
+    } else {
+        // 缓存失败（缓存已满或已存在），使用当前的 cache_key
+        // 注意：这种情况下路径内存可能不是持久的，但至少不会崩溃
+        cached_path = cache_key;
+        cached_path_len = strlen(cache_key);
+        fprintf(stderr, "[WARNING] 使用临时路径作为 source_module_path: %s\n", cache_key);
+    }
     
     fprintf(stderr, "[DEBUG] Setting source_module_path for module %s: %s (len=%zu)\n",
             cache_key, cached_path, cached_path_len);
