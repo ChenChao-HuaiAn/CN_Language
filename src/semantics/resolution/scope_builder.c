@@ -801,12 +801,19 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         } else {
             // 插入失败，检查是否是导入的符号
             CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, enum_decl->name, enum_decl->name_length);
+            fprintf(stderr, "[DEBUG] scope_builder: enum '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
+                    (int)enum_decl->name_length, enum_decl->name, (void*)existing,
+                    existing ? (void*)existing->source_module_path : NULL);
             if (existing && existing->kind == CN_SEM_SYMBOL_ENUM && existing->source_module_path != NULL) {
                 // 是导入的枚举（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                fprintf(stderr, "[DEBUG] scope_builder: skipping imported enum '%.*s'\n",
+                        (int)enum_decl->name_length, enum_decl->name);
             } else {
                 // 真正的重复定义，报告错误
+                fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate enum '%.*s'\n",
+                        (int)enum_decl->name_length, enum_decl->name);
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, enum_decl->name);
+                    diagnostics, NULL, 0, 0, enum_decl->name, enum_decl->name_length);
             }
         }
     }
@@ -874,12 +881,19 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         } else {
             // 插入失败，检查是否是导入的符号
             CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, struct_decl->name, struct_decl->name_length);
+            fprintf(stderr, "[DEBUG] scope_builder: struct '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
+                    (int)struct_decl->name_length, struct_decl->name, (void*)existing,
+                    existing ? (void*)existing->source_module_path : NULL);
             if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT && existing->source_module_path != NULL) {
                 // 是导入的结构体（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                fprintf(stderr, "[DEBUG] scope_builder: skipping imported struct '%.*s'\n",
+                        (int)struct_decl->name_length, struct_decl->name);
             } else {
                 // 真正的重复定义，报告错误
+                fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate struct '%.*s'\n",
+                        (int)struct_decl->name_length, struct_decl->name);
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, struct_decl->name);
+                    diagnostics, NULL, 0, 0, struct_decl->name, struct_decl->name_length);
             }
         }
     }
@@ -1062,7 +1076,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         // 不同符号但名字冲突，报错
                         fprintf(stderr, "[DEBUG] Import: different symbol, reporting error\n");
                         cn_support_diag_semantic_error_duplicate_symbol(
-                            diagnostics, NULL, 0, 0, sym->name);
+                            diagnostics, NULL, 0, 0, sym->name, sym->name_length);
                         node = node->next;
                         continue;
                     }
@@ -1142,7 +1156,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
                         // 不同符号但名字冲突，报错
                         cn_support_diag_semantic_error_duplicate_symbol(
-                            diagnostics, NULL, 0, 0, member_name);
+                            diagnostics, NULL, 0, 0, member_name, member_name_length);
                         continue;
                     }
                 }
@@ -1235,12 +1249,19 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         } else {
             // 插入失败，检查是否是导入的符号
             CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, var_decl->name, var_decl->name_length);
+            fprintf(stderr, "[DEBUG] scope_builder: var '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
+                    (int)var_decl->name_length, var_decl->name, (void*)existing,
+                    existing ? (void*)existing->source_module_path : NULL);
             if (existing && existing->kind == CN_SEM_SYMBOL_VARIABLE && existing->source_module_path != NULL) {
                 // 是导入的变量（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                fprintf(stderr, "[DEBUG] scope_builder: skipping imported var '%.*s'\n",
+                        (int)var_decl->name_length, var_decl->name);
             } else {
                 // 真正的重复定义，报告错误
+                fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate var '%.*s'\n",
+                        (int)var_decl->name_length, var_decl->name);
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, var_decl->name);
+                    diagnostics, NULL, 0, 0, var_decl->name, var_decl->name_length);
             }
         }
     }
@@ -1361,22 +1382,34 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     existing_sym->decl_scope = global_scope;  // 标记为当前模块定义
                 } else {
                     // 检查是否是导入的函数
+                    fprintf(stderr, "[DEBUG] scope_builder: func '%.*s' kind mismatch, existing->source_module_path=%p\n",
+                            (int)function_decl->name_length, function_decl->name, (void*)existing_sym->source_module_path);
                     if (existing_sym->source_module_path != NULL) {
                         // 是导入的函数（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                        fprintf(stderr, "[DEBUG] scope_builder: skipping imported func '%.*s'\n",
+                                (int)function_decl->name_length, function_decl->name);
                     } else {
                         // 真正的重复定义（同一模块内）
+                        fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate func '%.*s'\n",
+                                (int)function_decl->name_length, function_decl->name);
                         cn_support_diag_semantic_error_duplicate_symbol(
-                            diagnostics, NULL, 0, 0, function_decl->name);
+                            diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
                     }
                 }
             } else {
                 // 其他类型的符号冲突，检查是否是导入的符号
+                fprintf(stderr, "[DEBUG] scope_builder: func '%.*s' other kind conflict, existing->source_module_path=%p\n",
+                        (int)function_decl->name_length, function_decl->name, (void*)existing_sym->source_module_path);
                 if (existing_sym->source_module_path != NULL) {
                     // 是导入的符号（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                    fprintf(stderr, "[DEBUG] scope_builder: skipping imported symbol '%.*s'\n",
+                            (int)function_decl->name_length, function_decl->name);
                 } else {
                     // 真正的符号冲突
+                    fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate symbol '%.*s'\n",
+                            (int)function_decl->name_length, function_decl->name);
                     cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, function_decl->name);
+                        diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
                 }
             }
         }
@@ -1424,7 +1457,7 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
             } else {
                 // 真正的重复定义，报告错误
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, param->name);
+                    diagnostics, NULL, 0, 0, param->name, param->name_length);
             }
         }
     }
@@ -1548,7 +1581,7 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             } else {
                 // 真正的重复定义，报告错误
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, var_decl->name);
+                    diagnostics, NULL, 0, 0, var_decl->name, var_decl->name_length);
             }
         }
 
@@ -1636,7 +1669,7 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             } else {
                 // 真正的重复定义，报告错误
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, struct_decl->name);
+                    diagnostics, NULL, 0, 0, struct_decl->name, struct_decl->name_length);
             }
         }
         break;
@@ -1695,7 +1728,7 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             } else {
                 // 真正的重复定义，报告错误
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, enum_decl->name);
+                    diagnostics, NULL, 0, 0, enum_decl->name, enum_decl->name_length);
             }
         }
         break;
@@ -3609,7 +3642,7 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
                         // 不同符号但名字冲突，报错
                         cn_support_diag_semantic_error_duplicate_symbol(
-                            diagnostics, NULL, 0, 0, sym->name);
+                            diagnostics, NULL, 0, 0, sym->name, sym->name_length);
                         node = node->next;
                         continue;
                     }
@@ -3690,7 +3723,7 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
                         // 不同符号但名字冲突，报错
                         cn_support_diag_semantic_error_duplicate_symbol(
-                            diagnostics, NULL, 0, 0, member_name);
+                            diagnostics, NULL, 0, 0, member_name, member_name_length);
                         continue;
                     }
                 }
@@ -3858,12 +3891,12 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                 } else {
                     // 真正的重复定义（同一模块内）
                     cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, function_decl->name);
+                        diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
                 }
             } else {
                 // 其他类型的符号冲突
                 cn_support_diag_semantic_error_duplicate_symbol(
-                    diagnostics, NULL, 0, 0, function_decl->name);
+                    diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
             }
         }
 

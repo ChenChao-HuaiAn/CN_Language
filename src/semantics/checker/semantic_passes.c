@@ -817,12 +817,19 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             } else {
                 // 插入失败，检查是否是导入的符号
                 CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, struct_decl->name, struct_decl->name_length);
+                fprintf(stderr, "[DEBUG] semantic_passes: struct '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
+                        (int)struct_decl->name_length, struct_decl->name, (void*)existing,
+                        existing ? (void*)existing->source_module_path : NULL);
                 if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT && existing->source_module_path != NULL) {
                     // 是导入的结构体（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                    fprintf(stderr, "[DEBUG] semantic_passes: skipping imported struct '%.*s'\n",
+                            (int)struct_decl->name_length, struct_decl->name);
                 } else {
                     // 真正的重复定义，报告错误
+                    fprintf(stderr, "[DEBUG] semantic_passes: reporting duplicate struct '%.*s'\n",
+                            (int)struct_decl->name_length, struct_decl->name);
                     cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, struct_decl->name);
+                        diagnostics, NULL, 0, 0, struct_decl->name, struct_decl->name_length);
                 }
             }
             break;
@@ -877,12 +884,19 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             } else {
                 // 插入失败，检查是否是导入的符号
                 CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, enum_decl->name, enum_decl->name_length);
+                fprintf(stderr, "[DEBUG] semantic_passes: enum '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
+                        (int)enum_decl->name_length, enum_decl->name, (void*)existing,
+                        existing ? (void*)existing->source_module_path : NULL);
                 if (existing && existing->kind == CN_SEM_SYMBOL_ENUM && existing->source_module_path != NULL) {
                     // 是导入的枚举（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
+                    fprintf(stderr, "[DEBUG] semantic_passes: skipping imported enum '%.*s'\n",
+                            (int)enum_decl->name_length, enum_decl->name);
                 } else {
                     // 真正的重复定义，报告错误
+                    fprintf(stderr, "[DEBUG] semantic_passes: reporting duplicate enum '%.*s'\n",
+                            (int)enum_decl->name_length, enum_decl->name);
                     cn_support_diag_semantic_error_duplicate_symbol(
-                        diagnostics, NULL, 0, 0, enum_decl->name);
+                        diagnostics, NULL, 0, 0, enum_decl->name, enum_decl->name_length);
                 }
             }
             break;

@@ -264,9 +264,22 @@ void cn_support_diag_semantic_error_duplicate_symbol(
     const char *filename,
     int line,
     int column,
-    const char *symbol_name)
+    const char *symbol_name,
+    size_t symbol_name_length)
 {
+    // 创建 null 结尾的符号名称副本用于调试输出
+    char name_buf[256];
+    if (symbol_name && symbol_name_length > 0) {
+        size_t copy_len = symbol_name_length < 255 ? symbol_name_length : 255;
+        memcpy(name_buf, symbol_name, copy_len);
+        name_buf[copy_len] = '\0';
+    } else {
+        strcpy(name_buf, "(null)");
+    }
+    fprintf(stderr, "[DEBUG] cn_support_diag_semantic_error_duplicate_symbol called: symbol='%s'\n",
+            name_buf);
     (void)symbol_name; // 目前尚不支持动态消息，忽略符号名
+    (void)symbol_name_length;
     cn_support_diagnostics_report_error(
         diagnostics,
         CN_DIAG_CODE_SEM_DUPLICATE_SYMBOL,

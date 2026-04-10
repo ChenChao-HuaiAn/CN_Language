@@ -247,12 +247,14 @@ void cn_support_diagnostics_report_warning(
 size_t cn_support_diagnostics_error_count(const CnDiagnostics *diagnostics);
 
 // 语义分析专用诊断接口
+// 注意：symbol_name 可以是非 null 结尾的字符串，需要配合 symbol_name_length 使用
 void cn_support_diag_semantic_error_duplicate_symbol(
     CnDiagnostics *diagnostics,
     const char *filename,
     int line,
     int column,
-    const char *symbol_name);
+    const char *symbol_name,
+    size_t symbol_name_length);
 
 void cn_support_diag_semantic_error_undefined_identifier(
     CnDiagnostics *diagnostics,
