@@ -651,14 +651,39 @@ CnType *cn_type_infer_identifier(CnSemScope *scope, CnAstExpr *ident_expr) {
 // 类型深度复制：用于模块导入时复制完整的类型信息
 // ============================================================================
 
+// 递归类型检测：使用线程局部存储记录正在复制的类型
+// 避免递归类型定义（如结构体包含指向自身的指针）导致无限递归
+
+#define MAX_RECURSION_DEPTH 64
+
+// 线程局部存储：记录正在复制的结构体类型
+static _Thread_local const CnType *g_copying_types[MAX_RECURSION_DEPTH];
+static _Thread_local size_t g_copying_depth = 0;
+
+/**
+ * @brief 检查类型是否正在被复制（递归检测）
+ *
+ * @param type 要检查的类型
+ * @return true 如果类型正在被复制，false 否则
+ */
+static bool is_type_being_copied(const CnType *type) {
+    for (size_t i = 0; i < g_copying_depth; i++) {
+        if (g_copying_types[i] == type) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /**
  * @brief 深度复制结构体字段数组
  *
  * @param src_fields 源字段数组
  * @param field_count 字段数量
+ * @param current_struct 当前正在复制的结构体类型（用于递归检测）
  * @return 新分配的字段数组，失败返回 NULL
  */
-static CnStructField *cn_type_deep_copy_fields(CnStructField *src_fields, size_t field_count) {
+static CnStructField *cn_type_deep_copy_fields_ex(CnStructField *src_fields, size_t field_count, const CnType *current_struct) {
     if (!src_fields || field_count == 0) {
         return NULL;
     }
@@ -674,11 +699,37 @@ static CnStructField *cn_type_deep_copy_fields(CnStructField *src_fields, size_t
         dst_fields[i].name_length = src_fields[i].name_length;
         dst_fields[i].is_const = src_fields[i].is_const;
         
+        // 检查字段类型是否是递归引用（指向当前结构体的指针）
+        CnType *field_type = src_fields[i].field_type;
+        if (field_type && field_type->kind == CN_TYPE_POINTER &&
+            field_type->as.pointer_to &&
+            field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+            
+            // 检查是否指向当前结构体（递归引用）
+            CnType *pointee = field_type->as.pointer_to;
+            if (current_struct &&
+                pointee->as.struct_type.name && current_struct->as.struct_type.name &&
+                pointee->as.struct_type.name_length == current_struct->as.struct_type.name_length &&
+                memcmp(pointee->as.struct_type.name, current_struct->as.struct_type.name,
+                       pointee->as.struct_type.name_length) == 0) {
+                // 递归引用：创建指向新结构体的指针
+                // 注意：这里需要创建一个指向新结构体的指针，但新结构体还未完成
+                // 我们先创建一个浅拷贝的指针，后续会更新
+                dst_fields[i].field_type = cn_type_new_pointer(NULL);  // 暂时设为NULL
+                continue;
+            }
+        }
+        
         // 深度复制字段类型
-        dst_fields[i].field_type = cn_type_deep_copy(src_fields[i].field_type);
+        dst_fields[i].field_type = cn_type_deep_copy(field_type);
     }
     
     return dst_fields;
+}
+
+// 保留旧函数签名以兼容
+static CnStructField *cn_type_deep_copy_fields(CnStructField *src_fields, size_t field_count) {
+    return cn_type_deep_copy_fields_ex(src_fields, field_count, NULL);
 }
 
 /**
@@ -752,9 +803,35 @@ CnType *cn_type_deep_copy(CnType *src) {
         
         case CN_TYPE_STRUCT: {
             // 结构体类型：深度复制字段信息
-            CnStructField *fields_copy = cn_type_deep_copy_fields(
+            // 【关键修复】检测递归类型定义，避免无限递归
+            
+            // 检查是否正在复制此类型（递归引用）
+            if (is_type_being_copied(src)) {
+                // 递归引用：返回一个浅拷贝的结构体类型
+                // 这避免了无限递归，同时保留了类型名称信息
+                return cn_type_new_struct(
+                    src->as.struct_type.name,
+                    src->as.struct_type.name_length,
+                    NULL,  // 字段暂时为空，后续可以动态解析
+                    0,
+                    src->as.struct_type.decl_scope,
+                    src->as.struct_type.owner_func_name,
+                    src->as.struct_type.owner_func_name_length);
+            }
+            
+            // 检查递归深度
+            if (g_copying_depth >= MAX_RECURSION_DEPTH) {
+                fprintf(stderr, "[WARNING] cn_type_deep_copy: 递归深度超过限制\n");
+                return NULL;
+            }
+            
+            // 记录正在复制的类型
+            g_copying_types[g_copying_depth++] = src;
+            
+            CnStructField *fields_copy = cn_type_deep_copy_fields_ex(
                 src->as.struct_type.fields,
-                src->as.struct_type.field_count);
+                src->as.struct_type.field_count,
+                src);  // 传入当前结构体类型用于递归检测
             
             CnType *dst = cn_type_new_struct(
                 src->as.struct_type.name,
@@ -764,6 +841,32 @@ CnType *cn_type_deep_copy(CnType *src) {
                 src->as.struct_type.decl_scope,
                 src->as.struct_type.owner_func_name,
                 src->as.struct_type.owner_func_name_length);
+            
+            // 更新递归指针字段：将NULL指针更新为指向新结构体
+            if (dst && fields_copy) {
+                for (size_t i = 0; i < src->as.struct_type.field_count; i++) {
+                    CnType *field_type = src->as.struct_type.fields[i].field_type;
+                    if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                        field_type->as.pointer_to &&
+                        field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                        
+                        CnType *pointee = field_type->as.pointer_to;
+                        if (pointee->as.struct_type.name && src->as.struct_type.name &&
+                            pointee->as.struct_type.name_length == src->as.struct_type.name_length &&
+                            memcmp(pointee->as.struct_type.name, src->as.struct_type.name,
+                                   pointee->as.struct_type.name_length) == 0) {
+                            // 这是递归指针字段，更新为指向新结构体
+                            if (dst->as.struct_type.fields[i].field_type &&
+                                dst->as.struct_type.fields[i].field_type->kind == CN_TYPE_POINTER) {
+                                dst->as.struct_type.fields[i].field_type->as.pointer_to = dst;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // 弹出递归栈
+            g_copying_depth--;
             
             return dst;
         }
