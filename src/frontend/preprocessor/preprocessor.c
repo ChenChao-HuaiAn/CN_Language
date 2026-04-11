@@ -70,6 +70,15 @@ void cn_frontend_preprocessor_init(
     preprocessor->current_column = 1;
     
     preprocessor->diagnostics = NULL;
+    
+    // 跳过UTF-8 BOM（如果存在）
+    // UTF-8 BOM: 0xEF 0xBB 0xBF
+    if (source_length >= 3 &&
+        (unsigned char)source[0] == 0xEF &&
+        (unsigned char)source[1] == 0xBB &&
+        (unsigned char)source[2] == 0xBF) {
+        preprocessor->current_offset = 3;  // 跳过BOM的3个字节
+    }
 }
 
 void cn_frontend_preprocessor_set_diagnostics(

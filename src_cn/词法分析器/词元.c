@@ -200,742 +200,742 @@ char* 词元类型名称(enum 词元类型枚举 cn_var_类型) {
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_0; else goto if_merge_1;
+  if (r1) goto if_then_97; else goto if_merge_98;
 
-  if_then_0:
+  if_then_97:
   return "关键字_如果";
-  goto if_merge_1;
+  goto if_merge_98;
 
-  if_merge_1:
+  if_merge_98:
   r2 = cn_var_类型;
   r3 = r2 == 1;
-  if (r3) goto if_then_2; else goto if_merge_3;
+  if (r3) goto if_then_99; else goto if_merge_100;
 
-  if_then_2:
+  if_then_99:
   return "关键字_否则";
-  goto if_merge_3;
+  goto if_merge_100;
 
-  if_merge_3:
+  if_merge_100:
   r4 = cn_var_类型;
   r5 = r4 == 2;
-  if (r5) goto if_then_4; else goto if_merge_5;
+  if (r5) goto if_then_101; else goto if_merge_102;
 
-  if_then_4:
+  if_then_101:
   return "关键字_当";
-  goto if_merge_5;
+  goto if_merge_102;
 
-  if_merge_5:
+  if_merge_102:
   r6 = cn_var_类型;
   r7 = r6 == 3;
-  if (r7) goto if_then_6; else goto if_merge_7;
+  if (r7) goto if_then_103; else goto if_merge_104;
 
-  if_then_6:
+  if_then_103:
   return "关键字_循环";
-  goto if_merge_7;
+  goto if_merge_104;
 
-  if_merge_7:
+  if_merge_104:
   r8 = cn_var_类型;
   r9 = r8 == 4;
-  if (r9) goto if_then_8; else goto if_merge_9;
+  if (r9) goto if_then_105; else goto if_merge_106;
 
-  if_then_8:
+  if_then_105:
   return "关键字_返回";
-  goto if_merge_9;
+  goto if_merge_106;
 
-  if_merge_9:
+  if_merge_106:
   r10 = cn_var_类型;
   r11 = r10 == 5;
-  if (r11) goto if_then_10; else goto if_merge_11;
+  if (r11) goto if_then_107; else goto if_merge_108;
 
-  if_then_10:
+  if_then_107:
   return "关键字_中断";
-  goto if_merge_11;
+  goto if_merge_108;
 
-  if_merge_11:
+  if_merge_108:
   r12 = cn_var_类型;
   r13 = r12 == 6;
-  if (r13) goto if_then_12; else goto if_merge_13;
+  if (r13) goto if_then_109; else goto if_merge_110;
 
-  if_then_12:
+  if_then_109:
   return "关键字_继续";
-  goto if_merge_13;
+  goto if_merge_110;
 
-  if_merge_13:
+  if_merge_110:
   r14 = cn_var_类型;
   r15 = r14 == 7;
-  if (r15) goto if_then_14; else goto if_merge_15;
+  if (r15) goto if_then_111; else goto if_merge_112;
 
-  if_then_14:
+  if_then_111:
   return "关键字_选择";
-  goto if_merge_15;
+  goto if_merge_112;
 
-  if_merge_15:
+  if_merge_112:
   r16 = cn_var_类型;
   r17 = r16 == 8;
-  if (r17) goto if_then_16; else goto if_merge_17;
+  if (r17) goto if_then_113; else goto if_merge_114;
 
-  if_then_16:
+  if_then_113:
   return "关键字_情况";
-  goto if_merge_17;
+  goto if_merge_114;
 
-  if_merge_17:
+  if_merge_114:
   r18 = cn_var_类型;
   r19 = r18 == 9;
-  if (r19) goto if_then_18; else goto if_merge_19;
+  if (r19) goto if_then_115; else goto if_merge_116;
 
-  if_then_18:
+  if_then_115:
   return "关键字_默认";
-  goto if_merge_19;
+  goto if_merge_116;
 
-  if_merge_19:
+  if_merge_116:
   r20 = cn_var_类型;
   r21 = r20 == 10;
-  if (r21) goto if_then_20; else goto if_merge_21;
+  if (r21) goto if_then_117; else goto if_merge_118;
 
-  if_then_20:
+  if_then_117:
   return "关键字_整数";
-  goto if_merge_21;
+  goto if_merge_118;
 
-  if_merge_21:
+  if_merge_118:
   r22 = cn_var_类型;
   r23 = r22 == 11;
-  if (r23) goto if_then_22; else goto if_merge_23;
+  if (r23) goto if_then_119; else goto if_merge_120;
 
-  if_then_22:
+  if_then_119:
   return "关键字_小数";
-  goto if_merge_23;
+  goto if_merge_120;
 
-  if_merge_23:
+  if_merge_120:
   r24 = cn_var_类型;
   r25 = r24 == 12;
-  if (r25) goto if_then_24; else goto if_merge_25;
+  if (r25) goto if_then_121; else goto if_merge_122;
 
-  if_then_24:
+  if_then_121:
   return "关键字_字符串";
-  goto if_merge_25;
+  goto if_merge_122;
 
-  if_merge_25:
+  if_merge_122:
   r26 = cn_var_类型;
   r27 = r26 == 13;
-  if (r27) goto if_then_26; else goto if_merge_27;
+  if (r27) goto if_then_123; else goto if_merge_124;
 
-  if_then_26:
+  if_then_123:
   return "关键字_布尔";
-  goto if_merge_27;
+  goto if_merge_124;
 
-  if_merge_27:
+  if_merge_124:
   r28 = cn_var_类型;
   r29 = r28 == 14;
-  if (r29) goto if_then_28; else goto if_merge_29;
+  if (r29) goto if_then_125; else goto if_merge_126;
 
-  if_then_28:
+  if_then_125:
   return "关键字_空类型";
-  goto if_merge_29;
+  goto if_merge_126;
 
-  if_merge_29:
+  if_merge_126:
   r30 = cn_var_类型;
   r31 = r30 == 15;
-  if (r31) goto if_then_30; else goto if_merge_31;
+  if (r31) goto if_then_127; else goto if_merge_128;
 
-  if_then_30:
+  if_then_127:
   return "关键字_结构体";
-  goto if_merge_31;
+  goto if_merge_128;
 
-  if_merge_31:
+  if_merge_128:
   r32 = cn_var_类型;
   r33 = r32 == 16;
-  if (r33) goto if_then_32; else goto if_merge_33;
+  if (r33) goto if_then_129; else goto if_merge_130;
 
-  if_then_32:
+  if_then_129:
   return "关键字_枚举";
-  goto if_merge_33;
+  goto if_merge_130;
 
-  if_merge_33:
+  if_merge_130:
   r34 = cn_var_类型;
   r35 = r34 == 17;
-  if (r35) goto if_then_34; else goto if_merge_35;
+  if (r35) goto if_then_131; else goto if_merge_132;
 
-  if_then_34:
+  if_then_131:
   return "关键字_函数";
-  goto if_merge_35;
+  goto if_merge_132;
 
-  if_merge_35:
+  if_merge_132:
   r36 = cn_var_类型;
   r37 = r36 == 18;
-  if (r37) goto if_then_36; else goto if_merge_37;
+  if (r37) goto if_then_133; else goto if_merge_134;
 
-  if_then_36:
+  if_then_133:
   return "关键字_变量";
-  goto if_merge_37;
+  goto if_merge_134;
 
-  if_merge_37:
+  if_merge_134:
   r38 = cn_var_类型;
   r39 = r38 == 19;
-  if (r39) goto if_then_38; else goto if_merge_39;
+  if (r39) goto if_then_135; else goto if_merge_136;
 
-  if_then_38:
+  if_then_135:
   return "关键字_导入";
-  goto if_merge_39;
+  goto if_merge_136;
 
-  if_merge_39:
+  if_merge_136:
   r40 = cn_var_类型;
   r41 = r40 == 20;
-  if (r41) goto if_then_40; else goto if_merge_41;
+  if (r41) goto if_then_137; else goto if_merge_138;
 
-  if_then_40:
+  if_then_137:
   return "关键字_从";
-  goto if_merge_41;
+  goto if_merge_138;
 
-  if_merge_41:
+  if_merge_138:
   r42 = cn_var_类型;
   r43 = r42 == 21;
-  if (r43) goto if_then_42; else goto if_merge_43;
+  if (r43) goto if_then_139; else goto if_merge_140;
 
-  if_then_42:
+  if_then_139:
   return "关键字_公开";
-  goto if_merge_43;
+  goto if_merge_140;
 
-  if_merge_43:
+  if_merge_140:
   r44 = cn_var_类型;
   r45 = r44 == 22;
-  if (r45) goto if_then_44; else goto if_merge_45;
+  if (r45) goto if_then_141; else goto if_merge_142;
 
-  if_then_44:
+  if_then_141:
   return "关键字_私有";
-  goto if_merge_45;
+  goto if_merge_142;
 
-  if_merge_45:
+  if_merge_142:
   r46 = cn_var_类型;
   r47 = r46 == 23;
-  if (r47) goto if_then_46; else goto if_merge_47;
+  if (r47) goto if_then_143; else goto if_merge_144;
 
-  if_then_46:
+  if_then_143:
   return "关键字_静态";
-  goto if_merge_47;
+  goto if_merge_144;
 
-  if_merge_47:
+  if_merge_144:
   r48 = cn_var_类型;
   r49 = r48 == 24;
-  if (r49) goto if_then_48; else goto if_merge_49;
+  if (r49) goto if_then_145; else goto if_merge_146;
 
-  if_then_48:
+  if_then_145:
   return "关键字_真";
-  goto if_merge_49;
+  goto if_merge_146;
 
-  if_merge_49:
+  if_merge_146:
   r50 = cn_var_类型;
   r51 = r50 == 25;
-  if (r51) goto if_then_50; else goto if_merge_51;
+  if (r51) goto if_then_147; else goto if_merge_148;
 
-  if_then_50:
+  if_then_147:
   return "关键字_假";
-  goto if_merge_51;
+  goto if_merge_148;
 
-  if_merge_51:
+  if_merge_148:
   r52 = cn_var_类型;
   r53 = r52 == 26;
-  if (r53) goto if_then_52; else goto if_merge_53;
+  if (r53) goto if_then_149; else goto if_merge_150;
 
-  if_then_52:
+  if_then_149:
   return "关键字_无";
-  goto if_merge_53;
+  goto if_merge_150;
 
-  if_merge_53:
+  if_merge_150:
   r54 = cn_var_类型;
   r55 = r54 == 27;
-  if (r55) goto if_then_54; else goto if_merge_55;
+  if (r55) goto if_then_151; else goto if_merge_152;
 
-  if_then_54:
+  if_then_151:
   return "关键字_类";
-  goto if_merge_55;
+  goto if_merge_152;
 
-  if_merge_55:
+  if_merge_152:
   r56 = cn_var_类型;
   r57 = r56 == 28;
-  if (r57) goto if_then_56; else goto if_merge_57;
+  if (r57) goto if_then_153; else goto if_merge_154;
 
-  if_then_56:
+  if_then_153:
   return "关键字_接口";
-  goto if_merge_57;
+  goto if_merge_154;
 
-  if_merge_57:
+  if_merge_154:
   r58 = cn_var_类型;
   r59 = r58 == 29;
-  if (r59) goto if_then_58; else goto if_merge_59;
+  if (r59) goto if_then_155; else goto if_merge_156;
 
-  if_then_58:
+  if_then_155:
   return "关键字_保护";
-  goto if_merge_59;
+  goto if_merge_156;
 
-  if_merge_59:
+  if_merge_156:
   r60 = cn_var_类型;
   r61 = r60 == 30;
-  if (r61) goto if_then_60; else goto if_merge_61;
+  if (r61) goto if_then_157; else goto if_merge_158;
 
-  if_then_60:
+  if_then_157:
   return "关键字_虚拟";
-  goto if_merge_61;
+  goto if_merge_158;
 
-  if_merge_61:
+  if_merge_158:
   r62 = cn_var_类型;
   r63 = r62 == 31;
-  if (r63) goto if_then_62; else goto if_merge_63;
+  if (r63) goto if_then_159; else goto if_merge_160;
 
-  if_then_62:
+  if_then_159:
   return "关键字_重写";
-  goto if_merge_63;
+  goto if_merge_160;
 
-  if_merge_63:
+  if_merge_160:
   r64 = cn_var_类型;
   r65 = r64 == 32;
-  if (r65) goto if_then_64; else goto if_merge_65;
+  if (r65) goto if_then_161; else goto if_merge_162;
 
-  if_then_64:
+  if_then_161:
   return "关键字_抽象";
-  goto if_merge_65;
+  goto if_merge_162;
 
-  if_merge_65:
+  if_merge_162:
   r66 = cn_var_类型;
   r67 = r66 == 33;
-  if (r67) goto if_then_66; else goto if_merge_67;
+  if (r67) goto if_then_163; else goto if_merge_164;
 
-  if_then_66:
+  if_then_163:
   return "关键字_实现";
-  goto if_merge_67;
+  goto if_merge_164;
 
-  if_merge_67:
+  if_merge_164:
   r68 = cn_var_类型;
   r69 = r68 == 34;
-  if (r69) goto if_then_68; else goto if_merge_69;
+  if (r69) goto if_then_165; else goto if_merge_166;
 
-  if_then_68:
+  if_then_165:
   return "关键字_自身";
-  goto if_merge_69;
+  goto if_merge_166;
 
-  if_merge_69:
+  if_merge_166:
   r70 = cn_var_类型;
   r71 = r70 == 35;
-  if (r71) goto if_then_70; else goto if_merge_71;
+  if (r71) goto if_then_167; else goto if_merge_168;
 
-  if_then_70:
+  if_then_167:
   return "关键字_基类";
-  goto if_merge_71;
+  goto if_merge_168;
 
-  if_merge_71:
+  if_merge_168:
   r72 = cn_var_类型;
   r73 = r72 == 36;
-  if (r73) goto if_then_72; else goto if_merge_73;
+  if (r73) goto if_then_169; else goto if_merge_170;
 
-  if_then_72:
+  if_then_169:
   return "关键字_尝试";
-  goto if_merge_73;
+  goto if_merge_170;
 
-  if_merge_73:
+  if_merge_170:
   r74 = cn_var_类型;
   r75 = r74 == 37;
-  if (r75) goto if_then_74; else goto if_merge_75;
+  if (r75) goto if_then_171; else goto if_merge_172;
 
-  if_then_74:
+  if_then_171:
   return "关键字_捕获";
-  goto if_merge_75;
+  goto if_merge_172;
 
-  if_merge_75:
+  if_merge_172:
   r76 = cn_var_类型;
   r77 = r76 == 38;
-  if (r77) goto if_then_76; else goto if_merge_77;
+  if (r77) goto if_then_173; else goto if_merge_174;
 
-  if_then_76:
+  if_then_173:
   return "关键字_抛出";
-  goto if_merge_77;
+  goto if_merge_174;
 
-  if_merge_77:
+  if_merge_174:
   r78 = cn_var_类型;
   r79 = r78 == 39;
-  if (r79) goto if_then_78; else goto if_merge_79;
+  if (r79) goto if_then_175; else goto if_merge_176;
 
-  if_then_78:
+  if_then_175:
   return "关键字_最终";
-  goto if_merge_79;
+  goto if_merge_176;
 
-  if_merge_79:
+  if_merge_176:
   r80 = cn_var_类型;
   r81 = r80 == 40;
-  if (r81) goto if_then_80; else goto if_merge_81;
+  if (r81) goto if_then_177; else goto if_merge_178;
 
-  if_then_80:
+  if_then_177:
   return "标识符";
-  goto if_merge_81;
+  goto if_merge_178;
 
-  if_merge_81:
+  if_merge_178:
   r82 = cn_var_类型;
   r83 = r82 == 41;
-  if (r83) goto if_then_82; else goto if_merge_83;
+  if (r83) goto if_then_179; else goto if_merge_180;
 
-  if_then_82:
+  if_then_179:
   return "整数字面量";
-  goto if_merge_83;
+  goto if_merge_180;
 
-  if_merge_83:
+  if_merge_180:
   r84 = cn_var_类型;
   r85 = r84 == 42;
-  if (r85) goto if_then_84; else goto if_merge_85;
+  if (r85) goto if_then_181; else goto if_merge_182;
 
-  if_then_84:
+  if_then_181:
   return "浮点字面量";
-  goto if_merge_85;
+  goto if_merge_182;
 
-  if_merge_85:
+  if_merge_182:
   r86 = cn_var_类型;
   r87 = r86 == 43;
-  if (r87) goto if_then_86; else goto if_merge_87;
+  if (r87) goto if_then_183; else goto if_merge_184;
 
-  if_then_86:
+  if_then_183:
   return "字符串字面量";
-  goto if_merge_87;
+  goto if_merge_184;
 
-  if_merge_87:
+  if_merge_184:
   r88 = cn_var_类型;
   r89 = r88 == 44;
-  if (r89) goto if_then_88; else goto if_merge_89;
+  if (r89) goto if_then_185; else goto if_merge_186;
 
-  if_then_88:
+  if_then_185:
   return "字符字面量";
-  goto if_merge_89;
+  goto if_merge_186;
 
-  if_merge_89:
+  if_merge_186:
   r90 = cn_var_类型;
   r91 = r90 == 45;
-  if (r91) goto if_then_90; else goto if_merge_91;
+  if (r91) goto if_then_187; else goto if_merge_188;
 
-  if_then_90:
+  if_then_187:
   return "加号";
-  goto if_merge_91;
+  goto if_merge_188;
 
-  if_merge_91:
+  if_merge_188:
   r92 = cn_var_类型;
   r93 = r92 == 46;
-  if (r93) goto if_then_92; else goto if_merge_93;
+  if (r93) goto if_then_189; else goto if_merge_190;
 
-  if_then_92:
+  if_then_189:
   return "减号";
-  goto if_merge_93;
+  goto if_merge_190;
 
-  if_merge_93:
+  if_merge_190:
   r94 = cn_var_类型;
   r95 = r94 == 47;
-  if (r95) goto if_then_94; else goto if_merge_95;
+  if (r95) goto if_then_191; else goto if_merge_192;
 
-  if_then_94:
+  if_then_191:
   return "星号";
-  goto if_merge_95;
+  goto if_merge_192;
 
-  if_merge_95:
+  if_merge_192:
   r96 = cn_var_类型;
   r97 = r96 == 48;
-  if (r97) goto if_then_96; else goto if_merge_97;
+  if (r97) goto if_then_193; else goto if_merge_194;
 
-  if_then_96:
+  if_then_193:
   return "斜杠";
-  goto if_merge_97;
+  goto if_merge_194;
 
-  if_merge_97:
+  if_merge_194:
   r98 = cn_var_类型;
   r99 = r98 == 49;
-  if (r99) goto if_then_98; else goto if_merge_99;
+  if (r99) goto if_then_195; else goto if_merge_196;
 
-  if_then_98:
+  if_then_195:
   return "百分号";
-  goto if_merge_99;
+  goto if_merge_196;
 
-  if_merge_99:
+  if_merge_196:
   r100 = cn_var_类型;
   r101 = r100 == 50;
-  if (r101) goto if_then_100; else goto if_merge_101;
+  if (r101) goto if_then_197; else goto if_merge_198;
 
-  if_then_100:
+  if_then_197:
   return "等于";
-  goto if_merge_101;
+  goto if_merge_198;
 
-  if_merge_101:
+  if_merge_198:
   r102 = cn_var_类型;
   r103 = r102 == 51;
-  if (r103) goto if_then_102; else goto if_merge_103;
+  if (r103) goto if_then_199; else goto if_merge_200;
 
-  if_then_102:
+  if_then_199:
   return "赋值";
-  goto if_merge_103;
+  goto if_merge_200;
 
-  if_merge_103:
+  if_merge_200:
   r104 = cn_var_类型;
   r105 = r104 == 52;
-  if (r105) goto if_then_104; else goto if_merge_105;
+  if (r105) goto if_then_201; else goto if_merge_202;
 
-  if_then_104:
+  if_then_201:
   return "不等于";
-  goto if_merge_105;
+  goto if_merge_202;
 
-  if_merge_105:
+  if_merge_202:
   r106 = cn_var_类型;
   r107 = r106 == 53;
-  if (r107) goto if_then_106; else goto if_merge_107;
+  if (r107) goto if_then_203; else goto if_merge_204;
 
-  if_then_106:
+  if_then_203:
   return "小于";
-  goto if_merge_107;
+  goto if_merge_204;
 
-  if_merge_107:
+  if_merge_204:
   r108 = cn_var_类型;
   r109 = r108 == 54;
-  if (r109) goto if_then_108; else goto if_merge_109;
+  if (r109) goto if_then_205; else goto if_merge_206;
 
-  if_then_108:
+  if_then_205:
   return "小于等于";
-  goto if_merge_109;
+  goto if_merge_206;
 
-  if_merge_109:
+  if_merge_206:
   r110 = cn_var_类型;
   r111 = r110 == 55;
-  if (r111) goto if_then_110; else goto if_merge_111;
+  if (r111) goto if_then_207; else goto if_merge_208;
 
-  if_then_110:
+  if_then_207:
   return "大于";
-  goto if_merge_111;
+  goto if_merge_208;
 
-  if_merge_111:
+  if_merge_208:
   r112 = cn_var_类型;
   r113 = r112 == 56;
-  if (r113) goto if_then_112; else goto if_merge_113;
+  if (r113) goto if_then_209; else goto if_merge_210;
 
-  if_then_112:
+  if_then_209:
   return "大于等于";
-  goto if_merge_113;
+  goto if_merge_210;
 
-  if_merge_113:
+  if_merge_210:
   r114 = cn_var_类型;
   r115 = r114 == 57;
-  if (r115) goto if_then_114; else goto if_merge_115;
+  if (r115) goto if_then_211; else goto if_merge_212;
 
-  if_then_114:
+  if_then_211:
   return "逻辑与";
-  goto if_merge_115;
+  goto if_merge_212;
 
-  if_merge_115:
+  if_merge_212:
   r116 = cn_var_类型;
   r117 = r116 == 58;
-  if (r117) goto if_then_116; else goto if_merge_117;
+  if (r117) goto if_then_213; else goto if_merge_214;
 
-  if_then_116:
+  if_then_213:
   return "逻辑或";
-  goto if_merge_117;
+  goto if_merge_214;
 
-  if_merge_117:
+  if_merge_214:
   r118 = cn_var_类型;
   r119 = r118 == 59;
-  if (r119) goto if_then_118; else goto if_merge_119;
+  if (r119) goto if_then_215; else goto if_merge_216;
 
-  if_then_118:
+  if_then_215:
   return "逻辑非";
-  goto if_merge_119;
+  goto if_merge_216;
 
-  if_merge_119:
+  if_merge_216:
   r120 = cn_var_类型;
   r121 = r120 == 60;
-  if (r121) goto if_then_120; else goto if_merge_121;
+  if (r121) goto if_then_217; else goto if_merge_218;
 
-  if_then_120:
+  if_then_217:
   return "按位与";
-  goto if_merge_121;
+  goto if_merge_218;
 
-  if_merge_121:
+  if_merge_218:
   r122 = cn_var_类型;
   r123 = r122 == 61;
-  if (r123) goto if_then_122; else goto if_merge_123;
+  if (r123) goto if_then_219; else goto if_merge_220;
 
-  if_then_122:
+  if_then_219:
   return "按位或";
-  goto if_merge_123;
+  goto if_merge_220;
 
-  if_merge_123:
+  if_merge_220:
   r124 = cn_var_类型;
   r125 = r124 == 62;
-  if (r125) goto if_then_124; else goto if_merge_125;
+  if (r125) goto if_then_221; else goto if_merge_222;
 
-  if_then_124:
+  if_then_221:
   return "按位异或";
-  goto if_merge_125;
+  goto if_merge_222;
 
-  if_merge_125:
+  if_merge_222:
   r126 = cn_var_类型;
   r127 = r126 == 63;
-  if (r127) goto if_then_126; else goto if_merge_127;
+  if (r127) goto if_then_223; else goto if_merge_224;
 
-  if_then_126:
+  if_then_223:
   return "按位取反";
-  goto if_merge_127;
+  goto if_merge_224;
 
-  if_merge_127:
+  if_merge_224:
   r128 = cn_var_类型;
   r129 = r128 == 64;
-  if (r129) goto if_then_128; else goto if_merge_129;
+  if (r129) goto if_then_225; else goto if_merge_226;
 
-  if_then_128:
+  if_then_225:
   return "左移";
-  goto if_merge_129;
+  goto if_merge_226;
 
-  if_merge_129:
+  if_merge_226:
   r130 = cn_var_类型;
   r131 = r130 == 65;
-  if (r131) goto if_then_130; else goto if_merge_131;
+  if (r131) goto if_then_227; else goto if_merge_228;
 
-  if_then_130:
+  if_then_227:
   return "右移";
-  goto if_merge_131;
+  goto if_merge_228;
 
-  if_merge_131:
+  if_merge_228:
   r132 = cn_var_类型;
   r133 = r132 == 66;
-  if (r133) goto if_then_132; else goto if_merge_133;
+  if (r133) goto if_then_229; else goto if_merge_230;
 
-  if_then_132:
+  if_then_229:
   return "自增";
-  goto if_merge_133;
+  goto if_merge_230;
 
-  if_merge_133:
+  if_merge_230:
   r134 = cn_var_类型;
   r135 = r134 == 67;
-  if (r135) goto if_then_134; else goto if_merge_135;
+  if (r135) goto if_then_231; else goto if_merge_232;
 
-  if_then_134:
+  if_then_231:
   return "自减";
-  goto if_merge_135;
+  goto if_merge_232;
 
-  if_merge_135:
+  if_merge_232:
   r136 = cn_var_类型;
   r137 = r136 == 68;
-  if (r137) goto if_then_136; else goto if_merge_137;
+  if (r137) goto if_then_233; else goto if_merge_234;
 
-  if_then_136:
+  if_then_233:
   return "箭头";
-  goto if_merge_137;
+  goto if_merge_234;
 
-  if_merge_137:
+  if_merge_234:
   r138 = cn_var_类型;
   r139 = r138 == 69;
-  if (r139) goto if_then_138; else goto if_merge_139;
+  if (r139) goto if_then_235; else goto if_merge_236;
 
-  if_then_138:
+  if_then_235:
   return "左括号";
-  goto if_merge_139;
+  goto if_merge_236;
 
-  if_merge_139:
+  if_merge_236:
   r140 = cn_var_类型;
   r141 = r140 == 70;
-  if (r141) goto if_then_140; else goto if_merge_141;
+  if (r141) goto if_then_237; else goto if_merge_238;
 
-  if_then_140:
+  if_then_237:
   return "右括号";
-  goto if_merge_141;
+  goto if_merge_238;
 
-  if_merge_141:
+  if_merge_238:
   r142 = cn_var_类型;
   r143 = r142 == 71;
-  if (r143) goto if_then_142; else goto if_merge_143;
+  if (r143) goto if_then_239; else goto if_merge_240;
 
-  if_then_142:
+  if_then_239:
   return "左大括号";
-  goto if_merge_143;
+  goto if_merge_240;
 
-  if_merge_143:
+  if_merge_240:
   r144 = cn_var_类型;
   r145 = r144 == 72;
-  if (r145) goto if_then_144; else goto if_merge_145;
+  if (r145) goto if_then_241; else goto if_merge_242;
 
-  if_then_144:
+  if_then_241:
   return "右大括号";
-  goto if_merge_145;
+  goto if_merge_242;
 
-  if_merge_145:
+  if_merge_242:
   r146 = cn_var_类型;
   r147 = r146 == 73;
-  if (r147) goto if_then_146; else goto if_merge_147;
+  if (r147) goto if_then_243; else goto if_merge_244;
 
-  if_then_146:
+  if_then_243:
   return "左方括号";
-  goto if_merge_147;
+  goto if_merge_244;
 
-  if_merge_147:
+  if_merge_244:
   r148 = cn_var_类型;
   r149 = r148 == 74;
-  if (r149) goto if_then_148; else goto if_merge_149;
+  if (r149) goto if_then_245; else goto if_merge_246;
 
-  if_then_148:
+  if_then_245:
   return "右方括号";
-  goto if_merge_149;
+  goto if_merge_246;
 
-  if_merge_149:
+  if_merge_246:
   r150 = cn_var_类型;
   r151 = r150 == 75;
-  if (r151) goto if_then_150; else goto if_merge_151;
+  if (r151) goto if_then_247; else goto if_merge_248;
 
-  if_then_150:
+  if_then_247:
   return "分号";
-  goto if_merge_151;
+  goto if_merge_248;
 
-  if_merge_151:
+  if_merge_248:
   r152 = cn_var_类型;
   r153 = r152 == 76;
-  if (r153) goto if_then_152; else goto if_merge_153;
+  if (r153) goto if_then_249; else goto if_merge_250;
 
-  if_then_152:
+  if_then_249:
   return "逗号";
-  goto if_merge_153;
+  goto if_merge_250;
 
-  if_merge_153:
+  if_merge_250:
   r154 = cn_var_类型;
   r155 = r154 == 77;
-  if (r155) goto if_then_154; else goto if_merge_155;
+  if (r155) goto if_then_251; else goto if_merge_252;
 
-  if_then_154:
+  if_then_251:
   return "点";
-  goto if_merge_155;
+  goto if_merge_252;
 
-  if_merge_155:
+  if_merge_252:
   r156 = cn_var_类型;
   r157 = r156 == 78;
-  if (r157) goto if_then_156; else goto if_merge_157;
+  if (r157) goto if_then_253; else goto if_merge_254;
 
-  if_then_156:
+  if_then_253:
   return "冒号";
-  goto if_merge_157;
+  goto if_merge_254;
 
-  if_merge_157:
+  if_merge_254:
   r158 = cn_var_类型;
   r159 = r158 == 79;
-  if (r159) goto if_then_158; else goto if_merge_159;
+  if (r159) goto if_then_255; else goto if_merge_256;
 
-  if_then_158:
+  if_then_255:
   return "问号";
-  goto if_merge_159;
+  goto if_merge_256;
 
-  if_merge_159:
+  if_merge_256:
   r160 = cn_var_类型;
   r161 = r160 == 80;
-  if (r161) goto if_then_160; else goto if_merge_161;
+  if (r161) goto if_then_257; else goto if_merge_258;
 
-  if_then_160:
+  if_then_257:
   return "结束";
-  goto if_merge_161;
+  goto if_merge_258;
 
-  if_merge_161:
+  if_merge_258:
   r162 = cn_var_类型;
   r163 = r162 == 81;
-  if (r163) goto if_then_162; else goto if_merge_163;
+  if (r163) goto if_then_259; else goto if_merge_260;
 
-  if_then_162:
+  if_then_259:
   return "错误";
-  goto if_merge_163;
+  goto if_merge_260;
 
-  if_merge_163:
+  if_merge_260:
   return "未知词元类型";
 }
 
@@ -974,107 +974,107 @@ _Bool 是关键字(enum 词元类型枚举 cn_var_类型) {
   entry:
   r1 = cn_var_类型;
   r2 = r1 >= 0;
-  if (r2) goto logic_rhs_166; else goto logic_merge_167;
+  if (r2) goto logic_rhs_263; else goto logic_merge_264;
 
-  if_then_164:
+  if_then_261:
   return 1;
-  goto if_merge_165;
+  goto if_merge_262;
 
-  if_merge_165:
+  if_merge_262:
   r6 = cn_var_类型;
   r7 = r6 >= 10;
-  if (r7) goto logic_rhs_170; else goto logic_merge_171;
+  if (r7) goto logic_rhs_267; else goto logic_merge_268;
 
-  logic_rhs_166:
+  logic_rhs_263:
   r3 = cn_var_类型;
   r4 = r3 <= 9;
-  goto logic_merge_167;
+  goto logic_merge_264;
 
-  logic_merge_167:
-  if (r4) goto if_then_164; else goto if_merge_165;
+  logic_merge_264:
+  if (r4) goto if_then_261; else goto if_merge_262;
 
-  if_then_168:
+  if_then_265:
   return 1;
-  goto if_merge_169;
+  goto if_merge_266;
 
-  if_merge_169:
+  if_merge_266:
   r11 = cn_var_类型;
   r12 = r11 >= 17;
-  if (r12) goto logic_rhs_174; else goto logic_merge_175;
+  if (r12) goto logic_rhs_271; else goto logic_merge_272;
 
-  logic_rhs_170:
+  logic_rhs_267:
   r8 = cn_var_类型;
   r9 = r8 <= 16;
-  goto logic_merge_171;
+  goto logic_merge_268;
 
-  logic_merge_171:
-  if (r9) goto if_then_168; else goto if_merge_169;
+  logic_merge_268:
+  if (r9) goto if_then_265; else goto if_merge_266;
 
-  if_then_172:
+  if_then_269:
   return 1;
-  goto if_merge_173;
+  goto if_merge_270;
 
-  if_merge_173:
+  if_merge_270:
   r16 = cn_var_类型;
   r17 = r16 >= 24;
-  if (r17) goto logic_rhs_178; else goto logic_merge_179;
+  if (r17) goto logic_rhs_275; else goto logic_merge_276;
 
-  logic_rhs_174:
+  logic_rhs_271:
   r13 = cn_var_类型;
   r14 = r13 <= 23;
-  goto logic_merge_175;
+  goto logic_merge_272;
 
-  logic_merge_175:
-  if (r14) goto if_then_172; else goto if_merge_173;
+  logic_merge_272:
+  if (r14) goto if_then_269; else goto if_merge_270;
 
-  if_then_176:
+  if_then_273:
   return 1;
-  goto if_merge_177;
+  goto if_merge_274;
 
-  if_merge_177:
+  if_merge_274:
   r21 = cn_var_类型;
   r22 = r21 >= 27;
-  if (r22) goto logic_rhs_182; else goto logic_merge_183;
+  if (r22) goto logic_rhs_279; else goto logic_merge_280;
 
-  logic_rhs_178:
+  logic_rhs_275:
   r18 = cn_var_类型;
   r19 = r18 <= 26;
-  goto logic_merge_179;
+  goto logic_merge_276;
 
-  logic_merge_179:
-  if (r19) goto if_then_176; else goto if_merge_177;
+  logic_merge_276:
+  if (r19) goto if_then_273; else goto if_merge_274;
 
-  if_then_180:
+  if_then_277:
   return 1;
-  goto if_merge_181;
+  goto if_merge_278;
 
-  if_merge_181:
+  if_merge_278:
   r26 = cn_var_类型;
   r27 = r26 >= 36;
-  if (r27) goto logic_rhs_186; else goto logic_merge_187;
+  if (r27) goto logic_rhs_283; else goto logic_merge_284;
 
-  logic_rhs_182:
+  logic_rhs_279:
   r23 = cn_var_类型;
   r24 = r23 <= 35;
-  goto logic_merge_183;
+  goto logic_merge_280;
 
-  logic_merge_183:
-  if (r24) goto if_then_180; else goto if_merge_181;
+  logic_merge_280:
+  if (r24) goto if_then_277; else goto if_merge_278;
 
-  if_then_184:
+  if_then_281:
   return 1;
-  goto if_merge_185;
+  goto if_merge_282;
 
-  if_merge_185:
+  if_merge_282:
   return 0;
 
-  logic_rhs_186:
+  logic_rhs_283:
   r28 = cn_var_类型;
   r29 = r28 <= 39;
-  goto logic_merge_187;
+  goto logic_merge_284;
 
-  logic_merge_187:
-  if (r29) goto if_then_184; else goto if_merge_185;
+  logic_merge_284:
+  if (r29) goto if_then_281; else goto if_merge_282;
   return 0;
 }
 
@@ -1086,14 +1086,14 @@ _Bool 是字面量(enum 词元类型枚举 cn_var_类型) {
   entry:
   r1 = cn_var_类型;
   r2 = r1 >= 40;
-  if (r2) goto logic_rhs_188; else goto logic_merge_189;
+  if (r2) goto logic_rhs_285; else goto logic_merge_286;
 
-  logic_rhs_188:
+  logic_rhs_285:
   r3 = cn_var_类型;
   r4 = r3 <= 44;
-  goto logic_merge_189;
+  goto logic_merge_286;
 
-  logic_merge_189:
+  logic_merge_286:
   return r4;
 }
 
@@ -1105,14 +1105,14 @@ _Bool 是运算符(enum 词元类型枚举 cn_var_类型) {
   entry:
   r1 = cn_var_类型;
   r2 = r1 >= 45;
-  if (r2) goto logic_rhs_190; else goto logic_merge_191;
+  if (r2) goto logic_rhs_287; else goto logic_merge_288;
 
-  logic_rhs_190:
+  logic_rhs_287:
   r3 = cn_var_类型;
   r4 = r3 <= 68;
-  goto logic_merge_191;
+  goto logic_merge_288;
 
-  logic_merge_191:
+  logic_merge_288:
   return r4;
 }
 
@@ -1124,14 +1124,14 @@ _Bool 是分隔符(enum 词元类型枚举 cn_var_类型) {
   entry:
   r1 = cn_var_类型;
   r2 = r1 >= 69;
-  if (r2) goto logic_rhs_192; else goto logic_merge_193;
+  if (r2) goto logic_rhs_289; else goto logic_merge_290;
 
-  logic_rhs_192:
+  logic_rhs_289:
   r3 = cn_var_类型;
   r4 = r3 <= 79;
-  goto logic_merge_193;
+  goto logic_merge_290;
 
-  logic_merge_193:
+  logic_merge_290:
   return r4;
 }
 
