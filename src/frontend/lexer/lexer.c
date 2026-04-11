@@ -201,6 +201,15 @@ void cn_frontend_lexer_init(CnLexer *lexer, const char *source, size_t length, c
     lexer->line = 1;
     lexer->column = 1;
     lexer->diagnostics = NULL;
+    
+    // 跳过UTF-8 BOM（如果存在）
+    // UTF-8 BOM: 0xEF 0xBB 0xBF
+    if (length >= 3 &&
+        (unsigned char)source[0] == 0xEF &&
+        (unsigned char)source[1] == 0xBB &&
+        (unsigned char)source[2] == 0xBF) {
+        lexer->offset = 3;  // 跳过BOM的3个字节
+    }
 }
 
 void cn_frontend_lexer_set_diagnostics(CnLexer *lexer, struct CnDiagnostics *diagnostics)
