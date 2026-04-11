@@ -168,6 +168,13 @@ CnSemSymbol *cn_sem_scope_lookup_shallow(CnSemScope *scope,
                                          const char *name,
                                          size_t name_length);
 
+// 按符号类型查找：在同名符号共存的情况下，优先返回指定类型的符号
+// 用于类型上下文（如变量声明）中查找类型符号，而非模块符号
+CnSemSymbol *cn_sem_scope_lookup_by_kind(CnSemScope *scope,
+                                         const char *name,
+                                         size_t name_length,
+                                         CnSemSymbolKind preferred_kind);
+
 // 检查两个符号是否是同一个符号（来自同一模块的同一声明）
 // 用于解决跨编译会话的符号唯一性问题
 int cn_sem_symbol_is_same(const CnSemSymbol *sym1, const CnSemSymbol *sym2);

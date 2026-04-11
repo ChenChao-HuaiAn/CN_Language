@@ -1147,6 +1147,11 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
             if (sym) {
+                // 【调试】检查符号的类型信息
+                if (sym->kind == CN_SEM_SYMBOL_ENUM) {
+                    fprintf(stderr, "[DEBUG] infer_expr_type: enum '%.*s' type=%p, module_scope=%p\n",
+                            (int)name_len, name, (void*)sym->type, (void*)sym->as.module_scope);
+                }
                 expr->type = sym->type;
             } else {
                 // 报错：未定义标识符
@@ -1842,7 +1847,29 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                     break;
                 }
-                CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
+                // 【关键修复】在成员访问上下文中，优先查找类型符号（枚举/结构体）
+                // 因为模块符号和类型符号可能同名共存
+                // 例如：词元.词元类型枚举 - 这里"词元"应该优先匹配枚举类型，而不是模块
+                CnSemSymbol *sym = cn_sem_scope_lookup_by_kind(scope, name, name_len, CN_SEM_SYMBOL_ENUM);
+                if (!sym) {
+                    sym = cn_sem_scope_lookup_by_kind(scope, name, name_len, CN_SEM_SYMBOL_STRUCT);
+                }
+                if (!sym) {
+                    sym = cn_sem_scope_lookup_by_kind(scope, name, name_len, CN_SEM_SYMBOL_MODULE);
+                }
+                if (!sym) {
+                    sym = cn_sem_scope_lookup(scope, name, name_len);
+                }
+                
+                // 【调试】检查符号查找结果
+                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: looking up '%.*s', found sym=%p, kind=%d, type=%p\n",
+                        (int)name_len, name, (void*)sym, sym ? sym->kind : -1, sym ? (void*)sym->type : NULL);
+                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM) {
+                    fprintf(stderr, "[DEBUG] MEMBER_ACCESS: enum symbol '%.*s', type=%p, type_kind=%d, enum_scope=%p\n",
+                            (int)name_len, name, (void*)sym->type,
+                            sym->type ? sym->type->kind : -1,
+                            (sym->type && sym->type->kind == CN_TYPE_ENUM) ? (void*)sym->type->as.enum_type.enum_scope : NULL);
+                }
                 
                 // 如果是模块符号，在模块作用域中查找成员
                 if (sym && sym->kind == CN_SEM_SYMBOL_MODULE && sym->as.module_scope) {
@@ -1879,6 +1906,14 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 
                 // 如果是枚举符号，在枚举作用域中查找成员
+                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: looking up '%.*s', found sym=%p, kind=%d, type=%p\n",
+                        (int)name_len, name, (void*)sym, sym ? sym->kind : -1, sym ? (void*)sym->type : NULL);
+                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM) {
+                    fprintf(stderr, "[DEBUG] MEMBER_ACCESS: enum symbol '%.*s', type=%p, type_kind=%d, enum_scope=%p\n",
+                            (int)name_len, name, (void*)sym->type,
+                            sym->type ? sym->type->kind : -1,
+                            sym->type ? (void*)sym->type->as.enum_type.enum_scope : NULL);
+                }
                 if (sym && sym->kind == CN_SEM_SYMBOL_ENUM && sym->type &&
                     sym->type->kind == CN_TYPE_ENUM && sym->type->as.enum_type.enum_scope) {
                     CnSemSymbol *member_sym = cn_type_enum_find_member(
@@ -1934,6 +1969,10 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             // 否则按照结构体成员访问处理
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
+            
+            // 【调试】检查 object_type 的值
+            fprintf(stderr, "[DEBUG] infer_expr_type for member object: object_type=%p, kind=%d\n",
+                    (void*)object_type, object_type ? object_type->kind : -1);
             
             // 【关键修复】确保对象表达式的类型被正确设置
             // 代码生成器依赖 expr->as.member.object->type 来判断是否使用 "->" 操作符

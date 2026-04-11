@@ -1,5 +1,6 @@
 #include "cnlang/frontend/semantics.h"
 
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -174,10 +175,30 @@ CnSemSymbol *cn_sem_scope_insert_symbol(CnSemScope *scope,
     // 检查是否已存在同名符号
     CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, name, name_length);
     if (existing) {
-        // 如果已存在同名符号，返回 NULL 表示插入失败
-        // 调用者应该检查是否是同一个符号（使用 cn_sem_is_same_symbol）
-        // 如果是同一个符号，应该静默忽略
-        return NULL;
+        // 【关键修复】允许模块符号和类型符号共存
+        // 模块符号（CN_SEM_SYMBOL_MODULE）用于点访问语法（如 `词元.词元类型枚举`）
+        // 类型符号（CN_SEM_SYMBOL_STRUCT, CN_SEM_SYMBOL_ENUM）用于类型上下文（如 `词元 变量名`）
+        // 这两种符号可以共存，因为它们的使用场景不同
+        if (existing->kind == CN_SEM_SYMBOL_MODULE &&
+            (kind == CN_SEM_SYMBOL_STRUCT || kind == CN_SEM_SYMBOL_ENUM)) {
+            // 允许模块符号和类型符号共存，继续插入
+            fprintf(stderr, "[DEBUG] Allowing coexistence: existing module symbol '%.*s', new %s symbol\n",
+                    (int)name_length, name,
+                    kind == CN_SEM_SYMBOL_STRUCT ? "struct" : "enum");
+        }
+        else if ((existing->kind == CN_SEM_SYMBOL_STRUCT || existing->kind == CN_SEM_SYMBOL_ENUM) &&
+                 kind == CN_SEM_SYMBOL_MODULE) {
+            // 允许类型符号和模块符号共存，继续插入
+            fprintf(stderr, "[DEBUG] Allowing coexistence: existing %s symbol '%.*s', new module symbol\n",
+                    existing->kind == CN_SEM_SYMBOL_STRUCT ? "struct" : "enum",
+                    (int)name_length, name);
+        }
+        else {
+            // 其他情况：同名符号插入失败
+            // 调用者应该检查是否是同一个符号（使用 cn_sem_is_same_symbol）
+            // 如果是同一个符号，应该静默忽略
+            return NULL;
+        }
     }
 
     node = (CnSemSymbolNode *)malloc(sizeof(CnSemSymbolNode));
@@ -250,6 +271,43 @@ CnSemSymbol *cn_sem_scope_lookup(CnSemScope *scope,
     }
 
     return NULL;
+}
+
+// 按符号类型查找：在同名符号共存的情况下，优先返回指定类型的符号
+// 用于类型上下文（如变量声明）中查找类型符号，而非模块符号
+CnSemSymbol *cn_sem_scope_lookup_by_kind(CnSemScope *scope,
+                                         const char *name,
+                                         size_t name_length,
+                                         CnSemSymbolKind preferred_kind)
+{
+    CnSemSymbol *fallback = NULL;  // 用于存储非首选类型的符号
+
+    if (!scope || !name || name_length == 0) {
+        return NULL;
+    }
+
+    while (scope) {
+        // 遍历当前作用域的所有符号
+        CnSemSymbolNode *node = scope->symbols;
+        while (node) {
+            if (cn_sem_symbol_name_equals(&node->symbol, name, name_length)) {
+                // 找到同名符号
+                if (node->symbol.kind == preferred_kind) {
+                    // 找到首选类型的符号，直接返回
+                    return &node->symbol;
+                }
+                // 记录第一个找到的非首选类型符号作为备选
+                if (!fallback) {
+                    fallback = &node->symbol;
+                }
+            }
+            node = node->next;
+        }
+        scope = scope->parent;
+    }
+
+    // 如果没有找到首选类型的符号，返回备选符号
+    return fallback;
 }
 
 void cn_sem_scope_foreach_symbol(CnSemScope *scope,

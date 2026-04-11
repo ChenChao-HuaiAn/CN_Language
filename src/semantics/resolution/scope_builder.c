@@ -206,7 +206,16 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
     }
     
     // 检查是否来自同一个声明作用域
+    // 【注意】仅当两个符号都有有效的类型信息时才使用 decl_scope 判断
+    // 否则可能导致类型信息丢失
     if (sym1->decl_scope && sym2->decl_scope && sym1->decl_scope == sym2->decl_scope) {
+        // 如果其中一个符号缺少类型信息，不能认为是同一个符号
+        // 需要让调用者处理类型信息补充
+        if ((sym1->type && !sym2->type) || (!sym1->type && sym2->type)) {
+            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, decl_scope match but type mismatch (type1=%p, type2=%p), returning 0\n",
+                    name_buf, sym1->kind, (void*)sym1->type, (void*)sym2->type);
+            return 0;  // 类型信息不一致，需要处理
+        }
         fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, decl_scope match (scope=%p)\n",
                 name_buf, sym1->kind, (void*)sym1->decl_scope);
         return 1;  // 声明作用域相同，是同一个符号
@@ -242,6 +251,44 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
             name_buf, sym1->kind, (void*)sym1->type, (void*)sym2->type,
             (void*)sym1->decl_scope, (void*)sym2->decl_scope);
     return 0;
+}
+
+/**
+ * @brief 复制符号的类型信息（处理枚举类型为 NULL 的特殊情况）
+ *
+ * 当模块导入时，枚举符号的 type 字段可能为 NULL（模块缓存时类型信息丢失）。
+ * 此函数检测这种情况并创建新的枚举类型，同时复制枚举作用域。
+ *
+ * @param src_sym 源符号
+ * @param dst_sym 目标符号（已创建，需要设置 type 字段）
+ */
+static void cn_sem_copy_symbol_type(CnSemSymbol *src_sym, CnSemSymbol *dst_sym) {
+    if (!src_sym || !dst_sym) {
+        return;
+    }
+    
+    // 【关键修复】处理枚举符号类型为 NULL 的情况
+    if (src_sym->kind == CN_SEM_SYMBOL_ENUM && !src_sym->type) {
+        // 枚举符号的 type 字段为 NULL，需要创建新的枚举类型
+        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: enum '%.*s' has NULL type, creating new enum type.\n",
+                (int)src_sym->name_length, src_sym->name);
+        // 创建新的枚举类型
+        dst_sym->type = cn_type_new_enum(src_sym->name, src_sym->name_length);
+        // 复制枚举作用域（需要检查 dst_sym->type 是否创建成功）
+        if (dst_sym->type && src_sym->as.module_scope) {
+            dst_sym->type->as.enum_type.enum_scope = cn_sem_scope_deep_copy_enum(src_sym->as.module_scope);
+        }
+    }
+    // 【新增】处理结构体符号类型为 NULL 的情况
+    else if (src_sym->kind == CN_SEM_SYMBOL_STRUCT && !src_sym->type) {
+        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: struct '%.*s' has NULL type, creating new struct type.\n",
+                (int)src_sym->name_length, src_sym->name);
+        // 创建一个不完整的结构体类型（字段信息可能缺失）
+        dst_sym->type = cn_type_new_struct(src_sym->name, src_sym->name_length, NULL, 0, NULL, NULL, 0);
+    } else {
+        // 正常情况：深度复制类型
+        dst_sym->type = cn_type_deep_copy(src_sym->type);
+    }
 }
 
 // 符号链表节点，用于在作用域中维护符号列表
@@ -308,6 +355,52 @@ static int cache_module_with_program(const char *file_path, CnSemScope *scope, C
     CnSemScope *existing = find_cached_module(file_path);
     if (existing) {
         return 0;  // 已缓存，不重复添加
+    }
+    
+    // 【关键修复】在缓存前，确保所有符号的类型信息被深度复制
+    // 这样即使原模块被重新编译，缓存的符号仍然有有效的类型信息
+    // 解决问题：模块导入时类型信息丢失（sym->type 变为 NULL 或悬空指针）
+    if (scope && scope->symbols) {
+        CnSemSymbolNode *node = scope->symbols;
+        while (node) {
+            CnSemSymbol *sym = &node->symbol;
+            
+            // 深度复制类型信息，确保缓存中的符号有独立的类型对象
+            // 【重要】只有当深度复制成功时才更新类型，否则保留原始类型
+            if (sym->type) {
+                CnType *copied_type = cn_type_deep_copy(sym->type);
+                if (copied_type) {
+                    sym->type = copied_type;
+                } else {
+                    // 深度复制失败，记录警告但保留原始类型指针
+                    // 注意：这可能导致悬空指针问题，但比 NULL 类型更好调试
+                    fprintf(stderr, "[WARNING] cache_module_with_program: cn_type_deep_copy failed for symbol '%.*s' (kind=%d), keeping original type=%p\n",
+                            (int)sym->name_length, sym->name, sym->kind, (void*)sym->type);
+                }
+            } else {
+                // 【调试】符号类型为 NULL，记录警告
+                fprintf(stderr, "[DEBUG] cache_module_with_program: symbol '%.*s' (kind=%d) has NULL type before caching\n",
+                        (int)sym->name_length, sym->name, sym->kind);
+            }
+            
+            // 对于枚举类型，还需要确保 enum_scope 被正确复制
+            // 枚举符号的 as.module_scope 存储枚举成员作用域
+            if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->as.module_scope) {
+                CnSemScope *copied_scope = cn_sem_scope_deep_copy_enum(sym->as.module_scope);
+                if (copied_scope) {
+                    sym->as.module_scope = copied_scope;
+                }
+            }
+            
+            // 对于结构体类型，也需要复制成员作用域
+            if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->as.module_scope) {
+                // 结构体的 module_scope 存储字段作用域
+                // 注意：结构体作用域的深度复制需要保留字段信息
+                // 这里暂时只复制指针，因为 cn_type_deep_copy 已经处理了结构体字段
+            }
+            
+            node = node->next;
+        }
     }
     
     // 使用规范化路径存储
@@ -778,6 +871,8 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
             CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, global_scope);
             if (enum_scope && sym->type) {
                 sym->type->as.enum_type.enum_scope = enum_scope;
+                // 【关键修复】同时设置 sym->as.module_scope，以便模块导入时能正确复制枚举作用域
+                sym->as.module_scope = enum_scope;
                 
                 // 注册枚举成员到枚举作用域和全局作用域
                 // 这样可以直接通过成员名访问枚举成员（如：红、绿、蓝）
@@ -1076,10 +1171,15 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                         sym->name_length);
                 if (existing_sym) {
                     // 检查是否是同一个符号（同一模块的同一成员）
-                    fprintf(stderr, "[DEBUG] Import: checking symbol %.*s, existing_kind=%d, new_kind=%d\n",
-                            (int)sym->name_length, sym->name, existing_sym->kind, sym->kind);
+                    fprintf(stderr, "[DEBUG] Import: checking symbol %.*s, existing_kind=%d, new_kind=%d, existing_type=%p, new_type=%p\n",
+                            (int)sym->name_length, sym->name, existing_sym->kind, sym->kind,
+                            (void*)existing_sym->type, (void*)sym->type);
                     if (cn_sem_is_same_symbol(existing_sym, sym)) {
-                        // 同一符号，静默忽略，不报错也不重复添加
+                        // 同一符号，但如果现有符号缺少类型信息，需要补充
+                        if (!existing_sym->type && sym->type) {
+                            fprintf(stderr, "[DEBUG] Import: same symbol, updating missing type info\n");
+                            existing_sym->type = cn_type_deep_copy(sym->type);
+                        }
                         fprintf(stderr, "[DEBUG] Import: same symbol, skipping\n");
                         node = node->next;
                         continue;
@@ -1103,7 +1203,17 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         // 复制符号信息
                         // 【关键修复】使用深度复制确保类型信息完整保留
                         // 解决模块导入时结构体字段信息丢失问题
-                        new_sym->type = cn_type_deep_copy(sym->type);
+                        
+                        // 【调试日志】检查源符号的类型信息
+                        fprintf(stderr, "[DEBUG] Importing symbol '%.*s', kind=%d, src_type=%p\n",
+                                (int)sym->name_length, sym->name, sym->kind, (void*)sym->type);
+                        
+                        // 使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                        cn_sem_copy_symbol_type(sym, new_sym);
+                        
+                        // 【调试日志】检查复制后的类型信息
+                        fprintf(stderr, "[DEBUG] After copy: new_type=%p\n", (void*)new_sym->type);
+                        
                         new_sym->is_public = sym->is_public;
                         new_sym->is_const = sym->is_const;
                         // 保留原始 decl_scope 以便区分导入符号
@@ -1182,14 +1292,18 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                       member_sym->kind);
                     if (new_sym) {
                         // 复制符号信息
-                        // 【关键修复】使用深度复制确保类型信息完整保留
-                        new_sym->type = cn_type_deep_copy(member_sym->type);
+                        // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                        cn_sem_copy_symbol_type(member_sym, new_sym);
+                        
                         new_sym->is_public = member_sym->is_public;
                         new_sym->decl_scope = member_sym->decl_scope;
                         // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
                         new_sym->source_module_path = member_sym->source_module_path;
                         new_sym->source_module_path_length = member_sym->source_module_path_length;
-                        if (member_sym->kind == CN_SEM_SYMBOL_MODULE) {
+                        // 【关键修复】复制 module_scope 以支持枚举和结构体类型
+                        if (member_sym->kind == CN_SEM_SYMBOL_MODULE ||
+                            member_sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                            member_sym->kind == CN_SEM_SYMBOL_ENUM) {
                             new_sym->as.module_scope = member_sym->as.module_scope;
                         } else if (member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                             new_sym->as.enum_value = member_sym->as.enum_value;
@@ -1703,6 +1817,8 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, scope);
             if (enum_scope && sym->type) {
                 sym->type->as.enum_type.enum_scope = enum_scope;
+                // 【关键修复】同时设置 sym->as.module_scope，以便模块导入时能正确复制枚举作用域
+                sym->as.module_scope = enum_scope;
                 
                 // 注册枚举成员到枚举作用域和当前作用域
                 // 这样可以直接通过成员名访问枚举成员（如：红、绿、蓝）
@@ -1923,6 +2039,15 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     CnSemScope *cached = find_cached_module(file_path);
     if (cached) {
         fprintf(stderr, "[DEBUG] 模块已缓存，直接返回: %s\n", cache_key);
+        // 【调试】检查缓存的作用域中的符号是否有正确的 type 字段和 module_scope
+        CnSemSymbolNode *debug_node = cached->symbols;
+        while (debug_node) {
+            fprintf(stderr, "[DEBUG] Cached symbol '%.*s', kind=%d, type=%p, module_scope=%p\n",
+                    (int)debug_node->symbol.name_length, debug_node->symbol.name,
+                    debug_node->symbol.kind, (void*)debug_node->symbol.type,
+                    (void*)debug_node->symbol.as.module_scope);
+            debug_node = debug_node->next;
+        }
         if (normalized_path) free(normalized_path);
         return cached;  // 返回缓存的作用域
     }
@@ -2040,8 +2165,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             module_scope, sym->name, sym->name_length, sym->kind);
                                         if (new_sym) {
-                                            // 【关键修复】使用深度复制确保类型信息完整保留
-                                            new_sym->type = cn_type_deep_copy(sym->type);
+                                            // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                            cn_sem_copy_symbol_type(sym, new_sym);
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -2072,8 +2197,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             module_scope, member_name, member_name_length, member_sym->kind);
                                         if (new_sym) {
-                                            // 【关键修复】使用深度复制确保类型信息完整保留
-                                            new_sym->type = cn_type_deep_copy(member_sym->type);
+                                            // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                            cn_sem_copy_symbol_type(member_sym, new_sym);
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -2123,11 +2248,60 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                             }
                                             // 特殊处理：如果新符号是结构体/枚举类型，而现有符号是枚举成员
                                             // 则用结构体/枚举类型替换枚举成员（结构体定义更重要）
+                                            // 【关键修复】只有当新符号有有效的 type 时才进行替换
                                             if ((sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
-                                                existing->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                                                existing->kind == CN_SEM_SYMBOL_ENUM_MEMBER &&
+                                                sym->type != NULL) {
                                                 existing->kind = sym->kind;
                                                 existing->type = sym->type;
                                                 existing->as.module_scope = sym->as.module_scope;
+                                            }
+                                            // 【关键修复】如果现有符号是模块符号，而新符号是结构体/枚举
+                                            // 不替换，而是插入新符号（共存）
+                                            // 模块符号用于点访问语法，结构体/枚举符号用于类型上下文
+                                            if (existing->kind == CN_SEM_SYMBOL_MODULE &&
+                                                (sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                                                // 检查是否已存在同名的结构体/枚举符号（在当前作用域的符号链表中查找）
+                                                bool type_exists = false;
+                                                CnSemSymbolNode *check_node = module_scope->symbols;
+                                                while (check_node) {
+                                                    // 直接比较符号名称和类型
+                                                    if (check_node->symbol.name_length == sym->name_length &&
+                                                        check_node->symbol.name != NULL && sym->name != NULL &&
+                                                        memcmp(check_node->symbol.name, sym->name, sym->name_length) == 0 &&
+                                                        check_node->symbol.kind == sym->kind) {
+                                                        type_exists = true;
+                                                        break;
+                                                    }
+                                                    check_node = check_node->next;
+                                                }
+                                                
+                                                if (type_exists) {
+                                                    // 已存在同名的结构体/枚举符号，跳过
+                                                    fprintf(stderr, "[DEBUG] Type symbol '%.*s' already exists, skipping\n",
+                                                            (int)sym->name_length, sym->name);
+                                                    node = node->next;
+                                                    continue;
+                                                }
+                                                
+                                                // 插入新的结构体/枚举符号
+                                                CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
+                                                    module_scope, sym->name, sym->name_length, sym->kind);
+                                                if (new_sym) {
+                                                    cn_sem_copy_symbol_type(sym, new_sym);
+                                                    new_sym->is_public = sym->is_public;
+                                                    new_sym->is_const = sym->is_const;
+                                                    new_sym->decl_scope = sym->decl_scope;
+                                                    new_sym->source_module_path = sym->source_module_path;
+                                                    new_sym->source_module_path_length = sym->source_module_path_length;
+                                                    if (sym->as.module_scope) {
+                                                        new_sym->as.module_scope = sym->as.module_scope;
+                                                    }
+                                                    fprintf(stderr, "[DEBUG] Inserted type symbol '%.*s' (kind=%d) alongside module symbol\n",
+                                                            (int)sym->name_length, sym->name, sym->kind);
+                                                }
+                                                node = node->next;
+                                                continue;
                                             }
                                             node = node->next;
                                             continue;
@@ -2136,8 +2310,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                     CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                         module_scope, sym->name, sym->name_length, sym->kind);
                                     if (new_sym) {
-                                        // 【关键修复】使用深度复制确保类型信息完整保留
-                                        new_sym->type = cn_type_deep_copy(sym->type);
+                                        // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                        cn_sem_copy_symbol_type(sym, new_sym);
                                         new_sym->is_public = sym->is_public;
                                         new_sym->is_const = sym->is_const;
                                         // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -2369,6 +2543,10 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, module_scope);
             if (enum_scope && sym->type) {
                 sym->type->as.enum_type.enum_scope = enum_scope;
+                // 【关键修复】同时设置 sym->as.module_scope，以便模块导入时能正确复制枚举作用域
+                sym->as.module_scope = enum_scope;
+                fprintf(stderr, "[DEBUG] Registered enum '%.*s' with type=%p, module_scope=%p\n",
+                        (int)enum_decl->name_length, enum_decl->name, (void*)sym->type, (void*)sym->as.module_scope);
                 
                 // 注册枚举成员到枚举作用域和模块作用域
                 // 这样可以直接通过成员名访问枚举成员（如：关键字_如果、标识符等）
@@ -2440,6 +2618,16 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             if (existing->kind == CN_SEM_SYMBOL_STRUCT) {
                 continue;
             }
+            // 【关键修复】如果已存在的是模块符号，不跳过结构体注册
+            // 模块符号和结构体符号可以共存：
+            // - 模块符号用于点访问语法（如 `词元.词元类型枚举`）
+            // - 结构体符号用于类型上下文（如 `词元 变量名`）
+            // 符号插入函数 cn_sem_scope_insert_symbol 已修改为允许这种共存
+            if (existing->kind == CN_SEM_SYMBOL_MODULE) {
+                fprintf(stderr, "[DEBUG] Module symbol '%.*s' exists, registering struct symbol alongside\n",
+                        (int)struct_decl->name_length, struct_decl->name);
+                // 不跳过，继续注册结构体符号
+            }
             // 如果已存在的是枚举成员，用结构体替换它
             if (existing->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                 // 创建不完整的结构体类型（只有名称，没有字段）
@@ -2455,8 +2643,11 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                 existing->as.module_scope = NULL;
                 continue;
             }
+            // 如果已存在的是模块符号，继续执行（不跳过）
             // 其他类型的符号冲突，跳过
-            continue;
+            if (existing->kind != CN_SEM_SYMBOL_MODULE) {
+                continue;
+            }
         }
         
         // 创建不完整的结构体类型（只有名称，没有字段）
@@ -2477,6 +2668,9 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             // 设置源模块路径（关键：用于跨编译会话的符号唯一性判断）
             sym->source_module_path = cache_key;
             sym->source_module_path_length = strlen(cache_key);
+            // 【调试日志】验证结构体符号的 type 字段
+            fprintf(stderr, "[DEBUG] Registered struct '%.*s' with type=%p\n",
+                    (int)sym->name_length, sym->name, (void*)sym->type);
         }
     }
     
@@ -2869,6 +3063,9 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
             CnSemScope *enum_scope = cn_sem_scope_new(CN_SEM_SCOPE_ENUM, global_scope);
             if (enum_scope && sym->type) {
                 sym->type->as.enum_type.enum_scope = enum_scope;
+                // 【关键修复】同时设置 sym->as.module_scope，以便模块导入时能正确复制枚举作用域
+                // 参见 module_semantics.c 第278-279行的导入逻辑
+                sym->as.module_scope = enum_scope;
                 // 注册枚举成员到枚举作用域和全局作用域
                 // 这样可以直接通过成员名访问枚举成员（如：红、绿、蓝）
                 for (size_t j = 0; j < enum_decl->member_count; j++) {
@@ -3050,8 +3247,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, member_name, member_name_length, member_sym->kind);
                                         if (new_sym) {
-                                            // 【关键修复】使用深度复制确保类型信息完整保留
-                                            new_sym->type = cn_type_deep_copy(member_sym->type);
+                                            // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                            cn_sem_copy_symbol_type(member_sym, new_sym);
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
                                             // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
@@ -3079,8 +3276,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, sym->name, sym->name_length, sym->kind);
                                         if (new_sym) {
-                                            // 【关键修复】使用深度复制确保类型信息完整保留
-                                            new_sym->type = cn_type_deep_copy(sym->type);
+                                            // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                            cn_sem_copy_symbol_type(sym, new_sym);
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -3141,8 +3338,10 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     // 特殊处理：如果现有符号是模块符号，而新符号是结构体或枚举类型，
                                     // 则用新符号替换模块符号（因为类型定义比模块符号更重要）
                                     // 但需要保留 module_scope 以便递归处理嵌套导入
+                                    // 【关键修复】只有当新符号有有效的 type 时才进行替换
                                     if (existing_sym->kind == CN_SEM_SYMBOL_MODULE &&
-                                        (sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                                        (sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
+                                        sym->type != NULL) {
                                         // 保存 module_scope 以便递归处理嵌套导入
                                         CnSemScope *saved_module_scope = existing_sym->as.module_scope;
                                         
@@ -3172,6 +3371,17 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         node = node->next;
                                         continue;
                                     }
+                                    // 【关键修复】如果新符号是结构体/枚举但 type 为 NULL，保持现有符号不变
+                                    // 这通常发生在模块名称与结构体名称冲突时
+                                    // 例如：导入 ./运算符 时，运算符 是模块名，不应该被替换为结构体
+                                    if (existing_sym->kind == CN_SEM_SYMBOL_MODULE &&
+                                        (sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
+                                        sym->type == NULL) {
+                                        fprintf(stderr, "[DEBUG] Skipping replacement of module symbol '%.*s' with struct/enum symbol that has NULL type\n",
+                                                (int)sym->name_length, sym->name);
+                                        node = node->next;
+                                        continue;
+                                    }
                                     // 其他名称冲突，跳过
                                     node = node->next;
                                     continue;
@@ -3181,8 +3391,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                 CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                     global_scope, sym->name, sym->name_length, sym->kind);
                                 if (new_sym) {
-                                    // 【关键修复】使用深度复制确保类型信息完整保留
-                                    new_sym->type = cn_type_deep_copy(sym->type);
+                                    // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                    cn_sem_copy_symbol_type(sym, new_sym);
                                     new_sym->is_public = sym->is_public;
                                     new_sym->is_const = sym->is_const;
                                     // 保留原始 decl_scope 以便区分导入符号
@@ -3293,8 +3503,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, member_name, member_name_length, member_sym->kind);
                                         if (new_sym) {
-                                            // 【关键修复】使用深度复制确保类型信息完整保留
-                                            new_sym->type = cn_type_deep_copy(member_sym->type);
+                                            // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                            cn_sem_copy_symbol_type(member_sym, new_sym);
                                             new_sym->is_public = member_sym->is_public;
                                             new_sym->is_const = member_sym->is_const;
                                             // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）
@@ -3321,8 +3531,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                         CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                             global_scope, sym->name, sym->name_length, sym->kind);
                                         if (new_sym) {
-                                            // 【关键修复】使用深度复制确保类型信息完整保留
-                                            new_sym->type = cn_type_deep_copy(sym->type);
+                                            // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                            cn_sem_copy_symbol_type(sym, new_sym);
                                             new_sym->is_public = sym->is_public;
                                             new_sym->is_const = sym->is_const;
                                             // 【关键修复】保留原始 decl_scope 以便区分导入符号
@@ -3395,8 +3605,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                 CnSemSymbol *new_sym = cn_sem_scope_insert_symbol(
                                     global_scope, sym->name, sym->name_length, sym->kind);
                                 if (new_sym) {
-                                    // 【关键修复】使用深度复制确保类型信息完整保留
-                                    new_sym->type = cn_type_deep_copy(sym->type);
+                                    // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                                    cn_sem_copy_symbol_type(sym, new_sym);
                                     new_sym->is_public = sym->is_public;
                                     new_sym->is_const = sym->is_const;
                                     new_sym->decl_scope = sym->decl_scope;
@@ -3703,8 +3913,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                                       sym->kind);
                     if (new_sym) {
                         // 复制符号信息
-                        // 【关键修复】使用深度复制确保类型信息完整保留
-                        new_sym->type = cn_type_deep_copy(sym->type);
+                        // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                        cn_sem_copy_symbol_type(sym, new_sym);
                         new_sym->is_public = sym->is_public;
                         new_sym->is_const = sym->is_const;
                         new_sym->decl_scope = sym->decl_scope;
@@ -3784,8 +3994,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                                       member_sym->kind);
                     if (new_sym) {
                         // 复制符号信息
-                        // 【关键修复】使用深度复制确保类型信息完整保留
-                        new_sym->type = cn_type_deep_copy(member_sym->type);
+                        // 【关键修复】使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
+                        cn_sem_copy_symbol_type(member_sym, new_sym);
                         new_sym->is_public = member_sym->is_public;
                         new_sym->decl_scope = member_sym->decl_scope;
                         // 复制源模块路径（关键：用于跨编译会话的符号唯一性判断）

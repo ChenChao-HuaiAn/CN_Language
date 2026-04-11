@@ -470,17 +470,28 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                       const char *member_name,
                                       size_t member_name_length) {
     if (!enum_type || enum_type->kind != CN_TYPE_ENUM || !member_name) {
+        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: invalid params, enum_type=%p, kind=%d, member_name=%p\n",
+                (void*)enum_type, enum_type ? enum_type->kind : -1, (void*)member_name);
         return NULL;
     }
     if (!enum_type->as.enum_type.enum_scope) {
+        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: enum_scope is NULL for enum '%.*s'\n",
+                (int)enum_type->as.enum_type.name_length, enum_type->as.enum_type.name);
         return NULL;
     }
+
+    // 【调试】打印枚举作用域中的所有成员
+    fprintf(stderr, "[DEBUG] cn_type_enum_find_member: looking for '%.*s' in enum '%.*s', enum_scope=%p\n",
+            (int)member_name_length, member_name,
+            (int)enum_type->as.enum_type.name_length, enum_type->as.enum_type.name,
+            (void*)enum_type->as.enum_type.enum_scope);
 
     // 首先尝试直接查找成员名
     CnSemSymbol *sym = cn_sem_scope_lookup_shallow(enum_type->as.enum_type.enum_scope,
                                                    member_name,
                                                    member_name_length);
     if (sym) {
+        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found '%.*s' directly\n", (int)member_name_length, member_name);
         return sym;
     }
 
