@@ -1183,13 +1183,24 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         fprintf(stderr, "[DEBUG] Import: same symbol, skipping\n");
                         node = node->next;
                         continue;
-                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                        // 不同符号但名字冲突，报错
-                        fprintf(stderr, "[DEBUG] Import: different symbol, reporting error\n");
+                    }
+                    // 【关键修复】同名不同类型的符号可以共存
+                    // 例如：词元 结构体 和 词元类型枚举 枚举 可以同时存在
+                    // 只有当符号种类相同且不是同一个符号时，才报告冲突
+                    else if (existing_sym->kind == sym->kind && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 同名同种类但不是同一个符号，报错
+                        fprintf(stderr, "[DEBUG] Import: same name and kind but different symbol, reporting error\n");
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, sym->name, sym->name_length);
                         node = node->next;
                         continue;
+                    }
+                    // 【新增】同名不同类型的符号，允许共存
+                    // 例如：existing_sym 是结构体，sym 是枚举，两者可以共存
+                    else if (existing_sym->kind != sym->kind) {
+                        fprintf(stderr, "[DEBUG] Import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
+                                existing_sym->kind, sym->kind);
+                        // 继续添加新符号（不跳过）
                     }
                 }
                 
@@ -1276,11 +1287,20 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     if (cn_sem_is_same_symbol(existing_sym, member_sym)) {
                         // 同一符号，静默忽略，不报错也不重复添加
                         continue;
-                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                        // 不同符号但名字冲突，报错
+                    }
+                    // 【关键修复】同名不同类型的符号可以共存
+                    // 只有当符号种类相同且不是同一个符号时，才报告冲突
+                    else if (existing_sym->kind == member_sym->kind && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 同名同种类但不是同一个符号，报错
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, member_name, member_name_length);
                         continue;
+                    }
+                    // 【新增】同名不同类型的符号，允许共存
+                    else if (existing_sym->kind != member_sym->kind) {
+                        fprintf(stderr, "[DEBUG] Selective import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
+                                existing_sym->kind, member_sym->kind);
+                        // 继续添加新符号（不跳过）
                     }
                 }
                 
@@ -3896,12 +3916,21 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         // 同一符号，静默忽略，不报错也不重复添加
                         node = node->next;
                         continue;
-                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                        // 不同符号但名字冲突，报错
+                    }
+                    // 【关键修复】同名不同类型的符号可以共存
+                    // 只有当符号种类相同且不是同一个符号时，才报告冲突
+                    else if (existing_sym->kind == sym->kind && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 同名同种类但不是同一个符号，报错
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, sym->name, sym->name_length);
                         node = node->next;
                         continue;
+                    }
+                    // 【新增】同名不同类型的符号，允许共存
+                    else if (existing_sym->kind != sym->kind) {
+                        fprintf(stderr, "[DEBUG] Import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
+                                existing_sym->kind, sym->kind);
+                        // 继续添加新符号（不跳过）
                     }
                 }
                 
@@ -3978,11 +4007,20 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     if (cn_sem_is_same_symbol(existing_sym, member_sym)) {
                         // 同一符号，静默忽略，不报错也不重复添加
                         continue;
-                    } else if (existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
-                        // 不同符号但名字冲突，报错
+                    }
+                    // 【关键修复】同名不同类型的符号可以共存
+                    // 只有当符号种类相同且不是同一个符号时，才报告冲突
+                    else if (existing_sym->kind == member_sym->kind && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
+                        // 同名同种类但不是同一个符号，报错
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, member_name, member_name_length);
                         continue;
+                    }
+                    // 【新增】同名不同类型的符号，允许共存
+                    else if (existing_sym->kind != member_sym->kind) {
+                        fprintf(stderr, "[DEBUG] Selective import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
+                                existing_sym->kind, member_sym->kind);
+                        // 继续添加新符号（不跳过）
                     }
                 }
                 

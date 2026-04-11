@@ -1,6 +1,7 @@
 #include "cnlang/frontend/semantics.h"
 #include "cnlang/semantics/freestanding_check.h"
 #include "cnlang/semantics/class_analyzer.h"
+#include "cnlang/semantics/template.h"  // 用于 cn_type_get_name 函数
 #include "cnlang/support/diagnostics.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -1145,14 +1146,41 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 break;
             }
             
-            CnSemSymbol *sym = cn_sem_scope_lookup(scope, name, name_len);
+            // 优先查找枚举类型符号，避免返回枚举成员符号（具有整数类型）
+            // 这对于成员访问表达式（如 枚举类型.成员）至关重要
+            CnSemSymbol *sym = cn_sem_scope_lookup_by_kind(scope, name, name_len, CN_SEM_SYMBOL_ENUM);
+            fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s', enum_lookup=%p, kind=%d\n",
+                    (int)name_len, name, (void*)sym, sym ? sym->kind : -1);
+            if (!sym) {
+                // 如果没有找到枚举类型符号，使用普通查找
+                sym = cn_sem_scope_lookup(scope, name, name_len);
+                fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s', normal_lookup=%p, kind=%d, type=%p\n",
+                        (int)name_len, name, (void*)sym, sym ? sym->kind : -1, sym ? (void*)sym->type : NULL);
+            }
             if (sym) {
-                // 【调试】检查符号的类型信息
+                // 对于枚举类型符号，需要确保返回正确的枚举类型
                 if (sym->kind == CN_SEM_SYMBOL_ENUM) {
-                    fprintf(stderr, "[DEBUG] infer_expr_type: enum '%.*s' type=%p, module_scope=%p\n",
+                    fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s' is ENUM, type=%p, module_scope=%p\n",
                             (int)name_len, name, (void*)sym->type, (void*)sym->as.module_scope);
+                    // 枚举类型符号的 type 字段可能为 NULL（设计如此）
+                    // 我们需要创建或获取枚举类型
+                    if (sym->type) {
+                        expr->type = sym->type;
+                        fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: using sym->type, kind=%d\n",
+                                expr->type ? expr->type->kind : -1);
+                    } else {
+                        // 创建枚举类型并设置 enum_scope
+                        expr->type = cn_type_new_enum(name, name_len);
+                        if (expr->type && sym->as.module_scope) {
+                            expr->type->as.enum_type.enum_scope = sym->as.module_scope;
+                        }
+                        fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: created new enum type, kind=%d, enum_scope=%p\n",
+                                expr->type ? expr->type->kind : -1,
+                                expr->type ? (void*)expr->type->as.enum_type.enum_scope : NULL);
+                    }
+                } else {
+                    expr->type = sym->type;
                 }
-                expr->type = sym->type;
             } else {
                 // 报错：未定义标识符
                 // name 不是 null 结尾的字符串，需要复制到临时缓冲区
@@ -1914,27 +1942,66 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                             sym->type ? sym->type->kind : -1,
                             sym->type ? (void*)sym->type->as.enum_type.enum_scope : NULL);
                 }
-                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM && sym->type &&
-                    sym->type->kind == CN_TYPE_ENUM && sym->type->as.enum_type.enum_scope) {
-                    CnSemSymbol *member_sym = cn_type_enum_find_member(
-                        sym->type,
-                        expr->as.member.member_name,
-                        expr->as.member.member_name_length);
-                    
-                    if (!member_sym) {
-                        cn_support_diag_semantic_error_generic(
-                            diagnostics,
-                            CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
-                            NULL, 0, 0,
-                            "语义错误：枚举中不存在该成员");
-                        expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
-                    } else {
-                        // 枚举成员访问的类型是成员的类型（整数）
-                        expr->type = member_sym->type;
-                        // 设置对象表达式的类型（标记为枚举类型）
-                        expr->as.member.object->type = sym->type;
+                // 【修复】处理枚举类型符号，支持 sym->type 为 NULL 的情况
+                if (sym && sym->kind == CN_SEM_SYMBOL_ENUM) {
+                    // 获取或创建枚举类型
+                    CnType *enum_type = sym->type;
+                    if (!enum_type) {
+                        // 枚举类型符号的 type 字段可能为 NULL，使用 module_scope 创建
+                        enum_type = cn_type_new_enum(name, name_len);
+                        if (enum_type && sym->as.module_scope) {
+                            enum_type->as.enum_type.enum_scope = sym->as.module_scope;
+                        }
                     }
-                    break;
+                    
+                    if (enum_type && enum_type->kind == CN_TYPE_ENUM && enum_type->as.enum_type.enum_scope) {
+                        CnSemSymbol *member_sym = cn_type_enum_find_member(
+                            enum_type,
+                            expr->as.member.member_name,
+                            expr->as.member.member_name_length);
+                        
+                        if (!member_sym) {
+                            // 【增强错误诊断】构建包含枚举名称的错误信息
+                            char error_msg[512];
+                            char member_name_buf[128] = "未知成员";
+                            
+                            // 安全复制成员名称
+                            if (expr->as.member.member_name && expr->as.member.member_name_length > 0) {
+                                size_t copy_len = expr->as.member.member_name_length < sizeof(member_name_buf) - 1
+                                    ? expr->as.member.member_name_length : sizeof(member_name_buf) - 1;
+                                memcpy(member_name_buf, expr->as.member.member_name, copy_len);
+                                member_name_buf[copy_len] = '\0';
+                            }
+                            
+                            // 获取枚举名称
+                            const char *enum_name = enum_type->as.enum_type.name;
+                            size_t enum_name_len = enum_type->as.enum_type.name_length;
+                            
+                            // 构建错误信息（安全处理空指针）
+                            if (enum_name && enum_name_len > 0) {
+                                snprintf(error_msg, sizeof(error_msg),
+                                    "语义错误：枚举 '%.*s' 中不存在成员 '%s'",
+                                    (int)enum_name_len, enum_name, member_name_buf);
+                            } else {
+                                snprintf(error_msg, sizeof(error_msg),
+                                    "语义错误：枚举中不存在成员 '%s'",
+                                    member_name_buf);
+                            }
+                            
+                            cn_support_diag_semantic_error_generic(
+                                diagnostics,
+                                CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
+                                NULL, 0, 0,
+                                error_msg);
+                            expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                        } else {
+                            // 枚举成员访问的类型是成员的类型（整数）
+                            expr->type = member_sym->type;
+                            // 设置对象表达式的类型（标记为枚举类型）
+                            expr->as.member.object->type = enum_type;
+                        }
+                        break;
+                    }
                 }
                 
                 // 【容错处理】如果符号查找失败，但对象表达式已有枚举类型，直接使用已有类型
@@ -2024,11 +2091,28 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     expr->as.member.member_name_length);
                 
                 if (!member_sym) {
+                    // 【增强错误诊断】构建包含可用成员列表的错误信息
+                    char error_msg[512];
+                    char member_name_buf[128];
+                    size_t copy_len = expr->as.member.member_name_length < sizeof(member_name_buf) - 1
+                        ? expr->as.member.member_name_length : sizeof(member_name_buf) - 1;
+                    memcpy(member_name_buf, expr->as.member.member_name, copy_len);
+                    member_name_buf[copy_len] = '\0';
+                    
+                    // 获取枚举名称
+                    const char *enum_name = object_type->as.enum_type.name;
+                    size_t enum_name_len = object_type->as.enum_type.name_length;
+                    
+                    // 收集可用成员列表（简化版本：仅显示枚举名称提示）
+                    snprintf(error_msg, sizeof(error_msg),
+                        "语义错误：枚举 '%.*s' 中不存在成员 '%s'",
+                        (int)enum_name_len, enum_name, member_name_buf);
+                    
                     cn_support_diag_semantic_error_generic(
                         diagnostics,
                         CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
                         expr->loc.filename, expr->loc.line, expr->loc.column,
-                        "语义错误：枚举中不存在该成员");
+                        error_msg);
                     expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 } else {
                     // 枚举成员访问的类型是成员的类型（整数）
@@ -2039,11 +2123,36 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             // 检查对象是否为结构体类型
             if (!object_type || object_type->kind != CN_TYPE_STRUCT) {
+                // 【增强错误诊断】提供具体的类型信息
+                char error_msg[256];
+                if (!object_type) {
+                    snprintf(error_msg, sizeof(error_msg),
+                        "语义错误：成员访问操作的对象类型为空（可能是未定义的标识符）");
+                } else {
+                    // 获取类型名称
+                    const char *type_name = cn_type_get_name(object_type);
+                    const char *kind_name = "未知";
+                    switch (object_type->kind) {
+                        case CN_TYPE_VOID: kind_name = "空类型"; break;
+                        case CN_TYPE_INT: kind_name = "整数"; break;
+                        case CN_TYPE_FLOAT: kind_name = "小数"; break;
+                        case CN_TYPE_BOOL: kind_name = "布尔"; break;
+                        case CN_TYPE_STRING: kind_name = "字符串"; break;
+                        case CN_TYPE_POINTER: kind_name = "指针"; break;
+                        case CN_TYPE_ARRAY: kind_name = "数组"; break;
+                        case CN_TYPE_FUNCTION: kind_name = "函数"; break;
+                        case CN_TYPE_UNKNOWN: kind_name = "未知类型"; break;
+                        default: break;
+                    }
+                    snprintf(error_msg, sizeof(error_msg),
+                        "语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: %s (%s)",
+                        type_name, kind_name);
+                }
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
-                    expr->loc.filename, expr->loc.line, expr->loc.column,
-                    "语义错误：成员访问操作的对象必须是结构体或枚举类型");
+                    NULL, 0, 0,
+                    error_msg);
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }

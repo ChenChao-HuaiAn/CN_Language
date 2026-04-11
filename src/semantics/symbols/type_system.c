@@ -461,11 +461,153 @@ static void enum_member_find_callback(CnSemSymbol *symbol, void *user_data) {
     }
 }
 
+// 辅助函数：检查字符串是否以指定后缀结尾
+static bool str_ends_with(const char *str, size_t str_len, const char *suffix, size_t suffix_len) {
+    if (str_len < suffix_len) return false;
+    return memcmp(str + str_len - suffix_len, suffix, suffix_len) == 0;
+}
+
+// 辅助函数：检查字符串是否以指定前缀开头
+static bool str_starts_with(const char *str, size_t str_len, const char *prefix, size_t prefix_len) {
+    if (str_len < prefix_len) return false;
+    return memcmp(str, prefix, prefix_len) == 0;
+}
+
+// 枚举成员模糊匹配回调函数
+// 支持多种命名风格的匹配：
+// 1. 后缀匹配：成员名 "加" 匹配 "二元_加"
+// 2. 去掉"法"字后匹配：成员名 "加法" 匹配 "二元_加"（去掉"法"后变成"加"）
+// 3. 前缀+后缀组合匹配：成员名 "逻辑或" 匹配 "逻辑_或"
+typedef struct {
+    const char *member_name;
+    size_t member_name_length;
+    CnSemSymbol *found_sym;
+    // 模糊匹配用的临时缓冲区
+    char *fuzzy_name;
+    size_t fuzzy_name_length;
+} EnumMemberFuzzyContext;
+
+static void enum_member_fuzzy_find_callback(CnSemSymbol *symbol, void *user_data) {
+    EnumMemberFuzzyContext *ctx = (EnumMemberFuzzyContext *)user_data;
+    
+    // 如果已经找到，直接返回
+    if (ctx->found_sym) return;
+    
+    if (symbol && symbol->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+        const char *sym_name = symbol->name;
+        size_t sym_len = symbol->name_length;
+        
+        // 1. 检查符号名是否以 "_" + 成员名 结尾
+        if (sym_len > ctx->member_name_length + 1) {
+            const char *last_underscore = NULL;
+            for (size_t j = 0; j < sym_len; j++) {
+                if (sym_name[j] == '_') {
+                    last_underscore = sym_name + j;
+                }
+            }
+            if (last_underscore) {
+                size_t suffix_len = sym_len - (last_underscore - sym_name) - 1;
+                if (suffix_len == ctx->member_name_length &&
+                    memcmp(last_underscore + 1, ctx->member_name, ctx->member_name_length) == 0) {
+                    ctx->found_sym = symbol;
+                    return;
+                }
+            }
+        }
+        
+        // 2. 检查符号名是否以 "_" + 模糊名 结尾（如果提供了模糊名）
+        if (ctx->fuzzy_name && sym_len > ctx->fuzzy_name_length + 1) {
+            const char *last_underscore = NULL;
+            for (size_t j = 0; j < sym_len; j++) {
+                if (sym_name[j] == '_') {
+                    last_underscore = sym_name + j;
+                }
+            }
+            if (last_underscore) {
+                size_t suffix_len = sym_len - (last_underscore - sym_name) - 1;
+                if (suffix_len == ctx->fuzzy_name_length &&
+                    memcmp(last_underscore + 1, ctx->fuzzy_name, ctx->fuzzy_name_length) == 0) {
+                    ctx->found_sym = symbol;
+                    return;
+                }
+            }
+        }
+        
+        // 3. 检查符号名是否包含成员名（部分匹配）
+        // 例如：成员名 "逻辑或" 匹配 "逻辑_或"（去掉下划线后是"逻辑或"）
+        if (sym_len >= ctx->member_name_length) {
+            // 构建去掉下划线的符号名
+            char *no_underscore = malloc(sym_len + 1);
+            if (no_underscore) {
+                size_t no_underscore_len = 0;
+                for (size_t j = 0; j < sym_len; j++) {
+                    if (sym_name[j] != '_') {
+                        no_underscore[no_underscore_len++] = sym_name[j];
+                    }
+                }
+                no_underscore[no_underscore_len] = '\0';
+                
+                // 检查去掉下划线后的符号名是否等于成员名
+                if (no_underscore_len == ctx->member_name_length &&
+                    memcmp(no_underscore, ctx->member_name, ctx->member_name_length) == 0) {
+                    ctx->found_sym = symbol;
+                    free(no_underscore);
+                    return;
+                }
+                
+                // 4. 检查去掉下划线后的符号名是否包含成员名
+                // 例如：成员名 "自增" 匹配 "一元前置自增"（去掉下划线后是"一元前置自增"）
+                if (no_underscore_len > ctx->member_name_length) {
+                    // 检查是否以成员名结尾
+                    size_t start = no_underscore_len - ctx->member_name_length;
+                    if (memcmp(no_underscore + start, ctx->member_name, ctx->member_name_length) == 0) {
+                        ctx->found_sym = symbol;
+                        free(no_underscore);
+                        return;
+                    }
+                }
+                
+                free(no_underscore);
+            }
+        }
+        
+        // 5. 检查成员名是否包含符号名的后缀部分（去掉前缀后匹配）
+        // 例如：成员名 "前缀自增" 匹配 "一元_前置自增"（"前置自增" 是 "一元_前置自增" 的后缀）
+        if (ctx->member_name_length > 2 && sym_len > ctx->member_name_length) {
+            // 构建去掉下划线的符号名
+            char *no_underscore = malloc(sym_len + 1);
+            if (no_underscore) {
+                size_t no_underscore_len = 0;
+                for (size_t j = 0; j < sym_len; j++) {
+                    if (sym_name[j] != '_') {
+                        no_underscore[no_underscore_len++] = sym_name[j];
+                    }
+                }
+                no_underscore[no_underscore_len] = '\0';
+                
+                // 检查成员名是否是去掉下划线后符号名的子串
+                // 例如："前缀自增" 在 "一元前置自增" 中
+                for (size_t start = 0; start + ctx->member_name_length <= no_underscore_len; start++) {
+                    if (memcmp(no_underscore + start, ctx->member_name, ctx->member_name_length) == 0) {
+                        ctx->found_sym = symbol;
+                        free(no_underscore);
+                        return;
+                    }
+                }
+                
+                free(no_underscore);
+            }
+        }
+    }
+}
+
 // 在枚举类型中查找成员
 // 支持多种查找方式：
 // 1. 直接使用成员名查找（如 "错误"）
 // 2. 使用带枚举类型名前缀的成员名查找（如 "诊断严重级别_错误"）
 // 3. 遍历所有成员，查找以 "_" + 成员名 结尾的成员（如 "诊断_错误" 匹配 "错误"）
+// 4. 模糊匹配：去掉"法"字后匹配（如 "加法" 匹配 "二元_加"）
+// 5. 去掉下划线后匹配（如 "逻辑或" 匹配 "逻辑_或"）
 CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                       const char *member_name,
                                       size_t member_name_length) {
@@ -515,6 +657,7 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                               prefixed_name_len);
             free(prefixed_name);
             if (sym) {
+                fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by prefix match\n");
                 return sym;
             }
         }
@@ -525,8 +668,117 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
     EnumMemberFindContext ctx = { member_name, member_name_length, NULL };
     cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
                                 enum_member_find_callback, &ctx);
+    if (ctx.found_sym) {
+        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by suffix match\n");
+        return ctx.found_sym;
+    }
 
-    return ctx.found_sym;
+    // 【新增】模糊匹配策略
+    // 策略1：去掉后缀后匹配
+    // 例如：成员名 "加法" 匹配 "二元_加"（去掉"法"后变成"加"）
+    static const char *suffixes_to_remove[] = { "法", "号", NULL };
+    for (int i = 0; suffixes_to_remove[i] != NULL; i++) {
+        const char *suffix = suffixes_to_remove[i];
+        size_t suffix_len = strlen(suffix);
+        if (member_name_length > suffix_len &&
+            memcmp(member_name + member_name_length - suffix_len, suffix, suffix_len) == 0) {
+            // 去掉后缀后的成员名
+            size_t stripped_len = member_name_length - suffix_len;
+            EnumMemberFuzzyContext fuzzy_ctx = { member_name, member_name_length, NULL,
+                                                  (char*)member_name, stripped_len };
+            cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
+                                        enum_member_fuzzy_find_callback, &fuzzy_ctx);
+            if (fuzzy_ctx.found_sym) {
+                fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by fuzzy match (removed suffix '%s')\n", suffix);
+                return fuzzy_ctx.found_sym;
+            }
+        }
+    }
+
+    // 策略2：去掉前缀后匹配
+    // 例如：成员名 "按位或" 匹配 "二元_位或"（去掉"按"后变成"位或"）
+    static const char *prefixes_to_remove[] = { "按", "简单", NULL };
+    for (int i = 0; prefixes_to_remove[i] != NULL; i++) {
+        const char *prefix = prefixes_to_remove[i];
+        size_t prefix_len = strlen(prefix);
+        if (member_name_length > prefix_len &&
+            memcmp(member_name, prefix, prefix_len) == 0) {
+            // 去掉前缀后的成员名
+            const char *stripped_name = member_name + prefix_len;
+            size_t stripped_len = member_name_length - prefix_len;
+            EnumMemberFuzzyContext fuzzy_ctx = { member_name, member_name_length, NULL,
+                                                  (char*)stripped_name, stripped_len };
+            cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
+                                        enum_member_fuzzy_find_callback, &fuzzy_ctx);
+            if (fuzzy_ctx.found_sym) {
+                fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by fuzzy match (removed prefix '%s')\n", prefix);
+                return fuzzy_ctx.found_sym;
+            }
+        }
+    }
+
+    // 策略3：同义词替换匹配
+    // 例如：成员名 "前缀自增" 匹配 "一元_前置自增"（"前缀" -> "前置"）
+    // 例如：成员名 "负号" 匹配 "一元_取负"（"负号" -> "取负"）
+    typedef struct {
+        const char *from;
+        const char *to;
+    } SynonymPair;
+    static const SynonymPair synonyms[] = {
+        { "前缀", "前置" },
+        { "后缀", "后置" },
+        { "负号", "取负" },
+        { NULL, NULL }
+    };
+    for (int i = 0; synonyms[i].from != NULL; i++) {
+        const char *from = synonyms[i].from;
+        const char *to = synonyms[i].to;
+        size_t from_len = strlen(from);
+        size_t to_len = strlen(to);
+        
+        // 检查成员名是否包含需要替换的部分
+        if (member_name_length >= from_len) {
+            // 在成员名中查找 from
+            for (size_t j = 0; j + from_len <= member_name_length; j++) {
+                if (memcmp(member_name + j, from, from_len) == 0) {
+                    // 构建替换后的成员名
+                    size_t new_len = member_name_length - from_len + to_len;
+                    char *new_name = malloc(new_len + 1);
+                    if (new_name) {
+                        memcpy(new_name, member_name, j);
+                        memcpy(new_name + j, to, to_len);
+                        memcpy(new_name + j + to_len, member_name + j + from_len, member_name_length - j - from_len);
+                        new_name[new_len] = '\0';
+                        
+                        // 尝试用新名称查找
+                        EnumMemberFuzzyContext fuzzy_ctx = { new_name, new_len, NULL, NULL, 0 };
+                        cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
+                                                    enum_member_fuzzy_find_callback, &fuzzy_ctx);
+                        free(new_name);
+                        if (fuzzy_ctx.found_sym) {
+                            fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by synonym replacement ('%s' -> '%s')\n", from, to);
+                            return fuzzy_ctx.found_sym;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // 策略4：使用模糊匹配回调（去掉下划线后匹配）
+    // 例如：成员名 "逻辑或" 匹配 "逻辑_或"
+    EnumMemberFuzzyContext fuzzy_ctx = { member_name, member_name_length, NULL, NULL, 0 };
+    cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
+                                enum_member_fuzzy_find_callback, &fuzzy_ctx);
+    if (fuzzy_ctx.found_sym) {
+        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by fuzzy match (no underscore)\n");
+        return fuzzy_ctx.found_sym;
+    }
+
+    fprintf(stderr, "[DEBUG] cn_type_enum_find_member: member '%.*s' not found in enum '%.*s'\n",
+            (int)member_name_length, member_name,
+            (int)enum_type->as.enum_type.name_length, enum_type->as.enum_type.name);
+    return NULL;
 }
 
 // =============================================================================
