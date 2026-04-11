@@ -45,7 +45,6 @@ typedef enum CnTokenKind {
     CN_TOKEN_KEYWORD_CLASS,     // 类
     CN_TOKEN_KEYWORD_TEMPLATE, // 模板
     CN_TOKEN_KEYWORD_CONST,    // 常量
-    CN_TOKEN_KEYWORD_CONST_STRING, // 常量字符串（const char* 类型别名）
     CN_TOKEN_KEYWORD_STATIC,   // 静态
     CN_TOKEN_KEYWORD_PUBLIC,   // 公开（已在模块系统实现）
     CN_TOKEN_KEYWORD_PRIVATE,   // 私有（已在模块系统实现）

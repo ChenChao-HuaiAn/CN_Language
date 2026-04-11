@@ -74,8 +74,6 @@ const char *cn_frontend_token_kind_name(CnTokenKind kind)
         return "KEYWORD_TEMPLATE";
     case CN_TOKEN_KEYWORD_CONST:
         return "KEYWORD_CONST";
-    case CN_TOKEN_KEYWORD_CONST_STRING:
-        return "KEYWORD_CONST_STRING";
     case CN_TOKEN_KEYWORD_STATIC:
         return "KEYWORD_STATIC";
     case CN_TOKEN_KEYWORD_PUBLIC:

@@ -1,4 +1,4 @@
-// 简单内核示例 - 打印 "Hello from CN Kernel!"
+﻿// 简单内核示例 - 打印 "Hello from CN Kernel!"
 // 这是一个最小的 CN Language 内核程序，演示在 freestanding 模式下的打印功能
 
 函数 kernel_main() {
