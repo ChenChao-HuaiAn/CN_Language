@@ -121,39 +121,39 @@ struct 诊断集合* 创建诊断集合(long long cn_var_初始容量) {
   entry:
   r0 = cn_var_初始容量;
   r1 = r0 <= 0;
-  if (r1) goto if_then_829; else goto if_merge_830;
+  if (r1) goto if_then_297; else goto if_merge_298;
 
-  if_then_829:
+  if_then_297:
   cn_var_初始容量 = 4;
-  goto if_merge_830;
+  goto if_merge_298;
 
-  if_merge_830:
+  if_merge_298:
   struct 诊断集合* cn_var_集合_0;
   r2 = 分配内存(32);
   cn_var_集合_0 = r2;
   r3 = cn_var_集合_0;
   r4 = r3 == 0;
-  if (r4) goto if_then_831; else goto if_merge_832;
+  if (r4) goto if_then_299; else goto if_merge_300;
 
-  if_then_831:
+  if_then_299:
   return 0;
-  goto if_merge_832;
+  goto if_merge_300;
 
-  if_merge_832:
+  if_merge_300:
   r5 = cn_var_初始容量;
   r6 = 分配内存数组(48, r5);
   r7 = cn_var_集合_0;
   r8 = r7->诊断数组;
   r9 = r8 == 0;
-  if (r9) goto if_then_833; else goto if_merge_834;
+  if (r9) goto if_then_301; else goto if_merge_302;
 
-  if_then_833:
+  if_then_301:
   r10 = cn_var_集合_0;
   释放内存(r10);
   return 0;
-  goto if_merge_834;
+  goto if_merge_302;
 
-  if_merge_834:
+  if_merge_302:
   r11 = cn_var_初始容量;
   r12 = cn_var_集合_0;
   return r12;
@@ -171,25 +171,25 @@ void 释放诊断集合(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_835; else goto if_merge_836;
+  if (r1) goto if_then_303; else goto if_merge_304;
 
-  if_then_835:
+  if_then_303:
   return;
-  goto if_merge_836;
+  goto if_merge_304;
 
-  if_merge_836:
+  if_merge_304:
   r2 = cn_var_集合;
   r3 = r2->诊断数组;
   r4 = r3 != 0;
-  if (r4) goto if_then_837; else goto if_merge_838;
+  if (r4) goto if_then_305; else goto if_merge_306;
 
-  if_then_837:
+  if_then_305:
   r5 = cn_var_集合;
   r6 = r5->诊断数组;
   释放内存(r6);
-  goto if_merge_838;
+  goto if_merge_306;
 
-  if_merge_838:
+  if_merge_306:
   r7 = cn_var_集合;
   释放内存(r7);
   return;
@@ -208,13 +208,13 @@ _Bool 扩展诊断数组(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_839; else goto if_merge_840;
+  if (r1) goto if_then_307; else goto if_merge_308;
 
-  if_then_839:
+  if_then_307:
   return 0;
-  goto if_merge_840;
+  goto if_merge_308;
 
-  if_merge_840:
+  if_merge_308:
   long long cn_var_新容量_0;
   r2 = cn_var_集合;
   r3 = r2->容量;
@@ -222,13 +222,13 @@ _Bool 扩展诊断数组(struct 诊断集合* cn_var_集合) {
   cn_var_新容量_0 = r4;
   r5 = cn_var_新容量_0;
   r6 = r5 <= 0;
-  if (r6) goto if_then_841; else goto if_merge_842;
+  if (r6) goto if_then_309; else goto if_merge_310;
 
-  if_then_841:
+  if_then_309:
   cn_var_新容量_0 = 4;
-  goto if_merge_842;
+  goto if_merge_310;
 
-  if_merge_842:
+  if_merge_310:
   struct 诊断信息* cn_var_新数组_1;
   r7 = cn_var_集合;
   r8 = r7->诊断数组;
@@ -238,13 +238,13 @@ _Bool 扩展诊断数组(struct 诊断集合* cn_var_集合) {
   cn_var_新数组_1 = r11;
   r12 = cn_var_新数组_1;
   r13 = r12 == 0;
-  if (r13) goto if_then_843; else goto if_merge_844;
+  if (r13) goto if_then_311; else goto if_merge_312;
 
-  if_then_843:
+  if_then_311:
   return 0;
-  goto if_merge_844;
+  goto if_merge_312;
 
-  if_merge_844:
+  if_merge_312:
   r14 = cn_var_新数组_1;
   r15 = cn_var_新容量_0;
   return 1;
@@ -272,27 +272,27 @@ void 报告诊断(struct 诊断集合* cn_var_集合, enum 诊断严重级别 cn
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_845; else goto if_merge_846;
+  if (r1) goto if_then_313; else goto if_merge_314;
 
-  if_then_845:
+  if_then_313:
   return;
-  goto if_merge_846;
+  goto if_merge_314;
 
-  if_merge_846:
+  if_merge_314:
   r2 = cn_var_集合;
   r3 = r2->长度;
   r4 = cn_var_集合;
   r5 = r4->容量;
   r6 = r3 >= r5;
-  if (r6) goto if_then_847; else goto if_merge_848;
+  if (r6) goto if_then_315; else goto if_merge_316;
 
-  if_then_847:
+  if_then_315:
   r7 = cn_var_集合;
   r8 = 扩展诊断数组(r7);
   r9 = r8 == 0;
-  if (r9) goto if_then_849; else goto if_merge_850;
+  if (r9) goto if_then_317; else goto if_merge_318;
 
-  if_merge_848:
+  if_merge_316:
   struct 诊断信息* cn_var_信息_0;
   r10 = cn_var_集合;
   r11 = r10->诊断数组;
@@ -309,28 +309,28 @@ void 报告诊断(struct 诊断集合* cn_var_集合, enum 诊断严重级别 cn
   r21 = r20 + 1;
   r22 = cn_var_级别;
   r23 = r22 == 0;
-  if (r23) goto if_then_851; else goto if_else_852;
+  if (r23) goto if_then_319; else goto if_else_320;
 
-  if_then_849:
+  if_then_317:
   return;
-  goto if_merge_850;
+  goto if_merge_318;
 
-  if_merge_850:
-  goto if_merge_848;
+  if_merge_318:
+  goto if_merge_316;
 
-  if_then_851:
+  if_then_319:
   r24 = cn_var_集合;
   r25 = r24->错误计数;
   r26 = r25 + 1;
-  goto if_merge_853;
+  goto if_merge_321;
 
-  if_else_852:
+  if_else_320:
   r27 = cn_var_集合;
   r28 = r27->警告计数;
   r29 = r28 + 1;
-  goto if_merge_853;
+  goto if_merge_321;
 
-  if_merge_853:
+  if_merge_321:
   return;
 }
 
@@ -372,13 +372,13 @@ _Bool 有错误(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_854; else goto if_merge_855;
+  if (r1) goto if_then_322; else goto if_merge_323;
 
-  if_then_854:
+  if_then_322:
   return 0;
-  goto if_merge_855;
+  goto if_merge_323;
 
-  if_merge_855:
+  if_merge_323:
   r2 = cn_var_集合;
   r3 = r2->错误计数;
   r4 = r3 > 0;
@@ -393,13 +393,13 @@ long long 获取错误计数(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_856; else goto if_merge_857;
+  if (r1) goto if_then_324; else goto if_merge_325;
 
-  if_then_856:
+  if_then_324:
   return 0;
-  goto if_merge_857;
+  goto if_merge_325;
 
-  if_merge_857:
+  if_merge_325:
   r2 = cn_var_集合;
   r3 = r2->错误计数;
   return r3;
@@ -413,13 +413,13 @@ long long 获取警告计数(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_858; else goto if_merge_859;
+  if (r1) goto if_then_326; else goto if_merge_327;
 
-  if_then_858:
+  if_then_326:
   return 0;
-  goto if_merge_859;
+  goto if_merge_327;
 
-  if_merge_859:
+  if_merge_327:
   r2 = cn_var_集合;
   r3 = r2->警告计数;
   return r3;
@@ -435,28 +435,28 @@ _Bool 应该继续(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_860; else goto if_merge_861;
+  if (r1) goto if_then_328; else goto if_merge_329;
 
-  if_then_860:
+  if_then_328:
   return 1;
-  goto if_merge_861;
+  goto if_merge_329;
 
-  if_merge_861:
+  if_merge_329:
   r2 = cn_var_集合;
   r3 = r2->最大错误数;
   r4 = r3 > 0;
-  if (r4) goto if_then_862; else goto if_merge_863;
+  if (r4) goto if_then_330; else goto if_merge_331;
 
-  if_then_862:
+  if_then_330:
   r5 = cn_var_集合;
   r6 = r5->错误计数;
   r7 = cn_var_集合;
   r8 = r7->最大错误数;
   r9 = r6 < r8;
   return r9;
-  goto if_merge_863;
+  goto if_merge_331;
 
-  if_merge_863:
+  if_merge_331:
   return 1;
 }
 
@@ -468,29 +468,29 @@ char* 获取严重级别字符串(enum 诊断严重级别 cn_var_级别) {
   entry:
   r0 = cn_var_级别;
   r1 = r0 == 0;
-  if (r1) goto if_then_864; else goto if_else_865;
+  if (r1) goto if_then_332; else goto if_else_333;
 
-  if_then_864:
+  if_then_332:
   return "错误";
-  goto if_merge_866;
+  goto if_merge_334;
 
-  if_else_865:
+  if_else_333:
   r2 = cn_var_级别;
   r3 = r2 == 0;
-  if (r3) goto if_then_867; else goto if_else_868;
+  if (r3) goto if_then_335; else goto if_else_336;
 
-  if_merge_866:
+  if_merge_334:
 
-  if_then_867:
+  if_then_335:
   return "警告";
-  goto if_merge_869;
+  goto if_merge_337;
 
-  if_else_868:
+  if_else_336:
   return "未知";
-  goto if_merge_869;
+  goto if_merge_337;
 
-  if_merge_869:
-  goto if_merge_866;
+  if_merge_337:
+  goto if_merge_334;
   return NULL;
 }
 
@@ -520,13 +520,13 @@ void 打印诊断信息(struct 诊断信息* cn_var_信息) {
   entry:
   r0 = cn_var_信息;
   r1 = r0 == 0;
-  if (r1) goto if_then_870; else goto if_merge_871;
+  if (r1) goto if_then_338; else goto if_merge_339;
 
-  if_then_870:
+  if_then_338:
   return;
-  goto if_merge_871;
+  goto if_merge_339;
 
-  if_merge_871:
+  if_merge_339:
   char* cn_var_级别字符串_0;
   r2 = cn_var_信息;
   r3 = r2->严重级别;
@@ -536,9 +536,9 @@ void 打印诊断信息(struct 诊断信息* cn_var_信息) {
   r6 = r5->位置;
   r7 = r6.文件名;
   r8 = r7 != 0;
-  if (r8) goto if_then_872; else goto if_else_873;
+  if (r8) goto if_then_340; else goto if_else_341;
 
-  if_then_872:
+  if_then_340:
   r9 = cn_var_信息;
   r10 = r9->位置;
   r11 = r10.文件名;
@@ -552,16 +552,16 @@ void 打印诊断信息(struct 诊断信息* cn_var_信息) {
   r19 = cn_var_信息;
   r20 = r19->消息;
   打印格式("%s:%d:%d: %s: %s\n", r11, r14, r17, r18, r20);
-  goto if_merge_874;
+  goto if_merge_342;
 
-  if_else_873:
+  if_else_341:
   r21 = cn_var_级别字符串_0;
   r22 = cn_var_信息;
   r23 = r22->消息;
   打印格式("%s: %s\n", r21, r23);
-  goto if_merge_874;
+  goto if_merge_342;
 
-  if_merge_874:
+  if_merge_342:
   return;
 }
 
@@ -577,39 +577,39 @@ void 打印所有诊断(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_875; else goto if_merge_876;
+  if (r1) goto if_then_343; else goto if_merge_344;
 
-  if_then_875:
+  if_then_343:
   return;
-  goto if_merge_876;
+  goto if_merge_344;
 
-  if_merge_876:
+  if_merge_344:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_877;
+  goto for_cond_345;
 
-  for_cond_877:
+  for_cond_345:
   r2 = cn_var_i_0;
   r3 = cn_var_集合;
   r4 = r3->长度;
   r5 = r2 < r4;
-  if (r5) goto for_body_878; else goto for_exit_880;
+  if (r5) goto for_body_346; else goto for_exit_348;
 
-  for_body_878:
+  for_body_346:
   r6 = cn_var_集合;
   r7 = r6->诊断数组;
   r8 = cn_var_i_0;
   r9 = r7 + r8;
   打印诊断信息(r9);
-  goto for_update_879;
+  goto for_update_347;
 
-  for_update_879:
+  for_update_347:
   r10 = cn_var_i_0;
   r11 = r10 + 1;
   cn_var_i_0 = r11;
-  goto for_cond_877;
+  goto for_cond_345;
 
-  for_exit_880:
+  for_exit_348:
   r12 = cn_var_集合;
   r13 = r12->错误计数;
   r14 = cn_var_集合;
@@ -625,13 +625,13 @@ void 清空诊断集合(struct 诊断集合* cn_var_集合) {
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_881; else goto if_merge_882;
+  if (r1) goto if_then_349; else goto if_merge_350;
 
-  if_then_881:
+  if_then_349:
   return;
-  goto if_merge_882;
+  goto if_merge_350;
 
-  if_merge_882:
+  if_merge_350:
   return;
 }
 
@@ -816,61 +816,61 @@ void 诊断集合添加(struct 诊断集合* cn_var_集合, struct 诊断信息 
   entry:
   r0 = cn_var_集合;
   r1 = r0 == 0;
-  if (r1) goto if_then_883; else goto if_merge_884;
+  if (r1) goto if_then_351; else goto if_merge_352;
 
-  if_then_883:
+  if_then_351:
   return;
-  goto if_merge_884;
+  goto if_merge_352;
 
-  if_merge_884:
+  if_merge_352:
   r2 = cn_var_集合;
   r3 = r2->长度;
   r4 = cn_var_集合;
   r5 = r4->容量;
   r6 = r3 >= r5;
-  if (r6) goto if_then_885; else goto if_merge_886;
+  if (r6) goto if_then_353; else goto if_merge_354;
 
-  if_then_885:
+  if_then_353:
   r7 = cn_var_集合;
   r8 = 扩展诊断数组(r7);
   r9 = r8 == 0;
-  if (r9) goto if_then_887; else goto if_merge_888;
+  if (r9) goto if_then_355; else goto if_merge_356;
 
-  if_merge_886:
+  if_merge_354:
   r10 = cn_var_信息;
   r11 = cn_var_集合;
   r12 = r11->诊断数组;
   r13 = cn_var_集合;
   r14 = r13->长度;
-    { long long _tmp_r4 = r10; cn_rt_array_set_element(r12, r14, &_tmp_r4, 8); }
+    { long long _tmp_r2 = r10; cn_rt_array_set_element(r12, r14, &_tmp_r2, 8); }
   r15 = cn_var_集合;
   r16 = r15->长度;
   r17 = r16 + 1;
   r18 = cn_var_信息;
   r19 = r18.严重级别;
   r20 = r19 == 0;
-  if (r20) goto if_then_889; else goto if_else_890;
+  if (r20) goto if_then_357; else goto if_else_358;
 
-  if_then_887:
+  if_then_355:
   return;
-  goto if_merge_888;
+  goto if_merge_356;
 
-  if_merge_888:
-  goto if_merge_886;
+  if_merge_356:
+  goto if_merge_354;
 
-  if_then_889:
+  if_then_357:
   r21 = cn_var_集合;
   r22 = r21->错误计数;
   r23 = r22 + 1;
-  goto if_merge_891;
+  goto if_merge_359;
 
-  if_else_890:
+  if_else_358:
   r24 = cn_var_集合;
   r25 = r24->警告计数;
   r26 = r25 + 1;
-  goto if_merge_891;
+  goto if_merge_359;
 
-  if_merge_891:
+  if_merge_359:
   return;
 }
 

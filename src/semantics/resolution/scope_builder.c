@@ -479,6 +479,14 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         snprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
     }
 
+    // 注册内置函数：格式化字符串 (sprintf的别名)
+    // 特殊处理：支持可变参数，返回整数
+    CnSemSymbol *format_str_sym = cn_sem_scope_insert_symbol(global_scope, "格式化字符串", strlen("格式化字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (format_str_sym) {
+        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理可变参数
+        format_str_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
     // 注册内置函数：长度 (length)
     // 注意：长度函数是特殊的，它可以接受字符串或数组参数
     // 我们在符号表中标记它，但在 semantic_passes.c 中特殊处理其类型检查
@@ -2730,6 +2738,12 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
     CnSemSymbol *snprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式化", strlen("字符串格式化"), CN_SEM_SYMBOL_FUNCTION);
     if (snprintf_sym) {
         snprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+    }
+
+    // 注册内置函数：格式化字符串 (sprintf的别名) - 支持可变参数
+    CnSemSymbol *format_str_sym = cn_sem_scope_insert_symbol(global_scope, "格式化字符串", strlen("格式化字符串"), CN_SEM_SYMBOL_FUNCTION);
+    if (format_str_sym) {
+        format_str_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
     }
 
     // =============================================================================
