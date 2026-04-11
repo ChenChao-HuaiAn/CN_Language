@@ -1976,13 +1976,35 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 object_type = object_type->as.pointer_to;
             }
             
+            // 【修复】检查对象是否为枚举类型（枚举成员访问）
+            // 当符号查找失败但对象类型是枚举时，直接在枚举作用域中查找成员
+            if (object_type && object_type->kind == CN_TYPE_ENUM && object_type->as.enum_type.enum_scope) {
+                CnSemSymbol *member_sym = cn_type_enum_find_member(
+                    object_type,
+                    expr->as.member.member_name,
+                    expr->as.member.member_name_length);
+                
+                if (!member_sym) {
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_MEMBER_NOT_FOUND,
+                        expr->loc.filename, expr->loc.line, expr->loc.column,
+                        "语义错误：枚举中不存在该成员");
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                } else {
+                    // 枚举成员访问的类型是成员的类型（整数）
+                    expr->type = member_sym->type;
+                }
+                break;
+            }
+            
             // 检查对象是否为结构体类型
             if (!object_type || object_type->kind != CN_TYPE_STRUCT) {
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_TYPE_MISMATCH,
                     expr->loc.filename, expr->loc.line, expr->loc.column,
-                    "语义错误：成员访问操作的对象必须是结构体类型");
+                    "语义错误：成员访问操作的对象必须是结构体或枚举类型");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }
