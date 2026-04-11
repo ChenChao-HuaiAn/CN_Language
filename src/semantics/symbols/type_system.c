@@ -172,6 +172,23 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         return true;
     }
     
+    // 整数到结构体类型的隐式转换（用于枚举类型参数）
+    // 在CN语言中，枚举类型在解析阶段被识别为结构体类型，
+    // 而枚举成员的类型是整数类型，因此需要允许整数传递给结构体类型参数
+    // 这样可以支持函数调用时传入枚举成员值
+    if (a_is_int && b->kind == CN_TYPE_STRUCT) {
+        return true;
+    }
+    
+    // 枚举类型到结构体类型的隐式转换
+    // 在CN语言中，枚举类型在解析阶段被识别为结构体类型，
+    // 当函数参数类型是枚举类型时，解析器会将其识别为结构体类型，
+    // 而传入的枚举成员的类型是枚举类型(CN_TYPE_ENUM)，
+    // 因此需要允许枚举类型传递给结构体类型参数
+    if (a->kind == CN_TYPE_ENUM && b->kind == CN_TYPE_STRUCT) {
+        return true;
+    }
+    
     // 指针类型之间的兼容性
     if (a->kind == CN_TYPE_POINTER && b->kind == CN_TYPE_POINTER) {
         // 特殊处理：空类型指针（void*）可以接受任何类型的指针
