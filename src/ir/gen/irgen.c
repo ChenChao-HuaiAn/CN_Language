@@ -1298,6 +1298,7 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 静态数组的 length > 0，动态数组的 length == 0
             CnType *array_type = expr->as.index.array->type;
             bool is_static_array = false;
+            bool is_string_type = false;  // 【新增】字符串类型标记
             
             // 【调试】输出数组类型信息
             fprintf(stderr, "[DEBUG] INDEX: array_type=%p, kind=%d, length=%zu\n",
@@ -1305,7 +1306,19 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     array_type ? array_type->kind : -1,
                     (array_type && array_type->kind == CN_TYPE_ARRAY) ? array_type->as.array.length : 0);
             
-            if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
+            // 【新增】检查是否为字符串类型或字符指针类型
+            // 1. 字符串类型 (CN_TYPE_STRING)
+            // 2. 字符指针类型 (CN_TYPE_POINTER -> CN_TYPE_CHAR)
+            if (array_type && array_type->kind == CN_TYPE_STRING) {
+                is_string_type = true;
+                fprintf(stderr, "[DEBUG] INDEX: detected string type, using pointer arithmetic\n");
+            } else if (array_type && array_type->kind == CN_TYPE_POINTER &&
+                       array_type->as.pointer_to &&
+                       array_type->as.pointer_to->kind == CN_TYPE_CHAR) {
+                // 字符指针类型：char* 的索引访问
+                is_string_type = true;
+                fprintf(stderr, "[DEBUG] INDEX: detected char pointer type, using pointer arithmetic\n");
+            } else if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
                 is_static_array = true;
                 fprintf(stderr, "[DEBUG] INDEX: detected static array, length=%zu\n", array_type->as.array.length);
             }
@@ -1318,6 +1331,27 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             } else if (result_type->kind != CN_TYPE_POINTER) {
                 // 如果元素类型不是指针，则创建指向元素类型的指针
                 result_type = cn_type_new_pointer(result_type);
+            }
+            
+            // 【新增】字符串类型索引访问：使用指针算术直接访问
+            if (is_string_type) {
+                // 字符串索引访问：str[index] 返回 char 类型
+                // 生成 GET_ELEMENT_PTR 指令：result = &str[index]
+                CnIrInst *gep_inst = cn_ir_inst_new(CN_IR_INST_GET_ELEMENT_PTR,
+                                                     cn_ir_op_reg(result_reg, result_type),
+                                                     array_op, index_op);
+                emit(ctx, gep_inst);
+                
+                // 解引用字符值（字符串索引返回 char，不是 char*）
+                // 使用 DEREF 指令生成 *ptr
+                int deref_reg = alloc_reg(ctx);
+                CnType *char_type = cn_type_new_primitive(CN_TYPE_CHAR);
+                CnIrInst *deref_inst = cn_ir_inst_new(CN_IR_INST_DEREF,
+                                                       cn_ir_op_reg(deref_reg, char_type),
+                                                       cn_ir_op_reg(result_reg, result_type),
+                                                       cn_ir_op_none());
+                emit(ctx, deref_inst);
+                return cn_ir_op_reg(deref_reg, char_type);
             }
             
             if (is_static_array) {

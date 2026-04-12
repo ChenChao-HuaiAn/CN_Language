@@ -38,7 +38,7 @@ struct 扫描器 {
 // Global Variables
 
 // Forward Declarations
-struct 扫描器* 创建扫描器(char*, long long);
+struct 扫描器* 创建扫描器(const char*, long long);
 void 销毁扫描器(struct 扫描器*);
 long long 当前字符(struct 扫描器*);
 long long 前进(struct 扫描器*);
@@ -49,7 +49,7 @@ _Bool 是空白字符(long long);
 void 跳过空白字符(struct 扫描器*);
 struct 词元 下一个词元(struct 扫描器*);
 
-struct 扫描器* 创建扫描器(char* cn_var_源码内容, long long cn_var_源码长度) {
+struct 扫描器* 创建扫描器(const char* cn_var_源码内容, long long cn_var_源码长度) {
   long long r4;
   char* r3;
   void* r0;
@@ -104,6 +104,7 @@ long long 当前字符(struct 扫描器* cn_var_实例) {
   struct 扫描器* r10;
   struct 扫描器* r13;
   char* r16;
+  char* r17;
   _Bool r2;
   _Bool r9;
   struct 扫描器 r4;
@@ -127,8 +128,9 @@ long long 当前字符(struct 扫描器* cn_var_实例) {
   r13 = cn_var_实例;
   r14 = *r13;
   r15 = r14.位置;
-  r16 = (void**)cn_rt_array_get_element(r12, r15, 8);
-  return r16;
+  r16 = &r12[r15];
+  r17 = r16;
+  return r17;
 
   logic_rhs_6:
   r3 = cn_var_实例;

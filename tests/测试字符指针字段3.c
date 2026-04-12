@@ -18,11 +18,12 @@ struct 测试 {
 long long 主();
 
 long long 主() {
-  long long r5;
+  long long r6;
   void* r0;
   struct 测试* r1;
   char* r3;
   char* r4;
+  char r5;
   struct 测试 r2;
 
   entry:
@@ -33,9 +34,10 @@ long long 主() {
   r1 = cn_var_t_0;
   r2 = *r1;
   r3 = r2.数据;
-  r4 = (void**)cn_rt_array_get_element(r3, 0, 8);
-  cn_var_c_1 = r4;
-  r5 = cn_var_c_1;
-  return r5;
+  r4 = &r3[0];
+  r5 = *r4;
+  cn_var_c_1 = r5;
+  r6 = cn_var_c_1;
+  return r6;
 }
 

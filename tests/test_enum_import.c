@@ -36,7 +36,7 @@ struct 词元;
 struct 词元类型枚举;
 
 // Forward Declarations - 从导入模块
-struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long);
+struct 词元 创建词元(enum 词元类型枚举, const char*, long long, long long);
 char* 获取类型名称(enum 词元类型枚举);
 
 // Global Variables

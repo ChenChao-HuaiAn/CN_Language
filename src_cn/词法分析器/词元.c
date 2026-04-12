@@ -106,7 +106,7 @@ struct 词元 {
 
 // Forward Declarations
 char* 词元类型名称(enum 词元类型枚举);
-struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
+struct 词元 创建词元(enum 词元类型枚举, const char*, long long, long long, long long);
 _Bool 是关键字(enum 词元类型枚举);
 _Bool 是字面量(enum 词元类型枚举);
 _Bool 是运算符(enum 词元类型枚举);
@@ -1020,7 +1020,7 @@ char* 词元类型名称(enum 词元类型枚举 cn_var_类型) {
   return "未知词元类型";
 }
 
-struct 词元 创建词元(enum 词元类型枚举 cn_var_类型, char* cn_var_值, long long cn_var_行号, long long cn_var_列号, long long cn_var_长度值) {
+struct 词元 创建词元(enum 词元类型枚举 cn_var_类型, const char* cn_var_值, long long cn_var_行号, long long cn_var_列号, long long cn_var_长度值) {
   long long r2, r3, r4;
   char* r1;
   struct 词元 r5;

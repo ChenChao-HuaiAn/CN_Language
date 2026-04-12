@@ -37,10 +37,10 @@ struct 词元 {
 // Global Variables
 
 // Forward Declarations
-struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long);
+struct 词元 创建词元(enum 词元类型枚举, const char*, long long, long long);
 char* 获取类型名称(enum 词元类型枚举);
 
-struct 词元 创建词元(enum 词元类型枚举 cn_var_类型, char* cn_var_内容, long long cn_var_行号, long long cn_var_列号) {
+struct 词元 创建词元(enum 词元类型枚举 cn_var_类型, const char* cn_var_内容, long long cn_var_行号, long long cn_var_列号) {
   long long r2, r3;
   char* r1;
   struct 词元 r4;
