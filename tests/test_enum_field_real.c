@@ -35,7 +35,7 @@ long long main() {
   struct 物体 cn_var_球_0;
   r0 = cn_var_球_0;
   r1 = r0.颜色值;
-  r2 = r1 == 0;
+  r2 = r1 == 颜色_红;
   if (r2) goto if_then_0; else goto if_merge_1;
 
   if_then_0:

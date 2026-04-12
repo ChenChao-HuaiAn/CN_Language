@@ -22,7 +22,7 @@ long long 主() {
   long long cn_var_c_2;
   r0 = cn_var_源码_0;
   r1 = cn_var_位置_1;
-  r2 = *(char**)cn_rt_array_get_element(r0, r1, 8);
+  r2 = (void**)cn_rt_array_get_element(r0, r1, 8);
   cn_var_c_2 = r2;
   r3 = cn_var_c_2;
   return r3;

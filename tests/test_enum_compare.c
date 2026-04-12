@@ -29,14 +29,14 @@ long long main() {
 
   entry:
   enum 颜色 cn_var_c_0;
-  cn_var_c_0 = 1;
+  cn_var_c_0 = 颜色_绿;
   r0 = cn_var_c_0;
-  r1 = r0 == 1;
+  r1 = r0 == 颜色_绿;
   if (r1) goto if_then_0; else goto if_merge_1;
 
   if_then_0:
   r3 = cn_var_c_0;
-  r4 = r3 >= 0;
+  r4 = r3 >= 颜色_红;
   if (r4) goto logic_rhs_4; else goto logic_merge_5;
 
   if_merge_1:
@@ -51,7 +51,7 @@ long long main() {
 
   logic_rhs_4:
   r5 = cn_var_c_0;
-  r6 = r5 <= 3;
+  r6 = r5 <= 颜色_黄;
   goto logic_merge_5;
 
   logic_merge_5:

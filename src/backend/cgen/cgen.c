@@ -334,7 +334,7 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
         case CN_IR_OP_REG: fprintf(ctx->output_file, "r%d", op.as.reg_id); break;
         case CN_IR_OP_IMM_INT: fprintf(ctx->output_file, "%lld", op.as.imm_int); break;
         case CN_IR_OP_IMM_FLOAT: fprintf(ctx->output_file, "%f", op.as.imm_float); break;
-        case CN_IR_OP_IMM_STR: 
+        case CN_IR_OP_IMM_STR:
             // 字符串字面量：需要加引号并处理转义
             fprintf(ctx->output_file, "\"");
             for (const char *p = op.as.imm_str; p && *p; p++) {
@@ -349,7 +349,108 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
             }
             fprintf(ctx->output_file, "\"");
             break;
-        case CN_IR_OP_SYMBOL: fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name)); break;
+        case CN_IR_OP_SYMBOL:
+            // 检查是否为枚举成员符号
+            // 枚举成员符号名格式为 "枚举类型名_成员名"，不需要添加 cn_var_ 前缀
+            // 【调试】输出符号信息
+            fprintf(stderr, "[DEBUG] print_operand: sym_name=%s, type=%p, kind=%d\n",
+                    op.as.sym_name ? op.as.sym_name : "NULL",
+                    (void*)op.type, op.type ? op.type->kind : -1);
+            
+            // 【修复】检查是否为局部变量名格式（原名_数字序号）
+            // 局部变量名格式为 "原名_序号"，序号是数字
+            // 枚举成员名格式为 "枚举类型名_成员名"，成员名不是纯数字
+            bool is_local_var_by_name = false;
+            if (op.as.sym_name && strchr(op.as.sym_name, '_') != NULL) {
+                const char *last_underscore = strrchr(op.as.sym_name, '_');
+                if (last_underscore) {
+                    const char *after_underscore = last_underscore + 1;
+                    bool is_number = true;
+                    for (const char *p = after_underscore; *p; p++) {
+                        if (*p < '0' || *p > '9') {
+                            is_number = false;
+                            break;
+                        }
+                    }
+                    // 如果下划线后面是纯数字，则是局部变量名
+                    if (is_number && strlen(after_underscore) > 0) {
+                        is_local_var_by_name = true;
+                    }
+                }
+            }
+            
+            // 只有当类型是枚举且不是局部变量名格式时，才当作枚举成员处理
+            if (op.type && op.type->kind == CN_TYPE_ENUM && !is_local_var_by_name) {
+                // 枚举成员：直接输出符号名
+                fprintf(ctx->output_file, "%s", op.as.sym_name);
+            } else {
+                // 【调试】检查符号名是否包含下划线（可能是枚举成员但类型信息丢失）
+                // 枚举成员名格式为 "枚举类型名_成员名"
+                bool is_enum_member_by_name = false;
+                if (op.as.sym_name && strchr(op.as.sym_name, '_') != NULL) {
+                    // 符号名包含下划线，可能是枚举成员
+                    // 检查是否在全局作用域中作为枚举成员存在
+                    if (ctx->global_scope) {
+                        CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope, op.as.sym_name, strlen(op.as.sym_name));
+                        if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                            is_enum_member_by_name = true;
+                            fprintf(stderr, "[DEBUG] Found enum member by name lookup: %s\n", op.as.sym_name);
+                        }
+                    }
+                    
+                    // 【修复】检查符号名是否符合枚举成员命名模式
+                    // 枚举成员符号名格式为 "枚举类型名_成员名"
+                    // 局部变量名格式为 "原名_序号"（序号是数字）
+                    // 关键区别：枚举成员的下划线后面不是数字，局部变量的下划线后面是数字
+                    if (!is_enum_member_by_name) {
+                        size_t name_len = strlen(op.as.sym_name);
+                        if (name_len > 3) {
+                            // 查找最后一个下划线的位置
+                            const char *last_underscore = strrchr(op.as.sym_name, '_');
+                            if (last_underscore) {
+                                // 检查下划线后面是否是数字
+                                const char *after_underscore = last_underscore + 1;
+                                bool is_number_after_underscore = true;
+                                for (const char *p = after_underscore; *p; p++) {
+                                    if (*p < '0' || *p > '9') {
+                                        is_number_after_underscore = false;
+                                        break;
+                                    }
+                                }
+                                
+                                // 如果下划线后面是数字，则是局部变量，不是枚举成员
+                                if (is_number_after_underscore && strlen(after_underscore) > 0) {
+                                    // 这是局部变量名格式（如 "名称长度_0"），不是枚举成员
+                                    is_enum_member_by_name = false;
+                                } else {
+                                    // 下划线后面不是数字，检查是否包含中文
+                                    bool has_chinese = false;
+                                    for (size_t i = 0; i < name_len; i++) {
+                                        if ((unsigned char)op.as.sym_name[i] > 127) {
+                                            has_chinese = true;
+                                            break;
+                                        }
+                                    }
+                                    // 如果包含中文且下划线后面不是数字，可能是枚举成员
+                                    if (has_chinese) {
+                                        is_enum_member_by_name = true;
+                                        fprintf(stderr, "[DEBUG] Detected enum member by Chinese name pattern: %s\n", op.as.sym_name);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                if (is_enum_member_by_name) {
+                    // 枚举成员：直接输出符号名
+                    fprintf(ctx->output_file, "%s", op.as.sym_name);
+                } else {
+                    // 普通变量：添加 cn_var_ 前缀
+                    fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name));
+                }
+            }
+            break;
         case CN_IR_OP_LABEL: fprintf(ctx->output_file, "%s", op.as.label->name ? op.as.label->name : "unnamed_label"); break;
         case CN_IR_OP_AST_EXPR:
             // AST表达式：直接生成 C 代码（用于结构体字面量等）
@@ -397,16 +498,67 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                 // 基类指针：输出 "base" 标识符
                 fprintf(ctx->output_file, "base");
             } else {
-                // 支持引用其他模块变量
-                // 先简单处理：直接输出变量名（需要结合符号表处理模块前缀）
-                fprintf(ctx->output_file, "cn_var_%.*s",
-                        (int)expr->as.identifier.name_length,
-                        expr->as.identifier.name);
+                // 检查是否为枚举成员引用
+                // 枚举成员的类型是 CN_TYPE_ENUM，可以通过 expr->type 获取枚举类型信息
+                bool is_enum_member = false;
+                if (expr->type && expr->type->kind == CN_TYPE_ENUM) {
+                    // 这是一个枚举成员引用
+                    // 生成格式：枚举类型名_成员名
+                    const char *enum_name = expr->type->as.enum_type.name;
+                    size_t enum_name_len = expr->type->as.enum_type.name_length;
+                    const char *member_name = expr->as.identifier.name;
+                    size_t member_name_len = expr->as.identifier.name_length;
+                    
+                    fprintf(ctx->output_file, "%.*s_%.*s",
+                            (int)enum_name_len, enum_name,
+                            (int)member_name_len, member_name);
+                    is_enum_member = true;
+                }
+                
+                // 如果不是枚举成员，检查全局作用域中是否有同名的枚举成员符号
+                if (!is_enum_member && ctx->global_scope) {
+                    CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                           expr->as.identifier.name,
+                                                           expr->as.identifier.name_length);
+                    if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
+                        // 找到枚举成员符号
+                        // 枚举成员的符号名格式为 "枚举类型名_成员名"
+                        // 直接使用符号名作为枚举值引用
+                        fprintf(ctx->output_file, "%.*s",
+                                (int)sym->name_length, sym->name);
+                        is_enum_member = true;
+                    }
+                }
+                
+                // 如果不是枚举成员，按普通变量处理
+                if (!is_enum_member) {
+                    // 支持引用其他模块变量
+                    // 先简单处理：直接输出变量名（需要结合符号表处理模块前缀）
+                    fprintf(ctx->output_file, "cn_var_%.*s",
+                            (int)expr->as.identifier.name_length,
+                            expr->as.identifier.name);
+                }
             }
             break;
         case CN_AST_EXPR_MEMBER_ACCESS:
-            // 成员访问表达式：obj.member 或 ptr->member 或 类名.静态成员 或 基类.成员
+            // 成员访问表达式：obj.member 或 ptr->member 或 类名.静态成员 或 基类.成员 或 枚举类型.成员
             {
+                // 【新增】检查是否为枚举成员访问（枚举类型.成员名）
+                // 枚举成员访问的对象类型是枚举类型
+                if (expr->as.member.object && expr->as.member.object->type) {
+                    CnType *obj_type = expr->as.member.object->type;
+                    if (obj_type->kind == CN_TYPE_ENUM) {
+                        // 枚举成员访问：生成 枚举类型名_成员名
+                        const char *enum_name = obj_type->as.enum_type.name;
+                        size_t enum_name_len = obj_type->as.enum_type.name_length;
+                        fprintf(ctx->output_file, "%.*s_%.*s",
+                                (int)enum_name_len, enum_name,
+                                (int)expr->as.member.member_name_length,
+                                expr->as.member.member_name);
+                        break;  // 枚举成员访问处理完成
+                    }
+                }
+                
                 // 检查是否为静态成员访问
                 if (expr->as.member.is_static_member && expr->as.member.class_name) {
                     // 静态成员访问：生成 类名_成员名
@@ -974,18 +1126,35 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 inst->extra_args_count >= 3 &&
                 inst->dest.kind != CN_IR_OP_NONE) {
                 
-                // 对于结构体类型，返回的是指针，不需要解引用
+                // 对于结构体指针类型，返回的是指针，不需要解引用
                 // 对于基本类型，需要解引用
-                bool is_struct_type = inst->dest.type &&
-                    inst->dest.type->kind == CN_TYPE_STRUCT;
+                // 【修复】检查目标类型是否为指针类型，如果是则获取其指向的类型
+                bool is_pointer_to_struct = false;
+                bool is_pointer_type = false;
+                CnType *target_type = inst->dest.type;
+                
+                // 如果目标类型是指针，获取其指向的类型
+                if (target_type && target_type->kind == CN_TYPE_POINTER) {
+                    is_pointer_type = true;
+                    target_type = target_type->as.pointer_to;
+                }
+                
+                // 检查目标类型是否为结构体
+                is_pointer_to_struct = target_type && target_type->kind == CN_TYPE_STRUCT;
                 
                 print_operand(ctx, inst->dest);
-                if (is_struct_type) {
-                    // 结构体类型：dest = (type*)cn_rt_array_get_element(arr, idx, size)
-                    fprintf(ctx->output_file, " = (%s*)", get_c_type_string(inst->dest.type));
+                if (is_pointer_to_struct) {
+                    // 结构体指针类型：dest = (struct type*)cn_rt_array_get_element(arr, idx, size)
+                    fprintf(ctx->output_file, " = (struct %s*)",
+                            target_type && target_type->as.struct_type.name ?
+                            target_type->as.struct_type.name : "void");
+                } else if (is_pointer_type) {
+                    // 指针类型：dest = (void**)cn_rt_array_get_element(arr, idx, size)
+                    // 数组存储的是指针，所以返回 void** 类型
+                    fprintf(ctx->output_file, " = (void**)");
                 } else {
                     // 基本类型：dest = *(type*)cn_rt_array_get_element(arr, idx, size)
-                    fprintf(ctx->output_file, " = *(%s*)", get_c_type_string(inst->dest.type));
+                    fprintf(ctx->output_file, " = *(%s)", get_c_type_string(inst->dest.type));
                 }
                 fprintf(ctx->output_file, "%s(", get_c_function_name(inst->src1.as.sym_name));
                 
@@ -1126,6 +1295,18 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             break;
         case CN_IR_INST_ADDRESS_OF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = &"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
         case CN_IR_INST_DEREF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = *"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
+        case CN_IR_INST_GET_ELEMENT_PTR: {
+            // 数组索引访问（静态数组）：dest = &array[index]
+            // 生成 C 风格的数组索引访问：dest = &array[index]
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = &");
+            print_operand(ctx, inst->src1);  // 数组
+            fprintf(ctx->output_file, "[");
+            print_operand(ctx, inst->src2);  // 索引
+            fprintf(ctx->output_file, "];\n");
+            break;
+        }
         case CN_IR_INST_MEMBER_ACCESS: {
             // 结构体成员访问：dest = obj.member 或 dest = ptr->member
             fprintf(ctx->output_file, "  ");

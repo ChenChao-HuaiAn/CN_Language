@@ -68,6 +68,29 @@ typedef struct CnIrGenStaticVar {
     struct CnIrGenStaticVar *next;
 } CnIrGenStaticVar;
 
+// 用于查找枚举类型符号的回调上下文
+typedef struct EnumLookupContext {
+    CnSemScope *target_enum_scope;  // 目标枚举作用域
+    const char *enum_name;          // 找到的枚举类型名
+    size_t enum_name_len;           // 枚举类型名长度
+} EnumLookupContext;
+
+// 查找枚举类型符号的回调函数
+static void find_enum_symbol_callback(CnSemSymbol *symbol, void *user_data) {
+    EnumLookupContext *ctx = (EnumLookupContext *)user_data;
+    // 如果已经找到，直接返回
+    if (ctx->enum_name) return;
+    
+    // 检查是否是枚举类型符号，且其枚举作用域匹配目标
+    if (symbol->kind == CN_SEM_SYMBOL_ENUM &&
+        symbol->type &&
+        symbol->type->kind == CN_TYPE_ENUM &&
+        symbol->type->as.enum_type.enum_scope == ctx->target_enum_scope) {
+        ctx->enum_name = symbol->name;
+        ctx->enum_name_len = symbol->name_length;
+    }
+}
+
 // 局部变量名映射节点（用于变量名唯一化）
 typedef struct CnIrLocalVarEntry {
     char *original_name;      // 原始变量名
@@ -283,9 +306,85 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 // 注意：枚举成员符号的 kind 是 CN_SEM_SYMBOL_ENUM_MEMBER
                 // 而变量符号的 kind 是 CN_SEM_SYMBOL_VAR 或 CN_SEM_SYMBOL_PARAM
                 if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
-                    // 枚举成员：直接返回其常量值
+                    // 枚举成员：生成 "枚举类型名_成员名" 格式的符号名
+                    // 需要找到枚举类型名称
+                    const char *enum_name = NULL;
+                    size_t enum_name_len = 0;
+                    
+                    // 方法1：从符号的类型信息获取枚举类型名称
+                    // 枚举成员的 type 应该是枚举类型
+                    if (sym->type && sym->type->kind == CN_TYPE_ENUM) {
+                        enum_name = sym->type->as.enum_type.name;
+                        enum_name_len = sym->type->as.enum_type.name_length;
+                    }
+                    
+                    // 方法2：从表达式的类型信息获取（如果语义分析器设置了正确的类型）
+                    if (!enum_name && expr->type && expr->type->kind == CN_TYPE_ENUM) {
+                        enum_name = expr->type->as.enum_type.name;
+                        enum_name_len = expr->type->as.enum_type.name_length;
+                    }
+                    
+                    // 方法3：从符号的声明作用域获取枚举类型信息
+                    if (!enum_name && sym->decl_scope && sym->decl_scope->kind == CN_SEM_SCOPE_ENUM) {
+                        // 枚举作用域的父作用域应该包含枚举类型符号
+                        CnSemScope *parent_scope = cn_sem_scope_parent(sym->decl_scope);
+                        if (parent_scope) {
+                            // 使用回调函数遍历父作用域查找枚举类型符号
+                            EnumLookupContext lookup_ctx = {
+                                .target_enum_scope = sym->decl_scope,
+                                .enum_name = NULL,
+                                .enum_name_len = 0
+                            };
+                            cn_sem_scope_foreach_symbol(parent_scope, find_enum_symbol_callback, &lookup_ctx);
+                            if (lookup_ctx.enum_name) {
+                                enum_name = lookup_ctx.enum_name;
+                                enum_name_len = lookup_ctx.enum_name_len;
+                            }
+                        }
+                    }
+                    
+                    // 方法2：从表达式的类型信息获取（如果语义分析器设置了正确的类型）
+                    if (!enum_name && expr->type && expr->type->kind == CN_TYPE_ENUM) {
+                        enum_name = expr->type->as.enum_type.name;
+                        enum_name_len = expr->type->as.enum_type.name_length;
+                    }
+                    
+                    // 方法3：检查符号名是否已经是 "枚举类型名_成员名" 格式
+                    if (!enum_name) {
+                        // 检查符号名是否包含下划线
+                        const char *underscore = memchr(sym->name, '_', sym->name_length);
+                        if (underscore) {
+                            // 符号名已经是正确格式，使用 copy_name 正确复制
+                            char *sym_name = copy_name(sym->name, sym->name_length);
+                            free(name);
+                            CnIrOperand result = cn_ir_op_symbol(sym_name, expr->type);
+                            free(sym_name);
+                            return result;
+                        }
+                    }
+                    
+                    // 生成 "枚举类型名_成员名" 格式的符号名
+                    if (enum_name && enum_name_len > 0) {
+                        size_t member_name_len = sym->name_length;
+                        size_t total_len = enum_name_len + 1 + member_name_len + 1; // "_" + "\0"
+                        char *qualified_name = malloc(total_len);
+                        if (qualified_name) {
+                            snprintf(qualified_name, total_len, "%.*s_%.*s",
+                                    (int)enum_name_len, enum_name,
+                                    (int)member_name_len, sym->name);
+                            free(name);
+                            CnIrOperand result = cn_ir_op_symbol(qualified_name, expr->type);
+                            free(qualified_name);
+                            return result;
+                        }
+                    }
+                    
+                    // 回退：使用 copy_name 正确复制符号名
+                    char *sym_name = copy_name(sym->name, sym->name_length);
                     free(name);
-                    return cn_ir_op_imm_int(sym->as.enum_value, cn_type_new_primitive(CN_TYPE_INT));
+                    CnIrOperand result = cn_ir_op_symbol(sym_name, expr->type);
+                    free(sym_name);
+                    return result;
                 }
                 
                 // 检查是否来自模块：如果 decl_scope 是模块作用域，生成带模块前缀的名称
@@ -496,17 +595,45 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 CnIrOperand array_op = cn_ir_gen_expr(ctx, target->as.index.array);
                 CnIrOperand index_op = cn_ir_gen_expr(ctx, target->as.index.index);
                 
-                // 调用 cn_rt_array_set_element(数组, 索引, &value, 元素大小)
-                CnIrInst *set_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
-                                                      cn_ir_op_symbol("cn_rt_array_set_element", NULL),
-                                                      cn_ir_op_none());
-                set_inst->extra_args_count = 4;
-                set_inst->extra_args = malloc(4 * sizeof(CnIrOperand));
-                set_inst->extra_args[0] = array_op;
-                set_inst->extra_args[1] = index_op;
-                set_inst->extra_args[2] = value;  // 直接传递值
-                set_inst->extra_args[3] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
-                emit(ctx, set_inst);
+                // 【修复】检查是否为静态数组（固定大小数组）
+                CnType *array_type = target->as.index.array->type;
+                bool is_static_array = false;
+                if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
+                    is_static_array = true;
+                }
+                
+                if (is_static_array) {
+                    // 静态数组：使用 GET_ELEMENT_PTR + STORE 生成 C 风格的数组索引赋值
+                    // 生成：array[index] = value
+                    CnType *elem_type = expr->type;
+                    if (!elem_type) {
+                        elem_type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    }
+                    CnType *ptr_type = cn_type_new_pointer(elem_type);
+                    
+                    int addr_reg = alloc_reg(ctx);
+                    CnIrInst *gep_inst = cn_ir_inst_new(CN_IR_INST_GET_ELEMENT_PTR,
+                                                         cn_ir_op_reg(addr_reg, ptr_type),
+                                                         array_op, index_op);
+                    emit(ctx, gep_inst);
+                    
+                    // 存储：*addr = value
+                    emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE,
+                                              cn_ir_op_reg(addr_reg, ptr_type),
+                                              value, cn_ir_op_none()));
+                } else {
+                    // 动态数组：调用 cn_rt_array_set_element(数组, 索引, &value, 元素大小)
+                    CnIrInst *set_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                          cn_ir_op_symbol("cn_rt_array_set_element", NULL),
+                                                          cn_ir_op_none());
+                    set_inst->extra_args_count = 4;
+                    set_inst->extra_args = malloc(4 * sizeof(CnIrOperand));
+                    set_inst->extra_args[0] = array_op;
+                    set_inst->extra_args[1] = index_op;
+                    set_inst->extra_args[2] = value;  // 直接传递值
+                    set_inst->extra_args[3] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
+                    emit(ctx, set_inst);
+                }
             }
             return value;
         }
@@ -1167,19 +1294,23 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             CnIrOperand array_op = cn_ir_gen_expr(ctx, expr->as.index.array);
             CnIrOperand index_op = cn_ir_gen_expr(ctx, expr->as.index.index);
             
-            // 调用 cn_rt_array_get_element(数组, 索引, 元素大小)
-            CnIrInst *get_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
-                                                  cn_ir_op_symbol("cn_rt_array_get_element", NULL),
-                                                  cn_ir_op_none());
-            get_inst->extra_args_count = 3;
-            get_inst->extra_args = malloc(3 * sizeof(CnIrOperand));
-            get_inst->extra_args[0] = array_op;
-            get_inst->extra_args[1] = index_op;
-            get_inst->extra_args[2] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
+            // 【修复】检查是否为静态数组（固定大小数组）
+            // 静态数组的 length > 0，动态数组的 length == 0
+            CnType *array_type = expr->as.index.array->type;
+            bool is_static_array = false;
+            
+            // 【调试】输出数组类型信息
+            fprintf(stderr, "[DEBUG] INDEX: array_type=%p, kind=%d, length=%zu\n",
+                    (void*)array_type,
+                    array_type ? array_type->kind : -1,
+                    (array_type && array_type->kind == CN_TYPE_ARRAY) ? array_type->as.array.length : 0);
+            
+            if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
+                is_static_array = true;
+                fprintf(stderr, "[DEBUG] INDEX: detected static array, length=%zu\n", array_type->as.array.length);
+            }
             
             int result_reg = alloc_reg(ctx);
-            // 【修复】cn_rt_array_get_element 返回 void*（指针类型）
-            // 所以返回类型应该是指向元素类型的指针，而不是元素类型本身
             CnType *result_type = expr->type;
             if (!result_type) {
                 // 如果元素类型未知，默认使用 void* 指针类型
@@ -1188,10 +1319,42 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 // 如果元素类型不是指针，则创建指向元素类型的指针
                 result_type = cn_type_new_pointer(result_type);
             }
-            get_inst->dest = cn_ir_op_reg(result_reg, result_type);
-            emit(ctx, get_inst);
             
-            return cn_ir_op_reg(result_reg, result_type);
+            if (is_static_array) {
+                // 静态数组：使用 GET_ELEMENT_PTR 指令生成 C 风格的数组索引访问
+                // 生成：result = &array[index]
+                CnIrInst *gep_inst = cn_ir_inst_new(CN_IR_INST_GET_ELEMENT_PTR,
+                                                     cn_ir_op_reg(result_reg, result_type),
+                                                     array_op, index_op);
+                emit(ctx, gep_inst);
+                
+                // 然后加载值（如果元素类型不是指针）
+                if (expr->type && expr->type->kind != CN_TYPE_POINTER) {
+                    int load_reg = alloc_reg(ctx);
+                    CnIrInst *load_inst = cn_ir_inst_new(CN_IR_INST_LOAD,
+                                                          cn_ir_op_reg(load_reg, expr->type),
+                                                          cn_ir_op_reg(result_reg, result_type),
+                                                          cn_ir_op_none());
+                    emit(ctx, load_inst);
+                    return cn_ir_op_reg(load_reg, expr->type);
+                }
+                return cn_ir_op_reg(result_reg, result_type);
+            } else {
+                // 动态数组：调用 cn_rt_array_get_element(数组, 索引, 元素大小)
+                CnIrInst *get_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
+                                                      cn_ir_op_symbol("cn_rt_array_get_element", NULL),
+                                                      cn_ir_op_none());
+                get_inst->extra_args_count = 3;
+                get_inst->extra_args = malloc(3 * sizeof(CnIrOperand));
+                get_inst->extra_args[0] = array_op;
+                get_inst->extra_args[1] = index_op;
+                get_inst->extra_args[2] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
+                
+                get_inst->dest = cn_ir_op_reg(result_reg, result_type);
+                emit(ctx, get_inst);
+                
+                return cn_ir_op_reg(result_reg, result_type);
+            }
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
             // 成员访问：支持结构体 obj.member、模块 module.member 和枚举 enum.member
@@ -1226,14 +1389,50 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             if (is_enum_access) {
                 // 枚举成员访问：查找枚举成员的值
                 CnType *enum_type = enum_sym ? enum_sym->type : expr->as.member.object->type;
+                
+                // 【调试】输出枚举类型信息
+                fprintf(stderr, "[DEBUG] 枚举成员访问: 成员名=%.*s, enum_type=%p, kind=%d\n",
+                        (int)expr->as.member.member_name_length, expr->as.member.member_name,
+                        (void*)enum_type, enum_type ? enum_type->kind : -1);
+                
                 CnSemSymbol *member_sym = cn_type_enum_find_member(
                     enum_type,
                     expr->as.member.member_name,
                     expr->as.member.member_name_length);
                 
                 if (member_sym && member_sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
-                    // 直接返回枚举成员的常量值
-                    return cn_ir_op_imm_int(member_sym->as.enum_value, expr->type);
+                    // 枚举成员：保留为符号引用，而不是立即数
+                    // C代码生成器期望符号名格式为 "枚举类型名_成员名"
+                    // 需要生成完整的枚举成员符号名
+                    
+                    // 获取枚举类型名称
+                    const char *enum_name = enum_type->as.enum_type.name;
+                    size_t enum_name_len = enum_type->as.enum_type.name_length;
+                    
+                    // 获取成员名称
+                    const char *member_name = member_sym->name;
+                    size_t member_name_len = member_sym->name_length;
+                    
+                    // 生成完整的枚举成员符号名：枚举类型名_成员名
+                    size_t full_name_len = enum_name_len + 1 + member_name_len; // "_" + 成员名
+                    char *full_name = malloc(full_name_len + 1);
+                    if (full_name) {
+                        snprintf(full_name, full_name_len + 1, "%.*s_%.*s",
+                                (int)enum_name_len, enum_name,
+                                (int)member_name_len, member_name);
+                        
+                        fprintf(stderr, "[DEBUG] 创建枚举成员符号: name=%s, type=%p, kind=%d\n",
+                                full_name, (void*)enum_type, enum_type ? enum_type->kind : -1);
+                        CnIrOperand result = cn_ir_op_symbol(full_name, enum_type);
+                        free(full_name);
+                        return result;
+                    }
+                    
+                    // 如果分配失败，回退到使用成员名
+                    char *fallback_name = copy_name(member_sym->name, member_sym->name_length);
+                    CnIrOperand result = cn_ir_op_symbol(fallback_name, enum_type);
+                    free(fallback_name);
+                    return result;
                 }
                 // 如果找不到，返回错误操作数
                 return cn_ir_op_none();

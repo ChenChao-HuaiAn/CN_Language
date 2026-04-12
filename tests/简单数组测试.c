@@ -11,8 +11,9 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r0, r2, r4, r5, r6;
+  long long r0, r2, r4, r6, r7;
   void* r3;
+  long long* r5;
   _Bool r1;
 
   entry:
@@ -31,13 +32,14 @@ long long main() {
   r2 = cn_var_i_0;
   r3 = cn_var_arr;
   r4 = cn_var_i_0;
-    { long long _tmp_r0 = r2; cn_rt_array_set_element(r3, r4, &_tmp_r0, 8); }
+  r5 = &r3[r4];
+  r5 = r2;
   goto for_update_2;
 
   for_update_2:
-  r5 = cn_var_i_0;
-  r6 = r5 + 1;
-  cn_var_i_0 = r6;
+  r6 = cn_var_i_0;
+  r7 = r6 + 1;
+  cn_var_i_0 = r7;
   goto for_cond_0;
 
   for_exit_3:

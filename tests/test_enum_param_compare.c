@@ -27,7 +27,7 @@ _Bool 是暖色(enum 颜色 cn_var_c) {
 
   entry:
   r1 = cn_var_c;
-  r2 = r1 >= 0;
+  r2 = r1 >= 颜色_红;
   if (r2) goto logic_rhs_2; else goto logic_merge_3;
 
   if_then_0:
@@ -39,7 +39,7 @@ _Bool 是暖色(enum 颜色 cn_var_c) {
 
   logic_rhs_2:
   r3 = cn_var_c;
-  r4 = r3 <= 3;
+  r4 = r3 <= 颜色_黄;
   goto logic_merge_3;
 
   logic_merge_3:
@@ -54,7 +54,7 @@ long long main() {
 
   entry:
   enum 颜色 cn_var_col_0;
-  cn_var_col_0 = 1;
+  cn_var_col_0 = 颜色_绿;
   r0 = cn_var_col_0;
   r1 = 是暖色(r0);
   if (r1) goto if_then_4; else goto if_merge_5;

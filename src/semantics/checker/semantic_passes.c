@@ -69,7 +69,64 @@ static void resolve_stmt_names(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics
             CnAstVarDecl *decl = &stmt->as.var_decl;
             resolve_expr_names(scope, decl->initializer, diagnostics);
             // 插入变量名以便后续语句引用
-            cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+            CnSemSymbol *sym = cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
+            
+            // 【关键修复】为局部变量设置类型信息
+            // 参考全局变量的类型设置逻辑（scope_builder.c 第1363-1409行）
+            if (sym) {
+                if (decl->declared_type && decl->declared_type->kind == CN_TYPE_STRUCT) {
+                    // 结构体类型：需要查找结构体定义
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            decl->declared_type->as.struct_type.name,
+                                            decl->declared_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        sym->type = type_sym->type;
+                    } else {
+                        sym->type = decl->declared_type;
+                    }
+                } else if (decl->declared_type && decl->declared_type->kind == CN_TYPE_POINTER &&
+                           decl->declared_type->as.pointer_to &&
+                           decl->declared_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                    // 指向结构体的指针类型
+                    CnType *ptr_type = decl->declared_type;
+                    CnType *pointee_type = ptr_type->as.pointer_to;
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            pointee_type->as.struct_type.name,
+                                            pointee_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        sym->type = cn_type_new_pointer(type_sym->type);
+                    } else {
+                        sym->type = decl->declared_type;
+                    }
+                } else if (decl->declared_type && decl->declared_type->kind == CN_TYPE_ARRAY &&
+                           decl->declared_type->as.array.element_type &&
+                           decl->declared_type->as.array.element_type->kind == CN_TYPE_STRUCT) {
+                    // 结构体数组类型
+                    CnType *arr_type = decl->declared_type;
+                    CnType *elem_type = arr_type->as.array.element_type;
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            elem_type->as.struct_type.name,
+                                            elem_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        sym->type = cn_type_new_array(type_sym->type, arr_type->as.array.length);
+                    } else {
+                        sym->type = decl->declared_type;
+                    }
+                } else if (decl->declared_type) {
+                    // 其他类型（基本类型、指针等）
+                    sym->type = decl->declared_type;
+                } else if (decl->initializer) {
+                    // 没有显式类型声明，但有初始化表达式，从初始化表达式推断类型
+                    CnType *init_type = infer_expr_type(scope, decl->initializer, diagnostics);
+                    if (init_type) {
+                        sym->type = init_type;
+                    }
+                }
+                sym->is_const = decl->is_const;
+            }
             break;
         }
         case CN_AST_STMT_EXPR:
@@ -897,7 +954,9 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                                                            member->name_length,
                                                            CN_SEM_SYMBOL_ENUM_MEMBER);
                         if (scope_member_sym) {
-                            scope_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                            // 枚举成员的类型应该是枚举类型，而不是整数类型
+                            // 这样在代码生成时可以获取正确的枚举类型名称
+                            scope_member_sym->type = sym->type; // 使用枚举类型
                             scope_member_sym->as.enum_value = member->value;
                         }
                         // 注意：如果 scope_member_sym 为 NULL，说明当前作用域已有同名符号
@@ -1179,7 +1238,13 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                                 expr->type ? (void*)expr->type->as.enum_type.enum_scope : NULL);
                     }
                 } else {
+                    // 【调试】显示变量/结构体等符号的类型信息
+                    fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s' is kind=%d, sym->type=%p, type_kind=%d\n",
+                            (int)name_len, name, sym->kind, (void*)sym->type,
+                            sym->type ? sym->type->kind : -1);
                     expr->type = sym->type;
+                    fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s' set expr->type=%p, expr->type->kind=%d\n",
+                            (int)name_len, name, (void*)expr->type, expr->type ? expr->type->kind : -1);
                 }
             } else {
                 // 报错：未定义标识符
@@ -2035,6 +2100,15 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             }
             
             // 否则按照结构体成员访问处理
+            // 【调试】显示成员访问对象的类型
+            fprintf(stderr, "[DEBUG] MEMBER_ACCESS: object kind=%d, object expr=%p\n",
+                    expr->as.member.object ? expr->as.member.object->kind : -1,
+                    (void*)expr->as.member.object);
+            if (expr->as.member.object && expr->as.member.object->type) {
+                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: object already has type=%p, kind=%d\n",
+                        (void*)expr->as.member.object->type, expr->as.member.object->type->kind);
+            }
+            
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
             
             // 【调试】检查 object_type 的值
@@ -2077,9 +2151,21 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 object_type = object_type->as.pointer_to;
             }
             
-            // 如果对象是指针类型，自动解引用（支持 自身.成员 语法）
+            // 如果对象是指针类型，自动解引用（支持 指针.成员 语法）
+            // CN语言允许指针使用"."语法访问成员，在C代码生成时会转换为"->"
             if (object_type && object_type->kind == CN_TYPE_POINTER) {
-                object_type = object_type->as.pointer_to;
+                if (object_type->as.pointer_to) {
+                    object_type = object_type->as.pointer_to;
+                } else {
+                    // 指针类型没有指向类型信息，报错
+                    cn_support_diag_semantic_error_generic(
+                        diagnostics,
+                        CN_DIAG_CODE_SEM_TYPE_MISMATCH,
+                        NULL, 0, 0,
+                        "语义错误：指针类型缺少指向类型信息");
+                    expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+                    break;
+                }
             }
             
             // 【修复】检查对象是否为枚举类型（枚举成员访问）

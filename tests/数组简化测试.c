@@ -12,15 +12,19 @@ long long main();
 long long main() {
   cn_rt_init();
   void* r0;
-  void* r1;
+  void* r2;
+  long long* r1;
+  long long* r3;
 
   entry:
   long long* cn_var_一维数组;
   cn_var_一维数组 = cn_rt_array_alloc(8, 5);
   r0 = cn_var_一维数组;
-    { long long _tmp_i0 = 10; cn_rt_array_set_element(r0, 0, &_tmp_i0, 8); }
-  r1 = cn_var_一维数组;
-    { long long _tmp_i1 = 20; cn_rt_array_set_element(r1, 1, &_tmp_i1, 8); }
+  r1 = &r0[0];
+  r1 = 10;
+  r2 = cn_var_一维数组;
+  r3 = &r2[1];
+  r3 = 20;
   return 0;
   cn_rt_exit();
 }

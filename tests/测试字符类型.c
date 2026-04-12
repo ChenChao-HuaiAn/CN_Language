@@ -12,9 +12,12 @@ long long main();
 long long main() {
   cn_rt_init();
   void* r2;
-  void* r3;
   void* r4;
-  void* r5;
+  void* r6;
+  void* r8;
+  char* r3;
+  char* r5;
+  char* r7;
   _Bool r1;
   char r0;
 
@@ -33,13 +36,16 @@ long long main() {
   char* cn_var_缓冲区;
   cn_var_缓冲区 = cn_rt_array_alloc(8, 64);
   r2 = cn_var_缓冲区;
-    { long long _tmp_i0 = 72; cn_rt_array_set_element(r2, 0, &_tmp_i0, 8); }
-  r3 = cn_var_缓冲区;
-    { long long _tmp_i1 = 105; cn_rt_array_set_element(r3, 1, &_tmp_i1, 8); }
+  r3 = &r2[0];
+  r3 = 72;
   r4 = cn_var_缓冲区;
-    { long long _tmp_i2 = 0; cn_rt_array_set_element(r4, 2, &_tmp_i2, 8); }
-  r5 = cn_var_缓冲区;
-  cn_rt_print_string(r5);
+  r5 = &r4[1];
+  r5 = 105;
+  r6 = cn_var_缓冲区;
+  r7 = &r6[2];
+  r7 = 0;
+  r8 = cn_var_缓冲区;
+  cn_rt_print_string(r8);
   return 0;
   cn_rt_exit();
 }

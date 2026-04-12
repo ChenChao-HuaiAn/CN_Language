@@ -36,7 +36,7 @@ long long 主() {
   r2 = *r1;
   r3 = r2.数据;
   r4 = cn_var_i_1;
-  r5 = *(char**)cn_rt_array_get_element(r3, r4, 8);
+  r5 = (void**)cn_rt_array_get_element(r3, r4, 8);
   cn_var_c_2 = r5;
   r6 = cn_var_c_2;
   return r6;

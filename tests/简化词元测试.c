@@ -38,7 +38,7 @@ long long main() {
   struct 托肯 cn_var_测试托肯_0;
   r0 = cn_var_测试托肯_0;
   r1 = r0.类型字段;
-  r2 = r1 == 0;
+  r2 = r1 == 托肯类型_托肯如果;
   if (r2) goto if_then_0; else goto if_merge_1;
 
   if_then_0:

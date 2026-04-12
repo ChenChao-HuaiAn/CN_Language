@@ -24,9 +24,9 @@ long long main() {
 
   entry:
   long long cn_var_值_0;
-  cn_var_值_0 = 1;
+  cn_var_值_0 = 词元类型_词元标识符;
   r0 = cn_var_值_0;
-  r1 = r0 == 1;
+  r1 = r0 == 词元类型_词元标识符;
   if (r1) goto if_then_0; else goto if_merge_1;
 
   if_then_0:

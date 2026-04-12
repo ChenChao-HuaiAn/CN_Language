@@ -245,6 +245,18 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
         }
     }
     
+    // 【关键修复】对于模块符号，使用 module_scope 进行比较
+    // 模块符号的 type 字段为 NULL，但 module_scope 存储了模块的作用域
+    // 如果两个模块符号的 module_scope 相同，则它们是同一个模块
+    if (sym1->kind == CN_SEM_SYMBOL_MODULE && sym2->kind == CN_SEM_SYMBOL_MODULE) {
+        if (sym1->as.module_scope && sym2->as.module_scope &&
+            sym1->as.module_scope == sym2->as.module_scope) {
+            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, module symbol module_scope match (scope=%p)\n",
+                    name_buf, sym1->kind, (void*)sym1->as.module_scope);
+            return 1;  // 模块作用域相同，是同一个模块
+        }
+    }
+    
     // 默认情况：同名同种类的符号，但无法确定是否来自同一声明
     // 返回 0 表示不是同一个符号，让调用者决定如何处理
     fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, NO MATCH (type1=%p, type2=%p, scope1=%p, scope2=%p)\n",
@@ -898,7 +910,9 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                        member->name_length,
                                                        CN_SEM_SYMBOL_ENUM_MEMBER);
                     if (global_member_sym) {
-                        global_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 枚举成员的类型应该是枚举类型，而不是整数类型
+                        // 这样在代码生成时可以获取正确的枚举类型名称
+                        global_member_sym->type = sym->type; // 使用枚举类型
                         global_member_sym->as.enum_value = member->value;
                     }
                     // 注意：全局作用域中的重复定义不报错，因为可能是导入的
@@ -1851,8 +1865,8 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                                                        member->name_length,
                                                        CN_SEM_SYMBOL_ENUM_MEMBER);
                     if (member_sym) {
-                        // 枚举成员的类型是整数
-                        member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 枚举成员的类型应该是枚举类型
+                        member_sym->type = sym->type; // 使用枚举类型
                         // 保存枚举成员的值
                         member_sym->as.enum_value = member->value;
                     }
@@ -1864,7 +1878,8 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                                                        member->name_length,
                                                        CN_SEM_SYMBOL_ENUM_MEMBER);
                     if (scope_member_sym) {
-                        scope_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 枚举成员的类型应该是枚举类型
+                        scope_member_sym->type = sym->type; // 使用枚举类型
                         scope_member_sym->as.enum_value = member->value;
                     }
                     // 注意：当前作用域中的重复定义不报错，因为可能是导入的
@@ -2579,7 +2594,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                                        member->name_length,
                                                        CN_SEM_SYMBOL_ENUM_MEMBER);
                     if (member_sym) {
-                        member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 枚举成员的类型应该是枚举类型
+                        member_sym->type = sym->type; // 使用枚举类型
                         member_sym->as.enum_value = member->value;
                         // 枚举成员继承枚举的可见性
                         member_sym->is_public = 1;  // 枚举成员默认公开
@@ -2594,7 +2610,8 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                                        member->name_length,
                                                        CN_SEM_SYMBOL_ENUM_MEMBER);
                     if (module_member_sym) {
-                        module_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 枚举成员的类型应该是枚举类型
+                        module_member_sym->type = sym->type; // 使用枚举类型
                         module_member_sym->as.enum_value = member->value;
                         module_member_sym->is_public = 1;  // 枚举成员默认公开
                         // 设置源模块路径
@@ -3097,7 +3114,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                        member->name_length,
                                                        CN_SEM_SYMBOL_ENUM_MEMBER);
                     if (member_sym) {
-                        member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 枚举成员的类型应该是枚举类型
+                        member_sym->type = sym->type; // 使用枚举类型
                         member_sym->as.enum_value = member->value;
                     }
                     
@@ -3107,7 +3125,8 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                                        member->name_length,
                                                        CN_SEM_SYMBOL_ENUM_MEMBER);
                     if (global_member_sym) {
-                        global_member_sym->type = cn_type_new_primitive(CN_TYPE_INT);
+                        // 枚举成员的类型应该是枚举类型
+                        global_member_sym->type = sym->type; // 使用枚举类型
                         global_member_sym->as.enum_value = member->value;
                     }
                 }

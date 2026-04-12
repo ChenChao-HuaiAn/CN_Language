@@ -33,7 +33,7 @@ long long 主() {
   r1 = cn_var_t_0;
   r2 = *r1;
   r3 = r2.数据;
-  r4 = *(char**)cn_rt_array_get_element(r3, 0, 8);
+  r4 = (void**)cn_rt_array_get_element(r3, 0, 8);
   cn_var_c_1 = r4;
   r5 = cn_var_c_1;
   return r5;

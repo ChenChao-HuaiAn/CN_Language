@@ -40,21 +40,21 @@ long long main() {
 
   entry:
   enum 颜色 cn_var_当前颜色_0;
-  cn_var_当前颜色_0 = 0;
+  当前颜色_0 = 颜色_红;
   enum 状态 cn_var_任务状态_1;
-  cn_var_任务状态_1 = 0;
+  任务状态_1 = 状态_待处理;
   enum 星期 cn_var_今天_2;
-  cn_var_今天_2 = 0;
-  r0 = cn_var_当前颜色_0;
-  r1 = r0 == 0;
+  今天_2 = 星期_周一;
+  r0 = 当前颜色_0;
+  r1 = r0 == 颜色_红;
   if (r1) goto if_then_0; else goto if_merge_1;
 
   if_then_0:
-  cn_var_当前颜色_0 = 1;
+  当前颜色_0 = 颜色_绿;
   goto if_merge_1;
 
   if_merge_1:
-  cn_var_任务状态_1 = 2;
+  任务状态_1 = 状态_已完成;
   return 0;
   cn_rt_exit();
 }

@@ -18,19 +18,19 @@ long long 测试枚举Switch();
 long long main();
 
 long long 测试枚举Switch() {
-  long long r0;
   _Bool r1;
   _Bool r2;
+  enum 节点类型 r0;
 
   entry:
-  long long cn_var_类型_0;
-  cn_var_类型_0 = 0;
+  enum 节点类型 cn_var_类型_0;
+  cn_var_类型_0 = 节点类型_字面量;
   r0 = cn_var_类型_0;
-  r1 = r0 == 0;
+  r1 = r0 == 节点类型_字面量;
   if (r1) goto case_body_1; else goto switch_check_4;
 
   switch_check_4:
-  r2 = r0 == 1;
+  r2 = r0 == 节点类型_标识符;
   if (r2) goto case_body_2; else goto case_default_3;
 
   case_body_1:
