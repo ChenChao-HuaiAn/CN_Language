@@ -141,15 +141,17 @@ int cn_multi_compile_ctx_add_unit(CnMultiFileCompileContext *ctx,
 // E2: 模块头文件生成
 // ============================================================================
 
-// C 类型转字符串的辅助函数
-static const char *get_c_type_str(CnType *type) {
+// C 类型转字符串的辅助函数（内部实现）
+static const char *get_c_type_str_internal(CnType *type, bool is_param) {
     if (!type) return "void";
     switch (type->kind) {
         case CN_TYPE_INT: return "long long";
         case CN_TYPE_FLOAT: return "double";
         case CN_TYPE_CHAR: return "char";
         case CN_TYPE_BOOL: return "_Bool";
-        case CN_TYPE_STRING: return "char*";
+        case CN_TYPE_STRING:
+            // 函数参数使用 const char* 以匹配运行时库签名
+            return is_param ? "const char*" : "char*";
         case CN_TYPE_INT32: return "int";
         case CN_TYPE_INT64: return "long long";
         case CN_TYPE_UINT32: return "unsigned int";
@@ -160,8 +162,8 @@ static const char *get_c_type_str(CnType *type) {
         case CN_TYPE_VOID: return "void";
         case CN_TYPE_POINTER: {
             static _Thread_local char buffer[256];
-            snprintf(buffer, sizeof(buffer), "%s*", 
-                     get_c_type_str(type->as.pointer_to));
+            snprintf(buffer, sizeof(buffer), "%s*",
+                     get_c_type_str_internal(type->as.pointer_to, false));
             return buffer;
         }
         case CN_TYPE_STRUCT: {
@@ -180,6 +182,16 @@ static const char *get_c_type_str(CnType *type) {
         }
         default: return "int";
     }
+}
+
+// C 类型转字符串的辅助函数（公共接口）
+static const char *get_c_type_str(CnType *type) {
+    return get_c_type_str_internal(type, false);
+}
+
+// C 参数类型转字符串的辅助函数（字符串类型添加 const 修饰符）
+static const char *get_c_param_type_str(CnType *type) {
+    return get_c_type_str_internal(type, true);
 }
 
 int cn_cgen_module_header(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *unit) {
@@ -236,13 +248,13 @@ int cn_cgen_module_header(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *u
             const char *ret_type = get_c_type_str(func->return_type);
             fprintf(f, "%s %s(", ret_type, func->name);
             
-            // 参数列表
+            // 参数列表（使用 get_c_param_type_str 为字符串类型添加 const 修饰符）
             if (func->param_count == 0) {
                 fprintf(f, "void");
             } else {
                 for (size_t p = 0; p < func->param_count; p++) {
                     if (p > 0) fprintf(f, ", ");
-                    const char *param_type = get_c_type_str(func->params[p].type);
+                    const char *param_type = get_c_param_type_str(func->params[p].type);
                     fprintf(f, "%s arg%zu", param_type, p);
                 }
             }

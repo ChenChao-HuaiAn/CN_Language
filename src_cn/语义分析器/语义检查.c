@@ -4195,23 +4195,23 @@ struct 类型信息* 检查字面量表达式(struct 语义检查上下文* cn_v
   if_merge_2765:
   r2 = cn_var_字面量节点;
   r3 = r2->类型;
-  r4 = r3 == /* NONE */;
+  r4 = r3 == 字面量类型_字面量_整数;
   if (r4) goto case_body_2767; else goto switch_check_2773;
 
   switch_check_2773:
-  r5 = r3 == /* NONE */;
+  r5 = r3 == 字面量类型_字面量_浮点;
   if (r5) goto case_body_2768; else goto switch_check_2774;
 
   switch_check_2774:
-  r6 = r3 == /* NONE */;
+  r6 = r3 == 字面量类型_字面量_字符串;
   if (r6) goto case_body_2769; else goto switch_check_2775;
 
   switch_check_2775:
-  r7 = r3 == /* NONE */;
+  r7 = r3 == 字面量类型_字面量_布尔;
   if (r7) goto case_body_2770; else goto switch_check_2776;
 
   switch_check_2776:
-  r8 = r3 == /* NONE */;
+  r8 = r3 == 字面量类型_字面量_空;
   if (r8) goto case_body_2771; else goto case_default_2772;
 
   case_body_2767:

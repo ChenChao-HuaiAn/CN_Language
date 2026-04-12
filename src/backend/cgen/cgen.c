@@ -132,7 +132,13 @@ static bool is_enum_type_name(const char *name, size_t name_len);
 static bool is_type_already_generated(const char *name, size_t name_len);
 static void mark_type_as_generated(const char *name, size_t name_len);
 
-const char *get_c_type_string(CnType *type) {
+/**
+ * @brief 获取类型的C类型字符串（内部实现）
+ * @param type 类型指针
+ * @param is_param 是否是函数参数（用于决定字符串类型是否添加const）
+ * @return C类型字符串
+ */
+static const char *get_c_type_string_internal(CnType *type, bool is_param) {
     if (!type) return "void";
     switch (type->kind) {
         case CN_TYPE_INT:
@@ -141,7 +147,10 @@ const char *get_c_type_string(CnType *type) {
         case CN_TYPE_FLOAT: return "double";
         case CN_TYPE_CHAR: return "char";
         case CN_TYPE_BOOL: return "_Bool";
-        case CN_TYPE_STRING: return "char*";
+        case CN_TYPE_STRING:
+            // 函数参数使用 const char* 以匹配运行时库签名
+            // 变量和返回值使用 char* 以支持修改操作
+            return is_param ? "const char*" : "char*";
         
         // 新增的数字类型（支持数字字面量后缀）
         case CN_TYPE_INT32: return "int";
@@ -239,6 +248,24 @@ const char *get_c_type_string(CnType *type) {
             return "void*";
         default: return "int";
     }
+}
+
+/**
+ * @brief 获取类型的C类型字符串（公共接口）
+ * @param type 类型指针
+ * @return C类型字符串（默认不添加const修饰符）
+ */
+const char *get_c_type_string(CnType *type) {
+    return get_c_type_string_internal(type, false);
+}
+
+/**
+ * @brief 获取函数参数类型的C类型字符串
+ * @param type 类型指针
+ * @return C类型字符串（字符串类型添加const修饰符）
+ */
+const char *get_c_param_type_string(CnType *type) {
+    return get_c_type_string_internal(type, true);
 }
 
 static const char *get_c_function_name(const char *name) {
@@ -1424,7 +1451,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     // 生成函数签名
     fprintf(ctx->output_file, "%s %s(", get_c_type_string(func->return_type), c_func_name);
     for (size_t i = 0; i < func->param_count; i++) {
-        fprintf(ctx->output_file, "%s %s", get_c_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
+        fprintf(ctx->output_file, "%s %s", get_c_param_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
         if (i < func->param_count - 1) fprintf(ctx->output_file, ", ");
     }
     
@@ -2434,7 +2461,7 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         }
         fprintf(file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
         for (size_t i = 0; i < func->param_count; i++) {
-            fprintf(file, "%s", get_c_type_string(func->params[i].type));
+            fprintf(file, "%s", get_c_param_type_string(func->params[i].type));
             if (i < func->param_count - 1) fprintf(file, ", ");
         }
         fprintf(file, ");\n");
@@ -2481,7 +2508,7 @@ int cn_cgen_header_to_file(CnIrModule *module, const char *filename) {
     while (func) {
         fprintf(file, "%s %s(", get_c_type_string(func->return_type), get_c_function_name(func->name));
         for (size_t i = 0; i < func->param_count; i++) {
-            fprintf(file, "%s %s", get_c_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
+            fprintf(file, "%s %s", get_c_param_type_string(func->params[i].type), get_c_variable_name(func->params[i].as.sym_name));
             if (i < func->param_count - 1) fprintf(file, ", ");
         }
         fprintf(file, ");\n");
@@ -3041,13 +3068,13 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
     const char *ret_type = get_c_type_string(func_type->as.function.return_type);
     fprintf(file, "%s %.*s(", ret_type, (int)func_name_len, func_name);
     
-    // 参数列表
+    // 参数列表（使用 get_c_param_type_string 为字符串类型添加 const 修饰符）
     if (func_type->as.function.param_count == 0) {
         fprintf(file, "void");
     } else {
         for (size_t i = 0; i < func_type->as.function.param_count; i++) {
             if (i > 0) fprintf(file, ", ");
-            const char *param_type = get_c_type_string(func_type->as.function.param_types[i]);
+            const char *param_type = get_c_param_type_string(func_type->as.function.param_types[i]);
             fprintf(file, "%s", param_type);
         }
     }
@@ -3580,7 +3607,7 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
         
         fprintf(file, "%s %s(", get_c_type_string(func->return_type), c_func_name);
         for (size_t i = 0; i < func->param_count; i++) {
-            fprintf(file, "%s", get_c_type_string(func->params[i].type));
+            fprintf(file, "%s", get_c_param_type_string(func->params[i].type));
             if (i < func->param_count - 1) fprintf(file, ", ");
         }
         fprintf(file, ");\n");

@@ -152,24 +152,24 @@ enum 词元类型枚举 查找关键字(char* cn_var_名称) {
   entry:
   r0 = cn_var_关键字表已初始化;
   r1 = !r0;
-  if (r1) goto if_then_438; else goto if_merge_439;
+  if (r1) goto if_then_373; else goto if_merge_374;
 
-  if_then_438:
+  if_then_373:
   初始化关键字表();
-  goto if_merge_439;
+  goto if_merge_374;
 
-  if_merge_439:
+  if_merge_374:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_440;
+  goto for_cond_375;
 
-  for_cond_440:
+  for_cond_375:
   r2 = cn_var_i_0;
   r3 = cn_var_关键字表大小;
   r4 = r2 < r3;
-  if (r4) goto for_body_441; else goto for_exit_443;
+  if (r4) goto for_body_376; else goto for_exit_378;
 
-  for_body_441:
+  for_body_376:
   r5 = cn_var_名称;
   r6 = cn_var_关键字表;
   r7 = cn_var_i_0;
@@ -177,27 +177,27 @@ enum 词元类型枚举 查找关键字(char* cn_var_名称) {
   r9 = r8->名称;
   r10 = 比较字符串(r5, r9);
   r11 = r10 == 0;
-  if (r11) goto if_then_444; else goto if_merge_445;
+  if (r11) goto if_then_379; else goto if_merge_380;
 
-  for_update_442:
+  for_update_377:
   r16 = cn_var_i_0;
   r17 = r16 + 1;
   cn_var_i_0 = r17;
-  goto for_cond_440;
+  goto for_cond_375;
 
-  for_exit_443:
+  for_exit_378:
   return 词元类型枚举_标识符;
 
-  if_then_444:
+  if_then_379:
   r12 = cn_var_关键字表;
   r13 = cn_var_i_0;
   r14 = (void**)cn_rt_array_get_element(r12, r13, 8);
   r15 = r14->类型;
   return r15;
-  goto if_merge_445;
+  goto if_merge_380;
 
-  if_merge_445:
-  goto for_update_442;
+  if_merge_380:
+  goto for_update_377;
   return 0;
 }
 
@@ -238,13 +238,13 @@ void 初始化关键字表() {
 
   entry:
   r0 = cn_var_关键字表已初始化;
-  if (r0) goto if_then_446; else goto if_merge_447;
+  if (r0) goto if_then_381; else goto if_merge_382;
 
-  if_then_446:
+  if_then_381:
   return;
-  goto if_merge_447;
+  goto if_merge_382;
 
-  if_merge_447:
+  if_merge_382:
   cn_var_关键字表已初始化 = 1;
   return;
 }

@@ -32,6 +32,13 @@
 extern const char *get_c_type_string(CnType *type);
 
 /**
+ * @brief 获取函数参数类型的C类型字符串（字符串类型添加const修饰符）
+ *
+ * 注意：此函数声明在cgen.c中，这里通过extern引用
+ */
+extern const char *get_c_param_type_string(CnType *type);
+
+/**
  * @brief 检查表达式是否为字符串类型
  *
  * 检查表达式本身的类型，或者对于二元表达式检查操作数类型
@@ -304,12 +311,12 @@ static void cgen_constructor_forward_decl(FILE *out, CnAstClassDecl *class_decl,
     fprintf(out, "%.*s* self",
             (int)class_decl->name_length, class_decl->name);
     
-    // 其他参数
+    // 其他参数（使用 get_c_param_type_string 为字符串类型添加 const 修饰符）
     for (size_t i = 0; i < constructor->parameter_count; i++) {
         CnAstParameter *param = &constructor->parameters[i];
         const char *param_type = "int";
         if (param->declared_type) {
-            param_type = get_c_type_string(param->declared_type);
+            param_type = get_c_param_type_string(param->declared_type);
         }
         fprintf(out, ", %s %.*s", param_type,
                 (int)param->name_length, param->name);
@@ -359,12 +366,12 @@ static void cgen_method_forward_decl(FILE *out, CnAstClassDecl *class_decl,
                 (int)class_decl->name_length, class_decl->name);
     }
     
-    // 其他参数
+    // 其他参数（使用 get_c_param_type_string 为字符串类型添加 const 修饰符）
     for (size_t i = 0; i < method->parameter_count; i++) {
         CnAstParameter *param = &method->parameters[i];
         const char *param_type = "int";
         if (param->declared_type) {
-            param_type = get_c_type_string(param->declared_type);
+            param_type = get_c_param_type_string(param->declared_type);
         }
         // 非静态方法需要逗号分隔，静态方法第一个参数不需要逗号
         if (!method->is_static || i > 0) {
@@ -1174,7 +1181,7 @@ static void cgen_constructor_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_
         CnAstParameter *param = &constructor->parameters[i];
         const char *param_type = "int";
         if (param->declared_type) {
-            param_type = get_c_type_string(param->declared_type);
+            param_type = get_c_param_type_string(param->declared_type);
         }
         fprintf(out, ", %s %.*s", param_type,
                 (int)param->name_length, param->name);
@@ -1370,7 +1377,7 @@ static void cgen_method_impl(CnCCodeGenContext *ctx, CnAstClassDecl *class_decl,
         CnAstParameter *param = &method->parameters[i];
         const char *param_type = "int";
         if (param->declared_type) {
-            param_type = get_c_type_string(param->declared_type);
+            param_type = get_c_param_type_string(param->declared_type);
         }
         // 非静态方法需要逗号分隔，静态方法第一个参数不需要逗号
         if (!method->is_static || i > 0) {
@@ -1653,7 +1660,7 @@ static void cgen_vtable_entry_decl(FILE *out, CnVTableEntry *entry,
         CnAstParameter *param = &method->parameters[j];
         const char *param_type = "int";
         if (param->declared_type) {
-            param_type = get_c_type_string(param->declared_type);
+            param_type = get_c_param_type_string(param->declared_type);
         }
         fprintf(out, ", %s %.*s", param_type,
                 (int)param->name_length, param->name);
@@ -1690,7 +1697,7 @@ static void cgen_pure_virtual_error_func(FILE *out, CnAstClassDecl *class_decl,
         CnAstParameter *param = &method->parameters[i];
         const char *param_type = "int";
         if (param->declared_type) {
-            param_type = get_c_type_string(param->declared_type);
+            param_type = get_c_param_type_string(param->declared_type);
         }
         fprintf(out, ", %s %.*s", param_type,
                 (int)param->name_length, param->name);
@@ -2647,7 +2654,7 @@ static void cgen_interface_pure_virtual_error_func(FILE *out,
         CnAstParameter *param = &method->parameters[i];
         const char *param_type = "int";
         if (param->declared_type) {
-            param_type = get_c_type_string(param->declared_type);
+            param_type = get_c_param_type_string(param->declared_type);
         }
         fprintf(out, ", %s %.*s", param_type,
                 (int)param->name_length, param->name);
@@ -2734,7 +2741,7 @@ bool cn_cgen_interface_decl(CnCCodeGenContext *ctx, CnAstInterfaceDecl *interfac
             CnAstParameter *param = &method->parameters[j];
             const char *param_type = "int";
             if (param->declared_type) {
-                param_type = get_c_type_string(param->declared_type);
+                param_type = get_c_param_type_string(param->declared_type);
             }
             fprintf(out, ", %s %.*s", param_type,
                     (int)param->name_length, param->name);

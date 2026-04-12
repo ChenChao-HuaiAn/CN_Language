@@ -140,6 +140,17 @@ void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt);
  */
 const char *get_c_type_string(CnType *type);
 
+/**
+ * @brief 获取函数参数类型的C类型字符串
+ *
+ * 将CN语言的类型转换为C语言的类型字符串
+ * 对于字符串类型，添加 const 修饰符以匹配运行时库签名
+ *
+ * @param type CN语言类型
+ * @return const char* C语言类型字符串
+ */
+const char *get_c_param_type_string(CnType *type);
+
 // ============================================================================
 // 阶段E：多文件模块代码生成 API
 // ============================================================================
