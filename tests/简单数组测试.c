@@ -12,7 +12,7 @@ long long main();
 long long main() {
   cn_rt_init();
   long long r0, r2, r4, r6, r7;
-  void* r3;
+  long long* r3;
   long long* r5;
   _Bool r1;
 

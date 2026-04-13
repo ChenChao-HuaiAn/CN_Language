@@ -1171,14 +1171,46 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 
                 print_operand(ctx, inst->dest);
                 if (is_pointer_to_struct) {
-                    // 结构体指针类型：dest = (struct type*)cn_rt_array_get_element(arr, idx, size)
+                    // 【修复】结构体指针类型：数组元素访问返回的是指向结构体的指针
+                    // dest = (struct type*)cn_rt_array_get_element(arr, idx, size)
+                    // 注意：这里不需要额外的解引用，因为数组存储的就是结构体指针
                     fprintf(ctx->output_file, " = (struct %s*)",
                             target_type && target_type->as.struct_type.name ?
                             target_type->as.struct_type.name : "void");
                 } else if (is_pointer_type) {
-                    // 指针类型：dest = (void**)cn_rt_array_get_element(arr, idx, size)
-                    // 数组存储的是指针，所以返回 void** 类型
-                    fprintf(ctx->output_file, " = (void**)");
+                    // 【修复】指针类型：数组元素访问返回的是指向元素的指针
+                    // 如果元素类型是指针，则返回的是指针的指针
+                    // 例如：int*[] 数组，访问元素返回 int**
+                    if (target_type && target_type->kind == CN_TYPE_POINTER) {
+                        // 元素本身是指针类型，返回指针的指针
+                        CnType *elem_pointee = target_type->as.pointer_to;
+                        if (elem_pointee && elem_pointee->kind == CN_TYPE_STRUCT) {
+                            fprintf(ctx->output_file, " = (struct %s**)",
+                                    elem_pointee->as.struct_type.name ? elem_pointee->as.struct_type.name : "void");
+                        } else if (elem_pointee && elem_pointee->kind == CN_TYPE_ENUM) {
+                            fprintf(ctx->output_file, " = (enum %s**)",
+                                    elem_pointee->as.enum_type.name ? elem_pointee->as.enum_type.name : "int");
+                        } else if (elem_pointee) {
+                            fprintf(ctx->output_file, " = (%s**)", get_c_type_string(elem_pointee));
+                        } else {
+                            fprintf(ctx->output_file, " = (void**)");
+                        }
+                    } else if (target_type && target_type->kind == CN_TYPE_STRUCT) {
+                        // 【修复】这种情况不应该发生在这里
+                        // 如果 target_type 是结构体，说明 dest.type 是结构体指针
+                        // 这已经在 is_pointer_to_struct 分支处理了
+                        fprintf(ctx->output_file, " = (struct %s*)",
+                                target_type->as.struct_type.name ? target_type->as.struct_type.name : "void");
+                    } else if (target_type && target_type->kind == CN_TYPE_ENUM) {
+                        fprintf(ctx->output_file, " = (enum %s*)",
+                                target_type->as.enum_type.name ? target_type->as.enum_type.name : "int");
+                    } else if (target_type) {
+                        // 其他指针类型（如 int*）
+                        fprintf(ctx->output_file, " = (%s*)", get_c_type_string(target_type));
+                    } else {
+                        // 未知类型，使用 void*
+                        fprintf(ctx->output_file, " = (void*)");
+                    }
                 } else {
                     // 基本类型：dest = *(type*)cn_rt_array_get_element(arr, idx, size)
                     fprintf(ctx->output_file, " = *(%s)", get_c_type_string(inst->dest.type));
@@ -1601,6 +1633,10 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             // 这对于指针类型变量特别重要，因为我们需要保留指针类型信息
                             if (scan_inst->src1.type) {
                                 new_type = scan_inst->src1.type;
+                                // 【调试】输出类型信息
+                                if (new_type && new_type->kind == CN_TYPE_POINTER) {
+                                    fprintf(stderr, "[DEBUG CGEN] LOAD src1.type is POINTER for reg r%d\n", reg_id);
+                                }
                             }
                             // 首先尝试从 dest.type 获取
                             else if (scan_inst->dest.type) {
@@ -1611,9 +1647,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                      scan_inst->src1.as.reg_id < actual_reg_count) {
                                 new_type = reg_types[scan_inst->src1.as.reg_id];
                             }
-                            // 如果 src1.type 也为 NULL，尝试从函数参数中获取类型
-                            // 同时检查全局作用域中的变量类型
-                            else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
+                            // 【重要修复】如果 src1 是符号（变量名），检查变量是否为指针类型
+                            // 这处理了LOAD指令从指针变量加载时类型信息丢失的问题
+                            if (!new_type && scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
                                 // 首先检查函数参数
                                 for (size_t p = 0; p < func->param_count; p++) {
@@ -1665,9 +1701,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             // src1 可能是寄存器、立即数或符号
                             if (scan_inst->src1.type) {
                                 new_type = scan_inst->src1.type;
+                                // 【调试】输出MOV类型信息
+                                if (new_type && new_type->kind == CN_TYPE_POINTER) {
+                                    fprintf(stderr, "[DEBUG CGEN] MOV src1.type is POINTER for reg r%d in function %s\n", reg_id, func->name);
+                                }
                             }
                             // 如果 src1 是符号，尝试从函数参数中获取类型
-                            else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
+                            if (!new_type && scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
                                 // 首先检查函数参数
                                 for (size_t p = 0; p < func->param_count; p++) {
@@ -1702,6 +1742,56 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             else if (scan_inst->src1.kind == CN_IR_OP_REG &&
                                      scan_inst->src1.as.reg_id < actual_reg_count) {
                                 new_type = reg_types[scan_inst->src1.as.reg_id];
+                            }
+                        }
+                        
+                        // 【修复】对于 CALL 指令，确保返回类型正确传播到目标寄存器
+                        // 这是类型传播问题的关键修复点
+                        if (!new_type && scan_inst->kind == CN_IR_INST_CALL) {
+                            // CALL 指令的 dest.type 应该已经被 IR 生成器设置为返回类型
+                            // 但我们需要确保这个类型被正确传播
+                            if (scan_inst->dest.type) {
+                                new_type = scan_inst->dest.type;
+                                // 【调试】输出CALL类型信息
+                                if (new_type && new_type->kind == CN_TYPE_POINTER) {
+                                    fprintf(stderr, "[DEBUG CGEN] CALL dest.type is POINTER for reg r%d in function %s\n", reg_id, func->name);
+                                }
+                            }
+                            // 如果 dest.type 为 NULL，尝试从被调用函数的符号信息获取返回类型
+                            else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name && ctx->global_scope) {
+                                const char *func_name = scan_inst->src1.as.sym_name;
+                                // 去掉可能的前缀
+                                const char *lookup_name = func_name;
+                                size_t lookup_len = strlen(func_name);
+                                // 查找函数符号
+                                CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->global_scope, lookup_name, lookup_len);
+                                if (func_sym && func_sym->kind == CN_SEM_SYMBOL_FUNCTION && func_sym->type) {
+                                    // 函数符号的 type 是函数类型，从中提取返回类型
+                                    if (func_sym->type->kind == CN_TYPE_FUNCTION && func_sym->type->as.function.return_type) {
+                                        new_type = func_sym->type->as.function.return_type;
+                                        fprintf(stderr, "[DEBUG CGEN] CALL looked up return type for %s, got POINTER=%d\n",
+                                                func_name, new_type && new_type->kind == CN_TYPE_POINTER);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 【新增】对于 GET_ELEMENT_PTR 指令，处理静态数组索引访问的类型
+                        // GET_ELEMENT_PTR 返回指向数组元素的指针
+                        if (!new_type && scan_inst->kind == CN_IR_INST_GET_ELEMENT_PTR) {
+                            // dest = &array[index]，dest 的类型是指向数组元素类型的指针
+                            if (scan_inst->dest.type) {
+                                new_type = scan_inst->dest.type;
+                            } else if (scan_inst->src1.type) {
+                                // 从数组类型推断元素指针类型
+                                CnType *array_type = scan_inst->src1.type;
+                                if (array_type->kind == CN_TYPE_ARRAY && array_type->as.array.element_type) {
+                                    // 元素指针类型
+                                    new_type = cn_type_new_pointer(array_type->as.array.element_type);
+                                } else if (array_type->kind == CN_TYPE_POINTER) {
+                                    // 如果是指针类型（动态数组），直接使用
+                                    new_type = array_type;
+                                }
                             }
                         }
                         
@@ -1761,8 +1851,41 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             }
                         }
                         
+                        // 【修复】对于 ADDRESS_OF 指令，目标寄存器类型应该是指针类型
+                        if (!new_type && scan_inst->kind == CN_IR_INST_ADDRESS_OF) {
+                            // ADDRESS_OF 指令：dest = &src1
+                            // dest 的类型应该是指向 src1 类型的指针
+                            CnType *src_type = NULL;
+                            
+                            // 从 src1.type 获取类型
+                            if (scan_inst->src1.type) {
+                                src_type = scan_inst->src1.type;
+                            }
+                            // 如果 src1 是寄存器，从 reg_types 中获取
+                            else if (scan_inst->src1.kind == CN_IR_OP_REG &&
+                                     scan_inst->src1.as.reg_id < actual_reg_count) {
+                                src_type = reg_types[scan_inst->src1.as.reg_id];
+                            }
+                            
+                            // 如果有源类型，创建指针类型
+                            if (src_type) {
+                                new_type = cn_type_new_pointer(src_type);
+                                fprintf(stderr, "[DEBUG CGEN] ADDRESS_OF: created pointer type for reg r%d\n", reg_id);
+                            }
+                            // 如果 dest.type 已经是指针类型，直接使用
+                            else if (scan_inst->dest.type && scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                new_type = scan_inst->dest.type;
+                            }
+                        }
+                        
                         if (new_type) {
                             CnType *old_type = reg_types[reg_id];
+                            
+                            // 【调试】输出类型更新信息
+                            if (new_type->kind == CN_TYPE_POINTER) {
+                                fprintf(stderr, "[DEBUG CGEN] reg r%d: new_type=POINTER, old_type=%s\n",
+                                        reg_id, old_type ? (old_type->kind == CN_TYPE_POINTER ? "POINTER" : "OTHER") : "NULL");
+                            }
                             
                             // 判断是否应该更新类型
                             // 重要：指针类型和结构体类型优先级高于INT类型，不应该被降级
@@ -1836,6 +1959,10 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             
                             if (should_update) {
                                 reg_types[reg_id] = new_type;
+                                // 【调试】确认类型更新
+                                if (new_type && new_type->kind == CN_TYPE_POINTER) {
+                                    fprintf(stderr, "[DEBUG CGEN] UPDATED reg r%d to POINTER\n", reg_id);
+                                }
                             }
                         } else {
                             // 修复：即使无法推断类型，也要标记寄存器为已使用（使用默认类型）
@@ -1915,6 +2042,10 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         /* 修复：确保所有使用的寄存器都被声明，即使类型信息缺失 */
         bool has_int_regs = false;
         for (int i = 0; i < actual_reg_count; i++) {
+            // 【调试】输出最终类型
+            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_POINTER) {
+                fprintf(stderr, "[DEBUG CGEN] FINAL: reg r%d is POINTER in function %s\n", i, func->name);
+            }
             // 对于NULL、CN_TYPE_VOID、CN_TYPE_INT或CN_TYPE_UNKNOWN类型，都使用long long
             // 注意：NULL类型表示类型信息缺失，VOID类型可能是函数调用返回值未正确设置，但仍需声明寄存器
             if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_VOID || reg_types[i]->kind == CN_TYPE_INT || reg_types[i]->kind == CN_TYPE_UNKNOWN) {
@@ -1936,10 +2067,12 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
-        /* 声明数组寄存器（void* 用于数组指针） */
+        /* 声明数组寄存器（使用元素指针类型，而非void*） */
         for (int i = 0; i < actual_reg_count; i++) {
             if (reg_types[i] && reg_types[i]->kind == CN_TYPE_ARRAY) {
-                fprintf(ctx->output_file, "  void* r%d;\n", i);
+                // 数组类型应该声明为元素指针类型，以便支持指针算术
+                // 例如：关键字条目[40] 应该声明为 struct 关键字条目*
+                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
             }
         }
         

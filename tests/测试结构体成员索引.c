@@ -19,12 +19,13 @@ struct 扫描器 {
 long long 主();
 
 long long 主() {
-  long long r6, r8;
+  long long r6, r9;
   void* r0;
   struct 扫描器* r1;
   char* r3;
   struct 扫描器* r4;
   char* r7;
+  char r8;
   struct 扫描器 r2;
   struct 扫描器 r5;
 
@@ -39,9 +40,10 @@ long long 主() {
   r4 = cn_var_实例_0;
   r5 = *r4;
   r6 = r5.位置;
-  r7 = (void**)cn_rt_array_get_element(r3, r6, 8);
-  cn_var_c_1 = r7;
-  r8 = cn_var_c_1;
-  return r8;
+  r7 = &r3[r6];
+  r8 = *r7;
+  cn_var_c_1 = r8;
+  r9 = cn_var_c_1;
+  return r9;
 }
 

@@ -266,10 +266,15 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
 }
 
 /**
- * @brief 复制符号的类型信息（处理枚举类型为 NULL 的特殊情况）
+ * @brief 复制符号的类型信息（处理类型为 NULL 的特殊情况）
  *
- * 当模块导入时，枚举符号的 type 字段可能为 NULL（模块缓存时类型信息丢失）。
- * 此函数检测这种情况并创建新的枚举类型，同时复制枚举作用域。
+ * 当模块导入时，符号的 type 字段可能为 NULL（模块缓存时类型信息丢失）。
+ * 此函数检测这种情况并尝试恢复类型信息。
+ *
+ * 【关键修复策略】
+ * 1. 如果源符号有有效的 type，直接引用原始类型（避免深拷贝导致的信息丢失）
+ * 2. 如果源符号 type 为 NULL 但有 module_scope（枚举），从 module_scope 恢复
+ * 3. 如果源符号 type 为 NULL 且无法恢复，创建占位类型
  *
  * @param src_sym 源符号
  * @param dst_sym 目标符号（已创建，需要设置 type 字段）
@@ -279,8 +284,18 @@ static void cn_sem_copy_symbol_type(CnSemSymbol *src_sym, CnSemSymbol *dst_sym) 
         return;
     }
     
+    // 【关键修复】优先处理源符号有有效类型的情况
+    if (src_sym->type) {
+        // 直接引用原始类型，避免深拷贝导致的信息丢失
+        // 这是因为模块缓存的作用域指针是持久的，类型对象也是持久的
+        dst_sym->type = src_sym->type;
+        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: '%.*s' (kind=%d) using original type=%p\n",
+                (int)src_sym->name_length, src_sym->name, src_sym->kind, (void*)src_sym->type);
+        return;
+    }
+    
     // 【关键修复】处理枚举符号类型为 NULL 的情况
-    if (src_sym->kind == CN_SEM_SYMBOL_ENUM && !src_sym->type) {
+    if (src_sym->kind == CN_SEM_SYMBOL_ENUM) {
         // 枚举符号的 type 字段为 NULL，需要创建新的枚举类型
         fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: enum '%.*s' has NULL type, creating new enum type.\n",
                 (int)src_sym->name_length, src_sym->name);
@@ -289,18 +304,29 @@ static void cn_sem_copy_symbol_type(CnSemSymbol *src_sym, CnSemSymbol *dst_sym) 
         // 复制枚举作用域（需要检查 dst_sym->type 是否创建成功）
         if (dst_sym->type && src_sym->as.module_scope) {
             dst_sym->type->as.enum_type.enum_scope = cn_sem_scope_deep_copy_enum(src_sym->as.module_scope);
+            fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: enum '%.*s' created type=%p with enum_scope=%p\n",
+                    (int)src_sym->name_length, src_sym->name, (void*)dst_sym->type,
+                    (void*)dst_sym->type->as.enum_type.enum_scope);
         }
+        return;
     }
-    // 【新增】处理结构体符号类型为 NULL 的情况
-    else if (src_sym->kind == CN_SEM_SYMBOL_STRUCT && !src_sym->type) {
-        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: struct '%.*s' has NULL type, creating new struct type.\n",
+    
+    // 【关键修复】处理结构体符号类型为 NULL 的情况
+    if (src_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: struct '%.*s' has NULL type, creating placeholder struct type.\n",
                 (int)src_sym->name_length, src_sym->name);
-        // 创建一个不完整的结构体类型（字段信息可能缺失）
+        // 创建一个占位的结构体类型（字段信息可能缺失）
+        // 后续在延迟解析阶段可能会补充字段信息
         dst_sym->type = cn_type_new_struct(src_sym->name, src_sym->name_length, NULL, 0, NULL, NULL, 0);
-    } else {
-        // 正常情况：深度复制类型
-        dst_sym->type = cn_type_deep_copy(src_sym->type);
+        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: struct '%.*s' created placeholder type=%p\n",
+                (int)src_sym->name_length, src_sym->name, (void*)dst_sym->type);
+        return;
     }
+    
+    // 其他情况：type 为 NULL 且无法恢复
+    fprintf(stderr, "[WARNING] cn_sem_copy_symbol_type: '%.*s' (kind=%d) has NULL type and cannot recover\n",
+            (int)src_sym->name_length, src_sym->name, src_sym->kind);
+    dst_sym->type = NULL;
 }
 
 // 符号链表节点，用于在作用域中维护符号列表
@@ -369,51 +395,9 @@ static int cache_module_with_program(const char *file_path, CnSemScope *scope, C
         return 0;  // 已缓存，不重复添加
     }
     
-    // 【关键修复】在缓存前，确保所有符号的类型信息被深度复制
-    // 这样即使原模块被重新编译，缓存的符号仍然有有效的类型信息
-    // 解决问题：模块导入时类型信息丢失（sym->type 变为 NULL 或悬空指针）
-    if (scope && scope->symbols) {
-        CnSemSymbolNode *node = scope->symbols;
-        while (node) {
-            CnSemSymbol *sym = &node->symbol;
-            
-            // 深度复制类型信息，确保缓存中的符号有独立的类型对象
-            // 【重要】只有当深度复制成功时才更新类型，否则保留原始类型
-            if (sym->type) {
-                CnType *copied_type = cn_type_deep_copy(sym->type);
-                if (copied_type) {
-                    sym->type = copied_type;
-                } else {
-                    // 深度复制失败，记录警告但保留原始类型指针
-                    // 注意：这可能导致悬空指针问题，但比 NULL 类型更好调试
-                    fprintf(stderr, "[WARNING] cache_module_with_program: cn_type_deep_copy failed for symbol '%.*s' (kind=%d), keeping original type=%p\n",
-                            (int)sym->name_length, sym->name, sym->kind, (void*)sym->type);
-                }
-            } else {
-                // 【调试】符号类型为 NULL，记录警告
-                fprintf(stderr, "[DEBUG] cache_module_with_program: symbol '%.*s' (kind=%d) has NULL type before caching\n",
-                        (int)sym->name_length, sym->name, sym->kind);
-            }
-            
-            // 对于枚举类型，还需要确保 enum_scope 被正确复制
-            // 枚举符号的 as.module_scope 存储枚举成员作用域
-            if (sym->kind == CN_SEM_SYMBOL_ENUM && sym->as.module_scope) {
-                CnSemScope *copied_scope = cn_sem_scope_deep_copy_enum(sym->as.module_scope);
-                if (copied_scope) {
-                    sym->as.module_scope = copied_scope;
-                }
-            }
-            
-            // 对于结构体类型，也需要复制成员作用域
-            if (sym->kind == CN_SEM_SYMBOL_STRUCT && sym->as.module_scope) {
-                // 结构体的 module_scope 存储字段作用域
-                // 注意：结构体作用域的深度复制需要保留字段信息
-                // 这里暂时只复制指针，因为 cn_type_deep_copy 已经处理了结构体字段
-            }
-            
-            node = node->next;
-        }
-    }
+    // 【注意】暂时禁用深度复制，避免栈溢出崩溃
+    // 深度复制逻辑需要更仔细的设计，避免无限递归
+    // 当前策略：直接缓存作用域指针，依赖模块缓存的生命周期管理
     
     // 使用规范化路径存储
     char *normalized = normalize_file_path(file_path);
@@ -961,7 +945,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     fields[j].name = struct_decl->fields[j].name;
                     fields[j].name_length = struct_decl->fields[j].name_length;
                     
-                    // 解析字段类型：如果是自定义类型（结构体类型表示），从符号表查找真实类型
+                    // 解析字段类型：如果是自定义类型（结构体或枚举类型表示），从符号表查找真实类型
                     CnType *field_type = struct_decl->fields[j].field_type;
                     if (field_type && field_type->kind == CN_TYPE_STRUCT && field_type->as.struct_type.name) {
                         CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
@@ -969,6 +953,16 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                     field_type->as.struct_type.name_length);
                         if (type_sym && type_sym->type) {
                             // 使用符号表中的真实类型（可能是枚举或结构体）
+                            field_type = type_sym->type;
+                        }
+                    }
+                    // 【关键修复】处理枚举类型字段：枚举类型在AST中表示为CN_TYPE_ENUM
+                    else if (field_type && field_type->kind == CN_TYPE_ENUM && field_type->as.enum_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.enum_type.name,
+                                                    field_type->as.enum_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            // 使用符号表中的真实枚举类型
                             field_type = type_sym->type;
                         }
                     }
@@ -1043,6 +1037,17 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         if (type_sym && type_sym->type &&
                             type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
                             type_sym->type->as.struct_type.fields) {
+                            field->field_type = type_sym->type;
+                        }
+                    }
+                    // 【关键修复】情况1.5：字段类型是枚举类型
+                    else if (field_type && field_type->kind == CN_TYPE_ENUM &&
+                             field_type->as.enum_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                    field_type->as.enum_type.name,
+                                                    field_type->as.enum_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_ENUM) {
                             field->field_type = type_sym->type;
                         }
                     }
@@ -1600,6 +1605,9 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
     
     // 设置函数作用域的名称为函数名
     cn_sem_scope_set_name(function_scope, function_decl->name, function_decl->name_length);
+    
+    // 【关键修改】将作用域保存到 AST 节点，这样 semantic_passes 和 irgen 可以复用
+    function_decl->owning_scope = function_scope;
 
     for (i = 0; i < function_decl->parameter_count; ++i) {
         CnAstParameter *param = &function_decl->parameters[i];
@@ -1625,6 +1633,7 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
     }
 
     cn_sem_build_block_scope(function_scope, function_decl->body, diagnostics);
+    // 【注意】不再释放 function_scope，它现在由 AST 节点拥有，将在 ast_free 中释放
 }
 
 static void cn_sem_build_block_scope(CnSemScope *parent_scope,
@@ -1638,14 +1647,21 @@ static void cn_sem_build_block_scope(CnSemScope *parent_scope,
         return;
     }
 
+    // 【修复】创建新的块作用域并保存到 AST 节点
+    // 这样 semantic_passes 和 irgen 可以通过 block->owning_scope 访问
     block_scope = cn_sem_scope_new(CN_SEM_SCOPE_BLOCK, parent_scope);
     if (!block_scope) {
         return;
     }
-
+    
+    // 【关键修改】将块作用域保存到 AST 节点
+    block->owning_scope = block_scope;
+    
+    // 遍历语句并构建符号表
     for (i = 0; i < block->stmt_count; ++i) {
         cn_sem_build_stmt(block_scope, block->stmts[i], diagnostics);
     }
+    // 【注意】不再释放 block_scope，它现在由 AST 节点拥有，将在 ast_free 中释放
 }
 
 static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *diagnostics)
@@ -1725,6 +1741,52 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
             } else {
                 // 非结构体类型,直接使用
                 sym->type = var_decl->declared_type;
+                
+                // 【关键修复】如果没有显式类型声明，尝试从初始化表达式推断类型
+                // 例如：变量 管理器 = (符号表管理器*)分配清零内存(...)
+                if (!sym->type && var_decl->initializer) {
+                    // 先构建初始化表达式的类型信息
+                    cn_sem_build_expr(scope, var_decl->initializer, diagnostics);
+                    
+                    // 从初始化表达式获取类型
+                    if (var_decl->initializer->type) {
+                        CnType *init_type = var_decl->initializer->type;
+                        
+                        // 如果初始化表达式是类型转换表达式，需要查找完整的类型
+                        if (init_type->kind == CN_TYPE_POINTER &&
+                            init_type->as.pointer_to &&
+                            init_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                            init_type->as.pointer_to->as.struct_type.name) {
+                            // 查找完整的结构体类型
+                            CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                                    init_type->as.pointer_to->as.struct_type.name,
+                                                    init_type->as.pointer_to->as.struct_type.name_length);
+                            if (type_sym && type_sym->type &&
+                                (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                                // 创建新的指针类型，指向完整的结构体类型
+                                sym->type = cn_type_new_pointer(type_sym->type);
+                            } else {
+                                sym->type = init_type;
+                            }
+                        } else if (init_type->kind == CN_TYPE_STRUCT && init_type->as.struct_type.name) {
+                            // 查找完整的结构体类型
+                            CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                                    init_type->as.struct_type.name,
+                                                    init_type->as.struct_type.name_length);
+                            if (type_sym && type_sym->type &&
+                                (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                                sym->type = type_sym->type;
+                            } else {
+                                sym->type = init_type;
+                            }
+                        } else {
+                            sym->type = init_type;
+                        }
+                        
+                        fprintf(stderr, "[DEBUG] scope_builder: inferred type for '%.*s' from initializer, type_kind=%d\n",
+                                (int)var_decl->name_length, var_decl->name, sym->type ? sym->type->kind : -1);
+                    }
+                }
             }
             sym->is_const = var_decl->is_const;
             sym->is_static = var_decl->is_static;  // 传递静态变量标记
@@ -2415,6 +2477,33 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                             }
                         }
                     }
+                    // 【关键修复】处理指向结构体的指针类型
+                    else if (param_type && param_type->kind == CN_TYPE_POINTER &&
+                             param_type->as.pointer_to &&
+                             param_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                             param_type->as.pointer_to->as.struct_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                param_type->as.pointer_to->as.struct_type.name,
+                                                param_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                            // 创建新的指针类型，指向完整的结构体类型
+                            param_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    }
+                    // 【关键修复】处理指向枚举的指针类型
+                    else if (param_type && param_type->kind == CN_TYPE_POINTER &&
+                             param_type->as.pointer_to &&
+                             param_type->as.pointer_to->kind == CN_TYPE_ENUM &&
+                             param_type->as.pointer_to->as.enum_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                param_type->as.pointer_to->as.enum_type.name,
+                                                param_type->as.pointer_to->as.enum_type.name_length);
+                        if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                            // 创建新的指针类型，指向完整的枚举类型
+                            param_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    }
                     param_types[j] = param_type;
                 }
             }
@@ -2422,6 +2511,41 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             CnType *return_type = function_decl->return_type;
             if (!return_type) {
                 return_type = cn_type_new_primitive(CN_TYPE_VOID);
+            }
+            // 【关键修复】处理返回类型中的结构体和指针类型
+            else if (return_type->kind == CN_TYPE_STRUCT && return_type->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        return_type->as.struct_type.name,
+                                        return_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    return_type = type_sym->type;
+                }
+            }
+            // 【关键修复】处理指向结构体的指针返回类型
+            else if (return_type->kind == CN_TYPE_POINTER &&
+                     return_type->as.pointer_to &&
+                     return_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                     return_type->as.pointer_to->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        return_type->as.pointer_to->as.struct_type.name,
+                                        return_type->as.pointer_to->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    return_type = cn_type_new_pointer(type_sym->type);
+                }
+            }
+            // 【关键修复】处理指向枚举的指针返回类型
+            else if (return_type->kind == CN_TYPE_POINTER &&
+                     return_type->as.pointer_to &&
+                     return_type->as.pointer_to->kind == CN_TYPE_ENUM &&
+                     return_type->as.pointer_to->as.enum_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        return_type->as.pointer_to->as.enum_type.name,
+                                        return_type->as.pointer_to->as.enum_type.name_length);
+                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                    return_type = cn_type_new_pointer(type_sym->type);
+                }
             }
             sym->type = cn_type_new_function(return_type,
                                             param_types,
@@ -2461,6 +2585,42 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             sym->is_const = var_decl->is_const;
             // 根据AST中的visibility字段设置可见性
             sym->is_public = (var_decl->visibility == CN_VISIBILITY_PUBLIC) ? 1 : 0;
+            
+            // 【关键修复】处理全局变量类型中的结构体和指针类型
+            if (sym->type && sym->type->kind == CN_TYPE_STRUCT && sym->type->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                        sym->type->as.struct_type.name,
+                                        sym->type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    sym->type = type_sym->type;
+                }
+            }
+            // 【关键修复】处理指向结构体的指针类型
+            else if (sym->type && sym->type->kind == CN_TYPE_POINTER &&
+                     sym->type->as.pointer_to &&
+                     sym->type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                     sym->type->as.pointer_to->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                        sym->type->as.pointer_to->as.struct_type.name,
+                                        sym->type->as.pointer_to->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    sym->type = cn_type_new_pointer(type_sym->type);
+                }
+            }
+            // 【关键修复】处理指向枚举的指针类型
+            else if (sym->type && sym->type->kind == CN_TYPE_POINTER &&
+                     sym->type->as.pointer_to &&
+                     sym->type->as.pointer_to->kind == CN_TYPE_ENUM &&
+                     sym->type->as.pointer_to->as.enum_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                        sym->type->as.pointer_to->as.enum_type.name,
+                                        sym->type->as.pointer_to->as.enum_type.name_length);
+                if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                    sym->type = cn_type_new_pointer(type_sym->type);
+                }
+            }
             
             // 如果没有显式类型，从初始化表达式推断类型
             if (!sym->type && var_decl->initializer) {
@@ -2750,6 +2910,15 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                         }
                     }
                 }
+                // 【关键修复】处理枚举类型字段
+                else if (field_type && field_type->kind == CN_TYPE_ENUM && field_type->as.enum_type.name) {
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                                field_type->as.enum_type.name,
+                                                field_type->as.enum_type.name_length);
+                    if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                        field_type = type_sym->type;
+                    }
+                }
                 // 处理指针类型：如果字段是指针指向自定义类型
                 else if (field_type && field_type->kind == CN_TYPE_POINTER &&
                          field_type->as.pointer_to &&
@@ -2766,6 +2935,18 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                         // 但为了安全，保留原来的不完整指针类型
                     }
                     // 如果 type_sym 不存在，保留原来的不完整指针类型
+                }
+                // 【关键修复】处理指针指向枚举类型
+                else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                         field_type->as.pointer_to &&
+                         field_type->as.pointer_to->kind == CN_TYPE_ENUM &&
+                         field_type->as.pointer_to->as.enum_type.name) {
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                                field_type->as.pointer_to->as.enum_type.name,
+                                                field_type->as.pointer_to->as.enum_type.name_length);
+                    if (type_sym && type_sym->type && type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                        field_type = cn_type_new_pointer(type_sym->type);
+                    }
                 }
                 fields[j].field_type = field_type;
                 fields[j].is_const = struct_decl->fields[j].is_const;
@@ -2808,6 +2989,17 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                         if (type_sym && type_sym->type &&
                             type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
                             type_sym->type->as.struct_type.fields) {
+                            field->field_type = type_sym->type;
+                        }
+                    }
+                    // 【关键修复】情况1.5：字段类型是枚举类型
+                    else if (field_type && field_type->kind == CN_TYPE_ENUM &&
+                             field_type->as.enum_type.name) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(module_scope,
+                                                    field_type->as.enum_type.name,
+                                                    field_type->as.enum_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            type_sym->kind == CN_SEM_SYMBOL_ENUM) {
                             field->field_type = type_sym->type;
                         }
                     }

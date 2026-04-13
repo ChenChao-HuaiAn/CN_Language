@@ -1328,8 +1328,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             if (!result_type) {
                 // 如果元素类型未知，默认使用 void* 指针类型
                 result_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
-            } else if (result_type->kind != CN_TYPE_POINTER) {
-                // 如果元素类型不是指针，则创建指向元素类型的指针
+            } else {
+                // 【修复】动态数组索引访问返回的是指向数组元素的指针
+                // cn_rt_array_get_element 返回 void*，需要转换为正确的指针类型
+                // 无论元素类型是否是指针，都需要创建指向元素类型的指针
+                // 例如：符号*[] 数组，元素类型是 符号*，访问返回 符号**
                 result_type = cn_type_new_pointer(result_type);
             }
             
@@ -1480,6 +1483,15 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
                 // 模块成员访问：直接使用成员名称（不再生成带模块前缀的名称）
                 // 模块系统通过作用域管理避免命名冲突
+                // 【修复】需要先查找对象的唯一名称，确保使用正确的局部变量名
+                char *obj_name = copy_name(expr->as.member.object->as.identifier.name,
+                                          expr->as.member.object->as.identifier.name_length);
+                char *unique_obj_name = lookup_local_var_unique_name(ctx, obj_name);
+                if (unique_obj_name) {
+                    free(obj_name);
+                    obj_name = unique_obj_name;
+                }
+                
                 size_t member_name_len = expr->as.member.member_name_length;
                 char *member_name = malloc(member_name_len + 1);
                 if (member_name) {
@@ -1487,8 +1499,10 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                             (int)member_name_len, expr->as.member.member_name);
                     CnIrOperand result = cn_ir_op_symbol(member_name, expr->type);
                     free(member_name);
+                    free(obj_name);
                     return result;
                 }
+                free(obj_name);
                 // 如果分配失败，继续使用默认处理
             }
             
@@ -2108,15 +2122,24 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
         cn_ir_function_add_block(ir_func, entry);
         ctx->current_block = entry;
         
-        // 为函数创建作用域（父级为传入的 parent_scope）
-        CnSemScope *func_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, parent_scope);
-        ctx->current_scope = func_scope;
+        // 【关键修改】使用 AST 节点中保存的作用域（由 scope_builder 创建）
+        CnSemScope *func_scope = func->owning_scope;
+        if (func_scope) {
+            ctx->current_scope = func_scope;
+        } else {
+            // 如果没有作用域，创建新的（向后兼容）
+            func_scope = cn_sem_scope_new(CN_SEM_SCOPE_FUNCTION, parent_scope);
+            ctx->current_scope = func_scope;
+        }
 
         // 生成函数体
         cn_ir_gen_block(ctx, func->body);
         
         // 恢复作用域
-        cn_sem_scope_free(func_scope);
+        // 【注意】如果作用域来自 AST 节点，不释放；否则释放
+        if (!func->owning_scope) {
+            cn_sem_scope_free(func_scope);
+        }
         ctx->current_scope = ctx->global_scope;
     }
     

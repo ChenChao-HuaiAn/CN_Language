@@ -6,88 +6,88 @@
 
 // Enum Definitions - 从导入模块
 enum 词元类型枚举 {
-    词元类型枚举_关键字_如果 = 0,
-    词元类型枚举_关键字_否则 = 1,
-    词元类型枚举_关键字_当 = 2,
-    词元类型枚举_关键字_循环 = 3,
-    词元类型枚举_关键字_返回 = 4,
-    词元类型枚举_关键字_中断 = 5,
-    词元类型枚举_关键字_继续 = 6,
-    词元类型枚举_关键字_选择 = 7,
-    词元类型枚举_关键字_情况 = 8,
-    词元类型枚举_关键字_默认 = 9,
-    词元类型枚举_关键字_整数 = 10,
-    词元类型枚举_关键字_小数 = 11,
-    词元类型枚举_关键字_字符串 = 12,
-    词元类型枚举_关键字_布尔 = 13,
-    词元类型枚举_关键字_空类型 = 14,
-    词元类型枚举_关键字_结构体 = 15,
-    词元类型枚举_关键字_枚举 = 16,
-    词元类型枚举_关键字_函数 = 17,
-    词元类型枚举_关键字_变量 = 18,
-    词元类型枚举_关键字_导入 = 19,
-    词元类型枚举_关键字_从 = 20,
-    词元类型枚举_关键字_公开 = 21,
-    词元类型枚举_关键字_私有 = 22,
-    词元类型枚举_关键字_静态 = 23,
-    词元类型枚举_关键字_真 = 24,
-    词元类型枚举_关键字_假 = 25,
-    词元类型枚举_关键字_无 = 26,
-    词元类型枚举_关键字_类 = 27,
-    词元类型枚举_关键字_接口 = 28,
-    词元类型枚举_关键字_保护 = 29,
-    词元类型枚举_关键字_虚拟 = 30,
-    词元类型枚举_关键字_重写 = 31,
-    词元类型枚举_关键字_抽象 = 32,
-    词元类型枚举_关键字_实现 = 33,
-    词元类型枚举_关键字_自身 = 34,
-    词元类型枚举_关键字_基类 = 35,
-    词元类型枚举_关键字_尝试 = 36,
-    词元类型枚举_关键字_捕获 = 37,
-    词元类型枚举_关键字_抛出 = 38,
-    词元类型枚举_关键字_最终 = 39,
-    词元类型枚举_标识符 = 40,
-    词元类型枚举_整数字面量 = 41,
-    词元类型枚举_浮点字面量 = 42,
-    词元类型枚举_字符串字面量 = 43,
-    词元类型枚举_字符字面量 = 44,
-    词元类型枚举_加号 = 45,
-    词元类型枚举_减号 = 46,
-    词元类型枚举_星号 = 47,
-    词元类型枚举_斜杠 = 48,
-    词元类型枚举_百分号 = 49,
-    词元类型枚举_等于 = 50,
-    词元类型枚举_赋值 = 51,
-    词元类型枚举_不等于 = 52,
-    词元类型枚举_小于 = 53,
-    词元类型枚举_小于等于 = 54,
-    词元类型枚举_大于 = 55,
-    词元类型枚举_大于等于 = 56,
-    词元类型枚举_逻辑与 = 57,
-    词元类型枚举_逻辑或 = 58,
-    词元类型枚举_逻辑非 = 59,
-    词元类型枚举_按位与 = 60,
-    词元类型枚举_按位或 = 61,
-    词元类型枚举_按位异或 = 62,
-    词元类型枚举_按位取反 = 63,
-    词元类型枚举_左移 = 64,
-    词元类型枚举_右移 = 65,
-    词元类型枚举_自增 = 66,
-    词元类型枚举_自减 = 67,
-    词元类型枚举_箭头 = 68,
-    词元类型枚举_左括号 = 69,
-    词元类型枚举_右括号 = 70,
-    词元类型枚举_左大括号 = 71,
-    词元类型枚举_右大括号 = 72,
-    词元类型枚举_左方括号 = 73,
-    词元类型枚举_右方括号 = 74,
-    词元类型枚举_分号 = 75,
-    词元类型枚举_逗号 = 76,
-    词元类型枚举_点 = 77,
-    词元类型枚举_冒号 = 78,
-    词元类型枚举_问号 = 79,
+    词元类型枚举_错误 = 81,
     词元类型枚举_结束 = 80,
-    词元类型枚举_错误 = 81
+    词元类型枚举_问号 = 79,
+    词元类型枚举_冒号 = 78,
+    词元类型枚举_点 = 77,
+    词元类型枚举_逗号 = 76,
+    词元类型枚举_分号 = 75,
+    词元类型枚举_右方括号 = 74,
+    词元类型枚举_左方括号 = 73,
+    词元类型枚举_右大括号 = 72,
+    词元类型枚举_左大括号 = 71,
+    词元类型枚举_右括号 = 70,
+    词元类型枚举_左括号 = 69,
+    词元类型枚举_箭头 = 68,
+    词元类型枚举_自减 = 67,
+    词元类型枚举_自增 = 66,
+    词元类型枚举_右移 = 65,
+    词元类型枚举_左移 = 64,
+    词元类型枚举_按位取反 = 63,
+    词元类型枚举_按位异或 = 62,
+    词元类型枚举_按位或 = 61,
+    词元类型枚举_按位与 = 60,
+    词元类型枚举_逻辑非 = 59,
+    词元类型枚举_逻辑或 = 58,
+    词元类型枚举_逻辑与 = 57,
+    词元类型枚举_大于等于 = 56,
+    词元类型枚举_大于 = 55,
+    词元类型枚举_小于等于 = 54,
+    词元类型枚举_小于 = 53,
+    词元类型枚举_不等于 = 52,
+    词元类型枚举_赋值 = 51,
+    词元类型枚举_等于 = 50,
+    词元类型枚举_百分号 = 49,
+    词元类型枚举_斜杠 = 48,
+    词元类型枚举_星号 = 47,
+    词元类型枚举_减号 = 46,
+    词元类型枚举_加号 = 45,
+    词元类型枚举_字符字面量 = 44,
+    词元类型枚举_字符串字面量 = 43,
+    词元类型枚举_浮点字面量 = 42,
+    词元类型枚举_整数字面量 = 41,
+    词元类型枚举_标识符 = 40,
+    词元类型枚举_关键字_最终 = 39,
+    词元类型枚举_关键字_抛出 = 38,
+    词元类型枚举_关键字_捕获 = 37,
+    词元类型枚举_关键字_尝试 = 36,
+    词元类型枚举_关键字_基类 = 35,
+    词元类型枚举_关键字_自身 = 34,
+    词元类型枚举_关键字_实现 = 33,
+    词元类型枚举_关键字_抽象 = 32,
+    词元类型枚举_关键字_重写 = 31,
+    词元类型枚举_关键字_虚拟 = 30,
+    词元类型枚举_关键字_保护 = 29,
+    词元类型枚举_关键字_接口 = 28,
+    词元类型枚举_关键字_类 = 27,
+    词元类型枚举_关键字_无 = 26,
+    词元类型枚举_关键字_假 = 25,
+    词元类型枚举_关键字_真 = 24,
+    词元类型枚举_关键字_静态 = 23,
+    词元类型枚举_关键字_私有 = 22,
+    词元类型枚举_关键字_公开 = 21,
+    词元类型枚举_关键字_从 = 20,
+    词元类型枚举_关键字_导入 = 19,
+    词元类型枚举_关键字_变量 = 18,
+    词元类型枚举_关键字_函数 = 17,
+    词元类型枚举_关键字_枚举 = 16,
+    词元类型枚举_关键字_结构体 = 15,
+    词元类型枚举_关键字_空类型 = 14,
+    词元类型枚举_关键字_布尔 = 13,
+    词元类型枚举_关键字_字符串 = 12,
+    词元类型枚举_关键字_小数 = 11,
+    词元类型枚举_关键字_整数 = 10,
+    词元类型枚举_关键字_默认 = 9,
+    词元类型枚举_关键字_情况 = 8,
+    词元类型枚举_关键字_选择 = 7,
+    词元类型枚举_关键字_继续 = 6,
+    词元类型枚举_关键字_中断 = 5,
+    词元类型枚举_关键字_返回 = 4,
+    词元类型枚举_关键字_循环 = 3,
+    词元类型枚举_关键字_当 = 2,
+    词元类型枚举_关键字_否则 = 1,
+    词元类型枚举_关键字_如果 = 0
 };
 struct 词元;
 struct 词元 {
@@ -106,51 +106,51 @@ struct 扫描器 {
     long long 源码长度;
 };
 enum 节点类型 {
-    节点类型_程序节点 = 0,
-    节点类型_函数声明 = 1,
-    节点类型_变量声明 = 2,
-    节点类型_结构体声明 = 3,
-    节点类型_枚举声明 = 4,
-    节点类型_模块声明 = 5,
-    节点类型_导入声明 = 6,
-    节点类型_类声明 = 7,
-    节点类型_接口声明 = 8,
-    节点类型_模板函数声明 = 9,
-    节点类型_模板结构体声明 = 10,
-    节点类型_表达式语句 = 11,
-    节点类型_块语句 = 12,
-    节点类型_如果语句 = 13,
-    节点类型_当语句 = 14,
-    节点类型_循环语句 = 15,
-    节点类型_返回语句 = 16,
-    节点类型_中断语句 = 17,
-    节点类型_继续语句 = 18,
-    节点类型_选择语句 = 19,
-    节点类型_尝试语句 = 20,
-    节点类型_抛出语句 = 21,
-    节点类型_最终语句 = 22,
-    节点类型_二元表达式 = 23,
-    节点类型_一元表达式 = 24,
-    节点类型_字面量表达式 = 25,
-    节点类型_标识符表达式 = 26,
-    节点类型_函数调用表达式 = 27,
-    节点类型_成员访问表达式 = 28,
-    节点类型_数组访问表达式 = 29,
-    节点类型_赋值表达式 = 30,
-    节点类型_三元表达式 = 31,
-    节点类型_数组字面量表达式 = 32,
-    节点类型_结构体字面量表达式 = 33,
-    节点类型_逻辑表达式 = 34,
-    节点类型_模板实例化表达式 = 35,
-    节点类型_基础类型 = 36,
-    节点类型_指针类型 = 37,
-    节点类型_数组类型 = 38,
-    节点类型_函数类型 = 39,
-    节点类型_结构体类型 = 40,
-    节点类型_枚举类型 = 41,
-    节点类型_类类型 = 42,
+    节点类型_标识符类型 = 44,
     节点类型_接口类型 = 43,
-    节点类型_标识符类型 = 44
+    节点类型_类类型 = 42,
+    节点类型_枚举类型 = 41,
+    节点类型_结构体类型 = 40,
+    节点类型_函数类型 = 39,
+    节点类型_数组类型 = 38,
+    节点类型_指针类型 = 37,
+    节点类型_基础类型 = 36,
+    节点类型_模板实例化表达式 = 35,
+    节点类型_逻辑表达式 = 34,
+    节点类型_结构体字面量表达式 = 33,
+    节点类型_数组字面量表达式 = 32,
+    节点类型_三元表达式 = 31,
+    节点类型_赋值表达式 = 30,
+    节点类型_数组访问表达式 = 29,
+    节点类型_成员访问表达式 = 28,
+    节点类型_函数调用表达式 = 27,
+    节点类型_标识符表达式 = 26,
+    节点类型_字面量表达式 = 25,
+    节点类型_一元表达式 = 24,
+    节点类型_二元表达式 = 23,
+    节点类型_最终语句 = 22,
+    节点类型_抛出语句 = 21,
+    节点类型_尝试语句 = 20,
+    节点类型_选择语句 = 19,
+    节点类型_继续语句 = 18,
+    节点类型_中断语句 = 17,
+    节点类型_返回语句 = 16,
+    节点类型_循环语句 = 15,
+    节点类型_当语句 = 14,
+    节点类型_如果语句 = 13,
+    节点类型_块语句 = 12,
+    节点类型_表达式语句 = 11,
+    节点类型_模板结构体声明 = 10,
+    节点类型_模板函数声明 = 9,
+    节点类型_接口声明 = 8,
+    节点类型_类声明 = 7,
+    节点类型_导入声明 = 6,
+    节点类型_模块声明 = 5,
+    节点类型_枚举声明 = 4,
+    节点类型_结构体声明 = 3,
+    节点类型_变量声明 = 2,
+    节点类型_函数声明 = 1,
+    节点类型_程序节点 = 0
 };
 struct 源位置 {
     char* 文件名;
@@ -163,132 +163,134 @@ struct AST节点 {
     struct 源位置 位置;
 };
 enum 导入类型 {
-    导入类型_导入_全量 = 0,
-    导入类型_导入_选择性 = 1,
-    导入类型_导入_别名 = 2,
-    导入类型_导入_从模块选择性 = 3,
+    导入类型_导入_从包导入模块 = 5,
     导入类型_导入_从模块通配符 = 4,
-    导入类型_导入_从包导入模块 = 5
+    导入类型_导入_从模块选择性 = 3,
+    导入类型_导入_别名 = 2,
+    导入类型_导入_选择性 = 1,
+    导入类型_导入_全量 = 0
 };
 enum 可见性 {
-    可见性_可见性_默认 = 0,
+    可见性_可见性_私有 = 2,
     可见性_可见性_公开 = 1,
-    可见性_可见性_私有 = 2
+    可见性_可见性_默认 = 0
 };
 enum 字面量类型 {
-    字面量类型_字面量_整数 = 0,
-    字面量类型_字面量_浮点 = 1,
-    字面量类型_字面量_字符串 = 2,
-    字面量类型_字面量_布尔 = 3,
+    字面量类型_字面量_字符 = 5,
     字面量类型_字面量_空 = 4,
-    字面量类型_字面量_字符 = 5
+    字面量类型_字面量_布尔 = 3,
+    字面量类型_字面量_字符串 = 2,
+    字面量类型_字面量_浮点 = 1,
+    字面量类型_字面量_整数 = 0
 };
 enum 赋值运算符 {
-    赋值运算符_赋值_简单 = 0,
-    赋值运算符_赋值_加法 = 1,
-    赋值运算符_赋值_减法 = 2,
-    赋值运算符_赋值_乘法 = 3,
-    赋值运算符_赋值_除法 = 4,
-    赋值运算符_赋值_取模 = 5,
-    赋值运算符_赋值_位与 = 6,
-    赋值运算符_赋值_位或 = 7,
-    赋值运算符_赋值_位异或 = 8,
+    赋值运算符_赋值_右移 = 10,
     赋值运算符_赋值_左移 = 9,
-    赋值运算符_赋值_右移 = 10
+    赋值运算符_赋值_位异或 = 8,
+    赋值运算符_赋值_位或 = 7,
+    赋值运算符_赋值_位与 = 6,
+    赋值运算符_赋值_取模 = 5,
+    赋值运算符_赋值_除法 = 4,
+    赋值运算符_赋值_乘法 = 3,
+    赋值运算符_赋值_减法 = 2,
+    赋值运算符_赋值_加法 = 1,
+    赋值运算符_赋值_简单 = 0
 };
 enum 一元运算符 {
-    一元运算符_一元_逻辑非 = 0,
-    一元运算符_一元_取负 = 1,
-    一元运算符_一元_取地址 = 2,
-    一元运算符_一元_解引用 = 3,
-    一元运算符_一元_位取反 = 4,
-    一元运算符_一元_前置自增 = 5,
-    一元运算符_一元_前置自减 = 6,
+    一元运算符_一元_后置自减 = 8,
     一元运算符_一元_后置自增 = 7,
-    一元运算符_一元_后置自减 = 8
+    一元运算符_一元_前置自减 = 6,
+    一元运算符_一元_前置自增 = 5,
+    一元运算符_一元_位取反 = 4,
+    一元运算符_一元_解引用 = 3,
+    一元运算符_一元_取地址 = 2,
+    一元运算符_一元_取负 = 1,
+    一元运算符_一元_逻辑非 = 0
 };
 enum 逻辑运算符 {
-    逻辑运算符_逻辑_与 = 0,
-    逻辑运算符_逻辑_或 = 1
+    逻辑运算符_逻辑_或 = 1,
+    逻辑运算符_逻辑_与 = 0
 };
 enum 二元运算符 {
-    二元运算符_二元_加 = 0,
-    二元运算符_二元_减 = 1,
-    二元运算符_二元_乘 = 2,
-    二元运算符_二元_除 = 3,
-    二元运算符_二元_取模 = 4,
-    二元运算符_二元_等于 = 5,
-    二元运算符_二元_不等于 = 6,
-    二元运算符_二元_小于 = 7,
-    二元运算符_二元_大于 = 8,
-    二元运算符_二元_小于等于 = 9,
-    二元运算符_二元_大于等于 = 10,
-    二元运算符_二元_位与 = 11,
-    二元运算符_二元_位或 = 12,
-    二元运算符_二元_位异或 = 13,
+    二元运算符_二元_逻辑或 = 17,
+    二元运算符_二元_逻辑与 = 16,
+    二元运算符_二元_右移 = 15,
     二元运算符_二元_左移 = 14,
-    二元运算符_二元_右移 = 15
+    二元运算符_二元_位异或 = 13,
+    二元运算符_二元_位或 = 12,
+    二元运算符_二元_位与 = 11,
+    二元运算符_二元_大于等于 = 10,
+    二元运算符_二元_小于等于 = 9,
+    二元运算符_二元_大于 = 8,
+    二元运算符_二元_小于 = 7,
+    二元运算符_二元_不等于 = 6,
+    二元运算符_二元_等于 = 5,
+    二元运算符_二元_取模 = 4,
+    二元运算符_二元_除 = 3,
+    二元运算符_二元_乘 = 2,
+    二元运算符_二元_减 = 1,
+    二元运算符_二元_加 = 0
 };
 enum 同步点类型 {
-    同步点类型_同步点_分号 = 0,
-    同步点类型_同步点_右大括号 = 1,
-    同步点类型_同步点_右小括号 = 2,
-    同步点类型_同步点_右中括号 = 3,
-    同步点类型_同步点_逗号 = 4,
-    同步点类型_同步点_关键字 = 5,
+    同步点类型_同步点_声明关键字 = 7,
     同步点类型_同步点_类型关键字 = 6,
-    同步点类型_同步点_声明关键字 = 7
+    同步点类型_同步点_关键字 = 5,
+    同步点类型_同步点_逗号 = 4,
+    同步点类型_同步点_右中括号 = 3,
+    同步点类型_同步点_右小括号 = 2,
+    同步点类型_同步点_右大括号 = 1,
+    同步点类型_同步点_分号 = 0
 };
 enum 语法恢复策略 {
-    语法恢复策略_不恢复 = 0,
-    语法恢复策略_跳过词元 = 1,
-    语法恢复策略_同步到分号 = 2,
+    语法恢复策略_同步到关键字 = 4,
     语法恢复策略_同步到大括号 = 3,
-    语法恢复策略_同步到关键字 = 4
+    语法恢复策略_同步到分号 = 2,
+    语法恢复策略_跳过词元 = 1,
+    语法恢复策略_不恢复 = 0
 };
 enum 诊断严重级别 {
-    诊断严重级别_诊断_错误 = 0,
-    诊断严重级别_诊断_警告 = 1
+    诊断严重级别_诊断_警告 = 1,
+    诊断严重级别_诊断_错误 = 0
 };
 enum 诊断错误码 {
-    诊断错误码_未知错误 = 0,
-    诊断错误码_词法_未终止字符串 = 1,
-    诊断错误码_词法_无效字符 = 2,
-    诊断错误码_词法_无效十六进制 = 3,
-    诊断错误码_词法_无效二进制 = 4,
-    诊断错误码_词法_无效八进制 = 5,
-    诊断错误码_词法_字面量溢出 = 6,
-    诊断错误码_词法_未终止块注释 = 7,
-    诊断错误码_语法_期望标记 = 11,
-    诊断错误码_语法_预留特性 = 12,
-    诊断错误码_语法_无效函数名 = 13,
-    诊断错误码_语法_无效参数 = 14,
-    诊断错误码_语法_无效变量声明 = 15,
-    诊断错误码_语法_无效比较运算符 = 16,
-    诊断错误码_语法_无效表达式 = 17,
-    诊断错误码_语义_重复符号 = 21,
-    诊断错误码_语义_未定义标识符 = 22,
-    诊断错误码_语义_类型不匹配 = 23,
-    诊断错误码_语义_参数数量不匹配 = 24,
-    诊断错误码_语义_参数类型不匹配 = 25,
-    诊断错误码_语义_返回语句在函数外 = 26,
-    诊断错误码_语义_中断继续在循环外 = 27,
-    诊断错误码_语义_缺少返回语句 = 28,
-    诊断错误码_语义_无效赋值 = 29,
-    诊断错误码_语义_不可调用 = 30,
-    诊断错误码_语义_非结构体类型 = 31,
-    诊断错误码_语义_成员未找到 = 32,
-    诊断错误码_语义_访问被拒绝 = 33,
-    诊断错误码_语义_常量缺少初始化 = 34,
-    诊断错误码_语义_常量非常量初始化 = 35,
-    诊断错误码_语义_开关非常量情况 = 36,
-    诊断错误码_语义_开关重复情况 = 37,
-    诊断错误码_语义_静态非常量初始化 = 38,
-    诊断错误码_语义_静态空类型 = 39,
-    诊断错误码_语义_无效自身使用 = 40,
-    诊断错误码_语义_抽象类实例化 = 41,
+    诊断错误码_语义_纯虚函数调用 = 43,
     诊断错误码_语义_纯虚函数未实现 = 42,
-    诊断错误码_语义_纯虚函数调用 = 43
+    诊断错误码_语义_抽象类实例化 = 41,
+    诊断错误码_语义_无效自身使用 = 40,
+    诊断错误码_语义_静态空类型 = 39,
+    诊断错误码_语义_静态非常量初始化 = 38,
+    诊断错误码_语义_开关重复情况 = 37,
+    诊断错误码_语义_开关非常量情况 = 36,
+    诊断错误码_语义_常量非常量初始化 = 35,
+    诊断错误码_语义_常量缺少初始化 = 34,
+    诊断错误码_语义_访问被拒绝 = 33,
+    诊断错误码_语义_成员未找到 = 32,
+    诊断错误码_语义_非结构体类型 = 31,
+    诊断错误码_语义_不可调用 = 30,
+    诊断错误码_语义_无效赋值 = 29,
+    诊断错误码_语义_缺少返回语句 = 28,
+    诊断错误码_语义_中断继续在循环外 = 27,
+    诊断错误码_语义_返回语句在函数外 = 26,
+    诊断错误码_语义_参数类型不匹配 = 25,
+    诊断错误码_语义_参数数量不匹配 = 24,
+    诊断错误码_语义_类型不匹配 = 23,
+    诊断错误码_语义_未定义标识符 = 22,
+    诊断错误码_语义_重复符号 = 21,
+    诊断错误码_语法_无效表达式 = 17,
+    诊断错误码_语法_无效比较运算符 = 16,
+    诊断错误码_语法_无效变量声明 = 15,
+    诊断错误码_语法_无效参数 = 14,
+    诊断错误码_语法_无效函数名 = 13,
+    诊断错误码_语法_预留特性 = 12,
+    诊断错误码_语法_期望标记 = 11,
+    诊断错误码_词法_未终止块注释 = 7,
+    诊断错误码_词法_字面量溢出 = 6,
+    诊断错误码_词法_无效八进制 = 5,
+    诊断错误码_词法_无效二进制 = 4,
+    诊断错误码_词法_无效十六进制 = 3,
+    诊断错误码_词法_无效字符 = 2,
+    诊断错误码_词法_未终止字符串 = 1,
+    诊断错误码_未知错误 = 0
 };
 
 // Struct Definitions - 从导入模块
@@ -405,6 +407,19 @@ struct 结构体字段初始化 {
     char* 字段名;
     struct 表达式节点* 值;
 };
+struct 表达式列表;
+struct 赋值表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 目标;
+    struct 表达式节点* 值;
+    enum 赋值运算符 运算符;
+};
+struct 三元表达式 {
+    struct AST节点 节点基类;
+    struct 表达式节点* 条件;
+    struct 表达式节点* 真值;
+    struct 表达式节点* 假值;
+};
 struct 表达式节点;
 struct 表达式节点 {
     enum 节点类型 类型;
@@ -421,7 +436,7 @@ struct 表达式节点 {
     long long 运算符;
     struct 表达式节点* 操作数;
     struct 表达式节点* 被调函数;
-    struct 表达式节点* 参数列表;
+    struct 表达式列表* 参数列表;
     long long 参数个数;
     struct 表达式节点* 对象;
     char* 成员名;
@@ -430,9 +445,10 @@ struct 表达式节点 {
     struct 表达式节点* 索引;
     struct 表达式节点* 左侧表达式;
     struct 表达式节点* 值;
+    struct 赋值表达式 赋值表达式;
+    struct 三元表达式 三元表达式;
     struct 表达式节点* 指针;
 };
-struct 表达式列表;
 struct 表达式列表;
 struct 表达式列表 {
     struct 表达式节点* 节点;
@@ -487,20 +503,6 @@ struct 数组访问表达式 {
     struct AST节点 节点基类;
     struct 表达式节点* 数组;
     struct 表达式节点* 索引;
-};
-struct 赋值表达式;
-struct 赋值表达式 {
-    struct AST节点 节点基类;
-    struct 表达式节点* 目标;
-    struct 表达式节点* 值;
-    enum 赋值运算符 运算符;
-};
-struct 三元表达式;
-struct 三元表达式 {
-    struct AST节点 节点基类;
-    struct 表达式节点* 条件;
-    struct 表达式节点* 真值;
-    struct 表达式节点* 假值;
 };
 struct 数组字面量表达式;
 struct 数组字面量表达式 {
@@ -787,9 +789,9 @@ extern long long cn_var_语法错误恢复上下文大小;
 struct 诊断集合* 创建诊断集合(long long);
 void 释放诊断集合(struct 诊断集合*);
 _Bool 扩展诊断数组(struct 诊断集合*);
-void 报告诊断(struct 诊断集合*, enum 诊断严重级别, enum 诊断错误码, struct 源位置, char*);
-void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, char*);
-void 报告警告(struct 诊断集合*, enum 诊断错误码, struct 源位置, char*);
+void 报告诊断(struct 诊断集合*, enum 诊断严重级别, enum 诊断错误码, struct 源位置, const char*);
+void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+void 报告警告(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
 _Bool 有错误(struct 诊断集合*);
 long long 获取错误计数(struct 诊断集合*);
 long long 获取警告计数(struct 诊断集合*);
@@ -798,22 +800,22 @@ char* 获取严重级别字符串(enum 诊断严重级别);
 void 打印诊断信息(struct 诊断信息*);
 void 打印所有诊断(struct 诊断集合*);
 void 清空诊断集合(struct 诊断集合*);
-struct 源位置 创建源位置(char*, long long, long long);
+struct 源位置 创建源位置(const char*, long long, long long);
 struct 源位置 创建未知位置(void);
-void 报告重复符号错误(struct 诊断集合*, struct 源位置, char*);
-void 报告未定义标识符错误(struct 诊断集合*, struct 源位置, char*);
-void 报告类型不匹配错误(struct 诊断集合*, struct 源位置, char*, char*);
-void 报告缺少返回语句错误(struct 诊断集合*, struct 源位置, char*);
-void 报告常量缺少初始化错误(struct 诊断集合*, struct 源位置, char*);
-void 报告期望标记错误(struct 诊断集合*, struct 源位置, char*);
+void 报告重复符号错误(struct 诊断集合*, struct 源位置, const char*);
+void 报告未定义标识符错误(struct 诊断集合*, struct 源位置, const char*);
+void 报告类型不匹配错误(struct 诊断集合*, struct 源位置, const char*, const char*);
+void 报告缺少返回语句错误(struct 诊断集合*, struct 源位置, const char*);
+void 报告常量缺少初始化错误(struct 诊断集合*, struct 源位置, const char*);
+void 报告期望标记错误(struct 诊断集合*, struct 源位置, const char*);
 void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
-void 报告无效字符错误(struct 诊断集合*, struct 源位置, char*);
+void 报告无效字符错误(struct 诊断集合*, struct 源位置, const char*);
 void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
 void 释放表达式列表(struct 表达式列表*);
 void 释放表达式节点(struct 表达式节点*);
 void 表达式列表添加(struct 表达式列表*, struct 表达式节点*);
 struct 表达式列表* 创建表达式列表(void);
-struct 表达式节点* 创建基类访问表达式(char*);
+struct 表达式节点* 创建基类访问表达式(const char*);
 struct 表达式节点* 创建自身表达式(void);
 struct 表达式节点* 创建空值表达式(void);
 struct 表达式节点* 创建标识符表达式(void);
@@ -834,13 +836,13 @@ extern long long cn_var_关键字表大小;
 void 初始化关键字表(void);
 struct 关键字条目* 获取关键字表(void);
 long long 关键字总数(void);
-_Bool 是关键字字符串(char*);
-enum 词元类型枚举 查找关键字(char*);
+_Bool 是关键字字符串(const char*);
+enum 词元类型枚举 查找关键字(const char*);
 void* 分配内存数组(long long, long long);
 long long 类型大小(long long);
-char* 复制字符串副本(char*);
-char* 字符串格式(char*);
-long long 字符串格式化(char*, long long, char*);
+char* 复制字符串副本(const char*);
+char* 字符串格式(const char*);
+long long 字符串格式化(const char*, long long, const char*);
 char* 读取行(void);
 long long 获取绝对值(long long);
 long long 求最大值(long long, long long);
@@ -848,8 +850,8 @@ long long 求最小值(long long, long long);
 long long 获取参数个数(void);
 char* 获取参数(long long);
 char* 获取程序名称(void);
-char* 查找选项(char*);
-long long 选项存在(char*);
+char* 查找选项(const char*);
+long long 选项存在(const char*);
 char* 获取位置参数(long long);
 long long 获取位置参数个数(void);
 void* 数组获取(void*, long long);
@@ -875,7 +877,7 @@ _Bool 是十六进制数字(long long);
 _Bool 是数字(long long);
 _Bool 是换行符(long long);
 _Bool 是空白字符(long long);
-struct 扫描器* 创建扫描器(char*, long long);
+struct 扫描器* 创建扫描器(const char*, long long);
 void 销毁扫描器(struct 扫描器*);
 struct 词元 下一个词元(struct 扫描器*);
 struct 词元 预览词元(struct 扫描器*);
@@ -896,7 +898,7 @@ extern long long cn_var_最大字符串长度;
 extern long long cn_var_最大数字长度;
 extern long long cn_var_扫描器大小;
 char* 词元类型名称(enum 词元类型枚举);
-struct 词元 创建词元(enum 词元类型枚举, char*, long long, long long, long long);
+struct 词元 创建词元(enum 词元类型枚举, const char*, long long, long long, long long);
 _Bool 是关键字(enum 词元类型枚举);
 _Bool 是字面量(enum 词元类型枚举);
 _Bool 是运算符(enum 词元类型枚举);
@@ -956,113 +958,113 @@ struct 类型节点* 解析类型(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_999; else goto if_merge_1000;
+  if (r1) goto if_then_1064; else goto if_merge_1065;
 
-  if_then_999:
+  if_then_1064:
   return 0;
-  goto if_merge_1000;
+  goto if_merge_1065;
 
-  if_merge_1000:
+  if_merge_1065:
   struct 类型节点* cn_var_结果_0;
   cn_var_结果_0 = 0;
   r2 = cn_var_实例;
   r3 = r2->当前词元;
   r4 = r3.类型;
   r5 = 是否类型关键字(r4);
-  if (r5) goto if_then_1001; else goto if_else_1002;
+  if (r5) goto if_then_1066; else goto if_else_1067;
 
-  if_then_1001:
+  if_then_1066:
   r6 = cn_var_实例;
   r7 = 解析基础类型(r6);
   cn_var_结果_0 = r7;
-  goto if_merge_1003;
+  goto if_merge_1068;
 
-  if_else_1002:
+  if_else_1067:
   r8 = cn_var_实例;
   r9 = r8->当前词元;
   r10 = r9.类型;
   r11 = r10 == 词元类型枚举_标识符;
-  if (r11) goto if_then_1004; else goto if_else_1005;
+  if (r11) goto if_then_1069; else goto if_else_1070;
 
-  if_merge_1003:
-  goto while_cond_1009;
+  if_merge_1068:
+  goto while_cond_1074;
 
-  if_then_1004:
+  if_then_1069:
   创建类型节点();
   cn_var_结果_0 = /* NONE */;
   r12 = cn_var_结果_0;
   r13 = r12 == 0;
-  if (r13) goto if_then_1007; else goto if_merge_1008;
+  if (r13) goto if_then_1072; else goto if_merge_1073;
 
-  if_else_1005:
+  if_else_1070:
   r18 = cn_var_实例;
   报告错误(r18, 诊断错误码_语法_期望标记, "期望类型名");
   return 0;
-  goto if_merge_1006;
+  goto if_merge_1071;
 
-  if_merge_1006:
-  goto if_merge_1003;
+  if_merge_1071:
+  goto if_merge_1068;
 
-  if_then_1007:
+  if_then_1072:
   return 0;
-  goto if_merge_1008;
+  goto if_merge_1073;
 
-  if_merge_1008:
+  if_merge_1073:
   r14 = cn_var_实例;
   r15 = r14->当前词元;
   r16 = r15.值;
   r17 = cn_var_实例;
   前进词元(r17);
-  goto if_merge_1006;
+  goto if_merge_1071;
 
-  while_cond_1009:
+  while_cond_1074:
   r19 = cn_var_实例;
   r20 = 检查(r19, 词元类型枚举_星号);
-  if (r20) goto while_body_1010; else goto while_exit_1011;
+  if (r20) goto while_body_1075; else goto while_exit_1076;
 
-  while_body_1010:
+  while_body_1075:
   r21 = cn_var_实例;
   r22 = cn_var_结果_0;
   r23 = 解析指针类型(r21, r22);
   cn_var_结果_0 = r23;
   r24 = cn_var_结果_0;
   r25 = r24 == 0;
-  if (r25) goto if_then_1012; else goto if_merge_1013;
+  if (r25) goto if_then_1077; else goto if_merge_1078;
 
-  while_exit_1011:
-  goto while_cond_1014;
+  while_exit_1076:
+  goto while_cond_1079;
 
-  if_then_1012:
+  if_then_1077:
   return 0;
-  goto if_merge_1013;
+  goto if_merge_1078;
 
-  if_merge_1013:
-  goto while_cond_1009;
+  if_merge_1078:
+  goto while_cond_1074;
 
-  while_cond_1014:
+  while_cond_1079:
   r26 = cn_var_实例;
   r27 = 检查(r26, 词元类型枚举_左方括号);
-  if (r27) goto while_body_1015; else goto while_exit_1016;
+  if (r27) goto while_body_1080; else goto while_exit_1081;
 
-  while_body_1015:
+  while_body_1080:
   r28 = cn_var_实例;
   r29 = cn_var_结果_0;
   r30 = 解析数组类型(r28, r29);
   cn_var_结果_0 = r30;
   r31 = cn_var_结果_0;
   r32 = r31 == 0;
-  if (r32) goto if_then_1017; else goto if_merge_1018;
+  if (r32) goto if_then_1082; else goto if_merge_1083;
 
-  while_exit_1016:
+  while_exit_1081:
   r33 = cn_var_结果_0;
   return r33;
 
-  if_then_1017:
+  if_then_1082:
   return 0;
-  goto if_merge_1018;
+  goto if_merge_1083;
 
-  if_merge_1018:
-  goto while_cond_1014;
+  if_merge_1083:
+  goto while_cond_1079;
   return NULL;
 }
 
@@ -1087,87 +1089,87 @@ struct 类型节点* 解析基础类型(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1019; else goto if_merge_1020;
+  if (r1) goto if_then_1084; else goto if_merge_1085;
 
-  if_then_1019:
+  if_then_1084:
   return 0;
-  goto if_merge_1020;
+  goto if_merge_1085;
 
-  if_merge_1020:
+  if_merge_1085:
   struct 类型节点* cn_var_结果_0;
   创建类型节点();
   cn_var_结果_0 = /* NONE */;
   r2 = cn_var_结果_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1021; else goto if_merge_1022;
+  if (r3) goto if_then_1086; else goto if_merge_1087;
 
-  if_then_1021:
+  if_then_1086:
   return 0;
-  goto if_merge_1022;
+  goto if_merge_1087;
 
-  if_merge_1022:
+  if_merge_1087:
   r4 = cn_var_实例;
   r5 = 检查(r4, 词元类型枚举_关键字_整数);
-  if (r5) goto if_then_1023; else goto if_else_1024;
+  if (r5) goto if_then_1088; else goto if_else_1089;
 
-  if_then_1023:
-  goto if_merge_1025;
+  if_then_1088:
+  goto if_merge_1090;
 
-  if_else_1024:
+  if_else_1089:
   r6 = cn_var_实例;
   r7 = 检查(r6, 词元类型枚举_关键字_小数);
-  if (r7) goto if_then_1026; else goto if_else_1027;
+  if (r7) goto if_then_1091; else goto if_else_1092;
 
-  if_merge_1025:
+  if_merge_1090:
   r15 = cn_var_实例;
   前进词元(r15);
   r16 = cn_var_结果_0;
   return r16;
 
-  if_then_1026:
-  goto if_merge_1028;
+  if_then_1091:
+  goto if_merge_1093;
 
-  if_else_1027:
+  if_else_1092:
   r8 = cn_var_实例;
   r9 = 检查(r8, 词元类型枚举_关键字_字符串);
-  if (r9) goto if_then_1029; else goto if_else_1030;
+  if (r9) goto if_then_1094; else goto if_else_1095;
 
-  if_merge_1028:
-  goto if_merge_1025;
+  if_merge_1093:
+  goto if_merge_1090;
 
-  if_then_1029:
-  goto if_merge_1031;
+  if_then_1094:
+  goto if_merge_1096;
 
-  if_else_1030:
+  if_else_1095:
   r10 = cn_var_实例;
   r11 = 检查(r10, 词元类型枚举_关键字_布尔);
-  if (r11) goto if_then_1032; else goto if_else_1033;
+  if (r11) goto if_then_1097; else goto if_else_1098;
 
-  if_merge_1031:
-  goto if_merge_1028;
+  if_merge_1096:
+  goto if_merge_1093;
 
-  if_then_1032:
-  goto if_merge_1034;
+  if_then_1097:
+  goto if_merge_1099;
 
-  if_else_1033:
+  if_else_1098:
   r12 = cn_var_实例;
   r13 = 检查(r12, 词元类型枚举_关键字_空类型);
-  if (r13) goto if_then_1035; else goto if_else_1036;
+  if (r13) goto if_then_1100; else goto if_else_1101;
 
-  if_merge_1034:
-  goto if_merge_1031;
+  if_merge_1099:
+  goto if_merge_1096;
 
-  if_then_1035:
-  goto if_merge_1037;
+  if_then_1100:
+  goto if_merge_1102;
 
-  if_else_1036:
+  if_else_1101:
   r14 = cn_var_结果_0;
   释放类型节点(r14);
   return 0;
-  goto if_merge_1037;
+  goto if_merge_1102;
 
-  if_merge_1037:
-  goto if_merge_1034;
+  if_merge_1102:
+  goto if_merge_1099;
   return NULL;
 }
 
@@ -1189,45 +1191,45 @@ struct 类型节点* 解析指针类型(struct 解析器* cn_var_实例, struct 
   entry:
   r1 = cn_var_实例;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_1041; else goto logic_rhs_1040;
+  if (r2) goto logic_merge_1106; else goto logic_rhs_1105;
 
-  if_then_1038:
+  if_then_1103:
   return 0;
-  goto if_merge_1039;
+  goto if_merge_1104;
 
-  if_merge_1039:
+  if_merge_1104:
   r5 = cn_var_实例;
   r6 = 期望(r5, 词元类型枚举_星号);
   r7 = !r6;
-  if (r7) goto if_then_1042; else goto if_merge_1043;
+  if (r7) goto if_then_1107; else goto if_merge_1108;
 
-  logic_rhs_1040:
+  logic_rhs_1105:
   r3 = cn_var_基类型;
   r4 = r3 == 0;
-  goto logic_merge_1041;
+  goto logic_merge_1106;
 
-  logic_merge_1041:
-  if (r4) goto if_then_1038; else goto if_merge_1039;
+  logic_merge_1106:
+  if (r4) goto if_then_1103; else goto if_merge_1104;
 
-  if_then_1042:
+  if_then_1107:
   r8 = cn_var_基类型;
   return r8;
-  goto if_merge_1043;
+  goto if_merge_1108;
 
-  if_merge_1043:
+  if_merge_1108:
   struct 类型节点* cn_var_指针类型_0;
   创建类型节点();
   cn_var_指针类型_0 = /* NONE */;
   r9 = cn_var_指针类型_0;
   r10 = r9 == 0;
-  if (r10) goto if_then_1044; else goto if_merge_1045;
+  if (r10) goto if_then_1109; else goto if_merge_1110;
 
-  if_then_1044:
+  if_then_1109:
   r11 = cn_var_基类型;
   return r11;
-  goto if_merge_1045;
+  goto if_merge_1110;
 
-  if_merge_1045:
+  if_merge_1110:
   r12 = cn_var_基类型;
   r13 = cn_var_基类型;
   r14 = r13->指针层级;
@@ -1263,63 +1265,63 @@ struct 类型节点* 解析数组类型(struct 解析器* cn_var_实例, struct 
   entry:
   r1 = cn_var_实例;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_1049; else goto logic_rhs_1048;
+  if (r2) goto logic_merge_1114; else goto logic_rhs_1113;
 
-  if_then_1046:
+  if_then_1111:
   return 0;
-  goto if_merge_1047;
+  goto if_merge_1112;
 
-  if_merge_1047:
+  if_merge_1112:
   r5 = cn_var_实例;
   r6 = 期望(r5, 词元类型枚举_左方括号);
   r7 = !r6;
-  if (r7) goto if_then_1050; else goto if_merge_1051;
+  if (r7) goto if_then_1115; else goto if_merge_1116;
 
-  logic_rhs_1048:
+  logic_rhs_1113:
   r3 = cn_var_元素类型;
   r4 = r3 == 0;
-  goto logic_merge_1049;
+  goto logic_merge_1114;
 
-  logic_merge_1049:
-  if (r4) goto if_then_1046; else goto if_merge_1047;
+  logic_merge_1114:
+  if (r4) goto if_then_1111; else goto if_merge_1112;
 
-  if_then_1050:
+  if_then_1115:
   r8 = cn_var_元素类型;
   return r8;
-  goto if_merge_1051;
+  goto if_merge_1116;
 
-  if_merge_1051:
+  if_merge_1116:
   struct 类型节点* cn_var_数组类型_0;
   创建类型节点();
   cn_var_数组类型_0 = /* NONE */;
   r9 = cn_var_数组类型_0;
   r10 = r9 == 0;
-  if (r10) goto if_then_1052; else goto if_merge_1053;
+  if (r10) goto if_then_1117; else goto if_merge_1118;
 
-  if_then_1052:
+  if_then_1117:
   r11 = cn_var_元素类型;
   return r11;
-  goto if_merge_1053;
+  goto if_merge_1118;
 
-  if_merge_1053:
+  if_merge_1118:
   r12 = cn_var_元素类型;
   r13 = cn_var_元素类型;
   r14 = r13->数组维度;
   r15 = r14 + 1;
   r16 = cn_var_实例;
   r17 = 检查(r16, 词元类型枚举_整数字面量);
-  if (r17) goto if_then_1054; else goto if_merge_1055;
+  if (r17) goto if_then_1119; else goto if_merge_1120;
 
-  if_then_1054:
+  if_then_1119:
   r18 = cn_var_实例;
   r19 = r18->当前词元;
   r20 = r19.值;
   字符串转整数(r20);
   r21 = cn_var_实例;
   前进词元(r21);
-  goto if_merge_1055;
+  goto if_merge_1120;
 
-  if_merge_1055:
+  if_merge_1120:
   r22 = cn_var_实例;
   r23 = 期望(r22, 词元类型枚举_右方括号);
   r24 = cn_var_数组类型_0;
@@ -1356,98 +1358,98 @@ struct 类型节点* 解析函数类型(struct 解析器* cn_var_实例) {
   entry:
   r0 = cn_var_实例;
   r1 = r0 == 0;
-  if (r1) goto if_then_1056; else goto if_merge_1057;
+  if (r1) goto if_then_1121; else goto if_merge_1122;
 
-  if_then_1056:
+  if_then_1121:
   return 0;
-  goto if_merge_1057;
+  goto if_merge_1122;
 
-  if_merge_1057:
+  if_merge_1122:
   struct 类型节点* cn_var_函数类型_0;
   创建类型节点();
   cn_var_函数类型_0 = /* NONE */;
   r2 = cn_var_函数类型_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_1058; else goto if_merge_1059;
+  if (r3) goto if_then_1123; else goto if_merge_1124;
 
-  if_then_1058:
+  if_then_1123:
   return 0;
-  goto if_merge_1059;
+  goto if_merge_1124;
 
-  if_merge_1059:
+  if_merge_1124:
   r4 = cn_var_实例;
   r5 = 期望(r4, 词元类型枚举_关键字_函数);
   r6 = !r5;
-  if (r6) goto if_then_1060; else goto if_merge_1061;
+  if (r6) goto if_then_1125; else goto if_merge_1126;
 
-  if_then_1060:
+  if_then_1125:
   r7 = cn_var_函数类型_0;
   释放类型节点(r7);
   return 0;
-  goto if_merge_1061;
+  goto if_merge_1126;
 
-  if_merge_1061:
+  if_merge_1126:
   r8 = cn_var_实例;
   r9 = 期望(r8, 词元类型枚举_左括号);
   r10 = !r9;
-  if (r10) goto if_then_1062; else goto if_merge_1063;
+  if (r10) goto if_then_1127; else goto if_merge_1128;
 
-  if_then_1062:
+  if_then_1127:
   r11 = cn_var_函数类型_0;
   释放类型节点(r11);
   return 0;
-  goto if_merge_1063;
+  goto if_merge_1128;
 
-  if_merge_1063:
-  goto while_cond_1064;
+  if_merge_1128:
+  goto while_cond_1129;
 
-  while_cond_1064:
+  while_cond_1129:
   r12 = cn_var_实例;
   r13 = 检查(r12, 词元类型枚举_右括号);
   r14 = !r13;
-  if (r14) goto while_body_1065; else goto while_exit_1066;
+  if (r14) goto while_body_1130; else goto while_exit_1131;
 
-  while_body_1065:
+  while_body_1130:
   struct 类型节点* cn_var_参数类型_1;
   r15 = cn_var_实例;
   r16 = 解析类型(r15);
   cn_var_参数类型_1 = r16;
   r17 = cn_var_参数类型_1;
   r18 = r17 != 0;
-  if (r18) goto if_then_1067; else goto if_merge_1068;
+  if (r18) goto if_then_1132; else goto if_merge_1133;
 
-  while_exit_1066:
+  while_exit_1131:
   r24 = cn_var_实例;
   r25 = 期望(r24, 词元类型枚举_右括号);
   r26 = cn_var_实例;
   r27 = 匹配(r26, 词元类型枚举_箭头);
-  if (r27) goto if_then_1071; else goto if_merge_1072;
+  if (r27) goto if_then_1136; else goto if_merge_1137;
 
-  if_then_1067:
+  if_then_1132:
   r19 = cn_var_函数类型_0;
   r20 = cn_var_参数类型_1;
   函数类型添加参数(r19, r20);
-  goto if_merge_1068;
+  goto if_merge_1133;
 
-  if_merge_1068:
+  if_merge_1133:
   r21 = cn_var_实例;
   r22 = 匹配(r21, 词元类型枚举_逗号);
   r23 = !r22;
-  if (r23) goto if_then_1069; else goto if_merge_1070;
+  if (r23) goto if_then_1134; else goto if_merge_1135;
 
-  if_then_1069:
-  goto while_exit_1066;
-  goto if_merge_1070;
+  if_then_1134:
+  goto while_exit_1131;
+  goto if_merge_1135;
 
-  if_merge_1070:
-  goto while_cond_1064;
+  if_merge_1135:
+  goto while_cond_1129;
 
-  if_then_1071:
+  if_then_1136:
   r28 = cn_var_实例;
   r29 = 解析类型(r28);
-  goto if_merge_1072;
+  goto if_merge_1137;
 
-  if_merge_1072:
+  if_merge_1137:
   r30 = cn_var_函数类型_0;
   return r30;
 }

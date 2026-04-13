@@ -2,7 +2,7 @@
     "说明": "CN语言自举测试配置文件",
     "版本": "1.0.0",
     
-    "编译器路径": "build/cnc.exe",
+    "编译器路径": "build/src/Release/cnc.exe",
     "源码目录": "src_cn",
     "输出目录": "build/bootstrap_test",
     

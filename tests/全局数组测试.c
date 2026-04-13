@@ -12,7 +12,7 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  void* r0;
+  long long* r0;
   long long* r1;
 
   entry:

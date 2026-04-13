@@ -28,3 +28,22 @@ enable_testing()
 
 add_subdirectory(src)
 add_subdirectory(tests)
+
+# 自举测试目标
+add_custom_target(bootstrap_test
+    COMMAND ${CMAKE_COMMAND} -E echo "=== CN语言自举测试 ==="
+    COMMAND ${CMAKE_SOURCE_DIR}/tools/bootstrap_test.sh
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    DEPENDS cnc
+    COMMENT "执行三阶段自举验证"
+)
+
+# Windows版本
+if(WIN32)
+    add_custom_target(bootstrap_test_win
+        COMMAND powershell -ExecutionPolicy Bypass -File ${CMAKE_SOURCE_DIR}/tools/bootstrap_test.ps1
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        DEPENDS cnc
+        COMMENT "执行三阶段自举验证 (Windows)"
+    )
+endif()

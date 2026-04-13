@@ -69,65 +69,65 @@ char* 获取类型名称(enum 词元类型枚举 cn_var_类型) {
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 词元类型枚举_标识符;
-  if (r1) goto case_body_1; else goto switch_check_9;
+  if (r1) goto case_body_20; else goto switch_check_28;
 
-  switch_check_9:
+  switch_check_28:
   r2 = r0 == 词元类型枚举_整数字面量;
-  if (r2) goto case_body_2; else goto switch_check_10;
+  if (r2) goto case_body_21; else goto switch_check_29;
 
-  switch_check_10:
+  switch_check_29:
   r3 = r0 == 词元类型枚举_字符串字面量;
-  if (r3) goto case_body_3; else goto switch_check_11;
+  if (r3) goto case_body_22; else goto switch_check_30;
 
-  switch_check_11:
+  switch_check_30:
   r4 = r0 == 词元类型枚举_运算符;
-  if (r4) goto case_body_4; else goto switch_check_12;
+  if (r4) goto case_body_23; else goto switch_check_31;
 
-  switch_check_12:
+  switch_check_31:
   r5 = r0 == 词元类型枚举_分隔符;
-  if (r5) goto case_body_5; else goto switch_check_13;
+  if (r5) goto case_body_24; else goto switch_check_32;
 
-  switch_check_13:
+  switch_check_32:
   r6 = r0 == 词元类型枚举_关键字;
-  if (r6) goto case_body_6; else goto switch_check_14;
+  if (r6) goto case_body_25; else goto switch_check_33;
 
-  switch_check_14:
+  switch_check_33:
   r7 = r0 == 词元类型枚举_错误;
-  if (r7) goto case_body_7; else goto case_default_8;
+  if (r7) goto case_body_26; else goto case_default_27;
 
-  case_body_1:
+  case_body_20:
   return "标识符";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  case_body_2:
+  case_body_21:
   return "整数字面量";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  case_body_3:
+  case_body_22:
   return "字符串字面量";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  case_body_4:
+  case_body_23:
   return "运算符";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  case_body_5:
+  case_body_24:
   return "分隔符";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  case_body_6:
+  case_body_25:
   return "关键字";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  case_body_7:
+  case_body_26:
   return "错误";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  case_default_8:
+  case_default_27:
   return "未知";
-  goto switch_merge_0;
+  goto switch_merge_19;
 
-  switch_merge_0:
+  switch_merge_19:
   return NULL;
 }
 

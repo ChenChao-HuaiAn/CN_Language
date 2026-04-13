@@ -31,7 +31,7 @@ $BOOTSTRAP_DIR = Join-Path $BUILD_DIR "bootstrap_test"
 
 # 默认配置
 $DEFAULT_CONFIG = @{
-    编译器路径 = Join-Path $BUILD_DIR "cnc.exe"
+    编译器路径 = Join-Path $BUILD_DIR "src/Release/cnc.exe"
     源码目录 = $SRC_CN_DIR
     输出目录 = $BOOTSTRAP_DIR
     编译选项 = @("-O2")
@@ -262,8 +262,8 @@ function Invoke-Compile {
     
     # 步骤1: 生成C代码
     $emitCArgs = @(
-        $SourceDir,
-        "-o", $OutputDir,
+        "--project", $SourceDir,
+        "-o", $OutputExe,
         "--emit-c"
     )
     

@@ -117,6 +117,7 @@ struct CnType;
 struct CnAstExpr;
 struct CnAstStmt;
 struct CnAstBlockStmt;
+struct CnSemScope;  // 作用域结构体前向声明
 
 // 可见性枚举
 typedef enum CnVisibility {
@@ -145,6 +146,7 @@ typedef struct CnAstExprStmt {
 typedef struct CnAstBlockStmt {
     size_t stmt_count;
     struct CnAstStmt **stmts;
+    struct CnSemScope *owning_scope;  // 块作用域（由 scope_builder 创建）
 } CnAstBlockStmt;
 
 // 返回语句
@@ -455,6 +457,7 @@ typedef struct CnAstFunctionDecl {
     int is_prototype;             // 是否为函数原型声明（无函数体，以分号结尾）
     int is_override;              // 是否为重写函数（使用"重写"关键字）
     int is_static;                // 是否为静态方法（使用"静态"关键字）
+    struct CnSemScope *owning_scope;  // 函数作用域（由 scope_builder 创建，包含参数和局部变量符号）
 } CnAstFunctionDecl;
 
 // 程序根节点

@@ -1,4 +1,5 @@
 #include "cnlang/frontend/ast.h"
+#include "cnlang/frontend/semantics.h"  // 用于 cn_sem_scope_free
 
 #include <stdlib.h>
 
@@ -123,6 +124,12 @@ void cn_frontend_ast_block_free(CnAstBlockStmt *block)
         return;
     }
 
+    // 【新增】释放块作用域
+    if (block->owning_scope) {
+        cn_sem_scope_free(block->owning_scope);
+        block->owning_scope = NULL;
+    }
+
     cn_frontend_ast_stmt_array_free(block->stmts, block->stmt_count);
     free(block->stmts);
     free(block);
@@ -224,6 +231,12 @@ void cn_frontend_ast_function_free(CnAstFunctionDecl *function_decl)
 {
     if (!function_decl) {
         return;
+    }
+
+    // 【新增】释放函数作用域
+    if (function_decl->owning_scope) {
+        cn_sem_scope_free(function_decl->owning_scope);
+        function_decl->owning_scope = NULL;
     }
 
     free(function_decl->parameters);  // 释放参数数组

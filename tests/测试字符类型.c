@@ -11,10 +11,10 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  void* r2;
-  void* r4;
-  void* r6;
-  void* r8;
+  char* r2;
+  char* r4;
+  char* r6;
+  char* r8;
   char* r3;
   char* r5;
   char* r7;

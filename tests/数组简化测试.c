@@ -11,8 +11,8 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  void* r0;
-  void* r2;
+  long long* r0;
+  long long* r2;
   long long* r1;
   long long* r3;
 

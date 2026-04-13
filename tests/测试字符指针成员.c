@@ -33,6 +33,7 @@ long long 当前字符(struct 扫描器* cn_var_实例) {
   char* r16;
   _Bool r2;
   _Bool r9;
+  char r17;
   struct 扫描器 r4;
   struct 扫描器 r7;
   struct 扫描器 r11;
@@ -54,8 +55,9 @@ long long 当前字符(struct 扫描器* cn_var_实例) {
   r13 = cn_var_实例;
   r14 = *r13;
   r15 = r14.位置;
-  r16 = (void**)cn_rt_array_get_element(r12, r15, 8);
-  return r16;
+  r16 = &r12[r15];
+  r17 = *r16;
+  return r17;
 
   logic_rhs_2:
   r3 = cn_var_实例;

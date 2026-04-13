@@ -47,12 +47,12 @@ long long main();
 long long main() {
   cn_rt_init();
   char* r11;
-  void* r15;
-  void* r17;
-  void* r19;
-  void* r21;
-  void* r25;
-  void* r29;
+  enum 词元类型枚举* r15;
+  enum 词元类型枚举* r17;
+  enum 词元类型枚举* r19;
+  enum 词元类型枚举* r21;
+  enum 词元类型枚举* r25;
+  enum 词元类型枚举* r29;
   enum 词元类型枚举* r16;
   enum 词元类型枚举* r18;
   enum 词元类型枚举* r20;

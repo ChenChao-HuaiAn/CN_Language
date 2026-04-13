@@ -86,9 +86,24 @@ bool cn_type_equals(CnType *a, CnType *b) {
             return (a->as.array.length == b->as.array.length) &&
                    cn_type_equals(a->as.array.element_type, b->as.array.element_type);
         case CN_TYPE_STRUCT:
-            if (!a->as.struct_type.name || !b->as.struct_type.name) return false;
-            if (a->as.struct_type.name_length != b->as.struct_type.name_length) return false;
-            return memcmp(a->as.struct_type.name, b->as.struct_type.name, a->as.struct_type.name_length) == 0;
+            if (!a->as.struct_type.name || !b->as.struct_type.name) {
+                fprintf(stderr, "[DEBUG] cn_type_equals STRUCT: one name is NULL (a=%p, b=%p)\n",
+                        (void*)a->as.struct_type.name, (void*)b->as.struct_type.name);
+                return false;
+            }
+            if (a->as.struct_type.name_length != b->as.struct_type.name_length) {
+                fprintf(stderr, "[DEBUG] cn_type_equals STRUCT: name length mismatch (a_len=%zu='%.*s', b_len=%zu='%.*s')\n",
+                        a->as.struct_type.name_length, (int)a->as.struct_type.name_length, a->as.struct_type.name,
+                        b->as.struct_type.name_length, (int)b->as.struct_type.name_length, b->as.struct_type.name);
+                return false;
+            }
+            if (memcmp(a->as.struct_type.name, b->as.struct_type.name, a->as.struct_type.name_length) != 0) {
+                fprintf(stderr, "[DEBUG] cn_type_equals STRUCT: name content mismatch (a='%.*s', b='%.*s')\n",
+                        (int)a->as.struct_type.name_length, a->as.struct_type.name,
+                        (int)b->as.struct_type.name_length, b->as.struct_type.name);
+                return false;
+            }
+            return true;
         case CN_TYPE_ENUM:
             if (!a->as.enum_type.name || !b->as.enum_type.name) return false;
             if (a->as.enum_type.name_length != b->as.enum_type.name_length) return false;
@@ -706,6 +721,30 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
             // 去掉前缀后的成员名
             const char *stripped_name = member_name + prefix_len;
             size_t stripped_len = member_name_length - prefix_len;
+            
+            // 【修复】先尝试直接匹配去掉前缀后的名称
+            // 例如：成员名 "简单赋值" 去掉前缀 "简单" 后变成 "赋值"
+            // 尝试匹配 "赋值_简单"（枚举类型名_去掉前缀后的名称）
+            if (enum_name && enum_name_len > 0) {
+                size_t prefixed_name_len = enum_name_len + 1 + stripped_len;
+                char *prefixed_name = malloc(prefixed_name_len + 1);
+                if (prefixed_name) {
+                    memcpy(prefixed_name, enum_name, enum_name_len);
+                    prefixed_name[enum_name_len] = '_';
+                    memcpy(prefixed_name + enum_name_len + 1, stripped_name, stripped_len);
+                    prefixed_name[prefixed_name_len] = '\0';
+                    
+                    sym = cn_sem_scope_lookup_shallow(enum_type->as.enum_type.enum_scope,
+                                                      prefixed_name, prefixed_name_len);
+                    free(prefixed_name);
+                    if (sym) {
+                        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by prefix removal + enum prefix match\n");
+                        return sym;
+                    }
+                }
+            }
+            
+            // 然后尝试模糊匹配
             EnumMemberFuzzyContext fuzzy_ctx = { member_name, member_name_length, NULL,
                                                   (char*)stripped_name, stripped_len };
             cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
@@ -979,8 +1018,11 @@ static CnStructField *cn_type_deep_copy_fields_ex(CnStructField *src_fields, siz
         dst_fields[i].name_length = src_fields[i].name_length;
         dst_fields[i].is_const = src_fields[i].is_const;
         
-        // 检查字段类型是否是递归引用（指向当前结构体的指针）
+        // 【调试】显示字段类型信息
         CnType *field_type = src_fields[i].field_type;
+        fprintf(stderr, "[DEBUG] cn_type_deep_copy_fields_ex: field '%.*s', field_type=%p, kind=%d\n",
+                (int)src_fields[i].name_length, src_fields[i].name,
+                (void*)field_type, field_type ? field_type->kind : -1);
         if (field_type && field_type->kind == CN_TYPE_POINTER &&
             field_type->as.pointer_to &&
             field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
@@ -999,9 +1041,57 @@ static CnStructField *cn_type_deep_copy_fields_ex(CnStructField *src_fields, siz
                 continue;
             }
         }
+        // 【关键修复】处理指针指向枚举类型的情况
+        else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                 field_type->as.pointer_to &&
+                 field_type->as.pointer_to->kind == CN_TYPE_ENUM) {
+            // 指针指向枚举类型，正常深度复制
+            fprintf(stderr, "[DEBUG] cn_type_deep_copy_fields_ex: field '%.*s' is pointer to ENUM, copying...\n",
+                    (int)src_fields[i].name_length, src_fields[i].name);
+        }
+        // 【关键修复】处理指针指向 VOID 的情况（可能是类型信息丢失）
+        else if (field_type && field_type->kind == CN_TYPE_POINTER &&
+                 (!field_type->as.pointer_to || field_type->as.pointer_to->kind == CN_TYPE_VOID)) {
+            fprintf(stderr, "[WARNING] cn_type_deep_copy_fields_ex: field '%.*s' has pointer to NULL or VOID, this may indicate lost type info\n",
+                    (int)src_fields[i].name_length, src_fields[i].name);
+        }
         
         // 深度复制字段类型
         dst_fields[i].field_type = cn_type_deep_copy(field_type);
+    }
+    
+    // 【关键修复】后处理：检查并修复指针类型字段
+    // 确保所有指针字段的 pointer_to 都被正确设置，不仅仅是递归引用
+    for (size_t i = 0; i < field_count; i++) {
+        CnType *src_field_type = src_fields[i].field_type;
+        CnType *dst_field_type = dst_fields[i].field_type;
+        
+        // 检查是否是指针类型，且 pointer_to 为 NULL 或 VOID
+        if (dst_field_type && dst_field_type->kind == CN_TYPE_POINTER) {
+            CnType *dst_pointer_to = dst_field_type->as.pointer_to;
+            
+            // 如果目标指针的 pointer_to 为 NULL 或 VOID，但源指针有有效的类型信息
+            if ((!dst_pointer_to || dst_pointer_to->kind == CN_TYPE_VOID) &&
+                src_field_type && src_field_type->kind == CN_TYPE_POINTER &&
+                src_field_type->as.pointer_to &&
+                src_field_type->as.pointer_to->kind != CN_TYPE_VOID) {
+                
+                // 从源字段恢复类型信息
+                fprintf(stderr, "[DEBUG] cn_type_deep_copy_fields_ex: fixing field '%.*s' pointer_to from NULL/VOID to kind=%d\n",
+                        (int)src_fields[i].name_length, src_fields[i].name,
+                        src_field_type->as.pointer_to->kind);
+                
+                // 深度复制源指针指向的类型
+                CnType *recovered_type = cn_type_deep_copy(src_field_type->as.pointer_to);
+                if (recovered_type) {
+                    // 释放旧的 void 类型（如果有）
+                    if (dst_pointer_to && dst_pointer_to->kind == CN_TYPE_VOID) {
+                        free(dst_pointer_to);
+                    }
+                    dst_field_type->as.pointer_to = recovered_type;
+                }
+            }
+        }
     }
     
     return dst_fields;
@@ -1071,7 +1161,38 @@ CnType *cn_type_deep_copy(CnType *src) {
             
         case CN_TYPE_POINTER: {
             // 指针类型：递归复制指向的类型
+            // 【调试】追踪指针类型的复制
+            fprintf(stderr, "[DEBUG] cn_type_deep_copy: POINTER type, pointer_to=%p, pointer_to_kind=%d\n",
+                    (void*)src->as.pointer_to, src->as.pointer_to ? src->as.pointer_to->kind : -1);
+            
+            // 【关键修复】如果 pointer_to 为 NULL，创建一个保留名称信息的结构体类型
+            if (!src->as.pointer_to) {
+                fprintf(stderr, "[WARNING] cn_type_deep_copy: POINTER has NULL pointer_to, creating void pointer\n");
+                return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+            }
+            
+            // 【关键修复】如果 pointer_to 为 VOID，直接创建 void 指针
+            if (src->as.pointer_to->kind == CN_TYPE_VOID) {
+                return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+            }
+            
+            // 【关键修复】检查递归深度，避免栈溢出
+            if (g_copying_depth >= MAX_RECURSION_DEPTH) {
+                fprintf(stderr, "[WARNING] cn_type_deep_copy: POINTER recursion depth exceeded, using original pointer_to\n");
+                return cn_type_new_pointer(src->as.pointer_to);
+            }
+            
             CnType *base_copy = cn_type_deep_copy(src->as.pointer_to);
+            fprintf(stderr, "[DEBUG] cn_type_deep_copy: POINTER base_copy=%p, base_copy_kind=%d\n",
+                    (void*)base_copy, base_copy ? base_copy->kind : -1);
+            
+            // 【关键修复】如果深拷贝后 base_copy 为 NULL，保留原始类型信息
+            if (!base_copy) {
+                fprintf(stderr, "[WARNING] cn_type_deep_copy: POINTER base_copy is NULL, using original pointer_to\n");
+                // 直接引用原始类型（浅拷贝）
+                return cn_type_new_pointer(src->as.pointer_to);
+            }
+            
             return cn_type_new_pointer(base_copy);
         }
         
@@ -1126,19 +1247,41 @@ CnType *cn_type_deep_copy(CnType *src) {
             if (dst && fields_copy) {
                 for (size_t i = 0; i < src->as.struct_type.field_count; i++) {
                     CnType *field_type = src->as.struct_type.fields[i].field_type;
+                    CnType *dst_field_type = dst->as.struct_type.fields[i].field_type;
+                    
+                    // 【关键修复】处理两种情况：
+                    // 1. pointer_to 指向结构体类型（正常情况）
+                    // 2. pointer_to 为 NULL（递归引用时在 cn_type_deep_copy_fields_ex 中创建）
                     if (field_type && field_type->kind == CN_TYPE_POINTER &&
-                        field_type->as.pointer_to &&
-                        field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                        dst_field_type && dst_field_type->kind == CN_TYPE_POINTER) {
                         
-                        CnType *pointee = field_type->as.pointer_to;
-                        if (pointee->as.struct_type.name && src->as.struct_type.name &&
-                            pointee->as.struct_type.name_length == src->as.struct_type.name_length &&
-                            memcmp(pointee->as.struct_type.name, src->as.struct_type.name,
-                                   pointee->as.struct_type.name_length) == 0) {
-                            // 这是递归指针字段，更新为指向新结构体
-                            if (dst->as.struct_type.fields[i].field_type &&
-                                dst->as.struct_type.fields[i].field_type->kind == CN_TYPE_POINTER) {
-                                dst->as.struct_type.fields[i].field_type->as.pointer_to = dst;
+                        // 情况1：pointer_to 指向结构体类型
+                        if (field_type->as.pointer_to &&
+                            field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                            
+                            CnType *pointee = field_type->as.pointer_to;
+                            if (pointee->as.struct_type.name && src->as.struct_type.name &&
+                                pointee->as.struct_type.name_length == src->as.struct_type.name_length &&
+                                memcmp(pointee->as.struct_type.name, src->as.struct_type.name,
+                                       pointee->as.struct_type.name_length) == 0) {
+                                // 这是递归指针字段，更新为指向新结构体
+                                dst_field_type->as.pointer_to = dst;
+                                fprintf(stderr, "[DEBUG] cn_type_deep_copy: updated recursive pointer field to point to new struct\n");
+                            }
+                        }
+                        // 情况2：pointer_to 为 NULL（递归引用）
+                        else if (!dst_field_type->as.pointer_to) {
+                            // 检查源字段是否是递归引用
+                            if (field_type->as.pointer_to &&
+                                field_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                                field_type->as.pointer_to->as.struct_type.name &&
+                                src->as.struct_type.name &&
+                                field_type->as.pointer_to->as.struct_type.name_length == src->as.struct_type.name_length &&
+                                memcmp(field_type->as.pointer_to->as.struct_type.name, src->as.struct_type.name,
+                                       field_type->as.pointer_to->as.struct_type.name_length) == 0) {
+                                // 更新为指向新结构体
+                                dst_field_type->as.pointer_to = dst;
+                                fprintf(stderr, "[DEBUG] cn_type_deep_copy: updated NULL pointer_to to point to new struct\n");
                             }
                         }
                     }
