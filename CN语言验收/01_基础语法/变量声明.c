@@ -11,13 +11,20 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  void* r0;
-  void* r1;
-  void* r2;
-  void* r3;
-  void* r4;
-  void* r5;
-  void* r6;
+  long long* r0;
+  long long* r2;
+  long long* r4;
+  long long** r6;
+  long long** r10;
+  long long* r1;
+  long long* r3;
+  long long* r5;
+  long long** r7;
+  long long** r8;
+  long long* r9;
+  long long** r11;
+  long long** r12;
+  long long* r13;
 
   entry:
   long long cn_var_x_0;
@@ -33,19 +40,26 @@ long long main() {
   long long* cn_var_arr;
   cn_var_arr = cn_rt_array_alloc(8, 5);
   r0 = cn_var_arr;
-    { long long _tmp_i0 = 1; cn_rt_array_set_element(r0, 0, &_tmp_i0, 8); }
-  r1 = cn_var_arr;
-    { long long _tmp_i1 = 2; cn_rt_array_set_element(r1, 1, &_tmp_i1, 8); }
+  r1 = &r0[0];
+  r1 = 1;
   r2 = cn_var_arr;
-    { long long _tmp_i2 = 3; cn_rt_array_set_element(r2, 2, &_tmp_i2, 8); }
+  r3 = &r2[1];
+  r3 = 2;
+  r4 = cn_var_arr;
+  r5 = &r4[2];
+  r5 = 3;
   long long** cn_var_matrix;
   cn_var_matrix = cn_rt_array_alloc(8, 2);
-  r3 = cn_var_matrix;
-  r4 = *(long long**)cn_rt_array_get_element(r3, 0, 8);
-    { long long _tmp_i3 = 1; cn_rt_array_set_element(r4, 0, &_tmp_i3, 8); }
-  r5 = cn_var_matrix;
-  r6 = *(long long**)cn_rt_array_get_element(r5, 0, 8);
-    { long long _tmp_i4 = 2; cn_rt_array_set_element(r6, 1, &_tmp_i4, 8); }
+  r6 = cn_var_matrix;
+  r7 = &r6[0];
+  r8 = r7;
+  r9 = &r8[0];
+  r9 = 1;
+  r10 = cn_var_matrix;
+  r11 = &r10[0];
+  r12 = r11;
+  r13 = &r12[1];
+  r13 = 2;
   return 0;
   cn_rt_exit();
 }

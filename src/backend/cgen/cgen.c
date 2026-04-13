@@ -380,9 +380,6 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
             // 检查是否为枚举成员符号
             // 枚举成员符号名格式为 "枚举类型名_成员名"，不需要添加 cn_var_ 前缀
             // 【调试】输出符号信息
-            fprintf(stderr, "[DEBUG] print_operand: sym_name=%s, type=%p, kind=%d\n",
-                    op.as.sym_name ? op.as.sym_name : "NULL",
-                    (void*)op.type, op.type ? op.type->kind : -1);
             
             // 【修复】检查是否为局部变量名格式（原名_数字序号）
             // 局部变量名格式为 "原名_序号"，序号是数字
@@ -421,8 +418,7 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
                         CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope, op.as.sym_name, strlen(op.as.sym_name));
                         if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                             is_enum_member_by_name = true;
-                            fprintf(stderr, "[DEBUG] Found enum member by name lookup: %s\n", op.as.sym_name);
-                        }
+                            }
                     }
                     
                     // 【修复】检查符号名是否符合枚举成员命名模式
@@ -461,8 +457,7 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
                                     // 如果包含中文且下划线后面不是数字，可能是枚举成员
                                     if (has_chinese) {
                                         is_enum_member_by_name = true;
-                                        fprintf(stderr, "[DEBUG] Detected enum member by Chinese name pattern: %s\n", op.as.sym_name);
-                                    }
+                                        }
                                 }
                             }
                         }

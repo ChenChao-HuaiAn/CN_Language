@@ -375,8 +375,6 @@ bool cn_sem_check_import_conflicts(CnFileModuleSemInfo *file_info,
             if (sym_i->local_name_length == sym_j->local_name_length &&
                 memcmp(sym_i->local_name, sym_j->local_name, sym_i->local_name_length) == 0) {
                 
-                fprintf(stderr, "[DEBUG] module_semantics: import name conflict '%.*s' (from different modules)\n",
-                        (int)sym_i->local_name_length, sym_i->local_name);
                 no_conflicts = false;
                 
                 if (diagnostics) {
@@ -406,8 +404,6 @@ bool cn_sem_check_import_conflicts(CnFileModuleSemInfo *file_info,
                 if (local->name_length == imported->local_name_length &&
                     memcmp(local->name, imported->local_name, local->name_length) == 0) {
                     
-                    fprintf(stderr, "[DEBUG] module_semantics: import vs local conflict '%.*s'\n",
-                            (int)imported->local_name_length, imported->local_name);
                     no_conflicts = false;
                     
                     if (diagnostics) {

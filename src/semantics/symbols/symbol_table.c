@@ -182,17 +182,11 @@ CnSemSymbol *cn_sem_scope_insert_symbol(CnSemScope *scope,
         if (existing->kind == CN_SEM_SYMBOL_MODULE &&
             (kind == CN_SEM_SYMBOL_STRUCT || kind == CN_SEM_SYMBOL_ENUM)) {
             // 允许模块符号和类型符号共存，继续插入
-            fprintf(stderr, "[DEBUG] Allowing coexistence: existing module symbol '%.*s', new %s symbol\n",
-                    (int)name_length, name,
-                    kind == CN_SEM_SYMBOL_STRUCT ? "struct" : "enum");
-        }
+            }
         else if ((existing->kind == CN_SEM_SYMBOL_STRUCT || existing->kind == CN_SEM_SYMBOL_ENUM) &&
                  kind == CN_SEM_SYMBOL_MODULE) {
             // 允许类型符号和模块符号共存，继续插入
-            fprintf(stderr, "[DEBUG] Allowing coexistence: existing %s symbol '%.*s', new module symbol\n",
-                    existing->kind == CN_SEM_SYMBOL_STRUCT ? "struct" : "enum",
-                    (int)name_length, name);
-        }
+            }
         else {
             // 其他情况：同名符号插入失败
             // 调用者应该检查是否是同一个符号（使用 cn_sem_is_same_symbol）

@@ -44,8 +44,6 @@ static bool cn_name_equals(const char *name1, size_t len1,
 static void report_error(CnClassAnalyzerContext *ctx, const char *message,
                          const char *name, size_t name_length)
 {
-    fprintf(stderr, "[DEBUG] class_analyzer: reporting error '%.*s': %s\n",
-            (int)name_length, name, message);
     if (!ctx->diagnostics) {
         return;
     }

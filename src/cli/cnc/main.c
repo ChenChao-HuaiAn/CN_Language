@@ -3,8 +3,13 @@
 #include <string.h>
 #include <errno.h>
 #include <ctype.h>
+#include <sys/stat.h>
 #ifdef _WIN32
 #include <windows.h>
+#include <direct.h>
+#else
+#include <dirent.h>
+#include <unistd.h>
 #endif
 
 #include "cnlang/frontend/lexer.h"
@@ -216,6 +221,199 @@ static char *read_file_to_buffer(const char *filename, size_t *out_length)
     return buffer;
 }
 
+/*
+ * 目录扫描功能 - 递归扫描项目目录下的所有 .cn 文件
+ */
+
+// 动态字符串数组结构
+typedef struct {
+    char **items;
+    size_t count;
+    size_t capacity;
+} CnFileList;
+
+// 初始化文件列表
+static void cn_file_list_init(CnFileList *list) {
+    list->items = NULL;
+    list->count = 0;
+    list->capacity = 0;
+}
+
+// 添加文件到列表
+static bool cn_file_list_add(CnFileList *list, const char *path) {
+    if (list->count >= list->capacity) {
+        size_t new_cap = list->capacity == 0 ? 16 : list->capacity * 2;
+        char **new_items = realloc(list->items, new_cap * sizeof(char*));
+        if (!new_items) return false;
+        list->items = new_items;
+        list->capacity = new_cap;
+    }
+    list->items[list->count] = strdup(path);
+    if (!list->items[list->count]) return false;
+    list->count++;
+    return true;
+}
+
+// 释放文件列表
+static void cn_file_list_free(CnFileList *list) {
+    if (list->items) {
+        for (size_t i = 0; i < list->count; i++) {
+            free(list->items[i]);
+        }
+        free(list->items);
+        list->items = NULL;
+    }
+    list->count = 0;
+    list->capacity = 0;
+}
+
+// 检查路径是否为目录
+static bool is_directory(const char *path) {
+#ifdef _WIN32
+    DWORD attrs = GetFileAttributesA(path);
+    return (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    return (stat(path, &st) == 0 && S_ISDIR(st.st_mode));
+#endif
+}
+
+// 检查文件扩展名是否为 .cn
+static bool is_cn_file(const char *filename) {
+    size_t len = strlen(filename);
+    return (len > 3 && strcmp(filename + len - 3, ".cn") == 0);
+}
+
+// 递归扫描目录获取所有 .cn 文件
+static int scan_cn_files_recursive(const char *dir, CnFileList *list, bool verbose) {
+#ifdef _WIN32
+    WIN32_FIND_DATAA find_data;
+    char search_path[MAX_PATH];
+    
+    // 构建搜索路径
+    snprintf(search_path, sizeof(search_path), "%s\\*", dir);
+    
+    HANDLE hFind = FindFirstFileA(search_path, &find_data);
+    if (hFind == INVALID_HANDLE_VALUE) {
+        fprintf(stderr, "无法打开目录: %s\n", dir);
+        return -1;
+    }
+    
+    do {
+        // 跳过 "." 和 ".."
+        if (strcmp(find_data.cFileName, ".") == 0 || strcmp(find_data.cFileName, "..") == 0) {
+            continue;
+        }
+        
+        char full_path[MAX_PATH];
+        snprintf(full_path, sizeof(full_path), "%s\\%s", dir, find_data.cFileName);
+        
+        if (find_data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            // 递归扫描子目录
+            scan_cn_files_recursive(full_path, list, verbose);
+        } else if (is_cn_file(find_data.cFileName)) {
+            // 添加 .cn 文件到列表
+            if (verbose) {
+                printf("发现源文件: %s\n", full_path);
+            }
+            if (!cn_file_list_add(list, full_path)) {
+                fprintf(stderr, "内存分配失败\n");
+                FindClose(hFind);
+                return -1;
+            }
+        }
+    } while (FindNextFileA(hFind, &find_data) != 0);
+    
+    FindClose(hFind);
+    return 0;
+#else
+    DIR *d = opendir(dir);
+    if (!d) {
+        fprintf(stderr, "无法打开目录: %s\n", dir);
+        return -1;
+    }
+    
+    struct dirent *entry;
+    while ((entry = readdir(d)) != NULL) {
+        // 跳过 "." 和 ".."
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
+        
+        char full_path[1024];
+        snprintf(full_path, sizeof(full_path), "%s/%s", dir, entry->d_name);
+        
+        if (is_directory(full_path)) {
+            // 递归扫描子目录
+            scan_cn_files_recursive(full_path, list, verbose);
+        } else if (is_cn_file(entry->d_name)) {
+            // 添加 .cn 文件到列表
+            if (verbose) {
+                printf("发现源文件: %s\n", full_path);
+            }
+            if (!cn_file_list_add(list, full_path)) {
+                fprintf(stderr, "内存分配失败\n");
+                closedir(d);
+                return -1;
+            }
+        }
+    }
+    
+    closedir(d);
+    return 0;
+#endif
+}
+
+// 扫描项目目录获取所有 .cn 文件
+static int scan_cn_files(const char *dir, CnFileList *list, bool verbose) {
+    cn_file_list_init(list);
+    
+    if (!is_directory(dir)) {
+        fprintf(stderr, "错误: '%s' 不是有效的目录\n", dir);
+        return -1;
+    }
+    
+    if (verbose) {
+        printf("正在扫描项目目录: %s\n", dir);
+    }
+    
+    return scan_cn_files_recursive(dir, list, verbose);
+}
+
+// 查找主入口文件
+static const char* find_main_entry(CnFileList *list) {
+    // 优先查找 main.cn
+    for (size_t i = 0; i < list->count; i++) {
+        const char *path = list->items[i];
+        const char *name = strrchr(path, '/');
+        if (!name) name = strrchr(path, '\\');
+        if (name) name++; else name = path;
+        
+        if (strcmp(name, "main.cn") == 0) {
+            return path;
+        }
+    }
+    
+    // 其次查找 主程序.cn
+    for (size_t i = 0; i < list->count; i++) {
+        const char *path = list->items[i];
+        const char *name = strrchr(path, '/');
+        if (!name) name = strrchr(path, '\\');
+        if (name) name++; else name = path;
+        
+        if (strcmp(name, "主程序.cn") == 0) {
+            return path;
+        }
+    }
+    
+    // 如果没有找到，返回第一个文件
+    if (list->count > 0) {
+        return list->items[0];
+    }
+    
+    return NULL;
+}
+
 // 打印函数列表和语句数
 static void print_function_summary(const CnAstProgram *program)
 {
@@ -251,29 +449,22 @@ static void print_diagnostics(const CnDiagnostics *diagnostics)
         return;
     }
 
-    fprintf(stderr, "[DEBUG] print_diagnostics: count=%zu, items=%p\n",
-            diagnostics->count, (void*)diagnostics->items);
     fflush(stderr);
 
     for (i = 0; i < diagnostics->count; ++i) {
-        fprintf(stderr, "[DEBUG] 处理第 %zu 条诊断信息\n", i);
         fflush(stderr);
         
         const CnDiagnostic *d = &diagnostics->items[i];
         
-        fprintf(stderr, "[DEBUG] d=%p, severity=%d, code=%d\n",
-                (void*)d, (int)d->severity, (int)d->code);
         fflush(stderr);
         
         const char *severity_str = (d->severity == CN_DIAG_SEVERITY_ERROR) ? "错误" : "警告";
         const char *filename = d->filename ? d->filename : "<未知文件>";
         
-        fprintf(stderr, "[DEBUG] filename=%s\n", filename);
         fflush(stderr);
         
         const char *message = d->message ? d->message : "<无消息>";
         
-        fprintf(stderr, "[DEBUG] message=%s\n", message);
         fflush(stderr);
         
         int line = d->line;
@@ -289,7 +480,6 @@ static void print_diagnostics(const CnDiagnostics *diagnostics)
                 message);
         fflush(stderr);
     }
-    fprintf(stderr, "[DEBUG] print_diagnostics 完成\n");
     fflush(stderr);
 }
 
@@ -525,20 +715,90 @@ int main(int argc, char **argv)
         }
     }
     
-    // 设置主文件名（向后兼容）
-    if (source_file_count > 0) {
-        // 如果指定了 --main，使用它；否则使用第一个源文件
-        filename = main_entry ? main_entry : source_files[0];
-    } else if (main_entry) {
-        filename = main_entry;
-    } else if (!project_dir) {
-        fprintf(stderr, "错误: 未指定源文件\n");
-        return 1;
+    // 处理 --project 参数：扫描项目目录
+    CnFileList project_files;
+    cn_file_list_init(&project_files);
+    
+    if (project_dir) {
+        printf("项目模式: 扫描目录 %s\n", project_dir);
+        
+        if (scan_cn_files(project_dir, &project_files, true) != 0) {
+            fprintf(stderr, "错误: 扫描项目目录失败\n");
+            cn_file_list_free(&project_files);
+            return 1;
+        }
+        
+        if (project_files.count == 0) {
+            fprintf(stderr, "错误: 项目目录中没有找到 .cn 文件\n");
+            cn_file_list_free(&project_files);
+            return 1;
+        }
+        
+        printf("找到 %zu 个源文件\n", project_files.count);
+        
+        // 查找主入口文件
+        if (main_entry) {
+            // 用户指定了入口文件，验证它是否存在
+            bool found = false;
+            for (size_t i = 0; i < project_files.count; i++) {
+                const char *path = project_files.items[i];
+                const char *name = strrchr(path, '/');
+                if (!name) name = strrchr(path, '\\');
+                if (name) name++; else name = path;
+                
+                if (strcmp(name, main_entry) == 0 || strcmp(path, main_entry) == 0) {
+                    filename = path;
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                fprintf(stderr, "警告: 指定的入口文件 '%s' 未找到，使用默认入口\n", main_entry);
+                filename = find_main_entry(&project_files);
+            }
+        } else {
+            filename = find_main_entry(&project_files);
+        }
+        
+        if (!filename) {
+            fprintf(stderr, "错误: 无法确定入口文件\n");
+            cn_file_list_free(&project_files);
+            return 1;
+        }
+        
+        printf("入口文件: %s\n", filename);
+        
+        // 将项目文件添加到源文件列表
+        for (size_t i = 0; i < project_files.count; i++) {
+            if (source_file_count >= source_file_capacity) {
+                size_t new_cap = source_file_capacity == 0 ? 16 : source_file_capacity * 2;
+                const char **new_files = realloc((void*)source_files, new_cap * sizeof(const char*));
+                if (new_files) {
+                    source_files = new_files;
+                    source_file_capacity = new_cap;
+                }
+            }
+            if (source_file_count < source_file_capacity) {
+                source_files[source_file_count++] = project_files.items[i];
+            }
+        }
+    } else {
+        // 非项目模式：设置主文件名（向后兼容）
+        if (source_file_count > 0) {
+            // 如果指定了 --main，使用它；否则使用第一个源文件
+            filename = main_entry ? main_entry : source_files[0];
+        } else if (main_entry) {
+            filename = main_entry;
+        } else {
+            fprintf(stderr, "错误: 未指定源文件\n");
+            return 1;
+        }
     }
 
     source = read_file_to_buffer(filename, &source_length);
     if (!source) {
         fprintf(stderr, "无法读取文件: %s\n", filename);
+        cn_file_list_free(&project_files);
         return 1;
     }
 
@@ -705,20 +965,12 @@ int main(int argc, char **argv)
         cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);
         cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC);
         print_diagnostics(&diagnostics);
-        fprintf(stderr, "[DEBUG] 开始清理资源...\n");
-        fprintf(stderr, "[DEBUG] 释放 global_scope: %p\n", (void*)global_scope);
         cn_sem_scope_free(global_scope);
-        fprintf(stderr, "[DEBUG] 释放 program: %p\n", (void*)program);
         cn_frontend_ast_program_free(program);
-        fprintf(stderr, "[DEBUG] 释放 parser: %p\n", (void*)parser);
         cn_frontend_parser_free(parser);
-        fprintf(stderr, "[DEBUG] 释放 preprocessor\n");
         cn_frontend_preprocessor_free(&preprocessor);
-        fprintf(stderr, "[DEBUG] 释放 diagnostics\n");
         cn_support_diagnostics_free(&diagnostics);
-        fprintf(stderr, "[DEBUG] 释放 source\n");
         free(source);
-        fprintf(stderr, "[DEBUG] 清理完成\n");
         return 1;
     }
     cn_perf_end(&perf_stats, CN_PERF_PHASE_SEMANTIC_TYPECHECK);
@@ -837,16 +1089,11 @@ int main(int argc, char **argv)
         // 为缓存的导入模块生成IR和C代码
         // =====================================================================
         int cached_count = cn_sem_get_cached_module_count();
-        fprintf(stderr, "[DEBUG] 缓存的模块数量: %d\n", cached_count);
-        
         for (int i = 0; i < cached_count; i++) {
             const char *module_path = cn_sem_get_cached_module_path(i);
             CnAstProgram *module_program = cn_sem_get_cached_module_program(i);
             CnIrModule *module_ir = cn_sem_get_cached_module_ir(i);
             
-            fprintf(stderr, "[DEBUG] 处理缓存模块 %d: %s, program=%p, ir=%p\n",
-                    i, module_path ? module_path : "NULL",
-                    (void*)module_program, (void*)module_ir);
             
             if (!module_path || !module_program) {
                 continue;
@@ -854,8 +1101,6 @@ int main(int argc, char **argv)
             
             // 如果模块还没有IR，生成IR
             if (!module_ir) {
-                fprintf(stderr, "[DEBUG] 为模块生成IR: %s\n", module_path);
-                
                 // 获取模块作用域
                 CnSemScope *module_scope = NULL;
                 // 从缓存中查找作用域（需要添加获取作用域的API）
@@ -869,9 +1114,7 @@ int main(int argc, char **argv)
                     cn_ir_run_default_passes(module_ir);
                     // 缓存IR
                     cn_sem_set_cached_module_ir(i, module_ir);
-                    fprintf(stderr, "[DEBUG] 模块IR生成成功: %s\n", module_path);
-                } else {
-                    fprintf(stderr, "[DEBUG] 模块IR生成失败: %s\n", module_path);
+                    } else {
                     continue;
                 }
             }
@@ -894,8 +1137,6 @@ int main(int argc, char **argv)
                 continue;
             }
             
-            fprintf(stderr, "[DEBUG] 为模块生成C代码: %s -> %s\n", module_path, module_c_path);
-            
             // 从模块路径提取模块名
             const char *base_name = strrchr(module_path, '/');
             if (!base_name) base_name = strrchr(module_path, '\\');
@@ -911,10 +1152,8 @@ int main(int argc, char **argv)
             
             // 生成C代码
             if (module_ir && cn_cgen_module_with_imports_to_file(module_ir, module_program, module_loader, global_scope, module_id, module_c_path) == 0) {
-                fprintf(stderr, "[DEBUG] 模块C代码生成成功: %s\n", module_c_path);
-            } else {
-                fprintf(stderr, "[DEBUG] 模块C代码生成失败: %s\n", module_c_path);
-            }
+                } else {
+                }
         }
 
         // 收集所有需要编译的 C 文件（包括导入模块）
@@ -967,8 +1206,7 @@ int main(int argc, char **argv)
                                 }
                             }
                         } else {
-                            fprintf(stderr, "[DEBUG] 模块C文件不存在: %s\n", module_c_path);
-                        }
+                            }
                     }
                 }
             }
@@ -1209,6 +1447,7 @@ cleanup:
     free(source);
     free((void*)source_files);
     free((void*)include_paths);
+    cn_file_list_free(&project_files);  // 释放项目文件列表
 
     return 0;
 }

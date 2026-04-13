@@ -1301,27 +1301,20 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             bool is_string_type = false;  // 【新增】字符串类型标记
             
             // 【调试】输出数组类型信息
-            fprintf(stderr, "[DEBUG] INDEX: array_type=%p, kind=%d, length=%zu\n",
-                    (void*)array_type,
-                    array_type ? array_type->kind : -1,
-                    (array_type && array_type->kind == CN_TYPE_ARRAY) ? array_type->as.array.length : 0);
             
             // 【新增】检查是否为字符串类型或字符指针类型
             // 1. 字符串类型 (CN_TYPE_STRING)
             // 2. 字符指针类型 (CN_TYPE_POINTER -> CN_TYPE_CHAR)
             if (array_type && array_type->kind == CN_TYPE_STRING) {
                 is_string_type = true;
-                fprintf(stderr, "[DEBUG] INDEX: detected string type, using pointer arithmetic\n");
-            } else if (array_type && array_type->kind == CN_TYPE_POINTER &&
+                } else if (array_type && array_type->kind == CN_TYPE_POINTER &&
                        array_type->as.pointer_to &&
                        array_type->as.pointer_to->kind == CN_TYPE_CHAR) {
                 // 字符指针类型：char* 的索引访问
                 is_string_type = true;
-                fprintf(stderr, "[DEBUG] INDEX: detected char pointer type, using pointer arithmetic\n");
-            } else if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
+                } else if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
                 is_static_array = true;
-                fprintf(stderr, "[DEBUG] INDEX: detected static array, length=%zu\n", array_type->as.array.length);
-            }
+                }
             
             int result_reg = alloc_reg(ctx);
             CnType *result_type = expr->type;
@@ -1428,9 +1421,6 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 CnType *enum_type = enum_sym ? enum_sym->type : expr->as.member.object->type;
                 
                 // 【调试】输出枚举类型信息
-                fprintf(stderr, "[DEBUG] 枚举成员访问: 成员名=%.*s, enum_type=%p, kind=%d\n",
-                        (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                        (void*)enum_type, enum_type ? enum_type->kind : -1);
                 
                 CnSemSymbol *member_sym = cn_type_enum_find_member(
                     enum_type,
@@ -1458,8 +1448,6 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                                 (int)enum_name_len, enum_name,
                                 (int)member_name_len, member_name);
                         
-                        fprintf(stderr, "[DEBUG] 创建枚举成员符号: name=%s, type=%p, kind=%d\n",
-                                full_name, (void*)enum_type, enum_type ? enum_type->kind : -1);
                         CnIrOperand result = cn_ir_op_symbol(full_name, enum_type);
                         free(full_name);
                         return result;

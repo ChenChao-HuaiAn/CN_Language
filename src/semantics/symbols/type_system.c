@@ -87,20 +87,12 @@ bool cn_type_equals(CnType *a, CnType *b) {
                    cn_type_equals(a->as.array.element_type, b->as.array.element_type);
         case CN_TYPE_STRUCT:
             if (!a->as.struct_type.name || !b->as.struct_type.name) {
-                fprintf(stderr, "[DEBUG] cn_type_equals STRUCT: one name is NULL (a=%p, b=%p)\n",
-                        (void*)a->as.struct_type.name, (void*)b->as.struct_type.name);
                 return false;
             }
             if (a->as.struct_type.name_length != b->as.struct_type.name_length) {
-                fprintf(stderr, "[DEBUG] cn_type_equals STRUCT: name length mismatch (a_len=%zu='%.*s', b_len=%zu='%.*s')\n",
-                        a->as.struct_type.name_length, (int)a->as.struct_type.name_length, a->as.struct_type.name,
-                        b->as.struct_type.name_length, (int)b->as.struct_type.name_length, b->as.struct_type.name);
                 return false;
             }
             if (memcmp(a->as.struct_type.name, b->as.struct_type.name, a->as.struct_type.name_length) != 0) {
-                fprintf(stderr, "[DEBUG] cn_type_equals STRUCT: name content mismatch (a='%.*s', b='%.*s')\n",
-                        (int)a->as.struct_type.name_length, a->as.struct_type.name,
-                        (int)b->as.struct_type.name_length, b->as.struct_type.name);
                 return false;
             }
             return true;
@@ -376,14 +368,21 @@ CnStructField *cn_type_struct_find_field(CnType *struct_type,
                 struct_type->as.struct_type.name_length);
         }
         
-        if (type_sym && type_sym->type &&
-            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
-            type_sym->type->as.struct_type.fields) {
-            // 更新结构体类型的字段信息
-            struct_type->as.struct_type.fields = type_sym->type->as.struct_type.fields;
-            struct_type->as.struct_type.field_count = type_sym->type->as.struct_type.field_count;
-            // 同时更新声明作用域
-            struct_type->as.struct_type.decl_scope = type_sym->type->as.struct_type.decl_scope;
+        if (type_sym && type_sym->type) {
+            // 【关键修复】支持枚举类型：如果符号是枚举类型，直接返回NULL（枚举没有字段）
+            // 如果符号是结构体类型，更新字段信息
+            if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                return NULL;  // 枚举类型没有字段
+            } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                       type_sym->type->as.struct_type.fields) {
+                // 更新结构体类型的字段信息
+                struct_type->as.struct_type.fields = type_sym->type->as.struct_type.fields;
+                struct_type->as.struct_type.field_count = type_sym->type->as.struct_type.field_count;
+                // 同时更新声明作用域
+                struct_type->as.struct_type.decl_scope = type_sym->type->as.struct_type.decl_scope;
+            } else {
+                return NULL;
+            }
         } else {
             return NULL;
         }
@@ -627,28 +626,19 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                       const char *member_name,
                                       size_t member_name_length) {
     if (!enum_type || enum_type->kind != CN_TYPE_ENUM || !member_name) {
-        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: invalid params, enum_type=%p, kind=%d, member_name=%p\n",
-                (void*)enum_type, enum_type ? enum_type->kind : -1, (void*)member_name);
         return NULL;
     }
     if (!enum_type->as.enum_type.enum_scope) {
-        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: enum_scope is NULL for enum '%.*s'\n",
-                (int)enum_type->as.enum_type.name_length, enum_type->as.enum_type.name);
         return NULL;
     }
 
     // 【调试】打印枚举作用域中的所有成员
-    fprintf(stderr, "[DEBUG] cn_type_enum_find_member: looking for '%.*s' in enum '%.*s', enum_scope=%p\n",
-            (int)member_name_length, member_name,
-            (int)enum_type->as.enum_type.name_length, enum_type->as.enum_type.name,
-            (void*)enum_type->as.enum_type.enum_scope);
 
     // 首先尝试直接查找成员名
     CnSemSymbol *sym = cn_sem_scope_lookup_shallow(enum_type->as.enum_type.enum_scope,
                                                    member_name,
                                                    member_name_length);
     if (sym) {
-        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found '%.*s' directly\n", (int)member_name_length, member_name);
         return sym;
     }
 
@@ -672,7 +662,6 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                               prefixed_name_len);
             free(prefixed_name);
             if (sym) {
-                fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by prefix match\n");
                 return sym;
             }
         }
@@ -684,7 +673,6 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
     cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
                                 enum_member_find_callback, &ctx);
     if (ctx.found_sym) {
-        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by suffix match\n");
         return ctx.found_sym;
     }
 
@@ -704,7 +692,6 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
             cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
                                         enum_member_fuzzy_find_callback, &fuzzy_ctx);
             if (fuzzy_ctx.found_sym) {
-                fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by fuzzy match (removed suffix '%s')\n", suffix);
                 return fuzzy_ctx.found_sym;
             }
         }
@@ -738,7 +725,6 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                                       prefixed_name, prefixed_name_len);
                     free(prefixed_name);
                     if (sym) {
-                        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by prefix removal + enum prefix match\n");
                         return sym;
                     }
                 }
@@ -750,7 +736,6 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
             cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
                                         enum_member_fuzzy_find_callback, &fuzzy_ctx);
             if (fuzzy_ctx.found_sym) {
-                fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by fuzzy match (removed prefix '%s')\n", prefix);
                 return fuzzy_ctx.found_sym;
             }
         }
@@ -795,7 +780,6 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
                                                     enum_member_fuzzy_find_callback, &fuzzy_ctx);
                         free(new_name);
                         if (fuzzy_ctx.found_sym) {
-                            fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by synonym replacement ('%s' -> '%s')\n", from, to);
                             return fuzzy_ctx.found_sym;
                         }
                     }
@@ -810,13 +794,9 @@ CnSemSymbol *cn_type_enum_find_member(CnType *enum_type,
     cn_sem_scope_foreach_symbol(enum_type->as.enum_type.enum_scope,
                                 enum_member_fuzzy_find_callback, &fuzzy_ctx);
     if (fuzzy_ctx.found_sym) {
-        fprintf(stderr, "[DEBUG] cn_type_enum_find_member: found by fuzzy match (no underscore)\n");
         return fuzzy_ctx.found_sym;
     }
 
-    fprintf(stderr, "[DEBUG] cn_type_enum_find_member: member '%.*s' not found in enum '%.*s'\n",
-            (int)member_name_length, member_name,
-            (int)enum_type->as.enum_type.name_length, enum_type->as.enum_type.name);
     return NULL;
 }
 
@@ -1020,9 +1000,6 @@ static CnStructField *cn_type_deep_copy_fields_ex(CnStructField *src_fields, siz
         
         // 【调试】显示字段类型信息
         CnType *field_type = src_fields[i].field_type;
-        fprintf(stderr, "[DEBUG] cn_type_deep_copy_fields_ex: field '%.*s', field_type=%p, kind=%d\n",
-                (int)src_fields[i].name_length, src_fields[i].name,
-                (void*)field_type, field_type ? field_type->kind : -1);
         if (field_type && field_type->kind == CN_TYPE_POINTER &&
             field_type->as.pointer_to &&
             field_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
@@ -1046,8 +1023,6 @@ static CnStructField *cn_type_deep_copy_fields_ex(CnStructField *src_fields, siz
                  field_type->as.pointer_to &&
                  field_type->as.pointer_to->kind == CN_TYPE_ENUM) {
             // 指针指向枚举类型，正常深度复制
-            fprintf(stderr, "[DEBUG] cn_type_deep_copy_fields_ex: field '%.*s' is pointer to ENUM, copying...\n",
-                    (int)src_fields[i].name_length, src_fields[i].name);
         }
         // 【关键修复】处理指针指向 VOID 的情况（可能是类型信息丢失）
         else if (field_type && field_type->kind == CN_TYPE_POINTER &&
@@ -1077,9 +1052,6 @@ static CnStructField *cn_type_deep_copy_fields_ex(CnStructField *src_fields, siz
                 src_field_type->as.pointer_to->kind != CN_TYPE_VOID) {
                 
                 // 从源字段恢复类型信息
-                fprintf(stderr, "[DEBUG] cn_type_deep_copy_fields_ex: fixing field '%.*s' pointer_to from NULL/VOID to kind=%d\n",
-                        (int)src_fields[i].name_length, src_fields[i].name,
-                        src_field_type->as.pointer_to->kind);
                 
                 // 深度复制源指针指向的类型
                 CnType *recovered_type = cn_type_deep_copy(src_field_type->as.pointer_to);
@@ -1162,8 +1134,6 @@ CnType *cn_type_deep_copy(CnType *src) {
         case CN_TYPE_POINTER: {
             // 指针类型：递归复制指向的类型
             // 【调试】追踪指针类型的复制
-            fprintf(stderr, "[DEBUG] cn_type_deep_copy: POINTER type, pointer_to=%p, pointer_to_kind=%d\n",
-                    (void*)src->as.pointer_to, src->as.pointer_to ? src->as.pointer_to->kind : -1);
             
             // 【关键修复】如果 pointer_to 为 NULL，创建一个保留名称信息的结构体类型
             if (!src->as.pointer_to) {
@@ -1183,8 +1153,6 @@ CnType *cn_type_deep_copy(CnType *src) {
             }
             
             CnType *base_copy = cn_type_deep_copy(src->as.pointer_to);
-            fprintf(stderr, "[DEBUG] cn_type_deep_copy: POINTER base_copy=%p, base_copy_kind=%d\n",
-                    (void*)base_copy, base_copy ? base_copy->kind : -1);
             
             // 【关键修复】如果深拷贝后 base_copy 为 NULL，保留原始类型信息
             if (!base_copy) {
@@ -1266,8 +1234,7 @@ CnType *cn_type_deep_copy(CnType *src) {
                                        pointee->as.struct_type.name_length) == 0) {
                                 // 这是递归指针字段，更新为指向新结构体
                                 dst_field_type->as.pointer_to = dst;
-                                fprintf(stderr, "[DEBUG] cn_type_deep_copy: updated recursive pointer field to point to new struct\n");
-                            }
+                                }
                         }
                         // 情况2：pointer_to 为 NULL（递归引用）
                         else if (!dst_field_type->as.pointer_to) {
@@ -1281,8 +1248,7 @@ CnType *cn_type_deep_copy(CnType *src) {
                                        field_type->as.pointer_to->as.struct_type.name_length) == 0) {
                                 // 更新为指向新结构体
                                 dst_field_type->as.pointer_to = dst;
-                                fprintf(stderr, "[DEBUG] cn_type_deep_copy: updated NULL pointer_to to point to new struct\n");
-                            }
+                                }
                         }
                     }
                 }

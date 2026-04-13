@@ -495,9 +495,6 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             if (sym) {
                 // 符号已存在，保存其类型（可能是 scope_builder 推断出的类型）
                 existing_type = sym->type;
-                fprintf(stderr, "[DEBUG] VAR_DECL: found existing symbol '%.*s' with type=%p, type_kind=%d\n",
-                        (int)decl->name_length, decl->name, (void*)existing_type,
-                        existing_type ? existing_type->kind : -1);
             } else {
                 // 符号不存在，插入新的符号
                 sym = cn_sem_scope_insert_symbol(scope, decl->name, decl->name_length, CN_SEM_SYMBOL_VARIABLE);
@@ -506,10 +503,6 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             // 在变量符号插入后推断初始化表达式的类型
             CnType *init_type = infer_expr_type(scope, decl->initializer, diagnostics);
             // 【调试】输出变量声明的类型推断信息
-            fprintf(stderr, "[DEBUG] VAR_DECL: '%.*s', declared_type=%p, init_type=%p, init_type_kind=%d\n",
-                    (int)decl->name_length, decl->name,
-                    (void*)decl->declared_type, (void*)init_type,
-                    init_type ? init_type->kind : -1);
             if (sym) {
                 sym->is_const = decl->is_const;
                 sym->is_static = decl->is_static;  // 传递静态变量标记
@@ -607,13 +600,9 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                     // 如果 existing_type 存在，说明 scope_builder 已经从初始化表达式推断出了类型
                     if (existing_type) {
                         sym->type = existing_type;
-                        fprintf(stderr, "[DEBUG] VAR_DECL: using existing type for '%.*s', type_kind=%d\n",
-                                (int)decl->name_length, decl->name, existing_type->kind);
                     } else if (init_type) {
                         // 【调试】输出类型推断信息
                         if (init_type->kind == CN_TYPE_POINTER) {
-                            fprintf(stderr, "[DEBUG] VAR_DECL: inferring type for '%.*s' as POINTER\n",
-                                    (int)decl->name_length, decl->name);
                         }
                         sym->type = init_type;
                     } else {
@@ -851,17 +840,10 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             } else {
                 // 插入失败，检查是否是导入的符号
                 CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, struct_decl->name, struct_decl->name_length);
-                fprintf(stderr, "[DEBUG] semantic_passes: struct '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
-                        (int)struct_decl->name_length, struct_decl->name, (void*)existing,
-                        existing ? (void*)existing->source_module_path : NULL);
                 if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT && existing->source_module_path != NULL) {
                     // 是导入的结构体（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
-                    fprintf(stderr, "[DEBUG] semantic_passes: skipping imported struct '%.*s'\n",
-                            (int)struct_decl->name_length, struct_decl->name);
                 } else {
                     // 真正的重复定义，报告错误
-                    fprintf(stderr, "[DEBUG] semantic_passes: reporting duplicate struct '%.*s'\n",
-                            (int)struct_decl->name_length, struct_decl->name);
                     cn_support_diag_semantic_error_duplicate_symbol(
                         diagnostics, NULL, 0, 0, struct_decl->name, struct_decl->name_length);
                 }
@@ -920,17 +902,10 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
             } else {
                 // 插入失败，检查是否是导入的符号
                 CnSemSymbol *existing = cn_sem_scope_lookup_shallow(scope, enum_decl->name, enum_decl->name_length);
-                fprintf(stderr, "[DEBUG] semantic_passes: enum '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
-                        (int)enum_decl->name_length, enum_decl->name, (void*)existing,
-                        existing ? (void*)existing->source_module_path : NULL);
                 if (existing && existing->kind == CN_SEM_SYMBOL_ENUM && existing->source_module_path != NULL) {
                     // 是导入的枚举（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
-                    fprintf(stderr, "[DEBUG] semantic_passes: skipping imported enum '%.*s'\n",
-                            (int)enum_decl->name_length, enum_decl->name);
                 } else {
                     // 真正的重复定义，报告错误
-                    fprintf(stderr, "[DEBUG] semantic_passes: reporting duplicate enum '%.*s'\n",
-                            (int)enum_decl->name_length, enum_decl->name);
                     cn_support_diag_semantic_error_duplicate_symbol(
                         diagnostics, NULL, 0, 0, enum_decl->name, enum_decl->name_length);
                 }
@@ -1162,43 +1137,27 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             // 优先查找枚举类型符号，避免返回枚举成员符号（具有整数类型）
             // 这对于成员访问表达式（如 枚举类型.成员）至关重要
             CnSemSymbol *sym = cn_sem_scope_lookup_by_kind(scope, name, name_len, CN_SEM_SYMBOL_ENUM);
-            fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s', enum_lookup=%p, kind=%d\n",
-                    (int)name_len, name, (void*)sym, sym ? sym->kind : -1);
             if (!sym) {
                 // 如果没有找到枚举类型符号，使用普通查找
                 sym = cn_sem_scope_lookup(scope, name, name_len);
-                fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s', normal_lookup=%p, kind=%d, type=%p\n",
-                        (int)name_len, name, (void*)sym, sym ? sym->kind : -1, sym ? (void*)sym->type : NULL);
             }
             if (sym) {
                 // 对于枚举类型符号，需要确保返回正确的枚举类型
                 if (sym->kind == CN_SEM_SYMBOL_ENUM) {
-                    fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s' is ENUM, type=%p, module_scope=%p\n",
-                            (int)name_len, name, (void*)sym->type, (void*)sym->as.module_scope);
                     // 枚举类型符号的 type 字段可能为 NULL（设计如此）
                     // 我们需要创建或获取枚举类型
                     if (sym->type) {
                         expr->type = sym->type;
-                        fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: using sym->type, kind=%d\n",
-                                expr->type ? expr->type->kind : -1);
-                    } else {
+                        } else {
                         // 创建枚举类型并设置 enum_scope
                         expr->type = cn_type_new_enum(name, name_len);
                         if (expr->type && sym->as.module_scope) {
                             expr->type->as.enum_type.enum_scope = sym->as.module_scope;
                         }
-                        fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: created new enum type, kind=%d, enum_scope=%p\n",
-                                expr->type ? expr->type->kind : -1,
-                                expr->type ? (void*)expr->type->as.enum_type.enum_scope : NULL);
                     }
                 } else {
                     // 【调试】显示变量/结构体等符号的类型信息
-                    fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s' is kind=%d, sym->type=%p, type_kind=%d\n",
-                            (int)name_len, name, sym->kind, (void*)sym->type,
-                            sym->type ? sym->type->kind : -1);
                     expr->type = sym->type;
-                    fprintf(stderr, "[DEBUG] infer_expr_type IDENTIFIER: '%.*s' set expr->type=%p, expr->type->kind=%d\n",
-                            (int)name_len, name, (void*)expr->type, expr->type ? expr->type->kind : -1);
                 }
             } else {
                 // 报错：未定义标识符
@@ -1791,9 +1750,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         // 如果被调用者表达式类型是函数类型，使用其返回类型
                         if (callee_expr_type->kind == CN_TYPE_FUNCTION && callee_expr_type->as.function.return_type) {
                             expr->type = callee_expr_type->as.function.return_type;
-                            fprintf(stderr, "[DEBUG] CALL: recovered return type from callee expr, kind=%d\n",
-                                    expr->type->kind);
-                        }
+                            }
                     }
                 }
             } else {
@@ -1807,9 +1764,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     if (!expr->type || expr->type->kind == CN_TYPE_UNKNOWN) {
                         if (expr->as.call.callee->type) {
                             expr->type = expr->as.call.callee->type;
-                            fprintf(stderr, "[DEBUG] CALL: recovered method return type from callee, kind=%d\n",
-                                    expr->type->kind);
-                        }
+                            }
                     }
                     
                     // 推断所有参数类型（修复：方法调用参数也需要类型推断）
@@ -1932,13 +1887,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 
                 // 【调试】检查符号查找结果
-                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: looking up '%.*s', found sym=%p, kind=%d, type=%p\n",
-                        (int)name_len, name, (void*)sym, sym ? sym->kind : -1, sym ? (void*)sym->type : NULL);
                 if (sym && sym->kind == CN_SEM_SYMBOL_ENUM) {
-                    fprintf(stderr, "[DEBUG] MEMBER_ACCESS: enum symbol '%.*s', type=%p, type_kind=%d, enum_scope=%p\n",
-                            (int)name_len, name, (void*)sym->type,
-                            sym->type ? sym->type->kind : -1,
-                            (sym->type && sym->type->kind == CN_TYPE_ENUM) ? (void*)sym->type->as.enum_type.enum_scope : NULL);
                 }
                 
                 // 如果是模块符号，在模块作用域中查找成员
@@ -1976,13 +1925,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 
                 // 如果是枚举符号，在枚举作用域中查找成员
-                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: looking up '%.*s', found sym=%p, kind=%d, type=%p\n",
-                        (int)name_len, name, (void*)sym, sym ? sym->kind : -1, sym ? (void*)sym->type : NULL);
                 if (sym && sym->kind == CN_SEM_SYMBOL_ENUM) {
-                    fprintf(stderr, "[DEBUG] MEMBER_ACCESS: enum symbol '%.*s', type=%p, type_kind=%d, enum_scope=%p\n",
-                            (int)name_len, name, (void*)sym->type,
-                            sym->type ? sym->type->kind : -1,
-                            sym->type ? (void*)sym->type->as.enum_type.enum_scope : NULL);
                 }
                 // 【修复】处理枚举类型符号，支持 sym->type 为 NULL 的情况
                 if (sym && sym->kind == CN_SEM_SYMBOL_ENUM) {
@@ -2078,19 +2021,12 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             // 否则按照结构体成员访问处理
             // 【调试】显示成员访问对象的类型
-            fprintf(stderr, "[DEBUG] MEMBER_ACCESS: object kind=%d, object expr=%p\n",
-                    expr->as.member.object ? expr->as.member.object->kind : -1,
-                    (void*)expr->as.member.object);
             if (expr->as.member.object && expr->as.member.object->type) {
-                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: object already has type=%p, kind=%d\n",
-                        (void*)expr->as.member.object->type, expr->as.member.object->type->kind);
             }
             
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
             
             // 【调试】检查 object_type 的值
-            fprintf(stderr, "[DEBUG] infer_expr_type for member object: object_type=%p, kind=%d\n",
-                    (void*)object_type, object_type ? object_type->kind : -1);
             
             // 【关键修复】确保对象表达式的类型被正确设置
             // 代码生成器依赖 expr->as.member.object->type 来判断是否使用 "->" 操作符
@@ -2193,9 +2129,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                     expr->as.member.object->type->kind == CN_TYPE_STRUCT) {
                     // 使用对象表达式的缓存类型
                     object_type = expr->as.member.object->type;
-                    fprintf(stderr, "[DEBUG] MEMBER_ACCESS: recovered object type from cached type, kind=%d\n",
-                            object_type->kind);
-                }
+                    }
                 // 如果仍然是无效类型，报告错误
                 if (!object_type || object_type->kind != CN_TYPE_STRUCT) {
                     // 【增强错误诊断】提供具体的类型信息
@@ -2310,14 +2244,8 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 }
                 
                 expr->type = field_type;
-                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: found field '%.*s', field_type=%p, kind=%d\n",
-                        (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                        (void*)field_type, field_type ? field_type->kind : -1);
             } else {
                 // 字段未找到，可能是类方法调用
-                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: field '%.*s' not found in struct '%.*s'\n",
-                        (int)expr->as.member.member_name_length, expr->as.member.member_name,
-                        (int)object_type->as.struct_type.name_length, object_type->as.struct_type.name);
                 // 从结构体类型中获取类名
                 if (object_type->kind == CN_TYPE_STRUCT && object_type->as.struct_type.name) {
                     const char *class_name = object_type->as.struct_type.name;
@@ -2398,23 +2326,15 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             const char *struct_name = expr->as.struct_lit.struct_name;
             size_t struct_name_len = expr->as.struct_lit.struct_name_length;
             
-            fprintf(stderr, "[DEBUG] STRUCT_LITERAL: struct_name='%.*s', len=%zu\n",
-                    (int)struct_name_len, struct_name ? struct_name : "(null)", struct_name_len);
             
             if (!struct_name || struct_name_len == 0) {
-                fprintf(stderr, "[DEBUG] STRUCT_LITERAL: struct_name is NULL or empty, returning UNKNOWN\n");
                 expr->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
                 break;
             }
             CnSemSymbol *struct_sym = cn_sem_scope_lookup(scope, struct_name, struct_name_len);
             
-            fprintf(stderr, "[DEBUG] STRUCT_LITERAL: lookup '%.*s', found sym=%p, kind=%d, type=%p\n",
-                    (int)struct_name_len, struct_name, (void*)struct_sym,
-                    struct_sym ? struct_sym->kind : -1,
-                    struct_sym ? (void*)struct_sym->type : NULL);
             
             if (!struct_sym || struct_sym->kind != CN_SEM_SYMBOL_STRUCT) {
-                fprintf(stderr, "[DEBUG] STRUCT_LITERAL: struct symbol not found or wrong kind, returning UNKNOWN\n");
                 cn_support_diag_semantic_error_generic(
                     diagnostics,
                     CN_DIAG_CODE_SEM_UNDEFINED_IDENTIFIER,

@@ -276,8 +276,6 @@ void cn_support_diag_semantic_error_duplicate_symbol(
     } else {
         strcpy(name_buf, "(null)");
     }
-    fprintf(stderr, "[DEBUG] cn_support_diag_semantic_error_duplicate_symbol called: symbol='%s'\n",
-            name_buf);
     (void)symbol_name; // 目前尚不支持动态消息，忽略符号名
     (void)symbol_name_length;
     cn_support_diagnostics_report_error(

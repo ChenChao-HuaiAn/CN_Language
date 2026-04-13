@@ -191,8 +191,6 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
     if (sym1->source_module_path && sym2->source_module_path &&
         sym1->source_module_path_length == sym2->source_module_path_length &&
         memcmp(sym1->source_module_path, sym2->source_module_path, sym1->source_module_path_length) == 0) {
-        fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, source_module_path match (path=%.*s)\n",
-                name_buf, sym1->kind, (int)sym1->source_module_path_length, sym1->source_module_path);
         return 1;  // 来自同一个模块且名称相同，是同一个符号
     }
     
@@ -200,8 +198,6 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
     // 当符号被复制时，type 指针也被复制了，所以类型指针相同意味着来自同一声明
     // 这是最可靠的判断方式，因为类型对象是唯一的
     if (sym1->type && sym2->type && sym1->type == sym2->type) {
-        fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, type match (type=%p)\n",
-                name_buf, sym1->kind, (void*)sym1->type);
         return 1;  // 类型指针相同，肯定是同一个符号
     }
     
@@ -212,12 +208,8 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
         // 如果其中一个符号缺少类型信息，不能认为是同一个符号
         // 需要让调用者处理类型信息补充
         if ((sym1->type && !sym2->type) || (!sym1->type && sym2->type)) {
-            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, decl_scope match but type mismatch (type1=%p, type2=%p), returning 0\n",
-                    name_buf, sym1->kind, (void*)sym1->type, (void*)sym2->type);
             return 0;  // 类型信息不一致，需要处理
         }
-        fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, decl_scope match (scope=%p)\n",
-                name_buf, sym1->kind, (void*)sym1->decl_scope);
         return 1;  // 声明作用域相同，是同一个符号
     }
     
@@ -227,8 +219,6 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
         sym1->type->kind == CN_TYPE_FUNCTION && sym2->type->kind == CN_TYPE_FUNCTION) {
         // 比较函数类型的结构：参数数量
         if (sym1->type->as.function.param_count == sym2->type->as.function.param_count) {
-            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, function param count match (%zu)\n",
-                    name_buf, sym1->kind, sym1->type->as.function.param_count);
             return 1;  // 同名函数且参数数量相同，认为是同一个函数
         }
     }
@@ -239,8 +229,6 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
         (sym2->kind == CN_SEM_SYMBOL_STRUCT || sym2->kind == CN_SEM_SYMBOL_ENUM)) {
         if (sym1->as.module_scope && sym2->as.module_scope &&
             sym1->as.module_scope == sym2->as.module_scope) {
-            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, module_scope match (scope=%p)\n",
-                    name_buf, sym1->kind, (void*)sym1->as.module_scope);
             return 1;  // 成员作用域相同，是同一个类型定义
         }
     }
@@ -251,17 +239,12 @@ static int cn_sem_is_same_symbol(const CnSemSymbol *sym1, const CnSemSymbol *sym
     if (sym1->kind == CN_SEM_SYMBOL_MODULE && sym2->kind == CN_SEM_SYMBOL_MODULE) {
         if (sym1->as.module_scope && sym2->as.module_scope &&
             sym1->as.module_scope == sym2->as.module_scope) {
-            fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, module symbol module_scope match (scope=%p)\n",
-                    name_buf, sym1->kind, (void*)sym1->as.module_scope);
             return 1;  // 模块作用域相同，是同一个模块
         }
     }
     
     // 默认情况：同名同种类的符号，但无法确定是否来自同一声明
     // 返回 0 表示不是同一个符号，让调用者决定如何处理
-    fprintf(stderr, "[DEBUG] cn_sem_is_same_symbol: name=%s, kind=%d, NO MATCH (type1=%p, type2=%p, scope1=%p, scope2=%p)\n",
-            name_buf, sym1->kind, (void*)sym1->type, (void*)sym2->type,
-            (void*)sym1->decl_scope, (void*)sym2->decl_scope);
     return 0;
 }
 
@@ -289,37 +272,26 @@ static void cn_sem_copy_symbol_type(CnSemSymbol *src_sym, CnSemSymbol *dst_sym) 
         // 直接引用原始类型，避免深拷贝导致的信息丢失
         // 这是因为模块缓存的作用域指针是持久的，类型对象也是持久的
         dst_sym->type = src_sym->type;
-        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: '%.*s' (kind=%d) using original type=%p\n",
-                (int)src_sym->name_length, src_sym->name, src_sym->kind, (void*)src_sym->type);
         return;
     }
     
     // 【关键修复】处理枚举符号类型为 NULL 的情况
     if (src_sym->kind == CN_SEM_SYMBOL_ENUM) {
         // 枚举符号的 type 字段为 NULL，需要创建新的枚举类型
-        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: enum '%.*s' has NULL type, creating new enum type.\n",
-                (int)src_sym->name_length, src_sym->name);
         // 创建新的枚举类型
         dst_sym->type = cn_type_new_enum(src_sym->name, src_sym->name_length);
         // 复制枚举作用域（需要检查 dst_sym->type 是否创建成功）
         if (dst_sym->type && src_sym->as.module_scope) {
             dst_sym->type->as.enum_type.enum_scope = cn_sem_scope_deep_copy_enum(src_sym->as.module_scope);
-            fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: enum '%.*s' created type=%p with enum_scope=%p\n",
-                    (int)src_sym->name_length, src_sym->name, (void*)dst_sym->type,
-                    (void*)dst_sym->type->as.enum_type.enum_scope);
         }
         return;
     }
     
     // 【关键修复】处理结构体符号类型为 NULL 的情况
     if (src_sym->kind == CN_SEM_SYMBOL_STRUCT) {
-        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: struct '%.*s' has NULL type, creating placeholder struct type.\n",
-                (int)src_sym->name_length, src_sym->name);
         // 创建一个占位的结构体类型（字段信息可能缺失）
         // 后续在延迟解析阶段可能会补充字段信息
         dst_sym->type = cn_type_new_struct(src_sym->name, src_sym->name_length, NULL, 0, NULL, NULL, 0);
-        fprintf(stderr, "[DEBUG] cn_sem_copy_symbol_type: struct '%.*s' created placeholder type=%p\n",
-                (int)src_sym->name_length, src_sym->name, (void*)dst_sym->type);
         return;
     }
     
@@ -905,17 +877,10 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         } else {
             // 插入失败，检查是否是导入的符号
             CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, enum_decl->name, enum_decl->name_length);
-            fprintf(stderr, "[DEBUG] scope_builder: enum '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
-                    (int)enum_decl->name_length, enum_decl->name, (void*)existing,
-                    existing ? (void*)existing->source_module_path : NULL);
             if (existing && existing->kind == CN_SEM_SYMBOL_ENUM && existing->source_module_path != NULL) {
                 // 是导入的枚举（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
-                fprintf(stderr, "[DEBUG] scope_builder: skipping imported enum '%.*s'\n",
-                        (int)enum_decl->name_length, enum_decl->name);
             } else {
                 // 真正的重复定义，报告错误
-                fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate enum '%.*s'\n",
-                        (int)enum_decl->name_length, enum_decl->name);
                 cn_support_diag_semantic_error_duplicate_symbol(
                     diagnostics, NULL, 0, 0, enum_decl->name, enum_decl->name_length);
             }
@@ -954,6 +919,7 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         if (type_sym && type_sym->type) {
                             // 使用符号表中的真实类型（可能是枚举或结构体）
                             field_type = type_sym->type;
+                        } else {
                         }
                     }
                     // 【关键修复】处理枚举类型字段：枚举类型在AST中表示为CN_TYPE_ENUM
@@ -995,17 +961,10 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         } else {
             // 插入失败，检查是否是导入的符号
             CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, struct_decl->name, struct_decl->name_length);
-            fprintf(stderr, "[DEBUG] scope_builder: struct '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
-                    (int)struct_decl->name_length, struct_decl->name, (void*)existing,
-                    existing ? (void*)existing->source_module_path : NULL);
             if (existing && existing->kind == CN_SEM_SYMBOL_STRUCT && existing->source_module_path != NULL) {
                 // 是导入的结构体（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
-                fprintf(stderr, "[DEBUG] scope_builder: skipping imported struct '%.*s'\n",
-                        (int)struct_decl->name_length, struct_decl->name);
             } else {
                 // 真正的重复定义，报告错误
-                fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate struct '%.*s'\n",
-                        (int)struct_decl->name_length, struct_decl->name);
                 cn_support_diag_semantic_error_duplicate_symbol(
                     diagnostics, NULL, 0, 0, struct_decl->name, struct_decl->name_length);
             }
@@ -1190,16 +1149,11 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                                                         sym->name_length);
                 if (existing_sym) {
                     // 检查是否是同一个符号（同一模块的同一成员）
-                    fprintf(stderr, "[DEBUG] Import: checking symbol %.*s, existing_kind=%d, new_kind=%d, existing_type=%p, new_type=%p\n",
-                            (int)sym->name_length, sym->name, existing_sym->kind, sym->kind,
-                            (void*)existing_sym->type, (void*)sym->type);
                     if (cn_sem_is_same_symbol(existing_sym, sym)) {
                         // 同一符号，但如果现有符号缺少类型信息，需要补充
                         if (!existing_sym->type && sym->type) {
-                            fprintf(stderr, "[DEBUG] Import: same symbol, updating missing type info\n");
                             existing_sym->type = cn_type_deep_copy(sym->type);
                         }
-                        fprintf(stderr, "[DEBUG] Import: same symbol, skipping\n");
                         node = node->next;
                         continue;
                     }
@@ -1208,7 +1162,6 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     // 只有当符号种类相同且不是同一个符号时，才报告冲突
                     else if (existing_sym->kind == sym->kind && existing_sym->kind != CN_SEM_SYMBOL_MODULE) {
                         // 同名同种类但不是同一个符号，报错
-                        fprintf(stderr, "[DEBUG] Import: same name and kind but different symbol, reporting error\n");
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, sym->name, sym->name_length);
                         node = node->next;
@@ -1217,8 +1170,6 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     // 【新增】同名不同类型的符号，允许共存
                     // 例如：existing_sym 是结构体，sym 是枚举，两者可以共存
                     else if (existing_sym->kind != sym->kind) {
-                        fprintf(stderr, "[DEBUG] Import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
-                                existing_sym->kind, sym->kind);
                         // 继续添加新符号（不跳过）
                     }
                 }
@@ -1235,14 +1186,11 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                         // 解决模块导入时结构体字段信息丢失问题
                         
                         // 【调试日志】检查源符号的类型信息
-                        fprintf(stderr, "[DEBUG] Importing symbol '%.*s', kind=%d, src_type=%p\n",
-                                (int)sym->name_length, sym->name, sym->kind, (void*)sym->type);
                         
                         // 使用辅助函数复制类型信息（处理枚举类型为 NULL 的特殊情况）
                         cn_sem_copy_symbol_type(sym, new_sym);
                         
                         // 【调试日志】检查复制后的类型信息
-                        fprintf(stderr, "[DEBUG] After copy: new_type=%p\n", (void*)new_sym->type);
                         
                         new_sym->is_public = sym->is_public;
                         new_sym->is_const = sym->is_const;
@@ -1317,8 +1265,6 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     }
                     // 【新增】同名不同类型的符号，允许共存
                     else if (existing_sym->kind != member_sym->kind) {
-                        fprintf(stderr, "[DEBUG] Selective import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
-                                existing_sym->kind, member_sym->kind);
                         // 继续添加新符号（不跳过）
                     }
                 }
@@ -1416,17 +1362,10 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
         } else {
             // 插入失败，检查是否是导入的符号
             CnSemSymbol *existing = cn_sem_scope_lookup_shallow(global_scope, var_decl->name, var_decl->name_length);
-            fprintf(stderr, "[DEBUG] scope_builder: var '%.*s' insert failed, existing=%p, existing->source_module_path=%p\n",
-                    (int)var_decl->name_length, var_decl->name, (void*)existing,
-                    existing ? (void*)existing->source_module_path : NULL);
             if (existing && existing->kind == CN_SEM_SYMBOL_VARIABLE && existing->source_module_path != NULL) {
                 // 是导入的变量（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
-                fprintf(stderr, "[DEBUG] scope_builder: skipping imported var '%.*s'\n",
-                        (int)var_decl->name_length, var_decl->name);
             } else {
                 // 真正的重复定义，报告错误
-                fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate var '%.*s'\n",
-                        (int)var_decl->name_length, var_decl->name);
                 cn_support_diag_semantic_error_duplicate_symbol(
                     diagnostics, NULL, 0, 0, var_decl->name, var_decl->name_length);
             }
@@ -1549,32 +1488,20 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     existing_sym->decl_scope = global_scope;  // 标记为当前模块定义
                 } else {
                     // 检查是否是导入的函数
-                    fprintf(stderr, "[DEBUG] scope_builder: func '%.*s' kind mismatch, existing->source_module_path=%p\n",
-                            (int)function_decl->name_length, function_decl->name, (void*)existing_sym->source_module_path);
                     if (existing_sym->source_module_path != NULL) {
                         // 是导入的函数（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
-                        fprintf(stderr, "[DEBUG] scope_builder: skipping imported func '%.*s'\n",
-                                (int)function_decl->name_length, function_decl->name);
                     } else {
                         // 真正的重复定义（同一模块内）
-                        fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate func '%.*s'\n",
-                                (int)function_decl->name_length, function_decl->name);
                         cn_support_diag_semantic_error_duplicate_symbol(
                             diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
                     }
                 }
             } else {
                 // 其他类型的符号冲突，检查是否是导入的符号
-                fprintf(stderr, "[DEBUG] scope_builder: func '%.*s' other kind conflict, existing->source_module_path=%p\n",
-                        (int)function_decl->name_length, function_decl->name, (void*)existing_sym->source_module_path);
                 if (existing_sym->source_module_path != NULL) {
                     // 是导入的符号（source_module_path 不为空表示来自其他模块），静默跳过（不报错）
-                    fprintf(stderr, "[DEBUG] scope_builder: skipping imported symbol '%.*s'\n",
-                            (int)function_decl->name_length, function_decl->name);
                 } else {
                     // 真正的符号冲突
-                    fprintf(stderr, "[DEBUG] scope_builder: reporting duplicate symbol '%.*s'\n",
-                            (int)function_decl->name_length, function_decl->name);
                     cn_support_diag_semantic_error_duplicate_symbol(
                         diagnostics, NULL, 0, 0, function_decl->name, function_decl->name_length);
                 }
@@ -1617,7 +1544,18 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
                                    param->name_length,
                                    CN_SEM_SYMBOL_VARIABLE);
         if (sym) {
-            sym->type = param->declared_type;
+            // 【关键修复】解析参数类型：如果是自定义类型（结构体类型表示），从符号表查找真实类型
+            CnType *param_type = param->declared_type;
+            if (param_type && param_type->kind == CN_TYPE_STRUCT && param_type->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(parent_scope,
+                                            param_type->as.struct_type.name,
+                                            param_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type) {
+                    // 使用符号表中的真实类型（可能是枚举或结构体）
+                    param_type = type_sym->type;
+                }
+            }
+            sym->type = param_type;
             sym->is_const = param->is_const;  // 传递常量参数标记
         } else {
             // 参数重复定义，检查是否是导入的符号
@@ -1783,8 +1721,6 @@ static void cn_sem_build_stmt(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics 
                             sym->type = init_type;
                         }
                         
-                        fprintf(stderr, "[DEBUG] scope_builder: inferred type for '%.*s' from initializer, type_kind=%d\n",
-                                (int)var_decl->name_length, var_decl->name, sym->type ? sym->type->kind : -1);
                     }
                 }
             }
@@ -2130,19 +2066,11 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     char *normalized_path = normalize_file_path(file_path);
     const char *cache_key = normalized_path ? normalized_path : file_path;
     
-    fprintf(stderr, "[DEBUG] compile_external_module_recursive: file_path=%s, normalized=%s\n",
-            file_path, cache_key);
-    
     CnSemScope *cached = find_cached_module(file_path);
     if (cached) {
-        fprintf(stderr, "[DEBUG] 模块已缓存，直接返回: %s\n", cache_key);
         // 【调试】检查缓存的作用域中的符号是否有正确的 type 字段和 module_scope
         CnSemSymbolNode *debug_node = cached->symbols;
         while (debug_node) {
-            fprintf(stderr, "[DEBUG] Cached symbol '%.*s', kind=%d, type=%p, module_scope=%p\n",
-                    (int)debug_node->symbol.name_length, debug_node->symbol.name,
-                    debug_node->symbol.kind, (void*)debug_node->symbol.type,
-                    (void*)debug_node->symbol.as.module_scope);
             debug_node = debug_node->next;
         }
         if (normalized_path) free(normalized_path);
@@ -2375,8 +2303,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                                 
                                                 if (type_exists) {
                                                     // 已存在同名的结构体/枚举符号，跳过
-                                                    fprintf(stderr, "[DEBUG] Type symbol '%.*s' already exists, skipping\n",
-                                                            (int)sym->name_length, sym->name);
                                                     node = node->next;
                                                     continue;
                                                 }
@@ -2394,8 +2320,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                                                     if (sym->as.module_scope) {
                                                         new_sym->as.module_scope = sym->as.module_scope;
                                                     }
-                                                    fprintf(stderr, "[DEBUG] Inserted type symbol '%.*s' (kind=%d) alongside module symbol\n",
-                                                            (int)sym->name_length, sym->name, sym->kind);
                                                 }
                                                 node = node->next;
                                                 continue;
@@ -2740,8 +2664,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
                 sym->type->as.enum_type.enum_scope = enum_scope;
                 // 【关键修复】同时设置 sym->as.module_scope，以便模块导入时能正确复制枚举作用域
                 sym->as.module_scope = enum_scope;
-                fprintf(stderr, "[DEBUG] Registered enum '%.*s' with type=%p, module_scope=%p\n",
-                        (int)enum_decl->name_length, enum_decl->name, (void*)sym->type, (void*)sym->as.module_scope);
                 
                 // 注册枚举成员到枚举作用域和模块作用域
                 // 这样可以直接通过成员名访问枚举成员（如：关键字_如果、标识符等）
@@ -2821,8 +2743,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             // - 结构体符号用于类型上下文（如 `词元 变量名`）
             // 符号插入函数 cn_sem_scope_insert_symbol 已修改为允许这种共存
             if (existing->kind == CN_SEM_SYMBOL_MODULE) {
-                fprintf(stderr, "[DEBUG] Module symbol '%.*s' exists, registering struct symbol alongside\n",
-                        (int)struct_decl->name_length, struct_decl->name);
                 // 不跳过，继续注册结构体符号
             }
             // 如果已存在的是枚举成员，用结构体替换它
@@ -2866,8 +2786,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
             sym->source_module_path = cache_key;
             sym->source_module_path_length = strlen(cache_key);
             // 【调试日志】验证结构体符号的 type 字段
-            fprintf(stderr, "[DEBUG] Registered struct '%.*s' with type=%p\n",
-                    (int)sym->name_length, sym->name, (void*)sym->type);
         }
     }
     
@@ -3036,7 +2954,6 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
     pop_compiling_module();
     
     // 缓存模块作用域和AST（用于后续代码生成）
-    fprintf(stderr, "[DEBUG] 缓存模块: %s\n", cache_key);
     int cache_result = cache_module_with_program(file_path, module_scope, module_program);
     
     // 设置模块作用域中所有符号的源模块路径
@@ -3056,16 +2973,11 @@ static CnSemScope *compile_external_module_recursive(const char *file_path,
         fprintf(stderr, "[WARNING] 使用临时路径作为 source_module_path: %s\n", cache_key);
     }
     
-    fprintf(stderr, "[DEBUG] Setting source_module_path for module %s: %s (len=%zu)\n",
-            cache_key, cached_path, cached_path_len);
-    
     // 遍历模块作用域中的所有符号，设置源模块路径
     CnSemSymbolNode *node = module_scope->symbols;
     while (node) {
         node->symbol.source_module_path = cached_path;
         node->symbol.source_module_path_length = cached_path_len;
-        fprintf(stderr, "[DEBUG] Set source_module_path for symbol %.*s: %s\n",
-                (int)node->symbol.name_length, node->symbol.name, cached_path);
         node = node->next;
     }
     
@@ -3359,6 +3271,7 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         if (type_sym && type_sym->type) {
                             // 使用符号表中的真实类型（可能是枚举或结构体）
                             field_type = type_sym->type;
+                        } else {
                         }
                     }
                     fields[j].field_type = field_type;
@@ -3398,10 +3311,15 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                         CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
                                                     field_type->as.struct_type.name,
                                                     field_type->as.struct_type.name_length);
-                        if (type_sym && type_sym->type &&
-                            type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
-                            type_sym->type->as.struct_type.fields) {
-                            field->field_type = type_sym->type;
+                        if (type_sym && type_sym->type) {
+                            // 【关键修复】检查是否是枚举类型
+                            // 如果符号是枚举类型，使用枚举类型；如果是结构体类型，使用结构体类型
+                            if (type_sym->kind == CN_SEM_SYMBOL_ENUM) {
+                                field->field_type = type_sym->type;
+                            } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                                       type_sym->type->as.struct_type.fields) {
+                                field->field_type = type_sym->type;
+                            }
                         }
                     }
                     // 情况2：字段类型是指针，指向的结构体没有字段信息
@@ -3608,8 +3526,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                                     if (existing_sym->kind == CN_SEM_SYMBOL_MODULE &&
                                         (sym->kind == CN_SEM_SYMBOL_STRUCT || sym->kind == CN_SEM_SYMBOL_ENUM) &&
                                         sym->type == NULL) {
-                                        fprintf(stderr, "[DEBUG] Skipping replacement of module symbol '%.*s' with struct/enum symbol that has NULL type\n",
-                                                (int)sym->name_length, sym->name);
                                         node = node->next;
                                         continue;
                                     }
@@ -4139,8 +4055,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     }
                     // 【新增】同名不同类型的符号，允许共存
                     else if (existing_sym->kind != sym->kind) {
-                        fprintf(stderr, "[DEBUG] Import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
-                                existing_sym->kind, sym->kind);
                         // 继续添加新符号（不跳过）
                     }
                 }
@@ -4229,8 +4143,6 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     }
                     // 【新增】同名不同类型的符号，允许共存
                     else if (existing_sym->kind != member_sym->kind) {
-                        fprintf(stderr, "[DEBUG] Selective import: same name but different kinds (existing=%d, new=%d), allowing coexistence\n",
-                                existing_sym->kind, member_sym->kind);
                         // 继续添加新符号（不跳过）
                     }
                 }
