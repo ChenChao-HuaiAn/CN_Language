@@ -1307,8 +1307,6 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             bool is_static_array = false;
             bool is_string_type = false;  // 【新增】字符串类型标记
             
-            // 【调试】输出数组类型信息
-            
             // 【新增】检查是否为字符串类型或字符指针类型
             // 1. 字符串类型 (CN_TYPE_STRING)
             // 2. 字符指针类型 (CN_TYPE_POINTER -> CN_TYPE_CHAR)

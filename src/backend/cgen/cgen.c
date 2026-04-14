@@ -45,6 +45,119 @@ static bool is_runtime_macro_conflict(const char *func_name) {
     return false;
 }
 
+/* 符号名匹配（考虑局部变量名后缀和前缀）
+ * 检查两个符号名是否匹配，考虑：
+ * 1. 局部变量名的 _数字序号 后缀（例如：cn_var_上下文_0 和 cn_var_上下文）
+ * 2. cn_var_ 前缀（例如：cn_var_上下文 和 上下文）
+ *
+ * 这处理了IR生成器为参数和局部变量添加 cn_var_ 前缀的情况
+ */
+static bool names_match_with_suffix(const char *name1, const char *name2) {
+    if (!name1 || !name2) return false;
+    
+    // 首先尝试精确匹配
+    if (strcmp(name1, name2) == 0) return true;
+    
+    size_t len1 = strlen(name1);
+    size_t len2 = strlen(name2);
+    
+    // 【新增】检查 cn_var_ 前缀匹配
+    // 例如：cn_var_上下文 和 上下文 应该匹配
+    const char *cn_var_prefix = "cn_var_";
+    size_t cn_prefix_len = 7; // strlen("cn_var_")
+    
+    // 检查 name1 是否是 cn_var_ + name2
+    if (len1 == cn_prefix_len + len2 &&
+        strncmp(name1, cn_var_prefix, cn_prefix_len) == 0 &&
+        strcmp(name1 + cn_prefix_len, name2) == 0) {
+        return true;
+    }
+    
+    // 检查 name2 是否是 cn_var_ + name1
+    if (len2 == cn_prefix_len + len1 &&
+        strncmp(name2, cn_var_prefix, cn_prefix_len) == 0 &&
+        strcmp(name2 + cn_prefix_len, name1) == 0) {
+        return true;
+    }
+    
+    // 【新增】检查 cn_var_ 前缀 + _数字 后缀的组合
+    // 例如：cn_var_上下文_0 和 上下文 应该匹配
+    const char *last_underscore1 = strrchr(name1, '_');
+    const char *last_underscore2 = strrchr(name2, '_');
+    
+    // 检查 name1 是否是 cn_var_ + name2 + _数字
+    if (last_underscore1 && len1 > len2 + cn_prefix_len) {
+        const char *after = last_underscore1 + 1;
+        bool is_number = true;
+        for (const char *p = after; *p; p++) {
+            if (*p < '0' || *p > '9') { is_number = false; break; }
+        }
+        if (is_number && strlen(after) > 0) {
+            // name1 格式为 xxx_数字，检查 xxx 是否是 cn_var_ + name2
+            size_t base_len = last_underscore1 - name1;
+            if (base_len == cn_prefix_len + len2 &&
+                strncmp(name1, cn_var_prefix, cn_prefix_len) == 0 &&
+                strncmp(name1 + cn_prefix_len, name2, len2) == 0) {
+                return true;
+            }
+        }
+    }
+    
+    // 检查 name2 是否是 cn_var_ + name1 + _数字
+    if (last_underscore2 && len2 > len1 + cn_prefix_len) {
+        const char *after = last_underscore2 + 1;
+        bool is_number = true;
+        for (const char *p = after; *p; p++) {
+            if (*p < '0' || *p > '9') { is_number = false; break; }
+        }
+        if (is_number && strlen(after) > 0) {
+            size_t base_len = last_underscore2 - name2;
+            if (base_len == cn_prefix_len + len1 &&
+                strncmp(name2, cn_var_prefix, cn_prefix_len) == 0 &&
+                strncmp(name2 + cn_prefix_len, name1, len1) == 0) {
+                return true;
+            }
+        }
+    }
+    
+    // 原有逻辑：检查是否是局部变量名格式（原名_数字序号）
+    // 检查 name1 是否是 name2 加上 _数字 后缀
+    const char *last_underscore = strrchr(name1, '_');
+    if (last_underscore && len1 > len2) {
+        // 检查下划线后面是否是纯数字
+        const char *after = last_underscore + 1;
+        bool is_number = true;
+        for (const char *p = after; *p; p++) {
+            if (*p < '0' || *p > '9') { is_number = false; break; }
+        }
+        if (is_number && strlen(after) > 0) {
+            // name1 是 name2 加上 _数字 后缀
+            size_t prefix_len = last_underscore - name1;
+            if (prefix_len == len2 && strncmp(name1, name2, prefix_len) == 0) {
+                return true;
+            }
+        }
+    }
+    
+    // 检查 name2 是否是 name1 加上 _数字 后缀
+    last_underscore = strrchr(name2, '_');
+    if (last_underscore && len2 > len1) {
+        const char *after = last_underscore + 1;
+        bool is_number = true;
+        for (const char *p = after; *p; p++) {
+            if (*p < '0' || *p > '9') { is_number = false; break; }
+        }
+        if (is_number && strlen(after) > 0) {
+            size_t prefix_len = last_underscore - name2;
+            if (prefix_len == len1 && strncmp(name2, name1, prefix_len) == 0) {
+                return true;
+            }
+        }
+    }
+    
+    return false;
+}
+
 /* 运行时库函数冲突检测：检测函数名是否与运行时库函数冲突 */
 static bool is_runtime_function_conflict(const char *func_name) {
     if (!func_name) return false;
@@ -1397,23 +1510,40 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             // 【新增】如果src1是符号（变量名），检查变量声明是否为指针类型
             // 这处理了LOAD指令后类型信息丢失的情况
             else if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
-                // 检查变量名是否在当前函数的ALLOCA指令中声明为指针类型
                 const char *sym_name = inst->src1.as.sym_name;
-                CnIrBasicBlock *block = ctx->current_func->first_block;
-                while (block && !is_pointer) {
-                    CnIrInst *alloca_inst = block->first_inst;
-                    while (alloca_inst && !is_pointer) {
-                        if (alloca_inst->kind == CN_IR_INST_ALLOCA &&
-                            alloca_inst->dest.kind == CN_IR_OP_SYMBOL &&
-                            alloca_inst->dest.as.sym_name &&
-                            strcmp(alloca_inst->dest.as.sym_name, sym_name) == 0 &&
-                            alloca_inst->dest.type &&
-                            alloca_inst->dest.type->kind == CN_TYPE_POINTER) {
+                
+                // 首先检查是否为函数参数（参数不会有ALLOCA指令）
+                if (ctx->current_func && ctx->current_func->params) {
+                    for (size_t i = 0; i < ctx->current_func->param_count && !is_pointer; i++) {
+                        CnIrOperand *param = &ctx->current_func->params[i];
+                        if (param->kind == CN_IR_OP_SYMBOL &&
+                            param->as.sym_name &&
+                            names_match_with_suffix(param->as.sym_name, sym_name) &&
+                            param->type &&
+                            param->type->kind == CN_TYPE_POINTER) {
                             is_pointer = true;
                         }
-                        alloca_inst = alloca_inst->next;
                     }
-                    block = block->next;
+                }
+                
+                // 如果不是参数，检查变量名是否在当前函数的ALLOCA指令中声明为指针类型
+                if (!is_pointer) {
+                    CnIrBasicBlock *block = ctx->current_func->first_block;
+                    while (block && !is_pointer) {
+                        CnIrInst *alloca_inst = block->first_inst;
+                        while (alloca_inst && !is_pointer) {
+                            if (alloca_inst->kind == CN_IR_INST_ALLOCA &&
+                                alloca_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                alloca_inst->dest.as.sym_name &&
+                                names_match_with_suffix(alloca_inst->dest.as.sym_name, sym_name) &&
+                                alloca_inst->dest.type &&
+                                alloca_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                is_pointer = true;
+                            }
+                            alloca_inst = alloca_inst->next;
+                        }
+                        block = block->next;
+                    }
                 }
             }
             
@@ -1664,8 +1794,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 // 首先检查函数参数
                                 for (size_t p = 0; p < func->param_count; p++) {
                                     if (func->params[p].as.sym_name) {
-                                        // 直接匹配（参数名称可能已经是 cn_var_xxx 格式）
-                                        if (strcmp(func->params[p].as.sym_name, sym_name) == 0) {
+                                        // 使用 names_match_with_suffix 匹配（考虑局部变量名后缀）
+                                        if (names_match_with_suffix(func->params[p].as.sym_name, sym_name)) {
                                             new_type = func->params[p].type;
                                             break;
                                         }
@@ -1680,7 +1810,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                             if (alloca_inst->kind == CN_IR_INST_ALLOCA &&
                                                 alloca_inst->dest.kind == CN_IR_OP_SYMBOL &&
                                                 alloca_inst->dest.as.sym_name &&
-                                                strcmp(alloca_inst->dest.as.sym_name, sym_name) == 0) {
+                                                names_match_with_suffix(alloca_inst->dest.as.sym_name, sym_name)) {
                                                 new_type = alloca_inst->dest.type;
                                                 break;
                                             }
@@ -1722,8 +1852,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 // 首先检查函数参数
                                 for (size_t p = 0; p < func->param_count; p++) {
                                     if (func->params[p].as.sym_name) {
-                                        // 直接匹配（参数名称可能已经是 cn_var_xxx 格式）
-                                        if (strcmp(func->params[p].as.sym_name, sym_name) == 0) {
+                                        // 使用 names_match_with_suffix 匹配（考虑局部变量名后缀）
+                                        if (names_match_with_suffix(func->params[p].as.sym_name, sym_name)) {
                                             new_type = func->params[p].type;
                                             break;
                                         }
@@ -1738,7 +1868,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                             if (alloca_inst->kind == CN_IR_INST_ALLOCA &&
                                                 alloca_inst->dest.kind == CN_IR_OP_SYMBOL &&
                                                 alloca_inst->dest.as.sym_name &&
-                                                strcmp(alloca_inst->dest.as.sym_name, sym_name) == 0) {
+                                                names_match_with_suffix(alloca_inst->dest.as.sym_name, sym_name)) {
                                                 new_type = alloca_inst->dest.type;
                                                 break;
                                             }
@@ -1962,6 +2092,18 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 should_update = true;
                                 if (!old_type || old_type->kind != CN_TYPE_POINTER) {
                                     types_changed = true;
+                                }
+                            }
+                            
+                            // 【修复】对于MEMBER_ACCESS指令，如果dest.type是结构体类型，强制更新
+                            // 这确保成员访问的结构体类型正确传播（如 cn_var_信息->位置 返回 struct 源位置）
+                            if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS &&
+                                scan_inst->dest.type &&
+                                scan_inst->dest.type->kind == CN_TYPE_STRUCT) {
+                                should_update = true;
+                                if (!old_type || old_type->kind != CN_TYPE_STRUCT) {
+                                    types_changed = true;
+                                    fprintf(stderr, "[DEBUG CGEN] MEMBER_ACCESS dest.type is STRUCT for reg r%d, updating\n", reg_id);
                                 }
                             }
                             

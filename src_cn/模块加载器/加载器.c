@@ -1105,12 +1105,12 @@ void 销毁模块加载器(struct 模块加载器* cn_var_加载器) {
 
   for_cond_3657:
   r2 = cn_var_i_0;
-  r3 = cn_var_加载器.搜索路径数量;
+  r3 = cn_var_加载器->搜索路径数量;
   r4 = r2 < r3;
   if (r4) goto for_body_3658; else goto for_exit_3660;
 
   for_body_3658:
-  r5 = cn_var_加载器.搜索路径列表;
+  r5 = cn_var_加载器->搜索路径列表;
   r6 = cn_var_i_0;
   r7 = (void*)cn_rt_array_get_element(r5, r6, 8);
   r8 = r7 != 0;
@@ -1128,7 +1128,7 @@ void 销毁模块加载器(struct 模块加载器* cn_var_加载器) {
   goto for_cond_3663;
 
   if_then_3661:
-  r9 = cn_var_加载器.搜索路径列表;
+  r9 = cn_var_加载器->搜索路径列表;
   r10 = cn_var_i_0;
   r11 = (void*)cn_rt_array_get_element(r9, r10, 8);
   释放内存(r11);
@@ -1145,7 +1145,7 @@ void 销毁模块加载器(struct 模块加载器* cn_var_加载器) {
 
   for_body_3664:
   struct 模块缓存条目* cn_var_条目_2;
-  r17 = cn_var_加载器.缓存列表;
+  r17 = cn_var_加载器->缓存列表;
   r18 = cn_var_i_1;
   r19 = (void*)cn_rt_array_get_element(r17, r18, 8);
   cn_var_条目_2 = r19;
@@ -1204,7 +1204,7 @@ _Bool 添加搜索路径(struct 模块加载器* cn_var_加载器, const char* c
   goto if_merge_3671;
 
   if_merge_3671:
-  r5 = cn_var_加载器.搜索路径数量;
+  r5 = cn_var_加载器->搜索路径数量;
   r6 = cn_var_最大搜索路径数量;
   r7 = r5 >= r6;
   if (r7) goto if_then_3674; else goto if_merge_3675;
@@ -1244,10 +1244,10 @@ _Bool 添加搜索路径(struct 模块加载器* cn_var_加载器, const char* c
   r16 = cn_var_路径;
   r17 = 复制字符串(r15, r16);
   r18 = cn_var_路径副本_1;
-  r19 = cn_var_加载器.搜索路径列表;
-  r20 = cn_var_加载器.搜索路径数量;
+  r19 = cn_var_加载器->搜索路径列表;
+  r20 = cn_var_加载器->搜索路径数量;
     { long long _tmp_r17 = r18; cn_rt_array_set_element(r19, r20, &_tmp_r17, 8); }
-  r21 = cn_var_加载器.搜索路径数量;
+  r21 = cn_var_加载器->搜索路径数量;
   r22 = r21 + 1;
   return 1;
 }
@@ -1572,17 +1572,17 @@ void 销毁模块标识符(struct 模块标识符* cn_var_标识符) {
   goto if_merge_3714;
 
   if_merge_3714:
-  r2 = cn_var_标识符.完全限定名;
+  r2 = cn_var_标识符->完全限定名;
   r3 = r2 != 0;
   if (r3) goto if_then_3715; else goto if_merge_3716;
 
   if_then_3715:
-  r4 = cn_var_标识符.完全限定名;
+  r4 = cn_var_标识符->完全限定名;
   释放内存(r4);
   goto if_merge_3716;
 
   if_merge_3716:
-  r5 = cn_var_标识符.路径段列表;
+  r5 = cn_var_标识符->路径段列表;
   r6 = r5 != 0;
   if (r6) goto if_then_3717; else goto if_merge_3718;
 
@@ -1597,12 +1597,12 @@ void 销毁模块标识符(struct 模块标识符* cn_var_标识符) {
 
   for_cond_3719:
   r7 = cn_var_i_0;
-  r8 = cn_var_标识符.路径段数量;
+  r8 = cn_var_标识符->路径段数量;
   r9 = r7 < r8;
   if (r9) goto for_body_3720; else goto for_exit_3722;
 
   for_body_3720:
-  r10 = cn_var_标识符.路径段列表;
+  r10 = cn_var_标识符->路径段列表;
   r11 = cn_var_i_0;
   r12 = (void*)cn_rt_array_get_element(r10, r11, 8);
   r13 = r12 != 0;
@@ -1615,12 +1615,12 @@ void 销毁模块标识符(struct 模块标识符* cn_var_标识符) {
   goto for_cond_3719;
 
   for_exit_3722:
-  r19 = cn_var_标识符.路径段列表;
+  r19 = cn_var_标识符->路径段列表;
   释放内存(r19);
   goto if_merge_3718;
 
   if_then_3723:
-  r14 = cn_var_标识符.路径段列表;
+  r14 = cn_var_标识符->路径段列表;
   r15 = cn_var_i_0;
   r16 = (void*)cn_rt_array_get_element(r14, r15, 8);
   释放内存(r16);
@@ -1689,13 +1689,13 @@ _Bool 解析模块文件路径(struct 模块加载器* cn_var_加载器, struct 
 
   for_cond_3731:
   r8 = cn_var_i_0;
-  r9 = cn_var_加载器.搜索路径数量;
+  r9 = cn_var_加载器->搜索路径数量;
   r10 = r8 < r9;
   if (r10) goto for_body_3732; else goto for_exit_3734;
 
   for_body_3732:
   char* cn_var_搜索路径_1;
-  r11 = cn_var_加载器.搜索路径列表;
+  r11 = cn_var_加载器->搜索路径列表;
   r12 = cn_var_i_0;
   r13 = (void*)cn_rt_array_get_element(r11, r12, 8);
   cn_var_搜索路径_1 = r13;
@@ -1728,7 +1728,7 @@ _Bool 解析模块文件路径(struct 模块加载器* cn_var_加载器, struct 
 
   for_cond_3735:
   r21 = cn_var_j_4;
-  r22 = cn_var_标识符.路径段数量;
+  r22 = cn_var_标识符->路径段数量;
   r23 = r21 < r22;
   if (r23) goto for_body_3736; else goto for_exit_3738;
 
@@ -1740,7 +1740,7 @@ _Bool 解析模块文件路径(struct 模块加载器* cn_var_加载器, struct 
   r27 = r26 + 1;
   cn_var_路径位置_2 = r27;
   char* cn_var_段_5;
-  r28 = cn_var_标识符.路径段列表;
+  r28 = cn_var_标识符->路径段列表;
   r29 = cn_var_j_4;
   r30 = (void*)cn_rt_array_get_element(r28, r29, 8);
   cn_var_段_5 = r30;
@@ -1900,7 +1900,7 @@ struct 模块元数据* 从缓存获取模块(struct 模块加载器* cn_var_加
   r9 = r7 % r8;
   cn_var_索引_1 = r9;
   struct 模块缓存条目* cn_var_条目_2;
-  r10 = cn_var_加载器.缓存列表;
+  r10 = cn_var_加载器->缓存列表;
   r11 = cn_var_索引_1;
   r12 = (void*)cn_rt_array_get_element(r10, r11, 8);
   cn_var_条目_2 = r12;
@@ -2027,14 +2027,14 @@ _Bool 添加模块到缓存(struct 模块加载器* cn_var_加载器, const char
   r26 = cn_var_模块名;
   r27 = 复制字符串(r25, r26);
   r28 = cn_var_元数据;
-  r29 = cn_var_加载器.缓存列表;
+  r29 = cn_var_加载器->缓存列表;
   r30 = cn_var_索引_1;
   r31 = (void*)cn_rt_array_get_element(r29, r30, 8);
   r32 = cn_var_新条目_2;
-  r33 = cn_var_加载器.缓存列表;
+  r33 = cn_var_加载器->缓存列表;
   r34 = cn_var_索引_1;
     { long long _tmp_r20 = r32; cn_rt_array_set_element(r33, r34, &_tmp_r20, 8); }
-  r35 = cn_var_加载器.缓存数量;
+  r35 = cn_var_加载器->缓存数量;
   r36 = r35 + 1;
   return 1;
 }
@@ -2208,42 +2208,42 @@ void 销毁模块元数据(struct 模块元数据* cn_var_元数据) {
   goto if_merge_3789;
 
   if_merge_3789:
-  r2 = cn_var_元数据.标识符;
+  r2 = cn_var_元数据->标识符;
   r3 = r2 != 0;
   if (r3) goto if_then_3790; else goto if_merge_3791;
 
   if_then_3790:
-  r4 = cn_var_元数据.标识符;
+  r4 = cn_var_元数据->标识符;
   销毁模块标识符(r4);
   goto if_merge_3791;
 
   if_merge_3791:
-  r5 = cn_var_元数据.文件路径;
+  r5 = cn_var_元数据->文件路径;
   r6 = r5 != 0;
   if (r6) goto if_then_3792; else goto if_merge_3793;
 
   if_then_3792:
-  r7 = cn_var_元数据.文件路径;
+  r7 = cn_var_元数据->文件路径;
   释放内存(r7);
   goto if_merge_3793;
 
   if_merge_3793:
-  r8 = cn_var_元数据.导出符号表;
+  r8 = cn_var_元数据->导出符号表;
   r9 = r8 != 0;
   if (r9) goto if_then_3794; else goto if_merge_3795;
 
   if_then_3794:
-  r10 = cn_var_元数据.导出符号表;
+  r10 = cn_var_元数据->导出符号表;
   释放内存(r10);
   goto if_merge_3795;
 
   if_merge_3795:
-  r11 = cn_var_元数据.依赖列表;
+  r11 = cn_var_元数据->依赖列表;
   r12 = r11 != 0;
   if (r12) goto if_then_3796; else goto if_merge_3797;
 
   if_then_3796:
-  r13 = cn_var_元数据.依赖列表;
+  r13 = cn_var_元数据->依赖列表;
   释放内存(r13);
   goto if_merge_3797;
 
@@ -2340,13 +2340,13 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   goto if_merge_3803;
 
   if_merge_3803:
-  r11 = cn_var_加载器.当前依赖深度;
+  r11 = cn_var_加载器->当前依赖深度;
   r12 = cn_var_最大依赖深度;
   r13 = r11 >= r12;
   if (r13) goto if_then_3804; else goto if_merge_3805;
 
   if_then_3804:
-  r14 = cn_var_加载器.诊断集合;
+  r14 = cn_var_加载器->诊断集合;
   报告错误(r14, 诊断错误码_未知错误, 0, "模块依赖深度超过限制");
   return 0;
   goto if_merge_3805;
@@ -2361,7 +2361,7 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   if (r18) goto if_then_3806; else goto if_merge_3807;
 
   if_then_3806:
-  r19 = cn_var_加载器.诊断集合;
+  r19 = cn_var_加载器->诊断集合;
   报告错误(r19, 诊断错误码_未知错误, 0, "无法解析模块标识符");
   return 0;
   goto if_merge_3807;
@@ -2392,11 +2392,11 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   if (r29) goto if_then_3810; else goto if_merge_3811;
 
   if_then_3810:
-  r30 = cn_var_加载器.诊断集合;
+  r30 = cn_var_加载器->诊断集合;
   报告错误(r30, 诊断错误码_未知错误, 0, "无法找到模块文件");
   r31 = cn_var_元数据_2;
   销毁模块元数据(r31);
-  r32 = cn_var_加载器.加载失败数;
+  r32 = cn_var_加载器->加载失败数;
   r33 = r32 + 1;
   return 0;
   goto if_merge_3811;
@@ -2416,7 +2416,7 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   if_then_3812:
   r41 = cn_var_元数据_2;
   销毁模块元数据(r41);
-  r42 = cn_var_加载器.加载失败数;
+  r42 = cn_var_加载器->加载失败数;
   r43 = r42 + 1;
   return 0;
   goto if_merge_3813;
@@ -2440,11 +2440,11 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   if (r54) goto if_then_3814; else goto if_merge_3815;
 
   if_then_3814:
-  r55 = cn_var_加载器.诊断集合;
+  r55 = cn_var_加载器->诊断集合;
   报告错误(r55, 诊断错误码_未知错误, 0, "无法读取模块文件");
   r56 = cn_var_元数据_2;
   销毁模块元数据(r56);
-  r57 = cn_var_加载器.加载失败数;
+  r57 = cn_var_加载器->加载失败数;
   r58 = r57 + 1;
   return 0;
   goto if_merge_3815;
@@ -2464,7 +2464,7 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   释放内存(r64);
   r65 = cn_var_元数据_2;
   销毁模块元数据(r65);
-  r66 = cn_var_加载器.加载失败数;
+  r66 = cn_var_加载器->加载失败数;
   r67 = r66 + 1;
   return 0;
   goto if_merge_3817;
@@ -2472,7 +2472,7 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   if_merge_3817:
   struct 解析器* cn_var_解析器实例_7;
   r68 = cn_var_扫描器实例_6;
-  r69 = cn_var_加载器.诊断集合;
+  r69 = cn_var_加载器->诊断集合;
   r70 = 创建解析器(r68, r69);
   cn_var_解析器实例_7 = r70;
   r71 = cn_var_解析器实例_7;
@@ -2486,7 +2486,7 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   释放内存(r74);
   r75 = cn_var_元数据_2;
   销毁模块元数据(r75);
-  r76 = cn_var_加载器.加载失败数;
+  r76 = cn_var_加载器->加载失败数;
   r77 = r76 + 1;
   return 0;
   goto if_merge_3819;
@@ -2509,7 +2509,7 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   释放内存(r84);
   r85 = cn_var_元数据_2;
   销毁模块元数据(r85);
-  r86 = cn_var_加载器.加载失败数;
+  r86 = cn_var_加载器->加载失败数;
   r87 = r86 + 1;
   return 0;
   goto if_merge_3821;
@@ -2526,7 +2526,7 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   r93 = cn_var_模块名;
   r94 = cn_var_元数据_2;
   r95 = 添加模块到缓存(r92, r93, r94);
-  r96 = cn_var_加载器.加载成功数;
+  r96 = cn_var_加载器->加载成功数;
   r97 = r96 + 1;
   r98 = cn_var_元数据_2;
   return r98;
@@ -2551,12 +2551,12 @@ struct 模块元数据* 加载模块(struct 模块加载器* cn_var_加载器, c
 
   if_merge_3823:
   struct 模块元数据* cn_var_保存当前模块_0;
-  r5 = cn_var_加载器.当前模块;
+  r5 = cn_var_加载器->当前模块;
   cn_var_保存当前模块_0 = r5;
   long long cn_var_保存依赖深度_1;
-  r6 = cn_var_加载器.当前依赖深度;
+  r6 = cn_var_加载器->当前依赖深度;
   cn_var_保存依赖深度_1 = r6;
-  r7 = cn_var_加载器.当前依赖深度;
+  r7 = cn_var_加载器->当前依赖深度;
   r8 = r7 + 1;
   struct 模块元数据* cn_var_结果_2;
   r9 = cn_var_加载器;
@@ -2602,7 +2602,7 @@ _Bool 处理导入语句(struct 模块加载器* cn_var_加载器, struct 导入
 
   if_merge_3827:
   char* cn_var_模块名_0;
-  r8 = cn_var_导入节点.模块名;
+  r8 = cn_var_导入节点->模块名;
   cn_var_模块名_0 = r8;
   r9 = cn_var_模块名_0;
   r10 = r9 == 0;
@@ -2643,14 +2643,14 @@ _Bool 处理导入语句(struct 模块加载器* cn_var_加载器, struct 导入
   goto if_merge_3835;
 
   if_merge_3835:
-  r16 = cn_var_当前模块.依赖数量;
-  r17 = cn_var_当前模块.依赖容量;
+  r16 = cn_var_当前模块->依赖数量;
+  r17 = cn_var_当前模块->依赖容量;
   r18 = r16 >= r17;
   if (r18) goto if_then_3836; else goto if_merge_3837;
 
   if_then_3836:
   long long cn_var_新容量_2;
-  r19 = cn_var_当前模块.依赖容量;
+  r19 = cn_var_当前模块->依赖容量;
   r20 = r19 << 1;
   cn_var_新容量_2 = r20;
   r21 = cn_var_新容量_2;
@@ -2659,12 +2659,12 @@ _Bool 处理导入语句(struct 模块加载器* cn_var_加载器, struct 导入
 
   if_merge_3837:
   struct 模块依赖* cn_var_依赖_4;
-  r32 = cn_var_当前模块.依赖列表;
-  r33 = cn_var_当前模块.依赖数量;
+  r32 = cn_var_当前模块->依赖列表;
+  r33 = cn_var_当前模块->依赖数量;
   r34 = (void*)cn_rt_array_get_element(r32, r33, 8);
   cn_var_依赖_4 = r35;
   r36 = cn_var_依赖模块_1->标识符;
-  r37 = cn_var_当前模块.依赖数量;
+  r37 = cn_var_当前模块->依赖数量;
   r38 = r37 + 1;
   return 1;
 
@@ -2674,7 +2674,7 @@ _Bool 处理导入语句(struct 模块加载器* cn_var_加载器, struct 导入
 
   if_merge_3839:
   struct 模块依赖* cn_var_新数组_3;
-  r23 = cn_var_当前模块.依赖列表;
+  r23 = cn_var_当前模块->依赖列表;
   r24 = cn_var_新容量_2;
   r25 = 模块依赖大小();
   r26 = r24 * r25;
@@ -2715,7 +2715,7 @@ _Bool 处理所有导入语句(struct 模块加载器* cn_var_加载器, struct 
 
   if_merge_3843:
   struct 程序节点* cn_var_程序_0;
-  r8 = cn_var_当前模块.程序节点;
+  r8 = cn_var_当前模块->程序节点;
   cn_var_程序_0 = r8;
   struct 声明节点列表* cn_var_声明列表_1;
   r9 = cn_var_程序_0->声明列表;
@@ -2723,7 +2723,7 @@ _Bool 处理所有导入语句(struct 模块加载器* cn_var_加载器, struct 
   goto while_cond_3848;
 
   logic_rhs_3844:
-  r6 = cn_var_当前模块.程序节点;
+  r6 = cn_var_当前模块->程序节点;
   r7 = r6 == 0;
   goto logic_merge_3845;
 
@@ -2810,7 +2810,7 @@ _Bool 收集导出符号(struct 模块元数据* cn_var_元数据) {
 
   if_merge_3858:
   struct 程序节点* cn_var_程序_0;
-  r5 = cn_var_元数据.程序节点;
+  r5 = cn_var_元数据->程序节点;
   cn_var_程序_0 = r5;
   long long cn_var_符号数量_1;
   cn_var_符号数量_1 = 0;
@@ -2820,7 +2820,7 @@ _Bool 收集导出符号(struct 模块元数据* cn_var_元数据) {
   goto while_cond_3861;
 
   logic_rhs_3859:
-  r3 = cn_var_元数据.程序节点;
+  r3 = cn_var_元数据->程序节点;
   r4 = r3 == 0;
   goto logic_merge_3860;
 
@@ -2871,7 +2871,7 @@ _Bool 收集导出符号(struct 模块元数据* cn_var_元数据) {
   r19 = cn_var_符号数量_1;
   r20 = 导出符号大小();
   r21 = 分配清零内存(r19, r20);
-  r22 = cn_var_元数据.导出符号表;
+  r22 = cn_var_元数据->导出符号表;
   r23 = r22 == 0;
   if (r23) goto if_then_3870; else goto if_merge_3871;
 
@@ -2905,7 +2905,7 @@ _Bool 收集导出符号(struct 模块元数据* cn_var_元数据) {
 
   if_then_3875:
   struct 导出符号* cn_var_符号_6;
-  r33 = cn_var_元数据.导出符号表;
+  r33 = cn_var_元数据->导出符号表;
   r34 = cn_var_当前索引_4;
   r35 = (void*)cn_rt_array_get_element(r33, r34, 8);
   cn_var_符号_6 = r36;
