@@ -14,6 +14,31 @@ endif()
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# ============================================================
+# 自举构建选项
+# ============================================================
+# 自举构建流程：
+#   第一阶段：使用C编译器构建引导编译器 cnc.exe
+#   第二阶段：使用引导编译器构建自托管编译器 cn.exe
+#   第三阶段（验证）：用自托管编译器编译自己，比较哈希值
+#
+# 使用方法：
+#   cmake -B build -DBUILD_BOOTSTRAP=ON
+#   cmake --build build --config Release
+#   # 或使用构建脚本：
+#   ./tools/build_bootstrap.sh all    (Linux/macOS)
+#   .\tools\build_bootstrap.ps1 all   (Windows)
+# ============================================================
+
+option(BUILD_BOOTSTRAP "构建引导编译器(第一阶段)" ON)
+option(BUILD_SELF_HOSTED "构建自托管编译器(第二阶段)" OFF)
+option(BOOTSTRAP_VERIFY "执行自举验证" OFF)
+
+# 设置输出目录
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+
 # 配置version.h头文件
 configure_file(
     "${CMAKE_SOURCE_DIR}/include/cnlang/support/version.h.in"
