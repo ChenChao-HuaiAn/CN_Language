@@ -160,6 +160,9 @@ typedef struct CnIrFunction {
     // 函数原型声明相关
     int is_prototype;          // 是否为函数原型声明（无函数体）
     
+    // 可见性相关
+    int is_public;             // 是否为公开函数（用于模块头文件生成）
+    
     struct CnIrFunction *next;
 } CnIrFunction;
 

@@ -243,8 +243,8 @@ int cn_cgen_module_header(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *u
                 continue;
             }
             
-            // 跳过私有函数（以下划线开头约定）
-            if (func->name[0] == '_') {
+            // 跳过私有函数（使用语义分析的 is_public 字段）
+            if (!func->is_public) {
                 func = func->next;
                 continue;
             }

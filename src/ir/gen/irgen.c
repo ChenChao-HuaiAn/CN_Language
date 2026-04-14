@@ -2094,6 +2094,9 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
         ir_func->is_interrupt_handler = 1;
         ir_func->interrupt_vector = func->interrupt_vector;
     }
+    
+    // 设置函数可见性（用于模块头文件生成）
+    ir_func->is_public = (func->visibility == CN_VISIBILITY_PUBLIC) ? 1 : 0;
 
     // 添加参数
     for (size_t i = 0; i < func->parameter_count; i++) {
