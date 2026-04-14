@@ -27,16 +27,14 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r1;
-  _Bool r2;
-  struct 物体 r0;
+  long long r0;
+  _Bool r1;
 
   entry:
   struct 物体 cn_var_球_0;
-  r0 = cn_var_球_0;
-  r1 = r0.颜色值;
-  r2 = r1 == 颜色_红;
-  if (r2) goto if_then_0; else goto if_merge_1;
+  r0 = cn_var_球_0.颜色值;
+  r1 = r0 == 颜色_红;
+  if (r1) goto if_then_0; else goto if_merge_1;
 
   if_then_0:
   return 1;

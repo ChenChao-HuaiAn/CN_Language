@@ -232,6 +232,10 @@ static CnAstFunctionDecl *cn_function_decl_clone(CnAstFunctionDecl *orig) {
     clone->visibility = orig->visibility;
     clone->is_interrupt_handler = orig->is_interrupt_handler;
     clone->interrupt_vector = orig->interrupt_vector;
+    clone->is_prototype = orig->is_prototype;
+    clone->is_override = orig->is_override;
+    clone->is_static = orig->is_static;
+    clone->owning_scope = NULL;  // 实例化函数的作用域需要重新构建
     
     // 复制参数列表
     if (orig->parameter_count > 0 && orig->parameters) {

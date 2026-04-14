@@ -24,18 +24,16 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r2;
-  _Bool r3;
-  struct 声明节点 r0;
-  struct 基础信息 r1;
+  long long r1;
+  _Bool r2;
+  struct 基础信息 r0;
 
   entry:
   struct 声明节点 cn_var_声明_0;
-  r0 = cn_var_声明_0;
-  r1 = r0.基础;
-  r2 = r1.类型;
-  r3 = r2 == 1;
-  if (r3) goto case_body_1; else goto case_default_2;
+  r0 = cn_var_声明_0.基础;
+  r1 = r0.类型;
+  r2 = r1 == 1;
+  if (r2) goto case_body_1; else goto case_default_2;
 
   case_body_1:
   return 1;

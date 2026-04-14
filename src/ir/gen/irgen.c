@@ -1101,7 +1101,14 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                                                                                 NULL, 0); // owner_func_name, owner_func_name_length
                                                                             
                                                                             // 生成基类指针：&obj.基类名_base
-                                                                            // 步骤1：生成成员访问指令获取基类成员
+                                                                            // 步骤1：先加载对象到寄存器（确保使用正确的唯一变量名）
+                                                                            int obj_reg = alloc_reg(ctx);
+                                                                            CnIrOperand obj_reg_op = cn_ir_op_reg(obj_reg, object_expr->type);
+                                                                            emit(ctx, cn_ir_inst_new(CN_IR_INST_LOAD, obj_reg_op,
+                                                                                                     cn_ir_op_symbol(obj_name, object_expr->type),
+                                                                                                     cn_ir_op_none()));
+                                                                            
+                                                                            // 步骤2：生成成员访问指令获取基类成员
                                                                             int member_reg = alloc_reg(ctx);
                                                                             CnIrOperand member_operand = cn_ir_op_reg(member_reg, base_class_type);
                                                                             
@@ -1111,7 +1118,7 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                                                                             
                                                                             CnIrInst *member_inst = cn_ir_inst_new(
                                                                                 CN_IR_INST_MEMBER_ACCESS, member_operand,
-                                                                                cn_ir_op_symbol(obj_name, object_expr->type),
+                                                                                obj_reg_op,  // 使用寄存器操作数而不是符号操作数
                                                                                 cn_ir_op_symbol(base_member_name, object_expr->type));
                                                                             emit(ctx, member_inst);
                                                                             
@@ -1500,11 +1507,36 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             if (!expr->as.member.object) {
                 return cn_ir_op_none();
             }
-            CnIrOperand object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
             
-            // 判断对象是否为指针类型
-            bool object_is_pointer = (expr->as.member.object->type &&
-                                      expr->as.member.object->type->kind == CN_TYPE_POINTER);
+            // 【修复】如果对象是标识符，直接使用符号操作数，避免生成LOAD指令
+            // 这样可以确保变量名在声明和引用时一致
+            CnIrOperand object_op;
+            bool object_is_pointer = false;
+            
+            if (expr->as.member.object->kind == CN_AST_EXPR_IDENTIFIER) {
+                // 对象是标识符：直接使用符号操作数
+                char *obj_name = copy_name(expr->as.member.object->as.identifier.name,
+                                          expr->as.member.object->as.identifier.name_length);
+                // 查找局部变量的唯一名称
+                char *unique_name = lookup_local_var_unique_name(ctx, obj_name);
+                if (unique_name) {
+                    free(obj_name);
+                    obj_name = unique_name;
+                }
+                
+                // 判断对象是否为指针类型
+                object_is_pointer = (expr->as.member.object->type &&
+                                     expr->as.member.object->type->kind == CN_TYPE_POINTER);
+                
+                // 创建符号操作数
+                object_op = cn_ir_op_symbol(obj_name, expr->as.member.object->type);
+                free(obj_name);
+            } else {
+                // 其他情况：正常生成IR
+                object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
+                object_is_pointer = (expr->as.member.object->type &&
+                                     expr->as.member.object->type->kind == CN_TYPE_POINTER);
+            }
             
             // 重要：将对象的类型信息设置到object_op中，以便代码生成器判断是否使用"->"
             if (expr->as.member.object->type) {

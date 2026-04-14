@@ -22,15 +22,12 @@ struct 扫描器 {
 long long 主();
 
 long long 主() {
-  long long r1, r5, r6, r9, r10, r13;
+  long long r1, r4, r5, r7, r8, r10;
   void* r0;
-  struct 扫描器* r3;
-  struct 扫描器* r7;
-  struct 扫描器* r11;
   _Bool r2;
-  struct 扫描器 r4;
-  struct 扫描器 r8;
-  struct 扫描器 r12;
+  struct 扫描器 r3;
+  struct 扫描器 r6;
+  struct 扫描器 r9;
 
   entry:
   struct 扫描器* cn_var_实例_0;
@@ -43,23 +40,20 @@ long long 主() {
   if (r2) goto if_then_0; else goto if_else_1;
 
   if_then_0:
-  r3 = cn_var_实例_0;
-  r4 = *r3;
-  r5 = r4.行号;
-  r6 = r5 + 1;
+  r3 = *cn_var_实例_0;
+  r4 = r3.行号;
+  r5 = r4 + 1;
   goto if_merge_2;
 
   if_else_1:
-  r7 = cn_var_实例_0;
-  r8 = *r7;
-  r9 = r8.列号;
-  r10 = r9 + 1;
+  r6 = *cn_var_实例_0;
+  r7 = r6.列号;
+  r8 = r7 + 1;
   goto if_merge_2;
 
   if_merge_2:
-  r11 = cn_var_实例_0;
-  r12 = *r11;
-  r13 = r12.列号;
-  return r13;
+  r9 = *cn_var_实例_0;
+  r10 = r9.列号;
+  return r10;
 }
 

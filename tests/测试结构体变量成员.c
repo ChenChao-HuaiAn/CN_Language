@@ -21,8 +21,7 @@ struct 词元 {
 long long 主();
 
 long long 主() {
-  long long r0, r1, r2, r3, r5;
-  struct 词元 r4;
+  long long r0, r1, r2, r3, r4;
 
   entry:
   struct 词元 cn_var_结果_0;
@@ -34,8 +33,7 @@ long long 主() {
   r1 = cn_var_位置_2;
   r2 = cn_var_起始列号_1;
   r3 = r1 - r2;
-  r4 = cn_var_结果_0;
-  r5 = r4.长度;
-  return r5;
+  r4 = cn_var_结果_0.长度;
+  return r4;
 }
 

@@ -20,23 +20,19 @@ long long 测试指针成员访问(struct 数据*);
 long long main();
 
 long long 测试指针成员访问(struct 数据* cn_var_指针) {
-  long long r1, r3, r4, r5, r6;
-  struct 数据* r0;
-  struct 数据* r2;
+  long long r0, r1, r2, r3, r4;
 
   entry:
   long long cn_var_值1_0;
-  r0 = cn_var_指针;
-  r1 = r0->值;
-  cn_var_值1_0 = r1;
+  r0 = cn_var_指针->值;
+  cn_var_值1_0 = r0;
   long long cn_var_值2_1;
-  r2 = cn_var_指针;
-  r3 = r2->编号;
-  cn_var_值2_1 = r3;
-  r4 = cn_var_值1_0;
-  r5 = cn_var_值2_1;
-  r6 = r4 + r5;
-  return r6;
+  r1 = cn_var_指针->编号;
+  cn_var_值2_1 = r1;
+  r2 = cn_var_值1_0;
+  r3 = cn_var_值2_1;
+  r4 = r2 + r3;
+  return r4;
 }
 
 long long main() {

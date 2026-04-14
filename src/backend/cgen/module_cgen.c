@@ -168,14 +168,22 @@ static const char *get_c_type_str_internal(CnType *type, bool is_param) {
         }
         case CN_TYPE_STRUCT: {
             static _Thread_local char buffer[256];
-            snprintf(buffer, sizeof(buffer), "struct %.*s", 
+            // 【修复】检查结构体名称是否有效
+            if (!type->as.struct_type.name || type->as.struct_type.name_length == 0) {
+                return "struct _anonymous";
+            }
+            snprintf(buffer, sizeof(buffer), "struct %.*s",
                      (int)type->as.struct_type.name_length,
                      type->as.struct_type.name);
             return buffer;
         }
         case CN_TYPE_ENUM: {
             static _Thread_local char buffer[256];
-            snprintf(buffer, sizeof(buffer), "enum %.*s", 
+            // 【修复】检查枚举名称是否有效
+            if (!type->as.enum_type.name || type->as.enum_type.name_length == 0) {
+                return "enum _anonymous";
+            }
+            snprintf(buffer, sizeof(buffer), "enum %.*s",
                      (int)type->as.enum_type.name_length,
                      type->as.enum_type.name);
             return buffer;
@@ -249,7 +257,8 @@ int cn_cgen_module_header(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *u
             fprintf(f, "%s %s(", ret_type, func->name);
             
             // 参数列表（使用 get_c_param_type_str 为字符串类型添加 const 修饰符）
-            if (func->param_count == 0) {
+            // 【修复】检查 params 是否为 NULL
+            if (func->param_count == 0 || !func->params) {
                 fprintf(f, "void");
             } else {
                 for (size_t p = 0; p < func->param_count; p++) {
@@ -280,11 +289,14 @@ int cn_cgen_module_header(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *u
 
 int cn_cgen_module_impl(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *unit) {
     if (!ctx || !unit || !unit->impl_path || !unit->ir_module) {
+        fprintf(stderr, "[DEBUG CGEN] cn_cgen_module_impl: invalid parameters\n");
         return -1;
     }
     
+    fprintf(stderr, "[DEBUG CGEN] cn_cgen_module_impl: opening file %s\n", unit->impl_path);
     FILE *f = fopen(unit->impl_path, "w");
     if (!f) {
+        fprintf(stderr, "[DEBUG CGEN] cn_cgen_module_impl: failed to open file %s\n", unit->impl_path);
         return -1;
     }
     
@@ -341,7 +353,9 @@ int cn_cgen_module_impl(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *uni
         func = func->next;
     }
     
+    fprintf(stderr, "[DEBUG CGEN] cn_cgen_module_impl: closing file for module\n");
     fclose(f);
+    fprintf(stderr, "[DEBUG CGEN] cn_cgen_module_impl: completed successfully\n");
     return 0;
 }
 
@@ -546,59 +560,81 @@ int cn_multi_compile_execute(CnMultiFileCompileContext *ctx) {
             continue;
         }
         
+        // 【调试】输出模块处理信息
+        fprintf(stderr, "[DEBUG CGEN] Processing module %zu (header)...\n", i);
+        
         // 生成头文件
         if (cn_cgen_module_header(ctx, &ctx->units[i]) != 0) {
             result = -1;
             continue;
         }
         
+        // 【调试】输出模块处理信息
+        fprintf(stderr, "[DEBUG CGEN] Processing module %zu (impl)...\n", i);
+        
         // 生成实现文件
         if (cn_cgen_module_impl(ctx, &ctx->units[i]) != 0) {
             result = -1;
             continue;
         }
+        
+        // 【调试】输出模块完成信息
+        fprintf(stderr, "[DEBUG CGEN] Module %zu completed.\n", i);
     }
+    
+    fprintf(stderr, "[DEBUG CGEN] All modules processed, generating main entry...\n");
     
     // 4. 生成主入口文件（如果有入口模块）
     for (size_t i = 0; i < ctx->unit_count; i++) {
+        fprintf(stderr, "[DEBUG CGEN] Checking unit %zu for entry (is_entry=%d)\n", i, ctx->units[i].is_entry);
         if (ctx->units[i].is_entry) {
+            fprintf(stderr, "[DEBUG CGEN] Found entry module at index %zu\n", i);
             char main_path[512];
             snprintf(main_path, sizeof(main_path), "%s/__cn_main__.c", ctx->output_dir);
             
+            fprintf(stderr, "[DEBUG CGEN] Opening main file: %s\n", main_path);
             FILE *main_file = fopen(main_path, "w");
             if (main_file) {
+                fprintf(stderr, "[DEBUG CGEN] Writing main file header\n");
                 fprintf(main_file, "/* CN 语言程序入口 - 自动生成 */\n\n");
                 
                 // 包含所有模块头文件
+                fprintf(stderr, "[DEBUG CGEN] Including %zu module headers\n", ctx->unit_count);
                 for (size_t j = 0; j < ctx->unit_count; j++) {
                     char mod_name[256];
-                    cn_sanitize_module_name(ctx->units[j].module_id, 
+                    cn_sanitize_module_name(ctx->units[j].module_id,
                                              mod_name, sizeof(mod_name));
                     fprintf(main_file, "#include \"%s.h\"\n", mod_name);
                 }
                 fprintf(main_file, "\n");
                 
                 // 生成初始化序列
+                fprintf(stderr, "[DEBUG CGEN] Generating init call sequence\n");
                 cn_cgen_init_call_sequence(ctx, main_file);
                 
                 // 生成 main 函数
+                fprintf(stderr, "[DEBUG CGEN] Generating main function\n");
                 fprintf(main_file, "int main(int argc, char **argv) {\n");
                 fprintf(main_file, "    cn_rt_cli_init(argc, argv);\n");  // 初始化命令行参数
                 fprintf(main_file, "    __cn_init_all_modules__();\n");
                 
                 // 调用入口模块的 main 函数
                 char entry_name[256];
-                cn_sanitize_module_name(ctx->units[i].module_id, 
+                cn_sanitize_module_name(ctx->units[i].module_id,
                                          entry_name, sizeof(entry_name));
                 fprintf(main_file, "    return %s__main();\n", entry_name);
                 fprintf(main_file, "}\n");
                 
+                fprintf(stderr, "[DEBUG CGEN] Closing main file\n");
                 fclose(main_file);
+            } else {
+                fprintf(stderr, "[DEBUG CGEN] Failed to open main file: %s\n", main_path);
             }
             break;  // 只处理第一个入口模块
         }
     }
     
+    fprintf(stderr, "[DEBUG CGEN] cn_cgen_all_modules completed with result=%d\n", result);
     return result;
 }
 

@@ -24,19 +24,15 @@ struct 外层结构体 {
 long long 测试指针字段();
 
 long long 测试指针字段() {
-  long long r3;
-  struct 内层结构体* r1;
-  struct 内层结构体* r2;
-  struct 外层结构体 r0;
+  long long r1;
+  struct 内层结构体* r0;
 
   entry:
   struct 外层结构体 cn_var_外层_0;
   struct 内层结构体* cn_var_指针_1;
-  r0 = cn_var_外层_0;
-  r1 = r0.指针字段;
-  cn_var_指针_1 = r1;
-  r2 = cn_var_指针_1;
-  r3 = r2->值;
-  return r3;
+  r0 = cn_var_外层_0.指针字段;
+  cn_var_指针_1 = r0;
+  r1 = cn_var_指针_1->值;
+  return r1;
 }
 

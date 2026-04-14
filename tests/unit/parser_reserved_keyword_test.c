@@ -8,9 +8,10 @@
 // 测试预留关键字在语法层触发错误
 static int test_reserved_keyword_error(void)
 {
-    // 测试使用预留关键字 '模板' 应该触发语法错误
+    // 测试使用预留关键字 '命名空间' 应该触发语法错误
     // 注意：'类'、'保护'、'虚拟'、'抽象' 已在阶段11实现，不再是预留关键字
-    const char *source = "模板 测试模板 { }";
+    // 注意：'模板' 关键字已在阶段13/17实现，用于泛型编程和接口模板参数
+    const char *source = "命名空间 测试命名空间 { }";
     size_t length = strlen(source);
     
     CnLexer lexer;

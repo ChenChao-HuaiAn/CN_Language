@@ -46,39 +46,36 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  char* r11;
+  char* r8;
+  enum 词元类型枚举* r12;
+  enum 词元类型枚举* r14;
+  enum 词元类型枚举* r16;
+  enum 词元类型枚举* r18;
+  enum 词元类型枚举* r22;
+  enum 词元类型枚举* r26;
+  enum 词元类型枚举* r13;
   enum 词元类型枚举* r15;
   enum 词元类型枚举* r17;
   enum 词元类型枚举* r19;
-  enum 词元类型枚举* r21;
-  enum 词元类型枚举* r25;
-  enum 词元类型枚举* r29;
-  enum 词元类型枚举* r16;
-  enum 词元类型枚举* r18;
   enum 词元类型枚举* r20;
-  enum 词元类型枚举* r22;
   enum 词元类型枚举* r23;
-  enum 词元类型枚举* r26;
+  enum 词元类型枚举* r24;
   enum 词元类型枚举* r27;
-  enum 词元类型枚举* r30;
-  enum 词元类型枚举* r31;
+  enum 词元类型枚举* r28;
   _Bool r1;
-  _Bool r4;
-  _Bool r8;
-  _Bool r13;
-  _Bool r14;
-  _Bool r24;
-  _Bool r28;
-  _Bool r32;
-  struct 词元 r2;
-  struct 词元 r5;
-  struct 词元 r6;
-  struct 词元 r9;
+  _Bool r3;
+  _Bool r6;
+  _Bool r10;
+  _Bool r11;
+  _Bool r21;
+  _Bool r25;
+  _Bool r29;
+  struct 词元 r4;
   enum 词元类型枚举 r0;
-  enum 词元类型枚举 r3;
+  enum 词元类型枚举 r2;
+  enum 词元类型枚举 r5;
   enum 词元类型枚举 r7;
-  enum 词元类型枚举 r10;
-  enum 二元运算符 r12;
+  enum 二元运算符 r9;
 
   entry:
   enum 词元类型枚举 cn_var_类型_0;
@@ -96,10 +93,9 @@ long long main() {
 
   if_merge_2:
   struct 词元 cn_var_词元实例_1;
-  r2 = cn_var_词元实例_1;
-  r3 = r2.类型;
-  r4 = r3 == 词元类型枚举_关键字;
-  if (r4) goto if_then_3; else goto if_else_4;
+  r2 = cn_var_词元实例_1.类型;
+  r3 = r2 == 词元类型枚举_关键字;
+  if (r3) goto if_then_3; else goto if_else_4;
 
   if_then_3:
   goto if_merge_5;
@@ -110,12 +106,11 @@ long long main() {
 
   if_merge_5:
   struct 词元 cn_var_另一个词元_2;
-  r5 = 创建词元(词元类型枚举_整数字面量, "123", 2, 5);
-  cn_var_另一个词元_2 = r5;
-  r6 = cn_var_另一个词元_2;
-  r7 = r6.类型;
-  r8 = r7 != 词元类型枚举_整数字面量;
-  if (r8) goto if_then_6; else goto if_merge_7;
+  r4 = 创建词元(词元类型枚举_整数字面量, "123", 2, 5);
+  cn_var_另一个词元_2 = r4;
+  r5 = cn_var_另一个词元_2.类型;
+  r6 = r5 != 词元类型枚举_整数字面量;
+  if (r6) goto if_then_6; else goto if_merge_7;
 
   if_then_6:
   return 3;
@@ -123,19 +118,18 @@ long long main() {
 
   if_merge_7:
   char* cn_var_类型名称_3;
-  r9 = cn_var_另一个词元_2;
-  r10 = r9.类型;
-  r11 = 获取类型名称(r10);
-  cn_var_类型名称_3 = r11;
+  r7 = cn_var_另一个词元_2.类型;
+  r8 = 获取类型名称(r7);
+  cn_var_类型名称_3 = r8;
   enum 二元运算符 cn_var_运算符_4;
   cn_var_运算符_4 = 二元运算符_加法;
-  r12 = cn_var_运算符_4;
-  r13 = r12 == 二元运算符_加法;
-  if (r13) goto case_body_9; else goto switch_check_12;
+  r9 = cn_var_运算符_4;
+  r10 = r9 == 二元运算符_加法;
+  if (r10) goto case_body_9; else goto switch_check_12;
 
   switch_check_12:
-  r14 = r12 == 二元运算符_减法;
-  if (r14) goto case_body_10; else goto case_default_11;
+  r11 = r9 == 二元运算符_减法;
+  if (r11) goto case_body_10; else goto case_default_11;
 
   case_body_9:
   goto switch_merge_8;
@@ -152,42 +146,42 @@ long long main() {
   switch_merge_8:
   enum 词元类型枚举* cn_var_类型数组;
   cn_var_类型数组 = cn_rt_array_alloc(8, 3);
-  r15 = cn_var_类型数组;
-  r16 = &r15[0];
-  r16 = 词元类型枚举_标识符;
-  r17 = cn_var_类型数组;
-  r18 = &r17[1];
-  r18 = 词元类型枚举_整数字面量;
-  r19 = cn_var_类型数组;
-  r20 = &r19[2];
-  r20 = 词元类型枚举_字符串字面量;
-  r21 = cn_var_类型数组;
-  r22 = &r21[0];
-  r23 = r22;
-  r24 = r23 != 词元类型枚举_标识符;
-  if (r24) goto if_then_13; else goto if_merge_14;
+  r12 = cn_var_类型数组;
+  r13 = &r12[0];
+  r13 = 词元类型枚举_标识符;
+  r14 = cn_var_类型数组;
+  r15 = &r14[1];
+  r15 = 词元类型枚举_整数字面量;
+  r16 = cn_var_类型数组;
+  r17 = &r16[2];
+  r17 = 词元类型枚举_字符串字面量;
+  r18 = cn_var_类型数组;
+  r19 = &r18[0];
+  r20 = r19;
+  r21 = r20 != 词元类型枚举_标识符;
+  if (r21) goto if_then_13; else goto if_merge_14;
 
   if_then_13:
   return 6;
   goto if_merge_14;
 
   if_merge_14:
-  r25 = cn_var_类型数组;
-  r26 = &r25[1];
-  r27 = r26;
-  r28 = r27 != 词元类型枚举_整数字面量;
-  if (r28) goto if_then_15; else goto if_merge_16;
+  r22 = cn_var_类型数组;
+  r23 = &r22[1];
+  r24 = r23;
+  r25 = r24 != 词元类型枚举_整数字面量;
+  if (r25) goto if_then_15; else goto if_merge_16;
 
   if_then_15:
   return 7;
   goto if_merge_16;
 
   if_merge_16:
-  r29 = cn_var_类型数组;
-  r30 = &r29[2];
-  r31 = r30;
-  r32 = r31 != 词元类型枚举_字符串字面量;
-  if (r32) goto if_then_17; else goto if_merge_18;
+  r26 = cn_var_类型数组;
+  r27 = &r26[2];
+  r28 = r27;
+  r29 = r28 != 词元类型枚举_字符串字面量;
+  if (r29) goto if_then_17; else goto if_merge_18;
 
   if_then_17:
   return 8;

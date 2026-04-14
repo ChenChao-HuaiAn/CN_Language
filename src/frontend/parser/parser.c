@@ -581,6 +581,10 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
     fn->visibility = parser->current_visibility;  // 使用当前块的可见性
     fn->is_interrupt_handler = 0;  // 普通函数
     fn->interrupt_vector = 0;
+    fn->is_prototype = 0;           // 默认非原型声明
+    fn->is_override = 0;            // 默认非重写函数
+    fn->is_static = 0;              // 默认非静态方法
+    fn->owning_scope = NULL;        // 函数作用域（由 scope_builder 创建）
 
     parser_advance(parser);
 
@@ -3728,6 +3732,7 @@ static CnAstBlockStmt *make_block(void)
 
     block->stmt_count = 0;
     block->stmts = NULL;
+    block->owning_scope = NULL;  // 块作用域（由 scope_builder 创建）
     return block;
 }
 

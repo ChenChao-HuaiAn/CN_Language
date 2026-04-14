@@ -30,16 +30,14 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r1;
-  _Bool r2;
-  struct 托肯 r0;
+  long long r0;
+  _Bool r1;
 
   entry:
   struct 托肯 cn_var_测试托肯_0;
-  r0 = cn_var_测试托肯_0;
-  r1 = r0.类型字段;
-  r2 = r1 == 托肯类型_托肯如果;
-  if (r2) goto if_then_0; else goto if_merge_1;
+  r0 = cn_var_测试托肯_0.类型字段;
+  r1 = r0 == 托肯类型_托肯如果;
+  if (r1) goto if_then_0; else goto if_merge_1;
 
   if_then_0:
   cn_rt_print_string("匹配成功");

@@ -19,37 +19,33 @@ struct 测试 {
 long long 主();
 
 long long 主() {
-  long long r3, r10;
+  long long r2, r8;
   void* r0;
-  struct 测试* r1;
-  struct 测试* r4;
+  char* r4;
+  char* r5;
   char* r6;
-  char* r7;
-  char* r8;
-  char r9;
-  struct 测试 r2;
-  struct 测试 r5;
+  char r7;
+  struct 测试 r1;
+  struct 测试 r3;
 
   entry:
   struct 测试* cn_var_t_0;
   r0 = 分配内存(16);
   cn_var_t_0 = r0;
   long long cn_var_v_1;
-  r1 = cn_var_t_0;
-  r2 = *r1;
-  r3 = r2.值;
-  cn_var_v_1 = r3;
+  r1 = *cn_var_t_0;
+  r2 = r1.值;
+  cn_var_v_1 = r2;
   char* cn_var_p_2;
-  r4 = cn_var_t_0;
-  r5 = *r4;
-  r6 = r5.数据;
-  cn_var_p_2 = r6;
+  r3 = *cn_var_t_0;
+  r4 = r3.数据;
+  cn_var_p_2 = r4;
   long long cn_var_c_3;
-  r7 = cn_var_p_2;
-  r8 = &r7[0];
-  r9 = *r8;
-  cn_var_c_3 = r9;
-  r10 = cn_var_c_3;
-  return r10;
+  r5 = cn_var_p_2;
+  r6 = &r5[0];
+  r7 = *r6;
+  cn_var_c_3 = r7;
+  r8 = cn_var_c_3;
+  return r8;
 }
 

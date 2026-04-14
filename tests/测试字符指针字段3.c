@@ -18,26 +18,24 @@ struct 测试 {
 long long 主();
 
 long long 主() {
-  long long r6;
+  long long r5;
   void* r0;
-  struct 测试* r1;
+  char* r2;
   char* r3;
-  char* r4;
-  char r5;
-  struct 测试 r2;
+  char r4;
+  struct 测试 r1;
 
   entry:
   struct 测试* cn_var_t_0;
   r0 = 分配内存(8);
   cn_var_t_0 = r0;
   long long cn_var_c_1;
-  r1 = cn_var_t_0;
-  r2 = *r1;
-  r3 = r2.数据;
-  r4 = &r3[0];
-  r5 = *r4;
-  cn_var_c_1 = r5;
-  r6 = cn_var_c_1;
-  return r6;
+  r1 = *cn_var_t_0;
+  r2 = r1.数据;
+  r3 = &r2[0];
+  r4 = *r3;
+  cn_var_c_1 = r4;
+  r5 = cn_var_c_1;
+  return r5;
 }
 

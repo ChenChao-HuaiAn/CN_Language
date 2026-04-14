@@ -328,13 +328,13 @@ struct 表达式节点* 创建表达式节点(enum 节点类型 cn_var_类型) {
   cn_var_节点_0 = r1;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_823; else goto if_merge_824;
+  if (r3) goto if_then_758; else goto if_merge_759;
 
-  if_then_823:
+  if_then_758:
   return 0;
-  goto if_merge_824;
+  goto if_merge_759;
 
-  if_merge_824:
+  if_merge_759:
   r4 = cn_var_类型;
   r5 = cn_var_节点_0;
   return r5;
@@ -460,12 +460,12 @@ struct 表达式节点* 创建空值表达式() {
   cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 != 0;
-  if (r2) goto if_then_825; else goto if_merge_826;
+  if (r2) goto if_then_760; else goto if_merge_761;
 
-  if_then_825:
-  goto if_merge_826;
+  if_then_760:
+  goto if_merge_761;
 
-  if_merge_826:
+  if_merge_761:
   r3 = cn_var_节点_0;
   return r3;
 }
@@ -482,12 +482,12 @@ struct 表达式节点* 创建自身表达式() {
   cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 != 0;
-  if (r2) goto if_then_827; else goto if_merge_828;
+  if (r2) goto if_then_762; else goto if_merge_763;
 
-  if_then_827:
-  goto if_merge_828;
+  if_then_762:
+  goto if_merge_763;
 
-  if_merge_828:
+  if_merge_763:
   r3 = cn_var_节点_0;
   return r3;
 }
@@ -505,13 +505,13 @@ struct 表达式节点* 创建基类访问表达式(const char* cn_var_成员名
   cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 != 0;
-  if (r2) goto if_then_829; else goto if_merge_830;
+  if (r2) goto if_then_764; else goto if_merge_765;
 
-  if_then_829:
+  if_then_764:
   r3 = cn_var_成员名;
-  goto if_merge_830;
+  goto if_merge_765;
 
-  if_merge_830:
+  if_merge_765:
   r4 = cn_var_节点_0;
   return r4;
 }
@@ -529,342 +529,255 @@ struct 表达式列表* 创建表达式列表() {
   cn_var_列表_0 = r1;
   r2 = cn_var_列表_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_831; else goto if_merge_832;
+  if (r3) goto if_then_766; else goto if_merge_767;
 
-  if_then_831:
+  if_then_766:
   return 0;
-  goto if_merge_832;
+  goto if_merge_767;
 
-  if_merge_832:
+  if_merge_767:
   r4 = cn_var_列表_0;
   return r4;
 }
 
 void 表达式列表添加(struct 表达式列表* cn_var_列表, struct 表达式节点* cn_var_节点) {
-  long long r0, r2, r4, r7, r12, r17;
+  long long r0, r2, r4, r5, r6, r9, r10, r11, r14;
   struct 表达式列表* r1;
   struct 表达式节点* r3;
-  struct 表达式列表* r5;
-  struct 表达式节点* r6;
-  struct 表达式节点* r8;
-  struct 表达式列表* r9;
-  struct 表达式列表* r10;
-  struct 表达式列表* r11;
+  struct 表达式节点* r7;
+  struct 表达式列表* r8;
+  struct 表达式列表* r12;
   struct 表达式列表* r13;
-  struct 表达式列表* r14;
-  struct 表达式列表* r15;
+  struct 表达式节点* r15;
   struct 表达式列表* r16;
-  struct 表达式节点* r18;
-  struct 表达式列表* r19;
 
   entry:
   r1 = cn_var_列表;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_836; else goto logic_rhs_835;
+  if (r2) goto logic_merge_771; else goto logic_rhs_770;
 
-  if_then_833:
+  if_then_768:
   return;
-  goto if_merge_834;
+  goto if_merge_769;
 
-  if_merge_834:
-  r5 = cn_var_列表;
-  r6 = r5->节点;
-  r7 = r6 == 0;
-  if (r7) goto if_then_837; else goto if_merge_838;
+  if_merge_769:
+  r5 = cn_var_列表.节点;
+  r6 = r5 == 0;
+  if (r6) goto if_then_772; else goto if_merge_773;
 
-  logic_rhs_835:
+  logic_rhs_770:
   r3 = cn_var_节点;
   r4 = r3 == 0;
-  goto logic_merge_836;
+  goto logic_merge_771;
 
-  logic_merge_836:
-  if (r4) goto if_then_833; else goto if_merge_834;
+  logic_merge_771:
+  if (r4) goto if_then_768; else goto if_merge_769;
 
-  if_then_837:
-  r8 = cn_var_节点;
+  if_then_772:
+  r7 = cn_var_节点;
   return;
-  goto if_merge_838;
+  goto if_merge_773;
 
-  if_merge_838:
+  if_merge_773:
   struct 表达式列表* cn_var_当前_0;
-  r9 = cn_var_列表;
-  cn_var_当前_0 = r9;
-  goto while_cond_839;
+  r8 = cn_var_列表;
+  cn_var_当前_0 = r8;
+  goto while_cond_774;
 
-  while_cond_839:
-  r10 = cn_var_当前_0;
-  r11 = r10->下一个;
-  r12 = r11 != 0;
-  if (r12) goto while_body_840; else goto while_exit_841;
+  while_cond_774:
+  r9 = cn_var_当前_0->下一个;
+  r10 = r9 != 0;
+  if (r10) goto while_body_775; else goto while_exit_776;
 
-  while_body_840:
-  r13 = cn_var_当前_0;
-  r14 = r13->下一个;
-  cn_var_当前_0 = r14;
-  goto while_cond_839;
+  while_body_775:
+  r11 = cn_var_当前_0->下一个;
+  cn_var_当前_0 = r11;
+  goto while_cond_774;
 
-  while_exit_841:
+  while_exit_776:
   struct 表达式列表* cn_var_新节点_1;
-  r15 = 创建表达式列表();
-  cn_var_新节点_1 = r15;
+  r12 = 创建表达式列表();
+  cn_var_新节点_1 = r12;
+  r13 = cn_var_新节点_1;
+  r14 = r13 != 0;
+  if (r14) goto if_then_777; else goto if_merge_778;
+
+  if_then_777:
+  r15 = cn_var_节点;
   r16 = cn_var_新节点_1;
-  r17 = r16 != 0;
-  if (r17) goto if_then_842; else goto if_merge_843;
+  goto if_merge_778;
 
-  if_then_842:
-  r18 = cn_var_节点;
-  r19 = cn_var_新节点_1;
-  goto if_merge_843;
-
-  if_merge_843:
+  if_merge_778:
   return;
 }
 
 void 释放表达式节点(struct 表达式节点* cn_var_节点) {
-  long long r1, r4, r9, r14, r19, r24, r29, r34, r39, r44, r49, r54;
+  long long r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27, r28, r29, r30, r31, r32, r33, r34;
   struct 表达式节点* r0;
-  struct 表达式节点* r2;
-  struct 表达式节点* r3;
-  struct 表达式节点* r5;
-  struct 表达式节点* r6;
-  struct 表达式节点* r7;
-  struct 表达式节点* r8;
-  struct 表达式节点* r10;
-  struct 表达式节点* r11;
-  struct 表达式节点* r12;
-  struct 表达式节点* r13;
-  struct 表达式节点* r15;
-  struct 表达式节点* r16;
-  struct 表达式节点* r17;
-  struct 表达式节点* r18;
-  struct 表达式节点* r20;
-  struct 表达式节点* r21;
-  struct 表达式节点* r22;
-  struct 表达式列表* r23;
-  struct 表达式节点* r25;
-  struct 表达式列表* r26;
-  struct 表达式节点* r27;
-  struct 表达式节点* r28;
-  struct 表达式节点* r30;
-  struct 表达式节点* r31;
-  struct 表达式节点* r32;
-  struct 表达式节点* r33;
   struct 表达式节点* r35;
-  struct 表达式节点* r36;
-  struct 表达式节点* r37;
-  struct 表达式节点* r38;
-  struct 表达式节点* r40;
-  struct 表达式节点* r41;
-  struct 表达式节点* r42;
-  struct 表达式节点* r43;
-  struct 表达式节点* r45;
-  struct 表达式节点* r46;
-  struct 表达式节点* r47;
-  struct 表达式节点* r48;
-  struct 表达式节点* r50;
-  struct 表达式节点* r51;
-  struct 表达式节点* r52;
-  struct 表达式节点* r53;
-  struct 表达式节点* r55;
-  struct 表达式节点* r56;
-  struct 表达式节点* r57;
 
   entry:
   r0 = cn_var_节点;
   r1 = r0 == 0;
-  if (r1) goto if_then_844; else goto if_merge_845;
+  if (r1) goto if_then_779; else goto if_merge_780;
 
-  if_then_844:
+  if_then_779:
   return;
-  goto if_merge_845;
+  goto if_merge_780;
 
-  if_merge_845:
-  r2 = cn_var_节点;
-  r3 = r2->左操作数;
-  r4 = r3 != 0;
-  if (r4) goto if_then_846; else goto if_merge_847;
+  if_merge_780:
+  r2 = cn_var_节点.左操作数;
+  r3 = r2 != 0;
+  if (r3) goto if_then_781; else goto if_merge_782;
 
-  if_then_846:
-  r5 = cn_var_节点;
-  r6 = r5->左操作数;
-  释放表达式节点(r6);
-  goto if_merge_847;
+  if_then_781:
+  r4 = cn_var_节点.左操作数;
+  释放表达式节点(r4);
+  goto if_merge_782;
 
-  if_merge_847:
-  r7 = cn_var_节点;
-  r8 = r7->右操作数;
+  if_merge_782:
+  r5 = cn_var_节点.右操作数;
+  r6 = r5 != 0;
+  if (r6) goto if_then_783; else goto if_merge_784;
+
+  if_then_783:
+  r7 = cn_var_节点.右操作数;
+  释放表达式节点(r7);
+  goto if_merge_784;
+
+  if_merge_784:
+  r8 = cn_var_节点.操作数;
   r9 = r8 != 0;
-  if (r9) goto if_then_848; else goto if_merge_849;
+  if (r9) goto if_then_785; else goto if_merge_786;
 
-  if_then_848:
-  r10 = cn_var_节点;
-  r11 = r10->右操作数;
-  释放表达式节点(r11);
-  goto if_merge_849;
+  if_then_785:
+  r10 = cn_var_节点.操作数;
+  释放表达式节点(r10);
+  goto if_merge_786;
 
-  if_merge_849:
-  r12 = cn_var_节点;
-  r13 = r12->操作数;
-  r14 = r13 != 0;
-  if (r14) goto if_then_850; else goto if_merge_851;
+  if_merge_786:
+  r11 = cn_var_节点.被调函数;
+  r12 = r11 != 0;
+  if (r12) goto if_then_787; else goto if_merge_788;
 
-  if_then_850:
-  r15 = cn_var_节点;
-  r16 = r15->操作数;
-  释放表达式节点(r16);
-  goto if_merge_851;
+  if_then_787:
+  r13 = cn_var_节点.被调函数;
+  释放表达式节点(r13);
+  goto if_merge_788;
 
-  if_merge_851:
-  r17 = cn_var_节点;
-  r18 = r17->被调函数;
-  r19 = r18 != 0;
-  if (r19) goto if_then_852; else goto if_merge_853;
+  if_merge_788:
+  r14 = cn_var_节点.参数列表;
+  r15 = r14 != 0;
+  if (r15) goto if_then_789; else goto if_merge_790;
 
-  if_then_852:
-  r20 = cn_var_节点;
-  r21 = r20->被调函数;
-  释放表达式节点(r21);
-  goto if_merge_853;
+  if_then_789:
+  r16 = cn_var_节点.参数列表;
+  释放表达式列表(r16);
+  goto if_merge_790;
 
-  if_merge_853:
-  r22 = cn_var_节点;
-  r23 = r22->参数列表;
+  if_merge_790:
+  r17 = cn_var_节点.对象;
+  r18 = r17 != 0;
+  if (r18) goto if_then_791; else goto if_merge_792;
+
+  if_then_791:
+  r19 = cn_var_节点.对象;
+  释放表达式节点(r19);
+  goto if_merge_792;
+
+  if_merge_792:
+  r20 = cn_var_节点.数组;
+  r21 = r20 != 0;
+  if (r21) goto if_then_793; else goto if_merge_794;
+
+  if_then_793:
+  r22 = cn_var_节点.数组;
+  释放表达式节点(r22);
+  goto if_merge_794;
+
+  if_merge_794:
+  r23 = cn_var_节点.索引;
   r24 = r23 != 0;
-  if (r24) goto if_then_854; else goto if_merge_855;
+  if (r24) goto if_then_795; else goto if_merge_796;
 
-  if_then_854:
-  r25 = cn_var_节点;
-  r26 = r25->参数列表;
-  释放表达式列表(r26);
-  goto if_merge_855;
+  if_then_795:
+  r25 = cn_var_节点.索引;
+  释放表达式节点(r25);
+  goto if_merge_796;
 
-  if_merge_855:
-  r27 = cn_var_节点;
-  r28 = r27->对象;
-  r29 = r28 != 0;
-  if (r29) goto if_then_856; else goto if_merge_857;
+  if_merge_796:
+  r26 = cn_var_节点.左侧表达式;
+  r27 = r26 != 0;
+  if (r27) goto if_then_797; else goto if_merge_798;
 
-  if_then_856:
-  r30 = cn_var_节点;
-  r31 = r30->对象;
+  if_then_797:
+  r28 = cn_var_节点.左侧表达式;
+  释放表达式节点(r28);
+  goto if_merge_798;
+
+  if_merge_798:
+  r29 = cn_var_节点.值;
+  r30 = r29 != 0;
+  if (r30) goto if_then_799; else goto if_merge_800;
+
+  if_then_799:
+  r31 = cn_var_节点.值;
   释放表达式节点(r31);
-  goto if_merge_857;
+  goto if_merge_800;
 
-  if_merge_857:
-  r32 = cn_var_节点;
-  r33 = r32->数组;
-  r34 = r33 != 0;
-  if (r34) goto if_then_858; else goto if_merge_859;
+  if_merge_800:
+  r32 = cn_var_节点.指针;
+  r33 = r32 != 0;
+  if (r33) goto if_then_801; else goto if_merge_802;
 
-  if_then_858:
+  if_then_801:
+  r34 = cn_var_节点.指针;
+  释放表达式节点(r34);
+  goto if_merge_802;
+
+  if_merge_802:
   r35 = cn_var_节点;
-  r36 = r35->数组;
-  释放表达式节点(r36);
-  goto if_merge_859;
-
-  if_merge_859:
-  r37 = cn_var_节点;
-  r38 = r37->索引;
-  r39 = r38 != 0;
-  if (r39) goto if_then_860; else goto if_merge_861;
-
-  if_then_860:
-  r40 = cn_var_节点;
-  r41 = r40->索引;
-  释放表达式节点(r41);
-  goto if_merge_861;
-
-  if_merge_861:
-  r42 = cn_var_节点;
-  r43 = r42->左侧表达式;
-  r44 = r43 != 0;
-  if (r44) goto if_then_862; else goto if_merge_863;
-
-  if_then_862:
-  r45 = cn_var_节点;
-  r46 = r45->左侧表达式;
-  释放表达式节点(r46);
-  goto if_merge_863;
-
-  if_merge_863:
-  r47 = cn_var_节点;
-  r48 = r47->值;
-  r49 = r48 != 0;
-  if (r49) goto if_then_864; else goto if_merge_865;
-
-  if_then_864:
-  r50 = cn_var_节点;
-  r51 = r50->值;
-  释放表达式节点(r51);
-  goto if_merge_865;
-
-  if_merge_865:
-  r52 = cn_var_节点;
-  r53 = r52->指针;
-  r54 = r53 != 0;
-  if (r54) goto if_then_866; else goto if_merge_867;
-
-  if_then_866:
-  r55 = cn_var_节点;
-  r56 = r55->指针;
-  释放表达式节点(r56);
-  goto if_merge_867;
-
-  if_merge_867:
-  r57 = cn_var_节点;
-  释放内存(r57);
+  释放内存(r35);
   return;
 }
 
 void 释放表达式列表(struct 表达式列表* cn_var_列表) {
-  long long r1, r4, r9;
+  long long r1, r2, r3, r4, r5, r6, r7;
   struct 表达式列表* r0;
-  struct 表达式列表* r2;
-  struct 表达式节点* r3;
-  struct 表达式列表* r5;
-  struct 表达式节点* r6;
-  struct 表达式列表* r7;
   struct 表达式列表* r8;
-  struct 表达式列表* r10;
-  struct 表达式列表* r11;
-  struct 表达式列表* r12;
 
   entry:
   r0 = cn_var_列表;
   r1 = r0 == 0;
-  if (r1) goto if_then_868; else goto if_merge_869;
+  if (r1) goto if_then_803; else goto if_merge_804;
 
-  if_then_868:
+  if_then_803:
   return;
-  goto if_merge_869;
+  goto if_merge_804;
 
-  if_merge_869:
-  r2 = cn_var_列表;
-  r3 = r2->节点;
-  r4 = r3 != 0;
-  if (r4) goto if_then_870; else goto if_merge_871;
+  if_merge_804:
+  r2 = cn_var_列表.节点;
+  r3 = r2 != 0;
+  if (r3) goto if_then_805; else goto if_merge_806;
 
-  if_then_870:
-  r5 = cn_var_列表;
-  r6 = r5->节点;
-  释放表达式节点(r6);
-  goto if_merge_871;
+  if_then_805:
+  r4 = cn_var_列表.节点;
+  释放表达式节点(r4);
+  goto if_merge_806;
 
-  if_merge_871:
-  r7 = cn_var_列表;
-  r8 = r7->下一个;
-  r9 = r8 != 0;
-  if (r9) goto if_then_872; else goto if_merge_873;
+  if_merge_806:
+  r5 = cn_var_列表.下一个;
+  r6 = r5 != 0;
+  if (r6) goto if_then_807; else goto if_merge_808;
 
-  if_then_872:
-  r10 = cn_var_列表;
-  r11 = r10->下一个;
-  释放表达式列表(r11);
-  goto if_merge_873;
+  if_then_807:
+  r7 = cn_var_列表.下一个;
+  释放表达式列表(r7);
+  goto if_merge_808;
 
-  if_merge_873:
-  r12 = cn_var_列表;
-  释放内存(r12);
+  if_merge_808:
+  r8 = cn_var_列表;
+  释放内存(r8);
   return;
 }
 

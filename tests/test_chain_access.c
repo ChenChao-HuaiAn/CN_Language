@@ -24,16 +24,14 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r2;
-  struct 外层 r0;
-  struct 内层 r1;
+  long long r1;
+  struct 内层 r0;
 
   entry:
   struct 外层 cn_var_对象_0;
-  r0 = cn_var_对象_0;
-  r1 = r0.成员;
-  r2 = r1.值;
-  return r2;
+  r0 = cn_var_对象_0.成员;
+  r1 = r0.值;
+  return r1;
   cn_rt_exit();
 }
 

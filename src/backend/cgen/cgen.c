@@ -1790,17 +1790,25 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             }
                         }
                         
-                        // 对于 MEMBER_ACCESS 指令，如果 dest.type 为 NULL，尝试从 src1.type 推断成员类型
-                        if (!new_type && scan_inst->kind == CN_IR_INST_MEMBER_ACCESS) {
-                            // src1 是对象，src2 是成员名
-                            // 需要从对象的类型中推断成员的类型
-                            CnType *obj_type = scan_inst->src1.type;
-                            
-                            // 如果 src1.type 为 NULL，尝试从 reg_types 中获取
-                            if (!obj_type && scan_inst->src1.kind == CN_IR_OP_REG &&
-                                scan_inst->src1.as.reg_id < actual_reg_count) {
-                                obj_type = reg_types[scan_inst->src1.as.reg_id];
+                        // 对于 MEMBER_ACCESS 指令，优先使用 dest.type（IR生成器设置的成员类型）
+                        // 这是最可靠的类型来源，特别是对于指针成员
+                        if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS) {
+                            // 【优先】使用 dest.type（IR生成器设置的成员类型）
+                            if (scan_inst->dest.type) {
+                                new_type = scan_inst->dest.type;
                             }
+                            
+                            // 如果 dest.type 为 NULL，尝试从 src1.type 推断成员类型
+                            if (!new_type) {
+                                // src1 是对象，src2 是成员名
+                                // 需要从对象的类型中推断成员的类型
+                                CnType *obj_type = scan_inst->src1.type;
+                                
+                                // 如果 src1.type 为 NULL，尝试从 reg_types 中获取
+                                if (!obj_type && scan_inst->src1.kind == CN_IR_OP_REG &&
+                                    scan_inst->src1.as.reg_id < actual_reg_count) {
+                                    obj_type = reg_types[scan_inst->src1.as.reg_id];
+                                }
                             if (obj_type) {
                                 // 如果是指针类型，获取指向的类型
                                 if (obj_type->kind == CN_TYPE_POINTER && obj_type->as.pointer_to) {
@@ -1844,6 +1852,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                     }
                                 }
                             }
+                        }
                         }
                         
                         // 【修复】对于 ADDRESS_OF 指令，目标寄存器类型应该是指针类型

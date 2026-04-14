@@ -20,11 +20,9 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r3, r5, r6;
+  long long r2, r3, r4;
   struct 点* r1;
   struct 点 r0;
-  struct 点 r2;
-  struct 点 r4;
 
   entry:
   struct 点 cn_var_p_0;
@@ -32,12 +30,10 @@ long long main() {
   r0 = cn_var_p_0;
   r1 = &cn_var_p_0;
   cn_var_ptr_1 = r1;
-  r2 = cn_var_p_0;
-  r3 = r2.x;
-  r4 = cn_var_p_0;
-  r5 = r4.y;
-  r6 = r3 + r5;
-  return r6;
+  r2 = cn_var_p_0.x;
+  r3 = cn_var_p_0.y;
+  r4 = r2 + r3;
+  return r4;
   cn_rt_exit();
 }
 

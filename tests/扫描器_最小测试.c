@@ -96,21 +96,17 @@ void 销毁扫描器(struct 扫描器* cn_var_实例) {
 }
 
 long long 当前字符(struct 扫描器* cn_var_实例) {
-  long long r0, r5, r8, r15;
-  char* r12;
+  long long r0, r4, r6, r11;
+  char* r9;
   struct 扫描器* r1;
-  struct 扫描器* r3;
-  struct 扫描器* r6;
-  struct 扫描器* r10;
-  struct 扫描器* r13;
-  char* r16;
+  char* r12;
   _Bool r2;
-  _Bool r9;
-  char r17;
-  struct 扫描器 r4;
-  struct 扫描器 r7;
-  struct 扫描器 r11;
-  struct 扫描器 r14;
+  _Bool r7;
+  char r13;
+  struct 扫描器 r3;
+  struct 扫描器 r5;
+  struct 扫描器 r8;
+  struct 扫描器 r10;
 
   entry:
   r1 = cn_var_实例;
@@ -122,42 +118,35 @@ long long 当前字符(struct 扫描器* cn_var_实例) {
   goto if_merge_5;
 
   if_merge_5:
-  r10 = cn_var_实例;
-  r11 = *r10;
-  r12 = r11.源码;
-  r13 = cn_var_实例;
-  r14 = *r13;
-  r15 = r14.位置;
-  r16 = &r12[r15];
-  r17 = *r16;
-  return r17;
+  r8 = *cn_var_实例;
+  r9 = r8.源码;
+  r10 = *cn_var_实例;
+  r11 = r10.位置;
+  r12 = &r9[r11];
+  r13 = *r12;
+  return r13;
 
   logic_rhs_6:
-  r3 = cn_var_实例;
-  r4 = *r3;
-  r5 = r4.位置;
-  r6 = cn_var_实例;
-  r7 = *r6;
-  r8 = r7.长度;
-  r9 = r5 >= r8;
+  r3 = *cn_var_实例;
+  r4 = r3.位置;
+  r5 = *cn_var_实例;
+  r6 = r5.长度;
+  r7 = r4 >= r6;
   goto logic_merge_7;
 
   logic_merge_7:
-  if (r9) goto if_then_4; else goto if_merge_5;
+  if (r7) goto if_then_4; else goto if_merge_5;
   return 0;
 }
 
 long long 前进(struct 扫描器* cn_var_实例) {
-  long long r1, r2, r6, r7, r8, r12, r13, r16, r17, r18;
+  long long r1, r2, r5, r6, r7, r10, r11, r13, r14, r15;
   struct 扫描器* r0;
-  struct 扫描器* r4;
-  struct 扫描器* r10;
-  struct 扫描器* r14;
   _Bool r3;
-  _Bool r9;
-  struct 扫描器 r5;
-  struct 扫描器 r11;
-  struct 扫描器 r15;
+  _Bool r8;
+  struct 扫描器 r4;
+  struct 扫描器 r9;
+  struct 扫描器 r12;
 
   entry:
   long long cn_var_c_0;
@@ -169,30 +158,27 @@ long long 前进(struct 扫描器* cn_var_实例) {
   if (r3) goto if_then_8; else goto if_merge_9;
 
   if_then_8:
-  r4 = cn_var_实例;
-  r5 = *r4;
-  r6 = r5.位置;
-  r7 = r6 + 1;
-  r8 = cn_var_c_0;
-  r9 = r8 == 10;
-  if (r9) goto if_then_10; else goto if_else_11;
+  r4 = *cn_var_实例;
+  r5 = r4.位置;
+  r6 = r5 + 1;
+  r7 = cn_var_c_0;
+  r8 = r7 == 10;
+  if (r8) goto if_then_10; else goto if_else_11;
 
   if_merge_9:
-  r18 = cn_var_c_0;
-  return r18;
+  r15 = cn_var_c_0;
+  return r15;
 
   if_then_10:
-  r10 = cn_var_实例;
-  r11 = *r10;
-  r12 = r11.行号;
-  r13 = r12 + 1;
+  r9 = *cn_var_实例;
+  r10 = r9.行号;
+  r11 = r10 + 1;
   goto if_merge_12;
 
   if_else_11:
-  r14 = cn_var_实例;
-  r15 = *r14;
-  r16 = r15.列号;
-  r17 = r16 + 1;
+  r12 = *cn_var_实例;
+  r13 = r12.列号;
+  r14 = r13 + 1;
   goto if_merge_12;
 
   if_merge_12:
@@ -349,41 +335,39 @@ void 跳过空白字符(struct 扫描器* cn_var_实例) {
 }
 
 struct 词元 下一个词元(struct 扫描器* cn_var_实例) {
-  long long r6, r9, r11, r12, r14, r15, r17, r20, r23, r24, r25, r27, r29, r31, r34, r37, r38, r39, r41, r44, r45, r46, r48, r51, r52, r53, r55, r58, r59, r60, r63, r64, r65;
+  long long r5, r7, r9, r10, r12, r13, r15, r18, r21, r22, r23, r25, r27, r29, r32, r35, r36, r37, r39, r42, r43, r44, r46, r49, r50, r51, r53, r56, r57, r58, r61, r62, r63;
   struct 扫描器* r0;
   struct 扫描器* r3;
-  struct 扫描器* r4;
-  struct 扫描器* r7;
-  struct 扫描器* r10;
-  struct 扫描器* r19;
-  struct 扫描器* r22;
-  struct 扫描器* r30;
-  struct 扫描器* r33;
-  struct 扫描器* r36;
-  struct 扫描器* r43;
-  struct 扫描器* r50;
-  struct 扫描器* r57;
-  struct 扫描器* r62;
+  struct 扫描器* r8;
+  struct 扫描器* r17;
+  struct 扫描器* r20;
+  struct 扫描器* r28;
+  struct 扫描器* r31;
+  struct 扫描器* r34;
+  struct 扫描器* r41;
+  struct 扫描器* r48;
+  struct 扫描器* r55;
+  struct 扫描器* r60;
   _Bool r1;
-  _Bool r13;
-  _Bool r18;
-  _Bool r21;
-  _Bool r28;
-  _Bool r32;
-  _Bool r35;
-  _Bool r42;
-  _Bool r49;
-  _Bool r56;
+  _Bool r11;
+  _Bool r16;
+  _Bool r19;
+  _Bool r26;
+  _Bool r30;
+  _Bool r33;
+  _Bool r40;
+  _Bool r47;
+  _Bool r54;
   struct 词元 r2;
-  struct 扫描器 r5;
-  struct 扫描器 r8;
-  struct 词元 r16;
-  struct 词元 r26;
-  struct 词元 r40;
-  struct 词元 r47;
-  struct 词元 r54;
-  struct 词元 r61;
-  struct 词元 r66;
+  struct 扫描器 r4;
+  struct 扫描器 r6;
+  struct 词元 r14;
+  struct 词元 r24;
+  struct 词元 r38;
+  struct 词元 r45;
+  struct 词元 r52;
+  struct 词元 r59;
+  struct 词元 r64;
 
   entry:
   struct 词元 cn_var_结果_0;
@@ -400,139 +384,137 @@ struct 词元 下一个词元(struct 扫描器* cn_var_实例) {
   r3 = cn_var_实例;
   跳过空白字符(r3);
   long long cn_var_起始行号_1;
-  r4 = cn_var_实例;
-  r5 = *r4;
-  r6 = r5.行号;
-  cn_var_起始行号_1 = r6;
+  r4 = *cn_var_实例;
+  r5 = r4.行号;
+  cn_var_起始行号_1 = r5;
   long long cn_var_起始列号_2;
-  r7 = cn_var_实例;
-  r8 = *r7;
-  r9 = r8.列号;
-  cn_var_起始列号_2 = r9;
+  r6 = *cn_var_实例;
+  r7 = r6.列号;
+  cn_var_起始列号_2 = r7;
   long long cn_var_c_3;
-  r10 = cn_var_实例;
-  r11 = 当前字符(r10);
-  cn_var_c_3 = r11;
-  r12 = cn_var_c_3;
-  r13 = r12 == 0;
-  if (r13) goto if_then_36; else goto if_merge_37;
+  r8 = cn_var_实例;
+  r9 = 当前字符(r8);
+  cn_var_c_3 = r9;
+  r10 = cn_var_c_3;
+  r11 = r10 == 0;
+  if (r11) goto if_then_36; else goto if_merge_37;
 
   if_then_36:
-  r14 = cn_var_起始行号_1;
-  r15 = cn_var_起始列号_2;
-  r16 = cn_var_结果_0;
-  return r16;
+  r12 = cn_var_起始行号_1;
+  r13 = cn_var_起始列号_2;
+  r14 = cn_var_结果_0;
+  return r14;
   goto if_merge_37;
 
   if_merge_37:
-  r17 = cn_var_c_3;
-  r18 = 是数字(r17);
-  if (r18) goto if_then_38; else goto if_merge_39;
+  r15 = cn_var_c_3;
+  r16 = 是数字(r15);
+  if (r16) goto if_then_38; else goto if_merge_39;
 
   if_then_38:
   goto while_cond_40;
 
   if_merge_39:
-  r27 = cn_var_c_3;
-  r28 = 是标识符开头(r27);
-  if (r28) goto if_then_43; else goto if_merge_44;
+  r25 = cn_var_c_3;
+  r26 = 是标识符开头(r25);
+  if (r26) goto if_then_43; else goto if_merge_44;
 
   while_cond_40:
-  r19 = cn_var_实例;
-  r20 = 当前字符(r19);
-  r21 = 是数字(r20);
-  if (r21) goto while_body_41; else goto while_exit_42;
+  r17 = cn_var_实例;
+  r18 = 当前字符(r17);
+  r19 = 是数字(r18);
+  if (r19) goto while_body_41; else goto while_exit_42;
 
   while_body_41:
-  r22 = cn_var_实例;
-  r23 = 前进(r22);
+  r20 = cn_var_实例;
+  r21 = 前进(r20);
   goto while_cond_40;
 
   while_exit_42:
-  r24 = cn_var_起始行号_1;
-  r25 = cn_var_起始列号_2;
-  r26 = cn_var_结果_0;
-  return r26;
+  r22 = cn_var_起始行号_1;
+  r23 = cn_var_起始列号_2;
+  r24 = cn_var_结果_0;
+  return r24;
   goto if_merge_39;
 
   if_then_43:
   goto while_cond_45;
 
   if_merge_44:
-  r41 = cn_var_c_3;
-  r42 = r41 == 43;
-  if (r42) goto if_then_50; else goto if_merge_51;
+  r39 = cn_var_c_3;
+  r40 = r39 == 43;
+  if (r40) goto if_then_50; else goto if_merge_51;
 
   while_cond_45:
-  r30 = cn_var_实例;
-  r31 = 当前字符(r30);
-  r32 = 是标识符开头(r31);
-  if (r32) goto logic_merge_49; else goto logic_rhs_48;
+  r28 = cn_var_实例;
+  r29 = 当前字符(r28);
+  r30 = 是标识符开头(r29);
+  if (r30) goto logic_merge_49; else goto logic_rhs_48;
 
   while_body_46:
-  r36 = cn_var_实例;
-  r37 = 前进(r36);
+  r34 = cn_var_实例;
+  r35 = 前进(r34);
   goto while_cond_45;
 
   while_exit_47:
-  r38 = cn_var_起始行号_1;
-  r39 = cn_var_起始列号_2;
-  r40 = cn_var_结果_0;
-  return r40;
+  r36 = cn_var_起始行号_1;
+  r37 = cn_var_起始列号_2;
+  r38 = cn_var_结果_0;
+  return r38;
   goto if_merge_44;
 
   logic_rhs_48:
-  r33 = cn_var_实例;
-  r34 = 当前字符(r33);
-  r35 = 是数字(r34);
+  r31 = cn_var_实例;
+  r32 = 当前字符(r31);
+  r33 = 是数字(r32);
   goto logic_merge_49;
 
   logic_merge_49:
-  if (r35) goto while_body_46; else goto while_exit_47;
+  if (r33) goto while_body_46; else goto while_exit_47;
 
   if_then_50:
-  r43 = cn_var_实例;
-  r44 = 前进(r43);
-  r45 = cn_var_起始行号_1;
-  r46 = cn_var_起始列号_2;
-  r47 = cn_var_结果_0;
-  return r47;
+  r41 = cn_var_实例;
+  r42 = 前进(r41);
+  r43 = cn_var_起始行号_1;
+  r44 = cn_var_起始列号_2;
+  r45 = cn_var_结果_0;
+  return r45;
   goto if_merge_51;
 
   if_merge_51:
-  r48 = cn_var_c_3;
-  r49 = r48 == 45;
-  if (r49) goto if_then_52; else goto if_merge_53;
+  r46 = cn_var_c_3;
+  r47 = r46 == 45;
+  if (r47) goto if_then_52; else goto if_merge_53;
 
   if_then_52:
-  r50 = cn_var_实例;
-  r51 = 前进(r50);
-  r52 = cn_var_起始行号_1;
-  r53 = cn_var_起始列号_2;
-  r54 = cn_var_结果_0;
-  return r54;
+  r48 = cn_var_实例;
+  r49 = 前进(r48);
+  r50 = cn_var_起始行号_1;
+  r51 = cn_var_起始列号_2;
+  r52 = cn_var_结果_0;
+  return r52;
   goto if_merge_53;
 
   if_merge_53:
-  r55 = cn_var_c_3;
-  r56 = r55 == 59;
-  if (r56) goto if_then_54; else goto if_merge_55;
+  r53 = cn_var_c_3;
+  r54 = r53 == 59;
+  if (r54) goto if_then_54; else goto if_merge_55;
 
   if_then_54:
-  r57 = cn_var_实例;
-  r58 = 前进(r57);
-  r59 = cn_var_起始行号_1;
-  r60 = cn_var_起始列号_2;
-  r61 = cn_var_结果_0;
-  return r61;
+  r55 = cn_var_实例;
+  r56 = 前进(r55);
+  r57 = cn_var_起始行号_1;
+  r58 = cn_var_起始列号_2;
+  r59 = cn_var_结果_0;
+  return r59;
   goto if_merge_55;
 
   if_merge_55:
-  r62 = cn_var_实例;
-  r63 = 前进(r62);
-  r64 = cn_var_起始行号_1;
-  r65 = cn_var_起始列号_2;
-  r66 = cn_var_结果_0;
-  return r66;
+  r60 = cn_var_实例;
+  r61 = 前进(r60);
+  r62 = cn_var_起始行号_1;
+  r63 = cn_var_起始列号_2;
+  r64 = cn_var_结果_0;
+  return r64;
 }
 

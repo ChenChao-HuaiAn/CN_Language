@@ -24,23 +24,21 @@ long long main();
 
 long long main() {
   cn_rt_init();
-  long long r5;
+  long long r4;
   struct B* r1;
-  struct B* r3;
+  struct B* r2;
   struct B r0;
-  struct A r2;
-  struct B r4;
+  struct B r3;
 
   entry:
   struct A cn_var_变量A_0;
   struct B cn_var_变量B_1;
   r0 = cn_var_变量B_1;
   r1 = &cn_var_变量B_1;
-  r2 = cn_var_变量A_0;
-  r3 = r2.指针;
-  r4 = *r3;
-  r5 = r4.值;
-  return r5;
+  r2 = cn_var_变量A_0.指针;
+  r3 = *r2;
+  r4 = r3.值;
+  return r4;
   cn_rt_exit();
 }
 
