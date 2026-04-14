@@ -269,9 +269,17 @@ static void cn_sem_copy_symbol_type(CnSemSymbol *src_sym, CnSemSymbol *dst_sym) 
     
     // 【关键修复】优先处理源符号有有效类型的情况
     if (src_sym->type) {
-        // 直接引用原始类型，避免深拷贝导致的信息丢失
-        // 这是因为模块缓存的作用域指针是持久的，类型对象也是持久的
-        dst_sym->type = src_sym->type;
+        // 【重要修复】使用深拷贝而非直接引用
+        // 原因：模块缓存的作用域指针虽然是持久的，但类型对象可能因模块重新编译而失效
+        // 深拷贝确保导入的类型信息独立于源模块的生命周期
+        dst_sym->type = cn_type_deep_copy(src_sym->type);
+        
+        // 如果深拷贝失败，回退到直接引用（保持兼容性）
+        if (!dst_sym->type) {
+            fprintf(stderr, "[WARNING] cn_sem_copy_symbol_type: deep copy failed for '%.*s', using direct reference\n",
+                    (int)src_sym->name_length, src_sym->name);
+            dst_sym->type = src_sym->type;
+        }
         return;
     }
     

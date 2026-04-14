@@ -32,7 +32,10 @@ typedef enum CnTypeKind {
     CN_TYPE_ARRAY,  // 数组类型
     CN_TYPE_STRUCT, // 结构体类型
     CN_TYPE_ENUM,   // 枚举类型
+    CN_TYPE_CLASS,  // 类类型
+    CN_TYPE_INTERFACE, // 接口类型
     CN_TYPE_FUNCTION, // 函数类型
+    CN_TYPE_PARAM,  // 类型参数（模板类型参数）
     CN_TYPE_MEMORY_ADDRESS, // 内存地址类型
     
     // 扩展的数字类型（用于支持数字字面量后缀）

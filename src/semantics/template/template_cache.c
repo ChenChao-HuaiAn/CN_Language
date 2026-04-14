@@ -403,8 +403,12 @@ const char *cn_type_get_name(CnType *type) {
         case CN_TYPE_ARRAY:      return "数组";
         case CN_TYPE_STRUCT:     return type->as.struct_type.name;
         case CN_TYPE_ENUM:       return type->as.enum_type.name;
+        case CN_TYPE_CLASS:      return "类";
+        case CN_TYPE_INTERFACE:  return "接口";
         case CN_TYPE_FUNCTION:   return "函数";
+        case CN_TYPE_PARAM:      return "类型参数";
         case CN_TYPE_MEMORY_ADDRESS: return "内存地址";
+        case CN_TYPE_SELF:       return "自身";
         case CN_TYPE_UNKNOWN:    return "未知";
         default:                 return "未知";
     }

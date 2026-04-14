@@ -234,10 +234,22 @@ static const char *get_c_type_string_internal(CnType *type, bool is_param) {
         case CN_TYPE_ENUM: {
             /* 枚举类型：返回枚举名 */
             static _Thread_local char buffer[256];
-            snprintf(buffer, sizeof(buffer), "enum %.*s", 
-                     (int)type->as.enum_type.name_length, 
+            snprintf(buffer, sizeof(buffer), "enum %.*s",
+                     (int)type->as.enum_type.name_length,
                      type->as.enum_type.name);
             return buffer;
+        }
+        case CN_TYPE_CLASS: {
+            /* 类类型：返回类名 */
+            static _Thread_local char buffer[256];
+            snprintf(buffer, sizeof(buffer), "struct %.*s*",
+                     (int)type->as.struct_type.name_length,
+                     type->as.struct_type.name);
+            return buffer;
+        }
+        case CN_TYPE_INTERFACE: {
+            /* 接口类型：返回接口指针 */
+            return "void*";
         }
         case CN_TYPE_MEMORY_ADDRESS: {
             /* 内存地址类型：对应 uintptr_t */
@@ -245,6 +257,9 @@ static const char *get_c_type_string_internal(CnType *type, bool is_param) {
         }
         case CN_TYPE_SELF:
             /* 自身类型：接口方法中使用 void* 作为占位符 */
+            return "void*";
+        case CN_TYPE_PARAM:
+            /* 类型参数：使用 void* 作为占位符 */
             return "void*";
         default: return "int";
     }

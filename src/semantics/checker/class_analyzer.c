@@ -438,8 +438,28 @@ bool cn_is_valid_member_type(CnClassAnalyzerContext *ctx, CnType *type)
             /* 枚举类型有效 */
             return true;
             
+        case CN_TYPE_CLASS:
+            /* 类类型有效 */
+            return true;
+            
+        case CN_TYPE_INTERFACE:
+            /* 接口类型有效 */
+            return true;
+            
         case CN_TYPE_FUNCTION:
             /* 函数类型（函数指针）有效 */
+            return true;
+            
+        case CN_TYPE_MEMORY_ADDRESS:
+            /* 内存地址类型有效 */
+            return true;
+            
+        case CN_TYPE_SELF:
+            /* 自身类型有效（在类/接口定义中） */
+            return true;
+            
+        case CN_TYPE_PARAM:
+            /* 类型参数有效（在泛型定义中） */
             return true;
             
         default:

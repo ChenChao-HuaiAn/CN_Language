@@ -86,6 +86,9 @@ bool cn_type_equals(CnType *a, CnType *b) {
             return (a->as.array.length == b->as.array.length) &&
                    cn_type_equals(a->as.array.element_type, b->as.array.element_type);
         case CN_TYPE_STRUCT:
+        case CN_TYPE_CLASS:
+        case CN_TYPE_INTERFACE:
+            // 结构体、类、接口类型使用相同的比较逻辑
             if (!a->as.struct_type.name || !b->as.struct_type.name) {
                 return false;
             }
@@ -106,6 +109,9 @@ bool cn_type_equals(CnType *a, CnType *b) {
             for (size_t i = 0; i < a->as.function.param_count; i++) {
                 if (!cn_type_equals(a->as.function.param_types[i], b->as.function.param_types[i])) return false;
             }
+            return true;
+        case CN_TYPE_PARAM:
+            // 类型参数：比较参数名称
             return true;
         default:
             return true;
@@ -1274,6 +1280,25 @@ CnType *cn_type_deep_copy(CnType *src) {
             
             return dst;
         }
+        
+        case CN_TYPE_CLASS:
+        case CN_TYPE_INTERFACE: {
+            // 类类型和接口类型：与结构体类型类似的处理
+            CnType *dst = cn_type_new_struct(
+                src->as.struct_type.name,
+                src->as.struct_type.name_length,
+                NULL,  // 字段暂时为空
+                0,
+                src->as.struct_type.decl_scope,
+                src->as.struct_type.owner_func_name,
+                src->as.struct_type.owner_func_name_length);
+            return dst;
+        }
+        
+        case CN_TYPE_PARAM:
+        case CN_TYPE_SELF:
+            // 类型参数和自身类型：简单复制
+            return cn_type_new_primitive(src->kind);
         
         case CN_TYPE_FUNCTION: {
             // 函数类型：深度复制返回类型和参数类型
