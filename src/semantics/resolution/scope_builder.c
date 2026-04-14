@@ -291,7 +291,17 @@ static void cn_sem_copy_symbol_type(CnSemSymbol *src_sym, CnSemSymbol *dst_sym) 
     if (src_sym->kind == CN_SEM_SYMBOL_STRUCT) {
         // 创建一个占位的结构体类型（字段信息可能缺失）
         // 后续在延迟解析阶段可能会补充字段信息
-        dst_sym->type = cn_type_new_struct(src_sym->name, src_sym->name_length, NULL, 0, NULL, NULL, 0);
+        // 【重要修复】使用 src_sym->as.module_scope 作为 decl_scope
+        // 结构体符号的 module_scope 存储了结构体的成员作用域，这对于字段查找至关重要
+        // 如果 decl_scope 为 NULL，cn_type_struct_find_field() 将无法找到字段
+        dst_sym->type = cn_type_new_struct(
+            src_sym->name,
+            src_sym->name_length,
+            NULL,  // 字段暂时为空，后续可以动态解析
+            0,
+            src_sym->as.module_scope,  // 【关键】使用结构体的成员作用域作为 decl_scope
+            NULL,
+            0);
         return;
     }
     
