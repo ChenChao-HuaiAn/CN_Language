@@ -2583,6 +2583,16 @@ void cn_cgen_struct_decl_with_prefix(CnCCodeGenContext *ctx, CnAstStmt *struct_s
     
     CnAstStructDecl *decl = &struct_stmt->as.struct_decl;
     
+    // 【修复】对于全局结构体，检查是否已生成（避免与导入模块的同名结构体重定义）
+    // 局部结构体（有函数前缀）名称已唯一化，不需要检查
+    if (!func_prefix || func_prefix_len == 0) {
+        if (is_type_already_generated(decl->name, decl->name_length)) {
+            return;  // 已生成，跳过
+        }
+        // 标记为已生成
+        mark_type_as_generated(decl->name, decl->name_length);
+    }
+    
     // 生成结构体定义
     // 注意：前向声明已在第一遍扫描中统一输出，此处不再重复输出
     // 如果有函数前缀，生成: struct __local_函数名_结构体名
@@ -2635,12 +2645,26 @@ void cn_cgen_struct_decl(CnCCodeGenContext *ctx, CnAstStmt *struct_stmt) {
     cn_cgen_struct_decl_with_prefix(ctx, struct_stmt, NULL, 0);
 }
 
+// 前向声明：类型去重检查函数（定义在后面）
+static bool is_type_already_generated(const char *name, size_t name_len);
+static void mark_type_as_generated(const char *name, size_t name_len);
+static void mark_enum_type_as_generated(const char *name, size_t name_len);
+
 // 生成枚举定义（从 AST 枚举声明）
 // 为枚举成员自动添加枚举类型名称作为前缀，避免C语言中枚举成员全局命名空间冲突
 void cn_cgen_enum_decl(CnCCodeGenContext *ctx, CnAstStmt *enum_stmt) {
     if (!ctx || !enum_stmt || enum_stmt->kind != CN_AST_STMT_ENUM_DECL) return;
     
     CnAstEnumDecl *decl = &enum_stmt->as.enum_decl;
+    
+    // 【修复】检查枚举是否已生成（避免与导入模块的同名枚举重定义）
+    if (is_type_already_generated(decl->name, decl->name_length)) {
+        return;  // 已生成，跳过
+    }
+    
+    // 标记为已生成
+    mark_type_as_generated(decl->name, decl->name_length);
+    mark_enum_type_as_generated(decl->name, decl->name_length);
     
     // 生成枚举定义
     fprintf(ctx->output_file, "enum %.*s {\n",

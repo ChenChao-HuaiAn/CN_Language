@@ -3894,7 +3894,10 @@ void 生成块语句IR(struct IR生成上下文* cn_var_上下文, struct 语句
 }
 
 void 生成函数IR(struct IR生成上下文* cn_var_上下文, struct 声明节点* cn_var_声明) {
-  long long r0, r2, r4, r5, r6, r9, r11, r12, r17, r18, r19, r29;
+  long long r0, r2, r4, r5, r6, r9, r12, r19, r29;
+  char* r11;
+  char* r17;
+  char* r18;
   char* r20;
   char* r21;
   char* r23;

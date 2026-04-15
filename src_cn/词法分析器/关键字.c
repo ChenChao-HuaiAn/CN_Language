@@ -141,71 +141,79 @@ struct 关键字条目* 获取关键字表();
 void 初始化关键字表();
 
 enum 词元类型枚举 查找关键字(const char* cn_var_名称) {
-  long long r1, r2, r3, r4, r7, r9, r10, r11, r13, r15, r16, r17;
+  long long r2, r3, r7, r11, r14, r17, r18, r19;
   char* r5;
+  char* r10;
   struct 关键字条目* r6;
-  struct 关键字条目* r12;
-  void* r8;
-  void* r14;
+  struct 关键字条目* r13;
+  struct 关键字条目* r8;
+  struct 关键字条目* r15;
   _Bool r0;
+  _Bool r1;
+  _Bool r4;
+  _Bool r12;
+  struct 关键字条目 r9;
+  struct 关键字条目 r16;
 
   entry:
   r0 = cn_var_关键字表已初始化;
   r1 = !r0;
-  if (r1) goto if_then_373; else goto if_merge_374;
+  if (r1) goto if_then_0; else goto if_merge_1;
 
-  if_then_373:
+  if_then_0:
   初始化关键字表();
-  goto if_merge_374;
+  goto if_merge_1;
 
-  if_merge_374:
+  if_merge_1:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_375;
+  goto for_cond_2;
 
-  for_cond_375:
+  for_cond_2:
   r2 = cn_var_i_0;
   r3 = cn_var_关键字表大小;
   r4 = r2 < r3;
-  if (r4) goto for_body_376; else goto for_exit_378;
+  if (r4) goto for_body_3; else goto for_exit_5;
 
-  for_body_376:
+  for_body_3:
   r5 = cn_var_名称;
   r6 = cn_var_关键字表;
   r7 = cn_var_i_0;
-  r8 = (void*)cn_rt_array_get_element(r6, r7, 8);
-  r9 = r8->名称;
-  r10 = 比较字符串(r5, r9);
-  r11 = r10 == 0;
-  if (r11) goto if_then_379; else goto if_merge_380;
+  r8 = &r6[r7];
+  r9 = r8;
+  r10 = r9.名称;
+  r11 = 比较字符串(r5, r10);
+  r12 = r11 == 0;
+  if (r12) goto if_then_6; else goto if_merge_7;
 
-  for_update_377:
-  r16 = cn_var_i_0;
-  r17 = r16 + 1;
-  cn_var_i_0 = r17;
-  goto for_cond_375;
+  for_update_4:
+  r18 = cn_var_i_0;
+  r19 = r18 + 1;
+  cn_var_i_0 = r19;
+  goto for_cond_2;
 
-  for_exit_378:
+  for_exit_5:
   return 词元类型枚举_标识符;
 
-  if_then_379:
-  r12 = cn_var_关键字表;
-  r13 = cn_var_i_0;
-  r14 = (void*)cn_rt_array_get_element(r12, r13, 8);
-  r15 = r14->类型;
-  return r15;
-  goto if_merge_380;
+  if_then_6:
+  r13 = cn_var_关键字表;
+  r14 = cn_var_i_0;
+  r15 = &r13[r14];
+  r16 = r15;
+  r17 = r16.类型;
+  return r17;
+  goto if_merge_7;
 
-  if_merge_380:
-  goto for_update_377;
+  if_merge_7:
+  goto for_update_4;
   return 0;
 }
 
 _Bool 是关键字字符串(const char* cn_var_名称) {
-  long long r3;
   char* r0;
-  enum 词元类型枚举 r2;
+  _Bool r3;
   enum 词元类型枚举 r1;
+  enum 词元类型枚举 r2;
 
   entry:
   enum 词元类型枚举 cn_var_类型_0;
@@ -238,13 +246,13 @@ void 初始化关键字表() {
 
   entry:
   r0 = cn_var_关键字表已初始化;
-  if (r0) goto if_then_381; else goto if_merge_382;
+  if (r0) goto if_then_8; else goto if_merge_9;
 
-  if_then_381:
+  if_then_8:
   return;
-  goto if_merge_382;
+  goto if_merge_9;
 
-  if_merge_382:
+  if_merge_9:
   cn_var_关键字表已初始化 = 1;
   return;
 }

@@ -2017,11 +2017,10 @@ void 构建类声明作用域(struct 作用域构建器* cn_var_构建器, struc
 }
 
 void 构建类成员作用域(struct 作用域构建器* cn_var_构建器, struct 类成员* cn_var_成员节点, struct 符号* cn_var_类符号, long long cn_var_索引) {
-  long long r1, r3, r6, r8, r10, r17, r20, r26, r28, r30, r35, r41, r43, r44, r45, r47, r49;
+  long long r1, r3, r6, r8, r10, r17, r20, r26, r28, r30, r35, r41, r43, r44, r45, r46, r47, r49;
   char* r11;
   char* r31;
   struct 参数** r33;
-  struct 符号** r46;
   struct 类成员* r0;
   struct 变量声明* r12;
   struct 类型节点* r13;
