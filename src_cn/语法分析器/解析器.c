@@ -1017,19 +1017,21 @@ _Bool 同步恢复(struct 解析器*);
 _Bool 是否类型关键字(enum 词元类型枚举);
 
 struct 解析器* 创建解析器(struct 扫描器* cn_var_扫描器实例, struct 诊断集合* cn_var_诊断集合指针) {
-  long long r1, r2, r5, r8, r10, r13;
+  long long r1, r2, r5, r13;
   struct 扫描器* r0;
   void* r3;
   struct 解析器* r4;
   struct 扫描器* r6;
   struct 诊断集合* r7;
-  long long* r9;
+  struct 语法错误恢复上下文* r9;
   struct 解析器* r14;
   struct 扫描器* r15;
   struct 扫描器* r17;
   struct 解析器* r19;
   _Bool r11;
   _Bool r12;
+  struct 语法错误恢复上下文 r8;
+  struct 语法错误恢复上下文 r10;
   struct 词元 r16;
   struct 词元 r18;
 
@@ -1103,7 +1105,7 @@ void 销毁解析器(struct 解析器* cn_var_实例) {
 }
 
 struct 程序节点* 解析程序(struct 解析器* cn_var_实例) {
-  long long r1, r4, r5, r6, r7, r11;
+  long long r1, r4, r7, r11;
   struct 解析器* r0;
   struct 程序节点* r2;
   struct 程序节点* r3;
@@ -1113,6 +1115,8 @@ struct 程序节点* 解析程序(struct 解析器* cn_var_实例) {
   struct 程序节点* r12;
   struct 声明节点* r13;
   struct 程序节点* r14;
+  struct 词元 r5;
+  enum 词元类型枚举 r6;
 
   entry:
   r0 = cn_var_实例;
@@ -1169,8 +1173,10 @@ struct 程序节点* 解析程序(struct 解析器* cn_var_实例) {
 }
 
 void 前进词元(struct 解析器* cn_var_实例) {
-  long long r1, r2, r3;
+  long long r1;
   struct 解析器* r0;
+  struct 扫描器* r3;
+  struct 词元 r2;
   struct 词元 r4;
 
   entry:
@@ -1228,8 +1234,10 @@ _Bool 期望(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类
 }
 
 _Bool 检查(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类型) {
-  long long r1, r2, r3, r5;
+  long long r1, r5;
   struct 解析器* r0;
+  struct 词元 r2;
+  enum 词元类型枚举 r3;
   enum 词元类型枚举 r4;
 
   entry:
@@ -1346,10 +1354,14 @@ _Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_
 }
 
 void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_错误码, const char* cn_var_消息) {
-  long long r1, r2, r3, r4, r5, r8, r9, r10, r11, r13;
+  long long r1, r2, r3, r5, r9, r11;
   char* r12;
   struct 解析器* r0;
+  struct 诊断集合* r4;
+  struct 诊断集合* r13;
   struct 源位置 r7;
+  struct 词元 r8;
+  struct 词元 r10;
   struct 诊断信息 r14;
   enum 诊断错误码 r6;
 
@@ -1408,20 +1420,34 @@ void 报告错误期望(struct 解析器* cn_var_实例, enum 词元类型枚举
 }
 
 _Bool 同步恢复(struct 解析器* cn_var_实例) {
-  long long r1, r2, r4, r6, r7, r8, r9, r10, r11, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r24, r27, r29, r32, r34, r35, r36, r37, r38, r39, r40, r41, r42, r43, r45, r47, r49, r51, r53, r55, r57, r59, r60, r62;
+  long long r1, r6, r7, r8, r9, r10, r15, r18, r21, r37, r38, r39, r40, r41, r42, r43, r45, r47, r49, r51, r53, r55, r57, r59;
   struct 解析器* r0;
-  long long* r3;
-  long long* r12;
-  long long* r23;
+  struct 语法错误恢复上下文* r3;
+  struct 语法错误恢复上下文* r12;
+  struct 语法错误恢复上下文* r23;
   struct 解析器* r25;
-  long long* r28;
+  struct 语法错误恢复上下文* r28;
   struct 解析器* r30;
-  long long* r33;
-  long long* r61;
+  struct 语法错误恢复上下文* r33;
+  struct 语法错误恢复上下文* r61;
   struct 解析器* r63;
   _Bool r5;
   _Bool r26;
   _Bool r31;
+  struct 语法错误恢复上下文 r2;
+  struct 语法错误恢复上下文 r4;
+  struct 语法错误恢复上下文 r11;
+  struct 语法错误恢复上下文 r13;
+  struct 词元 r14;
+  struct 词元 r16;
+  struct 词元 r19;
+  struct 语法错误恢复上下文 r22;
+  struct 语法错误恢复上下文 r24;
+  struct 语法错误恢复上下文 r27;
+  struct 语法错误恢复上下文 r29;
+  struct 语法错误恢复上下文 r32;
+  struct 语法错误恢复上下文 r34;
+  struct 词元 r35;
   enum 词元类型枚举 r44;
   enum 词元类型枚举 r46;
   enum 词元类型枚举 r48;
@@ -1430,6 +1456,11 @@ _Bool 同步恢复(struct 解析器* cn_var_实例) {
   enum 词元类型枚举 r54;
   enum 词元类型枚举 r56;
   enum 词元类型枚举 r58;
+  struct 语法错误恢复上下文 r60;
+  struct 语法错误恢复上下文 r62;
+  enum 词元类型枚举 r17;
+  enum 词元类型枚举 r20;
+  enum 词元类型枚举 r36;
 
   entry:
   r0 = cn_var_实例;

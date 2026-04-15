@@ -951,7 +951,7 @@ struct 语句节点* 解析抛出语句(struct 解析器* cn_var_实例);
 struct 语句节点* 解析表达式语句(struct 解析器* cn_var_实例);
 struct 语句节点* 解析变量声明语句(struct 解析器* cn_var_实例);
 struct 语句节点* 解析语句(struct 解析器* cn_var_实例) {
-  long long r1, r2, r3, r39, r40;
+  long long r1;
   struct 解析器* r0;
   struct 解析器* r17;
   struct 块语句节点* r18;
@@ -993,6 +993,10 @@ struct 语句节点* 解析语句(struct 解析器* cn_var_实例) {
   _Bool r15;
   _Bool r16;
   _Bool r41;
+  struct 词元 r2;
+  struct 词元 r39;
+  enum 词元类型枚举 r3;
+  enum 词元类型枚举 r40;
 
   entry:
   r0 = cn_var_实例;
@@ -1375,7 +1379,7 @@ struct 语句节点* 解析当语句(struct 解析器* cn_var_实例) {
 }
 
 struct 语句节点* 解析循环语句(struct 解析器* cn_var_实例) {
-  long long r1, r3, r9, r10, r11, r12, r23, r30;
+  long long r1, r3, r9, r10, r23, r30;
   struct 解析器* r0;
   struct 语句节点* r2;
   struct 解析器* r4;
@@ -1406,6 +1410,8 @@ struct 语句节点* 解析循环语句(struct 解析器* cn_var_实例) {
   _Bool r27;
   _Bool r29;
   _Bool r34;
+  struct 词元 r11;
+  enum 词元类型枚举 r12;
 
   entry:
   r0 = cn_var_实例;
@@ -1934,7 +1940,8 @@ void* 解析情况列表(struct 解析器* cn_var_实例) {
 }
 
 struct 语句节点* 解析尝试语句(struct 解析器* cn_var_实例) {
-  long long r1, r3, r14, r15;
+  long long r1, r3;
+  char* r15;
   struct 解析器* r0;
   struct 语句节点* r2;
   struct 解析器* r4;
@@ -1959,6 +1966,7 @@ struct 语句节点* 解析尝试语句(struct 解析器* cn_var_实例) {
   _Bool r17;
   _Bool r19;
   _Bool r23;
+  struct 词元 r14;
 
   entry:
   r0 = cn_var_实例;
@@ -2025,7 +2033,9 @@ struct 语句节点* 解析尝试语句(struct 解析器* cn_var_实例) {
 }
 
 struct 语句节点* 解析抛出语句(struct 解析器* cn_var_实例) {
-  long long r1, r3, r5, r6, r11, r12;
+  long long r1, r3;
+  char* r6;
+  char* r12;
   struct 解析器* r0;
   struct 语句节点* r2;
   struct 解析器* r4;
@@ -2037,6 +2047,8 @@ struct 语句节点* 解析抛出语句(struct 解析器* cn_var_实例) {
   _Bool r8;
   _Bool r10;
   _Bool r15;
+  struct 词元 r5;
+  struct 词元 r11;
 
   entry:
   r0 = cn_var_实例;

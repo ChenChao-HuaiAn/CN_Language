@@ -4,6 +4,22 @@
 
 ### 🔴 权重 ≥ 15：必须关注
 
+> [权重: 20] 2026-04-14 19:08 | 类型推断问题 | 成员访问类型推断问题：AST节点类型信息丢失
+> - **问题**：第一次访问 `信息.位置` 正确推断为 `struct 源位置`，但后续访问的 `expr->type` 和 `object_op.type` 都是 NULL
+> - **调试输出**：
+>   ```
+>   [DEBUG SEM] MEMBER_ACCESS object_type is POINTER to STRUCT '诊断信息', member '位置'
+>   [DEBUG SEM] Set expr->type to field_type for member '位置', type kind=8
+>   [DEBUG IRGEN] MEMBER_ACCESS: expr->type=000002AF38E763E0, object_op.type=000002AF38E66E10 for member '位置'
+>   [DEBUG IRGEN] MEMBER_ACCESS: expr->type=0000000000000000, object_op.type=0000000000000000 for member '位置'
+>   ```
+> - **根本原因**：AST节点类型信息丢失。语义分析器正确设置了 `expr->type`，但 IR 生成器只收到第一个访问的类型信息。问题可能出在 AST 节点的复制或缓存上。
+> - **解决方案**：需要进一步调查 AST 节点的复制和缓存机制，确保类型信息正确传递
+> - **影响**：严重 - 导致生成的C代码类型错误，编译失败
+> - **权重计算**：基础权重10(类型错误) × 类型系数2.0(需要进一步调查) × 新鲜度1.0 × 解决状态1.0(调查中) = 20
+
+### 🔴 权重 ≥ 15：必须关注
+
 > [权重: 78] 2026-04-11 08:23 | 设计缺陷 | AI未经用户批准擅自添加"常量字符串"关键字
 > - **问题**：AI在开发CN语言编译器时，未经用户批准擅自添加了"常量字符串"关键字，与现有的"字符串"类型重复
 > - **涉及文件**：

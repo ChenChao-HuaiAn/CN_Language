@@ -335,8 +335,16 @@ int cn_cgen_module_impl(CnMultiFileCompileContext *ctx, CnModuleCompileUnit *uni
         fprintf(f, "/* 全局变量 */\n");
         while (global) {
             // 直接使用原始变量名（不再使用编码名称）
-            const char *type_str = get_c_type_str(global->type);
-            fprintf(f, "static %s %s;\n", type_str, global->name);
+            // 【修复】检查是否为静态数组类型，生成正确的C数组语法
+            if (global->type && global->type->kind == CN_TYPE_ARRAY && global->type->as.array.length > 0) {
+                // 静态数组：生成 "元素类型 变量名[长度];"
+                const char *elem_type_str = get_c_type_str(global->type->as.array.element_type);
+                fprintf(f, "static %s %s[%zu];\n", elem_type_str, global->name, global->type->as.array.length);
+            } else {
+                // 非数组类型：正常生成
+                const char *type_str = get_c_type_str(global->type);
+                fprintf(f, "static %s %s;\n", type_str, global->name);
+            }
             
             global = global->next;
         }

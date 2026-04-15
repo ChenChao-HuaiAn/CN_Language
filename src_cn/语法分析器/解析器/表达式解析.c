@@ -2358,8 +2358,10 @@ struct 表达式节点* 解析一元表达式(struct 解析器* cn_var_实例) {
 }
 
 struct 表达式节点* 解析后缀表达式(struct 解析器* cn_var_实例) {
-  long long r1, r5, r15, r23, r24, r29, r37, r38, r43, r57, r67, r76;
+  long long r1, r5, r15, r29, r43, r57, r67, r76;
+  char* r24;
   char* r32;
+  char* r38;
   char* r46;
   struct 解析器* r0;
   struct 解析器* r2;
@@ -2374,6 +2376,7 @@ struct 表达式节点* 解析后缀表达式(struct 解析器* cn_var_实例) {
   struct 表达式节点* r14;
   struct 表达式节点* r16;
   struct 表达式节点* r17;
+  struct 表达式列表* r18;
   struct 表达式节点* r19;
   struct 解析器* r20;
   struct 解析器* r22;
@@ -2427,7 +2430,8 @@ struct 表达式节点* 解析后缀表达式(struct 解析器* cn_var_实例) {
   _Bool r54;
   _Bool r63;
   _Bool r72;
-  struct 参数 r18;
+  struct 词元 r23;
+  struct 词元 r37;
 
   entry:
   r0 = cn_var_实例;
@@ -2670,7 +2674,8 @@ struct 表达式节点* 解析后缀表达式(struct 解析器* cn_var_实例) {
 }
 
 struct 表达式节点* 解析基础表达式(struct 解析器* cn_var_实例) {
-  long long r1, r2, r3, r4, r15, r43, r44, r49, r50, r51;
+  long long r1, r2, r3, r4, r15, r49, r51;
+  char* r44;
   char* r47;
   struct 解析器* r0;
   struct 解析器* r5;
@@ -2713,6 +2718,8 @@ struct 表达式节点* 解析基础表达式(struct 解析器* cn_var_实例) {
   _Bool r39;
   _Bool r42;
   _Bool r46;
+  struct 词元 r43;
+  struct 词元 r50;
 
   entry:
   r0 = cn_var_实例;
@@ -2853,7 +2860,8 @@ struct 表达式节点* 解析基础表达式(struct 解析器* cn_var_实例) {
 }
 
 struct 表达式节点* 解析字面量(struct 解析器* cn_var_实例) {
-  long long r1, r4, r5, r6, r18, r19;
+  long long r1, r4;
+  char* r19;
   struct 解析器* r0;
   struct 表达式节点* r2;
   struct 表达式节点* r3;
@@ -2870,6 +2878,9 @@ struct 表达式节点* 解析字面量(struct 解析器* cn_var_实例) {
   _Bool r10;
   _Bool r11;
   _Bool r12;
+  struct 词元 r5;
+  struct 词元 r18;
+  enum 词元类型枚举 r6;
 
   entry:
   r0 = cn_var_实例;
@@ -2964,12 +2975,14 @@ struct 表达式节点* 解析字面量(struct 解析器* cn_var_实例) {
 }
 
 struct 表达式节点* 解析标识符表达式(struct 解析器* cn_var_实例) {
-  long long r1, r4, r5, r6;
+  long long r1, r4;
+  char* r6;
   struct 解析器* r0;
   struct 表达式节点* r2;
   struct 表达式节点* r3;
   struct 解析器* r7;
   struct 表达式节点* r8;
+  struct 词元 r5;
 
   entry:
   r0 = cn_var_实例;
@@ -3042,13 +3055,13 @@ struct 表达式列表* 解析函数调用参数(struct 解析器* cn_var_实例
   struct 解析器* r5;
   struct 解析器* r8;
   struct 表达式节点* r9;
+  struct 表达式节点* r10;
   struct 表达式列表* r12;
+  struct 表达式节点* r13;
   struct 解析器* r14;
   struct 表达式列表* r17;
   _Bool r6;
   _Bool r15;
-  struct 参数 r10;
-  struct 参数 r13;
 
   entry:
   r0 = cn_var_实例;

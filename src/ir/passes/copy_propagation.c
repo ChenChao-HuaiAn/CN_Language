@@ -155,17 +155,31 @@ static void propagate_copy(CnIrCopyMap *map, CnIrOperand *op) {
     int reg_id = op->as.reg_id;
     CnIrOperand source;
     
+    // 【修复】保存原始类型信息，防止复写传播时丢失类型
+    CnType *original_type = op->type;
+    
     // 查找复写映射
     if (copy_map_get(map, reg_id, &source)) {
         // 替换为源操作数
         *op = source;
+        
+        // 【修复】如果源操作数没有类型信息，但原始操作数有，保留原始类型
+        // 这对于链式成员访问（如 a.b.c）特别重要，因为类型信息需要传播
+        if (!op->type && original_type) {
+            op->type = original_type;
+        }
         
         // 如果源操作数也是寄存器，递归查找（处理传递性复写）
         // 例如：%1 -> %0, %0 -> %3，则 %1 最终应该替换为 %3
         if (source.kind == CN_IR_OP_REG) {
             CnIrOperand transitive_source;
             if (copy_map_get(map, source.as.reg_id, &transitive_source)) {
+                // 【修复】同样保留类型信息
+                CnType *current_type = op->type;
                 *op = transitive_source;
+                if (!op->type && current_type) {
+                    op->type = current_type;
+                }
             }
         }
     }

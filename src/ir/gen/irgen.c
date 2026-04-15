@@ -1324,15 +1324,20 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             int result_reg = alloc_reg(ctx);
             CnType *result_type = expr->type;
             if (!result_type) {
-                // 如果元素类型未知，默认使用 void* 指针类型
-                result_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
-            } else {
-                // 【修复】动态数组索引访问返回的是指向数组元素的指针
-                // cn_rt_array_get_element 返回 void*，需要转换为正确的指针类型
-                // 无论元素类型是否是指针，都需要创建指向元素类型的指针
-                // 例如：符号*[] 数组，元素类型是 符号*，访问返回 符号**
-                result_type = cn_type_new_pointer(result_type);
+                // 【修复】如果元素类型未知，尝试从数组类型推断
+                if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.element_type) {
+                    // 静态数组索引访问返回元素类型
+                    result_type = array_type->as.array.element_type;
+                } else {
+                    // 其他情况默认使用 void* 指针类型
+                    result_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                }
             }
+            // 【关键修复】动态数组索引访问返回的是数组元素
+            // cn_rt_array_get_element 返回 void*，需要转换为正确的类型
+            // 如果元素类型是指针类型（如 符号*），直接使用该指针类型
+            // 如果元素类型是非指针类型（如 整数），需要创建指向该类型的指针
+            // 注意：这里不创建指向指针的指针，因为数组存储的就是指针本身
             
             // 【新增】字符串类型索引访问：使用指针算术直接访问
             if (is_string_type) {
@@ -1358,22 +1363,25 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             if (is_static_array) {
                 // 静态数组：使用 GET_ELEMENT_PTR 指令生成 C 风格的数组索引访问
                 // 生成：result = &array[index]
+                // 【修复】GET_ELEMENT_PTR 返回指向元素的指针，需要创建指针类型
+                CnType *ptr_type = cn_type_new_pointer(result_type);
                 CnIrInst *gep_inst = cn_ir_inst_new(CN_IR_INST_GET_ELEMENT_PTR,
-                                                     cn_ir_op_reg(result_reg, result_type),
+                                                     cn_ir_op_reg(result_reg, ptr_type),
                                                      array_op, index_op);
                 emit(ctx, gep_inst);
                 
-                // 然后加载值（如果元素类型不是指针）
-                if (expr->type && expr->type->kind != CN_TYPE_POINTER) {
+                // 【修复】对于非指针类型（包括结构体），需要加载值
+                // 静态数组索引访问 arr[i] 返回元素值，不是指针
+                if (result_type && result_type->kind != CN_TYPE_POINTER) {
                     int load_reg = alloc_reg(ctx);
                     CnIrInst *load_inst = cn_ir_inst_new(CN_IR_INST_LOAD,
-                                                          cn_ir_op_reg(load_reg, expr->type),
-                                                          cn_ir_op_reg(result_reg, result_type),
+                                                          cn_ir_op_reg(load_reg, result_type),
+                                                          cn_ir_op_reg(result_reg, ptr_type),
                                                           cn_ir_op_none());
                     emit(ctx, load_inst);
-                    return cn_ir_op_reg(load_reg, expr->type);
+                    return cn_ir_op_reg(load_reg, result_type);
                 }
-                return cn_ir_op_reg(result_reg, result_type);
+                return cn_ir_op_reg(result_reg, ptr_type);
             } else {
                 // 动态数组：调用 cn_rt_array_get_element(数组, 索引, 元素大小)
                 CnIrInst *get_inst = cn_ir_inst_new(CN_IR_INST_CALL, cn_ir_op_none(),
@@ -1385,10 +1393,29 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 get_inst->extra_args[1] = index_op;
                 get_inst->extra_args[2] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
                 
-                get_inst->dest = cn_ir_op_reg(result_reg, result_type);
+                // 【关键修复】动态数组索引访问返回 void*，需要设置正确的目标类型
+                // 如果元素类型是指针类型（如 符号*），dest.type 应该设置为该指针类型
+                // 这样代码生成器的类型扫描才能正确传播类型信息
+                
+                // 【调试】输出类型信息
+                #ifdef CN_DEBUG_TYPE_PROPAGATION
+                if (expr->type) {
+                    if (expr->type->kind == CN_TYPE_POINTER) {
+                        fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 是指针类型\n");
+                    } else if (expr->type->kind == CN_TYPE_STRUCT) {
+                        fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 是结构体类型\n");
+                    } else {
+                        fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 是其他类型 (kind=%d)\n", expr->type->kind);
+                    }
+                } else {
+                    fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 为 NULL\n");
+                }
+                #endif
+                
+                get_inst->dest = cn_ir_op_reg(result_reg, expr->type ? expr->type : result_type);
                 emit(ctx, get_inst);
                 
-                return cn_ir_op_reg(result_reg, result_type);
+                return cn_ir_op_reg(result_reg, expr->type ? expr->type : result_type);
             }
         }
         case CN_AST_EXPR_MEMBER_ACCESS: {
@@ -1522,13 +1549,49 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     obj_name = unique_name;
                 }
                 
-                // 判断对象是否为指针类型
-                object_is_pointer = (expr->as.member.object->type &&
-                                     expr->as.member.object->type->kind == CN_TYPE_POINTER);
+                // 【关键修复】获取对象的类型信息
+                // 优先使用 AST 节点的类型，如果为 NULL 则从符号表查找
+                CnType *obj_type = expr->as.member.object->type;
+                if (!obj_type && ctx->current_scope) {
+                    // 从符号表查找变量的类型
+                    CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope,
+                                            expr->as.member.object->as.identifier.name,
+                                            expr->as.member.object->as.identifier.name_length);
+                    if (sym && sym->type) {
+                        obj_type = sym->type;
+                    }
+                }
+                // 如果当前作用域没找到，尝试全局作用域
+                if (!obj_type && ctx->global_scope && ctx->global_scope != ctx->current_scope) {
+                    CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                            expr->as.member.object->as.identifier.name,
+                                            expr->as.member.object->as.identifier.name_length);
+                    if (sym && sym->type) {
+                        obj_type = sym->type;
+                    }
+                }
                 
-                // 创建符号操作数
-                object_op = cn_ir_op_symbol(obj_name, expr->as.member.object->type);
+                // 判断对象是否为指针类型
+                object_is_pointer = (obj_type && obj_type->kind == CN_TYPE_POINTER);
+                
+                // 创建符号操作数，使用获取到的类型
+                object_op = cn_ir_op_symbol(obj_name, obj_type);
                 free(obj_name);
+            } else if (expr->as.member.object->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+                // 【修复】对象是成员访问表达式：递归生成IR
+                // 这是链式访问的关键，如 信息.位置.文件名
+                object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
+                
+                // 【关键修复】从递归调用返回的操作数中获取类型信息
+                // cn_ir_gen_expr 返回的操作数包含类型信息，需要传播到 object_op.type
+                if (object_op.type) {
+                    // 已经有类型信息，直接使用
+                    object_is_pointer = (object_op.type->kind == CN_TYPE_POINTER);
+                } else if (expr->as.member.object->type) {
+                    // 从 AST 节点获取类型信息
+                    object_op.type = expr->as.member.object->type;
+                    object_is_pointer = (expr->as.member.object->type->kind == CN_TYPE_POINTER);
+                }
             } else {
                 // 其他情况：正常生成IR
                 object_op = cn_ir_gen_expr(ctx, expr->as.member.object);
@@ -1537,7 +1600,8 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             }
             
             // 重要：将对象的类型信息设置到object_op中，以便代码生成器判断是否使用"->"
-            if (expr->as.member.object->type) {
+            // 【修复】只有当 object_op.type 为 NULL 时才设置，避免覆盖链式访问中已设置的类型
+            if (!object_op.type && expr->as.member.object->type) {
                 object_op.type = expr->as.member.object->type;
             }
             
@@ -1564,7 +1628,94 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 生成成员访问指令，dest操作数记录成员名
             int result_reg = alloc_reg(ctx);
             
-            CnIrOperand result = cn_ir_op_reg(result_reg, expr->type);
+            // 【修复】如果 expr->type 为 NULL，尝试从 object_op.type 推断
+            // 这是链式访问的关键，如 信息.位置.文件名
+            CnType *result_type = expr->type;
+            if (!result_type && object_op.type) {
+                // 从对象类型推断成员类型
+                CnType *obj_type = object_op.type;
+                // 如果是指针类型，获取指向的类型
+                if (obj_type->kind == CN_TYPE_POINTER && obj_type->as.pointer_to) {
+                    obj_type = obj_type->as.pointer_to;
+                }
+                // 如果是结构体类型，查找成员类型
+                if (obj_type->kind == CN_TYPE_STRUCT) {
+                    if (obj_type->as.struct_type.fields) {
+                        const char *member_name = expr->as.member.member_name;
+                        size_t member_name_length = expr->as.member.member_name_length;
+                        for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
+                            if (obj_type->as.struct_type.fields[f].name &&
+                                obj_type->as.struct_type.fields[f].name_length == member_name_length &&
+                                memcmp(obj_type->as.struct_type.fields[f].name, member_name, member_name_length) == 0) {
+                                result_type = obj_type->as.struct_type.fields[f].field_type;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            // 【修复】如果 object_op.type 也是 NULL，尝试从 expr->as.member.object->type 推断
+            if (!result_type && !object_op.type && expr->as.member.object && expr->as.member.object->type) {
+                CnType *obj_type = expr->as.member.object->type;
+                // 如果是指针类型，获取指向的类型
+                if (obj_type->kind == CN_TYPE_POINTER && obj_type->as.pointer_to) {
+                    obj_type = obj_type->as.pointer_to;
+                }
+                // 如果是结构体类型，查找成员类型
+                if (obj_type->kind == CN_TYPE_STRUCT && obj_type->as.struct_type.fields) {
+                    const char *member_name = expr->as.member.member_name;
+                    size_t member_name_length = expr->as.member.member_name_length;
+                    for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
+                        if (obj_type->as.struct_type.fields[f].name &&
+                            obj_type->as.struct_type.fields[f].name_length == member_name_length &&
+                            memcmp(obj_type->as.struct_type.fields[f].name, member_name, member_name_length) == 0) {
+                            result_type = obj_type->as.struct_type.fields[f].field_type;
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // 【新增】如果 result_type 仍然为 NULL，尝试从全局符号表获取结构体类型信息
+            // 这处理了结构体类型信息不完整的情况
+            if (!result_type && ctx->global_scope) {
+                CnType *obj_type = object_op.type;
+                if (!obj_type && expr->as.member.object && expr->as.member.object->type) {
+                    obj_type = expr->as.member.object->type;
+                }
+                
+                if (obj_type) {
+                    // 如果是指针类型，获取指向的类型
+                    if (obj_type->kind == CN_TYPE_POINTER && obj_type->as.pointer_to) {
+                        obj_type = obj_type->as.pointer_to;
+                    }
+                    
+                    // 如果是结构体类型但没有字段信息，从全局符号表获取完整类型
+                    if (obj_type->kind == CN_TYPE_STRUCT && !obj_type->as.struct_type.fields && obj_type->as.struct_type.name) {
+                        CnSemSymbol *struct_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                obj_type->as.struct_type.name, obj_type->as.struct_type.name_length);
+                        if (struct_sym && struct_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            struct_sym->type && struct_sym->type->as.struct_type.fields) {
+                            // 使用完整的结构体类型
+                            obj_type = struct_sym->type;
+                            
+                            // 查找成员类型
+                            const char *member_name = expr->as.member.member_name;
+                            size_t member_name_length = expr->as.member.member_name_length;
+                            for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
+                                if (obj_type->as.struct_type.fields[f].name &&
+                                    obj_type->as.struct_type.fields[f].name_length == member_name_length &&
+                                    memcmp(obj_type->as.struct_type.fields[f].name, member_name, member_name_length) == 0) {
+                                    result_type = obj_type->as.struct_type.fields[f].field_type;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            CnIrOperand result = cn_ir_op_reg(result_reg, result_type);
             
             // 使用 MEMBER_ACCESS 指令，src1为对象，src2为成员名（作为符号）
             char *member_name = copy_name(expr->as.member.member_name, expr->as.member.member_name_length);

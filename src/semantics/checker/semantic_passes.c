@@ -117,6 +117,26 @@ static void resolve_stmt_names(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics
                     } else {
                         sym->type = decl->declared_type;
                     }
+                } else if (decl->declared_type && decl->declared_type->kind == CN_TYPE_ARRAY &&
+                           decl->declared_type->as.array.element_type &&
+                           decl->declared_type->as.array.element_type->kind == CN_TYPE_POINTER &&
+                           decl->declared_type->as.array.element_type->as.pointer_to &&
+                           decl->declared_type->as.array.element_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                    // 【关键修复】指针数组类型：元素类型是指向结构体的指针（如 符号*[]）
+                    CnType *arr_type = decl->declared_type;
+                    CnType *elem_ptr_type = arr_type->as.array.element_type;  // 指针类型
+                    CnType *pointee_type = elem_ptr_type->as.pointer_to;      // 指向的结构体类型
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            pointee_type->as.struct_type.name,
+                                            pointee_type->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        // 创建新的数组类型，元素类型为指向完整结构体类型的指针
+                        CnType *new_elem_type = cn_type_new_pointer(type_sym->type);
+                        sym->type = cn_type_new_array(new_elem_type, arr_type->as.array.length);
+                    } else {
+                        sym->type = decl->declared_type;
+                    }
                 } else if (decl->declared_type) {
                     // 其他类型（基本类型、指针等）
                     sym->type = decl->declared_type;
@@ -343,6 +363,25 @@ bool cn_sem_check_types(CnSemScope *global_scope,
                     var_decl->declared_type = cn_type_new_array(type_sym->type, arr_type->as.array.length);
                 }
             }
+            // 【关键修复】特殊处理：如果声明类型是指针数组（元素类型是指向结构体的指针）
+            else if (var_decl->declared_type->kind == CN_TYPE_ARRAY &&
+                     var_decl->declared_type->as.array.element_type &&
+                     var_decl->declared_type->as.array.element_type->kind == CN_TYPE_POINTER &&
+                     var_decl->declared_type->as.array.element_type->as.pointer_to &&
+                     var_decl->declared_type->as.array.element_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                CnType *arr_type = var_decl->declared_type;
+                CnType *elem_ptr_type = arr_type->as.array.element_type;  // 指针类型
+                CnType *pointee_type = elem_ptr_type->as.pointer_to;      // 指向的结构体类型
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        pointee_type->as.struct_type.name,
+                                        pointee_type->as.struct_type.name_length);
+                if (type_sym && type_sym->type &&
+                    (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                    // 创建新的数组类型，元素类型为指向完整结构体类型的指针
+                    CnType *new_elem_type = cn_type_new_pointer(type_sym->type);
+                    var_decl->declared_type = cn_type_new_array(new_elem_type, arr_type->as.array.length);
+                }
+            }
             
             // 更新全局作用域中该变量的类型
             CnSemSymbol *sym = cn_sem_scope_lookup_shallow(global_scope,
@@ -553,6 +592,26 @@ static void check_stmt_types(CnSemScope *scope, CnAstStmt *stmt, CnDiagnostics *
                             (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
                             // 创建新的数组类型，元素类型为完整的结构体类型
                             decl->declared_type = cn_type_new_array(type_sym->type, arr_type->as.array.length);
+                        }
+                    }
+                    
+                    // 【关键修复】特殊处理：如果声明类型是指针数组（元素类型是指向结构体的指针）
+                    if (decl->declared_type->kind == CN_TYPE_ARRAY &&
+                        decl->declared_type->as.array.element_type &&
+                        decl->declared_type->as.array.element_type->kind == CN_TYPE_POINTER &&
+                        decl->declared_type->as.array.element_type->as.pointer_to &&
+                        decl->declared_type->as.array.element_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                        CnType *arr_type = decl->declared_type;
+                        CnType *elem_ptr_type = arr_type->as.array.element_type;  // 指针类型
+                        CnType *pointee_type = elem_ptr_type->as.pointer_to;      // 指向的结构体类型
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                                pointee_type->as.struct_type.name,
+                                                pointee_type->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                            // 创建新的数组类型，元素类型为指向完整结构体类型的指针
+                            CnType *new_elem_type = cn_type_new_pointer(type_sym->type);
+                            decl->declared_type = cn_type_new_array(new_elem_type, arr_type->as.array.length);
                         }
                     }
                     
@@ -2025,8 +2084,6 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             }
             
             CnType *object_type = infer_expr_type(scope, expr->as.member.object, diagnostics);
-            
-            // 【调试】检查 object_type 的值
             
             // 【关键修复】确保对象表达式的类型被正确设置
             // 代码生成器依赖 expr->as.member.object->type 来判断是否使用 "->" 操作符

@@ -130,7 +130,7 @@ struct 关键字条目 {
 
 // Global Variables
 long long cn_var_关键字表大小 = 40;
-struct 关键字条目* cn_var_关键字表 = 0;
+struct 关键字条目 cn_var_关键字表[40];
 _Bool cn_var_关键字表已初始化 = 0;
 
 // Forward Declarations

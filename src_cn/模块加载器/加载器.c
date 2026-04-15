@@ -1057,9 +1057,11 @@ long long 获取文件大小(void*);
 void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
 
 struct 模块加载器* 创建模块加载器(struct 诊断集合* cn_var_诊断集合指针) {
-  long long r0, r2, r3, r5;
+  long long r0, r3;
   void* r1;
+  struct 模块加载器* r2;
   struct 诊断集合* r4;
+  struct 模块加载器* r5;
 
   entry:
   struct 模块加载器* cn_var_加载器_0;
@@ -1081,11 +1083,16 @@ struct 模块加载器* 创建模块加载器(struct 诊断集合* cn_var_诊断
 }
 
 void 销毁模块加载器(struct 模块加载器* cn_var_加载器) {
-  long long r0, r1, r2, r3, r4, r5, r6, r8, r9, r10, r12, r13, r14, r15, r16, r17, r18, r21, r22, r23, r26, r27, r28;
+  long long r0, r1, r2, r3, r4, r6, r8, r10, r12, r13, r14, r15, r16, r18, r21, r26, r27, r28;
+  char* r23;
+  char** r5;
+  char** r9;
+  struct 模块缓存条目** r17;
   void* r7;
   void* r11;
   void* r19;
   struct 模块缓存条目* r20;
+  struct 模块缓存条目* r22;
   struct 模块缓存条目* r24;
   struct 模块缓存条目* r25;
 
@@ -1184,7 +1191,7 @@ void 销毁模块加载器(struct 模块加载器* cn_var_加载器) {
 }
 
 _Bool 添加搜索路径(struct 模块加载器* cn_var_加载器, const char* cn_var_路径) {
-  long long r0, r1, r2, r4, r5, r6, r7, r9, r10, r11, r14, r19, r20, r21, r22;
+  long long r0, r1, r2, r4, r5, r6, r7, r9, r10, r11, r14, r20, r21, r22;
   char* r3;
   char* r8;
   char* r13;
@@ -1192,6 +1199,7 @@ _Bool 添加搜索路径(struct 模块加载器* cn_var_加载器, const char* c
   char* r16;
   char* r17;
   char* r18;
+  char** r19;
   void* r12;
 
   entry:
@@ -1283,15 +1291,19 @@ void 设置默认搜索路径(struct 模块加载器* cn_var_加载器, const ch
 }
 
 struct 模块标识符* 解析模块标识符(const char* cn_var_模块名) {
-  long long r1, r3, r4, r5, r6, r7, r8, r9, r10, r13, r14, r15, r17, r18, r20, r23, r24, r25, r26, r28, r30, r31, r32, r33, r34, r35, r36, r38, r39, r40, r42, r43, r44, r45, r46, r48, r50, r52, r54, r56, r58, r59, r60, r63, r64, r65, r66, r67, r68, r70, r71, r72, r73, r79, r80, r81, r82, r84, r87, r88, r89, r90, r91;
+  long long r1, r3, r4, r5, r6, r7, r8, r9, r10, r13, r14, r15, r18, r23, r24, r25, r26, r28, r30, r31, r32, r33, r34, r35, r36, r39, r42, r43, r44, r45, r46, r48, r50, r52, r54, r56, r58, r59, r60, r63, r64, r65, r66, r68, r70, r71, r80, r81, r82, r84, r87, r88, r89, r90, r91;
   char* r0;
   char* r2;
+  char* r17;
+  char* r20;
   char* r21;
   char* r22;
   char* r27;
+  char* r40;
   char* r47;
   char* r51;
   char* r62;
+  char* r73;
   char* r75;
   char* r77;
   char* r78;
@@ -1301,19 +1313,23 @@ struct 模块标识符* 解析模块标识符(const char* cn_var_模块名) {
   char* r76;
   char* r86;
   void* r11;
+  struct 模块标识符* r12;
   void* r16;
+  struct 模块标识符* r19;
   void* r29;
   void* r37;
+  char** r38;
+  struct 模块标识符* r41;
   void* r49;
   void* r53;
   void* r61;
+  char** r67;
   void* r69;
+  char** r72;
+  struct 模块标识符* r74;
+  char** r79;
   void* r85;
-  enum 词元类型枚举 r12;
-  enum 词元类型枚举 r19;
-  enum 词元类型枚举 r41;
-  enum 词元类型枚举 r74;
-  enum 词元类型枚举 r92;
+  struct 模块标识符* r92;
 
   entry:
   r0 = cn_var_模块名;
@@ -1556,9 +1572,15 @@ struct 模块标识符* 解析模块标识符(const char* cn_var_模块名) {
 }
 
 void 销毁模块标识符(struct 模块标识符* cn_var_标识符) {
-  long long r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r13, r14, r15, r17, r18, r19;
+  long long r1, r3, r6, r7, r8, r9, r11, r13, r15, r17, r18;
+  char* r2;
+  char* r4;
+  char** r5;
+  char** r10;
   void* r12;
+  char** r14;
   void* r16;
+  char** r19;
   enum 词元类型枚举 r0;
   enum 词元类型枚举 r20;
 
@@ -1632,7 +1654,7 @@ void 销毁模块标识符(struct 模块标识符* cn_var_标识符) {
 }
 
 _Bool 解析模块文件路径(struct 模块加载器* cn_var_加载器, struct 模块标识符* cn_var_标识符, const char* cn_var_输出路径, long long cn_var_输出路径大小) {
-  long long r0, r1, r2, r3, r5, r7, r8, r9, r10, r11, r12, r15, r18, r20, r21, r22, r23, r25, r26, r27, r28, r29, r32, r34, r35, r37, r39, r40, r41, r42, r43, r45, r46, r48, r49, r51, r55, r57, r58, r59, r63, r64;
+  long long r0, r1, r2, r3, r5, r7, r8, r9, r10, r12, r15, r18, r20, r21, r22, r23, r25, r26, r27, r29, r32, r34, r35, r37, r39, r40, r41, r42, r43, r45, r46, r48, r49, r51, r55, r57, r58, r59, r63, r64;
   char* r6;
   char* r14;
   char* r17;
@@ -1641,6 +1663,7 @@ _Bool 解析模块文件路径(struct 模块加载器* cn_var_加载器, struct 
   char* r47;
   char* r60;
   char* r62;
+  char** r11;
   char* r16;
   char* r24;
   char* r33;
@@ -1650,6 +1673,7 @@ _Bool 解析模块文件路径(struct 模块加载器* cn_var_加载器, struct 
   char* r61;
   void* r13;
   void* r19;
+  char** r28;
   void* r30;
   void* r38;
   void* r53;
@@ -1873,12 +1897,16 @@ long long 计算哈希值(const char* cn_var_字符串指针) {
 }
 
 struct 模块元数据* 从缓存获取模块(struct 模块加载器* cn_var_加载器, const char* cn_var_模块名) {
-  long long r0, r1, r2, r4, r6, r7, r8, r9, r10, r11, r14, r15, r17, r18, r19, r20;
+  long long r0, r1, r2, r4, r6, r7, r8, r9, r11, r14, r17, r18;
   char* r3;
   char* r5;
+  char* r15;
   char* r16;
+  struct 模块缓存条目** r10;
   void* r12;
   struct 模块缓存条目* r13;
+  struct 模块元数据* r19;
+  struct 模块缓存条目* r20;
 
   entry:
   r1 = cn_var_加载器;
@@ -1942,12 +1970,16 @@ struct 模块元数据* 从缓存获取模块(struct 模块加载器* cn_var_加
 }
 
 _Bool 添加模块到缓存(struct 模块加载器* cn_var_加载器, const char* cn_var_模块名, struct 模块元数据* cn_var_元数据) {
-  long long r0, r1, r2, r3, r5, r7, r9, r10, r11, r12, r13, r16, r18, r19, r20, r22, r23, r25, r29, r30, r33, r34, r35, r36;
+  long long r0, r1, r2, r3, r5, r7, r9, r10, r11, r12, r13, r16, r18, r19, r20, r23, r30, r34, r35, r36;
   char* r4;
   char* r8;
   char* r17;
+  char* r22;
+  char* r25;
   char* r26;
   char* r27;
+  struct 模块缓存条目** r29;
+  struct 模块缓存条目** r33;
   struct 模块元数据* r6;
   void* r14;
   struct 模块缓存条目* r15;
@@ -2194,8 +2226,16 @@ struct 模块元数据* 创建模块元数据(struct 模块标识符* cn_var_标
 }
 
 void 销毁模块元数据(struct 模块元数据* cn_var_元数据) {
-  long long r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13;
+  long long r1, r3, r6, r9, r12;
+  char* r5;
+  char* r7;
   struct 模块元数据* r0;
+  struct 模块标识符* r2;
+  struct 模块标识符* r4;
+  struct 导出符号* r8;
+  struct 导出符号* r10;
+  struct 模块依赖* r11;
+  struct 模块依赖* r13;
   struct 模块元数据* r14;
 
   entry:
@@ -2254,10 +2294,12 @@ void 销毁模块元数据(struct 模块元数据* cn_var_元数据) {
 }
 
 struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载器, const char* cn_var_模块名) {
-  long long r0, r1, r2, r4, r5, r9, r11, r12, r13, r14, r18, r19, r23, r25, r29, r30, r32, r33, r35, r36, r37, r39, r40, r42, r43, r44, r47, r50, r51, r52, r54, r55, r57, r58, r60, r63, r66, r67, r69, r72, r76, r77, r81, r86, r87, r92, r96, r97;
+  long long r0, r1, r2, r4, r5, r9, r11, r12, r13, r18, r23, r25, r29, r32, r33, r35, r36, r37, r40, r42, r43, r47, r50, r51, r52, r54, r57, r58, r60, r63, r66, r67, r72, r76, r77, r81, r86, r87, r92, r96, r97;
   char* r3;
   char* r6;
   char* r15;
+  char* r39;
+  char* r44;
   char* r46;
   char* r49;
   char* r59;
@@ -2273,17 +2315,26 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   struct 模块元数据* r7;
   struct 模块元数据* r8;
   struct 模块元数据* r10;
+  struct 诊断集合* r14;
   struct 模块标识符* r16;
+  struct 模块标识符* r17;
+  struct 诊断集合* r19;
+  struct 模块标识符* r20;
   struct 模块元数据* r21;
   struct 模块元数据* r22;
+  struct 模块标识符* r24;
+  struct 模块标识符* r26;
+  struct 诊断集合* r30;
   struct 模块元数据* r31;
   void* r38;
   struct 模块元数据* r41;
+  struct 诊断集合* r55;
   struct 模块元数据* r56;
   struct 扫描器* r61;
   struct 扫描器* r62;
   struct 模块元数据* r65;
   struct 扫描器* r68;
+  struct 诊断集合* r69;
   struct 解析器* r70;
   struct 解析器* r71;
   struct 扫描器* r73;
@@ -2302,10 +2353,6 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
   _Bool r28;
   _Bool r53;
   _Bool r95;
-  enum 词元类型枚举 r17;
-  enum 词元类型枚举 r20;
-  enum 词元类型枚举 r24;
-  enum 词元类型枚举 r26;
 
   entry:
   r1 = cn_var_加载器;
@@ -2533,9 +2580,10 @@ struct 模块元数据* 加载模块核心(struct 模块加载器* cn_var_加载
 }
 
 struct 模块元数据* 加载模块(struct 模块加载器* cn_var_加载器, const char* cn_var_模块名) {
-  long long r0, r1, r2, r4, r5, r6, r7, r8, r9, r13;
+  long long r0, r1, r2, r4, r6, r7, r8, r9, r13;
   char* r3;
   char* r10;
+  struct 模块元数据* r5;
   struct 模块元数据* r11;
   struct 模块元数据* r12;
   struct 模块元数据* r14;
@@ -2579,17 +2627,21 @@ struct 模块元数据* 加载模块(struct 模块加载器* cn_var_加载器, c
 }
 
 _Bool 处理导入语句(struct 模块加载器* cn_var_加载器, struct 导入声明* cn_var_导入节点, struct 模块元数据* cn_var_当前模块) {
-  long long r0, r1, r2, r3, r5, r7, r8, r10, r11, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r29, r31, r32, r33, r35, r36, r37, r38;
+  long long r0, r1, r2, r3, r5, r7, r10, r11, r15, r16, r17, r18, r19, r20, r21, r22, r24, r25, r26, r29, r31, r33, r35, r37, r38;
+  char* r8;
   char* r9;
   char* r12;
   struct 导入声明* r4;
   struct 模块元数据* r6;
   struct 模块元数据* r13;
   struct 模块元数据* r14;
+  struct 模块依赖* r23;
   void* r27;
   struct 模块依赖* r28;
   struct 模块依赖* r30;
+  struct 模块依赖* r32;
   void* r34;
+  struct 模块标识符* r36;
 
   entry:
   r2 = cn_var_加载器;
@@ -2696,13 +2748,20 @@ _Bool 处理导入语句(struct 模块加载器* cn_var_加载器, struct 导入
 }
 
 _Bool 处理所有导入语句(struct 模块加载器* cn_var_加载器, struct 模块元数据* cn_var_当前模块) {
-  long long r0, r1, r2, r3, r5, r6, r7, r8, r9, r11, r12, r13, r15, r16, r17, r18, r19, r23, r24;
+  long long r0, r1, r2, r3, r5, r7, r11, r13, r15, r17, r19, r23;
   struct 模块元数据* r4;
+  struct 程序节点* r6;
+  struct 程序节点* r8;
+  struct 声明节点列表* r9;
   struct 声明节点列表* r10;
+  struct 声明节点* r12;
   struct 声明节点* r14;
+  struct 导入声明* r18;
   struct 导入声明* r20;
   struct 模块元数据* r21;
+  struct 声明节点列表* r24;
   _Bool r22;
+  enum 节点类型 r16;
 
   entry:
   r2 = cn_var_加载器;
@@ -2787,17 +2846,42 @@ _Bool 处理所有导入语句(struct 模块加载器* cn_var_加载器, struct 
 }
 
 _Bool 收集导出符号(struct 模块元数据* cn_var_元数据) {
-  long long r0, r2, r3, r4, r5, r6, r8, r9, r10, r12, r13, r14, r15, r16, r17, r18, r19, r20, r22, r23, r24, r25, r27, r28, r29, r31, r32, r33, r34, r36, r37, r38, r39, r41, r42, r43, r44, r45, r46, r47, r49, r50, r51, r52, r53, r54, r55, r56, r58, r59, r60, r61, r62, r63, r64, r65;
+  long long r0, r2, r4, r8, r10, r12, r14, r15, r17, r18, r19, r20, r23, r24, r27, r29, r31, r34, r36, r38, r41, r44, r46, r49, r52, r55, r58, r61, r62, r63, r64;
+  char* r42;
+  char* r43;
+  char* r50;
+  char* r51;
+  char* r59;
+  char* r60;
   struct 模块元数据* r1;
+  struct 程序节点* r3;
+  struct 程序节点* r5;
+  struct 声明节点列表* r6;
   struct 声明节点列表* r7;
+  struct 声明节点* r9;
   struct 声明节点* r11;
+  struct 声明节点列表* r16;
   void* r21;
+  struct 导出符号* r22;
+  struct 声明节点列表* r25;
   struct 声明节点列表* r26;
+  struct 声明节点* r28;
   struct 声明节点* r30;
+  struct 导出符号* r33;
   void* r35;
+  struct 函数声明* r39;
+  struct 函数声明* r40;
+  struct 变量声明* r47;
+  struct 变量声明* r48;
+  struct 变量声明* r56;
   struct 变量声明* r57;
-  struct 函数声明 r40;
-  struct 变量声明 r48;
+  struct 声明节点列表* r65;
+  _Bool r13;
+  _Bool r32;
+  _Bool r53;
+  enum 节点类型 r37;
+  enum 节点类型 r45;
+  enum 节点类型 r54;
 
   entry:
   r1 = cn_var_元数据;

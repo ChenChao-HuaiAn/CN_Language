@@ -924,7 +924,8 @@ struct 类型节点* 解析指针类型(struct 解析器* cn_var_实例, struct 
 struct 类型节点* 解析数组类型(struct 解析器* cn_var_实例, struct 类型节点* cn_var_元素类型);
 struct 类型节点* 解析函数类型(struct 解析器* cn_var_实例);
 struct 类型节点* 解析类型(struct 解析器* cn_var_实例) {
-  long long r1, r2, r3, r7, r8, r9, r11, r12, r13, r22, r29;
+  long long r1, r9, r11, r22, r29;
+  char* r13;
   struct 解析器* r0;
   struct 解析器* r5;
   struct 类型节点* r6;
@@ -945,6 +946,11 @@ struct 类型节点* 解析类型(struct 解析器* cn_var_实例) {
   _Bool r4;
   _Bool r17;
   _Bool r24;
+  struct 词元 r2;
+  struct 词元 r7;
+  struct 词元 r12;
+  enum 词元类型枚举 r3;
+  enum 词元类型枚举 r8;
 
   entry:
   r0 = cn_var_实例;
@@ -1162,16 +1168,17 @@ struct 类型节点* 解析基础类型(struct 解析器* cn_var_实例) {
 }
 
 struct 类型节点* 解析指针类型(struct 解析器* cn_var_实例, struct 类型节点* cn_var_基类型) {
-  long long r0, r2, r4, r7, r10, r13, r14, r15, r16;
+  long long r0, r2, r4, r7, r10, r13, r14, r16;
+  char* r15;
   struct 解析器* r1;
   struct 类型节点* r3;
   struct 解析器* r5;
   struct 类型节点* r8;
+  struct 类型节点* r9;
   struct 类型节点* r11;
   struct 类型节点* r12;
+  struct 类型节点* r17;
   _Bool r6;
-  enum 节点类型 r9;
-  enum 节点类型 r17;
 
   entry:
   r1 = cn_var_实例;
@@ -1225,21 +1232,23 @@ struct 类型节点* 解析指针类型(struct 解析器* cn_var_实例, struct 
 }
 
 struct 类型节点* 解析数组类型(struct 解析器* cn_var_实例, struct 类型节点* cn_var_元素类型) {
-  long long r0, r2, r4, r7, r10, r13, r14, r17, r18;
+  long long r0, r2, r4, r7, r10, r13, r14;
+  char* r18;
   struct 解析器* r1;
   struct 类型节点* r3;
   struct 解析器* r5;
   struct 类型节点* r8;
+  struct 类型节点* r9;
   struct 类型节点* r11;
   struct 类型节点* r12;
   struct 解析器* r15;
   struct 解析器* r19;
   struct 解析器* r20;
+  struct 类型节点* r22;
   _Bool r6;
   _Bool r16;
   _Bool r21;
-  enum 节点类型 r9;
-  enum 节点类型 r22;
+  struct 词元 r17;
 
   entry:
   r1 = cn_var_实例;
@@ -1308,29 +1317,29 @@ struct 类型节点* 解析数组类型(struct 解析器* cn_var_实例, struct 
 struct 类型节点* 解析函数类型(struct 解析器* cn_var_实例) {
   long long r1, r3, r6, r10, r14, r18, r23;
   struct 解析器* r0;
+  struct 类型节点* r2;
   struct 解析器* r4;
+  struct 类型节点* r7;
   struct 解析器* r8;
+  struct 类型节点* r11;
   struct 解析器* r12;
   struct 解析器* r15;
   struct 类型节点* r16;
   struct 类型节点* r17;
+  struct 类型节点* r19;
   struct 类型节点* r20;
   struct 解析器* r21;
   struct 解析器* r24;
   struct 解析器* r26;
   struct 解析器* r28;
   struct 类型节点* r29;
+  struct 类型节点* r30;
   _Bool r5;
   _Bool r9;
   _Bool r13;
   _Bool r22;
   _Bool r25;
   _Bool r27;
-  enum 节点类型 r2;
-  enum 节点类型 r7;
-  enum 节点类型 r11;
-  enum 节点类型 r19;
-  enum 节点类型 r30;
 
   entry:
   r0 = cn_var_实例;

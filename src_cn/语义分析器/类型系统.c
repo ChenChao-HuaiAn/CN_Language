@@ -1097,7 +1097,8 @@ struct 类型信息* 创建字符串类型() {
 }
 
 struct 类型信息* 创建指针类型(struct 类型信息* cn_var_指向类型) {
-  long long r0, r3, r4, r5, r6, r7, r8;
+  long long r0, r3, r4, r5, r6, r8;
+  char* r7;
   void* r1;
   struct 类型信息* r2;
   struct 类型信息* r9;
@@ -1292,9 +1293,10 @@ _Bool 类型相同(struct 类型信息* cn_var_类型1, struct 类型信息* cn_
 }
 
 enum 类型兼容性 检查类型兼容性(struct 类型信息* cn_var_源类型, struct 类型信息* cn_var_目标类型) {
-  long long r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27, r28, r29, r30, r31, r32, r33, r34, r35, r36, r37, r38, r39, r40, r44, r45, r46, r47, r48;
+  long long r3, r5, r7, r10, r11, r13, r15, r16, r18, r20, r21, r23, r25, r26, r28, r30, r31, r33, r35, r36, r38, r40, r44, r46, r48;
   struct 类型信息* r0;
   struct 类型信息* r1;
+  struct 类型信息* r8;
   struct 类型信息* r41;
   struct 类型信息* r42;
   struct 类型信息* r49;
@@ -1302,6 +1304,23 @@ enum 类型兼容性 检查类型兼容性(struct 类型信息* cn_var_源类型
   _Bool r2;
   _Bool r43;
   _Bool r51;
+  enum 类型种类 r4;
+  enum 类型种类 r6;
+  enum 类型种类 r9;
+  enum 类型种类 r12;
+  enum 类型种类 r14;
+  enum 类型种类 r17;
+  enum 类型种类 r19;
+  enum 类型种类 r22;
+  enum 类型种类 r24;
+  enum 类型种类 r27;
+  enum 类型种类 r29;
+  enum 类型种类 r32;
+  enum 类型种类 r34;
+  enum 类型种类 r37;
+  enum 类型种类 r39;
+  enum 类型种类 r45;
+  enum 类型种类 r47;
 
   entry:
   r0 = cn_var_源类型;
@@ -1320,7 +1339,7 @@ enum 类型兼容性 检查类型兼容性(struct 类型信息* cn_var_源类型
 
   if_then_1932:
   r8 = cn_var_源类型->指向类型;
-  r9 = r8.种类;
+  r9 = r8->种类;
   r10 = r9 == 类型种类_类型_空;
   if (r10) goto if_then_1936; else goto if_merge_1937;
 
@@ -1482,9 +1501,13 @@ enum 类型兼容性 检查类型兼容性(struct 类型信息* cn_var_源类型
 }
 
 _Bool 是派生类(struct 类型信息* cn_var_子类, struct 类型信息* cn_var_父类) {
-  long long r0, r2, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15, r16;
+  long long r0, r2, r4, r5, r7, r9, r11, r12, r13, r15, r16;
   struct 类型信息* r1;
   struct 类型信息* r3;
+  struct 符号* r10;
+  struct 符号* r14;
+  enum 类型种类 r6;
+  enum 类型种类 r8;
 
   entry:
   r1 = cn_var_子类;
@@ -1560,8 +1583,10 @@ _Bool 实现接口(struct 类型信息* cn_var_类类型, struct 类型信息* c
 }
 
 _Bool 是数值类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3, r4, r5, r6;
+  long long r1, r2, r4, r6;
   struct 类型信息* r0;
+  enum 类型种类 r3;
+  enum 类型种类 r5;
 
   entry:
   r0 = cn_var_类型;
@@ -1587,8 +1612,10 @@ _Bool 是数值类型(struct 类型信息* cn_var_类型) {
 }
 
 _Bool 是整数类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3, r4, r5, r6;
+  long long r1, r2, r4, r6;
   struct 类型信息* r0;
+  enum 类型种类 r3;
+  enum 类型种类 r5;
 
   entry:
   r0 = cn_var_类型;
@@ -1614,8 +1641,9 @@ _Bool 是整数类型(struct 类型信息* cn_var_类型) {
 }
 
 _Bool 是指针类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3;
+  long long r1, r3;
   struct 类型信息* r0;
+  enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
@@ -1633,8 +1661,9 @@ _Bool 是指针类型(struct 类型信息* cn_var_类型) {
 }
 
 _Bool 是数组类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3;
+  long long r1, r3;
   struct 类型信息* r0;
+  enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
@@ -1652,8 +1681,9 @@ _Bool 是数组类型(struct 类型信息* cn_var_类型) {
 }
 
 _Bool 是结构体类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3;
+  long long r1, r3;
   struct 类型信息* r0;
+  enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
@@ -1671,8 +1701,9 @@ _Bool 是结构体类型(struct 类型信息* cn_var_类型) {
 }
 
 _Bool 是类类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3;
+  long long r1, r3;
   struct 类型信息* r0;
+  enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
@@ -1690,8 +1721,9 @@ _Bool 是类类型(struct 类型信息* cn_var_类型) {
 }
 
 _Bool 是函数类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3;
+  long long r1, r3;
   struct 类型信息* r0;
+  enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
@@ -1709,8 +1741,12 @@ _Bool 是函数类型(struct 类型信息* cn_var_类型) {
 }
 
 _Bool 是可调用类型(struct 类型信息* cn_var_类型) {
-  long long r1, r2, r3, r4, r5, r6, r7, r8, r9, r10;
+  long long r1, r2, r4, r5, r7, r10;
   struct 类型信息* r0;
+  struct 类型信息* r8;
+  enum 类型种类 r3;
+  enum 类型种类 r6;
+  enum 类型种类 r9;
 
   entry:
   r0 = cn_var_类型;
@@ -1736,7 +1772,7 @@ _Bool 是可调用类型(struct 类型信息* cn_var_类型) {
 
   logic_rhs_2023:
   r8 = cn_var_类型->指向类型;
-  r9 = r8.种类;
+  r9 = r8->种类;
   r10 = r9 == 类型种类_类型_函数;
   goto logic_merge_2024;
 
@@ -1746,7 +1782,7 @@ _Bool 是可调用类型(struct 类型信息* cn_var_类型) {
 }
 
 struct 类型信息* 从类型节点推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r1, r2;
+  long long r1;
   struct 类型节点* r0;
   struct 类型节点* r12;
   struct 类型推断上下文* r13;
@@ -1784,6 +1820,7 @@ struct 类型信息* 从类型节点推断(struct 类型节点* cn_var_类型节
   _Bool r9;
   _Bool r10;
   _Bool r11;
+  enum 节点类型 r2;
 
   entry:
   r0 = cn_var_类型节点指针;
@@ -1903,12 +1940,14 @@ struct 类型信息* 从类型节点推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r0, r1, r2, r3, r4, r6, r7, r8, r9, r11, r12, r13, r15, r16, r17, r19, r20, r21, r23, r24, r26, r27, r28, r29, r30, r31, r33, r34, r35, r36, r38, r39, r40, r41, r43, r44, r45, r46, r48, r49, r50, r53;
+  long long r1, r2, r3, r4, r6, r7, r8, r9, r11, r12, r13, r15, r16, r17, r19, r20, r21, r24, r26, r27, r28, r29, r30, r31, r33, r34, r35, r36, r38, r39, r40, r41, r43, r44, r45, r46, r48, r49, r50, r53;
+  char* r0;
   struct 类型信息* r5;
   struct 类型信息* r10;
   struct 类型信息* r14;
   struct 类型信息* r18;
   struct 类型信息* r22;
+  struct 符号表管理器* r23;
   struct 符号* r25;
   struct 类型信息* r32;
   struct 类型信息* r37;
@@ -2059,7 +2098,8 @@ struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型信息* 从指针类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r0, r3, r4, r5, r7, r8, r9, r10, r12, r13, r14;
+  long long r3, r4, r5, r7, r8, r9, r10, r12, r13, r14;
+  struct 类型节点* r0;
   struct 类型推断上下文* r1;
   struct 类型信息* r2;
   struct 类型信息* r6;
@@ -2112,7 +2152,8 @@ struct 类型信息* 从指针类型推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型信息* 从数组类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r0, r3, r4, r5, r6, r7, r9, r11, r13;
+  long long r3, r4, r5, r6, r7, r9, r11, r13;
+  struct 类型节点* r0;
   struct 类型推断上下文* r1;
   struct 类型信息* r2;
   void* r8;
@@ -2152,7 +2193,10 @@ struct 类型信息* 从数组类型推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型信息* 从结构体类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r0, r1, r3, r4, r5, r6, r7, r8, r9;
+  long long r3, r4, r5, r6, r7, r9;
+  char* r1;
+  char* r8;
+  struct 符号表管理器* r0;
   struct 符号* r2;
   struct 类型信息* r10;
 
@@ -2187,7 +2231,10 @@ struct 类型信息* 从结构体类型推断(struct 类型节点* cn_var_类型
 }
 
 struct 类型信息* 从枚举类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r0, r1, r3, r4, r5, r6, r7, r8, r9;
+  long long r3, r4, r5, r6, r7, r9;
+  char* r1;
+  char* r8;
+  struct 符号表管理器* r0;
   struct 符号* r2;
   struct 类型信息* r10;
 
@@ -2222,7 +2269,10 @@ struct 类型信息* 从枚举类型推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型信息* 从类类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r0, r1, r3, r4, r5, r6, r7, r8, r9;
+  long long r3, r4, r5, r6, r7, r9;
+  char* r1;
+  char* r8;
+  struct 符号表管理器* r0;
   struct 符号* r2;
   struct 类型信息* r10;
 
@@ -2257,7 +2307,10 @@ struct 类型信息* 从类类型推断(struct 类型节点* cn_var_类型节点
 }
 
 struct 类型信息* 从接口类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r0, r1, r3, r4, r5, r6, r7, r8, r9;
+  long long r3, r4, r5, r6, r7, r9;
+  char* r1;
+  char* r8;
+  struct 符号表管理器* r0;
   struct 符号* r2;
   struct 类型信息* r10;
 
@@ -2298,12 +2351,21 @@ struct 类型信息* 从函数类型推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类型信息指针) {
-  long long r1, r2, r4, r5, r8, r10, r26, r27, r28, r29, r31, r32, r33, r35, r36, r37, r38, r39, r40;
+  long long r1, r4, r5, r8, r28, r31, r32;
+  char* r26;
+  char* r27;
+  char* r35;
+  char* r36;
+  char* r37;
+  char* r38;
+  char* r39;
   struct 类型信息* r0;
   void* r6;
   struct 类型节点* r7;
   void* r9;
+  struct 类型信息* r29;
   struct 类型节点* r30;
+  struct 类型信息* r33;
   struct 类型节点* r34;
   struct 类型节点* r41;
   _Bool r3;
@@ -2322,6 +2384,9 @@ struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类
   _Bool r23;
   _Bool r24;
   _Bool r25;
+  _Bool r40;
+  enum 类型种类 r2;
+  enum 类型种类 r10;
 
   entry:
   r0 = cn_var_类型信息指针;

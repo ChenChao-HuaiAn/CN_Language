@@ -20,17 +20,15 @@ long long 测试指针成员访问();
 long long main();
 
 long long 测试指针成员访问() {
-  long long r1, r2;
-  struct 函数声明* r0;
+  long long r0, r1;
 
   entry:
   struct 函数声明* cn_var_声明指针_0;
   long long cn_var_名称值_1;
-  r0 = cn_var_声明指针_0;
-  r1 = r0->名称;
-  cn_var_名称值_1 = r1;
-  r2 = cn_var_名称值_1;
-  return r2;
+  r0 = cn_var_声明指针_0->名称;
+  cn_var_名称值_1 = r0;
+  r1 = cn_var_名称值_1;
+  return r1;
 }
 
 long long main() {

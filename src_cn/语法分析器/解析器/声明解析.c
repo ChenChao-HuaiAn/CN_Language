@@ -945,7 +945,8 @@ struct 声明节点* 解析模块声明(struct 解析器* cn_var_实例);
 struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例);
 enum 可见性 解析可见性修饰符(struct 解析器* cn_var_实例);
 struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
-  long long r1, r4, r5, r32, r33, r38, r39, r40;
+  long long r1, r40;
+  char* r39;
   struct 解析器* r0;
   struct 解析器* r2;
   struct 解析器* r16;
@@ -979,7 +980,12 @@ struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
   _Bool r14;
   _Bool r15;
   _Bool r34;
+  struct 词元 r4;
+  struct 词元 r32;
+  struct 词元 r38;
   enum 可见性 r3;
+  enum 词元类型枚举 r5;
+  enum 词元类型枚举 r33;
 
   entry:
   r0 = cn_var_实例;
@@ -1118,7 +1124,8 @@ struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
 }
 
 struct 声明节点* 解析函数声明(struct 解析器* cn_var_实例) {
-  long long r1, r3, r4, r5, r6, r15, r16, r24, r25;
+  long long r1, r3, r4, r5, r6;
+  char* r25;
   struct 解析器* r0;
   struct 声明节点* r2;
   struct 解析器* r7;
@@ -1154,6 +1161,9 @@ struct 声明节点* 解析函数声明(struct 解析器* cn_var_实例) {
   _Bool r33;
   _Bool r35;
   _Bool r40;
+  struct 词元 r15;
+  struct 词元 r24;
+  enum 词元类型枚举 r16;
 
   entry:
   r0 = cn_var_实例;
@@ -1296,13 +1306,13 @@ struct 参数列表* 解析参数列表(struct 解析器* cn_var_实例) {
   struct 解析器* r4;
   struct 解析器* r7;
   struct 参数节点* r8;
+  struct 参数节点* r9;
   struct 参数列表* r11;
+  struct 参数节点* r12;
   struct 解析器* r13;
   struct 参数列表* r16;
   _Bool r5;
   _Bool r14;
-  struct 参数 r9;
-  struct 参数 r12;
 
   entry:
   r0 = cn_var_实例;
@@ -1369,8 +1379,10 @@ struct 参数列表* 解析参数列表(struct 解析器* cn_var_实例) {
 }
 
 struct 参数节点* 解析参数(struct 解析器* cn_var_实例) {
-  long long r1, r3, r6, r7, r13, r14;
+  long long r1, r3, r13, r14;
+  char* r7;
   struct 解析器* r0;
+  struct 参数节点* r2;
   struct 解析器* r4;
   struct 类型节点* r5;
   struct 解析器* r8;
@@ -1379,12 +1391,12 @@ struct 参数节点* 解析参数(struct 解析器* cn_var_实例) {
   struct 解析器* r15;
   struct 解析器* r17;
   struct 解析器* r18;
+  struct 参数节点* r20;
   _Bool r9;
   _Bool r11;
   _Bool r16;
   _Bool r19;
-  struct 参数 r2;
-  struct 参数 r20;
+  struct 词元 r6;
 
   entry:
   r0 = cn_var_实例;
@@ -1447,7 +1459,9 @@ struct 参数节点* 解析参数(struct 解析器* cn_var_实例) {
 }
 
 struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
-  long long r1, r3, r10, r11, r18, r19, r25, r26, r27, r30, r31, r32, r33;
+  long long r1, r3, r25, r26, r27, r30, r31;
+  char* r19;
+  char* r33;
   struct 解析器* r0;
   struct 声明节点* r2;
   struct 解析器* r4;
@@ -1479,6 +1493,10 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
   _Bool r36;
   _Bool r38;
   _Bool r42;
+  struct 词元 r10;
+  struct 词元 r18;
+  struct 词元 r32;
+  enum 词元类型枚举 r11;
 
   entry:
   r0 = cn_var_实例;
@@ -1601,7 +1619,8 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
 }
 
 struct 声明节点* 解析结构体声明(struct 解析器* cn_var_实例) {
-  long long r1, r3, r5, r6, r13, r17;
+  long long r1, r3, r13, r17;
+  char* r6;
   struct 解析器* r0;
   struct 声明节点* r2;
   struct 解析器* r4;
@@ -1619,6 +1638,7 @@ struct 声明节点* 解析结构体声明(struct 解析器* cn_var_实例) {
   _Bool r10;
   _Bool r12;
   _Bool r21;
+  struct 词元 r5;
 
   entry:
   r0 = cn_var_实例;
@@ -1685,7 +1705,10 @@ struct 声明节点* 解析结构体声明(struct 解析器* cn_var_实例) {
 }
 
 struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
-  long long r1, r3, r5, r6, r13, r15, r16, r17, r22, r23, r24, r27, r28, r29;
+  long long r1, r3, r13, r15, r24, r27, r28, r29;
+  char* r6;
+  char* r17;
+  char* r23;
   struct 解析器* r0;
   struct 声明节点* r2;
   struct 解析器* r4;
@@ -1709,6 +1732,9 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   _Bool r26;
   _Bool r33;
   _Bool r35;
+  struct 词元 r5;
+  struct 词元 r16;
+  struct 词元 r22;
 
   entry:
   r0 = cn_var_实例;
@@ -1805,7 +1831,10 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
 }
 
 struct 声明节点* 解析类声明(struct 解析器* cn_var_实例) {
-  long long r1, r3, r9, r10, r15, r16, r22, r23, r30, r35, r43, r50;
+  long long r1, r3, r30, r35, r43, r50;
+  char* r10;
+  char* r16;
+  char* r23;
   char* r27;
   struct 解析器* r0;
   struct 声明节点* r2;
@@ -1848,6 +1877,9 @@ struct 声明节点* 解析类声明(struct 解析器* cn_var_实例) {
   _Bool r34;
   _Bool r39;
   _Bool r55;
+  struct 词元 r9;
+  struct 词元 r15;
+  struct 词元 r22;
   enum 可见性 r44;
   enum 可见性 r51;
   enum 可见性 r37;
@@ -2009,7 +2041,8 @@ struct 声明节点* 解析类声明(struct 解析器* cn_var_实例) {
 }
 
 struct 声明节点* 解析接口声明(struct 解析器* cn_var_实例) {
-  long long r1, r3, r5, r6, r13, r19;
+  long long r1, r3, r13, r19;
+  char* r6;
   struct 解析器* r0;
   struct 声明节点* r2;
   struct 解析器* r4;
@@ -2030,6 +2063,7 @@ struct 声明节点* 解析接口声明(struct 解析器* cn_var_实例) {
   _Bool r12;
   _Bool r15;
   _Bool r24;
+  struct 词元 r5;
 
   entry:
   r0 = cn_var_实例;
@@ -2145,8 +2179,11 @@ struct 声明节点* 解析模块声明(struct 解析器* cn_var_实例) {
 }
 
 struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例) {
-  long long r1, r3, r5, r6, r14, r15, r16, r23, r29, r30;
+  long long r1, r3, r14, r23;
+  char* r6;
+  char* r16;
   char* r20;
+  char* r30;
   struct 解析器* r0;
   struct 声明节点* r2;
   struct 解析器* r4;
@@ -2174,6 +2211,9 @@ struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例) {
   _Bool r32;
   _Bool r34;
   _Bool r36;
+  struct 词元 r5;
+  struct 词元 r15;
+  struct 词元 r29;
 
   entry:
   r0 = cn_var_实例;
