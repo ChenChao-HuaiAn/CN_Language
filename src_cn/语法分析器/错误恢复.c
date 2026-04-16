@@ -161,13 +161,13 @@ _Bool 初始化错误恢复(struct 语法错误恢复上下文* cn_var_上下文
   entry:
   r0 = cn_var_上下文;
   r1 = r0 == 0;
-  if (r1) goto if_then_878; else goto if_merge_879;
+  if (r1) goto if_then_980; else goto if_merge_981;
 
-  if_then_878:
+  if_then_980:
   return 0;
-  goto if_merge_879;
+  goto if_merge_981;
 
-  if_merge_879:
+  if_merge_981:
   r2 = cn_var_默认最大连续错误;
   r3 = cn_var_默认最大恢复次数;
   return 1;
@@ -180,12 +180,12 @@ void 销毁错误恢复上下文(struct 语法错误恢复上下文* cn_var_上�
   entry:
   r0 = cn_var_上下文;
   r1 = r0 != 0;
-  if (r1) goto if_then_880; else goto if_merge_881;
+  if (r1) goto if_then_982; else goto if_merge_983;
 
-  if_then_880:
-  goto if_merge_881;
+  if_then_982:
+  goto if_merge_983;
 
-  if_merge_881:
+  if_merge_983:
   return;
 }
 
@@ -215,113 +215,113 @@ long long 是同步点(enum 词元类型枚举 cn_var_词元类型, enum 同步�
   entry:
   r0 = cn_var_同步类型;
   r1 = r0 == 同步点类型_同步点_分号;
-  if (r1) goto case_body_883; else goto switch_check_892;
+  if (r1) goto case_body_985; else goto switch_check_994;
 
-  switch_check_892:
+  switch_check_994:
   r2 = r0 == 同步点类型_同步点_右大括号;
-  if (r2) goto case_body_884; else goto switch_check_893;
+  if (r2) goto case_body_986; else goto switch_check_995;
 
-  switch_check_893:
+  switch_check_995:
   r3 = r0 == 同步点类型_同步点_右小括号;
-  if (r3) goto case_body_885; else goto switch_check_894;
+  if (r3) goto case_body_987; else goto switch_check_996;
 
-  switch_check_894:
+  switch_check_996:
   r4 = r0 == 同步点类型_同步点_右中括号;
-  if (r4) goto case_body_886; else goto switch_check_895;
+  if (r4) goto case_body_988; else goto switch_check_997;
 
-  switch_check_895:
+  switch_check_997:
   r5 = r0 == 同步点类型_同步点_逗号;
-  if (r5) goto case_body_887; else goto switch_check_896;
+  if (r5) goto case_body_989; else goto switch_check_998;
 
-  switch_check_896:
+  switch_check_998:
   r6 = r0 == 同步点类型_同步点_关键字;
-  if (r6) goto case_body_888; else goto switch_check_897;
+  if (r6) goto case_body_990; else goto switch_check_999;
 
-  switch_check_897:
+  switch_check_999:
   r7 = r0 == 同步点类型_同步点_类型关键字;
-  if (r7) goto case_body_889; else goto switch_check_898;
+  if (r7) goto case_body_991; else goto switch_check_1000;
 
-  switch_check_898:
+  switch_check_1000:
   r8 = r0 == 同步点类型_同步点_声明关键字;
-  if (r8) goto case_body_890; else goto case_default_891;
+  if (r8) goto case_body_992; else goto case_default_993;
 
-  case_body_883:
+  case_body_985:
   r9 = cn_var_词元类型;
   r10 = r9 == 1;
   return r10;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_body_884:
+  case_body_986:
   r11 = cn_var_词元类型;
   r12 = r11 == 2;
   return r12;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_body_885:
+  case_body_987:
   r13 = cn_var_词元类型;
   r14 = r13 == 3;
   return r14;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_body_886:
+  case_body_988:
   r15 = cn_var_词元类型;
   r16 = r15 == 4;
   return r16;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_body_887:
+  case_body_989:
   r17 = cn_var_词元类型;
   r18 = r17 == 5;
   return r18;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_body_888:
+  case_body_990:
   r20 = cn_var_词元类型;
   r21 = r20 >= 100;
-  if (r21) goto logic_rhs_899; else goto logic_merge_900;
+  if (r21) goto logic_rhs_1001; else goto logic_merge_1002;
 
-  logic_rhs_899:
+  logic_rhs_1001:
   r22 = cn_var_词元类型;
   r23 = r22 <= 150;
-  goto logic_merge_900;
+  goto logic_merge_1002;
 
-  logic_merge_900:
+  logic_merge_1002:
   return r23;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_body_889:
+  case_body_991:
   r25 = cn_var_词元类型;
   r26 = r25 >= 160;
-  if (r26) goto logic_rhs_901; else goto logic_merge_902;
+  if (r26) goto logic_rhs_1003; else goto logic_merge_1004;
 
-  logic_rhs_901:
+  logic_rhs_1003:
   r27 = cn_var_词元类型;
   r28 = r27 <= 170;
-  goto logic_merge_902;
+  goto logic_merge_1004;
 
-  logic_merge_902:
+  logic_merge_1004:
   return r28;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_body_890:
+  case_body_992:
   r30 = cn_var_词元类型;
   r31 = r30 >= 180;
-  if (r31) goto logic_rhs_903; else goto logic_merge_904;
+  if (r31) goto logic_rhs_1005; else goto logic_merge_1006;
 
-  logic_rhs_903:
+  logic_rhs_1005:
   r32 = cn_var_词元类型;
   r33 = r32 <= 190;
-  goto logic_merge_904;
+  goto logic_merge_1006;
 
-  logic_merge_904:
+  logic_merge_1006:
   return r33;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  case_default_891:
+  case_default_993:
   return 0;
-  goto switch_merge_882;
+  goto switch_merge_984;
 
-  switch_merge_882:
+  switch_merge_984:
   return 0;
 }
 
@@ -339,76 +339,76 @@ long long 是任意同步点(enum 词元类型枚举 cn_var_词元类型) {
   entry:
   r0 = cn_var_词元类型;
   r1 = 是同步点(r0, 同步点类型_同步点_分号);
-  if (r1) goto if_then_905; else goto if_merge_906;
+  if (r1) goto if_then_1007; else goto if_merge_1008;
 
-  if_then_905:
+  if_then_1007:
   return 1;
-  goto if_merge_906;
+  goto if_merge_1008;
 
-  if_merge_906:
+  if_merge_1008:
   r2 = cn_var_词元类型;
   r3 = 是同步点(r2, 同步点类型_同步点_右大括号);
-  if (r3) goto if_then_907; else goto if_merge_908;
+  if (r3) goto if_then_1009; else goto if_merge_1010;
 
-  if_then_907:
+  if_then_1009:
   return 1;
-  goto if_merge_908;
+  goto if_merge_1010;
 
-  if_merge_908:
+  if_merge_1010:
   r4 = cn_var_词元类型;
   r5 = 是同步点(r4, 同步点类型_同步点_右小括号);
-  if (r5) goto if_then_909; else goto if_merge_910;
+  if (r5) goto if_then_1011; else goto if_merge_1012;
 
-  if_then_909:
+  if_then_1011:
   return 1;
-  goto if_merge_910;
+  goto if_merge_1012;
 
-  if_merge_910:
+  if_merge_1012:
   r6 = cn_var_词元类型;
   r7 = 是同步点(r6, 同步点类型_同步点_右中括号);
-  if (r7) goto if_then_911; else goto if_merge_912;
+  if (r7) goto if_then_1013; else goto if_merge_1014;
 
-  if_then_911:
+  if_then_1013:
   return 1;
-  goto if_merge_912;
+  goto if_merge_1014;
 
-  if_merge_912:
+  if_merge_1014:
   r8 = cn_var_词元类型;
   r9 = 是同步点(r8, 同步点类型_同步点_逗号);
-  if (r9) goto if_then_913; else goto if_merge_914;
+  if (r9) goto if_then_1015; else goto if_merge_1016;
 
-  if_then_913:
+  if_then_1015:
   return 1;
-  goto if_merge_914;
+  goto if_merge_1016;
 
-  if_merge_914:
+  if_merge_1016:
   r10 = cn_var_词元类型;
   r11 = 是同步点(r10, 同步点类型_同步点_关键字);
-  if (r11) goto if_then_915; else goto if_merge_916;
+  if (r11) goto if_then_1017; else goto if_merge_1018;
 
-  if_then_915:
+  if_then_1017:
   return 1;
-  goto if_merge_916;
+  goto if_merge_1018;
 
-  if_merge_916:
+  if_merge_1018:
   r12 = cn_var_词元类型;
   r13 = 是同步点(r12, 同步点类型_同步点_类型关键字);
-  if (r13) goto if_then_917; else goto if_merge_918;
+  if (r13) goto if_then_1019; else goto if_merge_1020;
 
-  if_then_917:
+  if_then_1019:
   return 1;
-  goto if_merge_918;
+  goto if_merge_1020;
 
-  if_merge_918:
+  if_merge_1020:
   r14 = cn_var_词元类型;
   r15 = 是同步点(r14, 同步点类型_同步点_声明关键字);
-  if (r15) goto if_then_919; else goto if_merge_920;
+  if (r15) goto if_then_1021; else goto if_merge_1022;
 
-  if_then_919:
+  if_then_1021:
   return 1;
-  goto if_merge_920;
+  goto if_merge_1022;
 
-  if_merge_920:
+  if_merge_1022:
   return 0;
 }
 
@@ -423,53 +423,53 @@ long long 跳转到同步点(struct 语法错误恢复上下文* cn_var_上下�
   entry:
   r0 = cn_var_上下文;
   r1 = r0 == 0;
-  if (r1) goto if_then_921; else goto if_merge_922;
+  if (r1) goto if_then_1023; else goto if_merge_1024;
 
-  if_then_921:
+  if_then_1023:
   return 0;
-  goto if_merge_922;
+  goto if_merge_1024;
 
-  if_merge_922:
+  if_merge_1024:
   r2 = cn_var_上下文->恢复尝试次数;
   r3 = r2 + 1;
   r4 = cn_var_上下文->恢复尝试次数;
   r5 = cn_var_上下文->最大恢复次数;
   r6 = r4 > r5;
-  if (r6) goto if_then_923; else goto if_merge_924;
+  if (r6) goto if_then_1025; else goto if_merge_1026;
 
-  if_then_923:
+  if_then_1025:
   return 0;
-  goto if_merge_924;
+  goto if_merge_1026;
 
-  if_merge_924:
+  if_merge_1026:
   r7 = cn_var_当前词元类型;
   r8 = cn_var_目标同步类型;
   r9 = 是同步点(r7, r8);
-  if (r9) goto if_then_925; else goto if_merge_926;
+  if (r9) goto if_then_1027; else goto if_merge_1028;
 
-  if_then_925:
+  if_then_1027:
   return 1;
-  goto if_merge_926;
+  goto if_merge_1028;
 
-  if_merge_926:
+  if_merge_1028:
   r10 = cn_var_目标同步类型;
   r11 = r10 == 同步点类型_同步点_分号;
-  if (r11) goto if_then_927; else goto if_merge_928;
+  if (r11) goto if_then_1029; else goto if_merge_1030;
 
-  if_then_927:
+  if_then_1029:
   r12 = cn_var_当前词元类型;
   r13 = 是任意同步点(r12);
-  if (r13) goto if_then_929; else goto if_merge_930;
+  if (r13) goto if_then_1031; else goto if_merge_1032;
 
-  if_merge_928:
+  if_merge_1030:
   return 0;
 
-  if_then_929:
+  if_then_1031:
   return 1;
-  goto if_merge_930;
+  goto if_merge_1032;
 
-  if_merge_930:
-  goto if_merge_928;
+  if_merge_1032:
+  goto if_merge_1030;
   return 0;
 }
 
@@ -481,31 +481,31 @@ _Bool 应该抑制错误(struct 语法错误恢复上下文* cn_var_上下文) {
   entry:
   r0 = cn_var_上下文;
   r1 = r0 == 0;
-  if (r1) goto if_then_931; else goto if_merge_932;
+  if (r1) goto if_then_1033; else goto if_merge_1034;
 
-  if_then_931:
+  if_then_1033:
   return 0;
-  goto if_merge_932;
+  goto if_merge_1034;
 
-  if_merge_932:
+  if_merge_1034:
   r2 = cn_var_上下文->抑制级联错误;
-  if (r2) goto if_then_933; else goto if_merge_934;
+  if (r2) goto if_then_1035; else goto if_merge_1036;
 
-  if_then_933:
+  if_then_1035:
   return 1;
-  goto if_merge_934;
+  goto if_merge_1036;
 
-  if_merge_934:
+  if_merge_1036:
   r3 = cn_var_上下文->连续错误计数;
   r4 = cn_var_上下文->最大连续错误;
   r5 = r3 >= r4;
-  if (r5) goto if_then_935; else goto if_merge_936;
+  if (r5) goto if_then_1037; else goto if_merge_1038;
 
-  if_then_935:
+  if_then_1037:
   return 1;
-  goto if_merge_936;
+  goto if_merge_1038;
 
-  if_merge_936:
+  if_merge_1038:
   return 0;
 }
 
@@ -516,39 +516,39 @@ void 记录错误(struct 语法错误恢复上下文* cn_var_上下文, long lon
   entry:
   r0 = cn_var_上下文;
   r1 = r0 == 0;
-  if (r1) goto if_then_937; else goto if_merge_938;
+  if (r1) goto if_then_1039; else goto if_merge_1040;
 
-  if_then_937:
+  if_then_1039:
   return;
-  goto if_merge_938;
+  goto if_merge_1040;
 
-  if_merge_938:
+  if_merge_1040:
   r2 = cn_var_上下文->最后错误行号;
   r3 = cn_var_行号;
   r4 = r2 == r3;
-  if (r4) goto if_then_939; else goto if_else_940;
+  if (r4) goto if_then_1041; else goto if_else_1042;
 
-  if_then_939:
+  if_then_1041:
   r5 = cn_var_上下文->级联抑制计数;
   r6 = r5 + 1;
   r7 = cn_var_上下文->级联抑制计数;
   r8 = cn_var_上下文->最大连续错误;
   r9 = r7 >= r8;
-  if (r9) goto if_then_942; else goto if_merge_943;
+  if (r9) goto if_then_1044; else goto if_merge_1045;
 
-  if_else_940:
-  goto if_merge_941;
+  if_else_1042:
+  goto if_merge_1043;
 
-  if_merge_941:
+  if_merge_1043:
   r10 = cn_var_上下文->连续错误计数;
   r11 = r10 + 1;
   r12 = cn_var_行号;
 
-  if_then_942:
-  goto if_merge_943;
+  if_then_1044:
+  goto if_merge_1045;
 
-  if_merge_943:
-  goto if_merge_941;
+  if_merge_1045:
+  goto if_merge_1043;
   return;
 }
 
@@ -559,13 +559,13 @@ void 重置错误计数(struct 语法错误恢复上下文* cn_var_上下文) {
   entry:
   r0 = cn_var_上下文;
   r1 = r0 == 0;
-  if (r1) goto if_then_944; else goto if_merge_945;
+  if (r1) goto if_then_1046; else goto if_merge_1047;
 
-  if_then_944:
+  if_then_1046:
   return;
-  goto if_merge_945;
+  goto if_merge_1047;
 
-  if_merge_945:
+  if_merge_1047:
   return;
 }
 
@@ -587,98 +587,98 @@ enum 语法恢复策略 选择恢复策略(long long cn_var_错误码) {
   entry:
   r0 = cn_var_错误码;
   r1 = r0 == 101;
-  if (r1) goto case_body_947; else goto switch_check_960;
+  if (r1) goto case_body_1049; else goto switch_check_1062;
 
-  switch_check_960:
+  switch_check_1062:
   r2 = r0 == 102;
-  if (r2) goto case_body_948; else goto switch_check_961;
+  if (r2) goto case_body_1050; else goto switch_check_1063;
 
-  switch_check_961:
+  switch_check_1063:
   r3 = r0 == 103;
-  if (r3) goto case_body_949; else goto switch_check_962;
+  if (r3) goto case_body_1051; else goto switch_check_1064;
 
-  switch_check_962:
+  switch_check_1064:
   r4 = r0 == 104;
-  if (r4) goto case_body_950; else goto switch_check_963;
+  if (r4) goto case_body_1052; else goto switch_check_1065;
 
-  switch_check_963:
+  switch_check_1065:
   r5 = r0 == 105;
-  if (r5) goto case_body_951; else goto switch_check_964;
+  if (r5) goto case_body_1053; else goto switch_check_1066;
 
-  switch_check_964:
+  switch_check_1066:
   r6 = r0 == 106;
-  if (r6) goto case_body_952; else goto switch_check_965;
+  if (r6) goto case_body_1054; else goto switch_check_1067;
 
-  switch_check_965:
+  switch_check_1067:
   r7 = r0 == 107;
-  if (r7) goto case_body_953; else goto switch_check_966;
+  if (r7) goto case_body_1055; else goto switch_check_1068;
 
-  switch_check_966:
+  switch_check_1068:
   r8 = r0 == 108;
-  if (r8) goto case_body_954; else goto switch_check_967;
+  if (r8) goto case_body_1056; else goto switch_check_1069;
 
-  switch_check_967:
+  switch_check_1069:
   r9 = r0 == 109;
-  if (r9) goto case_body_955; else goto switch_check_968;
+  if (r9) goto case_body_1057; else goto switch_check_1070;
 
-  switch_check_968:
+  switch_check_1070:
   r10 = r0 == 1;
-  if (r10) goto case_body_956; else goto switch_check_969;
+  if (r10) goto case_body_1058; else goto switch_check_1071;
 
-  switch_check_969:
+  switch_check_1071:
   r11 = r0 == 2;
-  if (r11) goto case_body_957; else goto switch_check_970;
+  if (r11) goto case_body_1059; else goto switch_check_1072;
 
-  switch_check_970:
+  switch_check_1072:
   r12 = r0 == 3;
-  if (r12) goto case_body_958; else goto case_default_959;
+  if (r12) goto case_body_1060; else goto case_default_1061;
 
-  case_body_947:
-  goto switch_merge_946;
+  case_body_1049:
+  goto switch_merge_1048;
 
-  case_body_948:
+  case_body_1050:
   return 语法恢复策略_同步到分号;
-  goto switch_merge_946;
+  goto switch_merge_1048;
 
-  case_body_949:
-  goto switch_merge_946;
+  case_body_1051:
+  goto switch_merge_1048;
 
-  case_body_950:
+  case_body_1052:
   return 语法恢复策略_同步到大括号;
-  goto switch_merge_946;
+  goto switch_merge_1048;
 
-  case_body_951:
-  goto switch_merge_946;
+  case_body_1053:
+  goto switch_merge_1048;
 
-  case_body_952:
-  goto switch_merge_946;
+  case_body_1054:
+  goto switch_merge_1048;
 
-  case_body_953:
+  case_body_1055:
   return 语法恢复策略_同步到关键字;
-  goto switch_merge_946;
+  goto switch_merge_1048;
 
-  case_body_954:
-  goto switch_merge_946;
+  case_body_1056:
+  goto switch_merge_1048;
 
-  case_body_955:
+  case_body_1057:
   return 语法恢复策略_跳过词元;
-  goto switch_merge_946;
+  goto switch_merge_1048;
 
-  case_body_956:
-  goto switch_merge_946;
+  case_body_1058:
+  goto switch_merge_1048;
 
-  case_body_957:
-  goto switch_merge_946;
+  case_body_1059:
+  goto switch_merge_1048;
 
-  case_body_958:
+  case_body_1060:
   return 语法恢复策略_跳过词元;
-  goto switch_merge_946;
+  goto switch_merge_1048;
 
-  case_default_959:
+  case_default_1061:
   return 语法恢复策略_同步到分号;
-  goto switch_merge_946;
+  goto switch_merge_1048;
 
-  switch_merge_946:
+  switch_merge_1048:
   return 0;
 }
 
@@ -696,73 +696,73 @@ char* 同步点类型名称(enum 同步点类型 cn_var_同步类型) {
   entry:
   r0 = cn_var_同步类型;
   r1 = r0 == 同步点类型_同步点_分号;
-  if (r1) goto case_body_972; else goto switch_check_981;
+  if (r1) goto case_body_1074; else goto switch_check_1083;
 
-  switch_check_981:
+  switch_check_1083:
   r2 = r0 == 同步点类型_同步点_右大括号;
-  if (r2) goto case_body_973; else goto switch_check_982;
+  if (r2) goto case_body_1075; else goto switch_check_1084;
 
-  switch_check_982:
+  switch_check_1084:
   r3 = r0 == 同步点类型_同步点_右小括号;
-  if (r3) goto case_body_974; else goto switch_check_983;
+  if (r3) goto case_body_1076; else goto switch_check_1085;
 
-  switch_check_983:
+  switch_check_1085:
   r4 = r0 == 同步点类型_同步点_右中括号;
-  if (r4) goto case_body_975; else goto switch_check_984;
+  if (r4) goto case_body_1077; else goto switch_check_1086;
 
-  switch_check_984:
+  switch_check_1086:
   r5 = r0 == 同步点类型_同步点_逗号;
-  if (r5) goto case_body_976; else goto switch_check_985;
+  if (r5) goto case_body_1078; else goto switch_check_1087;
 
-  switch_check_985:
+  switch_check_1087:
   r6 = r0 == 同步点类型_同步点_关键字;
-  if (r6) goto case_body_977; else goto switch_check_986;
+  if (r6) goto case_body_1079; else goto switch_check_1088;
 
-  switch_check_986:
+  switch_check_1088:
   r7 = r0 == 同步点类型_同步点_类型关键字;
-  if (r7) goto case_body_978; else goto switch_check_987;
+  if (r7) goto case_body_1080; else goto switch_check_1089;
 
-  switch_check_987:
+  switch_check_1089:
   r8 = r0 == 同步点类型_同步点_声明关键字;
-  if (r8) goto case_body_979; else goto case_default_980;
+  if (r8) goto case_body_1081; else goto case_default_1082;
 
-  case_body_972:
+  case_body_1074:
   return "分号";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_body_973:
+  case_body_1075:
   return "右大括号";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_body_974:
+  case_body_1076:
   return "右小括号";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_body_975:
+  case_body_1077:
   return "右中括号";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_body_976:
+  case_body_1078:
   return "逗号";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_body_977:
+  case_body_1079:
   return "关键字";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_body_978:
+  case_body_1080:
   return "类型关键字";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_body_979:
+  case_body_1081:
   return "声明关键字";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  case_default_980:
+  case_default_1082:
   return "未知同步点";
-  goto switch_merge_971;
+  goto switch_merge_1073;
 
-  switch_merge_971:
+  switch_merge_1073:
   return NULL;
 }
 
@@ -777,49 +777,49 @@ char* 恢复策略名称(enum 语法恢复策略 cn_var_策略) {
   entry:
   r0 = cn_var_策略;
   r1 = r0 == 语法恢复策略_不恢复;
-  if (r1) goto case_body_989; else goto switch_check_995;
+  if (r1) goto case_body_1091; else goto switch_check_1097;
 
-  switch_check_995:
+  switch_check_1097:
   r2 = r0 == 语法恢复策略_跳过词元;
-  if (r2) goto case_body_990; else goto switch_check_996;
+  if (r2) goto case_body_1092; else goto switch_check_1098;
 
-  switch_check_996:
+  switch_check_1098:
   r3 = r0 == 语法恢复策略_同步到分号;
-  if (r3) goto case_body_991; else goto switch_check_997;
+  if (r3) goto case_body_1093; else goto switch_check_1099;
 
-  switch_check_997:
+  switch_check_1099:
   r4 = r0 == 语法恢复策略_同步到大括号;
-  if (r4) goto case_body_992; else goto switch_check_998;
+  if (r4) goto case_body_1094; else goto switch_check_1100;
 
-  switch_check_998:
+  switch_check_1100:
   r5 = r0 == 语法恢复策略_同步到关键字;
-  if (r5) goto case_body_993; else goto case_default_994;
+  if (r5) goto case_body_1095; else goto case_default_1096;
 
-  case_body_989:
+  case_body_1091:
   return "不恢复";
-  goto switch_merge_988;
+  goto switch_merge_1090;
 
-  case_body_990:
+  case_body_1092:
   return "跳过词元";
-  goto switch_merge_988;
+  goto switch_merge_1090;
 
-  case_body_991:
+  case_body_1093:
   return "同步到分号";
-  goto switch_merge_988;
+  goto switch_merge_1090;
 
-  case_body_992:
+  case_body_1094:
   return "同步到大括号";
-  goto switch_merge_988;
+  goto switch_merge_1090;
 
-  case_body_993:
+  case_body_1095:
   return "同步到关键字";
-  goto switch_merge_988;
+  goto switch_merge_1090;
 
-  case_default_994:
+  case_default_1096:
   return "未知策略";
-  goto switch_merge_988;
+  goto switch_merge_1090;
 
-  switch_merge_988:
+  switch_merge_1090:
   return NULL;
 }
 

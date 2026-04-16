@@ -129,7 +129,21 @@ static char *lookup_local_var_unique_name(CnIrGenContext *ctx, const char *origi
 
 // 添加局部变量名映射
 static void add_local_var_mapping(CnIrGenContext *ctx, const char *original_name, const char *unique_name) {
-    CnIrLocalVarEntry *entry = (CnIrLocalVarEntry *)malloc(sizeof(CnIrLocalVarEntry));
+    // 先检查是否已存在同名映射，如果存在则更新
+    CnIrLocalVarEntry *entry = ctx->local_var_map;
+    while (entry) {
+        if (strcmp(entry->original_name, original_name) == 0) {
+            // 已存在，更新唯一名称
+            free(entry->unique_name);
+            entry->unique_name = strdup(unique_name);
+            fprintf(stderr, "[DEBUG VAR] 更新变量映射: '%s' -> '%s'\n", original_name, unique_name);
+            return;
+        }
+        entry = entry->next;
+    }
+    
+    // 不存在，创建新条目
+    entry = (CnIrLocalVarEntry *)malloc(sizeof(CnIrLocalVarEntry));
     if (entry) {
         entry->original_name = strdup(original_name);
         entry->unique_name = strdup(unique_name);
@@ -141,14 +155,17 @@ static void add_local_var_mapping(CnIrGenContext *ctx, const char *original_name
 // 释放局部变量映射表
 static void free_local_var_map(CnIrGenContext *ctx) {
     CnIrLocalVarEntry *entry = ctx->local_var_map;
+    int count = 0;
     while (entry) {
         CnIrLocalVarEntry *next = entry->next;
         free(entry->original_name);
         free(entry->unique_name);
         free(entry);
         entry = next;
+        count++;
     }
     ctx->local_var_map = NULL;
+    fprintf(stderr, "[DEBUG MAP] 清空映射表，释放 %d 个条目\n", count);
 }
 
 CnIrGenContext *cn_ir_gen_context_new() {
@@ -441,6 +458,16 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     var_type = sym->type;
                 }
             }
+            // 【关键修复】如果仍然没有找到类型，尝试从全局作用域查找
+            // 这处理了全局变量访问时类型信息丢失的问题
+            if (!var_type && ctx->global_scope) {
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                       expr->as.identifier.name,
+                                                       expr->as.identifier.name_length);
+                if (sym && sym->type) {
+                    var_type = sym->type;
+                }
+            }
             
             CnIrOperand dest = cn_ir_op_reg(dest_reg, var_type);
             CnIrOperand src = cn_ir_op_symbol(name, var_type);
@@ -595,14 +622,40 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 CnIrOperand array_op = cn_ir_gen_expr(ctx, target->as.index.array);
                 CnIrOperand index_op = cn_ir_gen_expr(ctx, target->as.index.index);
                 
-                // 【修复】检查是否为静态数组（固定大小数组）
+                // 【修复】检查是否为静态数组（固定大小数组）或指针类型
                 CnType *array_type = target->as.index.array->type;
-                bool is_static_array = false;
-                if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
-                    is_static_array = true;
+                
+                // 【关键修复】如果 array_type 为 NULL，尝试从多种来源获取类型信息
+                if (!array_type) {
+                    if (target->as.index.array->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
+                        // 情况1：标识符 - 从全局作用域获取类型信息
+                        CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                               target->as.index.array->as.identifier.name,
+                                                               target->as.index.array->as.identifier.name_length);
+                        if (sym && sym->type) {
+                            array_type = sym->type;
+                        }
+                    } else if (target->as.index.array->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+                        // 情况2：成员访问表达式 - 从成员访问表达式的类型获取
+                        // 例如：集合.诊断数组 的类型是 诊断信息*（指针类型）
+                        array_type = target->as.index.array->type;
+                        // 如果成员访问表达式的类型仍然为 NULL，尝试从 IR 操作数获取
+                        if (!array_type && array_op.type) {
+                            array_type = array_op.type;
+                        }
+                    }
                 }
                 
-                if (is_static_array) {
+                bool is_static_array = false;
+                bool is_pointer_type = false;
+                if (array_type && array_type->kind == CN_TYPE_ARRAY && array_type->as.array.length > 0) {
+                    is_static_array = true;
+                } else if (array_type && array_type->kind == CN_TYPE_POINTER) {
+                    // 指针类型：使用指针算术访问元素
+                    is_pointer_type = true;
+                }
+                
+                if (is_static_array || is_pointer_type) {
                     // 静态数组：使用 GET_ELEMENT_PTR + STORE 生成 C 风格的数组索引赋值
                     // 生成：array[index] = value
                     CnType *elem_type = expr->type;
@@ -630,6 +683,11 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     set_inst->extra_args = malloc(4 * sizeof(CnIrOperand));
                     set_inst->extra_args[0] = array_op;
                     set_inst->extra_args[1] = index_op;
+                    // 【修复】确保 value 带有正确的类型信息
+                    // 如果 value 没有类型，尝试从数组元素类型获取
+                    if (!value.type && array_type && array_type->kind == CN_TYPE_ARRAY) {
+                        value.type = array_type->as.array.element_type;
+                    }
                     set_inst->extra_args[2] = value;  // 直接传递值
                     set_inst->extra_args[3] = cn_ir_op_imm_int(8, cn_type_new_primitive(CN_TYPE_INT));  // 元素大小
                     emit(ctx, set_inst);
@@ -883,9 +941,18 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     
                     // 检查参数是否是类型名（标识符且在符号表中是类型）
                     bool is_type_name = false;
-                    if (arg->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
+                    if (arg->kind == CN_AST_EXPR_IDENTIFIER) {
                         char *arg_name = copy_name(arg->as.identifier.name, arg->as.identifier.name_length);
-                        CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope, arg_name, strlen(arg_name));
+                        
+                        // 【修复】先检查当前作用域，再检查全局作用域
+                        CnSemSymbol *sym = NULL;
+                        if (ctx->current_scope) {
+                            sym = cn_sem_scope_lookup(ctx->current_scope, arg_name, strlen(arg_name));
+                        }
+                        if (!sym && ctx->global_scope) {
+                            sym = cn_sem_scope_lookup(ctx->global_scope, arg_name, strlen(arg_name));
+                        }
+                        
                         if (sym && (sym->kind == CN_SEM_SYMBOL_STRUCT ||
                                     sym->kind == CN_SEM_SYMBOL_CLASS ||
                                     sym->kind == CN_SEM_SYMBOL_ENUM)) {
@@ -1304,6 +1371,28 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 【修复】检查是否为静态数组（固定大小数组）
             // 静态数组的 length > 0，动态数组的 length == 0
             CnType *array_type = expr->as.index.array->type;
+            
+            // 【关键修复】如果 array_type 为 NULL，尝试从多种来源获取类型信息
+            if (!array_type) {
+                if (expr->as.index.array->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
+                    // 情况1：标识符 - 从全局作用域获取类型信息
+                    CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                           expr->as.index.array->as.identifier.name,
+                                                           expr->as.index.array->as.identifier.name_length);
+                    if (sym && sym->type) {
+                        array_type = sym->type;
+                    }
+                } else if (expr->as.index.array->kind == CN_AST_EXPR_MEMBER_ACCESS) {
+                    // 情况2：成员访问表达式 - 从成员访问表达式的类型获取
+                    // 例如：集合.诊断数组 的类型是 诊断信息*（指针类型）
+                    array_type = expr->as.index.array->type;
+                    // 如果成员访问表达式的类型仍然为 NULL，尝试从 IR 操作数获取
+                    if (!array_type && array_op.type) {
+                        array_type = array_op.type;
+                    }
+                }
+            }
+            
             bool is_static_array = false;
             bool is_string_type = false;  // 【新增】字符串类型标记
             
@@ -1399,17 +1488,7 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 
                 // 【调试】输出类型信息
                 #ifdef CN_DEBUG_TYPE_PROPAGATION
-                if (expr->type) {
-                    if (expr->type->kind == CN_TYPE_POINTER) {
-                        fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 是指针类型\n");
-                    } else if (expr->type->kind == CN_TYPE_STRUCT) {
-                        fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 是结构体类型\n");
-                    } else {
-                        fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 是其他类型 (kind=%d)\n", expr->type->kind);
-                    }
-                } else {
-                    fprintf(stderr, "[DEBUG] 动态数组索引访问: expr->type 为 NULL\n");
-                }
+                // 类型检查（调试信息已移除）
                 #endif
                 
                 get_inst->dest = cn_ir_op_reg(result_reg, expr->type ? expr->type : result_type);
@@ -1544,6 +1623,7 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                                           expr->as.member.object->as.identifier.name_length);
                 // 查找局部变量的唯一名称
                 char *unique_name = lookup_local_var_unique_name(ctx, obj_name);
+                fprintf(stderr, "[DEBUG MEMBER] 查找变量 '%s' -> '%s'\n", obj_name, unique_name ? unique_name : "(null)");
                 if (unique_name) {
                     free(obj_name);
                     obj_name = unique_name;
@@ -1568,6 +1648,36 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                                             expr->as.member.object->as.identifier.name_length);
                     if (sym && sym->type) {
                         obj_type = sym->type;
+                    }
+                }
+                
+                // 【新增】如果符号表查找失败，尝试从 IR 函数参数列表中获取类型
+                // 这处理了函数参数类型信息在符号表中丢失的情况
+                if (!obj_type && ctx->current_func && ctx->current_func->params) {
+                    const char *ident_name = expr->as.member.object->as.identifier.name;
+                    size_t ident_name_len = expr->as.member.object->as.identifier.name_length;
+                    for (size_t p = 0; p < ctx->current_func->param_count; p++) {
+                        CnIrOperand *param = &ctx->current_func->params[p];
+                        if (param->kind == CN_IR_OP_SYMBOL && param->as.sym_name) {
+                            // 比较参数名（考虑 cn_var_ 前缀）
+                            const char *param_name = param->as.sym_name;
+                            size_t param_name_len = strlen(param_name);
+                            // 检查是否匹配（带或不带 cn_var_ 前缀）
+                            bool matches = false;
+                            if (param_name_len == ident_name_len &&
+                                strncmp(param_name, ident_name, ident_name_len) == 0) {
+                                matches = true;
+                            } else if (param_name_len > 7 && // "cn_var_" 长度为 7
+                                       strncmp(param_name, "cn_var_", 7) == 0 &&
+                                       param_name_len - 7 == ident_name_len &&
+                                       strncmp(param_name + 7, ident_name, ident_name_len) == 0) {
+                                matches = true;
+                            }
+                            if (matches && param->type) {
+                                obj_type = param->type;
+                                break;
+                            }
+                        }
                     }
                 }
                 
@@ -1736,6 +1846,34 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             if (operand.kind == CN_IR_OP_NONE) {
                 return cn_ir_op_none();
             }
+            
+            // 【修复】如果操作数是标识符，需要查找唯一变量名
+            // 这样可以确保变量名映射正确传播
+            if (expr->as.cast.operand->kind == CN_AST_EXPR_IDENTIFIER) {
+                char *name = copy_name(expr->as.cast.operand->as.identifier.name,
+                                      expr->as.cast.operand->as.identifier.name_length);
+                char *unique_name = lookup_local_var_unique_name(ctx, name);
+                if (unique_name) {
+                    // 找到局部变量映射，使用唯一名称
+                    // 创建一个新的标识符表达式，使用唯一名称
+                    // 注意：这里我们直接返回操作数，因为类型转换只是改变类型
+                    free(name);
+                    // 返回带有正确类型的操作数
+                    if (operand.kind == CN_IR_OP_REG) {
+                        // 如果是寄存器操作数，更新类型并返回
+                        operand.type = expr->as.cast.target_type;
+                        return operand;
+                    } else if (operand.kind == CN_IR_OP_SYMBOL) {
+                        // 如果是符号操作数，更新类型并返回
+                        operand.type = expr->as.cast.target_type;
+                        return operand;
+                    }
+                    free(unique_name);
+                } else {
+                    free(name);
+                }
+            }
+            
             // 使用AST表达式操作数，在cgen阶段生成类型转换
             return cn_ir_op_ast_expr(expr, expr->as.cast.target_type);
         }
@@ -1761,6 +1899,20 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             CnType *decl_type = decl->declared_type;
             if (!decl_type && decl->initializer && decl->initializer->type) {
                 decl_type = decl->initializer->type;
+                // 【新增】如果推断类型是指针类型，且指向结构体类型，需要解析真实类型
+                if (decl_type && decl_type->kind == CN_TYPE_POINTER &&
+                    decl_type->as.pointer_to &&
+                    decl_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                    ctx->global_scope) {
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                            decl_type->as.pointer_to->as.struct_type.name,
+                                            decl_type->as.pointer_to->as.struct_type.name_length);
+                    if (type_sym && type_sym->type &&
+                        (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                        // 创建新的指针类型，指向真实的结构体类型
+                        decl_type = cn_type_new_pointer(type_sym->type);
+                    }
+                }
             }
             // 如果仍然没有类型，尝试从符号表获取
             if (!decl_type && ctx->current_scope) {
@@ -1887,6 +2039,7 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             char *unique_name = make_unique_local_name(name);
             // 添加变量名映射（原始名 -> 唯一名）
             add_local_var_mapping(ctx, name, unique_name);
+            fprintf(stderr, "[DEBUG VAR] 添加变量映射: '%s' -> '%s'\n", name, unique_name);
             free(name);
             CnIrOperand addr = cn_ir_op_symbol(unique_name, decl_type);
             free(unique_name);
@@ -2237,6 +2390,7 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     // 重置局部变量计数器和清空映射表（每个函数独立）
     reset_local_var_counter();
     free_local_var_map(ctx);
+    fprintf(stderr, "[DEBUG FUNC] 开始处理函数: %.*s\n", (int)func->name_length, func->name);
 
     // 中断处理函数特殊处理：设置中断属性
     if (func->is_interrupt_handler) {
@@ -2252,6 +2406,16 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
         char *param_name = copy_name(func->parameters[i].name, func->parameters[i].name_length);
         CnType *param_type = func->parameters[i].declared_type;
         
+        // 【关键修复】如果参数类型为 NULL，尝试从函数作用域获取
+        if (!param_type && func->owning_scope) {
+            CnSemSymbol *param_sym = cn_sem_scope_lookup_shallow(func->owning_scope,
+                                                    func->parameters[i].name,
+                                                    func->parameters[i].name_length);
+            if (param_sym && param_sym->type) {
+                param_type = param_sym->type;
+            }
+        }
+        
         // 特殊处理：如果参数类型是结构体类型，可能是枚举类型或类类型
         // 需要从符号表查找真实类型
         if (param_type && param_type->kind == CN_TYPE_STRUCT && ctx->global_scope) {
@@ -2266,6 +2430,23 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
                 }
             }
         }
+        // 【新增】特殊处理：如果参数类型是指针类型，且指向结构体类型
+        // 需要从符号表查找真实类型，然后创建新的指针类型
+        else if (param_type && param_type->kind == CN_TYPE_POINTER &&
+                 param_type->as.pointer_to &&
+                 param_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                 ctx->global_scope) {
+            CnSemSymbol *type_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                    param_type->as.pointer_to->as.struct_type.name,
+                                    param_type->as.pointer_to->as.struct_type.name_length);
+            if (type_sym && type_sym->type) {
+                if (type_sym->kind == CN_SEM_SYMBOL_ENUM ||
+                    type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                    // 创建新的指针类型，指向真实的结构体/枚举类型
+                    param_type = cn_type_new_pointer(type_sym->type);
+                }
+            }
+        }
         
         // 为参数生成唯一名称（使用 cn_var_ 前缀）
         size_t param_name_len = strlen(param_name);
@@ -2274,6 +2455,7 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
             snprintf(unique_param_name, 7 + param_name_len + 1, "cn_var_%s", param_name);
             
             // 添加参数到局部变量映射表，这样在标识符查找时能优先找到参数
+            fprintf(stderr, "[DEBUG PARAM] 添加参数映射: '%s' -> '%s'\n", param_name, unique_param_name);
             add_local_var_mapping(ctx, param_name, unique_param_name);
         }
         
@@ -2402,6 +2584,12 @@ CnIrModule *cn_ir_gen_program(CnAstProgram *program, CnSemScope *global_scope, C
                     global->initializer = cn_ir_op_imm_str(
                         var_decl->initializer->as.string_literal.value,
                         var_type);
+                } else if (var_decl->initializer->kind == CN_AST_EXPR_STRUCT_LITERAL) {
+                    // 结构体字面量：保存 AST 节点指针，在代码生成时处理
+                    // 使用 CN_IR_OP_AST_EXPR 来保存结构体字面量的 AST 节点
+                    global->initializer.kind = CN_IR_OP_AST_EXPR;
+                    global->initializer.as.ast_expr = var_decl->initializer;  // 保存 AST 节点指针
+                    global->initializer.type = var_type;
                 } else {
                     // 其他类型的初始化表达式暂不支持，使用0初始化
                     global->initializer = cn_ir_op_imm_int(0, var_type);

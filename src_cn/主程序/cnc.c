@@ -256,15 +256,16 @@ enum 二元运算符 {
     二元运算符_二元_加 = 0
 };
 enum 节点类型 {
-    节点类型_标识符类型 = 44,
-    节点类型_接口类型 = 43,
-    节点类型_类类型 = 42,
-    节点类型_枚举类型 = 41,
-    节点类型_结构体类型 = 40,
-    节点类型_函数类型 = 39,
-    节点类型_数组类型 = 38,
-    节点类型_指针类型 = 37,
-    节点类型_基础类型 = 36,
+    节点类型_标识符类型 = 45,
+    节点类型_接口类型 = 44,
+    节点类型_类类型 = 43,
+    节点类型_枚举类型 = 42,
+    节点类型_结构体类型 = 41,
+    节点类型_函数类型 = 40,
+    节点类型_数组类型 = 39,
+    节点类型_指针类型 = 38,
+    节点类型_基础类型 = 37,
+    节点类型_类型转换表达式 = 36,
     节点类型_模板实例化表达式 = 35,
     节点类型_逻辑表达式 = 34,
     节点类型_结构体字面量表达式 = 33,
@@ -373,6 +374,7 @@ enum 编译模式 {
     编译模式_宿主模式 = 0
 };
 enum IR操作码 {
+    IR操作码_类型转换指令 = 35,
     IR操作码_选择指令 = 34,
     IR操作码_PHI指令 = 33,
     IR操作码_结构体初始化指令 = 32,
@@ -846,6 +848,8 @@ struct 表达式节点 {
     struct 赋值表达式 赋值表达式;
     struct 三元表达式 三元表达式;
     struct 表达式节点* 指针;
+    struct 类型节点* 目标类型;
+    struct 表达式节点* 转换操作数;
 };
 struct 结构体字段初始化;
 struct 结构体字段初始化 {
@@ -1367,10 +1371,12 @@ void 报告期望标记错误(struct 诊断集合*, struct 源位置, const char
 void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
 void 报告无效字符错误(struct 诊断集合*, struct 源位置, const char*);
 void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
+extern struct 源位置 cn_var_空源位置;
 void 释放表达式列表(struct 表达式列表*);
 void 释放表达式节点(struct 表达式节点*);
 void 表达式列表添加(struct 表达式列表*, struct 表达式节点*);
 struct 表达式列表* 创建表达式列表(void);
+struct 表达式节点* 创建类型转换表达式(struct 类型节点*, struct 表达式节点*);
 struct 表达式节点* 创建基类访问表达式(const char*);
 struct 表达式节点* 创建自身表达式(void);
 struct 表达式节点* 创建空值表达式(void);
@@ -1434,6 +1440,7 @@ struct 类型信息* 创建布尔类型(void);
 struct 类型信息* 创建小数类型(const char*, long long);
 struct 类型信息* 创建整数类型(const char*, long long, _Bool);
 struct 类型信息* 创建空类型(void);
+extern struct 源位置 cn_var_空源位置;
 extern long long cn_var_初始符号容量;
 extern long long cn_var_初始子作用域容量;
 extern long long cn_var_符号大小;
@@ -1520,6 +1527,7 @@ extern long long cn_var_小数大小;
 extern long long cn_var_布尔大小;
 extern long long cn_var_字符串大小;
 extern long long cn_var_指针大小;
+extern struct 源位置 cn_var_空源位置;
 extern long long cn_var_初始符号容量;
 extern long long cn_var_初始子作用域容量;
 extern long long cn_var_符号大小;
@@ -1561,6 +1569,7 @@ extern long long cn_var_作用域大小;
 extern long long cn_var_符号大小;
 extern long long cn_var_初始子作用域容量;
 extern long long cn_var_初始符号容量;
+extern struct 源位置 cn_var_空源位置;
 extern long long cn_var_整数大小;
 extern long long cn_var_小数大小;
 extern long long cn_var_布尔大小;
@@ -1582,6 +1591,7 @@ void 生成变量声明IR(struct IR生成上下文*, struct 语句节点*);
 void 生成语句IR(struct IR生成上下文*, struct 语句节点*);
 struct IR操作数 生成解引用IR(struct IR生成上下文*, struct 表达式节点*);
 struct IR操作数 生成取地址IR(struct IR生成上下文*, struct 表达式节点*);
+struct IR操作数 生成类型转换IR(struct IR生成上下文*, struct 表达式节点*);
 struct IR操作数 生成赋值IR(struct IR生成上下文*, struct 表达式节点*);
 struct IR操作数 生成数组访问IR(struct IR生成上下文*, struct 表达式节点*);
 struct IR操作数 生成成员访问IR(struct IR生成上下文*, struct 表达式节点*);
@@ -1607,6 +1617,7 @@ extern long long cn_var_小数大小;
 extern long long cn_var_布尔大小;
 extern long long cn_var_字符串大小;
 extern long long cn_var_指针大小;
+extern struct 源位置 cn_var_空源位置;
 extern long long cn_var_初始符号容量;
 extern long long cn_var_初始子作用域容量;
 extern long long cn_var_符号大小;
@@ -1677,6 +1688,7 @@ extern long long cn_var_作用域大小;
 extern long long cn_var_符号大小;
 extern long long cn_var_初始子作用域容量;
 extern long long cn_var_初始符号容量;
+extern struct 源位置 cn_var_空源位置;
 extern long long cn_var_整数大小;
 extern long long cn_var_小数大小;
 extern long long cn_var_布尔大小;
@@ -1743,6 +1755,7 @@ char* 恢复策略名称(enum 语法恢复策略);
 extern long long cn_var_默认最大连续错误;
 extern long long cn_var_默认最大恢复次数;
 extern long long cn_var_语法错误恢复上下文大小;
+extern struct 源位置 cn_var_空源位置;
 struct 类型节点* 解析函数类型(struct 解析器*);
 struct 类型节点* 解析数组类型(struct 解析器*, struct 类型节点*);
 struct 类型节点* 解析指针类型(struct 解析器*, struct 类型节点*);
@@ -1847,6 +1860,7 @@ extern long long cn_var_最大标识符长度;
 extern long long cn_var_最大字符串长度;
 extern long long cn_var_最大数字长度;
 extern long long cn_var_扫描器大小;
+extern struct 源位置 cn_var_空源位置;
 
 // CN Language Enum Definitions
 enum 编译阶段 {
@@ -2897,7 +2911,7 @@ _Bool 执行代码生成(struct 编译上下文* cn_var_上下文) {
   r33 = cn_var_输出路径;
   r34 = cn_var_i_1;
   r35 = &r33[r34];
-  r35 = 0;
+  *r35 = 0;
   goto for_exit_117;
   goto if_merge_119;
 

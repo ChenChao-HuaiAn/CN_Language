@@ -5,25 +5,26 @@
 #include "cnlang/runtime/system_api.h"
 
 // CN Language Global Struct Forward Declarations
-struct 符号;
+struct 源位置;
 
 // CN Language Global Struct Definitions
-struct 符号 {
-    char* 名称;
-    long long 值;
+struct 源位置 {
+    char* 文件名;
+    long long 行号;
+    long long 列号;
 };
 
 // Global Variables
-struct 符号** cn_var_全局符号表 = 0;
+struct 源位置 cn_var_空源位置 = {0, 0, 0};
 
 // Forward Declarations
-long long 主();
+long long main();
 
-long long 主() {
+long long main() {
+  cn_rt_init();
 
   entry:
-  struct 符号** cn_var_局部符号表;
-  cn_var_局部符号表 = cn_rt_array_alloc(8, 10);
   return 0;
+  cn_rt_exit();
 }
 

@@ -16,15 +16,16 @@ enum 可见性 {
     可见性_私有级别 = 0
 };
 enum 节点类型 {
-    节点类型_标识符类型 = 44,
-    节点类型_接口类型 = 43,
-    节点类型_类类型 = 42,
-    节点类型_枚举类型 = 41,
-    节点类型_结构体类型 = 40,
-    节点类型_函数类型 = 39,
-    节点类型_数组类型 = 38,
-    节点类型_指针类型 = 37,
-    节点类型_基础类型 = 36,
+    节点类型_标识符类型 = 45,
+    节点类型_接口类型 = 44,
+    节点类型_类类型 = 43,
+    节点类型_枚举类型 = 42,
+    节点类型_结构体类型 = 41,
+    节点类型_函数类型 = 40,
+    节点类型_数组类型 = 39,
+    节点类型_指针类型 = 38,
+    节点类型_基础类型 = 37,
+    节点类型_类型转换表达式 = 36,
     节点类型_模板实例化表达式 = 35,
     节点类型_逻辑表达式 = 34,
     节点类型_结构体字面量表达式 = 33,
@@ -161,13 +162,13 @@ struct 程序节点* 创建程序节点() {
   cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 == 0;
-  if (r2) goto if_then_809; else goto if_merge_810;
+  if (r2) goto if_then_911; else goto if_merge_912;
 
-  if_then_809:
+  if_then_911:
   return 0;
-  goto if_merge_810;
+  goto if_merge_912;
 
-  if_merge_810:
+  if_merge_912:
   r3 = cn_var_节点_0;
   return r3;
 }
@@ -180,21 +181,21 @@ void 程序添加声明(struct 程序节点* cn_var_程序, struct 声明节点*
   entry:
   r1 = cn_var_程序;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_814; else goto logic_rhs_813;
+  if (r2) goto logic_merge_916; else goto logic_rhs_915;
 
-  if_then_811:
+  if_then_913:
   return;
-  goto if_merge_812;
+  goto if_merge_914;
 
-  if_merge_812:
+  if_merge_914:
 
-  logic_rhs_813:
+  logic_rhs_915:
   r3 = cn_var_声明;
   r4 = r3 == 0;
-  goto logic_merge_814;
+  goto logic_merge_916;
 
-  logic_merge_814:
-  if (r4) goto if_then_811; else goto if_merge_812;
+  logic_merge_916:
+  if (r4) goto if_then_913; else goto if_merge_914;
   return;
 }
 

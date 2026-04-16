@@ -1097,12 +1097,25 @@ static int cn_sem_is_const_expr(CnSemScope *scope, CnAstExpr *expr) {
             return 0;
         }
         
-        // 8. 以下表达式类型不是常量
+        // 8. 结构体字面量：所有字段都是常量则为常量
+        case CN_AST_EXPR_STRUCT_LITERAL: {
+            // 检查所有字段值是否都是常量
+            for (size_t i = 0; i < expr->as.struct_lit.field_count; i++) {
+                if (!expr->as.struct_lit.fields[i].value) {
+                    return 0;  // 空字段值不是常量
+                }
+                if (!cn_sem_is_const_expr(scope, expr->as.struct_lit.fields[i].value)) {
+                    return 0;  // 字段值不是常量
+                }
+            }
+            return 1;  // 所有字段都是常量
+        }
+        
+        // 9. 以下表达式类型不是常量
         case CN_AST_EXPR_CALL:           // 函数调用
         case CN_AST_EXPR_ASSIGN:         // 赋值表达式
         case CN_AST_EXPR_ARRAY_LITERAL:  // 数组字面量（暂不认为是常量）
         case CN_AST_EXPR_INDEX:          // 数组索引
-        case CN_AST_EXPR_STRUCT_LITERAL: // 结构体字面量
         case CN_AST_EXPR_MEMORY_READ:    // 内存读取
         case CN_AST_EXPR_MEMORY_WRITE:   // 内存写入
         case CN_AST_EXPR_MEMORY_COPY:    // 内存复制
@@ -1714,8 +1727,14 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                 // 这确保在函数调用参数类型检查时能正确解析导入的结构体类型
                 cn_type_set_resolution_scope(scope);
                 
+                // 【修复】检查是否为可变参数函数
+                // 当 param_count == 0 且 param_types == NULL 时，表示可变参数函数
+                bool is_variadic = (callee_type->as.function.param_count == 0 &&
+                                    callee_type->as.function.param_types == NULL);
+                
                 // 检查参数个数
-                if (expr->as.call.argument_count != callee_type->as.function.param_count) {
+                // 可变参数函数允许任意数量的参数（至少需要检查是否有参数）
+                if (!is_variadic && expr->as.call.argument_count != callee_type->as.function.param_count) {
                     // 获取函数名用于错误报告
                     char func_name[256] = {0};
                     if (expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
@@ -1734,7 +1753,7 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         CN_DIAG_CODE_SEM_ARGUMENT_COUNT_MISMATCH,
                         NULL, 0, 0,
                         error_msg);
-                } else {
+                } else if (!is_variadic) {
                     // 逐个检查参数类型
                     for (size_t i = 0; i < expr->as.call.argument_count; i++) {
                         if (!expr->as.call.arguments[i]) continue;
@@ -1796,6 +1815,22 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
                         } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
                             // 替换为完整的结构体类型
                             return_type = type_sym->type;
+                        }
+                    }
+                }
+                // 【新增】处理返回类型是指针类型，且指向结构体类型
+                else if (return_type && return_type->kind == CN_TYPE_POINTER &&
+                         return_type->as.pointer_to &&
+                         return_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                    // 在全局作用域查找类型定义
+                    CnSemSymbol *type_sym = cn_sem_scope_lookup(scope,
+                                            return_type->as.pointer_to->as.struct_type.name,
+                                            return_type->as.pointer_to->as.struct_type.name_length);
+                    if (type_sym && type_sym->type) {
+                        if (type_sym->kind == CN_SEM_SYMBOL_ENUM ||
+                            type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            // 创建新的指针类型，指向真实的结构体/枚举类型
+                            return_type = cn_type_new_pointer(type_sym->type);
                         }
                     }
                 }

@@ -271,7 +271,13 @@ void cn_ir_dump_operand_to_file(CnIrOperand op, FILE *file) {
         case CN_IR_OP_IMM_INT: fprintf(file, "%lld", op.as.imm_int); break;
         case CN_IR_OP_IMM_FLOAT: fprintf(file, "%f", op.as.imm_float); break;
         case CN_IR_OP_IMM_STR: fprintf(file, "\"%s\"", op.as.imm_str); break;
-        case CN_IR_OP_SYMBOL: fprintf(file, "@%s", op.as.sym_name); break;
+        case CN_IR_OP_SYMBOL:
+            fprintf(file, "@%s", op.as.sym_name);
+            // 【调试】输出类型信息
+            if (op.type) {
+                fprintf(file, "[:%d]", op.type->kind);
+            }
+            break;
         case CN_IR_OP_LABEL: fprintf(file, "%s", op.as.label->name ? op.as.label->name : "unnamed"); break;
         default: fprintf(file, "unknown"); break;
     }

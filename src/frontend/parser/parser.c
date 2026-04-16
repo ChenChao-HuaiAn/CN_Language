@@ -818,6 +818,9 @@ static CnAstFunctionDecl *parse_function_decl(CnParser *parser)
             }
             
             params[param_count].declared_type = param_type;
+            // 【调试】输出参数类型信息
+            fprintf(stderr, "[DEBUG PARSER] 函数参数 %.*s: param_type=%p, kind=%d\n",
+                    (int)param_name_length, param_name, (void*)param_type, param_type ? param_type->kind : -1);
             param_count++;
 
             if (parser->current.kind == CN_TOKEN_COMMA) {
@@ -1683,16 +1686,34 @@ static CnAstStmt *parse_statement(CnParser *parser)
                     declared_type = NULL; // 后续通过类型推断
                 } else {
                     // 显式类型形式：常量 类型名 变量名 = 值;
+                    // 保存类型名（用于结构体字面量初始化）
+                    type_name = parser->current.lexeme_begin;
+                    type_name_length = parser->current.lexeme_length;
                     declared_type = parse_type(parser);
                     if (!declared_type) {
                         return NULL;
                     }
+                    // 如果类型是结构体类型，更新类型名
+                    if (declared_type && declared_type->kind == CN_TYPE_STRUCT) {
+                        type_name = declared_type->as.struct_type.name;
+                        type_name_length = declared_type->as.struct_type.name_length;
+                    }
                 }
             } else {
                 // 使用统一的 parse_type 解析类型
+                // 保存类型名（用于结构体字面量初始化）
+                if (parser->current.kind == CN_TOKEN_IDENT) {
+                    type_name = parser->current.lexeme_begin;
+                    type_name_length = parser->current.lexeme_length;
+                }
                 declared_type = parse_type(parser);
                 if (!declared_type) {
                     return NULL;
+                }
+                // 如果类型是结构体类型，更新类型名
+                if (declared_type && declared_type->kind == CN_TYPE_STRUCT) {
+                    type_name = declared_type->as.struct_type.name;
+                    type_name_length = declared_type->as.struct_type.name_length;
                 }
             }
         } else if (parser->current.kind == CN_TOKEN_KEYWORD_VAR) {
@@ -2033,7 +2054,13 @@ static CnAstStmt *parse_statement(CnParser *parser)
 
         if (parser->current.kind == CN_TOKEN_EQUAL) {
             parser_advance(parser);
-            initializer = parse_expression(parser);
+            // 检查是否是结构体字面量初始化：{ ... }
+            // 如果有类型名且当前是 {，则解析为结构体字面量
+            if (parser->current.kind == CN_TOKEN_LBRACE && type_name && type_name_length > 0) {
+                initializer = parse_struct_literal_with_name(parser, type_name, type_name_length);
+            } else {
+                initializer = parse_expression(parser);
+            }
         }
 
         parser_expect(parser, CN_TOKEN_SEMICOLON);

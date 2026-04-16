@@ -179,6 +179,12 @@ bool cn_type_compatible(CnType *a, CnType *b) {
         return true;
     }
     
+    // 整数到数组的隐式转换（用于空指针常量：整数0可以赋值给数组类型）
+    // 在CN语言中，"无"关键字被解析为整数0，需要能够赋值给数组类型（如 符号*[]）
+    if (a_is_int && b->kind == CN_TYPE_ARRAY) {
+        return true;
+    }
+    
     // 整数到字符串的隐式转换（用于空指针常量：整数0可以赋值给字符串类型）
     // 在CN语言中，"无"关键字被解析为整数0，需要能够赋值给字符串类型
     if (a_is_int && b->kind == CN_TYPE_STRING) {

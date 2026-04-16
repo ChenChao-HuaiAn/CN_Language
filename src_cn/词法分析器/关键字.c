@@ -141,7 +141,7 @@ struct 关键字条目* 获取关键字表();
 void 初始化关键字表();
 
 enum 词元类型枚举 查找关键字(const char* cn_var_名称) {
-  long long r2, r3, r7, r11, r14, r17, r18, r19;
+  long long r1, r2, r3, r4, r7, r11, r12, r14, r17, r18, r19;
   char* r5;
   char* r10;
   struct 关键字条目* r6;
@@ -149,33 +149,30 @@ enum 词元类型枚举 查找关键字(const char* cn_var_名称) {
   struct 关键字条目* r8;
   struct 关键字条目* r15;
   _Bool r0;
-  _Bool r1;
-  _Bool r4;
-  _Bool r12;
   struct 关键字条目 r9;
   struct 关键字条目 r16;
 
   entry:
   r0 = cn_var_关键字表已初始化;
   r1 = !r0;
-  if (r1) goto if_then_0; else goto if_merge_1;
+  if (r1) goto if_then_473; else goto if_merge_474;
 
-  if_then_0:
+  if_then_473:
   初始化关键字表();
-  goto if_merge_1;
+  goto if_merge_474;
 
-  if_merge_1:
+  if_merge_474:
   long long cn_var_i_0;
   cn_var_i_0 = 0;
-  goto for_cond_2;
+  goto for_cond_475;
 
-  for_cond_2:
+  for_cond_475:
   r2 = cn_var_i_0;
   r3 = cn_var_关键字表大小;
   r4 = r2 < r3;
-  if (r4) goto for_body_3; else goto for_exit_5;
+  if (r4) goto for_body_476; else goto for_exit_478;
 
-  for_body_3:
+  for_body_476:
   r5 = cn_var_名称;
   r6 = cn_var_关键字表;
   r7 = cn_var_i_0;
@@ -184,36 +181,36 @@ enum 词元类型枚举 查找关键字(const char* cn_var_名称) {
   r10 = r9.名称;
   r11 = 比较字符串(r5, r10);
   r12 = r11 == 0;
-  if (r12) goto if_then_6; else goto if_merge_7;
+  if (r12) goto if_then_479; else goto if_merge_480;
 
-  for_update_4:
+  for_update_477:
   r18 = cn_var_i_0;
   r19 = r18 + 1;
   cn_var_i_0 = r19;
-  goto for_cond_2;
+  goto for_cond_475;
 
-  for_exit_5:
+  for_exit_478:
   return 词元类型枚举_标识符;
 
-  if_then_6:
+  if_then_479:
   r13 = cn_var_关键字表;
   r14 = cn_var_i_0;
   r15 = &r13[r14];
   r16 = r15;
   r17 = r16.类型;
   return r17;
-  goto if_merge_7;
+  goto if_merge_480;
 
-  if_merge_7:
-  goto for_update_4;
+  if_merge_480:
+  goto for_update_477;
   return 0;
 }
 
 _Bool 是关键字字符串(const char* cn_var_名称) {
+  long long r3;
   char* r0;
-  _Bool r3;
-  enum 词元类型枚举 r1;
   enum 词元类型枚举 r2;
+  enum 词元类型枚举 r1;
 
   entry:
   enum 词元类型枚举 cn_var_类型_0;
@@ -246,13 +243,13 @@ void 初始化关键字表() {
 
   entry:
   r0 = cn_var_关键字表已初始化;
-  if (r0) goto if_then_8; else goto if_merge_9;
+  if (r0) goto if_then_481; else goto if_merge_482;
 
-  if_then_8:
+  if_then_481:
   return;
-  goto if_merge_9;
+  goto if_merge_482;
 
-  if_merge_9:
+  if_merge_482:
   cn_var_关键字表已初始化 = 1;
   return;
 }

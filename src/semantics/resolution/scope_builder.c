@@ -546,16 +546,18 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
     // 特殊处理：支持可变参数，返回字符串
     CnSemSymbol *sprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式", strlen("字符串格式"), CN_SEM_SYMBOL_FUNCTION);
     if (sprintf_sym) {
-        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理可变参数
-        sprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+        // 创建函数类型：返回字符串类型
+        // 参数类型使用 NULL 表示可变参数
+        sprintf_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), NULL, 0);
     }
 
     // 注册内置函数：字符串格式化 (snprintf)
     // 特殊处理：支持可变参数，返回整数
     CnSemSymbol *snprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式化", strlen("字符串格式化"), CN_SEM_SYMBOL_FUNCTION);
     if (snprintf_sym) {
-        // 使用 UNKNOWN 类型标记，让类型检查器特殊处理可变参数
-        snprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+        // 创建函数类型：返回整数类型
+        // 参数类型使用 NULL 表示可变参数
+        snprintf_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), NULL, 0);
     }
 
     // 注册内置函数：格式化字符串 (sprintf的别名)
@@ -1444,6 +1446,19 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                             }
                         }
                     }
+                    // 【关键修复】处理指向结构体的指针类型
+                    else if (param_type && param_type->kind == CN_TYPE_POINTER &&
+                             param_type->as.pointer_to &&
+                             param_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                param_type->as.pointer_to->as.struct_type.name,
+                                                param_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type &&
+                            (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                            // 创建新的指针类型，指向完整的结构体类型
+                            param_type = cn_type_new_pointer(type_sym->type);
+                        }
+                    }
                     param_types[j] = param_type;
                 }
             }
@@ -1464,6 +1479,21 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                     } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
                         // 替换为完整的结构体/类类型
                         return_type = type_sym->type;
+                    }
+                }
+            }
+            // 【新增】处理返回类型是指针类型，且指向结构体类型
+            else if (return_type && return_type->kind == CN_TYPE_POINTER &&
+                     return_type->as.pointer_to &&
+                     return_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        return_type->as.pointer_to->as.struct_type.name,
+                                        return_type->as.pointer_to->as.struct_type.name_length);
+                if (type_sym && type_sym->type) {
+                    if (type_sym->kind == CN_SEM_SYMBOL_ENUM ||
+                        type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 创建新的指针类型，指向真实的结构体/枚举类型
+                        return_type = cn_type_new_pointer(type_sym->type);
                     }
                 }
             }
@@ -1516,6 +1546,21 @@ CnSemScope *cn_sem_build_scopes(CnAstProgram *program, CnDiagnostics *diagnostic
                                 return_type = type_sym->type;
                             } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
                                 return_type = type_sym->type;
+                            }
+                        }
+                    }
+                    // 【新增】处理返回类型是指针类型，且指向结构体类型
+                    else if (return_type && return_type->kind == CN_TYPE_POINTER &&
+                             return_type->as.pointer_to &&
+                             return_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                                return_type->as.pointer_to->as.struct_type.name,
+                                                return_type->as.pointer_to->as.struct_type.name_length);
+                        if (type_sym && type_sym->type) {
+                            if (type_sym->kind == CN_SEM_SYMBOL_ENUM ||
+                                type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                // 创建新的指针类型，指向真实的结构体/枚举类型
+                                return_type = cn_type_new_pointer(type_sym->type);
                             }
                         }
                     }
@@ -1591,6 +1636,23 @@ static void cn_sem_build_function_scope(CnSemScope *parent_scope,
                 if (type_sym && type_sym->type) {
                     // 使用符号表中的真实类型（可能是枚举或结构体）
                     param_type = type_sym->type;
+                }
+            }
+            // 【新增】处理指针类型参数：如果参数类型是指针类型，且指向结构体类型
+            // 需要从符号表查找真实类型，然后创建新的指针类型
+            else if (param_type && param_type->kind == CN_TYPE_POINTER &&
+                     param_type->as.pointer_to &&
+                     param_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                     param_type->as.pointer_to->as.struct_type.name) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(parent_scope,
+                                        param_type->as.pointer_to->as.struct_type.name,
+                                        param_type->as.pointer_to->as.struct_type.name_length);
+                if (type_sym && type_sym->type) {
+                    if (type_sym->kind == CN_SEM_SYMBOL_ENUM ||
+                        type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 创建新的指针类型，指向真实的结构体/枚举类型
+                        param_type = cn_type_new_pointer(type_sym->type);
+                    }
                 }
             }
             sym->type = param_type;
@@ -3160,13 +3222,15 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
     // 注册内置函数：字符串格式 (sprintf) - 支持可变参数
     CnSemSymbol *sprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式", strlen("字符串格式"), CN_SEM_SYMBOL_FUNCTION);
     if (sprintf_sym) {
-        sprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+        // 创建函数类型：返回字符串类型
+        sprintf_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_STRING), NULL, 0);
     }
 
     // 注册内置函数：字符串格式化 (snprintf) - 支持可变参数
     CnSemSymbol *snprintf_sym = cn_sem_scope_insert_symbol(global_scope, "字符串格式化", strlen("字符串格式化"), CN_SEM_SYMBOL_FUNCTION);
     if (snprintf_sym) {
-        snprintf_sym->type = cn_type_new_primitive(CN_TYPE_UNKNOWN);
+        // 创建函数类型：返回整数类型
+        snprintf_sym->type = cn_type_new_function(cn_type_new_primitive(CN_TYPE_INT), NULL, 0);
     }
 
     // 注册内置函数：格式化字符串 (sprintf的别名) - 支持可变参数
@@ -4344,6 +4408,21 @@ CnSemScope *cn_sem_build_scopes_with_loader(CnAstProgram *program,
                     } else if (type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
                         // 替换为完整的结构体/类类型
                         return_type = type_sym->type;
+                    }
+                }
+            }
+            // 【新增】处理返回类型是指针类型，且指向结构体类型
+            else if (return_type && return_type->kind == CN_TYPE_POINTER &&
+                     return_type->as.pointer_to &&
+                     return_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                CnSemSymbol *type_sym = cn_sem_scope_lookup(global_scope,
+                                        return_type->as.pointer_to->as.struct_type.name,
+                                        return_type->as.pointer_to->as.struct_type.name_length);
+                if (type_sym && type_sym->type) {
+                    if (type_sym->kind == CN_SEM_SYMBOL_ENUM ||
+                        type_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 创建新的指针类型，指向真实的结构体/枚举类型
+                        return_type = cn_type_new_pointer(type_sym->type);
                     }
                 }
             }
