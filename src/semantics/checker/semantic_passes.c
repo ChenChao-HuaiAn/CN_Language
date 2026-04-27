@@ -1608,6 +1608,27 @@ static CnType *infer_expr_type(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics
             
             CnType *callee_type = infer_expr_type(scope, expr->as.call.callee, diagnostics);
             
+            // 【修复P0-2】如果callee_type不是函数类型，尝试直接从符号表查找函数符号
+            // 这处理了跨模块函数调用时标识符类型推断失败的情况
+            if ((!callee_type || (callee_type->kind != CN_TYPE_FUNCTION &&
+                 !(callee_type->kind == CN_TYPE_POINTER && callee_type->as.pointer_to &&
+                   callee_type->as.pointer_to->kind == CN_TYPE_FUNCTION))) &&
+                expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
+                expr->as.call.callee->as.identifier.name) {
+                CnSemSymbol *func_sym = cn_sem_scope_lookup(scope,
+                    expr->as.call.callee->as.identifier.name,
+                    expr->as.call.callee->as.identifier.name_length);
+                if (func_sym && func_sym->type) {
+                    if (func_sym->type->kind == CN_TYPE_FUNCTION) {
+                        callee_type = func_sym->type;
+                    } else if (func_sym->type->kind == CN_TYPE_POINTER &&
+                               func_sym->type->as.pointer_to &&
+                               func_sym->type->as.pointer_to->kind == CN_TYPE_FUNCTION) {
+                        callee_type = func_sym->type;
+                    }
+                }
+            }
+            
             // 特殊处理：内置函数 "长度" 可以接受字符串或数组
             // 支持两种形式：长度(arr) 和 arr.长度()
             bool is_length_builtin = false;

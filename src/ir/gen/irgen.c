@@ -1297,7 +1297,8 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
             // 确定函数返回类型
             CnType *return_type = expr->type;
             
-            // 如果 expr->type 不可靠（NULL 或 VOID），尝试从函数符号获取返回类型
+            // 【修复】如果 expr->type 不可靠（NULL 或 VOID），尝试从函数符号获取返回类型
+            // 这是变量类型推断的关键步骤
             if ((!return_type || return_type->kind == CN_TYPE_VOID) &&
                 expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
                 char *func_name = copy_name(expr->as.call.callee->as.identifier.name,
@@ -1307,6 +1308,23 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                     // 函数符号的 type 是函数类型，需要从中提取返回类型
                     if (sym->type->kind == CN_TYPE_FUNCTION && sym->type->as.function.return_type) {
                         return_type = sym->type->as.function.return_type;
+                        // 【新增】更新 expr->type 以便后续使用
+                        expr->type = return_type;
+                    }
+                }
+                free(func_name);
+            }
+            
+            // 【新增】如果仍然没有返回类型，尝试从当前作用域查找函数符号
+            if ((!return_type || return_type->kind == CN_TYPE_VOID) &&
+                expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER && ctx->current_scope) {
+                char *func_name = copy_name(expr->as.call.callee->as.identifier.name,
+                                            expr->as.call.callee->as.identifier.name_length);
+                CnSemSymbol *sym = cn_sem_scope_lookup(ctx->current_scope, func_name, strlen(func_name));
+                if (sym && sym->kind == CN_SEM_SYMBOL_FUNCTION && sym->type) {
+                    if (sym->type->kind == CN_TYPE_FUNCTION && sym->type->as.function.return_type) {
+                        return_type = sym->type->as.function.return_type;
+                        expr->type = return_type;
                     }
                 }
                 free(func_name);
@@ -1912,6 +1930,30 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
                         // 创建新的指针类型，指向真实的结构体类型
                         decl_type = cn_type_new_pointer(type_sym->type);
                     }
+                }
+            }
+            // 【修复P0-2】如果initializer->type为NULL，但initializer是函数调用，
+            // 尝试从符号表获取函数返回类型作为变量类型
+            if (!decl_type && decl->initializer &&
+                decl->initializer->kind == CN_AST_EXPR_CALL &&
+                decl->initializer->as.call.callee &&
+                decl->initializer->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
+                decl->initializer->as.call.callee->as.identifier.name) {
+                CnAstExpr *callee_expr = decl->initializer->as.call.callee;
+                CnSemSymbol *func_sym = NULL;
+                if (ctx->current_scope) {
+                    func_sym = cn_sem_scope_lookup(ctx->current_scope,
+                        callee_expr->as.identifier.name,
+                        callee_expr->as.identifier.name_length);
+                }
+                if (!func_sym && ctx->global_scope) {
+                    func_sym = cn_sem_scope_lookup(ctx->global_scope,
+                        callee_expr->as.identifier.name,
+                        callee_expr->as.identifier.name_length);
+                }
+                if (func_sym && func_sym->type && func_sym->type->kind == CN_TYPE_FUNCTION &&
+                    func_sym->type->as.function.return_type) {
+                    decl_type = func_sym->type->as.function.return_type;
                 }
             }
             // 如果仍然没有类型，尝试从符号表获取

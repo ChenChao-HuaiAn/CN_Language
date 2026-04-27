@@ -2078,6 +2078,19 @@ static void cn_sem_build_expr(CnSemScope *scope, CnAstExpr *expr, CnDiagnostics 
         break;
     case CN_AST_EXPR_CALL:
         cn_sem_build_expr(scope, expr->as.call.callee, diagnostics);
+        // 【修复P0-2】尝试设置函数调用表达式的类型
+        // 当callee是标识符时，从符号表获取函数返回类型并设置expr->type
+        // 这确保了跨模块函数调用时，变量声明能正确推断类型
+        if (!expr->type && expr->as.call.callee &&
+            expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER &&
+            expr->as.call.callee->as.identifier.name) {
+            CnSemSymbol *func_sym = cn_sem_scope_lookup(scope,
+                expr->as.call.callee->as.identifier.name,
+                expr->as.call.callee->as.identifier.name_length);
+            if (func_sym && func_sym->type && func_sym->type->kind == CN_TYPE_FUNCTION) {
+                expr->type = func_sym->type->as.function.return_type;
+            }
+        }
         for (i = 0; i < expr->as.call.argument_count; ++i) {
             cn_sem_build_expr(scope, expr->as.call.arguments[i], diagnostics);
         }
