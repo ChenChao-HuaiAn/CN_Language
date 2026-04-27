@@ -172,6 +172,28 @@ static const char *get_c_type_str_internal(CnType *type, bool is_param) {
             if (!type->as.struct_type.name || type->as.struct_type.name_length == 0) {
                 return "struct _anonymous";
             }
+            // 【P0-1修复】检查是否是CN基本类型关键字被错误标记为结构体
+            // 自举编译时，语义分析器可能将 整数/字符串/布尔 等基本类型
+            // 错误创建为 CN_TYPE_STRUCT 类型，需要在此翻译为正确的C类型
+            {
+                const char *name = type->as.struct_type.name;
+                size_t name_len = type->as.struct_type.name_length;
+                /* CN基本类型关键字 -> C类型映射（UTF-8编码） */
+                switch (name_len) {
+                    case 6: /* 2个汉字 × 3字节 */
+                        if (strncmp(name, "整数", 6) == 0) return "long long";
+                        if (strncmp(name, "小数", 6) == 0) return "double";
+                        if (strncmp(name, "字符", 6) == 0) return "char";
+                        if (strncmp(name, "布尔", 6) == 0) return "_Bool";
+                        break;
+                    case 9: /* 3个汉字 × 3字节 */
+                        if (strncmp(name, "字符串", 9) == 0) return "char*";
+                        if (strncmp(name, "空类型", 9) == 0) return "void";
+                        break;
+                    default:
+                        break;
+                }
+            }
             snprintf(buffer, sizeof(buffer), "struct %.*s",
                      (int)type->as.struct_type.name_length,
                      type->as.struct_type.name);
