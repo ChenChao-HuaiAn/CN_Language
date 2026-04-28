@@ -109,6 +109,10 @@ void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
 void 报告无效字符错误(struct 诊断集合*, struct 源位置, const char*);
 void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
 
+// Extern Declarations - 跨模块调用的函数
+extern void* 分配内存数组();
+extern char* 字符串格式();
+
 struct 诊断集合* 创建诊断集合(long long cn_var_初始容量) {
   long long r0, r1, r4, r5, r8, r10;
   void* r2;

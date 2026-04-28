@@ -664,10 +664,29 @@ struct 结构体字段初始化 {
     char* 字段名;
     struct 表达式节点* 值;
 };
+struct 声明语句;
 struct 语句节点;
 struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
+    struct 表达式语句* 作为表达式语句;
+    struct 块语句* 作为块语句;
+    struct 如果语句* 作为如果语句;
+    struct 当语句* 作为当语句;
+    struct 循环语句* 作为循环语句;
+    struct 返回语句* 作为返回语句;
+    struct 中断语句* 作为中断语句;
+    struct 继续语句* 作为继续语句;
+    struct 选择语句* 作为选择语句;
+    struct 尝试语句* 作为尝试语句;
+    struct 抛出语句* 作为抛出语句;
+    struct 声明语句* 作为声明语句;
+};
+struct 声明节点;
+struct 声明语句;
+struct 声明语句 {
+    struct AST节点 节点基类;
+    struct 声明节点* 声明;
 };
 struct 捕获子句;
 struct 捕获子句 {
@@ -680,7 +699,6 @@ struct 情况分支 {
     struct 表达式节点* 匹配值;
     struct 块语句* 语句体;
 };
-struct 声明节点;
 struct 声明节点列表;
 struct 声明节点列表 {
     struct 声明节点* 节点;
@@ -937,6 +955,26 @@ struct 语句节点* 解析抛出语句(struct 解析器*);
 struct 语句节点* 解析表达式语句(struct 解析器*);
 struct 语句节点* 解析变量声明语句(struct 解析器*);
 
+// Extern Declarations - 跨模块调用的函数
+extern long long 创建块语句();
+extern long long 块语句添加();
+extern long long 创建如果语句();
+extern void* 解析表达式();
+extern long long 创建当语句();
+extern long long 创建循环语句();
+extern long long 创建返回语句();
+extern long long 创建中断语句();
+extern long long 创建继续语句();
+extern long long 创建选择语句();
+extern long long 创建情况分支();
+extern long long 情况分支添加语句();
+extern long long 创建尝试语句();
+extern void* 解析类型();
+extern long long 创建抛出语句();
+extern long long 创建表达式语句();
+extern void* 解析变量声明();
+extern long long 创建声明语句();
+
 struct 语句节点* 解析语句(struct 解析器* cn_var_实例);
 struct 块语句节点* 解析块语句(struct 解析器* cn_var_实例);
 struct 语句节点* 解析如果语句(struct 解析器* cn_var_实例);
@@ -1187,7 +1225,6 @@ struct 块语句节点* 解析块语句(struct 解析器* cn_var_实例) {
   if_merge_1297:
   struct 块语句节点* cn_var_块节点_0;
   创建块语句();
-  cn_var_块节点_0 = /* NONE */;
   r2 = cn_var_块节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1298; else goto if_merge_1299;
@@ -1278,7 +1315,6 @@ struct 语句节点* 解析如果语句(struct 解析器* cn_var_实例) {
   if_merge_1308:
   struct 语句节点* cn_var_节点_0;
   创建如果语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1309; else goto if_merge_1310;
@@ -1355,7 +1391,6 @@ struct 语句节点* 解析当语句(struct 解析器* cn_var_实例) {
   if_merge_1317:
   struct 语句节点* cn_var_节点_0;
   创建当语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1318; else goto if_merge_1319;
@@ -1426,7 +1461,6 @@ struct 语句节点* 解析循环语句(struct 解析器* cn_var_实例) {
   if_merge_1321:
   struct 语句节点* cn_var_节点_0;
   创建循环语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1322; else goto if_merge_1323;
@@ -1535,7 +1569,6 @@ struct 语句节点* 解析返回语句(struct 解析器* cn_var_实例) {
   if_merge_1337:
   struct 语句节点* cn_var_节点_0;
   创建返回语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1338; else goto if_merge_1339;
@@ -1585,7 +1618,6 @@ struct 语句节点* 解析中断语句(struct 解析器* cn_var_实例) {
   if_merge_1343:
   struct 语句节点* cn_var_节点_0;
   创建中断语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1344; else goto if_merge_1345;
@@ -1624,7 +1656,6 @@ struct 语句节点* 解析继续语句(struct 解析器* cn_var_实例) {
   if_merge_1347:
   struct 语句节点* cn_var_节点_0;
   创建继续语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1348; else goto if_merge_1349;
@@ -1673,7 +1704,6 @@ struct 语句节点* 解析选择语句(struct 解析器* cn_var_实例) {
   if_merge_1351:
   struct 语句节点* cn_var_节点_0;
   创建选择语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1352; else goto if_merge_1353;
@@ -1796,7 +1826,6 @@ void* 解析情况列表(struct 解析器* cn_var_实例) {
   r12 = 期望(r11, 词元类型枚举_冒号);
   struct 情况分支* cn_var_默认分支_1;
   创建情况分支();
-  cn_var_默认分支_1 = /* NONE */;
   r13 = cn_var_默认分支_1;
   r14 = r13 != 0;
   if (r14) goto if_then_1364; else goto if_merge_1365;
@@ -1868,7 +1897,6 @@ void* 解析情况列表(struct 解析器* cn_var_实例) {
   前进词元(r37);
   struct 情况分支* cn_var_当前情况_3;
   创建情况分支();
-  cn_var_当前情况_3 = /* NONE */;
   r38 = cn_var_当前情况_3;
   r39 = r38 != 0;
   if (r39) goto if_then_1378; else goto if_merge_1379;
@@ -1981,7 +2009,6 @@ struct 语句节点* 解析尝试语句(struct 解析器* cn_var_实例) {
   if_merge_1390:
   struct 语句节点* cn_var_节点_0;
   创建尝试语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1391; else goto if_merge_1392;
@@ -2063,7 +2090,6 @@ struct 语句节点* 解析抛出语句(struct 解析器* cn_var_实例) {
   if_merge_1398:
   struct 语句节点* cn_var_节点_0;
   创建抛出语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1399; else goto if_merge_1400;
@@ -2119,7 +2145,6 @@ struct 语句节点* 解析表达式语句(struct 解析器* cn_var_实例) {
   if_merge_1404:
   struct 语句节点* cn_var_节点_0;
   创建表达式语句();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1405; else goto if_merge_1406;
@@ -2172,7 +2197,6 @@ struct 语句节点* 解析变量声明语句(struct 解析器* cn_var_实例) {
   if_merge_1410:
   struct 语句节点* cn_var_节点_1;
   创建声明语句();
-  cn_var_节点_1 = /* NONE */;
   r6 = cn_var_节点_1;
   r7 = r6 == 0;
   if (r7) goto if_then_1411; else goto if_merge_1412;

@@ -2088,7 +2088,11 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
             emit(ctx, cn_ir_inst_new(CN_IR_INST_ALLOCA, addr, cn_ir_op_none(), cn_ir_op_none()));
             if (decl->initializer) {
                 CnIrOperand init_val = cn_ir_gen_expr(ctx, decl->initializer);
-                emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, init_val, cn_ir_op_none()));
+                // 【P3修复】如果初始化表达式返回NONE（如void函数调用），跳过STORE指令
+                // 这避免了生成 "变量 = /* NONE */;" 的无效C代码
+                if (init_val.kind != CN_IR_OP_NONE) {
+                    emit(ctx, cn_ir_inst_new(CN_IR_INST_STORE, addr, init_val, cn_ir_op_none()));
+                }
             }
             break;
         }

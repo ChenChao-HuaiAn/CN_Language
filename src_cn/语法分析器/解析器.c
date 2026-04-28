@@ -657,10 +657,29 @@ struct 结构体字段初始化 {
     char* 字段名;
     struct 表达式节点* 值;
 };
+struct 声明语句;
 struct 语句节点;
 struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
+    struct 表达式语句* 作为表达式语句;
+    struct 块语句* 作为块语句;
+    struct 如果语句* 作为如果语句;
+    struct 当语句* 作为当语句;
+    struct 循环语句* 作为循环语句;
+    struct 返回语句* 作为返回语句;
+    struct 中断语句* 作为中断语句;
+    struct 继续语句* 作为继续语句;
+    struct 选择语句* 作为选择语句;
+    struct 尝试语句* 作为尝试语句;
+    struct 抛出语句* 作为抛出语句;
+    struct 声明语句* 作为声明语句;
+};
+struct 声明节点;
+struct 声明语句;
+struct 声明语句 {
+    struct AST节点 节点基类;
+    struct 声明节点* 声明;
 };
 struct 捕获子句;
 struct 捕获子句 {
@@ -673,7 +692,6 @@ struct 情况分支 {
     struct 表达式节点* 匹配值;
     struct 块语句* 语句体;
 };
-struct 声明节点;
 struct 声明节点列表;
 struct 声明节点列表 {
     struct 声明节点* 节点;
@@ -1302,13 +1320,13 @@ _Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_
   enum 词元类型枚举* r4;
   struct 解析器* r11;
   enum 词元类型枚举* r12;
+  void* r14;
   struct 解析器* r16;
   _Bool r3;
   _Bool r5;
   _Bool r7;
   _Bool r10;
   _Bool r15;
-  enum 词元类型枚举 r14;
 
   entry:
   r2 = cn_var_实例;
@@ -1350,7 +1368,7 @@ _Bool 匹配多种(struct 解析器* cn_var_实例, enum 词元类型枚举* cn_
   r11 = cn_var_实例;
   r12 = cn_var_类型数组;
   r13 = cn_var_i_0;
-  r14 = *(enum 词元类型枚举)cn_rt_array_get_element(r12, r13, 8);
+  r14 = (void*)cn_rt_array_get_element(r12, r13, 8);
   r15 = 检查(r11, r14);
   if (r15) goto if_then_37; else goto if_merge_38;
 

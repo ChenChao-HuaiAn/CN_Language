@@ -1333,6 +1333,11 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             fprintf(ctx->output_file, ";\n");
             break;
         case CN_IR_INST_STORE: {
+            // 【P3修复】如果源操作数为NONE，跳过该指令
+            // 这避免了生成 "变量 = /* NONE */;" 的无效C代码
+            // 根因：函数调用返回值未被捕获时，STORE的源操作数为NONE
+            if (inst->src1.kind == CN_IR_OP_NONE) break;
+            
             // 检查目标是否需要解引用
             // 情况1：目标操作数是寄存器（通过 GET_ELEMENT_PTR 获取的地址）- 需要解引用
             // 情况2：目标操作数是符号（变量名）- 不需要解引用
@@ -1423,8 +1428,35 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 if (inst->src1.type) {
                     fprintf(ctx->output_file, "%s", get_c_type_string(inst->src1.type));
                 } else {
-                    // 没有类型信息，使用变量名
-                    print_operand(ctx, inst->src1);
+                    // 【P4修复】没有类型信息时，检查符号名是否可能是类型名
+                    // 如果符号名不匹配当前函数的任何ALLOCA变量，则当作类型名处理
+                    // 这解决了跨模块类型名在SIZEOF中被错误添加cn_var_前缀的问题
+                    const char *sym_name = inst->src1.as.sym_name;
+                    bool is_local_var = false;
+                    if (ctx->current_func) {
+                        CnIrBasicBlock *check_block = ctx->current_func->first_block;
+                        while (check_block && !is_local_var) {
+                            CnIrInst *check_inst = check_block->first_inst;
+                            while (check_inst) {
+                                if (check_inst->kind == CN_IR_INST_ALLOCA &&
+                                    check_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                    check_inst->dest.as.sym_name &&
+                                    names_match_with_suffix(check_inst->dest.as.sym_name, sym_name)) {
+                                    is_local_var = true;
+                                    break;
+                                }
+                                check_inst = check_inst->next;
+                            }
+                            check_block = check_block->next;
+                        }
+                    }
+                    if (is_local_var) {
+                        // 是局部变量，使用print_operand（会添加cn_var_前缀）
+                        print_operand(ctx, inst->src1);
+                    } else {
+                        // 不是局部变量，可能是类型名，生成 struct 类型名
+                        fprintf(ctx->output_file, "struct %s", sym_name);
+                    }
                 }
             } else {
                 // 其他情况：直接打印操作数
@@ -2139,6 +2171,52 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                 prescan_alloca_inst = prescan_alloca_inst->next;
             }
             prescan_alloca_block = prescan_alloca_block->next;
+        }
+        
+        /* 【P1修复】预扫描STORE指令，当STORE将CALL结果存入ALLOCA变量时，
+         * 如果CALL返回指针/结构体类型但ALLOCA是INT类型，更新ALLOCA类型。
+         * 这解决了变量类型推断错误：如 "变量 解析器 = 创建解析器()"
+         * 创建解析器返回指针，但解析器被声明为 long long int 的问题。
+         */
+        {
+            CnIrBasicBlock *prescan_store_block = func->first_block;
+            while (prescan_store_block) {
+                CnIrInst *prescan_store_inst = prescan_store_block->first_inst;
+                while (prescan_store_inst) {
+                    if (prescan_store_inst->kind == CN_IR_INST_STORE &&
+                        prescan_store_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                        prescan_store_inst->dest.as.sym_name &&
+                        prescan_store_inst->src1.kind == CN_IR_OP_REG &&
+                        prescan_store_inst->src1.type) {
+                        /* 检查源寄存器类型是否为指针/结构体/枚举 */
+                        CnType *src_type = prescan_store_inst->src1.type;
+                        bool src_is_pointer_or_struct = (src_type->kind == CN_TYPE_POINTER ||
+                                                         src_type->kind == CN_TYPE_STRUCT ||
+                                                         src_type->kind == CN_TYPE_ENUM ||
+                                                         src_type->kind == CN_TYPE_STRING);
+                        if (src_is_pointer_or_struct) {
+                            /* 在alloca_types中查找目标变量 */
+                            const char *dest_name = prescan_store_inst->dest.as.sym_name;
+                            AllocaTypeEntry *entry = alloca_types;
+                            while (entry) {
+                                if (entry->sym_name && names_match_with_suffix(entry->sym_name, dest_name)) {
+                                    /* 如果ALLOCA当前类型是INT/VOID/UNKNOWN，更新为源类型 */
+                                    if (entry->type &&
+                                        (entry->type->kind == CN_TYPE_INT ||
+                                         entry->type->kind == CN_TYPE_VOID ||
+                                         entry->type->kind == CN_TYPE_UNKNOWN)) {
+                                        entry->type = src_type;
+                                    }
+                                    break;
+                                }
+                                entry = entry->next;
+                            }
+                        }
+                    }
+                    prescan_store_inst = prescan_store_inst->next;
+                }
+                prescan_store_block = prescan_store_block->next;
+            }
         }
         
         /* 性能优化：多遍扫描收集寄存器类型，确保 MEMBER_ACCESS 指令能获取正确的类型 */
@@ -3305,6 +3383,92 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         func = func->next;
     }
     fprintf(file, "\n");
+    
+    // 【P2修复】扫描所有CALL指令，收集被调用但未在当前模块声明的函数
+    // 生成extern声明，解决跨模块函数调用缺少前向声明的问题
+    {
+        #define MAX_EXTERN_FUNCS_A 512
+        const char *extern_func_names_a[MAX_EXTERN_FUNCS_A];
+        CnType *extern_func_ret_types_a[MAX_EXTERN_FUNCS_A];
+        size_t extern_func_count_a = 0;
+        
+        CnIrFunction *scan_func_a = module->first_func;
+        while (scan_func_a) {
+            CnIrBasicBlock *scan_block_a = scan_func_a->first_block;
+            while (scan_block_a) {
+                CnIrInst *scan_inst_a = scan_block_a->first_inst;
+                while (scan_inst_a) {
+                    if (scan_inst_a->kind == CN_IR_INST_CALL &&
+                        scan_inst_a->src1.kind == CN_IR_OP_SYMBOL &&
+                        scan_inst_a->src1.as.sym_name) {
+                        const char *called_name = scan_inst_a->src1.as.sym_name;
+                        // 跳过运行时库函数（cn_rt_前缀或与运行时库冲突的函数名）
+                        if (strncmp(called_name, "cn_rt_", 6) == 0 ||
+                            is_runtime_function_conflict(called_name) ||
+                            is_runtime_macro_conflict(called_name)) {
+                            scan_inst_a = scan_inst_a->next;
+                            continue;
+                        }
+                        bool already_decl = false;
+                        CnIrFunction *cf = module->first_func;
+                        while (cf) {
+                            if (cf->name && strcmp(cf->name, called_name) == 0) {
+                                already_decl = true;
+                                break;
+                            }
+                            cf = cf->next;
+                        }
+                        if (!already_decl) {
+                            for (size_t ei = 0; ei < extern_func_count_a; ei++) {
+                                if (strcmp(extern_func_names_a[ei], called_name) == 0) {
+                                    already_decl = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!already_decl && extern_func_count_a < MAX_EXTERN_FUNCS_A) {
+                            extern_func_names_a[extern_func_count_a] = called_name;
+                            extern_func_ret_types_a[extern_func_count_a] =
+                                (scan_inst_a->dest.kind == CN_IR_OP_REG && scan_inst_a->dest.type)
+                                ? scan_inst_a->dest.type : NULL;
+                            extern_func_count_a++;
+                        }
+                    }
+                    scan_inst_a = scan_inst_a->next;
+                }
+                scan_block_a = scan_block_a->next;
+            }
+            scan_func_a = scan_func_a->next;
+        }
+        
+        if (extern_func_count_a > 0) {
+            fprintf(file, "// Extern Declarations - 跨模块调用的函数\n");
+            for (size_t ei = 0; ei < extern_func_count_a; ei++) {
+                const char *ret_type_str = "long long";
+                if (extern_func_ret_types_a[ei]) {
+                    CnType *rt = extern_func_ret_types_a[ei];
+                    if (rt->kind == CN_TYPE_POINTER || rt->kind == CN_TYPE_STRUCT ||
+                        rt->kind == CN_TYPE_ENUM) {
+                        ret_type_str = "void*";
+                    } else if (rt->kind == CN_TYPE_STRING) {
+                        ret_type_str = "char*";
+                    } else if (rt->kind == CN_TYPE_FLOAT) {
+                        ret_type_str = "double";
+                    } else if (rt->kind == CN_TYPE_BOOL) {
+                        ret_type_str = "_Bool";
+                    } else if (rt->kind == CN_TYPE_CHAR) {
+                        ret_type_str = "char";
+                    } else if (rt->kind == CN_TYPE_VOID) {
+                        ret_type_str = "void";
+                    }
+                }
+                fprintf(file, "extern %s %s();\n", ret_type_str,
+                        get_c_function_name(extern_func_names_a[ei]));
+            }
+            fprintf(file, "\n");
+        }
+        #undef MAX_EXTERN_FUNCS_A
+    }
 
     func = module->first_func;
     while (func) {
@@ -4543,6 +4707,113 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
         func = func->next;
     }
     fprintf(file, "\n");
+    
+    // 【P2修复】扫描所有CALL指令，收集被调用但未在当前模块声明的函数
+    // 生成extern声明，解决跨模块函数调用缺少前向声明的问题
+    {
+        // 最大可收集的外部函数数量
+        #define MAX_EXTERN_FUNCS 512
+        const char *extern_func_names[MAX_EXTERN_FUNCS];
+        CnType *extern_func_ret_types[MAX_EXTERN_FUNCS];
+        size_t extern_func_count = 0;
+        
+        // 遍历所有函数的所有基本块，收集CALL指令中被调用的函数名
+        CnIrFunction *scan_func = module->first_func;
+        while (scan_func) {
+            CnIrBasicBlock *scan_block = scan_func->first_block;
+            while (scan_block) {
+                CnIrInst *scan_inst = scan_block->first_inst;
+                while (scan_inst) {
+                    if (scan_inst->kind == CN_IR_INST_CALL &&
+                        scan_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                        scan_inst->src1.as.sym_name) {
+                        const char *called_func_name = scan_inst->src1.as.sym_name;
+                        
+                        // 跳过运行时库函数（cn_rt_前缀或与运行时库冲突的函数名）
+                        if (strncmp(called_func_name, "cn_rt_", 6) == 0 ||
+                            is_runtime_function_conflict(called_func_name) ||
+                            is_runtime_macro_conflict(called_func_name)) {
+                            scan_inst = scan_inst->next;
+                            continue;
+                        }
+                        
+                        // 检查是否已在当前模块的函数列表中
+                        bool already_declared = false;
+                        CnIrFunction *check_func = module->first_func;
+                        while (check_func) {
+                            if (check_func->name && strcmp(check_func->name, called_func_name) == 0) {
+                                already_declared = true;
+                                break;
+                            }
+                            check_func = check_func->next;
+                        }
+                        
+                        // 检查是否已在declared_functions集合中
+                        if (!already_declared && ctx.declared_functions) {
+                            if (cn_rt_map_contains(ctx.declared_functions, called_func_name)) {
+                                already_declared = true;
+                            }
+                        }
+                        
+                        // 检查是否已收集到extern列表中
+                        if (!already_declared) {
+                            for (size_t ei = 0; ei < extern_func_count; ei++) {
+                                if (strcmp(extern_func_names[ei], called_func_name) == 0) {
+                                    already_declared = true;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        // 如果未声明，添加到extern列表
+                        if (!already_declared && extern_func_count < MAX_EXTERN_FUNCS) {
+                            extern_func_names[extern_func_count] = called_func_name;
+                            // 尝试从CALL指令的dest.type获取返回类型
+                            extern_func_ret_types[extern_func_count] =
+                                (scan_inst->dest.kind == CN_IR_OP_REG && scan_inst->dest.type)
+                                ? scan_inst->dest.type : NULL;
+                            extern_func_count++;
+                        }
+                    }
+                    scan_inst = scan_inst->next;
+                }
+                scan_block = scan_block->next;
+            }
+            scan_func = scan_func->next;
+        }
+        
+        // 生成extern声明
+        if (extern_func_count > 0) {
+            fprintf(file, "// Extern Declarations - 跨模块调用的函数\n");
+            for (size_t ei = 0; ei < extern_func_count; ei++) {
+                const char *ret_type_str = "long long";  // 默认返回类型
+                if (extern_func_ret_types[ei]) {
+                    // 指针/结构体/枚举类型使用void*作为extern返回类型
+                    CnType *rt = extern_func_ret_types[ei];
+                    if (rt->kind == CN_TYPE_POINTER ||
+                        rt->kind == CN_TYPE_STRUCT ||
+                        rt->kind == CN_TYPE_ENUM) {
+                        ret_type_str = "void*";
+                    } else if (rt->kind == CN_TYPE_STRING) {
+                        ret_type_str = "char*";
+                    } else if (rt->kind == CN_TYPE_FLOAT) {
+                        ret_type_str = "double";
+                    } else if (rt->kind == CN_TYPE_BOOL) {
+                        ret_type_str = "_Bool";
+                    } else if (rt->kind == CN_TYPE_CHAR) {
+                        ret_type_str = "char";
+                    } else if (rt->kind == CN_TYPE_VOID) {
+                        ret_type_str = "void";
+                    }
+                }
+                // 使用K&R风格声明（不检查参数），避免参数类型不匹配问题
+                fprintf(file, "extern %s %s();\n", ret_type_str,
+                        get_c_function_name(extern_func_names[ei]));
+            }
+            fprintf(file, "\n");
+        }
+        #undef MAX_EXTERN_FUNCS
+    }
 
     func = module->first_func;
     while (func) {

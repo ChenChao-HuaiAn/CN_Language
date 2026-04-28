@@ -398,10 +398,37 @@ struct 捕获子句 {
     char* 变量名;
     struct 块语句* 语句体;
 };
+struct 声明语句;
+struct 声明语句 {
+    struct AST节点 节点基类;
+    struct 声明节点* 声明;
+};
+struct 表达式语句;
+struct 如果语句;
+struct 当语句;
+struct 循环语句;
+struct 返回语句;
+struct 中断语句;
+struct 继续语句;
+struct 选择语句;
+struct 尝试语句;
+struct 抛出语句;
 struct 语句节点;
 struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
+    struct 表达式语句* 作为表达式语句;
+    struct 块语句* 作为块语句;
+    struct 如果语句* 作为如果语句;
+    struct 当语句* 作为当语句;
+    struct 循环语句* 作为循环语句;
+    struct 返回语句* 作为返回语句;
+    struct 中断语句* 作为中断语句;
+    struct 继续语句* 作为继续语句;
+    struct 选择语句* 作为选择语句;
+    struct 尝试语句* 作为尝试语句;
+    struct 抛出语句* 作为抛出语句;
+    struct 声明语句* 作为声明语句;
 };
 struct 结构体字段初始化;
 struct 结构体字段初始化 {
@@ -923,6 +950,12 @@ struct 类型节点* 解析指针类型(struct 解析器*, struct 类型节点*)
 struct 类型节点* 解析数组类型(struct 解析器*, struct 类型节点*);
 struct 类型节点* 解析函数类型(struct 解析器*);
 
+// Extern Declarations - 跨模块调用的函数
+extern long long 创建类型节点();
+extern long long 释放类型节点();
+extern long long 字符串转整数();
+extern long long 函数类型添加参数();
+
 struct 类型节点* 解析类型(struct 解析器* cn_var_实例);
 struct 类型节点* 解析基础类型(struct 解析器* cn_var_实例);
 struct 类型节点* 解析指针类型(struct 解析器* cn_var_实例, struct 类型节点* cn_var_基类型);
@@ -991,7 +1024,6 @@ struct 类型节点* 解析类型(struct 解析器* cn_var_实例) {
 
   if_then_1106:
   创建类型节点();
-  cn_var_结果_0 = /* NONE */;
   r10 = cn_var_结果_0;
   r11 = r10 == 0;
   if (r11) goto if_then_1109; else goto if_merge_1110;
@@ -1097,7 +1129,6 @@ struct 类型节点* 解析基础类型(struct 解析器* cn_var_实例) {
   if_merge_1122:
   struct 类型节点* cn_var_结果_0;
   创建类型节点();
-  cn_var_结果_0 = /* NONE */;
   r2 = cn_var_结果_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1123; else goto if_merge_1124;
@@ -1216,7 +1247,6 @@ struct 类型节点* 解析指针类型(struct 解析器* cn_var_实例, struct 
   if_merge_1145:
   struct 类型节点* cn_var_指针类型_0;
   创建类型节点();
-  cn_var_指针类型_0 = /* NONE */;
   r9 = cn_var_指针类型_0;
   r10 = r9 == 0;
   if (r10) goto if_then_1146; else goto if_merge_1147;
@@ -1286,7 +1316,6 @@ struct 类型节点* 解析数组类型(struct 解析器* cn_var_实例, struct 
   if_merge_1153:
   struct 类型节点* cn_var_数组类型_0;
   创建类型节点();
-  cn_var_数组类型_0 = /* NONE */;
   r9 = cn_var_数组类型_0;
   r10 = r9 == 0;
   if (r10) goto if_then_1154; else goto if_merge_1155;
@@ -1358,7 +1387,6 @@ struct 类型节点* 解析函数类型(struct 解析器* cn_var_实例) {
   if_merge_1159:
   struct 类型节点* cn_var_函数类型_0;
   创建类型节点();
-  cn_var_函数类型_0 = /* NONE */;
   r2 = cn_var_函数类型_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1160; else goto if_merge_1161;

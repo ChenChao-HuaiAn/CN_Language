@@ -257,11 +257,20 @@ CnIrOperand cn_ir_op_ast_expr(CnAstExpr *expr, CnType *type) {
 }
 
 static const char *inst_names[] = {
+    // 算术与逻辑指令 (0-11)
     "add", "sub", "mul", "div", "mod", "and", "or", "xor", "shl", "shr", "neg", "not",
+    // 比较指令 (12-17)
     "eq", "ne", "lt", "le", "gt", "ge",
-    "alloca", "load", "store", "mov",
+    // 内存操作指令 (18-23)
+    "alloca", "load", "store", "mov", "addr_of", "deref",
+    // 控制流指令 (24-28)
     "label", "jump", "branch", "call", "ret",
-    "phi"
+    // 结构体操作指令 (29-31)
+    "getelemptr", "member_access", "struct_init",
+    // 类型操作指令 (32)
+    "sizeof",
+    // 其他指令 (33-34)
+    "phi", "select"
 };
 
 void cn_ir_dump_operand_to_file(CnIrOperand op, FILE *file) {

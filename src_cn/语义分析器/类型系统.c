@@ -392,10 +392,37 @@ struct 捕获子句 {
     char* 变量名;
     struct 块语句* 语句体;
 };
+struct 声明语句;
+struct 声明语句 {
+    struct AST节点 节点基类;
+    struct 声明节点* 声明;
+};
+struct 表达式语句;
+struct 如果语句;
+struct 当语句;
+struct 循环语句;
+struct 返回语句;
+struct 中断语句;
+struct 继续语句;
+struct 选择语句;
+struct 尝试语句;
+struct 抛出语句;
 struct 语句节点;
 struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
+    struct 表达式语句* 作为表达式语句;
+    struct 块语句* 作为块语句;
+    struct 如果语句* 作为如果语句;
+    struct 当语句* 作为当语句;
+    struct 循环语句* 作为循环语句;
+    struct 返回语句* 作为返回语句;
+    struct 中断语句* 作为中断语句;
+    struct 继续语句* 作为继续语句;
+    struct 选择语句* 作为选择语句;
+    struct 尝试语句* 作为尝试语句;
+    struct 抛出语句* 作为抛出语句;
+    struct 声明语句* 作为声明语句;
 };
 struct 结构体字段初始化;
 struct 结构体字段初始化 {
@@ -2463,23 +2490,23 @@ struct 类型信息* 从函数类型推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类型信息指针) {
-  long long r6, r9, r33, r38, r40;
+  long long r6, r9, r33, r37, r39;
   char* r29;
   char* r31;
+  char* r43;
   char* r45;
   char* r47;
   char* r49;
   char* r51;
-  char* r53;
   struct 类型信息* r0;
   void* r7;
   struct 类型节点* r8;
   void* r10;
-  struct 类型信息* r35;
-  struct 类型节点* r36;
-  struct 类型信息* r42;
-  struct 类型节点* r43;
-  struct 类型节点* r56;
+  struct 类型信息* r34;
+  struct 类型节点* r35;
+  struct 类型信息* r40;
+  struct 类型节点* r41;
+  struct 类型节点* r54;
   _Bool r1;
   _Bool r4;
   _Bool r5;
@@ -2498,22 +2525,20 @@ struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类
   _Bool r25;
   _Bool r26;
   _Bool r27;
-  _Bool r55;
+  _Bool r53;
   struct 类型信息 r2;
   struct 类型信息 r11;
   struct 类型信息 r28;
   struct 类型信息 r30;
   struct 类型信息 r32;
-  struct 类型信息 r34;
-  struct 类型信息 r37;
-  struct 类型信息 r39;
-  struct 类型信息 r41;
+  struct 类型信息 r36;
+  struct 类型信息 r38;
+  struct 类型信息 r42;
   struct 类型信息 r44;
   struct 类型信息 r46;
   struct 类型信息 r48;
   struct 类型信息 r50;
   struct 类型信息 r52;
-  struct 类型信息 r54;
   enum 类型种类 r3;
   enum 类型种类 r12;
 
@@ -2639,44 +2664,42 @@ struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类
   case_body_222:
   r32 = *cn_var_类型信息指针;
   r33 = r32.指针层级;
-  r34 = *cn_var_类型信息指针;
-  r35 = r34.指向类型;
-  r36 = 类型信息转类型节点(r35);
+  r34 = cn_var_类型信息指针->指向类型;
+  r35 = 类型信息转类型节点(r34);
   goto switch_merge_215;
   goto switch_merge_215;
 
   case_body_223:
-  r37 = *cn_var_类型信息指针;
-  r38 = r37.数组维度;
-  r39 = *cn_var_类型信息指针;
-  r40 = r39.总元素数;
-  r41 = *cn_var_类型信息指针;
-  r42 = r41.元素类型;
-  r43 = 类型信息转类型节点(r42);
+  r36 = *cn_var_类型信息指针;
+  r37 = r36.数组维度;
+  r38 = *cn_var_类型信息指针;
+  r39 = r38.总元素数;
+  r40 = cn_var_类型信息指针->元素类型;
+  r41 = 类型信息转类型节点(r40);
   goto switch_merge_215;
   goto switch_merge_215;
 
   case_body_224:
+  r42 = *cn_var_类型信息指针;
+  r43 = r42.名称;
+  goto switch_merge_215;
+  goto switch_merge_215;
+
+  case_body_225:
   r44 = *cn_var_类型信息指针;
   r45 = r44.名称;
   goto switch_merge_215;
   goto switch_merge_215;
 
-  case_body_225:
+  case_body_226:
   r46 = *cn_var_类型信息指针;
   r47 = r46.名称;
   goto switch_merge_215;
   goto switch_merge_215;
 
-  case_body_226:
+  case_body_227:
   r48 = *cn_var_类型信息指针;
   r49 = r48.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
-
-  case_body_227:
-  r50 = *cn_var_类型信息指针;
-  r51 = r50.名称;
   goto switch_merge_215;
   goto switch_merge_215;
 
@@ -2685,8 +2708,8 @@ struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类
   goto switch_merge_215;
 
   case_body_229:
-  r52 = *cn_var_类型信息指针;
-  r53 = r52.名称;
+  r50 = *cn_var_类型信息指针;
+  r51 = r50.名称;
   goto switch_merge_215;
   goto switch_merge_215;
 
@@ -2699,10 +2722,10 @@ struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类
   goto switch_merge_215;
 
   switch_merge_215:
-  r54 = *cn_var_类型信息指针;
-  r55 = r54.是常量;
-  r56 = cn_var_节点_1;
-  return r56;
+  r52 = *cn_var_类型信息指针;
+  r53 = r52.是常量;
+  r54 = cn_var_节点_1;
+  return r54;
 }
 
 _Bool 是有效的类型种类(enum 类型种类 cn_var_种类) {

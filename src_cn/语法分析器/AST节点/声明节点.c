@@ -131,10 +131,34 @@ struct 表达式节点 {
     struct 类型节点* 目标类型;
     struct 表达式节点* 转换操作数;
 };
+struct 表达式语句;
+struct 块语句;
+struct 如果语句;
+struct 当语句;
+struct 循环语句;
+struct 返回语句;
+struct 中断语句;
+struct 继续语句;
+struct 选择语句;
+struct 尝试语句;
+struct 抛出语句;
+struct 声明语句;
 struct 语句节点;
 struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
+    struct 表达式语句* 作为表达式语句;
+    struct 块语句* 作为块语句;
+    struct 如果语句* 作为如果语句;
+    struct 当语句* 作为当语句;
+    struct 循环语句* 作为循环语句;
+    struct 返回语句* 作为返回语句;
+    struct 中断语句* 作为中断语句;
+    struct 继续语句* 作为继续语句;
+    struct 选择语句* 作为选择语句;
+    struct 尝试语句* 作为尝试语句;
+    struct 抛出语句* 作为抛出语句;
+    struct 声明语句* 作为声明语句;
 };
 
 // Struct Definitions - 从导入模块

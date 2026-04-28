@@ -664,10 +664,29 @@ struct 结构体字段初始化 {
     char* 字段名;
     struct 表达式节点* 值;
 };
+struct 声明语句;
 struct 语句节点;
 struct 语句节点 {
     enum 节点类型 类型;
     struct 源位置 位置;
+    struct 表达式语句* 作为表达式语句;
+    struct 块语句* 作为块语句;
+    struct 如果语句* 作为如果语句;
+    struct 当语句* 作为当语句;
+    struct 循环语句* 作为循环语句;
+    struct 返回语句* 作为返回语句;
+    struct 中断语句* 作为中断语句;
+    struct 继续语句* 作为继续语句;
+    struct 选择语句* 作为选择语句;
+    struct 尝试语句* 作为尝试语句;
+    struct 抛出语句* 作为抛出语句;
+    struct 声明语句* 作为声明语句;
+};
+struct 声明节点;
+struct 声明语句;
+struct 声明语句 {
+    struct AST节点 节点基类;
+    struct 声明节点* 声明;
 };
 struct 捕获子句;
 struct 捕获子句 {
@@ -680,7 +699,6 @@ struct 情况分支 {
     struct 表达式节点* 匹配值;
     struct 块语句* 语句体;
 };
-struct 声明节点;
 struct 声明节点列表;
 struct 声明节点列表 {
     struct 声明节点* 节点;
@@ -933,6 +951,32 @@ struct 声明节点* 解析模块声明(struct 解析器*);
 struct 声明节点* 解析导入声明(struct 解析器*);
 enum 可见性 解析可见性修饰符(struct 解析器*);
 
+// Extern Declarations - 跨模块调用的函数
+extern long long 创建函数声明();
+extern void* 解析类型();
+extern void* 解析块语句();
+extern long long 创建参数列表();
+extern long long 参数列表添加();
+extern long long 创建参数节点();
+extern long long 创建变量声明();
+extern long long 字符串转整数();
+extern long long 数组大小列表添加();
+extern void* 解析表达式();
+extern long long 创建结构体声明();
+extern long long 结构体添加成员();
+extern long long 创建枚举声明();
+extern long long 创建枚举成员();
+extern long long 枚举添加成员();
+extern long long 创建类声明();
+extern long long 类添加实现接口();
+extern long long 类添加方法();
+extern long long 类添加字段();
+extern long long 创建接口声明();
+extern long long 接口添加方法();
+extern long long 创建模块声明();
+extern long long 创建导入声明();
+extern long long 导入添加成员();
+
 struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例);
 struct 声明节点* 解析函数声明(struct 解析器* cn_var_实例);
 struct 参数列表* 解析参数列表(struct 解析器* cn_var_实例);
@@ -1178,7 +1222,6 @@ struct 声明节点* 解析函数声明(struct 解析器* cn_var_实例) {
   if_merge_1439:
   struct 声明节点* cn_var_节点_0;
   创建函数声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1440; else goto if_merge_1441;
@@ -1327,7 +1370,6 @@ struct 参数列表* 解析参数列表(struct 解析器* cn_var_实例) {
   if_merge_1465:
   struct 参数列表* cn_var_列表_0;
   创建参数列表();
-  cn_var_列表_0 = /* NONE */;
   r2 = cn_var_列表_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1466; else goto if_merge_1467;
@@ -1411,7 +1453,6 @@ struct 参数节点* 解析参数(struct 解析器* cn_var_实例) {
   if_merge_1476:
   struct 参数节点* cn_var_参数_0;
   创建参数节点();
-  cn_var_参数_0 = /* NONE */;
   r2 = cn_var_参数_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1477; else goto if_merge_1478;
@@ -1511,7 +1552,6 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
   if_merge_1485:
   struct 声明节点* cn_var_节点_0;
   创建变量声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1486; else goto if_merge_1487;
@@ -1653,7 +1693,6 @@ struct 声明节点* 解析结构体声明(struct 解析器* cn_var_实例) {
   if_merge_1505:
   struct 声明节点* cn_var_节点_0;
   创建结构体声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1506; else goto if_merge_1507;
@@ -1749,7 +1788,6 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   if_merge_1514:
   struct 声明节点* cn_var_节点_0;
   创建枚举声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1515; else goto if_merge_1516;
@@ -1780,7 +1818,6 @@ struct 声明节点* 解析枚举声明(struct 解析器* cn_var_实例) {
   while_body_1518:
   struct 枚举成员* cn_var_成员_2;
   创建枚举成员();
-  cn_var_成员_2 = /* NONE */;
   r14 = cn_var_成员_2;
   r15 = r14 == 0;
   if (r15) goto if_then_1520; else goto if_merge_1521;
@@ -1897,7 +1934,6 @@ struct 声明节点* 解析类声明(struct 解析器* cn_var_实例) {
   if_merge_1526:
   struct 声明节点* cn_var_节点_0;
   创建类声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1527; else goto if_merge_1528;
@@ -2078,7 +2114,6 @@ struct 声明节点* 解析接口声明(struct 解析器* cn_var_实例) {
   if_merge_1551:
   struct 声明节点* cn_var_节点_0;
   创建接口声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1552; else goto if_merge_1553;
@@ -2162,7 +2197,6 @@ struct 声明节点* 解析模块声明(struct 解析器* cn_var_实例) {
   if_merge_1563:
   struct 声明节点* cn_var_节点_0;
   创建模块声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1564; else goto if_merge_1565;
@@ -2228,7 +2262,6 @@ struct 声明节点* 解析导入声明(struct 解析器* cn_var_实例) {
   if_merge_1567:
   struct 声明节点* cn_var_节点_0;
   创建导入声明();
-  cn_var_节点_0 = /* NONE */;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
   if (r3) goto if_then_1568; else goto if_merge_1569;
