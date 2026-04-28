@@ -54,17 +54,30 @@ static bool g_target_layout_valid = false;
 static const char *try_cn_primitive_type_name(const char *name, size_t name_len) {
     if (!name || name_len == 0) return NULL;
 
-    /* 使用长度先做快速筛选，再用strncmp精确匹配 */
+    /* 使用长度先做快速筛选，再用strncmp精确匹配
+     * UTF-8编码下中文字符串长度：
+     * - 1个汉字 = 3字节, 2个汉字 = 6字节, 3个汉字 = 9字节
+     * 包含：CN基本类型关键字 + CN元类型关键字（函数/无/结构体）
+     * 【P0-3a修复】扩展映射：添加 函数→void*、无→void*、结构体→void*
+     */
     switch (name_len) {
+        case 3: /* 1个汉字 × 3字节 = 3字节 */
+            /* 【P0-3a】"无"是CN的null/none关键字，被错误标记为结构体类型时映射为void* */
+            if (strncmp(name, "无", 3) == 0) return "void*";
+            break;
         case 6: /* 2个汉字 × 3字节 = 6字节 */
             if (strncmp(name, "整数", 6) == 0) return "long long";
             if (strncmp(name, "小数", 6) == 0) return "double";
             if (strncmp(name, "字符", 6) == 0) return "char";
             if (strncmp(name, "布尔", 6) == 0) return "_Bool";
+            /* 【P0-3a】"函数"作为类型名使用时，映射为通用函数指针void* */
+            if (strncmp(name, "函数", 6) == 0) return "void*";
             break;
         case 9: /* 3个汉字 × 3字节 = 9字节 */
             if (strncmp(name, "字符串", 9) == 0) return "char*";
             if (strncmp(name, "空类型", 9) == 0) return "void";
+            /* 【P0-3a】"结构体"本身作为类型名时是元类型，不应生成struct定义 */
+            if (strncmp(name, "结构体", 9) == 0) return "void*";
             break;
         default:
             break;
@@ -515,6 +528,27 @@ static const char *get_c_type_string_internal(CnType *type, bool is_param) {
                     type->as.struct_type.name, type->as.struct_type.name_length);
                 if (cn_prim) {
                     return cn_prim;
+                }
+            }
+            
+            // 【P0-3a修复】防御性检查：检测类型名是否腐败
+            // 如果类型名包含结构体定义内容（含 {; \n } 等字符），
+            // 说明 struct_type.name 指向了结构体定义的源文本而非仅类型名，
+            // 类型信息已损坏，应回退到 void*
+            {
+                const char *_name = type->as.struct_type.name;
+                int _name_len = (int)type->as.struct_type.name_length;
+                int _corrupted = 0;
+                for (int _i = 0; _i < _name_len; _i++) {
+                    if (_name[_i] == '{' || _name[_i] == ';' ||
+                        _name[_i] == '\n' || _name[_i] == '}') {
+                        _corrupted = 1;
+                        break;
+                    }
+                }
+                if (_corrupted) {
+                    // 类型信息损坏，回退到 void*
+                    return "void*";
                 }
             }
             
@@ -3487,10 +3521,30 @@ static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type
     size_t name_len = type->as.struct_type.name_length;
     if (!name) return;
     
-    // 【P0-1修复】跳过CN基本类型关键字（如 整数、字符串、布尔 等）
+    // 【P0-1修复+P0-3a扩展】跳过CN基本类型关键字（如 整数、字符串、布尔 等）
     // 这些不是真正的结构体，不应生成结构体定义
+    // 【P0-3a】扩展：也跳过 函数、无、结构体 等元类型关键字
     if (is_cn_primitive_type_name(name, name_len)) {
         return;
+    }
+    
+    // 【P0-3a修复】防御性检查：检测类型名是否腐败
+    // 如果类型名包含结构体定义内容（含 {; \n } 等字符），
+    // 说明 struct_type.name 指向了结构体定义的源文本而非仅类型名，
+    // 不应生成结构体定义
+    {
+        int _corrupted = 0;
+        for (size_t _i = 0; _i < name_len; _i++) {
+            if (name[_i] == '{' || name[_i] == ';' ||
+                name[_i] == '\n' || name[_i] == '}') {
+                _corrupted = 1;
+                break;
+            }
+        }
+        if (_corrupted) {
+            // 类型名损坏，跳过此结构体定义
+            return;
+        }
     }
     
     // 检查是否已生成
@@ -3511,12 +3565,25 @@ static void cn_cgen_struct_type_definition_with_forward(FILE *file, CnType *type
                 const char *pointee_name = pointee->as.struct_type.name;
                 size_t pointee_name_len = pointee->as.struct_type.name_length;
                 // 只有在没有生成前向声明和完整定义时才输出前向声明
+                // 【P0-3a】同时跳过CN基本类型关键字和腐败的类型名
                 if (pointee_name && !is_type_forward_declared(pointee_name, pointee_name_len) &&
-                    !is_type_already_generated(pointee_name, pointee_name_len)) {
-                    // 输出前向声明
-                    fprintf(file, "struct %.*s;\n", (int)pointee_name_len, pointee_name);
-                    // 标记为已生成前向声明（但不标记为完整定义）
-                    mark_type_as_forward_declared(pointee_name, pointee_name_len);
+                    !is_type_already_generated(pointee_name, pointee_name_len) &&
+                    !is_cn_primitive_type_name(pointee_name, pointee_name_len)) {
+                    // 【P0-3a】检查pointee_name是否腐败
+                    int _pcorrupted = 0;
+                    for (size_t _pi = 0; _pi < pointee_name_len; _pi++) {
+                        if (pointee_name[_pi] == '{' || pointee_name[_pi] == ';' ||
+                            pointee_name[_pi] == '\n' || pointee_name[_pi] == '}') {
+                            _pcorrupted = 1;
+                            break;
+                        }
+                    }
+                    if (!_pcorrupted) {
+                        // 输出前向声明
+                        fprintf(file, "struct %.*s;\n", (int)pointee_name_len, pointee_name);
+                        // 标记为已生成前向声明（但不标记为完整定义）
+                        mark_type_as_forward_declared(pointee_name, pointee_name_len);
+                    }
                 }
             }
         }

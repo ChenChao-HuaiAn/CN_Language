@@ -172,26 +172,53 @@ static const char *get_c_type_str_internal(CnType *type, bool is_param) {
             if (!type->as.struct_type.name || type->as.struct_type.name_length == 0) {
                 return "struct _anonymous";
             }
-            // 【P0-1修复】检查是否是CN基本类型关键字被错误标记为结构体
+            // 【P0-1修复+P0-3a扩展】检查是否是CN基本类型关键字被错误标记为结构体
             // 自举编译时，语义分析器可能将 整数/字符串/布尔 等基本类型
             // 错误创建为 CN_TYPE_STRUCT 类型，需要在此翻译为正确的C类型
+            // 【P0-3a】扩展映射：添加 函数→void*、无→void*、结构体→void*
             {
                 const char *name = type->as.struct_type.name;
                 size_t name_len = type->as.struct_type.name_length;
                 /* CN基本类型关键字 -> C类型映射（UTF-8编码） */
                 switch (name_len) {
+                    case 3: /* 1个汉字 × 3字节 */
+                        /* 【P0-3a】"无"是CN的null/none关键字 */
+                        if (strncmp(name, "无", 3) == 0) return "void*";
+                        break;
                     case 6: /* 2个汉字 × 3字节 */
                         if (strncmp(name, "整数", 6) == 0) return "long long";
                         if (strncmp(name, "小数", 6) == 0) return "double";
                         if (strncmp(name, "字符", 6) == 0) return "char";
                         if (strncmp(name, "布尔", 6) == 0) return "_Bool";
+                        /* 【P0-3a】"函数"作为类型名时映射为通用函数指针 */
+                        if (strncmp(name, "函数", 6) == 0) return "void*";
                         break;
                     case 9: /* 3个汉字 × 3字节 */
                         if (strncmp(name, "字符串", 9) == 0) return "char*";
                         if (strncmp(name, "空类型", 9) == 0) return "void";
+                        /* 【P0-3a】"结构体"本身作为类型名时是元类型 */
+                        if (strncmp(name, "结构体", 9) == 0) return "void*";
                         break;
                     default:
                         break;
+                }
+            }
+            // 【P0-3a修复】防御性检查：检测类型名是否腐败
+            // 如果类型名包含结构体定义内容（含 {; \n } 等字符），
+            // 说明 struct_type.name 指向了结构体定义的源文本而非仅类型名
+            {
+                const char *_name = type->as.struct_type.name;
+                int _name_len = (int)type->as.struct_type.name_length;
+                int _corrupted = 0;
+                for (int _i = 0; _i < _name_len; _i++) {
+                    if (_name[_i] == '{' || _name[_i] == ';' ||
+                        _name[_i] == '\n' || _name[_i] == '}') {
+                        _corrupted = 1;
+                        break;
+                    }
+                }
+                if (_corrupted) {
+                    return "void*";
                 }
             }
             snprintf(buffer, sizeof(buffer), "struct %.*s",
