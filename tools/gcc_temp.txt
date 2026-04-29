@@ -1,0 +1,157 @@
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1076:25: error: expected expression before ';' token
+ 1076 |   r15 = r3 == /* NONE */;
+      |                         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1086:10: error: returning 'struct \U00005757\U00008bed\U000053e5\U00008282\U000070b9 *' from a function with incompatible return type 'struct \U00008bed\U000053e5\U00008282\U000070b9 *' [-Wincompatible-pointer-types]
+ 1086 |   return r18;
+      |          ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00005757\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1207:3: error: implicit declaration of function '\U0000521b\U00005efa\U00005757\U00008bed\U000053e5' [-Wimplicit-function-declaration]
+ 1207 |   创建块语句();
+      |   ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1208:31: error: expected expression before ';' token
+ 1208 |   cn_var_块节点_0 = /* NONE */;
+      |                               ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1255:3: error: implicit declaration of function '\U00005757\U00008bed\U000053e5\U00006dfb\U000052a0' [-Wimplicit-function-declaration]
+ 1255 |   块语句添加(r17, r18);
+      |   ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00005982\U0000679c\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1298:3: error: implicit declaration of function '\U0000521b\U00005efa\U00005982\U0000679c\U00008bed\U000053e5'; did you mean '解析如果语句'? [-Wimplicit-function-declaration]
+ 1298 |   创建如果语句();
+      |   ^~~~~~~~~~~~
+      |   解析如果语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1299:29: error: expected expression before ';' token
+ 1299 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1314:8: error: implicit declaration of function '\U000089e3\U00006790\U00008868\U00008fbe\U00005f0f'; did you mean '解析表达式语句'? [-Wimplicit-function-declaration]
+ 1314 |   r8 = 解析表达式(r7);
+      |        ^~~~~~~~~~
+      |        解析表达式语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1314:6: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 1314 |   r8 = 解析表达式(r7);
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00005f53\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1375:3: error: implicit declaration of function '\U0000521b\U00005efa\U00005f53\U00008bed\U000053e5' [-Wimplicit-function-declaration]
+ 1375 |   创建当语句();
+      |   ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1376:29: error: expected expression before ';' token
+ 1376 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1391:6: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 1391 |   r8 = 解析表达式(r7);
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00005faa\U000073af\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1446:3: error: implicit declaration of function '\U0000521b\U00005efa\U00005faa\U000073af\U00008bed\U000053e5'; did you mean '解析循环语句'? [-Wimplicit-function-declaration]
+ 1446 |   创建循环语句();
+      |   ^~~~~~~~~~~~
+      |   解析循环语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1447:29: error: expected expression before ';' token
+ 1447 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1506:7: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 1506 |   r25 = 解析表达式(r24);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1519:7: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 1519 |   r32 = 解析表达式(r31);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00008fd4\U000056de\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1555:3: error: implicit declaration of function '\U0000521b\U00005efa\U00008fd4\U000056de\U00008bed\U000053e5'; did you mean '解析返回语句'? [-Wimplicit-function-declaration]
+ 1555 |   创建返回语句();
+      |   ^~~~~~~~~~~~
+      |   解析返回语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1556:29: error: expected expression before ';' token
+ 1556 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1575:6: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 1575 |   r9 = 解析表达式(r8);
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00004e2d\U000065ad\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1605:3: error: implicit declaration of function '\U0000521b\U00005efa\U00004e2d\U000065ad\U00008bed\U000053e5'; did you mean '解析中断语句'? [-Wimplicit-function-declaration]
+ 1605 |   创建中断语句();
+      |   ^~~~~~~~~~~~
+      |   解析中断语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1606:29: error: expected expression before ';' token
+ 1606 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00007ee7\U00007eed\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1644:3: error: implicit declaration of function '\U0000521b\U00005efa\U00007ee7\U00007eed\U00008bed\U000053e5'; did you mean '解析继续语句'? [-Wimplicit-function-declaration]
+ 1644 |   创建继续语句();
+      |   ^~~~~~~~~~~~
+      |   解析继续语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1645:29: error: expected expression before ';' token
+ 1645 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00009009\U000062e9\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1693:3: error: implicit declaration of function '\U0000521b\U00005efa\U00009009\U000062e9\U00008bed\U000053e5'; did you mean '解析选择语句'? [-Wimplicit-function-declaration]
+ 1693 |   创建选择语句();
+      |   ^~~~~~~~~~~~
+      |   解析选择语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1694:29: error: expected expression before ';' token
+ 1694 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1709:6: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 1709 |   r8 = 解析表达式(r7);
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U000060c5\U000051b5\U00005217\U00008868':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1816:3: error: implicit declaration of function '\U0000521b\U00005efa\U000060c5\U000051b5\U00005206\U0000652f' [-Wimplicit-function-declaration]
+ 1816 |   创建情况分支();
+      |   ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1817:33: error: expected expression before ';' token
+ 1817 |   cn_var_默认分支_1 = /* NONE */;
+      |                                 ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1878:3: error: implicit declaration of function '\U000060c5\U000051b5\U00005206\U0000652f\U00006dfb\U000052a0\U00008bed\U000053e5' [-Wimplicit-function-declaration]
+ 1878 |   情况分支添加语句(r30, r31);
+      |   ^~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1889:33: error: expected expression before ';' token
+ 1889 |   cn_var_当前情况_3 = /* NONE */;
+      |                                 ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1903:7: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 1903 |   r41 = 解析表达式(r40);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00005c1d\U00008bd5\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2001:3: error: implicit declaration of function '\U0000521b\U00005efa\U00005c1d\U00008bd5\U00008bed\U000053e5'; did you mean '解析尝试语句'? [-Wimplicit-function-declaration]
+ 2001 |   创建尝试语句();
+      |   ^~~~~~~~~~~~
+      |   解析尝试语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2002:29: error: expected expression before ';' token
+ 2002 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2026:9: error: implicit declaration of function '\U000089e3\U00006790\U00007c7b\U0000578b' [-Wimplicit-function-declaration]
+ 2026 |   r13 = 解析类型(r12);
+      |         ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2026:7: error: assignment to 'struct \U00007c7b\U0000578b\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 2026 |   r13 = 解析类型(r12);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U0000629b\U000051fa\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2083:3: error: implicit declaration of function '\U0000521b\U00005efa\U0000629b\U000051fa\U00008bed\U000053e5'; did you mean '解析抛出语句'? [-Wimplicit-function-declaration]
+ 2083 |   创建抛出语句();
+      |   ^~~~~~~~~~~~
+      |   解析抛出语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2084:29: error: expected expression before ';' token
+ 2084 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00008868\U00008fbe\U00005f0f\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2139:3: error: implicit declaration of function '\U0000521b\U00005efa\U00008868\U00008fbe\U00005f0f\U00008bed\U000053e5'; did you mean '创建表达式节点'? [-Wimplicit-function-declaration]
+ 2139 |   创建表达式语句();
+      |   ^~~~~~~~~~~~~~
+      |   创建表达式节点
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2140:29: error: expected expression before ';' token
+ 2140 |   cn_var_节点_0 = /* NONE */;
+      |                             ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2151:6: error: assignment to 'struct \U00008868\U00008fbe\U00005f0f\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 2151 |   r5 = 解析表达式(r4);
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U000053d8\U000091cf\U000058f0\U0000660e\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2180:8: error: implicit declaration of function '\U000089e3\U00006790\U000053d8\U000091cf\U000058f0\U0000660e'; did you mean '解析变量声明语句'? [-Wimplicit-function-declaration]
+ 2180 |   r3 = 解析变量声明(r2);
+      |        ^~~~~~~~~~~~
+      |        解析变量声明语句
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2180:6: error: assignment to 'struct \U000058f0\U0000660e\U00008282\U000070b9 *' from 'int' makes pointer from integer without a cast [-Wint-conversion]
+ 2180 |   r3 = 解析变量声明(r2);
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2192:3: error: implicit declaration of function '\U0000521b\U00005efa\U000058f0\U0000660e\U00008bed\U000053e5' [-Wimplicit-function-declaration]
+ 2192 |   创建声明语句();
+      |   ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:2193:29: error: expected expression before ';' token
+ 2193 |   cn_var_节点_1 = /* NONE */;
+      |                             ^

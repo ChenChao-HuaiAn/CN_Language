@@ -38,6 +38,9 @@ typedef struct CnCCodeGenContext {
     struct CnType **reg_types;  ///< 寄存器类型数组
     int reg_types_count;        ///< 寄存器类型数组大小
     
+    /* ALLOCA变量类型映射表（P8修复：供MEMBER_ACCESS指令查找变量指针类型） */
+    void *alloca_types;         ///< AllocaTypeEntry链表头指针（文件内部类型）
+    
     /* 全局作用域（用于查找结构体类型的完整定义） */
     struct CnSemScope *global_scope; ///< 全局作用域
     

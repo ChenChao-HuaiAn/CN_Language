@@ -204,6 +204,17 @@ static size_t get_base_name_len(const char *name) {
     return last_underscore - name; // 返回基础名称的长度
 }
 
+/* 【P8修复】ALLOCA变量类型映射表条目 - 移到文件作用域供指令生成使用
+ * 原来定义在 cn_cgen_function() 内部的 if 块中，
+ * 指令生成函数无法访问。P8修复需要 MEMBER_ACCESS 指令
+ * 能查找 alloca_types 来判断变量是否为指针类型。
+ */
+typedef struct AllocaTypeEntry {
+    const char *sym_name;    // 符号名（不拥有内存）
+    CnType *type;            // 类型指针
+    struct AllocaTypeEntry *next;
+} AllocaTypeEntry;
+
 /**
  * 比较两个名称是否匹配（考虑 cn_var_ 前缀和 _数字 后缀）
  *
@@ -1915,35 +1926,49 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
         }
         case CN_IR_INST_MEMBER_ACCESS: {
             // 结构体成员访问：dest = obj.member 或 dest = ptr->member
+            // CN语言统一使用'.'访问成员，编译器自动根据类型选择'.'或'->'
             fprintf(ctx->output_file, "  ");
             print_operand(ctx, inst->dest);
             fprintf(ctx->output_file, " = ");
             print_operand(ctx, inst->src1);
             
-            // 检查对象是否为指针类型，决定使用 -> 还是 .
+            // 【P8修复】多层指针类型检测，决定使用 -> 还是 .
+            // 关键改进：不再使用if/else if链式结构，而是逐层检查。
+            // 当高层级返回低精度类型（INT/VOID/UNKNOWN）时，继续检查低层级，
+            // 因为alloca_types和reg_types经过P6多遍扫描后可能有更精确的POINTER类型。
+            // 只有高层级返回高精度类型（POINTER/STRUCT/STRING/ENUM）时才直接信任。
             bool is_pointer = false;
+            bool has_precise_type = false;  // 是否已获得高精度类型（无需继续检查）
+            
+            // 层级1：操作数自带类型信息
             if (inst->src1.type) {
-                // 使用统一的指针类型检测函数，支持 CnType 和 struct 类型节点 两种类型系统
                 is_pointer = is_pointer_type_unified(inst->src1.type);
-                // 【调试】输出类型信息
-                #ifdef CN_DEBUG_TYPE_PROPAGATION
-                fprintf(stderr, "[DEBUG] MEMBER_ACCESS: src1.type 存在, is_pointer=%s\n", is_pointer ? "true" : "false");
-                #endif
+                // 判断是否为无歧义的高精度指针类型，可直接信任
+                // 关键：CN_TYPE_STRUCT/ENUM 不应阻止后续检查，因为IR生成器可能
+                // 将指针变量标记为STRUCT而非POINTER，alloca_types经过P6类型传播后更准确
+                // 同时要区分CnType和struct类型节点：只有CnType才能用kind判断
+                CnType *cn_type_check = (CnType *)inst->src1.type;
+                if (cn_type_check->kind >= 0 && cn_type_check->kind <= CN_TYPE_UNKNOWN) {
+                    /* 有效的CnType */
+                    CnTypeKind kind = cn_type_check->kind;
+                    has_precise_type = (kind == CN_TYPE_POINTER || kind == CN_TYPE_STRING);
+                }
+                /* 如果是struct类型节点（kind超出CnTypeKind范围），不设置has_precise_type，
+                 * 允许后续层级检查，因为类型节点的指针层级可能不准确 */
             }
-            // 【新增】检查 src1 是否为符号操作数，且符号名匹配函数参数
-            // 这处理了函数参数是指针类型的情况
-            else if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+            
+            // 层级2：符号操作数 - 检查函数参数和变量类型
+            // 当层级1没有类型，或层级1类型为低精度时，继续检查
+            if (!has_precise_type && inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
                 const char *sym_name = inst->src1.as.sym_name;
                 
-                // 首先检查是否为函数参数（参数不会有ALLOCA指令）
-                if (ctx->current_func && ctx->current_func->params) {
+                // 层级2a：检查是否为函数参数（参数不会有ALLOCA指令）
+                if (!is_pointer && ctx->current_func && ctx->current_func->params) {
                     for (size_t i = 0; i < ctx->current_func->param_count && !is_pointer; i++) {
                         CnIrOperand *param = &ctx->current_func->params[i];
                         if (param->kind == CN_IR_OP_SYMBOL &&
                             param->as.sym_name &&
                             names_match_with_suffix(param->as.sym_name, sym_name)) {
-                            // 找到匹配的参数，检查类型
-                            // 使用统一的指针类型检测函数
                             if (param->type && is_pointer_type_unified(param->type)) {
                                 is_pointer = true;
                             }
@@ -1951,7 +1976,21 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     }
                 }
                 
-                // 如果不是参数，检查变量名是否在当前函数的ALLOCA指令中声明为指针类型
+                // 层级2b：【P8修复】从alloca_types映射表查找（P6多遍扫描更新后的类型）
+                // 这比遍历ALLOCA指令更可靠，因为alloca_types包含了STORE类型传播的更新
+                if (!is_pointer && ctx->alloca_types) {
+                    AllocaTypeEntry *entry = (AllocaTypeEntry *)ctx->alloca_types;
+                    while (entry && !is_pointer) {
+                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, sym_name)) {
+                            if (entry->type && is_pointer_type_unified(entry->type)) {
+                                is_pointer = true;
+                            }
+                        }
+                        entry = entry->next;
+                    }
+                }
+                
+                // 层级2c：遍历ALLOCA指令查找（回退方案）
                 if (!is_pointer) {
                     CnIrBasicBlock *block = ctx->current_func->first_block;
                     while (block && !is_pointer) {
@@ -1962,7 +2001,6 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                                 alloca_inst->dest.as.sym_name &&
                                 names_match_with_suffix(alloca_inst->dest.as.sym_name, sym_name) &&
                                 alloca_inst->dest.type) {
-                                // 使用统一的指针类型检测函数
                                 if (is_pointer_type_unified(alloca_inst->dest.type)) {
                                     is_pointer = true;
                                 }
@@ -1972,20 +2010,36 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                         block = block->next;
                     }
                 }
+                
+                // 层级2d：【P8修复】启发式变量名检测 - 当类型信息完全缺失时使用
+                // CN语言中变量名包含"指针"关键词的通常是指针类型
+                if (!is_pointer) {
+                    size_t sym_len = strlen(sym_name);
+                    // 检查变量名是否包含"指针"关键词（UTF-8编码）
+                    if (strstr(sym_name, "\xe6\x8c\x87\xe9\x92\x88") != NULL) {
+                        is_pointer = true;
+                    }
+                    // 检查变量名是否以"_ptr"或"Ptr"结尾（C风格指针命名）
+                    else if (sym_len > 4 && strcmp(sym_name + sym_len - 4, "_ptr") == 0) {
+                        is_pointer = true;
+                    }
+                    else if (sym_len > 3 && strcmp(sym_name + sym_len - 3, "Ptr") == 0) {
+                        is_pointer = true;
+                    }
+                }
             }
-            else if (inst->src1.kind == CN_IR_OP_REG && ctx->reg_types) {
-                // 对于寄存器操作数，从reg_types中获取类型信息
+            
+            // 层级3：寄存器操作数 - 从reg_types中获取类型信息
+            // 当层级1/2没有获得高精度类型时，检查reg_types
+            if (!has_precise_type && !is_pointer && inst->src1.kind == CN_IR_OP_REG && ctx->reg_types) {
                 int reg_id = inst->src1.as.reg_id;
                 if (reg_id < ctx->reg_types_count && ctx->reg_types[reg_id]) {
-                    // 使用统一的指针类型检测函数
                     is_pointer = is_pointer_type_unified(ctx->reg_types[reg_id]);
-                    // 【调试】输出类型信息
                     #ifdef CN_DEBUG_TYPE_PROPAGATION
                     fprintf(stderr, "[DEBUG] MEMBER_ACCESS: src1 是寄存器 r%d, is_pointer=%s\n",
                             reg_id, is_pointer ? "true" : "false");
                     #endif
                 } else {
-                    // 【调试】输出类型信息缺失
                     #ifdef CN_DEBUG_TYPE_PROPAGATION
                     fprintf(stderr, "[DEBUG] MEMBER_ACCESS: src1 是寄存器 r%d, 但 reg_types 中没有类型信息\n", reg_id);
                     #endif
@@ -2195,13 +2249,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
          * 这解决了MOV指令类型传播问题：当MOV指令从局部变量赋值时，
          * 需要知道变量的指针类型。通过预扫描ALLOCA指令，我们可以
          * 在多遍扫描开始前就建立完整的符号类型映射。
+         * 【P8修复】AllocaTypeEntry已移到文件作用域，供MEMBER_ACCESS指令使用
          */
-        typedef struct AllocaTypeEntry {
-            const char *sym_name;    // 符号名（不拥有内存）
-            CnType *type;            // 类型指针
-            struct AllocaTypeEntry *next;
-        } AllocaTypeEntry;
-        
         AllocaTypeEntry *alloca_types = NULL;  // 符号类型映射链表
         
         // 预扫描所有ALLOCA指令
@@ -2254,11 +2303,24 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             AllocaTypeEntry *entry = alloca_types;
                             while (entry) {
                                 if (entry->sym_name && names_match_with_suffix(entry->sym_name, dest_name)) {
+                                    bool should_update = false;
                                     /* 如果ALLOCA当前类型是INT/VOID/UNKNOWN，更新为源类型 */
                                     if (entry->type &&
                                         (entry->type->kind == CN_TYPE_INT ||
                                          entry->type->kind == CN_TYPE_VOID ||
                                          entry->type->kind == CN_TYPE_UNKNOWN)) {
+                                        should_update = true;
+                                    }
+                                    /* 【P8修复】POINTER类型可覆盖STRUCT/ENUM类型
+                                     * 例如：变量声明为struct X但赋值为(struct X*)指针，
+                                     * 应更新为POINTER类型以正确生成 -> 访问 */
+                                    else if (src_type->kind == CN_TYPE_POINTER &&
+                                             entry->type &&
+                                             (entry->type->kind == CN_TYPE_STRUCT ||
+                                              entry->type->kind == CN_TYPE_ENUM)) {
+                                        should_update = true;
+                                    }
+                                    if (should_update) {
                                         entry->type = src_type;
                                     }
                                     break;
@@ -3130,13 +3192,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             ctx->reg_types_count = actual_reg_count;
         }
         
-        // 【修复】释放预扫描的ALLOCA类型映射表
-        AllocaTypeEntry *entry = alloca_types;
-        while (entry) {
-            AllocaTypeEntry *next = entry->next;
-            free(entry);
-            entry = next;
-        }
+        // 【P8修复】将alloca_types保存到ctx中，供指令生成时MEMBER_ACCESS使用
+        // 延迟释放：在指令生成完成后才释放
+        ctx->alloca_types = alloca_types;
         
     skip_register_type_scan:;
     }
@@ -3150,6 +3208,17 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     }
     ctx->reg_types = NULL;
     ctx->reg_types_count = 0;
+    
+    // 【P8修复】释放alloca_types映射表（延迟到指令生成完成后）
+    if (ctx->alloca_types) {
+        AllocaTypeEntry *entry = (AllocaTypeEntry *)ctx->alloca_types;
+        while (entry) {
+            AllocaTypeEntry *next = entry->next;
+            free(entry);
+            entry = next;
+        }
+        ctx->alloca_types = NULL;
+    }
 
     // 检查函数是否以返回语句结束
     bool has_return = false;

@@ -1460,7 +1460,7 @@ struct 模块标识符* 解析模块标识符(const char* cn_var_模块名) {
   goto if_merge_36;
 
   if_merge_36:
-  r20 = cn_var_标识符_1.完全限定名;
+  r20 = cn_var_标识符_1->完全限定名;
   r21 = cn_var_模块名;
   r22 = 复制字符串(r20, r21);
   r23 = cn_var_名称长度_0;
@@ -1508,7 +1508,7 @@ struct 模块标识符* 解析模块标识符(const char* cn_var_模块名) {
   goto for_update_39;
 
   if_then_43:
-  r41 = cn_var_标识符_1.完全限定名;
+  r41 = cn_var_标识符_1->完全限定名;
   释放内存(r41);
   r42 = cn_var_标识符_1;
   释放内存(r42);
@@ -1624,7 +1624,7 @@ struct 模块标识符* 解析模块标识符(const char* cn_var_模块名) {
   if (r70) goto for_body_57; else goto for_exit_59;
 
   for_body_57:
-  r71 = cn_var_标识符_1.路径段列表;
+  r71 = cn_var_标识符_1->路径段列表;
   r72 = cn_var_j_9;
   r73 = (void*)cn_rt_array_get_element(r71, r72, 8);
   释放内存(r73);
@@ -1637,9 +1637,9 @@ struct 模块标识符* 解析模块标识符(const char* cn_var_模块名) {
   goto for_cond_56;
 
   for_exit_59:
-  r76 = cn_var_标识符_1.路径段列表;
+  r76 = cn_var_标识符_1->路径段列表;
   释放内存(r76);
-  r77 = cn_var_标识符_1.完全限定名;
+  r77 = cn_var_标识符_1->完全限定名;
   释放内存(r77);
   r78 = cn_var_标识符_1;
   释放内存(r78);
@@ -3220,7 +3220,7 @@ _Bool 收集导出符号(struct 模块元数据* cn_var_元数据) {
 
   if_then_229:
   r42 = cn_var_函数声明_7->名称;
-  r43 = cn_var_函数声明_7.名称;
+  r43 = cn_var_函数声明_7->名称;
   r44 = 获取字符串长度(r43);
   goto if_merge_230;
 
@@ -3245,7 +3245,7 @@ _Bool 收集导出符号(struct 模块元数据* cn_var_元数据) {
 
   if_then_234:
   r50 = cn_var_变量声明_8->名称;
-  r51 = cn_var_变量声明_8.名称;
+  r51 = cn_var_变量声明_8->名称;
   r52 = 获取字符串长度(r51);
   r53 = cn_var_变量声明_8->是常量;
   goto if_merge_235;

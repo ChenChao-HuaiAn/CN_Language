@@ -1148,19 +1148,19 @@ struct 类型信息* 创建指针类型(struct 类型信息* cn_var_指向类型
   r5 = cn_var_指针大小;
   r6 = cn_var_指针大小;
   r7 = cn_var_指向类型->名称;
-  r8 = cn_rt_string_concat(r7, "*");
+  r8 = r7 + "*";
   r9 = cn_var_类型_0;
   return r9;
 }
 
 struct 类型信息* 创建数组类型(struct 类型信息* cn_var_元素类型, long long* cn_var_维度大小, long long cn_var_维度) {
-  long long r0, r3, r5, r6, r8, r10, r11, r12, r13, r14, r15, r16, r17, r18, r19;
+  long long r0, r3, r5, r6, r7, r8, r10, r12, r13, r14, r15, r16, r17, r18, r19;
   void* r1;
   struct 类型信息* r2;
   long long* r4;
   long long* r9;
+  void* r11;
   struct 类型信息* r20;
-  _Bool r7;
 
   entry:
   struct 类型信息* cn_var_类型_0;
@@ -1174,30 +1174,30 @@ struct 类型信息* 创建数组类型(struct 类型信息* cn_var_元素类型
   cn_var_总数_1 = 1;
   long long cn_var_i_2;
   cn_var_i_2 = 0;
-  goto for_cond_0;
+  goto for_cond_538;
 
-  for_cond_0:
+  for_cond_538:
   r5 = cn_var_i_2;
   r6 = cn_var_维度;
   r7 = r5 < r6;
-  if (r7) goto for_body_1; else goto for_exit_3;
+  if (r7) goto for_body_539; else goto for_exit_541;
 
-  for_body_1:
+  for_body_539:
   r8 = cn_var_总数_1;
   r9 = cn_var_维度大小;
   r10 = cn_var_i_2;
-  r11 = *(long long)cn_rt_array_get_element(r9, r10, 8);
+  r11 = (void*)cn_rt_array_get_element(r9, r10, 8);
   r12 = r8 * r11;
   cn_var_总数_1 = r12;
-  goto for_update_2;
+  goto for_update_540;
 
-  for_update_2:
+  for_update_540:
   r13 = cn_var_i_2;
   r14 = r13 + 1;
   cn_var_i_2 = r14;
-  goto for_cond_0;
+  goto for_cond_538;
 
-  for_exit_3:
+  for_exit_541:
   r15 = cn_var_总数_1;
   r16 = cn_var_总数_1;
   r17 = cn_var_元素类型->大小;
@@ -1327,7 +1327,7 @@ _Bool 类型相同(struct 类型信息* cn_var_类型1, struct 类型信息* cn_
 }
 
 enum 类型兼容性 检查类型兼容性(struct 类型信息* cn_var_源类型, struct 类型信息* cn_var_目标类型) {
-  long long r3, r11, r16, r21, r26, r31, r36, r44;
+  long long r3, r5, r7, r10, r11, r13, r15, r16, r18, r20, r21, r23, r25, r26, r28, r30, r31, r33, r35, r36, r38, r40, r44, r46, r48;
   struct 类型信息* r0;
   struct 类型信息* r1;
   struct 类型信息* r8;
@@ -1336,24 +1336,7 @@ enum 类型兼容性 检查类型兼容性(struct 类型信息* cn_var_源类型
   struct 类型信息* r49;
   struct 类型信息* r50;
   _Bool r2;
-  _Bool r5;
-  _Bool r7;
-  _Bool r10;
-  _Bool r13;
-  _Bool r15;
-  _Bool r18;
-  _Bool r20;
-  _Bool r23;
-  _Bool r25;
-  _Bool r28;
-  _Bool r30;
-  _Bool r33;
-  _Bool r35;
-  _Bool r38;
-  _Bool r40;
   _Bool r43;
-  _Bool r46;
-  _Bool r48;
   _Bool r51;
   enum 类型种类 r4;
   enum 类型种类 r6;
@@ -1377,260 +1360,253 @@ enum 类型兼容性 检查类型兼容性(struct 类型信息* cn_var_源类型
   r0 = cn_var_源类型;
   r1 = cn_var_目标类型;
   r2 = 类型相同(r0, r1);
-  if (r2) goto if_then_49; else goto if_merge_50;
+  if (r2) goto if_then_587; else goto if_merge_588;
 
-  if_then_49:
+  if_then_587:
   return 类型兼容性_完全兼容;
-  goto if_merge_50;
+  goto if_merge_588;
 
-  if_merge_50:
+  if_merge_588:
   r4 = cn_var_源类型->种类;
   r5 = r4 == 类型种类_类型_指针;
-  if (r5) goto logic_rhs_53; else goto logic_merge_54;
+  if (r5) goto logic_rhs_591; else goto logic_merge_592;
 
-  if_then_51:
+  if_then_589:
   r8 = cn_var_源类型->指向类型;
   r9 = r8->种类;
   r10 = r9 == 类型种类_类型_空;
-  if (r10) goto if_then_55; else goto if_merge_56;
+  if (r10) goto if_then_593; else goto if_merge_594;
 
-  if_merge_52:
+  if_merge_590:
   r12 = cn_var_源类型->种类;
   r13 = r12 == 类型种类_类型_整数;
-  if (r13) goto logic_rhs_59; else goto logic_merge_60;
+  if (r13) goto logic_rhs_597; else goto logic_merge_598;
 
-  logic_rhs_53:
+  logic_rhs_591:
   r6 = cn_var_目标类型->种类;
   r7 = r6 == 类型种类_类型_指针;
-  goto logic_merge_54;
+  goto logic_merge_592;
 
-  logic_merge_54:
-  if (r7) goto if_then_51; else goto if_merge_52;
+  logic_merge_592:
+  if (r7) goto if_then_589; else goto if_merge_590;
 
-  if_then_55:
+  if_then_593:
   return 类型兼容性_隐式转换;
-  goto if_merge_56;
+  goto if_merge_594;
 
-  if_merge_56:
-  goto if_merge_52;
+  if_merge_594:
+  goto if_merge_590;
 
-  if_then_57:
+  if_then_595:
   return 类型兼容性_隐式转换;
-  goto if_merge_58;
+  goto if_merge_596;
 
-  if_merge_58:
+  if_merge_596:
   r17 = cn_var_源类型->种类;
   r18 = r17 == 类型种类_类型_整数;
-  if (r18) goto logic_rhs_63; else goto logic_merge_64;
+  if (r18) goto logic_rhs_601; else goto logic_merge_602;
 
-  logic_rhs_59:
+  logic_rhs_597:
   r14 = cn_var_目标类型->种类;
   r15 = r14 == 类型种类_类型_小数;
-  goto logic_merge_60;
+  goto logic_merge_598;
 
-  logic_merge_60:
-  if (r15) goto if_then_57; else goto if_merge_58;
+  logic_merge_598:
+  if (r15) goto if_then_595; else goto if_merge_596;
 
-  if_then_61:
+  if_then_599:
   return 类型兼容性_隐式转换;
-  goto if_merge_62;
+  goto if_merge_600;
 
-  if_merge_62:
+  if_merge_600:
   r22 = cn_var_源类型->种类;
   r23 = r22 == 类型种类_类型_枚举;
-  if (r23) goto logic_rhs_67; else goto logic_merge_68;
+  if (r23) goto logic_rhs_605; else goto logic_merge_606;
 
-  logic_rhs_63:
+  logic_rhs_601:
   r19 = cn_var_目标类型->种类;
   r20 = r19 == 类型种类_类型_整数;
-  goto logic_merge_64;
+  goto logic_merge_602;
 
-  logic_merge_64:
-  if (r20) goto if_then_61; else goto if_merge_62;
+  logic_merge_602:
+  if (r20) goto if_then_599; else goto if_merge_600;
 
-  if_then_65:
+  if_then_603:
   return 类型兼容性_隐式转换;
-  goto if_merge_66;
+  goto if_merge_604;
 
-  if_merge_66:
+  if_merge_604:
   r27 = cn_var_源类型->种类;
   r28 = r27 == 类型种类_类型_整数;
-  if (r28) goto logic_rhs_71; else goto logic_merge_72;
+  if (r28) goto logic_rhs_609; else goto logic_merge_610;
 
-  logic_rhs_67:
+  logic_rhs_605:
   r24 = cn_var_目标类型->种类;
   r25 = r24 == 类型种类_类型_整数;
-  goto logic_merge_68;
+  goto logic_merge_606;
 
-  logic_merge_68:
-  if (r25) goto if_then_65; else goto if_merge_66;
+  logic_merge_606:
+  if (r25) goto if_then_603; else goto if_merge_604;
 
-  if_then_69:
+  if_then_607:
   return 类型兼容性_显式转换;
-  goto if_merge_70;
+  goto if_merge_608;
 
-  if_merge_70:
+  if_merge_608:
   r32 = cn_var_源类型->种类;
   r33 = r32 == 类型种类_类型_小数;
-  if (r33) goto logic_rhs_75; else goto logic_merge_76;
+  if (r33) goto logic_rhs_613; else goto logic_merge_614;
 
-  logic_rhs_71:
+  logic_rhs_609:
   r29 = cn_var_目标类型->种类;
   r30 = r29 == 类型种类_类型_枚举;
-  goto logic_merge_72;
+  goto logic_merge_610;
 
-  logic_merge_72:
-  if (r30) goto if_then_69; else goto if_merge_70;
+  logic_merge_610:
+  if (r30) goto if_then_607; else goto if_merge_608;
 
-  if_then_73:
+  if_then_611:
   return 类型兼容性_显式转换;
-  goto if_merge_74;
+  goto if_merge_612;
 
-  if_merge_74:
+  if_merge_612:
   r37 = cn_var_源类型->种类;
   r38 = r37 == 类型种类_类型_类;
-  if (r38) goto logic_rhs_79; else goto logic_merge_80;
+  if (r38) goto logic_rhs_617; else goto logic_merge_618;
 
-  logic_rhs_75:
+  logic_rhs_613:
   r34 = cn_var_目标类型->种类;
   r35 = r34 == 类型种类_类型_整数;
-  goto logic_merge_76;
+  goto logic_merge_614;
 
-  logic_merge_76:
-  if (r35) goto if_then_73; else goto if_merge_74;
+  logic_merge_614:
+  if (r35) goto if_then_611; else goto if_merge_612;
 
-  if_then_77:
+  if_then_615:
   r41 = cn_var_源类型;
   r42 = cn_var_目标类型;
   r43 = 是派生类(r41, r42);
-  if (r43) goto if_then_81; else goto if_merge_82;
+  if (r43) goto if_then_619; else goto if_merge_620;
 
-  if_merge_78:
+  if_merge_616:
   r45 = cn_var_源类型->种类;
   r46 = r45 == 类型种类_类型_类;
-  if (r46) goto logic_rhs_85; else goto logic_merge_86;
+  if (r46) goto logic_rhs_623; else goto logic_merge_624;
 
-  logic_rhs_79:
+  logic_rhs_617:
   r39 = cn_var_目标类型->种类;
   r40 = r39 == 类型种类_类型_类;
-  goto logic_merge_80;
+  goto logic_merge_618;
 
-  logic_merge_80:
-  if (r40) goto if_then_77; else goto if_merge_78;
+  logic_merge_618:
+  if (r40) goto if_then_615; else goto if_merge_616;
 
-  if_then_81:
+  if_then_619:
   return 类型兼容性_隐式转换;
-  goto if_merge_82;
+  goto if_merge_620;
 
-  if_merge_82:
-  goto if_merge_78;
+  if_merge_620:
+  goto if_merge_616;
 
-  if_then_83:
+  if_then_621:
   r49 = cn_var_源类型;
   r50 = cn_var_目标类型;
   r51 = 实现接口(r49, r50);
-  if (r51) goto if_then_87; else goto if_merge_88;
+  if (r51) goto if_then_625; else goto if_merge_626;
 
-  if_merge_84:
+  if_merge_622:
   return 类型兼容性_不兼容;
 
-  logic_rhs_85:
+  logic_rhs_623:
   r47 = cn_var_目标类型->种类;
   r48 = r47 == 类型种类_类型_接口;
-  goto logic_merge_86;
+  goto logic_merge_624;
 
-  logic_merge_86:
-  if (r48) goto if_then_83; else goto if_merge_84;
+  logic_merge_624:
+  if (r48) goto if_then_621; else goto if_merge_622;
 
-  if_then_87:
+  if_then_625:
   return 类型兼容性_隐式转换;
-  goto if_merge_88;
+  goto if_merge_626;
 
-  if_merge_88:
-  goto if_merge_84;
+  if_merge_626:
+  goto if_merge_622;
   return 0;
 }
 
 _Bool 是派生类(struct 类型信息* cn_var_子类, struct 类型信息* cn_var_父类) {
-  long long r0, r5;
+  long long r0, r2, r4, r5, r7, r9, r12, r15, r16;
   struct 类型信息* r1;
   struct 类型信息* r3;
   struct 符号* r10;
   struct 符号* r11;
   struct 符号* r13;
   struct 符号* r14;
-  struct 符号* r16;
-  _Bool r2;
-  _Bool r4;
-  _Bool r7;
-  _Bool r9;
-  _Bool r12;
-  _Bool r15;
   enum 类型种类 r6;
   enum 类型种类 r8;
 
   entry:
   r1 = cn_var_子类;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_92; else goto logic_rhs_91;
+  if (r2) goto logic_merge_630; else goto logic_rhs_629;
 
-  if_then_89:
+  if_then_627:
   return 0;
-  goto if_merge_90;
+  goto if_merge_628;
 
-  if_merge_90:
+  if_merge_628:
   r6 = cn_var_子类->种类;
   r7 = r6 != 类型种类_类型_类;
-  if (r7) goto logic_merge_96; else goto logic_rhs_95;
+  if (r7) goto logic_merge_634; else goto logic_rhs_633;
 
-  logic_rhs_91:
+  logic_rhs_629:
   r3 = cn_var_父类;
   r4 = r3 == 0;
-  goto logic_merge_92;
+  goto logic_merge_630;
 
-  logic_merge_92:
-  if (r4) goto if_then_89; else goto if_merge_90;
+  logic_merge_630:
+  if (r4) goto if_then_627; else goto if_merge_628;
 
-  if_then_93:
+  if_then_631:
   return 0;
-  goto if_merge_94;
+  goto if_merge_632;
 
-  if_merge_94:
+  if_merge_632:
   struct 符号* cn_var_当前_0;
   r10 = cn_var_子类->类型符号;
   cn_var_当前_0 = r10;
-  goto while_cond_97;
+  goto while_cond_635;
 
-  logic_rhs_95:
+  logic_rhs_633:
   r8 = cn_var_父类->种类;
   r9 = r8 != 类型种类_类型_类;
-  goto logic_merge_96;
+  goto logic_merge_634;
 
-  logic_merge_96:
-  if (r9) goto if_then_93; else goto if_merge_94;
+  logic_merge_634:
+  if (r9) goto if_then_631; else goto if_merge_632;
 
-  while_cond_97:
+  while_cond_635:
   r11 = cn_var_当前_0;
   r12 = r11 != 0;
-  if (r12) goto while_body_98; else goto while_exit_99;
+  if (r12) goto while_body_636; else goto while_exit_637;
 
-  while_body_98:
+  while_body_636:
   r13 = cn_var_当前_0;
   r14 = cn_var_父类->类型符号;
   r15 = r13 == r14;
-  if (r15) goto if_then_100; else goto if_merge_101;
+  if (r15) goto if_then_638; else goto if_merge_639;
 
-  while_exit_99:
+  while_exit_637:
   return 0;
 
-  if_then_100:
+  if_then_638:
   return 1;
-  goto if_merge_101;
+  goto if_merge_639;
 
-  if_merge_101:
+  if_merge_639:
   r16 = cn_var_当前_0->父类符号;
   cn_var_当前_0 = r16;
-  goto while_cond_97;
+  goto while_cond_635;
   return 0;
 }
 
@@ -1643,182 +1619,167 @@ _Bool 实现接口(struct 类型信息* cn_var_类类型, struct 类型信息* c
 }
 
 _Bool 是数值类型(struct 类型信息* cn_var_类型) {
-  long long r2;
+  long long r1, r2, r4, r6;
   struct 类型信息* r0;
-  _Bool r1;
-  _Bool r4;
-  _Bool r6;
   enum 类型种类 r3;
   enum 类型种类 r5;
 
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_120; else goto if_merge_121;
+  if (r1) goto if_then_658; else goto if_merge_659;
 
-  if_then_120:
+  if_then_658:
   return 0;
-  goto if_merge_121;
+  goto if_merge_659;
 
-  if_merge_121:
+  if_merge_659:
   r3 = cn_var_类型->种类;
   r4 = r3 == 类型种类_类型_整数;
-  if (r4) goto logic_merge_123; else goto logic_rhs_122;
+  if (r4) goto logic_merge_661; else goto logic_rhs_660;
 
-  logic_rhs_122:
+  logic_rhs_660:
   r5 = cn_var_类型->种类;
   r6 = r5 == 类型种类_类型_小数;
-  goto logic_merge_123;
+  goto logic_merge_661;
 
-  logic_merge_123:
+  logic_merge_661:
   return r6;
 }
 
 _Bool 是整数类型(struct 类型信息* cn_var_类型) {
-  long long r2;
+  long long r1, r2, r4, r6;
   struct 类型信息* r0;
-  _Bool r1;
-  _Bool r4;
-  _Bool r6;
   enum 类型种类 r3;
   enum 类型种类 r5;
 
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_124; else goto if_merge_125;
+  if (r1) goto if_then_662; else goto if_merge_663;
 
-  if_then_124:
+  if_then_662:
   return 0;
-  goto if_merge_125;
+  goto if_merge_663;
 
-  if_merge_125:
+  if_merge_663:
   r3 = cn_var_类型->种类;
   r4 = r3 == 类型种类_类型_整数;
-  if (r4) goto logic_merge_127; else goto logic_rhs_126;
+  if (r4) goto logic_merge_665; else goto logic_rhs_664;
 
-  logic_rhs_126:
+  logic_rhs_664:
   r5 = cn_var_类型->种类;
   r6 = r5 == 类型种类_类型_枚举;
-  goto logic_merge_127;
+  goto logic_merge_665;
 
-  logic_merge_127:
+  logic_merge_665:
   return r6;
 }
 
 _Bool 是指针类型(struct 类型信息* cn_var_类型) {
+  long long r1, r3;
   struct 类型信息* r0;
-  _Bool r1;
-  _Bool r3;
   enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_128; else goto if_merge_129;
+  if (r1) goto if_then_666; else goto if_merge_667;
 
-  if_then_128:
+  if_then_666:
   return 0;
-  goto if_merge_129;
+  goto if_merge_667;
 
-  if_merge_129:
+  if_merge_667:
   r2 = cn_var_类型->种类;
   r3 = r2 == 类型种类_类型_指针;
   return r3;
 }
 
 _Bool 是数组类型(struct 类型信息* cn_var_类型) {
+  long long r1, r3;
   struct 类型信息* r0;
-  _Bool r1;
-  _Bool r3;
   enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_130; else goto if_merge_131;
+  if (r1) goto if_then_668; else goto if_merge_669;
 
-  if_then_130:
+  if_then_668:
   return 0;
-  goto if_merge_131;
+  goto if_merge_669;
 
-  if_merge_131:
+  if_merge_669:
   r2 = cn_var_类型->种类;
   r3 = r2 == 类型种类_类型_数组;
   return r3;
 }
 
 _Bool 是结构体类型(struct 类型信息* cn_var_类型) {
+  long long r1, r3;
   struct 类型信息* r0;
-  _Bool r1;
-  _Bool r3;
   enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_132; else goto if_merge_133;
+  if (r1) goto if_then_670; else goto if_merge_671;
 
-  if_then_132:
+  if_then_670:
   return 0;
-  goto if_merge_133;
+  goto if_merge_671;
 
-  if_merge_133:
+  if_merge_671:
   r2 = cn_var_类型->种类;
   r3 = r2 == 类型种类_类型_结构体;
   return r3;
 }
 
 _Bool 是类类型(struct 类型信息* cn_var_类型) {
+  long long r1, r3;
   struct 类型信息* r0;
-  _Bool r1;
-  _Bool r3;
   enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_134; else goto if_merge_135;
+  if (r1) goto if_then_672; else goto if_merge_673;
 
-  if_then_134:
+  if_then_672:
   return 0;
-  goto if_merge_135;
+  goto if_merge_673;
 
-  if_merge_135:
+  if_merge_673:
   r2 = cn_var_类型->种类;
   r3 = r2 == 类型种类_类型_类;
   return r3;
 }
 
 _Bool 是函数类型(struct 类型信息* cn_var_类型) {
+  long long r1, r3;
   struct 类型信息* r0;
-  _Bool r1;
-  _Bool r3;
   enum 类型种类 r2;
 
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_136; else goto if_merge_137;
+  if (r1) goto if_then_674; else goto if_merge_675;
 
-  if_then_136:
+  if_then_674:
   return 0;
-  goto if_merge_137;
+  goto if_merge_675;
 
-  if_merge_137:
+  if_merge_675:
   r2 = cn_var_类型->种类;
   r3 = r2 == 类型种类_类型_函数;
   return r3;
 }
 
 _Bool 是可调用类型(struct 类型信息* cn_var_类型) {
-  long long r2, r5;
+  long long r1, r2, r4, r5, r7, r10;
   struct 类型信息* r0;
   struct 类型信息* r8;
-  _Bool r1;
-  _Bool r4;
-  _Bool r7;
-  _Bool r10;
   enum 类型种类 r3;
   enum 类型种类 r6;
   enum 类型种类 r9;
@@ -1826,37 +1787,38 @@ _Bool 是可调用类型(struct 类型信息* cn_var_类型) {
   entry:
   r0 = cn_var_类型;
   r1 = r0 == 0;
-  if (r1) goto if_then_138; else goto if_merge_139;
+  if (r1) goto if_then_676; else goto if_merge_677;
 
-  if_then_138:
+  if_then_676:
   return 0;
-  goto if_merge_139;
+  goto if_merge_677;
 
-  if_merge_139:
+  if_merge_677:
   r3 = cn_var_类型->种类;
   r4 = r3 == 类型种类_类型_函数;
-  if (r4) goto logic_merge_141; else goto logic_rhs_140;
+  if (r4) goto logic_merge_679; else goto logic_rhs_678;
 
-  logic_rhs_140:
+  logic_rhs_678:
   r6 = cn_var_类型->种类;
   r7 = r6 == 类型种类_类型_指针;
-  if (r7) goto logic_rhs_142; else goto logic_merge_143;
+  if (r7) goto logic_rhs_680; else goto logic_merge_681;
 
-  logic_merge_141:
+  logic_merge_679:
   return r10;
 
-  logic_rhs_142:
+  logic_rhs_680:
   r8 = cn_var_类型->指向类型;
   r9 = r8->种类;
   r10 = r9 == 类型种类_类型_函数;
-  goto logic_merge_143;
+  goto logic_merge_681;
 
-  logic_merge_143:
-  goto logic_merge_141;
+  logic_merge_681:
+  goto logic_merge_679;
   return 0;
 }
 
 struct 类型信息* 从类型节点推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
+  long long r1;
   struct 类型节点* r0;
   struct 类型节点* r12;
   struct 类型推断上下文* r13;
@@ -1885,7 +1847,6 @@ struct 类型信息* 从类型节点推断(struct 类型节点* cn_var_类型节
   struct 类型节点* r36;
   struct 类型推断上下文* r37;
   struct 类型信息* r38;
-  _Bool r1;
   _Bool r3;
   _Bool r4;
   _Bool r5;
@@ -1900,122 +1861,122 @@ struct 类型信息* 从类型节点推断(struct 类型节点* cn_var_类型节
   entry:
   r0 = cn_var_类型节点指针;
   r1 = r0 == 0;
-  if (r1) goto if_then_144; else goto if_merge_145;
+  if (r1) goto if_then_682; else goto if_merge_683;
 
-  if_then_144:
+  if_then_682:
   return 0;
-  goto if_merge_145;
+  goto if_merge_683;
 
-  if_merge_145:
+  if_merge_683:
   r2 = cn_var_类型节点指针->类型;
   r3 = r2 == 节点类型_基础类型;
-  if (r3) goto case_body_147; else goto switch_check_157;
+  if (r3) goto case_body_685; else goto switch_check_695;
 
-  switch_check_157:
+  switch_check_695:
   r4 = r2 == 节点类型_指针类型;
-  if (r4) goto case_body_148; else goto switch_check_158;
+  if (r4) goto case_body_686; else goto switch_check_696;
 
-  switch_check_158:
+  switch_check_696:
   r5 = r2 == 节点类型_数组类型;
-  if (r5) goto case_body_149; else goto switch_check_159;
+  if (r5) goto case_body_687; else goto switch_check_697;
 
-  switch_check_159:
+  switch_check_697:
   r6 = r2 == 节点类型_结构体类型;
-  if (r6) goto case_body_150; else goto switch_check_160;
+  if (r6) goto case_body_688; else goto switch_check_698;
 
-  switch_check_160:
+  switch_check_698:
   r7 = r2 == 节点类型_枚举类型;
-  if (r7) goto case_body_151; else goto switch_check_161;
+  if (r7) goto case_body_689; else goto switch_check_699;
 
-  switch_check_161:
+  switch_check_699:
   r8 = r2 == 节点类型_类类型;
-  if (r8) goto case_body_152; else goto switch_check_162;
+  if (r8) goto case_body_690; else goto switch_check_700;
 
-  switch_check_162:
+  switch_check_700:
   r9 = r2 == 节点类型_接口类型;
-  if (r9) goto case_body_153; else goto switch_check_163;
+  if (r9) goto case_body_691; else goto switch_check_701;
 
-  switch_check_163:
+  switch_check_701:
   r10 = r2 == 节点类型_函数类型;
-  if (r10) goto case_body_154; else goto switch_check_164;
+  if (r10) goto case_body_692; else goto switch_check_702;
 
-  switch_check_164:
+  switch_check_702:
   r11 = r2 == 节点类型_标识符类型;
-  if (r11) goto case_body_155; else goto case_default_156;
+  if (r11) goto case_body_693; else goto case_default_694;
 
-  case_body_147:
+  case_body_685:
   r12 = cn_var_类型节点指针;
   r13 = cn_var_上下文;
   r14 = 从基础类型推断(r12, r13);
   return r14;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_148:
+  case_body_686:
   r15 = cn_var_类型节点指针;
   r16 = cn_var_上下文;
   r17 = 从指针类型推断(r15, r16);
   return r17;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_149:
+  case_body_687:
   r18 = cn_var_类型节点指针;
   r19 = cn_var_上下文;
   r20 = 从数组类型推断(r18, r19);
   return r20;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_150:
+  case_body_688:
   r21 = cn_var_类型节点指针;
   r22 = cn_var_上下文;
   r23 = 从结构体类型推断(r21, r22);
   return r23;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_151:
+  case_body_689:
   r24 = cn_var_类型节点指针;
   r25 = cn_var_上下文;
   r26 = 从枚举类型推断(r24, r25);
   return r26;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_152:
+  case_body_690:
   r27 = cn_var_类型节点指针;
   r28 = cn_var_上下文;
   r29 = 从类类型推断(r27, r28);
   return r29;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_153:
+  case_body_691:
   r30 = cn_var_类型节点指针;
   r31 = cn_var_上下文;
   r32 = 从接口类型推断(r30, r31);
   return r32;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_154:
+  case_body_692:
   r33 = cn_var_类型节点指针;
   r34 = cn_var_上下文;
   r35 = 从函数类型推断(r33, r34);
   return r35;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_body_155:
+  case_body_693:
   r36 = cn_var_类型节点指针;
   r37 = cn_var_上下文;
   r38 = 从基础类型推断(r36, r37);
   return r38;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  case_default_156:
+  case_default_694:
   return 0;
-  goto switch_merge_146;
+  goto switch_merge_684;
 
-  switch_merge_146:
+  switch_merge_684:
   return NULL;
 }
 
 struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r2, r4, r7, r9, r12, r16, r20;
+  long long r2, r3, r4, r7, r8, r9, r12, r13, r16, r17, r20, r21, r27, r29, r34, r39, r44, r49;
   char* r0;
   char* r1;
   char* r6;
@@ -2049,17 +2010,6 @@ struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节
   struct 类型推断上下文* r51;
   struct 类型信息* r52;
   struct 类型信息* r54;
-  _Bool r3;
-  _Bool r8;
-  _Bool r13;
-  _Bool r17;
-  _Bool r21;
-  _Bool r27;
-  _Bool r29;
-  _Bool r34;
-  _Bool r39;
-  _Bool r44;
-  _Bool r49;
   enum 符号类型 r28;
   enum 符号类型 r33;
   enum 符号类型 r38;
@@ -2072,60 +2022,60 @@ struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节
   r1 = cn_var_名称_0;
   r2 = 比较字符串(r1, "整数");
   r3 = r2 == 0;
-  if (r3) goto if_then_165; else goto if_merge_166;
+  if (r3) goto if_then_703; else goto if_merge_704;
 
-  if_then_165:
+  if_then_703:
   r4 = cn_var_整数大小;
   r5 = 创建整数类型("整数", r4, 1);
   return r5;
-  goto if_merge_166;
+  goto if_merge_704;
 
-  if_merge_166:
+  if_merge_704:
   r6 = cn_var_名称_0;
   r7 = 比较字符串(r6, "小数");
   r8 = r7 == 0;
-  if (r8) goto if_then_167; else goto if_merge_168;
+  if (r8) goto if_then_705; else goto if_merge_706;
 
-  if_then_167:
+  if_then_705:
   r9 = cn_var_小数大小;
   r10 = 创建小数类型("小数", r9);
   return r10;
-  goto if_merge_168;
+  goto if_merge_706;
 
-  if_merge_168:
+  if_merge_706:
   r11 = cn_var_名称_0;
   r12 = 比较字符串(r11, "布尔");
   r13 = r12 == 0;
-  if (r13) goto if_then_169; else goto if_merge_170;
+  if (r13) goto if_then_707; else goto if_merge_708;
 
-  if_then_169:
+  if_then_707:
   r14 = 创建布尔类型();
   return r14;
-  goto if_merge_170;
+  goto if_merge_708;
 
-  if_merge_170:
+  if_merge_708:
   r15 = cn_var_名称_0;
   r16 = 比较字符串(r15, "字符串");
   r17 = r16 == 0;
-  if (r17) goto if_then_171; else goto if_merge_172;
+  if (r17) goto if_then_709; else goto if_merge_710;
 
-  if_then_171:
+  if_then_709:
   r18 = 创建字符串类型();
   return r18;
-  goto if_merge_172;
+  goto if_merge_710;
 
-  if_merge_172:
+  if_merge_710:
   r19 = cn_var_名称_0;
   r20 = 比较字符串(r19, "空类型");
   r21 = r20 == 0;
-  if (r21) goto if_then_173; else goto if_merge_174;
+  if (r21) goto if_then_711; else goto if_merge_712;
 
-  if_then_173:
+  if_then_711:
   r22 = 创建空类型();
   return r22;
-  goto if_merge_174;
+  goto if_merge_712;
 
-  if_merge_174:
+  if_merge_712:
   struct 符号* cn_var_符号指针_1;
   r23 = cn_var_上下文->符号表;
   r24 = cn_var_名称_0;
@@ -2133,80 +2083,80 @@ struct 类型信息* 从基础类型推断(struct 类型节点* cn_var_类型节
   cn_var_符号指针_1 = r25;
   r26 = cn_var_符号指针_1;
   r27 = r26 != 0;
-  if (r27) goto if_then_175; else goto if_merge_176;
+  if (r27) goto if_then_713; else goto if_merge_714;
 
-  if_then_175:
+  if_then_713:
   r28 = cn_var_符号指针_1->种类;
   r29 = r28 == 符号类型_结构体符号;
-  if (r29) goto if_then_177; else goto if_merge_178;
+  if (r29) goto if_then_715; else goto if_merge_716;
 
-  if_merge_176:
+  if_merge_714:
   r53 = cn_var_名称_0;
   r54 = 创建未定义类型(r53);
   return r54;
 
-  if_then_177:
+  if_then_715:
   r30 = cn_var_名称_0;
   r31 = cn_var_符号指针_1;
   r32 = 创建结构体类型(r30, r31);
   return r32;
-  goto if_merge_178;
+  goto if_merge_716;
 
-  if_merge_178:
+  if_merge_716:
   r33 = cn_var_符号指针_1->种类;
   r34 = r33 == 符号类型_枚举符号;
-  if (r34) goto if_then_179; else goto if_merge_180;
+  if (r34) goto if_then_717; else goto if_merge_718;
 
-  if_then_179:
+  if_then_717:
   r35 = cn_var_名称_0;
   r36 = cn_var_符号指针_1;
   r37 = 创建枚举类型(r35, r36);
   return r37;
-  goto if_merge_180;
+  goto if_merge_718;
 
-  if_merge_180:
+  if_merge_718:
   r38 = cn_var_符号指针_1->种类;
   r39 = r38 == 符号类型_类符号;
-  if (r39) goto if_then_181; else goto if_merge_182;
+  if (r39) goto if_then_719; else goto if_merge_720;
 
-  if_then_181:
+  if_then_719:
   r40 = cn_var_名称_0;
   r41 = cn_var_符号指针_1;
   r42 = 创建类类型(r40, r41);
   return r42;
-  goto if_merge_182;
+  goto if_merge_720;
 
-  if_merge_182:
+  if_merge_720:
   r43 = cn_var_符号指针_1->种类;
   r44 = r43 == 符号类型_接口符号;
-  if (r44) goto if_then_183; else goto if_merge_184;
+  if (r44) goto if_then_721; else goto if_merge_722;
 
-  if_then_183:
+  if_then_721:
   r45 = cn_var_名称_0;
   r46 = cn_var_符号指针_1;
   r47 = 创建接口类型(r45, r46);
   return r47;
-  goto if_merge_184;
+  goto if_merge_722;
 
-  if_merge_184:
+  if_merge_722:
   r48 = cn_var_符号指针_1->类型信息;
   r49 = r48 != 0;
-  if (r49) goto if_then_185; else goto if_merge_186;
+  if (r49) goto if_then_723; else goto if_merge_724;
 
-  if_then_185:
+  if_then_723:
   r50 = cn_var_符号指针_1->类型信息;
   r51 = cn_var_上下文;
   r52 = 从类型节点推断(r50, r51);
   return r52;
-  goto if_merge_186;
+  goto if_merge_724;
 
-  if_merge_186:
-  goto if_merge_176;
+  if_merge_724:
+  goto if_merge_714;
   return NULL;
 }
 
 struct 类型信息* 从指针类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r7, r8, r12, r13;
+  long long r4, r7, r8, r9, r12, r13;
   struct 类型节点* r0;
   struct 类型推断上下文* r1;
   struct 类型信息* r2;
@@ -2216,8 +2166,6 @@ struct 类型信息* 从指针类型推断(struct 类型节点* cn_var_类型节
   struct 类型信息* r10;
   struct 类型信息* r11;
   struct 类型信息* r14;
-  _Bool r4;
-  _Bool r9;
 
   entry:
   struct 类型信息* cn_var_指向类型_0;
@@ -2227,57 +2175,55 @@ struct 类型信息* 从指针类型推断(struct 类型节点* cn_var_类型节
   cn_var_指向类型_0 = r2;
   r3 = cn_var_指向类型_0;
   r4 = r3 == 0;
-  if (r4) goto if_then_187; else goto if_merge_188;
+  if (r4) goto if_then_725; else goto if_merge_726;
 
-  if_then_187:
+  if_then_725:
   return 0;
-  goto if_merge_188;
+  goto if_merge_726;
 
-  if_merge_188:
+  if_merge_726:
   struct 类型信息* cn_var_结果_1;
   r5 = cn_var_指向类型_0;
   r6 = 创建指针类型(r5);
   cn_var_结果_1 = r6;
   long long cn_var_i_2;
   cn_var_i_2 = 1;
-  goto for_cond_189;
+  goto for_cond_727;
 
-  for_cond_189:
+  for_cond_727:
   r7 = cn_var_i_2;
   r8 = cn_var_类型节点指针->指针层级;
   r9 = r7 < r8;
-  if (r9) goto for_body_190; else goto for_exit_192;
+  if (r9) goto for_body_728; else goto for_exit_730;
 
-  for_body_190:
+  for_body_728:
   r10 = cn_var_结果_1;
   r11 = 创建指针类型(r10);
   cn_var_结果_1 = r11;
-  goto for_update_191;
+  goto for_update_729;
 
-  for_update_191:
+  for_update_729:
   r12 = cn_var_i_2;
   r13 = r12 + 1;
   cn_var_i_2 = r13;
-  goto for_cond_189;
+  goto for_cond_727;
 
-  for_exit_192:
+  for_exit_730:
   r14 = cn_var_结果_1;
   return r14;
 }
 
 struct 类型信息* 从数组类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r5, r6, r7, r9, r14;
+  long long r4, r5, r6, r7, r9, r13;
   struct 类型节点* r0;
   struct 类型推断上下文* r1;
   struct 类型信息* r2;
   struct 类型信息* r3;
   void* r8;
   long long* r10;
-  long long* r11;
-  struct 类型信息* r12;
-  long long* r13;
-  struct 类型信息* r15;
-  _Bool r4;
+  struct 类型信息* r11;
+  long long* r12;
+  struct 类型信息* r14;
 
   entry:
   struct 类型信息* cn_var_元素类型_0;
@@ -2287,13 +2233,13 @@ struct 类型信息* 从数组类型推断(struct 类型节点* cn_var_类型节
   cn_var_元素类型_0 = r2;
   r3 = cn_var_元素类型_0;
   r4 = r3 == 0;
-  if (r4) goto if_then_193; else goto if_merge_194;
+  if (r4) goto if_then_731; else goto if_merge_732;
 
-  if_then_193:
+  if_then_731:
   return 0;
-  goto if_merge_194;
+  goto if_merge_732;
 
-  if_merge_194:
+  if_merge_732:
   long long* cn_var_维度大小_1;
   r5 = cn_var_类型节点指针->数组维度;
   r6 = cn_var_整数大小;
@@ -2302,17 +2248,16 @@ struct 类型信息* 从数组类型推断(struct 类型节点* cn_var_类型节
   cn_var_维度大小_1 = (long long*)分配内存((cn_var_类型节点指针->数组维度 * cn_var_整数大小));
   r9 = cn_var_类型节点指针->数组大小;
   r10 = cn_var_维度大小_1;
-  r11 = &r10[0];
-  *r11 = r9;
-  r12 = cn_var_元素类型_0;
-  r13 = cn_var_维度大小_1;
-  r14 = cn_var_类型节点指针->数组维度;
-  r15 = 创建数组类型(r12, r13, r14);
-  return r15;
+    { long long _tmp_r3 = r9; cn_rt_array_set_element(r10, 0, &_tmp_r3, 8); }
+  r11 = cn_var_元素类型_0;
+  r12 = cn_var_维度大小_1;
+  r13 = cn_var_类型节点指针->数组维度;
+  r14 = 创建数组类型(r11, r12, r13);
+  return r14;
 }
 
 struct 类型信息* 从结构体类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r3;
+  long long r3, r5, r7;
   char* r1;
   char* r8;
   struct 符号表管理器* r0;
@@ -2320,8 +2265,6 @@ struct 类型信息* 从结构体类型推断(struct 类型节点* cn_var_类型
   struct 符号* r4;
   struct 符号* r9;
   struct 类型信息* r10;
-  _Bool r5;
-  _Bool r7;
   enum 符号类型 r6;
 
   entry:
@@ -2332,30 +2275,30 @@ struct 类型信息* 从结构体类型推断(struct 类型节点* cn_var_类型
   cn_var_符号指针_0 = r2;
   r4 = cn_var_符号指针_0;
   r5 = r4 == 0;
-  if (r5) goto logic_merge_198; else goto logic_rhs_197;
+  if (r5) goto logic_merge_736; else goto logic_rhs_735;
 
-  if_then_195:
+  if_then_733:
   return 0;
-  goto if_merge_196;
+  goto if_merge_734;
 
-  if_merge_196:
+  if_merge_734:
   r8 = cn_var_类型节点指针->名称;
   r9 = cn_var_符号指针_0;
   r10 = 创建结构体类型(r8, r9);
   return r10;
 
-  logic_rhs_197:
+  logic_rhs_735:
   r6 = cn_var_符号指针_0->种类;
   r7 = r6 != 符号类型_结构体符号;
-  goto logic_merge_198;
+  goto logic_merge_736;
 
-  logic_merge_198:
-  if (r7) goto if_then_195; else goto if_merge_196;
+  logic_merge_736:
+  if (r7) goto if_then_733; else goto if_merge_734;
   return NULL;
 }
 
 struct 类型信息* 从枚举类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r3;
+  long long r3, r5, r7;
   char* r1;
   char* r8;
   struct 符号表管理器* r0;
@@ -2363,8 +2306,6 @@ struct 类型信息* 从枚举类型推断(struct 类型节点* cn_var_类型节
   struct 符号* r4;
   struct 符号* r9;
   struct 类型信息* r10;
-  _Bool r5;
-  _Bool r7;
   enum 符号类型 r6;
 
   entry:
@@ -2375,30 +2316,30 @@ struct 类型信息* 从枚举类型推断(struct 类型节点* cn_var_类型节
   cn_var_符号指针_0 = r2;
   r4 = cn_var_符号指针_0;
   r5 = r4 == 0;
-  if (r5) goto logic_merge_202; else goto logic_rhs_201;
+  if (r5) goto logic_merge_740; else goto logic_rhs_739;
 
-  if_then_199:
+  if_then_737:
   return 0;
-  goto if_merge_200;
+  goto if_merge_738;
 
-  if_merge_200:
+  if_merge_738:
   r8 = cn_var_类型节点指针->名称;
   r9 = cn_var_符号指针_0;
   r10 = 创建枚举类型(r8, r9);
   return r10;
 
-  logic_rhs_201:
+  logic_rhs_739:
   r6 = cn_var_符号指针_0->种类;
   r7 = r6 != 符号类型_枚举符号;
-  goto logic_merge_202;
+  goto logic_merge_740;
 
-  logic_merge_202:
-  if (r7) goto if_then_199; else goto if_merge_200;
+  logic_merge_740:
+  if (r7) goto if_then_737; else goto if_merge_738;
   return NULL;
 }
 
 struct 类型信息* 从类类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r3;
+  long long r3, r5, r7;
   char* r1;
   char* r8;
   struct 符号表管理器* r0;
@@ -2406,8 +2347,6 @@ struct 类型信息* 从类类型推断(struct 类型节点* cn_var_类型节点
   struct 符号* r4;
   struct 符号* r9;
   struct 类型信息* r10;
-  _Bool r5;
-  _Bool r7;
   enum 符号类型 r6;
 
   entry:
@@ -2418,30 +2357,30 @@ struct 类型信息* 从类类型推断(struct 类型节点* cn_var_类型节点
   cn_var_符号指针_0 = r2;
   r4 = cn_var_符号指针_0;
   r5 = r4 == 0;
-  if (r5) goto logic_merge_206; else goto logic_rhs_205;
+  if (r5) goto logic_merge_744; else goto logic_rhs_743;
 
-  if_then_203:
+  if_then_741:
   return 0;
-  goto if_merge_204;
+  goto if_merge_742;
 
-  if_merge_204:
+  if_merge_742:
   r8 = cn_var_类型节点指针->名称;
   r9 = cn_var_符号指针_0;
   r10 = 创建类类型(r8, r9);
   return r10;
 
-  logic_rhs_205:
+  logic_rhs_743:
   r6 = cn_var_符号指针_0->种类;
   r7 = r6 != 符号类型_类符号;
-  goto logic_merge_206;
+  goto logic_merge_744;
 
-  logic_merge_206:
-  if (r7) goto if_then_203; else goto if_merge_204;
+  logic_merge_744:
+  if (r7) goto if_then_741; else goto if_merge_742;
   return NULL;
 }
 
 struct 类型信息* 从接口类型推断(struct 类型节点* cn_var_类型节点指针, struct 类型推断上下文* cn_var_上下文) {
-  long long r3;
+  long long r3, r5, r7;
   char* r1;
   char* r8;
   struct 符号表管理器* r0;
@@ -2449,8 +2388,6 @@ struct 类型信息* 从接口类型推断(struct 类型节点* cn_var_类型节
   struct 符号* r4;
   struct 符号* r9;
   struct 类型信息* r10;
-  _Bool r5;
-  _Bool r7;
   enum 符号类型 r6;
 
   entry:
@@ -2461,25 +2398,25 @@ struct 类型信息* 从接口类型推断(struct 类型节点* cn_var_类型节
   cn_var_符号指针_0 = r2;
   r4 = cn_var_符号指针_0;
   r5 = r4 == 0;
-  if (r5) goto logic_merge_210; else goto logic_rhs_209;
+  if (r5) goto logic_merge_748; else goto logic_rhs_747;
 
-  if_then_207:
+  if_then_745:
   return 0;
-  goto if_merge_208;
+  goto if_merge_746;
 
-  if_merge_208:
+  if_merge_746:
   r8 = cn_var_类型节点指针->名称;
   r9 = cn_var_符号指针_0;
   r10 = 创建接口类型(r8, r9);
   return r10;
 
-  logic_rhs_209:
+  logic_rhs_747:
   r6 = cn_var_符号指针_0->种类;
   r7 = r6 != 符号类型_接口符号;
-  goto logic_merge_210;
+  goto logic_merge_748;
 
-  logic_merge_210:
-  if (r7) goto if_then_207; else goto if_merge_208;
+  logic_merge_748:
+  if (r7) goto if_then_745; else goto if_merge_746;
   return NULL;
 }
 
@@ -2490,26 +2427,26 @@ struct 类型信息* 从函数类型推断(struct 类型节点* cn_var_类型节
 }
 
 struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类型信息指针) {
-  long long r6, r9, r33, r37, r39;
-  char* r29;
-  char* r31;
-  char* r43;
-  char* r45;
-  char* r47;
-  char* r49;
-  char* r51;
+  long long r1, r4, r5, r8, r28, r31, r32;
+  char* r26;
+  char* r27;
+  char* r35;
+  char* r36;
+  char* r37;
+  char* r38;
+  char* r39;
   struct 类型信息* r0;
-  void* r7;
-  struct 类型节点* r8;
-  void* r10;
-  struct 类型信息* r34;
-  struct 类型节点* r35;
-  struct 类型信息* r40;
+  void* r6;
+  struct 类型节点* r7;
+  void* r9;
+  struct 类型信息* r29;
+  struct 类型节点* r30;
+  struct 类型信息* r33;
+  struct 类型节点* r34;
   struct 类型节点* r41;
-  struct 类型节点* r54;
-  _Bool r1;
-  _Bool r4;
-  _Bool r5;
+  _Bool r3;
+  _Bool r11;
+  _Bool r12;
   _Bool r13;
   _Bool r14;
   _Bool r15;
@@ -2523,237 +2460,207 @@ struct 类型节点* 类型信息转类型节点(struct 类型信息* cn_var_类
   _Bool r23;
   _Bool r24;
   _Bool r25;
-  _Bool r26;
-  _Bool r27;
-  _Bool r53;
-  struct 类型信息 r2;
-  struct 类型信息 r11;
-  struct 类型信息 r28;
-  struct 类型信息 r30;
-  struct 类型信息 r32;
-  struct 类型信息 r36;
-  struct 类型信息 r38;
-  struct 类型信息 r42;
-  struct 类型信息 r44;
-  struct 类型信息 r46;
-  struct 类型信息 r48;
-  struct 类型信息 r50;
-  struct 类型信息 r52;
-  enum 类型种类 r3;
-  enum 类型种类 r12;
+  _Bool r40;
+  enum 类型种类 r2;
+  enum 类型种类 r10;
 
   entry:
   r0 = cn_var_类型信息指针;
   r1 = r0 == 0;
-  if (r1) goto if_then_211; else goto if_merge_212;
+  if (r1) goto if_then_749; else goto if_merge_750;
 
-  if_then_211:
+  if_then_749:
   return 0;
-  goto if_merge_212;
+  goto if_merge_750;
 
-  if_merge_212:
-  r2 = *cn_var_类型信息指针;
-  r3 = r2.种类;
-  r4 = 是有效的类型种类(r3);
-  r5 = r4 == 0;
-  if (r5) goto if_then_213; else goto if_merge_214;
+  if_merge_750:
+  r2 = cn_var_类型信息指针->种类;
+  r3 = 是有效的类型种类(r2);
+  r4 = r3 == 0;
+  if (r4) goto if_then_751; else goto if_merge_752;
 
-  if_then_213:
+  if_then_751:
   struct 类型节点* cn_var_节点_0;
-  r6 = sizeof(struct 类型节点);
-  r7 = 分配清零内存(1, r6);
+  r5 = sizeof(struct 类型节点);
+  r6 = 分配清零内存(1, r5);
   cn_var_节点_0 = (struct 类型节点*)分配清零内存(1, 类型大小(cn_var_类型节点));
-  r8 = cn_var_节点_0;
-  return r8;
-  goto if_merge_214;
+  r7 = cn_var_节点_0;
+  return r7;
+  goto if_merge_752;
 
-  if_merge_214:
+  if_merge_752:
   struct 类型节点* cn_var_节点_1;
-  r9 = sizeof(struct 类型节点);
-  r10 = 分配清零内存(1, r9);
+  r8 = sizeof(struct 类型节点);
+  r9 = 分配清零内存(1, r8);
   cn_var_节点_1 = (struct 类型节点*)分配清零内存(1, 类型大小(cn_var_类型节点));
-  r11 = *cn_var_类型信息指针;
-  r12 = r11.种类;
-  r13 = r12 == 类型种类_类型_空;
-  if (r13) goto case_body_216; else goto switch_check_232;
+  r10 = cn_var_类型信息指针->种类;
+  r11 = r10 == 类型种类_类型_空;
+  if (r11) goto case_body_754; else goto switch_check_770;
 
-  switch_check_232:
-  r14 = r12 == 类型种类_类型_整数;
-  if (r14) goto case_body_217; else goto switch_check_233;
+  switch_check_770:
+  r12 = r10 == 类型种类_类型_整数;
+  if (r12) goto case_body_755; else goto switch_check_771;
 
-  switch_check_233:
-  r15 = r12 == 类型种类_类型_小数;
-  if (r15) goto case_body_218; else goto switch_check_234;
+  switch_check_771:
+  r13 = r10 == 类型种类_类型_小数;
+  if (r13) goto case_body_756; else goto switch_check_772;
 
-  switch_check_234:
-  r16 = r12 == 类型种类_类型_布尔;
-  if (r16) goto case_body_219; else goto switch_check_235;
+  switch_check_772:
+  r14 = r10 == 类型种类_类型_布尔;
+  if (r14) goto case_body_757; else goto switch_check_773;
 
-  switch_check_235:
-  r17 = r12 == 类型种类_类型_字符串;
-  if (r17) goto case_body_220; else goto switch_check_236;
+  switch_check_773:
+  r15 = r10 == 类型种类_类型_字符串;
+  if (r15) goto case_body_758; else goto switch_check_774;
 
-  switch_check_236:
-  r18 = r12 == 类型种类_类型_字符;
-  if (r18) goto case_body_221; else goto switch_check_237;
+  switch_check_774:
+  r16 = r10 == 类型种类_类型_字符;
+  if (r16) goto case_body_759; else goto switch_check_775;
 
-  switch_check_237:
-  r19 = r12 == 类型种类_类型_指针;
-  if (r19) goto case_body_222; else goto switch_check_238;
+  switch_check_775:
+  r17 = r10 == 类型种类_类型_指针;
+  if (r17) goto case_body_760; else goto switch_check_776;
 
-  switch_check_238:
-  r20 = r12 == 类型种类_类型_数组;
-  if (r20) goto case_body_223; else goto switch_check_239;
+  switch_check_776:
+  r18 = r10 == 类型种类_类型_数组;
+  if (r18) goto case_body_761; else goto switch_check_777;
 
-  switch_check_239:
-  r21 = r12 == 类型种类_类型_结构体;
-  if (r21) goto case_body_224; else goto switch_check_240;
+  switch_check_777:
+  r19 = r10 == 类型种类_类型_结构体;
+  if (r19) goto case_body_762; else goto switch_check_778;
 
-  switch_check_240:
-  r22 = r12 == 类型种类_类型_枚举;
-  if (r22) goto case_body_225; else goto switch_check_241;
+  switch_check_778:
+  r20 = r10 == 类型种类_类型_枚举;
+  if (r20) goto case_body_763; else goto switch_check_779;
 
-  switch_check_241:
-  r23 = r12 == 类型种类_类型_类;
-  if (r23) goto case_body_226; else goto switch_check_242;
+  switch_check_779:
+  r21 = r10 == 类型种类_类型_类;
+  if (r21) goto case_body_764; else goto switch_check_780;
 
-  switch_check_242:
-  r24 = r12 == 类型种类_类型_接口;
-  if (r24) goto case_body_227; else goto switch_check_243;
+  switch_check_780:
+  r22 = r10 == 类型种类_类型_接口;
+  if (r22) goto case_body_765; else goto switch_check_781;
 
-  switch_check_243:
-  r25 = r12 == 类型种类_类型_函数;
-  if (r25) goto case_body_228; else goto switch_check_244;
+  switch_check_781:
+  r23 = r10 == 类型种类_类型_函数;
+  if (r23) goto case_body_766; else goto switch_check_782;
 
-  switch_check_244:
-  r26 = r12 == 类型种类_类型_参数;
-  if (r26) goto case_body_229; else goto switch_check_245;
+  switch_check_782:
+  r24 = r10 == 类型种类_类型_参数;
+  if (r24) goto case_body_767; else goto switch_check_783;
 
-  switch_check_245:
-  r27 = r12 == 类型种类_类型_未定义;
-  if (r27) goto case_body_230; else goto case_default_231;
+  switch_check_783:
+  r25 = r10 == 类型种类_类型_未定义;
+  if (r25) goto case_body_768; else goto case_default_769;
 
-  case_body_216:
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_754:
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_217:
-  r28 = *cn_var_类型信息指针;
-  r29 = r28.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_755:
+  r26 = cn_var_类型信息指针->名称;
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_218:
-  r30 = *cn_var_类型信息指针;
-  r31 = r30.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_756:
+  r27 = cn_var_类型信息指针->名称;
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_219:
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_757:
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_220:
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_758:
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_221:
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_759:
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_222:
-  r32 = *cn_var_类型信息指针;
-  r33 = r32.指针层级;
-  r34 = cn_var_类型信息指针->指向类型;
-  r35 = 类型信息转类型节点(r34);
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_760:
+  r28 = cn_var_类型信息指针->指针层级;
+  r29 = cn_var_类型信息指针->指向类型;
+  r30 = 类型信息转类型节点(r29);
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_223:
-  r36 = *cn_var_类型信息指针;
-  r37 = r36.数组维度;
-  r38 = *cn_var_类型信息指针;
-  r39 = r38.总元素数;
-  r40 = cn_var_类型信息指针->元素类型;
-  r41 = 类型信息转类型节点(r40);
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_761:
+  r31 = cn_var_类型信息指针->数组维度;
+  r32 = cn_var_类型信息指针->总元素数;
+  r33 = cn_var_类型信息指针->元素类型;
+  r34 = 类型信息转类型节点(r33);
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_224:
-  r42 = *cn_var_类型信息指针;
-  r43 = r42.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_762:
+  r35 = cn_var_类型信息指针->名称;
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_225:
-  r44 = *cn_var_类型信息指针;
-  r45 = r44.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_763:
+  r36 = cn_var_类型信息指针->名称;
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_226:
-  r46 = *cn_var_类型信息指针;
-  r47 = r46.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_764:
+  r37 = cn_var_类型信息指针->名称;
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_227:
-  r48 = *cn_var_类型信息指针;
-  r49 = r48.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_765:
+  r38 = cn_var_类型信息指针->名称;
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_228:
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_766:
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_229:
-  r50 = *cn_var_类型信息指针;
-  r51 = r50.名称;
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_767:
+  r39 = cn_var_类型信息指针->名称;
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_body_230:
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_body_768:
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  case_default_231:
-  goto switch_merge_215;
-  goto switch_merge_215;
+  case_default_769:
+  goto switch_merge_753;
+  goto switch_merge_753;
 
-  switch_merge_215:
-  r52 = *cn_var_类型信息指针;
-  r53 = r52.是常量;
-  r54 = cn_var_节点_1;
-  return r54;
+  switch_merge_753:
+  r40 = cn_var_类型信息指针->是常量;
+  r41 = cn_var_节点_1;
+  return r41;
 }
 
 _Bool 是有效的类型种类(enum 类型种类 cn_var_种类) {
-  long long r0;
-  _Bool r2;
-  _Bool r4;
+  long long r0, r2, r4;
   enum 类型种类 r1;
   enum 类型种类 r3;
 
   entry:
   r1 = cn_var_种类;
   r2 = r1 < 类型种类_类型_空;
-  if (r2) goto logic_merge_249; else goto logic_rhs_248;
+  if (r2) goto logic_merge_787; else goto logic_rhs_786;
 
-  if_then_246:
+  if_then_784:
   return 0;
-  goto if_merge_247;
+  goto if_merge_785;
 
-  if_merge_247:
+  if_merge_785:
   return 1;
 
-  logic_rhs_248:
+  logic_rhs_786:
   r3 = cn_var_种类;
   r4 = r3 > 类型种类_类型_未定义;
-  goto logic_merge_249;
+  goto logic_merge_787;
 
-  logic_merge_249:
-  if (r4) goto if_then_246; else goto if_merge_247;
+  logic_merge_787:
+  if (r4) goto if_then_784; else goto if_merge_785;
   return 0;
 }
 
@@ -2778,129 +2685,129 @@ char* 获取类型种类名称(enum 类型种类 cn_var_种类) {
   entry:
   r0 = cn_var_种类;
   r1 = r0 == 类型种类_类型_空;
-  if (r1) goto case_body_251; else goto switch_check_267;
+  if (r1) goto case_body_789; else goto switch_check_805;
 
-  switch_check_267:
+  switch_check_805:
   r2 = r0 == 类型种类_类型_整数;
-  if (r2) goto case_body_252; else goto switch_check_268;
+  if (r2) goto case_body_790; else goto switch_check_806;
 
-  switch_check_268:
+  switch_check_806:
   r3 = r0 == 类型种类_类型_小数;
-  if (r3) goto case_body_253; else goto switch_check_269;
+  if (r3) goto case_body_791; else goto switch_check_807;
 
-  switch_check_269:
+  switch_check_807:
   r4 = r0 == 类型种类_类型_布尔;
-  if (r4) goto case_body_254; else goto switch_check_270;
+  if (r4) goto case_body_792; else goto switch_check_808;
 
-  switch_check_270:
+  switch_check_808:
   r5 = r0 == 类型种类_类型_字符串;
-  if (r5) goto case_body_255; else goto switch_check_271;
+  if (r5) goto case_body_793; else goto switch_check_809;
 
-  switch_check_271:
+  switch_check_809:
   r6 = r0 == 类型种类_类型_字符;
-  if (r6) goto case_body_256; else goto switch_check_272;
+  if (r6) goto case_body_794; else goto switch_check_810;
 
-  switch_check_272:
+  switch_check_810:
   r7 = r0 == 类型种类_类型_指针;
-  if (r7) goto case_body_257; else goto switch_check_273;
+  if (r7) goto case_body_795; else goto switch_check_811;
 
-  switch_check_273:
+  switch_check_811:
   r8 = r0 == 类型种类_类型_数组;
-  if (r8) goto case_body_258; else goto switch_check_274;
+  if (r8) goto case_body_796; else goto switch_check_812;
 
-  switch_check_274:
+  switch_check_812:
   r9 = r0 == 类型种类_类型_结构体;
-  if (r9) goto case_body_259; else goto switch_check_275;
+  if (r9) goto case_body_797; else goto switch_check_813;
 
-  switch_check_275:
+  switch_check_813:
   r10 = r0 == 类型种类_类型_枚举;
-  if (r10) goto case_body_260; else goto switch_check_276;
+  if (r10) goto case_body_798; else goto switch_check_814;
 
-  switch_check_276:
+  switch_check_814:
   r11 = r0 == 类型种类_类型_类;
-  if (r11) goto case_body_261; else goto switch_check_277;
+  if (r11) goto case_body_799; else goto switch_check_815;
 
-  switch_check_277:
+  switch_check_815:
   r12 = r0 == 类型种类_类型_接口;
-  if (r12) goto case_body_262; else goto switch_check_278;
+  if (r12) goto case_body_800; else goto switch_check_816;
 
-  switch_check_278:
+  switch_check_816:
   r13 = r0 == 类型种类_类型_函数;
-  if (r13) goto case_body_263; else goto switch_check_279;
+  if (r13) goto case_body_801; else goto switch_check_817;
 
-  switch_check_279:
+  switch_check_817:
   r14 = r0 == 类型种类_类型_参数;
-  if (r14) goto case_body_264; else goto switch_check_280;
+  if (r14) goto case_body_802; else goto switch_check_818;
 
-  switch_check_280:
+  switch_check_818:
   r15 = r0 == 类型种类_类型_未定义;
-  if (r15) goto case_body_265; else goto case_default_266;
+  if (r15) goto case_body_803; else goto case_default_804;
 
-  case_body_251:
+  case_body_789:
   return "空类型";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_252:
+  case_body_790:
   return "整数";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_253:
+  case_body_791:
   return "小数";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_254:
+  case_body_792:
   return "布尔";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_255:
+  case_body_793:
   return "字符串";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_256:
+  case_body_794:
   return "字符";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_257:
+  case_body_795:
   return "指针";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_258:
+  case_body_796:
   return "数组";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_259:
+  case_body_797:
   return "结构体";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_260:
+  case_body_798:
   return "枚举";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_261:
+  case_body_799:
   return "类";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_262:
+  case_body_800:
   return "接口";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_263:
+  case_body_801:
   return "函数";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_264:
+  case_body_802:
   return "类型参数";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_body_265:
+  case_body_803:
   return "未定义";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  case_default_266:
+  case_default_804:
   return "未知";
-  goto switch_merge_250;
+  goto switch_merge_788;
 
-  switch_merge_250:
+  switch_merge_788:
   return NULL;
 }
 
