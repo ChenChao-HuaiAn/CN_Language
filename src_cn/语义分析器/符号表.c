@@ -1327,7 +1327,7 @@ _Bool 在循环体内(struct 符号表管理器* cn_var_管理器) {
   struct 作用域* r1;
 
   entry:
-  long long cn_var_作用域指针_0;
+  struct 作用域* cn_var_作用域指针_0;
   r0 = cn_var_管理器->当前作用域;
   cn_var_作用域指针_0 = r0;
   goto while_cond_613;
@@ -1338,7 +1338,7 @@ _Bool 在循环体内(struct 符号表管理器* cn_var_管理器) {
   if (r2) goto while_body_614; else goto while_exit_615;
 
   while_body_614:
-  r3 = cn_var_作用域指针_0.是循环体;
+  r3 = cn_var_作用域指针_0->是循环体;
   if (r3) goto if_then_616; else goto if_merge_617;
 
   while_exit_615:
@@ -1349,7 +1349,7 @@ _Bool 在循环体内(struct 符号表管理器* cn_var_管理器) {
   goto if_merge_617;
 
   if_merge_617:
-  r4 = cn_var_作用域指针_0.父作用域;
+  r4 = cn_var_作用域指针_0->父作用域;
   cn_var_作用域指针_0 = r4;
   goto while_cond_613;
   return 0;
@@ -1565,7 +1565,7 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, const c
   void* r15;
 
   entry:
-  long long cn_var_作用域指针_0;
+  struct 作用域* cn_var_作用域指针_0;
   r0 = cn_var_管理器->当前作用域;
   cn_var_作用域指针_0 = r0;
   goto while_cond_636;
@@ -1585,12 +1585,12 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, const c
 
   for_cond_639:
   r3 = cn_var_i_1;
-  r4 = cn_var_作用域指针_0.符号数量;
+  r4 = cn_var_作用域指针_0->符号数量;
   r5 = r3 < r4;
   if (r5) goto for_body_640; else goto for_exit_642;
 
   for_body_640:
-  r6 = cn_var_作用域指针_0.符号表;
+  r6 = cn_var_作用域指针_0->符号表;
   r7 = cn_var_i_1;
   r8 = (void*)cn_rt_array_get_element(r6, r7, 8);
   r9 = r8->名称;
@@ -1606,12 +1606,12 @@ struct 符号* 查找符号(struct 符号表管理器* cn_var_管理器, const c
   goto for_cond_639;
 
   for_exit_642:
-  r18 = cn_var_作用域指针_0.父作用域;
+  r18 = cn_var_作用域指针_0->父作用域;
   cn_var_作用域指针_0 = r18;
   goto while_cond_636;
 
   if_then_643:
-  r13 = cn_var_作用域指针_0.符号表;
+  r13 = cn_var_作用域指针_0->符号表;
   r14 = cn_var_i_1;
   r15 = (void*)cn_rt_array_get_element(r13, r14, 8);
   return r15;
@@ -1943,10 +1943,12 @@ char* 获取作用域类型名称(enum 作用域类型 cn_var_类型) {
 }
 
 _Bool 检查符号可访问性(struct 符号* cn_var_符号指针, struct 作用域* cn_var_访问者作用域) {
-  long long r6, r10, r11, r12, r14, r15;
+  long long r6, r11, r14, r15;
   struct 作用域* r4;
   struct 作用域* r5;
   struct 作用域* r9;
+  struct 作用域* r10;
+  struct 作用域* r12;
   struct 作用域* r13;
   _Bool r1;
   _Bool r3;
@@ -1982,7 +1984,7 @@ _Bool 检查符号可访问性(struct 符号* cn_var_符号指针, struct 作用
   if (r8) goto if_then_715; else goto if_merge_716;
 
   if_then_715:
-  long long cn_var_当前_0;
+  struct 作用域* cn_var_当前_0;
   r9 = cn_var_访问者作用域;
   cn_var_当前_0 = r9;
   goto while_cond_717;
@@ -2010,7 +2012,7 @@ _Bool 检查符号可访问性(struct 符号* cn_var_符号指针, struct 作用
   goto if_merge_721;
 
   if_merge_721:
-  r15 = cn_var_当前_0.父作用域;
+  r15 = cn_var_当前_0->父作用域;
   cn_var_当前_0 = r15;
   goto while_cond_717;
   return 0;

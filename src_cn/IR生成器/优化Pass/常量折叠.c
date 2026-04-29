@@ -2128,15 +2128,15 @@ _Bool 折叠二元运算(struct IR指令* cn_var_指令) {
   if (r15) goto if_then_92; else goto if_merge_93;
 
   if_then_96:
-  long long cn_var_左_0;
+  double cn_var_左_0;
   r23 = cn_var_指令->源操作数1;
   r24 = r23.整数值;
   cn_var_左_0 = r24;
-  long long cn_var_右_1;
+  double cn_var_右_1;
   r25 = cn_var_指令->源操作数2;
   r26 = r25.整数值;
   cn_var_右_1 = r26;
-  long long cn_var_结果_2;
+  double cn_var_结果_2;
   r27 = cn_var_指令->操作码;
   r28 = cn_var_左_0;
   r29 = cn_var_右_1;
@@ -2284,11 +2284,11 @@ _Bool 折叠一元运算(struct IR指令* cn_var_指令) {
   if (r8) goto if_then_106; else goto if_merge_107;
 
   if_then_110:
-  long long cn_var_值_0;
+  double cn_var_值_0;
   r12 = cn_var_指令->源操作数1;
   r13 = r12.整数值;
   cn_var_值_0 = r13;
-  long long cn_var_结果_1;
+  double cn_var_结果_1;
   r14 = cn_var_指令->操作码;
   r15 = cn_var_值_0;
   r16 = 计算整数一元运算(r14, r15);

@@ -955,25 +955,25 @@ struct 语句节点* 解析抛出语句(struct 解析器*);
 struct 语句节点* 解析表达式语句(struct 解析器*);
 struct 语句节点* 解析变量声明语句(struct 解析器*);
 
-// Extern Declarations - 跨模块调用的函数
-extern long long 创建块语句();
-extern long long 块语句添加();
-extern long long 创建如果语句();
-extern void* 解析表达式();
-extern long long 创建当语句();
-extern long long 创建循环语句();
-extern long long 创建返回语句();
-extern long long 创建中断语句();
-extern long long 创建继续语句();
-extern long long 创建选择语句();
-extern long long 创建情况分支();
-extern long long 情况分支添加语句();
-extern long long 创建尝试语句();
-extern void* 解析类型();
-extern long long 创建抛出语句();
-extern long long 创建表达式语句();
-extern void* 解析变量声明();
-extern long long 创建声明语句();
+// Extern Declarations - 跨模块调用的函数（ANSI原型风格）
+extern void* 创建块语句(void);
+extern void* 块语句添加(void*, void*);
+extern void* 创建如果语句(void);
+extern void* 解析表达式(void*);
+extern void* 创建当语句(void);
+extern void* 创建循环语句(void);
+extern void* 创建返回语句(void);
+extern void* 创建中断语句(void);
+extern void* 创建继续语句(void);
+extern void* 创建选择语句(void);
+extern void* 创建情况分支(void);
+extern void* 情况分支添加语句(void*, void*);
+extern void* 创建尝试语句(void);
+extern void* 解析类型(void*);
+extern void* 创建抛出语句(void);
+extern void* 创建表达式语句(void);
+extern void* 解析变量声明(void*);
+extern void* 创建声明语句(void);
 
 struct 语句节点* 解析语句(struct 解析器* cn_var_实例);
 struct 块语句节点* 解析块语句(struct 解析器* cn_var_实例);

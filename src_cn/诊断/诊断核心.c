@@ -109,9 +109,9 @@ void 报告未终止字符串错误(struct 诊断集合*, struct 源位置);
 void 报告无效字符错误(struct 诊断集合*, struct 源位置, const char*);
 void 诊断集合添加(struct 诊断集合*, struct 诊断信息);
 
-// Extern Declarations - 跨模块调用的函数
-extern void* 分配内存数组();
-extern char* 字符串格式();
+// Extern Declarations - 跨模块调用的函数（ANSI原型风格）
+extern void* 分配内存数组(long long, void*);
+extern char* 字符串格式(const char*, void*, void*);
 
 struct 诊断集合* 创建诊断集合(long long cn_var_初始容量) {
   long long r0, r1, r4, r5, r8, r10;
@@ -246,11 +246,12 @@ _Bool 扩展诊断数组(struct 诊断集合* cn_var_集合) {
 }
 
 void 报告诊断(struct 诊断集合* cn_var_集合, enum 诊断严重级别 cn_var_级别, enum 诊断错误码 cn_var_代码, struct 源位置 cn_var_位置, const char* cn_var_消息) {
-  long long r1, r2, r3, r4, r7, r9, r10, r15, r16, r18, r19, r20, r21, r22;
+  long long r1, r2, r3, r4, r7, r9, r15, r16, r18, r19, r20, r21, r22;
   char* r14;
   struct 诊断集合* r0;
   struct 诊断集合* r5;
   struct 诊断信息* r8;
+  struct 诊断信息* r10;
   _Bool r6;
   struct 源位置 r13;
   enum 诊断严重级别 r11;
@@ -521,9 +522,10 @@ void 打印诊断信息(struct 诊断信息* cn_var_信息) {
 }
 
 void 打印所有诊断(struct 诊断集合* cn_var_集合) {
-  long long r1, r2, r3, r4, r6, r7, r8, r9, r10, r11;
+  long long r1, r2, r3, r4, r6, r8, r9, r10, r11;
   struct 诊断集合* r0;
   struct 诊断信息* r5;
+  struct 诊断信息* r7;
 
   entry:
   r0 = cn_var_集合;

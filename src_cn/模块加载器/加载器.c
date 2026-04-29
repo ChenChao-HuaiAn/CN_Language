@@ -1080,12 +1080,12 @@ long long 字符串指针大小();
 long long 获取文件大小(void*);
 void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
 
-// Extern Declarations - 跨模块调用的函数
-extern void* 创建扫描器();
-extern void* 创建解析器();
-extern long long 销毁扫描器();
-extern void* 解析程序();
-extern long long 销毁解析器();
+// Extern Declarations - 跨模块调用的函数（ANSI原型风格）
+extern void* 创建扫描器(void*, void*);
+extern void* 创建解析器(void*, void*);
+extern void* 销毁扫描器(void*);
+extern void* 解析程序(void*);
+extern void* 销毁解析器(void*);
 
 struct 模块加载器* 创建模块加载器(struct 诊断集合* cn_var_诊断集合指针) {
   long long r0;

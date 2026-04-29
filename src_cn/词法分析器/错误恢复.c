@@ -177,12 +177,12 @@ _Bool 是分隔符(long long);
 void 更新错误上下文(struct 错误恢复上下文*, long long);
 _Bool 应该停止编译(struct 错误恢复上下文*);
 
-// Extern Declarations - 跨模块调用的函数
-extern char* 字符串格式();
-extern long long 前进();
-extern long long 当前字符();
-extern _Bool 是否结束();
-extern void* 下一个词元();
+// Extern Declarations - 跨模块调用的函数（ANSI原型风格）
+extern char* 字符串格式(const char*, void*, const char*);
+extern long long 前进(void*);
+extern long long 当前字符(void*);
+extern _Bool 是否结束(void*);
+extern void* 下一个词元(void*);
 
 void 初始化错误恢复(struct 错误恢复上下文* cn_var_上下文) {
   long long r2;

@@ -723,8 +723,9 @@ _Bool 跳过块注释(struct 扫描器* cn_var_实例) {
 }
 
 struct 词元 扫描标识符(struct 扫描器* cn_var_实例) {
-  long long r0, r1, r2, r4, r5, r7, r9, r10, r11, r12, r13, r14, r15, r16, r17, r20, r21, r22, r25, r30, r31, r32;
+  long long r0, r1, r2, r4, r5, r7, r9, r10, r11, r12, r13, r14, r15, r16, r17, r20, r22, r25, r30, r31, r32;
   char* r19;
+  char* r21;
   char* r23;
   char* r18;
   char* r24;

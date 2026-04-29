@@ -149,8 +149,8 @@ struct 程序节点 {
 struct 程序节点* 创建程序节点();
 void 程序添加声明(struct 程序节点*, struct 声明节点*);
 
-// Extern Declarations - 跨模块调用的函数
-extern long long 程序节点大小();
+// Extern Declarations - 跨模块调用的函数（ANSI原型风格）
+extern void* 程序节点大小(void);
 
 struct 程序节点* 创建程序节点() {
   long long r2;

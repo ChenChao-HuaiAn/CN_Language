@@ -950,11 +950,11 @@ struct 类型节点* 解析指针类型(struct 解析器*, struct 类型节点*)
 struct 类型节点* 解析数组类型(struct 解析器*, struct 类型节点*);
 struct 类型节点* 解析函数类型(struct 解析器*);
 
-// Extern Declarations - 跨模块调用的函数
-extern long long 创建类型节点();
-extern long long 释放类型节点();
-extern long long 字符串转整数();
-extern long long 函数类型添加参数();
+// Extern Declarations - 跨模块调用的函数（ANSI原型风格）
+extern void* 创建类型节点(void);
+extern void* 释放类型节点(void*);
+extern void* 字符串转整数(const char*);
+extern void* 函数类型添加参数(void*, void*);
 
 struct 类型节点* 解析类型(struct 解析器* cn_var_实例);
 struct 类型节点* 解析基础类型(struct 解析器* cn_var_实例);
@@ -1204,8 +1204,9 @@ struct 类型节点* 解析基础类型(struct 解析器* cn_var_实例) {
 }
 
 struct 类型节点* 解析指针类型(struct 解析器* cn_var_实例, struct 类型节点* cn_var_基类型) {
-  long long r0, r2, r4, r7, r10, r13, r14, r16;
+  long long r0, r2, r4, r7, r10, r13, r14;
   char* r15;
+  char* r16;
   struct 解析器* r1;
   struct 类型节点* r3;
   struct 解析器* r5;
