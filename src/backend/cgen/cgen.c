@@ -632,6 +632,45 @@ const char *get_c_param_type_string(CnType *type) {
     return get_c_type_string_internal(type, true);
 }
 
+/**
+ * 【P5修复】将CnType转换为extern声明安全的C类型字符串
+ * 对于结构体/指针/枚举等可能未在当前模块定义的类型，使用void*替代
+ * 避免生成不完整类型导致的GCC错误
+ * is_param: true时字符串类型使用const char*（参数位置），false时使用char*（返回值位置）
+ */
+static const char *get_extern_type_string(CnType *type, bool is_param) {
+    if (!type) return is_param ? "void*" : "void*";
+    switch (type->kind) {
+        case CN_TYPE_INT:
+        case CN_TYPE_INT32:
+        case CN_TYPE_INT64:
+        case CN_TYPE_UINT32:
+        case CN_TYPE_UINT64:
+        case CN_TYPE_UINT64_LL:
+            return "long long";
+        case CN_TYPE_FLOAT:
+        case CN_TYPE_FLOAT32:
+        case CN_TYPE_FLOAT64:
+            return "double";
+        case CN_TYPE_CHAR: return "char";
+        case CN_TYPE_BOOL: return "_Bool";
+        case CN_TYPE_STRING: return is_param ? "const char*" : "char*";
+        case CN_TYPE_VOID: return "void";
+        /* 指针、结构体、枚举、类、接口等使用void*避免不完整类型错误 */
+        case CN_TYPE_POINTER:
+        case CN_TYPE_STRUCT:
+        case CN_TYPE_ENUM:
+        case CN_TYPE_CLASS:
+        case CN_TYPE_INTERFACE:
+        case CN_TYPE_ARRAY:
+        case CN_TYPE_MEMORY_ADDRESS:
+        case CN_TYPE_SELF:
+        case CN_TYPE_PARAM:
+            return "void*";
+        default: return "long long";
+    }
+}
+
 static const char *get_c_function_name(const char *name) {
     if (!name) return "unnamed_func";
     
@@ -3384,12 +3423,14 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
     }
     fprintf(file, "\n");
     
-    // 【P2修复】扫描所有CALL指令，收集被调用但未在当前模块声明的函数
-    // 生成extern声明，解决跨模块函数调用缺少前向声明的问题
+    // 【P5修复】扫描所有CALL指令，收集被调用但未在当前模块声明的函数
+    // 生成ANSI原型风格的extern声明，包含参数类型信息
+    // 解决K&R风格声明(extern type name();)导致的"函数参数数量不匹配"GCC错误
     {
         #define MAX_EXTERN_FUNCS_A 512
         const char *extern_func_names_a[MAX_EXTERN_FUNCS_A];
         CnType *extern_func_ret_types_a[MAX_EXTERN_FUNCS_A];
+        CnIrInst *extern_call_insts_a[MAX_EXTERN_FUNCS_A]; // 【P5】保存CALL指令以获取参数信息
         size_t extern_func_count_a = 0;
         
         CnIrFunction *scan_func_a = module->first_func;
@@ -3409,29 +3450,43 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
                             scan_inst_a = scan_inst_a->next;
                             continue;
                         }
-                        bool already_decl = false;
+                        // 检查是否已在当前模块的函数列表中声明
+                        bool in_module_a = false;
                         CnIrFunction *cf = module->first_func;
                         while (cf) {
                             if (cf->name && strcmp(cf->name, called_name) == 0) {
-                                already_decl = true;
+                                in_module_a = true;
                                 break;
                             }
                             cf = cf->next;
                         }
-                        if (!already_decl) {
-                            for (size_t ei = 0; ei < extern_func_count_a; ei++) {
-                                if (strcmp(extern_func_names_a[ei], called_name) == 0) {
-                                    already_decl = true;
-                                    break;
-                                }
+                        if (in_module_a) {
+                            scan_inst_a = scan_inst_a->next;
+                            continue;
+                        }
+                        // 检查是否已收集到extern列表中
+                        size_t existing_idx_a = 0;
+                        bool in_extern_a = false;
+                        for (size_t ei = 0; ei < extern_func_count_a; ei++) {
+                            if (strcmp(extern_func_names_a[ei], called_name) == 0) {
+                                in_extern_a = true;
+                                existing_idx_a = ei;
+                                break;
                             }
                         }
-                        if (!already_decl && extern_func_count_a < MAX_EXTERN_FUNCS_A) {
+                        if (!in_extern_a && extern_func_count_a < MAX_EXTERN_FUNCS_A) {
+                            // 新函数，添加到extern列表
                             extern_func_names_a[extern_func_count_a] = called_name;
                             extern_func_ret_types_a[extern_func_count_a] =
                                 (scan_inst_a->dest.kind == CN_IR_OP_REG && scan_inst_a->dest.type)
                                 ? scan_inst_a->dest.type : NULL;
+                            extern_call_insts_a[extern_func_count_a] = scan_inst_a;
                             extern_func_count_a++;
+                        } else if (in_extern_a) {
+                            // 【P5】已存在，如果新调用有更多参数则更新指令指针
+                            if (scan_inst_a->extra_args_count > extern_call_insts_a[existing_idx_a]->extra_args_count) {
+                                extern_call_insts_a[existing_idx_a] = scan_inst_a;
+                            }
                         }
                     }
                     scan_inst_a = scan_inst_a->next;
@@ -3442,28 +3497,24 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
         }
         
         if (extern_func_count_a > 0) {
-            fprintf(file, "// Extern Declarations - 跨模块调用的函数\n");
+            fprintf(file, "// Extern Declarations - 跨模块调用的函数（ANSI原型风格）\n");
             for (size_t ei = 0; ei < extern_func_count_a; ei++) {
-                const char *ret_type_str = "long long";
-                if (extern_func_ret_types_a[ei]) {
-                    CnType *rt = extern_func_ret_types_a[ei];
-                    if (rt->kind == CN_TYPE_POINTER || rt->kind == CN_TYPE_STRUCT ||
-                        rt->kind == CN_TYPE_ENUM) {
-                        ret_type_str = "void*";
-                    } else if (rt->kind == CN_TYPE_STRING) {
-                        ret_type_str = "char*";
-                    } else if (rt->kind == CN_TYPE_FLOAT) {
-                        ret_type_str = "double";
-                    } else if (rt->kind == CN_TYPE_BOOL) {
-                        ret_type_str = "_Bool";
-                    } else if (rt->kind == CN_TYPE_CHAR) {
-                        ret_type_str = "char";
-                    } else if (rt->kind == CN_TYPE_VOID) {
-                        ret_type_str = "void";
-                    }
-                }
-                fprintf(file, "extern %s %s();\n", ret_type_str,
+                // 【P5】使用get_extern_type_string获取安全的类型字符串
+                const char *ret_type_str = get_extern_type_string(extern_func_ret_types_a[ei], false);
+                CnIrInst *call_inst_a = extern_call_insts_a[ei];
+                fprintf(file, "extern %s %s(", ret_type_str,
                         get_c_function_name(extern_func_names_a[ei]));
+                // 【P5】生成ANSI原型参数列表
+                if (call_inst_a && call_inst_a->extra_args_count > 0) {
+                    for (size_t pi = 0; pi < call_inst_a->extra_args_count; pi++) {
+                        CnType *param_type = call_inst_a->extra_args[pi].type;
+                        fprintf(file, "%s", get_extern_type_string(param_type, true));
+                        if (pi < call_inst_a->extra_args_count - 1) fprintf(file, ", ");
+                    }
+                } else {
+                    fprintf(file, "void");  // 无参数时使用void而非空列表
+                }
+                fprintf(file, ");\n");
             }
             fprintf(file, "\n");
         }
@@ -4708,13 +4759,15 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
     }
     fprintf(file, "\n");
     
-    // 【P2修复】扫描所有CALL指令，收集被调用但未在当前模块声明的函数
-    // 生成extern声明，解决跨模块函数调用缺少前向声明的问题
+    // 【P5修复】扫描所有CALL指令，收集被调用但未在当前模块声明的函数
+    // 生成ANSI原型风格的extern声明，包含参数类型信息
+    // 解决K&R风格声明(extern type name();)导致的"函数参数数量不匹配"GCC错误
     {
         // 最大可收集的外部函数数量
         #define MAX_EXTERN_FUNCS 512
         const char *extern_func_names[MAX_EXTERN_FUNCS];
         CnType *extern_func_ret_types[MAX_EXTERN_FUNCS];
+        CnIrInst *extern_call_insts[MAX_EXTERN_FUNCS]; // 【P5】保存CALL指令以获取参数信息
         size_t extern_func_count = 0;
         
         // 遍历所有函数的所有基本块，收集CALL指令中被调用的函数名
@@ -4738,41 +4791,54 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
                         }
                         
                         // 检查是否已在当前模块的函数列表中
-                        bool already_declared = false;
+                        bool in_module_func = false;
                         CnIrFunction *check_func = module->first_func;
                         while (check_func) {
                             if (check_func->name && strcmp(check_func->name, called_func_name) == 0) {
-                                already_declared = true;
+                                in_module_func = true;
                                 break;
                             }
                             check_func = check_func->next;
                         }
                         
                         // 检查是否已在declared_functions集合中
-                        if (!already_declared && ctx.declared_functions) {
+                        if (!in_module_func && ctx.declared_functions) {
                             if (cn_rt_map_contains(ctx.declared_functions, called_func_name)) {
-                                already_declared = true;
+                                in_module_func = true;
                             }
                         }
                         
+                        if (in_module_func) {
+                            scan_inst = scan_inst->next;
+                            continue;
+                        }
+                        
                         // 检查是否已收集到extern列表中
-                        if (!already_declared) {
-                            for (size_t ei = 0; ei < extern_func_count; ei++) {
-                                if (strcmp(extern_func_names[ei], called_func_name) == 0) {
-                                    already_declared = true;
-                                    break;
-                                }
+                        size_t existing_idx = 0;
+                        bool in_extern_list = false;
+                        for (size_t ei = 0; ei < extern_func_count; ei++) {
+                            if (strcmp(extern_func_names[ei], called_func_name) == 0) {
+                                in_extern_list = true;
+                                existing_idx = ei;
+                                break;
                             }
                         }
                         
                         // 如果未声明，添加到extern列表
-                        if (!already_declared && extern_func_count < MAX_EXTERN_FUNCS) {
+                        if (!in_extern_list && extern_func_count < MAX_EXTERN_FUNCS) {
                             extern_func_names[extern_func_count] = called_func_name;
                             // 尝试从CALL指令的dest.type获取返回类型
                             extern_func_ret_types[extern_func_count] =
                                 (scan_inst->dest.kind == CN_IR_OP_REG && scan_inst->dest.type)
                                 ? scan_inst->dest.type : NULL;
+                            // 【P5】保存CALL指令指针以获取参数类型信息
+                            extern_call_insts[extern_func_count] = scan_inst;
                             extern_func_count++;
+                        } else if (in_extern_list) {
+                            // 【P5】已存在，如果新调用有更多参数则更新指令指针
+                            if (scan_inst->extra_args_count > extern_call_insts[existing_idx]->extra_args_count) {
+                                extern_call_insts[existing_idx] = scan_inst;
+                            }
                         }
                     }
                     scan_inst = scan_inst->next;
@@ -4782,33 +4848,26 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
             scan_func = scan_func->next;
         }
         
-        // 生成extern声明
+        // 生成ANSI原型风格的extern声明
         if (extern_func_count > 0) {
-            fprintf(file, "// Extern Declarations - 跨模块调用的函数\n");
+            fprintf(file, "// Extern Declarations - 跨模块调用的函数（ANSI原型风格）\n");
             for (size_t ei = 0; ei < extern_func_count; ei++) {
-                const char *ret_type_str = "long long";  // 默认返回类型
-                if (extern_func_ret_types[ei]) {
-                    // 指针/结构体/枚举类型使用void*作为extern返回类型
-                    CnType *rt = extern_func_ret_types[ei];
-                    if (rt->kind == CN_TYPE_POINTER ||
-                        rt->kind == CN_TYPE_STRUCT ||
-                        rt->kind == CN_TYPE_ENUM) {
-                        ret_type_str = "void*";
-                    } else if (rt->kind == CN_TYPE_STRING) {
-                        ret_type_str = "char*";
-                    } else if (rt->kind == CN_TYPE_FLOAT) {
-                        ret_type_str = "double";
-                    } else if (rt->kind == CN_TYPE_BOOL) {
-                        ret_type_str = "_Bool";
-                    } else if (rt->kind == CN_TYPE_CHAR) {
-                        ret_type_str = "char";
-                    } else if (rt->kind == CN_TYPE_VOID) {
-                        ret_type_str = "void";
-                    }
-                }
-                // 使用K&R风格声明（不检查参数），避免参数类型不匹配问题
-                fprintf(file, "extern %s %s();\n", ret_type_str,
+                // 【P5】使用get_extern_type_string获取安全的类型字符串
+                const char *ret_type_str = get_extern_type_string(extern_func_ret_types[ei], false);
+                CnIrInst *call_inst = extern_call_insts[ei];
+                fprintf(file, "extern %s %s(", ret_type_str,
                         get_c_function_name(extern_func_names[ei]));
+                // 【P5】生成ANSI原型参数列表
+                if (call_inst && call_inst->extra_args_count > 0) {
+                    for (size_t pi = 0; pi < call_inst->extra_args_count; pi++) {
+                        CnType *param_type = call_inst->extra_args[pi].type;
+                        fprintf(file, "%s", get_extern_type_string(param_type, true));
+                        if (pi < call_inst->extra_args_count - 1) fprintf(file, ", ");
+                    }
+                } else {
+                    fprintf(file, "void");  // 无参数时使用void而非空列表
+                }
+                fprintf(file, ");\n");
             }
             fprintf(file, "\n");
         }
