@@ -1,0 +1,1655 @@
+﻿gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U0000521b\U00005efaIR\U00006a2
+1\U00005757':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...a21\U00005757'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1301:147: error: 'cn_var_\U00006a21\U00005757' unde
+clared (first use in this function); did you mean 'cn_var_模块_0'?
+ 1301 |   r7 = 设置内存(/* P7DBG_AST_EXPR kind=24 *//* P7DBG_expr kind=24 */(void*)/* P7DBG_expr kind=10 *//* P7DBG_expr ki
+nd=14 *//* P7DBG_expr kind=2 */cn_var_模块.目标信息, 0, r6);
+      |                                                                                                                
+                                   ^~~~~~~~~~~
+      |                                                                                                                
+                                   cn_var_模块_0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1301:147: note: each undeclared identifier is repor
+ted only once for each function it appears in
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U0000521b\U00005efaIR\U000051fd\U000
+06570':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1408:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1408 |   r3 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U00006dfb\U000052a0\U000051fd\U00006
+570\U000053c2\U00006570':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1557:8: error: incompatible types when assigning to
+ type 'struct \U000053c2\U00006570' from type 'struct IR\U000064cd\U00004f5c\U00006570'
+ 1557 |   r8 = cn_var_参数;
+      |        ^~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1560:7: error: assignment to 'int *' from incompati
+ble pointer type 'struct IR\U000064cd\U00004f5c\U00006570 *' [-Wincompatible-pointer-types]
+ 1560 |   r11 = &r9[r10];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1561:39: error: incompatible types when assigning t
+o type 'int' from type 'struct \U000053c2\U00006570'
+ 1561 | /* P7DBG_STORE src1.kind=1 */  *r11 = r8;
+      |                                       ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U00006dfb\U000052a0\U00005c40\U00009
+0e8\U000053d8\U000091cf':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1595:7: error: assignment to 'int *' from incompati
+ble pointer type 'struct IR\U000064cd\U00004f5c\U00006570 *' [-Wincompatible-pointer-types]
+ 1595 |   r11 = &r9[r10];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1596:39: error: incompatible types when assigning t
+o type 'int' from type 'struct IR\U000064cd\U00004f5c\U00006570'
+ 1596 | /* P7DBG_STORE src1.kind=1 */  *r11 = r8;
+      |                                       ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U0000521b\U00005efa\U000057fa\U00006
+72c\U00005757':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1738:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1738 |   r3 = cn_var_名称提示;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1739:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1739 |   r4 = cn_var_名称提示;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1741:6: error: assignment to 'long long int' from '
+char *' makes integer from pointer without a cast [-Wint-conversion]
+ 1741 |   r6 = (r3 ? r5 : 0);
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U00005b57\U00007b26\U00004e32\U00005
+e38\U000091cf\U000064cd\U00004f5c\U00006570':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:2050:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 2050 |   r0 = cn_var_值;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U00005168\U00005c40\U00007b26\U00005
+3f7\U000064cd\U00004f5c\U00006570':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:2063:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 2063 |   r0 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U0000521b\U00005efa\U00005168\U00005
+c40\U000053d8\U000091cf':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:2100:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 2100 |   r3 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c: In function '\U0000521b\U00005efa\U00009759\U00006
+001\U000053d8\U000091cf':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:2224:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 2224 |   r3 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:2226:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 2226 |   r5 = cn_var_名称;
+      |      ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c: In function '\U000083b7\U000053d6\U00
+005bc4\U00005b58\U00005668\U00005e38\U000091cf':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...e38\U000091cf'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:2900:9: error: incompatible types when assig
+ning to type 'struct \U00005e38\U000091cf\U0000503c' from type 'struct \U00005e38\U000091cf\U0000503c *'
+ 2900 |   r12 = (struct 常量值*)cn_rt_array_get_element(r10, r11, 8);
+      |         ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c: In function '\U00008bb0\U00005f55\U0
+0005b9a\U00004e49':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...b9a\U00004e49'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1608:8: error: incompatible types when assi
+gning to type 'struct \U00004f7f\U00007528\U00004fe1\U0000606f' from type 'struct \U00004f7f\U00007528\U00004fe1\U00006
+06f *'
+ 1608 |   r7 = (struct 使用信息*)cn_rt_array_get_element(r5, r6, 8);
+      |        ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c: In function '\U00008bb0\U00005f55\U00004f7
+f\U00007528':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1642:8: error: incompatible types when assi
+gning to type 'struct \U00004f7f\U00007528\U00004fe1\U0000606f' from type 'struct \U00004f7f\U00007528\U00004fe1\U00006
+06f *'
+ 1642 |   r7 = (struct 使用信息*)cn_rt_array_get_element(r5, r6, 8);
+      |        ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c: In function '\U00005206\U00006790\U0000630
+7\U00004ee4\U00004f7f\U00007528':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1758:18: error: incompatible type for argum
+ent 1 of '\U00005206\U00006790\U000064cd\U00004f5c\U00006570\U00004f7f\U00007528'
+ 1758 |   分析操作数使用(r17, r18, 0);
+      |                  ^~~
+      |                  |
+      |                  void *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1656:37: note: expected 'struct IR\U000064c
+d\U00004f5c\U00006570' but argument is of type 'void *'
+ 1656 | void 分析操作数使用(struct IR操作数 cn_var_操作数, struct 使用信息* cn_var_信息, _Bool cn_var_是定义) {
+      |                     ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c: In function '\U000053ef\U00004ee5\U0000522
+0\U00009664\U00006307\U00004ee4':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1966:9: error: incompatible types when assi
+gning to type 'struct \U00004f7f\U00007528\U00004fe1\U0000606f' from type 'struct \U00004f7f\U00007528\U00004fe1\U00006
+06f *'
+ 1966 |   r19 = (struct 使用信息*)cn_rt_array_get_element(r17, r18, 8);
+      |         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1983:9: error: incompatible types when assi
+gning to type 'struct \U00004f7f\U00007528\U00004fe1\U0000606f' from type 'struct \U00004f7f\U00007528\U00004fe1\U00006
+06f *'
+ 1983 |   r23 = (struct 使用信息*)cn_rt_array_get_element(r21, r22, 8);
+      |         ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U00008ffd\U000052a0\U00005b57
+\U00007b26\U00004e32':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...b26\U00004e32'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:1507:6: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 1507 |   r5 = cn_var_字符串值;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:1522:6: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 1522 |   r3 = cn_var_字符串值;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:1540:7: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 1540 |   r28 = cn_var_字符串值;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U00007c7b\U0000578b\U00005230C\U000
+07c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:1921:9: error: invalid type argument of unary '*' 
+(have 'long long int')
+ 1921 |   r29 = *(long long)cn_rt_array_get_element(r28, 0, 8);
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U0000751f\U00006210\U00007c7b\U0000
+578b\U000058f0\U0000660e':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2084:6: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 2084 |   r8 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2100:7: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 2100 |   r17 = cn_var_名称;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2113:7: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 2113 |   r41 = cn_var_名称;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2130:9: error: invalid type argument of unary '*' 
+(have 'long long int')
+ 2130 |   r27 = *(long long)cn_rt_array_get_element(r25, r26, 8);
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U0000751f\U00006210\U00005185\U0000
+5b58\U00006307\U00004ee4':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3073:12: error: 'struct \U00007c7b\U0000578b\U0000
+8282\U000070b9' has no member named '\U00005927\U00005c0f'
+ 3073 |   r16 = r15->大小;
+      |            ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U0000751f\U00006210\U000063a7\U0000
+5236\U00006d41\U00006307\U00004ee4':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3441:24: error: incompatible type for argument 1 o
+f '\U0000751f\U00006210\U000064cd\U00004f5c\U00006570\U00004ee3\U00007801'
+ 3441 |   r75 = 生成操作数代码(r73, r74);
+      |                        ^~~
+      |                        |
+      |                        void *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2427:38: note: expected 'struct IR\U000064cd\U0000
+4f5c\U00006570' but argument is of type 'void *'
+ 2427 | char* 生成操作数代码(struct IR操作数 cn_var_操作数, struct 输出缓冲区* cn_var_缓冲区) {
+      |                      ~~~~~~~~~~~~~~~~^~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U0000751f\U00006210\U00007ed3\U0000
+6784\U00004f53\U00006307\U00004ee4':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3602:12: error: 'struct \U00007c7b\U0000578b\U0000
+8282\U000070b9' has no member named '\U000079cd\U00007c7b'
+ 3602 |   r36 = r35->种类;
+      |            ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U0000751f\U00006210\U00005c40\U0000
+90e8\U000053d8\U000091cf\U000058f0\U0000660e':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4231:25: warning: dereferencing 'void *' pointer
+ 4231 |   r9 = cn_var_局部变量_1->类型信息;
+      |                         ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4231:25: error: request for member '\U00007c7b\U00
+00578b\U00004fe1\U0000606f' in something not a structure or union
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4237:26: warning: dereferencing 'void *' pointer
+ 4237 |   r15 = cn_var_局部变量_1->寄存器编号;
+      |                          ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4237:26: error: request for member '\U00005bc4\U00
+005b58\U00005668\U00007f16\U000053f7' in something not a structure or union
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U0000751f\U00006210\U000051fd\U0000
+6570\U00004ee3\U00007801':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4351:22: warning: dereferencing 'void *' pointer
+ 4351 |   r22 = cn_var_参数_1->类型信息;
+      |                      ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4351:22: error: request for member '\U00007c7b\U00
+00578b\U00004fe1\U0000606f' in something not a structure or union
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4353:25: error: passing argument 1 of '\U00007c7b\
+U0000578b\U00008282\U000070b9\U00005230C\U00007c7b\U0000578b' makes pointer from integer without a cast [-Wint-conversi
+on]
+ 4353 |   r24 = 类型节点到C类型(r22, r23);
+      |                         ^~~
+      |                         |
+      |                         long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2150:40: note: expected 'struct \U00007c7b\U000057
+8b\U00008282\U000070b9 *' but argument is of type 'long long int'
+ 2150 | char* 类型节点到C类型(struct 类型节点* cn_var_类型节点指针, struct 输出缓冲区* cn_var_缓冲区) {
+      |                       ~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U000083b7\U000053d6\U00009ed8\U0000
+8ba4\U0000751f\U00006210\U00009009\U00009879':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4477:10: error: incompatible types when returning 
+type 'void *' but 'struct \U00004ee3\U00007801\U0000751f\U00006210\U00009009\U00009879' was expected
+ 4477 |   return r3;
+      |          ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U0000683c\U00005f0f\U00005316\U0000
+6574\U00006570':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4498:6: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 4498 |   r0 = cn_var_缓冲区;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4500:6: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 4500 |   r1 = cn_var_缓冲区;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4554:7: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 4554 |   r19 = cn_var_缓冲区;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4577:7: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 4577 |   r30 = cn_var_缓冲区;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4579:27: error: initialization of 'long long int' 
+from 'void *' makes integer from pointer without a cast [-Wint-conversion]
+ 4579 |     { long long _tmp_r6 = r29; cn_rt_array_set_element(r30, r31, &_tmp_r6, 8); }
+      |                           ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4586:7: warning: assignment discards 'const' quali
+fier from pointer target type [-Wdiscarded-qualifiers]
+ 4586 |   r34 = cn_var_缓冲区;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c: In function '\U00008ffd\U000052a0\U00005c0f\U0000
+6570':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4618:162: error: 'cn_var_\U00005c0f\U00006570\U000
+04e34\U000065f6' undeclared (first use in this function); did you mean 'cn_var_小数临时_1'?
+ 4618 | /* P7DBG_STORE src1.kind=7 */  cn_var_小数部分_2 = /* P7DBG_AST_EXPR kind=24 *//* P7DBG_expr kind=24 */(long long)/
+* P7DBG_expr kind=0 */(/* P7DBG_expr kind=2 */cn_var_小数临时 * 1000000);
+      |                                                                                                                
+                                                  ^~~~~~~~~~~~~~~
+      |                                                                                                                
+                                                  cn_var_小数临时_1
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4618:162: note: each undeclared identifier is repo
+rted only once for each function it appears in
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1432:11: error: conflicting types for '\U00
+0083b7\U000053d6\U00009519\U00008bef\U00008ba1\U00006570'; have 'long long int(struct \U00006a21\U00005757\U00004ee3\U0
+0007801\U0000751f\U00006210\U00004e0a\U00004e0b\U00006587 *)'
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...b\U00006587 *)':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ 1432 | long long 获取错误计数(struct 模块代码生成上下文*);
+      |           ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1202:11: note: previous declaration of '\U000083b
+7\U000053d6\U00009519\U00008bef\U00008ba1\U00006570' with type 'long long int(struct \U00008bca\U000065ad\U000096c6\U00
+005408 *)'
+ 1202 | long long 获取错误计数(struct 诊断集合*);
+      |           ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1433:11: error: conflicting types for '\U000083b7
+\U000053d6\U00008b66\U0000544a\U00008ba1\U00006570'; have 'long long int(struct \U00006a21\U00005757\U00004ee3\U0000780
+1\U0000751f\U00006210\U00004e0a\U00004e0b\U00006587 *)'
+ 1433 | long long 获取警告计数(struct 模块代码生成上下文*);
+      |           ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1201:11: note: previous declaration of '\U000083b
+7\U000053d6\U00008b66\U0000544a\U00008ba1\U00006570' with type 'long long int(struct \U00008bca\U000065ad\U000096c6\U00
+005408 *)'
+ 1201 | long long 获取警告计数(struct 诊断集合*);
+      |           ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c: In function '\U0000751f\U00006210\U00005934\U000
+06587\U00004ef6\U00004fdd\U000062a4\U00005b8f':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1449:6: warning: assignment discards 'const' qual
+ifier from pointer target type [-Wdiscarded-qualifiers]
+ 1449 |   r3 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c: In function '\U0000751f\U00006210\U00007ed3\U000
+06784\U00004f53\U00005b9a\U00004e49':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1754:7: error: assignment to 'char *' from 'char'
+ makes pointer from integer without a cast [-Wint-conversion]
+ 1754 |   r26 = *(char*)cn_rt_array_get_element(r24, r25, 8);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c: In function '\U0000751f\U00006210\U00007c7b\U000
+05b9a\U00004e49':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2069:7: error: assignment to 'char *' from 'char'
+ makes pointer from integer without a cast [-Wint-conversion]
+ 2069 |   r26 = *(char*)cn_rt_array_get_element(r24, r25, 8);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c: In function '\U0000751f\U00006210\U000051fd\U000
+06570\U000058f0\U0000660e':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2311:9: error: incompatible types when assigning 
+to type 'struct IR\U000064cd\U00004f5c\U00006570' from type 'struct IR\U000064cd\U00004f5c\U00006570 *'
+ 2311 |   r21 = (struct IR操作数*)cn_rt_array_get_element(r19, r20, 8);
+      |         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2313:7: error: assignment to 'long long int' from
+ 'struct \U00007c7b\U0000578b\U00008282\U000070b9 *' makes integer from pointer without a cast [-Wint-conversion]
+ 2313 |   r22 = cn_var_参数_1.类型信息;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2315:25: error: passing argument 1 of '\U00007c7b
+\U0000578b\U00008282\U000070b9\U00005230C\U00007c7b\U0000578b' makes pointer from integer without a cast [-Wint-convers
+ion]
+ 2315 |   r24 = 类型节点到C类型(r22, r23);
+      |                         ^~~
+      |                         |
+      |                         long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1354:23: note: expected 'struct \U00007c7b\U00005
+78b\U00008282\U000070b9 *' but argument is of type 'long long int'
+ 1354 | char* 类型节点到C类型(struct 类型节点*, struct 输出缓冲区*);
+      |                       ^~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c: In function '\U0000521b\U00005efa\U00006a21\U000
+05757\U00004ee3\U00007801\U0000751f\U00006210\U00004e0a\U00004e0b\U00006587':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2376:7: warning: assignment discards 'const' qual
+ifier from pointer target type [-Wdiscarded-qualifiers]
+ 2376 |   r21 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2378:7: warning: assignment discards 'const' qual
+ifier from pointer target type [-Wdiscarded-qualifiers]
+ 2378 |   r23 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c: In function '\U00005199\U00005165\U00004ee3\U000
+07801\U00006587\U00004ef6':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2669:6: warning: assignment discards 'const' qual
+ifier from pointer target type [-Wdiscarded-qualifiers]
+ 2669 |   r2 = cn_var_输出目录;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2678:7: warning: assignment discards 'const' qual
+ifier from pointer target type [-Wdiscarded-qualifiers]
+ 2678 |   r10 = cn_var_输出目录;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2688:7: warning: assignment discards 'const' qual
+ifier from pointer target type [-Wdiscarded-qualifiers]
+ 2688 |   r19 = cn_var_输出目录;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2697:7: warning: assignment discards 'const' qual
+ifier from pointer target type [-Wdiscarded-qualifiers]
+ 2697 |   r27 = cn_var_输出目录;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c: At top level:
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2819:11: error: conflicting types for '\U000083b7
+\U000053d6\U00009519\U00008bef\U00008ba1\U00006570'; have 'long long int(struct \U00006a21\U00005757\U00004ee3\U0000780
+1\U0000751f\U00006210\U00004e0a\U00004e0b\U00006587 *)'
+ 2819 | long long 获取错误计数(struct 模块代码生成上下文* cn_var_上下文) {
+      |           ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1202:11: note: previous declaration of '\U000083b
+7\U000053d6\U00009519\U00008bef\U00008ba1\U00006570' with type 'long long int(struct \U00008bca\U000065ad\U000096c6\U00
+005408 *)'
+ 1202 | long long 获取错误计数(struct 诊断集合*);
+      |           ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2836:11: error: conflicting types for '\U000083b7
+\U000053d6\U00008b66\U0000544a\U00008ba1\U00006570'; have 'long long int(struct \U00006a21\U00005757\U00004ee3\U0000780
+1\U0000751f\U00006210\U00004e0a\U00004e0b\U00006587 *)'
+ 2836 | long long 获取警告计数(struct 模块代码生成上下文* cn_var_上下文) {
+      |           ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1201:11: note: previous declaration of '\U000083b
+7\U000053d6\U00008b66\U0000544a\U00008ba1\U00006570' with type 'long long int(struct \U00008bca\U000065ad\U000096c6\U00
+005408 *)'
+ 1201 | long long 获取警告计数(struct 诊断集合*);
+      |           ^~~~~~~~~~~~
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00009500\U00006bc1\U00006a21\U
+00005757\U000052a0\U00008f7d\U00005668':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...f7d\U00005668'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1164:6: error: assignment to 'char *' from incompati
+ble pointer type 'char **' [-Wincompatible-pointer-types]
+ 1164 |   r8 = r7;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1183:7: error: assignment to 'char *' from incompati
+ble pointer type 'char **' [-Wincompatible-pointer-types]
+ 1183 |   r13 = r12;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1201:46: error: assignment to 'struct \U00006a21\U00
+005757\U00007f13\U00005b58\U00006761\U000076ee *' from incompatible pointer type 'struct \U00006a21\U00005757\U00007f13
+\U00005b58\U00006761\U000076ee **' [-Wincompatible-pointer-types]
+ 1201 | /* P7DBG_STORE src1.kind=1 */  cn_var_条目_2 = r21;
+      |                                              ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00006dfb\U000052a0\U0000641c\U00007d
+22\U00008def\U00005f84':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1270:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1270 |   r3 = cn_var_路径;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1283:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1283 |   r8 = cn_var_路径;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1290:213: error: 'cn_var_\U00008def\U00005f84\U00009
+57f\U00005ea6' undeclared (first use in this function); did you mean 'cn_var_路径长度_0'?
+ 1290 | /* P7DBG_STORE src1.kind=7 */  cn_var_路径副本_1 = /* P7DBG_AST_EXPR kind=24 *//* P7DBG_expr kind=24 */(char*)/* P7
+DBG_expr kind=1 *//* P7DBG_expr kind=2 */分配内存(/* P7DBG_expr kind=0 */(/* P7DBG_expr kind=2 */cn_var_路径长度 + 1));
+      |                                                                                                                
+                                                                                                     ^~~~~~~~~~~~~~~
+      |                                                                                                                
+                                                                                                     cn_var_路径长度_0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1290:213: note: each undeclared identifier is report
+ed only once for each function it appears in
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1301:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1301 |   r16 = cn_var_路径;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00008bbe\U00007f6e\U00009ed8\U00008b
+a4\U0000641c\U00007d22\U00008def\U00005f84':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1337:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1337 |   r3 = cn_var_源文件目录;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U000089e3\U00006790\U00006a21\U000057
+57\U00006807\U00008bc6\U00007b26':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1405:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1405 |   r0 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1415:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1415 |   r2 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1463:7: error: assignment to 'long long int' from 'c
+har *' makes integer from pointer without a cast [-Wint-conversion]
+ 1463 |   r20 = cn_var_标识符_1->完全限定名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1464:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1464 |   r21 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1465:20: error: passing argument 1 of '\U0000590d\U0
+0005236\U00005b57\U00007b26\U00004e32' makes pointer from integer without a cast [-Wint-conversion]
+ 1465 |   r22 = 复制字符串(r20, r21);
+      |                    ^~~
+      |                    |
+      |                    long long int
+In file included from include/cnrt.h:6,
+                 from C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:4:
+include/cnlang/runtime/stdlib.h:79:24: note: expected 'char *' but argument is of type 'long long int'
+   79 | char* 复制字符串(char* dest, const char* src);
+      |                  ~~~~~~^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1480:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1480 |   r27 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1482:7: error: assignment to 'char' from 'char *' ma
+kes integer from pointer without a cast [-Wint-conversion]
+ 1482 |   r29 = &r27[r28];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1483:9: error: invalid type argument of unary '*' (h
+ave 'int')
+ 1483 |   r30 = *r29;
+      |         ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1511:7: error: assignment to 'long long int' from 'c
+har *' makes integer from pointer without a cast [-Wint-conversion]
+ 1511 |   r41 = cn_var_标识符_1->完全限定名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1512:12: error: passing argument 1 of 'cn_rt_free' m
+akes pointer from integer without a cast [-Wint-conversion]
+ 1512 |   释放内存(r41);
+      |            ^~~
+      |            |
+      |            long long int
+In file included from include/cnlang/runtime/stdlib.h:21:
+include/cnlang/runtime/memory.h:49:24: note: expected 'void *' but argument is of type 'long long int'
+   49 | void  cn_rt_free(void* ptr);
+      |                  ~~~~~~^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1537:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1537 |   r48 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1539:7: error: assignment to 'char' from 'char *' ma
+kes integer from pointer without a cast [-Wint-conversion]
+ 1539 |   r50 = &r48[r49];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1540:9: error: invalid type argument of unary '*' (h
+ave 'int')
+ 1540 |   r51 = *r50;
+      |         ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1567:211: error: 'cn_var_\U00006bb5\U0000957f\U00005
+ea6' undeclared (first use in this function); did you mean 'cn_var_段长度_7'?
+ 1567 | /* P7DBG_STORE src1.kind=7 */  cn_var_段副本_8 = /* P7DBG_AST_EXPR kind=24 *//* P7DBG_expr kind=24 */(char*)/* P7D
+BG_expr kind=1 *//* P7DBG_expr kind=2 */分配内存(/* P7DBG_expr kind=0 */(/* P7DBG_expr kind=2 */cn_var_段长度 + 1));
+      |                                                                                                                
+                                                                                                   ^~~~~~~~~~~~~
+      |                                                                                                                
+                                                                                                   cn_var_段长度_7
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1573:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1573 |   r88 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1575:7: error: assignment to 'char' from 'char *' ma
+kes integer from pointer without a cast [-Wint-conversion]
+ 1575 |   r90 = &r88[r89];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1576:9: error: invalid type argument of unary '*' (h
+ave 'int')
+ 1576 |   r91 = *r90;
+      |         ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1590:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1590 |   r53 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1592:7: error: assignment to 'char' from 'char *' ma
+kes integer from pointer without a cast [-Wint-conversion]
+ 1592 |   r55 = &r53[r54];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1593:9: error: invalid type argument of unary '*' (h
+ave 'int')
+ 1593 |   r56 = *r55;
+      |         ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1627:7: error: assignment to 'long long int' from 'c
+har **' makes integer from pointer without a cast [-Wint-conversion]
+ 1627 |   r71 = cn_var_标识符_1->路径段列表;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1629:40: error: passing argument 1 of 'cn_rt_array_g
+et_element' makes pointer from integer without a cast [-Wint-conversion]
+ 1629 |   r73 = (void*)cn_rt_array_get_element(r71, r72, 8);
+      |                                        ^~~
+      |                                        |
+      |                                        long long int
+In file included from include/cnrt.h:4:
+include/cnlang/runtime/runtime.h:70:37: note: expected 'void *' but argument is of type 'long long int'
+   70 | void* cn_rt_array_get_element(void *arr, size_t index, size_t elem_size);
+      |                               ~~~~~~^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1640:7: error: assignment to 'long long int' from 'c
+har **' makes integer from pointer without a cast [-Wint-conversion]
+ 1640 |   r76 = cn_var_标识符_1->路径段列表;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1641:12: error: passing argument 1 of 'cn_rt_free' m
+akes pointer from integer without a cast [-Wint-conversion]
+ 1641 |   释放内存(r76);
+      |            ^~~
+      |            |
+      |            long long int
+include/cnlang/runtime/memory.h:49:24: note: expected 'void *' but argument is of type 'long long int'
+   49 | void  cn_rt_free(void* ptr);
+      |                  ~~~~~~^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1642:7: error: assignment to 'long long int' from 'c
+har *' makes integer from pointer without a cast [-Wint-conversion]
+ 1642 |   r77 = cn_var_标识符_1->完全限定名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1643:12: error: passing argument 1 of 'cn_rt_free' m
+akes pointer from integer without a cast [-Wint-conversion]
+ 1643 |   释放内存(r77);
+      |            ^~~
+      |            |
+      |            long long int
+include/cnlang/runtime/memory.h:49:24: note: expected 'void *' but argument is of type 'long long int'
+   49 | void  cn_rt_free(void* ptr);
+      |                  ~~~~~~^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00009500\U00006bc1\U00006a21\U000057
+57\U00006807\U00008bc6\U00007b26':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1711:7: error: assignment to 'char *' from 'char' ma
+kes pointer from integer without a cast [-Wint-conversion]
+ 1711 |   r12 = *(char*)cn_rt_array_get_element(r10, r11, 8);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U000089e3\U00006790\U00006a21\U000057
+57\U00006587\U00004ef6\U00008def\U00005f84':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1792:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1792 |   r6 = cn_var_输出路径;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1818:7: error: assignment to 'char *' from incompati
+ble pointer type 'char **' [-Wincompatible-pointer-types]
+ 1818 |   r14 = r13;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1864:7: error: assignment to 'char *' from 'char' ma
+kes pointer from integer without a cast [-Wint-conversion]
+ 1864 |   r32 = *(char*)cn_rt_array_get_element(r30, r31, 8);
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1872:7: error: assignment to 'long long int' from 'c
+har *' makes integer from pointer without a cast [-Wint-conversion]
+ 1872 |   r37 = r35 + r36;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1875:18: error: passing argument 1 of '\U0000590d\U0
+0005236\U00005185\U00005b58' makes pointer from integer without a cast [-Wint-conversion]
+ 1875 |   r40 = 复制内存(r37, r38, r39);
+      |                  ^~~
+      |                  |
+      |                  long long int
+include/cnlang/runtime/stdlib.h:182:22: note: expected 'void *' but argument is of type 'long long int'
+  182 | void* 复制内存(void* dest, const void* src, size_t n);
+      |                ~~~~~~^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1891:7: error: assignment to 'long long int' from 'c
+har *' makes integer from pointer without a cast [-Wint-conversion]
+ 1891 |   r48 = r46 + r47;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1892:20: error: passing argument 1 of '\U0000590d\U0
+0005236\U00005b57\U00007b26\U00004e32' makes pointer from integer without a cast [-Wint-conversion]
+ 1892 |   r49 = 复制字符串(r48, ".cn");
+      |                    ^~~
+      |                    |
+      |                    long long int
+include/cnlang/runtime/stdlib.h:79:24: note: expected 'char *' but argument is of type 'long long int'
+   79 | char* 复制字符串(char* dest, const char* src);
+      |                  ~~~~~~^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1920:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1920 |   r63 = cn_var_输出路径;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00008ba1\U00007b97\U000054c8\U00005e
+0c\U0000503c':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1947:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1947 |   r0 = cn_var_字符串指针;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1962:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1962 |   r3 = cn_var_字符串指针;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1964:6: error: assignment to 'char' from 'char *' ma
+kes integer from pointer without a cast [-Wint-conversion]
+ 1964 |   r5 = &r3[r4];
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1965:8: error: invalid type argument of unary '*' (h
+ave 'int')
+ 1965 |   r6 = *r5;
+      |        ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1972:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1972 |   r10 = cn_var_字符串指针;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1974:7: error: assignment to 'char' from 'char *' ma
+kes integer from pointer without a cast [-Wint-conversion]
+ 1974 |   r12 = &r10[r11];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1975:9: error: invalid type argument of unary '*' (h
+ave 'int')
+ 1975 |   r13 = *r12;
+      |         ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00004ece\U00007f13\U00005b58\U000083
+b7\U000053d6\U00006a21\U00005757':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2030:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2030 |   r5 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2042:46: error: assignment to 'struct \U00006a21\U00
+005757\U00007f13\U00005b58\U00006761\U000076ee *' from incompatible pointer type 'struct \U00006a21\U00005757\U00007f13
+\U00005b58\U00006761\U000076ee **' [-Wincompatible-pointer-types]
+ 2042 | /* P7DBG_STORE src1.kind=1 */  cn_var_条目_2 = r12;
+      |                                              ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2046:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2046 |   r3 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2060:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2060 |   r16 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00006dfb\U000052a0\U00006a21\U000057
+57\U00005230\U00007f13\U00005b58':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2118:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2118 |   r8 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2143:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2143 |   r4 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2156:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2156 |   r17 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2174:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2174 |   r26 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00008bfb\U000053d6\U00006587\U00004e
+f6\U00005185\U00005bb9':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2218:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2218 |   r2 = cn_var_文件路径;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2228:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2228 |   r8 = cn_var_文件路径;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2275:211: error: 'cn_var_\U00006587\U00004ef6\U00005
+927\U00005c0f' undeclared (first use in this function); did you mean 'cn_var_文件大小_1'?
+ 2275 | /* P7DBG_STORE src1.kind=7 */  cn_var_缓冲区_2 = /* P7DBG_AST_EXPR kind=24 *//* P7DBG_expr kind=24 */(char*)/* P7D
+BG_expr kind=1 *//* P7DBG_expr kind=2 */分配内存(/* P7DBG_expr kind=0 */(/* P7DBG_expr kind=2 */cn_var_文件大小 + 1));
+      |                                                                                                                
+                                                                                                   ^~~~~~~~~~~~~~~
+      |                                                                                                                
+                                                                                                   cn_var_文件大小_1
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U000052a0\U00008f7d\U00006a21\U000057
+57\U00006838\U00005fc3':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2518:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2518 |   r6 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2526:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2526 |   r3 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2553:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2553 |   r16 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2634:7: error: assignment to 'long long int' from 'c
+har **' makes integer from pointer without a cast [-Wint-conversion]
+ 2634 |   r53 = &cn_var_源码内容_4;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2636:7: error: assignment to 'long long int' from 'l
+ong long int *' makes integer from pointer without a cast [-Wint-conversion]
+ 2636 |   r55 = &cn_var_源码大小_5;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2637:27: error: passing argument 2 of '\U00008bfb\U0
+00053d6\U00006587\U00004ef6\U00005185\U00005bb9' makes pointer from integer without a cast [-Wint-conversion]
+ 2637 |   r56 = 读取文件内容(r51, r53, r55);
+      |                           ^~~
+      |                           |
+      |                           long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2190:56: note: expected 'char **' but argument is of
+ type 'long long int'
+ 2190 | _Bool 读取文件内容(const char* cn_var_文件路径, char** cn_var_输出缓冲区, long long* cn_var_输出大小) {
+      |                                                 ~~~~~~~^~~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2637:32: error: passing argument 3 of '\U00008bfb\U0
+00053d6\U00006587\U00004ef6\U00005185\U00005bb9' makes pointer from integer without a cast [-Wint-conversion]
+ 2637 |   r56 = 读取文件内容(r51, r53, r55);
+      |                                ^~~
+      |                                |
+      |                                long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2637:32: note: possible fix: take the address with '
+&'
+ 2637 |   r56 = 读取文件内容(r51, r53, r55);
+      |                                ^~~
+      |                                &
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2190:86: note: expected 'long long int *' but argume
+nt is of type 'long long int'
+ 2190 | _Bool 读取文件内容(const char* cn_var_文件路径, char** cn_var_输出缓冲区, long long* cn_var_输出大小) {
+      |                                                                           ~~~~~~~~~~~^~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2656:25: error: passing argument 2 of '\U0000521b\U0
+0005efa\U0000626b\U000063cf\U00005668' makes pointer from integer without a cast [-Wint-conversion]
+ 2656 |   r65 = 创建扫描器(r63, r64);
+      |                         ^~~
+      |                         |
+      |                         long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1084:32: note: expected 'void *' but argument is of 
+type 'long long int'
+ 1084 | extern void* 创建扫描器(void*, void*);
+      |                                ^~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2726:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2726 |   r97 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U000052a0\U00008f7d\U00006a21\U000057
+57':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2768:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2768 |   r10 = cn_var_模块名;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2777:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 2777 |   r3 = cn_var_模块名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00005904\U00007406\U00005bfc\U000051
+65\U00008bed\U000053e5':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2884:9: error: incompatible types when assigning to 
+type 'struct \U00006a21\U00005757\U00004f9d\U00008d56' from type 'struct \U00006a21\U00005757\U00004f9d\U00008d56 *'
+ 2884 |   r34 = (struct 模块依赖*)cn_rt_array_get_element(r32, r33, 8);
+      |         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2902:300: error: 'cn_var_\U000065b0\U00005bb9\U00009
+1cf' undeclared (first use in this function); did you mean 'cn_var_新容量_2'?
+ 2902 | /* P7DBG_STORE src1.kind=7 */  cn_var_新数组_3 = /* P7DBG_AST_EXPR kind=24 *//* P7DBG_expr kind=24 */(struct 模块依赖*
+)/* P7DBG_expr kind=1 *//* P7DBG_expr kind=2 */重新分配内存(/* P7DBG_expr kind=14 *//* P7DBG_expr kind=2 */cn_var_当前模块->依赖列表,
+ /* P7DBG_expr kind=0 */(/* P7DBG_expr kind=2 */cn_var_新容量 * /* P7DBG_expr kind=1 *//* P7DBG_expr kind=2 */模块依赖大小()));
+      |                                                                                                                
+                                                                                                                       
+                                                                     ^~~~~~~~~~~~~
+      |                                                                                                                
+                                                                                                                       
+                                                                     cn_var_新容量_2
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U00006536\U000096c6\U00005bfc\U000051
+fa\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3183:9: error: incompatible types when assigning to 
+type 'struct \U00005bfc\U000051fa\U00007b26\U000053f7' from type 'struct \U00005bfc\U000051fa\U00007b26\U000053f7 *'
+ 3183 |   r35 = (struct 导出符号*)cn_rt_array_get_element(r33, r34, 8);
+      |         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3222:7: error: assignment to 'long long int' from 'c
+har *' makes integer from pointer without a cast [-Wint-conversion]
+ 3222 |   r42 = cn_var_函数声明_7->名称;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3247:7: error: assignment to 'long long int' from 'c
+har *' makes integer from pointer without a cast [-Wint-conversion]
+ 3247 |   r50 = cn_var_变量声明_8->名称;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c: In function '\U000062a5\U0000544a\U00009519\U00008b
+ef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3357:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 3357 |   r0 = cn_var_消息;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3362:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 3362 |   r2 = cn_var_消息;
+      |      ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U0000521b\U00005efa\U00008bca\U00
+0065ad\U000096c6\U00005408':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...6c6\U00005408'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:148:25: error: passing argument 2 of '\U00005206\U0000
+914d\U00005185\U00005b58\U00006570\U00007ec4' makes pointer from integer without a cast [-Wint-conversion]
+  148 |   r6 = 分配内存数组(48, r5);
+      |                         ^~
+      |                         |
+      |                         long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:113:38: note: expected 'void *' but argument is of typ
+e 'long long int'
+  113 | extern void* 分配内存数组(long long, void*);
+      |                                      ^~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U00008bca\U000065ad
+':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:291:7: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  291 |   r14 = cn_var_消息;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U00009519\U00008bef
+':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:329:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  329 |   r3 = cn_var_消息;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U00008b66\U0000544a
+':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:344:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  344 |   r3 = cn_var_消息;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U0000521b\U00005efa\U00006e90\U00004f4d
+\U00007f6e':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:594:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  594 |   r0 = cn_var_文件名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U000091cd\U0000590d
+\U00007b26\U000053f7\U00009519\U00008bef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:618:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  618 |   r0 = cn_var_符号名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:619:8: error: too few arguments to function '\U00005b5
+7\U00007b26\U00004e32\U0000683c\U00005f0f'; expected 3, have 2
+  619 |   r1 = 字符串格式("重复定义的符号: %s", r0);
+      |        ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:114:14: note: declared here
+  114 | extern char* 字符串格式(const char*, void*, void*);
+      |              ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U0000672a\U00005b9a
+\U00004e49\U00006807\U00008bc6\U00007b26\U00009519\U00008bef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:637:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  637 |   r0 = cn_var_标识符名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:638:8: error: too few arguments to function '\U00005b5
+7\U00007b26\U00004e32\U0000683c\U00005f0f'; expected 3, have 2
+  638 |   r1 = 字符串格式("未定义的标识符: %s", r0);
+      |        ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:114:14: note: declared here
+  114 | extern char* 字符串格式(const char*, void*, void*);
+      |              ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U00007c7b\U0000578b
+\U00004e0d\U00005339\U0000914d\U00009519\U00008bef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:657:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  657 |   r0 = cn_var_期望类型;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:658:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  658 |   r1 = cn_var_实际类型;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U00007f3a\U00005c11
+\U00008fd4\U000056de\U00008bed\U000053e5\U00009519\U00008bef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:677:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  677 |   r0 = cn_var_函数名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:678:8: error: too few arguments to function '\U00005b5
+7\U00007b26\U00004e32\U0000683c\U00005f0f'; expected 3, have 2
+  678 |   r1 = 字符串格式("函数 '%s' 缺少返回语句", r0);
+      |        ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:114:14: note: declared here
+  114 | extern char* 字符串格式(const char*, void*, void*);
+      |              ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U00005e38\U000091cf
+\U00007f3a\U00005c11\U0000521d\U000059cb\U00005316\U00009519\U00008bef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:696:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  696 |   r0 = cn_var_常量名;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:697:8: error: too few arguments to function '\U00005b5
+7\U00007b26\U00004e32\U0000683c\U00005f0f'; expected 3, have 2
+  697 |   r1 = 字符串格式("常量 '%s' 缺少初始化表达式", r0);
+      |        ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:114:14: note: declared here
+  114 | extern char* 字符串格式(const char*, void*, void*);
+      |              ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U0000671f\U0000671b
+\U00006807\U00008bb0\U00009519\U00008bef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:715:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  715 |   r0 = cn_var_期望的标记;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:716:8: error: too few arguments to function '\U00005b5
+7\U00007b26\U00004e32\U0000683c\U00005f0f'; expected 3, have 2
+  716 |   r1 = 字符串格式("期望 %s", r0);
+      |        ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:114:14: note: declared here
+  114 | extern char* 字符串格式(const char*, void*, void*);
+      |              ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U000062a5\U0000544a\U000065e0\U00006548
+\U00005b57\U00007b26\U00009519\U00008bef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:745:6: warning: assignment discards 'const' qualifier 
+from pointer target type [-Wdiscarded-qualifiers]
+  745 |   r0 = cn_var_无效字符;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:746:8: error: too few arguments to function '\U00005b5
+7\U00007b26\U00004e32\U0000683c\U00005f0f'; expected 3, have 2
+  746 |   r1 = 字符串格式("无效字符: %s", r0);
+      |        ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:114:14: note: declared here
+  114 | extern char* 字符串格式(const char*, void*, void*);
+      |              ^~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c: In function '\U00008bca\U000065ad\U000096c6\U00005408
+\U00006dfb\U000052a0':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:790:7: error: assignment to 'int *' from incompatible 
+pointer type 'struct \U00008bca\U000065ad\U00004fe1\U0000606f *' [-Wincompatible-pointer-types]
+  790 |   r11 = &r9[r10];
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:791:39: error: incompatible types when assigning to ty
+pe 'int' from type 'struct \U00008bca\U000065ad\U00004fe1\U0000606f'
+  791 | /* P7DBG_STORE src1.kind=1 */  *r11 = r8;
+      |                                       ^~
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c: In function '\U000067e5\U0000627e\U00005173\U
+0000952e\U00005b57':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...52e\U00005b57'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:176:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  176 |   r5 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:180:8: error: incompatible types when assigning to t
+ype 'struct \U00005173\U0000952e\U00005b57\U00006761\U000076ee' from type 'struct \U00005173\U0000952e\U00005b57\U00006
+761\U000076ee *'
+  180 |   r9 = r8;
+      |        ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:199:9: error: incompatible types when assigning to t
+ype 'struct \U00005173\U0000952e\U00005b57\U00006761\U000076ee' from type 'struct \U00005173\U0000952e\U00005b57\U00006
+761\U000076ee *'
+  199 |   r16 = r15;
+      |         ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c: In function '\U0000662f\U00005173\U0000952e\U00005b
+57\U00005b57\U00007b26\U00004e32':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:217:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  217 |   r0 = cn_var_名称;
+      |      ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c: In function '\U0000521b\U00005efa\U0000626b\U
+000063cf\U00005668':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...3cf\U00005668'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:208:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  208 |   r0 = cn_var_源码内容;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:230:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  230 |   r6 = cn_var_源码内容;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c: In function '\U00005f53\U0000524d\U00005b57\U00007b
+26':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:425:8: warning: dereferencing 'void *' pointer
+  425 |   r9 = *r8;
+      |        ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:425:6: error: invalid use of void expression
+  425 |   r9 = *r8;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c: In function '\U00009884\U000089c8\U00005b57\U00007b
+26':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:464:9: warning: dereferencing 'void *' pointer
+  464 |   r15 = *r14;
+      |         ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:464:7: error: invalid use of void expression
+  464 |   r15 = *r14;
+      |       ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c: In function '\U0000521b\U00005efa\U00008bcd\U0
+0005143':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...bcd\U00005143'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:951:6: warning: assignment discards 'const' qualifier
+ from pointer target type [-Wdiscarded-qualifiers]
+  951 |   r1 = cn_var_值;
+      |      ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c: In function '\U000062a5\U0000544a\U00008bcd\
+U00006cd5\U00009519\U00008bef':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...519\U00008bef'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c:222:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+  222 |   r0 = cn_var_详情;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c:223:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+  223 |   r1 = cn_var_详情;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c:244:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+  244 |   r10 = cn_var_详情;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c: In function '\U00006267\U0000884c\U00006062\U00005
+90d':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c:540:9: error: incompatible types when assigning to 
+type 'struct \U00008bcd\U00005143' from type 'void *'
+  540 |   r26 = 下一个词元(r25);
+      |         ^~~~~~~~~~
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U000053d8\U
+000091cf\U00007b26\U000053f7':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...b26\U000053f7'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:932:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  932 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U000051fd\U000065
+70\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:955:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  955 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U000053c2\U000065
+70\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:978:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  978 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U00007ed3\U000067
+84\U00004f53\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:997:6: warning: assignment discards 'const' qualifie
+r from pointer target type [-Wdiscarded-qualifiers]
+  997 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U0000679a\U00004e
+3e\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1015:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1015 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U0000679a\U00004e
+3e\U00006210\U00005458\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1034:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1034 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U00007c7b\U00007b
+26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1055:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1055 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U000063a5\U000053
+e3\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1074:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1074 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U0000521b\U00005efa\U00004f5c\U000075
+28\U000057df':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1096:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1096 |   r3 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U00008fdb\U00005165\U00004f5c\U000075
+28\U000057df':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1253:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1253 |   r1 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1284:27: error: initialization of 'long long int' fr
+om 'struct \U00004f5c\U00007528\U000057df *' makes integer from pointer without a cast [-Wint-conversion]
+ 1284 |     { long long _tmp_r0 = r20; cn_rt_array_set_element(r22, r24, &_tmp_r0, 8); }
+      |                           ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U00005728\U00005faa\U000073af\U00004f
+53\U00005185':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1352:6: error: assignment to 'long long int' from 's
+truct \U00004f5c\U00007528\U000057df *' makes integer from pointer without a cast [-Wint-conversion]
+ 1352 |   r4 = cn_var_作用域指针_0->父作用域;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1353:52: error: assignment to 'struct \U00004f5c\U00
+007528\U000057df *' from 'long long int' makes pointer from integer without a cast [-Wint-conversion]
+ 1353 | /* P7DBG_STORE src1.kind=1 */  cn_var_作用域指针_0 = r4;
+      |                                                    ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U000063d2\U00005165\U00007b26\U000053
+f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1421:27: error: initialization of 'long long int' fr
+om 'struct \U00007b26\U000053f7 *' makes integer from pointer without a cast [-Wint-conversion]
+ 1421 |     { long long _tmp_r1 = r22; cn_rt_array_set_element(r24, r26, &_tmp_r1, 8); }
+      |                           ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U00005728\U00004f5c\U00007528\U000057
+df\U000063d2\U00005165\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1495:27: error: initialization of 'long long int' fr
+om 'struct \U00007b26\U000053f7 *' makes integer from pointer without a cast [-Wint-conversion]
+ 1495 |     { long long _tmp_r2 = r22; cn_rt_array_set_element(r23, r24, &_tmp_r2, 8); }
+      |                           ^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U000067e5\U0000627e\U00005f53\U000052
+4d\U00004f5c\U00007528\U000057df\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1532:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1532 |   r9 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U000067e5\U0000627e\U00007b26\U000053
+f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1593:6: error: assignment to 'long long int' from 's
+truct \U00007b26\U000053f7 **' makes integer from pointer without a cast [-Wint-conversion]
+ 1593 |   r6 = cn_var_作用域指针_0->符号表;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1595:39: error: passing argument 1 of 'cn_rt_array_g
+et_element' makes pointer from integer without a cast [-Wint-conversion]
+ 1595 |   r8 = (void*)cn_rt_array_get_element(r6, r7, 8);
+      |                                       ^~
+      |                                       |
+      |                                       long long int
+In file included from include/cnrt.h:4,
+                 from C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:4:
+include/cnlang/runtime/runtime.h:70:37: note: expected 'void *' but argument is of type 'long long int'
+   70 | void* cn_rt_array_get_element(void *arr, size_t index, size_t elem_size);
+      |                               ~~~~~~^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1596:10: warning: dereferencing 'void *' pointer
+ 1596 |   r9 = r8->名称;
+      |          ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1596:10: error: request for member '\U0000540d\U0000
+79f0' in something not a structure or union
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1597:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1597 |   r10 = cn_var_名称;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1598:20: error: passing argument 1 of '\U00006bd4\U0
+0008f83\U00005b57\U00007b26\U00004e32' makes pointer from integer without a cast [-Wint-conversion]
+ 1598 |   r11 = 比较字符串(r9, r10);
+      |                    ^~
+      |                    |
+      |                    long long int
+In file included from include/cnrt.h:6:
+include/cnlang/runtime/stdlib.h:121:28: note: expected 'const char *' but argument is of type 'long long int'
+  121 | int 比较字符串(const char* s1, const char* s2);
+      |                ~~~~~~~~~~~~^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1609:7: error: assignment to 'long long int' from 's
+truct \U00004f5c\U00007528\U000057df *' makes integer from pointer without a cast [-Wint-conversion]
+ 1609 |   r18 = cn_var_作用域指针_0->父作用域;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1610:52: error: assignment to 'struct \U00004f5c\U00
+007528\U000057df *' from 'long long int' makes pointer from integer without a cast [-Wint-conversion]
+ 1610 | /* P7DBG_STORE src1.kind=1 */  cn_var_作用域指针_0 = r18;
+      |                                                    ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1614:7: error: assignment to 'long long int' from 's
+truct \U00007b26\U000053f7 **' makes integer from pointer without a cast [-Wint-conversion]
+ 1614 |   r13 = cn_var_作用域指针_0->符号表;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1616:40: error: passing argument 1 of 'cn_rt_array_g
+et_element' makes pointer from integer without a cast [-Wint-conversion]
+ 1616 |   r15 = (void*)cn_rt_array_get_element(r13, r14, 8);
+      |                                        ^~~
+      |                                        |
+      |                                        long long int
+include/cnlang/runtime/runtime.h:70:37: note: expected 'void *' but argument is of type 'long long int'
+   70 | void* cn_rt_array_get_element(void *arr, size_t index, size_t elem_size);
+      |                               ~~~~~~^~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U000067e5\U0000627e\U00005168\U00005c
+40\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1655:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1655 |   r9 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U00005728\U00004f5c\U00007528\U000057
+df\U000067e5\U0000627e\U00007b26\U000053f7':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1707:6: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1707 |   r7 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U000067e5\U0000627e\U00007c7b\U000062
+10\U00005458':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1737:3: error: label 'tail_rec_loop' used but not de
+fined
+ 1737 |   goto tail_rec_loop;
+      |   ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c: In function '\U000068c0\U000067e5\U00007b26\U000053
+f7\U000053ef\U00008bbf\U000095ee\U00006027':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:2015:7: error: assignment to 'long long int' from 's
+truct \U00004f5c\U00007528\U000057df *' makes integer from pointer without a cast [-Wint-conversion]
+ 2015 |   r15 = cn_var_当前_0->父作用域;
+      |       ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:2016:46: error: assignment to 'struct \U00004f5c\U00
+007528\U000057df *' from 'long long int' makes pointer from integer without a cast [-Wint-conversion]
+ 2016 | /* P7DBG_STORE src1.kind=1 */  cn_var_当前_0 = r15;
+      |                                              ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U00006574\
+U00006570\U00007c7b\U0000578b':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...c7b\U0000578b'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1075:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1075 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U00005c0f\U00006
+570\U00007c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1094:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1094 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U00006570\U00007
+ec4\U00007c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1189:9: error: invalid type argument of unary '*' (
+have 'long long int')
+ 1189 |   r11 = *(long long)cn_rt_array_get_element(r9, r10, 8);
+      |         ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U00007ed3\U00006
+784\U00004f53\U00007c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1243:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1243 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U0000679a\U00004
+e3e\U00007c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1261:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1261 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U00007c7b\U00007
+c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1281:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1281 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U000063a5\U00005
+3e3\U00007c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1299:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1299 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U0000521b\U00005efa\U0000672a\U00005
+b9a\U00004e49\U00007c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1316:6: warning: assignment discards 'const' qualif
+ier from pointer target type [-Wdiscarded-qualifiers]
+ 1316 |   r2 = cn_var_名称;
+      |      ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U00007c7b\U0000578b\U000076f8\U00005
+40c':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1325:3: error: label 'tail_rec_loop' used but not d
+efined
+ 1325 |   goto tail_rec_loop;
+      |   ^~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c: In function '\U00005b9e\U000073b0\U000063a5\U00005
+3e3':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1641:3: error: label 'tail_rec_loop' used but not d
+efined
+ 1641 |   goto tail_rec_loop;
+      |   ^~~~
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1042:6: error: conflicting types for '\U000062
+a5\U0000544a\U00009519\U00008bef'; have 'void(struct \U000089e3\U00006790\U00005668 *, enum \U00008bca\U000065ad\U00009
+519\U00008bef\U00007801,  const char *)'
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh... const char *)':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+ 1042 | void 报告错误(struct 解析器*, enum 诊断错误码, const char*);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:811:6: note: previous declaration of '\U000062a5\U00
+00544a\U00009519\U00008bef' with type 'void(struct \U00008bca\U000065ad\U000096c6\U00005408 *, enum \U00008bca\U000065a
+d\U00009519\U00008bef\U00007801,  struct \U00006e90\U00004f4d\U00007f6e,  const char *)'
+  811 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c: In function '\U00005339\U0000914d\U0000591a\U000079
+cd':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1372:19: error: incompatible type for argument 2 of 
+'\U000068c0\U000067e5'
+ 1372 |   r15 = 检查(r11, r14);
+      |                   ^~~
+      |                   |
+      |                   void *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1270:58: note: expected 'enum \U00008bcd\U00005143\U
+00007c7b\U0000578b\U0000679a\U00004e3e' but argument is of type 'void *'
+ 1270 | _Bool 检查(struct 解析器* cn_var_实例, enum 词元类型枚举 cn_var_类型) {
+      |                                        ~~~~~~~~~~~~~~~~~~^~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c: At top level:
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1395:6: error: conflicting types for '\U000062a5\U00
+00544a\U00009519\U00008bef'; have 'void(struct \U000089e3\U00006790\U00005668 *, enum \U00008bca\U000065ad\U00009519\U0
+0008bef\U00007801,  const char *)'
+ 1395 | void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_错误码, const char* cn_var_消息) {
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:811:6: note: previous declaration of '\U000062a5\U00
+00544a\U00009519\U00008bef' with type 'void(struct \U00008bca\U000065ad\U000096c6\U00005408 *, enum \U00008bca\U000065a
+d\U00009519\U00008bef\U00007801,  struct \U00006e90\U00004f4d\U00007f6e,  const char *)'
+  811 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c: In function '\U000062a5\U0000544a\U00009519\U00008b
+ef':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1433:7: warning: assignment discards 'const' qualifi
+er from pointer target type [-Wdiscarded-qualifiers]
+ 1433 |   r12 = cn_var_消息;
+      |       ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:857:6: error: conflicting types for '\U00006
+2a5\U0000544a\U00009519\U00008bef'; have 'void(struct \U000089e3\U00006790\U00005668 *, enum \U00008bca\U000065ad\U0000
+9519\U00008bef\U00007801,  const char *)'
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh... const char *)':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  857 | void 报告错误(struct 解析器*, enum 诊断错误码, const char*);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:807:6: note: previous declaration of '\U000062a5\U
+0000544a\U00009519\U00008bef' with type 'void(struct \U00008bca\U000065ad\U000096c6\U00005408 *, enum \U00008bca\U00006
+5ad\U00009519\U00008bef\U00007801,  struct \U00006e90\U00004f4d\U00007f6e,  const char *)'
+  807 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:867:6: error: conflicting types for '\U000062a5\U0
+000544a\U00009519\U00008bef'; have 'void(struct \U000089e3\U00006790\U00005668 *, enum \U00008bca\U000065ad\U00009519\U
+00008bef\U00007801,  const char *)'
+  867 | void 报告错误(struct 解析器* cn_var_实例, enum 诊断错误码 cn_var_错误码, const char* cn_var_消息);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:807:6: note: previous declaration of '\U000062a5\U
+0000544a\U00009519\U00008bef' with type 'void(struct \U00008bca\U000065ad\U000096c6\U00005408 *, enum \U00008bca\U00006
+5ad\U00009519\U00008bef\U00007801,  struct \U00006e90\U00004f4d\U00007f6e,  const char *)'
+  807 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |      ^~~~~~~~
+gcc : In file included from include/cnlang/runtime/stdlib.h:21,
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (In file include...me/stdlib.h:21,:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+                 from include/cnrt.h:6,
+                 from C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\AST节点\程序节点.c:4:
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\AST节点\程序节点.c: In function '\U0000521b\U00005efa\U00007a0b\
+U00005e8f\U00008282\U000070b9':
+include/cnlang/runtime/memory.h:111:18: error: too few arguments to function 'cn_rt_malloc'; expected 1, have 0
+  111 | #define 分配内存 cn_rt_malloc
+      |                  ^~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\AST节点\程序节点.c:164:8: note: in expansion of macro '分配内存'
+  164 |   r0 = 分配内存(/* NONE */);
+      |        ^~~~~~~~
+include/cnlang/runtime/memory.h:111:18: note: declared here
+  111 | #define 分配内存 cn_rt_malloc
+      |                  ^~~~~~~~~~~~
+include/cnlang/runtime/stdlib.h:36:7: note: in expansion of macro '分配内存'
+   36 | void* 分配内存(size_t size);
+      |       ^~~~~~~~
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\AST节点\表达式节点.c: In function '\U0000521b\U00005efa\U00
+0057fa\U00007c7b\U00008bbf\U000095ee\U00008868\U00008fbe\U00005f0f':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...fbe\U00005f0f'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\AST节点\表达式节点.c:515:6: warning: assignment discards 'const' 
+qualifier from pointer target type [-Wdiscarded-qualifiers]
+  515 |   r3 = cn_var_成员名;
+      |      ^
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c: In function '\U000089e3\U00006790\U00009
+876\U00005c42\U000058f0\U0000660e':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...8f0\U0000660e'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1072:25: error: expected expression before ';' 
+token
+ 1072 |   r11 = r5 == /* NONE */;
+      |                         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1084:25: error: expected expression before ';' 
+token
+ 1084 |   r14 = r5 == /* NONE */;
+      |                         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1161:24: error: invalid operands to binary + (h
+ave 'char *' and 'char *')
+ 1161 |   r40 = "意外的词元: " + r39;
+      |         ~~~~~~~~~~~~~~ ^
+      |         |
+      |         char *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:12: error: passing argument 1 of '\U000062
+a5\U0000544a\U00009519\U00008bef' from incompatible pointer type [-Wincompatible-pointer-types]
+ 1162 |   报告错误(r37, 诊断错误码_语法_期望标记, r40);
+      |            ^~~
+      |            |
+      |            struct \U000089e3\U00006790\U00005668 *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:810:15: note: expected 'struct \U00008bca\U0000
+65ad\U000096c6\U00005408 *' but argument is of type 'struct \U000089e3\U00006790\U00005668 *'
+  810 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |               ^~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:43: error: incompatible type for argument 
+3 of '\U000062a5\U0000544a\U00009519\U00008bef'
+ 1162 |   报告错误(r37, 诊断错误码_语法_期望标记, r40);
+      |                                           ^~~
+      |                                           |
+      |                                           char *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:810:50: note: expected 'struct \U00006e90\U0000
+4f4d\U00007f6e' but argument is of type 'char *'
+  810 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |                                                  ^~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:3: error: too few arguments to function '\
+U000062a5\U0000544a\U00009519\U00008bef'; expected 4, have 3
+ 1162 |   报告错误(r37, 诊断错误码_语法_期望标记, r40);
+      |   ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:810:6: note: declared here
+  810 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c: In function '\U000089e3\U00006790\U000053c2\U0
+0006570':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1482:22: error: invalid use of undefined type '
+struct \U000053c2\U00006570\U00008282\U000070b9'
+ 1482 |   r13 = cn_var_参数_0->数组维度;
+      |                      ^~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c: In function '\U000089e3\U00006790\U000053d8\U0
+00091cf\U000058f0\U0000660e':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1576:27: error: expected expression before ')' 
+token
+ 1576 |   r8 = 检查(r7, /* NONE */);
+      |                           ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1623:24: error: 'struct \U000058f0\U0000660e\U0
+0008282\U000070b9' has no member named '\U000053d8\U000091cf\U000058f0\U0000660e'; did you mean '\U00004f5c\U00004e3a\U
+000053d8\U000091cf\U000058f0\U0000660e'?
+ 1623 |   r25 = cn_var_节点_0->变量声明;
+      |                        ^~~~~~~~
+      |                        作为变量声明
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1624:12: error: request for member '\U00006570\
+U00007ec4\U00007ef4\U00005ea6' in something not a structure or union
+ 1624 |   r26 = r25.数组维度;
+      |            ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1636:24: error: 'struct \U000058f0\U0000660e\U0
+0008282\U000070b9' has no member named '\U000053d8\U000091cf\U000058f0\U0000660e'; did you mean '\U00004f5c\U00004e3a\U
+000053d8\U000091cf\U000058f0\U0000660e'?
+ 1636 |   r30 = cn_var_节点_0->变量声明;
+      |                        ^~~~~~~~
+      |                        作为变量声明
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1637:12: error: request for member '\U00006570\
+U00007ec4\U00005927\U00005c0f' in something not a structure or union
+ 1637 |   r31 = r30.数组大小;
+      |            ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1641:35: error: expected expression before ')' 
+token
+ 1641 |   数组大小列表添加(r31, /* NONE */);
+      |                                   ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1641:20: error: passing argument 1 of '\U000065
+70\U00007ec4\U00005927\U00005c0f\U00005217\U00008868\U00006dfb\U000052a0' makes pointer from integer without a cast [-W
+int-conversion]
+ 1641 |   数组大小列表添加(r31, /* NONE */);
+      |                    ^~~
+      |                    |
+      |                    long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:963:31: note: expected 'void *' but argument is
+ of type 'long long int'
+  963 | extern void* 数组大小列表添加(void*, void*);
+      |                               ^~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c: In function '\U000089e3\U00006790\U00006a21\U0
+0005757\U000058f0\U0000660e':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:12: error: passing argument 1 of '\U000062
+a5\U0000544a\U00009519\U00008bef' from incompatible pointer type [-Wincompatible-pointer-types]
+ 2213 |   报告错误(r5, 诊断错误码_语法_预留特性, "模块关键字暂不支持，请使用文件即模块");
+      |            ^~
+      |            |
+      |            struct \U000089e3\U00006790\U00005668 *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:810:15: note: expected 'struct \U00008bca\U0000
+65ad\U000096c6\U00005408 *' but argument is of type 'struct \U000089e3\U00006790\U00005668 *'
+  810 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |               ^~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:42: error: incompatible type for argument 
+3 of '\U000062a5\U0000544a\U00009519\U00008bef'
+ 2213 |   报告错误(r5, 诊断错误码_语法_预留特性, "模块关键字暂不支持，请使用文件即模块");
+      |                                          ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      |                                          |
+      |                                          char *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:810:50: note: expected 'struct \U00006e90\U0000
+4f4d\U00007f6e' but argument is of type 'char *'
+  810 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |                                                  ^~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:3: error: too few arguments to function '\
+U000062a5\U0000544a\U00009519\U00008bef'; expected 4, have 3
+ 2213 |   报告错误(r5, 诊断错误码_语法_预留特性, "模块关键字暂不支持，请使用文件即模块");
+      |   ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:810:6: note: declared here
+  810 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |      ^~~~~~~~
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c: In function '\U000089e3\U00006790\U00007
+c7b\U0000578b':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...c7b\U0000578b'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:12: error: passing argument 1 of '\U000062
+a5\U0000544a\U00009519\U00008bef' from incompatible pointer type [-Wincompatible-pointer-types]
+ 1033 |   报告错误(r15, 诊断错误码_语法_期望标记, "期望类型名");
+      |            ^~~
+      |            |
+      |            struct \U000089e3\U00006790\U00005668 *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:823:15: note: expected 'struct \U00008bca\U0000
+65ad\U000096c6\U00005408 *' but argument is of type 'struct \U000089e3\U00006790\U00005668 *'
+  823 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |               ^~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:43: error: incompatible type for argument 
+3 of '\U000062a5\U0000544a\U00009519\U00008bef'
+ 1033 |   报告错误(r15, 诊断错误码_语法_期望标记, "期望类型名");
+      |                                           ^~~~~~~~~~~~
+      |                                           |
+      |                                           char *
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:823:50: note: expected 'struct \U00006e90\U0000
+4f4d\U00007f6e' but argument is of type 'char *'
+  823 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |                                                  ^~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:3: error: too few arguments to function '\
+U000062a5\U0000544a\U00009519\U00008bef'; expected 4, have 3
+ 1033 |   报告错误(r15, 诊断错误码_语法_期望标记, "期望类型名");
+      |   ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:823:6: note: declared here
+  823 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |      ^~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c: In function '\U000089e3\U00006790\U00006307\U0
+0009488\U00007c7b\U0000578b':
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1265:13: error: invalid operands to binary + (h
+ave 'char *' and 'char *')
+ 1265 |   r16 = r15 + "*";
+      |             ^
+      |             |
+      |             char *
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c: In function '\U000089e3\U00006790\U0000
+57fa\U00007840\U00008868\U00008fbe\U00005f0f':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...fbe\U00005f0f'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2944:22: error: 'struct \U000089e3\U00006790\U
+00005668' has no member named '\U00008bca\U000065ad\U000096c6\U00005408'; did you mean '\U00008bca\U000065ad\U000096c6\
+U00005408\U00006307\U00009488'?
+ 2944 |   r49 = cn_var_实例->诊断集合;
+      |                      ^~~~~~~~
+      |                      诊断集合指针
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2946:12: error: 'struct \U00008bcd\U00005143' 
+has no member named '\U00004f4d\U00007f6e'
+ 2946 |   r51 = r50.位置;
+      |            ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2947:12: error: passing argument 1 of '\U00006
+2a5\U0000544a\U00009519\U00008bef' makes pointer from integer without a cast [-Wint-conversion]
+ 2947 |   报告错误(r49, 诊断错误码_语法_无效表达式, r51, "期望表达式");
+      |            ^~~
+      |            |
+      |            long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:823:15: note: expected 'struct \U00008bca\U000
+065ad\U000096c6\U00005408 *' but argument is of type 'long long int'
+  823 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |               ^~~~~~~~~~~~~~~~
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2947:45: error: incompatible type for argument
+ 3 of '\U000062a5\U0000544a\U00009519\U00008bef'
+ 2947 |   报告错误(r49, 诊断错误码_语法_无效表达式, r51, "期望表达式");
+      |                                             ^~~
+      |                                             |
+      |                                             long long int
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:823:50: note: expected 'struct \U00006e90\U000
+04f4d\U00007f6e' but argument is of type 'long long int'
+  823 | void 报告错误(struct 诊断集合*, enum 诊断错误码, struct 源位置, const char*);
+      |                                                  ^~~~~~~~~~~~~
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c: In function '\U000089e3\U00006790\U00008
+bed\U000053e5':
+At line:1 char:213
++ ... $f in $cFiles) { $output = gcc -c $f.FullName -I include 2>&1; if ($o ...
++                                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (C:\Users\ChenCh...bed\U000053e5'::String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1096:25: error: expected expression before ';' 
+token
+ 1096 |   r15 = r3 == /* NONE */;
+      |                         ^
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1106:10: error: returning 'struct \U00005757\U0
+0008bed\U000053e5\U00008282\U000070b9 *' from a function with incompatible return type 'struct \U00008bed\U000053e5\U00
+008282\U000070b9 *' [-Wincompatible-pointer-types]
+ 1106 |   return r18;
+      |          ^~~

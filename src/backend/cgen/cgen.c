@@ -2732,7 +2732,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         
         /* 性能优化：多遍扫描收集寄存器类型，确保 MEMBER_ACCESS 指令能获取正确的类型 */
         bool types_changed = true;
-        int max_iterations = 10;  // 防止无限循环
+        int max_iterations = 20;  // 【P3-1修复】增加迭代次数以支持跨基本块类型传播
         int iteration = 0;
         while (types_changed && iteration < max_iterations) {
             types_changed = false;
@@ -3177,8 +3177,10 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 // 之前没有类型，直接更新
                                 should_update = true;
                                 types_changed = true;  // 标记类型发生变化
-                            } else if (new_type->kind == CN_TYPE_POINTER && old_type->kind != CN_TYPE_POINTER) {
-                                // 新类型是指针类型，旧类型不是指针类型，更新
+                            } else if ((new_type->kind == CN_TYPE_POINTER || new_type->kind == CN_TYPE_STRING)
+                                       && old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING) {
+                                // 【P3-1修复】新类型是指针/字符串类型，旧类型不是，更新
+                                // STRING(char*)在C中是指针类型，应与POINTER同等优先级
                                 should_update = true;
                                 types_changed = true;  // 标记类型发生变化
                             } else if (new_type->kind == CN_TYPE_STRUCT && old_type->kind != CN_TYPE_STRUCT) {
@@ -3186,9 +3188,10 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 should_update = true;
                                 types_changed = true;  // 标记类型发生变化
                             }
-                            // 防止指针类型被降级为INT类型
-                            else if (old_type->kind == CN_TYPE_POINTER && new_type->kind != CN_TYPE_POINTER) {
-                                // 旧类型是指针类型，新类型不是指针类型，不更新
+                            // 【P3-1修复】防止指针/字符串类型被降级为INT类型
+                            else if ((old_type->kind == CN_TYPE_POINTER || old_type->kind == CN_TYPE_STRING)
+                                     && new_type->kind != CN_TYPE_POINTER && new_type->kind != CN_TYPE_STRING) {
+                                // 旧类型是指针/字符串类型，新类型不是，不更新
                                 should_update = false;
                             }
                             // 防止结构体类型被降级为INT类型
@@ -3207,36 +3210,40 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 types_changed = true;
                             }
                             
-                            // 【修复】对于LOAD指令，如果dest.type是指针类型，强制更新
+                            // 【P3-1修复】对于LOAD指令，如果dest.type是指针/字符串类型，强制更新
                             // 这确保LOAD指令的目标寄存器类型正确传播
                             if (scan_inst->kind == CN_IR_INST_LOAD &&
                                 scan_inst->dest.type &&
-                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
+                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
                                 should_update = true;
-                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
+                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
                                     types_changed = true;
                                 }
                             }
                             
-                            // 【修复】对于CALL指令，如果dest.type是指针类型，强制更新
+                            // 【P3-1修复】对于CALL指令，如果dest.type是指针/字符串类型，强制更新
                             // 这确保动态数组索引访问返回的指针类型正确传播
                             // 例如：cn_rt_array_get_element 返回 void*，但实际类型应该是 符号*
                             if (scan_inst->kind == CN_IR_INST_CALL &&
                                 scan_inst->dest.type &&
-                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
+                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
                                 should_update = true;
-                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
+                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
                                     types_changed = true;
                                 }
                             }
                             
-                            // 【修复】对于MEMBER_ACCESS指令，如果dest.type是指针类型，强制更新
-                            // 这确保成员访问的指针类型正确传播
+                            // 【P3-1修复】对于MEMBER_ACCESS指令，如果dest.type是指针/字符串类型，强制更新
+                            // 这确保成员访问的指针/字符串类型正确传播
+                            // 例如：cn_var_标识符_1->完全限定名 返回 char* (STRING)
                             if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS &&
                                 scan_inst->dest.type &&
-                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
+                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
                                 should_update = true;
-                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
+                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
                                     types_changed = true;
                                 }
                             }
@@ -3252,24 +3259,14 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 }
                             }
                             
-                            // 【修复】对于MOV指令，如果dest.type是指针类型，强制更新
-                            // 这确保MOV指令的指针类型正确传播（如 声明.作为函数声明 返回 函数声明*）
+                            // 【P3-1修复】对于MOV指令，如果dest.type是指针/字符串类型，强制更新
+                            // 这确保MOV指令的指针/字符串类型正确传播（如 声明.作为函数声明 返回 函数声明*）
                             if (scan_inst->kind == CN_IR_INST_MOV &&
                                 scan_inst->dest.type &&
-                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
+                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
+                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
                                 should_update = true;
-                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
-                                    types_changed = true;
-                                }
-                            }
-                            
-                            // 【修复】对于CALL指令，如果dest.type是指针类型，强制更新
-                            // 这确保函数调用的指针返回类型正确传播
-                            if (scan_inst->kind == CN_IR_INST_CALL &&
-                                scan_inst->dest.type &&
-                                scan_inst->dest.type->kind == CN_TYPE_POINTER) {
-                                should_update = true;
-                                if (!old_type || old_type->kind != CN_TYPE_POINTER) {
+                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
                                     types_changed = true;
                                 }
                             }
@@ -3382,8 +3379,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         int src1_reg_id = scan_inst->src1.as.reg_id;
                         CnType *old_src1_type = reg_types[src1_reg_id];
                         if (scan_inst->src1.type) {
-                            // 如果新类型是指针类型，或者之前没有类型，则更新
+                            // 【P3-1修复】如果新类型是指针/字符串类型，或者之前没有类型，则更新
                             if (scan_inst->src1.type->kind == CN_TYPE_POINTER ||
+                                scan_inst->src1.type->kind == CN_TYPE_STRING ||
                                 !old_src1_type) {
                                 reg_types[src1_reg_id] = scan_inst->src1.type;
                             }
@@ -3392,7 +3390,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             reg_types[src1_reg_id] = cn_type_new_primitive(CN_TYPE_INT);
                             types_changed = true;
                         }
-                        // 如果已有指针类型或结构体类型，不要用INT类型覆盖
+                        // 如果已有指针/字符串/结构体类型，不要用INT类型覆盖
                     }
                 }
                 // 收集src2寄存器类型
@@ -3401,8 +3399,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         int src2_reg_id = scan_inst->src2.as.reg_id;
                         CnType *old_src2_type = reg_types[src2_reg_id];
                         if (scan_inst->src2.type) {
-                            // 如果新类型是指针类型，或者之前没有类型，则更新
+                            // 【P3-1修复】如果新类型是指针/字符串类型，或者之前没有类型，则更新
                             if (scan_inst->src2.type->kind == CN_TYPE_POINTER ||
+                                scan_inst->src2.type->kind == CN_TYPE_STRING ||
                                 !old_src2_type) {
                                 reg_types[src2_reg_id] = scan_inst->src2.type;
                             }
@@ -3420,8 +3419,9 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             int extra_reg_id = scan_inst->extra_args[i].as.reg_id;
                             CnType *old_extra_type = reg_types[extra_reg_id];
                             if (scan_inst->extra_args[i].type) {
-                                // 如果新类型是指针类型，或者之前没有类型，则更新
+                                // 【P3-1修复】如果新类型是指针/字符串类型，或者之前没有类型，则更新
                                 if (scan_inst->extra_args[i].type->kind == CN_TYPE_POINTER ||
+                                    scan_inst->extra_args[i].type->kind == CN_TYPE_STRING ||
                                     !old_extra_type) {
                                     reg_types[extra_reg_id] = scan_inst->extra_args[i].type;
                                 }

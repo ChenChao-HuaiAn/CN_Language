@@ -1,61 +1,55 @@
-# 分析GCC错误分类
-$errors = Get-Content 'gcc_errors_only.txt' -Encoding utf8 | Select-String 'error:'
-$typeMap = @{}
+cd c:/Users/ChenChao/Documents/gitcode/CN_Language
+$errors = Get-Content 'tools/gcc_errors_after_p2.txt' -Raw
+$errorLines = $errors -split "`n" | Where-Object { $_ -match 'error:' }
 
-foreach ($e in $errors) {
-    $line = $e.ToString()
-    if ($line -match 'error: (.+?)$') {
-        $msg = $matches[1].Trim()
-        
-        # 归类
-        if ($msg -match 'too many arguments') {
-            $cat = 'A-too many arguments'
-        } elseif ($msg -match 'too few arguments') {
-            $cat = 'B-too few arguments'
-        } elseif ($msg -match 'incompatible types when assign') {
-            $cat = 'C-incompatible types (assignment)'
-        } elseif ($msg -match 'incompatible type for argument') {
-            $cat = 'D-incompatible type (argument)'
-        } elseif ($msg -match 'incompatible types when return') {
-            $cat = 'E-incompatible types (return)'
-        } elseif ($msg -match 'assignment to .+ from') {
-            $cat = 'F-assignment type mismatch'
-        } elseif ($msg -match 'initialization of .+ from') {
-            $cat = 'G-initialization type mismatch'
-        } elseif ($msg -match 'passing argument .+ of') {
-            $cat = 'H-passing argument type mismatch'
-        } elseif ($msg -match 'conflicting types') {
-            $cat = 'I-conflicting types'
-        } elseif ($msg -match 'request for member') {
-            $cat = 'J-request for member (dot vs arrow)'
-        } elseif ($msg -match 'invalid operands to binary') {
-            $cat = 'K-invalid operands (string/ptr math)'
-        } elseif ($msg -match 'invalid type argument of unary') {
-            $cat = 'L-invalid dereference (non-pointer)'
-        } elseif ($msg -match 'invalid use of void') {
-            $cat = 'M-invalid use of void expression'
-        } elseif ($msg -match 'undeclared|undec') {
-            $cat = 'N-undeclared variable'
-        } elseif ($msg -match 'expected expression') {
-            $cat = 'O-expected expression (syntax)'
-        } elseif ($msg -match 'label.*used but not defined') {
-            $cat = 'P-label not defined'
-        } elseif ($msg -match 'struct.*has no member') {
-            $cat = 'Q-struct has no member'
-        } else {
-            $cat = "Z-other: " + $msg.Substring(0, [Math]::Min(60, $msg.Length))
-        }
-        
-        if (-not $typeMap.ContainsKey($cat)) {
-            $typeMap[$cat] = 0
-        }
-        $typeMap[$cat]++
-    }
+Write-Host "=== 修复后GCC错误统计 ==="
+Write-Host "总错误数: $($errorLines.Count)"
+Write-Host ""
+
+Write-Host "=== 错误类型分布（Top 20）==="
+$errorTypes = $errorLines | ForEach-Object {
+    if ($_.ToString() -match 'error: (.+)') { $matches[1].Trim() } else { $_.ToString().Trim() }
+} | Group-Object | Sort-Object Count -Descending | Select-Object -First 20
+
+foreach ($et in $errorTypes) {
+    Write-Host "$($et.Count)|$($et.Name)"
 }
 
-Write-Host "=== 错误类型分类统计 ==="
-$typeMap.GetEnumerator() | Sort-Object Name | Format-Table Name, Value -AutoSize
 Write-Host ""
-Write-Host "=== 总计 ==="
-$total = ($typeMap.Values | Measure-Object -Sum).Sum
-Write-Host "Total errors: $total"
+Write-Host "=== 按源文件分布（Top 10）==="
+$fileErrors = $errorLines | ForEach-Object {
+    if ($_.ToString() -match '([^\\]+\.c):') { $matches[1] } else { 'unknown' }
+} | Group-Object | Sort-Object Count -Descending | Select-Object -First 10
+
+foreach ($fe in $fileErrors) {
+    Write-Host "$($fe.Count)|$($fe.Name)"
+}
+
+Write-Host ""
+Write-Host "=== 修复效果对比 ==="
+Write-Host "修复前: 348"
+Write-Host "P1修复后: 176"
+Write-Host "P1+P2修复后: $($errorLines.Count)"
+Write-Host "P1效果: -172 (-49.4%)"
+$p2effect = 176 - $errorLines.Count
+$p2pct = [math]::Round(($p2effect / 176) * 100, 1)
+Write-Host "P2效果: -$p2effect (-$p2pct%)"
+$totalEffect = 348 - $errorLines.Count
+$totalPct = [math]::Round(($totalEffect / 348) * 100, 1)
+Write-Host "总效果: -$totalEffect (-$totalPct%)"
+
+Write-Host ""
+Write-Host "=== struct相关错误 ==="
+$structErrors = $errorLines | Where-Object { $_ -match 'struct' }
+Write-Host "struct相关错误数: $($structErrors.Count)"
+$structTypes = $structErrors | ForEach-Object {
+    if ($_.ToString() -match 'error: (.+)') { $matches[1].Trim() } else { $_.ToString().Trim() }
+} | Group-Object | Sort-Object Count -Descending
+foreach ($st in $structTypes) {
+    Write-Host "$($st.Count)|$($st.Name)"
+}
+
+Write-Host ""
+Write-Host "=== 成员访问相关错误 ==="
+$memberErrors = $errorLines | Where-Object { $_ -match 'request for member|has no member' }
+Write-Host "成员访问错误数: $($memberErrors.Count)"

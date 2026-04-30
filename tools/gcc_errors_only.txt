@@ -1,0 +1,348 @@
+﻿C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1301:147: error: 'cn_var_\U00006a21\U00005757' unde
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1557:8: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1560:7: error: assignment to 'int *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1561:39: error: incompatible types when assigning t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1595:7: error: assignment to 'int *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1596:39: error: incompatible types when assigning t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1741:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1380:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1385:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1386:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1392:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1401:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1402:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1432:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1442:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1447:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1448:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1454:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1463:9: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:1464:9: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:2852:8: error: expected expression before 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:2900:9: error: incompatible types when assig
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1608:8: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1642:8: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1665:8: error: expected expression before '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1677:8: error: expected expression before '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1683:8: error: expected expression before '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1758:18: error: incompatible type for argum
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1966:9: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1983:9: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:1921:9: error: invalid type argument of unary '*' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2130:9: error: invalid type argument of unary '*' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2464:8: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2492:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2500:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2508:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2518:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2526:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:2536:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3073:12: error: 'struct \U00007c7b\U0000578b\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3441:24: error: incompatible type for argument 1 o
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3602:12: error: 'struct \U00007c7b\U0000578b\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4231:25: error: request for member '\U00007c7b\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4237:26: error: request for member '\U00005bc4\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4351:22: error: request for member '\U00007c7b\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4353:25: error: passing argument 1 of '\U00007c7b\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4477:10: error: incompatible types when returning 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4579:27: error: initialization of 'long long int' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4618:162: error: 'cn_var_\U00005c0f\U00006570\U000
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1432:11: error: conflicting types for '\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1433:11: error: conflicting types for '\U000083b7
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1754:7: error: assignment to 'char *' from 'char'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2069:7: error: assignment to 'char *' from 'char'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2311:9: error: incompatible types when assigning 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2313:7: error: assignment to 'long long int' from
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2315:25: error: passing argument 1 of '\U00007c7b
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2375:9: error: expected expression before 'struct
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2819:11: error: conflicting types for '\U000083b7
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2836:11: error: conflicting types for '\U000083b7
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1164:6: error: assignment to 'char *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1183:7: error: assignment to 'char *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1201:46: error: assignment to 'struct \U00006a21\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1290:213: error: 'cn_var_\U00008def\U00005f84\U00009
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1463:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1465:20: error: passing argument 1 of '\U0000590d\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1482:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1483:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1511:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1512:12: error: passing argument 1 of 'cn_rt_free' m
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1539:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1540:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1567:211: error: 'cn_var_\U00006bb5\U0000957f\U00005
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1575:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1576:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1592:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1593:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1627:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1629:40: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1640:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1641:12: error: passing argument 1 of 'cn_rt_free' m
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1642:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1643:12: error: passing argument 1 of 'cn_rt_free' m
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1711:7: error: assignment to 'char *' from 'char' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1818:7: error: assignment to 'char *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1864:7: error: assignment to 'char *' from 'char' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1872:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1875:18: error: passing argument 1 of '\U0000590d\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1891:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1892:20: error: passing argument 1 of '\U0000590d\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1964:6: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1965:8: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1974:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1975:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2042:46: error: assignment to 'struct \U00006a21\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2275:211: error: 'cn_var_\U00006587\U00004ef6\U00005
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2546:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2547:17: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2547:3: error: too few arguments to function '\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2562:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2563:17: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2563:3: error: too few arguments to function '\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2594:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2595:17: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2595:3: error: too few arguments to function '\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2634:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2636:7: error: assignment to 'long long int' from 'l
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2637:27: error: passing argument 2 of '\U00008bfb\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2637:32: error: passing argument 3 of '\U00008bfb\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2643:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2644:17: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2644:3: error: too few arguments to function '\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2656:25: error: passing argument 2 of '\U0000521b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2884:9: error: incompatible types when assigning to 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2902:300: error: 'cn_var_\U000065b0\U00005bb9\U00009
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3183:9: error: incompatible types when assigning to 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3222:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3247:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:148:25: error: passing argument 2 of '\U00005206\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:295:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:330:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:330:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:345:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:345:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:440:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:449:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:619:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:624:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:624:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:638:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:643:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:643:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:664:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:664:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:678:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:683:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:683:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:697:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:702:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:702:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:716:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:721:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:721:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:732:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:732:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:746:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:751:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:751:3: error: too few arguments to function '\U000062a
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:790:7: error: assignment to 'int *' from incompatible 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:791:39: error: incompatible types when assigning to ty
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:794:9: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:795:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:183:8: error: incompatible types when assigning to t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:202:9: error: incompatible types when assigning to t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:425:6: error: invalid use of void expression
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:464:7: error: invalid use of void expression
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1579:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1583:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1601:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1617:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1621:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1630:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1637:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1644:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1659:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1663:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1681:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1685:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1703:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1719:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1723:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1740:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1756:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1760:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1777:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1781:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1799:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1803:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1813:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1820:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1827:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1834:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1841:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1848:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1855:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1862:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1869:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1876:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1883:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1890:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:1897:48: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:202:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:211:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:220:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:229:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:238:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:247:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:256:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:265:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:274:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:283:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:292:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:301:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:310:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:319:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:328:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:337:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:346:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:355:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:364:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:373:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:382:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:391:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:400:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:409:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:418:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:427:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:436:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:445:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:454:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:463:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:472:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:481:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:490:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:499:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:508:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:517:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:526:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:535:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:544:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:553:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:562:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:571:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:580:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:589:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:598:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:607:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:616:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:625:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:634:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:643:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:652:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:661:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:670:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:679:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:688:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:697:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:706:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:715:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:724:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:733:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:742:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:751:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:760:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:769:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:778:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:787:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:796:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:805:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:814:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:823:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:832:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:841:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:850:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:859:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:868:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:877:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:886:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:895:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:904:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:913:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:922:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:931:18: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:976:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:985:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:990:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1002:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1007:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1019:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1024:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1036:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1041:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1053:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1058:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1073:16: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1088:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1093:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1107:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1112:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1126:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\词元.c:1131:14: error: expected expression before 'struct'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c:540:9: error: incompatible types when assigning to 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1284:27: error: initialization of 'long long int' fr
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1352:6: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1353:52: error: assignment to 'struct \U00004f5c\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1421:27: error: initialization of 'long long int' fr
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1495:27: error: initialization of 'long long int' fr
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1593:6: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1595:39: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1596:10: error: request for member '\U0000540d\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1598:20: error: passing argument 1 of '\U00006bd4\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1609:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1610:52: error: assignment to 'struct \U00004f5c\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1614:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1616:40: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1737:3: error: label 'tail_rec_loop' used but not de
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:2015:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:2016:46: error: assignment to 'struct \U00004f5c\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1189:9: error: invalid type argument of unary '*' (
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1325:3: error: label 'tail_rec_loop' used but not d
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1641:3: error: label 'tail_rec_loop' used but not d
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1042:6: error: conflicting types for '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1372:19: error: incompatible type for argument 2 of 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1395:6: error: conflicting types for '\U000062a5\U00
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:857:6: error: conflicting types for '\U00006
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:867:6: error: conflicting types for '\U000062a5\U0
+include/cnlang/runtime/memory.h:111:18: error: too few arguments to function 'cn_rt_malloc'; expected 1, have 0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1072:25: error: expected expression before ';' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1084:25: error: expected expression before ';' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1161:24: error: invalid operands to binary + (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:12: error: passing argument 1 of '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:43: error: incompatible type for argument 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:3: error: too few arguments to function '\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1482:22: error: invalid use of undefined type '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1576:27: error: expected expression before ')' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1623:24: error: 'struct \U000058f0\U0000660e\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1624:12: error: request for member '\U00006570\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1636:24: error: 'struct \U000058f0\U0000660e\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1637:12: error: request for member '\U00006570\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1641:35: error: expected expression before ')' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1641:20: error: passing argument 1 of '\U000065
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:12: error: passing argument 1 of '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:42: error: incompatible type for argument 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:3: error: too few arguments to function '\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2365:10: error: expected expression before 'str
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2376:10: error: expected expression before 'str
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2387:10: error: expected expression before 'str
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2398:10: error: expected expression before 'str
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2402:10: error: expected expression before 'str
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:12: error: passing argument 1 of '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:43: error: incompatible type for argument 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:3: error: too few arguments to function '\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1265:13: error: invalid operands to binary + (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2944:22: error: 'struct \U000089e3\U00006790\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2946:12: error: 'struct \U00008bcd\U00005143' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2947:12: error: passing argument 1 of '\U00006
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2947:45: error: incompatible type for argument
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1096:25: error: expected expression before ';' 
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1106:10: error: returning 'struct \U00005757\U0
