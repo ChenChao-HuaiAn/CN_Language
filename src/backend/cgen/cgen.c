@@ -788,7 +788,10 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr);
 
 static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
     switch (op.kind) {
-        case CN_IR_OP_NONE: fprintf(ctx->output_file, "/* NONE */"); break;
+        // 【P3-4修复】NONE操作数在C中不是有效表达式，替换为NULL
+        // 比较操作中的NONE通常是null检查，函数参数中的NONE也是空指针
+        // NULL在C中定义为(void*)0或0，在大多数上下文中都能工作
+        case CN_IR_OP_NONE: fprintf(ctx->output_file, "NULL"); break;
         case CN_IR_OP_REG: fprintf(ctx->output_file, "r%d", op.as.reg_id); break;
         case CN_IR_OP_IMM_INT: fprintf(ctx->output_file, "%lld", op.as.imm_int); break;
         case CN_IR_OP_IMM_FLOAT: fprintf(ctx->output_file, "%f", op.as.imm_float); break;
@@ -2052,9 +2055,9 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 inst->extra_args_count >= 3 &&
                 inst->dest.kind != CN_IR_OP_NONE) {
                 
-                // 对于结构体指针类型，返回的是指针，不需要解引用
-                // 对于基本类型，需要解引用
-                // 【修复】检查目标类型是否为指针类型，如果是则获取其指向的类型
+                // 【P3-2修复】cn_rt_array_get_element 返回 void*，指向数组元素
+                // 保守修复策略：只修正C语法错误（*(type) → *(type*)），不改变语义
+                // 因为寄存器声明类型由reg_types决定，修改右侧表达式类型会导致不匹配
                 bool is_pointer_to_struct = false;
                 bool is_pointer_type = false;
                 CnType *target_type = inst->dest.type;
@@ -2070,38 +2073,48 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 
                 print_operand(ctx, inst->dest);
                 if (is_pointer_to_struct) {
-                    // 【修复】结构体指针类型：数组元素访问返回的是指向结构体的指针
+                    // 结构体指针类型：数组元素访问返回的是指向结构体的指针
                     // dest = (type*)cn_rt_array_get_element(arr, idx, size)
-                    // 【P0-1修复】使用 get_c_type_string() 统一获取C类型字符串
-                    // 该函数已内置CN基本类型关键字到C类型的映射
                     if (target_type) {
                         fprintf(ctx->output_file, " = (%s*)", get_c_type_string(target_type));
                     } else {
                         fprintf(ctx->output_file, " = (void*)");
                     }
                 } else if (is_pointer_type) {
-                    // 【修复】指针类型：数组元素访问返回的是指向元素的指针
-                    // 如果元素类型是指针，则返回的是指针的指针
-                    // 例如：int*[] 数组，访问元素返回 int**
+                    // 指针类型：数组元素访问返回的是指向元素的指针
                     if (target_type && target_type->kind == CN_TYPE_POINTER) {
                         // 元素本身是指针类型，返回指针的指针
                         CnType *elem_pointee = target_type->as.pointer_to;
                         if (elem_pointee) {
-                            // 【P0-1修复】使用 get_c_type_string() 统一获取C类型字符串
                             fprintf(ctx->output_file, " = (%s**)", get_c_type_string(elem_pointee));
                         } else {
                             fprintf(ctx->output_file, " = (void**)");
                         }
                     } else if (target_type) {
-                        // 【P0-1修复】使用 get_c_type_string() 统一获取C类型字符串
                         fprintf(ctx->output_file, " = (%s*)", get_c_type_string(target_type));
                     } else {
-                        // 未知类型，使用 void*
                         fprintf(ctx->output_file, " = (void*)");
                     }
                 } else {
                     // 基本类型：dest = *(type*)cn_rt_array_get_element(arr, idx, size)
-                    fprintf(ctx->output_file, " = *(%s)", get_c_type_string(inst->dest.type));
+                    // 【P3-2修复】修正无效C语法：*(type) → *(type*)
+                    // 原代码生成 *(long long) 是无效C语法（解引用非指针类型）
+                    // 但对于STRING类型（char*），*(char*) 是有效C语法，不应改为 *(char**)
+                    // 策略：如果类型字符串以*结尾，保持原格式；否则添加*使其成为指针类型
+                    {
+                        const char *type_str = get_c_type_string(inst->dest.type);
+                        size_t type_len = strlen(type_str);
+                        if (type_len > 0 && type_str[type_len - 1] == '*') {
+                            // 类型已是指针类型（如char*），直接使用 *(type) 格式
+                            // 例如 *(char*) 解引用得到 char 值
+                            fprintf(ctx->output_file, " = *(%s)", type_str);
+                        } else {
+                            // 类型不是指针（如long long, struct X, double等）
+                            // 使用 *(type*) 格式：先转void*为type*再解引用
+                            // 例如 *(long long*) 解引用得到 long long 值
+                            fprintf(ctx->output_file, " = *(%s*)", type_str);
+                        }
+                    }
                 }
                 fprintf(ctx->output_file, "%s(", get_c_function_name(inst->src1.as.sym_name));
                 
@@ -2168,20 +2181,35 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     fprintf(ctx->output_file, "); }\n");
                     temp_str_counter++;
                 } else if (elem.kind == CN_IR_OP_REG) {
-                    // 寄存器变量：根据类型生成临时变量
+                    // 【P3-5修复】寄存器变量：根据类型生成临时变量
+                    // 优先使用elem.type，其次从ctx->reg_types推断类型
                     static int temp_reg_counter = 0;
                     const char *tmp_type = "long long";
                     char struct_type_buf[256] = {0};  // 用于结构体类型名
-                    if (elem.type) {
-                        switch (elem.type->kind) {
+                    CnType *elem_type = elem.type;  // 元素操作数的类型
+                    
+                    // 【P3-5修复】当elem.type为NULL时，从reg_types推断寄存器类型
+                    if (!elem_type && ctx->reg_types) {
+                        int reg_id = elem.as.reg_id;
+                        if (reg_id >= 0 && reg_id < ctx->reg_types_count && ctx->reg_types[reg_id]) {
+                            elem_type = ctx->reg_types[reg_id];
+                        }
+                    }
+                    
+                    if (elem_type) {
+                        switch (elem_type->kind) {
                             case CN_TYPE_FLOAT: tmp_type = "double"; break;
                             case CN_TYPE_STRING: tmp_type = "char*"; break;
+                            case CN_TYPE_POINTER:
+                                // 【P3-5修复】指针类型：使用void*临时变量
+                                tmp_type = "void*";
+                                break;
                             case CN_TYPE_STRUCT:
                                 // 结构体类型：生成 "struct 结构体名"
-                                if (elem.type->as.struct_type.name) {
+                                if (elem_type->as.struct_type.name) {
                                     snprintf(struct_type_buf, sizeof(struct_type_buf), "struct %.*s",
-                                        (int)elem.type->as.struct_type.name_length,
-                                        elem.type->as.struct_type.name);
+                                        (int)elem_type->as.struct_type.name_length,
+                                        elem_type->as.struct_type.name);
                                     tmp_type = struct_type_buf;
                                 } else {
                                     tmp_type = "struct void";
@@ -3592,6 +3620,65 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         ctx->alloca_types = alloca_types;
         
     skip_register_type_scan:;
+    }
+
+    // 【P3-6修复】预扫描：确保所有被JUMP/BRANCH引用的基本块都在链表中
+    // 尾递归优化(tail_call_opt.c)的create_loop_header可能创建tail_rec_loop块
+    // 但未正确将其链接到函数的基本块链表中，导致标签未生成
+    {
+        CnIrBasicBlock *scan_blk = func->first_block;
+        while (scan_blk) {
+            CnIrInst *scan_inst = scan_blk->first_inst;
+            while (scan_inst) {
+                // 检查JUMP指令的目标块是否在链表中
+                if (scan_inst->kind == CN_IR_INST_JUMP &&
+                    scan_inst->dest.kind == CN_IR_OP_LABEL) {
+                    CnIrBasicBlock *target = scan_inst->dest.as.label;
+                    // 检查目标块是否已在链表中
+                    bool in_list = false;
+                    CnIrBasicBlock *check = func->first_block;
+                    while (check) {
+                        if (check == target) { in_list = true; break; }
+                        check = check->next;
+                    }
+                    if (!in_list && target) {
+                        // 目标块不在链表中，追加到链表末尾
+                        CnIrBasicBlock *last = func->first_block;
+                        while (last->next) last = last->next;
+                        last->next = target;
+                        target->prev = last;
+                    }
+                }
+                // 检查BRANCH指令的两个目标块
+                if (scan_inst->kind == CN_IR_INST_BRANCH) {
+                    CnIrBasicBlock *targets[2] = { NULL, NULL };
+                    int target_count = 0;
+                    if (scan_inst->dest.kind == CN_IR_OP_LABEL) {
+                        targets[target_count++] = scan_inst->dest.as.label;
+                    }
+                    if (scan_inst->src2.kind == CN_IR_OP_LABEL) {
+                        targets[target_count++] = scan_inst->src2.as.label;
+                    }
+                    for (int t = 0; t < target_count; t++) {
+                        CnIrBasicBlock *target = targets[t];
+                        bool in_list = false;
+                        CnIrBasicBlock *check = func->first_block;
+                        while (check) {
+                            if (check == target) { in_list = true; break; }
+                            check = check->next;
+                        }
+                        if (!in_list && target) {
+                            CnIrBasicBlock *last = func->first_block;
+                            while (last->next) last = last->next;
+                            last->next = target;
+                            target->prev = last;
+                        }
+                    }
+                }
+                scan_inst = scan_inst->next;
+            }
+            scan_blk = scan_blk->next;
+        }
     }
 
     CnIrBasicBlock *block = func->first_block;

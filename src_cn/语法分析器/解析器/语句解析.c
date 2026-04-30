@@ -1093,7 +1093,7 @@ struct 语句节点* 解析语句(struct 解析器* cn_var_实例) {
   if (r14) goto case_body_1278; else goto switch_check_1292;
 
   switch_check_1292:
-  r15 = r3 == /* NONE */;
+  r15 = r3 == NULL;
   if (r15) goto case_body_1279; else goto switch_check_1293;
 
   switch_check_1293:

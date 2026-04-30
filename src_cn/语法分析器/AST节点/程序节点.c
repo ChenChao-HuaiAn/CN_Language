@@ -161,7 +161,7 @@ struct 程序节点* 创建程序节点() {
   entry:
   struct 程序节点* cn_var_节点_0;
   程序节点大小();
-  r0 = 分配内存(/* NONE */);
+  r0 = 分配内存(NULL);
 /* P7DBG_STORE src1.kind=1 */  cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 == 0;

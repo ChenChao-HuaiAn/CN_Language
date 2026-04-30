@@ -1614,6 +1614,7 @@ _Bool 实现接口(struct 类型信息* cn_var_类类型, struct 类型信息* c
   long long r0, r1, r2, r3, r4, r5, r6, r7, r8, r9, r10, r11, r12, r13, r14, r15, r16, r17, r18, r19, r20, r21, r22, r23, r24, r25, r26, r27, r28, r29, r30, r31, r32, r33;
 
   entry:
+  tail_rec_loop:
   goto tail_rec_loop;
   return 0;
 }

@@ -1069,7 +1069,7 @@ struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
   if (r10) goto case_body_1420; else goto switch_check_1431;
 
   switch_check_1431:
-  r11 = r5 == /* NONE */;
+  r11 = r5 == NULL;
   if (r11) goto case_body_1421; else goto switch_check_1432;
 
   switch_check_1432:
@@ -1081,7 +1081,7 @@ struct 声明节点* 解析顶层声明(struct 解析器* cn_var_实例) {
   if (r13) goto case_body_1423; else goto switch_check_1434;
 
   switch_check_1434:
-  r14 = r5 == /* NONE */;
+  r14 = r5 == NULL;
   if (r14) goto case_body_1424; else goto switch_check_1435;
 
   switch_check_1435:
@@ -1573,7 +1573,7 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
 
   if_merge_1489:
   r7 = cn_var_实例;
-  r8 = 检查(r7, /* NONE */);
+  r8 = 检查(r7, NULL);
   if (r8) goto if_then_1490; else goto if_merge_1491;
 
   if_then_1490:
@@ -1638,7 +1638,7 @@ struct 声明节点* 解析变量声明(struct 解析器* cn_var_实例) {
   r32 = cn_var_实例->当前词元;
   r33 = r32.值;
   字符串转整数(r33);
-  数组大小列表添加(r31, /* NONE */);
+  数组大小列表添加(r31, NULL);
   r34 = cn_var_实例;
   前进词元(r34);
   goto if_merge_1501;
