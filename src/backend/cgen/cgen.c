@@ -419,6 +419,8 @@ static bool cgen_is_string_concat(CnAstExpr *expr) {
 
 // 前向声明
 static bool is_enum_type_name(const char *name, size_t name_len);
+static bool is_enum_member_name(const char *name);
+static bool is_struct_variable_name(const char *name);
 static bool is_type_already_generated(const char *name, size_t name_len);
 static void mark_type_as_generated(const char *name, size_t name_len);
 
@@ -832,10 +834,146 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
                 }
             }
             
+            // 【P7修复】检查是否为结构体类型名（如"类型信息"、"类型节点"等）
+            // 当SYMBOL操作数的type是CN_TYPE_STRUCT，或者在全局作用域中作为结构体类型存在时，
+            // 说明这是一个类型名引用，不是变量引用，应生成 "struct 类型名" 而非 "cn_var_类型名"
+            // 典型场景：类型大小(类型信息) 中的"类型信息"是类型名
+            bool is_struct_type_name = false;
+            if (!is_local_var_by_name && op.as.sym_name) {
+                // 方法1：通过type字段检查
+                if (op.type && op.type->kind == CN_TYPE_STRUCT) {
+                    // 【修复P9】先检查符号名是否匹配枚举成员模式
+                    // 自举编译时枚举类型被错误标记为CN_TYPE_STRUCT，
+                    // 枚举成员符号名格式为"枚举类型名_成员名"，不应生成struct前缀
+                    if (op.as.sym_name && is_enum_member_name(op.as.sym_name)) {
+                        is_struct_type_name = false;
+                    }
+                    // 【修复P9】检查是否是结构体变量（而非结构体类型名）
+                    // 在C代码生成中，变量名不需要struct前缀，只有类型声明才需要
+                    // 例如：cn_var_操作数.种类 → 变量访问，不需要struct
+                    //       struct 类型名 变量名 → 类型声明，需要struct
+                    else if (op.as.sym_name && is_struct_variable_name(op.as.sym_name)) {
+                        is_struct_type_name = false;
+                    }
+                    // 【修复P9】检查全局作用域中是否作为变量/函数/枚举成员存在
+                    // 关键原则：只有确认是类型名时才添加struct前缀，否则不添加
+                    // 添加struct前缀错误会导致编译失败，不添加最多影响sizeof等少数场景
+                    else if (ctx->global_scope) {
+                        CnSemSymbol *g_sym = cn_sem_scope_lookup(ctx->global_scope,
+                            op.as.sym_name, strlen(op.as.sym_name));
+                        if (g_sym) {
+                            if (g_sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                                // 在全局作用域中确认为结构体类型名
+                                is_struct_type_name = true;
+                            } else {
+                                // 在全局作用域中是变量/函数/枚举成员等，不是类型名
+                                is_struct_type_name = false;
+                            }
+                        } else {
+                            // 符号不在全局作用域中，检查是否是已生成的类型名
+                            size_t sym_name_len = strlen(op.as.sym_name);
+                            if (is_type_already_generated(op.as.sym_name, sym_name_len) &&
+                                !is_enum_type_name(op.as.sym_name, sym_name_len)) {
+                                // 是已生成的结构体类型名（排除枚举类型）
+                                is_struct_type_name = true;
+                            } else {
+                                // 不是已知类型名，可能是局部变量或未注册的符号
+                                is_struct_type_name = false;
+                            }
+                        }
+                    }
+                    else {
+                        // 没有全局作用域，检查是否是已生成的类型名
+                        size_t sym_name_len = strlen(op.as.sym_name);
+                        if (is_type_already_generated(op.as.sym_name, sym_name_len) &&
+                            !is_enum_type_name(op.as.sym_name, sym_name_len)) {
+                            is_struct_type_name = true;
+                        } else {
+                            is_struct_type_name = false;
+                        }
+                    }
+                }
+                // 方法2：通过全局作用域检查（当type字段不正确时）
+                if (!is_struct_type_name && ctx->global_scope) {
+                    CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                        op.as.sym_name, strlen(op.as.sym_name));
+                    if (sym && sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                        // 【修复P9】即使是结构体类型名，如果符号名匹配变量命名模式，
+                        // 也不应添加struct前缀（全局作用域中可能同时存在类型名和变量名）
+                        if (op.as.sym_name && is_struct_variable_name(op.as.sym_name)) {
+                            is_struct_type_name = false;
+                        } else {
+                            is_struct_type_name = true;
+                        }
+                    }
+                }
+                // 方法3：检查符号名是否不是当前函数的局部变量
+                // 如果符号名不匹配任何ALLOCA变量和函数参数，且不是枚举成员，
+                // 则可能是类型名
+                if (!is_struct_type_name && ctx->current_func) {
+                    bool is_alloca_var = false;
+                    CnIrBasicBlock *chk_block = ctx->current_func->first_block;
+                    while (chk_block && !is_alloca_var) {
+                        CnIrInst *chk_inst = chk_block->first_inst;
+                        while (chk_inst) {
+                            if (chk_inst->kind == CN_IR_INST_ALLOCA &&
+                                chk_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                chk_inst->dest.as.sym_name &&
+                                names_match_with_suffix(chk_inst->dest.as.sym_name, op.as.sym_name)) {
+                                is_alloca_var = true;
+                                break;
+                            }
+                            chk_inst = chk_inst->next;
+                        }
+                        chk_block = chk_block->next;
+                    }
+                    // 也检查函数参数
+                    if (!is_alloca_var) {
+                        for (size_t p = 0; p < ctx->current_func->param_count; p++) {
+                            if (ctx->current_func->params[p].kind == CN_IR_OP_SYMBOL &&
+                                ctx->current_func->params[p].as.sym_name &&
+                                names_match_with_suffix(ctx->current_func->params[p].as.sym_name, op.as.sym_name)) {
+                                is_alloca_var = true;
+                                break;
+                            }
+                        }
+                    }
+                    // 如果不是局部变量也不是函数参数，且在全局作用域中不是枚举成员/变量/函数，
+                    // 则当作类型名处理
+                    if (!is_alloca_var) {
+                        bool is_known_non_type = false;
+                        if (ctx->global_scope) {
+                            CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                op.as.sym_name, strlen(op.as.sym_name));
+                            if (sym && (sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER ||
+                                        sym->kind == CN_SEM_SYMBOL_VARIABLE ||
+                                        sym->kind == CN_SEM_SYMBOL_FUNCTION)) {
+                                is_known_non_type = true;  // 不是类型名
+                            }
+                        }
+                        // 【修复P9】限定名查找失败时，检查符号名前缀是否匹配已知枚举类型名
+                        if (!is_known_non_type && op.as.sym_name) {
+                            is_known_non_type = is_enum_member_name(op.as.sym_name);
+                        }
+                        // 【修复P9】检查符号名是否匹配变量命名模式
+                        if (!is_known_non_type && op.as.sym_name) {
+                            is_known_non_type = is_struct_variable_name(op.as.sym_name);
+                        }
+                        if (!is_known_non_type) {
+                            is_struct_type_name = true;
+                        }
+                    }
+                }
+            }
+            
             // 只有当类型是枚举且不是局部变量名格式时，才当作枚举成员处理
             if (op.type && op.type->kind == CN_TYPE_ENUM && !is_local_var_by_name) {
                 // 枚举成员：直接输出符号名
                 fprintf(ctx->output_file, "%s", op.as.sym_name);
+            } else if (is_struct_type_name) {
+                // 【P7修复】结构体类型名：生成 "struct 类型名"
+                // 这解决了 类型大小(cn_var_类型信息) 中类型名被错误添加cn_var_前缀的问题
+                fprintf(ctx->output_file, "struct %s", op.as.sym_name);
             } else {
                 // 【调试】检查符号名是否包含下划线（可能是枚举成员但类型信息丢失）
                 // 枚举成员名格式为 "枚举类型名_成员名"
@@ -847,7 +985,7 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
                         CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope, op.as.sym_name, strlen(op.as.sym_name));
                         if (sym && sym->kind == CN_SEM_SYMBOL_ENUM_MEMBER) {
                             is_enum_member_by_name = true;
-                            }
+                        }
                     }
                     
                     // 【修复】检查符号名是否符合枚举成员命名模式
@@ -886,7 +1024,7 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
                                     // 如果包含中文且下划线后面不是数字，可能是枚举成员
                                     if (has_chinese) {
                                         is_enum_member_by_name = true;
-                                        }
+                                    }
                                 }
                             }
                         }
@@ -897,23 +1035,104 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
                     // 枚举成员：直接输出符号名
                     fprintf(ctx->output_file, "%s", op.as.sym_name);
                 } else {
-                    // 普通变量：添加 cn_var_ 前缀
-                    fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name));
+                    // 【P7修复】普通变量：添加 cn_var_ 前缀
+                    // 但需要检查符号名是否是当前函数中带后缀的ALLOCA变量
+                    // 如果符号名没有数字后缀，但当前函数有带后缀的同名变量，
+                    // 则使用带后缀的变量名（解决变量名映射不一致问题）
+                    const char *final_name = op.as.sym_name;
+                    bool needs_suffix_lookup = false;
+                    
+                    // 检查符号名是否没有数字后缀（即不是局部变量名格式）
+                    if (!is_local_var_by_name && op.as.sym_name) {
+                        // 检查是否在全局作用域中作为结构体类型名存在
+                        // 如果是类型名，不需要查找后缀
+                        bool is_type_in_scope = false;
+                        if (ctx->global_scope) {
+                            CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                op.as.sym_name, strlen(op.as.sym_name));
+                            if (sym && (sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                        sym->kind == CN_SEM_SYMBOL_ENUM)) {
+                                is_type_in_scope = true;
+                            }
+                        }
+                        
+                        if (!is_type_in_scope) {
+                            needs_suffix_lookup = true;
+                        }
+                    }
+                    
+                    if (needs_suffix_lookup && ctx->current_func) {
+                        // 在当前函数的ALLOCA指令中查找带后缀的匹配变量名
+                        const char *matched_name = NULL;
+                        CnIrBasicBlock *lookup_block = ctx->current_func->first_block;
+                        while (lookup_block && !matched_name) {
+                            CnIrInst *lookup_inst = lookup_block->first_inst;
+                            while (lookup_inst) {
+                                if (lookup_inst->kind == CN_IR_INST_ALLOCA &&
+                                    lookup_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                    lookup_inst->dest.as.sym_name &&
+                                    names_match_with_suffix(lookup_inst->dest.as.sym_name, op.as.sym_name)) {
+                                    // 找到匹配的ALLOCA变量，使用其完整名称（带后缀）
+                                    matched_name = lookup_inst->dest.as.sym_name;
+                                    break;
+                                }
+                                lookup_inst = lookup_inst->next;
+                            }
+                            lookup_block = lookup_block->next;
+                        }
+                        
+                        // 也检查函数参数
+                        if (!matched_name) {
+                            for (size_t p = 0; p < ctx->current_func->param_count; p++) {
+                                if (ctx->current_func->params[p].kind == CN_IR_OP_SYMBOL &&
+                                    ctx->current_func->params[p].as.sym_name &&
+                                    names_match_with_suffix(ctx->current_func->params[p].as.sym_name, op.as.sym_name)) {
+                                    matched_name = ctx->current_func->params[p].as.sym_name;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (matched_name) {
+                            // 使用匹配到的带后缀的变量名
+                            fprintf(ctx->output_file, "%s", get_c_variable_name(matched_name));
+                        } else {
+                            // 没有找到匹配，使用原始名称
+                            fprintf(ctx->output_file, "%s", get_c_variable_name(op.as.sym_name));
+                        }
+                    } else {
+                        // 不需要查找后缀，直接使用原始名称
+                        fprintf(ctx->output_file, "%s", get_c_variable_name(final_name));
+                    }
                 }
             }
             break;
         case CN_IR_OP_LABEL: fprintf(ctx->output_file, "%s", op.as.label->name ? op.as.label->name : "unnamed_label"); break;
         case CN_IR_OP_AST_EXPR:
             // AST表达式：直接生成 C 代码（用于结构体字面量等）
+            // 【调试P7】写入到输出文件中作为注释
+            fprintf(ctx->output_file, "/* P7DBG_AST_EXPR kind=%d */",
+                     op.as.ast_expr ? op.as.ast_expr->kind : -1);
             cn_cgen_expr_simple(ctx, op.as.ast_expr);
             break;
-        default: fprintf(ctx->output_file, "/* UNKNOWN */"); break;
+        default:
+            fprintf(ctx->output_file, "/* P7DBG_UNKNOWN_OP kind=%d */", op.kind);
+            break;
     }
 }
 
 // 生成简单表达式的 C 代码（用于模块变量初始化）
 static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
     if (!ctx || !expr) return;
+    
+    // 【调试P7】输出所有非字面量表达式类型到输出文件
+    if (expr->kind != CN_AST_EXPR_INTEGER_LITERAL &&
+        expr->kind != CN_AST_EXPR_FLOAT_LITERAL &&
+        expr->kind != CN_AST_EXPR_STRING_LITERAL &&
+        expr->kind != CN_AST_EXPR_CHAR_LITERAL &&
+        expr->kind != CN_AST_EXPR_BOOL_LITERAL) {
+        fprintf(ctx->output_file, "/* P7DBG_expr kind=%d */", expr->kind);
+    }
     
     switch (expr->kind) {
         case CN_AST_EXPR_INTEGER_LITERAL:
@@ -995,10 +1214,33 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                     }
                 }
                 
-                // 如果不是枚举成员也不是函数名，按普通变量处理
+                // 【P7修复】检查是否为结构体类型名
+                // 当标识符的type是CN_TYPE_STRUCT，或者在全局作用域中作为结构体类型存在时，
+                // 应生成 "struct 类型名" 而非 "cn_var_类型名"
+                bool is_type_name = false;
                 if (!is_enum_member) {
-                    // 支持引用其他模块变量
-                    // 先简单处理：直接输出变量名（需要结合符号表处理模块前缀）
+                    // 方法1：通过expr->type检查
+                    if (expr->type && expr->type->kind == CN_TYPE_STRUCT) {
+                        is_type_name = true;
+                    }
+                    // 方法2：通过全局作用域检查
+                    if (!is_type_name && ctx->global_scope) {
+                        CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                                expr->as.identifier.name,
+                                                                expr->as.identifier.name_length);
+                        if (sym && sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            is_type_name = true;
+                        }
+                    }
+                }
+                
+                if (is_type_name) {
+                    // 【P7修复】结构体类型名：生成 "struct 类型名"
+                    fprintf(ctx->output_file, "struct %.*s",
+                            (int)expr->as.identifier.name_length,
+                            expr->as.identifier.name);
+                } else if (!is_enum_member) {
+                    // 普通变量：添加 cn_var_ 前缀
                     fprintf(ctx->output_file, "cn_var_%.*s",
                             (int)expr->as.identifier.name_length,
                             expr->as.identifier.name);
@@ -1362,6 +1604,103 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
             // 函数调用表达式：函数名(参数列表)
             {
                 CnAstCallExpr *call = &expr->as.call;
+                
+                // 【P7修复】类型大小(类型名) -> sizeof(struct 类型名) 或 sizeof(类型)
+                // 在CN语言中，类型大小()是运行时函数，接受long long参数
+                // 但当参数是结构体类型名时，应转换为C的sizeof()运算符
+                bool is_leixing_daxiao = false;
+                if (call->callee &&
+                    call->callee->kind == CN_AST_EXPR_IDENTIFIER &&
+                    call->callee->as.identifier.name) {
+                    // 【调试】输出callee信息
+                    fprintf(stderr, "[DEBUG P7] CALL callee='%.*s' len=%zu kind=%d\n",
+                            (int)call->callee->as.identifier.name_length,
+                            call->callee->as.identifier.name,
+                            call->callee->as.identifier.name_length,
+                            call->callee->kind);
+                    if (strncmp(call->callee->as.identifier.name, "类型大小",
+                                call->callee->as.identifier.name_length) == 0 &&
+                        strlen("类型大小") == call->callee->as.identifier.name_length) {
+                        is_leixing_daxiao = true;
+                    }
+                }
+                
+                if (is_leixing_daxiao && call->argument_count == 1 && call->arguments[0]) {
+                    // 检查参数是否为结构体类型名
+                    CnAstExpr *arg = call->arguments[0];
+                    bool arg_is_struct_type = false;
+                    
+                    // 方法1：通过参数的type字段检查
+                    if (arg->type && arg->type->kind == CN_TYPE_STRUCT) {
+                        arg_is_struct_type = true;
+                    }
+                    // 方法2：通过全局作用域检查（参数是标识符时）
+                    if (!arg_is_struct_type && arg->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
+                        CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                                arg->as.identifier.name,
+                                                                arg->as.identifier.name_length);
+                        if (sym && sym->kind == CN_SEM_SYMBOL_STRUCT) {
+                            arg_is_struct_type = true;
+                        }
+                    }
+                    // 方法3：通过alloca_types检查（参数是标识符且在ALLOCA映射中为结构体类型）
+                    if (!arg_is_struct_type && arg->kind == CN_AST_EXPR_IDENTIFIER && ctx->alloca_types) {
+                        AllocaTypeEntry *entry = (AllocaTypeEntry *)ctx->alloca_types;
+                        while (entry) {
+                            if (entry->type && entry->type->kind == CN_TYPE_STRUCT &&
+                                entry->sym_name &&
+                                strncmp(entry->sym_name, arg->as.identifier.name,
+                                        arg->as.identifier.name_length) == 0 &&
+                                strlen(entry->sym_name) == arg->as.identifier.name_length) {
+                                arg_is_struct_type = true;
+                                break;
+                            }
+                            entry = entry->next;
+                        }
+                    }
+                    
+                    if (arg_is_struct_type) {
+                        // 生成 sizeof(struct 类型名)
+                        fprintf(ctx->output_file, "sizeof(struct ");
+                        if (arg->kind == CN_AST_EXPR_IDENTIFIER) {
+                            fprintf(ctx->output_file, "%.*s",
+                                    (int)arg->as.identifier.name_length,
+                                    arg->as.identifier.name);
+                        } else {
+                            cn_cgen_expr_simple(ctx, arg);
+                        }
+                        fprintf(ctx->output_file, ")");
+                        break;
+                    }
+                    
+                    // 参数不是结构体类型名，检查是否为其他类型（枚举等）
+                    bool arg_is_enum_type = false;
+                    if (arg->kind == CN_AST_EXPR_IDENTIFIER && ctx->global_scope) {
+                        CnSemSymbol *sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                                arg->as.identifier.name,
+                                                                arg->as.identifier.name_length);
+                        if (sym && sym->kind == CN_SEM_SYMBOL_ENUM) {
+                            arg_is_enum_type = true;
+                        }
+                    }
+                    if (arg_is_enum_type) {
+                        // 生成 sizeof(enum 类型名)
+                        fprintf(ctx->output_file, "sizeof(enum ");
+                        fprintf(ctx->output_file, "%.*s",
+                                (int)arg->as.identifier.name_length,
+                                arg->as.identifier.name);
+                        fprintf(ctx->output_file, ")");
+                        break;
+                    }
+                    
+                    // 参数是普通变量（整数），保持原样：类型大小(cn_var_变量名)
+                    // 但类型大小在C中不存在，需要转换为运行时函数
+                    // 实际上类型大小接受整数参数时，直接使用sizeof即可
+                    // 因为CN语言的类型大小语义等价于sizeof
+                    // 但如果参数是变量（运行时值），则无法使用sizeof
+                    // 这种情况保持原样生成函数调用
+                }
+                
                 // 输出函数名（callee 是被调用的函数表达式）
                 if (call->callee) {
                     cn_cgen_expr_simple(ctx, call->callee);
@@ -1402,6 +1741,9 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             // 这避免了生成 "变量 = /* NONE */;" 的无效C代码
             // 根因：函数调用返回值未被捕获时，STORE的源操作数为NONE
             if (inst->src1.kind == CN_IR_OP_NONE) break;
+            
+            // 【调试P7】输出STORE指令的src1类型
+            fprintf(ctx->output_file, "/* P7DBG_STORE src1.kind=%d */", inst->src1.kind);
             
             // 检查目标是否需要解引用
             // 情况1：目标操作数是寄存器（通过 GET_ELEMENT_PTR 获取的地址）- 需要解引用
@@ -1875,6 +2217,59 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     }
                     fprintf(ctx->output_file, ");\n");
                 }
+            } else if (inst->src1.kind == CN_IR_OP_SYMBOL &&
+                       strcmp(inst->src1.as.sym_name, "类型大小") == 0 &&
+                       inst->extra_args_count == 1 &&
+                       inst->extra_args[0].kind == CN_IR_OP_SYMBOL &&
+                       inst->extra_args[0].as.sym_name) {
+                // 【P7修复】类型大小(类型名) -> sizeof(struct 类型名) 或 sizeof(类型)
+                // CN语言中"类型大小"函数接受类型名参数，在C代码中应转换为sizeof
+                // 这解决了 类型大小(cn_var_类型信息) 中类型名被错误添加cn_var_前缀的问题
+                const char *type_arg_name = inst->extra_args[0].as.sym_name;
+                CnType *type_arg_type = inst->extra_args[0].type;
+                
+                if (inst->dest.kind != CN_IR_OP_NONE) {
+                    print_operand(ctx, inst->dest);
+                    fprintf(ctx->output_file, " = ");
+                }
+                
+                if (type_arg_type && type_arg_type->kind == CN_TYPE_STRUCT) {
+                    // 参数类型是结构体：生成 sizeof(struct 类型名)
+                    fprintf(ctx->output_file, "sizeof(struct %s);\n", type_arg_name);
+                } else if (type_arg_type && type_arg_type->kind != CN_TYPE_STRUCT) {
+                    // 参数类型是非结构体类型：生成 sizeof(C类型)
+                    fprintf(ctx->output_file, "sizeof(%s);\n", get_c_type_string(type_arg_type));
+                } else {
+                    // 参数没有类型信息：检查是否为局部变量
+                    // 如果不是局部变量，则当作结构体类型名处理
+                    bool is_local = false;
+                    if (ctx->current_func) {
+                        CnIrBasicBlock *chk_block = ctx->current_func->first_block;
+                        while (chk_block && !is_local) {
+                            CnIrInst *chk_inst = chk_block->first_inst;
+                            while (chk_inst) {
+                                if (chk_inst->kind == CN_IR_INST_ALLOCA &&
+                                    chk_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                    chk_inst->dest.as.sym_name &&
+                                    names_match_with_suffix(chk_inst->dest.as.sym_name, type_arg_name)) {
+                                    is_local = true;
+                                    break;
+                                }
+                                chk_inst = chk_inst->next;
+                            }
+                            chk_block = chk_block->next;
+                        }
+                    }
+                    if (!is_local) {
+                        // 不是局部变量，当作结构体类型名
+                        fprintf(ctx->output_file, "sizeof(struct %s);\n", type_arg_name);
+                    } else {
+                        // 是局部变量，回退到普通函数调用
+                        fprintf(ctx->output_file, "类型大小(");
+                        print_operand(ctx, inst->extra_args[0]);
+                        fprintf(ctx->output_file, ");\n");
+                    }
+                }
             } else {
                 // 普通函数调用
                 if (inst->dest.kind != CN_IR_OP_NONE) { print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); }
@@ -1885,9 +2280,9 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     print_operand(ctx, inst->src1);
                     fprintf(ctx->output_file, "(");
                 }
-                for (size_t i = 0; i < inst->extra_args_count; i++) { 
-                    print_operand(ctx, inst->extra_args[i]); 
-                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", "); 
+                for (size_t i = 0; i < inst->extra_args_count; i++) {
+                    print_operand(ctx, inst->extra_args[i]);
+                    if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", ");
                 }
                 fprintf(ctx->output_file, ");\n");
             }
@@ -3987,6 +4382,55 @@ static bool is_enum_type_name(const char *name, size_t name_len) {
             return true;
         }
     }
+    return false;
+}
+
+// 检测符号名是否是枚举成员（格式：枚举类型名_成员名）
+// 利用已生成的枚举类型名集合g_enum_type_names进行前缀匹配
+// 例如："词元类型枚举_关键字_如果" 的前缀 "词元类型枚举" 匹配已知枚举类型名
+static bool is_enum_member_name(const char *name) {
+    if (!name) return false;
+    
+    // 遍历所有已知枚举类型名，检查符号名是否以"枚举类型名_"开头
+    for (size_t i = 0; i < g_enum_type_count; i++) {
+        size_t enum_name_len = strlen(g_enum_type_names[i]);
+        // 符号名必须比枚举类型名长（至少多一个下划线+成员名）
+        if (strlen(name) > enum_name_len &&
+            strncmp(name, g_enum_type_names[i], enum_name_len) == 0 &&
+            name[enum_name_len] == '_') {
+            return true;
+        }
+    }
+    return false;
+}
+
+// 【P9修复】检测符号名是否是结构体变量（而非结构体类型名）
+// 在C代码生成中，变量名不需要struct前缀，只有类型声明才需要
+// 区分规则：
+//   - cn_var_ 前缀 → 局部变量（如 cn_var_操作数）
+//   - cn_tmp_ 前缀 → 临时变量
+//   - cn_ret_ 前缀 → 返回值变量
+//   - cn_arg_ 前缀 → 参数变量
+//   - cn_global_ 前缀 → 全局变量
+//   - 符号名以_数字结尾 → 带后缀的局部变量（如 操作数_0）
+static bool is_struct_variable_name(const char *name) {
+    if (!name) return false;
+    
+    // cn_var_ 前缀的符号是局部变量
+    if (strncmp(name, "cn_var_", 7) == 0) return true;
+    
+    // cn_tmp_ 前缀的符号是临时变量
+    if (strncmp(name, "cn_tmp_", 7) == 0) return true;
+    
+    // cn_ret_ 前缀的符号是返回值变量
+    if (strncmp(name, "cn_ret_", 7) == 0) return true;
+    
+    // cn_arg_ 前缀的符号是参数变量
+    if (strncmp(name, "cn_arg_", 7) == 0) return true;
+    
+    // cn_global_ 前缀的符号是全局变量
+    if (strncmp(name, "cn_global_", 10) == 0) return true;
+    
     return false;
 }
 
