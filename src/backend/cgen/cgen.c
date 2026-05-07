@@ -2469,6 +2469,78 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 }
             }
             
+            // 【RC4修复】层级4：寄存器操作数回退推断 - 扫描寄存器赋值来源
+            // 当层级3的reg_types为INT/UNKNOWN/NULL时，扫描指令找到该寄存器是如何被赋值的，
+            // 从赋值来源推断是否为指针类型。这解决了"变量 p = 创建解析器()"这类
+            // 函数返回结构体指针但寄存器被声明为long long的问题。
+            if (!has_precise_type && !is_pointer && inst->src1.kind == CN_IR_OP_REG && ctx->current_func) {
+                int target_reg_id = inst->src1.as.reg_id;
+                CnIrBasicBlock *scan_block = ctx->current_func->first_block;
+                while (scan_block && !is_pointer) {
+                    CnIrInst *scan_inst = scan_block->first_inst;
+                    while (scan_inst && !is_pointer) {
+                        // 检查该寄存器是否被CALL指令赋值
+                        if (scan_inst->kind == CN_IR_INST_CALL &&
+                            scan_inst->dest.kind == CN_IR_OP_REG &&
+                            scan_inst->dest.as.reg_id == target_reg_id) {
+                            // 从CALL指令的返回值推断类型
+                            if (scan_inst->dest.type &&
+                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
+                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
+                                is_pointer = true;
+                            }
+                            // 如果dest.type为NULL或INT，尝试从函数符号表获取返回类型
+                            else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name && ctx->global_scope) {
+                                const char *func_name = scan_inst->src1.as.sym_name;
+                                CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->global_scope, func_name, strlen(func_name));
+                                if (func_sym && func_sym->kind == CN_SEM_SYMBOL_FUNCTION && func_sym->type &&
+                                    func_sym->type->kind == CN_TYPE_FUNCTION) {
+                                    CnType *ret_type = func_sym->type->as.function.return_type;
+                                    if (ret_type && (ret_type->kind == CN_TYPE_POINTER ||
+                                                     ret_type->kind == CN_TYPE_STRING ||
+                                                     ret_type->kind == CN_TYPE_STRUCT)) {
+                                        is_pointer = true;
+                                    }
+                                }
+                            }
+                        }
+                        // 检查该寄存器是否被LOAD指令赋值（从变量加载）
+                        if (scan_inst->kind == CN_IR_INST_LOAD &&
+                            scan_inst->dest.kind == CN_IR_OP_REG &&
+                            scan_inst->dest.as.reg_id == target_reg_id) {
+                            // 从LOAD的源变量类型推断
+                            if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
+                                // 检查alloca_types
+                                if (ctx->alloca_types) {
+                                    AllocaTypeEntry *ma_entry = (AllocaTypeEntry *)ctx->alloca_types;
+                                    while (ma_entry && !is_pointer) {
+                                        if (ma_entry->sym_name && names_match_with_suffix(ma_entry->sym_name, scan_inst->src1.as.sym_name)) {
+                                            if (ma_entry->type && is_pointer_type_unified(ma_entry->type)) {
+                                                is_pointer = true;
+                                            }
+                                        }
+                                        ma_entry = ma_entry->next;
+                                    }
+                                }
+                            }
+                        }
+                        // 检查该寄存器是否被MOV指令赋值（从其他寄存器复制）
+                        if (scan_inst->kind == CN_IR_INST_MOV &&
+                            scan_inst->dest.kind == CN_IR_OP_REG &&
+                            scan_inst->dest.as.reg_id == target_reg_id &&
+                            scan_inst->src1.kind == CN_IR_OP_REG &&
+                            ctx->reg_types) {
+                            int src_reg_id = scan_inst->src1.as.reg_id;
+                            if (src_reg_id >= 0 && src_reg_id < ctx->reg_types_count && ctx->reg_types[src_reg_id]) {
+                                is_pointer = is_pointer_type_unified(ctx->reg_types[src_reg_id]);
+                            }
+                        }
+                        scan_inst = scan_inst->next;
+                    }
+                    scan_block = scan_block->next;
+                }
+            }
+            
             if (is_pointer) {
                 fprintf(ctx->output_file, "->");
             } else {
@@ -2518,6 +2590,765 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
     }
 }
 
+/* ============================================================================
+ * 【P1修复】寄存器使用类型推断
+ *
+ * 核心问题：cnc编译器将所有IR寄存器统一声明为 long long int，
+ * 导致指针、结构体、字符串等类型的变量在生成的C代码中类型不匹配。
+ *
+ * 解决方案：在多遍类型传播之后、寄存器声明之前，
+ * 对类型仍为INT/UNKNOWN/VOID的寄存器进行"使用模式推断"，
+ * 根据寄存器在指令中的使用方式推断其真实类型。
+ * ============================================================================ */
+
+/**
+ * @brief 从MEMBER_ACCESS指令推断寄存器的结构体指针类型
+ *
+ * 规则：如果寄存器被用于MEMBER_ACCESS指令的base操作数，
+ * 且该访问使用 -> 语法（即base是指针），则寄存器应是对应结构体指针类型。
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @param alloca_types ALLOCA变量类型映射表
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_from_member_access(CnCCodeGenContext *ctx, CnIrFunction *func,
+                                         int reg_index, AllocaTypeEntry *alloca_types) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_MEMBER_ACCESS &&
+                inst->src1.kind == CN_IR_OP_REG &&
+                inst->src1.as.reg_id == reg_index) {
+                /* 寄存器被用作成员访问的base */
+                /* 检查是否应该使用 -> 语法（即base是指针类型） */
+                bool base_is_pointer = false;
+                CnType *pointer_type = NULL;
+                
+                /* 从src1.type判断 */
+                if (inst->src1.type) {
+                    CnType *check = (CnType *)inst->src1.type;
+                    if (check->kind >= 0 && check->kind <= CN_TYPE_UNKNOWN) {
+                        if (check->kind == CN_TYPE_POINTER) {
+                            base_is_pointer = true;
+                            pointer_type = inst->src1.type;
+                        } else if (check->kind == CN_TYPE_STRING) {
+                            /* char* 也是指针 */
+                            base_is_pointer = true;
+                            pointer_type = inst->src1.type;
+                        }
+                    } else {
+                        /* 可能是struct类型节点，检查指针层级 */
+                        long long *ptr_level = (long long *)((char *)inst->src1.type + 24);
+                        if (*ptr_level > 0) {
+                            base_is_pointer = true;
+                            pointer_type = inst->src1.type;
+                        }
+                    }
+                }
+                
+                /* 从dest.type反推：如果dest是结构体成员类型，base可能是结构体指针 */
+                if (!base_is_pointer && inst->dest.type && inst->src1.type) {
+                    /* 如果src1.type是STRUCT类型，说明base应该是结构体指针 */
+                    CnType *src1_check = (CnType *)inst->src1.type;
+                    if (src1_check->kind >= 0 && src1_check->kind <= CN_TYPE_UNKNOWN &&
+                        src1_check->kind == CN_TYPE_STRUCT) {
+                        /* base是结构体值类型，需要升级为指针 */
+                        pointer_type = cn_type_new_pointer(inst->src1.type);
+                        base_is_pointer = true;
+                    }
+                }
+                
+                /* 从reg_types查找 */
+                if (!base_is_pointer && inst->src1.kind == CN_IR_OP_REG) {
+                    /* 尝试从ctx->reg_types获取 */
+                    if (ctx->reg_types && reg_index < ctx->reg_types_count) {
+                        CnType *reg_type = ctx->reg_types[reg_index];
+                        if (reg_type && (reg_type->kind == CN_TYPE_POINTER ||
+                                         reg_type->kind == CN_TYPE_STRING)) {
+                            base_is_pointer = true;
+                            pointer_type = reg_type;
+                        }
+                    }
+                }
+                
+                /* 【S3修复】当reg_types中寄存器类型为INT/NULL时，
+                 * 尝试追溯LOAD指令找到原始符号，从函数参数获取类型。
+                 * 这处理了：r1 = LOAD cn_var_类型1; r8 = r1->名称
+                 * 当r1的类型传播失败（仍为INT）时，通过LOAD追溯找到
+                 * cn_var_类型1是函数参数，类型为struct 类型信息* */
+                if (!base_is_pointer && inst->src1.kind == CN_IR_OP_REG && func) {
+                    CnIrBasicBlock *trace_block = func->first_block;
+                    while (trace_block && !base_is_pointer) {
+                        CnIrInst *trace_inst = trace_block->first_inst;
+                        while (trace_inst && !base_is_pointer) {
+                            if (trace_inst->kind == CN_IR_INST_LOAD &&
+                                trace_inst->dest.kind == CN_IR_OP_REG &&
+                                trace_inst->dest.as.reg_id == reg_index &&
+                                trace_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                                trace_inst->src1.as.sym_name) {
+                                /* 找到LOAD指令，从函数参数查找符号类型 */
+                                const char *sym_name = trace_inst->src1.as.sym_name;
+                                for (size_t p = 0; p < func->param_count; p++) {
+                                    if (func->params[p].as.sym_name &&
+                                        names_match_with_suffix(func->params[p].as.sym_name, sym_name)) {
+                                        CnType *param_type = func->params[p].type;
+                                        if (param_type) {
+                                            if (param_type->kind == CN_TYPE_POINTER) {
+                                                base_is_pointer = true;
+                                                pointer_type = param_type;
+                                            } else if (param_type->kind == CN_TYPE_STRING) {
+                                                base_is_pointer = true;
+                                                pointer_type = param_type;
+                                            } else if (param_type->kind == CN_TYPE_STRUCT) {
+                                                pointer_type = cn_type_new_pointer(param_type);
+                                                base_is_pointer = true;
+                                            }
+                                        }
+                                        break;
+                                    }
+                                }
+                            }
+                            trace_inst = trace_inst->next;
+                        }
+                        trace_block = trace_block->next;
+                    }
+                }
+                
+                if (base_is_pointer && pointer_type) {
+                    return pointer_type;
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 从CALL指令推断寄存器的返回类型
+ *
+ * 规则：如果寄存器被赋值为CALL指令的结果，
+ * 从全局符号表获取被调用函数的返回类型。
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_from_call(CnCCodeGenContext *ctx, CnIrFunction *func, int reg_index) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_CALL &&
+                inst->dest.kind == CN_IR_OP_REG &&
+                inst->dest.as.reg_id == reg_index) {
+                
+                /* 优先使用dest.type（IR生成器设置的返回类型） */
+                if (inst->dest.type &&
+                    inst->dest.type->kind != CN_TYPE_INT &&
+                    inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                    inst->dest.type->kind != CN_TYPE_VOID) {
+                    return inst->dest.type;
+                }
+                
+                /* 从全局符号表查找函数返回类型 */
+                if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                    const char *func_name = inst->src1.as.sym_name;
+                    size_t func_name_len = strlen(func_name);
+                    
+                    /* 层级1：从全局符号表查找 */
+                    if (ctx->global_scope) {
+                        CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->global_scope, func_name, func_name_len);
+                        if (func_sym && func_sym->kind == CN_SEM_SYMBOL_FUNCTION && func_sym->type) {
+                            if (func_sym->type->kind == CN_TYPE_FUNCTION && func_sym->type->as.function.return_type) {
+                                CnType *ret_type = func_sym->type->as.function.return_type;
+                                /* 只返回非INT/UNKNOWN/VOID的精确类型 */
+                                if (ret_type->kind != CN_TYPE_INT &&
+                                    ret_type->kind != CN_TYPE_UNKNOWN &&
+                                    ret_type->kind != CN_TYPE_VOID) {
+                                    return ret_type;
+                                }
+                            }
+                        }
+                    }
+                    
+                    /* 【RC1增强】层级2：从IR模块函数列表查找返回类型
+                     * 跨模块函数调用时，全局符号表可能不完整，
+                     * 但IR模块中包含了所有已编译函数的返回类型信息 */
+                    if (ctx->module) {
+                        CnIrFunction *mod_func = ctx->module->first_func;
+                        while (mod_func) {
+                            if (mod_func->name && strcmp(mod_func->name, func_name) == 0 &&
+                                mod_func->return_type &&
+                                mod_func->return_type->kind != CN_TYPE_INT &&
+                                mod_func->return_type->kind != CN_TYPE_UNKNOWN &&
+                                mod_func->return_type->kind != CN_TYPE_VOID) {
+                                return mod_func->return_type;
+                            }
+                            mod_func = mod_func->next;
+                        }
+                    }
+                    
+                    /* 【RC1增强】层级3：运行时API函数名模式匹配
+                     * 常见的运行时函数有已知的返回类型模式，
+                     * 通过函数名前缀/后缀推断返回类型 */
+                    if (func_name_len > 4) {
+                        /* cn_rt_ 前缀的函数：运行时API */
+                        if (strncmp(func_name, "cn_rt_", 6) == 0) {
+                            /* cn_rt_strdup, cn_rt_strcat 等返回 char* */
+                            if (strstr(func_name, "str") || strstr(func_name, "path")) {
+                                return cn_type_new_primitive(CN_TYPE_STRING);
+                            }
+                            /* cn_rt_malloc, cn_rt_alloc 等返回 void* (用POINTER表示) */
+                            if (strstr(func_name, "alloc") || strstr(func_name, "malloc")) {
+                                return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                            }
+                        }
+                        /* 中文创建函数：创建XXX 通常返回 XXX* 指针 */
+                        if (strncmp(func_name, "创建", 6) == 0) {
+                            /* 创建函数返回结构体指针，但无法确定具体类型，
+                             * 返回NULL让其他规则处理 */
+                        }
+                    }
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 从LOAD指令推断寄存器类型
+ *
+ * 规则：如果寄存器被赋值为LOAD指令的结果，
+ * 且源操作数是符号（变量），从ALLOCA映射表获取变量类型。
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @param alloca_types ALLOCA变量类型映射表
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_from_load(CnCCodeGenContext *ctx, CnIrFunction *func,
+                                int reg_index, AllocaTypeEntry *alloca_types) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_LOAD &&
+                inst->dest.kind == CN_IR_OP_REG &&
+                inst->dest.as.reg_id == reg_index) {
+                
+                /* 从dest.type获取（IR生成器设置的类型） */
+                if (inst->dest.type &&
+                    inst->dest.type->kind != CN_TYPE_INT &&
+                    inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                    inst->dest.type->kind != CN_TYPE_VOID) {
+                    return inst->dest.type;
+                }
+                
+                /* 从ALLOCA映射表获取变量类型 */
+                if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                    const char *sym_name = inst->src1.as.sym_name;
+                    AllocaTypeEntry *entry = alloca_types;
+                    while (entry) {
+                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, sym_name)) {
+                            if (entry->type &&
+                                entry->type->kind != CN_TYPE_INT &&
+                                entry->type->kind != CN_TYPE_UNKNOWN &&
+                                entry->type->kind != CN_TYPE_VOID) {
+                                return entry->type;
+                            }
+                        }
+                        entry = entry->next;
+                    }
+                }
+                
+                /* 从src1.type获取 */
+                if (inst->src1.type &&
+                    inst->src1.type->kind != CN_TYPE_INT &&
+                    inst->src1.type->kind != CN_TYPE_UNKNOWN &&
+                    inst->src1.type->kind != CN_TYPE_VOID) {
+                    return inst->src1.type;
+                }
+                
+                /* 【S2修复】从函数参数查找符号类型
+                 * 当LOAD指令的src1是符号操作数（如cn_var_类型1）时，
+                 * 从func->params查找该符号对应的参数类型。
+                 * 这是类型传播链的关键环节：函数参数类型通过LOAD传播到寄存器，
+                 * 如果此环节断裂，所有依赖该参数的成员访问类型都会失败 */
+                if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                    const char *sym_name = inst->src1.as.sym_name;
+                    for (size_t p = 0; p < func->param_count; p++) {
+                        if (func->params[p].as.sym_name &&
+                            names_match_with_suffix(func->params[p].as.sym_name, sym_name)) {
+                            if (func->params[p].type &&
+                                func->params[p].type->kind != CN_TYPE_INT &&
+                                func->params[p].type->kind != CN_TYPE_UNKNOWN &&
+                                func->params[p].type->kind != CN_TYPE_VOID) {
+                                return func->params[p].type;
+                            }
+                        }
+                    }
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 从MOV指令推断寄存器类型
+ *
+ * 规则：如果寄存器被赋值为MOV指令的结果，
+ * 从源操作数类型推断目标寄存器类型。
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @param alloca_types ALLOCA变量类型映射表
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_from_mov(CnCCodeGenContext *ctx, CnIrFunction *func,
+                               int reg_index, AllocaTypeEntry *alloca_types) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_MOV &&
+                inst->dest.kind == CN_IR_OP_REG &&
+                inst->dest.as.reg_id == reg_index) {
+                
+                /* 从dest.type获取 */
+                if (inst->dest.type &&
+                    inst->dest.type->kind != CN_TYPE_INT &&
+                    inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                    inst->dest.type->kind != CN_TYPE_VOID) {
+                    return inst->dest.type;
+                }
+                
+                /* 从src1.type获取 */
+                if (inst->src1.type &&
+                    inst->src1.type->kind != CN_TYPE_INT &&
+                    inst->src1.type->kind != CN_TYPE_UNKNOWN &&
+                    inst->src1.type->kind != CN_TYPE_VOID) {
+                    return inst->src1.type;
+                }
+                
+                /* IMM_STR视为char* */
+                if (inst->src1.kind == CN_IR_OP_IMM_STR) {
+                    return cn_type_new_primitive(CN_TYPE_STRING);
+                }
+                
+                /* 从符号源查找ALLOCA映射表 */
+                if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                    const char *sym_name = inst->src1.as.sym_name;
+                    AllocaTypeEntry *entry = alloca_types;
+                    while (entry) {
+                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, sym_name)) {
+                            if (entry->type &&
+                                entry->type->kind != CN_TYPE_INT &&
+                                entry->type->kind != CN_TYPE_UNKNOWN &&
+                                entry->type->kind != CN_TYPE_VOID) {
+                                return entry->type;
+                            }
+                        }
+                        entry = entry->next;
+                    }
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 从STORE指令推断寄存器类型（当寄存器被用作存储地址时）
+ *
+ * 规则：如果寄存器被用作STORE指令的目标地址，
+ * 则该寄存器应是指针类型。
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_from_store_addr(CnCCodeGenContext *ctx, CnIrFunction *func, int reg_index) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_STORE) {
+                /* 检查dest是否使用了该寄存器（作为地址） */
+                if (inst->dest.kind == CN_IR_OP_REG && inst->dest.as.reg_id == reg_index) {
+                    /* 寄存器被用作存储地址，应是指针类型 */
+                    if (inst->src1.type) {
+                        /* 创建指向源类型的指针 */
+                        return cn_type_new_pointer(inst->src1.type);
+                    }
+                    /* 无法确定指向类型，返回void* */
+                    return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                }
+                /* 检查src1是否是该寄存器（值被存储） */
+                if (inst->src1.kind == CN_IR_OP_REG && inst->src1.as.reg_id == reg_index) {
+                    /* 寄存器的值被存储，其类型应与存储源类型一致 */
+                    if (inst->src1.type &&
+                        inst->src1.type->kind != CN_TYPE_INT &&
+                        inst->src1.type->kind != CN_TYPE_UNKNOWN &&
+                        inst->src1.type->kind != CN_TYPE_VOID) {
+                        return inst->src1.type;
+                    }
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 从GET_ELEMENT_PTR指令推断寄存器类型
+ *
+ * 规则：GET_ELEMENT_PTR返回指向数组元素的指针。
+ * 【RC1增强】增加ALLOCA映射表查找和reg_types查找，处理src1.type为NULL的情况
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @param alloca_types ALLOCA变量类型映射表
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_from_gep(CnCCodeGenContext *ctx, CnIrFunction *func,
+                               int reg_index, AllocaTypeEntry *alloca_types) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_GET_ELEMENT_PTR &&
+                inst->dest.kind == CN_IR_OP_REG &&
+                inst->dest.as.reg_id == reg_index) {
+                /* 从dest.type获取 */
+                if (inst->dest.type &&
+                    inst->dest.type->kind != CN_TYPE_INT &&
+                    inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                    inst->dest.type->kind != CN_TYPE_VOID) {
+                    return inst->dest.type;
+                }
+                
+                /* 获取源操作数类型 */
+                CnType *src_type = inst->src1.type;
+                
+                /* 【RC1增强】如果src1.type为NULL，从reg_types查找 */
+                if (!src_type && inst->src1.kind == CN_IR_OP_REG &&
+                    inst->src1.as.reg_id >= 0 && ctx->reg_types &&
+                    inst->src1.as.reg_id < ctx->reg_types_count) {
+                    src_type = ctx->reg_types[inst->src1.as.reg_id];
+                }
+                
+                /* 【RC1增强】如果src1是符号，从ALLOCA映射表查找 */
+                if (!src_type && inst->src1.kind == CN_IR_OP_SYMBOL &&
+                    inst->src1.as.sym_name && alloca_types) {
+                    AllocaTypeEntry *entry = alloca_types;
+                    while (entry) {
+                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, inst->src1.as.sym_name)) {
+                            src_type = entry->type;
+                            break;
+                        }
+                        entry = entry->next;
+                    }
+                }
+                
+                /* 从源类型推断元素指针类型 */
+                if (src_type) {
+                    if (src_type->kind == CN_TYPE_ARRAY && src_type->as.array.element_type) {
+                        return cn_type_new_pointer(src_type->as.array.element_type);
+                    } else if (src_type->kind == CN_TYPE_POINTER) {
+                        return src_type;
+                    }
+                    /* 【RC1增强】STRING类型(char*)的GEP结果也是char*
+                     * 例如：char*指针的索引访问 char* p; p[i] 结果类型是char* */
+                    else if (src_type->kind == CN_TYPE_STRING) {
+                        return cn_type_new_primitive(CN_TYPE_STRING);
+                    }
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 从ADDRESS_OF指令推断寄存器类型
+ *
+ * 规则：ADDRESS_OF返回指向源操作数的指针。
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_from_address_of(CnCCodeGenContext *ctx, CnIrFunction *func, int reg_index) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_ADDRESS_OF &&
+                inst->dest.kind == CN_IR_OP_REG &&
+                inst->dest.as.reg_id == reg_index) {
+                /* 从dest.type获取 */
+                if (inst->dest.type && inst->dest.type->kind == CN_TYPE_POINTER) {
+                    return inst->dest.type;
+                }
+                /* 从src1.type创建指针 */
+                if (inst->src1.type) {
+                    return cn_type_new_pointer(inst->src1.type);
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 【RC1新增】从MEMBER_ACCESS指令的目标寄存器推断成员类型
+ *
+ * 当寄存器是MEMBER_ACCESS指令的目标（dest）时，从结构体类型和成员名
+ * 推断成员的类型。这解决了成员访问结果被声明为long long的问题。
+ * 例如：r5 = r3->名称，r5应该是char*类型而非long long
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @param alloca_types ALLOCA变量类型映射表
+ * @return 推断出的成员类型，无法推断返回NULL
+ */
+static CnType* infer_from_member_access_dest(CnCCodeGenContext *ctx, CnIrFunction *func,
+                                              int reg_index, AllocaTypeEntry *alloca_types) {
+    CnIrBasicBlock *block = func->first_block;
+    while (block) {
+        CnIrInst *inst = block->first_inst;
+        while (inst) {
+            if (inst->kind == CN_IR_INST_MEMBER_ACCESS &&
+                inst->dest.kind == CN_IR_OP_REG &&
+                inst->dest.as.reg_id == reg_index) {
+                
+                /* 优先使用dest.type（IR生成器设置的成员类型） */
+                if (inst->dest.type &&
+                    inst->dest.type->kind != CN_TYPE_INT &&
+                    inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                    inst->dest.type->kind != CN_TYPE_VOID) {
+                    return inst->dest.type;
+                }
+                
+                /* 从src1的对象类型和src2的成员名推断成员类型 */
+                CnType *obj_type = NULL;
+                
+                /* 获取对象类型：从src1.type */
+                if (inst->src1.type) {
+                    obj_type = inst->src1.type;
+                }
+                /* 从reg_types获取（多遍扫描后的类型） */
+                if (!obj_type && inst->src1.kind == CN_IR_OP_REG &&
+                    inst->src1.as.reg_id >= 0 && ctx->reg_types &&
+                    inst->src1.as.reg_id < ctx->reg_types_count) {
+                    obj_type = ctx->reg_types[inst->src1.as.reg_id];
+                }
+                /* 从alloca_types查找 */
+                if (!obj_type && inst->src1.kind == CN_IR_OP_SYMBOL &&
+                    inst->src1.as.sym_name && alloca_types) {
+                    AllocaTypeEntry *entry = alloca_types;
+                    while (entry) {
+                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, inst->src1.as.sym_name)) {
+                            obj_type = entry->type;
+                            break;
+                        }
+                        entry = entry->next;
+                    }
+                }
+                
+                /* 【S3修复】当src1是符号操作数时，从函数参数查找对象类型
+                 * 处理MEMBER_ACCESS指令中src1为符号（如cn_var_类型1）的情况，
+                 * 从func->params获取参数类型作为obj_type，用于查找成员类型 */
+                if (!obj_type && inst->src1.kind == CN_IR_OP_SYMBOL &&
+                    inst->src1.as.sym_name && func) {
+                    const char *sym_name = inst->src1.as.sym_name;
+                    for (size_t p = 0; p < func->param_count; p++) {
+                        if (func->params[p].as.sym_name &&
+                            names_match_with_suffix(func->params[p].as.sym_name, sym_name)) {
+                            CnType *param_type = func->params[p].type;
+                            if (param_type) {
+                                obj_type = param_type;
+                            }
+                            break;
+                        }
+                    }
+                }
+                
+                /* 【S3增强】当src1是寄存器且reg_types中类型为INT/NULL时，
+                 * 追溯LOAD指令找到原始符号，从函数参数获取对象类型。
+                 * 这处理了：r1 = LOAD cn_var_类型1; r5 = r1->名称
+                 * 当r1的类型传播失败（仍为INT）时，通过LOAD追溯找到
+                 * cn_var_类型1是函数参数，类型为struct 类型信息* */
+                if (!obj_type && inst->src1.kind == CN_IR_OP_REG && func) {
+                    int src1_reg_id = inst->src1.as.reg_id;
+                    CnIrBasicBlock *trace_block = func->first_block;
+                    while (trace_block && !obj_type) {
+                        CnIrInst *trace_inst = trace_block->first_inst;
+                        while (trace_inst && !obj_type) {
+                            if (trace_inst->kind == CN_IR_INST_LOAD &&
+                                trace_inst->dest.kind == CN_IR_OP_REG &&
+                                trace_inst->dest.as.reg_id == src1_reg_id &&
+                                trace_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                                trace_inst->src1.as.sym_name) {
+                                /* 找到LOAD指令，从函数参数查找符号类型 */
+                                const char *sym_name = trace_inst->src1.as.sym_name;
+                                for (size_t p = 0; p < func->param_count; p++) {
+                                    if (func->params[p].as.sym_name &&
+                                        names_match_with_suffix(func->params[p].as.sym_name, sym_name)) {
+                                        CnType *param_type = func->params[p].type;
+                                        if (param_type) {
+                                            obj_type = param_type;
+                                        }
+                                        break;
+                                    }
+                                }
+                                /* 如果不是函数参数，从alloca_types查找 */
+                                if (!obj_type && alloca_types) {
+                                    AllocaTypeEntry *entry = alloca_types;
+                                    while (entry) {
+                                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, sym_name)) {
+                                            obj_type = entry->type;
+                                            break;
+                                        }
+                                        entry = entry->next;
+                                    }
+                                }
+                            }
+                            trace_inst = trace_inst->next;
+                        }
+                        trace_block = trace_block->next;
+                    }
+                }
+                
+                /* 如果对象是指针类型，解引用获取结构体类型 */
+                if (obj_type && obj_type->kind == CN_TYPE_POINTER && obj_type->as.pointer_to) {
+                    obj_type = obj_type->as.pointer_to;
+                }
+                /* STRING类型(char*)的成员访问不适用于结构体成员查找 */
+                if (obj_type && obj_type->kind == CN_TYPE_STRING) {
+                    inst = inst->next;
+                    continue;
+                }
+                
+                /* 如果对象是结构体类型，查找成员类型 */
+                if (obj_type && obj_type->kind == CN_TYPE_STRUCT &&
+                    obj_type->as.struct_type.fields && inst->src2.kind == CN_IR_OP_SYMBOL) {
+                    const char *member_name = inst->src2.as.sym_name;
+                    size_t member_name_len = strlen(member_name);
+                    
+                    /* 遍历结构体字段查找成员类型 */
+                    for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
+                        if (obj_type->as.struct_type.fields[f].name &&
+                            obj_type->as.struct_type.fields[f].name_length == member_name_len &&
+                            memcmp(obj_type->as.struct_type.fields[f].name, member_name, member_name_len) == 0) {
+                            return obj_type->as.struct_type.fields[f].field_type;
+                        }
+                    }
+                    
+                    /* 如果结构体没有字段信息，尝试从全局作用域查找完整定义 */
+                    if (ctx->global_scope && obj_type->as.struct_type.name) {
+                        CnSemSymbol *struct_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                obj_type->as.struct_type.name, obj_type->as.struct_type.name_length);
+                        if (struct_sym && struct_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            struct_sym->type && struct_sym->type->as.struct_type.fields) {
+                            CnType *full_type = struct_sym->type;
+                            for (size_t f = 0; f < full_type->as.struct_type.field_count; f++) {
+                                if (full_type->as.struct_type.fields[f].name &&
+                                    full_type->as.struct_type.fields[f].name_length == member_name_len &&
+                                    memcmp(full_type->as.struct_type.fields[f].name, member_name, member_name_len) == 0) {
+                                    return full_type->as.struct_type.fields[f].field_type;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            inst = inst->next;
+        }
+        block = block->next;
+    }
+    return NULL;
+}
+
+/**
+ * @brief 从寄存器的使用模式推断其真实类型
+ *
+ * 综合运用多种推断规则，对类型不明确的寄存器进行二次类型推断。
+ * 推断优先级：MEMBER_ACCESS > MEMBER_ACCESS_DEST > CALL > LOAD > MOV > STORE > GEP > ADDRESS_OF
+ *
+ * @param ctx 代码生成上下文
+ * @param func 当前函数
+ * @param reg_index 寄存器索引
+ * @param alloca_types ALLOCA变量类型映射表
+ * @return 推断出的类型，无法推断返回NULL
+ */
+static CnType* infer_reg_type_from_usage(CnCCodeGenContext *ctx, CnIrFunction *func,
+                                          int reg_index, AllocaTypeEntry *alloca_types) {
+    CnType *result = NULL;
+    
+    /* 规则1：从MEMBER_ACCESS推断（最高优先级，因为指针类型最明确） */
+    result = infer_from_member_access(ctx, func, reg_index, alloca_types);
+    if (result) return result;
+    
+    /* 【RC1新增】规则1b：从MEMBER_ACCESS的目标寄存器推断成员类型
+     * 当寄存器是成员访问的结果时，从结构体类型和成员名推断成员类型
+     * 例如：r5 = r3->名称，r5应该是char*类型而非long long */
+    result = infer_from_member_access_dest(ctx, func, reg_index, alloca_types);
+    if (result) return result;
+    
+    /* 规则2：从CALL返回值推断 */
+    result = infer_from_call(ctx, func, reg_index);
+    if (result) return result;
+    
+    /* 规则3：从LOAD指令推断 */
+    result = infer_from_load(ctx, func, reg_index, alloca_types);
+    if (result) return result;
+    
+    /* 规则4：从MOV指令推断 */
+    result = infer_from_mov(ctx, func, reg_index, alloca_types);
+    if (result) return result;
+    
+    /* 规则5：从STORE地址推断 */
+    result = infer_from_store_addr(ctx, func, reg_index);
+    if (result) return result;
+    
+    /* 规则6：从GET_ELEMENT_PTR推断 */
+    result = infer_from_gep(ctx, func, reg_index, alloca_types);
+    if (result) return result;
+    
+    /* 规则7：从ADDRESS_OF推断 */
+    result = infer_from_address_of(ctx, func, reg_index);
+    if (result) return result;
+    
+    return NULL;
+}
+
 void cn_cgen_block(CnCCodeGenContext *ctx, CnIrBasicBlock *block) {
     if (!ctx || !block) return;
     if (block->name) fprintf(ctx->output_file, "\n  %s:\n", block->name);
@@ -2557,6 +3388,68 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     }
     
     fprintf(ctx->output_file, ") {\n");
+    
+    // === S1: 参数类型回填 ===
+    // 确保所有func->params都有正确的类型信息
+    // 这是类型传播链的基础：如果参数类型缺失（NULL/INT/UNKNOWN/VOID），
+    // 所有依赖该参数的LOAD指令和成员访问的类型传播都会失败
+    // 根因：IR生成器在某些情况下未正确设置参数类型，导致参数被当作long long处理
+    {
+        for (size_t p = 0; p < func->param_count; p++) {
+            CnType *param_type = func->params[p].type;
+            
+            // 如果参数类型缺失或为低精度类型，尝试从全局符号表回填
+            if (!param_type ||
+                param_type->kind == CN_TYPE_INT ||
+                param_type->kind == CN_TYPE_UNKNOWN ||
+                param_type->kind == CN_TYPE_VOID) {
+                
+                // 层级1：从全局符号表查找函数声明，获取参数类型
+                // CnType的as.function.param_types存储了函数签名中每个参数的类型
+                if (ctx->global_scope && func->name) {
+                    CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->global_scope,
+                        func->name, strlen(func->name));
+                    if (func_sym && func_sym->kind == CN_SEM_SYMBOL_FUNCTION &&
+                        func_sym->type && func_sym->type->kind == CN_TYPE_FUNCTION) {
+                        CnType *func_type = func_sym->type;
+                        if (p < func_type->as.function.param_count &&
+                            func_type->as.function.param_types[p]) {
+                            CnType *real_type = func_type->as.function.param_types[p];
+                            // 只回填高精度类型（POINTER/STRUCT/STRING/ENUM等）
+                            // 避免用INT回填覆盖可能更精确的NULL
+                            if (real_type->kind != CN_TYPE_INT &&
+                                real_type->kind != CN_TYPE_UNKNOWN &&
+                                real_type->kind != CN_TYPE_VOID) {
+                                func->params[p].type = real_type;
+                            }
+                        }
+                    }
+                }
+                
+                // 【S1增强】层级2：从IR模块函数列表回退查找参数类型
+                // 跨模块函数调用时，全局符号表可能不完整，
+                // 但IR模块中包含了所有已编译函数的参数类型信息
+                if (ctx->module && func->name &&
+                    (!func->params[p].type ||
+                     func->params[p].type->kind == CN_TYPE_INT ||
+                     func->params[p].type->kind == CN_TYPE_UNKNOWN ||
+                     func->params[p].type->kind == CN_TYPE_VOID)) {
+                    CnIrFunction *mod_func = ctx->module->first_func;
+                    while (mod_func) {
+                        if (mod_func->name && strcmp(mod_func->name, func->name) == 0 &&
+                            p < mod_func->param_count && mod_func->params[p].type &&
+                            mod_func->params[p].type->kind != CN_TYPE_INT &&
+                            mod_func->params[p].type->kind != CN_TYPE_UNKNOWN &&
+                            mod_func->params[p].type->kind != CN_TYPE_VOID) {
+                            func->params[p].type = mod_func->params[p].type;
+                            break;
+                        }
+                        mod_func = mod_func->next;
+                    }
+                }
+            }
+        }
+    }
     
     // 生成静态局部变量声明（在函数体开头）
     if (func->first_static_var) {
@@ -2703,6 +3596,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
          * 如果CALL返回指针/结构体类型但ALLOCA是INT类型，更新ALLOCA类型。
          * 这解决了变量类型推断错误：如 "变量 解析器 = 创建解析器()"
          * 创建解析器返回指针，但解析器被声明为 long long int 的问题。
+         * 【P1增强】同时处理IMM_STR源和CALL结果→变量类型传播。
          */
         {
             CnIrBasicBlock *prescan_store_block = func->first_block;
@@ -2711,15 +3605,30 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                 while (prescan_store_inst) {
                     if (prescan_store_inst->kind == CN_IR_INST_STORE &&
                         prescan_store_inst->dest.kind == CN_IR_OP_SYMBOL &&
-                        prescan_store_inst->dest.as.sym_name &&
-                        prescan_store_inst->src1.kind == CN_IR_OP_REG &&
-                        prescan_store_inst->src1.type) {
-                        /* 检查源寄存器类型是否为指针/结构体/枚举 */
-                        CnType *src_type = prescan_store_inst->src1.type;
-                        bool src_is_pointer_or_struct = (src_type->kind == CN_TYPE_POINTER ||
-                                                         src_type->kind == CN_TYPE_STRUCT ||
-                                                         src_type->kind == CN_TYPE_ENUM ||
-                                                         src_type->kind == CN_TYPE_STRING);
+                        prescan_store_inst->dest.as.sym_name) {
+                        
+                        CnType *src_type = NULL;
+                        
+                        /* 从REG源获取类型 */
+                        if (prescan_store_inst->src1.kind == CN_IR_OP_REG &&
+                            prescan_store_inst->src1.type) {
+                            src_type = prescan_store_inst->src1.type;
+                        }
+                        /* 【P1增强】从IMM_STR源获取char*类型 */
+                        if (!src_type && prescan_store_inst->src1.kind == CN_IR_OP_IMM_STR) {
+                            src_type = cn_type_new_primitive(CN_TYPE_STRING);
+                        }
+                        /* 【P1增强】从src1.type直接获取 */
+                        if (!src_type && prescan_store_inst->src1.type) {
+                            src_type = prescan_store_inst->src1.type;
+                        }
+                        
+                        /* 检查源类型是否为指针/结构体/枚举/字符串 */
+                        bool src_is_pointer_or_struct = (src_type &&
+                            (src_type->kind == CN_TYPE_POINTER ||
+                             src_type->kind == CN_TYPE_STRUCT ||
+                             src_type->kind == CN_TYPE_ENUM ||
+                             src_type->kind == CN_TYPE_STRING));
                         if (src_is_pointer_or_struct) {
                             /* 在alloca_types中查找目标变量 */
                             const char *dest_name = prescan_store_inst->dest.as.sym_name;
@@ -2734,6 +3643,10 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                          entry->type->kind == CN_TYPE_UNKNOWN)) {
                                         should_update = true;
                                     }
+                                    /* 如果ALLOCA当前类型为NULL，也更新 */
+                                    if (!entry->type) {
+                                        should_update = true;
+                                    }
                                     /* 【P8修复】POINTER类型可覆盖STRUCT/ENUM类型
                                      * 例如：变量声明为struct X但赋值为(struct X*)指针，
                                      * 应更新为POINTER类型以正确生成 -> 访问 */
@@ -2741,6 +3654,15 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                              entry->type &&
                                              (entry->type->kind == CN_TYPE_STRUCT ||
                                               entry->type->kind == CN_TYPE_ENUM)) {
+                                        should_update = true;
+                                    }
+                                    /* 【P1增强】STRING类型可覆盖INT/CHAR/BOOL类型
+                                     * 例如：变量声明为int但赋值为字符串字面量 */
+                                    else if (src_type->kind == CN_TYPE_STRING &&
+                                             entry->type &&
+                                             (entry->type->kind == CN_TYPE_INT ||
+                                              entry->type->kind == CN_TYPE_CHAR ||
+                                              entry->type->kind == CN_TYPE_BOOL)) {
                                         should_update = true;
                                     }
                                     if (should_update) {
@@ -2815,8 +3737,11 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 }
                             }
                             
-                            // 【备用】如果仍然没有找到类型，检查函数参数和全局作用域
-                            if (!new_type && scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
+                            // 【S4修复】备用类型查找：检查函数参数和全局作用域
+                            // 修改条件：不仅!new_type时查找，当new_type为INT/UNKNOWN/VOID时也查找
+                            // 因为这些低精度类型说明类型传播失败，需要从参数/全局作用域回填
+                            if ((!new_type || new_type->kind == CN_TYPE_INT || new_type->kind == CN_TYPE_UNKNOWN || new_type->kind == CN_TYPE_VOID)
+                                && scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
                                 
                                 // 检查函数参数
@@ -2858,6 +3783,23 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             /* 优先级1：从src1.type直接获取 */
                             if (scan_inst->src1.type) {
                                 mov_src_type = scan_inst->src1.type;
+                            }
+                            /* 【P1修复】优先级1.5：如果src1是寄存器且reg_types中有更精确的POINTER/STRING类型，
+                             * 优先使用reg_types中的类型。这处理了IR生成器将指针寄存器标记为STRUCT、
+                             * 但多遍扫描已将其升级为POINTER的情况。
+                             * 例如：r8被IR生成器标记为struct X，但reg_types[r8]已是struct X* */
+                            if (scan_inst->src1.kind == CN_IR_OP_REG &&
+                                scan_inst->src1.as.reg_id < actual_reg_count &&
+                                reg_types[scan_inst->src1.as.reg_id]) {
+                                CnType *reg_type = reg_types[scan_inst->src1.as.reg_id];
+                                /* 如果reg_types是POINTER/STRING，优先于src1.type的STRUCT */
+                                if (is_pointer_like_type(reg_type)) {
+                                    mov_src_type = reg_type;
+                                }
+                                /* 如果mov_src_type仍为NULL，使用reg_types */
+                                else if (!mov_src_type) {
+                                    mov_src_type = reg_type;
+                                }
                             }
                             /* 优先级2：IMM_STR视为char*类型 */
                             if (!mov_src_type && scan_inst->src1.kind == CN_IR_OP_IMM_STR) {
@@ -2920,6 +3862,13 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                  new_type->kind == CN_TYPE_BOOL)) {
                                 new_type = mov_src_type;
                             }
+                            /* 【P1修复】POINTER/STRING类型可以覆盖STRUCT类型
+                             * 例如：r9 = r8，r8是struct X*（POINTER），r9当前是struct X（STRUCT）
+                             * 应升级r9为POINTER类型，否则生成 "struct X r9; r9 = r8;" 会类型不匹配 */
+                            else if (mov_src_type && is_pointer_like_type(mov_src_type) &&
+                                     new_type && new_type->kind == CN_TYPE_STRUCT) {
+                                new_type = mov_src_type;
+                            }
                             /* 结构体类型也可以覆盖低精度类型 */
                             else if (mov_src_type && mov_src_type->kind == CN_TYPE_STRUCT &&
                                 (!new_type ||
@@ -2934,13 +3883,16 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             }
                         }
                         
-                        // 【修复】对于 CALL 指令，优先使用 dest.type 作为返回类型
+                        // 【P1修复增强】对于 CALL 指令，优先使用 dest.type 作为返回类型
                         // 这是类型传播问题的关键修复点
                         // 注意：这里不使用 !new_type 条件，因为我们要强制使用 dest.type
                         if (scan_inst->kind == CN_IR_INST_CALL) {
                             // CALL 指令的 dest.type 应该已经被 IR 生成器设置为返回类型
-                            // 优先使用 dest.type，因为它是最准确的类型信息
-                            if (scan_inst->dest.type) {
+                            // 优先使用 dest.type，但仅当它是精确类型（非INT/UNKNOWN/VOID）时
+                            if (scan_inst->dest.type &&
+                                scan_inst->dest.type->kind != CN_TYPE_INT &&
+                                scan_inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                                scan_inst->dest.type->kind != CN_TYPE_VOID) {
                                 new_type = scan_inst->dest.type;
                                 
                                 // 【调试】输出类型传播信息
@@ -2954,18 +3906,54 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 }
                                 #endif
                             }
-                            // 如果 dest.type 为 NULL，尝试从被调用函数的符号信息获取返回类型
-                            else if (scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name && ctx->global_scope) {
+                            // 【P1修复+RC1增强】如果 dest.type 为 NULL/INT/UNKNOWN/VOID，
+                            // 尝试从被调用函数的符号信息获取返回类型
+                            // 【RC1修复】移除!new_type限制：当dest.type为INT时，new_type非NULL但仍是低精度类型，
+                            // 应继续从符号表查找更精确的返回类型
+                            if (scan_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                                scan_inst->src1.as.sym_name &&
+                                (!new_type || new_type->kind == CN_TYPE_INT ||
+                                 new_type->kind == CN_TYPE_UNKNOWN || new_type->kind == CN_TYPE_VOID)) {
                                 const char *func_name = scan_inst->src1.as.sym_name;
-                                // 去掉可能的前缀
                                 const char *lookup_name = func_name;
                                 size_t lookup_len = strlen(func_name);
-                                // 查找函数符号
-                                CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->global_scope, lookup_name, lookup_len);
-                                if (func_sym && func_sym->kind == CN_SEM_SYMBOL_FUNCTION && func_sym->type) {
-                                    // 函数符号的 type 是函数类型，从中提取返回类型
-                                    if (func_sym->type->kind == CN_TYPE_FUNCTION && func_sym->type->as.function.return_type) {
-                                        new_type = func_sym->type->as.function.return_type;
+                                
+                                // 优先从全局符号表查找函数符号
+                                if (ctx->global_scope) {
+                                    CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->global_scope, lookup_name, lookup_len);
+                                    if (func_sym && func_sym->kind == CN_SEM_SYMBOL_FUNCTION && func_sym->type) {
+                                        if (func_sym->type->kind == CN_TYPE_FUNCTION &&
+                                            func_sym->type->as.function.return_type) {
+                                            CnType *ret_type = func_sym->type->as.function.return_type;
+                                            /* 只接受精确类型（指针/结构体/字符串/枚举等） */
+                                            if (ret_type->kind == CN_TYPE_POINTER ||
+                                                ret_type->kind == CN_TYPE_STRUCT ||
+                                                ret_type->kind == CN_TYPE_STRING ||
+                                                ret_type->kind == CN_TYPE_ENUM ||
+                                                ret_type->kind == CN_TYPE_ARRAY ||
+                                                ret_type->kind == CN_TYPE_CHAR ||
+                                                ret_type->kind == CN_TYPE_BOOL ||
+                                                ret_type->kind == CN_TYPE_FLOAT) {
+                                                new_type = ret_type;
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // 【RC1增强】如果全局符号表未找到，从IR模块函数列表查找返回类型
+                                // 这处理了跨模块函数调用时符号表可能不完整的情况
+                                if (!new_type && ctx->module) {
+                                    CnIrFunction *mod_func = ctx->module->first_func;
+                                    while (mod_func) {
+                                        if (mod_func->name && strcmp(mod_func->name, func_name) == 0 &&
+                                            mod_func->return_type &&
+                                            mod_func->return_type->kind != CN_TYPE_INT &&
+                                            mod_func->return_type->kind != CN_TYPE_UNKNOWN &&
+                                            mod_func->return_type->kind != CN_TYPE_VOID) {
+                                            new_type = mod_func->return_type;
+                                            break;
+                                        }
+                                        mod_func = mod_func->next;
                                     }
                                 }
                             }
@@ -2973,9 +3961,12 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         
                         // 【新增】对于 GET_ELEMENT_PTR 指令，处理静态数组索引访问的类型
                         // GET_ELEMENT_PTR 返回指向数组元素的指针
+                        // 【RC3修复】增加STRING类型处理和reg_types/alloca_types回退逻辑
                         if (!new_type && scan_inst->kind == CN_IR_INST_GET_ELEMENT_PTR) {
                             // dest = &array[index]，dest 的类型是指向数组元素类型的指针
-                            if (scan_inst->dest.type) {
+                            if (scan_inst->dest.type &&
+                                scan_inst->dest.type->kind != CN_TYPE_INT &&
+                                scan_inst->dest.type->kind != CN_TYPE_UNKNOWN) {
                                 new_type = scan_inst->dest.type;
                             } else if (scan_inst->src1.type) {
                                 // 从数组类型推断元素指针类型
@@ -2987,19 +3978,65 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                     // 如果是指针类型（动态数组），直接使用
                                     new_type = array_type;
                                 }
+                                /* 【RC3修复】STRING类型(char*)的GEP结果仍然是char*
+                                 * 例如：char* p; p[i] 的结果类型是char*（指向字符的指针）
+                                 * 这修复了字符串索引访问中间寄存器被声明为long long的问题 */
+                                else if (array_type->kind == CN_TYPE_STRING) {
+                                    new_type = cn_type_new_primitive(CN_TYPE_STRING);
+                                }
+                            }
+                            /* 【RC3修复】当src1.type为NULL时，从reg_types和alloca_types回退查找
+                             * 处理IR生成器未设置src1.type的情况 */
+                            if (!new_type) {
+                                CnType *src_type = NULL;
+                                /* 从reg_types查找src1寄存器类型 */
+                                if (scan_inst->src1.kind == CN_IR_OP_REG &&
+                                    scan_inst->src1.as.reg_id >= 0 &&
+                                    scan_inst->src1.as.reg_id < actual_reg_count) {
+                                    src_type = reg_types[scan_inst->src1.as.reg_id];
+                                }
+                                /* 从alloca_types查找src1符号类型 */
+                                if (!src_type && scan_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                                    scan_inst->src1.as.sym_name && alloca_types) {
+                                    AllocaTypeEntry *gep_entry = alloca_types;
+                                    while (gep_entry) {
+                                        if (gep_entry->sym_name && names_match_with_suffix(gep_entry->sym_name, scan_inst->src1.as.sym_name)) {
+                                            src_type = gep_entry->type;
+                                            break;
+                                        }
+                                        gep_entry = gep_entry->next;
+                                    }
+                                }
+                                /* 根据源类型推断GEP结果类型 */
+                                if (src_type) {
+                                    if (src_type->kind == CN_TYPE_ARRAY && src_type->as.array.element_type) {
+                                        new_type = cn_type_new_pointer(src_type->as.array.element_type);
+                                    } else if (src_type->kind == CN_TYPE_POINTER) {
+                                        new_type = src_type;
+                                    } else if (src_type->kind == CN_TYPE_STRING) {
+                                        new_type = cn_type_new_primitive(CN_TYPE_STRING);
+                                    }
+                                }
                             }
                         }
                         
                         // 对于 MEMBER_ACCESS 指令，优先使用 dest.type（IR生成器设置的成员类型）
                         // 这是最可靠的类型来源，特别是对于指针成员
                         if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS) {
-                            // 【优先】使用 dest.type（IR生成器设置的成员类型）
-                            if (scan_inst->dest.type) {
+                            // 【S4修复】使用 dest.type（IR生成器设置的成员类型）
+                            // 但仅当dest.type是精确类型时才使用，
+                            // 当dest.type为INT/UNKNOWN/VOID时，说明类型传播失败，
+                            // 需要继续从src1的对象类型推断成员类型
+                            if (scan_inst->dest.type &&
+                                scan_inst->dest.type->kind != CN_TYPE_INT &&
+                                scan_inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                                scan_inst->dest.type->kind != CN_TYPE_VOID) {
                                 new_type = scan_inst->dest.type;
                             }
                             
-                            // 如果 dest.type 为 NULL，尝试从 src1.type 推断成员类型
-                            if (!new_type) {
+                            // 如果 dest.type 为 NULL 或低精度类型，尝试从 src1.type 推断成员类型
+                            if (!new_type || new_type->kind == CN_TYPE_INT ||
+                                new_type->kind == CN_TYPE_UNKNOWN || new_type->kind == CN_TYPE_VOID) {
                                 // src1 是对象，src2 是成员名
                                 // 需要从对象的类型中推断成员的类型
                                 CnType *obj_type = scan_inst->src1.type;
@@ -3008,6 +4045,52 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 if (!obj_type && scan_inst->src1.kind == CN_IR_OP_REG &&
                                     scan_inst->src1.as.reg_id < actual_reg_count) {
                                     obj_type = reg_types[scan_inst->src1.as.reg_id];
+                                    /* 【S3增强】如果reg_types中类型为INT/NULL（传播失败），
+                                     * 追溯LOAD指令找到原始符号，从函数参数获取对象类型 */
+                                    if (obj_type && (obj_type->kind == CN_TYPE_INT ||
+                                                     obj_type->kind == CN_TYPE_UNKNOWN ||
+                                                     obj_type->kind == CN_TYPE_VOID)) {
+                                        obj_type = NULL; /* 重置，继续查找 */
+                                    }
+                                }
+                                /* 【S3增强】当src1是寄存器且reg_types中类型为INT/NULL时，
+                                 * 追溯LOAD指令找到原始符号，从函数参数获取对象类型 */
+                                if (!obj_type && scan_inst->src1.kind == CN_IR_OP_REG) {
+                                    int src1_reg_id = scan_inst->src1.as.reg_id;
+                                    CnIrBasicBlock *trace_block = func->first_block;
+                                    while (trace_block && !obj_type) {
+                                        CnIrInst *trace_inst = trace_block->first_inst;
+                                        while (trace_inst && !obj_type) {
+                                            if (trace_inst->kind == CN_IR_INST_LOAD &&
+                                                trace_inst->dest.kind == CN_IR_OP_REG &&
+                                                trace_inst->dest.as.reg_id == src1_reg_id &&
+                                                trace_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                                                trace_inst->src1.as.sym_name) {
+                                                const char *sym_name = trace_inst->src1.as.sym_name;
+                                                /* 从函数参数查找 */
+                                                for (size_t p = 0; p < func->param_count; p++) {
+                                                    if (func->params[p].as.sym_name &&
+                                                        names_match_with_suffix(func->params[p].as.sym_name, sym_name)) {
+                                                        obj_type = func->params[p].type;
+                                                        break;
+                                                    }
+                                                }
+                                                /* 从alloca_types查找 */
+                                                if (!obj_type && alloca_types) {
+                                                    AllocaTypeEntry *entry = alloca_types;
+                                                    while (entry) {
+                                                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, sym_name)) {
+                                                            obj_type = entry->type;
+                                                            break;
+                                                        }
+                                                        entry = entry->next;
+                                                    }
+                                                }
+                                            }
+                                            trace_inst = trace_inst->next;
+                                        }
+                                        trace_block = trace_block->next;
+                                    }
                                 }
                                 
                                 // 【修复】如果 src1 是符号（变量名），检查变量是否为指针类型
@@ -3171,11 +4254,15 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             }
                         }
                         
-                        /* 【P6修复】DEREF指令类型推断
+                        /* 【P6修复+RC1增强】DEREF指令类型推断
                          * 解引用 *ptr 的结果类型是指针指向的类型
                          * 如果无法确定指向类型，保持指针类型（避免降级为int）
+                         * 【RC1修复】移除!new_type限制：当dest.type为INT时，new_type非NULL但仍是低精度类型，
+                         * 应继续从源操作数推断解引用后的精确类型
                          */
-                        if (!new_type && scan_inst->kind == CN_IR_INST_DEREF) {
+                        if (scan_inst->kind == CN_IR_INST_DEREF &&
+                            (!new_type || new_type->kind == CN_TYPE_INT ||
+                             new_type->kind == CN_TYPE_UNKNOWN || new_type->kind == CN_TYPE_VOID)) {
                             CnType *src_type = NULL;
                             if (scan_inst->src1.kind == CN_IR_OP_REG &&
                                 scan_inst->src1.as.reg_id < actual_reg_count) {
@@ -3222,10 +4309,18 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 // 旧类型是指针/字符串类型，新类型不是，不更新
                                 should_update = false;
                             }
-                            // 防止结构体类型被降级为INT类型
+                            // 【P1修复】防止结构体类型被降级为INT类型
+                            // 但POINTER类型可以覆盖STRUCT类型（指针比结构体值更精确）
+                            // 例如：r9 = r8，r8是 struct X*，r9不应保持struct X而应升级为struct X*
                             else if (old_type->kind == CN_TYPE_STRUCT && new_type->kind != CN_TYPE_STRUCT) {
-                                // 旧类型是结构体类型，新类型不是结构体类型，不更新
-                                should_update = false;
+                                if (new_type->kind == CN_TYPE_POINTER || new_type->kind == CN_TYPE_STRING) {
+                                    // POINTER/STRING可以覆盖STRUCT：struct X → struct X*
+                                    should_update = true;
+                                    types_changed = true;
+                                } else {
+                                    // 其他类型不能覆盖STRUCT
+                                    should_update = false;
+                                }
                             }
                             // 新增：如果新旧类型相同，也更新（确保类型信息正确传播）
                             else if (new_type->kind == old_type->kind) {
@@ -3523,80 +4618,77 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
             }
         }
         
-        /* 性能优化：按类型分组声明寄存器，减少 fprintf 调用 */
-        /* 修复：确保所有使用的寄存器都被声明，即使类型信息缺失 */
-        bool has_int_regs = false;
+        /* 【Fix5】在二次推断前，临时设置ctx->reg_types
+         * infer_from_member_access()等函数依赖ctx->reg_types来查找寄存器类型，
+         * 但ctx->reg_types在寄存器声明后才正式设置。
+         * 这里临时设置，让二次推断能正确访问多遍传播后的类型信息。*/
+        CnType **saved_reg_types = ctx->reg_types;
+        int saved_reg_types_count = ctx->reg_types_count;
+        ctx->reg_types = reg_types;
+        ctx->reg_types_count = actual_reg_count;
+        
+        /* 【P1修复】在寄存器声明之前，对类型不明确的寄存器进行二次推断
+         * 多遍类型传播可能无法覆盖所有情况（如跨基本块传播不充分、
+         * CALL返回值类型未传播等），这里通过分析寄存器的使用模式来推断类型。
+         * 推断失败时回退到 long long int，不破坏现有功能。
+         */
         for (int i = 0; i < actual_reg_count; i++) {
-            // 【调试】输出最终类型
-            // 对于NULL、CN_TYPE_VOID、CN_TYPE_INT或CN_TYPE_UNKNOWN类型，都使用long long
-            // 注意：NULL类型表示类型信息缺失，VOID类型可能是函数调用返回值未正确设置，但仍需声明寄存器
-            if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_VOID || reg_types[i]->kind == CN_TYPE_INT || reg_types[i]->kind == CN_TYPE_UNKNOWN) {
-                if (!has_int_regs) {
-                    fprintf(ctx->output_file, "  long long ");
-                    has_int_regs = true;
-                } else {
-                    fprintf(ctx->output_file, ", ");
+            if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_INT ||
+                reg_types[i]->kind == CN_TYPE_UNKNOWN || reg_types[i]->kind == CN_TYPE_VOID) {
+                CnType *inferred = infer_reg_type_from_usage(ctx, func, i, alloca_types);
+                if (inferred && inferred->kind != CN_TYPE_INT &&
+                    inferred->kind != CN_TYPE_UNKNOWN && inferred->kind != CN_TYPE_VOID) {
+                    reg_types[i] = inferred;
                 }
-                fprintf(ctx->output_file, "r%d", i);
-            }
-        }
-        if (has_int_regs) fprintf(ctx->output_file, ";\n");
-        
-        /* 声明字符串寄存器（每个寄存器单独声明以确保每个都是指针类型） */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_STRING) {
-                fprintf(ctx->output_file, "  char* r%d;\n", i);
             }
         }
         
-        /* 声明数组寄存器（使用元素指针类型，而非void*） */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_ARRAY) {
-                // 数组类型应该声明为元素指针类型，以便支持指针算术
-                // 例如：关键字条目[40] 应该声明为 struct 关键字条目*
-                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
-            }
-        }
+        /* 【Fix5】恢复ctx->reg_types
+         * 二次推断完成，恢复之前保存的值。
+         * 后续的寄存器声明代码会重新设置ctx->reg_types。*/
+        ctx->reg_types = saved_reg_types;
+        ctx->reg_types_count = saved_reg_types_count;
         
-        /* 声明指针寄存器 */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_POINTER) {
-                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
+        /* 【P0修复】统一寄存器类型声明逻辑
+         * 修复前：按类型分组多循环声明，但遗漏了INT32/INT64/UINT32/UINT64/
+         *         CLASS/INTERFACE/MEMORY_ADDRESS等类型，这些全部落入long long分组
+         * 修复后：统一使用get_c_type_string()获取类型字符串，确保所有类型正确声明
+         * 只有NULL/VOID/UNKNOWN（真正无法确定类型）才回退到long long
+         */
+        {
+            /* 第一遍：收集需要long long回退的寄存器（类型信息缺失） */
+            bool has_fallback_regs = false;
+            for (int i = 0; i < actual_reg_count; i++) {
+                /* 只有NULL/VOID/UNKNOWN才回退到long long
+                 * NULL：类型信息完全缺失
+                 * VOID：不能声明void变量，回退到long long
+                 * UNKNOWN：类型未知，回退到long long
+                 * 注意：CN_TYPE_INT不再回退，get_c_type_string()会返回"long long"
+                 */
+                if (!reg_types[i] || reg_types[i]->kind == CN_TYPE_VOID ||
+                    reg_types[i]->kind == CN_TYPE_UNKNOWN) {
+                    if (!has_fallback_regs) {
+                        fprintf(ctx->output_file, "  long long ");
+                        has_fallback_regs = true;
+                    } else {
+                        fprintf(ctx->output_file, ", ");
+                    }
+                    fprintf(ctx->output_file, "r%d", i);
+                }
             }
-        }
-        
-        /* 声明布尔寄存器 */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_BOOL) {
-                fprintf(ctx->output_file, "  _Bool r%d;\n", i);
-            }
-        }
-        
-        /* 声明字符寄存器 */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_CHAR) {
-                fprintf(ctx->output_file, "  char r%d;\n", i);
-            }
-        }
-        
-        /* 声明浮点寄存器 */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_FLOAT) {
-                fprintf(ctx->output_file, "  double r%d;\n", i);
-            }
-        }
-        
-        /* 声明结构体寄存器 */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_STRUCT) {
-                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
-            }
-        }
-        
-        /* 声明枚举寄存器 */
-        for (int i = 0; i < actual_reg_count; i++) {
-            if (reg_types[i] && reg_types[i]->kind == CN_TYPE_ENUM) {
-                fprintf(ctx->output_file, "  %s r%d;\n", get_c_type_string(reg_types[i]), i);
+            if (has_fallback_regs) fprintf(ctx->output_file, ";\n");
+            
+            /* 第二遍：对有明确类型的寄存器，使用get_c_type_string()声明
+             * 这覆盖了所有类型：INT/INT32/INT64/UINT32/UINT64/BOOL/CHAR/FLOAT/
+             * STRING/POINTER/ARRAY/STRUCT/ENUM/CLASS/INTERFACE/MEMORY_ADDRESS等
+             * 每个寄存器单独声明，因为类型各不相同
+             */
+            for (int i = 0; i < actual_reg_count; i++) {
+                if (reg_types[i] && reg_types[i]->kind != CN_TYPE_VOID &&
+                    reg_types[i]->kind != CN_TYPE_UNKNOWN) {
+                    const char *type_str = get_c_type_string(reg_types[i]);
+                    fprintf(ctx->output_file, "  %s r%d;\n", type_str, i);
+                }
             }
         }
         
