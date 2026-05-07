@@ -1,0 +1,932 @@
+=== 编译: src_cn\词法分析器\扫描器.cn ===
+已生成 C 代码文件: src_cn\词法分析器\扫描器.c
+=== 编译: src_cn\词法分析器\关键字.cn ===
+已生成 C 代码文件: src_cn\词法分析器\关键字.c
+=== 编译: src_cn\词法分析器\字符工具.cn ===
+已生成 C 代码文件: src_cn\词法分析器\字符工具.c
+=== 编译: src_cn\词法分析器\错误恢复.cn ===
+[DEBUG PARSER] 函数参数 错误类型: param_type=0000019139671100, kind=8
+[DEBUG PARSER] 函数参数 错误类型: param_type=0000019139671510, kind=8
+[DEBUG PARSER] 函数参数 错误类型: param_type=0000019139671060, kind=8
+[DEBUG FUNC] 开始处理函数: 初始化错误恢复
+[DEBUG FUNC] 开始处理函数: 报告词法错误
+[DEBUG PARAM] 添加参数映射: '错误类型' -> 'cn_var_错误类型'
+[DEBUG VAR] 添加变量映射: '错误词元' -> '错误词元_0'
+[DEBUG VAR] 添加变量映射: '错误名称' -> '错误名称_1'
+[DEBUG MEMBER] 查找变量 '错误词元' -> '错误词元_0'
+[DEBUG MEMBER] 查找变量 '错误词元' -> '错误词元_0'
+[DEBUG PARAM] 添加参数映射: '错误类型' -> 'cn_var_错误类型'
+[DEBUG FUNC] 开始处理函数: 应该抑制错误
+[DEBUG FUNC] 开始处理函数: 重置错误计数
+[DEBUG FUNC] 开始处理函数: 词法错误名称
+[DEBUG PARAM] 添加参数映射: '错误类型' -> 'cn_var_错误类型'
+[DEBUG FUNC] 开始处理函数: 更新错误上下文
+函数: 初始化错误恢复，语句数: 7
+函数: 报告词法错误，语句数: 9
+函数: 应该抑制错误，语句数: 4
+函数: 重置错误计数，语句数: 4
+函数: 词法错误名称，语句数: 1
+函数: 更新错误上下文，语句数: 4
+已生成 C 代码文件: src_cn\词法分析器\错误恢复.c
+=== 编译: src_cn\诊断\诊断核心.cn ===
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+函数: 报告错误，语句数: 1
+函数: 有错误，语句数: 2
+函数: 获取错误计数，语句数: 2
+函数: 报告重复符号错误，语句数: 2
+函数: 报告未定义标识符错误，语句数: 2
+函数: 报告类型不匹配错误，语句数: 2
+函数: 报告缺少返回语句错误，语句数: 2
+函数: 报告常量缺少初始化错误，语句数: 2
+函数: 报告期望标记错误，语句数: 2
+函数: 报告未终止字符串错误，语句数: 1
+函数: 报告无效字符错误，语句数: 2
+已生成 C 代码文件: src_cn\诊断\诊断核心.c
+=== 编译: src_cn\诊断\诊断消息表.cn ===
+类型检查失败
+错误(29): <未知文件>:0:0: 语义错误：常量初始化表达式必须是编译时常量
+=== 编译: src_cn\诊断\诊断恢复.cn ===
+[DEBUG PARSER] 函数参数 最大错误: param_type=00000220BD453E80, kind=1
+[DEBUG PARSER] 无法识别的token: kind=80, line=105, col=1, error_count=17
+[DEBUG PARSER] 无法识别的token: kind=1, line=122, col=12, error_count=20
+[DEBUG PARSER] 无法识别的token: kind=79, line=122, col=19, error_count=21
+[DEBUG PARSER] 无法识别的token: kind=23, line=124, col=9, error_count=22
+[DEBUG PARSER] 无法识别的token: kind=1, line=124, col=16, error_count=23
+[DEBUG PARSER] 无法识别的token: kind=85, line=124, col=31, error_count=24
+[DEBUG PARSER] 无法识别的token: kind=1, line=124, col=32, error_count=25
+[DEBUG PARSER] 无法识别的token: kind=86, line=124, col=51, error_count=26
+[DEBUG PARSER] 无法识别的token: kind=9, line=125, col=13, error_count=27
+[DEBUG PARSER] 无法识别的token: kind=1, line=125, col=20, error_count=28
+[DEBUG PARSER] 无法识别的token: kind=85, line=125, col=32, error_count=29
+[DEBUG PARSER] 无法识别的token: kind=1, line=125, col=33, error_count=30
+[DEBUG PARSER] 无法识别的token: kind=23, line=128, col=9, error_count=31
+[DEBUG PARSER] 无法识别的token: kind=1, line=128, col=16, error_count=32
+[DEBUG PARSER] 无法识别的token: kind=85, line=128, col=31, error_count=33
+[DEBUG PARSER] 无法识别的token: kind=1, line=128, col=32, error_count=34
+[DEBUG PARSER] 无法识别的token: kind=86, line=128, col=54, error_count=35
+[DEBUG PARSER] 无法识别的token: kind=23, line=129, col=9, error_count=36
+[DEBUG PARSER] 无法识别的token: kind=1, line=129, col=16, error_count=37
+[DEBUG PARSER] 无法识别的token: kind=85, line=129, col=31, error_count=38
+[DEBUG PARSER] 无法识别的token: kind=1, line=129, col=32, error_count=39
+[DEBUG PARSER] 无法识别的token: kind=86, line=129, col=51, error_count=40
+[DEBUG PARSER] 无法识别的token: kind=23, line=130, col=9, error_count=41
+[DEBUG PARSER] 无法识别的token: kind=1, line=130, col=16, error_count=42
+[DEBUG PARSER] 无法识别的token: kind=85, line=130, col=31, error_count=43
+[DEBUG PARSER] 无法识别的token: kind=1, line=130, col=32, error_count=44
+[DEBUG PARSER] 无法识别的token: kind=86, line=130, col=57, error_count=45
+[DEBUG PARSER] 无法识别的token: kind=23, line=131, col=9, error_count=46
+[DEBUG PARSER] 无法识别的token: kind=1, line=131, col=16, error_count=47
+[DEBUG PARSER] 无法识别的token: kind=85, line=131, col=31, error_count=48
+[DEBUG PARSER] 无法识别的token: kind=1, line=131, col=32, error_count=49
+[DEBUG PARSER] 无法识别的token: kind=86, line=131, col=60, error_count=50
+[DEBUG PARSER] 无法识别的token: kind=23, line=132, col=9, error_count=51
+[DEBUG PARSER] 无法识别的token: kind=1, line=132, col=16, error_count=52
+[DEBUG PARSER] 无法识别的token: kind=85, line=132, col=31, error_count=53
+[DEBUG PARSER] 无法识别的token: kind=1, line=132, col=32, error_count=54
+[DEBUG PARSER] 无法识别的token: kind=86, line=132, col=54, error_count=55
+[DEBUG PARSER] 无法识别的token: kind=23, line=133, col=9, error_count=56
+[DEBUG PARSER] 无法识别的token: kind=1, line=133, col=16, error_count=57
+[DEBUG PARSER] 无法识别的token: kind=85, line=133, col=31, error_count=58
+[DEBUG PARSER] 无法识别的token: kind=1, line=133, col=32, error_count=59
+[DEBUG PARSER] 无法识别的token: kind=86, line=133, col=51, error_count=60
+[DEBUG PARSER] 无法识别的token: kind=9, line=134, col=13, error_count=61
+[DEBUG PARSER] 无法识别的token: kind=1, line=134, col=20, error_count=62
+[DEBUG PARSER] 无法识别的token: kind=85, line=134, col=32, error_count=63
+[DEBUG PARSER] 无法识别的token: kind=1, line=134, col=33, error_count=64
+[DEBUG PARSER] 无法识别的token: kind=23, line=137, col=9, error_count=65
+[DEBUG PARSER] 无法识别的token: kind=1, line=137, col=16, error_count=66
+[DEBUG PARSER] 无法识别的token: kind=85, line=137, col=31, error_count=67
+[DEBUG PARSER] 无法识别的token: kind=1, line=137, col=32, error_count=68
+[DEBUG PARSER] 无法识别的token: kind=86, line=137, col=57, error_count=69
+[DEBUG PARSER] 无法识别的token: kind=23, line=138, col=9, error_count=70
+[DEBUG PARSER] 无法识别的token: kind=1, line=138, col=16, error_count=71
+[DEBUG PARSER] 无法识别的token: kind=85, line=138, col=31, error_count=72
+[DEBUG PARSER] 无法识别的token: kind=1, line=138, col=32, error_count=73
+[DEBUG PARSER] 无法识别的token: kind=86, line=138, col=57, error_count=74
+[DEBUG PARSER] 无法识别的token: kind=23, line=139, col=9, error_count=75
+[DEBUG PARSER] 无法识别的token: kind=1, line=139, col=16, error_count=76
+[DEBUG PARSER] 无法识别的token: kind=85, line=139, col=31, error_count=77
+[DEBUG PARSER] 无法识别的token: kind=1, line=139, col=32, error_count=78
+[DEBUG PARSER] 无法识别的token: kind=86, line=139, col=57, error_count=79
+[DEBUG PARSER] 无法识别的token: kind=23, line=140, col=9, error_count=80
+[DEBUG PARSER] 无法识别的token: kind=1, line=140, col=16, error_count=81
+[DEBUG PARSER] 无法识别的token: kind=85, line=140, col=31, error_count=82
+[DEBUG PARSER] 无法识别的token: kind=1, line=140, col=32, error_count=83
+[DEBUG PARSER] 无法识别的token: kind=86, line=140, col=54, error_count=84
+[DEBUG PARSER] 无法识别的token: kind=23, line=141, col=9, error_count=85
+[DEBUG PARSER] 无法识别的token: kind=1, line=141, col=16, error_count=86
+[DEBUG PARSER] 无法识别的token: kind=85, line=141, col=31, error_count=87
+[DEBUG PARSER] 无法识别的token: kind=1, line=141, col=32, error_count=88
+[DEBUG PARSER] 无法识别的token: kind=86, line=141, col=54, error_count=89
+[DEBUG PARSER] 无法识别的token: kind=23, line=142, col=9, error_count=90
+[DEBUG PARSER] 无法识别的token: kind=1, line=142, col=16, error_count=91
+[DEBUG PARSER] 无法识别的token: kind=85, line=142, col=31, error_count=92
+[DEBUG PARSER] 无法识别的token: kind=1, line=142, col=32, error_count=93
+[DEBUG PARSER] 无法识别的token: kind=86, line=142, col=54, error_count=94
+[DEBUG PARSER] 无法识别的token: kind=9, line=143, col=13, error_count=95
+[DEBUG PARSER] 无法识别的token: kind=1, line=143, col=20, error_count=96
+[DEBUG PARSER] 无法识别的token: kind=85, line=143, col=32, error_count=97
+[DEBUG PARSER] 无法识别的token: kind=1, line=143, col=33, error_count=98
+[DEBUG PARSER] 无法识别的token: kind=23, line=146, col=9, error_count=99
+[DEBUG PARSER] 无法识别的token: kind=1, line=146, col=16, error_count=100
+[DEBUG PARSER] 无法识别的token: kind=85, line=146, col=31, error_count=101
+[DEBUG PARSER] 无法识别的token: kind=1, line=146, col=32, error_count=102
+[DEBUG PARSER] 无法识别的token: kind=86, line=146, col=57, error_count=103
+[DEBUG PARSER] 无法识别的token: kind=23, line=147, col=9, error_count=104
+[DEBUG PARSER] 无法识别的token: kind=1, line=147, col=16, error_count=105
+[DEBUG PARSER] 无法识别的token: kind=85, line=147, col=31, error_count=106
+[DEBUG PARSER] 无法识别的token: kind=1, line=147, col=32, error_count=107
+[DEBUG PARSER] 无法识别的token: kind=86, line=147, col=54, error_count=108
+[DEBUG PARSER] 无法识别的token: kind=23, line=148, col=9, error_count=109
+[DEBUG PARSER] 无法识别的token: kind=1, line=148, col=16, error_count=110
+[DEBUG PARSER] 无法识别的token: kind=85, line=148, col=31, error_count=111
+[DEBUG PARSER] 无法识别的token: kind=1, line=148, col=32, error_count=112
+[DEBUG PARSER] 无法识别的token: kind=86, line=148, col=51, error_count=113
+[DEBUG PARSER] 无法识别的token: kind=23, line=149, col=9, error_count=114
+[DEBUG PARSER] 无法识别的token: kind=1, line=149, col=16, error_count=115
+[DEBUG PARSER] 无法识别的token: kind=85, line=149, col=31, error_count=116
+[DEBUG PARSER] 无法识别的token: kind=1, line=149, col=32, error_count=117
+[DEBUG PARSER] 无法识别的token: kind=86, line=149, col=60, error_count=118
+[DEBUG PARSER] 无法识别的token: kind=23, line=150, col=9, error_count=119
+[DEBUG PARSER] 无法识别的token: kind=1, line=150, col=16, error_count=120
+[DEBUG PARSER] 无法识别的token: kind=85, line=150, col=31, error_count=121
+[DEBUG PARSER] 无法识别的token: kind=1, line=150, col=32, error_count=122
+[DEBUG PARSER] 无法识别的token: kind=86, line=150, col=60, error_count=123
+[DEBUG PARSER] 无法识别的token: kind=9, line=151, col=13, error_count=124
+[DEBUG PARSER] 无法识别的token: kind=1, line=151, col=20, error_count=125
+[DEBUG PARSER] 无法识别的token: kind=85, line=151, col=32, error_count=126
+[DEBUG PARSER] 无法识别的token: kind=1, line=151, col=33, error_count=127
+[DEBUG PARSER] 无法识别的token: kind=24, line=154, col=9, error_count=128
+[DEBUG PARSER] 无法识别的token: kind=86, line=154, col=15, error_count=129
+[DEBUG PARSER] 无法识别的token: kind=9, line=155, col=13, error_count=130
+[DEBUG PARSER] 无法识别的token: kind=1, line=155, col=20, error_count=131
+[DEBUG PARSER] 无法识别的token: kind=85, line=155, col=32, error_count=132
+[DEBUG PARSER] 无法识别的token: kind=1, line=155, col=33, error_count=133
+[DEBUG PARSER] 无法识别的token: kind=80, line=156, col=5, error_count=134
+[DEBUG PARSER] 无法识别的token: kind=80, line=157, col=1, error_count=135
+[DEBUG PARSER] 无法识别的token: kind=1, line=181, col=5, error_count=141
+[DEBUG PARSER] 无法识别的token: kind=85, line=181, col=14, error_count=142
+[DEBUG PARSER] 无法识别的token: kind=1, line=181, col=15, error_count=143
+[DEBUG PARSER] 无法识别的token: kind=60, line=181, col=28, error_count=144
+[DEBUG PARSER] 无法识别的token: kind=1, line=181, col=30, error_count=145
+[DEBUG PARSER] 无法识别的token: kind=85, line=181, col=39, error_count=146
+[DEBUG PARSER] 无法识别的token: kind=1, line=181, col=40, error_count=147
+[DEBUG PARSER] 无法识别的token: kind=53, line=181, col=53, error_count=148
+[DEBUG PARSER] 无法识别的token: kind=2, line=181, col=55, error_count=149
+[DEBUG PARSER] 无法识别的token: kind=6, line=184, col=5, error_count=150
+[DEBUG PARSER] 无法识别的token: kind=1, line=184, col=12, error_count=151
+[DEBUG PARSER] 无法识别的token: kind=85, line=184, col=21, error_count=152
+[DEBUG PARSER] 无法识别的token: kind=1, line=184, col=22, error_count=153
+[DEBUG PARSER] 无法识别的token: kind=66, line=184, col=38, error_count=154
+[DEBUG PARSER] 无法识别的token: kind=2, line=184, col=40, error_count=155
+[DEBUG PARSER] 无法识别的token: kind=68, line=184, col=42, error_count=156
+[DEBUG PARSER] 无法识别的token: kind=1, line=184, col=45, error_count=157
+[DEBUG PARSER] 无法识别的token: kind=85, line=184, col=54, error_count=158
+[DEBUG PARSER] 无法识别的token: kind=1, line=184, col=55, error_count=159
+[DEBUG PARSER] 无法识别的token: kind=67, line=184, col=68, error_count=160
+[DEBUG PARSER] 无法识别的token: kind=1, line=184, col=71, error_count=161
+[DEBUG PARSER] 无法识别的token: kind=85, line=184, col=80, error_count=162
+[DEBUG PARSER] 无法识别的token: kind=1, line=184, col=81, error_count=163
+[DEBUG PARSER] 无法识别的token: kind=79, line=184, col=97, error_count=164
+[DEBUG PARSER] 无法识别的token: kind=9, line=186, col=9, error_count=165
+[DEBUG PARSER] 无法识别的token: kind=1, line=186, col=16, error_count=166
+[DEBUG PARSER] 无法识别的token: kind=85, line=186, col=28, error_count=167
+[DEBUG PARSER] 无法识别的token: kind=1, line=186, col=29, error_count=168
+[DEBUG PARSER] 无法识别的token: kind=80, line=187, col=5, error_count=169
+[DEBUG PARSER] 无法识别的token: kind=6, line=190, col=5, error_count=170
+[DEBUG PARSER] 无法识别的token: kind=1, line=190, col=12, error_count=171
+[DEBUG PARSER] 无法识别的token: kind=63, line=190, col=22, error_count=172
+[DEBUG PARSER] 无法识别的token: kind=1, line=190, col=25, error_count=173
+[DEBUG PARSER] 无法识别的token: kind=68, line=190, col=35, error_count=174
+[DEBUG PARSER] 无法识别的token: kind=1, line=190, col=38, error_count=175
+[DEBUG PARSER] 无法识别的token: kind=85, line=190, col=47, error_count=176
+[DEBUG PARSER] 无法识别的token: kind=1, line=190, col=48, error_count=177
+[DEBUG PARSER] 无法识别的token: kind=63, line=190, col=67, error_count=178
+[DEBUG PARSER] 无法识别的token: kind=1, line=190, col=70, error_count=179
+[DEBUG PARSER] 无法识别的token: kind=79, line=190, col=80, error_count=180
+[DEBUG PARSER] 无法识别的token: kind=6, line=191, col=9, error_count=181
+[DEBUG PARSER] 无法识别的token: kind=1, line=191, col=16, error_count=182
+[DEBUG PARSER] 无法识别的token: kind=77, line=191, col=31, error_count=183
+[DEBUG PARSER] 无法识别的token: kind=1, line=191, col=32, error_count=184
+[DEBUG PARSER] 无法识别的token: kind=84, line=191, col=41, error_count=185
+[DEBUG PARSER] 无法识别的token: kind=1, line=191, col=43, error_count=186
+[DEBUG PARSER] 无法识别的token: kind=85, line=191, col=52, error_count=187
+[DEBUG PARSER] 无法识别的token: kind=1, line=191, col=53, error_count=188
+[DEBUG PARSER] 无法识别的token: kind=78, line=191, col=71, error_count=189
+[DEBUG PARSER] 无法识别的token: kind=61, line=191, col=73, error_count=190
+[DEBUG PARSER] 无法识别的token: kind=2, line=191, col=76, error_count=191
+[DEBUG PARSER] 无法识别的token: kind=68, line=191, col=78, error_count=192
+[DEBUG PARSER] 无法识别的token: kind=1, line=191, col=81, error_count=193
+[DEBUG PARSER] 无法识别的token: kind=61, line=191, col=88, error_count=194
+[DEBUG PARSER] 无法识别的token: kind=1, line=191, col=91, error_count=195
+[DEBUG PARSER] 无法识别的token: kind=85, line=191, col=100, error_count=196
+[DEBUG PARSER] 无法识别的token: kind=1, line=191, col=101, error_count=197
+[DEBUG PARSER] 无法识别的token: kind=79, line=191, col=120, error_count=198
+[DEBUG PARSER] 无法识别的token: kind=1, line=193, col=13, error_count=199
+[DEBUG PARSER] 无法识别的token: kind=85, line=193, col=22, error_count=200
+[DEBUG PARSER] 无法识别的token: kind=1, line=193, col=23, error_count=201
+[DEBUG PARSER] 无法识别的token: kind=60, line=193, col=42, error_count=202
+[DEBUG PARSER] 无法识别的token: kind=1, line=193, col=44, error_count=203
+[DEBUG PARSER] 无法识别的token: kind=85, line=193, col=53, error_count=204
+[DEBUG PARSER] 无法识别的token: kind=1, line=193, col=54, error_count=205
+[DEBUG PARSER] 无法识别的token: kind=53, line=193, col=73, error_count=206
+[DEBUG PARSER] 无法识别的token: kind=2, line=193, col=75, error_count=207
+[DEBUG PARSER] 无法识别的token: kind=6, line=194, col=13, error_count=208
+[DEBUG PARSER] 无法识别的token: kind=1, line=194, col=20, error_count=209
+[DEBUG PARSER] 无法识别的token: kind=85, line=194, col=29, error_count=210
+[DEBUG PARSER] 无法识别的token: kind=1, line=194, col=30, error_count=211
+[DEBUG PARSER] 无法识别的token: kind=67, line=194, col=49, error_count=212
+[DEBUG PARSER] 无法识别的token: kind=1, line=194, col=52, error_count=213
+[DEBUG PARSER] 无法识别的token: kind=79, line=194, col=71, error_count=214
+[DEBUG PARSER] 无法识别的token: kind=9, line=196, col=17, error_count=215
+[DEBUG PARSER] 无法识别的token: kind=1, line=196, col=24, error_count=216
+[DEBUG PARSER] 无法识别的token: kind=85, line=196, col=36, error_count=217
+[DEBUG PARSER] 无法识别的token: kind=1, line=196, col=37, error_count=218
+[DEBUG PARSER] 无法识别的token: kind=80, line=197, col=13, error_count=219
+[DEBUG PARSER] 无法识别的token: kind=80, line=198, col=9, error_count=220
+[DEBUG PARSER] 无法识别的token: kind=80, line=199, col=5, error_count=221
+[DEBUG PARSER] 无法识别的token: kind=7, line=199, col=7, error_count=222
+[DEBUG PARSER] 无法识别的token: kind=79, line=199, col=14, error_count=223
+[DEBUG PARSER] 无法识别的token: kind=1, line=201, col=9, error_count=224
+[DEBUG PARSER] 无法识别的token: kind=85, line=201, col=18, error_count=225
+[DEBUG PARSER] 无法识别的token: kind=1, line=201, col=19, error_count=226
+[DEBUG PARSER] 无法识别的token: kind=60, line=201, col=38, error_count=227
+[DEBUG PARSER] 无法识别的token: kind=2, line=201, col=40, error_count=228
+[DEBUG PARSER] 无法识别的token: kind=80, line=202, col=5, error_count=229
+[DEBUG PARSER] 无法识别的token: kind=1, line=205, col=5, error_count=230
+[DEBUG PARSER] 无法识别的token: kind=85, line=205, col=14, error_count=231
+[DEBUG PARSER] 无法识别的token: kind=1, line=205, col=15, error_count=232
+[DEBUG PARSER] 无法识别的token: kind=60, line=205, col=34, error_count=233
+[DEBUG PARSER] 无法识别的token: kind=85, line=206, col=14, error_count=235
+[DEBUG PARSER] 无法识别的token: kind=1, line=206, col=15, error_count=236
+[DEBUG PARSER] 无法识别的token: kind=60, line=206, col=34, error_count=237
+[DEBUG PARSER] 无法识别的token: kind=1, line=206, col=36, error_count=238
+[DEBUG PARSER] 无法识别的token: kind=9, line=209, col=5, error_count=239
+[DEBUG PARSER] 无法识别的token: kind=1, line=209, col=12, error_count=240
+[DEBUG PARSER] 无法识别的token: kind=77, line=209, col=30, error_count=241
+[DEBUG PARSER] 无法识别的token: kind=1, line=209, col=31, error_count=242
+[DEBUG PARSER] 无法识别的token: kind=78, line=209, col=37, error_count=243
+[DEBUG PARSER] 无法识别的token: kind=80, line=210, col=1, error_count=244
+[DEBUG PARSER] 无法识别的token: kind=1, line=228, col=9, error_count=253
+[DEBUG PARSER] 无法识别的token: kind=60, line=228, col=16, error_count=254
+[DEBUG PARSER] 无法识别的token: kind=1, line=228, col=18, error_count=255
+[DEBUG PARSER] 无法识别的token: kind=53, line=228, col=25, error_count=256
+[DEBUG PARSER] 无法识别的token: kind=2, line=228, col=27, error_count=257
+[DEBUG PARSER] 无法识别的token: kind=80, line=229, col=5, error_count=258
+[DEBUG PARSER] 无法识别的token: kind=9, line=230, col=5, error_count=259
+[DEBUG PARSER] 无法识别的token: kind=26, line=230, col=12, error_count=260
+[DEBUG PARSER] 无法识别的token: kind=80, line=231, col=1, error_count=261
+[DEBUG PARSER] 无法识别的token: kind=6, line=251, col=5, error_count=267
+[DEBUG PARSER] 无法识别的token: kind=1, line=251, col=12, error_count=268
+[DEBUG PARSER] 无法识别的token: kind=85, line=251, col=21, error_count=269
+[DEBUG PARSER] 无法识别的token: kind=1, line=251, col=22, error_count=270
+[DEBUG PARSER] 无法识别的token: kind=67, line=251, col=41, error_count=271
+[DEBUG PARSER] 无法识别的token: kind=1, line=251, col=44, error_count=272
+[DEBUG PARSER] 无法识别的token: kind=79, line=251, col=63, error_count=273
+[DEBUG PARSER] 无法识别的token: kind=6, line=253, col=9, error_count=274
+[DEBUG PARSER] 无法识别的token: kind=1, line=253, col=16, error_count=275
+[DEBUG PARSER] 无法识别的token: kind=63, line=253, col=26, error_count=276
+[DEBUG PARSER] 无法识别的token: kind=1, line=253, col=29, error_count=277
+[DEBUG PARSER] 无法识别的token: kind=68, line=253, col=39, error_count=278
+[DEBUG PARSER] 无法识别的token: kind=1, line=253, col=42, error_count=279
+[DEBUG PARSER] 无法识别的token: kind=85, line=253, col=51, error_count=280
+[DEBUG PARSER] 无法识别的token: kind=1, line=253, col=52, error_count=281
+[DEBUG PARSER] 无法识别的token: kind=63, line=253, col=71, error_count=282
+[DEBUG PARSER] 无法识别的token: kind=1, line=253, col=74, error_count=283
+[DEBUG PARSER] 无法识别的token: kind=79, line=253, col=84, error_count=284
+[DEBUG PARSER] 无法识别的token: kind=6, line=254, col=13, error_count=285
+[DEBUG PARSER] 无法识别的token: kind=1, line=254, col=20, error_count=286
+[DEBUG PARSER] 无法识别的token: kind=77, line=254, col=35, error_count=287
+[DEBUG PARSER] 无法识别的token: kind=1, line=254, col=36, error_count=288
+[DEBUG PARSER] 无法识别的token: kind=84, line=254, col=45, error_count=289
+[DEBUG PARSER] 无法识别的token: kind=1, line=254, col=47, error_count=290
+[DEBUG PARSER] 无法识别的token: kind=85, line=254, col=56, error_count=291
+[DEBUG PARSER] 无法识别的token: kind=1, line=254, col=57, error_count=292
+[DEBUG PARSER] 无法识别的token: kind=78, line=254, col=75, error_count=293
+[DEBUG PARSER] 无法识别的token: kind=61, line=254, col=77, error_count=294
+[DEBUG PARSER] 无法识别的token: kind=2, line=254, col=80, error_count=295
+[DEBUG PARSER] 无法识别的token: kind=68, line=254, col=82, error_count=296
+[DEBUG PARSER] 无法识别的token: kind=1, line=254, col=85, error_count=297
+[DEBUG PARSER] 无法识别的token: kind=61, line=254, col=92, error_count=298
+[DEBUG PARSER] 无法识别的token: kind=1, line=254, col=95, error_count=299
+[DEBUG PARSER] 无法识别的token: kind=85, line=254, col=104, error_count=300
+[DEBUG PARSER] 无法识别的token: kind=1, line=254, col=105, error_count=301
+[DEBUG PARSER] 无法识别的token: kind=79, line=254, col=124, error_count=302
+[DEBUG PARSER] 无法识别的token: kind=9, line=255, col=17, error_count=303
+[DEBUG PARSER] 无法识别的token: kind=25, line=255, col=24, error_count=304
+[DEBUG PARSER] 无法识别的token: kind=80, line=256, col=13, error_count=305
+[DEBUG PARSER] 无法识别的token: kind=80, line=257, col=9, error_count=306
+[DEBUG PARSER] 无法识别的token: kind=80, line=258, col=5, error_count=307
+[DEBUG PARSER] 无法识别的token: kind=9, line=260, col=5, error_count=308
+[DEBUG PARSER] 无法识别的token: kind=26, line=260, col=12, error_count=309
+[DEBUG PARSER] 无法识别的token: kind=80, line=261, col=1, error_count=310
+[DEBUG PARSER] 无法识别的token: kind=80, line=276, col=1, error_count=318
+[DEBUG PARSER] 无法识别的token: kind=9, line=288, col=5, error_count=324
+[DEBUG PARSER] 无法识别的token: kind=1, line=288, col=12, error_count=325
+[DEBUG PARSER] 无法识别的token: kind=85, line=288, col=21, error_count=326
+[DEBUG PARSER] 无法识别的token: kind=1, line=288, col=22, error_count=327
+[DEBUG PARSER] 无法识别的token: kind=80, line=289, col=1, error_count=328
+[DEBUG PARSER] 无法识别的token: kind=6, line=302, col=5, error_count=334
+[DEBUG PARSER] 无法识别的token: kind=1, line=302, col=12, error_count=335
+[DEBUG PARSER] 无法识别的token: kind=85, line=302, col=21, error_count=336
+[DEBUG PARSER] 无法识别的token: kind=1, line=302, col=22, error_count=337
+[DEBUG PARSER] 无法识别的token: kind=61, line=302, col=38, error_count=338
+[DEBUG PARSER] 无法识别的token: kind=2, line=302, col=41, error_count=339
+[DEBUG PARSER] 无法识别的token: kind=79, line=302, col=43, error_count=340
+[DEBUG PARSER] 无法识别的token: kind=9, line=303, col=9, error_count=341
+[DEBUG PARSER] 无法识别的token: kind=26, line=303, col=16, error_count=342
+[DEBUG PARSER] 无法识别的token: kind=80, line=304, col=5, error_count=343
+[DEBUG PARSER] 无法识别的token: kind=9, line=305, col=5, error_count=344
+[DEBUG PARSER] 无法识别的token: kind=1, line=305, col=12, error_count=345
+[DEBUG PARSER] 无法识别的token: kind=85, line=305, col=21, error_count=346
+[DEBUG PARSER] 无法识别的token: kind=1, line=305, col=22, error_count=347
+[DEBUG PARSER] 无法识别的token: kind=67, line=305, col=35, error_count=348
+[DEBUG PARSER] 无法识别的token: kind=1, line=305, col=38, error_count=349
+[DEBUG PARSER] 无法识别的token: kind=85, line=305, col=47, error_count=350
+[DEBUG PARSER] 无法识别的token: kind=1, line=305, col=48, error_count=351
+[DEBUG PARSER] 无法识别的token: kind=80, line=306, col=1, error_count=352
+解析失败
+错误(8): src_cn\诊断\诊断恢复.cn:47:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:48:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:49:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:50:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:51:1: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:72:1: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:81:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:96:1: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:97:12: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:99:18: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:100:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:100:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:101:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:102:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:103:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:104:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:122:12: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:122:12: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:176:12: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断恢复.cn:177:9: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断恢复.cn:177:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:177:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:178:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:206:14: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:224:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:224:9: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断恢复.cn:225:9: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断恢复.cn:225:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:225:16: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断恢复.cn:226:13: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断恢复.cn:226:20: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:227:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:246:12: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断恢复.cn:247:9: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断恢复.cn:247:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:247:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:248:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:270:12: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:271:18: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:272:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:272:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:273:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:274:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:275:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:285:12: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断恢复.cn:286:9: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断恢复.cn:286:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:286:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:287:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:298:12: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断恢复.cn:299:9: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断恢复.cn:299:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:299:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:300:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:322:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:322:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:322:66: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:323:16: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:323:57: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:325:9: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:327:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断恢复.cn:329:1: 语法错误：缺少预期的标记
+=== 编译: src_cn\诊断\诊断修复.cn ===
+[DEBUG PARSER] 无法识别的token: kind=1, line=77, col=8, error_count=23
+[DEBUG PARSER] 无法识别的token: kind=77, line=77, col=26, error_count=24
+[DEBUG PARSER] 无法识别的token: kind=84, line=77, col=49, error_count=26
+[DEBUG PARSER] 无法识别的token: kind=84, line=77, col=67, error_count=28
+[DEBUG PARSER] 无法识别的token: kind=84, line=77, col=95, error_count=30
+[DEBUG PARSER] 无法识别的token: kind=78, line=77, col=117, error_count=32
+[DEBUG PARSER] 无法识别的token: kind=88, line=77, col=119, error_count=33
+解析失败
+错误(8): src_cn\诊断\诊断修复.cn:35:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:36:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:37:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:38:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:39:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:40:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:41:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:42:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:43:1: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断修复.cn:54:5: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断修复.cn:56:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:57:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:58:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:59:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:60:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:61:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:62:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:63:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:64:5: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:65:1: 语法错误：缺少预期的标记
+错误(14): src_cn\诊断\诊断修复.cn:77:1: 语法错误：无法解析表达式
+错误(8): src_cn\诊断\诊断修复.cn:77:8: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:77:49: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:77:67: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:77:95: 语法错误：缺少预期的标记
+错误(8): src_cn\诊断\诊断修复.cn:77:117: 语法错误：缺少预期的标记
+错误(12): src_cn\诊断\诊断修复.cn:77:129: 语法错误：变量名无效
+=== 编译: src_cn\运行时\运行时.cn ===
+已生成 C 代码文件: src_cn\运行时\运行时.c
+=== 编译: src_cn\模块加载器\加载器.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=000001FDE51CAEC0, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=000001FDE5762FB0, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=000001FDE57433E0, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=000001FDE6674750, kind=1
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+[DEBUG FUNC] 开始处理函数: 初始化错误恢复
+[DEBUG FUNC] 开始处理函数: 销毁错误恢复上下文
+[DEBUG FUNC] 开始处理函数: 应该抑制错误
+[DEBUG FUNC] 开始处理函数: 记录错误
+[DEBUG FUNC] 开始处理函数: 重置错误计数
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误期望
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误期望
+函数: 报告错误，语句数: 1
+已生成 C 代码文件: src_cn\模块加载器\加载器.c
+=== 编译: src_cn\语法分析器\AST节点\基础结构.cn ===
+已生成 C 代码文件: src_cn\语法分析器\AST节点\基础结构.c
+=== 编译: src_cn\语法分析器\AST节点\表达式节点.cn ===
+已生成 C 代码文件: src_cn\语法分析器\AST节点\表达式节点.c
+=== 编译: src_cn\语法分析器\AST节点\语句节点.cn ===
+已生成 C 代码文件: src_cn\语法分析器\AST节点\语句节点.c
+=== 编译: src_cn\语法分析器\AST节点\声明节点.cn ===
+已生成 C 代码文件: src_cn\语法分析器\AST节点\声明节点.c
+=== 编译: src_cn\语法分析器\AST节点\程序节点.cn ===
+已生成 C 代码文件: src_cn\语法分析器\AST节点\程序节点.c
+=== 编译: src_cn\语法分析器\AST节点\运算符.cn ===
+已生成 C 代码文件: src_cn\语法分析器\AST节点\运算符.c
+=== 编译: src_cn\语法分析器\解析器\表达式解析.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=000002A2D5C00A40, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=000002A2D630F850, kind=1
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+[DEBUG FUNC] 开始处理函数: 初始化错误恢复
+[DEBUG FUNC] 开始处理函数: 销毁错误恢复上下文
+[DEBUG FUNC] 开始处理函数: 应该抑制错误
+[DEBUG FUNC] 开始处理函数: 记录错误
+[DEBUG FUNC] 开始处理函数: 重置错误计数
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误期望
+已生成 C 代码文件: src_cn\语法分析器\解析器\表达式解析.c
+=== 编译: src_cn\语法分析器\解析器\类型解析.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=00000212AF2E4210, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=00000212AF9F3D10, kind=1
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+类型检查失败
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '释放类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '字符串转整数'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '释放类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '释放类型节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '函数类型添加参数'
+=== 编译: src_cn\语法分析器\解析器\声明解析.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=0000029969399B10, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=0000029969AA7E80, kind=1
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+类型检查失败
+错误(26): <未知文件>:0:0: 语义错误：枚举 '词元类型枚举' 中不存在成员 '关键字_模块'
+错误(26): <未知文件>:0:0: 语义错误：枚举 '词元类型枚举' 中不存在成员 '关键字_常量'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建函数声明'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析类型'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析块语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建参数列表'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '参数列表添加'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建参数节点'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析类型'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建变量声明'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析类型'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '数组大小列表添加'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建结构体声明'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '结构体添加成员'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建枚举声明'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建枚举成员'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '字符串转整数'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '枚举添加成员'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建类声明'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '类添加实现接口'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '类添加方法'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '类添加字段'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建接口声明'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '接口添加方法'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建模块声明'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建导入声明'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '导入添加成员'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+=== 编译: src_cn\语法分析器\解析器\语句解析.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=00000271B06B9B60, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=00000271B0DC4870, kind=1
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+类型检查失败
+错误(26): <未知文件>:0:0: 语义错误：枚举 '词元类型枚举' 中不存在成员 '关键字_常量'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建块语句'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '块语句添加'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建如果语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建当语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建循环语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建返回语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建中断语句'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建继续语句'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建选择语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建情况分支'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '情况分支添加语句'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建情况分支'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '情况分支添加语句'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建尝试语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析类型'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建抛出语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建表达式语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析表达式'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '解析变量声明'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '创建声明语句'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+=== 编译: src_cn\语法分析器\解析器.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=0000018CEE60E750, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=0000018CEE61D370, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=0000018CEF909480, kind=1
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误期望
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+[DEBUG FUNC] 开始处理函数: 初始化错误恢复
+[DEBUG FUNC] 开始处理函数: 销毁错误恢复上下文
+[DEBUG FUNC] 开始处理函数: 应该抑制错误
+[DEBUG FUNC] 开始处理函数: 记录错误
+[DEBUG FUNC] 开始处理函数: 重置错误计数
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误期望
+函数: 报告错误，语句数: 3
+函数: 报告错误期望，语句数: 2
+已生成 C 代码文件: src_cn\语法分析器\解析器.c
+=== 编译: src_cn\语法分析器\AST节点.cn ===
+已生成 C 代码文件: src_cn\语法分析器\AST节点.c
+=== 编译: src_cn\语法分析器\错误恢复.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=0000015E69D36B10, kind=1
+[DEBUG FUNC] 开始处理函数: 初始化错误恢复
+[DEBUG FUNC] 开始处理函数: 销毁错误恢复上下文
+[DEBUG FUNC] 开始处理函数: 应该抑制错误
+[DEBUG FUNC] 开始处理函数: 记录错误
+[DEBUG FUNC] 开始处理函数: 重置错误计数
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+函数: 初始化错误恢复，语句数: 9
+函数: 销毁错误恢复上下文，语句数: 1
+函数: 应该抑制错误，语句数: 4
+函数: 记录错误，语句数: 4
+函数: 重置错误计数，语句数: 5
+已生成 C 代码文件: src_cn\语法分析器\错误恢复.c
+=== 编译: src_cn\语法分析器\解析器类型.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=00000274F7F99890, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=00000274F9216740, kind=1
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+[DEBUG FUNC] 开始处理函数: 报告错误期望
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+[DEBUG FUNC] 开始处理函数: 初始化错误恢复
+[DEBUG FUNC] 开始处理函数: 销毁错误恢复上下文
+[DEBUG FUNC] 开始处理函数: 应该抑制错误
+[DEBUG FUNC] 开始处理函数: 记录错误
+[DEBUG FUNC] 开始处理函数: 重置错误计数
+[DEBUG PARAM] 添加参数映射: '错误码' -> 'cn_var_错误码'
+函数: 报告错误，语句数: 0
+函数: 报告错误期望，语句数: 0
+已生成 C 代码文件: src_cn\语法分析器\解析器类型.c
+=== 编译: src_cn\语义分析器\符号表.cn ===
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+已生成 C 代码文件: src_cn\语义分析器\符号表.c
+=== 编译: src_cn\语义分析器\类型系统.cn ===
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+已生成 C 代码文件: src_cn\语义分析器\类型系统.c
+=== 编译: src_cn\语义分析器\语义检查.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=000001F0610E9AE0, kind=8
+类型检查失败
+错误(19): <未知文件>:0:0: 语义错误：函数 '检查声明' 参数 1 类型不匹配 (arg_kind=8, param_kind=6)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): src_cn\语义分析器\语义检查.cn:269:22: 语义错误：赋值类型不匹配
+错误(17): <未知文件>:0:0: 语义错误：索引操作的对象必须是数组或指针类型
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：索引操作的对象必须是数组或指针类型
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(26): <未知文件>:0:0: 语义错误：枚举 '类型种类' 中不存在成员 '布尔类型'
+错误(26): <未知文件>:0:0: 语义错误：枚举 '类型种类' 中不存在成员 '布尔类型'
+错误(26): <未知文件>:0:0: 语义错误：枚举 '类型种类' 中不存在成员 '布尔类型'
+错误(26): <未知文件>:0:0: 语义错误：枚举 '类型种类' 中不存在成员 '类型_未知'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): src_cn\语义分析器\语义检查.cn:763:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:767:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:771:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:775:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:779:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:783:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:787:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:791:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:795:26: 语义错误：赋值类型不匹配
+错误(17): src_cn\语义分析器\语义检查.cn:1034:22: 语义错误：赋值类型不匹配
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '是枚举类型'
+错误(16): <未知文件>:0:0: 语义错误：未定义的标识符 '查找枚举成员'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 整数 (整数)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 整数 (整数)
+错误(26): <未知文件>:0:0: 语义错误：枚举 '类型种类' 中不存在成员 '布尔类型'
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+=== 编译: src_cn\语义分析器\作用域构建.cn ===
+类型检查失败
+错误(19): <未知文件>:0:0: 语义错误：函数 '构建声明作用域' 参数 1 类型不匹配 (arg_kind=8, param_kind=6)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：无法推断变量类型，请提供显式类型声明
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：无法推断变量类型，请提供显式类型声明
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：无法推断变量类型，请提供显式类型声明
+错误(17): <未知文件>:0:0: 语义错误：无法推断变量类型，请提供显式类型声明
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：无法推断变量类型，请提供显式类型声明
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：索引操作的对象必须是数组或指针类型
+错误(17): <未知文件>:0:0: 语义错误：无法推断变量类型，请提供显式类型声明
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+错误(17): <未知文件>:0:0: 语义错误：成员访问操作的对象必须是结构体或枚举类型，实际类型为: 未知 (未知类型)
+=== 编译: src_cn\IR生成器\IR核心.cn ===
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+已生成 C 代码文件: src_cn\IR生成器\IR核心.c
+=== 编译: src_cn\IR生成器\IR生成.cn ===
+解析失败
+错误(14): src_cn\IR生成器\IR生成.cn:521:19: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:522:14: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:526:49: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:527:41: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:531:56: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:532:48: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:537:13: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:538:56: 语法错误：无法解析表达式
+错误(14): src_cn\IR生成器\IR生成.cn:539:69: 语法错误：无法解析表达式
+=== 编译: src_cn\IR生成器\优化Pass\常量折叠.cn ===
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+已生成 C 代码文件: src_cn\IR生成器\优化Pass\常量折叠.c
+=== 编译: src_cn\IR生成器\优化Pass\死代码消除.cn ===
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+已生成 C 代码文件: src_cn\IR生成器\优化Pass\死代码消除.c
+=== 编译: src_cn\代码生成器\C代码生成.cn ===
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+已生成 C 代码文件: src_cn\代码生成器\C代码生成.c
+=== 编译: src_cn\代码生成器\模块代码生成.cn ===
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告错误
+[DEBUG FUNC] 开始处理函数: 有错误
+[DEBUG FUNC] 开始处理函数: 获取错误计数
+[DEBUG FUNC] 开始处理函数: 报告重复符号错误
+[DEBUG FUNC] 开始处理函数: 报告未定义标识符错误
+[DEBUG FUNC] 开始处理函数: 报告类型不匹配错误
+[DEBUG FUNC] 开始处理函数: 报告缺少返回语句错误
+[DEBUG FUNC] 开始处理函数: 报告常量缺少初始化错误
+[DEBUG FUNC] 开始处理函数: 报告期望标记错误
+[DEBUG FUNC] 开始处理函数: 报告未终止字符串错误
+[DEBUG FUNC] 开始处理函数: 报告无效字符错误
+函数: 获取错误计数，语句数: 2
+已生成 C 代码文件: src_cn\代码生成器\模块代码生成.c
+=== 编译: src_cn\主程序\cnc.cn ===
+[DEBUG PARSER] 函数参数 错误码: param_type=000002041F3AB730, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=000002041F3ABEB0, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=00000204202AB9B0, kind=1
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+[DEBUG PARSER] 函数参数 错误码: param_type=000002042581A090, kind=8
+[DEBUG PARSER] 函数参数 错误码: param_type=000002042C20CD40, kind=8
+[WARNING] cn_sem_copy_symbol_type: '错误恢复' (kind=5) has NULL type and cannot recover
+名称解析失败
+错误(16): <未知文件>:0:0: 语义错误：无法编译外部模块

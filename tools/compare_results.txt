@@ -1,0 +1,45 @@
+=== P0 Fix Comparison Report ===
+
+Baseline(204) -> Before P0(214) -> After P0(214)
+
+=== File Distribution Comparison ===
+  C代码生成.c: 12 -> 12 (0)
+  IR核心.c: 7 -> 7 (0)
+  关键字.c: 2 -> 2 (0)
+  加载器.c: 46 -> 46 (0)
+  声明解析.c: 21 -> 21 (0)
+  常量折叠.c: 1 -> 1 (0)
+  扫描器.c: 2 -> 2 (0)
+  模块代码生成.c: 9 -> 9 (0)
+  死代码消除.c: 5 -> 5 (0)
+  程序节点.c: 1 -> 1 (0)
+  符号表.c: 20 -> 20 (0)
+  类型系统.c: 52 -> 52 (0)
+  类型解析.c: 4 -> 4 (0)
+  表达式解析.c: 4 -> 4 (0)
+  解析器.c: 3 -> 3 (0)
+  解析器类型.c: 2 -> 2 (0)
+  诊断核心.c: 9 -> 9 (0)
+  语句解析.c: 13 -> 13 (0)
+  错误恢复.c: 1 -> 1 (0)
+
+=== Error Type Comparison ===
+  CHAR_ASSIGN: 14 -> 13 (-1)
+  DEREF: 6 -> 6 (0)
+  FEW_ARGS: 9 -> 9 (0)
+  FUNC_ARG: 42 -> 43 (+1)
+  FUNC_CONFLICT: 8 -> 8 (0)
+  LL_ASSIGN: 49 -> 58 (+9)
+  MEMBER_ACCESS: 0 -> 12 (+12)
+  OTHER: 51 -> 13 (-38)
+  RETURN_MISMATCH: 1 -> 2 (+1)
+  STRUCT_ASSIGN: 29 -> 39 (+10)
+  UNDECLARED: 3 -> 9 (+6)
+  VOID_EXPR: 2 -> 2 (0)
+
+=== Detailed New Error Types ===
+  long long <- struct: 38
+  long long <- char*: 16
+  long long <- void*: 3
+  long long <- char**: 3
+  long long <- int*: 1

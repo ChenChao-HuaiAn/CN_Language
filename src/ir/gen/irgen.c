@@ -1330,6 +1330,51 @@ CnIrOperand cn_ir_gen_expr(CnIrGenContext *ctx, CnAstExpr *expr) {
                 free(func_name);
             }
             
+            // 【RC2修复-修改8】如果仍然没有返回类型，尝试从运行时API函数名推断
+            // 对于常见的运行时函数，根据函数名模式推断返回类型
+            if ((!return_type || return_type->kind == CN_TYPE_VOID || return_type->kind == CN_TYPE_UNKNOWN) &&
+                expr->as.call.callee->kind == CN_AST_EXPR_IDENTIFIER) {
+                char *rt_func_name = copy_name(expr->as.call.callee->as.identifier.name,
+                                               expr->as.call.callee->as.identifier.name_length);
+                // 分配内存类函数 → void* 指针类型
+                if (strcmp(rt_func_name, "分配内存") == 0 ||
+                    strcmp(rt_func_name, "malloc") == 0 ||
+                    strcmp(rt_func_name, "calloc") == 0 ||
+                    strcmp(rt_func_name, "realloc") == 0) {
+                    return_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                    expr->type = return_type;
+                }
+                // 字符串操作类函数 → char* 指针类型
+                else if (strcmp(rt_func_name, "复制字符串副本") == 0 ||
+                         strcmp(rt_func_name, "strdup") == 0 ||
+                         strcmp(rt_func_name, "strcpy") == 0 ||
+                         strcmp(rt_func_name, "strcat") == 0) {
+                    return_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_CHAR));
+                    expr->type = return_type;
+                }
+                // 文件操作类函数 → FILE* 或 int
+                else if (strcmp(rt_func_name, "fopen") == 0) {
+                    return_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                    expr->type = return_type;
+                }
+                // 创建类函数（以"创建"开头）→ 尝试从符号表查找对应结构体类型
+                else if (strncmp(rt_func_name, "创建", strlen("创建")) == 0 && ctx->global_scope) {
+                    // 尝试将"创建XXX"映射为"XXX"结构体类型
+                    const char *type_name_start = rt_func_name + strlen("创建");
+                    size_t type_name_len = strlen(type_name_start);
+                    if (type_name_len > 0) {
+                        CnSemSymbol *type_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                                                     type_name_start, type_name_len);
+                        if (type_sym && type_sym->type &&
+                            (type_sym->kind == CN_SEM_SYMBOL_STRUCT || type_sym->kind == CN_SEM_SYMBOL_CLASS)) {
+                            return_type = cn_type_new_pointer(type_sym->type);
+                            expr->type = return_type;
+                        }
+                    }
+                }
+                free(rt_func_name);
+            }
+            
             // 如果有返回值，分配结果寄存器
             if (return_type && return_type->kind != CN_TYPE_VOID) {
                 int dest_reg = alloc_reg(ctx);
@@ -1965,6 +2010,37 @@ void cn_ir_gen_stmt(CnIrGenContext *ctx, CnAstStmt *stmt) {
                     decl_type = sym->type;
                 }
             }
+            // 【RC2修复-修改6】如果仍然没有类型，尝试从初始化表达式的具体类型推断
+            // 避免将指针、结构体等类型错误地默认为整数类型
+            if (!decl_type && decl->initializer) {
+                CnAstExpr *init = decl->initializer;
+                // 取地址操作：推断为指针类型
+                if (init->kind == CN_AST_EXPR_UNARY &&
+                    init->as.unary.op == CN_AST_UNARY_OP_ADDRESS_OF &&
+                    init->as.unary.operand && init->as.unary.operand->type) {
+                    decl_type = cn_type_new_pointer(init->as.unary.operand->type);
+                }
+                // 字符串字面量：推断为 char* 类型
+                else if (init->kind == CN_AST_EXPR_STRING_LITERAL) {
+                    decl_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_CHAR));
+                }
+                // 成员访问：从成员表达式的类型推断
+                else if (init->kind == CN_AST_EXPR_MEMBER_ACCESS && init->type) {
+                    decl_type = init->type;
+                }
+                // 标识符引用：从标识符类型推断
+                else if (init->kind == CN_AST_EXPR_IDENTIFIER && init->type &&
+                         init->type->kind != CN_TYPE_UNKNOWN) {
+                    decl_type = init->type;
+                }
+                // 解引用操作：从操作数类型推断
+                else if (init->kind == CN_AST_EXPR_UNARY &&
+                         init->as.unary.op == CN_AST_UNARY_OP_DEREFERENCE &&
+                         init->as.unary.operand && init->as.unary.operand->type &&
+                         init->as.unary.operand->type->kind == CN_TYPE_POINTER) {
+                    decl_type = init->as.unary.operand->type->as.pointer_to;
+                }
+            }
             // 如果仍然没有类型，使用默认的整数类型
             // 这避免了生成 "void 变量名;" 的错误
             if (!decl_type) {
@@ -2410,8 +2486,39 @@ void cn_ir_gen_function(CnIrGenContext *ctx, CnAstFunctionDecl *func, CnSemScope
     // 使用显式声明的返回类型，如果没有则默认为整数类型
     CnType *return_type = func->return_type;
     if (!return_type) {
-        // 如果没有显式声明返回类型，默认为整数类型（后续可通过返回语句推断）
-        return_type = cn_type_new_primitive(CN_TYPE_INT);
+        // 【RC2修复-修改7】如果没有显式声明返回类型，尝试从函数体中的return语句推断
+        // 遍历函数体中的return语句，收集return表达式的类型
+        if (func->body && func->body->stmt_count > 0) {
+            CnType *inferred_return = NULL;
+            int return_count = 0;
+            int consistent = 1;  // 所有return语句类型是否一致
+            
+            for (size_t i = 0; i < func->body->stmt_count && consistent; i++) {
+                CnAstStmt *stmt = func->body->stmts[i];
+                // 只检查顶层的return语句（简化实现，不递归遍历嵌套块）
+                if (stmt->kind == CN_AST_STMT_RETURN && stmt->as.return_stmt.expr) {
+                    CnType *ret_expr_type = stmt->as.return_stmt.expr->type;
+                    if (ret_expr_type && ret_expr_type->kind != CN_TYPE_UNKNOWN) {
+                        if (inferred_return == NULL) {
+                            inferred_return = ret_expr_type;
+                        } else if (inferred_return->kind != ret_expr_type->kind) {
+                            consistent = 0;  // 类型不一致，放弃推断
+                        }
+                        return_count++;
+                    }
+                }
+            }
+            
+            // 如果找到至少一个return语句且类型一致，使用推断的类型
+            if (inferred_return && consistent && return_count > 0) {
+                return_type = inferred_return;
+            } else {
+                return_type = cn_type_new_primitive(CN_TYPE_INT);
+            }
+        } else {
+            // 如果没有显式声明返回类型，默认为整数类型
+            return_type = cn_type_new_primitive(CN_TYPE_INT);
+        }
     } else if (return_type->kind == CN_TYPE_STRUCT && ctx->global_scope) {
         // 特殊处理：如果返回类型是结构体类型，可能是枚举类型或类类型
         // 需要从符号表查找真实类型

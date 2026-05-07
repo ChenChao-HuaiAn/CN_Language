@@ -153,9 +153,9 @@ void 程序添加声明(struct 程序节点*, struct 声明节点*);
 extern void* 程序节点大小(void);
 
 struct 程序节点* 创建程序节点() {
-  long long r2;
   void* r0;
   struct 程序节点* r1;
+  long long r2;
   struct 程序节点* r3;
 
   entry:
@@ -165,40 +165,42 @@ struct 程序节点* 创建程序节点() {
 /* P7DBG_STORE src1.kind=1 */  cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 == 0;
-  if (r2) goto if_then_344; else goto if_merge_345;
+  if (r2) goto if_then_528; else goto if_merge_529;
 
-  if_then_344:
+  if_then_528:
   return 0;
-  goto if_merge_345;
+  goto if_merge_529;
 
-  if_merge_345:
+  if_merge_529:
   r3 = cn_var_节点_0;
   return r3;
 }
 
 void 程序添加声明(struct 程序节点* cn_var_程序, struct 声明节点* cn_var_声明) {
-  long long r0, r2, r4;
+  long long r0;
   struct 程序节点* r1;
+  long long r2;
   struct 声明节点* r3;
+  long long r4;
 
   entry:
   r1 = cn_var_程序;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_349; else goto logic_rhs_348;
+  if (r2) goto logic_merge_533; else goto logic_rhs_532;
 
-  if_then_346:
+  if_then_530:
   return;
-  goto if_merge_347;
+  goto if_merge_531;
 
-  if_merge_347:
+  if_merge_531:
 
-  logic_rhs_348:
+  logic_rhs_532:
   r3 = cn_var_声明;
   r4 = r3 == 0;
-  goto logic_merge_349;
+  goto logic_merge_533;
 
-  logic_merge_349:
-  if (r4) goto if_then_346; else goto if_merge_347;
+  logic_merge_533:
+  if (r4) goto if_then_530; else goto if_merge_531;
   return;
 }
 

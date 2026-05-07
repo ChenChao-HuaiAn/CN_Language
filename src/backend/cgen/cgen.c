@@ -3437,6 +3437,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                     CnIrFunction *mod_func = ctx->module->first_func;
                     while (mod_func) {
                         if (mod_func->name && strcmp(mod_func->name, func->name) == 0 &&
+                            mod_func != func &&
                             p < mod_func->param_count && mod_func->params[p].type &&
                             mod_func->params[p].type->kind != CN_TYPE_INT &&
                             mod_func->params[p].type->kind != CN_TYPE_UNKNOWN &&
@@ -3447,6 +3448,16 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         mod_func = mod_func->next;
                     }
                 }
+                
+                // 【S1增强】层级3：从函数签名中的参数类型回填
+                // 函数签名已经正确生成了参数类型（如 struct 类型信息*），
+                // 但func->params[p].type可能仍为NULL/INT。
+                // 这是因为cn_ir_function_add_param()存储的是CnIrOperand，
+                // 其type字段可能未被正确设置。
+                // 检查函数签名生成时使用的get_c_param_type_string()返回的类型
+                // 与func->params[p].type是否一致。
+                // 如果func->params[p].type仍为低精度，但函数的return_type已知，
+                // 尝试从函数的IR指令中推断参数类型。
             }
         }
     }
@@ -3503,6 +3514,65 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         isr_func->interrupt_vector, isr_c_name, isr_c_name);
             }
             isr_func = isr_func->next;
+        }
+    }
+    
+    // 【关键修复】预扫描：确保所有被JUMP/BRANCH引用的基本块都在链表中
+    // 尾递归优化(tail_call_opt.c)的create_loop_header可能创建tail_rec_loop块
+    // 但未正确将其链接到函数的基本块链表中。
+    // 【重要】此修复必须在寄存器类型扫描之前执行，否则类型传播循环
+    // 看不到未链接块中的指令，导致所有寄存器类型回退为long long。
+    {
+        CnIrBasicBlock *fix_blk = func->first_block;
+        while (fix_blk) {
+            CnIrInst *fix_inst = fix_blk->first_inst;
+            while (fix_inst) {
+                // 检查JUMP指令的目标块是否在链表中
+                if (fix_inst->kind == CN_IR_INST_JUMP &&
+                    fix_inst->dest.kind == CN_IR_OP_LABEL) {
+                    CnIrBasicBlock *target = fix_inst->dest.as.label;
+                    bool in_list = false;
+                    CnIrBasicBlock *check = func->first_block;
+                    while (check) {
+                        if (check == target) { in_list = true; break; }
+                        check = check->next;
+                    }
+                    if (!in_list && target) {
+                        CnIrBasicBlock *last = func->first_block;
+                        while (last->next) last = last->next;
+                        last->next = target;
+                        target->prev = last;
+                    }
+                }
+                // 检查BRANCH指令的两个目标块
+                if (fix_inst->kind == CN_IR_INST_BRANCH) {
+                    CnIrBasicBlock *targets[2] = { NULL, NULL };
+                    int target_count = 0;
+                    if (fix_inst->dest.kind == CN_IR_OP_LABEL) {
+                        targets[target_count++] = fix_inst->dest.as.label;
+                    }
+                    if (fix_inst->src2.kind == CN_IR_OP_LABEL) {
+                        targets[target_count++] = fix_inst->src2.as.label;
+                    }
+                    for (int t = 0; t < target_count; t++) {
+                        CnIrBasicBlock *target = targets[t];
+                        bool in_list = false;
+                        CnIrBasicBlock *check = func->first_block;
+                        while (check) {
+                            if (check == target) { in_list = true; break; }
+                            check = check->next;
+                        }
+                        if (!in_list && target) {
+                            CnIrBasicBlock *last = func->first_block;
+                            while (last->next) last = last->next;
+                            last->next = target;
+                            target->prev = last;
+                        }
+                    }
+                }
+                fix_inst = fix_inst->next;
+            }
+            fix_blk = fix_blk->next;
         }
     }
     
@@ -3709,19 +3779,19 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 const char *sym_name = scan_inst->src1.as.sym_name;
                                 
                                 // 【最高优先级】从预扫描的ALLOCA映射表中查找
-                                // 这解决了LOAD指令类型传播不正确的问题
-                                AllocaTypeEntry *entry = alloca_types;
-                                while (entry) {
-                                    if (names_match_with_suffix(entry->sym_name, sym_name)) {
-                                        new_type = entry->type;
-                                        break;
+                                    // 这解决了LOAD指令类型传播不正确的问题
+                                    AllocaTypeEntry *entry = alloca_types;
+                                    while (entry) {
+                                        if (names_match_with_suffix(entry->sym_name, sym_name)) {
+                                            new_type = entry->type;
+                                            break;
+                                        }
+                                        entry = entry->next;
                                     }
-                                    entry = entry->next;
                                 }
-                            }
-                            
-                            // 如果ALLOCA映射表中没有找到，尝试其他来源
-                            if (!new_type) {
+                                
+                                // 如果ALLOCA映射表中没有找到，尝试其他来源
+                                if (!new_type) {
                                 // 从 src1.type 获取
                                 if (scan_inst->src1.type) {
                                     new_type = scan_inst->src1.type;
@@ -3780,8 +3850,14 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         if (scan_inst->kind == CN_IR_INST_MOV) {
                             CnType *mov_src_type = NULL;
                             
-                            /* 优先级1：从src1.type直接获取 */
-                            if (scan_inst->src1.type) {
+                            /* 优先级1：从src1.type直接获取
+                             * 【S5修复】只有当src1.type是高精度类型时才直接使用，
+                             * 如果src1.type是INT/UNKNOWN/VOID，说明类型传播失败，
+                             * 需要继续从ALLOCA/函数参数/全局作用域获取更精确的类型 */
+                            if (scan_inst->src1.type &&
+                                scan_inst->src1.type->kind != CN_TYPE_INT &&
+                                scan_inst->src1.type->kind != CN_TYPE_UNKNOWN &&
+                                scan_inst->src1.type->kind != CN_TYPE_VOID) {
                                 mov_src_type = scan_inst->src1.type;
                             }
                             /* 【P1修复】优先级1.5：如果src1是寄存器且reg_types中有更精确的POINTER/STRING类型，
@@ -4714,64 +4790,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
     skip_register_type_scan:;
     }
 
-    // 【P3-6修复】预扫描：确保所有被JUMP/BRANCH引用的基本块都在链表中
-    // 尾递归优化(tail_call_opt.c)的create_loop_header可能创建tail_rec_loop块
-    // 但未正确将其链接到函数的基本块链表中，导致标签未生成
-    {
-        CnIrBasicBlock *scan_blk = func->first_block;
-        while (scan_blk) {
-            CnIrInst *scan_inst = scan_blk->first_inst;
-            while (scan_inst) {
-                // 检查JUMP指令的目标块是否在链表中
-                if (scan_inst->kind == CN_IR_INST_JUMP &&
-                    scan_inst->dest.kind == CN_IR_OP_LABEL) {
-                    CnIrBasicBlock *target = scan_inst->dest.as.label;
-                    // 检查目标块是否已在链表中
-                    bool in_list = false;
-                    CnIrBasicBlock *check = func->first_block;
-                    while (check) {
-                        if (check == target) { in_list = true; break; }
-                        check = check->next;
-                    }
-                    if (!in_list && target) {
-                        // 目标块不在链表中，追加到链表末尾
-                        CnIrBasicBlock *last = func->first_block;
-                        while (last->next) last = last->next;
-                        last->next = target;
-                        target->prev = last;
-                    }
-                }
-                // 检查BRANCH指令的两个目标块
-                if (scan_inst->kind == CN_IR_INST_BRANCH) {
-                    CnIrBasicBlock *targets[2] = { NULL, NULL };
-                    int target_count = 0;
-                    if (scan_inst->dest.kind == CN_IR_OP_LABEL) {
-                        targets[target_count++] = scan_inst->dest.as.label;
-                    }
-                    if (scan_inst->src2.kind == CN_IR_OP_LABEL) {
-                        targets[target_count++] = scan_inst->src2.as.label;
-                    }
-                    for (int t = 0; t < target_count; t++) {
-                        CnIrBasicBlock *target = targets[t];
-                        bool in_list = false;
-                        CnIrBasicBlock *check = func->first_block;
-                        while (check) {
-                            if (check == target) { in_list = true; break; }
-                            check = check->next;
-                        }
-                        if (!in_list && target) {
-                            CnIrBasicBlock *last = func->first_block;
-                            while (last->next) last = last->next;
-                            last->next = target;
-                            target->prev = last;
-                        }
-                    }
-                }
-                scan_inst = scan_inst->next;
-            }
-            scan_blk = scan_blk->next;
-        }
-    }
+    // 【注意】P3-6基本块链表修复已移到寄存器类型扫描之前执行，
+    // 确保类型传播循环能看到所有基本块中的指令。
 
     CnIrBasicBlock *block = func->first_block;
     while (block) { cn_cgen_block(ctx, block); block = block->next; }

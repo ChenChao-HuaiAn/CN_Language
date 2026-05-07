@@ -1,0 +1,41 @@
+[DEBUG PARSER] 函数参数 类型: param_type=000002616E3E3E20, kind=8
+[DEBUG PARSER] 函数参数 类型: param_type=000002616E3E4050, kind=8
+[DEBUG PARSER] 函数参数 值: param_type=000002616E3E40A0, kind=5
+[DEBUG PARSER] 函数参数 行号: param_type=000002616E40F2D0, kind=1
+[DEBUG PARSER] 函数参数 列号: param_type=000002616E40EBF0, kind=1
+[DEBUG PARSER] 函数参数 长度值: param_type=000002616E40F690, kind=1
+[DEBUG PARSER] 函数参数 类型: param_type=000002616E40EDD0, kind=8
+[DEBUG PARSER] 函数参数 类型: param_type=000002616E40EAB0, kind=8
+[DEBUG PARSER] 函数参数 类型: param_type=000002616E40F0A0, kind=8
+[DEBUG PARSER] 函数参数 类型: param_type=000002616E40E7E0, kind=8
+[DEBUG MAP] 清空映射表，释放 0 个条目
+[DEBUG FUNC] 开始处理函数: 词元类型名称
+[DEBUG PARAM] 添加参数映射: '类型' -> 'cn_var_类型'
+[DEBUG MAP] 清空映射表，释放 1 个条目
+[DEBUG FUNC] 开始处理函数: 创建词元
+[DEBUG PARAM] 添加参数映射: '类型' -> 'cn_var_类型'
+[DEBUG PARAM] 添加参数映射: '值' -> 'cn_var_值'
+[DEBUG PARAM] 添加参数映射: '行号' -> 'cn_var_行号'
+[DEBUG PARAM] 添加参数映射: '列号' -> 'cn_var_列号'
+[DEBUG PARAM] 添加参数映射: '长度值' -> 'cn_var_长度值'
+[DEBUG VAR] 添加变量映射: '新词元' -> '新词元_0'
+[DEBUG MAP] 清空映射表，释放 6 个条目
+[DEBUG FUNC] 开始处理函数: 是关键字
+[DEBUG PARAM] 添加参数映射: '类型' -> 'cn_var_类型'
+[DEBUG MAP] 清空映射表，释放 1 个条目
+[DEBUG FUNC] 开始处理函数: 是字面量
+[DEBUG PARAM] 添加参数映射: '类型' -> 'cn_var_类型'
+[DEBUG MAP] 清空映射表，释放 1 个条目
+[DEBUG FUNC] 开始处理函数: 是运算符
+[DEBUG PARAM] 添加参数映射: '类型' -> 'cn_var_类型'
+[DEBUG MAP] 清空映射表，释放 1 个条目
+[DEBUG FUNC] 开始处理函数: 是分隔符
+[DEBUG PARAM] 添加参数映射: '类型' -> 'cn_var_类型'
+[DEBUG MAP] 清空映射表，释放 1 个条目
+函数: 词元类型名称，语句数: 83
+函数: 创建词元，语句数: 7
+函数: 是关键字，语句数: 7
+函数: 是字面量，语句数: 1
+函数: 是运算符，语句数: 1
+函数: 是分隔符，语句数: 1
+已生成 C 代码文件: src_cn\词法分析器\词元.c

@@ -1,0 +1,201 @@
+﻿C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1301:147: error: 'cn_var_\U00006a21\U00005757' unde
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1557:8: error: incompatible types when assigning to
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1560:7: error: assignment to 'int *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1561:39: error: incompatible types when assigning t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1595:7: error: assignment to 'int *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1596:39: error: incompatible types when assigning t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\IR核心.c:1741:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\常量折叠.c:2900:9: error: incompatible types when assig
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1608:8: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1642:8: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1758:18: error: incompatible type for argum
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1966:9: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\IR生成器\优化Pass\死代码消除.c:1983:9: error: incompatible types when assi
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3073:12: error: 'struct \U00007c7b\U0000578b\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3441:24: error: incompatible type for argument 1 o
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:3602:12: error: 'struct \U00007c7b\U0000578b\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4231:25: error: request for member '\U00007c7b\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4237:26: error: request for member '\U00005bc4\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4351:22: error: request for member '\U00007c7b\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4353:25: error: passing argument 1 of '\U00007c7b\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4477:10: error: incompatible types when returning
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\C代码生成.c:4618:162: error: 'cn_var_\U00005c0f\U00006570\U000
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1432:11: error: conflicting types for '\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1433:11: error: conflicting types for '\U000083b7
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:1754:7: error: assignment to 'char *' from 'char'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2069:7: error: assignment to 'char *' from 'char'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2311:9: error: incompatible types when assigning
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2313:7: error: assignment to 'long long int' from
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2315:25: error: passing argument 1 of '\U00007c7b
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2819:11: error: conflicting types for '\U000083b7
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\代码生成器\模块代码生成.c:2836:11: error: conflicting types for '\U000083b7
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1164:6: error: assignment to 'char *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1183:7: error: assignment to 'char *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1201:46: error: assignment to 'struct \U00006a21\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1290:213: error: 'cn_var_\U00008def\U00005f84\U00009
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1463:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1465:20: error: passing argument 1 of '\U0000590d\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1482:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1483:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1511:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1512:12: error: passing argument 1 of 'cn_rt_free' m
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1539:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1540:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1567:211: error: 'cn_var_\U00006bb5\U0000957f\U00005
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1575:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1576:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1592:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1593:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1627:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1629:40: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1640:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1641:12: error: passing argument 1 of 'cn_rt_free' m
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1642:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1643:12: error: passing argument 1 of 'cn_rt_free' m
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1711:7: error: assignment to 'char *' from 'char' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1818:7: error: assignment to 'char *' from incompati
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1864:7: error: assignment to 'char *' from 'char' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1872:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1875:18: error: passing argument 1 of '\U0000590d\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1891:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1892:20: error: passing argument 1 of '\U0000590d\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1964:6: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1965:8: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1974:7: error: assignment to 'char' from 'char *' ma
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:1975:9: error: invalid type argument of unary '*' (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2042:46: error: assignment to 'struct \U00006a21\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2275:211: error: 'cn_var_\U00006587\U00004ef6\U00005
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2634:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2636:7: error: assignment to 'long long int' from 'l
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2637:27: error: passing argument 2 of '\U00008bfb\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2637:32: error: passing argument 3 of '\U00008bfb\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2656:25: error: passing argument 2 of '\U0000521b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2884:9: error: incompatible types when assigning to
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:2902:300: error: 'cn_var_\U000065b0\U00005bb9\U00009
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3183:9: error: incompatible types when assigning to
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3222:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\模块加载器\加载器.c:3247:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:148:25: error: passing argument 2 of '\U00005206\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:619:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:638:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:678:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:697:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:716:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:746:8: error: too few arguments to function '\U00005b5
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:790:7: error: assignment to 'int *' from incompatible
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\诊断\诊断核心.c:791:39: error: incompatible types when assigning to ty
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:180:8: error: incompatible types when assigning to t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\关键字.c:199:9: error: incompatible types when assigning to t
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:425:6: error: invalid use of void expression
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\扫描器.c:464:7: error: invalid use of void expression
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\词法分析器\错误恢复.c:540:9: error: incompatible types when assigning to
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1352:6: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1353:52: error: assignment to 'struct \U00004f5c\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1593:6: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1595:39: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1596:10: error: request for member '\U0000540d\U0000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1598:20: error: passing argument 1 of '\U00006bd4\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1609:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1610:52: error: assignment to 'struct \U00004f5c\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1614:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1616:40: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1740:6: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1754:6: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1768:6: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1770:40: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1770:7: error: assignment to 'long long int' from 'v
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1771:12: error: invalid type argument of '->' (have
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1772:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1773:20: error: passing argument 1 of '\U00006bd4\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1773:25: error: passing argument 2 of '\U00006bd4\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1784:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1789:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1791:40: error: passing argument 1 of 'cn_rt_array_g
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1791:7: error: assignment to 'long long int' from 'v
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1792:10: error: returning 'long long int' from a fun
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1799:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1800:7: error: assignment to 'long long int' from 'c
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1803:17: error: assignment to 'struct \U00007b26\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:1804:17: error: assignment to 'const char *' from 'l
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:2087:7: error: assignment to 'long long int' from 's
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\符号表.c:2088:46: error: assignment to 'struct \U00004f5c\U00
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1328:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1333:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1334:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1346:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1420:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1421:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1422:20: error: passing argument 1 of '\U00006bd4\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1422:25: error: passing argument 2 of '\U00006bd4\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1428:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1429:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1432:16: error: assignment to 'struct \U00007c7b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1433:16: error: assignment to 'struct \U00007c7b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1458:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1459:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1462:16: error: assignment to 'struct \U00007c7b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1463:16: error: assignment to 'struct \U00007c7b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1477:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1478:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1494:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1495:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1496:18: error: passing argument 1 of '\U00007c7b\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1496:23: error: passing argument 2 of '\U00007c7b\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1516:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1518:51: error: passing argument 1 of 'cn_rt_array_
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1518:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1519:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1521:51: error: passing argument 1 of 'cn_rt_array_
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1521:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1522:18: error: passing argument 1 of '\U00007c7b\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1522:23: error: passing argument 2 of '\U00007c7b\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1866:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1880:6: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1893:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1894:48: error: assignment to 'struct \U00007b26\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1895:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1923:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1925:47: error: passing argument 1 of 'cn_rt_array_
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1925:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1926:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1937:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1950:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1951:12: error: request for member '\U0000540d\U000
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1952:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1953:20: error: passing argument 1 of '\U0000521b\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1953:25: error: passing argument 2 of '\U0000521b\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1953:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1954:50: error: assignment to 'struct \U00007c7b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1955:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1956:7: error: assignment to 'long long int' from '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1959:17: error: assignment to 'struct \U00007c7b\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语义分析器\类型系统.c:1960:19: error: assignment to 'struct \U00007c7b\U0
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1042:6: error: conflicting types for '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1372:19: error: incompatible type for argument 2 of
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器.c:1395:6: error: conflicting types for '\U000062a5\U00
+gcc : C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:857:6: error: conflicting types for '\U00006
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器类型.c:867:6: error: conflicting types for '\U000062a5\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\AST节点\程序节点.c:164:17: error: passing argument 1 of 'cn_rt_m
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1161:24: error: invalid operands to binary + (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:12: error: passing argument 1 of '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:43: error: incompatible type for argument
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1162:3: error: too few arguments to function '\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1482:22: error: invalid use of undefined type '
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1576:17: error: incompatible type for argument
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1623:24: error: 'struct \U000058f0\U0000660e\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1624:12: error: request for member '\U00006570\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1636:24: error: 'struct \U000058f0\U0000660e\U0
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1637:12: error: request for member '\U00006570\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:1641:20: error: passing argument 1 of '\U000065
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:12: error: passing argument 1 of '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:42: error: incompatible type for argument
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\声明解析.c:2213:3: error: too few arguments to function '\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:12: error: passing argument 1 of '\U000062
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:43: error: incompatible type for argument
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1033:3: error: too few arguments to function '\
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\类型解析.c:1265:13: error: invalid operands to binary + (h
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2944:22: error: 'struct \U000089e3\U00006790\U
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2946:12: error: 'struct \U00008bcd\U00005143'
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2947:12: error: passing argument 1 of '\U00006
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\表达式解析.c:2947:45: error: incompatible type for argument
+C:\Users\ChenChao\Documents\gitcode\CN_Language\src_cn\语法分析器\解析器\语句解析.c:1106:10: error: returning 'struct \U00005757\U0

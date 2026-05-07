@@ -4576,7 +4576,7 @@ void 格式化整数(const char* cn_var_缓冲区, long long cn_var_缓冲区大
   r29 = (void*)cn_rt_array_get_element(r27, r28, 8);
   r30 = cn_var_缓冲区;
   r31 = cn_var_输出索引_3;
-    { long long _tmp_r6 = r29; cn_rt_array_set_element(r30, r31, &_tmp_r6, 8); }
+    { void* _tmp_r6 = r29; cn_rt_array_set_element(r30, r31, &_tmp_r6, 8); }
   r32 = cn_var_输出索引_3;
   r33 = r32 + 1;
 /* P7DBG_STORE src1.kind=1 */  cn_var_输出索引_3 = r33;

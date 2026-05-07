@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <stdint.h>     /* 【RC5修复】uintptr_t类型需要 */
 #include <sys/stat.h>
 
 #ifdef _WIN32
@@ -141,7 +142,44 @@ int cn_multi_compile_ctx_add_unit(CnMultiFileCompileContext *ctx,
 // E2: 模块头文件生成
 // ============================================================================
 
+// 【RC5修复】CN基本类型关键字映射函数（本地版本）
+// 当语义分析器将中文基本类型错误标记为CN_TYPE_STRUCT时，
+// 通过类型名映射回正确的C类型
+// 与cgen.c中的try_cn_primitive_type_name()保持一致
+static const char *try_cn_primitive_type_name_local(const char *name, size_t name_len) {
+    if (!name || name_len == 0) return NULL;
+    /* 使用长度先做快速筛选，再用strncmp精确匹配
+     * UTF-8编码下中文字符串长度：
+     * - 1个汉字 = 3字节, 2个汉字 = 6字节, 3个汉字 = 9字节
+     */
+    switch (name_len) {
+        case 3: /* 1个汉字 × 3字节 */
+            if (strncmp(name, "无", 3) == 0) return "void*";
+            break;
+        case 6: /* 2个汉字 × 3字节 */
+            if (strncmp(name, "整数", 6) == 0) return "long long";
+            if (strncmp(name, "小数", 6) == 0) return "double";
+            if (strncmp(name, "字符", 6) == 0) return "char";
+            if (strncmp(name, "布尔", 6) == 0) return "_Bool";
+            if (strncmp(name, "函数", 6) == 0) return "void*";
+            break;
+        case 9: /* 3个汉字 × 3字节 */
+            if (strncmp(name, "字符串", 9) == 0) return "char*";
+            if (strncmp(name, "空类型", 9) == 0) return "void";
+            if (strncmp(name, "结构体", 9) == 0) return "void*";
+            break;
+        default:
+            break;
+    }
+    return NULL;
+}
+
 // C 类型转字符串的辅助函数（内部实现）
+// 【RC5修复】与cgen.c中的get_c_type_string_internal()保持一致
+// 补全了CN_TYPE_ARRAY/CLASS/INTERFACE/MEMORY_ADDRESS/SELF/PARAM/UNKNOWN等缺失的类型映射
+// 修复了CN_TYPE_POINTER缺少函数指针处理和空指针保护的问题
+// 修复了CN_TYPE_STRUCT缺少局部结构体支持的问题
+// 修复了default分支返回"int"而非"long long"的问题
 static const char *get_c_type_str_internal(CnType *type, bool is_param) {
     if (!type) return "void";
     switch (type->kind) {
@@ -161,49 +199,83 @@ static const char *get_c_type_str_internal(CnType *type, bool is_param) {
         case CN_TYPE_FLOAT64: return "double";
         case CN_TYPE_VOID: return "void";
         case CN_TYPE_POINTER: {
+            // 【RC5修复】添加函数指针类型处理，与cgen.c一致
+            if (type->as.pointer_to && type->as.pointer_to->kind == CN_TYPE_FUNCTION) {
+                // 函数指针类型：返回类型(*)(param1_type, param2_type, ...)
+                static _Thread_local char buffer[512];
+                CnType *func_type = type->as.pointer_to;
+                
+                char params_str[256] = {0};
+                if (func_type->as.function.param_count == 0) {
+                    snprintf(params_str, sizeof(params_str), "void");
+                } else {
+                    size_t offset = 0;
+                    for (size_t i = 0; i < func_type->as.function.param_count; i++) {
+                        const char *param_type = get_c_type_str_internal(
+                            func_type->as.function.param_types[i], false);
+                        offset += snprintf(params_str + offset, sizeof(params_str) - offset,
+                                           "%s", param_type);
+                        if (i < func_type->as.function.param_count - 1) {
+                            offset += snprintf(params_str + offset, sizeof(params_str) - offset,
+                                               ", ");
+                        }
+                    }
+                }
+                
+                snprintf(buffer, sizeof(buffer), "%s(*)(%s)",
+                         get_c_type_str_internal(func_type->as.function.return_type, false),
+                         params_str);
+                return buffer;
+            }
+            
             static _Thread_local char buffer[256];
+            // 【RC5修复】空指针保护：指针指向类型未知时使用void*
+            if (!type->as.pointer_to) {
+                snprintf(buffer, sizeof(buffer), "void*");
+                return buffer;
+            }
+            
             snprintf(buffer, sizeof(buffer), "%s*",
                      get_c_type_str_internal(type->as.pointer_to, false));
             return buffer;
         }
-        case CN_TYPE_STRUCT: {
+        // 【RC5修复】新增CN_TYPE_ARRAY类型映射，与cgen.c一致
+        // 数组类型在C代码中生成元素指针类型
+        case CN_TYPE_ARRAY: {
             static _Thread_local char buffer[256];
-            // 【修复】检查结构体名称是否有效
-            if (!type->as.struct_type.name || type->as.struct_type.name_length == 0) {
-                return "struct _anonymous";
+            // 元素类型未知时使用void*
+            if (!type->as.array.element_type) {
+                snprintf(buffer, sizeof(buffer), "void*");
+                return buffer;
             }
-            // 【P0-1修复+P0-3a扩展】检查是否是CN基本类型关键字被错误标记为结构体
-            // 自举编译时，语义分析器可能将 整数/字符串/布尔 等基本类型
-            // 错误创建为 CN_TYPE_STRUCT 类型，需要在此翻译为正确的C类型
-            // 【P0-3a】扩展映射：添加 函数→void*、无→void*、结构体→void*
+            
+            CnType *elem_type = type->as.array.element_type;
+            const char *elem_c_type = get_c_type_str_internal(elem_type, false);
+            
+            // 腐败检测：类型字符串包含结构体定义内容时回退到void*
+            if (strstr(elem_c_type, "{") != NULL || strstr(elem_c_type, ";") != NULL) {
+                snprintf(buffer, sizeof(buffer), "void*");
+                return buffer;
+            }
+            
+            snprintf(buffer, sizeof(buffer), "%s*", elem_c_type);
+            return buffer;
+        }
+        case CN_TYPE_STRUCT: {
+            static _Thread_local char buffer[512];
+            // 检查结构体名称是否有效
+            if (!type->as.struct_type.name || type->as.struct_type.name_length == 0) {
+                return "struct";
+            }
+            // 【RC5修复】使用统一的中文基本类型映射函数，与cgen.c一致
             {
-                const char *name = type->as.struct_type.name;
-                size_t name_len = type->as.struct_type.name_length;
-                /* CN基本类型关键字 -> C类型映射（UTF-8编码） */
-                switch (name_len) {
-                    case 3: /* 1个汉字 × 3字节 */
-                        /* 【P0-3a】"无"是CN的null/none关键字 */
-                        if (strncmp(name, "无", 3) == 0) return "void*";
-                        break;
-                    case 6: /* 2个汉字 × 3字节 */
-                        if (strncmp(name, "整数", 6) == 0) return "long long";
-                        if (strncmp(name, "小数", 6) == 0) return "double";
-                        if (strncmp(name, "字符", 6) == 0) return "char";
-                        if (strncmp(name, "布尔", 6) == 0) return "_Bool";
-                        /* 【P0-3a】"函数"作为类型名时映射为通用函数指针 */
-                        if (strncmp(name, "函数", 6) == 0) return "void*";
-                        break;
-                    case 9: /* 3个汉字 × 3字节 */
-                        if (strncmp(name, "字符串", 9) == 0) return "char*";
-                        if (strncmp(name, "空类型", 9) == 0) return "void";
-                        /* 【P0-3a】"结构体"本身作为类型名时是元类型 */
-                        if (strncmp(name, "结构体", 9) == 0) return "void*";
-                        break;
-                    default:
-                        break;
+                const char *cn_prim = try_cn_primitive_type_name_local(
+                    type->as.struct_type.name, type->as.struct_type.name_length);
+                if (cn_prim) {
+                    return cn_prim;
                 }
             }
-            // 【P0-3a修复】防御性检查：检测类型名是否腐败
+            // 防御性检查：检测类型名是否腐败
             // 如果类型名包含结构体定义内容（含 {; \n } 等字符），
             // 说明 struct_type.name 指向了结构体定义的源文本而非仅类型名
             {
@@ -221,14 +293,24 @@ static const char *get_c_type_str_internal(CnType *type, bool is_param) {
                     return "void*";
                 }
             }
-            snprintf(buffer, sizeof(buffer), "struct %.*s",
-                     (int)type->as.struct_type.name_length,
-                     type->as.struct_type.name);
+            // 【RC5修复】添加局部结构体支持，与cgen.c一致
+            // 局部结构体生成 __local_函数名_结构体名 格式
+            if (type->as.struct_type.owner_func_name) {
+                snprintf(buffer, sizeof(buffer), "struct __local_%.*s_%.*s",
+                         (int)type->as.struct_type.owner_func_name_length,
+                         type->as.struct_type.owner_func_name,
+                         (int)type->as.struct_type.name_length,
+                         type->as.struct_type.name);
+            } else {
+                snprintf(buffer, sizeof(buffer), "struct %.*s",
+                         (int)type->as.struct_type.name_length,
+                         type->as.struct_type.name);
+            }
             return buffer;
         }
         case CN_TYPE_ENUM: {
             static _Thread_local char buffer[256];
-            // 【修复】检查枚举名称是否有效
+            // 检查枚举名称是否有效
             if (!type->as.enum_type.name || type->as.enum_type.name_length == 0) {
                 return "enum _anonymous";
             }
@@ -237,7 +319,37 @@ static const char *get_c_type_str_internal(CnType *type, bool is_param) {
                      type->as.enum_type.name);
             return buffer;
         }
-        default: return "int";
+        // 【RC5修复】新增CN_TYPE_CLASS类型映射，与cgen.c一致
+        // 类类型在C中用结构体指针实现
+        case CN_TYPE_CLASS: {
+            static _Thread_local char buffer[256];
+            snprintf(buffer, sizeof(buffer), "struct %.*s*",
+                     (int)type->as.struct_type.name_length,
+                     type->as.struct_type.name);
+            return buffer;
+        }
+        // 【RC5修复】新增CN_TYPE_INTERFACE类型映射，与cgen.c一致
+        // 接口类型在C中用void*实现
+        case CN_TYPE_INTERFACE:
+            return "void*";
+        // 【RC5修复】新增CN_TYPE_MEMORY_ADDRESS类型映射，与cgen.c一致
+        case CN_TYPE_MEMORY_ADDRESS:
+            return "uintptr_t";
+        // 【RC5修复】新增CN_TYPE_SELF类型映射，与cgen.c一致
+        // 自身类型在接口方法中使用void*作为占位符
+        case CN_TYPE_SELF:
+            return "void*";
+        // 【RC5修复】新增CN_TYPE_PARAM类型映射，与cgen.c一致
+        // 类型参数使用void*作为占位符
+        case CN_TYPE_PARAM:
+            return "void*";
+        // 【RC5修复】新增CN_TYPE_UNKNOWN类型映射
+        // 未知类型返回long long，与CN_TYPE_INT一致
+        case CN_TYPE_UNKNOWN:
+            return "long long";
+        // 【RC5修复】default从"int"改为"long long"，与CN_TYPE_INT一致
+        // 避免函数声明中参数类型为int而定义为long long的冲突
+        default: return "long long";
     }
 }
 

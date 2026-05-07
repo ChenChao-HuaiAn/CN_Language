@@ -319,11 +319,12 @@ void 释放表达式节点(struct 表达式节点*);
 void 释放表达式列表(struct 表达式列表*);
 
 struct 表达式节点* 创建表达式节点(enum 节点类型 cn_var_类型) {
-  long long r0, r3;
+  long long r0;
   void* r1;
   struct 表达式节点* r2;
-  struct 表达式节点* r5;
+  long long r3;
   enum 节点类型 r4;
+  struct 表达式节点* r5;
 
   entry:
   struct 表达式节点* cn_var_节点_0;
@@ -332,13 +333,13 @@ struct 表达式节点* 创建表达式节点(enum 节点类型 cn_var_类型) {
 /* P7DBG_STORE src1.kind=1 */  cn_var_节点_0 = r1;
   r2 = cn_var_节点_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_291; else goto if_merge_292;
+  if (r3) goto if_then_475; else goto if_merge_476;
 
-  if_then_291:
+  if_then_475:
   return 0;
-  goto if_merge_292;
+  goto if_merge_476;
 
-  if_merge_292:
+  if_merge_476:
   r4 = cn_var_类型;
   r5 = cn_var_节点_0;
   return r5;
@@ -453,9 +454,9 @@ struct 表达式节点* 创建标识符表达式() {
 }
 
 struct 表达式节点* 创建空值表达式() {
-  long long r2;
   struct 表达式节点* r0;
   struct 表达式节点* r1;
+  long long r2;
   struct 表达式节点* r3;
 
   entry:
@@ -464,20 +465,20 @@ struct 表达式节点* 创建空值表达式() {
 /* P7DBG_STORE src1.kind=1 */  cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 != 0;
-  if (r2) goto if_then_293; else goto if_merge_294;
+  if (r2) goto if_then_477; else goto if_merge_478;
 
-  if_then_293:
-  goto if_merge_294;
+  if_then_477:
+  goto if_merge_478;
 
-  if_merge_294:
+  if_merge_478:
   r3 = cn_var_节点_0;
   return r3;
 }
 
 struct 表达式节点* 创建自身表达式() {
-  long long r2;
   struct 表达式节点* r0;
   struct 表达式节点* r1;
+  long long r2;
   struct 表达式节点* r3;
 
   entry:
@@ -486,21 +487,21 @@ struct 表达式节点* 创建自身表达式() {
 /* P7DBG_STORE src1.kind=1 */  cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 != 0;
-  if (r2) goto if_then_295; else goto if_merge_296;
+  if (r2) goto if_then_479; else goto if_merge_480;
 
-  if_then_295:
-  goto if_merge_296;
+  if_then_479:
+  goto if_merge_480;
 
-  if_merge_296:
+  if_merge_480:
   r3 = cn_var_节点_0;
   return r3;
 }
 
 struct 表达式节点* 创建基类访问表达式(const char* cn_var_成员名) {
-  long long r2;
-  char* r3;
   struct 表达式节点* r0;
   struct 表达式节点* r1;
+  long long r2;
+  char* r3;
   struct 表达式节点* r4;
 
   entry:
@@ -509,21 +510,21 @@ struct 表达式节点* 创建基类访问表达式(const char* cn_var_成员名
 /* P7DBG_STORE src1.kind=1 */  cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 != 0;
-  if (r2) goto if_then_297; else goto if_merge_298;
+  if (r2) goto if_then_481; else goto if_merge_482;
 
-  if_then_297:
+  if_then_481:
   r3 = cn_var_成员名;
-  goto if_merge_298;
+  goto if_merge_482;
 
-  if_merge_298:
+  if_merge_482:
   r4 = cn_var_节点_0;
   return r4;
 }
 
 struct 表达式节点* 创建类型转换表达式(struct 类型节点* cn_var_目标类型, struct 表达式节点* cn_var_操作数) {
-  long long r2;
   struct 表达式节点* r0;
   struct 表达式节点* r1;
+  long long r2;
   struct 类型节点* r3;
   struct 表达式节点* r4;
   struct 类型节点* r5;
@@ -535,23 +536,24 @@ struct 表达式节点* 创建类型转换表达式(struct 类型节点* cn_var_
 /* P7DBG_STORE src1.kind=1 */  cn_var_节点_0 = r0;
   r1 = cn_var_节点_0;
   r2 = r1 != 0;
-  if (r2) goto if_then_299; else goto if_merge_300;
+  if (r2) goto if_then_483; else goto if_merge_484;
 
-  if_then_299:
+  if_then_483:
   r3 = cn_var_目标类型;
   r4 = cn_var_操作数;
   r5 = cn_var_目标类型;
-  goto if_merge_300;
+  goto if_merge_484;
 
-  if_merge_300:
+  if_merge_484:
   r6 = cn_var_节点_0;
   return r6;
 }
 
 struct 表达式列表* 创建表达式列表() {
-  long long r0, r3;
+  long long r0;
   void* r1;
   struct 表达式列表* r2;
+  long long r3;
   struct 表达式列表* r4;
 
   entry:
@@ -561,282 +563,300 @@ struct 表达式列表* 创建表达式列表() {
 /* P7DBG_STORE src1.kind=1 */  cn_var_列表_0 = r1;
   r2 = cn_var_列表_0;
   r3 = r2 == 0;
-  if (r3) goto if_then_301; else goto if_merge_302;
+  if (r3) goto if_then_485; else goto if_merge_486;
 
-  if_then_301:
+  if_then_485:
   return 0;
-  goto if_merge_302;
+  goto if_merge_486;
 
-  if_merge_302:
+  if_merge_486:
   r4 = cn_var_列表_0;
   return r4;
 }
 
 void 表达式列表添加(struct 表达式列表* cn_var_列表, struct 表达式节点* cn_var_节点) {
-  long long r0, r2, r4, r6, r10, r14;
+  long long r0;
   struct 表达式列表* r1;
+  long long r2;
   struct 表达式节点* r3;
+  long long r4;
   struct 表达式节点* r5;
+  long long r6;
   struct 表达式节点* r7;
   struct 表达式列表* r8;
   struct 表达式列表* r9;
+  long long r10;
   struct 表达式列表* r11;
   struct 表达式列表* r12;
   struct 表达式列表* r13;
+  long long r14;
   struct 表达式节点* r15;
   struct 表达式列表* r16;
 
   entry:
   r1 = cn_var_列表;
   r2 = r1 == 0;
-  if (r2) goto logic_merge_306; else goto logic_rhs_305;
+  if (r2) goto logic_merge_490; else goto logic_rhs_489;
 
-  if_then_303:
+  if_then_487:
   return;
-  goto if_merge_304;
+  goto if_merge_488;
 
-  if_merge_304:
+  if_merge_488:
   r5 = cn_var_列表->节点;
   r6 = r5 == 0;
-  if (r6) goto if_then_307; else goto if_merge_308;
+  if (r6) goto if_then_491; else goto if_merge_492;
 
-  logic_rhs_305:
+  logic_rhs_489:
   r3 = cn_var_节点;
   r4 = r3 == 0;
-  goto logic_merge_306;
+  goto logic_merge_490;
 
-  logic_merge_306:
-  if (r4) goto if_then_303; else goto if_merge_304;
+  logic_merge_490:
+  if (r4) goto if_then_487; else goto if_merge_488;
 
-  if_then_307:
+  if_then_491:
   r7 = cn_var_节点;
   return;
-  goto if_merge_308;
+  goto if_merge_492;
 
-  if_merge_308:
+  if_merge_492:
   struct 表达式列表* cn_var_当前_0;
   r8 = cn_var_列表;
 /* P7DBG_STORE src1.kind=1 */  cn_var_当前_0 = r8;
-  goto while_cond_309;
+  goto while_cond_493;
 
-  while_cond_309:
+  while_cond_493:
   r9 = cn_var_当前_0->下一个;
   r10 = r9 != 0;
-  if (r10) goto while_body_310; else goto while_exit_311;
+  if (r10) goto while_body_494; else goto while_exit_495;
 
-  while_body_310:
+  while_body_494:
   r11 = cn_var_当前_0->下一个;
 /* P7DBG_STORE src1.kind=1 */  cn_var_当前_0 = r11;
-  goto while_cond_309;
+  goto while_cond_493;
 
-  while_exit_311:
+  while_exit_495:
   struct 表达式列表* cn_var_新节点_1;
   r12 = 创建表达式列表();
 /* P7DBG_STORE src1.kind=1 */  cn_var_新节点_1 = r12;
   r13 = cn_var_新节点_1;
   r14 = r13 != 0;
-  if (r14) goto if_then_312; else goto if_merge_313;
+  if (r14) goto if_then_496; else goto if_merge_497;
 
-  if_then_312:
+  if_then_496:
   r15 = cn_var_节点;
   r16 = cn_var_新节点_1;
-  goto if_merge_313;
+  goto if_merge_497;
 
-  if_merge_313:
+  if_merge_497:
   return;
 }
 
 void 释放表达式节点(struct 表达式节点* cn_var_节点) {
-  long long r1, r3, r6, r9, r12, r15, r18, r21, r24, r27, r30, r33;
   struct 表达式节点* r0;
+  long long r1;
   struct 表达式节点* r2;
+  long long r3;
   struct 表达式节点* r4;
   struct 表达式节点* r5;
+  long long r6;
   struct 表达式节点* r7;
   struct 表达式节点* r8;
+  long long r9;
   struct 表达式节点* r10;
   struct 表达式节点* r11;
+  long long r12;
   struct 表达式节点* r13;
   struct 表达式列表* r14;
+  long long r15;
   struct 表达式列表* r16;
   struct 表达式节点* r17;
+  long long r18;
   struct 表达式节点* r19;
   struct 表达式节点* r20;
+  long long r21;
   struct 表达式节点* r22;
   struct 表达式节点* r23;
+  long long r24;
   struct 表达式节点* r25;
   struct 表达式节点* r26;
+  long long r27;
   struct 表达式节点* r28;
   struct 表达式节点* r29;
+  long long r30;
   struct 表达式节点* r31;
   struct 表达式节点* r32;
+  long long r33;
   struct 表达式节点* r34;
   struct 表达式节点* r35;
 
   entry:
   r0 = cn_var_节点;
   r1 = r0 == 0;
-  if (r1) goto if_then_314; else goto if_merge_315;
+  if (r1) goto if_then_498; else goto if_merge_499;
 
-  if_then_314:
+  if_then_498:
   return;
-  goto if_merge_315;
+  goto if_merge_499;
 
-  if_merge_315:
+  if_merge_499:
   r2 = cn_var_节点->左操作数;
   r3 = r2 != 0;
-  if (r3) goto if_then_316; else goto if_merge_317;
+  if (r3) goto if_then_500; else goto if_merge_501;
 
-  if_then_316:
+  if_then_500:
   r4 = cn_var_节点->左操作数;
   释放表达式节点(r4);
-  goto if_merge_317;
+  goto if_merge_501;
 
-  if_merge_317:
+  if_merge_501:
   r5 = cn_var_节点->右操作数;
   r6 = r5 != 0;
-  if (r6) goto if_then_318; else goto if_merge_319;
+  if (r6) goto if_then_502; else goto if_merge_503;
 
-  if_then_318:
+  if_then_502:
   r7 = cn_var_节点->右操作数;
   释放表达式节点(r7);
-  goto if_merge_319;
+  goto if_merge_503;
 
-  if_merge_319:
+  if_merge_503:
   r8 = cn_var_节点->操作数;
   r9 = r8 != 0;
-  if (r9) goto if_then_320; else goto if_merge_321;
+  if (r9) goto if_then_504; else goto if_merge_505;
 
-  if_then_320:
+  if_then_504:
   r10 = cn_var_节点->操作数;
   释放表达式节点(r10);
-  goto if_merge_321;
+  goto if_merge_505;
 
-  if_merge_321:
+  if_merge_505:
   r11 = cn_var_节点->被调函数;
   r12 = r11 != 0;
-  if (r12) goto if_then_322; else goto if_merge_323;
+  if (r12) goto if_then_506; else goto if_merge_507;
 
-  if_then_322:
+  if_then_506:
   r13 = cn_var_节点->被调函数;
   释放表达式节点(r13);
-  goto if_merge_323;
+  goto if_merge_507;
 
-  if_merge_323:
+  if_merge_507:
   r14 = cn_var_节点->参数列表;
   r15 = r14 != 0;
-  if (r15) goto if_then_324; else goto if_merge_325;
+  if (r15) goto if_then_508; else goto if_merge_509;
 
-  if_then_324:
+  if_then_508:
   r16 = cn_var_节点->参数列表;
   释放表达式列表(r16);
-  goto if_merge_325;
+  goto if_merge_509;
 
-  if_merge_325:
+  if_merge_509:
   r17 = cn_var_节点->对象;
   r18 = r17 != 0;
-  if (r18) goto if_then_326; else goto if_merge_327;
+  if (r18) goto if_then_510; else goto if_merge_511;
 
-  if_then_326:
+  if_then_510:
   r19 = cn_var_节点->对象;
   释放表达式节点(r19);
-  goto if_merge_327;
+  goto if_merge_511;
 
-  if_merge_327:
+  if_merge_511:
   r20 = cn_var_节点->数组;
   r21 = r20 != 0;
-  if (r21) goto if_then_328; else goto if_merge_329;
+  if (r21) goto if_then_512; else goto if_merge_513;
 
-  if_then_328:
+  if_then_512:
   r22 = cn_var_节点->数组;
   释放表达式节点(r22);
-  goto if_merge_329;
+  goto if_merge_513;
 
-  if_merge_329:
+  if_merge_513:
   r23 = cn_var_节点->索引;
   r24 = r23 != 0;
-  if (r24) goto if_then_330; else goto if_merge_331;
+  if (r24) goto if_then_514; else goto if_merge_515;
 
-  if_then_330:
+  if_then_514:
   r25 = cn_var_节点->索引;
   释放表达式节点(r25);
-  goto if_merge_331;
+  goto if_merge_515;
 
-  if_merge_331:
+  if_merge_515:
   r26 = cn_var_节点->左侧表达式;
   r27 = r26 != 0;
-  if (r27) goto if_then_332; else goto if_merge_333;
+  if (r27) goto if_then_516; else goto if_merge_517;
 
-  if_then_332:
+  if_then_516:
   r28 = cn_var_节点->左侧表达式;
   释放表达式节点(r28);
-  goto if_merge_333;
+  goto if_merge_517;
 
-  if_merge_333:
+  if_merge_517:
   r29 = cn_var_节点->值;
   r30 = r29 != 0;
-  if (r30) goto if_then_334; else goto if_merge_335;
+  if (r30) goto if_then_518; else goto if_merge_519;
 
-  if_then_334:
+  if_then_518:
   r31 = cn_var_节点->值;
   释放表达式节点(r31);
-  goto if_merge_335;
+  goto if_merge_519;
 
-  if_merge_335:
+  if_merge_519:
   r32 = cn_var_节点->指针;
   r33 = r32 != 0;
-  if (r33) goto if_then_336; else goto if_merge_337;
+  if (r33) goto if_then_520; else goto if_merge_521;
 
-  if_then_336:
+  if_then_520:
   r34 = cn_var_节点->指针;
   释放表达式节点(r34);
-  goto if_merge_337;
+  goto if_merge_521;
 
-  if_merge_337:
+  if_merge_521:
   r35 = cn_var_节点;
   释放内存(r35);
   return;
 }
 
 void 释放表达式列表(struct 表达式列表* cn_var_列表) {
-  long long r1, r3, r6;
   struct 表达式列表* r0;
+  long long r1;
   struct 表达式节点* r2;
+  long long r3;
   struct 表达式节点* r4;
   struct 表达式列表* r5;
+  long long r6;
   struct 表达式列表* r7;
   struct 表达式列表* r8;
 
   entry:
   r0 = cn_var_列表;
   r1 = r0 == 0;
-  if (r1) goto if_then_338; else goto if_merge_339;
+  if (r1) goto if_then_522; else goto if_merge_523;
 
-  if_then_338:
+  if_then_522:
   return;
-  goto if_merge_339;
+  goto if_merge_523;
 
-  if_merge_339:
+  if_merge_523:
   r2 = cn_var_列表->节点;
   r3 = r2 != 0;
-  if (r3) goto if_then_340; else goto if_merge_341;
+  if (r3) goto if_then_524; else goto if_merge_525;
 
-  if_then_340:
+  if_then_524:
   r4 = cn_var_列表->节点;
   释放表达式节点(r4);
-  goto if_merge_341;
+  goto if_merge_525;
 
-  if_merge_341:
+  if_merge_525:
   r5 = cn_var_列表->下一个;
   r6 = r5 != 0;
-  if (r6) goto if_then_342; else goto if_merge_343;
+  if (r6) goto if_then_526; else goto if_merge_527;
 
-  if_then_342:
+  if_then_526:
   r7 = cn_var_列表->下一个;
   释放表达式列表(r7);
-  goto if_merge_343;
+  goto if_merge_527;
 
-  if_merge_343:
+  if_merge_527:
   r8 = cn_var_列表;
   释放内存(r8);
   return;
