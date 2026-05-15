@@ -420,6 +420,8 @@ static bool cgen_is_string_concat(CnAstExpr *expr) {
 // 前向声明
 static bool is_enum_type_name(const char *name, size_t name_len);
 static bool is_enum_member_name(const char *name);
+static CnType* lookup_func_param_type(CnCCodeGenContext *ctx, const char *func_name, size_t param_index);
+static bool is_void_pointer_type(CnType *type);
 static bool is_struct_variable_name(const char *name);
 static bool is_type_already_generated(const char *name, size_t name_len);
 static void mark_type_as_generated(const char *name, size_t name_len);
@@ -684,10 +686,13 @@ static const char *get_extern_type_string(CnType *type, bool is_param) {
         case CN_TYPE_BOOL: return "_Bool";
         case CN_TYPE_STRING: return is_param ? "const char*" : "char*";
         case CN_TYPE_VOID: return "void";
-        /* 指针、结构体、枚举、类、接口等使用void*避免不完整类型错误 */
+        /* Round5-Fix2: 枚举在C中是int类型，使用void*会导致参数类型不匹配
+         * 典型错误：报告错误(r, 诊断错误码_XXX, msg) 中枚举值是int但声明为void* */
+        case CN_TYPE_ENUM:
+            return "int";
+        /* 指针、结构体、类、接口等使用void*避免不完整类型错误 */
         case CN_TYPE_POINTER:
         case CN_TYPE_STRUCT:
-        case CN_TYPE_ENUM:
         case CN_TYPE_CLASS:
         case CN_TYPE_INTERFACE:
         case CN_TYPE_ARRAY:
@@ -981,7 +986,11 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
                 // 【调试】检查符号名是否包含下划线（可能是枚举成员但类型信息丢失）
                 // 枚举成员名格式为 "枚举类型名_成员名"
                 bool is_enum_member_by_name = false;
-                if (op.as.sym_name && strchr(op.as.sym_name, '_') != NULL) {
+                // 【P1修复-E组】cn_var_ 前缀的符号是局部变量，不是枚举成员
+                // 枚举成员名不会以 cn_var_ 开头，跳过枚举成员检查避免误判
+                // 例如：cn_var_模块 不应被误判为枚举成员，而应走后缀查找路径找到 cn_var_模块_0
+                bool is_cn_var_name = (op.as.sym_name && strncmp(op.as.sym_name, "cn_var_", 7) == 0);
+                if (op.as.sym_name && strchr(op.as.sym_name, '_') != NULL && !is_cn_var_name) {
                     // 符号名包含下划线，可能是枚举成员
                     // 检查是否在全局作用域中作为枚举成员存在
                     if (ctx->global_scope) {
@@ -1113,13 +1122,10 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
         case CN_IR_OP_LABEL: fprintf(ctx->output_file, "%s", op.as.label->name ? op.as.label->name : "unnamed_label"); break;
         case CN_IR_OP_AST_EXPR:
             // AST表达式：直接生成 C 代码（用于结构体字面量等）
-            // 【调试P7】写入到输出文件中作为注释
-            fprintf(ctx->output_file, "/* P7DBG_AST_EXPR kind=%d */",
-                     op.as.ast_expr ? op.as.ast_expr->kind : -1);
             cn_cgen_expr_simple(ctx, op.as.ast_expr);
             break;
         default:
-            fprintf(ctx->output_file, "/* P7DBG_UNKNOWN_OP kind=%d */", op.kind);
+            fprintf(ctx->output_file, "/* unknown_op kind=%d */", op.kind);
             break;
     }
 }
@@ -1127,15 +1133,6 @@ static void print_operand(CnCCodeGenContext *ctx, CnIrOperand op) {
 // 生成简单表达式的 C 代码（用于模块变量初始化）
 static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
     if (!ctx || !expr) return;
-    
-    // 【调试P7】输出所有非字面量表达式类型到输出文件
-    if (expr->kind != CN_AST_EXPR_INTEGER_LITERAL &&
-        expr->kind != CN_AST_EXPR_FLOAT_LITERAL &&
-        expr->kind != CN_AST_EXPR_STRING_LITERAL &&
-        expr->kind != CN_AST_EXPR_CHAR_LITERAL &&
-        expr->kind != CN_AST_EXPR_BOOL_LITERAL) {
-        fprintf(ctx->output_file, "/* P7DBG_expr kind=%d */", expr->kind);
-    }
     
     switch (expr->kind) {
         case CN_AST_EXPR_INTEGER_LITERAL:
@@ -1244,9 +1241,105 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
                             expr->as.identifier.name);
                 } else if (!is_enum_member) {
                     // 普通变量：添加 cn_var_ 前缀
-                    fprintf(ctx->output_file, "cn_var_%.*s",
-                            (int)expr->as.identifier.name_length,
-                            expr->as.identifier.name);
+                    // Round5-Fix8: 检查当前函数中是否有带后缀的同名ALLOCA变量
+                    // 例如：cn_var_路径长度 应匹配 cn_var_路径长度_0
+                    const char *var_name = expr->as.identifier.name;
+                    size_t var_name_len = expr->as.identifier.name_length;
+                    const char *matched_name = NULL;
+                    
+                    if (ctx->current_func) {
+                        // 在当前函数的ALLOCA指令中查找带后缀的匹配变量名
+                        CnIrBasicBlock *lookup_block = ctx->current_func->first_block;
+                        while (lookup_block && !matched_name) {
+                            CnIrInst *lookup_inst = lookup_block->first_inst;
+                            while (lookup_inst && !matched_name) {
+                                if (lookup_inst->kind == CN_IR_INST_ALLOCA &&
+                                    lookup_inst->dest.kind == CN_IR_OP_SYMBOL &&
+                                    lookup_inst->dest.as.sym_name) {
+                                    // 使用names_match_with_suffix匹配变量名
+                                    char temp_name[256];
+                                    snprintf(temp_name, sizeof(temp_name), "cn_var_%.*s",
+                                             (int)var_name_len, var_name);
+                                    if (names_match_with_suffix(lookup_inst->dest.as.sym_name, temp_name)) {
+                                        // 找到匹配，但确保是带后缀的版本（名称更长）
+                                        if (strlen(lookup_inst->dest.as.sym_name) > strlen(temp_name)) {
+                                            matched_name = lookup_inst->dest.as.sym_name;
+                                        }
+                                    }
+                                }
+                                lookup_inst = lookup_inst->next;
+                            }
+                            lookup_block = lookup_block->next;
+                        }
+                        // 也检查函数参数
+                        if (!matched_name) {
+                            for (size_t p = 0; p < ctx->current_func->param_count; p++) {
+                                if (ctx->current_func->params[p].as.sym_name) {
+                                    char temp_name[256];
+                                    snprintf(temp_name, sizeof(temp_name), "cn_var_%.*s",
+                                             (int)var_name_len, var_name);
+                                    if (names_match_with_suffix(ctx->current_func->params[p].as.sym_name, temp_name)) {
+                                        if (strlen(ctx->current_func->params[p].as.sym_name) > strlen(temp_name)) {
+                                            matched_name = ctx->current_func->params[p].as.sym_name;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if (matched_name) {
+                        // 使用带后缀的变量名
+                        fprintf(ctx->output_file, "%s", get_c_variable_name(matched_name));
+                    } else {
+                        // 没有找到带后缀的版本，使用原始名称
+                        // Round5-Fix8: 也尝试从print_operand的后缀查找逻辑
+                        // 搜索当前函数中所有ALLOCA指令，找到第一个匹配的带后缀变量
+                        const char *suffix_matched = NULL;
+                        if (ctx->current_func) {
+                            CnIrBasicBlock *sb = ctx->current_func->first_block;
+                            while (sb && !suffix_matched) {
+                                CnIrInst *si = sb->first_inst;
+                                while (si) {
+                                    if (si->kind == CN_IR_INST_ALLOCA &&
+                                        si->dest.kind == CN_IR_OP_SYMBOL &&
+                                        si->dest.as.sym_name) {
+                                        // 构造完整变量名
+                                        char full_name[256];
+                                        snprintf(full_name, sizeof(full_name), "cn_var_%.*s",
+                                                 (int)var_name_len, var_name);
+                                        // 检查ALLOCA变量名是否以full_name开头且后面是_数字
+                                        size_t full_len = strlen(full_name);
+                                        size_t alloca_len = strlen(si->dest.as.sym_name);
+                                        if (alloca_len > full_len &&
+                                            strncmp(si->dest.as.sym_name, full_name, full_len) == 0 &&
+                                            si->dest.as.sym_name[full_len] == '_') {
+                                            // 验证后缀是_数字格式
+                                            const char *suffix = si->dest.as.sym_name + full_len + 1;
+                                            bool is_digit_suffix = true;
+                                            for (const char *p = suffix; *p; p++) {
+                                                if (*p < '0' || *p > '9') {
+                                                    is_digit_suffix = false;
+                                                    break;
+                                                }
+                                            }
+                                            if (is_digit_suffix && strlen(suffix) > 0) {
+                                                suffix_matched = si->dest.as.sym_name;
+                                            }
+                                        }
+                                    }
+                                    si = si->next;
+                                }
+                                sb = sb->next;
+                            }
+                        }
+                        if (suffix_matched) {
+                            fprintf(ctx->output_file, "%s", get_c_variable_name(suffix_matched));
+                        } else {
+                            fprintf(ctx->output_file, "cn_var_%.*s",
+                                    (int)var_name_len, var_name);
+                        }
+                    }
                 }
             }
             break;
@@ -1727,6 +1820,11 @@ static void cn_cgen_expr_simple(CnCCodeGenContext *ctx, CnAstExpr *expr) {
 
 // --- 核心生成函数 ---
 
+/* 【修复1.2】前向声明：从结构体类型中查找成员类型
+ * 函数定义在下方，但需要在cn_cgen_inst的MEMBER_ACCESS代码生成中使用 */
+static CnType* lookup_struct_member_type_cgen(CnType *obj_type, const char *member_name,
+                                                size_t member_name_length);
+
 void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
     if (!ctx || !inst) return;
     switch (inst->kind) {
@@ -1745,21 +1843,91 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             // 根因：函数调用返回值未被捕获时，STORE的源操作数为NONE
             if (inst->src1.kind == CN_IR_OP_NONE) break;
             
-            // 【调试P7】输出STORE指令的src1类型
-            fprintf(ctx->output_file, "/* P7DBG_STORE src1.kind=%d */", inst->src1.kind);
-            
             // 检查目标是否需要解引用
             // 情况1：目标操作数是寄存器（通过 GET_ELEMENT_PTR 获取的地址）- 需要解引用
             // 情况2：目标操作数是符号（变量名）- 不需要解引用
             bool need_deref = (inst->dest.kind == CN_IR_OP_REG &&
                               inst->dest.type &&
                               inst->dest.type->kind == CN_TYPE_POINTER);
+            
+            /* 【第2轮修复C】检测不兼容struct指针赋值，添加显式类型转换
+             * CN语言的标签联合（tagged union）在C代码中生成独立的struct类型，
+             * 子类型→父类型赋值时GCC报"不兼容指针类型"错误。
+             * 例如：struct 语句节点* = struct 循环语句* → 需要插入 (struct 语句节点*) */
+            bool need_cast = false;
+            CnType *cast_dest_type = NULL;
+            
+            if (inst->dest.kind == CN_IR_OP_SYMBOL && inst->dest.as.sym_name) {
+                /* 获取目标变量类型 */
+                CnType *dest_store_type = inst->dest.type;
+                if (!dest_store_type && ctx->alloca_types) {
+                    AllocaTypeEntry *entry = (AllocaTypeEntry *)ctx->alloca_types;
+                    while (entry) {
+                        if (entry->sym_name && names_match_with_suffix(entry->sym_name, inst->dest.as.sym_name)) {
+                            dest_store_type = entry->type;
+                            break;
+                        }
+                        entry = entry->next;
+                    }
+                }
+                
+                /* 获取源操作数类型 */
+                CnType *src_store_type = inst->src1.type;
+                if (!src_store_type && inst->src1.kind == CN_IR_OP_REG &&
+                    inst->src1.as.reg_id >= 0 && ctx->reg_types &&
+                    inst->src1.as.reg_id < ctx->reg_types_count) {
+                    src_store_type = ctx->reg_types[inst->src1.as.reg_id];
+                }
+                
+                /* 检测：两个都是STRUCT指针类型但名称不同 → 联合体变体赋值 */
+                if (dest_store_type && src_store_type &&
+                    dest_store_type->kind == CN_TYPE_POINTER &&
+                    src_store_type->kind == CN_TYPE_POINTER &&
+                    dest_store_type->as.pointer_to &&
+                    src_store_type->as.pointer_to &&
+                    dest_store_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                    src_store_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                    dest_store_type->as.pointer_to->as.struct_type.name &&
+                    src_store_type->as.pointer_to->as.struct_type.name) {
+                    
+                    size_t dlen = dest_store_type->as.pointer_to->as.struct_type.name_length;
+                    size_t slen = src_store_type->as.pointer_to->as.struct_type.name_length;
+                    const char *dname = dest_store_type->as.pointer_to->as.struct_type.name;
+                    const char *sname = src_store_type->as.pointer_to->as.struct_type.name;
+                    
+                    if (dlen != slen || memcmp(dname, sname, dlen) != 0) {
+                        need_cast = true;
+                        cast_dest_type = dest_store_type;
+                    }
+                }
+                /* 也检测POINTER vs STRING的不兼容（如 char** = char*） */
+                else if (dest_store_type && src_store_type &&
+                         dest_store_type->kind == CN_TYPE_POINTER &&
+                         src_store_type->kind == CN_TYPE_STRING &&
+                         dest_store_type->as.pointer_to) {
+                    /* 目标是POINTER，源是STRING(char*)，如果POINTER指向的不是char，需要转换 */
+                    need_cast = true;
+                    cast_dest_type = dest_store_type;
+                }
+                /* 检测STRING vs POINTER的不兼容（如 char* = struct X*） */
+                else if (dest_store_type && src_store_type &&
+                         dest_store_type->kind == CN_TYPE_STRING &&
+                         src_store_type->kind == CN_TYPE_POINTER) {
+                    need_cast = true;
+                    cast_dest_type = dest_store_type;
+                }
+            }
+            
             fprintf(ctx->output_file, "  ");
             if (need_deref) {
                 fprintf(ctx->output_file, "*");
             }
             print_operand(ctx, inst->dest);
             fprintf(ctx->output_file, " = ");
+            if (need_cast && cast_dest_type) {
+                /* 插入显式类型转换 */
+                fprintf(ctx->output_file, "(%s)", get_c_type_string(cast_dest_type));
+            }
             print_operand(ctx, inst->src1);
             fprintf(ctx->output_file, ";\n");
             break;
@@ -1801,7 +1969,70 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 default: break;
             }
             print_operand(ctx, inst->src2); fprintf(ctx->output_file, ";\n"); break;
-        case CN_IR_INST_RET: fprintf(ctx->output_file, "  return"); if (inst->src1.kind != CN_IR_OP_NONE) { fprintf(ctx->output_file, " "); print_operand(ctx, inst->src1); } fprintf(ctx->output_file, ";\n"); break;
+        case CN_IR_INST_RET: {
+            // Round5-Fix7 + P1修复: RETURN指令类型转换
+            // 当返回值类型与函数返回类型不兼容时，插入显式类型转换
+            // 典型错误：return r12 期望 struct 常量值 但实际是 struct 常量值*（指针→值）
+            //           return r3 期望 struct 参数生成器 但实际是 void*
+            //           return r18 期望 struct 循环语句* 但实际是 struct while语句*（H1错误）
+            fprintf(ctx->output_file, "  return");
+            if (inst->src1.kind != CN_IR_OP_NONE) {
+                bool need_deref = false;      // 需要解引用 *ptr
+                bool need_cast_deref = false;  // 需要 *(type*)ptr
+                bool need_cast = false;        // 需要 (type) 显式转换
+                const char *cast_type_str = NULL;
+                
+                if (ctx->current_func && ctx->current_func->return_type &&
+                    inst->src1.kind == CN_IR_OP_REG && ctx->reg_types) {
+                    CnType *ret_type = ctx->current_func->return_type;
+                    int src_reg_id = inst->src1.as.reg_id;
+                    if (src_reg_id >= 0 && src_reg_id < ctx->reg_types_count && ctx->reg_types[src_reg_id]) {
+                        CnType *val_type = ctx->reg_types[src_reg_id];
+                        
+                        // 情况1：返回指针但期望struct值 → 解引用 *ptr
+                        if (ret_type->kind == CN_TYPE_STRUCT &&
+                            (val_type->kind == CN_TYPE_POINTER || val_type->kind == CN_TYPE_STRING)) {
+                            need_deref = true;
+                        }
+                        // 情况2：返回void*但期望struct → 显式转换后解引用 *(struct X*)ptr
+                        if (ret_type->kind == CN_TYPE_STRUCT &&
+                            val_type->kind == CN_TYPE_POINTER &&
+                            val_type->as.pointer_to && val_type->as.pointer_to->kind == CN_TYPE_VOID) {
+                            need_deref = false;
+                            need_cast_deref = true;
+                            cast_type_str = get_c_type_string(ret_type);
+                        }
+                        // 【P1修复-H1】情况3：两个不同的struct指针不兼容
+                        // 例如：期望 struct 循环语句* 但实际是 struct while语句*
+                        // 插入 (struct 循环语句*) 显式转换
+                        if (ret_type->kind == CN_TYPE_POINTER && val_type->kind == CN_TYPE_POINTER &&
+                            ret_type->as.pointer_to && val_type->as.pointer_to &&
+                            ret_type->as.pointer_to->kind == CN_TYPE_STRUCT &&
+                            val_type->as.pointer_to->kind == CN_TYPE_STRUCT) {
+                            /* 检查是否为不同的结构体类型名 */
+                            const char *ret_name = ret_type->as.pointer_to->as.struct_type.name;
+                            const char *val_name = val_type->as.pointer_to->as.struct_type.name;
+                            if (ret_name && val_name && strcmp(ret_name, val_name) != 0) {
+                                need_cast = true;
+                                cast_type_str = get_c_type_string(ret_type);
+                            }
+                        }
+                    }
+                }
+                
+                fprintf(ctx->output_file, " ");
+                if (need_deref) {
+                    fprintf(ctx->output_file, "*");
+                } else if (need_cast_deref && cast_type_str) {
+                    fprintf(ctx->output_file, "*(%s*)", cast_type_str);
+                } else if (need_cast && cast_type_str) {
+                    fprintf(ctx->output_file, "(%s)", cast_type_str);
+                }
+                print_operand(ctx, inst->src1);
+            }
+            fprintf(ctx->output_file, ";\n");
+            break;
+        }
         case CN_IR_INST_JUMP: fprintf(ctx->output_file, "  goto %s;\n", inst->dest.as.label->name); break;
         case CN_IR_INST_BRANCH:
             // 检查条件操作数是否有效
@@ -2097,17 +2328,24 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     }
                 } else {
                     // 基本类型：dest = *(type*)cn_rt_array_get_element(arr, idx, size)
-                    // 【P3-2修复】修正无效C语法：*(type) → *(type*)
-                    // 原代码生成 *(long long) 是无效C语法（解引用非指针类型）
-                    // 但对于STRING类型（char*），*(char*) 是有效C语法，不应改为 *(char**)
-                    // 策略：如果类型字符串以*结尾，保持原格式；否则添加*使其成为指针类型
+                    // cn_rt_array_get_element 返回 void*，指向数组元素
+                    // 需要将 void* 转为 type* 再解引用得到 type 值
+                    //
+                    // 【第3轮修复P1】修复STRING类型（char*）的错误解引用
+                    // 当dest类型是char*时，数组存储的是char*元素，
+                    // void*指向char*元素，需要 *(char**) 解引用得到 char* 值
+                    // 原代码生成 *(char*) 解引用得到 char 值，导致
+                    // "assignment to 'char *' from 'char'" 错误
                     {
                         const char *type_str = get_c_type_string(inst->dest.type);
                         size_t type_len = strlen(type_str);
                         if (type_len > 0 && type_str[type_len - 1] == '*') {
-                            // 类型已是指针类型（如char*），直接使用 *(type) 格式
-                            // 例如 *(char*) 解引用得到 char 值
-                            fprintf(ctx->output_file, " = *(%s)", type_str);
+                            // 类型已是指针类型（如char*, struct X*等）
+                            // 数组存储的是指针元素，void*指向指针元素
+                            // 需要 *(type**) 解引用得到指针值
+                            // 例如：*(char**) 得到 char* 值
+                            // 例如：*(struct X**) 得到 struct X* 值
+                            fprintf(ctx->output_file, " = *(%s*)", type_str);
                         } else {
                             // 类型不是指针（如long long, struct X, double等）
                             // 使用 *(type*) 格式：先转void*为type*再解引用
@@ -2300,7 +2538,63 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 }
             } else {
                 // 普通函数调用
-                if (inst->dest.kind != CN_IR_OP_NONE) { print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = "); }
+                // 【第3轮修复P1】为参数添加显式类型转换
+                // 当寄存器参数类型为long long但函数期望指针类型时，
+                // 插入显式类型转换避免GCC类型不匹配错误
+                
+                // 【P1修复-D8】当dest类型为STRUCT但函数返回void*时，
+                // 插入解引用和类型转换：dest = *(struct X*)func(args)
+                // 典型错误：r26 = 下一个词元(r25)，下一个词元返回void*，r26应为struct 词元
+                bool call_need_deref_cast = false;
+                const char *call_deref_cast_type = NULL;
+                if (inst->dest.kind == CN_IR_OP_REG && inst->dest.type &&
+                    inst->dest.type->kind == CN_TYPE_STRUCT) {
+                    /* dest是struct类型，检查函数是否返回void* */
+                    bool func_returns_void_ptr = false;
+                    /* 从reg_types检查dest寄存器是否已被标记为void* */
+                    if (ctx->reg_types) {
+                        int dest_reg_id = inst->dest.as.reg_id;
+                        if (dest_reg_id >= 0 && dest_reg_id < ctx->reg_types_count &&
+                            ctx->reg_types[dest_reg_id]) {
+                            CnType *dest_reg_type = ctx->reg_types[dest_reg_id];
+                            if (dest_reg_type->kind == CN_TYPE_POINTER &&
+                                dest_reg_type->as.pointer_to &&
+                                dest_reg_type->as.pointer_to->kind == CN_TYPE_VOID) {
+                                func_returns_void_ptr = true;
+                            }
+                        }
+                    }
+                    /* 从函数名模式判断：创建XXX、cn_rt_array_get_element等返回void* */
+                    if (!func_returns_void_ptr && inst->src1.kind == CN_IR_OP_SYMBOL &&
+                        inst->src1.as.sym_name) {
+                        const char *fname = inst->src1.as.sym_name;
+                        size_t fname_len = strlen(fname);
+                        /* "创建"前缀的函数通常返回void* */
+                        if (fname_len > 6 && strncmp(fname, "\xe5\x88\x9b\xe5\xbb\xba", 6) == 0) {
+                            func_returns_void_ptr = true;
+                        }
+                        /* "下一个词元"等返回void*的函数 */
+                        else if (strstr(fname, "\xe4\xb8\x8b\xe4\xb8\x80\xe4\xb8\xaa") /* "下一个" */) {
+                            func_returns_void_ptr = true;
+                        }
+                        /* cn_rt_array_get_element返回void* */
+                        else if (strstr(fname, "cn_rt_array_get_element")) {
+                            func_returns_void_ptr = true;
+                        }
+                    }
+                    if (func_returns_void_ptr) {
+                        call_need_deref_cast = true;
+                        call_deref_cast_type = get_c_type_string(inst->dest.type);
+                    }
+                }
+                
+                if (inst->dest.kind != CN_IR_OP_NONE) {
+                    print_operand(ctx, inst->dest);
+                    fprintf(ctx->output_file, " = ");
+                    if (call_need_deref_cast && call_deref_cast_type) {
+                        fprintf(ctx->output_file, "*(%s*)", call_deref_cast_type);
+                    }
+                }
                 
                 if (inst->src1.kind == CN_IR_OP_SYMBOL) {
                     fprintf(ctx->output_file, "%s(", get_c_function_name(inst->src1.as.sym_name));
@@ -2309,6 +2603,55 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                     fprintf(ctx->output_file, "(");
                 }
                 for (size_t i = 0; i < inst->extra_args_count; i++) {
+                    /* 【P1修复增强】检查参数是否需要显式类型转换
+                     * 扩展了原有的类型转换逻辑，处理更多不兼容类型场景：
+                     * 1. 参数为INT/UNKNOWN/NULL，函数期望非INT类型（含void*、ENUM、STRUCT、POINTER）
+                     * 2. 参数为void*，函数期望STRUCT/POINTER类型
+                     * 3. 参数为STRUCT，函数期望void*（隐式兼容，无需转换） */
+                    bool need_cast = false;
+                    const char *cast_type = NULL;
+                    
+                    /* 获取参数的实际类型（从reg_types） */
+                    CnType *arg_type = NULL;
+                    if (inst->extra_args[i].kind == CN_IR_OP_REG && ctx->reg_types &&
+                        inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                        int arg_reg_id = inst->extra_args[i].as.reg_id;
+                        if (arg_reg_id >= 0 && arg_reg_id < ctx->reg_types_count) {
+                            arg_type = ctx->reg_types[arg_reg_id];
+                        }
+                    }
+                    
+                    /* 获取函数声明的参数类型 */
+                    CnType *param_type = NULL;
+                    if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                        param_type = lookup_func_param_type(ctx, inst->src1.as.sym_name, i);
+                    }
+                    
+                    /* 根据参数类型和函数参数类型判断是否需要转换 */
+                    if (param_type && param_type->kind != CN_TYPE_INT &&
+                        param_type->kind != CN_TYPE_UNKNOWN) {
+                        /* 情况1：参数为INT/UNKNOWN/NULL，函数期望非INT类型
+                         * 包括：int→void*、int→struct*、int→enum、int→size_t等 */
+                        if (!arg_type || arg_type->kind == CN_TYPE_INT ||
+                            arg_type->kind == CN_TYPE_UNKNOWN ||
+                            arg_type->kind == CN_TYPE_VOID) {
+                            need_cast = true;
+                            cast_type = get_c_type_string(param_type);
+                        }
+                        /* 情况2：参数为void*，函数期望STRUCT/POINTER类型
+                         * 例如：cn_rt_array_get_element返回void*，但函数期望struct符号* */
+                        else if (arg_type && is_void_pointer_type(arg_type) &&
+                                 param_type->kind != CN_TYPE_VOID &&
+                                 !is_void_pointer_type(param_type)) {
+                            need_cast = true;
+                            cast_type = get_c_type_string(param_type);
+                        }
+                        /* 情况3：参数为STRUCT，函数期望void*（隐式兼容，无需转换） */
+                    }
+                    
+                    if (need_cast && cast_type) {
+                        fprintf(ctx->output_file, "(%s)", cast_type);
+                    }
                     print_operand(ctx, inst->extra_args[i]);
                     if (i < inst->extra_args_count - 1) fprintf(ctx->output_file, ", ");
                 }
@@ -2334,13 +2677,110 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
             fprintf(ctx->output_file, ");\n");
             break;
         case CN_IR_INST_ADDRESS_OF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = &"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
-        case CN_IR_INST_DEREF: fprintf(ctx->output_file, "  "); print_operand(ctx, inst->dest); fprintf(ctx->output_file, " = *"); print_operand(ctx, inst->src1); fprintf(ctx->output_file, ";\n"); break;
-        case CN_IR_INST_GET_ELEMENT_PTR: {
-            // 数组索引访问（静态数组）：dest = &array[index]
-            // 生成 C 风格的数组索引访问：dest = &array[index]
+        case CN_IR_INST_DEREF: {
+            /* 【第3轮修复P1】处理void*解引用
+             * 当src1是void*类型时，GCC不允许直接解引用（*void_ptr是非法的），
+             * 需要先转换为dest类型指针再解引用：*(dest_type*)void_ptr
+             * 典型场景：r9 = *r8，r8是void*（如从下一个词元()返回），
+             * r9是struct 词元类型，应生成 r9 = *(struct 词元类型*)r8 */
+            bool src_is_void_ptr = false;
+            CnType *src_type = inst->src1.type;
+            
+            /* 检查src1是否为void* */
+            if (src_type && src_type->kind == CN_TYPE_POINTER &&
+                src_type->as.pointer_to && src_type->as.pointer_to->kind == CN_TYPE_VOID) {
+                src_is_void_ptr = true;
+            }
+            /* 从reg_types检查src1寄存器类型 */
+            if (!src_is_void_ptr && inst->src1.kind == CN_IR_OP_REG && ctx->reg_types) {
+                int src_reg_id = inst->src1.as.reg_id;
+                if (src_reg_id >= 0 && src_reg_id < ctx->reg_types_count && ctx->reg_types[src_reg_id]) {
+                    CnType *reg_type = ctx->reg_types[src_reg_id];
+                    if (reg_type->kind == CN_TYPE_POINTER &&
+                        reg_type->as.pointer_to && reg_type->as.pointer_to->kind == CN_TYPE_VOID) {
+                        src_is_void_ptr = true;
+                    }
+                }
+            }
+            
             fprintf(ctx->output_file, "  ");
             print_operand(ctx, inst->dest);
-            fprintf(ctx->output_file, " = &");
+            fprintf(ctx->output_file, " = *");
+            if (src_is_void_ptr && inst->dest.type &&
+                inst->dest.type->kind != CN_TYPE_VOID) {
+                /* 插入类型转换：*(dest_type*)void_ptr */
+                fprintf(ctx->output_file, "(%s)", get_c_type_string(inst->dest.type));
+            }
+            print_operand(ctx, inst->src1);
+            fprintf(ctx->output_file, ";\n");
+            break;
+        }
+        case CN_IR_INST_GET_ELEMENT_PTR: {
+            // 数组索引访问（静态数组）：dest = &array[index]
+            // 【P1修复-D1-D7】当dest类型与数组元素指针类型不匹配时，插入类型转换
+            // 典型错误：r11 = &r9[r10]，r9是struct IR操作数数组，r11被声明为int*
+            //          应生成 r11 = (struct IR操作数**)&r9[r10]
+            bool gep_need_cast = false;
+            const char *gep_cast_type = NULL;
+            
+            /* 检查dest寄存器类型是否与数组元素指针类型不匹配 */
+            if (inst->dest.kind == CN_IR_OP_REG && ctx->reg_types) {
+                int dest_reg_id = inst->dest.as.reg_id;
+                if (dest_reg_id >= 0 && dest_reg_id < ctx->reg_types_count && ctx->reg_types[dest_reg_id]) {
+                    CnType *dest_type = ctx->reg_types[dest_reg_id];
+                    /* dest类型是INT/UNKNOWN/VOID/CHAR/BOOL等低精度类型，
+                     * 但GEP结果应该是指针类型，需要从src1推断正确的元素指针类型 */
+                    if (dest_type->kind == CN_TYPE_INT || dest_type->kind == CN_TYPE_UNKNOWN ||
+                        dest_type->kind == CN_TYPE_VOID || dest_type->kind == CN_TYPE_CHAR ||
+                        dest_type->kind == CN_TYPE_BOOL || dest_type->kind == CN_TYPE_INT32 ||
+                        dest_type->kind == CN_TYPE_INT64) {
+                        /* 尝试从src1获取数组元素类型 */
+                        CnType *arr_type = NULL;
+                        /* 从reg_types获取src1类型 */
+                        if (inst->src1.kind == CN_IR_OP_REG && inst->src1.as.reg_id >= 0 &&
+                            inst->src1.as.reg_id < ctx->reg_types_count) {
+                            arr_type = ctx->reg_types[inst->src1.as.reg_id];
+                        }
+                        /* 从操作数自带类型获取 */
+                        if (!arr_type) arr_type = inst->src1.type;
+                        /* 从alloca_types获取 */
+                        if (!arr_type && inst->src1.kind == CN_IR_OP_SYMBOL &&
+                            inst->src1.as.sym_name && ctx->alloca_types) {
+                            AllocaTypeEntry *entry = (AllocaTypeEntry *)ctx->alloca_types;
+                            while (entry) {
+                                if (entry->sym_name && names_match_with_suffix(entry->sym_name, inst->src1.as.sym_name)) {
+                                    arr_type = entry->type;
+                                    break;
+                                }
+                                entry = entry->next;
+                            }
+                        }
+                        /* 根据数组类型推断元素指针类型 */
+                        if (arr_type) {
+                            CnType *elem_ptr_type = NULL;
+                            if (arr_type->kind == CN_TYPE_ARRAY && arr_type->as.array.element_type) {
+                                elem_ptr_type = cn_type_new_pointer(arr_type->as.array.element_type);
+                            } else if (arr_type->kind == CN_TYPE_POINTER) {
+                                elem_ptr_type = arr_type; /* 指针数组的GEP结果仍是指针 */
+                            } else if (arr_type->kind == CN_TYPE_STRUCT) {
+                                elem_ptr_type = cn_type_new_pointer(arr_type);
+                            }
+                            if (elem_ptr_type) {
+                                gep_need_cast = true;
+                                gep_cast_type = get_c_type_string(elem_ptr_type);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            fprintf(ctx->output_file, "  ");
+            print_operand(ctx, inst->dest);
+            fprintf(ctx->output_file, " = ");
+            if (gep_need_cast && gep_cast_type) {
+                fprintf(ctx->output_file, "(%s)", gep_cast_type);
+            }
+            fprintf(ctx->output_file, "&");
             print_operand(ctx, inst->src1);  // 数组
             fprintf(ctx->output_file, "[");
             print_operand(ctx, inst->src2);  // 索引
@@ -2547,10 +2987,186 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
                 fprintf(ctx->output_file, ".");
             }
             // src2 为成员名（符号类型）
+            // Round5-Fix3: 联合体成员名映射 - CN源码中的成员名可能与C结构体中的成员名不同
+            // 例如：类型节点.大小 → C中应为 类型节点.作为大小（联合体变体成员）
+            //       声明节点.变量声明 → C中应为 声明节点.作为变量声明
+            //       实例.诊断集合 → C中应为 实例.诊断集合指针
             if (inst->src2.kind == CN_IR_OP_SYMBOL) {
-                fprintf(ctx->output_file, "%s", inst->src2.as.sym_name);
+                const char *raw_member = inst->src2.as.sym_name;
+                const char *output_member = raw_member;  // 默认使用原始成员名
+                
+                // 尝试从全局符号表查找结构体定义，验证成员名是否存在
+                if (ctx->global_scope && raw_member) {
+                    // 【修复1.3b】获取对象的结构体类型 - 增强多层级查找
+                    CnType *check_obj_type = inst->src1.type;
+                    // 层级1：从reg_types获取
+                    if (!check_obj_type && inst->src1.kind == CN_IR_OP_REG && ctx->reg_types &&
+                        inst->src1.as.reg_id >= 0 && inst->src1.as.reg_id < ctx->reg_types_count) {
+                        check_obj_type = ctx->reg_types[inst->src1.as.reg_id];
+                    }
+                    // 层级2：从alloca_types查找（符号操作数）
+                    if (!check_obj_type && inst->src1.kind == CN_IR_OP_SYMBOL &&
+                        inst->src1.as.sym_name && ctx->alloca_types) {
+                        AllocaTypeEntry *entry = (AllocaTypeEntry *)ctx->alloca_types;
+                        while (entry) {
+                            if (entry->sym_name && names_match_with_suffix(entry->sym_name, inst->src1.as.sym_name)) {
+                                check_obj_type = entry->type;
+                                break;
+                            }
+                            entry = entry->next;
+                        }
+                    }
+                    // 层级3：从函数参数查找（符号操作数）
+                    if (!check_obj_type && inst->src1.kind == CN_IR_OP_SYMBOL &&
+                        inst->src1.as.sym_name && ctx->current_func && ctx->current_func->params) {
+                        for (size_t p = 0; p < ctx->current_func->param_count; p++) {
+                            if (ctx->current_func->params[p].as.sym_name &&
+                                names_match_with_suffix(ctx->current_func->params[p].as.sym_name, inst->src1.as.sym_name)) {
+                                check_obj_type = ctx->current_func->params[p].type;
+                                break;
+                            }
+                        }
+                    }
+                    // 解引用指针类型
+                    if (check_obj_type && check_obj_type->kind == CN_TYPE_POINTER && check_obj_type->as.pointer_to) {
+                        check_obj_type = check_obj_type->as.pointer_to;
+                    }
+                    
+                    // 如果对象是结构体类型，检查成员名是否存在
+                    if (check_obj_type && check_obj_type->kind == CN_TYPE_STRUCT &&
+                        check_obj_type->as.struct_type.name) {
+                        // 从全局符号表获取完整的结构体定义
+                        CnSemSymbol *struct_sym = cn_sem_scope_lookup(ctx->global_scope,
+                                check_obj_type->as.struct_type.name,
+                                check_obj_type->as.struct_type.name_length);
+                        if (struct_sym && struct_sym->kind == CN_SEM_SYMBOL_STRUCT &&
+                            struct_sym->type && struct_sym->type->as.struct_type.fields) {
+                            CnType *full_type = struct_sym->type;
+                            bool member_found = false;
+                            // 检查原始成员名是否存在
+                            size_t raw_len = strlen(raw_member);
+                            for (size_t f = 0; f < full_type->as.struct_type.field_count; f++) {
+                                if (full_type->as.struct_type.fields[f].name &&
+                                    full_type->as.struct_type.fields[f].name_length == raw_len &&
+                                    memcmp(full_type->as.struct_type.fields[f].name, raw_member, raw_len) == 0) {
+                                    member_found = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (!member_found) {
+                                // 成员名不存在，尝试"作为"前缀（联合体变体成员）
+                                // UTF-8编码："作为" = \xe4\xbd\x9c\xe4\xb8\xba
+                                char prefixed_name[256];
+                                snprintf(prefixed_name, sizeof(prefixed_name),
+                                    "\xe4\xbd\x9c\xe4\xb8\xba%s", raw_member);
+                                size_t prefixed_len = strlen(prefixed_name);
+                                
+                                for (size_t f = 0; f < full_type->as.struct_type.field_count; f++) {
+                                    if (full_type->as.struct_type.fields[f].name &&
+                                        full_type->as.struct_type.fields[f].name_length == prefixed_len &&
+                                        memcmp(full_type->as.struct_type.fields[f].name, prefixed_name, prefixed_len) == 0) {
+                                        output_member = strdup(prefixed_name);
+                                        member_found = true;
+                                        break;
+                                    }
+                                }
+                                
+                                // 如果"作为"前缀也没找到，尝试"指针"后缀
+                                // UTF-8编码："指针" = \xe6\x8c\x87\xe9\x92\x88
+                                if (!member_found) {
+                                    char suffixed_name[256];
+                                    snprintf(suffixed_name, sizeof(suffixed_name),
+                                        "%s\xe6\x8c\x87\xe9\x92\x88", raw_member);
+                                    size_t suffixed_len = strlen(suffixed_name);
+                                    
+                                    for (size_t f = 0; f < full_type->as.struct_type.field_count; f++) {
+                                        if (full_type->as.struct_type.fields[f].name &&
+                                            full_type->as.struct_type.fields[f].name_length == suffixed_len &&
+                                            memcmp(full_type->as.struct_type.fields[f].name, suffixed_name, suffixed_len) == 0) {
+                                            output_member = strdup(suffixed_name);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // 【P1修复-C13】当check_obj_type为NULL时（类型传播失败），
+                    // 回退方案：遍历AST程序中的结构体定义，检查是否有"作为+成员名"的字段
+                    // 这解决了 r15 = r14.类型信息; r16 = r15->大小 中
+                    // r15类型为struct 类类型节点但类型传播失败时，大小→作为大小 的映射
+                    if (!check_obj_type && raw_member && ctx->program && ctx->program->structs) {
+                        char prefixed_name[256];
+                        snprintf(prefixed_name, sizeof(prefixed_name),
+                            "\xe4\xbd\x9c\xe4\xb8\xba%s", raw_member);  // "作为" + 成员名
+                        size_t prefixed_len = strlen(prefixed_name);
+                        bool found_prefixed = false;
+                        
+                        // 遍历AST程序中所有结构体定义，查找"作为+成员名"的字段
+                        for (size_t si = 0; si < ctx->program->struct_count && !found_prefixed; si++) {
+                            CnAstStmt *struct_stmt = ctx->program->structs[si];
+                            if (struct_stmt && struct_stmt->kind == CN_AST_STMT_STRUCT_DECL) {
+                                CnAstStructDecl *sd = &struct_stmt->as.struct_decl;
+                                for (size_t f = 0; f < sd->field_count; f++) {
+                                    if (sd->fields[f].name &&
+                                        sd->fields[f].name_length == prefixed_len &&
+                                        memcmp(sd->fields[f].name, prefixed_name, prefixed_len) == 0) {
+                                        output_member = strdup(prefixed_name);
+                                        found_prefixed = true;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                fprintf(ctx->output_file, "%s", output_member);
             }
             fprintf(ctx->output_file, ";\n");
+            
+            // 【修复1.3a】将成员结果类型回填到reg_types
+            // 当MEMBER_ACCESS指令的结果寄存器类型为INT/NULL/UNKNOWN时，
+            // 从指令的dest.type或结构体成员推断中获取更精确的类型
+            if (inst->dest.kind == CN_IR_OP_REG && ctx->reg_types) {
+                int dest_reg_id = inst->dest.as.reg_id;
+                if (dest_reg_id >= 0 && dest_reg_id < ctx->reg_types_count) {
+                    CnType *current_type = ctx->reg_types[dest_reg_id];
+                    // 只有当reg_types中类型为INT/NULL/UNKNOWN时才更新
+                    if (!current_type || current_type->kind == CN_TYPE_INT ||
+                        current_type->kind == CN_TYPE_UNKNOWN ||
+                        current_type->kind == CN_TYPE_VOID) {
+                        // 优先从指令的dest.type获取（IR生成器设置的成员类型）
+                        CnType *member_result_type = inst->dest.type;
+                        if (member_result_type && member_result_type->kind != CN_TYPE_INT &&
+                            member_result_type->kind != CN_TYPE_UNKNOWN &&
+                            member_result_type->kind != CN_TYPE_VOID) {
+                            ctx->reg_types[dest_reg_id] = member_result_type;
+                        }
+                        // 如果dest.type也是低精度，尝试从结构体成员推断
+                        else if (inst->src2.kind == CN_IR_OP_SYMBOL && inst->src2.as.sym_name) {
+                            // 复用check_obj_type（上面已计算）来查找成员类型
+                            CnType *obj_type_for_member = inst->src1.type;
+                            if (!obj_type_for_member && inst->src1.kind == CN_IR_OP_REG && ctx->reg_types &&
+                                inst->src1.as.reg_id >= 0 && inst->src1.as.reg_id < ctx->reg_types_count) {
+                                obj_type_for_member = ctx->reg_types[inst->src1.as.reg_id];
+                            }
+                            if (obj_type_for_member && obj_type_for_member->kind == CN_TYPE_POINTER && obj_type_for_member->as.pointer_to) {
+                                obj_type_for_member = obj_type_for_member->as.pointer_to;
+                            }
+                            if (obj_type_for_member && obj_type_for_member->kind == CN_TYPE_STRUCT && obj_type_for_member->as.struct_type.fields) {
+                                const char *mname = inst->src2.as.sym_name;
+                                size_t mname_len = strlen(mname);
+                                CnType *found = lookup_struct_member_type_cgen(obj_type_for_member, mname, mname_len);
+                                if (found) {
+                                    ctx->reg_types[dest_reg_id] = found;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             break;
         }
         case CN_IR_INST_STRUCT_INIT:
@@ -2600,6 +3216,64 @@ void cn_cgen_inst(CnCCodeGenContext *ctx, CnIrInst *inst) {
  * 对类型仍为INT/UNKNOWN/VOID的寄存器进行"使用模式推断"，
  * 根据寄存器在指令中的使用方式推断其真实类型。
  * ============================================================================ */
+
+/**
+ * @brief 【修复1.2】从结构体类型中查找成员类型，支持"作为"前缀和"指针"后缀匹配
+ *
+ * 当原始成员名在结构体字段中未找到时，尝试：
+ * 1. "作为"前缀：如 "大小" → "作为大小"（联合体变体成员）
+ * 2. "指针"后缀：如 "诊断集合" → "诊断集合指针"（指针类型成员）
+ *
+ * @param obj_type 结构体类型（必须为CN_TYPE_STRUCT且有fields）
+ * @param member_name 成员名
+ * @param member_name_length 成员名长度
+ * @return 找到的成员类型，未找到返回NULL
+ */
+static CnType* lookup_struct_member_type_cgen(CnType *obj_type, const char *member_name,
+                                                size_t member_name_length) {
+    if (!obj_type || obj_type->kind != CN_TYPE_STRUCT || !obj_type->as.struct_type.fields) {
+        return NULL;
+    }
+
+    /* 第1步：尝试原始成员名精确匹配 */
+    for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
+        if (obj_type->as.struct_type.fields[f].name &&
+            obj_type->as.struct_type.fields[f].name_length == member_name_length &&
+            memcmp(obj_type->as.struct_type.fields[f].name, member_name, member_name_length) == 0) {
+            return obj_type->as.struct_type.fields[f].field_type;
+        }
+    }
+
+    /* 第2步：尝试"作为"前缀匹配（联合体变体成员）
+     * UTF-8编码："作为" = \xe4\xbd\x9c\xe4\xb8\xba */
+    char prefixed_name[256];
+    snprintf(prefixed_name, sizeof(prefixed_name),
+        "\xe4\xbd\x9c\xe4\xb8\xba%s", member_name);  // "作为" + 成员名
+    size_t prefixed_len = strlen(prefixed_name);
+    for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
+        if (obj_type->as.struct_type.fields[f].name &&
+            obj_type->as.struct_type.fields[f].name_length == prefixed_len &&
+            memcmp(obj_type->as.struct_type.fields[f].name, prefixed_name, prefixed_len) == 0) {
+            return obj_type->as.struct_type.fields[f].field_type;
+        }
+    }
+
+    /* 第3步：尝试"指针"后缀匹配（指针类型成员）
+     * UTF-8编码："指针" = \xe6\x8c\x87\xe9\x92\x88 */
+    char suffixed_name[256];
+    snprintf(suffixed_name, sizeof(suffixed_name),
+        "%s\xe6\x8c\x87\xe9\x92\x88", member_name);  // 成员名 + "指针"
+    size_t suffixed_len = strlen(suffixed_name);
+    for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
+        if (obj_type->as.struct_type.fields[f].name &&
+            obj_type->as.struct_type.fields[f].name_length == suffixed_len &&
+            memcmp(obj_type->as.struct_type.fields[f].name, suffixed_name, suffixed_len) == 0) {
+            return obj_type->as.struct_type.fields[f].field_type;
+        }
+    }
+
+    return NULL;  // 未找到
+}
 
 /**
  * @brief 从MEMBER_ACCESS指令推断寄存器的结构体指针类型
@@ -2726,6 +3400,153 @@ static CnType* infer_from_member_access(CnCCodeGenContext *ctx, CnIrFunction *fu
         block = block->next;
     }
     return NULL;
+}
+
+/* ============================================================================
+ * 【第3轮修复】CALL参数反向类型传播辅助函数
+ * 当寄存器作为函数参数传入但类型为INT/UNKNOWN/NULL时，
+ * 从函数声明的参数类型推断寄存器应有的类型。
+ * 这解决了"long long参数传给void*参数"的GCC类型不匹配错误。
+ * ============================================================================ */
+
+/**
+ * @brief 运行时中文函数参数类型查找（模式匹配）
+ *
+ * 通过函数名模式匹配，推断运行时库函数的参数类型。
+ * 当全局符号表和IR模块函数列表都未找到参数类型时使用。
+ *
+ * @param func_name 函数名
+ * @param func_name_len 函数名长度
+ * @param param_index 参数索引（0-based）
+ * @return 参数类型，找不到返回NULL
+ */
+static CnType* lookup_runtime_param_type(const char *func_name,
+                                          size_t func_name_len,
+                                          size_t param_index) {
+    if (!func_name) return NULL;
+
+    /* 字符串操作类函数：参数为 char* / const char* */
+    if (strcmp(func_name, "复制字符串") == 0 ||
+        strcmp(func_name, "限长复制字符串") == 0 ||
+        strcmp(func_name, "限长比较字符串") == 0 ||
+        strcmp(func_name, "限长连接字符串") == 0) {
+        if (param_index <= 1) return cn_type_new_primitive(CN_TYPE_STRING);
+    }
+    else if (strcmp(func_name, "比较字符串") == 0 ||
+             strcmp(func_name, "查找字符") == 0 ||
+             strcmp(func_name, "反向查找字符") == 0 ||
+             strcmp(func_name, "查找子串") == 0 ||
+             strcmp(func_name, "连接字符串") == 0) {
+        return cn_type_new_primitive(CN_TYPE_STRING);
+    }
+    else if (strcmp(func_name, "字符串格式") == 0) {
+        return cn_type_new_primitive(CN_TYPE_STRING);
+    }
+    /* 内存操作类函数 */
+    else if (strcmp(func_name, "释放内存") == 0) {
+        if (param_index == 0) return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+    }
+    else if (strcmp(func_name, "复制内存") == 0 || strcmp(func_name, "比较内存") == 0) {
+        if (param_index <= 1) return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+    }
+    else if (strcmp(func_name, "设置内存") == 0) {
+        if (param_index == 0) return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+    }
+    else if (strcmp(func_name, "分配内存数组") == 0) {
+        if (param_index == 1) return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+    }
+    /* 文件操作类函数 */
+    else if (strcmp(func_name, "读取文件内容") == 0) {
+        if (param_index == 0) return cn_type_new_primitive(CN_TYPE_STRING);
+        if (param_index == 1) return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_STRING));
+        if (param_index == 2) return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_INT));
+    }
+    /* 创建类函数 */
+    else if (strcmp(func_name, "创建扫描器") == 0) {
+        return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+    }
+    else if (strcmp(func_name, "cn_rt_array_get_element") == 0) {
+        if (param_index == 0) return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+    }
+    /* 创建XXX类函数：参数通常是指针 */
+    else if (func_name_len > 6 && strncmp(func_name, "创建", 6) == 0) {
+        return cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+    }
+
+    return NULL;
+}
+
+/**
+ * @brief 检查类型是否为void*（指向void的指针）
+ *
+ * void*类型太模糊，不应作为反向类型传播的目标类型。
+ * 当函数参数类型为void*时，不应将long long int寄存器升级为void*，
+ * 因为void*可以接受任何指针类型，升级反而会导致赋值不兼容错误。
+ * 例如：创建输出缓冲区()的第一个参数期望long long int（缓冲区大小），
+ * 但被错误升级为void*后，r4 = cn_var_默认缓冲区大小 会报类型不匹配。
+ *
+ * @param type 待检查的类型
+ * @return true如果是void*类型，false否则
+ */
+static bool is_void_pointer_type(CnType *type) {
+    if (!type) return false;
+    if (type->kind != CN_TYPE_POINTER) return false;
+    /* 指针指向类型未知时，也视为void*（保守处理） */
+    if (!type->as.pointer_to) return true;
+    return type->as.pointer_to->kind == CN_TYPE_VOID;
+}
+
+/**
+ * @brief 查找函数的第N个参数类型（用于CALL参数反向类型传播）
+ *
+ * 从全局符号表、IR模块函数列表、运行时函数名模式匹配中查找函数参数类型。
+ * 当寄存器作为函数参数传入但类型为INT/UNKNOWN/NULL时，
+ * 从函数声明的参数类型推断寄存器应有的类型。
+ *
+ * @param ctx 代码生成上下文
+ * @param func_name 函数名
+ * @param param_index 参数索引（0-based）
+ * @return 参数类型，找不到返回NULL
+ */
+static CnType* lookup_func_param_type(CnCCodeGenContext *ctx,
+                                       const char *func_name,
+                                       size_t param_index) {
+    if (!func_name) return NULL;
+    size_t func_name_len = strlen(func_name);
+
+    /* 层级1：从全局符号表查找 */
+    if (ctx->global_scope) {
+        CnSemSymbol *func_sym = cn_sem_scope_lookup(ctx->global_scope, func_name, func_name_len);
+        if (func_sym && func_sym->kind == CN_SEM_SYMBOL_FUNCTION && func_sym->type &&
+            func_sym->type->kind == CN_TYPE_FUNCTION) {
+            CnType *func_type = func_sym->type;
+            if (param_index < func_type->as.function.param_count &&
+                func_type->as.function.param_types[param_index]) {
+                CnType *pt = func_type->as.function.param_types[param_index];
+                if (pt->kind != CN_TYPE_INT && pt->kind != CN_TYPE_UNKNOWN && pt->kind != CN_TYPE_VOID) {
+                    return pt;
+                }
+            }
+        }
+    }
+
+    /* 层级2：从IR模块函数列表查找 */
+    if (ctx->module) {
+        CnIrFunction *mod_func = ctx->module->first_func;
+        while (mod_func) {
+            if (mod_func->name && strcmp(mod_func->name, func_name) == 0 &&
+                param_index < mod_func->param_count && mod_func->params[param_index].type) {
+                CnType *pt = mod_func->params[param_index].type;
+                if (pt->kind != CN_TYPE_INT && pt->kind != CN_TYPE_UNKNOWN && pt->kind != CN_TYPE_VOID) {
+                    return pt;
+                }
+            }
+            mod_func = mod_func->next;
+        }
+    }
+
+    /* 层级3：运行时中文函数名模式匹配 */
+    return lookup_runtime_param_type(func_name, func_name_len, param_index);
 }
 
 /**
@@ -3040,11 +3861,20 @@ static CnType* infer_from_gep(CnCCodeGenContext *ctx, CnIrFunction *func,
                 inst->dest.kind == CN_IR_OP_REG &&
                 inst->dest.as.reg_id == reg_index) {
                 /* 从dest.type获取 */
+                /* 【第3轮修复P0】GEP结果始终是指针类型，当dest.type为非指针类型时
+                 * 需要升级为指针类型。例如dest.type=struct 诊断信息 → struct 诊断信息* */
                 if (inst->dest.type &&
                     inst->dest.type->kind != CN_TYPE_INT &&
                     inst->dest.type->kind != CN_TYPE_UNKNOWN &&
                     inst->dest.type->kind != CN_TYPE_VOID) {
-                    return inst->dest.type;
+                    /* 如果dest.type已经是指针类型，直接使用 */
+                    if (inst->dest.type->kind == CN_TYPE_POINTER ||
+                        inst->dest.type->kind == CN_TYPE_STRING) {
+                        return inst->dest.type;
+                    }
+                    /* 如果dest.type是非指针类型（STRUCT/ENUM/CHAR/BOOL/FLOAT等），
+                     * GEP返回的是指向该类型的指针，需要升级为POINTER类型 */
+                    return cn_type_new_pointer(inst->dest.type);
                 }
                 
                 /* 获取源操作数类型 */
@@ -3075,12 +3905,28 @@ static CnType* infer_from_gep(CnCCodeGenContext *ctx, CnIrFunction *func,
                     if (src_type->kind == CN_TYPE_ARRAY && src_type->as.array.element_type) {
                         return cn_type_new_pointer(src_type->as.array.element_type);
                     } else if (src_type->kind == CN_TYPE_POINTER) {
+                        /* 【第2轮修复B】POINTER类型的GEP结果保持相同类型
+                         * 例如：char** 数组的 &arr[i] 结果是 char**（指向char*元素的指针）
+                         * 例如：struct X** 数组的 &arr[i] 结果是 struct X**
+                         * 关键：GEP返回的是"指向数组元素的指针"，元素类型就是指针指向的类型，
+                         * 所以GEP结果类型 = 指向(元素类型)的指针 = 与src_type相同 */
                         return src_type;
                     }
                     /* 【RC1增强】STRING类型(char*)的GEP结果也是char*
                      * 例如：char*指针的索引访问 char* p; p[i] 结果类型是char* */
                     else if (src_type->kind == CN_TYPE_STRING) {
                         return cn_type_new_primitive(CN_TYPE_STRING);
+                    }
+                    /* 【第2轮修复B】STRUCT类型的GEP结果是指向结构体的指针
+                     * 例如：struct X 数组的 &arr[i] 结果是 struct X*
+                     * 当src_type是结构体值类型（非指针）时，GEP返回指向该结构体的指针 */
+                    else if (src_type->kind == CN_TYPE_STRUCT) {
+                        return cn_type_new_pointer(src_type);
+                    }
+                    /* 【第2轮修复B】ENUM类型的GEP结果是指向枚举的指针
+                     * 例如：enum E 数组的 &arr[i] 结果是 enum E* */
+                    else if (src_type->kind == CN_TYPE_ENUM) {
+                        return cn_type_new_pointer(src_type);
                     }
                 }
             }
@@ -3099,9 +3945,11 @@ static CnType* infer_from_gep(CnCCodeGenContext *ctx, CnIrFunction *func,
  * @param ctx 代码生成上下文
  * @param func 当前函数
  * @param reg_index 寄存器索引
+ * @param alloca_types ALLOCA变量类型映射表
  * @return 推断出的类型，无法推断返回NULL
  */
-static CnType* infer_from_address_of(CnCCodeGenContext *ctx, CnIrFunction *func, int reg_index) {
+static CnType* infer_from_address_of(CnCCodeGenContext *ctx, CnIrFunction *func,
+                                      int reg_index, AllocaTypeEntry *alloca_types) {
     CnIrBasicBlock *block = func->first_block;
     while (block) {
         CnIrInst *inst = block->first_inst;
@@ -3116,6 +3964,43 @@ static CnType* infer_from_address_of(CnCCodeGenContext *ctx, CnIrFunction *func,
                 /* 从src1.type创建指针 */
                 if (inst->src1.type) {
                     return cn_type_new_pointer(inst->src1.type);
+                }
+                /* 【第3轮修复P0】当src1.type为NULL时，从alloca_types查找符号类型
+                 * 典型场景：r53 = &cn_var_源码内容_4
+                 * cn_var_源码内容_4 的类型在alloca_types中为char[]，
+                 * 取地址后应为char* */
+                if (inst->src1.kind == CN_IR_OP_SYMBOL && inst->src1.as.sym_name) {
+                    /* 从alloca_types查找 */
+                    if (alloca_types) {
+                        AllocaTypeEntry *entry = alloca_types;
+                        while (entry) {
+                            if (entry->sym_name && entry->type &&
+                                names_match_with_suffix(entry->sym_name, inst->src1.as.sym_name)) {
+                                /* 数组类型取地址得到指向元素的指针
+                                 * char[] → char* */
+                                if (entry->type->kind == CN_TYPE_ARRAY &&
+                                    entry->type->as.array.element_type) {
+                                    return cn_type_new_pointer(entry->type->as.array.element_type);
+                                }
+                                /* 其他类型取地址得到指向该类型的指针 */
+                                return cn_type_new_pointer(entry->type);
+                            }
+                            entry = entry->next;
+                        }
+                    }
+                    /* 从函数参数查找 */
+                    if (func) {
+                        for (size_t p = 0; p < func->param_count; p++) {
+                            if (func->params[p].as.sym_name &&
+                                names_match_with_suffix(func->params[p].as.sym_name, inst->src1.as.sym_name)) {
+                                CnType *param_type = func->params[p].type;
+                                if (param_type) {
+                                    return cn_type_new_pointer(param_type);
+                                }
+                                break;
+                            }
+                        }
+                    }
                 }
             }
             inst = inst->next;
@@ -3256,20 +4141,15 @@ static CnType* infer_from_member_access_dest(CnCCodeGenContext *ctx, CnIrFunctio
                     continue;
                 }
                 
-                /* 如果对象是结构体类型，查找成员类型 */
+                /* 【修复1.2】如果对象是结构体类型，查找成员类型
+                 * 使用lookup_struct_member_type_cgen支持"作为"前缀和"指针"后缀匹配 */
                 if (obj_type && obj_type->kind == CN_TYPE_STRUCT &&
                     obj_type->as.struct_type.fields && inst->src2.kind == CN_IR_OP_SYMBOL) {
                     const char *member_name = inst->src2.as.sym_name;
                     size_t member_name_len = strlen(member_name);
                     
-                    /* 遍历结构体字段查找成员类型 */
-                    for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
-                        if (obj_type->as.struct_type.fields[f].name &&
-                            obj_type->as.struct_type.fields[f].name_length == member_name_len &&
-                            memcmp(obj_type->as.struct_type.fields[f].name, member_name, member_name_len) == 0) {
-                            return obj_type->as.struct_type.fields[f].field_type;
-                        }
-                    }
+                    CnType *found = lookup_struct_member_type_cgen(obj_type, member_name, member_name_len);
+                    if (found) return found;
                     
                     /* 如果结构体没有字段信息，尝试从全局作用域查找完整定义 */
                     if (ctx->global_scope && obj_type->as.struct_type.name) {
@@ -3278,13 +4158,8 @@ static CnType* infer_from_member_access_dest(CnCCodeGenContext *ctx, CnIrFunctio
                         if (struct_sym && struct_sym->kind == CN_SEM_SYMBOL_STRUCT &&
                             struct_sym->type && struct_sym->type->as.struct_type.fields) {
                             CnType *full_type = struct_sym->type;
-                            for (size_t f = 0; f < full_type->as.struct_type.field_count; f++) {
-                                if (full_type->as.struct_type.fields[f].name &&
-                                    full_type->as.struct_type.fields[f].name_length == member_name_len &&
-                                    memcmp(full_type->as.struct_type.fields[f].name, member_name, member_name_len) == 0) {
-                                    return full_type->as.struct_type.fields[f].field_type;
-                                }
-                            }
+                            found = lookup_struct_member_type_cgen(full_type, member_name, member_name_len);
+                            if (found) return found;
                         }
                     }
                 }
@@ -3343,7 +4218,7 @@ static CnType* infer_reg_type_from_usage(CnCCodeGenContext *ctx, CnIrFunction *f
     if (result) return result;
     
     /* 规则7：从ADDRESS_OF推断 */
-    result = infer_from_address_of(ctx, func, reg_index);
+    result = infer_from_address_of(ctx, func, reg_index, alloca_types);
     if (result) return result;
     
     return NULL;
@@ -4033,6 +4908,89 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                     }
                                 }
                             }
+                            
+                            /* 【修复1】运行时中文函数名模式匹配
+                             * 当全局符号表和IR模块函数列表都未找到返回类型时，
+                             * 通过中文函数名模式推断返回类型。
+                             * 这是跨模块函数调用类型丢失的主要修复点。
+                             */
+                            if (!new_type &&
+                                scan_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                                scan_inst->src1.as.sym_name) {
+                                const char *rt_func_name = scan_inst->src1.as.sym_name;
+                                size_t rt_func_len = strlen(rt_func_name);
+                                
+                                /* 分配内存类函数 → void* */
+                                if (strcmp(rt_func_name, "分配内存") == 0 ||
+                                    strcmp(rt_func_name, "分配清零内存") == 0 ||
+                                    strcmp(rt_func_name, "重新分配内存") == 0) {
+                                    new_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                                }
+                                /* 字符串操作类 → char* (STRING) */
+                                else if (strcmp(rt_func_name, "复制字符串副本") == 0 ||
+                                         strcmp(rt_func_name, "复制字符串") == 0 ||
+                                         strcmp(rt_func_name, "字符串格式") == 0 ||
+                                         strcmp(rt_func_name, "整数转字符串") == 0) {
+                                    new_type = cn_type_new_primitive(CN_TYPE_STRING);
+                                }
+                                /* 数组操作类 → void* */
+                                else if (strcmp(rt_func_name, "分配内存数组") == 0 ||
+                                         strcmp(rt_func_name, "cn_rt_array_get_element") == 0) {
+                                    new_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                                }
+                                /* 创建类函数：创建XXX → struct XXX* 或 void*
+                                 * "创建"的UTF-8编码占6字节 */
+                                else if (rt_func_len > 6 &&
+                                         strncmp(rt_func_name, "创建", 6) == 0) {
+                                    const char *type_name = rt_func_name + 6;
+                                    size_t type_name_len = strlen(type_name);
+                                    CnType *created_type = NULL;
+                                    
+                                    /* 尝试从全局符号表查找结构体/类定义 */
+                                    if (type_name_len > 0 && ctx->global_scope) {
+                                        CnSemSymbol *type_sym = cn_sem_scope_lookup(
+                                            ctx->global_scope, type_name, type_name_len);
+                                        if (type_sym &&
+                                            (type_sym->kind == CN_SEM_SYMBOL_STRUCT ||
+                                             type_sym->kind == CN_SEM_SYMBOL_CLASS) &&
+                                            type_sym->type) {
+                                            created_type = cn_type_new_pointer(type_sym->type);
+                                        }
+                                    }
+                                    /* 如果找不到结构体定义，至少标记为void* */
+                                    if (!created_type) {
+                                        created_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                                    }
+                                    new_type = created_type;
+                                }
+                                /* 查找/获取/搜索类函数 → void* (通常返回指针) */
+                                else if (strstr(rt_func_name, "查找") ||
+                                         strstr(rt_func_name, "获取") ||
+                                         strstr(rt_func_name, "搜索")) {
+                                    new_type = cn_type_new_pointer(cn_type_new_primitive(CN_TYPE_VOID));
+                                }
+                            }
+                            
+                            // 【RC2-B修复】CALL指令返回STRUCT类型时，检查是否为运行时数组函数
+                            // 运行时数组函数（如cn_rt_array_get_element）返回void*，实际应是指向元素的指针
+                            // 如果new_type是STRUCT，需要升级为POINTER(struct X)，否则生成
+                            // "struct X r = (struct X*)cn_rt_array_get_element(...)" 会类型不匹配
+                            if (new_type && new_type->kind == CN_TYPE_STRUCT &&
+                                scan_inst->src1.kind == CN_IR_OP_SYMBOL && scan_inst->src1.as.sym_name) {
+                                const char *fn_name = scan_inst->src1.as.sym_name;
+                                // 检查是否为返回指针的运行时数组函数
+                                if (strstr(fn_name, "cn_rt_array_get_element") ||
+                                    strstr(fn_name, "cn_rt_array_push") ||
+                                    strstr(fn_name, "cn_rt_array_front") ||
+                                    strstr(fn_name, "cn_rt_array_back") ||
+                                    strstr(fn_name, "cn_rt_array_data")) {
+                                    // 将STRUCT类型升级为POINTER类型
+                                    CnType *ptr_type = cn_type_new_pointer(new_type);
+                                    if (ptr_type) {
+                                        new_type = ptr_type;
+                                    }
+                                }
+                            }
                         }
                         
                         // 【新增】对于 GET_ELEMENT_PTR 指令，处理静态数组索引访问的类型
@@ -4040,10 +4998,23 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                         // 【RC3修复】增加STRING类型处理和reg_types/alloca_types回退逻辑
                         if (!new_type && scan_inst->kind == CN_IR_INST_GET_ELEMENT_PTR) {
                             // dest = &array[index]，dest 的类型是指向数组元素类型的指针
+                            // 【第3轮修复P0】GEP结果始终是指针类型，当dest.type为非指针类型时
+                            // 需要升级为指针类型。例如dest.type=struct 诊断信息 → struct 诊断信息*
                             if (scan_inst->dest.type &&
                                 scan_inst->dest.type->kind != CN_TYPE_INT &&
-                                scan_inst->dest.type->kind != CN_TYPE_UNKNOWN) {
-                                new_type = scan_inst->dest.type;
+                                scan_inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                                scan_inst->dest.type->kind != CN_TYPE_VOID) {
+                                /* 如果dest.type已经是指针类型，直接使用 */
+                                if (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
+                                    scan_inst->dest.type->kind == CN_TYPE_STRING) {
+                                    new_type = scan_inst->dest.type;
+                                }
+                                /* 【第3轮修复P0】如果dest.type是非指针类型（STRUCT/ENUM/CHAR/BOOL/FLOAT等），
+                                 * GEP返回的是指向该类型的指针，需要升级为POINTER类型
+                                 * 例如：&诊断信息数组[i] 的类型是 struct 诊断信息*，不是 struct 诊断信息 */
+                                else {
+                                    new_type = cn_type_new_pointer(scan_inst->dest.type);
+                                }
                             } else if (scan_inst->src1.type) {
                                 // 从数组类型推断元素指针类型
                                 CnType *array_type = scan_inst->src1.type;
@@ -4052,6 +5023,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                     new_type = cn_type_new_pointer(array_type->as.array.element_type);
                                 } else if (array_type->kind == CN_TYPE_POINTER) {
                                     // 如果是指针类型（动态数组），直接使用
+                                    /* 【第2轮修复B】多级指针保持相同类型
+                                     * char** 数组的 &arr[i] → char** */
                                     new_type = array_type;
                                 }
                                 /* 【RC3修复】STRING类型(char*)的GEP结果仍然是char*
@@ -4059,6 +5032,12 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                  * 这修复了字符串索引访问中间寄存器被声明为long long的问题 */
                                 else if (array_type->kind == CN_TYPE_STRING) {
                                     new_type = cn_type_new_primitive(CN_TYPE_STRING);
+                                }
+                                /* 【第2轮修复B】STRUCT/ENUM类型的GEP结果是指向该类型的指针 */
+                                else if (array_type->kind == CN_TYPE_STRUCT) {
+                                    new_type = cn_type_new_pointer(array_type);
+                                } else if (array_type->kind == CN_TYPE_ENUM) {
+                                    new_type = cn_type_new_pointer(array_type);
                                 }
                             }
                             /* 【RC3修复】当src1.type为NULL时，从reg_types和alloca_types回退查找
@@ -4088,9 +5067,16 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                     if (src_type->kind == CN_TYPE_ARRAY && src_type->as.array.element_type) {
                                         new_type = cn_type_new_pointer(src_type->as.array.element_type);
                                     } else if (src_type->kind == CN_TYPE_POINTER) {
+                                        /* 【第2轮修复B】POINTER类型保持相同（多级指针） */
                                         new_type = src_type;
                                     } else if (src_type->kind == CN_TYPE_STRING) {
                                         new_type = cn_type_new_primitive(CN_TYPE_STRING);
+                                    }
+                                    /* 【第2轮修复B】STRUCT/ENUM类型的GEP结果是指向该类型的指针 */
+                                    else if (src_type->kind == CN_TYPE_STRUCT) {
+                                        new_type = cn_type_new_pointer(src_type);
+                                    } else if (src_type->kind == CN_TYPE_ENUM) {
+                                        new_type = cn_type_new_pointer(src_type);
                                     }
                                 }
                             }
@@ -4200,6 +5186,24 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                             search_block = search_block->next;
                                         }
                                     }
+                                    // 【P1修复】如果ALLOCA指令查找失败或类型为INT/NULL，
+                                    // 从alloca_types查找（预扫描阶段推断的更精确类型）
+                                    if ((!obj_type || obj_type->kind == CN_TYPE_INT ||
+                                         obj_type->kind == CN_TYPE_UNKNOWN ||
+                                         obj_type->kind == CN_TYPE_VOID) && alloca_types) {
+                                        AllocaTypeEntry *entry = alloca_types;
+                                        while (entry) {
+                                            if (entry->sym_name && names_match_with_suffix(entry->sym_name, sym_name)) {
+                                                if (entry->type && entry->type->kind != CN_TYPE_INT &&
+                                                    entry->type->kind != CN_TYPE_UNKNOWN &&
+                                                    entry->type->kind != CN_TYPE_VOID) {
+                                                    obj_type = entry->type;
+                                                    break;
+                                                }
+                                            }
+                                            entry = entry->next;
+                                        }
+                                    }
                                 }
                                 
                             if (obj_type) {
@@ -4223,7 +5227,8 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                         }
                                     }
                                 }
-                                // 如果是结构体类型，查找成员类型
+                                // 【修复1.2】如果是结构体类型，查找成员类型
+                                // 使用lookup_struct_member_type_cgen支持"作为"前缀和"指针"后缀匹配
                                 if (!new_type && obj_type->kind == CN_TYPE_STRUCT && obj_type->as.struct_type.fields) {
                                     const char *member_name = NULL;
                                     size_t member_name_length = 0;
@@ -4232,16 +5237,7 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                         member_name_length = strlen(member_name);
                                     }
                                     if (member_name) {
-                                        // 遍历结构体成员查找类型
-                                        // 使用 name_length 和 memcmp 比较，而不是 strcmp
-                                        for (size_t f = 0; f < obj_type->as.struct_type.field_count; f++) {
-                                            if (obj_type->as.struct_type.fields[f].name &&
-                                                obj_type->as.struct_type.fields[f].name_length == member_name_length &&
-                                                memcmp(obj_type->as.struct_type.fields[f].name, member_name, member_name_length) == 0) {
-                                                new_type = obj_type->as.struct_type.fields[f].field_type;
-                                                break;
-                                            }
-                                        }
+                                        new_type = lookup_struct_member_type_cgen(obj_type, member_name, member_name_length);
                                     }
                                 }
                             }
@@ -4358,6 +5354,60 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                             }
                         }
                         
+                        /* 【修复3】SELECT指令类型传播增强
+                         * 三元运算符：dest = condition ? true_val : false_val
+                         * 如果任一分支是指针/结构体/字符串类型，结果也应该是该类型
+                         * 这解决了三元运算符中指针类型丢失的问题
+                         */
+                        if (scan_inst->kind == CN_IR_INST_SELECT &&
+                            (!new_type || new_type->kind == CN_TYPE_INT ||
+                             new_type->kind == CN_TYPE_UNKNOWN || new_type->kind == CN_TYPE_VOID)) {
+                            CnType *sel_type = NULL;
+                            
+                            /* 从src2（true_val）获取类型 */
+                            if (scan_inst->src2.kind == CN_IR_OP_REG &&
+                                scan_inst->src2.as.reg_id < actual_reg_count) {
+                                sel_type = reg_types[scan_inst->src2.as.reg_id];
+                            }
+                            if (!sel_type && scan_inst->src2.type) {
+                                sel_type = scan_inst->src2.type;
+                            }
+                            /* IMM_STR视为char*类型 */
+                            if (!sel_type && scan_inst->src2.kind == CN_IR_OP_IMM_STR) {
+                                sel_type = cn_type_new_primitive(CN_TYPE_STRING);
+                            }
+                            
+                            /* 从extra_args[0]（false_val）获取类型 */
+                            if ((!sel_type || sel_type->kind == CN_TYPE_INT ||
+                                 sel_type->kind == CN_TYPE_UNKNOWN || sel_type->kind == CN_TYPE_VOID) &&
+                                scan_inst->extra_args_count > 0) {
+                                CnType *false_type = NULL;
+                                if (scan_inst->extra_args[0].kind == CN_IR_OP_REG &&
+                                    scan_inst->extra_args[0].as.reg_id < actual_reg_count) {
+                                    false_type = reg_types[scan_inst->extra_args[0].as.reg_id];
+                                }
+                                if (!false_type && scan_inst->extra_args[0].type) {
+                                    false_type = scan_inst->extra_args[0].type;
+                                }
+                                if (!false_type && scan_inst->extra_args[0].kind == CN_IR_OP_IMM_STR) {
+                                    false_type = cn_type_new_primitive(CN_TYPE_STRING);
+                                }
+                                /* 只有精确类型才作为备选 */
+                                if (false_type && false_type->kind != CN_TYPE_INT &&
+                                    false_type->kind != CN_TYPE_UNKNOWN &&
+                                    false_type->kind != CN_TYPE_VOID) {
+                                    sel_type = false_type;
+                                }
+                            }
+                            
+                            /* 只有精确类型才传播（排除INT/UNKNOWN/VOID） */
+                            if (sel_type && sel_type->kind != CN_TYPE_INT &&
+                                sel_type->kind != CN_TYPE_UNKNOWN &&
+                                sel_type->kind != CN_TYPE_VOID) {
+                                new_type = sel_type;
+                            }
+                        }
+                        
                         if (new_type) {
                             CnType *old_type = reg_types[reg_id];
                             
@@ -4409,64 +5459,31 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                 types_changed = true;
                             }
                             
-                            // 【P3-1修复】对于LOAD指令，如果dest.type是指针/字符串类型，强制更新
-                            // 这确保LOAD指令的目标寄存器类型正确传播
-                            if (scan_inst->kind == CN_IR_INST_LOAD &&
-                                scan_inst->dest.type &&
-                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
-                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
-                                should_update = true;
-                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
-                                    types_changed = true;
-                                }
-                            }
-                            
-                            // 【P3-1修复】对于CALL指令，如果dest.type是指针/字符串类型，强制更新
-                            // 这确保动态数组索引访问返回的指针类型正确传播
-                            // 例如：cn_rt_array_get_element 返回 void*，但实际类型应该是 符号*
-                            if (scan_inst->kind == CN_IR_INST_CALL &&
-                                scan_inst->dest.type &&
-                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
-                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
-                                should_update = true;
-                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
-                                    types_changed = true;
-                                }
-                            }
-                            
-                            // 【P3-1修复】对于MEMBER_ACCESS指令，如果dest.type是指针/字符串类型，强制更新
-                            // 这确保成员访问的指针/字符串类型正确传播
-                            // 例如：cn_var_标识符_1->完全限定名 返回 char* (STRING)
-                            if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS &&
-                                scan_inst->dest.type &&
-                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
-                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
-                                should_update = true;
-                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
-                                    types_changed = true;
-                                }
-                            }
-                            
-                            // 【修复】对于MEMBER_ACCESS指令，如果dest.type是结构体类型，强制更新
-                            // 这确保成员访问的结构体类型正确传播（如 cn_var_信息->位置 返回 struct 源位置）
-                            if (scan_inst->kind == CN_IR_INST_MEMBER_ACCESS &&
-                                scan_inst->dest.type &&
-                                scan_inst->dest.type->kind == CN_TYPE_STRUCT) {
-                                should_update = true;
-                                if (!old_type || old_type->kind != CN_TYPE_STRUCT) {
-                                    types_changed = true;
-                                }
-                            }
-                            
-                            // 【P3-1修复】对于MOV指令，如果dest.type是指针/字符串类型，强制更新
-                            // 这确保MOV指令的指针/字符串类型正确传播（如 声明.作为函数声明 返回 函数声明*）
-                            if (scan_inst->kind == CN_IR_INST_MOV &&
-                                scan_inst->dest.type &&
-                                (scan_inst->dest.type->kind == CN_TYPE_POINTER ||
-                                 scan_inst->dest.type->kind == CN_TYPE_STRING)) {
-                                should_update = true;
-                                if (!old_type || (old_type->kind != CN_TYPE_POINTER && old_type->kind != CN_TYPE_STRING)) {
-                                    types_changed = true;
+                            // 【第2轮修复A】统一类型传播增强：将LOAD/CALL/MEMBER_ACCESS/MOV的
+                            // 类型传播条件从"仅POINTER/STRING/STRUCT"扩展为"所有非INT/UNKNOWN/VOID类型"
+                            // 这解决了ENUM、CHAR、BOOL、FLOAT、INT32/INT64等类型被忽略的问题
+                            // 原来分5个if块（LOAD POINTER/STRING、CALL POINTER/STRING、
+                            // MEMBER_ACCESS POINTER/STRING、MEMBER_ACCESS STRUCT、MOV POINTER/STRING），
+                            // 现在合并为统一的条件判断
+                            {
+                                bool is_precise_dest_type = (scan_inst->dest.type &&
+                                    scan_inst->dest.type->kind != CN_TYPE_INT &&
+                                    scan_inst->dest.type->kind != CN_TYPE_UNKNOWN &&
+                                    scan_inst->dest.type->kind != CN_TYPE_VOID);
+                                
+                                if (is_precise_dest_type &&
+                                    (scan_inst->kind == CN_IR_INST_LOAD ||
+                                     scan_inst->kind == CN_IR_INST_CALL ||
+                                     scan_inst->kind == CN_IR_INST_MEMBER_ACCESS ||
+                                     scan_inst->kind == CN_IR_INST_MOV)) {
+                                    should_update = true;
+                                    // 只有从低精度类型升级到高精度类型时才标记类型变化
+                                    if (!old_type ||
+                                        old_type->kind == CN_TYPE_INT ||
+                                        old_type->kind == CN_TYPE_UNKNOWN ||
+                                        old_type->kind == CN_TYPE_VOID) {
+                                        types_changed = true;
+                                    }
                                 }
                             }
                             
@@ -4638,6 +5655,69 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
         }
         }  // 结束多遍扫描循环
         
+        /* 【第3轮修复P0】CALL参数反向类型传播
+         * 当寄存器作为函数参数传入但类型为INT/UNKNOWN/NULL时，
+         * 从函数声明的参数类型推断寄存器应有的类型。
+         * 这解决了"long long参数传给void*参数"的GCC类型不匹配错误。
+         *
+         * 典型场景：
+         *   r53 = &cn_var_源码内容_4;  // r53 应为 char** 但被声明为 long long
+         *   r56 = 读取文件内容(r51, r53, r55);  // 读取文件内容期望 char** 参数
+         *   → GCC报 "passing argument 2 of '读取文件内容' makes pointer from integer"
+         *
+         * 修复策略：遍历所有CALL指令，对每个寄存器参数，
+         * 如果其reg_types类型为INT/UNKNOWN/NULL，从函数声明获取参数类型并升级。
+         */
+        {
+            CnIrBasicBlock *cp_block = func->first_block;
+            while (cp_block) {
+                CnIrInst *cp_inst = cp_block->first_inst;
+                while (cp_inst) {
+                    if (cp_inst->kind == CN_IR_INST_CALL &&
+                        cp_inst->src1.kind == CN_IR_OP_SYMBOL &&
+                        cp_inst->src1.as.sym_name) {
+                        const char *called_func = cp_inst->src1.as.sym_name;
+                        
+                        /* 遍历CALL的extra_args参数 */
+                        for (size_t ai = 0; ai < cp_inst->extra_args_count; ai++) {
+                            if (cp_inst->extra_args[ai].kind == CN_IR_OP_REG) {
+                                int arg_reg_id = cp_inst->extra_args[ai].as.reg_id;
+                                if (arg_reg_id < 0 || arg_reg_id >= actual_reg_count) continue;
+                                
+                                CnType *cur_type = reg_types[arg_reg_id];
+                                /* 只有当寄存器类型为INT/UNKNOWN/NULL时才尝试升级 */
+                                if (!cur_type ||
+                                    cur_type->kind == CN_TYPE_INT ||
+                                    cur_type->kind == CN_TYPE_UNKNOWN ||
+                                    cur_type->kind == CN_TYPE_VOID) {
+                                    CnType *param_type = lookup_func_param_type(
+                                        ctx, called_func, ai);
+                                    /* 【第4轮修复】跳过void*类型的升级
+                                     * void*太模糊，不应将long long int升级为void*。
+                                     * 例如：创建输出缓冲区()的第一个参数期望long long int（缓冲区大小），
+                                     * 但void*升级会导致 r4 = cn_var_默认缓冲区大小 报类型不匹配。
+                                     * 只有具体的指针类型（struct X*, char*等）才执行升级。 */
+                                    if (param_type &&
+                                        param_type->kind != CN_TYPE_INT &&
+                                        param_type->kind != CN_TYPE_UNKNOWN &&
+                                        param_type->kind != CN_TYPE_VOID &&
+                                        !is_void_pointer_type(param_type)) {
+                                        reg_types[arg_reg_id] = param_type;
+                                        types_changed = true;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        /* 同时检查src1（第一个参数，某些CALL指令中src1也是参数） */
+                        /* 注意：src1通常是函数名，不是参数，跳过 */
+                    }
+                    cp_inst = cp_inst->next;
+                }
+                cp_block = cp_block->next;
+            }
+        }
+        
         /* 【P6修复】将更新后的alloca_types回写到ALLOCA指令的dest.type
          * 多遍扫描可能通过STORE指令类型传播更新了alloca_types中的类型，
          * 需要将这些更新反映到实际的ALLOCA指令中，这样在后续生成
@@ -4677,6 +5757,25 @@ void cn_cgen_function(CnCCodeGenContext *ctx, CnIrFunction *func) {
                                          (wb_inst->dest.type->kind == CN_TYPE_STRING ||
                                           wb_inst->dest.type->kind == CN_TYPE_STRUCT ||
                                           wb_inst->dest.type->kind == CN_TYPE_ENUM)) {
+                                    /* 【修复4】额外检查：当ALLOCA是STRING(char*)，
+                                     * 只有当POINTER指向的类型不是void时才覆盖，
+                                     * 避免将char*降级为void*（char*比void*更精确） */
+                                    if (wb_inst->dest.type->kind == CN_TYPE_STRING &&
+                                        writeback_entry->type->kind == CN_TYPE_POINTER &&
+                                        writeback_entry->type->as.pointer_to &&
+                                        writeback_entry->type->as.pointer_to->kind == CN_TYPE_VOID) {
+                                        /* 不覆盖：char*比void*更精确 */
+                                    } else {
+                                        should_wb_update = true;
+                                    }
+                                }
+                                /* 【修复4】ENUM类型可被任何精确类型覆盖
+                                 * 当ALLOCA变量被推断为ENUM类型，但实际存储的是
+                                 * 指针/结构体/字符串类型时，应更新为更精确的类型 */
+                                else if (wb_inst->dest.type->kind == CN_TYPE_ENUM &&
+                                         writeback_entry->type->kind != CN_TYPE_INT &&
+                                         writeback_entry->type->kind != CN_TYPE_UNKNOWN &&
+                                         writeback_entry->type->kind != CN_TYPE_VOID) {
                                     should_wb_update = true;
                                 }
                                 
@@ -5411,8 +6510,17 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
                             extern_func_count_a++;
                         } else if (in_extern_a) {
                             // 【P5】已存在，如果新调用有更多参数则更新指令指针
-                            if (scan_inst_a->extra_args_count > extern_call_insts_a[existing_idx_a]->extra_args_count) {
-                                extern_call_insts_a[existing_idx_a] = scan_inst_a;
+                            // Round5-Fix2: 对于可变参数函数，选择参数最少的调用（固定参数部分）
+                            // 因为可变参数函数声明只需要固定参数+...，参数多的调用会包含可变参数部分
+                            bool is_known_variadic_a = (strcmp(called_name, "字符串格式") == 0);
+                            if (is_known_variadic_a) {
+                                if (scan_inst_a->extra_args_count < extern_call_insts_a[existing_idx_a]->extra_args_count) {
+                                    extern_call_insts_a[existing_idx_a] = scan_inst_a;
+                                }
+                            } else {
+                                if (scan_inst_a->extra_args_count > extern_call_insts_a[existing_idx_a]->extra_args_count) {
+                                    extern_call_insts_a[existing_idx_a] = scan_inst_a;
+                                }
                             }
                         }
                     }
@@ -5432,11 +6540,20 @@ int cn_cgen_module_with_structs_to_file(CnIrModule *module, CnAstProgram *progra
                 fprintf(file, "extern %s %s(", ret_type_str,
                         get_c_function_name(extern_func_names_a[ei]));
                 // 【P5】生成ANSI原型参数列表
+                // Round5-Fix2: 检测已知可变参数函数，在参数列表末尾添加 ...
+                bool is_extern_variadic = false;
+                if (strcmp(extern_func_names_a[ei], "字符串格式") == 0) {
+                    is_extern_variadic = true;
+                }
                 if (call_inst_a && call_inst_a->extra_args_count > 0) {
                     for (size_t pi = 0; pi < call_inst_a->extra_args_count; pi++) {
                         CnType *param_type = call_inst_a->extra_args[pi].type;
                         fprintf(file, "%s", get_extern_type_string(param_type, true));
                         if (pi < call_inst_a->extra_args_count - 1) fprintf(file, ", ");
+                    }
+                    // Round5-Fix2: 可变参数函数在最后一个参数后添加 , ...
+                    if (is_extern_variadic) {
+                        fprintf(file, ", ...");
                     }
                 } else {
                     fprintf(file, "void");  // 无参数时使用void而非空列表
@@ -6121,9 +7238,48 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
         return;
     }
     
-    // 去重检查：如果已声明过该函数，跳过
+    // 【第2轮修复D】去重检查：如果已声明过该函数，检查签名是否一致
+    // 如果同名函数有不同参数数量（签名冲突），跳过第二次声明
+    // 这解决了不同模块导出同名但不同签名函数导致的"conflicting types"错误
     if (declared_functions && cn_rt_map_contains(declared_functions, temp_name)) {
+        // 检查签名是否一致：比较参数数量
+        uintptr_t prev_param_count = (uintptr_t)cn_rt_map_get(declared_functions, temp_name);
+        uintptr_t curr_param_count = (uintptr_t)func_type->as.function.param_count;
+        if (prev_param_count != curr_param_count) {
+            // 签名冲突：跳过第二次声明，使用第一次声明
+            // 第一次声明可能不精确，但至少不会产生conflicting types错误
+            return;
+        }
+        // 签名一致（参数数量相同），也跳过
         return;
+    }
+    
+    // 【第4轮修复P2】检测已知可变参数函数
+    // 字符串格式 本质上是可变参数函数（类似 sprintf），声明应使用 ...
+    // 这样无论调用时传2个还是3个参数，都能与声明兼容
+    bool is_variadic = false;
+    if (strcmp(temp_name, "字符串格式") == 0) {
+        is_variadic = true;
+    }
+    
+    // 【第4轮修复P2】检测已知跨模块签名冲突函数
+    // 这些函数在不同模块中有不同的参数签名，前向声明使用固定签名会导致类型不匹配
+    // 解决方案：跳过前向声明，让extern声明（从实际调用参数生成）来处理
+    // 报告错误: 模块A声明4参数(struct 诊断集合*, enum, struct 源位置, char*)
+    //           模块B调用3参数(struct 解析器*, enum, char*) → 签名冲突
+    // 获取错误计数/获取警告计数: 不同模块的第一个参数类型不同
+    static const char *cross_module_conflict_funcs[] = {
+        "报告错误",
+        "获取错误计数",
+        "获取警告计数",
+        NULL
+    };
+    for (int ci = 0; cross_module_conflict_funcs[ci] != NULL; ci++) {
+        if (strcmp(temp_name, cross_module_conflict_funcs[ci]) == 0) {
+            // 跳过前向声明，让extern声明（从实际CALL指令参数生成）来处理
+            // 这样声明参数类型和数量与实际调用一致，避免类型不匹配
+            return;
+        }
     }
     
     // 检测运行时宏冲突：如果函数名与运行时宏同名，需要先 #undef 取消宏定义
@@ -6144,6 +7300,10 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
             const char *param_type = get_c_param_type_string(func_type->as.function.param_types[i]);
             fprintf(file, "%s", param_type);
         }
+        // 【第4轮修复P2】可变参数函数在最后一个参数后添加 ...
+        if (is_variadic) {
+            fprintf(file, ", ...");
+        }
     }
     
     fprintf(file, ");\n");
@@ -6153,7 +7313,8 @@ static void cn_cgen_function_forward_declaration(FILE *file, const char *func_na
         // 使用strdup复制键名，因为哈希表会持有该指针
         char *key = strdup(temp_name);
         if (key) {
-            cn_rt_map_insert(declared_functions, key, (void*)1);
+            /* 【第2轮修复D】存储参数数量而非(void*)1，用于签名冲突检测 */
+            cn_rt_map_insert(declared_functions, key, (void*)(uintptr_t)func_type->as.function.param_count);
         }
     }
 }
@@ -6812,8 +7973,16 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
                             extern_func_count++;
                         } else if (in_extern_list) {
                             // 【P5】已存在，如果新调用有更多参数则更新指令指针
-                            if (scan_inst->extra_args_count > extern_call_insts[existing_idx]->extra_args_count) {
-                                extern_call_insts[existing_idx] = scan_inst;
+                            // Round5-Fix2: 对于可变参数函数，选择参数最少的调用（固定参数部分）
+                            bool is_known_variadic_m = (strcmp(called_func_name, "字符串格式") == 0);
+                            if (is_known_variadic_m) {
+                                if (scan_inst->extra_args_count < extern_call_insts[existing_idx]->extra_args_count) {
+                                    extern_call_insts[existing_idx] = scan_inst;
+                                }
+                            } else {
+                                if (scan_inst->extra_args_count > extern_call_insts[existing_idx]->extra_args_count) {
+                                    extern_call_insts[existing_idx] = scan_inst;
+                                }
                             }
                         }
                     }
@@ -6822,6 +7991,96 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
                 scan_block = scan_block->next;
             }
             scan_func = scan_func->next;
+        }
+        
+        // 【P1修复-G1】在extern声明之前，扫描所有指令中引用的结构体类型
+        // 为未在当前模块定义的结构体生成前向声明
+        // 典型错误：cn_var_参数_0->数组维度，struct 参数节点未定义
+        {
+            /* 收集需要前向声明的结构体类型名 */
+            #define MAX_FWD_DECL_STRUCTS 256
+            const char *fwd_decl_names[MAX_FWD_DECL_STRUCTS];
+            size_t fwd_decl_name_lens[MAX_FWD_DECL_STRUCTS];
+            size_t fwd_decl_count = 0;
+            
+            CnIrFunction *scan_f = module->first_func;
+            while (scan_f) {
+                CnIrBasicBlock *scan_b = scan_f->first_block;
+                while (scan_b) {
+                    CnIrInst *scan_i = scan_b->first_inst;
+                    while (scan_i) {
+                        /* 检查所有操作数的类型，收集STRUCT类型名 */
+                        CnType *types_to_check[6] = {NULL};
+                        int type_count = 0;
+                        /* dest类型 */
+                        if (scan_i->dest.type) types_to_check[type_count++] = scan_i->dest.type;
+                        /* src1类型 */
+                        if (scan_i->src1.type) types_to_check[type_count++] = scan_i->src1.type;
+                        /* src2类型 */
+                        if (scan_i->src2.type) types_to_check[type_count++] = scan_i->src2.type;
+                        /* extra_args类型（最多3个） */
+                        for (size_t ea = 0; ea < scan_i->extra_args_count && type_count < 6; ea++) {
+                            if (scan_i->extra_args[ea].type) {
+                                types_to_check[type_count++] = scan_i->extra_args[ea].type;
+                            }
+                        }
+                        
+                        for (int tc = 0; tc < type_count; tc++) {
+                            CnType *t = types_to_check[tc];
+                            /* 解引用指针类型 */
+                            if (t->kind == CN_TYPE_POINTER && t->as.pointer_to) {
+                                t = t->as.pointer_to;
+                            }
+                            if (t->kind == CN_TYPE_STRUCT && t->as.struct_type.name) {
+                                /* 检查是否已收集 */
+                                bool already = false;
+                                for (size_t fd = 0; fd < fwd_decl_count; fd++) {
+                                    if (fwd_decl_name_lens[fd] == t->as.struct_type.name_length &&
+                                        memcmp(fwd_decl_names[fd], t->as.struct_type.name, t->as.struct_type.name_length) == 0) {
+                                        already = true;
+                                        break;
+                                    }
+                                }
+                                if (!already && fwd_decl_count < MAX_FWD_DECL_STRUCTS) {
+                                    fwd_decl_names[fwd_decl_count] = t->as.struct_type.name;
+                                    fwd_decl_name_lens[fwd_decl_count] = t->as.struct_type.name_length;
+                                    fwd_decl_count++;
+                                }
+                            }
+                        }
+                        scan_i = scan_i->next;
+                    }
+                    scan_b = scan_b->next;
+                }
+                scan_f = scan_f->next;
+            }
+            
+            /* 输出前向声明（排除已定义的结构体） */
+            if (fwd_decl_count > 0) {
+                fprintf(file, "// Struct Forward Declarations from IR - IR指令中引用的结构体\n");
+                for (size_t fd = 0; fd < fwd_decl_count; fd++) {
+                    /* 检查是否已在全局结构体定义中 */
+                    bool already_defined = false;
+                    if (program) {
+                        for (size_t si = 0; si < program->struct_count; si++) {
+                            CnAstStmt *struct_stmt = program->structs[si];
+                            if (struct_stmt && struct_stmt->kind == CN_AST_STMT_STRUCT_DECL &&
+                                struct_stmt->as.struct_decl.name_length == fwd_decl_name_lens[fd] &&
+                                memcmp(struct_stmt->as.struct_decl.name, fwd_decl_names[fd], fwd_decl_name_lens[fd]) == 0) {
+                                already_defined = true;
+                                break;
+                            }
+                        }
+                    }
+                    /* 检查是否已前向声明 */
+                    if (!already_defined && !is_type_forward_declared(fwd_decl_names[fd], fwd_decl_name_lens[fd])) {
+                        fprintf(file, "struct %.*s;\n", (int)fwd_decl_name_lens[fd], fwd_decl_names[fd]);
+                        mark_type_as_forward_declared(fwd_decl_names[fd], fwd_decl_name_lens[fd]);
+                    }
+                }
+                fprintf(file, "\n");
+            }
+            #undef MAX_FWD_DECL_STRUCTS
         }
         
         // 生成ANSI原型风格的extern声明
@@ -6834,11 +8093,20 @@ int cn_cgen_module_with_imports_to_file(CnIrModule *module, CnAstProgram *progra
                 fprintf(file, "extern %s %s(", ret_type_str,
                         get_c_function_name(extern_func_names[ei]));
                 // 【P5】生成ANSI原型参数列表
+                // Round5-Fix2: 检测已知可变参数函数，在参数列表末尾添加 ...
+                bool is_extern_variadic_m = false;
+                if (strcmp(extern_func_names[ei], "字符串格式") == 0) {
+                    is_extern_variadic_m = true;
+                }
                 if (call_inst && call_inst->extra_args_count > 0) {
                     for (size_t pi = 0; pi < call_inst->extra_args_count; pi++) {
                         CnType *param_type = call_inst->extra_args[pi].type;
                         fprintf(file, "%s", get_extern_type_string(param_type, true));
                         if (pi < call_inst->extra_args_count - 1) fprintf(file, ", ");
+                    }
+                    // Round5-Fix2: 可变参数函数在最后一个参数后添加 , ...
+                    if (is_extern_variadic_m) {
+                        fprintf(file, ", ...");
                     }
                 } else {
                     fprintf(file, "void");  // 无参数时使用void而非空列表
