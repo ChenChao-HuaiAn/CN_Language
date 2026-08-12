@@ -6,7 +6,11 @@
 // 说明：单条IR指令的降级（算术/比较/调用等）在 x64_instructions.cpp 中实现
 // 规范：英文API命名，中文仅注释；函数<=100行
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
+#include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
@@ -50,6 +54,9 @@ std::string X64CodeGenerator::symbolName(const std::string& name) {
     if (name == "重新分配") return "cn_realloc";
     if (name == "复制内存") return "cn_memcpy";
     if (name == "置零内存") return "cn_memset";
+    if (name == "__cn_runtime_error") return "__cn_runtime_error";  // 运行时错误（Task 2.4）
+    // Task 2.5：运行时字符串API（__cn_ 前缀）为 extern "C" 导出，符号原样返回
+    if (name.rfind("__cn_", 0) == 0) return name;
     return nameMangle(name);
 }
 
@@ -189,24 +196,97 @@ std::string X64CodeGenerator::hexBytesString(const std::string& text) {
     return out;
 }
 
-// 生成 .data 段（字符串常量池 @str0/@str1/...）
-void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& module) {
-    writer.raw(".data");
-    if (module.stringConstants.empty()) {
-        writer.comment("（无字符串常量）");
-        return;
+// 浮点常量文本 -> IEEE754位模式十六进制（f32 转 uint32、f64 转 uint64）
+// 返回 MASM 兼容十六进制文本（如 f64 1.5 -> "3FF8000000000000h"），供 .data 段生成字节
+// 注意：MASM 不接受 0x 前缀（A2206 missing operator），必须用 数字+h 格式
+std::string X64CodeGenerator::floatBitsHex(const std::string& text, bool isDouble) {
+    std::uint64_t bits = 0;
+    try {
+        const double value = std::stod(text);
+        if (isDouble) {
+            // f64：直接按 double 位模式
+            std::memcpy(&bits, &value, sizeof(double));
+        } else {
+            // f32：先转 float（截断），再取位模式
+            const float f = static_cast<float>(value);
+            std::uint32_t bits32 = 0;
+            std::memcpy(&bits32, &f, sizeof(float));
+            bits = bits32;
+        }
+    } catch (...) {
+        bits = 0;  // 解析失败按0处理（词法层已保证合法）
     }
-    for (std::size_t i = 0; i < module.stringConstants.size(); ++i) {
-        std::string label = "@str" + std::to_string(i);
-        // UTF-8 字节序列 + 结尾0（十六进制形式，ml64兼容中文）
-        std::string bytes = hexBytesString(module.stringConstants[i]);
-        if (!bytes.empty()) bytes += ",";
-        writer.raw(label + " db " + bytes + "0");
-    }
+    char buf[32];
+    // MASM 十六进制：以十六进制数字开头（避免 A2085 以字母开头需 0 前缀），
+    // 尾部加 h。f32 8位十六进制（4字节）、f64 16位（8字节）
+    std::snprintf(buf, sizeof(buf), "%016llXh", static_cast<unsigned long long>(bits));
+    return buf;
 }
 
-// 生成 .code 段头部（含运行时内置函数 EXTERN 声明，供 ml64 链接外部符号）
-void X64CodeGenerator::emitCodeHeader(AsmWriter& writer) {
+// 在 .data 段登记浮点常量（@fpN），重复文本复用同一标签
+// 标签按登记顺序编号：@fp0/@fp1/...（与 emitDataSection 发射顺序一致）
+std::string X64CodeGenerator::registerFloatConstant(const std::string& text, bool isDouble) {
+    const std::string key = (isDouble ? "d:" : "f:") + text;
+    auto it = floatConstLabels_.find(key);
+    if (it != floatConstLabels_.end()) return it->second;
+    const std::string label = "@fp" + std::to_string(floatConstOrder_.size());
+    floatConstLabels_[key] = label;
+    floatConstOrder_.push_back(key);
+    return label;
+}
+
+// 生成 .data 段（字符串常量池 @str0/@str1/... + 浮点常量池 @fp0/@fp1/...，Task 2.3）
+void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& module) {
+    writer.raw(".data");
+    bool hasAny = false;
+    // 字符串常量（原有）：长字符串（中文多字节/长文本）拆分为多行 db 定义，
+    // 避免单行字节过多触发 ml64 A2042（statement too complex，集成验证发现）
+    for (std::size_t i = 0; i < module.stringConstants.size(); ++i) {
+        std::string label = "@str" + std::to_string(i);
+        const std::string text = module.stringConstants[i];
+        if (text.empty()) {
+            writer.raw(label + " db 0");
+            hasAny = true;
+            continue;
+        }
+        // 每行最多 MAX_BYTES_PER_DB 个字节（ml64 单行过长会报 A2042；
+        // 行尾不得有逗号——MASM 尾逗号报 A2008 syntax error）
+        const std::size_t maxBytesPerLine = 24;
+        std::size_t pos = 0;
+        bool first = true;
+        while (pos < text.size()) {
+            const std::size_t chunk = std::min(maxBytesPerLine, text.size() - pos);
+            std::string line = first ? (label + " db ") : "      db ";
+            line += hexBytesString(text.substr(pos, chunk));
+            writer.raw(line);
+            pos += chunk;
+            first = false;
+        }
+        // 以 0 结尾（C 字符串）
+        writer.raw("      db 0");
+        hasAny = true;
+    }
+    // 浮点常量（Task 2.3：MASM不支持浮点立即数，常量存 .data 段，SSE 用 movsd/movss 加载）
+    for (const std::string& key : floatConstOrder_) {
+        const bool isDouble = (key.compare(0, 2, "d:") == 0);
+        const std::string text = key.substr(2);
+        const std::string label = floatConstLabels_[key];
+        if (isDouble) {
+            // f64：8字节 QWORD（低位在前，MASM dq 已按小端）
+            writer.raw(label + " dq " + floatBitsHex(text, true));
+        } else {
+            // f32：4字节 DWORD
+            writer.raw(label + " dd " + floatBitsHex(text, false));
+        }
+        hasAny = true;
+    }
+    if (!hasAny) writer.comment("（无常量）");
+}
+
+// 生成 .code 段头部（含运行时内置函数 与 模块外被调用函数的 EXTERN 声明，供 ml64 链接外部符号）
+// Task 2.2：前向引用（定义在后）与纯原型声明场景——被调函数未在本模块定义时需 EXTERN，
+//   否则 ml64 报 A2006 undefined symbol；定义在后的同文件函数也需 EXTERN（MASM 单遍汇编）
+void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& module) {
     writer.raw(".code");
     // 阶段一运行时（cnrt）extern "C" 导出符号：打印行/打印行整数/打印行浮点
     // MASM 引用外部符号必须 EXTERN 声明，否则 A2006 undefined symbol
@@ -219,6 +299,29 @@ void X64CodeGenerator::emitCodeHeader(AsmWriter& writer) {
     writer.raw("EXTERN cn_realloc:PROC");
     writer.raw("EXTERN cn_memcpy:PROC");
     writer.raw("EXTERN cn_memset:PROC");
+    // 运行时错误处理（Task 2.4）：数组越界(2)/空指针解引用(3) 调用 __cn_runtime_error
+    writer.raw("EXTERN __cn_runtime_error:PROC");
+    // 收集本模块已定义的函数链接符号（PROC 定义），避免对自身重复 EXTERN
+    std::unordered_set<std::string> definedSymbols;
+    for (auto& function : module.functions) {
+        definedSymbols.insert(symbolName(function.name));
+    }
+    // 扫描所有直接调用（Call）与被取地址（FuncAddr）的函数名，
+    // 未在本模块定义的声明 EXTERN（MASM 单遍汇编要求先声明后引用）
+    std::unordered_set<std::string> externSet;
+    for (auto& function : module.functions) {
+        for (auto& block : function.blocks) {
+            for (auto& inst : block->instructions) {
+                if (inst.opcode == ir::Opcode::Call && !inst.extra.empty()) {
+                    std::string sym = symbolName(inst.extra);
+                    if (definedSymbols.find(sym) == definedSymbols.end()) externSet.insert(sym);
+                }
+            }
+        }
+    }
+    for (auto& sym : externSet) {
+        writer.raw("EXTERN " + sym + ":PROC");
+    }
 }
 
 // 生成函数头（PROC声明，阶段一C链接：符号经 symbolName 映射）
@@ -251,15 +354,28 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                                         : function.params[i].first;
         int slotOffset = varSlotOf(unique);
         std::string slot = "[rbp" + std::to_string(slotOffset) + "]";
+        const std::string& paramType = function.params[i].second;
         if (i < 4) {
-            // 前4参数：寄存器 -> 栈槽
-            std::string reg = parameterRegister(static_cast<int>(i));
-            std::string width = widthFor(function.params[i].second, reg);
-            writer.line("mov " + slot + ", " + width);
+            if (isFloatType(paramType)) {
+                // 修复6（浮点参数）：Win x64 浮点参数经 xmm0-3 传递，
+                // 原实现从 rcx/rdx/r8/r9（整型寄存器）读取——读到垃圾值。
+                // 浮点值存 8 字节槽（f32 只低 4 字节有效），movsd/movss 从 xmmN 存槽
+                const std::string store = (paramType == "f64") ? "movsd" : "movss";
+                const std::string mp = (paramType == "f64") ? "qword ptr " : "dword ptr ";
+                const std::string xmm = "xmm" + std::to_string(i);
+                writer.line(store + " " + mp + slot + ", " + xmm);
+            } else {
+                // 前4整型/指针参数：寄存器 -> 栈槽
+                std::string reg = parameterRegister(static_cast<int>(i));
+                std::string width = widthFor(paramType, reg);
+                writer.line("mov " + slot + ", " + width);
+            }
         } else {
             // 第5参数起：从调用者栈帧拷贝到本函数参数槽
             // 偏移 = 48 + (i-4)*8（第5参数 index=4 位于 [rbp+48]，
             // 第6参数 index=5 位于 [rbp+56]，依此类推）
+            // 浮点栈参数：caller 已写 8 字节（f64 movsd / f32 movss 低4字节），
+            // 整型/指针 8 字节。统一按 8 字节拷贝，读取时按实际宽度取用
             writer.line("mov rax, [rbp+" + std::to_string(48 + (static_cast<int>(i) - 4) * 8) + "]");
             writer.line("mov " + slot + ", rax");
         }
@@ -268,9 +384,19 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
 }
 
 // 生成函数 epilogue（恢复栈帧并返回）
+// 修复7（浮点返回）：Win x64 浮点返回值经 xmm0 传递。
+//   原实现一律 mov rax（整型寄存器）——浮点函数返回后 caller 读 xmm0
+//   得到残留垃圾值（09集成用例曾靠运气通过）。返回类型为浮点时
+//   用 movsd/movss 把返回值槽搬到 xmm0。
 void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& returnReg) {
     if (!returnReg.empty()) {
-        writer.line("mov rax, " + returnReg);
+        if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
+            const std::string load = (currentReturnType_ == "f64") ? "movsd" : "movss";
+            const std::string mp = (currentReturnType_ == "f64") ? "qword ptr " : "dword ptr ";
+            writer.line(load + " xmm0, " + mp + returnReg);
+        } else {
+            writer.line("mov rax, " + returnReg);
+        }
     }
     writer.line("mov rsp, rbp");
     writer.line("pop rbp");
@@ -287,19 +413,40 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
         const std::string& unique = (i < function.paramUniques.size())
                                         ? function.paramUniques[i]
                                         : function.params[i].first;
+        // Task 2.4：数组参数多槽逆序登记（元素槽 1..N-1 先、基址槽后=最深）
+        // a[i] 地址 = 基址 + i*8：基址槽 offset 最深，元素 i 在基址上方 i*8 处
+        auto pit = function.varSlots.find(unique);
+        if (pit != function.varSlots.end() && pit->second > 1) {
+            for (int s = pit->second - 1; s >= 1; --s) {
+                registerVarSlot(unique + "$s" + std::to_string(s));
+            }
+        }
         registerVarSlot(unique);
     }
     // 登记局部变量槽（扫描全部基本块中的 Alloca 指令，extra=变量名）。
     // 注意：必须在 emitPrologue（计算栈帧）之前完成，否则 varSlotOf 返回0
     // 导致局部变量访问全部落到 [rbp0]（A2006 undefined symbol: rbp0）
+    // Task 2.4：数组变量多槽（varSlots 记录长度）。数组槽逆序登记——
+    //   元素槽 1..N-1 先登记（offset 较浅），基址槽（槽0）最后登记（offset 最深）。
+    //   a[i] 地址 = 基址 + i*8：元素 i 槽 = varSlotOffset(i) = 基址 + 8i（变量槽区
+    //   向深处扩展，避开寄存器槽区），与 IR 层 Add 展开一致。
     for (auto& block : function.blocks) {
         for (auto& inst : block->instructions) {
             if (inst.opcode == ir::Opcode::Alloca) {
-                registerVarSlot(inst.extra);
+                auto it = function.varSlots.find(inst.extra);
+                const int slots = (it != function.varSlots.end()) ? it->second : 1;
+                if (slots > 1) {
+                    // 元素槽 N-1..1 逆序登记（offset 由浅到深）
+                    for (int s = slots - 1; s >= 1; --s) {
+                        registerVarSlot(inst.extra + "$s" + std::to_string(s));
+                    }
+                }
+                registerVarSlot(inst.extra);  // 基址槽（槽0，offset 最深）
             }
         }
     }
     AsmWriter writer;
+    currentReturnType_ = function.returnType;  // 供 epilogue 决定 xmm0/rax（浮点返回）
     emitFunctionHeader(writer, function);
     emitPrologue(writer, function);
     emitParamSetup(writer, function);
@@ -325,6 +472,20 @@ void X64CodeGenerator::emitBlock(AsmWriter& writer, const ir::IRBlock& block) {
 
 // 主入口：生成完整汇编文件
 std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
+    // 重置浮点常量池（模块级状态，每次生成独立）
+    floatConstLabels_.clear();
+    floatConstOrder_.clear();
+    // 预扫描：先收集全部浮点常量（.data 段先于函数指令生成，
+    // 若在指令生成时注册则 .data 段缺失 @fpN 标签）
+    for (auto& function : module.functions) {
+        for (auto& block : function.blocks) {
+            for (auto& inst : block->instructions) {
+                if (inst.opcode == ir::Opcode::ConstFloat) {
+                    registerFloatConstant(inst.extra, inst.type == "f64");
+                }
+            }
+        }
+    }
     AsmWriter writer;
     // 文件头注释
     writer.raw("; ============================================");
@@ -338,7 +499,7 @@ std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
     emitDataSection(writer, module);
     writer.raw("");
     // 代码段
-    emitCodeHeader(writer);
+    emitCodeHeader(writer, module);
     for (auto& function : module.functions) {
         writer.raw(generateFunctionAssembly(function));
     }

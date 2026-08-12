@@ -1,5 +1,5 @@
 // 词法分析器实现：UTF-8字符处理、关键字匹配、字面量与运算符识别（Task 1.2）
-// 覆盖：53个中文关键字、整数/浮点/字符串/字符字面量（含原始/多行前缀）、
+// 覆盖：54个中文关键字、整数/浮点/字符串/字符字面量（含原始/多行前缀）、
 //       39个运算符（含++/--）、8个分隔符、注释（块注释嵌套）、错误诊断
 #include <cstddef>
 #include <string>
@@ -40,9 +40,9 @@ bool isAsciiAlpha(char32_t c) {
     return (c >= U'a' && c <= U'z') || (c >= U'A' && c <= U'Z');
 }
 
-// 53个关键字 -> TokenType 映射表
+// 54个关键字 -> TokenType 映射表
 // 控制流(10)：如果/否则/当/循环/返回/中断/继续/选择/情况/默认
-// 类型(20)：整数/小数/整8~整128/正8~正128/浮32/浮64/布尔/字符/字符串/空类型/结构体/枚举
+// 类型(21)：整数/小数/整8~整128/正8~正128/浮32/浮64/布尔/字符/字符串/空类型/结构体/联合体/枚举
 // 声明(7)：函数/变量/导入/从/公开/私有/静态
 // 常量(3)：真/假/无
 // OOP(9)：类/接口/保护/虚拟/重写/抽象/实现/自身/父类
@@ -56,7 +56,7 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
         {"返回", TokenType::Kw_Return}, {"中断", TokenType::Kw_Break},
         {"继续", TokenType::Kw_Continue}, {"选择", TokenType::Kw_Switch},
         {"情况", TokenType::Kw_Case}, {"默认", TokenType::Kw_Default},
-        // ---- 类型(20) ----
+        // ---- 类型(21) ----
         {"整数", TokenType::Kw_Int}, {"小数", TokenType::Kw_Double},
         {"整8", TokenType::Kw_Int8}, {"整16", TokenType::Kw_Int16},
         {"整32", TokenType::Kw_Int32}, {"整64", TokenType::Kw_Int64},
@@ -67,7 +67,8 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
         {"浮32", TokenType::Kw_Float32}, {"浮64", TokenType::Kw_Float64},
         {"布尔", TokenType::Kw_Bool}, {"字符", TokenType::Kw_Char},
         {"字符串", TokenType::Kw_String}, {"空类型", TokenType::Kw_Void},
-        {"结构体", TokenType::Kw_Struct}, {"枚举", TokenType::Kw_Enum},
+        {"结构体", TokenType::Kw_Struct}, {"联合体", TokenType::Kw_Union},
+        {"枚举", TokenType::Kw_Enum},
         // ---- 声明(7) ----
         {"函数", TokenType::Kw_Function}, {"变量", TokenType::Kw_Var},
         {"导入", TokenType::Kw_Import}, {"从", TokenType::Kw_From},

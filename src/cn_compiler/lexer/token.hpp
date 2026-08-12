@@ -12,7 +12,7 @@ namespace cn_compiler {
 
 // Token类型枚举：词法分析器产出的每种词法单元对应一个枚举值
 enum class TokenType {
-    // ==================== 关键字（53个） ====================
+    // ==================== 关键字（54个） ====================
 
     // ---- 控制流关键字(10) ----
     Kw_If,            // 如果（条件分支）
@@ -26,7 +26,7 @@ enum class TokenType {
     Kw_Case,          // 情况（分支标签）
     Kw_Default,       // 默认（默认分支）
 
-    // ---- 类型关键字(20) ----
+    // ---- 类型关键字(21) ----
     Kw_Int,           // 整数（整32的别名）
     Kw_Double,        // 小数（浮64的别名）
     Kw_Int8,          // 整8（8位有符号整数）
@@ -46,6 +46,7 @@ enum class TokenType {
     Kw_String,        // 字符串（UTF-8，以\0结尾）
     Kw_Void,          // 空类型（无返回值）
     Kw_Struct,        // 结构体（值类型聚合）
+    Kw_Union,         // 联合体（所有字段共享同一内存区域，Task 2.7）
     Kw_Enum,          // 枚举（命名常量集合）
 
     // ---- 声明关键字(7) ----
@@ -170,7 +171,7 @@ public:
     // ---- 静态工具方法 ----
     // TokenType转字符串（调试输出/错误报告，返回中文文本）
     static const std::string& tokenTypeToString(TokenType type);
-    // 判断TokenType是否为关键字（53个中文关键字之一）
+    // 判断TokenType是否为关键字（54个中文关键字之一）
     static bool isKeyword(TokenType type);
     // 判断TokenType是否为字面量（整数/浮点/字符串/字符）
     static bool isLiteral(TokenType type);

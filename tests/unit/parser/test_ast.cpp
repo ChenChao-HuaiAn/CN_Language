@@ -15,8 +15,11 @@ using cn_compiler::BlockStmt;
 using cn_compiler::BoolLiteral;
 using cn_compiler::BreakStmt;
 using cn_compiler::CallExpr;
+using cn_compiler::CaseLabel;
 using cn_compiler::CharLiteral;
 using cn_compiler::ContinueStmt;
+using cn_compiler::DefaultLabel;
+using cn_compiler::EnumDecl;
 using cn_compiler::Expr;
 using cn_compiler::ExprStmt;
 using cn_compiler::FloatLiteral;
@@ -24,15 +27,21 @@ using cn_compiler::ForStmt;
 using cn_compiler::FunctionDecl;
 using cn_compiler::IdentifierExpr;
 using cn_compiler::IfStmt;
+using cn_compiler::IndexExpr;
+using cn_compiler::InitListExpr;
 using cn_compiler::IntegerLiteral;
 using cn_compiler::MemberExpr;
 using cn_compiler::NodeType;
+using cn_compiler::StructDecl;
+using cn_compiler::StructInitExpr;
+using cn_compiler::NullLiteral;
 using cn_compiler::Operator;
 using cn_compiler::ParamDecl;
 using cn_compiler::Program;
 using cn_compiler::ReturnStmt;
 using cn_compiler::Stmt;
 using cn_compiler::StringLiteral;
+using cn_compiler::SwitchStmt;
 using cn_compiler::Type;
 using cn_compiler::UnaryExpr;
 using cn_compiler::VarDecl;
@@ -47,6 +56,8 @@ public:
     void visitFunctionDecl(FunctionDecl* node) override { visit("FunctionDecl", node); }
     void visitParamDecl(ParamDecl* node) override { visit("ParamDecl", node); }
     void visitVarDecl(VarDecl* node) override { visit("VarDecl", node); }
+    void visitStructDecl(StructDecl* node) override { visit("StructDecl", node); }
+    void visitEnumDecl(EnumDecl* node) override { visit("EnumDecl", node); }
     void visitBlockStmt(BlockStmt* node) override { visit("BlockStmt", node); }
     void visitExprStmt(ExprStmt* node) override { visit("ExprStmt", node); }
     void visitIfStmt(IfStmt* node) override { visit("IfStmt", node); }
@@ -55,17 +66,24 @@ public:
     void visitReturnStmt(ReturnStmt* node) override { visit("ReturnStmt", node); }
     void visitBreakStmt(BreakStmt* node) override { visit("BreakStmt", node); }
     void visitContinueStmt(ContinueStmt* node) override { visit("ContinueStmt", node); }
+    void visitSwitchStmt(SwitchStmt* node) override { visit("SwitchStmt", node); }
+    void visitCaseLabel(CaseLabel* node) override { visit("CaseLabel", node); }
+    void visitDefaultLabel(DefaultLabel* node) override { visit("DefaultLabel", node); }
     void visitIntegerLiteral(IntegerLiteral* node) override { visit("IntegerLiteral", node); }
     void visitFloatLiteral(FloatLiteral* node) override { visit("FloatLiteral", node); }
     void visitStringLiteral(StringLiteral* node) override { visit("StringLiteral", node); }
     void visitCharLiteral(CharLiteral* node) override { visit("CharLiteral", node); }
     void visitBoolLiteral(BoolLiteral* node) override { visit("BoolLiteral", node); }
+    void visitNullLiteral(NullLiteral* node) override { visit("NullLiteral", node); }
     void visitIdentifierExpr(IdentifierExpr* node) override { visit("IdentifierExpr", node); }
     void visitBinaryExpr(BinaryExpr* node) override { visit("BinaryExpr", node); }
     void visitUnaryExpr(UnaryExpr* node) override { visit("UnaryExpr", node); }
     void visitAssignmentExpr(AssignmentExpr* node) override { visit("AssignmentExpr", node); }
     void visitCallExpr(CallExpr* node) override { visit("CallExpr", node); }
     void visitMemberExpr(MemberExpr* node) override { visit("MemberExpr", node); }
+    void visitIndexExpr(IndexExpr* node) override { visit("IndexExpr", node); }
+    void visitInitListExpr(InitListExpr* node) override { visit("InitListExpr", node); }
+    void visitStructInitExpr(StructInitExpr* node) override { visit("StructInitExpr", node); }
     void visitType(Type* node) override { visit("Type", node); }
 
     std::vector<std::string> visited;  // 访问记录

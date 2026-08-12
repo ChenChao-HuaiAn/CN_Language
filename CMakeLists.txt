@@ -89,17 +89,24 @@ add_library(cn_compiler_parser STATIC
 )
 target_link_libraries(cn_compiler_parser PUBLIC cn_compiler_lexer cn_compiler_common)
 
-# 语义模块库：语义分析器（Task 1.5，供编译器与单元测试共用）
+# 类型系统子模块库：类型工具（Task 2.3，供语义分析器与IR生成器共用）
+add_library(cn_compiler_type_system STATIC
+    src/cn_compiler/semantic/type_system.cpp
+)
+target_include_directories(cn_compiler_type_system PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
+
+# 语义模块库：语义分析器（Task 1.5 + Task 2.3 类型系统，供编译器与单元测试共用）
 add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic.cpp
 )
-target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_parser cn_compiler_common)
+target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
 
-# IR模块库：CN-IR结构与IR生成器（Task 1.6，供编译器与单元测试共用）
+# IR模块库：CN-IR结构与IR生成器（Task 1.6 + Task 2.3 类型映射/字面量后缀，供编译器与单元测试共用）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
 )
-target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_parser cn_compiler_common)
+target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
 
 # 代码生成模块库：抽象后端接口 + X64代码生成器（Task 1.7，供编译器与单元测试共用）
 add_library(cn_compiler_codegen STATIC
@@ -116,12 +123,21 @@ add_library(cn_compiler_ast_printer STATIC
 target_include_directories(cn_compiler_ast_printer PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_ast_printer PUBLIC cn_compiler_parser cn_compiler_common)
 
+# 优化器模块库：Pass框架 + 常量折叠 + 死代码消除（Task 2.6，供编译器与单元测试共用）
+add_library(cn_compiler_opt STATIC
+    src/cn_compiler/opt/pass_manager.cpp
+    src/cn_compiler/opt/const_fold.cpp
+    src/cn_compiler/opt/dce.cpp
+)
+target_include_directories(cn_compiler_opt PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_opt PUBLIC cn_compiler_ir cn_compiler_common)
+
 # 驱动模块库：CLI公共流水线与调试输出（Task 1.10 全链路集成）
 add_library(cn_compiler_driver STATIC
     src/cn_compiler/driver/driver.cpp
 )
 target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer)
+target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_opt)
 
 # 运行时库（cnrt）：IO + 程序入口（Task 1.8，规格书第十章）
 # 提供CN内置函数实现（打印行/打印行整数/打印行浮点）与 crt0 风格程序入口（调用 主）
@@ -129,6 +145,7 @@ target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_pa
 add_library(cn_runtime STATIC
     src/runtime/io_api.cpp
     src/runtime/runtime.cpp
+    src/runtime/string_api.cpp
 )
 target_include_directories(cn_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
 

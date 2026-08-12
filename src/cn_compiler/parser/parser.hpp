@@ -41,6 +41,7 @@ private:
     void advance();                                   // 前进一个Token（不越过EOF）
     bool check(TokenType type) const;                 // 当前是否为目标类型
     bool match(TokenType type);                       // 匹配并前进（匹配成功返回true）
+    const Token& peek(int offset) const;              // 向前看第offset个Token（0=当前，不越界）
     bool checkText(const char* text) const;           // 当前Token文本是否等于指定文本
     void reportError(const SourceLocation& loc, const std::string& message); // 报告语法错误
     void reportErrorHere(const std::string& message); // 报告当前Token位置错误
@@ -54,7 +55,20 @@ private:
 
     std::unique_ptr<FunctionDecl> parseFunctionDecl();  // 函数 名称(参数) [-> 类型] { 体 }
     std::unique_ptr<ParamDecl> parseParamDecl();        // 参数：类型 名称 或 名称: 类型
+    // 结构体/联合体声明：结构体 名 { 类型 字段; ... }（Task 2.7）
+    std::unique_ptr<StructDecl> parseStructDecl(bool isUnion);
+    // 枚举声明：枚举 名 { 成员, 成员 = 值, ... }（Task 2.7）
+    std::unique_ptr<EnumDecl> parseEnumDecl();
+    // 结构体初始化：类型名{ 字段 = 值, ... }（Task 2.7）
+    std::unique_ptr<Expr> parseStructInit(const std::string& typeName);
     std::string parseTypeName();                        // 类型名（类型关键字/标识符）
+    // 扩展类型名（Task 2.4）：基本类型 + 指针(*)/数组([长度]) 后缀
+    // 如 整32* / 整32[5] / 整32*[3]（返回规范化组合类型字符串）
+    std::string parseTypeNameEx();
+    // 解析初始化列表 { 表达式, ... }（Task 2.4，数组声明初始化）
+    std::unique_ptr<Expr> parseInitList();
+    // 解析函数指针类型：整32(*名)(整32, 整32)（规格书5.8 C风格），成功返回true并填充out
+    bool parseFuncPtrType(FuncPtrTypeInfo& out);
     std::unique_ptr<Stmt> parseVarDecl();               // 变量/常量/静态 声明
     std::unique_ptr<Stmt> parseVarDeclAfterKeyword(bool isConst); // 已消费 变量/常量 关键字后的声明体
     std::unique_ptr<Stmt> parseStaticVarDecl();         // 静态 [变量] 类型 名称 [= 初始值]
@@ -70,20 +84,28 @@ private:
     std::unique_ptr<Stmt> parseReturnStmt();            // 返回 [表达式]
     std::unique_ptr<Stmt> parseBreakStmt();             // 中断
     std::unique_ptr<Stmt> parseContinueStmt();          // 继续
+    std::unique_ptr<Stmt> parseSwitchStmt();            // 选择 (值) { 情况 常量: 语句* 默认: 语句* }
+    // 求值情况标签常量（整数字面量/字符字面量，返回是否成功）
+    bool parseCaseValue(std::int64_t& outValue, std::string& outRaw);
 
-    // ==================== 表达式解析（Pratt优先级链） ====================
+    // ==================== 表达式解析（Pratt优先级链，13级，规格书4.5） ====================
 
     std::unique_ptr<Expr> parseExpr();                  // 优先级1：赋值（最低）
     std::unique_ptr<Expr> parseAssignment();            // 赋值：= += -= *= /= %= （右结合）
     std::unique_ptr<Expr> parseLogicalOr();             // 优先级2：||
     std::unique_ptr<Expr> parseLogicalAnd();            // 优先级3：&&
-    std::unique_ptr<Expr> parseEquality();              // 优先级4：== !=
-    std::unique_ptr<Expr> parseComparison();            // 优先级5：< > <= >=
-    std::unique_ptr<Expr> parseAdditive();              // 优先级6：+ -
-    std::unique_ptr<Expr> parseMultiplicative();        // 优先级7：* / %
-    std::unique_ptr<Expr> parseUnary();                 // 优先级8：! - ~ ++ -- （前缀）
-    std::unique_ptr<Expr> parsePostfix();               // 优先级9：++ -- () .
-    std::unique_ptr<Expr> parsePrimary();               // 优先级10：字面量/标识符/(expr)
+    std::unique_ptr<Expr> parseBitOr();                 // 优先级4：|（按位或，Task 2.3）
+    std::unique_ptr<Expr> parseBitXor();                // 优先级5：^（按位异或，Task 2.3）
+    std::unique_ptr<Expr> parseBitAnd();                // 优先级6：&（按位与，Task 2.3）
+    std::unique_ptr<Expr> parseEquality();              // 优先级7：== !=
+    std::unique_ptr<Expr> parseComparison();            // 优先级8：< > <= >=
+    std::unique_ptr<Expr> parseShift();                 // 优先级9：<< >>（移位，Task 2.3）
+    std::unique_ptr<Expr> parseAdditive();              // 优先级10：+ -
+    std::unique_ptr<Expr> parseMultiplicative();        // 优先级11：* / %（* 为乘法，二元）
+    std::unique_ptr<Expr> parseUnary();                 // 优先级12：! ~ - & * ++ --（前缀；
+                                                        //   & 取地址 / * 解引用为一元，Task 2.3）
+    std::unique_ptr<Expr> parsePostfix();               // 优先级13：++ -- () .
+    std::unique_ptr<Expr> parsePrimary();               // 优先级13基础：字面量/标识符/(expr)
 
     // ---- 后缀解析辅助（避免单个函数超过100行） ----
     std::unique_ptr<Expr> parsePostfixIncDec(std::unique_ptr<Expr> expr); // 后缀 ++ --

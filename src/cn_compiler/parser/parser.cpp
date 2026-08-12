@@ -1,16 +1,22 @@
-// 语法分析器实现：递归下降 + Pratt表达式解析（Task 1.4）
-// 语法依据：CN语言规范 [03] 语句与控制流、[04] 函数与函数指针
+// 语法分析器实现：递归下降 + Pratt表达式解析（Task 1.4，Task 2.3 扩为13级）
+// 语法依据：CN语言规范 [03] 语句与控制流、[04] 函数与函数指针、[02] 类型系统
 // 实现要点：
-//   1. 10级表达式优先级链（赋值最低 -> 基本表达式最高）
+//   1. 13级表达式优先级链（规格书4.5，Task 2.3 补全位运算/移位层级）：
+//      13后缀 -> 12一元 -> 11乘除 -> 10加减 -> 9移位 -> 8比较 -> 7相等
+//      -> 6位与 -> 5位异或 -> 4位或 -> 3逻辑与 -> 2逻辑或 -> 1赋值
 //   2. 可选分号策略：兼容规范示例（无分号）与任务描述（带分号）
 //   3. 类型前置（CN规范）为主，同时兼容冒号后置（变量 x: 类型）写法
 //   4. 错误恢复：synchronize() 同步到下一个语句边界
+//   5. &/* 一元二元歧义（规格书4.4）：操作数位置（parseUnary前缀）解析为
+//      取地址/解引用（一元），二元位置（parseBitAnd/parseMultiplicative）解析为
+//      位与/乘法。lexer 统一产出 Amp/Star Token，由调用上下文区分
 #include <cstdint>
 #include <memory>
 #include <string>
 #include <utility>
 
 #include "cn_compiler/parser/parser.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -125,6 +131,13 @@ bool Parser::check(TokenType type) const {
     return currentType() == type;
 }
 
+// 向前看第offset个Token（0=当前；越界时返回最后一个Token，即EOF，永不越界）
+const Token& Parser::peek(int offset) const {
+    std::size_t idx = pos_ + static_cast<std::size_t>(offset);
+    if (idx >= tokens_.size()) idx = tokens_.size() - 1;
+    return tokens_[idx];
+}
+
 // 匹配目标类型并前进（成功返回true）
 bool Parser::match(TokenType type) {
     if (check(type)) {
@@ -204,13 +217,133 @@ std::string Parser::parseTypeName() {
     return "";
 }
 
+// 扩展类型名（Task 2.4）：基本类型 + 指针(*)/数组([长度]) 后缀
+// 语法（规格书3.5复合类型）：类型[长度]（数组）、类型*（指针），可组合：
+//   整32*            -> "整32*"
+//   整32[5]          -> "整32[5]"
+//   整32*[3]         -> "整32*[3]"（指针数组）
+//   整32[3]*         -> "整32[3]*"（数组指针）
+// 实现：先解析基本类型名，再循环消费后缀（* 与 [长度] 可交替出现），
+//       按"从右到左"拼接：先出现的后缀在组合类型文本中靠右（与C声明一致）
+std::string Parser::parseTypeNameEx() {
+    std::string base = parseTypeName();
+    std::string suffixes;
+    while (true) {
+        if (check(TokenType::Star)) {
+            // 指针后缀：类型* -> base + "*"
+            advance();
+            suffixes += "*";
+        } else if (check(TokenType::LeftBracket)) {
+            // 数组后缀：类型[长度]
+            advance();
+            std::string lenText;
+            if (check(TokenType::IntegerLiteral)) {
+                lenText = current().getValue();
+                // 剥离字面量后缀（数组长度必须是纯数字）
+                std::string s = lenText;
+                while (!s.empty() && (s.back() == 'L' || s.back() == 'l' ||
+                                      s.back() == 'U' || s.back() == 'u')) s.pop_back();
+                lenText = s;
+                advance();
+            } else {
+                reportErrorHere("预期数组长度（整数字面量）");
+            }
+            consume(TokenType::RightBracket, "']'");
+            suffixes += "[" + lenText + "]";
+        } else {
+            break;
+        }
+    }
+    // 无后缀：返回基本类型
+    if (suffixes.empty()) return base;
+    // 有后缀：组合类型为 base + suffixes（整32 + * -> 整32*；整32 + [5] -> 整32[5]）
+    return base + suffixes;
+}
+
+// 解析初始化列表（Task 2.4）：{ 表达式, 表达式, ... }
+// 用于数组声明初始化（整32[5] 数据 = { 1, 2, 3 }）
+std::unique_ptr<Expr> Parser::parseInitList() {
+    auto list = std::make_unique<InitListExpr>();
+    list->location = current().getLocation();
+    consume(TokenType::LeftBrace, "'{'");
+    while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        list->elements.push_back(parseExpr());
+        if (!match(TokenType::Comma)) break;
+    }
+    consume(TokenType::RightBrace, "'}'");
+    return list;
+}
+
+// 解析函数指针类型：整32(*名)(整32, 整32)（规格书5.8 C风格，Task 2.2）
+// 前置条件：current 指向返回类型（如 整32）。成功时消费完整类型并填充 out（含变量名）。
+// 识别模式：<类型> ( * <标识符> ) ( <参数类型列表> )
+//   变量名存于 out.paramTypes 前特殊标记？—— 不行，C风格函数指针的变量名不属类型本身。
+//   因此本函数仅填充 返回类型+参数类型；变量名由调用方（parseTypePrefixVarDecl/parseParamDecl）
+//   从 `( * <名> )` 中捕获后填入声明的 name 字段。
+bool Parser::parseFuncPtrType(FuncPtrTypeInfo& out) {
+    // current 应为返回类型关键字/标识符
+    if (!isTypeKeyword(currentType()) && !check(TokenType::Identifier)) return false;
+    // 返回类型
+    out.returnType = current().getValue();
+    advance();
+    // 必须紧跟 ( * 名 )
+    if (!check(TokenType::LeftParen)) return false;
+    // 提前记录函数指针语法完整消费后的变量名（调用方通过 out.name 读取）
+    // 解析 ( * 名 )
+    advance();  // 消费 (
+    if (!check(TokenType::Star)) return false;  // 必须是 *（取指针）
+    advance();  // 消费 *
+    if (!check(TokenType::Identifier)) {
+        reportErrorHere("函数指针声明预期变量名");
+        return false;
+    }
+    out.name = current().getValue();  // 记录变量名
+    advance();                        // 消费 名
+    if (!check(TokenType::RightParen)) {
+        reportErrorHere("函数指针声明预期 ')'");
+        return false;
+    }
+    advance();  // 消费 )
+    // 参数类型列表 ( 参数类型列表 )
+    if (!check(TokenType::LeftParen)) {
+        reportErrorHere("函数指针声明预期参数列表 '('");
+        return false;
+    }
+    advance();  // 消费 (
+    if (!check(TokenType::RightParen)) {
+        do {
+            // 参数类型（支持函数指针参数递归；Task 2.7 集成修复——
+            // 此前仅解析单个类型 token，学生* 等复合类型参数无法解析）
+            if (!isTypeKeyword(currentType()) && !check(TokenType::Identifier)) {
+                reportErrorHere("函数指针参数预期类型");
+                return false;
+            }
+            out.paramTypes.push_back(parseTypeNameEx());
+        } while (match(TokenType::Comma));
+    }
+    consume(TokenType::RightParen, "')'");
+    return true;
+}
+
 // 解析参数声明：类型 名称（CN规范）或 名称: 类型（冒号后置兼容）
 std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
     auto param = std::make_unique<ParamDecl>();
     param->location = current().getLocation();
     if (isTypeKeyword(currentType())) {
-        // 类型前置：整32 a
-        param->typeName = parseTypeName();
+        // 探测函数指针参数：<类型> ( * 名 ) ( 参数列表 )
+        if (peek(1).getType() == TokenType::LeftParen &&
+            peek(2).getType() == TokenType::Star &&
+            peek(3).getType() == TokenType::Identifier &&
+            peek(4).getType() == TokenType::RightParen &&
+            peek(5).getType() == TokenType::LeftParen) {
+            if (parseFuncPtrType(param->funcPtr)) {
+                // 函数指针参数：funcPtr 已填充，参数名在 funcPtr.name
+                param->name = param->funcPtr.name;
+                return param;
+            }
+        }
+        // 类型前置：整32 a / 整32* p / 整32[5] a（Task 2.4 复合类型参数）
+        param->typeName = parseTypeNameEx();
         if (check(TokenType::Identifier)) {
             param->name = current().getValue();
             advance();
@@ -218,14 +351,29 @@ std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
             reportErrorHere("预期参数名");
         }
     } else if (check(TokenType::Identifier)) {
-        // 冒号后置：a: 整32；或自定义类型前置：Foo x
+        // 自定义类型前置探测：Foo x / Foo* p / Foo[5] a（Task 2.7 集成修复——
+        // 此前仅 isTypeKeyword 支持复合类型参数，结构体/枚举参数无法解析）
+        // 识别模式：标识符 后跟 标识符（Foo x）、*、[ 长度
+        if (peek(1).getType() == TokenType::Identifier ||
+            peek(1).getType() == TokenType::Star ||
+            peek(1).getType() == TokenType::LeftBracket) {
+            param->typeName = parseTypeNameEx();
+            if (check(TokenType::Identifier)) {
+                param->name = current().getValue();
+                advance();
+            } else {
+                reportErrorHere("预期参数名");
+            }
+            return param;
+        }
+        // 冒号后置：a: 整32
         param->name = current().getValue();
         advance();
         if (check(TokenType::Colon)) {
             advance();
             param->typeName = parseTypeName();
         } else {
-            // 前一个标识符实际是自定义类型名（Foo x）
+            // 前一个标识符实际是自定义类型名（Foo x，无复合后缀）
             param->typeName = param->name;
             if (check(TokenType::Identifier)) {
                 param->name = current().getValue();
@@ -262,16 +410,140 @@ std::unique_ptr<FunctionDecl> Parser::parseFunctionDecl() {
         } while (match(TokenType::Comma));
     }
     consume(TokenType::RightParen, "')'");
-    // 返回类型（-> 类型，可省略表示无返回值）
+    // 返回类型（-> 类型，可省略表示无返回值；Task 2.4 支持指针返回类型）
     if (check(TokenType::Arrow)) {
         advance();
-        func->returnType = parseTypeName();
+        func->returnType = parseTypeNameEx();
     }
     // 函数体（可为空 = 函数原型声明）
     if (check(TokenType::LeftBrace)) {
         func->body = parseBlockStmt();
     }
     return func;
+}
+
+// 解析结构体/联合体声明：结构体 名 { 类型 字段; ... } / 联合体 名 { ... }（Task 2.7）
+// 字段分隔：换行/分号均可（规格书05示例为换行，兼容分号写法）
+std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
+    auto decl = std::make_unique<StructDecl>();
+    decl->isUnion = isUnion;
+    decl->location = current().getLocation();
+    advance();  // 消费"结构体"/"联合体"
+    if (!check(TokenType::Identifier)) {
+        reportErrorHere("预期" + std::string(isUnion ? "联合体" : "结构体") + "名");
+        synchronize();
+        return decl;
+    }
+    decl->name = current().getValue();
+    advance();
+    consume(TokenType::LeftBrace, "'{'");
+    // 字段列表：类型 字段名（换行/分号分隔，直到 }
+    while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        // 跳过字段分隔（换行已被lexer跳过；分号/逗号为显式分隔）
+        while (check(TokenType::Semicolon) || check(TokenType::Comma)) advance();
+        if (check(TokenType::RightBrace)) break;
+        StructField field;
+        field.name.clear();
+        // 字段类型：类型关键字/自定义类型名（含指针/数组后缀）
+        if (isTypeKeyword(currentType()) || check(TokenType::Identifier)) {
+            field.type = parseTypeNameEx();
+        } else {
+            reportErrorHere("结构体字段预期类型");
+            synchronize();
+            break;
+        }
+        if (check(TokenType::Identifier)) {
+            field.name = current().getValue();
+            advance();
+        } else {
+            reportErrorHere("结构体字段预期名称");
+            synchronize();
+            break;
+        }
+        decl->fields.push_back(std::move(field));
+        consumeSemicolon();  // 字段分隔（可选分号）
+    }
+    consume(TokenType::RightBrace, "'}'");
+    return decl;
+}
+
+// 解析枚举声明：枚举 名 { 成员, 成员 = 值, ... }（Task 2.7）
+// 成员值：整数字面量（可为负数）/省略（自动递增，首个默认0）
+std::unique_ptr<EnumDecl> Parser::parseEnumDecl() {
+    auto decl = std::make_unique<EnumDecl>();
+    decl->location = current().getLocation();
+    advance();  // 消费"枚举"
+    if (!check(TokenType::Identifier)) {
+        reportErrorHere("预期枚举名");
+        synchronize();
+        return decl;
+    }
+    decl->name = current().getValue();
+    advance();
+    consume(TokenType::LeftBrace, "'{'");
+    // 成员列表：成员 [= 值]（逗号分隔，可带尾逗号）
+    while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        if (!check(TokenType::Identifier)) {
+            reportErrorHere("枚举成员预期名称");
+            synchronize();
+            break;
+        }
+        EnumMember member;
+        member.name = current().getValue();
+        advance();
+        // 显式赋值：= 整数字面量（支持负号）
+        if (match(TokenType::Equal)) {
+            member.explicitValue = true;
+            if (currentType() == TokenType::IntegerLiteral) {
+                member.value = parseIntValue(current().getValue());
+                advance();
+            } else if (check(TokenType::Minus) &&
+                       peek(1).getType() == TokenType::IntegerLiteral) {
+                advance();  // 消费负号
+                member.value = -parseIntValue(current().getValue());
+                advance();
+            } else {
+                reportErrorHere("枚举成员值必须是整数字面量");
+                synchronize();
+                break;
+            }
+        }
+        decl->members.push_back(std::move(member));
+        // 逗号分隔（可带尾逗号）
+        if (check(TokenType::Comma)) {
+            advance();
+        } else {
+            break;
+        }
+    }
+    consume(TokenType::RightBrace, "'}'");
+    return decl;
+}
+
+// 解析结构体初始化：类型名{ 字段 = 值, ... }（Task 2.7）
+// 调用前提：已消费类型名（Identifier），当前为 { 或 ->
+std::unique_ptr<Expr> Parser::parseStructInit(const std::string& typeName) {
+    auto init = std::make_unique<StructInitExpr>(typeName);
+    init->location = current().getLocation();
+    consume(TokenType::LeftBrace, "'{'");
+    while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        if (!check(TokenType::Identifier)) {
+            reportErrorHere("结构体初始化预期字段名");
+            synchronize();
+            break;
+        }
+        std::string fieldName = current().getValue();
+        advance();
+        consume(TokenType::Equal, "'='");
+        init->fields.emplace_back(fieldName, parseExpr());
+        if (check(TokenType::Comma)) {
+            advance();
+        } else {
+            break;
+        }
+    }
+    consume(TokenType::RightBrace, "'}'");
+    return init;
 }
 
 // 解析代码块：{ 语句列表 }
@@ -335,11 +607,27 @@ std::unique_ptr<Stmt> Parser::parseStaticVarDecl() {
     return decl;
 }
 
-// 解析类型前置变量声明：类型 名称 [= 初始值]
+// 解析类型前置变量声明：类型 名称 [= 初始值] 或 函数指针 整32(*名)(参数) [= 初始值]
+// Task 2.4：类型可为复合类型（整32* / 整32[5]），初始值可为初始化列表 { ... }
 std::unique_ptr<Stmt> Parser::parseTypePrefixVarDecl() {
     auto decl = std::make_unique<VarDecl>();
     decl->location = current().getLocation();
-    decl->typeName = parseTypeName();
+    // 探测函数指针变量声明：<类型> ( * 名 ) ( 参数列表 )
+    if (peek(1).getType() == TokenType::LeftParen &&
+        peek(2).getType() == TokenType::Star &&
+        peek(3).getType() == TokenType::Identifier &&
+        peek(4).getType() == TokenType::RightParen &&
+        peek(5).getType() == TokenType::LeftParen) {
+        if (parseFuncPtrType(decl->funcPtr)) {
+            decl->name = decl->funcPtr.name;
+            if (check(TokenType::Equal)) {
+                advance();
+                decl->initializer = parseExpr();
+            }
+            return decl;
+        }
+    }
+    decl->typeName = parseTypeNameEx();
     if (!check(TokenType::Identifier)) {
         reportErrorHere("预期变量名，实际为 '" + current().getValue() + "'");
         synchronize();
@@ -349,7 +637,13 @@ std::unique_ptr<Stmt> Parser::parseTypePrefixVarDecl() {
     advance();
     if (check(TokenType::Equal)) {
         advance();
-        decl->initializer = parseExpr();
+        // 数组初始化列表：{ 1, 2, 3 }（Task 2.4）——仅当类型为数组类型
+        if (check(TokenType::LeftBrace) && types::isArray(decl->typeName)) {
+            decl->initializer = parseInitList();
+        } else {
+            // 结构体初始化（类型名{ 字段 = 值 }）走 parseExpr（parsePrimary 识别）
+            decl->initializer = parseExpr();
+        }
     }
     return decl;
 }
@@ -365,6 +659,7 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
         case TokenType::Kw_Return: return parseReturnStmt();
         case TokenType::Kw_Break: return parseBreakStmt();
         case TokenType::Kw_Continue: return parseContinueStmt();
+        case TokenType::Kw_Switch: return parseSwitchStmt();
         case TokenType::Kw_Var: {
             auto stmt = parseVarDeclAfterKeyword(false);
             consumeSemicolon();
@@ -388,6 +683,25 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
         auto stmt = parseTypePrefixVarDecl();
         consumeSemicolon();
         return stmt;
+    }
+    // 自定义类型名变量声明（Task 2.7）：点 p = ...（结构体/枚举类型名作为前缀）
+    // 探测形式1：标识符(类型名) + 标识符(变量名)：点 p
+    // 探测形式2：标识符(类型名) + 星号(指针) + 标识符(变量名)：点* ptr
+    // 探测形式3：标识符(类型名) + [长度] + 标识符(变量名)：点[3] 点数组
+    //           （须 ] 后跟变量名 Identifier，避免误判 点数组[0] = v 下标赋值）
+    if (check(TokenType::Identifier)) {
+        const bool typeThenVar = (peek(1).getType() == TokenType::Identifier);
+        const bool typePtrVar = (peek(1).getType() == TokenType::Star &&
+                                 peek(2).getType() == TokenType::Identifier);
+        const bool typeArrayVar = (peek(1).getType() == TokenType::LeftBracket &&
+                                   peek(2).getType() == TokenType::IntegerLiteral &&
+                                   peek(3).getType() == TokenType::RightBracket &&
+                                   peek(4).getType() == TokenType::Identifier);
+        if (typeThenVar || typePtrVar || typeArrayVar) {
+            auto stmt = parseTypePrefixVarDecl();
+            consumeSemicolon();
+            return stmt;
+        }
     }
     // 表达式语句
     auto exprStmt = std::make_unique<ExprStmt>(parseExpr());
@@ -496,6 +810,128 @@ std::unique_ptr<Stmt> Parser::parseContinueStmt() {
     return stmt;
 }
 
+// 求值情况标签常量：仅允许整数字面量 / 字符字面量（编译期常量）
+// 返回是否成功；成功时 outValue 为整数值、outRaw 为原始文本
+// 注意：解析成功后必须 advance() 消费该 Token（调用方随后 expect ':'）
+bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw) {
+    if (currentType() == TokenType::IntegerLiteral) {
+        outRaw = current().getValue();
+        outValue = 0;
+        // 解析十进制/十六进制/二进制/八进制整数（无后缀简化处理）
+        std::string text = outRaw;
+        bool negative = false;
+        if (!text.empty() && text.front() == '-') {
+            negative = true;
+            text = text.substr(1);
+        }
+        int base = 10;
+        if (text.size() > 2 && text[0] == '0') {
+            if (text[1] == 'x' || text[1] == 'X') { base = 16; text = text.substr(2); }
+            else if (text[1] == 'b' || text[1] == 'B') { base = 2; text = text.substr(2); }
+            else if (text[1] == 'o' || text[1] == 'O') { base = 8; text = text.substr(2); }
+        }
+        try {
+            outValue = static_cast<std::int64_t>(std::stoll(text, nullptr, base));
+        } catch (...) {
+            reportErrorHere("情况标签不是有效的整型常量");
+            return false;
+        }
+        if (negative) outValue = -outValue;
+        advance();  // 消费整数字面量
+        return true;
+    }
+    if (currentType() == TokenType::CharLiteral) {
+        outRaw = current().getValue();
+        // 字符常量：取引号内首字节值（与 IR 层 visitCharLiteral 一致）
+        std::string text = current().getValue();
+        int code = 0;
+        if (text.size() >= 3) code = static_cast<unsigned char>(text[1]);
+        outValue = code;
+        advance();  // 消费字符字面量
+        return true;
+    }
+    // 枚举引用：枚举名.成员（Task 2.7，如 情况 颜色.红）
+    // 语法层仅记录原始文本"枚举名.成员"，值由语义层求值（枚举常量符号表）
+    if (currentType() == TokenType::Identifier &&
+        peek(1).getType() == TokenType::Dot &&
+        peek(2).getType() == TokenType::Identifier) {
+        outRaw = current().getValue() + "." + peek(2).getValue();
+        advance();  // 消费枚举名
+        advance();  // 消费 .
+        advance();  // 消费成员名
+        outValue = 0;  // 占位值，语义层按枚举常量求值回填
+        return true;
+    }
+    reportErrorHere("情况标签必须是整型/字符常量");
+    return false;
+}
+
+// 解析选择语句：选择 (值) { 情况 常量: 语句* [情况 ...]* [默认: 语句*] }
+// 分支结构：
+//   SwitchStmt
+//     ├── condition                选择表达式
+//     ├── cases[]  (CaseLabel)     每个情况：value + statements（到下一标签/右花括号）
+//     └── defaultCase (DefaultLabel) 默认分支（最多一个）
+// 实现要点：使用"当前分支归属指针"模型，语句实时追加到最近打开的标签；
+//          支持默认分支位于任意位置（前/中/后），每个分支语句正确归属
+std::unique_ptr<Stmt> Parser::parseSwitchStmt() {
+    auto stmt = std::make_unique<SwitchStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"选择"
+    consume(TokenType::LeftParen, "'('");
+    stmt->condition = parseExpr();
+    consume(TokenType::RightParen, "')'");
+    consume(TokenType::LeftBrace, "'{'");
+
+    // 当前分支归属指针：普通语句实时追加到该标签的语句列表
+    Stmt* owner = nullptr;          // 最近打开的标签（CaseLabel 或 DefaultLabel）
+    bool seenDefault = false;       // 是否已出现默认标签
+
+    while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        if (check(TokenType::Kw_Case)) {
+            SourceLocation caseLoc = current().getLocation();
+            advance();  // 消费"情况"
+            std::int64_t caseValue = 0;
+            std::string rawValue;
+            if (!parseCaseValue(caseValue, rawValue)) {
+                // 常量求值失败：跳过到标签结束（防御性同步）
+                while (!check(TokenType::Colon) && !check(TokenType::EndOfFile) &&
+                       !check(TokenType::RightBrace)) advance();
+            }
+            consume(TokenType::Colon, "':'");
+            auto label = std::make_unique<CaseLabel>(caseValue);
+            label->rawValue = rawValue;
+            label->location = caseLoc;
+            owner = label.get();
+            stmt->cases.push_back(std::move(label));
+        } else if (check(TokenType::Kw_Default)) {
+            SourceLocation defLoc = current().getLocation();
+            advance();  // 消费"默认"
+            consume(TokenType::Colon, "':'");
+            if (seenDefault) {
+                reportError(defLoc, "选择语句中'默认'分支只能出现一次");
+            }
+            seenDefault = true;
+            auto label = std::make_unique<DefaultLabel>();
+            label->location = defLoc;
+            owner = label.get();
+            stmt->defaultCase = std::move(label);
+        } else {
+            // 普通语句：追加到当前标签（无标签时也吸收，错误恢复场景）
+            auto s = parseStmt();
+            consumeSemicolon();
+            if (owner != nullptr && owner->getType() == NodeType::CaseLabel) {
+                static_cast<CaseLabel*>(owner)->statements.push_back(std::move(s));
+            } else if (owner != nullptr && owner->getType() == NodeType::DefaultLabel) {
+                static_cast<DefaultLabel*>(owner)->statements.push_back(std::move(s));
+            }
+            // owner == nullptr：标签前出现语句，忽略（防御性）
+        }
+    }
+    consume(TokenType::RightBrace, "'}'");
+    return stmt;
+}
+
 // ==================== 表达式解析（Pratt优先级链） ====================
 
 // 表达式入口（最低优先级）：赋值
@@ -515,7 +951,8 @@ std::unique_ptr<Expr> Parser::parseAssignment() {
     return left;
 }
 
-// 逻辑或（左结合）：||
+// 逻辑或（左结合）：||（优先级2，规格书4.5）
+// 逻辑与（&&，优先级3）绑定更紧，故 parseLogicalOr 调用 parseLogicalAnd
 std::unique_ptr<Expr> Parser::parseLogicalOr() {
     auto left = parseLogicalAnd();
     while (check(TokenType::OrOr)) {
@@ -526,18 +963,53 @@ std::unique_ptr<Expr> Parser::parseLogicalOr() {
     return left;
 }
 
-// 逻辑与（左结合）：&&
+// 逻辑与（左结合）：&&（优先级3）
+// 位或（|，优先级4）绑定更紧，故 parseLogicalAnd 调用 parseBitOr
 std::unique_ptr<Expr> Parser::parseLogicalAnd() {
-    auto left = parseEquality();
+    auto left = parseBitOr();
     while (check(TokenType::AndAnd)) {
         advance();
-        auto right = parseEquality();
+        auto right = parseBitOr();
         left = std::make_unique<BinaryExpr>(Operator::AndAnd, std::move(left), std::move(right));
     }
     return left;
 }
 
-// 相等比较（左结合）：== !=
+// 按位或（左结合）：|（优先级4，Task 2.3 新增层级）
+std::unique_ptr<Expr> Parser::parseBitOr() {
+    auto left = parseBitXor();
+    while (check(TokenType::Pipe)) {
+        advance();
+        auto right = parseBitXor();
+        left = std::make_unique<BinaryExpr>(Operator::Pipe, std::move(left), std::move(right));
+    }
+    return left;
+}
+
+// 按位异或（左结合）：^（优先级5，Task 2.3 新增层级）
+std::unique_ptr<Expr> Parser::parseBitXor() {
+    auto left = parseBitAnd();
+    while (check(TokenType::Caret)) {
+        advance();
+        auto right = parseBitAnd();
+        left = std::make_unique<BinaryExpr>(Operator::Caret, std::move(left), std::move(right));
+    }
+    return left;
+}
+
+// 按位与（左结合）：&（优先级6，Task 2.3 新增层级）
+// 注意：此处 & 为二元位与；一元取地址 & 在 parseUnary 中处理（上下文区分）
+std::unique_ptr<Expr> Parser::parseBitAnd() {
+    auto left = parseEquality();
+    while (check(TokenType::Amp)) {
+        advance();
+        auto right = parseEquality();
+        left = std::make_unique<BinaryExpr>(Operator::Amp, std::move(left), std::move(right));
+    }
+    return left;
+}
+
+// 相等比较（左结合）：== !=（优先级7）
 std::unique_ptr<Expr> Parser::parseEquality() {
     auto left = parseComparison();
     while (check(TokenType::EqualEqual) || check(TokenType::BangEqual)) {
@@ -549,9 +1021,9 @@ std::unique_ptr<Expr> Parser::parseEquality() {
     return left;
 }
 
-// 关系比较（左结合）：< > <= >=
+// 关系比较（左结合）：< > <= >=（优先级8）
 std::unique_ptr<Expr> Parser::parseComparison() {
-    auto left = parseAdditive();
+    auto left = parseShift();
     while (true) {
         Operator op;
         if (check(TokenType::Less)) op = Operator::Less;
@@ -559,6 +1031,18 @@ std::unique_ptr<Expr> Parser::parseComparison() {
         else if (check(TokenType::LessEqual)) op = Operator::LessEqual;
         else if (check(TokenType::GreaterEqual)) op = Operator::GreaterEqual;
         else break;
+        advance();
+        auto right = parseShift();
+        left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+    }
+    return left;
+}
+
+// 移位（左结合）：<< >>（优先级9，Task 2.3 新增层级）
+std::unique_ptr<Expr> Parser::parseShift() {
+    auto left = parseAdditive();
+    while (check(TokenType::LessLess) || check(TokenType::GreaterGreater)) {
+        Operator op = check(TokenType::LessLess) ? Operator::LessLess : Operator::GreaterGreater;
         advance();
         auto right = parseAdditive();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
@@ -593,14 +1077,20 @@ std::unique_ptr<Expr> Parser::parseMultiplicative() {
     return left;
 }
 
-// 一元前缀（右结合）：! - ~ ++ --
+// 一元前缀（右结合，规格书4.5优先级12）：! ~ - *（解引用）&（取地址）++ --
+// &/* 一元二元歧义处理（规格书4.4）：lexer 统一产出 Amp/Star Token，
+//   本函数（操作数位置）将 & 解析为取地址、* 解析为解引用（一元）；
+//   二元位置（parseBitAnd 的 &、parseMultiplicative 的 *）解析为位与/乘法
 std::unique_ptr<Expr> Parser::parseUnary() {
     if (check(TokenType::Bang) || check(TokenType::Minus) || check(TokenType::Tilde) ||
-        check(TokenType::PlusPlus) || check(TokenType::MinusMinus)) {
+        check(TokenType::PlusPlus) || check(TokenType::MinusMinus) ||
+        check(TokenType::Amp) || check(TokenType::Star)) {
         Operator op;
         if (check(TokenType::Bang)) op = Operator::Bang;
         else if (check(TokenType::Minus)) op = Operator::Subtract;
         else if (check(TokenType::Tilde)) op = Operator::Tilde;
+        else if (check(TokenType::Amp)) op = Operator::AddressOf;   // &x 取地址（一元）
+        else if (check(TokenType::Star)) op = Operator::Deref;      // *p 解引用（一元）
         else if (check(TokenType::PlusPlus)) op = Operator::Increment;
         else op = Operator::Decrement;
         advance();
@@ -610,12 +1100,18 @@ std::unique_ptr<Expr> Parser::parseUnary() {
     return parsePostfix();
 }
 
-// 后缀（循环处理）：++ -- () .
+// 后缀（循环处理）：++ -- () . []（下标，Task 2.4）
 std::unique_ptr<Expr> Parser::parsePostfix() {
     auto expr = parsePrimary();
     while (true) {
         if (check(TokenType::PlusPlus) || check(TokenType::MinusMinus)) {
             expr = parsePostfixIncDec(std::move(expr));
+        } else if (check(TokenType::LeftBracket)) {
+            // 下标访问：expr[index]（规格书4.4 []下标，优先级13后缀）
+            advance();
+            auto index = parseExpr();
+            consume(TokenType::RightBracket, "']'");
+            expr = std::make_unique<IndexExpr>(std::move(expr), std::move(index));
         } else if (check(TokenType::LeftParen) || check(TokenType::Dot) ||
                    check(TokenType::Arrow)) {
             expr = parseCallOrMember(std::move(expr));
@@ -685,13 +1181,16 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
             advance();
             return std::make_unique<BoolLiteral>(false, "假");
         case TokenType::Kw_None:
-            // 阶段一无"无"字面量节点，报告暂不支持
+            // 空指针字面量：无（Task 2.4，规格书3.7空类型*；可选类型无值语义后续Task）
             advance();
-            reportError(loc, "暂不支持'无'字面量（阶段二实现可选类型）");
-            return std::make_unique<BoolLiteral>(false, "无");
+            return std::make_unique<NullLiteral>(loc);
         case TokenType::Identifier: {
             std::string name = current().getValue();
             advance();
+            // 结构体初始化：类型名{ 字段 = 值, ... }（Task 2.7，规格书05）
+            if (check(TokenType::LeftBrace)) {
+                return parseStructInit(name);
+            }
             return std::make_unique<IdentifierExpr>(name);
         }
         case TokenType::LeftParen: {
@@ -725,8 +1224,26 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 program->declarations.push_back(std::move(func));
             }
             consumeSemicolon();  // 函数原型后的可选分号
+        } else if (check(TokenType::Kw_Struct)) {
+            // 结构体声明（Task 2.7）
+            auto decl = parseStructDecl(false);
+            if (!decl->name.empty()) {
+                program->structs.push_back(std::move(decl));
+            }
+        } else if (check(TokenType::Kw_Union)) {
+            // 联合体声明（Task 2.7）
+            auto decl = parseStructDecl(true);
+            if (!decl->name.empty()) {
+                program->structs.push_back(std::move(decl));
+            }
+        } else if (check(TokenType::Kw_Enum)) {
+            // 枚举声明（Task 2.7）
+            auto decl = parseEnumDecl();
+            if (!decl->name.empty()) {
+                program->enums.push_back(std::move(decl));
+            }
         } else {
-            reportErrorHere("预期顶层声明（函数），实际为 '" + current().getValue() + "'");
+            reportErrorHere("预期顶层声明，实际为 '" + current().getValue() + "'");
             synchronize();  // 跳过无法识别的顶层内容
         }
     }

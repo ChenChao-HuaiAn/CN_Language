@@ -19,9 +19,10 @@
 #include "cn_compiler/parser/ast.hpp"
 
 namespace cn_compiler {
+class SemanticAnalyzer;  // 前向声明（Task 2.7：IR 查询结构体布局/枚举值）
 namespace ir {
 
-// IR指令操作码（规格书7.3指令分类，阶段一子集）
+// IR指令操作码（规格书7.3指令分类，阶段一子集 + Task 2.3 类型系统完善）
 enum class Opcode {
     // ---- 常量加载 ----
     ConstInt,       // 加载整数常量（extra=十进制值）
@@ -30,11 +31,18 @@ enum class Opcode {
     ConstBool,      // 加载布尔常量（extra=真/假）
 
     // ---- 算术运算 ----
-    Add,            // 整数加法
-    Sub,            // 整数减法
-    Mul,            // 整数乘法
-    Div,            // 整数除法
+    Add,            // 整数/浮点加法
+    Sub,            // 整数/浮点减法
+    Mul,            // 整数/浮点乘法
+    Div,            // 整数/浮点除法
     Mod,            // 整数取余
+
+    // ---- 位运算（Task 2.3 新增，整型专用） ----
+    BitAnd,         // 按位与 &
+    BitOr,          // 按位或 |
+    BitXor,         // 按位异或 ^
+    Shl,            // 左移 <<
+    Shr,            // 右移 >>（有符号算术右移；无符号逻辑右移由codegen按类型分派）
 
     // ---- 比较运算（结果为布尔） ----
     Eq,             // ==
@@ -49,18 +57,31 @@ enum class Opcode {
     Or,             // ||（短路，阶段一简化非短路）
     Not,            // !
 
+    // ---- 类型转换（Task 2.3 新增） ----
+    // 扩展（小->大整数）/截断（大->小整数）/整->浮/浮->整/浮32<->浮64
+    // 目标类型存 inst.type，源类型为 operand[0].type
+    Cast,           // 类型转换（extra 为空）
+
     // ---- 内存操作 ----
     Load,           // 从变量加载（operand[0]=变量名）
     Store,          // 存储到变量（operand[0]=值寄存器, extra=变量名）
     Alloca,         // 栈上分配（extra=变量名）
+    AddrOf,         // 取地址（Task 2.4）：operand[0]=变量引用，结果为该变量地址（ptr）
+    LoadPtr,        // 通过指针值加载（Task 2.4）：operand[0]=指针寄存器/常量，结果类型 inst.type
+    StorePtr,       // 通过指针值存储（Task 2.4）：operand[0]=目标地址(ptr), operand[1]=值
+    FieldAddr,      // 结构体字段地址（Task 2.7）：operand[0]=结构体基址(ptr)，
+                    //   extra=字段偏移字节（十进制），结果为该字段地址（ptr）；
+                    //   对 -> 访问隐含空指针检查（错误码3）
 
     // ---- 控制流 ----
     Jump,           // 无条件跳转（extra=目标块标签）
     Branch,         // 条件跳转（operand[0]=条件寄存器, extra=真块|假块）
-    Call,           // 函数调用（extra=函数名）
+    Call,           // 直接函数调用（extra=函数名）
+    CallIndirect,   // 间接调用函数指针（operand[0]=指针寄存器，Task 2.2）
     Return,         // 返回（operand[0]=返回值寄存器，可为空）
 
     // ---- 其他 ----
+    FuncAddr,       // 加载函数地址（extra=函数名，Task 2.2 函数指针赋值）
     Phi,            // Phi节点（SSA汇合点，阶段一预留）
 };
 
@@ -140,6 +161,9 @@ struct IRFunction {
     std::vector<std::unique_ptr<IRBlock>> blocks;             // 基本块列表
     int nextRegId = 0;                         // 下一个虚拟寄存器编号
     std::unordered_map<std::string, std::string> varTypes;   // 变量名 -> IR类型
+    // 变量栈槽数（唯一内部名 -> 槽数量，Task 2.4 数组多槽）。
+    // 数组变量（整32[5]）占用 长度 个连续8字节槽；普通变量默认1。
+    std::unordered_map<std::string, int> varSlots;
 
     // MSVC兼容：含 unique_ptr 的类，隐式拷贝构造会触发 C2280（traits实例化）。
     // 显式声明移动语义（语义与默认一致），删除拷贝。
@@ -172,7 +196,10 @@ struct IRModule {
 class IRGenerator : public AstVisitor {
 public:
     // 构造函数：绑定诊断引擎引用
-    explicit IRGenerator(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
+    // semantic 参数（Task 2.7）：指向已完成分析的语义分析器，
+    //   供结构体布局（字段偏移/总大小）与枚举值查询（可空，缺失时布局防御性跳过）
+    explicit IRGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic = nullptr)
+        : diagnostics_(diagnostics), semantic_(semantic) {}
 
     // 主入口：生成IR模块
     ir::IRModule generate(Program* program);
@@ -183,6 +210,8 @@ public:
     void visitFunctionDecl(FunctionDecl* node) override;
     void visitParamDecl(ParamDecl* node) override;
     void visitVarDecl(VarDecl* node) override;
+    void visitStructDecl(StructDecl* node) override;
+    void visitEnumDecl(EnumDecl* node) override;
     // 语句节点
     void visitBlockStmt(BlockStmt* node) override;
     void visitExprStmt(ExprStmt* node) override;
@@ -192,18 +221,25 @@ public:
     void visitReturnStmt(ReturnStmt* node) override;
     void visitBreakStmt(BreakStmt* node) override;
     void visitContinueStmt(ContinueStmt* node) override;
+    void visitSwitchStmt(SwitchStmt* node) override;
+    void visitCaseLabel(CaseLabel* node) override;
+    void visitDefaultLabel(DefaultLabel* node) override;
     // 表达式节点
     void visitIntegerLiteral(IntegerLiteral* node) override;
     void visitFloatLiteral(FloatLiteral* node) override;
     void visitStringLiteral(StringLiteral* node) override;
     void visitCharLiteral(CharLiteral* node) override;
     void visitBoolLiteral(BoolLiteral* node) override;
+    void visitNullLiteral(NullLiteral* node) override;
     void visitIdentifierExpr(IdentifierExpr* node) override;
     void visitBinaryExpr(BinaryExpr* node) override;
     void visitUnaryExpr(UnaryExpr* node) override;
     void visitAssignmentExpr(AssignmentExpr* node) override;
     void visitCallExpr(CallExpr* node) override;
     void visitMemberExpr(MemberExpr* node) override;
+    void visitIndexExpr(IndexExpr* node) override;
+    void visitInitListExpr(InitListExpr* node) override;
+    void visitStructInitExpr(StructInitExpr* node) override;
     // 类型节点
     void visitType(Type* node) override;
 
@@ -238,9 +274,21 @@ private:
     void genBlock(BlockStmt* node);             // 代码块（顺序生成语句）
     ir::IRValue genExpr(Expr* node);            // 表达式生成，返回结果寄存器
     void genVarDecl(VarDecl* node);             // 变量声明（Alloca + Store）
-    // 分配变量寄存器：Alloca并登记映射
-    ir::IRValue allocVar(const std::string& name, const std::string& irType,
+    // 数组越界检查插桩（Task 2.4）：index < 0 || index >= len 时调用运行时错误(2)
+    void emitBoundsCheck(const ir::IRValue& index, int arrayLen,
                          const SourceLocation& loc);
+    // 计算左值地址（标识符/下标/解引用/成员访问 -> 地址值），供赋值使用（Task 2.4/2.7）
+    ir::IRValue lvalueAddress(Expr* node);
+    // 结构体/联合体初始化展开（Task 2.7）：将 StructInitExpr 的字段逐个写入
+    //   targetBase（目标结构体基址，ptr）。嵌套结构体字段递归展开；
+    //   普通字段 genExpr 后 Cast 到字段IR类型再 StorePtr。
+    void emitStructInitTo(StructInitExpr* init, const ir::IRValue& targetBase,
+                          const SourceLocation& loc);
+    // 分配变量寄存器：Alloca并登记映射（Task 2.4：srcType 记录源码复合类型）
+    ir::IRValue allocVar(const std::string& name, const std::string& irType,
+                         const std::string& srcType, const SourceLocation& loc);
+    // 登记变量栈槽数（唯一内部名 -> 槽数量）：数组按长度、普通变量1（Task 2.4）
+    void registerVarSlots(const std::string& unique, const std::string& srcType);
     // 查找变量寄存器（未找到返回id=-1）
     ir::IRValue lookupVar(const std::string& name);
 
@@ -248,12 +296,13 @@ private:
     void genIf(IfStmt* node);                   // 如果/否则如果/否则
     void genWhile(WhileStmt* node);             // 当循环
     void genFor(ForStmt* node);                 // 循环（for风格/无限）
+    void genSwitch(SwitchStmt* node);           // 选择语句（级联条件跳转）
     ir::IRBlock* newBlock(const std::string& label);  // 新建基本块并加入函数
     void setCurrentBlock(ir::IRBlock* block);   // 设置当前生成块
 
     // ==================== 类型与辅助 ====================
-    // 源码类型 -> IR类型映射
-    static std::string mapType(const std::string& type);
+    // 源码类型 -> IR类型映射（Task 2.7：枚举类型按 i32 处理，依赖 semantic_）
+    std::string mapType(const std::string& type);
     // 运算符 -> IR操作码映射（返回false表示不支持）
     static bool mapBinaryOp(Operator op, bool isFloat, ir::Opcode& out);
     // 是否复合赋值运算符
@@ -270,6 +319,7 @@ private:
 
     // ==================== 成员状态 ====================
     Diagnostics& diagnostics_;                  // 诊断引擎
+    SemanticAnalyzer* semantic_ = nullptr;      // 语义分析器（结构体布局/枚举值查询，Task 2.7）
     ir::IRModule* module_ = nullptr;            // 当前模块
     ir::IRFunction* function_ = nullptr;        // 当前函数
     ir::IRBlock* currentBlock_ = nullptr;       // 当前生成块
@@ -278,19 +328,31 @@ private:
     int blockCounter_ = 0;                      // 基本块编号（全局递增）
     int varCounter_ = 0;                        // 变量唯一名计数器（函数级递增）
     // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
-    // 每个条目：源码名 -> {寄存器ID, 唯一内部名（name$N，遮蔽时分配独立槽）, IR类型}
+    // 每个条目：源码名 -> {寄存器ID, 唯一内部名（name$N，遮蔽时分配独立槽）, IR类型,
+    //                      源码类型（整32*/整32[5]等，Task 2.4 指针元素类型/数组元素类型）}
     struct VarEntry {
         int regId = -1;
         std::string uniqueName;
         std::string type;
+        std::string srcType;   // 源码类型（指针/数组复合类型原样保留）
     };
     std::vector<std::unordered_map<std::string, VarEntry>> varStack_;
+    // 查找变量的源码类型（指针/数组复合类型；未找到返回空串，Task 2.4）
+    std::string lookupSrcType(const std::string& name) const;
+    // 推导成员表达式对象的源码类型（变量/嵌套成员/数组字段元素，Task 2.7/修复10）：
+    //   返回 对象指向的结构体源码类型（如 方形 -> 形状；方形.顶点[0] -> 坐标）。
+    //   arrow 成员（方形指针->顶点）自动剥指针；数组字段元素类型递归推导。
+    std::string memberObjStructType(MemberExpr* node) const;
+    // 指针算术步进（字节）：普通指针8；结构体指针 = 结构体总大小（Task 2.7 修复）
+    std::int64_t ptrElemStride(const std::string& srcType) const;
     // 循环控制流：中断/继续跳转目标栈
     struct LoopContext {
         std::string breakTarget;    // 中断跳转目标块标签
         std::string continueTarget; // 继续跳转目标块标签
     };
     std::vector<LoopContext> loopStack_;
+    // 选择控制流：中断跳出目标栈（选择语句出口块标签）
+    std::vector<std::string> switchStack_;
 };
 
 } // namespace cn_compiler

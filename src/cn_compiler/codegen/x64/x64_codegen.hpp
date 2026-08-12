@@ -10,6 +10,7 @@
 #pragma once
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "cn_compiler/codegen/codegen.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
@@ -64,8 +65,8 @@ private:
     // 生成 .data 段（字符串常量池 @str0/@str1/...）
     void emitDataSection(AsmWriter& writer, const ir::IRModule& module);
 
-    // 生成 .code 段头部
-    void emitCodeHeader(AsmWriter& writer);
+    // 生成 .code 段头部（含运行时内置函数与模块外被调用函数的 EXTERN 声明）
+    void emitCodeHeader(AsmWriter& writer, const ir::IRModule& module);
 
     // 生成函数头（PROC声明）
     void emitFunctionHeader(AsmWriter& writer, const ir::IRFunction& function);
@@ -95,6 +96,19 @@ private:
     // 生成除/余（idiv 商 eax / 余 edx）
     void emitDivMod(AsmWriter& writer, const ir::IRInstruction& inst);
 
+    // 生成浮点二元运算（SSE：addsd/subsd/mulsd/divsd，Task 2.3）
+    void emitFloatBinary(AsmWriter& writer, const ir::IRInstruction& inst,
+                         const std::string& mnemonic);
+
+    // 生成移位运算（shl/shr/sar，Task 2.3）
+    void emitShift(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成类型转换（Cast：扩展/截断/整浮互转/浮32<->浮64，Task 2.3）
+    void emitCast(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成i128双槽运算（低/高64位分开处理，Task 2.3）
+    void emitInt128Binary(AsmWriter& writer, const ir::IRInstruction& inst);
+
     // 生成比较运算（cmp + setcc 到结果槽）
     void emitCompare(AsmWriter& writer, const ir::IRInstruction& inst);
 
@@ -103,6 +117,15 @@ private:
 
     // 生成变量加载/存储（Load/Store，经变量槽）
     void emitLoadStore(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成取地址（AddrOf：lea 变量槽地址，Task 2.4）
+    void emitAddrOf(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成结构体字段地址（FieldAddr：基址+偏移，含空指针检查错误码3，Task 2.7）
+    void emitFieldAddr(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成指针加载/存储（LoadPtr/StorePtr：经指针值地址访存，Task 2.4）
+    void emitPtrLoadStore(AsmWriter& writer, const ir::IRInstruction& inst);
 
     // 生成函数调用（前4参数寄存器，第5起压栈）
     void emitCall(AsmWriter& writer, const ir::IRInstruction& inst);
@@ -127,11 +150,20 @@ private:
     // 字符串转MASM db十六进制字节序列（UTF-8字节逐字节 0XXh，避免中文原始字节触发ml64 A2044）
     static std::string hexBytesString(const std::string& text);
 
+    // 浮点常量文本 -> IEEE754位模式（f32 转 uint32、f64 转 uint64，用于.data段）
+    // 返回十六进制数值文本（如 "0x3FF0000000000000"），供 emitFloatConstant 生成字节
+    static std::string floatBitsHex(const std::string& text, bool isDouble);
+    // 在 .data 段登记浮点常量（@fpN），返回标签；重复文本复用同一标签
+    std::string registerFloatConstant(const std::string& text, bool isDouble);
+
     // 选择整型寄存器宽度（i32->eax / i64->rax）
     static std::string widthFor(const std::string& type, const std::string& reg);
 
     // 类型是否浮点
     static bool isFloatType(const std::string& type);
+
+    // 8/16位整型的内存大小前缀（byte ptr/word ptr，MASM 无法推断内存宽度 A2070）
+    static std::string memSizePtr(const std::string& type);
 
     // 比较操作码 -> 条件跳转助记符（je/jne/jl/jle/jg/jge）
     static std::string condJumpMnemonic(ir::Opcode opcode);
@@ -164,10 +196,19 @@ private:
 
     Diagnostics& diagnostics_;  // 诊断引擎（错误报告预留）
 
+    // 当前生成函数的返回类型（IR类型，如 f64/i32，供 epilogue 决定 xmm0/rax）
+    std::string currentReturnType_;
+
     // 变量名 -> 槽偏移（函数级映射，generateFunctionAssembly 期间有效）
     std::unordered_map<std::string, int> varSlots_;
     // 当前函数寄存器槽数量（maxRegId+1，用于变量槽区定位）
     int regSlotCount_ = 0;
+    // 浮点常量文本+类型 -> .data标签（@fpN），模块级去重（generateAssembly 期间有效）
+    std::unordered_map<std::string, std::string> floatConstLabels_;
+    // 浮点常量登记顺序（保证 .data 段生成顺序与标签编号一致）
+    std::vector<std::string> floatConstOrder_;
+    // 空指针检查标签计数器（模块级递增，保证 LoadPtr/StorePtr 空指针检查标签唯一）
+    int ptrCheckCounter_ = 0;
 };
 
 } // namespace cn_compiler

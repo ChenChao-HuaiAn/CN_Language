@@ -24,6 +24,8 @@ public:
     void visitFunctionDecl(FunctionDecl* node) override;
     void visitParamDecl(ParamDecl* node) override;
     void visitVarDecl(VarDecl* node) override;
+    void visitStructDecl(StructDecl* node) override;
+    void visitEnumDecl(EnumDecl* node) override;
     // 语句节点
     void visitBlockStmt(BlockStmt* node) override;
     void visitExprStmt(ExprStmt* node) override;
@@ -33,18 +35,25 @@ public:
     void visitReturnStmt(ReturnStmt* node) override;
     void visitBreakStmt(BreakStmt* node) override;
     void visitContinueStmt(ContinueStmt* node) override;
+    void visitSwitchStmt(SwitchStmt* node) override;
+    void visitCaseLabel(CaseLabel* node) override;
+    void visitDefaultLabel(DefaultLabel* node) override;
     // 表达式节点
     void visitIntegerLiteral(IntegerLiteral* node) override;
     void visitFloatLiteral(FloatLiteral* node) override;
     void visitStringLiteral(StringLiteral* node) override;
     void visitCharLiteral(CharLiteral* node) override;
     void visitBoolLiteral(BoolLiteral* node) override;
+    void visitNullLiteral(NullLiteral* node) override;
     void visitIdentifierExpr(IdentifierExpr* node) override;
     void visitBinaryExpr(BinaryExpr* node) override;
     void visitUnaryExpr(UnaryExpr* node) override;
     void visitAssignmentExpr(AssignmentExpr* node) override;
     void visitCallExpr(CallExpr* node) override;
     void visitMemberExpr(MemberExpr* node) override;
+    void visitIndexExpr(IndexExpr* node) override;
+    void visitInitListExpr(InitListExpr* node) override;
+    void visitStructInitExpr(StructInitExpr* node) override;
     // 类型节点
     void visitType(Type* node) override;
 

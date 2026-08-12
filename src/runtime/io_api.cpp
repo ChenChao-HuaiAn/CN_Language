@@ -52,3 +52,19 @@ extern "C" void printLineInt(long long value) {
 extern "C" void printLineFloat(double value) {
     std::printf("%f\n", value);
 }
+
+// ==================== 运行时错误（规格书附录B错误码，Task 2.4） ====================
+
+// 运行时错误处理：打印错误信息（含错误码）后终止程序
+// 错误码：1=除零、2=数组越界、3=空指针解引用（规格书附录B）
+extern "C" void __cn_runtime_error(long long errorCode) {
+    const char* msg = "未知运行时错误";
+    switch (errorCode) {
+        case 1: msg = "除零错误"; break;
+        case 2: msg = "数组越界"; break;
+        case 3: msg = "空指针解引用"; break;
+        default: break;
+    }
+    std::printf("运行时错误(错误码%lld): %s\n", errorCode, msg);
+    std::exit(1);
+}

@@ -70,8 +70,35 @@ void AstPrinter::print(Program* program) {
 void AstPrinter::visitProgram(Program* node) {
     printHeader("程序", node->location, "声明数=" + std::to_string(node->declarations.size()));
     ++depth_;
+    for (const auto& s : node->structs) {
+        s->accept(*this);
+    }
+    for (const auto& e : node->enums) {
+        e->accept(*this);
+    }
     for (const auto& decl : node->declarations) {
         decl->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitStructDecl(StructDecl* node) {
+    printHeader(node->isUnion ? "联合体声明" : "结构体声明", node->location,
+                node->name + " 字段数=" + std::to_string(node->fields.size()));
+    ++depth_;
+    for (const auto& field : node->fields) {
+        printHeader("字段", node->location, field.type + " " + field.name);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitEnumDecl(EnumDecl* node) {
+    printHeader("枚举声明", node->location,
+                node->name + " 成员数=" + std::to_string(node->members.size()));
+    ++depth_;
+    for (const auto& member : node->members) {
+        printHeader("成员", node->location,
+                    member.name + " = " + std::to_string(member.value));
     }
     --depth_;
 }
@@ -199,6 +226,44 @@ void AstPrinter::visitContinueStmt(ContinueStmt* node) {
     printHeader("继续语句", node->location);
 }
 
+void AstPrinter::visitSwitchStmt(SwitchStmt* node) {
+    printHeader("选择语句", node->location,
+                "情况数=" + std::to_string(node->cases.size()) +
+                (node->defaultCase != nullptr ? " [有默认]" : " [无默认]"));
+    ++depth_;
+    if (node->condition != nullptr) {
+        printHeader("选择表达式", node->condition->location);
+        ++depth_;
+        node->condition->accept(*this);
+        --depth_;
+    }
+    for (const auto& caseNode : node->cases) {
+        caseNode->accept(*this);
+    }
+    if (node->defaultCase != nullptr) {
+        node->defaultCase->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitCaseLabel(CaseLabel* node) {
+    printHeader("情况标签", node->location, node->rawValue);
+    ++depth_;
+    for (const auto& stmt : node->statements) {
+        stmt->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitDefaultLabel(DefaultLabel* node) {
+    printHeader("默认标签", node->location);
+    ++depth_;
+    for (const auto& stmt : node->statements) {
+        stmt->accept(*this);
+    }
+    --depth_;
+}
+
 void AstPrinter::visitIntegerLiteral(IntegerLiteral* node) {
     printHeader("整数字面量", node->location, node->raw);
 }
@@ -217,6 +282,47 @@ void AstPrinter::visitCharLiteral(CharLiteral* node) {
 
 void AstPrinter::visitBoolLiteral(BoolLiteral* node) {
     printHeader("布尔字面量", node->location, node->raw);
+}
+
+void AstPrinter::visitNullLiteral(NullLiteral* node) {
+    printHeader("空指针字面量", node->location, "无");
+}
+
+void AstPrinter::visitIndexExpr(IndexExpr* node) {
+    printHeader("下标访问", node->location);
+    ++depth_;
+    if (node->object != nullptr) {
+        node->object->accept(*this);
+    }
+    if (node->index != nullptr) {
+        node->index->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitInitListExpr(InitListExpr* node) {
+    printHeader("初始化列表", node->location,
+                "元素数=" + std::to_string(node->elements.size()));
+    ++depth_;
+    for (const auto& elem : node->elements) {
+        elem->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitStructInitExpr(StructInitExpr* node) {
+    printHeader("结构体初始化", node->location,
+                node->typeName + " 字段数=" + std::to_string(node->fields.size()));
+    ++depth_;
+    for (const auto& field : node->fields) {
+        printHeader("字段赋值", node->location, field.first);
+        ++depth_;
+        if (field.second != nullptr) {
+            field.second->accept(*this);
+        }
+        --depth_;
+    }
+    --depth_;
 }
 
 void AstPrinter::visitIdentifierExpr(IdentifierExpr* node) {

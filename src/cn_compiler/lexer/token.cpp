@@ -21,7 +21,7 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Switch, "选择"},
         {TokenType::Kw_Case, "情况"},
         {TokenType::Kw_Default, "默认"},
-        // ---- 类型关键字(20) ----
+        // ---- 类型关键字(21) ----
         {TokenType::Kw_Int, "整数"},
         {TokenType::Kw_Double, "小数"},
         {TokenType::Kw_Int8, "整8"},
@@ -41,6 +41,7 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_String, "字符串"},
         {TokenType::Kw_Void, "空类型"},
         {TokenType::Kw_Struct, "结构体"},
+        {TokenType::Kw_Union, "联合体"},
         {TokenType::Kw_Enum, "枚举"},
         // ---- 声明关键字(7) ----
         {TokenType::Kw_Function, "函数"},

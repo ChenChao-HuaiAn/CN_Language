@@ -56,7 +56,8 @@ void printHelp() {
     std::cout << "  token <文件.cn>        输出Token流（调试用）\n";
     std::cout << "\n选项:\n";
     std::cout << "  --target <平台>        目标平台 (win-x64 | linux-arm64)\n";
-    std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2)\n";
+    std::cout << "  -O0/-O1/-O2/-O3       优化级别（规格书9.1；-O1=常量折叠+DCE，-O2/-O3 暂映射为 -O1）\n";
+    std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2)（兼容写法，等价 -O<级别>）\n";
     std::cout << "  --output <路径>        输出文件路径\n";
     std::cout << "  --verbose              详细输出\n";
     std::cout << "  --version, -v          显示版本信息\n";
@@ -75,12 +76,20 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
             options.target = args[++index];
             if (options.target != "win-x64" && options.target != "linux-arm64")
                 return "无效目标平台: " + options.target + "（应为 win-x64 或 linux-arm64）";
+        } else if (current == "-O0" || current == "-O1" ||
+                   current == "-O2" || current == "-O3") {
+            // 优化级别（规格书9.1）：-O0 无优化；-O1 常量折叠+DCE；
+            // -O2/-O3 暂映射为 -O1 同级别（预留循环优化/内联）
+            const int level = current[2] - '0';
+            options.optLevel = (level > 0) ? 1 : 0;
         } else if (current == "--opt") {
             if (index + 1 >= args.size()) return "选项 --opt 缺少参数";
             const std::string value = args[++index];
             if (value != "0" && value != "1" && value != "2")
                 return "无效优化级别: " + value + "（应为 0、1 或 2）";
             options.optLevel = std::stoi(value);
+            // 对齐规格书9.1：--opt 2/3 暂映射为 -O1 同级别（预留）
+            if (options.optLevel > 1) options.optLevel = 1;
         } else if (current == "--output") {
             if (index + 1 >= args.size()) return "选项 --output 缺少参数";
             options.output = args[++index];
@@ -277,12 +286,13 @@ static bool assembleAsm(const std::string& vcvarsBat, const std::string& asmPath
     return true;
 }
 
-// 编译运行时：cl /c io_api.cpp + runtime.cpp -> target/<stem>.obj（带缓存：obj新于cpp则跳过）
+// 编译运行时：cl /c io_api.cpp + runtime.cpp + string_api.cpp -> target/<stem>.obj（带缓存：obj新于cpp则跳过）
 static bool compileRuntime(const std::string& vcvarsBat, const std::string& objDir,
                            bool verbose, std::string& error) {
     static const char* runtimeSrcs[] = {
         "src/runtime/io_api.cpp",
         "src/runtime/runtime.cpp",
+        "src/runtime/string_api.cpp",
     };
     for (const char* src : runtimeSrcs) {
         std::string stem = pathStem(src);
@@ -300,7 +310,7 @@ static bool compileRuntime(const std::string& vcvarsBat, const std::string& objD
     return true;
 }
 
-// 链接：link /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE <用户.obj> <io_api.obj> <runtime.obj> -> <exe>
+// 链接：link /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE <用户.obj> <io_api.obj> <runtime.obj> <string_api.obj> -> <exe>
 // 说明：
 //   1. WinMainCRTStartup（而非 WinMain）：CRT 初始化 stdout/堆后调用用户 WinMain，
 //      否则 printLine（puts）输出为空（stdout 未初始化）
@@ -313,7 +323,8 @@ static bool linkExe(const std::string& vcvarsBat, const std::string& userObj,
         "link /nologo /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE "
         "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
         "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
-        runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\runtime.obj\"";
+        runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\runtime.obj\" \"" +
+        runtimeObjDir + "\\string_api.obj\"";
     int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
     if (rc != 0) {
         error = "链接失败（link 退出码 " + std::to_string(rc) + "）";

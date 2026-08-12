@@ -20,6 +20,8 @@ class Program;
 class FunctionDecl;
 class ParamDecl;
 class VarDecl;
+class StructDecl;
+class EnumDecl;
 class BlockStmt;
 class IntegerLiteral;
 class FloatLiteral;
@@ -32,6 +34,10 @@ class UnaryExpr;
 class AssignmentExpr;
 class CallExpr;
 class MemberExpr;
+class IndexExpr;
+class InitListExpr;
+class StructInitExpr;
+class NullLiteral;
 class ExprStmt;
 class IfStmt;
 class WhileStmt;
@@ -39,6 +45,9 @@ class ForStmt;
 class ReturnStmt;
 class BreakStmt;
 class ContinueStmt;
+class SwitchStmt;
+class CaseLabel;
+class DefaultLabel;
 class Type;
 
 // ==================== 枚举定义 ====================
@@ -50,6 +59,8 @@ enum class NodeType {
     FunctionDecl,      // 函数声明
     ParamDecl,         // 参数声明
     VarDecl,           // 变量/常量声明
+    StructDecl,        // 结构体/联合体声明（Task 2.7）
+    EnumDecl,          // 枚举声明（Task 2.7）
     // 语句节点
     BlockStmt,         // 代码块 { ... }
     ExprStmt,          // 表达式语句
@@ -59,18 +70,25 @@ enum class NodeType {
     ReturnStmt,        // 返回语句
     BreakStmt,         // 中断语句
     ContinueStmt,      // 继续语句
+    SwitchStmt,        // 选择语句（switch风格）
+    CaseLabel,         // 情况标签（case分支头）
+    DefaultLabel,      // 默认标签（default分支头）
     // 表达式节点
     IntegerLiteral,    // 整数字面量
     FloatLiteral,      // 浮点字面量
     StringLiteral,     // 字符串字面量
     CharLiteral,       // 字符字面量
     BoolLiteral,       // 布尔字面量
+    NullLiteral,       // 空指针字面量（无，Task 2.4）
     IdentifierExpr,    // 标识符表达式
     BinaryExpr,        // 二元运算
     UnaryExpr,         // 一元运算
     AssignmentExpr,    // 赋值表达式
     CallExpr,          // 函数调用
     MemberExpr,        // 成员访问（. / ->）
+    IndexExpr,         // 下标访问（数组[i]，Task 2.4）
+    InitListExpr,      // 初始化列表（{ 1, 2, 3 }，Task 2.4）
+    StructInitExpr,    // 结构体初始化（点{ x = 1, y = 2 }，Task 2.7）
     // 类型节点
     TypeNode,          // 类型
 };
@@ -95,12 +113,15 @@ enum class Operator {
     OrOr,              // ||
     Bang,              // !
     // 位运算(6)
-    Amp,               // &
-    Pipe,              // |
-    Caret,             // ^
-    Tilde,             // ~
-    LessLess,          // <<
-    GreaterGreater,    // >>
+    Amp,               // &（二元按位与）
+    Pipe,              // |（按位或）
+    Caret,             // ^（按位异或）
+    Tilde,             // ~（按位非）
+    LessLess,          // <<（左移）
+    GreaterGreater,    // >>（右移）
+    // 指针一元运算(2)（规格书4.4：&取地址、*解引用，Task 2.3 一元上下文解析）
+    AddressOf,         // &（取地址，一元）
+    Deref,             // *（解引用，一元）
     // 赋值(11)
     Assign,            // =
     PlusAssign,        // +=
@@ -134,6 +155,8 @@ public:
     virtual void visitFunctionDecl(FunctionDecl* node) = 0;
     virtual void visitParamDecl(ParamDecl* node) = 0;
     virtual void visitVarDecl(VarDecl* node) = 0;
+    virtual void visitStructDecl(StructDecl* node) = 0;
+    virtual void visitEnumDecl(EnumDecl* node) = 0;
     // 语句节点
     virtual void visitBlockStmt(BlockStmt* node) = 0;
     virtual void visitExprStmt(ExprStmt* node) = 0;
@@ -143,18 +166,25 @@ public:
     virtual void visitReturnStmt(ReturnStmt* node) = 0;
     virtual void visitBreakStmt(BreakStmt* node) = 0;
     virtual void visitContinueStmt(ContinueStmt* node) = 0;
+    virtual void visitSwitchStmt(SwitchStmt* node) = 0;
+    virtual void visitCaseLabel(CaseLabel* node) = 0;
+    virtual void visitDefaultLabel(DefaultLabel* node) = 0;
     // 表达式节点
     virtual void visitIntegerLiteral(IntegerLiteral* node) = 0;
     virtual void visitFloatLiteral(FloatLiteral* node) = 0;
     virtual void visitStringLiteral(StringLiteral* node) = 0;
     virtual void visitCharLiteral(CharLiteral* node) = 0;
     virtual void visitBoolLiteral(BoolLiteral* node) = 0;
+    virtual void visitNullLiteral(NullLiteral* node) = 0;
     virtual void visitIdentifierExpr(IdentifierExpr* node) = 0;
     virtual void visitBinaryExpr(BinaryExpr* node) = 0;
     virtual void visitUnaryExpr(UnaryExpr* node) = 0;
     virtual void visitAssignmentExpr(AssignmentExpr* node) = 0;
     virtual void visitCallExpr(CallExpr* node) = 0;
     virtual void visitMemberExpr(MemberExpr* node) = 0;
+    virtual void visitIndexExpr(IndexExpr* node) = 0;
+    virtual void visitInitListExpr(InitListExpr* node) = 0;
+    virtual void visitStructInitExpr(StructInitExpr* node) = 0;
     // 类型节点
     virtual void visitType(Type* node) = 0;
 };
@@ -248,6 +278,17 @@ public:
     std::string raw;   // 原始字面量文本
 };
 
+// 空指针字面量：无（Task 2.4）
+// 语义：作为指针字面量，值为0（等价C的NULL/空指针）；
+//       可赋给任意指针类型（含 空类型*）；也可作为空指针与指针比较
+class NullLiteral : public Expr {
+public:
+    explicit NullLiteral(SourceLocation loc) : Expr(NodeType::NullLiteral) {
+        location = loc;
+    }
+    void accept(AstVisitor& visitor) override { visitor.visitNullLiteral(this); }
+};
+
 // 标识符表达式：变量名/函数名引用
 class IdentifierExpr : public Expr {
 public:
@@ -325,6 +366,42 @@ public:
     bool isArrow;                  // true 表示 -> 访问（通过指针）
 };
 
+// 下标访问：对象[index]（Task 2.4）
+// 对象为数组（数组名/数组元素地址）或指针；index 为整型表达式。
+// 语义层展开为：基址 + index * 元素大小 的内存访问（越界检查错误码2）
+class IndexExpr : public Expr {
+public:
+    IndexExpr(std::unique_ptr<Expr> object, std::unique_ptr<Expr> index)
+        : Expr(NodeType::IndexExpr), object(std::move(object)), index(std::move(index)) {}
+    void accept(AstVisitor& visitor) override { visitor.visitIndexExpr(this); }
+
+    std::unique_ptr<Expr> object;  // 被下标对象（数组/指针表达式）
+    std::unique_ptr<Expr> index;   // 下标表达式（整型）
+};
+
+// 初始化列表：{ 表达式, 表达式, ... }（Task 2.4）
+// 用于数组声明初始化（整32[5] 数据 = { 1, 2, 3 }），部分初始化剩余元素补零（C语义）。
+// 结构体/联合体初始化列表在后续Task（2.7/2.8）复用本节点。
+class InitListExpr : public Expr {
+public:
+    InitListExpr() : Expr(NodeType::InitListExpr) {}
+    void accept(AstVisitor& visitor) override { visitor.visitInitListExpr(this); }
+
+    std::vector<std::unique_ptr<Expr>> elements;  // 初始化元素列表
+};
+
+// 结构体初始化：类型名{ 字段 = 值, ... }（规格书05，Task 2.7）
+// 例：点 p = 点{ x = 1, y = 2 }；字段按名赋值（顺序任意）
+class StructInitExpr : public Expr {
+public:
+    explicit StructInitExpr(std::string typeName)
+        : Expr(NodeType::StructInitExpr), typeName(std::move(typeName)) {}
+    void accept(AstVisitor& visitor) override { visitor.visitStructInitExpr(this); }
+
+    std::string typeName;                        // 结构体/联合体类型名
+    std::vector<std::pair<std::string, std::unique_ptr<Expr>>> fields;  // 字段名 -> 值
+};
+
 // ==================== 语句节点 ====================
 
 // 表达式语句：仅由表达式构成（如函数调用、自增表达式）
@@ -335,6 +412,58 @@ public:
     void accept(AstVisitor& visitor) override { visitor.visitExprStmt(this); }
 
     std::unique_ptr<Expr> expr;  // 表达式
+};
+
+// 函数指针类型信息：C风格 返回类型(*名)(参数类型列表)（规格书5.8）
+// 用于变量声明（整32(*回调)(整32, 整32)）与参数声明（整32(*func)(整32, 整32)）
+struct FuncPtrTypeInfo {
+    std::string returnType;                    // 返回类型（如 整32）
+    std::vector<std::string> paramTypes;       // 参数类型列表（如 [整32, 整32]）
+    std::string name;                          // 函数指针变量名（C风格声明内嵌：整32(*名)(...)）
+
+    bool isFunctionPtr() const { return !returnType.empty(); }  // 是否为函数指针类型
+    // 生成规范化类型字符串：函数指针<返回>(参数1,参数2,...)（语义层类型比较用）
+    std::string toString() const;
+};
+
+// 结构体字段：字段名 + 类型 + 对齐/偏移（语义层布局计算回填，Task 2.7）
+struct StructField {
+    std::string name;      // 字段名
+    std::string type;      // 字段类型（源码类型名，规范化后）
+    int offset = 0;        // 字段偏移（字节，语义层计算）
+};
+
+// 结构体/联合体声明：结构体 名 { 类型 字段; ... } / 联合体 名 { ... }（Task 2.7）
+// 联合体为 isUnion=true：所有字段从偏移0开始，大小 = 最大字段大小（按最大对齐）
+class StructDecl : public AstNode {
+public:
+    StructDecl() : AstNode(NodeType::StructDecl) {}
+    void accept(AstVisitor& visitor) override { visitor.visitStructDecl(this); }
+
+    std::string name;                        // 类型名（结构体名/联合体名）
+    bool isUnion = false;                    // true 表示联合体（共享内存布局）
+    std::vector<StructField> fields;         // 字段列表（含布局偏移回填）
+    int totalSize = 0;                       // 总大小（字节，语义层计算回填）
+    int align = 1;                           // 对齐（字节，语义层计算回填）
+    bool layoutComputed = false;             // 布局是否已计算（语义层回填标记）
+};
+
+// 枚举成员：成员名 + 值（显式赋值或自动递增，Task 2.7）
+struct EnumMember {
+    std::string name;      // 成员名
+    std::int64_t value;    // 成员值
+    bool explicitValue = false;  // 是否为显式赋值
+};
+
+// 枚举声明：枚举 名 { 成员, 成员 = 值, ... }（Task 2.7）
+// 未赋值成员自动按前一个成员值+1递增（首个默认0）；支持负数值
+class EnumDecl : public AstNode {
+public:
+    EnumDecl() : AstNode(NodeType::EnumDecl) {}
+    void accept(AstVisitor& visitor) override { visitor.visitEnumDecl(this); }
+
+    std::string name;                        // 枚举类型名
+    std::vector<EnumMember> members;         // 成员列表（值已求值）
 };
 
 // 变量声明：变量/常量/静态 类型前置或冒号后置（CN规范类型前置，兼容冒号后置）
@@ -348,6 +477,7 @@ public:
     std::string name;                            // 变量名
     std::string typeName;                        // 类型名（为空表示类型推断：变量 x = 10）
     std::unique_ptr<Expr> initializer;           // 初始值（可为空）
+    FuncPtrTypeInfo funcPtr;                     // 函数指针类型信息（非空表示本变量为函数指针）
 };
 
 // 代码块：{ 语句列表 }
@@ -416,6 +546,40 @@ public:
     void accept(AstVisitor& visitor) override { visitor.visitContinueStmt(this); }
 };
 
+// 情况标签：情况 常量值: 语句*（选择语句的一个分支）
+// 每个 case 标签附带其后的语句序列（到下一个标签或右花括号为止）
+class CaseLabel : public Stmt {
+public:
+    explicit CaseLabel(std::int64_t caseValue)
+        : Stmt(NodeType::CaseLabel), value(caseValue) {}
+    void accept(AstVisitor& visitor) override { visitor.visitCaseLabel(this); }
+
+    std::int64_t value;                          // 情况常量值（编译期整型常量）
+    std::string rawValue;                        // 情况常量原始文本（调试输出）
+    std::vector<std::unique_ptr<Stmt>> statements;  // 该分支语句体（可为空）
+};
+
+// 默认标签：默认: 语句*（选择语句的兜底分支，最多一个）
+class DefaultLabel : public Stmt {
+public:
+    DefaultLabel() : Stmt(NodeType::DefaultLabel) {}
+    void accept(AstVisitor& visitor) override { visitor.visitDefaultLabel(this); }
+
+    std::vector<std::unique_ptr<Stmt>> statements;  // 该分支语句体（可为空）
+};
+
+// 选择语句：选择(值) { 情况 常量: 语句* 默认: 语句* }
+// 值类型：整数/字符（阶段二）；枚举（后续Task支持）
+class SwitchStmt : public Stmt {
+public:
+    SwitchStmt() : Stmt(NodeType::SwitchStmt) {}
+    void accept(AstVisitor& visitor) override { visitor.visitSwitchStmt(this); }
+
+    std::unique_ptr<Expr> condition;                  // 选择表达式（整型/字符）
+    std::vector<std::unique_ptr<CaseLabel>> cases;    // 情况分支列表
+    std::unique_ptr<DefaultLabel> defaultCase;        // 默认分支（可为空）
+};
+
 // ==================== 声明节点 ====================
 
 // 类型节点：类型名（阶段一仅基本类型名，阶段二扩展复合类型）
@@ -435,6 +599,7 @@ public:
 
     std::string name;      // 参数名
     std::string typeName;  // 参数类型
+    FuncPtrTypeInfo funcPtr;  // 函数指针类型信息（非空表示本参数为函数指针）
 };
 
 // 函数声明：函数 名称(参数列表) [-> 返回类型] { 函数体 }
@@ -449,13 +614,15 @@ public:
     std::unique_ptr<BlockStmt> body;                   // 函数体（为空表示函数原型声明）
 };
 
-// 程序：顶层函数声明集合（阶段一仅函数，阶段二扩展结构体/枚举/导入）
+// 程序：顶层声明集合（函数/结构体/枚举/联合体）
 class Program : public AstNode {
 public:
     Program() : AstNode(NodeType::Program) {}
     void accept(AstVisitor& visitor) override { visitor.visitProgram(this); }
 
     std::vector<std::unique_ptr<FunctionDecl>> declarations;  // 顶层函数声明
+    std::vector<std::unique_ptr<StructDecl>> structs;         // 结构体/联合体声明（Task 2.7）
+    std::vector<std::unique_ptr<EnumDecl>> enums;             // 枚举声明（Task 2.7）
 };
 
 } // namespace cn_compiler

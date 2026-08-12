@@ -1,0 +1,88 @@
+// 类型系统工具子模块（Task 2.3 抽取）：CN语言类型识别/转换/推导
+// 职责：
+//   1. 类型别名规范化（整数->整32、小数->浮64）
+//   2. 类型分类（数值/整数/浮点/函数指针）
+//   3. 隐式转换检查（规格书3.7：字符↔整数、整型宽化、浮点宽化、整数->浮点）
+//   4. 数值运算结果类型推导（整型取宽者、含浮点取浮点）
+//   5. 整型位宽秩（rank）比较（整8=1 ... 整128=5）
+//   6. 字面量后缀解析（f/L/LL/U/UL/ULL，规格书4.3）
+// 设计：纯静态工具（无状态），供语义分析器（semantic）与IR生成器（ir）共用，
+//       避免两处各写一套类型逻辑导致别名/秩不一致
+// 规范：英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
+#pragma once
+#include <string>
+#include <vector>
+
+namespace cn_compiler {
+namespace types {
+
+// ==================== 类型别名与分类 ====================
+
+// 类型别名规范化：整数 -> 整32、小数 -> 浮64（其余原样返回）
+// 语义/IR层所有类型比较前必须先规范化，否则别名误报类型不匹配
+// Task 2.4：递归规范化复合类型（指针 整数* -> 整32*、数组 整数[10] -> 整32[10]）
+std::string canonical(const std::string& type);
+
+// 是否整数类型（整8~整128/正8~正128/整数，规范后判断）
+bool isInteger(const std::string& type);
+
+// 是否浮点类型（浮32/浮64/小数，规范后判断）
+bool isFloat(const std::string& type);
+
+// 是否数值类型（整/正/浮，规范后判断）
+bool isNumeric(const std::string& type);
+
+// 是否无符号整数类型（正N）
+bool isUnsigned(const std::string& type);
+
+// 整型位宽秩（整8=1 ... 整128=5）；非整数类型返回0
+int intRank(const std::string& type);
+
+// 是否函数指针类型（函数指针<返回>(参数,...)，Task 2.2 规范化字符串）
+bool isFuncPtr(const std::string& type);
+
+// ==================== 指针/数组复合类型（Task 2.4） ====================
+
+// 是否指针类型（类型名以 * 结尾，如 整32* / 空类型*）
+bool isPointer(const std::string& type);
+
+// 是否数组类型（类型名形如 元素类型[长度]，如 整32[10]）
+// 识别：最后一个 '[' 位于末尾 ']' 前，且下标部分为十进制数字
+bool isArray(const std::string& type);
+
+// 提取指针所指元素类型（整32* -> 整32；非指针类型原样返回）
+std::string pointeeOf(const std::string& type);
+
+// 提取数组元素类型（整32[10] -> 整32；数组类型中最后一个 '[' 之前的部分）
+std::string arrayElemOf(const std::string& type);
+
+// 提取数组长度（整32[10] -> 10；非数组类型返回 -1）
+int arrayLenOf(const std::string& type);
+
+// 基本类型字节大小（整8/布尔=1、整16=2、整32/浮32/字符=4、整64/浮64/指针=8、
+// 整128/正128=16）；其他类型返回0（数组/结构体等由调用方递归计算）
+int typeSize(const std::string& type);
+
+// ==================== 隐式转换 ====================
+
+// 能否隐式转换（规格书3.7 + 整型宽化/浮点宽化/整数->浮点）
+// from 源类型、to 目标类型（均先做别名规范化）
+bool canConvert(const std::string& from, const std::string& to);
+
+// 数值运算结果类型：整型取秩高者，含浮点取较宽浮点（先做别名规范化）
+std::string commonNumericType(const std::string& a, const std::string& b);
+
+// ==================== 字面量后缀（规格书4.3） ====================
+
+// 解析整数/浮点字面量原始文本的后缀，返回推断类型
+// 整数字面量：无后缀 -> 整32；f -> 浮32；L -> 整64；LL -> 整128；
+//            U -> 正32；UL -> 正64；ULL -> 正128
+// 浮点字面量：无后缀 -> 浮64；f/F -> 浮32
+// 返回 CN 源码类型名（整32/浮64 等），非法后缀返回空串
+std::string literalTypeOf(const std::string& raw, bool isFloat);
+
+// 剥离字面量文本的后缀，返回纯数字文本（"123ULL" -> "123"，"3.5f" -> "3.5"）
+std::string stripLiteralSuffix(const std::string& raw);
+
+} // namespace types
+} // namespace cn_compiler

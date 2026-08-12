@@ -29,6 +29,27 @@ extern "C" {
     CNRT_EXPORT void printLineInt(long long value);        // 打印行（整数）
     CNRT_EXPORT void printLineFloat(double value);         // 打印行（浮点数）
 
+    // 字符串API（规格书10.1 字符串操作：长度/比较/连接/复制/查找；Task 2.5）
+    // 对应CN内置函数：字符串长度/字符串比较/字符串连接/字符串复制/字符串查找
+    // 字符串采用 UTF-8 编码、以 \0 结尾（规格书10.3）
+    CNRT_EXPORT long long __cn_str_len(const char* str);         // 字符串长度（UTF-8 字节数）
+    CNRT_EXPORT long long __cn_str_eq(const char* a, const char* b); // 字符串比较（相等返回1，否则0）
+    CNRT_EXPORT char* __cn_str_concat(const char* a, const char* b); // 字符串连接（动态分配）
+    CNRT_EXPORT char* __cn_str_copy(const char* str);              // 字符串复制（深拷贝）
+    CNRT_EXPORT long long __cn_str_find(const char* haystack, const char* needle); // 子串查找（位置，-1未找到）
+
+    // 打印行多参数格式化辅助（Task 2.5）：逐段打印，最后统一换行
+    // 打印行("值:", 42, 3.5) 展开为 __cn_print_str("值:") + __cn_print_int(42) +
+    //                        __cn_print_float(3.5) + __cn_print_newline()
+    CNRT_EXPORT void __cn_print_str(const char* text);     // 打印字符串（不换行）
+    CNRT_EXPORT void __cn_print_int(long long value);      // 打印整数（不换行）
+    CNRT_EXPORT void __cn_print_float(double value);       // 打印浮点（不换行）
+    CNRT_EXPORT void __cn_print_newline();                 // 打印换行
+
+    // 运行时错误（规格书附录B错误码，Task 2.4 数组/指针运行时检查调用）
+    // 错误码：2=数组越界、3=空指针解引用（打印错误信息后终止程序）
+    CNRT_EXPORT void __cn_runtime_error(long long errorCode);
+
     // 程序入口（crt0风格，规格书10.4：调用CN语言 主 函数）
     CNRT_EXPORT int entry(int argc, char** argv);
 }
