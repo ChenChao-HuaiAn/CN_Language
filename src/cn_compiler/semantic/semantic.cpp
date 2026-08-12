@@ -46,6 +46,14 @@ bool isBitwiseOp(Operator op) {
     }
 }
 
+// 类型别名规范化：整数 -> 整32、小数 -> 浮64（规格书02-类型系统：默认类型别名）
+// 语义层所有类型比较前必须先规范化，否则 整数 x = 10（字面量推断为整32）会误报类型不匹配
+std::string canonicalType(const std::string& type) {
+    if (type == "整数") return "整32";
+    if (type == "小数") return "浮64";
+    return type;
+}
+
 } // namespace
 
 // ==================== 符号表管理 ====================
@@ -60,7 +68,7 @@ void SemanticAnalyzer::popScope() {
     if (scopes_.size() > 1) scopes_.pop_back();
 }
 
-// 声明变量：同作用域重复声明返回false并报告错误
+// 声明变量：同作用域重复声明返回false并报告错误（类型统一存规范化形式）
 bool SemanticAnalyzer::declareVar(const std::string& name, const std::string& type,
                                   const SourceLocation& loc) {
     if (scopes_.empty()) pushScope();
@@ -70,7 +78,7 @@ bool SemanticAnalyzer::declareVar(const std::string& name, const std::string& ty
                             "重复声明变量 '" + name + "'");
         return false;
     }
-    current[name] = type;
+    current[name] = canonicalType(type);
     return true;
 }
 
@@ -109,7 +117,10 @@ bool SemanticAnalyzer::isFloat(const std::string& type) {
 }
 
 // 是否能够隐式转换（CN规范：相同类型、整型宽化、浮点宽化、字符↔整型）
-bool SemanticAnalyzer::canConvert(const std::string& from, const std::string& to) {
+// 所有比较前先做别名规范化（整数=整32、小数=浮64），避免别名误报类型不匹配
+bool SemanticAnalyzer::canConvert(const std::string& fromRaw, const std::string& toRaw) {
+    const std::string from = canonicalType(fromRaw);
+    const std::string to = canonicalType(toRaw);
     if (from == to) return true;
     // 字符 ↔ 整数
     if ((from == "字符" && isInteger(to)) || (isInteger(from) && to == "字符")) return true;
@@ -118,7 +129,7 @@ bool SemanticAnalyzer::canConvert(const std::string& from, const std::string& to
         static const std::unordered_map<std::string, int> intRank = {
             {"正8", 1}, {"整8", 1},
             {"正16", 2}, {"整16", 2},
-            {"正32", 3}, {"整32", 3}, {"整数", 3},
+            {"正32", 3}, {"整32", 3},
             {"正64", 4}, {"整64", 4},
             {"正128", 5}, {"整128", 5},
         };
@@ -134,20 +145,22 @@ bool SemanticAnalyzer::canConvert(const std::string& from, const std::string& to
         if (rankFrom == rankTo && fromUnsigned != toUnsigned) return false;
         return rankFrom < rankTo;
     }
-    // 浮点宽化：浮32 -> 浮64/小数
-    if (from == "浮32" && (to == "浮64" || to == "小数")) return true;
+    // 浮点宽化：浮32 -> 浮64
+    if (from == "浮32" && to == "浮64") return true;
     // 整数 -> 浮点（允许整数隐式转浮点，浮点不可隐式转整数）
     if (isInteger(from) && isFloat(to)) return true;
     return false;
 }
 
-// 数值运算结果类型：整型取宽者，含浮点则取浮点
-std::string SemanticAnalyzer::commonNumericType(const std::string& a, const std::string& b) {
+// 数值运算结果类型：整型取宽者，含浮点则取浮点（先做别名规范化）
+std::string SemanticAnalyzer::commonNumericType(const std::string& aRaw, const std::string& bRaw) {
+    const std::string a = canonicalType(aRaw);
+    const std::string b = canonicalType(bRaw);
     if (a == b) return a;
     // 含浮点：取较宽浮点
     if (isFloat(a) || isFloat(b)) {
-        bool aFloat64 = (a == "浮64" || a == "小数");
-        bool bFloat64 = (b == "浮64" || b == "小数");
+        bool aFloat64 = (a == "浮64");
+        bool bFloat64 = (b == "浮64");
         if (aFloat64 || bFloat64) return "浮64";
         return "浮32";
     }
@@ -155,7 +168,7 @@ std::string SemanticAnalyzer::commonNumericType(const std::string& a, const std:
     static const std::unordered_map<std::string, int> intRank = {
         {"正8", 1}, {"整8", 1},
         {"正16", 2}, {"整16", 2},
-        {"正32", 3}, {"整32", 3}, {"整数", 3},
+        {"正32", 3}, {"整32", 3},
         {"正64", 4}, {"整64", 4},
         {"正128", 5}, {"整128", 5},
     };
@@ -193,13 +206,35 @@ void SemanticAnalyzer::checkCondition(const std::string& type, const SourceLocat
     }
 }
 
-// 第一趟：注册函数符号（支持前向调用与重名检测）
+// 注册CN语言内置函数符号（阶段一：IO函数，对应运行时 cnrt 的 extern "C" 导出）
+// 打印行（字符串）-> 空类型；打印行整数（整64）-> 空类型；打印行浮点（浮64）-> 空类型
+void SemanticAnalyzer::registerBuiltins() {
+    FunctionInfo printLineInfo;
+    printLineInfo.returnType = "空类型";
+    printLineInfo.paramTypes = {"字符串"};
+    printLineInfo.hasBody = true;  // 运行时提供实现，语义检查视为已定义
+    functions_["打印行"] = printLineInfo;
+
+    FunctionInfo printLineIntInfo;
+    printLineIntInfo.returnType = "空类型";
+    printLineIntInfo.paramTypes = {"整64"};
+    printLineIntInfo.hasBody = true;
+    functions_["打印行整数"] = printLineIntInfo;
+
+    FunctionInfo printLineFloatInfo;
+    printLineFloatInfo.returnType = "空类型";
+    printLineFloatInfo.paramTypes = {"浮64"};
+    printLineFloatInfo.hasBody = true;
+    functions_["打印行浮点"] = printLineFloatInfo;
+}
+
+// 第一趟：注册函数符号（支持前向调用与重名检测，类型统一存规范化形式）
 void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     FunctionInfo info;
-    info.returnType = node->returnType.empty() ? "空类型" : node->returnType;
+    info.returnType = node->returnType.empty() ? "空类型" : canonicalType(node->returnType);
     info.hasBody = (node->body != nullptr);
     for (auto& param : node->params) {
-        info.paramTypes.push_back(param->typeName);
+        info.paramTypes.push_back(canonicalType(param->typeName));
     }
     auto it = functions_.find(node->name);
     if (it != functions_.end()) {
@@ -232,6 +267,8 @@ bool SemanticAnalyzer::bodyGuaranteesReturn(BlockStmt* body) const {
 // 程序入口：两趟处理
 void SemanticAnalyzer::visitProgram(Program* node) {
     pushScope();  // 全局作用域
+    // 第零趟：注册CN语言内置函数符号（打印行等，无需源码声明即可调用）
+    registerBuiltins();
     // 第一趟：注册全部函数符号（含前向调用）
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {

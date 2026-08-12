@@ -86,6 +86,8 @@ private:
     void checkBlock(BlockStmt* node);              // 检查代码块（含作用域进出）
     // 检查条件表达式是否为布尔类型
     void checkCondition(const std::string& type, const SourceLocation& loc, const std::string& ctx);
+    // 注册CN语言内置函数符号（打印行/打印行整数/打印行浮点，供函数调用检查）
+    void registerBuiltins();
     void registerFunction(FunctionDecl* node);     // 第一趟：注册函数符号
     void checkFunctionBody(FunctionDecl* node);    // 第二趟：检查函数体
     // 函数体是否保证有返回（最后一条为返回语句或无限循环）

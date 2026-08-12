@@ -224,27 +224,52 @@ void IRGenerator::setCurrentBlock(ir::IRBlock* block) {
     currentBlock_ = block;
 }
 
-// 分配变量寄存器：Alloca指令 + 登记映射
+// 分配变量寄存器：Alloca指令 + 压入当前作用域
+// 唯一内部名 name$N：同名变量（遮蔽）在不同作用域分配不同内部名，
+// 使代码生成层能为每个作用域实例分配独立栈槽（否则遮蔽变量共用槽导致值串扰）
 ir::IRValue IRGenerator::allocVar(const std::string& name, const std::string& irType,
                                   const SourceLocation& loc) {
     ir::IRValue reg = newReg();
     reg.type = irType;
-    emit(ir::Opcode::Alloca, {}, reg, name, irType, loc);
-    varRegs_[name] = reg.id;
-    varTypes_[name] = irType;
+    // 生成唯一内部名：name$N（N为函数级递增计数）
+    std::string unique = name + "$" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, reg, unique, irType, loc);
+    if (varStack_.empty()) varStack_.emplace_back();  // 确保存在当前作用域
+    VarEntry entry;
+    entry.regId = reg.id;
+    entry.uniqueName = unique;
+    entry.type = irType;
+    varStack_.back()[name] = entry;
     return reg;
+}
+
+// 从内到外查找变量的唯一内部名（未找到返回空串）
+std::string IRGenerator::lookupVarName(const std::string& name) const {
+    for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) return found->second.uniqueName;
+    }
+    return "";
+}
+
+// 从内到外查找变量的IR类型（未找到返回空串）
+std::string IRGenerator::lookupVarType(const std::string& name) const {
+    for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) return found->second.type;
+    }
+    return "";
 }
 
 // 查找变量寄存器（未找到返回id=-1）
 ir::IRValue IRGenerator::lookupVar(const std::string& name) {
-    auto it = varRegs_.find(name);
-    if (it == varRegs_.end()) {
-        return ir::IRValue::reg(-1, "");
+    for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) {
+            return ir::IRValue::reg(found->second.regId, found->second.type);
+        }
     }
-    ir::IRValue reg = ir::IRValue::reg(it->second, "");
-    auto typeIt = varTypes_.find(name);
-    if (typeIt != varTypes_.end()) reg.type = typeIt->second;
-    return reg;
+    return ir::IRValue::reg(-1, "");
 }
 
 // ==================== 声明节点 ====================
@@ -264,8 +289,8 @@ ir::IRModule IRGenerator::generate(Program* program) {
     module_ = &module;
     regCounter_ = 0;
     blockCounter_ = 0;
-    varRegs_.clear();
-    varTypes_.clear();
+    varCounter_ = 0;
+    varStack_.clear();
     loopStack_.clear();
     visitProgram(program);
     module_ = nullptr;
@@ -277,22 +302,28 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     ir::IRFunction func;
     func.name = node->name;
     func.returnType = mapType(node->returnType.empty() ? "空类型" : node->returnType);
+    // 参数进入最外层作用域，生成唯一内部名（name$N）。
+    // params 保留源码名（对外可读/测试契约），paramUniques 存唯一名，
+    // 代码生成层按 paramUniques 登记/查询栈槽，保证遮蔽变量各自独立槽
+    varStack_.emplace_back();
     for (auto& param : node->params) {
+        std::string unique = param->name + "$" + std::to_string(varCounter_++);
         func.params.emplace_back(param->name, mapType(param->typeName));
-    }
-    function_ = &func;
-    varRegs_.clear();
-    varTypes_.clear();
-    blockCounter_ = 0;
-    // 入口基本块
-    ir::IRBlock* entry = newBlock("块0");
-    // 参数 -> 虚拟寄存器（阶段一：参数直接映射寄存器，无Alloca）
-    for (auto& param : node->params) {
+        func.paramUniques.push_back(unique);
         ir::IRValue reg = newReg();
         reg.type = mapType(param->typeName);
-        varRegs_[param->name] = reg.id;
-        varTypes_[param->name] = reg.type;
+        VarEntry entryInfo;
+        entryInfo.regId = reg.id;
+        entryInfo.uniqueName = unique;
+        entryInfo.type = reg.type;
+        varStack_.back()[param->name] = entryInfo;
     }
+    function_ = &func;
+    // 注意：varCounter_ 不可重置！参数已用 varCounter_ 生成唯一名，
+    // 若重置则函数体内同名遮蔽变量会生成相同唯一名（如 x$0）导致槽冲突
+    blockCounter_ = 0;
+    // 入口基本块（ASCII标签 bbN：ml64 不识别中文标识符，阶段一统一 ASCII）
+    ir::IRBlock* entry = newBlock("bb0");
     // 函数体
     if (node->body != nullptr) {
         genBlock(node->body.get());
@@ -325,11 +356,13 @@ void IRGenerator::visitVarDecl(VarDecl* node) {
 
 // ==================== 语句生成 ====================
 
-// 代码块：顺序生成语句
+// 代码块：顺序生成语句（进入子作用域，支持同名变量遮蔽）
 void IRGenerator::genBlock(BlockStmt* node) {
+    varStack_.emplace_back();  // 进入子作用域
     for (auto& stmt : node->statements) {
         genStmt(stmt.get());
     }
+    varStack_.pop_back();  // 退出子作用域
 }
 
 // 表达式语句
@@ -381,9 +414,9 @@ void IRGenerator::visitForStmt(ForStmt* node) {
 // 如果语句：条件跳转生成分支块
 void IRGenerator::genIf(IfStmt* node) {
     ir::IRValue cond = genExpr(node->condition.get());
-    std::string thenLabel = "块" + std::to_string(blockCounter_);
-    std::string elseLabel = "块" + std::to_string(blockCounter_ + 1);
-    std::string endLabel = "块" + std::to_string(blockCounter_ + 2);
+    std::string thenLabel = "bb" + std::to_string(blockCounter_);
+    std::string elseLabel = "bb" + std::to_string(blockCounter_ + 1);
+    std::string endLabel = "bb" + std::to_string(blockCounter_ + 2);
     // 记录条件并终结当前块
     endBranch(cond.toString(), thenLabel, elseLabel);
     // 真分支
@@ -406,9 +439,9 @@ void IRGenerator::genIf(IfStmt* node) {
 
 // 当循环：条件块 -> 循环体 -> 回边
 void IRGenerator::genWhile(WhileStmt* node) {
-    std::string condLabel = "块" + std::to_string(blockCounter_);
-    std::string bodyLabel = "块" + std::to_string(blockCounter_ + 1);
-    std::string endLabel = "块" + std::to_string(blockCounter_ + 2);
+    std::string condLabel = "bb" + std::to_string(blockCounter_);
+    std::string bodyLabel = "bb" + std::to_string(blockCounter_ + 1);
+    std::string endLabel = "bb" + std::to_string(blockCounter_ + 2);
     // 无条件跳入条件块
     endJump(condLabel);
     setCurrentBlock(newBlock(condLabel));
@@ -431,14 +464,14 @@ void IRGenerator::genFor(ForStmt* node) {
         genStmt(node->init.get());
         if (currentBlock_->terminated) {
             // 初始化已终结（如返回）：后续不可达，补出口块
-            setCurrentBlock(newBlock("块" + std::to_string(blockCounter_)));
+            setCurrentBlock(newBlock("bb" + std::to_string(blockCounter_)));
             return;
         }
     }
-    std::string condLabel = "块" + std::to_string(blockCounter_);
-    std::string bodyLabel = "块" + std::to_string(blockCounter_ + 1);
-    std::string updLabel = "块" + std::to_string(blockCounter_ + 2);
-    std::string endLabel = "块" + std::to_string(blockCounter_ + 3);
+    std::string condLabel = "bb" + std::to_string(blockCounter_);
+    std::string bodyLabel = "bb" + std::to_string(blockCounter_ + 1);
+    std::string updLabel = "bb" + std::to_string(blockCounter_ + 2);
+    std::string endLabel = "bb" + std::to_string(blockCounter_ + 3);
     // 跳入条件块
     endJump(condLabel);
     setCurrentBlock(newBlock(condLabel));
@@ -517,10 +550,11 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         if (node->initializer->getType() == NodeType::CharLiteral) irType = "i32";
     }
     allocVar(node->name, irType, node->location);
-    // 初始值 -> Store
+    // 初始值 -> Store（目标用唯一内部名，保证遮蔽变量写入自己的槽）
     if (node->initializer != nullptr) {
         ir::IRValue value = genExpr(node->initializer.get());
-        emit(ir::Opcode::Store, {value}, ir::IRValue(), node->name, irType, node->location);
+        emit(ir::Opcode::Store, {value}, ir::IRValue(),
+             lookupVarName(node->name), irType, node->location);
     }
 }
 
@@ -569,7 +603,7 @@ void IRGenerator::visitBoolLiteral(BoolLiteral* node) {
                            node->value ? "真" : "假", node->location);
 }
 
-// 标识符表达式：加载变量
+// 标识符表达式：加载变量（用唯一内部名定位栈槽，遮蔽变量读自己的槽）
 void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     ir::IRValue reg = lookupVar(node->name);
     if (reg.id < 0) {
@@ -577,9 +611,10 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return;
     }
+    const std::string unique = lookupVarName(node->name);
     lastExpr_ = emitResult(ir::Opcode::Load,
-                           {ir::IRValue::var(node->name, reg.type)},
-                           reg.type, node->name, node->location);
+                           {ir::IRValue::var(unique, reg.type)},
+                           reg.type, unique, node->location);
 }
 
 // 二元运算：递归生成左右操作数，输出运算指令
@@ -643,13 +678,13 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             ir::IRValue result = emitResult(
                 node->op == Operator::Increment ? ir::Opcode::Add : ir::Opcode::Sub,
                 {operand, one}, operand.type, "", node->location);
-            // 仅当操作数为变量引用时写回
+            // 仅当操作数为变量引用时写回（用唯一内部名定位槽）
             if (node->operand->getType() == NodeType::IdentifierExpr) {
                 IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->operand.get());
                 ir::IRValue slot = lookupVar(ident->name);
                 if (slot.id >= 0) {
-                    emit(ir::Opcode::Store, {result}, ir::IRValue(), ident->name,
-                         operand.type, node->location);
+                    emit(ir::Opcode::Store, {result}, ir::IRValue(),
+                         lookupVarName(ident->name), operand.type, node->location);
                 }
             }
             lastExpr_ = result;
@@ -661,7 +696,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
     }
 }
 
-// 赋值表达式：Store + 返回值
+// 赋值表达式：Store + 返回值（目标用唯一内部名，遮蔽变量写自己的槽）
 void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     // 阶段一：仅支持标识符左值
     if (node->target->getType() != NodeType::IdentifierExpr) {
@@ -670,9 +705,10 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     }
     IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
     ir::IRValue value = genExpr(node->value.get());
-    // 查找变量类型
-    auto typeIt = varTypes_.find(ident->name);
-    std::string targetType = (typeIt != varTypes_.end()) ? typeIt->second : value.type;
+    // 查找变量类型与唯一内部名
+    std::string targetType = lookupVarType(ident->name);
+    if (targetType.empty()) targetType = value.type;
+    const std::string unique = lookupVarName(ident->name);
     // 复合赋值：值 = 当前值 op 右值
     if (isCompoundAssignOp(node->op)) {
         ir::IRValue current = genExpr(node->target.get());
@@ -681,14 +717,14 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         if (mapBinaryOp(baseOp, false, opcode)) {
             ir::IRValue combined = emitResult(opcode, {current, value}, targetType, "",
                                               node->location);
-            emit(ir::Opcode::Store, {combined}, ir::IRValue(), ident->name, targetType,
+            emit(ir::Opcode::Store, {combined}, ir::IRValue(), unique, targetType,
                  node->location);
             lastExpr_ = combined;
             return;
         }
     }
     // 简单赋值
-    emit(ir::Opcode::Store, {value}, ir::IRValue(), ident->name, targetType,
+    emit(ir::Opcode::Store, {value}, ir::IRValue(), unique, targetType,
          node->location);
     lastExpr_ = value;
 }

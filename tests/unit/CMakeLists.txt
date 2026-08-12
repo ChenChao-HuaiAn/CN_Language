@@ -1,5 +1,6 @@
 # 单元测试构建配置（Task 0.1：common；Task 1.1/1.2：lexer；Task 1.3/1.4：parser；
-#                      Task 1.5：semantic；Task 1.6：ir）
+#                      Task 1.5：semantic；Task 1.6：ir；Task 1.7：codegen；
+#                      Task 1.8：runtime）
 # 单元测试可执行文件
 add_executable(cn_unit_tests
     common/test_source_location.cpp
@@ -10,6 +11,8 @@ add_executable(cn_unit_tests
     parser/test_parser.cpp
     semantic/test_semantic.cpp
     ir/test_ir.cpp
+    codegen/test_x64_codegen.cpp
+    runtime/test_runtime.cpp
 )
 
 # 链接 Google Test 与公共模块库
@@ -20,6 +23,8 @@ target_link_libraries(cn_unit_tests PRIVATE
     cn_compiler_parser
     cn_compiler_semantic
     cn_compiler_ir
+    cn_compiler_codegen
+    cn_runtime
 )
 
 # 启用测试发现（ctest）

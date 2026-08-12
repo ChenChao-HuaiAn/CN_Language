@@ -132,10 +132,22 @@ struct IRBlock {
 struct IRFunction {
     std::string name;                          // 函数名
     std::string returnType;                    // 返回类型（IR类型）
-    std::vector<std::pair<std::string, std::string>> params;  // (参数名, IR类型)
+    // 参数列表 (源码名, IR类型)：对外接口保持源码名（可读性/测试契约）
+    std::vector<std::pair<std::string, std::string>> params;
+    // 参数唯一内部名（与 params 一一对应，供代码生成层分配独立栈槽，
+    // 解决遮蔽参数/变量的槽冲突）
+    std::vector<std::string> paramUniques;
     std::vector<std::unique_ptr<IRBlock>> blocks;             // 基本块列表
     int nextRegId = 0;                         // 下一个虚拟寄存器编号
     std::unordered_map<std::string, std::string> varTypes;   // 变量名 -> IR类型
+
+    // MSVC兼容：含 unique_ptr 的类，隐式拷贝构造会触发 C2280（traits实例化）。
+    // 显式声明移动语义（语义与默认一致），删除拷贝。
+    IRFunction() = default;
+    IRFunction(const IRFunction&) = delete;
+    IRFunction& operator=(const IRFunction&) = delete;
+    IRFunction(IRFunction&&) = default;
+    IRFunction& operator=(IRFunction&&) = default;
 };
 
 // IR模块：函数列表 + 字符串常量池
@@ -143,6 +155,13 @@ struct IRModule {
     std::vector<IRFunction> functions;                  // 函数列表
     std::vector<std::string> stringConstants;           // 字符串常量池（@str0/@str1...）
     std::unordered_map<std::string, int> stringIndex;   // 文本 -> 常量池ID
+
+    // MSVC兼容：与 IRFunction 相同原因，显式移动语义
+    IRModule() = default;
+    IRModule(const IRModule&) = delete;
+    IRModule& operator=(const IRModule&) = delete;
+    IRModule(IRModule&&) = default;
+    IRModule& operator=(IRModule&&) = default;
 };
 
 } // namespace ir
@@ -244,6 +263,11 @@ private:
     // 字符串字面量解码（剥离引号，阶段一简单解码）
     static std::string decodeString(const std::string& raw);
 
+    // 查找变量的唯一内部名（未找到返回空串）
+    std::string lookupVarName(const std::string& name) const;
+    // 查找变量的IR类型（未找到返回空串）
+    std::string lookupVarType(const std::string& name) const;
+
     // ==================== 成员状态 ====================
     Diagnostics& diagnostics_;                  // 诊断引擎
     ir::IRModule* module_ = nullptr;            // 当前模块
@@ -252,8 +276,15 @@ private:
     ir::IRValue lastExpr_;                      // 最近一次表达式生成的结果
     int regCounter_ = 0;                        // 虚拟寄存器编号（全局递增）
     int blockCounter_ = 0;                      // 基本块编号（全局递增）
-    std::unordered_map<std::string, int> varRegs_;  // 变量名 -> 寄存器ID（函数级）
-    std::unordered_map<std::string, std::string> varTypes_; // 变量名 -> IR类型（函数级）
+    int varCounter_ = 0;                        // 变量唯一名计数器（函数级递增）
+    // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
+    // 每个条目：源码名 -> {寄存器ID, 唯一内部名（name$N，遮蔽时分配独立槽）, IR类型}
+    struct VarEntry {
+        int regId = -1;
+        std::string uniqueName;
+        std::string type;
+    };
+    std::vector<std::unordered_map<std::string, VarEntry>> varStack_;
     // 循环控制流：中断/继续跳转目标栈
     struct LoopContext {
         std::string breakTarget;    // 中断跳转目标块标签

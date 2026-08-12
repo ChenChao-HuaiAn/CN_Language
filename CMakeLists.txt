@@ -21,7 +21,11 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target)
 # （环境可能无外网，FetchContent 拉取 github 会失败，故回退到本地 third-party 源码）
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
+    # 本地源码候选路径：1) 用户级 third-party 目录 2) 构建缓存 _deps（先前拉取的源码）
     set(_gtest_local_src "${CMAKE_SOURCE_DIR}/../../third-party/unittest/googletest")
+    if(NOT EXISTS "${_gtest_local_src}/src/gtest-all.cc")
+        set(_gtest_local_src "${CMAKE_SOURCE_DIR}/target/build/_deps/googletest-src/googletest")
+    endif()
     if(EXISTS "${_gtest_local_src}/src/gtest-all.cc")
         message(STATUS "未找到系统 Google Test，使用本地源码: ${_gtest_local_src}")
         # 线程库（gtest 依赖 pthread）
@@ -97,11 +101,42 @@ add_library(cn_compiler_ir STATIC
 )
 target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_parser cn_compiler_common)
 
+# 代码生成模块库：抽象后端接口 + X64代码生成器（Task 1.7，供编译器与单元测试共用）
+add_library(cn_compiler_codegen STATIC
+    src/cn_compiler/codegen/x64/x64_codegen.cpp
+    src/cn_compiler/codegen/x64/x64_instructions.cpp
+)
+target_include_directories(cn_compiler_codegen PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_common)
+
+# AST打印器：访问者模式递归打印AST树（Task 1.10 ast 命令，供编译器与单元测试共用）
+add_library(cn_compiler_ast_printer STATIC
+    src/cn_compiler/parser/ast_printer.cpp
+)
+target_include_directories(cn_compiler_ast_printer PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_ast_printer PUBLIC cn_compiler_parser cn_compiler_common)
+
+# 驱动模块库：CLI公共流水线与调试输出（Task 1.10 全链路集成）
+add_library(cn_compiler_driver STATIC
+    src/cn_compiler/driver/driver.cpp
+)
+target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer)
+
+# 运行时库（cnrt）：IO + 程序入口（Task 1.8，规格书第十章）
+# 提供CN内置函数实现（打印行/打印行整数/打印行浮点）与 crt0 风格程序入口（调用 主）
+# 将来 cn 可执行文件生成的汇编链接此库（Task 1.9）
+add_library(cn_runtime STATIC
+    src/runtime/io_api.cpp
+    src/runtime/runtime.cpp
+)
+target_include_directories(cn_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
+
 # 编译器可执行文件
 add_executable(cn
     src/cn_main.cpp
 )
-target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir)
+target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_driver)
 
 # 子目录：单元测试
 add_subdirectory(tests/unit)

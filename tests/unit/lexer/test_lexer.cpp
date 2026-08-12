@@ -251,11 +251,12 @@ TEST(LexerTest, NestedBlockComment) {
 // ==================== 6. 字符串转义处理 ====================
 
 // 字符串转义：\n \t \r \" \\ \uXXXX
+// 注意：MSVC 不支持 raw string 中的 \" 序列（C2017非法转义），改用普通字符串字面量
 TEST(LexerTest, StringEscapes) {
-    auto tokens = withoutEof(analyze(R"("行1\n行2\t\"引号\"\\结束")"));
+    auto tokens = withoutEof(analyze("\"行1\\n行2\\t\\\"引号\\\"\\\\结束\""));
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].getType(), TokenType::StringLiteral);
-    EXPECT_EQ(tokens[0].getValue(), R"("行1\n行2\t\"引号\"\\结束")");
+    EXPECT_EQ(tokens[0].getValue(), "\"行1\\n行2\\t\\\"引号\\\"\\\\结束\"");
 }
 
 // 字符转义：\n \t \0 \u{4E2D}

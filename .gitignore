@@ -3,6 +3,16 @@ build/
 target/
 out/
 
+# MSVC 编译中间产物（cl/ml64/link 直接调用产生的杂散文件）
+*.obj
+*.exe
+*.asm
+*.lib
+*.pdb
+*.ilk
+*.exp
+*.res
+
 # AI记忆库（不随git传递，新机器从零积累）
 .ai-coder/memory/
 .ai-coder/tasks/

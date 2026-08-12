@@ -43,7 +43,49 @@
   - Opcode 25种：ConstInt/Float/String/Bool、Add/Sub/Mul/Div/Mod、Eq/Ne/Lt/Le/Gt/Ge、And/Or/Not、Load/Store/Alloca、Jump/Branch/Call/Return、Phi预留
   - `IRGenerator` 类：AST→IR 全链路（函数/变量Alloca+Store/控制流基本块/调用/字符串常量池去重）
 - **CMake集成**：新增 `cn_compiler_semantic`、`cn_compiler_ir` 静态库；测试链接入 `cn_unit_tests`
-- **测试结果**：**159/159 单元测试全部通过**（common 12 + lexer 37 + parser 60 + semantic 30 + ir 17），E2E通过，编译零错误零警告
+- **测试结果**：**181/181 单元测试全部通过**（common 12 + lexer 37 + parser 60 + semantic 33 + ir 17 + codegen 10 + runtime 12），编译零错误零警告
+
+### 2.7 阶段一：Task 1.7 + Task 1.8（已完成，前一会话）
+- **Task 1.7**：X64代码生成器（`src/cn_compiler/codegen/x64/x64_codegen.cpp/.hpp`、`x64_instructions.cpp`、`test_x64_codegen.cpp` 10个测试）
+  - `X64CodeGenerator` 类：IR模块→Win x64 MASM汇编（.data段+ .code段 + END）
+  - 栈槽分配（虚拟寄存器→[rbp-8N-8]）、Win x64调用约定（rcx/rdx/r8/r9 + 影子空间）、符号修饰（中文名UTF-8十六进制 ?XX..@@Y）
+- **Task 1.8**：运行时库（`src/runtime/runtime.hpp`、`io_api.cpp`、`runtime.cpp`、`test_runtime.cpp` 12个测试）
+  - `extern "C"` 导出：`printLine/printLineInt/printLineFloat`（打印行系列）、`cn_alloc/cn_free/...`（内存管理）
+  - 程序入口 `entry()`（crt0风格调用 `cn_main`）+ Windows `WinMain` 转发
+  - 符号映射：CN `主`→`cn_main`、`打印行`→`printLine`
+
+### 2.8 阶段一：Task 1.9 Hello World 全链路（本次完成 ✅ 阶段一里程碑）
+- **`cn build` 命令**（`src/cn_main.cpp`）：词法→语法→语义→IR→X64汇编文本→写 .asm→ml64 汇编→cl 编译运行时→link 链接→.exe
+- **符号映射（方案A：代码生成器内处理）**：`x64_codegen.cpp` 新增 `symbolName()`——`主`→`cn_main`、`打印行`→`printLine` 等9个运行时符号；`x64_instructions.cpp` Call 指令改用 `symbolName()`
+- **语义内置函数**：`semantic.cpp` 新增 `registerBuiltins()` 注册 `打印行/打印行整数/打印行浮点`
+- **ml64 MASM 兼容性**：asm 写 UTF-8 无 BOM；字符串常量改十六进制字节（`hexBytesString()`）；IR 块标签 `块N`→`bbN`；`.code` 段加 `EXTERN` 声明
+- **链接配置**：`/ENTRY:WinMainCRTStartup` + `/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib`
+- **测试同步**：`test_x64_codegen.cpp` 字符串断言改为十六进制字节
+- **验证**：`cn build tests/e2e/01_hello/hello.cn` → `target/hello.exe` 输出"你好，世界"；E2E 1/1 通过；单元测试 181/181 通过
+
+### 2.9 阶段一：Task 1.10 全命令集成（已完成 ✅）
+- **公共流水线抽取**：新建 `src/cn_compiler/driver/driver.hpp/.cpp`，`runPipeline()` 抽取 词法→语法→语义→IR→汇编文本 公共流水线，供 build/compile/run/ir 复用；`runCheck()`/`printTokens()`/`printIr()` 调试输出
+- **AST打印器**：新建 `src/cn_compiler/parser/ast_printer.hpp/.cpp`，继承 AstVisitor 递归打印 AST 树
+- **7 个命令全部可用**：`build`（复用 runPipeline，行为与 Task 1.9 一致）/`compile`（输出 .asm）/`run`（编译+执行透传退出码，修复 cmd 正斜杠路径 bug）/`check`（语义检查）/`ir`（字符串池+函数+基本块+指令）/`ast`（AST 树）/`token`（Token 流）
+- **CMake**：注册 `cn_compiler_ast_printer`、`cn_compiler_driver` 静态库
+
+### 2.10 阶段一：生产环境审查修复（已完成 ✅，2026-08-12 19:04）
+Debug 子任务模拟生产环境发现并修复 8 个 BUG（详见 lessons.md 权重31.9 记录）：
+1. **类型别名规范化**：`canonicalType()` 统一 `整数`→`整32`/`小数`→`浮64`，declareVar/registerFunction/canConvert/commonNumericType 全链路使用
+2. **变量槽登记**：`generateFunctionAssembly` 扫描全部 Alloca 登记局部变量槽（此前全部生成 `[rbp0]` 报 A2006）
+3. **idiv size 前缀**：`idiv dword ptr/qword ptr [rbp-X]`（此前 A2023）
+4. **Win x64 影子空间**：`emitCall` 一次性 `sub rsp,(32+栈参+对齐)` 预留；接收侧栈参偏移 `[rbp+48+(i-4)*8]`
+5. **IR 变量遮蔽**：作用域栈 + 唯一内部名 `name$N`，func.params 保留源码名 + paramUniques
+6. **i32 参数符号扩展**：传参前 `movsxd` 符号扩展 i32→i64（负数不再变巨大正数）
+7. **--output 目录创建**：`ensureDirExists()` 逐级创建目录（此前 LNK1104）
+8. **流水线错误检查**：driver 流水线 IR/codegen 阶段补 `diagnostics.hasErrors()` 检查
+
+### 2.11 阶段一收尾（已完成 ✅，2026-08-12 19:05）
+- **清理根目录 10 个杂散 .obj**（asm_demo/ast/diagnostics/ir/lexer/parser/semantic/token/x64_codegen/x64_instructions），确认无 .exe/.asm/.lib/.pdb 杂散
+- **.gitignore 新增**：`*.obj/*.exe/*.asm/*.lib/*.pdb/*.ilk/*.exp/*.res`
+- **最终回归**：构建 14 工程零警告；单元测试 181/181；E2E 1/1（--strict）；手动 `cn build hello.cn` → `hello.exe` 输出"你好，世界"
+- **plans 打勾**：Task 1.8 的 5 个 Step 补勾；Task 1.10 后标注 8 个 BUG 已修复
+- **已推送** gitcode develop 分支
 
 ## 三、总结发现的问题
 
@@ -52,25 +94,33 @@
 2. **GCC 7 不支持中文标识符（测试名）**：`TEST(Suite, 中文名)` 宏展开生成中文类名/函数名编译失败 → 测试名必须用英文，中文仅用于注释/字符串（现有 parser/lexer 测试均如此）
 3. **IRGenerator 虚函数缺失**：头文件声明 `visitIfStmt/visitWhileStmt/visitForStmt` 但实现遗漏 → 链接报 undefined reference，补充转发到 genIf/genWhile/genFor
 4. **`结果` 是保留关键字**：CN 语言 `结果<T,E>`（Kw_Result）不能作变量名，`变量 结果 = ...` 解析失败（"预期变量名"）→ 测试改用 `答案`
+5. **ml64 UTF-8 兼容性（Task 1.9）**：带 BOM 的 asm 全部 A2044；`db "中文"` 原始 UTF-8 字节 A2044；中文块标签 A2044 → 解决方案：asm 无 BOM + 字符串十六进制字节 + ASCII 标签
+6. **链接 CRT 注入（Task 1.9）**：`/ENTRY:WinMain` 时 link 不自动注入 CRT 库（LNK2019 大量未解析）；`/ENTRY:WinMain` 跳过 CRT 启动导致 stdout 未初始化输出为空 → 用 `WinMainCRTStartup` + 显式 `/DEFAULTLIB`
+7. **内置函数符号缺失（Task 1.9）**：语义分析器报"未声明的函数 '打印行'" → 新增 `registerBuiltins()`
+8. **MSVC getenv C4996**：/W4 /WX 下 `getenv` 报 C2220 错误 → 用 `_dupenv_s` 封装
 
-### 3.2 既有经验（HANDOFF继承）
+### 3.2 既有经验（HANDOFF继承 + Task 1.9 补充）
 1. **GCC 7 不支持中文标识符**：所有标识符必须英文，中文仅用于注释/字符串
 2. **无外网**：googletest 用本地 `~/third-party/unittest/googletest`（LLVM定制版，需 `-DGTEST_NO_LLVM_SUPPORT`）
-3. **本机构建命令**：`export PATH=$HOME/gcc7/usr/bin:$PATH && cmake -B target/Debug -S . -DCMAKE_CXX_COMPILER=$HOME/gcc7/usr/bin/g++ ...`
-4. **编译产物在 target/**（CMAKE_RUNTIME_OUTPUT_DIRECTORY），测试二进制在 `target/cn_unit_tests`
-5. **实施计划示例代码用中文API命名，但用户明确要求英文API命名**（"这些指令优先于任何冲突的通用模式指令"）——新代码一律英文API
+3. **编译产物在 target/**（CMAKE_RUNTIME_OUTPUT_DIRECTORY），测试二进制在 `target/Debug/cn_unit_tests.exe`
+4. **实施计划示例代码用中文API命名，但用户明确要求英文API命名**（"这些指令优先于任何冲突的通用模式指令"）——新代码一律英文API
+5. **本机构建命令（Windows MSVC）**：`"C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build target/build --config Debug --target cn`（cmake 不在 PATH，用 VS 自带完整路径）
+6. **本机工具链**：VS2022 Community + MSVC 14.38.33130（vcvars64.bat 用此版本）+ Windows SDK 10.0.26100.0；vswhere 定位安装路径
+7. **ml64 汇编限制**：asm 必须 UTF-8 无 BOM；中文只在注释和 `db` 十六进制；标签/符号 ASCII
+8. **cn build 链接命令**：`link /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE /DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib`
 
 ## 四、当前卡在哪
 
-无卡点。阶段一 Task 1.1~1.6 已完成并全部测试通过。下一步是 Task 1.7（X64代码生成器）。
+无卡点。**阶段一（Task 1.1~1.10）已全部完成**：7 个 CLI 命令全可用，生产环境审查 8 个 BUG 已修复，最终回归验证通过（181/181 单元测试 + E2E 1/1 + 手动 build 输出"你好，世界"），已提交推送 gitcode develop。
 
 ## 五、下一步计划是什么
 
 ### 5.1 立即需要做的
-执行 `plans/002 CN语言编译器实施计划.md` 阶段一：
-- Task 1.7：X64代码生成器（`src/cn_compiler/codegen/`，IR→汇编文本）
-- Task 1.8：运行时库（打印行等IO API）
-- Task 1.9：Hello World全链路（cn build 命令 + NASM/链接器）
+执行 `plans/002 CN语言编译器实施计划.md` 阶段二（核心语言）：
+- **Task 2.1**：控制流（如果/否则/当/循环/选择/中断/继续）——parser 解析、semantic 布尔检查+循环嵌套、IR 条件跳转/基本块拆分、x64 cmp/jcc
+- **Task 2.2**：函数完整支持（原型声明/递归/函数指针）
+- 后续：全部位宽类型/数组指针/字符串系统/结构体枚举/基础优化
+- 每阶段继续遵循 E2E 先行 + 打勾 plans + 更新 更新日志/HANDOFF/lessons
 
 ### 5.2 实施时的注意事项
 - E2E先行：每个功能必须先写E2E测试
@@ -113,7 +163,7 @@
 
 ---
 
-**当前测试状态**：159/159 单元测试通过 + E2E通过，编译零警告。
+**当前测试状态**：181/181 单元测试通过（common 12 + lexer 37 + parser 60 + semantic 33 + ir 17 + codegen 10 + runtime 12）+ E2E 1/1 通过，编译零警告。
 
 ---
 
@@ -164,13 +214,14 @@ cd target/Debug && ctest -C Debug --output-on-failure
 | 阶段 | 任务 | 状态 |
 |------|------|------|
 | 阶段零 | Task 0.1~0.3（工程骨架/CLI/诊断/E2E框架） | ✅ 完成 |
-| 阶段一 | Task 1.1~1.6（Token/词法/AST/语法/语义/IR） | ✅ 完成（159测试） |
-| 阶段一 | Task 1.7 X64代码生成器 | ⬜ 未开始 |
-| 阶段一 | Task 1.8 运行时库 | ⬜ 未开始 |
-| 阶段一 | Task 1.9 Hello World E2E | ⬜ 未开始 |
+| 阶段一 | Task 1.1~1.6（Token/词法/AST/语法/语义/IR） | ✅ 完成（181测试） |
+| 阶段一 | Task 1.7 X64代码生成器 | ✅ 完成 |
+| 阶段一 | Task 1.8 运行时库 | ✅ 完成 |
+| 阶段一 | Task 1.9 Hello World E2E | ✅ 完成（里程碑） |
+| 阶段一 | Task 1.10 全命令集成 + 生产审查8BUG修复 | ✅ 完成 |
 | 阶段二~七 | 控制流完善/函数/类型系统/数组/结构体/OOP/模块/优化 | ⬜ 未开始 |
 
-**编译流水线已就绪**：`Lexer → Parser → SemanticAnalyzer → IRGenerator`，下一步接 `CodeGenerator`（IR→x64汇编→NASM→链接→可执行文件）。
+**编译流水线已全链路打通**：`Lexer → Parser → SemanticAnalyzer → IRGenerator → X64CodeGenerator → ml64 → link → .exe`，7 个 CLI 命令（build/compile/run/check/ir/ast/token）全部可用。
 
 ### 7.5 关键文件索引（新会话快速定位）
 
