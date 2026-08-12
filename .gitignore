@@ -1,0 +1,24 @@
+# 构建产物
+build/
+target/
+out/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+*.sln
+*.suo
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# 系统文件
+Thumbs.db
+.DS_Store

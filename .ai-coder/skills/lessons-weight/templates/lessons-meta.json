@@ -1,0 +1,38 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "YYYY-MM-DDTHH:mm:ss+08:00",
+  "statistics": {
+    "totalEntries": 0,
+    "typeDistribution": {
+      "设计缺陷": 0,
+      "任务未完成": 0,
+      "逻辑错误": 0,
+      "集成问题": 0,
+      "配置错误": 0,
+      "工具执行错误": 0,
+      "其他": 0
+    },
+    "weightDistribution": {
+      "mustRead": 0,
+      "recommendedRead": 0,
+      "optionalRead": 0,
+      "lowPriority": 0
+    },
+    "highWeightIssues": []
+  },
+  "entries": [
+    {
+      "id": "unique-id",
+      "timestamp": "YYYY-MM-DD HH:mm",
+      "type": "问题类型",
+      "description": "问题描述",
+      "rootCause": "根本原因",
+      "solution": "解决方案",
+      "prevention": "预防措施",
+      "weight": 0,
+      "resolutionStatus": "unresolved|partial|resolved",
+      "isTemplate": false,
+      "tags": []
+    }
+  ]
+}
