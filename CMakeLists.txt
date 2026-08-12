@@ -64,9 +64,34 @@ target_link_libraries(cn PRIVATE cn_compiler_common)
 # 子目录：单元测试
 add_subdirectory(tests/unit)
 
-# E2E测试目标（Task 0.2 提供脚本，此处预留）
-add_custom_target(e2e
-    COMMAND python3 ${CMAKE_SOURCE_DIR}/tests/e2e/run_e2e.py --cn ${CMAKE_SOURCE_DIR}/target/cn
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "运行E2E测试"
-)
+# ============ E2E测试集成 ============
+
+# 启用CTest（注册E2E测试到 ctest -R e2e）
+enable_testing()
+
+# 查找Python3解释器（E2E测试脚本依赖）
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_EXECUTABLE)
+    message(STATUS "找到Python3解释器: ${Python3_EXECUTABLE}")
+
+    # E2E自定义目标：cmake --build target/build --target e2e
+    # 通过生成器表达式 $<TARGET_FILE:cn> 自动携带编译器实际输出路径
+    add_custom_target(e2e
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/e2e/run_e2e.py
+                --cn $<TARGET_FILE:cn>
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "运行E2E测试（tests/e2e/run_e2e.py）"
+        USES_TERMINAL
+    )
+    # 确保运行E2E前编译器已构建
+    add_dependencies(e2e cn)
+
+    # CTest集成：ctest --test-dir target/build -R e2e
+    add_test(NAME e2e
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/tests/e2e/run_e2e.py
+                --cn $<TARGET_FILE:cn>
+    )
+    set_tests_properties(e2e PROPERTIES WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
+else()
+    message(WARNING "未找到Python3解释器，E2E测试不可用（安装Python 3后重新配置）")
+endif()
