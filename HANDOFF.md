@@ -17,7 +17,20 @@
 - 结构：SKILL.md + specs/(9个规范文档) + config/(2个配置) + templates/(3个模板) + README.md
 - 内容：基于设计规格书创建，覆盖词法/类型/控制流/函数/结构体枚举/OOP/错误处理/模块系统全部语法规范
 
-### 2.3 关键设计决策汇总（13项）
+### 2.3 实施计划（已创建，Task 0.1~0.3已完成）
+- 文件：`plans/002 CN语言编译器实施计划.md`（3904行）
+- 状态：阶段零 Task 0.1（CMake骨架+CLI+诊断系统）、Task 0.3（E2E测试框架）已完成；Task 0.2（Google Test）实际已在Task 0.1中一并完成（tests/unit/CMakeLists.txt已存在，`cn_unit_tests`可构建）
+
+### 2.4 阶段零已完成的工程基础设施
+1. **Task 0.1**（commit 7bf427e）：CMake项目骨架、CLI框架（build/compile/run/check/ir/ast/token命令）、诊断系统（SourceLocation + 诊断引擎）、Google Test集成
+   - 文件：`CMakeLists.txt`、`src/cn_main.cpp`、`src/cn_compiler/common/source_location.hpp`、`src/cn_compiler/common/diagnostics.hpp/.cpp`、`tests/unit/CMakeLists.txt`、`tests/unit/common/test_source_location.cpp`、`tests/unit/common/test_diagnostics.cpp`
+   - 产物：`target/Debug/cn.exe`、`target/Debug/cn_unit_tests.exe`（MSVC单配置生成器，输出到 target/Debug/）
+2. **Task 0.3**（commit c3eb089）：E2E测试框架
+   - 文件：`tests/e2e/run_e2e.py`（运行器：编译→运行→比对，--verbose/--filter/--strict/--target-dir参数，彩色输出，UTF-8强制）、`tests/e2e/01_hello/hello.cn` + `hello.expected`、`tests/e2e/README.md`
+   - CMake集成：Python3检测、`e2e`自定义目标（`$<TARGET_FILE:cn>`自动传编译器路径）、CTest注册（`ctest -C Debug -R e2e`）
+   - 验证：`python tests/e2e/run_e2e.py --cn target/Debug/cn.exe` 正常识别用例并标记"未实现"（SKIP），框架本身可用
+
+### 2.5 关键设计决策汇总（13项）
 1. 语法基准：以plans/001风格为准（C风格OOP+异常已改为错误码+指针+手动内存管理）
 2. 编译器实现：从零用C++重写
 3. 代码生成后端：直接生成汇编代码，无外部依赖
@@ -44,25 +57,20 @@
 
 ## 四、当前卡在哪
 
-无卡点。设计规格书已批准，cn-language-spec技能已创建。下一步是创建实施计划。
+无卡点。阶段零 Task 0.1~0.3（工程骨架+CLI+诊断系统+单元测试+E2E框架）已完成。下一步是阶段一 Task 1.1（Token定义）。
 
 ## 五、下一步计划是什么
 
 ### 5.1 立即需要做的
-调用writing-plans技能，基于 `plans/001 CN语言编译器设计规格书.md` 创建详细实施计划。实施计划应按设计规格书第十一章的8个阶段拆解：
-- 阶段零：工程搭建（CMake配置、项目骨架）
-- 阶段一：基础编译器（词法+语法分析器，Hello World可运行）
-- 阶段二：核心语言（控制流+函数+类型系统+数组指针+结构体枚举）
-- 阶段三：OOP与模块（类/继承/虚函数/接口/模块系统/错误处理）
-- 阶段四：优化与后端（IR生成+优化器+Win x64代码生成）
-- 阶段五：Linux ARM64+优化增强
-- 阶段六：标准库开发
-- 阶段七：自举（用CN重写编译器）
+执行 `plans/002 CN语言编译器实施计划.md` 阶段一：
+- Task 1.1：Token定义（token.hpp/.cpp + test_token.cpp）
+- Task 1.2：词法分析器
+- Task 1.3：语法分析器（基础子集）
+- ... 直到 Task 1.9：Hello World全链路打通（`cn build tests/e2e/01_hello/hello.cn` 输出"你好，世界"）
 
-### 5.2 实施计划保存位置
-`docs/superpowers/plans/2026-08-12-cn-compiler.md`（或按项目惯例放到plans目录）
+注意：Task 0.2（Google Test）的复选框在plans/002中尚未打勾，但实际工作已在Task 0.1完成（`tests/unit/CMakeLists.txt`、`cn_unit_tests`目标、CTest发现均可用），执行阶段一时可顺手确认/打勾。
 
-### 5.3 实施时的注意事项
+### 5.2 实施时的注意事项
 - E2E先行：每个功能必须先写E2E测试
 - 禁止skip()：所有测试必须真正运行
 - 编译产物放在target/目录
@@ -89,6 +97,14 @@
 3. **多平台调用约定**：Win x64和Linux ARM64的寄存器约定完全不同，需要通过抽象后端接口隔离。
 4. **128位整数**：硬件支持有限，可能需要运行时辅助函数。
 
+### 6.4 Task 0.3经验（E2E框架）
+1. **Windows控制台中文乱码**：Python脚本需 `sys.stdout.reconfigure(encoding="utf-8")` 强制UTF-8输出，否则管道/控制台代码页（GBK）导致中文乱码。
+2. **项目根目录计算**：`run_e2e.py` 位于 `tests/e2e/`，项目根要用 `.parent.parent`（e2e→tests→根），用 `.parent` 会错误指向 tests/。
+3. **cmake不在PATH**：本机cmake需用VS自带路径 `C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe`（ctest.exe同目录）。
+4. **MSVC多配置生成器**：ctest需指定 `-C Debug`，否则报"Test not available without configuration"。
+5. **findstr过滤中文会因编码不匹配导致退出码1/255**：验证命令避免用findstr过滤中文输出，直接看完整输出或过滤英文关键词。
+6. **编译"尚未实现"检测**：阶段零编译器build命令返回"尚未实现"（stderr），运行器将其标记为SKIP而非FAIL，退出码0；`--strict`参数可将其视为失败（阶段一完成后全量验证用）。
+
 ## 七、项目文件结构现状
 
 ```
@@ -102,11 +118,21 @@ CN_Language_C/
 │           ├── specs/            # 9个规范文档
 │           ├── config/           # 2个配置文件
 │           └── templates/        # 3个模板文件
+├── CMakeLists.txt                 # 顶层构建配置（含E2E测试CTest集成）
+├── 更新日志.md                    # 提交前更新（覆盖式）
 ├── plans/
-│   └── 001 CN语言编译器设计规格书.md  # 设计规格书（已批准）
+│   ├── 001 CN语言编译器设计规格书.md  # 设计规格书（已批准）
+│   └── 002 CN语言编译器实施计划.md    # 实施计划（Task 0.1/0.3已打勾）
 ├── Rust参考/                      # Rust参考文档（只读参考，15个文件）
+├── src/
+│   ├── cn_main.cpp                # CLI入口
+│   └── cn_compiler/common/        # 诊断系统（source_location.hpp/diagnostics.hpp/.cpp）
+├── tests/
+│   ├── unit/                      # 单元测试（common/下2个测试文件，cn_unit_tests目标）
+│   └── e2e/                       # E2E测试框架（run_e2e.py + 01_hello用例 + README.md）
+├── target/                        # 编译产物（Debug/下 cn.exe、cn_unit_tests.exe）
 ├── HANDOFF.md                    # 本文档
-└── （src/ tests/ stdlib/ target/ 等目录尚未创建，待实施阶段创建）
+└── （stdlib/ 等目录尚未创建，待后续阶段）
 ```
 
 ## 八、相关文档索引
@@ -114,7 +140,9 @@ CN_Language_C/
 | 文档 | 路径 | 状态 |
 |------|------|------|
 | 设计规格书 | plans/001 CN语言编译器设计规格书.md | ✅ 已批准 |
+| 实施计划 | plans/002 CN语言编译器实施计划.md | ✅ Task 0.1/0.3已打勾，0.2实际已完成 |
 | cn-language-spec技能 | .ai-coder/skills/cn-language-spec/ | ✅ 已创建 |
+| E2E测试说明 | tests/e2e/README.md | ✅ 已创建 |
 | Rust参考-路线图 | Rust参考/003-CN语言开发路线图.md | 📖 参考用 |
 | Rust参考-设计规格书 | Rust参考/002-CN语言设计规格书.md | 📖 参考用 |
 | Rust参考-挑战与风险 | Rust参考/004-CN语言挑战与风险分析.md | 📖 参考用 |
