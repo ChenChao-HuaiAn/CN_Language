@@ -55,11 +55,17 @@ add_library(cn_compiler_common STATIC
 )
 target_include_directories(cn_compiler_common PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
+# 词法模块库：Token定义（Task 1.1，供编译器与单元测试共用）
+add_library(cn_compiler_lexer STATIC
+    src/cn_compiler/lexer/token.cpp
+)
+target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
+
 # 编译器可执行文件
 add_executable(cn
     src/cn_main.cpp
 )
-target_link_libraries(cn PRIVATE cn_compiler_common)
+target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer)
 
 # 子目录：单元测试
 add_subdirectory(tests/unit)
