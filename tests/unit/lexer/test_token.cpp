@@ -1,5 +1,6 @@
 // Token定义单元测试：类型枚举、文本值、源码位置
 // 覆盖：53个关键字、字面量、运算符、分隔符、tokenTypeToString、分类方法、位置存储
+// Task 1.1a 补充：自增/自减/问号
 #include <gtest/gtest.h>
 #include <string>
 #include <utility>
@@ -16,70 +17,72 @@ namespace {
 // 53个关键字：枚举值 -> 对应中文文本
 const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     // ---- 控制流关键字(10) ----
-    {TokenType::关键字如果, "如果"},
-    {TokenType::关键字否则, "否则"},
-    {TokenType::关键字当, "当"},
-    {TokenType::关键字循环, "循环"},
-    {TokenType::关键字返回, "返回"},
-    {TokenType::关键字中断, "中断"},
-    {TokenType::关键字继续, "继续"},
-    {TokenType::关键字选择, "选择"},
-    {TokenType::关键字情况, "情况"},
-    {TokenType::关键字默认, "默认"},
+    {TokenType::Kw_If, "如果"},
+    {TokenType::Kw_Else, "否则"},
+    {TokenType::Kw_While, "当"},
+    {TokenType::Kw_For, "循环"},
+    {TokenType::Kw_Return, "返回"},
+    {TokenType::Kw_Break, "中断"},
+    {TokenType::Kw_Continue, "继续"},
+    {TokenType::Kw_Switch, "选择"},
+    {TokenType::Kw_Case, "情况"},
+    {TokenType::Kw_Default, "默认"},
     // ---- 类型关键字(20) ----
-    {TokenType::关键字整数, "整数"},
-    {TokenType::关键字小数, "小数"},
-    {TokenType::关键字整8, "整8"},
-    {TokenType::关键字整16, "整16"},
-    {TokenType::关键字整32, "整32"},
-    {TokenType::关键字整64, "整64"},
-    {TokenType::关键字整128, "整128"},
-    {TokenType::关键字正8, "正8"},
-    {TokenType::关键字正16, "正16"},
-    {TokenType::关键字正32, "正32"},
-    {TokenType::关键字正64, "正64"},
-    {TokenType::关键字正128, "正128"},
-    {TokenType::关键字浮32, "浮32"},
-    {TokenType::关键字浮64, "浮64"},
-    {TokenType::关键字布尔, "布尔"},
-    {TokenType::关键字字符, "字符"},
-    {TokenType::关键字字符串, "字符串"},
-    {TokenType::关键字空类型, "空类型"},
-    {TokenType::关键字结构体, "结构体"},
-    {TokenType::关键字枚举, "枚举"},
+    {TokenType::Kw_Int, "整数"},
+    {TokenType::Kw_Double, "小数"},
+    {TokenType::Kw_Int8, "整8"},
+    {TokenType::Kw_Int16, "整16"},
+    {TokenType::Kw_Int32, "整32"},
+    {TokenType::Kw_Int64, "整64"},
+    {TokenType::Kw_Int128, "整128"},
+    {TokenType::Kw_UInt8, "正8"},
+    {TokenType::Kw_UInt16, "正16"},
+    {TokenType::Kw_UInt32, "正32"},
+    {TokenType::Kw_UInt64, "正64"},
+    {TokenType::Kw_UInt128, "正128"},
+    {TokenType::Kw_Float32, "浮32"},
+    {TokenType::Kw_Float64, "浮64"},
+    {TokenType::Kw_Bool, "布尔"},
+    {TokenType::Kw_Char, "字符"},
+    {TokenType::Kw_String, "字符串"},
+    {TokenType::Kw_Void, "空类型"},
+    {TokenType::Kw_Struct, "结构体"},
+    {TokenType::Kw_Enum, "枚举"},
     // ---- 声明关键字(7) ----
-    {TokenType::关键字函数, "函数"},
-    {TokenType::关键字变量, "变量"},
-    {TokenType::关键字导入, "导入"},
-    {TokenType::关键字从, "从"},
-    {TokenType::关键字公开, "公开"},
-    {TokenType::关键字私有, "私有"},
-    {TokenType::关键字静态, "静态"},
+    {TokenType::Kw_Function, "函数"},
+    {TokenType::Kw_Var, "变量"},
+    {TokenType::Kw_Import, "导入"},
+    {TokenType::Kw_From, "从"},
+    {TokenType::Kw_Public, "公开"},
+    {TokenType::Kw_Private, "私有"},
+    {TokenType::Kw_Static, "静态"},
     // ---- 常量关键字(3) ----
-    {TokenType::关键字真, "真"},
-    {TokenType::关键字假, "假"},
-    {TokenType::关键字无, "无"},
+    {TokenType::Kw_True, "真"},
+    {TokenType::Kw_False, "假"},
+    {TokenType::Kw_None, "无"},
     // ---- OOP关键字(9) ----
-    {TokenType::关键字类, "类"},
-    {TokenType::关键字接口, "接口"},
-    {TokenType::关键字保护, "保护"},
-    {TokenType::关键字虚拟, "虚拟"},
-    {TokenType::关键字重写, "重写"},
-    {TokenType::关键字抽象, "抽象"},
-    {TokenType::关键字实现, "实现"},
-    {TokenType::关键字自身, "自身"},
-    {TokenType::关键字父类, "父类"},
+    {TokenType::Kw_Class, "类"},
+    {TokenType::Kw_Interface, "接口"},
+    {TokenType::Kw_Protected, "保护"},
+    {TokenType::Kw_Virtual, "虚拟"},
+    {TokenType::Kw_Override, "重写"},
+    {TokenType::Kw_Abstract, "抽象"},
+    {TokenType::Kw_Implements, "实现"},
+    {TokenType::Kw_Self, "自身"},
+    {TokenType::Kw_Super, "父类"},
     // ---- 错误处理关键字(2) ----
-    {TokenType::关键字结果, "结果"},
-    {TokenType::关键字可选, "可选"},
+    {TokenType::Kw_Result, "结果"},
+    {TokenType::Kw_Optional, "可选"},
     // ---- 字面量前缀关键字(2) ----
-    {TokenType::关键字原始, "原始"},
-    {TokenType::关键字多行, "多行"},
+    {TokenType::Kw_Raw, "原始"},
+    {TokenType::Kw_MultiLine, "多行"},
 };
 
 // 运算符：枚举值 -> 符号文本（tokenTypeToString 输出）
 const std::vector<std::pair<TokenType, std::string>> kOperatorTable = {
-    // ---- 算术(5) ----
+    // ---- 算术(7) ----
+    {TokenType::PlusPlus, "++"},
+    {TokenType::MinusMinus, "--"},
     {TokenType::Plus, "+"},
     {TokenType::Minus, "-"},
     {TokenType::Star, "*"},
@@ -134,6 +137,7 @@ const std::vector<std::pair<TokenType, std::string>> kDelimiterTable = {
     {TokenType::Semicolon, ";"},
     {TokenType::Comma, ","},
     {TokenType::Colon, ":"},
+    {TokenType::Question, "?"},
 };
 
 } // namespace
@@ -141,7 +145,8 @@ const std::vector<std::pair<TokenType, std::string>> kDelimiterTable = {
 // ---- 关键字测试 ----
 
 // 构造53个关键字Token并验证类型与文本
-TEST(TokenTest, 构造53个关键字) {
+// 注：测试名使用英文（GCC 7 不支持中文标识符，中文仅用于注释与字符串）
+TEST(TokenTest, ConstructAll53Keywords) {
     ASSERT_EQ(kKeywordTable.size(), static_cast<size_t>(53));
     for (const auto& entry : kKeywordTable) {
         Token token(entry.first, entry.second, SourceLocation("测试.cn", 1, 1));
@@ -156,7 +161,7 @@ TEST(TokenTest, 构造53个关键字) {
 }
 
 // tokenTypeToString 对全部关键字返回正确中文文本
-TEST(TokenTest, 关键字转字符串) {
+TEST(TokenTest, KeywordToString) {
     for (const auto& entry : kKeywordTable) {
         EXPECT_EQ(Token::tokenTypeToString(entry.first), entry.second);
     }
@@ -165,7 +170,7 @@ TEST(TokenTest, 关键字转字符串) {
 // ---- 字面量测试 ----
 
 // 字面量Token的值存储与分类
-TEST(TokenTest, 字面量值存储) {
+TEST(TokenTest, LiteralValueStorage) {
     Token integer(TokenType::IntegerLiteral, "42", SourceLocation("测试.cn", 1, 1));
     EXPECT_EQ(integer.getType(), TokenType::IntegerLiteral);
     EXPECT_EQ(integer.getValue(), "42");
@@ -189,8 +194,39 @@ TEST(TokenTest, 字面量值存储) {
 
 // ---- 运算符测试 ----
 
+// 自增/自减/问号新Token类型专项测试（Task 1.1a）
+TEST(TokenTest, IncrementDecrementQuestionToken) {
+    Token plusPlus(TokenType::PlusPlus, "++", SourceLocation("测试.cn", 1, 1));
+    EXPECT_EQ(plusPlus.getType(), TokenType::PlusPlus);
+    EXPECT_EQ(plusPlus.getValue(), "++");
+    EXPECT_TRUE(plusPlus.isOperator());
+    EXPECT_TRUE(Token::isOperator(TokenType::PlusPlus));
+    EXPECT_FALSE(plusPlus.isDelimiter());
+
+    Token minusMinus(TokenType::MinusMinus, "--", SourceLocation("测试.cn", 1, 1));
+    EXPECT_EQ(minusMinus.getType(), TokenType::MinusMinus);
+    EXPECT_EQ(minusMinus.getValue(), "--");
+    EXPECT_TRUE(minusMinus.isOperator());
+    EXPECT_TRUE(Token::isOperator(TokenType::MinusMinus));
+    EXPECT_FALSE(minusMinus.isDelimiter());
+
+    Token question(TokenType::Question, "?", SourceLocation("测试.cn", 1, 1));
+    EXPECT_EQ(question.getType(), TokenType::Question);
+    EXPECT_EQ(question.getValue(), "?");
+    EXPECT_TRUE(question.isDelimiter());
+    EXPECT_TRUE(Token::isDelimiter(TokenType::Question));
+    EXPECT_FALSE(question.isOperator());
+    EXPECT_FALSE(question.isKeyword());
+    EXPECT_FALSE(question.isLiteral());
+
+    // tokenTypeToString 映射
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::PlusPlus), "++");
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::MinusMinus), "--");
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::Question), "?");
+}
+
 // 构造运算符Token并验证类型与分类
-TEST(TokenTest, 运算符构造与分类) {
+TEST(TokenTest, OperatorConstruction) {
     for (const auto& entry : kOperatorTable) {
         Token token(entry.first, entry.second, SourceLocation("测试.cn", 1, 1));
         EXPECT_EQ(token.getType(), entry.first);
@@ -210,7 +246,7 @@ TEST(TokenTest, 运算符构造与分类) {
 }
 
 // 运算符转字符串返回符号文本
-TEST(TokenTest, 运算符转字符串) {
+TEST(TokenTest, OperatorToString) {
     for (const auto& entry : kOperatorTable) {
         EXPECT_EQ(Token::tokenTypeToString(entry.first), entry.second);
     }
@@ -219,7 +255,7 @@ TEST(TokenTest, 运算符转字符串) {
 // ---- 分隔符测试 ----
 
 // 构造分隔符Token并验证分类
-TEST(TokenTest, 分隔符构造与分类) {
+TEST(TokenTest, DelimiterConstruction) {
     for (const auto& entry : kDelimiterTable) {
         Token token(entry.first, entry.second, SourceLocation("测试.cn", 1, 1));
         EXPECT_EQ(token.getType(), entry.first);
@@ -237,7 +273,7 @@ TEST(TokenTest, 分隔符构造与分类) {
 // ---- tokenTypeToString 覆盖测试 ----
 
 // 标识符/字面量/EOF/未知类型的字符串映射
-TEST(TokenTest, 特殊类型转字符串) {
+TEST(TokenTest, SpecialTypeToString) {
     EXPECT_EQ(Token::tokenTypeToString(TokenType::Identifier), "标识符");
     EXPECT_EQ(Token::tokenTypeToString(TokenType::IntegerLiteral), "整数字面量");
     EXPECT_EQ(Token::tokenTypeToString(TokenType::FloatLiteral), "浮点字面量");
@@ -254,9 +290,9 @@ TEST(TokenTest, 特殊类型转字符串) {
 // ---- 分类方法测试 ----
 
 // 各类别方法的正反向断言
-TEST(TokenTest, 分类方法) {
+TEST(TokenTest, ClassificationMethods) {
     // 关键字
-    EXPECT_TRUE(Token::isKeyword(TokenType::关键字返回));
+    EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Return));
     EXPECT_FALSE(Token::isKeyword(TokenType::Identifier));
     // 字面量
     EXPECT_TRUE(Token::isLiteral(TokenType::IntegerLiteral));
@@ -270,7 +306,7 @@ TEST(TokenTest, 分类方法) {
     EXPECT_TRUE(Token::isOperator(TokenType::AmpAddress));
     EXPECT_TRUE(Token::isOperator(TokenType::StarDeref));
     EXPECT_FALSE(Token::isOperator(TokenType::LeftParen));
-    EXPECT_FALSE(Token::isOperator(TokenType::关键字如果));
+    EXPECT_FALSE(Token::isOperator(TokenType::Kw_If));
     // 分隔符
     EXPECT_TRUE(Token::isDelimiter(TokenType::LeftParen));
     EXPECT_TRUE(Token::isDelimiter(TokenType::Semicolon));
@@ -286,9 +322,9 @@ TEST(TokenTest, 分类方法) {
 // ---- 源码位置测试 ----
 
 // Token携带SourceLocation并可正确读取
-TEST(TokenTest, 源码位置存储) {
+TEST(TokenTest, SourceLocationStorage) {
     SourceLocation location("测试.cn", 3, 7);
-    Token token(TokenType::关键字返回, "返回", location);
+    Token token(TokenType::Kw_Return, "返回", location);
     EXPECT_EQ(token.getLocation().getFileName(), "测试.cn");
     EXPECT_EQ(token.getLocation().getLine(), 3);
     EXPECT_EQ(token.getLocation().getColumn(), 7);

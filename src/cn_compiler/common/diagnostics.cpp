@@ -5,7 +5,8 @@
 namespace cn_compiler {
 
 // 将诊断级别转换为显示字符串
-static const char* 级别字符串(DiagnosticLevel level) {
+// 注：函数名使用英文，避免旧版GCC对中文标识符在operator<< ADL场景的解析bug
+static const char* levelToString(DiagnosticLevel level) {
     switch (level) {
         case DiagnosticLevel::Error:   return "错误";
         case DiagnosticLevel::Warning: return "警告";
@@ -31,7 +32,7 @@ void Diagnostics::report(const Diagnostic& diagnostic) {
 std::string Diagnostics::format() const {
     std::ostringstream oss;
     for (const auto& d : diagnostics_) {
-        oss << d.location.toString() << ": " << 级别字符串(d.level)
+        oss << d.location.toString() << ": " << levelToString(d.level)
             << ": " << d.message << "\n";
     }
     return oss.str();

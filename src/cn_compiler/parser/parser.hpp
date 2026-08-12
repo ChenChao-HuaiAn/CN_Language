@@ -1,0 +1,99 @@
+// 语法分析器：Token流 -> AST（Task 1.4）
+// 设计要点：
+//   1. 递归下降 + Pratt表达式解析（10级优先级链，阶段一子集）
+//   2. 接收 Token 序列和诊断引擎引用，parse() 返回 std::unique_ptr<Program>
+//   3. 错误恢复：报告语法错误后，同步到下一个语句边界继续解析
+//   4. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
+#pragma once
+#include <cstddef>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/lexer/token.hpp"
+#include "cn_compiler/parser/ast.hpp"
+
+namespace cn_compiler {
+
+// 语法分析器：递归下降 + Pratt表达式解析
+// 语法规则（阶段一子集，依据 CN语言规范 [03] 语句与控制流、[04] 函数与函数指针）：
+//   函数声明：函数 名称(参数列表) [-> 返回类型] { 函数体 }
+//   变量声明：变量 名称 [= 初始值] | 类型 名称 [= 初始值] | 常量 名称 [= 初始值]
+//   参数声明：类型 参数名（CN规范类型前置）
+//   条件语句：如果 (条件) { } [否则 如果 (条件) { }]* [否则 { }]
+//   当循环：当 (条件) { }
+//   循环语句：循环 (初始化; 条件; 更新) { } 或 循环 { }（无限循环）
+//   返回语句：返回 [表达式];  中断：中断;  继续：继续;
+class Parser {
+public:
+    // 构造函数：绑定诊断引擎引用
+    explicit Parser(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
+
+    // 主入口：分析Token流，返回程序AST（即使有错误也尽力返回部分AST）
+    std::unique_ptr<Program> parse(const std::vector<Token>& tokens);
+
+private:
+    // ==================== 基础辅助 ====================
+
+    const Token& current() const;                     // 当前Token（永不越界，末尾为EOF）
+    TokenType currentType() const;                    // 当前Token类型（便捷访问）
+    void advance();                                   // 前进一个Token（不越过EOF）
+    bool check(TokenType type) const;                 // 当前是否为目标类型
+    bool match(TokenType type);                       // 匹配并前进（匹配成功返回true）
+    bool checkText(const char* text) const;           // 当前Token文本是否等于指定文本
+    void reportError(const SourceLocation& loc, const std::string& message); // 报告语法错误
+    void reportErrorHere(const std::string& message); // 报告当前Token位置错误
+    void consume(TokenType type, const std::string& expected); // 匹配并前进，失败报错
+    void consumeSemicolon();                          // 消费可选分号（分号可选，规范示例无分号）
+    void synchronize();                               // 错误恢复：同步到下一个语句边界
+    bool atStatementBoundary() const;                 // 是否处于语句边界（} ; EOF 等）
+    void skipToStatementBoundary();                   // 跳过Token直到语句边界
+
+    // ==================== 类型与声明解析 ====================
+
+    std::unique_ptr<FunctionDecl> parseFunctionDecl();  // 函数 名称(参数) [-> 类型] { 体 }
+    std::unique_ptr<ParamDecl> parseParamDecl();        // 参数：类型 名称 或 名称: 类型
+    std::string parseTypeName();                        // 类型名（类型关键字/标识符）
+    std::unique_ptr<Stmt> parseVarDecl();               // 变量/常量/静态 声明
+    std::unique_ptr<Stmt> parseVarDeclAfterKeyword(bool isConst); // 已消费 变量/常量 关键字后的声明体
+    std::unique_ptr<Stmt> parseStaticVarDecl();         // 静态 [变量] 类型 名称 [= 初始值]
+    std::unique_ptr<Stmt> parseTypePrefixVarDecl();     // 类型 名称 [= 初始值]（类型前置）
+
+    // ==================== 语句解析 ====================
+
+    std::unique_ptr<Stmt> parseStmt();                  // 语句分发入口
+    std::unique_ptr<BlockStmt> parseBlockStmt();        // { 语句列表 }
+    std::unique_ptr<Stmt> parseIfStmt();                // 如果 (条件) { } 否则链
+    std::unique_ptr<Stmt> parseWhileStmt();             // 当 (条件) { }
+    std::unique_ptr<Stmt> parseForStmt();               // 循环 (初始化; 条件; 更新) { } / 循环 { }
+    std::unique_ptr<Stmt> parseReturnStmt();            // 返回 [表达式]
+    std::unique_ptr<Stmt> parseBreakStmt();             // 中断
+    std::unique_ptr<Stmt> parseContinueStmt();          // 继续
+
+    // ==================== 表达式解析（Pratt优先级链） ====================
+
+    std::unique_ptr<Expr> parseExpr();                  // 优先级1：赋值（最低）
+    std::unique_ptr<Expr> parseAssignment();            // 赋值：= += -= *= /= %= （右结合）
+    std::unique_ptr<Expr> parseLogicalOr();             // 优先级2：||
+    std::unique_ptr<Expr> parseLogicalAnd();            // 优先级3：&&
+    std::unique_ptr<Expr> parseEquality();              // 优先级4：== !=
+    std::unique_ptr<Expr> parseComparison();            // 优先级5：< > <= >=
+    std::unique_ptr<Expr> parseAdditive();              // 优先级6：+ -
+    std::unique_ptr<Expr> parseMultiplicative();        // 优先级7：* / %
+    std::unique_ptr<Expr> parseUnary();                 // 优先级8：! - ~ ++ -- （前缀）
+    std::unique_ptr<Expr> parsePostfix();               // 优先级9：++ -- () .
+    std::unique_ptr<Expr> parsePrimary();               // 优先级10：字面量/标识符/(expr)
+
+    // ---- 后缀解析辅助（避免单个函数超过100行） ----
+    std::unique_ptr<Expr> parsePostfixIncDec(std::unique_ptr<Expr> expr); // 后缀 ++ --
+    std::unique_ptr<Expr> parseCallOrMember(std::unique_ptr<Expr> expr); // () 和 .
+
+    // ==================== 成员状态 ====================
+
+    std::vector<Token> tokens_;  // Token流
+    std::size_t pos_ = 0;        // 当前Token索引
+    Diagnostics& diagnostics_;   // 诊断引擎引用
+};
+
+} // namespace cn_compiler

@@ -17,17 +17,32 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target)
 
-# Google Test：优先使用系统安装，否则通过 FetchContent 拉取
+# Google Test：优先使用系统安装，否则使用本地第三方源码构建
+# （环境可能无外网，FetchContent 拉取 github 会失败，故回退到本地 third-party 源码）
 find_package(GTest QUIET)
 if(NOT GTest_FOUND)
-    message(STATUS "未找到系统 Google Test，通过 FetchContent 拉取 googletest v1.14.0")
-    include(FetchContent)
-    FetchContent_Declare(
-        googletest
-        GIT_REPOSITORY https://github.com/google/googletest.git
-        GIT_TAG v1.14.0
-    )
-    FetchContent_MakeAvailable(googletest)
+    set(_gtest_local_src "${CMAKE_SOURCE_DIR}/../../third-party/unittest/googletest")
+    if(EXISTS "${_gtest_local_src}/src/gtest-all.cc")
+        message(STATUS "未找到系统 Google Test，使用本地源码: ${_gtest_local_src}")
+        # 线程库（gtest 依赖 pthread）
+        find_package(Threads REQUIRED)
+        # gtest 静态库（gtest-all.cc 为聚合编译文件，包含全部实现）
+        add_library(gtest STATIC "${_gtest_local_src}/src/gtest-all.cc")
+        target_include_directories(gtest PUBLIC "${_gtest_local_src}/include")
+        # gtest-all.cc 内部以相对路径 src/xxx.cc 包含同目录源文件，需将根目录加入私有包含路径
+        target_include_directories(gtest PRIVATE "${_gtest_local_src}")
+        # 本地源码为LLVM定制版gtest，禁用LLVM支持以消除对LLVM头文件的依赖
+        target_compile_definitions(gtest PUBLIC GTEST_NO_LLVM_SUPPORT)
+        target_link_libraries(gtest PUBLIC Threads::Threads)
+        # gtest_main 静态库（提供 main 入口）
+        add_library(gtest_main STATIC "${_gtest_local_src}/src/gtest_main.cc")
+        target_include_directories(gtest_main PUBLIC "${_gtest_local_src}/include")
+        target_link_libraries(gtest_main PUBLIC gtest)
+        # 兼容 GTest::gtest_main 命名（与系统包一致）
+        add_library(GTest::gtest_main ALIAS gtest_main)
+    else()
+        message(FATAL_ERROR "未找到系统 Google Test 且本地源码不可用（${_gtest_local_src}），请安装 gtest 或补充源码")
+    endif()
 endif()
 
 # Google Test 自身代码不启用 -Werror（避免第三方代码警告中断构建）
@@ -43,10 +58,11 @@ endforeach()
 
 # 编译警告（零警告要求，仅作用于本项目目标）
 # MSVC 需显式指定 UTF-8 源码编码（/utf-8），避免中文注释按 GBK 代码页误解析
+# GCC/Clang 需指定 -finput-charset=UTF-8，否则中文注释/标识符按本地编码解析报 stray 错误
 if(MSVC)
     add_compile_options(/W4 /WX /utf-8)
 else()
-    add_compile_options(-Wall -Wextra -Werror)
+    add_compile_options(-Wall -Wextra -Werror -finput-charset=UTF-8)
 endif()
 
 # 公共模块库：诊断系统（供编译器与单元测试共用）
@@ -55,17 +71,37 @@ add_library(cn_compiler_common STATIC
 )
 target_include_directories(cn_compiler_common PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
-# 词法模块库：Token定义（Task 1.1，供编译器与单元测试共用）
+# 词法模块库：Token定义 + 词法分析器（Task 1.1 + Task 1.2，供编译器与单元测试共用）
 add_library(cn_compiler_lexer STATIC
     src/cn_compiler/lexer/token.cpp
+    src/cn_compiler/lexer/lexer.cpp
 )
 target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
+
+# 语法模块库：AST节点定义 + 语法分析器（Task 1.3 + Task 1.4，供编译器与单元测试共用）
+add_library(cn_compiler_parser STATIC
+    src/cn_compiler/parser/ast.cpp
+    src/cn_compiler/parser/parser.cpp
+)
+target_link_libraries(cn_compiler_parser PUBLIC cn_compiler_lexer cn_compiler_common)
+
+# 语义模块库：语义分析器（Task 1.5，供编译器与单元测试共用）
+add_library(cn_compiler_semantic STATIC
+    src/cn_compiler/semantic/semantic.cpp
+)
+target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_parser cn_compiler_common)
+
+# IR模块库：CN-IR结构与IR生成器（Task 1.6，供编译器与单元测试共用）
+add_library(cn_compiler_ir STATIC
+    src/cn_compiler/ir/ir.cpp
+)
+target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_parser cn_compiler_common)
 
 # 编译器可执行文件
 add_executable(cn
     src/cn_main.cpp
 )
-target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer)
+target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir)
 
 # 子目录：单元测试
 add_subdirectory(tests/unit)
