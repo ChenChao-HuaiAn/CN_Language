@@ -843,6 +843,27 @@ void SemanticAnalyzer::visitDefaultLabel(DefaultLabel* node) {
 void SemanticAnalyzer::visitIntegerLiteral(IntegerLiteral* node) {
     lastType_ = types::literalTypeOf(node->raw, false);
     if (lastType_.empty()) lastType_ = "整32";  // 非法后缀防御性回退
+    // Task 完善A：i128/正128 字面量越界检查（规格书4.3 字面量范围）——
+    //   整128（有符号）上限 2^127-1、正128（无符号）上限 2^128-1。
+    //   超限立即报错（IR 层同样防御性检查，语义层先拦截供诊断）。
+    //   注意：无后缀超 int64 的字面量（如 2^127）IR 层会提升为整128，
+    //   此处同样按整128 上限检查（2^127 超出 2^127-1 报错）。
+    const std::string stripped = types::stripLiteralSuffix(node->raw);
+    if (lastType_ == "整128" || lastType_ == "正128" ||
+        (lastType_ == "整32" && types::textExceedsInt64(stripped))) {
+        const bool isSigned = (lastType_ != "正128");
+        const std::string limit = isSigned
+                                      ? "170141183460469231731687303715884105727"  // 2^127-1
+                                      : "340282366920938463463374607431768211455";  // 2^128-1
+        if (stripped.size() > limit.size() ||
+            (stripped.size() == limit.size() && stripped > limit)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "整数字面量超出" +
+                                    std::string(isSigned ? "整128（2^127-1）"
+                                                         : "正128（2^128-1）") +
+                                    "范围");
+        }
+    }
 }
 
 // 浮点字面量（Task 2.3：f后缀 -> 浮32，无后缀 -> 浮64）
@@ -1385,6 +1406,24 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
                 fieldType = canonicalType(f.type);
                 break;
             }
+        }
+        // 数组字段初始化列表（Task 完善A）：字段值为 InitListExpr（如 分数 = { 80, 90, 70 }），
+        //   字段类型须为数组，逐元素检查类型（元素类型与元素值类型可转换）
+        if (fieldPair.second->getType() == NodeType::InitListExpr) {
+            if (types::isArray(fieldType)) {
+                InitListExpr* list = static_cast<InitListExpr*>(fieldPair.second.get());
+                const std::string elemType = canonicalType(types::arrayElemOf(fieldType));
+                for (auto& elem : list->elements) {
+                    std::string elemValueType = checkExpr(elem.get());
+                    if (!elemValueType.empty() && elemValueType != "未知" &&
+                        !canConvertType(elemValueType, elemType)) {
+                        diagnostics_.report(DiagnosticLevel::Error, elem->location,
+                                            "结构体数组字段 '" + fieldName + "' 元素无法将 '" +
+                                            elemValueType + "' 隐式转换为 '" + elemType + "'");
+                    }
+                }
+            }
+            continue;
         }
         // 值类型检查（嵌套结构体初始化递归检查：checkExpr 返回内层类型）
         std::string valueType = checkExpr(fieldPair.second.get());

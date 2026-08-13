@@ -84,5 +84,19 @@ std::string literalTypeOf(const std::string& raw, bool isFloat);
 // 剥离字面量文本的后缀，返回纯数字文本（"123ULL" -> "123"，"3.5f" -> "3.5"）
 std::string stripLiteralSuffix(const std::string& raw);
 
+// ==================== 128位整数文本工具（Task 完善A：i128 完整支持） ====================
+
+// 是否 128 位整数类型（整128/正128）
+bool isI128(const std::string& type);
+
+// 十进制文本是否超出 int64 范围（正值 > 9223372036854775807；用于无后缀自动提升 i128）
+// text 应为已剥后缀的纯数字文本（仅十进制）
+bool textExceedsInt64(const std::string& text);
+
+// 将 i128 字面量文本拆分为 低64位:高64位 十六进制文本（如 "10000000000000000000" -> "0:8AC7230489E80000"）
+// 支持 十进制/0x十六进制/0b二进制/0o八进制 前缀（文本已剥后缀）
+// 解析失败返回空串（词法层已保证合法，防御性）
+std::string splitI128Text(const std::string& raw);
+
 } // namespace types
 } // namespace cn_compiler

@@ -4,7 +4,9 @@
 //   2. 隐式转换按规格书3.7：字符↔整数、整型宽化（同符号向宽）、浮点宽化、整数->浮点
 //   3. 数值运算结果类型：整型取秩高者、含浮点取较宽浮点（整/浮混合取浮点）
 //   4. 字面量后缀（规格书4.3）：f/L/LL/U/UL/ULL -> 浮32/整64/整128/正32/正64/正128
+#include <algorithm>
 #include <cctype>
+#include <cstdio>
 #include <string>
 #include <unordered_map>
 
@@ -216,6 +218,66 @@ std::string literalTypeOf(const std::string& raw, bool isFloat) {
     if (suffix == "UL") return "正64";
     if (suffix == "ULL") return "正128";
     return "";  // 非法后缀（词法层已限制，防御性返回空串）
+}
+
+// ==================== 128位整数文本工具（Task 完善A） ====================
+
+// 是否 128 位整数类型（整128/正128）
+bool isI128(const std::string& typeRaw) {
+    const std::string t = canonical(typeRaw);
+    return t == "整128" || t == "正128";
+}
+
+// 十进制文本是否超出 int64 范围（正值 > 9223372036854775807）
+bool textExceedsInt64(const std::string& text) {
+    // 字符串比较：长度大于19必超；长度等于19按字典序比较
+    if (text.size() < 19) return false;
+    if (text.size() > 19) return true;
+    return text > "9223372036854775807";
+}
+
+// 将 128 位字面量文本拆为 低64位:高64位（十六进制）
+// 返回 "低十六进制:高十六进制"（如 "0:8AC7230489E80000"）；非法返回空串
+std::string splitI128Text(const std::string& raw) {
+    // 识别进制前缀
+    int base = 10;
+    std::size_t start = 0;
+    if (raw.size() > 2 && raw[0] == '0') {
+        if (raw[1] == 'x' || raw[1] == 'X') { base = 16; start = 2; }
+        else if (raw[1] == 'b' || raw[1] == 'B') { base = 2; start = 2; }
+        else if (raw[1] == 'o' || raw[1] == 'O') { base = 8; start = 2; }
+    }
+    std::string digits = raw.substr(start);
+    if (digits.empty()) return "";
+    // 128位字节数组（16字节，低位在前）。逐位乘 base 加 digit（128 位乘加）：
+    //   每轮对全部 16 字节执行 bytes[i]*base+carry，carry 逐字节右移
+    //   （bytes[i]≤255、base≤16、carry≤16，无 64 位溢出风险）
+    unsigned char bytes[16] = {0};
+    for (char c : digits) {
+        int d = -1;
+        if (c >= '0' && c <= '9') d = c - '0';
+        else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+        else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+        else return "";  // 非法数字字符（防御性）
+        if (d >= base) return "";
+        std::uint64_t carry = static_cast<std::uint64_t>(d);
+        for (int i = 0; i < 16; ++i) {
+            const std::uint64_t cur =
+                static_cast<std::uint64_t>(bytes[i]) * static_cast<std::uint64_t>(base) + carry;
+            bytes[i] = static_cast<unsigned char>(cur & 0xFF);
+            carry = cur >> 8;
+        }
+    }
+    // 小端转 低64位/高64位（字节0-7 = 低64位，字节8-15 = 高64位）
+    std::uint64_t lo = 0;
+    std::uint64_t hi = 0;
+    for (int i = 7; i >= 0; --i) lo = (lo << 8) | bytes[i];
+    for (int i = 15; i >= 8; --i) hi = (hi << 8) | bytes[i];
+    char buf[48];
+    std::snprintf(buf, sizeof(buf), "%llX:%llX",
+                  static_cast<unsigned long long>(lo),
+                  static_cast<unsigned long long>(hi));
+    return buf;
 }
 
 // ==================== 指针/数组复合类型（Task 2.4） ====================

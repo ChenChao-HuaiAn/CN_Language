@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -72,6 +73,8 @@ enum class Opcode {
     FieldAddr,      // 结构体字段地址（Task 2.7）：operand[0]=结构体基址(ptr)，
                     //   extra=字段偏移字节（十进制），结果为该字段地址（ptr）；
                     //   对 -> 访问隐含空指针检查（错误码3）
+    CopyStruct,     // 结构体整体赋值（Task 完善A）：operand[0]=目标地址(ptr),
+                    //   operand[1]=源地址(ptr)，extra=拷贝字节数（十进制），无结果
 
     // ---- 控制流 ----
     Jump,           // 无条件跳转（extra=目标块标签）
@@ -158,6 +161,15 @@ struct IRFunction {
     // 参数唯一内部名（与 params 一一对应，供代码生成层分配独立栈槽，
     // 解决遮蔽参数/变量的槽冲突）
     std::vector<std::string> paramUniques;
+    // 结构体按值参数索引集合（Task 完善A）：这些参数以指针传入（调用方临时副本），
+    //   被调方需从指针拷贝结构体数据到参数槽（按值语义）
+    std::unordered_set<int> structParamIndexes;
+    // 结构体返回值（Task 完善A）：函数返回结构体（>8字节走 Win x64 隐藏返回指针）。
+    //   true 时调用方以隐藏指针（rcx）传入返回缓冲区，被调方写入缓冲区并返回该指针
+    bool structReturn = false;
+    // 结构体返回值大小（字节）：被调方 epilogue 按此大小把返回结构体数据
+    //   拷贝到隐藏返回缓冲区（精确大小，避免 64 字节硬编码越界写破坏相邻栈变量）
+    int structReturnSize = 0;
     std::vector<std::unique_ptr<IRBlock>> blocks;             // 基本块列表
     int nextRegId = 0;                         // 下一个虚拟寄存器编号
     std::unordered_map<std::string, std::string> varTypes;   // 变量名 -> IR类型
@@ -279,6 +291,21 @@ private:
                          const SourceLocation& loc);
     // 计算左值地址（标识符/下标/解引用/成员访问 -> 地址值），供赋值使用（Task 2.4/2.7）
     ir::IRValue lvalueAddress(Expr* node);
+    // ==================== i128 内存模型（Task 完善A） ====================
+    // i128/正128 值在 IR 层以"指向16字节双槽内存的 ptr"表示（低64位槽+高64位槽）。
+    // 运算/比较/转换/打印经运行时辅助函数（__cn_*_i128，指针式API）。
+    // 分配一个 i128 临时变量（Alloca，双槽），返回唯一内部名
+    std::string emitI128Temp(const SourceLocation& loc);
+    // 将 i128 值表达式转为地址（ptr）：
+    //   变量标识符/嵌套结果已是 ptr -> 原样；i128 常量/寄存器值 -> 落临时双槽再取地址
+    ir::IRValue i128ValueAddr(ir::IRValue value, const SourceLocation& loc);
+    // 生成 i128 二元运算（Mul/Div/Mod/Add/Sub -> 运行时辅助函数调用），
+    // 结果写入临时双槽并返回其地址（ptr）
+    ir::IRValue genI128Binary(ir::IRValue left, ir::IRValue right, ir::Opcode op,
+                              const SourceLocation& loc);
+    // 生成 i128 比较（返回 i1 布尔值）
+    ir::IRValue genI128Compare(ir::IRValue left, ir::IRValue right, ir::Opcode op,
+                               const SourceLocation& loc);
     // 结构体/联合体初始化展开（Task 2.7）：将 StructInitExpr 的字段逐个写入
     //   targetBase（目标结构体基址，ptr）。嵌套结构体字段递归展开；
     //   普通字段 genExpr 后 Cast 到字段IR类型再 StorePtr。
@@ -353,6 +380,8 @@ private:
     std::vector<LoopContext> loopStack_;
     // 选择控制流：中断跳出目标栈（选择语句出口块标签）
     std::vector<std::string> switchStack_;
+    // i128 临时变量计数器（每个临时变量分配独立唯一名 __i128tN）
+    int i128TempCounter_ = 0;
 };
 
 } // namespace cn_compiler

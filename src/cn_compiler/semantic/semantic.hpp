@@ -54,6 +54,8 @@ public:
                      std::int64_t& outValue) const;
     // 查询函数返回类型（未注册返回空串；供IR层推导调用结果类型，Task 2.7 集成修复）
     std::string funcReturnTypeOf(const std::string& funcName) const;
+    // 查询函数参数类型列表（未注册返回空；供IR层推导结构体按值实参传递，Task 完善A）
+    std::vector<std::string> funcParamTypesOf(const std::string& funcName) const;
     // 程序AST（供结构体/枚举符号表查询）
     Program* program_ = nullptr;
 

@@ -106,8 +106,17 @@ private:
     // 生成类型转换（Cast：扩展/截断/整浮互转/浮32<->浮64，Task 2.3）
     void emitCast(AsmWriter& writer, const ir::IRInstruction& inst);
 
-    // 生成i128双槽运算（低/高64位分开处理，Task 2.3）
+    // 生成i128双槽运算（低/高64位分开处理，Task 2.3 / Task 完善A 全128位）
     void emitInt128Binary(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成i128乘法/除法/取余（Task 完善A）：调用运行时辅助函数 __cn_mul_i128 等
+    // 辅助函数签名：void __cn_mul_i128(const uint64_t* a, const uint64_t* b, uint64_t* out)
+    //   a/b/out 均为指向 16 字节双槽内存的指针（i128 寄存器双槽 lea 地址）
+    void emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // 生成i128比较（Task 完善A）：调用 __cn_cmp_i128/__cn_cmp_u128（返回 int），
+    //   再与 0 比较 setcc 得到 i1
+    void emitInt128Compare(AsmWriter& writer, const ir::IRInstruction& inst);
 
     // 生成比较运算（cmp + setcc 到结果槽）
     void emitCompare(AsmWriter& writer, const ir::IRInstruction& inst);
@@ -149,6 +158,10 @@ private:
 
     // 字符串转MASM db十六进制字节序列（UTF-8字节逐字节 0XXh，避免中文原始字节触发ml64 A2044）
     static std::string hexBytesString(const std::string& text);
+
+    // 64位无符号整数 -> MASM 立即数十六进制文本（如 0x8AC7230489E80000 -> "8AC7230489E80000h"；
+    // 首字符为字母时加 0 前缀避免 A2085；值 ≤ 2^63 也可用十进制，统一十六进制避免超范围）
+    static std::string uint64HexText(std::uint64_t value);
 
     // 浮点常量文本 -> IEEE754位模式（f32 转 uint32、f64 转 uint64，用于.data段）
     // 返回十六进制数值文本（如 "0x3FF0000000000000"），供 emitFloatConstant 生成字节
@@ -198,6 +211,11 @@ private:
 
     // 当前生成函数的返回类型（IR类型，如 f64/i32，供 epilogue 决定 xmm0/rax）
     std::string currentReturnType_;
+    // 当前函数是否结构体返回值（Task 完善A：epilogue 把返回值拷贝到隐藏返回缓冲区 rcx）
+    bool currentStructReturn_ = false;
+    // 当前函数结构体返回大小（字节）：epilogue 按精确大小拷贝（避免 64 字节
+    //   硬编码越界写破坏相邻栈变量——16 字节结构体被写 64 字节越界 48 字节）
+    int currentStructReturnSize_ = 0;
 
     // 变量名 -> 槽偏移（函数级映射，generateFunctionAssembly 期间有效）
     std::unordered_map<std::string, int> varSlots_;

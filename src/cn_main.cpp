@@ -293,6 +293,7 @@ static bool compileRuntime(const std::string& vcvarsBat, const std::string& objD
         "src/runtime/io_api.cpp",
         "src/runtime/runtime.cpp",
         "src/runtime/string_api.cpp",
+        "src/runtime/i128_api.cpp",
     };
     for (const char* src : runtimeSrcs) {
         std::string stem = pathStem(src);
@@ -324,7 +325,7 @@ static bool linkExe(const std::string& vcvarsBat, const std::string& userObj,
         "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
         "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
         runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\runtime.obj\" \"" +
-        runtimeObjDir + "\\string_api.obj\"";
+        runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\"";
     int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
     if (rc != 0) {
         error = "链接失败（link 退出码 " + std::to_string(rc) + "）";

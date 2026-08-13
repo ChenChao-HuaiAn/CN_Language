@@ -5,6 +5,13 @@
 
 ## 高权重问题（必须避免）
 
+- [2026-08-13 09:00] **问题类型**: 逻辑错误（权重 22.75）
+  - **描述**: 结构体按值返回（Win x64 隐藏返回指针）实现中发现 4 个 BUG：① epilogue structReturn 分支直接 return 漏掉 `mov rsp,rbp/pop rbp/ret` → 执行流落入下一函数 PROC 无限递归 → 0xC00000FD 栈溢出；② `mov rcx, 64` 硬编码拷贝 64 字节，16 字节班级结构体越界写 48 字节破坏相邻栈变量（翻倍 160/0/0）；③ `出.分数[1] = ...`（IndexExpr 对象为结构体数组字段 MemberExpr）targetType 推导遗漏 → StorePtr 用 i64 8 字节写入覆盖相邻数组元素；④ i128 字面量越界未报错（2^127 被接受）
+  - **原因**: ① structReturn 分支是 emitEpilogue 的提前 return，未走公共尾部；② 结构体返回大小未记录到 IRFunction（codegen 无从得知精确字节）；③ visitAssignmentExpr IndexExpr 分支只处理 IdentifierExpr 对象，未处理 MemberExpr（出.分数）；④ 语义层 literalTypeOf 对无后缀超 int64 提升整128 但无越界检查
+  - **解决**: ① structReturn 分支补 `mov rsp,rbp/pop rbp/ret`；② IRFunction 新增 structReturnSize（语义层 typeSizeOf），epilogue 按精确字节数 `mov rcx, N` 拷贝；③ IndexExpr 目标类型推导补 MemberExpr 分支（memberObjStructType 找字段数组元素类型）；④ 语义层 visitIntegerLiteral 加 整128（2^127-1）/正128（2^128-1）上限检查（含无后缀超 int64 提升场景）
+  - **预防**: 提前 return 的分支必须补函数尾部（ret）；结构体返回/拷贝大小必须精确记录（IRFunction 字段），禁止 64 字节硬编码；IndexExpr 目标类型推导必须覆盖 MemberExpr 数组字段对象；i128 字面量越界检查放语义层（literalTypeOf 之后，含无后缀自动提升场景）
+  - **权重**: 22.75（逻辑错误8 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
 - [2026-08-13 03:34] **问题类型**: 逻辑错误（权重 22.75）
   - **描述**: 阶段2全面审查（模拟生产环境）发现 10 个 BUG：① 除零未插桩（错误码1）→ Windows 0xC0000094 崩溃而非 CN 错误码；② idiv 立即数 A2001；③ 无符号除法用 idiv+有符号扩展（正32 4000000000/2 错算 -295M）；④ 无符号比较用 setg/setl（正32 4294967295>1 判假）；⑤ u32 LoadPtr movsxd 符号扩展；⑥ 浮点参数经 rcx 读（caller 用 xmm0-3 → callee 读到垃圾）；⑦ 浮点返回只 mov rax 未设 xmm0；⑧ const_fold Call 尾部实参传播浮点常量 → `movsd xmm2, qword ptr 4.0` A2050；⑨ const_fold 无符号除/比较用有符号语义（-O1 与运行期不一致）；⑩ 结构体数组字段（方形.顶点[0].x / 指针->顶点[1].x）把数组字段当值 LoadPtr（垃圾指针→空指针错误/访问冲突），且数组字段越界不插桩
   - **原因**: ① 除零检查设计缺失（codegen 只对 LoadPtr/FieldAddr 插桩错误码）；② div/idiv 不接受立即数；③④⑤ 无符号类型（正N/uN）在除法/比较/加载路径未按无符号语义分派；⑥⑦ Win x64 浮点调用约定（xmm0-3 参数/xmm0 返回）callee 侧未实现；⑧ 尾部操作数传播无浮点过滤（Call 第3+实参落尾部）；⑨ 折叠期未区分符号；⑩ IR 层数组字段退化/步进/越界推导缺失（memberObjStructType 未处理 arrow 剥指针）

@@ -22,6 +22,7 @@ add_executable(cn_unit_tests
     semantic/test_pointer.cpp
     semantic/test_string_semantic.cpp
     semantic/test_struct_enum.cpp
+    semantic/test_i128_semantic.cpp
     ir/test_ir.cpp
     ir/test_ir_control.cpp
     ir/test_ir_function.cpp
@@ -29,16 +30,21 @@ add_executable(cn_unit_tests
     ir/test_ir_pointer.cpp
     ir/test_ir_string.cpp
     ir/test_ir_struct.cpp
+    ir/test_ir_struct_value.cpp
+    ir/test_ir_i128.cpp
     codegen/test_x64_codegen.cpp
     codegen/test_x64_function.cpp
     codegen/test_x64_types.cpp
     codegen/test_x64_pointer.cpp
     codegen/test_x64_struct.cpp
+    codegen/test_x64_struct_value.cpp
+    codegen/test_x64_i128.cpp
     opt/test_const_fold.cpp
     opt/test_dce.cpp
     opt/test_pass_manager.cpp
     runtime/test_runtime.cpp
     runtime/test_string_api.cpp
+    runtime/test_i128_api.cpp
 )
 
 # 链接 Google Test 与公共模块库

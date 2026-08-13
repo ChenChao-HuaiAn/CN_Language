@@ -51,6 +51,7 @@ const char* opcodeToString(Opcode opcode) {
         case Opcode::LoadPtr: return "指针加载";
         case Opcode::StorePtr: return "指针存储";
         case Opcode::FieldAddr: return "字段地址";
+        case Opcode::CopyStruct: return "结构体拷贝";
         case Opcode::Jump: return "跳转";
         case Opcode::Branch: return "条件跳转";
         case Opcode::Call: return "调用";
@@ -309,6 +310,13 @@ ir::IRValue IRGenerator::emitResult(ir::Opcode opcode,
                                     const SourceLocation& loc) {
     ir::IRValue result = newReg();
     result.type = type;
+    // Task 完善A：i128/正128 结果占用 2 个连续虚拟寄存器
+    //   （result.id = 低64位槽、result.id+1 = 高64位槽，寄存器槽区小端连续16字节）。
+    //   后续寄存器编号顺延，保证 i128 值占满连续槽（codegen 按双槽读写，
+    //   并可 lea 槽区地址传给指针式辅助函数 __cn_*_i128）。
+    if (type == "i128" || type == "u128") {
+        ++regCounter_;
+    }
     emit(opcode, operands, result, extra, type, loc);
     return result;
 }
@@ -395,6 +403,12 @@ ir::IRValue IRGenerator::allocVar(const std::string& name, const std::string& ir
 //       的元素槽会越界覆盖相邻变量（集成验证发现，Task 2.7 修复）
 void IRGenerator::registerVarSlots(const std::string& unique, const std::string& srcType) {
     if (function_ == nullptr) return;
+    // Task 完善A：i128/正128 变量/参数按 2 个连续 8 字节槽登记
+    // （低64位槽 + 高64位槽 name$s1，与结构体 2 槽机制一致）
+    if (types::isI128(types::canonical(srcType))) {
+        function_->varSlots[unique] = 2;
+        return;
+    }
     if (types::isArray(srcType)) {
         const int len = types::arrayLenOf(srcType);
         if (len <= 0) {
@@ -407,6 +421,9 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
             // 结构体数组：每元素占 ceil(结构体大小/8) 个 8 字节槽
             const int size = semantic_->typeSizeOf(elemSrc);
             elemSlots = (size + 7) / 8;
+        } else if (types::isI128(types::canonical(elemSrc))) {
+            // i128 数组：每元素 2 槽
+            elemSlots = 2;
         }
         function_->varSlots[unique] = len * elemSlots;
     } else if (semantic_ != nullptr && semantic_->isStructType(types::canonical(srcType))) {
@@ -732,17 +749,35 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     ir::IRFunction func;
     func.name = node->name;
     func.returnType = mapType(node->returnType.empty() ? "空类型" : node->returnType);
+    // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
+    if (semantic_ != nullptr && !node->returnType.empty() &&
+        semantic_->isStructType(types::canonical(node->returnType))) {
+        func.structReturn = true;
+        // 记录精确大小（字节）：epilogue 按此拷贝到隐藏返回缓冲区（避免 64 字节
+        //   硬编码越界写破坏相邻栈变量——班级 16 字节被写 64 字节越界 48 字节）
+        func.structReturnSize = semantic_->typeSizeOf(node->returnType);
+    }
+    // Task 完善A：提前绑定 function_，使 registerVarSlots（参数多槽登记）
+    //   在参数循环内即可生效（此前 function_ 在循环后设置，结构体参数
+    //   的 varSlots 登记被 registerVarSlots 的 function_==nullptr 检查跳过）
+    function_ = &func;
     // 参数进入最外层作用域，生成唯一内部名（name$N）。
     // params 保留源码名（对外可读/测试契约），paramUniques 存唯一名，
     // 代码生成层按 paramUniques 登记/查询栈槽，保证遮蔽变量各自独立槽
     varStack_.emplace_back();
-    for (auto& param : node->params) {
+    for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
+        auto& param = node->params[pi];
         std::string unique = param->name + "$" + std::to_string(varCounter_++);
         // Task 2.2：函数指针参数（整32(*func)(整32, 整32)）类型为 ptr
         std::string paramIrType = param->funcPtr.isFunctionPtr()
                                       ? "ptr" : mapType(param->typeName);
         // Task 2.4：数组参数按多槽登记（varSlots）
         registerVarSlots(unique, param->funcPtr.isFunctionPtr() ? "" : param->typeName);
+        // Task 完善A：结构体按值参数标记（语义层查询——结构体源码类型）
+        if (semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
+            semantic_->isStructType(types::canonical(param->typeName))) {
+            func.structParamIndexes.insert(static_cast<int>(pi));
+        }
         func.params.emplace_back(param->name, paramIrType);
         func.paramUniques.push_back(unique);
         ir::IRValue reg = newReg();
@@ -754,7 +789,6 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         entryInfo.srcType = param->typeName;  // 指针/数组复合类型源码名
         varStack_.back()[param->name] = entryInfo;
     }
-    function_ = &func;
     // 注意：varCounter_ 不可重置！参数已用 varCounter_ 生成唯一名，
     // 若重置则函数体内同名遮蔽变量会生成相同唯一名（如 x$0）导致槽冲突
     blockCounter_ = 0;
@@ -809,8 +843,28 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
 // 返回语句
 // Task 2.3：返回值类型与函数返回类型不同时先隐式转换 Cast
 // （如 整32 返回值经 整64 返回类型时宽化；8/16位返回类型截断）
+// Task 完善A：返回结构体初始化（返回 点对{...}）——在临时变量构建结构体，
+//   返回其地址（ptr）；调用方 CopyStruct 到目标。
 void IRGenerator::visitReturnStmt(ReturnStmt* node) {
     if (node->value != nullptr) {
+        // 结构体初始化返回：分配临时结构体变量（多槽），emitStructInitTo 写入，返回地址
+        if (node->value->getType() == NodeType::StructInitExpr && semantic_ != nullptr) {
+            StructInitExpr* init = static_cast<StructInitExpr*>(node->value.get());
+            const std::string structType = types::canonical(init->typeName);
+            if (semantic_->isStructType(structType)) {
+                const std::string temp = "__ret" + std::to_string(varCounter_++);
+                const std::string irType = "ptr";  // 结构体在 IR 层按 ptr（地址）
+                emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, irType),
+                     temp, irType, node->location);
+                registerVarSlots(temp, structType);
+                ir::IRValue base = emitResult(ir::Opcode::AddrOf,
+                                              {ir::IRValue::var(temp, "i64")},
+                                              "ptr", temp, node->location);
+                emitStructInitTo(init, base, node->location);
+                endReturn(base.toString());
+                return;
+            }
+        }
         ir::IRValue value = genExpr(node->value.get());
         if (function_ != nullptr) {
             const std::string retType = function_->returnType;
@@ -1198,6 +1252,20 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     // 普通表达式初始值 -> Store（目标用唯一内部名，保证遮蔽变量写入自己的槽）
     if (node->initializer != nullptr) {
         ir::IRValue value = genExpr(node->initializer.get());
+        // 结构体变量初始化值为"函数返回的结构体地址（ptr）"（Task 完善A）：
+        //   学生 张三加 = 加分(张三) —— 值是指向返回临时结构体的指针，
+        //   需 CopyStruct 到本变量槽区（按值拷贝）
+        if (semantic_ != nullptr && value.type == "ptr" &&
+            semantic_->isStructType(types::canonical(node->typeName))) {
+            const int size = semantic_->typeSizeOf(types::canonical(node->typeName));
+            ir::IRValue dstAddr = emitResult(ir::Opcode::AddrOf,
+                                             {ir::IRValue::var(unique, "i64")},
+                                             "ptr", unique, node->location);
+            emit(ir::Opcode::CopyStruct, {dstAddr, value}, ir::IRValue(),
+                 std::to_string(size), "void", node->location);
+            lastExpr_ = value;
+            return;
+        }
         if (value.type != irType && !irType.empty()) {
             value = emitResult(ir::Opcode::Cast, {value}, irType, "", node->location);
         }
@@ -1208,17 +1276,47 @@ void IRGenerator::genVarDecl(VarDecl* node) {
 
 // ==================== 表达式生成 ====================
 
-// 整数字面量（Task 2.3：后缀决定类型，规格书4.3）
+// 整数字面量（Task 2.3：后缀决定类型，规格书4.3 + Task 完善A：i128 全范围）
 // 无后缀 -> 整32；L -> 整64；LL -> 整128；U -> 正32；UL -> 正64；ULL -> 正128
-// 特殊：无后缀但值超出 int32 范围（5000000000 等）自动提升为整64（值自适应）
+// 特殊：无后缀但值超出 int32 范围（5000000000 等）自动提升为整64（值自适应）；
+//       无后缀但值超出 int64 范围（>2^63-1）自动提升为整128（Task 完善A）
 void IRGenerator::visitIntegerLiteral(IntegerLiteral* node) {
     std::string type = types::literalTypeOf(node->raw, false);
     if (type.empty()) type = "整32";
     // 无后缀（整32）但值超出 int32 范围：自动提升为整64
     if (type == "整32" && node->value > 2147483647LL) type = "整64";
-    // 字面量文本（剥后缀后用于ConstInt常量值；i128等大值以原始文本存储，codegen拆双槽）
-    lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type),
-                           types::stripLiteralSuffix(node->raw), node->location);
+    // 无后缀但值超出 int64 范围：自动提升为整128（十进制文本比较，2^63-1 上限）
+    if ((type == "整32" || type == "整64") &&
+        types::textExceedsInt64(types::stripLiteralSuffix(node->raw))) {
+        type = "整128";
+    }
+    // i128/正128 字面量：常量文本存 低64位:高64位 十六进制（codegen 拆双槽加载）
+    // 其余类型：直接存剥后缀十进制文本
+    const std::string stripped = types::stripLiteralSuffix(node->raw);
+    if (types::isI128(type)) {
+        // Task 完善A：i128（有符号）越界检查——正128 上限 2^128-1（无符号），
+        //   整128 上限 2^127-1（有符号）。超限报错（规格书4.3 字面量范围）。
+        const bool isSigned = (type == "整128");
+        const std::string limit = isSigned
+                                      ? "170141183460469231731687303715884105727"  // 2^127-1
+                                      : "340282366920938463463374607431768211455";  // 2^128-1
+        if (stripped.size() > limit.size() ||
+            (stripped.size() == limit.size() && stripped > limit)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "整数字面量超出" +
+                                    std::string(isSigned ? "整128（2^127-1）" : "正128（2^128-1）") +
+                                    "范围");
+            lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type), "0:0",
+                                   node->location);
+            return;
+        }
+        const std::string split = types::splitI128Text(stripped);
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type),
+                               split.empty() ? stripped : split, node->location);
+    } else {
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, mapType(type),
+                               stripped, node->location);
+    }
 }
 
 // 浮点字面量（Task 2.3：f后缀 -> 浮32，无后缀 -> 浮64）
@@ -1283,6 +1381,14 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
         // 数组名退化：AddrOf 数组基址（栈槽0）-> ptr
         lastExpr_ = emitResult(ir::Opcode::AddrOf,
                                {ir::IRValue::var(unique, reg.type)},
+                               "ptr", unique, node->location);
+        return;
+    }
+    // 结构体/联合体变量（Task 完善A）：按值语义——表达式值为"结构体地址"（ptr），
+    // 而非 Load 读变量槽（槽内容是 8 字节垃圾）。后续按值传参/赋值/CopyStruct 用地址。
+    if (semantic_ != nullptr && semantic_->isStructType(types::canonical(srcType))) {
+        lastExpr_ = emitResult(ir::Opcode::AddrOf,
+                               {ir::IRValue::var(unique, "i64")},
                                "ptr", unique, node->location);
         return;
     }
@@ -1614,6 +1720,27 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                     static_cast<IdentifierExpr*>(idx->object.get())->name);
                 if (types::isArray(st)) targetType = mapType(types::arrayElemOf(st));
                 else if (types::isPointer(st)) targetType = mapType(types::pointeeOf(st));
+            } else if (idx->object->getType() == NodeType::MemberExpr) {
+                // 出.分数[1] = v：对象为结构体数组字段（整32[3] 分数）——
+                //   元素类型 = 字段数组元素类型（memberObjStructType 推导对象结构体）
+                const std::string innerType = memberObjStructType(
+                    static_cast<MemberExpr*>(idx->object.get()));
+                const StructDecl* innerDecl = (semantic_ != nullptr)
+                                                  ? semantic_->findStruct(types::canonical(innerType))
+                                                  : nullptr;
+                if (innerDecl != nullptr) {
+                    MemberExpr* inner = static_cast<MemberExpr*>(idx->object.get());
+                    for (const auto& f : innerDecl->fields) {
+                        if (f.name == inner->memberName) {
+                            if (types::isArray(f.type)) {
+                                targetType = mapType(types::arrayElemOf(f.type));
+                            } else if (types::isPointer(f.type)) {
+                                targetType = mapType(types::pointeeOf(f.type));
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         } else if (node->target->getType() == NodeType::UnaryExpr) {
             UnaryExpr* un = static_cast<UnaryExpr*>(node->target.get());
@@ -1663,6 +1790,51 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     std::string targetType = lookupVarType(ident->name);
     if (targetType.empty()) targetType = value.type;
     const std::string unique = lookupVarName(ident->name);
+    // ---- 结构体整体赋值（Task 完善A）：b = a（C 语义逐字段拷贝 = 内存拷贝） ----
+    // 目标/源均为结构体变量（源码类型是自定义结构体）时，生成 CopyStruct 指令：
+    //   CopyStruct dstAddr=AddrOf(目标), srcAddr=AddrOf(源), extra=拷贝字节数
+    // 结构体大小由语义层 typeSizeOf 计算（含数组字段，整体拷贝）。
+    if (semantic_ != nullptr) {
+        const std::string targetSrcType = lookupSrcType(ident->name);
+        // 右值：标识符（b = a）或成员/下标（b = 名单[0]）
+        std::string valueSrcType;
+        if (node->value->getType() == NodeType::IdentifierExpr) {
+            valueSrcType = lookupSrcType(
+                static_cast<IdentifierExpr*>(node->value.get())->name);
+        } else if (node->value->getType() == NodeType::MemberExpr) {
+            valueSrcType = memberObjStructType(static_cast<MemberExpr*>(node->value.get()));
+        } else if (node->value->getType() == NodeType::IndexExpr) {
+            IndexExpr* ix = static_cast<IndexExpr*>(node->value.get());
+            if (ix->object->getType() == NodeType::IdentifierExpr) {
+                const std::string st = lookupSrcType(
+                    static_cast<IdentifierExpr*>(ix->object.get())->name);
+                if (types::isArray(st)) valueSrcType = types::arrayElemOf(st);
+                else if (types::isPointer(st)) valueSrcType = types::pointeeOf(st);
+            }
+        }
+        if (semantic_->isStructType(types::canonical(targetSrcType)) &&
+            semantic_->isStructType(types::canonical(valueSrcType))) {
+            const int size = semantic_->typeSizeOf(types::canonical(targetSrcType));
+            ir::IRValue dstAddr = emitResult(ir::Opcode::AddrOf,
+                                             {ir::IRValue::var(unique, "i64")},
+                                             "ptr", unique, node->location);
+            // 源地址：标识符 -> AddrOf；成员/下标 -> lvalueAddress
+            ir::IRValue srcAddr;
+            if (node->value->getType() == NodeType::IdentifierExpr) {
+                const std::string srcUnique = lookupVarName(
+                    static_cast<IdentifierExpr*>(node->value.get())->name);
+                srcAddr = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(srcUnique, "i64")},
+                                     "ptr", srcUnique, node->location);
+            } else {
+                srcAddr = lvalueAddress(node->value.get());
+            }
+            emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+                 std::to_string(size), "void", node->location);
+            lastExpr_ = value;
+            return;
+        }
+    }
     // 复合赋值：值 = 当前值 op 右值
     if (isCompoundAssignOp(node->op)) {
         ir::IRValue current = genExpr(node->target.get());
@@ -1723,6 +1895,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                 printFn = "__cn_print_str";
             } else if (argVal.type == "f32" || argVal.type == "f64") {
                 printFn = "__cn_print_float";
+            } else if (argVal.type == "i128" || argVal.type == "u128") {
+                // i128/正128（Task 完善A）：传双寄存器地址（低64位槽地址），
+                // 运行时辅助函数 __cn_print_i128 读 16 字节双槽
+                printFn = (argVal.type == "u128") ? "__cn_print_u128"
+                                                  : "__cn_print_i128";
             } else {
                 // 整型（含 i1 布尔）：统一按 i64 传递
                 if (argVal.type != "i64") {
@@ -1787,6 +1964,31 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                 if (mapped != "void" && mapped != "") resultType = mapped;
             }
         }
+        // 结构体返回值函数（Task 完善A）：调用方分配返回缓冲区（结构体临时变量），
+        //   以隐藏指针（rcx，Win x64 ABI）传给被调方；被调方写入缓冲区。
+        //   结果 = 缓冲区地址（ptr），供调用方 CopyStruct 到目标。
+        if (resultType == "ptr" && semantic_ != nullptr &&
+            semantic_->isStructType(types::canonical(
+                semantic_->funcReturnTypeOf(calleeName)))) {
+            const std::string retType = semantic_->funcReturnTypeOf(calleeName);
+            const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+            emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                 temp, "ptr", node->location);
+            // 返回缓冲区按 64 字节（8 槽）分配——与被调方 epilogue 的 64 字节
+            //   拷贝上限一致（结构体实际大小 ≤64 字节场景）
+            function_->varSlots[temp] = 8;
+            registerVarSlots(temp, retType);
+            ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
+                                         {ir::IRValue::var(temp, "i64")},
+                                         "ptr", temp, node->location);
+            // 隐藏返回指针作为第一个参数（rcx）
+            std::vector<ir::IRValue> hiddenArgs = args;
+            hiddenArgs.insert(hiddenArgs.begin(), buf);
+            emit(ir::Opcode::Call, hiddenArgs, ir::IRValue(), calleeName, "void",
+                 node->location);
+            lastExpr_ = buf;
+            return;
+        }
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType, calleeName,
                                node->location);
         return;
@@ -1814,7 +2016,8 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         const std::string srcType = lookupSrcType(ident->name);
         if (!unique.empty() && types::isArray(srcType)) {
             // 数组对象：基址 = AddrOf(数组槽0)；元素类型来自数组元素类型
-            const std::string elemIrType = mapType(types::arrayElemOf(srcType));
+            const std::string elemSrc = types::arrayElemOf(srcType);
+            const std::string elemIrType = mapType(elemSrc);
             ir::IRValue base = emitResult(ir::Opcode::AddrOf,
                                           {ir::IRValue::var(unique, elemIrType)},
                                           "ptr", unique, node->location);
@@ -1828,7 +2031,6 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             }
             std::int64_t elemStride = 8;
             if (semantic_ != nullptr) {
-                const std::string elemSrc = types::arrayElemOf(srcType);
                 if (semantic_->isStructType(elemSrc)) {
                     elemStride = semantic_->typeSizeOf(elemSrc);
                 }
@@ -1839,6 +2041,12 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 "i64", "", node->location);
             ir::IRValue addr = emitResult(ir::Opcode::Add, {base, scaled}, "ptr", "",
                                           node->location);
+            // 结构体元素（Task 完善A）：数组元素作为"结构体值"时返回地址（ptr），
+            //   供按值传参/赋值/整体拷贝使用；普通元素 LoadPtr 加载值
+            if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
+                lastExpr_ = addr;
+                return;
+            }
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, elemIrType, "",
                                    node->location);
             return;
@@ -1889,12 +2097,48 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             }
         }
     }
+    // 元素 IR 类型（Task 完善A）：数组字段（一班.分数[i]）按字段数组元素类型；
+    //   结构体元素返回地址（供按值传参），普通元素 LoadPtr 按元素类型
+    std::string elemIrType = "i64";
+    bool elemIsStruct = false;
+    if (node->object->getType() == NodeType::MemberExpr) {
+        MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
+        const std::string innerType = memberObjStructType(inner);
+        const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerType));
+        if (innerDecl != nullptr) {
+            for (const auto& f : innerDecl->fields) {
+                if (f.name == inner->memberName && types::isArray(f.type)) {
+                    const std::string elemSrc = types::arrayElemOf(f.type);
+                    elemIrType = mapType(elemSrc);
+                    if (semantic_ != nullptr &&
+                        semantic_->isStructType(types::canonical(elemSrc))) {
+                        elemIsStruct = true;
+                    }
+                    break;
+                }
+            }
+        }
+    } else if (node->object->getType() == NodeType::IdentifierExpr) {
+        const std::string st = lookupSrcType(
+            static_cast<IdentifierExpr*>(node->object.get())->name);
+        if (types::isPointer(st)) {
+            const std::string elemSrc = types::pointeeOf(st);
+            elemIrType = mapType(elemSrc);
+            if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
+                elemIsStruct = true;
+            }
+        }
+    }
     ir::IRValue scaled = emitResult(ir::Opcode::Mul,
                                     {index, ir::IRValue::constant(std::to_string(stride), "i64")},
                                     "i64", "", node->location);
     ir::IRValue addr = emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "",
                                   node->location);
-    lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "i64", "", node->location);
+    if (elemIsStruct) {
+        lastExpr_ = addr;  // 结构体元素：返回地址（按值传参/整体拷贝用）
+        return;
+    }
+    lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, elemIrType, "", node->location);
 }
 
 // 初始化列表作为表达式：不支持（语义层已报错），生成0占位
@@ -1923,6 +2167,46 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
         if (fieldPair.second->getType() == NodeType::StructInitExpr) {
             emitStructInitTo(static_cast<StructInitExpr*>(fieldPair.second.get()),
                              fieldAddr, loc);
+            continue;
+        }
+        // 数组字段初始化（Task 完善A）：字段值为 InitListExpr（如 分数 = { 80, 90, 70 }），
+        //   逐元素写入 字段地址 + i*元素大小（C 语义）
+        if (fieldPair.second->getType() == NodeType::InitListExpr) {
+            InitListExpr* list = static_cast<InitListExpr*>(fieldPair.second.get());
+            std::string fieldSrcType;
+            for (const auto& f : decl->fields) {
+                if (f.name == fieldName) { fieldSrcType = f.type; break; }
+            }
+            const std::string elemSrc = types::arrayElemOf(fieldSrcType);
+            const std::string elemIrType = mapType(elemSrc);
+            std::int64_t elemStride = types::typeSize(elemSrc);
+            if (elemStride <= 0) elemStride = 8;  // 防御：未知类型按 8 字节
+            if (semantic_->isStructType(types::canonical(elemSrc))) {
+                elemStride = semantic_->typeSizeOf(elemSrc);
+            } else if (types::isI128(types::canonical(elemSrc))) {
+                elemStride = 16;
+            }
+            for (std::size_t i = 0; i < list->elements.size(); ++i) {
+                ir::IRValue elemOff = emitResult(
+                    ir::Opcode::ConstInt, {}, "i64",
+                    std::to_string(static_cast<long long>(i) * elemStride), loc);
+                ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {fieldAddr, elemOff},
+                                                  "ptr", "", loc);
+                // 结构体数组元素（元素为 StructInitExpr）：递归展开
+                if (list->elements[i]->getType() == NodeType::StructInitExpr &&
+                    semantic_ != nullptr) {
+                    emitStructInitTo(
+                        static_cast<StructInitExpr*>(list->elements[i].get()),
+                        elemAddr, loc);
+                    continue;
+                }
+                ir::IRValue elem = genExpr(list->elements[i].get());
+                if (elem.type != elemIrType && !elemIrType.empty() && elem.type != "") {
+                    elem = emitResult(ir::Opcode::Cast, {elem}, elemIrType, "", loc);
+                }
+                emit(ir::Opcode::StorePtr, {elemAddr, elem}, ir::IRValue(), "",
+                     elemIrType, loc);
+            }
             continue;
         }
         // 普通字段：生成值 + Cast + StorePtr

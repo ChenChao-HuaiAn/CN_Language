@@ -535,7 +535,13 @@ std::unique_ptr<Expr> Parser::parseStructInit(const std::string& typeName) {
         std::string fieldName = current().getValue();
         advance();
         consume(TokenType::Equal, "'='");
-        init->fields.emplace_back(fieldName, parseExpr());
+        // 字段值为 { ... } 时解析为数组初始化列表（Task 完善A：结构体数组字段初始化，
+        // 如 班级{ 编号 = 1, 分数 = { 80, 90, 70 } }——此前 parseExpr 遇 { 报"预期表达式"）
+        if (check(TokenType::LeftBrace)) {
+            init->fields.emplace_back(fieldName, parseInitList());
+        } else {
+            init->fields.emplace_back(fieldName, parseExpr());
+        }
         if (check(TokenType::Comma)) {
             advance();
         } else {

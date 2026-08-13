@@ -157,9 +157,40 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         writer.line("mov " + dst + ", rax");
         return;
     }
+    // i128/u128 常量（Task 完善A）：extra = "LO:HI"（十六进制）或纯十进制小值
+    // 结果双槽：%vN（高64位）+ %vN+1（低64位），低64位槽地址更低
+    if (inst.type == "i128" || inst.type == "u128") {
+        const std::string& extra = inst.extra;
+        const std::size_t colon = extra.find(':');
+        std::string loText;
+        std::string hiText;
+        if (colon != std::string::npos) {
+            const std::uint64_t lo = static_cast<std::uint64_t>(
+                std::stoull(extra.substr(0, colon), nullptr, 16));
+            const std::uint64_t hi = static_cast<std::uint64_t>(
+                std::stoull(extra.substr(colon + 1), nullptr, 16));
+            loText = uint64HexText(lo);
+            hiText = uint64HexText(hi);
+        } else {
+            // 纯十进制小值（如 "100"）：低64位 = 值，高64位 = 0
+            try {
+                loText = uint64HexText(static_cast<std::uint64_t>(std::stoull(extra)));
+            } catch (...) {
+                loText = extra;
+            }
+            hiText = "0";
+        }
+        const int dstHiId = inst.result.id;
+        const int dstLoId = inst.result.id + 1;
+        writer.line("mov rax, " + loText);
+        writer.line("mov " + regSlot(dstLoId) + ", rax");
+        writer.line("mov rax, " + hiText);
+        writer.line("mov " + regSlot(dstHiId) + ", rax");
+        return;
+    }
     // 整型/布尔常量：立即数 -> 寄存器 -> 结果槽
     // Task 2.3：i64/u64 用 mov rax（64位值如 5000000000 超出 eax 范围）；
-    //           其余用 eax（32位）。i128/u128 常量按低64位处理
+    //           其余用 eax（32位）
     // 注意：MASM 不支持 0b/0o 前缀（A2048），十六进制 0x 也不支持（A2206），
     //       统一转换为十进制立即数（parser 已按 10/16/2/8 进制解析出数值）
     std::string value = (inst.extra == "真") ? "1" : (inst.extra == "假") ? "0" : inst.extra;
@@ -321,24 +352,194 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
     }
 }
 
-// ==================== i128 双槽运算（Task 2.3 务实实现） ====================
+// ==================== i128 双槽运算（Task 完善A：全128位） ====================
 
-// i128/u128 加法/减法：按低64位 + 高64位双槽运算（add/adc、sub/sbb）
-// 说明：i128 值存于8字节槽（低64位）。本实现支持加/减/比较（值域≤2^63时语义正确），
-//       乘/除/取余 需128位辅助函数（__cn_mul_i128 等），留待后续Task调运行时库
+// i128/u128 加法/减法：完整 128 位运算（低64位 add/sub + 高64位 adc/sbb 进位/借位）
+// 内存布局（Task 完善A 双槽模型）：
+//   i128 值占 2 个连续 8 字节槽，低64位在较低地址槽、高64位在较高地址槽。
+//   寄存器值：%vN（高64位）+ %vN+1（低64位），lea 基址 = regSlot(id+1)；
+//   变量值：x 槽（低64位）+ x$s1 槽（高64位）。
+//   注意：本函数处理 IR 指令 Add/Sub（type=i128），操作数为 i128 值（双槽）。
+//   操作数可能是 i128 常量（extra=LO:HI 十六进制）或 i128 寄存器（%vN）。
 void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstruction& inst) {
-    // 当前槽位为64位：低64位 add/sub + 高64位 adc/sbb
-    // 但单槽实现无法表达128位高半（槽为8字节）。务实方案：仅低64位运算，
-    // 高64位以0处理（值域≤2^63时正确）。完整128位由后续Task的运行时辅助函数实现
+    // 结果双槽：result.id 为高64位槽（%vN）、result.id+1 为低64位槽（%vN+1）
+    const int dstHiId = inst.result.id;
+    const int dstLoId = inst.result.id + 1;
+    std::string dstLo = regSlot(dstLoId);   // 低64位（较低地址）
+    std::string dstHi = regSlot(dstHiId);   // 高64位（较高地址）
+    // 操作数低/高64位文本：i128 常量拆双立即数；i128 寄存器取 双槽
+    auto splitI128 = [this](const ir::IRValue& v) -> std::pair<std::string, std::string> {
+        if (v.isConstant) {
+            // 常量 extra = "LO:HI"（十六进制）或纯十进制（小值）
+            const std::string& extra = v.extra;
+            const std::size_t colon = extra.find(':');
+            if (colon != std::string::npos) {
+                const std::uint64_t lo = static_cast<std::uint64_t>(
+                    std::stoull(extra.substr(0, colon), nullptr, 16));
+                const std::uint64_t hi = static_cast<std::uint64_t>(
+                    std::stoull(extra.substr(colon + 1), nullptr, 16));
+                return {uint64HexText(lo), uint64HexText(hi)};
+            }
+            // 纯十进制：低64位 = 值，高64位 = 0
+            try {
+                return {uint64HexText(static_cast<std::uint64_t>(std::stoull(extra))), "0"};
+            } catch (...) {
+                return {extra, "0"};
+            }
+        }
+        // 寄存器：%vN = 高64位（较高地址）、%vN+1 = 低64位（较低地址）
+        return {regSlot(v.id + 1), regSlot(v.id)};
+    };
+    const auto op1 = splitI128(inst.operands[0]);
+    const auto op2 = splitI128(inst.operands[1]);
+    const bool isAdd = (inst.opcode == ir::Opcode::Add);
+    // 低64位：mov rax, lo1 ; add/sub rax, lo2 ; mov dstLo, rax
+    // 注意：add/sub 内存操作数需显式 qword ptr（MASM A2070）；常量立即数
+    //       （十六进制 h 后缀）无需前缀
+    writer.line("mov rax, " + op1.first);
+    if (op2.first.rfind("rbp", 0) == 0 || op2.first.rfind("[", 0) == 0) {
+        writer.line(std::string(isAdd ? "add" : "sub") + " rax, qword ptr " + op2.first);
+    } else {
+        writer.line(std::string(isAdd ? "add" : "sub") + " rax, " + op2.first);
+    }
+    writer.line("mov " + dstLo + ", rax");
+    // 高64位：mov rcx, hi1 ; adc/sbb rcx, hi2 ; mov dstHi, rcx
+    // （add 后 adc 带进位；sub 后 sbb 带借位——flags 由低64位运算设置）
+    // 注意：adc/sbb 内存操作数需显式 qword ptr（MASM A2070 无法推断宽度）
+    writer.line("mov rcx, " + op1.second);
+    if (op2.second.rfind("rbp", 0) == 0 || op2.second.rfind("[", 0) == 0) {
+        writer.line(std::string(isAdd ? "adc" : "sbb") + " rcx, qword ptr " + op2.second);
+    } else {
+        writer.line(std::string(isAdd ? "adc" : "sbb") + " rcx, " + op2.second);
+    }
+    writer.line("mov " + dstHi + ", rcx");
+}
+
+// ==================== i128 乘/除/取余（Task 完善A：运行时辅助函数） ====================
+
+// i128/u128 乘法/除法/取余：调用运行时辅助函数（规格书10.5）
+//   void __cn_mul_i128(const uint64_t* a, const uint64_t* b, uint64_t* out)
+//   a/b/out 均为指向 16 字节双槽内存的指针（i128 值 = 2 个连续虚拟寄存器，
+//   lea 低64位槽地址传给辅助函数；辅助函数按小端读 低64位+高64位）。
+// 辅助函数名：mul -> __cn_mul_i128/u128；div -> __cn_div_i128/u128；mod -> __cn_mod_i128/u128
+void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstruction& inst) {
+    const bool isUnsigned = (inst.type == "u128");
+    std::string helper;
+    switch (inst.opcode) {
+        case ir::Opcode::Mul: helper = isUnsigned ? "__cn_mul_u128" : "__cn_mul_i128"; break;
+        case ir::Opcode::Div: helper = isUnsigned ? "__cn_div_u128" : "__cn_div_i128"; break;
+        case ir::Opcode::Mod: helper = isUnsigned ? "__cn_mod_u128" : "__cn_mod_i128"; break;
+        default: helper = "__cn_mul_i128"; break;
+    }
+    // 操作数 a/b 地址：i128 寄存器双槽 lea 低64位槽（%vN+1）；
+    // i128 常量需先落双槽临时区再取地址（不能 lea 立即数）。
+    // 常量临时区：a 用 [rsp+32]/[rsp+40]、b 用 [rsp+48]/[rsp+56]
+    // （call 前预留的 32 字节影子空间上方，两个操作数各自独立临时区，
+    //   避免 b 覆盖 a 的临时值；call 期间被调函数只读操作数，安全）
+    int tempBase = 32;
+    auto addrOfI128 = [this, &tempBase](const ir::IRValue& v, AsmWriter& w) -> std::string {
+        if (v.isConstant) {
+            const std::string& extra = v.extra;
+            const std::size_t colon = extra.find(':');
+            std::string loText, hiText;
+            if (colon != std::string::npos) {
+                loText = uint64HexText(static_cast<std::uint64_t>(
+                    std::stoull(extra.substr(0, colon), nullptr, 16)));
+                hiText = uint64HexText(static_cast<std::uint64_t>(
+                    std::stoull(extra.substr(colon + 1), nullptr, 16)));
+            } else {
+                loText = uint64HexText(static_cast<std::uint64_t>(std::stoull(extra)));
+                hiText = "0";
+            }
+            w.line("mov rax, " + loText);
+            w.line("mov [rsp+" + std::to_string(tempBase) + "], rax");       // 临时区低64位
+            w.line("mov rax, " + hiText);
+            w.line("mov [rsp+" + std::to_string(tempBase + 8) + "], rax");   // 临时区高64位
+            const std::string addr = "[rsp+" + std::to_string(tempBase) + "]";
+            tempBase += 16;  // 下一常量使用独立临时区
+            return addr;
+        }
+        if (v.id >= 0) return regSlot(v.id + 1);  // 低64位槽地址
+        return regSlot(v.id);  // 防御
+    };
+    const std::string aAddr = addrOfI128(inst.operands[0], writer);
+    const std::string bAddr = addrOfI128(inst.operands[1], writer);
+    // 结果双槽：%vN（高）+ %vN+1（低），lea 低64位槽
+    const int dstLoId = inst.result.id + 1;
+    const std::string outAddr = regSlot(dstLoId);
+    // Win x64 调用约定：rcx/rdx/r8 = a/b/out 地址（均为指针）
+    writer.line("lea rcx, " + aAddr);
+    writer.line("lea rdx, " + bAddr);
+    writer.line("lea r8, " + outAddr);
+    writer.line("sub rsp, 32");  // 影子空间
+    writer.line("call " + helper);
+    writer.line("add rsp, 32");
+}
+
+// ==================== i128 比较（Task 完善A：运行时辅助函数） ====================
+
+// i128/u128 比较：调用 __cn_cmp_i128/__cn_cmp_u128（返回 int：-1/0/1），
+//   再与 0 比较 setcc 得到 i1 结果
+// 辅助函数签名：int __cn_cmp_i128(const uint64_t* a, const uint64_t* b)
+void X64CodeGenerator::emitInt128Compare(AsmWriter& writer, const ir::IRInstruction& inst) {
+    const bool isUnsigned = (inst.type == "u128" ||
+                             inst.operands[0].type == "u128" ||
+                             inst.operands[1].type == "u128");
+    const std::string helper = isUnsigned ? "__cn_cmp_u128" : "__cn_cmp_i128";
+    // 操作数地址：i128 寄存器双槽 lea 低64位槽（%vN+1）；
+    // i128 常量先落 [rsp+32]/[rsp+40] 临时区再取地址
+    int tempBase = 32;
+    auto addrOfI128 = [this, &tempBase](const ir::IRValue& v, AsmWriter& w) -> std::string {
+        if (v.isConstant) {
+            const std::string& extra = v.extra;
+            const std::size_t colon = extra.find(':');
+            std::string loText, hiText;
+            if (colon != std::string::npos) {
+                loText = uint64HexText(static_cast<std::uint64_t>(
+                    std::stoull(extra.substr(0, colon), nullptr, 16)));
+                hiText = uint64HexText(static_cast<std::uint64_t>(
+                    std::stoull(extra.substr(colon + 1), nullptr, 16)));
+            } else {
+                loText = uint64HexText(static_cast<std::uint64_t>(std::stoull(extra)));
+                hiText = "0";
+            }
+            w.line("mov rax, " + loText);
+            w.line("mov [rsp+" + std::to_string(tempBase) + "], rax");
+            w.line("mov rax, " + hiText);
+            w.line("mov [rsp+" + std::to_string(tempBase + 8) + "], rax");
+            const std::string addr = "[rsp+" + std::to_string(tempBase) + "]";
+            tempBase += 16;
+            return addr;
+        }
+        if (v.id >= 0) return regSlot(v.id + 1);
+        return regSlot(v.id);
+    };
+    const std::string aAddr = addrOfI128(inst.operands[0], writer);
+    const std::string bAddr = addrOfI128(inst.operands[1], writer);
+    writer.line("lea rcx, " + aAddr);
+    writer.line("lea rdx, " + bAddr);
+    writer.line("sub rsp, 32");  // 影子空间
+    writer.line("call " + helper);
+    writer.line("add rsp, 32");
+    // 返回值在 eax（int），结果槽存 i1
     std::string dst = resultText(inst.result);
-    std::string op1 = operandText(inst.operands[0]);
-    std::string op2 = operandText(inst.operands[1]);
-    // 低64位运算（mov rax, op1 ; add/sub rax, op2 ; mov dst, rax）
-    writer.line("mov rax, " + op1);
-    writer.line(std::string(inst.opcode == ir::Opcode::Add ? "add" : "sub") + " rax, " + op2);
-    writer.line("mov " + dst + ", rax");
-    // 高64位：0（占位注释，完整实现留后续Task）
-    writer.comment("i128高64位运算（Task 2.3 仅低64位，128位全范围留运行时辅助函数）");
+    writer.line("mov rcx, rax");  // 保存比较结果
+    writer.line("test ecx, ecx");
+    // 按比较操作码选择条件：Eq -> cmp==0；Ne -> cmp!=0；
+    //   Lt -> cmp<0；Le -> cmp<=0；Gt -> cmp>0；Ge -> cmp>=0
+    std::string cc;
+    switch (inst.opcode) {
+        case ir::Opcode::Eq: cc = "sete"; break;
+        case ir::Opcode::Ne: cc = "setne"; break;
+        case ir::Opcode::Lt: cc = "setl"; break;
+        case ir::Opcode::Le: cc = "setle"; break;
+        case ir::Opcode::Gt: cc = "setg"; break;
+        case ir::Opcode::Ge: cc = "setge"; break;
+        default: cc = "sete"; break;
+    }
+    writer.line(cc + " al");
+    writer.line("movzx eax, al");
+    writer.line("mov " + dst + ", eax");
 }
 
 // ==================== 浮点运算（SSE，Task 2.3） ====================
@@ -493,8 +694,10 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         return;
     }
     // i128/u128 -> i64：截断取低64位（值域≤2^63时语义正确；打印行整数场景）
+    // 注意：i128 双寄存器 %vN（高64位）+ %vN+1（低64位），取低64位槽
     if ((from == "i128" || from == "u128") && (to == "i64" || to == "u64")) {
-        writer.line("mov rax, " + src);
+        const int srcLoId = inst.operands[0].id + 1;
+        writer.line("mov rax, " + regSlot(srcLoId));
         writer.line("mov " + dst + ", rax");
         return;
     }
@@ -607,6 +810,20 @@ void X64CodeGenerator::emitNot(AsmWriter& writer, const ir::IRInstruction& inst)
 //           （槽中高位可能是垃圾，符号/零扩展保证运算语义正确）
 void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction& inst) {
     if (inst.opcode == ir::Opcode::Load) {
+        // i128/正128 变量加载（Task 完善A）：变量 x（低64位槽）+ x$s1（高64位槽）
+        //   -> 结果双寄存器 %vN（高）+ %vN+1（低）
+        if (inst.type == "i128" || inst.type == "u128") {
+            const int dstHiId = inst.result.id;
+            const int dstLoId = inst.result.id + 1;
+            const std::string& varName = inst.operands[0].extra;
+            std::string srcLo = operandText(ir::IRValue::var(varName, "i64"));
+            std::string srcHi = operandText(ir::IRValue::var(varName + "$s1", "i64"));
+            writer.line("mov rax, " + srcLo);
+            writer.line("mov " + regSlot(dstLoId) + ", rax");
+            writer.line("mov rax, " + srcHi);
+            writer.line("mov " + regSlot(dstHiId) + ", rax");
+            return;
+        }
         // operands[0] 为变量引用（var），type 为变量类型
         std::string dst = resultText(inst.result);
         std::string src = operandText(inst.operands[0]);
@@ -632,6 +849,19 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         writer.line("mov " + dst + ", " + w);
     } else {
         // Store：operands[0] 值，extra 变量名
+        // i128/正128 变量存储（Task 完善A）：双寄存器（%vN 高 + %vN+1 低）
+        //   -> 变量 x（低64位槽）+ x$s1（高64位槽）
+        if (inst.type == "i128" || inst.type == "u128") {
+            const int srcHiId = inst.operands[0].id;
+            const int srcLoId = inst.operands[0].id + 1;
+            const std::string loSlot = "[rbp" + std::to_string(varSlotOf(inst.extra)) + "]";
+            const std::string hiSlot = "[rbp" + std::to_string(varSlotOf(inst.extra + "$s1")) + "]";
+            writer.line("mov rax, " + regSlot(srcLoId));
+            writer.line("mov " + loSlot + ", rax");
+            writer.line("mov rax, " + regSlot(srcHiId));
+            writer.line("mov " + hiSlot + ", rax");
+            return;
+        }
         // Task 2.3：小宽度（i8/i16/i32）值先符号/零扩展存满8字节槽，
         // 避免后续以整64读取时读到槽中高位垃圾（栈残留）
         std::string src = operandText(inst.operands[0]);
@@ -828,59 +1058,131 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
     // 参数从 operand 的偏移：间接调用 operand[0] 是指针，实参从 index 1 起
     const std::size_t argBase = isIndirect ? 1 : 0;
     const std::size_t argCount = inst.operands.size() - argBase;
-    // 一次性分配影子空间 + 栈参数区（并对齐16）。
+    // i128/结构体返回（Task 完善A）：调用方在栈上分配返回缓冲区（16字节对齐扩展），
+    //   隐藏返回指针（rcx）传给被调函数（Win x64 ABI 隐藏返回指针占第一个整型参数位）
+    const bool hasBigRet = (inst.result.type == "i128" || inst.result.type == "u128" ||
+                            inst.result.type.rfind("struct", 0) == 0);
+    const int bigRetPad = hasBigRet ? 16 : 0;  // 返回缓冲区
+    // 一次性分配影子空间 + 返回缓冲区 + 栈参数区（并对齐16）。
     // Win x64 ABI：无论参数多少，调用方必须在 call 前预留 32 字节影子空间，
     // 否则被调函数（如运行时 printLine）将影子空间写入栈顶，踩坏调用方栈帧。
     // 影子空间始终预留；仅当 argCount>4 时额外分配栈参数区
-    if (argCount > 4) {
-        const std::size_t stackArgs = argCount - 4;
-        const int total = static_cast<int>(32 + stackArgs * 8);
+    const std::size_t totalArgs = argCount + (hasBigRet ? 1 : 0);
+    if (totalArgs > 4) {
+        const std::size_t stackArgs = totalArgs - 4;
+        const int total = static_cast<int>(32 + bigRetPad + stackArgs * 8);
         const int alignPad = (total % 16 == 0) ? 0 : (16 - total % 16);
         writer.line("sub rsp, " + std::to_string(total + alignPad));
-        // 写入栈参数（第5参数 [rsp+32]，第6 [rsp+40]...）
-        for (std::size_t i = 4; i < argCount; ++i) {
+        // i128/结构体返回缓冲区：位于 [rsp+32+stackArgs*8]（16字节，返回指针区下方）
+        if (hasBigRet) {
+            writer.line("lea rax, [rsp+" + std::to_string(32 + stackArgs * 8) + "]");
+            writer.line("mov rcx, rax");  // 隐藏返回指针（rcx）
+        }
+        // 写入栈参数（第5参数 [rsp+32]，第6 [rsp+40]...；隐藏返回指针占第1参数位）
+        const std::size_t argOffset = hasBigRet ? 1 : 0;  // 参数寄存器位置后移
+        for (std::size_t i = 0; i < argCount && i + argOffset < 4; ++i) {
+            // 前4参数在寄存器，栈参数从第5起
+        }
+        for (std::size_t i = 4 - argOffset; i < argCount; ++i) {
             const std::string& op = operandText(inst.operands[argBase + i]);
             const std::string& argType = inst.operands[argBase + i].type;
-            if (isFloatType(argType)) {
+            if (argType == "i128" || argType == "u128") {
+                // i128 栈参数（Task 完善A）：传双寄存器地址（低64位槽地址）；
+                // 常量先落临时区（[rsp+48]/[rsp+56]，栈参数区上方）再取地址
+                const ir::IRValue& av = inst.operands[argBase + i];
+                std::string addr;
+                if (av.isConstant) {
+                    const std::string& ex = av.extra;
+                    const std::size_t colon = ex.find(':');
+                    std::string loT, hiT;
+                    if (colon != std::string::npos) {
+                        loT = uint64HexText(static_cast<std::uint64_t>(
+                            std::stoull(ex.substr(0, colon), nullptr, 16)));
+                        hiT = uint64HexText(static_cast<std::uint64_t>(
+                            std::stoull(ex.substr(colon + 1), nullptr, 16)));
+                    } else { loT = uint64HexText(static_cast<std::uint64_t>(std::stoull(ex))); hiT = "0"; }
+                    writer.line("mov rax, " + loT);
+                    writer.line("mov [rsp+48], rax");
+                    writer.line("mov rax, " + hiT);
+                    writer.line("mov [rsp+56], rax");
+                    addr = "[rsp+48]";
+                } else {
+                    const int loId = av.id + 1;
+                    writer.line("lea rax, " + regSlot(loId));
+                    addr = "rax";
+                }
+                writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], " + addr);
+            } else if (isFloatType(argType)) {
                 // 浮点栈参数：movsd/movss 存入栈槽（内存目标需显式大小前缀）
                 const std::string store = (argType == "f64") ? "movsd" : "movss";
                 const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
                 writer.line(store + " xmm0, " + mp + op);
-                writer.line(store + " " + mp + "[rsp+" + std::to_string(32 + (i - 4) * 8) + "], xmm0");
+                writer.line(store + " " + mp + "[rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], xmm0");
             } else if (argType == "i32" || argType == "i1") {
                 // 32位值：eax 读 + 符号扩展 rax（C ABI int->long long 提升）
                 writer.line("mov eax, " + op);
                 writer.line("movsxd rax, eax");
-                writer.line("mov [rsp+" + std::to_string(32 + (i - 4) * 8) + "], rax");
+                writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             } else {
                 writer.line("mov rax, " + op);
-                writer.line("mov [rsp+" + std::to_string(32 + (i - 4) * 8) + "], rax");
+                writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             }
         }
     } else {
-        // 参数<=4：仅预留影子空间 32 字节（并保持16字节对齐）
-        writer.line("sub rsp, 32");
+        // 参数<=4（含隐藏返回指针）：预留 32 字节影子空间 + 16 字节返回缓冲区（如需）
+        const int total = 32 + bigRetPad;
+        writer.line("sub rsp, " + std::to_string(total));
+        if (hasBigRet) {
+            writer.line("lea rax, [rsp+32]");
+            writer.line("mov rcx, rax");  // 隐藏返回指针（rcx）
+        }
     }
     // 前4参数寄存器（rcx/rdx/r8/r9 整型；xmm0-3 浮点，Task 2.3）。
     // Win x64 C ABI：整型按位置用 rcx/rdx/r8/r9，浮点按位置用 xmm0-3；
     // 参数按序分配寄存器（整型参数 i32 需符号扩展，否则负数高位垃圾变巨大正数）
-    for (std::size_t i = 0; i < argCount && i < 4; ++i) {
+    // 有隐藏返回指针时，参数寄存器从 index 1 起（rcx 被返回指针占用）
+    const std::size_t argOffset = hasBigRet ? 1 : 0;
+    for (std::size_t i = 0; i < argCount && i + argOffset < 4; ++i) {
         const std::string& op = operandText(inst.operands[argBase + i]);
         const std::string& argType = inst.operands[argBase + i].type;
-        if (isFloatType(argType)) {
+        const int regIdx = static_cast<int>(i + argOffset);
+        if (argType == "i128" || argType == "u128") {
+            // i128 寄存器参数（Task 完善A）：传双寄存器地址（低64位槽地址）；
+            // 常量先落临时区（[rsp+48]/[rsp+56]）再取地址
+            const ir::IRValue& av = inst.operands[argBase + i];
+            if (av.isConstant) {
+                const std::string& ex = av.extra;
+                const std::size_t colon = ex.find(':');
+                std::string loT, hiT;
+                if (colon != std::string::npos) {
+                    loT = uint64HexText(static_cast<std::uint64_t>(
+                        std::stoull(ex.substr(0, colon), nullptr, 16)));
+                    hiT = uint64HexText(static_cast<std::uint64_t>(
+                        std::stoull(ex.substr(colon + 1), nullptr, 16)));
+                } else { loT = uint64HexText(static_cast<std::uint64_t>(std::stoull(ex))); hiT = "0"; }
+                writer.line("mov rax, " + loT);
+                writer.line("mov [rsp+48], rax");
+                writer.line("mov rax, " + hiT);
+                writer.line("mov [rsp+56], rax");
+                writer.line("lea " + parameterRegister(regIdx) + ", [rsp+48]");
+            } else {
+                const int loId = av.id + 1;
+                writer.line("lea " + parameterRegister(regIdx) + ", " + regSlot(loId));
+            }
+        } else if (isFloatType(argType)) {
             // 浮点参数：xmm0-3（按位置，内存源需显式大小前缀）
             const std::string load = (argType == "f64") ? "movsd" : "movss";
             const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
-            const std::string xmm = "xmm" + std::to_string(i);
+            const std::string xmm = "xmm" + std::to_string(i);  // 浮点参数不参与隐藏返回指针
             writer.line(load + " " + xmm + ", " + mp + op);
         } else if (argType == "i32" || argType == "i1") {
-            std::string reg = parameterRegister(static_cast<int>(i));
+            std::string reg = parameterRegister(regIdx);
             // movsxd 需要先装入 eax：mov eax, op; movsxd rcx, eax
             writer.line("mov eax, " + op);
             writer.line("movsxd " + reg + ", eax");
         } else {
             // i64/指针：64 位直接 mov
-            writer.line("mov " + parameterRegister(static_cast<int>(i)) + ", " + op);
+            writer.line("mov " + parameterRegister(regIdx) + ", " + op);
         }
     }
     if (isIndirect) {
@@ -892,19 +1194,29 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         // 阶段一C链接：CN内置函数（打印行等）与 主 映射到运行时符号，其余走名称修饰
         writer.line("call " + symbolName(callee));
     }
-    // 恢复栈（与分配对称：argCount>4 恢复 影子空间+栈参数区，否则仅恢复影子空间32）
-    if (argCount > 4) {
-        const std::size_t stackArgs = argCount - 4;
-        const int total = static_cast<int>(32 + stackArgs * 8);
+    // 恢复栈（与分配对称：totalArgs>4 恢复 影子空间+返回缓冲区+栈参数区，否则仅恢复 影子空间+返回缓冲区）
+    if (totalArgs > 4) {
+        const std::size_t stackArgs = totalArgs - 4;
+        const int total = static_cast<int>(32 + bigRetPad + stackArgs * 8);
         const int alignPad = (total % 16 == 0) ? 0 : (16 - total % 16);
         writer.line("add rsp, " + std::to_string(total + alignPad));
     } else {
-        writer.line("add rsp, 32");
+        writer.line("add rsp, " + std::to_string(32 + bigRetPad));
     }
     // 返回值 -> 结果槽（浮点 xmm0，整型 rax，Task 2.3）
     if (inst.result.id >= 0) {
         std::string dst = resultText(inst.result);
-        if (isFloatType(inst.result.type)) {
+        if (inst.result.type == "i128" || inst.result.type == "u128") {
+            // i128 返回（Task 完善A）：调用方在栈上分配 16 字节返回缓冲区，
+            //   以隐藏指针（rcx）传给被调函数；被调方写入后返回缓冲区指针（rax）
+            //   结果双寄存器：%vN（高64位）+ %vN+1（低64位），从缓冲区读回
+            const int hiId = inst.result.id;
+            const int loId = inst.result.id + 1;
+            writer.line("mov rdx, [rax]");       // 低64位
+            writer.line("mov " + regSlot(loId) + ", rdx");
+            writer.line("mov rdx, [rax+8]");     // 高64位
+            writer.line("mov " + regSlot(hiId) + ", rdx");
+        } else if (isFloatType(inst.result.type)) {
             const std::string store = (inst.result.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.result.type == "f64") ? "qword ptr " : "dword ptr ";
             writer.line(store + " " + mp + dst + ", xmm0");
@@ -973,15 +1285,18 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
             else emitIntBinary(writer, inst, "sub");
             break;
         case ir::Opcode::Mul:
-            if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "mul");
+            if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
+            else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "mul");
             else emitIntBinary(writer, inst, "imul");
             break;
         case ir::Opcode::Div:
-            if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "div");
+            if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
+            else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "div");
             else emitDivMod(writer, inst);
             break;
         case ir::Opcode::Mod:
-            emitDivMod(writer, inst);
+            if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
+            else emitDivMod(writer, inst);
             break;
         case ir::Opcode::BitAnd:
             emitIntBinary(writer, inst, "and");
@@ -1011,7 +1326,12 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
         case ir::Opcode::Eq: case ir::Opcode::Ne:
         case ir::Opcode::Lt: case ir::Opcode::Le:
         case ir::Opcode::Gt: case ir::Opcode::Ge:
-            emitCompare(writer, inst);
+            if (inst.operands[0].type == "i128" || inst.operands[0].type == "u128" ||
+                inst.type == "i128" || inst.type == "u128") {
+                emitInt128Compare(writer, inst);
+            } else {
+                emitCompare(writer, inst);
+            }
             break;
         case ir::Opcode::Load:
         case ir::Opcode::Store:
@@ -1019,6 +1339,19 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
             break;
         case ir::Opcode::AddrOf:
             emitAddrOf(writer, inst);
+            break;
+        case ir::Opcode::CopyStruct:
+            // 结构体整体赋值（Task 完善A）：内存拷贝（rep movsb）
+            // operands[0]=目标地址(ptr)、operands[1]=源地址(ptr)、extra=字节数
+            {
+                const std::string dstOp = operandText(inst.operands[0]);
+                const std::string srcOp = operandText(inst.operands[1]);
+                const long long bytes = std::stoll(inst.extra);
+                writer.line("mov rdi, " + dstOp);   // 目标
+                writer.line("mov rsi, " + srcOp);   // 源
+                writer.line("mov rcx, " + std::to_string(bytes));  // 字节数
+                writer.line("rep movsb");
+            }
             break;
         case ir::Opcode::FieldAddr:
             emitFieldAddr(writer, inst);

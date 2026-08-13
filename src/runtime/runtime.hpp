@@ -46,6 +46,35 @@ extern "C" {
     CNRT_EXPORT void __cn_print_float(double value);       // 打印浮点（不换行）
     CNRT_EXPORT void __cn_print_newline();                 // 打印换行
 
+    // 128位整数运算辅助（规格书10.5，Task 完善A）
+    // 128位值以 cn_i128* 指针传入/回写（布局：out[0]=低64位、out[1]=高64位，
+    // 与编译器 i128 变量双槽一致），调用方负责传入指向16字节缓冲的指针
+    CNRT_EXPORT void __cn_add_i128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 128位加法
+    CNRT_EXPORT void __cn_sub_i128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 128位减法
+    CNRT_EXPORT void __cn_mul_i128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 有符号128位乘法
+    CNRT_EXPORT void __cn_mul_u128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 无符号128位乘法
+    CNRT_EXPORT void __cn_div_i128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 有符号128位除法
+    CNRT_EXPORT void __cn_mod_i128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 有符号128位取余
+    CNRT_EXPORT void __cn_div_u128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 无符号128位除法
+    CNRT_EXPORT void __cn_mod_u128(const unsigned long long* a, const unsigned long long* b,
+                                   unsigned long long* out);      // 无符号128位取余
+    CNRT_EXPORT int __cn_cmp_i128(const unsigned long long* a, const unsigned long long* b); // 有符号比较
+    CNRT_EXPORT int __cn_cmp_u128(const unsigned long long* a, const unsigned long long* b); // 无符号比较
+    CNRT_EXPORT double __cn_i128_to_f64(const unsigned long long* a); // 有符号128位转浮点
+    CNRT_EXPORT double __cn_u128_to_f64(const unsigned long long* a); // 无符号128位转浮点
+    CNRT_EXPORT void __cn_f64_to_i128(double value, unsigned long long* out); // 浮点转有符号128位
+    CNRT_EXPORT void __cn_print_i128(const unsigned long long* v); // 打印有符号128位（不换行）
+    CNRT_EXPORT void __cn_print_u128(const unsigned long long* v); // 打印无符号128位（不换行）
+    CNRT_EXPORT void printLineI128(const unsigned long long* v);   // 打印有符号128位（换行）
+    CNRT_EXPORT void printLineU128(const unsigned long long* v);   // 打印无符号128位（换行）
+
     // 运行时错误（规格书附录B错误码，Task 2.4 数组/指针运行时检查调用）
     // 错误码：2=数组越界、3=空指针解引用（打印错误信息后终止程序）
     CNRT_EXPORT void __cn_runtime_error(long long errorCode);
