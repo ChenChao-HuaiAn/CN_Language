@@ -200,6 +200,14 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
     return it->second.returnType;
 }
 
+// 查询函数参数类型列表（未注册返回空向量；供IR层推导 i128 实参是否需截断，
+// 集成验证修复：i128 实参传给 i128 参数时不得截断为 i64）
+std::vector<std::string> SemanticAnalyzer::funcParamTypesOf(const std::string& funcName) const {
+    auto it = functions_.find(funcName);
+    if (it == functions_.end()) return {};
+    return it->second.paramTypes;
+}
+
 // 扩展隐式转换（Task 2.7）：枚举↔整数（枚举本质为整32）；枚举间须同名；结构体须同名
 bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
                                       const std::string& toRaw) const {

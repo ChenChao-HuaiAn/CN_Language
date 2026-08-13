@@ -5,6 +5,13 @@
 
 ## 高权重问题（必须避免）
 
+- [2026-08-13 10:30] **问题类型**: 集成问题（权重 27.3）
+  - **描述**: 完善功能集成验证（14_integration2 员工档案系统）发现 6 个跨组件 BUG：① i128 返回 + 结构体按值参数 ABI 错位——被调方 `paramOffset = structReturn?1:0` 未涵盖 i128 返回（结构体参数应从 rdx 读但被调方从 rcx 读）+ i128 返回 prologue 未保存 rcx→r12（函数体内调用破坏 rcx，epilogue 用已破坏的 rcx → 0xC0000005）；② LoadPtr/StorePtr 漏 i128 双槽分支（`档案.年薪` 读取只 mov 8 字节，高64 残留垃圾）；③ emitCast 无"普通整数→i128"分支（i32→i128 落默认 mov 32位，高64 垃圾）；④ i128 参数 emitParamSetup 只 `mov slot, reg` 存 8 字节（调用方传 16 字节双槽地址指针，被调方只存低 8 字节）；⑤ 指针下标元素成员 `名单[j].年薪` objSrcType 推导只认数组变量（`types::isArray`），指针参数（`员工档案* 名单`）推导失败 → 字段访问降级为 0 → i128 比较恒假排序失效；⑥ 结构体下标赋值 `名单[j] = 名单[j+1]` 走 StorePtr 只存 8 字节（应 CopyStruct 48B）——结构体指针数组元素交换破坏数据
+  - **原因**: 完善 A（i128/结构体值）与完善 C（优化器）各自独立测试通过，但"i128 字段 + 结构体按值 + 指针数组 + 整体赋值 + 比较排序"组合场景未覆盖——Win x64 隐藏返回指针（rcx）对 i128/结构体返回的 paramOffset 处理不一致；codegen 各访存/传参路径对 i128 双槽约定（%vN=高64、%vN+1=低64）未全覆盖；IR 层 objSrcType 推导与结构体赋值检测对"指针下标"形态（IndexExpr of ptr）遗漏
+  - **解决**: ① paramOffset 涵盖 i128/u128 返回 + prologue `mov r12, rcx` + epilogue 用 r12；② LoadPtr/StorePtr 加 i128/u128 双槽分支；③ emitCast 加整数→i128 分支（符号扩展低64 + sar 63 高64）；④ emitParamSetup i128 参数（寄存器/栈）从指针 rep movsb 16 字节；⑤ visitMemberExpr objSrcType 推导 IndexExpr 分支补 `types::isPointer`（pointeeOf）；⑥ 非标识符左值赋值加结构体检测（CopyStruct 按 typeSizeOf）
+  - **预防**: i128 双槽约定（%vN=高/%vN+1=低）必须覆盖全部访存/传参/转换路径（LoadPtr/StorePtr/Cast→i128/i128参数/返回）；隐藏返回指针（rcx→r12）对 i128/结构体返回统一处理；IR 层自定义类型推导必须覆盖 IdentifierExpr/MemberExpr/IndexExpr（含指针下标 pointeeOf）；结构体赋值（变量/下标/成员）统一 CopyStruct；综合用例必须组合 i128 字段 + 结构体值 + 指针数组 + 排序
+  - **权重**: 27.3（集成问题7 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
 - [2026-08-13 09:00] **问题类型**: 逻辑错误（权重 22.75）
   - **描述**: 结构体按值返回（Win x64 隐藏返回指针）实现中发现 4 个 BUG：① epilogue structReturn 分支直接 return 漏掉 `mov rsp,rbp/pop rbp/ret` → 执行流落入下一函数 PROC 无限递归 → 0xC00000FD 栈溢出；② `mov rcx, 64` 硬编码拷贝 64 字节，16 字节班级结构体越界写 48 字节破坏相邻栈变量（翻倍 160/0/0）；③ `出.分数[1] = ...`（IndexExpr 对象为结构体数组字段 MemberExpr）targetType 推导遗漏 → StorePtr 用 i64 8 字节写入覆盖相邻数组元素；④ i128 字面量越界未报错（2^127 被接受）
   - **原因**: ① structReturn 分支是 emitEpilogue 的提前 return，未走公共尾部；② 结构体返回大小未记录到 IRFunction（codegen 无从得知精确字节）；③ visitAssignmentExpr IndexExpr 分支只处理 IdentifierExpr 对象，未处理 MemberExpr（出.分数）；④ 语义层 literalTypeOf 对无后缀超 int64 提升整128 但无越界检查

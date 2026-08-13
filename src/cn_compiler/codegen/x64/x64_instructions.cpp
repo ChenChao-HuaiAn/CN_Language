@@ -721,6 +721,34 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line("mov " + dst + ", eax");
         return;
     }
+    // 普通整数 -> i128/u128（集成验证发现 Bug）：i32/i64 等扩展为 128 位。
+    //   原实现无此分支，落到默认 32 位 mov —— 高64位槽残留垃圾 -> i128 运算结果错误。
+    //   i128 双槽约定：%vN=高64、%vN+1=低64（regSlot(id)/regSlot(id+1)）
+    if (to == "i128" || to == "u128") {
+        const bool signedSrc = (from == "i8" || from == "i16" ||
+                                from == "i32" || from == "i64");
+        // 低64位：源值（<64位 先扩展为64位）
+        if (from == "i8" || from == "i16") {
+            writer.line("movsx eax, " + memSizePtr(from) + src);
+            writer.line("movsxd rax, eax");
+        } else if (from == "u8" || from == "u16") {
+            writer.line("movzx eax, " + memSizePtr(from) + src);
+        } else if (from == "i32" || from == "u32") {
+            writer.line("mov eax, " + src);
+            if (signedSrc) writer.line("movsxd rax, eax");
+        } else {
+            writer.line("mov rax, " + src);
+        }
+        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");  // 低64位
+        // 高64位：有符号源符号扩展（算术右移63位）；无符号/常量 置 0
+        if (signedSrc) {
+            writer.line("sar rax, 63");
+        } else {
+            writer.line("xor rax, rax");
+        }
+        writer.line("mov " + regSlot(inst.result.id) + ", rax");      // 高64位
+        return;
+    }
     // 32 <-> 64（同宽度：mov 传递即可，值语义一致）
     writer.line("mov eax, " + src);
     writer.line("mov " + dst + ", eax");
@@ -1004,6 +1032,17 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             writer.line("mov " + dst + ", rax");
             return;
         }
+        if (inst.type == "i128" || inst.type == "u128") {
+            // i128 指针加载（集成验证发现 Bug）：结构体字段读取 i128（如 档案.年薪）
+            //   原实现漏了 i128 分支，只读 8B 到结果槽高64位残留垃圾 -> 值错误。
+            //   i128 双槽约定：%vN=高64、%vN+1=低64；小端内存 [rax]=低64、[rax+8]=高64
+            //   （结果槽在寄存器区，regSlot(id) 为高64、regSlot(id+1) 为低64）
+            writer.line("mov rcx, [rax]");        // 低64位
+            writer.line("mov " + regSlot(inst.result.id + 1) + ", rcx");
+            writer.line("mov rcx, [rax+8]");      // 高64位
+            writer.line("mov " + regSlot(inst.result.id) + ", rcx");
+            return;
+        }
         // i64/ptr：64位读取
         writer.line("mov rcx, [rax]");
         writer.line("mov " + dst + ", rcx");
@@ -1023,6 +1062,16 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         writer.line("movsx rcx, " + memSizePtr(inst.type) + value);
         const std::string sub = (inst.type == "i8") ? "cl" : "cx";
         writer.line("mov " + memSizePtr(inst.type) + "[rax], " + sub);
+        return;
+    }
+    if (inst.type == "i128" || inst.type == "u128") {
+        // i128 指针存储（集成验证发现 Bug 同 LoadPtr）：结构体字段写入 i128
+        //   原实现漏了 i128 分支，走 64 位存储只写低 8B -> 高 8B 残留垃圾。
+        //   值双槽：operand[1].id=高64（regSlot(id)）、id+1=低64（regSlot(id+1)）
+        writer.line("mov rcx, " + regSlot(inst.operands[1].id + 1));  // 低64位
+        writer.line("mov [rax], rcx");
+        writer.line("mov rcx, " + regSlot(inst.operands[1].id));      // 高64位
+        writer.line("mov [rax+8], rcx");
         return;
     }
     if (inst.type == "i32" || inst.type == "u32") {

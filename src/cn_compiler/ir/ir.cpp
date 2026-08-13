@@ -1756,6 +1756,46 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         }
         // 复合赋值（*p += 1 等）：先读当前值再运算（简化：直接读地址）
         ir::IRValue addr = lvalueAddress(node->target.get());
+        // 集成验证修复 Bug：下标/解引用目标的结构体整体赋值——
+        //   `名单[j] = 名单[j+1]`（结构体指针数组元素交换）目标为 IndexExpr，
+        //   原实现走 StorePtr 只存 8 字节 -> 结构体数据破坏。
+        //   目标元素类型为结构体、右值为结构体值（IndexExpr/标识符）时生成 CopyStruct。
+        if (semantic_ != nullptr &&
+            node->target->getType() == NodeType::IndexExpr) {
+            IndexExpr* tIdx = static_cast<IndexExpr*>(node->target.get());
+            std::string tElemSrc;
+            if (tIdx->object->getType() == NodeType::IdentifierExpr) {
+                const std::string st = lookupSrcType(
+                    static_cast<IdentifierExpr*>(tIdx->object.get())->name);
+                if (types::isArray(st)) tElemSrc = types::arrayElemOf(st);
+                else if (types::isPointer(st)) tElemSrc = types::pointeeOf(st);
+            }
+            if (!tElemSrc.empty() &&
+                semantic_->isStructType(types::canonical(tElemSrc)) &&
+                !isCompoundAssignOp(node->op)) {
+                // 右值：IndexExpr 结构体元素 -> 其地址（lvalueAddress）；
+                // 标识符结构体变量 -> AddrOf
+                ir::IRValue srcAddr;
+                if (node->value->getType() == NodeType::IndexExpr ||
+                    node->value->getType() == NodeType::MemberExpr) {
+                    srcAddr = lvalueAddress(node->value.get());
+                } else if (node->value->getType() == NodeType::IdentifierExpr) {
+                    const std::string srcUnique = lookupVarName(
+                        static_cast<IdentifierExpr*>(node->value.get())->name);
+                    srcAddr = emitResult(ir::Opcode::AddrOf,
+                                         {ir::IRValue::var(srcUnique, "i64")},
+                                         "ptr", srcUnique, node->location);
+                }
+                if (srcAddr.id >= 0) {
+                    const int size = semantic_->typeSizeOf(types::canonical(tElemSrc));
+                    emit(ir::Opcode::CopyStruct, {addr, srcAddr}, ir::IRValue(),
+                         std::to_string(size), "void", node->location);
+                    lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0",
+                                           node->location);
+                    return;
+                }
+            }
+        }
         // 结构体初始化赋值：点数组[0] = 点{ x = 5, y = 6 }（Task 2.7）
         // 按目标地址逐字段写入（结构体不能作为单寄存器值）
         if (node->value->getType() == NodeType::StructInitExpr && semantic_ != nullptr) {
@@ -1942,16 +1982,28 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     }
 
     std::vector<ir::IRValue> args;
-    for (auto& arg : node->arguments) {
-        ir::IRValue argVal = genExpr(arg.get());
+    for (std::size_t ai = 0; ai < node->arguments.size(); ++ai) {
+        ir::IRValue argVal = genExpr(node->arguments[ai].get());
         // Task 2.3：8/16位整数实参先扩展为 i64；i128/u128 实参截断为 i64
         // （Win x64 ABI 整参按64位传递；否则 emitCall 的 mov rax, op 读到槽中高位垃圾）
         // 所有 <64位 整数实参统一 Cast 到 i64（Win x64 ABI 整参按64位传递；
         // u32/i32 等若直接 mov rcx, [槽] 会读到槽高位栈残留垃圾）
+        // 集成验证修复：i128/u128 实参传给 i128/u128 参数时不得截断（如
+        //   `月薪(调后.年薪)`、`调整年薪(员工[0], 250000000000000000LL)`）——
+        //   原实现无条件截断为 i64，被调方按 16 字节读参数槽读到垃圾高位。
+        bool argIs128 = (argVal.type == "i128" || argVal.type == "u128");
+        bool paramIs128 = false;
+        if (argIs128 && isDirect && semantic_ != nullptr) {
+            const auto paramTypes = semantic_->funcParamTypesOf(calleeName);
+            if (ai < paramTypes.size()) {
+                const std::string canon = types::canonical(paramTypes[ai]);
+                paramIs128 = (canon == "整128" || canon == "正128");
+            }
+        }
         if (argVal.type == "i8" || argVal.type == "i16" ||
             argVal.type == "u8" || argVal.type == "u16" ||
             argVal.type == "i32" || argVal.type == "u32" ||
-            argVal.type == "i128" || argVal.type == "u128") {
+            (argIs128 && !paramIs128)) {
             argVal = emitResult(ir::Opcode::Cast, {argVal}, "i64", "", node->location);
         } else if (argVal.type == "f32") {
             // f32 实参提升为 f64（Win x64 ABI 浮点参数按 xmm 传双精度）
@@ -2096,8 +2148,17 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                                             "i64", "", node->location);
             ir::IRValue addr = emitResult(ir::Opcode::Add, {ptr, scaled}, "ptr", "",
                                           node->location);
+            // 集成验证修复 Bug：结构体指针元素（如 排序(员工档案* 名单) 中
+            //   名单[j]）作为"结构体值"应返回地址（供整体赋值/按值传参/字段访问），
+            //   原实现统一 LoadPtr 读首 8 字节当指针 -> 排序交换读到垃圾地址崩溃
+            const std::string pointee = types::pointeeOf(srcType);
+            if (semantic_ != nullptr &&
+                semantic_->isStructType(types::canonical(pointee))) {
+                lastExpr_ = addr;
+                return;
+            }
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},
-                                   mapType(types::pointeeOf(srcType)), "",
+                                   mapType(pointee), "",
                                    node->location);
             return;
         }
@@ -2321,6 +2382,12 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
                 static_cast<IdentifierExpr*>(idx->object.get())->name);
             if (types::isArray(arrType)) {
                 objSrcType = types::arrayElemOf(arrType);
+            } else if (types::isPointer(arrType)) {
+                // 集成验证修复 Bug：指针下标元素成员（如 排序(员工档案* 名单)
+                //   中 名单[j].年薪）— 元素类型 = 指针所指类型。
+                //   原实现只认数组变量，指针下标 objSrcType 推导失败 ->
+                //   decl==nullptr -> 字段访问降级为 0，i128 比较恒假（排序失效）
+                objSrcType = types::pointeeOf(arrType);
             }
         } else if (idx->object->getType() == NodeType::MemberExpr) {
             // 修复10/10b（数组字段元素成员读取）：方形.顶点[0].x /

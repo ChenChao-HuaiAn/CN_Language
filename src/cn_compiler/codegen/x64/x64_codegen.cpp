@@ -366,9 +366,12 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
     if (frameSize > 0) {
         writer.line("sub rsp, " + std::to_string(frameSize));
     }
-    // Task 完善A：结构体返回值函数——隐藏返回指针（rcx）保存到非易失寄存器 r12，
-    //   函数体可能破坏 rcx（参数拷贝/调用）；epilogue 用 r12 恢复缓冲区地址
-    if (function.structReturn) {
+    // Task 完善A：结构体/i128 返回值函数——隐藏返回指针（rcx）保存到非易失寄存器 r12，
+    //   函数体可能破坏 rcx（参数拷贝/调用）；epilogue 用 r12 恢复缓冲区地址。
+    //   修复（集成验证发现）：i128/u128 返回同样占用 rcx 作为隐藏返回指针，
+    //   且函数体内调用会破坏 rcx，必须保存到 r12（否则 epilogue 读到垃圾地址崩溃）
+    if (function.structReturn || function.returnType == "i128" ||
+        function.returnType == "u128") {
         writer.line("mov r12, rcx");
     }
 }
@@ -382,7 +385,11 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
 void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& function) {
     // Task 完善A：结构体返回值函数——隐藏返回指针（rcx）占第一个整型参数位，
     //   真实参数从 index 1 起（Win x64 ABI）
-    const std::size_t paramOffset = function.structReturn ? 1 : 0;
+    // 修复（集成验证发现）：i128/u128 返回同样占用 rcx 作为隐藏返回指针，
+    //   结构体按值参数须从 index 1 起读取（与结构体返回一致）
+    const std::size_t paramOffset =
+        (function.structReturn || function.returnType == "i128" ||
+         function.returnType == "u128") ? 1 : 0;
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         // 参数唯一名（paramUniques 与 params 一一对应，防御性回退到源码名）
         const std::string& unique = (i < function.paramUniques.size())
@@ -422,6 +429,18 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                 const std::string mp = (paramType == "f64") ? "qword ptr " : "dword ptr ";
                 const std::string xmm = "xmm" + std::to_string(i);
                 writer.line(store + " " + mp + slot + ", " + xmm);
+            } else if (paramType == "i128" || paramType == "u128") {
+                // i128 参数（集成验证修复 Bug）：调用方传双槽地址指针（低64位槽地址），
+                //   原实现只存 8 字节（mov reg）——高64位丢失 -> i128 参数值错误。
+                //   此处从指针地址拷贝 16 字节到参数双槽（槽0=低64位、槽1=高64位，
+                //   与 registerVarSlots 的 2 槽登记一致：槽1 在槽0 上方 8 字节）
+                const std::string srcPtr = parameterRegister(static_cast<int>(i + paramOffset));
+                writer.line("mov rsi, " + srcPtr);          // 源：i128 双槽地址
+                writer.line("lea rdi, " + slot);            // 目标：参数槽0
+                writer.line("mov rcx, 16");
+                writer.line("rep movsb");
+                writer.comment("i128 参数 " + function.params[i].first +
+                               " 拷贝 16 字节");
             } else {
                 // 前4整型/指针参数：寄存器 -> 栈槽（隐藏返回指针占位时偏移 paramOffset）
                 std::string reg = parameterRegister(static_cast<int>(i + paramOffset));
@@ -434,8 +453,21 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
             // 第6参数 index=5 位于 [rbp+56]，依此类推）
             // 浮点栈参数：caller 已写 8 字节（f64 movsd / f32 movss 低4字节），
             // 整型/指针 8 字节。统一按 8 字节拷贝，读取时按实际宽度取用
-            writer.line("mov rax, [rbp+" + std::to_string(48 + (static_cast<int>(i + paramOffset) - 4) * 8) + "]");
-            writer.line("mov " + slot + ", rax");
+            const std::string stackSrc =
+                "[rbp+" + std::to_string(48 + (static_cast<int>(i + paramOffset) - 4) * 8) + "]";
+            if (paramType == "i128" || paramType == "u128") {
+                // i128 栈参数（集成验证修复）：调用方栈槽存放的是双槽地址指针，
+                //   从指针拷贝 16 字节到参数双槽（与寄存器 i128 参数一致）
+                writer.line("mov rsi, " + stackSrc);      // 源：i128 双槽地址
+                writer.line("lea rdi, " + slot);          // 目标：参数槽0
+                writer.line("mov rcx, 16");
+                writer.line("rep movsb");
+                writer.comment("i128 栈参数 " + function.params[i].first +
+                               " 拷贝 16 字节");
+            } else {
+                writer.line("mov rax, " + stackSrc);
+                writer.line("mov " + slot + ", rax");
+            }
         }
         writer.comment("参数 " + function.params[i].first + " -> " + slot);
     }
@@ -486,13 +518,15 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
                 }
             }
             if (hiId >= 0) {
-                // 隐藏返回指针在 rcx（调用方传入）
-                writer.line("mov rax, rcx");  // 返回缓冲区地址
+                // 隐藏返回指针在 rcx（调用方传入）；prologue 已保存到 r12。
+                // 修复（集成验证发现）：函数体内调用会破坏 rcx，必须用 r12 恢复，
+                //   否则 epilogue 把已破坏的 rcx 当缓冲区地址写入 -> 崩溃（0xC0000005）
+                writer.line("mov rax, r12");  // 返回缓冲区地址（入口保存）
                 writer.line("mov rdx, " + regSlot(hiId + 1));  // 低64位
                 writer.line("mov [rax], rdx");
                 writer.line("mov rdx, " + regSlot(hiId));      // 高64位
                 writer.line("mov [rax+8], rdx");
-                writer.line("mov rax, rcx");  // ABI：返回缓冲区指针放 rax
+                writer.line("mov rax, r12");  // ABI：返回缓冲区指针放 rax
             }
         } else if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
             const std::string load = (currentReturnType_ == "f64") ? "movsd" : "movss";
