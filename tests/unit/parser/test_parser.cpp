@@ -767,3 +767,209 @@ TEST(ParserTest, LiteralValues) {
     ASSERT_EQ(intExpr->getType(), NodeType::IntegerLiteral);
     EXPECT_EQ(static_cast<IntegerLiteral*>(intExpr)->value, 42);
 }
+
+// ==================== 8. 语句终止与续行（cn-language-spec 01a第三节 / 03第零节） ====================
+
+// ---- 规则1：语句终止（无终止符 + 可选分号 + 关键字边界） ----
+
+// 无分号单语句：变量声明无分号合法
+TEST(ParserTest, StmtNoSemicolonVarDecl) {
+    auto result = parseProgram("函数 测试() { 变量 a = 1 }");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(firstFunction(result.program.get())->body->statements.size(), 1u);
+    EXPECT_EQ(firstStmt(result.program.get())->getType(), NodeType::VarDecl);
+}
+
+// 无分号单语句：返回无分号合法
+TEST(ParserTest, StmtNoSemicolonReturn) {
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 1 }");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(firstStmt(result.program.get())->getType(), NodeType::ReturnStmt);
+}
+
+// 无分号单语句：表达式语句（函数调用）无分号合法
+TEST(ParserTest, StmtNoSemicolonExpr) {
+    auto result = parseProgram("函数 测试() { 打印行(\"你好\") }");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(firstStmt(result.program.get())->getType(), NodeType::ExprStmt);
+}
+
+// 可选分号：带分号与不带分号均合法，语句数一致
+TEST(ParserTest, StmtSemicolonOptional) {
+    auto withSemi = parseProgram("函数 测试() { 变量 a = 1; 变量 b = 2; }");
+    ASSERT_FALSE(withSemi.diagnostics.hasErrors());
+    EXPECT_EQ(firstFunction(withSemi.program.get())->body->statements.size(), 2u);
+
+    auto withoutSemi = parseProgram("函数 测试() { 变量 a = 1 变量 b = 2 }");
+    ASSERT_FALSE(withoutSemi.diagnostics.hasErrors());
+    EXPECT_EQ(firstFunction(withoutSemi.program.get())->body->statements.size(), 2u);
+}
+
+// 无分号关键字边界：变量 x = 1 整32 y = 2 解析为两条声明（整32 触发新声明）
+TEST(ParserTest, StmtKeywordBoundaryTwoDecls) {
+    auto result = parseProgram("函数 测试() { 变量 x = 1 整32 y = 2 }");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    FunctionDecl* func = firstFunction(result.program.get());
+    ASSERT_EQ(func->body->statements.size(), 2u);
+    // 第一条：变量 x = 1（类型推断 VarDecl）
+    EXPECT_EQ(func->body->statements[0]->getType(), NodeType::VarDecl);
+    // 第二条：整32 y = 2（类型前置 VarDecl）
+    EXPECT_EQ(func->body->statements[1]->getType(), NodeType::VarDecl);
+    VarDecl* second = static_cast<VarDecl*>(func->body->statements[1].get());
+    EXPECT_EQ(second->name, "y");
+    EXPECT_EQ(second->typeName, "整32");
+}
+
+// ---- 规则2：续行（换行≡空格，天然无条件续行） ----
+
+// 续行-括号：多行函数调用参数
+TEST(ParserTest, StmtContinuationCallMultiLine) {
+    auto result = parseProgram(
+        "函数 测试() -> 整32 {\n"
+        "  返回 加(10,\n"
+        "            20)\n"
+        "}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    Expr* expr = returnExpr(result.program.get());
+    ASSERT_NE(expr, nullptr);
+    ASSERT_EQ(expr->getType(), NodeType::CallExpr);
+    CallExpr* call = static_cast<CallExpr*>(expr);
+    ASSERT_EQ(call->arguments.size(), 2u);
+}
+
+// 续行-括号：多行下标访问
+TEST(ParserTest, StmtContinuationIndexMultiLine) {
+    auto result = parseProgram(
+        "函数 测试() -> 整32 {\n"
+        "  返回 数组[\n"
+        "      1 + 2\n"
+        "  ]\n"
+        "}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    Expr* expr = returnExpr(result.program.get());
+    ASSERT_NE(expr, nullptr);
+    ASSERT_EQ(expr->getType(), NodeType::IndexExpr);
+}
+
+// 续行-括号：多行括号表达式分组
+TEST(ParserTest, StmtContinuationParenMultiLine) {
+    auto result = parseProgram(
+        "函数 测试() -> 整32 {\n"
+        "  返回 (1 +\n"
+        "          2) * 3\n"
+        "}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    Expr* expr = returnExpr(result.program.get());
+    ASSERT_NE(expr, nullptr);
+    ASSERT_EQ(expr->getType(), NodeType::BinaryExpr);
+    BinaryExpr* top = static_cast<BinaryExpr*>(expr);
+    EXPECT_EQ(top->op, Operator::Multiply);
+    // 左侧是括号分组 (1+2)
+    ASSERT_EQ(top->left->getType(), NodeType::BinaryExpr);
+    EXPECT_EQ(static_cast<BinaryExpr*>(top->left.get())->op, Operator::Add);
+}
+
+// 续行-行尾运算符：变量 s = 1 +\n 2 合法且等于 3
+TEST(ParserTest, StmtContinuationOperatorEndOfLine) {
+    auto result = parseProgram(
+        "函数 测试() -> 整32 {\n"
+        "  变量 s = 1 +\n"
+        "          2\n"
+        "  返回 s\n"
+        "}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    FunctionDecl* func = firstFunction(result.program.get());
+    ASSERT_EQ(func->body->statements.size(), 2u);
+    // 第一条：变量声明，初始化器是 1 + 2（Add）
+    VarDecl* decl = static_cast<VarDecl*>(func->body->statements[0].get());
+    ASSERT_EQ(decl->getType(), NodeType::VarDecl);
+    ASSERT_NE(decl->initializer, nullptr);
+    ASSERT_EQ(decl->initializer->getType(), NodeType::BinaryExpr);
+    BinaryExpr* init = static_cast<BinaryExpr*>(decl->initializer.get());
+    EXPECT_EQ(init->op, Operator::Add);
+    // 第二条：返回
+    EXPECT_EQ(func->body->statements[1]->getType(), NodeType::ReturnStmt);
+}
+
+// 行首运算符并入上一行：返回 a\n- b 实为 返回 a - b（换行≡空格）
+TEST(ParserTest, StmtContinuationLeadingOperator) {
+    auto result = parseProgram(
+        "函数 测试() -> 整32 {\n"
+        "  返回 a\n"
+        "         - b\n"
+        "}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    Expr* expr = returnExpr(result.program.get());
+    ASSERT_NE(expr, nullptr);
+    ASSERT_EQ(expr->getType(), NodeType::BinaryExpr);
+    EXPECT_EQ(static_cast<BinaryExpr*>(expr)->op, Operator::Subtract);
+}
+
+// ---- 规则3：单行多语句（显式分号支持） ----
+
+// 单行多语句：变量 i = 0; ++i; --i; 三条语句
+TEST(ParserTest, StmtMultipleOnOneLine) {
+    auto result = parseProgram("函数 测试() { 变量 i = 0; ++i; --i; }");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    FunctionDecl* func = firstFunction(result.program.get());
+    ASSERT_EQ(func->body->statements.size(), 3u);
+    EXPECT_EQ(func->body->statements[0]->getType(), NodeType::VarDecl);
+    EXPECT_EQ(func->body->statements[1]->getType(), NodeType::ExprStmt);
+    EXPECT_EQ(func->body->statements[2]->getType(), NodeType::ExprStmt);
+}
+
+// ---- 规则4：空语句与空循环体（裸分号非法） ----
+
+// 空语句非法：裸 ; 报"预期表达式"
+TEST(ParserTest, StmtBareSemicolonIllegal) {
+    auto result = parseProgram("函数 测试() { ; }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 连续分号 ;; 报错
+TEST(ParserTest, StmtDoubleSemicolonIllegal) {
+    auto result = parseProgram("函数 测试() { ;; }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 当(x); 是语法错误（循环体强制 {）
+TEST(ParserTest, StmtWhileSemicolonIllegal) {
+    auto result = parseProgram("函数 测试() { 当(x); }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 合法空循环体：当(x) { }（空块合法）
+TEST(ParserTest, StmtWhileEmptyBodyOk) {
+    auto result = parseProgram("函数 测试() { 当(x) { } }");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    Stmt* stmt = firstStmt(result.program.get());
+    ASSERT_EQ(stmt->getType(), NodeType::WhileStmt);
+    WhileStmt* whileStmt = static_cast<WhileStmt*>(stmt);
+    ASSERT_NE(whileStmt->body, nullptr);
+    EXPECT_TRUE(whileStmt->body->statements.empty());
+}
+
+// 循环头三段分号合法：循环(整32 j = 0; j < 10; j++) { }
+TEST(ParserTest, StmtForHeaderSemicolonsOk) {
+    auto result = parseProgram("函数 测试() { 循环(整32 j = 0; j < 10; j++) { } }");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    Stmt* stmt = firstStmt(result.program.get());
+    ASSERT_EQ(stmt->getType(), NodeType::ForStmt);
+    ForStmt* forStmt = static_cast<ForStmt*>(stmt);
+    // 三段齐全：init（VarDecl）、condition（j < 10）、update（j++）
+    ASSERT_NE(forStmt->init, nullptr);
+    EXPECT_EQ(forStmt->init->getType(), NodeType::VarDecl);
+    ASSERT_NE(forStmt->condition, nullptr);
+    ASSERT_EQ(forStmt->condition->getType(), NodeType::BinaryExpr);
+    ASSERT_NE(forStmt->update, nullptr);
+    ASSERT_EQ(forStmt->update->getType(), NodeType::UnaryExpr);
+    UnaryExpr* upd = static_cast<UnaryExpr*>(forStmt->update.get());
+    EXPECT_EQ(upd->op, Operator::Increment);
+    EXPECT_TRUE(upd->postfix);  // j++ 后缀
+}
+
+// 循环头缺分号报错：循环(整32 j = 0; j < 10) { }
+TEST(ParserTest, StmtForHeaderMissingSemicolonIllegal) {
+    auto result = parseProgram("函数 测试() { 循环(整32 j = 0; j < 10) { } }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
