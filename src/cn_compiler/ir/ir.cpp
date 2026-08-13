@@ -482,6 +482,10 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
         if (semantic_->isStructType(types::canonical(elem))) {
             return semantic_->typeSizeOf(elem);
         }
+        // 修复集成审查 BUG #5：i128/正128 指针元素 stride = 16 字节
+        if (types::isI128(types::canonical(elem))) {
+            return 16;
+        }
     }
     return 8;
 }
@@ -615,6 +619,10 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
                     const std::string elemSrc = types::arrayElemOf(srcType);
                     if (semantic_->isStructType(elemSrc)) {
                         elemStride = semantic_->typeSizeOf(elemSrc);
+                    }
+                    // 修复集成审查 BUG #5：i128/正128 数组元素 stride = 16
+                    if (types::isI128(types::canonical(elemSrc))) {
+                        elemStride = 16;
                     }
                 }
                 ir::IRValue scaled = emitResult(
@@ -1185,6 +1193,10 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         std::int64_t elemStride = 8;
         if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
             elemStride = semantic_->typeSizeOf(elemSrc);
+        }
+        // 修复集成审查 BUG #5：i128/正128 数组初始化元素 stride = 16
+        if (types::isI128(types::canonical(elemSrc))) {
+            elemStride = 16;
         }
         // 逐元素存储：目标为 数组槽[i]（地址 = 数组基址 + i*元素大小，基址槽最深）
         for (std::size_t i = 0; i < initList->elements.size(); ++i) {
@@ -1836,8 +1848,9 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     // 结构体大小由语义层 typeSizeOf 计算（含数组字段，整体拷贝）。
     if (semantic_ != nullptr) {
         const std::string targetSrcType = lookupSrcType(ident->name);
-        // 右值：标识符（b = a）或成员/下标（b = 名单[0]）
+        // 右值：标识符（b = a）或成员/下标（b = 名单[0]）或 链式赋值（b = c = a）
         std::string valueSrcType;
+        bool isChainedAssign = false;  // 链式赋值：右值为内层赋值表达式
         if (node->value->getType() == NodeType::IdentifierExpr) {
             valueSrcType = lookupSrcType(
                 static_cast<IdentifierExpr*>(node->value.get())->name);
@@ -1851,6 +1864,11 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 if (types::isArray(st)) valueSrcType = types::arrayElemOf(st);
                 else if (types::isPointer(st)) valueSrcType = types::pointeeOf(st);
             }
+        } else if (node->value->getType() == NodeType::AssignmentExpr) {
+            // 链式赋值 a = (b = c)：内层已把值写入 b（CopyStruct），
+            // 内层返回值 = 源地址（ptr 寄存器，指向 c）。结构体源类型与目标相同。
+            isChainedAssign = true;
+            valueSrcType = targetSrcType;
         }
         if (semantic_->isStructType(types::canonical(targetSrcType)) &&
             semantic_->isStructType(types::canonical(valueSrcType))) {
@@ -1858,9 +1876,12 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
             ir::IRValue dstAddr = emitResult(ir::Opcode::AddrOf,
                                              {ir::IRValue::var(unique, "i64")},
                                              "ptr", unique, node->location);
-            // 源地址：标识符 -> AddrOf；成员/下标 -> lvalueAddress
+            // 源地址：标识符 -> AddrOf；成员/下标 -> lvalueAddress；
+            // 链式赋值 -> 内层返回值（ptr 寄存器，源地址，内容与内层目标相同）
             ir::IRValue srcAddr;
-            if (node->value->getType() == NodeType::IdentifierExpr) {
+            if (isChainedAssign) {
+                srcAddr = value;  // 内层 CopyStruct 返回的源地址（ptr 寄存器）
+            } else if (node->value->getType() == NodeType::IdentifierExpr) {
                 const std::string srcUnique = lookupVarName(
                     static_cast<IdentifierExpr*>(node->value.get())->name);
                 srcAddr = emitResult(ir::Opcode::AddrOf,
@@ -2118,6 +2139,12 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 if (semantic_->isStructType(elemSrc)) {
                     elemStride = semantic_->typeSizeOf(elemSrc);
                 }
+            }
+            // 修复集成审查 BUG #5：i128/正128 数组元素 stride = 16 字节
+            //   （原实现只处理结构体类型，i128 数组 `大数[1]` 步进 8 字节
+            //   读到 大数[0] 高64位槽 -> 求和值错误）
+            if (types::isI128(types::canonical(elemSrc))) {
+                elemStride = 16;
             }
             ir::IRValue scaled = emitResult(
                 ir::Opcode::Mul,

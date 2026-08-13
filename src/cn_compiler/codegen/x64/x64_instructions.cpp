@@ -638,6 +638,19 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         const std::string conv = (to == "f64") ? "cvtsi2sd" : "cvtsi2ss";
         const std::string store = (to == "f64") ? "movsd" : "movss";
         const std::string mp = (to == "f64") ? "qword ptr " : "dword ptr ";
+        // i128/正128 -> 浮（修复集成审查 BUG #1）：128位转浮需运行时辅助函数
+        //   __cn_i128_to_f64（低64位+高64位双槽 -> double，处理符号与2^64缩放）。
+        //   原实现无此分支，落入默认 32 位 mov eax 读到槽中低32位垃圾 -> 输出 0。
+        if (from == "i128" || from == "u128") {
+            const int srcLoId = inst.operands[0].id + 1;  // 低64位槽
+            const std::string helper = (from == "u128") ? "__cn_u128_to_f64" : "__cn_i128_to_f64";
+            writer.line("lea rcx, " + regSlot(srcLoId));  // 双槽地址
+            writer.line("sub rsp, 32");                   // 影子空间
+            writer.line("call " + helper);
+            writer.line("add rsp, 32");
+            writer.line(store + " " + mp + dst + ", xmm0");
+            return;
+        }
         if (from == "i64" || from == "u64") {
             writer.line("mov rax, " + src);
             writer.line(conv + " xmm0, rax");
@@ -699,6 +712,21 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         const int srcLoId = inst.operands[0].id + 1;
         writer.line("mov rax, " + regSlot(srcLoId));
         writer.line("mov " + dst + ", rax");
+        return;
+    }
+    // i1 -> i64/u64（修复集成审查 BUG #4）：布尔值 0/1 零扩展。
+    //   原实现无此分支，落入默认 32 位 mov——src 槽高 32 位是垃圾
+    //   （i1 结果槽仅低 32 位写入），打印行(字符串后缀(...)) 读到垃圾
+    //   （如 4393751543809）。movzx 读低 32 位后零扩展到 64 位。
+    if (from == "i1" && (to == "i64" || to == "u64")) {
+        writer.line("mov eax, " + src);
+        writer.line("mov " + dst + ", rax");  // movzx 语义：写 eax 清零高32位
+        return;
+    }
+    // i1 -> i32/u32（零扩展同 32 位）
+    if (from == "i1" && (to == "i32" || to == "u32")) {
+        writer.line("mov eax, " + src);
+        writer.line("mov " + dst + ", eax");
         return;
     }
     // i32 -> i64：movsxd 符号扩展（否则负数高位垃圾变巨大正数，打印行整数场景）

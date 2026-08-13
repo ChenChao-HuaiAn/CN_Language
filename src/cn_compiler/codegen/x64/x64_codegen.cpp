@@ -61,11 +61,13 @@ std::string X64CodeGenerator::symbolName(const std::string& name) {
 }
 
 // 第index个整型参数（0起）的传递位置：前4用寄存器，第5起在栈上
-// Win x64 约定：rcx/rdx/r8/r9，第5参数位于 [rsp+40+(index-4)*8]（跳过返回地址+影子空间）
+// Win x64 约定：rcx/rdx/r8/r9，第5参数位于 [rbp+48+(index-4)*8]
+// （调用方 [rsp+32] = 被调方 push rbp 后 rbp+48；rsp 锚定会因被调方
+//   sub frameSize 落在自己栈帧内读垃圾——必须用 rbp 锚定，修复集成审查 BUG #2）
 std::string X64CodeGenerator::parameterRegister(int index) const {
     static const char* regs[] = {"rcx", "rdx", "r8", "r9"};
     if (index < 4) return regs[index];
-    return "[rsp+" + std::to_string(40 + (index - 4) * 8) + "]";
+    return "[rbp+" + std::to_string(48 + (index - 4) * 8) + "]";
 }
 
 // 操作码 + 结果类型 -> 指令助记符（用于分派；多数指令在 emitInstruction 直接处理）
@@ -420,8 +422,14 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                            std::to_string(bytes) + " 字节");
             continue;
         }
-        if (i < 4) {
-            if (isFloatType(paramType)) {
+        // 参数实际位号：整型/指针/i128 参数受隐藏返回指针（rcx 占位）影响，
+        //   位号 = i + paramOffset（Win x64 ABI）；浮点参数独立编址（xmm0-3），
+        //   位号 = i 不受 paramOffset 影响（修复集成审查 BUG #2：原 if (i < 4)
+        //   未加 paramOffset，i128 第4参数在隐藏返回指针共存时误走寄存器分支，
+        //   parameterRegister(4) 的 rsp 锚定读被调方栈帧垃圾 -> 崩溃）
+        const int actualIdx = static_cast<int>(i) + static_cast<int>(paramOffset);
+        if (isFloatType(paramType)) {
+            if (i < 4) {
                 // 修复6（浮点参数）：Win x64 浮点参数经 xmm0-3 传递，
                 // 原实现从 rcx/rdx/r8/r9（整型寄存器）读取——读到垃圾值。
                 // 浮点值存 8 字节槽（f32 只低 4 字节有效），movsd/movss 从 xmmN 存槽
@@ -429,12 +437,20 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                 const std::string mp = (paramType == "f64") ? "qword ptr " : "dword ptr ";
                 const std::string xmm = "xmm" + std::to_string(i);
                 writer.line(store + " " + mp + slot + ", " + xmm);
-            } else if (paramType == "i128" || paramType == "u128") {
+            } else {
+                // 浮点栈参数（第5起）：[rbp+48+(i-4)*8]
+                const std::string stackSrc =
+                    "[rbp+" + std::to_string(48 + (static_cast<int>(i) - 4) * 8) + "]";
+                writer.line("mov rax, " + stackSrc);
+                writer.line("mov " + slot + ", rax");
+            }
+        } else if (actualIdx < 4) {
+            if (paramType == "i128" || paramType == "u128") {
                 // i128 参数（集成验证修复 Bug）：调用方传双槽地址指针（低64位槽地址），
                 //   原实现只存 8 字节（mov reg）——高64位丢失 -> i128 参数值错误。
                 //   此处从指针地址拷贝 16 字节到参数双槽（槽0=低64位、槽1=高64位，
                 //   与 registerVarSlots 的 2 槽登记一致：槽1 在槽0 上方 8 字节）
-                const std::string srcPtr = parameterRegister(static_cast<int>(i + paramOffset));
+                const std::string srcPtr = parameterRegister(actualIdx);
                 writer.line("mov rsi, " + srcPtr);          // 源：i128 双槽地址
                 writer.line("lea rdi, " + slot);            // 目标：参数槽0
                 writer.line("mov rcx, 16");
@@ -443,18 +459,16 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                                " 拷贝 16 字节");
             } else {
                 // 前4整型/指针参数：寄存器 -> 栈槽（隐藏返回指针占位时偏移 paramOffset）
-                std::string reg = parameterRegister(static_cast<int>(i + paramOffset));
+                std::string reg = parameterRegister(actualIdx);
                 std::string width = widthFor(paramType, reg);
                 writer.line("mov " + slot + ", " + width);
             }
         } else {
-            // 第5参数起：从调用者栈帧拷贝到本函数参数槽
-            // 偏移 = 48 + (i-4)*8（第5参数 index=4 位于 [rbp+48]，
-            // 第6参数 index=5 位于 [rbp+56]，依此类推）
-            // 浮点栈参数：caller 已写 8 字节（f64 movsd / f32 movss 低4字节），
-            // 整型/指针 8 字节。统一按 8 字节拷贝，读取时按实际宽度取用
+            // 第5参数位起：从调用者栈帧拷贝到本函数参数槽
+            // 偏移 = 48 + (actualIdx-4)*8（第5参数位 actualIdx=4 位于 [rbp+48]，
+            // 第6参数位 actualIdx=5 位于 [rbp+56]，依此类推）
             const std::string stackSrc =
-                "[rbp+" + std::to_string(48 + (static_cast<int>(i + paramOffset) - 4) * 8) + "]";
+                "[rbp+" + std::to_string(48 + (actualIdx - 4) * 8) + "]";
             if (paramType == "i128" || paramType == "u128") {
                 // i128 栈参数（集成验证修复）：调用方栈槽存放的是双槽地址指针，
                 //   从指针拷贝 16 字节到参数双槽（与寄存器 i128 参数一致）

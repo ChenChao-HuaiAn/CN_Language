@@ -42,6 +42,7 @@ add_executable(cn_unit_tests
     codegen/test_x64_struct_value.cpp
     codegen/test_x64_i128.cpp
     codegen/test_x64_i128_struct.cpp
+    codegen/test_audit_regressions.cpp
     opt/test_const_fold.cpp
     opt/test_dce.cpp
     opt/test_pass_manager.cpp

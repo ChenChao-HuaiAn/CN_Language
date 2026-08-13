@@ -5,6 +5,13 @@
 
 ## 高权重问题（必须避免）
 
+- [2026-08-13 12:50] **问题类型**: 集成问题（权重 27.3）
+  - **描述**: 缺陷完善 Debug 全面审查（模拟生产环境，target/debug_audit/ 9 个边界用例）发现 5 个 BUG：① `i128→浮64` Cast 无分支（`整128 * 1.0` 输出 0.000000——emitCast 整→浮只处理 i64/u64，i128 落默认 32 位 mov 读垃圾低32位）；② i128 混合参数 + i128 返回 ABI 错位崩溃（0xC0000005）——`emitParamSetup` 用 `if (i < 4)` 判定参数位未加 paramOffset（i128 返回占 rcx 后第4参数实际位4=栈），且 `parameterRegister(4)` 返回 `[rsp+40]`（rsp 锚定，被调方 sub frameSize 后读自己栈帧垃圾，应为 rbp 锚定 `[rbp+48]`）；③ 链式结构体赋值 `链3 = 链2 = 链1` 只拷贝 8 字节（外层赋值右值为 AssignmentExpr 时 valueSrcType 推导失败 → 不走 CopyStruct 落简单 Store）；④ `i1→i64` Cast 无分支（字符串后缀/包含 打印 4393751543809 垃圾——i1 落默认 32 位 mov 读槽高32位垃圾）；⑤ i128 数组元素 stride 8（`整128[3] 大数; 大数[1]` 读到 大数[0] 高64槽，求和 92233720368547758086000000000000000000 错误——visitIndexExpr/ptrElemStride/初始化列表 elemStride 漏 i128=16）
+  - **原因**: i128 双槽约定（%vN=高/%vN+1=低）在 Cast 整→浮、i1→整 路径未全覆盖；Win x64 参数位判定（i<4）与 paramOffset 分离导致 i128 第4参数错判；parameterRegister 栈偏移 rsp 锚定（被调方 rsp 已 sub frameSize）应 rbp 锚定；链式赋值的结构体源推导未处理 AssignmentExpr 形态；i128 数组/指针 stride 只处理结构体类型漏 i128（16字节）
+  - **解决**: ① emitCast 加 i128/u128→f64 分支（调用 __cn_i128_to_f64/__cn_u128_to_f64 双槽地址 + xmm0）；② emitParamSetup 参数位判定改 `i + paramOffset < 4`（浮点独立 i<4），parameterRegister index≥4 改 `[rbp+48+(index-4)*8]`；③ IR 结构体赋值检测补 AssignmentExpr 右值（内层返回值即源地址）；④ emitCast 加 i1→i64/u64/i32 分支（mov eax 零扩展）；⑤ visitIndexExpr/ptrElemStride/数组初始化 elemStride 补 `types::isI128 → 16`
+  - **预防**: emitCast 必须全覆盖 i128↔浮/i1↔整 转换矩阵（缺分支落默认 32 位 mov 读垃圾）；被调方参数栈偏移恒用 rbp 锚定（rbp+48 为第5参数位）；参数位判定必须含 paramOffset（整型/i128），浮点独立编址（xmmN）；链式赋值右值形态（AssignmentExpr）必须纳入结构体源推导；i128 数组/指针 stride 恒 16（与 typeSize 一致）
+  - **权重**: 27.3（集成问题7 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
 - [2026-08-13 10:30] **问题类型**: 集成问题（权重 27.3）
   - **描述**: 完善功能集成验证（14_integration2 员工档案系统）发现 6 个跨组件 BUG：① i128 返回 + 结构体按值参数 ABI 错位——被调方 `paramOffset = structReturn?1:0` 未涵盖 i128 返回（结构体参数应从 rdx 读但被调方从 rcx 读）+ i128 返回 prologue 未保存 rcx→r12（函数体内调用破坏 rcx，epilogue 用已破坏的 rcx → 0xC0000005）；② LoadPtr/StorePtr 漏 i128 双槽分支（`档案.年薪` 读取只 mov 8 字节，高64 残留垃圾）；③ emitCast 无"普通整数→i128"分支（i32→i128 落默认 mov 32位，高64 垃圾）；④ i128 参数 emitParamSetup 只 `mov slot, reg` 存 8 字节（调用方传 16 字节双槽地址指针，被调方只存低 8 字节）；⑤ 指针下标元素成员 `名单[j].年薪` objSrcType 推导只认数组变量（`types::isArray`），指针参数（`员工档案* 名单`）推导失败 → 字段访问降级为 0 → i128 比较恒假排序失效；⑥ 结构体下标赋值 `名单[j] = 名单[j+1]` 走 StorePtr 只存 8 字节（应 CopyStruct 48B）——结构体指针数组元素交换破坏数据
   - **原因**: 完善 A（i128/结构体值）与完善 C（优化器）各自独立测试通过，但"i128 字段 + 结构体按值 + 指针数组 + 整体赋值 + 比较排序"组合场景未覆盖——Win x64 隐藏返回指针（rcx）对 i128/结构体返回的 paramOffset 处理不一致；codegen 各访存/传参路径对 i128 双槽约定（%vN=高64、%vN+1=低64）未全覆盖；IR 层 objSrcType 推导与结构体赋值检测对"指针下标"形态（IndexExpr of ptr）遗漏
