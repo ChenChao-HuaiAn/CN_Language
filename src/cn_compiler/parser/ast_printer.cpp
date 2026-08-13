@@ -325,6 +325,59 @@ void AstPrinter::visitStructInitExpr(StructInitExpr* node) {
     --depth_;
 }
 
+void AstPrinter::visitTernaryExpr(TernaryExpr* node) {
+    printHeader("三元表达式", node->location);
+    ++depth_;
+    if (node->condition != nullptr) {
+        node->condition->accept(*this);
+    }
+    if (node->trueValue != nullptr) {
+        node->trueValue->accept(*this);
+    }
+    if (node->falseValue != nullptr) {
+        node->falseValue->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitCastExpr(CastExpr* node) {
+    printHeader("强制转换", node->location, node->targetType);
+    ++depth_;
+    if (node->operand != nullptr) {
+        node->operand->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitLambdaExpr(LambdaExpr* node) {
+    std::string capture;
+    switch (node->captureKind) {
+        case LambdaCaptureKind::None: capture = "[]"; break;
+        case LambdaCaptureKind::ByValue: capture = "[=]"; break;
+        case LambdaCaptureKind::ByRef: capture = "[&]"; break;
+        case LambdaCaptureKind::Explicit: {
+            capture = "[";
+            for (std::size_t i = 0; i < node->explicitCaptures.size(); ++i) {
+                if (i > 0) capture += ", ";
+                capture += node->explicitCaptures[i];
+            }
+            capture += "]";
+            break;
+        }
+    }
+    std::string detail = capture + " 返回=" +
+        (node->returnType.empty() ? "推导" : node->returnType);
+    printHeader("lambda表达式", node->location, detail);
+    ++depth_;
+    for (auto& param : node->params) {
+        param->accept(*this);
+    }
+    if (node->body != nullptr) {
+        node->body->accept(*this);
+    }
+    --depth_;
+}
+
 void AstPrinter::visitIdentifierExpr(IdentifierExpr* node) {
     printHeader("标识符", node->location, node->name);
 }

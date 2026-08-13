@@ -49,7 +49,7 @@ enum class TokenType {
     Kw_Union,         // 联合体（所有字段共享同一内存区域，Task 2.7）
     Kw_Enum,          // 枚举（命名常量集合）
 
-    // ---- 声明关键字(7) ----
+    // ---- 声明关键字(8) ----
     Kw_Function,      // 函数（函数定义/声明）
     Kw_Var,           // 变量（变量声明）
     Kw_Import,        // 导入（导入模块）
@@ -57,6 +57,7 @@ enum class TokenType {
     Kw_Public,        // 公开（公开可见性标签）
     Kw_Private,       // 私有（私有可见性标签）
     Kw_Static,        // 静态（静态变量/函数）
+    Kw_Auto,          // 自动（类型推断声明，Task 2.10 lambda 赋值目标）
 
     // ---- 常量关键字(3) ----
     Kw_True,          // 真（布尔真值）

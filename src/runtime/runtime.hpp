@@ -24,10 +24,11 @@ extern "C" {
     // 置零内存（对应CN内置：置零内存）
     CNRT_EXPORT void cn_memset(void* dst, std::size_t size);
 
-    // IO API（规格书10.1，对应CN内置函数 打印行 / 打印行整数 / 打印行浮点）
-    CNRT_EXPORT void printLine(const char* text);          // 打印行（字符串）
-    CNRT_EXPORT void printLineInt(long long value);        // 打印行（整数）
-    CNRT_EXPORT void printLineFloat(double value);         // 打印行（浮点数）
+    // IO API（规格书10.1，Task 2.9 语义调整：打印=println 换行、打印行=print 不换行）
+    CNRT_EXPORT void printLine(const char* text);          // 打印（字符串，println 换行）
+    CNRT_EXPORT void printNoLine(const char* text);        // 打印行（字符串，print 不换行）
+    CNRT_EXPORT void printLineInt(long long value);        // 打印整数（换行）
+    CNRT_EXPORT void printLineFloat(double value);         // 打印浮点（换行）
 
     // 字符串API（规格书10.1 字符串操作：长度/比较/连接/复制/查找；Task 2.5 + Task 2.8 补充）
     // 对应CN内置函数：字符串长度/字符串比较/字符串连接/字符串复制/字符串查找/
@@ -54,7 +55,12 @@ extern "C" {
     CNRT_EXPORT char* __cn_str_from_int(long long value);            // 整数转字符串（动态分配）
     CNRT_EXPORT char* __cn_str_from_float(double value);             // 浮点转字符串（%f 语义，动态分配）
     CNRT_EXPORT char* __cn_str_from_char(int value);                 // 字符转字符串（单字节ASCII，动态分配）
+    CNRT_EXPORT char* __cn_str_from_bool(int value);                 // 布尔转字符串（"真"/"假"，Task 2.9）
     CNRT_EXPORT void __cn_str_free(char* str);                       // 字符串释放（封装 cn_free，可安全释放nullptr）
+
+    // 格式化（Task 2.9，规格书10.6）：sprintf 风格变参，返回动态分配字符串，调用方负责释放
+    // 占位符：%d(整) %u(无符号) %f(浮点) %s(字符串) %c(字符) %x/%X(十六进制) %o(八进制) %p(指针)
+    CNRT_EXPORT char* __cn_format(const char* fmt, ...);             // sprintf 风格格式化（动态分配）
 
     // 打印行多参数格式化辅助（Task 2.5）：逐段打印，最后统一换行
     // 打印行("值:", 42, 3.5) 展开为 __cn_print_str("值:") + __cn_print_int(42) +
@@ -87,6 +93,7 @@ extern "C" {
     CNRT_EXPORT int __cn_cmp_u128(const unsigned long long* a, const unsigned long long* b); // 无符号比较
     CNRT_EXPORT double __cn_i128_to_f64(const unsigned long long* a); // 有符号128位转浮点
     CNRT_EXPORT double __cn_u128_to_f64(const unsigned long long* a); // 无符号128位转浮点
+    CNRT_EXPORT double __cn_u64_to_f64(unsigned long long v); // 无符号64位转浮点（Task 2.10）
     CNRT_EXPORT void __cn_f64_to_i128(double value, unsigned long long* out); // 浮点转有符号128位
     CNRT_EXPORT void __cn_print_i128(const unsigned long long* v); // 打印有符号128位（不换行）
     CNRT_EXPORT void __cn_print_u128(const unsigned long long* v); // 打印无符号128位（不换行）

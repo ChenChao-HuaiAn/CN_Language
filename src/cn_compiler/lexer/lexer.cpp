@@ -40,10 +40,10 @@ bool isAsciiAlpha(char32_t c) {
     return (c >= U'a' && c <= U'z') || (c >= U'A' && c <= U'Z');
 }
 
-// 54个关键字 -> TokenType 映射表
+// 55个关键字 -> TokenType 映射表
 // 控制流(10)：如果/否则/当/循环/返回/中断/继续/选择/情况/默认
 // 类型(21)：整数/小数/整8~整128/正8~正128/浮32/浮64/布尔/字符/字符串/空类型/结构体/联合体/枚举
-// 声明(7)：函数/变量/导入/从/公开/私有/静态
+// 声明(8)：函数/变量/导入/从/公开/私有/静态/自动
 // 常量(3)：真/假/无
 // OOP(9)：类/接口/保护/虚拟/重写/抽象/实现/自身/父类
 // 错误处理(2)：结果/可选
@@ -69,11 +69,11 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
         {"字符串", TokenType::Kw_String}, {"空类型", TokenType::Kw_Void},
         {"结构体", TokenType::Kw_Struct}, {"联合体", TokenType::Kw_Union},
         {"枚举", TokenType::Kw_Enum},
-        // ---- 声明(7) ----
+        // ---- 声明(8) ----
         {"函数", TokenType::Kw_Function}, {"变量", TokenType::Kw_Var},
         {"导入", TokenType::Kw_Import}, {"从", TokenType::Kw_From},
         {"公开", TokenType::Kw_Public}, {"私有", TokenType::Kw_Private},
-        {"静态", TokenType::Kw_Static},
+        {"静态", TokenType::Kw_Static}, {"自动", TokenType::Kw_Auto},
         // ---- 常量(3) ----
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
         {"无", TokenType::Kw_None},

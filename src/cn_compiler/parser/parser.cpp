@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <utility>
 
 #include "cn_compiler/parser/parser.hpp"
@@ -105,6 +106,23 @@ double parseFloatValue(const std::string& text) {
     } catch (...) {
         return 0.0;
     }
+}
+
+// 判断标识符是否可作为强制转换的目标类型名（Task 2.10，规格书04-一E）：
+//   内置类型关键字 或 通用指针别名"指针"。
+// 用于 类型名(表达式) 与 函数调用 的解析歧义判定——
+//   '(' 前是这些名称时判为 CastExpr，否则判为 CallExpr。
+// 自定义类型名（结构体/枚举名）的转换：parser 无法访问语义符号表，
+//   保守按普通标识符处理（后续 parseCallOrMember 成调用，语义层报错）；
+//   结构体名(...) 转换暂不支持（与既有 结构体{...} 初始化语法不冲突）。
+bool isCastableTypeName(const std::string& name) {
+    static const std::unordered_set<std::string> kTypes = {
+        "整数", "小数", "整8", "整16", "整32", "整64", "整128",
+        "正8", "正16", "正32", "正64", "正128",
+        "浮32", "浮64", "布尔", "字符", "字符串", "空类型",
+        "指针",   // Task 2.10：通用指针别名（空类型*）
+    };
+    return kTypes.count(name) > 0;
 }
 
 } // namespace
@@ -386,6 +404,13 @@ std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
     } else {
         reportErrorHere("预期参数声明，实际为 '" + current().getValue() + "'");
         synchronize();
+    }
+    // 默认参数：类型 名称 = 常量表达式（规格书04-一C，Task 2.10）
+    // 解析为普通表达式（字面量/一元负号常量），常量性由语义层校验
+    if (check(TokenType::Equal) && !param->name.empty()) {
+        advance();
+        param->hasDefault = true;
+        param->defaultExpr = parseExpr();
     }
     return param;
 }
@@ -671,6 +696,12 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
             consumeSemicolon();
             return stmt;
         }
+        case TokenType::Kw_Auto: {
+            // 自动 名称 = 初始值（类型推断声明，Task 2.10 lambda 赋值目标）
+            auto stmt = parseVarDeclAfterKeyword(false);
+            consumeSemicolon();
+            return stmt;
+        }
         case TokenType::LeftBrace: return parseBlockStmt();  // 嵌套代码块
         default:
             break;
@@ -947,7 +978,7 @@ std::unique_ptr<Expr> Parser::parseExpr() {
 
 // 赋值（右结合）：= += -= *= /= %=
 std::unique_ptr<Expr> Parser::parseAssignment() {
-    auto left = parseLogicalOr();
+    auto left = parseTernary();
     if (isAssignOp(currentType())) {
         Operator op = toAssignOp(currentType());
         advance();
@@ -955,6 +986,25 @@ std::unique_ptr<Expr> Parser::parseAssignment() {
         return std::make_unique<AssignmentExpr>(std::move(left), op, std::move(value));
     }
     return left;
+}
+
+// 三元条件表达式（Task 2.9，规格书4.5 优先级1.5，右结合）：
+//   条件 ? 真值 : 假值
+// 优先级链：赋值(1) < 三元(1.5) < 逻辑或(2)；右结合：a ? b : c ? d : e = a ? b : (c ? d : e)
+// 实现：先解析 逻辑或（绑定更紧），遇 '?' 后解析真值（parseExpr，完整表达式），
+//       再消费 ':' 解析假值（parseTernary 递归实现右结合）。标签/CFG 在 IR 层处理（惰性求值）。
+std::unique_ptr<Expr> Parser::parseTernary() {
+    auto condition = parseLogicalOr();
+    if (check(TokenType::Question)) {
+        SourceLocation loc = condition->location;
+        advance();  // 消费 '?'
+        auto trueValue = parseExpr();      // 真值：完整表达式（可含嵌套三元）
+        consume(TokenType::Colon, "':'");
+        auto falseValue = parseTernary();  // 假值：递归调用实现右结合
+        return std::make_unique<TernaryExpr>(std::move(condition), std::move(trueValue),
+                                             std::move(falseValue));
+    }
+    return condition;
 }
 
 // 逻辑或（左结合）：||（优先级2，规格书4.5）
@@ -1156,9 +1206,26 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
     return std::make_unique<MemberExpr>(std::move(expr), memberName, isArrow);
 }
 
-// 基本表达式：字面量 / 标识符 / (表达式)
+// 基本表达式：字面量 / 标识符 / (表达式) / [捕获]lambda
 std::unique_ptr<Expr> Parser::parsePrimary() {
     const SourceLocation loc = current().getLocation();
+    // lambda 表达式探测：[ 捕获 ] ( 参数 ) [-> 返回] { 体 }（Task 2.10）
+    // 判据：当前为 '[' 且（紧接 ']' 或捕获内容后 ']' 再 '('）——区别于下标访问。
+    //   下标访问 [ 后跟 表达式；lambda 捕获 [ 后跟 ]、=、&、标识符。
+    if (check(TokenType::LeftBracket) && peekLambdaCapture()) {
+        return parseLambdaExpr();
+    }
+    // 类型关键字强制转换探测：类型名(表达式)（Task 2.10，规格书04-一E）
+    // 类型关键字（整32/浮64/字符串/指针等）后紧跟 '(' -> CastExpr。
+    // 自定义类型名（结构体/枚举）由语义层处理（parser 无符号表），
+    //   这里仅处理内置类型关键字（isTypeKeyword 覆盖）。
+    if (isTypeKeyword(currentType()) && peek(1).getType() == TokenType::LeftParen) {
+        std::string typeName = parseTypeName();  // 消费类型关键字
+        advance();                               // 消费 '('
+        auto operand = parseExpr();
+        consume(TokenType::RightParen, "')'");
+        return std::make_unique<CastExpr>(typeName, std::move(operand));
+    }
     switch (currentType()) {
         case TokenType::IntegerLiteral: {
             std::string raw = current().getValue();
@@ -1197,6 +1264,20 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
             if (check(TokenType::LeftBrace)) {
                 return parseStructInit(name);
             }
+            // 类型名(表达式) 强制转换（Task 2.10，规格书04-一E）：
+            // 判据：标识符 + '(' 且标识符为类型关键字/已声明类型名 -> CastExpr；
+            //       否则 -> 普通标识符（后续 parseCallOrMember 处理为函数调用）。
+            // 注：parser 无法访问语义符号表（自定义类型名），保守策略——
+            //   '(' 前是类型关键字 或 已知内置类型名 才判为 Cast；
+            //   自定义类型（结构体名）的转换依赖语义层，此处先按普通标识符
+            //   （parseCallOrMember 成函数调用，语义层见到类型名报未声明函数）。
+            //   为支持 结构体名(...) 转换，parser 预登记内置类型关键字全集。
+            if (check(TokenType::LeftParen) && isCastableTypeName(name)) {
+                advance();
+                auto operand = parseExpr();
+                consume(TokenType::RightParen, "')'");
+                return std::make_unique<CastExpr>(name, std::move(operand));
+            }
             return std::make_unique<IdentifierExpr>(name);
         }
         case TokenType::LeftParen: {
@@ -1212,6 +1293,126 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
     reportErrorHere("预期表达式，实际为 '" + current().getValue() + "'");
     advance();
     return std::make_unique<IntegerLiteral>(0, "0");
+}
+
+// lambda 捕获探测（Task 2.10）：当前为 '['，判断是否为 lambda 捕获列表。
+// 合法捕获形态：[]、[=]、[&]、[x]、[x, y]、[=, &x] 等；其后须跟 '('（参数表）。
+// 与下标访问区分：下标 [ 后跟 表达式（标识符/数字/字面量/嵌套下标），
+//   lambda 捕获 [ 后跟 ]、=、& 或 标识符 且找到 ']' 后是 '('。
+bool Parser::peekLambdaCapture() const {
+    int i = 1;  // 已消费 '['
+    // [] / [=] / [&]：后随 '('（参数表）或 '{'（无参 lambda 体）才算 lambda
+    //   （避免误判数组下标 [ ... ] 后随运算符的形态）
+    if (peek(i).getType() == TokenType::RightBracket) {
+        return peek(i + 1).getType() == TokenType::LeftParen ||
+               peek(i + 1).getType() == TokenType::LeftBrace;
+    }
+    if (peek(i).getType() == TokenType::Equal ||
+        peek(i).getType() == TokenType::Amp) {
+        return peek(i + 1).getType() == TokenType::RightBracket &&
+               (peek(i + 2).getType() == TokenType::LeftParen ||
+                peek(i + 2).getType() == TokenType::LeftBrace);
+    }
+    // 显式捕获：[变量] / [变量, ...]（含 & 前缀：&x）
+    bool any = false;
+    while (true) {
+        const TokenType t = peek(i).getType();
+        if (t == TokenType::Amp) { i++; any = true; continue; }   // &x
+        if (t == TokenType::Identifier) { i++; any = true; }
+        else { return false; }                                     // 非捕获形态
+        if (peek(i).getType() == TokenType::RightBracket) {
+            return any && peek(i + 1).getType() == TokenType::LeftParen;
+        }
+        if (peek(i).getType() == TokenType::Comma) { i++; continue; }
+        return false;
+    }
+}
+
+// 解析 lambda 表达式：[捕获](参数) [-> 返回类型] { 函数体 }（规格书04-一D，Task 2.10）
+// 捕获：[] 不捕获 / [=] 值捕获 / [&] 引用捕获 / [变量] 显式捕获。
+// 返回类型可省略（语义层推导）；参数列表可空（无参 lambda）。
+std::unique_ptr<Expr> Parser::parseLambdaExpr() {
+    auto lambda = std::make_unique<LambdaExpr>();
+    lambda->location = current().getLocation();
+    advance();  // 消费 '['
+    // 捕获列表
+    if (check(TokenType::RightBracket)) {
+        lambda->captureKind = LambdaCaptureKind::None;
+        advance();
+    } else if (check(TokenType::Equal) &&
+               peek(1).getType() == TokenType::RightBracket) {
+        // [=]：值捕获全部外层变量
+        lambda->captureKind = LambdaCaptureKind::ByValue;
+        advance();
+        advance();  // 消费 ']'
+    } else if (check(TokenType::Amp) && peek(1).getType() == TokenType::RightBracket) {
+        // [&]：引用捕获全部外层变量
+        lambda->captureKind = LambdaCaptureKind::ByRef;
+        advance();
+        advance();  // 消费 ']'
+    } else if (check(TokenType::Equal)) {
+        // [=, x] 混合：按显式处理（先消费 '='）
+        lambda->captureKind = LambdaCaptureKind::Explicit;
+        advance();
+        while (!check(TokenType::RightBracket)) {
+            if (check(TokenType::Amp)) advance();
+            if (check(TokenType::Identifier)) {
+                lambda->explicitCaptures.push_back(current().getValue());
+                advance();
+            } else {
+                reportErrorHere("lambda 捕获列表预期变量名");
+                break;
+            }
+            if (check(TokenType::Comma)) { advance(); continue; }
+            break;
+        }
+        consume(TokenType::RightBracket, "']'");
+    } else {
+        // 显式捕获：[x] / [x, y] / [&x] / [=, x] 等
+        lambda->captureKind = LambdaCaptureKind::Explicit;
+        if (check(TokenType::Equal)) {
+            advance();  // 允许 [=, x] 混合：按显式处理
+        }
+        while (!check(TokenType::RightBracket)) {
+            if (check(TokenType::Amp)) advance();  // &x：引用捕获前缀（本阶段同显式）
+            if (check(TokenType::Identifier)) {
+                lambda->explicitCaptures.push_back(current().getValue());
+                advance();
+            } else {
+                reportErrorHere("lambda 捕获列表预期变量名");
+                break;
+            }
+            if (check(TokenType::Comma)) {
+                advance();
+                continue;
+            }
+            break;
+        }
+        consume(TokenType::RightBracket, "']'");
+    }
+    // 参数列表：(参数1, 参数2, ...)（可省略：`[] { ... }` 无参 lambda）
+    if (check(TokenType::LeftParen)) {
+        advance();
+        if (!check(TokenType::RightParen)) {
+            do {
+                lambda->params.push_back(parseParamDecl());
+            } while (match(TokenType::Comma));
+        }
+        consume(TokenType::RightParen, "')'");
+    }
+    // 返回类型：[-> 返回类型]
+    if (check(TokenType::Arrow)) {
+        advance();
+        lambda->returnType = parseTypeName();
+    }
+    // 函数体：{ 语句列表 }
+    if (check(TokenType::LeftBrace)) {
+        lambda->body = parseBlockStmt();
+    } else {
+        reportErrorHere("lambda 表达式预期函数体 '{'");
+        lambda->body = std::make_unique<BlockStmt>();
+    }
+    return lambda;
 }
 
 // ==================== 主入口 ====================

@@ -92,6 +92,7 @@ private:
 
     std::unique_ptr<Expr> parseExpr();                  // 优先级1：赋值（最低）
     std::unique_ptr<Expr> parseAssignment();            // 赋值：= += -= *= /= %= （右结合）
+    std::unique_ptr<Expr> parseTernary();               // 优先级1.5：条件 ? 真值 : 假值（右结合，Task 2.9）
     std::unique_ptr<Expr> parseLogicalOr();             // 优先级2：||
     std::unique_ptr<Expr> parseLogicalAnd();            // 优先级3：&&
     std::unique_ptr<Expr> parseBitOr();                 // 优先级4：|（按位或，Task 2.3）
@@ -106,6 +107,10 @@ private:
                                                         //   & 取地址 / * 解引用为一元，Task 2.3）
     std::unique_ptr<Expr> parsePostfix();               // 优先级13：++ -- () .
     std::unique_ptr<Expr> parsePrimary();               // 优先级13基础：字面量/标识符/(expr)
+    // 解析 lambda 表达式：[捕获](参数) [-> 返回] { 体 }（Task 2.10，规格书04-一D）
+    std::unique_ptr<Expr> parseLambdaExpr();
+    // lambda 捕获列表探测（区分 [ 下标 与 [捕获] lambda，Task 2.10）
+    bool peekLambdaCapture() const;
 
     // ---- 后缀解析辅助（避免单个函数超过100行） ----
     std::unique_ptr<Expr> parsePostfixIncDec(std::unique_ptr<Expr> expr); // 后缀 ++ --

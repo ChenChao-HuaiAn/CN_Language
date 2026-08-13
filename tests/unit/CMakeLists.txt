@@ -15,6 +15,7 @@ add_executable(cn_unit_tests
     parser/test_parser_array_ptr.cpp
     parser/test_parser_struct.cpp
     parser/test_parser_struct_param.cpp
+    parser/test_parser_ternary.cpp
     semantic/test_semantic.cpp
     semantic/test_semantic_control.cpp
     semantic/test_function.cpp
@@ -24,6 +25,11 @@ add_executable(cn_unit_tests
     semantic/test_string_extra.cpp
     semantic/test_struct_enum.cpp
     semantic/test_i128_semantic.cpp
+    semantic/test_semantic_ternary.cpp
+    semantic/test_overload.cpp
+    semantic/test_default_param.cpp
+    semantic/test_cast_expr.cpp
+    semantic/test_lambda.cpp
     ir/test_ir.cpp
     ir/test_ir_control.cpp
     ir/test_ir_function.cpp
@@ -34,6 +40,7 @@ add_executable(cn_unit_tests
     ir/test_ir_struct.cpp
     ir/test_ir_struct_value.cpp
     ir/test_ir_i128.cpp
+    ir/test_ir_ternary.cpp
     codegen/test_x64_codegen.cpp
     codegen/test_x64_function.cpp
     codegen/test_x64_types.cpp
@@ -56,6 +63,7 @@ add_executable(cn_unit_tests
     runtime/test_string_api.cpp
     runtime/test_string_api_extra.cpp
     runtime/test_i128_api.cpp
+    runtime/test_format_api.cpp
 )
 
 # 链接 Google Test 与公共模块库

@@ -246,11 +246,11 @@ TEST(IRStringTest, StringFindCall) {
 
 // ==================== 5. 打印行多参数展开 ====================
 
-// 打印行("值:", 42)：展开为 __cn_print_str + __cn_print_int + __cn_print_newline
-TEST(IRStringTest, PrintLineMultiArgsExpansion) {
+// 打印("值:", 42)（Task 2.9：打印=println）：展开为 __cn_print_str + __cn_print_int + __cn_print_newline
+TEST(IRStringTest, PrintMultiArgsExpansion) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行("值:", 42)
+    打印("值:", 42)
     返回 0
 }
 )CN");
@@ -276,8 +276,8 @@ TEST(IRStringTest, PrintLineMultiArgsExpansion) {
     EXPECT_TRUE(hasPrintNewline);
 }
 
-// 打印行单参数：保持 printLine 原路径（不展开）
-TEST(IRStringTest, PrintLineSingleArgNoExpansion) {
+// 打印行单参数（Task 2.9：打印行=print 不换行）：展开为 __cn_print_str（无 newline）
+TEST(IRStringTest, PrintLineSingleArgNoNewline) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
     打印行("你好")
@@ -285,7 +285,16 @@ TEST(IRStringTest, PrintLineSingleArgNoExpansion) {
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
-    const auto* inst = findInst(r.module, 0, Opcode::Call);
-    ASSERT_NE(inst, nullptr);
-    EXPECT_EQ(inst->extra, "打印行");
+    bool hasPrintStr = false;
+    bool hasNewline = false;
+    for (auto& block : r.module.functions[0].blocks) {
+        for (auto& inst : block->instructions) {
+            if (inst.opcode == Opcode::Call) {
+                if (inst.extra == "__cn_print_str") hasPrintStr = true;
+                if (inst.extra == "__cn_print_newline") hasNewline = true;
+            }
+        }
+    }
+    EXPECT_TRUE(hasPrintStr);     // 打印行 走不换行打印
+    EXPECT_FALSE(hasNewline);     // 打印行 末尾不换行（新语义）
 }

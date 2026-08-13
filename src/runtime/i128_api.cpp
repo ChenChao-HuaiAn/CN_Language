@@ -272,6 +272,13 @@ extern "C" double __cn_u128_to_f64(const std::uint64_t* a) {
            static_cast<double>(a[0]);
 }
 
+// 无符号64位转浮点：__cn_u64_to_f64（Task 2.10 强制转换 正64(x) -> 浮64）
+// 说明：cvtsi2sd 按有符号解释（正64 4000000000 位模式 0xEE6B2800 被当负数），
+//   必须经 C 层 static_cast<double>（无符号语义），由编译器正确处理。
+extern "C" double __cn_u64_to_f64(std::uint64_t v) {
+    return static_cast<double>(v);
+}
+
 // 浮点转有符号128位：__cn_f64_to_i128(value, out)（向零截断）
 extern "C" void __cn_f64_to_i128(double value, std::uint64_t* out) {
     if (value < 0) {

@@ -1,148 +1,81 @@
 # HANDOFF - CN语言编译器项目交接文档
 
-> **交接原因**：2026-08-13 会话结束（**语言表达力增强规划完成：全面检测 CN 相对 C++ 的能力缺口，P0~P3 全覆盖增强路线图已写入 plans**——规格书 001 补隐式转换/三元/运算符重载/泛型/静态成员/常量成员/友元/格式化打印/字符串拼接 + 关键字 54→58；阶段2 新增 Task 2.9/2.10（三元/字符串+数值拼接/格式化/重载/默认参数/强制转换/lambda）；阶段3 新增 Task 3.7/3.8/3.9（运算符重载/泛型模板/类成员增强）；阶段6 补输入/数学/格式化/条件编译）。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
+> **交接原因**：2026-08-13 会话结束（**Task 2.10 函数特性增强实现完成**——函数重载（mangling 附录C）、默认参数（右向左连续 + 调用补全）、强制类型转换（emitCast 矩阵补全）、lambda 表达式（匿名函数+闭包捕获，新增 `自动` 关键字））。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
 >
-> **前序里程碑**：基础语言缺陷完善A（i128 完整支持 + 结构体按值传参/返回 + 结构体整体赋值）、Task 2.8 字符串系统完善B（13 个运行时字符串 API）、优化器增强完善C（代数简化 + CSE + 复写传播 + 跨块 DCE + 全局值传播 + -O2/-O3）、集成验证（14_integration2 + 修复 6 个跨组件 BUG）、缺陷完善 Debug 全面审查（9 边界用例 + 修复 5 BUG），单测 665/665、E2E 14/14、56 组合 -O0/-O1/-O2/-O3 输出一致、编译零警告。
+> **前序里程碑**：基础语言缺陷完善A（i128 + 结构体按值 + CopyStruct）、Task 2.8 字符串系统完善B（13 API）、优化器增强完善C（5 Pass + -O2/-O3）、集成验证（14_integration2 + 6 BUG）、Debug 全面审查（9 用例 + 5 BUG）、Task 2.9 语言表达力增强（三元/拼接/格式化/打印打印行）、**Task 2.10 函数特性增强**，单测 **726/726**、E2E **16/16**、64 组合 -O0/-O1/-O2/-O3 输出一致、编译零警告（/W4 /WX）。
 
 ## 一、我们在做什么任务
 
-正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码（Win x64 MASM，ml64 汇编）。当前完成阶段2全部 + 基础语言缺陷完善A + 字符串系统完善B + 优化器增强完善C + 缺陷完善 Debug 全面审查。
+正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码（Win x64 MASM，ml64 汇编）。当前完成阶段2全部 + 缺陷完善 A/B/C + Debug 审查 + Task 2.9 表达力 + **Task 2.10 函数特性增强**。下一步：Task 2.11（或阶段3 OOP 准备，见 plans 阶段2 文档）。
 
 ## 二、已经完成了什么
 
 ### 2.1 设计规格书（已批准）
 - 文件：`plans/001 CN语言编译器设计规格书.md`（984行，14章）
-- 关键字计数 54（新增"联合体"）
+- 关键字计数 55（新增"自动"）
 
 ### 2.2 cn-language-spec 技能（已创建）
 - 目录：`.ai-coder/skills/cn-language-spec/`（16个文件）
 - **编写任何 CN 语言相关代码前必须调用此技能查规范**
 
 ### 2.3 阶段零/一/二（全部完成 ✅）
-- Task 0.1~2.7 全部完成（CLI/诊断/词法/语法/语义/IR/X64代码生成/运行时/driver + 控制流/函数/类型/数组指针/字符串/优化器/结构体枚举联合体）
+- Task 0.1~2.10 全部完成（CLI/诊断/词法/语法/语义/IR/X64代码生成/运行时/driver + 控制流/函数/类型/数组指针/字符串/优化器/结构体枚举联合体 + 缺陷完善A/B/C + 表达力增强 + 函数特性增强）
 
-### 2.4 基础语言缺陷完善A（本次完成 ✅）
-- **i128 完整支持（规格书10.5）**：
-  - `src/runtime/i128_api.cpp`：全部 128 位运算辅助函数（`__cn_add/sub/mul/div/mod_i128`、`__cn_div/mod_u128`、`__cn_cmp_i128/u128`、转换、打印），MSVC `_umul128` 4次乘加 + 128次迭代二进制长除法，指针式 API（`a[0]=低64位/a[1]=高64位`）
-  - IR/codegen：双寄存器模型（id=高64位/id+1=低64位）、add/adc、sub/sbb 进位/借位链、`emitInt128MulDivMod` 调辅助函数、`emitInt128Compare`、打印行展开走 `__cn_print_i128/u128`、i128→i64 截断 Cast
-  - 语义：`isI128/textExceedsInt64/splitI128Text`；字面量越界检查（整128 上限 2^127-1、正128 上限 2^128-1，含无后缀超 int64 自动提升场景）
-- **结构体按值传参/返回（规格书7.4，Win x64 ABI）**：
-  - 传参：`structParamIndexes` + `emitParamSetup` rep movsb 从指针拷贝到参数槽（精确字节数）
-  - 返回：Win x64 隐藏返回指针方案——`IRFunction.structReturn/structReturnSize`；调用方分配 `__retbufN` 返回缓冲区（64字节）作为隐藏参数（rcx）；被调方 prologue `mov r12, rcx` 保存（非易失寄存器）；epilogue 按 `structReturnSize` **精确字节数**拷贝到缓冲区
-- **结构体整体赋值**：`CopyStruct` IR 指令（extra=字节数）+ codegen `rep movsb` 内联拷贝；含数组字段结构体整体拷贝
+### 2.4 Task 2.10 函数特性增强（本次完成 ✅ 2026-08-13）
+- **函数重载（规格书04-一B，附录C mangling）**：
+  - 语义层 `signatureKey = 名#参数类型串`（`加#整32,整32`）作函数表 key；同名不同参数/个数共存，仅返回类型不同不构成重载（报错）
+  - `resolveOverload` 按 conversionLevel（0=精确/1=宽化/2=隐式/-1=不可转）总等级选最优；调用回填 `CallExpr.resolvedSignature`
+  - codegen `nameMangle` 解析 sigKey 生成 `?UTF8HEX@@Y<参数编码>@Z`；mangleTypeCode：整32=H/浮64=N/字符串=PAX/空类型*=PEX/指针=PE<所指>
+  - `IRFunction.name` = 源码名（测试契约）、`mangledName` = sigKey；函数头/ENDP/EXTERN 全用 mangledName；FuncAddr 用 `funcFirstSigKey`（LNK1120 修复）
+- **默认参数（规格书04-一C）**：`参数 = 默认值`；**从右向左连续声明**（反向扫描 noDefaultSeen 后遇有默认报错）；`funcDefaultArgs_[mangledName]` 记录尾部默认值常量，调用补全 `missing = 总数 - 实参个数` 取末尾 missing 个；默认值须编译期常量（evalDefaultExpr）
+- **强制类型转换（规格书04-一E）**：`类型名(表达式)`；parser 歧义判定（`(` 前 token 是类型关键字/类型名 → CastExpr）；语义检查（数值族/指针↔整数/指针→指针显式合法）；emitCast 补全：ptr↔int（64位 mov）、u64→浮（新增 `__cn_u64_to_f64`，cvtsi2sd 有符号语义错）、浮→i128（新增 `__cn_f64_to_i128`）、u32→浮（mov eax 零扩展）
+- **lambda 表达式（规格书04-一D）**：`[捕获]`（[]/[=]/[&]/[变量]）；参数表可选、返回类型推导（lambdaInferMode_）；赋值目标用新增 `自动` 关键字（Kw_Auto）；降级为匿名函数+闭包捕获环境——匿名函数签名=[捕获参数..., 显式参数...]，调用点展开捕获实参；`collectLambdaCaptures` 递归扫描收集外层变量；visitLambdaExpr 保存/恢复 outerFunction/outerBlock/blockCounter_/varStack_（0xC0000005 修复）
+- **测试**：新增 `test_overload.cpp`（8）/`test_default_param.cpp`（6）/`test_cast_expr.cpp`（8）/`test_lambda.cpp`（8）共 30 个；`tests/e2e/16_function_extra/函数增强.cn`（21 行期望）；单测 **726/726**、E2E **16/16**、64 组合 -O0~-O3 一致、编译零警告
 
-### 2.5 本次修复的 4 个 BUG
-1. **epilogue 漏 ret**：structReturn 分支直接 return 漏掉尾部 `mov rsp,rbp/pop rbp/ret` → 执行流落入下一函数无限递归 → 0xC00000FD
-2. **64 字节硬编码拷贝越界**：16 字节班级结构体被写 64 字节越界 48 字节破坏相邻栈变量 → `structReturnSize` 精确拷贝
-3. **StorePtr 目标类型 i64 覆盖**：`出.分数[1] = ...`（IndexExpr 对象为结构体数组字段 MemberExpr）targetType 推导遗漏 → 8 字节写入覆盖相邻数组元素 → 补 MemberExpr 分支
-4. **i128 字面量越界未报错**：语义层加 整128/正128 上限检查
+### 2.5 修复的 BUG（Task 2.10 全部已修复 ✅）
+1. **A1010**：ENDP 用纯名 → 改 mangledName
+2. **0xC0000005 IR 崩溃**：visitLambdaExpr 覆盖外层函数状态 → 保存/恢复
+3. **0xC0000374 堆损坏**：lambda 返回字符串字面量被调用方 `字符串释放` → E2E 改返回拼接字符串（**教训：常量池字符串不可释放**）
+4. **A2022**：`mov rcx, @str0`（ConstString 标签不能 mov 入 64 位寄存器）→ emitCall ptr 常量参数用 lea
+5. **LNK1120**：FuncAddr 用纯名 → funcFirstSigKey
+6. **默认参数规则多次修正**：最终反向扫描（`求和(a, b=10, c=20)` 合法不误报）
+7. **`结果`/`原始` 关键字冲突**：Kw_Result/Kw_Raw → 测试变量改 `值`/`通用指针`
+8. **lambda 解析**：`[=]` 未消费 `]`；`[] {...}` 无参（peekLambdaCapture 放宽为 `(` 或 `{`）
+9. **`浮64(3)` 表达式上下文未识别**：parsePrimary 加类型关键字 Cast 探测
+10. **字符转换失败**：dstNumeric 补 `字符`
 
-### 2.6 完善功能集成验证（本次完成 ✅ 2026-08-13，提交 `8989012`）
-- **新增综合用例** `tests/e2e/14_integration2/员工档案.cn`：员工档案管理系统——48B 大结构体（i128 年薪 + 字符串姓名 + 整32[3] 数组）按值传参/返回、整体赋值（含修改隔离）、结构体指针数组冒泡排序（CopyStruct 交换 48B 元素）、i128 大数运算（乘/除/取余/负数）、字符串 13 API 组合、小结构体寄存器传参、优化 Pass 验证
-- **修复 6 个跨组件 BUG**（集成组合场景暴露）：
-  1. **i128 返回 + 结构体按值参数 ABI 错位**：`paramOffset = structReturn?1:0` 未涵盖 i128 返回（结构体参数从 rdx 传但被调方从 rcx 读）；i128 返回 prologue 未保存 rcx→r12（函数体内调用破坏 rcx → epilogue 崩溃 0xC0000005）→ paramOffset 涵盖 i128/u128 + prologue r12 + epilogue r12
-  2. **LoadPtr/StorePtr 漏 i128 双槽分支**：结构体 i128 字段读写只 8 字节 → 加双槽分支（低64↔regSlot(id+1)、高64↔regSlot(id)）
-  3. **emitCast 无"整数→i128"分支**：i32→i128 落默认 32 位 mov → 加符号扩展分支
-  4. **i128 参数只存 8 字节**：emitParamSetup 对 i128 参数（寄存器/栈）从指针 rep movsb 16 字节
-  5. **指针下标元素成员推导失败**：`名单[j].年薪`（`员工档案* 名单`）objSrcType 只认数组变量 → 补 `types::isPointer`（pointeeOf）
-  6. **结构体下标赋值走 StorePtr**：`名单[j] = 名单[j+1]` 只存 8 字节 → 加结构体检测生成 CopyStruct
-- **其他**：`semantic.cpp` 补 `funcParamTypesOf` 实现（声明未定义 → 链接错误）；`ir.cpp` i128 实参仅当目标参数非 i128 时才截断为 i64
-- **新增单元测试** `test_x64_i128_struct.cpp`（+4）
-- **验证**：单测 **660/660**、E2E **14/14**、01~14 × -O0/-O1/-O2/-O3 = **56 组合 FAILURES=0**、全 CLI（token/ast/check/ir/run）可用、编译零警告
+### 2.6 前序里程碑（背景）
+- 缺陷完善A：i128 完整支持（双寄存器模型 + 运行时辅助函数）+ 结构体按值传参/返回（Win x64 隐藏返回指针）+ CopyStruct
+- Task 2.8：字符串 13 API（子串/字典序/大写/修剪/反转/从整数等，内存语义：动态结果调用方释放）
+- 完善C：优化器 5 Pass（代数简化/const_fold/copy_prop/cse/跨块DCE）+ -O2/-O3
+- Task 2.9：三元表达式（惰性求值 CFG）、字符串+数值隐式拼接（`__cn_str_from_bool`）、`格式化()`（`__cn_format` 变参，movq 位模式 ABI）、`打印`=println/`打印行`=print
 
-### 2.7 Task 2.8 字符串系统完善B（本次完成 ✅ 2026-08-13）
-- **规格书核对**：10.1 仅定义 5 个字符串 API（长度/比较/连接/复制/查找）；比较运算符仅整型与浮点变体，未定义字符串变体 → 不实现；按"常见字符串库补充并在规格书标注"新增 13 个 API
-- **新增 13 个运行时字符串 API**（`src/runtime/string_api.cpp`）：
-  - 子串 `__cn_str_sub`(字符串, 整64, 整64)→字符串（字节偏移，UTF-8 按字节）
-  - 字典序 `__cn_str_cmp`(字符串, 字符串)→整64（<0/0/>0）
-  - 大写 `__cn_str_upper`/小写 `__cn_str_lower`（ASCII，非ASCII原样）
-  - 前缀 `__cn_str_starts_with`/后缀 `__cn_str_ends_with`/包含 `__cn_str_contains`→布尔
-  - 修剪 `__cn_str_trim`（空格/制表/换行/回车）
-  - 反转 `__cn_str_reverse`（UTF-8 安全：按字符逆序不拆字节）
-  - 从整数 `__cn_str_from_int`/从浮点 `__cn_str_from_float`/从字符 `__cn_str_from_char`
-  - 释放 `__cn_str_free`（封装 cn_free，nullptr 安全）
-  - 内存语义：动态分配结果（子串/大写/小写/修剪/反转/从整数/从浮点/从字符）调用方负责释放
-- **值语义决策**：字符串变量为指针，`字符串 t = s` 共享同一指针（与 C 一致，不深拷贝）；显式深拷贝用 `字符串复制`
-- **格式化函数**：sprintf 风格变参 ABI 复杂暂缓（打印行多参数已覆盖格式化输出需求），后续标准库阶段
-- **修改**：`semantic.cpp`（registerBuiltins 13 新API）、`ir.cpp`（中文名→符号映射 + resultType 映射；字符串释放 空类型用 emit）、`runtime.hpp`、`tests/unit/CMakeLists.txt`、规格书 10.1/10.3 标注、阶段2文档 Task 2.8 条目
-- **新增测试**：`test_string_api_extra.cpp`（runtime 29）/`test_string_extra.cpp`（semantic 10）/`test_ir_string_extra.cpp`（ir 9）共 48+3 个；`tests/e2e/12_string_extra/字符串完善.cn`（27行期望）
+## 三、总结发现的问题
 
-### 2.7 Task 完善C 优化器增强（本次完成 ✅ 2026-08-13）
-- **新增 5 个优化 Pass**（`src/cn_compiler/opt/`）：
-  - **代数简化** `algebraic_simplify.hpp/.cpp`：整型恒等变换（x+0/0+x/x-0/x*1/1*x/x*0/x/1/x<<0/x>>0/x|0/x^0/x&-1→x 或 0；x-x/x^x→0；x&&假→假；x||真→真）；浮点/i128 保守跳过；常量结果原地替换、寄存器结果函数级替换链
-  - **复写传播** `copy_propagation.hpp/.cpp`：块内 Store→Load 转发（唯一内部名精确匹配）；多槽/StorePtr/Call 保守清空
-  - **块内 CSE** `cse.hpp/.cpp`：纯运算"操作码+类型+操作数身份"哈希复用；Load 复用（无写内存时）；浮点 CSE 仅 -O2 以上
-  - **跨块 DCE 增强** `cross_block_dce.hpp/.cpp`：常量条件跳转折叠（真/假→无条件跳转）+ 入口可达性分析 + 不可达块整块删除（label 字符串互引无需修正索引）
-  - **全局值传播** `global_value.hpp/.cpp`：函数级线性扫描常量 Store→Load 安全子集
-- **共享工具** `opt_common.hpp`：isPureArith/constCanPropagate/normalizeIntText/replaceUses（寄存器无条件替换 + 常量白名单）
-- **-O1/-O2/-O3 级别区分**（`runOptLevel`，driver 接入）：-O1=折叠+DCE+代数简化+复写传播；-O2=+CSE（含浮点）+跨块DCE；-O3=+全局值传播；`cn_main` -O2/-O3 不再映射 -O1，`--opt 0/1/2/3`
-- **新增测试**：6 个单元测试（`test_algebraic` 20/`test_cse` 11/`test_copy_prop` 8/`test_cross_block_dce` 7/`test_global_value` 8/`test_opt_levels` 6，+56）；`tests/e2e/13_opt2/优化增强.cn` + `.expected`
-- **验证**：单元测试 **656/656**（原600+新56）；E2E **13/13**；**01~13 全部用例 × -O0/-O1/-O2/-O3 = 52 组合输出完全一致**（`target/opt_verify/verify_all.py`，FAILURES=0，规格书12.4）；编译零警告（MSVC /W4 /WX）
-
-### 2.8 缺陷完善 Debug 全面审查（本次完成 ✅ 2026-08-13）
-- **审查方式**：按生产环境模拟运行——`target/debug_audit/` 9 个边界用例（p1_i128_boundary/p2_struct_boundary/p3_string_boundary/p4_opt_boundary/p5_error_path/p6_opt_boundary/p7_error_path/p8_cli_opt/p9_combo）+ 全部 E2E 01~14 + 单测 660/660
-- **修复 5 个 BUG**（详见 更新日志.md，综合教训权重 27.3）：
-  1. **i128→浮64 Cast 无分支**：`整128 * 1.0` 输出 0.000000（emitCast 整→浮只处理 i64/u64，i128 落默认 32 位 mov 读垃圾）→ 加 i128/u128→f64 分支（调 `__cn_i128_to_f64/__cn_u128_to_f64` 双槽地址 + xmm0）
-  2. **i128 混合参数 + i128 返回 ABI 错位崩溃**（0xC0000005）：`emitParamSetup` 用 `if (i < 4)` 判定参数位未加 paramOffset；`parameterRegister(4)` 返回 `[rsp+40]`（rsp 锚定，被调方 sub frameSize 后读自己栈帧垃圾）→ 参数位判定改 `i + paramOffset < 4`、栈参数恒 rbp 锚定 `[rbp+48+(index-4)*8]`
-  3. **链式结构体赋值 `链3 = 链2 = 链1` 只拷贝 8 字节**：外层赋值右值为 AssignmentExpr 时 valueSrcType 推导失败 → 不走 CopyStruct → 补 AssignmentExpr 右值检测
-  4. **i1→i64 Cast 无分支**：字符串后缀/包含打印 4393751543809 垃圾（i1 落默认 32 位 mov 读槽高32位垃圾）→ 加 i1→i64/u64/i32 分支（mov eax 零扩展）
-  5. **i128 数组元素 stride 8**：`整128[3] 大数; 大数[1]` 读到 大数[0] 高64槽 → `visitIndexExpr/ptrElemStride/数组初始化 elemStride` 补 `types::isI128 → 16`
-- **修改**：`x64_codegen.cpp`（paramOffset/rbp 锚定）、`x64_instructions.cpp`（i128→f64、i1→i64 Cast）、`ir.cpp`（链式赋值 CopyStruct、i128 stride）、`tests/unit/CMakeLists.txt`、新增 `test_audit_regressions.cpp`（+5）
-
-### 2.9 测试状态（最终）
-- **单元测试 665/665**（660 + Debug 审查新增 5）
-- **E2E 14/14**（01~14，含 14_integration2 员工档案系统）
-- **56 组合（01~14 × -O0/-O1/-O2/-O3）输出完全一致，FAILURES=0**（`target/opt_verify/verify_all.py`）
-- **编译零警告**（MSVC /W4 /WX）
-- 本轮收尾提交（缺陷完善全部成果 + Debug 审查修复）将推送 gitcode develop
-
-## 三、环境与构建命令
-
-- **cmake 不在 PATH**：需用 VS 自带环境：`cmd /c ""C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\Tools\VsDevCmd.bat" -arch=x64 >nul 2>&1 && "C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe" --build target/build --config Debug --target cn"`
-- **重新配置 CMake**（新增测试文件后）：`cmake -S . -B target/build` 再 build
-- **构建目标**：`cn`（主程序）、`cn_unit_tests`（单元测试）
-- **单元测试运行**：`target\Debug\cn_unit_tests.exe --gtest_brief=1`
-- **E2E 运行**：`python tests\e2e\run_e2e.py --cn target\Debug\cn.exe`（10/11 已自动发现）
-- **编译 CN 源码**：`target\Debug\cn.exe build tests\e2e\10_struct_value\结构体值.cn -O1 --output target\10.exe`
-- **查看 IR**：`target\Debug\cn.exe ir <文件.cn>`
-- **注意**：cmd 重定向中文输出会乱码（代码页），用 Python `subprocess` + `encoding='utf-8'` 读取；findstr 匹配中文不可靠；cmd 无 tail/head，用 PowerShell `Select-Object -Last`
+- **常量池字符串不可释放**：lambda 返回 `.data` 常量池字符串字面量，调用方 `字符串释放` → 0xC0000374 堆损坏。**规律：任何返回字符串字面量地址的场景（lambda/三元/直接返回字面量）调用方不能释放**
+- **MSVC x64 变参 ABI**：浮点按参数位 xmmN + 必须 movq 位模式到同参数位整型寄存器（va_arg 从保存槽读）
+- **关键字冲突**：`结果`（Kw_Result）/`原始`（Kw_Raw）/`自动`（Kw_Auto）等关键字不能作变量名——测试用例编写注意
+- **cn.exe 与 cn_unit_tests.exe 分开构建**：改 semantic/parser 等库后必须重建 cn 目标（只建 cn_unit_tests 会导致 CLI 用旧库）
 
 ## 四、当前卡在哪
 
-无卡点。本轮完成的是**规划层**工作——全面检测 CN 相对 C++ 的能力缺口并写入 plans（P0~P3 全覆盖路线图），**尚未开始代码实现**。代码层面仍停留在上一里程碑（665/665 单测 + E2E 14/14 + 56 组合 -O0/-O1/-O2/-O3 输出一致 + 编译零警告）。
+- **无卡点**：Task 2.10 全部完成，所有验证通过（单测 726/726、E2E 16/16、64 组合一致、零警告）
+- 下一步：Task 2.11（见 `plans/002-阶段2-核心语言.md` 阶段二文档后续条目）或阶段3 OOP 与错误处理准备
 
 ## 五、下一步计划
 
-- **实施 Task 2.9（语言表达力增强，P0）**——首选实施起点，直接命中用户痛点：三元表达式 `? :`、字符串 `+` 数值隐式拼接（`打印("你好" + 123)`）、`格式化()` 打印函数。落点 `plans/002-阶段2-核心语言.md` Task 2.9。
-- **实施 Task 2.10（函数特性增强，P1）**：函数重载 / 默认参数 / 强制类型转换 / lambda。落点阶段2 Task 2.10。
-- **实施阶段三 Task 3.1~3.9**：OOP 全套（类/继承/虚函数/接口/访问控制/错误处理/模块系统）+ 运算符重载 / 泛型模板 / 类成员增强。落点 `plans/002-阶段3-OOP与错误处理.md`。
-- **实施阶段六**：输入 API / 数学函数 / 格式化 / 条件编译 + 标准库容器。落点 `plans/002-阶段6-标准库.md`。
-- **大结构体（>64 字节）按值返回**：当前返回缓冲区 64 字节上限，>64 字节结构体需扩容（后续 Task）。
-- **优化器剩余**（需 SSA 或后续 Task）：SSA 构造与 Phi 节点、真正的全局数据流、跨块 CSE、循环优化（LICM/强度削减/不变量外提）、内联、跳转表、-O3 向量化预留。
+1. 若继续阶段2：按 `plans/002-阶段2-核心语言.md` 后续 Task 逐项实施（每项 E2E 先行 + 单测 + 文档打勾 + 提交）
+2. 阶段3（OOP 与错误处理）：`plans/002-阶段3-OOP与错误处理.md`（类/继承/接口/错误码传播）
+3. 每轮提交前：更新 `更新日志.md`（覆盖写）+ plans 打勾 + HANDOFF.md + git 提交（中文标题，推 gitcode develop）
 
-## 六、踩过的坑（绝对不要再踩，详见 lessons.md 权重）
+## 六、踩过的坑绝对不要再踩（经验教训已同步 lessons.md）
 
-1. **结构体组合场景步进/槽数必须按 typeSizeOf**（权重22.75）：结构体数组初始化列表、栈槽数（长度×元素槽数）、指针算术/`p[i]`/`p++` 步进、数组元素间距、结构体数组字段——全部按结构体总大小/字段元素大小，禁止 8 字节假设
-2. **函数调用结果类型必须查语义层真实返回类型**（权重22.75）：funcReturnTypeOf
-3. **ptr 常量恒64位**（权重22.75）：`ConstInt (ptr) [0]` 必须 mov rax（mov eax 只写低32位）
-4. **长字符串 db 拆行**（权重22.75）：ml64 单行 db 过长 A2042；行尾不得加逗号 A2008；每行 ≤24 字节
-5. **自定义类型作参数**（权重22.75）：parseParamDecl/parseFuncPtrType 参数类型必须用 parseTypeNameEx
-6. **数组名退化**（权重22.75）：语义层二元运算/比较前数组类型必须退化为指针
-7. **IR 层结构体信息推导三种形态**（权重20.8）：IdentifierExpr/MemberExpr/IndexExpr/BinaryExpr 都要能推出结构体类型
-8. **epilogue 提前 return 分支必须补 ret**（权重22.75）：structReturn 分支漏 `mov rsp,rbp/pop rbp/ret` → 执行流落入下一函数 → 0xC00000FD 栈溢出
-9. **结构体返回拷贝必须精确字节数**（权重22.75）：禁止 64 字节硬编码——16 字节结构体越界写 48 字节破坏相邻栈变量；用 IRFunction.structReturnSize
-10. **StorePtr 目标类型推导必须覆盖 MemberExpr 数组字段对象**（权重22.75）：`出.分数[1] = v` targetType 若遗漏变 i64 → 8 字节写入覆盖相邻数组元素
-11. **i128 字面量越界检查放语义层**（权重22.75）：含无后缀超 int64 自动提升场景（lastType_ 非整128 也检查）；整128 上限 2^127-1、正128 上限 2^128-1
-12. **Win x64 影子空间**（权重31.2）：所有 call 前预留 32 字节
-13. **MASM 内存操作数必须显式大小前缀**（权重31.2）：qword/dword ptr
-14. **UTF-8 中文前缀字节偏移**（权重20.8）：compare/substr 偏移用字节数
-15. **x86-64 写32位寄存器清零高32位**（权重20.8）：地址在 rax 时值加载用 rcx 系列
-16. **数组布局方向必须全局一致**（权重26）：C 语义 = Add 方向 + codegen 逆序登记
-17. **空类型返回的调用必须用 emit（result.id<0），不能用 emitResult**（Task 2.8 新增）：`字符串释放` 返回空类型，若用 emitResult 分配结果寄存器，codegen 会对 void 类型写返回值（widthFor 返回原寄存器生成多余 mov）→ 用 `emit` 直接发射，与打印行 void 展开一致
-18. **运行时 API 扩展必须同步三处**（Task 2.8 新增）：runtime.hpp 声明 + string_api.cpp 实现 + semantic registerBuiltins 注册 + IR 名称映射与 resultType 映射（缺一不可，否则链接 undefined symbol / 类型错误）
-19. **改 runtime 后必须删 target 下旧 obj 缓存**（权重15）：cn_main compileRuntime 带缓存（obj 新于 cpp 跳过），改 string_api.cpp 后必须删 target\string_api.obj 否则链接旧符号
-20. **测试构造 IR 块必须有终止信息**（完善C 新增）：真实 IR 契约——每块 terminated=true + termKind（跳转/条件跳转/返回）；无终止的块会被 DCE 误删结果（%v9 无引用级联删除）且跨块 DCE 可达性分析从入口沿跳转目标遍历时"断链" → 误删可达块
-21. **Pass 登记替换不得无条件报 changed**（完善C 新增）：CopyPropagation/GlobalValue 的 Load 命中登记替换时若无条件 changed=true，fixpoint 永不收敛（第二次运行 Load 结果已无引用仍报告修改）→ 登记不报修改，仅 replaceUses 实际替换引用点才报
-22. **apply_diff 修改头文件时核对类声明完整性**（完善C 新增）：include 块附近插入易破坏类定义起始行（C2059 public 语法错误链）→ 修改后立即 read_file 复核结构
-23. **静态成员函数不能访问非静态成员**（完善C 新增）：CSEPass::patternOf 原 static 访问 allowFloat_ → C2597；改成员函数
-24. **优化器验证脚本产物放 target/**（完善C 新增）：target/opt_verify/verify_all.py（13 用例 × -O0/-O1/-O2/-O3 = 52 组合输出一致性，规格书12.4）
+1. **常量池字符串不可释放**（0xC0000374）——返回字面量地址的调用方禁用 `字符串释放`
+2. **ENDP 符号必须与函数头一致**（mangledName）——A1010
+3. **visitLambdaExpr 必须保存/恢复外层生成状态**——0xC0000005
+4. **ConstString 标签不能 mov 入寄存器**（A2022）——ptr 常量参数用 lea
+5. **重载符号三处一致**（定义/调用/FuncAddr）——LNK1120
+6. **默认参数反向扫描规则**：noDefaultSeen 后遇有默认参数报错
+7. **测试变量名避开关键字**：`结果`/`原始`/`自动` 等
+8. **cn.exe 与单元测试分开重建**：改库后两个目标都要 build
+9. **Python subprocess 捕获中文输出用 text=True 遇 GBK 解码错**：脚本写文件再读取，避免内联打印被吞

@@ -42,7 +42,10 @@ using cn_compiler::ReturnStmt;
 using cn_compiler::Stmt;
 using cn_compiler::StringLiteral;
 using cn_compiler::SwitchStmt;
+using cn_compiler::CastExpr;
+using cn_compiler::LambdaExpr;
 using cn_compiler::Type;
+using cn_compiler::TernaryExpr;
 using cn_compiler::UnaryExpr;
 using cn_compiler::VarDecl;
 using cn_compiler::WhileStmt;
@@ -84,6 +87,9 @@ public:
     void visitIndexExpr(IndexExpr* node) override { visit("IndexExpr", node); }
     void visitInitListExpr(InitListExpr* node) override { visit("InitListExpr", node); }
     void visitStructInitExpr(StructInitExpr* node) override { visit("StructInitExpr", node); }
+    void visitTernaryExpr(TernaryExpr* node) override { visit("TernaryExpr", node); }
+    void visitCastExpr(CastExpr* node) override { visit("CastExpr", node); }
+    void visitLambdaExpr(LambdaExpr* node) override { visit("LambdaExpr", node); }
     void visitType(Type* node) override { visit("Type", node); }
 
     std::vector<std::string> visited;  // 访问记录

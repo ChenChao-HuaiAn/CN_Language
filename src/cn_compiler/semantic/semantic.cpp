@@ -194,6 +194,7 @@ bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::strin
 // 查询函数返回类型（未注册返回空串；供IR层推导调用结果类型）
 // 集成验证发现：用户函数返回浮64 时 IR 调用结果类型误标 i32，导致
 // codegen 用 eax 读 xmm0 返回值（除零崩溃）——Task 2.7 修复
+// Task 2.10：key 可为"名#参数串"（重载签名）或纯函数名（内置函数/单版本查询）
 std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) const {
     auto it = functions_.find(funcName);
     if (it == functions_.end()) return "";
@@ -206,6 +207,133 @@ std::vector<std::string> SemanticAnalyzer::funcParamTypesOf(const std::string& f
     auto it = functions_.find(funcName);
     if (it == functions_.end()) return {};
     return it->second.paramTypes;
+}
+
+// 签名 key：名 + "#" + 参数类型串（逗号分隔）。重载决议与 mangling 共用，
+// 保证"同名不同签名"各自唯一；仅返回类型不同不会改变 key（不构成重载）。
+std::string SemanticAnalyzer::signatureKey(const std::string& name,
+                                           const std::vector<std::string>& paramTypes) {
+    std::string key = name;
+    if (!paramTypes.empty()) {
+        key += "#";
+        for (std::size_t i = 0; i < paramTypes.size(); ++i) {
+            if (i > 0) key += ",";
+            key += paramTypes[i];
+        }
+    }
+    return key;
+}
+
+// 是否存在该函数名的任意签名
+bool SemanticAnalyzer::hasFunctionName(const std::string& name) const {
+    if (functions_.find(name) != functions_.end()) return true;  // 内置纯名 key
+    for (const auto& kv : functions_) {
+        // 用户函数 key 形如 名#参数串；纯名内置 key 无 '#'
+        const std::size_t hashPos = kv.first.find('#');
+        const std::string base = (hashPos == std::string::npos) ? kv.first
+                                                                : kv.first.substr(0, hashPos);
+        if (base == name) return true;
+    }
+    return false;
+}
+
+// 返回该函数名的第一个签名 key（按注册顺序；函数名作值/取地址用）
+std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
+    for (const auto& kv : functions_) {
+        const std::size_t hashPos = kv.first.find('#');
+        const std::string base = (hashPos == std::string::npos) ? kv.first
+                                                                : kv.first.substr(0, hashPos);
+        if (base == name) return kv.first;
+    }
+    return "";
+}
+
+// 实参类型到参数类型的转换等级（重载决议用）：
+//   0 = 精确匹配（canonical 后相等，含枚举同名）
+//   1 = 宽化（整型同符号向宽 / 浮点向宽 / 枚举->整型）
+//   2 = 隐式转换（canConvertType 其余合法场景：整->浮、字符->整等）
+//  -1 = 不可转换
+int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
+                                      const std::string& paramTypeRaw) {
+    const std::string arg = canonicalType(argTypeRaw);
+    const std::string param = canonicalType(paramTypeRaw);
+    if (arg == param) return 0;
+    if (!canConvertType(arg, param)) return -1;
+    // 枚举 -> 整数：按宽化处理（枚举本质为整32，值域不损失）
+    if (isEnumType(arg) && !isEnumType(param) && types::isInteger(param)) return 1;
+    // 整数族内部：同符号宽化（整8->整16->整32->整64、正8->正16->...）
+    if (types::isInteger(arg) && types::isInteger(param)) {
+        const bool argUnsigned = types::isUnsigned(arg);
+        const bool paramUnsigned = types::isUnsigned(param);
+        if (argUnsigned == paramUnsigned) {
+            if (types::intRank(arg) <= types::intRank(param)) return 1;  // 同符号向宽
+        }
+        // 符号混合：一律按隐式转换（保守，避免有符号->无符号宽化的值域陷阱）
+        return 2;
+    }
+    // 浮点族内部：浮32 -> 浮64 宽化
+    if (types::isFloat(arg) && types::isFloat(param)) {
+        if (arg == "浮32" && param == "浮64") return 1;
+        return 2;  // 浮64 -> 浮32 窄化：隐式转换（有损）
+    }
+    // 整数 -> 浮点 / 字符 -> 整数 等：隐式转换
+    return 2;
+}
+
+// 重载决议：实参类型列表 -> 最佳匹配签名（返回签名 key）。
+// 匹配规则（规格书04-一B）：
+//   1. 参数个数：实参个数在 [最少必填, 参数总数] 区间（默认参数补全参与）
+//   2. 逐参数计算转换等级；按"总等级"比较（精确优先于宽化优先于隐式转换）
+//   3. 唯一最佳 -> 返回其签名 key；多个同样优 -> 歧义错误（返回空串）
+std::string SemanticAnalyzer::resolveOverload(const std::string& name,
+                                              const std::vector<std::string>& argTypes,
+                                              const SourceLocation& loc) {
+    std::string bestKey;
+    int bestTotal = INT32_MAX;
+    bool ambiguous = false;
+    std::string ambiguousDetail;
+    for (const auto& kv : functions_) {
+        const std::size_t hashPos = kv.first.find('#');
+        const std::string base = (hashPos == std::string::npos) ? kv.first
+                                                                : kv.first.substr(0, hashPos);
+        if (base != name) continue;  // 仅同名的签名参与决议
+        const FunctionInfo& info = kv.second;
+        // 参数个数匹配：实参个数 + 可补全的默认参数数 >= 参数总数
+        const int required = static_cast<int>(info.paramTypes.size()) - info.defaultCount;
+        const int given = static_cast<int>(argTypes.size());
+        if (given < required || given > static_cast<int>(info.paramTypes.size())) {
+            continue;  // 参数个数不匹配
+        }
+        // 逐参数转换等级（只检查实际提供的参数；缺省部分由默认值补全）
+        int total = 0;
+        bool ok = true;
+        for (int i = 0; i < given; ++i) {
+            const int level = conversionLevel(argTypes[i], info.paramTypes[i]);
+            if (level < 0) { ok = false; break; }
+            total += level;
+        }
+        if (!ok) continue;
+        if (bestKey.empty() || total < bestTotal) {
+            bestKey = kv.first;
+            bestTotal = total;
+            ambiguous = false;
+        } else if (total == bestTotal && kv.first != bestKey) {
+            ambiguous = true;  // 两个签名同样优
+            ambiguousDetail = kv.first + " 与 " + bestKey;
+        }
+    }
+    if (ambiguous && !bestKey.empty()) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "函数 '" + name + "' 调用存在歧义（" + ambiguousDetail +
+                            " 均可匹配），请使用显式类型转换消除歧义");
+        return "";
+    }
+    if (bestKey.empty()) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "未找到匹配的函数 '" + name + "'（参数个数或类型不匹配）");
+        return "";
+    }
+    return bestKey;
 }
 
 // 扩展隐式转换（Task 2.7）：枚举↔整数（枚举本质为整32）；枚举间须同名；结构体须同名
@@ -420,16 +548,24 @@ void SemanticAnalyzer::checkCondition(const std::string& type, const SourceLocat
 // Task 2.5 新增：
 //   - 打印行 支持多参数（字符串/整数/浮点混合，visitCallExpr 特判，签名仅登记单参版本）
 //   - 字符串API：字符串长度/字符串比较/字符串连接/字符串复制/字符串查找
+// Task 2.9 语义调整（用户裁决，lessons.md 权重10.4）：
+//   - 打印 = println（自动换行）、打印行 = print（不换行）——直觉命名
+//   - 格式化（格式字符串, 参数...）-> 字符串（sprintf 风格，调用方释放）
 void SemanticAnalyzer::registerBuiltins() {
-    // ---- 打印行系列 ----
-    FunctionInfo printLineInfo;
-    printLineInfo.returnType = "空类型";
-    printLineInfo.paramTypes = {"字符串"};
-    printLineInfo.hasBody = true;  // 运行时提供实现，语义检查视为已定义
-    // 变参标记：参数个数不限（visitCallExpr 特判展开），paramTypes 仅用于单参检查
-    printLineInfo.variadic = true;
-    functions_["打印行"] = printLineInfo;
+    // ---- 打印 系列（Task 2.9 语义调整）----
+    // 打印：println 语义（自动换行，运行时 printLine）；打印行：print 语义（不换行，运行时 printNoLine）
+    const auto regPrintFn = [this](const std::string& name) {
+        FunctionInfo info;
+        info.returnType = "空类型";
+        info.paramTypes = {"字符串"};
+        info.hasBody = true;
+        info.variadic = true;  // 参数个数不限（visitCallExpr 特判展开）
+        functions_[name] = info;
+    };
+    regPrintFn("打印");
+    regPrintFn("打印行");
 
+    // 单参数整数/浮点打印（保留既有能力，供无拼接的简单输出；名字保留 打印行整数/打印行浮点）
     FunctionInfo printLineIntInfo;
     printLineIntInfo.returnType = "空类型";
     printLineIntInfo.paramTypes = {"整64"};
@@ -441,6 +577,15 @@ void SemanticAnalyzer::registerBuiltins() {
     printLineFloatInfo.paramTypes = {"浮64"};
     printLineFloatInfo.hasBody = true;
     functions_["打印行浮点"] = printLineFloatInfo;
+
+    // ---- 格式化（Task 2.9，规格书10.6）：格式化(格式字符串, 参数...) -> 字符串 ----
+    // 变参：参数个数不限（IR 层按占位符展开为 __cn_format 调用）
+    FunctionInfo formatInfo;
+    formatInfo.returnType = "字符串";
+    formatInfo.paramTypes = {"字符串"};
+    formatInfo.hasBody = true;
+    formatInfo.variadic = true;
+    functions_["格式化"] = formatInfo;
 
     // ---- 字符串API（Task 2.5，规格书10.1 字符串操作：长度/比较/连接/复制/查找） ----
     // 运行时符号：字符串长度 -> __cn_str_len、字符串比较 -> __cn_str_eq、
@@ -508,6 +653,7 @@ void SemanticAnalyzer::registerBuiltins() {
     regStrFn("字符串从整数", "字符串", {"整64"});
     regStrFn("字符串从浮点", "字符串", {"浮64"});
     regStrFn("字符串从字符", "字符串", {"字符"});
+    regStrFn("字符串从布尔", "字符串", {"布尔"});   // Task 2.9：布尔转"真"/"假"（拼接上下文）
     regStrFn("字符串释放", "空类型", {"字符串"});
 }
 
@@ -515,10 +661,43 @@ void SemanticAnalyzer::registerBuiltins() {
 // Task 2.2 增强：
 //   - 函数指针参数：参数类型用 funcPtr.toString() 规范化表示
 //   - 签名一致性：原型声明与定义签名（返回类型+参数类型）必须一致
+// Task 2.10 重载：函数符号表 key 改为"名#参数类型串"（signatureKey），
+//   同名不同参数类型/个数可共存；仅返回类型不同不构成重载（重复定义报错）。
+//   默认参数记录尾部 defaultCount（调用补全用）；默认值表达式留在 AST（IR 层展开）。
 void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     FunctionInfo info;
     info.returnType = node->returnType.empty() ? "空类型" : canonicalType(node->returnType);
     info.hasBody = (node->body != nullptr);
+    // 默认参数规则检查：从右向左连续声明（f(a=1, b) 非法——默认参数左侧出现无默认参数；
+    //   f(a, b=1, c=2) 合法——最左侧参数可无默认）。
+    // 正确判定：从左到右，一旦遇到无默认参数，其后所有参数都须无默认；
+    //   即"第一个有默认参数的左侧参数都须有默认"（除最左侧参数）。
+    // 简化实现：反向遍历，记录右侧是否已出现默认参数；若当前无默认且
+    //   右侧已有默认 且 当前不是最左侧参数 -> 非法（左侧还有参数会继承默认？不——
+    //   f(a=1, b) 中 a 有默认、b 无默认：反向看 b 无默认、a(右侧)有默认、b 不是最左 -> 合法？
+    //   不对——f(a=1, b)：a 有默认，b 无默认，b 在 a 右侧（更右）应无默认，合法！
+    //   f(a, b=1)：b 有默认，a 无默认，a 最左，合法！
+    //   f(a=1, b, c=2)：c 有默认，b 无默认（右侧有 c 默认），b 非最左 -> 非法 ✓
+    //   判定：反向遍历，遇到无默认参数时，若"已见默认"且"它左侧还有参数" -> 非法。
+    // 默认参数规则：从右向左连续声明——反向扫描，一旦遇到无默认参数，
+    //   其左侧（更左）不能再出现有默认参数（f(a=1, b) 非法：b 无默认在右，
+    //   a 有默认在左被隔断；f(a, b=1) 合法：b 有默认最右、a 无默认最左）
+    bool noDefaultSeen = false;
+    for (auto it = node->params.rbegin(); it != node->params.rend(); ++it) {
+        if ((*it)->hasDefault) {
+            ++info.defaultCount;
+            info.hasDefault.push_back(true);
+            if (noDefaultSeen) {
+                diagnostics_.report(DiagnosticLevel::Error, (*it)->location,
+                                    "默认参数必须从右向左连续声明（参数 '" + (*it)->name +
+                                    "' 左侧不能出现无默认值参数）");
+            }
+        } else {
+            info.hasDefault.push_back(false);
+            noDefaultSeen = true;
+        }
+    }
+    std::reverse(info.hasDefault.begin(), info.hasDefault.end());  // 恢复参数顺序
     for (auto& param : node->params) {
         // 函数指针参数：整32(*func)(整32, 整32) 类型存规范化字符串
         if (param->funcPtr.isFunctionPtr()) {
@@ -527,34 +706,44 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
             info.paramTypes.push_back(canonicalType(param->typeName));
         }
     }
-    auto it = functions_.find(node->name);
+    // 生成签名 key（名 + "#" + 参数类型串，mangling 与决议共用）
+    node->sigKey = signatureKey(node->name, info.paramTypes);
+    auto it = functions_.find(node->sigKey);
     if (it != functions_.end()) {
-        // 重名：允许"原型声明 + 定义"组合，其余为重复定义
+        // 同签名重名：允许"原型声明 + 定义"组合，其余为重复定义
         bool isProtoPlusDef = !it->second.hasBody && info.hasBody;
         if (isProtoPlusDef) {
             // 签名一致性检查：原型（已注册）与定义（当前）签名必须一致
             const FunctionInfo& proto = it->second;
             bool same = (proto.returnType == info.returnType &&
-                         proto.paramTypes.size() == info.paramTypes.size());
-            if (same) {
-                for (std::size_t i = 0; i < proto.paramTypes.size() && same; ++i) {
-                    if (proto.paramTypes[i] != info.paramTypes[i]) same = false;
-                }
-            }
+                         proto.defaultCount == info.defaultCount);
             if (!same) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "函数 '" + node->name + "' 原型声明与定义签名不一致");
             }
-        } else if (!it->second.hasBody || info.hasBody) {
-            // 原型+原型 或 定义+定义 均为重复声明
-            if (it->second.hasBody || info.hasBody) {
-                diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                    "重复定义函数 '" + node->name + "'");
-            }
+        } else if (it->second.hasBody || info.hasBody) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "重复定义函数 '" + node->name +
+                                "'（参数类型相同；仅返回类型不同不构成重载）");
         }
         return;
     }
-    functions_[node->name] = info;
+    // Task 2.10 重载兼容：签名 key 未命中但同名已有其他签名——
+    //   合法重载（加(整32,整32) 与 加(浮64,浮64)）；
+    //   但"原型声明 + 不同签名定义"是错误（原型已锁定签名，定义须一致）。
+    //   规则：同名存在 原型（无体）且 当前是定义（有体）→ 签名必须与原型一致。
+    for (const auto& kv : functions_) {
+        const std::size_t hashPos = kv.first.find('#');
+        const std::string base = (hashPos == std::string::npos) ? kv.first
+                                                                : kv.first.substr(0, hashPos);
+        if (base == node->name && !kv.second.hasBody && info.hasBody) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "函数 '" + node->name +
+                                "' 原型声明与定义签名不一致（重载须参数类型不同）");
+            return;
+        }
+    }
+    functions_[node->sigKey] = info;
 }
 
 // 函数体是否保证有返回：最后一条语句为返回语句或无限循环
@@ -628,8 +817,8 @@ bool SemanticAnalyzer::analyze(Program* program) {
 
 // 第二趟：检查函数体（参数入作用域 + 语句检查 + 返回类型检查）
 void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
-    // 函数符号必须已注册（原型声明无函数体）
-    auto it = functions_.find(node->name);
+    // 函数符号必须已注册（原型声明无函数体）。Task 2.10：按签名 key 查询
+    auto it = functions_.find(node->sigKey);
     if (it == functions_.end()) return;
     if (node->body == nullptr) return;  // 函数原型声明：无需检查体
 
@@ -782,7 +971,17 @@ void SemanticAnalyzer::visitForStmt(ForStmt* node) {
 
 // 返回语句：检查返回值类型与函数返回类型匹配
 void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
+    // lambda 返回类型推导模式（Task 2.10）：currentReturnType_ 为空，
+    // 不报"只能出现在函数体内"，而是收集返回表达式类型作为推导候选
     if (currentReturnType_.empty()) {
+        if (lambdaInferMode_) {
+            if (node->value != nullptr) {
+                lambdaReturnCandidate_.push_back(checkExpr(node->value.get()));
+            } else {
+                lambdaReturnCandidate_.push_back("空类型");
+            }
+            return;
+        }
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "'返回'语句只能出现在函数体内");
         return;
@@ -945,18 +1144,26 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         lastType_ = node->name;
         return;
     }
-    auto it = functions_.find(node->name);
-    if (it != functions_.end()) {
-        // 函数名作为值：构造函数指针类型（返回类型 + 参数类型）
-        const FunctionInfo& info = it->second;
-        std::string funcPtrType = "函数指针<" + info.returnType + ">(";
-        for (std::size_t i = 0; i < info.paramTypes.size(); ++i) {
-            if (i > 0) funcPtrType += ",";
-            funcPtrType += info.paramTypes[i];
+    // 函数名作为值（Task 2.10 重载）：构造函数指针类型。
+    // 有多个签名时取第一个（按注册顺序）；无参数的函数直接给出函数指针类型。
+    // 注：重载函数作函数指针值语义未定义（C++ 需显式类型化），此处保守取首签名，
+    //     并允许 回调 = 加 单版本场景（既有测试契约）。
+    if (hasFunctionName(node->name)) {
+        for (const auto& kv : functions_) {
+            const std::size_t hashPos = kv.first.find('#');
+            const std::string base = (hashPos == std::string::npos) ? kv.first
+                                                                    : kv.first.substr(0, hashPos);
+            if (base != node->name) continue;
+            const FunctionInfo& info = kv.second;
+            std::string funcPtrType = "函数指针<" + info.returnType + ">(";
+            for (std::size_t i = 0; i < info.paramTypes.size(); ++i) {
+                if (i > 0) funcPtrType += ",";
+                funcPtrType += info.paramTypes[i];
+            }
+            funcPtrType += ")";
+            lastType_ = funcPtrType;
+            return;
         }
-        funcPtrType += ")";
-        lastType_ = funcPtrType;
-        return;
     }
     diagnostics_.report(DiagnosticLevel::Error, node->location,
                         "未声明的标识符 '" + node->name + "'");
@@ -1034,6 +1241,17 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
         const bool rightStr = (rightType == "字符串" || rightType == "字符*");
         if (node->op == Operator::Add && leftStr && rightStr) {
             lastType_ = "字符串";  // 连接结果为字符串
+            return;
+        }
+        // ---- 字符串 + 数值 隐式拼接（Task 2.9，规格书3.7 数值→字符串 仅 + 拼接语境）----
+        // 左操作数为 字符串/字符*，右操作数为 整数/浮点/布尔/字符/枚举 -> 隐式转字符串再连接。
+        // 多操作数左结合："a" + 1 + 2 = ("a"+1)+2（右操作数类型为字符串结果）。
+        // 布尔转 "真"/"假"（新增 __cn_str_from_bool）；枚举按整32转（isNumeric 已含整128/正128）。
+        const bool rightConcatable =
+            isNumeric(rightType) || rightType == "布尔" || rightType == "字符" ||
+            isEnumType(rightType);
+        if (node->op == Operator::Add && leftStr && rightConcatable) {
+            lastType_ = "字符串";
             return;
         }
         // 指针算术：指针 + 整数 / 指针 - 整数（按元素大小偏移，规格书4.4指针运算符）
@@ -1153,6 +1371,38 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
     }
 }
 
+// 三元条件表达式（Task 2.9，规格书4.5）：条件 ? 真值 : 假值
+// 规则：① 条件必须为布尔；② 真/假分支类型统一——数值用 commonNumericType 宽化合并，
+//      字符串/指针/结构体 等非数值类型须两分支完全一致（禁止 字符串 vs 整32 分支混用，
+//      如需混用请在真/假分支内用字符串拼接/格式化显式转字符串）。
+void SemanticAnalyzer::visitTernaryExpr(TernaryExpr* node) {
+    std::string condType = checkExpr(node->condition.get());
+    checkCondition(condType, node->condition->location, "三元表达式");
+    std::string trueType = checkExpr(node->trueValue.get());
+    std::string falseType = checkExpr(node->falseValue.get());
+    // 数组名退化（与二元运算一致）：数组类型作为值参与三元时退化为元素指针
+    if (isArrayType(trueType)) trueType = types::arrayElemOf(trueType) + "*";
+    if (isArrayType(falseType)) falseType = types::arrayElemOf(falseType) + "*";
+    if (trueType == "未知" || falseType == "未知") {
+        lastType_ = (trueType == "未知") ? falseType : trueType;
+        return;
+    }
+    // 数值类型：宽化合并（整8/整32/浮32 等按 commonNumericType 提升）
+    if (isNumeric(trueType) && isNumeric(falseType)) {
+        lastType_ = commonNumericType(trueType, falseType);
+        return;
+    }
+    // 非数值类型：两分支须完全一致（字符串/字符*/指针/结构体/枚举/布尔）
+    if (trueType != falseType) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "三元表达式两个分支类型不一致：'" + trueType + "' 与 '" +
+                            falseType + "'");
+        lastType_ = trueType;
+        return;
+    }
+    lastType_ = trueType;
+}
+
 // 赋值表达式：左值须可写（标识符/下标/解引用），类型兼容检查
 void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     // 检查左值（标识符/下标访问/解引用为可写左值；Task 2.4 扩展下标与解引用）
@@ -1204,6 +1454,9 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
 
 // 函数调用：检查被调者与实参数量/类型
 // Task 2.2：支持两种调用——直接函数名调用、函数指针变量间接调用
+// Task 2.10：直接函数名调用改为重载决议（按实参个数+类型匹配签名，
+//   支持默认参数补全；仅返回类型不同不构成重载）；决议结果写回
+//   node->resolvedSignature（IR 层按此生成 mangled 符号）
 void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // 分派依据：callee 若是函数名（在函数符号表中）→ 直接调用；
     //           否则检查其类型，若是函数指针变量 → 间接调用
@@ -1211,16 +1464,16 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     std::string calleeName;
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
-        if (functions_.find(calleeName) != functions_.end()) isDirect = true;
+        if (hasFunctionName(calleeName)) isDirect = true;
     }
 
     // ---- 直接函数名调用：函数名(实参) ----
     if (isDirect) {
-        auto it = functions_.find(calleeName);
-        const FunctionInfo& info = it->second;
-        // 变参函数（打印行 Task 2.5）：参数个数不限，逐个检查类型
-        // （字符串/字符*/整型/浮点/布尔/枚举均允许，IR 层按类型展开为打印序列）
-        if (info.variadic) {
+        // 变参内置函数（打印/打印行/格式化 Task 2.5/2.9）：纯名 key 直接查，
+        // 参数个数不限，逐个检查类型（字符串/字符*/整型/浮点/布尔/枚举均允许）
+        auto builtinIt = functions_.find(calleeName);
+        if (builtinIt != functions_.end() && builtinIt->second.variadic) {
+            const FunctionInfo& info = builtinIt->second;
             for (auto& arg : node->arguments) {
                 std::string argType = checkExpr(arg.get());
                 const bool okStr = (argType == "字符串" || argType == "字符*" ||
@@ -1235,23 +1488,34 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             lastType_ = info.returnType;
             return;
         }
-        // 参数数量检查
-        if (node->arguments.size() != info.paramTypes.size()) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "函数 '" + calleeName + "' 期望 " +
-                                std::to_string(info.paramTypes.size()) + " 个参数，实际提供 " +
-                                std::to_string(node->arguments.size()) + " 个");
-            lastType_ = info.returnType;
+        // 非变参直接调用：重载决议（先检查实参类型）
+        std::vector<std::string> argTypes;
+        argTypes.reserve(node->arguments.size());
+        for (auto& arg : node->arguments) {
+            argTypes.push_back(checkExpr(arg.get()));
+        }
+        std::string sigKey = resolveOverload(calleeName, argTypes, node->location);
+        if (sigKey.empty()) {
+            // 决议失败（参数个数/类型不匹配或歧义）：恢复兼容——若纯名存在（内置
+            // 单版本函数），按旧逻辑检查，避免错误级联导致 IR 层找不到符号
+            auto fallback = functions_.find(calleeName);
+            if (fallback != functions_.end()) {
+                lastType_ = fallback->second.returnType;
+            } else {
+                lastType_ = "未知";
+            }
             return;
         }
-        // 参数类型检查
+        node->resolvedSignature = sigKey;
+        auto it = functions_.find(sigKey);
+        const FunctionInfo& info = it->second;
+        // 参数类型检查（决议已保证可转换；此处再逐个报告具体错误位置）
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
-            std::string argType = checkExpr(node->arguments[i].get());
             const std::string& paramType = info.paramTypes[i];
-            if (!canConvertType(argType, paramType)) {
+            if (!canConvertType(argTypes[i], paramType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
                                     "函数 '" + calleeName + "' 第 " + std::to_string(i + 1) +
-                                    " 个参数无法将 '" + argType + "' 隐式转换为 '" +
+                                    " 个参数无法将 '" + argTypes[i] + "' 隐式转换为 '" +
                                     paramType + "'");
             }
         }
@@ -1481,6 +1745,254 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
 // 类型节点：语义阶段不做处理
 void SemanticAnalyzer::visitType(Type* node) {
     (void)node;
+}
+
+// 强制类型转换：类型名(表达式)（规格书04-一E，Task 2.10）
+// 语义同 static_cast：宽化/窄化/浮整/指针↔整数 均显式触发（不检查隐式转换）。
+// 检查规则：
+//   1. 源类型/目标类型均须已知（未知源类型报错——IR 层无法生成转换）
+//   2. 任意两个数值类型（整型族/浮点族）之间可转换
+//   3. 指针 ↔ 整数：显式转换合法（整数 -> 指针 / 指针 -> 整数）
+//   4. 指针 -> 指针：显式转换合法（位重解释）
+// lambda 捕获分析（Task 2.10）：扫描函数体中的标识符引用，
+//   收集不在参数表中的外层变量。递归遍历表达式/语句中的 IdentifierExpr；
+//   显式捕获（[x]）不在此处理（visitLambdaExpr 单独校验）。
+void SemanticAnalyzer::collectLambdaCaptures(
+    LambdaExpr* node, const std::unordered_set<std::string>& paramNames) {
+    std::vector<Expr*> exprs;
+    std::vector<Stmt*> stmts;
+    for (auto& stmt : node->body->statements) stmts.push_back(stmt.get());
+    // 收集全部表达式（语句 + 嵌套表达式）
+    std::vector<Expr*> allExprs;
+    while (!stmts.empty()) {
+        Stmt* s = stmts.back();
+        stmts.pop_back();
+        switch (s->getType()) {
+            case NodeType::ExprStmt:
+                exprs.push_back(static_cast<ExprStmt*>(s)->expr.get());
+                break;
+            case NodeType::VarDecl:
+                if (static_cast<VarDecl*>(s)->initializer != nullptr)
+                    exprs.push_back(static_cast<VarDecl*>(s)->initializer.get());
+                break;
+            case NodeType::ReturnStmt:
+                if (static_cast<ReturnStmt*>(s)->value != nullptr)
+                    exprs.push_back(static_cast<ReturnStmt*>(s)->value.get());
+                break;
+            case NodeType::IfStmt: {
+                IfStmt* ifs = static_cast<IfStmt*>(s);
+                exprs.push_back(ifs->condition.get());
+                for (auto& sub : ifs->thenBranch->statements) stmts.push_back(sub.get());
+                if (ifs->elseBranch) stmts.push_back(ifs->elseBranch.get());
+                break;
+            }
+            case NodeType::WhileStmt: {
+                WhileStmt* ws = static_cast<WhileStmt*>(s);
+                exprs.push_back(ws->condition.get());
+                for (auto& sub : ws->body->statements) stmts.push_back(sub.get());
+                break;
+            }
+            case NodeType::ForStmt: {
+                ForStmt* fs = static_cast<ForStmt*>(s);
+                if (fs->condition) exprs.push_back(fs->condition.get());
+                if (fs->update) exprs.push_back(fs->update.get());
+                if (fs->init) stmts.push_back(fs->init.get());
+                for (auto& sub : fs->body->statements) stmts.push_back(sub.get());
+                break;
+            }
+            case NodeType::BlockStmt:
+                for (auto& sub : static_cast<BlockStmt*>(s)->statements)
+                    stmts.push_back(sub.get());
+                break;
+            default:
+                break;
+        }
+    }
+    // 递归展开表达式树，收集 IdentifierExpr
+    while (!exprs.empty()) {
+        Expr* e = exprs.back();
+        exprs.pop_back();
+        if (e == nullptr) continue;
+        switch (e->getType()) {
+            case NodeType::IdentifierExpr: {
+                const std::string& name = static_cast<IdentifierExpr*>(e)->name;
+                if (paramNames.count(name) == 0) {
+                    std::string t;
+                    // 必须是外层已声明变量（排除函数名/类型名；函数名捕获无意义）
+                    if (lookupVar(name, t) && !t.empty() && t != "未知") {
+                        // 去重加入
+                        bool dup = false;
+                        for (const auto& c : node->explicitCaptures)
+                            if (c == name) { dup = true; break; }
+                        if (!dup) node->explicitCaptures.push_back(name);
+                    }
+                }
+                break;
+            }
+            case NodeType::BinaryExpr: {
+                BinaryExpr* b = static_cast<BinaryExpr*>(e);
+                exprs.push_back(b->left.get());
+                exprs.push_back(b->right.get());
+                break;
+            }
+            case NodeType::UnaryExpr:
+                exprs.push_back(static_cast<UnaryExpr*>(e)->operand.get());
+                break;
+            case NodeType::AssignmentExpr: {
+                AssignmentExpr* a = static_cast<AssignmentExpr*>(e);
+                exprs.push_back(a->target.get());
+                exprs.push_back(a->value.get());
+                break;
+            }
+            case NodeType::CallExpr: {
+                CallExpr* c = static_cast<CallExpr*>(e);
+                exprs.push_back(c->callee.get());
+                for (auto& arg : c->arguments) exprs.push_back(arg.get());
+                break;
+            }
+            case NodeType::MemberExpr:
+                exprs.push_back(static_cast<MemberExpr*>(e)->object.get());
+                break;
+            case NodeType::IndexExpr: {
+                IndexExpr* ix = static_cast<IndexExpr*>(e);
+                exprs.push_back(ix->object.get());
+                exprs.push_back(ix->index.get());
+                break;
+            }
+            case NodeType::TernaryExpr: {
+                TernaryExpr* t = static_cast<TernaryExpr*>(e);
+                exprs.push_back(t->condition.get());
+                exprs.push_back(t->trueValue.get());
+                exprs.push_back(t->falseValue.get());
+                break;
+            }
+            case NodeType::CastExpr:
+                exprs.push_back(static_cast<CastExpr*>(e)->operand.get());
+                break;
+            default:
+                break;
+        }
+    }
+}
+
+//   5. 其余组合（如 字符串 -> 整32、结构体 -> 整32）报错
+void SemanticAnalyzer::visitCastExpr(CastExpr* node) {
+    const std::string target = canonicalType(node->targetType);
+    const std::string src = checkExpr(node->operand.get());
+    if (src == "未知") {
+        lastType_ = "未知";
+        return;  // 源类型未知：操作数错误已由 checkExpr 报告，避免连锁误报
+    }
+    const bool srcNumeric = isNumeric(src) || isEnumType(src) || src == "字符";
+    const bool dstNumeric = isNumeric(target) || target == "字符";
+    const bool srcPtr = types::isPointer(src);
+    const bool dstPtr = types::isPointer(target);
+    const bool ok =
+        (srcNumeric && dstNumeric) ||        // 数值族内部（整<->浮、整宽窄化、枚举/字符）
+        (srcPtr && dstPtr) ||                // 指针 -> 指针（位重解释）
+        (srcNumeric && dstPtr) ||            // 整数 -> 指针
+        (srcPtr && dstNumeric);              // 指针 -> 整数
+    if (!ok) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "无法将 '" + src + "' 显式转换为 '" + target + "'");
+        lastType_ = "未知";
+        return;
+    }
+    lastType_ = target;
+}
+
+// lambda 表达式：检查捕获 + 返回类型推导（规格书04-一D，Task 2.10）
+// 方案：lambda 降级为匿名函数 + 闭包捕获环境（IR 层生成）。本阶段只做：
+//   1. 检查参数（复用函数体检查逻辑）
+//   2. 检查函数体（捕获变量在闭包作用域中可见）
+//   3. 推导返回类型（显式返回标注 或 函数体单一返回语句）
+//   lastType_ 返回 lambda 类型描述符（函数指针<返回>(参数,...)），
+//   供 `自动 加倍 = [...]...` 声明与 `加倍(...)` 调用检查使用。
+void SemanticAnalyzer::visitLambdaExpr(LambdaExpr* node) {
+    // Task 2.10 捕获分析：确定实际捕获变量集（回填 node->explicitCaptures）
+    //   [] 不捕获；[=] 值捕获全部外层可见变量；[&] 引用捕获全部外层可见变量；
+    //   [变量] 显式捕获（校验变量存在）。
+    // 实现：扫描 lambda 函数体中的标识符引用，凡不在参数表中的外层变量即为捕获。
+    //   （简化：扫描一次；嵌套 lambda 的捕获集合并到本层）
+    if (node->captureKind == LambdaCaptureKind::None ||
+        node->captureKind == LambdaCaptureKind::ByValue ||
+        node->captureKind == LambdaCaptureKind::ByRef) {
+        // [] 与 [=]/[&] 等价：扫描函数体引用，收集外层变量作捕获。
+        //   （[] 不显式声明捕获，但体内引用外层变量时按隐式值捕获处理，
+        //     与 Task 2.8 字符串指针共享语义一致；IR 层按此展开捕获实参）
+        // [=]/[&]：收集函数体中引用的外层变量（标识符不在参数表、在 scopes_ 中）
+        node->explicitCaptures.clear();
+        std::unordered_set<std::string> paramNames;
+        for (auto& p : node->params) paramNames.insert(p->name);
+        // 在参数作用域压栈后扫描体（体检查时标识符已解析），
+        // 这里预先收集：从 scopes_ 栈（不含 lambda 参数）查找可见变量
+        // 简化实现：捕获分析依赖 visitIdentifierExpr 的变量解析——在 pushScope
+        // 之前先把当前外层作用域全部变量视为候选，扫描体中出现的标识符。
+        collectLambdaCaptures(node, paramNames);
+    } else if (node->captureKind == LambdaCaptureKind::Explicit) {
+        // [x, y]：校验捕获变量存在（外层作用域可查）
+        for (const auto& cap : node->explicitCaptures) {
+            std::string t;
+            if (!lookupVar(cap, t)) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "lambda 捕获的变量 '" + cap + "' 未声明");
+            }
+        }
+    }
+    // 推入 lambda 参数作用域（函数体内参数可见）
+    pushScope();
+    for (auto& param : node->params) {
+        const std::string ptype = param->funcPtr.isFunctionPtr()
+                                      ? param->funcPtr.toString()
+                                      : canonicalType(param->typeName);
+        if (!declareVar(param->name, ptype, param->location)) {
+            diagnostics_.report(DiagnosticLevel::Error, param->location,
+                                "lambda 参数 '" + param->name + "' 重复声明");
+        }
+    }
+    // 检查函数体（返回语句由 checkFunctionBody 校验；lambda 的返回类型
+    // 在 visitReturnStmt 里按 currentReturnType_ 校验——lambda 未标注时
+    // 先置空、由 return 语句动态放宽，见 visitReturnStmt 特判）
+    const std::string savedReturn = currentReturnType_;
+    currentReturnType_ = node->returnType.empty() ? "" : canonicalType(node->returnType);
+    if (node->body != nullptr) {
+        // 显式返回标注：按普通函数检查（返回类型一致性由 visitReturnStmt 保证）
+        if (!node->returnType.empty()) {
+            checkBlock(node->body.get());
+        } else {
+            // 无返回标注：宽松检查——记录 return 表达式类型用于推导。
+            // 直接复用 checkBlock 会因 currentReturnType_ 为空而漏检，
+            // 故先按"任意类型"检查体，再单独推导返回类型。
+            lambdaReturnCandidate_.clear();
+            lambdaInferMode_ = true;
+            for (auto& stmt : node->body->statements) {
+                checkStmt(stmt.get());
+            }
+            lambdaInferMode_ = false;
+            if (lambdaReturnCandidate_.size() == 1) {
+                node->returnType = lambdaReturnCandidate_[0];
+            } else if (lambdaReturnCandidate_.empty()) {
+                node->returnType = "空类型";
+            } else {
+                // 多个返回类型不一致：取第一个（保守），避免类型检查二次报错
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "lambda 返回类型无法推导（多个返回语句类型不一致）");
+                node->returnType = lambdaReturnCandidate_[0];
+            }
+        }
+    }
+    currentReturnType_ = savedReturn;
+    popScope();
+    // lambda 类型描述符：函数指针<返回>(参数类型,...)
+    std::string params;
+    for (std::size_t i = 0; i < node->params.size(); ++i) {
+        if (i > 0) params += ", ";
+        params += node->params[i]->funcPtr.isFunctionPtr()
+                      ? node->params[i]->funcPtr.toString()
+                      : canonicalType(node->params[i]->typeName);
+    }
+    lastType_ = "函数指针<" + (node->returnType.empty() ? "空类型" : node->returnType) +
+                ">(" + params + ")";
 }
 
 // ==================== 分发辅助 ====================

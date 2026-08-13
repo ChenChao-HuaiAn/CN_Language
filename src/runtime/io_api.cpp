@@ -36,19 +36,30 @@ extern "C" void cn_memset(void* dst, std::size_t size) {
     std::memset(dst, 0, size);
 }
 
-// ==================== IO API（规格书10.1） ====================
+// ==================== IO API（规格书10.1，Task 2.9 语义调整） ====================
+// 新语义（用户裁决，lessons.md 权重10.4）：
+//   打印   = println（自动换行，printf/puts 语义）——printLine
+//   打印行 = print（不换行，fputs 语义）——printNoLine
+// IR 层统一把 打印/打印行 展开为 __cn_print_* 序列（打印 末尾加 newline），
+//   单参数字符串路径（防御保留）经 codegen symbolName 映射到 printLine/printNoLine。
 
-// 打印行（字符串）：对应CN内置函数 打印行（puts 语义，自动换行）
+// 打印（字符串）：对应CN内置函数 打印（println 语义，自动换行）
 extern "C" void printLine(const char* text) {
     std::puts(text);
 }
 
-// 打印行（整数）：对应CN内置函数 打印行整数（printf "%lld\n" 语义）
+// 打印行（字符串）：对应CN内置函数 打印行（print 语义，不换行）
+extern "C" void printNoLine(const char* text) {
+    if (text == nullptr) text = "";
+    std::fputs(text, stdout);
+}
+
+// 打印（整数）：对应CN内置函数 打印整数（printf "%lld\n" 语义）
 extern "C" void printLineInt(long long value) {
     std::printf("%lld\n", value);
 }
 
-// 打印行（浮点数）：对应CN内置函数 打印行浮点（printf "%f\n" 语义）
+// 打印（浮点数）：对应CN内置函数 打印浮点（printf "%f\n" 语义）
 extern "C" void printLineFloat(double value) {
     std::printf("%f\n", value);
 }

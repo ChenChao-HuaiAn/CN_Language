@@ -54,6 +54,9 @@ public:
     void visitIndexExpr(IndexExpr* node) override;
     void visitInitListExpr(InitListExpr* node) override;
     void visitStructInitExpr(StructInitExpr* node) override;
+    void visitTernaryExpr(TernaryExpr* node) override;
+    void visitCastExpr(CastExpr* node) override;
+    void visitLambdaExpr(LambdaExpr* node) override;
     // 类型节点
     void visitType(Type* node) override;
 

@@ -154,7 +154,10 @@ struct IRBlock {
 
 // IR函数：签名 + 参数 + 基本块列表 + 变量映射
 struct IRFunction {
-    std::string name;                          // 函数名
+    std::string name;                          // 函数名（源码名，可读/测试契约）
+    // Task 2.10 重载：mangled 符号名（名#参数串，codegen 按此生成附录C符号）。
+    //   非空时 codegen 用它作链接符号；为空回退 name（内置/主/无参函数）。
+    std::string mangledName;
     std::string returnType;                    // 返回类型（IR类型）
     // 参数列表 (源码名, IR类型)：对外接口保持源码名（可读性/测试契约）
     std::vector<std::pair<std::string, std::string>> params;
@@ -252,6 +255,9 @@ public:
     void visitIndexExpr(IndexExpr* node) override;
     void visitInitListExpr(InitListExpr* node) override;
     void visitStructInitExpr(StructInitExpr* node) override;
+    void visitTernaryExpr(TernaryExpr* node) override;
+    void visitCastExpr(CastExpr* node) override;
+    void visitLambdaExpr(LambdaExpr* node) override;
     // 类型节点
     void visitType(Type* node) override;
 
@@ -338,6 +344,14 @@ private:
     static Operator baseOpOfCompound(Operator op);
     // 字符串字面量解码（剥离引号，阶段一简单解码）
     static std::string decodeString(const std::string& raw);
+    // 判断 AST 表达式是否为字符串类型（Task 2.9 拼接判定）：
+    //   字符串字面量 / 字符串变量（lookupSrcType 为 字符串 或 字符*）→ true；
+    //   普通指针/整型等 → false。用于区分"字符串+数值拼接"与"指针算术"（ptr + 整型）
+    bool isStringTypedExpr(Expr* node) const;
+    // 默认参数常量求值（Task 2.10）：字面量 -> IR 常量（ConstInt/Float/String/Bool）
+    ir::IRValue evalDefaultExpr(Expr* expr, ir::IRFunction& func);
+    // 空串入常量池并返回 @str 编号（默认字符串参数补全）
+    int internEmptyString();
 
     // 查找变量的唯一内部名（未找到返回空串）
     std::string lookupVarName(const std::string& name) const;
@@ -354,6 +368,25 @@ private:
     int regCounter_ = 0;                        // 虚拟寄存器编号（全局递增）
     int blockCounter_ = 0;                      // 基本块编号（全局递增）
     int varCounter_ = 0;                        // 变量唯一名计数器（函数级递增）
+    int lambdaCounter_ = 0;                     // lambda 匿名函数计数器（Task 2.10）
+    // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。
+    // 顺序与函数参数一致（仅含带默认值的尾部参数）；调用补全时按此精确展开。
+    std::unordered_map<std::string, std::vector<ir::IRValue>> funcDefaultArgs_;
+    // 当前调用待补全的默认实参（visitCallExpr 收集后追加到 args）
+    std::vector<ir::IRValue> defaultArgValues_;
+    // 最近一次 lambda 生成的匿名函数名与捕获变量列表（Task 2.10，
+    //   genVarDecl 遇 LambdaExpr 初始值时登记闭包关联）
+    std::string lastLambdaName_;
+    std::vector<std::string> lastLambdaCaptures_;
+    std::string lastLambdaReturnIrType_;  // 最近 lambda 的返回 IR 类型（闭包调用结果类型）
+    // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 返回 IR 类型}。
+    // 调用 `闭包变量(...)` 时展开捕获实参（前置）再 Call 匿名函数。
+    struct ClosureInfo {
+        std::string lambdaName;
+        std::vector<std::string> captures;
+        std::string returnIrType;  // 匿名函数返回 IR 类型（结果寄存器类型）
+    };
+    std::unordered_map<std::string, ClosureInfo> closureInfo_;
     // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
     // 每个条目：源码名 -> {寄存器ID, 唯一内部名（name$N，遮蔽时分配独立槽）, IR类型,
     //                      源码类型（整32*/整32[5]等，Task 2.4 指针元素类型/数组元素类型）}

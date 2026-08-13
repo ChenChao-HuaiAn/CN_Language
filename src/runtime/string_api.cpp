@@ -7,6 +7,7 @@
 //               字符串查找→__cn_str_find
 #include "runtime/runtime.hpp"
 
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -249,6 +250,44 @@ extern "C" char* __cn_str_from_char(int value) {
     if (result == nullptr) return nullptr;
     result[0] = static_cast<char>(value & 0xFF);
     result[1] = '\0';
+    return result;
+}
+
+// 布尔转字符串（Task 2.9）：真 -> "真"、假 -> "假"（UTF-8 3字节）。
+extern "C" char* __cn_str_from_bool(int value) {
+    const char* text = (value != 0) ? "\xE7\x9C\x9F" : "\xE5\x81\x87";  // "真"/"假"
+    const std::size_t len = std::strlen(text);
+    char* result = static_cast<char*>(std::malloc(len + 1));
+    if (result == nullptr) return nullptr;
+    std::memcpy(result, text, len + 1);
+    return result;
+}
+
+// 格式化（Task 2.9，规格书10.6）：sprintf 风格变参，返回动态分配字符串，调用方负责释放。
+// 占位符：%d(整) %u(无符号) %f(浮点) %s(字符串) %c(字符) %x/%X(十六进制) %o(八进制) %p(指针)。
+// 实现：vsnprintf 两趟（先量长度再分配），避免固定缓冲截断（sprintf 语义保证完整输出）。
+// Win x64 ABI：调用方（编译器 IR 展开）已按 C 变参规则传递参数（整型 GPR / 浮点 XMM，
+//   调用方预留 32 字节影子空间），本函数用 va_arg 按占位符类型读取。
+extern "C" char* __cn_format(const char* fmt, ...) {
+    if (fmt == nullptr) fmt = "";
+    va_list args;
+    va_start(args, fmt);
+    // 第一趟：计算所需长度（不含结尾 \0）
+    va_list copy;
+    va_copy(copy, args);
+    const int len = std::vsnprintf(nullptr, 0, fmt, copy);
+    va_end(copy);
+    if (len < 0) {
+        va_end(args);
+        return nullptr;
+    }
+    char* result = static_cast<char*>(std::malloc(static_cast<std::size_t>(len) + 1));
+    if (result == nullptr) {
+        va_end(args);
+        return nullptr;
+    }
+    std::vsnprintf(result, static_cast<std::size_t>(len) + 1, fmt, args);
+    va_end(args);
     return result;
 }
 

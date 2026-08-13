@@ -43,7 +43,7 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Struct, "结构体"},
         {TokenType::Kw_Union, "联合体"},
         {TokenType::Kw_Enum, "枚举"},
-        // ---- 声明关键字(7) ----
+        // ---- 声明关键字(8) ----
         {TokenType::Kw_Function, "函数"},
         {TokenType::Kw_Var, "变量"},
         {TokenType::Kw_Import, "导入"},
@@ -51,6 +51,7 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Public, "公开"},
         {TokenType::Kw_Private, "私有"},
         {TokenType::Kw_Static, "静态"},
+        {TokenType::Kw_Auto, "自动"},
         // ---- 常量关键字(3) ----
         {TokenType::Kw_True, "真"},
         {TokenType::Kw_False, "假"},

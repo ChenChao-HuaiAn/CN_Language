@@ -38,6 +38,9 @@ class IndexExpr;
 class InitListExpr;
 class StructInitExpr;
 class NullLiteral;
+class TernaryExpr;
+class CastExpr;
+class LambdaExpr;
 class ExprStmt;
 class IfStmt;
 class WhileStmt;
@@ -89,6 +92,9 @@ enum class NodeType {
     IndexExpr,         // 下标访问（数组[i]，Task 2.4）
     InitListExpr,      // 初始化列表（{ 1, 2, 3 }，Task 2.4）
     StructInitExpr,    // 结构体初始化（点{ x = 1, y = 2 }，Task 2.7）
+    TernaryExpr,       // 三元条件表达式（条件 ? 真值 : 假值，Task 2.9）
+    CastExpr,          // 强制类型转换（类型名(表达式)，Task 2.10）
+    LambdaExpr,        // lambda表达式（[捕获](参数) -> 返回 { 体 }，Task 2.10）
     // 类型节点
     TypeNode,          // 类型
 };
@@ -185,6 +191,9 @@ public:
     virtual void visitIndexExpr(IndexExpr* node) = 0;
     virtual void visitInitListExpr(InitListExpr* node) = 0;
     virtual void visitStructInitExpr(StructInitExpr* node) = 0;
+    virtual void visitTernaryExpr(TernaryExpr* node) = 0;
+    virtual void visitCastExpr(CastExpr* node) = 0;
+    virtual void visitLambdaExpr(LambdaExpr* node) = 0;
     // 类型节点
     virtual void visitType(Type* node) = 0;
 };
@@ -351,6 +360,8 @@ public:
 
     std::unique_ptr<Expr> callee;                 // 被调者（通常是标识符）
     std::vector<std::unique_ptr<Expr>> arguments; // 实参列表
+    std::string resolvedSignature;                // 重载决议后的签名 key（Task 2.10，
+                                                  //   语义层写回；IR 层按此生成 mangled 符号）
 };
 
 // 成员访问：对象.成员 或 对象->成员
@@ -400,6 +411,53 @@ public:
 
     std::string typeName;                        // 结构体/联合体类型名
     std::vector<std::pair<std::string, std::unique_ptr<Expr>>> fields;  // 字段名 -> 值
+};
+
+// 三元条件表达式：条件 ? 真值 : 假值（规格书4.5 优先级1.5，右结合，Task 2.9）
+// 语义：条件为布尔；结果为真值/假值的公共类型（数值宽化合并；字符串/指针/结构体须一致）；
+//       IR 层用条件跳转 CFG 实现惰性求值（不选中分支不执行）
+class TernaryExpr : public Expr {
+public:
+    TernaryExpr(std::unique_ptr<Expr> condition, std::unique_ptr<Expr> trueValue,
+                std::unique_ptr<Expr> falseValue)
+        : Expr(NodeType::TernaryExpr), condition(std::move(condition)),
+          trueValue(std::move(trueValue)), falseValue(std::move(falseValue)) {}
+    void accept(AstVisitor& visitor) override { visitor.visitTernaryExpr(this); }
+
+    std::unique_ptr<Expr> condition;   // 条件表达式（须为布尔）
+    std::unique_ptr<Expr> trueValue;   // 条件为真时的值
+    std::unique_ptr<Expr> falseValue;  // 条件为假时的值
+};
+
+// 强制类型转换：类型名(表达式)（规格书04-一E，Task 2.10）
+// 语义同 static_cast/位重解释组合：宽化/窄化/浮整/指针↔整数 均显式触发。
+// 解析判据：'(' 前 token 为类型关键字/已声明类型名 -> CastExpr；否则 -> CallExpr。
+class CastExpr : public Expr {
+public:
+    CastExpr(std::string targetType, std::unique_ptr<Expr> operand)
+        : Expr(NodeType::CastExpr), targetType(std::move(targetType)),
+          operand(std::move(operand)) {}
+    void accept(AstVisitor& visitor) override { visitor.visitCastExpr(this); }
+
+    std::string targetType;        // 目标类型名（整32/浮64/指针/自定义类型等）
+    std::unique_ptr<Expr> operand; // 被转换表达式
+};
+
+// 捕获规格：[] 不捕获 / [=] 值捕获 / [&] 引用捕获 / [变量] 显式捕获（Task 2.10）
+enum class LambdaCaptureKind { None, ByValue, ByRef, Explicit };
+
+// lambda 表达式：[] 或 [捕获](参数) [-> 返回类型] { 函数体 }（规格书04-一D，Task 2.10）
+// 语义：降级为匿名函数 + 闭包捕获环境；无捕获可赋给函数指针；有捕获存入闭包结构体。
+class LambdaExpr : public Expr {
+public:
+    LambdaExpr() : Expr(NodeType::LambdaExpr) {}
+    void accept(AstVisitor& visitor) override { visitor.visitLambdaExpr(this); }
+
+    LambdaCaptureKind captureKind = LambdaCaptureKind::None;  // 捕获方式
+    std::vector<std::string> explicitCaptures; // 显式捕获变量名列表（[x, y]）
+    std::vector<std::unique_ptr<ParamDecl>> params; // 参数列表
+    std::string returnType;                    // 返回类型（为空表示推导）
+    std::unique_ptr<BlockStmt> body;           // 函数体
 };
 
 // ==================== 语句节点 ====================
@@ -591,7 +649,10 @@ public:
     std::string name;  // 类型名（如 整32 / 字符串 / 自定义类型名）
 };
 
-// 参数声明：类型 参数名（CN规范类型前置；兼容 参数名: 类型 冒号后置）
+// 参数声明：类型 参数名 [= 默认值]（CN规范类型前置；兼容 参数名: 类型 冒号后置）
+// 默认参数（规格书04-一C，Task 2.10）：从右向左连续声明；默认值须编译期常量。
+//   defaultExpr 为表达式节点（整/浮/字符串/布尔/字符字面量、一元负号常量）；
+//   hasDefault 标记是否给出默认值（缺省实参补全用）。
 class ParamDecl : public AstNode {
 public:
     ParamDecl() : AstNode(NodeType::ParamDecl) {}
@@ -600,6 +661,8 @@ public:
     std::string name;      // 参数名
     std::string typeName;  // 参数类型
     FuncPtrTypeInfo funcPtr;  // 函数指针类型信息（非空表示本参数为函数指针）
+    bool hasDefault = false;  // 是否有默认值（Task 2.10）
+    std::unique_ptr<Expr> defaultExpr;  // 默认值表达式（编译期常量，Task 2.10）
 };
 
 // 函数声明：函数 名称(参数列表) [-> 返回类型] { 函数体 }
@@ -612,6 +675,8 @@ public:
     std::vector<std::unique_ptr<ParamDecl>> params;    // 参数列表
     std::string returnType;                            // 返回类型（为空表示无返回值）
     std::unique_ptr<BlockStmt> body;                   // 函数体（为空表示函数原型声明）
+    std::string sigKey;                                // 重载签名 key（Task 2.10，
+                                                       //   语义层注册时写回；IR/codegen 按此 mangling）
 };
 
 // 程序：顶层声明集合（函数/结构体/枚举/联合体）

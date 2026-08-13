@@ -23,6 +23,11 @@ struct FunctionInfo {
     std::vector<std::string> paramTypes;   // 参数类型列表
     bool hasBody = false;                  // 是否有函数体（函数原型声明无体）
     bool variadic = false;                 // 是否变参函数（Task 2.5：打印行 多参数）
+    // ---- Task 2.10：默认参数 ----
+    std::vector<bool> hasDefault;          // 每个参数是否有默认值（与 paramTypes 等长）
+    // 默认值表达式按需求值：IR 层展开；语义层仅记录个数（defaultCount 为尾部连续
+    // 带默认值的参数个数，调用时用于"实参个数 + 可补全"匹配）
+    int defaultCount = 0;                  // 尾部默认参数个数（从右向左连续声明）
 };
 
 // 语义分析器：构建符号表并做类型检查，产出诊断
@@ -54,6 +59,8 @@ public:
                      std::int64_t& outValue) const;
     // 查询函数返回类型（未注册返回空串；供IR层推导调用结果类型，Task 2.7 集成修复）
     std::string funcReturnTypeOf(const std::string& funcName) const;
+    // 返回该函数名的第一个签名 key（函数名作值/取地址用，Task 2.10；无此名返回空串）
+    std::string funcFirstSigKey(const std::string& name) const;
     // 查询函数参数类型列表（未注册返回空；供IR层推导结构体按值实参传递，Task 完善A）
     std::vector<std::string> funcParamTypesOf(const std::string& funcName) const;
     // 程序AST（供结构体/枚举符号表查询）
@@ -95,6 +102,9 @@ public:
     void visitIndexExpr(IndexExpr* node) override;
     void visitInitListExpr(InitListExpr* node) override;
     void visitStructInitExpr(StructInitExpr* node) override;
+    void visitTernaryExpr(TernaryExpr* node) override;
+    void visitCastExpr(CastExpr* node) override;
+    void visitLambdaExpr(LambdaExpr* node) override;
     // 类型节点
     void visitType(Type* node) override;
 
@@ -145,6 +155,26 @@ private:
     void checkFunctionBody(FunctionDecl* node);    // 第二趟：检查函数体
     // 函数体是否保证有返回（最后一条为返回语句或无限循环）
     bool bodyGuaranteesReturn(BlockStmt* body) const;
+    // lambda 捕获分析（Task 2.10）：扫描函数体中的标识符引用，
+    //   收集不在参数表中的外层变量到 node->explicitCaptures（[=]/[&] 用）
+    void collectLambdaCaptures(LambdaExpr* node,
+                               const std::unordered_set<std::string>& paramNames);
+    // ---- Task 2.10 重载/默认参数辅助 ----
+    // 生成函数签名 key：名 + "#" + 参数类型串（重载决议与 mangling 共用）
+    static std::string signatureKey(const std::string& name,
+                                    const std::vector<std::string>& paramTypes);
+    // 注册/查询重载函数：按签名 key 存取（functions_ 键由纯函数名改为签名 key）
+    void registerFunctionOverload(FunctionDecl* node, const FunctionInfo& info);
+    // 从函数名查询全部已注册签名（含默认参数补全的签名，返回 nullptr 表示无此名函数）
+    bool hasFunctionName(const std::string& name) const;
+    // 重载决议：实参类型列表 -> 匹配的签名（精确>宽化>隐式转换；默认参数补全参与）。
+    // 返回匹配的签名 key（未匹配返回空串；歧义时报告错误）
+    std::string resolveOverload(const std::string& name,
+                                const std::vector<std::string>& argTypes,
+                                const SourceLocation& loc);
+    // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换 -1=不可转
+    //（非静态：需调用 canConvertType/isEnumType 等成员，Task 2.10）
+    int conversionLevel(const std::string& argType, const std::string& paramType);
     // 判断类型字符串是否为函数指针类型（函数指针<返回>(参数,...)）
     static bool isFuncPtrType(const std::string& type);
     // 从函数指针类型字符串提取返回类型（空串表示非法输入）
@@ -163,6 +193,9 @@ private:
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
     int loopDepth_ = 0;                            // 循环嵌套深度（中断/继续合法性）
     int switchDepth_ = 0;                          // 选择嵌套深度（中断跳出选择合法性）
+    // ---- lambda 返回类型推导（Task 2.10） ----
+    bool lambdaInferMode_ = false;                 // 是否处于 lambda 无标注返回推导模式
+    std::vector<std::string> lambdaReturnCandidate_; // 推导模式下的返回表达式类型候选
 };
 
 } // namespace cn_compiler

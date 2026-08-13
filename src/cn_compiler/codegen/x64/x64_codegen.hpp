@@ -56,6 +56,8 @@ private:
 
     // 中文符号名 -> UTF-8十六进制修饰名（ASCII原样返回）
     static std::string nameMangle(const std::string& name);
+    // 源码类型名 -> 附录C 类型编码（重载 mangling 用，Task 2.10）
+    static std::string mangleTypeCode(const std::string& typeRaw);
 
     // CN符号 -> 汇编链接符号（阶段一C链接映射：主->cn_main，打印行->printLine等）
     static std::string symbolName(const std::string& name);

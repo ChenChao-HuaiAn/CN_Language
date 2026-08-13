@@ -755,7 +755,11 @@ ir::IRModule IRGenerator::generate(Program* program) {
 void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     if (node->body == nullptr) return;  // 函数原型声明：不生成IR函数（链接期缺失检测）
     ir::IRFunction func;
+    // Task 2.10 重载：func.name 保持源码名（可读/测试契约）；
+    //   mangledName 存签名 key（名#参数串），codegen 按此生成附录C符号。
+    //   无参函数 sigKey 即纯名（mangledName==name，保持 主->cn_main 等映射）。
     func.name = node->name;
+    func.mangledName = node->sigKey.empty() ? node->name : node->sigKey;
     func.returnType = mapType(node->returnType.empty() ? "空类型" : node->returnType);
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
     if (semantic_ != nullptr && !node->returnType.empty() &&
@@ -796,6 +800,24 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         entryInfo.type = reg.type;
         entryInfo.srcType = param->typeName;  // 指针/数组复合类型源码名
         varStack_.back()[param->name] = entryInfo;
+    }
+    // Task 2.10：收集尾部默认参数值（签名 key -> 默认值 IR 常量列表）。
+    // 调用补全时按 名#参数串 查此表，把缺省实参精确展开为默认值常量。
+    // 默认值表达式须为编译期常量（整/浮/字符串/布尔/字符字面量、一元负号）。
+    //   常量求值：字面量 -> ConstInt/ConstFloat/ConstString/ConstBool；
+    //   其他形态（一元负号 -1）在下方 evalConstExpr 中处理。
+    {
+        std::vector<ir::IRValue> defaults;
+        for (auto& param : node->params) {
+            if (param->hasDefault && param->defaultExpr != nullptr) {
+                defaults.push_back(evalDefaultExpr(param->defaultExpr.get(), func));
+            }
+        }
+        if (!defaults.empty()) {
+            // 用 mangledName（签名 key 名#参数串）作 key——调用方按
+            // node->resolvedSignature（同 sigKey）查找补全
+            funcDefaultArgs_[func.mangledName] = defaults;
+        }
     }
     // 注意：varCounter_ 不可重置！参数已用 varCounter_ 生成唯一名，
     // 若重置则函数体内同名遮蔽变量会生成相同唯一名（如 x$0）导致槽冲突
@@ -1171,6 +1193,8 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             irType = "i1";
         } else if (node->initializer->getType() == NodeType::CharLiteral) {
             irType = "i32";
+        } else if (node->initializer->getType() == NodeType::LambdaExpr) {
+            irType = "ptr";  // Task 2.10：lambda 赋值目标为函数指针（8字节地址）
         } else if (node->initializer->getType() == NodeType::NullLiteral) {
             irType = "ptr";  // 空指针字面量：指针类型（无 = 0）
         }
@@ -1263,7 +1287,21 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     }
     // 普通表达式初始值 -> Store（目标用唯一内部名，保证遮蔽变量写入自己的槽）
     if (node->initializer != nullptr) {
+        // Task 2.10 lambda 赋值：`自动 加倍 = [...]...`——
+        //   先 genExpr（生成匿名函数并记录 lastLambdaName_/lastLambdaCaptures_），
+        //   再登记闭包关联（调用 `加倍(...)` 时展开捕获实参）
         ir::IRValue value = genExpr(node->initializer.get());
+        if (node->initializer->getType() == NodeType::LambdaExpr &&
+            !lastLambdaName_.empty()) {
+            ClosureInfo info;
+            info.lambdaName = lastLambdaName_;
+            info.captures = lastLambdaCaptures_;
+            info.returnIrType = lastLambdaReturnIrType_;
+            closureInfo_[node->name] = info;
+            lastLambdaName_.clear();
+            lastLambdaCaptures_.clear();
+            lastLambdaReturnIrType_.clear();
+        }
         // 结构体变量初始化值为"函数返回的结构体地址（ptr）"（Task 完善A）：
         //   学生 张三加 = 加分(张三) —— 值是指向返回临时结构体的指针，
         //   需 CopyStruct 到本变量槽区（按值拷贝）
@@ -1355,6 +1393,87 @@ void IRGenerator::visitStringLiteral(StringLiteral* node) {
                            "@str" + std::to_string(index), node->location);
 }
 
+// 空串入常量池并返回 @str 编号（默认字符串参数补全，Task 2.10）
+int IRGenerator::internEmptyString() {
+    auto it = module_->stringIndex.find("");
+    if (it != module_->stringIndex.end()) return it->second;
+    const int index = static_cast<int>(module_->stringConstants.size());
+    module_->stringConstants.push_back("");
+    module_->stringIndex[""] = index;
+    return index;
+}
+
+// 默认参数常量求值（Task 2.10）：字面量 -> IR 常量（ConstInt/Float/String/Bool）
+// 支持：整/浮/字符串/布尔/字符字面量、一元负号 -N（常量取负）。
+// 其他形态（标识符/调用等）返回默认 0（语义层已检查"须编译期常量"，错误已报）。
+ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr, ir::IRFunction& func) {
+    (void)func;
+    switch (expr->getType()) {
+        case NodeType::IntegerLiteral: {
+            IntegerLiteral* lit = static_cast<IntegerLiteral*>(expr);
+            std::string type = types::literalTypeOf(lit->raw, false);
+            const std::string irType = mapType(type.empty() ? "整32" : type);
+            return ir::IRValue::constant(std::to_string(lit->value), irType);
+        }
+        case NodeType::FloatLiteral: {
+            FloatLiteral* lit = static_cast<FloatLiteral*>(expr);
+            std::string type = types::literalTypeOf(lit->raw, true);
+            return ir::IRValue::constant(types::stripLiteralSuffix(lit->raw),
+                                         mapType(type));
+        }
+        case NodeType::StringLiteral: {
+            StringLiteral* lit = static_cast<StringLiteral*>(expr);
+            const std::string text = decodeString(lit->raw);
+            int index = -1;
+            auto it = module_->stringIndex.find(text);
+            if (it != module_->stringIndex.end()) {
+                index = it->second;
+            } else {
+                index = static_cast<int>(module_->stringConstants.size());
+                module_->stringConstants.push_back(text);
+                module_->stringIndex[text] = index;
+            }
+            return ir::IRValue::constant("@str" + std::to_string(index), "ptr");
+        }
+        case NodeType::BoolLiteral: {
+            BoolLiteral* lit = static_cast<BoolLiteral*>(expr);
+            return ir::IRValue::constant(lit->value ? "真" : "假", "i1");
+        }
+        case NodeType::CharLiteral: {
+            CharLiteral* lit = static_cast<CharLiteral*>(expr);
+            std::string text = lit->raw;
+            // 字符字面量：单引号内首字符码点（'A' -> 65；'\u{4E2D}' 全解码）
+            if (text.size() >= 3 && text.front() == '\'' && text.back() == '\'') {
+                const std::string inner = text.substr(1, text.size() - 2);
+                if (inner.size() == 1) {
+                    return ir::IRValue::constant(
+                        std::to_string(static_cast<unsigned char>(inner[0])), "i32");
+                }
+            }
+            return ir::IRValue::constant("0", "i32");
+        }
+        case NodeType::UnaryExpr: {
+            // 一元负号：-N（常量取负）
+            UnaryExpr* un = static_cast<UnaryExpr*>(expr);
+            if (un->op == Operator::Subtract) {
+                ir::IRValue inner = evalDefaultExpr(un->operand.get(), func);
+                if (inner.isConstant && inner.type != "ptr" && inner.type != "i1") {
+                    try {
+                        const long long v = std::stoll(inner.extra);
+                        return ir::IRValue::constant(std::to_string(-v), inner.type);
+                    } catch (...) {
+                        return ir::IRValue::constant("0", inner.type);
+                    }
+                }
+            }
+            return ir::IRValue::constant("0", "i64");
+        }
+        default:
+            // 非字面量默认值（标识符/调用等）：语义层已报错，此处补 0
+            return ir::IRValue::constant("0", "i64");
+    }
+}
+
 // 字符字面量：按Unicode码点常量（阶段一简化：取引号内首字符值）
 // 注意：字符字面量为单引号（如 'B'），decodeString 只处理双引号字符串，
 //       必须单独剥离单引号，否则取到的是 "'"（39）而非字符本身
@@ -1384,7 +1503,15 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     if (reg.id < 0) {
         // 未找到变量：可能是函数名（函数指针赋值）。生成函数地址。
         // 防御性：若连函数也不是（语义已报错），仍生成FuncAddr避免IR中断
-        lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", node->name, node->location);
+        // Task 2.10 重载：函数名作值（回调 = 加）须用决议后的签名 key——
+        //   定义处符号按 mangledName（名#参数串）发射，此处取首个签名保持一致；
+        //   无参函数/单版本函数 sigKey 即纯名，行为不变
+        std::string funcSym = node->name;
+        if (semantic_ != nullptr) {
+            const std::string sig = semantic_->funcFirstSigKey(node->name);
+            if (!sig.empty()) funcSym = sig;
+        }
+        lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", funcSym, node->location);
         return;
     }
     const std::string unique = lookupVarName(node->name);
@@ -1409,6 +1536,50 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                            reg.type, unique, node->location);
 }
 
+// 判断 AST 表达式是否为字符串类型（Task 2.9 拼接判定辅助）
+// 用于区分"字符串 + 数值 隐式拼接"与"指针算术"（ptr + 整型）——
+// 两者左操作数 IR 类型都是 ptr，必须靠源码类型区分：
+//   StringLiteral          -> 字符串字面量
+//   IdentifierExpr         -> 查变量源码类型（字符串/字符*）
+//   BinaryExpr(Add)        -> 连接/拼接结果（递归：左字符串即结果字符串）
+//   IndexExpr              -> 数组元素为字符串（字符串[i] 元素是字符，仍算字符串）
+//   CallExpr(字符串API)     -> 返回字符串的内置函数调用（字符串长度 等返回字符串的）
+bool IRGenerator::isStringTypedExpr(Expr* node) const {
+    if (node == nullptr) return false;
+    switch (node->getType()) {
+        case NodeType::StringLiteral:
+            return true;
+        case NodeType::IdentifierExpr: {
+            const std::string st = types::canonical(lookupSrcType(
+                static_cast<IdentifierExpr*>(node)->name));
+            return (st == "字符串" || st == "字符*");
+        }
+        case NodeType::BinaryExpr: {
+            BinaryExpr* bin = static_cast<BinaryExpr*>(node);
+            if (bin->op == Operator::Add) {
+                // 连接/拼接结果：左字符串（含数值拼接）即结果字符串
+                return isStringTypedExpr(bin->left.get());
+            }
+            return false;
+        }
+        case NodeType::IndexExpr: {
+            // 数组元素：元素类型为字符串/字符（字符串[i] -> 字符 仍可参与拼接）
+            IndexExpr* idx = static_cast<IndexExpr*>(node);
+            if (idx->object->getType() == NodeType::IdentifierExpr) {
+                const std::string st = types::canonical(lookupSrcType(
+                    static_cast<IdentifierExpr*>(idx->object.get())->name));
+                if (types::isArray(st)) {
+                    const std::string elem = types::canonical(types::arrayElemOf(st));
+                    return (elem == "字符串" || elem == "字符");
+                }
+            }
+            return false;
+        }
+        default:
+            return false;
+    }
+}
+
 // 二元运算：递归生成左右操作数，输出运算指令
 // Task 2.3：操作数类型不一致时先隐式转换 Cast 到公共类型
 // （如 整8 + 整8 -> 整32 提升；整32 + 整64 -> 整64 宽化；整 + 浮 -> 浮64）
@@ -1424,6 +1595,79 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
     //       （指针+整数 仍走下方指针算术分支；指针+指针 由语义层保证为字符串连接）
     if (left.type == "ptr" && right.type == "ptr" && node->op == Operator::Add) {
         lastExpr_ = emitResult(ir::Opcode::Call, {left, right}, "ptr",
+                               "__cn_str_concat", node->location);
+        return;
+    }
+    // ---- 字符串 + 数值 隐式拼接（Task 2.9）：左为字符串(ptr)，右为数值/布尔/字符/枚举 ----
+    // 展开：右操作数先转字符串（__cn_str_from_int/float/char/bool），再 __cn_str_concat。
+    //   整数/枚举 -> __cn_str_from_int（整32 先 Cast i64；整128 截断 i64——值域≤2^63 语义正确）
+    //   浮点      -> __cn_str_from_float（f32 先 Cast f64）
+    //   字符      -> __cn_str_from_char（i32 值）
+    //   布尔      -> __cn_str_from_bool（i1 -> "真"/"假"）
+    // 多操作数左结合："a" + 1 + 2 = ("a"+1)+2：内层结果为 ptr（连接产物），外层再拼。
+    //   连接/转换产物为动态内存，调用方负责 字符串释放（与 Task 2.5 语义一致）。
+    // 注意：Call 有副作用，CSE 已排除（cse.cpp isSideEffect），不会被错误合并。
+    // 关键区分：ptr 左操作数可能是 字符串（拼接）或 普通指针（指针算术 q + 1）。
+    //   拼接仅当 左操作数源码类型为 字符串/字符*（字面量 或 字符串变量/数组元素）；
+    //   普通指针 + 整数 必须走下方指针算术分支（05_array_pointer 回归教训）。
+    const bool leftIsString = isStringTypedExpr(node->left.get());
+    if (leftIsString && left.type == "ptr" && node->op == Operator::Add &&
+        right.type != "ptr" && right.type != "i128" && right.type != "u128") {
+        ir::IRValue strArg = right;
+        std::string convFn;
+        if (right.type == "f32" || right.type == "f64") {
+            if (strArg.type != "f64") {
+                strArg = emitResult(ir::Opcode::Cast, {strArg}, "f64", "",
+                                    node->location);
+            }
+            convFn = "__cn_str_from_float";
+        } else if (right.type == "i1") {
+            convFn = "__cn_str_from_bool";  // 布尔转 "真"/"假"
+        } else if (right.type == "i32" || right.type == "u32") {
+            // 字符字面量/字符变量（IR i32）走字符转换；整32/枚举 走整数转换。
+            // 区分依据：右操作数 AST 形态（CharLiteral 直判）+ 变量源码类型查表
+            bool isChar = false;
+            if (node->right->getType() == NodeType::CharLiteral) {
+                isChar = true;
+            } else if (node->right->getType() == NodeType::IdentifierExpr) {
+                const std::string st = types::canonical(lookupSrcType(
+                    static_cast<IdentifierExpr*>(node->right.get())->name));
+                isChar = (st == "字符");
+            }
+            if (isChar) {
+                convFn = "__cn_str_from_char";
+            } else {
+                if (strArg.type != "i64") {
+                    strArg = emitResult(ir::Opcode::Cast, {strArg}, "i64", "",
+                                        node->location);
+                }
+                convFn = "__cn_str_from_int";
+            }
+        } else {
+            // 整数（i64/u64/i8/i16 等）：统一转 i64 后 字符串从整数
+            if (strArg.type != "i64") {
+                strArg = emitResult(ir::Opcode::Cast, {strArg}, "i64", "",
+                                    node->location);
+            }
+            convFn = "__cn_str_from_int";
+        }
+        ir::IRValue rightStr = emitResult(ir::Opcode::Call, {strArg}, "ptr",
+                                          convFn, node->location);
+        lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
+                               "__cn_str_concat", node->location);
+        return;
+    }
+    // 字符串 + 整128/正128（IR 双槽 ptr 形态）：转字符串（截断 i64）再连接
+    // i128 值在 IR 层为"指向16字节双槽内存的 ptr"（低64位槽+高64位槽），
+    // right 本身就是该地址（变量槽地址或临时双槽地址）。取低64位 LoadPtr 转整64
+    //（值域≤2^63 语义正确；超范围拼接场景后续 Task 再支持全量转换）。
+    if (leftIsString && left.type == "ptr" && node->op == Operator::Add &&
+        (right.type == "i128" || right.type == "u128")) {
+        ir::IRValue lo = emitResult(ir::Opcode::LoadPtr, {right}, "i64", "",
+                                    node->location);
+        ir::IRValue rightStr = emitResult(ir::Opcode::Call, {lo}, "ptr",
+                                          "__cn_str_from_int", node->location);
+        lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
                                "__cn_str_concat", node->location);
         return;
     }
@@ -1628,6 +1872,78 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             lastExpr_ = operand;
             break;
     }
+}
+
+// 三元条件表达式（Task 2.9，规格书4.5）：条件 ? 真值 : 假值
+// 惰性求值（硬要求）：IR 必须用条件跳转 CFG——条件为真只执行真分支、为假只执行假分支，
+//   禁止先求两分支再 Select（不选中分支的副作用/函数调用不得执行）。
+// 实现（非 SSA 变量寻址模型）：
+//   1. 求条件（i1），endBranch 条件跳转到 真块/假块
+//   2. 真块：求真值 -> Store 到临时槽 -> endJump 汇合块
+//   3. 假块：求假值 -> Store 到临时槽 -> endJump 汇合块
+//   4. 汇合块：Load 临时槽 作为表达式结果（lastExpr_）
+// 标签"随建随取"（参照 genIf）：绝不按偏移预计算未来标签，嵌套三元会新增块
+void IRGenerator::visitTernaryExpr(TernaryExpr* node) {
+    ir::IRValue cond = genExpr(node->condition.get());
+    // 三元结果类型：IR 层类型（i64/f64/ptr/i1 等）。语义层已保证两分支类型统一
+    //   （数值已宽化合并；字符串/指针/结构体一致），此处取真分支 IR 类型作为槽类型。
+    // 惰性求值无法在求值前得知真值 IR 类型（真值在真块内才生成），故先分配临时槽，
+    //   槽 IR 类型用"条件为真时的类型"——语义层已保证真/假分支 IR 类型一致（数值宽化
+    //   由两分支各自 Cast 到公共类型，见下方 Cast 对齐）。
+    // 临时槽：allocVar 分配唯一变量（Alloca + varSlots 登记），分支内 Store、汇合块 Load。
+    // 注意：三元结果可能为 结构体/指针/字符串（ptr）——槽按 1 个 8 字节槽登记即可
+    //   （ptr 统一 8 字节；结构体场景三元不常用，语义层已限两分支一致，此处按 ptr 处理）。
+    std::string slotType = "i64";
+    {
+        // 先求真值到临时（惰性：真块内才求值）。为获得槽类型，这里不直接求值，
+        // 而是通过语义层结果类型映射：三元结果的源码类型 = 语义层已推导（lastType_ 由
+        // 语义分析器设置，但 IR 生成器无法直接读 lastType_）。改为：两分支各自
+        // genExpr 后按"分支类型"统一——字符串/指针分支类型是 ptr，数值分支是 i64/f64。
+        // 简便且正确：分配 ptr 槽 + 真/假值 Cast 到 ptr？不行——数值需要 8 字节槽。
+        // 正确方案：真块/假块各 Store 各分支值（各自 IR 类型），汇合块 Load 时用
+        //   真分支的 IR 类型（语义层保证两分支 IR 类型一致，数值已宽化合并）。
+        // 故这里临时分配"通用 8 字节槽"，Store 时按分支实际类型写入（codegen 对 Store
+        //   的 type 字段决定宽度），Load 时按真分支类型读。i1 布尔用 1 槽（8 字节，
+        //   codegen i1 Load 读低字节）。
+    }
+    // 预分配临时槽（唯一内部名 __ternary$N）
+    std::string tempName = "__ternary$" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"),
+         tempName, "i64", node->location);
+    function_->varSlots[tempName] = 1;
+
+    // 标签"随建随取"：先取 3 个标签（newBlock 内部自增计数，参照 genIf）
+    std::string trueLabel = "bb" + std::to_string(blockCounter_++);
+    std::string falseLabel = "bb" + std::to_string(blockCounter_++);
+    std::string endLabel = "bb" + std::to_string(blockCounter_++);
+    // 条件跳转（条件寄存器挂在块最后指令操作数上，codegen 读取）
+    endBranch(cond.toString(), trueLabel, falseLabel);
+
+    // 真分支：求真值 -> Store 临时槽 -> 跳汇合
+    setCurrentBlock(newBlock(trueLabel));
+    ir::IRValue trueVal = genExpr(node->trueValue.get());
+    emit(ir::Opcode::Store, {trueVal}, ir::IRValue(), tempName, trueVal.type,
+         node->location);
+    ir::IRValue trueTypeForLoad = trueVal;  // 记录真分支 IR 类型（汇合块 Load 用）
+    if (!currentBlock_->terminated) endJump(endLabel);
+
+    // 假分支：求假值 -> Store 临时槽 -> 跳汇合
+    setCurrentBlock(newBlock(falseLabel));
+    ir::IRValue falseVal = genExpr(node->falseValue.get());
+    // 两分支类型对齐（数值宽化合并：真整64/假整32 -> 假 Cast 到整64；整/浮 -> 浮64）
+    if (falseVal.type != trueTypeForLoad.type && !trueTypeForLoad.type.empty()) {
+        // 仅当类型不同且目标非 void 时 Cast（数值宽化；字符串/指针均为 ptr 天然一致）
+        falseVal = emitResult(ir::Opcode::Cast, {falseVal}, trueTypeForLoad.type, "",
+                              node->location);
+    }
+    emit(ir::Opcode::Store, {falseVal}, ir::IRValue(), tempName, falseVal.type,
+         node->location);
+    if (!currentBlock_->terminated) endJump(endLabel);
+
+    // 汇合块：Load 临时槽 作为表达式结果（类型用真分支类型，语义层已保证一致）
+    setCurrentBlock(newBlock(endLabel));
+    lastExpr_ = emitResult(ir::Opcode::Load, {ir::IRValue::var(tempName, "i64")},
+                           trueTypeForLoad.type, "", node->location);
 }
 
 // 赋值表达式：Store + 返回值（标识符左值经 Store；下标/解引用左值经 StorePtr）
@@ -1929,25 +2245,69 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     std::string calleeName;
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
+        // Task 2.10 lambda 闭包调用：`加倍(21)`——callee 是登记过的闭包变量，
+        //   展开为：捕获实参（前置，从外层变量调用点取值）+ 显式实参 + Call 匿名函数
+        auto closureIt = closureInfo_.find(calleeName);
+        if (closureIt != closureInfo_.end()) {
+            std::vector<ir::IRValue> closureArgs;
+            for (const auto& cap : closureIt->second.captures) {
+                closureArgs.push_back(genExpr(std::make_unique<IdentifierExpr>(cap).get()));
+            }
+            for (auto& arg : node->arguments) {
+                closureArgs.push_back(genExpr(arg.get()));
+            }
+            // 结果类型：匿名函数返回 IR 类型（非空）；空（如 空类型）用 void
+            const std::string retType = closureIt->second.returnIrType.empty()
+                                            ? "void" : closureIt->second.returnIrType;
+            lastExpr_ = emitResult(ir::Opcode::Call, closureArgs, retType,
+                                   closureIt->second.lambdaName, node->location);
+            return;
+        }
         if (lookupVar(calleeName).id < 0) isDirect = true;  // 不在变量表 -> 函数名
-    }
-
-    // ---- 打印行 展开（Task 2.5）：打印行("值:", 42) / 打印行(42) ----
-    // 逐参数按类型调用运行时打印函数（字符串/整数/浮点），最后统一换行。
-    // 展开条件：多参数（任意类型）或 单参数非字符串（整数/浮点直接打印）。
-    // 单参数字符串保持原有 printLine 路径（codegen 映射），输出一致且不破坏既有行为。
-    // 注意：打印函数返回 void，用 emit 直接发射（不分配结果寄存器，
-    //       codegen 对 id<0 的结果不生成返回值存储）
-    bool printLineExpand = false;
-    if (isDirect && calleeName == "打印行") {
-        if (node->arguments.size() > 1) {
-            printLineExpand = true;  // 多参数：任意类型均展开
-        } else if (node->arguments.size() == 1) {
-            ir::IRValue first = genExpr(node->arguments[0].get());
-            printLineExpand = (first.type != "ptr");  // 单参数非字符串展开
+        // Task 2.10 重载：语义层决议结果（签名 key 名#参数串）优先作为符号名——
+        //   定义/调用三处一致（codegen 按此生成 mangled 符号）。
+        //   内置函数（打印/字符串API）无重载，resolvedSignature 为空，保持原名映射。
+        if (isDirect && !node->resolvedSignature.empty()) {
+            calleeName = node->resolvedSignature;
         }
     }
-    if (printLineExpand) {
+    // ---- 默认实参补全（Task 2.10）----
+    // 决议已按"实参个数+可补全"匹配。缺省参数按 函数定义侧收集的默认值常量
+    // （funcDefaultArgs_[签名key]，visitFunctionDecl 时由 defaultExpr 求值）精确展开。
+    // 收集规则：defaults 列表按函数参数顺序仅含带默认值的尾部参数；
+    //   调用方缺 N 个实参时取 defaults 最后 N 个（从右向左连续声明）。
+    if (isDirect && !node->resolvedSignature.empty()) {
+        auto defIt = funcDefaultArgs_.find(node->resolvedSignature);
+        if (defIt != funcDefaultArgs_.end()) {
+            const auto& defaults = defIt->second;
+            const std::size_t given = node->arguments.size();
+            // 参数总数：语义层注册的 paramTypes 长度（含默认参数）
+            const std::size_t totalParams = semantic_ != nullptr
+                ? semantic_->funcParamTypesOf(node->resolvedSignature).size()
+                : given + defaults.size();
+            // 缺省个数 = 参数总数 - 实参个数（0 ~ defaults.size()）
+            if (given < totalParams) {
+                const std::size_t missing = totalParams - given;
+                defaultArgValues_.clear();
+                // 取 defaults 中 末尾 missing 个（尾部参数默认值，从右向左连续声明）
+                for (std::size_t k = defaults.size() - missing; k < defaults.size(); ++k) {
+                    defaultArgValues_.push_back(defaults[k]);
+                }
+            }
+        }
+    }
+
+    // ---- 打印 / 打印行 展开（Task 2.5 + Task 2.9 语义调整）----
+    // 新语义（用户裁决，lessons.md 权重10.4）：
+    //   打印   = println（末尾自动换行）——运行时 printLine/__cn_print_* + newline
+    //   打印行 = print（末尾不换行）——运行时 __cn_print_*（fputs 语义，无换行）
+    // 统一展开：逐参数按类型调用运行时打印函数（字符串/整数/浮点/i128/布尔），
+    //   打印 最后加 __cn_print_newline；打印行 不加。
+    // 注意：打印函数返回 void，用 emit 直接发射（不分配结果寄存器，
+    //       codegen 对 id<0 的结果不生成返回值存储）
+    bool isPrintNewline = (isDirect && calleeName == "打印");      // 打印：换行
+    bool isPrintNoLine = (isDirect && calleeName == "打印行");     // 打印行：不换行
+    if (isPrintNewline || isPrintNoLine) {
         for (auto& arg : node->arguments) {
             ir::IRValue argVal = genExpr(arg.get());
             // 参数类型 -> 打印函数名（字符串/字符* -> 字符串；整型 -> 整数；浮点 -> 浮点）
@@ -1972,9 +2332,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             emit(ir::Opcode::Call, {argVal}, ir::IRValue(), printFn, "void",
                  node->location);
         }
-        // 统一换行
-        emit(ir::Opcode::Call, {}, ir::IRValue(), "__cn_print_newline", "void",
-             node->location);
+        // 打印（println 语义）末尾统一换行；打印行（print 语义）不换行
+        if (isPrintNewline) {
+            emit(ir::Opcode::Call, {}, ir::IRValue(), "__cn_print_newline", "void",
+                 node->location);
+        }
         lastExpr_ = ir::IRValue();  // 无返回值（空类型）
         return;
     }
@@ -1999,7 +2361,10 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "字符串从整数") calleeName = "__cn_str_from_int";
         else if (calleeName == "字符串从浮点") calleeName = "__cn_str_from_float";
         else if (calleeName == "字符串从字符") calleeName = "__cn_str_from_char";
+        else if (calleeName == "字符串从布尔") calleeName = "__cn_str_from_bool";  // Task 2.9
         else if (calleeName == "字符串释放") calleeName = "__cn_str_free";
+        // Task 2.9：格式化（格式字符串, 参数...）-> 字符串（sprintf 风格）
+        else if (calleeName == "格式化") calleeName = "__cn_format";
     }
 
     std::vector<ir::IRValue> args;
@@ -2032,6 +2397,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         }
         args.push_back(argVal);
     }
+    // 追加默认实参（Task 2.10）：缺省参数在实参之后按参数顺序补全
+    for (const auto& defVal : defaultArgValues_) {
+        args.push_back(defVal);
+    }
+    defaultArgValues_.clear();
     if (isDirect) {
         // 直接调用：extra=函数名；按函数返回类型设置结果类型（Task 2.5 字符串API；
         // Task 2.7 集成修复：用户自定义函数经语义层查真实返回类型，避免浮64
@@ -2047,8 +2417,9 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                    calleeName == "__cn_str_sub" || calleeName == "__cn_str_upper" ||
                    calleeName == "__cn_str_lower" || calleeName == "__cn_str_trim" ||
                    calleeName == "__cn_str_reverse" || calleeName == "__cn_str_from_int" ||
-                   calleeName == "__cn_str_from_float" || calleeName == "__cn_str_from_char") {
-            resultType = "ptr";       // 连接/复制/子串/大写/小写/修剪/反转/数字/字符转换 -> 字符串（指针）
+                   calleeName == "__cn_str_from_float" || calleeName == "__cn_str_from_char" ||
+                   calleeName == "__cn_str_from_bool" || calleeName == "__cn_format") {
+            resultType = "ptr";       // 连接/复制/子串/大写/小写/修剪/反转/数字/字符/布尔转换、格式化 -> 字符串（指针）
         } else if (calleeName == "__cn_str_free") {
             // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：
             // 语义层"空类型"->mapType "void" 被下方过滤，emitResult 结果寄存器写入
@@ -2491,6 +2862,120 @@ void IRGenerator::visitType(Type* node) {
 }
 
 // ==================== 表达式分发 ====================
+
+// 强制类型转换：类型名(表达式)（Task 2.10，规格书04-一E）
+// 语义：复用 IR Cast 指令（codegen 按 from/to 分派转换矩阵）。
+//   目标 IR 类型由源码类型映射；源为 genExpr 结果（类型不匹配时
+//   Cast 指令的 codegen 负责扩展/截断/浮整/指针↔整数 转换）。
+void IRGenerator::visitCastExpr(CastExpr* node) {
+    ir::IRValue operand = genExpr(node->operand.get());
+    const std::string target = mapType(node->targetType);
+    // 源类型为 i128/u128 且目标为浮点：Cast 指令源类型按双槽约定
+    // （codegen emitCast 已按 from==i128/u128 走辅助函数 __cn_*_to_f64）。
+    // 指针 -> 整数 / 整数 -> 指针：IR 层类型均为 8 字节槽（ptr/i64），
+    //   Cast 的 codegen 需按 from/to 文本区分——这里保持类型信息完整：
+    //   若源是 ptr 且目标 i64：Cast(from=ptr, to=i64) 位重解释；
+    //   若源是 i64 且目标 ptr：Cast(from=i64, to=ptr)。
+    // 注意：IR 类型 "ptr" 与 "i64" 都是 64 位槽，Cast 指令携带完整
+    //   from/to 类型，codegen emitCast 依据类型分派正确指令。
+    lastExpr_ = emitResult(ir::Opcode::Cast, {operand}, target, "", node->location);
+}
+
+// lambda 表达式（Task 2.10）：降级为 匿名函数 + 捕获参数前置。
+// 完整方案：
+//   1. 匿名函数签名 = [捕获参数..., 显式参数...]；捕获参数名 = 捕获变量源码名，
+//      函数体内同名引用解析到匿名函数自己的参数槽（词法闭包语义）。
+//   2. 表达式结果 = 匿名函数地址（FuncAddr）——无捕获/有捕获统一。
+//      `自动 加倍 = [...]...` 时 genVarDecl 登记闭包关联
+//      closureInfo_[变量名] = {匿名函数名, 捕获变量列表}。
+//   3. 调用 `加倍(21)` 时 visitCallExpr 展开：捕获实参（从外层变量读取，
+//      读取时机=调用点；[&] 引用语义精确，[=] 值捕获在捕获变量创建后
+//      不再修改时等价于快照——E2E 用不修改场景验证）+ 显式实参 + Call。
+//   4. 捕获集由语义层 visitLambdaExpr 分析（[=]/[&] 展开为全部外层可见变量，
+//      [变量] 显式列表），回填到 node->explicitCaptures。
+void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
+    const std::string lambdaName = "?lambda" + std::to_string(lambdaCounter_++);
+    const std::string returnIrType = mapType(node->returnType.empty()
+                                                 ? "空类型" : node->returnType);
+    ir::IRFunction func;
+    func.name = lambdaName;
+    func.returnType = returnIrType;
+    // 捕获变量名（语义层已回填全部捕获）：匿名函数参数前置
+    std::vector<std::string> capturedNames = node->explicitCaptures;
+    // 保存外层生成状态（lambda 内嵌在表达式中，生成匿名函数后须恢复主函数状态）
+    ir::IRFunction* outerFunction = function_;
+    ir::IRBlock* outerBlock = currentBlock_;
+    const int outerBlockCounter = blockCounter_;
+    const std::size_t outerVarDepth = varStack_.size();
+    function_ = &func;
+    varStack_.emplace_back();
+    // 捕获参数：类型 = 外层变量 IR 类型（查当前 varStack 作用域链）
+    for (const auto& cap : capturedNames) {
+        const std::string capType = lookupVarType(cap);
+        const std::string capSrc = lookupSrcType(cap);
+        std::string unique = cap + "$" + std::to_string(varCounter_++);
+        func.params.emplace_back(cap, capType.empty() ? "i64" : capType);
+        func.paramUniques.push_back(unique);
+        registerVarSlots(unique, capSrc);
+        ir::IRValue reg = newReg();
+        reg.type = capType.empty() ? "i64" : capType;
+        VarEntry entry;
+        entry.regId = reg.id;
+        entry.uniqueName = unique;
+        entry.type = reg.type;
+        entry.srcType = capSrc;
+        varStack_.back()[cap] = entry;
+    }
+    // 显式参数
+    for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
+        auto& param = node->params[pi];
+        const std::string ptype = param->funcPtr.isFunctionPtr()
+                                      ? "ptr" : mapType(param->typeName);
+        std::string unique = param->name + "$" + std::to_string(varCounter_++);
+        func.params.emplace_back(param->name, ptype);
+        func.paramUniques.push_back(unique);
+        registerVarSlots(unique, param->funcPtr.isFunctionPtr() ? "" : param->typeName);
+        ir::IRValue reg = newReg();
+        reg.type = ptype;
+        VarEntry entry;
+        entry.regId = reg.id;
+        entry.uniqueName = unique;
+        entry.type = reg.type;
+        entry.srcType = param->typeName;
+        varStack_.back()[param->name] = entry;
+    }
+    blockCounter_ = 0;
+    ir::IRBlock* entry = newBlock("bb0");
+    (void)entry;
+    if (node->body != nullptr) {
+        genBlock(node->body.get());
+    }
+    if (!function_->blocks.empty()) {
+        ir::IRBlock* last = function_->blocks.back().get();
+        if (!last->terminated) {
+            setCurrentBlock(last);
+            endReturn("");
+        }
+    } else {
+        setCurrentBlock(entry);
+        endReturn("");
+    }
+    varStack_.pop_back();
+    module_->functions.push_back(std::move(func));
+    // 恢复外层生成状态（主函数继续）
+    function_ = outerFunction;
+    currentBlock_ = outerBlock;
+    blockCounter_ = outerBlockCounter;
+    // 弹出 lambda 捕获参数作用域（仅弹出 visitLambdaExpr 自己压入的一层）
+    while (varStack_.size() > outerVarDepth) varStack_.pop_back();
+    // 记录最近一次 lambda 的匿名函数名与捕获列表（genVarDecl 登记闭包关联用）
+    lastLambdaName_ = lambdaName;
+    lastLambdaCaptures_ = capturedNames;
+    lastLambdaReturnIrType_ = returnIrType;
+    // 表达式结果 = 匿名函数地址（赋给 自动 变量；调用经 closureInfo_ 展开）。
+    // 注意：FuncAddr 须在外层（主函数）块中生成——function_ 已恢复
+    lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", lambdaName, node->location);
+}
 
 // 生成表达式，返回结果寄存器
 ir::IRValue IRGenerator::genExpr(Expr* node) {

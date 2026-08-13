@@ -651,6 +651,37 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
             writer.line(store + " " + mp + dst + ", xmm0");
             return;
         }
+        // Task 2.10 核对：u64/u32 -> 浮 必须按"无符号"语义（cvtsi2sd 按有符号，
+        //   正64 4000000000 会被转成 -2.9e9——bit 重解释错误）。
+        //   无符号 -> 浮：mov rax 后转 unsigned 需要额外处理（超过 2^63 的
+        //   正64 有符号解释为负）。方案：u64 -> f64 用运行时辅助
+        //   __cn_u64_to_f64（C 层 static_cast<double>，编译器正确处理无符号语义）。
+        if (from == "u64" && to == "f64") {
+            writer.line("mov rcx, " + src);
+            writer.line("sub rsp, 32");
+            writer.line("call __cn_u64_to_f64");
+            writer.line("add rsp, 32");
+            writer.line(store + " " + mp + dst + ", xmm0");
+            return;
+        }
+        if (from == "u64" && to == "f32") {
+            // u64 -> f32：先转 f64 再截断（cvtsd2ss）
+            writer.line("mov rcx, " + src);
+            writer.line("sub rsp, 32");
+            writer.line("call __cn_u64_to_f64");
+            writer.line("add rsp, 32");
+            writer.line("cvtsd2ss xmm0, xmm0");
+            writer.line("movss dword ptr " + dst + ", xmm0");
+            return;
+        }
+        if (from == "u32") {
+            // u32 -> 浮：mov eax 零扩展（写 eax 清零高32位），有符号 cvtsi2sd 正确
+            //（u32 值域 [0, 2^32)，有符号 32 位解释等价，因高 32 位为 0）
+            writer.line("mov eax, " + src);
+            writer.line(conv + " xmm0, rax");
+            writer.line(store + " " + mp + dst + ", xmm0");
+            return;
+        }
         if (from == "i64" || from == "u64") {
             writer.line("mov rax, " + src);
             writer.line(conv + " xmm0, rax");
@@ -659,6 +690,29 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
             writer.line(conv + " xmm0, eax");
         }
         writer.line(store + " " + mp + dst + ", xmm0");
+        return;
+    }
+    // ---- 指针 <-> 整数（Task 2.10 显式转换，位重解释） ----
+    // 指针 -> 整数：64 位 mov（整型槽 = 指针值）；整数 -> 指针：64 位 mov。
+    // 指针与整数的 IR 类型均为 64 位槽，mov 传递即位重解释；需避免走
+    //   下方默认 32 位 mov（读高 32 位垃圾）。
+    if ((from == "ptr" && (to == "i64" || to == "u64")) ||
+        ((from == "i64" || from == "u64") && to == "ptr")) {
+        writer.line("mov rax, " + src);
+        writer.line("mov " + dst + ", rax");
+        return;
+    }
+    // 浮 -> 整128（Task 2.10 缺失分支）：调用运行时辅助 __cn_f64_to_i128
+    //   （向零截断，双槽输出）。原实现无此分支，浮->i128 落默认 32 位 mov 读垃圾。
+    if (fromFloat && (to == "i128" || to == "u128")) {
+        const std::string conv = (from == "f64") ? "movsd" : "movss";
+        const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
+        writer.line(conv + " xmm0, " + mp + src);
+        writer.line("lea rdx, " + regSlot(inst.result.id + 1));  // 低64位槽地址
+        writer.line("sub rsp, 32");
+        writer.line("call __cn_f64_to_i128");
+        writer.line("add rsp, 32");
+        // 双槽由辅助函数写入；结果寄存器链正常（高64在 id、低64在 id+1）
         return;
     }
     // ---- 浮32 <-> 浮64 ----
@@ -1201,7 +1255,13 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("movsxd rax, eax");
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             } else {
-                writer.line("mov rax, " + op);
+                // Task 2.10：指针常量参数（@strN 标签/函数名）lea 取地址
+                const ir::IRValue& av = inst.operands[argBase + i];
+                if (av.isConstant && argType == "ptr") {
+                    writer.line("lea rax, " + op);
+                } else {
+                    writer.line("mov rax, " + op);
+                }
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             }
         }
@@ -1215,7 +1275,11 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         }
     }
     // 前4参数寄存器（rcx/rdx/r8/r9 整型；xmm0-3 浮点，Task 2.3）。
-    // Win x64 C ABI：整型按位置用 rcx/rdx/r8/r9，浮点按位置用 xmm0-3；
+    // Win x64 C ABI：参数按"位置"分配寄存器——第N个参数（N从1起）用
+    //   RCX/XMM0、RDX/XMM1、R8/XMM2、R9/XMM3（类型决定用整型或浮点寄存器族，
+    //   但位置一致）。MSVC 反汇编实证（FormatFloat：movsd xmm1 传单浮点参数）：
+    //   浮点参数按参数位用 xmmN（N=参数位），变参 va_arg(double) 同样按参数位读。
+    //   故 emitCall 浮点参数用 xmm + regIdx（参数位），非浮点序号。
     // 参数按序分配寄存器（整型参数 i32 需符号扩展，否则负数高位垃圾变巨大正数）
     // 有隐藏返回指针时，参数寄存器从 index 1 起（rcx 被返回指针占用）
     const std::size_t argOffset = hasBigRet ? 1 : 0;
@@ -1247,11 +1311,18 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("lea " + parameterRegister(regIdx) + ", " + regSlot(loId));
             }
         } else if (isFloatType(argType)) {
-            // 浮点参数：xmm0-3（按位置，内存源需显式大小前缀）
+            // 浮点参数：按"参数位"用 xmmN（N=regIdx，与整型 rcx/rdx/r8/r9 位置一致）。
+            // MSVC x64 变参机制（__cn_format 反汇编实证）：
+            //   - 浮点参数 xmmN 传给被调方（非变参读取路径）
+            //   - 变参函数只把 rcx/rdx/r8/r9 保存到 shadow space，va_arg 从保存槽读
+            //   - 故浮点位模式必须用 movq 复制到同参数位整型寄存器（movq rdx, xmm1）
+            //     ——否则 va_arg(double) 读到未初始化槽 -> %f 输出 0.000000（Task 2.9 修复）
             const std::string load = (argType == "f64") ? "movsd" : "movss";
             const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
-            const std::string xmm = "xmm" + std::to_string(i);  // 浮点参数不参与隐藏返回指针
+            const std::string xmm = "xmm" + std::to_string(regIdx);
             writer.line(load + " " + xmm + ", " + mp + op);
+            // 浮点位模式复制到同参数位整型寄存器（变参 va_arg 读取路径，MSVC 惯例）
+            writer.line("movq " + parameterRegister(regIdx) + ", " + xmm);
         } else if (argType == "i32" || argType == "i1") {
             std::string reg = parameterRegister(regIdx);
             // movsxd 需要先装入 eax：mov eax, op; movsxd rcx, eax
@@ -1259,7 +1330,15 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             writer.line("movsxd " + reg + ", eax");
         } else {
             // i64/指针：64 位直接 mov
-            writer.line("mov " + parameterRegister(regIdx) + ", " + op);
+            // Task 2.10 修复：指针常量参数（@strN 字符串池标签 / 函数名）是地址，
+            //   mov rcx, @str0 把字节数组当 64 位值装入 -> A2022 大小不匹配；
+            //   须用 lea 取标签地址（与 ConstString 加载一致）
+            const ir::IRValue& av = inst.operands[argBase + i];
+            if (av.isConstant && argType == "ptr") {
+                writer.line("lea " + parameterRegister(regIdx) + ", " + op);
+            } else {
+                writer.line("mov " + parameterRegister(regIdx) + ", " + op);
+            }
         }
     }
     if (isIndirect) {

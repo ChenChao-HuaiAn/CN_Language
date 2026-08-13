@@ -14,30 +14,108 @@
 #include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
 
 // ==================== 基础工具函数 ====================
 
 // 中文符号名 -> UTF-8十六进制修饰名（?XX..@@Y），ASCII直接返回
+// Task 2.10 重载：签名 key（名#参数串）在此解析——
+//   `加#整32,整32` -> `?E58AA0@@Y<i32><i32>@Z`（附录C：?函数名@@Y<返回编码><参数编码>@Z，
+//   返回类型不参与签名——重载仅按参数区分，返回编码省略）。
+//   纯函数名（无 '#'）：保持既有 ?XX@@Y 形式（兼容阶段一 C 链接）。
 std::string X64CodeGenerator::nameMangle(const std::string& name) {
+    // 解析签名 key：名#参数类型串（逗号分隔，类型为源码规范名）
+    std::string baseName = name;
+    std::vector<std::string> paramTypes;
+    const std::size_t hashPos = name.find('#');
+    if (hashPos != std::string::npos) {
+        baseName = name.substr(0, hashPos);
+        const std::string params = name.substr(hashPos + 1);
+        std::size_t start = 0;
+        while (start <= params.size()) {
+            const std::size_t comma = params.find(',', start);
+            const std::string p = (comma == std::string::npos)
+                                      ? params.substr(start)
+                                      : params.substr(start, comma - start);
+            if (!p.empty()) paramTypes.push_back(p);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+    }
+    // 纯 ASCII 且无参数：直接使用（内置/运行时符号路径不走本函数）
     bool hasNonAscii = false;
-    for (unsigned char c : name) {
+    for (unsigned char c : baseName) {
         if (c >= 0x80) {
             hasNonAscii = true;
             break;
         }
     }
-    if (!hasNonAscii) return name;  // 纯ASCII符号直接使用
-    // 非ASCII符号：? + 每字节%02X + @@Y（仿MSVC修饰的简易形式）
+    if (!hasNonAscii && paramTypes.empty()) return baseName;
+    // 非ASCII符号：? + 每字节%02X（UTF-8十六进制编码，附录C）
     std::string mangled = "?";
-    for (unsigned char c : name) {
+    for (unsigned char c : baseName) {
         char buf[4];
         std::snprintf(buf, sizeof(buf), "%02X", static_cast<int>(c));
         mangled += buf;
     }
+    if (paramTypes.empty()) {
+        mangled += "@@Y";  // 无重载：既有形式（?XX..@@Y）
+        return mangled;
+    }
+    // 有参数（重载）：?XX..@@Y + 参数编码 + @Z（返回类型不参与，附录C）
     mangled += "@@Y";
+    for (const auto& p : paramTypes) {
+        mangled += mangleTypeCode(p);
+    }
+    mangled += "@Z";
     return mangled;
+}
+
+// 源码类型名 -> 附录C 类型编码（mangling 用，Task 2.10）
+// 编码表（自包含、可预测；与 MSVC 基础类型码对应）：
+//   空类型 X / 布尔 _N / 字符 D / 整8 C / 正8 E / 整16 F / 正16 G /
+//   整32 H / 正32 I / 整64 J / 正64 K / 整128 _M / 正128 _O /
+//   浮32 M / 浮64 N / 字符串(ptr) PA? / 指针 PE? / 自定义结构体 _T?（按名编码）
+// 注：编码唯一性要求——字符串=PAX（char* 指针）、任意指针=PE<所指编码>、
+//     数组=PA<元素编码>（退化指针）、函数指针=P6A...（本阶段按 PE 简化）。
+std::string X64CodeGenerator::mangleTypeCode(const std::string& typeRaw) {
+    const std::string t = types::canonical(typeRaw);
+    if (t == "空类型") return "X";
+    if (t == "布尔") return "_N";
+    if (t == "字符") return "D";
+    if (t == "整8") return "C";
+    if (t == "正8") return "E";
+    if (t == "整16") return "F";
+    if (t == "正16") return "G";
+    if (t == "整32") return "H";
+    if (t == "正32") return "I";
+    if (t == "整64") return "J";
+    if (t == "正64") return "K";
+    if (t == "整128") return "_M";
+    if (t == "正128") return "_O";
+    if (t == "浮32") return "M";
+    if (t == "浮64") return "N";
+    if (t == "字符串" || t == "字符*") return "PAX";      // char*（字符串指针）
+    if (t == "空类型*") return "PEX";                      // void*（通用指针）
+    if (!t.empty() && t.back() == '*') {
+        // 指向 X 的指针：PE<X编码>（递归）
+        return "PE" + mangleTypeCode(t.substr(0, t.size() - 1));
+    }
+    // 数组：退化为元素指针（PA<元素编码>）
+    const std::size_t lb = t.rfind('[');
+    if (lb != std::string::npos && t.back() == ']') {
+        return "PA" + mangleTypeCode(t.substr(0, lb));
+    }
+    // 函数指针 / 自定义结构体 / 枚举：按名编码（模块内唯一）
+    std::string code = "_T";
+    for (unsigned char c : t) {
+        char buf[4];
+        std::snprintf(buf, sizeof(buf), "%02X", static_cast<int>(c));
+        code += buf;
+    }
+    return code;
 }
 
 // CN符号 -> 汇编链接符号（阶段一C链接映射）
@@ -46,7 +124,8 @@ std::string X64CodeGenerator::nameMangle(const std::string& name) {
 // 复制内存 -> cn_memcpy、置零内存 -> cn_memset；其余符号走 nameMangle 修饰
 std::string X64CodeGenerator::symbolName(const std::string& name) {
     if (name == "主") return "cn_main";
-    if (name == "打印行") return "printLine";
+    if (name == "打印") return "printLine";        // Task 2.9：打印 = println（换行）
+    if (name == "打印行") return "printNoLine";    // Task 2.9：打印行 = print（不换行）
     if (name == "打印行整数") return "printLineInt";
     if (name == "打印行浮点") return "printLineFloat";
     if (name == "分配") return "cn_alloc";
@@ -300,11 +379,17 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
 //   否则 ml64 报 A2006 undefined symbol；定义在后的同文件函数也需 EXTERN（MASM 单遍汇编）
 void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& module) {
     writer.raw(".code");
-    // 阶段一运行时（cnrt）extern "C" 导出符号：打印行/打印行整数/打印行浮点
+    // 阶段一运行时（cnrt）extern "C" 导出符号：打印/打印行/打印整数/打印浮点
     // MASM 引用外部符号必须 EXTERN 声明，否则 A2006 undefined symbol
+    // Task 2.9 语义调整：打印=printLine（换行）、打印行=printNoLine（不换行）
     writer.raw("EXTERN printLine:PROC");
+    writer.raw("EXTERN printNoLine:PROC");
     writer.raw("EXTERN printLineInt:PROC");
     writer.raw("EXTERN printLineFloat:PROC");
+    // Task 2.9：格式化（__cn_format 变参，返回动态字符串）
+    writer.raw("EXTERN __cn_format:PROC");
+    // 字符串API（Task 2.9：布尔转字符串 __cn_str_from_bool；其余 __cn_ 前缀自动收集）
+    writer.raw("EXTERN __cn_str_from_bool:PROC");
     // 内存管理API（规格书10.2，供 分配/释放/重新分配/复制内存/置零内存 内置函数）
     writer.raw("EXTERN cn_alloc:PROC");
     writer.raw("EXTERN cn_free:PROC");
@@ -329,20 +414,28 @@ void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& mod
     writer.raw("EXTERN __cn_i128_to_f64:PROC");
     writer.raw("EXTERN __cn_u128_to_f64:PROC");
     writer.raw("EXTERN __cn_f64_to_i128:PROC");
+    // Task 2.10：无符号64位转浮点（正64(x) -> 浮64 显式转换，cvtsi2sd 有符号语义修正）
+    writer.raw("EXTERN __cn_u64_to_f64:PROC");
     writer.raw("EXTERN printLineI128:PROC");
     writer.raw("EXTERN printLineU128:PROC");
     // 收集本模块已定义的函数链接符号（PROC 定义），避免对自身重复 EXTERN
+    // Task 2.10：重载函数用 mangledName（名#参数串）作链接符号
     std::unordered_set<std::string> definedSymbols;
     for (auto& function : module.functions) {
-        definedSymbols.insert(symbolName(function.name));
+        const std::string sym = symbolName(
+            function.mangledName.empty() ? function.name : function.mangledName);
+        definedSymbols.insert(sym);
     }
     // 扫描所有直接调用（Call）与被取地址（FuncAddr）的函数名，
     // 未在本模块定义的声明 EXTERN（MASM 单遍汇编要求先声明后引用）
+    // Task 2.10：FuncAddr（lambda 匿名函数赋值/函数指针）同样需 EXTERN 或已在模块内
     std::unordered_set<std::string> externSet;
     for (auto& function : module.functions) {
         for (auto& block : function.blocks) {
             for (auto& inst : block->instructions) {
-                if (inst.opcode == ir::Opcode::Call && !inst.extra.empty()) {
+                if ((inst.opcode == ir::Opcode::Call ||
+                     inst.opcode == ir::Opcode::FuncAddr) &&
+                    !inst.extra.empty()) {
                     std::string sym = symbolName(inst.extra);
                     if (definedSymbols.find(sym) == definedSymbols.end()) externSet.insert(sym);
                 }
@@ -355,9 +448,12 @@ void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& mod
 }
 
 // 生成函数头（PROC声明，阶段一C链接：符号经 symbolName 映射）
+// Task 2.10：重载函数用 mangledName（名#参数串）作链接符号
 void X64CodeGenerator::emitFunctionHeader(AsmWriter& writer, const ir::IRFunction& function) {
     writer.comment("函数 " + function.name + " : " + function.returnType);
-    writer.raw(symbolName(function.name) + " PROC");
+    const std::string sym = symbolName(
+        function.mangledName.empty() ? function.name : function.mangledName);
+    writer.raw(sym + " PROC");
 }
 
 // 生成函数 prologue（push rbp / mov rbp,rsp / 预留栈帧）
@@ -608,7 +704,10 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
     for (auto& block : function.blocks) {
         emitBlock(writer, *block);
     }
-    writer.raw(symbolName(function.name) + " ENDP");
+    // Task 2.10：ENDP 须与 PROC 同名（重载函数用 mangledName）
+    const std::string endSym = symbolName(
+        function.mangledName.empty() ? function.name : function.mangledName);
+    writer.raw(endSym + " ENDP");
     writer.raw("");
     return writer.str();
 }

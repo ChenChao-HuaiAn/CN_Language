@@ -31,11 +31,13 @@ const std::unordered_map<std::string, int>& intRankTable() {
 
 } // namespace
 
-// 类型别名规范化：整数 -> 整32、小数 -> 浮64（其余原样返回）
+// 类型别名规范化：整数 -> 整32、小数 -> 浮64、指针 -> 空类型*（其余原样返回）
 // Task 2.4：递归规范化复合类型——指针（整数* -> 整32*）与数组（整数[10] -> 整32[10]）
+// Task 2.10：`指针` 为通用指针别名（空类型*），用于 指针(地址) 强制转换与 指针 x 声明
 std::string canonical(const std::string& type) {
     if (type == "整数") return "整32";
     if (type == "小数") return "浮64";
+    if (type == "指针") return "空类型*";
     // 指针类型：尾字符 '*'，递归规范化元素类型（整数* -> 整32*）
     if (!type.empty() && type.back() == '*') {
         return canonical(type.substr(0, type.size() - 1)) + "*";

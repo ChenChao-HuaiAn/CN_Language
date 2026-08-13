@@ -117,16 +117,16 @@ TEST(StringSemanticTest, StringConcatCharPtr) {
     EXPECT_EQ(r.errorCount, 0);
 }
 
-// 字符串 + 整数：非法（+ 连接仅限字符串之间）
-TEST(StringSemanticTest, StringPlusIntInvalid) {
+// 字符串 + 整数（Task 2.9）：隐式拼接合法（规格书3.7 数值→字符串 仅 + 拼接语境）
+TEST(StringSemanticTest, StringPlusIntOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     字符串 s = "你好" + 42
     返回 0
 }
 )CN");
-    EXPECT_FALSE(r.ok);
-    EXPECT_GT(r.errorCount, 0);
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
 }
 
 // ==================== 3. 字符串API内置函数 ====================
