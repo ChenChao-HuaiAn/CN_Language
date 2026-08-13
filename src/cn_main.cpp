@@ -56,8 +56,9 @@ void printHelp() {
     std::cout << "  token <文件.cn>        输出Token流（调试用）\n";
     std::cout << "\n选项:\n";
     std::cout << "  --target <平台>        目标平台 (win-x64 | linux-arm64)\n";
-    std::cout << "  -O0/-O1/-O2/-O3       优化级别（规格书9.1；-O1=常量折叠+DCE，-O2/-O3 暂映射为 -O1）\n";
-    std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2)（兼容写法，等价 -O<级别>）\n";
+    std::cout << "  -O0/-O1/-O2/-O3       优化级别（规格书9.1+完善C；-O1=折叠+DCE+代数简化+复写传播，\n";
+    std::cout << "                         -O2 增加 CSE+跨块DCE，-O3 增加全局值传播）\n";
+    std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2 | 3)（兼容写法，等价 -O<级别>）\n";
     std::cout << "  --output <路径>        输出文件路径\n";
     std::cout << "  --verbose              详细输出\n";
     std::cout << "  --version, -v          显示版本信息\n";
@@ -78,18 +79,17 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
                 return "无效目标平台: " + options.target + "（应为 win-x64 或 linux-arm64）";
         } else if (current == "-O0" || current == "-O1" ||
                    current == "-O2" || current == "-O3") {
-            // 优化级别（规格书9.1）：-O0 无优化；-O1 常量折叠+DCE；
-            // -O2/-O3 暂映射为 -O1 同级别（预留循环优化/内联）
+            // 优化级别（规格书9.1 + 完善C）：-O0 无优化；
+            // -O1 常量折叠+DCE+代数简化+复写传播；
+            // -O2 增加 CSE+跨块DCE；-O3 增加全局值传播
             const int level = current[2] - '0';
-            options.optLevel = (level > 0) ? 1 : 0;
+            options.optLevel = level;
         } else if (current == "--opt") {
             if (index + 1 >= args.size()) return "选项 --opt 缺少参数";
             const std::string value = args[++index];
-            if (value != "0" && value != "1" && value != "2")
-                return "无效优化级别: " + value + "（应为 0、1 或 2）";
+            if (value != "0" && value != "1" && value != "2" && value != "3")
+                return "无效优化级别: " + value + "（应为 0、1、2 或 3）";
             options.optLevel = std::stoi(value);
-            // 对齐规格书9.1：--opt 2/3 暂映射为 -O1 同级别（预留）
-            if (options.optLevel > 1) options.optLevel = 1;
         } else if (current == "--output") {
             if (index + 1 >= args.size()) return "选项 --output 缺少参数";
             options.output = args[++index];

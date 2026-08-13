@@ -21,6 +21,7 @@ add_executable(cn_unit_tests
     semantic/test_types_full.cpp
     semantic/test_pointer.cpp
     semantic/test_string_semantic.cpp
+    semantic/test_string_extra.cpp
     semantic/test_struct_enum.cpp
     semantic/test_i128_semantic.cpp
     ir/test_ir.cpp
@@ -29,6 +30,7 @@ add_executable(cn_unit_tests
     ir/test_ir_types.cpp
     ir/test_ir_pointer.cpp
     ir/test_ir_string.cpp
+    ir/test_ir_string_extra.cpp
     ir/test_ir_struct.cpp
     ir/test_ir_struct_value.cpp
     ir/test_ir_i128.cpp
@@ -42,8 +44,15 @@ add_executable(cn_unit_tests
     opt/test_const_fold.cpp
     opt/test_dce.cpp
     opt/test_pass_manager.cpp
+    opt/test_algebraic.cpp
+    opt/test_cse.cpp
+    opt/test_copy_prop.cpp
+    opt/test_cross_block_dce.cpp
+    opt/test_global_value.cpp
+    opt/test_opt_levels.cpp
     runtime/test_runtime.cpp
     runtime/test_string_api.cpp
+    runtime/test_string_api_extra.cpp
     runtime/test_i128_api.cpp
 )
 

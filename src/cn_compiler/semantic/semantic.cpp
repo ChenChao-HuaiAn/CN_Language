@@ -467,6 +467,40 @@ void SemanticAnalyzer::registerBuiltins() {
     strFindInfo.paramTypes = {"字符串", "字符串"};
     strFindInfo.hasBody = true;
     functions_["字符串查找"] = strFindInfo;
+
+    // ---- 补充字符串API（Task 2.8，规格书10.1 标注"常见字符串库补充"） ----
+    // 运行时符号：字符串子串 -> __cn_str_sub、字符串字典序 -> __cn_str_cmp、
+    //           字符串大写 -> __cn_str_upper、字符串小写 -> __cn_str_lower、
+    //           字符串前缀 -> __cn_str_starts_with、字符串后缀 -> __cn_str_ends_with、
+    //           字符串包含 -> __cn_str_contains、字符串修剪 -> __cn_str_trim、
+    //           字符串反转 -> __cn_str_reverse、字符串从整数 -> __cn_str_from_int、
+    //           字符串从浮点 -> __cn_str_from_float、字符串从字符 -> __cn_str_from_char、
+    //           字符串释放 -> __cn_str_free（IR 层按函数名映射）
+    // 内存语义：返回动态内存（子串/大写/小写/修剪/反转/从整数/从浮点/从字符），
+    //           调用方负责用 字符串释放 释放；连接/复制沿用 Task 2.5 语义。
+    // 注：字符串比较运算符（==/!=/</> 等）规格书未定义字符串变体（运算符表仅整型
+    //     与浮点变体），不实现；等价能力由 字符串比较（相等）与 字符串字典序 提供。
+    const auto regStrFn = [this](const std::string& name, const std::string& retType,
+                                 const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regStrFn("字符串子串", "字符串", {"字符串", "整64", "整64"});
+    regStrFn("字符串字典序", "整64", {"字符串", "字符串"});
+    regStrFn("字符串大写", "字符串", {"字符串"});
+    regStrFn("字符串小写", "字符串", {"字符串"});
+    regStrFn("字符串前缀", "布尔", {"字符串", "字符串"});
+    regStrFn("字符串后缀", "布尔", {"字符串", "字符串"});
+    regStrFn("字符串包含", "布尔", {"字符串", "字符串"});
+    regStrFn("字符串修剪", "字符串", {"字符串"});
+    regStrFn("字符串反转", "字符串", {"字符串"});
+    regStrFn("字符串从整数", "字符串", {"整64"});
+    regStrFn("字符串从浮点", "字符串", {"浮64"});
+    regStrFn("字符串从字符", "字符串", {"字符"});
+    regStrFn("字符串释放", "空类型", {"字符串"});
 }
 
 // 第一趟：注册函数符号（支持前向调用与重名检测，类型统一存规范化形式）

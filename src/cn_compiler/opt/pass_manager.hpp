@@ -46,5 +46,14 @@ private:
     int maxIterations_ = 16;                     // 上限轮次（防死循环）
 };
 
+// 按优化级别构建并运行 Pass 流水线（Task 完善C 优化器增强）
+// 级别组合（规格书9.1 + 完善C）：
+//   -O1: 常量折叠 + DCE + 代数简化 + 复写传播（块内 Store->Load 转发）
+//   -O2: -O1 + 块内 CSE（含浮点）+ 跨块 DCE（不可达块删除）
+//   -O3: -O2 + 全局值传播（常量 Store->Load 安全子集）
+// 所有级别输出必须与 -O0 一致（规格书12.4 优化正确性）
+// 返回: 是否执行了至少一次修改
+bool runOptLevel(ir::IRModule& module, int optLevel);
+
 } // namespace opt
 } // namespace cn_compiler

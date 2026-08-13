@@ -284,3 +284,26 @@
   - **解决**: 先 `endBranch(bad.toString(), errLabel, okLabel)`（用预取标签）再 `setCurrentBlock(newBlock(errLabel))`、`setCurrentBlock(newBlock(okLabel))`——newBlock 内部递增推进计数器，与预取标签对齐
   - **预防**: 涉及"预取标签 + newBlock"的模式必须确认计数器递增次数与标签数一致；CFG 生成后可用 `cn ir` 检查块号是否连续
   - **权重**: 15.6（逻辑错误8 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
+## 高权重问题（优化器增强完善C 新增，2026-08-13）
+
+- [2026-08-13 09:30] **问题类型**: 逻辑错误（权重 16.8）
+  - **描述**: 优化器新 Pass 单元测试构造的 IR 基本块缺少终止信息（terminated=false），导致：① DCE 认为返回寄存器 %v9 无人引用 → 级联删除全部 Add/Mul（O1BasicPasses 失败）；② 跨块 DCE 可达性分析从入口沿跳转目标遍历"断链" → 误删可达块（O2CSEAndCrossBlockDCE 失败，块数剩1）
+  - **原因**: 真实 IR 契约要求每块 terminated=true + termKind（跳转/条件跳转/返回）；测试构造图省事省略，违反契约
+  - **解决**: 测试 makeBlock 后补 endReturn/endJump 终止信息（块0→跳转块1、块1→返回 %v9、块2→返回）
+  - **预防**: 凡手工构造 IRModule 的测试，每个块必须带终止信息；优化 Pass 依赖块终止（DCE 引用收集 / 跨块可达性）——无终止的块行为未定义
+  - **权重**: 16.8（逻辑错误8 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-13 09:30] **问题类型**: 逻辑错误（权重 12.5）
+  - **描述**: CopyPropagation/GlobalValue Pass 的 Load 命中槽值表登记替换时**无条件** changed=true，导致 fixpoint 永不收敛：第二次运行 Load 结果已无引用，但仍报告"修改"→ PassManager 无限迭代（O3RunTwiceStable 失败）
+  - **原因**: 登记映射与"实际替换引用点"混淆——登记本身不是修改，replaceUses 实际替换才是
+  - **解决**: 登记映射不设 changed；仅 replaceUses（替换引用点）返回 true 才置 changed
+  - **预防**: fixpoint Pass 的 changed 语义 = "模块实际被修改"（指令/操作数变化），登记中间数据结构不算修改；新 Pass 必须验证"运行两次第二次返回 false"（收敛性测试）
+  - **权重**: 12.5（逻辑错误8 × 详细分析1.5 × 解决方案1.3 × 预防措施1.0 × 已解决1.0）
+
+- [2026-08-13 09:30] **问题类型**: 工具执行错误（权重 4）
+  - **描述**: apply_diff 修改 copy_propagation.hpp 的 include 块时误删类声明起始行（class CopyPropagationPass : public Pass），导致 C2059/C2653/C2146 一串语法错误；cse.hpp 静态成员函数 patternOf 访问非静态成员 allowFloat_ 报 C2597
+  - **原因**: ① include 附近插入点与类定义行相邻，diff 匹配边界误伤；② patternOf 声明为 static 却需访问成员变量
+  - **解决**: ① read_file 复核后补全类定义；② patternOf 改为成员函数（去掉 static）
+  - **预防**: apply_diff 修改头文件后立即 read_file 复核结构完整性；静态成员函数不能访问非静态成员（需改成员函数或传参）
+  - **权重**: 4（工具执行错误2 × 详细分析1.5 × 解决方案1.3 × 预防措施1.0 × 已解决1.0）

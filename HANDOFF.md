@@ -1,10 +1,10 @@
 # HANDOFF - CN语言编译器项目交接文档
 
-> **交接原因**：2026-08-13 会话结束（基础语言缺陷完善A完成：i128 完整支持 + 结构体按值传参/返回 + 结构体整体赋值，单测 549/549、E2E 11/11，已提交推送 gitcode develop 提交 `59c3944`）。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
+> **交接原因**：2026-08-13 会话结束（基础语言缺陷完善A完成：i128 完整支持 + 结构体按值传参/返回 + 结构体整体赋值，单测 549/549、E2E 11/11，提交 `59c3944`；Task 2.8 字符串系统完善B完成：13个运行时字符串API + 值语义决策 + 比较运算符决策，单测 600/600、E2E 12/12；**优化器增强完善C完成：代数简化 + 块内CSE + 复写传播 + 跨块DCE + 全局值传播 + -O2/-O3 级别区分，单测 656/656、E2E 13/13、52 组合 -O0/-O1/-O2/-O3 输出一致**）。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
 
 ## 一、我们在做什么任务
 
-正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码（Win x64 MASM，ml64 汇编）。当前完成阶段2全部 + 基础语言缺陷完善A。
+正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码（Win x64 MASM，ml64 汇编）。当前完成阶段2全部 + 基础语言缺陷完善A + 字符串系统完善B + 优化器增强完善C。
 
 ## 二、已经完成了什么
 
@@ -35,12 +35,41 @@
 3. **StorePtr 目标类型 i64 覆盖**：`出.分数[1] = ...`（IndexExpr 对象为结构体数组字段 MemberExpr）targetType 推导遗漏 → 8 字节写入覆盖相邻数组元素 → 补 MemberExpr 分支
 4. **i128 字面量越界未报错**：语义层加 整128/正128 上限检查
 
-### 2.6 测试状态
-- **单元测试 549/549**（原 508 + 新增 41：`test_i128_api`/`test_i128_semantic`/`test_ir_i128`/`test_ir_struct_value`/`test_x64_struct_value`/`test_x64_i128`）
-- **E2E 11/11**（01~09 无回归 + 新增 `10_struct_value` 41 行、`11_i128` 34 行）
-- **-O0/-O1 输出一致**（10/11 验证）
+### 2.6 Task 2.8 字符串系统完善B（本次完成 ✅ 2026-08-13）
+- **规格书核对**：10.1 仅定义 5 个字符串 API（长度/比较/连接/复制/查找）；比较运算符仅整型与浮点变体，未定义字符串变体 → 不实现；按"常见字符串库补充并在规格书标注"新增 13 个 API
+- **新增 13 个运行时字符串 API**（`src/runtime/string_api.cpp`）：
+  - 子串 `__cn_str_sub`(字符串, 整64, 整64)→字符串（字节偏移，UTF-8 按字节）
+  - 字典序 `__cn_str_cmp`(字符串, 字符串)→整64（<0/0/>0）
+  - 大写 `__cn_str_upper`/小写 `__cn_str_lower`（ASCII，非ASCII原样）
+  - 前缀 `__cn_str_starts_with`/后缀 `__cn_str_ends_with`/包含 `__cn_str_contains`→布尔
+  - 修剪 `__cn_str_trim`（空格/制表/换行/回车）
+  - 反转 `__cn_str_reverse`（UTF-8 安全：按字符逆序不拆字节）
+  - 从整数 `__cn_str_from_int`/从浮点 `__cn_str_from_float`/从字符 `__cn_str_from_char`
+  - 释放 `__cn_str_free`（封装 cn_free，nullptr 安全）
+  - 内存语义：动态分配结果（子串/大写/小写/修剪/反转/从整数/从浮点/从字符）调用方负责释放
+- **值语义决策**：字符串变量为指针，`字符串 t = s` 共享同一指针（与 C 一致，不深拷贝）；显式深拷贝用 `字符串复制`
+- **格式化函数**：sprintf 风格变参 ABI 复杂暂缓（打印行多参数已覆盖格式化输出需求），后续标准库阶段
+- **修改**：`semantic.cpp`（registerBuiltins 13 新API）、`ir.cpp`（中文名→符号映射 + resultType 映射；字符串释放 空类型用 emit）、`runtime.hpp`、`tests/unit/CMakeLists.txt`、规格书 10.1/10.3 标注、阶段2文档 Task 2.8 条目
+- **新增测试**：`test_string_api_extra.cpp`（runtime 29）/`test_string_extra.cpp`（semantic 10）/`test_ir_string_extra.cpp`（ir 9）共 48+3 个；`tests/e2e/12_string_extra/字符串完善.cn`（27行期望）
+
+### 2.7 Task 完善C 优化器增强（本次完成 ✅ 2026-08-13）
+- **新增 5 个优化 Pass**（`src/cn_compiler/opt/`）：
+  - **代数简化** `algebraic_simplify.hpp/.cpp`：整型恒等变换（x+0/0+x/x-0/x*1/1*x/x*0/x/1/x<<0/x>>0/x|0/x^0/x&-1→x 或 0；x-x/x^x→0；x&&假→假；x||真→真）；浮点/i128 保守跳过；常量结果原地替换、寄存器结果函数级替换链
+  - **复写传播** `copy_propagation.hpp/.cpp`：块内 Store→Load 转发（唯一内部名精确匹配）；多槽/StorePtr/Call 保守清空
+  - **块内 CSE** `cse.hpp/.cpp`：纯运算"操作码+类型+操作数身份"哈希复用；Load 复用（无写内存时）；浮点 CSE 仅 -O2 以上
+  - **跨块 DCE 增强** `cross_block_dce.hpp/.cpp`：常量条件跳转折叠（真/假→无条件跳转）+ 入口可达性分析 + 不可达块整块删除（label 字符串互引无需修正索引）
+  - **全局值传播** `global_value.hpp/.cpp`：函数级线性扫描常量 Store→Load 安全子集
+- **共享工具** `opt_common.hpp`：isPureArith/constCanPropagate/normalizeIntText/replaceUses（寄存器无条件替换 + 常量白名单）
+- **-O1/-O2/-O3 级别区分**（`runOptLevel`，driver 接入）：-O1=折叠+DCE+代数简化+复写传播；-O2=+CSE（含浮点）+跨块DCE；-O3=+全局值传播；`cn_main` -O2/-O3 不再映射 -O1，`--opt 0/1/2/3`
+- **新增测试**：6 个单元测试（`test_algebraic` 20/`test_cse` 11/`test_copy_prop` 8/`test_cross_block_dce` 7/`test_global_value` 8/`test_opt_levels` 6，+56）；`tests/e2e/13_opt2/优化增强.cn` + `.expected`
+- **验证**：单元测试 **656/656**（原600+新56）；E2E **13/13**；**01~13 全部用例 × -O0/-O1/-O2/-O3 = 52 组合输出完全一致**（`target/opt_verify/verify_all.py`，FAILURES=0，规格书12.4）；编译零警告（MSVC /W4 /WX）
+
+### 2.8 测试状态
+- **单元测试 656/656**（原 600 + 新增 56）
+- **E2E 13/13**（01~12 无回归 + 新增 `13_opt2`）
+- **-O0 vs -O1/-O2/-O3 输出一致**（52 组合全量验证）
 - **编译零警告**（MSVC /W4 /WX）
-- Git 提交 `59c3944` 已推送 gitcode develop
+- Git 提交 `59c3944` 已推送 gitcode develop（Task 2.8 + 完善C 尚未提交）
 
 ## 三、环境与构建命令
 
@@ -55,13 +84,13 @@
 
 ## 四、当前卡在哪
 
-无卡点。基础语言缺陷完善A 全部完成并通过验证（549/549 单测 + E2E 11/11 + 已提交推送 gitcode develop `59c3944`）。
+无卡点。基础语言缺陷完善A + Task 2.8 字符串系统完善B + 优化器增强完善C 全部完成并通过验证（656/656 单测 + E2E 13/13 + 52 组合 -O0/-O1/-O2/-O3 输出一致；Task 2.8 + 完善C 改动尚未提交推送）。
 
 ## 五、下一步计划
 
-- **Task 2.8 字符串系统完善**（阶段2/3 后续）
-- 全局值传播（需 SSA）、CSE、复写传播、跨块 DCE 增强、代数简化——优化器增强
-- -O2/-O3 映射为 -O1 同级别（预留循环优化/内联/向量化）
+- **优化器增强完善C 已完成**：代数简化 + 复写传播（块内）+ 块内 CSE + 跨块 DCE（不可达块删除）+ 全局值传播（安全子集）+ -O2/-O3 级别区分
+- **格式化函数**（sprintf 风格 `字符串格式化`）：变参 ABI 复杂暂缓，后续标准库阶段实现
+- **优化器剩余**（需 SSA 或后续 Task）：SSA 构造与 Phi 节点、真正的全局数据流（前驱/多前驱交集）、跨块 CSE（支配关系）、循环优化（LICM/强度削减/不变量外提）、内联、跳转表、空块合并、-O3 向量化预留
 - 结构体作为函数参数/返回（按值拷贝）已支持；**结构体数组元素按值传参已支持**；剩余：嵌套结构体按值返回（含数组字段）已支持（10_struct_value 验证）
 - i128 乘/除/取余与全范围128位已支持；剩余：**i128 辅助函数入 stdlib/数学.cn**（阶段6）
 - 大结构体（>64 字节）按值返回：当前返回缓冲区 64 字节上限，>64 字节结构体需扩容（后续 Task）
@@ -84,4 +113,11 @@
 14. **UTF-8 中文前缀字节偏移**（权重20.8）：compare/substr 偏移用字节数
 15. **x86-64 写32位寄存器清零高32位**（权重20.8）：地址在 rax 时值加载用 rcx 系列
 16. **数组布局方向必须全局一致**（权重26）：C 语义 = Add 方向 + codegen 逆序登记
-17. **运行时**（后续补充）
+17. **空类型返回的调用必须用 emit（result.id<0），不能用 emitResult**（Task 2.8 新增）：`字符串释放` 返回空类型，若用 emitResult 分配结果寄存器，codegen 会对 void 类型写返回值（widthFor 返回原寄存器生成多余 mov）→ 用 `emit` 直接发射，与打印行 void 展开一致
+18. **运行时 API 扩展必须同步三处**（Task 2.8 新增）：runtime.hpp 声明 + string_api.cpp 实现 + semantic registerBuiltins 注册 + IR 名称映射与 resultType 映射（缺一不可，否则链接 undefined symbol / 类型错误）
+19. **改 runtime 后必须删 target 下旧 obj 缓存**（权重15）：cn_main compileRuntime 带缓存（obj 新于 cpp 跳过），改 string_api.cpp 后必须删 target\string_api.obj 否则链接旧符号
+20. **测试构造 IR 块必须有终止信息**（完善C 新增）：真实 IR 契约——每块 terminated=true + termKind（跳转/条件跳转/返回）；无终止的块会被 DCE 误删结果（%v9 无引用级联删除）且跨块 DCE 可达性分析从入口沿跳转目标遍历时"断链" → 误删可达块
+21. **Pass 登记替换不得无条件报 changed**（完善C 新增）：CopyPropagation/GlobalValue 的 Load 命中登记替换时若无条件 changed=true，fixpoint 永不收敛（第二次运行 Load 结果已无引用仍报告修改）→ 登记不报修改，仅 replaceUses 实际替换引用点才报
+22. **apply_diff 修改头文件时核对类声明完整性**（完善C 新增）：include 块附近插入易破坏类定义起始行（C2059 public 语法错误链）→ 修改后立即 read_file 复核结构
+23. **静态成员函数不能访问非静态成员**（完善C 新增）：CSEPass::patternOf 原 static 访问 allowFloat_ → C2597；改成员函数
+24. **优化器验证脚本产物放 target/**（完善C 新增）：target/opt_verify/verify_all.py（13 用例 × -O0/-O1/-O2/-O3 = 52 组合输出一致性，规格书12.4）

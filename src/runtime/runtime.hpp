@@ -29,14 +29,32 @@ extern "C" {
     CNRT_EXPORT void printLineInt(long long value);        // 打印行（整数）
     CNRT_EXPORT void printLineFloat(double value);         // 打印行（浮点数）
 
-    // 字符串API（规格书10.1 字符串操作：长度/比较/连接/复制/查找；Task 2.5）
-    // 对应CN内置函数：字符串长度/字符串比较/字符串连接/字符串复制/字符串查找
+    // 字符串API（规格书10.1 字符串操作：长度/比较/连接/复制/查找；Task 2.5 + Task 2.8 补充）
+    // 对应CN内置函数：字符串长度/字符串比较/字符串连接/字符串复制/字符串查找/
+    //               字符串子串/字符串字典序/字符串大写/字符串小写/字符串前缀/
+    //               字符串后缀/字符串包含/字符串修剪/字符串反转/字符串从整数/
+    //               字符串从浮点/字符串从字符/字符串释放
     // 字符串采用 UTF-8 编码、以 \0 结尾（规格书10.3）
     CNRT_EXPORT long long __cn_str_len(const char* str);         // 字符串长度（UTF-8 字节数）
     CNRT_EXPORT long long __cn_str_eq(const char* a, const char* b); // 字符串比较（相等返回1，否则0）
     CNRT_EXPORT char* __cn_str_concat(const char* a, const char* b); // 字符串连接（动态分配）
     CNRT_EXPORT char* __cn_str_copy(const char* str);              // 字符串复制（深拷贝）
     CNRT_EXPORT long long __cn_str_find(const char* haystack, const char* needle); // 子串查找（位置，-1未找到）
+
+    // ---- Task 2.8 补充字符串API（规格书10.1 标注"常见字符串库补充"，内存语义：调用方负责释放） ----
+    CNRT_EXPORT char* __cn_str_sub(const char* str, long long start, long long len);   // 子串（字节偏移，动态分配）
+    CNRT_EXPORT long long __cn_str_cmp(const char* a, const char* b); // 字典序比较（<0/0/>0，替代未定义的字符串比较运算符）
+    CNRT_EXPORT char* __cn_str_upper(const char* str);               // ASCII 大写（动态分配，非ASCII字节原样保留）
+    CNRT_EXPORT char* __cn_str_lower(const char* str);               // ASCII 小写（动态分配，非ASCII字节原样保留）
+    CNRT_EXPORT long long __cn_str_starts_with(const char* str, const char* prefix); // 前缀判断（1=是，0=否）
+    CNRT_EXPORT long long __cn_str_ends_with(const char* str, const char* suffix);   // 后缀判断（1=是，0=否）
+    CNRT_EXPORT long long __cn_str_contains(const char* haystack, const char* needle); // 包含判断（1=是，0=否）
+    CNRT_EXPORT char* __cn_str_trim(const char* str);                // 去首尾空白（空格/制表/换行/回车，动态分配）
+    CNRT_EXPORT char* __cn_str_reverse(const char* str);             // 反转（UTF-8安全：按字符序列逆序，动态分配）
+    CNRT_EXPORT char* __cn_str_from_int(long long value);            // 整数转字符串（动态分配）
+    CNRT_EXPORT char* __cn_str_from_float(double value);             // 浮点转字符串（%f 语义，动态分配）
+    CNRT_EXPORT char* __cn_str_from_char(int value);                 // 字符转字符串（单字节ASCII，动态分配）
+    CNRT_EXPORT void __cn_str_free(char* str);                       // 字符串释放（封装 cn_free，可安全释放nullptr）
 
     // 打印行多参数格式化辅助（Task 2.5）：逐段打印，最后统一换行
     // 打印行("值:", 42, 3.5) 展开为 __cn_print_str("值:") + __cn_print_int(42) +

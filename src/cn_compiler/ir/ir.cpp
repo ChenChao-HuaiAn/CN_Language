@@ -1918,13 +1918,27 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         return;
     }
 
-    // ---- 字符串API名称映射（Task 2.5）：中文函数名 -> 运行时符号 ----
+    // ---- 字符串API名称映射（Task 2.5 + Task 2.8）：中文函数名 -> 运行时符号 ----
     if (isDirect) {
         if (calleeName == "字符串长度") calleeName = "__cn_str_len";
         else if (calleeName == "字符串比较") calleeName = "__cn_str_eq";
         else if (calleeName == "字符串连接") calleeName = "__cn_str_concat";
         else if (calleeName == "字符串复制") calleeName = "__cn_str_copy";
         else if (calleeName == "字符串查找") calleeName = "__cn_str_find";
+        // Task 2.8 补充API（规格书10.1 标注"常见字符串库补充"）
+        else if (calleeName == "字符串子串") calleeName = "__cn_str_sub";
+        else if (calleeName == "字符串字典序") calleeName = "__cn_str_cmp";
+        else if (calleeName == "字符串大写") calleeName = "__cn_str_upper";
+        else if (calleeName == "字符串小写") calleeName = "__cn_str_lower";
+        else if (calleeName == "字符串前缀") calleeName = "__cn_str_starts_with";
+        else if (calleeName == "字符串后缀") calleeName = "__cn_str_ends_with";
+        else if (calleeName == "字符串包含") calleeName = "__cn_str_contains";
+        else if (calleeName == "字符串修剪") calleeName = "__cn_str_trim";
+        else if (calleeName == "字符串反转") calleeName = "__cn_str_reverse";
+        else if (calleeName == "字符串从整数") calleeName = "__cn_str_from_int";
+        else if (calleeName == "字符串从浮点") calleeName = "__cn_str_from_float";
+        else if (calleeName == "字符串从字符") calleeName = "__cn_str_from_char";
+        else if (calleeName == "字符串释放") calleeName = "__cn_str_free";
     }
 
     std::vector<ir::IRValue> args;
@@ -1950,12 +1964,22 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         // Task 2.7 集成修复：用户自定义函数经语义层查真实返回类型，避免浮64
         // 结果被误标 i32 导致 codegen 用 eax 读 xmm0 返回值）
         std::string resultType = "i32";
-        if (calleeName == "__cn_str_len" || calleeName == "__cn_str_find") {
-            resultType = "i64";       // 字符串长度/查找 -> 整64
-        } else if (calleeName == "__cn_str_eq") {
-            resultType = "i1";        // 字符串比较 -> 布尔
-        } else if (calleeName == "__cn_str_concat" || calleeName == "__cn_str_copy") {
-            resultType = "ptr";       // 字符串连接/复制 -> 字符串（指针）
+        if (calleeName == "__cn_str_len" || calleeName == "__cn_str_find" ||
+            calleeName == "__cn_str_cmp") {
+            resultType = "i64";       // 字符串长度/查找/字典序 -> 整64
+        } else if (calleeName == "__cn_str_eq" || calleeName == "__cn_str_starts_with" ||
+                   calleeName == "__cn_str_ends_with" || calleeName == "__cn_str_contains") {
+            resultType = "i1";        // 字符串比较/前缀/后缀/包含 -> 布尔
+        } else if (calleeName == "__cn_str_concat" || calleeName == "__cn_str_copy" ||
+                   calleeName == "__cn_str_sub" || calleeName == "__cn_str_upper" ||
+                   calleeName == "__cn_str_lower" || calleeName == "__cn_str_trim" ||
+                   calleeName == "__cn_str_reverse" || calleeName == "__cn_str_from_int" ||
+                   calleeName == "__cn_str_from_float" || calleeName == "__cn_str_from_char") {
+            resultType = "ptr";       // 连接/复制/子串/大写/小写/修剪/反转/数字/字符转换 -> 字符串（指针）
+        } else if (calleeName == "__cn_str_free") {
+            // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：
+            // 语义层"空类型"->mapType "void" 被下方过滤，emitResult 结果寄存器写入
+            // eax 无害且符合现有 void 调用惯例）
         } else if (semantic_ != nullptr) {
             // 用户函数：查询语义层返回类型（未映射（空/未知）回退 i32）
             const std::string ret = semantic_->funcReturnTypeOf(calleeName);
@@ -1987,6 +2011,14 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             emit(ir::Opcode::Call, hiddenArgs, ir::IRValue(), calleeName, "void",
                  node->location);
             lastExpr_ = buf;
+            return;
+        }
+        // 字符串释放（空类型返回）：用 emit 直接发射，不分配结果寄存器
+        // （与打印行 void 展开一致；codegen 对 result.id<0 不生成返回值存储）
+        if (calleeName == "__cn_str_free") {
+            emit(ir::Opcode::Call, args, ir::IRValue(), calleeName, "void",
+                 node->location);
+            lastExpr_ = ir::IRValue();
             return;
         }
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType, calleeName,

@@ -16,8 +16,6 @@
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/lexer/lexer.hpp"
 #include "cn_compiler/lexer/token.hpp"
-#include "cn_compiler/opt/const_fold.hpp"
-#include "cn_compiler/opt/dce.hpp"
 #include "cn_compiler/opt/pass_manager.hpp"
 #include "cn_compiler/parser/ast_printer.hpp"
 #include "cn_compiler/parser/parser.hpp"
@@ -64,14 +62,14 @@ int runPipeline(const std::string& source, const std::string& fileName,
         return 1;
     }
 
-    // 4.5 优化阶段（Task 2.6）：优化级别 > 0 时运行 Pass 流水线
-    //     -O1 = 常量折叠 + 死代码消除（规格书9.1）；-O2/-O3 暂映射为 -O1（预留）
+    // 4.5 优化阶段（Task 2.6 + Task 完善C 优化器增强）：
+    //     优化级别 > 0 时运行 Pass 流水线（规格书9.1 + 完善C 分级组合）
+    //     -O1: 常量折叠 + DCE + 代数简化 + 复写传播（块内转发）
+    //     -O2: -O1 + 块内 CSE + 跨块 DCE（不可达块删除）
+    //     -O3: -O2 + 全局值传播（常量 Store->Load 安全子集）
     //     Pass 管理器按依赖顺序调度至收敛（fixpoint）
     if (options.optLevel > 0) {
-        opt::PassManager passManager;
-        passManager.addPass(std::make_unique<opt::ConstFoldPass>());
-        passManager.addPass(std::make_unique<opt::DCEPass>());
-        passManager.run(output.module);
+        opt::runOptLevel(output.module, options.optLevel);
     }
 
     // 5. 代码生成（X64 MASM汇编文本）

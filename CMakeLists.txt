@@ -123,11 +123,17 @@ add_library(cn_compiler_ast_printer STATIC
 target_include_directories(cn_compiler_ast_printer PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_ast_printer PUBLIC cn_compiler_parser cn_compiler_common)
 
-# 优化器模块库：Pass框架 + 常量折叠 + 死代码消除（Task 2.6，供编译器与单元测试共用）
+# 优化器模块库：Pass框架 + 常量折叠 + 死代码消除 + 代数简化/复写传播/CSE/
+#   跨块DCE/全局值传播（Task 2.6 + Task 完善C 优化器增强，供编译器与单元测试共用）
 add_library(cn_compiler_opt STATIC
     src/cn_compiler/opt/pass_manager.cpp
     src/cn_compiler/opt/const_fold.cpp
     src/cn_compiler/opt/dce.cpp
+    src/cn_compiler/opt/algebraic_simplify.cpp
+    src/cn_compiler/opt/copy_propagation.cpp
+    src/cn_compiler/opt/cse.cpp
+    src/cn_compiler/opt/cross_block_dce.cpp
+    src/cn_compiler/opt/global_value.cpp
 )
 target_include_directories(cn_compiler_opt PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_opt PUBLIC cn_compiler_ir cn_compiler_common)
