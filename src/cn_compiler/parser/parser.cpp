@@ -1321,7 +1321,11 @@ bool Parser::peekLambdaCapture() const {
         if (t == TokenType::Identifier) { i++; any = true; }
         else { return false; }                                     // 非捕获形态
         if (peek(i).getType() == TokenType::RightBracket) {
-            return any && peek(i + 1).getType() == TokenType::LeftParen;
+            // 显式捕获 [变量] 的 ']' 后既可以是 '('（参数表）也可以是 '{'（无参 lambda 体），
+            // 与 [] / [=] / [&] 分支保持一致。原实现仅认 '('，导致 `[外层] { ... }`
+            // 无参显式捕获 lambda 被误判为数组下标（报"预期表达式，实际为 '['"）。
+            return any && (peek(i + 1).getType() == TokenType::LeftParen ||
+                           peek(i + 1).getType() == TokenType::LeftBrace);
         }
         if (peek(i).getType() == TokenType::Comma) { i++; continue; }
         return false;

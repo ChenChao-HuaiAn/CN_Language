@@ -223,6 +223,18 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         // 解析失败按不溢出处理（防御性）
     }
     if (need64 || !valueFits32) {
+        // 审查修复：无符号 64 位大值（如 9000000000000000000）用十进制立即数
+        //   ml64 会按 32 位截断（符号扩展），输出低32位垃圾（3800301568）。
+        //   必须转 MASM 十六进制（数字开头 + h 后缀）——uint64HexText 已处理
+        //   "以 A-F 开头加前导 0"。
+        if (!valueFits32) {
+            try {
+                const unsigned long long uv = std::stoull(value);
+                value = uint64HexText(uv);
+            } catch (...) {
+                // 解析失败保持原样（防御性）
+            }
+        }
         writer.line("mov rax, " + value);
         writer.line("mov " + dst + ", rax");
     } else {
@@ -621,6 +633,21 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     const std::string& to = inst.type;
     const bool fromFloat = isFloatType(from);
     const bool toFloat = isFloatType(to);
+    // ---- 浮 -> 整128（Task 2.10 分支）：调用运行时辅助 __cn_f64_to_i128 ----
+    //   注意：必须先于下方"浮->整（64位以内 cvttsd2si）"分支判断，否则 i128/u128
+    //   目标会被 !toFloat 条件误判为 ≤64位整数，走 cvttsd2si eax 截断成 32 位垃圾
+    //   （审查发现：整128(3.75) 输出 555584875101915752019966573213188168 错误值）。
+    if (fromFloat && (to == "i128" || to == "u128")) {
+        const std::string conv = (from == "f64") ? "movsd" : "movss";
+        const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
+        writer.line(conv + " xmm0, " + mp + src);
+        writer.line("lea rdx, " + regSlot(inst.result.id + 1));  // 低64位槽地址
+        writer.line("sub rsp, 32");
+        writer.line("call __cn_f64_to_i128");
+        writer.line("add rsp, 32");
+        // 双槽由辅助函数写入；结果寄存器链正常（高64在 id、低64在 id+1）
+        return;
+    }
     // ---- 浮 -> 整（截断，cvttss2si/cvttsd2si） ----
     if (fromFloat && !toFloat) {
         const std::string conv = (from == "f64") ? "cvttsd2si" : "cvttss2si";
@@ -702,17 +729,13 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line("mov " + dst + ", rax");
         return;
     }
-    // 浮 -> 整128（Task 2.10 缺失分支）：调用运行时辅助 __cn_f64_to_i128
-    //   （向零截断，双槽输出）。原实现无此分支，浮->i128 落默认 32 位 mov 读垃圾。
-    if (fromFloat && (to == "i128" || to == "u128")) {
-        const std::string conv = (from == "f64") ? "movsd" : "movss";
-        const std::string mp = (from == "f64") ? "qword ptr " : "dword ptr ";
-        writer.line(conv + " xmm0, " + mp + src);
-        writer.line("lea rdx, " + regSlot(inst.result.id + 1));  // 低64位槽地址
-        writer.line("sub rsp, 32");
-        writer.line("call __cn_f64_to_i128");
-        writer.line("add rsp, 32");
-        // 双槽由辅助函数写入；结果寄存器链正常（高64在 id、低64在 id+1）
+    // 同类型 64 位直通（i64/u64 <-> i64/u64 同类型，缺陷修复防御）：
+    //   显式转换 `正64(正64值)` 或 IR 内部 Cast 到 u64 时，源已是 64 位值，
+    //   直接 64 位 mov 传递（位模式保留，正64 超 2^63 值不被截断）。
+    //   原实现落默认 32 位 mov 截断 -> 高 32 位丢失（正64 打印垃圾）。
+    if ((from == "i64" || from == "u64") && (to == "i64" || to == "u64")) {
+        writer.line("mov rax, " + src);
+        writer.line("mov " + dst + ", rax");
         return;
     }
     // ---- 浮32 <-> 浮64 ----
@@ -797,10 +820,28 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line("mov " + dst + ", rax");
         return;
     }
+    // u64 -> i64（审查修复）：64 位位重解释（mov rax），值域 ≤2^63 语义正确。
+    //   原实现落默认 32 位 mov 截断（正64 5000000000 打印 705032704）。
+    if (from == "u64" && to == "i64") {
+        writer.line("mov rax, " + src);
+        writer.line("mov " + dst + ", rax");
+        return;
+    }
     // i64 -> i32（截断）：mov eax 低32位（值语义取低32位）
     if (from == "i64" && to == "i32") {
         writer.line("mov eax, " + src);
         writer.line("mov " + dst + ", eax");
+        return;
+    }
+    // 同类型 i128->i128 / u128->u128（审查修复）：显式转换 `整128(整128值)` 时
+    //   源已是双槽值，需双槽复制（mov 高/低64位）。原实现落默认 32 位 mov 读低32位
+    //   垃圾（`整128(1234567890123456789LL)` 输出 0）。
+    if ((from == "i128" && to == "i128") || (from == "u128" && to == "u128")) {
+        const int srcLoId = inst.operands[0].id + 1;
+        writer.line("mov rax, " + regSlot(srcLoId));
+        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");
+        writer.line("mov rax, " + regSlot(inst.operands[0].id));
+        writer.line("mov " + regSlot(inst.result.id) + ", rax");
         return;
     }
     // 普通整数 -> i128/u128（集成验证发现 Bug）：i32/i64 等扩展为 128 位。
@@ -1254,6 +1295,11 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("mov eax, " + op);
                 writer.line("movsxd rax, eax");
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
+            } else if (argType == "u32") {
+                // 无符号32位栈参数：mov eax 读低32位（写 eax 清零高32位）+ mov rax
+                //   零扩展（缺陷修复：movsxd 符号扩展会把 0x80000000 以上位模式变负）
+                writer.line("mov eax, " + op);
+                writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             } else {
                 // Task 2.10：指针常量参数（@strN 标签/函数名）lea 取地址
                 const ir::IRValue& av = inst.operands[argBase + i];
@@ -1328,6 +1374,12 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             // movsxd 需要先装入 eax：mov eax, op; movsxd rcx, eax
             writer.line("mov eax, " + op);
             writer.line("movsxd " + reg + ", eax");
+        } else if (argType == "u32") {
+            // 无符号32位实参：mov 零扩展（写 eax 清零高32位，直接 mov rcx 读槽高位垃圾
+            // 会错；movsxd 符号扩展会把 0x80000000 以上位模式扩展成负数——缺陷修复
+            // 统一：mov eax 读低32位 + 写 rcx 即零扩展）
+            writer.line("mov eax, " + op);
+            writer.line("mov " + parameterRegister(regIdx) + ", rax");
         } else {
             // i64/指针：64 位直接 mov
             // Task 2.10 修复：指针常量参数（@strN 字符串池标签 / 函数名）是地址，

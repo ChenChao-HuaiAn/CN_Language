@@ -211,10 +211,22 @@ int X64CodeGenerator::varSlotAreaSize() const {
 }
 
 // 扫描函数内最大虚拟寄存器ID（用于寄存器槽区预留）
+// 缺陷修复：i128/u128 值占用 2 个连续虚拟寄存器（result.id 与 result.id+1），
+//   原实现只按 result.id 计 maxId——当 i128 结果是函数内最后一个寄存器时
+//   （如 lambda 内捕获 i128 参数后仅一次 Load），id+1 槽未预留，落在变量
+//   槽区，与捕获参数双槽（$s1 高64位槽）重叠 -> i128 捕获值读垃圾
+//   （实测 1234567890123456789LL 输出 22773757910726981403490738691264577813
+//    = 低64位 << 64 | 低64位）。修复：i128/u128 结果按 id+1 计。
 int X64CodeGenerator::maxRegIdIn(const ir::IRFunction& function) {
     int maxId = -1;
     auto check = [&maxId](const ir::IRValue& v) {
-        if (v.id >= 0 && v.id > maxId) maxId = v.id;
+        if (v.id < 0) return;
+        // i128/u128 双寄存器：占用 id 与 id+1（result.id=高64位、id+1=低64位）
+        if (v.type == "i128" || v.type == "u128") {
+            if (v.id + 1 > maxId) maxId = v.id + 1;
+        } else if (v.id > maxId) {
+            maxId = v.id;
+        }
     };
     for (auto& block : function.blocks) {
         for (auto& inst : block->instructions) {
@@ -310,8 +322,13 @@ std::string X64CodeGenerator::floatBitsHex(const std::string& text, bool isDoubl
     char buf[32];
     // MASM 十六进制：以十六进制数字开头（避免 A2085 以字母开头需 0 前缀），
     // 尾部加 h。f32 8位十六进制（4字节）、f64 16位（8字节）
-    std::snprintf(buf, sizeof(buf), "%016llXh", static_cast<unsigned long long>(bits));
-    return buf;
+    std::snprintf(buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(bits));
+    std::string hex = buf;
+    // 审查修复：负数浮点位模式（如 -3.75 -> C00E000000000000h）以字母 C 开头，
+    //   ml64 报 A2006 undefined symbol（把 C00E... 当标识符）。
+    //   与 uint64HexText 一致：以 A-F 开头时补前导 0。
+    if (!hex.empty() && (hex[0] >= 'A' && hex[0] <= 'F')) hex = "0" + hex;
+    return hex + "h";
 }
 
 // 在 .data 段登记浮点常量（@fpN），重复文本复用同一标签

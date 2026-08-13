@@ -52,7 +52,8 @@ extern "C" {
     CNRT_EXPORT long long __cn_str_contains(const char* haystack, const char* needle); // 包含判断（1=是，0=否）
     CNRT_EXPORT char* __cn_str_trim(const char* str);                // 去首尾空白（空格/制表/换行/回车，动态分配）
     CNRT_EXPORT char* __cn_str_reverse(const char* str);             // 反转（UTF-8安全：按字符序列逆序，动态分配）
-    CNRT_EXPORT char* __cn_str_from_int(long long value);            // 整数转字符串（动态分配）
+    CNRT_EXPORT char* __cn_str_from_int(long long value);            // 整数转字符串（%lld，动态分配）
+    CNRT_EXPORT char* __cn_str_from_uint(unsigned long long value);  // 无符号整数转字符串（%llu，动态分配，缺陷修复）
     CNRT_EXPORT char* __cn_str_from_float(double value);             // 浮点转字符串（%f 语义，动态分配）
     CNRT_EXPORT char* __cn_str_from_char(int value);                 // 字符转字符串（单字节ASCII，动态分配）
     CNRT_EXPORT char* __cn_str_from_bool(int value);                 // 布尔转字符串（"真"/"假"，Task 2.9）
@@ -66,7 +67,8 @@ extern "C" {
     // 打印行("值:", 42, 3.5) 展开为 __cn_print_str("值:") + __cn_print_int(42) +
     //                        __cn_print_float(3.5) + __cn_print_newline()
     CNRT_EXPORT void __cn_print_str(const char* text);     // 打印字符串（不换行）
-    CNRT_EXPORT void __cn_print_int(long long value);      // 打印整数（不换行）
+    CNRT_EXPORT void __cn_print_int(long long value);      // 打印整数（不换行，%lld 语义）
+    CNRT_EXPORT void __cn_print_uint(unsigned long long value); // 打印无符号整数（不换行，%llu 语义，缺陷修复）
     CNRT_EXPORT void __cn_print_float(double value);       // 打印浮点（不换行）
     CNRT_EXPORT void __cn_print_newline();                 // 打印换行
 

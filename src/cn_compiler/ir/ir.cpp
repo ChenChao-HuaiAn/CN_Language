@@ -473,6 +473,16 @@ std::string IRGenerator::lookupSrcType(const std::string& name) const {
     return "";
 }
 
+// 变量是否为 [&] 引用捕获参数（lambda 匿名函数内：参数槽存被捕获变量地址，
+// 读取须解引用（LoadPtr）、赋值须经指针——规格书04-一D 引用语义，缺陷修复）
+bool IRGenerator::isByRefCapture(const std::string& name) const {
+    for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) return found->second.byRef;
+    }
+    return false;
+}
+
 // 指针算术步进（字节）：普通指针按8字节（栈槽宽）；结构体指针按结构体总大小。
 // 集成验证发现：指针 + 整型 / p[i] / p++ 曾固定按8字节，导致结构体指针
 // 遍历错位（学生 24 字节却每次只前进8字节）——Task 2.7 修复
@@ -488,6 +498,45 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
         }
     }
     return 8;
+}
+
+// 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）。
+// 覆盖三种形态：
+//   1. 标识符指针变量：查变量源码类型 -> pointeeOf
+//   2. 指针算术（p + n / p - n / n + p）：递归指针操作数一侧
+//   3. 取地址（&x）：递归 operand（&*p 语义等价 p，但此处仍按 operand 推导）
+// 无法推导返回空串（调用方回退默认宽度）。
+std::string IRGenerator::pointerPointeeSrcType(Expr* node) const {
+    if (node == nullptr) return "";
+    if (node->getType() == NodeType::IdentifierExpr) {
+        const std::string srcType = lookupSrcType(
+            static_cast<IdentifierExpr*>(node)->name);
+        if (!srcType.empty() && types::isPointer(srcType)) {
+            return types::pointeeOf(srcType);
+        }
+        return "";
+    }
+    if (node->getType() == NodeType::BinaryExpr) {
+        BinaryExpr* bin = static_cast<BinaryExpr*>(node);
+        if (bin->op == Operator::Add || bin->op == Operator::Subtract) {
+            // 指针算术：指针可能在左或右（p+1 / 1+p 罕见但支持）
+            std::string left = pointerPointeeSrcType(bin->left.get());
+            if (!left.empty()) return left;
+            std::string right = pointerPointeeSrcType(bin->right.get());
+            if (!right.empty()) return right;
+        }
+        return "";
+    }
+    if (node->getType() == NodeType::UnaryExpr) {
+        UnaryExpr* un = static_cast<UnaryExpr*>(node);
+        // &x / *x / 指针自增 p++：递归 operand 推导
+        if (un->op == Operator::AddressOf || un->op == Operator::Deref ||
+            un->op == Operator::Increment || un->op == Operator::Decrement) {
+            return pointerPointeeSrcType(un->operand.get());
+        }
+        return "";
+    }
+    return "";
 }
 
 // 推导成员表达式对象的源码结构体类型（Task 2.7/修复10）
@@ -589,6 +638,13 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(node);
         const std::string unique = lookupVarName(ident->name);
         const std::string srcType = lookupSrcType(ident->name);
+        // 缺陷修复（[&] 引用捕获左值）：参数槽存被捕获变量地址，取地址 = Load 参数槽
+        //   （而非 AddrOf 参数槽——否则 &捕获变量 取到的是参数槽自身的地址）
+        if (isByRefCapture(ident->name)) {
+            return emitResult(ir::Opcode::Load,
+                              {ir::IRValue::var(unique, "ptr")},
+                              "ptr", unique, node->location);
+        }
         const std::string irType = mapType(types::isArray(srcType)
                                                ? types::arrayElemOf(srcType) : srcType);
         return emitResult(ir::Opcode::AddrOf,
@@ -603,10 +659,19 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
             const std::string unique = lookupVarName(ident->name);
             const std::string srcType = lookupSrcType(ident->name);
             if (!unique.empty() && types::isArray(srcType)) {
-                ir::IRValue base = emitResult(
-                    ir::Opcode::AddrOf,
-                    {ir::IRValue::var(unique, mapType(types::arrayElemOf(srcType)))},
-                    "ptr", unique, idx->location);
+                // 缺陷修复（[&] 捕获数组）：参数槽存被捕获数组地址，基址 = Load 参数槽
+                //   （而非 AddrOf 参数槽——否则下标落到参数槽自身区域，读垃圾/越界）
+                ir::IRValue base;
+                if (isByRefCapture(ident->name)) {
+                    base = emitResult(ir::Opcode::Load,
+                                      {ir::IRValue::var(unique, "ptr")},
+                                      "ptr", unique, idx->location);
+                } else {
+                    base = emitResult(
+                        ir::Opcode::AddrOf,
+                        {ir::IRValue::var(unique, mapType(types::arrayElemOf(srcType)))},
+                        "ptr", unique, idx->location);
+                }
                 ir::IRValue index = genExpr(idx->index.get());
                 emitBoundsCheck(index, types::arrayLenOf(srcType), idx->location);
                 if (index.type != "i64") {
@@ -1297,10 +1362,65 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             info.lambdaName = lastLambdaName_;
             info.captures = lastLambdaCaptures_;
             info.returnIrType = lastLambdaReturnIrType_;
+            // 缺陷修复（[=] 快照 / [&] 引用，规格书04-一D）：
+            //   捕获实参在"lambda 定义处"（即此处）求值并固化：
+            //     [=]/[变量] 值捕获：genExpr(变量) 读取当前值 -> 快照
+            //       （原实现在调用点读取，捕获变量后续被修改时闭包读到最新值——
+            //       与规格"值捕获=捕获时复制"不符，实测 lambda值快照: 1000 而非 101）
+            //     [&] 引用捕获：AddrOf(变量) 取变量地址 -> 指针，
+            //       闭包内解引用读最新值、经指针写回外部（引用语义精确）
+            //   调用 `加倍(...)` 时直接展开这些已固化的捕获实参（前置）。
+            const std::size_t capCount = lastLambdaCaptures_.size();
+            const std::size_t refCount = lastLambdaCaptureRefs_.size();
+            for (std::size_t ci = 0; ci < capCount; ++ci) {
+                const std::string& cap = lastLambdaCaptures_[ci];
+                const bool byRef = (ci < refCount) && lastLambdaCaptureRefs_[ci];
+                if (byRef) {
+                    // 引用捕获：&变量（AddrOf 取变量槽地址）
+                    const std::string capUnique = lookupVarName(cap);
+                    const std::string capIrType = lookupVarType(cap);
+                    info.captureArgs.push_back(emitResult(
+                        ir::Opcode::AddrOf,
+                        {ir::IRValue::var(capUnique, capIrType.empty() ? "i64" : capIrType)},
+                        "ptr", capUnique, node->location));
+                } else {
+                    const std::string capSrc = lookupSrcType(cap);
+                    // 缺陷修复（[=] 结构体值捕获快照）：结构体是值类型，值捕获须
+                    //   在"定义处"深拷贝快照到临时缓冲区——不能仅存 AddrOf 指针：
+                    //   指针指向原变量，定义后修改会破坏快照；且闭包参数槽被当
+                    //   结构体数据本身时，字段访问读到的是地址值字节=垃圾
+                    //   （实测 值捕获p.x: 553448424 而非 1）。
+                    if (semantic_ != nullptr &&
+                        semantic_->isStructType(types::canonical(capSrc))) {
+                        const int size = semantic_->typeSizeOf(types::canonical(capSrc));
+                        const std::string temp =
+                            "__capstruct" + std::to_string(varCounter_++);
+                        emit(ir::Opcode::Alloca, {},
+                             ir::IRValue::reg(regCounter_++, "ptr"),
+                             temp, "ptr", node->location);
+                        registerVarSlots(temp, capSrc);
+                        ir::IRValue dstAddr = emitResult(
+                            ir::Opcode::AddrOf, {ir::IRValue::var(temp, "i64")},
+                            "ptr", temp, node->location);
+                        ir::IRValue srcAddr = emitResult(
+                            ir::Opcode::AddrOf,
+                            {ir::IRValue::var(lookupVarName(cap), "i64")},
+                            "ptr", lookupVarName(cap), node->location);
+                        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+                             std::to_string(size), "void", node->location);
+                        info.captureArgs.push_back(dstAddr);
+                    } else {
+                        // 值捕获：定义处读取变量值快照（i128 双槽 Load 生成双寄存器值）
+                        info.captureArgs.push_back(genExpr(
+                            std::make_unique<IdentifierExpr>(cap).get()));
+                    }
+                }
+            }
             closureInfo_[node->name] = info;
             lastLambdaName_.clear();
             lastLambdaCaptures_.clear();
             lastLambdaReturnIrType_.clear();
+            lastLambdaCaptureRefs_.clear();
         }
         // 结构体变量初始化值为"函数返回的结构体地址（ptr）"（Task 完善A）：
         //   学生 张三加 = 加分(张三) —— 值是指向返回临时结构体的指针，
@@ -1339,6 +1459,17 @@ void IRGenerator::visitIntegerLiteral(IntegerLiteral* node) {
     if ((type == "整32" || type == "整64") &&
         types::textExceedsInt64(types::stripLiteralSuffix(node->raw))) {
         type = "整128";
+    }
+    // 审查修复：无符号后缀（U=正32 / UL=正64）字面量值超出对应位宽时提升。
+    //   原实现漏了无符号提升，`9000000000000000000U`（正32 但值 > 2^32-1）走
+    //   stripped 十进制文本直接存，codegen std::stoull 溢出回绕（3800301568）。
+    //   正32 超 2^32-1 -> 正64；正64 超 2^64-1 -> 正128。
+    const std::string strippedForUnsigned = types::stripLiteralSuffix(node->raw);
+    if (type == "正32" && types::textExceedsU32(strippedForUnsigned)) {
+        type = "正64";
+    }
+    if (type == "正64" && types::textExceedsU64(strippedForUnsigned)) {
+        type = "正128";
     }
     // i128/正128 字面量：常量文本存 低64位:高64位 十六进制（codegen 拆双槽加载）
     // 其余类型：直接存剥后缀十进制文本
@@ -1516,6 +1647,26 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     }
     const std::string unique = lookupVarName(node->name);
     const std::string srcType = lookupSrcType(node->name);
+    // 缺陷修复（[&] 引用捕获读取，规格书04-一D）：参数槽存被捕获变量地址——
+    //   数组/结构体：[&] 捕获时存的是变量地址（AddrOf 值），读取 = 取出该地址
+    //   （地址形态，供下标/字段/按值传参使用）；
+    //   标量/字符串/i128：[&] 捕获须解引用（LoadPtr）读最新值。
+    if (isByRefCapture(node->name)) {
+        if (types::isArray(srcType) ||
+            (semantic_ != nullptr &&
+             semantic_->isStructType(types::canonical(srcType)))) {
+            lastExpr_ = emitResult(ir::Opcode::Load,
+                                   {ir::IRValue::var(unique, "ptr")},
+                                   "ptr", unique, node->location);
+            return;
+        }
+        ir::IRValue capAddr = emitResult(ir::Opcode::Load,
+                                         {ir::IRValue::var(unique, "ptr")},
+                                         "ptr", unique, node->location);
+        lastExpr_ = emitResult(ir::Opcode::LoadPtr, {capAddr}, reg.type,
+                               "", node->location);
+        return;
+    }
     if (types::isArray(srcType)) {
         // 数组名退化：AddrOf 数组基址（栈槽0）-> ptr
         lastExpr_ = emitResult(ir::Opcode::AddrOf,
@@ -1644,12 +1795,26 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
                 convFn = "__cn_str_from_int";
             }
         } else {
-            // 整数（i64/u64/i8/i16 等）：统一转 i64 后 字符串从整数
-            if (strArg.type != "i64") {
-                strArg = emitResult(ir::Opcode::Cast, {strArg}, "i64", "",
-                                    node->location);
+            // 整数（i64/u64/i8/i16 等）：缺陷修复——无符号（正8~正64）走
+            //   __cn_str_from_uint（%llu 语义，值超 2^63 正确显示正数），
+            //   有符号统一转 i64 走 __cn_str_from_int（%lld）
+            const bool isUnsignedNum = (strArg.type == "u8" ||
+                                        strArg.type == "u16" ||
+                                        strArg.type == "u32" ||
+                                        strArg.type == "u64");
+            if (isUnsignedNum) {
+                if (strArg.type != "u64") {
+                    strArg = emitResult(ir::Opcode::Cast, {strArg}, "u64", "",
+                                        node->location);
+                }
+                convFn = "__cn_str_from_uint";
+            } else {
+                if (strArg.type != "i64") {
+                    strArg = emitResult(ir::Opcode::Cast, {strArg}, "i64", "",
+                                        node->location);
+                }
+                convFn = "__cn_str_from_int";
             }
-            convFn = "__cn_str_from_int";
         }
         ir::IRValue rightStr = emitResult(ir::Opcode::Call, {strArg}, "ptr",
                                           convFn, node->location);
@@ -1663,7 +1828,11 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
     //（值域≤2^63 语义正确；超范围拼接场景后续 Task 再支持全量转换）。
     if (leftIsString && left.type == "ptr" && node->op == Operator::Add &&
         (right.type == "i128" || right.type == "u128")) {
-        ir::IRValue lo = emitResult(ir::Opcode::LoadPtr, {right}, "i64", "",
+        // i128 值是"双槽寄存器值"（IRValue.id=高64位槽、id+1=低64位槽），
+        // 而非指针地址——不能用 LoadPtr 解引用（会把槽值当地址访问导致
+        // 0xC0000005）。正确做法：Cast i128 -> i64 取低64位（emitCast 已有
+        // i128/u128->i64 分支，值域≤2^63 语义正确）。
+        ir::IRValue lo = emitResult(ir::Opcode::Cast, {right}, "i64", "",
                                     node->location);
         ir::IRValue rightStr = emitResult(ir::Opcode::Call, {lo}, "ptr",
                                           "__cn_str_from_int", node->location);
@@ -1812,8 +1981,19 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->operand.get());
                 ir::IRValue slot = lookupVar(ident->name);
                 if (slot.id >= 0) {
-                    emit(ir::Opcode::Store, {result}, ir::IRValue(),
-                         lookupVarName(ident->name), "ptr", node->location);
+                    // 缺陷修复（[&] 引用捕获自增自减）：参数槽存被捕获变量地址，
+                    //   写回经 StorePtr（更新外部变量）；值捕获走本地 Store
+                    if (isByRefCapture(ident->name)) {
+                        const std::string unique = lookupVarName(ident->name);
+                        ir::IRValue capAddr = emitResult(
+                            ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")},
+                            "ptr", unique, node->location);
+                        emit(ir::Opcode::StorePtr, {capAddr, result},
+                             ir::IRValue(), "", "ptr", node->location);
+                    } else {
+                        emit(ir::Opcode::Store, {result}, ir::IRValue(),
+                             lookupVarName(ident->name), "ptr", node->location);
+                    }
                 }
             }
             lastExpr_ = result;
@@ -1828,10 +2008,19 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                     ? static_cast<IdentifierExpr*>(node->operand.get())->name
                     : "");
             if (node->operand->getType() == NodeType::IdentifierExpr && !unique.empty()) {
-                // 变量槽地址：AddrOf 指令（codegen 生成 lea）
-                lastExpr_ = emitResult(ir::Opcode::AddrOf,
-                                       {ir::IRValue::var(unique, operand.type)},
-                                       "ptr", unique, node->location);
+                // 缺陷修复（[&] 引用捕获 &变量）：参数槽存被捕获变量地址，
+                //   &捕获变量 = Load 参数槽（取被捕获变量地址，而非参数槽自身地址）
+                if (isByRefCapture(
+                        static_cast<IdentifierExpr*>(node->operand.get())->name)) {
+                    lastExpr_ = emitResult(ir::Opcode::Load,
+                                           {ir::IRValue::var(unique, "ptr")},
+                                           "ptr", unique, node->location);
+                } else {
+                    // 变量槽地址：AddrOf 指令（codegen 生成 lea）
+                    lastExpr_ = emitResult(ir::Opcode::AddrOf,
+                                           {ir::IRValue::var(unique, operand.type)},
+                                           "ptr", unique, node->location);
+                }
             } else if (node->operand->getType() == NodeType::IndexExpr) {
                 // &数组[i]：等价 数组[i] 的地址（lvalueAddress 计算基址+偏移）
                 lastExpr_ = lvalueAddress(node->operand.get());
@@ -1851,17 +2040,13 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
         case Operator::Deref: {
             // 解引用 *p（Task 2.4）：LoadPtr(指针值) 从指针地址加载元素
             // 元素IR类型：从操作数源码指针类型推断（整32* -> i32、浮64* -> f64）
+            // 审查修复：*（p+1）等复合指针表达式原来落默认 i64 读满 8 字节，
+            //   把数组相邻 4 字节栈残留垃圾一并读入（指针算术结果错误）。
+            //   统一经 pointerPointeeSrcType 递归推导所指元素类型。
             std::string elemType = "i64";  // 默认按64位（指针所指值存8字节槽）
-            if (node->operand->getType() == NodeType::IdentifierExpr) {
-                IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->operand.get());
-                const std::string srcType = lookupSrcType(ident->name);
-                if (!srcType.empty() && types::isPointer(srcType)) {
-                    elemType = mapType(types::pointeeOf(srcType));
-                }
-            } else if (node->operand->getType() == NodeType::BinaryExpr) {
-                // *（p + 1）等复合指针表达式：语义层已推导元素类型，
-                // IR层指针运算结果保持 ptr；解引用按 64 位读取（i64）
-                // 数组元素为 整32 时读满8字节槽取低32位，值语义正确
+            const std::string pointeeSrc = pointerPointeeSrcType(node->operand.get());
+            if (!pointeeSrc.empty()) {
+                elemType = mapType(pointeeSrc);
             }
             // 空指针检查（错误码3）：codegen 在 LoadPtr/StorePtr 处插桩
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {operand}, elemType,
@@ -2231,6 +2416,18 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     if (value.type != targetType) {
         value = emitResult(ir::Opcode::Cast, {value}, targetType, "", node->location);
     }
+    // 缺陷修复（[&] 引用捕获赋值写回，规格书04-一D）：参数槽存被捕获变量地址，
+    //   赋值必须经指针（LoadPtr 地址 -> StorePtr 写被捕获变量），
+    //   使闭包内修改反映到外部（引用语义）。值捕获（[=]）仍走本地 Store。
+    if (isByRefCapture(ident->name)) {
+        ir::IRValue capAddr = emitResult(ir::Opcode::Load,
+                                         {ir::IRValue::var(unique, "ptr")},
+                                         "ptr", unique, node->location);
+        emit(ir::Opcode::StorePtr, {capAddr, value}, ir::IRValue(), "",
+             targetType, node->location);
+        lastExpr_ = value;
+        return;
+    }
     emit(ir::Opcode::Store, {value}, ir::IRValue(), unique, targetType,
          node->location);
     lastExpr_ = value;
@@ -2246,12 +2443,14 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
         // Task 2.10 lambda 闭包调用：`加倍(21)`——callee 是登记过的闭包变量，
-        //   展开为：捕获实参（前置，从外层变量调用点取值）+ 显式实参 + Call 匿名函数
+        //   展开为：捕获实参（前置，定义处已固化的值快照/引用指针，缺陷修复——
+        //   原实现在此 genExpr(变量) 于调用点取值，[=] 值捕获读到最新值而非快照）
+        //           + 显式实参 + Call 匿名函数
         auto closureIt = closureInfo_.find(calleeName);
         if (closureIt != closureInfo_.end()) {
             std::vector<ir::IRValue> closureArgs;
-            for (const auto& cap : closureIt->second.captures) {
-                closureArgs.push_back(genExpr(std::make_unique<IdentifierExpr>(cap).get()));
+            for (const auto& capArg : closureIt->second.captureArgs) {
+                closureArgs.push_back(capArg);
             }
             for (auto& arg : node->arguments) {
                 closureArgs.push_back(genExpr(arg.get()));
@@ -2322,12 +2521,27 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                 printFn = (argVal.type == "u128") ? "__cn_print_u128"
                                                   : "__cn_print_i128";
             } else {
-                // 整型（含 i1 布尔）：统一按 i64 传递
-                if (argVal.type != "i64") {
-                    argVal = emitResult(ir::Opcode::Cast, {argVal}, "i64", "",
-                                        node->location);
+                // 整型（含 i1 布尔）：有符号统一 Cast i64 走 __cn_print_int；
+                // 无符号（正8~正64）直接传 __cn_print_uint（%llu 语义，缺陷修复：
+                //   原实现统一 __cn_print_int（%lld 有符号），正64 值超 2^63 时
+                //   位模式按有符号解释打印成负数）
+                const bool isUnsignedArg = (argVal.type == "u8" ||
+                                            argVal.type == "u16" ||
+                                            argVal.type == "u32" ||
+                                            argVal.type == "u64");
+                if (isUnsignedArg) {
+                    if (argVal.type != "u64") {
+                        argVal = emitResult(ir::Opcode::Cast, {argVal}, "u64", "",
+                                            node->location);
+                    }
+                    printFn = "__cn_print_uint";
+                } else {
+                    if (argVal.type != "i64") {
+                        argVal = emitResult(ir::Opcode::Cast, {argVal}, "i64", "",
+                                            node->location);
+                    }
+                    printFn = "__cn_print_int";
                 }
-                printFn = "__cn_print_int";
             }
             emit(ir::Opcode::Call, {argVal}, ir::IRValue(), printFn, "void",
                  node->location);
@@ -2902,6 +3116,12 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     func.returnType = returnIrType;
     // 捕获变量名（语义层已回填全部捕获）：匿名函数参数前置
     std::vector<std::string> capturedNames = node->explicitCaptures;
+    // 缺陷修复（[=] 快照 / [&] 引用区分，规格书04-一D）：
+    //   [&] 引用捕获整体：所有捕获参数按"指针"形态传递（参数槽存被捕获变量地址），
+    //     体内读取解引用（读最新值）、赋值经指针（写外部变量）。
+    //   [=]/[]/[变量] 值捕获：参数槽存定义处值快照（值语义，后续外部修改不影响）。
+    const bool allByRef = (node->captureKind == LambdaCaptureKind::ByRef);
+    std::vector<bool> captureRefs(capturedNames.size(), allByRef);
     // 保存外层生成状态（lambda 内嵌在表达式中，生成匿名函数后须恢复主函数状态）
     ir::IRFunction* outerFunction = function_;
     ir::IRBlock* outerBlock = currentBlock_;
@@ -2909,21 +3129,40 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     const std::size_t outerVarDepth = varStack_.size();
     function_ = &func;
     varStack_.emplace_back();
-    // 捕获参数：类型 = 外层变量 IR 类型（查当前 varStack 作用域链）
-    for (const auto& cap : capturedNames) {
+    // 捕获参数：类型 = 外层变量 IR 类型（查当前 varStack 作用域链）；
+    //   [&] 引用捕获参数类型为 ptr（存被捕获变量地址），体内 byRef 标记驱动解引用
+    for (std::size_t ci = 0; ci < capturedNames.size(); ++ci) {
+        const std::string& cap = capturedNames[ci];
+        const bool byRef = captureRefs[ci];
         const std::string capType = lookupVarType(cap);
         const std::string capSrc = lookupSrcType(cap);
+        // 缺陷修复（[=] 结构体值捕获）：结构体值捕获实参是"定义处深拷贝临时
+        //   缓冲区的指针"（见 genVarDecl captureArgs 固化逻辑），闭包参数须标记
+        //   为按值结构体参数（structParamIndexes），emitParamSetup 才会从该指针
+        //   rep movsb 拷贝结构体数据到参数槽——否则参数槽存的是指针值本身，
+        //   闭包体字段访问读到地址值字节=垃圾（值捕获p.x: 553448424 而非 1）。
+        const bool isStructValCapture =
+            !byRef && semantic_ != nullptr &&
+            semantic_->isStructType(types::canonical(capSrc));
         std::string unique = cap + "$" + std::to_string(varCounter_++);
-        func.params.emplace_back(cap, capType.empty() ? "i64" : capType);
+        const std::string paramType =
+            byRef ? "ptr" : (capType.empty() ? "i64" : capType);
+        func.params.emplace_back(cap, paramType);
         func.paramUniques.push_back(unique);
-        registerVarSlots(unique, capSrc);
+        if (isStructValCapture) {
+            func.structParamIndexes.insert(static_cast<int>(ci));
+        }
+        // [&] 引用捕获：参数槽 1 槽（8 字节指针）；[=] 值捕获：按原类型多槽（i128 双槽）
+        registerVarSlots(unique, byRef ? "" : capSrc);
         ir::IRValue reg = newReg();
-        reg.type = capType.empty() ? "i64" : capType;
+        reg.type = paramType;
         VarEntry entry;
         entry.regId = reg.id;
         entry.uniqueName = unique;
-        entry.type = reg.type;
+        // 体内"值类型"仍为原类型：读取时经 byRef 解引用（LoadPtr）返回原类型值
+        entry.type = byRef ? (capType.empty() ? "i64" : capType) : reg.type;
         entry.srcType = capSrc;
+        entry.byRef = byRef;
         varStack_.back()[cap] = entry;
     }
     // 显式参数
@@ -2972,6 +3211,7 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     lastLambdaName_ = lambdaName;
     lastLambdaCaptures_ = capturedNames;
     lastLambdaReturnIrType_ = returnIrType;
+    lastLambdaCaptureRefs_ = captureRefs;
     // 表达式结果 = 匿名函数地址（赋给 自动 变量；调用经 closureInfo_ 展开）。
     // 注意：FuncAddr 须在外层（主函数）块中生成——function_ 已恢复
     lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", lambdaName, node->location);

@@ -75,6 +75,12 @@ extern "C" void __cn_print_int(long long value) {
     std::printf("%lld", value);
 }
 
+// 打印无符号整数（不换行，%llu 语义；缺陷修复：正8~正64 值超 2^63 时正确显示正数，
+// 原实现统一走 __cn_print_int（%lld 有符号）把 2^63 以上位模式打印成负数）
+extern "C" void __cn_print_uint(unsigned long long value) {
+    std::printf("%llu", value);
+}
+
 // 打印浮点（不换行，%f 语义，默认6位小数）
 extern "C" void __cn_print_float(double value) {
     std::printf("%f", value);
@@ -226,6 +232,19 @@ extern "C" char* __cn_str_reverse(const char* str) {
 extern "C" char* __cn_str_from_int(long long value) {
     char buffer[32];
     std::snprintf(buffer, sizeof(buffer), "%lld", value);
+    const std::size_t len = std::strlen(buffer);
+    char* result = static_cast<char*>(std::malloc(len + 1));
+    if (result == nullptr) return nullptr;
+    std::memcpy(result, buffer, len + 1);
+    return result;
+}
+
+// 无符号整数转字符串（十进制，%llu 语义；缺陷修复：正8~正64 值超 2^63 时
+// 正确显示正数，原实现统一走 __cn_str_from_int（%lld 有符号）把 2^63 以上
+// 位模式打印成负数）。
+extern "C" char* __cn_str_from_uint(unsigned long long value) {
+    char buffer[32];
+    std::snprintf(buffer, sizeof(buffer), "%llu", value);
     const std::size_t len = std::strlen(buffer);
     char* result = static_cast<char*>(std::malloc(len + 1));
     if (result == nullptr) return nullptr;

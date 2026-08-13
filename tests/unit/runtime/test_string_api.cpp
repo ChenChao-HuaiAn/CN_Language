@@ -169,3 +169,43 @@ TEST(StringApiTest, PrintLineMultiArgsExpansion) {
     });
     EXPECT_EQ(out, "值:42\n");
 }
+
+// ==================== 缺陷修复：无符号打印 / 无符号转字符串 ====================
+
+// 无符号打印：正64 值超 2^63 正确显示正数（%llu 语义；修复前 %lld 打印负数）
+TEST(StringApiTest, PrintUintLarge) {
+    std::string out = captureOutput([] { __cn_print_uint(18446744073709551615ULL); });
+    EXPECT_EQ(out, "18446744073709551615");
+}
+
+// 无符号打印：普通值（与有符号一致）
+TEST(StringApiTest, PrintUintNormal) {
+    std::string out = captureOutput([] { __cn_print_uint(9000000000000000000ULL); });
+    EXPECT_EQ(out, "9000000000000000000");
+}
+
+// 无符号打印：组合（模拟 打印行("正:", 大值) 展开，无符号走 __cn_print_uint）
+TEST(StringApiTest, PrintUintMultiArgs) {
+    std::string out = captureOutput([] {
+        __cn_print_str("正:");
+        __cn_print_uint(9000000000000000000ULL);
+        __cn_print_newline();
+    });
+    EXPECT_EQ(out, "正:9000000000000000000\n");
+}
+
+// 无符号转字符串：值超 2^63 正确显示正数（%llu 语义；修复前 %lld 转出负数）
+TEST(StringApiTest, StrFromUintLarge) {
+    char* s = __cn_str_from_uint(18446744073709551615ULL);
+    ASSERT_NE(s, nullptr);
+    EXPECT_STREQ(s, "18446744073709551615");
+    std::free(s);
+}
+
+// 无符号转字符串：普通值
+TEST(StringApiTest, StrFromUintNormal) {
+    char* s = __cn_str_from_uint(9000000000000000000ULL);
+    ASSERT_NE(s, nullptr);
+    EXPECT_STREQ(s, "9000000000000000000");
+    std::free(s);
+}

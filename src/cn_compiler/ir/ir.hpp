@@ -379,12 +379,24 @@ private:
     std::string lastLambdaName_;
     std::vector<std::string> lastLambdaCaptures_;
     std::string lastLambdaReturnIrType_;  // 最近 lambda 的返回 IR 类型（闭包调用结果类型）
-    // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 返回 IR 类型}。
-    // 调用 `闭包变量(...)` 时展开捕获实参（前置）再 Call 匿名函数。
+    // 最近 lambda 各捕获是否引用捕获（缺陷修复：决定定义处捕获实参是
+    //   值快照（[=]/[变量]）还是变量地址指针（[&]），genVarDecl 登记闭包时使用）
+    std::vector<bool> lastLambdaCaptureRefs_;
+    // 查询变量是否为"引用捕获参数"（lambda 匿名函数内 [&] 捕获的参数槽存
+    //   被捕获变量地址，读取须解引用、赋值须经指针——规格书04-一D 引用语义）
+    bool isByRefCapture(const std::string& name) const;
+    // 闭包关联：变量源码名 -> {匿名函数名, 捕获变量列表, 定义处捕获实参, 返回 IR 类型}。
+    // 语义（规格书04-一D，缺陷修复）：
+    //   [=]/[变量] 值捕获：captureArgs[i] = 定义处对 捕获变量 求值的值快照
+    //     （lambda 定义后外部修改不影响闭包内值）。
+    //   [&] 引用捕获：captureArgs[i] = 定义处 捕获变量地址（AddrOf 指针），
+    //     匿名函数体内以指针形态存储捕获参数，读取时解引用——闭包读最新值。
+    // 调用 `闭包变量(...)` 时展开 captureArgs（前置）再 Call 匿名函数。
     struct ClosureInfo {
         std::string lambdaName;
-        std::vector<std::string> captures;
-        std::string returnIrType;  // 匿名函数返回 IR 类型（结果寄存器类型）
+        std::vector<std::string> captures;      // 捕获变量源码名列表
+        std::vector<ir::IRValue> captureArgs;   // 定义处求值的捕获实参（值快照 或 &变量 指针）
+        std::string returnIrType;               // 匿名函数返回 IR 类型（结果寄存器类型）
     };
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
     // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
@@ -395,6 +407,7 @@ private:
         std::string uniqueName;
         std::string type;
         std::string srcType;   // 源码类型（指针/数组复合类型原样保留）
+        bool byRef = false;    // 是否为 [&] 引用捕获参数（lambda 匿名函数内；缺陷修复）
     };
     std::vector<std::unordered_map<std::string, VarEntry>> varStack_;
     // 查找变量的源码类型（指针/数组复合类型；未找到返回空串，Task 2.4）
@@ -405,6 +418,10 @@ private:
     std::string memberObjStructType(MemberExpr* node) const;
     // 指针算术步进（字节）：普通指针8；结构体指针 = 结构体总大小（Task 2.7 修复）
     std::int64_t ptrElemStride(const std::string& srcType) const;
+    // 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）：
+    //   标识符指针变量 / 指针算术（p+1，递归指针侧）/ 取地址（&x 递归 operand）。
+    //   返回所指元素源码类型（如 整32* -> 整32）；无法推导返回空串。
+    std::string pointerPointeeSrcType(Expr* node) const;
     // 循环控制流：中断/继续跳转目标栈
     struct LoopContext {
         std::string breakTarget;    // 中断跳转目标块标签

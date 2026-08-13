@@ -238,6 +238,20 @@ bool textExceedsInt64(const std::string& text) {
     return text > "9223372036854775807";
 }
 
+// 十进制文本是否超出 正32（无符号32位）范围（> 4294967295）
+bool textExceedsU32(const std::string& text) {
+    if (text.size() < 10) return false;
+    if (text.size() > 10) return true;
+    return text > "4294967295";
+}
+
+// 十进制文本是否超出 正64（无符号64位）范围（> 18446744073709551615）
+bool textExceedsU64(const std::string& text) {
+    if (text.size() < 20) return false;
+    if (text.size() > 20) return true;
+    return text > "18446744073709551615";
+}
+
 // 将 128 位字面量文本拆为 低64位:高64位（十六进制）
 // 返回 "低十六进制:高十六进制"（如 "0:8AC7230489E80000"）；非法返回空串
 std::string splitI128Text(const std::string& raw) {

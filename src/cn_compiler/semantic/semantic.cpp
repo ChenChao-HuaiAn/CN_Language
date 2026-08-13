@@ -1869,6 +1869,24 @@ void SemanticAnalyzer::collectLambdaCaptures(
             case NodeType::CastExpr:
                 exprs.push_back(static_cast<CastExpr*>(e)->operand.get());
                 break;
+            case NodeType::LambdaExpr: {
+                // 缺陷修复（嵌套 lambda 捕获穿透）：内层 lambda 引用的外层变量
+                //   必须合并到本层捕获集——否则内层 lambda 体生成时，其捕获变量
+                //   穿透本层匿名函数边界，直接引用更外层函数的栈槽（跨函数槽
+                //   越界，产生 [rbp0] 非法汇编，实测嵌套 lambda 汇编失败）。
+                //   递归收集内层捕获集，再并入本层捕获（去重）。
+                LambdaExpr* inner = static_cast<LambdaExpr*>(e);
+                std::unordered_set<std::string> innerParams = paramNames;
+                for (auto& p : inner->params) innerParams.insert(p->name);
+                collectLambdaCaptures(inner, innerParams);
+                for (const auto& c : inner->explicitCaptures) {
+                    bool dup = false;
+                    for (const auto& ec : node->explicitCaptures)
+                        if (ec == c) { dup = true; break; }
+                    if (!dup) node->explicitCaptures.push_back(c);
+                }
+                break;
+            }
             default:
                 break;
         }
@@ -1883,7 +1901,11 @@ void SemanticAnalyzer::visitCastExpr(CastExpr* node) {
         lastType_ = "未知";
         return;  // 源类型未知：操作数错误已由 checkExpr 报告，避免连锁误报
     }
-    const bool srcNumeric = isNumeric(src) || isEnumType(src) || src == "字符";
+    // 布尔（i1）本质为 0/1 整数，允许显式转整数（规格书04-一E 数值族内部转换；
+    // emitCast 已有 i1->i32/u32/i64/u64 分支）。原实现漏判"布尔"导致
+    // 整32(真)/整64(假) 被误拒。
+    const bool srcNumeric = isNumeric(src) || isEnumType(src) ||
+                            src == "字符" || src == "布尔";
     const bool dstNumeric = isNumeric(target) || target == "字符";
     const bool srcPtr = types::isPointer(src);
     const bool dstPtr = types::isPointer(target);

@@ -136,6 +136,20 @@ TEST(CastExprTest, ParseAmbiguityResolved) {
     EXPECT_TRUE(r.ok) << r.messages;
 }
 
+// 回归（审查修复 BUG#2）：布尔 -> 整数 显式转换合法
+//   原实现 srcNumeric 判断漏"布尔"，导致 整32(真)/整64(假) 被误拒。
+TEST(CastExprTest, BoolToIntConversion) {
+    auto r = analyzeSource(R"CN(
+函数 主() -> 整32 {
+    整32 a = 整32(真)
+    整64 b = 整64(假)
+    返回 0
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
+}
+
 // 强制转换在表达式上下文（函数实参内嵌）
 TEST(CastExprTest, CastInArgContext) {
     auto r = analyzeSource(R"CN(
