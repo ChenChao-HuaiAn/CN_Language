@@ -6,6 +6,7 @@
 # 用例目录结构约定：
 #   tests/e2e/<编号>_<名称>/<用例>.cn        # CN语言源文件
 #   tests/e2e/<编号>_<名称>/<用例>.expected  # 期望输出（逐行比对）
+#   tests/e2e/<编号>_<名称>/主.cn + 依赖.cn  # 多文件模块用例（入口=主.cn）
 
 import argparse
 import ctypes
@@ -118,6 +119,15 @@ def 查找源文件(用例目录: pathlib.Path) -> pathlib.Path:
     cn文件们 = sorted(用例目录.glob("*.cn"))
     if not cn文件们:
         raise FileNotFoundError(f"用例目录缺少 .cn 源文件: {用例目录.name}")
+    # 多文件模块用例（Task 3.6，规格书08-四）：目录含多个 .cn 时，
+    # 入口文件约定为 主.cn（模块名 == 主）。单文件用例保持取第一个行为不变。
+    if len(cn文件们) > 1:
+        for 候选 in cn文件们:
+            if 候选.name == "主.cn":
+                return 候选
+        # 无 主.cn 的多文件目录：按约定报错提示（避免误取依赖模块当入口）
+        raise FileNotFoundError(
+            f"多文件用例目录需含入口 主.cn: {用例目录.name}")
     return cn文件们[0]
 
 
@@ -132,7 +142,7 @@ def 查找期望文件(源文件: pathlib.Path) -> pathlib.Path:
 
 
 def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
-                输出目录: pathlib.Path, 详细: bool) -> tuple:
+                 输出目录: pathlib.Path, 详细: bool) -> tuple:
     """
     执行单个E2E用例：编译->运行->比对输出
     返回 (状态, 说明)；状态取值: "通过" / "失败" / "未实现"

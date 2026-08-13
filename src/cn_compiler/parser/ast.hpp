@@ -22,6 +22,11 @@ class ParamDecl;
 class VarDecl;
 class StructDecl;
 class EnumDecl;
+class ClassDecl;
+class ClassMember;
+class InterfaceDecl;
+class ImportDecl;
+class GenericDecl;
 class BlockStmt;
 class IntegerLiteral;
 class FloatLiteral;
@@ -29,6 +34,8 @@ class StringLiteral;
 class CharLiteral;
 class BoolLiteral;
 class IdentifierExpr;
+class SelfExpr;
+class SuperExpr;
 class BinaryExpr;
 class UnaryExpr;
 class AssignmentExpr;
@@ -55,6 +62,16 @@ class Type;
 
 // ==================== 枚举定义 ====================
 
+// 访问控制枚举：类/接口成员的可见性标签（规格书06-二 标签式）
+// 同时用于模块级顶层声明的可见性（规格书08-三 标签式，Task 3.6）：
+//   公开: -> Public（跨模块可导入）；私有: -> Private（仅本模块可见）。
+// 定义在文件顶部（先于 FunctionDecl/StructDecl 等声明节点，供其 access 字段使用）。
+enum class AccessSpecifier {
+    Public,         // 公开：
+    Protected,      // 保护：/ 公开：模块级等价 Public（模块级无保护）
+    Private         // 私有：
+};
+
 // 节点类型：标识每个AST节点的种类（语义分析器/打印器按类型分发）
 enum class NodeType {
     // 声明节点
@@ -64,6 +81,11 @@ enum class NodeType {
     VarDecl,           // 变量/常量声明
     StructDecl,        // 结构体/联合体声明（Task 2.7）
     EnumDecl,          // 枚举声明（Task 2.7）
+    ClassDecl,         // 类声明（Task 3.1，阶段3 OOP）
+    ClassMember,       // 类成员（字段/方法/构造/析构/运算符重载/友元，Task 3.1）
+    InterfaceDecl,     // 接口声明（Task 3.3）
+    ImportDecl,        // 导入声明（Task 3.6）
+    GenericDecl,       // 泛型声明（包装被泛型修饰的类/函数，Task 3.8）
     // 语句节点
     BlockStmt,         // 代码块 { ... }
     ExprStmt,          // 表达式语句
@@ -84,6 +106,8 @@ enum class NodeType {
     BoolLiteral,       // 布尔字面量
     NullLiteral,       // 空指针字面量（无，Task 2.4）
     IdentifierExpr,    // 标识符表达式
+    SelfExpr,          // 自身（this 指针，Task 3.1）
+    SuperExpr,         // 父类（限定调用 父类.方法()，Task 3.1）
     BinaryExpr,        // 二元运算
     UnaryExpr,         // 一元运算
     AssignmentExpr,    // 赋值表达式
@@ -163,6 +187,12 @@ public:
     virtual void visitVarDecl(VarDecl* node) = 0;
     virtual void visitStructDecl(StructDecl* node) = 0;
     virtual void visitEnumDecl(EnumDecl* node) = 0;
+    // 阶段3 OOP/错误处理/模块/泛型 声明节点（默认空实现，语义/IR 层按需重写）
+    virtual void visitClassDecl(ClassDecl* node);          // 类声明（Task 3.1）
+    virtual void visitClassMember(ClassMember* node);      // 类成员（Task 3.1）
+    virtual void visitInterfaceDecl(InterfaceDecl* node);  // 接口声明（Task 3.3）
+    virtual void visitImportDecl(ImportDecl* node);        // 导入声明（Task 3.6）
+    virtual void visitGenericDecl(GenericDecl* node);      // 泛型声明（Task 3.8）
     // 语句节点
     virtual void visitBlockStmt(BlockStmt* node) = 0;
     virtual void visitExprStmt(ExprStmt* node) = 0;
@@ -183,6 +213,8 @@ public:
     virtual void visitBoolLiteral(BoolLiteral* node) = 0;
     virtual void visitNullLiteral(NullLiteral* node) = 0;
     virtual void visitIdentifierExpr(IdentifierExpr* node) = 0;
+    virtual void visitSelfExpr(SelfExpr* node);            // 自身（this，Task 3.1）
+    virtual void visitSuperExpr(SuperExpr* node);          // 父类（Task 3.1）
     virtual void visitBinaryExpr(BinaryExpr* node) = 0;
     virtual void visitUnaryExpr(UnaryExpr* node) = 0;
     virtual void visitAssignmentExpr(AssignmentExpr* node) = 0;
@@ -308,6 +340,28 @@ public:
     std::string name;  // 标识符名
 };
 
+// 自身表达式：自身（对应 C++ 的 this 指针，Task 3.1，规格书06-七）
+// 语义：指向当前类实例的指针；通常经 自身.成员 访问实例成员。
+// 语法层仅记录关键字位置，语义层按类方法上下文解析为 this 指针。
+class SelfExpr : public Expr {
+public:
+    explicit SelfExpr(SourceLocation loc) : Expr(NodeType::SelfExpr) {
+        location = loc;
+    }
+    void accept(AstVisitor& visitor) override { visitor.visitSelfExpr(this); }
+};
+
+// 父类表达式：父类（对应 C++ 的 父类:: 限定调用，Task 3.1，规格书06-七）
+// 语法形式：父类.方法名(实参)（限定调用父类实现）；本节点为 父类 关键字本身，
+//           后续由 parseCallOrMember 组装为 MemberExpr/CallExpr（object=SuperExpr）。
+class SuperExpr : public Expr {
+public:
+    explicit SuperExpr(SourceLocation loc) : Expr(NodeType::SuperExpr) {
+        location = loc;
+    }
+    void accept(AstVisitor& visitor) override { visitor.visitSuperExpr(this); }
+};
+
 // 二元运算：左操作数 运算符 右操作数（Pratt解析的中间/最终结果）
 class BinaryExpr : public Expr {
 public:
@@ -318,6 +372,11 @@ public:
     Operator op;                  // 运算符
     std::unique_ptr<Expr> left;   // 左操作数
     std::unique_ptr<Expr> right;  // 右操作数
+    // 运算符重载结果源码类型（Task 3.7，缺陷2 修复）：
+    //   语义层在 visitBinaryExpr 命中成员 运算符X 时写回重载方法返回类型；
+    //   IR 层对"链式运算符重载"（甲+乙+丙）的内层 BinaryExpr 经 exprSrcType
+    //   读取此字段得到类类型，避免落入 ptr+ptr 字符串连接分支（字段错乱）。
+    std::string resolvedType;
 };
 
 // 一元运算：运算符 操作数（含前缀/后缀自增自减）
@@ -362,6 +421,9 @@ public:
     std::vector<std::unique_ptr<Expr>> arguments; // 实参列表
     std::string resolvedSignature;                // 重载决议后的签名 key（Task 2.10，
                                                   //   语义层写回；IR 层按此生成 mangled 符号）
+    std::string resolvedType;                     // 内置构造器推导的 结果<T,E>/可选<T> 类型
+                                                  //   （Task 3.5，语义层写回；IR 层按此
+                                                  //    降级为合成结构体构造）
 };
 
 // 成员访问：对象.成员 或 对象->成员
@@ -504,6 +566,8 @@ public:
     int totalSize = 0;                       // 总大小（字节，语义层计算回填）
     int align = 1;                           // 对齐（字节，语义层计算回填）
     bool layoutComputed = false;             // 布局是否已计算（语义层回填标记）
+    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
+    AccessSpecifier access = AccessSpecifier::Public;
 };
 
 // 枚举成员：成员名 + 值（显式赋值或自动递增，Task 2.7）
@@ -522,6 +586,8 @@ public:
 
     std::string name;                        // 枚举类型名
     std::vector<EnumMember> members;         // 成员列表（值已求值）
+    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
+    AccessSpecifier access = AccessSpecifier::Public;
 };
 
 // 变量声明：变量/常量/静态 类型前置或冒号后置（CN规范类型前置，兼容冒号后置）
@@ -677,9 +743,121 @@ public:
     std::unique_ptr<BlockStmt> body;                   // 函数体（为空表示函数原型声明）
     std::string sigKey;                                // 重载签名 key（Task 2.10，
                                                        //   语义层注册时写回；IR/codegen 按此 mangling）
+    // ---- 模块级可见性（Task 3.6，规格书08-三 标签式） ----
+    // 顶层声明的模块可见性：公开: 后声明 -> Public（跨模块可导入）；
+    //   私有: 后声明 -> Private（仅本模块可见）。默认 Public。
+    // 与类内成员访问标签（ClassMember::access）同语法不同作用域：
+    //   顶层标签由 parser.cpp 顶层循环维护；类内标签由 parseClassDecl 维护。
+    AccessSpecifier access = AccessSpecifier::Public;
 };
 
-// 程序：顶层声明集合（函数/结构体/枚举/联合体）
+// 导入声明：导入 模块路径 | 从 模块路径 导入 名称列表（Task 3.6，规格书08-二）
+//   importPath   : 模块路径（. 分隔，如 数学.平方根 / 网络协议.HTTP.请求）
+//   fromImport   : true 表示 从 模块 导入 名1, 名2（false 表示 导入 整个模块）
+//   names        : fromImport=true 时的导入名称列表
+class ImportDecl : public AstNode {
+public:
+    ImportDecl() : AstNode(NodeType::ImportDecl) {}
+    void accept(AstVisitor& visitor) override { visitor.visitImportDecl(this); }
+
+    std::string importPath;                    // 模块路径（如 数学.平方根）
+    bool fromImport = false;                   // 是否为 从...导入 形式
+    std::vector<std::string> names;            // 导入名称列表（fromImport 时有效）
+};
+
+// 类成员：类体内的字段/方法/构造/析构/运算符重载/友元（Task 3.1，规格书06）
+// kind 取值（英文枚举，见 ClassMemberKind）：
+//   Field       : 字段声明（类型 名称 [= 初始值]）
+//   Method      : 方法声明（[虚拟|重写|抽象|常量] 函数 名(...) -> 类型 { 体 }）
+//   Constructor : 构造函数（函数 类名(...) { 体 }）
+//   Destructor  : 析构函数（函数 ~类名() { 体 }）
+//   Operator    : 运算符重载成员（函数 运算符X(右操作数) -> 类型 { 体 }）
+//   Friend      : 友元声明（友元 函数 名(...) 或 友元 类 名）
+enum class ClassMemberKind {
+    Field,          // 字段
+    Method,         // 方法
+    Constructor,    // 构造函数
+    Destructor,     // 析构函数
+    Operator,       // 运算符重载（函数 运算符X）
+    Friend          // 友元声明
+};
+
+// 类成员节点：字段/方法/构造/析构/运算符重载/友元（Task 3.1）
+class ClassMember : public AstNode {
+public:
+    ClassMember() : AstNode(NodeType::ClassMember) {}
+    void accept(AstVisitor& visitor) override { visitor.visitClassMember(this); }
+
+    ClassMemberKind kind = ClassMemberKind::Field;  // 成员种类
+    AccessSpecifier access = AccessSpecifier::Public; // 可见性（当前访问标签段）
+
+    // ---- 字段（kind=Field） ----
+    std::string name;                              // 字段名/方法名/友元目标名
+    std::string typeName;                          // 字段类型（含 结果<T,E> 等模板类型）
+    std::unique_ptr<Expr> initializer;             // 字段初始值（可为空）
+
+    // ---- 方法/构造/析构/运算符重载（kind=Method/Constructor/Destructor/Operator） ----
+    bool isVirtual = false;                        // 虚拟 修饰（虚函数）
+    bool isOverride = false;                       // 重写 修饰
+    bool isAbstract = false;                       // 抽象 修饰（纯虚函数，无实现体）
+    bool isConstMethod = false;                    // 常量 修饰（常量成员函数，Task 3.9）
+    bool isStatic = false;                         // 静态 修饰（静态方法/字段，Task 3.9）
+    std::vector<std::unique_ptr<ParamDecl>> params;// 参数列表
+    std::string returnType;                        // 返回类型（方法/运算符重载）
+    std::string operatorSym;                       // 运算符符号（kind=Operator，如 "+"）
+    std::unique_ptr<BlockStmt> body;               // 方法体（抽象/接口签名为空）
+
+    // ---- 友元（kind=Friend） ----
+    bool isFriendClass = false;                    // 友元 类 名（true）或 友元 函数（false）
+};
+
+// 类声明：类 名 [: 父类名|接口名] { 访问标签段* }（Task 3.1，规格书06-一）
+//   baseName    : 父类名（单继承；可为空）
+//   interfaces  : 实现的接口名列表（可多个，规格书06-六 接口实现）
+//   members     : 成员列表（按声明顺序；语义层按访问标签段分组）
+class ClassDecl : public AstNode {
+public:
+    ClassDecl() : AstNode(NodeType::ClassDecl) {}
+    void accept(AstVisitor& visitor) override { visitor.visitClassDecl(this); }
+
+    std::string name;                              // 类名
+    std::string baseName;                          // 父类名（可为空 = 无继承）
+    std::vector<std::string> interfaces;           // 实现的接口名列表
+    std::vector<std::unique_ptr<ClassMember>> members; // 类成员列表
+    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
+    AccessSpecifier access = AccessSpecifier::Public;
+};
+
+// 接口声明：接口 名 { 虚拟函数签名列表 }（Task 3.3，规格书06-六）
+// 接口只含虚函数签名（无实现体）；实现类通过 重写 提供实现。
+class InterfaceDecl : public AstNode {
+public:
+    InterfaceDecl() : AstNode(NodeType::InterfaceDecl) {}
+    void accept(AstVisitor& visitor) override { visitor.visitInterfaceDecl(this); }
+
+    std::string name;                              // 接口名
+    std::vector<std::unique_ptr<ClassMember>> members; // 方法签名列表（kind=Method，body 为空）
+    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
+    AccessSpecifier access = AccessSpecifier::Public;
+};
+
+// 泛型声明：泛型 <类型 T> 类/函数（Task 3.8，规格书06-十三）
+//   typeParams   : 类型参数名列表（如 [T, U]）
+//   constraints  : 类型参数接口约束（constraints[T] = 接口名；空表示无约束）
+//   innerClass   : 被泛型修饰的类声明（泛型类）
+//   innerFunc    : 被泛型修饰的函数声明（泛型函数；与 innerClass 二选一）
+class GenericDecl : public AstNode {
+public:
+    GenericDecl() : AstNode(NodeType::GenericDecl) {}
+    void accept(AstVisitor& visitor) override { visitor.visitGenericDecl(this); }
+
+    std::vector<std::string> typeParams;           // 类型参数名列表
+    std::vector<std::string> constraints;          // 接口约束（与 typeParams 一一对应，空串=无约束）
+    std::unique_ptr<ClassDecl> innerClass;         // 泛型类（可为空）
+    std::unique_ptr<FunctionDecl> innerFunc;       // 泛型函数（可为空）
+};
+
+// 程序：顶层声明集合（函数/结构体/枚举/联合体/类/接口/导入/泛型）
 class Program : public AstNode {
 public:
     Program() : AstNode(NodeType::Program) {}
@@ -688,6 +866,10 @@ public:
     std::vector<std::unique_ptr<FunctionDecl>> declarations;  // 顶层函数声明
     std::vector<std::unique_ptr<StructDecl>> structs;         // 结构体/联合体声明（Task 2.7）
     std::vector<std::unique_ptr<EnumDecl>> enums;             // 枚举声明（Task 2.7）
+    std::vector<std::unique_ptr<ClassDecl>> classes;          // 类声明（Task 3.1）
+    std::vector<std::unique_ptr<InterfaceDecl>> interfaces;   // 接口声明（Task 3.3）
+    std::vector<std::unique_ptr<ImportDecl>> imports;         // 导入声明（Task 3.6）
+    std::vector<std::unique_ptr<GenericDecl>> generics;       // 泛型声明（Task 3.8）
 };
 
 } // namespace cn_compiler

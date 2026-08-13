@@ -26,6 +26,12 @@ public:
     void visitVarDecl(VarDecl* node) override;
     void visitStructDecl(StructDecl* node) override;
     void visitEnumDecl(EnumDecl* node) override;
+    // 阶段3 OOP/错误处理/模块/泛型 声明节点（Task 3.1/3.3/3.6/3.8）
+    void visitClassDecl(ClassDecl* node) override;
+    void visitClassMember(ClassMember* node) override;
+    void visitInterfaceDecl(InterfaceDecl* node) override;
+    void visitImportDecl(ImportDecl* node) override;
+    void visitGenericDecl(GenericDecl* node) override;
     // 语句节点
     void visitBlockStmt(BlockStmt* node) override;
     void visitExprStmt(ExprStmt* node) override;
@@ -46,6 +52,8 @@ public:
     void visitBoolLiteral(BoolLiteral* node) override;
     void visitNullLiteral(NullLiteral* node) override;
     void visitIdentifierExpr(IdentifierExpr* node) override;
+    void visitSelfExpr(SelfExpr* node) override;
+    void visitSuperExpr(SuperExpr* node) override;
     void visitBinaryExpr(BinaryExpr* node) override;
     void visitUnaryExpr(UnaryExpr* node) override;
     void visitAssignmentExpr(AssignmentExpr* node) override;

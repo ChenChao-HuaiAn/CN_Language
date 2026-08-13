@@ -103,8 +103,20 @@ extern "C" {
     CNRT_EXPORT void printLineU128(const unsigned long long* v);   // 打印无符号128位（换行）
 
     // 运行时错误（规格书附录B错误码，Task 2.4 数组/指针运行时检查调用）
-    // 错误码：2=数组越界、3=空指针解引用（打印错误信息后终止程序）
+    // 错误码：1=除零、2=数组越界、3=空指针解引用（打印错误信息后终止程序）
+    // 阶段3（Task 3.5）：扩展 4=内存分配失败、5=文件打开失败、6=无效参数、
+    //                   7=资源未初始化、8=溢出
     CNRT_EXPORT void __cn_runtime_error(long long errorCode);
+    // 错误码 -> 错误消息文本（不终止进程；供测试与诊断直接验证消息表）
+    // 未注册错误码返回 "未知运行时错误"
+    CNRT_EXPORT const char* __cn_error_message(long long errorCode);
+
+    // 对象内存辅助（阶段3 Task 3.1，规格书06 类实例化/删除）
+    // NewObject 展开调用：分配 size 字节堆内存（失败时报错误码4并终止），
+    //   返回对象指针（虚表指针初始化由 codegen 负责——对象首地址 8 字节）
+    CNRT_EXPORT void* __cn_object_new(long long size);
+    // DeleteObject 展开调用：释放对象内存（安全释放 nullptr）
+    CNRT_EXPORT void __cn_object_delete(void* ptr);
 
     // 程序入口（crt0风格，规格书10.4：调用CN语言 主 函数）
     CNRT_EXPORT int entry(int argc, char** argv);

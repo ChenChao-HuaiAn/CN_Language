@@ -20,7 +20,15 @@
 #include "cn_compiler/parser/ast.hpp"
 
 namespace cn_compiler {
-class SemanticAnalyzer;  // 前向声明（Task 2.7：IR 查询结构体布局/枚举值）
+class SemanticAnalyzer;   // 前向声明（Task 2.7：IR 查询结构体布局/枚举值）
+struct ClassMemberInfo;   // 前向声明（阶段3：类方法信息，semantic.hpp 定义）
+
+// 类方法符号 key：类名$sigKey（sigKey=名#参数串）。
+// codegen classMethodSymbol 生成 nameMangle(类名$名#参数串)，IR 侧 func.mangledName
+// 直接存 类名$sigKey，emitFunctionHeader 经 symbolName -> nameMangle 产生完全一致符号。
+// （ir_oop.cpp 定义，ir_oop_call.cpp 调用）
+std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
+
 namespace ir {
 
 // IR指令操作码（规格书7.3指令分类，阶段一子集 + Task 2.3 类型系统完善）
@@ -82,6 +90,17 @@ enum class Opcode {
     Call,           // 直接函数调用（extra=函数名）
     CallIndirect,   // 间接调用函数指针（operand[0]=指针寄存器，Task 2.2）
     Return,         // 返回（operand[0]=返回值寄存器，可为空）
+
+    // ---- 阶段3 OOP：对象/虚调用（Task 3.1/3.2，规格书06） ----
+    NewObject,      // 新建对象（Task 3.1）：operand[0]=类名（extra=类名+对象大小），
+                    //   结果=对象指针；codegen 分配堆内存并初始化虚表指针
+    DeleteObject,   // 删除对象（Task 3.1）：operand[0]=对象指针，无结果；
+                    //   codegen 调用析构并释放内存
+    VirtualCall,    // 虚调用（Task 3.2，规格书06-四/五）：operand[0]=对象指针，
+                    //   operand[1..]=实参，extra=虚函数名（codegen 查虚表槽位间接跳转），
+                    //   结果类型 inst.type（返回类型）
+    VtableAddr,     // 加载虚表地址（Task 3.2）：operand[0]=对象指针，结果=虚表指针；
+                    //   供 codegen 初始化子类虚表/虚调用前取表
 
     // ---- 其他 ----
     FuncAddr,       // 加载函数地址（extra=函数名，Task 2.2 函数指针赋值）
@@ -159,6 +178,8 @@ struct IRFunction {
     //   非空时 codegen 用它作链接符号；为空回退 name（内置/主/无参函数）。
     std::string mangledName;
     std::string returnType;                    // 返回类型（IR类型）
+    std::string returnTypeSrc;                 // 返回类型（源码类型，Task 3.5：
+                                               //   可选<T>/结果<T,E> 模板类型判定用）
     // 参数列表 (源码名, IR类型)：对外接口保持源码名（可读性/测试契约）
     std::vector<std::pair<std::string, std::string>> params;
     // 参数唯一内部名（与 params 一一对应，供代码生成层分配独立栈槽，
@@ -219,6 +240,13 @@ public:
     // 主入口：生成IR模块
     ir::IRModule generate(Program* program);
 
+    // ---- 阶段3 OOP：供子模块（ir_oop.cpp/ir_oop_call.cpp）调用的公开辅助 ----
+    // 生成表达式（ir_oop_call.cpp 的实参展开复用，与 visitCallExpr 实参路径一致）
+    ir::IRValue genExprForOop(Expr* node) { return genExpr(node); }
+    // 生成调用实参（整参扩展/i128 保宽/f32->f64）：OOP 调用展开复用
+    std::vector<ir::IRValue> buildCallArgsOop(
+        const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc);
+
     // ==================== AstVisitor 接口实现 ====================
     // 声明节点
     void visitProgram(Program* node) override;
@@ -227,6 +255,11 @@ public:
     void visitVarDecl(VarDecl* node) override;
     void visitStructDecl(StructDecl* node) override;
     void visitEnumDecl(EnumDecl* node) override;
+    // 阶段3 OOP：类声明/自身/父类（Task 3.1，串联集成子任务实现）
+    void visitClassDecl(ClassDecl* node) override;
+    void visitClassMember(ClassMember* node) override;
+    void visitSelfExpr(SelfExpr* node) override;
+    void visitSuperExpr(SuperExpr* node) override;
     // 语句节点
     void visitBlockStmt(BlockStmt* node) override;
     void visitExprStmt(ExprStmt* node) override;
@@ -432,6 +465,70 @@ private:
     std::vector<std::string> switchStack_;
     // i128 临时变量计数器（每个临时变量分配独立唯一名 __i128tN）
     int i128TempCounter_ = 0;
+
+    // ---- 阶段3 OOP 调用/析构（ir_oop_call.cpp 实现） ----
+    // 函数收尾钩子：类类型局部变量（有析构函数）离开作用域 -> DeleteObject（RAII）
+    void genClassDestructorCalls();
+    // 变量唯一内部名 -> 源码类型（genVarDecl 登记，析构扫描用）
+    std::unordered_map<std::string, std::string> oopVarSrcTypes_;
+
+    // ==================== 阶段3 OOP：类方法体/指令发射（Task 3.1/3.2，串联集成） ====================
+    // 提升单个类方法体为独立 IRFunction：
+    //   - this 指针为第一个参数（静态方法无 this）
+    //   - 方法签名符号沿用 ClassMemberInfo.sigKey（名#参数串），
+    //     codegen 按 类名$sigKey 生成链接符号（与虚表 dq 引用一致）
+    void emitClassMethod(const std::string& className, const ClassMemberInfo& mi);
+    // 生成方法体 IRFunction 的参数装载（this + 显式参数进入 varStack_ 最外层作用域）
+    void setupMethodParams(ir::IRFunction& func, const ClassMemberInfo& mi);
+    // ---- 阶段3 OOP 表达式/调用/字段钩子（ir_oop.cpp 实现，ir.cpp 调用点插入） ----
+    // 构造调用（类名(实参) -> NewObject + 构造体调用）与成员方法调用
+    //   （对象.方法：虚 -> VirtualCall；非虚 -> 直接 Call；类名.静态方法；父类.方法）
+    bool handleClassCallExpr(CallExpr* node);
+    // 类字段读取（visitMemberExpr 钩子）：实例字段（对象.字段）与静态字段（类名.字段）
+    bool handleClassMemberExpr(MemberExpr* node);
+    // 类字段左值地址（lvalueAddress 钩子）：返回 实例字段地址（this+偏移）或静态字段符号
+    bool handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr);
+    // 类字段赋值（visitAssignmentExpr 钩子）：对象.字段 = v / 类名.静态字段 = v
+    bool handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
+                                 const SourceLocation& loc);
+    // 方法体内直接字段读取（visitIdentifierExpr 钩子）：字段名 无 自身. 前缀
+    bool handleClassFieldRead(IdentifierExpr* node);
+    // 方法体内直接字段赋值（visitAssignmentExpr 钩子）：字段名 = v
+    bool handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
+                                const SourceLocation& loc);
+    // 方法体内直接字段自增/自减（visitUnaryExpr 钩子）：字段名++ / 字段名--
+    //   （缺陷5 修复：静态/实例字段不在 varStack_，原自增路径只读不写，须读-算-写回）
+    bool handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
+                                const SourceLocation& loc);
+    // 运算符重载（visitBinaryExpr 钩子）：左操作数为类实例且类有 运算符X 成员 ->
+    //   降级为成员方法调用（this=左操作数指针，实参=右操作数）
+    bool handleOperatorOverload(BinaryExpr* node, const ir::IRValue& left,
+                                const ir::IRValue& right);
+    // 名称是否为当前类的实例字段（非静态方法内、未被局部变量/参数遮蔽）
+    bool isInstanceField(const std::string& name) const;
+    // 内置构造器降级（visitCallExpr 钩子，Task 3.5）：正常(值)/错误(值)/某些(值)
+    //   -> 分配结果/可选合成结构体临时槽 + 写 是否正常/是否某些 + 值/错误值，
+    //   返回结构体地址（ptr）。返回 true 表示已处理（lastExpr_ 已设置）。
+    bool handleResultCtor(CallExpr* node);
+    // 生成 实例字段地址：this 指针（Load 自身参数槽）+ FieldAddr(类字段偏移)
+    ir::IRValue genInstanceFieldAddr(const std::string& fieldName,
+                                     const SourceLocation& loc);
+    // 生成 静态字段地址：ConstString 常量携带 ?static_类名_字段名 链接符号
+    //   （codegen emitConstLoad 对 ConstString 生成 lea rax, 符号 -> 地址值）
+    ir::IRValue genStaticFieldAddr(const std::string& className,
+                                   const std::string& fieldName,
+                                   const SourceLocation& loc);
+    // 推导表达式源码类型（标识符查变量表 / 自身=当前类 / 成员字段类型 / 调用返回类型）
+    std::string exprSrcType(Expr* node) const;
+    // 查询类字段源码类型（沿继承链；未找到返回空串）
+    std::string classFieldType(const std::string& className,
+                               const std::string& fieldName) const;
+    // 当前方法所属类名（visitClassDecl 设置；方法体内 自身/父类 解析用）
+    std::string currentClass_ = "";
+    // 当前方法是否静态（静态方法体内 自身 非法，字段访问解析用）
+    bool currentMethodStatic_ = false;
+    // 当前方法是否常量成员函数（常量方法体内禁止修改成员，Task 3.9 语义已检查）
+    bool currentMethodConst_ = false;
 };
 
 } // namespace cn_compiler

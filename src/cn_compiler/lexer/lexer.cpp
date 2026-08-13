@@ -40,14 +40,17 @@ bool isAsciiAlpha(char32_t c) {
     return (c >= U'a' && c <= U'z') || (c >= U'A' && c <= U'Z');
 }
 
-// 55个关键字 -> TokenType 映射表
+// 58个关键字 -> TokenType 映射表
 // 控制流(10)：如果/否则/当/循环/返回/中断/继续/选择/情况/默认
 // 类型(21)：整数/小数/整8~整128/正8~正128/浮32/浮64/布尔/字符/字符串/空类型/结构体/联合体/枚举
 // 声明(8)：函数/变量/导入/从/公开/私有/静态/自动
-// 常量(3)：真/假/无
-// OOP(9)：类/接口/保护/虚拟/重写/抽象/实现/自身/父类
+// 常量(4)：真/假/无/常量
+// OOP(10)：类/接口/保护/虚拟/重写/抽象/实现/自身/父类/友元
 // 错误处理(2)：结果/可选
 // 字面量前缀(2)：原始/多行
+// 泛型(1)：泛型
+// 注：运算符 为上下文关键字（非保留字），不在此表，仅当后随运算符符号且处于
+//     类/结构体函数定义上下文时由 parser 识别（Task 3.7）
 const std::unordered_map<std::string, TokenType>& keywordTable() {
     static const std::unordered_map<std::string, TokenType> kTable = {
         // ---- 控制流(10) ----
@@ -74,19 +77,21 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
         {"导入", TokenType::Kw_Import}, {"从", TokenType::Kw_From},
         {"公开", TokenType::Kw_Public}, {"私有", TokenType::Kw_Private},
         {"静态", TokenType::Kw_Static}, {"自动", TokenType::Kw_Auto},
-        // ---- 常量(3) ----
+        // ---- 常量(4) ----
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
-        {"无", TokenType::Kw_None},
-        // ---- OOP(9) ----
+        {"无", TokenType::Kw_None}, {"常量", TokenType::Kw_Const},
+        // ---- OOP(10) ----
         {"类", TokenType::Kw_Class}, {"接口", TokenType::Kw_Interface},
         {"保护", TokenType::Kw_Protected}, {"虚拟", TokenType::Kw_Virtual},
         {"重写", TokenType::Kw_Override}, {"抽象", TokenType::Kw_Abstract},
         {"实现", TokenType::Kw_Implements}, {"自身", TokenType::Kw_Self},
-        {"父类", TokenType::Kw_Super},
+        {"父类", TokenType::Kw_Super}, {"友元", TokenType::Kw_Friend},
         // ---- 错误处理(2) ----
         {"结果", TokenType::Kw_Result}, {"可选", TokenType::Kw_Optional},
         // ---- 字面量前缀(2) ----
         {"原始", TokenType::Kw_Raw}, {"多行", TokenType::Kw_MultiLine},
+        // ---- 泛型(1) ----
+        {"泛型", TokenType::Kw_Generic},
     };
     return kTable;
 }

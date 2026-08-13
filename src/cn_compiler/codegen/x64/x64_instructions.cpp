@@ -146,7 +146,17 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
     }
     if (inst.opcode == ir::Opcode::ConstString) {
         // 字符串常量：LEA 加载常量池标签地址到 rax -> 结果槽
-        writer.line("lea rax, " + inst.extra);
+        // 阶段3（Task 3.9，E2E 28 修复）：静态字段地址符号（IR 层生成
+        //   "?static_类名$字段名" 原始中文）须经 nameMangle 修饰——
+        //   ml64 对 asm 中的原始 UTF-8 中文符号报 A2044 invalid character，
+        //   且须与 .data 段定义符号（staticFieldSymbol = "?static_" + nameMangle）
+        //   一致才能链接。
+        std::string sym = inst.extra;
+        const std::string staticPrefix = "?static_";
+        if (sym.compare(0, staticPrefix.size(), staticPrefix) == 0) {
+            sym = staticPrefix + nameMangle(sym.substr(staticPrefix.size()));
+        }
+        writer.line("lea rax, " + sym);
         writer.line("mov " + dst + ", rax");
         return;
     }
@@ -1585,6 +1595,13 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
             break;
         case ir::Opcode::Phi:
             writer.comment("Phi节点（阶段一预留，无实际汇编）");
+            break;
+        // 阶段3 OOP（Task 3.1/3.2）：新建对象/删除对象/虚调用/虚表地址
+        case ir::Opcode::NewObject:
+        case ir::Opcode::DeleteObject:
+        case ir::Opcode::VirtualCall:
+        case ir::Opcode::VtableAddr:
+            emitOopInstruction(writer, inst);
             break;
         default:
             writer.comment("未支持操作码");

@@ -435,6 +435,12 @@ void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& mod
     writer.raw("EXTERN __cn_u64_to_f64:PROC");
     writer.raw("EXTERN printLineI128:PROC");
     writer.raw("EXTERN printLineU128:PROC");
+    // 阶段3 OOP（Task 3.1）：对象内存辅助函数（堆分配/释放）
+    writer.raw("EXTERN __cn_object_new:PROC");
+    writer.raw("EXTERN __cn_object_delete:PROC");
+    // 阶段3 OOP（Task 3.2）：虚表符号引用（MASM 单遍汇编，须先 EXTERN）
+    //   EXTERN 后 .rdata 段定义（emitOopGlobals 在 emitCodeHeader 前发射，
+    //   已定义符号在 definedSymbols 中，此处仅为指令引用兜底）
     // 收集本模块已定义的函数链接符号（PROC 定义），避免对自身重复 EXTERN
     // Task 2.10：重载函数用 mangledName（名#参数串）作链接符号
     std::unordered_set<std::string> definedSymbols;
@@ -745,6 +751,11 @@ std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
     // 重置浮点常量池（模块级状态，每次生成独立）
     floatConstLabels_.clear();
     floatConstOrder_.clear();
+    // 重置阶段3 OOP 状态（虚表/静态字段去重集合，每次生成独立）
+    emittedVtables_.clear();
+    emittedStatics_.clear();
+    vtableRefs_.clear();
+    staticRefs_.clear();
     // 预扫描：先收集全部浮点常量（.data 段先于函数指令生成，
     // 若在指令生成时注册则 .data 段缺失 @fpN 标签）
     for (auto& function : module.functions) {
@@ -756,6 +767,8 @@ std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
             }
         }
     }
+    // 预收集：OOP 指令引用的虚表符号（供 EXTERN 声明与 .rdata 发射）
+    collectClassRefs(module, vtableRefs_, staticRefs_);
     AsmWriter writer;
     // 文件头注释
     writer.raw("; ============================================");
@@ -765,8 +778,12 @@ std::string X64CodeGenerator::generateAssembly(const ir::IRModule& module) {
     writer.raw("; 由 cn_compiler 自动生成，请勿手动编辑");
     writer.raw("; ============================================");
     writer.raw("");
-    // 数据段
+    // 数据段（字符串/浮点常量 + 阶段3 静态字段 .data）
     emitDataSection(writer, module);
+    // 阶段3 OOP 全局：虚表（.rdata）+ 静态字段（.data）
+    std::unordered_set<std::string> staticSymbols;
+    emitOopGlobals(writer, staticSymbols);
+    staticRefs_.insert(staticSymbols.begin(), staticSymbols.end());
     writer.raw("");
     // 代码段
     emitCodeHeader(writer, module);

@@ -350,8 +350,11 @@ static int buildExe(const CliOptions& options, const std::string& file,
     if (!readSourceFile(file, source, error)) return 1;
 
     // 2. 编译器流水线：词法 -> 语法 -> 语义 -> IR -> 汇编文本
+    //    Task 3.6 模块系统：统一走多文件流水线（单文件无导入时行为与 runPipeline 等价；
+    //    含导入时自动加载依赖模块）。source 已读取但多文件流水线按文件路径重新加载
+    //    （含依赖模块），保持一致的文件解析语义。
     cn_compiler::driver::PipelineOutput output;
-    if (cn_compiler::driver::runPipeline(source, file, toDriverOptions(options), output) != 0) {
+    if (cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output) != 0) {
         return 1;
     }
 
@@ -439,7 +442,8 @@ static int runCompile(const CliOptions& options, const std::string& file) {
         return 1;
     }
     cn_compiler::driver::PipelineOutput output;
-    if (cn_compiler::driver::runPipeline(source, file, toDriverOptions(options), output) != 0) {
+    // Task 3.6：compile 命令走多文件流水线（自动加载导入依赖）
+    if (cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output) != 0) {
         return 1;
     }
     // 输出 .asm（--output 指定或默认 target/<stem>.asm）
@@ -486,6 +490,7 @@ static int runRun(const CliOptions& options, const std::string& file) {
 }
 
 // check 命令：仅检查语法和类型，不生成代码
+// Task 3.6：走多文件流水线到语义阶段（自动加载导入依赖；不生成代码）
 static int runCheckCommand(const CliOptions& options, const std::string& file) {
     std::string source;
     std::string error;
@@ -493,7 +498,8 @@ static int runCheckCommand(const CliOptions& options, const std::string& file) {
         std::cerr << "错误: " << error << "\n";
         return 1;
     }
-    const int rc = cn_compiler::driver::runCheck(source, file, toDriverOptions(options));
+    cn_compiler::driver::PipelineOutput output;
+    const int rc = cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output);
     if (rc == 0) {
         std::cout << "检查通过: " << file << "\n";
     }
@@ -501,6 +507,7 @@ static int runCheckCommand(const CliOptions& options, const std::string& file) {
 }
 
 // ir 命令：输出IR（调试用）
+// Task 3.6：走多文件流水线（含导入依赖模块的 IR 一并生成）
 static int runIr(const CliOptions& options, const std::string& file) {
     std::string source;
     std::string error;
@@ -509,7 +516,7 @@ static int runIr(const CliOptions& options, const std::string& file) {
         return 1;
     }
     cn_compiler::driver::PipelineOutput output;
-    if (cn_compiler::driver::runPipeline(source, file, toDriverOptions(options), output) != 0) {
+    if (cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output) != 0) {
         return 1;
     }
     cn_compiler::driver::printIr(output.module);

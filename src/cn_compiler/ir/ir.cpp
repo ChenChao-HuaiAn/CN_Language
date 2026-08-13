@@ -57,6 +57,11 @@ const char* opcodeToString(Opcode opcode) {
         case Opcode::Call: return "调用";
         case Opcode::CallIndirect: return "间接调用";
         case Opcode::Return: return "返回";
+        // 阶段3 OOP（Task 3.1/3.2）
+        case Opcode::NewObject: return "新建对象";
+        case Opcode::DeleteObject: return "删除对象";
+        case Opcode::VirtualCall: return "虚调用";
+        case Opcode::VtableAddr: return "虚表地址";
         case Opcode::FuncAddr: return "函数地址";
         case Opcode::Phi: return "汇合";
     }
@@ -749,6 +754,13 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
     // 字段地址 = 基址 + 偏移（FieldAddr；-> 隐含空指针检查错误码3）
     if (node->getType() == NodeType::MemberExpr) {
         MemberExpr* member = static_cast<MemberExpr*>(node);
+        // ---- 阶段3 OOP（Task 3.1）：类字段左值地址（对象.字段 / 类名.静态字段） ----
+        // 实例字段 -> 对象指针 + FieldAddr；静态字段 -> ?static_类名_字段名 符号地址。
+        // 供 对象.字段 = v 赋值、&对象.字段 取地址 使用。
+        ir::IRValue oopAddr;
+        if (handleClassMemberLvalue(member, oopAddr)) {
+            return oopAddr;
+        }
         // 枚举引用不是左值，防御性按值处理
         if (!member->isArrow && member->object->getType() == NodeType::IdentifierExpr) {
             IdentifierExpr* ident = static_cast<IdentifierExpr*>(member->object.get());
@@ -791,11 +803,40 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
 
 // ==================== 声明节点 ====================
 
-// 程序入口：遍历顶层函数声明
+// 程序入口：遍历顶层函数声明与类声明（Task 3.1：类方法体提升为 IRFunction）
+// 顺序：先普通函数（含 主），再类方法（OOP 程序全链路）。
+// 注意：类方法体经 visitClassDecl 统一遍历 semantic 类符号表（含泛型实例化类）。
 void IRGenerator::visitProgram(Program* node) {
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             visitFunctionDecl(static_cast<FunctionDecl*>(decl.get()));
+        }
+    }
+    // 阶段3 OOP（Task 3.1）：类方法体提升。
+    // 1. AST 顶层类（program->classes）逐个提升（visitClassDecl 只处理 node 对应类）
+    std::unordered_set<std::string> astClassNames;
+    for (auto& cls : node->classes) {
+        astClassNames.insert(cls->name);
+        visitClassDecl(cls.get());
+    }
+    // 2. 泛型内嵌类（GenericDecl.innerClass）：其类定义方法体须提升
+    for (auto& gd : node->generics) {
+        if (gd->innerClass != nullptr) {
+            astClassNames.insert(gd->innerClass->name);
+            visitClassDecl(gd->innerClass.get());
+        }
+    }
+    // 3. 泛型单态化实例化类（semantic classes()[名$实参]，不在 AST 顶层类列表）：
+    //    实例化类符号含完整成员表（含继承并入），方法体 AST 沿用原泛型类定义。
+    if (semantic_ != nullptr) {
+        for (const auto& kv : semantic_->classes()) {
+            if (astClassNames.count(kv.first) > 0) continue;  // 已由 AST 路径提升
+            const ClassInfo& ci = kv.second;
+            for (const auto& mk : ci.methods) {
+                const ClassMemberInfo& mi = mk.second;
+                if (!mi.hasBody) continue;
+                emitClassMethod(ci.name, mi);
+            }
         }
     }
 }
@@ -809,6 +850,10 @@ ir::IRModule IRGenerator::generate(Program* program) {
     varCounter_ = 0;
     varStack_.clear();
     loopStack_.clear();
+    oopVarSrcTypes_.clear();
+    currentClass_.clear();
+    currentMethodStatic_ = false;
+    currentMethodConst_ = false;
     visitProgram(program);
     module_ = nullptr;
     return module;
@@ -826,6 +871,7 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     func.name = node->name;
     func.mangledName = node->sigKey.empty() ? node->name : node->sigKey;
     func.returnType = mapType(node->returnType.empty() ? "空类型" : node->returnType);
+    func.returnTypeSrc = node->returnType.empty() ? "空类型" : node->returnType;
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
     if (semantic_ != nullptr && !node->returnType.empty() &&
         semantic_->isStructType(types::canonical(node->returnType))) {
@@ -905,6 +951,10 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         setCurrentBlock(entry);
         endReturn("");
     }
+    // 阶段3 OOP（Task 3.1）：类类型局部变量（有析构函数）函数收尾 DeleteObject（RAII）。
+    // 注意：必须在块终止补齐后调用（genClassDestructorCalls 在最后一个未终止块
+    //   末尾插入 DeleteObject；若函数已有返回则不插入，避免破坏既有终止）
+    genClassDestructorCalls();
     module_->functions.push_back(std::move(func));
     function_ = nullptr;
 }
@@ -942,6 +992,46 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
 //   返回其地址（ptr）；调用方 CopyStruct 到目标。
 void IRGenerator::visitReturnStmt(ReturnStmt* node) {
     if (node->value != nullptr) {
+        // 阶段3（Task 3.5）：可选<T> 函数返回 无 —— 构造空可选结构体
+        //   （标志 是否某些=0 + 值=0）。原实现把 无（常量0）直接当返回地址，
+        //   epilogue 从地址 0 拷贝 -> 0xC0000005 访问冲突崩溃（E2E 24 修复）。
+        if (semantic_ != nullptr && function_ != nullptr &&
+            node->value->getType() == NodeType::NullLiteral &&
+            SemanticAnalyzer::isOptionalType(types::canonical(function_->returnTypeSrc))) {
+            const std::string optSrc = types::canonical(function_->returnTypeSrc);
+            const std::string t = types::canonical(SemanticAnalyzer::optionalTypeArg(optSrc));
+            if (!t.empty()) {
+                const std::string structName = SemanticAnalyzer::optionalStructName(t);
+                const StructDecl* decl = semantic_->findStruct(structName);
+                if (decl != nullptr) {
+                    const std::string temp = "__rctor" + std::to_string(varCounter_++);
+                    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                         temp, "ptr", node->location);
+                    registerVarSlots(temp, structName);
+                    ir::IRValue base = emitResult(ir::Opcode::AddrOf,
+                                                  {ir::IRValue::var(temp, "i64")},
+                                                  "ptr", temp, node->location);
+                    // 标志 是否某些 = 0（i32 存 4 字节，低字节即布尔 0）
+                    ir::IRValue flag = emitResult(ir::Opcode::ConstInt, {}, "i32", "0",
+                                                  node->location);
+                    emit(ir::Opcode::StorePtr, {base, flag}, ir::IRValue(), "",
+                         "i32", node->location);
+                    // 值字段 = 0（可选<T> 值字段偏移 8；按类型写 0）
+                    int valOff = 8;
+                    for (const auto& f : decl->fields) {
+                        if (f.name == "值") { valOff = semantic_->fieldOffsetOf(decl, f.name); }
+                    }
+                    ir::IRValue valAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
+                                                     std::to_string(valOff), node->location);
+                    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                                  node->location);
+                    emit(ir::Opcode::StorePtr, {valAddr, zero}, ir::IRValue(), "",
+                         "i64", node->location);
+                    endReturn(base.toString());
+                    return;
+                }
+            }
+        }
         // 结构体初始化返回：分配临时结构体变量（多槽），emitStructInitTo 写入，返回地址
         if (node->value->getType() == NodeType::StructInitExpr && semantic_ != nullptr) {
             StructInitExpr* init = static_cast<StructInitExpr*>(node->value.get());
@@ -1234,6 +1324,38 @@ void IRGenerator::genStmt(Stmt* node) {
 
 // 变量声明生成：Alloca + Store（Task 2.4：数组多槽分配 + 初始化列表）
 void IRGenerator::genVarDecl(VarDecl* node) {
+    // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名替换——
+    //   盒子<整32> -> 盒子$整32（语义层已单态化注册，IR 层按实例化类符号名
+    //   （类名$实参）字符串映射，使类初始化/NewObject 存储路径命中 findClass）。
+    if (semantic_ != nullptr && !node->funcPtr.isFunctionPtr() &&
+        !node->typeName.empty()) {
+        const std::size_t genLt = node->typeName.find('<');
+        const std::size_t genGt = node->typeName.rfind('>');
+        if (genLt != std::string::npos && genGt != std::string::npos &&
+            genGt > genLt) {
+            const std::string head = node->typeName.substr(0, genLt);
+            const std::string inner =
+                node->typeName.substr(genLt + 1, genGt - genLt - 1);
+            // 实例化符号名 = 类名$实参1$实参2（与语义层 instantiateGeneric 一致）
+            std::string inst = head;
+            std::size_t pos = 0;
+            while (pos <= inner.size()) {
+                const std::size_t comma = inner.find(',', pos);
+                const std::string arg = (comma == std::string::npos)
+                    ? inner.substr(pos) : inner.substr(pos, comma - pos);
+                std::size_t b = arg.find_first_not_of(" \t");
+                std::size_t e = arg.find_last_not_of(" \t");
+                std::string trimmed = (b != std::string::npos && e != std::string::npos)
+                    ? arg.substr(b, e - b + 1) : arg;
+                inst += "$" + types::canonical(trimmed);
+                if (comma == std::string::npos) break;
+                pos = comma + 1;
+            }
+            if (semantic_->findClass(inst) != nullptr) {
+                node->typeName = inst;
+            }
+        }
+    }
     // 源码类型（Task 2.4：整32* / 整32[5] 复合类型保留用于元素类型推断/数组槽数）
     const std::string srcType = node->funcPtr.isFunctionPtr() ? "函数指针" : node->typeName;
     // 类型推断：无显式类型时按初始值（阶段一简化）
@@ -1267,6 +1389,10 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）
     allocVar(node->name, irType, srcType, node->location);
     const std::string unique = lookupVarName(node->name);
+    // 登记变量源码类型（OOP 析构扫描用：类类型局部变量有析构函数时函数收尾 DeleteObject）
+    if (!unique.empty()) {
+        oopVarSrcTypes_[unique] = srcType;
+    }
 
     // 初始值处理：
     //   1. 数组初始化列表 { 1, 2, 3 }：逐元素 Store 到数组槽[i]（部分初始化补零）
@@ -1435,6 +1561,34 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                  std::to_string(size), "void", node->location);
             lastExpr_ = value;
             return;
+        }
+        // 缺陷1 修复：类对象初始化（资源 乙 = 甲）——类对象是堆指针语义，
+        //   直接 Store 源指针会让两个变量共享同一堆地址，RAII 重复释放堆损坏。
+        //   正确语义：新建独立堆对象 + 逐字段 CopyStruct 深拷贝。
+        if (semantic_ != nullptr && value.type == "ptr" &&
+            node->initializer->getType() == NodeType::IdentifierExpr) {
+            const std::string initSrcType = lookupSrcType(
+                static_cast<IdentifierExpr*>(node->initializer.get())->name);
+            const std::string canonSrc = types::canonical(initSrcType);
+            const std::string canonTgt = types::canonical(srcType);
+            if (semantic_->isClassType(canonTgt) &&
+                semantic_->isClassType(canonSrc)) {
+                const ClassInfo* ci = semantic_->findClass(canonTgt);
+                if (ci != nullptr) {
+                    // value 即源对象指针（Load 源变量槽）
+                    const std::string extra = canonTgt + "|" +
+                                              std::to_string(ci->totalSize);
+                    ir::IRValue newObj = emitResult(
+                        ir::Opcode::NewObject,
+                        {ir::IRValue::constant(canonTgt, "ptr")},
+                        "ptr", extra, node->location);
+                    emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
+                         std::to_string(ci->totalSize), "void", node->location);
+                    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique,
+                         "ptr", node->location);
+                    return;
+                }
+            }
         }
         if (value.type != irType && !irType.empty()) {
             value = emitResult(ir::Opcode::Cast, {value}, irType, "", node->location);
@@ -1630,6 +1784,12 @@ void IRGenerator::visitBoolLiteral(BoolLiteral* node) {
 // 数组名（Task 2.4）：退化为首元素地址（AddrOf 数组槽0，即基址）
 // 函数名（不在变量表）：生成 FuncAddr 指令（函数指针赋值场景：回调 = 加）
 void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
+    // ---- 阶段3 OOP（Task 3.1）：方法体内直接字段读取（无 自身. 前缀） ----
+    // 字段名 不在当前方法作用域（局部变量/参数）但命中类字段表 -> this+偏移 LoadPtr。
+    // 注意：须在 lookupVar 之前判定（字段可能被语义层并入作用域，但 IR 层未并入）。
+    if (handleClassFieldRead(node)) {
+        return;
+    }
     ir::IRValue reg = lookupVar(node->name);
     if (reg.id < 0) {
         // 未找到变量：可能是函数名（函数指针赋值）。生成函数地址。
@@ -1739,6 +1899,13 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
 void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
     ir::IRValue left = genExpr(node->left.get());
     ir::IRValue right = genExpr(node->right.get());
+    // ---- 阶段3 OOP（Task 3.7）：运算符重载降级为成员方法调用 ----
+    // 左操作数为类实例且类有 运算符X 成员（+ - * / % == != < > <= >=）时，
+    //   this=左操作数指针，实参=右操作数，Call 类名$运算符X#参数串（非虚）。
+    // 注意：须在字符串连接/指针算术分支之前（语义层重载决议优先于隐式转换）。
+    if (handleOperatorOverload(node, left, right)) {
+        return;
+    }
     bool isFloat = (left.type == "f32" || left.type == "f64" ||
                     right.type == "f32" || right.type == "f64");
     // ---- 字符串连接（Task 2.5）：两个指针（字符串/字符*）的 + -> 运行时连接 ----
@@ -1958,6 +2125,14 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
         }
         case Operator::Increment:
         case Operator::Decrement: {
+            // 缺陷5 修复：类字段（静态/实例）自增自减——字段名不在 varStack_，
+            //   须走"读-算-写回"专用路径（原实现只读不写，静态字段 总数++ 恒 0）
+            if (node->operand->getType() == NodeType::IdentifierExpr &&
+                handleClassFieldIncDec(
+                    static_cast<IdentifierExpr*>(node->operand.get()),
+                    node->op, node->location)) {
+                break;
+            }
             // 自增/自减：数值 x = x ± 1；指针 x = x ± 元素大小（Task 2.4）
             std::string deltaText = "1";
             if (operand.type == "ptr") {
@@ -2138,6 +2313,11 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     // 通过 lvalueAddress 计算字段地址（FieldAddr），StorePtr 写入
     if (node->target->getType() == NodeType::MemberExpr) {
         MemberExpr* member = static_cast<MemberExpr*>(node->target.get());
+        // ---- 阶段3 OOP（Task 3.1）：类字段赋值（对象.字段 = v / 类名.静态字段 = v） ----
+        // 实例字段 -> 对象指针+偏移 StorePtr；静态字段 -> ?static_ 符号 StorePtr。
+        if (handleClassMemberAssign(member, node->value.get(), node->location)) {
+            return;
+        }
         // 枚举成员赋值不合法（枚举值为只读常量）
         if (!member->isArrow && member->object->getType() == NodeType::IdentifierExpr) {
             IdentifierExpr* ident = static_cast<IdentifierExpr*>(member->object.get());
@@ -2338,11 +2518,52 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         return;
     }
     IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
+    // ---- 阶段3 OOP（Task 3.1）：方法体内直接字段赋值（无 自身. 前缀） ----
+    // 字段名 不在当前方法作用域但命中类字段表 -> this+偏移 StorePtr。
+    if (handleClassFieldAssign(ident, node->value.get(), node->location)) {
+        return;
+    }
+    // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）
+    const std::string unique = lookupVarName(ident->name);
+    // ---- 阶段3 OOP（缺陷1 修复）：类对象赋值深拷贝 ----
+    // 类对象是堆指针语义，`乙 = 甲` 若直接 Store 指针会导致两个变量槽共享
+    // 同一堆地址，RAII（函数返回 DeleteObject）对两个变量重复释放 -> 堆损坏。
+    // 正确语义：新建独立堆对象 + 逐字节拷贝字段（C++ 拷贝语义，含虚表指针，
+    //   同类虚表指针相同，覆盖后语义不变）。
+    if (semantic_ != nullptr &&
+        node->value->getType() == NodeType::IdentifierExpr) {
+        const std::string targetSrcType = lookupSrcType(ident->name);
+        const std::string canonTarget = types::canonical(targetSrcType);
+        const std::string valueSrcType = lookupSrcType(
+            static_cast<IdentifierExpr*>(node->value.get())->name);
+        const std::string canonValue = types::canonical(valueSrcType);
+        if (semantic_->isClassType(canonTarget) &&
+            semantic_->isClassType(canonValue)) {
+            const ClassInfo* ci = semantic_->findClass(canonTarget);
+            if (ci != nullptr && !isCompoundAssignOp(node->op)) {
+                // 源对象指针 = Load 源变量槽（类变量槽存对象指针）
+                ir::IRValue srcObj = genExpr(node->value.get());
+                // 新建独立对象（extra=类名|大小，codegen 初始化虚表指针）
+                const std::string extra = canonTarget + "|" +
+                                          std::to_string(ci->totalSize);
+                ir::IRValue newObj = emitResult(
+                    ir::Opcode::NewObject,
+                    {ir::IRValue::constant(canonTarget, "ptr")},
+                    "ptr", extra, node->location);
+                // 逐字节拷贝字段到新对象（深拷贝）
+                emit(ir::Opcode::CopyStruct, {newObj, srcObj}, ir::IRValue(),
+                     std::to_string(ci->totalSize), "void", node->location);
+                emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique, "ptr",
+                     node->location);
+                lastExpr_ = newObj;
+                return;
+            }
+        }
+    }
     ir::IRValue value = genExpr(node->value.get());
-    // 查找变量类型与唯一内部名
+    // 查找变量类型（唯一内部名 unique 已在上方类深拷贝分支前计算）
     std::string targetType = lookupVarType(ident->name);
     if (targetType.empty()) targetType = value.type;
-    const std::string unique = lookupVarName(ident->name);
     // ---- 结构体整体赋值（Task 完善A）：b = a（C 语义逐字段拷贝 = 内存拷贝） ----
     // 目标/源均为结构体变量（源码类型是自定义结构体）时，生成 CopyStruct 指令：
     //   CopyStruct dstAddr=AddrOf(目标), srcAddr=AddrOf(源), extra=拷贝字节数
@@ -2437,6 +2658,20 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
 // 直接调用（函数名）：Call 指令，extra=函数名
 // 间接调用（函数指针变量）：先取指针值，再 CallIndirect（operand[0]=指针寄存器）
 void IRGenerator::visitCallExpr(CallExpr* node) {
+    // ---- 阶段3 OOP（Task 3.1/3.2）：构造调用/成员方法调用/虚调用 ----
+    // 构造调用 类名(实参)：callee 为类类型名（NewObject + 构造体 Call）；
+    // 成员方法调用 对象.方法(实参)：callee 为 MemberExpr（虚 -> VirtualCall，
+    //   非虚/父类/静态 -> 直接 Call）。命中即返回，未命中（普通函数调用）走原路径。
+    if (handleClassCallExpr(node)) {
+        return;
+    }
+    // ---- 阶段3 错误处理（Task 3.5）：内置构造器 正常/错误/某些 降级 ----
+    // 语义层已推导 结果<T,E>/可选<T> 类型（resolvedType），此处分配合成结构体
+    // 临时槽 + 写 是否正常/是否某些 + 值/错误值，返回结构体地址（ptr）。
+    // 命中即返回，未命中（普通函数调用）走原路径。
+    if (handleResultCtor(node)) {
+        return;
+    }
     // 判断是否为直接函数名调用（函数名不在变量表中）
     bool isDirect = false;
     std::string calleeName;
@@ -2943,6 +3178,13 @@ void IRGenerator::visitStructInitExpr(StructInitExpr* node) {
 // ->  ：对象为结构体指针 → 指针值 + 字段偏移（隐含空指针检查，错误码3）
 // 枚举引用（枚举名.成员）：生成枚举成员整数值（ConstInt）
 void IRGenerator::visitMemberExpr(MemberExpr* node) {
+    // ---- 阶段3 OOP（Task 3.1）：类字段读取（对象.字段 / 类名.静态字段） ----
+    // 静态字段 -> 静态字段地址 + LoadPtr；实例字段 -> 对象指针 + FieldAddr + LoadPtr。
+    // 注意：方法调用（对象.方法()）由 visitCallExpr 的 handleClassCallExpr 先行拦截，
+    //   此处 MemberExpr 仅处理"读取字段值"；方法引用作值（函数指针）暂不支持（语义层预留）。
+    if (handleClassMemberExpr(node)) {
+        return;
+    }
     // 枚举引用：枚举名.成员 → 整数值（Task 2.7）
     if (!node->isArrow && node->object->getType() == NodeType::IdentifierExpr) {
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->object.get());
@@ -3040,11 +3282,33 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
         return;
     }
     // 字段类型（IR类型）
+    // 阶段3（Task 3.5）：结果/可选 合成结构体成员名映射（与 fieldOffsetOf 一致）——
+    //   源码 .正常/.值/.错误/.有值 对应 是否正常/错误值联合/是否某些；
+    //   .值/.错误 读内层联合体，类型 = 结果<T,E> 的 T/E 参数。
     std::string fieldSrcType = "";
-    for (const auto& f : decl->fields) {
-        if (f.name == node->memberName) {
-            fieldSrcType = f.type;
-            break;
+    const std::string& srcObjType = types::canonical(objSrcType);
+    if (SemanticAnalyzer::isResultType(srcObjType)) {
+        const std::vector<std::string> rargs = SemanticAnalyzer::resultTypeArgs(srcObjType);
+        if (node->memberName == "正常") {
+            fieldSrcType = "布尔";
+        } else if (node->memberName == "值" && rargs.size() == 2) {
+            fieldSrcType = rargs[0];
+        } else if (node->memberName == "错误" && rargs.size() == 2) {
+            fieldSrcType = rargs[1];
+        }
+    } else if (SemanticAnalyzer::isOptionalType(srcObjType)) {
+        if (node->memberName == "有值") {
+            fieldSrcType = "布尔";
+        } else if (node->memberName == "值") {
+            fieldSrcType = SemanticAnalyzer::optionalTypeArg(srcObjType);
+        }
+    }
+    if (fieldSrcType.empty()) {
+        for (const auto& f : decl->fields) {
+            if (f.name == node->memberName) {
+                fieldSrcType = f.type;
+                break;
+            }
         }
     }
     // 修复10（数组字段退化）：结构体数组字段（如 方形.顶点）作为值表达式时，

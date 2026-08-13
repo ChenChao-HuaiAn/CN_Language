@@ -36,6 +36,24 @@ extern "C" void cn_memset(void* dst, std::size_t size) {
     std::memset(dst, 0, size);
 }
 
+// ==================== 对象内存辅助（阶段3 Task 3.1，规格书06） ====================
+
+// 新建对象：分配 size 字节堆内存（NewObject 指令展开调用）
+// 失败时报错误码4（内存分配失败，规格书附录B）并终止，成功返回对象指针
+// 虚表指针初始化由 codegen 负责（对象首地址 8 字节，NewObject 后写入）
+extern "C" void* __cn_object_new(long long size) {
+    void* ptr = std::malloc(static_cast<std::size_t>(size > 0 ? size : 1));
+    if (ptr == nullptr) {
+        __cn_runtime_error(4);  // 内存分配失败（不返回）
+    }
+    return ptr;
+}
+
+// 删除对象：释放对象内存（DeleteObject 指令展开调用；安全释放 nullptr）
+extern "C" void __cn_object_delete(void* ptr) {
+    std::free(ptr);
+}
+
 // ==================== IO API（规格书10.1，Task 2.9 语义调整） ====================
 // 新语义（用户裁决，lessons.md 权重10.4）：
 //   打印   = println（自动换行，printf/puts 语义）——printLine
@@ -66,16 +84,26 @@ extern "C" void printLineFloat(double value) {
 
 // ==================== 运行时错误（规格书附录B错误码，Task 2.4） ====================
 
-// 运行时错误处理：打印错误信息（含错误码）后终止程序
-// 错误码：1=除零、2=数组越界、3=空指针解引用（规格书附录B）
-extern "C" void __cn_runtime_error(long long errorCode) {
-    const char* msg = "未知运行时错误";
+// 错误码 -> 错误消息文本（不终止进程；供测试与诊断直接验证消息表）
+// 错误码（规格书附录B）：1=除零、2=数组越界、3=空指针解引用；
+//   阶段3（Task 3.5）扩展：4=内存分配失败、5=文件打开失败、6=无效参数、
+//   7=资源未初始化、8=溢出
+extern "C" const char* __cn_error_message(long long errorCode) {
     switch (errorCode) {
-        case 1: msg = "除零错误"; break;
-        case 2: msg = "数组越界"; break;
-        case 3: msg = "空指针解引用"; break;
-        default: break;
+        case 1: return "除零错误";
+        case 2: return "数组越界";
+        case 3: return "空指针解引用";
+        case 4: return "内存分配失败";
+        case 5: return "文件打开失败";
+        case 6: return "无效参数";
+        case 7: return "资源未初始化";
+        case 8: return "溢出";
+        default: return "未知运行时错误";
     }
-    std::printf("运行时错误(错误码%lld): %s\n", errorCode, msg);
+}
+
+// 运行时错误处理：打印错误信息（含错误码）后终止程序
+extern "C" void __cn_runtime_error(long long errorCode) {
+    std::printf("运行时错误(错误码%lld): %s\n", errorCode, __cn_error_message(errorCode));
     std::exit(1);
 }

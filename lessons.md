@@ -5,6 +5,27 @@
 
 ## 高权重问题（必须避免）
 
+- [2026-08-14 01:08] **问题类型**: 逻辑错误（权重 18.2）
+  - **描述**: 阶段3 串联集成子任务首跑 6 个 IR OOP 发射测试失败：① 类方法重复提升（visitClassDecl 遍历全部 semantic classes() + visitProgram 对每类再调 → 动物.方法 出现 2 次）；② 重写方法虚调用误判（`狗.介绍` 中 `自身.叫声()` 走直接 Call `狗$叫声` 而非 VirtualCall——重写方法 isVirtual=false 但 vtableIndex>=0 覆盖父类槽位）；③ 析构函数与构造函数同名冲突（parser 对 `函数 ~资源` 记录 name=资源 无~ + kind=Destructor，语义层构造判定 `name==类名 && name[0]!='~'` 把析构误判为构造 → "重复定义方法"）；④ 语义层 visitCallExpr 成员调用对 `自身`/`父类`（类型 类名*）不剥指针（`自身.叫声()` 报"类 '动物*' 没有成员"）；⑤ 静态方法体内直接访问静态字段（`返回 总数`）IR 未处理（仅处理 类名.静态字段）；⑥ 实例方法调用 `->` 未剥指针（`动物* 实例; 实例->叫声()` 报"类型 '动物*' 不是类类型"）
+  - **原因**: ① visitClassDecl 设计为遍历语义全部类（为覆盖泛型实例化类），但 visitProgram 又对 AST 类逐个调用 → 双重遍历；② 虚调用判定用 `m->isVirtual` 漏掉重写方法（语义层重写方法 isVirtual=false、vtableIndex>=0）；③ parser 析构 name 不带 ~，语义层构造判定 name[0]!='~' 失效；④/⑥ 语义层与 IR 层的 自身/父类/-> 指针剥除逻辑未对齐（visitMemberExpr 已剥但 visitCallExpr 未剥）；⑤ 静态字段直接访问路径缺失
+  - **解决**: ① visitClassDecl 只处理 node 对应类（findClass），visitProgram 对 AST 类 + 泛型内嵌类 + 单态化实例化类（去重）分三路提升；② 虚调用判定改 `semantic_->classVtableIndex(类名, 方法名) >= 0`（重写方法同样虚分派）；③ 语义层析构 name 规范为 `~类名`（mi.name 加 ~ 前缀），构造判定排除 Destructor kind；④ 语义层 visitCallExpr 成员调用对 自身/父类 剥指针取类类型；⑤ IR handleClassFieldRead/Assign 补静态字段直接访问（沿继承链查 isStatic）；⑥ IR 实例方法调用 canonObjForMethod 对 -> 剥指针
+  - **预防**: 跨模块（语义层/IR/codegen）的 OOP 判定逻辑必须统一——重写方法虚分派判据用 vtableIndex（不是 isVirtual）、自身/父类/-> 一律剥指针取类类型、析构 name 规范为 ~类名；类方法提升路径须去重（AST 类 + 泛型实例化类分路，避免双重遍历）；新增能力先写 E2E 冒烟（cn ir 命令）验证语义层通过再断言 IR 指令
+  - **权重**: 18.2（逻辑错误8 × 详细分析1.8 × 解决方案1.5 × 预防措施1.3 × 已解决1.0 × 影响度0.8）
+
+- [2026-08-14 01:07] **问题类型**: 逻辑错误（权重 12.5）
+  - **描述**: codegen OOP 子任务单测首跑失败 5 类：① 虚表/静态字段符号断言用 `?vtable_动物`（实际 `vtableSymbol` 走 nameMangle 生成 `?vtable_?XX..@@Y`，`?动物` 中文字节被 UTF-8 十六进制修饰）；② 结果<T,E> 测试源码 `正常(a/b)` 推导 `结果<整32,整32>` 与返回类型 `结果<整32,字符串>` 不匹配（语义层报类型错误）；③ DeleteObject 无 semantic 时跳过析构调用（测试手工 IR 无 semantic 匹配不到 `call ?`）；④ 运行时错误码 4~8 死亡测试 `EXPECT_DEATH` 匹配中文消息失败（`std::printf` + `exit` 经 gtest 死亡测试管道无法捕获中文 UTF-8 输出）；⑤ `ObjectNewHugeSize` 触发真实分配失败 → `__cn_runtime_error(4)` → `exit(1)` 终止整个测试进程（而非仅该测试）
+  - **原因**: ① 符号断言未理解 nameMangle 的 UTF-8 十六进制修饰规则（`?vtable_?` 前缀 + 类名修饰）；② 结果类型参数必须与返回类型完全一致（`错误(-1)` 推断错误值类型=整32，返回类型错误值也应整32）；③ emitDeleteObject 的析构调用被 `semantic_ != nullptr` 条件门控（测试手工 IR 无 semantic）；④ Windows gtest 死亡测试子进程管道对中文 UTF-8 输出捕获不可靠（正则匹配失败）；⑤ 测试设计错误——`__cn_object_new` 对超大尺寸 malloc 失败按设计调用错误码4终止，不该在单测进程内触发
+  - **解决**: ① 断言改 `?vtable_?`/`?static_?` 前缀；② 测试源码统一错误类型为整32；③ emitDeleteObject 析构符号生成不依赖 semantic（classMethodSymbol 纯字符串拼装，无条件输出）；④ 新增 `__cn_error_message(code)` 导出（错误码→消息文本，不终止进程），测试直接 `EXPECT_STREQ` 验证消息表；⑤ 删除 ObjectNewHugeSize 真实分配测试，改签名可链接验证
+  - **预防**: 符号断言一律按 nameMangle 修饰规则匹配前缀（`?vtable_?`/`?static_?`）而非原始中文；错误码消息验证用导出的 `__cn_error_message`（避免死亡测试管道中文捕获问题）；凡"分配失败会 exit"的辅助函数不得在单测进程内触发真实失败路径；测试源码的结果/可选类型参数必须与函数返回类型完全一致
+  - **权重**: 12.5（逻辑错误8 × 详细分析1.5 × 解决方案1.3 × 预防措施1.2 × 已解决1.0）
+
+- [2026-08-14 01:07] **问题类型**: 设计缺陷（权重 10.4）
+  - **描述**: 阶段3 codegen 子任务发现 IR 层 OOP 指令发射（visitClassDecl/visitSelfExpr/visitSuperExpr 与 NewObject/VirtualCall 指令生成）尚未实现——IRGenerator 仅定义 Opcode 枚举（NewObject/DeleteObject/VirtualCall/VtableAddr），`visitProgram` 只遍历 FunctionDecl，类方法体未提升为 IRFunction。codegen 侧只能按约定契约展开指令，无法全链路验证类实例化/虚调用运行行为
+  - **原因**: 前序语义+IR 子任务只保证"IR 层可生成模块不崩溃"（语义层通过后 IR 不崩），未实现 OOP 指令发射与类方法体生成；codegen 子任务边界是"把语义层/IR 层的类产物落地"，IR 层 OOP 发射属后续 IR 子任务/模块集成
+  - **解决**: codegen 按契约实现指令展开（NewObject.extra="类名|大小字节"、VirtualCall.extra="类名.虚方法名" operand[0]=this、VtableAddr.extra=类名）；测试用"手工 IR 构造"验证展开正确性（test_x64_vtable.cpp），"全链路语义+IR+codegen"验证虚表/静态字段/结构体降级文本生成（test_x64_oop.cpp）；plans 文档明确遗留风险与后续 IR 子任务注意事项
+  - **预防**: 跨子任务接口（IR 指令 operand/extra 格式、符号命名）必须在前序子任务文档中明确契约；codegen 子任务用"手工 IR 指令"测试绕过 IR 发射缺口，用"全链路"测试验证已实现部分；driver 未接入 semantic 指针（默认构造无 OOP 查询）需模块系统子任务补齐
+  - **权重**: 10.4（设计缺陷10 × 详细分析1.5 × 解决方案1.3 × 预防措施1.2 × 已解决0.9）
+
 - [2026-08-13 22:55] **问题类型**: 逻辑错误（权重 9.4）
   - **描述**: E2E 用例 `19_语句终止` 编写"空循环体合法"演示时，用 `当 (次数 >= 3) { }` 作恒真空循环体——条件恒真且体内无任何语句/跳出手段，运行期死循环挂起进程，E2E 脚本超时。已改为 `当 (次数 > 99) { }`（恒假条件，循环体一次都不执行，退出后继续后续断言）
   - **原因**: 编写"空循环体合法"演示时只关注"循环体为空"，未意识到**空循环体必须配合恒假条件**（或体内有 `跳出`）才可执行终止；恒真空循环在 C/CN 语言中都是死循环（合法但永不终止）
@@ -373,3 +394,54 @@
   - **解决**: 见上 8 点，均定位根因后最小修复；新增回归测试：语义 `test_cast_expr.cpp`（BoolToIntConversion）+ `test_lambda.cpp`（ExplicitCaptureNoParamOk）+ E2E `17_audit/审查回归.cn`（8 场景）。
   - **预防**: ① i128 双槽值是"寄存器值"非"指针"，取低64位必须 Cast 而非 LoadPtr；② 语义层类型判定（数值族/可转换）须覆盖布尔/枚举/字符全类别；③ parser 各 lambda 捕获形态的探测条件必须一致（`]` 后 `(` 或 `{`）；④ 十六进制生成器统一走 `uint64HexText`（含前导0逻辑），禁止各自 `%llX`；⑤ 无符号字面量同样需要值域自适应的位宽提升；⑥ emitCast 分支按"更具体类型优先"排序（i128 目标先于通用 !toFloat）；⑦ emitCast 必须覆盖同类型与 u64↔i64 转换矩阵；⑧ MASM 超32位立即数用十六进制。
   - **权重**: 27.3（集成问题7 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
+## 高权重问题（Task 3.6 模块系统 新增，2026-08-14）
+
+- [2026-08-14 03:00] **问题类型**: 集成问题（权重 16.8）
+ - **描述**: 模块系统多文件编译首次集成验证：依赖模块（中文文件名 `数学.cn`）加载后编译器**挂起**（无输出、CPU 100%）。排查发现 Windows 上 `std::filesystem::u8path(path)` + `std::ifstream` 对**中文文件名路径**挂起（不返回也不报错）；改用 `MultiByteToWideChar(CP_UTF8)` + `_wfopen_s` 后正常。另一处：语义层模块限定调用重写 `node->callee = make_unique<IdentifierExpr>(memberName)` 后**继续用旧 MemberExpr 指针 mem**（`mem->memberName`/`moduleName` 引用），use-after-free → bad allocation 崩溃——重写销毁旧节点后必须先用局部变量缓存字段值
+ - **原因**: ① MSVC 的 `std::filesystem::u8path` 已弃用且实现有缺陷——对 UTF-8 中文路径转换后 ifstream 构造/读取挂起（未返回）；② AST 节点重写（`unique_ptr` 赋值销毁旧节点）后，保存的旧节点裸指针/引用全部悬垂，访问即 UB（此处表现为 bad allocation）
+ - **解决**: ① `module::readSourceFile` 用 `MultiByteToWideChar(CP_UTF8)` 转 UTF-16 宽路径 + `_wfopen_s` 读取；且**先试窄字符（fopen_s）再试 UTF-8 转换**（入口路径来自 cmd 为 GBK，依赖路径为源码内 UTF-8，两种编码兼容）；② 重写前 `const std::string funcName = mem->memberName;`（值拷贝），`moduleName` 同样值拷贝
+ - **预防**: Windows 读取 UTF-8 中文路径禁止用 `std::filesystem::u8path`（MSVC 挂起），统一 `MultiByteToWideChar(CP_UTF8)` + `_wfopen_s`；AST 节点重写/替换（`unique_ptr` 赋值、vector 移动）后禁止继续访问旧节点指针/引用，字段值必须先拷贝到局部变量；凡"重写 + 引用旧节点"模式（模块限定调用/类型替换/泛型实例化）都要遵守"先取值后替换"
+ - **权重**: 16.8（集成问题7 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0 × 影响度0.6）
+
+- [2026-08-14 03:00] **问题类型**: 逻辑错误（权重 12.6）
+ - **描述**: 模块系统单测 3 个失败：① `SemanticPrivateNotVisibleAcrossModules` 断言"跨模块私有函数不可见应报错"但 r.ok=true——测试变量名用 `结果`（结果<T,E> 模板关键字）导致语法错误，diags 有错但 makeUnit 不检查，parseSourceText 返回 false 后 unit->imports 空 → 主模块无依赖 → 拓扑序错位（数学模块被当入口，私有函数被合并）；② `ModuleUnit.imports`（parseSourceText 第5参数）与 `ast->imports`（parser 填充）不同步——driver 用 `unit->imports` 做依赖，若 parseSourceText 因语法错误提前 return，imports 空而 ast->imports 非空
+ - **原因**: ① CN 语言 `结果`/`可选` 是保留关键字（错误处理模板），不能作变量名；测试源码未遵守；② 依赖收集有"AST 缓存"与"单元字段"两份，解析失败时不同步
+ - **解决**: ① 测试变量名改 `数值`/`结果值`；② `topoSort` 的依赖源统一从 `ast->imports`（唯一权威，parser 填充）读取，废弃 `ModuleUnit.imports` 冗余字段（保留但不再作为依赖依据）
+ - **预防**: CN 语言测试源码变量名避开保留字（结果/可选/正常/错误/某些/自身/父类等）；模块依赖收集只依赖 AST 的 imports（parser 权威），任何"缓存字段"都可能因解析失败不同步；makeUnit 类测试辅助须检查 parseSourceText 返回值与 diags
+ - **权重**: 12.6（逻辑错误8 × 详细分析1.5 × 解决方案1.3 × 预防措施1.2 × 已解决1.0）
+
+## 高权重问题（Debug 全面审查子任务 新增，2026-08-14，5 项遗留缺陷已修复 ✅）
+
+> 本子任务系统性修复 E2E 子任务遗留的 5 项缺陷。以下逐项记录根因/解决/预防，
+> **全部已修复**（单测 901/901、E2E 28/28、编译零警告 /W4 /WX，clean-first 全量验证）。
+
+- [2026-08-14 05:00] **问题类型**: 逻辑错误（权重 16.8）**已修复 ✅**
+  - **描述**: 类对象指针共享 + RAII 自动释放 → 重复释放堆损坏（0xC0000374）。`资源 乙 = 甲` 类对象赋值浅拷贝——两个变量槽存同一堆指针，函数返回时 `genClassDestructorCalls` 对两个变量各发射一次 DeleteObject，同一地址被 double free。
+  - **原因**: 类对象是堆指针语义（变量槽存对象指针），但赋值走 genVarDecl/visitAssignmentExpr 的普通 Store 路径，直接把源指针拷给目标变量，无拷贝构造语义；RAII 析构扫描见两个"类类型变量"各释放一次。
+  - **解决**: 类对象赋值改为深拷贝——genVarDecl（声明初始化 `资源 乙 = 甲`）与 visitAssignmentExpr（`乙 = 甲`）两处均：NewObject 新建独立堆对象 + CopyStruct 逐字节拷贝字段（含虚表指针），再 Store 新指针到目标变量槽。
+  - **预防**: 类对象变量槽存的是**堆指针**而非值，赋值/初始化必须 NewObject+CopyStruct 深拷贝（C++ 拷贝语义），禁止直接 Store 源指针；RAII DeleteObject 与深拷贝语义必须配套，否则同一地址重复释放。
+
+- [2026-08-14 05:00] **问题类型**: 逻辑错误（权重 14.4）**已修复 ✅**
+  - **描述**: 运算符重载链式 `甲+乙+丙` 中间对象字段错乱（输出 2564+128i 而非 14+26i）。内层 `甲+乙` 的 BinaryExpr 结果类型在 IR 层无法识别，外层 `+` 落入 ptr+ptr 字符串连接分支（__cn_str_concat）。
+  - **原因**: IR 层 `exprSrcType` 只认 IdentifierExpr/SelfExpr/SuperExpr/MemberExpr，内层 BinaryExpr 返回空串 → handleOperatorOverload 的 `isClassType(canonLeft)` 判假 → 走 ptr+ptr 字符串连接；语义层虽推导了重载结果类型但未回传 IR 层。
+  - **解决**: BinaryExpr 新增 `resolvedType` 字段，语义层 visitBinaryExpr 命中运算符重载时写回重载方法返回类型；IR 层 `exprSrcType` 增加 BinaryExpr 分支读取该字段。
+  - **预防**: 语义层推导出的中间表达式类型（运算符重载/构造器等）须经 AST 节点字段回传给 IR 层（resolvedType/resolvedSignature 模式），不能只依赖 IR 层从 AST 形态反向推导；链式表达式场景必须测试内层表达式类型传递。
+
+- [2026-08-14 05:00] **问题类型**: 逻辑错误（权重 16.8）**已修复 ✅**
+  - **描述**: 泛型类带参构造字段写入未生效（读垃圾）、多类型参数/浮点字段错乱。`盒子<整32>(42)` 带参构造调用后字段读 5834336；`容器<浮64>.设置(3.5)` 读 0.000000；多类型参数读 4362144,128。
+  - **原因**: ① 构造函数查找用 `ci->methods.find(className)`——泛型实例化类构造方法名是原始泛型类名（盒子），className 是实例化名（盒子$整32），find 失败 → NewObject 后无构造体 Call，字段未初始化；② 泛型方法体提升时 `setupMethodParams` 用 AST 参数 typeName（仍是类型参数 T/U），未用 mi.paramTypes（已按实参替换），mapType(T) 误判为 ptr → 浮点/多类型参数位模式错乱。
+  - **解决**: ① 构造函数查找改为遍历 methods 找 isConstructor（不再用 className 作 key）；② setupMethodParams 优先用 mi.paramTypes（泛型单态化已替换）作为参数类型。
+  - **预防**: 泛型单态化后，实例化类的**构造方法名仍是原始泛型类名**（不是 类名$实参），凡按 className 查构造/方法名处须改用 isConstructor 标记遍历；泛型方法体 IR 提升的参数类型必须用 mi.paramTypes（已替换实参），禁止用 AST 原始 typeName（仍是类型参数）。
+
+- [2026-08-14 05:00] **问题类型**: 集成问题（权重 14.4）**已修复 ✅**
+  - **描述**: 被导入模块公开函数体引用私有符号 → 合并后未声明。`数学.cn` 公开函数 `三倍` 体内调用私有 `内部辅助`，合并时私有函数被过滤 → 语义层报"未声明 内部辅助"。
+  - **原因**: module mergeModuleDecls 对被导入模块只合并公开声明（私有不跨模块），但公开函数体可能依赖本模块私有函数，私有函数未随闭包带入导致公开函数体找不到符号。
+  - **解决**: mergeModuleDecls 增加"私有依赖闭包"——先收集公开函数体引用的函数名（AST 遍历 CallExpr），再迭代补齐被引用的私有函数（私有函数可能引用其他私有函数，迭代到不动点），公开函数 + 闭包私有函数一并合并。
+  - **预防**: 模块可见性过滤不能简单"只留公开"——公开声明体引用的私有依赖必须做闭包合并（否则公开函数体链接失败）；闭包收集须迭代到不动点（私有函数可引用其他私有函数）；AST 函数引用收集要覆盖全部语句/表达式节点类型（含 lambda 体）。
+
+- [2026-08-14 05:00] **问题类型**: 逻辑错误（权重 16.8）**已修复 ✅**
+  - **描述**: 静态字段自增 `总数++` 计数恒 0；友元引用参数 `账户& 账` 成员访问报"类型 '账户&' 不是类类型"。&表达式传参读 0 属既有指针语义（实测正常，非缺陷）。
+  - **原因**: ① visitUnaryExpr 的自增写回只处理 varStack_ 命中的普通变量（lookupVar），类字段（静态/实例）不在 varStack_ 中 → 只生成 LoadPtr 读值、无 StorePtr 写回；② types::canonical 不剥引用后缀 `&`，友元参数 `账户&` 经 findClass 判类类型失败。
+  - **解决**: ① 新增 handleClassFieldIncDec——类字段（静态/实例）自增自减走"读-算-写回"三段（LoadPtr + Add/Sub + StorePtr）；② types::canonical 剥引用后缀 `&`（账户& → 账户），substTypeParam 增加引用后缀递归替换（T& → 实参&）。
+  - **预防**: 类字段（静态/实例）不在 varStack_，凡"读取/赋值/自增"操作须经专用 handle 钩子（handleClassFieldRead/Assign/IncDec），不能依赖 lookupVar 命中；引用类型 `类型&` 在类型比较/类类型判定前必须先剥 `&`（canonical 统一处理）；自增自减必须"读-算-写回"三段，禁止只读不写。

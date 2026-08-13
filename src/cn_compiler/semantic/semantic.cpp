@@ -142,10 +142,30 @@ void SemanticAnalyzer::declareTypeName(const std::string& name, const SourceLoca
 }
 
 // 是否结构体/联合体类型名（Task 2.7）
+// 阶段3（Task 3.5）：结果<T,E>/可选<T> 降级为合成结构体（结果$T$E / 可选$T），
+//   模板类型名映射到合成名后同样视为结构体（供 IR 层 findStruct/typeSizeOf 使用）
 bool SemanticAnalyzer::isStructType(const std::string& type) const {
     if (type.empty() || program_ == nullptr) return false;
     for (const auto& s : program_->structs) {
         if (s->name == type) return true;
+    }
+    if (isResultType(type)) {
+        const std::vector<std::string> args = resultTypeArgs(type);
+        if (args.size() == 2) {
+            const std::string sname =
+                resultStructName(types::canonical(args[0]), types::canonical(args[1]));
+            for (const auto& s : program_->structs) {
+                if (s->name == sname) return true;
+            }
+        }
+    } else if (isOptionalType(type)) {
+        const std::string t = types::canonical(optionalTypeArg(type));
+        if (!t.empty()) {
+            const std::string sname = optionalStructName(t);
+            for (const auto& s : program_->structs) {
+                if (s->name == sname) return true;
+            }
+        }
     }
     return false;
 }
@@ -160,10 +180,29 @@ bool SemanticAnalyzer::isEnumType(const std::string& type) const {
 }
 
 // 查找结构体/联合体定义（未找到返回nullptr）
+// 阶段3（Task 3.5）：结果<T,E>/可选<T> 模板类型名映射到合成结构体名
 const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
     if (program_ == nullptr) return nullptr;
     for (const auto& s : program_->structs) {
         if (s->name == name) return s.get();
+    }
+    if (isResultType(name)) {
+        const std::vector<std::string> args = resultTypeArgs(name);
+        if (args.size() == 2) {
+            const std::string sname =
+                resultStructName(types::canonical(args[0]), types::canonical(args[1]));
+            for (const auto& s : program_->structs) {
+                if (s->name == sname) return s.get();
+            }
+        }
+    } else if (isOptionalType(name)) {
+        const std::string t = types::canonical(optionalTypeArg(name));
+        if (!t.empty()) {
+            const std::string sname = optionalStructName(t);
+            for (const auto& s : program_->structs) {
+                if (s->name == sname) return s.get();
+            }
+        }
     }
     return nullptr;
 }
@@ -336,11 +375,34 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
     return bestKey;
 }
 
-// 扩展隐式转换（Task 2.7）：枚举↔整数（枚举本质为整32）；枚举间须同名；结构体须同名
+// 扩展隐式转换（Task 2.7 + 阶段3）：枚举↔整数；枚举间须同名；结构体须同名；
+// 结果<T,E>/可选<T> 模板类型须同模板结构（Task 3.5）
 bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
                                       const std::string& toRaw) const {
     const std::string from = canonicalType(fromRaw);
     const std::string to = canonicalType(toRaw);
+    // 模板类型兼容（Task 3.5）：结果<T,E> 与 结果<T,E> 须完全一致；
+    //   结果<A,B> 与 结果<C,D>（A可转C 且 B可转D）允许（错误码类型宽化）
+    const bool fromResult = isResultType(from);
+    const bool toResult = isResultType(to);
+    if (fromResult && toResult) {
+        const std::vector<std::string> fa = resultTypeArgs(from);
+        const std::vector<std::string> ta = resultTypeArgs(to);
+        if (fa.size() == 2 && ta.size() == 2) {
+            return canConvertType(fa[0], ta[0]) && canConvertType(fa[1], ta[1]);
+        }
+        return false;
+    }
+    const bool fromOpt = isOptionalType(from);
+    const bool toOpt = isOptionalType(to);
+    if (fromOpt && toOpt) {
+        const std::string fa = optionalTypeArg(from);
+        const std::string ta = optionalTypeArg(to);
+        return !fa.empty() && !ta.empty() && canConvertType(fa, ta);
+    }
+    // 空指针常量 -> 可选<T>：视为空可选值（无）（Task 3.5，规格书07-三）
+    if (from == "空类型*" && toOpt) return true;
+    if (fromResult || toResult || fromOpt || toOpt) return false;  // 模板与非模板不可转
     const bool fromEnum = isEnumType(from);
     const bool toEnum = isEnumType(to);
     // 枚举 ↔ 整数：双向允许（枚举值可赋给整型变量；整数可赋给枚举变量）
@@ -365,8 +427,19 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     if (types::isArray(type)) {
         return typeSizeOf(types::arrayElemOf(type)) * types::arrayLenOf(type);
     }
+    // 阶段3（Task 3.5）：结果<T,E>/可选<T> 已降级为合成结构体，按结构体布局
+    if (isResultType(type) || isOptionalType(type)) {
+        const StructDecl* lowered = findStruct(type);
+        if (lowered != nullptr) return lowered->totalSize;
+        // 未降级（防御）：结果 = 布尔+联合体（8+8=16）；可选 = 布尔+值
+        if (isResultType(type)) return 16;
+        return typeSizeOf(optionalTypeArg(type)) + 1;
+    }
     const StructDecl* decl = findStruct(type);
     if (decl != nullptr) return decl->totalSize;
+    // 类类型（Task 3.1）：实例大小（含虚表指针）
+    const ClassInfo* cls = findClass(type);
+    if (cls != nullptr) return cls->totalSize;
     const int baseSize = types::typeSize(type);
     if (baseSize > 0) return baseSize;
     // 字符串 = 指针（8字节）；未知类型防御性返回8
@@ -380,6 +453,14 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
     if (isEnumType(type)) return 4;
     if (types::isPointer(type)) return 8;
     if (types::isArray(type)) return typeAlignOf(types::arrayElemOf(type));
+    // 阶段3（Task 3.5/3.1）：结果/可选 合成结构体、类类型
+    if (isResultType(type) || isOptionalType(type)) {
+        const StructDecl* lowered = findStruct(type);
+        if (lowered != nullptr) return lowered->align;
+        return 8;  // 防御：未降级按8对齐
+    }
+    const ClassInfo* cls = findClass(type);
+    if (cls != nullptr) return cls->align;
     const StructDecl* decl = findStruct(type);
     if (decl != nullptr) return decl->align;
     if (type == "整128" || type == "正128") return 16;
@@ -390,9 +471,28 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
 }
 
 // 查找结构体字段偏移（-1表示无此字段；联合体字段偏移恒为0）
+// 阶段3（Task 3.5）：结果/可选 合成结构体成员名映射——源码访问 .正常/.值/.错误/
+//   .有值，合成结构体字段为 是否正常/值/错误值/是否某些，此处统一映射查偏移。
+//   注意：结果<T,E> 的 .值/.错误 位于内层联合体（错误值联合，偏移=联合体字段偏移）；
+//   可选<T> 的 .值 是外层字段（值，偏移=字段偏移）。
 int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const {
     for (const auto& f : decl->fields) {
         if (f.name == fieldName) return decl->isUnion ? 0 : f.offset;
+    }
+    // 合成结构体（结果$T$E / 可选$T）：映射源码成员名到合成字段名
+    const std::string& declName = decl->name;
+    std::string mapped = fieldName;
+    if (declName.rfind("结果$", 0) == 0) {
+        if (fieldName == "正常") mapped = "是否正常";
+        else if (fieldName == "值" || fieldName == "错误") mapped = "错误值联合";
+    } else if (declName.rfind("可选$", 0) == 0) {
+        if (fieldName == "有值") mapped = "是否某些";
+        else if (fieldName == "值") mapped = "值";
+    }
+    if (mapped != fieldName) {
+        for (const auto& f : decl->fields) {
+            if (f.name == mapped) return decl->isUnion ? 0 : f.offset;
+        }
     }
     return -1;
 }
@@ -665,6 +765,12 @@ void SemanticAnalyzer::registerBuiltins() {
 //   同名不同参数类型/个数可共存；仅返回类型不同不构成重载（重复定义报错）。
 //   默认参数记录尾部 defaultCount（调用补全用）；默认值表达式留在 AST（IR 层展开）。
 void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
+    // 阶段3（Task 3.5）：内置构造器 正常/错误/某些 用户不可重定义
+    if (node->name == "正常" || node->name == "错误" || node->name == "某些") {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "内置构造器 '" + node->name + "' 不可重定义");
+        return;
+    }
     FunctionInfo info;
     info.returnType = node->returnType.empty() ? "空类型" : canonicalType(node->returnType);
     info.hasBody = (node->body != nullptr);
@@ -761,12 +867,20 @@ bool SemanticAnalyzer::bodyGuaranteesReturn(BlockStmt* body) const {
 
 // ==================== 声明节点 ====================
 
-// 程序入口：多趟处理（Task 2.7 增加结构体/枚举注册与布局计算）
+// 程序入口：多趟处理（Task 2.7 增加结构体/枚举注册与布局计算；阶段3 类/接口/泛型/错误降级）
 void SemanticAnalyzer::visitProgram(Program* node) {
     pushScope();  // 全局作用域
     program_ = node;
     // 第零趟：注册CN语言内置函数符号（打印行等，无需源码声明即可调用）
+    //         阶段3：注册 正常/错误/某些 内置构造器（用户不可重定义）
     registerBuiltins();
+    registerErrorBuiltins();
+    // 第零趟b（阶段3，Task 3.6）：收集导入模块名（限定调用识别用）
+    //   注：多文件编译时 driver 已合并被导入模块的公开声明到本 Program，
+    //   导入声明（ImportDecl）仍保留在 AST 中供此处收集模块名。
+    for (auto& imp : node->imports) {
+        visitImportDecl(imp.get());
+    }
     // 第一趟a：注册全部结构体/联合体/枚举类型名（支持前向引用：字段可引用后定义的类型）
     for (auto& s : node->structs) {
         declareTypeName(s->name, s->location);
@@ -782,13 +896,23 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (auto& e : node->enums) {
         computeEnumValues(e.get());
     }
-    // 第一趟d：注册全部函数符号（含前向调用）
+    // 第一趟d（阶段3）：注册类/接口符号（类名 + 成员解析 + 虚表 + 接口验证 + 布局）
+    registerClassAndInterfaces(node);
+    // 第一趟e（阶段3）：注册泛型声明（泛型类/函数模板）
+    registerGenerics(node);
+    // 第一趟f（阶段3）：结果/可选类型降级（生成合成结构体并布局）
+    lowerResultOptionalTypes(node);
+    // 第一趟g：注册全部函数符号（含前向调用）
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             registerFunction(decl.get());
         }
     }
-    // 第二趟：逐个检查函数体
+    // 第二趟a（阶段3）：检查类方法体（自身/父类/访问控制/常量 上下文）
+    for (auto& kv : classes_) {
+        checkClassMethods(const_cast<ClassInfo&>(kv.second));
+    }
+    // 第二趟b：逐个检查函数体
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             checkFunctionBody(static_cast<FunctionDecl*>(decl.get()));
@@ -823,6 +947,8 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     if (node->body == nullptr) return;  // 函数原型声明：无需检查体
 
     currentReturnType_ = it->second.returnType;
+    // 阶段3（Task 3.9）：记录当前上下文函数名（友元函数访问检查用）
+    currentFunctionName_ = node->name;
     pushScope();  // 参数作用域
     for (auto& param : node->params) {
         // 函数指针参数：类型为 funcPtr 规范化字符串；普通参数用 typeName
@@ -844,6 +970,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
                             currentReturnType_ + "'");
     }
     currentReturnType_.clear();
+    currentFunctionName_.clear();  // 阶段3：退出函数上下文
     popScope();
 }
 
@@ -864,6 +991,11 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (node->funcPtr.isFunctionPtr()) {
         varType = node->funcPtr.toString();
     }
+    // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型替换提前——
+    //   名<实参> -> 实例化类名（容器<整32> -> 容器$整32）。必须在初始值检查
+    //   （checkExpr 触发实例化构造，返回 容器$整32）之前替换 varType，
+    //   否则类型匹配（容器<整32> vs 容器$整32）失败。
+    varType = resolveGenericTypeName(varType, node->location);
     if (varType.empty() && node->initializer != nullptr) {
         // 类型推断：无显式类型时从初始值推断
         varType = checkExpr(node->initializer.get());
@@ -939,11 +1071,31 @@ void SemanticAnalyzer::visitBlockStmt(BlockStmt* node) {
 }
 
 void SemanticAnalyzer::visitExprStmt(ExprStmt* node) {
-    checkExpr(node->expr.get());
+    const std::string exprType = checkExpr(node->expr.get());
+    // 规则1（Task 3.5）：结果<T,E> 返回值被丢弃未检查 -> 错误
+    // 仅函数调用表达式触发（普通表达式如 结果.正常 读取本身即检查）
+    if (node->expr->getType() == NodeType::CallExpr) {
+        checkResultDiscard(exprType, node->expr->location);
+    }
 }
 
 // 如果语句：条件必须为布尔；分支各自进入子作用域
+// 阶段3（Task 3.5）：条件为 结果.正常/可选.有值 时走错误码传播跟踪
+//   （真分支可访问 .值；否则分支可访问 .错误；规则2 检查未处理错误分支）
 void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
+    // 结果/可选 检查跟踪（条件为 结果.正常 / 可选.有值 时专用处理）
+    if (node->condition->getType() == NodeType::MemberExpr) {
+        MemberExpr* cond = static_cast<MemberExpr*>(node->condition.get());
+        const std::string condObjType = checkExpr(cond->object.get());
+        const bool isResultCheck =
+            isResultType(condObjType) && cond->memberName == "正常";
+        const bool isOptionalCheck =
+            isOptionalType(condObjType) && cond->memberName == "有值";
+        if (isResultCheck || isOptionalCheck) {
+            trackIfCheck(node);
+            return;
+        }
+    }
     checkCondition(checkExpr(node->condition.get()), node->condition->location, "'如果'");
     if (node->thenBranch != nullptr) checkBlock(node->thenBranch.get());
     if (node->elseBranch != nullptr) checkStmt(node->elseBranch.get());
@@ -1133,16 +1285,54 @@ void SemanticAnalyzer::visitBoolLiteral(BoolLiteral* node) {
 
 // 标识符表达式：从符号表查找变量或函数
 // Task 2.2：函数名作值（不加括号）时类型为"函数指针<返回>(参数,...)"，用于赋值给函数指针变量
+// 阶段3：类/接口/泛型类型名识别（类名.静态成员 引用、泛型实例化 类型名<实参>）
 void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
     std::string varType;
     if (lookupVar(node->name, varType)) {
         lastType_ = varType;
         return;
     }
-    // 枚举/结构体类型名作标识符（供 枚举名.成员 与 &结构体 引用，Task 2.7）
-    if (isEnumType(node->name) || isStructType(node->name)) {
+    // 枚举/结构体/类/接口类型名作标识符（供 枚举名.成员、&结构体、类名.静态成员，Task 2.7/3.x）
+    if (isEnumType(node->name) || isStructType(node->name) ||
+        isClassType(node->name) || isInterfaceType(node->name)) {
         lastType_ = node->name;
         return;
+    }
+    // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名 名<实参>（如 盒子<整32>）
+    //   作标识符（构造调用 callee / 类型引用）——触发单态化，返回实例化类名。
+    const std::size_t genLt = node->name.find('<');
+    const std::size_t genGt = node->name.rfind('>');
+    if (genLt != std::string::npos && genGt != std::string::npos &&
+        genGt > genLt) {
+        const std::string head = node->name.substr(0, genLt);
+        if (findGeneric(head) != nullptr) {
+            const std::string inner =
+                node->name.substr(genLt + 1, genGt - genLt - 1);
+            std::vector<std::string> args;
+            std::size_t pos = 0;
+            while (pos <= inner.size()) {
+                const std::size_t comma = inner.find(',', pos);
+                if (comma == std::string::npos) {
+                    args.push_back(inner.substr(pos));
+                    break;
+                }
+                args.push_back(inner.substr(pos, comma - pos));
+                pos = comma + 1;
+            }
+            for (auto& a : args) {
+                const std::size_t b = a.find_first_not_of(" \t");
+                const std::size_t e = a.find_last_not_of(" \t");
+                if (b != std::string::npos && e != std::string::npos) {
+                    a = a.substr(b, e - b + 1);
+                }
+            }
+            const std::string instName =
+                instantiateGeneric(head, args, node->location);
+            if (!instName.empty()) {
+                lastType_ = instName;
+                return;
+            }
+        }
     }
     // 函数名作为值（Task 2.10 重载）：构造函数指针类型。
     // 有多个签名时取第一个（按注册顺序）；无参数的函数直接给出函数指针类型。
@@ -1283,7 +1473,29 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
             lastType_ = leftType;
             return;
         }
-        if (!isNumeric(leftType) || !isNumeric(rightType)) {
+        // 阶段3（Task 3.7）：类类型左操作数先查运算符重载（重载决议顺序②）
+        // 内置算术分支先执行到此（非数值类类型）；命中重载则返回，否则报错。
+        if ((!isNumeric(leftType) || !isNumeric(rightType)) && isClassType(canonicalType(leftType))) {
+            const std::string opSym = [node]() -> std::string {
+                switch (node->op) {
+                    case Operator::Add: return "+";
+                    case Operator::Subtract: return "-";
+                    case Operator::Multiply: return "*";
+                    case Operator::Divide: return "/";
+                    case Operator::Modulo: return "%";
+                    default: return "";
+                }
+            }();
+            if (!opSym.empty()) {
+                const ClassMemberInfo* mi = resolveOperatorOverload(
+                    opSym, leftType, {rightType}, node->location);
+                if (mi != nullptr) {
+                    lastType_ = mi->type;
+                    // 缺陷2 修复：写回重载结果类型，供 IR 层链式运算符重载识别
+                    node->resolvedType = mi->type;
+                    return;
+                }
+            }
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "算术运算符要求数值操作数，实际为 '" + leftType + "' 与 '" +
                                 rightType + "'");
@@ -1297,6 +1509,45 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
         return;
     }
 
+    // ---- 阶段3：运算符重载决议（Task 3.7，规格书01b）----
+    // 重载决议顺序：① 优先内置运算符（上方已处理）；② 无内置匹配时按左操作数
+    //   类型查成员 运算符X；③ 无匹配报"类型不兼容"（由上方报错）。
+    // 此处拦截：左操作数为类类型（非内置可处理）时查成员运算符。
+    if (isClassType(canonicalType(leftType))) {
+        const std::string opSym = [node]() -> std::string {
+            switch (node->op) {
+                case Operator::Add: return "+";
+                case Operator::Subtract: return "-";
+                case Operator::Multiply: return "*";
+                case Operator::Divide: return "/";
+                case Operator::Modulo: return "%";
+                case Operator::EqualEqual: return "==";
+                case Operator::BangEqual: return "!=";
+                case Operator::Less: return "<";
+                case Operator::Greater: return ">";
+                case Operator::LessEqual: return "<=";
+                case Operator::GreaterEqual: return ">=";
+                default: return "";
+            }
+        }();
+        if (!opSym.empty()) {
+            const ClassMemberInfo* mi = resolveOperatorOverload(
+                opSym, leftType, {rightType}, node->location);
+            if (mi != nullptr) {
+                // 运算符重载命中：结果为重载方法返回类型
+                lastType_ = mi->type;
+                // 缺陷2 修复：写回重载结果类型，供 IR 层链式运算符重载识别
+                node->resolvedType = mi->type;
+                return;
+            }
+            // 无重载匹配且非内置：报"类型不兼容"
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "运算符 '" + opSym + "' 与类型 '" + leftType +
+                                    "' 不兼容（无内置匹配且类无对应运算符重载）");
+            lastType_ = "未知";
+            return;
+        }
+    }
     // 其他运算符（阶段一不支持，回退左操作数类型）
     lastType_ = leftType;
 }
@@ -1404,7 +1655,39 @@ void SemanticAnalyzer::visitTernaryExpr(TernaryExpr* node) {
 }
 
 // 赋值表达式：左值须可写（标识符/下标/解引用），类型兼容检查
+// 阶段3（Task 3.9）：常量成员函数体内禁止修改成员（赋值目标为 自身.字段 时报错）
 void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
+    // 常量成员函数检查（Task 3.9）：常量方法体内修改成员 -> 错误
+    if (isConstMethodContext()) {
+        // 赋值目标为 自身.字段 或 直接字段引用（类方法体内）
+        if (node->target->getType() == NodeType::MemberExpr) {
+            MemberExpr* mem = static_cast<MemberExpr*>(node->target.get());
+            if (mem->object->getType() == NodeType::SelfExpr ||
+                (!contextClassStack_.empty() &&
+                 mem->object->getType() == NodeType::IdentifierExpr)) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "常量成员函数内不能修改成员 '" + mem->memberName + "'");
+            }
+        }
+        if (node->target->getType() == NodeType::IdentifierExpr && !contextClassStack_.empty()) {
+            // 直接字段赋值（无 自身. 前缀，如 值 = v）：方法体内标识符可能是字段
+            // （字段已入方法作用域，故不能用 lookupVar 失败判断；直接查类字段表）
+            const std::string& name =
+                static_cast<IdentifierExpr*>(node->target.get())->name;
+            const ClassInfo* cls = currentContextClass();
+            if (cls != nullptr) {
+                std::string owner;
+                const ClassMemberInfo* member =
+                    lookupClassMember(cls->name, name, owner);
+                if (member != nullptr && !member->isStatic) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "常量成员函数内不能修改成员 '" + name + "'");
+                }
+            }
+        }
+    }
     // 检查左值（标识符/下标访问/解引用为可写左值；Task 2.4 扩展下标与解引用）
     std::string targetType = "未知";
     if (node->target->getType() == NodeType::IdentifierExpr) {
@@ -1459,12 +1742,248 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
 //   node->resolvedSignature（IR 层按此生成 mangled 符号）
 void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // 分派依据：callee 若是函数名（在函数符号表中）→ 直接调用；
-    //           否则检查其类型，若是函数指针变量 → 间接调用
+    //           否则检查其类型，若是函数指针变量 → 间接调用；
+    //           阶段3：成员方法调用（对象.方法(...)）、内置构造器（正常/错误/某些）、
+    //           泛型实例化（类型名<实参>(...)）
+    // ---- 阶段3（Task 3.6）：模块限定调用 模块.函数(实参) ----
+    // 语法：导入 数学.平方根 后调用 数学.平方根(16.0)——parseCallOrMember 将其
+    //   解析为 CallExpr(MemberExpr(标识符"数学", "平方根"))。
+    // 识别：object 为标识符且名字在 importedModules_（已导入模块名）中，
+    //   且该名字不是类型名（结构体/枚举/类）→ 重写 callee 为直接函数名，
+    //   复用下方"直接函数名调用"路径（重载决议/参数检查/IR 符号生成均无需改动）。
+    if (node->callee->getType() == NodeType::MemberExpr) {
+        MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
+        if (!mem->isArrow) {
+        if (mem->object->getType() == NodeType::IdentifierExpr) {
+            // 值拷贝：重写会销毁旧 MemberExpr（mem->object 悬垂），须先取名字
+            const std::string moduleName =
+                static_cast<IdentifierExpr*>(mem->object.get())->name;
+            const bool isTypeName = isStructType(moduleName) || isEnumType(moduleName) ||
+                                    findClass(moduleName) != nullptr ||
+                                    findInterface(moduleName) != nullptr;
+            if (!isTypeName && importedModules_.count(moduleName) > 0) {
+                // 先取函数名到局部变量（下方重写会销毁旧 MemberExpr，mem 悬垂！）
+                const std::string funcName = mem->memberName;
+                // 重写为直接函数名（成员方法调用分支不会再命中 MemberExpr）
+                node->callee = std::make_unique<IdentifierExpr>(funcName);
+                // 跨模块可见性检查：重写后的函数必须已注册（公开符号已合并）。
+                // 若未注册（私有符号被过滤/符号不存在）→ 报错，避免走
+                // "函数指针间接调用"静默路径导致误通过。
+                if (!hasFunctionName(funcName)) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "模块 '" + moduleName + "' 没有公开符号 '" +
+                                            funcName + "'");
+                }
+            }
+        }
+    }
+    }  // 模块限定调用重写块结束（Task 3.6）
     bool isDirect = false;
     std::string calleeName;
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
         if (hasFunctionName(calleeName)) isDirect = true;
+    }
+
+    // ---- 阶段3：内置构造器 正常(值)/错误(值)/某些(值)（Task 3.5）----
+    // 这些函数已注册在 functions_（纯名 key），但返回类型含占位符"自动"；
+    // 此处按"参数类型 + 返回上下文"推导实际 结果<T,E>/可选<T> 类型。
+    if (node->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string builtinName =
+            static_cast<IdentifierExpr*>(node->callee.get())->name;
+        auto bit = functions_.find(builtinName);
+        if (bit != functions_.end() &&
+            (builtinName == "正常" || builtinName == "错误" || builtinName == "某些")) {
+            // 参数类型检查（1个实参）
+            if (node->arguments.size() != 1) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "内置构造器 '" + builtinName + "' 期望 1 个实参");
+            }
+            std::string argType = "未知";
+            for (auto& arg : node->arguments) {
+                argType = checkExpr(arg.get());
+            }
+            // 构造器返回类型推导：
+            //   正常(v) -> 结果<typeof(v), E>（E 由返回上下文/默认整32 决定）
+            //   错误(v) -> 结果<T, typeof(v)>（T 由返回上下文/默认整32 决定）
+            //   某些(v) -> 可选<typeof(v)>
+            // 返回上下文推断（Task 3.5 E2E 24 修复）：构造器用于 返回 语句时，
+            //   从当前函数返回类型 结果<T,E> 取缺失的 T/E（如 打开配置 返回
+            //   结果<字符串,整32>，`返回 错误(5)` 的 T 推断为 字符串）。
+            std::string ctxT = "";
+            std::string ctxE = "";
+            if (!currentReturnType_.empty() && isResultType(currentReturnType_)) {
+                const std::vector<std::string> args = resultTypeArgs(currentReturnType_);
+                if (args.size() == 2) {
+                    ctxT = args[0];
+                    ctxE = args[1];
+                }
+            } else if (!currentReturnType_.empty() && isOptionalType(currentReturnType_)) {
+                ctxT = optionalTypeArg(currentReturnType_);
+            }
+            if (builtinName == "正常") {
+                const std::string e = (ctxE.empty() ? "整32" : ctxE);
+                lastType_ = "结果<" + (argType == "未知" ? "整32" : argType) + "," + e + ">";
+            } else if (builtinName == "错误") {
+                const std::string t = (ctxT.empty() ? "整32" : ctxT);
+                lastType_ = "结果<" + t + "," + (argType == "未知" ? "整32" : argType) + ">";
+            } else {
+                lastType_ = "可选<" + (argType == "未知" ? "整32" : argType) + ">";
+            }
+            // 写回推导类型（Task 3.5 E2E 24 修复）：IR 层按 resolvedType 降级为
+            //   合成结构体构造（分配槽 + 写 是否正常/是否某些 + 值/错误值）
+            node->resolvedType = lastType_;
+            return;
+        }
+    }
+    // ---- 阶段3：构造函数调用 类名(实参)（Task 3.1，规格书06-三）----
+    // 语法：点 p = 点(1, 2)——callee 为类类型名时视为构造调用。
+    // 构造返回对象（结果类型 = 类名）；校验参数个数与类型（查构造方法）。
+    // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化构造 盒子<整32>(42)——callee
+    //   为 名<实参>（IdentifierExpr 名字含 <），先触发单态化（instantiateGeneric）
+    //   生成实例化类符号（盒子$整32），再按普通类构造处理。
+    if (node->callee->getType() == NodeType::IdentifierExpr) {
+        std::string className =
+            static_cast<IdentifierExpr*>(node->callee.get())->name;
+        const std::size_t genLt = className.find('<');
+        const std::size_t genGt = className.rfind('>');
+        if (genLt != std::string::npos && genGt != std::string::npos &&
+            genGt > genLt) {
+            const std::string head = className.substr(0, genLt);
+            if (findGeneric(head) != nullptr) {
+                const std::string inner =
+                    className.substr(genLt + 1, genGt - genLt - 1);
+                std::vector<std::string> args;
+                std::size_t pos = 0;
+                while (pos <= inner.size()) {
+                    const std::size_t comma = inner.find(',', pos);
+                    if (comma == std::string::npos) {
+                        args.push_back(inner.substr(pos));
+                        break;
+                    }
+                    args.push_back(inner.substr(pos, comma - pos));
+                    pos = comma + 1;
+                }
+                for (auto& a : args) {
+                    const std::size_t b = a.find_first_not_of(" \t");
+                    const std::size_t e = a.find_last_not_of(" \t");
+                    if (b != std::string::npos && e != std::string::npos) {
+                        a = a.substr(b, e - b + 1);
+                    }
+                }
+                const std::string instName =
+                    instantiateGeneric(head, args, node->location);
+                if (!instName.empty()) className = instName;
+            }
+        }
+        const ClassInfo* ctorCls = findClass(className);
+        if (ctorCls != nullptr) {
+            // 查找构造函数（函数名 == 类名）
+            const ClassMemberInfo* ctor = nullptr;
+            auto mit = ctorCls->methods.find(className);
+            if (mit != ctorCls->methods.end() && mit->second.isConstructor) {
+                ctor = &mit->second;
+            }
+            if (ctor != nullptr) {
+                std::vector<std::string> argTypes;
+                for (auto& arg : node->arguments) {
+                    argTypes.push_back(checkExpr(arg.get()));
+                }
+                if (argTypes.size() != ctor->paramTypes.size()) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "构造函数 '" + className + "' 期望 " +
+                                            std::to_string(ctor->paramTypes.size()) +
+                                            " 个实参，实际提供 " +
+                                            std::to_string(argTypes.size()) + " 个");
+                } else {
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        if (!canConvertType(argTypes[i], ctor->paramTypes[i])) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->arguments[i]->location,
+                                "构造函数 '" + className + "' 第 " + std::to_string(i + 1) +
+                                    " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                    ctor->paramTypes[i] + "'");
+                        }
+                    }
+                }
+                lastType_ = className;  // 构造返回对象
+                return;
+            }
+            // 无构造函数：允许默认构造（返回类类型）
+            lastType_ = className;
+            return;
+        }
+    }
+    // ---- 阶段3：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)（Task 3.1/3.9）----
+    if (node->callee->getType() == NodeType::MemberExpr) {
+        MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
+        const std::string objType = checkExpr(mem->object.get());
+        const std::string methodName = mem->memberName;
+        std::string ownerClass;
+        // 对象为类实例 或 类名.静态方法
+        // 集成修复（自身/父类）：自身 类型为 类名*（this 指针），父类 类型为 父类名*，
+        //   方法调用须剥指针取类类型（与 visitMemberExpr 的自身.成员 处理一致）；
+        //   -> 访问 自身->方法() 同样剥指针。
+        std::string objTypeForClass = objType;
+        if (mem->object->getType() == NodeType::SelfExpr ||
+            mem->object->getType() == NodeType::SuperExpr) {
+            if (types::isPointer(objTypeForClass)) {
+                objTypeForClass = types::pointeeOf(objTypeForClass);
+            }
+        }
+        const std::string clsName = mem->isArrow
+                                        ? canonicalType(types::pointeeOf(objTypeForClass))
+                                        : canonicalType(objTypeForClass);
+        const ClassMemberInfo* method = lookupClassMember(clsName, methodName, ownerClass);
+        if (method != nullptr && !method->isStatic) {
+            // 实例方法调用：校验参数个数与类型
+            std::vector<std::string> argTypes;
+            for (auto& arg : node->arguments) {
+                argTypes.push_back(checkExpr(arg.get()));
+            }
+            if (argTypes.size() != method->paramTypes.size()) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "方法 '" + methodName + "' 期望 " +
+                                        std::to_string(method->paramTypes.size()) +
+                                        " 个实参，实际提供 " +
+                                        std::to_string(argTypes.size()) + " 个");
+            } else {
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (!canConvertType(argTypes[i], method->paramTypes[i])) {
+                        diagnostics_.report(
+                            DiagnosticLevel::Error, node->arguments[i]->location,
+                            "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
+                                " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                method->paramTypes[i] + "'");
+                    }
+                }
+            }
+            // 访问控制检查（Task 3.4）
+            const std::string contextClass = contextClassStack_.empty()
+                                                 ? ""
+                                                 : contextClassStack_.back();
+            checkAccess(*findClass(ownerClass), *method, contextClass, node->location,
+                        "方法");
+            lastType_ = method->type;
+            return;
+        }
+        if (method != nullptr && method->isStatic) {
+            // 静态方法调用（类名.静态方法(...)）
+            std::vector<std::string> argTypes;
+            for (auto& arg : node->arguments) {
+                argTypes.push_back(checkExpr(arg.get()));
+            }
+            if (argTypes.size() != method->paramTypes.size()) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "静态方法 '" + methodName + "' 期望 " +
+                                        std::to_string(method->paramTypes.size()) +
+                                        " 个实参，实际提供 " +
+                                        std::to_string(argTypes.size()) + " 个");
+            }
+            lastType_ = method->type;
+            return;
+        }
+        // 非类成员：继续走通用路径（结构体字段函数指针等）
     }
 
     // ---- 直接函数名调用：函数名(实参) ----
@@ -1563,12 +2082,60 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     lastType_ = "未知";
 }
 
-// 成员访问：结构体/联合体字段访问（. 与 ->，Task 2.7 接通）
-// .  ：对象须为结构体/联合体值或引用，memberName 为其字段；
-// -> ：对象须为指向结构体/联合体的指针，解引用后访问字段
+// 成员访问：结构体/联合体字段访问（. 与 ->，Task 2.7）+ 类成员（Task 3.1）+ 结果/可选（Task 3.5）
+// .  ：对象须为结构体/联合体/类值，memberName 为其字段/方法；
+// -> ：对象须为指向结构体/联合体/类的指针，解引用后访问成员
 void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
-    std::string objectType = checkExpr(node->object.get());
     const std::string memberName = node->memberName;
+    const std::string objectVar = objectVarName(node->object.get());
+    std::string objectType = checkExpr(node->object.get());
+    // 结果/可选成员检查（Task 3.5 规则2/3）：.正常/.有值/.值/.错误
+    if (isResultType(objectType) || isOptionalType(objectType)) {
+        // 结果<T,E> / 可选<T> 经降级为合成结构体，其成员 .正常/.有值/.值/.错误
+        // 在此处做强制检查规则分析；成员类型按降级结构体字段推导。
+        checkResultMember(objectType, memberName, node->location, objectVar);
+        // 推导成员类型：结果.正常 -> 布尔；可选.有值 -> 布尔；结果.值 -> T；可选.值 -> T；
+        // 结果.错误 -> E
+        if (isResultType(objectType)) {
+            const std::vector<std::string> args = resultTypeArgs(objectType);
+            if (memberName == "正常") {
+                lastType_ = "布尔";
+                return;
+            }
+            if (memberName == "值" && args.size() == 2) {
+                lastType_ = canonicalType(args[0]);
+                return;
+            }
+            if (memberName == "错误" && args.size() == 2) {
+                lastType_ = canonicalType(args[1]);
+                return;
+            }
+        }
+        if (isOptionalType(objectType)) {
+            if (memberName == "有值") {
+                lastType_ = "布尔";
+                return;
+            }
+            if (memberName == "值") {
+                lastType_ = canonicalType(optionalTypeArg(objectType));
+                return;
+            }
+        }
+        // 其他成员：走降级结构体字段查找（防御）
+        const StructDecl* lowered = findStruct(canonicalType(objectType));
+        if (lowered != nullptr) {
+            for (const auto& f : lowered->fields) {
+                if (f.name == memberName) {
+                    lastType_ = canonicalType(f.type);
+                    return;
+                }
+            }
+        }
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "结果/可选 类型没有成员 '" + memberName + "'");
+        lastType_ = "未知";
+        return;
+    }
     // 枚举值引用：枚举名.成员（如 颜色.红，Task 2.7）
     // object 为标识符且其类型是枚举类型名 → 求值为枚举成员整数值
     if (!node->isArrow && node->object->getType() == NodeType::IdentifierExpr) {
@@ -1586,25 +2153,88 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         }
     }
     std::string structType;  // 承载字段的结构体类型名（.为对象类型，->为指针所指）
-    if (node->isArrow) {
-        // -> 访问：object 须为结构体/联合体指针（类型以 * 结尾）
+    // 自身（this）指针：自身.成员 应剥指针取类类型（Task 3.1，规格书06-七）
+    if (node->object->getType() == NodeType::SelfExpr) {
+        structType = canonicalType(types::isPointer(objectType)
+                                       ? types::pointeeOf(objectType)
+                                       : objectType);
+    } else if (node->isArrow) {
+        // -> 访问：object 须为指针
         if (types::isPointer(objectType)) {
             structType = canonicalType(types::pointeeOf(objectType));
         } else {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "-> 成员访问要求左侧为结构体指针，实际为 '" +
-                                objectType + "'");
+                                "-> 成员访问要求左侧为指针，实际为 '" + objectType + "'");
             lastType_ = "未知";
             return;
         }
     } else {
-        // . 访问：object 须为结构体/联合体（枚举访问 枚举名.成员 走标识符路径）
         structType = canonicalType(objectType);
     }
+    // 类成员访问（Task 3.1）：对象为类类型 或 类名.静态成员（标识符且是类类型名）
+    const ClassInfo* cls = findClass(structType);
+    if (cls != nullptr) {
+        std::string ownerClass;
+        const ClassMemberInfo* member = lookupClassMember(structType, memberName, ownerClass);
+        if (member == nullptr) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "类 '" + structType + "' 没有成员 '" + memberName + "'");
+            lastType_ = "未知";
+            return;
+        }
+        // 静态成员访问检查（Task 3.9）：类名.静态成员 允许；实例.静态成员 也允许；
+        //   非静态成员经 类名. 访问 -> 错误（无实例）
+        // 判断"类名.成员"：标识符本身是已注册类名（非类类型变量！变量 a 类型为
+        //   账户 时 a.余额 是实例访问，不应误判为 类名.静态访问）
+        bool objectIsTypeName = false;
+        if (node->object->getType() == NodeType::IdentifierExpr) {
+            const std::string& objName =
+                static_cast<IdentifierExpr*>(node->object.get())->name;
+            objectIsTypeName = isClassType(objName);
+        }
+        if (objectIsTypeName && !member->isStatic) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "静态访问 '类名." + memberName +
+                                    "' 要求成员为静态（非静态成员须经实例访问）");
+            lastType_ = "未知";
+            return;
+        }
+        // 静态成员引用：直接给类型（供 IR 层取静态字段/静态方法地址）
+        if (member->isStatic) {
+            lastType_ = member->type;
+            return;
+        }
+        // 访问控制检查（Task 3.4）：非类上下文访问 私有/保护 成员 -> 错误
+        const std::string contextClass = contextClassStack_.empty()
+                                             ? ""
+                                             : contextClassStack_.back();
+        // 实例成员访问控制（自身.私有字段 在子类访问父类私有 -> 报错）
+        const ClassInfo* ownerInfo = findClass(ownerClass);
+        if (ownerInfo != nullptr) {
+            checkAccess(*ownerInfo, *member, contextClass, node->location,
+                        member->isConstructor || member->isDestructor ? "方法" : "成员");
+        }
+        // 方法引用：类型为 方法签名（供 对象.方法() 调用检查；此处给返回类型）
+        if (!member->paramTypes.empty() || member->isConstructor ||
+            member->isDestructor) {
+            // 方法作值（函数指针类型）
+            std::string fp = "函数指针<" + member->type + ">(";
+            for (std::size_t i = 0; i < member->paramTypes.size(); ++i) {
+                if (i > 0) fp += ",";
+                fp += member->paramTypes[i];
+            }
+            fp += ")";
+            lastType_ = fp;
+            return;
+        }
+        lastType_ = member->type;
+        return;
+    }
+    // 结构体/联合体字段访问（Task 2.7）
     const StructDecl* decl = findStruct(structType);
     if (decl == nullptr) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "类型 '" + structType + "' 不是结构体/联合体类型，无法访问成员 '" +
+                            "类型 '" + structType + "' 不是结构体/联合体/类类型，无法访问成员 '" +
                             memberName + "'");
         lastType_ = "未知";
         return;
@@ -1627,7 +2257,11 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     lastType_ = "未知";
 }
 
-// 空指针字面量：无（Task 2.4）——类型为"空类型*"，可赋给任意指针（规格书3.7）
+// 空指针字面量：无（Task 2.4/3.5）
+// 双义（规格书07-三）：指针上下文为空指针常量（空类型*）；
+//   可选<T> 上下文为空可选值（无）——由赋值/返回的目标类型在 canConvertType
+//   中处理（空类型* 可转换为 可选<T>：视为空可选构造）。
+// 本节点类型推断保持 空类型*（与既有指针语义一致），可选赋值由 canConvertType 放行。
 void SemanticAnalyzer::visitNullLiteral(NullLiteral* node) {
     (void)node;
     lastType_ = "空类型*";
@@ -1740,6 +2374,69 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
         }
     }
     lastType_ = structType;
+}
+
+// ==================== 阶段3：声明节点/表达式（Task 3.1~3.9） ====================
+// 类/接口/泛型 声明由 visitProgram 统一驱动（registerClassAndInterfaces /
+// registerGenerics / lowerResultOptionalTypes）；此处提供防御性空实现，
+// 防止 AST 直接访问（AstVisitor 分发）时无方法可调。
+
+// 类声明：由 registerClassAndInterfaces 处理（防御性空实现）
+void SemanticAnalyzer::visitClassDecl(ClassDecl* node) {
+    (void)node;
+}
+
+// 类成员：由 resolveClass/collectClassMembers 处理（防御性空实现）
+void SemanticAnalyzer::visitClassMember(ClassMember* node) {
+    (void)node;
+}
+
+// 接口声明：由 registerClassAndInterfaces 处理（防御性空实现）
+void SemanticAnalyzer::visitInterfaceDecl(InterfaceDecl* node) {
+    (void)node;
+}
+
+// 导入声明：模块系统（Task 3.6）
+// 收集已导入模块名（importPath 首段）：导入 数学.平方根 / 从 数学 导入 正弦
+// 供 visitCallExpr 识别"模块.函数"限定调用（重写为直接调用）。
+// 模块加载/合并由 driver（runModulePipeline）在语义分析前完成；
+// 此处仅记录模块名集合，不校验符号存在性（跨模块可见性在合并阶段已过滤私有）。
+void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
+    std::string moduleName = node->importPath;
+    const std::size_t dot = moduleName.find('.');
+    if (dot != std::string::npos) moduleName = moduleName.substr(0, dot);
+    if (!moduleName.empty()) importedModules_.insert(moduleName);
+}
+
+// 泛型声明：由 registerGenerics/instantiateGeneric 处理（防御性空实现）
+void SemanticAnalyzer::visitGenericDecl(GenericDecl* node) {
+    (void)node;
+}
+
+// 自身表达式：自身（this 指针）——类型为 当前上下文类 指针
+// （Task 3.1，规格书06-七；仅类方法体内合法）
+void SemanticAnalyzer::visitSelfExpr(SelfExpr* node) {
+    const ClassInfo* cls = currentContextClass();
+    if (cls == nullptr) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "'自身' 只能出现在类方法体内");
+        lastType_ = "未知";
+        return;
+    }
+    lastType_ = cls->name + "*";
+}
+
+// 父类表达式：父类（SuperExpr）——解析为父类类型（供 父类.方法() 限定调用）
+// （Task 3.1，规格书06-七；仅类方法体内合法）
+void SemanticAnalyzer::visitSuperExpr(SuperExpr* node) {
+    const ClassInfo* cls = currentContextClass();
+    if (cls == nullptr || cls->baseName.empty()) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "'父类' 只能出现在有父类的类方法体内");
+        lastType_ = "未知";
+        return;
+    }
+    lastType_ = cls->baseName;  // 父类类型（供 父类.方法() 查找父类成员）
 }
 
 // 类型节点：语义阶段不做处理

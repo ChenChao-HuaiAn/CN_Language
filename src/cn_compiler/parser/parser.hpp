@@ -16,6 +16,21 @@
 
 namespace cn_compiler {
 
+// 判断Token是否为类型关键字（阶段一基本类型 + 阶段三 结果/可选 模板类型名）
+// 声明于此供 parser.cpp 与 parser_oop.cpp 共用（原为 parser.cpp 匿名命名空间内静态函数）
+bool isTypeKeyword(TokenType type);
+
+// 判断Token是否为赋值运算符（= += -= *= /= %= 等11个，parser_expr.cpp 使用）
+bool isAssignOp(TokenType type);
+// TokenType -> 赋值运算符映射（parser_expr.cpp 使用）
+Operator toAssignOp(TokenType type);
+// 解析整数字面量文本为数值（支持 10/16/2/8 进制、整数后缀；parser_expr.cpp/parser_stmt.cpp 使用）
+std::int64_t parseIntValue(const std::string& text);
+// 解析浮点字面量文本为数值（剥离浮点后缀；parser_expr.cpp 使用）
+double parseFloatValue(const std::string& text);
+// 判断标识符是否可作为强制转换的目标类型名（内置类型关键字/指针；parser_expr.cpp 使用）
+bool isCastableTypeName(const std::string& name);
+
 // 语法分析器：递归下降 + Pratt表达式解析
 // 语法规则（阶段一子集，依据 CN语言规范 [03] 语句与控制流、[04] 函数与函数指针）：
 //   函数声明：函数 名称(参数列表) [-> 返回类型] { 函数体 }
@@ -54,7 +69,23 @@ private:
     // ==================== 类型与声明解析 ====================
 
     std::unique_ptr<FunctionDecl> parseFunctionDecl();  // 函数 名称(参数) [-> 类型] { 体 }
+    // 类声明：类 名 [: 父类|接口] { 访问标签段* }（Task 3.1，实现于 parser_oop.cpp）
+    std::unique_ptr<ClassDecl> parseClassDecl();
+    // 接口声明：接口 名 { 虚拟 函数 签名... }（Task 3.3，实现于 parser_oop.cpp）
+    std::unique_ptr<InterfaceDecl> parseInterfaceDecl();
+    // 导入声明：导入 路径 | 从 路径 导入 名, 名（Task 3.6，实现于 parser_oop.cpp）
+    std::unique_ptr<ImportDecl> parseImportDecl();
+    // 泛型声明：泛型 <类型 T[, 类型 U : 接口]> 类/函数（Task 3.8，实现于 parser_oop.cpp）
+    std::unique_ptr<GenericDecl> parseGenericDecl();
+    // 类成员解析：当前访问标签段下的字段/方法/构造/析构/运算符重载/友元（parser_oop.cpp）
+    //   返回 true 表示成功解析一个成员并填充 out（带访问标签）
+    bool parseClassMember(ClassMember& out, AccessSpecifier access);
     std::unique_ptr<ParamDecl> parseParamDecl();        // 参数：类型 名称 或 名称: 类型
+    // 模板实参形态探测（Task 3.5/3.8）：当前为 '<'，判断是否为模板尖括号
+    //   （类型名 < 类型[,...] >），而非小于比较运算符。lookahead 扫描不消费 token。
+    bool isTemplateAngleOpen() const;
+    // 模块路径解析：标识符{.标识符}（导入/从 的路径部分，Task 3.6）
+    std::string parseModulePath();
     // 结构体/联合体声明：结构体 名 { 类型 字段; ... }（Task 2.7）
     std::unique_ptr<StructDecl> parseStructDecl(bool isUnion);
     // 枚举声明：枚举 名 { 成员, 成员 = 值, ... }（Task 2.7）

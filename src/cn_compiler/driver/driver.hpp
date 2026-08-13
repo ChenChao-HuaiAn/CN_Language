@@ -39,6 +39,14 @@ struct PipelineOutput {
 int runPipeline(const std::string& source, const std::string& fileName,
                 const DriverOptions& options, PipelineOutput& output);
 
+// 多文件编译流水线（Task 3.6 模块系统）：
+//   以 entryFile 为入口模块，自动解析其 导入/从...导入 依赖，递归加载依赖模块，
+//   拓扑排序后合并为单一 Program，再走 语义->IR->代码生成。
+// 参数: entryFile 入口源文件（主.cn 或含 函数 主 的文件）、options 选项、output 流水线产物
+// 返回: 0 成功；非0 失败（诊断已打印到 stderr）
+int runModulePipeline(const std::string& entryFile, const DriverOptions& options,
+                      PipelineOutput& output);
+
 // 输出Token流到 stdout（token 命令）：每行 "类型\t文本\t位置"
 void printTokens(const std::vector<Token>& tokens);
 

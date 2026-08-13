@@ -76,6 +76,19 @@ void AstPrinter::visitProgram(Program* node) {
     for (const auto& e : node->enums) {
         e->accept(*this);
     }
+    // 阶段3：导入/类/接口/泛型 声明（Task 3.1/3.3/3.6/3.8）
+    for (const auto& imp : node->imports) {
+        imp->accept(*this);
+    }
+    for (const auto& cls : node->classes) {
+        cls->accept(*this);
+    }
+    for (const auto& itf : node->interfaces) {
+        itf->accept(*this);
+    }
+    for (const auto& gen : node->generics) {
+        gen->accept(*this);
+    }
     for (const auto& decl : node->declarations) {
         decl->accept(*this);
     }
@@ -442,6 +455,129 @@ void AstPrinter::visitMemberExpr(MemberExpr* node) {
 
 void AstPrinter::visitType(Type* node) {
     printHeader("类型", node->location, node->name);
+}
+
+// ==================== 阶段3 OOP/错误处理/模块/泛型 节点打印 ====================
+
+void AstPrinter::visitImportDecl(ImportDecl* node) {
+    std::string detail = node->importPath;
+    if (node->fromImport) {
+        detail += " -> 导入 [";
+        for (std::size_t i = 0; i < node->names.size(); ++i) {
+            if (i > 0) detail += ", ";
+            detail += node->names[i];
+        }
+        detail += "]";
+    }
+    printHeader("导入声明", node->location, detail);
+}
+
+void AstPrinter::visitInterfaceDecl(InterfaceDecl* node) {
+    printHeader("接口声明", node->location,
+                node->name + " 方法数=" + std::to_string(node->members.size()));
+    ++depth_;
+    for (const auto& member : node->members) {
+        member->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitClassDecl(ClassDecl* node) {
+    std::string detail = node->name;
+    if (!node->baseName.empty()) detail += " : " + node->baseName;
+    for (const auto& itf : node->interfaces) {
+        detail += ", " + itf;
+    }
+    detail += " 成员数=" + std::to_string(node->members.size());
+    printHeader("类声明", node->location, detail);
+    ++depth_;
+    for (const auto& member : node->members) {
+        member->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitClassMember(ClassMember* node) {
+    // 访问标签文本
+    const char* accessText = "公开";
+    if (node->access == AccessSpecifier::Protected) accessText = "保护";
+    if (node->access == AccessSpecifier::Private) accessText = "私有";
+    std::string detail = std::string(accessText) + ":";
+    // 按成员种类输出细节
+    switch (node->kind) {
+        case ClassMemberKind::Field:
+            detail += " 字段 " + node->typeName + " " + node->name;
+            if (node->isStatic) detail += " [静态]";
+            printHeader("类成员", node->location, detail);
+            if (node->initializer != nullptr) {
+                ++depth_;
+                node->initializer->accept(*this);
+                --depth_;
+            }
+            return;
+        case ClassMemberKind::Constructor:
+            detail += " 构造 " + node->name;
+            break;
+        case ClassMemberKind::Destructor:
+            detail += " 析构 ~" + node->name;
+            break;
+        case ClassMemberKind::Operator:
+            detail += " 运算符重载 " + node->operatorSym;
+            break;
+        case ClassMemberKind::Friend:
+            detail += std::string(" 友元 ") + (node->isFriendClass ? "类 " : "函数 ") + node->name;
+            printHeader("类成员", node->location, detail);
+            return;
+        case ClassMemberKind::Method:
+        default:
+            detail += " 方法 " + node->name;
+            break;
+    }
+    // 方法修饰符
+    if (node->isVirtual) detail += " [虚拟]";
+    if (node->isOverride) detail += " [重写]";
+    if (node->isAbstract) detail += " [抽象]";
+    if (node->isConstMethod) detail += " [常量]";
+    if (node->isStatic) detail += " [静态]";
+    if (!node->returnType.empty()) detail += " -> " + node->returnType;
+    printHeader("类成员", node->location, detail);
+    ++depth_;
+    for (const auto& param : node->params) {
+        param->accept(*this);
+    }
+    if (node->body != nullptr) {
+        node->body->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitGenericDecl(GenericDecl* node) {
+    std::string detail = "<";
+    for (std::size_t i = 0; i < node->typeParams.size(); ++i) {
+        if (i > 0) detail += ", ";
+        detail += "类型 " + node->typeParams[i];
+        if (i < node->constraints.size() && !node->constraints[i].empty()) {
+            detail += " : " + node->constraints[i];
+        }
+    }
+    detail += ">";
+    printHeader("泛型声明", node->location, detail);
+    ++depth_;
+    if (node->innerClass != nullptr) {
+        node->innerClass->accept(*this);
+    }
+    if (node->innerFunc != nullptr) {
+        node->innerFunc->accept(*this);
+    }
+    --depth_;
+}
+
+void AstPrinter::visitSelfExpr(SelfExpr* node) {
+    printHeader("自身", node->location);
+}
+
+void AstPrinter::visitSuperExpr(SuperExpr* node) {
+    printHeader("父类", node->location);
 }
 
 } // namespace cn_compiler

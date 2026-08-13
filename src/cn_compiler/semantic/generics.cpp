@@ -1,0 +1,385 @@
+// 阶段3 泛型/模板子模块（Task 3.8，规格书06-十三）
+// 职责：
+//   1. 泛型 <类型 T> 声明类型参数，记录作用域
+//   2. 类型名<实参> 实例化：语义层为每个具体实参生成独立类型+函数（单态化），
+//      涉及符号表深拷贝、mangling 编码扩展
+//   3. 接口约束 泛型 <类型 T : 接口>：编译期检查实参实现接口
+//   4. 单态化后代码须与各优化级别输出一致
+// 设计：英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
+// 实现范围（本子任务语义层）：
+//   - 注册泛型声明（generics_ 表）
+//   - 单态化：为 类型名<实参> 生成实例化类符号（替换类型参数后的成员表）
+//   - 接口约束校验：实参类型须实现约束接口
+//   IR 层的单态化展开（方法体生成）由后续 codegen 子任务基于本模块产物完成。
+#include <string>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include "cn_compiler/semantic/semantic.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
+
+namespace cn_compiler {
+
+// ==================== 泛型注册（Task 3.8） ====================
+
+// 注册全部泛型声明（存入 generics_ 表）
+// 泛型声明包装类/函数（GenericDecl 内嵌 innerClass / innerFunc）。
+// 注册规则：
+//   - 泛型类：以 类名 登记（实例化时 类型名<实参> 查此表）
+//   - 泛型函数：以 函数名 登记
+void SemanticAnalyzer::registerGenerics(Program* node) {
+    for (auto& gen : node->generics) {
+        GenericInfo info;
+        info.typeParams = gen->typeParams;
+        info.constraints = gen->constraints;
+        info.ast = gen.get();
+        // 泛型类
+        if (gen->innerClass != nullptr) {
+            const std::string name = gen->innerClass->name;
+            if (generics_.find(name) != generics_.end()) {
+                diagnostics_.report(DiagnosticLevel::Error, gen->location,
+                                    "重复声明泛型类 '" + name + "'");
+                continue;
+            }
+            generics_[name] = info;
+        }
+        // 泛型函数
+        if (gen->innerFunc != nullptr) {
+            const std::string name = gen->innerFunc->name;
+            if (generics_.find(name) != generics_.end()) {
+                diagnostics_.report(DiagnosticLevel::Error, gen->location,
+                                    "重复声明泛型函数 '" + name + "'");
+                continue;
+            }
+            generics_[name] = info;
+        }
+    }
+}
+
+// 查询泛型声明（未找到返回nullptr）
+const GenericInfo* SemanticAnalyzer::findGeneric(const std::string& name) const {
+    auto it = generics_.find(name);
+    return (it == generics_.end()) ? nullptr : &it->second;
+}
+
+// 泛型实例化类型名替换（Task 3.8，E2E 26 修复）：
+//   名<实参>（如 容器<整32>）-> 实例化类名（容器$整32），触发单态化注册。
+//   非泛型类型原样返回（含 结果<T,E>/可选<T> 模板——走语义层降级路径）。
+std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName,
+                                                     const SourceLocation& loc) {
+    if (typeName.empty()) return typeName;
+    const std::size_t lt = typeName.find('<');
+    const std::size_t gt = typeName.rfind('>');
+    if (lt == std::string::npos || gt == std::string::npos || gt <= lt) {
+        return typeName;
+    }
+    const std::string head = typeName.substr(0, lt);
+    if (findGeneric(head) == nullptr) return typeName;
+    const std::string inner = typeName.substr(lt + 1, gt - lt - 1);
+    std::vector<std::string> args;
+    std::size_t pos = 0;
+    while (pos <= inner.size()) {
+        const std::size_t comma = inner.find(',', pos);
+        if (comma == std::string::npos) {
+            args.push_back(inner.substr(pos));
+            break;
+        }
+        args.push_back(inner.substr(pos, comma - pos));
+        pos = comma + 1;
+    }
+    for (auto& a : args) {
+        const std::size_t b = a.find_first_not_of(" \t");
+        const std::size_t e = a.find_last_not_of(" \t");
+        if (b != std::string::npos && e != std::string::npos) {
+            a = a.substr(b, e - b + 1);
+        }
+    }
+    const std::string instName = instantiateGeneric(head, args, loc);
+    return instName.empty() ? typeName : instName;
+}
+
+// ==================== 类型参数替换（Task 3.8） ====================
+
+// 替换类型参数（AST 深拷贝时把 T 替换为实参类型）
+// 支持：裸类型名（T）、指针（T*）、数组（T[10]）、模板类型（结果<T,整32> 等）
+std::string SemanticAnalyzer::substTypeParam(const std::string& type,
+                                             const std::vector<std::string>& params,
+                                             const std::vector<std::string>& args) {
+    // 裸类型参数
+    for (std::size_t i = 0; i < params.size(); ++i) {
+        if (type == params[i]) return args[i];
+    }
+    // 引用：尾字符 '&'（T& -> 实参&，泛型函数引用参数）
+    if (!type.empty() && type.back() == '&') {
+        const std::string elem = substTypeParam(type.substr(0, type.size() - 1), params, args);
+        return elem + "&";
+    }
+    // 指针：尾字符 '*'
+    if (!type.empty() && type.back() == '*') {
+        const std::string elem = substTypeParam(type.substr(0, type.size() - 1), params, args);
+        return elem + "*";
+    }
+    // 数组：T[10]
+    const std::size_t lb = type.rfind('[');
+    const std::size_t rb = type.rfind(']');
+    if (lb != std::string::npos && rb != std::string::npos && rb == type.size() - 1) {
+        const std::string len = type.substr(lb + 1, rb - lb - 1);
+        if (!len.empty() && len.find_first_not_of("0123456789") == std::string::npos) {
+            const std::string elem = substTypeParam(type.substr(0, lb), params, args);
+            return elem + "[" + len + "]";
+        }
+    }
+    // 模板类型：结果<...>/可选<...>/其他 类型名<...>
+    const std::size_t lt = type.find('<');
+    const std::size_t gt = type.rfind('>');
+    if (lt != std::string::npos && gt != std::string::npos && gt > lt) {
+        const std::string head = type.substr(0, lt);
+        // 仅当头部本身不是类型参数时递归替换内部
+        bool headIsParam = false;
+        for (const auto& p : params) {
+            if (head == p) { headIsParam = true; break; }
+        }
+        if (!headIsParam) {
+            const std::string inner = type.substr(lt + 1, gt - lt - 1);
+            // 按逗号分割（模板参数不含嵌套逗号；防御：简单分割）
+            std::vector<std::string> parts;
+            std::size_t pos = 0;
+            while (pos <= inner.size()) {
+                const std::size_t comma = inner.find(',', pos);
+                if (comma == std::string::npos) {
+                    parts.push_back(inner.substr(pos));
+                    break;
+                }
+                parts.push_back(inner.substr(pos, comma - pos));
+                pos = comma + 1;
+            }
+            std::string newInner;
+            for (std::size_t i = 0; i < parts.size(); ++i) {
+                if (i > 0) newInner += ",";
+                std::string p = parts[i];
+                std::size_t b = p.find_first_not_of(" \t");
+                std::size_t e = p.find_last_not_of(" \t");
+                if (b != std::string::npos && e != std::string::npos) {
+                    p = p.substr(b, e - b + 1);
+                }
+                newInner += substTypeParam(p, params, args);
+            }
+            return head + "<" + newInner + ">";
+        }
+    }
+    return type;  // 非类型参数
+}
+
+// ==================== 接口约束校验（Task 3.8） ====================
+
+// 校验类型实参满足接口约束（泛型 <类型 T : 接口>）
+// 规则：实参类型须为类，且该类实现了约束接口（含继承的接口实现）
+void SemanticAnalyzer::checkGenericConstraint(const std::string& argType,
+                                              const std::string& constraint,
+                                              const SourceLocation& loc) {
+    if (constraint.empty()) return;
+    if (interfaces_.find(constraint) == interfaces_.end()) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "泛型约束引用了未声明的接口 '" + constraint + "'");
+        return;
+    }
+    const ClassInfo* cls = findClass(types::canonical(argType));
+    if (cls == nullptr) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "泛型类型实参 '" + argType + "' 不是类类型，无法满足接口约束 '" +
+                                constraint + "'");
+        return;
+    }
+    // 检查类是否实现该接口（自身或父类）
+    const ClassInfo* cur = cls;
+    while (cur != nullptr) {
+        for (const auto& iface : cur->interfaces) {
+            if (iface == constraint) return;  // 已实现
+        }
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName);
+    }
+    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "类 '" + cls->name + "' 未实现接口 '" + constraint +
+                            "'，不满足泛型约束");
+}
+
+// ==================== 泛型单态化（Task 3.8） ====================
+
+// 泛型类/函数实例化：为 类型名<实参> 生成单态化副本
+//   className 为泛型类名，args 为类型实参（如 ["整32"]）；返回实例化后的类符号名
+// 实现：
+//   1. 查泛型声明（generics_），未找到返回空串
+//   2. 参数个数校验（与 typeParams 等长）
+//   3. 接口约束校验（实参须实现约束接口）
+//   4. 生成实例化类符号名：类名$整32（mangling 编码扩展）
+//   5. 深拷贝泛型类成员，替换类型参数，注册到 classes_（单态化）
+std::string SemanticAnalyzer::instantiateGeneric(
+    const std::string& className, const std::vector<std::string>& args,
+    const SourceLocation& loc) {
+    const GenericInfo* gen = findGeneric(className);
+    if (gen == nullptr) return "";  // 非泛型（由调用方决定是否报错）
+
+    // 参数个数校验
+    if (gen->typeParams.size() != args.size()) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "泛型 '" + className + "' 期望 " +
+                                std::to_string(gen->typeParams.size()) + " 个类型实参，实际提供 " +
+                                std::to_string(args.size()) + " 个");
+        return "";
+    }
+
+    // 接口约束校验
+    for (std::size_t i = 0; i < gen->typeParams.size(); ++i) {
+        if (!gen->constraints[i].empty()) {
+            checkGenericConstraint(args[i], gen->constraints[i], loc);
+        }
+    }
+
+    // 生成实例化类符号名（mangling 编码扩展：类名$实参1$实参2）
+    std::string instanceName = className;
+    for (const auto& a : args) {
+        instanceName += "$" + types::canonical(a);
+    }
+
+    // 已实例化：直接返回（去重）
+    if (instantiatedGenerics_.count(instanceName)) return instanceName;
+    instantiatedGenerics_.insert(instanceName);
+
+    // 泛型类单态化：深拷贝类声明（替换类型参数）
+    if (gen->ast->innerClass != nullptr) {
+        const ClassDecl* src = gen->ast->innerClass.get();
+        ClassInfo info;
+        info.name = instanceName;
+        info.baseName = src->baseName;
+        info.interfaces = src->interfaces;
+        info.ast = src;
+        // 收集成员（替换类型参数）
+        for (auto& member : src->members) {
+            // 字段
+            if (member->kind == ClassMemberKind::Field) {
+                ClassMemberInfo mi;
+                mi.name = member->name;
+                mi.type = types::canonical(
+                    substTypeParam(member->typeName, gen->typeParams, args));
+                mi.access = member->access;
+                mi.ownerClass = instanceName;
+                mi.isStatic = member->isStatic;
+                mi.hasBody = false;
+                info.fields[mi.name] = mi;
+                info.fieldOrder.push_back(mi.name);
+                continue;
+            }
+            // 方法/构造/析构
+            if (member->kind == ClassMemberKind::Method ||
+                member->kind == ClassMemberKind::Constructor ||
+                member->kind == ClassMemberKind::Destructor) {
+                ClassMemberInfo mi;
+                mi.name = member->name;
+                mi.type = types::canonical(
+                    substTypeParam(member->returnType, gen->typeParams, args));
+                mi.access = member->access;
+                mi.ownerClass = instanceName;
+                mi.isVirtual = member->isVirtual;
+                mi.isOverride = member->isOverride;
+                mi.isAbstract = member->isAbstract;
+                mi.isStatic = member->isStatic;
+                mi.isConstMethod = member->isConstMethod;
+                mi.hasBody = (member->body != nullptr);
+                mi.ast = member.get();
+                mi.isConstructor = (member->name == src->name);
+                mi.isDestructor = (!member->name.empty() && member->name[0] == '~' &&
+                                   member->name.substr(1) == src->name);
+                for (auto& p : member->params) {
+                    mi.paramTypes.push_back(
+                        types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
+                }
+                mi.sigKey = signatureKey(mi.name, mi.paramTypes);
+                info.methods[mi.name] = mi;
+                info.methodOrder.push_back(mi.name);
+                continue;
+            }
+            // 运算符重载
+            if (member->kind == ClassMemberKind::Operator) {
+                ClassMemberInfo mi;
+                mi.name = member->operatorSym.empty() ? member->name : member->operatorSym;
+                mi.type = types::canonical(
+                    substTypeParam(member->returnType, gen->typeParams, args));
+                mi.access = member->access;
+                mi.ownerClass = instanceName;
+                mi.isVirtual = member->isVirtual;
+                mi.isStatic = member->isStatic;
+                mi.hasBody = (member->body != nullptr);
+                mi.operatorSym = member->operatorSym;
+                for (auto& p : member->params) {
+                    mi.paramTypes.push_back(
+                        types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
+                }
+                mi.sigKey = signatureKey(mi.name, mi.paramTypes);
+                info.methods[mi.name] = mi;
+                info.methodOrder.push_back(mi.name);
+                continue;
+            }
+            // 友元（复制）
+            if (member->kind == ClassMemberKind::Friend) {
+                if (member->isFriendClass) {
+                    info.friendClasses.push_back(member->name);
+                } else {
+                    info.friendFuncs.push_back(member->name);
+                }
+            }
+        }
+        // 继承并入（父类字段/方法；父类须已解析）
+        if (!info.baseName.empty()) {
+            auto pit = classes_.find(info.baseName);
+            if (pit != classes_.end()) {
+                const ClassInfo& parent = pit->second;
+                for (const auto& fname : parent.fieldOrder) {
+                    auto f = parent.fields.find(fname);
+                    if (f == parent.fields.end()) continue;
+                    if (info.fields.find(fname) == info.fields.end()) {
+                        info.fields[fname] = f->second;
+                        info.fieldOrder.push_back(fname);
+                    }
+                }
+                for (const auto& mname : parent.methodOrder) {
+                    auto m = parent.methods.find(mname);
+                    if (m == parent.methods.end()) continue;
+                    if (info.methods.find(mname) == info.methods.end()) {
+                        info.methods[mname] = m->second;
+                        info.methodOrder.push_back(mname);
+                    }
+                }
+                info.hasVtable = parent.hasVtable;
+            }
+        }
+        // 虚表分配 + 接口验证 + 布局（复用 resolveClass 的辅助逻辑）
+        assignVtable(info);
+        verifyInterfaceImpl(info);
+        computeClassLayout(info);
+        classes_[instanceName] = std::move(info);
+        // 实例化类名登记到类型名表
+        typeNames_.insert(instanceName);
+        return instanceName;
+    }
+
+    // 泛型函数单态化：注册实例化函数符号（替换类型参数）
+    if (gen->ast->innerFunc != nullptr) {
+        const FunctionDecl* src = gen->ast->innerFunc.get();
+        FunctionInfo info;
+        info.returnType = types::canonical(
+            substTypeParam(src->returnType, gen->typeParams, args));
+        info.hasBody = (src->body != nullptr);
+        for (auto& p : src->params) {
+            info.paramTypes.push_back(
+                types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
+        }
+        // 实例化函数名（mangling）：名$实参串
+        functions_[instanceName] = info;
+        return instanceName;
+    }
+    return "";
+}
+
+} // namespace cn_compiler

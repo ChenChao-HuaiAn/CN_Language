@@ -7,15 +7,23 @@
 //   4. Win x64 调用约定：前4整型参数 rcx/rdx/r8/r9，第5个起在栈上 rsp+40+(i-4)*8
 //   5. 中文符号名 UTF-8 十六进制修饰（?XX..@@Y），ASCII 符号原样输出
 //   6. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
+// 阶段3 OOP（Task 3.1/3.2/3.9）：类实例布局/虚表生成/虚调用/静态字段，
+//   拆分子模块 x64_codegen_oop.cpp（新对象/虚调用/虚表）与
+//   x64_codegen_vtable.cpp（.rdata 虚表数组与静态字段 .data 分配）
 #pragma once
+#include <set>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "cn_compiler/codegen/codegen.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
 
 namespace cn_compiler {
+
+// 语义分析器前向声明（阶段3：类布局/虚表槽位/静态字段查询，供 codegen OOP 展开）
+class SemanticAnalyzer;
 
 // 汇编文本行输出助手（统一缩进/对齐，提升可读性）
 class AsmWriter {
@@ -37,6 +45,10 @@ private:
 class X64CodeGenerator : public Backend {
 public:
     explicit X64CodeGenerator(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
+    // 阶段3（Task 3.1）：绑定语义分析器（类布局/虚表槽位/静态字段查询）。
+    //   可空——未绑定时 OOP 指令（NewObject 等）以注释占位输出（测试可构造无类模块）
+    explicit X64CodeGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic)
+        : diagnostics_(diagnostics), semantic_(semantic) {}
 
     // 主入口：生成完整汇编文件（.data段 + .code段 + END）
     std::string generateAssembly(const ir::IRModule& module) override;
@@ -45,6 +57,33 @@ public:
     std::string targetPlatform() const override { return "win-x64"; }
 
 private:
+    // ==================== 阶段3 OOP 辅助（Task 3.1/3.2/3.9） ====================
+    // 类方法链接符号：类名 + 方法签名 key（名#参数串）-> 修饰符号。
+    //   与语义层 sigKey（名#参数串）一致；mangleTypeCode 已处理类类型按名编码
+    static std::string classMethodSymbol(const std::string& className,
+                                         const std::string& methodName,
+                                         const std::vector<std::string>& paramTypes);
+    // 类虚表符号（.rdata 段数组标签）：?vtable_类名
+    static std::string vtableSymbol(const std::string& className);
+    // 类静态字段符号（.data 段全类共享）：?static_类名_字段名
+    static std::string staticFieldSymbol(const std::string& className,
+                                         const std::string& fieldName);
+    // 生成全部虚表（.rdata 段函数指针数组）与静态字段（.data 段），
+    //   返回生成的静态字段符号集合（供 EXTERN 去重）
+    void emitOopGlobals(AsmWriter& writer, std::unordered_set<std::string>& staticSymbols);
+    // 扫描函数内 VirtualCall/NewObject 引用的类，收集需要的虚表符号
+    void collectClassRefs(const ir::IRModule& module,
+                          std::unordered_set<std::string>& vtableSymbols,
+                          std::unordered_set<std::string>& staticSymbols) const;
+    // 生成单条 OOP 指令（NewObject/DeleteObject/VirtualCall/VtableAddr）
+    void emitOopInstruction(AsmWriter& writer, const ir::IRInstruction& inst);
+    // 生成虚调用：经对象虚表指针 + 槽位偏移间接 call（this 参数经 paramOffset 后移）
+    void emitVirtualCall(AsmWriter& writer, const ir::IRInstruction& inst);
+    // 生成新建对象：堆分配 + 写入虚表指针（对象首地址）
+    void emitNewObject(AsmWriter& writer, const ir::IRInstruction& inst);
+    // 生成删除对象：调用析构 + 释放内存
+    void emitDeleteObject(AsmWriter& writer, const ir::IRInstruction& inst);
+
     // 生成单个函数的汇编（PROC 头 -> prologue -> 基本块 -> epilogue）
     std::string generateFunctionAssembly(const ir::IRFunction& function);
 
@@ -229,6 +268,16 @@ private:
     std::vector<std::string> floatConstOrder_;
     // 空指针检查标签计数器（模块级递增，保证 LoadPtr/StorePtr 空指针检查标签唯一）
     int ptrCheckCounter_ = 0;
+
+    // 语义分析器指针（阶段3：类布局/虚表槽位/静态字段查询；可空）
+    SemanticAnalyzer* semantic_ = nullptr;
+    // 已生成虚表符号集合（去重，供 .rdata 发射）
+    std::unordered_set<std::string> emittedVtables_;
+    // 已生成静态字段符号集合（去重，供 .data 发射）
+    std::unordered_set<std::string> emittedStatics_;
+    // 模块级收集的虚表/静态字段引用符号（generateAssembly 期间有效）
+    std::unordered_set<std::string> vtableRefs_;
+    std::unordered_set<std::string> staticRefs_;
 };
 
 } // namespace cn_compiler

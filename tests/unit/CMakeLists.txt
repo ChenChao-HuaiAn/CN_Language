@@ -9,6 +9,7 @@ add_executable(cn_unit_tests
     lexer/test_lexer.cpp
     lexer/test_lexer_string.cpp
     lexer/test_lexer_keywords.cpp
+    lexer/test_lexer_stage3.cpp
     parser/test_ast.cpp
     parser/test_parser.cpp
     parser/test_parser_control.cpp
@@ -16,6 +17,7 @@ add_executable(cn_unit_tests
     parser/test_parser_struct.cpp
     parser/test_parser_struct_param.cpp
     parser/test_parser_ternary.cpp
+    parser/test_parser_stage3.cpp
     semantic/test_semantic.cpp
     semantic/test_semantic_control.cpp
     semantic/test_function.cpp
@@ -30,6 +32,10 @@ add_executable(cn_unit_tests
     semantic/test_default_param.cpp
     semantic/test_cast_expr.cpp
     semantic/test_lambda.cpp
+    semantic/test_semantic_oop.cpp
+    semantic/test_semantic_error.cpp
+    semantic/test_semantic_generic.cpp
+    module/test_module.cpp
     ir/test_ir.cpp
     ir/test_ir_control.cpp
     ir/test_ir_function.cpp
@@ -41,6 +47,8 @@ add_executable(cn_unit_tests
     ir/test_ir_struct_value.cpp
     ir/test_ir_i128.cpp
     ir/test_ir_ternary.cpp
+    ir/test_ir_oop.cpp
+    ir/test_ir_oop_emit.cpp
     codegen/test_x64_codegen.cpp
     codegen/test_x64_function.cpp
     codegen/test_x64_types.cpp
@@ -50,6 +58,8 @@ add_executable(cn_unit_tests
     codegen/test_x64_i128.cpp
     codegen/test_x64_i128_struct.cpp
     codegen/test_audit_regressions.cpp
+    codegen/test_x64_oop.cpp
+    codegen/test_x64_vtable.cpp
     opt/test_const_fold.cpp
     opt/test_dce.cpp
     opt/test_pass_manager.cpp
@@ -64,6 +74,7 @@ add_executable(cn_unit_tests
     runtime/test_string_api_extra.cpp
     runtime/test_i128_api.cpp
     runtime/test_format_api.cpp
+    runtime/test_object_api.cpp
 )
 
 # 链接 Google Test 与公共模块库
@@ -77,6 +88,7 @@ target_link_libraries(cn_unit_tests PRIVATE
     cn_compiler_ir
     cn_compiler_codegen
     cn_compiler_opt
+    cn_compiler_module
     cn_runtime
 )
 

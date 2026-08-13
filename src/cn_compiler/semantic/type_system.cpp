@@ -38,6 +38,12 @@ std::string canonical(const std::string& type) {
     if (type == "整数") return "整32";
     if (type == "小数") return "浮64";
     if (type == "指针") return "空类型*";
+    // 引用类型：尾字符 '&'（账户& / T&），引用是别名，剥除后等价其基础类型
+    //   （缺陷5 修复：友元引用参数 账户& 账 经 canonical 剥 & 后 findClass 命中，
+    //   否则报"类型 '账户&' 不是类类型"）。
+    if (!type.empty() && type.back() == '&') {
+        return canonical(type.substr(0, type.size() - 1));
+    }
     // 指针类型：尾字符 '*'，递归规范化元素类型（整数* -> 整32*）
     if (!type.empty() && type.back() == '*') {
         return canonical(type.substr(0, type.size() - 1)) + "*";

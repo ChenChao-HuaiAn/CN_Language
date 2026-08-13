@@ -52,11 +52,12 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Private, "私有"},
         {TokenType::Kw_Static, "静态"},
         {TokenType::Kw_Auto, "自动"},
-        // ---- 常量关键字(3) ----
+        // ---- 常量关键字(4) ----
         {TokenType::Kw_True, "真"},
         {TokenType::Kw_False, "假"},
         {TokenType::Kw_None, "无"},
-        // ---- OOP关键字(9) ----
+        {TokenType::Kw_Const, "常量"},
+        // ---- OOP关键字(10) ----
         {TokenType::Kw_Class, "类"},
         {TokenType::Kw_Interface, "接口"},
         {TokenType::Kw_Protected, "保护"},
@@ -66,12 +67,15 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Implements, "实现"},
         {TokenType::Kw_Self, "自身"},
         {TokenType::Kw_Super, "父类"},
+        {TokenType::Kw_Friend, "友元"},
         // ---- 错误处理关键字(2) ----
         {TokenType::Kw_Result, "结果"},
         {TokenType::Kw_Optional, "可选"},
         // ---- 字面量前缀关键字(2) ----
         {TokenType::Kw_Raw, "原始"},
         {TokenType::Kw_MultiLine, "多行"},
+        // ---- 泛型关键字(1) ----
+        {TokenType::Kw_Generic, "泛型"},
         // ---- 标识符与字面量 ----
         {TokenType::Identifier, "标识符"},
         {TokenType::IntegerLiteral, "整数字面量"},
@@ -150,9 +154,10 @@ const std::string& Token::tokenTypeToString(TokenType type) {
     return it != map.end() ? it->second : kUnknown;
 }
 
-// 判断是否为关键字：枚举值落在关键字区间 [Kw_If, Kw_MultiLine]
+// 判断是否为关键字：枚举值落在关键字区间 [Kw_If, Kw_Generic]
+// 阶段3：新增 常量/友元/泛型 后，关键字枚举区间扩展至 Kw_Generic（58 个）
 bool Token::isKeyword(TokenType type) {
-    return type >= TokenType::Kw_If && type <= TokenType::Kw_MultiLine;
+    return type >= TokenType::Kw_If && type <= TokenType::Kw_Generic;
 }
 
 // 判断是否为字面量：整数/浮点/字符串/字符四类

@@ -83,9 +83,15 @@ add_library(cn_compiler_lexer STATIC
 target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
 
 # 语法模块库：AST节点定义 + 语法分析器（Task 1.3 + Task 1.4，供编译器与单元测试共用）
+# 单文件 <=1000 行约束：parser.cpp 拆分为 4 个模块——
+#   parser.cpp（基础辅助+类型+声明+主入口）、parser_oop.cpp（类/接口/导入/泛型）、
+#   parser_stmt.cpp（语句解析）、parser_expr.cpp（表达式解析）
 add_library(cn_compiler_parser STATIC
     src/cn_compiler/parser/ast.cpp
     src/cn_compiler/parser/parser.cpp
+    src/cn_compiler/parser/parser_oop.cpp
+    src/cn_compiler/parser/parser_stmt.cpp
+    src/cn_compiler/parser/parser_expr.cpp
 )
 target_link_libraries(cn_compiler_parser PUBLIC cn_compiler_lexer cn_compiler_common)
 
@@ -96,25 +102,40 @@ add_library(cn_compiler_type_system STATIC
 target_include_directories(cn_compiler_type_system PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
 
-# 语义模块库：语义分析器（Task 1.5 + Task 2.3 类型系统，供编译器与单元测试共用）
+# 语义模块库：语义分析器（Task 1.5 + Task 2.3 类型系统 + 阶段3 OOP/错误处理/泛型，
+#   按职责拆分子模块：class_resolver/error_analysis/generics，供编译器与单元测试共用）
 add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic.cpp
+    src/cn_compiler/semantic/class_resolver.cpp
+    src/cn_compiler/semantic/error_analysis.cpp
+    src/cn_compiler/semantic/generics.cpp
 )
 target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
 
-# IR模块库：CN-IR结构与IR生成器（Task 1.6 + Task 2.3 类型映射/字面量后缀，供编译器与单元测试共用）
+# IR模块库：CN-IR结构与IR生成器（Task 1.6 + Task 2.3 类型映射/字面量后缀 + 阶段3 OOP
+#   指令发射，供编译器与单元测试共用）
+# 阶段3 拆分子模块（单文件<=1000行约束）：ir_oop.cpp（类方法体提升/自身/父类/字段访问）、
+#   ir_oop_call.cpp（构造/虚调用/方法调用/运算符重载/DeleteObject）、
+#   ir_error_ctor.cpp（结果/可选内置构造器降级）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
+    src/cn_compiler/ir/ir_oop.cpp
+    src/cn_compiler/ir/ir_oop_call.cpp
+    src/cn_compiler/ir/ir_error_ctor.cpp
 )
 target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
 
-# 代码生成模块库：抽象后端接口 + X64代码生成器（Task 1.7，供编译器与单元测试共用）
+# 代码生成模块库：抽象后端接口 + X64代码生成器（Task 1.7 + 阶段3 OOP，供编译器与单元测试共用）
+# 阶段3 拆分子模块（单文件<=1000行约束）：x64_codegen_oop.cpp（OOP指令展开）、
+#   x64_codegen_vtable.cpp（虚表 .rdata + 静态字段 .data）
 add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/x64/x64_codegen.cpp
     src/cn_compiler/codegen/x64/x64_instructions.cpp
+    src/cn_compiler/codegen/x64/x64_codegen_oop.cpp
+    src/cn_compiler/codegen/x64/x64_codegen_vtable.cpp
 )
 target_include_directories(cn_compiler_codegen PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_common)
+target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_semantic cn_compiler_common)
 
 # AST打印器：访问者模式递归打印AST树（Task 1.10 ast 命令，供编译器与单元测试共用）
 add_library(cn_compiler_ast_printer STATIC
@@ -138,12 +159,21 @@ add_library(cn_compiler_opt STATIC
 target_include_directories(cn_compiler_opt PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_opt PUBLIC cn_compiler_ir cn_compiler_common)
 
-# 驱动模块库：CLI公共流水线与调试输出（Task 1.10 全链路集成）
+# 模块系统库（Task 3.6）：文件即模块/导入解析/依赖拓扑排序/AST合并/入口识别
+add_library(cn_compiler_module STATIC
+    src/cn_compiler/module/module.cpp
+)
+target_include_directories(cn_compiler_module PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_module PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_common)
+
+# 驱动模块库：CLI公共流水线与调试输出（Task 1.10 全链路集成；
+#   Task 3.6 多文件编译流水线 driver_module.cpp）
 add_library(cn_compiler_driver STATIC
     src/cn_compiler/driver/driver.cpp
+    src/cn_compiler/driver/driver_module.cpp
 )
 target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_opt)
+target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_opt cn_compiler_module)
 
 # 运行时库（cnrt）：IO + 程序入口（Task 1.8，规格书第十章）
 # 提供CN内置函数实现（打印行/打印行整数/打印行浮点）与 crt0 风格程序入口（调用 主）

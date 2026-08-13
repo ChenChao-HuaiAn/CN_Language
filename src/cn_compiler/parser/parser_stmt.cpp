@@ -1,0 +1,324 @@
+// 语法分析器语句解析：控制流语句（Task 1.4 + Task 2.x + Task 3.5）
+// 本文件为 parser.cpp 的拆分模块（单文件 <=1000 行约束），包含：
+//   解析语句分发、如果/当/循环/返回/中断/继续/选择/情况/默认 语句
+// 语法依据：CN语言规范 [03] 语句与控制流、[07] 错误处理
+#include <cstdint>
+#include <memory>
+#include <string>
+
+#include "cn_compiler/parser/parser.hpp"
+
+namespace cn_compiler {
+
+// 解析语句：按当前Token分发到具体语句解析函数
+std::unique_ptr<Stmt> Parser::parseStmt() {
+    switch (currentType()) {
+        case TokenType::Kw_If: return parseIfStmt();
+        case TokenType::Kw_While: return parseWhileStmt();
+        case TokenType::Kw_For: return parseForStmt();
+        case TokenType::Kw_Return: return parseReturnStmt();
+        case TokenType::Kw_Break: return parseBreakStmt();
+        case TokenType::Kw_Continue: return parseContinueStmt();
+        case TokenType::Kw_Switch: return parseSwitchStmt();
+        case TokenType::Kw_Var: {
+            auto stmt = parseVarDeclAfterKeyword(false);
+            consumeSemicolon();
+            return stmt;
+        }
+        case TokenType::Kw_Auto: {
+            // 自动 名称 = 初始值（类型推断声明，Task 2.10 lambda 赋值目标）
+            auto stmt = parseVarDeclAfterKeyword(false);
+            consumeSemicolon();
+            return stmt;
+        }
+        case TokenType::LeftBrace: return parseBlockStmt();  // 嵌套代码块
+        default:
+            break;
+    }
+    if (check(TokenType::Kw_Const)) {
+        auto stmt = parseVarDeclAfterKeyword(true);
+        consumeSemicolon();
+        return stmt;
+    }
+    if (check(TokenType::Kw_Static)) {
+        auto stmt = parseStaticVarDecl();
+        consumeSemicolon();
+        return stmt;
+    }
+    if (isTypeKeyword(currentType())) {
+        auto stmt = parseTypePrefixVarDecl();
+        consumeSemicolon();
+        return stmt;
+    }
+    // 自定义类型名变量声明（Task 2.7）：点 p = ...（结构体/枚举类型名作为前缀）
+    // 探测形式1：标识符(类型名) + 标识符(变量名)：点 p
+    // 探测形式2：标识符(类型名) + 星号(指针) + 标识符(变量名)：点* ptr
+    // 探测形式3：标识符(类型名) + [长度] + 标识符(变量名)：点[3] 点数组
+    //           （须 ] 后跟变量名 Identifier，避免误判 点数组[0] = v 下标赋值）
+    if (check(TokenType::Identifier)) {
+        const bool typeThenVar = (peek(1).getType() == TokenType::Identifier);
+        const bool typePtrVar = (peek(1).getType() == TokenType::Star &&
+                                 peek(2).getType() == TokenType::Identifier);
+        const bool typeArrayVar = (peek(1).getType() == TokenType::LeftBracket &&
+                                   peek(2).getType() == TokenType::IntegerLiteral &&
+                                   peek(3).getType() == TokenType::RightBracket &&
+                                   peek(4).getType() == TokenType::Identifier);
+        // Task 3.8 泛型实例化变量声明：类型名<实参> 变量名（向量<整32> 整数列表）
+        // 探测形式4：标识符 + < 且为模板形态 + 后续 类型...> 后跟变量名
+        //   判据：标识符(类型名) < 类型关键字/标识符 ... > 标识符(变量名)
+        const bool typeTemplateVar =
+            (peek(1).getType() == TokenType::Less &&
+             (isTypeKeyword(peek(2).getType()) || peek(2).getType() == TokenType::Identifier));
+        if (typeThenVar || typePtrVar || typeArrayVar || typeTemplateVar) {
+            auto stmt = parseTypePrefixVarDecl();
+            consumeSemicolon();
+            return stmt;
+        }
+    }
+    // Task 3.5 结果/可选 模板类型变量声明：结果<整32, 整32> r（类型关键字前缀）
+    if ((check(TokenType::Kw_Result) || check(TokenType::Kw_Optional)) &&
+        peek(1).getType() == TokenType::Less) {
+        auto stmt = parseTypePrefixVarDecl();
+        consumeSemicolon();
+        return stmt;
+    }
+    // 表达式语句
+    auto exprStmt = std::make_unique<ExprStmt>(parseExpr());
+    exprStmt->location = exprStmt->expr->location;
+    consumeSemicolon();
+    return exprStmt;
+}
+
+// 解析如果语句：如果 (条件) { } [否则 如果 ...] [否则 { }]
+// 兼容无括号形式（规格书06/07 示例）：如果 条件 { }（条件表达式自然解析停止于 '{'）
+std::unique_ptr<Stmt> Parser::parseIfStmt() {
+    auto stmt = std::make_unique<IfStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"如果"
+    if (check(TokenType::LeftParen)) {
+        advance();
+        stmt->condition = parseExpr();
+        consume(TokenType::RightParen, "')'");
+    } else {
+        stmt->condition = parseExpr();  // 无括号：表达式自然解析停止于 '{'
+    }
+    stmt->thenBranch = parseBlockStmt();
+    // 否则分支（否则如果 或 否则）
+    if (check(TokenType::Kw_Else)) {
+        advance();
+        if (check(TokenType::Kw_If)) {
+            stmt->elseBranch = parseIfStmt();  // 否则 如果 链
+        } else {
+            stmt->elseBranch = parseBlockStmt();  // 否则
+        }
+    }
+    return stmt;
+}
+
+// 解析当循环：当 (条件) { 循环体 }
+// 兼容无括号形式（与 如果 一致）：当 条件 { }（条件表达式自然解析停止于 '{'）
+std::unique_ptr<Stmt> Parser::parseWhileStmt() {
+    auto stmt = std::make_unique<WhileStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"当"
+    if (check(TokenType::LeftParen)) {
+        advance();
+        stmt->condition = parseExpr();
+        consume(TokenType::RightParen, "')'");
+    } else {
+        stmt->condition = parseExpr();
+    }
+    stmt->body = parseBlockStmt();
+    return stmt;
+}
+
+// 解析循环语句：循环 (初始化; 条件; 更新) { 体 } 或 循环 { 体 }（无限循环）
+std::unique_ptr<Stmt> Parser::parseForStmt() {
+    auto stmt = std::make_unique<ForStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"循环"
+    if (check(TokenType::LeftParen)) {
+        advance();
+        // 初始化部分（可为空）
+        if (!check(TokenType::Semicolon)) {
+            if (check(TokenType::Kw_Var)) {
+                stmt->init = parseVarDeclAfterKeyword(false);
+            } else if (check(TokenType::Kw_Const)) {
+                stmt->init = parseVarDeclAfterKeyword(true);
+            } else if (isTypeKeyword(currentType())) {
+                stmt->init = parseTypePrefixVarDecl();
+            } else {
+                stmt->init = std::make_unique<ExprStmt>(parseExpr());
+            }
+        }
+        consume(TokenType::Semicolon, "';'");
+        // 条件部分（可为空 = 无限循环）
+        if (!check(TokenType::Semicolon)) {
+            stmt->condition = parseExpr();
+        }
+        consume(TokenType::Semicolon, "';'");
+        // 更新部分（可为空）
+        if (!check(TokenType::RightParen)) {
+            stmt->update = parseExpr();
+        }
+        consume(TokenType::RightParen, "')'");
+    }
+    // 循环体
+    stmt->body = parseBlockStmt();
+    return stmt;
+}
+
+// 解析返回语句：返回 [表达式]
+std::unique_ptr<Stmt> Parser::parseReturnStmt() {
+    auto stmt = std::make_unique<ReturnStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"返回"
+    if (!check(TokenType::Semicolon) && !check(TokenType::RightBrace) &&
+        !check(TokenType::EndOfFile)) {
+        stmt->value = parseExpr();
+    }
+    consumeSemicolon();
+    return stmt;
+}
+
+// 解析中断语句：中断
+std::unique_ptr<Stmt> Parser::parseBreakStmt() {
+    auto stmt = std::make_unique<BreakStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"中断"
+    consumeSemicolon();
+    return stmt;
+}
+
+// 解析继续语句：继续
+std::unique_ptr<Stmt> Parser::parseContinueStmt() {
+    auto stmt = std::make_unique<ContinueStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"继续"
+    consumeSemicolon();
+    return stmt;
+}
+
+// 求值情况标签常量：仅允许整数字面量 / 字符字面量（编译期常量）
+// 返回是否成功；成功时 outValue 为整数值、outRaw 为原始文本
+// 注意：解析成功后必须 advance() 消费该 Token（调用方随后 expect ':'）
+bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw) {
+    if (currentType() == TokenType::IntegerLiteral) {
+        outRaw = current().getValue();
+        outValue = 0;
+        // 解析十进制/十六进制/二进制/八进制整数（无后缀简化处理）
+        std::string text = outRaw;
+        bool negative = false;
+        if (!text.empty() && text.front() == '-') {
+            negative = true;
+            text = text.substr(1);
+        }
+        int base = 10;
+        if (text.size() > 2 && text[0] == '0') {
+            if (text[1] == 'x' || text[1] == 'X') { base = 16; text = text.substr(2); }
+            else if (text[1] == 'b' || text[1] == 'B') { base = 2; text = text.substr(2); }
+            else if (text[1] == 'o' || text[1] == 'O') { base = 8; text = text.substr(2); }
+        }
+        try {
+            outValue = static_cast<std::int64_t>(std::stoll(text, nullptr, base));
+        } catch (...) {
+            reportErrorHere("情况标签不是有效的整型常量");
+            return false;
+        }
+        if (negative) outValue = -outValue;
+        advance();  // 消费整数字面量
+        return true;
+    }
+    if (currentType() == TokenType::CharLiteral) {
+        outRaw = current().getValue();
+        // 字符常量：取引号内首字节值（与 IR 层 visitCharLiteral 一致）
+        std::string text = current().getValue();
+        int code = 0;
+        if (text.size() >= 3) code = static_cast<unsigned char>(text[1]);
+        outValue = code;
+        advance();  // 消费字符字面量
+        return true;
+    }
+    // 枚举引用：枚举名.成员（Task 2.7，如 情况 颜色.红）
+    // 语法层仅记录原始文本"枚举名.成员"，值由语义层求值（枚举常量符号表）
+    if (currentType() == TokenType::Identifier &&
+        peek(1).getType() == TokenType::Dot &&
+        peek(2).getType() == TokenType::Identifier) {
+        outRaw = current().getValue() + "." + peek(2).getValue();
+        advance();  // 消费枚举名
+        advance();  // 消费 .
+        advance();  // 消费成员名
+        outValue = 0;  // 占位值，语义层按枚举常量求值回填
+        return true;
+    }
+    reportErrorHere("情况标签必须是整型/字符常量");
+    return false;
+}
+
+// 解析选择语句：选择 (值) { 情况 常量: 语句* [情况 ...]* [默认: 语句*] }
+// 分支结构：
+//   SwitchStmt
+//     ├── condition                选择表达式
+//     ├── cases[]  (CaseLabel)     每个情况：value + statements（到下一标签/右花括号）
+//     └── defaultCase (DefaultLabel) 默认分支（最多一个）
+// 实现要点：使用"当前分支归属指针"模型，语句实时追加到最近打开的标签；
+//          支持默认分支位于任意位置（前/中/后），每个分支语句正确归属
+std::unique_ptr<Stmt> Parser::parseSwitchStmt() {
+    auto stmt = std::make_unique<SwitchStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费"选择"
+    consume(TokenType::LeftParen, "'('");
+    stmt->condition = parseExpr();
+    consume(TokenType::RightParen, "')'");
+    consume(TokenType::LeftBrace, "'{'");
+
+    // 当前分支归属指针：普通语句实时追加到该标签的语句列表
+    Stmt* owner = nullptr;          // 最近打开的标签（CaseLabel 或 DefaultLabel）
+    bool seenDefault = false;       // 是否已出现默认标签
+
+    while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        if (check(TokenType::Kw_Case)) {
+            SourceLocation caseLoc = current().getLocation();
+            advance();  // 消费"情况"
+            std::int64_t caseValue = 0;
+            std::string rawValue;
+            if (!parseCaseValue(caseValue, rawValue)) {
+                // 常量求值失败：跳过到标签结束（防御性同步）
+                while (!check(TokenType::Colon) && !check(TokenType::EndOfFile) &&
+                       !check(TokenType::RightBrace)) advance();
+            }
+            consume(TokenType::Colon, "':'");
+            auto label = std::make_unique<CaseLabel>(caseValue);
+            label->rawValue = rawValue;
+            label->location = caseLoc;
+            owner = label.get();
+            stmt->cases.push_back(std::move(label));
+        } else if (check(TokenType::Kw_Default)) {
+            SourceLocation defLoc = current().getLocation();
+            advance();  // 消费"默认"
+            consume(TokenType::Colon, "':'");
+            if (seenDefault) {
+                reportError(defLoc, "选择语句中'默认'分支只能出现一次");
+            }
+            seenDefault = true;
+            auto label = std::make_unique<DefaultLabel>();
+            label->location = defLoc;
+            owner = label.get();
+            stmt->defaultCase = std::move(label);
+        } else {
+            // 普通语句：追加到当前标签（无标签时也吸收，错误恢复场景）
+            auto s = parseStmt();
+            consumeSemicolon();
+            if (owner != nullptr && owner->getType() == NodeType::CaseLabel) {
+                static_cast<CaseLabel*>(owner)->statements.push_back(std::move(s));
+            } else if (owner != nullptr && owner->getType() == NodeType::DefaultLabel) {
+                static_cast<DefaultLabel*>(owner)->statements.push_back(std::move(s));
+            }
+            // owner == nullptr：标签前出现语句，忽略（防御性）
+        }
+    }
+    consume(TokenType::RightBrace, "'}'");
+    return stmt;
+}
+
+} // namespace cn_compiler
