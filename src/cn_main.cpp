@@ -18,6 +18,7 @@
 #include <sstream>
 #include <string>
 #include <sys/stat.h>
+#include <unordered_set>
 #include <vector>
 
 #ifdef _WIN32
@@ -38,6 +39,8 @@ struct CliOptions {
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息
     bool useRegAlloc = true;         // 是否启用寄存器分配（-O2 起联动；--no-regalloc 显式关闭）
     bool debugInfo = false;          // 是否嵌入源码位置注释（--debug）
+    // Task 6.6 条件编译：命令行注入宏（-D 宏名，可多次；#如果定义 判定用）
+    std::unordered_set<std::string> macros;
 };
 
 // 打印版本信息
@@ -104,6 +107,10 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
         } else if (current == "--output") {
             if (index + 1 >= args.size()) return "选项 --output 缺少参数";
             options.output = args[++index];
+        } else if (current == "-D") {
+            // Task 6.6 条件编译：注入宏定义（-D 宏名，可多次指定）
+            if (index + 1 >= args.size()) return "选项 -D 缺少宏名参数";
+            options.macros.insert(args[++index]);
         } else if (current == "--verbose") {
             options.verbose = true;
         } else if (current.rfind("--", 0) == 0) {
@@ -187,6 +194,8 @@ static cn_compiler::driver::DriverOptions toDriverOptions(const CliOptions& opti
     dopts.optLevel = options.optLevel;
     dopts.output = options.output;
     dopts.verbose = options.verbose;
+    // Task 6.6 条件编译：命令行注入宏集合透传
+    dopts.macros = options.macros;
     // 阶段C（Task 4.3）：寄存器分配联动——-O2 及以上默认启用，
     //   --no-regalloc 显式关闭（options.useRegAlloc=false 覆盖）
     dopts.useRegAlloc = (options.optLevel >= 2) && options.useRegAlloc;
@@ -347,6 +356,7 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
         "src/runtime/runtime.cpp",
         "src/runtime/string_api.cpp",
         "src/runtime/i128_api.cpp",
+        "src/runtime/math_api.cpp",  // Task 6.3 数学库（__cn_sqrt 等）
     };
     const std::string sep = isWinX64(target) ? "\\" : "/";
     for (const char* src : runtimeSrcs) {
@@ -392,12 +402,14 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
             "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\runtime.obj\" \"" +
-            runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\"";
+            runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\" \"" +
+            runtimeObjDir + "\\math_api.obj\"";
     } else {
         cmdLine =
             linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "/io_api.o\" \"" + runtimeObjDir + "/runtime.o\" \"" +
-            runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\"";
+            runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\" \"" +
+            runtimeObjDir + "/math_api.o\"";
     }
     int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
     if (rc != 0) {

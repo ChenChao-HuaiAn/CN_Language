@@ -2823,6 +2823,17 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "字符串释放") calleeName = "__cn_str_free";
         // Task 2.9：格式化（格式字符串, 参数...）-> 字符串（sprintf 风格）
         else if (calleeName == "格式化") calleeName = "__cn_format";
+        // Task 6.3 数学库：中文限定名（数学.平方根 等，语义层注册为内置函数 key）
+        //   -> 运行时符号（math_api.cpp）。语义层 visitCallExpr 已把 数学.平方根(值)
+        //   重写为 IdentifierExpr("数学.平方根")，此处映射为 __cn_sqrt。
+        else if (calleeName == "数学.平方根") calleeName = "__cn_sqrt";
+        else if (calleeName == "数学.幂") calleeName = "__cn_pow";
+        else if (calleeName == "数学.正弦") calleeName = "__cn_sin";
+        else if (calleeName == "数学.余弦") calleeName = "__cn_cos";
+        else if (calleeName == "数学.正切") calleeName = "__cn_tan";
+        else if (calleeName == "数学.绝对值") calleeName = "__cn_fabs";
+        else if (calleeName == "数学.向上取整") calleeName = "__cn_ceil";
+        else if (calleeName == "数学.向下取整") calleeName = "__cn_floor";
     }
 
     std::vector<ir::IRValue> args;
@@ -2879,6 +2890,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                    calleeName == "__cn_str_from_bool" || calleeName == "__cn_str_from_uint" ||
                    calleeName == "__cn_format") {
             resultType = "ptr";       // 连接/复制/子串/大写/小写/修剪/反转/数字/字符/布尔转换、格式化 -> 字符串（指针）
+        } else if (calleeName == "__cn_sqrt" || calleeName == "__cn_pow" ||
+                   calleeName == "__cn_sin" || calleeName == "__cn_cos" ||
+                   calleeName == "__cn_tan" || calleeName == "__cn_fabs" ||
+                   calleeName == "__cn_ceil" || calleeName == "__cn_floor") {
+            resultType = "f64";       // 数学库（Task 6.3）：平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整 -> 浮64
         } else if (calleeName == "__cn_str_free") {
             // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：
             // 语义层"空类型"->mapType "void" 被下方过滤，emitResult 结果寄存器写入

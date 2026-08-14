@@ -34,9 +34,11 @@ bool readSourceFile(const std::string& path, std::string& content, std::string& 
 
 // 从源码文本解析模块（词法 + 语法 + 导入收集）
 // 返回解析是否成功（失败时 diags 已记录词法/语法错误）
+// 参数 macros：命令行注入宏集合（-D 宏名，条件编译 #如果定义 判定用；Task 6.6）
 bool parseSourceText(const std::string& source, const std::string& filePath,
                      const std::string& moduleName, std::unique_ptr<Program>& ast,
-                     std::vector<std::string>& imports, Diagnostics& diags);
+                     std::vector<std::string>& imports, Diagnostics& diags,
+                     const std::unordered_set<std::string>& macros = {});
 
 // 模块依赖图：按导入关系建立并拓扑排序（被依赖者在前；入口模块最后）
 class ModuleGraph {

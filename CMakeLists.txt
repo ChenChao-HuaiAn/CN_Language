@@ -75,10 +75,12 @@ add_library(cn_compiler_common STATIC
 )
 target_include_directories(cn_compiler_common PUBLIC ${CMAKE_SOURCE_DIR}/src)
 
-# 词法模块库：Token定义 + 词法分析器（Task 1.1 + Task 1.2，供编译器与单元测试共用）
+# 词法模块库：Token定义 + 词法分析器 + 预处理器（Task 1.1 + Task 1.2 + Task 6.6 条件编译，
+#   供编译器与单元测试共用）
 add_library(cn_compiler_lexer STATIC
     src/cn_compiler/lexer/token.cpp
     src/cn_compiler/lexer/lexer.cpp
+    src/cn_compiler/lexer/preprocessor.cpp
 )
 target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
 
@@ -208,6 +210,7 @@ add_library(cn_runtime STATIC
     src/runtime/runtime.cpp
     src/runtime/string_api.cpp
     src/runtime/i128_api.cpp
+    src/runtime/math_api.cpp
 )
 target_include_directories(cn_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
 

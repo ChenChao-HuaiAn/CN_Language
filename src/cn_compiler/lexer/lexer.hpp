@@ -6,8 +6,11 @@
 #include <utility>
 #include <vector>
 
+#include <unordered_set>
+
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/common/source_location.hpp"
+#include "cn_compiler/lexer/preprocessor.hpp"
 #include "cn_compiler/lexer/token.hpp"
 
 namespace cn_compiler {
@@ -18,10 +21,14 @@ namespace cn_compiler {
 class Lexer {
 public:
     // 构造函数：绑定源码全文、源文件名、诊断引擎引用
-    Lexer(const std::string& source, std::string fileName, Diagnostics& diagnostics)
-        : source_(source), fileName_(std::move(fileName)), diagnostics_(diagnostics) {}
+    // 可选：命令行注入宏集合（-D 宏名，条件编译 #如果定义 判定用；Task 6.6）
+    Lexer(const std::string& source, std::string fileName, Diagnostics& diagnostics,
+          const std::unordered_set<std::string>& macros = {})
+        : source_(source), fileName_(std::move(fileName)), diagnostics_(diagnostics),
+          macros_(macros) {}
 
     // 主入口：分析源码返回Token流（末尾含文件结束Token）
+    // 处理流程：预处理（条件编译裁剪，保留行号）-> 词法切分
     std::vector<Token> tokenize();
 
 private:
@@ -47,12 +54,13 @@ private:
     static bool lookupKeyword(const std::string& text, TokenType& type); // 查找53个关键字
     void reportError(const SourceLocation& loc, const std::string& message); // 报告词法错误
 
-    std::string source_;       // 源码全文
+    std::string source_;       // 源码全文（预处理裁剪后）
     std::string fileName_;     // 源文件名
     std::size_t pos_ = 0;      // 当前字节偏移
     int line_ = 1;             // 当前行号（从1开始）
     int column_ = 1;           // 当前列号（从1开始，按字符计数）
     Diagnostics& diagnostics_; // 诊断引擎引用
+    std::unordered_set<std::string> macros_; // 命令行注入宏（值拷贝，防默认参数临时对象悬垂）
 };
 
 } // namespace cn_compiler

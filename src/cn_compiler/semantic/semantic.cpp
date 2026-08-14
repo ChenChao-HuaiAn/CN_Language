@@ -758,6 +758,34 @@ void SemanticAnalyzer::registerBuiltins() {
     regStrFn("布尔转字符串", "字符串", {"布尔"});   // Task 2.9：布尔转"真"/"假"（拼接上下文）
     regStrFn("正数转字符串", "字符串", {"正64"});
     regStrFn("字符串释放", "空类型", {"字符串"});
+
+    // ---- 数学库（Task 6.3，规格书10.5 数学库；对应运行时 math_api.cpp）----
+    // 中文名带 "数学." 前缀（形如 模块.函数 限定名），作为**内置函数唯一 key**：
+    //   - 与 CN 层模块 stdlib/数学.cn 的公开函数（纯名 平方根 等）不冲突——
+    //     模块函数注册为纯名（公开符号合并），内置函数注册为带点限定名
+    //   - 调用方式 数学.平方根(值)：visitCallExpr 模块限定重写时，对已注册的
+    //     数学.* 内置名特判：不重写为纯名，保留限定名走内置函数路径
+    // 运行时符号：数学.平方根 -> __cn_sqrt、数学.幂 -> __cn_pow、
+    //   数学.正弦 -> __cn_sin、数学.余弦 -> __cn_cos、数学.正切 -> __cn_tan、
+    //   数学.绝对值 -> __cn_fabs、数学.向上取整 -> __cn_ceil、
+    //   数学.向下取整 -> __cn_floor（IR 层按函数名映射）
+    // 参数/返回均为 浮64（double）；P1 的对数/反三角/随机数留待后续
+    const auto regMathFn = [this](const std::string& name, const std::string& retType,
+                                  const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regMathFn("数学.平方根", "浮64", {"浮64"});
+    regMathFn("数学.幂", "浮64", {"浮64", "浮64"});
+    regMathFn("数学.正弦", "浮64", {"浮64"});
+    regMathFn("数学.余弦", "浮64", {"浮64"});
+    regMathFn("数学.正切", "浮64", {"浮64"});
+    regMathFn("数学.绝对值", "浮64", {"浮64"});
+    regMathFn("数学.向上取整", "浮64", {"浮64"});
+    regMathFn("数学.向下取整", "浮64", {"浮64"});
 }
 
 // 第一趟：注册函数符号（支持前向调用与重名检测，类型统一存规范化形式）
@@ -1755,6 +1783,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // 识别：object 为标识符且名字在 importedModules_（已导入模块名）中，
     //   且该名字不是类型名（结构体/枚举/类）→ 重写 callee 为直接函数名，
     //   复用下方"直接函数名调用"路径（重载决议/参数检查/IR 符号生成均无需改动）。
+    // Task 6.3 数学内置函数特判：内置函数注册为带点限定名（数学.平方根）。
+    //   优先级：用户模块函数优先——若模块 数学 已导入且公开符号合并后存在纯名
+    //   平方根（用户自定义 数学.cn 的公开函数），走"普通模块函数"路径（重写为纯名）；
+    //   否则若限定名是已注册内置函数（数学.平方根 全局注册，无需导入，
+    //   如 stdlib/数学.cn 模块体内直接写 数学.平方根(值)），保留限定名走内置路径。
+    //   即：内置限定名仅在"无同名用户模块公开函数"时生效，二者不冲突。
     if (node->callee->getType() == NodeType::MemberExpr) {
         MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
         if (!mem->isArrow) {
@@ -1765,15 +1799,23 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             const bool isTypeName = isStructType(moduleName) || isEnumType(moduleName) ||
                                     findClass(moduleName) != nullptr ||
                                     findInterface(moduleName) != nullptr;
-            if (!isTypeName && importedModules_.count(moduleName) > 0) {
-                // 先取函数名到局部变量（下方重写会销毁旧 MemberExpr，mem 悬垂！）
-                const std::string funcName = mem->memberName;
-                // 重写为直接函数名（成员方法调用分支不会再命中 MemberExpr）
-                node->callee = std::make_unique<IdentifierExpr>(funcName);
-                // 跨模块可见性检查：重写后的函数必须已注册（公开符号已合并）。
-                // 若未注册（私有符号被过滤/符号不存在）→ 报错，避免走
-                // "函数指针间接调用"静默路径导致误通过。
-                if (!hasFunctionName(funcName)) {
+            // 先取函数名到局部变量（下方重写会销毁旧 MemberExpr，mem 悬垂！）
+            const std::string funcName = mem->memberName;
+            const std::string qualified = moduleName + "." + funcName;
+            // 已导入模块的公开函数优先（用户模块 数学.cn 的公开符号合并为纯名）
+            const bool moduleImported = importedModules_.count(moduleName) > 0;
+            const bool userFuncExists = moduleImported && hasFunctionName(funcName);
+            if (!isTypeName &&
+                (userFuncExists || moduleImported || hasFunctionName(qualified))) {
+                // 用户模块公开函数：重写为直接函数名（成员方法调用分支不再命中 MemberExpr）
+                if (userFuncExists) {
+                    node->callee = std::make_unique<IdentifierExpr>(funcName);
+                } else if (hasFunctionName(qualified)) {
+                    // 数学库内置函数（数学.平方根 等）：保留限定名作标识符
+                    node->callee = std::make_unique<IdentifierExpr>(qualified);
+                } else {
+                    // 已导入模块但符号不存在 → 报错，避免走"函数指针间接调用"静默路径
+                    node->callee = std::make_unique<IdentifierExpr>(funcName);
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "模块 '" + moduleName + "' 没有公开符号 '" +
                                             funcName + "'");

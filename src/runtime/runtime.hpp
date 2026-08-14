@@ -110,6 +110,18 @@ extern "C" {
     CNRT_EXPORT void printLineI128(const std::uint64_t* v);        // 打印有符号128位（换行）
     CNRT_EXPORT void printLineU128(const std::uint64_t* v);        // 打印无符号128位（换行）
 
+    // 数学库 API（Task 6.3，规格书10.5 数学库；对应 CN 层 stdlib/数学.cn 函数）
+    // 命名约定：运行时英文 API，CN 层中文函数名由编译器 IR 层映射到此符号
+    // 输入输出均为 double（浮64）；P1 的对数/反三角/随机数留待后续
+    CNRT_EXPORT double __cn_sqrt(double value);      // 平方根（数学.平方根）
+    CNRT_EXPORT double __cn_pow(double base, double exponent); // 幂（数学.幂，底数^指数）
+    CNRT_EXPORT double __cn_sin(double radians);     // 正弦（数学.正弦，弧度制）
+    CNRT_EXPORT double __cn_cos(double radians);     // 余弦（数学.余弦，弧度制）
+    CNRT_EXPORT double __cn_tan(double radians);     // 正切（数学.正切，弧度制）
+    CNRT_EXPORT double __cn_fabs(double value);      // 绝对值（数学.绝对值）
+    CNRT_EXPORT double __cn_ceil(double value);      // 向上取整（数学.向上取整）
+    CNRT_EXPORT double __cn_floor(double value);     // 向下取整（数学.向下取整）
+
     // 运行时错误（规格书附录B错误码，Task 2.4 数组/指针运行时检查调用）
     // 错误码：1=除零、2=数组越界、3=空指针解引用（打印错误信息后终止程序）
     // 阶段3（Task 3.5）：扩展 4=内存分配失败、5=文件打开失败、6=无效参数、

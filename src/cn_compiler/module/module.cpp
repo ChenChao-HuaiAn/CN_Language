@@ -102,8 +102,10 @@ bool readSourceFile(const std::string& path, std::string& content, std::string& 
 // 返回解析是否成功（失败时 diags 已记录词法/语法错误）
 bool parseSourceText(const std::string& source, const std::string& filePath,
                      const std::string& moduleName, std::unique_ptr<Program>& ast,
-                     std::vector<std::string>& imports, Diagnostics& diags) {
-    Lexer lexer(source, filePath, diags);
+                     std::vector<std::string>& imports, Diagnostics& diags,
+                     const std::unordered_set<std::string>& macros) {
+    // Task 6.6：命令行注入宏参与条件编译判定（#如果定义 宏名）
+    Lexer lexer(source, filePath, diags, macros);
     auto tokens = lexer.tokenize();
     if (diags.hasErrors()) return false;
 

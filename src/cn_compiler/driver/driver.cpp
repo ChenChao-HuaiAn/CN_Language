@@ -30,8 +30,8 @@ int runPipeline(const std::string& source, const std::string& fileName,
                 const DriverOptions& options, PipelineOutput& output) {
     Diagnostics diagnostics;
 
-    // 1. 词法分析
-    Lexer lexer(source, fileName, diagnostics);
+    // 1. 词法分析（Task 6.6：传入命令行注入宏集合，条件编译 #如果定义 判定用）
+    Lexer lexer(source, fileName, diagnostics, options.macros);
     output.tokens = lexer.tokenize();
     if (diagnostics.hasErrors()) {
         std::cerr << diagnostics.format();
@@ -97,7 +97,8 @@ int runCheck(const std::string& source, const std::string& fileName,
     (void)options;
     Diagnostics diagnostics;
 
-    Lexer lexer(source, fileName, diagnostics);
+    // Task 6.6：命令行注入宏集合（-D 宏名）参与条件编译判定
+    Lexer lexer(source, fileName, diagnostics, options.macros);
     std::vector<Token> tokens = lexer.tokenize();
     if (diagnostics.hasErrors()) {
         std::cerr << diagnostics.format();

@@ -10,6 +10,7 @@ add_executable(cn_unit_tests
     lexer/test_lexer_string.cpp
     lexer/test_lexer_keywords.cpp
     lexer/test_lexer_stage3.cpp
+    lexer/test_preprocessor.cpp
     parser/test_ast.cpp
     parser/test_parser.cpp
     parser/test_parser_control.cpp
@@ -83,6 +84,7 @@ add_executable(cn_unit_tests
     runtime/test_i128_api.cpp
     runtime/test_format_api.cpp
     runtime/test_object_api.cpp
+    runtime/test_math_api.cpp
 )
 
 # 链接 Google Test 与公共模块库

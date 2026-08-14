@@ -600,7 +600,16 @@ Token Lexer::readOperatorOrDelimiter() {
 }
 
 // 主入口：分析源码返回Token流（末尾含文件结束Token）
+// Task 6.6 条件编译：先经 Preprocessor 裁剪（保留行号），再切分 Token。
+//   裁剪后的非激活行替换为空白，行号/列号与原始源码一致，诊断定位不偏移。
 std::vector<Token> Lexer::tokenize() {
+    // 预处理：条件编译指令裁剪（#定义/#如果定义/#否则/#结束如果）
+    Preprocessor preprocessor(source_, fileName_, diagnostics_, macros_);
+    source_ = preprocessor.process();
+    pos_ = 0;
+    line_ = 1;
+    column_ = 1;
+
     std::vector<Token> tokens;
     while (true) {
         skipWhitespaceAndComments();

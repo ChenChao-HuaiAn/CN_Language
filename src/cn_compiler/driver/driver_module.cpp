@@ -11,6 +11,7 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "cn_compiler/codegen/backend_factory.hpp"
@@ -44,7 +45,8 @@ std::string pathDir(const std::string& path) {
 // 依赖模块路径 = 入口所在目录 + 模块名 + ".cn"（文件即模块，同目录平铺）
 // 返回 false 表示加载/解析失败（diags 已输出或 error 已写入）
 bool loadModuleTree(const std::string& filePath, const std::string& dir,
-                    module::ModuleGraph& graph, std::string& error) {
+                    module::ModuleGraph& graph, std::string& error,
+                    const std::unordered_set<std::string>& macros) {
     const std::string stem = pathStem(filePath);
     if (graph.findModule(stem) != nullptr) return true;  // 已加载：去重
 
@@ -55,7 +57,8 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     auto unit = std::make_unique<module::ModuleUnit>();
     unit->filePath = filePath;
     unit->moduleName = stem;
-    if (!module::parseSourceText(source, filePath, stem, unit->ast, unit->imports, diags)) {
+    if (!module::parseSourceText(source, filePath, stem, unit->ast, unit->imports, diags,
+                                 macros)) {
         std::cerr << diags.format();
         error = "模块 '" + stem + "' 解析失败";
         return false;
@@ -66,7 +69,7 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     module::ModuleUnit* cur = graph.findModule(stem);
     for (const auto& dep : cur->imports) {
         const std::string depFile = dir + dep + ".cn";
-        if (!loadModuleTree(depFile, dir, graph, error)) return false;
+        if (!loadModuleTree(depFile, dir, graph, error, macros)) return false;
     }
     return true;
 }
@@ -83,7 +86,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     module::ModuleGraph graph;
     std::string error;
     const std::string dir = pathDir(entryFile);
-    if (!loadModuleTree(entryFile, dir, graph, error)) {
+    if (!loadModuleTree(entryFile, dir, graph, error, options.macros)) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
     }

@@ -7,6 +7,7 @@
 #pragma once
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "cn_compiler/ir/ir.hpp"
@@ -22,6 +23,8 @@ struct DriverOptions {
     int optLevel = 2;                // 优化级别
     std::string output;              // 输出文件路径
     bool verbose = false;            // 详细输出
+    // Task 6.6 条件编译：命令行注入宏（-D 宏名），供 #如果定义 判定
+    std::unordered_set<std::string> macros;  // 注入宏集合
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关
     //   useRegAlloc：-O2 及以上默认启用（可被 --no-regalloc 关闭）；-O0/-O1 恒 false
     //   debugInfo：--debug 开启，汇编中嵌入源码位置注释
