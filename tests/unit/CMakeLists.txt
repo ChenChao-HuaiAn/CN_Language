@@ -37,6 +37,7 @@ add_executable(cn_unit_tests
     semantic/test_semantic_error.cpp
     semantic/test_semantic_generic.cpp
     module/test_module.cpp
+    module/test_module_driver.cpp
     ir/test_ir.cpp
     ir/test_ir_control.cpp
     ir/test_ir_function.cpp
@@ -104,6 +105,7 @@ target_link_libraries(cn_unit_tests PRIVATE
     cn_compiler_codegen
     cn_compiler_opt
     cn_compiler_module
+    cn_compiler_driver
     cn_runtime
 )
 
