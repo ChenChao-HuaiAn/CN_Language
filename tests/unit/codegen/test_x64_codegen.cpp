@@ -254,3 +254,53 @@ TEST(X64CodegenTest, BlockLabel) {
 
     EXPECT_NE(asmText.find("块0:"), std::string::npos);
 }
+
+// 辅助：构造单 i64 虚拟寄存器函数（寄存器分配会为其分配 1 个被调用者保存寄存器）
+IRModule buildI64SingleModule() {
+    IRModule module;
+    IRFunction func;
+    func.name = "single";
+    func.returnType = "i64";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    // %v0 = ConstInt 1 (i64)
+    IRInstruction c;
+    c.opcode = Opcode::ConstInt;
+    c.result = IRValue::reg(0, "i64");
+    c.type = "i64";
+    c.extra = "1";
+    block->instructions.push_back(c);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v0";
+    func.blocks.push_back(std::move(block));
+    func.nextRegId = 1;
+    module.functions.push_back(std::move(func));
+    return module;
+}
+
+// 栈对齐回归（阶段C 修复）：prologue 中被调用者保存寄存器 push 在 sub rsp 之后，
+// 当 push 数为奇数时，sub 大小必须 +8 补齐，否则函数体内 rsp≡8 (mod 16)，
+// call 前 rsp 不 16 对齐，违反 Win x64 ABI -> 被调方（MSVC 编译运行时）movaps 崩溃
+// （0xC0000005）。本测试：1 个 i64 虚拟寄存器 -> 分配 1 个被调用者保存寄存器
+// （r12，freeRegs std::set 字典序最小），奇数 push -> sub 应为 16(对齐) + 8 = 24。
+TEST(X64CodegenTest, PrologueStackAlignWithCalleeSaved) {
+    Diagnostics diagnostics;
+    X64CodeGenerator generator(diagnostics);
+    generator.setRegAllocEnabled(true);  // -O2 默认启用寄存器分配
+    IRModule module = buildI64SingleModule();
+
+    const std::string asmText = generator.generateAssembly(module);
+
+    // 分配 1 个被调用者保存寄存器（r12）并压栈保存
+    EXPECT_NE(asmText.find("push r12"), std::string::npos);
+    // sub 大小 = 16（寄存器槽 8 字节 16 对齐）+ 8（奇数 push 补齐）= 24
+    EXPECT_NE(asmText.find("sub rsp, 24"), std::string::npos);
+
+    // 关闭寄存器分配（-O0/-O1 行为）：无 push，sub 为 16（不含 +8）
+    X64CodeGenerator gen2(diagnostics);
+    IRModule module2 = buildI64SingleModule();
+    const std::string asmText2 = gen2.generateAssembly(module2);
+    EXPECT_EQ(asmText2.find("push r12"), std::string::npos);
+    EXPECT_NE(asmText2.find("sub rsp, 16"), std::string::npos);
+}

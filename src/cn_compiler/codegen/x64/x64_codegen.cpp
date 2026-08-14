@@ -526,6 +526,15 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
     writer.line("push rbp");
     writer.line("mov rbp, rsp");
     int frameSize = computeFrameSize(function);
+    // 阶段C（Task 4.3）栈对齐修复：被调用者保存寄存器（rbx/r12~r15）在
+    //   sub rsp 之后压栈，若 push 数量为奇数，函数体内 rsp≡8 (mod 16)，
+    //   call 前 rsp 不再 16 字节对齐，违反 Win x64 ABI——被调方（MSVC 编译
+    //   的运行时）用 movaps/movdqa 对齐访问立即崩溃（0xC0000005）。
+    //   正确约束：sub 大小 F 满足 (F + 8N) ≡ 0 (mod 16)；computeFrameSize
+    //   已保证 F ≡ 0 (mod 16)，故 N 为奇数时 F 额外 +8。
+    if (calleeSavedRegs_.size() % 2 == 1) {
+        frameSize += 8;
+    }
     if (frameSize > 0) {
         writer.line("sub rsp, " + std::to_string(frameSize));
     }

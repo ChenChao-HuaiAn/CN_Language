@@ -522,15 +522,15 @@
 ## 高权重问题（新Win10环境恢复发现，2026-08-14）
 
 > 新 Win10 系统环境恢复构建基线时发现 2 个缺陷（均与新环境 MSVC 相关），
-> **当前状态：umul128 缺陷已修复 ✅（2026-08-14 19:05，缺陷修复子任务）；reg_alloc -O2 崩溃缺陷仍待修复（由 reg_alloc 缺陷修复子任务处理）。**
-> 构建基线：CMake 配置成功、全量构建零错误零警告；单测 964/964（umul128 修复后全量通过）、E2E 7/28。
+> **当前状态：umul128 缺陷已修复 ✅（2026-08-14 19:05）；reg_alloc -O2 崩溃缺陷已修复 ✅（2026-08-14 19:50，栈对齐根因）。**
+> 构建基线：CMake 配置成功、全量构建零错误零警告；单测 965/965（修复后含新增回归测试）、E2E 28/28（-O0/-O2/-O3 三级别输出一致）。
 
-- [2026-08-14 19:01] **问题类型**: 逻辑错误（权重 20.8）**待修复 ⚠️**
-  - **描述**: 换新 Win10 环境后 E2E 21/28 崩溃（退出码 3221225477=0xC0000005），单测 963/964。对照实验定位：`-O0` 全部用例输出正确、`-O2 --no-regalloc` 全部用例输出正确、**默认 `-O2`（启用寄存器分配）崩溃**——根因是阶段C 线性扫描寄存器分配器（reg_alloc，[`cn_main.cpp`](src/cn_main.cpp:192) `dopts.useRegAlloc = (optLevel >= 2) && useRegAlloc`）生成的 x64 汇编在新 MSVC 环境下错误。旧环境（此前 28/28 通过）未暴露，新环境暴露。
-  - **原因**: reg_alloc 生成的代码存在平台相关缺陷（新 MSVC 工具链组合下触发）；具体缺陷位置需进一步反汇编定位（可能涉及被调用者保存寄存器保存/恢复、栈槽与物理寄存器映射、i128 双槽等）。
-  - **解决**: 待调查（候选：1) 反汇编 -O2 与 -O2 --no-regalloc 差异定位具体错误指令；2) 参考 arm64 保守降级——x64 默认关闭 regalloc 或仅 -O3 启用，等写回点收敛后再启用；3) 修复 reg_alloc 后全量回归）。
-  - **预防**: 跨环境（GCC→MSVC、Win10 版本/工具链升级）后必须重跑全量 E2E 验证 -O2 与 -O0 一致性；优化器/寄存器分配器这类"代码生成优化"默认启用前必须在目标环境全量回归；新环境恢复基线时对 -O2 崩溃先做 --no-regalloc 对照实验定位。
-  - **权重**: 20.8（逻辑错误8 × 详细分析2.0 × 解决方案1.3 × 预防措施1.0 × 待解决2.0 × 影响度0.5）
+- [2026-08-14 19:01] **问题类型**: 逻辑错误（权重 20.8）**已修复 ✅（2026-08-14 19:50）**
+  - **描述**: 换新 Win10 环境后 E2E 21/28 崩溃（退出码 3221225477=0xC0000005），单测 963/964。对照实验定位：`-O0` 全部用例输出正确、`-O2 --no-regalloc` 全部用例输出正确、**默认 `-O2`（启用寄存器分配）崩溃**——根因是阶段C 线性扫描寄存器分配器（reg_alloc，[`cn_main.cpp`](src/cn_main.cpp:192) `dopts.useRegAlloc = (optLevel >= 2) && useRegAlloc`）生成的 x64 汇编在新 MSVC 环境下错误。
+  - **原因**: **x64 prologue 栈 16 字节对齐破坏**——[`x64_codegen.cpp`](src/cn_compiler/codegen/x64/x64_codegen.cpp:525) `emitPrologue` 先 `sub rsp, frameSize`（frameSize 已 16 对齐 ≡0 mod 16），**之后** `emitSaveCalleeSaved` 再 push 被调用者保存寄存器（rbx/r12~r15）。当 push 数量为奇数（N=1/3/5）时，函数体内 `rsp ≡ 8 (mod 16)`；`emitCall` 的 `sub rsp, 32`（16 倍数）不改变余数，**call 前 rsp≡8 (mod 16) 违反 Win x64 ABI**（call 时 rsp 必须 16 对齐）→ 被调方（MSVC 编译的运行时/用户函数）用 `movaps`/`movdqa` 对齐访问立即 0xC0000005。旧环境（GCC7 Linux 无 MSVC 对齐敏感运行时路径）未暴露，新 MSVC 环境暴露。失败用例统计证实：05/07 有函数 `push r12/r13/r14`（3 个奇数）、09 有函数 `push rbx/r12/r13/r14/r15`（5 个奇数）。
+  - **解决**: **最小化修复（仅 x64_codegen.cpp emitPrologue +3 行）**：`calleeSavedRegs_.size() % 2 == 1` 时 `frameSize += 8`（保持 `sub rsp` 后 + 奇数 push 总和 ≡0 mod 16）。正确约束：sub 大小 F 满足 `(F + 8N) ≡ 0 (mod 16)`；computeFrameSize 已保证 F≡0 mod 16，故 N 奇数时 F+8。修复后「阶乘」`sub rsp,128→136`、「主」`552→560`、`664→672` 全部对齐。新增回归单测 `X64CodegenTest.PrologueStackAlignWithCalleeSaved`（test_x64_codegen.cpp）：1 个 i64 虚拟寄存器 → 分配 1 个被调用者保存寄存器（奇数 push）→ 断言 `sub rsp, 24`（16 对齐 + 奇数补 8）与 `push r12`；关闭 regalloc 时无 push、`sub rsp, 16`。
+  - **预防**: ① 凡 prologue 在 `sub rsp, frameSize` **之后** push 被调用者保存寄存器（或任何 8 字节压栈），栈帧大小必须计入 push 字节数——正确公式 `F + 8N ≡ 0 (mod 16)`，不能只对 frameSize 单独 16 对齐；② 每次寄存器分配器集成后，必须验证函数体内 `call` 前 `rsp ≡ 0 (mod 16)`（可 grep prologue 的 `sub rsp` 与 push 数量手动核对）；③ 跨环境（GCC→MSVC、工具链升级）后必须重跑全量 E2E 验证 -O2 与 -O0 一致性；④ 优化器/寄存器分配器这类"代码生成优化"默认启用前必须在目标环境全量回归。
+  - **权重**: 20.8（逻辑错误8 × 详细分析2.0 × 解决方案1.5 × 预防措施1.3 × 已解决1.0 × 影响度0.5）
 
 - [2026-08-14 19:01] **问题类型**: 逻辑错误（权重 8.4）**已修复 ✅**
   - **描述**: 单元测试 `I128ApiTest.MulCrossTerms` 失败——`__cn_mul_u128`（`0xFFFFFFFFFFFFFFFF * 2`）输出高低 64 位互换（期望 out[0]=0xFFFFFFFFFFFFFFFE/out[1]=1，实际 out[0]=1/out[1]=0xFFFFFFFFFFFFFFFE）。[`i128_api.cpp`](src/runtime/i128_api.cpp:151) `umul128` 的 MSVC 分支 `hi = _umul128(a, b, &lo)` **参数语义写反**——`_umul128` 签名是"返回值=低64位、第三参数输出=高64位"，应写 `lo = _umul128(a, b, &hi)`。GCC 分支（__int128）写法正确，故旧 Linux GCC7 环境全过、新 MSVC 环境暴露（与 lessons 权重 27.3"换电脑构建失败"同类 MSVC 差异）。
