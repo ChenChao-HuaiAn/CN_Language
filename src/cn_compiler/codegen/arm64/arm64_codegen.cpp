@@ -124,12 +124,12 @@ std::string Arm64CodeGenerator::mangleTypeCode(const std::string& typeRaw) {
 }
 
 // CN符号 -> 汇编链接符号（中文名 -> C 符号映射表，平台无关，照抄 X64）
+// 方案C（2026-08-14）✅ 已修复：删除 打印行整数/打印行浮点 映射（与 X64 同步，
+//   打印/打印行 为变参函数，IR 层展开为 __cn_print_* 系列）
 std::string Arm64CodeGenerator::symbolName(const std::string& name) {
     if (name == "主") return "cn_main";
     if (name == "打印") return "printLine";
     if (name == "打印行") return "printNoLine";
-    if (name == "打印行整数") return "printLineInt";
-    if (name == "打印行浮点") return "printLineFloat";
     if (name == "分配") return "cn_alloc";
     if (name == "释放") return "cn_free";
     if (name == "重新分配") return "cn_realloc";

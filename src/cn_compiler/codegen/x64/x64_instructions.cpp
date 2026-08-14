@@ -803,7 +803,7 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line("mov " + dst + ", ax");
         return;
     }
-    // i128/u128 -> i64：截断取低64位（值域≤2^63时语义正确；打印行整数场景）
+    // i128/u128 -> i64：截断取低64位（值域≤2^63时语义正确；函数参数整64 场景）
     // 注意：i128 双寄存器 %vN（高64位）+ %vN+1（低64位），取低64位槽
     if ((from == "i128" || from == "u128") && (to == "i64" || to == "u64")) {
         const int srcLoId = inst.operands[0].id + 1;
@@ -826,7 +826,7 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line("mov " + dst + ", eax");
         return;
     }
-    // i32 -> i64：movsxd 符号扩展（否则负数高位垃圾变巨大正数，打印行整数场景）
+    // i32 -> i64：movsxd 符号扩展（否则负数高位垃圾变巨大正数，打印(整32) 场景）
     if (from == "i32" && to == "i64") {
         writer.line("mov eax, " + src);
         writer.line("movsxd rax, eax");

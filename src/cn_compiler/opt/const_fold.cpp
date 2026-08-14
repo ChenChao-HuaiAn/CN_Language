@@ -379,6 +379,13 @@ bool ConstFoldPass::foldCast(const std::string& fromType, const std::string& fro
     if (isFloatType(fromType) && isFloatType(toType)) {
         double d = 0.0;
         if (!parseDouble(fromText, d)) return false;
+        // 审查修复（方案C f32 打印 Cast 链路）：f32 -> f64 必须先按 f32 精度截断
+        //   再提升——(double)(3.14f) 应为 3.1400001049041748（float 3.14 的精确值），
+        //   原实现直接按 double 解析 3.14（3.1400000000000001），打印/格式化在
+        //   更高精度（%g/%e 或 浮点转字符串）下输出错误；%f 6位小数恰好掩盖差异。
+        if (fromType == "f32" && toType == "f64") {
+            d = static_cast<double>(static_cast<float>(d));
+        }
         out = formatDouble(d, toType);
         isFloat = true;
         return true;

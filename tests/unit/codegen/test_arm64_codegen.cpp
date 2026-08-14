@@ -551,12 +551,12 @@ TEST(Arm64CodegenTest, DirectCall) {
     auto block = std::make_unique<IRBlock>();
     block->label = "块0";
 
-    // Call %v0 = 打印行整数(42)
+    // Call %v0 = 打印(42)
     IRInstruction call;
     call.opcode = Opcode::Call;
     call.result = IRValue::reg(0, "i32");
     call.type = "i32";
-    call.extra = "打印行整数";
+    call.extra = "打印";
     call.operands = {IRValue::constant("42", "i32")};
     block->instructions.push_back(call);
 
@@ -570,6 +570,6 @@ TEST(Arm64CodegenTest, DirectCall) {
 
     std::string asmText = generator.generateAssembly(module);
 
-    // 运行时符号映射 + bl 调用
-    EXPECT_NE(asmText.find("bl printLineInt"), std::string::npos);
+    // 运行时符号映射 + bl 调用（方案C：打印 -> printLine，遗留 打印行整数 已删除）
+    EXPECT_NE(asmText.find("bl printLine"), std::string::npos);
 }

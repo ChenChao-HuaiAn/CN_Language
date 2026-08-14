@@ -1,5 +1,7 @@
 // CN运行时（cnrt）公共接口：内存管理、IO、程序入口（规格书第十章）
-// 对应CN语言内置函数：打印行 / 打印行整数 / 打印行浮点，以及程序入口 主
+// 对应CN语言内置函数：打印 / 打印行（变参，IR 层展开为 __cn_print_* 序列），以及程序入口 主
+// 方案C（2026-08-14）✅ 已修复：遗留的 打印行整数/打印行浮点 已删除（旧语义"行"=换行，
+//   与 打印行 不换行语义相反）；printLineInt/printLineFloat 符号保留（单元测试引用+ABI稳定）
 // 注意：运行时C++实现采用英文API命名（用户要求），CN符号在汇编层映射
 #pragma once
 
@@ -26,10 +28,13 @@ extern "C" {
     CNRT_EXPORT void cn_memset(void* dst, std::size_t size);
 
     // IO API（规格书10.1，Task 2.9 语义调整：打印=println 换行、打印行=print 不换行）
+    // 打印/打印行 变参展开走 __cn_print_*（不换行）系列（见 string_api.cpp）；
+    // 以下 printLine/printNoLine/printLineInt/printLineFloat 为防御保留的单参数路径
+    //   （printLineInt/printLineFloat 仅单元测试直接调用，编译器已不再映射）
     CNRT_EXPORT void printLine(const char* text);          // 打印（字符串，println 换行）
     CNRT_EXPORT void printNoLine(const char* text);        // 打印行（字符串，print 不换行）
-    CNRT_EXPORT void printLineInt(long long value);        // 打印整数（换行）
-    CNRT_EXPORT void printLineFloat(double value);         // 打印浮点（换行）
+    CNRT_EXPORT void printLineInt(long long value);        // 打印整数（换行，防御保留）
+    CNRT_EXPORT void printLineFloat(double value);         // 打印浮点（换行，防御保留）
 
     // 字符串API（规格书10.1 字符串操作：长度/比较/连接/复制/查找；Task 2.5 + Task 2.8 补充）
     // 对应CN内置函数：字符串长度/字符串比较/字符串连接/字符串复制/字符串查找/

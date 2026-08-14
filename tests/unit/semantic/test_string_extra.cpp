@@ -65,7 +65,7 @@ TEST(StringExtraSemanticTest, CmpRegister) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整64 c = 字符串字典序("a", "b")
-    打印行整数(c)
+    打印(c)
     返回 0
 }
 )CN");

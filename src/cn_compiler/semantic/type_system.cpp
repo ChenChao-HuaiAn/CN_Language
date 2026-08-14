@@ -118,10 +118,11 @@ bool canConvert(const std::string& fromRaw, const std::string& toRaw) {
         const int rankTo = intRank(to);
         if (rankFrom == 0 || rankTo == 0) return false;
         // 同秩跨符号（正64<->整64）允许隐式：位模式一致，仅解释不同
-        // （C++ 语义；打印行整数(整64) 传 正64 等场景需要）
+        // （C++ 语义；打印(整64) 传 正64 等场景需要）
         if (rankFrom == rankTo) return true;
-        // 128位 -> 64位（整128/正128 -> 整64）允许窄化：打印行整数 接受整64，
+        // 128位 -> 64位（整128/正128 -> 整64）允许窄化：函数参数为整64 时，
         // i128 值传低64位（位模式截断，值域≤2^63时语义正确）
+        // 方案C（2026-08-14）✅ 已修复：遗留的 打印行整数 已删除，此规则为通用隐式转换保留
         if ((from == "整128" || from == "正128") &&
             (to == "整64" || to == "正64")) return true;
         return rankFrom < rankTo;

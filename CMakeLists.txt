@@ -198,7 +198,10 @@ target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_opt cn_compiler_module)
 
 # 运行时库（cnrt）：IO + 程序入口（Task 1.8，规格书第十章）
-# 提供CN内置函数实现（打印行/打印行整数/打印行浮点）与 crt0 风格程序入口（调用 主）
+# 提供CN内置函数实现（打印/打印行 变参展开的 __cn_print_* 系列 + 防御保留的 printLine 系列）
+# 与 crt0 风格程序入口（调用 主）
+# 方案C（2026-08-14）✅ 已修复：遗留的 打印行整数/打印行浮点 已删除（旧语义"行"=换行，
+#   与 打印行 不换行语义相反）；运行时 printLineInt/printLineFloat 符号保留（单测引用+ABI稳定）
 # 将来 cn 可执行文件生成的汇编链接此库（Task 1.9）
 add_library(cn_runtime STATIC
     src/runtime/io_api.cpp

@@ -653,16 +653,21 @@ void SemanticAnalyzer::checkCondition(const std::string& type, const SourceLocat
 }
 
 // 注册CN语言内置函数符号（阶段一：IO函数 + Task 2.5 字符串API，对应运行时 cnrt 的 extern "C" 导出）
-// 打印行（字符串）-> 空类型；打印行整数（整64）-> 空类型；打印行浮点（浮64）-> 空类型
+// 打印（字符串/变参）-> 空类型；打印行（字符串/变参）-> 空类型
 // Task 2.5 新增：
 //   - 打印行 支持多参数（字符串/整数/浮点混合，visitCallExpr 特判，签名仅登记单参版本）
 //   - 字符串API：字符串长度/字符串比较/字符串连接/字符串复制/字符串查找
 // Task 2.9 语义调整（用户裁决，lessons.md 权重10.4）：
 //   - 打印 = println（自动换行）、打印行 = print（不换行）——直觉命名
 //   - 格式化（格式字符串, 参数...）-> 字符串（sprintf 风格，调用方释放）
+// 方案C（2026-08-14）✅ 已修复：删除遗留的 打印行整数/打印行浮点 注册——
+//   旧语义（"行"=换行）与 打印行（"行"=逐行连续输出，不换行）恰好相反，造成二义性。
+//   统一用 打印（变参，自动换行）完全等价表达：打印行整数(42) == 打印(42)（输出 42\n）。
+//   "行" 语义统一为：不追加换行（打印行）；打印/打印行 均为变参函数。
 void SemanticAnalyzer::registerBuiltins() {
     // ---- 打印 系列（Task 2.9 语义调整）----
     // 打印：println 语义（自动换行，运行时 printLine）；打印行：print 语义（不换行，运行时 printNoLine）
+    // 变参：参数个数不限（IR 层逐参数展开为 __cn_print_* 序列，打印 末尾加换行）
     const auto regPrintFn = [this](const std::string& name) {
         FunctionInfo info;
         info.returnType = "空类型";
@@ -673,19 +678,6 @@ void SemanticAnalyzer::registerBuiltins() {
     };
     regPrintFn("打印");
     regPrintFn("打印行");
-
-    // 单参数整数/浮点打印（保留既有能力，供无拼接的简单输出；名字保留 打印行整数/打印行浮点）
-    FunctionInfo printLineIntInfo;
-    printLineIntInfo.returnType = "空类型";
-    printLineIntInfo.paramTypes = {"整64"};
-    printLineIntInfo.hasBody = true;
-    functions_["打印行整数"] = printLineIntInfo;
-
-    FunctionInfo printLineFloatInfo;
-    printLineFloatInfo.returnType = "空类型";
-    printLineFloatInfo.paramTypes = {"浮64"};
-    printLineFloatInfo.hasBody = true;
-    functions_["打印行浮点"] = printLineFloatInfo;
 
     // ---- 格式化（Task 2.9，规格书10.6）：格式化(格式字符串, 参数...) -> 字符串 ----
     // 变参：参数个数不限（IR 层按占位符展开为 __cn_format 调用）
@@ -2001,7 +1993,10 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // ---- 直接函数名调用：函数名(实参) ----
     if (isDirect) {
         // 变参内置函数（打印/打印行/格式化 Task 2.5/2.9）：纯名 key 直接查，
-        // 参数个数不限，逐个检查类型（字符串/字符*/整型/浮点/布尔/枚举均允许）
+        // 参数个数不限，逐个检查类型（字符串/字符*/整型/浮点/布尔/字符/枚举均允许）
+        // 方案C审查（2026-08-14）：okNum 补 字符——旧 打印行整数('A')（字符→整64
+        //   隐式转换）替换为 打印('A') 后，IR 层 字符(i32) Cast i64 走 __cn_print_int
+        //   输出ASCII码（65），行为等价；缺此检查会误拒 打印(字符变量)/打印('A')
         auto builtinIt = functions_.find(calleeName);
         if (builtinIt != functions_.end() && builtinIt->second.variadic) {
             const FunctionInfo& info = builtinIt->second;
@@ -2010,7 +2005,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 const bool okStr = (argType == "字符串" || argType == "字符*" ||
                                     argType == "字符串*");
                 const bool okNum = (isNumeric(argType) || argType == "布尔" ||
-                                    isEnumType(argType));
+                                    argType == "字符" || isEnumType(argType));
                 if (!okStr && !okNum) {
                     diagnostics_.report(DiagnosticLevel::Error, arg->location,
                                         "打印行 参数类型不支持：'" + argType + "'");

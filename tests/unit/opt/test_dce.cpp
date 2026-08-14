@@ -146,7 +146,7 @@ TEST(DCETest, KeepStore) {
 TEST(DCETest, KeepCall) {
     auto module = makeModule({
         makeInst(Opcode::Call, {IRValue::reg(1, "i32")}, IRValue::reg(0, "i32"),
-                 "打印行整数"),
+                 "打印"),
     });
     EXPECT_FALSE(DCEPass().run(module));
     EXPECT_EQ(countInstructions(module), 1);
@@ -195,7 +195,7 @@ TEST(DCETest, MixedInstructions) {
         makeInst(Opcode::Add, {IRValue::reg(2, "i32"), IRValue::reg(3, "i32")},
                 IRValue::reg(0, "i32"), "i32"),
         makeInst(Opcode::Call, {IRValue::reg(0, "i32")}, IRValue::reg(4, "i32"),
-                 "打印行整数"),
+                 "打印"),
     });
     // %v0 被 Call 引用 -> Add 保留；无死代码
     EXPECT_FALSE(DCEPass().run(module));

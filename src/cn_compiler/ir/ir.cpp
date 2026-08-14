@@ -2749,6 +2749,14 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             if (argVal.type == "ptr") {
                 printFn = "__cn_print_str";
             } else if (argVal.type == "f32" || argVal.type == "f64") {
+                // 浮32 必须先 Cast 浮64 再传 __cn_print_float(double)——
+                // 否则 ABI 不匹配（xmm0 低32位垃圾被当 double 读，输出 0.000000）
+                // 缺陷修复（方案C 2026-08-14）：原 打印行浮点(f32) 靠语义层隐式宽化，
+                //   改 打印(f32) 变参展开后此 Cast 必须显式
+                if (argVal.type == "f32") {
+                    argVal = emitResult(ir::Opcode::Cast, {argVal}, "f64", "",
+                                        node->location);
+                }
                 printFn = "__cn_print_float";
             } else if (argVal.type == "i128" || argVal.type == "u128") {
                 // i128/正128（Task 完善A）：传双寄存器地址（低64位槽地址），

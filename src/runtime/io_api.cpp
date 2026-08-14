@@ -2,7 +2,10 @@
 // 所有函数通过 extern "C" 导出，供CN编译器生成的汇编链接
 // CN语言符号映射：分配→cn_alloc、释放→cn_free、重新分配→cn_realloc、
 //                复制内存→cn_memcpy、置零内存→cn_memset、
-//                打印行→printLine、打印行整数→printLineInt、打印行浮点→printLineFloat
+//                打印→printLine、打印行→printNoLine（单参数防御路径）
+// 方案C（2026-08-14）✅ 已修复：遗留的 打印行整数/打印行浮点 已删除——
+//   打印/打印行 为变参函数，IR 层展开为 __cn_print_*（不换行）序列；
+//   printLineInt/printLineFloat 保留（单元测试直接引用 + 防御 ABI 稳定）
 #include "runtime/runtime.hpp"
 
 #include <cstdio>

@@ -119,15 +119,15 @@ std::string X64CodeGenerator::mangleTypeCode(const std::string& typeRaw) {
 }
 
 // CN符号 -> 汇编链接符号（阶段一C链接映射）
-// 运行时以 extern "C" 导出：主 -> cn_main、打印行 -> printLine、打印行整数 -> printLineInt、
-// 打印行浮点 -> printLineFloat、分配 -> cn_alloc、释放 -> cn_free、重新分配 -> cn_realloc、
+// 运行时以 extern "C" 导出：主 -> cn_main、打印 -> printLine、打印行 -> printNoLine、
+// 分配 -> cn_alloc、释放 -> cn_free、重新分配 -> cn_realloc、
 // 复制内存 -> cn_memcpy、置零内存 -> cn_memset；其余符号走 nameMangle 修饰
+// 方案C（2026-08-14）✅ 已修复：删除 打印行整数/打印行浮点 映射——
+//   打印/打印行 为变参函数，IR 层逐参数展开为 __cn_print_* 序列，不再映射 printLineInt/printLineFloat。
 std::string X64CodeGenerator::symbolName(const std::string& name) {
     if (name == "主") return "cn_main";
     if (name == "打印") return "printLine";        // Task 2.9：打印 = println（换行）
     if (name == "打印行") return "printNoLine";    // Task 2.9：打印行 = print（不换行）
-    if (name == "打印行整数") return "printLineInt";
-    if (name == "打印行浮点") return "printLineFloat";
     if (name == "分配") return "cn_alloc";
     if (name == "释放") return "cn_free";
     if (name == "重新分配") return "cn_realloc";
@@ -438,13 +438,13 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
 //   否则 ml64 报 A2006 undefined symbol；定义在后的同文件函数也需 EXTERN（MASM 单遍汇编）
 void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& module) {
     writer.raw(".code");
-    // 阶段一运行时（cnrt）extern "C" 导出符号：打印/打印行/打印整数/打印浮点
+    // 阶段一运行时（cnrt）extern "C" 导出符号：打印/打印行
     // MASM 引用外部符号必须 EXTERN 声明，否则 A2006 undefined symbol
     // Task 2.9 语义调整：打印=printLine（换行）、打印行=printNoLine（不换行）
+    // 方案C（2026-08-14）✅ 已修复：打印/打印行 变参展开走 __cn_print_* 系列，
+    //   不再直接调用 printLineInt/printLineFloat（EXTERN 声明随映射一并删除）
     writer.raw("EXTERN printLine:PROC");
     writer.raw("EXTERN printNoLine:PROC");
-    writer.raw("EXTERN printLineInt:PROC");
-    writer.raw("EXTERN printLineFloat:PROC");
     // Task 2.9：格式化（__cn_format 变参，返回动态字符串）
     writer.raw("EXTERN __cn_format:PROC");
     // 字符串API（Task 2.9：布尔转字符串 __cn_str_from_bool；其余 __cn_ 前缀自动收集）

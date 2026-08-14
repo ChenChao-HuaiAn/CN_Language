@@ -136,7 +136,7 @@ TEST(StringSemanticTest, StringLenBuiltin) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整64 n = 字符串长度("hello")
-    打印行整数(n)
+    打印(n)
     返回 0
 }
 )CN");
@@ -177,7 +177,7 @@ TEST(StringSemanticTest, StringFindBuiltin) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整64 pos = 字符串查找("hello world", "world")
-    打印行整数(pos)
+    打印(pos)
     返回 0
 }
 )CN");
