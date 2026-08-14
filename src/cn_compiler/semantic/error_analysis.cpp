@@ -154,6 +154,27 @@ void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
             }
         }
     }
+    // Task 6.1（容器库 向量/链表/栈/队列）：泛型类定义中的 结果<T,E> 返回类型
+    //   须触发合成结构体降级（结果$T$E）。泛型类在 node->generics（innerClass），
+    //   不在 node->classes——此前漏扫导致 正常()/错误() 在泛型方法体内无法降级
+    //   （handleResultCtor findStruct 失败 -> 走普通 Call -> LNK2019 未定义 正常/错误）。
+    for (auto& g : node->generics) {
+        if (g->innerClass == nullptr) continue;
+        for (auto& m : g->innerClass->members) {
+            if (m->kind == ClassMemberKind::Field && !m->typeName.empty()) {
+                typeStrings.push_back(m->typeName);
+            }
+            if ((m->kind == ClassMemberKind::Method ||
+                 m->kind == ClassMemberKind::Constructor ||
+                 m->kind == ClassMemberKind::Destructor) &&
+                !m->returnType.empty()) {
+                typeStrings.push_back(m->returnType);
+            }
+            for (auto& p : m->params) {
+                if (!p->typeName.empty()) typeStrings.push_back(p->typeName);
+            }
+        }
+    }
 
     // 递归展开：模板参数本身可能是模板类型（结果<可选<整32>,整32>）
     std::vector<std::string> queue = typeStrings;
@@ -231,6 +252,87 @@ void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
     // 计算合成结构体布局（递归：先联合体后外层；structs 顺序已保证）
     for (auto& s : node->structs) {
         computeLayout(s.get());
+    }
+}
+
+// Task 6.1：确保单个类型的结果/可选合成结构体已降级（含嵌套递归）。
+//   泛型类实例化（向量$整32）的方法返回类型 结果<整32,整32> 在 lowerResultOptionalTypes
+//   （第一趟f）之后才出现——lowerResultOptionalTypes 扫描原始泛型定义得到 结果$T$整32
+//   （T 未绑定），实例化后须按替换类型重新降级。此接口供 instantiateGeneric 调用。
+void SemanticAnalyzer::ensureLoweredType(const std::string& typeRaw) {
+    if (program_ == nullptr) return;
+    const std::string type = types::canonical(typeRaw);
+    if (isResultType(type)) {
+        const std::vector<std::string> args = resultTypeArgs(type);
+        if (args.size() == 2) {
+            const std::string t = types::canonical(args[0]);
+            const std::string e = types::canonical(args[1]);
+            const std::string sname = resultStructName(t, e);
+            if (loweredStructNames_.insert(sname).second) {
+                const std::string uname = "结果联合$" + t + "$" + e;
+                StructDecl* unionDecl = new StructDecl();
+                unionDecl->name = uname;
+                unionDecl->isUnion = true;
+                StructField fVal;
+                fVal.name = "值";
+                fVal.type = t;
+                unionDecl->fields.push_back(fVal);
+                StructField fErr;
+                fErr.name = "错误值";
+                fErr.type = e;
+                unionDecl->fields.push_back(fErr);
+                program_->structs.emplace_back(unionDecl);
+                StructDecl* outerDecl = new StructDecl();
+                outerDecl->name = sname;
+                StructField fOk;
+                fOk.name = "是否正常";
+                fOk.type = "布尔";
+                outerDecl->fields.push_back(fOk);
+                StructField fUn;
+                fUn.name = "错误值联合";
+                fUn.type = uname;
+                program_->structs.emplace_back(outerDecl);
+                // 布局顺序：先联合体（内层）后外层——外层 totalSize 依赖联合体 totalSize，
+                //   反序会导致外层把联合体当 0 字节（totalSize 仅布尔 1 字节，rep movsb
+                //   只拷 1 字节 -> 结果值字段未写 -> 读 0/垃圾）。
+                // Task 6.1 防御：typeSizeOf 对结构体依赖 findStruct 返回 totalSize，若
+                //   外层先算（或联合体 totalSize 未及设）会得错误布局——重置 layoutComputed
+                //   强制重算新建结构体，确保 联合体(内) -> 外层 的正确依赖顺序。
+                StructDecl* unionPtr = program_->structs[program_->structs.size() - 2].get();
+                StructDecl* outerPtr = program_->structs.back().get();
+                unionPtr->layoutComputed = false;
+                outerPtr->layoutComputed = false;
+                computeLayout(unionPtr);
+                computeLayout(outerPtr);
+                unionPtr->layoutComputed = false;
+                outerPtr->layoutComputed = false;
+                computeLayout(unionPtr);
+                computeLayout(outerPtr);
+                // 递归展开参数
+                ensureLoweredType(t);
+                ensureLoweredType(e);
+            }
+        }
+    } else if (isOptionalType(type)) {
+        const std::string t = types::canonical(optionalTypeArg(type));
+        if (!t.empty()) {
+            const std::string sname = optionalStructName(t);
+            if (loweredStructNames_.insert(sname).second) {
+                StructDecl* decl = new StructDecl();
+                decl->name = sname;
+                StructField fSome;
+                fSome.name = "是否某些";
+                fSome.type = "布尔";
+                decl->fields.push_back(fSome);
+                StructField fVal;
+                fVal.name = "值";
+                fVal.type = t;
+                decl->fields.push_back(fVal);
+                program_->structs.emplace_back(decl);
+                computeLayout(program_->structs.back().get());
+                ensureLoweredType(t);
+            }
+        }
     }
 }
 

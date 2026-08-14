@@ -678,15 +678,49 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         constMethodContext_ = mi.isConstMethod;
         const std::string savedFuncName = currentFunctionName_;
         currentFunctionName_ = mi.name;
+        // Task 6.1（嵌套泛型 链表$整32 方法体内 节点<T>）：实例化类名含 $，
+        //   解析类型实参（链表$整32 -> T=整32）设置 genericTypeParams_，
+        //   供 resolveGenericTypeName 替换方法体内的 节点<T> 为 节点$整32。
+        std::unordered_map<std::string, std::string> savedTypeParams =
+            genericTypeParams_;
+        genericTypeParams_.clear();
+        const std::size_t dollar = info.name.find('$');
+        if (dollar != std::string::npos) {
+            const std::string genName = info.name.substr(0, dollar);
+            const GenericInfo* ginfo = findGeneric(genName);
+            if (ginfo != nullptr) {
+                std::string rest = info.name.substr(dollar + 1);
+                std::size_t apos = 0;
+                for (std::size_t ti = 0; ti < ginfo->typeParams.size(); ++ti) {
+                    const std::size_t delim = rest.find('$', apos);
+                    const std::string arg = (delim == std::string::npos)
+                        ? rest.substr(apos) : rest.substr(apos, delim - apos);
+                    genericTypeParams_[ginfo->typeParams[ti]] = arg;
+                    if (delim == std::string::npos) break;
+                    apos = delim + 1;
+                }
+            }
+        }
 
         // 参数入作用域（方法参数 + this 隐式参数 + 类字段）
         pushScope();
         // 隐式 this 参数（自身 表达式类型）
         declareVar("自身", info.name + "*", member->location);
-        for (auto& p : member->params) {
-            std::string ptype = p->funcPtr.isFunctionPtr()
-                                    ? p->funcPtr.toString()
-                                    : types::canonical(p->typeName);
+        // Task 6.1（实例化泛型类方法体检查）：参数类型用 mi.paramTypes（已替换
+        //   类型参数 T -> 整32），AST 参数 typeName 仍是原始 T——原实现用 AST
+        //   typeName 导致 值:T 参数在 向量$整32.追加 内类型仍是 T，与 数据 字段
+        //   （整32*）交互报"无法将 T 隐式转换为 整32"。
+        const std::vector<std::string>& paramTypes = mi.paramTypes;
+        for (std::size_t pi = 0; pi < member->params.size(); ++pi) {
+            const ParamDecl* p = member->params[pi].get();
+            std::string ptype;
+            if (p->funcPtr.isFunctionPtr()) {
+                ptype = p->funcPtr.toString();
+            } else if (pi < paramTypes.size() && !paramTypes[pi].empty()) {
+                ptype = paramTypes[pi];
+            } else {
+                ptype = types::canonical(p->typeName);
+            }
             if (!declareVar(p->name, ptype, p->location)) {
                 // 参数重复声明（防御）
             }
@@ -719,6 +753,7 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         // 恢复上下文
         currentFunctionName_ = savedFuncName;
         constMethodContext_ = savedConst;
+        genericTypeParams_ = savedTypeParams;
         contextClassStack_.pop_back();
     }
 }

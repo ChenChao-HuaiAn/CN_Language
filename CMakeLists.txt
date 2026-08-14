@@ -124,6 +124,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_oop.cpp
     src/cn_compiler/ir/ir_oop_call.cpp
     src/cn_compiler/ir/ir_error_ctor.cpp
+    src/cn_compiler/ir/ir_generic_func.cpp
 )
 target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
 

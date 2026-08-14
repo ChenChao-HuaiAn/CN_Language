@@ -66,9 +66,36 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
         // Task 3.8 泛型实例化变量声明：类型名<实参> 变量名（向量<整32> 整数列表）
         // 探测形式4：标识符 + < 且为模板形态 + 后续 类型...> 后跟变量名
         //   判据：标识符(类型名) < 类型关键字/标识符 ... > 标识符(变量名)
-        const bool typeTemplateVar =
-            (peek(1).getType() == TokenType::Less &&
-             (isTypeKeyword(peek(2).getType()) || peek(2).getType() == TokenType::Identifier));
+        // Task 6.1 修复（泛型函数调用）：名<类型>(实参) 是泛型函数调用而非变量声明——
+        //   `交换<整32>(&a, &b)` 独立语句被误判为类型声明（预期变量名实际为 '('）。
+        //   判定：模板实参 `>` 之后紧跟 '(' 时是函数调用（parseTypePrefixVarDecl
+        //   会报错）；向前扫描确认 `>` 后无 '(' 才走变量声明探测。
+        bool typeTemplateVar = false;
+        if (peek(1).getType() == TokenType::Less &&
+            (isTypeKeyword(peek(2).getType()) || peek(2).getType() == TokenType::Identifier)) {
+            // 前向扫描找匹配 '>'：模板实参内不出现 '('（类型实参形态），
+            //   '>' 后若紧跟 '(' 则是泛型函数调用（交换<整32>(...)）
+            std::size_t i = 2;
+            int angleDepth = 1;
+            bool angleClosed = false;
+            while (angleDepth > 0) {
+                const TokenType t = peek(static_cast<int>(i)).getType();
+                if (t == TokenType::Less) { angleDepth++; i++; continue; }
+                if (t == TokenType::Greater) {
+                    angleDepth--;
+                    if (angleDepth == 0) { angleClosed = true; break; }
+                    i++;
+                    continue;
+                }
+                if (t == TokenType::EndOfFile) break;
+                i++;
+            }
+            // '>' 闭合且其后不是 '(' -> 变量声明（向量<整32> 列表）
+            if (angleClosed &&
+                peek(static_cast<int>(i + 1)).getType() != TokenType::LeftParen) {
+                typeTemplateVar = true;
+            }
+        }
         if (typeThenVar || typePtrVar || typeArrayVar || typeTemplateVar) {
             auto stmt = parseTypePrefixVarDecl();
             consumeSemicolon();

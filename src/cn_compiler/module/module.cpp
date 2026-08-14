@@ -483,12 +483,19 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
         }
         out->interfaces.push_back(std::unique_ptr<InterfaceDecl>(i.release()));
     }
-    // ---- 泛型声明（Task 3.8，E2E 26 修复）----
-    // 入口模块泛型声明全部合并（registerGenerics 依赖）；被导入模块泛型暂不跨模块
-    //   （泛型声明无 access 字段，跨模块泛型导入留待后续完善）。
+    // ---- 泛型声明（Task 3.8，E2E 26 修复；Task 6.1 泛型跨模块打通）----
+    // 入口模块泛型声明全部合并（registerGenerics 依赖）；被导入模块合并 公开 泛型
+    //   （泛型声明内嵌 innerClass/innerFunc 自带模块级 access——公开: 标签后的
+    //   泛型声明跨模块可见；私有 泛型不跨模块，与函数/类可见性规则一致）。
+    //   Task 6.1：stdlib/核心.cn（交换/最小/最大）与 容器.cn（向量/链表/栈/队列）
+    //   为被导入标准库模块，其公开泛型须跨模块合并才能实例化使用。
     // 类型重名检测：泛型类/函数名加入 seenTypes（与普通类/函数冲突检测）。
     for (auto& g : unit.ast->generics) {
-        if (!entryModule) continue;  // 被导入模块泛型不跨模块（防御）
+        const bool genPublic = (g->innerClass != nullptr)
+                                   ? (g->innerClass->access == AccessSpecifier::Public)
+                                   : (g->innerFunc != nullptr &&
+                                      g->innerFunc->access == AccessSpecifier::Public);
+        if (!entryModule && !genPublic) continue;  // 私有泛型不跨模块
         std::string gname;
         if (g->innerClass != nullptr) gname = g->innerClass->name;
         else if (g->innerFunc != nullptr) gname = g->innerFunc->name;

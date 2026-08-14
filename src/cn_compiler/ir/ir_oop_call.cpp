@@ -223,6 +223,35 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         buildCallArgsOop(node->arguments, node->location);
     for (auto& a : userArgs) args.push_back(a);
     const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+    // Task 6.1（容器库 追加/读取 返回 结果<空类型,整32> 合成结构体）：方法返回
+    //   结构体时须走隐藏返回指针（与 visitCallExpr 普通函数 structReturn 一致）——
+    //   调用方分配返回缓冲区（隐藏指针 rcx），被调方写入后返回缓冲区地址（rax）。
+    //   原实现缺此处理：调用方传 this=rcx、实参=rdx，被调方把 this 当隐藏返回
+    //   指针（prologue mov r12,rcx）-> 返回 rep movsb 从错误地址拷贝 -> 崩溃。
+    if (semantic_ != nullptr && !m->type.empty() &&
+        semantic_->isStructType(types::canonical(m->type))) {
+        const std::string temp = "__retbuf" + std::to_string(varCounter_++);
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+             temp, "ptr", node->location);
+        // 返回缓冲区槽数：按结构体实际大小（ceil(size/8)）——不能固定 8 字节，
+        //   否则被调方 rep movsb 12 字节越界覆盖相邻栈槽（this 被覆盖 -> 数据
+        //   基址垃圾）。registerVarSlots 对结构体类型登记多槽，但需类型已注册。
+        function_->varSlots[temp] = 8;
+        registerVarSlots(temp, m->type);
+        const int structSize = semantic_->typeSizeOf(types::canonical(m->type));
+        if (structSize > 8) function_->varSlots[temp] = (structSize + 7) / 8;
+        ir::IRValue buf = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(temp, "i64")},
+                                     "ptr", temp, node->location);
+        std::vector<ir::IRValue> hiddenArgs;
+        hiddenArgs.push_back(buf);   // 隐藏返回指针（参数位 0，rcx）
+        hiddenArgs.push_back(thisArg);  // this（参数位 1，rdx）
+        for (auto& a : userArgs) hiddenArgs.push_back(a);
+        emit(ir::Opcode::Call, hiddenArgs, ir::IRValue(),
+             methodSymbolKey(owner, m->sigKey), "void", node->location);
+        lastExpr_ = buf;
+        return true;
+    }
     // 符号：父类.方法() 用父类（owner）符号；普通调用用声明类（owner）符号
     if (resultType == "void" || resultType.empty()) {
         emit(ir::Opcode::Call, args, ir::IRValue(),

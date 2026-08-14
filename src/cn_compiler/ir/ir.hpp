@@ -22,6 +22,7 @@
 namespace cn_compiler {
 class SemanticAnalyzer;   // 前向声明（Task 2.7：IR 查询结构体布局/枚举值）
 struct ClassMemberInfo;   // 前向声明（阶段3：类方法信息，semantic.hpp 定义）
+struct GenericFuncInstance;  // 前向声明（Task 6.1：泛型函数实例化记录，semantic.hpp 定义）
 
 // 类方法符号 key：类名$sigKey（sigKey=名#参数串）。
 // codegen classMethodSymbol 生成 nameMangle(类名$名#参数串)，IR 侧 func.mangledName
@@ -394,6 +395,15 @@ private:
     // ==================== 成员状态 ====================
     Diagnostics& diagnostics_;                  // 诊断引擎
     SemanticAnalyzer* semantic_ = nullptr;      // 语义分析器（结构体布局/枚举值查询，Task 2.7）
+
+    // ==================== 泛型函数实例化（Task 6.1） ====================
+    // 当前泛型函数实例化的类型参数映射（类型参数名 -> 实参类型，如 T -> 整32）。
+    // 生成泛型函数实例体时设置，mapType/genVarDecl 等按此替换 T。
+    std::unordered_map<std::string, std::string> genericTypeParams_;
+    // 替换源码类型中的类型参数（T/T*/结果<T,整32> 等；非参数原样返回）
+    std::string substGenericType(const std::string& type) const;
+    // 提升泛型函数实例化函数体（名$实参）：从 泛型声明 innerFunc 生成 IRFunction
+    void emitGenericFuncInstance(const GenericFuncInstance& gfi);
     ir::IRModule* module_ = nullptr;            // 当前模块
     ir::IRFunction* function_ = nullptr;        // 当前函数
     ir::IRBlock* currentBlock_ = nullptr;       // 当前生成块

@@ -76,7 +76,34 @@ std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName
         return typeName;
     }
     const std::string head = typeName.substr(0, lt);
-    if (findGeneric(head) == nullptr) return typeName;
+    if (findGeneric(head) == nullptr) {
+        // Task 6.1（栈<T> 方法体内 结果<T,整32> 局部变量）：模板类型内部类型参数
+        //   替换——head 非泛型类（结果/可选 等合成模板），但内部实参 T 是当前
+        //   泛型上下文的类型参数，须替换为实参（整32）后返回（结果<整32,整32>）。
+        if (!genericTypeParams_.empty()) {
+            const std::string inner = typeName.substr(lt + 1, gt - lt - 1);
+            std::string newInner;
+            std::size_t pos = 0;
+            while (pos <= inner.size()) {
+                const std::size_t comma = inner.find(',', pos);
+                std::string part = (comma == std::string::npos)
+                    ? inner.substr(pos) : inner.substr(pos, comma - pos);
+                const std::size_t b = part.find_first_not_of(" \t");
+                const std::size_t e = part.find_last_not_of(" \t");
+                if (b != std::string::npos && e != std::string::npos) {
+                    part = part.substr(b, e - b + 1);
+                }
+                auto pit = genericTypeParams_.find(part);
+                if (pit != genericTypeParams_.end()) part = pit->second;
+                if (!newInner.empty()) newInner += ",";
+                newInner += part;
+                if (comma == std::string::npos) break;
+                pos = comma + 1;
+            }
+            return head + "<" + newInner + ">";
+        }
+        return typeName;
+    }
     const std::string inner = typeName.substr(lt + 1, gt - lt - 1);
     std::vector<std::string> args;
     std::size_t pos = 0;
@@ -95,9 +122,18 @@ std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName
         if (b != std::string::npos && e != std::string::npos) {
             a = a.substr(b, e - b + 1);
         }
+        // Task 6.1（嵌套泛型 链表$整32 方法体内 节点<T>）：类型实参若是当前
+        //   泛型上下文的类型参数（T），先替换为实参类型（整32）再实例化
+        //   ——否则 节点<T> -> 节点$T（T 未绑定，findClass 失败）。
+        auto pit = genericTypeParams_.find(a);
+        if (pit != genericTypeParams_.end()) a = pit->second;
     }
     const std::string instName = instantiateGeneric(head, args, loc);
-    return instName.empty() ? typeName : instName;
+    if (instName.empty()) return typeName;
+    // 保留类型名后缀（* 指针 / [N] 数组）：名<实参>* -> 名$实参*——
+    //   原实现直接返回 名$实参 丢掉 *，导致 节点<T>* 变 节点$整32（非指针）。
+    std::string suffix = typeName.substr(gt + 1);
+    return instName + suffix;
 }
 
 // ==================== 类型参数替换（Task 3.8） ====================
@@ -263,6 +299,14 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 mi.name = member->name;
                 mi.type = types::canonical(
                     substTypeParam(member->typeName, gen->typeParams, args));
+                // Task 6.1（嵌套泛型容器 栈<T> 组合 向量<T>）：字段类型替换后
+                //   可能是未实例化的泛型类形态（向量$整32 的原始 向量<T> 已替换，
+                //   但 向量$整32 类符号尚未注册）。递归触发嵌套泛型实例化——
+                //   使 向量$整32 注册到 classes_（IR 层 isClassType/方法符号解析依赖）。
+                //   注：resolveGenericTypeName 对非泛型原样返回（含 结果<T,E> 模板）。
+                if (!mi.type.empty()) {
+                    mi.type = resolveGenericTypeName(mi.type, member->location);
+                }
                 mi.access = member->access;
                 mi.ownerClass = instanceName;
                 mi.isStatic = member->isStatic;
@@ -277,8 +321,13 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 member->kind == ClassMemberKind::Destructor) {
                 ClassMemberInfo mi;
                 mi.name = member->name;
+                // Task 6.1（容器库 清空() 等无返回方法）：returnType 空串规范化
+                //   为 空类型——否则 checkClassMethods 的 mi.type != "空类型" 判定
+                //   把空串当作非空返回类型，报"缺少返回语句"。
+                const std::string retRaw =
+                    member->returnType.empty() ? "空类型" : member->returnType;
                 mi.type = types::canonical(
-                    substTypeParam(member->returnType, gen->typeParams, args));
+                    substTypeParam(retRaw, gen->typeParams, args));
                 mi.access = member->access;
                 mi.ownerClass = instanceName;
                 mi.isVirtual = member->isVirtual;
@@ -288,9 +337,15 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 mi.isConstMethod = member->isConstMethod;
                 mi.hasBody = (member->body != nullptr);
                 mi.ast = member.get();
-                mi.isConstructor = (member->name == src->name);
-                mi.isDestructor = (!member->name.empty() && member->name[0] == '~' &&
-                                   member->name.substr(1) == src->name);
+                mi.isConstructor = (member->kind == ClassMemberKind::Constructor ||
+                                    (member->name == src->name &&
+                                     member->kind != ClassMemberKind::Destructor));
+                // 析构判定：parser 对 函数 ~类名 记录 kind=Destructor、name=类名（无 ~），
+                //   语义层 resolveClass 规范为 ~类名——泛型实例化须按 kind 判定，
+                //   否则析构被误判为构造（name==类名）导致方法表冲突/布局错乱。
+                mi.isDestructor = (member->kind == ClassMemberKind::Destructor);
+                // 规范化析构名：~类名（与语义层 resolveClass 一致，IR 层符号解析依赖）
+                if (mi.isDestructor) mi.name = "~" + src->name;
                 for (auto& p : member->params) {
                     mi.paramTypes.push_back(
                         types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
@@ -358,6 +413,18 @@ std::string SemanticAnalyzer::instantiateGeneric(
         assignVtable(info);
         verifyInterfaceImpl(info);
         computeClassLayout(info);
+        // Task 6.1（容器库 向量/链表 的 正常()/错误() 降级）：实例化类方法返回
+        //   类型 结果<整32,整32> 在 lowerResultOptionalTypes（第一趟f）之后才出现，
+        //   须按替换后的类型重新降级合成结构体（结果$整32$整32），否则
+        //   handleResultCtor findStruct 失败 -> 生成 Call 正常/错误 -> LNK2019。
+        //   注意：必须在 std::move(info) 之前遍历（move 后 info.methods 已转移为空）。
+        for (const auto& mk : info.methods) {
+            if (!mk.second.type.empty() &&
+                (SemanticAnalyzer::isResultType(mk.second.type) ||
+                 SemanticAnalyzer::isOptionalType(mk.second.type))) {
+                ensureLoweredType(mk.second.type);
+            }
+        }
         classes_[instanceName] = std::move(info);
         // 实例化类名登记到类型名表
         typeNames_.insert(instanceName);

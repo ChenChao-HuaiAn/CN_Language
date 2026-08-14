@@ -93,6 +93,15 @@ struct GenericInfo {
     const GenericDecl* ast = nullptr;          // 泛型 AST（内嵌类/函数）
 };
 
+// 泛型函数实例化记录（Task 6.1 打通泛型函数调用）：
+//   泛型函数 名<实参>(...) 调用时单态化注册 名$实参 函数符号，此处记录
+//   实例化信息供 IR 层生成函数体（替换类型参数 T -> 实参）。
+struct GenericFuncInstance {
+    std::string instanceName;                  // 实例化函数名（名$实参串）
+    const GenericDecl* gen = nullptr;          // 原泛型声明 AST（内嵌 innerFunc）
+    std::vector<std::string> args;             // 类型实参列表（如 ["整32"]）
+};
+
 // 错误码传播分析状态（Task 3.5，规则1~3）：
 //   变量名 -> 已检查标记（"正常"=结果.正常已检查 / "有值"=可选.有值已检查）
 using ErrorCheckState = std::unordered_map<std::string, std::string>;
@@ -153,6 +162,12 @@ public:
     const ClassInfo* findClass(const std::string& name) const;
     // 全部类符号表只读访问（Task 3.1，供 codegen 遍历生成虚表/静态字段/类方法符号）
     const std::unordered_map<std::string, ClassInfo>& classes() const { return classes_; }
+    // 全部泛型函数实例化记录只读访问（Task 6.1，供 IR 层生成函数体）
+    const std::vector<GenericFuncInstance>& genericFuncInstances() const {
+        return genericFuncInstances_;
+    }
+    // 确保单个类型的结果/可选合成结构体已降级（Task 6.1 泛型类实例化后调用）
+    void ensureLoweredType(const std::string& type);
     // 全部接口符号表只读访问（Task 3.3，供 codegen 预留接口信息）
     const std::unordered_map<std::string, InterfaceInfo>& interfaces() const { return interfaces_; }
     // 查找接口符号（未找到返回nullptr）
@@ -391,6 +406,13 @@ private:
     std::unordered_map<std::string, InterfaceInfo> interfaces_; // 接口符号表（Task 3.3）
     std::unordered_map<std::string, GenericInfo> generics_;    // 泛型声明表（Task 3.8）
     std::unordered_set<std::string> instantiatedGenerics_;     // 已实例化泛型类名集合（去重）
+    // 泛型函数实例化记录（Task 6.1）：名$实参 -> 原泛型声明 + 实参列表
+    //   （visitCallExpr 泛型函数调用时登记，供 IR 层生成函数体）
+    std::vector<GenericFuncInstance> genericFuncInstances_;
+    // 当前实例化泛型类的类型参数映射（Task 6.1）：类型参数名 -> 实参类型
+    //   （checkClassMethods 检查 链表$整32 方法体时设置 T -> 整32，供
+    //    resolveGenericTypeName 把方法体内 节点<T> 替换为 节点$整32）
+    std::unordered_map<std::string, std::string> genericTypeParams_;
     // 当前上下文类名栈（方法体内解析 自身/父类/访问控制；空=非类上下文）
     std::vector<std::string> contextClassStack_;
     // 当前方法是否常量成员函数（常量 修饰，Task 3.9 修改成员检查）

@@ -238,14 +238,22 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
             expr = std::make_unique<IndexExpr>(std::move(expr), std::move(index));
             expr->location = loc;
         } else if (check(TokenType::Less) && isTemplateAngleOpen() &&
-                   expr->getType() == NodeType::IdentifierExpr) {
+                   (expr->getType() == NodeType::IdentifierExpr ||
+                    expr->getType() == NodeType::MemberExpr)) {
             // 泛型实例化（Task 3.8，规格书06-十三）：类型名<实参>（如 向量<整32>）
             // 消费模板实参（< 整32 >），把 IdentifierExpr 名字更新为 名<实参>
             //   （E2E 26 修复：原实现消费实参后不改名，语义层收到纯名 盒子，
             //    查泛型类/普通类均失败报"未声明"——须让 callee/类型名携带实参）。
             // 后续 parseCallOrMember 处理 (实参) 调用（向量<整32>(10)）。
-            IdentifierExpr* idExpr = static_cast<IdentifierExpr*>(expr.get());
-            std::string newName = idExpr->name + "<";
+            // Task 6.1 扩展：模块限定泛型调用 核心.交换<整32>(...)——expr 为
+            //   MemberExpr（模块.函数），泛型实参合并到 memberName（交换<整32>），
+            //   语义层 visitCallExpr 模块限定重写后按 名<类型> 形态单态化。
+            std::string newName;
+            if (expr->getType() == NodeType::IdentifierExpr) {
+                newName = static_cast<IdentifierExpr*>(expr.get())->name + "<";
+            } else {
+                newName = static_cast<MemberExpr*>(expr.get())->memberName + "<";
+            }
             advance();  // 消费 '<'
             bool first = true;
             while (true) {
@@ -268,7 +276,11 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
             }
             consume(TokenType::Greater, "'>'");
             newName += ">";
-            idExpr->name = newName;
+            if (expr->getType() == NodeType::IdentifierExpr) {
+                static_cast<IdentifierExpr*>(expr.get())->name = newName;
+            } else {
+                static_cast<MemberExpr*>(expr.get())->memberName = newName;
+            }
         } else if (check(TokenType::LeftParen) || check(TokenType::Dot) ||
                    check(TokenType::Arrow)) {
             expr = parseCallOrMember(std::move(expr));

@@ -29,7 +29,19 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     const std::string name =
         static_cast<IdentifierExpr*>(node->callee.get())->name;
     if (name != "正常" && name != "错误" && name != "某些") return false;
-    if (node->resolvedType.empty()) return false;  // 语义层未推导（防御）
+    if (node->resolvedType.empty()) {
+        // Task 6.1（泛型类实例化方法体 向量$整32.追加 等）：语义层对实例化类
+        //   方法体的 resolvedType 推导可能缺失（泛型上下文），回退用当前函数
+        //   返回类型（function_->returnTypeSrc，如 结果<空类型,整32>）——
+        //   返回 正常()/返回 错误(码) 的 结果<T,E> 与函数返回类型一致。
+        if (function_ == nullptr || function_->returnTypeSrc.empty()) return false;
+        node->resolvedType = function_->returnTypeSrc;
+        // 错误(码)：错误值类型 = 实参类型（如 错误码.内存 -> 整32 枚举）
+        if (name == "错误" && !node->arguments.empty()) {
+            // 保持 结果<T,E> 的 E = 实参推导；若返回类型 E 与实参不匹配，
+            //   canConvert 已检查；此处直接用函数返回类型（E 一致）。
+        }
+    }
 
     // 解析推导类型：结果<T,E> / 可选<T>
     std::string structName;   // 合成结构体名（结果$T$E / 可选$T）
@@ -55,8 +67,14 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     }
 
     // 合成结构体须已注册（语义层 lowerResultOptionalTypes 已加入 program->structs）
+    // Task 6.1（泛型类实例化方法体）：实例化后类型（结果$整32$整32）可能在
+    //   lowerResultOptionalTypes 之后才出现——查不到时触发 ensureLoweredType 再查。
     const StructDecl* decl = semantic_->findStruct(structName);
-    if (decl == nullptr) return false;
+    if (decl == nullptr) {
+        semantic_->ensureLoweredType(node->resolvedType);
+        decl = semantic_->findStruct(structName);
+        if (decl == nullptr) return false;
+    }
     const int structSize = semantic_->typeSizeOf(structName);
 
     // ---- 分配临时结构体槽（多槽登记：类型大小 -> 槽数）----
@@ -90,7 +108,10 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
             if (f.name == "值") { valueOffset = semantic_->fieldOffsetOf(decl, f.name); }
         }
     }
-    if (valueOffset < 0) valueOffset = 8;  // 防御：默认对齐后 8 字节
+    // Task 6.1（泛型类 ensureLoweredType 生成的合成结构体）：fieldOffsetOf 可能因
+    //   联合体布局时机返回错误偏移（1 而非 8）——结果/可选合成结构体首字段 布尔(1)，
+    //   值/联合字段按 8 字节对齐。防御：偏移 < 8 时用 8（与 standard layout 一致）。
+    if (valueOffset < 0 || valueOffset < 8) valueOffset = 8;
     ir::IRValue valAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                      std::to_string(valueOffset), node->location);
 

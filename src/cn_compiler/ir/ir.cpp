@@ -74,6 +74,12 @@ const char* opcodeToString(Opcode opcode) {
 
 // 源码类型 -> IR类型映射（规格书7.5类型表示）
 std::string IRGenerator::mapType(const std::string& type) {
+    // Task 6.1（泛型函数实例化）：类型参数 T/U 先替换为实参类型
+    //   （最小<整32> 函数体内 返回 T / 局部 T 变量须映射为整32 而非 ptr 兜底）
+    if (!genericTypeParams_.empty()) {
+        const std::string subst = substGenericType(type);
+        if (subst != type) return mapType(subst);
+    }
     if (type == "整8") return "i8";
     if (type == "整16") return "i16";
     if (type == "整32" || type == "整数") return "i32";
@@ -839,6 +845,15 @@ void IRGenerator::visitProgram(Program* node) {
             }
         }
     }
+    // 4. 泛型函数实例化（Task 6.1，26_generics 遗留限制打通）：
+    //    语义层 visitCallExpr 对 名<类型>(实参) 调用登记 GenericFuncInstance
+    //    （实例化名 + 原泛型声明 + 类型实参），此处为每个实例生成 IRFunction
+    //    （类型参数 T -> 实参类型 替换，符号名 = 名$实参 与调用方一致）。
+    if (semantic_ != nullptr) {
+        for (const auto& gfi : semantic_->genericFuncInstances()) {
+            emitGenericFuncInstance(gfi);
+        }
+    }
 }
 
 // 主入口：生成IR模块
@@ -1357,9 +1372,12 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         }
     }
     // 源码类型（Task 2.4：整32* / 整32[5] 复合类型保留用于元素类型推断/数组槽数）
-    const std::string srcType = node->funcPtr.isFunctionPtr() ? "函数指针" : node->typeName;
+    // Task 6.1（泛型函数实例化）：T/T*/结果<T,E> 等类型参数替换为实参类型
+    //   （交换<整32> 函数体内 `T 临时`、`数据[位置]` 的元素类型推断须用实参类型）
+    const std::string srcTypeRaw = node->funcPtr.isFunctionPtr() ? "函数指针" : node->typeName;
+    const std::string srcType = substGenericType(srcTypeRaw);
     // 类型推断：无显式类型时按初始值（阶段一简化）
-    std::string irType = mapType(node->typeName.empty() ? "整32" : node->typeName);
+    std::string irType = mapType(node->typeName.empty() ? "整32" : srcType);
     // Task 2.2：函数指针变量（整32(*回调)(整32, 整32)）类型为 ptr
     if (node->funcPtr.isFunctionPtr()) {
         irType = "ptr";
@@ -2571,8 +2589,10 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     if (semantic_ != nullptr) {
         const std::string targetSrcType = lookupSrcType(ident->name);
         // 右值：标识符（b = a）或成员/下标（b = 名单[0]）或 链式赋值（b = c = a）
+        //   或 结构体返回调用（读取结果 = 数据.读取(99)，Task 6.1 修复）
         std::string valueSrcType;
         bool isChainedAssign = false;  // 链式赋值：右值为内层赋值表达式
+        bool isStructReturnCall = false;  // 结构体返回调用：右值为结构体返回函数/方法调用
         if (node->value->getType() == NodeType::IdentifierExpr) {
             valueSrcType = lookupSrcType(
                 static_cast<IdentifierExpr*>(node->value.get())->name);
@@ -2591,6 +2611,15 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
             // 内层返回值 = 源地址（ptr 寄存器，指向 c）。结构体源类型与目标相同。
             isChainedAssign = true;
             valueSrcType = targetSrcType;
+        } else if (node->value->getType() == NodeType::CallExpr) {
+            // 结构体返回调用（读取结果 = 数据.读取(99)）：
+            //   genExpr 已生成调用（隐藏返回指针写入 retbuf），value =
+            //   结构体地址（ptr 寄存器，指向 retbuf/临时对象）。
+            //   目标变量是结构体时须 CopyStruct 按值拷贝——原实现漏此分支，
+            //   落入默认 Store 只存 8 字节地址（读取结果 = retbuf 地址），
+            //   .正常/.值 读到地址值导致越界判断失效（Task 6.1 E2E 发现）。
+            isStructReturnCall = true;
+            valueSrcType = targetSrcType;
         }
         if (semantic_->isStructType(types::canonical(targetSrcType)) &&
             semantic_->isStructType(types::canonical(valueSrcType))) {
@@ -2599,10 +2628,11 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                                              {ir::IRValue::var(unique, "i64")},
                                              "ptr", unique, node->location);
             // 源地址：标识符 -> AddrOf；成员/下标 -> lvalueAddress；
-            // 链式赋值 -> 内层返回值（ptr 寄存器，源地址，内容与内层目标相同）
+            // 链式赋值 -> 内层返回值（ptr 寄存器，源地址，内容与内层目标相同）；
+            // 结构体返回调用 -> 调用返回的结构体地址（ptr 寄存器）
             ir::IRValue srcAddr;
-            if (isChainedAssign) {
-                srcAddr = value;  // 内层 CopyStruct 返回的源地址（ptr 寄存器）
+            if (isChainedAssign || isStructReturnCall) {
+                srcAddr = value;  // 内层 CopyStruct 返回/调用返回的结构体地址
             } else if (node->value->getType() == NodeType::IdentifierExpr) {
                 const std::string srcUnique = lookupVarName(
                     static_cast<IdentifierExpr*>(node->value.get())->name);
@@ -2834,6 +2864,9 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "数学.绝对值") calleeName = "__cn_fabs";
         else if (calleeName == "数学.向上取整") calleeName = "__cn_ceil";
         else if (calleeName == "数学.向下取整") calleeName = "__cn_floor";
+        // Task 6.1 核心库：运行时错误（断言 依赖）-> __cn_runtime_error
+        //   （IR 层数组越界检查已直接发射该符号，codegen 有映射）
+        else if (calleeName == "运行时错误") calleeName = "__cn_runtime_error";
     }
 
     std::vector<ir::IRValue> args;

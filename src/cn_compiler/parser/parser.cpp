@@ -882,6 +882,11 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
         } else if (check(TokenType::Kw_Generic)) {
             // 泛型声明（Task 3.8，规格书06-十三）：泛型 <类型 T> 类/函数
             auto decl = parseGenericDecl();
+            // Task 6.1：泛型模块级可见性传递——公开:/私有: 标签后的泛型声明
+            //   由 innerClass/innerFunc 的 access 记录（module.cpp 跨模块合并
+            //   依据 inner access 判断公开泛型；标准库模块 公开 泛型须跨模块可见）
+            if (decl->innerClass != nullptr) decl->innerClass->access = moduleAccess;
+            if (decl->innerFunc != nullptr) decl->innerFunc->access = moduleAccess;
             if (decl->innerClass != nullptr || decl->innerFunc != nullptr) {
                 program->generics.push_back(std::move(decl));
             }

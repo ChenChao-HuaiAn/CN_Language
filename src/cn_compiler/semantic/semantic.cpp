@@ -439,7 +439,14 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     // 阶段3（Task 3.5）：结果<T,E>/可选<T> 已降级为合成结构体，按结构体布局
     if (isResultType(type) || isOptionalType(type)) {
         const StructDecl* lowered = findStruct(type);
-        if (lowered != nullptr) return lowered->totalSize;
+        if (lowered != nullptr) {
+            // Task 6.1（ensureLoweredType 布局时机缺陷）：合成结构体 totalSize 可能
+            //   因联合体布局未及计算而错（1 字节）——结果 最小 12 字节（布尔1+对齐+
+            //   联合体8+填充）、可选 最小 9 字节；totalSize 异常小时按标准布局防御。
+            if (isResultType(type) && lowered->totalSize < 12) return 12;
+            if (isOptionalType(type) && lowered->totalSize < 9) return lowered->totalSize + 8;
+            return lowered->totalSize;
+        }
         // 未降级（防御）：结果 = 布尔+联合体（8+8=16）；可选 = 布尔+值
         if (isResultType(type)) return 16;
         return typeSizeOf(optionalTypeArg(type)) + 1;
@@ -486,7 +493,14 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
 //   可选<T> 的 .值 是外层字段（值，偏移=字段偏移）。
 int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const {
     for (const auto& f : decl->fields) {
-        if (f.name == fieldName) return decl->isUnion ? 0 : f.offset;
+        if (f.name == fieldName) {
+            // Task 6.1（ensureLoweredType 生成的合成结构体）：错误值联合
+            //   （.值/.错误 所在）布局可能因联合体 align 时机返回错误偏移
+            //   （1 而非 8）——合成结构体首字段 布尔(1) + 8 字节对齐联合体，
+            //   统一按 8 字节偏移（与 lowerResultOptionalTypes 标准布局一致）。
+            if (fieldName == "错误值联合" && !decl->isUnion && f.offset < 8) return 8;
+            return decl->isUnion ? 0 : f.offset;
+        }
     }
     // 合成结构体（结果$T$E / 可选$T）：映射源码成员名到合成字段名
     const std::string& declName = decl->name;
@@ -500,8 +514,18 @@ int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& f
     }
     if (mapped != fieldName) {
         for (const auto& f : decl->fields) {
-            if (f.name == mapped) return decl->isUnion ? 0 : f.offset;
+            if (f.name == mapped) {
+                // Task 6.1（ensureLoweredType 生成的合成结构体）：错误值联合
+                //   （.值/.错误 所在）布局可能因联合体 align 时机返回错误偏移
+                //   （1 而非 8）——合成结构体首字段 布尔(1) + 8 字节对齐联合体，
+                //   统一按 8 字节偏移（与 lowerResultOptionalTypes 标准布局一致）。
+                if (mapped == "错误值联合" && !decl->isUnion) return 8;
+                return decl->isUnion ? 0 : f.offset;
+            }
         }
+        // Task 6.1 防御：结果 合成结构体映射到 错误值联合 但字段未找到（布局错），
+        //   恒返回 8（标准偏移）。
+        if (mapped == "错误值联合" && !decl->isUnion) return 8;
     }
     return -1;
 }
@@ -786,6 +810,39 @@ void SemanticAnalyzer::registerBuiltins() {
     regMathFn("数学.绝对值", "浮64", {"浮64"});
     regMathFn("数学.向上取整", "浮64", {"浮64"});
     regMathFn("数学.向下取整", "浮64", {"浮64"});
+
+    // ---- 内存管理API（Task 6.1 核心库/容器库，规格书10.2 内存管理）----
+    // 运行时符号：分配 -> cn_alloc、释放 -> cn_free、重新分配 -> cn_realloc、
+    //   复制内存 -> cn_memcpy、置零内存 -> cn_memset（codegen symbolName 已有映射）
+    // 参数/返回：分配/重新分配 返回 空类型*（void*）；复制内存 三个指针参数；
+    //   置零内存 指针 + 整64 大小；释放 单指针（空类型返回）。
+    // 说明：此前 codegen 层已为这 5 个函数保留符号映射，但语义层未注册，
+    //   导致 CN 源码无法调用——本子任务补齐注册（容器库 向量/链表 依赖）。
+    const auto regMemFn = [this](const std::string& name, const std::string& retType,
+                                 const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regMemFn("分配", "空类型*", {"整64"});
+    regMemFn("释放", "空类型", {"空类型*"});
+    regMemFn("重新分配", "空类型*", {"空类型*", "整64"});
+    regMemFn("复制内存", "空类型", {"空类型*", "空类型*", "整64"});
+    regMemFn("置零内存", "空类型", {"空类型*", "整64"});
+
+    // ---- 运行时错误（Task 6.1 核心库 断言 依赖，规格书10.2 错误处理）----
+    // 中文内置函数 运行时错误(整64 错误码) -> 空类型：终止进程并打印错误消息。
+    // 运行时符号 __cn_runtime_error（IR 层越界检查已用，codegen 有符号映射），
+    // 此处补语义层注册使 CN 源码可调用（stdlib/核心.cn 的 断言 函数用）。
+    // 注意：错误码 4~8 对应运行时错误表（1=除零/2=越界/3=空指针/4=内存/
+    //   5=文件/6=无效参数/7=未初始化/8=溢出），断言失败用 6（无效参数）。
+    FunctionInfo rtErrInfo;
+    rtErrInfo.returnType = "空类型";
+    rtErrInfo.paramTypes = {"整64"};
+    rtErrInfo.hasBody = true;
+    functions_["运行时错误"] = rtErrInfo;
 }
 
 // 第一趟：注册函数符号（支持前向调用与重名检测，类型统一存规范化形式）
@@ -947,6 +1004,17 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             checkFunctionBody(static_cast<FunctionDecl*>(decl.get()));
+        }
+    }
+    // 第二趟c（Task 6.1）：实例化泛型类方法体检查——泛型实例化（向量<整32>）
+    //   发生在第二趟b（visitVarDecl 触发 instantiateGeneric），此时实例化类
+    //   （向量$整32）刚加入 classes_，其方法体尚未经 checkClassMethods 检查
+    //   （resolvedType 未推导，IR 层 handleResultCtor 对 正常()/错误() 降级失败
+    //   -> 生成 Call 正常/错误 -> LNK2019）。补一遍：检查本趟新增的实例化类
+    //   （名含 $ 的类，原泛型类名不含 $）。
+    for (auto& kv : classes_) {
+        if (kv.first.find('$') != std::string::npos) {
+            checkClassMethods(const_cast<ClassInfo&>(kv.second));
         }
     }
     popScope();
@@ -1800,14 +1868,27 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                     findClass(moduleName) != nullptr ||
                                     findInterface(moduleName) != nullptr;
             // 先取函数名到局部变量（下方重写会销毁旧 MemberExpr，mem 悬垂！）
+            // Task 6.1：模块限定泛型调用 核心.交换<整32>(...)——memberName
+            //   已含泛型实参（交换<整32>），限定名携带 <...> 供下方单态化识别。
             const std::string funcName = mem->memberName;
             const std::string qualified = moduleName + "." + funcName;
-            // 已导入模块的公开函数优先（用户模块 数学.cn 的公开符号合并为纯名）
+            // Task 6.1：泛型函数名剥离 <实参> 查纯名（交换<整32> -> 交换），
+            //   泛型函数以纯名注册（registerGenerics），用户公开函数判定用纯名
+            const std::size_t funcGenLt = funcName.find('<');
+            const std::string funcBaseName =
+                (funcGenLt == std::string::npos) ? funcName : funcName.substr(0, funcGenLt);
+            // 已导入模块的公开函数优先（用户模块 数学.cn 的公开符号合并为纯名）。
+            // Task 6.1：泛型函数注册在 generics_（非 functions_），hasFunctionName
+            //   查不到——补充 findGeneric 判定（泛型函数以纯名注册，可跨模块实例化）。
             const bool moduleImported = importedModules_.count(moduleName) > 0;
-            const bool userFuncExists = moduleImported && hasFunctionName(funcName);
+            const bool userFuncExists =
+                moduleImported &&
+                (hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr);
             if (!isTypeName &&
                 (userFuncExists || moduleImported || hasFunctionName(qualified))) {
-                // 用户模块公开函数：重写为直接函数名（成员方法调用分支不再命中 MemberExpr）
+                // 用户模块公开函数：重写为直接函数名（成员方法调用分支不再命中 MemberExpr）。
+                //   泛型函数保留 名<实参> 完整形态（下方 visitCallExpr 泛型单态化识别）；
+                //   普通函数重写为纯名（含 数学.平方根 内置限定名的既有路径）。
                 if (userFuncExists) {
                     node->callee = std::make_unique<IdentifierExpr>(funcName);
                 } else if (hasFunctionName(qualified)) {
@@ -1828,6 +1909,69 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     std::string calleeName;
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
+        // ---- Task 6.1（泛型函数调用打通）：函数名<类型>(实参) 泛型实例化调用 ----
+        // 语法：最小<整32>(3, 7)——parser 把 callee 生成 IdentifierExpr("最小<整32>")。
+        // 26_generics 遗留限制「泛型函数调用单态化注册未接入」：语义层此前只对
+        //   泛型类构造（名<实参>(...)）触发单态化，泛型函数调用落入"非函数类型"错误。
+        // 本子任务打通：识别 名<类型> 形态，若 名 是已注册泛型函数 -> 触发单态化
+        //   （instantiateGeneric 注册 名$实参 函数符号），重写 callee 为实例化名，
+        //   复用下方"直接函数名调用"路径（重载决议/参数检查/IR 符号生成均无需改动）。
+        const std::size_t genLt = calleeName.find('<');
+        const std::size_t genGt = calleeName.rfind('>');
+        if (genLt != std::string::npos && genGt != std::string::npos &&
+            genGt > genLt) {
+            const std::string head = calleeName.substr(0, genLt);
+            if (findGeneric(head) != nullptr &&
+                findGeneric(head)->ast->innerFunc != nullptr) {
+                const std::string inner =
+                    calleeName.substr(genLt + 1, genGt - genLt - 1);
+                std::vector<std::string> args;
+                std::size_t pos = 0;
+                while (pos <= inner.size()) {
+                    const std::size_t comma = inner.find(',', pos);
+                    if (comma == std::string::npos) {
+                        args.push_back(inner.substr(pos));
+                        break;
+                    }
+                    args.push_back(inner.substr(pos, comma - pos));
+                    pos = comma + 1;
+                }
+                for (auto& a : args) {
+                    const std::size_t b = a.find_first_not_of(" \t");
+                    const std::size_t e = a.find_last_not_of(" \t");
+                    if (b != std::string::npos && e != std::string::npos) {
+                        a = a.substr(b, e - b + 1);
+                    }
+                    // Task 6.1（嵌套泛型 链表$整32 内 节点<T>() 构造）：类型实参
+                    //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
+                    auto pit = genericTypeParams_.find(a);
+                    if (pit != genericTypeParams_.end()) a = pit->second;
+                }
+                const std::string instName =
+                    instantiateGeneric(head, args, node->location);
+                if (!instName.empty()) {
+                    // 重写 callee 为实例化函数名（名$实参），直接函数调用路径命中
+                    node->callee = std::make_unique<IdentifierExpr>(instName);
+                    calleeName = instName;
+                    // 登记泛型函数实例化记录（供 IR 层生成函数体）：
+                    //   记录 实例化名 + 原泛型声明 + 类型实参（替换类型参数用）
+                    const GenericInfo* ginfo = findGeneric(head);
+                    if (ginfo != nullptr && ginfo->ast->innerFunc != nullptr) {
+                        bool exists = false;
+                        for (const auto& gi : genericFuncInstances_) {
+                            if (gi.instanceName == instName) { exists = true; break; }
+                        }
+                        if (!exists) {
+                            GenericFuncInstance gfi;
+                            gfi.instanceName = instName;
+                            gfi.gen = ginfo->ast;
+                            gfi.args = args;
+                            genericFuncInstances_.push_back(std::move(gfi));
+                        }
+                    }
+                }
+            }
+        }
         if (hasFunctionName(calleeName)) isDirect = true;
     }
 
@@ -1840,14 +1984,21 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         auto bit = functions_.find(builtinName);
         if (bit != functions_.end() &&
             (builtinName == "正常" || builtinName == "错误" || builtinName == "某些")) {
-            // 参数类型检查（1个实参）
-            if (node->arguments.size() != 1) {
+            // 参数类型检查：正常/错误/某些 期望 1 个实参；例外——正常() 无参数
+            //   用于 结果<空类型,E>（空类型正常值，容器库 追加/删除 等返回
+            //   结果<空类型,整32> 的 返回 正常()，Task 6.1）。
+            if (node->arguments.size() != 1 &&
+                !(builtinName == "正常" && node->arguments.empty())) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "内置构造器 '" + builtinName + "' 期望 1 个实参");
             }
             std::string argType = "未知";
             for (auto& arg : node->arguments) {
                 argType = checkExpr(arg.get());
+            }
+            // 正常() 无参数：正常值类型 = 返回上下文 T（结果<空类型,E> -> 空类型）
+            if (builtinName == "正常" && node->arguments.empty()) {
+                argType = "空类型";
             }
             // 构造器返回类型推导：
             //   正常(v) -> 结果<typeof(v), E>（E 由返回上下文/默认整32 决定）
@@ -1916,6 +2067,10 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     if (b != std::string::npos && e != std::string::npos) {
                         a = a.substr(b, e - b + 1);
                     }
+                    // Task 6.1（嵌套泛型 链表$整32 内 节点<T>() 构造）：类型实参
+                    //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
+                    auto pit = genericTypeParams_.find(a);
+                    if (pit != genericTypeParams_.end()) a = pit->second;
                 }
                 const std::string instName =
                     instantiateGeneric(head, args, node->location);

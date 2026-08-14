@@ -51,6 +51,14 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     // 结构体/类返回值标记（隐藏返回指针，Win x64 ABI）
     if (semantic_ != nullptr && !mi.type.empty()) {
         const std::string canon = types::canonical(mi.type);
+        // Task 6.1（泛型类实例化方法 向量$整32.读取 返回 结果<整32,整32>）：
+        //   合成结构体 结果$整32$整32 可能未降级（ensureLoweredType 时机），
+        //   此处动态补降级后再判定 structReturn——否则被调方按普通方法装载
+        //   this=rcx，与调用方隐藏返回指针传参错位 -> 读取垃圾/崩溃。
+        if (SemanticAnalyzer::isResultType(canon) ||
+            SemanticAnalyzer::isOptionalType(canon)) {
+            semantic_->ensureLoweredType(canon);
+        }
         if (semantic_->isStructType(canon)) {
             func.structReturn = true;
             func.structReturnSize = semantic_->typeSizeOf(canon);
@@ -206,6 +214,14 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             const std::string st = lookupSrcType(name);
             if (!st.empty()) return st;
             if (semantic_ != nullptr && semantic_->isClassType(name)) return name;
+            // Task 6.1（泛型嵌套容器 栈<T> 组合 向量<T>）：方法体内直接字段名
+            //   （数据）——exprSrcType 需返回字段源码类型（向量$整32），否则
+            //   handleClassCallExpr 对 数据.设置() 的对象类型解析失败（空串 ->
+            //   isClassType 判定 false -> 走通用间接调用路径，生成空取地址）。
+            if (!currentClass_.empty() && !currentMethodStatic_ &&
+                isInstanceField(name)) {
+                return classFieldType(currentClass_, name);
+            }
             return "";
         }
         case NodeType::BinaryExpr: {

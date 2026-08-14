@@ -258,8 +258,15 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         writer.line("mov rax, " + value);
         writer.line("mov " + dst + ", rax");
     } else {
-        writer.line("mov eax, " + value);
-        writer.line("mov " + dst + ", eax");
+        // 32 位常量装载：栈槽用 mov eax + mov 槽（宽度明确）；
+        // 物理寄存器（寄存器分配结果）用 32 位直接装载 mov r12d, 立即数——
+        //   原实现 mov eax,0 / mov r12, eax 尺寸不匹配（A2022：eax 32位、r12 64位）。
+        if (hasPhysReg(inst.result.id)) {
+            writer.line("mov " + widthFor(inst.type, dst) + ", " + value);
+        } else {
+            writer.line("mov eax, " + value);
+            writer.line("mov " + dst + ", eax");
+        }
     }
 }
 
@@ -651,6 +658,15 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     std::string src = operandText(inst.operands[0]);
     const std::string& from = inst.operands[0].type;
     const std::string& to = inst.type;
+    // 源为物理寄存器（寄存器分配）且目标为 32 位整型时，须用 32 位寄存器名
+    // （mov eax, r12 尺寸不匹配 A2022；覆盖 i64->i32 截断、u32->浮 等
+    //   所有经 eax 读源的 Cast 分支，与 Load/Store 路径对称处理）
+    const std::string srcReg = (src == "rax" || src == "rbx" || src == "rcx" ||
+                                src == "rdx" || src == "r12" || src == "r13" ||
+                                src == "r14" || src == "r15") ? src : "";
+    if (!srcReg.empty() && (to == "i32" || to == "u32")) {
+        src = widthFor(to, srcReg);
+    }
     const bool fromFloat = isFloatType(from);
     const bool toFloat = isFloatType(to);
     // ---- 浮 -> 整128（Task 2.10 分支）：调用运行时辅助 __cn_f64_to_i128 ----
@@ -1016,8 +1032,23 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
             return;
         }
         std::string w = widthFor(inst.type, "rax");
-        writer.line("mov " + w + ", " + src);
-        writer.line("mov " + dst + ", " + w);
+        // 源为物理寄存器（寄存器分配）：32 位读须用 r14d（mov eax, r14 尺寸不匹配）
+        std::string srcLoad = src;
+        if (inst.type != "i64" && inst.type != "u64" && inst.type != "ptr") {
+            const std::string reg = (src == "rax" || src == "rbx" || src == "rcx" ||
+                                     src == "rdx" || src == "r12" || src == "r13" ||
+                                     src == "r14" || src == "r15")
+                                        ? src : "";
+            if (!reg.empty()) srcLoad = widthFor(inst.type, reg);
+        }
+        writer.line("mov " + w + ", " + srcLoad);
+        // 物理寄存器（寄存器分配结果）目标：32 位值须用同宽度装载
+        //   （mov r12d, eax），原实现 mov r12, eax 尺寸不匹配（A2022）
+        if (hasPhysReg(inst.result.id)) {
+            writer.line("mov " + widthFor(inst.type, dst) + ", " + w);
+        } else {
+            writer.line("mov " + dst + ", " + w);
+        }
     } else {
         // Store：operands[0] 值，extra 变量名
         // i128/正128 变量存储（Task 完善A）：双寄存器（%vN 高 + %vN+1 低）
@@ -1036,6 +1067,14 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         // Task 2.3：小宽度（i8/i16/i32）值先符号/零扩展存满8字节槽，
         // 避免后续以整64读取时读到槽中高位垃圾（栈残留）
         std::string src = operandText(inst.operands[0]);
+        // 源为物理寄存器（寄存器分配）：32 位值须用 32 位名
+        //   （mov eax, r12 尺寸不匹配 A2022，与 Load 路径对称处理）
+        if (inst.type == "i32" || inst.type == "u32") {
+            const std::string reg = (src == "rax" || src == "rbx" || src == "rcx" ||
+                                     src == "rdx" || src == "r12" || src == "r13" ||
+                                     src == "r14" || src == "r15") ? src : "";
+            if (!reg.empty()) src = widthFor(inst.type, reg);
+        }
         int offset = varSlotOf(inst.extra);
         std::string slot = "[rbp" + std::to_string(offset) + "]";
         if (isFloatType(inst.type)) {
