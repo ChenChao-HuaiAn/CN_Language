@@ -148,7 +148,9 @@ namespace {
 inline void umul128(std::uint64_t a, std::uint64_t b,
                     std::uint64_t& lo, std::uint64_t& hi) {
 #ifdef _MSC_VER
-    hi = _umul128(a, b, &lo);
+    // MSVC intrinsic：_umul128 返回值为低64位，第三参数（out）为高64位
+    // 注意：返回值赋给 lo、out 参数写 hi（与 GCC __int128 分支语义对齐）
+    lo = _umul128(a, b, &hi);
 #else
     // __int128 内建：GCC/Clang 生成 mul x, x；结果 128 位
     const unsigned __int128 product =

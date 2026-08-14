@@ -28,7 +28,7 @@
 > - `arm64_codegen_i128.cpp`：i128 加/减（adds/adc/sbcs）+ 乘/除/余/比较（运行时辅助）
 > - `arm64_codegen_oop.cpp`：NewObject/DeleteObject/VirtualCall/VtableAddr（blr 间接调用）
 > - `arm64_codegen_vtable.cpp`：虚表 .section .rodata + .quad、静态字段 .data
-> - 运行时平台无关：i128_api.cpp `_umul128` → `__int128`（#ifdef _MSC_VER 保留原实现）；
+> - 运行时平台无关：i128_api.cpp `_umul128` → `__int128`（#ifdef _MSC_VER 保留原实现）；**MSVC `_umul128` 分支参数语义已修复（2026-08-14）**——原 `hi = _umul128(a, b, &lo)` 写反（返回值=低64位、第三参数=高64位），已改 `lo = _umul128(a, b, &hi);`，单测 964/964 通过 ✅；
 >   runtime.cpp Linux `main` 入口（CNRT_LINUX_MAIN 宏，避免与 gtest_main 冲突）
 > **验证**：全量单测 918/918（含新增 17 个 Arm64CodegenTest）+ 编译零警告（GCC 7 -Werror）
 >   + `aarch64-linux-gnu-as` 交叉汇编验证 GAS 语法合法 + i128 API 16/16（__int128 分支）
