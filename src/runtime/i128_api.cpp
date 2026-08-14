@@ -139,7 +139,28 @@ extern "C" void __cn_sub_i128(const std::uint64_t* a, const std::uint64_t* b,
     out[1] = hi;
 }
 
-// 有符号128位乘法：a * b -> out（位模式与无符号相同，_umul128 组合 4 次 64×64 乘加）
+// 64×64 -> 128 位无符号乘法（跨平台实现）
+// MSVC：_umul128（<intrin.h> intrinsic）；GCC/Clang：__int128 内建
+// （GCC 7 无 _umul128，直接使用 __int128 生成 mul 指令）
+namespace {
+
+// 64x64 无符号乘法 -> 128 位（低64位 + 高64位）
+inline void umul128(std::uint64_t a, std::uint64_t b,
+                    std::uint64_t& lo, std::uint64_t& hi) {
+#ifdef _MSC_VER
+    hi = _umul128(a, b, &lo);
+#else
+    // __int128 内建：GCC/Clang 生成 mul x, x；结果 128 位
+    const unsigned __int128 product =
+        static_cast<unsigned __int128>(a) * static_cast<unsigned __int128>(b);
+    lo = static_cast<std::uint64_t>(product);
+    hi = static_cast<std::uint64_t>(product >> 64);
+#endif
+}
+
+} // namespace
+
+// 有符号128位乘法：a * b -> out（位模式与无符号相同，umul128 组合 4 次 64×64 乘加）
 //   128位 = (a1*2^64 + a0) * (b1*2^64 + b0)
 //         = a0*b0 + (a0*b1 + a1*b0)*2^64 + a1*b1*2^128（2^128 溢出丢弃）
 //   低64位 = a0*b0 低64位；高64位 = a0*b0 高64位 + a0*b1 低64位 + a1*b0 低64位
@@ -147,16 +168,19 @@ extern "C" void __cn_mul_i128(const std::uint64_t* a, const std::uint64_t* b,
                               std::uint64_t* out) {
     // a0*b0：lo = 低64位，h0 = 高64位（进位起点）
     std::uint64_t h0 = 0;
-    const std::uint64_t lo = _umul128(a[0], b[0], &h0);
+    std::uint64_t lo = 0;
+    umul128(a[0], b[0], lo, h0);
     std::uint64_t hi = h0;
     // a0*b1：低64位 m1 累加到高64位（m1 的高64位 h1 在 2^128 之外，丢弃）
     std::uint64_t h1 = 0;
-    const std::uint64_t m1 = _umul128(a[0], b[1], &h1);
+    std::uint64_t m1 = 0;
+    umul128(a[0], b[1], m1, h1);
     (void)h1;
     hi += m1;
     // a1*b0：低64位 m2 累加到高64位（h2 丢弃）
     std::uint64_t h2 = 0;
-    const std::uint64_t m2 = _umul128(a[1], b[0], &h2);
+    std::uint64_t m2 = 0;
+    umul128(a[1], b[0], m2, h2);
     (void)h2;
     hi += m2;
     // a1*b1 的高位部分影响丢弃位（2^128 之外），忽略

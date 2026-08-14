@@ -111,9 +111,15 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         // 缺陷3 修复：泛型实例化类（盒子$整32）的构造方法名 = 原始泛型类名（盒子），
         //   不能用 className（盒子$整32）作 key find——改为遍历 methods 找 isConstructor。
         //   普通类的构造方法名 == 类名，遍历同样命中。
+        // 缺陷修复（阶段A-3）：继承场景下父类构造函数（如 动物 的 ownerClass="动物"）
+        //   会随继承并入子类 methods 表（name="动物"），若仅按 isConstructor 遍历首个
+        //   命中，会因 unordered_map 遍历顺序（GCC/MSVC 不同）误选父类构造（2 参），
+        //   忽略子类自身构造（3 参）导致自身字段未初始化。必须限定 ownerClass == className，
+        //   只匹配"本类自己声明"的构造函数（泛型实例化类 ownerClass=实例化名，同样成立）。
         const ClassMemberInfo* ctor = nullptr;
         for (const auto& mk : ci->methods) {
-            if (mk.second.isConstructor && mk.second.hasBody) {
+            if (mk.second.isConstructor && mk.second.hasBody &&
+                mk.second.ownerClass == className) {
                 ctor = &mk.second;
                 break;
             }

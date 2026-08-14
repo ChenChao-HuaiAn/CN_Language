@@ -1,0 +1,989 @@
+// Linux ARM64 (AArch64) 代码生成器实现（阶段5）——模块装配与函数框架
+// 职责：
+//   1. 生成汇编文件骨架（头注释 / .data段 / .section .rodata / .text段）
+//   2. 生成函数级框架（函数头 / prologue / 参数装载 / 基本块 / epilogue）
+//   3. 符号修饰（中文名 GAS 风格 _ + UTF-8十六进制）、参数位置映射、栈槽分配
+// 说明：单条IR指令的降级（算术/比较/调用等）在 arm64_instructions.cpp 中实现；
+//       OOP 指令（NewObject 等）在 arm64_codegen_oop.cpp 中实现
+// 规范：英文API命名，中文仅注释；函数<=100行
+#include <algorithm>
+#include <cstdint>
+#include <cstdio>
+#include <cstring>
+#include <string>
+#include <unordered_set>
+#include <vector>
+
+#include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
+
+namespace cn_compiler {
+
+// ==================== 基础工具函数 ====================
+
+// 中文符号名 -> GAS 风格修饰名（_ + UTF-8 十六进制，如 主 -> _E4B8BB）
+// 与 X64 的 ?XX..@@Y 不同：GAS 符号必须是 C 标识符（可含 . 与 $），
+//   中文字节不能直接作为符号名，故 _ 前缀 + 每字节 %02X 十六进制编码。
+// 纯 ASCII 且无重载参数：直接返回（内置/运行时符号路径不走本函数）。
+// Task 2.10 重载：签名 key（名#参数串）同样解析——非ASCII 部分编码，
+//   参数类型按 mangleTypeCode 编码，去掉 MASM 的 @@Y/@Z 包装（GAS 无需）。
+std::string Arm64CodeGenerator::nameMangle(const std::string& name) {
+    std::string baseName = name;
+    std::vector<std::string> paramTypes;
+    const std::size_t hashPos = name.find('#');
+    if (hashPos != std::string::npos) {
+        baseName = name.substr(0, hashPos);
+        const std::string params = name.substr(hashPos + 1);
+        std::size_t start = 0;
+        while (start <= params.size()) {
+            const std::size_t comma = params.find(',', start);
+            const std::string p = (comma == std::string::npos)
+                                      ? params.substr(start)
+                                      : params.substr(start, comma - start);
+            if (!p.empty()) paramTypes.push_back(p);
+            if (comma == std::string::npos) break;
+            start = comma + 1;
+        }
+    }
+    // GAS 符号名合法字符：字母/数字/._$（须避免 ?、@、# 等特殊字符——@ 是 GAS 注释符）
+    bool needsMangle = false;
+    for (unsigned char c : baseName) {
+        if (c >= 0x80 || !(std::isalnum(c) || c == '_' || c == '.' || c == '$')) {
+            needsMangle = true;
+            break;
+        }
+    }
+    if (!needsMangle && paramTypes.empty()) return baseName;
+    std::string mangled = "_";
+    for (unsigned char c : baseName) {
+        char buf[4];
+        std::snprintf(buf, sizeof(buf), "%02X", static_cast<int>(c));
+        mangled += buf;
+    }
+    for (const auto& p : paramTypes) {
+        mangled += "_" + mangleTypeCode(p);
+    }
+    return mangled;
+}
+
+// 中文块标签 -> GAS 标签（L + UTF-8 十六进制；ASCII 原样返回）
+// GAS 标签必须为 C 标识符（中文字节会报 unrecognized character），
+//   块标签 块0/块1 含中文，需编码为 ASCII 形式（L + hex）
+std::string Arm64CodeGenerator::labelMangle(const std::string& name) {
+    bool needsMangle = false;
+    for (unsigned char c : name) {
+        if (c >= 0x80 || !(std::isalnum(c) || c == '_' || c == '.' || c == '$')) {
+            needsMangle = true;
+            break;
+        }
+    }
+    if (!needsMangle) return name;
+    std::string mangled = "L";
+    for (unsigned char c : name) {
+        char buf[4];
+        std::snprintf(buf, sizeof(buf), "%02X", static_cast<int>(c));
+        mangled += buf;
+    }
+    return mangled;
+}
+
+// 源码类型名 -> 附录C 类型编码（重载 mangling 用，与 X64 完全一致）
+std::string Arm64CodeGenerator::mangleTypeCode(const std::string& typeRaw) {
+    const std::string t = types::canonical(typeRaw);
+    if (t == "空类型") return "X";
+    if (t == "布尔") return "_N";
+    if (t == "字符") return "D";
+    if (t == "整8") return "C";
+    if (t == "正8") return "E";
+    if (t == "整16") return "F";
+    if (t == "正16") return "G";
+    if (t == "整32") return "H";
+    if (t == "正32") return "I";
+    if (t == "整64") return "J";
+    if (t == "正64") return "K";
+    if (t == "整128") return "_M";
+    if (t == "正128") return "_O";
+    if (t == "浮32") return "M";
+    if (t == "浮64") return "N";
+    if (t == "字符串" || t == "字符*") return "PAX";
+    if (t == "空类型*") return "PEX";
+    if (!t.empty() && t.back() == '*') {
+        return "PE" + mangleTypeCode(t.substr(0, t.size() - 1));
+    }
+    const std::size_t lb = t.rfind('[');
+    if (lb != std::string::npos && t.back() == ']') {
+        return "PA" + mangleTypeCode(t.substr(0, lb));
+    }
+    std::string code = "_T";
+    for (unsigned char c : t) {
+        char buf[4];
+        std::snprintf(buf, sizeof(buf), "%02X", static_cast<int>(c));
+        code += buf;
+    }
+    return code;
+}
+
+// CN符号 -> 汇编链接符号（中文名 -> C 符号映射表，平台无关，照抄 X64）
+std::string Arm64CodeGenerator::symbolName(const std::string& name) {
+    if (name == "主") return "cn_main";
+    if (name == "打印") return "printLine";
+    if (name == "打印行") return "printNoLine";
+    if (name == "打印行整数") return "printLineInt";
+    if (name == "打印行浮点") return "printLineFloat";
+    if (name == "分配") return "cn_alloc";
+    if (name == "释放") return "cn_free";
+    if (name == "重新分配") return "cn_realloc";
+    if (name == "复制内存") return "cn_memcpy";
+    if (name == "置零内存") return "cn_memset";
+    if (name == "__cn_runtime_error") return "__cn_runtime_error";
+    if (name.rfind("__cn_", 0) == 0) return name;
+    return nameMangle(name);
+}
+
+// 第index个整型参数（0起）的传递位置：前8用寄存器 x0~x7，第9起在栈上
+// AAPCS64：整型/指针参数 x0~x7；栈参数位于调用方栈顶。
+//   被调方 prologue 依次压栈：stp x29,x30（16B）、stp x19,xzr（16B，仅
+//   currentNeedHiddenRet_ 时）——故栈参数相对 x29 的偏移 = 16 + 16*needHiddenRet。
+std::string Arm64CodeGenerator::parameterRegister(int index) const {
+    static const char* regs[] = {"x0", "x1", "x2", "x3",
+                                 "x4", "x5", "x6", "x7"};
+    if (index < 8) return regs[index];
+    const int base = currentNeedHiddenRet_ ? 32 : 16;
+    return "[x29,#" + std::to_string(base + (index - 8) * 8) + "]";
+}
+
+// 操作码 + 结果类型 -> 指令助记符（用于分派）
+std::string Arm64CodeGenerator::selectInstruction(ir::Opcode opcode,
+                                                  const std::string& type) const {
+    (void)type;
+    switch (opcode) {
+        case ir::Opcode::Add: return "add";
+        case ir::Opcode::Sub: return "sub";
+        case ir::Opcode::Mul: return "mul";
+        case ir::Opcode::Div: return "sdiv";
+        case ir::Opcode::Mod: return "msub";
+        case ir::Opcode::And: return "and";
+        case ir::Opcode::Or: return "orr";
+        case ir::Opcode::Not: return "mvn";
+        case ir::Opcode::Load: return "ldr";
+        case ir::Opcode::Store: return "str";
+        case ir::Opcode::Eq: case ir::Opcode::Ne:
+        case ir::Opcode::Lt: case ir::Opcode::Le:
+        case ir::Opcode::Gt: case ir::Opcode::Ge:
+            return "cmp+cset";
+        default:
+            return "";
+    }
+}
+
+// ==================== 栈槽分配 ====================
+
+// 虚拟寄存器ID -> 栈槽偏移（寄存器槽区：-8*id-8，紧贴x29向下）
+int Arm64CodeGenerator::regSlotOffset(int regId) {
+    return -8 * regId - 8;
+}
+
+// 变量槽index -> 栈槽偏移（寄存器槽区之后：-8*regCount-8*(index+1)）
+int Arm64CodeGenerator::varSlotOffset(int index) const {
+    return -8 * regSlotCount_ - 8 * (index + 1);
+}
+
+// 虚拟寄存器 -> 栈槽内存操作数文本（[x29, #-8*id-8]）
+std::string Arm64CodeGenerator::regSlotMem(int regId) {
+    const int off = regSlotOffset(regId);
+    return "[x29,#" + std::to_string(off) + "]";
+}
+
+// 登记变量到变量槽映射（记录槽偏移，返回槽索引）
+int Arm64CodeGenerator::registerVarSlot(const std::string& name) {
+    auto it = varSlots_.find(name);
+    if (it != varSlots_.end()) return it->second;
+    const int index = static_cast<int>(varSlots_.size());
+    varSlots_[name] = index;
+    return index;
+}
+
+// 查询变量槽偏移（未登记返回0，调用方保证已登记）
+int Arm64CodeGenerator::varSlotOf(const std::string& name) const {
+    auto it = varSlots_.find(name);
+    if (it == varSlots_.end()) return 0;
+    return varSlotOffset(it->second);
+}
+
+// 变量槽区大小（当前已登记槽数 * 8）
+int Arm64CodeGenerator::varSlotAreaSize() const {
+    return static_cast<int>(varSlots_.size()) * 8;
+}
+
+// 扫描函数内最大虚拟寄存器ID（i128/u128 值占 2 个连续虚拟寄存器）
+int Arm64CodeGenerator::maxRegIdIn(const ir::IRFunction& function) {
+    int maxId = -1;
+    auto check = [&maxId](const ir::IRValue& v) {
+        if (v.id < 0) return;
+        if (v.type == "i128" || v.type == "u128") {
+            if (v.id + 1 > maxId) maxId = v.id + 1;
+        } else if (v.id > maxId) {
+            maxId = v.id;
+        }
+    };
+    for (auto& block : function.blocks) {
+        for (auto& inst : block->instructions) {
+            check(inst.result);
+            for (auto& op : inst.operands) check(op);
+        }
+        if (!block->termReturnValue.empty()) {
+            auto& s = block->termReturnValue;
+            if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
+                const int id = std::stoi(s.substr(2));
+                if (id > maxId) maxId = id;
+            }
+        }
+    }
+    return maxId;
+}
+
+// 计算函数栈帧大小：变量槽区 + 寄存器槽区（maxRegId+1个槽），16字节对齐
+int Arm64CodeGenerator::computeFrameSize(const ir::IRFunction& function) const {
+    const int varBytes = varSlotAreaSize();
+    const int regCount = maxRegIdIn(function) + 1;
+    const int regBytes = (regCount > 0) ? regCount * 8 : 0;
+    const int total = varBytes + regBytes;
+    return ((total + 15) / 16) * 16;
+}
+
+// ==================== 模块级汇编生成 ====================
+
+// 字符串转汇编字面量（转义反斜杠/引号/控制字符，UTF-8字节保留）
+std::string Arm64CodeGenerator::escapeString(const std::string& text) {
+    std::string out;
+    for (unsigned char c : text) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            case '\0': out += "\\0"; break;
+            default:
+                out += static_cast<char>(c);
+                break;
+        }
+    }
+    return out;
+}
+
+// 字符串转 GAS 十六进制字节序列（UTF-8字节逐字节 0xXX，逗号分隔，供 .byte 发射）
+std::string Arm64CodeGenerator::hexBytesString(const std::string& text) {
+    std::string out;
+    for (unsigned char c : text) {
+        if (!out.empty()) out += ",";
+        char buf[8];
+        std::snprintf(buf, sizeof(buf), "0x%02X", static_cast<int>(c));
+        out += buf;
+    }
+    return out;
+}
+
+// 64位无符号整数 -> GAS 立即数十六进制文本（0x 前缀）
+std::string Arm64CodeGenerator::uint64HexText(std::uint64_t value) {
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "0x%llX", static_cast<unsigned long long>(value));
+    return buf;
+}
+
+// 浮点常量文本 -> IEEE754位模式十六进制（f32 转 uint32、f64 转 uint64）
+std::string Arm64CodeGenerator::floatBitsHex(const std::string& text, bool isDouble) {
+    std::uint64_t bits = 0;
+    try {
+        const double value = std::stod(text);
+        if (isDouble) {
+            std::memcpy(&bits, &value, sizeof(double));
+        } else {
+            const float f = static_cast<float>(value);
+            std::uint32_t bits32 = 0;
+            std::memcpy(&bits32, &f, sizeof(float));
+            bits = bits32;
+        }
+    } catch (...) {
+        bits = 0;
+    }
+    char buf[32];
+    std::snprintf(buf, sizeof(buf), "0x%016llX", static_cast<unsigned long long>(bits));
+    return buf;
+}
+
+// 在常量池登记浮点常量（@fpN），重复文本复用同一标签
+std::string Arm64CodeGenerator::registerFloatConstant(const std::string& text,
+                                                      bool isDouble) {
+    const std::string key = (isDouble ? "d:" : "f:") + text;
+    auto it = floatConstLabels_.find(key);
+    if (it != floatConstLabels_.end()) return it->second;
+    const std::string label = "Lfp" + std::to_string(floatConstOrder_.size());
+    floatConstLabels_[key] = label;
+    floatConstOrder_.push_back(key);
+    return label;
+}
+
+// ==================== 立即数/符号地址/访存辅助 ====================
+
+// 生成加载 64 位立即数到寄存器（movz/movk 分段，最多 4 条指令）
+// 首段（最高非零 16 位块）用 movz 清零其余位，后续非零块用 movk 拼接
+void Arm64CodeGenerator::emitMovImm(Arm64AsmWriter& writer, const std::string& reg,
+                                    std::uint64_t value) {
+    // 收集非零 16 位块（从最高位开始找首块，保证 movz 后其余位清零）
+    int firstShift = -1;
+    for (int shift = 0; shift < 64; shift += 16) {
+        const std::uint64_t chunk = (value >> shift) & 0xFFFF;
+        if (chunk != 0) {
+            firstShift = shift;
+            break;
+        }
+    }
+    if (firstShift < 0) {
+        writer.line("movz " + reg + ", #0");
+        return;
+    }
+    for (int shift = 0; shift < 64; shift += 16) {
+        const std::uint64_t chunk = (value >> shift) & 0xFFFF;
+        if (chunk == 0) continue;  // 0 块无需 movk（movz 已清零）
+        if (shift == firstShift) {
+            writer.line("movz " + reg + ", #" + std::to_string(chunk) +
+                        (shift == 0 ? "" : (", lsl #" + std::to_string(shift))));
+        } else {
+            writer.line("movk " + reg + ", #" + std::to_string(chunk) +
+                        ", lsl #" + std::to_string(shift));
+        }
+    }
+}
+
+// 加载符号地址到寄存器（adrp + add :lo12:）
+void Arm64CodeGenerator::emitLoadSymbolAddr(Arm64AsmWriter& writer,
+                                            const std::string& reg,
+                                            const std::string& symbol) {
+    writer.line("adrp " + reg + ", " + symbol);
+    writer.line("add " + reg + ", " + reg + ", :lo12:" + symbol);
+}
+
+// 栈槽偏移 -> 内存操作数文本（[x29,#off]；|off|>255 时生成 x13 地址计算指令）
+std::string Arm64CodeGenerator::stackMemText(int offset, Arm64AsmWriter& writer) {
+    if (offset >= -256 && offset <= 255) {
+        return "[x29,#" + std::to_string(offset) + "]";
+    }
+    // 大偏移：|offset| <= 4095 可用单条 add/sub；否则 movz/movk 到 x13 再 add/sub
+    // （AArch64 add/sub 立即数 12 位，最大 4095）
+    if (offset < 0) {
+        const int abs = -offset;
+        if (abs <= 4095) {
+            writer.line("sub x13, x29, #" + std::to_string(abs));
+        } else {
+            emitMovImm(writer, "x13", static_cast<std::uint64_t>(abs));
+            writer.line("sub x13, x29, x13");
+        }
+    } else {
+        if (offset <= 4095) {
+            writer.line("add x13, x29, #" + std::to_string(offset));
+        } else {
+            emitMovImm(writer, "x13", static_cast<std::uint64_t>(offset));
+            writer.line("add x13, x29, x13");
+        }
+    }
+    return "[x13]";
+}
+
+// 栈槽地址计算：reg = x29 + offset（|offset|<=4095 单条 add/sub，否则 mov 到 x13）
+void Arm64CodeGenerator::emitStackAddr(Arm64AsmWriter& writer,
+                                       const std::string& reg, int offset) {
+    if (offset >= -4095 && offset <= 4095) {
+        if (offset < 0) {
+            writer.line("sub " + reg + ", x29, #" + std::to_string(-offset));
+        } else {
+            writer.line("add " + reg + ", x29, #" + std::to_string(offset));
+        }
+    } else {
+        if (offset < 0) {
+            emitMovImm(writer, "x13", static_cast<std::uint64_t>(-offset));
+            writer.line("sub " + reg + ", x29, x13");
+        } else {
+            emitMovImm(writer, "x13", static_cast<std::uint64_t>(offset));
+            writer.line("add " + reg + ", x29, x13");
+        }
+    }
+}
+
+// 从栈槽加载到寄存器（reg=xN 整型 或 sN/dN 浮点；type 决定宽度与符号/零扩展）
+void Arm64CodeGenerator::emitStackLoad(Arm64AsmWriter& writer, int offset,
+                                       const std::string& reg, const std::string& type) {
+    const std::string mem = stackMemText(offset, writer);
+    if (isFloatType(type)) {
+        writer.line("ldr " + reg + ", " + mem);
+        return;
+    }
+    // AArch64 加载字节/半字的目标必须为 w 寄存器（ldrsb/ldrsh 亦同），
+    // 与 32 位 ldr wN 一致；reg 若为 xN 需转 wN（如 x9 -> w9）
+    if (type == "i8" || type == "i16" || type == "u8" || type == "u16") {
+        const std::string wreg = "w" + reg.substr(1);
+        const std::string ins = (type == "i8") ? "ldrsb" :
+                                (type == "i16") ? "ldrsh" :
+                                (type == "u8") ? "ldrb" : "ldrh";
+        writer.line(ins + " " + wreg + ", " + mem);
+        return;
+    }
+    if (type == "i32" || type == "u32" || type == "i1") {
+        const std::string wreg = "w" + reg.substr(1);
+        writer.line("ldr " + wreg + ", " + mem);
+        return;
+    }
+    writer.line("ldr " + reg + ", " + mem);
+}
+
+// 存储寄存器到栈槽（reg=xN 整型 或 sN/dN 浮点；type 决定宽度）
+void Arm64CodeGenerator::emitStackStore(Arm64AsmWriter& writer, int offset,
+                                        const std::string& reg, const std::string& type) {
+    const std::string mem = stackMemText(offset, writer);
+    if (isFloatType(type)) {
+        writer.line("str " + reg + ", " + mem);
+        return;
+    }
+    if (type == "i8" || type == "u8") {
+        writer.line("strb w" + reg.substr(1) + ", " + mem);
+        return;
+    }
+    if (type == "i16" || type == "u16") {
+        writer.line("strh w" + reg.substr(1) + ", " + mem);
+        return;
+    }
+    if (type == "i32" || type == "u32" || type == "i1") {
+        writer.line("str w" + reg.substr(1) + ", " + mem);
+        return;
+    }
+    writer.line("str " + reg + ", " + mem);
+}
+
+// 从任意操作数加载到整型寄存器 reg（常量 mov / 寄存器槽 / 变量槽）
+// 返回实际装载了值的寄存器名（通常为 reg 本身）
+std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
+                                               const ir::IRValue& operand,
+                                               const std::string& reg) {
+    if (operand.isConstant) {
+        // ptr 常量：@strN 字符串池标签 / @fpN 浮点常量池 / 函数符号 -> 加载符号地址
+        // （不能 stoll 解析——@str0 非数值会落入 catch 装载 0，导致实参传空指针）
+        // 数值 ptr 常量（如 "0" 空指针）仍按立即数装载
+        if (operand.type == "ptr") {
+            std::string sym = operand.extra;
+            bool numeric = true;
+            for (unsigned char c : sym) {
+                if (!(std::isdigit(c) || c == '-' || c == 'x' || c == 'X' ||
+                      (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))) {
+                    numeric = false;
+                    break;
+                }
+            }
+            if (numeric) {
+                try {
+                    emitMovImm(writer, reg,
+                               static_cast<std::uint64_t>(std::stoll(sym)));
+                    return reg;
+                } catch (...) {
+                    // 非数值（0x 前缀解析失败）回落符号地址
+                }
+            }
+            if (sym.compare(0, 4, "@str") == 0) {
+                sym = "L" + sym.substr(1);  // @strN -> LstrN（GAS 标签）
+            }
+            emitLoadSymbolAddr(writer, reg, sym);
+            return reg;
+        }
+        std::string text = operand.extra;
+        if (operand.type == "i1") {
+            text = (text == "真") ? "1" : "0";
+        }
+        if (!text.empty() && text[0] == '0' && text.size() > 1 &&
+            (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' ||
+             text[1] == 'B' || text[1] == 'o' || text[1] == 'O')) {
+            try {
+                const std::uint64_t raw =
+                    std::stoull(text.substr(2), nullptr,
+                                 (text[1] == 'x' || text[1] == 'X') ? 16 :
+                                 (text[1] == 'b' || text[1] == 'B') ? 2 : 8);
+                text = std::to_string(raw);
+            } catch (...) {
+            }
+        }
+        // 有符号解析优先；溢出（如 正64 最大值 18446744073709551615 > LLONG_MAX）
+        // 回落无符号解析，避免 catch 装载 0
+        try {
+            const long long v = std::stoll(text);
+            emitMovImm(writer, reg, static_cast<std::uint64_t>(v));
+        } catch (...) {
+            try {
+                const std::uint64_t u = std::stoull(text);
+                emitMovImm(writer, reg, u);
+            } catch (...) {
+                emitMovImm(writer, reg, 0);
+            }
+        }
+        return reg;
+    }
+    if (operand.id >= 0) {
+        emitStackLoad(writer, regSlotOffset(operand.id), reg, operand.type);
+        return reg;
+    }
+    emitStackLoad(writer, varSlotOf(operand.extra), reg, operand.type);
+    return reg;
+}
+
+// 从任意操作数加载到浮点寄存器 vreg（浮点常量池 / 寄存器槽 / 变量槽）
+void Arm64CodeGenerator::loadOperandToV(Arm64AsmWriter& writer,
+                                        const ir::IRValue& operand,
+                                        const std::string& vreg) {
+    const bool isDouble = (operand.type == "f64");
+    if (operand.isConstant) {
+        const std::string label = registerFloatConstant(operand.extra, isDouble);
+        emitLoadSymbolAddr(writer, "x10", label);
+        writer.line("ldr " + vreg + ", [x10]");
+        return;
+    }
+    if (operand.id >= 0) {
+        emitStackLoad(writer, regSlotOffset(operand.id), vreg, operand.type);
+        return;
+    }
+    emitStackLoad(writer, varSlotOf(operand.extra), vreg, operand.type);
+}
+
+// 参数是否结构体按值
+bool Arm64CodeGenerator::isStructParam(const ir::IRFunction& function,
+                                       std::size_t index) const {
+    if (index >= function.params.size()) return false;
+    return function.params[index].second == "ptr" &&
+           function.structParamIndexes.count(static_cast<int>(index)) > 0;
+}
+
+// ==================== 模块级段生成 ====================
+
+// 生成 .data 段（字符串常量池 @str0/@str1/... + 浮点常量池 @fp0/@fp1/...）
+void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
+                                         const ir::IRModule& module) {
+    writer.raw(".data");
+    bool hasAny = false;
+    for (std::size_t i = 0; i < module.stringConstants.size(); ++i) {
+        const std::string label = "Lstr" + std::to_string(i);
+        const std::string text = module.stringConstants[i];
+        writer.raw(label + ":");
+        if (text.empty()) {
+            writer.raw("    .byte 0");
+            hasAny = true;
+            continue;
+        }
+        const std::size_t maxBytesPerLine = 24;
+        std::size_t pos = 0;
+        while (pos < text.size()) {
+            const std::size_t chunk = std::min(maxBytesPerLine, text.size() - pos);
+            writer.raw("    .byte " + hexBytesString(text.substr(pos, chunk)));
+            pos += chunk;
+        }
+        writer.raw("    .byte 0");
+        hasAny = true;
+    }
+    for (const std::string& key : floatConstOrder_) {
+        const bool isDouble = (key.compare(0, 2, "d:") == 0);
+        const std::string text = key.substr(2);
+        const std::string label = floatConstLabels_[key];
+        writer.raw(label + ":");
+        if (isDouble) {
+            writer.raw("    .quad " + floatBitsHex(text, true));
+        } else {
+            writer.raw("    .word " + floatBitsHex(text, false));
+        }
+        hasAny = true;
+    }
+    if (!hasAny) writer.comment("（无常量）");
+}
+
+// 生成 .text 段头部（导出函数符号 + 外部被调函数符号）
+void Arm64CodeGenerator::emitTextHeader(Arm64AsmWriter& writer,
+                                        const ir::IRModule& module) {
+    writer.raw(".text");
+    writer.comment("运行时外部符号（由 cn_runtime 库提供，链接器解析）");
+    std::unordered_set<std::string> definedSymbols;
+    for (auto& function : module.functions) {
+        const std::string sym = symbolName(
+            function.mangledName.empty() ? function.name : function.mangledName);
+        definedSymbols.insert(sym);
+    }
+    std::unordered_set<std::string> externSet;
+    for (auto& function : module.functions) {
+        for (auto& block : function.blocks) {
+            for (auto& inst : block->instructions) {
+                if ((inst.opcode == ir::Opcode::Call ||
+                     inst.opcode == ir::Opcode::FuncAddr) &&
+                    !inst.extra.empty()) {
+                    std::string sym = symbolName(inst.extra);
+                    if (definedSymbols.find(sym) == definedSymbols.end()) {
+                        externSet.insert(sym);
+                    }
+                }
+            }
+        }
+    }
+    for (auto& sym : externSet) {
+        writer.raw(".globl " + sym);
+    }
+}
+
+// 生成函数头（.globl + .type + 符号标签）
+void Arm64CodeGenerator::emitFunctionHeader(Arm64AsmWriter& writer,
+                                            const ir::IRFunction& function) {
+    writer.comment("函数 " + function.name + " : " + function.returnType);
+    const std::string sym = symbolName(
+        function.mangledName.empty() ? function.name : function.mangledName);
+    writer.raw(".globl " + sym);
+    writer.raw(".type " + sym + ", %function");
+    writer.raw(sym + ":");
+}
+
+// 生成函数 prologue（stp x29,x30 / 可选 stp x19,xzr / mov x29,sp / sub sp,#frameSize）
+// AAPCS64：
+//   - x29 帧指针、x30 链接寄存器，均被调用者保存
+//   - 需要保存隐藏返回指针（结构体/i128 返回）时用 x19（被调用者保存），
+//     在 x29/x30 之后压 stp x19, xzr（xzr 占位保持 16 对齐），恢复时 ldp 丢弃
+//   - 压栈顺序固定：先 x29,x30 再 x19（栈参数偏移 = 16 + 16*needHiddenRet，
+//     与 parameterRegister 一致）
+// 栈调整辅助：|amount| <= 4095 用单条 sub/add；否则先 mov 到 x13 再 sub/add
+// AArch64 立即数栈调整最大 4095（12 位），大栈帧（如 4224 字节）需分段
+void Arm64CodeGenerator::emitStackAdjust(Arm64AsmWriter& writer, int amount) {
+    if (amount == 0) return;
+    if (amount > 0 && amount <= 4095) {
+        writer.line("add sp, sp, #" + std::to_string(amount));
+    } else if (amount < 0 && amount >= -4095) {
+        writer.line("sub sp, sp, #" + std::to_string(-amount));
+    } else {
+        // 大偏移：movz/movk 装载到 x13 再 sub/add（x13 为地址计算临时寄存器）
+        emitMovImm(writer, "x13", static_cast<std::uint64_t>(amount < 0 ? -amount : amount));
+        if (amount < 0) {
+            writer.line("sub sp, sp, x13");
+        } else {
+            writer.line("add sp, sp, x13");
+        }
+    }
+}
+
+void Arm64CodeGenerator::emitPrologue(Arm64AsmWriter& writer,
+                                      const ir::IRFunction& function) {
+    const bool needHiddenRet = (function.structReturn ||
+                                function.returnType == "i128" ||
+                                function.returnType == "u128");
+    writer.line("stp x29, x30, [sp, #-16]!");
+    if (needHiddenRet) {
+        writer.line("stp x19, xzr, [sp, #-16]!");
+        writer.line("mov x19, x0");
+        writer.comment("保存隐藏返回指针（入口 x0 -> x19）");
+    }
+    writer.line("mov x29, sp");
+    const int frameSize = computeFrameSize(function);
+    currentFrameSize_ = frameSize;
+    if (frameSize > 0) {
+        emitStackAdjust(writer, -frameSize);
+    }
+}
+
+// 从栈槽内存操作数文本解析偏移（"[x29,#-N]" -> -N；"[x13]" -> 0）
+int Arm64CodeGenerator::parseStackOffset(const std::string& mem) {
+    if (mem.compare(0, 6, "[x29,#") == 0) {
+        return std::stoi(mem.substr(6, mem.size() - 7));
+    }
+    return 0;  // [x13] 或其他
+}
+
+// 生成函数参数装载：前8寄存器 x0~x7 / v0~v7 存入参数槽，第9起从栈读
+// AAPCS64：
+//   - 整型/指针参数按位 x0~x7；浮点参数按位 v0~v7（第 N 个参数用 xN 或 vN）
+//   - 隐藏返回指针（结构体/i128 返回）占 x0，真实参数位号 = i + 1（paramOffset=1）
+//   - 栈参数（第9起）位于 [x29, #base + (i-8)*8]（base=16/32 视 x19 而定）
+//   - i128 参数以"双槽地址指针"传入（调用方传 16 字节缓冲地址），拷贝 16 字节
+//   - 结构体按值参数以指针传入，拷贝到参数槽（按值语义）
+void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
+                                        const ir::IRFunction& function) {
+    const std::size_t paramOffset =
+        (function.structReturn || function.returnType == "i128" ||
+         function.returnType == "u128") ? 1 : 0;
+    for (std::size_t i = 0; i < function.params.size(); ++i) {
+        const std::string& unique = (i < function.paramUniques.size())
+                                        ? function.paramUniques[i]
+                                        : function.params[i].first;
+        const int slotOffset = varSlotOf(unique);
+        const std::string& paramType = function.params[i].second;
+        const int actualIdx = static_cast<int>(i) + static_cast<int>(paramOffset);
+        // 结构体按值参数：传入指针 -> 参数槽（多槽拷贝，按值语义）
+        if (isStructParam(function, i) &&
+            function.varSlots.count(unique) > 0 &&
+            function.varSlots.at(unique) >= 1) {
+            const int bytes = function.varSlots.at(unique) * 8;
+            std::string srcReg = parameterRegister(actualIdx);
+            if (actualIdx >= 8) {
+                writer.line("ldr x10, " + srcReg);
+                srcReg = "x10";
+            } else {
+                writer.line("mov x10, " + srcReg);
+            }
+            emitStackAddr(writer, "x12", slotOffset);
+            const int words = bytes / 8;
+            for (int w = 0; w < words; ++w) {
+                writer.line("ldr x11, [x10, #" + std::to_string(w * 8) + "]");
+                writer.line("str x11, [x12, #" + std::to_string(w * 8) + "]");
+            }
+            writer.comment("结构体参数 " + function.params[i].first +
+                           " 拷贝 " + std::to_string(bytes) + " 字节");
+            continue;
+        }
+        // 浮点参数：sN/dN 独立编址（位号 = i，不受 paramOffset 影响；f32 用 s、f64 用 d）
+        if (isFloatType(paramType)) {
+            if (i < 8) {
+                const std::string vreg = (paramType == "f64") ? "d" : "s";
+                emitStackStore(writer, slotOffset, vreg + std::to_string(i), paramType);
+            } else {
+                const std::string mem = stackMemText(
+                    16 + (static_cast<int>(i) - 8) * 8, writer);
+                writer.line("ldr x10, " + mem);
+                emitStackStore(writer, slotOffset, "x10", "i64");
+            }
+            continue;
+        }
+        if (actualIdx < 8) {
+            // 前8整型/指针参数：寄存器 -> 栈槽
+            if (paramType == "i128" || paramType == "u128") {
+                // i128 参数：双槽地址指针 -> 参数双槽拷贝 16 字节
+                const std::string srcReg = parameterRegister(actualIdx);
+                emitStackAddr(writer, "x12", slotOffset);
+                writer.line("ldr x10, [" + srcReg + "]");
+                writer.line("str x10, [x12]");
+                writer.line("ldr x10, [" + srcReg + ", #8]");
+                writer.line("str x10, [x12, #8]");
+                writer.comment("i128 参数 " + function.params[i].first +
+                               " 拷贝 16 字节");
+            } else {
+                const std::string reg = parameterRegister(actualIdx);
+                emitStackStore(writer, slotOffset, reg, paramType);
+            }
+        } else {
+            // 第9参数位起：从调用者栈帧拷贝到本函数参数槽
+            const std::string stackSrc = stackMemText(
+                16 + (actualIdx - 8) * 8, writer);
+            if (paramType == "i128" || paramType == "u128") {
+                writer.line("ldr x10, " + stackSrc);  // i128 双槽地址指针
+                emitStackAddr(writer, "x12", slotOffset);
+                writer.line("ldr x11, [x10]");
+                writer.line("str x11, [x12]");
+                writer.line("ldr x11, [x10, #8]");
+                writer.line("str x11, [x12, #8]");
+                writer.comment("i128 栈参数 " + function.params[i].first +
+                               " 拷贝 16 字节");
+            } else {
+                writer.line("ldr x10, " + stackSrc);
+                emitStackStore(writer, slotOffset, "x10", paramType);
+            }
+        }
+        writer.comment("参数 " + function.params[i].first + " -> 槽偏移 " +
+                       std::to_string(slotOffset));
+    }
+}
+
+// 生成函数 epilogue（恢复栈帧并返回）
+// 结构体/i128 返回：把 returnReg 指向的数据拷贝到隐藏返回缓冲区（x19 保存的入口 x0），
+//   返回值 = 缓冲区指针（x0）
+// 浮点返回：fmov d0/s0（经栈槽装载）；整型返回：mov x0
+// 恢复：add sp,#frameSize; ldp x29,x30,[sp],#16; [ldp x19,xzr,[sp],#16]; ret
+void Arm64CodeGenerator::emitEpilogue(Arm64AsmWriter& writer,
+                                  const std::string& returnReg) {
+if (currentStructReturn_ && !returnReg.empty()) {
+        writer.line("mov x0, x19");
+        const int copyBytes = (currentStructReturnSize_ > 0)
+                                  ? currentStructReturnSize_ : 16;
+        const int words = (copyBytes + 7) / 8;
+        // 源地址：returnReg 为栈槽（[x29,#-N]）时，槽内存的是结构体地址（指针），
+        //   须 ldr 装载指针值（不能用 add 取槽地址——那会从槽地址处读错数据），
+        //   与 X64 的 "mov rsi, returnReg"（装载值）语义一致
+        if (returnReg.compare(0, 6, "[x29,#") == 0) {
+            const int off = parseStackOffset(returnReg);
+            // 装载槽值（结构体地址指针）：大偏移（|off|>255）经 stackMemText
+            //   生成 x13 间接寻址，避免 ldr [x29,#-N] 负偏移非法
+            emitStackLoad(writer, off, "x11", "ptr");
+        } else {
+            writer.line("mov x11, " + returnReg);
+        }
+        for (int w = 0; w < words; ++w) {
+            writer.line("ldr x10, [x11, #" + std::to_string(w * 8) + "]");
+            writer.line("str x10, [x0, #" + std::to_string(w * 8) + "]");
+        }
+        writer.comment("结构体返回：按 " + std::to_string(copyBytes) +
+                       " 字节拷贝到隐藏返回缓冲区");
+        writer.line("mov x0, x19");  // ABI：返回缓冲区指针放 x0
+        emitStackAdjust(writer, currentFrameSize_);
+        // 恢复顺序与压栈相反：x19 后压（栈顶），先弹 x19 再弹 x29/x30
+        // （prologue: stp x29,x30 先、stp x19,xzr 后；mov x29,sp 在 x19 压栈后）
+        if (currentNeedHiddenRet_) writer.line("ldp x19, xzr, [sp], #16");
+        writer.line("ldp x29, x30, [sp], #16");
+        writer.line("ret");
+        return;
+    }
+    if (!returnReg.empty()) {
+        if (currentReturnType_ == "i128" || currentReturnType_ == "u128") {
+            // i128 返回：缓冲区 = x19，源 = returnReg（高64位槽），
+            //   低64位槽 = regSlotOffset(loId) = regSlotOffset(hiId+1) = hi槽 - 8
+            //   （regSlotOffset(id) = -8*id-8，loId=hiId+1 -> lo槽 = hi槽 - 8）
+            const int hiOffset = (returnReg.compare(0, 6, "[x29,#") == 0)
+                                     ? parseStackOffset(returnReg) : -8;
+            writer.line("mov x0, x19");
+            const std::string loMem = stackMemText(hiOffset - 8, writer);
+            writer.line("ldr x10, " + loMem);
+            writer.line("str x10, [x0]");
+            const std::string hiMem = stackMemText(hiOffset, writer);
+            writer.line("ldr x10, " + hiMem);
+            writer.line("str x10, [x0, #8]");
+            writer.line("mov x0, x19");
+            emitStackAdjust(writer, currentFrameSize_);
+            if (currentNeedHiddenRet_) writer.line("ldp x19, xzr, [sp], #16");
+            writer.line("ldp x29, x30, [sp], #16");
+            writer.line("ret");
+            return;
+        }
+        if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
+            const std::string vreg = (currentReturnType_ == "f64") ? "d0" : "s0";
+            if (returnReg.compare(0, 6, "[x29,#") == 0) {
+                const int off = parseStackOffset(returnReg);
+                emitStackLoad(writer, off, vreg, currentReturnType_);
+            } else if (returnReg.size() > 2 && returnReg[0] == '%' && returnReg[1] == 'v') {
+                const int id = std::stoi(returnReg.substr(2));
+                emitStackLoad(writer, regSlotOffset(id), vreg, currentReturnType_);
+            } else {
+                // 常量文本返回（如 "0"/"1"）：浮点常量池加载
+                loadOperandToV(writer, ir::IRValue::constant(returnReg, currentReturnType_), vreg);
+            }
+        } else if (returnReg.compare(0, 6, "[x29,#") == 0) {
+            const int off = parseStackOffset(returnReg);
+            emitStackLoad(writer, off, "x0", currentReturnType_);
+        } else if (returnReg.size() > 2 && returnReg[0] == '%' && returnReg[1] == 'v') {
+            // 返回 %vN 文本：解析寄存器ID
+            const int id = std::stoi(returnReg.substr(2));
+            emitStackLoad(writer, regSlotOffset(id), "x0", currentReturnType_);
+        } else {
+            // 常量文本返回（如 "0"/"1"）：立即数装载
+            emitMovImm(writer, "x0", static_cast<std::uint64_t>(std::stoll(returnReg)));
+        }
+    }
+    emitStackAdjust(writer, currentFrameSize_);
+    // 恢复顺序与压栈相反（x19 后压先弹）
+    if (currentNeedHiddenRet_) writer.line("ldp x19, xzr, [sp], #16");
+    writer.line("ldp x29, x30, [sp], #16");
+    writer.line("ret");
+}
+
+// 生成单个函数：登记变量槽 -> 函数头 -> prologue -> 参数 -> 基本块 -> epilogue
+std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& function) {
+    regSlotCount_ = maxRegIdIn(function) + 1;
+    varSlots_.clear();
+    currentNeedHiddenRet_ = (function.structReturn ||
+                             function.returnType == "i128" ||
+                             function.returnType == "u128");
+    // 登记参数槽（使用唯一内部名 paramUniques）
+    for (std::size_t i = 0; i < function.params.size(); ++i) {
+        const std::string& unique = (i < function.paramUniques.size())
+                                        ? function.paramUniques[i]
+                                        : function.params[i].first;
+        auto pit = function.varSlots.find(unique);
+        if (pit != function.varSlots.end() && pit->second > 1) {
+            for (int s = pit->second - 1; s >= 1; --s) {
+                registerVarSlot(unique + "$s" + std::to_string(s));
+            }
+        }
+        registerVarSlot(unique);
+    }
+    // 登记局部变量槽（扫描 Alloca 指令）
+    for (auto& block : function.blocks) {
+        for (auto& inst : block->instructions) {
+            if (inst.opcode == ir::Opcode::Alloca) {
+                auto it = function.varSlots.find(inst.extra);
+                const int slots = (it != function.varSlots.end()) ? it->second : 1;
+                if (slots > 1) {
+                    for (int s = slots - 1; s >= 1; --s) {
+                        registerVarSlot(inst.extra + "$s" + std::to_string(s));
+                    }
+                }
+                registerVarSlot(inst.extra);
+            }
+        }
+    }
+    Arm64AsmWriter writer;
+    currentReturnType_ = function.returnType;
+    currentStructReturn_ = function.structReturn;
+    currentStructReturnSize_ = function.structReturnSize;
+    // 块标签前缀：L<函数符号>_（函数符号可能是中文编码名，直接拼接合法）
+    currentBlockPrefix_ = "L" + symbolName(
+        function.mangledName.empty() ? function.name : function.mangledName) + "_";
+    emitFunctionHeader(writer, function);
+    emitPrologue(writer, function);
+    emitParamSetup(writer, function);
+    for (auto& block : function.blocks) {
+        emitBlock(writer, *block);
+    }
+    const std::string sym = symbolName(
+        function.mangledName.empty() ? function.name : function.mangledName);
+    writer.raw(".size " + sym + ", .-" + sym);
+    writer.raw("");
+    return writer.str();
+}
+
+// 生成一个基本块（标签 + 指令序列 + 终止）
+// 标签带函数级前缀（currentBlockPrefix_），避免多函数同名"块0"标签冲突
+void Arm64CodeGenerator::emitBlock(Arm64AsmWriter& writer, const ir::IRBlock& block) {
+    writer.raw(currentBlockPrefix_ + labelMangle(block.label) + ":");
+    for (auto& inst : block.instructions) {
+        emitInstruction(writer, inst);
+    }
+    if (block.terminated) {
+        emitTerminator(writer, block);
+    }
+}
+
+// 主入口：生成完整汇编文件
+std::string Arm64CodeGenerator::generateAssembly(const ir::IRModule& module) {
+    floatConstLabels_.clear();
+    floatConstOrder_.clear();
+    emittedVtables_.clear();
+    emittedStatics_.clear();
+    vtableRefs_.clear();
+    staticRefs_.clear();
+    // 预扫描：收集全部浮点常量（常量池段先于函数指令生成）
+    for (auto& function : module.functions) {
+        for (auto& block : function.blocks) {
+            for (auto& inst : block->instructions) {
+                if (inst.opcode == ir::Opcode::ConstFloat) {
+                    registerFloatConstant(inst.extra, inst.type == "f64");
+                }
+            }
+        }
+    }
+    collectClassRefs(module, vtableRefs_, staticRefs_);
+    Arm64AsmWriter writer;
+    writer.raw("// ============================================");
+    writer.raw("// CN语言编译器生成代码（阶段5 ARM64 代码生成器）");
+    writer.raw("// 目标平台: " + targetPlatform());
+    writer.raw("// 汇编格式: GNU as (GAS) / AArch64 / AAPCS64");
+    writer.raw("// 由 cn_compiler 自动生成，请勿手动编辑");
+    writer.raw("// ============================================");
+    writer.raw("");
+    emitDataSection(writer, module);
+    writer.raw("");
+    std::unordered_set<std::string> staticSymbols;
+    emitOopGlobals(writer, staticSymbols);
+    staticRefs_.insert(staticSymbols.begin(), staticSymbols.end());
+    writer.raw("");
+    emitTextHeader(writer, module);
+    for (auto& function : module.functions) {
+        writer.raw(generateFunctionAssembly(function));
+    }
+    writer.raw(".section .note.GNU-stack,\"\",@progbits");
+    writer.raw("");
+    return writer.str();
+}
+
+} // namespace cn_compiler

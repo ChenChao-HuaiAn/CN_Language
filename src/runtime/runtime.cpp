@@ -21,4 +21,14 @@ extern "C" int entry(int argc, char** argv) {
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
     return entry(0, nullptr);
 }
+#else
+// Linux/Unix 入口（阶段5 Linux ARM64）：标准 main 转发到 entry。
+// 用 CNRT_LINUX_MAIN 宏控制：cn 可执行文件（链接 cn_runtime 时）需要 main；
+// 单元测试（同时链接 cn_runtime 与 gtest_main）不需要 main（由 gtest 提供），
+// 避免 multiple definition of 'main' 链接冲突。宏在 CMake 中按目标开启。
+#ifdef CNRT_LINUX_MAIN
+int main(int argc, char** argv) {
+    return entry(argc, argv);
+}
+#endif
 #endif

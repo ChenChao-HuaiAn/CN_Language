@@ -42,8 +42,8 @@ std::unique_ptr<ModuleUnit> makeUnit(const std::string& source, const std::strin
     return unit;
 }
 
-// 便捷：取 Program 中的第一个函数声明
-cn_compiler::FunctionDecl* firstFunc(Program* p) {
+// 便捷：取 Program 中的第一个函数声明（部分用例未使用，GCC -Wunused-function 兼容）
+[[maybe_unused]] cn_compiler::FunctionDecl* firstFunc(Program* p) {
     return (p == nullptr || p->declarations.empty()) ? nullptr : p->declarations[0].get();
 }
 

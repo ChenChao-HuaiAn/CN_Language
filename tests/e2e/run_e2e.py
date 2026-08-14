@@ -28,11 +28,14 @@ if hasattr(sys.stderr, "reconfigure"):
 # 项目根目录（用例根目录的上两级：tests/e2e -> tests -> 项目根）
 项目根目录 = 用例根目录.parent.parent
 
-# 默认编译器候选路径（按优先级自动探测）
+# 默认编译器候选路径（按优先级自动探测；Windows 下带 .exe，Linux 下无后缀）
 编译器候选 = [
     pathlib.Path("target") / "Debug" / "cn.exe",
+    pathlib.Path("target") / "Debug" / "cn",
     pathlib.Path("target") / "Release" / "cn.exe",
+    pathlib.Path("target") / "Release" / "cn",
     pathlib.Path("target") / "cn.exe",
+    pathlib.Path("target") / "cn",
 ]
 
 # 编译器"尚未实现"标记（阶段零预期输出，用于区分真实失败）
@@ -142,7 +145,7 @@ def 查找期望文件(源文件: pathlib.Path) -> pathlib.Path:
 
 
 def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
-                 输出目录: pathlib.Path, 详细: bool) -> tuple:
+                 输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
     """
     执行单个E2E用例：编译->运行->比对输出
     返回 (状态, 说明)；状态取值: "通过" / "失败" / "未实现"
@@ -154,15 +157,22 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     except FileNotFoundError as 异常:
         return "失败", str(异常)
 
-    输出可执行 = 输出目录 / f"{名称}.exe"
-    # 清理陈旧的可执行文件，确保"编译成功但未生成"可被可靠检测
-    if 输出可执行.exists():
-        输出可执行.unlink()
+    # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
+    可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
+    输出可执行 = 输出目录 / f"{名称}{可执行后缀}"
+    # 清理陈旧的可执行文件（同时清理两平台后缀，避免残留旧产物误判），
+    # 确保"编译成功但未生成"可被可靠检测
+    for 后缀 in (".exe", ""):
+        旧文件 = 输出目录 / f"{名称}{后缀}"
+        if 旧文件.exists() and 旧文件.is_file():
+            旧文件.unlink()
 
-    # 1. 编译：cn build <源文件> --output <可执行文件>
+    # 1. 编译：cn build <源文件> --target <平台> --output <可执行文件>
     if 详细:
-        print(f"    [编译] {编译器路径} build {源文件.name} --output {输出可执行}")
+        print(f"    [编译] {编译器路径} build {源文件.name} "
+              f"--target {目标平台} --output {输出可执行}")
     编译结果 = 运行命令([str(编译器路径), "build", str(源文件),
+                      "--target", 目标平台,
                       "--output", str(输出可执行)], 项目根目录)
     if 编译结果.returncode != 0:
         提示 = (编译结果.stderr or 编译结果.stdout).strip()
@@ -215,15 +225,26 @@ def 主程序() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="示例:\n"
                "  python3 run_e2e.py\n"
-               "  python3 run_e2e.py --cn target/Debug/cn.exe --verbose\n"
+               "  python3 run_e2e.py --cn target/Debug/cn --verbose\n"
+               "  python3 run_e2e.py --target linux-arm64 --cn target/Debug/cn\n"
                "  python3 run_e2e.py --filter 01_hello")
     解析器.add_argument("--cn", help="cn编译器路径（默认自动探测 target/Debug 等）")
+    解析器.add_argument("--target", default=None,
+                        help="目标平台（win-x64 | linux-arm64；默认按本机平台自动推断）")
     解析器.add_argument("--verbose", "-v", action="store_true", help="详细输出（显示编译/运行命令）")
     解析器.add_argument("--filter", help="仅运行目录名包含指定模式的用例")
     解析器.add_argument("--target-dir", default="target", help="可执行文件输出目录（默认 target）")
     解析器.add_argument("--strict", action="store_true",
                         help="将'未实现'用例视为失败（阶段一完成后全量验证用）")
     参数 = 解析器.parse_args()
+
+    # 目标平台：显式指定优先；否则按本机平台自动推断（Windows -> win-x64，其他 -> linux-arm64）
+    目标平台 = 参数.target
+    if 目标平台 is None:
+        目标平台 = "win-x64" if sys.platform == "win32" else "linux-arm64"
+    if 目标平台 not in ("win-x64", "linux-arm64"):
+        print(红色(f"错误: 无效目标平台 {目标平台}（应为 win-x64 或 linux-arm64）"))
+        return 2
 
     # 探测编译器与输出目录
     编译器路径 = 探测编译器(参数.cn)
@@ -232,6 +253,7 @@ def 主程序() -> int:
 
     print(粗体("CN语言 E2E 测试运行器"))
     print(f"  编译器: {青色(str(编译器路径))}")
+    print(f"  目标平台: {青色(目标平台)}")
     print(f"  输出目录: {输出目录}")
     print()
 
@@ -247,7 +269,7 @@ def 主程序() -> int:
     未实现列表 = []
     for 用例目录 in 用例目录们:
         print(f"运行用例: {用例目录.name}")
-        状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 参数.verbose)
+        状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 参数.verbose, 目标平台)
         if 状态 == "通过":
             通过数 += 1
             print(f"  {绿色('PASS')} 通过")

@@ -48,7 +48,7 @@ void printHelp() {
     std::cout << "用法: cn <命令> [选项] <文件>\n";
     std::cout << "\n命令:\n";
     std::cout << "  build <文件.cn>        编译并生成可执行文件\n";
-    std::cout << "  compile <文件.cn>      仅编译生成汇编文件(.asm)\n";
+    std::cout << "  compile <文件.cn>      仅编译生成汇编文件(.asm / .s)\n";
     std::cout << "  run <文件.cn>          编译并运行\n";
     std::cout << "  check <文件.cn>        仅检查语法和类型，不生成代码\n";
     std::cout << "  ir <文件.cn>           输出IR（调试用）\n";
@@ -198,6 +198,8 @@ static std::string runCapture(const std::string& cmdLine) {
     char buf[512];
     while (std::fgets(buf, sizeof(buf), pipe)) result += buf;
     _pclose(pipe);
+#else
+    (void)cmdLine;  // Linux 下未使用（vswhere 探测仅 Windows）
 #endif
     return result;
 }
@@ -212,14 +214,15 @@ static std::string trim(const std::string& text) {
 
 // 读取环境变量（MSVC安全版封装：_dupenv_s），未设置返回空串
 static std::string getEnvVar(const std::string& name) {
-    char* value = nullptr;
 #ifdef _WIN32
+    char* value = nullptr;
     size_t len = 0;
     if (_dupenv_s(&value, &len, name.c_str()) != 0 || value == nullptr) return "";
     std::string result(value);
     std::free(value);
     return result;
 #else
+    (void)name;  // Linux 分支：仅作 getenv 参数，防御性避免 -Wunused-parameter
     const char* v = std::getenv(name.c_str());
     return v ? std::string(v) : "";
 #endif
@@ -251,7 +254,7 @@ static std::string findVcvarsBat(std::string& error) {
     return vcvars;
 }
 
-// 执行工具链命令（非Windows平台返回1并报错）
+// 执行工具链命令（平台无关：Windows 经 vcvars 环境执行 MSVC 命令；Linux 直接执行 as/g++）
 // vcvarsBat 为空表示已在开发者环境，直接执行；否则 call vcvars64.bat 后执行
 static int runToolchainCommand(const std::string& vcvarsBat, const std::string& cmdLine,
                                bool verbose) {
@@ -265,70 +268,125 @@ static int runToolchainCommand(const std::string& vcvarsBat, const std::string& 
     }
     return std::system(full.c_str());
 #else
-    (void)vcvarsBat;
-    (void)cmdLine;
-    (void)verbose;
-    std::cerr << "错误: 该命令仅支持 Windows（需要 ml64/link/cl MSVC 工具链）\n";
-    return 1;
+    (void)vcvarsBat;  // Linux 下无 vcvars 环境，直接执行
+    if (verbose) std::cout << "执行: " << cmdLine << "\n";
+    return std::system(cmdLine.c_str());
 #endif
 }
 
-// 汇编：ml64 /c /Fo<obj> <asm>
-static bool assembleAsm(const std::string& vcvarsBat, const std::string& asmPath,
-                        const std::string& objPath, bool verbose, std::string& error) {
-    std::string cmdLine =
-        "ml64 /nologo /c /Fo\"" + objPath + "\" \"" + asmPath + "\"";
+// 目标平台辅助：是否为 win-x64（Windows 工具链）或 linux-arm64（as/g++ 工具链）
+static bool isWinX64(const std::string& target) { return target == "win-x64"; }
+static bool isLinuxArm64(const std::string& target) { return target == "linux-arm64"; }
+
+// Linux 工具链探测：环境变量 CN_AS / CN_CXX 优先，其次便携工具链（~/gcc7），最后 PATH
+//   本机为无系统 g++ 的 ARM64 环境，便携工具链位于 /home/user/gcc7/usr/bin/g++
+static std::string linuxAsTool() {
+    const std::string env = getEnvVar("CN_AS");
+    if (!env.empty()) return env;
+    struct stat st;
+    if (stat("/home/user/gcc7/usr/bin/as", &st) == 0) return "/home/user/gcc7/usr/bin/as";
+    return "as";
+}
+static std::string linuxCxxTool() {
+    const std::string env = getEnvVar("CN_CXX");
+    if (!env.empty()) return env;
+    struct stat st;
+    if (stat("/home/user/gcc7/usr/bin/g++", &st) == 0) return "/home/user/gcc7/usr/bin/g++";
+    return "g++";
+}
+// 可执行文件后缀：Windows .exe；Linux 无后缀
+static std::string exeSuffix(const std::string& target) { return isWinX64(target) ? ".exe" : ""; }
+// 汇编文件后缀：Windows .asm（MASM）；Linux .s（GAS）
+static std::string asmSuffix(const std::string& target) { return isWinX64(target) ? ".asm" : ".s"; }
+// 目标文件后缀：Windows .obj；Linux .o
+static std::string objSuffix(const std::string& target) { return isWinX64(target) ? ".obj" : ".o"; }
+
+// 汇编：win-x64 -> ml64 /c /Fo<obj> <asm>；linux-arm64 -> as -o <obj> <asm>
+static bool assembleAsm(const std::string& target, const std::string& vcvarsBat,
+                        const std::string& asmPath, const std::string& objPath,
+                        bool verbose, std::string& error) {
+    std::string cmdLine;
+    if (isWinX64(target)) {
+        cmdLine = "ml64 /nologo /c /Fo\"" + objPath + "\" \"" + asmPath + "\"";
+    } else {
+        // GAS（GNU as）：直接汇编 .s -> .o（本机 ARM64 用系统 as / 便携工具链）
+        cmdLine = linuxAsTool() + " -o \"" + objPath + "\" \"" + asmPath + "\"";
+    }
     int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
     if (rc != 0) {
-        error = "汇编失败（ml64 退出码 " + std::to_string(rc) + "）";
+        error = "汇编失败（" + std::string(isWinX64(target) ? "ml64" : "as")
+                + " 退出码 " + std::to_string(rc) + "）";
         return false;
     }
     return true;
 }
 
-// 编译运行时：cl /c io_api.cpp + runtime.cpp + string_api.cpp -> target/<stem>.obj（带缓存：obj新于cpp则跳过）
-static bool compileRuntime(const std::string& vcvarsBat, const std::string& objDir,
-                           bool verbose, std::string& error) {
+// 编译运行时源文件 -> 目标文件（带缓存：obj 新于 cpp 则跳过）
+//   win-x64：cl /c /std:c++17 /utf-8；linux-arm64：g++ -c -std=c++17 -fno-exceptions -fno-rtti
+//   Linux 需 -DCNRT_LINUX_MAIN 使 runtime.cpp 的 main 生效（与 CMake cn 目标定义一致）
+static bool compileRuntime(const std::string& target, const std::string& vcvarsBat,
+                           const std::string& objDir, bool verbose, std::string& error) {
     static const char* runtimeSrcs[] = {
         "src/runtime/io_api.cpp",
         "src/runtime/runtime.cpp",
         "src/runtime/string_api.cpp",
         "src/runtime/i128_api.cpp",
     };
+    const std::string sep = isWinX64(target) ? "\\" : "/";
     for (const char* src : runtimeSrcs) {
         std::string stem = pathStem(src);
-        std::string obj = objDir + "\\" + stem + ".obj";
+        std::string obj = objDir + sep + stem + objSuffix(target);
         // 缓存：obj 已存在且不早于 cpp 时跳过（避免重复编译）
         if (isNewerThan(obj, src)) continue;
-        std::string cmdLine = "cl /nologo /c /std:c++17 /utf-8 /I\"src\" "
-                              "/Fo\"" + obj + "\" \"" + src + "\"";
+        std::string cmdLine;
+        if (isWinX64(target)) {
+            cmdLine = "cl /nologo /c /std:c++17 /utf-8 /I\"src\" "
+                      "/Fo\"" + obj + "\" \"" + src + "\"";
+        } else {
+            cmdLine = linuxCxxTool() + " -c -std=c++17 -fno-exceptions -fno-rtti "
+                      "-DCNRT_LINUX_MAIN -I\"src\" -o \"" + obj + "\" \"" + src + "\"";
+        }
         int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
         if (rc != 0) {
-            error = "编译运行时失败（cl 退出码 " + std::to_string(rc) + "，源文件 " + src + "）";
+            error = "编译运行时失败（" + std::string(isWinX64(target) ? "cl" : "g++")
+                    + " 退出码 " + std::to_string(rc) + "，源文件 " + src + "）";
             return false;
         }
     }
     return true;
 }
 
-// 链接：link /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE <用户.obj> <io_api.obj> <runtime.obj> <string_api.obj> -> <exe>
-// 说明：
+// 链接：win-x64 -> link /ENTRY:WinMainCRTStartup；linux-arm64 -> g++ -no-pie
+// win-x64 说明：
 //   1. WinMainCRTStartup（而非 WinMain）：CRT 初始化 stdout/堆后调用用户 WinMain，
 //      否则 printLine（puts）输出为空（stdout 未初始化）
 //   2. 自定义入口时 link 不自动注入 CRT 默认库，需显式 /DEFAULTLIB 指定：
 //      libcmt（静态CRT）+ libucrt（静态UCRT，提供 memcpy/memset）+ kernel32（Win32 API）
-static bool linkExe(const std::string& vcvarsBat, const std::string& userObj,
-                    const std::string& runtimeObjDir, const std::string& exePath,
-                    bool verbose, std::string& error) {
-    std::string cmdLine =
-        "link /nologo /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE "
-        "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
-        "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
-        runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\runtime.obj\" \"" +
-        runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\"";
+// linux-arm64 说明：
+//   - 后端 GAS 用 adrp+add（PC 相对寻址）生成代码；-no-pie 避免 PIE 下数据符号
+//     需经 GOT 间接访问（R_AARCH64_ADR_PREL_PG_HI21 无法直接引用 PIE 数据符号）
+//   - 主函数符号 cn_main / 内置函数符号由运行时 .o 提供（extern "C"）
+static bool linkExe(const std::string& target, const std::string& vcvarsBat,
+                    const std::string& userObj, const std::string& runtimeObjDir,
+                    const std::string& exePath, bool verbose, std::string& error) {
+    std::string cmdLine;
+    if (isWinX64(target)) {
+        cmdLine =
+            "link /nologo /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE "
+            "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
+            "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
+            runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\runtime.obj\" \"" +
+            runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\"";
+    } else {
+        cmdLine =
+            linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\" \"" +
+            runtimeObjDir + "/io_api.o\" \"" + runtimeObjDir + "/runtime.o\" \"" +
+            runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\"";
+    }
     int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
     if (rc != 0) {
-        error = "链接失败（link 退出码 " + std::to_string(rc) + "）";
+        error = "链接失败（" + std::string(isWinX64(target) ? "link" : "g++")
+                + " 退出码 " + std::to_string(rc) + "）";
         return false;
     }
     return true;
@@ -339,9 +397,9 @@ static bool linkExe(const std::string& vcvarsBat, const std::string& userObj,
 // 返回: 0 成功；非0 失败（错误消息已写入 error 或已打印诊断）
 static int buildExe(const CliOptions& options, const std::string& file,
                     std::string& exePath, std::string& error) {
-    // 阶段一只支持 win-x64 后端（MASM 汇编 + MSVC 工具链）
-    if (options.target != "win-x64") {
-        error = "该命令目前仅支持目标平台 win-x64（收到: " + options.target + "）";
+    // 支持平台：win-x64（MASM + MSVC）/ linux-arm64（GAS + as/g++）
+    if (!isWinX64(options.target) && !isLinuxArm64(options.target)) {
+        error = "该命令不支持目标平台 " + options.target + "（应为 win-x64 或 linux-arm64）";
         return 1;
     }
 
@@ -359,36 +417,39 @@ static int buildExe(const CliOptions& options, const std::string& file,
     }
 
     // 3. 确定输出路径并确保输出目录存在
-    //    中间文件（.asm/.obj）放在 exe 同目录，避免不同目录同名源文件互相覆盖；
-    //    --output 指定深层不存在目录时自动逐级创建（如 target/deep/a/b/c/out.exe）
+    //    中间文件（.asm/.s + .obj/.o）放在 exe 同目录，避免不同目录同名源文件互相覆盖；
+    //    --output 指定深层不存在目录时自动逐级创建（如 target/deep/a/b/c/out）
+    const std::string exeSuf = exeSuffix(options.target);
     std::string stem = pathStem(file);
-    exePath = options.output.empty() ? "target/" + stem + ".exe" : options.output;
+    exePath = options.output.empty() ? "target/" + stem + exeSuf : options.output;
     // 提取 exe 所在目录（含末尾分隔符）；无目录（纯文件名）则用 "target/"
     std::string exeDir = "target/";
-    std::string exeName = stem + ".exe";
+    std::string exeName = stem + exeSuf;
     {
         size_t slash = exePath.find_last_of("/\\");
         if (slash != std::string::npos) {
             exeDir = exePath.substr(0, slash + 1);
             exeName = exePath.substr(slash + 1);
-            if (exeName.empty()) exeName = stem + ".exe";
+            if (exeName.empty()) exeName = stem + exeSuf;
         }
     }
-    // 去掉 exe 扩展名作为中间文件主干名（避免 out.exe -> out.asm）
+    // 去掉 exe 扩展名作为中间文件主干名（避免 out.exe -> out.asm / out -> out.s）
     std::string midStem = exeName;
     size_t dot = midStem.find_last_of('.');
     if (dot != std::string::npos) midStem = midStem.substr(0, dot);
     if (midStem.empty()) midStem = stem;
-    // 统一中间文件路径分隔符为反斜杠（ml64/link 对正斜杠接受，但反斜杠更稳）
-    for (char& ch : exeDir) if (ch == '/') ch = '\\';
+    // 统一中间文件路径分隔符（ml64/link 用反斜杠；as/g++ 用正斜杠）
+    if (isWinX64(options.target)) {
+        for (char& ch : exeDir) if (ch == '/') ch = '\\';
+    }
     if (!ensureDirExists(exeDir)) {
         error = "无法创建输出目录 " + exeDir;
         return 1;
     }
-    std::string asmPath = exeDir + midStem + ".asm";
-    std::string objPath = exeDir + midStem + ".obj";
+    std::string asmPath = exeDir + midStem + asmSuffix(options.target);
+    std::string objPath = exeDir + midStem + objSuffix(options.target);
 
-    // 4. 写入汇编文件（UTF-8 无 BOM：ml64 对 BOM 报 A2044 无效字符）
+    // 4. 写入汇编文件（UTF-8 无 BOM：ml64 对 BOM 报 A2044 无效字符；as 同样不接受 BOM）
     {
         std::ofstream out(asmPath, std::ios::binary);
         if (!out) {
@@ -398,18 +459,23 @@ static int buildExe(const CliOptions& options, const std::string& file,
         out << output.asmText;
     }
 
-    // 5. 定位 MSVC 工具链（ml64/link/cl）
-    std::string vcvarsBat = findVcvarsBat(error);
-    if (!error.empty()) return 1;
+    // 5. 定位 MSVC 工具链（仅 win-x64；linux-arm64 用系统 as/g++，无需 vcvars）
+    std::string vcvarsBat;
+    if (isWinX64(options.target)) {
+        vcvarsBat = findVcvarsBat(error);
+        if (!error.empty()) return 1;
+    }
 
-    // 6. 汇编用户代码 -> .obj
-    if (!assembleAsm(vcvarsBat, asmPath, objPath, options.verbose, error)) return 1;
+    // 6. 汇编用户代码 -> .obj/.o
+    if (!assembleAsm(options.target, vcvarsBat, asmPath, objPath,
+                     options.verbose, error)) return 1;
 
-    // 7. 编译运行时库 -> .obj（缓存：target/io_api.obj + target/runtime.obj）
-    if (!compileRuntime(vcvarsBat, "target", options.verbose, error)) return 1;
+    // 7. 编译运行时库 -> .obj/.o（缓存：target/io_api.obj + target/runtime.obj）
+    if (!compileRuntime(options.target, vcvarsBat, "target", options.verbose, error)) return 1;
 
-    // 8. 链接 -> .exe
-    if (!linkExe(vcvarsBat, objPath, "target", exePath, options.verbose, error)) return 1;
+    // 8. 链接 -> 可执行文件（win-x64 .exe / linux-arm64 无后缀）
+    if (!linkExe(options.target, vcvarsBat, objPath, "target", exePath,
+                 options.verbose, error)) return 1;
     return 0;
 }
 
@@ -427,12 +493,12 @@ static int runBuild(const CliOptions& options, const std::string& file) {
     return 0;
 }
 
-// compile 命令：仅编译生成汇编文件(.asm)
+// compile 命令：仅编译生成汇编文件（win-x64 .asm / linux-arm64 .s）
 static int runCompile(const CliOptions& options, const std::string& file) {
-    // 阶段一只支持 win-x64 后端
-    if (options.target != "win-x64") {
-        std::cerr << "错误: compile 命令目前仅支持目标平台 win-x64（收到: "
-                  << options.target << "）\n";
+    // 支持平台：win-x64 / linux-arm64
+    if (!isWinX64(options.target) && !isLinuxArm64(options.target)) {
+        std::cerr << "错误: compile 命令不支持目标平台 " << options.target
+                  << "（应为 win-x64 或 linux-arm64）\n";
         return 1;
     }
     std::string source;
@@ -446,9 +512,10 @@ static int runCompile(const CliOptions& options, const std::string& file) {
     if (cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output) != 0) {
         return 1;
     }
-    // 输出 .asm（--output 指定或默认 target/<stem>.asm）
+    // 输出汇编文件（--output 指定或默认 target/<stem>.<asm|s>）
     std::string stem = pathStem(file);
-    std::string asmPath = options.output.empty() ? "target/" + stem + ".asm" : options.output;
+    std::string asmPath = options.output.empty()
+        ? "target/" + stem + asmSuffix(options.target) : options.output;
     // --output 指定深层目录时自动创建
     {
         size_t slash = asmPath.find_last_of("/\\");
@@ -479,12 +546,14 @@ static int runRun(const CliOptions& options, const std::string& file) {
         return 1;
     }
     if (options.verbose) std::cout << "运行: " << exePath << "\n";
-    // cmd 会把正斜杠当作选项分隔符（'target' is not recognized），统一转反斜杠
     std::string exe = exePath;
-    for (char& ch : exe) {
-        if (ch == '/') ch = '\\';
+    if (isWinX64(options.target)) {
+        // Windows cmd 会把正斜杠当作选项分隔符（'target' is not recognized），统一转反斜杠
+        for (char& ch : exe) {
+            if (ch == '/') ch = '\\';
+        }
     }
-    // 路径含空格时加引号，否则直接执行并透传退出码
+    // 路径含空格时加引号，否则直接执行并透传退出码（Linux 直接执行无后缀可执行文件）
     const std::string cmd = (exe.find(' ') != std::string::npos) ? ("\"" + exe + "\"") : exe;
     return std::system(cmd.c_str());
 }

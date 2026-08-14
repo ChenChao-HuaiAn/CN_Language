@@ -1,121 +1,119 @@
 # HANDOFF - CN语言编译器项目交接文档
 
-> **交接原因**：2026-08-14 会话结束（**阶段3「OOP 与错误处理」全部实施完成 + 收尾子任务完成**——9 个 Task 全完成、5 项遗留缺陷全修复、plans 打勾、文档同步、Git 提交推送。全量单测 901/901、E2E 28/28、编译零警告）。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
+> **交接原因**：2026-08-14 会话结束（**阶段5「Linux ARM64」阶段A 全部完成**——阶段A-1 ARM64 后端核心 + 阶段A-2 驱动/CLI/E2E 接入与本机全链路 + 阶段A-3 修复 2 个 E2E 失败；Linux ARM64 本机全链路跑通：cn build → as → g++ → 运行；单测 918/918、编译零警告、E2E **28/28 PASS**）。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
 >
-> **前序里程碑**：阶段2全部 + 缺陷完善 A/B/C + Debug 审查 + 阶段3 语义层+IR 子任务（840）+ codegen+运行时子任务（865）+ 串联集成子任务（878）+ 模块系统子任务（900）+ E2E 用例子任务（28/28）+ Debug 全面审查子任务（5 项缺陷全修复）→ **本轮 阶段3 收尾子任务（全量验证 + plans 打勾 + 文档同步 + Git 提交推送）**。
+> **前序里程碑**：阶段3「OOP 与错误处理」全部完成（901/901 单测、28/28 E2E）；阶段A-1（ARM64 后端核心 + 运行时平台无关改造）。
 
 ## 一、我们在做什么任务
 
-正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码（Win x64 MASM，ml64 汇编）。当前**阶段3「OOP 与错误处理」已全部完成并交付**（9 个 Task：类/继承/虚函数/接口/访问控制/错误处理/模块系统/运算符重载/泛型/类成员增强）。下一步：**阶段4「优化与Win x64」** 或 **阶段5「Linux ARM64」**（见 plans/002-阶段4/5 文档）。
+正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码。当前已完成：阶段0~3（词法→语法→语义→IR→Win x64 后端→OOP/错误处理/模块/泛型）、阶段4 优化、**阶段5「Linux ARM64」阶段A 全部完成（阶段A-1 ARM64 后端核心 + 阶段A-2 CLI 分发与驱动/本机全链路 + 阶段A-3 2 个 E2E 失败修复，28/28 PASS）**。下一步：**阶段6「标准库」** 或 阶段5 阶段B/C（交叉编译/QEMU 验证、优化对齐）。
 
 ## 二、已经完成了什么
 
-### 2.1 本轮核心任务：Debug 全面审查子任务（已完成 ✅）
+### 2.1 本轮核心任务：阶段5 阶段A-2「ARM64 后端接入驱动/CLI/E2E + 本机全链路」（已完成 ✅）
 
-**修复的 5 项遗留缺陷（E2E 子任务规避的边界，本轮全部修复并补回归）**：
+**后端工厂与驱动分发**：
+- 新建 [`backend_factory.hpp`](src/cn_compiler/codegen/backend_factory.hpp) / [`backend_factory.cpp`](src/cn_compiler/codegen/backend_factory.cpp)：`createBackend(target, diag, sem)`——win-x64 → X64、linux-arm64 → ARM64、未知报错
+- [`driver.cpp`](src/cn_compiler/driver/driver.cpp) / [`driver_module.cpp`](src/cn_compiler/driver/driver_module.cpp)：`X64CodeGenerator` 硬编码 → `createBackend` 指针分发
 
-1. **类对象指针共享 + RAII 重复释放堆损坏（缺陷1）**
-   - 根因：类对象变量槽存堆指针，`资源 乙 = 甲` 赋值浅拷贝 Store 源指针，两变量共享同地址，RAII DeleteObject 各释放一次 → double free（0xC0000374）。
-   - 修复：`genVarDecl`（声明初始化）+ `visitAssignmentExpr`（赋值）两处改为 NewObject+CopyStruct 深拷贝。
-2. **运算符重载链式中间对象字段错乱（缺陷2）**
-   - 根因：IR 层 `exprSrcType` 不识别内层 BinaryExpr，外层 `+` 落 ptr+ptr 字符串连接（`甲+乙+丙` → 2564+128i）。
-   - 修复：`BinaryExpr` 新增 `resolvedType` 字段，语义层写回重载结果类型、IR 层读取。
-3. **泛型带参构造字段写入失效 / 多类型参数 / 浮点字段（缺陷3）**
-   - 根因：① 构造查找用 className（实例化名 盒子$整32）find 失败（构造方法名是原始泛型类名 盒子）；② 方法参数类型用 AST typeName（仍是类型参数 T），未用 mi.paramTypes（已替换实参）。
-   - 修复：① 遍历 methods 找 isConstructor；② setupMethodParams 用 mi.paramTypes。
-4. **模块公开函数体引用私有符号 → 合并后未声明（缺陷4）**
-   - 根因：被导入模块仅合并公开声明，公开函数体依赖的私有函数被过滤。
-   - 修复：`mergeModuleDecls` 增加私有依赖闭包（AST 遍历收集函数引用 + 迭代到不动点）。
-5. **静态字段自增 / 友元引用参数（缺陷5）**
-   - 根因：① 类字段不在 varStack_，visitUnaryExpr 自增只读不写（总数++ 恒 0）；② canonical 不剥引用后缀 `&`（账户& 报"不是类类型"）。
-   - 修复：① 新增 `handleClassFieldIncDec` 读-算-写回；② `types::canonical`/`substTypeParam` 剥 `&`。
-   - 注：缺陷5中的"&表达式传参读 0"经复现验证本就正常（非缺陷）。
+**CLI 工具链平台分支（[`cn_main.cpp`](src/cn_compiler/cn_main.cpp)）**：
+- win-x64：ml64 / cl / link（MSVC 流程不变）
+- linux-arm64：`as`（GAS）+ `g++ -c -std=c++17 -fno-exceptions -fno-rtti -DCNRT_LINUX_MAIN` + `g++ -no-pie` 链接
+- 后缀按平台：.asm/.s、.obj/.o、可执行无 .exe；Linux 工具链探测（CN_AS/CN_CXX → ~/gcc7 → PATH）
+- runRun：Linux 直接执行
 
-**补强的回归测试**：
-- E2E：20/25/26/27/28 用例追加边界场景（类深拷贝、链式运算符、带参构造+多类型+浮点、私有闭包、静态自增+友元引用）。
-- 单测：新增 `MergePrivateDependencyClosure`（模块私有闭包）。
+**E2E 适配（[`run_e2e.py`](tests/e2e/run_e2e.py)）**：编译器候选补无后缀、`--target` 参数（按平台默认）、可执行后缀按平台、透传 --target
 
-### 2.2 阶段3 全部 9 个 Task（全部完成 ✅）
+**ARM64 后端本机验证修复（15 个汇编/ABI bug）**：见 [`更新日志.md`](更新日志.md) 第三节——含 mul 立即数、`@` 标签、`?` 符号、大栈帧分段、epilogue 恢复顺序、stackMemText 反解、i128 乘除 a/b 同寄存器、f64→i128 out 传 x0、ptr 常量实参、正64 最大值 stoull 等。
 
-| Task | 内容 | 验证 |
-|------|------|------|
-| 3.1 | 类与继承（类/实例化/字段/方法/单继承/构造析构/自身/父类） | E2E 20 |
-| 3.2 | 虚函数与多态（虚拟/重写/父类指针虚调用/父类.方法()） | E2E 21 |
-| 3.3 | 接口与实现（接口定义/类实现多接口/接口虚调用） | E2E 22 |
-| 3.4 | 访问控制（公开/保护/私有标签式可见性） | E2E 23 |
-| 3.5 | 错误处理（结果<T,E>/可选<T>/内置构造器/3条强制检查规则） | E2E 24 |
-| 3.6 | 模块系统（文件即模块/导入/从导入/公开私有可见性/主.cn 入口） | E2E 27 |
-| 3.7 | 运算符重载（上下文关键字 运算符/重载决议/链式表达式） | E2E 25 |
-| 3.8 | 泛型与模板（泛型类/函数/单态化/多类型参数/接口约束） | E2E 26 |
-| 3.9 | 类成员增强（静态字段/静态方法/常量成员函数/友元） | E2E 28 |
+### 2.1b 阶段A-1「ARM64 后端核心 + 运行时平台无关改造」（已完成 ✅）
 
-### 2.3 前序里程碑（已全部完成 ✅）
+**新增 ARM64 后端（GAS 汇编 + AAPCS64 ABI，7 个文件）**：
 
-- 阶段2 全部 + 缺陷完善 A/B/C + Debug 审查
-- 阶段3 语义层+IR（840 单测）、codegen+运行时（865）、串联集成（878）、模块系统（900）
-- E2E 用例子任务（28/28）+ Debug 全面审查子任务（5 项缺陷全修复）
-- 阶段3 收尾子任务（全量验证 + plans 打勾 + 文档同步 + Git 提交推送）
+| 文件 | 职责 |
+|------|------|
+| [`arm64_codegen.hpp`](src/cn_compiler/codegen/arm64/arm64_codegen.hpp) | `Arm64CodeGenerator : Backend`，targetPlatform="linux-arm64"，栈槽映射/访存/立即数辅助 |
+| [`arm64_codegen.cpp`](src/cn_compiler/codegen/arm64/arm64_codegen.cpp) | 模块装配（.text/.data/.section .rodata）、函数框架（stp x29,x30 / x19 隐藏返回指针 / 16 对齐）、参数装载（x0~x7/v0~v7/栈/i128 双槽/结构体拷贝）、epilogue、符号（_ + UTF-8 hex） |
+| [`arm64_instructions.cpp`](src/cn_compiler/codegen/arm64/arm64_instructions.cpp) | 单指令降级：整型/浮点算术、比较 cset、移位、Cast、Load/Store/LoadPtr/StorePtr、FieldAddr、Call、常量（movz/movk、adrp+add、浮点常量池） |
+| [`arm64_codegen_dispatch.cpp`](src/cn_compiler/codegen/arm64/arm64_codegen_dispatch.cpp) | 终止指令 + 指令分派（≤1000 行拆分） |
+| [`arm64_codegen_i128.cpp`](src/cn_compiler/codegen/arm64/arm64_codegen_i128.cpp) | i128 adds/adc/sbcs + 乘除余/比较调运行时辅助 |
+| [`arm64_codegen_oop.cpp`](src/cn_compiler/codegen/arm64/arm64_codegen_oop.cpp) | NewObject/DeleteObject/VirtualCall（blr）/VtableAddr |
+| [`arm64_codegen_vtable.cpp`](src/cn_compiler/codegen/arm64/arm64_codegen_vtable.cpp) | 虚表 .section .rodata + .quad、静态字段 .data |
+
+**运行时平台无关改造**：
+- [`i128_api.cpp`](src/runtime/i128_api.cpp)：`_umul128`（MSVC intrinsic）→ `umul128` 封装（`#ifdef _MSC_VER` 保留原实现；`#else` 用 `__int128` 内建）
+- [`runtime.hpp`](src/runtime/runtime.hpp)：i128 API 签名统一 `std::uint64_t`（修 LP64 `unsigned long` vs `unsigned long long` 重声明冲突）+ 补 `<cstdint>`
+- [`runtime.cpp`](src/runtime/runtime.cpp)：Linux `main(argc, argv)` → entry（`CNRT_LINUX_MAIN` 宏控制，避免与 gtest_main 冲突）
+
+**Linux GCC 移植预存缺陷修复**（原 MSVC-only 项目首次 Linux 全量编译暴露）：
+- `funcFirstSigKey`/函数名作值遍历 unordered_map 依赖哈希顺序 → 字典序确定性选择（GCC/MSVC 行为不一致）
+- ast_printer 的 AddressOf/Deref 未处理、ir.cpp 括号警告、cn_main 未用参数、6 个测试文件 `[[maybe_unused]]`
+
+### 2.2 前序里程碑（已全部完成 ✅）
+
+- 阶段0~3 全部（901/901 单测、28/28 E2E、5 项缺陷全修复）
+- 阶段4 优化与 Win x64 完善
+- 语言表达力增强规划（P0~P3 写入 plans）
 
 ## 三、当前测试基线
 
 | 指标 | 数值 |
 |------|------|
-| 单元测试 | **901/901** |
-| E2E | **28/28** |
-| 编译警告 | 0（/W4 /WX，clean-first 全量重编译验证） |
-| 优化级别回归 | -O2/-O3 下 5 项缺陷复现程序全部正确 |
+| 单元测试 | **918/918**（原 901 + 新增 17 个 Arm64CodegenTest） |
+| E2E | **28/28**（Linux ARM64 本机真实运行，0 SKIP；Win x64 亦 28/28） |
+| 编译警告 | 0（GCC 7 -Wall -Wextra -Werror） |
+| ARM64 汇编验证 | `aarch64-linux-gnu-as` 交叉汇编通过（含 i128/OOP/浮点/字符串全特性 IR） |
 
 ## 四、关键架构约定（必须遵守）
 
 1. **IR OOP 指令契约**：NewObject.extra=`类名|大小字节`；VirtualCall.extra=`类名.虚方法名`（operand[0]=this）；VtableAddr.extra=类名；DeleteObject.extra=类名
-2. **方法链接符号 = 类名$sigKey**（sigKey=名#参数串）；虚表 dq 项与 classMethodSymbol 一致
+2. **方法链接符号 = 类名$sigKey**（sigKey=名#参数串）；虚表 dq/.quad 项与 classMethodSymbol 一致
 3. **重写方法虚分派判据 = classVtableIndex >= 0**（不是 isVirtual）
 4. **自身/父类/-> 一律剥指针取类类型**
 5. **析构 name 规范为 ~类名**；DeleteObject 沿继承链解析实际析构名
 6. **this 是第一参数**（静态无 this）；VirtualCall this 占 operand[0]
-7. **i128 双槽约定**：字段偏移/stride/LoadPtr/StorePtr 按 16 字节
+7. **i128 双槽约定**：字段偏移/stride/LoadPtr/StorePtr 按 16 字节；%vN=高64、%vN+1=低64（低地址槽）
 8. **Win x64 ABI**：隐藏返回指针占 rcx；this 参与 paramOffset
-9. **类实例布局**：`[vtable指针(8B) | 父类成员区 | 自身成员区]`；无虚函数类 hasVtable=false 无虚表指针
-10. **MASM 段指令**：只读段用 `.const`（`.rdata` 是 PE 节名非源指令）；静态字段符号 `?static_` + nameMangle
-11. **结果/可选降级**：`结果<T,E>` → `{布尔 是否正常; 联合体{值; 错误值}}`（合成名 `结果$T$E`）；`可选<T>` → `{布尔 是否某些; T 值}`（合成名 `可选$T`）
-12. **泛型实例化符号**：类名$实参（`盒子$整32`）；varDecl/IR 层按字符串映射；单模块文件（非 主）视为入口
-13. **run_e2e.py 多文件**：入口约定 主.cn（模块名 == 主）
-14. **类对象赋值语义（本轮新增）**：类对象变量槽存**堆指针**，赋值/初始化必须 NewObject+CopyStruct 深拷贝（禁止浅拷贝 Store 源指针，否则 RAII double free）
-15. **引用类型剥除**：`类型&` 在类型比较/类类型判定前先 canonical 剥 `&`
-16. **泛型单态化后构造方法名仍是原始泛型类名**（非 类名$实参），查构造须遍历 isConstructor 标记
+9. **类实例布局**：`[vtable指针(8B) | 父类成员区 | 自身成员区]`；无虚函数类 hasVtable=false
+10. **结果/可选降级**：`结果<T,E>` → 合成结构体；`可选<T>` → 合成结构体
+11. **泛型实例化符号**：类名$实参；单模块文件（非 主）视为入口
+12. **类对象赋值深拷贝**：禁止浅拷贝 Store 源指针（RAII double free）
+13. **ARM64 栈帧（本轮新增）**：%vN → [x29,#-8N-8]（与 X64 [rbp-8N-8] 对应）；隐藏返回指针占 x0 用 x19 保存；栈参数偏移 = 16 + 16*needHiddenRet；栈槽 |offset|>255 用 x13 兜底
+14. **ARM64 符号（本轮新增）**：nameMangle = `_` 前缀 + UTF-8 hex（去 ?..@@Y）；块标签 L+hex + 函数级前缀 `L<函数符号>_`；常量标签 LstrN/LfpN（GAS 中 @ 是注释符）
+15. **ARM64 寄存器策略**：x9/x10/x11 临时、x12 拷贝计数、x13 地址计算、x16 间接调用目标、x19 隐藏返回指针
+16. **运行时 main（本轮新增）**：Linux main 用 `CNRT_LINUX_MAIN` 宏控制（cn 可执行开启；单测关闭防 gtest_main 冲突）
 
 ## 五、踩过的坑（绝对不要再踩）
 
 1. **DeleteObject 析构符号**：子类无自身析构时符号是 `子类$~父类析构名`，codegen 硬编码 `~类名` 链接失败
-2. **虚表段 `.rdata`**：ml64 不认 `.rdata`（A2008），用 `.const`
-3. **内置构造器**：正常/错误/某些 必须降级为合成结构体构造，否则 LNK2019；i1 常量 codegen 生成 mov rcx,0（用 i32）
-4. **`返回 无`**：无 常量 0 不能当结构体返回地址（0xC0000005）
-5. **结果/可选成员映射**：`.值/.错误` 在内层联合体（偏移=联合体字段偏移）
-6. **模块合并遗漏**：mergeModuleDecls 须处理 generics（原只合并函数/结构体/枚举/类/接口）
-7. **单模块入口**：非 主.cn 单文件 isEntryModule 判 false → 泛型/私有被过滤
-8. **MSBuild 增量构建坑**：apply_diff 修改后 MSBuild 可能不重编译——用 `--clean-first` 强制重建
-9. **静态字段符号**：IR 生成 `?static_类名$字段名` 原始中文，codegen 必须 nameMangle（A2044）
-10. **泛型实例化 parser**：parsePostfix 消费 `<实参>` 后须更新 IdentifierExpr 名
-11. **类对象赋值浅拷贝**（本轮新增）：类对象赋值/初始化必须深拷贝，否则 RAII double free
-12. **类字段自增只读不写**（本轮新增）：类字段不在 varStack_，自增须走 handleClassFieldIncDec 读-算-写回
-13. **泛型构造查找用 className**（本轮新增）：实例化类构造方法名是原始泛型类名，须遍历 isConstructor
-14. **模块私有依赖闭包**（本轮新增）：公开函数体引用私有函数须做闭包合并
+2. **MASM .rdata**：ml64 不认 `.rdata`（A2008），用 `.const`；**GAS 相反**：`.section .rodata`
+3. **GAS `@` 前缀**：`@str0` 标签非法（@ 是注释符）→ 用 `Lstr0`；块标签需函数级唯一前缀（多函数同名"块0"冲突）
+4. **GAS 注释**：`#` 与立即数前缀冲突 → 用 `//`
+5. **LP64 类型别名**：`std::uint64_t` = `unsigned long`（Linux）vs `unsigned long long`（runtime.hpp 声明）→ extern "C" 重声明冲突，统一 `std::uint64_t`
+6. **unordered_map 遍历顺序**：funcFirstSigKey/函数名作值依赖哈希顺序，GCC/MSVC 不一致 → 字典序确定性选择
+7. **gtest 与运行时 main 冲突**：Linux 下 runtime.cpp 的 main 与 gtest_main 冲突 → CNRT_LINUX_MAIN 宏控制
+8. **GCC 7 严格警告**：unused-function/unused-parameter/parentheses 在 MSVC 不报 → `[[maybe_unused]]`、括号、`(void)param`
+9. **MSBuild 增量构建坑**：apply_diff 修改后须 `--clean-first` 强制重建（CMake 同样）
+10. **i128 返回 epilogue**：x19 保存的隐藏返回指针；恢复时仅 needHiddenRet 才 ldp x19（否则读垃圾）
+11. **常量返回文本**：termReturnValue="0"/"1"（非 %vN）不能 substr(2) 解析 → 防御分支
+12. **movz/movk**：0 块应跳过（movz 已清零），否则输出多余 movk #0
 
 ## 六、下一步计划
 
-1. **阶段4「优化与Win x64」**（plans/002-阶段4-优化与Winx64.md）：优化器增强 + Win x64 完善
-2. **阶段5「Linux ARM64」**（plans/002-阶段5-LinuxARM64.md）：跨平台后端
-3. **遗留风险（可接受，阶段3 范围内）**：
+1. **阶段6「标准库」**（plans/002-阶段6-标准库.md）：容器/数学/文件 IO/格式化/条件编译
+2. **阶段5 阶段B/C**（plans/002-阶段5-LinuxARM64.md）：交叉编译/QEMU 验证、ARM64 优化对齐等后续内容（当前阶段A 已全部完成）
+3. **遗留风险**：
    - 接口附加 vtable 预留（多接口场景，规格书06-五 预留，未实现）
-   - 父类构造初始化列表语法（`函数 狗(...) : 动物(...)`，子类构造体内直接赋值父类字段暂代）
-   - 运算符重载返回类对象赋值语义（本轮已修链式 + 深拷贝，单目运算符 - ! ~ 未映射）
+   - ARM64 E2E 在 x86 主机需交叉工具链/QEMU（本机已为 aarch64，全链路已验证）
+   - `~/gcc7` 便携工具链是本机 g++ 唯一来源（PATH 无系统 g++），cn_main 已自动探测
 
-## 七、验证命令（强制）
+## 七、关键文件索引
 
-```bash
-cmake -S . -B target/build && cmake --build target/build --config Release
-target/build/tests/unit/cn_unit_tests.exe   # 实际路径 target/Release/cn_unit_tests.exe
-python tests/e2e/run_e2e.py --cn target/Release/cn.exe
-```
-
-要求：编译零警告（/W4 /WX）、单测 901/901、E2E 28/28。
+| 模块 | 文件 |
+|------|------|
+| ARM64 后端 | src/cn_compiler/codegen/arm64/（7 文件） |
+| X64 后端 | src/cn_compiler/codegen/x64/（4 文件） |
+| Backend 接口 | src/cn_compiler/codegen/codegen.hpp |
+| 运行时 | src/runtime/（runtime.hpp/cpp、i128_api.cpp、io_api.cpp、string_api.cpp） |
+| ARM64 单测 | tests/unit/codegen/test_arm64_codegen.cpp |
+| 阶段5 计划 | plans/002-阶段5-LinuxARM64.md（Task 5.1/5.2/5.3 已全部打勾 ✅） |

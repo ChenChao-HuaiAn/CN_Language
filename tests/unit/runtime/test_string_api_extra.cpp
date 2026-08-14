@@ -10,8 +10,8 @@
 
 namespace {
 
-// 辅助：动态分配字符串拷贝断言（使用 __cn_str_free 释放）
-void expectStr(const char* actual, const char* expected) {
+// 辅助：动态分配字符串拷贝断言（使用 __cn_str_free 释放；部分用例未使用，GCC 兼容）
+[[maybe_unused]] void expectStr(const char* actual, const char* expected) {
     EXPECT_STREQ(actual, expected);
 }
 

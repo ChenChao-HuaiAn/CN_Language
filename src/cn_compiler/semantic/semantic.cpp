@@ -4,6 +4,7 @@
 //   2. 变量作用域栈：进入代码块/循环体时压栈，退出时弹栈
 //   3. 类型检查：隐式转换（整型宽化/浮点宽化/字符↔整型）、条件必须为布尔
 //   4. 语义错误：未声明符号、重复声明、类型不匹配、非循环中中断/继续、缺返回
+#include <algorithm>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -63,7 +64,8 @@ bool isArrayType(const std::string& type) {
     return types::isArray(type);
 }
 // 计算数组总字节大小（元素大小 × 长度）
-int arrayTotalSize(const std::string& type) {
+// GCC -Wunused-function 下标记 maybe_unused（MSVC 不报，GCC 严格）
+[[maybe_unused]] int arrayTotalSize(const std::string& type) {
     const int len = types::arrayLenOf(type);
     const int elemSize = types::typeSize(types::arrayElemOf(type));
     if (len <= 0 || elemSize <= 0) return 0;
@@ -276,15 +278,22 @@ bool SemanticAnalyzer::hasFunctionName(const std::string& name) const {
     return false;
 }
 
-// 返回该函数名的第一个签名 key（按注册顺序；函数名作值/取地址用）
+// 返回该函数名的第一个签名 key（函数名作值/取地址用）
+// 修复（Linux 移植）：原实现遍历 unordered_map（functions_），返回顺序由哈希表
+//   布局决定——MSVC 与 GCC 的哈希顺序不同，导致"函数名作值"选中的重载签名不稳定
+//   （OverloadTest.FuncNameAsValue 在 GCC 下选到 加#浮64,浮64，类型不匹配失败）。
+//   改为确定性选择：取同名签名 key 字典序最小者（与"注册顺序"语义一致，
+//   跨编译器稳定，不依赖哈希顺序）。
 std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
+    std::string best;
     for (const auto& kv : functions_) {
         const std::size_t hashPos = kv.first.find('#');
         const std::string base = (hashPos == std::string::npos) ? kv.first
                                                                 : kv.first.substr(0, hashPos);
-        if (base == name) return kv.first;
+        if (base != name) continue;
+        if (best.empty() || kv.first < best) best = kv.first;
     }
-    return "";
+    return best;
 }
 
 // 实参类型到参数类型的转换等级（重载决议用）：
@@ -1335,24 +1344,25 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         }
     }
     // 函数名作为值（Task 2.10 重载）：构造函数指针类型。
-    // 有多个签名时取第一个（按注册顺序）；无参数的函数直接给出函数指针类型。
+    // 有多个签名时取第一个（确定性选择，见 funcFirstSigKey 修复——原实现
+    //   遍历 unordered_map 依赖哈希顺序，GCC/MSVC 平台行为不一致）。
     // 注：重载函数作函数指针值语义未定义（C++ 需显式类型化），此处保守取首签名，
     //     并允许 回调 = 加 单版本场景（既有测试契约）。
     if (hasFunctionName(node->name)) {
-        for (const auto& kv : functions_) {
-            const std::size_t hashPos = kv.first.find('#');
-            const std::string base = (hashPos == std::string::npos) ? kv.first
-                                                                    : kv.first.substr(0, hashPos);
-            if (base != node->name) continue;
-            const FunctionInfo& info = kv.second;
-            std::string funcPtrType = "函数指针<" + info.returnType + ">(";
-            for (std::size_t i = 0; i < info.paramTypes.size(); ++i) {
-                if (i > 0) funcPtrType += ",";
-                funcPtrType += info.paramTypes[i];
+        const std::string sig = funcFirstSigKey(node->name);
+        if (!sig.empty()) {
+            const auto it = functions_.find(sig);
+            if (it != functions_.end()) {
+                const FunctionInfo& info = it->second;
+                std::string funcPtrType = "函数指针<" + info.returnType + ">(";
+                for (std::size_t i = 0; i < info.paramTypes.size(); ++i) {
+                    if (i > 0) funcPtrType += ",";
+                    funcPtrType += info.paramTypes[i];
+                }
+                funcPtrType += ")";
+                lastType_ = funcPtrType;
+                return;
             }
-            funcPtrType += ")";
-            lastType_ = funcPtrType;
-            return;
         }
     }
     diagnostics_.report(DiagnosticLevel::Error, node->location,

@@ -125,14 +125,26 @@ add_library(cn_compiler_ir STATIC
 )
 target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
 
-# 代码生成模块库：抽象后端接口 + X64代码生成器（Task 1.7 + 阶段3 OOP，供编译器与单元测试共用）
+# 代码生成模块库：抽象后端接口 + X64代码生成器 + ARM64代码生成器
+# （Task 1.7 + 阶段3 OOP + 阶段5 Linux ARM64，供编译器与单元测试共用）
 # 阶段3 拆分子模块（单文件<=1000行约束）：x64_codegen_oop.cpp（OOP指令展开）、
 #   x64_codegen_vtable.cpp（虚表 .rdata + 静态字段 .data）
+# 阶段5 ARM64：arm64_codegen.cpp（函数框架/栈帧/参数/段发射）、
+#   arm64_instructions.cpp（单指令 AArch64 降级）、arm64_codegen_i128.cpp（i128 双槽运算）、
+#   arm64_codegen_oop.cpp（OOP 指令展开）、arm64_codegen_vtable.cpp（虚表 .rodata）
+# 阶段5 Task 5.2：backend_factory.cpp（按目标平台分发后端实例）
 add_library(cn_compiler_codegen STATIC
+    src/cn_compiler/codegen/backend_factory.cpp
     src/cn_compiler/codegen/x64/x64_codegen.cpp
     src/cn_compiler/codegen/x64/x64_instructions.cpp
     src/cn_compiler/codegen/x64/x64_codegen_oop.cpp
     src/cn_compiler/codegen/x64/x64_codegen_vtable.cpp
+    src/cn_compiler/codegen/arm64/arm64_codegen.cpp
+    src/cn_compiler/codegen/arm64/arm64_instructions.cpp
+    src/cn_compiler/codegen/arm64/arm64_codegen_dispatch.cpp
+    src/cn_compiler/codegen/arm64/arm64_codegen_i128.cpp
+    src/cn_compiler/codegen/arm64/arm64_codegen_oop.cpp
+    src/cn_compiler/codegen/arm64/arm64_codegen_vtable.cpp
 )
 target_include_directories(cn_compiler_codegen PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_codegen PUBLIC cn_compiler_ir cn_compiler_semantic cn_compiler_common)
@@ -191,6 +203,10 @@ add_executable(cn
     src/cn_main.cpp
 )
 target_link_libraries(cn PRIVATE cn_compiler_common cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_driver)
+# Linux 下 cn 运行时入口 main（单元测试不需——gtest_main 提供 main，避免冲突）
+if(NOT WIN32)
+    target_compile_definitions(cn PRIVATE CNRT_LINUX_MAIN)
+endif()
 
 # 子目录：单元测试
 add_subdirectory(tests/unit)

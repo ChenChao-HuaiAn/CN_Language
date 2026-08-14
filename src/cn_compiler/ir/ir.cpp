@@ -2050,11 +2050,11 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
         // 整型混合：按语义 rank 提升（i8/i16 -> i32；整32 + 整64 -> 整64）
         const bool leftWider = (left.type == "i64" || left.type == "u64" ||
                                 left.type == "i128" || left.type == "u128" ||
-                                left.type == "u32" && right.type == "i32" ||
-                                left.type == "i32" && right.type == "i8" ||
-                                left.type == "i32" && right.type == "i16" ||
-                                left.type == "u32" && right.type == "i8" ||
-                                left.type == "u32" && right.type == "i16");
+                                (left.type == "u32" && right.type == "i32") ||
+                                (left.type == "i32" && right.type == "i8") ||
+                                (left.type == "i32" && right.type == "i16") ||
+                                (left.type == "u32" && right.type == "i8") ||
+                                (left.type == "u32" && right.type == "i16"));
         const std::string common = leftWider ? left.type : right.type;
         if (left.type != common) {
             left = emitResult(ir::Opcode::Cast, {left}, common, "", node->location);

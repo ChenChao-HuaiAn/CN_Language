@@ -108,8 +108,8 @@ bool hasOpcode(const IRModule& module, std::size_t blockIndex, Opcode op) {
     return false;
 }
 
-// 检查某块某指令的操作数是否为常量
-bool operandIsConst(const IRModule& module, std::size_t blockIndex,
+// 检查某块某指令的操作数是否为常量（部分用例未使用，GCC 兼容）
+[[maybe_unused]] bool operandIsConst(const IRModule& module, std::size_t blockIndex,
                     std::size_t instIndex, std::size_t opIndex,
                     const std::string& text) {
     const auto& inst = module.functions[0].blocks[blockIndex]->instructions[instIndex];

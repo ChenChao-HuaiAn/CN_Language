@@ -50,6 +50,7 @@ add_executable(cn_unit_tests
     ir/test_ir_oop.cpp
     ir/test_ir_oop_emit.cpp
     codegen/test_x64_codegen.cpp
+    codegen/test_arm64_codegen.cpp
     codegen/test_x64_function.cpp
     codegen/test_x64_types.cpp
     codegen/test_x64_pointer.cpp
@@ -91,6 +92,12 @@ target_link_libraries(cn_unit_tests PRIVATE
     cn_compiler_module
     cn_runtime
 )
+
+# GCC 7 严格警告兼容：第三方 gtest 头文件（gtest.h 内部有符号比较）触发
+# -Werror=sign-compare，不属于本项目代码——对 gtest 相关头文件抑制该警告
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(cn_unit_tests PRIVATE -Wno-sign-compare)
+endif()
 
 # 启用测试发现（ctest）
 include(GoogleTest)

@@ -42,8 +42,8 @@ ParseResult parseProgram(const std::string& source) {
     return result;
 }
 
-// 辅助：取函数体第一条语句（表达式语句）
-Expr* firstExpr(const Program* program) {
+// 辅助：取函数体第一条语句（表达式语句）（部分用例未使用，GCC 兼容）
+[[maybe_unused]] Expr* firstExpr(const Program* program) {
     const FunctionDecl* fn = program->declarations[0].get();
     Stmt* stmt = fn->body->statements[0].get();
     return static_cast<ExprStmt*>(stmt)->expr.get();

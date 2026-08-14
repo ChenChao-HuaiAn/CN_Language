@@ -445,3 +445,20 @@
   - **原因**: ① visitUnaryExpr 的自增写回只处理 varStack_ 命中的普通变量（lookupVar），类字段（静态/实例）不在 varStack_ 中 → 只生成 LoadPtr 读值、无 StorePtr 写回；② types::canonical 不剥引用后缀 `&`，友元参数 `账户&` 经 findClass 判类类型失败。
   - **解决**: ① 新增 handleClassFieldIncDec——类字段（静态/实例）自增自减走"读-算-写回"三段（LoadPtr + Add/Sub + StorePtr）；② types::canonical 剥引用后缀 `&`（账户& → 账户），substTypeParam 增加引用后缀递归替换（T& → 实参&）。
   - **预防**: 类字段（静态/实例）不在 varStack_，凡"读取/赋值/自增"操作须经专用 handle 钩子（handleClassFieldRead/Assign/IncDec），不能依赖 lookupVar 命中；引用类型 `类型&` 在类型比较/类类型判定前必须先剥 `&`（canonical 统一处理）；自增自减必须"读-算-写回"三段，禁止只读不写。
+
+## 高权重问题（阶段A-3：Linux ARM64 E2E 2 项缺陷修复，2026-08-14，已修复 ✅）
+
+> 本子任务修复 Linux ARM64 后端接入 CLI 后 E2E 剩余的 2 个失败用例，
+> **全部已修复**（单测 918/918、E2E 28/28、编译零警告 GCC 7 -Werror，Linux ARM64 本机真实运行）。
+
+- [2026-08-14 11:07] **问题类型**: 逻辑错误（权重 16.8）**已修复 ✅**
+  - **描述**: E2E `20_oop_class` 子类构造 `狗("旺财",3,"金毛")` 被解析为父类构造（2 参），第 3 参 `种` 被忽略 → `品种` 字段未初始化（输出空）。`动物`（无继承）构造正确，`狗 : 动物` 子类构造错误。
+  - **原因**: IR 层 [`ir_oop_call.cpp`](src/cn_compiler/ir/ir_oop_call.cpp) 构造解析遍历 `ci->methods` 找"首个 isConstructor"，但继承并入的父类构造（`动物` 的 ownerClass="动物"）也在子类 methods 表中，与子类自身构造（`狗` 的 ownerClass="狗"）共存。`unordered_map` 遍历顺序在 GCC（Linux）与 MSVC（Windows）下不同——Windows 恰好先命中子类构造（x64 全过），Linux 先命中父类构造，行为差异。
+  - **解决**: 构造匹配增加 `ownerClass == className` 限定，只匹配"本类自己声明"的构造（泛型实例化类 ownerClass=实例化名，同样成立；父类构造被排除）。
+  - **预防**: 遍历 `unordered_map` 做"首个命中"类选择必须不依赖遍历顺序（跨编译器/平台行为不一致），须加确定性限定条件（如 ownerClass 匹配）；继承并入父类成员时，"构造/析构"这类与类身份强绑定的成员应排除或用 ownerClass 区分，不能简单并入后靠遍历顺序兜底。
+
+- [2026-08-14 11:07] **问题类型**: 逻辑错误（权重 14.4）**已修复 ✅**
+  - **描述**: E2E `14_integration2` 冒泡排序后数据错乱（150 排最前）。排序比较链（i128）经 `__cn_cmp_i128` + cset 判断，CopyStruct（48B）交换正常，问题在比较结果判读。
+  - **原因**: arm64 端 [`arm64_codegen_i128.cpp`](src/cn_compiler/codegen/arm64/arm64_codegen_i128.cpp) 对 `__cn_cmp_i128` 返回的 32 位 `int`（AAPCS64 下 x0 高 32 位未定义）用 `cmp x0, #0`（64 位）比较。返回 -1 时若 x0 高 32 位残留 0，x0=0xFFFFFFFF 被读成正数 → `cset x9, gt` 把"小于"误判为"大于"，升序退化。x64 端用 `test ecx, ecx`（32 位）正确，arm64 移植时误用 64 位比较。
+  - **解决**: 改 `cmp w0, #0`（32 位比较），与 x64 的 `test ecx, ecx` 语义对齐。
+  - **预防**: 调用返回 32 位 `int` 的运行时辅助后，判读必须用 32 位寄存器（w0/ecx），禁止用 64 位（x0/rax）——AAPCS64/x64 均不保证返回 int 时高 32 位清零；从 x64 移植比较/判读逻辑时，须逐条核对 32/64 位宽一致性（test ecx 对应 cmp w0、setcc 对应 cset）。

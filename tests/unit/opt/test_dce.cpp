@@ -54,8 +54,8 @@ int countInstructions(const IRModule& module) {
         module.functions[0].blocks[0]->instructions.size());
 }
 
-// 块内第i条指令
-const IRInstruction& instAt(const IRModule& module, std::size_t index) {
+// 块内第i条指令（部分用例未使用，GCC -Wunused-function 兼容）
+[[maybe_unused]] const IRInstruction& instAt(const IRModule& module, std::size_t index) {
     return module.functions[0].blocks[0]->instructions[index];
 }
 

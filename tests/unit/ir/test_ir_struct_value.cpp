@@ -63,8 +63,8 @@ const cn_compiler::ir::IRFunction* findFunction(const IRModule& module,
     return nullptr;
 }
 
-// 函数中是否出现指定操作码
-bool functionHasOpcode(const cn_compiler::ir::IRFunction& fn, Opcode op) {
+// 函数中是否出现指定操作码（部分用例未使用，GCC -Wunused-function 兼容）
+[[maybe_unused]] bool functionHasOpcode(const cn_compiler::ir::IRFunction& fn, Opcode op) {
     for (const auto& block : fn.blocks) {
         for (const auto& inst : block->instructions) {
             if (inst.opcode == op) return true;

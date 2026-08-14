@@ -34,6 +34,8 @@ const char* AstPrinter::operatorText(Operator op) {
         case Operator::Tilde: return "~";
         case Operator::LessLess: return "<<";
         case Operator::GreaterGreater: return ">>";
+        case Operator::AddressOf: return "&";
+        case Operator::Deref: return "*";
         case Operator::Assign: return "=";
         case Operator::PlusAssign: return "+=";
         case Operator::MinusAssign: return "-=";

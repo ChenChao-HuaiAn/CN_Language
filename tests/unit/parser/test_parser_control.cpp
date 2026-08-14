@@ -38,8 +38,8 @@ ParseResult parseProgram(const std::string& source) {
     return result;
 }
 
-// 取第一个函数的第n条语句
-Stmt* firstStmt(Program* program, std::size_t index = 0) {
+// 取第一个函数的第n条语句（部分用例未使用，GCC -Wunused-function 兼容）
+[[maybe_unused]] Stmt* firstStmt(Program* program, std::size_t index = 0) {
     if (program == nullptr || program->declarations.empty()) return nullptr;
     auto& func = program->declarations[0];
     if (func->body == nullptr) return nullptr;

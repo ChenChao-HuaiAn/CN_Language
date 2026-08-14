@@ -13,7 +13,7 @@
 #include <string>
 #include <vector>
 
-#include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/codegen/backend_factory.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/module/module.hpp"
@@ -123,9 +123,13 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         opt::runOptLevel(output.module, options.optLevel);
     }
 
-    // 6. 代码生成（X64 MASM 汇编文本）
-    X64CodeGenerator codegen(diagnostics, &semantic);
-    output.asmText = codegen.generateAssembly(output.module);
+    // 6. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）
+    std::unique_ptr<Backend> backend = createBackend(options.target, diagnostics, &semantic);
+    if (!backend) {
+        std::cerr << diagnostics.format();
+        return 1;
+    }
+    output.asmText = backend->generateAssembly(output.module);
     if (diagnostics.hasErrors()) {
         std::cerr << diagnostics.format();
         return 1;
