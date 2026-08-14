@@ -44,6 +44,32 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     if (member == nullptr || member->body == nullptr) return;  // 抽象/接口签名无体
     if (!mi.hasBody) return;
 
+    // Debug 子任务修复（泛型类方法内循环遍历第一个泛型字段）：泛型单态化类
+    //   （盒子$整64）方法体提升时须设置 genericTypeParams_（T -> 整64）——
+    //   原实现仅 emitGenericFuncInstance 设置，泛型类方法体内 `T 总和` 局部变量
+    //   与 `T* 数据` 字段的 T 未替换 -> mapType(T) 兜底 ptr，`总和 + 数据[索引]`
+    //   被当成指针算术（值左移3当地址），索引≥2 读垃圾。语义层 checkClassMethods
+    //   已有同样解析（class_resolver.cpp），此处 IR 层补齐。
+    std::unordered_map<std::string, std::string> savedTypeParams = genericTypeParams_;
+    const std::size_t dollar = className.find('$');
+    if (dollar != std::string::npos && semantic_ != nullptr) {
+        const std::string genName = className.substr(0, dollar);
+        const GenericInfo* ginfo = semantic_->findGeneric(genName);
+        if (ginfo != nullptr) {
+            genericTypeParams_.clear();
+            std::string rest = className.substr(dollar + 1);
+            std::size_t apos = 0;
+            for (std::size_t ti = 0; ti < ginfo->typeParams.size(); ++ti) {
+                const std::size_t delim = rest.find('$', apos);
+                const std::string arg = (delim == std::string::npos)
+                    ? rest.substr(apos) : rest.substr(apos, delim - apos);
+                genericTypeParams_[ginfo->typeParams[ti]] = arg;
+                if (delim == std::string::npos) break;
+                apos = delim + 1;
+            }
+        }
+    }
+
     ir::IRFunction func;
     func.name = className + "." + mi.name;
     func.mangledName = methodSymbolKey(className, mi.sigKey);
@@ -92,6 +118,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     currentClass_ = savedClass;
     currentMethodStatic_ = savedStatic;
     currentMethodConst_ = savedConst;
+    genericTypeParams_ = savedTypeParams;  // 恢复泛型类型参数映射（emitClassMethod 开头设置）
     if (!varStack_.empty()) varStack_.pop_back();
 }
 

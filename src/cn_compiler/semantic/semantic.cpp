@@ -2203,17 +2203,34 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         }
         const ClassInfo* ctorCls = findClass(className);
         if (ctorCls != nullptr) {
-            // 查找构造函数（函数名 == 类名）
-            const ClassMemberInfo* ctor = nullptr;
-            auto mit = ctorCls->methods.find(className);
-            if (mit != ctorCls->methods.end() && mit->second.isConstructor) {
-                ctor = &mit->second;
+            // 查找构造函数（函数名 == 类名）。Debug 子任务修复（构造函数重载）：
+            //   methods 表构造条目 key=sigKey（名#参数串），遍历按 isConstructor +
+            //   ownerClass（排除父类构造，阶段A-3）+ 实参个数 + 类型可转换 匹配最优。
+            std::vector<std::string> argTypes;
+            for (auto& arg : node->arguments) {
+                argTypes.push_back(checkExpr(arg.get()));
             }
-            if (ctor != nullptr) {
-                std::vector<std::string> argTypes;
-                for (auto& arg : node->arguments) {
-                    argTypes.push_back(checkExpr(arg.get()));
+            const ClassMemberInfo* ctor = nullptr;
+            const ClassMemberInfo* ctorExact = nullptr;
+            for (const auto& mk : ctorCls->methods) {
+                const ClassMemberInfo& mi = mk.second;
+                if (!mi.isConstructor || mi.ownerClass != className) continue;
+                if (mi.paramTypes.size() != argTypes.size()) continue;
+                bool ok = true;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (conversionLevel(argTypes[i], mi.paramTypes[i]) < 0) { ok = false; break; }
                 }
+                if (!ok) continue;
+                ctor = &mi;
+                // 精确类型匹配（全部 0 级转换）优先
+                bool exact = true;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (conversionLevel(argTypes[i], mi.paramTypes[i]) != 0) { exact = false; break; }
+                }
+                if (exact) { ctorExact = &mi; break; }
+            }
+            if (ctorExact != nullptr) ctor = ctorExact;
+            if (ctor != nullptr) {
                 if (argTypes.size() != ctor->paramTypes.size()) {
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "构造函数 '" + className + "' 期望 " +
@@ -2231,6 +2248,8 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                         }
                     }
                 }
+                // 记录选中的构造 sigKey（IR 层按此生成构造体 Call 符号）
+                node->resolvedSignature = className + "$" + ctor->sigKey;
                 lastType_ = className;  // 构造返回对象
                 return;
             }

@@ -304,3 +304,70 @@ TEST(X64CodegenTest, PrologueStackAlignWithCalleeSaved) {
     EXPECT_EQ(asmText2.find("push r12"), std::string::npos);
     EXPECT_NE(asmText2.find("sub rsp, 16"), std::string::npos);
 }
+
+// 辅助：构造大栈帧函数（N 个 Alloca 局部变量，每个 8 字节变量槽）
+// 600 个 -> 变量槽区 4800 字节 > 4096 阈值，触发 __chkstk 栈探测路径
+IRModule buildBigFrameModule(int varCount) {
+    IRModule module;
+    IRFunction func;
+    func.name = "big";
+    func.returnType = "i64";
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    // 登记变量槽（generateFunctionAssembly 会扫描 Alloca 指令登记 varSlots_，
+    //   此处 Alloca extra 用唯一名即可，varSlots_ 每槽 8 字节）
+    for (int i = 0; i < varCount; ++i) {
+        IRInstruction alloc;
+        alloc.opcode = Opcode::Alloca;
+        alloc.extra = "buf$" + std::to_string(i);
+        block->instructions.push_back(alloc);
+    }
+    // %v0 = ConstInt 0 (i64) 作为返回值
+    IRInstruction c;
+    c.opcode = Opcode::ConstInt;
+    c.result = IRValue::reg(0, "i64");
+    c.type = "i64";
+    c.extra = "0";
+    block->instructions.push_back(c);
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v0";
+    func.blocks.push_back(std::move(block));
+    func.nextRegId = 1;
+    module.functions.push_back(std::move(func));
+    return module;
+}
+
+// 大栈帧 __chkstk 栈探测（Debug 子任务修复）：栈帧 > 4KB 时必须发射
+//   mov rax, N / call __chkstk / sub rsp, rax（MSVC 惯例），否则 `sub rsp, N`
+//   一次性越过 Windows 栈 guard 页 -> 0xC0000005（无任何输出即崩）。
+TEST(X64CodegenTest, BigFrameEmitsChkstk) {
+    Diagnostics diagnostics;
+    X64CodeGenerator generator(diagnostics);
+    // 600 个变量槽 = 4800 字节 + 寄存器槽区（%v0 = 8 字节）= 4808
+    //   16 字节对齐 -> frameSize = 4816 > 4096 阈值
+    IRModule module = buildBigFrameModule(600);
+
+    const std::string asmText = generator.generateAssembly(module);
+
+    // EXTERN 声明存在
+    EXPECT_NE(asmText.find("EXTERN __chkstk:PROC"), std::string::npos);
+    // 三段式：mov rax, 帧大小(4816) / call __chkstk / sub rsp, rax
+    EXPECT_NE(asmText.find("mov rax, 4816"), std::string::npos);
+    EXPECT_NE(asmText.find("call __chkstk"), std::string::npos);
+    EXPECT_NE(asmText.find("sub rsp, rax"), std::string::npos);
+}
+
+// 小栈帧（<=4KB）不应发射 __chkstk（保持原 sub rsp, 立即数 路径）
+TEST(X64CodegenTest, SmallFrameNoChkstk) {
+    Diagnostics diagnostics;
+    X64CodeGenerator generator(diagnostics);
+    // 100 个变量槽 = 800 字节 + 寄存器槽区（%v0 = 8 字节）= 808
+    //   16 字节对齐 -> frameSize = 816 <= 4096，不触发 chkstk
+    IRModule module = buildBigFrameModule(100);
+
+    const std::string asmText = generator.generateAssembly(module);
+
+    EXPECT_EQ(asmText.find("call __chkstk"), std::string::npos);
+    EXPECT_NE(asmText.find("sub rsp, 816"), std::string::npos);
+}

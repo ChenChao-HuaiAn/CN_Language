@@ -117,12 +117,44 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         //   忽略子类自身构造（3 参）导致自身字段未初始化。必须限定 ownerClass == className，
         //   只匹配"本类自己声明"的构造函数（泛型实例化类 ownerClass=实例化名，同样成立）。
         const ClassMemberInfo* ctor = nullptr;
-        for (const auto& mk : ci->methods) {
-            if (mk.second.isConstructor && mk.second.hasBody &&
-                mk.second.ownerClass == className) {
-                ctor = &mk.second;
-                break;
+        // Debug 子任务修复（构造函数重载）：优先用语义层记录的选中构造
+        //   （node->resolvedSignature = 类名$构造sigKey，visitCallExpr 已按实参匹配），
+        //   精确对应 无参/带参 重载；未记录时遍历 methods 按 实参个数 匹配兜底。
+        if (!node->resolvedSignature.empty()) {
+            const std::size_t ds = node->resolvedSignature.find('$');
+            if (ds != std::string::npos) {
+                const std::string wantSig = node->resolvedSignature.substr(ds + 1);
+                for (const auto& mk : ci->methods) {
+                    if (mk.second.isConstructor && mk.second.sigKey == wantSig &&
+                        mk.second.ownerClass == className) {
+                        ctor = &mk.second;
+                        break;
+                    }
+                }
             }
+        }
+        if (ctor == nullptr) {
+            // 兜底：按 实参个数 匹配本类构造（与语义层一致的 ownerClass 限定）
+            const std::size_t givenArgs = node->arguments.size();
+            const ClassMemberInfo* fallback = nullptr;
+            for (const auto& mk : ci->methods) {
+                if (mk.second.isConstructor && mk.second.hasBody &&
+                    mk.second.ownerClass == className &&
+                    mk.second.paramTypes.size() == givenArgs) {
+                    fallback = &mk.second;
+                    break;
+                }
+            }
+            if (fallback == nullptr) {
+                for (const auto& mk : ci->methods) {
+                    if (mk.second.isConstructor && mk.second.hasBody &&
+                        mk.second.ownerClass == className) {
+                        fallback = &mk.second;
+                        break;
+                    }
+                }
+            }
+            ctor = fallback;
         }
         if (ctor != nullptr) {
             // 构造体 Call：符号 = 类名$构造sigKey，实参 = [obj(this)] + 实参

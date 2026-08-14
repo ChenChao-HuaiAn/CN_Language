@@ -445,6 +445,10 @@ void X64CodeGenerator::emitCodeHeader(AsmWriter& writer, const ir::IRModule& mod
     //   不再直接调用 printLineInt/printLineFloat（EXTERN 声明随映射一并删除）
     writer.raw("EXTERN printLine:PROC");
     writer.raw("EXTERN printNoLine:PROC");
+    // Debug 子任务修复（大栈帧无 __chkstk 栈探测崩溃）：栈帧 > 4KB 的函数
+    //   prologue 调用 __chkstk（MSVC CRT libcmt.lib 提供）按页探测提交栈空间。
+    //   __chkstk 契约：rax=所需字节数，调用后 rsp 已减去该值（破坏 rax/rcx/r10/r11）
+    writer.raw("EXTERN __chkstk:PROC");
     // Task 2.9：格式化（__cn_format 变参，返回动态字符串）
     writer.raw("EXTERN __cn_format:PROC");
     // 字符串API（Task 2.9：布尔转字符串 __cn_str_from_bool；其余 __cn_ 前缀自动收集）
@@ -522,6 +526,13 @@ void X64CodeGenerator::emitFunctionHeader(AsmWriter& writer, const ir::IRFunctio
 }
 
 // 生成函数 prologue（push rbp / mov rbp,rsp / 预留栈帧 / 保存被调用者保存寄存器）
+// Debug 子任务（Task 6.11 后续）修复：大栈帧无 __chkstk 栈探测崩溃——
+//   Windows 栈 guard 页机制：`sub rsp, N`（N > 4KB）一次性越过已提交栈页，
+//   访问未提交页 -> 0xC0000005（函数无任何输出即崩）。MSVC 惯例：栈帧
+//   > 4KB（保守阈值，实际 guard 页 + 已提交页约 8KB）时必须先 `call __chkstk`
+//   按 4KB 页逐步提交栈空间（__chkstk 契约：rax=所需字节数，返回后 rsp 已减）。
+//   __chkstk 会破坏 rax/rcx/r10/r11（MSVC chkstk.asm volatile 集合），
+//   因此隐藏返回指针（rcx -> r12）的保存必须在其之前执行。
 void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& function) {
     writer.line("push rbp");
     writer.line("mov rbp, rsp");
@@ -535,16 +546,38 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
     if (calleeSavedRegs_.size() % 2 == 1) {
         frameSize += 8;
     }
-    if (frameSize > 0) {
-        writer.line("sub rsp, " + std::to_string(frameSize));
-    }
     // Task 完善A：结构体/i128 返回值函数——隐藏返回指针（rcx）保存到非易失寄存器 r12，
     //   函数体可能破坏 rcx（参数拷贝/调用）；epilogue 用 r12 恢复缓冲区地址。
     //   修复（集成验证发现）：i128/u128 返回同样占用 rcx 作为隐藏返回指针，
     //   且函数体内调用会破坏 rcx，必须保存到 r12（否则 epilogue 读到垃圾地址崩溃）
+    //   ⚠️ 必须在 call __chkstk 之前执行（__chkstk 破坏 rcx）
     if (function.structReturn || function.returnType == "i128" ||
         function.returnType == "u128") {
         writer.line("mov r12, rcx");
+    }
+    // ⚠️ Debug 子任务修复（__chkstk 寄存器破坏）：参数寄存器（rcx/rdx/r8/r9/
+    //   xmm0-3）必须在 call __chkstk 之前保存到参数槽——__chkstk 破坏
+    //   rax/rcx/r10/r11（MSVC chkstk.asm volatile 集合），若 chkstk 先执行，
+    //   emitParamSetup 从 rcx 读第1个整型参数将读到垃圾。参数槽是 [rbp-offset]
+    //   rbp 相对寻址，不依赖 rsp 已分配，因此在栈帧分配前保存安全。
+    //   （generateFunctionAssembly 不再单独调用 emitParamSetup）
+    emitParamSetup(writer, function);
+    if (frameSize > 0) {
+        // 栈帧 > 4KB：MSVC 惯例三段式——mov rax, N / call __chkstk / sub rsp, rax。
+        //   __chkstk 契约（MSVC x64 CRT chkstk.asm）：rax = 要探测的字节数；
+        //   **只按 4KB 页 touch 栈页触发栈增长，不修改 rsp**（"The stack pointer
+        //   is not adjusted"），且返回后 rax 仍为输入值；随后编译器自己
+        //   `sub rsp, rax` 完成栈帧分配。frameSize 已 16 对齐，sub 后 rsp
+        //   保持 16 字节对齐，满足 Win x64 ABI。
+        if (frameSize > 4096) {
+            writer.line("mov rax, " + std::to_string(frameSize));
+            writer.comment("栈帧 " + std::to_string(frameSize) +
+                           " 字节 > 4KB：call __chkstk 按页探测提交");
+            writer.line("call __chkstk");
+            writer.line("sub rsp, rax");
+        } else {
+            writer.line("sub rsp, " + std::to_string(frameSize));
+        }
     }
     // 阶段C（Task 4.3）：寄存器分配使用的被调用者保存寄存器（rbx/r12~r15）压栈保存
     //   ——分配器只使用被调用者保存寄存器，调用者不期望其被修改，须保存/恢复。
@@ -814,8 +847,9 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
     currentStructReturn_ = function.structReturn;  // 结构体返回值（隐藏返回指针）
     currentStructReturnSize_ = function.structReturnSize;  // 结构体返回大小（字节）
     emitFunctionHeader(writer, function);
+    // emitParamSetup 已移入 emitPrologue 内部（在 call __chkstk 之前保存参数
+    //   寄存器——__chkstk 破坏 rax/rcx/r10/r11，见 emitPrologue 注释）
     emitPrologue(writer, function);
-    emitParamSetup(writer, function);
     // 遍历基本块
     for (auto& block : function.blocks) {
         emitBlock(writer, *block);

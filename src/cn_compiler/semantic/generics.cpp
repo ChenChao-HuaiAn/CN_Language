@@ -70,6 +70,19 @@ const GenericInfo* SemanticAnalyzer::findGeneric(const std::string& name) const 
 std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName,
                                                      const SourceLocation& loc) {
     if (typeName.empty()) return typeName;
+    // Debug 子任务修复（泛型类方法内局部变量 T / T*）：裸类型参数与指针
+    //   在泛型实例化类方法体内（checkClassMethods 设置 genericTypeParams_）须替换
+    //   为实参类型——原实现无 '<' 直接返回，`T 总和 = 数据[0]` 声明类型仍为 T，
+    //   与字段（整64*）交互报"无法将 整64 隐式转换为 T"。
+    if (!genericTypeParams_.empty()) {
+        auto pit = genericTypeParams_.find(typeName);
+        if (pit != genericTypeParams_.end()) return pit->second;
+        // 指针：T* -> 实参*（裸参数 + 尾 '*'）
+        if (!typeName.empty() && typeName.back() == '*') {
+            auto pit2 = genericTypeParams_.find(typeName.substr(0, typeName.size() - 1));
+            if (pit2 != genericTypeParams_.end()) return pit2->second + "*";
+        }
+    }
     const std::size_t lt = typeName.find('<');
     const std::size_t gt = typeName.rfind('>');
     if (lt == std::string::npos || gt == std::string::npos || gt <= lt) {
@@ -202,7 +215,38 @@ std::string SemanticAnalyzer::substTypeParam(const std::string& type,
                 }
                 newInner += substTypeParam(p, params, args);
             }
-            return head + "<" + newInner + ">";
+            // Debug 子任务修复（泛型 + 函数指针回调）：保留 <...> 之后的后缀
+            //   （函数指针参数列表 (T,T) 等）并递归替换其中内嵌的类型参数——
+            //   原实现 return head+"<"+newInner+">" 丢弃后缀 -> 函数指针签名
+            //   缺参数列表（函数指针<整32> vs 函数指针<整32>(整32,整32)），
+            //   单态化后签名与调用实参不匹配（"未找到匹配的函数"）。
+            std::string suffix = (gt + 1 < type.size()) ? type.substr(gt + 1) : "";
+            if (!suffix.empty()) {
+                // 参数列表 (T,T) 内逐个替换类型参数（T -> 实参）
+                if (suffix.front() == '(' && suffix.back() == ')') {
+                    const std::string plist = suffix.substr(1, suffix.size() - 2);
+                    std::string newPlist;
+                    std::size_t pos2 = 0;
+                    while (pos2 <= plist.size()) {
+                        const std::size_t comma = plist.find(',', pos2);
+                        std::string part = (comma == std::string::npos)
+                            ? plist.substr(pos2) : plist.substr(pos2, comma - pos2);
+                        std::size_t b2 = part.find_first_not_of(" \t");
+                        std::size_t e2 = part.find_last_not_of(" \t");
+                        if (b2 != std::string::npos && e2 != std::string::npos) {
+                            part = part.substr(b2, e2 - b2 + 1);
+                        }
+                        if (!newPlist.empty()) newPlist += ",";
+                        newPlist += substTypeParam(part, params, args);
+                        if (comma == std::string::npos) break;
+                        pos2 = comma + 1;
+                    }
+                    suffix = "(" + newPlist + ")";
+                } else {
+                    suffix = substTypeParam(suffix, params, args);
+                }
+            }
+            return head + "<" + newInner + ">" + suffix;
         }
     }
     return type;  // 非类型参数
@@ -351,8 +395,13 @@ std::string SemanticAnalyzer::instantiateGeneric(
                         types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
                 }
                 mi.sigKey = signatureKey(mi.name, mi.paramTypes);
-                info.methods[mi.name] = mi;
-                info.methodOrder.push_back(mi.name);
+                // Debug 子任务修复（构造函数重载）：泛型实例化类同样用 sigKey 作
+                //   构造/析构 methods key（多版本构造共存），普通方法按名（与
+                //   resolveClass collectClassMembers 一致）
+                const std::string storeKey = (mi.isConstructor || mi.isDestructor)
+                                                 ? mi.sigKey : mi.name;
+                info.methods[storeKey] = mi;
+                info.methodOrder.push_back(storeKey);
                 continue;
             }
             // 运算符重载
@@ -439,8 +488,14 @@ std::string SemanticAnalyzer::instantiateGeneric(
             substTypeParam(src->returnType, gen->typeParams, args));
         info.hasBody = (src->body != nullptr);
         for (auto& p : src->params) {
-            info.paramTypes.push_back(
-                types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
+            // Debug 子任务修复（泛型 + 函数指针回调）：函数指针参数（整32(*比较)(T, T)）
+            //   的 p->typeName 为空（解析填充 param->funcPtr），须用 funcPtr.toString()
+            //   规范化字符串（函数指针<整32>(T,T)），substTypeParam 的模板分支会递归
+            //   替换内嵌类型参数 T -> 实参（整32），否则实例化签名缺函数指针参数 ->
+            //   "未找到匹配的函数 '排序$整32'（参数个数或类型不匹配）"
+            info.paramTypes.push_back(types::canonical(substTypeParam(
+                p->funcPtr.isFunctionPtr() ? p->funcPtr.toString() : p->typeName,
+                gen->typeParams, args)));
         }
         // 实例化函数名（mangling）：名$实参串
         functions_[instanceName] = info;

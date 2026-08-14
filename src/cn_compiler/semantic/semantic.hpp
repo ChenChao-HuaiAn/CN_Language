@@ -182,6 +182,9 @@ public:
     int classTotalSize(const std::string& className) const;
     // 查询类字段偏移（沿继承链，-1表示无此字段；含虚表指针偏移调整）
     int classFieldOffset(const std::string& className, const std::string& fieldName) const;
+    // 查询泛型声明（未找到返回nullptr）。Debug 子任务修复（泛型类方法体提升
+    //   需解析 实例化类名$实参 的类型参数映射）——公开转发供 IR 层访问。
+    const GenericInfo* findGeneric(const std::string& name) const;
 
     // ==================== AstVisitor 接口实现 ====================
     // 声明节点
@@ -385,9 +388,6 @@ private:
     // 校验类型实参满足接口约束（泛型 <类型 T : 接口>）
     void checkGenericConstraint(const std::string& argType, const std::string& constraint,
                                 const SourceLocation& loc);
-    // 查询泛型声明（未找到返回nullptr）
-    const GenericInfo* findGeneric(const std::string& name) const;
-
     // ==================== 成员状态 ====================
     Diagnostics& diagnostics_;                     // 诊断引擎引用
     std::unordered_map<std::string, FunctionInfo> functions_;   // 函数符号表

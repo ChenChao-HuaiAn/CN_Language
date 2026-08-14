@@ -53,7 +53,33 @@ std::string IRGenerator::substGenericType(const std::string& type) const {
             if (comma == std::string::npos) break;
             pos = comma + 1;
         }
-        return type.substr(0, lt) + "<" + newInner + ">";
+        // Debug 子任务修复（泛型 + 函数指针回调）：保留 <...> 之后的后缀
+        //   （函数指针参数列表 (T,T)）并递归替换内嵌类型参数——原实现丢弃
+        //   后缀导致函数指针类型不完整（与语义层 substTypeParam 同步修复）。
+        std::string suffix = (gt + 1 < type.size()) ? type.substr(gt + 1) : "";
+        if (!suffix.empty() && suffix.front() == '(' && suffix.back() == ')') {
+            const std::string plist = suffix.substr(1, suffix.size() - 2);
+            std::string newPlist;
+            std::size_t pos2 = 0;
+            while (pos2 <= plist.size()) {
+                const std::size_t comma = plist.find(',', pos2);
+                std::string part = (comma == std::string::npos)
+                    ? plist.substr(pos2) : plist.substr(pos2, comma - pos2);
+                std::size_t b2 = part.find_first_not_of(" \t");
+                std::size_t e2 = part.find_last_not_of(" \t");
+                if (b2 != std::string::npos && e2 != std::string::npos) {
+                    part = part.substr(b2, e2 - b2 + 1);
+                }
+                if (!newPlist.empty()) newPlist += ",";
+                newPlist += substGenericType(part);
+                if (comma == std::string::npos) break;
+                pos2 = comma + 1;
+            }
+            suffix = "(" + newPlist + ")";
+        } else if (!suffix.empty()) {
+            suffix = substGenericType(suffix);
+        }
+        return type.substr(0, lt) + "<" + newInner + ">" + suffix;
     }
     return type;
 }

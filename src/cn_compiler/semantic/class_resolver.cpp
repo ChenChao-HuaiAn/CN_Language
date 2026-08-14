@@ -371,13 +371,22 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                                         : types::canonical(p->typeName));
         }
         mi.sigKey = signatureKey(mi.name, mi.paramTypes);
-        if (info.methods.find(mi.name) != info.methods.end()) {
+        // Debug 子任务修复（构造函数重载覆盖）：构造函数/析构 用 sigKey（名#参数串）
+        //   作 methods 表 key——多版本构造（盒子() / 盒子(整64)）允许共存
+        //   （C++ 构造重载语义），不再互相覆盖。查重按 sigKey，纯同名同参才报重复。
+        //   普通方法仍按名索引（虚表/接口/查找依赖 name key；普通方法重载符号
+        //   本就按 sigKey 生成，但 methods 存储保持按名——既有行为不变）。
+        //   构造/析构不参与虚表（isVirtual 恒假）、不经 lookupClassMember 按名查找
+        //   （构造走 类名(...) 语法、析构经 DeleteObject 解析），用 sigKey key 安全。
+        const std::string storeKey = (mi.isConstructor || mi.isDestructor)
+                                         ? mi.sigKey : mi.name;
+        if (info.methods.find(storeKey) != info.methods.end()) {
             diagnostics_.report(DiagnosticLevel::Error, member->location,
                                 "类 '" + node->name + "' 重复定义方法 '" + mi.name + "'");
             continue;
         }
-        info.methods[mi.name] = mi;
-        info.methodOrder.push_back(mi.name);
+        info.methods[storeKey] = mi;
+        info.methodOrder.push_back(storeKey);
     }
 }
 
