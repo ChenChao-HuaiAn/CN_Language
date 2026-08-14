@@ -18,10 +18,13 @@ std::unique_ptr<Expr> Parser::parseExpr() {
 std::unique_ptr<Expr> Parser::parseAssignment() {
     auto left = parseTernary();
     if (isAssignOp(currentType())) {
+        const SourceLocation loc = current().getLocation();  // 赋值运算符位置
         Operator op = toAssignOp(currentType());
         advance();
         auto value = parseAssignment();  // 右结合：a = b = c
-        return std::make_unique<AssignmentExpr>(std::move(left), op, std::move(value));
+        auto expr = std::make_unique<AssignmentExpr>(std::move(left), op, std::move(value));
+        expr->location = loc;
+        return expr;
     }
     return left;
 }
@@ -39,20 +42,25 @@ std::unique_ptr<Expr> Parser::parseTernary() {
         auto trueValue = parseExpr();      // 真值：完整表达式（可含嵌套三元）
         consume(TokenType::Colon, "':'");
         auto falseValue = parseTernary();  // 假值：递归调用实现右结合
-        return std::make_unique<TernaryExpr>(std::move(condition), std::move(trueValue),
-                                             std::move(falseValue));
+        auto expr = std::make_unique<TernaryExpr>(std::move(condition), std::move(trueValue),
+                                                  std::move(falseValue));
+        expr->location = loc;
+        return expr;
     }
     return condition;
 }
 
 // 逻辑或（左结合）：||（优先级2，规格书4.5）
 // 逻辑与（&&，优先级3）绑定更紧，故 parseLogicalOr 调用 parseLogicalAnd
+// 阶段C 修复：复合表达式节点设置 location（取左操作数位置），供 IR 指令携带源码位置
 std::unique_ptr<Expr> Parser::parseLogicalOr() {
     auto left = parseLogicalAnd();
     while (check(TokenType::OrOr)) {
+        const SourceLocation loc = left->location;
         advance();
         auto right = parseLogicalAnd();
         left = std::make_unique<BinaryExpr>(Operator::OrOr, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -62,9 +70,11 @@ std::unique_ptr<Expr> Parser::parseLogicalOr() {
 std::unique_ptr<Expr> Parser::parseLogicalAnd() {
     auto left = parseBitOr();
     while (check(TokenType::AndAnd)) {
+        const SourceLocation loc = left->location;
         advance();
         auto right = parseBitOr();
         left = std::make_unique<BinaryExpr>(Operator::AndAnd, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -73,9 +83,11 @@ std::unique_ptr<Expr> Parser::parseLogicalAnd() {
 std::unique_ptr<Expr> Parser::parseBitOr() {
     auto left = parseBitXor();
     while (check(TokenType::Pipe)) {
+        const SourceLocation loc = left->location;
         advance();
         auto right = parseBitXor();
         left = std::make_unique<BinaryExpr>(Operator::Pipe, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -84,9 +96,11 @@ std::unique_ptr<Expr> Parser::parseBitOr() {
 std::unique_ptr<Expr> Parser::parseBitXor() {
     auto left = parseBitAnd();
     while (check(TokenType::Caret)) {
+        const SourceLocation loc = left->location;
         advance();
         auto right = parseBitAnd();
         left = std::make_unique<BinaryExpr>(Operator::Caret, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -96,9 +110,11 @@ std::unique_ptr<Expr> Parser::parseBitXor() {
 std::unique_ptr<Expr> Parser::parseBitAnd() {
     auto left = parseEquality();
     while (check(TokenType::Amp)) {
+        const SourceLocation loc = left->location;
         advance();
         auto right = parseEquality();
         left = std::make_unique<BinaryExpr>(Operator::Amp, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -107,10 +123,12 @@ std::unique_ptr<Expr> Parser::parseBitAnd() {
 std::unique_ptr<Expr> Parser::parseEquality() {
     auto left = parseComparison();
     while (check(TokenType::EqualEqual) || check(TokenType::BangEqual)) {
+        const SourceLocation loc = left->location;
         Operator op = check(TokenType::EqualEqual) ? Operator::EqualEqual : Operator::BangEqual;
         advance();
         auto right = parseComparison();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -119,6 +137,7 @@ std::unique_ptr<Expr> Parser::parseEquality() {
 std::unique_ptr<Expr> Parser::parseComparison() {
     auto left = parseShift();
     while (true) {
+        const SourceLocation loc = left->location;
         Operator op;
         if (check(TokenType::Less)) op = Operator::Less;
         else if (check(TokenType::Greater)) op = Operator::Greater;
@@ -128,6 +147,7 @@ std::unique_ptr<Expr> Parser::parseComparison() {
         advance();
         auto right = parseShift();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -136,10 +156,12 @@ std::unique_ptr<Expr> Parser::parseComparison() {
 std::unique_ptr<Expr> Parser::parseShift() {
     auto left = parseAdditive();
     while (check(TokenType::LessLess) || check(TokenType::GreaterGreater)) {
+        const SourceLocation loc = left->location;
         Operator op = check(TokenType::LessLess) ? Operator::LessLess : Operator::GreaterGreater;
         advance();
         auto right = parseAdditive();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -148,10 +170,12 @@ std::unique_ptr<Expr> Parser::parseShift() {
 std::unique_ptr<Expr> Parser::parseAdditive() {
     auto left = parseMultiplicative();
     while (check(TokenType::Plus) || check(TokenType::Minus)) {
+        const SourceLocation loc = left->location;
         Operator op = check(TokenType::Plus) ? Operator::Add : Operator::Subtract;
         advance();
         auto right = parseMultiplicative();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -160,6 +184,7 @@ std::unique_ptr<Expr> Parser::parseAdditive() {
 std::unique_ptr<Expr> Parser::parseMultiplicative() {
     auto left = parseUnary();
     while (check(TokenType::Star) || check(TokenType::Slash) || check(TokenType::Percent)) {
+        const SourceLocation loc = left->location;
         Operator op;
         if (check(TokenType::Star)) op = Operator::Multiply;
         else if (check(TokenType::Slash)) op = Operator::Divide;
@@ -167,6 +192,7 @@ std::unique_ptr<Expr> Parser::parseMultiplicative() {
         advance();
         auto right = parseUnary();
         left = std::make_unique<BinaryExpr>(op, std::move(left), std::move(right));
+        left->location = loc;
     }
     return left;
 }
@@ -179,6 +205,7 @@ std::unique_ptr<Expr> Parser::parseUnary() {
     if (check(TokenType::Bang) || check(TokenType::Minus) || check(TokenType::Tilde) ||
         check(TokenType::PlusPlus) || check(TokenType::MinusMinus) ||
         check(TokenType::Amp) || check(TokenType::Star)) {
+        const SourceLocation loc = current().getLocation();  // 一元运算符位置
         Operator op;
         if (check(TokenType::Bang)) op = Operator::Bang;
         else if (check(TokenType::Minus)) op = Operator::Subtract;
@@ -189,7 +216,9 @@ std::unique_ptr<Expr> Parser::parseUnary() {
         else op = Operator::Decrement;
         advance();
         auto operand = parseUnary();  // 一元嵌套：- -x
-        return std::make_unique<UnaryExpr>(op, std::move(operand), false);
+        auto expr = std::make_unique<UnaryExpr>(op, std::move(operand), false);
+        expr->location = loc;
+        return expr;
     }
     return parsePostfix();
 }
@@ -202,10 +231,12 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
             expr = parsePostfixIncDec(std::move(expr));
         } else if (check(TokenType::LeftBracket)) {
             // 下标访问：expr[index]（规格书4.4 []下标，优先级13后缀）
+            const SourceLocation loc = expr->location;
             advance();
             auto index = parseExpr();
             consume(TokenType::RightBracket, "']'");
             expr = std::make_unique<IndexExpr>(std::move(expr), std::move(index));
+            expr->location = loc;
         } else if (check(TokenType::Less) && isTemplateAngleOpen() &&
                    expr->getType() == NodeType::IdentifierExpr) {
             // 泛型实例化（Task 3.8，规格书06-十三）：类型名<实参>（如 向量<整32>）
@@ -250,16 +281,23 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
 
 // 后缀自增自减：expr++ / expr--
 std::unique_ptr<Expr> Parser::parsePostfixIncDec(std::unique_ptr<Expr> expr) {
+    const SourceLocation loc = expr->location;
     Operator op = check(TokenType::PlusPlus) ? Operator::Increment : Operator::Decrement;
     advance();
-    return std::make_unique<UnaryExpr>(op, std::move(expr), true);
+    auto result = std::make_unique<UnaryExpr>(op, std::move(expr), true);
+    result->location = loc;
+    return result;
 }
 
 // 调用与成员访问：expr(args) / expr.member / expr->member
+// 阶段C 修复：CallExpr/MemberExpr 需设置 location（默认空导致 IR 指令 loc 无效，
+//   --debug 源码注释被 isValidLoc 过滤——调用/成员是绝大多数指令的源码位置来源）
 std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
     if (check(TokenType::LeftParen)) {
+        const SourceLocation loc = expr->location;  // 被调者位置（函数名/对象）
         advance();
         auto call = std::make_unique<CallExpr>(std::move(expr));
+        call->location = loc;
         if (!check(TokenType::RightParen)) {
             do {
                 call->arguments.push_back(parseExpr());
@@ -269,14 +307,19 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
         return call;
     }
     // 成员访问（. 或 ->）
+    const SourceLocation loc = expr->location;
     bool isArrow = check(TokenType::Arrow);
     advance();
     std::string memberName = current().getValue();
     advance();
-    return std::make_unique<MemberExpr>(std::move(expr), memberName, isArrow);
+    auto mem = std::make_unique<MemberExpr>(std::move(expr), memberName, isArrow);
+    mem->location = loc;
+    return mem;
 }
 
 // 基本表达式：字面量 / 标识符 / (表达式) / [捕获]lambda
+// 阶段C 修复：字面量/标识符/强制转换等叶子节点设置 location（原实现默认空，
+//   导致 IR 指令 loc 无效，--debug 源码注释被过滤）
 std::unique_ptr<Expr> Parser::parsePrimary() {
     const SourceLocation loc = current().getLocation();
     // lambda 表达式探测：[ 捕获 ] ( 参数 ) [-> 返回] { 体 }（Task 2.10）
@@ -294,35 +337,51 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         advance();                               // 消费 '('
         auto operand = parseExpr();
         consume(TokenType::RightParen, "')'");
-        return std::make_unique<CastExpr>(typeName, std::move(operand));
+        auto cast = std::make_unique<CastExpr>(typeName, std::move(operand));
+        cast->location = loc;
+        return cast;
     }
     switch (currentType()) {
         case TokenType::IntegerLiteral: {
             std::string raw = current().getValue();
             advance();
-            return std::make_unique<IntegerLiteral>(parseIntValue(raw), raw);
+            auto lit = std::make_unique<IntegerLiteral>(parseIntValue(raw), raw);
+            lit->location = loc;
+            return lit;
         }
         case TokenType::FloatLiteral: {
             std::string raw = current().getValue();
             advance();
-            return std::make_unique<FloatLiteral>(parseFloatValue(raw), raw);
+            auto lit = std::make_unique<FloatLiteral>(parseFloatValue(raw), raw);
+            lit->location = loc;
+            return lit;
         }
         case TokenType::StringLiteral: {
             std::string raw = current().getValue();
             advance();
-            return std::make_unique<StringLiteral>(raw);
+            auto lit = std::make_unique<StringLiteral>(raw);
+            lit->location = loc;
+            return lit;
         }
         case TokenType::CharLiteral: {
             std::string raw = current().getValue();
             advance();
-            return std::make_unique<CharLiteral>(raw);
+            auto lit = std::make_unique<CharLiteral>(raw);
+            lit->location = loc;
+            return lit;
         }
-        case TokenType::Kw_True:
+        case TokenType::Kw_True: {
             advance();
-            return std::make_unique<BoolLiteral>(true, "真");
-        case TokenType::Kw_False:
+            auto lit = std::make_unique<BoolLiteral>(true, "真");
+            lit->location = loc;
+            return lit;
+        }
+        case TokenType::Kw_False: {
             advance();
-            return std::make_unique<BoolLiteral>(false, "假");
+            auto lit = std::make_unique<BoolLiteral>(false, "假");
+            lit->location = loc;
+            return lit;
+        }
         case TokenType::Kw_None:
             // 空指针字面量：无（Task 2.4，规格书3.7空类型*；可选类型无值语义后续Task）
             // 阶段3（规格书07-三）：无 同时是空可选值（语义层区分）
@@ -339,6 +398,7 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
         case TokenType::Identifier: {
             std::string name = current().getValue();
             advance();
+            const SourceLocation idLoc = loc;  // 标识符位置
             // 结构体初始化：类型名{ 字段 = 值, ... }（Task 2.7，规格书05）
             if (check(TokenType::LeftBrace)) {
                 return parseStructInit(name);
@@ -348,15 +408,19 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
             //       否则 -> 普通标识符（后续 parseCallOrMember 处理为函数调用）。
             // 注：parser 无法访问语义符号表（自定义类型名），保守策略——
             //   '(' 前是类型关键字 或 已知内置类型名 才判为 Cast；
-            //   自定义类型（结构体名）的转换依赖语义层，此处先按普通标识符
+            // 自定义类型（结构体名）的转换依赖语义层，此处先按普通标识符
             //   （parseCallOrMember 成函数调用，语义层见到类型名报未声明函数）。
             if (check(TokenType::LeftParen) && isCastableTypeName(name)) {
                 advance();
                 auto operand = parseExpr();
                 consume(TokenType::RightParen, "')'");
-                return std::make_unique<CastExpr>(name, std::move(operand));
+                auto cast = std::make_unique<CastExpr>(name, std::move(operand));
+                cast->location = idLoc;
+                return cast;
             }
-            return std::make_unique<IdentifierExpr>(name);
+            auto ident = std::make_unique<IdentifierExpr>(name);
+            ident->location = idLoc;
+            return ident;
         }
         case TokenType::LeftParen: {
             advance();
@@ -370,7 +434,9 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
     // 无法解析的表达式：报告错误并返回占位（错误恢复）
     reportErrorHere("预期表达式，实际为 '" + current().getValue() + "'");
     advance();
-    return std::make_unique<IntegerLiteral>(0, "0");
+    auto fallback = std::make_unique<IntegerLiteral>(0, "0");
+    fallback->location = loc;
+    return fallback;
 }
 
 // lambda 捕获探测（Task 2.10）：当前为 '['，判断是否为 lambda 捕获列表。

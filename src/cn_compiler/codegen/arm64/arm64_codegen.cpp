@@ -913,11 +913,9 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
         }
     }
     // 阶段C（Task 4.4）：调试信息收集器初始化（源码位置注释）
+    // 注释前缀（"// "）由 Arm64AsmWriter::comment 统一添加，收集器只存纯文本
     debugInfo_ = debuginfo::DebugInfoCollector();
     asmLineCounter_ = 0;
-    if (debugInfoEnabled_) {
-        debugInfo_.setCommentStyle(debuginfo::AsmCommentStyle::GasSlash);
-    }
     Arm64AsmWriter writer;
     currentReturnType_ = function.returnType;
     currentStructReturn_ = function.structReturn;

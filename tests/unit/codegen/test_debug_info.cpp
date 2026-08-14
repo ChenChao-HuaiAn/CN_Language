@@ -13,7 +13,6 @@
 #include "cn_compiler/common/source_location.hpp"
 
 using cn_compiler::SourceLocation;
-using cn_compiler::debuginfo::AsmCommentStyle;
 using cn_compiler::debuginfo::DebugInfoCollector;
 
 namespace {
@@ -25,20 +24,22 @@ SourceLocation makeLoc(int line) {
 
 } // namespace
 
-// ---- 1. 注释格式 ----
+// ---- 1. 注释文本（纯内容，不含注释语法前缀——前缀由各后端 AsmWriter 统一添加，
+//        避免与 writer 前缀叠加成双前缀；阶段C 串联修复） ----
 
-TEST(DebugInfoTest, MasmCommentStyle) {
+TEST(DebugInfoTest, CommentTextNoPrefix) {
     DebugInfoCollector collector;
-    collector.setCommentStyle(AsmCommentStyle::MasmSemicolon);
     const std::string c = collector.commentFor(makeLoc(12), 1);
-    EXPECT_EQ(c, "; src: main.cn:12");
+    // 纯文本：不含任何注释语法前缀（"; " / "// "）
+    EXPECT_EQ(c, "src: main.cn:12");
 }
 
-TEST(DebugInfoTest, GasCommentStyle) {
+TEST(DebugInfoTest, BackendPrefixAppliedByWriter) {
     DebugInfoCollector collector;
-    collector.setCommentStyle(AsmCommentStyle::GasSlash);
     const std::string c = collector.commentFor(makeLoc(12), 1);
-    EXPECT_EQ(c, "// src: main.cn:12");
+    // 后端拼接验证：x64 writer 加 "; "、arm64 writer 加 "// "（阶段C 修复双前缀）
+    EXPECT_EQ("; " + c, "; src: main.cn:12");
+    EXPECT_EQ("// " + c, "// src: main.cn:12");
 }
 
 // ---- 2. 行号映射表 ----
@@ -66,9 +67,9 @@ TEST(DebugInfoTest, DedupSameLoc) {
     // 相同位置再次调用 -> 空串（去重）
     const std::string second = collector.commentFor(makeLoc(12), 2);
     EXPECT_TRUE(second.empty());
-    // 不同行 -> 正常生成
+    // 不同行 -> 正常生成（纯文本）
     const std::string third = collector.commentFor(makeLoc(13), 3);
-    EXPECT_EQ(third, "; src: main.cn:13");
+    EXPECT_EQ(third, "src: main.cn:13");
     // 映射表只登记 2 条（去重后）
     EXPECT_EQ(collector.mappings().size(), 2u);
 }

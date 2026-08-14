@@ -5,6 +5,13 @@
 
 ## 高权重问题（必须避免）
 
+- [2026-08-14 16:10] **问题类型**: 集成问题（权重 16.6）
+  - **描述**: 阶段C 串联集成验证发现 `--debug` 源码注释链路两处断裂：① **parser 表达式节点缺 location**——`parser_expr.cpp` 的 CallExpr/IdentifierExpr/字面量/BinaryExpr/UnaryExpr/IndexExpr/MemberExpr/AssignmentExpr/TernaryExpr/CastExpr 创建时未设置 `location`（默认空 SourceLocation），IR 指令 `inst.loc` 全无效，`DebugInfoCollector::isValidLoc` 过滤全部注释——`--debug` 后 x64/arm64 全优化级别汇编中源码注释 0 条，且**无任何报错（静默断裂）**；② **debug_info 双前缀注释**——`commentFor` 返回带注释前缀文本（`// src:`），而 x64/arm64 的 `AsmWriter::comment()` 又自动加前缀（`; `/`// `），产出 `// // src:` 双前缀
+  - **原因**: ① parser 表达式节点创建时只关心语法正确性，location 字段被遗漏（语句/声明节点有设置、表达式节点全漏）；调试信息消费端 `isValidLoc` 静默过滤无效位置，无诊断——链路断裂无感知；② `commentFor` 与 writer 职责边界不清，两处都加前缀
+  - **解决**: ① `parser_expr.cpp` 全部表达式节点补 `location` 赋值（叶子取 token 位置、复合取左操作数/运算符位置）；② `commentFor` 改为返回纯文本 `src: 文件.cn:行`，注释前缀由各后端 AsmWriter 统一添加，删除 `AsmCommentStyle`/`setCommentStyle` 死代码并同步单测
+  - **预防**: **任何 AST 节点创建后必须设置 location**（特别是表达式节点）——IR 指令 loc、未来 DWARF 定位全部依赖它；调试信息消费端遇到无效位置应可诊断（当前静默过滤是隐患）；生成注释文本时先确认 writer 是否已自动加前缀（避免双前缀）；每次新增 CLI 开关（--debug/--no-regalloc）必须实际运行验证产物（grep 汇编注释数），不能只靠单测
+  - **权重**: 16.6（集成问题7 × 详细分析1.8 × 解决方案1.5 × 预防措施1.5 × 已解决1.0 × 影响度0.8）
+
 - [2026-08-14 15:20] **问题类型**: 逻辑错误（权重 31.2）
   - **描述**: 阶段B 优化器（LICM）两次引入破坏正确性的外提：① 循环体漏收集 back edge tail 块——`findNaturalLoops` BFS 未 `body.insert(tail)`，循环内 Store 槽未入 writtenSlots → 循环变量 Load 误判"值不变" → 依赖指令外提 → 02_control 打印垃圾值（-1868819032）；② 外提指令引用"循环内 Load 定义寄存器"——Load 结果加入不变集合但 Load 指令留在循环内，`减 %v108 %v106 1` 外提到 preheader 后引用未定义的 %v106 → 14_integration2 排序错乱（员工0 年薪 0）
   - **原因**: ① 自然循环 body 集合算法缺 tail（自环 tail==header 也被 `t!=h` 误排除）；② 不变集合混入"值不变但定义留在循环内"的副作用指令结果（Load），外提引用它们的指令造成使用前未定义

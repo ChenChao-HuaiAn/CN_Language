@@ -760,11 +760,9 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
         regAllocUsed_ = !calleeSavedRegs_.empty();
     }
     // ---- 阶段C：调试信息（Task 4.4） ----
+    // 注释前缀（"; "）由 AsmWriter::comment 统一添加，本收集器只存纯文本
     debugInfo_ = debuginfo::DebugInfoCollector();
     asmLineCounter_ = 0;
-    if (debugInfoEnabled_) {
-        debugInfo_.setCommentStyle(debuginfo::AsmCommentStyle::MasmSemicolon);
-    }
     // 登记参数槽（使用唯一内部名 paramUniques，与 Alloca extra 及 Load/Store 引用一致）
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         const std::string& unique = (i < function.paramUniques.size())

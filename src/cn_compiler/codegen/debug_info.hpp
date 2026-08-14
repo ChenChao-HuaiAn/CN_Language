@@ -20,12 +20,6 @@
 namespace cn_compiler {
 namespace debuginfo {
 
-// 汇编位置注释格式
-enum class AsmCommentStyle {
-    MasmSemicolon,   // "; src: ..."（Win x64 MASM）
-    GasSlash,        // "// src: ..."（Linux ARM64 GAS）
-};
-
 // 源码行号映射条目：源码位置 -> 汇编行号
 struct SourceMapping {
     std::string fileName;   // 源文件名
@@ -35,16 +29,16 @@ struct SourceMapping {
 };
 
 // 调试信息收集器：收集源码行号映射并生成汇编注释
+// 注释语法前缀（x64 "; " / arm64 "// "）由各后端 AsmWriter 统一添加，
+//   本模块只产出纯文本 "src: 文件.cn:行"，避免与 writer 前缀叠加成双前缀
+//   （阶段C 串联修复：原实现返回带前缀文本，writer.comment 再加前缀 -> "// // src:"）
 class DebugInfoCollector {
 public:
-    // 设置注释风格（默认 MASM 分号）
-    void setCommentStyle(AsmCommentStyle style) { style_ = style; }
-
     // 登记一条源码位置（在汇编中插入注释前调用）
     //  - asmLine 由 codegen 在写入汇编文本时提供（当前已写行数+1）
     void addMapping(const SourceLocation& loc, int asmLine);
 
-    // 生成源码位置注释行（供 codegen 在指令前插入）
+    // 生成源码位置注释文本（纯内容，不含注释语法前缀，由 writer 统一加前缀）
     //  - loc: 指令源码位置；asmLine: 该注释在汇编中的行号（当前行数+1）
     //  - 返回空串表示无需注释（位置无效或与上一条相同）
     std::string commentFor(const SourceLocation& loc, int asmLine);
@@ -68,7 +62,6 @@ public:
     static bool isValidLoc(const SourceLocation& loc);
 
 private:
-    AsmCommentStyle style_ = AsmCommentStyle::MasmSemicolon;
     std::vector<SourceMapping> mappings_;  // 行号映射表（按 asmLine 升序）
     SourceLocation lastLoc_;               // 上一条已注释位置（去重）
     bool hasLastLoc_ = false;
