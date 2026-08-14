@@ -98,7 +98,9 @@ std::string X64CodeGenerator::setccMnemonic(ir::Opcode opcode) {
 
 // ==================== 操作数文本 ====================
 
-// 操作数 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽）
+// 操作数 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽 / 物理寄存器）
+// 阶段C（Task 4.3）：寄存器分配开启时，分配到物理寄存器的虚拟寄存器
+//   直接输出物理寄存器名（如 rbx），否则保持栈槽映射（全栈帧行为不变）
 std::string X64CodeGenerator::operandText(const ir::IRValue& operand) {
     if (operand.isConstant) {
         // 常量：布尔 -> 0/1；字符串 -> 常量池标签；其余 -> 文本原样
@@ -108,6 +110,10 @@ std::string X64CodeGenerator::operandText(const ir::IRValue& operand) {
         return operand.extra;
     }
     if (operand.id >= 0) {
+        const regalloc::RegAssignment* ra = regAllocOf(operand.id);
+        if (ra != nullptr && !ra->assignedReg.empty()) {
+            return ra->assignedReg;  // 物理寄存器
+        }
         return regSlot(operand.id);  // 虚拟寄存器 -> 栈槽
     }
     // 变量引用（Load操作数[0]）：按变量槽
@@ -115,8 +121,12 @@ std::string X64CodeGenerator::operandText(const ir::IRValue& operand) {
     return "[rbp" + std::to_string(offset) + "]";
 }
 
-// 结果寄存器 -> 目的操作数文本（寄存器槽）
+// 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
 std::string X64CodeGenerator::resultText(const ir::IRValue& result) {
+    const regalloc::RegAssignment* ra = regAllocOf(result.id);
+    if (ra != nullptr && !ra->assignedReg.empty()) {
+        return ra->assignedReg;  // 物理寄存器
+    }
     return regSlot(result.id);
 }
 
@@ -1452,11 +1462,16 @@ void X64CodeGenerator::emitTerminator(AsmWriter& writer, const ir::IRBlock& bloc
     if (block.termKind == "返回") {
         std::string returnReg;
         if (!block.termReturnValue.empty()) {
-            // 返回值是 %vN，映射到其栈槽
+            // 返回值是 %vN，映射到其物理寄存器（阶段C）或栈槽
             std::string s = block.termReturnValue;
             if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
                 int id = std::stoi(s.substr(2));
-                returnReg = regSlot(id);
+                const regalloc::RegAssignment* ra = regAllocOf(id);
+                if (ra != nullptr && !ra->assignedReg.empty()) {
+                    returnReg = ra->assignedReg;  // 物理寄存器
+                } else {
+                    returnReg = regSlot(id);
+                }
             } else {
                 returnReg = s;  // 常量或变量名
             }

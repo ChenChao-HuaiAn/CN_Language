@@ -912,6 +912,12 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
             }
         }
     }
+    // 阶段C（Task 4.4）：调试信息收集器初始化（源码位置注释）
+    debugInfo_ = debuginfo::DebugInfoCollector();
+    asmLineCounter_ = 0;
+    if (debugInfoEnabled_) {
+        debugInfo_.setCommentStyle(debuginfo::AsmCommentStyle::GasSlash);
+    }
     Arm64AsmWriter writer;
     currentReturnType_ = function.returnType;
     currentStructReturn_ = function.structReturn;
@@ -937,6 +943,13 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
 void Arm64CodeGenerator::emitBlock(Arm64AsmWriter& writer, const ir::IRBlock& block) {
     writer.raw(currentBlockPrefix_ + labelMangle(block.label) + ":");
     for (auto& inst : block.instructions) {
+        // 阶段C（Task 4.4）：源码位置注释（调试信息，GAS // 风格）
+        if (debugInfoEnabled_ && debuginfo::DebugInfoCollector::isValidLoc(inst.loc)) {
+            const std::string c = debugInfo_.commentFor(inst.loc, ++asmLineCounter_);
+            if (!c.empty()) {
+                writer.comment(c);
+            }
+        }
         emitInstruction(writer, inst);
     }
     if (block.terminated) {

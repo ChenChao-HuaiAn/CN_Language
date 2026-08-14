@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "cn_compiler/codegen/codegen.hpp"
+#include "cn_compiler/codegen/debug_info.hpp"
+#include "cn_compiler/codegen/reg_alloc.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
 
 namespace cn_compiler {
@@ -55,6 +57,18 @@ public:
     //   可空——未绑定时 OOP 指令（NewObject 等）以注释占位输出
     explicit Arm64CodeGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic)
         : diagnostics_(diagnostics), semantic_(semantic) {}
+
+    // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关（默认关闭——保持全栈帧行为）
+    //   arm64 集成点：reg_alloc 模块完整可用（活跃区间/线性扫描/溢出/被调用者保存），
+    //   本后端提供 setRegAllocMap 接口供外部注入分配结果；默认关闭时全栈槽映射不变。
+    //   （arm64 结果写回点分散于 35 处 emitStackStore(regSlotOffset(...))，为保守正确性，
+    //    寄存器分配作为可开关特性，默认关闭——见阶段C 设计决策）
+    void setRegAllocEnabled(bool enabled) { regAllocEnabled_ = enabled; }
+    bool regAllocEnabled() const { return regAllocEnabled_; }
+    void setDebugInfoEnabled(bool enabled) { debugInfoEnabled_ = enabled; }
+    bool debugInfoEnabled() const { return debugInfoEnabled_; }
+    // 注入寄存器分配结果（供外部线性扫描分配器消费，默认空 = 全栈槽）
+    void setRegAllocMap(const regalloc::RegAssignmentMap& map) { regAllocMap_ = map; }
 
     // 主入口：生成完整汇编文件（.text + .data + .section .rodata）
     std::string generateAssembly(const ir::IRModule& module) override;
@@ -323,6 +337,17 @@ private:
     // 模块级收集的虚表/静态字段引用符号
     std::unordered_set<std::string> vtableRefs_;
     std::unordered_set<std::string> staticRefs_;
+
+    // ---- 阶段C：寄存器分配（Task 4.3） ----
+    // 注入的寄存器分配结果（外部线性扫描分配器产生；空 = 全栈槽映射）
+    regalloc::RegAssignmentMap regAllocMap_;
+    // 是否启用寄存器分配（默认关闭——arm64 保持全栈帧行为，正确性优先）
+    bool regAllocEnabled_ = false;
+
+    // ---- 阶段C：调试信息（Task 4.4） ----
+    debuginfo::DebugInfoCollector debugInfo_;  // 源码行号映射收集器
+    bool debugInfoEnabled_ = false;            // 是否嵌入源码位置注释
+    int asmLineCounter_ = 0;                   // 汇编行号计数器（供调试映射）
 };
 
 } // namespace cn_compiler

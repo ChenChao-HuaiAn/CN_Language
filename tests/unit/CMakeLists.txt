@@ -61,6 +61,8 @@ add_executable(cn_unit_tests
     codegen/test_audit_regressions.cpp
     codegen/test_x64_oop.cpp
     codegen/test_x64_vtable.cpp
+    codegen/test_reg_alloc.cpp
+    codegen/test_debug_info.cpp
     opt/test_const_fold.cpp
     opt/test_dce.cpp
     opt/test_pass_manager.cpp
@@ -70,6 +72,11 @@ add_executable(cn_unit_tests
     opt/test_cross_block_dce.cpp
     opt/test_global_value.cpp
     opt/test_opt_levels.cpp
+    opt/test_ssa.cpp
+    opt/test_licm.cpp
+    opt/test_strength_reduce.cpp
+    opt/test_inline.cpp
+    opt/test_tail_call.cpp
     runtime/test_runtime.cpp
     runtime/test_string_api.cpp
     runtime/test_string_api_extra.cpp

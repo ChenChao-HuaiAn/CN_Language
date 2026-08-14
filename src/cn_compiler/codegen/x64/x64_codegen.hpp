@@ -18,6 +18,8 @@
 #include <vector>
 
 #include "cn_compiler/codegen/codegen.hpp"
+#include "cn_compiler/codegen/debug_info.hpp"
+#include "cn_compiler/codegen/reg_alloc.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
 
 namespace cn_compiler {
@@ -49,6 +51,15 @@ public:
     //   可空——未绑定时 OOP 指令（NewObject 等）以注释占位输出（测试可构造无类模块）
     explicit X64CodeGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic)
         : diagnostics_(diagnostics), semantic_(semantic) {}
+
+    // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关（默认关闭——保持全栈帧行为）
+    //   开启后仅对 64 位整型/指针虚拟寄存器做物理寄存器分配（被调用者保存寄存器），
+    //   且在函数序言保存、尾声恢复。关闭 = 全栈槽映射（-O0/-O1 行为完全不变）。
+    void setRegAllocEnabled(bool enabled) { regAllocEnabled_ = enabled; }
+    bool regAllocEnabled() const { return regAllocEnabled_; }
+    // 调试信息开关：开启后在汇编中嵌入源码位置注释（"; src: 文件.cn:行"）
+    void setDebugInfoEnabled(bool enabled) { debugInfoEnabled_ = enabled; }
+    bool debugInfoEnabled() const { return debugInfoEnabled_; }
 
     // 主入口：生成完整汇编文件（.data段 + .code段 + END）
     std::string generateAssembly(const ir::IRModule& module) override;
@@ -242,11 +253,26 @@ private:
     // 变量槽区大小（当前已登记槽数 * 8，供栈帧计算）
     int varSlotAreaSize() const;
 
-    // 虚拟寄存器/变量 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽）
+    // 虚拟寄存器/变量 -> 源操作数文本（常量立即数 / 寄存器槽 / 变量槽 / 物理寄存器）
     std::string operandText(const ir::IRValue& operand);
 
-    // 结果寄存器 -> 目的操作数文本（寄存器槽）
+    // 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
     std::string resultText(const ir::IRValue& result);
+
+    // ==================== 阶段C：寄存器分配 + 调试信息 ====================
+
+    // 虚拟寄存器ID -> 寄存器分配结果（未分配返回空映射项）
+    const regalloc::RegAssignment* regAllocOf(int regId) const;
+
+    // 寄存器分配器可分配的物理寄存器名（被调用者保存，去保留）
+    static std::vector<std::string> allocableCalleeSavedRegs(bool needR12Reserved);
+
+    // 虚拟寄存器是否分配到物理寄存器（regAlloc 开启且映射存在且非空）
+    bool hasPhysReg(int regId) const;
+
+    // 被调用者保存寄存器（本函数实际使用的）-> 序言压栈 / 尾声恢复
+    void emitSaveCalleeSaved(AsmWriter& writer);
+    void emitRestoreCalleeSaved(AsmWriter& writer);
 
     Diagnostics& diagnostics_;  // 诊断引擎（错误报告预留）
 
@@ -278,6 +304,21 @@ private:
     // 模块级收集的虚表/静态字段引用符号（generateAssembly 期间有效）
     std::unordered_set<std::string> vtableRefs_;
     std::unordered_set<std::string> staticRefs_;
+
+    // ---- 阶段C：寄存器分配（Task 4.3） ----
+    // 虚拟寄存器 -> 分配结果（物理寄存器 / 溢出槽），函数级有效
+    regalloc::RegAssignmentMap regAllocMap_;
+    // 本函数实际使用的被调用者保存寄存器（序言压栈/尾声恢复，按压栈顺序）
+    std::vector<std::string> calleeSavedRegs_;
+    // 是否启用了寄存器分配（-O2 时 true；structReturn/i128 返回函数强制关闭）
+    bool regAllocEnabled_ = false;
+    // 本函数是否实际使用了物理寄存器（决定是否需要保存/恢复被调用者保存寄存器）
+    bool regAllocUsed_ = false;
+
+    // ---- 阶段C：调试信息（Task 4.4） ----
+    debuginfo::DebugInfoCollector debugInfo_;  // 源码行号映射收集器
+    bool debugInfoEnabled_ = false;            // 是否嵌入源码位置注释
+    int asmLineCounter_ = 0;                   // 汇编行号计数器（供调试映射）
 };
 
 } // namespace cn_compiler

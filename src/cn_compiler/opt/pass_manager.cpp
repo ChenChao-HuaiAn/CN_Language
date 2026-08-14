@@ -1,9 +1,10 @@
-// CN语言优化器 Pass 管理器实现（Task 2.6 + Task 完善C 优化器增强）
+// CN语言优化器 Pass 管理器实现（Task 2.6 + Task 完善C 优化器增强 + 阶段B）
 // 实现要点：
 //   1. addPass 注册 Pass（独占所有权）
 //   2. run 执行 fixpoint 循环：每轮按注册顺序运行全部 Pass，
 //      收集修改信号，直到一轮内无修改或达到上限轮次
-//   3. runOptLevel 按优化级别构建 Pass 组合（完善C 新增 5 个 Pass）
+//   3. runOptLevel 按优化级别构建 Pass 组合（完善C + 阶段B 优化补全）
+//      阶段B（Task 4.1/4.2）：SSA/Phi、LICM、强度削减、内联、尾调用
 #include "cn_compiler/opt/algebraic_simplify.hpp"
 #include "cn_compiler/opt/const_fold.hpp"
 #include "cn_compiler/opt/copy_propagation.hpp"
@@ -11,7 +12,12 @@
 #include "cn_compiler/opt/cse.hpp"
 #include "cn_compiler/opt/dce.hpp"
 #include "cn_compiler/opt/global_value.hpp"
+#include "cn_compiler/opt/inline.hpp"
+#include "cn_compiler/opt/licm.hpp"
 #include "cn_compiler/opt/pass_manager.hpp"
+#include "cn_compiler/opt/ssa.hpp"
+#include "cn_compiler/opt/strength_reduce.hpp"
+#include "cn_compiler/opt/tail_call.hpp"
 
 namespace cn_compiler {
 namespace opt {
@@ -55,12 +61,28 @@ bool runOptLevel(ir::IRModule& module, int optLevel) {
         manager.addPass(std::make_unique<CSEPass>(true));
         // ---- 跨块 DCE 增强（-O2）：不可达块删除 + 常量条件跳转折叠 ----
         manager.addPass(std::make_unique<CrossBlockDCEPass>());
+        // ---- 循环不变量外提（-O2，阶段B Task 4.2）：循环内不变量移到循环前
+        //      （规格书9.2：-O2 含循环优化；仅在循环外提后不改变执行次数语义） ----
+        manager.addPass(std::make_unique<LICMPass>());
+        // ---- 强度削减（-O2，阶段B Task 4.2）：乘/除 2 的幂 -> 移位
+        //      （i*4/i*8 数组寻址核心场景；LICM 后循环内指令更纯净） ----
+        manager.addPass(std::make_unique<StrengthReducePass>());
+        // ---- 尾调用优化（-O2，阶段B Task 4.2）：尾递归转为循环
+        //      （函数级安全变换，节省栈帧；规格书9.2 TCO） ----
+        manager.addPass(std::make_unique<TailCallPass>());
     }
     if (optLevel >= 3) {
         // ---- 全局值传播（-O3）：常量 Store->Load 安全子集 ----
         manager.addPass(std::make_unique<GlobalValuePass>());
+        // ---- SSA 构造（-O3，阶段B Task 4.1）：汇合点 Phi 节点
+        //      （codegen 对 Phi 输出"无汇编注释"，语义等价；为后续数据流
+        //        分析（寄存器分配/全局值传播增强）铺路） ----
+        manager.addPass(std::make_unique<SSAPass>());
+        // ---- 函数内联（-O3，阶段B Task 4.2）：小函数内联展开
+        //      （规格书9.2：-O3 含激进内联；启发式阈值 kMaxInlineInsts） ----
+        manager.addPass(std::make_unique<InlinePass>());
     }
-    // DCE 最后运行：清理简化/CSE 产生的死代码
+    // DCE 最后运行：清理简化/CSE/LICM/内联/TCO 产生的死代码
     manager.addPass(std::make_unique<DCEPass>());
     return manager.run(module);
 }

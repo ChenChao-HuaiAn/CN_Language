@@ -22,6 +22,11 @@ struct DriverOptions {
     int optLevel = 2;                // 优化级别
     std::string output;              // 输出文件路径
     bool verbose = false;            // 详细输出
+    // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关
+    //   useRegAlloc：-O2 及以上默认启用（可被 --no-regalloc 关闭）；-O0/-O1 恒 false
+    //   debugInfo：--debug 开启，汇编中嵌入源码位置注释
+    bool useRegAlloc = false;        // 是否启用寄存器分配（由 cn_main 按 optLevel 联动设置）
+    bool debugInfo = false;          // 是否嵌入源码位置注释
 };
 
 // 流水线产物：保存各阶段中间结果，按命令需要消费

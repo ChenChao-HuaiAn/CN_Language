@@ -35,6 +35,9 @@ struct CliOptions {
     int optLevel = 2;                // 优化级别
     std::string output;              // 输出文件路径
     bool verbose = false;            // 详细输出
+    // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息
+    bool useRegAlloc = true;         // 是否启用寄存器分配（-O2 起联动；--no-regalloc 显式关闭）
+    bool debugInfo = false;          // 是否嵌入源码位置注释（--debug）
 };
 
 // 打印版本信息
@@ -59,6 +62,8 @@ void printHelp() {
     std::cout << "  -O0/-O1/-O2/-O3       优化级别（规格书9.1+完善C；-O1=折叠+DCE+代数简化+复写传播，\n";
     std::cout << "                         -O2 增加 CSE+跨块DCE，-O3 增加全局值传播）\n";
     std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2 | 3)（兼容写法，等价 -O<级别>）\n";
+    std::cout << "  --no-regalloc          关闭寄存器分配（阶段C：-O2 起默认启用，保持全栈帧）\n";
+    std::cout << "  --debug                汇编中嵌入源码位置注释（阶段C 调试信息）\n";
     std::cout << "  --output <路径>        输出文件路径\n";
     std::cout << "  --verbose              详细输出\n";
     std::cout << "  --version, -v          显示版本信息\n";
@@ -90,6 +95,12 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
             if (value != "0" && value != "1" && value != "2" && value != "3")
                 return "无效优化级别: " + value + "（应为 0、1、2 或 3）";
             options.optLevel = std::stoi(value);
+        } else if (current == "--no-regalloc") {
+            // 阶段C（Task 4.3）：显式关闭寄存器分配（保持全栈帧行为）
+            options.useRegAlloc = false;
+        } else if (current == "--debug") {
+            // 阶段C（Task 4.4）：汇编中嵌入源码位置注释
+            options.debugInfo = true;
         } else if (current == "--output") {
             if (index + 1 >= args.size()) return "选项 --output 缺少参数";
             options.output = args[++index];
@@ -176,6 +187,11 @@ static cn_compiler::driver::DriverOptions toDriverOptions(const CliOptions& opti
     dopts.optLevel = options.optLevel;
     dopts.output = options.output;
     dopts.verbose = options.verbose;
+    // 阶段C（Task 4.3）：寄存器分配联动——-O2 及以上默认启用，
+    //   --no-regalloc 显式关闭（options.useRegAlloc=false 覆盖）
+    dopts.useRegAlloc = (options.optLevel >= 2) && options.useRegAlloc;
+    // 阶段C（Task 4.4）：调试信息
+    dopts.debugInfo = options.debugInfo;
     return dopts;
 }
 

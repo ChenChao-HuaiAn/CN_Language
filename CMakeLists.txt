@@ -133,8 +133,11 @@ target_link_libraries(cn_compiler_ir PUBLIC cn_compiler_type_system cn_compiler_
 #   arm64_instructions.cpp（单指令 AArch64 降级）、arm64_codegen_i128.cpp（i128 双槽运算）、
 #   arm64_codegen_oop.cpp（OOP 指令展开）、arm64_codegen_vtable.cpp（虚表 .rodata）
 # 阶段5 Task 5.2：backend_factory.cpp（按目标平台分发后端实例）
+# 阶段C（Task 4.3/4.4）：reg_alloc.cpp（线性扫描寄存器分配器）+ debug_info.cpp（调试信息）
 add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/backend_factory.cpp
+    src/cn_compiler/codegen/reg_alloc.cpp
+    src/cn_compiler/codegen/debug_info.cpp
     src/cn_compiler/codegen/x64/x64_codegen.cpp
     src/cn_compiler/codegen/x64/x64_instructions.cpp
     src/cn_compiler/codegen/x64/x64_codegen_oop.cpp
@@ -157,7 +160,8 @@ target_include_directories(cn_compiler_ast_printer PUBLIC ${CMAKE_SOURCE_DIR}/sr
 target_link_libraries(cn_compiler_ast_printer PUBLIC cn_compiler_parser cn_compiler_common)
 
 # 优化器模块库：Pass框架 + 常量折叠 + 死代码消除 + 代数简化/复写传播/CSE/
-#   跨块DCE/全局值传播（Task 2.6 + Task 完善C 优化器增强，供编译器与单元测试共用）
+#   跨块DCE/全局值传播 + 阶段B（SSA/Phi、LICM、强度削减、内联、尾调用）
+#   （Task 2.6 + Task 完善C + 阶段B Task 4.1/4.2 优化补全，供编译器与单元测试共用）
 add_library(cn_compiler_opt STATIC
     src/cn_compiler/opt/pass_manager.cpp
     src/cn_compiler/opt/const_fold.cpp
@@ -167,6 +171,12 @@ add_library(cn_compiler_opt STATIC
     src/cn_compiler/opt/cse.cpp
     src/cn_compiler/opt/cross_block_dce.cpp
     src/cn_compiler/opt/global_value.cpp
+    src/cn_compiler/opt/cfg.cpp
+    src/cn_compiler/opt/ssa.cpp
+    src/cn_compiler/opt/licm.cpp
+    src/cn_compiler/opt/strength_reduce.cpp
+    src/cn_compiler/opt/inline.cpp
+    src/cn_compiler/opt/tail_call.cpp
 )
 target_include_directories(cn_compiler_opt PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_opt PUBLIC cn_compiler_ir cn_compiler_common)

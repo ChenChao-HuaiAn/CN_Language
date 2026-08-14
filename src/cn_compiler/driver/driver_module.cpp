@@ -124,7 +124,9 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     }
 
     // 6. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）
-    std::unique_ptr<Backend> backend = createBackend(options.target, diagnostics, &semantic);
+    std::unique_ptr<Backend> backend = createBackend(
+        options.target, diagnostics, &semantic,
+        options.optLevel, options.useRegAlloc, options.debugInfo);
     if (!backend) {
         std::cerr << diagnostics.format();
         return 1;

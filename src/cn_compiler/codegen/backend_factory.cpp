@@ -16,15 +16,31 @@
 namespace cn_compiler {
 
 // 创建目标平台对应的代码生成后端（分发工厂）
+// 阶段C（Task 4.3）：-O2 及以上 + useRegAlloc 时启用寄存器分配；
+//   默认（optLevel<=1 或 useRegAlloc=false）保持全栈槽映射（-O0/-O1 行为不变）
+// 阶段C（Task 4.4）：debugInfo 开启时嵌入源码位置注释
 // 未知目标平台：报告诊断错误（源码位置留空）并返回 nullptr
 std::unique_ptr<Backend> createBackend(const std::string& target,
                                        Diagnostics& diag,
-                                       SemanticAnalyzer* sem) {
+                                       SemanticAnalyzer* sem,
+                                       int optLevel,
+                                       bool useRegAlloc,
+                                       bool debugInfo) {
+    // 寄存器分配联动：-O2 及以上默认启用（useRegAlloc 显式关闭可覆盖）
+    const bool regAllocOn = (optLevel >= 2) && useRegAlloc;
     if (target == "win-x64") {
-        return std::make_unique<X64CodeGenerator>(diag, sem);
+        auto backend = std::make_unique<X64CodeGenerator>(diag, sem);
+        backend->setRegAllocEnabled(regAllocOn);
+        backend->setDebugInfoEnabled(debugInfo);
+        return backend;
     }
     if (target == "linux-arm64") {
-        return std::make_unique<Arm64CodeGenerator>(diag, sem);
+        auto backend = std::make_unique<Arm64CodeGenerator>(diag, sem);
+        // arm64 寄存器分配作为可开关特性（阶段C 设计决策：默认关闭，
+        //   保持全栈帧行为，正确性最高优先；reg_alloc 模块独立可用）
+        backend->setRegAllocEnabled(false);
+        backend->setDebugInfoEnabled(debugInfo);
+        return backend;
     }
     diag.report(Diagnostic::error("", 0, 0,
                  "未知目标平台: " + target + "（应为 win-x64 或 linux-arm64）"));

@@ -76,7 +76,9 @@ int runPipeline(const std::string& source, const std::string& fileName,
     // 阶段3（Task 3.1）：绑定 semantic 指针——OOP 指令（NewObject 虚表指针初始化/
     //    VirtualCall 槽位查询/DeleteObject 析构符号/静态字段符号）依赖类布局与
     //    虚表槽位查询；未绑定时 OOP 指令以注释占位输出（无法生成正确汇编）。
-    std::unique_ptr<Backend> backend = createBackend(options.target, diagnostics, &semantic);
+    std::unique_ptr<Backend> backend = createBackend(
+        options.target, diagnostics, &semantic,
+        options.optLevel, options.useRegAlloc, options.debugInfo);
     if (!backend) {
         std::cerr << diagnostics.format();
         return 1;

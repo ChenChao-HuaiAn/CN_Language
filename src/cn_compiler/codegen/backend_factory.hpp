@@ -18,9 +18,15 @@ class SemanticAnalyzer;
 // 创建目标平台对应的代码生成后端
 // 参数: target 目标平台（"win-x64" / "linux-arm64"）、diag 诊断引擎、
 //       sem 语义分析器指针（可空，供 OOP 指令展开查询类布局）
+//       optLevel 优化级别（阶段C：-O2 及以上启用寄存器分配，-O0/-O1 全栈帧不变）
+//       useRegAlloc 是否启用寄存器分配（默认 false，保持全栈帧行为；-O2 联动时为 true）
+//       debugInfo 是否嵌入源码位置注释（默认 false）
 // 返回: 后端实例所有权；未知平台返回 nullptr（diag 已报告错误）
 std::unique_ptr<Backend> createBackend(const std::string& target,
                                        Diagnostics& diag,
-                                       SemanticAnalyzer* sem);
+                                       SemanticAnalyzer* sem,
+                                       int optLevel = 0,
+                                       bool useRegAlloc = false,
+                                       bool debugInfo = false);
 
 } // namespace cn_compiler

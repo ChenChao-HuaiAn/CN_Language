@@ -1,16 +1,60 @@
 # HANDOFF - CN语言编译器项目交接文档
 
-> **交接原因**：2026-08-14 会话结束（**阶段5「Linux ARM64」阶段A 全部完成**——阶段A-1 ARM64 后端核心 + 阶段A-2 驱动/CLI/E2E 接入与本机全链路 + 阶段A-3 修复 2 个 E2E 失败；Linux ARM64 本机全链路跑通：cn build → as → g++ → 运行；单测 918/918、编译零警告、E2E **28/28 PASS**）。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
+> **交接原因**：2026-08-14 会话结束（**阶段C「寄存器分配 + 调试信息 + 优化级别框架」全部完成**——线性扫描寄存器分配器 reg_alloc + debug_info 源码注释 + `--no-regalloc`/`--debug` 开关联动；-O0 与 -O2 E2E 28/28 输出一致、964/964 单测、编译零警告）。本文档写给完全没有上下文的新会话看，帮助快速恢复开发。
 >
-> **前序里程碑**：阶段3「OOP 与错误处理」全部完成（901/901 单测、28/28 E2E）；阶段A-1（ARM64 后端核心 + 运行时平台无关改造）。
+> **前序里程碑**：阶段3「OOP 与错误处理」（901/901 单测、28/28 E2E）；阶段A「Linux ARM64」（918/918 单测、28/28 E2E）；阶段B 优化补全（949/949 单测、28/28 E2E）；阶段C 寄存器分配/调试信息（本交接，964/964 单测、28/28 E2E）。
 
 ## 一、我们在做什么任务
 
-正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码。当前已完成：阶段0~3（词法→语法→语义→IR→Win x64 后端→OOP/错误处理/模块/泛型）、阶段4 优化、**阶段5「Linux ARM64」阶段A 全部完成（阶段A-1 ARM64 后端核心 + 阶段A-2 CLI 分发与驱动/本机全链路 + 阶段A-3 2 个 E2E 失败修复，28/28 PASS）**。下一步：**阶段6「标准库」** 或 阶段5 阶段B/C（交叉编译/QEMU 验证、优化对齐）。
+正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码。当前已完成：阶段0~3（词法→语法→语义→IR→Win x64 后端→OOP/错误处理/模块/泛型）、阶段4 优化（**阶段B 完成 SSA/LICM/强度削减/内联/TCO；阶段C 完成寄存器分配/调试信息**）、阶段5「Linux ARM64」阶段A（ARM64 后端 + 本机全链路）。下一步：**阶段6「标准库」** 或 阶段5 阶段B/C（交叉编译/QEMU 验证）、阶段4 优化级别框架收尾（arm64 寄存器分配按需启用）。
 
 ## 二、已经完成了什么
 
-### 2.1 本轮核心任务：阶段5 阶段A-2「ARM64 后端接入驱动/CLI/E2E + 本机全链路」（已完成 ✅）
+### 2.0 本轮核心任务：阶段C「寄存器分配 + 调试信息 + 优化级别框架」（已完成 ✅，2026-08-14）
+
+**新增模块（codegen 层，规格书 Task 4.3/4.4）**：
+
+| 文件 | 职责 | 挂载 |
+|------|------|------|
+| [`codegen/reg_alloc.hpp`](src/cn_compiler/codegen/reg_alloc.hpp) / [`reg_alloc.cpp`](src/cn_compiler/codegen/reg_alloc.cpp) | 线性扫描寄存器分配器：活跃区间（def-use + 跨块活跃传播）→ 按 start 扫描 → 空闲寄存器分配/溢出到栈槽 | **-O2**（x64） |
+| [`codegen/debug_info.hpp`](src/cn_compiler/codegen/debug_info.hpp) / [`debug_info.cpp`](src/cn_compiler/codegen/debug_info.cpp) | 源码行号映射表 + 汇编注释（`; src:` / `// src:`）+ DWARF 扩展位预留 | `--debug` |
+| `x64_codegen.hpp/.cpp` + `x64_instructions.cpp` | operandText/resultText/emitTerminator 三收敛点映射物理寄存器；被调用者保存寄存器 prologue push/epilogue pop | -O2 |
+| `backend_factory.cpp` + `driver.hpp/cpp` + `cn_main.cpp` | `--no-regalloc`/`--debug` CLI 开关；createBackend 传参联动 | -O2 起启用 |
+
+**关键设计（保守策略，正确性最高优先）**：
+1. **-O0/-O1 全栈帧完全不变**（不引入回归）；-O2 起启用寄存器分配，`--no-regalloc` 可关
+2. **仅 i64/u64/ptr 参与分配**（浮点/i128/小位宽保持栈槽——避免与发射器宽度假设冲突）
+3. **仅被调用者保存寄存器**（x64 rbx/r12~r15；arm64 x19~x28）——后端发射器内部用调用者保存寄存器（rax/rcx/rdx/r8~r11 / x0~x18）作临时
+4. **structReturn/i128/u128 返回函数强制关闭**（epilogue 提前 return 路径，被调用者保存恢复会遗漏）
+5. **arm64**：提供 `setRegAllocMap` 注入 API（reg_alloc 模块独立可用），默认关闭（结果写回点分散 35 处，保守全栈帧）
+6. 调试信息默认关闭（`--debug` 开启）；x64 MASM `; src:` / arm64 GAS `// src:`（`#` 与立即数冲突）
+
+**测试**：新增 14 个单测（reg_alloc 9 + debug_info 5）→ 总 **964/964**；E2E 28/28（-O0 与 -O2 输出完全一致）；x64 -O0 无物理寄存器、-O2 有（push/pop 配对正确）；编译零警告。
+
+### 2.0b 前序核心任务：阶段B「平台无关优化补全」（已完成 ✅，2026-08-14）
+
+**新增 Pass（操作 IR，与平台无关，服务 x64 与 arm64 双后端）**：
+
+| 文件 | 职责 | 挂载 |
+|------|------|------|
+| [`opt/cfg.hpp`](src/cn_compiler/opt/cfg.hpp) / [`cfg.cpp`](src/cn_compiler/opt/cfg.cpp) | 支配树（支配者/立即支配者迭代求解）+ 自然循环检测（back edge→header+循环体） | 供 SSA/LICM 共用 |
+| [`opt/ssa.hpp`](src/cn_compiler/opt/ssa.hpp) / [`ssa.cpp`](src/cn_compiler/opt/ssa.cpp) | SSA 构造：汇合点变量级 Phi（复用 Load 结果寄存器，语义等价、幂等） | **-O3** |
+| [`opt/licm.hpp`](src/cn_compiler/opt/licm.hpp) / [`licm.cpp`](src/cn_compiler/opt/licm.cpp) | 循环不变量外提：迭代不变集合，纯运算外提到 preheader | **-O2** |
+| [`opt/strength_reduce.hpp`](src/cn_compiler/opt/strength_reduce.hpp) / [`strength_reduce.cpp`](src/cn_compiler/opt/strength_reduce.cpp) | 强度削减：`Mul x 2^n -> Shl`、无符号 `Div x 2^n -> Shr` | **-O2** |
+| [`opt/inline.hpp`](src/cn_compiler/opt/inline.hpp) / [`inline.cpp`](src/cn_compiler/opt/inline.cpp) | 函数内联：阈值 16 指令；排除递归/入口/OOP/lambda/模块函数/参数 Store/AddrOf | **-O3** |
+| [`opt/tail_call.hpp`](src/cn_compiler/opt/tail_call.hpp) / [`tail_call.cpp`](src/cn_compiler/opt/tail_call.cpp) | 尾调用优化：尾递归→参数槽 Store+跳回入口 | **-O2** |
+
+**优化级别组合**：-O0 无优化；-O1 折叠+简化+复写+DCE；-O2 +CSE+跨块DCE+LICM+强度削减+TCO；-O3 +全局值传播+SSA+内联。**-O0/-O2/-O3 三级别 E2E 输出完全一致（28/28）**。
+
+**关键安全设计（踩坑修复沉淀）**：
+1. LICM：Load/副作用指令结果**不加入不变集合**——避免外提指令在 preheader 引用"循环内 Load 定义"的未定义寄存器（排序/数组场景正确性关键）
+2. LICM：循环体必须含 back edge tail 块（`body.insert(tail)`）与自环（tail==header）
+3. 内联：排除 `?lambda`（捕获语义）、mangledName 含 `#`（模块/重载函数）、含 `AddrOf 参数`（地址逃逸）、含 `Store 参数`（值传递副本）
+4. TCO：保守条件（实参匹配、入口无参数 Store、实参非嵌套调用结果、非结构体返回）
+
+**测试**：新增 31 个单测（SSA 7 + LICM 6 + 强度削减 8 + 内联 6 + TCO 6）→ 总 **949/949**；E2E 三级别全 28/28。
+
+### 2.1 阶段5 阶段A-2「ARM64 后端接入驱动/CLI/E2E + 本机全链路」（已完成 ✅）
 
 **后端工厂与驱动分发**：
 - 新建 [`backend_factory.hpp`](src/cn_compiler/codegen/backend_factory.hpp) / [`backend_factory.cpp`](src/cn_compiler/codegen/backend_factory.cpp)：`createBackend(target, diag, sem)`——win-x64 → X64、linux-arm64 → ARM64、未知报错
@@ -59,8 +103,8 @@
 
 | 指标 | 数值 |
 |------|------|
-| 单元测试 | **918/918**（原 901 + 新增 17 个 Arm64CodegenTest） |
-| E2E | **28/28**（Linux ARM64 本机真实运行，0 SKIP；Win x64 亦 28/28） |
+| 单元测试 | **949/949**（原 918 + 新增 31 个阶段B Pass 测试：SSA 7/LICM 6/强度削减 8/内联 6/TCO 6） |
+| E2E | **28/28**（Linux ARM64 本机真实运行，0 SKIP；**-O0/-O2/-O3 三级别输出一致**；Win x64 亦 28/28） |
 | 编译警告 | 0（GCC 7 -Wall -Wextra -Werror） |
 | ARM64 汇编验证 | `aarch64-linux-gnu-as` 交叉汇编通过（含 i128/OOP/浮点/字符串全特性 IR） |
 

@@ -210,6 +210,48 @@ int X64CodeGenerator::varSlotAreaSize() const {
     return static_cast<int>(varSlots_.size()) * 8;
 }
 
+// ==================== 阶段C：寄存器分配 + 调试信息辅助（Task 4.3/4.4） ====================
+
+// 虚拟寄存器ID -> 寄存器分配结果（未分配或未启用返回 nullptr）
+const regalloc::RegAssignment* X64CodeGenerator::regAllocOf(int regId) const {
+    if (regId < 0) return nullptr;
+    auto it = regAllocMap_.find(regId);
+    if (it == regAllocMap_.end()) return nullptr;
+    return &it->second;
+}
+
+// 虚拟寄存器是否分配到物理寄存器（regAlloc 开启且映射存在且非空）
+bool X64CodeGenerator::hasPhysReg(int regId) const {
+    const regalloc::RegAssignment* ra = regAllocOf(regId);
+    return ra != nullptr && !ra->assignedReg.empty();
+}
+
+// 寄存器分配器可分配的物理寄存器名（被调用者保存，去保留）
+//  - x64：rbx/r12~r15（rbp 为帧指针不参与）
+//  - needR12Reserved: 隐藏返回指针场景（structReturn/i128）保留 r12
+//    （prologue 用 r12 保存入口 rcx，不可被分配器占用）
+std::vector<std::string> X64CodeGenerator::allocableCalleeSavedRegs(bool needR12Reserved) {
+    std::vector<std::string> regs = {"rbx", "r12", "r13", "r14", "r15"};
+    if (needR12Reserved) {
+        regs.erase(std::remove(regs.begin(), regs.end(), "r12"), regs.end());
+    }
+    return regs;
+}
+
+// 序言保存被调用者保存寄存器（本函数实际使用的，压栈顺序 = 分配顺序）
+void X64CodeGenerator::emitSaveCalleeSaved(AsmWriter& writer) {
+    for (const auto& reg : calleeSavedRegs_) {
+        writer.line("push " + reg);
+    }
+}
+
+// 尾声恢复被调用者保存寄存器（逆序 pop，与压栈相反）
+void X64CodeGenerator::emitRestoreCalleeSaved(AsmWriter& writer) {
+    for (auto it = calleeSavedRegs_.rbegin(); it != calleeSavedRegs_.rend(); ++it) {
+        writer.line("pop " + *it);
+    }
+}
+
 // 扫描函数内最大虚拟寄存器ID（用于寄存器槽区预留）
 // 缺陷修复：i128/u128 值占用 2 个连续虚拟寄存器（result.id 与 result.id+1），
 //   原实现只按 result.id 计 maxId——当 i128 结果是函数内最后一个寄存器时
@@ -479,7 +521,7 @@ void X64CodeGenerator::emitFunctionHeader(AsmWriter& writer, const ir::IRFunctio
     writer.raw(sym + " PROC");
 }
 
-// 生成函数 prologue（push rbp / mov rbp,rsp / 预留栈帧）
+// 生成函数 prologue（push rbp / mov rbp,rsp / 预留栈帧 / 保存被调用者保存寄存器）
 void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& function) {
     writer.line("push rbp");
     writer.line("mov rbp, rsp");
@@ -495,6 +537,11 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
         function.returnType == "u128") {
         writer.line("mov r12, rcx");
     }
+    // 阶段C（Task 4.3）：寄存器分配使用的被调用者保存寄存器（rbx/r12~r15）压栈保存
+    //   ——分配器只使用被调用者保存寄存器，调用者不期望其被修改，须保存/恢复。
+    //   注：压栈顺序固定（rbx/r12/r13/r14/r15 顺序），恢复时逆序 pop。
+    //   r12 若被分配器使用（无隐藏返回指针场景），同样在此保存。
+    emitSaveCalleeSaved(writer);
 }
 
 // 生成函数参数加载：前4参数从寄存器存入参数槽，第5起直接从栈读（无需搬运）
@@ -669,6 +716,9 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
             writer.line("mov rax, " + returnReg);
         }
     }
+    // 阶段C（Task 4.3）：恢复被调用者保存寄存器（逆序 pop，与 prologue 压栈相反）
+    //   structReturn 提前 return 路径已由 regAllocUsed_=false 保证不在此恢复
+    emitRestoreCalleeSaved(writer);
     writer.line("mov rsp, rbp");
     writer.line("pop rbp");
     writer.line("ret");
@@ -679,6 +729,42 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
     // 计算寄存器槽数量（变量槽区定位依赖）
     regSlotCount_ = maxRegIdIn(function) + 1;
     varSlots_.clear();
+    // ---- 阶段C：寄存器分配（Task 4.3） ----
+    // 保守策略（正确性最高优先）：
+    //   - 结构体返回 / i128 返回函数强制关闭寄存器分配（epilogue 有提前 return 路径，
+    //     被调用者保存寄存器恢复会遗漏 -> 返回缓冲区 r12/rax 被破坏）
+    //   - 其余函数在 regAllocEnabled_（-O2）时执行线性扫描分配
+    regAllocMap_.clear();
+    calleeSavedRegs_.clear();
+    regAllocUsed_ = false;
+    const bool forceDisable = function.structReturn ||
+                              function.returnType == "i128" ||
+                              function.returnType == "u128";
+    const bool useRegAlloc = regAllocEnabled_ && !forceDisable;
+    if (useRegAlloc) {
+        // 隐藏返回指针场景（本函数无隐藏返回指针，forceDisable=false）无需保留 r12；
+        // 分配器默认使用被调用者保存寄存器集（rbx/r12~r15）
+        regalloc::LinearScanAllocator allocator(regalloc::TargetArch::X64);
+        regAllocMap_ = allocator.allocate(function);
+        // 收集本函数实际使用的被调用者保存寄存器（序言压栈/尾声恢复）
+        for (const auto& kv : regAllocMap_) {
+            if (!kv.second.assignedReg.empty()) {
+                calleeSavedRegs_.push_back(kv.second.assignedReg);
+            }
+        }
+        // 去重 + 保持稳定顺序（rbx/r12/r13/r14/r15）
+        std::sort(calleeSavedRegs_.begin(), calleeSavedRegs_.end());
+        calleeSavedRegs_.erase(
+            std::unique(calleeSavedRegs_.begin(), calleeSavedRegs_.end()),
+            calleeSavedRegs_.end());
+        regAllocUsed_ = !calleeSavedRegs_.empty();
+    }
+    // ---- 阶段C：调试信息（Task 4.4） ----
+    debugInfo_ = debuginfo::DebugInfoCollector();
+    asmLineCounter_ = 0;
+    if (debugInfoEnabled_) {
+        debugInfo_.setCommentStyle(debuginfo::AsmCommentStyle::MasmSemicolon);
+    }
     // 登记参数槽（使用唯一内部名 paramUniques，与 Alloca extra 及 Load/Store 引用一致）
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         const std::string& unique = (i < function.paramUniques.size())
@@ -739,6 +825,13 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
 void X64CodeGenerator::emitBlock(AsmWriter& writer, const ir::IRBlock& block) {
     writer.raw(block.label + ":");
     for (auto& inst : block.instructions) {
+        // 阶段C（Task 4.4）：源码位置注释（调试信息）
+        if (debugInfoEnabled_ && debuginfo::DebugInfoCollector::isValidLoc(inst.loc)) {
+            const std::string c = debugInfo_.commentFor(inst.loc, ++asmLineCounter_);
+            if (!c.empty()) {
+                writer.comment(c);
+            }
+        }
         emitInstruction(writer, inst);
     }
     if (block.terminated) {
