@@ -2807,10 +2807,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "字符串包含") calleeName = "__cn_str_contains";
         else if (calleeName == "字符串修剪") calleeName = "__cn_str_trim";
         else if (calleeName == "字符串反转") calleeName = "__cn_str_reverse";
-        else if (calleeName == "字符串从整数") calleeName = "__cn_str_from_int";
-        else if (calleeName == "字符串从浮点") calleeName = "__cn_str_from_float";
-        else if (calleeName == "字符串从字符") calleeName = "__cn_str_from_char";
-        else if (calleeName == "字符串从布尔") calleeName = "__cn_str_from_bool";  // Task 2.9
+        else if (calleeName == "整数转字符串") calleeName = "__cn_str_from_int";
+        else if (calleeName == "浮点转字符串") calleeName = "__cn_str_from_float";
+        else if (calleeName == "字符转字符串") calleeName = "__cn_str_from_char";
+        else if (calleeName == "布尔转字符串") calleeName = "__cn_str_from_bool";  // Task 2.9
+        else if (calleeName == "正数转字符串") calleeName = "__cn_str_from_uint";
         else if (calleeName == "字符串释放") calleeName = "__cn_str_free";
         // Task 2.9：格式化（格式字符串, 参数...）-> 字符串（sprintf 风格）
         else if (calleeName == "格式化") calleeName = "__cn_format";
@@ -2867,7 +2868,8 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                    calleeName == "__cn_str_lower" || calleeName == "__cn_str_trim" ||
                    calleeName == "__cn_str_reverse" || calleeName == "__cn_str_from_int" ||
                    calleeName == "__cn_str_from_float" || calleeName == "__cn_str_from_char" ||
-                   calleeName == "__cn_str_from_bool" || calleeName == "__cn_format") {
+                   calleeName == "__cn_str_from_bool" || calleeName == "__cn_str_from_uint" ||
+                   calleeName == "__cn_format") {
             resultType = "ptr";       // 连接/复制/子串/大写/小写/修剪/反转/数字/字符/布尔转换、格式化 -> 字符串（指针）
         } else if (calleeName == "__cn_str_free") {
             // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：

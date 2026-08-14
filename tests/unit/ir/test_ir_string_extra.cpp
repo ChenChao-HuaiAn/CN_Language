@@ -143,9 +143,9 @@ TEST(IRStringExtraTest, PredicateMapping) {
 TEST(IRStringExtraTest, ConvertMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 i = 字符串从整数(42)
-    字符串 f = 字符串从浮点(3.5)
-    字符串 c = 字符串从字符('A')
+    字符串 i = 整数转字符串(42)
+    字符串 f = 浮点转字符串(3.5)
+    字符串 c = 字符转字符串('A')
     字符串释放(i)
     字符串释放(f)
     字符串释放(c)
@@ -165,7 +165,7 @@ TEST(IRStringExtraTest, ConvertMapping) {
 TEST(IRStringExtraTest, FreeMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 i = 字符串从整数(42)
+    字符串 i = 整数转字符串(42)
     字符串释放(i)
     返回 0
 }

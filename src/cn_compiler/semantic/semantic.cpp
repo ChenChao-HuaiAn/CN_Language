@@ -735,10 +735,11 @@ void SemanticAnalyzer::registerBuiltins() {
     //           字符串大写 -> __cn_str_upper、字符串小写 -> __cn_str_lower、
     //           字符串前缀 -> __cn_str_starts_with、字符串后缀 -> __cn_str_ends_with、
     //           字符串包含 -> __cn_str_contains、字符串修剪 -> __cn_str_trim、
-    //           字符串反转 -> __cn_str_reverse、字符串从整数 -> __cn_str_from_int、
-    //           字符串从浮点 -> __cn_str_from_float、字符串从字符 -> __cn_str_from_char、
+    //           字符串反转 -> __cn_str_reverse、整数转字符串 -> __cn_str_from_int、
+    //           浮点转字符串 -> __cn_str_from_float、字符转字符串 -> __cn_str_from_char、
+    //           布尔转字符串 -> __cn_str_from_bool、正数转字符串 -> __cn_str_from_uint、
     //           字符串释放 -> __cn_str_free（IR 层按函数名映射）
-    // 内存语义：返回动态内存（子串/大写/小写/修剪/反转/从整数/从浮点/从字符），
+    // 内存语义：返回动态内存（子串/大写/小写/修剪/反转/整数转/浮点转/字符转/正数转），
     //           调用方负责用 字符串释放 释放；连接/复制沿用 Task 2.5 语义。
     // 注：字符串比较运算符（==/!=/</> 等）规格书未定义字符串变体（运算符表仅整型
     //     与浮点变体），不实现；等价能力由 字符串比较（相等）与 字符串字典序 提供。
@@ -759,10 +760,11 @@ void SemanticAnalyzer::registerBuiltins() {
     regStrFn("字符串包含", "布尔", {"字符串", "字符串"});
     regStrFn("字符串修剪", "字符串", {"字符串"});
     regStrFn("字符串反转", "字符串", {"字符串"});
-    regStrFn("字符串从整数", "字符串", {"整64"});
-    regStrFn("字符串从浮点", "字符串", {"浮64"});
-    regStrFn("字符串从字符", "字符串", {"字符"});
-    regStrFn("字符串从布尔", "字符串", {"布尔"});   // Task 2.9：布尔转"真"/"假"（拼接上下文）
+    regStrFn("整数转字符串", "字符串", {"整64"});
+    regStrFn("浮点转字符串", "字符串", {"浮64"});
+    regStrFn("字符转字符串", "字符串", {"字符"});
+    regStrFn("布尔转字符串", "字符串", {"布尔"});   // Task 2.9：布尔转"真"/"假"（拼接上下文）
+    regStrFn("正数转字符串", "字符串", {"正64"});
     regStrFn("字符串释放", "空类型", {"字符串"});
 }
 
