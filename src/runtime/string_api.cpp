@@ -314,3 +314,69 @@ extern "C" char* __cn_format(const char* fmt, ...) {
 extern "C" void __cn_str_free(char* str) {
     std::free(str);
 }
+
+// ==================== Task 6.5 字符串解析API（字符串扩展库） ====================
+// 对标 C++ std::strtoll/strtod，供 stdlib/字符串扩展.cn 数值解析包装。
+// 设计（Task 6.2 IO 库同模式）：
+//   - 成功标志用 int* 输出参数（1=成功，0=非法输入/空串/范围错误）
+//   - 返回解析值；失败返回 0（整型）/0.0（浮点）/0（布尔），避免误用
+//   - strtoll/strtod 允许行首空白（C 风格扫描）；解析后跳过尾部空白，
+//     必须到字符串结尾才算整串合法（"abc" 判定非法，等价 strto* 严格模式）
+// 说明：字符串按 UTF-8 字节处理；数值解析仅接受 ASCII 数字/符号（C 语义）。
+
+// 字符串转整数：strtoll 整串解析（十进制）
+// 参数 ok：成功标志输出（1=成功，0=非法输入/空串/范围错误）
+// 返回：解析的整数值；失败返回 0
+extern "C" long long __cn_str_to_int(const char* str, int* ok) {
+    if (ok != nullptr) *ok = 0;
+    if (str == nullptr) str = "";
+    errno = 0;
+    char* end = nullptr;
+    const long long value = std::strtoll(str, &end, 10);
+    // 必须"至少解析了数字"（end != str 在跳过空白前判定——仅空白输入时
+    //   strtoll 的 end 指向开头，若先跳空白会误判"   " 为合法整数 0）
+    const bool parsed = (end != str);
+    // 跳过尾部空白后必须到串尾（整串合法数字，拒绝 "123abc" 部分解析）
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') ++end;
+    const bool valid = (errno == 0 && parsed && *end == '\0');
+    if (valid && ok != nullptr) *ok = 1;
+    return valid ? value : 0;
+}
+
+// 字符串转浮点：strtod 整串解析
+// 参数 ok：成功标志输出（1=成功，0=非法输入/空串/范围错误）
+// 返回：解析的浮点值；失败返回 0.0
+extern "C" double __cn_str_to_double(const char* str, int* ok) {
+    if (ok != nullptr) *ok = 0;
+    if (str == nullptr) str = "";
+    errno = 0;
+    char* end = nullptr;
+    const double value = std::strtod(str, &end);
+    // 必须"至少解析了数字"（end != str 在跳过空白前判定，防仅空白误判）
+    const bool parsed = (end != str);
+    // 跳过尾部空白后必须到串尾（整串合法数字）
+    while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') ++end;
+    const bool valid = (errno == 0 && parsed && *end == '\0');
+    if (valid && ok != nullptr) *ok = 1;
+    return valid ? value : 0.0;
+}
+
+// 字符串转布尔：精确匹配 "真"/"假"/"true"/"false"（英文不区分大小写）
+// 参数 ok：成功标志输出（1=成功，0=非法输入）
+// 返回：1=真、0=假；非法输入返回 0（成功标志为 0 区分）
+// 说明：中文 真/假 为 UTF-8 3 字节；英文 true/false 大小写不敏感（C 语义）
+extern "C" long long __cn_str_to_bool(const char* str, int* ok) {
+    if (ok != nullptr) *ok = 0;
+    if (str == nullptr) str = "";
+    if (std::strcmp(str, "真") == 0 || std::strcmp(str, "true") == 0 ||
+        std::strcmp(str, "TRUE") == 0 || std::strcmp(str, "True") == 0) {
+        if (ok != nullptr) *ok = 1;
+        return 1;
+    }
+    if (std::strcmp(str, "假") == 0 || std::strcmp(str, "false") == 0 ||
+        std::strcmp(str, "FALSE") == 0 || std::strcmp(str, "False") == 0) {
+        if (ok != nullptr) *ok = 1;
+        return 0;
+    }
+    return 0;  // 非法输入：成功标志保持 0
+}

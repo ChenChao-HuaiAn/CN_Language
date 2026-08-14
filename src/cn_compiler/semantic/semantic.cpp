@@ -863,6 +863,68 @@ void SemanticAnalyzer::registerBuiltins() {
     regFileFn("文件.关闭文件", "空类型", {"空类型*"});
     regFileFn("文件.文件存在", "布尔", {"字符串"});
 
+    // ---- 字符串扩展库（Task 6.5，对标 C++ string 解析；对应运行时 string_api.cpp）----
+    // 中文名带 "解析." 前缀（形如 模块.函数 限定名），与 stdlib/字符串扩展.cn
+    // 模块公开函数（纯名 字符串转整数 等）不冲突——内置走"限定名直调"（IO 库同模式）。
+    // 注意：不能用 "字符串." 前缀——字符串 是类型关键字（Kw_String），词法器将
+    //   "字符串.转整数" 拆为 关键字+标识符 报"预期表达式"（lessons 变量名前缀同类）。
+    // 运行时符号：解析.转整数 -> __cn_str_to_int、解析.转浮点 -> __cn_str_to_double、
+    //   解析.转布尔 -> __cn_str_to_bool（IR 层映射）。
+    // 设计说明（Task 6.2 IO 库同模式）：
+    //   - 三个解析函数均带 整32* 成功标志输出参数（1=成功，0=非法输入/空串/范围错误）
+    //   - 返回整64/浮64/整64（布尔 0/1）；失败返回 0/0.0——CN 层 stdlib/字符串扩展.cn
+    //     用 &成功 传参，失败返回 错误(6)
+    //   - 与现有 整数转字符串/浮点转字符串/布尔转字符串 命名对称（字符串转 前缀）
+    const auto regStrExtFn = [this](const std::string& name, const std::string& retType,
+                                    const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regStrExtFn("解析.转整数", "整64", {"字符串", "整32*"});
+    regStrExtFn("解析.转浮点", "浮64", {"字符串", "整32*"});
+    regStrExtFn("解析.转布尔", "整64", {"字符串", "整32*"});
+
+    // ---- 时间库（Task 6.5，规格书10.4 时间；对应运行时 time_api.cpp）----
+    // 中文名带 "时间." 前缀，与 stdlib/时间.cn 模块公开函数不冲突（数学库同模式）。
+    // 运行时符号：时间.当前时间戳 -> __cn_time、时间.单调时钟毫秒 -> __cn_clock_ms、
+    //   时间.格式化时间 -> __cn_time_format（IR 层映射）。
+    // 设计说明：
+    //   - 当前时间戳/单调时钟毫秒：零参数，返回整64（秒/毫秒）
+    //   - 格式化时间：参数 (整64 时间戳, 字符串 格式)，返回 字符串*（动态分配，
+    //     失败 nullptr）——CN 层 stdlib/时间.cn 包装 结果<字符串,整32>（nullptr→错误码.参数）
+    const auto regTimeFn = [this](const std::string& name, const std::string& retType,
+                                  const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regTimeFn("时间.当前时间戳", "整64", {});
+    regTimeFn("时间.单调时钟毫秒", "整64", {});
+    regTimeFn("时间.格式化时间", "字符串", {"整64", "字符串"});
+
+    // ---- 系统库（Task 6.5，规格书10.4 命令行参数；对应运行时 system_api.cpp）----
+    // 中文名带 "系统." 前缀，与 stdlib/系统.cn 模块公开函数不冲突（数学库同模式）。
+    // 运行时符号：系统.参数个数 -> __cn_argc、系统.参数 -> __cn_argv（IR 层映射）。
+    // 设计说明：
+    //   - 参数个数：零参数，返回整64（argc，含可执行文件名本身）
+    //   - 参数：参数 (整64 索引)，返回 字符串*（CRT 持有，越界 nullptr）——CN 层
+    //     stdlib/系统.cn 包装 结果<字符串,整32>（nullptr→错误码.参数）
+    const auto regSysFn = [this](const std::string& name, const std::string& retType,
+                                 const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regSysFn("系统.参数个数", "整64", {});
+    regSysFn("系统.参数", "字符串", {"整64"});
+
     // ---- 内存管理API（Task 6.1 核心库/容器库，规格书10.2 内存管理）----
     // 运行时符号：分配 -> cn_alloc、释放 -> cn_free、重新分配 -> cn_realloc、
     //   复制内存 -> cn_memcpy、置零内存 -> cn_memset（codegen symbolName 已有映射）

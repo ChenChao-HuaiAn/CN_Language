@@ -65,6 +65,13 @@ extern "C" {
     CNRT_EXPORT char* __cn_str_from_bool(int value);                 // 布尔转字符串（"真"/"假"，Task 2.9）
     CNRT_EXPORT void __cn_str_free(char* str);                       // 字符串释放（封装 cn_free，可安全释放nullptr）
 
+    // ---- Task 6.5 字符串解析API（字符串扩展库；对应 CN 层 stdlib/字符串扩展.cn 包装）----
+    // 成功标志：int* 输出参数（1=成功，0=非法输入/空串/范围错误），CN 层用 &成功 传参。
+    // 内存语义：输入为常规 UTF-8 字符串（以 \0 结尾），无动态分配输出。
+    CNRT_EXPORT long long __cn_str_to_int(const char* str, int* ok);     // 字符串转整数（字符串.转整数，strtoll 整串解析）
+    CNRT_EXPORT double __cn_str_to_double(const char* str, int* ok);     // 字符串转浮点（字符串.转浮点，strtod 整串解析）
+    CNRT_EXPORT long long __cn_str_to_bool(const char* str, int* ok);    // 字符串转布尔（字符串.转布尔，"真"/"假"/"true"/"false"）
+
     // 格式化（Task 2.9，规格书10.6）：sprintf 风格变参，返回动态分配字符串，调用方负责释放
     // 占位符：%d(整) %u(无符号) %f(浮点) %s(字符串) %c(字符) %x/%X(十六进制) %o(八进制) %p(指针)
     CNRT_EXPORT char* __cn_format(const char* fmt, ...);             // sprintf 风格格式化（动态分配）
@@ -160,6 +167,24 @@ extern "C" {
     CNRT_EXPORT void* __cn_object_new(long long size);
     // DeleteObject 展开调用：释放对象内存（安全释放 nullptr）
     CNRT_EXPORT void __cn_object_delete(void* ptr);
+
+    // ---- Task 6.5 时间 API（时间库；对应 CN 层 stdlib/时间.cn 包装）----
+    // 对标 C++ chrono/ctime；平台差异：#ifdef _WIN32（QueryPerformanceCounter/
+    //   localtime_s）与 POSIX（clock_gettime/localtime_r）分支。
+    // 内存语义：__cn_time_format 返回动态分配字符串，调用方用 __cn_str_free 释放。
+    CNRT_EXPORT long long __cn_time();                            // 当前时间戳（时间.当前时间戳，秒级）
+    CNRT_EXPORT long long __cn_clock_ms();                        // 单调时钟毫秒（时间.单调时钟毫秒）
+    CNRT_EXPORT char* __cn_time_format(long long ts, const char* fmt); // 格式化时间（时间.格式化时间，失败 nullptr）
+
+    // ---- Task 6.5 系统 API（系统库；对应 CN 层 stdlib/系统.cn 包装）----
+    // 对标 C++ argv（规格书10.4 命令行参数）；entry 入口经 __cn_cache_argv 缓存。
+    // 内存语义：__cn_argv 返回 CRT 持有字符串（非动态分配），调用方不得释放。
+    CNRT_EXPORT long long __cn_argc();                            // 参数个数（系统.参数个数，含可执行文件名）
+    CNRT_EXPORT char* __cn_argv(long long index);                 // 参数（系统.参数，越界 nullptr）
+    // 缓存命令行参数：由 entry 入口调用（程序启动注入真实 argc/argv）
+    CNRT_EXPORT void __cn_cache_argv(int argc, char** argv);
+    // 测试专用 setter：注入固定 argc/argv（供单元测试验证缓存读写，生产不调用）
+    CNRT_EXPORT void __cn_set_argv_for_test(int argc, char** argv);
 
     // 程序入口（crt0风格，规格书10.4：调用CN语言 主 函数）
     CNRT_EXPORT int entry(int argc, char** argv);

@@ -1,65 +1,70 @@
 # HANDOFF - CN语言编译器项目交接文档
 
-> **交接原因**：2026-08-14 会话结束（**阶段6「标准库」第4步已完成 ✅**——IO 输入（Task 6.2 输入部分）：stdlib/IO.cn（读取行/读取整数/读取浮点/打印到错误）+ 文件读写（Task 6.8）：stdlib/文件.cn（打开/读取/写入/读取文件行/大小/关闭/存在）。运行时新增 input_api.cpp + file_api.cpp，语义注册 + IR 映射五处同步，E2E stdin 注入支持（run_e2e.py 扩展 .input 文件），中文路径文件读写验证通过（MultiByteToWideChar + _wfopen_s）。单测 1005/1005、E2E 36/36 全通过，构建 0 错误 0 警告）。
+> **交接原因**：2026-08-15 会话结束（**阶段6「标准库」第5步已完成 ✅**——字符串扩展（Task 6.5 字符串处理库补充）：stdlib/字符串扩展.cn（字符串转整数/转浮点/转布尔/替换/填充左/填充右/分割）+ 时间库（Task 6.9）：stdlib/时间.cn（当前时间戳/单调时钟毫秒/格式化时间）+ 系统库（Task 6.10）：stdlib/系统.cn（参数个数/参数）。运行时新增 time_api.cpp + system_api.cpp，string_api.cpp 扩展 3 个解析函数，五处同步，E2E 运行器支持 .args 命令行参数注入（中文参数 UTF-8 无乱码）。单测 1048/1048、E2E 39/39 全通过，构建 0 错误 0 警告）。
 >
-> **前序里程碑**：阶段3「OOP 与错误处理」（901/901 单测、28/28 E2E）；阶段A「Linux ARM64」（918/918 单测、28/28 E2E）；阶段B 优化补全（949/949 单测、28/28 E2E）；阶段C 寄存器分配/调试信息（964/964 单测、28/28 E2E）；reg_alloc -O2 崩溃缺陷修复（965/965 单测、28/28 E2E）；字符串转换函数命名优化（965/965 单测、28/28 E2E）；打印函数族命名统一方案C（965/965 单测、28/28 E2E）；**阶段6第1步：条件编译+数学库（987/987 单测、30/30 E2E）**；**阶段6第2步：核心库+容器库（987/987 单测、32/32 E2E）**；**阶段6第3步：映射集合+算法库（987/987 单测、34/34 E2E）**；**阶段6第4步：IO输入+文件库（1005/1005 单测、36/36 E2E，本交接）**。
+> **前序里程碑**：阶段3「OOP 与错误处理」（901/901 单测、28/28 E2E）；阶段A「Linux ARM64」（918/918 单测）；阶段B 优化补全（949/949 单测）；阶段C 寄存器分配/调试信息（964/964 单测）；reg_alloc -O2 崩溃修复（965/965）；字符串转换函数命名优化（965/965）；打印函数族命名统一方案C（965/965）；**阶段6第1步：条件编译+数学库（987/987 单测、30/30 E2E）**；**第2步：核心库+容器库（987/987、32/32）**；**第3步：映射集合+算法库（987/987、34/34）**；**第4步：IO输入+文件库（1005/1005、36/36）**；**第5步：字符串扩展+时间+系统库（1048/1048、39/39，本交接）**。
 
 ## 一、我们在做什么任务
 
-正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码。当前处于**阶段6「标准库」**（plans/002-阶段6-标准库.md）：第1步（条件编译+数学库）、第2步（核心库+容器库）、第3步（映射集合+算法库）、第4步（IO输入+文件库）已完成，剩余 Task 6.5 字符串处理库（格式化）。
+正在开发CN语言编译器——一门全中文语法的系统级编程语言，参考C++编程范式，用C++17从零编写编译器，直接生成汇编代码。当前处于**阶段6「标准库」**（plans/002-阶段6-标准库.md）：第1步（条件编译+数学库）、第2步（核心库+容器库）、第3步（映射集合+算法库）、第4步（IO输入+文件库）、第5步（字符串扩展+时间+系统库）已完成。剩余 Task 6.5 剩余部分（stdlib/字符串.cn 常规包装）与 Debug 子任务（编译器缺陷修复）。
 
-**本次任务**：阶段6第4步子任务——IO 输入（Task 6.2 输入部分）：`stdlib/IO.cn`（读取行/读取整数/读取浮点/打印到错误）+ 文件读写（Task 6.8）：`stdlib/文件.cn`（打开/读取/写入/读取文件行/大小/关闭/存在），全链路 E2E 验证（33_io_input + 34_file）。
+**本次任务**：阶段6第5步子任务——字符串扩展（Task 6.5 字符串处理库补充）：`stdlib/字符串扩展.cn`（字符串转整数/转浮点/转布尔/替换/填充左/填充右/分割）+ 时间库（Task 6.9）：`stdlib/时间.cn` + 系统库（Task 6.10）：`stdlib/系统.cn`，全链路 E2E 验证（35_string_ext + 36_time + 37_system）。
 
 ## 二、已经完成了什么
 
-### 2.0 本轮核心任务：IO 输入 + 文件读写（Task 6.2 输入部分 + Task 6.8）（已完成 ✅，2026-08-14）
+### 2.0 本轮核心任务：字符串扩展 + 时间 + 系统库（Task 6.5补充 + Task 6.9 + Task 6.10）（已完成 ✅，2026-08-15）
 
-**IO 输入（stdlib/IO.cn + input_api.cpp）**：
-
-| 项 | 内容 |
-|----|------|
-| 运行时 | `src/runtime/input_api.cpp`：`__cn_read_line`（动态分配 UTF-8 不含换行，EOF 返回 nullptr）/ `__cn_read_int`（strtoll 整行解析 + 整32* 成功标志）/ `__cn_read_float`（strtod 整行解析 + 整32* 成功标志）/ `__cn_print_err`（fprintf stderr 不换行） |
-| stdlib | `stdlib/IO.cn`：`读取行() → 结果<字符串,整32>`（EOF→错误码.文件=5）、`读取整数() → 结果<整64,整32>`、`读取浮点() → 结果<浮64,整32>`（成功标志经 &整32）、`打印到错误(字符串)` |
-| E2E | `tests/e2e/33_io_input/`（主.cn + 主.input + 主.expected）：读取行/读取整数/读取浮点 + EOF 语义（stdin 注入验证） |
-| 单测 | `tests/unit/runtime/test_input_api.cpp`（11 用例：读取行含空格/空行/EOF、读取整数合法/非法/EOF、读取浮点、打印到错误 _dup2 重定向 stderr） |
-
-**文件读写（stdlib/文件.cn + file_api.cpp）**：
+**字符串扩展（stdlib/字符串扩展.cn + string_api.cpp 扩展）**：
 
 | 项 | 内容 |
 |----|------|
-| 运行时 | `src/runtime/file_api.cpp`：`__cn_file_open`（模式 1=读/2=写截断/3=追加）/ `__cn_file_read`（fread）/ `__cn_file_write`（fwrite）/ `__cn_file_read_line`（fgets 动态分配含换行，EOF nullptr）/ `__cn_file_size`（fseek end+ftell+恢复，失败 -1）/ `__cn_file_close` / `__cn_file_exists`；**中文路径 UTF-8 → MultiByteToWideChar(CP_UTF8) + _wfopen_s** |
-| stdlib | `stdlib/文件.cn`：`打开文件(路径, 模式) → 结果<空类型*,整32>`、`读取文件/写入文件/文件大小 → 结果<整64,整32>`、`读取文件行 → 结果<字符串,整32>`、`关闭文件`、`文件存在 → 布尔` |
-| E2E | `tests/e2e/34_file/`（主.cn + 主.expected）：写（模式2）→ 文件存在=1 → 读（模式1）按行 → EOF → 文件大小=57（中文 UTF-8 字节数），文件名 `target/测试文件.txt` 验证中文路径 |
-| 单测 | `tests/unit/runtime/test_file_api.cpp`（7 用例：写读/大小 UTF-8/原始读取/追加/中文文件名/打开失败/非法模式） |
+| 运行时 | `src/runtime/string_api.cpp` 扩展：`__cn_str_to_int`（strtoll 整串解析 + 整32* 成功标志，拒绝 "123abc" 部分解析，仅空白判定非法）/ `__cn_str_to_double`（strtod 整串解析）/ `__cn_str_to_bool`（"真"/"假"/"true"/"false"，英文大小写不敏感） |
+| stdlib | `stdlib/字符串扩展.cn`：`字符串转整数/转浮点/转布尔`（结果<T,整32> 包装，失败 错误(6)）+ `替换`（循环 字符串查找+子串+连接，目标不存在原样副本，安全计数 100 防无限循环）+ `填充左/右`（字符转字符串+循环连接）+ `分割`（字符串* 数组 + 数组长度，C 风格因 CN 数组长度须编译期常量；返回数量，数组不足 错误(6)） |
+| E2E | `tests/e2e/35_string_ext/`（主.cn + 字符串扩展.cn 模块副本 + 主.expected）：内置直调解析 + 模块导入验证 替换/填充/分割 组合函数 |
+| 单测 | `tests/unit/runtime/test_string_parse_api.cpp`（24 用例：合法/非法/前导空格/空串/超范围/空指针/中文布尔/英文大小写） |
 
-**验证结果**：构建 0 错误 0 警告（MSVC /W4 /WX）；单元测试 1005/1005；E2E 36/36（34 前序 + 33_io_input + 34_file）。
+**时间库（stdlib/时间.cn + time_api.cpp）**：
+
+| 项 | 内容 |
+|----|------|
+| 运行时 | `src/runtime/time_api.cpp`：`__cn_time`（time(nullptr) 秒级）/ `__cn_clock_ms`（Windows QueryPerformanceCounter / POSIX clock_gettime(CLOCK_MONOTONIC)，#ifdef _WIN32）/ `__cn_time_format`（localtime_s/localtime_r + strftime，失败 nullptr，动态分配调用方释放） |
+| stdlib | `stdlib/时间.cn`：`当前时间戳() -> 整64`、`单调时钟毫秒() -> 整64`、`格式化时间(时间戳, 格式) -> 结果<字符串,整32>`（失败 错误(6)） |
+| E2E | `tests/e2e/36_time/`（主.cn + 主.expected）：**E2E 固定文本比对 → 程序内部断言只输出 真/假**（时间戳递增、格式化时间长度=10、分隔符 '-'、年份 4 位数字） |
+| 单测 | `tests/unit/runtime/test_time_api.cpp`（9 用例：时间戳>0/递增、时钟毫秒非负/递增、格式断言、非法时间戳 nullptr） |
+
+**系统库（stdlib/系统.cn + system_api.cpp）**：
+
+| 项 | 内容 |
+|----|------|
+| 运行时 | `src/runtime/system_api.cpp`：`__cn_argc`/`__cn_argv`（全局缓存；Windows `GetCommandLineW` + `CommandLineToArgvW` 从进程原始命令行解析 + `WideCharToMultiByte(CP_UTF8)` 转 UTF-8 缓存；Linux 直接缓存 entry argv） |
+| stdlib | `stdlib/系统.cn`：`参数个数() -> 整32`、`参数(整32 索引) -> 结果<字符串,整32>`（越界 错误(6)，字符串 CRT 持有不得释放） |
+| E2E | `tests/e2e/37_system/`（主.cn + **主.args** + 主.expected）：run_e2e.py 扩展 `.args` 文件注入命令行参数（每行一个参数），验证 参数个数=3 + 中文参数 "CN语言" UTF-8 无乱码 |
+| 单测 | `tests/unit/runtime/test_system_api.cpp`（10 用例：argc 计数、argv 索引、越界/负索引/未初始化、setter 往返） |
+
+**验证结果**：构建 0 错误 0 警告（MSVC /W4 /WX）；单元测试 **1048/1048**（1005 + 43 新增）；E2E **39/39**（36 前序 + 35_string_ext + 36_time + 37_system）。
 
 ### 2.1 本轮新增内置函数五处同步清单（⚠️ 后续新增内置必须照做）
 
 | 同步点 | 文件 | 内容 |
 |--------|------|------|
-| ① 语义注册 | `src/cn_compiler/semantic/semantic.cpp` registerBuiltins | `IO.读取行`/`IO.读取整数`/`IO.读取浮点`/`IO.打印到错误` + `文件.打开文件` 等 7 个（带 `IO.`/`文件.` 前缀限定名，数学库同模式） |
-| ② IR 名称映射 | `src/cn_compiler/ir/ir.cpp` visitCallExpr | `IO.读取行`→`__cn_read_line` 等 11 处 |
-| ③ IR 结果类型映射 | `src/cn_compiler/ir/ir.cpp` | 读取行→ptr、读取整数→i64、读取浮点→f64、打开文件→ptr、读写/大小→i64、读取文件行→ptr、文件存在→i1 |
-| ④ 运行时声明 | `src/runtime/runtime.hpp` + `CMakeLists.txt` cn_runtime + `src/cn_main.cpp` compileRuntime 源文件数组 + linkExe .obj/.o 列表 | input_api.cpp + file_api.cpp 四处（含 x64/arm64 两处） |
-| ⑤ 测试/文档 | E2E + 单测 + plans + 更新日志 | 33_io_input/34_file E2E + test_input_api/test_file_api 单测 |
+| ① 语义注册 | `src/cn_compiler/semantic/semantic.cpp` registerBuiltins | `解析.转整数/转浮点/转布尔` + `时间.当前时间戳/单调时钟毫秒/格式化时间` + `系统.参数个数/参数`（带前缀限定名，数学库同模式） |
+| ② IR 名称映射 | `src/cn_compiler/ir/ir.cpp` visitCallExpr | `解析.xxx`→`__cn_str_to_*`、`时间.xxx`→`__cn_time/__cn_clock_ms/__cn_time_format`、`系统.xxx`→`__cn_argc/__cn_argv` |
+| ③ IR 结果类型映射 | `src/cn_compiler/ir/ir.cpp` | 转整数/时间戳/时钟毫秒/参数个数→i64、转浮点→f64、转布尔→i64（CN 层 Cast 布尔）、格式化时间/参数→ptr |
+| ④ 运行时声明与构建 | `src/runtime/runtime.hpp` + `CMakeLists.txt` cn_runtime + `src/cn_main.cpp` compileRuntime 源文件数组 + linkExe .obj/.o 列表 | time_api.cpp + system_api.cpp 四处（x64/arm64）+ **shell32.lib（Windows CommandLineToArgvW）** |
+| ⑤ 测试/文档 | E2E + 单测 + plans + 更新日志 | 35_string_ext/36_time/37_system E2E + test_string_parse_api/test_time_api/test_system_api 单测 |
 
-### 2.2 本轮编译器缺陷修复（✅ 已修复）
+### 2.2 本轮命名冲突与平台差异解决方案（⚠️ 重要，后续标准库/测试注意）
 
-| # | 缺陷 | 现象 | 修复 |
-|---|------|------|------|
-| 1 | **字符串/字符\* 与 空类型\*（无）比较被误拒** | `字符串 != 无`（读取行 EOF 判定）报"指针只能与指针或空指针比较，实际为 '字符串' 与 '空类型*'" | `semantic.cpp` 比较运算 isPointerType 判断补充 `字符串`/`字符*`（本质 char\*），指针间比较按地址放行 |
-
-### 2.3 本轮实测边界（⚠️ 后续标准库/测试注意）
-
-| # | 边界 | 说明 |
+| # | 问题 | 解决 |
 |---|------|------|
-| 1 | **stdlib 模块公开函数与内置限定名冲突** | 模块已导入时 `IO.读取行` 会被重写为用户模块公开函数（纯名 `读取行`，返回 结果），与内置（返回 字符串）冲突。E2E 遵循 25_math 模式：**直接调内置限定名（不导入 stdlib 模块）**；stdlib 模块体内 `IO.xxx` 在未导入时走内置 |
-| 2 | **变量名避免以类型关键字开头** | `整数成功` 词法拆分为 关键字（整数）+标识符（成功）报"预期标识符"。改 `整数标志`/`成功标志` 等 |
-| 3 | **读取文件行 返回含 \n** | `打印("第一行: ", 第一行)` 内容含 `\n` + `打印` 自动换行 → 输出空行。expected 按实际行为匹配 |
-| 4 | **E2E stdin 注入** | run_e2e.py 扩展：同名 `.input` 文件存在时经 subprocess input 参数注入（33_io_input 用） |
+| 1 | **`字符串.转整数` 前缀编译失败** | `字符串` 是类型关键字（Kw_String），词法器将 `字符串.转整数` 拆为 关键字+标识符 报"预期表达式"（lessons 变量名前缀同类问题）——内置改为 `解析.` 前缀（`解析.转整数` 等），stdlib 模块公开纯名 `字符串转整数` 不冲突 |
+| 2 | **`结果` 关键字不可作变量名** | 字符串扩展.cn 局部变量 `字符串 结果` 报"预期变量名，实际是 '结果'"（Kw_Result）——改 `缓冲` |
+| 3 | **Windows WinMain 下 argc 恒 0** | `/ENTRY:WinMainCRTStartup` 的 WinMain 形参无 argc/argv（第4参是 nCmdShow），原 `entry(0, nullptr)` 导致 系统.参数个数 恒 0——改转发 MSVC CRT 全局 `__argc`/`__argv` |
+| 4 | **Windows 中文参数乱码（GBK）** | `__argv` 是 ANSI（GBK 代码页）中文乱码；`__wargv`（CRT 宽参数）仅 wmain 入口初始化（WinMain 下 nullptr）——改 `GetCommandLineW` + `CommandLineToArgvW` 从进程原始命令行（Unicode）解析 + `WideCharToMultiByte(CP_UTF8)` 转 UTF-8 缓存（依赖 shell32.lib） |
+| 5 | **E2E 固定文本 vs 时间动态值** | 时间戳/日期内容随运行时刻变化——E2E 程序内部断言（递增/长度/分隔符），只输出 真/假（1/0） |
+| 6 | **字符串 == 运算符未定义** | 36_time 分隔符比较用 `字符串比较` 内置（规格书未定义字符串 == 运算符） |
 
-### 2.4 前序里程碑（已全部完成 ✅）
+### 2.3 前序里程碑（已全部完成 ✅）
 
 - 阶段0~3 全部（901/901 单测、28/28 E2E、5 项缺陷全修复）
 - 阶段4 优化与 Win x64 完善（949/949 → 964/964 单测）
@@ -70,13 +75,14 @@
 - 阶段6第1步：条件编译+数学库（987/987 单测、30/30 E2E）
 - 阶段6第2步：核心库+容器库（987/987 单测、32/32 E2E）
 - 阶段6第3步：映射集合+算法库（987/987 单测、34/34 E2E）
+- 阶段6第4步：IO输入+文件库（1005/1005 单测、36/36 E2E）
 
 ## 三、当前测试基线
 
 | 指标 | 数值 |
 |------|------|
-| 单元测试 | **1005/1005**（Win x64） |
-| E2E | **36/36**（含 33_io_input、34_file；Win x64） |
+| 单元测试 | **1048/1048**（Win x64） |
+| E2E | **39/39**（含 35_string_ext、36_time、37_system；Win x64） |
 | 编译警告 | 0（MSVC /W4 /WX） |
 
 ## 四、关键架构约定（必须遵守）
@@ -93,7 +99,7 @@
 10. **结果/可选降级**：`结果<T,E>` → 合成结构体；`可选<T>` → 合成结构体
 11. **泛型实例化符号**：类名$实参；单模块文件（非 主）视为入口
 12. **类对象赋值深拷贝**：禁止浅拷贝 Store 源指针（RAII double free）
-13. **结构体赋值（含结构体返回调用）必须 CopyStruct**：`读取结果 = 数据.读取(99)` 右值为 CallExpr 时 srcAddr=调用返回地址，按 size 字节 rep movsb（ir.cpp 赋值路径）
+13. **结构体赋值（含结构体返回调用）必须 CopyStruct**：`读取结果 = 数据.读取(99)` 右值为 CallExpr 时 srcAddr=调用返回地址，按 size 字节 rep movsb
 14. **构造函数重载未支持**（规避）：同名构造函数在 methods 表按名覆盖，标准库类不用构造重载（预留() 代替）
 15. **打印函数族语义**：`打印(...)` = 结尾换行；`打印行(...)` = 不换行；`格式化(...)` = 格式化字符串。仅支持标量+字符串+字符变参
 16. **条件编译指令**：`#定义`/`#如果定义(宏)`/`#否则`/`#结束如果`，行级裁剪保留行号，命令行 `-D 宏名` 注入
@@ -103,59 +109,75 @@
 20. **泛型+函数指针回调不可用**（Task 6.7 实测）：泛型函数参数中函数指针类型单态化不替换 → 签名不匹配；算法库排序/二分用具体类型重载 + 比较内联
 21. **泛型类方法内循环遍历第一个泛型字段损坏**（Task 6.4 实测）：循环逻辑放模块级泛型自由函数（参数数组），类方法委托调用
 22. **打印变参内嵌泛型类字段下标损坏**：E2E 先存局部变量再打印
-23. **IO/文件内置函数**（本轮新增）：注册为带 `IO.`/`文件.` 前缀限定名（数学库同模式）；E2E 直接调内置限定名（不导入 stdlib 模块）；`读取整数/读取浮点` 成功标志经整32* 输出
-24. **中文路径文件读写**（本轮新增）：`MultiByteToWideChar(CP_UTF8)` + `_wfopen_s`（std::filesystem::u8path 对中文路径挂起，弃用）
-25. **E2E stdin 注入**（本轮新增）：run_e2e.py 检测同名 `.input` 文件，subprocess input 参数注入
-26. **字符串与 无 比较合法**（本轮修复）：`字符串 != 无`（EOF 判定）语义层放行（字符串本质 char*，指针间比较按地址）
+23. **IO/文件内置函数**：注册为带 `IO.`/`文件.` 前缀限定名（数学库同模式）；E2E 直接调内置限定名（不导入 stdlib 模块）；`读取整数/读取浮点` 成功标志经整32* 输出
+24. **中文路径文件读写**：`MultiByteToWideChar(CP_UTF8)` + `_wfopen_s`（std::filesystem::u8path 对中文路径挂起，弃用）
+25. **E2E stdin 注入**：run_e2e.py 检测同名 `.input` 文件，subprocess input 参数注入
+26. **字符串与 无 比较合法**：`字符串 != 无`（EOF 判定）语义层放行（字符串本质 char*，指针间比较按地址）
+27. **内置函数限定名前缀不可用类型关键字**（本轮新增）：`字符串`/`整数`/`浮点` 等类型关键字不能作限定名前缀（`字符串.转整数` 词法拆分报错）——字符串解析内置用 `解析.` 前缀
+28. **关键字不可作变量名**（本轮新增）：`结果`（Kw_Result）/`错误`/`正常` 等内置构造器关键字不可作变量名——标准库局部变量用 `缓冲` 等
+29. **系统库命令行参数**（本轮新增）：Windows `GetCommandLineW` + `CommandLineToArgvW`（Unicode）+ `WideCharToMultiByte(CP_UTF8)` 转 UTF-8（`__argv` GBK 乱码、`__wargv` WinMain 下 nullptr）；依赖 shell32.lib
+30. **E2E 命令行参数注入**（本轮新增）：run_e2e.py 检测同名 `.args` 文件（每行一个参数，首行=argv[1]，argv[0]=exe 名），subprocess 命令追加
+31. **时间库 E2E 固定输出**（本轮新增）：时间戳/日期动态值 → 程序内部断言（递增/长度/分隔符）只输出 真/假；字符串分隔符比较用 `字符串比较` 内置
 
 ## 五、踩过的坑（绝对不要再踩）
 
-1. **打印函数族命名"行"字语义已反转**（权重15.0，✅已修复）：`打印行`=不换行（逐行连续输出语义），勿再按直觉理解为换行
-2. **结构体返回调用赋值必须 CopyStruct**（✅已修复）：`变量 = 结构体返回调用()` 若漏 CopyStruct 只存 8 字节地址，字段读垃圾。ir.cpp 赋值路径已补 CallExpr 右值分支
-3. **构造函数重载会互相覆盖**（⚠️规避）：语义层 methods 表按方法名索引，无参/带参同名构造函数后者覆盖前者。标准库类不要写多个构造函数重载
-4. **嵌套泛型字段 + 结构体返回方法崩溃**（⚠️规避）：组合类字段（栈 内 向量<T>）调用结构体返回方法 this 传递错误崩溃。组合类用独立基础字段实现
-5. **物理寄存器宽度 A2022**（✅已修复）：codegen 中任何 `mov 32位寄存器, 物理寄存器` 必须转 32 位名（r12→r12d）
+1. **打印函数族命名"行"字语义已反转**（权重15.0，✅已修复）：`打印行`=不换行，勿按直觉理解为换行
+2. **结构体返回调用赋值必须 CopyStruct**（✅已修复）：`变量 = 结构体返回调用()` 若漏 CopyStruct 只存 8 字节地址
+3. **构造函数重载会互相覆盖**（⚠️规避）：标准库类不要写多个构造函数重载
+4. **嵌套泛型字段 + 结构体返回方法崩溃**（⚠️规避）：组合类用独立基础字段实现
+5. **物理寄存器宽度 A2022**（✅已修复）：codegen 中 `mov 32位寄存器, 物理寄存器` 必须转 32 位名（r12→r12d）
 6. **CRLF 宏名带 `\r`**（✅已修复）：终止字符集合必须含 `\r`/`\n`
 7. **中文字节长度比较**（✅已修复）：`compare(0,N,"中文")` 的 N 必须是字节数
 8. **内置函数与模块函数冲突**（✅已修复）：用户模块公开函数优先；stdlib 模块体内不能直调同名内置（自递归）
 9. **运行时新增源文件两处同步**（✅已修复）：compileRuntime 源文件数组 + linkExe .obj 列表（x64/arm64）
-10. **泛型函数 + 函数指针参数不可用**（⚠️规避）：`泛型 <类型 T> 函数 f(T*, 整64, 整32(*比较)(T,T))` 单态化后签名不匹配。算法库排序/二分用具体类型重载 + 比较内联
-11. **泛型类方法内循环遍历第一个泛型字段损坏**（⚠️规避）：双字段泛型类方法内 `当(索引<长度){ 如果(字段[索引]==目标) }` 读垃圾。循环逻辑放模块级泛型自由函数（参数数组），类方法委托调用
-12. **打印变参内嵌泛型类字段下标损坏**（⚠️规避）：`打印(..., 数据[索引])` 索引≥2 读垃圾。先存局部变量再打印
-13. **数组声明语法**：`整32[6] 数组 = { ... }`（类型前置 + 长度在类型括号内），`整32 数组[6]` 是非法写法（Task 6.7 实测）
-14. **变量名避免以类型关键字开头**（本轮新增）：`整数成功` 词法拆分为 关键字+标识符 报"预期标识符"（`整数`/`浮点`/`字符串` 等是保留字，作变量名前缀会拆词）
-15. **MSVC 单测 fopen/freopen 触发 C4996**（本轮新增）：/W4 /WX 下 `fopen`/`freopen` 警告即错误（C2220）；用 `fopen_s`/`freopen_s` 或 `_dup`/`_dup2`（stderr 重定向，`stderr` 是 `__acrt_iob_func(2)` 宏右值，`freopen_s` 无法重定向）
+10. **泛型函数 + 函数指针参数不可用**（⚠️规避）：算法库排序/二分用具体类型重载 + 比较内联
+11. **泛型类方法内循环遍历第一个泛型字段损坏**（⚠️规避）：循环逻辑放模块级泛型自由函数
+12. **打印变参内嵌泛型类字段下标损坏**（⚠️规避）：先存局部变量再打印
+13. **数组声明语法**：`整32[6] 数组 = { ... }`（类型前置 + 长度在类型括号内）
+14. **变量名避免以类型关键字开头**：`整数成功` 词法拆分为 关键字+标识符 报"预期标识符"
+15. **MSVC 单测 fopen/freopen 触发 C4996**（本轮新增）：用 `fopen_s`/`freopen_s` 或 `_dup`/`_dup2`
+16. **strto* 仅空白输入误判合法**（本轮新增）：`"   "` strtoll 的 end 指向开头，须在跳过尾部空白**前**判定 `end != str`（先跳空白会误判为合法 0）
+17. **内置限定名前缀不可用类型关键字**（本轮新增）：`字符串.转整数` 词法拆分报错（`字符串` 是 Kw_String）——用 `解析.` 前缀
+18. **`结果`/`错误`/`正常` 等关键字不可作变量名**（本轮新增）：`字符串 结果` 报"预期变量名"——用 `缓冲`
+19. **Windows WinMain 无 argc/argv**（本轮新增）：`/ENTRY:WinMainCRTStartup` 下 WinMain 形参无 argc/argv——用 `GetCommandLineW` + `CommandLineToArgvW`（依赖 shell32.lib）
+20. **Windows __argv GBK 乱码 / __wargv 仅 wmain 初始化**（本轮新增）：中文命令行参数用 `WideCharToMultiByte(CP_UTF8)` 转 UTF-8 缓存
 
 ## 六、下一步计划
 
 1. **阶段6「标准库」后续任务**（plans/002-阶段6-标准库.md）：
-   - Task 6.5 字符串处理库（stdlib/字符串.cn：长度/比较/连接/复制/查找/格式化）——字符串 API 已全部内置（Task 2.5/2.8/2.9），此处仅提供 stdlib 模块包装
+   - Task 6.5 剩余：stdlib/字符串.cn 常规包装（长度/比较/连接/复制/查找/格式化）——字符串 API 已全部内置（Task 2.5/2.8/2.9），此处仅提供 stdlib 模块包装
    - 数学库 P1：对数/反三角/随机数（未做）
 2. **Debug 子任务（编译器缺陷修复）**：
    - **构造函数重载**：ClassInfo.methods 按 sigKey 索引（当前按名覆盖）
    - **嵌套泛型字段 this 传递**：栈/队列已改独立字段规避；彻底修复需查 ir_oop_call.cpp structReturn 嵌套场景
    - **泛型函数 + 函数指针参数**：泛型函数参数中函数指针类型单态化替换（T 未替换为实参类型）
-   - **泛型类方法内循环遍历第一个泛型字段**：循环内字段 LoadPtr 地址计算（S/T/U/AA 实验定位：索引≥2 读垃圾）
+   - **泛型类方法内循环遍历第一个泛型字段**：循环内字段 LoadPtr 地址计算（索引≥2 读垃圾）
 3. **阶段5 阶段B/C**（plans/002-阶段5-LinuxARM64.md）：交叉编译/QEMU 验证、ARM64 优化对齐
 4. **遗留风险**：
-   - `stdlib/数学.cn`/`IO.cn`/`文件.cn` 模块体内 `数学.xxx`/`IO.xxx`/`文件.xxx` 直调冲突（仅供外部导入使用；E2E 直接验证内置）
+   - `stdlib/数学.cn`/`IO.cn`/`文件.cn`/`字符串扩展.cn`/`时间.cn`/`系统.cn` 模块体内 `数学.xxx`/`IO.xxx`/`文件.xxx`/`解析.xxx`/`时间.xxx`/`系统.xxx` 直调冲突（仅供外部导入使用；E2E 直接验证内置）
    - 接口附加 vtable 预留（多接口场景，未实现）
    - ARM64 E2E 在 x86 主机需交叉工具链/QEMU
    - **x64_instructions.cpp 存量超行数**：单文件超 1000 行约束，待后续拆分
+   - system_api.cpp 转换后 argv 字符串 malloc 持有（进程生命周期，退出由 OS 回收——可接受；若需严格释放可在 entry 返回后清理，当前无机制）
 
 ## 七、关键文件索引
 
 | 模块 | 文件 |
 |------|------|
-| IO 输入运行时（新增） | [`src/runtime/input_api.cpp`](src/runtime/input_api.cpp)（读取行/读取整数/读取浮点/打印到错误） |
-| 文件运行时（新增） | [`src/runtime/file_api.cpp`](src/runtime/file_api.cpp)（打开/读取/写入/读取文件行/大小/关闭/存在，中文路径 _wfopen_s） |
-| IO 输入库（新增） | [`stdlib/IO.cn`](stdlib/IO.cn)（读取行/读取整数/读取浮点/打印到错误，结果<T,整32> 包装） |
-| 文件库（新增） | [`stdlib/文件.cn`](stdlib/文件.cn)（打开/读取/写入/读取文件行/大小/关闭/存在） |
-| 语义注册（修改） | [`src/cn_compiler/semantic/semantic.cpp`](src/cn_compiler/semantic/semantic.cpp)（registerBuiltins：IO./文件. 内置注册 + 字符串与 无 比较修复） |
-| IR 映射（修改） | [`src/cn_compiler/ir/ir.cpp`](src/cn_compiler/ir/ir.cpp)（IO./文件. 名称映射 + 结果类型映射） |
-| E2E 运行器（修改） | [`tests/e2e/run_e2e.py`](tests/e2e/run_e2e.py)（.input 文件 stdin 注入） |
-| IO 输入 E2E（新增） | tests/e2e/33_io_input/（主.cn + 主.input + 主.expected） |
-| 文件 E2E（新增） | tests/e2e/34_file/（主.cn + 主.expected） |
-| IO 单测（新增） | tests/unit/runtime/test_input_api.cpp |
-| 文件单测（新增） | tests/unit/runtime/test_file_api.cpp |
-| 计划文档 | plans/002-阶段6-标准库.md（Task 6.2 输入已打勾 ✅、Task 6.8 已补记 ✅） |
+| 字符串解析运行时（扩展） | [`src/runtime/string_api.cpp`](src/runtime/string_api.cpp)（__cn_str_to_int/to_double/to_bool，strto* 整串解析 + 整32* 成功标志） |
+| 时间运行时（新增） | [`src/runtime/time_api.cpp`](src/runtime/time_api.cpp)（__cn_time/__cn_clock_ms/__cn_time_format，平台 #ifdef _WIN32） |
+| 系统运行时（新增） | [`src/runtime/system_api.cpp`](src/runtime/system_api.cpp)（__cn_argc/__cn_argv，Windows CommandLineToArgvW UTF-8 缓存） |
+| 字符串扩展库（新增） | [`stdlib/字符串扩展.cn`](stdlib/字符串扩展.cn)（字符串转整数/转浮点/转布尔/替换/填充左/填充右/分割） |
+| 时间库（新增） | [`stdlib/时间.cn`](stdlib/时间.cn)（当前时间戳/单调时钟毫秒/格式化时间） |
+| 系统库（新增） | [`stdlib/系统.cn`](stdlib/系统.cn)（参数个数/参数） |
+| 语义注册（修改） | [`src/cn_compiler/semantic/semantic.cpp`](src/cn_compiler/semantic/semantic.cpp)（registerBuiltins：解析./时间./系统. 内置注册） |
+| IR 映射（修改） | [`src/cn_compiler/ir/ir.cpp`](src/cn_compiler/ir/ir.cpp)（解析./时间./系统. 名称映射 + 结果类型映射） |
+| 运行时入口（修改） | [`src/runtime/runtime.cpp`](src/runtime/runtime.cpp)（entry 缓存 argc/argv；WinMain 转发） |
+| E2E 运行器（修改） | [`tests/e2e/run_e2e.py`](tests/e2e/run_e2e.py)（.args 文件命令行参数注入） |
+| 字符串扩展 E2E（新增） | tests/e2e/35_string_ext/（主.cn + 字符串扩展.cn + 主.expected） |
+| 时间 E2E（新增） | tests/e2e/36_time/（主.cn + 主.expected，内部断言输出 真/假） |
+| 系统 E2E（新增） | tests/e2e/37_system/（主.cn + 主.args + 主.expected，中文参数 UTF-8） |
+| 字符串解析单测（新增） | tests/unit/runtime/test_string_parse_api.cpp（24 用例） |
+| 时间单测（新增） | tests/unit/runtime/test_time_api.cpp（9 用例） |
+| 系统单测（新增） | tests/unit/runtime/test_system_api.cpp（10 用例） |
+| 计划文档 | plans/002-阶段6-标准库.md（Task 6.5 字符串处理库 ✅、Task 6.9 时间库 ✅、Task 6.10 系统库 ✅） |

@@ -214,8 +214,14 @@ add_library(cn_runtime STATIC
     src/runtime/math_api.cpp
     src/runtime/input_api.cpp
     src/runtime/file_api.cpp
+    src/runtime/time_api.cpp
+    src/runtime/system_api.cpp
 )
 target_include_directories(cn_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
+# Task 6.5 系统库：CommandLineToArgvW 依赖 shell32（Windows 命令行 Unicode 解析）
+if(WIN32)
+    target_link_libraries(cn_runtime PUBLIC shell32)
+endif()
 
 # 编译器可执行文件
 add_executable(cn

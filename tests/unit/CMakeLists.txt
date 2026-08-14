@@ -81,12 +81,15 @@ add_executable(cn_unit_tests
     runtime/test_runtime.cpp
     runtime/test_string_api.cpp
     runtime/test_string_api_extra.cpp
+    runtime/test_string_parse_api.cpp
     runtime/test_i128_api.cpp
     runtime/test_format_api.cpp
     runtime/test_object_api.cpp
     runtime/test_math_api.cpp
     runtime/test_input_api.cpp
     runtime/test_file_api.cpp
+    runtime/test_time_api.cpp
+    runtime/test_system_api.cpp
 )
 
 # 链接 Google Test 与公共模块库

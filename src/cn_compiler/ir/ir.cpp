@@ -2886,6 +2886,23 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "文件.文件大小") calleeName = "__cn_file_size";
         else if (calleeName == "文件.关闭文件") calleeName = "__cn_file_close";
         else if (calleeName == "文件.文件存在") calleeName = "__cn_file_exists";
+        // Task 6.5 字符串扩展库（stdlib/字符串扩展.cn 包装的内置，语义层注册为
+        //   解析.* 限定名——"字符串" 是类型关键字不能作限定名前缀）：
+        //   解析.转整数 -> __cn_str_to_int、解析.转浮点 -> __cn_str_to_double、
+        //   解析.转布尔 -> __cn_str_to_bool（string_api.cpp；成功标志经整32* 输出参数）
+        else if (calleeName == "解析.转整数") calleeName = "__cn_str_to_int";
+        else if (calleeName == "解析.转浮点") calleeName = "__cn_str_to_double";
+        else if (calleeName == "解析.转布尔") calleeName = "__cn_str_to_bool";
+        // Task 6.5 时间库（stdlib/时间.cn 包装的内置，语义层注册为 时间.* 限定名）：
+        //   时间.当前时间戳 -> __cn_time、时间.单调时钟毫秒 -> __cn_clock_ms、
+        //   时间.格式化时间 -> __cn_time_format（time_api.cpp）
+        else if (calleeName == "时间.当前时间戳") calleeName = "__cn_time";
+        else if (calleeName == "时间.单调时钟毫秒") calleeName = "__cn_clock_ms";
+        else if (calleeName == "时间.格式化时间") calleeName = "__cn_time_format";
+        // Task 6.5 系统库（stdlib/系统.cn 包装的内置，语义层注册为 系统.* 限定名）：
+        //   系统.参数个数 -> __cn_argc、系统.参数 -> __cn_argv（system_api.cpp）
+        else if (calleeName == "系统.参数个数") calleeName = "__cn_argc";
+        else if (calleeName == "系统.参数") calleeName = "__cn_argv";
     }
 
     std::vector<ir::IRValue> args;
@@ -2962,6 +2979,20 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             resultType = "ptr";       // 读取文件行 -> 字符串（动态分配，EOF 返回 nullptr）
         } else if (calleeName == "__cn_file_exists") {
             resultType = "i1";        // 文件存在 -> 布尔
+        } else if (calleeName == "__cn_str_to_int") {
+            resultType = "i64";       // 字符串扩展（Task 6.5）：转整数 -> 整64（成功标志经整32*）
+        } else if (calleeName == "__cn_str_to_double") {
+            resultType = "f64";       // 转浮点 -> 浮64（成功标志经整32*）
+        } else if (calleeName == "__cn_str_to_bool") {
+            resultType = "i64";       // 转布尔 -> 整64（0/1，成功标志经整32*；CN 层 Cast 布尔）
+        } else if (calleeName == "__cn_time" || calleeName == "__cn_clock_ms") {
+            resultType = "i64";       // 时间库（Task 6.5）：当前时间戳/单调时钟毫秒 -> 整64
+        } else if (calleeName == "__cn_time_format") {
+            resultType = "ptr";       // 格式化时间 -> 字符串（动态分配，失败 nullptr）
+        } else if (calleeName == "__cn_argc") {
+            resultType = "i64";       // 系统库（Task 6.5）：参数个数 -> 整64
+        } else if (calleeName == "__cn_argv") {
+            resultType = "ptr";       // 参数 -> 字符串（CRT 持有，越界 nullptr）
         } else if (calleeName == "__cn_str_free") {
             // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：
             // 语义层"空类型"->mapType "void" 被下方过滤，emitResult 结果寄存器写入

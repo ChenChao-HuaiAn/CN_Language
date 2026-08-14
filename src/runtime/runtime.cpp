@@ -9,17 +9,22 @@ extern "C" int cn_main();
 
 // 入口：调用 主 函数，将返回值传递给操作系统
 // 对应CN语言 主 函数（规格书10.4：命令行参数预留，阶段一只支持无参签名）
+// Task 6.5（系统库）：将 argc/argv 缓存到全局（__cn_cache_argv），
+//   供 CN 层 系统.参数个数/系统.参数 读取（system_api.cpp）
 extern "C" int entry(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+    __cn_cache_argv(argc, argv);
     return cn_main();
 }
 
 // Windows入口（阶段一简化：控制台程序直接转发到 entry）
 #ifdef _WIN32
 #include <windows.h>
+#include <cstdlib>  // __argc/__argv（MSVC CRT 全局变量，入口前已由 CRT 解析命令行）
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
-    return entry(0, nullptr);
+    // Task 6.5（系统库）：WinMain 的形参不含 argc/argv（第4参是 nCmdShow），
+    //   但 MSVC CRT 在调用入口前已解析命令行到全局 __argc/__argv——
+    //   转发真实命令行参数（旧实现 entry(0, nullptr) 导致 系统.参数个数 恒为 0）
+    return entry(__argc, __argv);
 }
 #else
 // Linux/Unix 入口（阶段5 Linux ARM64）：标准 main 转发到 entry。

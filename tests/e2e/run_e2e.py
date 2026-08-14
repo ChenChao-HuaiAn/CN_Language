@@ -154,6 +154,23 @@ def 查找输入文件(源文件: pathlib.Path) -> pathlib.Path:
         return 输入文件
     return None
 
+
+def 查找参数文件(源文件: pathlib.Path) -> list:
+    """查找与源文件同名的 .args 命令行参数文件（不存在返回空列表，Task 6.5 系统库用）
+
+    文件格式：每行一个参数（首行即 argv[1]；argv[0] 恒为可执行文件名本身）。
+    空白行与 # 注释行跳过（与 .input 注入同模式，方便维护中文参数）。
+    """
+    参数文件 = 源文件.with_suffix(".args")
+    if not 参数文件.exists():
+        return []
+    参数列表 = []
+    for 行 in 参数文件.read_text(encoding="utf-8").splitlines():
+        行 = 行.strip()
+        if 行 and not 行.startswith("#"):
+            参数列表.append(行)
+    return 参数列表
+
 # ============ 核心逻辑 ============
 
 
@@ -196,17 +213,22 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     if not 输出可执行.exists():
         return "失败", "编译返回成功但未生成可执行文件"
 
-    # 2. 运行可执行文件（Task 6.2：存在同名 .input 文件时注入标准输入）
+    # 2. 运行可执行文件（Task 6.2：存在同名 .input 文件时注入标准输入；
+    #    Task 6.5：存在同名 .args 文件时追加命令行参数——argv[0]=可执行文件，
+    #    后续参数来自 .args 文件每行一项）
     输入文件 = 查找输入文件(源文件)
     标准输入 = ""
     if 输入文件 is not None:
         标准输入 = 输入文件.read_text(encoding="utf-8")
+    参数列表 = 查找参数文件(源文件)
     if 详细:
         if 输入文件 is not None:
             print(f"    [运行] {输出可执行} < {输入文件.name}")
+        elif 参数列表:
+            print(f"    [运行] {输出可执行} {' '.join(参数列表)}")
         else:
             print(f"    [运行] {输出可执行}")
-    运行结果 = 运行命令([str(输出可执行)], 项目根目录, 标准输入)
+    运行结果 = 运行命令([str(输出可执行)] + 参数列表, 项目根目录, 标准输入)
     if 运行结果.returncode != 0:
         return "失败", f"运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
 
