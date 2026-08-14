@@ -212,6 +212,8 @@ add_library(cn_runtime STATIC
     src/runtime/string_api.cpp
     src/runtime/i128_api.cpp
     src/runtime/math_api.cpp
+    src/runtime/input_api.cpp
+    src/runtime/file_api.cpp
 )
 target_include_directories(cn_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
 

@@ -85,6 +85,8 @@ add_executable(cn_unit_tests
     runtime/test_format_api.cpp
     runtime/test_object_api.cpp
     runtime/test_math_api.cpp
+    runtime/test_input_api.cpp
+    runtime/test_file_api.cpp
 )
 
 # 链接 Google Test 与公共模块库

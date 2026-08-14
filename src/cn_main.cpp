@@ -357,6 +357,8 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
         "src/runtime/string_api.cpp",
         "src/runtime/i128_api.cpp",
         "src/runtime/math_api.cpp",  // Task 6.3 数学库（__cn_sqrt 等）
+        "src/runtime/input_api.cpp", // Task 6.2 输入 API（__cn_read_* / __cn_print_err）
+        "src/runtime/file_api.cpp",  // Task 6.2 文件 API（__cn_file_*）
     };
     const std::string sep = isWinX64(target) ? "\\" : "/";
     for (const char* src : runtimeSrcs) {
@@ -403,13 +405,15 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "\\io_api.obj\" \"" + runtimeObjDir + "\\runtime.obj\" \"" +
             runtimeObjDir + "\\string_api.obj\" \"" + runtimeObjDir + "\\i128_api.obj\" \"" +
-            runtimeObjDir + "\\math_api.obj\"";
+            runtimeObjDir + "\\math_api.obj\" \"" + runtimeObjDir + "\\input_api.obj\" \"" +
+            runtimeObjDir + "\\file_api.obj\"";
     } else {
         cmdLine =
             linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\" \"" +
             runtimeObjDir + "/io_api.o\" \"" + runtimeObjDir + "/runtime.o\" \"" +
             runtimeObjDir + "/string_api.o\" \"" + runtimeObjDir + "/i128_api.o\" \"" +
-            runtimeObjDir + "/math_api.o\"";
+            runtimeObjDir + "/math_api.o\" \"" + runtimeObjDir + "/input_api.o\" \"" +
+            runtimeObjDir + "/file_api.o\"";
     }
     int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
     if (rc != 0) {

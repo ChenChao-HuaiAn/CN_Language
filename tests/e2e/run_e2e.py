@@ -84,11 +84,16 @@ def 着色(文本: str, 颜色码: str) -> str:
 # ============ 工具函数 ============
 
 
-def 运行命令(命令列表: list, 工作目录: pathlib.Path) -> subprocess.CompletedProcess:
-    """执行命令并返回结果（捕获stdout/stderr，UTF-8解码容错）"""
+def 运行命令(命令列表: list, 工作目录: pathlib.Path,
+             标准输入: str = "") -> subprocess.CompletedProcess:
+    """执行命令并返回结果（捕获stdout/stderr，UTF-8解码容错）
+
+    标准输入: 可选 stdin 注入字符串（Task 6.2 IO 输入用例用，默认空）
+    """
     return subprocess.run(
         命令列表, cwd=str(工作目录), capture_output=True,
-        text=True, encoding="utf-8", errors="replace")
+        text=True, encoding="utf-8", errors="replace",
+        input=标准输入)
 
 
 def 探测编译器(显式路径: str) -> pathlib.Path:
@@ -141,6 +146,14 @@ def 查找期望文件(源文件: pathlib.Path) -> pathlib.Path:
         raise FileNotFoundError(f"缺少期望输出文件: {期望文件}")
     return 期望文件
 
+
+def 查找输入文件(源文件: pathlib.Path) -> pathlib.Path:
+    """查找与源文件同名的 .input 标准输入文件（不存在返回 None，Task 6.2 IO 输入用）"""
+    输入文件 = 源文件.with_suffix(".input")
+    if 输入文件.exists():
+        return 输入文件
+    return None
+
 # ============ 核心逻辑 ============
 
 
@@ -183,10 +196,17 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     if not 输出可执行.exists():
         return "失败", "编译返回成功但未生成可执行文件"
 
-    # 2. 运行可执行文件
+    # 2. 运行可执行文件（Task 6.2：存在同名 .input 文件时注入标准输入）
+    输入文件 = 查找输入文件(源文件)
+    标准输入 = ""
+    if 输入文件 is not None:
+        标准输入 = 输入文件.read_text(encoding="utf-8")
     if 详细:
-        print(f"    [运行] {输出可执行}")
-    运行结果 = 运行命令([str(输出可执行)], 项目根目录)
+        if 输入文件 is not None:
+            print(f"    [运行] {输出可执行} < {输入文件.name}")
+        else:
+            print(f"    [运行] {输出可执行}")
+    运行结果 = 运行命令([str(输出可执行)], 项目根目录, 标准输入)
     if 运行结果.returncode != 0:
         return "失败", f"运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
 

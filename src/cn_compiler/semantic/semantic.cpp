@@ -811,6 +811,58 @@ void SemanticAnalyzer::registerBuiltins() {
     regMathFn("数学.向上取整", "浮64", {"浮64"});
     regMathFn("数学.向下取整", "浮64", {"浮64"});
 
+    // ---- IO 输入（Task 6.2，规格书10.6 输入 API；对应运行时 input_api.cpp）----
+    // 中文名带 "IO." 前缀（形如 模块.函数 限定名），与 stdlib/IO.cn 模块公开函数
+    // （纯名 读取行 等）不冲突——模块函数走"公开符号合并"，内置走"限定名直调"。
+    // 运行时符号：IO.读取行 -> __cn_read_line、IO.读取整数 -> __cn_read_int、
+    //   IO.读取浮点 -> __cn_read_float、IO.打印到错误 -> __cn_print_err（IR 层映射）。
+    // 设计说明：
+    //   - 读取行 返回 字符串*（动态分配，EOF/失败返回 无/空指针）——CN 层 stdlib/IO.cn
+    //     用 结果<字符串,整32> 包装（nullptr 判定 → 错误码.文件 5 / EOF 特殊语义）
+    //   - 读取整数/读取浮点 为 C 风格成功标志：参数 (整32* 成功标志)，返回整64/浮64——
+    //     CN 层 stdlib/IO.cn 用 &成功 传参，失败返回 错误(错误码.参数)（非 EOF 语义）
+    //   - 打印到错误：单字符串参数，不换行（fprintf stderr，与 打印行 不换行语义一致）
+    const auto regIoFn = [this](const std::string& name, const std::string& retType,
+                                const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regIoFn("IO.读取行", "字符串", {});
+    regIoFn("IO.读取整数", "整64", {"整32*"});
+    regIoFn("IO.读取浮点", "浮64", {"整32*"});
+    regIoFn("IO.打印到错误", "空类型", {"字符串"});
+
+    // ---- 文件 API（Task 6.2，规格书阶段五「文件系统」；对应运行时 file_api.cpp）----
+    // 中文名带 "文件." 前缀，与 stdlib/文件.cn 模块公开函数不冲突。
+    // 运行时符号：文件.打开文件 -> __cn_file_open、文件.读取文件 -> __cn_file_read、
+    //   文件.写入文件 -> __cn_file_write、文件.读取文件行 -> __cn_file_read_line、
+    //   文件.文件大小 -> __cn_file_size、文件.关闭文件 -> __cn_file_close、
+    //   文件.文件存在 -> __cn_file_exists（IR 层映射）。
+    // 设计说明：
+    //   - 句柄类型：空类型*（void*，C 层 FILE* 转换）
+    //   - 打开文件：模式 整32（1=读/2=写/3=追加），返回 空类型*（失败 nullptr）
+    //   - 读取文件/写入文件/文件大小：返回整64（实际字节数/大小，失败 -1）
+    //   - 读取文件行：返回 字符串*（动态分配，EOF 返回 nullptr）——CN 层包装 结果<字符串,整32>
+    //   - 文件存在：返回 布尔
+    const auto regFileFn = [this](const std::string& name, const std::string& retType,
+                                  const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regFileFn("文件.打开文件", "空类型*", {"字符串", "整32"});
+    regFileFn("文件.读取文件", "整64", {"空类型*", "字符*", "整64"});
+    regFileFn("文件.写入文件", "整64", {"空类型*", "字符串"});
+    regFileFn("文件.读取文件行", "字符串", {"空类型*"});
+    regFileFn("文件.文件大小", "整64", {"空类型*"});
+    regFileFn("文件.关闭文件", "空类型", {"空类型*"});
+    regFileFn("文件.文件存在", "布尔", {"字符串"});
+
     // ---- 内存管理API（Task 6.1 核心库/容器库，规格书10.2 内存管理）----
     // 运行时符号：分配 -> cn_alloc、释放 -> cn_free、重新分配 -> cn_realloc、
     //   复制内存 -> cn_memcpy、置零内存 -> cn_memset（codegen symbolName 已有映射）
@@ -1491,12 +1543,22 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
         }
         // 指针比较（Task 2.4）：两指针（或指针与空指针）按地址比较；
         // 指针与整型禁止隐式比较（规格书3.7：指针与整数禁止隐式转换）
-        const bool leftPtr = isPointerType(leftType);
-        const bool rightPtr = isPointerType(rightType);
+        // Task 6.2（IO/文件库）：字符串/字符* 本质是 char* 指针，与 空类型*（无）
+        //   比较合法（读取行 返回字符串，EOF 返回 nullptr 判定）；视为指针比较。
+        const bool leftPtr = isPointerType(leftType) ||
+                             leftType == "字符串" || leftType == "字符*";
+        const bool rightPtr = isPointerType(rightType) ||
+                              rightType == "字符串" || rightType == "字符*";
         if ((leftPtr || rightPtr) && !(leftPtr && rightPtr)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "指针只能与指针或空指针比较，实际为 '" + leftType +
                                 "' 与 '" + rightType + "'");
+            lastType_ = "布尔";
+            return;
+        }
+        // 指针间（含字符串）比较按地址，无需类型转换检查（字符串 vs 空类型*
+        //   均以 ptr 表示，地址比较合法）
+        if (leftPtr && rightPtr) {
             lastType_ = "布尔";
             return;
         }

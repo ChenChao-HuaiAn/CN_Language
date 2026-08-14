@@ -110,6 +110,29 @@ extern "C" {
     CNRT_EXPORT void printLineI128(const std::uint64_t* v);        // 打印有符号128位（换行）
     CNRT_EXPORT void printLineU128(const std::uint64_t* v);        // 打印无符号128位（换行）
 
+    // 输入 API（Task 6.2，规格书10.6 输入；对应 CN 层 stdlib/IO.cn 函数）
+    // 内存语义：__cn_read_line 返回动态分配 UTF-8 字符串（不含换行），
+    //   调用方负责用 __cn_str_free 释放；EOF/失败返回 nullptr。
+    // 成功标志：__cn_read_int/__cn_read_float 用 int* 输出参数（1=成功，0=EOF/非法输入），
+    //   CN 层 stdlib/IO.cn 以 &成功 传参（C 风格）。
+    CNRT_EXPORT char* __cn_read_line();                 // 读取行（IO.读取行，EOF 返回 nullptr）
+    CNRT_EXPORT long long __cn_read_int(int* ok);       // 读取整数（IO.读取整数，strtoll 整行解析）
+    CNRT_EXPORT double __cn_read_float(int* ok);        // 读取浮点（IO.读取浮点，strtod 整行解析）
+    CNRT_EXPORT void __cn_print_err(const char* text);  // 打印到标准错误（IO.打印到错误，fprintf stderr 不换行）
+
+    // 文件 API（Task 6.2，规格书阶段五「文件系统」；对应 CN 层 stdlib/文件.cn 函数）
+    // 句柄类型：C 层 FILE* 以 void* 传递（CN 层对应 空类型*）。
+    // 模式：1=读"rb"、2=写"wb"（截断）、3=追加"ab"；失败返回 nullptr。
+    // 中文路径：UTF-8 经 MultiByteToWideChar(CP_UTF8) + _wfopen_s（lessons 已验证方案）。
+    // 内存语义：__cn_file_read_line 返回动态分配字符串（含换行），调用方负责 __cn_str_free。
+    CNRT_EXPORT void* __cn_file_open(const char* path, long long mode);      // 打开文件（文件.打开文件）
+    CNRT_EXPORT long long __cn_file_read(void* handle, char* buffer, long long count); // 读取原始字节（文件.读取文件）
+    CNRT_EXPORT long long __cn_file_write(void* handle, const char* data);   // 写入字符串（文件.写入文件）
+    CNRT_EXPORT char* __cn_file_read_line(void* handle);                     // 按行读取（文件.读取文件行，EOF 返回 nullptr）
+    CNRT_EXPORT long long __cn_file_size(void* handle);                      // 文件大小（文件.文件大小，失败 -1）
+    CNRT_EXPORT void __cn_file_close(void* handle);                          // 关闭文件（文件.关闭文件）
+    CNRT_EXPORT long long __cn_file_exists(const char* path);                // 文件存在（文件.文件存在，1=真 0=假）
+
     // 数学库 API（Task 6.3，规格书10.5 数学库；对应 CN 层 stdlib/数学.cn 函数）
     // 命名约定：运行时英文 API，CN 层中文函数名由编译器 IR 层映射到此符号
     // 输入输出均为 double（浮64）；P1 的对数/反三角/随机数留待后续

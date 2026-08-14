@@ -2867,6 +2867,25 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         // Task 6.1 核心库：运行时错误（断言 依赖）-> __cn_runtime_error
         //   （IR 层数组越界检查已直接发射该符号，codegen 有映射）
         else if (calleeName == "运行时错误") calleeName = "__cn_runtime_error";
+        // Task 6.2 IO 输入（stdlib/IO.cn 包装的内置，语义层注册为 IO.* 限定名）：
+        //   IO.读取行 -> __cn_read_line、IO.读取整数 -> __cn_read_int、
+        //   IO.读取浮点 -> __cn_read_float、IO.打印到错误 -> __cn_print_err（input_api.cpp）
+        else if (calleeName == "IO.读取行") calleeName = "__cn_read_line";
+        else if (calleeName == "IO.读取整数") calleeName = "__cn_read_int";
+        else if (calleeName == "IO.读取浮点") calleeName = "__cn_read_float";
+        else if (calleeName == "IO.打印到错误") calleeName = "__cn_print_err";
+        // Task 6.2 文件 API（stdlib/文件.cn 包装的内置，语义层注册为 文件.* 限定名）：
+        //   文件.打开文件 -> __cn_file_open、文件.读取文件 -> __cn_file_read、
+        //   文件.写入文件 -> __cn_file_write、文件.读取文件行 -> __cn_file_read_line、
+        //   文件.文件大小 -> __cn_file_size、文件.关闭文件 -> __cn_file_close、
+        //   文件.文件存在 -> __cn_file_exists（file_api.cpp）
+        else if (calleeName == "文件.打开文件") calleeName = "__cn_file_open";
+        else if (calleeName == "文件.读取文件") calleeName = "__cn_file_read";
+        else if (calleeName == "文件.写入文件") calleeName = "__cn_file_write";
+        else if (calleeName == "文件.读取文件行") calleeName = "__cn_file_read_line";
+        else if (calleeName == "文件.文件大小") calleeName = "__cn_file_size";
+        else if (calleeName == "文件.关闭文件") calleeName = "__cn_file_close";
+        else if (calleeName == "文件.文件存在") calleeName = "__cn_file_exists";
     }
 
     std::vector<ir::IRValue> args;
@@ -2928,6 +2947,21 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                    calleeName == "__cn_tan" || calleeName == "__cn_fabs" ||
                    calleeName == "__cn_ceil" || calleeName == "__cn_floor") {
             resultType = "f64";       // 数学库（Task 6.3）：平方根/幂/正弦/余弦/正切/绝对值/向上取整/向下取整 -> 浮64
+        } else if (calleeName == "__cn_read_line") {
+            resultType = "ptr";       // IO 输入（Task 6.2）：读取行 -> 字符串（动态分配，EOF 返回 nullptr）
+        } else if (calleeName == "__cn_read_int") {
+            resultType = "i64";       // 读取整数 -> 整64（成功标志经整32* 输出参数）
+        } else if (calleeName == "__cn_read_float") {
+            resultType = "f64";       // 读取浮点 -> 浮64（成功标志经整32* 输出参数）
+        } else if (calleeName == "__cn_file_open") {
+            resultType = "ptr";       // 文件 API（Task 6.2）：打开文件 -> 空类型*（FILE*，失败 nullptr）
+        } else if (calleeName == "__cn_file_read" || calleeName == "__cn_file_write" ||
+                   calleeName == "__cn_file_size") {
+            resultType = "i64";       // 读取/写入字节数、文件大小 -> 整64（失败 -1）
+        } else if (calleeName == "__cn_file_read_line") {
+            resultType = "ptr";       // 读取文件行 -> 字符串（动态分配，EOF 返回 nullptr）
+        } else if (calleeName == "__cn_file_exists") {
+            resultType = "i1";        // 文件存在 -> 布尔
         } else if (calleeName == "__cn_str_free") {
             // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：
             // 语义层"空类型"->mapType "void" 被下方过滤，emitResult 结果寄存器写入
