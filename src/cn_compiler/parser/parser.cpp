@@ -288,23 +288,44 @@ bool Parser::isTemplateAngleOpen() const {
     }
 }
 
-// 模块路径解析（Task 3.6）：标识符{.标识符}（. 分隔，如 数学.平方根 / 网络协议.HTTP.请求）
-std::string Parser::parseModulePath() {
-    std::string path;
-    if (check(TokenType::Identifier)) {
-        path = current().getValue();
+// 模块路径段判定（Task 3.6，v2.0）：标识符 或 关键字
+// 模块名可为关键字（规范官方示例 核心::可选::{某些, 无} 中 可选/无 均为关键字）；
+// 但须排除语法分隔 作为（Kw_As）——重命名导入 导入 路径 作为 别名 的别名不应被
+// 误吞为路径段。其余关键字（含 包/结果/可选/无 等）均可作为路径段/导入项名。
+bool Parser::isModulePathSegment() const {
+    return check(TokenType::Identifier) ||
+           (Token::isKeyword(currentType()) && !check(TokenType::Kw_As));
+}
+
+// 路径段前瞻判定：peek(1) 是否为合法路径段（parseModulePath 循环中
+//   当前 token 是 ::，须检查其后 token 而非当前）
+bool Parser::isModulePathSegmentAhead() const {
+    const TokenType t = peek(1).getType();
+    return t == TokenType::Identifier ||
+           (Token::isKeyword(t) && t != TokenType::Kw_As);
+}
+
+// 模块路径解析（Task 3.6，v2.0）：标识符 (:: 标识符)*（ColonColon 分隔）
+//   如 数学::平方根 -> {数学, 平方根}；网络协议::HTTP::请求 -> {网络协议, HTTP, 请求}
+//   核心::可选::{某些, 无} -> {核心, 可选}（路径段可为关键字，如 可选）
+// v2.0 将 v1.0 的 `.` 路径分隔改为 `::`（规格书08-三），`::` 为独立 ColonColon token。
+std::vector<std::string> Parser::parseModulePath() {
+    std::vector<std::string> segments;
+    if (isModulePathSegment()) {
+        segments.push_back(current().getValue());
         advance();
     } else {
         reportErrorHere("预期模块名（标识符）");
-        return path;
+        return segments;
     }
-    // 循环消费 .标识符
-    while (check(TokenType::Dot) && peek(1).getType() == TokenType::Identifier) {
-        advance();  // 消费 .
-        path += "." + current().getValue();
-        advance();  // 消费 标识符
+    // 循环消费 :: 路径段（v2.0：ColonColon 分隔；段可为标识符或关键字）
+    // 注意：用 peek(1) 判定路径段（当前 token 是 ::，检查其后的 token）
+    while (check(TokenType::ColonColon) && isModulePathSegmentAhead()) {
+        advance();  // 消费 ::
+        segments.push_back(current().getValue());
+        advance();  // 消费 路径段
     }
-    return path;
+    return segments;
 }
 
 // 扩展类型名（Task 2.4/3.5/3.8）：基本类型 + 指针(*)/数组([长度]) 后缀 + 模板实参
@@ -806,11 +827,12 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
     auto program = std::make_unique<Program>();
     if (!tokens_.empty()) program->location = tokens_[0].getLocation();
 
-    // 模块级可见性标签（Task 3.6，规格书08-三 标签式）：公开: / 私有:
+    // 模块级可见性标签（Task 3.6，规格书08-四 标签式）：公开: / 私有:
     // 与类内访问标签（parseClassDecl 内维护）同语法不同作用域：
     //   此处维护的是"后续顶层声明"的模块可见性，块级生效直到下一个标签。
-    //   默认可见性：公开（标签未出现前的顶层声明按公开处理）。
-    AccessSpecifier moduleAccess = AccessSpecifier::Public;
+    //   默认可见性：私有（v2.0 变更，规格书08-四 默认私有；文件顶部无标签时
+    //   声明默认私有，标准库模块须显式 公开: 导出 API）。
+    AccessSpecifier moduleAccess = AccessSpecifier::Private;
     while (!check(TokenType::EndOfFile)) {
         // 模块级可见性标签：公开: / 私有:（仅顶层作用域识别；类体内由 parseClassDecl 处理）
         if (check(TokenType::Kw_Public) && peek(1).getType() == TokenType::Colon) {
@@ -868,9 +890,17 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 program->interfaces.push_back(std::move(decl));
             }
         } else if (check(TokenType::Kw_Import)) {
-            // 导入声明（Task 3.6，规格书08-二）：导入 数学.平方根
+            // 导入声明（Task 3.6，规格书08-三，v2.0 全形式）：
+            //   导入 路径[作为 别名] | 导入 路径::{项} | 导入 路径::*
             auto decl = parseImportDecl();
-            if (!decl->importPath.empty()) {
+            if (!decl->segments.empty()) {
+                program->imports.push_back(std::move(decl));
+            }
+        } else if (check(TokenType::Kw_Module)) {
+            // 模块声明（Task 3.6，规格书08-二，v2.0 新增）：模块 标识符
+            //   引用 .cn 文件模块（建立模块树引用关系；复用 ImportDecl 承载）
+            auto decl = parseModuleDecl();
+            if (!decl->segments.empty()) {
                 program->imports.push_back(std::move(decl));
             }
         } else if (check(TokenType::Kw_Generic)) {

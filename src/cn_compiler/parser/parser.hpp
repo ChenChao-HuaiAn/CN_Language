@@ -73,8 +73,11 @@ private:
     std::unique_ptr<ClassDecl> parseClassDecl();
     // 接口声明：接口 名 { 虚拟 函数 签名... }（Task 3.3，实现于 parser_oop.cpp）
     std::unique_ptr<InterfaceDecl> parseInterfaceDecl();
-    // 导入声明：导入 路径 | 从 路径 导入 名, 名（Task 3.6，实现于 parser_oop.cpp）
+    // 导入声明（v2.0 全形式）：导入 路径[作为 别名] | 导入 路径::{项} | 导入 路径::*
+    //   （Task 3.6，实现于 parser_oop.cpp；v2.0 已删除 从...导入 分支）
     std::unique_ptr<ImportDecl> parseImportDecl();
+    // 模块声明：模块 标识符（v2.0 新增，实现于 parser_oop.cpp；引用 .cn 文件模块）
+    std::unique_ptr<ImportDecl> parseModuleDecl();
     // 泛型声明：泛型 <类型 T[, 类型 U : 接口]> 类/函数（Task 3.8，实现于 parser_oop.cpp）
     std::unique_ptr<GenericDecl> parseGenericDecl();
     // 类成员解析：当前访问标签段下的字段/方法/构造/析构/运算符重载/友元（parser_oop.cpp）
@@ -84,8 +87,15 @@ private:
     // 模板实参形态探测（Task 3.5/3.8）：当前为 '<'，判断是否为模板尖括号
     //   （类型名 < 类型[,...] >），而非小于比较运算符。lookahead 扫描不消费 token。
     bool isTemplateAngleOpen() const;
-    // 模块路径解析：标识符{.标识符}（导入/从 的路径部分，Task 3.6）
-    std::string parseModulePath();
+    // 模块路径解析（v2.0）：标识符(:: 标识符)*（ColonColon 分隔，Task 3.6）
+    //   返回路径段向量（segments）；兼容旧调用方经 importPath 拼接访问
+    std::vector<std::string> parseModulePath();
+    // 模块路径段判定（v2.0）：标识符 或 关键字（模块名可为关键字，
+    //   如 包/可选/结果/无；排除语法分隔 作为 以免吞并 重命名导入 的别名）
+    bool isModulePathSegment() const;
+    // 路径段前瞻判定：peek(1) 是否为合法路径段（parseModulePath 循环中
+    //   当前 token 是 ::，须检查其后 token 而非当前）
+    bool isModulePathSegmentAhead() const;
     // 结构体/联合体声明：结构体 名 { 类型 字段; ... }（Task 2.7）
     std::unique_ptr<StructDecl> parseStructDecl(bool isUnion);
     // 枚举声明：枚举 名 { 成员, 成员 = 值, ... }（Task 2.7）

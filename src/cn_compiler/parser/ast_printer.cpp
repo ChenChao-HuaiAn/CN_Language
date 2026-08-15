@@ -462,14 +462,33 @@ void AstPrinter::visitType(Type* node) {
 // ==================== 阶段3 OOP/错误处理/模块/泛型 节点打印 ====================
 
 void AstPrinter::visitImportDecl(ImportDecl* node) {
-    std::string detail = node->importPath;
-    if (node->fromImport) {
-        detail += " -> 导入 [";
+    std::string detail;
+    if (node->isModuleDecl) {
+        // 模块声明：模块 标识符（v2.0）
+        detail = "模块 " + node->importPath;
+        printHeader("模块声明", node->location, detail);
+        return;
+    }
+    // 导入声明（v2.0 全形式）
+    detail = "导入 ";
+    for (std::size_t i = 0; i < node->segments.size(); ++i) {
+        if (i > 0) detail += "::";
+        detail += node->segments[i];
+    }
+    if (!node->alias.empty()) {
+        detail += " 作为 " + node->alias;
+    } else if (node->wildcard) {
+        detail += "::*";
+    } else if (!node->names.empty()) {
+        detail += "::{";
         for (std::size_t i = 0; i < node->names.size(); ++i) {
             if (i > 0) detail += ", ";
-            detail += node->names[i];
+            detail += node->names[i].name;
+            if (!node->names[i].alias.empty()) {
+                detail += " 作为 " + node->names[i].alias;
+            }
         }
-        detail += "]";
+        detail += "}";
     }
     printHeader("导入声明", node->location, detail);
 }

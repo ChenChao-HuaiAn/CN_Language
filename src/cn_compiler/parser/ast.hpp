@@ -566,8 +566,8 @@ public:
     int totalSize = 0;                       // 总大小（字节，语义层计算回填）
     int align = 1;                           // 对齐（字节，语义层计算回填）
     bool layoutComputed = false;             // 布局是否已计算（语义层回填标记）
-    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
-    AccessSpecifier access = AccessSpecifier::Public;
+    // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
+    AccessSpecifier access = AccessSpecifier::Private;
 };
 
 // 枚举成员：成员名 + 值（显式赋值或自动递增，Task 2.7）
@@ -586,8 +586,8 @@ public:
 
     std::string name;                        // 枚举类型名
     std::vector<EnumMember> members;         // 成员列表（值已求值）
-    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
-    AccessSpecifier access = AccessSpecifier::Public;
+    // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
+    AccessSpecifier access = AccessSpecifier::Private;
 };
 
 // 变量声明：变量/常量/静态 类型前置或冒号后置（CN规范类型前置，兼容冒号后置）
@@ -743,26 +743,49 @@ public:
     std::unique_ptr<BlockStmt> body;                   // 函数体（为空表示函数原型声明）
     std::string sigKey;                                // 重载签名 key（Task 2.10，
                                                        //   语义层注册时写回；IR/codegen 按此 mangling）
-    // ---- 模块级可见性（Task 3.6，规格书08-三 标签式） ----
+    // ---- 模块级可见性（Task 3.6，规格书08-四 标签式） ----
     // 顶层声明的模块可见性：公开: 后声明 -> Public（跨模块可导入）；
-    //   私有: 后声明 -> Private（仅本模块可见）。默认 Public。
+    //   私有: 后声明 -> Private（仅本模块可见）。默认 Private（v2.0 变更）。
     // 与类内成员访问标签（ClassMember::access）同语法不同作用域：
     //   顶层标签由 parser.cpp 顶层循环维护；类内标签由 parseClassDecl 维护。
-    AccessSpecifier access = AccessSpecifier::Public;
+    AccessSpecifier access = AccessSpecifier::Private;
 };
 
-// 导入声明：导入 模块路径 | 从 模块路径 导入 名称列表（Task 3.6，规格书08-二）
-//   importPath   : 模块路径（. 分隔，如 数学.平方根 / 网络协议.HTTP.请求）
-//   fromImport   : true 表示 从 模块 导入 名1, 名2（false 表示 导入 整个模块）
-//   names        : fromImport=true 时的导入名称列表
+// 导入项：花括号导入中的单个符号（可选 作为 别名，v2.0）
+struct ImportItem {
+    std::string name;      // 符号名
+    std::string alias;     // 作为 别名（为空表示无别名）
+};
+
+// 导入声明（v2.0，规格书08-三 导入语法全形式，Task 3.6）
+//   导入 路径 [作为 标识符]              -> 路径导入 / 重命名导入
+//   导入 路径 :: { 项1 [作为 别名], ... } -> 花括号导入（替代 v1.0 从...导入）
+//   导入 路径 :: *                        -> 通配符导入
+//   模块 标识符                           -> 模块声明（isModuleDecl=true，引用 .cn 文件模块）
+// 结构化字段：
+//   segments     : 路径段（A::B::C -> {A, B, C}；模块 网络 -> {网络}）
+//   alias        : 作为 别名（可选，路径导入/模块声明重命名）
+//   names        : 花括号导入项（{a, b}；ImportItem.name/.alias）
+//   wildcard     : ::* 通配符
+//   isModuleDecl : 模块 声明（模块 X 引用文件模块）
+// 兼容字段（供 module.cpp/semantic.cpp 最小适配，第 4 层语义改造后移除）：
+//   importPath   : 路径文本（:: 分隔，如 数学::平方根；模块声明 = 模块名）
+//   fromImport   : 旧 从...导入 标记（v2.0 恒为 false，保留字段避免引用点编译失败）
 class ImportDecl : public AstNode {
 public:
     ImportDecl() : AstNode(NodeType::ImportDecl) {}
     void accept(AstVisitor& visitor) override { visitor.visitImportDecl(this); }
 
-    std::string importPath;                    // 模块路径（如 数学.平方根）
-    bool fromImport = false;                   // 是否为 从...导入 形式
-    std::vector<std::string> names;            // 导入名称列表（fromImport 时有效）
+    // ---- v2.0 结构化字段 ----
+    std::vector<std::string> segments;          // 路径段（A::B::C -> {A,B,C}）
+    std::string alias;                          // 作为 别名（可选）
+    std::vector<ImportItem> names;              // 花括号导入项（{a, b}）
+    bool wildcard = false;                      // ::* 通配符
+    bool isModuleDecl = false;                  // 模块 声明（模块 X）
+
+    // ---- 兼容字段（最小适配；第 4 层语义改造后移除） ----
+    std::string importPath;                     // 路径文本（:: 分隔；兼容旧字段名）
+    bool fromImport = false;                    // 旧 从...导入 标记（v2.0 恒 false）
 };
 
 // 类成员：类体内的字段/方法/构造/析构/运算符重载/友元（Task 3.1，规格书06）
@@ -789,7 +812,9 @@ public:
     void accept(AstVisitor& visitor) override { visitor.visitClassMember(this); }
 
     ClassMemberKind kind = ClassMemberKind::Field;  // 成员种类
-    AccessSpecifier access = AccessSpecifier::Public; // 可见性（当前访问标签段）
+    // 可见性（当前访问标签段；v2.0 默认私有——parseClassDecl 未出现标签时
+    //   按 Private 处理，公共成员须显式 公开:）
+    AccessSpecifier access = AccessSpecifier::Private;
 
     // ---- 字段（kind=Field） ----
     std::string name;                              // 字段名/方法名/友元目标名
@@ -824,8 +849,8 @@ public:
     std::string baseName;                          // 父类名（可为空 = 无继承）
     std::vector<std::string> interfaces;           // 实现的接口名列表
     std::vector<std::unique_ptr<ClassMember>> members; // 类成员列表
-    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
-    AccessSpecifier access = AccessSpecifier::Public;
+    // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
+    AccessSpecifier access = AccessSpecifier::Private;
 };
 
 // 接口声明：接口 名 { 虚拟函数签名列表 }（Task 3.3，规格书06-六）
@@ -837,8 +862,8 @@ public:
 
     std::string name;                              // 接口名
     std::vector<std::unique_ptr<ClassMember>> members; // 方法签名列表（kind=Method，body 为空）
-    // 模块级可见性（Task 3.6）：公开: -> Public / 私有: -> Private（默认 Public）
-    AccessSpecifier access = AccessSpecifier::Public;
+    // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
+    AccessSpecifier access = AccessSpecifier::Private;
 };
 
 // 泛型声明：泛型 <类型 T> 类/函数（Task 3.8，规格书06-十三）

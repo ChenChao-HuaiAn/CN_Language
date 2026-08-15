@@ -60,40 +60,43 @@ cn_compiler::FunctionDecl* findFunc(Program* p, const std::string& name) {
 
 // ==================== 导入语句解析 ====================
 
-// 导入 数学.平方根：importPath=数学.平方根，fromImport=false
+// 导入 数学::平方根（v2.0 :: 路径）：importPath=数学::平方根，segments={数学, 平方根}
 TEST(ModuleTest, ParseImportWholePath) {
     Diagnostics diags;
-    auto unit = makeUnit("导入 数学.平方根\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
+    auto unit = makeUnit("导入 数学::平方根\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
     ASSERT_NE(unit->ast, nullptr);
     ASSERT_EQ(unit->ast->imports.size(), 1u);
-    EXPECT_EQ(unit->ast->imports[0]->importPath, "数学.平方根");
+    EXPECT_EQ(unit->ast->imports[0]->importPath, "数学::平方根");
     EXPECT_FALSE(unit->ast->imports[0]->fromImport);
+    ASSERT_EQ(unit->ast->imports[0]->segments.size(), 2u);
+    EXPECT_EQ(unit->ast->imports[0]->segments[0], "数学");
+    EXPECT_EQ(unit->ast->imports[0]->segments[1], "平方根");
     // 导入依赖：首段模块名
     ASSERT_EQ(unit->imports.size(), 1u);
     EXPECT_EQ(unit->imports[0], "数学");
 }
 
-// 从 数学 导入 正弦, 余弦：fromImport=true，names=[正弦, 余弦]
-TEST(ModuleTest, ParseFromImportNames) {
+// 花括号导入（v2.0，替代 v1.0 从...导入）：导入 数学::{正弦, 余弦}
+TEST(ModuleTest, ParseBraceImportNames) {
     Diagnostics diags;
-    auto unit = makeUnit("从 数学 导入 正弦, 余弦\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
+    auto unit = makeUnit("导入 数学::{正弦, 余弦}\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
     ASSERT_NE(unit->ast, nullptr);
     ASSERT_EQ(unit->ast->imports.size(), 1u);
     EXPECT_EQ(unit->ast->imports[0]->importPath, "数学");
-    EXPECT_TRUE(unit->ast->imports[0]->fromImport);
+    EXPECT_FALSE(unit->ast->imports[0]->fromImport);
     ASSERT_EQ(unit->ast->imports[0]->names.size(), 2u);
-    EXPECT_EQ(unit->ast->imports[0]->names[0], "正弦");
-    EXPECT_EQ(unit->ast->imports[0]->names[1], "余弦");
+    EXPECT_EQ(unit->ast->imports[0]->names[0].name, "正弦");
+    EXPECT_EQ(unit->ast->imports[0]->names[1].name, "余弦");
     ASSERT_EQ(unit->imports.size(), 1u);
     EXPECT_EQ(unit->imports[0], "数学");
 }
 
-// 嵌套路径导入：导入 网络协议.HTTP.请求 -> 模块名取首段 网络协议
+// 嵌套路径导入：导入 网络协议::HTTP::请求 -> 模块名取首段 网络协议
 TEST(ModuleTest, ParseNestedPathFirstSegment) {
     Diagnostics diags;
-    auto unit = makeUnit("导入 网络协议.HTTP.请求\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
+    auto unit = makeUnit("导入 网络协议::HTTP::请求\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
     ASSERT_EQ(unit->imports.size(), 1u);
     EXPECT_EQ(unit->imports[0], "网络协议");
@@ -103,7 +106,7 @@ TEST(ModuleTest, ParseNestedPathFirstSegment) {
 TEST(ModuleTest, ImportDedup) {
     Diagnostics diags;
     auto unit = makeUnit(
-        "导入 数学.平方根\n从 数学 导入 正弦\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
+        "导入 数学::平方根\n导入 数学::{正弦}\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
     ASSERT_EQ(unit->imports.size(), 1u);
     EXPECT_EQ(unit->imports[0], "数学");
@@ -127,13 +130,13 @@ TEST(ModuleTest, ModuleAccessLabels) {
     EXPECT_EQ(unit->ast->declarations[1]->access, AccessSpecifier::Private);
 }
 
-// 默认可见性：无标签时顶层声明为 Public
-TEST(ModuleTest, ModuleDefaultPublic) {
+// 默认可见性（v2.0 变更）：无标签时顶层声明为 Private（原默认公开）
+TEST(ModuleTest, ModuleDefaultPrivate) {
     Diagnostics diags;
     auto unit = makeUnit("函数 默认函数() -> 整32 { 返回 0 }", "数学.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
     ASSERT_EQ(unit->ast->declarations.size(), 1u);
-    EXPECT_EQ(unit->ast->declarations[0]->access, AccessSpecifier::Public);
+    EXPECT_EQ(unit->ast->declarations[0]->access, AccessSpecifier::Private);
 }
 
 // 类内 公开:/私有: 标签与模块级标签作用域隔离（类体解析不受顶层标签影响）
@@ -266,10 +269,11 @@ TEST(ModuleTest, MergePublicOnly) {
 }
 
 // 跨模块类型重名（结构体）报错
+// 注：被导入模块类型须 公开:（v2.0 默认私有）才会跨模块合并并触发冲突
 TEST(ModuleTest, MergeTypeConflict) {
     Diagnostics diags;
     ModuleGraph graph;
-    graph.addModule(makeUnit("结构体 点 { 整32 x }", "甲.cn", diags));
+    graph.addModule(makeUnit("公开:\n结构体 点 { 整32 x }", "甲.cn", diags));
     graph.addModule(makeUnit("导入 甲\n结构体 点 { 整32 y }", "主.cn", diags));
 
     std::vector<ModuleUnit*> ordered;
@@ -282,10 +286,11 @@ TEST(ModuleTest, MergeTypeConflict) {
 
 // 跨模块类型重名（入口模块私有类 与 导入模块公开类）报错：
 //   两者合并到同一 Program 后语义层类型名冲突（类型表全局唯一）。
+// 注：被导入模块类须 公开:（v2.0 默认私有）才会跨模块合并并触发冲突
 TEST(ModuleTest, MergeClassConflictPrivateSkipped) {
     Diagnostics diags;
     ModuleGraph graph;
-    graph.addModule(makeUnit("类 动物 { }", "甲.cn", diags));
+    graph.addModule(makeUnit("公开:\n类 动物 { }", "甲.cn", diags));
     graph.addModule(makeUnit(
         "私有:\n"
         "类 动物 { }\n"
@@ -302,10 +307,11 @@ TEST(ModuleTest, MergeClassConflictPrivateSkipped) {
 }
 
 // 导入声明合并到 Program（供语义层收集 importedModules_ 识别限定调用）
+// 注：工具.cn 函数加 公开:（v2.0 默认私有）确保跨模块合并
 TEST(ModuleTest, MergeImportsMerged) {
     Diagnostics diags;
     ModuleGraph graph;
-    graph.addModule(makeUnit("函数 工具函数() -> 整32 { 返回 1 }", "工具.cn", diags));
+    graph.addModule(makeUnit("公开:\n函数 工具函数() -> 整32 { 返回 1 }", "工具.cn", diags));
     graph.addModule(makeUnit("导入 工具\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags));
 
     std::vector<ModuleUnit*> ordered;
@@ -361,7 +367,7 @@ TEST(ModuleTest, SemanticQualifiedCallRewrite) {
         "函数 平方根(浮64 x) -> 浮64 { 返回 x }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
-        "导入 数学.平方根\n"
+        "导入 数学::平方根\n"
         "函数 主() -> 整32 {\n"
         "    变量 结果 = 数学.平方根(16.0)\n"
         "    返回 0\n"
@@ -371,8 +377,8 @@ TEST(ModuleTest, SemanticQualifiedCallRewrite) {
     EXPECT_TRUE(r.ok) << r.messages;
 }
 
-// 从...导入 限定调用：从 数学 导入 正弦, 余弦
-TEST(ModuleTest, SemanticFromImportQualifiedCall) {
+// 花括号导入 限定调用（v2.0，替代 v1.0 从...导入）：导入 数学::{正弦, 余弦}
+TEST(ModuleTest, SemanticBraceImportQualifiedCall) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
@@ -381,7 +387,7 @@ TEST(ModuleTest, SemanticFromImportQualifiedCall) {
         "函数 余弦(浮64 x) -> 浮64 { 返回 x }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
-        "从 数学 导入 正弦, 余弦\n"
+        "导入 数学::{正弦, 余弦}\n"
         "函数 主() -> 整32 {\n"
         "    变量 结果 = 数学.正弦(1.0) + 数学.余弦(2.0)\n"
         "    返回 0\n"
@@ -489,7 +495,7 @@ TEST(ModuleTest, SemanticImportMissingSymbol) {
         "函数 平方根(浮64 x) -> 浮64 { 返回 x }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
-        "导入 数学.平方根\n"
+        "导入 数学::平方根\n"
         "函数 主() -> 整32 {\n"
         "    变量 数值 = 数学.不存在函数(1.0)\n"
         "    返回 0\n"
@@ -501,9 +507,9 @@ TEST(ModuleTest, SemanticImportMissingSymbol) {
     EXPECT_NE(r.messages.find("不存在函数"), std::string::npos) << r.messages;
 }
 
-// 从...导入 不存在的名字：从 数学 导入 不存在名 后在入口引用
+// 花括号导入 不存在的名字：导入 数学::{不存在名} 后在入口引用
 // -> 该名字未合并（不存在），入口调用报"未声明函数"（函数符号表无此项）
-TEST(ModuleTest, SemanticFromImportMissingName) {
+TEST(ModuleTest, SemanticBraceImportMissingName) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
@@ -511,7 +517,7 @@ TEST(ModuleTest, SemanticFromImportMissingName) {
         "函数 正弦(浮64 x) -> 浮64 { 返回 x }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
-        "从 数学 导入 不存在名\n"
+        "导入 数学::{不存在名}\n"
         "函数 主() -> 整32 {\n"
         "    变量 数值 = 不存在名(1.0)\n"
         "    返回 0\n"

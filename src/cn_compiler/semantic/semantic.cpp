@@ -2743,15 +2743,16 @@ void SemanticAnalyzer::visitInterfaceDecl(InterfaceDecl* node) {
     (void)node;
 }
 
-// 导入声明：模块系统（Task 3.6）
-// 收集已导入模块名（importPath 首段）：导入 数学.平方根 / 从 数学 导入 正弦
+// 导入声明：模块系统（Task 3.6，v2.0）
+// 收集已导入模块名（importPath 首段）：导入 数学::平方根 / 导入 数学::{正弦}
 // 供 visitCallExpr 识别"模块.函数"限定调用（重写为直接调用）。
 // 模块加载/合并由 driver（runModulePipeline）在语义分析前完成；
 // 此处仅记录模块名集合，不校验符号存在性（跨模块可见性在合并阶段已过滤私有）。
+// 注意：v2.0 路径为 :: 分隔（v1.0 的 . 已删除）；首段 = 模块名。
 void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     std::string moduleName = node->importPath;
-    const std::size_t dot = moduleName.find('.');
-    if (dot != std::string::npos) moduleName = moduleName.substr(0, dot);
+    const std::size_t sep = moduleName.find("::");
+    if (sep != std::string::npos) moduleName = moduleName.substr(0, sep);
     if (!moduleName.empty()) importedModules_.insert(moduleName);
 }
 

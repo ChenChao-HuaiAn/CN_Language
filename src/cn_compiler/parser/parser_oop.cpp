@@ -73,22 +73,97 @@ const char* operatorSymbolText(TokenType t) {
 
 } // namespace
 
-// ==================== 导入声明（Task 3.6） ====================
+// ==================== 导入声明与模块声明（Task 3.6，v2.0） ====================
 
-// 导入声明：导入 模块路径（规格书08-二，v2.0）
-//   导入 数学.平方根          -> importPath="数学.平方根", fromImport=false
-//   （v2.0 已删除 从 关键字与「从 模块 导入 名」语法；其解析分支在第 3 层
-//     重写为 导入 路径::{名1, 名2} 花括号导入形式。本层词法改造仅删除
-//     Kw_From 枚举引用，`从` 恢复为普通标识符。）
+// 模块声明：模块 标识符（规格书08-二，v2.0 新增）
+//   模块 网络        -> segments={网络}, isModuleDecl=true, importPath="网络"
+// 复用 ImportDecl 节点承载（module.cpp 加载逻辑相近）；无强制分号，; 可选。
+std::unique_ptr<ImportDecl> Parser::parseModuleDecl() {
+    auto decl = std::make_unique<ImportDecl>();
+    decl->location = current().getLocation();
+    decl->isModuleDecl = true;
+    advance();  // 消费"模块"
+    if (isModulePathSegment()) {
+        decl->segments.push_back(current().getValue());
+        decl->importPath = current().getValue();
+        advance();
+    } else {
+        reportErrorHere("模块声明预期模块名（标识符）");
+    }
+    consumeSemicolon();  // 可选分号（无强制分号，兼容 C 习惯）
+    return decl;
+}
+
+// 导入声明（规格书08-三，v2.0 导入语法全形式）：
+//   导入 路径 [作为 标识符]              -> 路径导入 / 重命名导入
+//   导入 路径 :: { 项1 [作为 别名], ... } -> 花括号导入（替代 v1.0 从...导入）
+//   导入 路径 :: *                        -> 通配符导入
+// 路径 = 标识符 (:: 标识符)*（ColonColon 分隔，v2.0 替代 v1.0 的 .）
+// v2.0 已删除「从 模块 导入 名」语法（`从` 已是普通标识符）；若遇 从 开头
+//   按普通表达式/报错处理（不进入本函数——顶层循环仅识别 Kw_Import 入口）。
 std::unique_ptr<ImportDecl> Parser::parseImportDecl() {
     auto decl = std::make_unique<ImportDecl>();
     decl->location = current().getLocation();
-    if (check(TokenType::Kw_Import)) {
-        // 导入 模块路径
-        advance();  // 消费"导入"
-        decl->importPath = parseModulePath();
-    } else {
+    if (!check(TokenType::Kw_Import)) {
         reportErrorHere("预期'导入'");
+        consumeSemicolon();
+        return decl;
+    }
+    advance();  // 消费"导入"
+    // 路径：标识符 (:: 标识符)*
+    decl->segments = parseModulePath();
+    decl->importPath.clear();
+    for (std::size_t i = 0; i < decl->segments.size(); ++i) {
+        if (i > 0) decl->importPath += "::";
+        decl->importPath += decl->segments[i];
+    }
+    // 形式分支（按当前 token 判定）
+    if (check(TokenType::Kw_As)) {
+        // 重命名导入：导入 路径 作为 标识符
+        advance();  // 消费"作为"
+        if (check(TokenType::Identifier)) {
+            decl->alias = current().getValue();
+            advance();
+        } else {
+            reportErrorHere("导入重命名预期别名（标识符）");
+        }
+    } else if (check(TokenType::ColonColon) &&
+               peek(1).getType() == TokenType::LeftBrace) {
+        // 花括号导入：导入 路径 :: { 项1 [作为 别名], ... }
+        advance();  // 消费 ::
+        advance();  // 消费 {
+        while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+            if (isModulePathSegment()) {
+                ImportItem item;
+                item.name = current().getValue();
+                advance();
+                // 导入项可选 作为 别名
+                if (check(TokenType::Kw_As)) {
+                    advance();
+                    if (isModulePathSegment()) {
+                        item.alias = current().getValue();
+                        advance();
+                    } else {
+                        reportErrorHere("导入项别名预期标识符");
+                    }
+                }
+                decl->names.push_back(item);
+            } else {
+                reportErrorHere("花括号导入预期符号名（标识符）");
+                break;
+            }
+            if (check(TokenType::Comma)) {
+                advance();
+                continue;
+            }
+            break;  // 非逗号：退出循环（右花括号或异常）
+        }
+        if (check(TokenType::RightBrace)) advance();  // 消费 }
+    } else if (check(TokenType::ColonColon) && peek(1).getType() == TokenType::Star) {
+        // 通配符导入：导入 路径 :: *
+        advance();  // 消费 ::
+        advance();  // 消费 *
+        decl->wildcard = true;
     }
     consumeSemicolon();  // 导入语句后的可选分号
     return decl;
@@ -257,8 +332,9 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     }
     consume(TokenType::LeftBrace, "'{'");
     // 类体：访问标签段*（公开:/保护:/私有: 块级标签，规格书06-二）
-    // 默认访问级别：公开（标签未出现前的成员按公开处理）
-    AccessSpecifier currentAccess = AccessSpecifier::Public;
+    // 默认访问级别：私有（v2.0 变更，规格书06-二 默认私有；标签未出现前的
+    //   成员按私有处理，公共 API 须显式 公开: 标注）
+    AccessSpecifier currentAccess = AccessSpecifier::Private;
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 访问标签：公开: / 保护: / 私有:
         if (check(TokenType::Kw_Public) && peek(1).getType() == TokenType::Colon) {

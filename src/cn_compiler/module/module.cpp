@@ -113,12 +113,12 @@ bool parseSourceText(const std::string& source, const std::string& filePath,
     ast = parser.parse(tokens);
     if (diags.hasErrors()) return false;
 
-    // 收集导入依赖（模块名去重；importPath 取首个 . 前段为模块名，
-    //   如 数学.平方根 -> 数学；网络协议.HTTP.请求 -> 网络协议）
+    // 收集导入依赖（模块名去重；importPath 取首个 :: 前段为模块名，
+    //   如 数学::平方根 -> 数学；网络协议::HTTP::请求 -> 网络协议；v2.0 :: 分隔）
     for (const auto& imp : ast->imports) {
         std::string dep = imp->importPath;
-        const std::size_t dot = dep.find('.');
-        if (dot != std::string::npos) dep = dep.substr(0, dot);
+        const std::size_t sep = dep.find("::");
+        if (sep != std::string::npos) dep = dep.substr(0, sep);
         if (!dep.empty() && dep != moduleName &&
             std::find(imports.begin(), imports.end(), dep) == imports.end()) {
             imports.push_back(dep);
@@ -174,10 +174,10 @@ bool dfsTopo(const std::unordered_map<std::string, std::unique_ptr<ModuleUnit>>&
     //   避免 ModuleUnit.imports 缓存字段与 AST 不同步导致拓扑顺序错误。
     if (it->second->ast != nullptr) {
         for (const auto& imp : it->second->ast->imports) {
-            // 取导入路径首段为模块名（如 数学.平方根 -> 数学）
+            // 取导入路径首段为模块名（如 数学::平方根 -> 数学；v2.0 :: 分隔）
             std::string dep = imp->importPath;
-            const std::size_t dot = dep.find('.');
-            if (dot != std::string::npos) dep = dep.substr(0, dot);
+            const std::size_t sep = dep.find("::");
+            if (sep != std::string::npos) dep = dep.substr(0, sep);
             if (!dep.empty() && dep != name) {
                 if (!dfsTopo(units, dep, color, ordered, path, error)) return false;
             }

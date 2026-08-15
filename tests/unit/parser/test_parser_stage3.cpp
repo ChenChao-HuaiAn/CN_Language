@@ -415,31 +415,160 @@ TEST(ParserStage3Test, GenericInstantiationType) {
     EXPECT_EQ(var->name, "整数列表");
 }
 
-// ==================== 8. 导入语句 ====================
+// ==================== 8. 导入语句（v2.0 全形式） ====================
 
-// 导入 整个模块：导入 数学.平方根
+// 路径导入（v2.0：:: 分隔）：导入 数学::平方根
 TEST(ParserStage3Test, ImportWholeModule) {
-    auto result = parseProgram("导入 数学.平方根\n导入 网络协议.HTTP.请求");
+    auto result = parseProgram("导入 数学::平方根\n导入 网络协议::HTTP::请求");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->imports.size(), 2u);
     ImportDecl* imp0 = result.program->imports[0].get();
-    EXPECT_EQ(imp0->importPath, "数学.平方根");
+    EXPECT_EQ(imp0->importPath, "数学::平方根");
     EXPECT_FALSE(imp0->fromImport);
+    EXPECT_FALSE(imp0->wildcard);
+    EXPECT_TRUE(imp0->alias.empty());
+    EXPECT_TRUE(imp0->names.empty());
+    ASSERT_EQ(imp0->segments.size(), 2u);
+    EXPECT_EQ(imp0->segments[0], "数学");
+    EXPECT_EQ(imp0->segments[1], "平方根");
     ImportDecl* imp1 = result.program->imports[1].get();
-    EXPECT_EQ(imp1->importPath, "网络协议.HTTP.请求");
+    EXPECT_EQ(imp1->importPath, "网络协议::HTTP::请求");
+    ASSERT_EQ(imp1->segments.size(), 3u);
+    EXPECT_EQ(imp1->segments[0], "网络协议");
+    EXPECT_EQ(imp1->segments[1], "HTTP");
+    EXPECT_EQ(imp1->segments[2], "请求");
 }
 
-// 从 模块 导入 名称列表：从 数学 导入 正弦, 余弦
-TEST(ParserStage3Test, FromImportNames) {
-    auto result = parseProgram("从 数学 导入 正弦, 余弦");
+// 花括号导入（v2.0，替代 v1.0 从...导入）：导入 数学::{正弦, 余弦}
+TEST(ParserStage3Test, BraceImportNames) {
+    auto result = parseProgram("导入 数学::{正弦, 余弦}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->imports.size(), 1u);
     ImportDecl* imp = result.program->imports[0].get();
     EXPECT_EQ(imp->importPath, "数学");
-    EXPECT_TRUE(imp->fromImport);
+    EXPECT_FALSE(imp->fromImport);
+    EXPECT_FALSE(imp->wildcard);
     ASSERT_EQ(imp->names.size(), 2u);
-    EXPECT_EQ(imp->names[0], "正弦");
-    EXPECT_EQ(imp->names[1], "余弦");
+    EXPECT_EQ(imp->names[0].name, "正弦");
+    EXPECT_TRUE(imp->names[0].alias.empty());
+    EXPECT_EQ(imp->names[1].name, "余弦");
+    EXPECT_TRUE(imp->names[1].alias.empty());
+}
+
+// 花括号导入 + 逐项重命名：导入 核心::可选::{某些 作为 有值, 无}
+TEST(ParserStage3Test, BraceImportWithAlias) {
+    auto result = parseProgram("导入 核心::可选::{某些 作为 有值, 无}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(result.program->imports.size(), 1u);
+    ImportDecl* imp = result.program->imports[0].get();
+    ASSERT_EQ(imp->segments.size(), 2u);
+    EXPECT_EQ(imp->segments[0], "核心");
+    EXPECT_EQ(imp->segments[1], "可选");
+    ASSERT_EQ(imp->names.size(), 2u);
+    EXPECT_EQ(imp->names[0].name, "某些");
+    EXPECT_EQ(imp->names[0].alias, "有值");
+    EXPECT_EQ(imp->names[1].name, "无");
+    EXPECT_TRUE(imp->names[1].alias.empty());
+}
+
+// 重命名导入：导入 核心::列表 作为 动态数组
+TEST(ParserStage3Test, RenameImport) {
+    auto result = parseProgram("导入 核心::列表 作为 动态数组");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(result.program->imports.size(), 1u);
+    ImportDecl* imp = result.program->imports[0].get();
+    EXPECT_EQ(imp->importPath, "核心::列表");
+    EXPECT_EQ(imp->alias, "动态数组");
+    EXPECT_FALSE(imp->wildcard);
+    EXPECT_TRUE(imp->names.empty());
+}
+
+// 通配符导入：导入 核心::集合::*
+TEST(ParserStage3Test, WildcardImport) {
+    auto result = parseProgram("导入 核心::集合::*");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(result.program->imports.size(), 1u);
+    ImportDecl* imp = result.program->imports[0].get();
+    ASSERT_EQ(imp->segments.size(), 2u);
+    EXPECT_EQ(imp->segments[0], "核心");
+    EXPECT_EQ(imp->segments[1], "集合");
+    EXPECT_TRUE(imp->wildcard);
+    EXPECT_FALSE(imp->isModuleDecl);
+}
+
+// 模块声明（v2.0）：模块 网络（引用 .cn 文件模块，无强制分号）
+TEST(ParserStage3Test, ModuleDecl) {
+    auto result = parseProgram("模块 网络\n模块 工具;");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(result.program->imports.size(), 2u);
+    ImportDecl* imp0 = result.program->imports[0].get();
+    EXPECT_TRUE(imp0->isModuleDecl);
+    EXPECT_EQ(imp0->importPath, "网络");
+    ASSERT_EQ(imp0->segments.size(), 1u);
+    EXPECT_EQ(imp0->segments[0], "网络");
+    ImportDecl* imp1 = result.program->imports[1].get();
+    EXPECT_TRUE(imp1->isModuleDecl);
+    EXPECT_EQ(imp1->importPath, "工具");
+}
+
+// ==================== 8b. 可见性默认私有（v2.0） ====================
+
+// 模块级默认私有：无标签顶层声明 -> access == Private（v2.0 变更，原默认公开）
+TEST(ParserStage3Test, ModuleDefaultPrivate) {
+    auto result = parseProgram(
+        "函数 默认函数() -> 整32 { 返回 0 }\n"
+        "结构体 默认结构体 { 整32 x }\n"
+        "枚举 默认枚举 { A }\n"
+        "类 默认类 { }\n"
+        "接口 默认接口 { 虚拟 函数 方法() -> 整32 }\n");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(result.program->declarations.size(), 1u);
+    EXPECT_EQ(result.program->declarations[0]->access, AccessSpecifier::Private);
+    ASSERT_EQ(result.program->structs.size(), 1u);
+    EXPECT_EQ(result.program->structs[0]->access, AccessSpecifier::Private);
+    ASSERT_EQ(result.program->enums.size(), 1u);
+    EXPECT_EQ(result.program->enums[0]->access, AccessSpecifier::Private);
+    ASSERT_EQ(result.program->classes.size(), 1u);
+    EXPECT_EQ(result.program->classes[0]->access, AccessSpecifier::Private);
+    ASSERT_EQ(result.program->interfaces.size(), 1u);
+    EXPECT_EQ(result.program->interfaces[0]->access, AccessSpecifier::Private);
+}
+
+// 模块级标签生效：公开: 后 Public、私有: 后 Private、无标签默认 Private
+TEST(ParserStage3Test, ModuleAccessLabelsV2) {
+    auto result = parseProgram(
+        "函数 首函数() -> 整32 { 返回 1 }\n"   // 无标签 -> 默认私有
+        "公开:\n"
+        "函数 公开函数() -> 整32 { 返回 2 }\n"
+        "函数 公开函数2() -> 整32 { 返回 3 }\n"
+        "私有:\n"
+        "函数 私有函数() -> 整32 { 返回 4 }\n");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ASSERT_EQ(result.program->declarations.size(), 4u);
+    EXPECT_EQ(result.program->declarations[0]->access, AccessSpecifier::Private);
+    EXPECT_EQ(result.program->declarations[1]->access, AccessSpecifier::Public);
+    EXPECT_EQ(result.program->declarations[2]->access, AccessSpecifier::Public);
+    EXPECT_EQ(result.program->declarations[3]->access, AccessSpecifier::Private);
+}
+
+// 类内默认私有：无标签类成员 -> access == Private（v2.0 变更，原默认公开）
+TEST(ParserStage3Test, ClassMemberDefaultPrivate) {
+    auto result = parseProgram(
+        "类 账户 {\n"
+        "    字符串 用户名\n"                 // 无标签 -> 默认私有
+        "    函数 内部函数() -> 整32 { 返回 0 }\n"
+        "公开:\n"
+        "    函数 公开函数() -> 整32 { 返回 1 }\n"
+        "}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    ClassDecl* cls = firstClass(result.program.get());
+    ASSERT_NE(cls, nullptr);
+    ASSERT_EQ(cls->members.size(), 3u);
+    EXPECT_EQ(cls->members[0]->kind, ClassMemberKind::Field);
+    EXPECT_EQ(cls->members[0]->access, AccessSpecifier::Private);
+    EXPECT_EQ(cls->members[1]->kind, ClassMemberKind::Method);
+    EXPECT_EQ(cls->members[1]->access, AccessSpecifier::Private);
+    EXPECT_EQ(cls->members[2]->access, AccessSpecifier::Public);
 }
 
 // ==================== 9. 运算符重载（上下文关键字） ====================
