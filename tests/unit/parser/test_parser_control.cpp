@@ -268,7 +268,9 @@ TEST(ParserSwitchTest, MissingLeftBrace) {
     EXPECT_TRUE(result.diagnostics.hasErrors());
 }
 
-// 情况标签非整型常量：报告错误
+// C-4（2026-08）：情况 裸标识符（变量名/枚举成员候选）——语法层接受
+//   （枚举成员候选，如 情况 红:），语义层按 选择 条件枚举类型解析；
+//   非枚举上下文的变量名由语义层报错（test_pattern_match 覆盖）
 TEST(ParserSwitchTest, CaseValueNotConstant) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
@@ -280,7 +282,7 @@ TEST(ParserSwitchTest, CaseValueNotConstant) {
     返回 0
 }
 )CN");
-    EXPECT_TRUE(result.diagnostics.hasErrors());
+    EXPECT_FALSE(result.diagnostics.hasErrors());
 }
 
 // 空 switch 体：合法（无分支）

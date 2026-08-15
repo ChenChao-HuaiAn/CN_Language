@@ -128,7 +128,8 @@ private:
     std::unique_ptr<Stmt> parseContinueStmt();          // 继续
     std::unique_ptr<Stmt> parseSwitchStmt();            // 选择 (值) { 情况 常量: 语句* 默认: 语句* }
     // 求值情况标签常量（整数字面量/字符字面量，返回是否成功）
-    bool parseCaseValue(std::int64_t& outValue, std::string& outRaw);
+    bool parseCaseValue(std::int64_t& outValue, std::string& outRaw,
+                        bool& outIsString, bool& outIsEnumMember);  // C-4：字符串/裸枚举成员
 
     // ==================== 表达式解析（Pratt优先级链，13级，规格书4.5） ====================
 

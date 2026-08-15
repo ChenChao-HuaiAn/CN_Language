@@ -171,6 +171,37 @@ std::unique_ptr<Expr> cloneNameExpr(Expr* node) {
     }
 }
 
+// C-4（2026-08）：情况 字符串字面量解码（与 IR decodeEscapes 同语义，
+//   用于 选择 字符串去重检测；实际比较由 IR 层按解码后文本生成常量）
+std::string decodeCaseString(const std::string& raw) {
+    std::string body;
+    if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"') {
+        body = raw.substr(1, raw.size() - 2);
+    } else {
+        body = raw;
+    }
+    std::string out;
+    for (std::size_t i = 0; i < body.size(); ++i) {
+        const char c = body[i];
+        if (c != '\\' || i + 1 >= body.size()) {
+            out += c;
+            continue;
+        }
+        const char n = body[i + 1];
+        switch (n) {
+            case 'n': out += '\n'; i += 1; break;
+            case 't': out += '\t'; i += 1; break;
+            case 'r': out += '\r'; i += 1; break;
+            case '0': out += '\0'; i += 1; break;
+            case '\\': out += '\\'; i += 1; break;
+            case '"': out += '"'; i += 1; break;
+            case '\'': out += '\''; i += 1; break;
+            default: out += c; break;
+        }
+    }
+    return out;
+}
+
 // C-2：迭代对象是否名称式（标识符/自身/父类/成员/下标/字面量）
 bool isNameLikeExpr(Expr* node) {
     if (node == nullptr) return false;
@@ -689,16 +720,43 @@ void SemanticAnalyzer::visitContinueStmt(ContinueStmt* node) {
 }
 void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
     std::string condType = checkExpr(node->condition.get());
+    const bool condIsString = (condType == "字符串");
     // Task 2.7：枚举条件允许（枚举本质为整32，case 值为枚举成员整数值）
-    if (!isInteger(condType) && condType != "字符" && !isEnumType(condType)) {
+    // C-4（2026-08）：字符串条件允许（情况 为字符串字面量，IR 层字符串比较链）
+    if (!isInteger(condType) && condType != "字符" && !isEnumType(condType) &&
+        !condIsString) {
         diagnostics_.report(DiagnosticLevel::Error, node->condition->location,
-                            "选择语句的表达式必须是整数或字符类型，实际为 '" +
+                            "选择语句的表达式必须是整数、字符、字符串或枚举类型，实际为 '" +
                             condType + "'");
     }
     // 情况值去重检测（编译期常量，语义层用 set 去重）
     std::unordered_set<std::int64_t> seenValues;
+    std::unordered_set<std::string> seenStrings;
     switchDepth_++;
     for (auto& caseNode : node->cases) {
+        // C-4：字符串情况值——条件须为字符串；解码回填 strValue 用于去重
+        if (caseNode->isString) {
+            if (!condIsString) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, caseNode->location,
+                    "字符串情况值 '" + caseNode->rawValue +
+                        "' 仅可用于字符串选择（选择 条件须为 字符串 类型）");
+            } else {
+                caseNode->strValue = decodeCaseString(caseNode->rawValue);
+                if (!seenStrings.insert(caseNode->strValue).second) {
+                    diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
+                                        "选择语句中情况值 '" + caseNode->rawValue +
+                                        "' 重复");
+                }
+            }
+            checkStmt(caseNode.get());
+            continue;
+        }
+        if (condIsString) {
+            diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
+                                "字符串选择的情况值须为字符串字面量（实际为 '" +
+                                    caseNode->rawValue + "'）");
+        }
         // 枚举引用情况值求值：rawValue 形如 "颜色.红"（Task 2.7）
         if (caseNode->rawValue.find('.') != std::string::npos) {
             const std::size_t dotPos = caseNode->rawValue.find('.');
@@ -710,6 +768,22 @@ void SemanticAnalyzer::visitSwitchStmt(SwitchStmt* node) {
             } else {
                 diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
                                     "情况标签枚举引用无效：'" + caseNode->rawValue + "'");
+            }
+        } else if (caseNode->isEnumMember) {
+            // C-4：裸枚举成员名（情况 红）——按 选择 条件枚举类型解析
+            if (isEnumType(condType)) {
+                std::int64_t enumVal = 0;
+                if (enumValueOf(condType, caseNode->rawValue, enumVal)) {
+                    caseNode->value = enumVal;
+                } else {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, caseNode->location,
+                        "枚举 '" + condType + "' 无成员 '" + caseNode->rawValue + "'");
+                }
+            } else {
+                diagnostics_.report(DiagnosticLevel::Error, caseNode->location,
+                                    "情况标签 '" + caseNode->rawValue +
+                                        "' 须为整型/字符常量（裸成员名仅用于枚举选择）");
             }
         }
         // 重复检测：与已见情况值比较

@@ -229,10 +229,32 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
     const std::string fallLabel = node->defaultCase != nullptr ? defLabel : endLabel;
     for (std::size_t i = 0; i < caseCount; ++i) {
         setCurrentBlock(newBlock(testLabels[i]));
-        // 比较：sel == 情况值（IR类型与选择值一致）
-        ir::IRValue caseConst = ir::IRValue::constant(
-            std::to_string(node->cases[i]->value), sel.type);
-        ir::IRValue cmp = emitResult(ir::Opcode::Eq, {sel, caseConst}, "i1", "", node->location);
+        // C-4（2026-08）：字符串情况值——按解码文本比较（__cn_str_eq 运行时）
+        //   （sel 为 字符串 = ptr；整值 Eq 会误比较指针地址，须走字符串相等调用）
+        ir::IRValue cmp;
+        if (node->cases[i]->isString) {
+            std::string text = node->cases[i]->strValue;
+            if (text.empty()) text = decodeString(node->cases[i]->rawValue);
+            int sindex = -1;
+            auto sit = module_->stringIndex.find(text);
+            if (sit != module_->stringIndex.end()) {
+                sindex = sit->second;
+            } else {
+                sindex = static_cast<int>(module_->stringConstants.size());
+                module_->stringConstants.push_back(text);
+                module_->stringIndex[text] = sindex;
+            }
+            ir::IRValue caseStr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                             "@str" + std::to_string(sindex),
+                                             node->location);
+            cmp = emitResult(ir::Opcode::Call, {sel, caseStr}, "i1", "__cn_str_eq",
+                             node->location);
+        } else {
+            // 比较：sel == 情况值（IR类型与选择值一致）
+            ir::IRValue caseConst = ir::IRValue::constant(
+                std::to_string(node->cases[i]->value), sel.type);
+            cmp = emitResult(ir::Opcode::Eq, {sel, caseConst}, "i1", "", node->location);
+        }
         // 匹配 -> 体块；不匹配 -> 下一判断/默认/出口
         const std::string nextTarget =
             (i + 1 < caseCount) ? testLabels[i + 1] : fallLabel;

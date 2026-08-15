@@ -265,10 +265,24 @@ std::unique_ptr<Stmt> Parser::parseContinueStmt() {
     return stmt;
 }
 
-// 求值情况标签常量：仅允许整数字面量 / 字符字面量（编译期常量）
+// 求值情况标签常量：整数字面量 / 字符字面量 / 字符串字面量 / 枚举引用（编译期常量）
+// C-4（2026-08）扩展：字符串字面量（outIsString=true，选择 字符串匹配）与
+//   裸枚举成员名（outIsEnumMember=true，形如 情况 红——语义层按 选择 条件枚举类型解析；
+//   限定形态 颜色.红 保持原行为，语义层按 rawValue 含 '.' 求值）。
 // 返回是否成功；成功时 outValue 为整数值、outRaw 为原始文本
 // 注意：解析成功后必须 advance() 消费该 Token（调用方随后 expect ':'）
-bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw) {
+bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
+                            bool& outIsString, bool& outIsEnumMember) {
+    outIsString = false;
+    outIsEnumMember = false;
+    if (currentType() == TokenType::StringLiteral) {
+        // 字符串情况值（C-4）：rawValue 保留含引号字面量，语义层解码
+        outRaw = current().getValue();
+        outValue = 0;
+        outIsString = true;
+        advance();
+        return true;
+    }
     if (currentType() == TokenType::IntegerLiteral) {
         outRaw = current().getValue();
         outValue = 0;
@@ -317,7 +331,17 @@ bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw) {
         outValue = 0;  // 占位值，语义层按枚举常量求值回填
         return true;
     }
-    reportErrorHere("情况标签必须是整型/字符常量");
+    // C-4：裸枚举成员名（情况 红）——语义层按 选择 条件枚举类型解析；
+    //   非枚举上下文由语义层报错（此处语法层不判别类型）
+    if (currentType() == TokenType::Identifier &&
+        peek(1).getType() != TokenType::Dot) {
+        outRaw = current().getValue();
+        outValue = 0;
+        outIsEnumMember = true;
+        advance();
+        return true;
+    }
+    reportErrorHere("情况标签必须是整型/字符/字符串常量");
     return false;
 }
 
@@ -346,19 +370,39 @@ std::unique_ptr<Stmt> Parser::parseSwitchStmt() {
         if (check(TokenType::Kw_Case)) {
             SourceLocation caseLoc = current().getLocation();
             advance();  // 消费"情况"
-            std::int64_t caseValue = 0;
-            std::string rawValue;
-            if (!parseCaseValue(caseValue, rawValue)) {
-                // 常量求值失败：跳过到标签结束（防御性同步）
-                while (!check(TokenType::Colon) && !check(TokenType::EndOfFile) &&
-                       !check(TokenType::RightBrace)) advance();
+            // C-4：多值情况标签 情况 v1, v2, v3: ——每个值一个 CaseLabel，
+            //   语句归属最后一个标签（前序标签体为空 = C fallthrough 分组）
+            std::vector<std::unique_ptr<CaseLabel>> group;
+            bool groupOk = true;
+            while (true) {
+                std::int64_t caseValue = 0;
+                std::string rawValue;
+                bool isStr = false, isEnum = false;
+                if (!parseCaseValue(caseValue, rawValue, isStr, isEnum)) {
+                    groupOk = false;
+                    // 常量求值失败：跳过到标签结束（防御性同步）
+                    while (!check(TokenType::Colon) && !check(TokenType::EndOfFile) &&
+                           !check(TokenType::RightBrace)) advance();
+                    break;
+                }
+                auto label = std::make_unique<CaseLabel>(caseValue);
+                label->rawValue = rawValue;
+                label->isString = isStr;
+                label->isEnumMember = isEnum;
+                label->location = caseLoc;
+                group.push_back(std::move(label));
+                if (check(TokenType::Comma)) {
+                    advance();
+                    continue;
+                }
+                break;
             }
+            (void)groupOk;
             consume(TokenType::Colon, "':'");
-            auto label = std::make_unique<CaseLabel>(caseValue);
-            label->rawValue = rawValue;
-            label->location = caseLoc;
-            owner = label.get();
-            stmt->cases.push_back(std::move(label));
+            for (auto& label : group) {
+                owner = label.get();  // 最后标签接收后续语句
+                stmt->cases.push_back(std::move(label));
+            }
         } else if (check(TokenType::Kw_Default)) {
             SourceLocation defLoc = current().getLocation();
             advance();  // 消费"默认"

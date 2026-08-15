@@ -741,6 +741,10 @@ public:
     std::int64_t value;                          // 情况常量值（编译期整型常量）
     std::string rawValue;                        // 情况常量原始文本（调试输出）
     std::vector<std::unique_ptr<Stmt>> statements;  // 该分支语句体（可为空）
+    // ---- C-4（2026-08）模式匹配增强 ----
+    bool isString = false;                       // 字符串情况值（rawValue 含引号字面量）
+    std::string strValue;                        // 解码后字符串（语义层回填，IR 比较用）
+    bool isEnumMember = false;                   // 裸枚举成员名（选择 条件为枚举类型时解析）
 };
 
 // 默认标签：默认: 语句*（选择语句的兜底分支，最多一个）
