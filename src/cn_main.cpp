@@ -42,6 +42,7 @@ struct CliOptions {
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息
     bool useRegAlloc = true;         // 是否启用寄存器分配（-O2 起联动；--no-regalloc 显式关闭）
     bool debugInfo = false;          // 是否嵌入源码位置注释（--debug）
+    bool verifyIr = false;           // 是否验证 IR 结构不变量（--验证-ir，B-4）
     // Task 6.6 条件编译：命令行注入宏（-D 宏名，可多次；#如果定义 判定用）
     std::unordered_set<std::string> macros;
     // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
@@ -75,6 +76,7 @@ void printHelp() {
     std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2 | 3)（兼容写法，等价 -O<级别>）\n";
     std::cout << "  --no-regalloc          关闭寄存器分配（阶段C：-O2 起默认启用，保持全栈帧）\n";
     std::cout << "  --debug                汇编中嵌入源码位置注释（阶段C 调试信息）\n";
+    std::cout << "  --验证-ir              优化前后验证 IR 结构不变量（规格书9.3，B-4；ASCII 别名 --verify-ir）\n";
     std::cout << "  --output <路径>        输出文件路径\n";
     std::cout << "  --verbose              详细输出\n";
     // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
@@ -115,6 +117,11 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
         } else if (current == "--debug") {
             // 阶段C（Task 4.4）：汇编中嵌入源码位置注释
             options.debugInfo = true;
+        } else if (current == "--验证-ir" || current == "--verify-ir") {
+            // B-4（2026-08，规格书9.3）：优化前后验证 IR 结构不变量
+            // （--verify-ir 为 ASCII 别名：Windows argv 为 GBK 编码，
+            //   命令行传中文选项在部分 shell 会乱码）
+            options.verifyIr = true;
         } else if (current == "--output") {
             if (index + 1 >= args.size()) return "选项 --output 缺少参数";
             options.output = args[++index];
@@ -369,6 +376,8 @@ static bool toDriverOptions(const CliOptions& options, const std::string& file,
     dopts.useRegAlloc = (options.optLevel >= 2) && options.useRegAlloc;
     // 阶段C（Task 4.4）：调试信息
     dopts.debugInfo = options.debugInfo;
+    // B-4（2026-08，规格书9.3）：IR 结构验证
+    dopts.verifyIr = options.verifyIr;
     // 模块系统 v2.0 第 5 层：货舱.toml + stdlib 目录
     dopts.stdlibDir = detectStdlibDir(options);
     if (!applyCargoConfig(options, file, dopts, error)) return false;

@@ -230,6 +230,10 @@ struct IRModule {
     IRModule& operator=(IRModule&&) = default;
 };
 
+// IR 验证器（B-4 2026-08，规格书9.3 -验证-ir）：检查 CFG 结构不变量
+// （块终止/跳转目标存在/寄存器 def-before-use/标签唯一），返回错误消息（空=通过）
+std::vector<std::string> verifyIRModule(const IRModule& module);
+
 } // namespace ir
 
 // ==================== IR生成器 ====================

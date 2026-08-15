@@ -68,8 +68,26 @@ int runPipeline(const std::string& source, const std::string& fileName,
     //     -O2: -O1 + 块内 CSE + 跨块 DCE（不可达块删除）
     //     -O3: -O2 + 全局值传播（常量 Store->Load 安全子集）
     //     Pass 管理器按依赖顺序调度至收敛（fixpoint）
+    // B-4（2026-08，规格书9.3）：--验证-ir 在优化前后各验证一次 CFG 结构
+    //   不变量（块终止/跳转目标/寄存器 def-before-use），失败即中止编译
+    if (options.verifyIr) {
+        const std::vector<std::string> preErrors = ir::verifyIRModule(output.module);
+        if (!preErrors.empty()) {
+            std::cerr << "IR 验证失败（优化前）：" << std::endl;
+            for (const auto& e : preErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
     if (options.optLevel > 0) {
         opt::runOptLevel(output.module, options.optLevel);
+    }
+    if (options.verifyIr) {
+        const std::vector<std::string> postErrors = ir::verifyIRModule(output.module);
+        if (!postErrors.empty()) {
+            std::cerr << "IR 验证失败（优化后）：" << std::endl;
+            for (const auto& e : postErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
     }
 
     // 5. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）

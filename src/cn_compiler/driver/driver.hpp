@@ -31,6 +31,9 @@ struct DriverOptions {
     //   debugInfo：--debug 开启，汇编中嵌入源码位置注释
     bool useRegAlloc = false;        // 是否启用寄存器分配（由 cn_main 按 optLevel 联动设置）
     bool debugInfo = false;          // 是否嵌入源码位置注释
+    // B-4（2026-08，规格书9.3）：--验证-ir 开启 IR 结构验证（CFG 终止/跳转目标/
+    //   寄存器 def-before-use），验证失败输出错误并中止编译
+    bool verifyIr = false;           // 是否验证 IR 结构不变量
     // ---- 货舱.toml 依赖管理（模块系统 v2.0 第 5 层，规格书09）----
     // hasCargoConfig：是否已加载货舱.toml（false = 未发现配置，依赖查找只走
     //   入口同目录 + stdlib 兜底）；cargoConfig 保存 [货舱]/[依赖] 解析结果。
