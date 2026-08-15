@@ -40,4 +40,6 @@ void AstVisitor::visitSelfExpr(SelfExpr* /*node*/) {}
 void AstVisitor::visitSuperExpr(SuperExpr* /*node*/) {}
 void AstVisitor::visitSizeofExpr(SizeofExpr* /*node*/) {}
 
+void AstVisitor::visitRangeForStmt(RangeForStmt* /*node*/) {}
+
 } // namespace cn_compiler

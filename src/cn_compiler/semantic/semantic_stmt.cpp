@@ -119,6 +119,351 @@ std::vector<std::string> funcPtrParams(const std::string& type) {
     return result;
 }
 
+// C-2（2026-08）：名称式表达式克隆——对...属于 迭代对象按名重建
+// 支持：标识符/自身/父类/成员/下标/字面量（重建新节点，无 AST 所有权共享，
+//   降级树内 大小()/元素()/下标 多处引用同一变量名，各自独立节点）。
+// 不支持（返回 nullptr）：函数调用/三元/强制转换/lambda 等临时值表达式。
+std::unique_ptr<Expr> cloneNameExpr(Expr* node) {
+    if (node == nullptr) return nullptr;
+    switch (node->getType()) {
+        case NodeType::IdentifierExpr: {
+            auto* id = static_cast<IdentifierExpr*>(node);
+            return std::make_unique<IdentifierExpr>(id->name);
+        }
+        case NodeType::SelfExpr:
+            return std::make_unique<SelfExpr>(node->location);
+        case NodeType::SuperExpr:
+            return std::make_unique<SuperExpr>(node->location);
+        case NodeType::MemberExpr: {
+            auto* m = static_cast<MemberExpr*>(node);
+            return std::make_unique<MemberExpr>(cloneNameExpr(m->object.get()),
+                                                m->memberName, m->isArrow);
+        }
+        case NodeType::IndexExpr: {
+            auto* ix = static_cast<IndexExpr*>(node);
+            return std::make_unique<IndexExpr>(cloneNameExpr(ix->object.get()),
+                                               cloneNameExpr(ix->index.get()));
+        }
+        case NodeType::IntegerLiteral: {
+            auto* lit = static_cast<IntegerLiteral*>(node);
+            return std::make_unique<IntegerLiteral>(lit->value, lit->raw);
+        }
+        case NodeType::FloatLiteral: {
+            auto* lit = static_cast<FloatLiteral*>(node);
+            return std::make_unique<FloatLiteral>(lit->value, lit->raw);
+        }
+        case NodeType::StringLiteral: {
+            auto* lit = static_cast<StringLiteral*>(node);
+            return std::make_unique<StringLiteral>(lit->raw);
+        }
+        case NodeType::CharLiteral: {
+            auto* lit = static_cast<CharLiteral*>(node);
+            return std::make_unique<CharLiteral>(lit->raw);
+        }
+        case NodeType::BoolLiteral: {
+            auto* lit = static_cast<BoolLiteral*>(node);
+            return std::make_unique<BoolLiteral>(lit->value, lit->raw);
+        }
+        case NodeType::NullLiteral:
+            return std::make_unique<NullLiteral>(node->location);
+        default:
+            return nullptr;  // 非名称式：调用方报错
+    }
+}
+
+// C-2：迭代对象是否名称式（标识符/自身/父类/成员/下标/字面量）
+bool isNameLikeExpr(Expr* node) {
+    if (node == nullptr) return false;
+    switch (node->getType()) {
+        case NodeType::IdentifierExpr:
+        case NodeType::SelfExpr:
+        case NodeType::SuperExpr:
+        case NodeType::MemberExpr:
+        case NodeType::IndexExpr:
+        case NodeType::IntegerLiteral:
+        case NodeType::FloatLiteral:
+        case NodeType::StringLiteral:
+        case NodeType::CharLiteral:
+        case NodeType::BoolLiteral:
+        case NodeType::NullLiteral:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// ==================== 表达式/语句深度克隆（C-2，2026-08） ====================
+// 对...属于 降级树需要嵌入用户循环体的独立副本（原体保留在 RangeForStmt.body，
+//   泛型类方法体按实例重检查时以原体重建降级树——移动会丢体/多实例类型错乱）。
+// 覆盖全部表达式/语句节点（lambda/选择 等完整克隆）；节点语义回填字段
+//   （location/propagateType/resolvedSignature 等）一并复制。
+std::unique_ptr<Expr> cloneExpr(Expr* node);
+std::unique_ptr<Stmt> cloneStmt(Stmt* node);
+
+std::unique_ptr<Expr> cloneExpr(Expr* node) {
+    if (node == nullptr) return nullptr;
+    std::unique_ptr<Expr> out;
+    switch (node->getType()) {
+        case NodeType::IntegerLiteral: {
+            auto* n = static_cast<IntegerLiteral*>(node);
+            out = std::make_unique<IntegerLiteral>(n->value, n->raw);
+            break;
+        }
+        case NodeType::FloatLiteral: {
+            auto* n = static_cast<FloatLiteral*>(node);
+            out = std::make_unique<FloatLiteral>(n->value, n->raw);
+            break;
+        }
+        case NodeType::StringLiteral: {
+            auto* n = static_cast<StringLiteral*>(node);
+            out = std::make_unique<StringLiteral>(n->raw);
+            break;
+        }
+        case NodeType::CharLiteral: {
+            auto* n = static_cast<CharLiteral*>(node);
+            out = std::make_unique<CharLiteral>(n->raw);
+            break;
+        }
+        case NodeType::BoolLiteral: {
+            auto* n = static_cast<BoolLiteral*>(node);
+            out = std::make_unique<BoolLiteral>(n->value, n->raw);
+            break;
+        }
+        case NodeType::NullLiteral:
+            out = std::make_unique<NullLiteral>(node->location);
+            break;
+        case NodeType::IdentifierExpr: {
+            auto* n = static_cast<IdentifierExpr*>(node);
+            out = std::make_unique<IdentifierExpr>(n->name);
+            break;
+        }
+        case NodeType::SelfExpr:
+            out = std::make_unique<SelfExpr>(node->location);
+            break;
+        case NodeType::SuperExpr:
+            out = std::make_unique<SuperExpr>(node->location);
+            break;
+        case NodeType::BinaryExpr: {
+            auto* n = static_cast<BinaryExpr*>(node);
+            out = std::make_unique<BinaryExpr>(n->op, cloneExpr(n->left.get()),
+                                               cloneExpr(n->right.get()));
+            break;
+        }
+        case NodeType::UnaryExpr: {
+            auto* n = static_cast<UnaryExpr*>(node);
+            auto u = std::make_unique<UnaryExpr>(n->op, cloneExpr(n->operand.get()),
+                                                 n->postfix);
+            u->propagateType = n->propagateType;  // C-1 语义回填
+            out = std::move(u);
+            break;
+        }
+        case NodeType::AssignmentExpr: {
+            auto* n = static_cast<AssignmentExpr*>(node);
+            out = std::make_unique<AssignmentExpr>(cloneExpr(n->target.get()), n->op,
+                                                   cloneExpr(n->value.get()));
+            break;
+        }
+        case NodeType::CallExpr: {
+            auto* n = static_cast<CallExpr*>(node);
+            auto c = std::make_unique<CallExpr>(cloneExpr(n->callee.get()));
+            for (auto& a : n->arguments) c->arguments.push_back(cloneExpr(a.get()));
+            c->resolvedSignature = n->resolvedSignature;
+            c->resolvedType = n->resolvedType;
+            c->moduleFilter = n->moduleFilter;
+            out = std::move(c);
+            break;
+        }
+        case NodeType::MemberExpr: {
+            auto* n = static_cast<MemberExpr*>(node);
+            out = std::make_unique<MemberExpr>(cloneExpr(n->object.get()),
+                                               n->memberName, n->isArrow);
+            break;
+        }
+        case NodeType::IndexExpr: {
+            auto* n = static_cast<IndexExpr*>(node);
+            out = std::make_unique<IndexExpr>(cloneExpr(n->object.get()),
+                                              cloneExpr(n->index.get()));
+            break;
+        }
+        case NodeType::InitListExpr: {
+            auto* n = static_cast<InitListExpr*>(node);
+            auto il = std::make_unique<InitListExpr>();
+            for (auto& el : n->elements) il->elements.push_back(cloneExpr(el.get()));
+            out = std::move(il);
+            break;
+        }
+        case NodeType::StructInitExpr: {
+            auto* n = static_cast<StructInitExpr*>(node);
+            auto si = std::make_unique<StructInitExpr>(n->typeName);
+            for (auto& f : n->fields) {
+                si->fields.emplace_back(f.first, cloneExpr(f.second.get()));
+            }
+            out = std::move(si);
+            break;
+        }
+        case NodeType::TernaryExpr: {
+            auto* n = static_cast<TernaryExpr*>(node);
+            out = std::make_unique<TernaryExpr>(cloneExpr(n->condition.get()),
+                                                cloneExpr(n->trueValue.get()),
+                                                cloneExpr(n->falseValue.get()));
+            break;
+        }
+        case NodeType::CastExpr: {
+            auto* n = static_cast<CastExpr*>(node);
+            out = std::make_unique<CastExpr>(n->targetType, cloneExpr(n->operand.get()));
+            break;
+        }
+        case NodeType::SizeofExpr: {
+            auto* n = static_cast<SizeofExpr*>(node);
+            auto so = std::make_unique<SizeofExpr>(n->typeName);
+            so->size = n->size;
+            out = std::move(so);
+            break;
+        }
+        case NodeType::LambdaExpr: {
+            auto* n = static_cast<LambdaExpr*>(node);
+            auto lam = std::make_unique<LambdaExpr>();
+            lam->captureKind = n->captureKind;
+            lam->explicitCaptures = n->explicitCaptures;
+            for (auto& p : n->params) {
+                auto pc = std::make_unique<ParamDecl>();
+                pc->name = p->name;
+                pc->typeName = p->typeName;
+                pc->funcPtr = p->funcPtr;
+                pc->hasDefault = p->hasDefault;
+                pc->defaultExpr = cloneExpr(p->defaultExpr.get());
+                lam->params.push_back(std::move(pc));
+            }
+            lam->returnType = n->returnType;
+            lam->body = n->body != nullptr
+                           ? std::unique_ptr<BlockStmt>(
+                                 static_cast<BlockStmt*>(cloneStmt(n->body.get()).release()))
+                           : nullptr;
+            out = std::move(lam);
+            break;
+        }
+        default:
+            // 未知表达式节点：克隆为 空指针 并依赖调用方防御（不应发生）
+            return nullptr;
+    }
+    out->location = node->location;
+    return out;
+}
+
+std::unique_ptr<Stmt> cloneStmt(Stmt* node) {
+    if (node == nullptr) return nullptr;
+    std::unique_ptr<Stmt> out;
+    switch (node->getType()) {
+        case NodeType::VarDecl: {
+            auto* n = static_cast<VarDecl*>(node);
+            auto v = std::make_unique<VarDecl>();
+            v->isConst = n->isConst;
+            v->isStatic = n->isStatic;
+            v->name = n->name;
+            v->typeName = n->typeName;
+            v->initializer = cloneExpr(n->initializer.get());
+            v->funcPtr = n->funcPtr;
+            out = std::move(v);
+            break;
+        }
+        case NodeType::ExprStmt: {
+            auto* n = static_cast<ExprStmt*>(node);
+            out = std::make_unique<ExprStmt>(cloneExpr(n->expr.get()));
+            break;
+        }
+        case NodeType::BlockStmt: {
+            auto* n = static_cast<BlockStmt*>(node);
+            auto b = std::make_unique<BlockStmt>();
+            for (auto& s : n->statements) b->statements.push_back(cloneStmt(s.get()));
+            out = std::move(b);
+            break;
+        }
+        case NodeType::IfStmt: {
+            auto* n = static_cast<IfStmt*>(node);
+            auto i = std::make_unique<IfStmt>();
+            i->condition = cloneExpr(n->condition.get());
+            i->thenBranch = n->thenBranch != nullptr
+                                ? std::unique_ptr<BlockStmt>(
+                                      static_cast<BlockStmt*>(
+                                          cloneStmt(n->thenBranch.get()).release()))
+                                : nullptr;
+            i->elseBranch = cloneStmt(n->elseBranch.get());
+            out = std::move(i);
+            break;
+        }
+        case NodeType::WhileStmt: {
+            auto* n = static_cast<WhileStmt*>(node);
+            auto w = std::make_unique<WhileStmt>();
+            w->condition = cloneExpr(n->condition.get());
+            w->body = n->body != nullptr
+                          ? std::unique_ptr<BlockStmt>(
+                                static_cast<BlockStmt*>(cloneStmt(n->body.get()).release()))
+                          : nullptr;
+            out = std::move(w);
+            break;
+        }
+        case NodeType::ForStmt: {
+            auto* n = static_cast<ForStmt*>(node);
+            auto f = std::make_unique<ForStmt>();
+            f->init = cloneStmt(n->init.get());
+            f->condition = cloneExpr(n->condition.get());
+            f->update = cloneExpr(n->update.get());
+            f->body = n->body != nullptr
+                          ? std::unique_ptr<BlockStmt>(
+                                static_cast<BlockStmt*>(cloneStmt(n->body.get()).release()))
+                          : nullptr;
+            out = std::move(f);
+            break;
+        }
+        case NodeType::ReturnStmt: {
+            auto* n = static_cast<ReturnStmt*>(node);
+            auto ret = std::make_unique<ReturnStmt>();
+            ret->value = cloneExpr(n->value.get());
+            out = std::move(ret);
+            break;
+        }
+        case NodeType::BreakStmt:
+            out = std::make_unique<BreakStmt>();
+            break;
+        case NodeType::ContinueStmt:
+            out = std::make_unique<ContinueStmt>();
+            break;
+        case NodeType::SwitchStmt: {
+            auto* n = static_cast<SwitchStmt*>(node);
+            auto sw = std::make_unique<SwitchStmt>();
+            sw->condition = cloneExpr(n->condition.get());
+            for (auto& c : n->cases) {
+                auto cc = std::make_unique<CaseLabel>(c->value);
+                cc->rawValue = c->rawValue;
+                for (auto& s : c->statements) cc->statements.push_back(cloneStmt(s.get()));
+                sw->cases.push_back(std::move(cc));
+            }
+            if (n->defaultCase != nullptr) {
+                auto d = std::make_unique<DefaultLabel>();
+                for (auto& s : n->defaultCase->statements) {
+                    d->statements.push_back(cloneStmt(s.get()));
+                }
+                sw->defaultCase = std::move(d);
+            }
+            out = std::move(sw);
+            break;
+        }
+        case NodeType::RangeForStmt: {
+            auto* n = static_cast<RangeForStmt*>(node);
+            auto rf = std::make_unique<RangeForStmt>();
+            rf->varName = n->varName;
+            rf->iterable = cloneExpr(n->iterable.get());
+            rf->body = cloneStmt(n->body.get());
+            out = std::move(rf);
+            break;
+        }
+        default:
+            return nullptr;  // 声明节点不应出现在循环体内
+    }
+    out->location = node->location;
+    return out;
+}
+
 } // namespace
 
 void SemanticAnalyzer::visitBlockStmt(BlockStmt* node) {
@@ -169,6 +514,131 @@ void SemanticAnalyzer::visitForStmt(ForStmt* node) {
     loopDepth_++;
     if (node->body != nullptr) checkBlock(node->body.get());
     loopDepth_--;
+}
+
+void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
+    // C-2（2026-08）：对 元素 属于 容器 { 体 } ——语义层降级为 循环 语句：
+    //   数组 T[N]    -> 循环 (整64 i=0; i<N; i++) { T 元素 = 容器[i]; 体 }
+    //   类容器 向量<T> -> 循环 (整64 i=0; i<容器.大小(); i++) { T 元素 = 容器.元素(i); 体 }
+    // 降级树写入 node->desugared 供 IR 层生成（IR 不做类型解析，复用降级树）。
+    // 设计约束：迭代对象须为名称式（变量/自身/成员/下标）——按名重建节点，
+    //   无 AST 所有权共享；函数调用等临时值暂不支持（报错引导先赋局部变量）。
+    const std::string containerType = canonicalType(checkExpr(node->iterable.get()));
+    // 索引变量名：$ 不在标识符字符集，用户无法与之冲突；
+    //   计数器唯一化——同作用域多个 对...属于 的索引变量互不冲突
+    const std::string idxName = "__对循环$索引" + std::to_string(rangeForCounter_++);
+    std::string elemType;
+    std::unique_ptr<Expr> lenExpr;    // 长度表达式（数组=常量 / 类=容器.大小()）
+    std::unique_ptr<Expr> elemExpr;   // 元素表达式（数组=容器[i] / 类=容器.元素(i)）
+    bool desugarOk = true;
+
+    if (!isNameLikeExpr(node->iterable.get())) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "'对...属于' 迭代对象须为变量/自身/成员/下标表达式"
+                            "（函数调用等临时值暂不支持，请先赋给局部变量）");
+        desugarOk = false;
+    } else if (types::isArray(containerType)) {
+        // 数组：长度编译期已知，元素 = 容器[索引]
+        elemType = types::arrayElemOf(containerType);
+        const int len = types::arrayLenOf(containerType);
+        if (len <= 0) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "'对...属于' 迭代数组长度必须为正（实际 '" +
+                                    containerType + "'）");
+            desugarOk = false;
+        } else {
+            lenExpr = std::make_unique<IntegerLiteral>(len, std::to_string(len));
+            elemExpr = std::make_unique<IndexExpr>(
+                cloneNameExpr(node->iterable.get()),
+                std::make_unique<IdentifierExpr>(idxName));
+        }
+    } else if (isClassType(containerType)) {
+        // 类容器：须提供 大小() 与 元素(整64)（对标 C++ 迭代器接口约定）
+        std::string lookupName = containerType;
+        if (findClass(lookupName) == nullptr) {
+            const std::string inst =
+                resolveGenericTypeName(containerType, node->location);
+            if (!inst.empty() && findClass(inst) != nullptr) lookupName = inst;
+        }
+        const ClassInfo* ci = findClass(lookupName);
+        if (ci == nullptr) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "'对...属于' 无法解析迭代对象类 '" + containerType + "'");
+            desugarOk = false;
+        } else {
+            auto mit = ci->methods.find("大小");
+            auto eit = ci->methods.find("元素");
+            if (mit == ci->methods.end() || eit == ci->methods.end() ||
+                eit->second.paramTypes.size() != 1) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "'对...属于' 迭代对象类 '" + lookupName +
+                        "' 须提供 大小() 与 元素(整64) 方法（与 向量<T> 同形态）");
+                desugarOk = false;
+            } else {
+                elemType = eit->second.type;  // 实例化类已替换类型参数（T -> 整32）
+                lenExpr = std::make_unique<CallExpr>(
+                    std::make_unique<MemberExpr>(
+                        cloneNameExpr(node->iterable.get()), "大小"));
+                auto elemCall = std::make_unique<CallExpr>(
+                    std::make_unique<MemberExpr>(
+                        cloneNameExpr(node->iterable.get()), "元素"));
+                elemCall->arguments.push_back(
+                    std::make_unique<IdentifierExpr>(idxName));
+                elemExpr = std::move(elemCall);
+            }
+        }
+    } else {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "'对...属于' 迭代对象须为数组或类容器（向量<T> 等），实际为 '" +
+                                containerType + "'");
+        desugarOk = false;
+    }
+
+    if (!desugarOk) {
+        // 保留体检查（减少连锁错误）；无降级树（IR 层防御性跳过）
+        if (node->body != nullptr) checkStmt(node->body.get());
+        return;
+    }
+
+    // ---- 构建降级 循环 语句 ----
+    // init：整64 __对循环$索引 = 0
+    auto initDecl = std::make_unique<VarDecl>();
+    initDecl->name = idxName;
+    initDecl->typeName = "整64";
+    initDecl->initializer = std::make_unique<IntegerLiteral>(0, "0");
+    initDecl->location = node->location;
+    // condition：__对循环$索引 < 长度
+    auto condition = std::make_unique<BinaryExpr>(
+        Operator::Less,
+        std::make_unique<IdentifierExpr>(idxName), std::move(lenExpr));
+    condition->location = node->location;
+    // update：__对循环$索引++
+    auto update = std::make_unique<UnaryExpr>(
+        Operator::Increment, std::make_unique<IdentifierExpr>(idxName), true);
+    update->location = node->location;
+    // body：{ T 元素 = 元素表达式; 用户体 }
+    auto body = std::make_unique<BlockStmt>();
+    auto elemDecl = std::make_unique<VarDecl>();
+    elemDecl->name = node->varName;
+    elemDecl->typeName = elemType;
+    elemDecl->initializer = std::move(elemExpr);
+    elemDecl->location = node->location;
+    body->statements.push_back(std::move(elemDecl));
+    if (node->body != nullptr) {
+        // 用户循环体克隆进降级树（原体保留在 node->body——泛型类方法体
+        //   按实例重检查时以原体重建降级树，移动会丢体/多实例类型错乱）
+        body->statements.push_back(cloneStmt(node->body.get()));
+    }
+    auto forStmt = std::make_unique<ForStmt>();
+    forStmt->init = std::move(initDecl);
+    forStmt->condition = std::move(condition);
+    forStmt->update = std::move(update);
+    forStmt->body = std::move(body);
+    forStmt->location = node->location;
+    node->desugared = std::move(forStmt);
+    // 检查降级树（类型解析/错误报告与用户书写代码同路径）
+    checkStmt(node->desugared.get());
 }
 void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
     // lambda 返回类型推导模式（Task 2.10）：currentReturnType_ 为空，

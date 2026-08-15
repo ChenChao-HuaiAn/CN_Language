@@ -198,6 +198,19 @@ void AstPrinter::visitWhileStmt(WhileStmt* node) {
     --depth_;
 }
 
+void AstPrinter::visitRangeForStmt(RangeForStmt* node) {
+    printHeader("对...属于 迭代语句", node->location);
+    ++depth_;
+    printHeader("变量: " + node->varName, node->location);
+    if (node->iterable != nullptr) {
+        node->iterable->accept(*this);
+    }
+    if (node->body != nullptr) {
+        node->body->accept(*this);
+    }
+    --depth_;
+}
+
 void AstPrinter::visitForStmt(ForStmt* node) {
     printHeader("循环语句", node->location);
     ++depth_;

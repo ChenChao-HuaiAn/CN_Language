@@ -56,6 +56,7 @@ class ForStmt;
 class ReturnStmt;
 class BreakStmt;
 class ContinueStmt;
+class RangeForStmt;
 class SwitchStmt;
 class CaseLabel;
 class DefaultLabel;
@@ -96,6 +97,7 @@ enum class NodeType {
     ReturnStmt,        // 返回语句
     BreakStmt,         // 中断语句
     ContinueStmt,      // 继续语句
+    RangeForStmt,      // 对...属于 迭代语句（C-2，语义层降级为 循环）
     SwitchStmt,        // 选择语句（switch风格）
     CaseLabel,         // 情况标签（case分支头）
     DefaultLabel,      // 默认标签（default分支头）
@@ -207,6 +209,9 @@ public:
     virtual void visitReturnStmt(ReturnStmt* node) = 0;
     virtual void visitBreakStmt(BreakStmt* node) = 0;
     virtual void visitContinueStmt(ContinueStmt* node) = 0;
+    // C-2（2026-08）：对...属于 迭代语句——默认空实现（语义层降级为 循环）
+    //   （与阶段3 声明节点同策略：按需重写，IR 层经 desugared 生成）
+    virtual void visitRangeForStmt(RangeForStmt* node);
     virtual void visitSwitchStmt(SwitchStmt* node) = 0;
     virtual void visitCaseLabel(CaseLabel* node) = 0;
     virtual void visitDefaultLabel(DefaultLabel* node) = 0;
@@ -704,6 +709,25 @@ class ContinueStmt : public Stmt {
 public:
     ContinueStmt() : Stmt(NodeType::ContinueStmt) {}
     void accept(AstVisitor& visitor) override { visitor.visitContinueStmt(this); }
+};
+
+// 对...属于 迭代语句（C-2，2026-08）：对 元素 属于 容器 { 循环体 }
+// 语法：对 <变量名> 属于 <表达式> <语句/块>（对标 C++ range-for / Python for-in）
+// 语义层（visitRangeForStmt）按容器形态降级为 循环（ForStmt）：
+//   - 数组 T[N]        -> 循环 (整64 i=0; i<N; i++) { T 元素 = 容器[i]; 体; }
+//   - 类容器（向量<T>）-> 循环 (整64 i=0; i<容器.大小(); i++) { T 元素 = 容器.元素(i); 体; }
+//   - 其他形态（须提供 大小()/元素(整64) 方法的类；否则报错）
+// 降级树写入 desugared：IR 层 visitRangeForStmt 直接生成降级树
+// （名称式迭代对象（标识符/成员/下标）按名重建，无 AST 所有权共享）
+class RangeForStmt : public Stmt {
+public:
+    RangeForStmt() : Stmt(NodeType::RangeForStmt) {}
+    void accept(AstVisitor& visitor) override { visitor.visitRangeForStmt(this); }
+
+    std::string varName;               // 循环变量名（用户书写）
+    std::unique_ptr<Expr> iterable;    // 迭代对象表达式
+    std::unique_ptr<Stmt> body;        // 循环体（块或单语句）
+    std::unique_ptr<Stmt> desugared;   // 语义层降级树（循环 语句，IR 层生成用）
 };
 
 // 情况标签：情况 常量值: 语句*（选择语句的一个分支）

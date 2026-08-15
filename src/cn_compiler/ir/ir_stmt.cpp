@@ -298,6 +298,12 @@ void IRGenerator::genStmt(Stmt* node) {
         case NodeType::ForStmt:
             genFor(static_cast<ForStmt*>(node));
             break;
+        case NodeType::RangeForStmt:
+            // C-2（2026-08）：对...属于 已在语义层降级为 循环（desugared）
+            if (static_cast<RangeForStmt*>(node)->desugared != nullptr) {
+                genStmt(static_cast<RangeForStmt*>(node)->desugared.get());
+            }
+            break;
         case NodeType::SwitchStmt:
             genSwitch(static_cast<SwitchStmt*>(node));
             break;

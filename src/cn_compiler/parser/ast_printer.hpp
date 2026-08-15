@@ -38,6 +38,7 @@ public:
     void visitIfStmt(IfStmt* node) override;
     void visitWhileStmt(WhileStmt* node) override;
     void visitForStmt(ForStmt* node) override;
+    void visitRangeForStmt(RangeForStmt* node) override;  // C-2：对...属于
     void visitReturnStmt(ReturnStmt* node) override;
     void visitBreakStmt(BreakStmt* node) override;
     void visitContinueStmt(ContinueStmt* node) override;

@@ -50,6 +50,15 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
         consumeSemicolon();
         return stmt;
     }
+    // C-2（2026-08）：对...属于 迭代语句（上下文关键字探测，须先于自定义类型
+    //   声明探测——对 元素 属于 容器 形态：标识符"对" + 标识符 + 标识符"属于"）
+    if (check(TokenType::Identifier) &&
+        current().getValue() == "对" &&
+        peek(1).getType() == TokenType::Identifier &&
+        peek(2).getType() == TokenType::Identifier &&
+        peek(2).getValue() == "属于") {
+        return parseRangeForStmt();
+    }
     // 自定义类型名变量声明（Task 2.7）：点 p = ...（结构体/枚举类型名作为前缀）
     // 探测形式1：标识符(类型名) + 标识符(变量名)：点 p
     // 探测形式2：标识符(类型名) + 星号(指针) + 标识符(变量名)：点* ptr
@@ -121,6 +130,29 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
     exprStmt->location = exprStmt->expr->location;
     consumeSemicolon();
     return exprStmt;
+}
+
+// C-2（2026-08）：对...属于 迭代语句（对标 C++ range-for / Python for-in）
+// 语法：对 <变量名> 属于 <表达式> <语句/块>（与 如果/当 一致，块后无分号）
+// 语义层按容器形态降级为 循环（数组 -> 下标；类容器 -> 大小()/元素(整64)）
+std::unique_ptr<Stmt> Parser::parseRangeForStmt() {
+    auto stmt = std::make_unique<RangeForStmt>();
+    stmt->location = current().getLocation();
+    advance();  // 消费 对
+    stmt->varName = current().getValue();
+    advance();  // 消费 变量名
+    if (!check(TokenType::Identifier) || current().getValue() != "属于") {
+        reportErrorHere("'对' 语句须为：对 变量名 属于 容器 { 循环体 }");
+    } else {
+        advance();  // 消费 属于
+    }
+    // 迭代对象解析期间抑制 结构体初始化探测（标识符+{ 歧义：{ 属循环体块）
+    const bool savedSuppress = suppressStructInit_;
+    suppressStructInit_ = true;
+    stmt->iterable = parseExpr();
+    suppressStructInit_ = savedSuppress;
+    stmt->body = parseStmt();  // 循环体：{ 块 } 或单语句
+    return stmt;
 }
 
 // 解析如果语句：如果 (条件) { } [否则 如果 ...] [否则 { }]
