@@ -351,6 +351,11 @@ std::string Parser::parseTypeNameEx() {
             // 用于 账户& 账（友元参数）、T& a（泛型函数引用参数）
             advance();
             suffixes += "&";
+        } else if (check(TokenType::ColonColon)) {
+            // A-2（crate 分桶）：限定类型键——类型位置支持 模块名::类型名
+            //   （甲::记录），语义层按所属模块解析多模块同名类型
+            advance();
+            suffixes += "::" + parseTypeName();
         } else if (check(TokenType::LeftBracket)) {
             // 数组后缀：类型[长度]
             advance();

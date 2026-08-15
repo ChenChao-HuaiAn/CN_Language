@@ -96,7 +96,14 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
                 typeTemplateVar = true;
             }
         }
-        if (typeThenVar || typePtrVar || typeArrayVar || typeTemplateVar) {
+        // A-2 形式5（crate 分桶）：标识符 :: 类型名 变量名（甲::记录 r）——
+        //   限定类型变量声明（多模块同名类型的精确引用）
+        const bool typeQualifiedVar = (peek(1).getType() == TokenType::ColonColon &&
+                                       (isTypeKeyword(peek(2).getType()) ||
+                                        peek(2).getType() == TokenType::Identifier) &&
+                                       peek(3).getType() == TokenType::Identifier);
+        if (typeThenVar || typePtrVar || typeArrayVar || typeTemplateVar ||
+            typeQualifiedVar) {
             auto stmt = parseTypePrefixVarDecl();
             consumeSemicolon();
             return stmt;

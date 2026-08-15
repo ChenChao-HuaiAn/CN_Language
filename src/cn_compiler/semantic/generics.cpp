@@ -296,10 +296,17 @@ void SemanticAnalyzer::checkGenericConstraint(const std::string& argType,
 //   4. 生成实例化类符号名：类名$整32（mangling 编码扩展）
 //   5. 深拷贝泛型类成员，替换类型参数，注册到 classes_（单态化）
 std::string SemanticAnalyzer::instantiateGeneric(
-    const std::string& className, const std::vector<std::string>& args,
+    const std::string& className, std::vector<std::string> args,
     const SourceLocation& loc) {
     const GenericInfo* gen = findGeneric(className);
     if (gen == nullptr) return "";  // 非泛型（由调用方决定是否报错）
+
+    // A-2（crate 分桶）：类型实参按当前模块解析——多模块同名类型实参（记录）
+    //   改写为限定键（甲::记录），实例化名/类型替换用限定键保持模块隔离
+    //   （否则两个模块的 向量<记录> 会生成同一实例名而互相污染）
+    for (auto& a : args) {
+        a = resolveTypeName(a, currentModuleName_, loc);
+    }
 
     // 参数个数校验
     if (gen->typeParams.size() != args.size()) {

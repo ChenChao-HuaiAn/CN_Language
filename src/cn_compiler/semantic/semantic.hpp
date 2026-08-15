@@ -270,8 +270,22 @@ private:
     // 泛型实例化类型名替换（Task 3.8）：名<实参> -> 实例化类名（容器$整32）；
     //   非泛型类型原样返回。供 visitVarDecl 等在使用前统一替换。
     std::string resolveGenericTypeName(const std::string& typeName, const SourceLocation& loc);
-    // 注册结构体/枚举类型名（重复注册报错，Task 2.7）
-    void declareTypeName(const std::string& name, const SourceLocation& loc);
+    // 注册结构体/枚举类型名（同模块重复注册报错；跨模块同名允许 = crate 分桶，
+    //   A-2 2026-08：类型按模块隔离，引用经 resolveTypeName 解析到所属模块）
+    void declareTypeName(const std::string& name, const std::string& module,
+                         const SourceLocation& loc);
+    // A-2：类型引用解析——裸名按当前模块解析，多模块同名时改写为限定键
+    //   （模块名::类型）；指针/数组/模板后缀递归处理。返回解析后的类型键。
+    std::string resolveTypeName(const std::string& type, const std::string& module,
+                                const SourceLocation& loc);
+    // A-2：拆分限定类型键（甲::记录 -> ("甲","记录")；无 :: -> ("", 原名)）
+    static void splitQualifiedType(const std::string& type, std::string& module,
+                                   std::string& base);
+    // A-2：按模块查结构体/枚举（限定键或裸名+模块集合；裸名且多模块定义返回nullptr）
+    const StructDecl* findStructInModule(const std::string& module,
+                                         const std::string& name) const;
+    const EnumDecl* findEnumInModule(const std::string& module,
+                                     const std::string& name) const;
     // 计算结构体/联合体布局（C风格对齐，Task 2.7）
     void computeLayout(StructDecl* decl);
     // 枚举成员值求值（自动递增/显式赋值/负数，Task 2.7）
@@ -410,7 +424,7 @@ private:
     // 泛型类/函数实例化：为 类型名<实参> 生成单态化副本
     //   className 为泛型类名，args 为类型实参（如 ["整32"]）；返回实例化后的类符号名
     std::string instantiateGeneric(const std::string& className,
-                                   const std::vector<std::string>& args,
+                                   std::vector<std::string> args,
                                    const SourceLocation& loc);
     // 替换类型参数（AST 深拷贝时把 T 替换为实参类型）
     static std::string substTypeParam(const std::string& type,
@@ -441,9 +455,21 @@ private:
     //   visitProgram 注册顶层 常量/静态 声明；visitIdentifierExpr 把常量名
     //   引用替换为字面量（编译期常量替换）。静态变量暂以全局变量语义注册
     //   （IR 层生成全局存储，见 F 步；本层先支持常量折叠 + 静态符号声明）。
-    std::unordered_map<std::string, std::string> globalConstValues_;  // 常量名 -> 值文本
+    std::unordered_map<std::string, std::string> globalConstValues_;  // 常量名 -> 值文本（唯一名）
     // 顶层静态变量名 -> 源码类型（第 9 层 Debug：IR 层生成 .data 全局存储）
     std::unordered_map<std::string, std::string> globalStatics_;      // 静态变量名 -> 源码类型
+    // ---- A-2（类型/常量 crate 分桶，2026-08）：跨模块同名符号隔离 ----
+    // 常量/静态：名 -> 模块名集合（多模块同名时引用须按当前模块解析）
+    std::unordered_map<std::string, std::unordered_set<std::string>> constModules_;
+    std::unordered_map<std::string, std::unordered_set<std::string>> staticModules_;
+    // 多模块同名的限定键条目（模块$名 -> 值文本/源码类型），语义层引用重写后
+    //   IR 按限定键查询（IR 无模块上下文，靠语义重写后的名字消除歧义）
+    std::unordered_map<std::string, std::string> globalConstValuesQualified_;
+    std::unordered_map<std::string, std::string> globalStaticsQualified_;
+    // 类型名 -> 定义它的模块名集合（结构体/枚举；跨模块同名允许 = crate 分桶）
+    std::unordered_map<std::string, std::unordered_set<std::string>> typeModules_;
+    // 当前分析上下文模块名（checkFunctionBody 设置；类型/常量/静态引用按此解析）
+    std::string currentModuleName_;
     std::unordered_set<std::string> typeNames_;    // 结构体/枚举类型名表（Task 2.7）
     std::vector<std::unordered_map<std::string, std::string>> scopes_; // 变量作用域栈
     std::string lastType_;                         // 最近一次表达式推断的类型

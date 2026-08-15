@@ -1075,23 +1075,38 @@ TEST(ModuleTest, CrateIsolateCrossCrateLastSegmentFilter) {
 //   在语义阶段报「重复声明类型/变量」。本测试显式锚定该限制（r.ok=false），
 //   待后续「类型级 crate 分桶 + 限定名解析」完善后反转。
 // 注意：不改变 44_crate_isolate 已通过的函数隔离（函数按 moduleName 分桶已隔离）。
-TEST(ModuleTest, SemanticTypeConstCrossModuleNotIsolated) {
+TEST(ModuleTest, SemanticTypeConstCrossModuleIsolated) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
         "结构体 记录 { 整64 标识 }\n"
         "公开:\n"
-        "常量 常量值 = 10\n",
+        "常量 常量值 = 10\n"
+        "公开:\n"
+        "函数 甲值() -> 整64 { 返回 常量值 }\n"
+        "公开:\n"
+        "函数 创建记录(整64 标识) -> 记录 { 返回 记录{ 标识 = 标识 } }\n"
+        "公开:\n"
+        "函数 读标识(记录 r) -> 整64 { 返回 r.标识 }\n",
         "甲.cn", diags1));
     units.push_back(makeUnit(
         "导入 甲\n"
         "结构体 记录 { 字符串 名称 }\n"
         "常量 常量值 = 20\n"
-        "函数 主() -> 整32 { 返回 0 }\n",
+        "函数 主值() -> 整64 { 返回 常量值 }\n"
+        "函数 创建记录(字符串 名称) -> 记录 { 返回 记录{ 名称 = 名称 } }\n"
+        "函数 读名称(记录 r) -> 字符串 { 返回 r.名称 }\n"
+        "函数 主() -> 整32 {\n"
+        "    甲::记录 r = 甲::创建记录(42)\n"
+        "    整64 标识 = 甲::读标识(r)\n"
+        "    字符串 名称 = 读名称(创建记录(\"书\"))\n"
+        "    返回 0\n"
+        "}\n",
         "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
-    // merge 阶段通过（crate 分桶允许），语义阶段报重复声明（全局去重限制）
-    //   ——断言 r.ok == false 锚定当前限制（非缺陷误报，是已知边界）
-    EXPECT_FALSE(r.ok) << "跨模块同名类型/常量当前未隔离（已知限制，待类型级 crate 分桶）";
+    // A-2（类型级 crate 分桶，2026-08）：跨模块同名类型/常量已隔离——
+    //   甲::记录(整64 标识) 与 主::记录(字符串 名称) 独立注册；
+    //   常量 常量值 按模块解析（甲=10、主=20）；限定类型 甲::记录 可引用
+    EXPECT_TRUE(r.ok) << "跨模块同名类型/常量未隔离（A-2 分桶失败）";
 }

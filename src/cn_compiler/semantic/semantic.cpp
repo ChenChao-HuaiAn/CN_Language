@@ -133,14 +133,134 @@ void SemanticAnalyzer::popScope() {
 }
 
 // 注册结构体/枚举类型名（顶层类型表，供变量声明/字段访问使用，Task 2.7）
-// 重复注册（同名结构体/枚举）报错
-void SemanticAnalyzer::declareTypeName(const std::string& name, const SourceLocation& loc) {
-    if (typeNames_.find(name) != typeNames_.end()) {
-        diagnostics_.report(DiagnosticLevel::Error, loc,
-                            "重复声明类型 '" + name + "'");
+// A-2（2026-08，crate 分桶）：同模块重复注册报错；跨模块同名类型允许
+//   （模块X/模块Y 各自定义 记录 互不冲突），引用经 resolveTypeName 解析。
+void SemanticAnalyzer::declareTypeName(const std::string& name, const std::string& module,
+                                       const SourceLocation& loc) {
+    auto& mods = typeModules_[name];
+    if (mods.count(module) > 0) {
+        // 同模块重复声明：报错（模块参数为空时按全局重复处理，兼容单模块）
+        if (module.empty() && mods.size() > 0) {
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                                "重复声明类型 '" + name + "'");
+        } else if (!module.empty()) {
+            diagnostics_.report(DiagnosticLevel::Error, loc,
+                                "重复声明类型 '" + name + "'（模块 '" + module + "' 内）");
+        }
         return;
     }
+    mods.insert(module);
     typeNames_.insert(name);
+}
+
+// A-2：拆分限定类型键（甲::记录 -> ("甲","记录")；无 :: -> ("", 原名)）
+// 用于类型查询辅助的限定键解析（findStruct/isStructType 等集中处理）
+void SemanticAnalyzer::splitQualifiedType(const std::string& type, std::string& module,
+                                          std::string& base) {
+    const std::size_t pos = type.find("::");
+    if (pos != std::string::npos) {
+        module = type.substr(0, pos);
+        base = type.substr(pos + 2);
+    } else {
+        module.clear();
+        base = type;
+    }
+}
+
+// A-2：按模块查结构体（限定键解析用）——指定模块内查找；模块为空按裸名匹配任一
+const StructDecl* SemanticAnalyzer::findStructInModule(const std::string& module,
+                                                       const std::string& name) const {
+    if (program_ == nullptr) return nullptr;
+    for (const auto& s : program_->structs) {
+        if (s->name != name) continue;
+        if (module.empty() || s->moduleName == module) return s.get();
+    }
+    return nullptr;
+}
+
+// A-2：按模块查枚举（限定键解析用）
+const EnumDecl* SemanticAnalyzer::findEnumInModule(const std::string& module,
+                                                   const std::string& name) const {
+    if (program_ == nullptr) return nullptr;
+    for (const auto& e : program_->enums) {
+        if (e->name != name) continue;
+        if (module.empty() || e->moduleName == module) return e.get();
+    }
+    return nullptr;
+}
+
+// A-2：类型引用解析——裸名按当前模块解析，多模块同名时改写为限定键
+//   （模块名::类型，如 甲::记录），使 IR/语义的查询（findStruct 等）精确命中
+//   所属模块的类型；指针/数组/引用后缀与模板内参递归处理。
+//   唯一定义（或当前模块独占）的类型保持裸名（既有行为不变）。
+std::string SemanticAnalyzer::resolveTypeName(const std::string& type,
+                                              const std::string& module,
+                                              const SourceLocation& loc) {
+    if (type.empty()) return type;
+    // 已是限定键（甲::记录）：直接返回（引用方已解析）
+    if (type.find("::") != std::string::npos &&
+        type.find('<') == std::string::npos &&
+        type.find('[') == std::string::npos &&
+        type.back() != '*' && type.back() != '&') {
+        return type;
+    }
+    // 模板类型（结果<...>/可选<...>/泛型类<...>）：递归改写内参
+    const std::size_t lt = type.find('<');
+    const std::size_t gt = type.rfind('>');
+    if (lt != std::string::npos && gt != std::string::npos && gt > lt) {
+        const std::string head = type.substr(0, lt);
+        const std::string inner = type.substr(lt + 1, gt - lt - 1);
+        std::string newInner;
+        std::size_t pos = 0;
+        while (pos <= inner.size()) {
+            const std::size_t comma = inner.find(',', pos);
+            const std::string part = (comma == std::string::npos)
+                                         ? inner.substr(pos)
+                                         : inner.substr(pos, comma - pos);
+            std::size_t b = part.find_first_not_of(" \t");
+            std::size_t e = part.find_last_not_of(" \t");
+            const std::string trimmed = (b != std::string::npos && e != std::string::npos)
+                                            ? part.substr(b, e - b + 1) : part;
+            if (!newInner.empty()) newInner += ",";
+            newInner += resolveTypeName(trimmed, module, loc);
+            if (comma == std::string::npos) break;
+            pos = comma + 1;
+        }
+        // 保留 <...> 之后的后缀（函数指针参数列表 (T,T) 等）
+        std::string suffix = (gt + 1 < type.size()) ? type.substr(gt + 1) : "";
+        return head + "<" + newInner + ">" + suffix;
+    }
+    // 指针/引用/数组后缀：递归改写基础类型
+    if (!type.empty() && (type.back() == '*' || type.back() == '&')) {
+        return resolveTypeName(type.substr(0, type.size() - 1), module, loc) +
+               type.substr(type.size() - 1);
+    }
+    const std::size_t lb = type.rfind('[');
+    if (lb != std::string::npos && type.back() == ']') {
+        const std::string len = type.substr(lb + 1, type.size() - lb - 2);
+        if (!len.empty() && len.find_first_not_of("0123456789") == std::string::npos) {
+            return resolveTypeName(type.substr(0, lb), module, loc) +
+                   type.substr(lb);
+        }
+    }
+    // 裸名：仅当是多模块同名的结构体/枚举时需限定（其余类型原样返回）
+    const auto tmodIt = typeModules_.find(type);
+    if (tmodIt == typeModules_.end() || tmodIt->second.size() <= 1) {
+        return type;
+    }
+    // 多模块同名：当前模块有定义 -> 限定键；否则报歧义错误
+    if (!module.empty() && tmodIt->second.count(module) > 0) {
+        return module + "::" + type;
+    }
+    std::string modList;
+    for (const auto& m : tmodIt->second) {
+        if (!modList.empty()) modList += "/";
+        modList += m.empty() ? "(全局)" : m;
+    }
+    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "类型 '" + type + "' 在多个模块中定义（" + modList +
+                            "），请使用 模块名::" + type + " 限定");
+    return type;
 }
 
 // 是否结构体/联合体类型名（Task 2.7）
@@ -148,8 +268,17 @@ void SemanticAnalyzer::declareTypeName(const std::string& name, const SourceLoca
 //   模板类型名映射到合成名后同样视为结构体（供 IR 层 findStruct/typeSizeOf 使用）
 bool SemanticAnalyzer::isStructType(const std::string& type) const {
     if (type.empty() || program_ == nullptr) return false;
-    for (const auto& s : program_->structs) {
-        if (s->name == type) return true;
+    // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）
+    std::string qmod, qbase;
+    splitQualifiedType(type, qmod, qbase);
+    if (!qmod.empty()) {
+        for (const auto& s : program_->structs) {
+            if (s->name == qbase && s->moduleName == qmod) return true;
+        }
+    } else {
+        for (const auto& s : program_->structs) {
+            if (s->name == type) return true;
+        }
     }
     if (isResultType(type)) {
         const std::vector<std::string> args = resultTypeArgs(type);
@@ -175,8 +304,12 @@ bool SemanticAnalyzer::isStructType(const std::string& type) const {
 // 是否枚举类型名（Task 2.7）
 bool SemanticAnalyzer::isEnumType(const std::string& type) const {
     if (type.empty() || program_ == nullptr) return false;
+    // A-2：限定键（甲::颜色）按模块精确匹配；裸名匹配任一模块（既有行为）
+    std::string qmod, qbase;
+    splitQualifiedType(type, qmod, qbase);
     for (const auto& e : program_->enums) {
-        if (e->name == type) return true;
+        if (e->name != qbase) continue;
+        if (qmod.empty() || e->moduleName == qmod) return true;
     }
     return false;
 }
@@ -185,8 +318,12 @@ bool SemanticAnalyzer::isEnumType(const std::string& type) const {
 // 阶段3（Task 3.5）：结果<T,E>/可选<T> 模板类型名映射到合成结构体名
 const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
     if (program_ == nullptr) return nullptr;
+    // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）
+    std::string qmod, qbase;
+    splitQualifiedType(name, qmod, qbase);
     for (const auto& s : program_->structs) {
-        if (s->name == name) return s.get();
+        if (s->name != qbase) continue;
+        if (qmod.empty() || s->moduleName == qmod) return s.get();
     }
     if (isResultType(name)) {
         const std::vector<std::string> args = resultTypeArgs(name);
@@ -212,8 +349,12 @@ const StructDecl* SemanticAnalyzer::findStruct(const std::string& name) const {
 // 查找枚举定义（未找到返回nullptr）
 const EnumDecl* SemanticAnalyzer::findEnum(const std::string& name) const {
     if (program_ == nullptr) return nullptr;
+    // A-2：限定键（甲::颜色）按模块精确匹配；裸名匹配任一模块（既有行为）
+    std::string qmod, qbase;
+    splitQualifiedType(name, qmod, qbase);
     for (const auto& e : program_->enums) {
-        if (e->name == name) return e.get();
+        if (e->name != qbase) continue;
+        if (qmod.empty() || e->moduleName == qmod) return e.get();
     }
     return nullptr;
 }
@@ -1052,6 +1193,12 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         return;
     }
     FunctionInfo info;
+    // A-2（crate 分桶）：返回类型按所属模块解析——多模块同名类型改写为限定键
+    //   （模块名::类型），IR 层按改写后的类型查询语义表（findStruct/typeSizeOf）
+    if (!node->returnType.empty()) {
+        node->returnType = resolveTypeName(node->returnType, node->moduleName,
+                                           node->location);
+    }
     info.returnType = node->returnType.empty() ? "空类型" : canonicalType(node->returnType);
     info.hasBody = (node->body != nullptr);
     // A-1（引用参数）：函数返回类型暂不支持引用（引用仅支持函数参数）——
@@ -1102,8 +1249,11 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         if (param->funcPtr.isFunctionPtr()) {
             info.paramTypes.push_back(param->funcPtr.toString());
         } else {
-            // A-1（引用参数）：引用保留 &（整32& / 账户&）——签名 key/mangling
-            //   须区分 按值/按引用（整32 vs 整32& 是不同重载）
+            // A-2（crate 分桶）：参数类型按所属模块解析并改写（IR 层按改写后
+            //   的类型查询语义表）；A-1 引用保留 &（整32&/账户&）——签名 key/
+            //   mangling 区分 按值/按引用
+            param->typeName = resolveTypeName(param->typeName, node->moduleName,
+                                              param->location);
             info.paramTypes.push_back(types::canonicalParam(param->typeName));
         }
     }
@@ -1237,11 +1387,21 @@ void SemanticAnalyzer::visitProgram(Program* node) {
         if (!gname.empty()) modulePublicSymbols_[g->moduleName].insert(gname);
     }
     // 第一趟a：注册全部结构体/联合体/枚举类型名（支持前向引用：字段可引用后定义的类型）
+    // A-2（crate 分桶）：类型按所属模块注册（同模块重复报错，跨模块同名允许）
     for (auto& s : node->structs) {
-        declareTypeName(s->name, s->location);
+        declareTypeName(s->name, s->moduleName, s->location);
     }
     for (auto& e : node->enums) {
-        declareTypeName(e->name, e->location);
+        declareTypeName(e->name, e->moduleName, e->location);
+    }
+    // A-2：结构体/联合体字段类型引用解析（按所属模块解析多模块同名类型，
+    //   改写字段类型为限定键；computeLayout/字段访问经 findStruct 精确命中）
+    for (auto& s : node->structs) {
+        for (auto& f : s->fields) {
+            if (!f.type.empty()) {
+                f.type = resolveTypeName(f.type, s->moduleName, s->location);
+            }
+        }
     }
     // 第一趟b：计算全部结构体/联合体布局（递归，循环引用检测）
     for (auto& s : node->structs) {
@@ -1284,15 +1444,41 @@ void SemanticAnalyzer::visitProgram(Program* node) {
                                     "顶层常量 '" + g->name +
                                         "' 初始值必须是字面量（整/浮/字符串）");
             }
-            if (!constText.empty()) globalConstValues_[g->name] = constText;
-            declareVar(g->name, "自动", g->location);
+            if (!constText.empty()) {
+                // A-2（常量 crate 分桶）：多模块同名常量各自登记限定键（模块$名），
+                //   引用经语义层按当前模块解析并重写节点名；裸名仅保留首定义
+                //   （兼容单模块/唯一定义场景，IR 层裸名查询路径不变）
+                constModules_[g->name].insert(g->moduleName);
+                if (globalConstValues_.find(g->name) == globalConstValues_.end()) {
+                    globalConstValues_[g->name] = constText;
+                }
+                globalConstValuesQualified_[g->moduleName + "$" + g->name] = constText;
+                // 限定键（模块$名）同时登记到 IR 查询表：语义层把多模块同名
+                //   常量引用重写为限定键后，IR 层 globalConstValue(限定键) 命中
+                //   （IR 无模块上下文，靠重写后的名字直接查值文本）
+                globalConstValues_[g->moduleName + "$" + g->name] = constText;
+            }
+            // 跨模块同名常量：仅首个模块 declareVar（全局作用域去重——
+            //   多模块同名时按当前模块解析，见 visitIdentifierExpr 常量分支）
+            if (constModules_[g->name].size() == 1) {
+                declareVar(g->name, "自动", g->location);
+            }
         } else if (g->isStatic) {
             // 第 9 层 Debug：顶层静态记录源码类型（IR 层生成 .data 全局存储），
             //   此前仅登记符号名导致函数体内引用落入 FuncAddr 分支（rbp0 汇编错误）
             const std::string stType =
                 g->typeName.empty() ? "自动" : canonicalType(g->typeName);
-            globalStatics_[g->name] = stType;
-            declareVar(g->name, stType, g->location);
+            // A-2（静态 crate 分桶）：同常量——多模块同名静态登记限定键（模块$名）
+            staticModules_[g->name].insert(g->moduleName);
+            if (globalStatics_.find(g->name) == globalStatics_.end()) {
+                globalStatics_[g->name] = stType;
+            }
+            globalStaticsQualified_[g->moduleName + "$" + g->name] = stType;
+            // 限定键（模块$名）同时登记到 IR 查询表（isGlobalStatic/globalStaticType）
+            globalStatics_[g->moduleName + "$" + g->name] = stType;
+            if (staticModules_[g->name].size() == 1) {
+                declareVar(g->name, stType, g->location);
+            }
         }
     }
     // 第二趟a（阶段3）：检查类方法体（自身/父类/访问控制/常量 上下文）
@@ -1322,7 +1508,7 @@ void SemanticAnalyzer::visitProgram(Program* node) {
 // 结构体/联合体声明：注册类型名（字段布局在 visitProgram 中统一计算）
 void SemanticAnalyzer::visitStructDecl(StructDecl* node) {
     // 由 visitProgram 驱动注册/布局；单独访问时仅注册类型名（防御性）
-    declareTypeName(node->name, node->location);
+    declareTypeName(node->name, node->moduleName, node->location);
 }
 
 // 枚举声明：成员值求值（自动递增/显式赋值/负数）
@@ -1347,6 +1533,10 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentReturnType_ = it->second.returnType;
     // 阶段3（Task 3.9）：记录当前上下文函数名（友元函数访问检查用）
     currentFunctionName_ = node->name;
+    // A-2（crate 分桶）：记录当前分析上下文模块名——类型/常量/静态引用按此解析
+    //   （多模块同名符号各自命中本模块的定义）
+    const std::string savedModule = currentModuleName_;
+    currentModuleName_ = node->moduleName;
     pushScope();  // 参数作用域
     for (auto& param : node->params) {
         // 函数指针参数：类型为 funcPtr 规范化字符串；普通参数用 typeName
@@ -1369,6 +1559,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     }
     currentReturnType_.clear();
     currentFunctionName_.clear();  // 阶段3：退出函数上下文
+    currentModuleName_ = savedModule;  // A-2：恢复外层模块上下文
     popScope();
 }
 
@@ -1394,6 +1585,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   （checkExpr 触发实例化构造，返回 容器$整32）之前替换 varType，
     //   否则类型匹配（容器<整32> vs 容器$整32）失败。
     varType = resolveGenericTypeName(varType, node->location);
+    // A-2（crate 分桶）：变量类型按所属模块解析并改写（顶层声明用节点模块，
+    //   局部变量用当前函数模块上下文；IR 层按改写后的类型查询语义表）
+    if (!varType.empty() && !node->funcPtr.isFunctionPtr()) {
+        const std::string mod = node->moduleName.empty() ? currentModuleName_
+                                                         : node->moduleName;
+        varType = resolveTypeName(varType, mod, node->location);
+        if (!node->typeName.empty()) node->typeName = varType;
+    }
     // A-1（引用参数）：引用变量声明暂不支持（引用仅支持函数参数）——
     //   明确报错避免 IR 层按指针类型静默误编译（变量 整32& r = x）
     if (!varType.empty() && types::isReference(varType)) {
@@ -1697,6 +1896,47 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
     //   为全局变量；此处识别常量名（globalConstValues_ 命中）并把类型改为
     //   字面量对应类型（整/浮/字符串），IR 层 genVarDecl 按常量值文本直接生成
     //   常量加载（避免按全局变量生成 Alloca 导致未初始化栈槽）。
+    // A-2（常量 crate 分桶）：多模块同名常量按当前模块解析——重写节点名为
+    //   限定键（模块$名），IR 层 globalConstValue 按限定键查到本模块的值；
+    //   唯一定义（或当前模块独占）的常量保持裸名（既有行为）。
+    //   注：多模块场景下节点名已重写，下方旧 constIt 块（裸名查询）自然失效；
+    //       单模块场景本块已 return，旧块为不可达防御代码。
+    auto constModIt = constModules_.find(node->name);
+    if (constModIt != constModules_.end()) {
+        std::string constText;
+        if (constModIt->second.size() > 1) {
+            const std::string mod = currentModuleName_;
+            auto qit = (mod.empty()) ? globalConstValuesQualified_.end()
+                                     : globalConstValuesQualified_.find(mod + "$" + node->name);
+            if (qit != globalConstValuesQualified_.end()) {
+                node->name = mod + "$" + node->name;
+                constText = qit->second;
+            } else {
+                std::string modList;
+                for (const auto& m : constModIt->second) {
+                    if (!modList.empty()) modList += "/";
+                    modList += m.empty() ? "(全局)" : m;
+                }
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "常量 '" + node->name + "' 在多个模块中定义（" +
+                                        modList + "），请使用 模块名::" + node->name + " 限定");
+            }
+        } else {
+            auto it = globalConstValues_.find(node->name);
+            if (it != globalConstValues_.end()) constText = it->second;
+        }
+        if (!constText.empty()) {
+            // 字符串字面量（含引号）-> 字符串；含 . / e / E -> 浮点；否则整数
+            if (constText.front() == '"' || constText.front() == '\'') {
+                lastType_ = "字符串";
+            } else if (constText.find_first_of(".eE") != std::string::npos) {
+                lastType_ = "浮64";
+            } else {
+                lastType_ = "整32";
+            }
+            return;
+        }
+    }
     auto constIt = globalConstValues_.find(node->name);
     if (constIt != globalConstValues_.end()) {
         const std::string& text = constIt->second;
@@ -1717,6 +1957,38 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         //   引用性仅保留在变量登记（IR byRef 标记）与参数签名（&）中
         lastType_ = types::isReference(varType) ? types::stripRef(varType) : varType;
         return;
+    }
+    // A-2（静态 crate 分桶）：多模块同名静态变量按当前模块解析——重写节点名为
+    //   限定键（模块$名），IR 层 isGlobalStatic/globalStaticType 按限定键命中；
+    //   唯一定义（或当前模块独占）的静态保持裸名（既有行为）。本地变量优先
+    //   （lookupVar 已先行命中返回）。
+    auto stModIt = staticModules_.find(node->name);
+    if (stModIt != staticModules_.end()) {
+        if (stModIt->second.size() > 1) {
+            if (currentModuleName_.empty() ||
+                stModIt->second.count(currentModuleName_) == 0) {
+                std::string modList;
+                for (const auto& m : stModIt->second) {
+                    if (!modList.empty()) modList += "/";
+                    modList += m.empty() ? "(全局)" : m;
+                }
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "静态变量 '" + node->name + "' 在多个模块中定义（" +
+                                        modList + "），请使用 模块名::" + node->name + " 限定");
+            } else {
+                node->name = currentModuleName_ + "$" + node->name;
+            }
+        }
+        auto git = globalStatics_.find(node->name);
+        if (git != globalStatics_.end()) {
+            lastType_ = git->second;
+            return;
+        }
+        auto gqit = globalStaticsQualified_.find(node->name);
+        if (gqit != globalStaticsQualified_.end()) {
+            lastType_ = gqit->second;
+            return;
+        }
     }
     // 枚举/结构体/类/接口类型名作标识符（供 枚举名.成员、&结构体、类名.静态成员，Task 2.7/3.x）
     if (isEnumType(node->name) || isStructType(node->name) ||
@@ -3021,6 +3293,8 @@ void SemanticAnalyzer::visitInitListExpr(InitListExpr* node) {
 // 结构体/联合体初始化：类型名{ 字段 = 值, ... }（Task 2.7）
 // 检查：类型名须为已声明的结构体/联合体；字段名存在；字段值类型可隐式转换
 void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
+    // A-2（crate 分桶）：结构体初始化类型名按当前模块解析（多模块同名 -> 限定键）
+    node->typeName = resolveTypeName(node->typeName, currentModuleName_, node->location);
     const std::string structType = canonicalType(node->typeName);
     const StructDecl* decl = findStruct(structType);
     if (decl == nullptr) {
@@ -3337,6 +3611,8 @@ void SemanticAnalyzer::collectLambdaCaptures(
 
 //   5. 其余组合（如 字符串 -> 整32、结构体 -> 整32）报错
 void SemanticAnalyzer::visitCastExpr(CastExpr* node) {
+    // A-2（crate 分桶）：强制转换目标类型按当前模块解析（多模块同名 -> 限定键）
+    node->targetType = resolveTypeName(node->targetType, currentModuleName_, node->location);
     const std::string target = canonicalType(node->targetType);
     const std::string src = checkExpr(node->operand.get());
     if (src == "未知") {
