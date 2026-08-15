@@ -1,0 +1,27 @@
+# CN 语言编译器 CI（B-2 2026-08）
+# 门禁：构建（/W4 /WX 零警告）+ 全量单测 + 全量 E2E
+name: CI
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+    branches: [develop, main]
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 配置 CMake
+        run: cmake -S . -B target/build
+
+      - name: 构建（零警告 /W4 /WX）
+        run: cmake --build target/build --config Debug
+
+      - name: 单元测试
+        run: target/Debug/cn_unit_tests.exe
+
+      - name: E2E 测试
+        run: python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
