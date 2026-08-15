@@ -108,6 +108,10 @@ target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
 #   按职责拆分子模块：class_resolver/error_analysis/generics，供编译器与单元测试共用）
 add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic.cpp
+    src/cn_compiler/semantic/semantic_expr.cpp
+    src/cn_compiler/semantic/semantic_call.cpp
+    src/cn_compiler/semantic/semantic_stmt.cpp
+    src/cn_compiler/semantic/semantic_decl.cpp
     src/cn_compiler/semantic/class_resolver.cpp
     src/cn_compiler/semantic/error_analysis.cpp
     src/cn_compiler/semantic/generics.cpp
@@ -121,6 +125,10 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_com
 #   ir_error_ctor.cpp（结果/可选内置构造器降级）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
+    src/cn_compiler/ir/ir_expr.cpp
+    src/cn_compiler/ir/ir_call.cpp
+    src/cn_compiler/ir/ir_stmt.cpp
+    src/cn_compiler/ir/ir_decl.cpp
     src/cn_compiler/ir/ir_oop.cpp
     src/cn_compiler/ir/ir_oop_call.cpp
     src/cn_compiler/ir/ir_error_ctor.cpp
