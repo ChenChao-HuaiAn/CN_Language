@@ -1,58 +1,57 @@
 # HANDOFF 交接文档
 
+**交接时间**: 2026-08-15 14:05（第 5 层完成后）
+
 ## 我们在做什么任务
 
-CN 语言编译器「模块系统 v2.0 全面改造」第 4 层：**crate 模型核心重构**（本改造的实质价值——命名空间隔离）。任务指令见 `plans/002-阶段6b-模块系统 v2.0」全面改造方案.md`（已批复）。
+CN 语言编译器「模块系统 v2.0 全面改造」共 10 层。当前已完成第 1-5 层：
+- 第 1 层：规范更新（specs/08 v2.0 + 09-包与依赖.md 新增）✅
+- 第 2 层：词法（ColonColon + 新关键字 模块/作为/包/货舱）✅
+- 第 3 层：语法（ImportDecl 结构化 v2.0 + parseModuleDecl + 默认私有）✅
+- 第 4 层：crate 重构（module.cpp 分桶 + 目录层级 + 语义分域 + use 导入表 + prelude + 内置 key `::` 化 + IR/codegen 包前缀 + 可见性交集）✅
+- **第 5 层：货舱.toml 依赖管理（本次完成）** ✅
+- 剩余：第 6 层（全量迁移旧语法 E2E + stdlib 公开: 显式化）、第 7-10 层
 
-## 已经完成
+## 已经完成了什么（第 5 层）
 
-### 第 1 层（规范更新）✅ 已完成
-specs/08-模块系统.md 重写 v2.0（crate 模型/导入全形式/默认私有/可见性交集）、specs/09-包与依赖.md 新增
+1. **货舱.toml 解析器**：`src/cn_compiler/driver/cargo_parser.hpp/.cpp`——TOML 子集解析（[货舱] 名称/版本 + [依赖] 名称="版本"），宽容未知节，# 注释，Windows UTF-8 宽路径兼容（先窄后宽）。10 个单测全绿。
+2. **CLI 集成**：`cn_main.cpp` 新增 `--货舱 <路径>` / `--stdlib <路径>` 选项 + 入口同目录自动发现 货舱.toml（对标 Cargo）+ stdlib 相对 exe 逐级上溯探测（最多 3 层）。
+3. **依赖查找**：`driver_module.cpp` loadModuleTree 扩展候选 3/4——入口同目录 → 货舱 [依赖]（版本=内置 → stdlib；其他 → 依赖/<名>/<名>.cn 或 包.cn）→ stdlib 兜底。
+4. **包.cn 支持**：parser 顶层循环新增 `公开 导入` 分支（无冒号再导出，规格书09-三）+ ImportDecl.access 字段。
+5. **E2E 47_package_cargo**：货舱.toml（本地 网络库 + 内置 核心）+ 依赖/网络库/（包.cn crate 根 + 网络.cn + 网络/传输控制.cn 子模块）全通过。
 
-### 第 2 层（词法）✅ 已完成
-ColonColon + 新关键字 4 个（模块/作为/包/货舱）+ 删 从
+## 测试结果
 
-### 第 3 层（语法）✅ 已完成
-ImportDecl 结构化（segments/alias/names/wildcard/isModuleDecl）+ parseImportDecl v2.0 全形式 + parseModuleDecl + 默认私有（模块级+类内）+ ast_printer 更新；单测 1078/1078 全绿
+- 全量单测：**1097/1097 全绿**（1087 + 10 新增）
+- 编译警告：**0**（MSVC /W4 /WX）
+- E2E：**36/46 通过**（第 4 层 35/45 → 新增 47 通过，无新增回归）
+- 10 个失败均为**第 6 层迁移项**（预期）：旧语法（`.`/`从`）8 个 = 27_module、29_core、30_container、31_map_set、32_algorithm、35_string_ext、38_tool、43_module_import；默认私有 2 个 = 41_ctor_overload、42_generic_field_loop
 
-### 第 4 层（crate 模型核心重构）✅ 本层已完成（2026-08-15）
-- **A. crate 分桶**：module.cpp mergeModuleDecls seenTypes 全局去重 → 按模块分桶（跨模块同名允许）；AST 节点加 moduleName 字段
-- **B. 目录层级**：driver loadModuleTree 支持 `net/transport.cn`（模块名=相对入口完整路径，修正 pathStem 去目录 bug）；模块声明双路径搜索
-- **C. use 导入表**：useImports_（模块名→符号集合/别名/通配符）；花括号别名纯名调用重写
-- **D. prelude + 内置 key `::` 化**：27 个限定名 `.`→`::`（+旧点号兼容）；内置无需导入可用
-- **E. IR/codegen 包前缀**：多模块场景 `模块名$` 前缀（定义/调用两侧同步）；单文件与 主 不加
-- **F. 顶层常量/静态**：parser 顶层 `常量`/`静态` 分支 + 编译期常量折叠
-- **G. 可见性交集检查**：模块私有类 merge 阶段不导出（类内公开成员不突破）
-- **H. 单测**：反转 4 个 + 新增 9 个
+## 总结发现的问题（坑）
 
-## 总结发现的问题（本层踩坑，已修复）
-
-1. **pathStem 去目录**：模块名计算必须用相对入口完整路径（`net/transport.cn` → `net::transport`），不能用 pathStem（只取 transport）
-2. **单文件链接前缀**：单文件（无导入）不能加模块前缀（破坏 cn_main/内置映射）→ mergeModules singleModule 时 crateName 空
-3. **泛型实例名 `$` 误剥**：resolveOverload 的模块前缀剥离须限定 `#` 存在且 `$` 在 `#` 前（`排序$整32` 不剥）
-4. **对象方法调用误判 P1-1**：`动物.描述()` 的 动物 变量 → lookupVar 排除
-5. **内置 `::` 化三处同步**：registerBuiltins + IR 映射 + 语义限定名拼接
-6. **MSVC 时间戳粒度**：apply_diff 后构建可能不重编 → 用 PowerShell touch 强制
+1. **Windows 中文路径三重编码**（最严重）：命令行 argv（GBK）↔ 源码 UTF-8 字面量 ↔ 磁盘 UTF-8 文件名。
+   - 解法：argv **保持 GBK** 供工具链（ml64/link 按 ANSI 代码页解释路径）；runModulePipeline 入口文件 + 货舱.toml 自动发现路径 **转 UTF-8**（driver 层统一 UTF-8）。
+   - `ansiToUtf8()` 在 cn_main.cpp：ANSI → UTF-8（经宽字符中转）。
+2. **argv 转 UTF-8 会破坏 E2E 18/19**：pathStem(file) 变 UTF-8 后中间文件名（.asm/.exe）传给 ml64/link 乱码 → 不能整体转 argv，只能 driver 层入口转 UTF-8。
+3. **依赖/ 目录误判 crate 内部模块**：`依赖/网络库/网络.cn` 以 entryDir 前缀开头被当入口模块树，moduleDir 与 depRoot 重复拼接 → external 判定加 `依赖/`、`stdlib/` 前缀。
+4. **cargo_parser 未引用形参 C4100**（/WX 转错误）：readTomlFile 的 error 参数未用 → 移除，由 loadCargoConfig 统一写 error。
 
 ## 当前卡在哪
 
-无阻塞。第 4 层全部完成，单测 1087/1087 全绿、编译零警告、E2E 35/45（10 失败全部为第 6 层预期迁移项）。
+无卡点。第 5 层全部完成并推送 gitcode（`2680335..eef0cd9`）。
 
-## 下一步计划（第 5~10 层）
+## 下一步计划（第 6 层）
 
-- **第 5 层**：货舱.toml（解析器 + CLI + 依赖查找 + E2E）
-- **第 6 层**：全量迁移——8 E2E（27/29/30/31/32/35/38/43 旧语法 `.`/`从` → `::`/花括号）+ 2 E2E 类内补 `公开:`（41/42）+ stdlib 10 模块 `公开:` 显式化
-- **第 7 层**：新增 E2E（44_crate_isolate/45_import_syntax/46_module_tree/47_package_cargo/48_prelude/49_default_private/50_class_private/51_visibility_intersection）
-- **第 8 层**：全链路集成（38_tool 迁移 v2.0）
-- **第 9 层**：Debug 全面审查
-- **第 10 层**：收尾
+全量迁移：
+- 8 个旧语法 E2E（`.`/`从` → `::`/花括号）：27_module、29_core、30_container、31_map_set、32_algorithm、35_string_ext、38_tool、43_module_import
+- 3 个单测迁移（旧语法导入）
+- stdlib 10 模块 `公开:` 显式化（当前文件顶部 公开: 已是显式，需核对）
+- 2 个 `函数 使用()` 改名
+- 迁移后 E2E 应 46/46 全绿
 
-## 踩过的坑（绝对不要再踩，已同步 lessons.md）
+## 踩过的坑绝对不要再踩（已同步 lessons.md）
 
-1. **`::` 化同步点**：内置 key 从 `.` 改 `::` 涉及 registerBuiltins/IR 映射/语义限定名三处，漏改则内置静默失效——本层已验证 25_math/33_io/34_file/36_time/37_system 全通过
-2. **模块名前缀副作用**：crate 前缀不能用于单文件与 主 函数，否则全量 E2E 链接失败 1120
-3. **MSVC 增量编译时间戳**：改动后必须确认重编（findstr 看编译行），必要时 touch
-
-## 当前分支
-
-develop（未提交本层改动，待中文提交 + gitcode 推送；如 403 保留本地）
+- **不要整体转换 Windows argv 为 UTF-8**——工具链（ml64/link/ml64 汇编）按 ANSI 代码页解释路径，UTF-8 中文文件名会乱码；只在 driver 层（runModulePipeline 入口 + 货舱.toml 自动发现）转 UTF-8。
+- **依赖/、stdlib/ 目录内的文件必须视为外部 crate 模块**（moduleName = 文件名主干），否则与入口 crate 模块树混淆导致路径重复拼接。
+- 编译验证必须用 VS 自带 cmake 完整路径（`C:\Program Files\Microsoft Visual Studio\2022\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe`），系统 PATH 无 cmake。
+- MSVC /WX 下任何未引用形参（C4100）都会中断构建——新函数签名参数要么使用要么删。

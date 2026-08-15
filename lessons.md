@@ -733,3 +733,29 @@
   - **解决**: ✅ ① 单测统一用 `fopen_s`/`freopen_s`（TEST_FOPEN/TEST_FREOPEN 宏封装，POSIX 分支回退 std::fopen）；② stderr 捕获改用 `_dup`/`_dup2` 文件描述符重定向（`_dup(_fileno(stderr))` 保存 → `_dup2(_fileno(file), _fileno(stderr))` 重定向 → 恢复 → `_close`）。
   - **预防**: MSVC 单测/运行时避免 `fopen`/`freopen`（/W4 /WX 下 C4996 即错误），用 `fopen_s`/`freopen_s` 或 `_dup`/`_dup2`；stderr 重定向禁止 `stderr = ...` 赋值（宏右值），用文件描述符级重定向；新增依赖文件操作的测试先确认 /W4 /WX 可编译。
   - **权重**: 4（工具执行错误2 × 详细分析1.5 × 解决方案1.3 × 预防措施1.0 × 已解决1.0）
+
+## 高权重问题（模块系统 v2.0 第 5 层 货舱.toml，2026-08-15，已解决 ✅）
+
+> 第 5 层实现 货舱.toml 依赖管理（cargo_parser + CLI 自动发现 + 依赖查找 + 包.cn 再导出），
+> **全部完成**（1097/1097 单测、E2E 36/46（10 失败均第 6 层迁移项）、编译零警告 MSVC /W4 /WX，推送 gitcode eef0cd9）。
+
+- [2026-08-15 14:00] **问题类型**: 集成问题（权重 10.8）**已修复 ✅**
+  - **描述**: Windows 中文路径三重编码——命令行 argv（GBK）↔ 源码 UTF-8 字面量（货舱.toml/依赖/）↔ 磁盘 UTF-8 文件名。① 自动发现 货舱.toml 用 GBK 入口目录 + UTF-8 文件名混拼打不开；② 尝试 argv 整体转 UTF-8 后 E2E 18/19（中文目录名）回归——`pathStem(file)` 变 UTF-8 后中间文件名（.asm/.exe）传给 ml64/link 乱码；③ argv 保持 GBK 后 47_package_cargo 链接失败（LNK1120 无 cn_main）——入口 `主.cn` 模块名变 GBK 字节，`isEntryModule` 与 UTF-8 字面量 "主" 比较失败，主函数被过滤。
+  - **原因**: 三条路径编码不一致：工具链（ml64/link）按 ANSI 代码页 936 解释路径；driver 模块名判定按 UTF-8 字面量；磁盘文件名为 UTF-8。
+  - **解决**: ✅ **分层策略**——argv **保持 GBK**（工具链路径）；`ansiToUtf8()` 将入口文件路径转 UTF-8 传给 `runModulePipeline`（driver 层统一 UTF-8，模块名判定/依赖查找正确）；`applyCargoConfig` 自动发现时入口目录 ANSI→UTF-8 后拼 UTF-8 "货舱.toml"（纯 UTF-8 路径，readTomlFile 宽路径可打开）。
+  - **预防**: Windows 下凡新增"命令行路径 + 源码字面量中文 + 工具链"三方交互：**不要整体转 argv 为 UTF-8**（工具链按 ANSI）；driver 层（模块名/依赖查找）统一 UTF-8，工具链层保持 GBK；入口文件读入 driver 前转 UTF-8。
+  - **权重**: 10.8（集成问题7 × 详细分析1.8 × 解决方案1.3 × 预防措施1.3 × 已解决0.9）
+
+- [2026-08-15 14:00] **问题类型**: 逻辑错误（权重 8.4）**已修复 ✅**
+  - **描述**: `依赖/网络库/网络.cn`（货舱本地依赖子目录）以入口目录（entryDir）前缀开头被误判为入口 crate 内部模块，`moduleDir` 与 depRoot 重复拼接 → 加载路径变成 `依赖/网络库/依赖/网络库/网络.cn`。
+  - **原因**: loadModuleTree 的 external 判定只看"文件是否在入口目录下"（relPart == filePath），货舱 `依赖/` 目录在入口目录树内（tests/e2e/47_package_cargo/依赖/...）故未被识别为外部 crate。
+  - **解决**: ✅ external 判定补 `依赖/`、`stdlib/` 前缀——凡在货舱依赖目录或编译器 stdlib 目录内的文件一律视为外部 crate 模块（moduleName = 文件名主干，moduleDir 为空）。
+  - **预防**: 凡按 entryDir 前缀判定"crate 内部模块"的逻辑，必须排除 `依赖/`、`stdlib/` 等外部依赖目录前缀；新增依赖查找目录后同步更新外部模块判定。
+  - **权重**: 8.4（逻辑错误8 × 详细分析1.8 × 解决方案1.5 × 预防措施1.0 × 已解决1.0）
+
+- [2026-08-15 14:00] **问题类型**: 工具执行错误（权重 4）**已修复 ✅**
+  - **描述**: cargo_parser.cpp 新增 `readTomlFile` 的 `error` 形参未引用 → MSVC /WX 下 C4100 警告即错误（C2220），`--clean-first` 全量构建失败。
+  - **原因**: /W4 /WX 严格警告策略下，任何未引用形参都升级为编译错误。
+  - **解决**: ✅ 移除 readTomlFile 的 error 参数（loadCargoConfig 统一负责写 error）。
+  - **预防**: 新增内部辅助函数时，形参要么使用要么删除；/WX 下先验证签名无未引用形参（C4100）再提交。
+  - **权重**: 4（工具执行错误2 × 详细分析1.5 × 解决方案1.3 × 预防措施1.0 × 已解决1.0）
