@@ -113,6 +113,9 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
         //   "_cn_static_" + nameMangle（须与 vtable.cpp staticFieldSymbol 定义一致）
         if (sym.compare(0, 8, "?static_") == 0) {
             sym = "_cn_static_" + nameMangle(sym.substr(8));
+        } else if (sym.compare(0, 9, "?gstatic_") == 0) {
+            // 第 9 层 Debug（P3-8）：顶层静态符号（?gstatic_名）GAS 化
+            sym = "_cn_gstatic_" + nameMangle(sym.substr(9));
         } else if (sym.compare(0, 4, "@str") == 0) {
             // 常量池标签：@strN -> LstrN（GAS 不允许 @ 开头符号，@ 是注释符）
             sym = "L" + sym.substr(1);

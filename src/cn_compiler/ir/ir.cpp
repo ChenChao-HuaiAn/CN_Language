@@ -813,6 +813,36 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
 // 顺序：先普通函数（含 主），再类方法（OOP 程序全链路）。
 // 注意：类方法体经 visitClassDecl 统一遍历 semantic 类符号表（含泛型实例化类）。
 void IRGenerator::visitProgram(Program* node) {
+    // 第 9 层 Debug（P3-8）：登记顶层静态变量到 IRModule（codegen .data 段发射）。
+    //   此前 IR 层不遍历 globals，函数体内引用全局静态名落入 FuncAddr 分支，
+    //   未分配槽导致 rbp0 汇编错误（A2006）。初始值为字面量时求值存入
+    //   globalStaticInits（codegen .data 段直接写初始值）。
+    if (semantic_ != nullptr) {
+        for (auto& g : node->globals) {
+            if (g->isStatic && !g->name.empty()) {
+                const std::string stType = semantic_->globalStaticType(g->name);
+                if (!stType.empty()) {
+                    module_->globalStatics[g->name] = stType;
+                }
+                if (g->initializer != nullptr) {
+                    const NodeType it = g->initializer->getType();
+                    if (it == NodeType::IntegerLiteral) {
+                        module_->globalStaticInits[g->name] =
+                            static_cast<IntegerLiteral*>(g->initializer.get())->raw;
+                    } else if (it == NodeType::FloatLiteral) {
+                        module_->globalStaticInits[g->name] =
+                            static_cast<FloatLiteral*>(g->initializer.get())->raw;
+                    } else if (it == NodeType::StringLiteral) {
+                        module_->globalStaticInits[g->name] =
+                            static_cast<StringLiteral*>(g->initializer.get())->raw;
+                    } else if (it == NodeType::BoolLiteral) {
+                        module_->globalStaticInits[g->name] =
+                            static_cast<BoolLiteral*>(g->initializer.get())->value ? "1" : "0";
+                    }
+                }
+            }
+        }
+    }
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             visitFunctionDecl(static_cast<FunctionDecl*>(decl.get()));
@@ -1851,6 +1881,17 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     }
     ir::IRValue reg = lookupVar(node->name);
     if (reg.id < 0) {
+        // 第 9 层 Debug（P3-8）：顶层静态变量读取——全局 .data 符号 LoadPtr。
+        //   静态变量不在函数局部 varStack_，须按全局符号地址读取（?gstatic_名）；
+        //   放在 lookupVar 失败后（局部变量优先，防止同名遮蔽误读全局）。
+        if (semantic_ != nullptr && semantic_->isGlobalStatic(node->name)) {
+            const std::string stType = semantic_->globalStaticType(node->name);
+            const std::string irT = mapType(stType.empty() ? "整64" : stType);
+            ir::IRValue addr = emitResult(
+                ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + node->name, node->location);
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, irT, "", node->location);
+            return;
+        }
         // 未找到变量：可能是函数名（函数指针赋值）。生成函数地址。
         // 防御性：若连函数也不是（语义已报错），仍生成FuncAddr避免IR中断
         // Task 2.10 重载：函数名作值（回调 = 加）须用决议后的签名 key——
@@ -2191,6 +2232,29 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                     static_cast<IdentifierExpr*>(node->operand.get()),
                     node->op, node->location)) {
                 break;
+            }
+            // 第 9 层 Debug（P3-8）：顶层静态变量自增/自减——全局符号"读-算-写回"。
+            if (node->operand->getType() == NodeType::IdentifierExpr &&
+                semantic_ != nullptr) {
+                IdentifierExpr* gsIdent = static_cast<IdentifierExpr*>(node->operand.get());
+                if (semantic_->isGlobalStatic(gsIdent->name)) {
+                    const std::string stType = semantic_->globalStaticType(gsIdent->name);
+                    const std::string irT = mapType(stType.empty() ? "整64" : stType);
+                    ir::IRValue gsAddr = emitResult(
+                        ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + gsIdent->name,
+                        node->location);
+                    ir::IRValue cur = emitResult(ir::Opcode::LoadPtr, {gsAddr}, irT, "",
+                                                 node->location);
+                    ir::IRValue delta = emitResult(ir::Opcode::ConstInt, {}, "i64", "1",
+                                                   node->location);
+                    ir::IRValue res = emitResult(
+                        node->op == Operator::Increment ? ir::Opcode::Add : ir::Opcode::Sub,
+                        {cur, delta}, irT, "", node->location);
+                    emit(ir::Opcode::StorePtr, {gsAddr, res}, ir::IRValue(), "", irT,
+                         node->location);
+                    lastExpr_ = res;
+                    break;
+                }
             }
             // 自增/自减：数值 x = x ± 1；指针 x = x ± 元素大小（Task 2.4）
             std::string deltaText = "1";
@@ -2580,6 +2644,29 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     // ---- 阶段3 OOP（Task 3.1）：方法体内直接字段赋值（无 自身. 前缀） ----
     // 字段名 不在当前方法作用域但命中类字段表 -> this+偏移 StorePtr。
     if (handleClassFieldAssign(ident, node->value.get(), node->location)) {
+        return;
+    }
+    // 第 9 层 Debug（P3-8）：顶层静态变量赋值——全局 .data 符号 StorePtr。
+    if (semantic_ != nullptr && semantic_->isGlobalStatic(ident->name)) {
+        const std::string stType = semantic_->globalStaticType(ident->name);
+        const std::string irT = mapType(stType.empty() ? "整64" : stType);
+        ir::IRValue value = genExpr(node->value.get());
+        // 复合赋值（+= 等）：先读后算再写
+        if (isCompoundAssignOp(node->op)) {
+            ir::IRValue addrR = emitResult(
+                ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + ident->name, node->location);
+            ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addrR}, irT, "",
+                                             node->location);
+            ir::Opcode opcode;
+            Operator baseOp = baseOpOfCompound(node->op);
+            if (mapBinaryOp(baseOp, false, opcode)) {
+                value = emitResult(opcode, {current, value}, irT, "", node->location);
+            }
+        }
+        ir::IRValue addr = emitResult(
+            ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + ident->name, node->location);
+        emit(ir::Opcode::StorePtr, {addr, value}, ir::IRValue(), "", irT, node->location);
+        lastExpr_ = value;
         return;
     }
     // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）

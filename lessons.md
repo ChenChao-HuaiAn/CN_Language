@@ -1,5 +1,21 @@
 # lessons.md - AI错误记录与经验教训
 
+## 高权重问题（第 9 层 Debug 全面审查 新增，2026-08-15）
+
+- [2026-08-15 16:30] **问题类型**: 逻辑错误（权重 8.4）**✅ 已修复（第 9 层）**
+  - **描述**: **顶层静态变量 P3-8 未实现（孤立代码）**——`静态 整64 计数器 = 0` 语义层仅登记符号名（`globalStaticNames_`），IR 层零消费：`visitProgram` 不遍历 `node->globals`，函数体内引用全局静态名落入 FuncAddr 分支（当函数名处理），生成 `mov [rbp0], rax` 未分配槽汇编（ml64 A2006 undefined symbol: rbp0）。实测编译失败：`target\错误: 汇编失败（ml64 退出码 1）`
+  - **原因**: 第 4 层实现 P3-8 时只做了语义登记（globalStaticNames_ + declareVar），IR/codegen 落地缺失——「语义登记 + IR 零消费」= 孤立代码；函数体内静态名 lookupVar 失败后无全局静态识别分支
+  - **解决**: ① semantic `globalStaticNames_` → `globalStatics_`（名→源码类型）+ `globalStaticType()` 查询；② IRModule 加 `globalStatics`/`globalStaticInits`；③ IR `visitProgram` 遍历 globals 登记 + `visitIdentifierExpr`（读，放 lookupVar 失败后）/`visitAssignmentExpr`（写+复合赋值）/`visitUnaryExpr`（自增自减）三路径识别全局静态 → `?gstatic_名` 符号 LoadPtr/StorePtr；④ x64/arm64 codegen `.data` 段发射 `?gstatic_`/`_cn_gstatic_` 全局符号（含整/浮/字符串初始值）+ nameMangle/GAS 化；回归单测 TopLevelStaticDecl + 实测（5/8、100→102→97、2.5、真）全对
+  - **预防**: 凡「语义层登记符号（globalStaticNames_ 类）」必须有 IR 层消费（visitProgram 遍历 + 读/写/自增路径）+ codegen 发射三件套；E2E 只测合法路径，缺陷先实测编译确认再修
+  - **权重**: 8.4（逻辑错误8 × 详细分析1.5 × 解决方案1.3 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-15 16:30] **问题类型**: 设计缺陷（权重 9.2）**📌 已评估已知限制（第 9 层，非缺陷）**
+  - **描述**: **跨模块同名类型/常量未隔离**——merge 阶段已按模块分桶允许（CrateTypeBuckets，模块X/模块Y 各定义 结构体 记录 合并成功），但语义层 typeNames_（declareTypeName）/globalConstValues_（declareVar）/scopes_ 仍全局去重 → 语义阶段报「重复声明类型 '记录'」「重复声明变量 '常量值'」+ 类型混淆（模块Y 的记录 读到 X 的字段）。v2.0 用户核心诉求「跨包同名符号不冲突」的**函数维度已隔离**（44 验证），类型/常量维度缺失
+  - **原因**: 第 4 层 crate 分桶只覆盖函数（moduleName 前缀）与 merge 阶段类型（CrateTypeBuckets），语义层类型表（typeNames_/结构体符号表）与顶层常量/静态表未按模块分域——类型系统核心改造未同步
+  - **解决**: 📌 标注为已知限制——锚点单测 `SemanticTypeConstCrossModuleNotIsolated`（断言 r.ok=false 显式标记）+ 44 注释 + HANDOFF/plans/更新日志。**根治方向**：类型级 crate 分桶（类型表按 moduleName 分域）+ 限定调用类型解析（模块名::类型）+ 类型 mangling（IR/codegen 30+ 处），中高风险列入后续里程碑
+  - **预防**: 写跨模块同名测试前先实测语义层行为（merge 通过 ≠ 语义通过）；类型/常量隔离须三处同步（merge 分桶 + 语义分域 + IR mangling）
+  - **权重**: 9.2（设计缺陷10 × 详细分析1.5 × 解决方案1.3 × 预防措施1.3 × 已评估0.6）
+
 ## 高权重问题（第 8 层 全链路集成串联 新增，2026-08-15）
 
 - [2026-08-15 15:55] **问题类型**: 逻辑错误（权重 9.0）**✅ 已修复（第 8 层）**

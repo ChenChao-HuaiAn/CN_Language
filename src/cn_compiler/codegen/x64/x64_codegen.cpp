@@ -430,6 +430,41 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
         }
         hasAny = true;
     }
+    // ---- 第 9 层 Debug（P3-8）：顶层静态变量 .data 全局存储 ----
+    // 符号 ?gstatic_名（与 IR 层 ConstString "?gstatic_名" 一致，nameMangle 修饰）。
+    // 初始值为字面量时写入；无初始值/表达式时零初始化。
+    for (const auto& kv : module.globalStatics) {
+        const std::string& name = kv.first;
+        const std::string stType = kv.second;
+        const std::string sym = "?gstatic_" + nameMangle(name);
+        std::string initText;
+        const auto initIt = module.globalStaticInits.find(name);
+        if (initIt != module.globalStaticInits.end()) initText = initIt->second;
+        // 按类型分配：i128 16 字节双槽；f32 4 字节；其余 8 字节
+        if (stType == "整128" || stType == "正128") {
+            writer.raw(sym + " dq 0, 0");
+        } else if (stType == "浮32") {
+            // f32 初始值：dd floatBitsHex；无初始值零初始化
+            writer.raw(sym + " dd " +
+                       (!initText.empty() ? floatBitsHex(initText, false) : "0"));
+        } else if (stType == "浮64") {
+            // f64 初始值：dq floatBitsHex（MASM 无浮点立即数，须位模式十六进制）
+            writer.raw(sym + " dq " +
+                       (!initText.empty() ? floatBitsHex(initText, true) : "0"));
+        } else {
+            if (!initText.empty() && initText.find_first_of(".eE") == std::string::npos) {
+                // 整数初始值直接写入（十六进制文本经 MASM 十进制；字符串不可作 .data 初始值）
+                writer.raw(sym + " dq " + initText);
+            } else if (!initText.empty() && initText.front() == '"') {
+                // 字符串初始值：先置零（初始值由首个赋值写入，防御性）
+                writer.raw(sym + " dq 0");
+            } else {
+                writer.raw(sym + " dq 0");
+            }
+        }
+        writer.comment("顶层静态 " + name + "（" + stType + "）");
+        hasAny = true;
+    }
     if (!hasAny) writer.comment("（无常量）");
 }
 

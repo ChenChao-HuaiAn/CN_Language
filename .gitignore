@@ -13,6 +13,10 @@ out/
 *.exp
 *.res
 
+# 单测临时文件（test_input_api 等运行时测试产生的 stdin 重定向文件）
+test_input_api_*.txt
+*.tmp
+
 # AI记忆库（不随git传递，新机器从零积累）
 .ai-coder/memory/
 .ai-coder/tasks/

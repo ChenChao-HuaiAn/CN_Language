@@ -1269,9 +1269,11 @@ void SemanticAnalyzer::visitProgram(Program* node) {
             if (!constText.empty()) globalConstValues_[g->name] = constText;
             declareVar(g->name, "自动", g->location);
         } else if (g->isStatic) {
-            globalStaticNames_.insert(g->name);
+            // 第 9 层 Debug：顶层静态记录源码类型（IR 层生成 .data 全局存储），
+            //   此前仅登记符号名导致函数体内引用落入 FuncAddr 分支（rbp0 汇编错误）
             const std::string stType =
                 g->typeName.empty() ? "自动" : canonicalType(g->typeName);
+            globalStatics_[g->name] = stType;
             declareVar(g->name, stType, g->location);
         }
     }

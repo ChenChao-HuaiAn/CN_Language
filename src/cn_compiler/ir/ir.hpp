@@ -216,6 +216,11 @@ struct IRModule {
     std::vector<IRFunction> functions;                  // 函数列表
     std::vector<std::string> stringConstants;           // 字符串常量池（@str0/@str1...）
     std::unordered_map<std::string, int> stringIndex;   // 文本 -> 常量池ID
+    // ---- 第 9 层 Debug（P3-8）：顶层静态变量全局存储 ----
+    // 静态变量名 -> 源码类型（codegen 在 .data 段分配 8 字节槽，符号 ?gstatic_名）
+    std::unordered_map<std::string, std::string> globalStatics;
+    // 静态变量初始值（初始化为字面量时求值存入；无初始值 -> 零初始化）
+    std::unordered_map<std::string, std::string> globalStaticInits;
 
     // MSVC兼容：与 IRFunction 相同原因，显式移动语义
     IRModule() = default;

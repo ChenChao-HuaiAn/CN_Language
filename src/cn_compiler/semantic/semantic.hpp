@@ -203,7 +203,12 @@ public:
     }
     // 是否顶层静态变量名（IR 层生成全局存储）
     bool isGlobalStatic(const std::string& name) const {
-        return globalStaticNames_.count(name) > 0;
+        return globalStatics_.count(name) > 0;
+    }
+    // 查询顶层静态变量源码类型（未注册返回空串；IR 层映射全局存储类型）
+    std::string globalStaticType(const std::string& name) const {
+        auto it = globalStatics_.find(name);
+        return (it == globalStatics_.end()) ? "" : it->second;
     }
 
     // ==================== AstVisitor 接口实现 ====================
@@ -434,7 +439,8 @@ private:
     //   引用替换为字面量（编译期常量替换）。静态变量暂以全局变量语义注册
     //   （IR 层生成全局存储，见 F 步；本层先支持常量折叠 + 静态符号声明）。
     std::unordered_map<std::string, std::string> globalConstValues_;  // 常量名 -> 值文本
-    std::unordered_set<std::string> globalStaticNames_;               // 静态变量名集合
+    // 顶层静态变量名 -> 源码类型（第 9 层 Debug：IR 层生成 .data 全局存储）
+    std::unordered_map<std::string, std::string> globalStatics_;      // 静态变量名 -> 源码类型
     std::unordered_set<std::string> typeNames_;    // 结构体/枚举类型名表（Task 2.7）
     std::vector<std::unordered_map<std::string, std::string>> scopes_; // 变量作用域栈
     std::string lastType_;                         // 最近一次表达式推断的类型

@@ -738,6 +738,38 @@ TEST(ModuleTest, TopLevelConstDecl) {
     EXPECT_TRUE(analyzer.analyze(&merged)) << diags.format();
 }
 
+// 顶层静态（v2.0 决策8，P3-8）：静态 整64 计数器 = 0 -> 函数体内可读写
+// 第 9 层 Debug 修复：此前 IR 层不生成全局存储（rbp0 汇编错误），
+//   本测试验证语义层正确登记全局静态符号与类型（IR/codegen 落地由 E2E 覆盖）。
+TEST(ModuleTest, TopLevelStaticDecl) {
+    Diagnostics diags;
+    ModuleGraph graph;
+    graph.addModule(makeUnit(
+        "静态 整64 计数器 = 0\n"
+        "函数 步进() -> 整64 {\n"
+        "    计数器 = 计数器 + 1\n"
+        "    返回 计数器\n"
+        "}\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 步进()\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags));
+    std::vector<ModuleUnit*> ordered;
+    std::string error;
+    ASSERT_TRUE(graph.topoSort(ordered, error)) << error;
+    Program merged;
+    ASSERT_TRUE(mergeModules(ordered, &merged, diags)) << diags.format();
+    ASSERT_EQ(merged.globals.size(), 1u);
+    EXPECT_EQ(merged.globals[0]->name, "计数器");
+    EXPECT_TRUE(merged.globals[0]->isStatic);
+    // 语义分析：全局静态符号 + 类型正确登记（isGlobalStatic/globalStaticType）
+    cn_compiler::SemanticAnalyzer analyzer(diags);
+    EXPECT_TRUE(analyzer.analyze(&merged)) << diags.format();
+    EXPECT_TRUE(analyzer.isGlobalStatic("计数器"));
+    EXPECT_EQ(analyzer.globalStaticType("计数器"), "整64");
+}
+
 // 可见性交集：模块私有类不跨模块导入（导入 甲::隐藏类 -> 报错）
 // 注：模块私有类在 merge 阶段被过滤（不合并进 Program），导入符号不存在
 TEST(ModuleTest, VisibilityIntersectionPrivateClassNotExported) {
@@ -1033,4 +1065,33 @@ TEST(ModuleTest, CrateIsolateCrossCrateLastSegmentFilter) {
     auto r = analyzeModules(std::move(units));
     // 跨 crate 限定调用：moduleFilter=工具库::格式化 按末段匹配 格式化 -> 通过
     EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// ==================== 第 9 层 Debug 审查新增（2026-08-15） ====================
+
+// 跨模块同名类型/常量语义层限制锚点：
+//   merge 阶段已按模块分桶允许跨模块同名类型（CrateTypeBuckets），但语义层
+//   typeNames_/globalConstValues_/declareVar 仍全局去重 -> 跨模块同名类型/常量
+//   在语义阶段报「重复声明类型/变量」。本测试显式锚定该限制（r.ok=false），
+//   待后续「类型级 crate 分桶 + 限定名解析」完善后反转。
+// 注意：不改变 44_crate_isolate 已通过的函数隔离（函数按 moduleName 分桶已隔离）。
+TEST(ModuleTest, SemanticTypeConstCrossModuleNotIsolated) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "结构体 记录 { 整64 标识 }\n"
+        "公开:\n"
+        "常量 常量值 = 10\n",
+        "甲.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 甲\n"
+        "结构体 记录 { 字符串 名称 }\n"
+        "常量 常量值 = 20\n"
+        "函数 主() -> 整32 { 返回 0 }\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // merge 阶段通过（crate 分桶允许），语义阶段报重复声明（全局去重限制）
+    //   ——断言 r.ok == false 锚定当前限制（非缺陷误报，是已知边界）
+    EXPECT_FALSE(r.ok) << "跨模块同名类型/常量当前未隔离（已知限制，待类型级 crate 分桶）";
 }

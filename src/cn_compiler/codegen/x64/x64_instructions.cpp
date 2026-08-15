@@ -166,6 +166,11 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         if (sym.compare(0, staticPrefix.size(), staticPrefix) == 0) {
             sym = staticPrefix + nameMangle(sym.substr(staticPrefix.size()));
         }
+        // 第 9 层 Debug（P3-8）：顶层静态符号（?gstatic_名）同样 nameMangle 修饰
+        const std::string gstaticPrefix = "?gstatic_";
+        if (sym.compare(0, gstaticPrefix.size(), gstaticPrefix) == 0) {
+            sym = gstaticPrefix + nameMangle(sym.substr(gstaticPrefix.size()));
+        }
         writer.line("lea rax, " + sym);
         writer.line("mov " + dst + ", rax");
         return;

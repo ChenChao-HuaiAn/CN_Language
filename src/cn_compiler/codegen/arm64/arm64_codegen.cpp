@@ -596,6 +596,33 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
         }
         hasAny = true;
     }
+    // ---- 第 9 层 Debug（P3-8）：顶层静态变量 .data 全局存储 ----
+    // 符号 _cn_gstatic_名（与 arm64_instructions.cpp ConstString 转换一致）
+    for (const auto& kv : module.globalStatics) {
+        const std::string& name = kv.first;
+        const std::string stType = kv.second;
+        const std::string sym = "_cn_gstatic_" + nameMangle(name);
+        std::string initText;
+        const auto initIt = module.globalStaticInits.find(name);
+        if (initIt != module.globalStaticInits.end()) initText = initIt->second;
+        writer.raw(".globl " + sym);
+        writer.raw(".type " + sym + ", %object");
+        writer.raw(sym + ":");
+        if (stType == "整128" || stType == "正128") {
+            writer.raw("    .quad 0");
+            writer.raw("    .quad 0");
+        } else if (stType == "浮32") {
+            writer.raw("    .word " +
+                       (!initText.empty() ? floatBitsHex(initText, false) : "0"));
+        } else if (stType == "浮64") {
+            writer.raw("    .quad " +
+                       (!initText.empty() ? floatBitsHex(initText, true) : "0"));
+        } else {
+            writer.raw("    .quad 0");
+        }
+        writer.comment("顶层静态 " + name + "（" + stType + "）");
+        hasAny = true;
+    }
     if (!hasAny) writer.comment("（无常量）");
 }
 
