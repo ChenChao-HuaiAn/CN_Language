@@ -1,6 +1,6 @@
 // 词法分析器单元测试（Task 1.2）
-// 覆盖：基本Token识别、53个关键字、运算符（含++/--）、分隔符、注释、字符串转义、
-//       原始/多行字符串、错误处理、位置追踪、混合代码
+// 覆盖：基本Token识别、61个关键字（v2.0）、运算符（含++/--）、分隔符（含 ::）、注释、
+//       字符串转义、原始/多行字符串、错误处理、位置追踪、混合代码
 #include <gtest/gtest.h>
 #include <string>
 #include <vector>
@@ -72,10 +72,10 @@ TEST(LexerTest, EmptySource) {
     EXPECT_EQ(tokens[0].getType(), TokenType::EndOfFile);
 }
 
-// ==================== 2. 关键字识别（53个全部） ====================
+// ==================== 2. 关键字识别（61个全部，v2.0） ====================
 
-// 全部53个关键字：文本 -> 类型
-TEST(LexerTest, All53Keywords) {
+// 全部61个关键字：文本 -> 类型（v2.0：删 从，增 模块/作为/包/货舱）
+TEST(LexerTest, All61Keywords) {
     const std::vector<std::pair<std::string, TokenType>> kKeywords = {
         // 控制流(10)
         {"如果", TokenType::Kw_If}, {"否则", TokenType::Kw_Else},
@@ -83,7 +83,7 @@ TEST(LexerTest, All53Keywords) {
         {"返回", TokenType::Kw_Return}, {"中断", TokenType::Kw_Break},
         {"继续", TokenType::Kw_Continue}, {"选择", TokenType::Kw_Switch},
         {"情况", TokenType::Kw_Case}, {"默认", TokenType::Kw_Default},
-        // 类型(20)
+        // 类型(21)
         {"整数", TokenType::Kw_Int}, {"小数", TokenType::Kw_Double},
         {"整8", TokenType::Kw_Int8}, {"整16", TokenType::Kw_Int16},
         {"整32", TokenType::Kw_Int32}, {"整64", TokenType::Kw_Int64},
@@ -94,33 +94,39 @@ TEST(LexerTest, All53Keywords) {
         {"浮32", TokenType::Kw_Float32}, {"浮64", TokenType::Kw_Float64},
         {"布尔", TokenType::Kw_Bool}, {"字符", TokenType::Kw_Char},
         {"字符串", TokenType::Kw_String}, {"空类型", TokenType::Kw_Void},
-        {"结构体", TokenType::Kw_Struct}, {"枚举", TokenType::Kw_Enum},
+        {"结构体", TokenType::Kw_Struct}, {"联合体", TokenType::Kw_Union},
+        {"枚举", TokenType::Kw_Enum},
         // 声明(7)
         {"函数", TokenType::Kw_Function}, {"变量", TokenType::Kw_Var},
-        {"导入", TokenType::Kw_Import}, {"从", TokenType::Kw_From},
+        {"导入", TokenType::Kw_Import},
         {"公开", TokenType::Kw_Public}, {"私有", TokenType::Kw_Private},
-        {"静态", TokenType::Kw_Static},
-        // 常量(3)
+        {"静态", TokenType::Kw_Static}, {"自动", TokenType::Kw_Auto},
+        // 模块系统(4，v2.0 新增)
+        {"模块", TokenType::Kw_Module}, {"作为", TokenType::Kw_As},
+        {"包", TokenType::Kw_Package}, {"货舱", TokenType::Kw_Cargo},
+        // 常量(4)
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
-        {"无", TokenType::Kw_None},
-        // OOP(9)
+        {"无", TokenType::Kw_None}, {"常量", TokenType::Kw_Const},
+        // OOP(10)
         {"类", TokenType::Kw_Class}, {"接口", TokenType::Kw_Interface},
         {"保护", TokenType::Kw_Protected}, {"虚拟", TokenType::Kw_Virtual},
         {"重写", TokenType::Kw_Override}, {"抽象", TokenType::Kw_Abstract},
         {"实现", TokenType::Kw_Implements}, {"自身", TokenType::Kw_Self},
-        {"父类", TokenType::Kw_Super},
+        {"父类", TokenType::Kw_Super}, {"友元", TokenType::Kw_Friend},
         // 错误处理(2)
         {"结果", TokenType::Kw_Result}, {"可选", TokenType::Kw_Optional},
         // 字面量前缀(2)
         {"原始", TokenType::Kw_Raw}, {"多行", TokenType::Kw_MultiLine},
+        // 泛型(1)
+        {"泛型", TokenType::Kw_Generic},
     };
-    ASSERT_EQ(kKeywords.size(), static_cast<size_t>(53));
+    ASSERT_EQ(kKeywords.size(), static_cast<size_t>(61));
     std::string source;
     for (const auto& entry : kKeywords) {
         source += entry.first + " ";
     }
     auto tokens = withoutEof(analyze(source));
-    ASSERT_EQ(tokens.size(), static_cast<size_t>(53));
+    ASSERT_EQ(tokens.size(), static_cast<size_t>(61));
     for (size_t i = 0; i < kKeywords.size(); i++) {
         EXPECT_EQ(tokens[i].getType(), kKeywords[i].second) << "关键字: " << kKeywords[i].first;
         EXPECT_EQ(tokens[i].getValue(), kKeywords[i].first);
@@ -141,6 +147,78 @@ TEST(LexerTest, KeywordNeedsSeparator) {
     ASSERT_EQ(tokens.size(), 1u);
     EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[0].getValue(), "如果x");
+}
+
+// ==================== 2b. 模块系统关键字与 ::（v2.0） ====================
+
+// 模块/作为/包/货舱 新关键字识别（v2.0）
+TEST(LexerTest, ModuleSystemKeywords) {
+    auto tokens = withoutEof(analyze("模块 网络 作为 别名 包 货舱"));
+    ASSERT_EQ(tokens.size(), 6u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Module);
+    EXPECT_EQ(tokens[0].getValue(), "模块");
+    EXPECT_TRUE(tokens[0].isKeyword());
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);  // 网络
+    EXPECT_EQ(tokens[2].getType(), TokenType::Kw_As);
+    EXPECT_EQ(tokens[2].getValue(), "作为");
+    EXPECT_EQ(tokens[3].getType(), TokenType::Identifier);  // 别名
+    EXPECT_EQ(tokens[4].getType(), TokenType::Kw_Package);
+    EXPECT_EQ(tokens[4].getValue(), "包");
+    EXPECT_EQ(tokens[5].getType(), TokenType::Kw_Cargo);
+    EXPECT_EQ(tokens[5].getValue(), "货舱");
+}
+
+// 从 不再是关键字：普通位置为标识符（v2.0 删除）
+TEST(LexerTest, FromIsNowIdentifier) {
+    auto tokens = withoutEof(analyze("从 数学 导入 正弦"));
+    ASSERT_EQ(tokens.size(), 4u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);  // 从
+    EXPECT_EQ(tokens[0].getValue(), "从");
+    EXPECT_FALSE(tokens[0].isKeyword());
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);  // 数学
+    EXPECT_EQ(tokens[2].getType(), TokenType::Kw_Import);   // 导入 仍是关键字
+    EXPECT_EQ(tokens[3].getType(), TokenType::Identifier);  // 正弦
+}
+
+// :: 贪婪匹配：双冒号为 ColonColon 单 token，单冒号为 Colon
+TEST(LexerTest, ColonColonGreedyMatch) {
+    auto tokens = withoutEof(analyze("数学::平方根 标签: 值"));
+    // 数学(Identifier) :: (ColonColon) 平方根(Identifier) 标签(Identifier)
+    // : (Colon) 值(Identifier) = 6 个 token
+    ASSERT_EQ(tokens.size(), 6u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);     // 数学
+    EXPECT_EQ(tokens[1].getType(), TokenType::ColonColon);     // ::
+    EXPECT_EQ(tokens[1].getValue(), "::");
+    EXPECT_EQ(tokens[2].getType(), TokenType::Identifier);     // 平方根
+    EXPECT_EQ(tokens[3].getType(), TokenType::Identifier);     // 标签
+    EXPECT_EQ(tokens[4].getType(), TokenType::Colon);          // :
+    EXPECT_EQ(tokens[4].getValue(), ":");
+    EXPECT_EQ(tokens[5].getType(), TokenType::Identifier);     // 值
+}
+
+// :: 与 : 优先级：:: 必须在 : 前贪婪匹配（连续 :: 与 : 混合）
+TEST(LexerTest, ColonColonPriority) {
+    auto tokens = withoutEof(analyze("a::b : c :: d"));
+    // a(Identifier) :: (ColonColon) b(Identifier) : (Colon) c(Identifier)
+    // :: (ColonColon) d(Identifier) = 7 个 token
+    ASSERT_EQ(tokens.size(), 7u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[1].getType(), TokenType::ColonColon);
+    EXPECT_EQ(tokens[2].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[3].getType(), TokenType::Colon);
+    EXPECT_EQ(tokens[4].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[5].getType(), TokenType::ColonColon);
+    EXPECT_EQ(tokens[6].getType(), TokenType::Identifier);
+}
+
+// :: 不与 ->、<<=、>>= 等冲突：贪婪匹配顺序正确（:: 独立匹配）
+TEST(LexerTest, ColonColonNoConflictWithOthers) {
+    auto tokens = withoutEof(analyze("a::b -> c <<= d >>= e"));
+    ASSERT_EQ(tokens.size(), 9u);
+    EXPECT_EQ(tokens[1].getType(), TokenType::ColonColon);
+    EXPECT_EQ(tokens[3].getType(), TokenType::Arrow);
+    EXPECT_EQ(tokens[5].getType(), TokenType::LessLessEqual);
+    EXPECT_EQ(tokens[7].getType(), TokenType::GreaterGreaterEqual);
 }
 
 // ==================== 3. 运算符识别（含++/--） ====================

@@ -1,6 +1,6 @@
 // 词法分析器实现：UTF-8字符处理、关键字匹配、字面量与运算符识别（Task 1.2）
-// 覆盖：54个中文关键字、整数/浮点/字符串/字符字面量（含原始/多行前缀）、
-//       39个运算符（含++/--）、8个分隔符、注释（块注释嵌套）、错误诊断
+// 覆盖：61个中文关键字（v2.0，含模块系统关键字）、整数/浮点/字符串/字符字面量（含原始/多行前缀）、
+//       39个运算符（含++/--）、9个分隔符（含 ::）、注释（块注释嵌套）、错误诊断
 #include <cstddef>
 #include <string>
 #include <unordered_map>
@@ -40,10 +40,10 @@ bool isAsciiAlpha(char32_t c) {
     return (c >= U'a' && c <= U'z') || (c >= U'A' && c <= U'Z');
 }
 
-// 58个关键字 -> TokenType 映射表
+// 61个关键字 -> TokenType 映射表（v2.0）
 // 控制流(10)：如果/否则/当/循环/返回/中断/继续/选择/情况/默认
 // 类型(21)：整数/小数/整8~整128/正8~正128/浮32/浮64/布尔/字符/字符串/空类型/结构体/联合体/枚举
-// 声明(8)：函数/变量/导入/从/公开/私有/静态/自动
+// 声明(9)：函数/变量/导入/公开/私有/静态/自动 + 模块系统(4)：模块/作为/包/货舱
 // 常量(4)：真/假/无/常量
 // OOP(10)：类/接口/保护/虚拟/重写/抽象/实现/自身/父类/友元
 // 错误处理(2)：结果/可选
@@ -72,11 +72,14 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
         {"字符串", TokenType::Kw_String}, {"空类型", TokenType::Kw_Void},
         {"结构体", TokenType::Kw_Struct}, {"联合体", TokenType::Kw_Union},
         {"枚举", TokenType::Kw_Enum},
-        // ---- 声明(8) ----
+        // ---- 声明(9) ----
         {"函数", TokenType::Kw_Function}, {"变量", TokenType::Kw_Var},
-        {"导入", TokenType::Kw_Import}, {"从", TokenType::Kw_From},
+        {"导入", TokenType::Kw_Import},
         {"公开", TokenType::Kw_Public}, {"私有", TokenType::Kw_Private},
         {"静态", TokenType::Kw_Static}, {"自动", TokenType::Kw_Auto},
+        // ---- 模块系统关键字(4，v2.0 新增) ----
+        {"模块", TokenType::Kw_Module}, {"作为", TokenType::Kw_As},
+        {"包", TokenType::Kw_Package}, {"货舱", TokenType::Kw_Cargo},
         // ---- 常量(4) ----
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
         {"无", TokenType::Kw_None}, {"常量", TokenType::Kw_Const},
@@ -540,6 +543,10 @@ Token Lexer::readOperatorOrDelimiter() {
         case U'!':
             if (peekNext(1) == U'=') { advance(); advance(); return Token(TokenType::BangEqual, "!=", loc); }
             break;
+        case U':':
+            // 模块路径分隔符 ::（v2.0）：贪婪匹配优先于单字符 Colon
+            if (peekNext(1) == U':') { advance(); advance(); return Token(TokenType::ColonColon, "::", loc); }
+            break;
         case U'<':
             if (peekNext(1) == U'=') { advance(); advance(); return Token(TokenType::LessEqual, "<=", loc); }
             if (peekNext(1) == U'<') { advance(); advance(); return Token(TokenType::LessLess, "<<", loc); }
@@ -587,7 +594,7 @@ Token Lexer::readOperatorOrDelimiter() {
         case U';': advance(); return Token(TokenType::Semicolon, ";", loc);
         case U',': advance(); return Token(TokenType::Comma, ",", loc);
         case U'.': advance(); return Token(TokenType::Dot, ".", loc);
-        case U':': advance(); return Token(TokenType::Colon, ":", loc);
+        case U':': advance(); return Token(TokenType::Colon, ":", loc);  // 单冒号（:: 已在双字符分支处理）
         case U'?': advance(); return Token(TokenType::Question, "?", loc);
         default: {
             // 未知字符：报告诊断并跳过（错误恢复）

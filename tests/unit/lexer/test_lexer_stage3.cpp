@@ -1,6 +1,7 @@
 // 阶段3 词法单元测试（Task 3.1/3.3/3.6/3.7/3.8/3.9）
 // 覆盖：
 //   1. 新增关键字：常量/友元/泛型（55 -> 58 个保留字）
+//      v2.0 模块系统：58 -> 61 个保留字（删 从，增 模块/作为/包/货舱）
 //   2. 运算符 为上下文关键字（非保留字）：普通位置是标识符
 //   3. 模板尖括号：结果<T,E>/可选<T>/泛型 <类型 T> 中的 < > 仍是普通运算符 token
 //      （消歧在 parser 层做，lexer 产出 Less/Greater 运算符 token）
@@ -71,13 +72,18 @@ TEST(LexerStage3Test, GenericKeyword) {
     EXPECT_EQ(tokens[4].getType(), TokenType::Greater);
 }
 
-// 关键字计数：58 个保留字（含 常量/友元/泛型，不含 运算符）
-TEST(LexerStage3Test, KeywordCount58) {
+// 关键字计数：61 个保留字（v2.0：含 常量/友元/泛型 + 模块/作为/包/货舱，删 从，不含 运算符）
+TEST(LexerStage3Test, KeywordCount61) {
     // 统计 keywordTable 全部关键字数量（通过遍历 isKeyword 分类验证连续性）
-    // 已知 58 个关键字的区间：[Kw_If, Kw_Generic]
+    // 已知 61 个关键字的区间：[Kw_If, Kw_Generic]（模块关键字位于区间内）
     EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Generic));
     EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Friend));
     EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Const));
+    // v2.0 模块系统关键字
+    EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Module));
+    EXPECT_TRUE(Token::isKeyword(TokenType::Kw_As));
+    EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Package));
+    EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Cargo));
     // 运算符 不是保留字（isKeyword 区间外，落为 Identifier）
     EXPECT_FALSE(Token::isKeyword(TokenType::Identifier));
 }

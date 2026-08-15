@@ -14,7 +14,7 @@ using cn_compiler::TokenType;
 
 namespace {
 
-// 53个关键字：枚举值 -> 对应中文文本
+// 61个关键字（v2.0）：枚举值 -> 对应中文文本（删 从，增 模块/作为/包/货舱）
 const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     // ---- 控制流关键字(10) ----
     {TokenType::Kw_If, "如果"},
@@ -27,7 +27,7 @@ const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     {TokenType::Kw_Switch, "选择"},
     {TokenType::Kw_Case, "情况"},
     {TokenType::Kw_Default, "默认"},
-    // ---- 类型关键字(20) ----
+    // ---- 类型关键字(21) ----
     {TokenType::Kw_Int, "整数"},
     {TokenType::Kw_Double, "小数"},
     {TokenType::Kw_Int8, "整8"},
@@ -47,20 +47,27 @@ const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     {TokenType::Kw_String, "字符串"},
     {TokenType::Kw_Void, "空类型"},
     {TokenType::Kw_Struct, "结构体"},
+    {TokenType::Kw_Union, "联合体"},
     {TokenType::Kw_Enum, "枚举"},
     // ---- 声明关键字(7) ----
     {TokenType::Kw_Function, "函数"},
     {TokenType::Kw_Var, "变量"},
     {TokenType::Kw_Import, "导入"},
-    {TokenType::Kw_From, "从"},
     {TokenType::Kw_Public, "公开"},
     {TokenType::Kw_Private, "私有"},
     {TokenType::Kw_Static, "静态"},
-    // ---- 常量关键字(3) ----
+    {TokenType::Kw_Auto, "自动"},
+    // ---- 模块系统关键字(4，v2.0 新增) ----
+    {TokenType::Kw_Module, "模块"},
+    {TokenType::Kw_As, "作为"},
+    {TokenType::Kw_Package, "包"},
+    {TokenType::Kw_Cargo, "货舱"},
+    // ---- 常量关键字(4) ----
     {TokenType::Kw_True, "真"},
     {TokenType::Kw_False, "假"},
     {TokenType::Kw_None, "无"},
-    // ---- OOP关键字(9) ----
+    {TokenType::Kw_Const, "常量"},
+    // ---- OOP关键字(10) ----
     {TokenType::Kw_Class, "类"},
     {TokenType::Kw_Interface, "接口"},
     {TokenType::Kw_Protected, "保护"},
@@ -70,12 +77,15 @@ const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     {TokenType::Kw_Implements, "实现"},
     {TokenType::Kw_Self, "自身"},
     {TokenType::Kw_Super, "父类"},
+    {TokenType::Kw_Friend, "友元"},
     // ---- 错误处理关键字(2) ----
     {TokenType::Kw_Result, "结果"},
     {TokenType::Kw_Optional, "可选"},
     // ---- 字面量前缀关键字(2) ----
     {TokenType::Kw_Raw, "原始"},
     {TokenType::Kw_MultiLine, "多行"},
+    // ---- 泛型关键字(1) ----
+    {TokenType::Kw_Generic, "泛型"},
 };
 
 // 运算符：枚举值 -> 符号文本（tokenTypeToString 输出）
@@ -128,7 +138,7 @@ const std::vector<std::pair<TokenType, std::string>> kOperatorTable = {
     {TokenType::RightBracket, "]"},
 };
 
-// 分隔符：枚举值 -> 符号文本
+// 分隔符：枚举值 -> 符号文本（含 ::，v2.0 模块路径分隔符）
 const std::vector<std::pair<TokenType, std::string>> kDelimiterTable = {
     {TokenType::LeftParen, "("},
     {TokenType::RightParen, ")"},
@@ -137,6 +147,7 @@ const std::vector<std::pair<TokenType, std::string>> kDelimiterTable = {
     {TokenType::Semicolon, ";"},
     {TokenType::Comma, ","},
     {TokenType::Colon, ":"},
+    {TokenType::ColonColon, "::"},
     {TokenType::Question, "?"},
 };
 
@@ -144,10 +155,10 @@ const std::vector<std::pair<TokenType, std::string>> kDelimiterTable = {
 
 // ---- 关键字测试 ----
 
-// 构造53个关键字Token并验证类型与文本
+// 构造61个关键字Token并验证类型与文本（v2.0）
 // 注：测试名使用英文（GCC 7 不支持中文标识符，中文仅用于注释与字符串）
-TEST(TokenTest, ConstructAll53Keywords) {
-    ASSERT_EQ(kKeywordTable.size(), static_cast<size_t>(53));
+TEST(TokenTest, ConstructAll61Keywords) {
+    ASSERT_EQ(kKeywordTable.size(), static_cast<size_t>(61));
     for (const auto& entry : kKeywordTable) {
         Token token(entry.first, entry.second, SourceLocation("测试.cn", 1, 1));
         EXPECT_EQ(token.getType(), entry.first);
@@ -285,6 +296,36 @@ TEST(TokenTest, SpecialTypeToString) {
     for (const auto& entry : kDelimiterTable) {
         EXPECT_EQ(Token::tokenTypeToString(entry.first), entry.second);
     }
+}
+
+// ---- :: 模块路径分隔符专项测试（v2.0） ----
+
+// :: token 构造与分类：ColonColon 是分隔符、非关键字、非运算符、非字面量
+TEST(TokenTest, ColonColonToken) {
+    Token cc(TokenType::ColonColon, "::", SourceLocation("测试.cn", 1, 1));
+    EXPECT_EQ(cc.getType(), TokenType::ColonColon);
+    EXPECT_EQ(cc.getValue(), "::");
+    EXPECT_TRUE(cc.isDelimiter());
+    EXPECT_TRUE(Token::isDelimiter(TokenType::ColonColon));
+    EXPECT_FALSE(cc.isKeyword());
+    EXPECT_FALSE(cc.isLiteral());
+    EXPECT_FALSE(cc.isOperator());
+    // tokenTypeToString 双向映射
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::ColonColon), "::");
+}
+
+// Colon 与 ColonColon 区分：两个独立 TokenType 各自映射
+TEST(TokenTest, ColonVsColonColon) {
+    Token colon(TokenType::Colon, ":", SourceLocation("测试.cn", 1, 1));
+    Token colonColon(TokenType::ColonColon, "::", SourceLocation("测试.cn", 1, 2));
+    EXPECT_EQ(colon.getType(), TokenType::Colon);
+    EXPECT_EQ(colon.getValue(), ":");
+    EXPECT_EQ(colonColon.getType(), TokenType::ColonColon);
+    EXPECT_EQ(colonColon.getValue(), "::");
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::Colon), ":");
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::ColonColon), "::");
+    EXPECT_NE(Token::tokenTypeToString(TokenType::Colon),
+              Token::tokenTypeToString(TokenType::ColonColon));
 }
 
 // ---- 分类方法测试 ----

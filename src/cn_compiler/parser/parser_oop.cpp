@@ -75,9 +75,11 @@ const char* operatorSymbolText(TokenType t) {
 
 // ==================== 导入声明（Task 3.6） ====================
 
-// 导入声明：导入 模块路径 | 从 模块路径 导入 名称列表（规格书08-二）
+// 导入声明：导入 模块路径（规格书08-二，v2.0）
 //   导入 数学.平方根          -> importPath="数学.平方根", fromImport=false
-//   从 数学 导入 正弦, 余弦    -> importPath="数学", fromImport=true, names=[正弦, 余弦]
+//   （v2.0 已删除 从 关键字与「从 模块 导入 名」语法；其解析分支在第 3 层
+//     重写为 导入 路径::{名1, 名2} 花括号导入形式。本层词法改造仅删除
+//     Kw_From 枚举引用，`从` 恢复为普通标识符。）
 std::unique_ptr<ImportDecl> Parser::parseImportDecl() {
     auto decl = std::make_unique<ImportDecl>();
     decl->location = current().getLocation();
@@ -85,29 +87,8 @@ std::unique_ptr<ImportDecl> Parser::parseImportDecl() {
         // 导入 模块路径
         advance();  // 消费"导入"
         decl->importPath = parseModulePath();
-    } else if (check(TokenType::Kw_From)) {
-        // 从 模块路径 导入 名称列表
-        advance();  // 消费"从"
-        decl->importPath = parseModulePath();
-        consume(TokenType::Kw_Import, "'导入'");
-        decl->fromImport = true;
-        // 名称列表：名称 {, 名称}
-        while (!check(TokenType::EndOfFile)) {
-            if (check(TokenType::Identifier)) {
-                decl->names.push_back(current().getValue());
-                advance();
-            } else {
-                reportErrorHere("导入名称列表预期标识符");
-                break;
-            }
-            if (check(TokenType::Comma)) {
-                advance();
-                continue;
-            }
-            break;
-        }
     } else {
-        reportErrorHere("预期'导入'或'从'");
+        reportErrorHere("预期'导入'");
     }
     consumeSemicolon();  // 导入语句后的可选分号
     return decl;

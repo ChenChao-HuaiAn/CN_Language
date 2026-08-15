@@ -70,3 +70,68 @@ TEST(LexerKeywordTest, UnionToString) {
     EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Struct), "结构体");
     EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Enum), "枚举");
 }
+
+// ==================== v2.0 模块系统关键字 ====================
+
+// 模块 关键字识别（v2.0 新增）：模块 网络
+TEST(LexerKeywordTest, ModuleKeyword) {
+    auto tokens = lexSource("模块 网络");
+    ASSERT_GE(tokens.size(), 2u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Module);
+    EXPECT_EQ(tokens[0].getValue(), "模块");
+    EXPECT_TRUE(tokens[0].isKeyword());
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);  // 网络
+}
+
+// 作为 关键字识别（v2.0 新增）：导入重命名
+TEST(LexerKeywordTest, AsKeyword) {
+    auto tokens = lexSource("作为 别名");
+    ASSERT_GE(tokens.size(), 2u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_As);
+    EXPECT_EQ(tokens[0].getValue(), "作为");
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
+}
+
+// 包 关键字识别（v2.0 新增）：包名概念
+TEST(LexerKeywordTest, PackageKeyword) {
+    auto tokens = lexSource("包 名");
+    ASSERT_GE(tokens.size(), 2u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Package);
+    EXPECT_EQ(tokens[0].getValue(), "包");
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
+}
+
+// 货舱 关键字识别（v2.0 新增）：货舱.toml 节
+TEST(LexerKeywordTest, CargoKeyword) {
+    auto tokens = lexSource("货舱");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Cargo);
+    EXPECT_EQ(tokens[0].getValue(), "货舱");
+    EXPECT_TRUE(tokens[0].isKeyword());
+}
+
+// 从 已删除关键字：普通位置是标识符（v2.0）
+TEST(LexerKeywordTest, FromRemovedIsIdentifier) {
+    auto tokens = lexSource("从");
+    ASSERT_FALSE(tokens.empty());
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[0].getValue(), "从");
+    EXPECT_FALSE(tokens[0].isKeyword());
+}
+
+// 导入 仍是关键字（v2.0 保留）
+TEST(LexerKeywordTest, ImportStillKeyword) {
+    auto tokens = lexSource("导入 数学");
+    ASSERT_GE(tokens.size(), 2u);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Import);
+    EXPECT_EQ(tokens[0].getValue(), "导入");
+    EXPECT_TRUE(tokens[0].isKeyword());
+}
+
+// 模块系统关键字映射表文本（tokenTypeToString）
+TEST(LexerKeywordTest, ModuleSystemKeywordToString) {
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Module), "模块");
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_As), "作为");
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Package), "包");
+    EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Cargo), "货舱");
+}

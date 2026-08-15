@@ -205,7 +205,7 @@ bool Parser::atStatementBoundary() const {
         case TokenType::Kw_For: case TokenType::Kw_Break: case TokenType::Kw_Continue:
         case TokenType::Kw_Var: case TokenType::Kw_Const: case TokenType::Kw_Static:
         case TokenType::Kw_Class: case TokenType::Kw_Interface: case TokenType::Kw_Import:
-        case TokenType::Kw_From: case TokenType::Kw_Generic:
+        case TokenType::Kw_Generic:
             return true;
         default:
             break;
@@ -869,12 +869,6 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             }
         } else if (check(TokenType::Kw_Import)) {
             // 导入声明（Task 3.6，规格书08-二）：导入 数学.平方根
-            auto decl = parseImportDecl();
-            if (!decl->importPath.empty()) {
-                program->imports.push_back(std::move(decl));
-            }
-        } else if (check(TokenType::Kw_From)) {
-            // 从...导入 声明（Task 3.6，规格书08-二）：从 数学 导入 正弦, 余弦
             auto decl = parseImportDecl();
             if (!decl->importPath.empty()) {
                 program->imports.push_back(std::move(decl));

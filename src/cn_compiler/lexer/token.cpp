@@ -43,15 +43,19 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Struct, "结构体"},
         {TokenType::Kw_Union, "联合体"},
         {TokenType::Kw_Enum, "枚举"},
-        // ---- 声明关键字(8) ----
+        // ---- 声明关键字(9) ----
         {TokenType::Kw_Function, "函数"},
         {TokenType::Kw_Var, "变量"},
         {TokenType::Kw_Import, "导入"},
-        {TokenType::Kw_From, "从"},
         {TokenType::Kw_Public, "公开"},
         {TokenType::Kw_Private, "私有"},
         {TokenType::Kw_Static, "静态"},
         {TokenType::Kw_Auto, "自动"},
+        // ---- 模块系统关键字(4，v2.0 新增) ----
+        {TokenType::Kw_Module, "模块"},
+        {TokenType::Kw_As, "作为"},
+        {TokenType::Kw_Package, "包"},
+        {TokenType::Kw_Cargo, "货舱"},
         // ---- 常量关键字(4) ----
         {TokenType::Kw_True, "真"},
         {TokenType::Kw_False, "假"},
@@ -128,7 +132,7 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Dot, "."},
         {TokenType::LeftBracket, "["},
         {TokenType::RightBracket, "]"},
-        // ---- 分隔符(8) ----
+        // ---- 分隔符(9) ----
         {TokenType::LeftParen, "("},
         {TokenType::RightParen, ")"},
         {TokenType::LeftBrace, "{"},
@@ -136,6 +140,7 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Semicolon, ";"},
         {TokenType::Comma, ","},
         {TokenType::Colon, ":"},
+        {TokenType::ColonColon, "::"},
         {TokenType::Question, "?"},
         // ---- 其他 ----
         {TokenType::EndOfFile, "文件结束"},
@@ -155,7 +160,9 @@ const std::string& Token::tokenTypeToString(TokenType type) {
 }
 
 // 判断是否为关键字：枚举值落在关键字区间 [Kw_If, Kw_Generic]
-// 阶段3：新增 常量/友元/泛型 后，关键字枚举区间扩展至 Kw_Generic（58 个）
+// v2.0 模块系统：新增 模块/作为/包/货舱、删除 从 后，关键字枚举区间为
+//   [Kw_If, Kw_Generic] 且包含新模块关键字（Kw_Module~Kw_Cargo 位于
+//   Kw_Auto 之后、常量区之前，均落在区间内）——共 61 个
 bool Token::isKeyword(TokenType type) {
     return type >= TokenType::Kw_If && type <= TokenType::Kw_Generic;
 }
@@ -174,12 +181,13 @@ bool Token::isOperator(TokenType type) {
     return type >= TokenType::PlusPlus && type <= TokenType::RightBracket;
 }
 
-// 判断是否为分隔符：括号/花括号/分号/逗号/冒号/问号，以及双角色的方括号
+// 判断是否为分隔符：括号/花括号/分号/逗号/冒号/冒号冒号/问号，以及双角色的方括号
 bool Token::isDelimiter(TokenType type) {
     return type == TokenType::LeftParen || type == TokenType::RightParen ||
            type == TokenType::LeftBrace || type == TokenType::RightBrace ||
            type == TokenType::Semicolon || type == TokenType::Comma ||
-           type == TokenType::Colon || type == TokenType::Question ||
+           type == TokenType::Colon || type == TokenType::ColonColon ||
+           type == TokenType::Question ||
            type == TokenType::LeftBracket || type == TokenType::RightBracket;
 }
 
