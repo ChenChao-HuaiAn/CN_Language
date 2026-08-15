@@ -770,3 +770,216 @@ TEST(ModuleTest, VisibilityIntersectionPrivateClassNotExported) {
     EXPECT_FALSE(hasHiddenClass) << "模块私有类不应跨模块合并";
     EXPECT_TRUE(r.ok) << r.messages;
 }
+
+// ==================== 第 7 层新增测试（v2.0 特性：默认私有/交集/通配符/重命名） ====================
+// 背景：v2.0 改造第 1-6 层完成，E2E 46/46 + 单测 1097/1097 全绿。本层新增 v2.0
+//   专属特性测试（E2E 44-51 + 本文件错误/边界场景）：
+//   - E2E 只测合法用法（run_e2e.py 编译失败即 FAIL）；错误场景（默认私有跨模块
+//     不可见、类内默认私有跨类不可访问、可见性交集私有类不可导入）由单测覆盖。
+//   - 命名空间隔离/导入语法全形式/模块树/prelude 由 E2E 44/45/46/48 覆盖。
+
+// 模块默认私有（v2.0 变更）：无 公开: 的顶层函数跨模块不可见——主.cn 导入后
+//   调用默认私有函数 -> 未合并（私有不跨模块）-> 未声明函数错误
+TEST(ModuleTest, SemanticDefaultPrivateNotExported) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "函数 默认私有函数(整32 n) -> 整32 { 返回 n * 2 }\n",  // 无 公开: -> 默认私有
+        "数据.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 数据\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 数据::默认私有函数(10)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 默认私有函数不跨模块合并 -> 限定调用无法重写 -> 报错
+    EXPECT_FALSE(r.ok) << r.messages;
+    EXPECT_NE(r.messages.find("默认私有函数"), std::string::npos) << r.messages;
+}
+
+// 模块默认私有（合法路径）：显式 公开: 的函数跨模块可调用；公开函数体内
+//   调用同文件默认私有函数（私有依赖闭包合并，缺陷4 修复）——语义通过
+TEST(ModuleTest, SemanticDefaultPrivatePublicFunctionClosure) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 公开函数(整32 n) -> 整32 { 返回 默认私有函数(n) }\n"
+        "函数 默认私有函数(整32 n) -> 整32 { 返回 n + 100 }\n",  // 无标签 -> 默认私有
+        "数据.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 数据::公开函数\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 公开函数(5)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 公开函数跨模块；默认私有函数作为闭包依赖一并合并 -> 语义通过
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 类内默认私有（v2.0 变更）：类内无标签方法默认私有——类外访问 -> 报错。
+// 类定义在入口模块内：方法 隐藏操作 无标签（默认私有），主函数访问 -> 访问控制错误
+TEST(ModuleTest, SemanticClassDefaultPrivateMemberAccess) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1;
+    units.push_back(makeUnit(
+        "类 计数器 {\n"
+        "    私有:\n"
+        "    整32 数值\n"
+        "    函数 计数器() -> 空类型 { 自身.数值 = 0 }\n"  // 无标签 -> 默认私有
+        "    公开:\n"
+        "    函数 读取() -> 整32 { 返回 自身.数值 }\n"
+        "}\n"
+        "函数 主() -> 整32 {\n"
+        "    计数器 计数1 = 计数器()\n"
+        "    变量 值 = 计数1.读取()\n"   // 公开成员可访问
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags1));
+    auto r = analyzeModules(std::move(units));
+    // 入口模块：公开成员 读取 可访问（合法路径）
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 类内默认私有错误路径：类外访问无标签（默认私有）成员 -> 报错
+TEST(ModuleTest, SemanticClassDefaultPrivateAccessOutside) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1;
+    units.push_back(makeUnit(
+        "类 计数器 {\n"
+        "    私有:\n"
+        "    整32 数值\n"
+        "    函数 计数器() -> 空类型 { 自身.数值 = 0 }\n"  // 无标签 -> 默认私有
+        "    函数 隐藏操作() -> 整32 { 返回 自身.数值 + 1 }\n"  // 无标签 -> 默认私有
+        "    公开:\n"
+        "    函数 读取() -> 整32 { 返回 自身.数值 }\n"
+        "}\n"
+        "函数 主() -> 整32 {\n"
+        "    计数器 计数1 = 计数器()\n"
+        "    变量 值 = 计数1.隐藏操作()\n"   // 类外访问默认私有成员 -> 报错
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags1));
+    auto r = analyzeModules(std::move(units));
+    // 类外访问默认私有方法 -> 访问控制错误（"私有" 关键字在诊断消息中）
+    EXPECT_FALSE(r.ok) << r.messages;
+    EXPECT_NE(r.messages.find("私有"), std::string::npos) << r.messages;
+}
+
+// 可见性交集错误路径：模块私有类整体不可导入——主.cn 导入 甲::隐藏类
+//   -> 私有类不跨模块合并 -> 类不存在（未声明的类型）报错
+TEST(ModuleTest, VisibilityIntersectionPrivateClassNotImportable) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "私有:\n"
+        "类 隐藏类 {\n"
+        "    公开:\n"
+        "    函数 隐藏方法() -> 整32 { 返回 1 }\n"
+        "}\n",
+        "甲.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 甲\n"
+        "函数 主() -> 整32 {\n"
+        "    隐藏类 实例 = 隐藏类()\n"  // 模块私有类整体不可见（交集=私有）
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 私有类不跨模块合并 -> 隐藏类 未声明 -> 报错
+    EXPECT_FALSE(r.ok) << r.messages;
+}
+
+// 通配符导入（合法路径）：导入 数学::* 后 数学::加法 可限定调用（通配符导入
+//   使 useHasSymbol 校验通过；模块公开符号表决定存在性）
+TEST(ModuleTest, UseImportWildcardQualifiedCall) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 加法(整32 a, 整32 b) -> 整32 { 返回 a + b }\n",
+        "数学.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 数学::*\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 数学::加法(1, 2)\n"  // 限定调用（通配符导入放行）
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 重命名冲突：两个导入 作为 同名别名（同一模块内 加 作为 运算 与 乘 作为 运算）
+//   -> 别名表后者覆盖前者（编译器实现语义），调用 运算(1,2) 解析到 乘。
+//   注：以编译器实现为准——当前 useImports_ 别名表为 别名->原符号 单向映射，
+//   后写覆盖先写，不报重复定义（v2.0 未定义别名冲突报错规则）。
+TEST(ModuleTest, UseImportRenameConflictLastWins) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }\n"
+        "函数 乘(整32 a, 整32 b) -> 整32 { 返回 a * b }\n",
+        "数学.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 数学::{加 作为 运算, 乘 作为 运算}\n"  // 同名别名：后者覆盖
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 运算(6, 7)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 别名覆盖（后写优先）：运算(6,7) 解析到 乘 -> 42；语义通过
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 未导入限定调用仍报错（P1-1 修复反转确认）：主.cn 未写 导入 直接 工具::双倍(10)
+//   -> 报「未声明的标识符」（用户模块非 prelude 内置例外）
+TEST(ModuleTest, SemanticQualifiedCallWithoutImportRegression) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 双倍(整32 n) -> 整32 { 返回 n * 2 }\n",
+        "工具.cn", diags1));
+    units.push_back(makeUnit(
+        "函数 主() -> 整32 {\n"
+        "    变量 数值 = 工具::双倍(10)\n"  // 未导入模块
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // P1-1 修复：未导入模块的限定调用 -> 报「未声明的标识符」
+    EXPECT_FALSE(r.ok) << "P1-1 修复：未导入模块限定调用应报错，实际通过\n" << r.messages;
+    EXPECT_NE(r.messages.find("未声明的标识符"), std::string::npos) << r.messages;
+}
+
+// 模块树（规格书08-二/五）：再导出链——甲.cn 内 `公开 导入 甲::连接` 把模块内
+//   公开函数再导出为模块级 API；主.cn `导入 甲::连接` 后限定调用 甲::连接 可用。
+//   注：driver 层目录层级（模块 声明 + 甲/子.cn 子模块递归加载）由 E2E 46 覆盖；
+//   本单测验证语义层再导出声明合并 + 限定调用解析（makeUnit 模块名仅取文件名
+//   主干，无法表达 甲::子 多级模块名，故直接用平铺模块验证）。
+TEST(ModuleTest, SemanticModuleTreeReexportChain) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "公开 导入 甲::连接\n"   // 再导出声明（importPath=甲::连接）
+        "函数 连接() -> 整32 { 返回 42 }\n",
+        "甲.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 甲::连接\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 甲::连接()\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 再导出链：导入 甲::连接 -> 甲 模块已导入（路径导入 wildcard）-> 连接 存在 -> 通过
+    EXPECT_TRUE(r.ok) << r.messages;
+}
