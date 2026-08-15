@@ -281,9 +281,29 @@ bool SemanticAnalyzer::hasFunctionName(const std::string& name) const {
     for (const auto& kv : functions_) {
         // 用户函数 key 形如 名#参数串；纯名内置 key 无 '#'
         const std::size_t hashPos = kv.first.find('#');
-        const std::string base = (hashPos == std::string::npos) ? kv.first
-                                                                : kv.first.substr(0, hashPos);
-        if (base == name) return true;
+        const std::size_t dollarPos = kv.first.find('$');
+        // 第 8 层（52_library 实测缺陷）：无参跨模块条目（模块名$函数名，
+        //   如 格式化$版本）剥离 '$' 前缀后 base 才匹配纯名；含 '#' 的
+        //   跨模块条目（模块名$名#参数）同样剥离。泛型实例名（排序$整32）
+        //   不剥离（base 保持 排序$整32 匹配泛型调用）——name 含 '$' 时跳过。
+        const bool crossModuleNoHash =
+            (hashPos == std::string::npos && dollarPos != std::string::npos &&
+             name.find('$') == std::string::npos);
+        const bool crossModuleWithHash =
+            (hashPos != std::string::npos && dollarPos != std::string::npos &&
+             dollarPos < hashPos);
+        if (crossModuleNoHash || crossModuleWithHash) {
+            const std::size_t hashP2 = kv.first.find('#');
+            const std::string base2 = (hashP2 == std::string::npos)
+                                          ? kv.first.substr(dollarPos + 1)
+                                          : kv.first.substr(dollarPos + 1, hashP2 - dollarPos - 1);
+            if (base2 == name) return true;
+        } else {
+            const std::string base = (hashPos == std::string::npos)
+                                         ? kv.first
+                                         : kv.first.substr(0, hashPos);
+            if (base == name) return true;
+        }
     }
     return false;
 }
@@ -366,6 +386,13 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
             dollarPos < hashFirst) {
             keyModule = key.substr(0, dollarPos);
             key = key.substr(dollarPos + 1);
+        } else if (hashFirst == std::string::npos && dollarPos != std::string::npos &&
+                   name.find('$') == std::string::npos) {
+            // 第 8 层（52_library 实测缺陷）：无参函数（sigKey 无 '#'）跨模块
+            //   注册 key = 模块名$函数名（如 格式化$版本）。调用 name 不含 '$'
+            //   （普通函数调用，区别于泛型实例名 排序$整32）——剥离 '$' 前缀。
+            keyModule = key.substr(0, dollarPos);
+            key = key.substr(dollarPos + 1);
         }
         const std::size_t hashPos = key.find('#');
         const std::string base = (hashPos == std::string::npos) ? key
@@ -377,7 +404,20 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         if (!moduleFilter.empty()) {
             // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
             const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
-            if (entryModule != moduleFilter) continue;
+            if (entryModule == moduleFilter) {
+                // 精确匹配：同包限定调用（网络::传输控制::发送 -> 网络::传输控制）
+            } else {
+                // 第 8 层（52_library 实测缺陷）：跨 crate 限定调用
+                //   （工具库::格式化::版本）——外部依赖模块注册 moduleName =
+                //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
+                //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
+                //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
+                const std::size_t lastColon = moduleFilter.rfind("::");
+                const std::string filterLast = (lastColon == std::string::npos)
+                                                    ? moduleFilter
+                                                    : moduleFilter.substr(lastColon + 2);
+                if (entryModule != filterLast) continue;
+            }
         }
         // 参数个数匹配：实参个数 + 可补全的默认参数数 >= 参数总数
         const int required = static_cast<int>(info.paramTypes.size()) - info.defaultCount;

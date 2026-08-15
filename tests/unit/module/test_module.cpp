@@ -983,3 +983,54 @@ TEST(ModuleTest, SemanticModuleTreeReexportChain) {
     // 再导出链：导入 甲::连接 -> 甲 模块已导入（路径导入 wildcard）-> 连接 存在 -> 通过
     EXPECT_TRUE(r.ok) << r.messages;
 }
+
+// 第 8 层缺陷修复（52_library 实测）：无参函数（sigKey 无 '#'）跨模块同名
+//   注册 key = 模块名$函数名（如 格式化$版本）。resolveOverload/hasFunctionName
+//   的 key 解析此前仅处理 模块名$名#参数（'$' 在 '#' 之前），无 '#' 时 keyModule
+//   不提取、base=格式化$版本 ≠ 版本 -> 限定调用 格式化::版本() 报"未找到匹配"。
+//   修复：无 '#' 且调用名不含 '$'（区别于泛型实例 排序$整32）时剥离 '$' 前缀。
+TEST(ModuleTest, CrateIsolateNoParamQualifiedCall) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 版本() -> 整64 { 返回 200 }\n"
+        "函数 价格(浮64 金额) -> 浮64 { 返回 金额 }\n",
+        "格式化.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 格式化::版本\n"
+        "导入 格式化::价格\n"
+        "函数 版本() -> 整64 { 返回 100 }\n"          // 主 模块同名（crate 隔离）
+        "函数 主() -> 整32 {\n"
+        "    变量 主版本 = 格式化::版本()\n"          // 无参跨模块限定调用
+        "    变量 价 = 格式化::价格(1.5)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 无参同名函数跨模块限定调用（格式化::版本 解析到 格式化$版本）-> 语义通过
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 第 8 层缺陷修复（52_library 实测）：跨 crate 限定调用 moduleFilter 最后段匹配
+//   ——工具库::格式化::版本() 的 subModule=工具库::格式化，但外部依赖模块注册
+//   moduleName=格式化（文件主干）。resolveOverload 精确匹配失败，须按 moduleFilter
+//   末段（:: 之后）匹配 entryModule（格式化）。
+TEST(ModuleTest, CrateIsolateCrossCrateLastSegmentFilter) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 版本() -> 整64 { 返回 200 }\n",          // 外部 crate：模块名=格式化
+        "格式化.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 工具库::格式化::版本\n"                  // 跨 crate 多级路径
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 工具库::格式化::版本()\n"       // 限定调用末段=格式化
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 跨 crate 限定调用：moduleFilter=工具库::格式化 按末段匹配 格式化 -> 通过
+    EXPECT_TRUE(r.ok) << r.messages;
+}
