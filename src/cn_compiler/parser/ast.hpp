@@ -169,6 +169,9 @@ enum class Operator {
     // 自增自减(2)
     Increment,         // ++（前缀/后缀）
     Decrement,         // --（前缀/后缀）
+    // 错误传播（C-1 2026-08，规格书07 Rust ? 运算符等价物）：后缀 ?——
+    //   结果<T,E>/可选<T> 表达式的值提取：正常 -> 值；否则从当前函数返回错误
+    Propagate,         // ?（后缀错误传播，postfix=true）
     // 成员访问(2)
     Dot,               // .
     Arrow,             // ->
@@ -393,6 +396,10 @@ public:
     Operator op;                   // 运算符
     std::unique_ptr<Expr> operand; // 操作数
     bool postfix;                  // 是否为后缀形式（++ -- 后缀为true）
+    // C-1（错误传播运算符，2026-08）：op==Propagate 时记录操作数类型
+    //   （结果<T,E> / 可选<T>），语义层回填、IR 层按此降级（正常取 .值 /
+    //   失败构造错误结果并返回）
+    std::string propagateType;
 };
 
 // 赋值表达式：目标 赋值运算符 值（右结合）

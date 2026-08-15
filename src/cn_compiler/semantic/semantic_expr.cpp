@@ -587,6 +587,69 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
                 lastType_ = "未知";
             }
             break;
+        case Operator::Propagate:
+            // C-1（错误传播运算符，2026-08）：表达式? ——操作数须为
+            //   结果<T,E>/可选<T>；当前函数返回类型须兼容（结果->结果、
+            //   可选->可选）；传播后值类型 = T（正常分支取 .值）。
+            //   失败分支由 IR 层生成"构造错误结果并返回"（Rust ? 语义）
+            {
+                node->propagateType = operandType;  // 回填（IR 层降级用）
+                if (isResultType(operandType) || isOptionalType(operandType)) {
+                    const std::vector<std::string> args = resultTypeArgs(operandType);
+                    if (isResultType(operandType) && args.size() == 2) {
+                        // 结果<T,E>：返回类型须为 结果<T,E2>（E2 与 E 可转换）
+                        lastType_ = canonicalType(args[0]);
+                        if (currentReturnType_.empty() ||
+                            !isResultType(currentReturnType_)) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->location,
+                                "'?'错误传播要求当前函数返回 结果<" +
+                                    canonicalType(args[0]) + ", " +
+                                    canonicalType(args[1]) + "> 类型（实际返回 '" +
+                                    currentReturnType_ + "'）");
+                        } else {
+                            const std::vector<std::string> retArgs =
+                                resultTypeArgs(currentReturnType_);
+                            // 值类型须精确一致（IR 层按操作数 T 直接取 .值，
+                            //   不自动转换；与 Rust ? 同型传播一致）
+                            if (retArgs.size() == 2 &&
+                                canonicalType(retArgs[0]) != canonicalType(args[0])) {
+                                diagnostics_.report(
+                                    DiagnosticLevel::Error, node->location,
+                                    "'?'传播的值类型 '" + canonicalType(args[0]) +
+                                        "' 与函数返回类型的值类型 '" +
+                                        canonicalType(retArgs[0]) + "' 不一致");
+                            }
+                            if (retArgs.size() == 2 &&
+                                !canConvertType(args[1], retArgs[1])) {
+                                diagnostics_.report(
+                                    DiagnosticLevel::Error, node->location,
+                                    "'?'传播的错误类型 '" + canonicalType(args[1]) +
+                                        "' 无法转换为函数返回类型的错误类型 '" +
+                                        canonicalType(retArgs[1]) + "'");
+                            }
+                        }
+                    } else if (isOptionalType(operandType)) {
+                        // 可选<T>：返回类型须为 可选<T>
+                        lastType_ = canonicalType(optionalTypeArg(operandType));
+                        if (currentReturnType_.empty() ||
+                            currentReturnType_ != "可选<" + lastType_ + ">") {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->location,
+                                "'?'错误传播要求当前函数返回 可选<" + lastType_ +
+                                    "> 类型（实际返回 '" + currentReturnType_ + "'）");
+                        }
+                    } else {
+                        lastType_ = "未知";
+                    }
+                } else {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "'?'错误传播要求 结果<T,E>/可选<T> 类型操作数，实际为 '" +
+                                            operandType + "'");
+                    lastType_ = "未知";
+                }
+            }
+            break;
         case Operator::Increment:
         case Operator::Decrement:
             // 自增/自减：数值 或 指针（Task 2.4 指针 ++/-- 按元素大小步进）

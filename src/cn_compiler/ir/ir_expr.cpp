@@ -533,6 +533,95 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                    "", node->location);
             break;
         }
+        case Operator::Propagate: {
+            // C-1（错误传播运算符，2026-08）：表达式? ——操作数地址 = 结果/可选
+            //   合成结构体（{i1 正常, pad, 联合体{值, 错误}}，正常标志 @0、值/错误 @8）。
+            //   正常 -> 取 .值 继续；失败 -> 构造 结果{正常=false, 错误=E} 并返回
+            //   （Rust ? 语义；node->propagateType 由语义层回填）
+            ir::IRValue propOperand = genExpr(node->operand.get());
+            const std::string ptype = node->propagateType;
+            std::string valSrc;
+            std::string errSrc;
+            if (SemanticAnalyzer::isResultType(ptype)) {
+                const std::vector<std::string> args = SemanticAnalyzer::resultTypeArgs(ptype);
+                if (args.size() == 2) {
+                    valSrc = args[0];
+                    errSrc = args[1];
+                }
+            } else if (SemanticAnalyzer::isOptionalType(ptype)) {
+                valSrc = SemanticAnalyzer::optionalTypeArg(ptype);
+                errSrc = "";  // 可选：失败 = 无值（结构体无错误字段）
+            }
+            if (valSrc.empty()) {
+                lastExpr_ = propOperand;
+                break;
+            }
+            // 合成结构体名（结果$T$E / 可选$T），失败分支分配临时结构体槽
+            std::string structName;
+            if (SemanticAnalyzer::isResultType(ptype)) {
+                structName = SemanticAnalyzer::resultStructName(
+                    types::canonical(valSrc), types::canonical(errSrc));
+            } else {
+                structName = SemanticAnalyzer::optionalStructName(
+                    types::canonical(valSrc));
+            }
+            // 正常标志 @ 偏移 0；值/错误 @ 偏移 8
+            ir::IRValue flagAddr = emitResult(ir::Opcode::FieldAddr, {propOperand}, "ptr",
+                                              "0", node->location);
+            ir::IRValue flag = emitResult(ir::Opcode::LoadPtr, {flagAddr}, "i1", "",
+                                          node->location);
+            ir::IRValue valAddr = emitResult(ir::Opcode::FieldAddr, {propOperand}, "ptr",
+                                             "8", node->location);
+            const std::string errLabel = "bb" + std::to_string(blockCounter_);
+            const std::string okLabel = "bb" + std::to_string(blockCounter_ + 1);
+            endBranch(flag.toString(), okLabel, errLabel);  // 真->ok 假->err
+            // 失败块：构造 结果{正常=false, 错误=E} 临时结构体并返回
+            setCurrentBlock(newBlock(errLabel));
+            const std::string tempName = "?prop$" + std::to_string(varCounter_++);
+            ir::IRValue temp = newReg();
+            temp.type = "ptr";
+            emit(ir::Opcode::Alloca, {}, temp, tempName, "ptr", node->location);
+            // 按结果/可选合成结构体实际大小登记槽（ensureLoweredType 防御：
+            //   泛型实例化方法体内首次出现的类型可能在 lower 后才注册）
+            if (semantic_ != nullptr && semantic_->findStruct(structName) == nullptr) {
+                semantic_->ensureLoweredType(ptype);
+            }
+            registerVarSlots(tempName, structName);
+            ir::IRValue tempAddr = emitResult(ir::Opcode::AddrOf,
+                                              {ir::IRValue::var(tempName, "i64")},
+                                              "ptr", tempName, node->location);
+            ir::IRValue falseV = emitResult(ir::Opcode::ConstInt, {}, "i32", "0",
+                                            node->location);
+            emit(ir::Opcode::StorePtr, {tempAddr, falseV}, ir::IRValue(), "", "i32",
+                 node->location);
+            if (SemanticAnalyzer::isResultType(ptype) && !errSrc.empty()) {
+                // 错误值 = 操作数.错误（联合体 @8；可选类型失败无需错误值）。
+                // 槽宽适配：整数 32 位按 8 字节槽写入（与 handleResultCtor 一致，
+                //   符号扩展保证 结果<T,整64> 读 .错误 高位无垃圾）
+                const std::string errIr = mapType(errSrc);
+                ir::IRValue errVal = emitResult(ir::Opcode::LoadPtr, {valAddr}, errIr,
+                                                "", node->location);
+                std::string storeType = errIr;
+                if (storeType != "ptr" && storeType != "f64" && storeType != "i1" &&
+                    storeType != "i128" && storeType != "u128") {
+                    storeType = "i64";
+                }
+                if (errVal.type != storeType && !storeType.empty()) {
+                    errVal = emitResult(ir::Opcode::Cast, {errVal}, storeType, "",
+                                        node->location);
+                }
+                ir::IRValue errField = emitResult(ir::Opcode::FieldAddr, {tempAddr},
+                                                  "ptr", "8", node->location);
+                emit(ir::Opcode::StorePtr, {errField, errVal}, ir::IRValue(), "",
+                     storeType, node->location);
+            }
+            endReturn(tempAddr.toString());
+            // 正常块：取 .值（联合体 @8）
+            setCurrentBlock(newBlock(okLabel));
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {valAddr}, mapType(valSrc), "",
+                                   node->location);
+            break;
+        }
         case Operator::Increment:
         case Operator::Decrement: {
             // 缺陷5 修复：类字段（静态/实例）自增自减——字段名不在 varStack_，

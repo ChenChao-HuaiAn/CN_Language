@@ -49,6 +49,7 @@ const char* AstPrinter::operatorText(Operator op) {
         case Operator::GreaterGreaterAssign: return ">>=";
         case Operator::Increment: return "++";
         case Operator::Decrement: return "--";
+        case Operator::Propagate: return "?";
         case Operator::Dot: return ".";
         case Operator::Arrow: return "->";
     }

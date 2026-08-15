@@ -134,6 +134,7 @@ private:
     std::unique_ptr<Expr> parseExpr();                  // 优先级1：赋值（最低）
     std::unique_ptr<Expr> parseAssignment();            // 赋值：= += -= *= /= %= （右结合）
     std::unique_ptr<Expr> parseTernary();               // 优先级1.5：条件 ? 真值 : 假值（右结合，Task 2.9）
+    bool ternaryQuestionNext();                     // C-1：'?' 后能否开始新表达式（三元判定）
     std::unique_ptr<Expr> parseLogicalOr();             // 优先级2：||
     std::unique_ptr<Expr> parseLogicalAnd();            // 优先级3：&&
     std::unique_ptr<Expr> parseBitOr();                 // 优先级4：|（按位或，Task 2.3）
