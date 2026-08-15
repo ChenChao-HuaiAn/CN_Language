@@ -59,6 +59,18 @@ std::string arrayElemOf(const std::string& type);
 // 提取数组长度（整32[10] -> 10；非数组类型返回 -1）
 int arrayLenOf(const std::string& type);
 
+// ==================== 引用类型（A-1 引用参数，2026-08） ====================
+
+// 是否引用类型（类型名以 & 结尾，如 整32& / 账户& / T&）
+bool isReference(const std::string& type);
+
+// 剥离引用后缀（整32& -> 整32；非引用类型原样返回）
+std::string stripRef(const std::string& type);
+
+// 参数类型规范化：引用保留 &（整32& -> 整32&），其余同 canonical——
+// 使重载签名（sigKey）与 mangling 能区分 按值/按引用 参数
+std::string canonicalParam(const std::string& type);
+
 // 基本类型字节大小（整8/布尔=1、整16=2、整32/浮32/字符=4、整64/浮64/指针=8、
 // 整128/正128=16）；其他类型返回0（数组/结构体等由调用方递归计算）
 int typeSize(const std::string& type);

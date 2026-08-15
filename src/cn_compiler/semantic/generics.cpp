@@ -392,7 +392,7 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 if (mi.isDestructor) mi.name = "~" + src->name;
                 for (auto& p : member->params) {
                     mi.paramTypes.push_back(
-                        types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
+                        types::canonicalParam(substTypeParam(p->typeName, gen->typeParams, args)));
                 }
                 mi.sigKey = signatureKey(mi.name, mi.paramTypes);
                 // Debug 子任务修复（构造函数重载）：泛型实例化类同样用 sigKey 作
@@ -418,7 +418,7 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 mi.operatorSym = member->operatorSym;
                 for (auto& p : member->params) {
                     mi.paramTypes.push_back(
-                        types::canonical(substTypeParam(p->typeName, gen->typeParams, args)));
+                        types::canonicalParam(substTypeParam(p->typeName, gen->typeParams, args)));
                 }
                 mi.sigKey = signatureKey(mi.name, mi.paramTypes);
                 info.methods[mi.name] = mi;
@@ -493,7 +493,7 @@ std::string SemanticAnalyzer::instantiateGeneric(
             //   规范化字符串（函数指针<整32>(T,T)），substTypeParam 的模板分支会递归
             //   替换内嵌类型参数 T -> 实参（整32），否则实例化签名缺函数指针参数 ->
             //   "未找到匹配的函数 '排序$整32'（参数个数或类型不匹配）"
-            info.paramTypes.push_back(types::canonical(substTypeParam(
+            info.paramTypes.push_back(types::canonicalParam(substTypeParam(
                 p->funcPtr.isFunctionPtr() ? p->funcPtr.toString() : p->typeName,
                 gen->typeParams, args)));
         }

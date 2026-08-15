@@ -333,8 +333,11 @@ std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
 //  -1 = 不可转换
 int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
                                       const std::string& paramTypeRaw) {
-    const std::string arg = canonicalType(argTypeRaw);
-    const std::string param = canonicalType(paramTypeRaw);
+    // A-1（引用参数）：按值/按引用双方均剥 & 后比较——引用参数绑定左值实参，
+    //   实参与参数的数据形状一致（都是被引用类型的值）；引用 vs 按值 的区分
+    //   由签名 key（& 保留在 paramTypes）完成，决议只看形状
+    const std::string arg = types::stripRef(canonicalType(argTypeRaw));
+    const std::string param = types::stripRef(canonicalType(paramTypeRaw));
     if (arg == param) return 0;
     if (!canConvertType(arg, param)) return -1;
     // 枚举 -> 整数：按宽化处理（枚举本质为整32，值域不损失）
@@ -1051,6 +1054,13 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     FunctionInfo info;
     info.returnType = node->returnType.empty() ? "空类型" : canonicalType(node->returnType);
     info.hasBody = (node->body != nullptr);
+    // A-1（引用参数）：函数返回类型暂不支持引用（引用仅支持函数参数）——
+    //   规格书容器设计中的 T& 下标返回 属后续扩展，当前明确报错避免静默误编译
+    if (!node->returnType.empty() && types::isReference(node->returnType)) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "函数返回类型暂不支持引用（'" + node->returnType +
+                            "'），请改用指针返回");
+    }
     // 默认参数规则检查：从右向左连续声明（f(a=1, b) 非法——默认参数左侧出现无默认参数；
     //   f(a, b=1, c=2) 合法——最左侧参数可无默认）。
     // 正确判定：从左到右，一旦遇到无默认参数，其后所有参数都须无默认；
@@ -1067,6 +1077,12 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     //   a 有默认在左被隔断；f(a, b=1) 合法：b 有默认最右、a 无默认最左）
     bool noDefaultSeen = false;
     for (auto it = node->params.rbegin(); it != node->params.rend(); ++it) {
+        // A-1（引用参数）：引用参数不能有默认值（引用须绑定调用方左值，无法预置）
+        if ((*it)->hasDefault && !(*it)->funcPtr.isFunctionPtr() &&
+            types::isReference((*it)->typeName)) {
+            diagnostics_.report(DiagnosticLevel::Error, (*it)->location,
+                                "引用参数不能有默认值（引用须绑定调用方左值）");
+        }
         if ((*it)->hasDefault) {
             ++info.defaultCount;
             info.hasDefault.push_back(true);
@@ -1086,7 +1102,9 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         if (param->funcPtr.isFunctionPtr()) {
             info.paramTypes.push_back(param->funcPtr.toString());
         } else {
-            info.paramTypes.push_back(canonicalType(param->typeName));
+            // A-1（引用参数）：引用保留 &（整32& / 账户&）——签名 key/mangling
+            //   须区分 按值/按引用（整32 vs 整32& 是不同重载）
+            info.paramTypes.push_back(types::canonicalParam(param->typeName));
         }
     }
     // 生成签名 key（名 + "#" + 参数类型串，mangling 与决议共用）
@@ -1376,6 +1394,13 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   （checkExpr 触发实例化构造，返回 容器$整32）之前替换 varType，
     //   否则类型匹配（容器<整32> vs 容器$整32）失败。
     varType = resolveGenericTypeName(varType, node->location);
+    // A-1（引用参数）：引用变量声明暂不支持（引用仅支持函数参数）——
+    //   明确报错避免 IR 层按指针类型静默误编译（变量 整32& r = x）
+    if (!varType.empty() && types::isReference(varType)) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "引用变量声明暂不支持（引用仅用于函数参数，如 函数 交换(整32& a, 整32& b)）");
+        return;
+    }
     if (varType.empty() && node->initializer != nullptr) {
         // 类型推断：无显式类型时从初始值推断
         varType = checkExpr(node->initializer.get());
@@ -1687,7 +1712,10 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
     }
     std::string varType;
     if (lookupVar(node->name, varType)) {
-        lastType_ = varType;
+        // A-1（引用参数）：表达式值是"被引用对象的值"（读取自动解引用），
+        //   类型为剥 & 后的基础类型——与 IR 层 byRef 解引用读取一致；
+        //   引用性仅保留在变量登记（IR byRef 标记）与参数签名（&）中
+        lastType_ = types::isReference(varType) ? types::stripRef(varType) : varType;
         return;
     }
     // 枚举/结构体/类/接口类型名作标识符（供 枚举名.成员、&结构体、类名.静态成员，Task 2.7/3.x）
@@ -2148,6 +2176,47 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
 // Task 2.2：支持两种调用——直接函数名调用、函数指针变量间接调用
 // Task 2.10：直接函数名调用改为重载决议（按实参个数+类型匹配签名，
 //   支持默认参数补全；仅返回类型不同不构成重载）；决议结果写回
+// A-1（引用参数）：实参自动取地址——引用参数按地址传递，调用点把实参重写为
+//   &左值（AddressOf UnaryExpr；IR 层 lvalueAddress 生成地址）。
+//   要求实参是左值（变量/下标/解引用/字段/自身）；常量/字面量/临时值报错。
+//   实参本身是引用变量时 &引用 仍得被引用对象地址（IR byRef 分支 Load 槽）。
+void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
+                                   const std::vector<std::string>& paramTypes) {
+    const std::size_t n = std::min(node->arguments.size(), paramTypes.size());
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!types::isReference(paramTypes[i])) continue;
+        Expr* arg = node->arguments[i].get();
+        bool isLvalue = false;
+        switch (arg->getType()) {
+            case NodeType::IdentifierExpr: {
+                std::string vt;
+                isLvalue = lookupVar(static_cast<IdentifierExpr*>(arg)->name, vt);
+                break;
+            }
+            case NodeType::IndexExpr:
+            case NodeType::MemberExpr:
+            case NodeType::SelfExpr:
+                isLvalue = true;
+                break;
+            case NodeType::UnaryExpr:
+                isLvalue = (static_cast<UnaryExpr*>(arg)->op == Operator::Deref);
+                break;
+            default:
+                isLvalue = false;
+                break;
+        }
+        if (!isLvalue) {
+            diagnostics_.report(DiagnosticLevel::Error, arg->location,
+                                "引用参数要求左值实参（不能对常量/字面量/临时值取地址）");
+            continue;
+        }
+        const SourceLocation loc = arg->location;
+        node->arguments[i] = std::make_unique<UnaryExpr>(
+            Operator::AddressOf, std::move(node->arguments[i]));
+        node->arguments[i]->location = loc;
+    }
+}
+
 //   node->resolvedSignature（IR 层按此生成 mangled 符号）
 void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // 分派依据：callee 若是函数名（在函数符号表中）→ 直接调用；
@@ -2517,6 +2586,8 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                         }
                     }
                 }
+                // A-1（引用参数）：构造形参为引用时实参自动取地址
+                wrapRefArgs(node, ctor->paramTypes);
                 // 记录选中的构造 sigKey（IR 层按此生成构造体 Call 符号）
                 node->resolvedSignature = className + "$" + ctor->sigKey;
                 lastType_ = className;  // 构造返回对象
@@ -2571,6 +2642,8 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     }
                 }
             }
+            // A-1（引用参数）：实例方法引用形参的实参自动取地址
+            wrapRefArgs(node, method->paramTypes);
             // 访问控制检查（Task 3.4）
             const std::string contextClass = contextClassStack_.empty()
                                                  ? ""
@@ -2593,6 +2666,8 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                         " 个实参，实际提供 " +
                                         std::to_string(argTypes.size()) + " 个");
             }
+            // A-1（引用参数）：静态方法引用形参的实参自动取地址
+            wrapRefArgs(node, method->paramTypes);
             lastType_ = method->type;
             return;
         }
@@ -2657,6 +2732,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             node->resolvedSignature = it->second.moduleName + "$" + sigKey;
         }
         const FunctionInfo& info = it->second;
+        // A-1（引用参数）：引用形参的实参自动取地址（重写为 &左值）——
+        //   须在 IR 层实参求值之前（IR genExpr 对 AddressOf 生成 lvalueAddress）
+        wrapRefArgs(node, info.paramTypes);
         // 参数类型检查（决议已保证可转换；此处再逐个报告具体错误位置）
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
             const std::string& paramType = info.paramTypes[i];

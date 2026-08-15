@@ -89,6 +89,11 @@ std::string Arm64CodeGenerator::labelMangle(const std::string& name) {
 
 // 源码类型名 -> 附录C 类型编码（重载 mangling 用，与 X64 完全一致）
 std::string Arm64CodeGenerator::mangleTypeCode(const std::string& typeRaw) {
+    // A-1（引用参数）：引用编码 A + 基础类型码（与 X64 完全一致），
+    //   须在 canonical 之前（canonical 按值类型剥 &）
+    if (!typeRaw.empty() && typeRaw.back() == '&') {
+        return "A" + mangleTypeCode(typeRaw.substr(0, typeRaw.size() - 1));
+    }
     const std::string t = types::canonical(typeRaw);
     if (t == "空类型") return "X";
     if (t == "布尔") return "_N";

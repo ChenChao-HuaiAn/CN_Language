@@ -155,7 +155,7 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
             for (auto& p : member->params) {
                 mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                             ? p->funcPtr.toString()
-                                            : types::canonical(p->typeName));
+                                            : types::canonicalParam(p->typeName));
             }
             info.methods[mi.name] = mi;
             info.methodOrder.push_back(mi.name);
@@ -295,7 +295,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
             for (auto& p : member->params) {
                 mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                             ? p->funcPtr.toString()
-                                            : types::canonical(p->typeName));
+                                            : types::canonicalParam(p->typeName));
             }
             mi.sigKey = signatureKey(mi.name, mi.paramTypes);
             if (info.methods.find(mi.name) != info.methods.end()) {
@@ -374,7 +374,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
         for (auto& p : member->params) {
             mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                         ? p->funcPtr.toString()
-                                        : types::canonical(p->typeName));
+                                        : types::canonicalParam(p->typeName));
         }
         mi.sigKey = signatureKey(mi.name, mi.paramTypes);
         // Debug 子任务修复（构造函数重载覆盖）：构造函数/析构 用 sigKey（名#参数串）
@@ -734,7 +734,7 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
             } else if (pi < paramTypes.size() && !paramTypes[pi].empty()) {
                 ptype = paramTypes[pi];
             } else {
-                ptype = types::canonical(p->typeName);
+                ptype = types::canonicalParam(p->typeName);
             }
             if (!declareVar(p->name, ptype, p->location)) {
                 // 参数重复声明（防御）

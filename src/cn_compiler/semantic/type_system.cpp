@@ -61,6 +61,24 @@ std::string canonical(const std::string& type) {
     return type;
 }
 
+// 是否引用类型（类型名以 & 结尾，如 整32& / 账户& / T&）
+bool isReference(const std::string& type) {
+    return !type.empty() && type.back() == '&';
+}
+
+// 剥离引用后缀（整32& -> 整32；非引用类型原样返回）
+std::string stripRef(const std::string& type) {
+    return isReference(type) ? type.substr(0, type.size() - 1) : type;
+}
+
+// 参数类型规范化：引用保留 &（整32& -> 整32&），其余同 canonical——
+// 使重载签名（sigKey）与 mangling 能区分 按值/按引用 参数。
+// 注意：canonical 本身按旧语义剥除 &（值类型比较用），参数签名须用本函数
+std::string canonicalParam(const std::string& type) {
+    if (isReference(type)) return canonical(stripRef(type)) + "&";
+    return canonical(type);
+}
+
 // 是否整数类型（整8~整128/正8~正128/整数）
 bool isInteger(const std::string& type) {
     const std::string t = canonical(type);

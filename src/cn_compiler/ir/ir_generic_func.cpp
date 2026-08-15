@@ -28,6 +28,11 @@ std::string IRGenerator::substGenericType(const std::string& type) const {
     // 裸类型参数
     auto it = genericTypeParams_.find(type);
     if (it != genericTypeParams_.end()) return it->second;
+    // 引用：尾字符 '&'（T& -> 实参&，泛型引用参数 A-1；与语义 substTypeParam 同步）
+    if (!type.empty() && type.back() == '&') {
+        const std::string elem = substGenericType(type.substr(0, type.size() - 1));
+        return elem + "&";
+    }
     // 指针：尾字符 '*'（T* -> 整32*）
     if (!type.empty() && type.back() == '*') {
         const std::string elem = substGenericType(type.substr(0, type.size() - 1));
@@ -123,11 +128,17 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
         const ParamDecl* param = node->params[pi].get();
         const std::string paramSrc = substGenericType(param->typeName);
+        // A-1（引用参数 泛型 T& -> 整32&）：参数槽存被引用左值地址，
+        //   体内读写经 byRef 解引用（与普通函数 visitFunctionDecl 一致）
+        const bool isRefParam = !param->funcPtr.isFunctionPtr() &&
+                                types::isReference(paramSrc);
         std::string unique = param->name + "$" + std::to_string(varCounter_++);
         std::string paramIrType = param->funcPtr.isFunctionPtr()
                                       ? "ptr" : mapType(paramSrc);
-        registerVarSlots(unique, param->funcPtr.isFunctionPtr() ? "" : paramSrc);
-        if (semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
+        if (isRefParam) paramIrType = "ptr";
+        registerVarSlots(unique, isRefParam ? ""
+                            : (param->funcPtr.isFunctionPtr() ? "" : paramSrc));
+        if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
             semantic_->isStructType(types::canonical(paramSrc))) {
             func.structParamIndexes.insert(static_cast<int>(pi));
         }
@@ -138,8 +149,9 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
         VarEntry entryInfo;
         entryInfo.regId = reg.id;
         entryInfo.uniqueName = unique;
-        entryInfo.type = reg.type;
+        entryInfo.type = isRefParam ? mapType(types::stripRef(paramSrc)) : reg.type;
         entryInfo.srcType = paramSrc;
+        entryInfo.byRef = isRefParam;
         varStack_.back()[param->name] = entryInfo;
     }
 

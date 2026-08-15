@@ -668,7 +668,9 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
         if (idx->object->getType() == NodeType::IdentifierExpr) {
             IdentifierExpr* ident = static_cast<IdentifierExpr*>(idx->object.get());
             const std::string unique = lookupVarName(ident->name);
-            const std::string srcType = lookupSrcType(ident->name);
+            const std::string srcTypeRaw = lookupSrcType(ident->name);
+            // A-1（引用参数）：引用数组参数（整32[5]&）先剥 & 再判数组形态
+            const std::string srcType = types::stripRef(srcTypeRaw);
             if (!unique.empty() && types::isArray(srcType)) {
                 // 缺陷修复（[&] 捕获数组）：参数槽存被捕获数组地址，基址 = Load 参数槽
                 //   （而非 AddrOf 参数槽——否则下标落到参数槽自身区域，读垃圾/越界）
@@ -953,13 +955,21 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
         auto& param = node->params[pi];
         std::string unique = param->name + "$" + std::to_string(varCounter_++);
+        // A-1（引用参数 整32& / 账户& / T&，2026-08 修复）：参数槽存"被引用左值
+        //   的地址"（8 字节），体内读取/赋值经 byRef 机制解引用（复用 lambda
+        //   [&] 捕获的成熟路径：读 LoadPtr、写 StorePtr、取地址 Load 槽）
+        const bool isRefParam = !param->funcPtr.isFunctionPtr() &&
+                                types::isReference(param->typeName);
         // Task 2.2：函数指针参数（整32(*func)(整32, 整32)）类型为 ptr
         std::string paramIrType = param->funcPtr.isFunctionPtr()
                                       ? "ptr" : mapType(param->typeName);
-        // Task 2.4：数组参数按多槽登记（varSlots）
-        registerVarSlots(unique, param->funcPtr.isFunctionPtr() ? "" : param->typeName);
-        // Task 完善A：结构体按值参数标记（语义层查询——结构体源码类型）
-        if (semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
+        if (isRefParam) paramIrType = "ptr";  // 引用参数按地址传递（槽存地址）
+        // Task 2.4：数组参数按多槽登记（varSlots）；引用参数仅 1 槽（存地址）
+        registerVarSlots(unique, isRefParam ? ""
+                            : (param->funcPtr.isFunctionPtr() ? "" : param->typeName));
+        // Task 完善A：结构体按值参数标记（语义层查询——结构体源码类型）；
+        //   引用参数（账户&）按地址传递（非按值结构体拷贝），须排除
+        if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
             semantic_->isStructType(types::canonical(param->typeName))) {
             func.structParamIndexes.insert(static_cast<int>(pi));
         }
@@ -970,8 +980,12 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         VarEntry entryInfo;
         entryInfo.regId = reg.id;
         entryInfo.uniqueName = unique;
-        entryInfo.type = reg.type;
+        // 体内"值类型"仍为被引用基础类型：读取经 byRef 解引用（LoadPtr）返回
+        // 基础类型值（与 lambda [&] 捕获 entry.type 规则一致，lambda 处注释同源）
+        entryInfo.type = isRefParam ? mapType(types::stripRef(param->typeName))
+                                    : reg.type;
         entryInfo.srcType = param->typeName;  // 指针/数组复合类型源码名
+        entryInfo.byRef = isRefParam;         // A-1：引用参数按 byRef 语义读写
         varStack_.back()[param->name] = entryInfo;
     }
     // Task 2.10：收集尾部默认参数值（签名 key -> 默认值 IR 常量列表）。
@@ -1912,9 +1926,12 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     //   （地址形态，供下标/字段/按值传参使用）；
     //   标量/字符串/i128：[&] 捕获须解引用（LoadPtr）读最新值。
     if (isByRefCapture(node->name)) {
-        if (types::isArray(srcType) ||
+        // A-1（引用参数）：srcType 可能是 账户& / 整32[5]&（引用参数带 &），
+        //   数组/结构体形态判断前先剥 &（被引用对象形状决定取地址还是取值）
+        const std::string stRef = types::stripRef(srcType);
+        if (types::isArray(stRef) ||
             (semantic_ != nullptr &&
-             semantic_->isStructType(types::canonical(srcType)))) {
+             semantic_->isStructType(types::canonical(stRef)))) {
             lastExpr_ = emitResult(ir::Opcode::Load,
                                    {ir::IRValue::var(unique, "ptr")},
                                    "ptr", unique, node->location);
@@ -2699,8 +2716,17 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 // 逐字节拷贝字段到新对象（深拷贝）
                 emit(ir::Opcode::CopyStruct, {newObj, srcObj}, ir::IRValue(),
                      std::to_string(ci->totalSize), "void", node->location);
-                emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique, "ptr",
-                     node->location);
+                // A-1（引用参数）：目标为引用参数时经指针写回（StorePtr 到槽内地址）
+                if (isByRefCapture(ident->name)) {
+                    ir::IRValue capAddr = emitResult(ir::Opcode::Load,
+                                                     {ir::IRValue::var(unique, "ptr")},
+                                                     "ptr", unique, node->location);
+                    emit(ir::Opcode::StorePtr, {capAddr, newObj}, ir::IRValue(), "",
+                         "ptr", node->location);
+                } else {
+                    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique, "ptr",
+                         node->location);
+                }
                 lastExpr_ = newObj;
                 return;
             }
@@ -2752,9 +2778,17 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         if (semantic_->isStructType(types::canonical(targetSrcType)) &&
             semantic_->isStructType(types::canonical(valueSrcType))) {
             const int size = semantic_->typeSizeOf(types::canonical(targetSrcType));
-            ir::IRValue dstAddr = emitResult(ir::Opcode::AddrOf,
-                                             {ir::IRValue::var(unique, "i64")},
-                                             "ptr", unique, node->location);
+            // A-1（引用参数）：目标为引用参数时目标地址 = Load 槽（槽内存被引用对象地址）
+            ir::IRValue dstAddr;
+            if (isByRefCapture(ident->name)) {
+                dstAddr = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(unique, "ptr")},
+                                     "ptr", unique, node->location);
+            } else {
+                dstAddr = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(unique, "i64")},
+                                     "ptr", unique, node->location);
+            }
             // 源地址：标识符 -> AddrOf；成员/下标 -> lvalueAddress；
             // 链式赋值 -> 内层返回值（ptr 寄存器，源地址，内容与内层目标相同）；
             // 结构体返回调用 -> 调用返回的结构体地址（ptr 寄存器）
@@ -2764,9 +2798,17 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
             } else if (node->value->getType() == NodeType::IdentifierExpr) {
                 const std::string srcUnique = lookupVarName(
                     static_cast<IdentifierExpr*>(node->value.get())->name);
-                srcAddr = emitResult(ir::Opcode::AddrOf,
-                                     {ir::IRValue::var(srcUnique, "i64")},
-                                     "ptr", srcUnique, node->location);
+                // A-1（引用参数）：源为引用参数时源地址 = Load 槽（槽内存地址）
+                if (isByRefCapture(
+                        static_cast<IdentifierExpr*>(node->value.get())->name)) {
+                    srcAddr = emitResult(ir::Opcode::Load,
+                                         {ir::IRValue::var(srcUnique, "ptr")},
+                                         "ptr", srcUnique, node->location);
+                } else {
+                    srcAddr = emitResult(ir::Opcode::AddrOf,
+                                         {ir::IRValue::var(srcUnique, "i64")},
+                                         "ptr", srcUnique, node->location);
+                }
             } else {
                 srcAddr = lvalueAddress(node->value.get());
             }
@@ -2784,8 +2826,17 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         if (mapBinaryOp(baseOp, false, opcode)) {
             ir::IRValue combined = emitResult(opcode, {current, value}, targetType, "",
                                               node->location);
-            emit(ir::Opcode::Store, {combined}, ir::IRValue(), unique, targetType,
-                 node->location);
+            // A-1（引用参数）：目标为引用参数时复合赋值经 StorePtr 写回
+            if (isByRefCapture(ident->name)) {
+                ir::IRValue capAddr = emitResult(ir::Opcode::Load,
+                                                 {ir::IRValue::var(unique, "ptr")},
+                                                 "ptr", unique, node->location);
+                emit(ir::Opcode::StorePtr, {capAddr, combined}, ir::IRValue(), "",
+                     targetType, node->location);
+            } else {
+                emit(ir::Opcode::Store, {combined}, ir::IRValue(), unique, targetType,
+                     node->location);
+            }
             lastExpr_ = combined;
             return;
         }
@@ -3686,19 +3737,24 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     // 显式参数
     for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
         auto& param = node->params[pi];
-        const std::string ptype = param->funcPtr.isFunctionPtr()
+        // A-1（引用参数）：lambda 显式引用参数（整32&）同样按 byRef 语义
+        const bool isRefParam = !param->funcPtr.isFunctionPtr() &&
+                                types::isReference(param->typeName);
+        const std::string ptype = (param->funcPtr.isFunctionPtr() || isRefParam)
                                       ? "ptr" : mapType(param->typeName);
         std::string unique = param->name + "$" + std::to_string(varCounter_++);
         func.params.emplace_back(param->name, ptype);
         func.paramUniques.push_back(unique);
-        registerVarSlots(unique, param->funcPtr.isFunctionPtr() ? "" : param->typeName);
+        registerVarSlots(unique, isRefParam ? ""
+                            : (param->funcPtr.isFunctionPtr() ? "" : param->typeName));
         ir::IRValue reg = newReg();
         reg.type = ptype;
         VarEntry entry;
         entry.regId = reg.id;
         entry.uniqueName = unique;
-        entry.type = reg.type;
+        entry.type = isRefParam ? mapType(types::stripRef(param->typeName)) : reg.type;
         entry.srcType = param->typeName;
+        entry.byRef = isRefParam;
         varStack_.back()[param->name] = entry;
     }
     blockCounter_ = 0;

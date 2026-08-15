@@ -81,6 +81,11 @@ std::string X64CodeGenerator::nameMangle(const std::string& name) {
 // 注：编码唯一性要求——字符串=PAX（char* 指针）、任意指针=PE<所指编码>、
 //     数组=PA<元素编码>（退化指针）、函数指针=P6A...（本阶段按 PE 简化）。
 std::string X64CodeGenerator::mangleTypeCode(const std::string& typeRaw) {
+    // A-1（引用参数）：引用编码 A + 基础类型码（MSVC 风格 A=引用），
+    //   须在 canonical 之前（canonical 按值类型剥 &）
+    if (!typeRaw.empty() && typeRaw.back() == '&') {
+        return "A" + mangleTypeCode(typeRaw.substr(0, typeRaw.size() - 1));
+    }
     const std::string t = types::canonical(typeRaw);
     if (t == "空类型") return "X";
     if (t == "布尔") return "_N";

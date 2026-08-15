@@ -278,6 +278,9 @@ private:
     void computeEnumValues(EnumDecl* decl);
     // 从内到外查找变量类型（未找到返回false）
     bool lookupVar(const std::string& name, std::string& type) const;
+    // A-1（引用参数）：实参自动取地址——引用参数按地址传递，调用点把实参重写为
+    //   &左值（AddressOf UnaryExpr）；实参须为左值（变量/下标/解引用/字段）
+    void wrapRefArgs(CallExpr* node, const std::vector<std::string>& paramTypes);
 
     // ==================== 类型工具（静态，委托 type_system 子模块 Task 2.3） ====================
     // 类型工具抽取到 semantic/type_system.hpp 子模块（types::命名空间），

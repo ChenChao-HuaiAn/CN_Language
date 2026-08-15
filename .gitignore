@@ -21,6 +21,10 @@ test_input_api_*.txt
 .ai-coder/memory/
 .ai-coder/tasks/
 
+# DSH技能发现链接（junction，指向 .ai-coder/skills 与设计系统）
+.agents/
+design-system/
+
 # CMake
 CMakeCache.txt
 CMakeFiles/
