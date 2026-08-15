@@ -23,9 +23,12 @@
 
 #ifdef _WIN32
 #include <windows.h>
+#else
+#include <unistd.h>  // readlink（stdlib 目录探测）
 #endif
 
 #include "cn_compiler/common/diagnostics.hpp"
+#include "cn_compiler/driver/cargo_parser.hpp"
 #include "cn_compiler/driver/driver.hpp"
 #include "cn_compiler/lexer/lexer.hpp"
 #include "cn_compiler/parser/parser.hpp"
@@ -41,6 +44,11 @@ struct CliOptions {
     bool debugInfo = false;          // 是否嵌入源码位置注释（--debug）
     // Task 6.6 条件编译：命令行注入宏（-D 宏名，可多次；#如果定义 判定用）
     std::unordered_set<std::string> macros;
+    // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
+    // --货舱 <路径> 显式指定；为空时按入口文件同目录自动发现 货舱.toml
+    std::string cargoToml;
+    // 编译器内置 stdlib 目录（--stdlib <路径> 显式覆盖；默认相对可执行文件探测）
+    std::string stdlibDir;
 };
 
 // 打印版本信息
@@ -69,6 +77,9 @@ void printHelp() {
     std::cout << "  --debug                汇编中嵌入源码位置注释（阶段C 调试信息）\n";
     std::cout << "  --output <路径>        输出文件路径\n";
     std::cout << "  --verbose              详细输出\n";
+    // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
+    std::cout << "  --货舱 <路径>           指定 货舱.toml 路径（默认按入口文件同目录自动发现）\n";
+    std::cout << "  --stdlib <路径>        指定编译器内置 stdlib 目录（默认相对可执行文件探测）\n";
     std::cout << "  --version, -v          显示版本信息\n";
     std::cout << "  --help, -h             显示帮助信息\n";
 }
@@ -111,6 +122,14 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
             // Task 6.6 条件编译：注入宏定义（-D 宏名，可多次指定）
             if (index + 1 >= args.size()) return "选项 -D 缺少宏名参数";
             options.macros.insert(args[++index]);
+        } else if (current == "--货舱") {
+            // 模块系统 v2.0 第 5 层：显式指定 货舱.toml 路径（覆盖自动发现）
+            if (index + 1 >= args.size()) return "选项 --货舱 缺少路径参数";
+            options.cargoToml = args[++index];
+        } else if (current == "--stdlib") {
+            // 显式指定编译器内置 stdlib 目录（覆盖相对可执行文件探测）
+            if (index + 1 >= args.size()) return "选项 --stdlib 缺少路径参数";
+            options.stdlibDir = args[++index];
         } else if (current == "--verbose") {
             options.verbose = true;
         } else if (current.rfind("--", 0) == 0) {
@@ -128,7 +147,50 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
 // ==================== 源文件读取与路径工具 ====================
 
 // 读取UTF-8源文件（自动去除UTF-8 BOM，兼容记事本保存的源码）
+// 路径编码兼容（第 5 层，货舱.toml 中文路径统一 UTF-8）：
+//   先试窄字符（GBK/ASCII），失败再试 UTF-8 -> UTF-16 宽路径（_wfopen），
+//   与 module::readSourceFile 同机制（依赖模块中文名已验证）。
 static bool readSourceFile(const std::string& path, std::string& content, std::string& error) {
+#ifdef _WIN32
+    auto readNarrow = [&](const std::string& p, std::string& out) -> bool {
+        FILE* fp = nullptr;
+        if (fopen_s(&fp, p.c_str(), "rb") != 0 || fp == nullptr) return false;
+        std::fseek(fp, 0, SEEK_END);
+        const long size = std::ftell(fp);
+        std::fseek(fp, 0, SEEK_SET);
+        out.clear();
+        if (size > 0) {
+            out.resize(static_cast<std::size_t>(size));
+            out.resize(std::fread(&out[0], 1, static_cast<std::size_t>(size), fp));
+        }
+        std::fclose(fp);
+        return true;
+    };
+    if (!readNarrow(path, content)) {
+        const int wideLen = MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, nullptr, 0);
+        if (wideLen <= 0) {
+            error = "无法打开源文件: " + path;
+            return false;
+        }
+        std::vector<wchar_t> widePath(static_cast<std::size_t>(wideLen));
+        MultiByteToWideChar(CP_UTF8, 0, path.c_str(), -1, widePath.data(), wideLen);
+        FILE* fp = nullptr;
+        if (_wfopen_s(&fp, widePath.data(), L"rb") != 0 || fp == nullptr) {
+            error = "无法打开源文件: " + path;
+            return false;
+        }
+        std::string buf;
+        std::fseek(fp, 0, SEEK_END);
+        const long size = std::ftell(fp);
+        std::fseek(fp, 0, SEEK_SET);
+        if (size > 0) {
+            buf.resize(static_cast<std::size_t>(size));
+            buf.resize(std::fread(&buf[0], 1, static_cast<std::size_t>(size), fp));
+        }
+        std::fclose(fp);
+        content = std::move(buf);
+    }
+#else
     std::ifstream in(path, std::ios::binary);
     if (!in) {
         error = "无法打开源文件: " + path;
@@ -137,6 +199,7 @@ static bool readSourceFile(const std::string& path, std::string& content, std::s
     std::ostringstream buf;
     buf << in.rdbuf();
     content = buf.str();
+#endif
     // 去除UTF-8 BOM（EF BB BF）
     if (content.size() >= 3 && content.compare(0, 3, "\xEF\xBB\xBF") == 0) {
         content = content.substr(3);
@@ -187,9 +250,114 @@ static bool ensureDirExists(const std::string& dir) {
 #endif
 }
 
-// 将 CliOptions 转换为 driver 选项
-static cn_compiler::driver::DriverOptions toDriverOptions(const CliOptions& options) {
-    cn_compiler::driver::DriverOptions dopts;
+// 提取文件所在目录（含末尾分隔符）；无目录返回空串
+static std::string pathDirPart(const std::string& path) {
+    size_t slash = path.find_last_of("/\\");
+    return (slash == std::string::npos) ? "" : path.substr(0, slash + 1);
+}
+
+// 探测编译器内置 stdlib 目录：
+//   1. --stdlib 显式指定 -> 使用该路径
+//   2. 默认：相对可执行文件所在目录的 stdlib/（编译器发行布局 target/stdlib 或 exe 同级）
+// 返回空串表示未探测到（依赖查找跳过内置 stdlib 兜底）
+static std::string detectStdlibDir(const CliOptions& options) {
+    if (!options.stdlibDir.empty()) {
+        return options.stdlibDir;
+    }
+    // 可执行文件路径：GetModuleFileNameA（Windows）/ /proc/self/exe（Linux）
+    std::string exeDir;
+#ifdef _WIN32
+    char buf[MAX_PATH] = {0};
+    GetModuleFileNameA(nullptr, buf, MAX_PATH);
+    exeDir = pathDirPart(buf);
+#else
+    char buf[4096] = {0};
+    const ssize_t n = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n > 0) {
+        buf[n] = '\0';
+        exeDir = pathDirPart(buf);
+    }
+#endif
+    if (exeDir.empty()) return "";
+    // 从可执行文件目录逐级向上回溯（最多 3 层），找含 stdlib/ 子目录的目录：
+    //   发行布局 target/Debug/cn.exe -> 项目根/stdlib（上溯 2 层）
+    //   本地布局 target/cn.exe       -> 项目根/stdlib（上溯 1 层）
+    //   便携布局 <bin>/cn            -> <bin>/stdlib（上溯 0 层）
+    struct stat st;
+    std::string dir = exeDir;
+    for (int level = 0; level <= 3; ++level) {
+        const std::string cand = dir + "stdlib";
+        if (stat(cand.c_str(), &st) == 0 && (st.st_mode & S_IFDIR)) return cand;
+        if (level == 3) break;
+        // 上溯一层：去掉末尾目录（保留末尾分隔符）
+        const std::size_t sep = dir.find_last_of("/\\", dir.size() - 2);
+        if (sep == std::string::npos) break;
+        dir = dir.substr(0, sep + 1);
+    }
+    return "";
+}
+
+// Windows 辅助：ANSI 代码页（GBK）窄字符串 -> UTF-8（MultiByteToWideChar 经宽字符）
+//   入口文件路径来自命令行（GBK）；"货舱.toml" 文件名为源码 UTF-8 字面量。
+//   自动发现需拼成**纯 UTF-8 路径**（目录段 GBK 转 UTF-8 + 文件段 UTF-8），
+//   供 readTomlFile 的 UTF-8 宽路径分支打开（混合编码两段都无法匹配）。
+static std::string ansiToUtf8(const std::string& ansi) {
+#ifdef _WIN32
+    if (ansi.empty()) return ansi;
+    const int wideLen = MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), -1, nullptr, 0);
+    if (wideLen <= 0) return ansi;  // 非 ANSI 编码（纯 ASCII 时 CP_ACP 也成功）
+    std::vector<wchar_t> wide(static_cast<std::size_t>(wideLen));
+    MultiByteToWideChar(CP_ACP, 0, ansi.c_str(), -1, wide.data(), wideLen);
+    const int utf8Len = WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, nullptr, 0, nullptr, nullptr);
+    std::string utf8(static_cast<std::size_t>(utf8Len - 1), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wide.data(), -1, &utf8[0], utf8Len, nullptr, nullptr);
+    return utf8;
+#else
+    (void)ansi;  // Linux 统一 UTF-8，无需转换
+    return ansi;
+#endif
+}
+
+// 加载 货舱.toml 配置到 driver 选项：
+//   --货舱 显式指定 -> 加载指定路径（缺失/解析失败报错）
+//   否则 -> 入口文件同目录自动发现 货舱.toml（对标 Cargo 自动发现；缺失不报错）
+// 返回 false 表示货舱.toml 存在但加载失败（错误已写入 error）
+static bool applyCargoConfig(const CliOptions& options, const std::string& file,
+                             cn_compiler::driver::DriverOptions& dopts, std::string& error) {
+    // 确定 货舱.toml 路径
+    std::string tomlPath;
+    if (!options.cargoToml.empty()) {
+        tomlPath = options.cargoToml;
+    } else {
+        // 入口目录（命令行 GBK）转 UTF-8 后拼接 UTF-8 文件名 货舱.toml，
+        //   得到纯 UTF-8 路径（readTomlFile 宽路径分支可打开）
+        const std::string dir = ansiToUtf8(pathDirPart(file));
+        tomlPath = (dir.empty() ? "" : dir) + "货舱.toml";
+    }
+    // 读取并解析
+    cn_compiler::driver::CargoConfig config;
+    std::string parseErr;
+    if (!cn_compiler::driver::loadCargoConfig(tomlPath, config, parseErr)) {
+        if (!parseErr.empty()) {
+            error = "解析 货舱.toml 失败: " + parseErr;
+            return false;
+        }
+        // 文件不存在：非错误（自动发现允许无配置；显式 --货舱 缺失时提示）
+        if (!options.cargoToml.empty()) {
+            error = "无法打开 货舱.toml: " + tomlPath;
+            return false;
+        }
+        return true;  // 未发现配置：继续，依赖查找只走入口同目录 + stdlib 兜底
+    }
+    dopts.hasCargoConfig = true;
+    dopts.cargoConfig = config;
+    dopts.cargoDir = pathDirPart(tomlPath);
+    return true;
+}
+
+// 将 CliOptions 转换为 driver 选项（含货舱.toml 加载；失败返回 false 并写 error）
+static bool toDriverOptions(const CliOptions& options, const std::string& file,
+                            cn_compiler::driver::DriverOptions& dopts, std::string& error) {
     dopts.target = options.target;
     dopts.optLevel = options.optLevel;
     dopts.output = options.output;
@@ -201,7 +369,10 @@ static cn_compiler::driver::DriverOptions toDriverOptions(const CliOptions& opti
     dopts.useRegAlloc = (options.optLevel >= 2) && options.useRegAlloc;
     // 阶段C（Task 4.4）：调试信息
     dopts.debugInfo = options.debugInfo;
-    return dopts;
+    // 模块系统 v2.0 第 5 层：货舱.toml + stdlib 目录
+    dopts.stdlibDir = detectStdlibDir(options);
+    if (!applyCargoConfig(options, file, dopts, error)) return false;
+    return true;
 }
 
 // ==================== MSVC 工具链（build/run 命令共用） ====================
@@ -448,8 +619,16 @@ static int buildExe(const CliOptions& options, const std::string& file,
     //    Task 3.6 模块系统：统一走多文件流水线（单文件无导入时行为与 runPipeline 等价；
     //    含导入时自动加载依赖模块）。source 已读取但多文件流水线按文件路径重新加载
     //    （含依赖模块），保持一致的文件解析语义。
+    //    模块系统 v2.0 第 5 层：toDriverOptions 负责加载 货舱.toml（自动发现/--货舱）。
+    cn_compiler::driver::DriverOptions dopts;
+    if (!toDriverOptions(options, file, dopts, error)) {
+        if (error.empty()) error = "加载 货舱.toml 配置失败";
+        return 1;
+    }
     cn_compiler::driver::PipelineOutput output;
-    if (cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output) != 0) {
+    // 入口文件转 UTF-8 传给 driver（依赖查找/模块名判定统一 UTF-8；
+    //   工具链路径保持 GBK file——ml64/link 按 ANSI 解释中文名）
+    if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
         return 1;
     }
 
@@ -544,9 +723,15 @@ static int runCompile(const CliOptions& options, const std::string& file) {
         std::cerr << "错误: " << error << "\n";
         return 1;
     }
+    cn_compiler::driver::DriverOptions dopts;
+    if (!toDriverOptions(options, file, dopts, error)) {
+        std::cerr << "错误: " << error << "\n";
+        return 1;
+    }
     cn_compiler::driver::PipelineOutput output;
-    // Task 3.6：compile 命令走多文件流水线（自动加载导入依赖）
-    if (cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output) != 0) {
+    // Task 3.6：compile 命令走多文件流水线（自动加载导入依赖）；
+    //   入口文件转 UTF-8（依赖查找/模块名判定统一 UTF-8）
+    if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
         return 1;
     }
     // 输出汇编文件（--output 指定或默认 target/<stem>.<asm|s>）
@@ -604,8 +789,13 @@ static int runCheckCommand(const CliOptions& options, const std::string& file) {
         std::cerr << "错误: " << error << "\n";
         return 1;
     }
+    cn_compiler::driver::DriverOptions dopts;
+    if (!toDriverOptions(options, file, dopts, error)) {
+        std::cerr << "错误: " << error << "\n";
+        return 1;
+    }
     cn_compiler::driver::PipelineOutput output;
-    const int rc = cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output);
+    const int rc = cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output);
     if (rc == 0) {
         std::cout << "检查通过: " << file << "\n";
     }
@@ -621,8 +811,13 @@ static int runIr(const CliOptions& options, const std::string& file) {
         std::cerr << "错误: " << error << "\n";
         return 1;
     }
+    cn_compiler::driver::DriverOptions dopts;
+    if (!toDriverOptions(options, file, dopts, error)) {
+        std::cerr << "错误: " << error << "\n";
+        return 1;
+    }
     cn_compiler::driver::PipelineOutput output;
-    if (cn_compiler::driver::runModulePipeline(file, toDriverOptions(options), output) != 0) {
+    if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
         return 1;
     }
     cn_compiler::driver::printIr(output.module);
@@ -683,6 +878,9 @@ int main(int argc, char** argv) {
     SetConsoleCP(CP_UTF8);
 #endif
 
+    // 注意：命令行参数保持 argv 原样（Windows 下为当前 ANSI 代码页 GBK 字节）——
+    //   ml64/link 等工具链按 ANSI 解释路径，UTF-8 中文会乱码（E2E 18/19 回归）。
+    //   货舱.toml 自动发现的中文文件名由 applyCargoConfig 做 UTF-8 -> ANSI 适配。
     std::vector<std::string> args(argv + 1, argv + argc);
 
     // 无参数：打印帮助
@@ -734,6 +932,9 @@ int main(int argc, char** argv) {
         std::cout << "目标平台: " << options.target << "\n";
         std::cout << "优化级别: " << options.optLevel << "\n";
         if (!options.output.empty()) std::cout << "输出: " << options.output << "\n";
+        // 模块系统 v2.0 第 5 层：货舱.toml 与 stdlib 目录
+        if (!options.cargoToml.empty()) std::cout << "货舱.toml: " << options.cargoToml << "\n";
+        if (!options.stdlibDir.empty()) std::cout << "stdlib目录: " << options.stdlibDir << "\n";
     }
 
     // Task 1.10：全部7个命令分发

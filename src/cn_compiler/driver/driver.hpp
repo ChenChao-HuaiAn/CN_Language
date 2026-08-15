@@ -10,6 +10,7 @@
 #include <unordered_set>
 #include <vector>
 
+#include "cn_compiler/driver/cargo_parser.hpp"
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/lexer/token.hpp"
 #include "cn_compiler/parser/ast.hpp"
@@ -30,6 +31,16 @@ struct DriverOptions {
     //   debugInfo：--debug 开启，汇编中嵌入源码位置注释
     bool useRegAlloc = false;        // 是否启用寄存器分配（由 cn_main 按 optLevel 联动设置）
     bool debugInfo = false;          // 是否嵌入源码位置注释
+    // ---- 货舱.toml 依赖管理（模块系统 v2.0 第 5 层，规格书09）----
+    // hasCargoConfig：是否已加载货舱.toml（false = 未发现配置，依赖查找只走
+    //   入口同目录 + stdlib 兜底）；cargoConfig 保存 [货舱]/[依赖] 解析结果。
+    // cargoDir：货舱.toml 所在目录（依赖查找基准，含末尾分隔符）。
+    bool hasCargoConfig = false;
+    cn_compiler::driver::CargoConfig cargoConfig;
+    std::string cargoDir;
+    // 编译器内置 stdlib 目录（相对可执行文件的 stdlib/ 或显式 --stdlib 覆盖）：
+    //   依赖版本 = "内置" 时在此查找（如 核心.cn）；空 = 未探测到（跳过内置查找）。
+    std::string stdlibDir;
 };
 
 // 流水线产物：保存各阶段中间结果，按命令需要消费

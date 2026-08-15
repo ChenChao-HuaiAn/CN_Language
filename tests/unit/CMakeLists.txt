@@ -38,6 +38,7 @@ add_executable(cn_unit_tests
     semantic/test_semantic_generic.cpp
     module/test_module.cpp
     module/test_module_driver.cpp
+    driver/test_cargo_parser.cpp
     ir/test_ir.cpp
     ir/test_ir_control.cpp
     ir/test_ir_function.cpp

@@ -804,6 +804,14 @@ public:
     // ---- 兼容字段（最小适配；第 4 层语义改造后移除） ----
     std::string importPath;                     // 路径文本（:: 分隔；兼容旧字段名）
     bool fromImport = false;                    // 旧 从...导入 标记（v2.0 恒 false）
+
+    // ---- 模块级可见性（第 5 层，规格书09-三 包.cn 再导出） ----
+    // 公开 导入 路径（无冒号形式，包.cn 公共 API 再导出）：
+    //   公开 导入 网络::连接 -> access = Public（被导入符号再导出为包级 API）
+    //   普通 导入            -> access = Private（仅本 crate 内部使用）
+    // parser 顶层循环识别 `公开` 前缀后调用 parseImportDecl 并设置本字段；
+    // 语义层 visitImportDecl 依此把公开导入的符号注册到包级导出表。
+    AccessSpecifier access = AccessSpecifier::Private;
 };
 
 // 类成员：类体内的字段/方法/构造/析构/运算符重载/友元（Task 3.1，规格书06）

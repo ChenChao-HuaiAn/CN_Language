@@ -847,6 +847,18 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             moduleAccess = AccessSpecifier::Private;
             continue;
         }
+        // 包.cn 再导出（第 5 层，规格书09-三）：公开 导入 路径
+        //   公开 导入 网络::连接 -> 再导出为包级 API（外部 包名::连接 可用）
+        //   无冒号形式（区别于 公开: 标签）；access=Public 记录再导出标记
+        if (check(TokenType::Kw_Public) && peek(1).getType() == TokenType::Kw_Import) {
+            advance();  // 消费 公开
+            auto decl = parseImportDecl();
+            if (!decl->segments.empty()) {
+                decl->access = AccessSpecifier::Public;  // 再导出
+                program->imports.push_back(std::move(decl));
+            }
+            continue;
+        }
         if (check(TokenType::Kw_Function)) {
             auto func = parseFunctionDecl();
             if (!func->name.empty() || func->body) {

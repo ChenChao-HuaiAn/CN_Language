@@ -196,6 +196,7 @@ target_link_libraries(cn_compiler_module PUBLIC cn_compiler_lexer cn_compiler_pa
 add_library(cn_compiler_driver STATIC
     src/cn_compiler/driver/driver.cpp
     src/cn_compiler/driver/driver_module.cpp
+    src/cn_compiler/driver/cargo_parser.cpp
 )
 target_include_directories(cn_compiler_driver PUBLIC ${CMAKE_SOURCE_DIR}/src)
 target_link_libraries(cn_compiler_driver PUBLIC cn_compiler_lexer cn_compiler_parser cn_compiler_semantic cn_compiler_ir cn_compiler_codegen cn_compiler_ast_printer cn_compiler_opt cn_compiler_module)

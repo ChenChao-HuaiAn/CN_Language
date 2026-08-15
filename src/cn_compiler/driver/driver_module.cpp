@@ -54,15 +54,21 @@ bool tryReadSource(const std::string& path, std::string& out) {
 //   - 子模块：网络.cn 内 模块 传输控制 -> 网络/传输控制.cn（当前模块树目录）
 // 模块名规范化：始终基于入口目录 entryDir（保证子模块名含父模块前缀，
 //   如 网络/传输控制.cn -> 网络::传输控制，而非仅 传输控制）。
-// 搜索顺序（每依赖两候选路径）：
-//   候选1 = 当前模块文件目录 + 依赖名.cn（普通依赖，如 主 导入 数学）
-//   候选2 = 当前模块文件目录 + 当前模块名最后段 + "/" + 依赖名.cn
-//           （子模块声明：网络.cn 内 模块 传输控制 -> 网络/传输控制.cn）
+//   外部模块（stdlib/依赖目录，文件路径不在 entryDir 下）：取文件名主干为模块名
+//   （stdlib/核心.cn -> 核心），moduleDir 为空（子模块从该文件目录加载）。
+// 第 5 层（v2.0 规格书09）依赖查找顺序：
+//   1. 入口同目录：候选1 = 当前模块文件目录 + 依赖名.cn；候选2 = 当前模块树目录
+//   2. 货舱.toml [依赖]：声明依赖包的解析路径——
+//      - 版本 = "内置" -> 编译器 stdlib 目录（options.stdlibDir）+ 依赖名.cn
+//      - 其他版本    -> 货舱目录/依赖/<名称>/<名称>.cn（或 /包.cn，库 crate 根）
+//   3. stdlib 兜底：options.stdlibDir + 依赖名.cn（未声明依赖但 stdlib 存在，如 核心）
+// 未找到 -> 报「无法打开源文件」（与 v1.0 一致）
 // 返回 false 表示加载/解析失败（diags 已输出或 error 已写入）
 bool loadModuleTree(const std::string& filePath, const std::string& dir,
                     const std::string& entryDir,
                     module::ModuleGraph& graph, std::string& error,
-                    const std::unordered_set<std::string>& macros) {
+                    const std::unordered_set<std::string>& macros,
+                    const DriverOptions& options) {
     // 模块名 = 文件相对**入口目录**的路径主干（网络/传输控制.cn -> 网络::传输控制）
     std::string relPart;
     if (filePath.size() > entryDir.size() && filePath.compare(0, entryDir.size(), entryDir) == 0) {
@@ -80,6 +86,25 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
          pos = moduleName.find_first_of("/\\", pos + 1)) {
         moduleName.replace(pos, 1, "::");
     }
+    // 外部模块（stdlib/依赖目录，不在入口 crate 模块树内）：模块名 = 文件名主干。
+    //   stdlib/核心.cn -> 核心；依赖/网络库/网络.cn -> 网络（跨 crate 按名匹配）。
+    // 判定为外部的条件：
+    //   1. 文件不在入口目录下（relPart == filePath，如显式绝对路径）
+    //   2. 文件在货舱依赖目录（relPart 以 "依赖/" 开头）——即使以 entryDir 前缀
+    //      开头（tests/e2e/47_package_cargo/依赖/...），也不属于入口 crate 模块树，
+    //      否则 moduleDir 会与 depRoot 重复拼接（第 5 层实测 bug）。
+    //   3. 文件在编译器 stdlib 目录（relPart 以 "stdlib/" 开头）——同上。
+    bool externalModule = false;
+    const bool inCargoDeps = (relPart.rfind("依赖/", 0) == 0);
+    const bool inStdlib = (relPart.rfind("stdlib/", 0) == 0);
+    if (relPart == filePath || inCargoDeps || inStdlib) {
+        // 仅当路径含目录时视为外部（纯文件名如 主.cn 保持原逻辑）
+        const std::size_t slash = moduleName.find("::");
+        if (slash != std::string::npos) {
+            moduleName = pathStem(filePath);
+            externalModule = true;
+        }
+    }
     if (graph.findModule(moduleName) != nullptr) return true;  // 已加载：去重
 
     std::string source;
@@ -89,8 +114,9 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     auto unit = std::make_unique<module::ModuleUnit>();
     unit->filePath = filePath;
     unit->moduleName = moduleName;
-    // 模块目录前缀（相对入口；网络/传输控制.cn -> 网络/），子模块从该目录加载
-    unit->moduleDir = pathDir(relPart);
+    // 模块目录前缀（相对入口；网络/传输控制.cn -> 网络/），子模块从该目录加载。
+    // 外部模块（stdlib/依赖目录）moduleDir 为空——子模块从文件所在目录加载。
+    unit->moduleDir = externalModule ? "" : pathDir(relPart);
     if (!module::parseSourceText(source, filePath, moduleName, unit->ast, unit->imports,
                                  diags, macros)) {
         std::cerr << diags.format();
@@ -113,24 +139,79 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
              pos = relPath.find("::", pos + 1)) {
             relPath.replace(pos, 2, "/");
         }
-        // 候选1：当前模块文件目录 + 依赖名.cn（普通依赖，主 导入 数学 -> 数学.cn）
+        // ---- 候选1：当前模块文件目录 + 依赖名.cn（普通依赖，主 导入 数学 -> 数学.cn）
         const std::string cand1 = depBase + relPath + ".cn";
         std::string srcBuf;
         if (tryReadSource(cand1, srcBuf)) {
-            if (!loadModuleTree(cand1, depBase, entryDir, graph, error, macros)) return false;
-            continue;
-        }
-        // 候选2：当前模块树目录（网络.cn 内 模块 传输控制 -> 网络/传输控制.cn）
-        //   当前模块文件目录 + 当前模块名最后段 + "/" + 依赖名.cn
-        const std::string cand2 = depBase + lastSeg + "/" + relPath + ".cn";
-        if (tryReadSource(cand2, srcBuf)) {
-            if (!loadModuleTree(cand2, dir + cur->moduleDir + lastSeg + "/", entryDir,
-                                graph, error, macros)) {
+            if (!loadModuleTree(cand1, depBase, entryDir, graph, error, macros, options)) {
                 return false;
             }
             continue;
         }
-        // 两个候选均不存在：依赖模块缺失（保持与 v1.0 一致：加载失败报错）
+        // ---- 候选2：当前模块树目录（网络.cn 内 模块 传输控制 -> 网络/传输控制.cn）
+        const std::string cand2 = depBase + lastSeg + "/" + relPath + ".cn";
+        if (tryReadSource(cand2, srcBuf)) {
+            if (!loadModuleTree(cand2, dir + cur->moduleDir + lastSeg + "/", entryDir,
+                                graph, error, macros, options)) {
+                return false;
+            }
+            continue;
+        }
+        // ---- 候选3：货舱.toml [依赖] 声明路径（第 5 层，规格书09 六 依赖解析流程）
+        // 依赖首段（网络协议::HTTP -> 网络协议）作为包名查 [依赖]
+        std::string pkgName = dep;
+        const std::size_t pkgSep = pkgName.find("::");
+        if (pkgSep != std::string::npos) pkgName = pkgName.substr(0, pkgSep);
+        if (options.hasCargoConfig) {
+            const driver::CargoDependency* cargoDep =
+                options.cargoConfig.findDependency(pkgName);
+            if (cargoDep != nullptr) {
+                if (cargoDep->version == "内置") {
+                    // 内置依赖：编译器 stdlib 目录
+                    if (!options.stdlibDir.empty()) {
+                        const std::string candBuiltin = options.stdlibDir + "/" + pkgName + ".cn";
+                        if (tryReadSource(candBuiltin, srcBuf)) {
+                            if (!loadModuleTree(candBuiltin, options.stdlibDir + "/", entryDir,
+                                                graph, error, macros, options)) {
+                                return false;
+                            }
+                            continue;
+                        }
+                    }
+                } else {
+                    // 本地依赖：货舱目录/依赖/<名称>/ 子目录（库 crate：<名称>.cn 或 包.cn）
+                    const std::string depRoot = options.cargoDir + "依赖/" + pkgName + "/";
+                    const std::string candLocal1 = depRoot + pkgName + ".cn";
+                    if (tryReadSource(candLocal1, srcBuf)) {
+                        if (!loadModuleTree(candLocal1, depRoot, entryDir,
+                                            graph, error, macros, options)) {
+                            return false;
+                        }
+                        continue;
+                    }
+                    const std::string candLocal2 = depRoot + "包.cn";
+                    if (tryReadSource(candLocal2, srcBuf)) {
+                        if (!loadModuleTree(candLocal2, depRoot, entryDir,
+                                            graph, error, macros, options)) {
+                            return false;
+                        }
+                        continue;
+                    }
+                }
+            }
+        }
+        // ---- 候选4：编译器 stdlib 兜底（未声明依赖但 stdlib 存在，如 核心/容器）
+        if (!options.stdlibDir.empty()) {
+            const std::string candStdlib = options.stdlibDir + "/" + pkgName + ".cn";
+            if (tryReadSource(candStdlib, srcBuf)) {
+                if (!loadModuleTree(candStdlib, options.stdlibDir + "/", entryDir,
+                                    graph, error, macros, options)) {
+                    return false;
+                }
+                continue;
+            }
+        }
+        // 全部候选不存在：依赖模块缺失（保持与 v1.0 一致：加载失败报错）
         error = "无法打开源文件: " + cand1;
         return false;
     }
@@ -145,11 +226,13 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
                       PipelineOutput& output) {
     Diagnostics diagnostics;
 
-    // 1. 加载模块树：入口 + 依赖（依赖与入口同目录平铺解析）
+    // 1. 加载模块树：入口 + 依赖
+    //    第 5 层：依赖查找按 options 中货舱.toml 配置 + stdlib 目录扩展
+    //    （入口同目录优先；货舱 [依赖] 次之；stdlib 兜底）
     module::ModuleGraph graph;
     std::string error;
     const std::string dir = pathDir(entryFile);
-    if (!loadModuleTree(entryFile, dir, dir, graph, error, options.macros)) {
+    if (!loadModuleTree(entryFile, dir, dir, graph, error, options.macros, options)) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
     }
