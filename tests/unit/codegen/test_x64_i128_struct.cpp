@@ -220,8 +220,10 @@ TEST(X64I128StructTest, I128ReturnSavesR12) {
     module.functions.push_back(std::move(func));
 
     const std::string asmText = generateAsm(module);
-    // prologue：mov r12, rcx（保存隐藏返回指针）
-    EXPECT_NE(asmText.find("mov r12, rcx"), std::string::npos);
-    // epilogue：mov rax, r12（用 r12 恢复缓冲区地址）
-    EXPECT_NE(asmText.find("mov rax, r12"), std::string::npos);
+    // A-4（2026-08）：隐藏返回指针保存到专用栈槽（?retbuf）——
+    //   内层函数入口 mov r12,rcx 会覆盖物理 r12（嵌套结构体返回损坏实测），
+    //   prologue: mov [rbp-N], rcx；epilogue: mov rax, [rbp-N]
+    EXPECT_NE(asmText.find("mov [rbp-"), std::string::npos);
+    EXPECT_NE(asmText.find("], rcx"), std::string::npos);
+    EXPECT_NE(asmText.find("mov rax, [rbp-"), std::string::npos);
 }

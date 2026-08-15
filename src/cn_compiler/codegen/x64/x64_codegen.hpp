@@ -280,6 +280,10 @@ private:
     std::string currentReturnType_;
     // 当前函数是否结构体返回值（Task 完善A：epilogue 把返回值拷贝到隐藏返回缓冲区 rcx）
     bool currentStructReturn_ = false;
+    // A-4（2026-08）：隐藏返回指针保存的专用栈槽偏移（结构体/i128 返回函数）。
+    //   不能用寄存器（内层函数入口 mov r12,rcx 会覆盖物理 r12，嵌套结构体返回
+    //   第3个结果损坏实测），栈槽不受内层调用影响
+    int retbufSlotOffset_ = 0;
     // 当前函数结构体返回大小（字节）：epilogue 按精确大小拷贝（避免 64 字节
     //   硬编码越界写破坏相邻栈变量——16 字节结构体被写 64 字节越界 48 字节）
     int currentStructReturnSize_ = 0;

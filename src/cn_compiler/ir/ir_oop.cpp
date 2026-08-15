@@ -374,10 +374,19 @@ bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
     if (!isInstanceField(node->name)) return false;
     const std::string fieldType = classFieldType(currentClass_, node->name);
     ir::IRValue addr = genInstanceFieldAddr(node->name, node->location);
-    // 数组/类字段退化：返回字段地址（供 字段[i] 下标 / 字段.成员 访问）
-    if (types::isArray(fieldType) ||
-        (semantic_ != nullptr && semantic_->isClassType(types::canonical(fieldType)))) {
+    // 数组字段退化：返回字段地址（供 字段[i] 下标访问）
+    if (types::isArray(fieldType)) {
         lastExpr_ = addr;
+        return true;
+    }
+    // A-4（2026-08）：类类型字段读取返回"对象指针"（LoadPtr）而非字段地址——
+    //   字段存对象指针，方法调用（字段.方法()）与值读取（类变量赋值）需要指针
+    //   本身；此前返回字段地址导致 向量 类字段的 追加/元素 以字段地址为 this，
+    //   实例字段读偏移全部错位（追加 分配失败/元素 读垃圾，52_library 边界复现）
+    if (semantic_ != nullptr &&
+        semantic_->isClassType(types::canonical(fieldType))) {
+        lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
+                               node->location);
         return true;
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},

@@ -129,8 +129,9 @@ TEST(X64StructValueTest, StructReturnEpilogueCopiesAndRets) {
     const std::size_t epilogue = asmText.rfind("rep movsb");
     ASSERT_NE(epilogue, std::string::npos);
     EXPECT_NE(asmText.find("ret", epilogue), std::string::npos);
-    // 保存隐藏返回指针 r12
-    EXPECT_NE(asmText.find("mov r12, rcx"), std::string::npos);
+    // A-4（2026-08）：隐藏返回指针保存到专用栈槽（?retbuf）——
+    //   原 mov r12, rcx 被内层函数入口覆盖（嵌套结构体返回损坏实测）
+    EXPECT_NE(asmText.find("], rcx"), std::string::npos);
 }
 
 // ==================== 结构体按值参数（param setup） ====================
@@ -187,6 +188,7 @@ TEST(X64StructValueTest, StructReturnParamOffset) {
     module.functions.push_back(std::move(func));
 
     const std::string asmText = generateAsm(module);
-    // 参数从 rdx 读取（rcx 是隐藏返回指针）
-    EXPECT_NE(asmText.find("mov [rbp-8], rdx"), std::string::npos);
+    // 参数从 rdx 读取（rcx 是隐藏返回指针；A-4：?retbuf 栈槽占 index0，
+    //   参数槽顺延至 index1 -> [rbp-16]）
+    EXPECT_NE(asmText.find("mov [rbp-16], rdx"), std::string::npos);
 }

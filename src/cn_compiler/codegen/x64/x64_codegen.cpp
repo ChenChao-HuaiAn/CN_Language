@@ -586,14 +586,14 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
     if (calleeSavedRegs_.size() % 2 == 1) {
         frameSize += 8;
     }
-    // Task 完善A：结构体/i128 返回值函数——隐藏返回指针（rcx）保存到非易失寄存器 r12，
-    //   函数体可能破坏 rcx（参数拷贝/调用）；epilogue 用 r12 恢复缓冲区地址。
-    //   修复（集成验证发现）：i128/u128 返回同样占用 rcx 作为隐藏返回指针，
-    //   且函数体内调用会破坏 rcx，必须保存到 r12（否则 epilogue 读到垃圾地址崩溃）
+    // Task 完善A：结构体/i128 返回值函数——隐藏返回指针（rcx）保存到专用栈槽
+    //   （retbufSlotOffset_，A-4 2026-08：原存 r12，内层函数入口 mov r12,rcx
+    //   覆盖物理 r12 导致外层 epilogue 读到垃圾地址——嵌套结构体返回损坏实测）；
+    //   epilogue 从栈槽恢复缓冲区地址。函数体可能破坏 rcx（参数拷贝/调用）。
     //   ⚠️ 必须在 call __chkstk 之前执行（__chkstk 破坏 rcx）
     if (function.structReturn || function.returnType == "i128" ||
         function.returnType == "u128") {
-        writer.line("mov r12, rcx");
+        writer.line("mov [rbp" + std::to_string(retbufSlotOffset_) + "], rcx");
     }
     // ⚠️ Debug 子任务修复（__chkstk 寄存器破坏）：参数寄存器（rcx/rdx/r8/r9/
     //   xmm0-3）必须在 call __chkstk 之前保存到参数槽——__chkstk 破坏
@@ -746,9 +746,10 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
     //   入口 prologue 已执行 "mov r12, rcx"（保存隐藏返回指针）。
     //   结构体大小从 IRFunction 不可直接得，用约定 64 字节上限拷贝。
     if (currentStructReturn_ && !returnReg.empty()) {
-        writer.line("mov rax, r12");                 // 缓冲区地址（入口保存）
+        const std::string rbSlot = "[rbp" + std::to_string(retbufSlotOffset_) + "]";
+        writer.line("mov rax, " + rbSlot);           // 缓冲区地址（入口保存到栈槽）
         writer.line("mov rsi, " + returnReg);        // 源：结构体地址
-        writer.line("mov rdi, r12");                 // 目标：返回缓冲区
+        writer.line("mov rdi, " + rbSlot);           // 目标：返回缓冲区
         // 按精确大小拷贝（structReturnSize，如 16 字节）——避免 64 字节硬编码
         //   越界写破坏相邻栈变量（班级 16 字节被写 64 字节越界 48 字节）
         const int copyBytes = (currentStructReturnSize_ > 0)
@@ -780,15 +781,17 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
                 }
             }
             if (hiId >= 0) {
-                // 隐藏返回指针在 rcx（调用方传入）；prologue 已保存到 r12。
-                // 修复（集成验证发现）：函数体内调用会破坏 rcx，必须用 r12 恢复，
+                // 隐藏返回指针在 rcx（调用方传入）；prologue 已保存到专用栈槽
+                //   （A-4 2026-08：原存 r12，内层函数入口覆盖物理 r12）。
+                // 修复（集成验证发现）：函数体内调用会破坏 rcx，必须用栈槽恢复，
                 //   否则 epilogue 把已破坏的 rcx 当缓冲区地址写入 -> 崩溃（0xC0000005）
-                writer.line("mov rax, r12");  // 返回缓冲区地址（入口保存）
+                const std::string rbSlot2 = "[rbp" + std::to_string(retbufSlotOffset_) + "]";
+                writer.line("mov rax, " + rbSlot2);  // 返回缓冲区地址（入口保存）
                 writer.line("mov rdx, " + regSlot(hiId + 1));  // 低64位
                 writer.line("mov [rax], rdx");
                 writer.line("mov rdx, " + regSlot(hiId));      // 高64位
                 writer.line("mov [rax+8], rdx");
-                writer.line("mov rax, r12");  // ABI：返回缓冲区指针放 rax
+                writer.line("mov rax, " + rbSlot2);  // ABI：返回缓冲区指针放 rax
             }
         } else if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
             const std::string load = (currentReturnType_ == "f64") ? "movsd" : "movss";
@@ -840,6 +843,15 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
             std::unique(calleeSavedRegs_.begin(), calleeSavedRegs_.end()),
             calleeSavedRegs_.end());
         regAllocUsed_ = !calleeSavedRegs_.empty();
+    }
+    // A-4（2026-08）：结构体/i128 返回函数——隐藏返回指针（rcx）保存到专用
+    //   栈槽（须在 emitPrologue 计算帧大小之前登记）。不能用寄存器保存：
+    //   内层函数入口 mov r12,rcx 会覆盖物理 r12（内层压栈保护的是它自己的值），
+    //   外层 epilogue 读到垃圾地址（嵌套结构体返回 第3个结果损坏 实测：
+    //   馆藏.添加 -> 向量.追加 三层调用链）。栈槽不受内层调用影响。
+    if (forceDisable) {
+        registerVarSlot("?retbuf");
+        retbufSlotOffset_ = varSlotOf("?retbuf");
     }
     // ---- 阶段C：调试信息（Task 4.4） ----
     // 注释前缀（"; "）由 AsmWriter::comment 统一添加，本收集器只存纯文本

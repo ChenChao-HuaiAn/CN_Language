@@ -1411,10 +1411,12 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (auto& e : node->enums) {
         computeEnumValues(e.get());
     }
+    // 第一趟e（阶段3）：注册泛型声明（泛型类/函数模板）——须在类解析之前：
+    //   A-4（2026-08）跨模块泛型类字段（馆藏 类字段 向量<整64>）在 resolveClass
+    //   期间经 resolveGenericTypeName 触发实例化，需 findGeneric 已注册
+    registerGenerics(node);
     // 第一趟d（阶段3）：注册类/接口符号（类名 + 成员解析 + 虚表 + 接口验证 + 布局）
     registerClassAndInterfaces(node);
-    // 第一趟e（阶段3）：注册泛型声明（泛型类/函数模板）
-    registerGenerics(node);
     // 第一趟f（阶段3）：结果/可选类型降级（生成合成结构体并布局）
     lowerResultOptionalTypes(node);
     // 第一趟g：注册全部函数符号（含前向调用）

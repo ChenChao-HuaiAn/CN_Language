@@ -146,7 +146,10 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
             if (member->kind != ClassMemberKind::Method) continue;
             ClassMemberInfo mi;
             mi.name = member->name;
-            mi.type = member->returnType.empty() ? "空类型" : types::canonical(member->returnType);
+            mi.type = member->returnType.empty()
+                ? "空类型"
+                : resolveGenericTypeName(types::canonical(member->returnType),
+                                         member->location);
             mi.access = AccessSpecifier::Public;
             mi.isVirtual = true;
             mi.isAbstract = true;  // 接口方法无实现体
@@ -155,7 +158,7 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
             for (auto& p : member->params) {
                 mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                             ? p->funcPtr.toString()
-                                            : types::canonicalParam(p->typeName));
+                                            : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));
             }
             info.methods[mi.name] = mi;
             info.methodOrder.push_back(mi.name);
@@ -295,7 +298,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
             for (auto& p : member->params) {
                 mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                             ? p->funcPtr.toString()
-                                            : types::canonicalParam(p->typeName));
+                                            : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));
             }
             mi.sigKey = signatureKey(mi.name, mi.paramTypes);
             if (info.methods.find(mi.name) != info.methods.end()) {
@@ -313,7 +316,11 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
         if (member->kind == ClassMemberKind::Field) {
             ClassMemberInfo mi;
             mi.name = member->name;
-            mi.type = types::canonical(member->typeName);
+            // A-4（跨模块泛型类字段）：向量<整64> 字段类型解析为实例化名 向量$整64
+            //   ——与构造调用 向量<整64>() 的返回类型一致（此前模板名 vs 实例化名
+            //   不匹配导致 52_library 馆藏 无法用 向量 作类字段）
+            mi.type = resolveGenericTypeName(types::canonical(member->typeName),
+                                             member->location);
             mi.access = member->access;
             mi.ownerClass = node->name;
             mi.isStatic = member->isStatic;
@@ -349,7 +356,10 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
         mi.name = (member->kind == ClassMemberKind::Destructor)
                       ? "~" + member->name
                       : member->name;
-        mi.type = member->returnType.empty() ? "空类型" : types::canonical(member->returnType);
+        mi.type = member->returnType.empty()
+                ? "空类型"
+                : resolveGenericTypeName(types::canonical(member->returnType),
+                                         member->location);
         mi.access = member->access;
         mi.ownerClass = node->name;
         mi.isVirtual = member->isVirtual;
@@ -374,7 +384,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
         for (auto& p : member->params) {
             mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                         ? p->funcPtr.toString()
-                                        : types::canonicalParam(p->typeName));
+                                        : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));
         }
         mi.sigKey = signatureKey(mi.name, mi.paramTypes);
         // Debug 子任务修复（构造函数重载覆盖）：构造函数/析构 用 sigKey（名#参数串）
@@ -734,7 +744,7 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
             } else if (pi < paramTypes.size() && !paramTypes[pi].empty()) {
                 ptype = paramTypes[pi];
             } else {
-                ptype = types::canonicalParam(p->typeName);
+                ptype = resolveGenericTypeName(types::canonicalParam(p->typeName), p->location);
             }
             if (!declareVar(p->name, ptype, p->location)) {
                 // 参数重复声明（防御）
