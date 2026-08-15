@@ -914,6 +914,55 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             if (decl->innerClass != nullptr || decl->innerFunc != nullptr) {
                 program->generics.push_back(std::move(decl));
             }
+        } else if (check(TokenType::Kw_Const)) {
+            // 顶层常量（第 4 层，v2.0 决策9，P1-4）：常量 名 = 值（crate 级常量）。
+            // 解析为 VarDecl(isConst=true) 存入 Program::globals（模块级可见性记录）。
+            // 语法：常量 名 = 常量表达式（类型推断；语义层校验常量性并注册符号）。
+            auto decl = std::make_unique<VarDecl>();
+            decl->location = current().getLocation();
+            decl->isConst = true;
+            advance();  // 消费 常量
+            if (!check(TokenType::Identifier)) {
+                reportErrorHere("预期常量名，实际为 '" + current().getValue() + "'");
+                synchronize();
+            } else {
+                decl->name = current().getValue();
+                advance();
+                // 冒号后置类型标注（常量 名: 整32 = 10，兼容写法）
+                if (check(TokenType::Colon)) {
+                    advance();
+                    decl->typeName = parseTypeName();
+                }
+                if (check(TokenType::Equal)) {
+                    advance();
+                    decl->initializer = parseExpr();
+                }
+                decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
+                program->globals.push_back(std::move(decl));
+            }
+        } else if (check(TokenType::Kw_Static)) {
+            // 顶层静态变量（第 4 层，v2.0 决策8，P3-8）：静态 [类型] 名 [= 值]
+            // （crate 级静态变量）。解析为 VarDecl(isStatic=true) 存入 globals。
+            auto decl = std::make_unique<VarDecl>();
+            decl->location = current().getLocation();
+            decl->isStatic = true;
+            advance();  // 消费 静态
+            // 兼容"静态 变量 名称"（parseStaticVarDecl 同款）
+            if (check(TokenType::Kw_Var)) advance();
+            decl->typeName = parseTypeName();
+            if (check(TokenType::Identifier)) {
+                decl->name = current().getValue();
+                advance();
+                if (check(TokenType::Equal)) {
+                    advance();
+                    decl->initializer = parseExpr();
+                }
+                decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
+                program->globals.push_back(std::move(decl));
+            } else {
+                reportErrorHere("预期变量名，实际为 '" + current().getValue() + "'");
+                synchronize();
+            }
         } else {
             reportErrorHere("预期顶层声明，实际为 '" + current().getValue() + "'");
             synchronize();  // 跳过无法识别的顶层内容

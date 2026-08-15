@@ -237,7 +237,12 @@ bool SemanticAnalyzer::enumValueOf(const std::string& enumName, const std::strin
 // codegen 用 eax 读 xmm0 返回值（除零崩溃）——Task 2.7 修复
 // Task 2.10：key 可为"名#参数串"（重载签名）或纯函数名（内置函数/单版本查询）
 std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) const {
+    // 第 4 层（P2-6）：支持 模块名$签名key（resolvedSignature 带 crate 前缀）
     auto it = functions_.find(funcName);
+    if (it == functions_.end()) {
+        const std::size_t dollar = funcName.find('$');
+        if (dollar != std::string::npos) it = functions_.find(funcName.substr(dollar + 1));
+    }
     if (it == functions_.end()) return "";
     return it->second.returnType;
 }
@@ -245,7 +250,12 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
 // 查询函数参数类型列表（未注册返回空向量；供IR层推导 i128 实参是否需截断，
 // 集成验证修复：i128 实参传给 i128 参数时不得截断为 i64）
 std::vector<std::string> SemanticAnalyzer::funcParamTypesOf(const std::string& funcName) const {
+    // 第 4 层（P2-6）：支持 模块名$签名key（resolvedSignature 带 crate 前缀）
     auto it = functions_.find(funcName);
+    if (it == functions_.end()) {
+        const std::size_t dollar = funcName.find('$');
+        if (dollar != std::string::npos) it = functions_.find(funcName.substr(dollar + 1));
+    }
     if (it == functions_.end()) return {};
     return it->second.paramTypes;
 }
@@ -335,17 +345,40 @@ int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
 //   3. 唯一最佳 -> 返回其签名 key；多个同样优 -> 歧义错误（返回空串）
 std::string SemanticAnalyzer::resolveOverload(const std::string& name,
                                               const std::vector<std::string>& argTypes,
-                                              const SourceLocation& loc) {
+                                              const SourceLocation& loc,
+                                              const std::string& moduleFilter) {
     std::string bestKey;
     int bestTotal = INT32_MAX;
     bool ambiguous = false;
     std::string ambiguousDetail;
     for (const auto& kv : functions_) {
-        const std::size_t hashPos = kv.first.find('#');
-        const std::string base = (hashPos == std::string::npos) ? kv.first
-                                                                : kv.first.substr(0, hashPos);
+        // 第 4 层：key 形态兼容——普通签名（名#参数）与跨模块条目
+        //   （模块名$名#参数）。模块条目 key 含 '$' 前缀（模块名$），
+        //   base 提取须剥离 模块名$ 前缀。
+        // 注意：泛型实例名（排序$整32）与重载签名（名#参数）不含模块前缀——
+        //   仅当 '#' 存在且 '$' 位于 '#' 之前（模块名$名#参数）才剥离；
+        //   排序$整32 无 '#' -> 不剥离（base 保持 排序$整32 匹配泛型调用）。
+        std::string key = kv.first;
+        std::string keyModule;  // key 携带的模块名（跨模块条目）
+        const std::size_t hashFirst = key.find('#');
+        const std::size_t dollarPos = key.find('$');
+        if (dollarPos != std::string::npos && hashFirst != std::string::npos &&
+            dollarPos < hashFirst) {
+            keyModule = key.substr(0, dollarPos);
+            key = key.substr(dollarPos + 1);
+        }
+        const std::size_t hashPos = key.find('#');
+        const std::string base = (hashPos == std::string::npos) ? key
+                                                                : key.substr(0, hashPos);
         if (base != name) continue;  // 仅同名的签名参与决议
         const FunctionInfo& info = kv.second;
+        // 第 4 层（crate 隔离）：限定调用按模块过滤——跨模块同名函数各自独立，
+        //   仅匹配调用模块的签名（数学::双倍 只解析 数学.cn 的双倍）。
+        if (!moduleFilter.empty()) {
+            // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
+            const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
+            if (entryModule != moduleFilter) continue;
+        }
         // 参数个数匹配：实参个数 + 可补全的默认参数数 >= 参数总数
         const int required = static_cast<int>(info.paramTypes.size()) - info.defaultCount;
         const int given = static_cast<int>(argTypes.size());
@@ -784,15 +817,17 @@ void SemanticAnalyzer::registerBuiltins() {
     regStrFn("字符串释放", "空类型", {"字符串"});
 
     // ---- 数学库（Task 6.3，规格书10.5 数学库；对应运行时 math_api.cpp）----
-    // 中文名带 "数学." 前缀（形如 模块.函数 限定名），作为**内置函数唯一 key**：
+    // 第 4 层（v2.0 决策6）：内置 key `::` 化——"数学." -> "数学::"（路径分隔
+    //   由 v1.0 的 . 改为 ::）。限定名作为**核心 包 prelude 成员**（规格书08-六）：
     //   - 与 CN 层模块 stdlib/数学.cn 的公开函数（纯名 平方根 等）不冲突——
-    //     模块函数注册为纯名（公开符号合并），内置函数注册为带点限定名
-    //   - 调用方式 数学.平方根(值)：visitCallExpr 模块限定重写时，对已注册的
-    //     数学.* 内置名特判：不重写为纯名，保留限定名走内置函数路径
-    // 运行时符号：数学.平方根 -> __cn_sqrt、数学.幂 -> __cn_pow、
-    //   数学.正弦 -> __cn_sin、数学.余弦 -> __cn_cos、数学.正切 -> __cn_tan、
-    //   数学.绝对值 -> __cn_fabs、数学.向上取整 -> __cn_ceil、
-    //   数学.向下取整 -> __cn_floor（IR 层按函数名映射）
+    //     模块函数注册为纯名（公开符号合并），内置函数注册为 :: 限定名
+    //   - 调用方式 数学::平方根(值)（v2.0）或旧 数学.平方根(值)（第 6 层迁移前
+    //     兼容）：visitCallExpr 模块限定重写时，对已注册的 数学::* 内置名特判：
+    //     不重写为纯名，保留限定名走内置函数路径（prelude 无需显式导入）
+    // 运行时符号：数学::平方根 -> __cn_sqrt、数学::幂 -> __cn_pow、
+    //   数学::正弦 -> __cn_sin、数学::余弦 -> __cn_cos、数学::正切 -> __cn_tan、
+    //   数学::绝对值 -> __cn_fabs、数学::向上取整 -> __cn_ceil、
+    //   数学::向下取整 -> __cn_floor（IR 层按函数名映射）
     // 参数/返回均为 浮64（double）；P1 的对数/反三角/随机数留待后续
     const auto regMathFn = [this](const std::string& name, const std::string& retType,
                                   const std::vector<std::string>& paramTypes) {
@@ -802,14 +837,14 @@ void SemanticAnalyzer::registerBuiltins() {
         info.hasBody = true;
         functions_[name] = info;
     };
-    regMathFn("数学.平方根", "浮64", {"浮64"});
-    regMathFn("数学.幂", "浮64", {"浮64", "浮64"});
-    regMathFn("数学.正弦", "浮64", {"浮64"});
-    regMathFn("数学.余弦", "浮64", {"浮64"});
-    regMathFn("数学.正切", "浮64", {"浮64"});
-    regMathFn("数学.绝对值", "浮64", {"浮64"});
-    regMathFn("数学.向上取整", "浮64", {"浮64"});
-    regMathFn("数学.向下取整", "浮64", {"浮64"});
+    regMathFn("数学::平方根", "浮64", {"浮64"});
+    regMathFn("数学::幂", "浮64", {"浮64", "浮64"});
+    regMathFn("数学::正弦", "浮64", {"浮64"});
+    regMathFn("数学::余弦", "浮64", {"浮64"});
+    regMathFn("数学::正切", "浮64", {"浮64"});
+    regMathFn("数学::绝对值", "浮64", {"浮64"});
+    regMathFn("数学::向上取整", "浮64", {"浮64"});
+    regMathFn("数学::向下取整", "浮64", {"浮64"});
 
     // ---- IO 输入（Task 6.2，规格书10.6 输入 API；对应运行时 input_api.cpp）----
     // 中文名带 "IO." 前缀（形如 模块.函数 限定名），与 stdlib/IO.cn 模块公开函数
@@ -830,10 +865,10 @@ void SemanticAnalyzer::registerBuiltins() {
         info.hasBody = true;
         functions_[name] = info;
     };
-    regIoFn("IO.读取行", "字符串", {});
-    regIoFn("IO.读取整数", "整64", {"整32*"});
-    regIoFn("IO.读取浮点", "浮64", {"整32*"});
-    regIoFn("IO.打印到错误", "空类型", {"字符串"});
+    regIoFn("IO::读取行", "字符串", {});
+    regIoFn("IO::读取整数", "整64", {"整32*"});
+    regIoFn("IO::读取浮点", "浮64", {"整32*"});
+    regIoFn("IO::打印到错误", "空类型", {"字符串"});
 
     // ---- 文件 API（Task 6.2，规格书阶段五「文件系统」；对应运行时 file_api.cpp）----
     // 中文名带 "文件." 前缀，与 stdlib/文件.cn 模块公开函数不冲突。
@@ -855,13 +890,13 @@ void SemanticAnalyzer::registerBuiltins() {
         info.hasBody = true;
         functions_[name] = info;
     };
-    regFileFn("文件.打开文件", "空类型*", {"字符串", "整32"});
-    regFileFn("文件.读取文件", "整64", {"空类型*", "字符*", "整64"});
-    regFileFn("文件.写入文件", "整64", {"空类型*", "字符串"});
-    regFileFn("文件.读取文件行", "字符串", {"空类型*"});
-    regFileFn("文件.文件大小", "整64", {"空类型*"});
-    regFileFn("文件.关闭文件", "空类型", {"空类型*"});
-    regFileFn("文件.文件存在", "布尔", {"字符串"});
+    regFileFn("文件::打开文件", "空类型*", {"字符串", "整32"});
+    regFileFn("文件::读取文件", "整64", {"空类型*", "字符*", "整64"});
+    regFileFn("文件::写入文件", "整64", {"空类型*", "字符串"});
+    regFileFn("文件::读取文件行", "字符串", {"空类型*"});
+    regFileFn("文件::文件大小", "整64", {"空类型*"});
+    regFileFn("文件::关闭文件", "空类型", {"空类型*"});
+    regFileFn("文件::文件存在", "布尔", {"字符串"});
 
     // ---- 字符串扩展库（Task 6.5，对标 C++ string 解析；对应运行时 string_api.cpp）----
     // 中文名带 "解析." 前缀（形如 模块.函数 限定名），与 stdlib/字符串扩展.cn
@@ -883,9 +918,9 @@ void SemanticAnalyzer::registerBuiltins() {
         info.hasBody = true;
         functions_[name] = info;
     };
-    regStrExtFn("解析.转整数", "整64", {"字符串", "整32*"});
-    regStrExtFn("解析.转浮点", "浮64", {"字符串", "整32*"});
-    regStrExtFn("解析.转布尔", "整64", {"字符串", "整32*"});
+    regStrExtFn("解析::转整数", "整64", {"字符串", "整32*"});
+    regStrExtFn("解析::转浮点", "浮64", {"字符串", "整32*"});
+    regStrExtFn("解析::转布尔", "整64", {"字符串", "整32*"});
 
     // ---- 时间库（Task 6.5，规格书10.4 时间；对应运行时 time_api.cpp）----
     // 中文名带 "时间." 前缀，与 stdlib/时间.cn 模块公开函数不冲突（数学库同模式）。
@@ -903,9 +938,9 @@ void SemanticAnalyzer::registerBuiltins() {
         info.hasBody = true;
         functions_[name] = info;
     };
-    regTimeFn("时间.当前时间戳", "整64", {});
-    regTimeFn("时间.单调时钟毫秒", "整64", {});
-    regTimeFn("时间.格式化时间", "字符串", {"整64", "字符串"});
+    regTimeFn("时间::当前时间戳", "整64", {});
+    regTimeFn("时间::单调时钟毫秒", "整64", {});
+    regTimeFn("时间::格式化时间", "字符串", {"整64", "字符串"});
 
     // ---- 系统库（Task 6.5，规格书10.4 命令行参数；对应运行时 system_api.cpp）----
     // 中文名带 "系统." 前缀，与 stdlib/系统.cn 模块公开函数不冲突（数学库同模式）。
@@ -922,8 +957,8 @@ void SemanticAnalyzer::registerBuiltins() {
         info.hasBody = true;
         functions_[name] = info;
     };
-    regSysFn("系统.参数个数", "整64", {});
-    regSysFn("系统.参数", "字符串", {"整64"});
+    regSysFn("系统::参数个数", "整64", {});
+    regSysFn("系统::参数", "字符串", {"整64"});
 
     // ---- 内存管理API（Task 6.1 核心库/容器库，规格书10.2 内存管理）----
     // 运行时符号：分配 -> cn_alloc、释放 -> cn_free、重新分配 -> cn_realloc、
@@ -1016,8 +1051,24 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     }
     // 生成签名 key（名 + "#" + 参数类型串，mangling 与决议共用）
     node->sigKey = signatureKey(node->name, info.paramTypes);
+    // ---- crate 模型（第 4 层，v2.0 决策4）：重复定义按模块分桶 ----
+    // 跨模块同名同签名函数允许（crate 隔离：包A::工具 与 包B::工具 独立符号）；
+    // 仅同模块内重名报错。moduleName 由 mergeModules 合并阶段写入 FunctionDecl。
+    info.moduleName = node->moduleName;
     auto it = functions_.find(node->sigKey);
     if (it != functions_.end()) {
+        // 同签名重名（模块分桶判定）：原型+定义 组合须同模块才配对；
+        //   跨模块同名同签名 -> crate 隔离，允许（本签名加入 funcSigModules_）
+        const bool sameModule = (it->second.moduleName == node->moduleName);
+        if (!sameModule) {
+            // 跨模块同名同签名：crate 隔离允许——原符号保留，本符号注册为
+            //   模块名$sigKey（与 IR 层 mangledName 前缀一致）。resolveOverload
+            //   按 moduleFilter 过滤：限定调用 模块::函数 时在 functions_ 中
+            //   查找 模块名$sigKey 条目（moduleFilter 匹配模块名）。
+            funcSigModules_[node->sigKey].insert(node->moduleName);
+            functions_[node->moduleName + "$" + node->sigKey] = info;
+            return;
+        }
         // 同签名重名：允许"原型声明 + 定义"组合，其余为重复定义
         bool isProtoPlusDef = !it->second.hasBody && info.hasBody;
         if (isProtoPlusDef) {
@@ -1031,7 +1082,7 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
             }
         } else if (it->second.hasBody || info.hasBody) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "重复定义函数 '" + node->name +
+                                "模块 '" + node->moduleName + "' 内重复定义函数 '" + node->name +
                                 "'（参数类型相同；仅返回类型不同不构成重载）");
         }
         return;
@@ -1039,18 +1090,21 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     // Task 2.10 重载兼容：签名 key 未命中但同名已有其他签名——
     //   合法重载（加(整32,整32) 与 加(浮64,浮64)）；
     //   但"原型声明 + 不同签名定义"是错误（原型已锁定签名，定义须一致）。
-    //   规则：同名存在 原型（无体）且 当前是定义（有体）→ 签名必须与原型一致。
+    //   规则：同名存在 原型（无体）且 当前是定义（有体）→ 签名必须与原型一致
+    //   （仅同模块内检查——跨模块原型不约束其他模块的定义）。
     for (const auto& kv : functions_) {
         const std::size_t hashPos = kv.first.find('#');
         const std::string base = (hashPos == std::string::npos) ? kv.first
                                                                 : kv.first.substr(0, hashPos);
-        if (base == node->name && !kv.second.hasBody && info.hasBody) {
+        if (base == node->name && kv.second.moduleName == node->moduleName &&
+            !kv.second.hasBody && info.hasBody) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "函数 '" + node->name +
                                 "' 原型声明与定义签名不一致（重载须参数类型不同）");
             return;
         }
     }
+    funcSigModules_[node->sigKey].insert(node->moduleName);
     functions_[node->sigKey] = info;
 }
 
@@ -1080,8 +1134,49 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     // 第零趟b（阶段3，Task 3.6）：收集导入模块名（限定调用识别用）
     //   注：多文件编译时 driver 已合并被导入模块的公开声明到本 Program，
     //   导入声明（ImportDecl）仍保留在 AST 中供此处收集模块名。
+    // 第 4 层（P1-3）：visitImportDecl 构建 use 导入表（符号集合/别名/通配符）。
     for (auto& imp : node->imports) {
         visitImportDecl(imp.get());
+    }
+    // 第 4 层（crate 分桶）：构建模块公开符号表（模块名 -> 公开符号名集合）。
+    // 合并后的声明自带 moduleName（mergeModules 写入）：按模块收集公开符号，
+    // 供限定调用验证（未导入模块的限定调用报「未声明的标识符」，P1-1 修复）、
+    // 花括号导入符号验证、可见性交集检查（模块私有类不导出）使用。
+    for (const auto& f : node->declarations) {
+        if (f->access == AccessSpecifier::Public && !f->moduleName.empty()) {
+            modulePublicSymbols_[f->moduleName].insert(f->name);
+        }
+    }
+    for (const auto& s : node->structs) {
+        if (s->access == AccessSpecifier::Public && !s->moduleName.empty()) {
+            modulePublicSymbols_[s->moduleName].insert(s->name);
+        }
+    }
+    for (const auto& e : node->enums) {
+        if (e->access == AccessSpecifier::Public && !e->moduleName.empty()) {
+            modulePublicSymbols_[e->moduleName].insert(e->name);
+        }
+    }
+    for (const auto& c : node->classes) {
+        if (c->access == AccessSpecifier::Public && !c->moduleName.empty()) {
+            modulePublicSymbols_[c->moduleName].insert(c->name);
+            modulePublicClasses_[c->moduleName].insert(c->name);
+        }
+    }
+    for (const auto& i : node->interfaces) {
+        if (i->access == AccessSpecifier::Public && !i->moduleName.empty()) {
+            modulePublicSymbols_[i->moduleName].insert(i->name);
+        }
+    }
+    for (const auto& g : node->generics) {
+        const bool genPublic = (g->innerClass != nullptr)
+                                   ? (g->innerClass->access == AccessSpecifier::Public)
+                                   : (g->innerFunc != nullptr &&
+                                      g->innerFunc->access == AccessSpecifier::Public);
+        if (!genPublic || g->moduleName.empty()) continue;
+        const std::string gname = (g->innerClass != nullptr) ? g->innerClass->name
+                                   : (g->innerFunc != nullptr) ? g->innerFunc->name : "";
+        if (!gname.empty()) modulePublicSymbols_[g->moduleName].insert(gname);
     }
     // 第一趟a：注册全部结构体/联合体/枚举类型名（支持前向引用：字段可引用后定义的类型）
     for (auto& s : node->structs) {
@@ -1108,6 +1203,36 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             registerFunction(decl.get());
+        }
+    }
+    // 第 4 层（v2.0 决策8/9，P1-4/P3-8）：注册顶层常量/静态（crate 级）。
+    //   常量：编译期常量折叠——初始值为字面量（整/浮/字符串）时求值存入
+    //   globalConstValues_（常量名 -> 值文本），visitIdentifierExpr 引用时替换。
+    //   静态：登记符号名（globalStaticNames_），供 IR 层生成全局存储。
+    //   常量值文本直接取字面量 raw（整数/浮点）或字符串内容（去引号）。
+    for (auto& g : node->globals) {
+        if (g->initializer == nullptr) continue;
+        if (g->isConst) {
+            Expr* init = g->initializer.get();
+            std::string constText;
+            if (init->getType() == NodeType::IntegerLiteral) {
+                constText = static_cast<IntegerLiteral*>(init)->raw;
+            } else if (init->getType() == NodeType::FloatLiteral) {
+                constText = static_cast<FloatLiteral*>(init)->raw;
+            } else if (init->getType() == NodeType::StringLiteral) {
+                constText = static_cast<StringLiteral*>(init)->raw;
+            } else {
+                diagnostics_.report(DiagnosticLevel::Error, init->location,
+                                    "顶层常量 '" + g->name +
+                                        "' 初始值必须是字面量（整/浮/字符串）");
+            }
+            if (!constText.empty()) globalConstValues_[g->name] = constText;
+            declareVar(g->name, "自动", g->location);
+        } else if (g->isStatic) {
+            globalStaticNames_.insert(g->name);
+            const std::string stType =
+                g->typeName.empty() ? "自动" : canonicalType(g->typeName);
+            declareVar(g->name, stType, g->location);
         }
     }
     // 第二趟a（阶段3）：检查类方法体（自身/父类/访问控制/常量 上下文）
@@ -1500,6 +1625,24 @@ void SemanticAnalyzer::visitBoolLiteral(BoolLiteral* node) {
 // Task 2.2：函数名作值（不加括号）时类型为"函数指针<返回>(参数,...)"，用于赋值给函数指针变量
 // 阶段3：类/接口/泛型类型名识别（类名.静态成员 引用、泛型实例化 类型名<实参>）
 void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
+    // 第 4 层（v2.0 决策9，P1-4）：顶层常量引用——编译期常量折叠。
+    //   常量已在 visitProgram 注册到 globalConstValues_（值文本）且 declareVar
+    //   为全局变量；此处识别常量名（globalConstValues_ 命中）并把类型改为
+    //   字面量对应类型（整/浮/字符串），IR 层 genVarDecl 按常量值文本直接生成
+    //   常量加载（避免按全局变量生成 Alloca 导致未初始化栈槽）。
+    auto constIt = globalConstValues_.find(node->name);
+    if (constIt != globalConstValues_.end()) {
+        const std::string& text = constIt->second;
+        // 字符串字面量（含引号）-> 字符串；含 . / e / E -> 浮点；否则整数
+        if (!text.empty() && (text.front() == '"' || text.front() == '\'')) {
+            lastType_ = "字符串";
+        } else if (text.find_first_of(".eE") != std::string::npos) {
+            lastType_ = "浮64";
+        } else {
+            lastType_ = "整32";
+        }
+        return;
+    }
     std::string varType;
     if (lookupVar(node->name, varType)) {
         lastType_ = varType;
@@ -1984,10 +2127,25 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     if (node->callee->getType() == NodeType::MemberExpr) {
         MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
         if (!mem->isArrow) {
-        if (mem->object->getType() == NodeType::IdentifierExpr) {
+        // 第 4 层（v2.0 决策1）：多段路径 包::模块::符号 解析——parser 将
+        //   数学::平方根 折叠为 MemberExpr(标识符"数学", "平方根")；多段
+        //   包::模块::符号 折叠为嵌套 MemberExpr(MemberExpr(标识符"包","模块"),"符号")。
+        //   此处把嵌套 MemberExpr 展平为完整路径字符串（包::模块::符号）判定：
+        //   取最深 object 为模块名（首段），memberName 链拼接为完整符号路径。
+        std::string pathPrefix;      // 嵌套路径前缀（如 包::模块 或 数学）
+        Expr* objPtr = mem->object.get();
+        MemberExpr* nested = nullptr;
+        while (objPtr->getType() == NodeType::MemberExpr) {
+            nested = static_cast<MemberExpr*>(objPtr);
+            pathPrefix = nested->memberName + "::" + pathPrefix;
+            objPtr = nested->object.get();
+        }
+        if (objPtr->getType() == NodeType::IdentifierExpr) {
             // 值拷贝：重写会销毁旧 MemberExpr（mem->object 悬垂），须先取名字
             const std::string moduleName =
-                static_cast<IdentifierExpr*>(mem->object.get())->name;
+                static_cast<IdentifierExpr*>(objPtr)->name;
+            // 完整限定名：模块名::[中间路径::]函数名（数学::平方根 / 包::模块::符号）
+            const std::string fullPath = moduleName + "::" + pathPrefix + mem->memberName;
             const bool isTypeName = isStructType(moduleName) || isEnumType(moduleName) ||
                                     findClass(moduleName) != nullptr ||
                                     findInterface(moduleName) != nullptr;
@@ -1995,7 +2153,11 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             // Task 6.1：模块限定泛型调用 核心.交换<整32>(...)——memberName
             //   已含泛型实参（交换<整32>），限定名携带 <...> 供下方单态化识别。
             const std::string funcName = mem->memberName;
-            const std::string qualified = moduleName + "." + funcName;
+            // 第 4 层：限定名统一为 :: 分隔（v2.0 内置 key 化）；旧点号路径
+            //   兼容（第 6 层迁移前，25_math 等 E2E 仍用 数学.平方根）。
+            const std::string qualified = fullPath;
+            // 兼容旧点号限定名（内置函数注册曾用 数学.平方根；v2.0 已改为 ::）
+            const std::string qualifiedDot = moduleName + "." + mem->memberName;
             // Task 6.1：泛型函数名剥离 <实参> 查纯名（交换<整32> -> 交换），
             //   泛型函数以纯名注册（registerGenerics），用户公开函数判定用纯名
             const std::size_t funcGenLt = funcName.find('<');
@@ -2005,34 +2167,99 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             // Task 6.1：泛型函数注册在 generics_（非 functions_），hasFunctionName
             //   查不到——补充 findGeneric 判定（泛型函数以纯名注册，可跨模块实例化）。
             const bool moduleImported = importedModules_.count(moduleName) > 0;
+            // 第 4 层（P1-2 目录层级）：子模块路径——net::transport::send() 中
+            //   send 属于子模块 net::transport（模块名含 ::）。父模块 net 已导入
+            //   （路径导入 wildcard），子模块公开符号经 merge 合并（moduleName=
+            //   "net::transport"）。模块符号名 = 完整路径前缀（net::transport）。
+            std::string subModule = moduleName;
+            if (!pathPrefix.empty()) {
+                const std::string mid = pathPrefix.substr(0, pathPrefix.size() - 2);
+                subModule = moduleName + "::" + mid;
+            }
+            // 第 4 层（P1-1）：use 导入表验证——导入的符号才允许访问。
+            //   模块已导入（路径/花括号/通配符）且符号在导入集合或通配符导入中。
+            //   子模块：父模块 wildcard 导入即视为子模块符号已导入（模块树）。
+            const auto useIt = useImports_.find(moduleName);
+            bool useHasSymbol = false;
+            if (useIt != useImports_.end()) {
+                useHasSymbol = useIt->second.wildcard ||
+                               useIt->second.symbols.count(funcBaseName) > 0 ||
+                               useIt->second.aliases.count(funcBaseName) > 0;
+            }
+            // 用户模块公开函数（模块公开符号表验证，含泛型；子模块按完整路径查）
             const bool userFuncExists =
-                moduleImported &&
-                (hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr);
+                (moduleImported && useHasSymbol &&
+                 (hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr)) ||
+                (!pathPrefix.empty() && modulePublicSymbols_.count(subModule) > 0 &&
+                 modulePublicSymbols_[subModule].count(funcBaseName) > 0 &&
+                 (hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr));
+            // prelude 例外（第 4 层）：内置限定名（数学::平方根 等 24 个）无需
+            //   显式导入即可用（核心 包 prelude）；用户模块公开函数优先。
+            const bool builtinQualified = hasFunctionName(qualified) ||
+                                          hasFunctionName(qualifiedDot);
             if (!isTypeName &&
-                (userFuncExists || moduleImported || hasFunctionName(qualified))) {
+                (userFuncExists || builtinQualified || moduleImported)) {
                 // 用户模块公开函数：重写为直接函数名（成员方法调用分支不再命中 MemberExpr）。
                 //   泛型函数保留 名<实参> 完整形态（下方 visitCallExpr 泛型单态化识别）；
                 //   普通函数重写为纯名（含 数学.平方根 内置限定名的既有路径）。
+                // 第 4 层（crate 隔离）：限定调用带模块上下文——重写后的纯名在
+                //   resolveOverload 时按模块过滤（跨模块同名函数不歧义）。
                 if (userFuncExists) {
                     node->callee = std::make_unique<IdentifierExpr>(funcName);
+                    // 模块过滤（resolveOverload 用）：子模块限定调用按子模块名过滤
+                    node->moduleFilter = (!pathPrefix.empty()) ? subModule : moduleName;
                 } else if (hasFunctionName(qualified)) {
-                    // 数学库内置函数（数学.平方根 等）：保留限定名作标识符
+                    // 内置函数（数学::平方根 等）：保留 :: 限定名作标识符
                     node->callee = std::make_unique<IdentifierExpr>(qualified);
-                } else {
+                } else if (hasFunctionName(qualifiedDot)) {
+                    // 兼容旧点号内置名（数学.平方根，v1.0）：保留点号限定名
+                    node->callee = std::make_unique<IdentifierExpr>(qualifiedDot);
+                } else if (moduleImported) {
                     // 已导入模块但符号不存在 → 报错，避免走"函数指针间接调用"静默路径
                     node->callee = std::make_unique<IdentifierExpr>(funcName);
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "模块 '" + moduleName + "' 没有公开符号 '" +
                                             funcName + "'");
                 }
+            } else if (!isTypeName && !moduleImported && !builtinQualified) {
+                // 对象方法调用排除：object 是局部变量/参数（动物.描述()）时，
+                //   moduleName 是变量名而非模块名——跳过 P1-1，走下方成员方法
+                //   调用路径（防误判：变量名不在类型名/模块名中）。
+                std::string objType;
+                const bool objIsVar = lookupVar(moduleName, objType);
+                if (!objIsVar) {
+                    // P1-1 修复：未导入模块的限定调用 -> 报「未声明的标识符」
+                    //   （内置函数 prelude 例外：builtinQualified 已排除）
+                    node->callee = std::make_unique<IdentifierExpr>(funcName);
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "未声明的标识符 '" + qualified +
+                                            "'（模块 '" + moduleName +
+                                            "' 未导入；请先写 导入 " + moduleName + "::" +
+                                            funcBaseName + "）");
+                }
             }
         }
     }
-    }  // 模块限定调用重写块结束（Task 3.6）
+    }  // 模块限定调用重写块结束（Task 3.6 / 第 4 层 P1-1）
     bool isDirect = false;
     std::string calleeName;
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
+        // 第 4 层（use 导入表）：花括号导入别名重写——导入 数学::{正弦 作为 正}
+        //   后调用 正() 时，calleeName 是别名；查 useImports_ 各模块别名表映射回
+        //   原符号名（正弦）。须在 isDirect 判定之前（别名名未注册为函数名，
+        //   hasFunctionName("正") 失败会导致 isDirect=false 走间接调用路径报错）。
+        if (calleeName.find('<') == std::string::npos) {
+            for (const auto& ui : useImports_) {
+                const auto& aliases = ui.second.aliases;
+                const auto aliasIt = aliases.find(calleeName);
+                if (aliasIt != aliases.end() && aliasIt->second != ui.first) {
+                    calleeName = aliasIt->second;  // 别名 -> 原符号名
+                    static_cast<IdentifierExpr*>(node->callee.get())->name = calleeName;
+                    break;
+                }
+            }
+        }
         // ---- Task 6.1（泛型函数调用打通）：函数名<类型>(实参) 泛型实例化调用 ----
         // 语法：最小<整32>(3, 7)——parser 把 callee 生成 IdentifierExpr("最小<整32>")。
         // 26_generics 遗留限制「泛型函数调用单态化注册未接入」：语义层此前只对
@@ -2360,7 +2587,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         for (auto& arg : node->arguments) {
             argTypes.push_back(checkExpr(arg.get()));
         }
-        std::string sigKey = resolveOverload(calleeName, argTypes, node->location);
+        // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）
+        std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
+                                             node->moduleFilter);
         if (sigKey.empty()) {
             // 决议失败（参数个数/类型不匹配或歧义）：恢复兼容——若纯名存在（内置
             // 单版本函数），按旧逻辑检查，避免错误级联导致 IR 层找不到符号
@@ -2372,8 +2601,19 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             }
             return;
         }
+        // 第 4 层（v2.0 决策4/6，P2-6）：crate 前缀——resolvedSignature 拼上
+        //   被调用函数所属模块名（模块名$sigKey），与定义侧 visitFunctionDecl
+        //   的 mangledName 前缀一致（跨模块同名函数链接符号不冲突）。
+        //   入口 主 / 单文件（moduleName 空）不加前缀（保持 主->cn_main 等映射）。
+        //   跨模块条目（sigKey 形如 模块名$名#参数）已带前缀，不再重复。
         node->resolvedSignature = sigKey;
         auto it = functions_.find(sigKey);
+        // 主 函数不加前缀（codegen 映射 cn_main，与 IR 层 visitFunctionDecl 同规则）
+        if (it != functions_.end() && !it->second.moduleName.empty() &&
+            it->second.moduleName != "主" && calleeName != "主" &&
+            sigKey.find('$') == std::string::npos) {
+            node->resolvedSignature = it->second.moduleName + "$" + sigKey;
+        }
         const FunctionInfo& info = it->second;
         // 参数类型检查（决议已保证可转换；此处再逐个报告具体错误位置）
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
@@ -2743,17 +2983,54 @@ void SemanticAnalyzer::visitInterfaceDecl(InterfaceDecl* node) {
     (void)node;
 }
 
-// 导入声明：模块系统（Task 3.6，v2.0）
-// 收集已导入模块名（importPath 首段）：导入 数学::平方根 / 导入 数学::{正弦}
-// 供 visitCallExpr 识别"模块.函数"限定调用（重写为直接调用）。
-// 模块加载/合并由 driver（runModulePipeline）在语义分析前完成；
-// 此处仅记录模块名集合，不校验符号存在性（跨模块可见性在合并阶段已过滤私有）。
-// 注意：v2.0 路径为 :: 分隔（v1.0 的 . 已删除）；首段 = 模块名。
+// 导入声明：模块系统（Task 3.6 v1.0 / 第 4 层 v2.0 use 导入表，P1-3）
+// v2.0：importedModules_（首段字符串集合）升级为 use 导入表——
+//   useImports_：模块名 -> { 导入符号集合, 别名映射, 通配符 }，
+//   并解析 segments 全路径（导入 包名::模块::符号 多段路径）。
+// 四种形式（规格书08-三）：
+//   导入 路径                 -> 路径导入：导入模块（限定访问 路径::符号）
+//   导入 路径 作为 别名        -> 重命名导入：别名绑定原路径
+//   导入 路径::{项列表}        -> 花括号导入：选择性导入符号（可逐个重命名）
+//   导入 路径::*              -> 通配符导入：全部公开符号
+// 兼容旧标记：importPath 字段仍为路径文本（:: 分隔），供 module.cpp 依赖收集。
 void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
-    std::string moduleName = node->importPath;
-    const std::size_t sep = moduleName.find("::");
-    if (sep != std::string::npos) moduleName = moduleName.substr(0, sep);
-    if (!moduleName.empty()) importedModules_.insert(moduleName);
+    if (node == nullptr || node->segments.empty()) return;
+    // ---- 模块声明（模块 X）：仅建立模块树引用，不引入符号 ----
+    if (node->isModuleDecl) return;
+    // ---- 路径导入 / 重命名导入 / 通配符导入 ----
+    // 取路径首段为模块名（跨包路径 包名::模块::符号 首段 = 包名；当前实现
+    //   以首段为 crate 边界，多段路径按模块名 = 完整路径前缀解析）
+    std::string moduleName = node->segments[0];
+    UseImportInfo& use = useImports_[moduleName];
+    if (node->wildcard) {
+        // 导入 模块::*：通配符导入（模块全部公开符号）
+        use.wildcard = true;
+        importedModules_.insert(moduleName);
+        return;
+    }
+    if (!node->names.empty()) {
+        // 导入 路径::{项1 [作为 别名], ...}：花括号导入
+        for (const auto& item : node->names) {
+            if (item.name.empty()) continue;
+            use.symbols.insert(item.name);
+            if (!item.alias.empty()) use.aliases[item.alias] = item.name;
+            else use.aliases[item.name] = item.name;
+        }
+        importedModules_.insert(moduleName);
+        return;
+    }
+    // 路径导入 / 重命名导入：导入整个模块（限定访问 模块::符号）。
+    // 第 4 层：路径导入语义 = 该模块任意公开符号可限定访问（与通配符导入
+    //   对 useHasSymbol 判定等价）——设 wildcard=true，使 visitCallExpr
+    //   的 useHasSymbol 校验通过（模块公开符号表 modulePublicSymbols_ 实际
+    //   决定符号存在性，wildcard 仅放宽"符号已导入"校验）。
+    use.wildcard = true;
+    if (!node->alias.empty()) {
+        // 重命名导入：导入 模块 作为 别名——别名绑定到模块级符号
+        //   （调用 别名::符号 时按原模块解析；本层别名表记录）
+        use.aliases[node->alias] = moduleName;
+    }
+    importedModules_.insert(moduleName);
 }
 
 // 泛型声明：由 registerGenerics/instantiateGeneric 处理（防御性空实现）

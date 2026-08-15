@@ -36,3 +36,4 @@ CTestTestfile.cmake
 # 系统文件
 Thumbs.db
 .DS_Store
+build_phase4/  

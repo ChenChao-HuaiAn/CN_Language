@@ -25,6 +25,10 @@ namespace module {
 struct ModuleUnit {
     std::string filePath;                  // 源文件路径
     std::string moduleName;                // 模块名 = 文件名（不含 .cn 扩展名）
+    // ---- 第 4 层（v2.0 决策6，P1-2）：目录层级 ----
+    // 相对入口目录的模块路径前缀（:: 路径对应 / 目录）。入口=空；
+    //   网络/传输控制.cn 的 moduleDir = "网络"；子模块声明从父模块目录加载。
+    std::string moduleDir;
     std::unique_ptr<Program> ast;          // 解析后的 AST（词法+语法）
     std::vector<std::string> imports;      // 导入的模块名列表（去重，依赖边）
 };

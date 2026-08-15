@@ -424,6 +424,10 @@ public:
     std::string resolvedType;                     // 内置构造器推导的 结果<T,E>/可选<T> 类型
                                                   //   （Task 3.5，语义层写回；IR 层按此
                                                   //    降级为合成结构体构造）
+    // ---- 第 4 层（crate 隔离）：限定调用模块过滤 ----
+    // 模块::函数(实参) 限定调用重写时记录所属模块（数学::双倍 -> 数学），
+    // 重载决议 resolveOverload 按此过滤（跨模块同名函数不歧义）。
+    std::string moduleFilter;
 };
 
 // 成员访问：对象.成员 或 对象->成员
@@ -568,6 +572,8 @@ public:
     bool layoutComputed = false;             // 布局是否已计算（语义层回填标记）
     // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
     AccessSpecifier access = AccessSpecifier::Private;
+    // ---- crate 模型（第 4 层，v2.0 决策4）----
+    std::string moduleName;  // 所属模块（crate 域）名，mergeModules 合并阶段写入
 };
 
 // 枚举成员：成员名 + 值（显式赋值或自动递增，Task 2.7）
@@ -588,6 +594,8 @@ public:
     std::vector<EnumMember> members;         // 成员列表（值已求值）
     // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
     AccessSpecifier access = AccessSpecifier::Private;
+    // ---- crate 模型（第 4 层，v2.0 决策4）----
+    std::string moduleName;  // 所属模块（crate 域）名，mergeModules 合并阶段写入
 };
 
 // 变量声明：变量/常量/静态 类型前置或冒号后置（CN规范类型前置，兼容冒号后置）
@@ -602,6 +610,11 @@ public:
     std::string typeName;                        // 类型名（为空表示类型推断：变量 x = 10）
     std::unique_ptr<Expr> initializer;           // 初始值（可为空）
     FuncPtrTypeInfo funcPtr;                     // 函数指针类型信息（非空表示本变量为函数指针）
+    // ---- 第 4 层（v2.0 决策8/9，P1-4/P3-8）：顶层常量/静态模块级可见性 ----
+    // 顶层 常量/静态 声明记录模块级可见性（公开:/私有: 标签段），
+    // 供 mergeModules 跨模块合并（公开 常量/静态 才跨模块可见）与链接前缀。
+    AccessSpecifier access = AccessSpecifier::Private;
+    std::string moduleName;                      // 所属模块（crate 域）名，合并阶段写入
 };
 
 // 代码块：{ 语句列表 }
@@ -749,6 +762,11 @@ public:
     // 与类内成员访问标签（ClassMember::access）同语法不同作用域：
     //   顶层标签由 parser.cpp 顶层循环维护；类内标签由 parseClassDecl 维护。
     AccessSpecifier access = AccessSpecifier::Private;
+    // ---- crate 模型（第 4 层，v2.0 决策4） ----
+    // 所属模块（crate 域）名：mergeModules 合并阶段写入（入口模块=主）。
+    // 用途：① 函数重复定义按模块分桶（跨模块同名允许——crate 隔离）；
+    //       ② IR/codegen 链接符号加 模块名$ 前缀（防跨包链接冲突）。
+    std::string moduleName;
 };
 
 // 导入项：花括号导入中的单个符号（可选 作为 别名，v2.0）
@@ -851,6 +869,8 @@ public:
     std::vector<std::unique_ptr<ClassMember>> members; // 类成员列表
     // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
     AccessSpecifier access = AccessSpecifier::Private;
+    // ---- crate 模型（第 4 层，v2.0 决策4）----
+    std::string moduleName;  // 所属模块（crate 域）名，mergeModules 合并阶段写入
 };
 
 // 接口声明：接口 名 { 虚拟函数签名列表 }（Task 3.3，规格书06-六）
@@ -864,6 +884,8 @@ public:
     std::vector<std::unique_ptr<ClassMember>> members; // 方法签名列表（kind=Method，body 为空）
     // 模块级可见性（Task 3.6，v2.0）：公开: -> Public / 私有: -> Private（默认 Private）
     AccessSpecifier access = AccessSpecifier::Private;
+    // ---- crate 模型（第 4 层，v2.0 决策4）----
+    std::string moduleName;  // 所属模块（crate 域）名，mergeModules 合并阶段写入
 };
 
 // 泛型声明：泛型 <类型 T> 类/函数（Task 3.8，规格书06-十三）
@@ -880,6 +902,8 @@ public:
     std::vector<std::string> constraints;          // 接口约束（与 typeParams 一一对应，空串=无约束）
     std::unique_ptr<ClassDecl> innerClass;         // 泛型类（可为空）
     std::unique_ptr<FunctionDecl> innerFunc;       // 泛型函数（可为空）
+    // ---- crate 模型（第 4 层，v2.0 决策4）----
+    std::string moduleName;  // 所属模块（crate 域）名，mergeModules 合并阶段写入
 };
 
 // 程序：顶层声明集合（函数/结构体/枚举/联合体/类/接口/导入/泛型）
@@ -895,6 +919,10 @@ public:
     std::vector<std::unique_ptr<InterfaceDecl>> interfaces;   // 接口声明（Task 3.3）
     std::vector<std::unique_ptr<ImportDecl>> imports;         // 导入声明（Task 3.6）
     std::vector<std::unique_ptr<GenericDecl>> generics;       // 泛型声明（Task 3.8）
+    // ---- 第 4 层（v2.0 决策8/9，P1-4/P3-8）：顶层常量/静态 ----
+    // 顶层声明：常量 名 = 值（crate 级常量，编译期求值）与 静态 [类型] 名 [= 值]
+    // （crate 级静态变量）。VarDecl 承载（isConst/isStatic），含模块级可见性。
+    std::vector<std::unique_ptr<VarDecl>> globals;            // 顶层常量/静态变量声明
 };
 
 } // namespace cn_compiler

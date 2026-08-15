@@ -34,6 +34,11 @@ struct FunctionInfo {
     // 默认值表达式按需求值：IR 层展开；语义层仅记录个数（defaultCount 为尾部连续
     // 带默认值的参数个数，调用时用于"实参个数 + 可补全"匹配）
     int defaultCount = 0;                  // 尾部默认参数个数（从右向左连续声明）
+    // ---- crate 模型（第 4 层，v2.0 决策4）----
+    // 所属模块（crate 域）名：registerFunction 写入（FunctionDecl::moduleName）。
+    // 重复定义检测按模块分桶：跨模块同名同签名函数允许（crate 隔离），
+    // 仅同模块内重名报错。空 = 单文件/内置函数（prelude，无 crate 域）。
+    std::string moduleName;
 };
 
 // ==================== 阶段3：类成员信息（Task 3.1） ====================
@@ -62,6 +67,11 @@ struct ClassMemberInfo {
 // 类符号信息：成员表 + 继承 + 虚表 + 接口实现 + 布局（Task 3.1~3.3）
 struct ClassInfo {
     std::string name;                          // 类名
+    // ---- 第 4 层（v2.0 决策11，可见性交集检查）----
+    // 所属模块（crate 域）名 + 模块级可见性：registerClassAndInterfaces 写入。
+    //   可见性交集：跨模块访问类成员须 模块公开 × 类内公开（交集最严格）。
+    std::string moduleName;                    // 所属模块名（空=单文件）
+    AccessSpecifier moduleAccess = AccessSpecifier::Public;  // 模块级可见性
     std::string baseName;                      // 父类名（空=无继承）
     std::vector<std::string> interfaces;       // 实现的接口名列表
     std::unordered_map<std::string, ClassMemberInfo> fields;    // 字段表（含继承并入）
@@ -185,6 +195,16 @@ public:
     // 查询泛型声明（未找到返回nullptr）。Debug 子任务修复（泛型类方法体提升
     //   需解析 实例化类名$实参 的类型参数映射）——公开转发供 IR 层访问。
     const GenericInfo* findGeneric(const std::string& name) const;
+    // ---- 第 4 层（v2.0 决策9，P1-4）：顶层常量查询（IR 层编译期折叠）----
+    // 查询顶层常量值文本（未注册返回空串；值为字面量 raw 文本）
+    std::string globalConstValue(const std::string& name) const {
+        auto it = globalConstValues_.find(name);
+        return (it == globalConstValues_.end()) ? "" : it->second;
+    }
+    // 是否顶层静态变量名（IR 层生成全局存储）
+    bool isGlobalStatic(const std::string& name) const {
+        return globalStaticNames_.count(name) > 0;
+    }
 
     // ==================== AstVisitor 接口实现 ====================
     // 声明节点
@@ -301,9 +321,12 @@ private:
     bool hasFunctionName(const std::string& name) const;
     // 重载决议：实参类型列表 -> 匹配的签名（精确>宽化>隐式转换；默认参数补全参与）。
     // 返回匹配的签名 key（未匹配返回空串；歧义时报告错误）
+    // 第 4 层（crate 隔离）：moduleFilter 非空时仅匹配该模块的签名（限定调用
+    //   module::函数 按模块过滤，跨模块同名函数不歧义）；空=不限制（纯名调用）。
     std::string resolveOverload(const std::string& name,
                                 const std::vector<std::string>& argTypes,
-                                const SourceLocation& loc);
+                                const SourceLocation& loc,
+                                const std::string& moduleFilter = "");
     // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换 -1=不可转
     //（非静态：需调用 canConvertType/isEnumType 等成员，Task 2.10）
     int conversionLevel(const std::string& argType, const std::string& paramType);
@@ -391,6 +414,27 @@ private:
     // ==================== 成员状态 ====================
     Diagnostics& diagnostics_;                     // 诊断引擎引用
     std::unordered_map<std::string, FunctionInfo> functions_;   // 函数符号表
+    // ---- crate 模型（第 4 层）----
+    // 签名 key -> 已注册该签名的模块名集合（跨模块同名函数允许；限定调用验证用）
+    std::unordered_map<std::string, std::unordered_set<std::string>> funcSigModules_;
+    // use 导入表（P1-3）：模块名 -> 导入符号信息（符号集合/别名/通配符）
+    struct UseImportInfo {
+        std::unordered_set<std::string> symbols;                 // 导入的具体符号名
+        std::unordered_map<std::string, std::string> aliases;    // 别名 -> 原符号名
+        bool wildcard = false;                                   // 导入 模块::*
+    };
+    std::unordered_map<std::string, UseImportInfo> useImports_;
+    // 模块公开符号表：模块名 -> 公开符号名集合（crate 分桶 + 限定调用验证 + 交集检查）
+    std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicSymbols_;
+    // 模块公开类名集合：模块名 -> 公开类名（可见性交集检查：跨模块类成员访问须类公开）
+    std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicClasses_;
+    // ---- 第 4 层（v2.0 决策8/9，P1-4/P3-8）：顶层常量/静态 ----
+    // crate 级常量符号表：常量名 -> 常量值（整型文本/浮点文本/字符串文本）。
+    //   visitProgram 注册顶层 常量/静态 声明；visitIdentifierExpr 把常量名
+    //   引用替换为字面量（编译期常量替换）。静态变量暂以全局变量语义注册
+    //   （IR 层生成全局存储，见 F 步；本层先支持常量折叠 + 静态符号声明）。
+    std::unordered_map<std::string, std::string> globalConstValues_;  // 常量名 -> 值文本
+    std::unordered_set<std::string> globalStaticNames_;               // 静态变量名集合
     std::unordered_set<std::string> typeNames_;    // 结构体/枚举类型名表（Task 2.7）
     std::vector<std::unordered_map<std::string, std::string>> scopes_; // 变量作用域栈
     std::string lastType_;                         // 最近一次表达式推断的类型

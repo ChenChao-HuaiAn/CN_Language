@@ -172,6 +172,12 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
         ClassInfo info;
         info.name = cls->name;
         info.ast = cls.get();
+        // 第 4 层（v2.0 决策11，可见性交集检查）：记录类所属模块与模块级可见性。
+        //   mergeModules 已按模块级可见性过滤（模块私有类不合并进 Program），
+        //   故合并后的类 moduleAccess 恒为 Public（入口模块类为 Private 或 Public
+        //   但同文件可见不受影响）；moduleName 用于跨模块访问判定（见 checkAccess）。
+        info.moduleName = cls->moduleName;
+        info.moduleAccess = cls->access;
         classes_[cls->name] = std::move(info);
         // 类名也登记到类型名表（变量声明/参数声明可用类类型）
         typeNames_.insert(cls->name);

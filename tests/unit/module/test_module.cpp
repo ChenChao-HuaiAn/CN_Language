@@ -268,8 +268,9 @@ TEST(ModuleTest, MergePublicOnly) {
     EXPECT_NE(findFunc(&merged, "主"), nullptr);
 }
 
-// 跨模块类型重名（结构体）报错
-// 注：被导入模块类型须 公开:（v2.0 默认私有）才会跨模块合并并触发冲突
+// 跨模块类型重名（第 4 层反转，v2.0 决策4 crate 隔离）：
+//   甲.cn 公开 结构体 点 与 主.cn 结构体 点 跨模块同名**允许**（crate 各自
+//   命名空间），仅同一模块内重名报错（分桶）。合并阶段不再全局去重冲突。
 TEST(ModuleTest, MergeTypeConflict) {
     Diagnostics diags;
     ModuleGraph graph;
@@ -280,13 +281,14 @@ TEST(ModuleTest, MergeTypeConflict) {
     std::string error;
     ASSERT_TRUE(graph.topoSort(ordered, error)) << error;
     Program merged;
-    EXPECT_FALSE(mergeModules(ordered, &merged, diags));
-    EXPECT_GT(diags.getErrorCount(), 0);
+    // crate 隔离：跨模块同名类型允许，合并成功
+    EXPECT_TRUE(mergeModules(ordered, &merged, diags));
+    EXPECT_EQ(diags.getErrorCount(), 0);
 }
 
-// 跨模块类型重名（入口模块私有类 与 导入模块公开类）报错：
-//   两者合并到同一 Program 后语义层类型名冲突（类型表全局唯一）。
-// 注：被导入模块类须 公开:（v2.0 默认私有）才会跨模块合并并触发冲突
+// 跨模块类型重名（第 4 层反转，v2.0 决策4 crate 隔离）：
+//   入口模块私有类 与 导入模块公开类 同名 -> 跨模块同名允许（分桶）。
+//   入口模块私有类不跨模块导出（merge 阶段可见性过滤），互不冲突。
 TEST(ModuleTest, MergeClassConflictPrivateSkipped) {
     Diagnostics diags;
     ModuleGraph graph;
@@ -301,9 +303,9 @@ TEST(ModuleTest, MergeClassConflictPrivateSkipped) {
     std::string error;
     ASSERT_TRUE(graph.topoSort(ordered, error)) << error;
     Program merged;
-    // 入口模块私有类 与 导入模块公开类 重名：合并阶段检测到类型冲突 -> 报错
-    EXPECT_FALSE(mergeModules(ordered, &merged, diags));
-    EXPECT_GT(diags.getErrorCount(), 0);
+    // crate 隔离：跨模块同名类允许，合并成功（无全局类型冲突）
+    EXPECT_TRUE(mergeModules(ordered, &merged, diags));
+    EXPECT_EQ(diags.getErrorCount(), 0);
 }
 
 // 导入声明合并到 Program（供语义层收集 importedModules_ 识别限定调用）
@@ -528,7 +530,9 @@ TEST(ModuleTest, SemanticBraceImportMissingName) {
     EXPECT_NE(r.messages.find("不存在名"), std::string::npos) << r.messages;
 }
 
-// 跨模块同签名函数重名：两个模块公开 双倍(整32) -> 合并后语义层报"重复定义函数"
+// 跨模块同签名函数重名（第 4 层反转，v2.0 决策4 crate 隔离）：
+//   两个模块公开 双倍(整32) -> crate 各自命名空间，跨模块同名**允许**
+//   （仅同模块内重名报错）。限定调用 数学::双倍 / 工具::双倍 各自解析。
 TEST(ModuleTest, SemanticDuplicateFunctionAcrossModules) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2, diags3;
@@ -543,13 +547,13 @@ TEST(ModuleTest, SemanticDuplicateFunctionAcrossModules) {
     units.push_back(makeUnit(
         "导入 数学\n导入 工具\n"
         "函数 主() -> 整32 {\n"
-        "    变量 数值 = 双倍(10)\n"
+        "    变量 数值 = 数学::双倍(10)\n"  // 限定调用按模块解析（crate 隔离）
         "    返回 0\n"
         "}\n",
         "主.cn", diags3));
     auto r = analyzeModules(std::move(units));
-    EXPECT_FALSE(r.ok) << r.messages;
-    EXPECT_NE(r.messages.find("重复定义函数"), std::string::npos) << r.messages;
+    // crate 隔离：跨模块同名函数允许，语义通过
+    EXPECT_TRUE(r.ok) << r.messages;
 }
 
 // 跨模块同签名函数重名（重载不冲突）：整32 与 浮64 签名可共存
@@ -588,19 +592,181 @@ TEST(ModuleTest, SemanticQualifiedCallWithoutImport) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 平方根(浮64 x) -> 浮64 { 返回 x }\n",
-        "数学.cn", diags1));
+        "函数 双倍(整32 n) -> 整32 { 返回 n * 2 }\n",
+        "工具.cn", diags1));
     units.push_back(makeUnit(
         "函数 主() -> 整32 {\n"
-        "    变量 数值 = 数学.平方根(16.0)\n"
+        "    变量 数值 = 工具.双倍(10)\n"
         "    返回 0\n"
         "}\n",
         "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
-    // 已知缺陷：未导入模块的限定调用应报错，当前实现静默通过（r.ok=true）。
-    // 记录缺陷而非断言通过——打印诊断供回归观察。
-    std::cerr << "=== 未导入限定调用诊断（已知缺陷 P1） ===\n"
-              << r.messages << "=== 结束 ===\n";
-    // 注：若未来修复该缺陷，应改为 EXPECT_FALSE(r.ok)。
-    EXPECT_TRUE(r.ok) << "已知缺陷 P1：未导入模块限定调用未报错（见 HANDOFF）";
+    // P1-1 修复（第 4 层）：未导入模块的限定调用 -> 报「未声明的标识符」。
+    //   工具.cn 是用户模块（公开函数 双倍 合并），非 prelude 内置——
+    //   主.cn 未写 导入 工具 直接 工具.双倍(10) -> 编译错误。
+    //   注：内置函数（数学::平方根 等 24 个 prelude 限定名）是例外，无需导入。
+    EXPECT_FALSE(r.ok) << "P1-1 修复：未导入模块限定调用应报错，实际通过\n" << r.messages;
+    EXPECT_NE(r.messages.find("未声明的标识符"), std::string::npos) << r.messages;
+}
+
+// ==================== 第 4 层新增测试（crate 模型核心重构） ====================
+
+// 同模块内重名类型报错（crate 分桶内去重）：同一模块两个公开 结构体 点
+TEST(ModuleTest, CrateBucketSameModuleDuplicateType) {
+    Diagnostics diags;
+    ModuleGraph graph;
+    graph.addModule(makeUnit(
+        "公开:\n结构体 点 { 整32 x }\n公开:\n结构体 点 { 整32 y }",
+        "甲.cn", diags));
+    graph.addModule(makeUnit("导入 甲\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags));
+    std::vector<ModuleUnit*> ordered;
+    std::string error;
+    ASSERT_TRUE(graph.topoSort(ordered, error)) << error;
+    Program merged;
+    // 同模块内重名 -> 报错（分桶内冲突）
+    EXPECT_FALSE(mergeModules(ordered, &merged, diags));
+    EXPECT_GT(diags.getErrorCount(), 0);
+}
+
+// 同模块内重名函数报错：同一模块两个同签名 双倍(整32)
+TEST(ModuleTest, CrateBucketSameModuleDuplicateFunction) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 双倍(整32 n) -> 整32 { 返回 n * 2 }\n"
+        "函数 双倍(整32 n) -> 整32 { 返回 n * 3 }\n",
+        "数学.cn", diags1));
+    units.push_back(makeUnit("导入 数学\n函数 主() -> 整32 { 返回 0 }", "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 同模块内同签名重名 -> 报"重复定义函数"
+    EXPECT_FALSE(r.ok) << r.messages;
+    EXPECT_NE(r.messages.find("重复定义函数"), std::string::npos) << r.messages;
+}
+
+// use 导入表：花括号导入 + 别名（导入 数学::{正弦 作为 正}）后 正() 可调用
+TEST(ModuleTest, UseImportBraceAlias) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 正弦(浮64 x) -> 浮64 { 返回 x }\n"
+        "函数 余弦(浮64 x) -> 浮64 { 返回 x + 1 }\n",
+        "数学.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 数学::{正弦 作为 正, 余弦}\n"
+        "函数 主() -> 整32 {\n"
+        "    浮64 值1 = 正(0.5)\n"       // 别名 正 -> 正弦
+        "    浮64 值2 = 余弦(0.5)\n"     // 花括号项直用
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// use 导入表：通配符导入（导入 数学::*）后任意公开符号可限定调用
+TEST(ModuleTest, UseImportWildcard) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 加法(整32 a, 整32 b) -> 整32 { 返回 a + b }\n",
+        "数学.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 数学::*\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 数学::加法(1, 2)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 内置 key `::` 化 + prelude：数学::平方根 无需导入即可调用（prelude 例外）
+TEST(ModuleTest, BuiltinQualifiedColonColonPrelude) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1;
+    units.push_back(makeUnit(
+        "函数 主() -> 整32 {\n"
+        "    浮64 根 = 数学::平方根(9.0)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags1));
+    auto r = analyzeModules(std::move(units));
+    // 内置 数学::平方根 为核心包 prelude 成员，无需导入即可用
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 旧点号内置名兼容（第 6 层迁移前）：数学.平方根 仍可用（builtinQualified 双判定）
+TEST(ModuleTest, BuiltinQualifiedDotCompat) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1;
+    units.push_back(makeUnit(
+        "函数 主() -> 整32 {\n"
+        "    浮64 根 = 数学.平方根(9.0)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags1));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 顶层常量（v2.0 决策9，P1-4）：常量 名 = 字面量 -> 函数体内可引用
+TEST(ModuleTest, TopLevelConstDecl) {
+    Diagnostics diags;
+    ModuleGraph graph;
+    graph.addModule(makeUnit(
+        "常量 最大容量 = 42\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 最大容量\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags));
+    std::vector<ModuleUnit*> ordered;
+    std::string error;
+    ASSERT_TRUE(graph.topoSort(ordered, error)) << error;
+    Program merged;
+    ASSERT_TRUE(mergeModules(ordered, &merged, diags)) << diags.format();
+    // 顶层常量注册到 Program::globals
+    ASSERT_EQ(merged.globals.size(), 1u);
+    EXPECT_EQ(merged.globals[0]->name, "最大容量");
+    EXPECT_TRUE(merged.globals[0]->isConst);
+    // 语义分析：常量引用类型检查通过
+    cn_compiler::SemanticAnalyzer analyzer(diags);
+    EXPECT_TRUE(analyzer.analyze(&merged)) << diags.format();
+}
+
+// 可见性交集：模块私有类不跨模块导入（导入 甲::隐藏类 -> 报错）
+// 注：模块私有类在 merge 阶段被过滤（不合并进 Program），导入符号不存在
+TEST(ModuleTest, VisibilityIntersectionPrivateClassNotExported) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "私有:\n"
+        "类 隐藏类 {\n"
+        "    公开:\n"
+        "    函数 隐藏方法() -> 整32 { 返回 1 }\n"
+        "}\n"
+        "公开:\n"
+        "函数 公开入口() -> 整32 { 返回 0 }\n",
+        "甲.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 甲\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 值 = 甲::公开入口()\n"  // 模块公开函数可访问（交集：模块公开）
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    // 可见性交集（v2.0 决策11）：模块私有类 隐藏类 在 merge 阶段被过滤——
+    //   验证合并后的 Program 不含该私有类（类内公开成员不突破模块私有边界）。
+    bool hasHiddenClass = false;
+    for (const auto& c : r.merged.classes) {
+        if (c->name == "隐藏类") { hasHiddenClass = true; break; }
+    }
+    // 私有类不跨模块合并；公开函数可正常调用（语义通过）
+    EXPECT_FALSE(hasHiddenClass) << "模块私有类不应跨模块合并";
+    EXPECT_TRUE(r.ok) << r.messages;
 }

@@ -113,8 +113,14 @@ bool parseSourceText(const std::string& source, const std::string& filePath,
     ast = parser.parse(tokens);
     if (diags.hasErrors()) return false;
 
-    // 收集导入依赖（模块名去重；importPath 取首个 :: 前段为模块名，
-    //   如 数学::平方根 -> 数学；网络协议::HTTP::请求 -> 网络协议；v2.0 :: 分隔）
+    // 收集导入依赖（模块名去重）。
+    // 第 4 层（v2.0 决策6，P1-2）：目录层级——依赖模块名取 :: 路径**前缀层级**：
+    //   - 导入 网络::传输控制  -> 依赖 网络（加载 网络.cn 或 网络/ 目录树）
+    //   - 导入 网络::传输控制::发送 -> 依赖 网络（首段模块树根）
+    //   - 导入 网络协议::HTTP::请求 -> 依赖 网络协议（crate/模块树首段）
+    //   模块声明（isModuleDecl，模块 网络）同样取首段加载网络.cn。
+    //   依赖收集仍以首段为模块名（driver 递归加载 网络.cn 后，其内部再
+    //   通过子模块声明加载 网络/传输控制.cn——目录层级由 driver 展开）。
     for (const auto& imp : ast->imports) {
         std::string dep = imp->importPath;
         const std::size_t sep = dep.find("::");
@@ -367,16 +373,28 @@ void collectStmtFuncRefs(Stmt* s, std::unordered_set<std::string>& out) {
     }
 }
 
+// 按模块（crate）分桶的类型去重表：模块名 -> 已合并类型名集合。
+// v2.0 crate 隔离（决策4）：跨模块同名类型允许（crate 各自命名空间），
+//   仅同一模块内重名报错。取代 v1.0 的全局 seenTypes 去重。
+using CrateTypeBuckets = std::unordered_map<std::string, std::unordered_set<std::string>>;
+
 // 合并一个模块的声明到 out（所有权 release 转移）。
 // 入口模块（entryModule=true）合并全部声明；被导入模块仅合并公开声明（私有不跨模块）。
-// 返回 false 表示存在跨模块类型重名冲突（diags 已记录；冲突声明跳过合并）。
-bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
-                      std::unordered_set<std::string>& seenTypes, Diagnostics& diags) {
+// 返回 false 表示存在同模块类型重名冲突（diags 已记录；冲突声明跳过合并）。
+bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool singleModule,
+                      CrateTypeBuckets& typeBuckets, Diagnostics& diags) {
     bool ok = true;
     // 声明是否跨模块可见：入口模块全部可见；被导入模块仅公开可见
     auto visible = [entryModule](AccessSpecifier a) {
         return entryModule || a == AccessSpecifier::Public;
     };
+    // 本模块的类型分桶（crate 隔离：同名类型跨模块互不冲突）
+    std::unordered_set<std::string>& seenTypes = typeBuckets[unit.moduleName];
+    // 第 4 层（P2-6）：单文件场景（无导入，singleModule=true）不启用 crate 前缀——
+    //   单文件模块名=文件主干（如 函数.cn -> 函数），加前缀会破坏既有链接符号
+    //   （codegen 对 主->cn_main、打印->__cn_print_* 的映射基于纯名）。仅多模块
+    //   （含导入）才写入 moduleName，供 IR 层加 模块名$ 链接前缀。
+    const std::string crateName = singleModule ? "" : unit.moduleName;
 
     // ---- 导入声明：所有权转移（所有模块的导入都保留到 merged Program）----
     // 语义层 visitProgram 从 Program::imports 收集 importedModules_（限定调用
@@ -386,7 +404,9 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
         out->imports.push_back(std::unique_ptr<ImportDecl>(imp.release()));
     }
     // ---- 函数（含重载）：所有权转移；重复定义检测交给语义层 registerFunction
-    //      （其已处理"原型+定义"组合与重载；跨模块同签名重名会在语义层报重复定义）----
+    //      （其已处理"原型+定义"组合与重载）。v2.0 crate 隔离：跨模块同名函数
+    //      允许（各模块独立命名空间），仅同模块内重名报错——语义层 registerFunction
+    //      按 sigKey 分模块判定（moduleName 已写入 FunctionDecl）。----
     // 缺陷4 修复（私有依赖闭包）：被导入模块的公开函数体内可能直接调用本模块
     //   私有函数。私有函数不跨模块可见，但公开函数体需要它才能编译——须把
     //   被公开函数（及其闭包链）引用的私有函数一并合并（它们对入口不可见，仅
@@ -427,16 +447,31 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
                 if (needed.insert(name).second) changed = true;
             }
         }
-        // 4) 合并：公开函数 + 被闭包引用的私有函数
+        // 4) 合并：公开函数 + 被闭包引用的私有函数（写入 crate 域 moduleName）
         for (auto& f : unit.ast->declarations) {
             const bool isPublic = (f->access == AccessSpecifier::Public);
             const bool inClosure = (needed.count(f->name) > 0);
             if (!isPublic && !inClosure) continue;  // 私有且未被引用：不合并
+            f->moduleName = crateName;              // crate 分桶/链接前缀（第 4 层）
             out->declarations.push_back(std::unique_ptr<FunctionDecl>(f.release()));
         }
     } else {
         for (auto& f : unit.ast->declarations) {
+            f->moduleName = crateName;  // crate 分桶/链接前缀（第 4 层）
             out->declarations.push_back(std::unique_ptr<FunctionDecl>(f.release()));
+        }
+    }
+    // ---- 顶层常量/静态（第 4 层，v2.0 决策8/9，P1-4/P3-8）----
+    // crate 级常量/静态变量：入口模块全部合并；被导入模块仅合并公开的。
+    //   模块级私有常量不跨模块（与函数/类可见性规则一致）。
+    for (auto& g : unit.ast->globals) {
+        if (!visible(g->access)) continue;
+        if (entryModule) {
+            g->moduleName = crateName;
+            out->globals.push_back(std::unique_ptr<VarDecl>(g.release()));
+        } else if (g->access == AccessSpecifier::Public) {
+            g->moduleName = crateName;
+            out->globals.push_back(std::unique_ptr<VarDecl>(g.release()));
         }
     }
     // ---- 结构体/联合体 ----
@@ -444,10 +479,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
         if (!visible(s->access)) continue;
         if (!seenTypes.insert(s->name).second) {
             diags.report(DiagnosticLevel::Error, s->location,
-                         "跨模块重复声明类型 '" + s->name + "'（模块 " + unit.moduleName + "）");
+                         "模块 '" + unit.moduleName + "' 内重复声明类型 '" + s->name + "'");
             ok = false;
             continue;  // 冲突：跳过合并（源 AST 仍持有所有权，正常释放）
         }
+        s->moduleName = crateName;  // crate 域（第 4 层）
         out->structs.push_back(std::unique_ptr<StructDecl>(s.release()));
     }
     // ---- 枚举 ----
@@ -455,10 +491,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
         if (!visible(e->access)) continue;
         if (!seenTypes.insert(e->name).second) {
             diags.report(DiagnosticLevel::Error, e->location,
-                         "跨模块重复声明类型 '" + e->name + "'（模块 " + unit.moduleName + "）");
+                         "模块 '" + unit.moduleName + "' 内重复声明类型 '" + e->name + "'");
             ok = false;
             continue;
         }
+        e->moduleName = crateName;  // crate 域（第 4 层）
         out->enums.push_back(std::unique_ptr<EnumDecl>(e.release()));
     }
     // ---- 类 ----
@@ -466,10 +503,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
         if (!visible(c->access)) continue;
         if (!seenTypes.insert(c->name).second) {
             diags.report(DiagnosticLevel::Error, c->location,
-                         "跨模块重复声明类型 '" + c->name + "'（模块 " + unit.moduleName + "）");
+                         "模块 '" + unit.moduleName + "' 内重复声明类型 '" + c->name + "'");
             ok = false;
             continue;
         }
+        c->moduleName = crateName;  // crate 域（第 4 层；可见性交集检查依据）
         out->classes.push_back(std::unique_ptr<ClassDecl>(c.release()));
     }
     // ---- 接口 ----
@@ -477,10 +515,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
         if (!visible(i->access)) continue;
         if (!seenTypes.insert(i->name).second) {
             diags.report(DiagnosticLevel::Error, i->location,
-                         "跨模块重复声明类型 '" + i->name + "'（模块 " + unit.moduleName + "）");
+                         "模块 '" + unit.moduleName + "' 内重复声明类型 '" + i->name + "'");
             ok = false;
             continue;
         }
+        i->moduleName = crateName;  // crate 域（第 4 层）
         out->interfaces.push_back(std::unique_ptr<InterfaceDecl>(i.release()));
     }
     // ---- 泛型声明（Task 3.8，E2E 26 修复；Task 6.1 泛型跨模块打通）----
@@ -489,7 +528,7 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
     //   泛型声明跨模块可见；私有 泛型不跨模块，与函数/类可见性规则一致）。
     //   Task 6.1：stdlib/核心.cn（交换/最小/最大）与 容器.cn（向量/链表/栈/队列）
     //   为被导入标准库模块，其公开泛型须跨模块合并才能实例化使用。
-    // 类型重名检测：泛型类/函数名加入 seenTypes（与普通类/函数冲突检测）。
+    // 类型重名检测：泛型类/函数名加入本模块分桶（与普通类/函数冲突检测，crate 隔离）。
     for (auto& g : unit.ast->generics) {
         const bool genPublic = (g->innerClass != nullptr)
                                    ? (g->innerClass->access == AccessSpecifier::Public)
@@ -501,10 +540,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
         else if (g->innerFunc != nullptr) gname = g->innerFunc->name;
         if (!gname.empty() && !seenTypes.insert(gname).second) {
             diags.report(DiagnosticLevel::Error, g->location,
-                         "跨模块重复声明类型 '" + gname + "'（模块 " + unit.moduleName + "）");
+                         "模块 '" + unit.moduleName + "' 内重复声明类型 '" + gname + "'");
             ok = false;
             continue;
         }
+        g->moduleName = crateName;  // crate 域（第 4 层）
         out->generics.push_back(std::unique_ptr<GenericDecl>(g.release()));
     }
     return ok;
@@ -512,12 +552,14 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule,
 
 } // namespace
 
-// 合并多个模块 AST 为单一 Program（Task 3.6）
+// 合并多个模块 AST 为单一 Program（Task 3.6；第 4 层 crate 分桶）
 // ordered 为拓扑排序结果（被依赖者在前）。
 // 入口模块判定 = isEntryModule（模块名 == 主，即 主.cn，规范08-四）：
 //   其全部声明（含私有）保留；被导入模块（非入口）仅合并公开声明。
+// v2.0 crate 隔离：类型重名按模块分桶（跨模块同名允许），函数重复定义
+//   由语义层 registerFunction 按 moduleName 分模块判定（同模块重名才报错）。
 bool mergeModules(const std::vector<ModuleUnit*>& ordered, Program* out, Diagnostics& diags) {
-    std::unordered_set<std::string> seenTypes;  // 已合并类型名（结构体/枚举/类/接口）
+    CrateTypeBuckets typeBuckets;  // 模块名 -> 已合并类型名集合（crate 分桶）
     bool ok = true;
     // 单模块场景（无导入）：唯一模块即入口（E2E 26 修复——单文件用例模块名
     //   非 主（如 泛型模板.cn），isEntryModule 判 false 导致泛型/私有被过滤，
@@ -526,7 +568,7 @@ bool mergeModules(const std::vector<ModuleUnit*>& ordered, Program* out, Diagnos
     for (ModuleUnit* unit : ordered) {
         if (unit == nullptr || unit->ast == nullptr) continue;
         const bool isEntry = singleModule || isEntryModule(*unit);
-        if (!mergeModuleDecls(*unit, out, isEntry, seenTypes, diags)) ok = false;
+        if (!mergeModuleDecls(*unit, out, isEntry, singleModule, typeBuckets, diags)) ok = false;
     }
     return ok;
 }

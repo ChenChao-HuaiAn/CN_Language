@@ -41,14 +41,46 @@ std::string pathDir(const std::string& path) {
     return (slash == std::string::npos) ? "" : path.substr(0, slash + 1);
 }
 
+// 安静尝试读取文件（不写 error）：探测候选路径是否存在
+bool tryReadSource(const std::string& path, std::string& out) {
+    std::string err;
+    return module::readSourceFile(path, out, err);
+}
+
 // 递归加载模块及其依赖：已加载模块名去重（重复导入只加载一次）
-// 依赖模块路径 = 入口所在目录 + 模块名 + ".cn"（文件即模块，同目录平铺）
+// 第 4 层（v2.0 决策6，P1-2）：目录层级——模块名 = 文件相对入口目录的路径：
+//   - 入口：网络/传输控制.cn -> 模块名 网络::传输控制（:: 对应 / 目录）
+//   - 依赖：导入 数学::平方根 首段 数学 -> 数学.cn（当前模块文件目录）
+//   - 子模块：网络.cn 内 模块 传输控制 -> 网络/传输控制.cn（当前模块树目录）
+// 模块名规范化：始终基于入口目录 entryDir（保证子模块名含父模块前缀，
+//   如 网络/传输控制.cn -> 网络::传输控制，而非仅 传输控制）。
+// 搜索顺序（每依赖两候选路径）：
+//   候选1 = 当前模块文件目录 + 依赖名.cn（普通依赖，如 主 导入 数学）
+//   候选2 = 当前模块文件目录 + 当前模块名最后段 + "/" + 依赖名.cn
+//           （子模块声明：网络.cn 内 模块 传输控制 -> 网络/传输控制.cn）
 // 返回 false 表示加载/解析失败（diags 已输出或 error 已写入）
 bool loadModuleTree(const std::string& filePath, const std::string& dir,
+                    const std::string& entryDir,
                     module::ModuleGraph& graph, std::string& error,
                     const std::unordered_set<std::string>& macros) {
-    const std::string stem = pathStem(filePath);
-    if (graph.findModule(stem) != nullptr) return true;  // 已加载：去重
+    // 模块名 = 文件相对**入口目录**的路径主干（网络/传输控制.cn -> 网络::传输控制）
+    std::string relPart;
+    if (filePath.size() > entryDir.size() && filePath.compare(0, entryDir.size(), entryDir) == 0) {
+        relPart = filePath.substr(entryDir.size());
+    } else {
+        relPart = filePath;
+    }
+    // 模块名 = 相对入口目录的完整路径（去扩展名，斜杠 -> ::）。
+    // 注意：不能用 pathStem（会去掉目录——net/transport.cn 只取 transport），
+    //   必须保留 net/ 前缀：net/transport.cn -> net::transport（目录层级 P1-2）。
+    std::string moduleName = relPart;
+    const std::size_t dotPos = moduleName.find_last_of('.');
+    if (dotPos != std::string::npos) moduleName = moduleName.substr(0, dotPos);
+    for (std::size_t pos = moduleName.find_first_of("/\\"); pos != std::string::npos;
+         pos = moduleName.find_first_of("/\\", pos + 1)) {
+        moduleName.replace(pos, 1, "::");
+    }
+    if (graph.findModule(moduleName) != nullptr) return true;  // 已加载：去重
 
     std::string source;
     if (!module::readSourceFile(filePath, source, error)) return false;
@@ -56,20 +88,51 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     Diagnostics diags;  // 词法/语法错误本地收集
     auto unit = std::make_unique<module::ModuleUnit>();
     unit->filePath = filePath;
-    unit->moduleName = stem;
-    if (!module::parseSourceText(source, filePath, stem, unit->ast, unit->imports, diags,
-                                 macros)) {
+    unit->moduleName = moduleName;
+    // 模块目录前缀（相对入口；网络/传输控制.cn -> 网络/），子模块从该目录加载
+    unit->moduleDir = pathDir(relPart);
+    if (!module::parseSourceText(source, filePath, moduleName, unit->ast, unit->imports,
+                                 diags, macros)) {
         std::cerr << diags.format();
-        error = "模块 '" + stem + "' 解析失败";
+        error = "模块 '" + moduleName + "' 解析失败";
         return false;
     }
     graph.addModule(std::move(unit));
 
-    // 递归加载依赖模块（同目录下 模块名.cn）
-    module::ModuleUnit* cur = graph.findModule(stem);
+    // 递归加载依赖模块（目录层级：候选1 当前文件目录 / 候选2 当前模块树目录）
+    module::ModuleUnit* cur = graph.findModule(moduleName);
+    const std::string depBase = dir + cur->moduleDir;
+    // 当前模块名最后段（网络::传输控制 -> 传输控制；网络 -> 网络）
+    std::string lastSeg = moduleName;
+    const std::size_t lastColon = lastSeg.rfind("::");
+    if (lastColon != std::string::npos) lastSeg = lastSeg.substr(lastColon + 2);
     for (const auto& dep : cur->imports) {
-        const std::string depFile = dir + dep + ".cn";
-        if (!loadModuleTree(depFile, dir, graph, error, macros)) return false;
+        // :: 分隔的依赖路径（网络::传输控制）转为目录层级（网络/传输控制.cn）
+        std::string relPath = dep;
+        for (std::size_t pos = relPath.find("::"); pos != std::string::npos;
+             pos = relPath.find("::", pos + 1)) {
+            relPath.replace(pos, 2, "/");
+        }
+        // 候选1：当前模块文件目录 + 依赖名.cn（普通依赖，主 导入 数学 -> 数学.cn）
+        const std::string cand1 = depBase + relPath + ".cn";
+        std::string srcBuf;
+        if (tryReadSource(cand1, srcBuf)) {
+            if (!loadModuleTree(cand1, depBase, entryDir, graph, error, macros)) return false;
+            continue;
+        }
+        // 候选2：当前模块树目录（网络.cn 内 模块 传输控制 -> 网络/传输控制.cn）
+        //   当前模块文件目录 + 当前模块名最后段 + "/" + 依赖名.cn
+        const std::string cand2 = depBase + lastSeg + "/" + relPath + ".cn";
+        if (tryReadSource(cand2, srcBuf)) {
+            if (!loadModuleTree(cand2, dir + cur->moduleDir + lastSeg + "/", entryDir,
+                                graph, error, macros)) {
+                return false;
+            }
+            continue;
+        }
+        // 两个候选均不存在：依赖模块缺失（保持与 v1.0 一致：加载失败报错）
+        error = "无法打开源文件: " + cand1;
+        return false;
     }
     return true;
 }
@@ -86,7 +149,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     module::ModuleGraph graph;
     std::string error;
     const std::string dir = pathDir(entryFile);
-    if (!loadModuleTree(entryFile, dir, graph, error, options.macros)) {
+    if (!loadModuleTree(entryFile, dir, dir, graph, error, options.macros)) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
     }

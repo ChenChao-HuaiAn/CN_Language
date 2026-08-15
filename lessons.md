@@ -1,5 +1,42 @@
 # lessons.md - AI错误记录与经验教训
 
+## 高权重问题（第 4 层 crate 模型核心重构 新增，2026-08-15）
+
+- [2026-08-15 05:00] **问题类型**: 逻辑错误（权重 9.8）**✅ 已修复（第 4 层）**
+  - **描述**: **模块名前缀计算用了 pathStem（去目录）**——目录层级 `net/transport.cn` 加载时模块名只取 `transport`（pathStem 去掉 net/ 前缀），导致子模块符号 `send` 注册 moduleName="transport" 而非 "net::transport"，`net::transport::send()` 限定调用 resolveOverload 过滤不匹配报「未找到匹配的函数 'send'」。诊断打印 loadModuleTree 的 relPart="net/transport.cn" 但 moduleName="transport" 确证
+  - **原因**: loadModuleTree 用 `pathStem(relPart)` 计算模块名，pathStem 用 find_last_of 去目录——目录层级模块名必须保留完整相对路径
+  - **解决**: 模块名改用 relPart 完整路径（去扩展名 + 斜杠转 `::`）：`net/transport.cn` → `net::transport`
+  - **预防**: 目录层级模块名 = 文件相对入口目录的完整路径，禁止用去目录的 pathStem；子模块符号归属完整路径模块名
+  - **权重**: 9.8（逻辑错误8 × 详细分析1.8 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-15 05:10] **问题类型**: 设计缺陷（权重 11.2）**✅ 已修复（第 4 层）**
+  - **描述**: **单文件场景也加 crate 前缀导致全量 E2E 链接失败 1120**——单文件（无导入，如 03_function 的 函数.cn）经 runModulePipeline merge 后 moduleName=文件主干（"函数"），IR 层给函数加 `函数$双倍` 前缀，codegen 找不到（`?E5878F@@YHH@Z` 无法解析）；同时 `主` 函数被加前缀破坏 `主→cn_main` 映射（入口无 cn_main 符号）
+  - **原因**: crate 前缀只应在多模块（有导入）场景启用；单文件/主 函数须保持纯名链接（codegen symbolName 的 主→cn_main、打印→__cn_print_* 映射基于纯名）
+  - **解决**: mergeModules singleModule=true 时 crateName 置空（不写入 moduleName）；IR 层 `node->name != "主"` 排除 主 函数；语义层 resolvedSignature 同规则（calleeName != "主"）
+  - **预防**: 链接符号前缀改动后必须全量 E2E 回归（单文件场景最易被破坏）；主/内置符号永不加前缀
+  - **权重**: 11.2（设计缺陷10 × 详细分析1.8 × 解决方案1.5 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-15 05:20] **问题类型**: 逻辑错误（权重 9.0）**✅ 已修复（第 4 层）**
+  - **描述**: **resolveOverload 把泛型实例名 `排序$整32` 误当模块前缀剥离**——`$` 剥离条件 `key.find('#') > dollarPos`（hashPos=npos 时比较 true）导致 `排序$整32` 被剥成 keyModule="排序"/key="整32"，base="整32" ≠ 调用名 "排序$整32" → 40_generic_funptr E2E 报「未找到匹配的函数 '排序$整32'」
+  - **原因**: 泛型实例化名（名$实参）与模块前缀（模块名$名#参数）都含 `$`，需区分：模块前缀必有 `#` 且 `$` 在 `#` 前
+  - **解决**: 剥离条件限定 `hashFirst != npos && dollarPos < hashFirst`（`#` 存在且 `$` 在 `#` 前）
+  - **预防**: `$` 在符号名中多义（模块前缀/泛型实例/内部唯一名），剥离模块前缀必须结合 `#` 存在性判定
+  - **权重**: 9.0（逻辑错误8 × 详细分析1.8 × 解决方案1.3 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-15 05:30] **问题类型**: 集成问题（权重 7.8）**✅ 已修复（第 4 层）**
+  - **描述**: **MSVC 增量编译时间戳粒度导致 apply_diff 后构建不重编**——多次改动 semantic.cpp/driver_module.cpp 后 `cmake --build` 显示无编译行（"BUILD_DONE" 无输出），运行单测仍用旧库（反复"改后仍失败"假象），需 PowerShell `(Get-Item file).LastWriteTime = Get-Date` touch 强制重编
+  - **原因**: apply_diff 写文件时间戳与 MSVC 依赖检查粒度相同，可能不触发重编；findstr 过滤构建输出看不到编译行
+  - **解决**: 改动后构建须确认目标源文件重编（findstr 编译行）；必要时 PowerShell touch 强制
+  - **预防**: 改 C++ 源后：① touch（PowerShell LastWriteTime）② build 并确认编译行 ③ 跑测试；避免"改了没编"浪费数轮调试
+  - **权重**: 7.8（集成问题7 × 详细分析1.5 × 解决方案1.3 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-15 05:40] **问题类型**: 集成问题（权重 7.5）**✅ 已修复（第 4 层）**
+  - **描述**: **Windows 中文临时文件写入踩坑**——单测 writeTempFile 用 `std::ofstream` 窄字符写中文文件名失败（ANSI 代码页），改用 `_wfopen_s` 宽字符写但内容误写 UTF-16（`\0` 乱码）；最终方案 `_wfopen_s` 宽路径 + UTF-8 字节直写
+  - **原因**: Windows ofstream 窄字符路径按 ANSI（GBK）解释，UTF-8 中文文件名找不到；`_wfopen_s` 宽路径正确但内容须保持 UTF-8 字节（不转 UTF-16）
+  - **解决**: `MultiByteToWideChar(CP_UTF8)` 转宽路径 + `_wfopen_s` + `fwrite` UTF-8 字节
+  - **预防**: Windows 测试写中文文件名一律 `_wfopen_s` 宽路径 + UTF-8 字节；验证写入成功（文件存在 + 内容字节）；`结果` 等关键字不可作变量名
+  - **权重**: 7.5（集成问题7 × 详细分析1.5 × 解决方案1.3 × 预防措施1.3 × 已解决1.0）
+
 ## 高权重问题（Task 6.13 模块导入语法测试补全 新增，2026-08-15）
 
 - [2026-08-15 07:10] **问题类型**: 任务未完成（测试覆盖不足，权重 9.0）

@@ -883,8 +883,22 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     // Task 2.10 重载：func.name 保持源码名（可读/测试契约）；
     //   mangledName 存签名 key（名#参数串），codegen 按此生成附录C符号。
     //   无参函数 sigKey 即纯名（mangledName==name，保持 主->cn_main 等映射）。
+    // 第 4 层（v2.0 决策4/6，P2-6）：crate 前缀——跨模块同名函数链接符号加
+    //   模块名$ 前缀（包A$函数 与 包B$函数 不冲突）。入口 主 与内置运行时符号
+    //   （__cn_*）不加前缀（保持链接；主 -> cn_main 映射、内置走 __cn_ 路径）。
     func.name = node->name;
-    func.mangledName = node->sigKey.empty() ? node->name : node->sigKey;
+    std::string linkName = node->sigKey.empty() ? node->name : node->sigKey;
+    // 第 4 层（v2.0 决策4/6，P2-6）：crate 前缀——跨模块同名函数链接符号加
+    //   模块名$ 前缀（包A$函数 与 包B$函数 不冲突）。例外：
+    //   ① 入口 主 函数（name=="主"）不加前缀（codegen 映射 cn_main）；
+    //   ② 内置运行时符号（__cn_*）不加前缀（保持链接）；
+    //   ③ 单文件模块（moduleName==文件主干，非 主）中 主 函数同样不加——
+    //      由 codegen symbolName 的 name=="主" -> cn_main 映射处理。
+    if (!node->moduleName.empty() && node->name != "主" &&
+        node->moduleName.find("__cn_") != 0) {
+        linkName = node->moduleName + "$" + linkName;
+    }
+    func.mangledName = linkName;
     func.returnType = mapType(node->returnType.empty() ? "空类型" : node->returnType);
     func.returnTypeSrc = node->returnType.empty() ? "空类型" : node->returnType;
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
@@ -1807,6 +1821,30 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     // 注意：须在 lookupVar 之前判定（字段可能被语义层并入作用域，但 IR 层未并入）。
     if (handleClassFieldRead(node)) {
         return;
+    }
+    // 第 4 层（v2.0 决策9，P1-4）：顶层常量引用——编译期常量折叠。
+    //   常量名 -> 字面量值文本（语义层 globalConstValue 查询），直接生成
+    //   常量加载（ConstInt/ConstFloat/ConstString），避免按变量生成栈槽。
+    if (semantic_ != nullptr) {
+        const std::string constText = semantic_->globalConstValue(node->name);
+        if (!constText.empty()) {
+            if (constText.size() >= 2 &&
+                (constText.front() == '"' || constText.front() == '\'')) {
+                // 字符串常量：去引号后入字符串常量池
+                std::string strVal = constText;
+                if (strVal.size() >= 2) strVal = strVal.substr(1, strVal.size() - 2);
+                lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr", strVal,
+                                       node->location);
+            } else if (constText.find_first_of(".eE") != std::string::npos) {
+                lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, "f64", constText,
+                                       node->location);
+            } else {
+                // 整数常量（可能为十六进制/负数 raw，codegen 按文本解析）
+                lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64", constText,
+                                       node->location);
+            }
+            return;
+        }
     }
     ir::IRValue reg = lookupVar(node->name);
     if (reg.id < 0) {
@@ -2853,56 +2891,58 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "字符串释放") calleeName = "__cn_str_free";
         // Task 2.9：格式化（格式字符串, 参数...）-> 字符串（sprintf 风格）
         else if (calleeName == "格式化") calleeName = "__cn_format";
-        // Task 6.3 数学库：中文限定名（数学.平方根 等，语义层注册为内置函数 key）
-        //   -> 运行时符号（math_api.cpp）。语义层 visitCallExpr 已把 数学.平方根(值)
-        //   重写为 IdentifierExpr("数学.平方根")，此处映射为 __cn_sqrt。
-        else if (calleeName == "数学.平方根") calleeName = "__cn_sqrt";
-        else if (calleeName == "数学.幂") calleeName = "__cn_pow";
-        else if (calleeName == "数学.正弦") calleeName = "__cn_sin";
-        else if (calleeName == "数学.余弦") calleeName = "__cn_cos";
-        else if (calleeName == "数学.正切") calleeName = "__cn_tan";
-        else if (calleeName == "数学.绝对值") calleeName = "__cn_fabs";
-        else if (calleeName == "数学.向上取整") calleeName = "__cn_ceil";
-        else if (calleeName == "数学.向下取整") calleeName = "__cn_floor";
+        // Task 6.3 数学库：中文限定名 -> 运行时符号（math_api.cpp）。第 4 层
+        //   （v2.0 决策6）内置 key `::` 化：语义层注册 数学::平方根，visitCallExpr
+        //   重写为 IdentifierExpr("数学::平方根")；此处映射为 __cn_sqrt。
+        //   旧点号名（数学.平方根，v1.0）兼容映射保留——第 6 层迁移前 E2E
+        //   25_math 等仍用 数学.平方根(值)（语义层 builtinQualified 双判定）。
+        else if (calleeName == "数学::平方根" || calleeName == "数学.平方根") calleeName = "__cn_sqrt";
+        else if (calleeName == "数学::幂" || calleeName == "数学.幂") calleeName = "__cn_pow";
+        else if (calleeName == "数学::正弦" || calleeName == "数学.正弦") calleeName = "__cn_sin";
+        else if (calleeName == "数学::余弦" || calleeName == "数学.余弦") calleeName = "__cn_cos";
+        else if (calleeName == "数学::正切" || calleeName == "数学.正切") calleeName = "__cn_tan";
+        else if (calleeName == "数学::绝对值" || calleeName == "数学.绝对值") calleeName = "__cn_fabs";
+        else if (calleeName == "数学::向上取整" || calleeName == "数学.向上取整") calleeName = "__cn_ceil";
+        else if (calleeName == "数学::向下取整" || calleeName == "数学.向下取整") calleeName = "__cn_floor";
         // Task 6.1 核心库：运行时错误（断言 依赖）-> __cn_runtime_error
         //   （IR 层数组越界检查已直接发射该符号，codegen 有映射）
         else if (calleeName == "运行时错误") calleeName = "__cn_runtime_error";
-        // Task 6.2 IO 输入（stdlib/IO.cn 包装的内置，语义层注册为 IO.* 限定名）：
-        //   IO.读取行 -> __cn_read_line、IO.读取整数 -> __cn_read_int、
-        //   IO.读取浮点 -> __cn_read_float、IO.打印到错误 -> __cn_print_err（input_api.cpp）
-        else if (calleeName == "IO.读取行") calleeName = "__cn_read_line";
-        else if (calleeName == "IO.读取整数") calleeName = "__cn_read_int";
-        else if (calleeName == "IO.读取浮点") calleeName = "__cn_read_float";
-        else if (calleeName == "IO.打印到错误") calleeName = "__cn_print_err";
-        // Task 6.2 文件 API（stdlib/文件.cn 包装的内置，语义层注册为 文件.* 限定名）：
-        //   文件.打开文件 -> __cn_file_open、文件.读取文件 -> __cn_file_read、
-        //   文件.写入文件 -> __cn_file_write、文件.读取文件行 -> __cn_file_read_line、
-        //   文件.文件大小 -> __cn_file_size、文件.关闭文件 -> __cn_file_close、
-        //   文件.文件存在 -> __cn_file_exists（file_api.cpp）
-        else if (calleeName == "文件.打开文件") calleeName = "__cn_file_open";
-        else if (calleeName == "文件.读取文件") calleeName = "__cn_file_read";
-        else if (calleeName == "文件.写入文件") calleeName = "__cn_file_write";
-        else if (calleeName == "文件.读取文件行") calleeName = "__cn_file_read_line";
-        else if (calleeName == "文件.文件大小") calleeName = "__cn_file_size";
-        else if (calleeName == "文件.关闭文件") calleeName = "__cn_file_close";
-        else if (calleeName == "文件.文件存在") calleeName = "__cn_file_exists";
+        // Task 6.2 IO 输入（stdlib/IO.cn 包装的内置，语义层注册为 IO:: 限定名）：
+        //   IO::读取行 -> __cn_read_line、IO::读取整数 -> __cn_read_int、
+        //   IO::读取浮点 -> __cn_read_float、IO::打印到错误 -> __cn_print_err（input_api.cpp）
+        else if (calleeName == "IO::读取行" || calleeName == "IO.读取行") calleeName = "__cn_read_line";
+        else if (calleeName == "IO::读取整数" || calleeName == "IO.读取整数") calleeName = "__cn_read_int";
+        else if (calleeName == "IO::读取浮点" || calleeName == "IO.读取浮点") calleeName = "__cn_read_float";
+        else if (calleeName == "IO::打印到错误" || calleeName == "IO.打印到错误") calleeName = "__cn_print_err";
+        // Task 6.2 文件 API（stdlib/文件.cn 包装的内置，语义层注册为 文件:: 限定名）：
+        //   文件::打开文件 -> __cn_file_open、文件::读取文件 -> __cn_file_read、
+        //   文件::写入文件 -> __cn_file_write、文件::读取文件行 -> __cn_file_read_line、
+        //   文件::文件大小 -> __cn_file_size、文件::关闭文件 -> __cn_file_close、
+        //   文件::文件存在 -> __cn_file_exists（file_api.cpp）
+        else if (calleeName == "文件::打开文件" || calleeName == "文件.打开文件") calleeName = "__cn_file_open";
+        else if (calleeName == "文件::读取文件" || calleeName == "文件.读取文件") calleeName = "__cn_file_read";
+        else if (calleeName == "文件::写入文件" || calleeName == "文件.写入文件") calleeName = "__cn_file_write";
+        else if (calleeName == "文件::读取文件行" || calleeName == "文件.读取文件行") calleeName = "__cn_file_read_line";
+        else if (calleeName == "文件::文件大小" || calleeName == "文件.文件大小") calleeName = "__cn_file_size";
+        else if (calleeName == "文件::关闭文件" || calleeName == "文件.关闭文件") calleeName = "__cn_file_close";
+        else if (calleeName == "文件::文件存在" || calleeName == "文件.文件存在") calleeName = "__cn_file_exists";
         // Task 6.5 字符串扩展库（stdlib/字符串扩展.cn 包装的内置，语义层注册为
-        //   解析.* 限定名——"字符串" 是类型关键字不能作限定名前缀）：
-        //   解析.转整数 -> __cn_str_to_int、解析.转浮点 -> __cn_str_to_double、
-        //   解析.转布尔 -> __cn_str_to_bool（string_api.cpp；成功标志经整32* 输出参数）
-        else if (calleeName == "解析.转整数") calleeName = "__cn_str_to_int";
-        else if (calleeName == "解析.转浮点") calleeName = "__cn_str_to_double";
-        else if (calleeName == "解析.转布尔") calleeName = "__cn_str_to_bool";
-        // Task 6.5 时间库（stdlib/时间.cn 包装的内置，语义层注册为 时间.* 限定名）：
-        //   时间.当前时间戳 -> __cn_time、时间.单调时钟毫秒 -> __cn_clock_ms、
-        //   时间.格式化时间 -> __cn_time_format（time_api.cpp）
-        else if (calleeName == "时间.当前时间戳") calleeName = "__cn_time";
-        else if (calleeName == "时间.单调时钟毫秒") calleeName = "__cn_clock_ms";
-        else if (calleeName == "时间.格式化时间") calleeName = "__cn_time_format";
-        // Task 6.5 系统库（stdlib/系统.cn 包装的内置，语义层注册为 系统.* 限定名）：
-        //   系统.参数个数 -> __cn_argc、系统.参数 -> __cn_argv（system_api.cpp）
-        else if (calleeName == "系统.参数个数") calleeName = "__cn_argc";
-        else if (calleeName == "系统.参数") calleeName = "__cn_argv";
+        //   解析:: 限定名——"字符串" 是类型关键字不能作限定名前缀）：
+        //   解析::转整数 -> __cn_str_to_int、解析::转浮点 -> __cn_str_to_double、
+        //   解析::转布尔 -> __cn_str_to_bool（string_api.cpp；成功标志经整32* 输出参数）
+        else if (calleeName == "解析::转整数" || calleeName == "解析.转整数") calleeName = "__cn_str_to_int";
+        else if (calleeName == "解析::转浮点" || calleeName == "解析.转浮点") calleeName = "__cn_str_to_double";
+        else if (calleeName == "解析::转布尔" || calleeName == "解析.转布尔") calleeName = "__cn_str_to_bool";
+        // Task 6.5 时间库（stdlib/时间.cn 包装的内置，语义层注册为 时间:: 限定名）：
+        //   时间::当前时间戳 -> __cn_time、时间::单调时钟毫秒 -> __cn_clock_ms、
+        //   时间::格式化时间 -> __cn_time_format（time_api.cpp）
+        else if (calleeName == "时间::当前时间戳" || calleeName == "时间.当前时间戳") calleeName = "__cn_time";
+        else if (calleeName == "时间::单调时钟毫秒" || calleeName == "时间.单调时钟毫秒") calleeName = "__cn_clock_ms";
+        else if (calleeName == "时间::格式化时间" || calleeName == "时间.格式化时间") calleeName = "__cn_time_format";
+        // Task 6.5 系统库（stdlib/系统.cn 包装的内置，语义层注册为 系统:: 限定名）：
+        //   系统::参数个数 -> __cn_argc、系统::参数 -> __cn_argv（system_api.cpp）
+        else if (calleeName == "系统::参数个数" || calleeName == "系统.参数个数") calleeName = "__cn_argc";
+        else if (calleeName == "系统::参数" || calleeName == "系统.参数") calleeName = "__cn_argv";
     }
 
     std::vector<ir::IRValue> args;

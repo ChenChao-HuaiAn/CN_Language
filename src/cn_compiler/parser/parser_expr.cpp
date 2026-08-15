@@ -282,7 +282,11 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
                 static_cast<MemberExpr*>(expr.get())->memberName = newName;
             }
         } else if (check(TokenType::LeftParen) || check(TokenType::Dot) ||
-                   check(TokenType::Arrow)) {
+                   check(TokenType::Arrow) || check(TokenType::ColonColon)) {
+            // 第 4 层（v2.0 决策1/6）：:: 限定路径 模块::符号 解析——与 . 成员访问
+            //   同语义（限定调用），复用 parseCallOrMember 折叠为 MemberExpr，
+            //   语义层 visitCallExpr 按 use 导入表重写。多段路径 包::模块::符号
+            //   逐段折叠为嵌套 MemberExpr（object=外层 MemberExpr）。
             expr = parseCallOrMember(std::move(expr));
         } else {
             break;
@@ -318,12 +322,17 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
         consume(TokenType::RightParen, "')'");
         return call;
     }
-    // 成员访问（. 或 ->）
+    // 成员访问（. 或 ->）或 v2.0 路径限定（::）
     const SourceLocation loc = expr->location;
-    bool isArrow = check(TokenType::Arrow);
+    const bool isArrow = check(TokenType::Arrow);
+    const bool isPath = check(TokenType::ColonColon);
+    (void)isPath;  // :: 与 . 同为成员访问路径（MemberExpr.isArrow=false），标记仅文档用
     advance();
     std::string memberName = current().getValue();
     advance();
+    // 第 4 层：:: 限定路径折叠为 MemberExpr（isArrow=false 与 . 同路径），
+    //   供语义层 use 导入表重写（模块::符号 限定调用）；memberName 可能为
+    //   关键字（核心::可选 等路径段），token 值直接取文本。
     auto mem = std::make_unique<MemberExpr>(std::move(expr), memberName, isArrow);
     mem->location = loc;
     return mem;

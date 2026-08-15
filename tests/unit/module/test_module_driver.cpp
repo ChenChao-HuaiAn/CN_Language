@@ -13,6 +13,14 @@
 #include <cstdlib>
 #include <fstream>
 #include <string>
+#ifdef _WIN32
+#include <direct.h>   // _mkdir / _rmdir（目录层级测试）
+#include <windows.h>  // MultiByteToWideChar（UTF-8 中文文件名写入）
+#else
+#include <sys/stat.h> // mkdir
+#include <unistd.h>   // rmdir
+#endif
+#include <vector>
 
 #include "cn_compiler/driver/driver.hpp"
 
@@ -83,4 +91,95 @@ TEST(ModuleDriverTest, ImportExistingModuleFileSucceeds) {
 
     std::remove(depPath.c_str());
     std::remove(entryPath.c_str());
+}
+
+// 目录层级（第 4 层，v2.0 决策6，P1-2）：net/transport.cn 子目录模块树
+// net.cn 内 模块 transport -> 加载 net/transport.cn；主 导入 net 使用其公开符号
+// 注：目录/子模块文件用 ASCII（net/transport.cn——模块路径 net::transport）；
+//   入口文件 主.cn 用 UTF-8 宽字符写入（readSourceFile UTF-8 宽路径读，避免
+//   Windows ofstream 窄字符写中文文件名失败——MultiByteToWideChar 兼容路径）
+TEST(ModuleDriverTest, ModuleTreeSubdirectory) {
+    // 创建子目录 net/
+    const std::string rootDir = tempDir() + "/tree_test_net";
+    const std::string netDir = rootDir + "/net";
+#ifdef _WIN32
+    _mkdir(rootDir.c_str());
+    _mkdir(netDir.c_str());
+#else
+    mkdir(rootDir.c_str(), 0755);
+    mkdir(netDir.c_str(), 0755);
+#endif
+    // net.cn：模块 transport 声明（子模块树）+ 公开函数（ASCII 文件名，
+    //   ofstream 窄字符写 OK；内容 UTF-8 字节直写）
+    const std::string netPath = rootDir + "/net.cn";
+    std::ofstream netOut(netPath, std::ios::binary);
+    netOut <<
+        "公开:\n"
+        "模块 transport\n"
+        "函数 entry() -> 整32 { 返回 1 }\n";
+    netOut.close();
+    // net/transport.cn：公开函数（子模块符号）
+    const std::string subPath = netDir + "/transport.cn";
+    std::ofstream subOut(subPath, std::ios::binary);
+    subOut <<
+        "公开:\n"
+        "函数 send() -> 整32 { 返回 42 }\n";
+    subOut.close();
+    // 主.cn：导入 net（模块树），调用 net::transport::send（多段限定）
+    const std::string entryPath = rootDir + "/主.cn";
+#ifdef _WIN32
+    // 中文文件名用 UTF-8 宽路径打开 + UTF-8 字节写入（readSourceFile 按
+    //   UTF-8 宽路径读取兼容；文件内容保持 UTF-8 字节，不转 UTF-16）
+    {
+        const std::string content =
+            "导入 net\n"
+            "函数 主() -> 整32 {\n"
+            "    变量 数值1 = net::transport::send()\n"
+            "    变量 数值2 = net::entry()\n"
+            "    返回 0\n"
+            "}\n";
+        const int pathLen = MultiByteToWideChar(CP_UTF8, 0, entryPath.c_str(), -1, nullptr, 0);
+        std::vector<wchar_t> widePath(static_cast<std::size_t>(pathLen));
+        MultiByteToWideChar(CP_UTF8, 0, entryPath.c_str(), -1, widePath.data(), pathLen);
+        FILE* fp = nullptr;
+        if (_wfopen_s(&fp, widePath.data(), L"wb") == 0 && fp != nullptr) {
+            std::fwrite(content.c_str(), 1, content.size(), fp);  // UTF-8 字节直写
+            std::fclose(fp);
+        }
+    }
+#else
+    std::ofstream(entryPath) <<
+        "导入 net\n"
+        "函数 主() -> 整32 {\n"
+        "    变量 数值1 = net::transport::send()\n"
+        "    变量 数值2 = net::entry()\n"
+        "    返回 0\n"
+        "}\n";
+#endif
+
+    DriverOptions options;
+    PipelineOutput output;
+    const int rc = runModulePipeline(entryPath, options, output);
+    // 诊断：失败时打印目录内容（文件是否写入，含子目录递归）
+    if (rc != 0) {
+        std::cerr << "诊断: tree_test_net 目录内容（递归）:\n";
+#ifdef _WIN32
+        std::string cmd = "dir /s \"" + rootDir + "\"";
+        std::system(cmd.c_str());
+#endif
+    }
+    EXPECT_EQ(rc, 0) << "目录层级模块树应编译成功";
+    // 失败时保留文件供排查（正常时清理）
+    if (rc != 0) return;
+
+    std::remove(entryPath.c_str());
+    std::remove(subPath.c_str());
+    std::remove(netPath.c_str());
+#ifdef _WIN32
+    _rmdir(netDir.c_str());
+    _rmdir(rootDir.c_str());
+#else
+    rmdir(netDir.c_str());
+    rmdir(rootDir.c_str());
+#endif
 }
