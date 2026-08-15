@@ -39,6 +39,7 @@ add_executable(cn_unit_tests
     semantic/test_reference_params.cpp
     semantic/test_error_propagate.cpp
     semantic/test_range_for.cpp
+    semantic/test_ffi_extern.cpp
     semantic/test_sizeof.cpp
     module/test_module.cpp
     module/test_module_driver.cpp

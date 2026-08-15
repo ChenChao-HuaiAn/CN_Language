@@ -864,7 +864,20 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             }
             continue;
         }
-        if (check(TokenType::Kw_Function)) {
+        // C-3（2026-08）FFI 最小集：外部 函数 名(参数) -> 类型 ——
+        //   上下文关键字探测（外部 为普通标识符，仅"外部 + 函数"组合触发），
+        //   声明 C 链接外部函数（无函数体，链接期解析符号）
+        if (check(TokenType::Identifier) && current().getValue() == "外部" &&
+            peek(1).getType() == TokenType::Kw_Function) {
+            advance();  // 消费 外部
+            auto func = parseFunctionDecl();
+            if (!func->name.empty() || func->body) {
+                func->isExtern = true;
+                func->access = moduleAccess;
+                program->declarations.push_back(std::move(func));
+            }
+            consumeSemicolon();
+        } else if (check(TokenType::Kw_Function)) {
             auto func = parseFunctionDecl();
             if (!func->name.empty() || func->body) {
                 func->access = moduleAccess;  // 记录模块级可见性（Task 3.6）

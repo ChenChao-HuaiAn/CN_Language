@@ -1108,6 +1108,13 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     }
     info.returnType = node->returnType.empty() ? "空类型" : canonicalType(node->returnType);
     info.hasBody = (node->body != nullptr);
+    // C-3（FFI）：外部 函数 声明——无函数体（C 符号由链接期解析）；
+    //   有函数体属误用（外部=外部定义，禁止 CN 侧实现）
+    info.isExtern = node->isExtern;
+    if (node->isExtern && node->body != nullptr) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "外部 函数 声明不能有函数体（C 符号由外部库提供）");
+    }
     // A-1（引用参数）：函数返回类型暂不支持引用（引用仅支持函数参数）——
     //   规格书容器设计中的 T& 下标返回 属后续扩展，当前明确报错避免静默误编译
     if (!node->returnType.empty() && types::isReference(node->returnType)) {
@@ -1221,6 +1228,20 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     }
     funcSigModules_[node->sigKey].insert(node->moduleName);
     functions_[node->sigKey] = info;
+}
+// C-3（FFI）：查询签名 key 对应函数是否为 外部 函数（链接符号=纯名）
+bool SemanticAnalyzer::isExternFunc(const std::string& sigKey) const {
+    auto it = functions_.find(sigKey);
+    if (it != functions_.end()) return it->second.isExtern;
+    // 跨模块前缀键（模块名$sigKey，crate 隔离注册路径）：
+    //   去掉模块前缀后按签名 key 比对（外部 声明均在入口文件，前缀=入口模块）
+    const std::size_t dollar = sigKey.find('$');
+    if (dollar != std::string::npos) {
+        const std::string rest = sigKey.substr(dollar + 1);
+        auto it2 = functions_.find(rest);
+        if (it2 != functions_.end()) return it2->second.isExtern;
+    }
+    return false;
 }
 bool SemanticAnalyzer::bodyGuaranteesReturn(BlockStmt* body) const {
     if (body == nullptr || body->statements.empty()) return false;

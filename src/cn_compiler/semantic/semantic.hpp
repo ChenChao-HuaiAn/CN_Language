@@ -29,6 +29,7 @@ struct FunctionInfo {
     std::vector<std::string> paramTypes;   // 参数类型列表
     bool hasBody = false;                  // 是否有函数体（函数原型声明无体）
     bool variadic = false;                 // 是否变参函数（Task 2.5：打印行 多参数）
+    bool isExtern = false;                 // C-3：外部 函数 声明（C 链接符号=纯名）
     // ---- Task 2.10：默认参数 ----
     std::vector<bool> hasDefault;          // 每个参数是否有默认值（与 paramTypes 等长）
     // 默认值表达式按需求值：IR 层展开；语义层仅记录个数（defaultCount 为尾部连续
@@ -149,6 +150,8 @@ public:
     std::string funcFirstSigKey(const std::string& name) const;
     // 查询函数参数类型列表（未注册返回空；供IR层推导结构体按值实参传递，Task 完善A）
     std::vector<std::string> funcParamTypesOf(const std::string& funcName) const;
+    // C-3：是否 外部 函数（链接符号=纯名，IR 调用侧按此映射）
+    bool isExternFunc(const std::string& sigKey) const;
     // 程序AST（供结构体/枚举符号表查询）
     Program* program_ = nullptr;
 

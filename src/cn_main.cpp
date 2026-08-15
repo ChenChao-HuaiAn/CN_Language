@@ -50,6 +50,8 @@ struct CliOptions {
     std::string cargoToml;
     // 编译器内置 stdlib 目录（--stdlib <路径> 显式覆盖；默认相对可执行文件探测）
     std::string stdlibDir;
+    // C-3（FFI）：附加链接库（--链接 <库>，可多次；ASCII 别名 --link-lib）
+    std::vector<std::string> extraLibs;
 };
 
 // 打印版本信息
@@ -82,6 +84,7 @@ void printHelp() {
     // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
     std::cout << "  --货舱 <路径>           指定 货舱.toml 路径（默认按入口文件同目录自动发现）\n";
     std::cout << "  --stdlib <路径>        指定编译器内置 stdlib 目录（默认相对可执行文件探测）\n";
+    std::cout << "  --链接 <库>             附加链接库（C-3 FFI；可多次；ASCII 别名 --link-lib）\n";
     std::cout << "  --version, -v          显示版本信息\n";
     std::cout << "  --help, -h             显示帮助信息\n";
 }
@@ -137,6 +140,10 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
             // 显式指定编译器内置 stdlib 目录（覆盖相对可执行文件探测）
             if (index + 1 >= args.size()) return "选项 --stdlib 缺少路径参数";
             options.stdlibDir = args[++index];
+        } else if (current == "--链接" || current == "--link-lib") {
+            // C-3（FFI）：附加链接库（可多次；--link-lib 为 ASCII 别名）
+            if (index + 1 >= args.size()) return "选项 --链接 缺少库名参数";
+            options.extraLibs.push_back(args[++index]);
         } else if (current == "--verbose") {
             options.verbose = true;
         } else if (current.rfind("--", 0) == 0) {
@@ -578,7 +585,8 @@ static bool compileRuntime(const std::string& target, const std::string& vcvarsB
 //   - 主函数符号 cn_main / 内置函数符号由运行时 .o 提供（extern "C"）
 static bool linkExe(const std::string& target, const std::string& vcvarsBat,
                     const std::string& userObj, const std::string& runtimeObjDir,
-                    const std::string& exePath, bool verbose, std::string& error) {
+                    const std::string& exePath, bool verbose,
+                    const std::vector<std::string>& extraLibs, std::string& error) {
     std::string cmdLine;
     if (isWinX64(target)) {
         cmdLine =
@@ -591,6 +599,10 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             runtimeObjDir + "\\math_api.obj\" \"" + runtimeObjDir + "\\input_api.obj\" \"" +
             runtimeObjDir + "\\file_api.obj\" \"" + runtimeObjDir + "\\time_api.obj\" \"" +
             runtimeObjDir + "\\system_api.obj\"";
+        // C-3（FFI）：附加链接库（--链接 库名，可多次）
+        for (const auto& lib : extraLibs) {
+            cmdLine += " \"" + lib + "\"";
+        }
     } else {
         cmdLine =
             linuxCxxTool() + " -no-pie -o \"" + exePath + "\" \"" + userObj + "\" \"" +
@@ -599,6 +611,9 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
             runtimeObjDir + "/math_api.o\" \"" + runtimeObjDir + "/input_api.o\" \"" +
             runtimeObjDir + "/file_api.o\" \"" + runtimeObjDir + "/time_api.o\" \"" +
             runtimeObjDir + "/system_api.o\"";
+        for (const auto& lib : extraLibs) {
+            cmdLine += " " + lib;
+        }
     }
     int rc = runToolchainCommand(vcvarsBat, cmdLine, verbose);
     if (rc != 0) {
@@ -700,7 +715,7 @@ static int buildExe(const CliOptions& options, const std::string& file,
 
     // 8. 链接 -> 可执行文件（win-x64 .exe / linux-arm64 无后缀）
     if (!linkExe(options.target, vcvarsBat, objPath, "target", exePath,
-                 options.verbose, error)) return 1;
+                 options.verbose, options.extraLibs, error)) return 1;
     return 0;
 }
 

@@ -60,7 +60,14 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         //   定义/调用三处一致（codegen 按此生成 mangled 符号）。
         //   内置函数（打印/字符串API）无重载，resolvedSignature 为空，保持原名映射。
         if (isDirect && !node->resolvedSignature.empty()) {
-            calleeName = node->resolvedSignature;
+            // C-3（FFI）：外部 函数 调用——链接符号 = 纯名（C 符号无重载
+            //   mangling、无模块前缀；codegen 自动 EXTERN，链接期由库解析）
+            if (semantic_ != nullptr &&
+                semantic_->isExternFunc(node->resolvedSignature)) {
+                calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
+            } else {
+                calleeName = node->resolvedSignature;
+            }
         }
     }
     // ---- 默认实参补全（Task 2.10）----
