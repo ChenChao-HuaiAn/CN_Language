@@ -893,9 +893,12 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   ① 入口 主 函数（name=="主"）不加前缀（codegen 映射 cn_main）；
     //   ② 内置运行时符号（__cn_*）不加前缀（保持链接）；
     //   ③ 单文件模块（moduleName==文件主干，非 主）中 主 函数同样不加——
-    //      由 codegen symbolName 的 name=="主" -> cn_main 映射处理。
-    if (!node->moduleName.empty() && node->name != "主" &&
-        node->moduleName.find("__cn_") != 0) {
+    //      由 codegen symbolName 的 name=="主" -> cn_main 映射处理；
+    //   ④ 入口文件 主.cn 的辅助函数（moduleName=="主"）同样不加前缀——
+    //      入口 crate 根文件的函数调用按纯名重写（语义层不感知入口模块前缀），
+    //      若加 主$ 前缀则定义侧与调用侧符号不匹配（38_tool 链接失败实测）。
+    if (!node->moduleName.empty() && node->moduleName != "主" &&
+        node->name != "主" && node->moduleName.find("__cn_") != 0) {
         linkName = node->moduleName + "$" + linkName;
     }
     func.mangledName = linkName;

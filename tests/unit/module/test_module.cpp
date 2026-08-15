@@ -360,7 +360,7 @@ MergeSemanticResult analyzeModules(std::vector<std::unique_ptr<ModuleUnit>> unit
     return result;
 }
 
-// 模块限定调用 数学.平方根(16.0) 经语义分析重写为直接调用并类型检查通过
+// 模块限定调用 数学::平方根(16.0) 经语义分析重写为直接调用并类型检查通过
 TEST(ModuleTest, SemanticQualifiedCallRewrite) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
@@ -371,7 +371,7 @@ TEST(ModuleTest, SemanticQualifiedCallRewrite) {
     units.push_back(makeUnit(
         "导入 数学::平方根\n"
         "函数 主() -> 整32 {\n"
-        "    变量 结果 = 数学.平方根(16.0)\n"
+        "    变量 结果 = 数学::平方根(16.0)\n"
         "    返回 0\n"
         "}\n",
         "主.cn", diags2));
@@ -391,7 +391,7 @@ TEST(ModuleTest, SemanticBraceImportQualifiedCall) {
     units.push_back(makeUnit(
         "导入 数学::{正弦, 余弦}\n"
         "函数 主() -> 整32 {\n"
-        "    变量 结果 = 数学.正弦(1.0) + 数学.余弦(2.0)\n"
+        "    变量 结果 = 数学::正弦(1.0) + 数学::余弦(2.0)\n"
         "    返回 0\n"
         "}\n",
         "主.cn", diags2));
@@ -410,12 +410,12 @@ TEST(ModuleTest, SemanticPrivateNotVisibleAcrossModules) {
     units.push_back(makeUnit(
         "导入 数学\n"
         "函数 主() -> 整32 {\n"
-        "    变量 数值 = 数学.内部辅助(10)\n"
+        "    变量 数值 = 数学::内部辅助(10)\n"
         "    返回 0\n"
         "}\n",
         "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
-    // 私有函数不跨模块合并 -> 数学.内部辅助 无法重写为直接调用 -> 报错
+    // 私有函数不跨模块合并 -> 数学::内部辅助 无法重写为直接调用 -> 报错
     EXPECT_FALSE(r.ok) << r.messages;
     EXPECT_NE(r.messages.find("内部辅助"), std::string::npos) << r.messages;
 }
@@ -487,7 +487,7 @@ TEST(ModuleTest, MergePrivateDependencyClosure) {
 //   "预期编译失败"用例（编译失败即判 FAIL），故边界错误用例全部由本文件
 //   单测覆盖（真实运行、无 skip），E2E 只测合法用法。
 
-// 导入不存在的符号：主.cn 导入 数学.平方根 后调用 数学.不存在函数
+// 导入不存在的符号：主.cn 导入 数学::平方根 后调用 数学::不存在函数
 // -> 语义层报 "模块 '数学' 没有公开符号 '不存在函数'"（限定调用重写路径）
 TEST(ModuleTest, SemanticImportMissingSymbol) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
@@ -499,7 +499,7 @@ TEST(ModuleTest, SemanticImportMissingSymbol) {
     units.push_back(makeUnit(
         "导入 数学::平方根\n"
         "函数 主() -> 整32 {\n"
-        "    变量 数值 = 数学.不存在函数(1.0)\n"
+        "    变量 数值 = 数学::不存在函数(1.0)\n"
         "    返回 0\n"
         "}\n",
         "主.cn", diags2));
@@ -596,14 +596,14 @@ TEST(ModuleTest, SemanticQualifiedCallWithoutImport) {
         "工具.cn", diags1));
     units.push_back(makeUnit(
         "函数 主() -> 整32 {\n"
-        "    变量 数值 = 工具.双倍(10)\n"
+        "    变量 数值 = 工具::双倍(10)\n"
         "    返回 0\n"
         "}\n",
         "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
     // P1-1 修复（第 4 层）：未导入模块的限定调用 -> 报「未声明的标识符」。
     //   工具.cn 是用户模块（公开函数 双倍 合并），非 prelude 内置——
-    //   主.cn 未写 导入 工具 直接 工具.双倍(10) -> 编译错误。
+    //   主.cn 未写 导入 工具 直接 工具::双倍(10) -> 编译错误。
     //   注：内置函数（数学::平方根 等 24 个 prelude 限定名）是例外，无需导入。
     EXPECT_FALSE(r.ok) << "P1-1 修复：未导入模块限定调用应报错，实际通过\n" << r.messages;
     EXPECT_NE(r.messages.find("未声明的标识符"), std::string::npos) << r.messages;
