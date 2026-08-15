@@ -515,6 +515,35 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
     int bestTotal = INT32_MAX;
     bool ambiguous = false;
     std::string ambiguousDetail;
+    // A-5（crate 隔离纯名调用）：前置扫描——当前模块是否定义过该函数名。
+    //   若定义过，其他模块的同名条目不参与纯名决议（作用域遮蔽导入语义：
+    //   跨模块同名函数纯名调用不再一律报歧义，当前模块版本优先）；
+    //   当前模块无定义时才回退导入条目（唯一导入/歧义判定照旧）。
+    bool currentHasName = false;
+    if (moduleFilter.empty() && !currentModuleName_.empty()) {
+        for (const auto& kv : functions_) {
+            std::string k2 = kv.first;
+            const std::size_t h2 = k2.find('#');
+            const std::size_t d2 = k2.find('$');
+            std::string km2;
+            if (d2 != std::string::npos && h2 != std::string::npos && d2 < h2) {
+                km2 = k2.substr(0, d2);
+                k2 = k2.substr(d2 + 1);
+            } else if (h2 == std::string::npos && d2 != std::string::npos &&
+                       name.find('$') == std::string::npos) {
+                km2 = k2.substr(0, d2);
+                k2 = k2.substr(d2 + 1);
+            }
+            const std::size_t hp = k2.find('#');
+            const std::string b2 = (hp == std::string::npos) ? k2 : k2.substr(0, hp);
+            if (b2 != name) continue;
+            const std::string em2 = km2.empty() ? kv.second.moduleName : km2;
+            if (em2 == currentModuleName_) {
+                currentHasName = true;
+                break;
+            }
+        }
+    }
     for (const auto& kv : functions_) {
         // 第 4 层：key 形态兼容——普通签名（名#参数）与跨模块条目
         //   （模块名$名#参数）。模块条目 key 含 '$' 前缀（模块名$），
@@ -545,23 +574,40 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         const FunctionInfo& info = kv.second;
         // 第 4 层（crate 隔离）：限定调用按模块过滤——跨模块同名函数各自独立，
         //   仅匹配调用模块的签名（数学::双倍 只解析 数学.cn 的双倍）。
+        // A-5（2026-08）：纯名调用（moduleFilter 空）当前模块条目优先——
+        //   crate 隔离同名函数纯名调用不再一律歧义（作用域遮蔽导入语义，
+        //   与 52_library 的 主::版本() 自限定等价）。
+        const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
         if (!moduleFilter.empty()) {
             // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
-            const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
             if (entryModule == moduleFilter) {
                 // 精确匹配：同包限定调用（网络::传输控制::发送 -> 网络::传输控制）
             } else {
-                // 第 8 层（52_library 实测缺陷）：跨 crate 限定调用
-                //   （工具库::格式化::版本）——外部依赖模块注册 moduleName =
-                //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
-                //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
-                //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
-                const std::size_t lastColon = moduleFilter.rfind("::");
-                const std::string filterLast = (lastColon == std::string::npos)
-                                                    ? moduleFilter
-                                                    : moduleFilter.substr(lastColon + 2);
-                if (entryModule != filterLast) continue;
+                // A-5（父模块名限定调用子模块函数）：entryModule（网络::传输控制）
+                //   以 moduleFilter + "::"（网络::）为前缀即视为同一模块——
+                //   子模块属于父模块命名空间（网络::连接() 解析到 网络::传输控制::连接）
+                const std::string filterPrefix = moduleFilter + "::";
+                const bool isSubModule =
+                    entryModule.compare(0, filterPrefix.size(), filterPrefix) == 0;
+                if (!isSubModule) {
+                    // 第 8 层（52_library 实测缺陷）：跨 crate 限定调用
+                    //   （工具库::格式化::版本）——外部依赖模块注册 moduleName =
+                    //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
+                    //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
+                    //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
+                    const std::size_t lastColon = moduleFilter.rfind("::");
+                    const std::string filterLast = (lastColon == std::string::npos)
+                                                        ? moduleFilter
+                                                        : moduleFilter.substr(lastColon + 2);
+                    if (entryModule != filterLast) continue;
+                }
             }
+        } else if (currentHasName && !entryModule.empty() &&
+                   entryModule != currentModuleName_) {
+            // A-5（crate 隔离纯名调用）：当前模块有同名函数时，其他模块条目
+            //   不参与决议（作用域遮蔽导入；52_library 的 主::版本() 自限定
+            //   语义等价，纯名 版本() 现在直接命中当前模块版本）
+            continue;
         }
         // 参数个数匹配：实参个数 + 可补全的默认参数数 >= 参数总数
         const int required = static_cast<int>(info.paramTypes.size()) - info.defaultCount;
@@ -2527,8 +2573,15 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         }
         if (objPtr->getType() == NodeType::IdentifierExpr) {
             // 值拷贝：重写会销毁旧 MemberExpr（mem->object 悬垂），须先取名字
-            const std::string moduleName =
+            std::string moduleName =
                 static_cast<IdentifierExpr*>(objPtr)->name;
+            // A-5（整路径重命名绑定模块级别名）：别名::符号 重映射为完整路径
+            //   （导入 甲::乙 作为 丙 -> 丙::连接() 解析 甲::乙::连接()）
+            const std::string moduleNameRaw = moduleName;
+            auto maIt = moduleAliases_.find(moduleNameRaw);
+            if (maIt != moduleAliases_.end()) {
+                moduleName = maIt->second;
+            }
             // 完整限定名：模块名::[中间路径::]函数名（数学::平方根 / 包::模块::符号）
             const std::string fullPath = moduleName + "::" + pathPrefix + mem->memberName;
             const bool isTypeName = isStructType(moduleName) || isEnumType(moduleName) ||
@@ -2551,7 +2604,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             // 已导入模块的公开函数优先（用户模块 数学.cn 的公开符号合并为纯名）。
             // Task 6.1：泛型函数注册在 generics_（非 functions_），hasFunctionName
             //   查不到——补充 findGeneric 判定（泛型函数以纯名注册，可跨模块实例化）。
-            const bool moduleImported = importedModules_.count(moduleName) > 0;
+            const bool moduleImported =
+                importedModules_.count(moduleName) > 0 ||
+                importedModules_.count(moduleNameRaw) > 0;
             // 第 4 层（P1-2 目录层级）：子模块路径——net::transport::send() 中
             //   send 属于子模块 net::transport（模块名含 ::）。父模块 net 已导入
             //   （路径导入 wildcard），子模块公开符号经 merge 合并（moduleName=
@@ -2564,12 +2619,19 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             // 第 4 层（P1-1）：use 导入表验证——导入的符号才允许访问。
             //   模块已导入（路径/花括号/通配符）且符号在导入集合或通配符导入中。
             //   子模块：父模块 wildcard 导入即视为子模块符号已导入（模块树）。
+            // A-5：use 导入表双查（重命名导入的别名名 + 重映射后的模块名）
             const auto useIt = useImports_.find(moduleName);
+            const auto useItRaw = useImports_.find(moduleNameRaw);
             bool useHasSymbol = false;
             if (useIt != useImports_.end()) {
                 useHasSymbol = useIt->second.wildcard ||
                                useIt->second.symbols.count(funcBaseName) > 0 ||
                                useIt->second.aliases.count(funcBaseName) > 0;
+            }
+            if (!useHasSymbol && useItRaw != useImports_.end()) {
+                useHasSymbol = useItRaw->second.wildcard ||
+                               useItRaw->second.symbols.count(funcBaseName) > 0 ||
+                               useItRaw->second.aliases.count(funcBaseName) > 0;
             }
             // 用户模块公开函数（模块公开符号表验证，含泛型；子模块按完整路径查）
             const bool userFuncExists =
@@ -2641,6 +2703,18 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 if (aliasIt != aliases.end() && aliasIt->second != ui.first) {
                     calleeName = aliasIt->second;  // 别名 -> 原符号名
                     static_cast<IdentifierExpr*>(node->callee.get())->name = calleeName;
+                    // A-5（花括号项别名跨模块同名歧义根治）：重写回原符号名时
+                    //   携带来源模块（moduleFilter）——resolveOverload 按模块过滤，
+                    //   跨模块同名（模块X$双倍 与 模块Y$双倍）纯名别名调用不再歧义。
+                    //   优先用导入项的来源完整路径（工具库::格式化，跨 crate
+                    //   场景首段 工具库 过滤会漏掉 格式化 模块条目——52_library
+                    //   的 格式价格 回归实测），回退首段（同包模块）
+                    auto iamIt = itemAliasModules_.find(calleeName);
+                    if (iamIt != itemAliasModules_.end()) {
+                        node->moduleFilter = iamIt->second;
+                    } else {
+                        node->moduleFilter = ui.first;
+                    }
                     break;
                 }
             }
@@ -3406,11 +3480,24 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     }
     if (!node->names.empty()) {
         // 导入 路径::{项1 [作为 别名], ...}：花括号导入
+        // A-5（花括号项别名跨模块同名）：记录每个导入项的来源模块**完整路径**
+        //   （工具库::格式化）——纯名调用重写回原符号名后按完整路径过滤；
+        //   首段（工具库）过滤在跨 crate 场景会漏掉 格式化 模块条目
+        std::string braceFullPath;
+        for (std::size_t si = 0; si < node->segments.size(); ++si) {
+            if (si > 0) braceFullPath += "::";
+            braceFullPath += node->segments[si];
+        }
         for (const auto& item : node->names) {
             if (item.name.empty()) continue;
             use.symbols.insert(item.name);
-            if (!item.alias.empty()) use.aliases[item.alias] = item.name;
-            else use.aliases[item.name] = item.name;
+            if (!item.alias.empty()) {
+                use.aliases[item.alias] = item.name;
+                itemAliasModules_[item.alias] = braceFullPath;
+            } else {
+                use.aliases[item.name] = item.name;
+                itemAliasModules_[item.name] = braceFullPath;
+            }
         }
         importedModules_.insert(moduleName);
         return;
@@ -3425,6 +3512,16 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
         // 重命名导入：导入 模块 作为 别名——别名绑定到模块级符号
         //   （调用 别名::符号 时按原模块解析；本层别名表记录）
         use.aliases[node->alias] = moduleName;
+        // A-5（整路径重命名绑定模块级别名）：别名绑定完整路径（含子模块/包
+        //   路径 甲::乙），并登记别名本身可导入（别名::符号 限定调用路径解析）
+        std::string fullPath;
+        for (std::size_t si = 0; si < node->segments.size(); ++si) {
+            if (si > 0) fullPath += "::";
+            fullPath += node->segments[si];
+        }
+        moduleAliases_[node->alias] = fullPath;
+        importedModules_.insert(node->alias);
+        useImports_[node->alias].wildcard = true;
     }
     importedModules_.insert(moduleName);
 }

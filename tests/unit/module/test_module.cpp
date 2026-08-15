@@ -1110,3 +1110,51 @@ TEST(ModuleTest, SemanticTypeConstCrossModuleIsolated) {
     //   常量 常量值 按模块解析（甲=10、主=20）；限定类型 甲::记录 可引用
     EXPECT_TRUE(r.ok) << "跨模块同名类型/常量未隔离（A-2 分桶失败）";
 }
+
+// A-5（模块边界修复，2026-08）：花括号项别名跨模块同名——导入
+//   模块X::{双倍 作为 X双倍} 与 模块Y::{双倍 作为 Y双倍}，纯名 X双倍/Y双倍
+//   各自解析到来源模块（别名重写携带 moduleFilter，此前歧义报错）
+TEST(ModuleTest, BraceAliasCrossModuleResolvesBySourceModule) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2, diags3;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 双倍(整64 值) -> 整64 { 返回 值 * 2 }\n",
+        "模块X.cn", diags1));
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 双倍(整64 值) -> 整64 { 返回 值 * 3 }\n",
+        "模块Y.cn", diags2));
+    units.push_back(makeUnit(
+        "导入 模块X::{双倍 作为 X双倍}\n"
+        "导入 模块Y::{双倍 作为 Y双倍}\n"
+        "函数 主() -> 整32 {\n"
+        "    整64 a = X双倍(21)\n"
+        "    整64 b = Y双倍(21)\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags3));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << "花括号项别名跨模块同名解析失败（A-5）";
+}
+
+// A-5：crate 隔离同名函数纯名调用优先当前模块——主 定义 版本()，导入模块
+//   也有 版本()，纯名 版本() 解析到当前模块（此前一律歧义报错）
+TEST(ModuleTest, BareCallPrefersCurrentModule) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 版本() -> 整64 { 返回 200 }\n",
+        "工具.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 工具\n"
+        "函数 版本() -> 整64 { 返回 100 }\n"
+        "函数 主() -> 整32 {\n"
+        "    整64 v = 版本()\n"
+        "    返回 0\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << "纯名调用当前模块优先解析失败（A-5）";
+}

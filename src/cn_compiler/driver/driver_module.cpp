@@ -133,6 +133,14 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     const std::size_t lastColon = lastSeg.rfind("::");
     if (lastColon != std::string::npos) lastSeg = lastSeg.substr(lastColon + 2);
     for (const auto& dep : cur->imports) {
+        // A-5（子目录模块无法导入父目录 根治）：依赖模块已在图中（父模块是
+        //   当前模块名 网络::传输控制 的前缀层级 网络，加载链祖先）——直接跳过
+        //   候选路径探测（父目录文件不在子模块目录下，探测必失败报
+        //   "无法打开源文件"）。符号经合并阶段全局可见（依赖主导入链全局合并），
+        //   语义层 use 导入表按 导入 网络 正常登记。
+        if (graph.findModule(dep) != nullptr) {
+            continue;
+        }
         // :: 分隔的依赖路径（网络::传输控制）转为目录层级（网络/传输控制.cn）
         std::string relPath = dep;
         for (std::size_t pos = relPath.find("::"); pos != std::string::npos;

@@ -447,6 +447,14 @@ private:
         bool wildcard = false;                                   // 导入 模块::*
     };
     std::unordered_map<std::string, UseImportInfo> useImports_;
+    // A-5（整路径重命名）：模块级别名 -> 完整路径（导入 甲::乙 作为 丙 ->
+    //   丙::符号 解析为 甲::乙::符号；此前别名绑定首段导致限定调用失效）
+    std::unordered_map<std::string, std::string> moduleAliases_;
+    // A-5（花括号项别名跨模块同名）：花括号导入项（含重命名）-> 来源模块
+    //   完整路径（导入 工具库::格式化::{价格 作为 格式价格} -> 格式价格 属
+    //   工具库::格式化）——纯名调用重写回原符号名时按完整路径过滤（首段
+    //   过滤在跨 crate 场景会漏掉 格式化 模块条目）
+    std::unordered_map<std::string, std::string> itemAliasModules_;
     // 模块公开符号表：模块名 -> 公开符号名集合（crate 分桶 + 限定调用验证 + 交集检查）
     std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicSymbols_;
     // 模块公开类名集合：模块名 -> 公开类名（可见性交集检查：跨模块类成员访问须类公开）
