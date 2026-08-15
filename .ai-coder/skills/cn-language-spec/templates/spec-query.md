@@ -1,6 +1,6 @@
 # CN语言规范查询结果
 
-> 技能：cn-language-spec（C++风格版v1.0）
+> 技能：cn-language-spec（C++风格版 v2.0）
 > 生成时间：{{生成时间}}
 
 ---
