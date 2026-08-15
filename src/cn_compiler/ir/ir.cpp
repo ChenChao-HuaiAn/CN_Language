@@ -725,9 +725,29 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
         //   类型大小；普通指针按 ptrElemStride（结构体指针按总大小）
         std::int64_t stride = 8;
         if (idx->object->getType() == NodeType::IdentifierExpr) {
-            const std::string st = lookupSrcType(
+            std::string st = lookupSrcType(
                 static_cast<IdentifierExpr*>(idx->object.get())->name);
-            stride = ptrElemStride(st);
+            // A-3（2026-08）：隐式类字段对象（方法体内 数据[位置] = 值 赋值目标，
+            //   lookupSrcType 为空）——按字段源码类型推导步进（向量 数据 T* 的
+            //   结构体元素 24 字节，此前固定 8 导致元素错位/越界）
+            if (st.empty() && isInstanceField(
+                    static_cast<IdentifierExpr*>(idx->object.get())->name)) {
+                st = classFieldType(currentClass_,
+                                    static_cast<IdentifierExpr*>(idx->object.get())->name);
+                if (types::isArray(st)) {
+                    // 数组字段：按 C 布局元素大小（与成员数组字段同规则）
+                    const std::string elemSrc = types::arrayElemOf(st);
+                    stride = (semantic_ != nullptr &&
+                              semantic_->isStructType(types::canonical(elemSrc)))
+                                 ? semantic_->typeSizeOf(elemSrc)
+                                 : types::typeSize(elemSrc);
+                    emitBoundsCheck(index, types::arrayLenOf(st), idx->location);
+                } else {
+                    stride = ptrElemStride(st);
+                }
+            } else {
+                stride = ptrElemStride(st);
+            }
         } else if (idx->object->getType() == NodeType::MemberExpr) {
             // 修复10/10b/10c：方形.顶点[0] / 方形指针->顶点[0] — object 为数组字段成员，
             //   元素步进 = 字段数组元素类型大小（memberObjStructType 递归处理 arrow）；
@@ -2553,6 +2573,16 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                     static_cast<IdentifierExpr*>(idx->object.get())->name);
                 if (types::isArray(st)) targetType = mapType(types::arrayElemOf(st));
                 else if (types::isPointer(st)) targetType = mapType(types::pointeeOf(st));
+                // A-3（2026-08）：隐式类字段对象（向量 数据[位置] = 值）——
+                //   目标类型按字段所指元素类型推导（此前回退 i64 只存 8 字节）
+                else if (st.empty() &&
+                         isInstanceField(static_cast<IdentifierExpr*>(idx->object.get())->name)) {
+                    const std::string ft = classFieldType(
+                        currentClass_,
+                        static_cast<IdentifierExpr*>(idx->object.get())->name);
+                    if (types::isArray(ft)) targetType = mapType(types::arrayElemOf(ft));
+                    else if (types::isPointer(ft)) targetType = mapType(types::pointeeOf(ft));
+                }
             } else if (idx->object->getType() == NodeType::MemberExpr) {
                 // 出.分数[1] = v：对象为结构体数组字段（整32[3] 分数）——
                 //   元素类型 = 字段数组元素类型（memberObjStructType 推导对象结构体）
@@ -2602,6 +2632,15 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                     static_cast<IdentifierExpr*>(tIdx->object.get())->name);
                 if (types::isArray(st)) tElemSrc = types::arrayElemOf(st);
                 else if (types::isPointer(st)) tElemSrc = types::pointeeOf(st);
+                // A-3（2026-08）：隐式类字段对象——结构体元素整体赋值（CopyStruct）
+                else if (st.empty() &&
+                         isInstanceField(static_cast<IdentifierExpr*>(tIdx->object.get())->name)) {
+                    const std::string ft = classFieldType(
+                        currentClass_,
+                        static_cast<IdentifierExpr*>(tIdx->object.get())->name);
+                    if (types::isArray(ft)) tElemSrc = types::arrayElemOf(ft);
+                    else if (types::isPointer(ft)) tElemSrc = types::pointeeOf(ft);
+                }
             }
             if (!tElemSrc.empty() &&
                 semantic_->isStructType(types::canonical(tElemSrc)) &&
@@ -3315,6 +3354,60 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             return;
         }
     }
+    // A-3（2026-08）：隐式类字段对象（方法体内 数据[位置]，数据 是 this->字段，
+    //   lookupSrcType 为空）——此前落入下方"其他对象"分支按 8 字节步进/标量 LoadPtr，
+    //   结构体元素越界读（向量<点> 元素错乱实测）。此处按字段源码类型推导
+    //   步进与元素形态（数组字段/结构体指针字段 -> 返回元素地址；标量 -> LoadPtr）。
+    if (node->object->getType() == NodeType::IdentifierExpr) {
+        IdentifierExpr* ident2 = static_cast<IdentifierExpr*>(node->object.get());
+        const std::string st2 = lookupSrcType(ident2->name);
+        if (st2.empty() && isInstanceField(ident2->name)) {
+            const std::string fieldType = classFieldType(currentClass_, ident2->name);
+            ir::IRValue ptr = genExpr(node->object.get());  // 字段指针值
+            ir::IRValue index = genExpr(node->index.get());
+            if (index.type != "i64") {
+                index = emitResult(ir::Opcode::Cast, {index}, "i64", "", node->location);
+            }
+            std::int64_t stride = 8;
+            std::string elemSrc = fieldType;
+            bool elemIsStruct = semantic_ != nullptr &&
+                                semantic_->isStructType(types::canonical(fieldType));
+            if (types::isArray(fieldType)) {
+                // 数组字段：按元素大小步进 + 越界检查（与成员数组字段同规则，
+                //   结构体内嵌数组按 C 布局紧凑排布）
+                elemSrc = types::arrayElemOf(fieldType);
+                elemIsStruct = semantic_ != nullptr &&
+                               semantic_->isStructType(types::canonical(elemSrc));
+                stride = elemIsStruct ? semantic_->typeSizeOf(elemSrc)
+                         : (types::isI128(types::canonical(elemSrc)) ? 16
+                                                                    : types::typeSize(elemSrc));
+                emitBoundsCheck(index, types::arrayLenOf(fieldType), node->location);
+            } else if (types::isPointer(fieldType)) {
+                // 指针字段（T* 数据）：堆元素按槽模型步进（标量 8 字节槽、
+                //   结构体按总大小、i128 双槽——与容器库 槽大小 分配一致）
+                elemSrc = types::pointeeOf(fieldType);
+                elemIsStruct = semantic_ != nullptr &&
+                               semantic_->isStructType(types::canonical(elemSrc));
+                stride = elemIsStruct ? semantic_->typeSizeOf(elemSrc)
+                         : (types::isI128(types::canonical(elemSrc)) ? 16 : 8);
+            } else if (elemIsStruct) {
+                stride = semantic_->typeSizeOf(fieldType);
+            }
+            ir::IRValue scaled = emitResult(
+                ir::Opcode::Mul,
+                {index, ir::IRValue::constant(std::to_string(stride), "i64")},
+                "i64", "", node->location);
+            ir::IRValue addr = emitResult(ir::Opcode::Add, {ptr, scaled}, "ptr", "",
+                                          node->location);
+            if (elemIsStruct) {
+                lastExpr_ = addr;  // 结构体元素：返回地址（结构体值语义）
+                return;
+            }
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, mapType(elemSrc), "",
+                                   node->location);
+            return;
+        }
+    }
     // 其他对象形式（下标表达式等）：直接取对象值作为地址（防御性）
     // 修复10：数组字段（方形.顶点[i]）按字段数组元素大小步进（坐标[4] -> 坐标 8 字节），
     //   非数组字段按 8 字节（指针假设）
@@ -3650,6 +3743,13 @@ void IRGenerator::visitType(Type* node) {
 // 语义：复用 IR Cast 指令（codegen 按 from/to 分派转换矩阵）。
 //   目标 IR 类型由源码类型映射；源为 genExpr 结果（类型不匹配时
 //   Cast 指令的 codegen 负责扩展/截断/浮整/指针↔整数 转换）。
+// 类型大小：编译期常量（A-3 2026-08）——语义层已求值并回填 node->size，
+//   IR 层直接生成整64常量（容器库 分配(容量 * 类型大小(T)) 扩容用）
+void IRGenerator::visitSizeofExpr(SizeofExpr* node) {
+    lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64",
+                           std::to_string(node->size), node->location);
+}
+
 void IRGenerator::visitCastExpr(CastExpr* node) {
     ir::IRValue operand = genExpr(node->operand.get());
     const std::string target = mapType(node->targetType);

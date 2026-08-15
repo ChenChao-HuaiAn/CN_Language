@@ -37,6 +37,7 @@ add_executable(cn_unit_tests
     semantic/test_semantic_error.cpp
     semantic/test_semantic_generic.cpp
     semantic/test_reference_params.cpp
+    semantic/test_sizeof.cpp
     module/test_module.cpp
     module/test_module_driver.cpp
     driver/test_cargo_parser.cpp

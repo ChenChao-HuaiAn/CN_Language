@@ -297,6 +297,7 @@ public:
     void visitTernaryExpr(TernaryExpr* node) override;
     void visitCastExpr(CastExpr* node) override;
     void visitLambdaExpr(LambdaExpr* node) override;
+    void visitSizeofExpr(SizeofExpr* node) override;  // 类型大小（A-3 2026-08）
     // 类型节点
     void visitType(Type* node) override;
 

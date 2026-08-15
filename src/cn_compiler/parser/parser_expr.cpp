@@ -310,6 +310,19 @@ std::unique_ptr<Expr> Parser::parsePostfixIncDec(std::unique_ptr<Expr> expr) {
 //   --debug 源码注释被 isValidLoc 过滤——调用/成员是绝大多数指令的源码位置来源）
 std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
     if (check(TokenType::LeftParen)) {
+        // A-3（类型大小内建）：类型大小(类型) ——参数是类型名而非表达式，
+        //   独立 AST 节点（SizeofExpr），语义层编译期求值（C++ sizeof 等价物）。
+        //   探测：被调者为标识符 类型大小 且紧接 '('。
+        if (expr->getType() == NodeType::IdentifierExpr &&
+            static_cast<IdentifierExpr*>(expr.get())->name == "类型大小") {
+            const SourceLocation loc = expr->location;
+            advance();  // 消费 '('
+            std::string typeName = parseTypeNameEx();
+            consume(TokenType::RightParen, "')'");
+            auto so = std::make_unique<SizeofExpr>(typeName);
+            so->location = loc;
+            return so;
+        }
         const SourceLocation loc = expr->location;  // 被调者位置（函数名/对象）
         advance();
         auto call = std::make_unique<CallExpr>(std::move(expr));

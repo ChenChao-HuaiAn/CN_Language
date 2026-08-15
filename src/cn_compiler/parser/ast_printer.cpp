@@ -364,6 +364,10 @@ void AstPrinter::visitCastExpr(CastExpr* node) {
     --depth_;
 }
 
+void AstPrinter::visitSizeofExpr(SizeofExpr* node) {
+    printHeader("类型大小", node->location, node->typeName);
+}
+
 void AstPrinter::visitLambdaExpr(LambdaExpr* node) {
     std::string capture;
     switch (node->captureKind) {

@@ -48,6 +48,7 @@ class NullLiteral;
 class TernaryExpr;
 class CastExpr;
 class LambdaExpr;
+class SizeofExpr;
 class ExprStmt;
 class IfStmt;
 class WhileStmt;
@@ -119,6 +120,7 @@ enum class NodeType {
     TernaryExpr,       // 三元条件表达式（条件 ? 真值 : 假值，Task 2.9）
     CastExpr,          // 强制类型转换（类型名(表达式)，Task 2.10）
     LambdaExpr,        // lambda表达式（[捕获](参数) -> 返回 { 体 }，Task 2.10）
+    SizeofExpr,        // 类型大小（类型大小(类型)，A-3 2026-08，C++ sizeof 等价物）
     // 类型节点
     TypeNode,          // 类型
 };
@@ -226,6 +228,7 @@ public:
     virtual void visitTernaryExpr(TernaryExpr* node) = 0;
     virtual void visitCastExpr(CastExpr* node) = 0;
     virtual void visitLambdaExpr(LambdaExpr* node) = 0;
+    virtual void visitSizeofExpr(SizeofExpr* node);  // 类型大小（A-3，默认空实现）
     // 类型节点
     virtual void visitType(Type* node) = 0;
 };
@@ -524,6 +527,19 @@ public:
     std::vector<std::unique_ptr<ParamDecl>> params; // 参数列表
     std::string returnType;                    // 返回类型（为空表示推导）
     std::unique_ptr<BlockStmt> body;           // 函数体
+};
+
+// 类型大小表达式：类型大小(类型)（A-3 2026-08，C++ sizeof 等价物）
+// 参数是类型名（可为 泛型 T / 限定类型 甲::记录 / 复合类型 整32[5]），
+// 编译期求值为字节大小（语义层计算回填 size，IR 层生成常量）。
+class SizeofExpr : public Expr {
+public:
+    explicit SizeofExpr(std::string typeName)
+        : Expr(NodeType::SizeofExpr), typeName(std::move(typeName)) {}
+    void accept(AstVisitor& visitor) override { visitor.visitSizeofExpr(this); }
+
+    std::string typeName;  // 目标类型名（解析后）
+    int size = 0;          // 字节大小（语义层回填）
 };
 
 // ==================== 语句节点 ====================

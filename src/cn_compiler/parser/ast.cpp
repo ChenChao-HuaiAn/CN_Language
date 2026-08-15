@@ -38,5 +38,6 @@ void AstVisitor::visitGenericDecl(GenericDecl* /*node*/) {}
 void AstVisitor::visitSelfExpr(SelfExpr* /*node*/) {}
 
 void AstVisitor::visitSuperExpr(SuperExpr* /*node*/) {}
+void AstVisitor::visitSizeofExpr(SizeofExpr* /*node*/) {}
 
 } // namespace cn_compiler

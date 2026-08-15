@@ -3609,6 +3609,20 @@ void SemanticAnalyzer::collectLambdaCaptures(
     }
 }
 
+// 类型大小：类型大小(类型) -> 整64（A-3 2026-08，C++ sizeof 等价物）
+// 编译期求值：泛型上下文（向量<T> 方法体）先替换类型参数（T -> 整32），
+//   再按多模块同名解析（限定键），最后查语义层类型大小（结构体/类/数组/标量）。
+// 返回值类型固定 整64（与分配/重新分配 参数类型一致，容器库直接使用）。
+void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
+    // 泛型上下文：类型参数 T 替换为当前实例化实参（向量$整32 方法体内 T -> 整32）
+    std::string t = resolveGenericTypeName(node->typeName, node->location);
+    // A-2（crate 分桶）：多模块同名类型按当前模块解析（限定键）
+    t = resolveTypeName(t, currentModuleName_, node->location);
+    node->typeName = t;
+    node->size = typeSizeOf(t);
+    lastType_ = "整64";
+}
+
 //   5. 其余组合（如 字符串 -> 整32、结构体 -> 整32）报错
 void SemanticAnalyzer::visitCastExpr(CastExpr* node) {
     // A-2（crate 分桶）：强制转换目标类型按当前模块解析（多模块同名 -> 限定键）
