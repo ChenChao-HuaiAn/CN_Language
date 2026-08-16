@@ -574,8 +574,6 @@ void X64CodeGenerator::emitFunctionHeader(AsmWriter& writer, const ir::IRFunctio
 //   __chkstk 会破坏 rax/rcx/r10/r11（MSVC chkstk.asm volatile 集合），
 //   因此隐藏返回指针（rcx -> r12）的保存必须在其之前执行。
 void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& function) {
-    writer.line("push rbp");
-    writer.line("mov rbp, rsp");
     int frameSize = computeFrameSize(function);
     // 阶段C（Task 4.3）栈对齐修复：被调用者保存寄存器（rbx/r12~r15）在
     //   sub rsp 之后压栈，若 push 数量为奇数，函数体内 rsp≡8 (mod 16)，
@@ -593,22 +591,27 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
     //   [新rsp+0..31]=[旧rsp-32..] 不冲突；递归同函数嵌套覆盖为已知限制）。
     frameSize += 16;
     retbufFrameOffset_ = -frameSize;
-    // Task 完善A：结构体/i128 返回值函数——隐藏返回指针（rcx）保存到专用栈槽
-    //   （retbufSlotOffset_，A-4 2026-08：原存 r12，内层函数入口 mov r12,rcx
-    //   覆盖物理 r12 导致外层 epilogue 读到垃圾地址——嵌套结构体返回损坏实测）；
-    //   epilogue 从栈槽恢复缓冲区地址。函数体可能破坏 rcx（参数拷贝/调用）。
-    //   ⚠️ 必须在 call __chkstk 之前执行（__chkstk 破坏 rcx）
-    if (function.structReturn || function.returnType == "i128" ||
-        function.returnType == "u128") {
-        writer.line("mov [rbp" + std::to_string(retbufSlotOffset_) + "], rcx");
+    // 2026-08（自举阶段7 修复）：大栈帧（>4KB）参数/返回指针的保存一律延后到
+    //   call __chkstk 之后——参数槽 [rbp-offset] 深达帧底，__chkstk 之前写入
+    //   会一次性越过 guard 页（未探测区域）直接访问违例（0xC0000005，构造
+    //   36KB 栈帧参数槽写入实测）。__chkstk 破坏 rcx/rdx/r8/r9，故先将
+    //   整型参数寄存器保存到调用方影子空间（入口 [rsp+8..+40]，Win x64 ABI
+    //   保证已提交且归被调方自由使用），__chkstk 完成探测分配后从影子空间
+    //   （push rbp 后即 [rbp+16..+48]）搬运。xmm0-3 不在 __chkstk volatile
+    //   集合（仅 rax/rcx/r10/r11），浮点参数无需预存。
+    const bool useShadowParams =
+        frameSize > 4096 &&
+        (!function.params.empty() || function.structReturn ||
+         function.returnType == "i128" || function.returnType == "u128");
+    if (useShadowParams) {
+        writer.comment("大栈帧：整型参数寄存器预存影子空间（__chkstk 破坏 rcx/rdx/r8/r9）");
+        writer.line("mov [rsp+8], rcx");
+        writer.line("mov [rsp+16], rdx");
+        writer.line("mov [rsp+24], r8");
+        writer.line("mov [rsp+32], r9");
     }
-    // ⚠️ Debug 子任务修复（__chkstk 寄存器破坏）：参数寄存器（rcx/rdx/r8/r9/
-    //   xmm0-3）必须在 call __chkstk 之前保存到参数槽——__chkstk 破坏
-    //   rax/rcx/r10/r11（MSVC chkstk.asm volatile 集合），若 chkstk 先执行，
-    //   emitParamSetup 从 rcx 读第1个整型参数将读到垃圾。参数槽是 [rbp-offset]
-    //   rbp 相对寻址，不依赖 rsp 已分配，因此在栈帧分配前保存安全。
-    //   （generateFunctionAssembly 不再单独调用 emitParamSetup）
-    emitParamSetup(writer, function);
+    writer.line("push rbp");
+    writer.line("mov rbp, rsp");
     if (frameSize > 0) {
         // 栈帧 > 4KB：MSVC 惯例三段式——mov rax, N / call __chkstk / sub rsp, rax。
         //   __chkstk 契约（MSVC x64 CRT chkstk.asm）：rax = 要探测的字节数；
@@ -626,6 +629,18 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
             writer.line("sub rsp, " + std::to_string(frameSize));
         }
     }
+    // 隐藏返回指针：__chkstk 完成后从影子空间（大帧）或寄存器（小帧）读入返回槽
+    if (function.structReturn || function.returnType == "i128" ||
+        function.returnType == "u128") {
+        if (useShadowParams) {
+            writer.line("mov rax, [rbp+16]");  // 影子空间保存的 rcx
+            writer.line("mov [rbp" + std::to_string(retbufSlotOffset_) + "], rax");
+        } else {
+            writer.line("mov [rbp" + std::to_string(retbufSlotOffset_) + "], rcx");
+        }
+    }
+    // 参数槽写入：大帧从影子空间读（__chkstk 破坏 rcx/rdx/r8/r9），小帧直接读寄存器
+    emitParamSetup(writer, function, useShadowParams);
     // 阶段C（Task 4.3）：寄存器分配使用的被调用者保存寄存器（rbx/r12~r15）压栈保存
     //   ——分配器只使用被调用者保存寄存器，调用者不期望其被修改，须保存/恢复。
     //   注：压栈顺序固定（rbx/r12/r13/r14/r15 顺序），恢复时逆序 pop。
@@ -639,14 +654,26 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
 // 故第 i（>=4）参数位于 [rbp + 48 + (i-4)*8]
 // 参数槽名使用 paramUniques（唯一内部名，与 Alloca 的 extra 一致），
 // 保证遮蔽参数/变量的引用与槽登记一致
-void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& function) {
+void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& function,
+                                    bool useShadowParams) {
     // Task 完善A：结构体返回值函数——隐藏返回指针（rcx）占第一个整型参数位，
     //   真实参数从 index 1 起（Win x64 ABI）
     // 修复（集成验证发现）：i128/u128 返回同样占用 rcx 作为隐藏返回指针，
     //   结构体按值参数须从 index 1 起读取（与结构体返回一致）
+    // useShadowParams（2026-08 自举阶段7）：大栈帧函数经 __chkstk 探测后，
+    //   整型参数寄存器（rcx/rdx/r8/r9 被 __chkstk 破坏）已预存调用方影子空间
+    //   （push rbp 后即 [rbp+16]/[+24]/[+32]/[+40]），此处从影子空间读源；
+    //   浮点参数 xmm0-3 不在 __chkstk volatile 集合，直接读寄存器。
     const std::size_t paramOffset =
         (function.structReturn || function.returnType == "i128" ||
          function.returnType == "u128") ? 1 : 0;
+    // 整型/指针参数源（前4位）：影子空间（大帧）或原寄存器（小帧）
+    auto intParamSrc = [this, useShadowParams](int actualIdx) -> std::string {
+        if (useShadowParams) {
+            return "[rbp+" + std::to_string(16 + 8 * actualIdx) + "]";
+        }
+        return parameterRegister(actualIdx);
+    };
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         // 参数唯一名（paramUniques 与 params 一一对应，防御性回退到源码名）
         const std::string& unique = (i < function.paramUniques.size())
@@ -663,7 +690,7 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
             // 参数是结构体（多槽登记）：传入指针在 寄存器/栈（隐藏返回指针占位时偏移）
             std::string srcPtr;
             if (i + paramOffset < 4) {
-                srcPtr = parameterRegister(static_cast<int>(i + paramOffset));
+                srcPtr = intParamSrc(static_cast<int>(i + paramOffset));
             } else {
                 srcPtr = "[rbp+" + std::to_string(48 + (static_cast<int>(i + paramOffset) - 4) * 8) + "]";
             }
@@ -688,6 +715,7 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                 // 修复6（浮点参数）：Win x64 浮点参数经 xmm0-3 传递，
                 // 原实现从 rcx/rdx/r8/r9（整型寄存器）读取——读到垃圾值。
                 // 浮点值存 8 字节槽（f32 只低 4 字节有效），movsd/movss 从 xmmN 存槽
+                // （xmm0-3 不在 __chkstk volatile 集合，大帧同样直接读）
                 const std::string store = (paramType == "f64") ? "movsd" : "movss";
                 const std::string mp = (paramType == "f64") ? "qword ptr " : "dword ptr ";
                 const std::string xmm = "xmm" + std::to_string(i);
@@ -705,7 +733,7 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                 //   原实现只存 8 字节（mov reg）——高64位丢失 -> i128 参数值错误。
                 //   此处从指针地址拷贝 16 字节到参数双槽（槽0=低64位、槽1=高64位，
                 //   与 registerVarSlots 的 2 槽登记一致：槽1 在槽0 上方 8 字节）
-                const std::string srcPtr = parameterRegister(actualIdx);
+                const std::string srcPtr = intParamSrc(actualIdx);
                 writer.line("mov rsi, " + srcPtr);          // 源：i128 双槽地址
                 writer.line("lea rdi, " + slot);            // 目标：参数槽0
                 writer.line("mov rcx, 16");
@@ -714,9 +742,16 @@ void X64CodeGenerator::emitParamSetup(AsmWriter& writer, const ir::IRFunction& f
                                " 拷贝 16 字节");
             } else {
                 // 前4整型/指针参数：寄存器 -> 栈槽（隐藏返回指针占位时偏移 paramOffset）
-                std::string reg = parameterRegister(actualIdx);
-                std::string width = widthFor(paramType, reg);
-                writer.line("mov " + slot + ", " + width);
+                if (useShadowParams) {
+                    // 大帧：从影子空间读（__chkstk 已破坏原寄存器），经 rax 中转
+                    writer.line("mov rax, [rbp+" +
+                                std::to_string(16 + 8 * actualIdx) + "]");
+                    writer.line("mov " + slot + ", rax");
+                } else {
+                    std::string reg = parameterRegister(actualIdx);
+                    std::string width = widthFor(paramType, reg);
+                    writer.line("mov " + slot + ", " + width);
+                }
             }
         } else {
             // 第5参数位起：从调用者栈帧拷贝到本函数参数槽

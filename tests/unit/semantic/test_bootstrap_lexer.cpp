@@ -35,7 +35,7 @@ std::string readLexerModule() {
     for (int i = 0; i < 3; ++i) root = root.parent_path();          // 项目根（tests/unit 之上）
     // 中文文件名在 Windows 须经宽字符路径（fs::path 拼接 L"" 字面量），
     // 窄字符流按 ANSI 代码页解释 UTF-8 文件名会打不开
-    const std::ifstream in(root / "tests" / "e2e" / "70_self_host_lexer" / L"词法分析.cn");
+    const std::ifstream in(root / L"CN语言编译器" / L"词法分析.cn");
     if (!in) return "";
     std::ostringstream ss;
     ss << in.rdbuf();
@@ -114,6 +114,7 @@ TEST(BootstrapLexerTest, ModuleContractPresent) {
               std::string::npos);
     EXPECT_NE(src.find("函数 扫描数字(字符串 源码, 整64 位置, 整64 长度, 字符串& 文本) -> 整64"),
               std::string::npos);
-    const std::size_t p5 = src.find("情况 \"如果\", \"否则\", \"当\", \"循环\", \"返回\", \"中断\", \"继续\", \"选择\", \"情况\", \"默认\":");
+    const std::size_t p5 = src.find("情况 \"如果\", \"否则\", \"当\", \"循环\", \"返回\", \"中断\", \"继续\", \"选择\", \"情况\", \"默认\",");
     EXPECT_NE(p5, std::string::npos);
+    EXPECT_NE(src.find("\"遍历\", \"中\", \"每个\":"), std::string::npos);  // 2026-08 补全关键字
 }

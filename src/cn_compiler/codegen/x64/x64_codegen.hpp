@@ -127,7 +127,8 @@ private:
     void emitPrologue(AsmWriter& writer, const ir::IRFunction& function);
 
     // 生成函数参数加载（前4寄存器存入参数槽）
-    void emitParamSetup(AsmWriter& writer, const ir::IRFunction& function);
+    void emitParamSetup(AsmWriter& writer, const ir::IRFunction& function,
+                      bool useTempParamArea);
 
     // 生成函数 epilogue（恢复栈帧并返回）
     void emitEpilogue(AsmWriter& writer, const std::string& returnReg);

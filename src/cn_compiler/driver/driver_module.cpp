@@ -97,7 +97,13 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     bool externalModule = false;
     const bool inCargoDeps = (relPart.rfind("依赖/", 0) == 0);
     const bool inStdlib = (relPart.rfind("stdlib/", 0) == 0);
-    if (relPart == filePath || inCargoDeps || inStdlib) {
+    // 库 crate 包入口（<目录>/包.cn）：视为外部模块——其 moduleDir 为空，
+    //   子模块依赖从文件所在目录解析（否则 dir+moduleDir 重复拼接包目录，
+    //   <入口>/CN语言编译器//CN语言编译器/词法分析.cn 实测）。
+    const bool isPkgEntry =
+        (relPart.size() > 7 &&
+         relPart.rfind("/包.cn") == relPart.size() - 7);  // "/包.cn" UTF-8 7 字节
+    if (relPart == filePath || inCargoDeps || inStdlib || isPkgEntry) {
         // 仅当路径含目录时视为外部（纯文件名如 主.cn 保持原逻辑）
         const std::size_t slash = moduleName.find("::");
         if (slash != std::string::npos) {
@@ -117,6 +123,16 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     // 模块目录前缀（相对入口；网络/传输控制.cn -> 网络/），子模块从该目录加载。
     // 外部模块（stdlib/依赖目录）moduleDir 为空——子模块从文件所在目录加载。
     unit->moduleDir = externalModule ? "" : pathDir(relPart);
+    // 阶段7 修复：模块实际目录 dir 已含 relDir（包目录加载链：包.cn 子模块
+    //   经包目录 dir 加载，relPart 相对 entryDir 仍带包前缀）——置空防重复拼接
+    //   （<入口>/CN语言编译器//CN语言编译器/词法分析.cn 实测）。
+    {
+        const std::string relDir = pathDir(relPart);
+        if (!relDir.empty() && dir.size() >= relDir.size() &&
+            dir.compare(dir.size() - relDir.size(), relDir.size(), relDir) == 0) {
+            unit->moduleDir = "";
+        }
+    }
     if (!module::parseSourceText(source, filePath, moduleName, unit->ast, unit->imports,
                                  diags, macros)) {
         std::cerr << diags.format();
@@ -147,6 +163,10 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
              pos = relPath.find("::", pos + 1)) {
             relPath.replace(pos, 2, "/");
         }
+        // 依赖首段作为包名（候选2b 目录包 与 候选3 货舱依赖 共用）
+        std::string pkgName = dep;
+        const std::size_t pkgSep = pkgName.find("::");
+        if (pkgSep != std::string::npos) pkgName = pkgName.substr(0, pkgSep);
         // ---- 候选1：当前模块文件目录 + 依赖名.cn（普通依赖，主 导入 数学 -> 数学.cn）
         const std::string cand1 = depBase + relPath + ".cn";
         std::string srcBuf;
@@ -165,11 +185,58 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
             }
             continue;
         }
+        // ---- 候选2b（阶段7 自举模块，2026-08）：入口目录逐级上溯查找
+        //   <目录>/<relPath>.cn——自举组件约定目录 CN语言编译器/（导入
+        //   CN语言编译器::词法分析 -> relPath=CN语言编译器/词法分析 ->
+        //   上溯命中 <项目根>/CN语言编译器/词法分析.cn）。E2E 用例入口
+        //   （tests/e2e/NN_x/主.cn）经 3~4 级上溯命中项目根。
+        {
+            // entryDir 可能为相对路径（E2E 从项目根调用）：逐级上溯到空前缀
+            //   （空前缀 = 相对 cwd，即项目根）。tests/e2e/NN_x -> tests/e2e ->
+            //   tests -> 空 -> <cwd>/CN语言编译器/词法分析.cn 命中。
+            std::string upDir = entryDir;
+            while (!upDir.empty() && (upDir.back() == '/' || upDir.back() == '\\')) {
+                upDir.pop_back();  // 去尾斜杠（pathDir 带尾），防 cand2bPkg 双斜杠
+            }
+            bool found = false;
+            while (true) {
+                const std::string cand2b =
+                    (upDir.empty() ? "" : upDir + "/") + relPath + ".cn";
+                if (tryReadSource(cand2b, srcBuf)) {
+                    if (!loadModuleTree(cand2b, upDir.empty() ? "" : upDir + "/",
+                                        entryDir, graph, error, macros, options)) {
+                        return false;
+                    }
+                    found = true;
+                    break;
+                }
+                // 目录包形态：<目录>/<首段>/包.cn（库 crate 入口；阶段7 自举
+                //   组件 项目根/CN语言编译器/包.cn —— 包内 导入 词法分析 等子模块）
+                const std::string cand2bPkg =
+                    (upDir.empty() ? "" : upDir + "/") + pkgName + "/包.cn";
+                if (tryReadSource(cand2bPkg, srcBuf)) {
+                    // 包内子模块从包目录加载（cwd 级命中时 dir = <包名>/）
+                    const std::string pkgDir = upDir.empty() ? pkgName + "/"
+                                                             : upDir + "/" + pkgName + "/";
+                    if (!loadModuleTree(cand2bPkg, pkgDir, entryDir,
+                                        graph, error, macros, options)) {
+                        return false;
+                    }
+                    found = true;
+                    break;
+                }
+                if (upDir.empty()) break;
+                const std::size_t sep = upDir.find_last_of("/\\");
+                if (sep == std::string::npos) {
+                    upDir = "";  // 末级单段目录（如 tests）：上溯到空（cwd）
+                    continue;
+                }
+                upDir = upDir.substr(0, sep);
+            }
+            if (found) continue;
+        }
         // ---- 候选3：货舱.toml [依赖] 声明路径（第 5 层，规格书09 六 依赖解析流程）
-        // 依赖首段（网络协议::HTTP -> 网络协议）作为包名查 [依赖]
-        std::string pkgName = dep;
-        const std::size_t pkgSep = pkgName.find("::");
-        if (pkgSep != std::string::npos) pkgName = pkgName.substr(0, pkgSep);
+        // 依赖首段（网络协议::HTTP -> 网络协议）作为包名查 [依赖]（pkgName 已提前计算）
         if (options.hasCargoConfig) {
             const driver::CargoDependency* cargoDep =
                 options.cargoConfig.findDependency(pkgName);
