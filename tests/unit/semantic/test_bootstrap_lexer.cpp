@@ -118,3 +118,45 @@ TEST(BootstrapLexerTest, ModuleContractPresent) {
     EXPECT_NE(p5, std::string::npos);
     EXPECT_NE(src.find("\"遍历\", \"中\", \"每个\":"), std::string::npos);  // 2026-08 补全关键字
 }
+// ==================== 自举 Task 7.3：CN 语义分析器 ====================
+
+// 读取 CN 语义分析器模块源码
+std::string readSemanticModule() {
+    namespace fs = std::filesystem;
+    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
+    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const std::ifstream in(root / L"CN语言编译器" / L"语义分析.cn");
+    if (!in) return "";
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+// 语义分析.cn 模块可被 C++ 编译器全链路编译（模块系统：词法/语法/语义 三链）
+TEST(BootstrapSemanticTest, ModuleCompilesViaDriver) {
+    namespace fs = std::filesystem;
+    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
+    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const fs::path entry = root / "tests" / "e2e" / "73_self_host_semantic" / L"主.cn";
+    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    cn_compiler::driver::DriverOptions options;
+    options.target = "win-x64";
+    options.stdlibDir = (root / "stdlib").string();
+    cn_compiler::driver::PipelineOutput output;
+    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    EXPECT_EQ(rc, 0);
+}
+
+// 语义分析.cn 关键函数契约存在（源码文本断言）
+TEST(BootstrapSemanticTest, ModuleContractPresent) {
+    const std::string src = readSemanticModule();
+    ASSERT_FALSE(src.empty()) << "无法读取 语义分析.cn";
+    EXPECT_NE(src.find("函数 语义检查(字符串 源码) -> 向量<字符串>"), std::string::npos);
+    EXPECT_NE(src.find("函数 行类型(字符串 行) -> 字符串"), std::string::npos);
+    EXPECT_NE(src.find("函数 符号查找(向量<字符串> 表, 字符串 名) -> 布尔"), std::string::npos);
+    EXPECT_NE(src.find("函数 检查(向量<字符串> AST行, 向量<字符串> 输出) -> 空类型"),
+              std::string::npos);
+    // 2026-08 修复痕迹：局部变量名避开函数名（遮蔽导致 call r11 崩溃）
+    EXPECT_NE(src.find("字符串 函数名2 = 函数名(文本)"), std::string::npos);
+}
+
