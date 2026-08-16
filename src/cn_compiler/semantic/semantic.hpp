@@ -234,7 +234,7 @@ public:
     void visitIfStmt(IfStmt* node) override;
     void visitWhileStmt(WhileStmt* node) override;
     void visitForStmt(ForStmt* node) override;
-    void visitRangeForStmt(RangeForStmt* node) override;  // C-2：对...属于 降级为 循环
+    void visitRangeForStmt(RangeForStmt* node) override;  // C-2：遍历...中每个 降级为 循环
     void visitReturnStmt(ReturnStmt* node) override;
     void visitBreakStmt(BreakStmt* node) override;
     void visitContinueStmt(ContinueStmt* node) override;
@@ -515,7 +515,7 @@ private:
     std::unordered_set<std::string> loweredStructNames_;
     // 泛型类实例化计数（生成 类名$实例号 唯一名）
     int genericInstanceCounter_ = 0;
-    int rangeForCounter_ = 0;                     // C-2：对...属于 索引变量唯一化计数
+    int rangeForCounter_ = 0;                     // C-2：遍历...中每个 索引变量唯一化计数
     // 当前上下文函数名（友元函数访问检查用，Task 3.9）
     std::string currentFunctionName_;
     // ---- 模块系统（Task 3.6）----

@@ -97,7 +97,7 @@ enum class NodeType {
     ReturnStmt,        // 返回语句
     BreakStmt,         // 中断语句
     ContinueStmt,      // 继续语句
-    RangeForStmt,      // 对...属于 迭代语句（C-2，语义层降级为 循环）
+    RangeForStmt,      // 遍历...中每个 迭代语句（C-2，语义层降级为 循环）
     SwitchStmt,        // 选择语句（switch风格）
     CaseLabel,         // 情况标签（case分支头）
     DefaultLabel,      // 默认标签（default分支头）
@@ -209,7 +209,7 @@ public:
     virtual void visitReturnStmt(ReturnStmt* node) = 0;
     virtual void visitBreakStmt(BreakStmt* node) = 0;
     virtual void visitContinueStmt(ContinueStmt* node) = 0;
-    // C-2（2026-08）：对...属于 迭代语句——默认空实现（语义层降级为 循环）
+    // C-2（2026-08）：遍历...中每个 迭代语句——默认空实现（语义层降级为 循环）
     //   （与阶段3 声明节点同策略：按需重写，IR 层经 desugared 生成）
     virtual void visitRangeForStmt(RangeForStmt* node);
     virtual void visitSwitchStmt(SwitchStmt* node) = 0;
@@ -711,8 +711,8 @@ public:
     void accept(AstVisitor& visitor) override { visitor.visitContinueStmt(this); }
 };
 
-// 对...属于 迭代语句（C-2，2026-08）：对 元素 属于 容器 { 循环体 }
-// 语法：对 <变量名> 属于 <表达式> <语句/块>（对标 C++ range-for / Python for-in）
+// 遍历...中每个 迭代语句（C-2，2026-08）：遍历 容器 中 每个 元素 { 循环体 }
+// 语法：遍历 <迭代对象> 中 每个 <变量名> <语句/块>（对标 C++ range-for / Python for-in）
 // 语义层（visitRangeForStmt）按容器形态降级为 循环（ForStmt）：
 //   - 数组 T[N]        -> 循环 (整64 i=0; i<N; i++) { T 元素 = 容器[i]; 体; }
 //   - 类容器（向量<T>）-> 循环 (整64 i=0; i<容器.大小(); i++) { T 元素 = 容器.元素(i); 体; }

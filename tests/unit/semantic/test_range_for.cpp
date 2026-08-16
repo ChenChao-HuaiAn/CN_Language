@@ -1,8 +1,8 @@
-// 对...属于 迭代语句语义单元测试（C-2，2026-08）
+// 遍历...中每个 迭代语句语义单元测试（C-2，2026-08）
 // 覆盖：数组迭代降级通过、类容器（大小()/元素(整64)）降级通过、
 //   非数组/非类容器报错、类缺 大小()/元素() 方法报错、
 //   非名称式迭代对象（函数调用）报错、循环变量作用域（循环外不可见）、
-//   循环体类型错误传播、嵌套 对...属于
+//   循环体类型错误传播、嵌套 遍历...中每个
 // 测试方式：Lexer + Parser + SemanticAnalyzer 全链路（非Mock）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文（注释可为中文）
 #include <gtest/gtest.h>
@@ -31,7 +31,7 @@ struct SemanticResult {
 SemanticResult analyzeSource(const std::string& source) {
     SemanticResult result;
     Diagnostics diagnostics;
-    Lexer lexer(source, "对属于测试.cn", diagnostics);
+    Lexer lexer(source, "遍历测试.cn", diagnostics);
     auto tokens = lexer.tokenize();
     Parser parser(diagnostics);
     auto program = parser.parse(tokens);
@@ -46,13 +46,13 @@ SemanticResult analyzeSource(const std::string& source) {
 
 } // namespace
 
-// 数组迭代：对 x 属于 数组 { 体 } —— 语义通过（数组形态降级）
+// 数组迭代：遍历 数组 中 每个 x { 体 } —— 语义通过（数组形态降级）
 TEST(RangeForTest, ArrayIterationOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32[3] 数据 = { 1, 2, 3 }
     整32 总和 = 0
-    对 x 属于 数据 {
+    遍历 数据 中 每个 x {
         总和 += x
     }
     返回 总和
@@ -79,7 +79,7 @@ TEST(RangeForTest, ClassContainerOk) {
 函数 主() -> 整32 {
     迷你表 表
     整32 总和 = 0
-    对 x 属于 表 {
+    遍历 表 中 每个 x {
         总和 += x
     }
     返回 总和
@@ -98,7 +98,7 @@ TEST(RangeForTest, MemberIterableOk) {
 函数 主() -> 整32 {
     班级 班 = 班级{ 成绩 = { 1, 2, 3 } }
     整32 总和 = 0
-    对 成绩 属于 班.成绩 {
+    遍历 班.成绩 中 每个 成绩 {
         总和 += 成绩
     }
     返回 总和
@@ -108,7 +108,7 @@ TEST(RangeForTest, MemberIterableOk) {
     EXPECT_EQ(0, r.errorCount);
 }
 
-// 嵌套 对...属于（结构体数组 -> 字段数组）：语义通过
+// 嵌套 遍历...中每个（结构体数组 -> 字段数组）：语义通过
 TEST(RangeForTest, NestedIterationOk) {
     auto r = analyzeSource(R"CN(
 结构体 班级 {
@@ -117,8 +117,8 @@ TEST(RangeForTest, NestedIterationOk) {
 函数 主() -> 整32 {
     班级[2] 各班 = { 班级{ 成绩 = { 1, 2 } }, 班级{ 成绩 = { 3, 4 } } }
     整32 总和 = 0
-    对 班 属于 各班 {
-        对 成绩 属于 班.成绩 {
+    遍历 各班 中 每个 班 {
+        遍历 班.成绩 中 每个 成绩 {
             总和 += 成绩
         }
     }
@@ -134,7 +134,7 @@ TEST(RangeForTest, NonContainerError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 x = 5
-    对 v 属于 x {
+    遍历 x 中 每个 v {
         打印(v)
     }
     返回 0
@@ -156,7 +156,7 @@ TEST(RangeForTest, MissingElementMethodError) {
 }
 函数 主() -> 整32 {
     无元素表 表
-    对 x 属于 表 {
+    遍历 表 中 每个 x {
         打印(x)
     }
     返回 0
@@ -175,7 +175,7 @@ TEST(RangeForTest, NonNameIterableError) {
     返回 数据
 }
 函数 主() -> 整32 {
-    对 x 属于 取数组() {
+    遍历 取数组() 中 每个 x {
         打印(x)
     }
     返回 0
@@ -191,7 +191,7 @@ TEST(RangeForTest, LoopVarScopedError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32[3] 数据 = { 1, 2, 3 }
-    对 x 属于 数据 {
+    遍历 数据 中 每个 x {
         打印(x)
     }
     返回 x
@@ -207,7 +207,7 @@ TEST(RangeForTest, BodyTypeErrorReported) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32[3] 数据 = { 1, 2, 3 }
-    对 x 属于 数据 {
+    遍历 数据 中 每个 x {
         字符串 错误 = x
     }
     返回 0
@@ -217,17 +217,17 @@ TEST(RangeForTest, BodyTypeErrorReported) {
     EXPECT_GT(r.errorCount, 0);
 }
 
-// 同作用域多个 对...属于：索引变量唯一化，不冲突
+// 同作用域多个 遍历...中每个：索引变量唯一化，不冲突
 TEST(RangeForTest, MultipleLoopsSameScopeOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32[2] 甲 = { 1, 2 }
     整32[2] 乙 = { 3, 4 }
     整32 总和 = 0
-    对 a 属于 甲 {
+    遍历 甲 中 每个 a {
         总和 += a
     }
-    对 b 属于 乙 {
+    遍历 乙 中 每个 b {
         总和 += b
     }
     返回 总和

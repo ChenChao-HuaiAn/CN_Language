@@ -199,7 +199,7 @@ void AstPrinter::visitWhileStmt(WhileStmt* node) {
 }
 
 void AstPrinter::visitRangeForStmt(RangeForStmt* node) {
-    printHeader("对...属于 迭代语句", node->location);
+    printHeader("遍历...中每个 迭代语句", node->location);
     ++depth_;
     printHeader("变量: " + node->varName, node->location);
     if (node->iterable != nullptr) {

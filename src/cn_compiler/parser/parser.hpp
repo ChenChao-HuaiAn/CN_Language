@@ -118,7 +118,7 @@ private:
     // ==================== 语句解析 ====================
 
     std::unique_ptr<Stmt> parseStmt();                  // 语句分发入口
-    std::unique_ptr<Stmt> parseRangeForStmt();          // C-2：对 元素 属于 容器 { 体 }
+    std::unique_ptr<Stmt> parseRangeForStmt();          // C-2：遍历 容器 中 每个 元素 { 体 }
     std::unique_ptr<BlockStmt> parseBlockStmt();        // { 语句列表 }
     std::unique_ptr<Stmt> parseIfStmt();                // 如果 (条件) { } 否则链
     std::unique_ptr<Stmt> parseWhileStmt();             // 当 (条件) { }
@@ -165,9 +165,9 @@ private:
     std::vector<Token> tokens_;  // Token流
     std::size_t pos_ = 0;        // 当前Token索引
     Diagnostics& diagnostics_;   // 诊断引擎引用
-    // C-2（2026-08）：对...属于 迭代对象解析期间抑制 结构体初始化探测
+    // C-2（2026-08）：遍历...中每个 迭代对象解析期间抑制 结构体初始化探测
     //   （标识符+{ 被 parsePrimary 贪心判为 类型名{字段=值}，而循环体 { 块
-    //    紧随迭代对象——对 x 属于 数据 { 体 } 的 { 须留给语句解析）
+    //    紧随迭代对象——遍历 数据 中 每个 x { 体 } 的 { 须留给语句解析）
     bool suppressStructInit_ = false;
 };
 

@@ -119,7 +119,7 @@ std::vector<std::string> funcPtrParams(const std::string& type) {
     return result;
 }
 
-// C-2（2026-08）：名称式表达式克隆——对...属于 迭代对象按名重建
+// C-2（2026-08）：名称式表达式克隆——遍历...中每个 迭代对象按名重建
 // 支持：标识符/自身/父类/成员/下标/字面量（重建新节点，无 AST 所有权共享，
 //   降级树内 大小()/元素()/下标 多处引用同一变量名，各自独立节点）。
 // 不支持（返回 nullptr）：函数调用/三元/强制转换/lambda 等临时值表达式。
@@ -224,7 +224,7 @@ bool isNameLikeExpr(Expr* node) {
 }
 
 // ==================== 表达式/语句深度克隆（C-2，2026-08） ====================
-// 对...属于 降级树需要嵌入用户循环体的独立副本（原体保留在 RangeForStmt.body，
+// 遍历...中每个 降级树需要嵌入用户循环体的独立副本（原体保留在 RangeForStmt.body，
 //   泛型类方法体按实例重检查时以原体重建降级树——移动会丢体/多实例类型错乱）。
 // 覆盖全部表达式/语句节点（lambda/选择 等完整克隆）；节点语义回填字段
 //   （location/propagateType/resolvedSignature 等）一并复制。
@@ -548,7 +548,7 @@ void SemanticAnalyzer::visitForStmt(ForStmt* node) {
 }
 
 void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
-    // C-2（2026-08）：对 元素 属于 容器 { 体 } ——语义层降级为 循环 语句：
+    // C-2（2026-08）：遍历 容器 中 每个 元素 { 体 } ——语义层降级为 循环 语句：
     //   数组 T[N]    -> 循环 (整64 i=0; i<N; i++) { T 元素 = 容器[i]; 体 }
     //   类容器 向量<T> -> 循环 (整64 i=0; i<容器.大小(); i++) { T 元素 = 容器.元素(i); 体 }
     // 降级树写入 node->desugared 供 IR 层生成（IR 不做类型解析，复用降级树）。
@@ -556,7 +556,7 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
     //   无 AST 所有权共享；函数调用等临时值暂不支持（报错引导先赋局部变量）。
     const std::string containerType = canonicalType(checkExpr(node->iterable.get()));
     // 索引变量名：$ 不在标识符字符集，用户无法与之冲突；
-    //   计数器唯一化——同作用域多个 对...属于 的索引变量互不冲突
+    //   计数器唯一化——同作用域多个 遍历 的索引变量互不冲突
     const std::string idxName = "__对循环$索引" + std::to_string(rangeForCounter_++);
     std::string elemType;
     std::unique_ptr<Expr> lenExpr;    // 长度表达式（数组=常量 / 类=容器.大小()）
@@ -565,7 +565,7 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
 
     if (!isNameLikeExpr(node->iterable.get())) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "'对...属于' 迭代对象须为变量/自身/成员/下标表达式"
+                            "'遍历...中每个' 迭代对象须为变量/自身/成员/下标表达式"
                             "（函数调用等临时值暂不支持，请先赋给局部变量）");
         desugarOk = false;
     } else if (types::isArray(containerType)) {
@@ -574,7 +574,7 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
         const int len = types::arrayLenOf(containerType);
         if (len <= 0) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "'对...属于' 迭代数组长度必须为正（实际 '" +
+                                "'遍历...中每个' 迭代数组长度必须为正（实际 '" +
                                     containerType + "'）");
             desugarOk = false;
         } else {
@@ -594,7 +594,7 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
         const ClassInfo* ci = findClass(lookupName);
         if (ci == nullptr) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "'对...属于' 无法解析迭代对象类 '" + containerType + "'");
+                                "'遍历...中每个' 无法解析迭代对象类 '" + containerType + "'");
             desugarOk = false;
         } else {
             auto mit = ci->methods.find("大小");
@@ -603,7 +603,7 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
                 eit->second.paramTypes.size() != 1) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, node->location,
-                    "'对...属于' 迭代对象类 '" + lookupName +
+                    "'遍历...中每个' 迭代对象类 '" + lookupName +
                         "' 须提供 大小() 与 元素(整64) 方法（与 向量<T> 同形态）");
                 desugarOk = false;
             } else {
@@ -621,7 +621,7 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
         }
     } else {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "'对...属于' 迭代对象须为数组或类容器（向量<T> 等），实际为 '" +
+                            "'遍历...中每个' 迭代对象须为数组或类容器（向量<T> 等），实际为 '" +
                                 containerType + "'");
         desugarOk = false;
     }

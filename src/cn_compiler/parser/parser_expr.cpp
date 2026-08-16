@@ -470,7 +470,7 @@ std::unique_ptr<Expr> Parser::parsePrimary() {
             advance();
             const SourceLocation idLoc = loc;  // 标识符位置
             // 结构体初始化：类型名{ 字段 = 值, ... }（Task 2.7，规格书05）
-            // C-2：对...属于 迭代对象解析期间抑制本探测（{ 属循环体块）
+            // C-2：遍历...中每个 迭代对象解析期间抑制本探测（{ 属循环体块）
             if (check(TokenType::LeftBrace) && !suppressStructInit_) {
                 return parseStructInit(name);
             }
