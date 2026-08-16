@@ -33,7 +33,7 @@ extern "C" char* __cn_str_concat(const char* a, const char* b) {
     if (b == nullptr) b = "";
     const std::size_t lenA = std::strlen(a);
     const std::size_t lenB = std::strlen(b);
-    char* result = static_cast<char*>(std::malloc(lenA + lenB + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(lenA + lenB + 1));
     if (result == nullptr) return nullptr;  // 分配失败返回空指针
     std::memcpy(result, a, lenA);
     std::memcpy(result + lenA, b, lenB + 1);
@@ -44,7 +44,7 @@ extern "C" char* __cn_str_concat(const char* a, const char* b) {
 extern "C" char* __cn_str_copy(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, str, len + 1);
     return result;
@@ -103,14 +103,14 @@ extern "C" char* __cn_str_sub(const char* str, long long start, long long len) {
     if (len < 0) len = 0;
     const std::size_t total = std::strlen(str);
     if (static_cast<std::size_t>(start) >= total) {
-        char* empty = static_cast<char*>(std::malloc(1));
+        char* empty = static_cast<char*>(cn_alloc_tracked(1));
         if (empty != nullptr) empty[0] = '\0';
         return empty;
     }
     const std::size_t avail = total - static_cast<std::size_t>(start);
     const std::size_t take = (static_cast<std::size_t>(len) < avail)
                                  ? static_cast<std::size_t>(len) : avail;
-    char* result = static_cast<char*>(std::malloc(take + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(take + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, str + start, take);
     result[take] = '\0';
@@ -130,7 +130,7 @@ extern "C" long long __cn_str_cmp(const char* a, const char* b) {
 extern "C" char* __cn_str_upper(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     for (std::size_t i = 0; i < len; i++) {
         const unsigned char c = static_cast<unsigned char>(str[i]);
@@ -145,7 +145,7 @@ extern "C" char* __cn_str_upper(const char* str) {
 extern "C" char* __cn_str_lower(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     for (std::size_t i = 0; i < len; i++) {
         const unsigned char c = static_cast<unsigned char>(str[i]);
@@ -192,7 +192,7 @@ extern "C" char* __cn_str_trim(const char* str) {
     while (end > begin && (*(end - 1) == ' ' || *(end - 1) == '\t' ||
                            *(end - 1) == '\n' || *(end - 1) == '\r')) end--;
     const std::size_t len = static_cast<std::size_t>(end - begin);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, begin, len);
     result[len] = '\0';
@@ -204,7 +204,7 @@ extern "C" char* __cn_str_trim(const char* str) {
 extern "C" char* __cn_str_reverse(const char* str) {
     if (str == nullptr) str = "";
     const std::size_t len = std::strlen(str);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::size_t out = 0;
     std::size_t i = len;
@@ -233,7 +233,7 @@ extern "C" char* __cn_str_from_int(long long value) {
     char buffer[32];
     std::snprintf(buffer, sizeof(buffer), "%lld", value);
     const std::size_t len = std::strlen(buffer);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, buffer, len + 1);
     return result;
@@ -246,7 +246,7 @@ extern "C" char* __cn_str_from_uint(unsigned long long value) {
     char buffer[32];
     std::snprintf(buffer, sizeof(buffer), "%llu", value);
     const std::size_t len = std::strlen(buffer);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, buffer, len + 1);
     return result;
@@ -257,7 +257,7 @@ extern "C" char* __cn_str_from_float(double value) {
     char buffer[64];
     std::snprintf(buffer, sizeof(buffer), "%f", value);
     const std::size_t len = std::strlen(buffer);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, buffer, len + 1);
     return result;
@@ -265,7 +265,7 @@ extern "C" char* __cn_str_from_float(double value) {
 
 // 字符转字符串：单字节 ASCII 字符（值 0-255）转1字节串。
 extern "C" char* __cn_str_from_char(int value) {
-    char* result = static_cast<char*>(std::malloc(2));
+    char* result = static_cast<char*>(cn_alloc_tracked(2));
     if (result == nullptr) return nullptr;
     result[0] = static_cast<char>(value & 0xFF);
     result[1] = '\0';
@@ -276,7 +276,7 @@ extern "C" char* __cn_str_from_char(int value) {
 extern "C" char* __cn_str_from_bool(int value) {
     const char* text = (value != 0) ? "\xE7\x9C\x9F" : "\xE5\x81\x87";  // "真"/"假"
     const std::size_t len = std::strlen(text);
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, text, len + 1);
     return result;
@@ -300,7 +300,7 @@ extern "C" char* __cn_format(const char* fmt, ...) {
         va_end(args);
         return nullptr;
     }
-    char* result = static_cast<char*>(std::malloc(static_cast<std::size_t>(len) + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(static_cast<std::size_t>(len) + 1));
     if (result == nullptr) {
         va_end(args);
         return nullptr;
@@ -312,7 +312,7 @@ extern "C" char* __cn_format(const char* fmt, ...) {
 
 // 字符串释放：封装 cn_free，可安全释放 nullptr（与 free 一致）。
 extern "C" void __cn_str_free(char* str) {
-    std::free(str);
+    cn_free_tracked(str);
 }
 
 // ==================== Task 6.5 字符串解析API（字符串扩展库） ====================

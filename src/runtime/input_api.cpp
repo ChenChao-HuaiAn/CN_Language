@@ -21,16 +21,16 @@
 // 调用方负责用 __cn_str_free 释放返回的字符串
 extern "C" char* __cn_read_line() {
     std::size_t cap = 128;
-    char* buf = static_cast<char*>(std::malloc(cap));
+    char* buf = static_cast<char*>(cn_alloc_tracked(cap));
     if (buf == nullptr) return nullptr;
     std::size_t len = 0;
     int c = std::fgetc(stdin);
     while (c != EOF) {
         if (len + 1 >= cap) {
             cap *= 2;
-            char* nb = static_cast<char*>(std::realloc(buf, cap));
+            char* nb = static_cast<char*>(cn_realloc_tracked(buf, cap));
             if (nb == nullptr) {
-                std::free(buf);
+                cn_free_tracked(buf);
                 return nullptr;
             }
             buf = nb;
@@ -40,7 +40,7 @@ extern "C" char* __cn_read_line() {
         c = std::fgetc(stdin);
     }
     if (len == 0) {
-        std::free(buf);  // EOF 且无任何数据
+        cn_free_tracked(buf);  // EOF 且无任何数据
         return nullptr;
     }
     // 剥除尾部换行/回车（规格书10.6：读取行 不含换行；文本模式 \r\n 已转 \n，防御处理）
@@ -63,7 +63,7 @@ extern "C" long long __cn_read_int(int* ok) {
     // 跳过尾部空白后必须到行尾（整行合法数字）
     while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') ++end;
     const bool valid = (errno == 0 && end != line && *end == '\0');
-    std::free(line);
+    cn_free_tracked(line);
     if (valid && ok != nullptr) *ok = 1;
     return valid ? value : 0;
 }
@@ -81,7 +81,7 @@ extern "C" double __cn_read_float(int* ok) {
     // 跳过尾部空白后必须到行尾（整行合法数字）
     while (*end == ' ' || *end == '\t' || *end == '\r' || *end == '\n') ++end;
     const bool valid = (errno == 0 && end != line && *end == '\0');
-    std::free(line);
+    cn_free_tracked(line);
     if (valid && ok != nullptr) *ok = 1;
     return valid ? value : 0.0;
 }

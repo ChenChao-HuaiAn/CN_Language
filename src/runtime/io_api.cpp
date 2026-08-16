@@ -8,25 +8,176 @@
 //   printLineInt/printLineFloat 保留（单元测试直接引用 + 防御 ABI 稳定）
 #include "runtime/runtime.hpp"
 
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 // ==================== 内存管理API（规格书10.2） ====================
 
+// ---- 分配计数（自举前置 C-3，2026-08：泄漏检测） ----
+// 活动分配数/累计分配次数 原子计数（cn_alloc/cn_realloc/cn_free 全路径维护）。
+// CN 内置函数 内存::活动分配数()/内存::总分配次数() 查询——容器/字符串
+// 释放后计数回落基线验证"无泄漏"，自举源码内存安全底线。
+static std::atomic<long long> g_cn_alloc_live{0};   // 当前活动分配数
+static std::atomic<long long> g_cn_alloc_total{0};  // 累计分配次数
+
 // 分配内存：对应CN内置函数 分配（malloc 语义，失败返回nullptr）
 extern "C" void* cn_alloc(std::size_t size) {
-    return std::malloc(size);
+    void* p = std::malloc(size);
+    if (p != nullptr) {
+        ++g_cn_alloc_total;
+        ++g_cn_alloc_live;
+    }
+    return p;
 }
 
 // 释放内存：对应CN内置函数 释放（free 语义）
 extern "C" void cn_free(void* ptr) {
-    std::free(ptr);
+    if (ptr != nullptr) {
+        --g_cn_alloc_live;
+        std::free(ptr);
+    }
 }
 
 // 重新分配内存：对应CN内置函数 重新分配（realloc 语义）
+// 计数规则：空指针=新分配（total++/live++）；size=0=释放（live--）；
+//   常规扩容 保持 live 不变（块数不增不减）
 extern "C" void* cn_realloc(void* ptr, std::size_t size) {
+    if (ptr == nullptr) {
+        void* p = std::realloc(nullptr, size);
+        if (p != nullptr) {
+            ++g_cn_alloc_total;
+            ++g_cn_alloc_live;
+        }
+        return p;
+    }
+    if (size == 0) {
+        --g_cn_alloc_live;
+        return std::realloc(ptr, 0);
+    }
     return std::realloc(ptr, size);
+}
+
+// ---- 计数分配辅助（自举前置 C-3，2026-08）----
+// 字符串 API（string_api.cpp）等内部 malloc 直调改走 *_tracked，使 活动分配数/
+//   总分配次数 覆盖全部动态内存（此前 __cn_str_free 经 cn_free 减计数而分配
+//   未加计数 -> 计数为负，泄漏检测失真）。
+extern "C" void* cn_alloc_tracked(std::size_t size) {
+    void* p = std::malloc(size);
+    if (p != nullptr) {
+        ++g_cn_alloc_total;
+        ++g_cn_alloc_live;
+    }
+    return p;
+}
+
+extern "C" void cn_free_tracked(void* ptr) {
+    if (ptr != nullptr) {
+        --g_cn_alloc_live;
+        std::free(ptr);
+    }
+}
+
+extern "C" void* cn_realloc_tracked(void* ptr, std::size_t size) {
+    if (ptr == nullptr) {
+        void* p = std::realloc(nullptr, size);
+        if (p != nullptr) {
+            ++g_cn_alloc_total;
+            ++g_cn_alloc_live;
+        }
+        return p;
+    }
+    if (size == 0) {
+        --g_cn_alloc_live;
+        return std::realloc(ptr, 0);
+    }
+    return std::realloc(ptr, size);
+}
+
+// 当前活动分配数（未释放块数，泄漏检测基线）
+extern "C" long long __cn_alloc_live() {
+    return g_cn_alloc_live.load();
+}
+
+// 累计分配次数（吞吐统计）
+extern "C" long long __cn_alloc_total() {
+    return g_cn_alloc_total.load();
+}
+
+// ==================== 进程竞技场（自举前置 C-1，2026-08：一次性进程模式） ====================
+// 适配编译器内存模式（长生命周期 + 一次分配）：块链 bump 分配——新块
+// 64KB，按 8 字节对齐切分，全部块链入全局链表；内存::竞技场重置() 一次性
+// 释放全部块（编译器进程生命周期内无需逐对象释放，杜绝泄漏/双重释放）。
+// 线程安全：编译器单线程使用，不做原子保护（块链操作非重入）。
+
+namespace {
+
+struct ArenaBlock {
+    ArenaBlock* next;
+    std::size_t used;
+    std::size_t capacity;
+    // 数据区紧随其后（块头 32 字节对齐到 64，数据 8 字节对齐）
+};
+
+constexpr std::size_t kArenaBlockSize = 64 * 1024;
+constexpr std::size_t kArenaHeaderPad = 64;  // 块头对齐（含 next/used/capacity 后补零）
+
+ArenaBlock* g_arenaHead = nullptr;
+long long g_arenaBytes = 0;    // 已分配（含块头）总字节
+long long g_arenaBlocks = 0;   // 块数
+
+ArenaBlock* newArenaBlock(std::size_t need) {
+    std::size_t cap = (need + kArenaHeaderPad + 7) & ~std::size_t(7);
+    if (cap < kArenaBlockSize) cap = kArenaBlockSize;
+    ArenaBlock* b = static_cast<ArenaBlock*>(std::malloc(cap));
+    if (b == nullptr) return nullptr;
+    b->next = nullptr;
+    b->used = kArenaHeaderPad;
+    b->capacity = cap;
+    g_arenaBytes += static_cast<long long>(cap);
+    ++g_arenaBlocks;
+    return b;
+}
+
+} // namespace
+
+// 竞技场分配：块内 bump（8 字节对齐）；当前块不足时链新块
+extern "C" void* __cn_arena_alloc(std::size_t size) {
+    const std::size_t need = (size + 7) & ~std::size_t(7);  // 8 字节对齐
+    if (g_arenaHead == nullptr ||
+        g_arenaHead->capacity - g_arenaHead->used < need) {
+        ArenaBlock* b = newArenaBlock(need);
+        if (b == nullptr) return nullptr;
+        b->next = g_arenaHead;
+        g_arenaHead = b;
+    }
+    void* p = reinterpret_cast<char*>(g_arenaHead) + g_arenaHead->used;
+    g_arenaHead->used += need;
+    return p;
+}
+
+// 竞技场重置：一次性释放全部块（分配指针全部失效，编译器进程收尾用）
+extern "C" void __cn_arena_reset() {
+    ArenaBlock* b = g_arenaHead;
+    while (b != nullptr) {
+        ArenaBlock* next = b->next;
+        std::free(b);
+        b = next;
+    }
+    g_arenaHead = nullptr;
+    g_arenaBytes = 0;
+    g_arenaBlocks = 0;
+}
+
+// 竞技场已分配总字节（含块头）
+extern "C" long long __cn_arena_bytes() {
+    return g_arenaBytes;
+}
+
+// 竞技场块数
+extern "C" long long __cn_arena_blocks() {
+    return g_arenaBlocks;
 }
 
 // 复制内存：对应CN内置函数 复制内存（memcpy 语义）

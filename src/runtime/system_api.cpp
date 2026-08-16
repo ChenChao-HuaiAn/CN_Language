@@ -63,7 +63,7 @@ extern "C" void __cn_cache_argv(int argc, char** argv) {
         return;
     }
     g_cached_argc = wargc;
-    g_cached_argv = static_cast<char**>(std::malloc(sizeof(char*) * static_cast<std::size_t>(wargc)));
+    g_cached_argv = static_cast<char**>(cn_alloc_tracked(sizeof(char*) * static_cast<std::size_t>(wargc)));
     if (g_cached_argv == nullptr) {
         g_cached_argc = 0;
         LocalFree(wargv);
@@ -72,7 +72,7 @@ extern "C" void __cn_cache_argv(int argc, char** argv) {
     for (int i = 0; i < wargc; ++i) {
         const int len = WideCharToMultiByte(CP_UTF8, 0, wargv[i], -1,
                                             nullptr, 0, nullptr, nullptr);
-        char* buf = static_cast<char*>(std::malloc(static_cast<std::size_t>(len)));
+        char* buf = static_cast<char*>(cn_alloc_tracked(static_cast<std::size_t>(len)));
         if (buf == nullptr) {
             g_cached_argv[i] = nullptr;
             continue;

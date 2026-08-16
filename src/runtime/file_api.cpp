@@ -90,16 +90,16 @@ extern "C" char* __cn_file_read_line(void* handle) {
     if (handle == nullptr) return nullptr;
     FILE* fp = static_cast<FILE*>(handle);
     std::size_t cap = 128;
-    char* buf = static_cast<char*>(std::malloc(cap));
+    char* buf = static_cast<char*>(cn_alloc_tracked(cap));
     if (buf == nullptr) return nullptr;
     std::size_t len = 0;
     int c = std::fgetc(fp);
     while (c != EOF) {
         if (len + 1 >= cap) {
             cap *= 2;
-            char* nb = static_cast<char*>(std::realloc(buf, cap));
+            char* nb = static_cast<char*>(cn_realloc_tracked(buf, cap));
             if (nb == nullptr) {
-                std::free(buf);
+                cn_free_tracked(buf);
                 return nullptr;
             }
             buf = nb;
@@ -109,7 +109,7 @@ extern "C" char* __cn_file_read_line(void* handle) {
         c = std::fgetc(fp);
     }
     if (len == 0) {
-        std::free(buf);  // EOF 且无数据
+        cn_free_tracked(buf);  // EOF 且无数据
         return nullptr;
     }
     buf[len] = '\0';

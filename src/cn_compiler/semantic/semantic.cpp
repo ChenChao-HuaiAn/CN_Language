@@ -1077,6 +1077,32 @@ void SemanticAnalyzer::registerBuiltins() {
     regTimeFn("时间::单调时钟毫秒", "整64", {});
     regTimeFn("时间::格式化时间", "字符串", {"整64", "字符串"});
 
+    // ---- 内存库（自举前置 C-1/C-3，2026-08；对应运行时 io_api.cpp）----
+    // 中文名带 "内存." 前缀（规格书10.2 内存管理扩展）。
+    // 运行时符号（IR 层映射）：
+    //   内存::活动分配数     -> __cn_alloc_live  （未释放块数，泄漏检测基线）
+    //   内存::总分配次数     -> __cn_alloc_total（累计分配次数）
+    //   内存::竞技场分配     -> __cn_arena_alloc（一次性进程 arena，bump 分配）
+    //   内存::竞技场重置     -> __cn_arena_reset（释放全部块）
+    //   内存::竞技场活动字节 -> __cn_arena_bytes（已分配总字节）
+    // 设计说明：
+    //   - 活动分配数/总分配次数：零参数，返回整64（原子计数）
+    //   - 竞技场分配：参数 (整64 大小)，返回 空类型*（失败 nullptr）
+    //   - 竞技场重置/竞技场活动字节：零参数，返回 空类型/整64
+    const auto regMemLibFn = [this](const std::string& name, const std::string& retType,
+                                    const std::vector<std::string>& paramTypes) {
+        FunctionInfo info;
+        info.returnType = retType;
+        info.paramTypes = paramTypes;
+        info.hasBody = true;
+        functions_[name] = info;
+    };
+    regMemLibFn("内存::活动分配数", "整64", {});
+    regMemLibFn("内存::总分配次数", "整64", {});
+    regMemLibFn("内存::竞技场分配", "空类型*", {"整64"});
+    regMemLibFn("内存::竞技场重置", "空类型", {});
+    regMemLibFn("内存::竞技场活动字节", "整64", {});
+
     // ---- 系统库（Task 6.5，规格书10.4 命令行参数；对应运行时 system_api.cpp）----
     // 中文名带 "系统." 前缀，与 stdlib/系统.cn 模块公开函数不冲突（数学库同模式）。
     // 运行时符号：系统.参数个数 -> __cn_argc、系统.参数 -> __cn_argv（IR 层映射）。

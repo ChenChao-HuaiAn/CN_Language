@@ -22,6 +22,21 @@ extern "C" {
     CNRT_EXPORT void cn_free(void* ptr);
     // 重新分配内存（对应CN内置：重新分配）
     CNRT_EXPORT void* cn_realloc(void* ptr, std::size_t size);
+    // ---- 计数分配辅助（自举前置 C-3，2026-08）----
+    // 字符串/时间/文件等内部 API 的 malloc 直调会绕过分配计数（活动分配数/
+    //   总分配次数 漏统计，且 __cn_str_free 经 cn_free 减计数导致负数）。
+    //   *_tracked 与 cn_alloc/cn_free/cn_realloc 同语义但计数归入泄漏检测。
+    CNRT_EXPORT void* cn_alloc_tracked(std::size_t size);
+    CNRT_EXPORT void cn_free_tracked(void* ptr);
+    CNRT_EXPORT void* cn_realloc_tracked(void* ptr, std::size_t size);
+    // 分配计数查询（自举前置 C-3，2026-08；对应CN内置 内存::活动分配数/总分配次数）
+    CNRT_EXPORT long long __cn_alloc_live();    // 当前活动分配数（泄漏检测基线）
+    CNRT_EXPORT long long __cn_alloc_total();   // 累计分配次数
+    // 进程竞技场（自举前置 C-1，2026-08；对应CN内置 内存::竞技场*）
+    CNRT_EXPORT void* __cn_arena_alloc(std::size_t size);  // bump 分配（8字节对齐）
+    CNRT_EXPORT void __cn_arena_reset();                    // 一次性释放全部块
+    CNRT_EXPORT long long __cn_arena_bytes();               // 已分配总字节（含块头）
+    CNRT_EXPORT long long __cn_arena_blocks();              // 块数
     // 复制内存（对应CN内置：复制内存）
     CNRT_EXPORT void cn_memcpy(void* dst, const void* src, std::size_t size);
     // 置零内存（对应CN内置：置零内存）

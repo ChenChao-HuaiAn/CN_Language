@@ -88,6 +88,7 @@ add_executable(cn_unit_tests
     opt/test_inline.cpp
     opt/test_tail_call.cpp
     runtime/test_runtime.cpp
+    runtime/test_memory_api.cpp
     runtime/test_string_api.cpp
     runtime/test_string_api_extra.cpp
     runtime/test_string_parse_api.cpp
