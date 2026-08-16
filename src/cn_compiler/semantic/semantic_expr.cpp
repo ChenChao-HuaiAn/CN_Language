@@ -967,6 +967,17 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         lastType_ = types::pointeeOf(objectType);
         return;
     }
+    // 自举前置 A-1（plans/004）：字符串[i] 逐字节 O(1) 访问——字符串即
+    //   字符*（UTF-8 字节视图），下标结果类型 字符。词法器逐字符遍历
+    //   不再每字符一次 子串 malloc（百万级分配不可接受）。
+    if (objectType == "字符串") {
+        if (!isInteger(indexType)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->index->location,
+                                "字符串下标必须是整型，实际为 '" + indexType + "'");
+        }
+        lastType_ = "字符";
+        return;
+    }
     diagnostics_.report(DiagnosticLevel::Error, node->location,
                         "下标访问要求数组或指针对象，实际为 '" + objectType + "'");
     lastType_ = "未知";

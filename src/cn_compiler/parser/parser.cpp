@@ -498,9 +498,13 @@ std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
         // 此前仅 isTypeKeyword 支持复合类型参数，结构体/枚举参数无法解析）
         // 识别模式：标识符 后跟 标识符（Foo x）、*、[ 长度
         // Task 3.1/3.8：& 引用后缀（账户& 账、T& a）——标识符 后跟 & 后跟 标识符
+        // 自举前置 A-3a（plans/004）：模板类型参数（向量<字符串> 词表）——
+        //   泛型实例化类型作函数参数；parseTypeNameEx 已支持 <实参> 消费，
+        //   此处补识别（此前漏 Less 判定 -> "预期参数名，实际为 '<'"）
         if (peek(1).getType() == TokenType::Identifier ||
             peek(1).getType() == TokenType::Star ||
             peek(1).getType() == TokenType::LeftBracket ||
+            peek(1).getType() == TokenType::Less ||
             (peek(1).getType() == TokenType::Amp &&
              peek(2).getType() == TokenType::Identifier)) {
             param->typeName = parseTypeNameEx();

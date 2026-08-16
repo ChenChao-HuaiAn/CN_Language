@@ -618,7 +618,43 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     const bool fromStruct = isStructType(from);
     const bool toStruct = isStructType(to);
     if (fromStruct || toStruct) return from == to;
+    // 自举前置 A-3b（plans/004）：自定义泛型类实例 类型名统一——源码模板形式
+    //   （向量<字符串>）与实例化符号名（向量$字符串，instantiateGeneric 生成）
+    //   视为同一类型。此前 返回 表（表=向量$字符串）与返回类型 向量<字符串>
+    //   比较失败 -> "无法将 '向量$字符串' 隐式转换为 '向量<字符串>'"
+    //   （返回容器/自定义泛型不可用，自举源码大面积受阻）。
+    const std::string fromInst = genericClassInstanceName(from);
+    const std::string toInst = genericClassInstanceName(to);
+    if (fromInst != from || toInst != to) {
+        return fromInst == toInst;
+    }
     return types::canConvert(from, to);
+}
+std::string SemanticAnalyzer::genericClassInstanceName(const std::string& typeRaw) const {
+    const std::string type = canonicalType(typeRaw);
+    const std::size_t lt = type.find('<');
+    if (lt == std::string::npos || type.empty() || type.back() != '>') return type;
+    const std::string head = type.substr(0, lt);
+    // 仅自定义泛型类（向量/映射/链表/栈/队列 等）参与统一；结果/可选 是
+    //   合成模板（另有降级路径），函数指针/其他 名<...> 形态不在此列
+    if (findGeneric(head) == nullptr || findGeneric(head)->ast->innerClass == nullptr) {
+        return type;
+    }
+    std::string instance = head;
+    std::string inner = type.substr(lt + 1, type.size() - lt - 2);
+    std::size_t pos = 0;
+    while (pos <= inner.size()) {
+        const std::size_t comma = inner.find(',', pos);
+        const std::string part = (comma == std::string::npos)
+                                     ? inner.substr(pos)
+                                     : inner.substr(pos, comma - pos);
+        std::size_t b = part.find_first_not_of(" \t");
+        std::size_t e = part.find_last_not_of(" \t");
+        instance += "$" + (b == std::string::npos ? "" : part.substr(b, e - b + 1));
+        if (comma == std::string::npos) break;
+        pos = comma + 1;
+    }
+    return instance;
 }
 int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);
@@ -1168,6 +1204,14 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
             //   mangling 区分 按值/按引用
             param->typeName = resolveTypeName(param->typeName, node->moduleName,
                                               param->location);
+            // 自举前置 A-3a（plans/004）：泛型实例化类型参数（向量<字符串> 词表）
+            //   ——模板形式归一为实例符号名（向量$字符串）并触发单态化，与类方法
+            //   参数（class_resolver resolveGenericTypeName 路径）一致。此前签名
+            //   key/参数槽/成员访问全程用模板形式，与构造调用产生的实例名不匹配：
+            //   "预期参数名，实际为 '<'"（parseParamDecl 已修）+"类型 '向量<字符串>'
+            //   不是类类型，无法访问成员 '大小'"。结果/可选 等合成模板不受影响
+            //   （findGeneric 未命中 -> 原样返回）。
+            param->typeName = resolveGenericTypeName(param->typeName, param->location);
             info.paramTypes.push_back(types::canonicalParam(param->typeName));
         }
     }
@@ -1245,12 +1289,49 @@ bool SemanticAnalyzer::isExternFunc(const std::string& sigKey) const {
 }
 bool SemanticAnalyzer::bodyGuaranteesReturn(BlockStmt* body) const {
     if (body == nullptr || body->statements.empty()) return false;
-    Stmt* last = body->statements.back().get();
-    if (last->getType() == NodeType::ReturnStmt) return true;
+    return stmtGuaranteesReturn(body->statements.back().get());
+}
+// 自举前置 A-2（plans/004）：语句是否必然以 返回 结束——用于函数体末语句
+//   为 选择（switch）全分支返回 的识别（类型名() 枚举分发+返回 模式）。
+//   规则：返回语句 ✓；无限循环（无条件）✓；选择 = 全部 情况 分支 + 默认
+//   分支 均必然返回（无 fall-through 逃逸）✓；块语句按 bodyGuaranteesReturn。
+bool SemanticAnalyzer::stmtGuaranteesReturn(Stmt* stmt) const {
+    if (stmt == nullptr) return false;
+    if (stmt->getType() == NodeType::ReturnStmt) return true;
     // 无限循环：循环 ( ; ; ) { } 或 循环 { }（无条件表达式）
-    if (last->getType() == NodeType::ForStmt) {
-        ForStmt* forStmt = static_cast<ForStmt*>(last);
+    if (stmt->getType() == NodeType::ForStmt) {
+        ForStmt* forStmt = static_cast<ForStmt*>(stmt);
         if (forStmt->condition == nullptr) return true;
+    }
+    // 选择（switch）全分支返回：每个 情况 分支（末语句必然返回）+ 默认 分支
+    //   存在且必然返回——所有路径均以 返回 结束，函数缺省返回检查可放行。
+    if (stmt->getType() == NodeType::SwitchStmt) {
+        SwitchStmt* sw = static_cast<SwitchStmt*>(stmt);
+        if (sw->cases.empty()) return false;
+        for (auto& c : sw->cases) {
+            // C-4 多值分组（情况 "继续", "暂停":）——前序标签体为空（C fallthrough
+            //   分组语义），跳过；其语句归属最后标签，由该标签的返回检查覆盖
+            if (c->statements.empty()) continue;
+            if (!stmtGuaranteesReturn(c->statements.back().get())) return false;
+        }
+        if (sw->defaultCase == nullptr) return false;
+        if (sw->defaultCase->statements.empty()) return false;
+        return stmtGuaranteesReturn(sw->defaultCase->statements.back().get());
+    }
+    // 块语句（嵌套作用域）：按函数体同规则
+    if (stmt->getType() == NodeType::BlockStmt) {
+        return bodyGuaranteesReturn(static_cast<BlockStmt*>(stmt));
+    }
+    // 如果/否则 双分支必然返回（若 条件 时返回，否则 时返回——所有路径均返回）
+    if (stmt->getType() == NodeType::IfStmt) {
+        IfStmt* iff = static_cast<IfStmt*>(stmt);
+        if (iff->elseBranch == nullptr) return false;  // 无否则分支：条件假时穿出
+        if (!stmtGuaranteesReturn(iff->thenBranch.get())) return false;
+        // 否则链：否则如果（IfStmt）或 块
+        if (iff->elseBranch->getType() == NodeType::IfStmt) {
+            return stmtGuaranteesReturn(iff->elseBranch.get());
+        }
+        return bodyGuaranteesReturn(static_cast<BlockStmt*>(iff->elseBranch.get()));
     }
     return false;
 }
@@ -1406,7 +1487,14 @@ void SemanticAnalyzer::visitProgram(Program* node) {
         }
     }
     // 第二趟a（阶段3）：检查类方法体（自身/父类/访问控制/常量 上下文）
+    // 自举前置 A-3a（2026-08）：跳过实例化类（名含 $）——实例化可能已在第一趟g
+    //   （registerFunction 泛型参数统一）发生，若此处检查、第二趟c 再检查同一
+    //   共享 AST（mi.ast 指向原始模板方法），wrapRefArgs 会把 前驱 -> &前驱
+    //   包装两次（第二次 arg 已是 整64* 地址 -> "引用参数要求左值实参" + 
+    //   "无法将 '整64*' 隐式转换为 '整64&'" 连环误报，映射 方法实测）。
+    //   实例化类统一由第二趟c 检查（每个类恰一次）。
     for (auto& kv : classes_) {
+        if (kv.first.find('$') != std::string::npos) continue;
         checkClassMethods(const_cast<ClassInfo&>(kv.second));
     }
     // 第二趟b：逐个检查函数体

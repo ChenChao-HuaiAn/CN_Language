@@ -390,8 +390,30 @@ void IRGenerator::genClassDestructorCalls() {
     for (const auto& block : function_->blocks) {
         if (!block->terminated) continue;
         if (block->termKind != "返回") continue;
+        // 自举前置 A-3b（plans/004）：返回块若返回"类局部变量的对象指针"
+        //   （返回 表，构建词表() -> 向量<字符串>），对象所有权随返回值转移给
+        //   调用方——该变量的 DeleteObject 必须跳过。此前一律析构，函数返回后
+        //   局部析构释放对象、调用方退出再次析构 -> 双重释放堆损坏（0xC0000374
+        //   STATUS_HEAP_CORRUPTION，返回容器/自定义泛型实测崩溃）。
+        //   识别：块返回值为 %vN 且 %vN 由 Load 该变量槽 产生（直接返回标识符）。
+        std::unordered_set<std::string> returnedVars;
+        const std::string& rv = block->termReturnValue;
+        if (rv.size() > 2 && rv[0] == '%' && rv[1] == 'v') {
+            const int retId = std::stoi(rv.substr(2));
+            for (const auto& inst : block->instructions) {
+                if (inst.result.id == retId && inst.opcode == ir::Opcode::Load &&
+                    !inst.operands.empty() && inst.operands[0].id < 0 &&
+                    !inst.operands[0].isConstant) {
+                    returnedVars.insert(inst.operands[0].extra);
+                    break;
+                }
+            }
+        } else if (!rv.empty() && rv.rfind("%v", 0) != 0) {
+            returnedVars.insert(rv);  // 防御：返回值为变量名直传
+        }
         setCurrentBlock(block.get());
         for (const auto& ov : objVars) {
+            if (returnedVars.count(ov.unique) > 0) continue;  // 所有权转移：跳过析构
             // 变量槽地址 -> Load 对象指针 -> DeleteObject
             ir::IRValue objPtr = emitResult(ir::Opcode::Load,
                                             {ir::IRValue::var(ov.unique, "ptr")},

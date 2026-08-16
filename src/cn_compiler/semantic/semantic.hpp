@@ -334,6 +334,11 @@ private:
     void checkFunctionBody(FunctionDecl* node);    // 第二趟：检查函数体
     // 函数体是否保证有返回（最后一条为返回语句或无限循环）
     bool bodyGuaranteesReturn(BlockStmt* body) const;
+    // 自举前置 A-2（plans/004）：语句是否必然以 返回 结束（选择 全分支返回 识别）
+    bool stmtGuaranteesReturn(Stmt* stmt) const;
+    // 自举前置 A-3b（plans/004）：自定义泛型类模板形式 -> 实例化符号名
+    //   （向量<字符串> -> 向量$字符串）；非泛型类/合成模板（结果/可选）原样返回
+    std::string genericClassInstanceName(const std::string& type) const;
     // lambda 捕获分析（Task 2.10）：扫描函数体中的标识符引用，
     //   收集不在参数表中的外层变量到 node->explicitCaptures（[=]/[&] 用）
     void collectLambdaCaptures(LambdaExpr* node,

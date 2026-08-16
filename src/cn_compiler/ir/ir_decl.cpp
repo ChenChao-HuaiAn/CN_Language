@@ -233,6 +233,12 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     genClassDestructorCalls();
     module_->functions.push_back(std::move(func));
     function_ = nullptr;
+    // 修复（2026-08 自举前置 A-3a 发现）：弹出参数作用域——原实现漏 pop，
+    //   每函数泄漏一层 varStack_，后续函数体内查找命中前函数的同名参数
+    //   （如 总和(向量<整64> 数据) 的 数据 泄漏），类方法体内直接字段访问
+    //   （向量.追加 的 数据）被误判为局部变量 -> 无槽 rbp0（A2006）实测。
+    //   emitGenericFuncInstance/emitClassMethod 均已 pop，此处对齐。
+    if (!varStack_.empty()) varStack_.pop_back();
 }
 void IRGenerator::visitParamDecl(ParamDecl* node) {
     // 参数由 visitFunctionDecl 统一处理

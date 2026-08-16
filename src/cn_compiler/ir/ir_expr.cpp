@@ -1329,6 +1329,20 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                                    node->location);
             return;
         }
+        // 自举前置 A-1（plans/004）：字符串[i] 逐字节 O(1) 访问（字符* 字节
+        //   视图，步进 1；与 C 的 s[i] 一致，越界由调用方按 字符串长度 约束）
+        if (!unique.empty() && types::canonical(srcType) == "字符串") {
+            ir::IRValue ptr = genExpr(node->object.get());
+            ir::IRValue index = genExpr(node->index.get());
+            if (index.type != "i64") {
+                index = emitResult(ir::Opcode::Cast, {index}, "i64", "", node->location);
+            }
+            ir::IRValue addr = emitResult(ir::Opcode::Add, {ptr, index}, "ptr", "",
+                                          node->location);
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "i8", "",
+                                   node->location);
+            return;
+        }
     }
     // A-3（2026-08）：隐式类字段对象（方法体内 数据[位置]，数据 是 this->字段，
     //   lookupSrcType 为空）——此前落入下方"其他对象"分支按 8 字节步进/标量 LoadPtr，
@@ -1366,6 +1380,10 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                                semantic_->isStructType(types::canonical(elemSrc));
                 stride = elemIsStruct ? semantic_->typeSizeOf(elemSrc)
                          : (types::isI128(types::canonical(elemSrc)) ? 16 : 8);
+            } else if (types::canonical(fieldType) == "字符串") {
+                // 自举前置 A-1：字符串字段（自身.源码[i]）——字符* 字节步进 1
+                elemSrc = "字符";
+                stride = 1;
             } else if (elemIsStruct) {
                 stride = semantic_->typeSizeOf(fieldType);
             }
@@ -1408,6 +1426,11 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                     emitBoundsCheck(index, types::arrayLenOf(f.type), node->location);
                     break;
                 }
+                // 自举前置 A-1：字符串成员（点.名[i]）——字符* 字节步进 1
+                if (f.name == inner->memberName && types::canonical(f.type) == "字符串") {
+                    stride = 1;
+                    break;
+                }
             }
         }
     }
@@ -1430,6 +1453,11 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                     }
                     break;
                 }
+                // 自举前置 A-1：字符串成员元素类型 字符（i8）
+                if (f.name == inner->memberName && types::canonical(f.type) == "字符串") {
+                    elemIrType = "i8";
+                    break;
+                }
             }
         }
     } else if (node->object->getType() == NodeType::IdentifierExpr) {
@@ -1441,6 +1469,9 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
                 elemIsStruct = true;
             }
+        } else if (types::canonical(st) == "字符串") {
+            // 自举前置 A-1：字符串变量兜底（i8 字节视图）
+            elemIrType = "i8";
         }
     }
     ir::IRValue scaled = emitResult(ir::Opcode::Mul,
