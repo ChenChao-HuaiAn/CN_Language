@@ -255,6 +255,14 @@ bool Parser::isTemplateAngleOpen() const {
     // 若为类型关键字，跳过（单个 token）；标识符可能带 指针(*)/数组([]) 后缀
     if (typeKeyword) {
         i++;
+        // 2026-08（自举 Task 7.6 修复）：类型关键字实参同样允许 * & 后缀
+        //   （结果<空类型*, 整32>——stdlib/文件.cn 打开文件 返回类型实测，
+        //   原实现返回 false 导致 结果< 不被识别为模板 -> 顶层声明解析失败）
+        while (true) {
+            const TokenType t = peek(static_cast<int>(i)).getType();
+            if (t == TokenType::Star || t == TokenType::Amp) { i++; continue; }
+            break;
+        }
     } else {
         i++;  // 消费标识符
         // 允许 * 与 [长度] 后缀（结果<整32*> 等）

@@ -591,6 +591,9 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
     if (isWinX64(target)) {
         cmdLine =
             "link /nologo /ENTRY:WinMainCRTStartup /SUBSYSTEM:CONSOLE "
+            "/STACK:8388608 "  // 2026-08（自举 Task 7.6）：栈 8MB——组件链递归
+                              // （解析 469 行组件源码）大帧（regId 全局累计 35KB/函数）
+                              // 叠加溢出 0xC00000FD；编译器级栈 8MB 为常见配置
             "/DEFAULTLIB:libcmt.lib /DEFAULTLIB:libucrt.lib /DEFAULTLIB:kernel32.lib "
             "/DEFAULTLIB:shell32.lib "  // Task 6.5 系统库：CommandLineToArgvW（Unicode 命令行解析）
             "/OUT:\"" + exePath + "\" \"" + userObj + "\" \"" +

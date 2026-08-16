@@ -270,7 +270,13 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 //   普通函数重写为纯名（含 数学.平方根 内置限定名的既有路径）。
                 // 第 4 层（crate 隔离）：限定调用带模块上下文——重写后的纯名在
                 //   resolveOverload 时按模块过滤（跨模块同名函数不歧义）。
-                if (userFuncExists) {
+                // 2026-08（自举 Task 7.6 修复）：仅当"当前编译模块 == 目标模块"
+                //   （stdlib 包装自引用，如 文件.cn 内部 文件::读取文件行）且内置
+                //   限定名存在时，内置优先——否则解析到自身包装（返回 结果 与内置
+                //   字符串 类型冲突）。用户模块限定调用（27_module 数学::平方根）
+                //   仍用户公开函数优先（内置 数学::平方根 存在但不应遮蔽）。
+                if (userFuncExists &&
+                    !(builtinQualified && currentModuleName_ == moduleName)) {
                     node->callee = std::make_unique<IdentifierExpr>(funcName);
                     // 模块过滤（resolveOverload 用）：子模块限定调用按子模块名过滤
                     node->moduleFilter = (!pathPrefix.empty()) ? subModule : moduleName;

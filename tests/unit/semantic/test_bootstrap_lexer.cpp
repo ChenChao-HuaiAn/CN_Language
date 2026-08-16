@@ -240,3 +240,38 @@ TEST(BootstrapCodegenTest, ModuleContractPresent) {
     EXPECT_NE(src.find("汇编|call "), std::string::npos);
 }
 
+// ==================== 自举 Task 7.6：两阶段自举验证 ====================
+
+// 自举验证用例（E2E 76）入口可被 C++ 编译器全链路编译
+TEST(BootstrapBootstrapTest, ModuleCompilesViaDriver) {
+    namespace fs = std::filesystem;
+    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
+    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const fs::path entry = root / "tests" / "e2e" / "76_self_host_bootstrap" / L"主.cn";
+    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    cn_compiler::driver::DriverOptions options;
+    options.target = "win-x64";
+    options.stdlibDir = (root / "stdlib").string();
+    cn_compiler::driver::PipelineOutput output;
+    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    EXPECT_EQ(rc, 0);
+}
+
+// 自举验证主程序契约：五阶段链 + 验证行
+TEST(BootstrapBootstrapTest, ModuleContractPresent) {
+    namespace fs = std::filesystem;
+    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
+    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const std::ifstream in(root / "tests" / "e2e" / "76_self_host_bootstrap" / L"主.cn");
+    ASSERT_TRUE(in.good()) << "无法读取 76 主.cn";
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    const std::string src = ss.str();
+    EXPECT_NE(src.find("阶段|词法|"), std::string::npos);
+    EXPECT_NE(src.find("阶段|语法|"), std::string::npos);
+    EXPECT_NE(src.find("阶段|语义|"), std::string::npos);
+    EXPECT_NE(src.find("阶段|IR|"), std::string::npos);
+    EXPECT_NE(src.find("阶段|代码生成|"), std::string::npos);
+    EXPECT_NE(src.find("自举|验证|通过"), std::string::npos);
+}
+
