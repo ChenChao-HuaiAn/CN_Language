@@ -132,8 +132,13 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     func.returnType = mapType(node->returnType.empty() ? "空类型" : node->returnType);
     func.returnTypeSrc = node->returnType.empty() ? "空类型" : node->returnType;
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
+    // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
     if (semantic_ != nullptr && !node->returnType.empty() &&
         semantic_->isStructType(types::canonical(node->returnType))) {
+        // 结果/可选 返回同样走隐藏返回指针协议（Win x64 ABI）——调用方
+        //   emitCall 按被调函数 structReturn 标志传返回缓冲（calleeReturnsStruct）。
+        //   若走 __rctor 栈临时返回，调用方跨调用读 .值 悬垂（空类型结果调用处
+        //   result.type=void 使原 hasBigRet 判定失效，2026-08 自举检查发现）
         func.structReturn = true;
         // 记录精确大小（字节）：epilogue 按此拷贝到隐藏返回缓冲区（避免 64 字节
         //   硬编码越界写破坏相邻栈变量——班级 16 字节被写 64 字节越界 48 字节）

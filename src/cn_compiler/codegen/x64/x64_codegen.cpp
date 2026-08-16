@@ -586,6 +586,13 @@ void X64CodeGenerator::emitPrologue(AsmWriter& writer, const ir::IRFunction& fun
     if (calleeSavedRegs_.size() % 2 == 1) {
         frameSize += 8;
     }
+    // 2026-08 自举检查修复：帧内固定 16 字节返回缓冲区（调用方侧）——
+    //   原实现在 emitCall 用 rsp 临时区（[rsp+32]），add rsp 后结果指针悬垂，
+    //   调用方跨调用读 .值 读到被覆盖的垃圾（结果/可选 返回 + 空类型结果场景）。
+    //   每函数统一预留 16 字节（帧底，sub 后即 [rsp+0..15]，与调用影子空间
+    //   [新rsp+0..31]=[旧rsp-32..] 不冲突；递归同函数嵌套覆盖为已知限制）。
+    frameSize += 16;
+    retbufFrameOffset_ = -frameSize;
     // Task 完善A：结构体/i128 返回值函数——隐藏返回指针（rcx）保存到专用栈槽
     //   （retbufSlotOffset_，A-4 2026-08：原存 r12，内层函数入口 mov r12,rcx
     //   覆盖物理 r12 导致外层 epilogue 读到垃圾地址——嵌套结构体返回损坏实测）；

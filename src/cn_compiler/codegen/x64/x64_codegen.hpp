@@ -190,6 +190,13 @@ private:
 
     // 生成函数调用（前4参数寄存器，第5起压栈）
     void emitCall(AsmWriter& writer, const ir::IRInstruction& inst);
+    // 被调函数是否走隐藏返回指针（结果/可选/结构体 返回，2026-08 自举检查修复）
+    bool calleeReturnsStruct(const std::string& callee) const;
+    // 当前生成的 IR 模块（generateAssembly 期间有效，calleeReturnsStruct 查被调函数用）
+    const ir::IRModule* activeModule_ = nullptr;
+    // 帧内固定 结构体/结果 返回缓冲区偏移（每函数 16 字节，emitPrologue 设置；
+    //   2026-08 自举检查修复：retbuf 移入帧内防 rsp 临时区悬垂；递归嵌套覆盖为已知限制）
+    int retbufFrameOffset_ = 0;
 
     // 生成块终止指令（返回/跳转/条件跳转）
     void emitTerminator(AsmWriter& writer, const ir::IRBlock& block);

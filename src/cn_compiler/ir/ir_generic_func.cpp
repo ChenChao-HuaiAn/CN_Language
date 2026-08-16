@@ -116,6 +116,8 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     func.returnType = mapType(retSrc);
     func.returnTypeSrc = retSrc;
     // 结构体返回值标记（隐藏返回指针）
+    // 修复（2026-08）：结果/可选 返回同样走隐藏返回指针协议（与 ir_decl/ir_oop
+    //   一致）——调用方 emitCall 按被调 structReturn 标志传返回缓冲
     if (semantic_ != nullptr && !retSrc.empty() &&
         semantic_->isStructType(types::canonical(retSrc))) {
         func.structReturn = true;

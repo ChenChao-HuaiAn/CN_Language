@@ -291,6 +291,10 @@ void SemanticAnalyzer::ensureLoweredType(const std::string& typeRaw) {
                 StructField fUn;
                 fUn.name = "错误值联合";
                 fUn.type = uname;
+                // 修复（2026-08 自举前置检查发现）：漏 push_back(fUn) ——外层结构体
+                //   只剩 是否正常 字段（totalSize=1），typeSizeOf 防御返回 12 导致
+                //   结构体拷贝丢 整64 值高 4 字节（获取 返回垃圾，64_hash_map 实测）
+                outerDecl->fields.push_back(fUn);
                 program_->structs.emplace_back(outerDecl);
                 // 布局顺序：先联合体（内层）后外层——外层 totalSize 依赖联合体 totalSize，
                 //   反序会导致外层把联合体当 0 字节（totalSize 仅布尔 1 字节，rep movsb

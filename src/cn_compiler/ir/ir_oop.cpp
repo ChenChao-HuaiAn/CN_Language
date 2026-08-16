@@ -85,6 +85,9 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             SemanticAnalyzer::isOptionalType(canon)) {
             semantic_->ensureLoweredType(canon);
         }
+        // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
+        //   （与自定义结构体一致）——调用方 emitCall 按被调 structReturn 传返回
+        //   缓冲；若走 __rctor 栈临时返回则调用方跨调用读 .值 悬垂
         if (semantic_->isStructType(canon)) {
             func.structReturn = true;
             func.structReturnSize = semantic_->typeSizeOf(canon);

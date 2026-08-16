@@ -294,15 +294,16 @@ TEST(X64CodegenTest, PrologueStackAlignWithCalleeSaved) {
 
     // 分配 1 个被调用者保存寄存器（r12）并压栈保存
     EXPECT_NE(asmText.find("push r12"), std::string::npos);
-    // sub 大小 = 16（寄存器槽 8 字节 16 对齐）+ 8（奇数 push 补齐）= 24
-    EXPECT_NE(asmText.find("sub rsp, 24"), std::string::npos);
+    // sub 大小 = 16（寄存器槽 8 字节 16 对齐）+ 8（奇数 push 补齐）+ 16
+    //   （帧内固定返回缓冲区，2026-08 自举检查）= 40
+    EXPECT_NE(asmText.find("sub rsp, 40"), std::string::npos);
 
-    // 关闭寄存器分配（-O0/-O1 行为）：无 push，sub 为 16（不含 +8）
+    // 关闭寄存器分配（-O0/-O1 行为）：无 push，sub 为 16 + 16（返回缓冲区）= 32
     X64CodeGenerator gen2(diagnostics);
     IRModule module2 = buildI64SingleModule();
     const std::string asmText2 = gen2.generateAssembly(module2);
     EXPECT_EQ(asmText2.find("push r12"), std::string::npos);
-    EXPECT_NE(asmText2.find("sub rsp, 16"), std::string::npos);
+    EXPECT_NE(asmText2.find("sub rsp, 32"), std::string::npos);
 }
 
 // 辅助：构造大栈帧函数（N 个 Alloca 局部变量，每个 8 字节变量槽）
@@ -345,15 +346,15 @@ TEST(X64CodegenTest, BigFrameEmitsChkstk) {
     Diagnostics diagnostics;
     X64CodeGenerator generator(diagnostics);
     // 600 个变量槽 = 4800 字节 + 寄存器槽区（%v0 = 8 字节）= 4808
-    //   16 字节对齐 -> frameSize = 4816 > 4096 阈值
+    //   16 字节对齐 -> frameSize = 4816，再加 16（帧内固定返回缓冲区）-> 4832 > 4096 阈值
     IRModule module = buildBigFrameModule(600);
 
     const std::string asmText = generator.generateAssembly(module);
 
     // EXTERN 声明存在
     EXPECT_NE(asmText.find("EXTERN __chkstk:PROC"), std::string::npos);
-    // 三段式：mov rax, 帧大小(4816) / call __chkstk / sub rsp, rax
-    EXPECT_NE(asmText.find("mov rax, 4816"), std::string::npos);
+    // 三段式：mov rax, 帧大小(4832) / call __chkstk / sub rsp, rax
+    EXPECT_NE(asmText.find("mov rax, 4832"), std::string::npos);
     EXPECT_NE(asmText.find("call __chkstk"), std::string::npos);
     EXPECT_NE(asmText.find("sub rsp, rax"), std::string::npos);
 }
@@ -363,11 +364,11 @@ TEST(X64CodegenTest, SmallFrameNoChkstk) {
     Diagnostics diagnostics;
     X64CodeGenerator generator(diagnostics);
     // 100 个变量槽 = 800 字节 + 寄存器槽区（%v0 = 8 字节）= 808
-    //   16 字节对齐 -> frameSize = 816 <= 4096，不触发 chkstk
+    //   16 字节对齐 -> frameSize = 816，再加 16（帧内固定返回缓冲区）= 832 <= 4096，不触发 chkstk
     IRModule module = buildBigFrameModule(100);
 
     const std::string asmText = generator.generateAssembly(module);
 
     EXPECT_EQ(asmText.find("call __chkstk"), std::string::npos);
-    EXPECT_NE(asmText.find("sub rsp, 816"), std::string::npos);
+    EXPECT_NE(asmText.find("sub rsp, 832"), std::string::npos);
 }

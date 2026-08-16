@@ -269,8 +269,12 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         if (hasPhysReg(inst.result.id)) {
             writer.line("mov " + widthFor(inst.type, dst) + ", " + value);
         } else {
+            // 修复（2026-08 自举检查发现，A2022）：mov r64, r32 非法——32 位常量
+            //   经 movsxd 符号扩展进 64 位寄存器/槽（|v| <= 2^31 已由上方保证，
+            //   无符号 u32 大值走 64 位分支，此处符号扩展安全）
             writer.line("mov eax, " + value);
-            writer.line("mov " + dst + ", eax");
+            writer.line("movsxd rcx, eax");
+            writer.line("mov " + dst + ", rcx");
         }
     }
 }
@@ -307,9 +311,26 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         return;
     }
     std::string w = widthFor(inst.type, "rax");
+    // 修复（2026-08 自举检查发现，A2070）：imul/and/or 等的立即数操作数若超过
+    //   有符号 int32 范围（如 Knuth 乘法散列常数 2654435761），x86 无法编码
+    //   imm32 -> 先 mov 64 位立即数到 rcx（大值须十六进制文本，十进制会被
+    //   ml64 按 32 位截断），再 运算 rax, rcx
+    std::string op2Text = op2;
+    if (inst.operands[1].isConstant) {
+        try {
+            const long long v = std::stoll(op2);
+            if (v > 2147483647LL || v < -2147483648LL) {
+                const unsigned long long uv = std::stoull(op2);
+                writer.line("mov rcx, " + uint64HexText(uv));
+                op2Text = "rcx";
+            }
+        } catch (...) {
+            // 解析失败按立即数原样（防御性）
+        }
+    }
     // mov rax, op1 -> 运算 rax, op2 -> mov dst, rax
     writer.line("mov " + w + ", " + op1);
-    writer.line(mnemonic + " " + w + ", " + op2);
+    writer.line(mnemonic + " " + w + ", " + op2Text);
     writer.line("mov " + dst + ", " + w);
 }
 
@@ -809,7 +830,7 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line("mov " + dst + ", rax");  // movzx 已清零高32位
             }
         } else {
-            writer.line("mov " + dst + ", eax");
+            writer.line("mov " + widthFor("i32", dst) + ", eax");
         }
         return;
     }
@@ -844,7 +865,7 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     // i1 -> i32/u32（零扩展同 32 位）
     if (from == "i1" && (to == "i32" || to == "u32")) {
         writer.line("mov eax, " + src);
-        writer.line("mov " + dst + ", eax");
+        writer.line("mov " + widthFor("i32", dst) + ", eax");
         return;
     }
     // i32 -> i64：movsxd 符号扩展（否则负数高位垃圾变巨大正数，打印(整32) 场景）
@@ -871,7 +892,7 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     // i64 -> i32（截断）：mov eax 低32位（值语义取低32位）
     if (from == "i64" && to == "i32") {
         writer.line("mov eax, " + src);
-        writer.line("mov " + dst + ", eax");
+        writer.line("mov " + widthFor("i32", dst) + ", eax");
         return;
     }
     // 同类型 i128->i128 / u128->u128（审查修复）：显式转换 `整128(整128值)` 时
@@ -914,8 +935,10 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
         return;
     }
     // 32 <-> 64（同宽度：mov 传递即可，值语义一致）
+    // 修复（2026-08 自举检查发现，A2022）：dst 为 64 位物理寄存器（寄存器分配）
+    //   时须用 32 位名（mov r12, eax 非法；mov r12d, eax 写低32位值语义一致）
     writer.line("mov eax, " + src);
-    writer.line("mov " + dst + ", eax");
+    writer.line("mov " + widthFor("i32", dst) + ", eax");
 }
 
 // ==================== 比较与逻辑 ====================
@@ -1288,6 +1311,17 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
 //   4. 被调者（push rbp 后）访问栈参数：第 i(>=4) 参数位于 [rbp+48+(i-4)*8]
 // 直接调用：call 函数名；间接调用（CallIndirect，Task 2.2）：call 寄存器
 // 间接调用时 inst.extra 为空，operand[0] 为函数指针值（寄存器/变量槽）
+// 被调函数是否走隐藏返回指针（结果/可选/结构体 返回）：按模块函数表 structReturn
+//   标志判定（2026-08 自举检查修复：空类型结果调用处 result.type=void 场景）
+bool X64CodeGenerator::calleeReturnsStruct(const std::string& callee) const {
+    if (callee.empty() || activeModule_ == nullptr) return false;
+    for (const auto& f : activeModule_->functions) {
+        if (f.mangledName == callee || f.name == callee) {
+            return f.structReturn;
+        }
+    }
+    return false;
+}
 void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst) {
     const bool isIndirect = (inst.opcode == ir::Opcode::CallIndirect);
     std::string callee = inst.extra;  // 直接调用：函数名（中文需修饰）
@@ -1296,8 +1330,13 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
     const std::size_t argCount = inst.operands.size() - argBase;
     // i128/结构体返回（Task 完善A）：调用方在栈上分配返回缓冲区（16字节对齐扩展），
     //   隐藏返回指针（rcx）传给被调函数（Win x64 ABI 隐藏返回指针占第一个整型参数位）
+    // 修复（2026-08 自举检查发现）：结果/可选 返回的调用处 result.type 可能为
+    //   void（空类型结果，如 结果<空类型,整32>），原 hasBigRet 判定失效 -> 调用方
+    //   不传返回缓冲，与被调 structReturn=true（paramOffset=1）错位，值参数从 r9
+    //   读垃圾。按**被调函数**的 structReturn 标志判定（module.functions 查找）。
     const bool hasBigRet = (inst.result.type == "i128" || inst.result.type == "u128" ||
-                            inst.result.type.rfind("struct", 0) == 0);
+                            inst.result.type.rfind("struct", 0) == 0 ||
+                            calleeReturnsStruct(callee));
     const int bigRetPad = hasBigRet ? 16 : 0;  // 返回缓冲区
     // 一次性分配影子空间 + 返回缓冲区 + 栈参数区（并对齐16）。
     // Win x64 ABI：无论参数多少，调用方必须在 call 前预留 32 字节影子空间，
@@ -1311,7 +1350,9 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line("sub rsp, " + std::to_string(total + alignPad));
         // i128/结构体返回缓冲区：位于 [rsp+32+stackArgs*8]（16字节，返回指针区下方）
         if (hasBigRet) {
-            writer.line("lea rax, [rsp+" + std::to_string(32 + stackArgs * 8) + "]");
+            // 2026-08 自举检查修复：返回缓冲用帧内固定区（[rbp+retbufFrameOffset_]）
+            //   ——rsp 临时区在 add rsp 后失效（悬垂）；帧内区持久，跨调用读 .值 安全
+            writer.line("lea rax, [rbp" + std::to_string(retbufFrameOffset_) + "]");
             writer.line("mov rcx, rax");  // 隐藏返回指针（rcx）
         }
         // 写入栈参数（第5参数 [rsp+32]，第6 [rsp+40]...；隐藏返回指针占第1参数位）
@@ -1380,7 +1421,7 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         const int total = 32 + bigRetPad;
         writer.line("sub rsp, " + std::to_string(total));
         if (hasBigRet) {
-            writer.line("lea rax, [rsp+32]");
+            writer.line("lea rax, [rbp" + std::to_string(retbufFrameOffset_) + "]");
             writer.line("mov rcx, rax");  // 隐藏返回指针（rcx）
         }
     }
