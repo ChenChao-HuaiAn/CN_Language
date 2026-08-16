@@ -75,6 +75,14 @@ extern "C" void printNoLine(const char* text) {
     std::fputs(text, stdout);
 }
 
+// 打印（布尔）：对应CN内置函数 打印 布尔参数（输出 真/假，不换行）
+// 2026-08（用户裁决，布尔打印统一）：布尔表达式（比较/逻辑结果）与 布尔 值
+//   经 打印 输出统一为 真/假（此前 i1 走 __cn_print_int 输出 1/0，与
+//   字符串拼接的 布尔转字符串（真/假）不一致）
+extern "C" void __cn_print_bool(bool value) {
+    std::fputs(value ? "真" : "假", stdout);
+}
+
 // 打印（整数）：对应CN内置函数 打印整数（printf "%lld\n" 语义）
 extern "C" void printLineInt(long long value) {
     std::printf("%lld\n", value);

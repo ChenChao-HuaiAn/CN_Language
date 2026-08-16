@@ -128,6 +128,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                 // 运行时辅助函数 __cn_print_i128 读 16 字节双槽
                 printFn = (argVal.type == "u128") ? "__cn_print_u128"
                                                   : "__cn_print_i128";
+            } else if (argVal.type == "i1") {
+                // 2026-08（用户裁决，布尔打印统一）：布尔（含比较/逻辑表达式
+                //   结果）经 打印 统一输出 真/假（__cn_print_bool）——此前 i1
+                //   走 __cn_print_int 输出 1/0，与字符串拼接 布尔转字符串 不一致
+                printFn = "__cn_print_bool";
             } else {
                 // 整型（含 i1 布尔）：有符号统一 Cast i64 走 __cn_print_int；
                 // 无符号（正8~正64）直接传 __cn_print_uint（%llu 语义，缺陷修复：

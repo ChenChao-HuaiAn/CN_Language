@@ -82,6 +82,7 @@ extern "C" {
     CNRT_EXPORT void __cn_print_str(const char* text);     // 打印字符串（不换行）
     CNRT_EXPORT void __cn_print_int(long long value);      // 打印整数（不换行，%lld 语义）
     CNRT_EXPORT void __cn_print_uint(unsigned long long value); // 打印无符号整数（不换行，%llu 语义，缺陷修复）
+CNRT_EXPORT void __cn_print_bool(bool value);             // 打印布尔（不换行，输出 真/假，2026-08 用户裁决）
     CNRT_EXPORT void __cn_print_float(double value);       // 打印浮点（不换行）
     CNRT_EXPORT void __cn_print_newline();                 // 打印换行
 
