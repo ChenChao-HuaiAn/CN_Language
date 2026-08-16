@@ -200,3 +200,43 @@ TEST(BootstrapIRTest, ModuleContractPresent) {
     EXPECT_NE(src.find("指令|调用|"), std::string::npos);
 }
 
+// ==================== 自举 Task 7.5：CN 代码生成器 ====================
+
+// 读取 CN 代码生成器模块源码
+std::string readCodegenModule() {
+    namespace fs = std::filesystem;
+    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
+    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const std::ifstream in(root / L"CN语言编译器" / L"代码生成.cn");
+    if (!in) return "";
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    return ss.str();
+}
+
+// 代码生成.cn 模块可被 C++ 编译器全链路编译（E2E 75 入口）
+TEST(BootstrapCodegenTest, ModuleCompilesViaDriver) {
+    namespace fs = std::filesystem;
+    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
+    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const fs::path entry = root / "tests" / "e2e" / "75_self_host_codegen" / L"主.cn";
+    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    cn_compiler::driver::DriverOptions options;
+    options.target = "win-x64";
+    options.stdlibDir = (root / "stdlib").string();
+    cn_compiler::driver::PipelineOutput output;
+    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    EXPECT_EQ(rc, 0);
+}
+
+// 代码生成.cn 关键函数契约存在
+TEST(BootstrapCodegenTest, ModuleContractPresent) {
+    const std::string src = readCodegenModule();
+    ASSERT_FALSE(src.empty()) << "无法读取 代码生成.cn";
+    EXPECT_NE(src.find("函数 代码生成(向量<字符串> IR行) -> 向量<字符串>"), std::string::npos);
+    EXPECT_NE(src.find("函数 汇编(向量<字符串> IR行, 向量<字符串> 输出) -> 空类型"),
+              std::string::npos);
+    EXPECT_NE(src.find("汇编|mov rax, ["), std::string::npos);
+    EXPECT_NE(src.find("汇编|call "), std::string::npos);
+}
+
