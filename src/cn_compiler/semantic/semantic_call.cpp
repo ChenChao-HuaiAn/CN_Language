@@ -693,9 +693,24 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         node->resolvedSignature = sigKey;
         auto it = functions_.find(sigKey);
         // 主 函数不加前缀（codegen 映射 cn_main，与 IR 层 visitFunctionDecl 同规则）
+        // 修复（2026-08 自举 Task 7.1 发现）："是否已带 crate 前缀"不能只看
+        //   sigKey.find('$')——泛型容器参数签名含实例名分隔符（记录#向量$字符串,
+        //   字符串,整64），$ 出现在 # 之后的参数串中，被误判"已带前缀"导致
+        //   模块前缀缺失 -> 与定义侧（词法分析$记录#...）链接符号不匹配
+        //   （LNK2019 未解析外部符号，CN 词法分析器模块实测）。正确判定：
+        //   模块前缀的 $ 位于 # 之前（跨模块条目 模块名$名#参数），与
+        //   resolveOverload/hasFunctionName 的既有形态判定一致。
+        const std::size_t sigHash = sigKey.find('#');
+        const std::size_t sigDollar = sigKey.find('$');
+        // 已带前缀 = 跨模块条目（$ 在 # 前）或 泛型实例名（$ 且无 #，如 排序$整32
+        //   ——非函数签名形态，不可再拼模块前缀）。仅 纯名#参数 形态（$ 全部位于
+        //   # 后的参数串中，如 记录#向量$字符串,字符串,整64）需拼模块前缀。
+        const bool alreadyPrefixed =
+            (sigDollar != std::string::npos &&
+             (sigHash == std::string::npos || sigDollar < sigHash));
         if (it != functions_.end() && !it->second.moduleName.empty() &&
             it->second.moduleName != "主" && calleeName != "主" &&
-            sigKey.find('$') == std::string::npos) {
+            !alreadyPrefixed) {
             node->resolvedSignature = it->second.moduleName + "$" + sigKey;
         }
         const FunctionInfo& info = it->second;
