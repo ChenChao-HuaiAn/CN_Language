@@ -73,18 +73,18 @@ cn <命令> [选项] <文件>
 src/cn_compiler/    编译器（lexer/parser/semantic/ir/opt/codegen/module/driver）
 src/runtime/        CN 运行时库（cnrt：IO/字符串/i128/数学/文件/时间/系统）
 stdlib/             标准库（CN 语言实现，10 个模块）
-tests/unit/         单元测试（Google Test，1125 个）
-tests/e2e/          E2E 测试（编译→运行→输出比对，59 个用例）
+tests/unit/         单元测试（Google Test，1189 个）
+tests/e2e/          E2E 测试（编译→运行→输出比对，79 个用例）
 plans/              设计规格书 / 实施计划 / 分析报告
 tools/              辅助脚本（文件切分、E2E 等）
 ```
 
-## 测试基线（2026-08-16）
+## 测试基线（2026-08-17）
 
-- 单元测试：**1125/1125**（92 个测试套件）
-- E2E：**59/59**
+- 单元测试：**1189/1189**（103 个测试套件）
+- E2E：**79/79**（含 79_bootstrap_closed_loop 真实自举闭环用例）
 - 编译警告：0（MSVC /W4 /WX）
-- 覆盖：阶段 0~6 + 6b（模块 v2.0）+ A 批缺陷修复（引用类型/类型分桶/容器槽/泛型字段/模块边界）+ B 批工程化
+- 覆盖：阶段 0~6 + 6b（模块 v2.0）+ 阶段 7 自举（CN 组件链 v2 真实 x64 MASM 后端 + 真实闭环验证）
 
 ## 已知限制（详见 plans/003 报告）
 

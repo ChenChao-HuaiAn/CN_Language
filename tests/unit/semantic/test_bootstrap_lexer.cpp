@@ -193,11 +193,13 @@ TEST(BootstrapIRTest, ModuleCompilesViaDriver) {
 TEST(BootstrapIRTest, ModuleContractPresent) {
     const std::string src = readIRModule();
     ASSERT_FALSE(src.empty()) << "无法读取 IR生成.cn";
-    EXPECT_NE(src.find("函数 IR生成(字符串 源码) -> 向量<字符串>"), std::string::npos);
-    EXPECT_NE(src.find("函数 行类型(字符串 行) -> 字符串"), std::string::npos);
-    EXPECT_NE(src.find("函数 生成(向量<字符串> AST行, 向量<字符串> 输出) -> 空类型"),
+    // v2 契约（2026-08 完整自举改造后）：IR生成 双参入口 + 生成 主流程 + 调用| IR 行
+    EXPECT_NE(src.find("函数 IR生成(字符串 源码, 字符串 模块名) -> 向量<字符串>"),
               std::string::npos);
-    EXPECT_NE(src.find("指令|调用|"), std::string::npos);
+    EXPECT_NE(src.find("函数 行类型(字符串 行) -> 字符串"), std::string::npos);
+    EXPECT_NE(src.find("函数 生成(向量<字符串> AST行, 字符串 模块名, 向量<字符串> 签名表,"),
+              std::string::npos);
+    EXPECT_NE(src.find("调用|"), std::string::npos);
 }
 
 // ==================== 自举 Task 7.5：CN 代码生成器 ====================
@@ -233,11 +235,14 @@ TEST(BootstrapCodegenTest, ModuleCompilesViaDriver) {
 TEST(BootstrapCodegenTest, ModuleContractPresent) {
     const std::string src = readCodegenModule();
     ASSERT_FALSE(src.empty()) << "无法读取 代码生成.cn";
+    // v2 契约（2026-08 完整自举改造后）：汇编 三参主流程 + 发射函数 + 真实 x64 指令发射
     EXPECT_NE(src.find("函数 代码生成(向量<字符串> IR行) -> 向量<字符串>"), std::string::npos);
-    EXPECT_NE(src.find("函数 汇编(向量<字符串> IR行, 向量<字符串> 输出) -> 空类型"),
+    EXPECT_NE(src.find("函数 汇编(向量<字符串> IR行, 向量<字符串> 常量表, 向量<字符串> 输出) -> 空类型"),
               std::string::npos);
-    EXPECT_NE(src.find("汇编|mov rax, ["), std::string::npos);
-    EXPECT_NE(src.find("汇编|call "), std::string::npos);
+    EXPECT_NE(src.find("函数 发射加载("), std::string::npos);
+    EXPECT_NE(src.find("函数 发射调用("), std::string::npos);
+    EXPECT_NE(src.find("mov rax, [rbp-"), std::string::npos);
+    EXPECT_NE(src.find("call "), std::string::npos);
 }
 
 // ==================== 自举 Task 7.6：两阶段自举验证 ====================

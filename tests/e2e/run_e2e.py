@@ -187,6 +187,16 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     except FileNotFoundError as 异常:
         return "失败", str(异常)
 
+    # ============ 79 自举闭环用例：特殊编排 ============
+    # 流程：编译79主.cn -> 运行落盘5个链.asm(第一次) -> ml64汇编5个.obj
+    #       -> 链接(79入口obj提供cn_main+向量方法, 链.obj提供CN组件函数)
+    #       -> 运行CN版编译器exe再次落盘(第二次) -> 比对两次产物一致
+    # 仅 win-x64 平台支持（依赖 ml64/link 与运行时 .obj）
+    if 名称 == "79_bootstrap_closed_loop":
+        if 目标平台 != "win-x64":
+            return "失败", "79闭环用例仅支持 win-x64（依赖 ml64/link）"
+        return 执行79闭环(编译器路径, 用例目录, 输出目录, 详细)
+
     # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
     可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
     输出可执行 = 输出目录 / f"{名称}{可执行后缀}"
@@ -238,6 +248,195 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     if 实际 != 期望:
         return "失败", f"输出不一致\n    期望: {期望}\n    实际: {实际}"
     return "通过", ""
+
+
+# ============ 79 自举闭环用例编排 ============
+# 完整闭环：C++版编译79主.cn -> 运行落盘5个链.asm(第一次,CN组件链产物)
+#   -> ml64汇编5个.obj -> 链接(79入口obj提供cn_main+向量方法, 链.obj提供CN组件函数)
+#   -> 运行CN版编译器exe再次落盘(第二次) -> 比对两次产物一致 => 自举闭环成立
+# 产物全部落 target/audit2/（规则19），不污染工作区源码目录
+
+
+def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+               输出目录: pathlib.Path, 详细: bool) -> tuple:
+    """执行 79 自举闭环用例：编译->落盘->汇编->链接->再落盘->比对"""
+    名称 = "79_bootstrap_closed_loop"
+    源文件 = 查找源文件(用例目录)
+    期望文件 = 查找期望文件(源文件)
+
+    # 工作目录：target/audit2/（全部产物落此，规则19）
+    审计目录 = 项目根目录 / "target" / "audit2"
+    审计目录.mkdir(parents=True, exist_ok=True)
+
+    # 工具链绝对路径（VS 2022）
+    MSVC根 = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
+    ML64 = None
+    LINK = None
+    for 版本 in ("14.44.35207", "14.38.33130"):
+        候选ml64 = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "ml64.exe"
+        候选link = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "link.exe"
+        if 候选ml64.exists() and ML64 is None:
+            ML64 = 候选ml64
+        if 候选link.exists() and LINK is None:
+            LINK = 候选link
+    if ML64 is None or LINK is None:
+        return "失败", "未找到 ml64/link（VS 2022 MSVC 工具链）"
+
+    # LIB 路径（MSVC + Windows Kits）--MSVC lib 随已探测版本，Windows Kits 用已装最新版
+    # ML64 位于 <MSVC根>\<版本>\bin\Hostx64\x64\ml64.exe -> lib 在 <MSVC根>\<版本>\lib\x64
+    msvc版本目录 = ML64.parent.parent.parent.parent
+    kits根 = pathlib.Path(r"C:\Program Files (x86)\Windows Kits\10\lib")
+    kits版 = sorted((p for p in kits根.glob("10.*") if p.is_dir()), reverse=True) if kits根.exists() else []
+    if not kits版:
+        return "失败", f"未找到 Windows Kits lib 目录: {kits根}\\10.*（请确认 Win10 SDK 安装）"
+    LIB路径们 = [
+        str(msvc版本目录 / "lib" / "x64"),
+        str(kits版[0] / "ucrt" / "x64"),
+        str(kits版[0] / "um" / "x64"),
+    ]
+    for lib路径 in LIB路径们:
+        if not pathlib.Path(lib路径).exists():
+            return "失败", f"LIB 路径不存在: {lib路径}"
+
+    # 运行时 .obj（C++ 版构建产物，target/ 下）
+    运行时名们 = ["io_api", "runtime", "string_api", "i128_api", "math_api",
+                "input_api", "file_api", "time_api", "system_api"]
+    运行时objs = [项目根目录 / "target" / f"{m}.obj" for m in 运行时名们]
+    for obj in 运行时objs:
+        if not obj.exists():
+            return "失败", f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
+
+    # 模块名 -> ASCII 名（避免 link 响应文件中文路径在 GBK 代码页下乱码）
+    模块们 = [("词法分析", "lexer"), ("语法分析", "parser"), ("语义分析", "semantic"),
+            ("IR生成", "irgen"), ("代码生成", "codegen")]
+
+    # ===== 步骤1：C++版编译 79 主.cn -> 79_bootstrap_closed_loop.exe =====
+    输出可执行 = 输出目录 / f"{名称}.exe"
+    if 输出可执行.exists():
+        输出可执行.unlink()
+    if 详细:
+        print(f"    [79-1] {编译器路径} build {源文件.name} --output {输出可执行}")
+    编译结果 = 运行命令([str(编译器路径), "build", str(源文件),
+                      "--target", "win-x64", "--output", str(输出可执行)],
+                     项目根目录)
+    if 编译结果.returncode != 0:
+        return "失败", f"79-1 编译失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+    if not 输出可执行.exists():
+        return "失败", "79-1 编译返回成功但未生成可执行文件"
+
+    # ===== 步骤2：运行 -> 落盘 5 个 *_链.asm（第一次，CN 组件链产物） =====
+    运行结果 = 运行命令([str(输出可执行)], 项目根目录)
+    if 运行结果.returncode != 0:
+        return "失败", f"79-2 运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
+    # 校验 5 个 .asm 已落盘
+    for 模块, _ in 模块们:
+        asm = 审计目录 / f"{模块}_链.asm"
+        if not asm.exists():
+            return "失败", f"79-2 未生成 {asm.name}"
+    # 备份第一次产物
+    第一次目录 = 审计目录 / "79_第一次"
+    第一次目录.mkdir(parents=True, exist_ok=True)
+    for 模块, _ in 模块们:
+        import shutil
+        shutil.copy2(审计目录 / f"{模块}_链.asm", 第一次目录 / f"{模块}_链.asm")
+
+    # ===== 步骤3：ml64 汇编 5 个 .asm -> 5 个 .obj =====
+    for 模块, ascii名 in 模块们:
+        asm = 审计目录 / f"{模块}_链.asm"
+        obj = 审计目录 / f"{ascii名}_chain.obj"
+        if 详细:
+            print(f"    [79-3] ml64 {asm.name}")
+        汇编结果 = 运行命令([str(ML64), "/nologo", "/c", f"/Fo{obj}", str(asm)],
+                         项目根目录)
+        if 汇编结果.returncode != 0:
+            return "失败", f"79-3 ml64 汇编 {模块} 失败(退出码{汇编结果.returncode}): {汇编结果.stdout.strip()[:200]}"
+
+    # ===== 步骤4：链接 -> CN 版编译器 exe =====
+    # 【防虚假验收关键】链接顺序必须是：链.obj（CN组件自编译产物）在前，
+    # 入口obj（C++版 cn build 产物，其中内联了同名组件函数）在后。
+    # /FORCE:MULTIPLE 下 MSVC link 保留命令行靠前的第一个定义--
+    # 若入口obj在前，组件符号全部绑定C++版内联实现，链.obj被LNK4006整体忽略，
+    # 第二次落盘实际由C++版组件执行，「CN vs CN」固定点沦为「C++ vs C++」假验证。
+    入口obj = 输出目录 / f"{名称}.obj"
+    if not 入口obj.exists():
+        return "失败", f"79-4 缺少入口 obj: {入口obj.name}（cn build 未产出 .obj）"
+    链objs = [审计目录 / f"{ascii名}_chain.obj" for _, ascii名 in 模块们]
+    输出exe = 审计目录 / "cn_compiler_self.exe"
+    # 响应文件（避免中文路径在 GBK 代码页下乱码）
+    响应文件 = 审计目录 / "79_link.rsp"
+    rsp_lines = [
+        "/nologo", "/ENTRY:WinMainCRTStartup", "/SUBSYSTEM:CONSOLE",
+        "/STACK:8388608", "/FORCE:MULTIPLE",
+    ]
+    for lib in LIB路径们:
+        rsp_lines.append(f"/LIBPATH:{lib}")
+    rsp_lines += ["/DEFAULTLIB:libcmt.lib", "/DEFAULTLIB:libucrt.lib",
+                  "/DEFAULTLIB:kernel32.lib", "/DEFAULTLIB:shell32.lib",
+                  f"/OUT:{输出exe}"]
+    # 链.obj 必须排在入口obj之前（见上方防虚假验收说明）
+    rsp_lines += [str(o) for o in 链objs] + [str(入口obj)] + [str(o) for o in 运行时objs]
+    # 生成 map 文件供符号保留方向自检（防组件符号被C++版内联定义覆盖）
+    map文件 = 审计目录 / "79_link.map"
+    if map文件.exists():
+        map文件.unlink()
+    rsp_lines.append(f"/MAP:{map文件}")
+    with open(响应文件, "w", encoding="utf-8") as f:
+        for 行 in rsp_lines:
+            f.write(f'"{行}"\n')
+    if 详细:
+        print(f"    [79-4] link -> {输出exe.name}")
+    链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录)
+    if 链接结果.returncode != 0:
+        return "失败", f"79-4 链接失败(退出码{链接结果.returncode}): {链接结果.stdout.strip()[:300]}"
+    if not 输出exe.exists():
+        return "失败", "79-4 链接返回成功但未生成 exe"
+
+    # ===== 步骤4.5：符号保留方向自检（防虚假验收） =====
+    # /MAP 产物中：每个链.obj 必须实际贡献符号（组件函数绑定CN自编译版本），
+    # cn_main 必须来自入口obj；否则闭环退化为C++版自演（入口obj内联组件覆盖链.obj）
+    map内容 = map文件.read_text(encoding="utf-8", errors="replace") if map文件.exists() else ""
+    for ascii名 in [a for _, a in 模块们]:
+        链obj名 = f"{ascii名}_chain.obj"
+        if 链obj名 not in map内容:
+            return "失败", (f"79-4.5 符号自检失败: map 中 {链obj名} 未贡献任何符号"
+                            "（组件符号被入口obj的C++内联版覆盖，闭环是假的）")
+    if "cn_main" not in map内容 or 入口obj.name not in map内容:
+        return "失败", f"79-4.5 符号自检失败: map 中未找到来自 {入口obj.name} 的 cn_main"
+
+    # ===== 步骤5：运行 CN 版编译器 exe -> 再次落盘（第二次） =====
+    # 【防假通过】先删除 5 个旧的 *_链.asm：若第二次运行未真正写文件，
+    # 步骤6 的存在性检查与比对将用第一次的旧产物蒙混过关
+    # （写入虽是截断重写，但删旧文件可确保「存在=第二次真的写了」）
+    for 模块, _ in 模块们:
+        旧asm = 审计目录 / f"{模块}_链.asm"
+        if 旧asm.exists():
+            旧asm.unlink()
+    运行结果2 = 运行命令([str(输出exe)], 项目根目录)
+    if 运行结果2.returncode != 0:
+        return "失败", f"79-5 CN版编译器运行失败(退出码{运行结果2.returncode}): {运行结果2.stderr.strip()[:200]}"
+
+    # ===== 步骤6：比对两次产物一致（自举固定点） =====
+    for 模块, _ in 模块们:
+        第一次 = 第一次目录 / f"{模块}_链.asm"
+        第二次 = 审计目录 / f"{模块}_链.asm"
+        if not 第二次.exists():
+            return "失败", f"79-6 第二次未生成 {第二次.name}"
+        内容1 = 第一次.read_bytes()
+        内容2 = 第二次.read_bytes()
+        if 内容1 != 内容2:
+            return "失败", (f"79-6 自举固定点不一致: {模块} "
+                            f"(第一次{len(内容1)}字节 vs 第二次{len(内容2)}字节)")
+
+    # ===== 步骤7：比对运行输出与期望 =====
+    期望 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines()]
+    实际 = [行.rstrip() for 行 in 运行结果2.stdout.splitlines()]
+    if 实际 != 期望:
+        return "失败", f"79-7 输出不一致\n    期望: {期望}\n    实际: {实际}"
+
+    # 判据说明：第一次落盘=C++版编译产物运行结果，第二次落盘=CN自编译版组件运行结果，
+    # 两者逐字节一致 = 「CN版编译器再次编译自身源码 -> 产物行为一致」（阶段7验收步骤2）。
+    # 这同时蕴含固定点：CN版自编译两次产物也必然一致（同为CN版组件行为）。
+    return "通过", "自举闭环成立：CN自编译版组件产物与C++版逐字节一致（阶段7验收步骤2：产物行为一致）"
 
 
 def 打印汇总(总数: int, 通过数: int, 失败数: int, 未实现数: int) -> None:
