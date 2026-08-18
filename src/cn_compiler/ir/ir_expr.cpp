@@ -514,6 +514,11 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
 }
 void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
     ir::IRValue operand = genExpr(node->operand.get());
+    // P2-14：单目运算符重载（- ! ~）——类实例且类有 运算符X（0 参数）成员时
+    //   降级为成员方法调用（this=操作数指针，无右实参）；须在内置一元运算之前。
+    if (handleUnaryOperatorOverload(node, operand)) {
+        return;
+    }
     switch (node->op) {
         case Operator::Bang:
             lastExpr_ = emitResult(ir::Opcode::Not, {operand}, "i1", "", node->location);

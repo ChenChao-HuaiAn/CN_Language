@@ -536,6 +536,21 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
 }
 void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
     std::string operandType = checkExpr(node->operand.get());
+    // P2-14：单目运算符重载（- ! ~）——类类型操作数先查 运算符X（0 参数）成员
+    //   （重载决议：类重载优先；无重载则落入下方内置校验/报错）
+    if (isClassType(canonicalType(operandType))) {
+        const std::string opSym = (node->op == Operator::Bang) ? "!" :
+                                  (node->op == Operator::Tilde) ? "~" :
+                                  (node->op == Operator::Subtract) ? "-" : "";
+        if (!opSym.empty()) {
+            const ClassMemberInfo* mi = resolveOperatorOverload(
+                opSym, operandType, {}, node->location);
+            if (mi != nullptr) {
+                lastType_ = mi->type;
+                return;
+            }
+        }
+    }
     switch (node->op) {
         case Operator::Bang:
             // 逻辑非：要求布尔

@@ -524,6 +524,8 @@ private:
     //   降级为成员方法调用（this=左操作数指针，实参=右操作数）
     bool handleOperatorOverload(BinaryExpr* node, const ir::IRValue& left,
                                 const ir::IRValue& right);
+    // P2-14：单目运算符重载（- ! ~）降级为成员方法调用（this=操作数指针，0 右实参）
+    bool handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue& operand);
     // 名称是否为当前类的实例字段（非静态方法内、未被局部变量/参数遮蔽）
     bool isInstanceField(const std::string& name) const;
     // 内置构造器降级（visitCallExpr 钩子，Task 3.5）：正常(值)/错误(值)/某些(值)

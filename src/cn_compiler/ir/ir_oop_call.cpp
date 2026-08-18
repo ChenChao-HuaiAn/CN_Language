@@ -312,6 +312,9 @@ static std::string operatorSymText(Operator op) {
         case Operator::Greater: return ">";
         case Operator::LessEqual: return "<=";
         case Operator::GreaterEqual: return ">=";
+        // P2-14：单目运算符符号（! ~；- 与二元减共用 Operator::Subtract）
+        case Operator::Bang: return "!";
+        case Operator::Tilde: return "~";
         default: return "";
     }
 }
@@ -335,6 +338,33 @@ bool IRGenerator::handleOperatorOverload(BinaryExpr* node, const ir::IRValue& le
     std::vector<ir::IRValue> args;
     args.push_back(left);
     args.push_back(right);
+    const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+    if (resultType == "void" || resultType.empty()) {
+        emit(ir::Opcode::Call, args, ir::IRValue(),
+             methodSymbolKey(owner, m->sigKey), "void", node->location);
+        lastExpr_ = ir::IRValue();
+    } else {
+        lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
+                               methodSymbolKey(owner, m->sigKey), node->location);
+    }
+    return true;
+}
+
+// P2-14：单目运算符重载（- ! ~）降级为成员方法调用（this=操作数指针，无右实参）
+bool IRGenerator::handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue& operand) {
+    if (semantic_ == nullptr || node->postfix) return false;
+    const std::string opSym = operatorSymText(node->op);
+    if (opSym.empty()) return false;
+    const std::string srcType = exprSrcType(node->operand.get());
+    const std::string canon = types::canonical(srcType);
+    if (!semantic_->isClassType(canon)) return false;
+    // 查 运算符X 成员（沿继承链，0 参数单目）
+    std::string owner;
+    const ClassMemberInfo* m = findClassMethod(semantic_, canon, opSym, owner);
+    if (m == nullptr) return false;
+    // 单目调用：this=操作数指针，无右实参
+    std::vector<ir::IRValue> args;
+    args.push_back(operand);
     const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
     if (resultType == "void" || resultType.empty()) {
         emit(ir::Opcode::Call, args, ir::IRValue(),
