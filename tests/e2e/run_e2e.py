@@ -174,6 +174,51 @@ def 查找参数文件(源文件: pathlib.Path) -> list:
 # ============ 核心逻辑 ============
 
 
+def 解码诊断(原始字节: bytes) -> str:
+    """解码编译器诊断：cn.exe 的 stderr 为 UTF-16LE（FF FE BOM），stdout 为 UTF-8"""
+    if not 原始字节:
+        return ""
+    if 原始字节.startswith(b"\xff\xfe"):
+        return 原始字节.decode("utf-16-le", errors="replace")
+    if 原始字节.startswith(b"\xfe\xff"):
+        return 原始字节.decode("utf-16-be", errors="replace")
+    return 原始字节.decode("utf-8", errors="replace")
+
+
+def 执行负用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+             输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
+    """
+    执行「负 e2e」用例：预期编译失败（P0-3 负向规范规则承载通道）。
+    目录含 期望编译失败.txt（内容可选 = 期望诊断子串）：
+      - 编译成功   -> 失败（规范负向规则被误实现/断言失效）
+      - 编译失败 且（无子串 或 stderr/stdout 含子串） -> 通过
+    返回 (状态, 说明)
+    """
+    名称 = 用例目录.name
+    try:
+        源文件 = 查找源文件(用例目录)
+    except FileNotFoundError as 异常:
+        return "失败", str(异常)
+    负标记 = 用例目录 / "期望编译失败.txt"
+    期望子串 = 负标记.read_text(encoding="utf-8").strip() if 负标记.exists() else ""
+    可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
+    输出可执行 = 输出目录 / f"{名称}{可执行后缀}"
+    if 输出可执行.exists():
+        输出可执行.unlink()
+    编译命令 = [str(编译器路径), "build", str(源文件),
+              "--target", 目标平台, "--output", str(输出可执行)]
+    if 详细:
+        print(f"    [负编译] {' '.join(编译命令)}")
+    # 字节模式采集：cn.exe stderr 为 UTF-16LE，须按字节解码诊断
+    编译结果 = subprocess.run(编译命令, cwd=str(项目根目录), capture_output=True)
+    if 编译结果.returncode == 0:
+        return "失败", f"预期编译失败但编译成功: {源文件.name}"
+    输出 = 解码诊断(编译结果.stderr) + 解码诊断(编译结果.stdout)
+    if 期望子串 and 期望子串 not in 输出:
+        return "失败", f"编译如预期失败但缺期望诊断[{期望子串}]，实际输出: {输出.strip()[:160]}"
+    return "通过", "负测试通过（预期编译失败）"
+
+
 def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                  输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
     """
@@ -181,6 +226,11 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     返回 (状态, 说明)；状态取值: "通过" / "失败" / "未实现"
     """
     名称 = 用例目录.name
+    # ============ 负 e2e：预期编译失败用例（P0-3） ============
+    # 目录含 期望编译失败.txt 时按负用例执行（负向规范规则承载通道）
+    if (用例目录 / "期望编译失败.txt").exists():
+        return 执行负用例(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
+
     try:
         源文件 = 查找源文件(用例目录)
         期望文件 = 查找期望文件(源文件)

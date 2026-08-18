@@ -33,12 +33,14 @@ std::string readLexerModule() {
     // __FILE__ 可能为相对路径（tests/unit/semantic/...），先绝对化再上溯 3 级
     fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();  // .../tests/unit/semantic
     for (int i = 0; i < 3; ++i) root = root.parent_path();          // 项目根（tests/unit 之上）
-    // 中文文件名在 Windows 须经宽字符路径（fs::path 拼接 L"" 字面量），
-    // 窄字符流按 ANSI 代码页解释 UTF-8 文件名会打不开
-    const std::ifstream in(root / L"CN语言编译器" / L"词法分析.cn");
-    if (!in) return "";
+    // B 任务拆分：门面 词法分析.cn + 子模块（词法/关键字|运算符|扫描），契约按合并源码断言
+    // （与 79 闭环合并口径一致：子模块函数以 门面模块名$函数名 全局可见）
     std::ostringstream ss;
-    ss << in.rdbuf();
+    for (const auto& rel : {L"词法分析.cn", L"词法/关键字.cn", L"词法/运算符.cn", L"词法/扫描.cn"}) {
+        const std::ifstream in(root / L"CN语言编译器" / rel);
+        if (!in) return "";
+        ss << in.rdbuf() << "\n";;
+    }
     return ss.str();
 }
 
@@ -125,10 +127,12 @@ std::string readSemanticModule() {
     namespace fs = std::filesystem;
     fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
     for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const std::ifstream in(root / L"CN语言编译器" / L"语义分析.cn");
-    if (!in) return "";
     std::ostringstream ss;
-    ss << in.rdbuf();
+    for (const auto& rel : {L"语义分析.cn", L"语义/符号表.cn", L"语义/内置.cn"}) {
+        const std::ifstream in(root / L"CN语言编译器" / rel);
+        if (!in) return "";
+        ss << in.rdbuf() << "\n";
+    }
     return ss.str();
 }
 
@@ -156,8 +160,9 @@ TEST(BootstrapSemanticTest, ModuleContractPresent) {
     EXPECT_NE(src.find("函数 符号查找(向量<字符串> 表, 字符串 名) -> 布尔"), std::string::npos);
     EXPECT_NE(src.find("函数 检查(向量<字符串> AST行, 向量<字符串> 输出) -> 空类型"),
               std::string::npos);
-    // 2026-08 修复痕迹：局部变量名避开函数名（遮蔽导致 call r11 崩溃）
-    EXPECT_NE(src.find("字符串 函数名2 = 函数名(文本)"), std::string::npos);
+    // 2026-08 修复痕迹：局部变量名避开函数名（遮蔽导致 call r11 崩溃），
+    // B 任务拆分后该调用为完整限定名 语义::内置::函数名(文本)
+    EXPECT_NE(src.find("字符串 函数名2 = 语义::内置::函数名(文本)"), std::string::npos);
 }
 
 // ==================== 自举 Task 7.4：CN IR 生成器 ====================
@@ -167,10 +172,12 @@ std::string readIRModule() {
     namespace fs = std::filesystem;
     fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
     for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const std::ifstream in(root / L"CN语言编译器" / L"IR生成.cn");
-    if (!in) return "";
     std::ostringstream ss;
-    ss << in.rdbuf();
+    for (const auto& rel : {L"IR生成.cn", L"IR生成/IR1.cn", L"IR生成/IR2.cn", L"IR生成/IR3.cn", L"IR生成/IR4.cn"}) {
+        const std::ifstream in(root / L"CN语言编译器" / rel);
+        if (!in) return "";
+        ss << in.rdbuf() << "\n";
+    }
     return ss.str();
 }
 
@@ -196,7 +203,8 @@ TEST(BootstrapIRTest, ModuleContractPresent) {
     // v2 契约（2026-08 完整自举改造后）：IR生成 双参入口 + 生成 主流程 + 调用| IR 行
     EXPECT_NE(src.find("函数 IR生成(字符串 源码, 字符串 模块名) -> 向量<字符串>"),
               std::string::npos);
-    EXPECT_NE(src.find("函数 行类型(字符串 行) -> 字符串"), std::string::npos);
+    // B 任务第二阶段拆分：行类型 -> IR行类型（IR1 行工具），生成（IR3 语句），调用|（IR4 表达式）
+    EXPECT_NE(src.find("函数 IR行类型(字符串 行) -> 字符串"), std::string::npos);
     EXPECT_NE(src.find("函数 生成(向量<字符串> AST行, 字符串 模块名, 向量<字符串> 签名表,"),
               std::string::npos);
     EXPECT_NE(src.find("调用|"), std::string::npos);
