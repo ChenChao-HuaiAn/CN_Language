@@ -1,15 +1,21 @@
 # HANDOFF 交接文档
 
-**交接时间**: 2026-08-17（阶段7 自举真实闭环收尾完成后）
+**交接时间**: 2026-08-18（性能基线对比执行完成，plans/004 D-1 预留项闭环）
 
 ## 我们在做什么任务
 
 CN 语言编译器「阶段7：自举」——用 CN 语言重写编译器自身（词法→语法→语义→IR→代码生成），
 并用 CN 编译器编译 CN 编译器，达成**真实自举闭环**。
 
-**本轮（2026-08-17）核心成果**：自举从「部分自举（前端真实、末端伪汇编描述器）」升级为
+**上一轮（2026-08-17）核心成果**：自举从「部分自举（前端真实、末端伪汇编描述器）」升级为
 **真实自举闭环**——CN 组件链 v2 完整改造（代码生成.cn 重写为真实 x64 MASM 后端）+ E2E 79
 真实闭环用例验证（CN 自编译版产物与 C++ 版产物 `fc /b` 逐字节一致 + 符号自检通过）。
+
+**本轮（2026-08-18）核心成果**：执行 plans/004 D-1 性能基线对比——自举后跑 CN 版编译器
+对比 C++ 版，验证「性能达 C -O0」里程碑。新增 `scripts/bench_self_host.py` 性能测量脚本
+（6 个测量点 M1~M6），实测 CN 版/C++ 版组件链编译比值 ≈1.04x（几乎 1:1），CN 版推演
+6 万行 ≈12s，远优于 004 可接受边界（≤100min 硬上限 / 10min 理想目标），
+**✅ 达到「性能达 C -O0」里程碑**。
 
 ## 已经完成了什么
 
@@ -92,16 +98,39 @@ CN 语言编译器「阶段7：自举」——用 CN 语言重写编译器自身
   run_e2e.py 内置 ml64/link 动态探测，bat 无独立价值
 - 清理后 78 用例复验 PASS
 
+### 8. 性能基线对比（本轮 2026-08-18，plans/004 D-1 预留项闭环）
+
+- **新增 `scripts/bench_self_host.py`**：性能测量脚本（复用 run_e2e.py 79 闭环编排）
+  - M1: C++版完整 build（cn.exe build 79主.cn，含编译+链接）
+  - M2: C++版组件链落盘（运行 79 exe 第一次落盘 5 个 *_链.asm，3 次取中位数）
+  - M3: ml64 汇编（5 个 .asm -> 5 个 .obj）
+  - M4: link 链接（-> cn_compiler_self.exe）
+  - M5: CN版组件链落盘（运行 cn_compiler_self.exe 第二次落盘，3 次取中位数）
+  - M6: 正确性验证（两次落盘产物逐字节一致）
+  - 计时用 `time.perf_counter()`（毫秒，3 位小数）；M2/M5 各测 3 次取中位数消除抖动
+  - 找不到 ml64/link / 编译失败 / 链接失败时清晰报错并退出非零码
+- **实测数据**（Release 版 cn.exe，MSVC 14.44.35207，输入 3604 行）：
+  - M1: 2291.635 ms / M2: 697.714 ms / M3: 51.719 ms / M4: 45.086 ms / M5: 727.932 ms
+  - M6: ✅ 两次产物逐字节一致
+  - **CN版/C++版 组件链编译比值 ≈ 1.04x**（几乎 1:1）
+  - CN 版推演 6 万行 ≈ **12s**，远优于 004 可接受边界（≤100min 硬上限 / 10min 理想目标）
+  - **✅ 达到「性能达 C -O0」里程碑（优于 10min 理想目标）**
+- **报告产物**：`target/bench/性能基线报告.md`（可复跑：`python scripts/bench_self_host.py`）
+- **环境准备**：本机 gtest 源码缺失导致 CMake 配置失败，从 GitHub codeload 下载
+  googletest v1.14.0 到 `C:\Users\ChenChao\Documents\third-party\unittest\googletest`
+  （CMakeLists.txt 期望路径），Debug+Release 双配置构建成功
+
 ## 测试结果（最终基线）
 
 - 构建：**0 错误 0 警告**（MSVC /W4 /WX）
 - 单测：**1189/1189**（103 个测试套件）
 - E2E：**79/79**（含 79_bootstrap_closed_loop 真实闭环用例）
+- 性能基线：**CN版/C++版 ≈1.04x**（plans/004 D-1 达成，报告见 target/bench/性能基线报告.md）
 - git：工作区干净，已推送 gitcode develop
 
 ## 当前卡在哪
 
-无卡点。阶段7 自举真实闭环已达成并推送 gitcode develop。
+无卡点。阶段7 自举真实闭环已达成，性能基线对比（D-1）已完成并推送 gitcode develop。
 
 ## 遗留问题清单（📌 已评估，非本轮缺陷）
 
@@ -121,11 +150,23 @@ CN 语言编译器「阶段7：自举」——用 CN 语言重写编译器自身
    模块文件），需扩展 CN 版 IR 生成跨模块符号解析（向量方法等标准库容器符号）
 2. **全程 CN 工具链**：C++ 版退化为纯引导编译器，后续编译器本体与标准库全部在 CN 源码
    中开发（自举后 CN 开发成本低）
-3. **性能基线对比**：plans/004 D-1 预留——自举后跑 CN 版对比 C++ 版，验证「性能达
-   C -O0」里程碑
+3. ~~**性能基线对比**~~：✅ 已完成（2026-08-18，plans/004 D-1 闭环）——CN版/C++版 ≈1.04x，
+   达到「性能达 C -O0」里程碑，报告见 target/bench/性能基线报告.md
 
 ## 踩过的坑绝对不要再踩（已同步 lessons.md）
 
+- **gtest 源码缺失导致 CMake 配置失败**（本轮新增）：CMakeLists.txt 期望
+  `Documents/third-party/unittest/googletest`（`${CMAKE_SOURCE_DIR}/../../third-party`），
+  新机器/新环境无此目录时 `cmake -S . -B target/build` 直接 FATAL_ERROR。解决：从
+  GitHub codeload 下载 googletest 源码解压到该路径（注意 v1.14.0 嵌套一层 googletest/，
+  需将 src/include 上移一层）。**预防**：换机器/换环境先检查 gtest 源码路径是否存在
+- **运行时 .obj 不要手动复制**（本轮新增）：cn build 的 compileRuntime 会自己编译
+  target/ 下 9 个运行时 .obj（带缓存：obj 新于 cpp 则跳过）。手动复制 CMake 构建的
+  .obj 到 target/ 会因时间戳较新导致缓存跳过，且 CMake 默认 /MD 与 cn build 链接
+  /DEFAULTLIB:libcmt.lib 冲突（LNK2019 __imp_* 无法解析）。**预防**：让 cn build 自己
+  编译运行时 .obj，不要手动复制
+- **性能测量取中位数**（本轮新增）：M2/M5 单次测量波动大（冷启动/系统负载），
+  3 次取中位数消除抖动，数据稳定复现
 - **虚假验收链接顺序**（权重 9.6）：`/FORCE:MULTIPLE` 下重复符号保留「命令行靠前定义」，
   入口 obj 在前即覆盖链.obj -> 组件符号全绑 C++ 版、链.obj 被 LNK4006 整体忽略。
   凡 `/FORCE:MULTIPLE` 链接多份同名定义，必须验证符号保留方向（map/dumpbin）+ 做

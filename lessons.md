@@ -1,5 +1,45 @@
 # lessons.md - AI错误记录与经验教训
 
+## 高权重问题（第 11 层 性能基线对比 新增，2026-08-18）
+
+- [2026-08-18 08:20] **问题类型**: 工具执行错误（权重 4.0）**✅ 已解决（第 11 层）**
+  - **描述**: **gtest 源码缺失导致 CMake 配置失败**——`cmake -S . -B target/build` 报
+    `FATAL_ERROR: 未找到系统 Google Test 且本地源码不可用`。CMakeLists.txt 期望
+    `${CMAKE_SOURCE_DIR}/../../third-party/unittest/googletest`（即
+    `C:\Users\ChenChao\Documents\third-party\unittest\googletest`），新机器/新环境无此目录。
+  - **原因**: gtest 源码不在 CMakeLists.txt 期望路径（`Documents/third-party`，注意不是
+    `gitcode/third-party`——`../../` 从 CN_Language_C 上两级是 Documents）。
+  - **解决**: 从 GitHub codeload 下载 googletest v1.14.0 源码
+    （`https://codeload.github.com/google/googletest/tar.gz/refs/tags/v1.14.0`），解压到
+    `C:\Users\ChenChao\Documents\third-party\unittest\googletest`。注意 v1.14.0 嵌套一层
+    `googletest/`，需将内层 `src`/`include` 上移一层（CMakeLists.txt 期望
+    `googletest/src/gtest-all.cc` 与 `googletest/include/gtest/gtest.h`）。
+  - **预防**: 换机器/换环境先检查 gtest 源码路径是否存在；下载 googletest 后核对目录
+    结构（src/gtest-all.cc + include/gtest/gtest.h 在期望位置）。
+  - **权重**: 4.0（工具执行错误2 × 详细分析1.3 × 解决方案1.2 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-18 08:20] **问题类型**: 工具执行错误（权重 4.0）**✅ 已解决（第 11 层）**
+  - **描述**: **运行时 .obj 手动复制导致链接失败**——把 CMake 构建的 9 个运行时 .obj
+    复制到 target/ 后，cn build 链接报 `LNK2019: 无法解析的外部符号 __imp_fputs` 等
+    15 个错误。cn build 的 compileRuntime 会自己编译 target/ 下运行时 .obj（带缓存：
+    obj 新于 cpp 则跳过），手动复制的 .obj 时间戳较新导致缓存跳过；且 CMake 默认 /MD
+    （动态 CRT）与 cn build 链接 `/DEFAULTLIB:libcmt.lib`（静态 CRT）冲突。
+  - **原因**: 手动复制 .obj 干扰 compileRuntime 缓存机制 + CRT 模式不匹配（/MD vs /MT）。
+  - **解决**: 删除手动复制的 .obj，让 cn build 自己编译运行时 .obj（cl 默认 /MD 与
+    link /DEFAULTLIB:libcmt.lib 实际可链接，之前失败纯因缓存跳过用了 CMake 的 .obj）。
+  - **预防**: 运行时 .obj 一律由 cn build 的 compileRuntime 生成，不要手动复制；
+    若需手动准备，须确认 CRT 模式与链接参数一致。
+  - **权重**: 4.0（工具执行错误2 × 详细分析1.3 × 解决方案1.2 × 预防措施1.3 × 已解决1.0）
+
+- [2026-08-18 08:20] **问题类型**: 逻辑错误（权重 4.0）**✅ 已解决（第 11 层）**
+  - **描述**: **性能测量单次波动大，需取中位数**——M2/M5 单次测量波动大
+    （M2: 1615→2501ms，M5: 1619→1629ms），首次运行冷启动/系统负载导致数据不可靠。
+  - **原因**: 单次测量受冷启动、系统负载、磁盘缓存等影响，波动可达 50%+。
+  - **解决**: M2/M5 各测 3 次取中位数（排序后取中间值），数据稳定复现
+    （M2: 697.714ms / M5: 727.932ms，比值稳定 ≈1.04x）。
+  - **预防**: 性能基准测量必须多次采样取中位数（或最小值），单次测量不可信。
+  - **权重**: 4.0（逻辑错误8 × 详细分析1.3 × 解决方案1.2 × 预防措施1.3 × 已解决1.0）
+
 ## 高权重问题（第 10 层 Debug 自举闭环审查 新增，2026-08-17）
 
 - [2026-08-17 23:30] **问题类型**: 逻辑错误（权重 9.6）**✅ 已修复（第 10 层）**

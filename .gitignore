@@ -17,6 +17,10 @@ out/
 test_input_api_*.txt
 *.tmp
 
+# Python 缓存
+__pycache__/
+*.pyc
+
 # AI记忆库（不随git传递，新机器从零积累）
 .ai-coder/memory/
 .ai-coder/tasks/
