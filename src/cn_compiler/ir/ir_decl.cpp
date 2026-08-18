@@ -53,15 +53,20 @@ void IRGenerator::visitProgram(Program* node) {
     }
     // 阶段3 OOP（Task 3.1）：类方法体提升。
     // 1. AST 顶层类（program->classes）逐个提升（visitClassDecl 只处理 node 对应类）
+    // P2-16：AST 类键与 semantic classes() map 键一致（模块::类），保证 pass3 去重不重复发射
     std::unordered_set<std::string> astClassNames;
     for (auto& cls : node->classes) {
-        astClassNames.insert(cls->name);
+        astClassNames.insert(cls->moduleName.empty()
+                                 ? cls->name
+                                 : cls->moduleName + "::" + cls->name);
         visitClassDecl(cls.get());
     }
     // 2. 泛型内嵌类（GenericDecl.innerClass）：其类定义方法体须提升
     for (auto& gd : node->generics) {
         if (gd->innerClass != nullptr) {
-            astClassNames.insert(gd->innerClass->name);
+            astClassNames.insert(gd->innerClass->moduleName.empty()
+                                     ? gd->innerClass->name
+                                     : gd->innerClass->moduleName + "::" + gd->innerClass->name);
             visitClassDecl(gd->innerClass.get());
         }
     }

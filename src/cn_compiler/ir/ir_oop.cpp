@@ -187,7 +187,10 @@ void IRGenerator::setupMethodParams(ir::IRFunction& func, const ClassMemberInfo&
 // 中未被 AST 覆盖的类符号提升（避免 visitClassDecl 遍历全部类导致嵌套重复）。
 void IRGenerator::visitClassDecl(ClassDecl* node) {
     if (semantic_ == nullptr || node == nullptr) return;
-    const ClassInfo* ci = semantic_->findClass(node->name);
+    // P2-16：按 模块::类 限定键解析（跨模块同名类各自取自己；裸名会被基地回退误中前者）
+    const ClassInfo* ci = semantic_->findClass(
+        node->moduleName.empty() ? node->name
+                                 : node->moduleName + "::" + node->name);
     if (ci == nullptr) return;
     for (const auto& mk : ci->methods) {
         const ClassMemberInfo& mi = mk.second;

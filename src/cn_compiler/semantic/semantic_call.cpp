@@ -286,6 +286,11 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 } else if (hasFunctionName(qualifiedDot)) {
                     // 兼容旧点号内置名（数学.平方根，v1.0）：保留点号限定名
                     node->callee = std::make_unique<IdentifierExpr>(qualifiedDot);
+                } else if (isClassType(qualified)) {
+                    // P2-16：模块限定类构造调用（模块::类(...)）——
+                    //   保留 :: 限定名走类构造路径（findClass 模块感知解析）
+                    node->callee = std::make_unique<IdentifierExpr>(qualified);
+                    node->moduleFilter = moduleName;
                 } else if (moduleImported) {
                     // 已导入模块但符号不存在 → 报错，避免走"函数指针间接调用"静默路径
                     node->callee = std::make_unique<IdentifierExpr>(funcName);

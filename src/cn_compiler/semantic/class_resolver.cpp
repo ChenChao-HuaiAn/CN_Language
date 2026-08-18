@@ -24,9 +24,9 @@ namespace cn_compiler {
 
 // ==================== 类型名查询（供 IR 层复用） ====================
 
-// 是否类类型名
+// 是否类类型名（P2-16：模块感知，含 模块::类 限定名）
 bool SemanticAnalyzer::isClassType(const std::string& type) const {
-    return classes_.find(type) != classes_.end();
+    return findClass(type) != nullptr;
 }
 
 // 是否接口类型名
@@ -34,10 +34,30 @@ bool SemanticAnalyzer::isInterfaceType(const std::string& type) const {
     return interfaces_.find(type) != interfaces_.end();
 }
 
-// 查找类符号（未找到返回nullptr）
+// P2-16 模块限定类键：模块::名称（模块为空直接用名称）
+static std::string cclassKey(const std::string& module, const std::string& name) {
+    return module.empty() ? name : module + "::" + name;
+}
+
+// 查找类符号（P2-16 模块感知：限定名直查；裸名先当前模块、再任意模块末段匹配）
 const ClassInfo* SemanticAnalyzer::findClass(const std::string& name) const {
-    auto it = classes_.find(name);
-    return (it == classes_.end()) ? nullptr : &it->second;
+    std::string mod, base;
+    splitQualifiedType(name, mod, base);
+    if (!mod.empty()) {
+        auto it = classes_.find(cclassKey(mod, base));
+        return (it == classes_.end()) ? nullptr : &it->second;
+    }
+    if (!currentModuleName_.empty()) {
+        auto it = classes_.find(cclassKey(currentModuleName_, base));
+        if (it != classes_.end()) return &it->second;
+    }
+    for (const auto& kv : classes_) {
+        const std::size_t sep = kv.first.rfind("::");
+        const std::string kbase = (sep == std::string::npos) ? kv.first
+                                                             : kv.first.substr(sep + 2);
+        if (kbase == base) return &kv.second;
+    }
+    return nullptr;
 }
 
 // 查找接口符号（未找到返回nullptr）
@@ -164,16 +184,22 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
             info.methodOrder.push_back(mi.name);
         }
     }
-    // 阶段A：注册类名（类名与结构体/枚举统一类型名空间，重复报错）
+    // 阶段A：注册类名（P2-16：map 键恒为 模块::类 供 IR 去重；符号名仅在跨模块同名冲突时带模块前缀）
+    //   预扫同名类跨模块冲突：类名 -> 出现过的模块集合
+    std::unordered_map<std::string, std::unordered_set<std::string>> clsNameMods;
+    for (auto& cls : node->classes) clsNameMods[cls->name].insert(cls->moduleName);
     for (auto& cls : node->classes) {
-        if (classes_.find(cls->name) != classes_.end() ||
-            typeNames_.find(cls->name) != typeNames_.end()) {
+        const std::string clsMapKey = cclassKey(cls->moduleName, cls->name);
+        const std::string clsSymName =
+            (clsNameMods[cls->name].size() > 1) ? clsMapKey : cls->name;
+        if (classes_.count(clsMapKey) != 0) {
             diagnostics_.report(DiagnosticLevel::Error, cls->location,
-                                "重复声明类型 '" + cls->name + "'");
+                                "重复声明类型 '" + cls->name + "'（模块内）");
             continue;
         }
+        declareTypeName(cls->name, cls->moduleName, cls->location);
         ClassInfo info;
-        info.name = cls->name;
+        info.name = clsSymName;
         info.ast = cls.get();
         // 第 4 层（v2.0 决策11，可见性交集检查）：记录类所属模块与模块级可见性。
         //   mergeModules 已按模块级可见性过滤（模块私有类不合并进 Program），
@@ -181,9 +207,7 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
         //   但同文件可见不受影响）；moduleName 用于跨模块访问判定（见 checkAccess）。
         info.moduleName = cls->moduleName;
         info.moduleAccess = cls->access;
-        classes_[cls->name] = std::move(info);
-        // 类名也登记到类型名表（变量声明/参数声明可用类类型）
-        typeNames_.insert(cls->name);
+        classes_[clsMapKey] = std::move(info);
     }
     // 阶段B：逐个解析类
     for (auto& cls : node->classes) {
@@ -193,7 +217,7 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
 
 // 解析单个类：成员收集 + 继承并入 + 虚表分配 + 接口实现验证 + 布局
 void SemanticAnalyzer::resolveClass(ClassDecl* node) {
-    auto it = classes_.find(node->name);
+    auto it = classes_.find(cclassKey(node->moduleName, node->name));
     if (it == classes_.end()) return;
     ClassInfo& info = it->second;
 
@@ -204,7 +228,7 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
         if (interfaces_.find(node->baseName) != interfaces_.end()) {
             // 冒号后是接口名：作为接口实现
             info.interfaces.push_back(node->baseName);
-        } else if (classes_.find(node->baseName) != classes_.end()) {
+        } else if (findClass(node->baseName) != nullptr) {
             info.baseName = node->baseName;
             // 继承标记：从父类继承虚表（子类覆写时覆盖槽位）
             const ClassInfo& parent = classes_[node->baseName];
@@ -232,9 +256,9 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
 
     // 父类成员并入（字段在前、方法随后；父类自身已 resolve）
     if (!info.baseName.empty()) {
-        auto pit = classes_.find(info.baseName);
-        if (pit != classes_.end()) {
-            const ClassInfo& parent = pit->second;
+        const ClassInfo* parentPtr = findClass(info.baseName);
+        if (parentPtr != nullptr) {
+            const ClassInfo& parent = *parentPtr;
             // 字段：父类字段在前
             for (const auto& fname : parent.fieldOrder) {
                 auto f = parent.fields.find(fname);
@@ -289,7 +313,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
             mi.type = member->returnType.empty() ? "空类型"
                                                  : types::canonical(member->returnType);
             mi.access = member->access;
-            mi.ownerClass = node->name;
+            mi.ownerClass = info.name;  // P2-16：成员符号归属类名 = 冲突感知符号名（限定），保证定义/调用符号一致
             mi.isVirtual = member->isVirtual;
             mi.isStatic = member->isStatic;
             mi.hasBody = (member->body != nullptr);
@@ -322,7 +346,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
             mi.type = resolveGenericTypeName(types::canonical(member->typeName),
                                              member->location);
             mi.access = member->access;
-            mi.ownerClass = node->name;
+            mi.ownerClass = info.name;  // P2-16：成员符号归属类名 = 冲突感知符号名（限定），保证定义/调用符号一致
             mi.isStatic = member->isStatic;
             mi.hasBody = false;
             mi.ast = member.get();
@@ -361,7 +385,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                 : resolveGenericTypeName(types::canonical(member->returnType),
                                          member->location);
         mi.access = member->access;
-        mi.ownerClass = node->name;
+        mi.ownerClass = info.name;  // P2-16：成员符号归属类名 = 冲突感知符号名（限定），保证定义/调用符号一致
         mi.isVirtual = member->isVirtual;
         mi.isOverride = member->isOverride;
         mi.isAbstract = member->isAbstract;
@@ -415,9 +439,9 @@ void SemanticAnalyzer::assignVtable(ClassInfo& info) {
     info.vtableOrder.clear();
     // 从父类继承槽位
     if (!info.baseName.empty()) {
-        auto pit = classes_.find(info.baseName);
-        if (pit != classes_.end()) {
-            const ClassInfo& parent = pit->second;
+        const ClassInfo* parentPtr = findClass(info.baseName);
+        if (parentPtr != nullptr) {
+            const ClassInfo& parent = *parentPtr;
             info.vtableOrder = parent.vtableOrder;
             info.hasVtable = parent.hasVtable;
         }

@@ -443,9 +443,9 @@ std::string SemanticAnalyzer::instantiateGeneric(
         }
         // 继承并入（父类字段/方法；父类须已解析）
         if (!info.baseName.empty()) {
-            auto pit = classes_.find(info.baseName);
-            if (pit != classes_.end()) {
-                const ClassInfo& parent = pit->second;
+            const ClassInfo* parentPtr = findClass(info.baseName);
+            if (parentPtr != nullptr) {
+                const ClassInfo& parent = *parentPtr;
                 for (const auto& fname : parent.fieldOrder) {
                     auto f = parent.fields.find(fname);
                     if (f == parent.fields.end()) continue;
