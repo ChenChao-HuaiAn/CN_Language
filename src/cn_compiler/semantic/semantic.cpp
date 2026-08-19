@@ -5,7 +5,10 @@
 //   3. 类型检查：隐式转换（整型宽化/浮点宽化/字符↔整型）、条件必须为布尔
 //   4. 语义错误：未声明符号、重复声明、类型不匹配、非循环中中断/继续、缺返回
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 
@@ -117,6 +120,126 @@ std::vector<std::string> funcPtrParams(const std::string& type) {
         pos = comma + 1;
     }
     return result;
+}
+
+// ==================== P3-22：顶层常量表达式求值（编译期常量折叠） ====================
+
+// 剥离数值字面量后缀（U/LL 等）
+std::string cnStripLiteralSuffix(const std::string& s) {
+    std::string r = s;
+    while (!r.empty() && (r.back() == 'U' || r.back() == 'u' ||
+                          r.back() == 'L' || r.back() == 'l')) r.pop_back();
+    return r;
+}
+
+bool cnParseInt(const std::string& t, long long& v) {
+    const std::string s = cnStripLiteralSuffix(t);
+    if (s.empty()) return false;
+    try {
+        if (s.size() > 2 && s[0] == '0' && (s[1] == 'x' || s[1] == 'X'))
+            v = std::stoll(s.substr(2), nullptr, 16);
+        else
+            v = std::stoll(s, nullptr, 10);
+        return true;
+    } catch (...) { return false; }
+}
+
+bool cnIsFloatText(const std::string& t) {
+    const std::string s = cnStripLiteralSuffix(t);
+    return s.find('.') != std::string::npos || s.find('e') != std::string::npos ||
+           s.find('E') != std::string::npos;
+}
+
+std::string cnFormatDouble(double d) {
+    char buf[64];
+    std::snprintf(buf, sizeof buf, "%g", d);
+    return buf;
+}
+
+// 折叠二元常量：整数/浮点算术 + 字符串字面量拼接
+std::string cnFoldConstBinary(Operator op, const std::string& l, const std::string& r) {
+    if (cnIsFloatText(l) || cnIsFloatText(r)) {
+        const double a = std::atof(cnStripLiteralSuffix(l).c_str());
+        const double b = std::atof(cnStripLiteralSuffix(r).c_str());
+        double c = 0;
+        switch (op) {
+            case Operator::Add: c = a + b; break;
+            case Operator::Subtract: c = a - b; break;
+            case Operator::Multiply: c = a * b; break;
+            case Operator::Divide: if (b == 0) return ""; c = a / b; break;
+            case Operator::Modulo: return "";
+            default: return "";
+        }
+        return cnFormatDouble(c);
+    }
+    long long a, b;
+    if (!cnParseInt(l, a) || !cnParseInt(r, b)) {
+        // 字符串字面量拼接（"a" + "b" -> "ab"）
+        if (!l.empty() && !r.empty() && l.front() == '"' && r.front() == '"') {
+            return l.substr(0, l.size() - 1) + r.substr(1);
+        }
+        return "";
+    }
+    long long c = 0;
+    switch (op) {
+        case Operator::Add: c = a + b; break;
+        case Operator::Subtract: c = a - b; break;
+        case Operator::Multiply: c = a * b; break;
+        case Operator::Divide: if (b == 0) return ""; c = a / b; break;
+        case Operator::Modulo: if (b == 0) return ""; c = a % b; break;
+        default: return "";
+    }
+    return std::to_string(c);
+}
+
+// 递归求值顶层常量表达式；成功返回 true 并输出值文本（供引用处重写）
+bool cnEvalConstExpr(const std::unordered_map<std::string, std::string>& vals,
+                     const std::string& curMod, Expr* e, std::string& out) {
+    if (e == nullptr) return false;
+    switch (e->getType()) {
+        case NodeType::IntegerLiteral: out = static_cast<IntegerLiteral*>(e)->raw; return true;
+        case NodeType::FloatLiteral: out = static_cast<FloatLiteral*>(e)->raw; return true;
+        case NodeType::StringLiteral: out = static_cast<StringLiteral*>(e)->raw; return true;
+        case NodeType::IdentifierExpr: {
+            const std::string n = static_cast<IdentifierExpr*>(e)->name;
+            auto it = vals.find(n);
+            if (it != vals.end()) { out = it->second; return true; }
+            if (!curMod.empty()) {
+                auto itq = vals.find(curMod + "$" + n);
+                if (itq != vals.end()) { out = itq->second; return true; }
+            }
+            return false;
+        }
+        case NodeType::UnaryExpr: {
+            UnaryExpr* u = static_cast<UnaryExpr*>(e);
+            if (u->postfix) return false;
+            if (u->op == Operator::Subtract) {
+                std::string v;
+                if (!cnEvalConstExpr(vals, curMod, u->operand.get(), v)) return false;
+                if (cnIsFloatText(v)) {
+                    out = cnFormatDouble(-std::atof(cnStripLiteralSuffix(v).c_str()));
+                } else {
+                    long long iv;
+                    if (!cnParseInt(v, iv)) return false;
+                    out = std::to_string(-iv);
+                }
+                return true;
+            }
+            if (u->op == Operator::Add)
+                return cnEvalConstExpr(vals, curMod, u->operand.get(), out);
+            return false;
+        }
+        case NodeType::BinaryExpr: {
+            BinaryExpr* b = static_cast<BinaryExpr*>(e);
+            std::string l, r;
+            if (!cnEvalConstExpr(vals, curMod, b->left.get(), l)) return false;
+            if (!cnEvalConstExpr(vals, curMod, b->right.get(), r)) return false;
+            out = cnFoldConstBinary(b->op, l, r);
+            return !out.empty();
+        }
+        default:
+            return false;
+    }
 }
 
 } // namespace
@@ -1464,16 +1587,11 @@ void SemanticAnalyzer::visitProgram(Program* node) {
         if (g->isConst) {
             Expr* init = g->initializer.get();
             std::string constText;
-            if (init->getType() == NodeType::IntegerLiteral) {
-                constText = static_cast<IntegerLiteral*>(init)->raw;
-            } else if (init->getType() == NodeType::FloatLiteral) {
-                constText = static_cast<FloatLiteral*>(init)->raw;
-            } else if (init->getType() == NodeType::StringLiteral) {
-                constText = static_cast<StringLiteral*>(init)->raw;
-            } else {
+            // P3-22：编译期常量表达式求值（字面量 / 引用其他常量 / 整浮算术 / 字符串拼接）
+            if (!cnEvalConstExpr(globalConstValues_, g->moduleName, init, constText)) {
                 diagnostics_.report(DiagnosticLevel::Error, init->location,
                                     "顶层常量 '" + g->name +
-                                        "' 初始值必须是字面量（整/浮/字符串）");
+                                        "' 初始值必须是字面量或常量表达式");
             }
             if (!constText.empty()) {
                 // A-2（常量 crate 分桶）：多模块同名常量各自登记限定键（模块$名），
