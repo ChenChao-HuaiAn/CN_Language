@@ -409,6 +409,28 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）
     allocVar(node->name, irType, srcType, node->location);
     const std::string unique = lookupVarName(node->name);
+    // P3-18：引用变量（整32& r = x）——槽存被引用左值地址，条目 byRef=true
+    //   （读/写/&r 经 Load/StorePtr 解引用；与 [&] 引用捕获同机制，codegen 已支持）
+    if (types::isReference(srcType) && node->initializer != nullptr &&
+        node->initializer->getType() == NodeType::IdentifierExpr) {
+        for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+            auto found = it->find(node->name);
+            if (found != it->end()) { found->second.byRef = true; break; }
+        }
+        IdentifierExpr* initIdent =
+            static_cast<IdentifierExpr*>(node->initializer.get());
+        const std::string initUnique = lookupVarName(initIdent->name);
+        if (!initUnique.empty()) {
+            ir::IRValue targetAddr = emitResult(
+                ir::Opcode::AddrOf,
+                {ir::IRValue::var(initUnique, "ptr")}, "ptr", initUnique,
+                node->location);
+            emit(ir::Opcode::Store, {targetAddr}, ir::IRValue(),
+                 unique, "ptr", node->location);
+        }
+        // 引用变量初始化即完成（不再按值 Store 常规路径）
+        return;
+    }
     // 登记变量源码类型（OOP 析构扫描用：类类型局部变量有析构函数时函数收尾 DeleteObject）
     if (!unique.empty()) {
         oopVarSrcTypes_[unique] = srcType;

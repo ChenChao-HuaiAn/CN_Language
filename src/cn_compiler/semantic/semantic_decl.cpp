@@ -140,12 +140,16 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         varType = resolveTypeName(varType, mod, node->location);
         if (!node->typeName.empty()) node->typeName = varType;
     }
-    // A-1（引用参数）：引用变量声明暂不支持（引用仅支持函数参数）——
-    //   明确报错避免 IR 层按指针类型静默误编译（变量 整32& r = x）
+    // P3-18（引用参数 A-1 扩展）：引用变量声明（变量 整32& r = x）——
+    //   槽存被引用左值地址，读/写经 byRef 解引用。仅支持绑定 左值变量
+    //   （IdentifierExpr 初始化器）；无初始化器或非左值仍报错。
     if (!varType.empty() && types::isReference(varType)) {
-        diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "引用变量声明暂不支持（引用仅用于函数参数，如 函数 交换(整32& a, 整32& b)）");
-        return;
+        if (node->initializer == nullptr ||
+            node->initializer->getType() != NodeType::IdentifierExpr) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "引用变量声明须绑定左值变量且须初始化（变量 整32& r = x）");
+            return;
+        }
     }
     if (varType.empty() && node->initializer != nullptr) {
         // 类型推断：无显式类型时从初始值推断

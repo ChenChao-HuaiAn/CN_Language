@@ -146,8 +146,8 @@ TEST(RefParamTest, RefReturnTypeError) {
     EXPECT_NE(r.messages.find("返回类型暂不支持引用"), std::string::npos) << r.messages;
 }
 
-// 引用变量声明暂不支持 -> 报错（引用仅支持函数参数）
-TEST(RefParamTest, RefVarDeclError) {
+// P3-18：引用变量声明（变量 整32& r = x，x 为左值变量）-> 通过（此前报"暂不支持"）
+TEST(RefParamTest, RefVarDeclOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 x = 1
@@ -155,8 +155,19 @@ TEST(RefParamTest, RefVarDeclError) {
     返回 0
 }
 )CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// P3-18：引用变量须绑定左值变量（右值初始化器 -> 报错）
+TEST(RefParamTest, RefVarDeclRvalueError) {
+    auto r = analyzeSource(R"CN(
+函数 主() -> 整32 {
+    整32& r = 42
+    返回 0
+}
+)CN");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.messages.find("引用变量声明暂不支持"), std::string::npos) << r.messages;
+    EXPECT_NE(r.messages.find("须绑定左值"), std::string::npos) << r.messages;
 }
 
 // 泛型引用参数（T&）声明与调用 -> 语义通过
