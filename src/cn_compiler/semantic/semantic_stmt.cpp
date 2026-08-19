@@ -563,12 +563,18 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
     std::unique_ptr<Expr> elemExpr;   // 元素表达式（数组=容器[i] / 类=容器.元素(i)）
     bool desugarOk = true;
 
+    // P3-24：非名称式迭代对象（函数调用等临时值）——先求值为隐藏临时变量再遍历（求值一次）
+    std::unique_ptr<VarDecl> tempIterableDecl;
     if (!isNameLikeExpr(node->iterable.get())) {
-        diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "'遍历...中每个' 迭代对象须为变量/自身/成员/下标表达式"
-                            "（函数调用等临时值暂不支持，请先赋给局部变量）");
-        desugarOk = false;
-    } else if (types::isArray(containerType)) {
+        const std::string tmpName = "__对循环$临时" + std::to_string(rangeForCounter_++);
+        tempIterableDecl = std::make_unique<VarDecl>();
+        tempIterableDecl->name = tmpName;
+        tempIterableDecl->typeName = containerType;
+        tempIterableDecl->initializer = std::move(node->iterable);
+        tempIterableDecl->location = node->location;
+        node->iterable = std::make_unique<IdentifierExpr>(tmpName);
+    }
+    if (types::isArray(containerType)) {
         // 数组：长度编译期已知，元素 = 容器[索引]
         elemType = types::arrayElemOf(containerType);
         const int len = types::arrayLenOf(containerType);
@@ -583,8 +589,11 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
                 cloneNameExpr(node->iterable.get()),
                 std::make_unique<IdentifierExpr>(idxName));
         }
-    } else if (isClassType(containerType)) {
-        // 类容器：须提供 大小() 与 元素(整64)（对标 C++ 迭代器接口约定）
+    } else if (isClassType(containerType) ||
+               (!containerType.empty() && !types::isArray(containerType) &&
+                findClass(resolveGenericTypeName(containerType, node->location)) != nullptr)) {
+        // 类容器：须提供 大小() 与 元素(整64)（对标 C++ 迭代器接口约定；
+        //   P3-24：容器类型含泛型参数（向量<整32>）时按实例化名解析）
         std::string lookupName = containerType;
         if (findClass(lookupName) == nullptr) {
             const std::string inst =
@@ -667,7 +676,15 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
     forStmt->update = std::move(update);
     forStmt->body = std::move(body);
     forStmt->location = node->location;
-    node->desugared = std::move(forStmt);
+    if (tempIterableDecl != nullptr) {
+        // P3-24：临时迭代对象 → 求值声明 + 循环 打包为块（避免 move 后空指针）
+        auto wrapper = std::make_unique<BlockStmt>();
+        wrapper->statements.push_back(std::move(tempIterableDecl));
+        wrapper->statements.push_back(std::move(forStmt));
+        node->desugared = std::move(wrapper);
+    } else {
+        node->desugared = std::move(forStmt);
+    }
     // 检查降级树（类型解析/错误报告与用户书写代码同路径）
     checkStmt(node->desugared.get());
 }

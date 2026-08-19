@@ -167,8 +167,8 @@ TEST(RangeForTest, MissingElementMethodError) {
     EXPECT_NE(std::string::npos, r.messages.find("大小() 与 元素(整64)"));
 }
 
-// 非名称式迭代对象（函数调用）：报错
-TEST(RangeForTest, NonNameIterableError) {
+// P3-24：非名称式迭代对象（函数调用）→ 求值为隐藏临时变量后遍历（编译通过）
+TEST(RangeForTest, NonNameIterableTemp) {
     auto r = analyzeSource(R"CN(
 函数 取数组() -> 整32[3] {
     整32[3] 数据 = { 1, 2, 3 }
@@ -181,9 +181,8 @@ TEST(RangeForTest, NonNameIterableError) {
     返回 0
 }
 )CN");
-    EXPECT_FALSE(r.ok);
-    EXPECT_GT(r.errorCount, 0);
-    EXPECT_NE(std::string::npos, r.messages.find("变量/自身/成员/下标"));
+    // P3-24：临时迭代对象编译通过（求值一次后再遍历）；数组按值返回运行期另有缺口（非本量表）
+    EXPECT_TRUE(r.ok) << r.messages;
 }
 
 // 循环变量作用域：循环外引用 报错（未声明）
