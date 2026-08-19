@@ -582,6 +582,46 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         const std::string objType = checkExpr(mem->object.get());
         const std::string methodName = mem->memberName;
         std::string ownerClass;
+        // P3-19：接口对象方法调用（图形.方法(实参)）——接口方法经全局槽位运行时分派
+        {
+            const std::string ifaceName = canonicalType(
+                types::isPointer(objType) ? types::pointeeOf(objType) : objType);
+            const InterfaceInfo* iface = findInterface(ifaceName);
+            if (iface != nullptr) {
+                const auto imit = iface->methods.find(methodName);
+                if (imit == iface->methods.end()) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "接口 '" + ifaceName + "' 没有成员 '" +
+                                            methodName + "'");
+                    lastType_ = "未知";
+                    return;
+                }
+                std::vector<std::string> argTypes;
+                for (auto& arg : node->arguments) {
+                    argTypes.push_back(checkExpr(arg.get()));
+                }
+                if (argTypes.size() != imit->second.paramTypes.size()) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "接口方法 '" + methodName + "' 期望 " +
+                            std::to_string(imit->second.paramTypes.size()) +
+                            " 个实参，实际提供 " + std::to_string(argTypes.size()) + " 个");
+                } else {
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        if (!canConvertType(argTypes[i], imit->second.paramTypes[i])) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->arguments[i]->location,
+                                "接口方法 '" + methodName + "' 第 " +
+                                    std::to_string(i + 1) + " 个实参无法将 '" +
+                                    argTypes[i] + "' 隐式转换为 '" +
+                                    imit->second.paramTypes[i] + "'");
+                        }
+                    }
+                }
+                lastType_ = imit->second.type;
+                return;
+            }
+        }
         // 对象为类实例 或 类名.静态方法
         // 集成修复（自身/父类）：自身 类型为 类名*（this 指针），父类 类型为 父类名*，
         //   方法调用须剥指针取类类型（与 visitMemberExpr 的自身.成员 处理一致）；

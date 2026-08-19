@@ -113,10 +113,27 @@ void X64CodeGenerator::emitNewObject(AsmWriter& writer, const ir::IRInstruction&
     // 2. 初始化虚表指针（对象首地址，规格书06-五）
     if (semantic_ != nullptr) {
         const ClassInfo* ci = semantic_->findClass(className);
-        if (ci != nullptr && ci->hasVtable) {
+        if (ci != nullptr && ci->hasVtable && !ci->vtableOrder.empty()) {
             writer.line("lea rcx, " + vtableSymbol(className));
             writer.line("mov [rax], rcx");
             writer.comment("初始化虚表指针 " + className);
+        }
+        // P3-19：接口分派区填充（对象首 8 字节虚表指针之后，槽位 = 8 + 全局槽*8）
+        if (ci != nullptr && !ci->ifaceDisp.empty()) {
+            for (const auto& pr : ci->ifaceDisp) {
+                const std::string mname = pr.second;
+                const auto mit = ci->methods.find(mname);
+                std::string sym;
+                if (mit != ci->methods.end()) {
+                    sym = classMethodSymbol(mit->second.ownerClass, mname,
+                                            mit->second.paramTypes);
+                } else {
+                    sym = classMethodSymbol(ci->name, mname, std::vector<std::string>{});
+                }
+                writer.line("lea rcx, " + sym);
+                writer.line("mov [rax+" + std::to_string(8 + pr.first * 8) + "], rcx");
+            }
+            writer.comment("接口分派区 " + className);
         }
     }
     // 3. 结果槽 = 对象指针

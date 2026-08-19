@@ -66,6 +66,26 @@ const InterfaceInfo* SemanticAnalyzer::findInterface(const std::string& name) co
     return (it == interfaces_.end()) ? nullptr : &it->second;
 }
 
+// P3-19：类（含继承链）是否实现指定接口（自身 interfaces + 各基类）
+bool SemanticAnalyzer::classImplementsInterface(const std::string& className,
+                                                const std::string& ifaceName) const {
+    const ClassInfo* cur = findClass(types::canonical(className));
+    while (cur != nullptr) {
+        for (const auto& im : cur->interfaces) {
+            if (im == ifaceName) return true;
+        }
+        cur = cur->baseName.empty() ? nullptr : findClass(cur->baseName);
+    }
+    return false;
+}
+
+// P3-19：接口成员全局槽位（未登记返回 -1）
+int SemanticAnalyzer::interfaceSlot(const std::string& ifaceName,
+                                    const std::string& methodName) const {
+    const auto it = interfaceSlot_.find(ifaceName + "::" + methodName);
+    return (it == interfaceSlot_.end()) ? -1 : it->second;
+}
+
 // 沿继承链查找类成员（含父类；未找到返回nullptr）
 // ownerClass 输出实际所属类名（访问控制检查用：子类访问保护成员允许）
 const ClassMemberInfo* SemanticAnalyzer::lookupClassMember(
@@ -125,8 +145,9 @@ int SemanticAnalyzer::classFieldOffset(const std::string& className,
         c = c->baseName.empty() ? nullptr : findClass(c->baseName);
     }
     std::reverse(chain.begin(), chain.end());
-    // 精确偏移：虚表指针占位 + 沿继承链累加字段大小
+    // 精确偏移：虚表指针占位 + 接口分派区（P3-19）+ 沿继承链累加字段大小
     int acc = info->hasVtable ? 8 : 0;
+    if (info->ifaceRegionSize > 0) acc += info->ifaceRegionSize;
     for (const ClassInfo* ci : chain) {
         for (const auto& fname : ci->fieldOrder) {
             auto f = ci->fields.find(fname);
@@ -182,6 +203,10 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
             }
             info.methods[mi.name] = mi;
             info.methodOrder.push_back(mi.name);
+            // P3-19：接口方法全局槽位（B1 分派：接口::方法 -> 全局唯一槽）
+            if (interfaceSlot_.find(iface->name + "::" + mi.name) == interfaceSlot_.end()) {
+                interfaceSlot_[iface->name + "::" + mi.name] = interfaceSlotCounter_++;
+            }
         }
     }
     // 阶段A：注册类名（P2-16：map 键恒为 模块::类 供 IR 去重；符号名仅在跨模块同名冲突时带模块前缀）
@@ -295,6 +320,53 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
         if (kv.second.isAbstract && !kv.second.hasBody) {
             info.isAbstract = true;
             break;
+        }
+    }
+
+    // P3-19：接口分派区（B1 全局槽位；跨继承链收集接口方法，强制虚表指针）
+    info.ifaceDisp.clear();
+    info.ifaceMaxSlot = -1;
+    info.ifaceRegionSize = 0;
+    {
+        std::vector<std::string> ifaceNames;
+        std::unordered_set<std::string> seenIface;
+        const ClassDecl* curD = node;
+        int guard = 0;
+        while (curD != nullptr && (guard++ < 64)) {
+            if (!curD->baseName.empty() &&
+                interfaces_.find(curD->baseName) != interfaces_.end()) {
+                if (seenIface.insert(curD->baseName).second)
+                    ifaceNames.push_back(curD->baseName);
+            }
+            for (const auto& im : curD->interfaces) {
+                if (seenIface.insert(im).second) ifaceNames.push_back(im);
+            }
+            curD = curD->baseName.empty()
+                       ? nullptr
+                       : (findClass(curD->baseName) != nullptr
+                              ? findClass(curD->baseName)->ast
+                              : nullptr);
+        }
+        if (!ifaceNames.empty()) {
+            info.hasVtable = true;  // 强制虚表指针：接口区统一置于对象首 8 字节后
+            int maxSlot = -1;
+            for (const auto& ifn : ifaceNames) {
+                const InterfaceInfo* iface = findInterface(ifn);
+                if (iface == nullptr) continue;
+                for (const auto& mk : iface->methods) {
+                    const int slot = interfaceSlot(ifn, mk.first);
+                    if (slot < 0) continue;
+                    bool dup = false;
+                    for (const auto& pr : info.ifaceDisp) {
+                        if (pr.first == slot) { dup = true; break; }
+                    }
+                    if (dup) continue;
+                    info.ifaceDisp.emplace_back(slot, mk.first);
+                    if (slot > maxSlot) maxSlot = slot;
+                }
+            }
+            info.ifaceMaxSlot = maxSlot;
+            if (maxSlot >= 0) info.ifaceRegionSize = (maxSlot + 1) * 8;
         }
     }
 
@@ -567,6 +639,8 @@ void SemanticAnalyzer::computeClassLayout(ClassInfo& info) {
     std::reverse(chain.begin(), chain.end());
 
     int offset = info.hasVtable ? 8 : 0;  // 虚表指针占位
+    // P3-19：接口分派区紧随虚表指针之后（字段前）——槽位偏移 = 8 + 全局槽*8 固定
+    if (info.ifaceRegionSize > 0) offset += info.ifaceRegionSize;
     int maxAlign = info.hasVtable ? 8 : 1;
     for (const ClassInfo* ci : chain) {
         for (const auto& fname : ci->fieldOrder) {

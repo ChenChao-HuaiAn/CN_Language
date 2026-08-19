@@ -85,6 +85,10 @@ struct ClassInfo {
     int totalSize = 0;                         // 实例大小（字节，含虚表指针）
     int align = 8;                             // 对齐（含虚表指针后按8对齐）
     bool hasVtable = false;                    // 是否有虚函数表
+    // P3-19：接口分派区（B1 全局槽位；对象首 8 字节虚表指针之后，槽=8+全局槽*8）
+    std::vector<std::pair<int, std::string>> ifaceDisp;  // (全局槽, 接口方法名)
+    int ifaceMaxSlot = -1;                     // 本类实现的接口方法最大全局槽
+    int ifaceRegionSize = 0;                   // 接口分派区字节数 (maxSlot+1)*8
     bool isAbstract = false;                   // 含抽象方法（不可实例化）
     const ClassDecl* ast = nullptr;            // AST 节点指针
 };
@@ -185,6 +189,11 @@ public:
     const std::unordered_map<std::string, InterfaceInfo>& interfaces() const { return interfaces_; }
     // 查找接口符号（未找到返回nullptr）
     const InterfaceInfo* findInterface(const std::string& name) const;
+    // P3-19：接口成员全局槽位（未登记返回 -1）
+    int interfaceSlot(const std::string& ifaceName, const std::string& methodName) const;
+    // P3-19：类（含继承链）是否实现指定接口
+    bool classImplementsInterface(const std::string& className,
+                                  const std::string& ifaceName) const;
     // 沿继承链查找类成员（含父类；未找到返回nullptr）
     const ClassMemberInfo* lookupClassMember(const std::string& className,
                                              const std::string& memberName,
@@ -501,6 +510,10 @@ private:
     // ---- 阶段3：类/接口/泛型符号表 ----
     std::unordered_map<std::string, ClassInfo> classes_;       // 类符号表（Task 3.1）
     std::unordered_map<std::string, InterfaceInfo> interfaces_; // 接口符号表（Task 3.3）
+    // P3-19：接口方法全局槽位（接口::方法 -> 全局槽；接口分派 B1 方案）
+    std::unordered_map<std::string, int> interfaceSlot_;
+    int interfaceSlotCounter_ = 0;
+    // P3-19 数据字段（方法声明见 public 区）
     std::unordered_map<std::string, GenericInfo> generics_;    // 泛型声明表（Task 3.8）
     std::unordered_set<std::string> instantiatedGenerics_;     // 已实例化泛型类名集合（去重）
     // 泛型函数实例化记录（Task 6.1）：名$实参 -> 原泛型声明 + 实参列表

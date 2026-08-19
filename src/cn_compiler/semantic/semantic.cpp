@@ -751,6 +751,19 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     if (fromInst != from || toInst != to) {
         return fromInst == toInst;
     }
+    // P3-19：类 → 接口 隐式转换（值或指针；接口类型可持有任何实现类对象）
+    {
+        std::string toIface = to;
+        if (types::isPointer(to) && isInterfaceType(types::pointeeOf(to))) {
+            toIface = types::pointeeOf(to);
+        }
+        if (isInterfaceType(toIface)) {
+            std::string fromBase = types::isPointer(from) ? types::pointeeOf(from) : from;
+            if (isClassType(fromBase) && classImplementsInterface(fromBase, toIface)) {
+                return true;
+            }
+        }
+    }
     return types::canConvert(from, to);
 }
 std::string SemanticAnalyzer::genericClassInstanceName(const std::string& typeRaw) const {

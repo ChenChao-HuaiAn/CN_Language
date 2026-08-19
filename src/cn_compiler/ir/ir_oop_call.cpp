@@ -59,6 +59,48 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         return false;
     }
 
+    // ---- P3-19：接口对象方法调用（图形.方法(实参)）——B1 全局槽位运行时分派 ----
+    // 接口分派区在对象首固定偏差（首个 8 字节为强制虚表指针，region 紧随其后）：
+    //   偏移 = 8 + 全局槽*8；LoadPtr 取实现方法地址 -> CallIndirect(方法, [this, 实参])。
+    if (node->callee->getType() == NodeType::MemberExpr) {
+        MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
+        std::string objSrc = exprSrcType(mem->object.get());
+        std::string ifaceName = types::canonical(objSrc);
+        if (types::isPointer(ifaceName)) {
+            ifaceName = types::canonical(types::pointeeOf(ifaceName));
+        }
+        if (!ifaceName.empty() && semantic_->isInterfaceType(ifaceName)) {
+            const InterfaceInfo* iface = semantic_->findInterface(ifaceName);
+            if (iface != nullptr) {
+                const auto imit = iface->methods.find(mem->memberName);
+                if (imit != iface->methods.end()) {
+                    const int slot = semantic_->interfaceSlot(ifaceName, mem->memberName);
+                    if (slot >= 0) {
+                        ir::IRValue objVal = genExpr(mem->object.get());
+                        const int dispOffset = 8 + slot * 8;  // 8=强制虚表指针
+                        ir::IRValue regionAddr =
+                            emitResult(ir::Opcode::FieldAddr, {objVal}, "ptr",
+                                       std::to_string(dispOffset), node->location);
+                        ir::IRValue meth =
+                            emitResult(ir::Opcode::LoadPtr, {regionAddr}, "ptr", "",
+                                       node->location);
+                        std::vector<ir::IRValue> args;
+                        args.push_back(objVal);  // this = 对象指针
+                        for (auto& a : node->arguments) {
+                            args.push_back(genExpr(a.get()));
+                        }
+                        const std::string retIr =
+                            mapType(types::canonical(imit->second.type));
+                        args.insert(args.begin(), meth);  // operand[0]=方法地址
+                        lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, retIr,
+                                               "", node->location);
+                        return true;
+                    }
+                }
+            }
+        }
+    }
+
     // ---- 情形A：构造调用 类名(实参) ----
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         std::string className =

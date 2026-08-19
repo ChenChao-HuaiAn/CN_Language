@@ -941,6 +941,28 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         lastType_ = member->type;
         return;
     }
+    // P3-19：接口类型对象成员访问（图形.方法，图形 静态类型为接口）——
+    //   解析为接口方法（公开；类型=签名返回类型；槽位由 IR 经 interfaceSlot 查询）
+    {
+        const std::string ifaceName = types::isPointer(objectType)
+            ? canonicalType(types::pointeeOf(objectType))
+            : canonicalType(objectType);
+        const InterfaceInfo* iface = findInterface(ifaceName);
+        if (iface != nullptr) {
+            const auto imit = iface->methods.find(memberName);
+            if (imit == iface->methods.end()) {
+                if (structType != ifaceName) {
+                    // 结构体名正好也是接口名等异常情形，走底层逻辑
+                }
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "接口 '" + ifaceName + "' 没有成员 '" + memberName + "'");
+                lastType_ = "未知";
+                return;
+            }
+            lastType_ = imit->second.type;
+            return;
+        }
+    }
     // 结构体/联合体字段访问（Task 2.7）
     const StructDecl* decl = findStruct(structType);
     if (decl == nullptr) {
