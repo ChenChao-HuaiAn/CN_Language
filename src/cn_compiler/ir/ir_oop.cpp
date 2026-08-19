@@ -106,6 +106,34 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
 
     blockCounter_ = 0;
     newBlock("bb0");  // 入口基本块
+    // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——在构造体首部调用父构造
+    //   （this=自身指针；父构造符号 = 父类名$父构造sigKey，与定义侧一致）
+    if (mi.isConstructor && !member->ctorInitBase.empty() && semantic_ != nullptr) {
+        const ClassInfo* parentI = semantic_->findClass(member->ctorInitBase);
+        if (parentI != nullptr) {
+            std::string parentCtorSig;
+            for (const auto& mk : parentI->methods) {
+                const ClassMemberInfo& pm = mk.second;
+                if (pm.isConstructor &&
+                    pm.paramTypes.size() == member->ctorInitArgs.size()) {
+                    parentCtorSig = pm.sigKey; break;
+                }
+            }
+            if (!parentCtorSig.empty()) {
+                std::vector<ir::IRValue> ctorArgs;
+                const std::string thisUnique = lookupVarName("自身");
+                ctorArgs.push_back(
+                    thisUnique.empty() ? ir::IRValue::reg(-1, "ptr")
+                                       : ir::IRValue::var(thisUnique, "ptr"));
+                for (auto& argExpr : member->ctorInitArgs) {
+                    ctorArgs.push_back(genExpr(argExpr.get()));
+                }
+                emit(ir::Opcode::Call, ctorArgs, ir::IRValue(),
+                     methodSymbolKey(parentI->name, parentCtorSig), "void",
+                     member->body->location);
+            }
+        }
+    }
     genBlock(member->body.get());
     // 无终止指令：补充默认返回（构造/析构/空类型 方法）
     if (!function_->blocks.empty()) {

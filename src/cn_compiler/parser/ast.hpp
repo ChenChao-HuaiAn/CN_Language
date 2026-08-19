@@ -913,6 +913,9 @@ public:
     std::string returnType;                        // 返回类型（方法/运算符重载）
     std::string operatorSym;                       // 运算符符号（kind=Operator，如 "+"）
     std::unique_ptr<BlockStmt> body;               // 方法体（抽象/接口签名为空）
+    // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——仅构造函数有意义
+    std::string ctorInitBase;                        // 初始化列表中的父类名（可空）
+    std::vector<std::unique_ptr<Expr>> ctorInitArgs; // 父类构造实参
 
     // ---- 友元（kind=Friend） ----
     bool isFriendClass = false;                    // 友元 类 名（true）或 友元 函数（false）

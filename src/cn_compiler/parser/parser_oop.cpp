@@ -504,6 +504,25 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
             } while (match(TokenType::Comma));
         }
         consume(TokenType::RightParen, "')'");
+        // P3-20：父类构造初始化列表（构造 函数 子(...) : 父(实参)）——
+        //   parser 记录，语义层校验（父类名/实参类型）、IR 层在构造体首部调用父构造
+        if (check(TokenType::Colon)) {
+            advance();
+            if (check(TokenType::Identifier)) {
+                out.ctorInitBase = current().getValue();
+                advance();
+            } else {
+                reportErrorHere("构造初始化列表预期父类名");
+                return false;
+            }
+            consume(TokenType::LeftParen, "'('");
+            if (!check(TokenType::RightParen)) {
+                do {
+                    out.ctorInitArgs.push_back(parseExpr());
+                } while (match(TokenType::Comma));
+            }
+            consume(TokenType::RightParen, "')'");
+        }
         // 返回类型（-> 类型，可省略）
         if (check(TokenType::Arrow)) {
             advance();

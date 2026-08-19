@@ -784,6 +784,46 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
             if (lookupVar(fname, t)) continue;
             declareVar(fname, f->second.type, member->location);
         }
+        // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——校验父类名与实参类型
+        if (mi.isConstructor && !member->ctorInitBase.empty()) {
+            if (member->ctorInitBase != info.baseName) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, member->location,
+                    "父类构造初始化列表目标 '" + member->ctorInitBase +
+                        "' 必须是直接父类 '" + info.baseName + "'");
+            } else {
+                const ClassInfo* parentI = info.baseName.empty()
+                    ? nullptr : findClass(info.baseName);
+                const ClassMemberInfo* pc = nullptr;
+                if (parentI != nullptr) {
+                    for (const auto& mk : parentI->methods) {
+                        const ClassMemberInfo& pm = mk.second;
+                        if (pm.isConstructor &&
+                            pm.paramTypes.size() == member->ctorInitArgs.size()) {
+                            pc = &pm; break;
+                        }
+                    }
+                }
+                if (pc == nullptr) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, member->location,
+                        "父类 '" + info.baseName + "' 没有匹配实参数量的构造函数（实参 " +
+                            std::to_string(member->ctorInitArgs.size()) + " 个）");
+                } else {
+                    for (std::size_t ai = 0; ai < member->ctorInitArgs.size(); ++ai) {
+                        const std::string at =
+                            checkExpr(member->ctorInitArgs[ai].get());
+                        if (!canConvertType(at, pc->paramTypes[ai])) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, member->location,
+                                "父类构造实参 " + std::to_string(ai + 1) +
+                                " 无法将 '" + at + "' 隐式转换为 '" +
+                                    pc->paramTypes[ai] + "'");
+                        }
+                    }
+                }
+            }
+        }
         // 检查方法体
         currentReturnType_ = mi.type;
         for (auto& stmt : member->body->statements) {
