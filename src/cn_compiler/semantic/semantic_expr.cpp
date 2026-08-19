@@ -901,6 +901,17 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         }
         // 静态成员引用：直接给类型（供 IR 层取静态字段/静态方法地址）
         if (member->isStatic) {
+            // P3-23：静态方法作值（函数指针）——类型为方法签名
+            if (cls->methods.find(memberName) != cls->methods.end()) {
+                std::string fp = "函数指针<" + member->type + ">(";
+                for (std::size_t i = 0; i < member->paramTypes.size(); ++i) {
+                    if (i > 0) fp += ",";
+                    fp += member->paramTypes[i];
+                }
+                fp += ")";
+                lastType_ = fp;
+                return;
+            }
             lastType_ = member->type;
             return;
         }

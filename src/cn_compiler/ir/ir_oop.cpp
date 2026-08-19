@@ -529,6 +529,21 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     const std::string objSrcType = exprSrcType(node->object.get());
     const std::string canonObj = types::canonical(objSrcType);
 
+    // P3-23：静态方法作值（类名.静态方法 用作函数指针值）→ FuncAddr 方法链接符号
+    if (!objName.empty() && semantic_->isClassType(objName)) {
+        const ClassInfo* ciStatic = semantic_->findClass(objName);
+        if (ciStatic != nullptr) {
+            auto smit = ciStatic->methods.find(node->memberName);
+            if (smit != ciStatic->methods.end() && smit->second.isStatic) {
+                lastExpr_ = emitResult(
+                    ir::Opcode::FuncAddr, {}, "ptr",
+                    methodSymbolKey(ciStatic->name, smit->second.sigKey),
+                    node->location);
+                return true;
+            }
+        }
+    }
+
     // ---- 静态字段：类名.字段（对象是类类型名，非变量） ----
     if (!objName.empty() && semantic_->isClassType(objName)) {
         const std::string fieldType = classFieldType(objName, node->memberName);
