@@ -17,6 +17,9 @@ namespace cn_compiler {
 
 namespace {
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 // 比较运算符（== != < > <= >=）
 bool isComparisonOp(Operator op) {
     switch (op) {
@@ -118,6 +121,8 @@ std::vector<std::string> funcPtrParams(const std::string& type) {
     }
     return result;
 }
+
+#pragma GCC diagnostic pop
 
 } // namespace
 

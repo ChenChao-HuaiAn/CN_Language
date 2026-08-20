@@ -14,6 +14,8 @@
 
 #ifdef _WIN32
 #include <io.h>  // _dup/_dup2/_fileno（stderr 重定向捕获）
+#else
+#include <unistd.h>  // dup/dup2/close/fileno（POSIX）
 #endif
 
 // 安全的文件打开/重定向（MSVC /W4 /WX 下 fopen/freopen 触发 C4996 警告即错误；
@@ -25,7 +27,8 @@
 #else
 #define TEST_FOPEN(path, mode, f) ((f) = std::fopen((path), (mode))) != nullptr
 #define TEST_FREOPEN(path, mode, stream, f) \
-    ((f) = std::freopen((path), (mode), (stream))) != nullptr
+    (((f) = std::freopen((path), (mode), (stream))) != nullptr \
+     ? true : (std::fclose(f), false))
 #endif
 
 #include "runtime/runtime.hpp"
@@ -184,17 +187,17 @@ TEST(InputApiTest, PrintErr) {
     FILE* newErr = nullptr;
     ASSERT_TRUE(TEST_FOPEN(path.c_str(), "wb", newErr));
     // 保存原始 stderr 文件描述符，重定向 stderr 到临时文件
-    const int savedStderr = _dup(_fileno(stderr));
+    const int savedStderr = dup(fileno(stderr));
     ASSERT_GE(savedStderr, 0);
-    ASSERT_EQ(_dup2(_fileno(newErr), _fileno(stderr)), 0);
+    ASSERT_EQ(dup2(fileno(newErr), fileno(stderr)), 0);
     std::fclose(newErr);
 
     __cn_print_err("错误消息测试\n");
     std::fflush(stderr);
 
     // 恢复 stderr
-    ASSERT_EQ(_dup2(savedStderr, _fileno(stderr)), 0);
-    _close(savedStderr);
+    ASSERT_EQ(dup2(savedStderr, fileno(stderr)), 0);
+    close(savedStderr);
 
     // 读取临时文件内容
     FILE* in = nullptr;

@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
 
 // ==================== 字符串API（规格书10.1） ====================
 

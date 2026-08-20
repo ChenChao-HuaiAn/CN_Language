@@ -8,8 +8,9 @@
 #include <fstream>
 #include <sstream>
 #include <string>
-
-#include <filesystem>
+#include <cstdlib>
+#include <climits>
+#include <cstring>
 
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/driver/driver.hpp"
@@ -27,17 +28,28 @@ using cn_compiler::TokenType;
 
 namespace {
 
+// POSIX realpath 替代 std::filesystem::absolute（GCC 7 无 <filesystem>）
+std::string getProjectRoot() {
+    char buf[PATH_MAX];
+    if (!realpath(__FILE__, buf)) return "";
+    std::string path(buf);
+    // 从 .../tests/unit/semantic/test_bootstrap_lexer.cpp 上溯 4 级到项目根
+    for (int i = 0; i < 4; ++i) {
+        std::size_t pos = path.rfind('/');
+        if (pos == std::string::npos) return "";
+        path = path.substr(0, pos);
+    }
+    return path;
+}
+
 // 读取 CN 词法分析器模块源码（路径从 __FILE__ 推导项目根，兼容任意测试 cwd）
 std::string readLexerModule() {
-    namespace fs = std::filesystem;
-    // __FILE__ 可能为相对路径（tests/unit/semantic/...），先绝对化再上溯 3 级
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();  // .../tests/unit/semantic
-    for (int i = 0; i < 3; ++i) root = root.parent_path();          // 项目根（tests/unit 之上）
-    // B 任务拆分：门面 词法分析.cn + 子模块（词法/关键字|运算符|扫描），契约按合并源码断言
-    // （与 79 闭环合并口径一致：子模块函数以 门面模块名$函数名 全局可见）
+    const std::string root = getProjectRoot();
+    if (root.empty()) return "";
     std::ostringstream ss;
-    for (const auto& rel : {L"词法分析.cn", L"词法/关键字.cn", L"词法/运算符.cn", L"词法/扫描.cn"}) {
-        const std::ifstream in(root / L"CN语言编译器" / rel);
+    for (const auto& rel : {"/CN语言编译器/词法分析.cn", "/CN语言编译器/词法/关键字.cn",
+                            "/CN语言编译器/词法/运算符.cn", "/CN语言编译器/词法/扫描.cn"}) {
+        const std::ifstream in((root + rel).c_str());
         if (!in) return "";
         ss << in.rdbuf() << "\n";;
     }
@@ -50,7 +62,7 @@ struct SemanticResult {
     std::string messages;
 };
 
-SemanticResult analyzeSource(const std::string& source) {
+[[maybe_unused]] SemanticResult analyzeSource(const std::string& source) {
     SemanticResult result;
     Diagnostics diagnostics;
     Lexer lexer(source, "自举词法分析模块.cn", diagnostics);
@@ -92,17 +104,17 @@ TEST(BootstrapLexerTest, ModuleTokenizesCleanly) {
 
 // 词法分析.cn 模块可被 C++ 编译器全链路编译（模块系统：导入 容器 + 导入 词法分析）
 TEST(BootstrapLexerTest, ModuleCompilesViaDriver) {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const fs::path entry = root / "tests" / "e2e" / "70_self_host_lexer" / L"主.cn";
-    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    const std::string root = getProjectRoot();
+    ASSERT_FALSE(root.empty());
+    const std::string entry = root + "/tests/e2e/70_self_host_lexer/主.cn";
+    std::ifstream testFile(entry.c_str());
+    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
 
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
-    options.stdlibDir = (root / "stdlib").string();
+    options.stdlibDir = root + "/stdlib";
     cn_compiler::driver::PipelineOutput output;
-    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    const int rc = cn_compiler::driver::runModulePipeline(entry, options, output);
     EXPECT_EQ(rc, 0);
 }
 
@@ -124,12 +136,12 @@ TEST(BootstrapLexerTest, ModuleContractPresent) {
 
 // 读取 CN 语义分析器模块源码
 std::string readSemanticModule() {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const std::string root = getProjectRoot();
+    if (root.empty()) return "";
     std::ostringstream ss;
-    for (const auto& rel : {L"语义分析.cn", L"语义/符号表.cn", L"语义/内置.cn"}) {
-        const std::ifstream in(root / L"CN语言编译器" / rel);
+    for (const auto& rel : {"/CN语言编译器/语义分析.cn", "/CN语言编译器/语义/符号表.cn",
+                            "/CN语言编译器/语义/内置.cn"}) {
+        const std::ifstream in((root + rel).c_str());
         if (!in) return "";
         ss << in.rdbuf() << "\n";
     }
@@ -138,16 +150,16 @@ std::string readSemanticModule() {
 
 // 语义分析.cn 模块可被 C++ 编译器全链路编译（模块系统：词法/语法/语义 三链）
 TEST(BootstrapSemanticTest, ModuleCompilesViaDriver) {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const fs::path entry = root / "tests" / "e2e" / "73_self_host_semantic" / L"主.cn";
-    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    const std::string root = getProjectRoot();
+    ASSERT_FALSE(root.empty());
+    const std::string entry = root + "/tests/e2e/73_self_host_semantic/主.cn";
+    std::ifstream testFile(entry.c_str());
+    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
-    options.stdlibDir = (root / "stdlib").string();
+    options.stdlibDir = root + "/stdlib";
     cn_compiler::driver::PipelineOutput output;
-    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    const int rc = cn_compiler::driver::runModulePipeline(entry, options, output);
     EXPECT_EQ(rc, 0);
 }
 
@@ -169,12 +181,13 @@ TEST(BootstrapSemanticTest, ModuleContractPresent) {
 
 // 读取 CN IR 生成器模块源码
 std::string readIRModule() {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
+    const std::string root = getProjectRoot();
+    if (root.empty()) return "";
     std::ostringstream ss;
-    for (const auto& rel : {L"IR生成.cn", L"IR生成/IR1.cn", L"IR生成/IR2.cn", L"IR生成/IR3.cn", L"IR生成/IR4.cn"}) {
-        const std::ifstream in(root / L"CN语言编译器" / rel);
+    for (const auto& rel : {"/CN语言编译器/IR生成.cn", "/CN语言编译器/IR生成/IR1.cn",
+                            "/CN语言编译器/IR生成/IR2.cn", "/CN语言编译器/IR生成/IR3.cn",
+                            "/CN语言编译器/IR生成/IR4.cn"}) {
+        const std::ifstream in((root + rel).c_str());
         if (!in) return "";
         ss << in.rdbuf() << "\n";
     }
@@ -183,16 +196,16 @@ std::string readIRModule() {
 
 // IR生成.cn 模块可被 C++ 编译器全链路编译（E2E 74 入口）
 TEST(BootstrapIRTest, ModuleCompilesViaDriver) {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const fs::path entry = root / "tests" / "e2e" / "74_self_host_ir" / L"主.cn";
-    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    const std::string root = getProjectRoot();
+    ASSERT_FALSE(root.empty());
+    const std::string entry = root + "/tests/e2e/74_self_host_ir/主.cn";
+    std::ifstream testFile(entry.c_str());
+    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
-    options.stdlibDir = (root / "stdlib").string();
+    options.stdlibDir = root + "/stdlib";
     cn_compiler::driver::PipelineOutput output;
-    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    const int rc = cn_compiler::driver::runModulePipeline(entry, options, output);
     EXPECT_EQ(rc, 0);
 }
 
@@ -214,10 +227,9 @@ TEST(BootstrapIRTest, ModuleContractPresent) {
 
 // 读取 CN 代码生成器模块源码
 std::string readCodegenModule() {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const std::ifstream in(root / L"CN语言编译器" / L"代码生成.cn");
+    const std::string root = getProjectRoot();
+    if (root.empty()) return "";
+    const std::ifstream in((root + "/CN语言编译器/代码生成.cn").c_str());
     if (!in) return "";
     std::ostringstream ss;
     ss << in.rdbuf();
@@ -226,16 +238,16 @@ std::string readCodegenModule() {
 
 // 代码生成.cn 模块可被 C++ 编译器全链路编译（E2E 75 入口）
 TEST(BootstrapCodegenTest, ModuleCompilesViaDriver) {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const fs::path entry = root / "tests" / "e2e" / "75_self_host_codegen" / L"主.cn";
-    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    const std::string root = getProjectRoot();
+    ASSERT_FALSE(root.empty());
+    const std::string entry = root + "/tests/e2e/75_self_host_codegen/主.cn";
+    std::ifstream testFile(entry.c_str());
+    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
-    options.stdlibDir = (root / "stdlib").string();
+    options.stdlibDir = root + "/stdlib";
     cn_compiler::driver::PipelineOutput output;
-    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    const int rc = cn_compiler::driver::runModulePipeline(entry, options, output);
     EXPECT_EQ(rc, 0);
 }
 
@@ -257,25 +269,25 @@ TEST(BootstrapCodegenTest, ModuleContractPresent) {
 
 // 自举验证用例（E2E 76）入口可被 C++ 编译器全链路编译
 TEST(BootstrapBootstrapTest, ModuleCompilesViaDriver) {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const fs::path entry = root / "tests" / "e2e" / "76_self_host_bootstrap" / L"主.cn";
-    ASSERT_TRUE(fs::exists(entry)) << "入口文件不存在: " << entry.string();
+    const std::string root = getProjectRoot();
+    ASSERT_FALSE(root.empty());
+    const std::string entry = root + "/tests/e2e/76_self_host_bootstrap/主.cn";
+    std::ifstream testFile(entry.c_str());
+    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
-    options.stdlibDir = (root / "stdlib").string();
+    options.stdlibDir = root + "/stdlib";
     cn_compiler::driver::PipelineOutput output;
-    const int rc = cn_compiler::driver::runModulePipeline(entry.string(), options, output);
+    const int rc = cn_compiler::driver::runModulePipeline(entry, options, output);
     EXPECT_EQ(rc, 0);
 }
 
 // 自举验证主程序契约：五阶段链 + 验证行
 TEST(BootstrapBootstrapTest, ModuleContractPresent) {
-    namespace fs = std::filesystem;
-    fs::path root = fs::absolute(fs::path(__FILE__)).parent_path();
-    for (int i = 0; i < 3; ++i) root = root.parent_path();
-    const std::ifstream in(root / "tests" / "e2e" / "76_self_host_bootstrap" / L"主.cn");
+    const std::string root = getProjectRoot();
+    ASSERT_FALSE(root.empty());
+    const std::string entry = root + "/tests/e2e/76_self_host_bootstrap/主.cn";
+    const std::ifstream in(entry.c_str());
     ASSERT_TRUE(in.good()) << "无法读取 76 主.cn";
     std::ostringstream ss;
     ss << in.rdbuf();
@@ -287,4 +299,3 @@ TEST(BootstrapBootstrapTest, ModuleContractPresent) {
     EXPECT_NE(src.find("阶段|代码生成|"), std::string::npos);
     EXPECT_NE(src.find("自举|验证|通过"), std::string::npos);
 }
-
