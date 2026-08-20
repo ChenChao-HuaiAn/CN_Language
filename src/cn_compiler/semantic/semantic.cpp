@@ -20,6 +20,9 @@ namespace cn_compiler {
 
 namespace {
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 // 比较运算符（== != < > <= >=）
 bool isComparisonOp(Operator op) {
     switch (op) {
@@ -75,6 +78,8 @@ bool isArrayType(const std::string& type) {
     if (len <= 0 || elemSize <= 0) return 0;
     return len * elemSize;
 }
+
+#pragma GCC diagnostic pop
 
 // 类型别名规范化：整数 -> 整32、小数 -> 浮64（规格书02-类型系统：默认类型别名）
 // Task 2.3：转发到 type_system 子模块（types::canonical），语义与IR共用同一实现

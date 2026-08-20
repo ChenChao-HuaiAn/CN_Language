@@ -116,6 +116,24 @@ void Arm64CodeGenerator::emitNewObject(Arm64AsmWriter& writer,
             writer.line("str x10, [x0]");
             writer.comment("初始化虚表指针 " + className);
         }
+        // P3-19：接口分派区填充（对象首 8 字节虚表指针之后，槽位 = 8 + 全局槽*8）
+        // 参考 x64 后端 x64_codegen_oop.cpp 第121-136行
+        if (ci != nullptr && !ci->ifaceDisp.empty()) {
+            for (const auto& pr : ci->ifaceDisp) {
+                const std::string mname = pr.second;
+                const auto mit = ci->methods.find(mname);
+                std::string sym;
+                if (mit != ci->methods.end()) {
+                    sym = classMethodSymbol(mit->second.ownerClass, mname,
+                                            mit->second.paramTypes);
+                } else {
+                    sym = classMethodSymbol(ci->name, mname, std::vector<std::string>{});
+                }
+                emitLoadSymbolAddr(writer, "x11", sym);
+                writer.line("str x11, [x0, #" + std::to_string(8 + pr.first * 8) + "]");
+            }
+            writer.comment("接口分派区 " + className);
+        }
     }
     // 3. 结果槽 = 对象指针
     emitStackStore(writer, dstOff, "x0", "ptr");

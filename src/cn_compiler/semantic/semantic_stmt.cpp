@@ -18,7 +18,7 @@ namespace cn_compiler {
 namespace {
 
 // 比较运算符（== != < > <= >=）
-bool isComparisonOp(Operator op) {
+[[maybe_unused]] bool isComparisonOp(Operator op) {
     switch (op) {
         case Operator::EqualEqual: case Operator::BangEqual:
         case Operator::Less: case Operator::Greater:
@@ -30,7 +30,7 @@ bool isComparisonOp(Operator op) {
 }
 
 // 逻辑运算符（&& || !）
-bool isLogicalOp(Operator op) {
+[[maybe_unused]] bool isLogicalOp(Operator op) {
     switch (op) {
         case Operator::AndAnd: case Operator::OrOr: case Operator::Bang:
             return true;
@@ -40,7 +40,7 @@ bool isLogicalOp(Operator op) {
 }
 
 // 位运算符（& | ^ ~ << >>）
-bool isBitwiseOp(Operator op) {
+[[maybe_unused]] bool isBitwiseOp(Operator op) {
     switch (op) {
         case Operator::Amp: case Operator::Pipe: case Operator::Caret:
         case Operator::Tilde: case Operator::LessLess: case Operator::GreaterGreater:
@@ -51,17 +51,17 @@ bool isBitwiseOp(Operator op) {
 }
 
 // 算术运算符（+ - * / %）
-bool isArithmeticOp(Operator op) {
+[[maybe_unused]] bool isArithmeticOp(Operator op) {
     return op == Operator::Add || op == Operator::Subtract ||
            op == Operator::Multiply || op == Operator::Divide ||
            op == Operator::Modulo;
 }
 
 // 指针类型辅助（Task 2.4）：是否指针类型 / 是否数组类型
-bool isPointerType(const std::string& type) {
+[[maybe_unused]] bool isPointerType(const std::string& type) {
     return types::isPointer(type);
 }
-bool isArrayType(const std::string& type) {
+[[maybe_unused]] bool isArrayType(const std::string& type) {
     return types::isArray(type);
 }
 // 计算数组总字节大小（元素大小 × 长度）
@@ -82,12 +82,12 @@ std::string canonicalType(const std::string& type) {
 // ==================== 函数指针类型工具（Task 2.2） ====================
 
 // 判断类型字符串是否为函数指针类型（函数指针<返回>(参数,...)）
-bool isFuncPtrTypeStr(const std::string& type) {
+[[maybe_unused]] bool isFuncPtrTypeStr(const std::string& type) {
     return type.rfind("函数指针<", 0) == 0;
 }
 
 // 从函数指针类型字符串提取返回类型（"函数指针<整32>(整32,整32)" -> "整32"）
-std::string funcPtrReturn(const std::string& type) {
+[[maybe_unused]] std::string funcPtrReturn(const std::string& type) {
     std::size_t lt = type.find('<');
     std::size_t gt = type.find('>');
     if (lt == std::string::npos || gt == std::string::npos || gt <= lt) return "";
@@ -96,7 +96,7 @@ std::string funcPtrReturn(const std::string& type) {
 
 // 从函数指针类型字符串提取参数类型列表
 // "函数指针<整32>(整32,整32)" -> ["整32","整32"]
-std::vector<std::string> funcPtrParams(const std::string& type) {
+[[maybe_unused]] std::vector<std::string> funcPtrParams(const std::string& type) {
     std::vector<std::string> result;
     std::size_t lp = type.find('(');
     std::size_t rp = type.rfind(')');
