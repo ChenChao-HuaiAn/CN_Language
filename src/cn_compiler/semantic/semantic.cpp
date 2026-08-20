@@ -472,6 +472,16 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
     if (it == functions_.end()) return "";
     return it->second.returnType;
 }
+bool SemanticAnalyzer::funcReturnsRef(const std::string& funcName) const {
+    // P3-18 补完：函数返回类型是否为引用（T&）——调用点把结果当"被引用左值的地址"
+    auto it = functions_.find(funcName);
+    if (it == functions_.end()) {
+        const std::size_t dollar = funcName.find('$');
+        if (dollar != std::string::npos) it = functions_.find(funcName.substr(dollar + 1));
+    }
+    if (it == functions_.end()) return false;
+    return it->second.isRefReturn;
+}
 std::vector<std::string> SemanticAnalyzer::funcParamTypesOf(const std::string& funcName) const {
     // 第 4 层（P2-6）：支持 模块名$签名key（resolvedSignature 带 crate 前缀）
     auto it = functions_.find(funcName);
@@ -1313,12 +1323,12 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "外部 函数 声明不能有函数体（C 符号由外部库提供）");
     }
-    // A-1（引用参数）：函数返回类型暂不支持引用（引用仅支持函数参数）——
-    //   规格书容器设计中的 T& 下标返回 属后续扩展，当前明确报错避免静默误编译
+    // P3-18 补完（2026-08）：函数返回类型支持引用（T&）——返回被引用左值的地址。
+    //   引用返回不参与重载签名（仅返回类型不同不构成重载）；isRefReturn 供 IR
+    //   （返回类型映射 ptr）与调用方（get() = 值 写回 / 整32& r = get() 绑定 /
+    //   &get() 取址）识别。返回的 lvalue 校验在 visitReturnStmt（禁返回局部变量地址）。
     if (!node->returnType.empty() && types::isReference(node->returnType)) {
-        diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "函数返回类型暂不支持引用（'" + node->returnType +
-                            "'），请改用指针返回");
+        info.isRefReturn = true;
     }
     // 默认参数规则检查：从右向左连续声明（f(a=1, b) 非法——默认参数左侧出现无默认参数；
     //   f(a, b=1, c=2) 合法——最左侧参数可无默认）。

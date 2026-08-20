@@ -134,7 +134,14 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
         linkName = node->moduleName + "$" + linkName;
     }
     func.mangledName = linkName;
-    func.returnType = mapType(node->returnType.empty() ? "空类型" : node->returnType);
+    // P3-18 补完（2026-08）：引用返回（T&）——IR 返回类型映射为 指针（返回被引用
+    //   左值的地址）；epilogue 走默认整型 rax 返回（无 structReturn/i128 特判）。
+    const bool isRefReturnFn = !node->returnType.empty() &&
+                               types::isReference(node->returnType);
+    func.returnType = isRefReturnFn
+                          ? "ptr"
+                          : mapType(node->returnType.empty() ? "空类型"
+                                                             : node->returnType);
     func.returnTypeSrc = node->returnType.empty() ? "空类型" : node->returnType;
     // Task 完善A：结构体返回值标记（返回类型为自定义结构体时走隐藏返回指针）
     // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议

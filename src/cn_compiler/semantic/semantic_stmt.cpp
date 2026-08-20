@@ -722,6 +722,23 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
                             "无法将 '" + valueType + "' 隐式转换为返回类型 '" +
                             currentReturnType_ + "'");
     }
+    // P3-18 补完（2026-08）：引用返回函数——返回值须为可绑定左值；禁止返回
+    //   本函数局部变量（含按值参数）的地址（随栈帧消亡的悬垂引用）。
+    if (currentIsRefReturn_) {
+        std::string baseName;
+        if (!refReturnLvalueBase(node->value.get(), baseName)) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "引用返回的返回值须为左值（变量/数组元素/解引用/成员/引用返回调用）");
+            return;
+        }
+        if (!baseName.empty() && !isRefParamForCurrentFn(baseName) &&
+            isCurrentFnLocal(baseName)) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "引用返回不能返回局部变量的地址（'" + baseName + "'）");
+        }
+    }
 }
 void SemanticAnalyzer::visitBreakStmt(BreakStmt* node) {
     if (loopDepth_ == 0 && switchDepth_ == 0) {

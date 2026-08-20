@@ -586,6 +586,17 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
                        node->operand->getType() == NodeType::IndexExpr ||
                        node->operand->getType() == NodeType::MemberExpr) {
                 lastType_ = operandType + "*";
+            } else if (node->operand->getType() == NodeType::CallExpr) {
+                // P3-18 补完：&引用返回调用 = 取得被引用者的地址（须确认为引用返回）
+                if (lastExprIsRefReturn_) {
+                    lastType_ = node->operand->getType() == NodeType::CallExpr
+                                    ? types::canonical(operandType) + "*"
+                                    : operandType + "*";
+                } else {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "'&'取地址要求左值操作数");
+                    lastType_ = "未知";
+                }
             } else {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "'&'取地址要求左值操作数");
@@ -754,6 +765,16 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                node->target->getType() == NodeType::UnaryExpr) {
         // 下标访问（数组[i]）/解引用（*p）均为可写左值
         targetType = checkExpr(node->target.get());
+    } else if (node->target->getType() == NodeType::CallExpr) {
+        // P3-18 补完：引用返回调用可作赋值目标（获取() = 值 写回被引用对象）
+        lastExprIsRefReturn_ = false;
+        targetType = checkExpr(node->target.get());
+        if (!lastExprIsRefReturn_) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "赋值目标须为可写左值（标识符/下标/解引用/成员/引用返回调用）");
+            targetType = "未知";
+        }
     } else {
         // 其他左值形式（成员访问等）：后续Task实现
         targetType = checkExpr(node->target.get());
@@ -936,6 +957,9 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
             }
             fp += ")";
             lastType_ = fp;
+            // P3-23 补完：实例方法作值（对象.实例方法）标记——IR 合成"绑定 this"
+            //   闭包（须先赋给变量经闭包变量调用；不可直接作裸 fnptr 实参，D2 诊断）
+            node->isMethodValue = true;
             return;
         }
         lastType_ = member->type;

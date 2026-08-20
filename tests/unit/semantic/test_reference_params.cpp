@@ -1,6 +1,6 @@
 // 引用参数语义单元测试（A-1 修复，2026-08）
 // 覆盖：引用参数注册（签名保留 &，与按值参数区分）、实参自动取地址（左值校验）、
-//   引用参数禁止默认值、引用返回类型报错、引用变量声明报错、
+//   引用参数禁止默认值、引用返回类型（T&，P3-18 补完）、引用变量声明、
 //   泛型 T& 引用参数、值/引用同形参重载调用歧义（文档化边界）
 // 测试方式：Lexer + Parser + SemanticAnalyzer 全链路（非Mock）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文（注释可为中文）
@@ -131,19 +131,81 @@ TEST(RefParamTest, RefDefaultValueError) {
     EXPECT_NE(r.messages.find("引用参数不能有默认值"), std::string::npos) << r.messages;
 }
 
-// 引用返回类型暂不支持 -> 报错
-TEST(RefParamTest, RefReturnTypeError) {
+// P3-18 补完：引用返回全局/静态对象（存活) -> 语义通过
+TEST(RefParamTest, RefReturnGlobalOk) {
     auto r = analyzeSource(R"CN(
 静态 整32 全局值 = 42
 函数 取引用() -> 整32& {
     返回 全局值
 }
 函数 主() -> 整32 {
+    整32& r = 取引用()
+    取引用() = 9
+    返回 0
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
+}
+
+// P3-18 补完：引用返回本函数局部变量地址（悬垂引用）-> 报错
+TEST(RefParamTest, RefReturnLocalError) {
+    auto r = analyzeSource(R"CN(
+函数 坏() -> 整32& {
+    整32 局部 = 5
+    返回 局部
+}
+函数 主() -> 整32 {
     返回 0
 }
 )CN");
     EXPECT_FALSE(r.ok);
-    EXPECT_NE(r.messages.find("返回类型暂不支持引用"), std::string::npos) << r.messages;
+    EXPECT_NE(r.messages.find("局部变量"), std::string::npos) << r.messages;
+}
+
+// P3-18 补完：引用返回本函数按值参数地址（随栈帧消亡）-> 报错
+TEST(RefParamTest, RefReturnByValueParamError) {
+    auto r = analyzeSource(R"CN(
+函数 坏(整32 v) -> 整32& {
+    返回 v
+}
+函数 主() -> 整32 {
+    返回 0
+}
+)CN");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.messages.find("局部变量"), std::string::npos) << r.messages;
+}
+
+// P3-18 补完：引用返回引用参数（指向调用方存储，存活）-> 通过
+TEST(RefParamTest, RefReturnRefParamOk) {
+    auto r = analyzeSource(R"CN(
+函数 传回(整32& x) -> 整32& {
+    返回 x
+}
+函数 主() -> 整32 {
+    整32 值 = 100
+    整32& 别名 = 传回(值)
+    传回(值) = 300
+    返回 0
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
+}
+
+// P3-18 补完：引用返回非左值（字面量）-> 报错
+TEST(RefParamTest, RefReturnNonLvalueError) {
+    auto r = analyzeSource(R"CN(
+函数 坏() -> 整32& {
+    返回 42
+}
+函数 主() -> 整32 {
+    返回 0
+}
+)CN");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.messages.find("左值"), std::string::npos) << r.messages;
 }
 
 // P3-18：引用变量声明（变量 整32& r = x，x 为左值变量）-> 通过（此前报"暂不支持"）

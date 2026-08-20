@@ -40,6 +40,10 @@ struct FunctionInfo {
     // 重复定义检测按模块分桶：跨模块同名同签名函数允许（crate 隔离），
     // 仅同模块内重名报错。空 = 单文件/内置函数（prelude，无 crate 域）。
     std::string moduleName;
+    // P3-18 补完（2026-08）：函数返回类型为 T&（引用返回，返回被引用左值地址）。
+    // 不参与重载签名（返回类型不构成重载）；isRefReturn 供 IR（返回类型映射 ptr）
+    // 与调用方（引用绑定 / 赋值写回 / 取地址）识别。
+    bool isRefReturn = false;
 };
 
 // ==================== 阶段3：类成员信息（Task 3.1） ====================
@@ -150,6 +154,8 @@ public:
                      std::int64_t& outValue) const;
     // 查询函数返回类型（未注册返回空串；供IR层推导调用结果类型，Task 2.7 集成修复）
     std::string funcReturnTypeOf(const std::string& funcName) const;
+    // P3-18 补完（2026-08）：函数返回类型是否为引用（T&）——调用点将结果当"左值地址"
+    bool funcReturnsRef(const std::string& funcName) const;
     // 返回该函数名的第一个签名 key（函数名作值/取地址用，Task 2.10；无此名返回空串）
     std::string funcFirstSigKey(const std::string& name) const;
     // 查询函数参数类型列表（未注册返回空；供IR层推导结构体按值实参传递，Task 完善A）
@@ -341,6 +347,16 @@ private:
     void registerBuiltins();
     void registerFunction(FunctionDecl* node);     // 第一趟：注册函数符号
     void checkFunctionBody(FunctionDecl* node);    // 第二趟：检查函数体
+    // P3-18 补完（2026-08）：解析返回表达式的基础标识符（左值形态：标识符/下标/
+    //   成员/解引用/引用返回调用链）；非可绑定左值返回 false。baseName 空串表示
+    //   指针指向（*p / -> 链）或引用返回调用链（无需解剖）。
+    static bool refReturnLvalueBase(const Expr* e, std::string& baseName);
+    // 名称是否为当前函数的引用参数（引用返回允许返回引用参数——指向调用方存储）
+    bool isRefParamForCurrentFn(const std::string& name) const;
+    // 名称是否绑定在当前函数局部作用域（scopes_ 索引 >= funcScopeStart_）
+    bool isCurrentFnLocal(const std::string& name) const;
+    // P3-23 补完（D2）：表达式是否为"实例方法作值"（对象.实例方法，绑定 this 闭包）
+    static bool argIsBoundMethodValue(const Expr* e);
     // 函数体是否保证有返回（最后一条为返回语句或无限循环）
     bool bodyGuaranteesReturn(BlockStmt* body) const;
     // 自举前置 A-2（plans/004）：语句是否必然以 返回 结束（选择 全分支返回 识别）
@@ -501,6 +517,14 @@ private:
     std::vector<std::unordered_map<std::string, std::string>> scopes_; // 变量作用域栈
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
+    // P3-18 补完（2026-08）：当前函数是否为引用返回（visitReturnStmt 校验用）
+    bool currentIsRefReturn_ = false;
+    // 当前函数引用参数名集合：引用返回局部检查用——引用参数可被返回（指向调用方存储）
+    std::unordered_set<std::string> currentRefParams_;
+    // 当前函数作用域起始索引（scopes_ 中索引 >= 该值 的绑定属函数局部；-1=无函数上下文）
+    int funcScopeStart_ = -1;
+    // 最近一次 checkExpr 求值是否"引用返回调用"（调用点/赋值目标/引用绑定/取地址识别）
+    bool lastExprIsRefReturn_ = false;
     int loopDepth_ = 0;                            // 循环嵌套深度（中断/继续合法性）
     int switchDepth_ = 0;                          // 选择嵌套深度（中断跳出选择合法性）
     // ---- lambda 返回类型推导（Task 2.10） ----

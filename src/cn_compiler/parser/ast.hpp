@@ -436,6 +436,10 @@ public:
     std::vector<std::unique_ptr<Expr>> arguments; // 实参列表
     std::string resolvedSignature;                // 重载决议后的签名 key（Task 2.10，
                                                   //   语义层写回；IR 层按此生成 mangled 符号）
+    // P3-18 补完（2026-08）：调用是否为"引用返回"调用（解析结果返回类型含 &）。
+    // 语义层决议时写回；IR 层据此把调用结果当"左值地址"处理（整32& r = 获取() /
+    // 获取() = 值 / &获取()）。函数指针间接调用不适用（无法静态知返回类型）。
+    bool isRefReturnCall = false;
     std::string resolvedType;                     // 内置构造器推导的 结果<T,E>/可选<T> 类型
                                                   //   （Task 3.5，语义层写回；IR 层按此
                                                   //    降级为合成结构体构造）
@@ -456,6 +460,9 @@ public:
     std::unique_ptr<Expr> object;  // 对象表达式
     std::string memberName;        // 成员名
     bool isArrow;                  // true 表示 -> 访问（通过指针）
+    // P3-23 补完（2026-08）：实例方法作值标记（对象.实例方法 非调用上下文）。
+    // 语义层 visitMemberExpr 写回；IR 合成"绑定 this"闭包并在变量绑定态登记。
+    bool isMethodValue = false;
 };
 
 // 下标访问：对象[index]（Task 2.4）

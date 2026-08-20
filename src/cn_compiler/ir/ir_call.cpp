@@ -357,10 +357,15 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             // eax 无害且符合现有 void 调用惯例）
         } else if (semantic_ != nullptr) {
             // 用户函数：查询语义层返回类型（未映射（空/未知）回退 i32）
-            const std::string ret = semantic_->funcReturnTypeOf(calleeName);
-            if (!ret.empty()) {
-                const std::string mapped = mapType(ret);
-                if (mapped != "void" && mapped != "") resultType = mapped;
+            // P3-18 补完：引用返回函数调用结果 = 被引用左值地址（ptr）
+            if (semantic_->funcReturnsRef(calleeName)) {
+                resultType = "ptr";
+            } else {
+                const std::string ret = semantic_->funcReturnTypeOf(calleeName);
+                if (!ret.empty()) {
+                    const std::string mapped = mapType(ret);
+                    if (mapped != "void" && mapped != "") resultType = mapped;
+                }
             }
         }
         // 结构体返回值函数（Task 完善A）：调用方分配返回缓冲区（结构体临时变量），

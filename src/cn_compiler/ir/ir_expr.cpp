@@ -1045,6 +1045,25 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         lastExpr_ = value;
         return;
     }
+    // P3-18 补完（2026-08）：引用返回调用作赋值目标（获取() = 值 / 获取() += 值）——
+    //   目标调用结果即被引用左值地址（ptr），StorePtr 写回。
+    if (node->target->getType() == NodeType::CallExpr) {
+        ir::IRValue tgtAddr = genExpr(node->target.get());
+        ir::IRValue val = genExpr(node->value.get());
+        if (isCompoundAssignOp(node->op)) {
+            ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {tgtAddr}, val.type,
+                                             "", node->location);
+            ir::Opcode opcode;
+            Operator baseOp = baseOpOfCompound(node->op);
+            if (mapBinaryOp(baseOp, false, opcode)) {
+                val = emitResult(opcode, {current, val}, val.type, "", node->location);
+            }
+        }
+        emit(ir::Opcode::StorePtr, {tgtAddr, val}, ir::IRValue(), "", val.type,
+             node->location);
+        lastExpr_ = val;
+        return;
+    }
     // 标识符左值（原有路径）：Store
     if (node->target->getType() != NodeType::IdentifierExpr) {
         lastExpr_ = genExpr(node->value.get());

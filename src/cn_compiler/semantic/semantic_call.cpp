@@ -158,6 +158,9 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
     }
 }
 void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
+    // P3-18 补完：本轮默认非引用返回；决议到引用返回函数时置 true
+    node->isRefReturnCall = false;
+    lastExprIsRefReturn_ = false;
     // 分派依据：callee 若是函数名（在函数符号表中）→ 直接调用；
     //           否则检查其类型，若是函数指针变量 → 间接调用；
     //           阶段3：成员方法调用（对象.方法(...)）、内置构造器（正常/错误/某些）、
@@ -599,6 +602,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 std::vector<std::string> argTypes;
                 for (auto& arg : node->arguments) {
                     argTypes.push_back(checkExpr(arg.get()));
+                    // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+                    if (argIsBoundMethodValue(arg.get())) {
+                        diagnostics_.report(
+                            DiagnosticLevel::Error, arg->location,
+                            "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+                    }
                 }
                 if (argTypes.size() != imit->second.paramTypes.size()) {
                     diagnostics_.report(
@@ -619,6 +628,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     }
                 }
                 lastType_ = imit->second.type;
+                lastExprIsRefReturn_ = false;  // 接口方法引用返回暂不支持（方法返回类型 canonical 剥 &）
                 return;
             }
         }
@@ -642,6 +652,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             std::vector<std::string> argTypes;
             for (auto& arg : node->arguments) {
                 argTypes.push_back(checkExpr(arg.get()));
+                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+                if (argIsBoundMethodValue(arg.get())) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, arg->location,
+                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+                }
             }
             if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -669,6 +685,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             checkAccess(*findClass(ownerClass), *method, contextClass, node->location,
                         "方法");
             lastType_ = method->type;
+            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
             return;
         }
         if (method != nullptr && method->isStatic) {
@@ -676,6 +693,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             std::vector<std::string> argTypes;
             for (auto& arg : node->arguments) {
                 argTypes.push_back(checkExpr(arg.get()));
+                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+                if (argIsBoundMethodValue(arg.get())) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, arg->location,
+                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+                }
             }
             if (argTypes.size() != method->paramTypes.size()) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -687,6 +710,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             // A-1（引用参数）：静态方法引用形参的实参自动取地址
             wrapRefArgs(node, method->paramTypes);
             lastType_ = method->type;
+            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
             return;
         }
         // 非类成员：继续走通用路径（结构体字段函数指针等）
@@ -721,6 +745,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         argTypes.reserve(node->arguments.size());
         for (auto& arg : node->arguments) {
             argTypes.push_back(checkExpr(arg.get()));
+            // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+            if (argIsBoundMethodValue(arg.get())) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, arg->location,
+                    "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+            }
         }
         // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）
         std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
@@ -731,6 +761,11 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             auto fallback = functions_.find(calleeName);
             if (fallback != functions_.end()) {
                 lastType_ = fallback->second.returnType;
+                // P3-18 补完：引用返回函数调用結果可作左值
+                if (fallback->second.isRefReturn) {
+                    node->isRefReturnCall = true;
+                    lastExprIsRefReturn_ = true;
+                }
             } else {
                 lastType_ = "未知";
             }
@@ -779,6 +814,11 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             }
         }
         lastType_ = info.returnType;
+        // P3-18 补完：引用返回函数调用結果可作左值（整32& r = 获取() / 获取()=值 / &获取()）
+        if (info.isRefReturn) {
+            node->isRefReturnCall = true;
+            lastExprIsRefReturn_ = true;
+        }
         return;
     }
 

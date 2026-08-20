@@ -558,6 +558,34 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
         return true;
     }
 
+    // P3-23 补完：实例方法作值（对象.实例方法）——绑定 this 的闭包。
+    //   语义已置 node->isMethodValue；此处记录闭包绑定信息（lastLambda*_ 供
+    //   genVarDecl 在变量绑定态登记 closureInfo_），表达式值 = 方法链接符号。
+    //   cb(实参) 经闭包调用展开捕获 this 直接 Call 方法符号（this + 用户实参）。
+    if (node->isMethodValue && semantic_->isClassType(canonObj)) {
+        std::string owner;
+        const ClassMemberInfo* method =
+            semantic_->lookupClassMember(canonObj, node->memberName, owner);
+        if (method != nullptr && !method->isStatic) {
+            const std::string ownerSym = owner.empty() ? canonObj : owner;
+            lastLambdaName_ = methodSymbolKey(ownerSym, method->sigKey);
+            lastLambdaCaptures_.clear();
+            // 被绑定对象：若为标识符则记录（闭包对象地址由 genVarDecl 求值）
+            if (node->object->getType() == NodeType::IdentifierExpr) {
+                lastLambdaCaptures_.push_back(
+                    static_cast<IdentifierExpr*>(node->object.get())->name);
+            }
+            lastLambdaReturnIrType_ =
+                mapType(method->type.empty() ? "空类型" : method->type);
+            lastLambdaCaptureRefs_.clear();
+            lastLambdaCaptureRefs_.push_back(true);  // 引用捕获（存对象地址）
+            lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr",
+                                   methodSymbolKey(ownerSym, method->sigKey),
+                                   node->location);
+            return true;
+        }
+    }
+
     // ---- 实例字段：对象为类实例（源码类型是类） ----
     if (!semantic_->isClassType(canonObj)) return false;
     const std::string fieldType = classFieldType(canonObj, node->memberName);

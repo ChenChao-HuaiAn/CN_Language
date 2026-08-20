@@ -78,7 +78,20 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                 return;
             }
         }
-        ir::IRValue value = genExpr(node->value.get());
+        // P3-18 补完（2026-08）：引用返回函数——返回值取"被引用左值的地址"
+        //   （返回地址而非值快照）；引用返回调用链本身已是地址（ptr）直接复用。
+        ir::IRValue value;
+        const bool isRefReturnFn = function_ != nullptr &&
+                                   types::isReference(function_->returnTypeSrc);
+        if (isRefReturnFn) {
+            if (node->value->getType() == NodeType::CallExpr) {
+                value = genExpr(node->value.get());
+            } else {
+                value = lvalueAddress(node->value.get());
+            }
+        } else {
+            value = genExpr(node->value.get());
+        }
         if (function_ != nullptr) {
             const std::string retType = function_->returnType;
             if (value.type != retType && !retType.empty() && retType != "void" &&
@@ -411,25 +424,50 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     const std::string unique = lookupVarName(node->name);
     // P3-18：引用变量（整32& r = x）——槽存被引用左值地址，条目 byRef=true
     //   （读/写/&r 经 Load/StorePtr 解引用；与 [&] 引用捕获同机制，codegen 已支持）
-    if (types::isReference(srcType) && node->initializer != nullptr &&
-        node->initializer->getType() == NodeType::IdentifierExpr) {
-        for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
-            auto found = it->find(node->name);
-            if (found != it->end()) { found->second.byRef = true; break; }
-        }
-        IdentifierExpr* initIdent =
-            static_cast<IdentifierExpr*>(node->initializer.get());
-        const std::string initUnique = lookupVarName(initIdent->name);
-        if (!initUnique.empty()) {
-            ir::IRValue targetAddr = emitResult(
-                ir::Opcode::AddrOf,
-                {ir::IRValue::var(initUnique, "ptr")}, "ptr", initUnique,
-                node->location);
+    //   P3-18 补完：绑定目标扩充到下标/解引用/成员/引用返回调用（同样取左值地址）。
+    if (types::isReference(srcType) && node->initializer != nullptr) {
+        const NodeType it = node->initializer->getType();
+        const bool callInit = (it == NodeType::CallExpr);
+        const bool lvalueForm = (it == NodeType::IdentifierExpr ||
+                                 it == NodeType::IndexExpr ||
+                                 it == NodeType::UnaryExpr ||
+                                 it == NodeType::MemberExpr);
+        if (callInit || lvalueForm) {
+            for (auto it2 = varStack_.rbegin(); it2 != varStack_.rend(); ++it2) {
+                auto found = it2->find(node->name);
+                if (found != it2->end()) {
+                    found->second.byRef = true;
+                    // 与引用参数（ir_decl 同规则）：体内"值类型" = 被引用基础类型
+                    //   （读取 byRef 解引用 LoadPtr 返回基础类型值，非 ptr）
+                    found->second.type = mapType(types::stripRef(srcType));
+                    break;
+                }
+            }
+            ir::IRValue targetAddr;
+            if (it == NodeType::IdentifierExpr) {
+                IdentifierExpr* initIdent =
+                    static_cast<IdentifierExpr*>(node->initializer.get());
+                const std::string initUnique = lookupVarName(initIdent->name);
+                if (initUnique.empty()) {
+                    // 防御：找不到被引用变量则终止本分支（语义层已报错）
+                    return;
+                }
+                targetAddr = emitResult(
+                    ir::Opcode::AddrOf,
+                    {ir::IRValue::var(initUnique, "ptr")}, "ptr", initUnique,
+                    node->location);
+            } else if (callInit) {
+                // 引用返回调用：调用结果本身即被引用左值地址（ptr）
+                targetAddr = genExpr(node->initializer.get());
+            } else {
+                // 下标/解引用/成员：取左值地址
+                targetAddr = lvalueAddress(node->initializer.get());
+            }
             emit(ir::Opcode::Store, {targetAddr}, ir::IRValue(),
                  unique, "ptr", node->location);
+            // 引用变量初始化即完成（不再按值 Store 常规路径）
+            return;
         }
-        // 引用变量初始化即完成（不再按值 Store 常规路径）
-        return;
     }
     // 登记变量源码类型（OOP 析构扫描用：类类型局部变量有析构函数时函数收尾 DeleteObject）
     if (!unique.empty()) {
@@ -524,12 +562,29 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         //   先 genExpr（生成匿名函数并记录 lastLambdaName_/lastLambdaCaptures_），
         //   再登记闭包关联（调用 `加倍(...)` 时展开捕获实参）
         ir::IRValue value = genExpr(node->initializer.get());
-        if (node->initializer->getType() == NodeType::LambdaExpr &&
+        // P3-23 补完：实例方法作值（自动 cb = 对象.方法）与 lambda 同为闭包登记路径
+        const bool isMethodValueInit =
+            node->initializer->getType() == NodeType::MemberExpr &&
+            static_cast<MemberExpr*>(node->initializer.get())->isMethodValue;
+        if ((node->initializer->getType() == NodeType::LambdaExpr ||
+             isMethodValueInit) &&
             !lastLambdaName_.empty()) {
             ClosureInfo info;
             info.lambdaName = lastLambdaName_;
             info.captures = lastLambdaCaptures_;
             info.returnIrType = lastLambdaReturnIrType_;
+            if (isMethodValueInit) {
+                // 绑定方法：捕获实参 = 被绑定对象地址（对象指针 = Load 槽）
+                const std::string& objName =
+                    lastLambdaCaptures_.empty() ? "" : lastLambdaCaptures_[0];
+                const std::string objUnique = lookupVarName(objName);
+                if (!objUnique.empty()) {
+                    info.captureArgs.push_back(emitResult(
+                        ir::Opcode::Load,
+                        {ir::IRValue::var(objUnique, "ptr")},
+                        "ptr", objUnique, node->location));
+                }
+            } else {
             // 缺陷修复（[=] 快照 / [&] 引用，规格书04-一D）：
             //   捕获实参在"lambda 定义处"（即此处）求值并固化：
             //     [=]/[变量] 值捕获：genExpr(变量) 读取当前值 -> 快照
@@ -584,6 +639,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                     }
                 }
             }
+            }  // else：lambda 值/引用捕获路径（绑定方法走上方 Load 分支）
             closureInfo_[node->name] = info;
             lastLambdaName_.clear();
             lastLambdaCaptures_.clear();
