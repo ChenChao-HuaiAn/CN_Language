@@ -654,7 +654,9 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         if (inst.operands[1].isConstant) {
             writer.line(sh + " eax, " + op2);
         } else {
-            writer.line("mov ecx, " + op2);
+            // 移位量须装载到 cl（rcx 低8位）：物理寄存器（寄存器分配）用 32 位名
+            //   （mov ecx, r14 尺寸不匹配 A2022；mov ecx, r14d 写低32位值语义一致）
+            writer.line("mov ecx, " + widthFor("i32", op2));
             writer.line(sh + " eax, cl");
         }
         writer.line("mov " + dst + ", eax");
@@ -666,7 +668,9 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
     if (inst.operands[1].isConstant) {
         writer.line(sh + " " + w + ", " + op2);
     } else {
-        writer.line("mov ecx, " + op2);
+        // 移位量须装载到 cl（rcx 低8位）：物理寄存器（寄存器分配）用 32 位名
+        //   （mov ecx, r14 尺寸不匹配 A2022；mov ecx, r14d 写低32位值语义一致）
+        writer.line("mov ecx, " + widthFor("i32", op2));
         writer.line(sh + " " + w + ", cl");
     }
     writer.line("mov " + dst + ", " + w);

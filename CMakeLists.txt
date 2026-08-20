@@ -64,7 +64,9 @@ endforeach()
 # MSVC 需显式指定 UTF-8 源码编码（/utf-8），避免中文注释按 GBK 代码页误解析
 # GCC/Clang 需指定 -finput-charset=UTF-8，否则中文注释/标识符按本地编码解析报 stray 错误
 if(MSVC)
-    add_compile_options(/W4 /WX /utf-8)
+    # /wd4068：禁用"未知的杂注"警告——源码含 #pragma GCC（GCC/Clang 专用，
+    #   MSVC 下无害忽略），避免 /WX 拦截导致全量重编失败
+    add_compile_options(/W4 /WX /utf-8 /wd4068)
 else()
     add_compile_options(-Wall -Wextra -Werror -finput-charset=UTF-8)
 endif()

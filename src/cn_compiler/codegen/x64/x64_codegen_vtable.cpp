@@ -37,8 +37,11 @@ void X64CodeGenerator::emitOopGlobals(AsmWriter& writer,
         }
         // 槽位 == vtableOrder 下标；每个虚方法映射到类方法链接符号
         //   重写方法 ownerClass 为子类自身，符号按子类生成（覆盖槽位）
-        std::string line = sym + " dq ";
-        bool first = true;
+        // 超长行处理：MASM 单条 dq 语句行长度/操作数有限制（ml64 A1009 line
+        //   too long / A2042 statement too complex），虚表槽位多（如 后端接口
+        //   20+ 虚方法）时单行 dq 超限——改为每个槽位单独一行 dq（与 arm64
+        //   后端 .quad 每槽一行一致，ml64 实测通过）。
+        writer.raw(sym + ":");
         for (const std::string& methodName : ci.vtableOrder) {
             // 查找方法成员（沿继承链，取当前类的实现：重写后 ownerClass==类名）
             std::string owner = ci.name;
@@ -51,11 +54,8 @@ void X64CodeGenerator::emitOopGlobals(AsmWriter& writer,
                 // 继承的虚方法：按方法名查基类实现（防御性：槽位保持父类符号）
                 target = classMethodSymbol(ci.name, methodName, {});
             }
-            if (!first) line += ", ";
-            line += target;
-            first = false;
+            writer.raw("    dq " + target);
         }
-        writer.raw(line);
         writer.comment("虚表 " + ci.name + "（" +
                        std::to_string(ci.vtableOrder.size()) + " 个槽位）");
     }
