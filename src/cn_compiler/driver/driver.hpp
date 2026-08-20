@@ -34,6 +34,8 @@ struct DriverOptions {
     // B-4（2026-08，规格书9.3）：--验证-ir 开启 IR 结构验证（CFG 终止/跳转目标/
     //   寄存器 def-before-use），验证失败输出错误并中止编译
     bool verifyIr = false;           // 是否验证 IR 结构不变量
+    // P3/D4（2026-08）：--cfi 开启接口间接调用控制流完整性（目标∈已知实现表）
+    bool useCfi = false;
     // ---- 货舱.toml 依赖管理（模块系统 v2.0 第 5 层，规格书09）----
     // hasCargoConfig：是否已加载货舱.toml（false = 未发现配置，依赖查找只走
     //   入口同目录 + stdlib 兜底）；cargoConfig 保存 [货舱]/[依赖] 解析结果。

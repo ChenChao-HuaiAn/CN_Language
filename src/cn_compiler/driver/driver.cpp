@@ -55,6 +55,8 @@ int runPipeline(const std::string& source, const std::string& fileName,
 
     // 4. IR生成（传入语义分析器引用：结构体布局/枚举值查询，Task 2.7）
     IRGenerator irGen(diagnostics, &semantic);
+    // P3/D4（2026-08）：接口间接调用 CFI 校验开关（--cfi）
+    irGen.setCfiEnabled(options.useCfi);
     output.module = irGen.generate(output.program.get());
     output.hasModule = true;
     if (diagnostics.hasErrors()) {

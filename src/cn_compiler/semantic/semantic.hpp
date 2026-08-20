@@ -91,6 +91,9 @@ struct ClassInfo {
     bool hasVtable = false;                    // 是否有虚函数表
     // P3-19：接口分派区（B1 全局槽位；对象首 8 字节虚表指针之后，槽=8+全局槽*8）
     std::vector<std::pair<int, std::string>> ifaceDisp;  // (全局槽, 接口方法名)
+    // P3/D3A：本类实现的全部接口名（含继承链并入；来源=class_resolver ifaceDisp 收集）。
+    //   供 接口→实现类集合 统计（去虚拟化唯一实现判定 + CFI 目标表）。
+    std::vector<std::string> ifaceNames;
     int ifaceMaxSlot = -1;                     // 本类实现的接口方法最大全局槽
     int ifaceRegionSize = 0;                   // 接口分派区字节数 (maxSlot+1)*8
     bool isAbstract = false;                   // 含抽象方法（不可实例化）
@@ -197,6 +200,9 @@ public:
     const InterfaceInfo* findInterface(const std::string& name) const;
     // P3-19：接口成员全局槽位（未登记返回 -1）
     int interfaceSlot(const std::string& ifaceName, const std::string& methodName) const;
+    // P3/D3A：接口的非抽象具体实现类集合（含继承链并入；登记在 ClassInfo.ifaceNames）。
+    //   去虚拟化：集合恰 1 项 → 接口调用点编译期直接调用；CFI：集合即该接口已知实现目标表。
+    std::vector<std::string> interfaceImplClasses(const std::string& ifaceName) const;
     // P3-19：类（含继承链）是否实现指定接口
     bool classImplementsInterface(const std::string& className,
                                   const std::string& ifaceName) const;

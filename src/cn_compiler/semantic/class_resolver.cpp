@@ -347,6 +347,9 @@ void SemanticAnalyzer::resolveClass(ClassDecl* node) {
                               ? findClass(curD->baseName)->ast
                               : nullptr);
         }
+        // P3/D3A：登记本类实现的全部接口名（含继承链并入）——供 接口→实现类集合
+        //   统计（去虚拟化唯一实现判定 + CFI 目标表）
+        info.ifaceNames = ifaceNames;
         if (!ifaceNames.empty()) {
             info.hasVtable = true;  // 强制虚表指针：接口区统一置于对象首 8 字节后
             int maxSlot = -1;
@@ -919,6 +922,23 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         genericTypeParams_ = savedTypeParams;
         contextClassStack_.pop_back();
     }
+}
+
+std::vector<std::string> SemanticAnalyzer::interfaceImplClasses(
+    const std::string& ifaceName) const {
+    // P3/D3A：接口的非抽象具体实现类集合（含继承链并入，登记在 ClassInfo.ifaceNames）。
+    //   去虚拟化：唯一实现 → 接口调用点编译期直接调用；
+    //   CFI：该集合即"已知实现目标表"（加载目标须属于该表）。
+    std::vector<std::string> impls;
+    for (const auto& kv : classes_) {
+        const ClassInfo& ci = kv.second;
+        if (ci.isAbstract) continue;  // 抽象类不可实例化，不构成实现目标
+        const auto& names = ci.ifaceNames;
+        if (std::find(names.begin(), names.end(), ifaceName) != names.end()) {
+            impls.push_back(ci.name);
+        }
+    }
+    return impls;
 }
 
 } // namespace cn_compiler

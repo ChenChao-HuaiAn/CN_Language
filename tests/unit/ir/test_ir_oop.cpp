@@ -172,3 +172,75 @@ TEST(IrOopTest, GenericIrGenerate) {
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
 }
+
+
+// P3/D3A 去虚拟化：单一实现接口 → 接口调用点 IR 直接 Call 实现类方法（无 CallIndirect）
+TEST(IrOopTest, InterfaceDevirtSingleImpl) {
+    auto r = generateIr(R"CN(
+接口 通讯 {
+    虚拟 函数 发(整32 数据) -> 整32
+}
+类 串口 : 通讯 {
+公开:
+    整32 累计
+    函数 串口() { 累计 = 0 }
+    重写 函数 发(整32 数据) -> 整32 { 累计 = 累计 + 数据; 返回 累计 }
+}
+函数 主() -> 整32 {
+    串口 对象 = 串口()
+    通讯* 设备 = 对象
+    整32 a = 设备.发(10)
+    返回 0
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    bool directCall = false;
+    bool indirectCall = false;
+    for (const auto& fn : r.module.functions) {
+        for (const auto& b : fn.blocks) {
+            for (const auto& inst : b->instructions) {
+                if (inst.opcode == Opcode::Call) directCall = true;
+                if (inst.opcode == Opcode::CallIndirect) indirectCall = true;
+            }
+        }
+    }
+    EXPECT_TRUE(directCall) << "单一实现接口调用应去虚拟化为直接 Call";
+    EXPECT_FALSE(indirectCall) << "单一实现接口不应残留 CallIndirect（去虚拟化）";
+}
+
+// P3/D3A 兜底：多实现接口 → 接口调用保留 CallIndirect（运行时分派，不改语义）
+TEST(IrOopTest, InterfaceDevirtMultiImplKeepsIndirect) {
+    auto r = generateIr(R"CN(
+接口 通讯 {
+    虚拟 函数 发(整32 数据) -> 整32
+}
+类 串口 : 通讯 {
+公开:
+    整32 累计
+    函数 串口() { 累计 = 0 }
+    重写 函数 发(整32 数据) -> 整32 { 累计 = 累计 + 数据; 返回 累计 }
+}
+类 网卡 : 通讯 {
+公开:
+    整32 累计
+    函数 网卡() { 累计 = 0 }
+    重写 函数 发(整32 数据) -> 整32 { 累计 = 累计 + 数据; 返回 累计 }
+}
+函数 主() -> 整32 {
+    串口 对象 = 串口()
+    通讯* 设备 = 对象
+    整32 a = 设备.发(10)
+    返回 0
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    bool indirectCall = false;
+    for (const auto& fn : r.module.functions) {
+        for (const auto& b : fn.blocks) {
+            for (const auto& inst : b->instructions) {
+                if (inst.opcode == Opcode::CallIndirect) indirectCall = true;
+            }
+        }
+    }
+    EXPECT_TRUE(indirectCall) << "多实现接口调用应保留 CallIndirect（运行时分派）";
+}

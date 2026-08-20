@@ -43,6 +43,7 @@ struct CliOptions {
     bool useRegAlloc = true;         // 是否启用寄存器分配（-O2 起联动；--no-regalloc 显式关闭）
     bool debugInfo = false;          // 是否嵌入源码位置注释（--debug）
     bool verifyIr = false;           // 是否验证 IR 结构不变量（--验证-ir，B-4）
+    bool useCfi = false;             // P3/D4：接口间接调用 CFI 校验（--cfi，默认关保性能）
     // Task 6.6 条件编译：命令行注入宏（-D 宏名，可多次；#如果定义 判定用）
     std::unordered_set<std::string> macros;
     // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
@@ -79,6 +80,7 @@ void printHelp() {
     std::cout << "  --no-regalloc          关闭寄存器分配（阶段C：-O2 起默认启用，保持全栈帧）\n";
     std::cout << "  --debug                汇编中嵌入源码位置注释（阶段C 调试信息）\n";
     std::cout << "  --验证-ir              优化前后验证 IR 结构不变量（规格书9.3，B-4；ASCII 别名 --verify-ir）\n";
+    std::cout << "  --cfi                  接口间接调用控制流完整性校验（目标∈已知实现表，默认关保性能）\n";
     std::cout << "  --output <路径>        输出文件路径\n";
     std::cout << "  --verbose              详细输出\n";
     // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
@@ -125,6 +127,9 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
             // （--verify-ir 为 ASCII 别名：Windows argv 为 GBK 编码，
             //   命令行传中文选项在部分 shell 会乱码）
             options.verifyIr = true;
+        } else if (current == "--cfi") {
+            // P3/D4（2026-08）：接口间接调用 CFI（控制流完整性）校验，默认关保性能
+            options.useCfi = true;
         } else if (current == "--output") {
             if (index + 1 >= args.size()) return "选项 --output 缺少参数";
             options.output = args[++index];
@@ -385,6 +390,8 @@ static bool toDriverOptions(const CliOptions& options, const std::string& file,
     dopts.debugInfo = options.debugInfo;
     // B-4（2026-08，规格书9.3）：IR 结构验证
     dopts.verifyIr = options.verifyIr;
+    // P3/D4（2026-08）：接口间接调用 CFI 校验
+    dopts.useCfi = options.useCfi;
     // 模块系统 v2.0 第 5 层：货舱.toml + stdlib 目录
     dopts.stdlibDir = detectStdlibDir(options);
     if (!applyCargoConfig(options, file, dopts, error)) return false;

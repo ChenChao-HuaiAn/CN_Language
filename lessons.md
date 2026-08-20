@@ -1017,3 +1017,12 @@
   - 解决: MemberExpr.isMethodValue 标记 + genVarDecl 对方法值初始值登记 closureInfo_（captureArgs=对象地址 Load 槽）+ 闭包调用展开 this 直接 Call 方法符号 + D2 诊断阻止裸 fnptr 直传。
   - 预防: "方法函数指针" 类特性先确认实例/静态（隐藏 this）差异；闭包 = 函数符号 + 捕获实参 是既有机制，新增可调值形态（方法值）须同步开放登记路径。
   - 权重: 6.0
+
+
+## P3 去虚拟化与 CFI（2026-08-19，007-P3）
+
+- [ ] 问题类型: 设计决策  ✅ 已实施（D3A 最小实现）
+  - 描述: 接口调用现每次 1 次间接（LoadPtr+CallIndirect）；单一实现接口可编译期直调省 1 间接；CFI 目标表约束默认关。
+  - 解决: ClassInfo.ifaceNames 登记 + interfaceImplClasses 语义统计（跳过抽象）→ IR handleInterfaceCall 唯一实现直 Call 实现类方法；--cfi 时间接路径发"目标∈已知实现表"运行时校验（Or/Not/Eq 链 + 错误块，照 emitBoundsCheck 模式）。
+  - 预防: 去虚拟化必须以"全程序唯一非抽象实现（含继承并入）"为准，多实现/m抽象 一律回退间接；CFI 与"1 次间接"性能目标冲突 → 默认关开关。
+  - 权重: 5.0

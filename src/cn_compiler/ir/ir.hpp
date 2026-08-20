@@ -256,6 +256,8 @@ public:
     // 生成调用实参（整参扩展/i128 保宽/f32->f64）：OOP 调用展开复用
     std::vector<ir::IRValue> buildCallArgsOop(
         const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc);
+    // P3/D4（2026-08）：接口间接调用 CFI 校验开关（--cfi 透传，默认关保性能）
+    void setCfiEnabled(bool enabled) { cfiEnabled_ = enabled; }
 
     // ==================== AstVisitor 接口实现 ====================
     // 声明节点
@@ -422,6 +424,8 @@ private:
     int blockCounter_ = 0;                      // 基本块编号（全局递增）
     int varCounter_ = 0;                        // 变量唯一名计数器（函数级递增）
     int lambdaCounter_ = 0;                     // lambda 匿名函数计数器（Task 2.10）
+    // P3/D4（2026-08）：接口间接调用 CFI 校验开关（--cfi 透传，默认关保性能）
+    bool cfiEnabled_ = false;
     // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。
     // 顺序与函数参数一致（仅含带默认值的尾部参数）；调用补全时按此精确展开。
     std::unordered_map<std::string, std::vector<ir::IRValue>> funcDefaultArgs_;
@@ -506,6 +510,10 @@ private:
     bool handleClassCallExpr(CallExpr* node);
     // 类字段读取（visitMemberExpr 钩子）：实例字段（对象.字段）与静态字段（类名.字段）
     bool handleClassMemberExpr(MemberExpr* node);
+    // P3/D4（2026-08）：接口间接调用 CFI 校验——加载目标 ∈ 该接口已知实现集合，
+    //   否则 __cn_runtime_error(3)。仅 --cfi 开启时发射（默认关保 1 次间接性能目标）。
+    void emitCfiCheck(const ir::IRValue& target, const std::string& ifaceName,
+                      const std::string& methodName, const SourceLocation& loc);
     // 类字段左值地址（lvalueAddress 钩子）：返回 实例字段地址（this+偏移）或静态字段符号
     bool handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr);
     // 类字段赋值（visitAssignmentExpr 钩子）：对象.字段 = v / 类名.静态字段 = v

@@ -74,6 +74,31 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
             if (iface != nullptr) {
                 const auto imit = iface->methods.find(mem->memberName);
                 if (imit != iface->methods.end()) {
+                    // P3/D3A（去虚拟化）：接口全局唯一实现类 → 编译期直接调用该实现
+                    //   方法（跳过 LoadPtr+CallIndirect，热路径省 1 次间接跳转；
+                    //   多实现接口回退既有间接路径，语义不变）
+                    const std::vector<std::string> impls =
+                        semantic_->interfaceImplClasses(ifaceName);
+                    if (impls.size() == 1) {
+                        std::string owner;
+                        const ClassMemberInfo* m =
+                            semantic_->lookupClassMember(impls[0], mem->memberName, owner);
+                        if (m != nullptr && !m->isStatic) {
+                            ir::IRValue objVal = genExpr(mem->object.get());
+                            std::vector<ir::IRValue> args;
+                            args.push_back(objVal);  // this = 对象指针
+                            for (auto& a : node->arguments) {
+                                args.push_back(genExpr(a.get()));
+                            }
+                            const std::string retIr =
+                                mapType(types::canonical(imit->second.type));
+                            const std::string ownerSym = owner.empty() ? impls[0] : owner;
+                            lastExpr_ = emitResult(
+                                ir::Opcode::Call, args, retIr,
+                                methodSymbolKey(ownerSym, m->sigKey), node->location);
+                            return true;
+                        }
+                    }
                     const int slot = semantic_->interfaceSlot(ifaceName, mem->memberName);
                     if (slot >= 0) {
                         ir::IRValue objVal = genExpr(mem->object.get());
@@ -84,6 +109,11 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
                         ir::IRValue meth =
                             emitResult(ir::Opcode::LoadPtr, {regionAddr}, "ptr", "",
                                        node->location);
+                        // P3/D4（CFI）：--cfi 开启时校验 分派目标 ∈ 该接口已知实现集合
+                        if (cfiEnabled_) {
+                            emitCfiCheck(meth, ifaceName, mem->memberName,
+                                         node->location);
+                        }
                         std::vector<ir::IRValue> args;
                         args.push_back(objVal);  // this = 对象指针
                         for (auto& a : node->arguments) {
@@ -487,13 +517,52 @@ void IRGenerator::genClassDestructorCalls() {
         for (const auto& ov : objVars) {
             if (returnedVars.count(ov.unique) > 0) continue;  // 所有权转移：跳过析构
             // 变量槽地址 -> Load 对象指针 -> DeleteObject
-            ir::IRValue objPtr = emitResult(ir::Opcode::Load,
-                                            {ir::IRValue::var(ov.unique, "ptr")},
-                                            "ptr", ov.unique, SourceLocation());
+            ir::IRValue objPtr = emitResult(
+                ir::Opcode::Load,
+                {ir::IRValue::var(ov.unique, "ptr")},
+                "ptr", ov.unique, SourceLocation());
             emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
                  ov.srcType, "void", SourceLocation());
         }
     }
+}
+
+void IRGenerator::emitCfiCheck(const ir::IRValue& target,
+                               const std::string& ifaceName,
+                               const std::string& methodName,
+                               const SourceLocation& loc) {
+    // P3/D4（2026-08）：接口间接调用 CFI——分派目标 ∈ 该接口已知实现集合 且 非空。
+    //   目标表约束：编译期该接口的全部非抽象实现类的方法符号（继承链并入）。
+    //   bad = (target==0) || (target 不属于任何已知实现) → __cn_runtime_error(3)。
+    if (semantic_ == nullptr || currentBlock_ == nullptr) return;
+    const std::vector<std::string> impls = semantic_->interfaceImplClasses(ifaceName);
+    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+    ir::IRValue isNull = emitResult(ir::Opcode::Eq, {target, zero}, "i1", "", loc);
+    // valid = 命中任一已知实现
+    ir::IRValue valid = emitResult(ir::Opcode::ConstBool, {}, "i1", "假", loc);
+    for (const auto& cls : impls) {
+        std::string owner;
+        const ClassMemberInfo* m = semantic_->lookupClassMember(cls, methodName, owner);
+        if (m == nullptr) continue;
+        const std::string ownerSym = owner.empty() ? cls : owner;
+        ir::IRValue implAddr = emitResult(
+            ir::Opcode::FuncAddr, {}, "ptr",
+            methodSymbolKey(ownerSym, m->sigKey), loc);
+        ir::IRValue isMatch = emitResult(ir::Opcode::Eq, {target, implAddr}, "i1", "",
+                                         loc);
+        valid = emitResult(ir::Opcode::Or, {valid, isMatch}, "i1", "", loc);
+    }
+    ir::IRValue notValid = emitResult(ir::Opcode::Not, {valid}, "i1", "", loc);
+    ir::IRValue bad = emitResult(ir::Opcode::Or, {isNull, notValid}, "i1", "", loc);
+    // 错误块 + 继续块（与 emitBoundsCheck 同模式；newBlock 内部推进 blockCounter_）
+    const std::string errLabel = "bb" + std::to_string(blockCounter_);
+    const std::string okLabel = "bb" + std::to_string(blockCounter_ + 1);
+    endBranch(bad.toString(), errLabel, okLabel);
+    setCurrentBlock(newBlock(errLabel));
+    ir::IRValue errCode = emitResult(ir::Opcode::ConstInt, {}, "i64", "3", loc);
+    emitResult(ir::Opcode::Call, {errCode}, "i32", "__cn_runtime_error", loc);
+    endReturn("");
+    setCurrentBlock(newBlock(okLabel));
 }
 
 } // namespace cn_compiler
