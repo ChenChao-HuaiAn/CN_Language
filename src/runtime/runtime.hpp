@@ -37,6 +37,9 @@ extern "C" {
     CNRT_EXPORT void __cn_arena_reset();                    // 一次性释放全部块
     CNRT_EXPORT long long __cn_arena_bytes();               // 已分配总字节（含块头）
     CNRT_EXPORT long long __cn_arena_blocks();              // 块数
+    // 批量释放 tracked 内存（2026-08-21 OOM修复；对应CN内置 内存::释放全部）
+    // 释放所有 cn_alloc_tracked 分配但未释放的内存，避免大规模编译时 OOM
+    CNRT_EXPORT void __cn_alloc_reset();
     // 复制内存（对应CN内置：复制内存）
     CNRT_EXPORT void cn_memcpy(void* dst, const void* src, std::size_t size);
     // 置零内存（对应CN内置：置零内存）

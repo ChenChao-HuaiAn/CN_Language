@@ -255,14 +255,16 @@ TEST(BootstrapCodegenTest, ModuleCompilesViaDriver) {
 TEST(BootstrapCodegenTest, ModuleContractPresent) {
     const std::string src = readCodegenModule();
     ASSERT_FALSE(src.empty()) << "无法读取 代码生成.cn";
-    // v2 契约（2026-08 完整自举改造后）：汇编 三参主流程 + 发射函数 + 真实 x64 指令发射
+    // v3 契约（2026-08 平台抽象层重构后）：门面入口 + 平台分发 + 后端抽象层导入
+    // 旧 971 行单文件已拆分为：后端接口.cn + IR遍历.cn + x64后端.cn + arm64后端.cn + 后端工厂.cn
     EXPECT_NE(src.find("函数 代码生成(向量<字符串> IR行) -> 向量<字符串>"), std::string::npos);
-    EXPECT_NE(src.find("函数 汇编(向量<字符串> IR行, 向量<字符串> 常量表, 向量<字符串> 输出) -> 空类型"),
+    EXPECT_NE(src.find("函数 代码生成平台(向量<字符串> IR行, 字符串 目标) -> 向量<字符串>"),
               std::string::npos);
-    EXPECT_NE(src.find("函数 发射加载("), std::string::npos);
-    EXPECT_NE(src.find("函数 发射调用("), std::string::npos);
-    EXPECT_NE(src.find("mov rax, [rbp-"), std::string::npos);
-    EXPECT_NE(src.find("call "), std::string::npos);
+    EXPECT_NE(src.find("导入 后端接口::后端接口"), std::string::npos);
+    EXPECT_NE(src.find("导入 后端工厂::创建后端"), std::string::npos);
+    EXPECT_NE(src.find("导入 IR遍历::IR遍历"), std::string::npos);
+    EXPECT_NE(src.find("创建后端(目标)"), std::string::npos);
+    EXPECT_NE(src.find("IR遍历(IR行, 后端)"), std::string::npos);
 }
 
 // ==================== 自举 Task 7.6：两阶段自举验证 ====================

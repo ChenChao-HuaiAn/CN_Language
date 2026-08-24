@@ -424,17 +424,27 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     // ---- 整数扩展/截断 ----
     if (from == "i8" || from == "i16" || from == "u8" || from == "u16") {
         const bool signedSrc = (from == "i8" || from == "i16");
-        const std::string ins = signedSrc ? ((from == "i8") ? "ldrsb" : "ldrsh")
-                                          : ((from == "u8") ? "ldrb" : "ldrh");
-        // AArch64 字节/半字加载目标必须为 w 寄存器（ldrsb/ldrsh/ldrb/ldrh 同理）
-        if (inst.operands[0].id >= 0) {
-            const std::string mem = stackMemText(regSlotOffset(inst.operands[0].id), writer);
-            writer.line(ins + " w9, " + mem);
+        // 修复：有符号用64位目标（ldrsb xN/ldrsh xN），无符号用32位w（ldrb wN/ldrh wN）
+        if (signedSrc) {
+            const std::string ins = (from == "i8") ? "ldrsb" : "ldrsh";
+            if (inst.operands[0].id >= 0) {
+                const std::string mem = stackMemText(regSlotOffset(inst.operands[0].id), writer);
+                writer.line(ins + " x9, " + mem);
+            } else {
+                const std::string mem = stackMemText(varSlotOf(inst.operands[0].extra), writer);
+                writer.line(ins + " x9, " + mem);
+            }
         } else {
-            const std::string mem = stackMemText(varSlotOf(inst.operands[0].extra), writer);
-            writer.line(ins + " w9, " + mem);
+            const std::string ins = (from == "u8") ? "ldrb" : "ldrh";
+            if (inst.operands[0].id >= 0) {
+                const std::string mem = stackMemText(regSlotOffset(inst.operands[0].id), writer);
+                writer.line(ins + " w9, " + mem);
+            } else {
+                const std::string mem = stackMemText(varSlotOf(inst.operands[0].extra), writer);
+                writer.line(ins + " w9, " + mem);
+            }
         }
-        emitStackStore(writer, dstOff, "x9", to);
+        emitStackStore(writer, dstOff, "x9", "i64");
         return;
     }
     // 大 -> 小（截断）：strb/strh/str wN（写低字节/低32位）
@@ -564,6 +574,12 @@ void Arm64CodeGenerator::emitLoadStore(Arm64AsmWriter& writer,
             emitStackStore(writer, regSlotOffset(dstHiId), "x9", "i64");
             return;
         }
+        // 窄类型（i8/i16/u8/u16/i32/u32/i1）加载后符号/零扩展到64位，
+        // 用64位存储避免strb/strh/str w只写部分字节导致高字节残留垃圾
+        const bool narrowType = (inst.type == "i8" || inst.type == "i16" ||
+                                 inst.type == "u8" || inst.type == "u16" ||
+                                 inst.type == "i32" || inst.type == "u32" ||
+                                 inst.type == "i1");
         if (inst.operands[0].id >= 0) {
             // 寄存器到寄存器（复制槽）
             emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x9", inst.type);
@@ -571,7 +587,10 @@ void Arm64CodeGenerator::emitLoadStore(Arm64AsmWriter& writer,
             // 变量槽
             emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x9", inst.type);
         }
-        emitStackStore(writer, regSlotOffset(inst.result.id), "x9", inst.type);
+        // 窄类型用64位存储（ldrsb/ldrsh/ldrb/ldrh/ldr w已扩展到x9/w9，
+        //   AArch64 ldr wN 自动清高32位，ldrsb/ldrsh符号扩展到64位xN）
+        emitStackStore(writer, regSlotOffset(inst.result.id), "x9",
+                       narrowType ? "i64" : inst.type);
     } else {
         // Store：operands[0] 值，extra 变量名
         if (inst.type == "i128" || inst.type == "u128") {
@@ -662,11 +681,20 @@ void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
         if (type == "i8" || type == "i16") {
             const std::string ins = (type == "i8") ? "ldrsb" : "ldrsh";
             writer.line(ins + " x10, [x9]");
+            // ldrsb/ldrsh 已将值符号扩展到64位x10，用64位存储避免strb/strh截断
+            emitStackStore(writer, regSlotOffset(inst.result.id), "x10", "i64");
+            return;
         } else if (type == "u8" || type == "u16") {
             const std::string ins = (type == "u8") ? "ldrb" : "ldrh";
-            writer.line(ins + " x10, [x9]");
+            writer.line(ins + " w10, [x9]");  // ldrb/ldrh 必须用w寄存器
+            // 写入w10自动清零高32位（零扩展），用64位存储避免strb/strh截断
+            emitStackStore(writer, regSlotOffset(inst.result.id), "x10", "i64");
+            return;
         } else if (type == "i32" || type == "u32" || type == "i1") {
             writer.line("ldr w10, [x9]");
+            // ldr w10 零扩展到64位x10（AArch64 ldr wN 自动清高32位），用64位存储
+            emitStackStore(writer, regSlotOffset(inst.result.id), "x10", "i64");
+            return;
         } else if (type == "i128" || type == "u128") {
             // i128 指针加载：低64位 [x9]、高64位 [x9+8]
             writer.line("ldr x10, [x9]");

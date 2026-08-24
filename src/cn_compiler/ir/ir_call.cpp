@@ -248,12 +248,13 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         // 自举前置 C-1/C-3 内存库（io_api.cpp）：
         //   内存::活动分配数 -> __cn_alloc_live、内存::总分配次数 -> __cn_alloc_total、
         //   内存::竞技场分配 -> __cn_arena_alloc、内存::竞技场重置 -> __cn_arena_reset、
-        //   内存::竞技场活动字节 -> __cn_arena_bytes
+        //   内存::竞技场活动字节 -> __cn_arena_bytes、内存::释放全部 -> __cn_alloc_reset
         else if (calleeName == "内存::活动分配数" || calleeName == "内存.活动分配数") calleeName = "__cn_alloc_live";
         else if (calleeName == "内存::总分配次数" || calleeName == "内存.总分配次数") calleeName = "__cn_alloc_total";
         else if (calleeName == "内存::竞技场分配" || calleeName == "内存.竞技场分配") calleeName = "__cn_arena_alloc";
         else if (calleeName == "内存::竞技场重置" || calleeName == "内存.竞技场重置") calleeName = "__cn_arena_reset";
         else if (calleeName == "内存::竞技场活动字节" || calleeName == "内存.竞技场活动字节") calleeName = "__cn_arena_bytes";
+        else if (calleeName == "内存::释放全部" || calleeName == "内存.释放全部") calleeName = "__cn_alloc_reset";
     }
 
     std::vector<ir::IRValue> args;
@@ -349,8 +350,8 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             resultType = "i64";       // 内存库（自举前置 C-1/C-3）：活动分配数/总分配次数/竞技场字节 -> 整64
         } else if (calleeName == "__cn_arena_alloc") {
             resultType = "ptr";       // 竞技场分配 -> 空类型*（失败 nullptr）
-        } else if (calleeName == "__cn_arena_reset") {
-            // 竞技场重置：空类型返回（与 __cn_str_free 同惯例）
+        } else if (calleeName == "__cn_arena_reset" || calleeName == "__cn_alloc_reset") {
+            // 竞技场重置/释放全部：空类型返回（与 __cn_str_free 同惯例）
         } else if (calleeName == "__cn_str_free") {
             // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：
             // 语义层"空类型"->mapType "void" 被下方过滤，emitResult 结果寄存器写入
@@ -393,9 +394,10 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             lastExpr_ = buf;
             return;
         }
-        // 字符串释放（空类型返回）：用 emit 直接发射，不分配结果寄存器
+        // 字符串释放/竞技场重置/释放全部（空类型返回）：用 emit 直接发射，不分配结果寄存器
         // （与打印行 void 展开一致；codegen 对 result.id<0 不生成返回值存储）
-        if (calleeName == "__cn_str_free") {
+        if (calleeName == "__cn_str_free" || calleeName == "__cn_arena_reset" ||
+            calleeName == "__cn_alloc_reset") {
             emit(ir::Opcode::Call, args, ir::IRValue(), calleeName, "void",
                  node->location);
             lastExpr_ = ir::IRValue();

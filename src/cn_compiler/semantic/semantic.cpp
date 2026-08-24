@@ -1253,6 +1253,7 @@ void SemanticAnalyzer::registerBuiltins() {
     regMemLibFn("内存::竞技场分配", "空类型*", {"整64"});
     regMemLibFn("内存::竞技场重置", "空类型", {});
     regMemLibFn("内存::竞技场活动字节", "整64", {});
+    regMemLibFn("内存::释放全部", "空类型", {});
 
     // ---- 系统库（Task 6.5，规格书10.4 命令行参数；对应运行时 system_api.cpp）----
     // 中文名带 "系统." 前缀，与 stdlib/系统.cn 模块公开函数不冲突（数学库同模式）。

@@ -48,9 +48,6 @@ if hasattr(sys.stderr, "reconfigure"):
         "62_ffi",                # 依赖 Windows API GetTickCount64
         "65_string_index",       # ARM64 char 默认为 unsigned char，符号扩展差异
         "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
-        "75_self_host_codegen",  # 生成 x64 MASM 汇编，ARM64 不可运行
-        "76_self_host_bootstrap", # 生成 x64 MASM 汇编，ARM64 不可运行
-        "78_chain_build",        # 生成 x64 MASM 汇编，ARM64 不可运行
         "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
     ],
     "win-x64": [
@@ -107,10 +104,21 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
 
     标准输入: 可选 stdin 注入字符串（Task 6.2 IO 输入用例用，默认空）
     """
+    # Linux 下增大栈大小限制（CN自举编译器函数栈帧较大，默认8MB可能不足）
+    preexec_fn = None
+    if sys.platform != "win32":
+        def _set_stack_limit():
+            import resource
+            try:
+                resource.setrlimit(resource.RLIMIT_STACK,
+                                  (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+            except (ValueError, OSError):
+                pass
+        preexec_fn = _set_stack_limit
     return subprocess.run(
         命令列表, cwd=str(工作目录), capture_output=True,
         text=True, encoding="utf-8", errors="replace",
-        input=标准输入)
+        input=标准输入, preexec_fn=preexec_fn)
 
 
 def 探测编译器(显式路径: str) -> pathlib.Path:

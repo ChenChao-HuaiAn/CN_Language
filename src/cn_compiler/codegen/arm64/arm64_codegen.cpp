@@ -423,17 +423,21 @@ void Arm64CodeGenerator::emitStackLoad(Arm64AsmWriter& writer, int offset,
         writer.line("ldr " + reg + ", " + mem);
         return;
     }
-    // AArch64 加载字节/半字的目标必须为 w 寄存器（ldrsb/ldrsh 亦同），
-    // 与 32 位 ldr wN 一致；reg 若为 xN 需转 wN（如 x9 -> w9）
-    if (type == "i8" || type == "i16" || type == "u8" || type == "u16") {
+    // 修复：有符号类型用64位目标寄存器（ldrsb xN/ldrsh xN 符号扩展到64位）
+    // 无符号类型用32位w寄存器（ldrb wN/ldrh wN 零扩展到32位，写入wN自动清零高32位）
+    if (type == "i8" || type == "i16") {
+        const std::string ins = (type == "i8") ? "ldrsb" : "ldrsh";
+        writer.line(ins + " " + reg + ", " + mem);  // ldrsb xN/ldrsh xN（64位目标合法）
+        return;
+    }
+    if (type == "u8" || type == "u16") {
         const std::string wreg = "w" + reg.substr(1);
-        const std::string ins = (type == "i8") ? "ldrsb" :
-                                (type == "i16") ? "ldrsh" :
-                                (type == "u8") ? "ldrb" : "ldrh";
-        writer.line(ins + " " + wreg + ", " + mem);
+        const std::string ins = (type == "u8") ? "ldrb" : "ldrh";
+        writer.line(ins + " " + wreg + ", " + mem);  // ldrb wN/ldrh wN（必须用w寄存器）
         return;
     }
     if (type == "i32" || type == "u32" || type == "i1") {
+        // ldr wN 自动清零高32位（AArch64 ABI），等效于零扩展到64位
         const std::string wreg = "w" + reg.substr(1);
         writer.line("ldr " + wreg + ", " + mem);
         return;

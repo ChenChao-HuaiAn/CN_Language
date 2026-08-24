@@ -1,90 +1,104 @@
 # HANDOFF 交接文档
 
-**交接时间**: 2026-08-20 23:40 CST（平台抽象层重构自举侧5组件已创建，待验证+待C++侧重构）
+**交接时间**: 2026-08-24 16:43 CST（arena分配器方案进行中，换电脑暂停）
 
 ## 我们在做什么任务
 
-CN 语言编译器的**平台抽象层重构**（plans/009）。目标是让自举编译器（CN语言编译器/）支持多平台代码生成（x64 MASM + ARM64 GAS），消除 [`代码生成.cn`](CN语言编译器/代码生成.cn) 100%硬编码 x64 MASM 的问题，使自举用例（E2E 75/76/78）在 ARM64 上可运行。
+CN 语言编译器的**运行时内存管理重构**--使用 tracked 注册表方案实现 `内存::释放全部()`，解决 78_chain_build 编译 5 大组件时内存累积 OOM。
 
 ## 已经完成了什么
 
-### 1. 方案设计与审批（已完成）
-- [`plans/009 CN语言编译器 平台抽象层重构方案.md`](plans/009%20CN语言编译器%20平台抽象层重构方案.md) 已编写并经用户审批同意
-- 方案中CN语言语法已修正为符合 spec 06 OOP 规范（接口用`接口`关键字、虚函数用`虚拟 函数`、返回类型后置`->`、空类型用`空类型`、无分号等）
+### 1. arena 统一分配方案（已废弃）
+- 尝试让 `cn_alloc`/`cn_realloc`/`cn_alloc_tracked`/`__cn_object_new` 全部使用 arena bump 分配
+- `cn_free`/`cn_free_tracked`/`__cn_object_delete` 变为空操作
+- **结果**：78_chain_build 内存峰值从 12.3GB 降到 193MB，但 `内存::释放全部()` 后段错误（arena 释放了向量数据数组）
+- **教训**：arena 模式下 `cn_free` 是空操作，破坏了 C++/Rust 式的正常 RAII 内存管理
 
-### 2. 自举侧后端抽象层5组件已创建（已完成）
+### 2. tracked 注册表方案（当前方案，已实现但有 bug）
+- `cn_alloc`/`cn_realloc`/`cn_free` 恢复使用 `std::malloc`/`std::realloc`/`std::free`（正常 RAII）
+- `cn_alloc_tracked` 分配时注册到全局链表（`TrackedNode`）
+- `cn_free_tracked` 从链表移除并 `std::free`
+- `__cn_alloc_reset()` 遍历链表逐个 `std::free`，然后清空链表
+- `__cn_object_new`/`__cn_object_delete` 恢复 `std::malloc`/`std::free`
 
-| 文件 | 行数 | 职责 |
-|------|------|------|
-| [`后端接口.cn`](CN语言编译器/后端接口.cn) | 85 | 抽象后端接口（`接口 后端接口`，29个虚拟函数签名） |
-| [`IR遍历.cn`](CN语言编译器/IR遍历.cn) | 398 | 平台无关IR指令遍历引擎（收集常量→汇编→获取输出） |
-| [`x64后端.cn`](CN语言编译器/x64后端.cn) | 708 | x64后端实现（Win x64 MASM，29个`重写 函数`全部实现） |
-| [`arm64后端.cn`](CN语言编译器/arm64后端.cn) | 837 | arm64后端实现（Linux ARM64 GAS，29个`重写 函数`全部实现） |
-| [`后端工厂.cn`](CN语言编译器/后端工厂.cn) | 25 | 按目标平台分发后端（win-x64→x64后端，linux-arm64→arm64后端） |
+### 3. 当前测试结果
+- **单元测试**：60个内存/运行时/对象/字符串测试全部通过
+- **78_chain_build**：
+  - 内存峰值 193MB（之前 12.3GB），内存问题已解决
+  - 运行时间 3秒（之前 2分34秒），速度大幅提升
+  - **段错误**：前两次 `内存::释放全部()` 成功（释放 944K + 2.96M 个 tracked 分配），第三次段错误
 
-### 3. 代码生成.cn重写为门面（已完成）
-- [`代码生成.cn`](CN语言编译器/代码生成.cn) 从971行硬编码缩减为30行门面
-- 入口函数签名保持不变：`代码生成(IR行)` → `创建后端(目标)` + `IR遍历(IR行, 后端)`
-- 外部调用者（E2E 75/76/77/78/79）无需修改
+### 4. 段错误根因分析（未解决）
+- `内存::释放全部()` 释放了所有 tracked 内存（字符串），但 `78_chain_build` 中可能有 tracked 字符串在 `内存::释放全部()` 后仍被访问
+- 或者 `cn_realloc_tracked` 的链表更新有 bug（`std::realloc` 内存复用导致重复节点）
+- `__cn_read_line` 中使用了 `cn_realloc_tracked` 扩容（第31行），这可能导致链表中的指针失效
 
-### 4. 包.cn已更新（已完成）
-- [`包.cn`](CN语言编译器/包.cn) 添加了5个新模块声明（后端接口/IR遍历/x64后端/arm64后端/后端工厂）
-- 后端抽象层5组件为内部实现模块，由代码生成门面内部导入，无需包级再导出
+## 修改的文件清单
 
-## 总结发现的问题
-
-1. **CN语言语法规范不熟悉** — 初次方案中CN语言代码使用了错误的语法（`类`而非`接口`、`虚拟 字符串 方法() 常 = 0;`而非`虚拟 函数 方法() -> 字符串`），经用户指出后已修正。**教训：编写CN语言代码前必须调用 cn-language-spec skill 查询规范**
-2. **自举侧后端抽象层尚未验证** — 5组件已创建但尚未编译验证（E2E 75/76/78未运行）
-3. **C++侧平台抽象尚未开始** — src/ 下的平台相关代码（cn_main.cpp约15处#ifdef、module.cpp/cargo_parser.cpp中文路径、运行时API）尚未重构
+1. [`src/runtime/io_api.cpp`](src/runtime/io_api.cpp) - 核心修改：
+   - 添加 `TrackedNode` 链表结构
+   - `cn_alloc`/`cn_realloc`/`cn_free` 恢复 `std::malloc`/`std::realloc`/`std::free`
+   - `cn_alloc_tracked` 注册到链表
+   - `cn_free_tracked` 从链表移除
+   - `cn_realloc_tracked` 更新链表（可能有问题）
+   - `__cn_object_new`/`__cn_object_delete` 恢复 `std::malloc`/`std::free`
+   - 实现 `__cn_alloc_reset()` 遍历链表释放
+2. [`src/runtime/time_api.cpp`](src/runtime/time_api.cpp) - `std::malloc` 改为 `cn_alloc_tracked`
 
 ## 当前卡在哪
 
-**自举侧后端抽象层5组件已创建但未验证**。需要：
-1. 编译验证：用C++版编译器编译自举组件链，检查语法/类型/接口实现
-2. E2E验证：运行E2E 75/76/78，检查自举代码生成器输出是否与原971行版本逐字节一致
-3. GS崩溃检查：拆分代码生成.cn可能触发0xC0000409 GS栈cookie崩溃（lessons记录：拆分为门面+6子模块时78/79运行期崩溃）
+**段错误未解决**。78_chain_build 运行时第三次 `内存::释放全部()` 段错误。
+
+### 下一步调试方向
+1. **检查 `cn_realloc_tracked` 的链表更新**：`std::realloc` 可能返回新地址，`trackedUnregister(ptr)` + `trackedRegister(new_p)` 可能导致重复节点（内存复用）
+2. **检查 `__cn_read_line` 和 `__cn_file_read_line`**：它们使用 `cn_realloc_tracked` 扩容，可能导致链表中的指针失效
+3. **考虑简化方案**：`cn_realloc_tracked` 不更新链表，而是 `cn_alloc_tracked` 新块 + `memcpy` + `cn_free_tracked` 旧块
 
 ## 下一步计划
 
-### 近期（换电脑后立即执行）
-1. **验证自举侧**（子任务2）：编译组件链 + E2E 75/76/78 x64 + 检查GS崩溃
-2. **C++侧平台抽象**（子任务3）：创建 platform.hpp + windows.cpp + linux.cpp + 重构 cn_main.cpp/module.cpp/cargo_parser.cpp
-3. **全量验证**（子任务4）：C++编译 + 单测 + E2E + 自举
-4. **串联集成**（子任务5）：确保所有组件在程序中真正可用
-5. **Debug审查**（子任务6）：审查所有代码，确保无bug
+### 近期（在 Win10 x86 上继续）
+1. **修复 78_chain_build 段错误**：
+   - 调试 `cn_realloc_tracked` 的链表更新逻辑
+   - 或者改用 `cn_alloc_tracked` + `memcpy` + `cn_free_tracked` 替代 `cn_realloc_tracked`
+2. **全量 E2E 和单元测试验证**
+3. **Git 提交并推送 gitcode develop 分支**
 
 ### 中长期
-- ARM64环境验证自举用例75/76/78（需ARM64主机）
-- arm64寄存器分配接线（P4-28待办）
-- 自举IR生成/代码生成通用化（P5-31待办，目前仅硬编码向量$字符串容器方法）
+1. **C++侧平台抽象**（plans/009子任务3）：创建 platform.hpp + windows.cpp + linux.cpp + 重构 cn_main.cpp/module.cpp/cargo_parser.cpp
+2. **79_bootstrap_closed_loop**：Win10 x86 有 MSVC 工具链，可以运行此用例
+3. **自举IR生成/代码生成通用化**（P5-31待办）
+
+## 换电脑后如何继续
+
+### 环境差异
+- **当前**：麒麟ARM64，g++ 9.3.0，无MSVC工具链
+- **目标**：Win10 x86，有MSVC 2022（ml64/link/cl）
+
+### 代码兼容性
+- 项目代码完全跨平台（C++ + CMake + #ifdef _WIN32 分支）
+- `cn build` 命令在 Win10 上用 MSVC 工具链（cl/ml64/link）
+- 在 ARM64 上跳过的用例（62_ffi、79_bootstrap_closed_loop）在 Win10 上可以运行
+
+### 平台抽象层方案
+- **自举侧（CN版）**：已完成，5组件已创建（后端接口/后端工厂/IR遍历/x64后端/arm64后端）
+- **C++侧**：待实施，30处 #ifdef 待重构为 platform.hpp 体系
+- 详见 `plans/009 CN语言编译器 平台抽象层重构方案.md`
 
 ## 踩过的坑（绝对不要再踩）
 
-1. **CN语言语法必须查规范** — 编写CN语言代码前必须调用 cn-language-spec skill 查询 spec 06 OOP规范。接口用`接口`关键字（非`类`），虚函数用`虚拟 函数 方法名(参数) -> 返回类型`（无`= 0`、无分号、无函数体），空类型用`空类型`（非`空`/`void`），语句无分号，返回类型后置`->`
-2. **ARM64后端emitNewObject必须填充接口分派区** — 权重16.8，遍历classInterfaces为每个接口写入分派表地址（adrp+add+str）
-3. **平台限制用例通过PLATFORM_SKIP跳过** — 在run_e2e.py中添加PLATFORM_SKIP字典，而非硬编码为失败
-4. **ARM64上char默认为unsigned char** — GCC7在ARM64上char类型默认unsigned，与x64的signed不同
-5. **GCC7严格性高于MSVC** — -Wall -Wextra -Werror下未使用形参/变量均报错，跨平台代码须同时满足
-6. **跨后端功能对称性检查** — x64后端已实现的功能，ARM64后端必须同步实现
-7. **代码生成.cn拆分可能触发GS崩溃** — 拆分为门面+6子模块时78/79运行期0xC0000409，当前5组件结构可能不触发，但需验证
-8. **CN版代码生成.cn原100%硬编码x64 MASM** — 新增平台应通过抽象层（后端接口+后端工厂）而非直接修改现有代码
-9. **Windows中文路径三重编码** — argv(GBK)↔源码UTF-8字面量↔磁盘UTF-8文件名，需ansiToUtf8()分层转换
-10. **std::filesystem::u8path在MSVC对中文路径挂起** — 必须用MultiByteToWideChar(CP_UTF8)+_wfopen_s
-
-## 已知边界（下轮勿踩）
-
-1. 外部模块按pathStem取名→跨组件同名子模块冲突取先加载者；子模块名须唯一且短
-2. 组件内与语义/内置、代码生成同名的辅助函数须组件内唯一化
-3. 程序化改名严禁全局字符串替换，须git恢复原始文件后按行/正则重建
-4. 代码生成拆分→0xC0000409后台帧/GS bug，待C++后端修复后再尝试（当前5组件结构待验证）
-5. run_e2e.py改UTF-16 stderr解码：负用例断言子串从cn.exe诊断抓取
-6. ARM64后端emitNewObject必须填充接口分派区（与x64对齐）
-7. 平台限制用例通过PLATFORM_SKIP跳过机制处理，不硬编码为失败
-8. CN版代码生成.cn原100%硬编码x64 MASM，新增平台应通过抽象层而非直接修改
+1. **CN语言语法必须查规范** - 编写CN语言代码前必须调用 cn-language-spec skill 查询 spec 06 OOP规范
+2. **ARM64后端emitNewObject必须填充接口分派区** - 权重16.8
+3. **ARM64窄类型加载必须区分有符号/无符号** - 有符号用xN目标（ldrsb xN），无符号用wN目标（ldrb wN）。权重16.8
+4. **ARM64窄类型存储用64位str xN** - 避免 strb/strh 只写部分字节导致高字节残留垃圾
+5. **麒麟ARM64缺少g++符号链接** - 检查 `which g++`，若不存在但 `which g++-9` 存在则创建符号链接
+6. **GCC 9 system()返回值必须处理** - `-Werror=unused-result` 对 system() 报错
+7. **arena模式破坏RAII** - arena模式下cn_free是空操作，向量扩容的旧数据不释放，内存累积。学习C++/Rust：保持std::malloc/realloc/free的正常RAII语义
+8. **平台限制用例通过PLATFORM_SKIP跳过** - 在run_e2e.py中添加PLATFORM_SKIP字典
+9. **代码生成.cn拆分为门面+后端抽象层** - 新增平台应通过抽象层而非直接修改现有代码
+10. **__cn_alloc_reset之前未实现** - 头文件声明了但运行时.cpp中没有实现，导致78_chain_build OOM
 
 ## Git状态
 
-- **分支**: develop，与origin/develop同步
-- **未提交工作**: 6个修改文件 + 10个新文件（含plans/009方案文档）
-- **最近基线**: E2E 109/109、单测 1196/1196 全绿（007-P3收尾后）
-- **本次提交内容**: 平台抽象层重构自举侧5组件 + 代码生成.cn门面重写 + 包.cn更新 + plans/009方案文档
+- **分支**: develop
+- **未提交工作**: tracked注册表方案实现（io_api.cpp + time_api.cpp），78_chain_build段错误未解决
+- **验证基线**: 单元测试60个内存相关测试通过，78_chain_build内存峰值193MB但段错误

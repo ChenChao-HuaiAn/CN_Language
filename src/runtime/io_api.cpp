@@ -9,11 +9,24 @@
 #include "runtime/runtime.hpp"
 
 #include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
 // ==================== 内存管理API（规格书10.2） ====================
+//
+// 内存管理策略（学习 C++ std::vector / Rust Vec 的成功经验）：
+//   cn_alloc / cn_realloc / cn_free 使用 std::malloc / std::realloc / std::free，
+//   支持正常的逐块释放（RAII：向量析构时释放数据数组，扩容时 realloc 释放旧块）。
+//
+//   cn_alloc_tracked 分配时注册到全局链表，供 内存::释放全部() 批量释放。
+//   这用于字符串等"原始类型"（非类，无 RAII 析构）的内存管理——
+//   CN 字符串拼接产生新串，旧串需显式 字符串释放()，但大规模编译时
+//   可能遗漏释放，内存::释放全部() 作为兜底批量释放。
+//
+//   内存::释放全部() -> __cn_alloc_reset()：遍历 tracked 链表逐个 std::free，
+//   然后清空链表。不影响 cn_alloc/cn_realloc 分配的内存（向量数据数组）。
 
 // ---- 分配计数（自举前置 C-3，2026-08：泄漏检测） ----
 // 活动分配数/累计分配次数 原子计数（cn_alloc/cn_realloc/cn_free 全路径维护）。
@@ -21,6 +34,41 @@
 // 释放后计数回落基线验证"无泄漏"，自举源码内存安全底线。
 static std::atomic<long long> g_cn_alloc_live{0};   // 当前活动分配数
 static std::atomic<long long> g_cn_alloc_total{0};  // 累计分配次数
+
+// ---- tracked 分配注册表（供 内存::释放全部() 批量释放）----
+// 链表节点：记录 tracked 分配的指针，供 __cn_alloc_reset() 遍历释放。
+// 设计：节点本身也用 std::malloc 分配（非 tracked），避免递归注册。
+struct TrackedNode {
+    void* ptr;            // tracked 分配的用户指针
+    TrackedNode* next;    // 链表下一节点
+};
+static TrackedNode* g_trackedHead = nullptr;  // tracked 链表头
+
+// 注册 tracked 分配到链表（失败时不影响分配本身，仅无法批量释放）
+static void trackedRegister(void* ptr) {
+    if (ptr == nullptr) return;
+    TrackedNode* node = static_cast<TrackedNode*>(std::malloc(sizeof(TrackedNode)));
+    if (node == nullptr) return;  // 注册失败不影响功能，仅无法批量释放
+    node->ptr = ptr;
+    node->next = g_trackedHead;
+    g_trackedHead = node;
+}
+
+// 从链表中移除 tracked 分配（cn_free_tracked 调用时）
+static void trackedUnregister(void* ptr) {
+    if (ptr == nullptr) return;
+    TrackedNode** pp = &g_trackedHead;
+    while (*pp != nullptr) {
+        if ((*pp)->ptr == ptr) {
+            TrackedNode* node = *pp;
+            *pp = node->next;
+            std::free(node);
+            return;
+        }
+        pp = &((*pp)->next);
+    }
+    // 未找到：可能是 __cn_alloc_reset 已清空链表后的释放，忽略
+}
 
 // 分配内存：对应CN内置函数 分配（malloc 语义，失败返回nullptr）
 extern "C" void* cn_alloc(std::size_t size) {
@@ -63,11 +111,13 @@ extern "C" void* cn_realloc(void* ptr, std::size_t size) {
 // 字符串 API（string_api.cpp）等内部 malloc 直调改走 *_tracked，使 活动分配数/
 //   总分配次数 覆盖全部动态内存（此前 __cn_str_free 经 cn_free 减计数而分配
 //   未加计数 -> 计数为负，泄漏检测失真）。
+// tracked 分配注册到全局链表，供 内存::释放全部() 批量释放（兜底防泄漏）。
 extern "C" void* cn_alloc_tracked(std::size_t size) {
     void* p = std::malloc(size);
     if (p != nullptr) {
         ++g_cn_alloc_total;
         ++g_cn_alloc_live;
+        trackedRegister(p);  // 注册到链表，供批量释放
     }
     return p;
 }
@@ -75,6 +125,7 @@ extern "C" void* cn_alloc_tracked(std::size_t size) {
 extern "C" void cn_free_tracked(void* ptr) {
     if (ptr != nullptr) {
         --g_cn_alloc_live;
+        trackedUnregister(ptr);  // 从链表移除
         std::free(ptr);
     }
 }
@@ -85,14 +136,23 @@ extern "C" void* cn_realloc_tracked(void* ptr, std::size_t size) {
         if (p != nullptr) {
             ++g_cn_alloc_total;
             ++g_cn_alloc_live;
+            trackedRegister(p);
         }
         return p;
     }
     if (size == 0) {
         --g_cn_alloc_live;
+        trackedUnregister(ptr);
         return std::realloc(ptr, 0);
     }
-    return std::realloc(ptr, size);
+    // realloc 扩容：更新链表中的指针
+    void* new_p = std::realloc(ptr, size);
+    if (new_p != nullptr && new_p != ptr) {
+        // realloc 可能返回新地址：更新链表中的指针
+        trackedUnregister(ptr);
+        trackedRegister(new_p);
+    }
+    return new_p;
 }
 
 // 当前活动分配数（未释放块数，泄漏检测基线）
@@ -193,6 +253,7 @@ extern "C" void cn_memset(void* dst, std::size_t size) {
 // ==================== 对象内存辅助（阶段3 Task 3.1，规格书06） ====================
 
 // 新建对象：分配 size 字节堆内存（NewObject 指令展开调用）
+// 使用 std::malloc（支持正常的 RAII 释放，与 C++ new / Rust Box 一致）
 // 失败时报错误码4（内存分配失败，规格书附录B）并终止，成功返回对象指针
 // 虚表指针初始化由 codegen 负责（对象首地址 8 字节，NewObject 后写入）
 extern "C" void* __cn_object_new(long long size) {
@@ -206,6 +267,25 @@ extern "C" void* __cn_object_new(long long size) {
 // 删除对象：释放对象内存（DeleteObject 指令展开调用；安全释放 nullptr）
 extern "C" void __cn_object_delete(void* ptr) {
     std::free(ptr);
+}
+
+// ==================== 批量释放（2026-08-24 OOM 修复） ====================
+// 内存::释放全部() -> __cn_alloc_reset()
+// 遍历 tracked 链表，释放所有未释放的 tracked 内存（字符串等原始类型）。
+// 不影响 cn_alloc/cn_realloc 分配的内存（向量数据数组由 RAII 析构管理）。
+// 设计参考 C++ 智能指针池和 Rust 的 Drop trait——批量释放仅针对无 RAII 的分配。
+extern "C" void __cn_alloc_reset() {
+    TrackedNode* node = g_trackedHead;
+    while (node != nullptr) {
+        TrackedNode* next = node->next;
+        if (node->ptr != nullptr) {
+            --g_cn_alloc_live;
+            std::free(node->ptr);
+        }
+        std::free(node);
+        node = next;
+    }
+    g_trackedHead = nullptr;
 }
 
 // ==================== IO API（规格书10.1，Task 2.9 语义调整） ====================

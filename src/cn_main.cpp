@@ -239,7 +239,8 @@ static void ensureTargetDir() {
 #ifdef _WIN32
     CreateDirectoryA("target", nullptr);  // 已存在时返回失败但无害
 #else
-    std::system("mkdir -p target 2>/dev/null");
+    int mkdir_ret = std::system("mkdir -p target 2>/dev/null");
+    (void)mkdir_ret;  // 忽略返回值，目录已存在时返回非零但无害
 #endif
 }
 

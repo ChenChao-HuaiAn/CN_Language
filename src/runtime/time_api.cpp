@@ -74,7 +74,7 @@ extern "C" char* __cn_time_format(long long ts, const char* fmt) {
     char probe[64];
     const std::size_t len = std::strftime(probe, sizeof(probe), fmt, &local);
     if (len == 0) return nullptr;  // 空结果或格式无效
-    char* result = static_cast<char*>(std::malloc(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
     std::strftime(result, len + 1, fmt, &local);
     return result;
