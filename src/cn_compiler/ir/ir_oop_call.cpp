@@ -140,22 +140,42 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         //   为 名<实参>（IdentifierExpr 名字含 <），语义层已单态化注册实例化类
         //   （盒子$整32），此处把 名<实参> 映射到实例化类符号名。
         const std::size_t genLt = className.find('<');
-        const std::size_t genGt = className.rfind('>');
+        // 2026-08-25 H3：平衡扫描找配对 '>'（嵌套泛型 向量<映射<整64,整64>> 的
+        //   inner 若用 rfind 最后 > 会缺内层闭合，实例名含 '<' -> findClass 失败
+        //   -> 构造调用回退普通 Call（无 NewObject/this）-> 运行段错误）
+        std::size_t genGt = std::string::npos;
+        if (genLt != std::string::npos) {
+            int depth = 0;
+            for (std::size_t i = genLt; i < className.size(); ++i) {
+                if (className[i] == '<') depth++;
+                else if (className[i] == '>') {
+                    depth--;
+                    if (depth == 0) { genGt = i; break; }
+                }
+            }
+        }
         if (genLt != std::string::npos && genGt != std::string::npos &&
             genGt > genLt) {
             const std::string head = className.substr(0, genLt);
             const std::string inner =
                 className.substr(genLt + 1, genGt - genLt - 1);
+            // 平衡逗号分割（嵌套内层 < 中 , 非外层分隔）
             std::vector<std::string> args;
             std::size_t pos = 0;
+            int angleDepth = 0;
+            std::size_t segStart = 0;
             while (pos <= inner.size()) {
-                const std::size_t comma = inner.find(',', pos);
-                if (comma == std::string::npos) {
-                    args.push_back(inner.substr(pos));
-                    break;
+                if (pos == inner.size() ||
+                    (inner[pos] == ',' && angleDepth == 0)) {
+                    args.push_back(inner.substr(segStart, pos - segStart));
+                    segStart = pos + 1;
+                    if (pos == inner.size()) break;
+                } else if (inner[pos] == '<') {
+                    angleDepth++;
+                } else if (inner[pos] == '>') {
+                    angleDepth--;
                 }
-                args.push_back(inner.substr(pos, comma - pos));
-                pos = comma + 1;
+                pos++;
             }
             for (auto& a : args) {
                 const std::size_t b = a.find_first_not_of(" \t");
@@ -163,8 +183,22 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
                 if (b != std::string::npos && e != std::string::npos) {
                     a = a.substr(b, e - b + 1);
                 }
+                // H3：嵌套实参（含 '<'）递归实例化为 映射$整64$整64
+                // H3：嵌套实参（含 '<'）转为实例化名（映射<整64,整64> -> 映射$整64$整64）
+                if (a.find('<') != std::string::npos) {
+                    std::string ninst = a.substr(0, a.find('<'));
+                    std::string ninner = a.substr(a.find('<') + 1, a.rfind('>') - a.find('<') - 1);
+                    std::size_t npos = 0;
+                    while (npos <= ninner.size()) {
+                        const std::size_t ncomma = ninner.find(',', npos);
+                        if (ncomma == std::string::npos) { ninst += "$" + ninner.substr(npos); break; }
+                        ninst += "$" + ninner.substr(npos, ncomma - npos);
+                        npos = ncomma + 1;
+                    }
+                    a = ninst;
+                }
             }
-            std::string inst = head;
+                        std::string inst = head;
             for (const auto& a : args) {
                 inst += "$" + types::canonical(a);
             }
