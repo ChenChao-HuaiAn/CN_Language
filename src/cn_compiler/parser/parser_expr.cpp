@@ -299,8 +299,24 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
                 }
                 break;
             }
-            consume(TokenType::Greater, "'>'");
-            newName += ">";
+            // 2026-08-25 缺陷修复（H3 嵌套泛型）：与 parser.cpp parseTypeNameEx 同——
+            // 泛型调用实参列表闭合 '>>'（词法合并为 GreaterGreater）拆分为两个 '>'
+            if (check(TokenType::Greater)) {
+                advance();
+                newName += ">";
+            } else if (check(TokenType::GreaterGreater)) {
+                // 嵌套泛型调用闭合：'>>' 拆为两个 '>' 并全部消费（两层闭合）
+                tokens_[pos_] = Token(TokenType::Greater, ">", tokens_[pos_].getLocation());
+                tokens_.insert(tokens_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
+                               Token(TokenType::Greater, ">",
+                                     tokens_[pos_].getLocation()));
+                advance();  // 吃内层 '>'
+                if (check(TokenType::Greater)) advance();  // 吃外层 '>'
+                newName += ">>";
+            } else {
+                consume(TokenType::Greater, "'>'");
+                newName += ">";
+            }
             if (expr->getType() == NodeType::IdentifierExpr) {
                 static_cast<IdentifierExpr*>(expr.get())->name = newName;
             } else {

@@ -84,7 +84,19 @@ std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName
         }
     }
     const std::size_t lt = typeName.find('<');
-    const std::size_t gt = typeName.rfind('>');
+    // 2026-08-25 缺陷修复（H3 嵌套泛型）：右边界用平衡扫描找 '<' 的配对 '>'——
+    //   rfind('>') 取最后一个（嵌套 向量<映射<整64,整64>> 的 inner 会缺内层闭合）。
+    std::size_t gt = std::string::npos;
+    if (lt != std::string::npos) {
+        int depth = 0;
+        for (std::size_t i = lt; i < typeName.size(); ++i) {
+            if (typeName[i] == '<') depth++;
+            else if (typeName[i] == '>') {
+                depth--;
+                if (depth == 0) { gt = i; break; }
+            }
+        }
+    }
     if (lt == std::string::npos || gt == std::string::npos || gt <= lt) {
         return typeName;
     }
@@ -119,15 +131,36 @@ std::string SemanticAnalyzer::resolveGenericTypeName(const std::string& typeName
     }
     const std::string inner = typeName.substr(lt + 1, gt - lt - 1);
     std::vector<std::string> args;
+    // 2026-08-25 缺陷修复（H3 嵌套泛型）：实参分割须平衡尖括号——
+    //   嵌套泛型实参（向量<映射<整64, 整64>>）内层 '<' 中的 ',' 不是外层分隔，
+    //   否则 args 误分为 {映射<整64, 整64} 且 映射< 尾部被截。
     std::size_t pos = 0;
-    while (pos <= inner.size()) {
-        const std::size_t comma = inner.find(',', pos);
-        if (comma == std::string::npos) {
-            args.push_back(inner.substr(pos));
+    int angleDepth = 0;
+    while (pos < inner.size()) {
+        if (inner[pos] == '<') { angleDepth++; pos++; continue; }
+        if (inner[pos] == '>') { angleDepth--; pos++; continue; }
+        if (inner[pos] == ',' && angleDepth == 0) {
+            args.push_back(inner.substr(pos));  // 占位，实际在下方用区间截取
             break;
         }
-        args.push_back(inner.substr(pos, comma - pos));
-        pos = comma + 1;
+        pos++;
+    }
+    // 用平衡扫描重做（上面简化版若失败则退回原逻辑）——直接完整实现：
+    args.clear();
+    pos = 0;
+    angleDepth = 0;
+    std::size_t segStart = 0;
+    while (pos <= inner.size()) {
+        if (pos == inner.size() || (inner[pos] == ',' && angleDepth == 0)) {
+            args.push_back(inner.substr(segStart, pos - segStart));
+            segStart = pos + 1;
+            if (pos == inner.size()) break;
+        } else if (inner[pos] == '<') {
+            angleDepth++;
+        } else if (inner[pos] == '>') {
+            angleDepth--;
+        }
+        pos++;
     }
     for (auto& a : args) {
         const std::size_t b = a.find_first_not_of(" \t");
@@ -306,6 +339,9 @@ std::string SemanticAnalyzer::instantiateGeneric(
     //   （否则两个模块的 向量<记录> 会生成同一实例名而互相污染）
     for (auto& a : args) {
         a = resolveTypeName(a, currentModuleName_, loc);
+        // 2026-08-25 H3（嵌套泛型）：实参若是嵌套泛型（映射<整64,整64>），
+        //   递归实例化为 映射$整64$整64 ——否则 向量<...> 实例名含 '<' 无法查表。
+        a = resolveGenericTypeName(a, loc);
     }
 
     // 参数个数校验

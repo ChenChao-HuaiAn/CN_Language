@@ -281,10 +281,10 @@ bool Parser::isTemplateAngleOpen() const {
             break;
         }
     }
-    // 后续循环：, 类型名 或 直接 >
+    // 后续循环：, 类型名 或 直接 >（2026-08-25 H3：GreaterGreater 视为嵌套闭合的 '>>'）
     while (true) {
         const TokenType t = peek(static_cast<int>(i)).getType();
-        if (t == TokenType::Greater) return true;   // 单个实参：结果<整32>
+        if (t == TokenType::Greater || t == TokenType::GreaterGreater) return true;
         if (t == TokenType::Comma) {
             // 多个实参：, 后必须是 类型关键字/标识符（结果<整32, 整32>）
             i++;
@@ -391,15 +391,29 @@ std::string Parser::parseTypeNameEx() {
                     consume(TokenType::Comma, "','");
                     args += ",";
                 }
-                // 实参类型：类型关键字/标识符（可含 * 后缀）
-                args += parseTypeName();
-                while (check(TokenType::Star)) {
-                    advance();
-                    args += "*";
-                }
+                // 实参类型：2026-08-25 H3 修复——用 parseTypeNameEx 递归解析
+                //   （内层模板实参 映射<整64,整64> 完整消费到自己的闭合 '>'，
+                //   原 parseTypeName 只吃标识符，嵌套泛型 <映射<...>> 结构错乱）
+                args += parseTypeNameEx();
                 if (!check(TokenType::Comma)) break;
             }
-            consume(TokenType::Greater, "'>'");
+            // 2026-08-25 缺陷修复（H3 嵌套泛型）：词法器把连续 '>>' 合并为右移
+            // 运算符 GreaterGreater（贪婪最长匹配）——嵌套泛型闭合 向量<映射<整64,整64>>
+            // 的结尾 '>>' 无法逐个消耗。此处把 GreaterGreater 拆为两个单 Greater：
+            //   在 tokens_ 的当前位插入一个 '>'，本层 consume 一个，剩余一个供外层消费。
+            if (check(TokenType::Greater)) {
+                advance();  // 普通单 '>'
+            } else if (check(TokenType::GreaterGreater)) {
+                // 把 tokens_[pos_] 由 '>>' 替换为 '>'（本层闭合），
+                // 并在其后插入另一个 '>'（外层闭合）
+                tokens_[pos_] = Token(TokenType::Greater, ">", tokens_[pos_].getLocation());
+                tokens_.insert(tokens_.begin() + static_cast<std::ptrdiff_t>(pos_ + 1),
+                               Token(TokenType::Greater, ">",
+                                     tokens_[pos_].getLocation()));
+                advance();  // 吃本层的 '>'
+            } else {
+                consume(TokenType::Greater, "'>'");
+            }
             suffixes += "<" + args + ">";
         } else {
             break;

@@ -301,6 +301,23 @@ const EnumDecl* SemanticAnalyzer::findEnumInModule(const std::string& module,
     }
     return nullptr;
 }
+
+namespace {
+// 2026-08-25 H3（嵌套泛型）：找模板实参列表中的顶层逗号（平衡尖括号）——
+//   嵌套泛型 向量<映射<整64, 整64>> 内层 '<' 中的 ',' 不是外层分隔。
+//   返回逗号位置；无顶层逗号返回 std::string::npos。
+std::size_t findTopLevelComma(const std::string& s, std::size_t from) {
+    int depth = 0;
+    for (std::size_t i = from; i < s.size(); ++i) {
+        const char c = s[i];
+        if (c == '<') depth++;
+        else if (c == '>') { if (depth > 0) depth--; }
+        else if (c == ',' && depth == 0) return i;
+    }
+    return std::string::npos;
+}
+}  // namespace
+
 std::string SemanticAnalyzer::resolveTypeName(const std::string& type,
                                               const std::string& module,
                                               const SourceLocation& loc) {
@@ -321,7 +338,7 @@ std::string SemanticAnalyzer::resolveTypeName(const std::string& type,
         std::string newInner;
         std::size_t pos = 0;
         while (pos <= inner.size()) {
-            const std::size_t comma = inner.find(',', pos);
+            const std::size_t comma = findTopLevelComma(inner, pos);  // H3：平衡尖括号
             const std::string part = (comma == std::string::npos)
                                          ? inner.substr(pos)
                                          : inner.substr(pos, comma - pos);
