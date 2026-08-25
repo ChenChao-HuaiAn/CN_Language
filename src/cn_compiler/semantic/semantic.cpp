@@ -474,7 +474,32 @@ std::string SemanticAnalyzer::funcReturnTypeOf(const std::string& funcName) cons
         const std::size_t dollar = funcName.find('$');
         if (dollar != std::string::npos) it = functions_.find(funcName.substr(dollar + 1));
     }
-    if (it == functions_.end()) return "";
+    if (it == functions_.end()) {
+        // 泛型类方法（自举重建 ABI 修复 2026-08-25）：调用符号形如
+        //   向量$Token$元素#整64（实例化类名$方法名#参数签名）。泛型类方法实例化
+        //   注册在 classes_（非 functions_），此处回退解析：
+        //   取最后一个'$'之后为方法名（元素#整64 -> 元素），剩余（向量$Token）为
+        //   实例化类名，查 classes_ 方法表得返回类型（Token）——使调用方正确走
+        //   结构体返回缓冲（隐藏返回指针），否则 16 字节结构体按寄存器返回字段错乱。
+        const std::size_t lastDollar = funcName.rfind('$');
+        if (lastDollar != std::string::npos) {
+            const std::string classPart = funcName.substr(0, lastDollar);
+            std::string methodPart = funcName.substr(lastDollar + 1);
+            const std::size_t hash = methodPart.find('#');
+            if (hash != std::string::npos) methodPart = methodPart.substr(0, hash);
+            const ClassInfo* ci = findClass(classPart);
+            if (ci != nullptr) {
+                const auto mit = ci->methods.find(methodPart);
+                if (mit != ci->methods.end()) return mit->second.type;
+                for (const auto& mk : ci->methods) {
+                    if (mk.first == methodPart || mk.first.rfind(methodPart, 0) == 0) {
+                        return mk.second.type;
+                    }
+                }
+            }
+        }
+        return "";
+    }
     return it->second.returnType;
 }
 bool SemanticAnalyzer::funcReturnsRef(const std::string& funcName) const {
