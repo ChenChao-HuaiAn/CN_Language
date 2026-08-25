@@ -14,6 +14,7 @@
 //   NewObject.extra = "类名|大小字节"；VirtualCall.extra = "类名.虚方法名"；
 //   DeleteObject.extra = "类名"
 // 规范：英文API命名，中文仅注释；函数<=100行
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -282,7 +283,9 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     if (mem->isArrow && types::isPointer(canonObjForMethod)) {
         canonObjForMethod = types::canonical(types::pointeeOf(canonObjForMethod));
     }
-    if (!semantic_->isClassType(canonObjForMethod)) return false;
+    if (!semantic_->isClassType(canonObjForMethod)) {
+        return false;
+    }
     // 查方法成员（沿继承链；owner=声明类）
     std::string owner;
     const ClassMemberInfo* m = findClassMethod(semantic_, canonObjForMethod, methodName, owner);
