@@ -1065,6 +1065,29 @@ void SemanticAnalyzer::registerBuiltins() {
     strFindInfo.hasBody = true;
     functions_["字符串查找"] = strFindInfo;
 
+    // ---- 字符串驻留（自举重建 P1，2026-08-25；对标 rustc Symbol / LLVM StringPool） ----
+    // 符号名/类型名/标识符 经 驻留 得唯一 整64 ID（相同内容同 ID，内容只存一份）。
+    // Token/AST/IR/符号表 用 ID 引用——比较/哈希 O(1)，消除百万级重复字符串分配。
+    // 运行时符号（IR 层映射）：驻留 -> __cn_intern、驻留文本 -> __cn_intern_text、
+    //   驻留计数 -> __cn_intern_count。
+    FunctionInfo internInfo;
+    internInfo.returnType = "整64";
+    internInfo.paramTypes = {"字符串"};
+    internInfo.hasBody = true;
+    functions_["驻留"] = internInfo;
+
+    FunctionInfo internTextInfo;
+    internTextInfo.returnType = "字符串";
+    internTextInfo.paramTypes = {"整64"};
+    internTextInfo.hasBody = true;
+    functions_["驻留文本"] = internTextInfo;
+
+    FunctionInfo internCountInfo;
+    internCountInfo.returnType = "整64";
+    internCountInfo.paramTypes = {};
+    internCountInfo.hasBody = true;
+    functions_["驻留计数"] = internCountInfo;
+
     // ---- 补充字符串API（Task 2.8，规格书10.1 标注"常见字符串库补充"） ----
     // 运行时符号：字符串子串 -> __cn_str_sub、字符串字典序 -> __cn_str_cmp、
     //           字符串大写 -> __cn_str_upper、字符串小写 -> __cn_str_lower、

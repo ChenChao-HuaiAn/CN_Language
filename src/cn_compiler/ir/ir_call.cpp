@@ -191,6 +191,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "布尔转字符串") calleeName = "__cn_str_from_bool";  // Task 2.9
         else if (calleeName == "正数转字符串") calleeName = "__cn_str_from_uint";
         else if (calleeName == "字符串释放") calleeName = "__cn_str_free";
+        // 字符串驻留（自举重建 P1，2026-08-25；对标 rustc Symbol / LLVM StringPool）
+        //   驻留(字符串) -> 整64 Symbol ID；驻留文本(ID) -> 字符串；驻留计数 -> 整64
+        else if (calleeName == "驻留") calleeName = "__cn_intern";
+        else if (calleeName == "驻留文本") calleeName = "__cn_intern_text";
+        else if (calleeName == "驻留计数") calleeName = "__cn_intern_count";
         // Task 2.9：格式化（格式字符串, 参数...）-> 字符串（sprintf 风格）
         else if (calleeName == "格式化") calleeName = "__cn_format";
         // Task 6.3 数学库：中文限定名 -> 运行时符号（math_api.cpp）。第 4 层
@@ -298,8 +303,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         // 结果被误标 i32 导致 codegen 用 eax 读 xmm0 返回值）
         std::string resultType = "i32";
         if (calleeName == "__cn_str_len" || calleeName == "__cn_str_find" ||
-            calleeName == "__cn_str_cmp") {
-            resultType = "i64";       // 字符串长度/查找/字典序 -> 整64
+            calleeName == "__cn_str_cmp" ||
+            calleeName == "__cn_intern" || calleeName == "__cn_intern_count") {
+            resultType = "i64";       // 字符串长度/查找/字典序 + 驻留/驻留计数 -> 整64
+        } else if (calleeName == "__cn_intern_text") {
+            resultType = "ptr";       // 驻留文本(ID) -> 字符串（驻留表指针，只读不释放）
         } else if (calleeName == "__cn_str_eq" || calleeName == "__cn_str_starts_with" ||
                    calleeName == "__cn_str_ends_with" || calleeName == "__cn_str_contains") {
             resultType = "i1";        // 字符串比较/前缀/后缀/包含 -> 布尔
