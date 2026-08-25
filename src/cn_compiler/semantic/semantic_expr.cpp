@@ -280,7 +280,18 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
     // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名 名<实参>（如 盒子<整32>）
     //   作标识符（构造调用 callee / 类型引用）——触发单态化，返回实例化类名。
     const std::size_t genLt = node->name.find('<');
-    const std::size_t genGt = node->name.rfind('>');
+    // 2026-08-25 H3：平衡扫描找配对 '>'（非 rfind 最后——嵌套泛型 inner 缺闭合）
+    std::size_t genGt = std::string::npos;
+    if (genLt != std::string::npos) {
+        int depth = 0;
+        for (std::size_t i = genLt; i < node->name.size(); ++i) {
+            if (node->name[i] == '<') depth++;
+            else if (node->name[i] == '>') {
+                depth--;
+                if (depth == 0) { genGt = i; break; }
+            }
+        }
+    }
     if (genLt != std::string::npos && genGt != std::string::npos &&
         genGt > genLt) {
         const std::string head = node->name.substr(0, genLt);
