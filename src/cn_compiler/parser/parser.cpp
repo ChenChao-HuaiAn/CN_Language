@@ -12,6 +12,7 @@
 //      位与/乘法。lexer 统一产出 Amp/Star Token，由调用上下文区分
 #include <cstdint>
 #include <memory>
+#include <cstdio>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -281,10 +282,25 @@ bool Parser::isTemplateAngleOpen() const {
             break;
         }
     }
-    // 后续循环：, 类型名 或 直接 >（2026-08-25 H3：GreaterGreater 视为嵌套闭合的 '>>'）
+    // 后续循环：, 类型名 或 直接 >（2026-08-25 H3：GreaterGreater 视为嵌套闭合的 '>>'；
+    //   嵌套泛型内层 < 平衡跳过——否则 向量<映射<...>> 探测在 映射< 处 false）
     while (true) {
         const TokenType t = peek(static_cast<int>(i)).getType();
         if (t == TokenType::Greater || t == TokenType::GreaterGreater) return true;
+        if (t == TokenType::Less) {
+            // 嵌套泛型实参（映射<...>）：平衡跳过内层 <...> 到配对 >
+            //   闭合后即为模板实参列表结束（外层 > 已由该内层闭合覆盖）
+            int depth = 0;
+            while (true) {
+                const TokenType tt = peek(static_cast<int>(i)).getType();
+                if (tt == TokenType::Less) depth++;
+                else if (tt == TokenType::Greater) { depth--; if (depth == 0) break; }
+                else if (tt == TokenType::GreaterGreater) { depth -= 2; if (depth <= 0) break; }
+                else if (tt == TokenType::EndOfFile) return false;
+                i++;
+            }
+            return true;  // 内层嵌套闭合 = 外层模板实参列表结束
+        }
         if (t == TokenType::Comma) {
             // 多个实参：, 后必须是 类型关键字/标识符（结果<整32, 整32>）
             i++;

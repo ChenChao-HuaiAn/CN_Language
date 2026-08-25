@@ -287,10 +287,13 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
                     first = false;
                     // 收集实参类型文本（token 重建：关键字/标识符原样，* 追加）
                     // 实参形态：类型名（关键字如 整32 或标识符如 自定义类型）
-                    if (!current().getValue().empty()) {
-                        newName += current().getValue();
+                    // 2026-08-25 H3：实参用 parseTypeNameEx（递归消费嵌套模板
+                    //   映射<...> 到自己的 >）——原 parseTypeName 只吃标识符，
+                    //   嵌套泛型调用 向量<映射<...>>() 内层 < 残留报"预期 >"
+                    const std::string argT = parseTypeNameEx();
+                    if (!argT.empty()) {
+                        newName += argT;
                     }
-                    parseTypeName();  // 实际消费实参类型
                     while (check(TokenType::Star)) { newName += "*"; advance(); }
                 }
                 if (check(TokenType::Comma)) {

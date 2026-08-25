@@ -379,14 +379,20 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     calleeName.substr(genLt + 1, genGt - genLt - 1);
                 std::vector<std::string> args;
                 std::size_t pos = 0;
+                int angleDepth = 0;
+                std::size_t segStart = 0;
                 while (pos <= inner.size()) {
-                    const std::size_t comma = inner.find(',', pos);
-                    if (comma == std::string::npos) {
-                        args.push_back(inner.substr(pos));
-                        break;
+                    if (pos == inner.size() ||
+                        (inner[pos] == ',' && angleDepth == 0)) {
+                        args.push_back(inner.substr(segStart, pos - segStart));
+                        segStart = pos + 1;
+                        if (pos == inner.size()) break;
+                    } else if (inner[pos] == '<') {
+                        angleDepth++;
+                    } else if (inner[pos] == '>') {
+                        angleDepth--;
                     }
-                    args.push_back(inner.substr(pos, comma - pos));
-                    pos = comma + 1;
+                    pos++;
                 }
                 for (auto& a : args) {
                     const std::size_t b = a.find_first_not_of(" \t");
@@ -398,6 +404,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
                     auto pit = genericTypeParams_.find(a);
                     if (pit != genericTypeParams_.end()) a = pit->second;
+                    if (a.find('<') != std::string::npos) {
+                        a = resolveGenericTypeName(a, node->location);
+                    }
                 }
                 const std::string instName =
                     instantiateGeneric(head, args, node->location);
@@ -504,14 +513,20 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     className.substr(genLt + 1, genGt - genLt - 1);
                 std::vector<std::string> args;
                 std::size_t pos = 0;
+                int angleDepth = 0;
+                std::size_t segStart = 0;
                 while (pos <= inner.size()) {
-                    const std::size_t comma = inner.find(',', pos);
-                    if (comma == std::string::npos) {
-                        args.push_back(inner.substr(pos));
-                        break;
+                    if (pos == inner.size() ||
+                        (inner[pos] == ',' && angleDepth == 0)) {
+                        args.push_back(inner.substr(segStart, pos - segStart));
+                        segStart = pos + 1;
+                        if (pos == inner.size()) break;
+                    } else if (inner[pos] == '<') {
+                        angleDepth++;
+                    } else if (inner[pos] == '>') {
+                        angleDepth--;
                     }
-                    args.push_back(inner.substr(pos, comma - pos));
-                    pos = comma + 1;
+                    pos++;
                 }
                 for (auto& a : args) {
                     const std::size_t b = a.find_first_not_of(" \t");
@@ -523,6 +538,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
                     auto pit = genericTypeParams_.find(a);
                     if (pit != genericTypeParams_.end()) a = pit->second;
+                    if (a.find('<') != std::string::npos) {
+                        a = resolveGenericTypeName(a, node->location);
+                    }
                 }
                 const std::string instName =
                     instantiateGeneric(head, args, node->location);
