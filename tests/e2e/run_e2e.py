@@ -12,8 +12,10 @@ import argparse
 import ctypes
 import os
 import pathlib
+import signal
 import subprocess
 import sys
+import time
 
 # 强制stdout/stderr使用UTF-8输出（避免Windows管道/控制台代码页导致中文乱码）
 if hasattr(sys.stdout, "reconfigure"):
@@ -40,6 +42,14 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # 编译器"尚未实现"标记（阶段零预期输出，用于区分真实失败）
 未实现标记 = "尚未实现"
+
+# 运行子进程内存保护（2026-08-24 用户要求）：
+# 79_bootstrap_closed_loop 等大规模编译用例运行时，子进程（如 CN 组件链编译器）
+# 内存可能失控（实测 26GB+ 卡死）。超过 内存上限MB 的进程将被自动终止并判为失败。
+# 单位：MB。0 = 不启用（默认仅对 78/79 等重负载用例启用，避免小用例轮询开销）。
+内存上限MB默认 = 4096
+内存保护用例前缀 = ("78_chain_build", "79_bootstrap_closed_loop")
+内存轮询间隔秒 = 0.5
 
 # 平台限制用例跳过列表：某些用例因平台特性差异（API/ABI/工具链）无法在特定平台运行
 # 键 = 目标平台，值 = 用例目录名前缀列表（不含编号前缀的短名匹配）
@@ -98,11 +108,77 @@ def 着色(文本: str, 颜色码: str) -> str:
 # ============ 工具函数 ============
 
 
+def 查询进程内存MB(进程ID: int) -> int:
+    """查询进程当前工作集内存（MB）；查询失败返回 0（不触发保护误杀）
+
+    说明：Windows 用 GetProcessMemoryInfo(WorkingSetSize)；
+          Linux 用 /proc/<pid>/status 的 VmRSS（kB）。工作集含共享页，
+          对"防失控"足够（失控时工作集必然随分配暴涨）。
+    """
+    try:
+        if sys.platform == "win32":
+            PROCESS_QUERY_INFORMATION = 0x0400
+            PROCESS_VM_READ = 0x0010
+            句柄 = ctypes.windll.kernel32.OpenProcess(
+                PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, False, 进程ID)
+            if not 句柄:
+                return 0
+            try:
+                class 进程内存计数(ctypes.Structure):
+                    _fields_ = [
+                        ("cb", ctypes.c_ulong),
+                        ("页错误数", ctypes.c_ulong),
+                        ("峰值工作集", ctypes.c_size_t),
+                        ("工作集", ctypes.c_size_t),
+                        ("峰值分页池", ctypes.c_size_t),
+                        ("分页池", ctypes.c_size_t),
+                        ("峰值非分页池", ctypes.c_size_t),
+                        ("非分页池", ctypes.c_size_t),
+                        ("峰值页文件", ctypes.c_size_t),
+                        ("页文件", ctypes.c_size_t),
+                        ("私有使用", ctypes.c_size_t),
+                    ]
+                计数 = 进程内存计数()
+                计数.cb = ctypes.sizeof(进程内存计数)
+                if ctypes.windll.psapi.GetProcessMemoryInfo(
+                        句柄, ctypes.byref(计数), 计数.cb):
+                    return int(计数.工作集 // (1024 * 1024))
+                return 0
+            finally:
+                ctypes.windll.kernel32.CloseHandle(句柄)
+        else:
+            # Linux：/proc/<pid>/status 的 VmRSS（kB）
+            with open(f"/proc/{进程ID}/status", encoding="utf-8") as f:
+                for 行 in f:
+                    if 行.startswith("VmRSS:"):
+                        return int(行.split()[1]) // 1024  # kB -> MB
+            return 0
+    except Exception:
+        return 0
+
+
+def 终止进程树(进程: subprocess.Popen) -> None:
+    """强制终止进程及其子进程树（Windows taskkill /T；Linux 进程组 SIGKILL）"""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/PID", str(进程.pid), "/T", "/F"],
+                capture_output=True, timeout=30)
+        else:
+            os.killpg(进程.pid, signal.SIGKILL)
+    except Exception:
+        pass
+
+
 def 运行命令(命令列表: list, 工作目录: pathlib.Path,
-             标准输入: str = "") -> subprocess.CompletedProcess:
+             标准输入: str = "", 内存上限MB: int = 0) -> subprocess.CompletedProcess:
     """执行命令并返回结果（捕获stdout/stderr，UTF-8解码容错）
 
     标准输入: 可选 stdin 注入字符串（Task 6.2 IO 输入用例用，默认空）
+    内存上限MB: >0 时启用内存保护——每 内存轮询间隔秒 轮询子进程工作集，
+      超过上限立即 终止进程树 并以退出码 -9（returncode）标记失败，
+      stderr 给出"内存超限"原因。防 79 等大规模编译用例内存失控卡死机器
+      （2026-08-24 实测：79_bootstrap_closed_loop.exe 工作集涨到 26GB+）。
     """
     # Linux 下增大栈大小限制（CN自举编译器函数栈帧较大，默认8MB可能不足）
     preexec_fn = None
@@ -115,6 +191,75 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
             except (ValueError, OSError):
                 pass
         preexec_fn = _set_stack_limit
+
+    # ---- 内存保护路径：Popen + 轮询工作集，超限立即终止 ----
+    # 2026-08-24 防死锁修复：轮询期间必须持续排空 stdout/stderr 管道——
+    #   78/79 组件链编译器输出量大，管道缓冲（约 64KB）写满后子进程阻塞在
+    #   write 上挂死（不计算/不退出/内存不涨，轮询永不触发，实测表现为
+    #   "卡死不动"）。用后台读取线程持续排空，管道永不阻塞。
+    if 内存上限MB > 0:
+        启动参数 = dict(
+            cwd=str(工作目录), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True, encoding="utf-8", errors="replace",
+            preexec_fn=preexec_fn)  # Linux 栈上限放大（Windows 忽略）
+        if sys.platform != "win32":
+            # Linux 独立进程组，便于 killpg 终止整棵子进程树
+            启动参数["start_new_session"] = True
+        进程 = subprocess.Popen(命令列表, **启动参数)
+        if 标准输入:
+            try:
+                进程.stdin.write(标准输入)
+                进程.stdin.flush()
+            except Exception:
+                pass
+            finally:
+                进程.stdin.close()
+
+        # 后台排空线程：持续读取 stdout/stderr，防管道缓冲写满导致子进程死锁
+        import threading
+        收集输出 = {"stdout": "", "stderr": ""}
+
+        def 排空(流, 键):
+            try:
+                for 行 in iter(流.readline, ""):
+                    收集输出[键] += 行
+            except Exception:
+                pass
+
+        排空线程们 = [
+            threading.Thread(target=排空, args=(进程.stdout, "stdout")),
+            threading.Thread(target=排空, args=(进程.stderr, "stderr")),
+        ]
+        for 线程 in 排空线程们:
+            线程.daemon = True
+            线程.start()
+
+        while 进程.poll() is None:
+            内存MB = 查询进程内存MB(进程.pid)
+            if 内存MB > 内存上限MB:
+                终止进程树(进程)
+                try:
+                    进程.wait(timeout=30)
+                except Exception:
+                    pass
+                # 回收线程残留输出
+                for 线程 in 排空线程们:
+                    线程.join(timeout=2)
+                return subprocess.CompletedProcess(
+                    命令列表, -9, 收集输出["stdout"],
+                    f"运行内存超限：工作集 {内存MB}MB > 上限 {内存上限MB}MB，"
+                    "已自动终止（防 OOM 卡死）\n--- 终止前 stdout 尾部 ---\n"
+                    + 收集输出["stdout"][-2500:]
+                    + "\n--- 终止前 stderr 尾部 ---\n"
+                    + 收集输出["stderr"][-2500:])
+            time.sleep(内存轮询间隔秒)
+        # 进程已退出：排空线程收尾后合并输出
+        for 线程 in 排空线程们:
+            线程.join(timeout=3)
+        return subprocess.CompletedProcess(
+            命令列表, 进程.returncode, 收集输出["stdout"], 收集输出["stderr"])
+
+    # ---- 普通路径（无内存保护）：与历史行为完全一致 ----
     return subprocess.run(
         命令列表, cwd=str(工作目录), capture_output=True,
         text=True, encoding="utf-8", errors="replace",
@@ -320,7 +465,12 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
             print(f"    [运行] {输出可执行} {' '.join(参数列表)}")
         else:
             print(f"    [运行] {输出可执行}")
-    运行结果 = 运行命令([str(输出可执行)] + 参数列表, 项目根目录, 标准输入)
+    # 内存保护（2026-08-24）：78/79 等大规模编译用例运行时监控子进程工作集，
+    # 超过 内存上限MB默认 立即自动终止并判失败（防 OOM 卡死拖垮机器）
+    运行内存上限 = 内存上限MB默认 if any(
+        前缀 in 名称 for 前缀 in 内存保护用例前缀) else 0
+    运行结果 = 运行命令([str(输出可执行)] + 参数列表, 项目根目录, 标准输入,
+                     运行内存上限)
     if 运行结果.returncode != 0:
         return "失败", f"运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
 
@@ -407,7 +557,9 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         return "失败", "79-1 编译返回成功但未生成可执行文件"
 
     # ===== 步骤2：运行 -> 落盘 5 个 *_链.asm（第一次，CN 组件链产物） =====
-    运行结果 = 运行命令([str(输出可执行)], 项目根目录)
+    # 内存保护（2026-08-24 用户要求）：组件链编译器内存可能失控（实测 26GB+），
+    # 超过 内存上限MB默认 立即自动终止并判失败
+    运行结果 = 运行命令([str(输出可执行)], 项目根目录, 内存上限MB=内存上限MB默认)
     if 运行结果.returncode != 0:
         return "失败", f"79-2 运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
     # 校验 5 个 .asm 已落盘
@@ -493,7 +645,8 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         旧asm = 审计目录 / f"{模块}_链.asm"
         if 旧asm.exists():
             旧asm.unlink()
-    运行结果2 = 运行命令([str(输出exe)], 项目根目录)
+    # CN 版编译器同样启用内存保护（与步骤2一致）
+    运行结果2 = 运行命令([str(输出exe)], 项目根目录, 内存上限MB=内存上限MB默认)
     if 运行结果2.returncode != 0:
         return "失败", f"79-5 CN版编译器运行失败(退出码{运行结果2.returncode}): {运行结果2.stderr.strip()[:200]}"
 
@@ -544,6 +697,8 @@ def 打印详情(失败列表: list, 未实现列表: list, 详细: bool) -> Non
 
 
 def 主程序() -> int:
+    # 重负载用例内存保护上限：CLI --max-mem-mb 可覆盖模块默认（78/79 超限自动终止）
+    global 内存上限MB默认
     解析器 = argparse.ArgumentParser(
         description="CN语言E2E测试运行器：编译->链接->运行->比对输出",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -555,12 +710,18 @@ def 主程序() -> int:
     解析器.add_argument("--cn", help="cn编译器路径（默认自动探测 target/Debug 等）")
     解析器.add_argument("--target", default=None,
                         help="目标平台（win-x64 | linux-arm64；默认按本机平台自动推断）")
+    解析器.add_argument("--max-mem-mb", type=int, default=内存上限MB默认,
+                        help=f"重负载用例（78/79）运行子进程内存上限MB，超过自动终止（默认 {内存上限MB默认}MB；0=不启用）")
     解析器.add_argument("--verbose", "-v", action="store_true", help="详细输出（显示编译/运行命令）")
     解析器.add_argument("--filter", help="仅运行目录名包含指定模式的用例")
     解析器.add_argument("--target-dir", default="target", help="可执行文件输出目录（默认 target）")
     解析器.add_argument("--strict", action="store_true",
                         help="将'未实现'用例视为失败（阶段一完成后全量验证用）")
     参数 = 解析器.parse_args()
+
+    # 覆盖模块级默认（超限自动终止的防护阈值）
+    if 参数.max_mem_mb is not None and 参数.max_mem_mb >= 0:
+        内存上限MB默认 = 参数.max_mem_mb
 
     # 目标平台：显式指定优先；否则按本机平台自动推断（Windows -> win-x64，其他 -> linux-arm64）
     目标平台 = 参数.target

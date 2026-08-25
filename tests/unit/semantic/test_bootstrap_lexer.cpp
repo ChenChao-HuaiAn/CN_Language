@@ -16,6 +16,7 @@
 #include "cn_compiler/driver/driver.hpp"
 #include "cn_compiler/lexer/lexer.hpp"
 #include "cn_compiler/lexer/token.hpp"
+#include "cn_compiler/module/module.hpp"
 #include "cn_compiler/parser/ast.hpp"
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
@@ -28,32 +29,75 @@ using cn_compiler::TokenType;
 
 namespace {
 
-// POSIX realpath 替代 std::filesystem::absolute（GCC 7 无 <filesystem>）
+// 取 __FILE__ 的绝对路径：POSIX realpath / Windows _fullpath
+// （替代 std::filesystem::absolute——GCC 7 无 <filesystem>；MSVC 无 realpath）
 std::string getProjectRoot() {
+#if defined(_WIN32)
+    char buf[_MAX_PATH];
+    if (!_fullpath(buf, __FILE__, _MAX_PATH)) return "";
+#else
     char buf[PATH_MAX];
     if (!realpath(__FILE__, buf)) return "";
+#endif
     std::string path(buf);
     // 从 .../tests/unit/semantic/test_bootstrap_lexer.cpp 上溯 4 级到项目根
+    // （Windows 路径分隔符为 '\'，POSIX 为 '/'，统一按两个分隔符截断）
     for (int i = 0; i < 4; ++i) {
-        std::size_t pos = path.rfind('/');
+        std::size_t pos = path.find_last_of("/\\");
         if (pos == std::string::npos) return "";
         path = path.substr(0, pos);
     }
+    // 相对拼接统一用 '/'（std::ifstream 在 Windows 上两者皆可）
+    for (std::size_t i = 0; i < path.size(); ++i) {
+        if (path[i] == '\\') path[i] = '/';
+    }
     return path;
+}
+
+// 读取入口文件到 content：Windows 走 readSourceFile（UTF-8 中文路径），
+// Linux 走 ifstream。返回是否成功。
+bool readEntryFile(const std::string& path, std::string& content) {
+#if defined(_WIN32)
+    std::string error;
+    return cn_compiler::module::readSourceFile(path, content, error);
+#else
+    const std::ifstream in(path.c_str());
+    if (!in) return false;
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    content = ss.str();
+    return true;
+#endif
+}
+
+// 读取文件（UTF-8 路径）并拼接：复用编译器自身的 readSourceFile
+// （Windows 下 std::ifstream 窄字符路径按 ANSI 代码页解释，UTF-8 中文路径
+//   找不到文件——与编译器模块加载同源问题；Linux 下 ifstream 即可）
+std::string readFileJoin(const std::string& root,
+                         const std::initializer_list<const char*>& rels) {
+    std::ostringstream ss;
+    for (const auto& rel : rels) {
+        std::string content;
+        std::string error;
+#if defined(_WIN32)
+        if (!cn_compiler::module::readSourceFile(root + rel, content, error)) return "";
+#else
+        const std::ifstream in((root + rel).c_str());
+        if (!in) return "";
+        ss << in.rdbuf() << "\n";
+        continue;
+#endif
+        ss << content << "\n";
+    }
+    return ss.str();
 }
 
 // 读取 CN 词法分析器模块源码（路径从 __FILE__ 推导项目根，兼容任意测试 cwd）
 std::string readLexerModule() {
     const std::string root = getProjectRoot();
     if (root.empty()) return "";
-    std::ostringstream ss;
-    for (const auto& rel : {"/CN语言编译器/词法分析.cn", "/CN语言编译器/词法/关键字.cn",
-                            "/CN语言编译器/词法/运算符.cn", "/CN语言编译器/词法/扫描.cn"}) {
-        const std::ifstream in((root + rel).c_str());
-        if (!in) return "";
-        ss << in.rdbuf() << "\n";;
-    }
-    return ss.str();
+    return readFileJoin(root, {"/CN语言编译器/词法分析.cn", "/CN语言编译器/词法/关键字.cn",
+                               "/CN语言编译器/词法/运算符.cn", "/CN语言编译器/词法/扫描.cn"});
 }
 
 struct SemanticResult {
@@ -107,8 +151,8 @@ TEST(BootstrapLexerTest, ModuleCompilesViaDriver) {
     const std::string root = getProjectRoot();
     ASSERT_FALSE(root.empty());
     const std::string entry = root + "/tests/e2e/70_self_host_lexer/主.cn";
-    std::ifstream testFile(entry.c_str());
-    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
+    std::string entryContent;
+    ASSERT_TRUE(readEntryFile(entry, entryContent)) << "入口文件不存在: " << entry;
 
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
@@ -138,14 +182,8 @@ TEST(BootstrapLexerTest, ModuleContractPresent) {
 std::string readSemanticModule() {
     const std::string root = getProjectRoot();
     if (root.empty()) return "";
-    std::ostringstream ss;
-    for (const auto& rel : {"/CN语言编译器/语义分析.cn", "/CN语言编译器/语义/符号表.cn",
-                            "/CN语言编译器/语义/内置.cn"}) {
-        const std::ifstream in((root + rel).c_str());
-        if (!in) return "";
-        ss << in.rdbuf() << "\n";
-    }
-    return ss.str();
+    return readFileJoin(root, {"/CN语言编译器/语义分析.cn", "/CN语言编译器/语义/符号表.cn",
+                               "/CN语言编译器/语义/内置.cn"});
 }
 
 // 语义分析.cn 模块可被 C++ 编译器全链路编译（模块系统：词法/语法/语义 三链）
@@ -153,8 +191,8 @@ TEST(BootstrapSemanticTest, ModuleCompilesViaDriver) {
     const std::string root = getProjectRoot();
     ASSERT_FALSE(root.empty());
     const std::string entry = root + "/tests/e2e/73_self_host_semantic/主.cn";
-    std::ifstream testFile(entry.c_str());
-    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
+    std::string entryContent;
+    ASSERT_TRUE(readEntryFile(entry, entryContent)) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
     options.stdlibDir = root + "/stdlib";
@@ -183,15 +221,9 @@ TEST(BootstrapSemanticTest, ModuleContractPresent) {
 std::string readIRModule() {
     const std::string root = getProjectRoot();
     if (root.empty()) return "";
-    std::ostringstream ss;
-    for (const auto& rel : {"/CN语言编译器/IR生成.cn", "/CN语言编译器/IR生成/IR1.cn",
-                            "/CN语言编译器/IR生成/IR2.cn", "/CN语言编译器/IR生成/IR3.cn",
-                            "/CN语言编译器/IR生成/IR4.cn"}) {
-        const std::ifstream in((root + rel).c_str());
-        if (!in) return "";
-        ss << in.rdbuf() << "\n";
-    }
-    return ss.str();
+    return readFileJoin(root, {"/CN语言编译器/IR生成.cn", "/CN语言编译器/IR生成/IR1.cn",
+                               "/CN语言编译器/IR生成/IR2.cn", "/CN语言编译器/IR生成/IR3.cn",
+                               "/CN语言编译器/IR生成/IR4.cn"});
 }
 
 // IR生成.cn 模块可被 C++ 编译器全链路编译（E2E 74 入口）
@@ -199,8 +231,8 @@ TEST(BootstrapIRTest, ModuleCompilesViaDriver) {
     const std::string root = getProjectRoot();
     ASSERT_FALSE(root.empty());
     const std::string entry = root + "/tests/e2e/74_self_host_ir/主.cn";
-    std::ifstream testFile(entry.c_str());
-    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
+    std::string entryContent;
+    ASSERT_TRUE(readEntryFile(entry, entryContent)) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
     options.stdlibDir = root + "/stdlib";
@@ -229,11 +261,7 @@ TEST(BootstrapIRTest, ModuleContractPresent) {
 std::string readCodegenModule() {
     const std::string root = getProjectRoot();
     if (root.empty()) return "";
-    const std::ifstream in((root + "/CN语言编译器/代码生成.cn").c_str());
-    if (!in) return "";
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    return ss.str();
+    return readFileJoin(root, {"/CN语言编译器/代码生成.cn"});
 }
 
 // 代码生成.cn 模块可被 C++ 编译器全链路编译（E2E 75 入口）
@@ -241,8 +269,8 @@ TEST(BootstrapCodegenTest, ModuleCompilesViaDriver) {
     const std::string root = getProjectRoot();
     ASSERT_FALSE(root.empty());
     const std::string entry = root + "/tests/e2e/75_self_host_codegen/主.cn";
-    std::ifstream testFile(entry.c_str());
-    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
+    std::string entryContent;
+    ASSERT_TRUE(readEntryFile(entry, entryContent)) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
     options.stdlibDir = root + "/stdlib";
@@ -274,8 +302,8 @@ TEST(BootstrapBootstrapTest, ModuleCompilesViaDriver) {
     const std::string root = getProjectRoot();
     ASSERT_FALSE(root.empty());
     const std::string entry = root + "/tests/e2e/76_self_host_bootstrap/主.cn";
-    std::ifstream testFile(entry.c_str());
-    ASSERT_TRUE(testFile.good()) << "入口文件不存在: " << entry;
+    std::string entryContent;
+    ASSERT_TRUE(readEntryFile(entry, entryContent)) << "入口文件不存在: " << entry;
     cn_compiler::driver::DriverOptions options;
     options.target = "win-x64";
     options.stdlibDir = root + "/stdlib";
@@ -289,11 +317,8 @@ TEST(BootstrapBootstrapTest, ModuleContractPresent) {
     const std::string root = getProjectRoot();
     ASSERT_FALSE(root.empty());
     const std::string entry = root + "/tests/e2e/76_self_host_bootstrap/主.cn";
-    const std::ifstream in(entry.c_str());
-    ASSERT_TRUE(in.good()) << "无法读取 76 主.cn";
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    const std::string src = ss.str();
+    std::string src;
+    ASSERT_TRUE(readEntryFile(entry, src)) << "无法读取 76 主.cn";
     EXPECT_NE(src.find("阶段|词法|"), std::string::npos);
     EXPECT_NE(src.find("阶段|语法|"), std::string::npos);
     EXPECT_NE(src.find("阶段|语义|"), std::string::npos);

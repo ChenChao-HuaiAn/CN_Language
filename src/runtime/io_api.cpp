@@ -13,6 +13,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
+#ifdef _WIN32
+#include <malloc.h>  // _heapmin（堆压缩，归还空闲页）
+#endif
 
 // ==================== 内存管理API（规格书10.2） ====================
 //
@@ -36,38 +42,28 @@ static std::atomic<long long> g_cn_alloc_live{0};   // 当前活动分配数
 static std::atomic<long long> g_cn_alloc_total{0};  // 累计分配次数
 
 // ---- tracked 分配注册表（供 内存::释放全部() 批量释放）----
-// 链表节点：记录 tracked 分配的指针，供 __cn_alloc_reset() 遍历释放。
-// 设计：节点本身也用 std::malloc 分配（非 tracked），避免递归注册。
-struct TrackedNode {
-    void* ptr;            // tracked 分配的用户指针
-    TrackedNode* next;    // 链表下一节点
-};
-static TrackedNode* g_trackedHead = nullptr;  // tracked 链表头
+// 2026-08-24 结构性加固（78_chain_build 段错误根治）：
+//   原实现用 std::malloc 手写链表（TrackedNode），reset/reset 之外的释放组合下
+//   易出现重复节点/悬垂节点（78 第三次 reset 段错误 0xC0000005 复现）。
+//   现改为 std::unordered_set<void*> 注册表——天然去重、O(1) 增删查、
+//   reset 遍历即释放；size 另存 unordered_map 供 cn_realloc_tracked 精确拷贝。
+//   学习 C++/Rust 经验：容器管理自己的内存；注册表只是“漏网字符串”兜底。
+static std::unordered_set<void*> g_trackedSet;            // tracked 分配集合（去重）
+static std::unordered_map<void*, std::size_t> g_trackedSize;  // ptr -> 分配大小
 
-// 注册 tracked 分配到链表（失败时不影响分配本身，仅无法批量释放）
-static void trackedRegister(void* ptr) {
+// 注册 tracked 分配（O(1)；重复注册天然去重）
+static void trackedRegister(void* ptr, std::size_t size = 0) {
     if (ptr == nullptr) return;
-    TrackedNode* node = static_cast<TrackedNode*>(std::malloc(sizeof(TrackedNode)));
-    if (node == nullptr) return;  // 注册失败不影响功能，仅无法批量释放
-    node->ptr = ptr;
-    node->next = g_trackedHead;
-    g_trackedHead = node;
+    g_trackedSet.insert(ptr);
+    if (size > 0) g_trackedSize[ptr] = size;
 }
 
-// 从链表中移除 tracked 分配（cn_free_tracked 调用时）
-static void trackedUnregister(void* ptr) {
-    if (ptr == nullptr) return;
-    TrackedNode** pp = &g_trackedHead;
-    while (*pp != nullptr) {
-        if ((*pp)->ptr == ptr) {
-            TrackedNode* node = *pp;
-            *pp = node->next;
-            std::free(node);
-            return;
-        }
-        pp = &((*pp)->next);
-    }
-    // 未找到：可能是 __cn_alloc_reset 已清空链表后的释放，忽略
+// 从注册表移除 tracked 分配（cn_free_tracked 调用时）；返回是否存在
+static bool trackedUnregister(void* ptr) {
+    if (ptr == nullptr) return false;
+    const bool existed = g_trackedSet.erase(ptr) > 0;
+    g_trackedSize.erase(ptr);
+    return existed;
 }
 
 // 分配内存：对应CN内置函数 分配（malloc 语义，失败返回nullptr）
@@ -117,15 +113,17 @@ extern "C" void* cn_alloc_tracked(std::size_t size) {
     if (p != nullptr) {
         ++g_cn_alloc_total;
         ++g_cn_alloc_live;
-        trackedRegister(p);  // 注册到链表，供批量释放
+        trackedRegister(p, size);  // 注册到链表（含 size，供 realloc 精确拷贝）
     }
     return p;
 }
 
 extern "C" void cn_free_tracked(void* ptr) {
-    if (ptr != nullptr) {
+    // 安全释放（2026-08-24 加固）：仅在 ptr 确实在本批 tracked 注册表中时释放——
+    //   reset 之后旧 ptr 不在表内，此处忽略而非 free，杜绝"reset 后遗留释放"双重释放
+    //   （78 段错误候选根因之一：组件链对已批量释放的旧串再次 字符串释放）。
+    if (ptr != nullptr && trackedUnregister(ptr)) {
         --g_cn_alloc_live;
-        trackedUnregister(ptr);  // 从链表移除
         std::free(ptr);
     }
 }
@@ -136,21 +134,26 @@ extern "C" void* cn_realloc_tracked(void* ptr, std::size_t size) {
         if (p != nullptr) {
             ++g_cn_alloc_total;
             ++g_cn_alloc_live;
-            trackedRegister(p);
+            trackedRegister(p, size);
         }
         return p;
     }
     if (size == 0) {
-        --g_cn_alloc_live;
-        trackedUnregister(ptr);
+        if (trackedUnregister(ptr)) --g_cn_alloc_live;
         return std::realloc(ptr, 0);
     }
-    // realloc 扩容：更新链表中的指针
+    // 2026-08-24 终版：std::realloc 扩容（保留"原地扩展"的堆效率，避免
+    //   malloc+memcpy+free 的堆碎片导致工作集失控——79 实测 8GB+ 未回落的教训）。
+    //   注册表为 unordered_set（天然去重）+ size map，换址时原子地
+    //   unregister(旧)+register(新,size)，杜绝原链表实现的重复/悬垂节点双 free。
     void* new_p = std::realloc(ptr, size);
-    if (new_p != nullptr && new_p != ptr) {
-        // realloc 可能返回新地址：更新链表中的指针
+    if (new_p == nullptr) return nullptr;  // 失败：旧块仍有效且仍注册，调用方自行处理
+    if (new_p != ptr) {
         trackedUnregister(ptr);
-        trackedRegister(new_p);
+        trackedRegister(new_p, size);
+    } else {
+        // 原地扩展：仅更新 size 元数据
+        g_trackedSize[ptr] = size;
     }
     return new_p;
 }
@@ -158,6 +161,28 @@ extern "C" void* cn_realloc_tracked(void* ptr, std::size_t size) {
 // 当前活动分配数（未释放块数，泄漏检测基线）
 extern "C" long long __cn_alloc_live() {
     return g_cn_alloc_live.load();
+}
+
+// RAII 辅助（2026-08-25 方案A，学习 C++ vector<string> 析构释放元素）：
+// 释放 向量<字符串> 对象的全部元素字符串。由 IR 层在 向量<字符串> 局部变量
+// 析构（DeleteObject）前调用，使字符串随局部向量离开作用域自动清理，
+// 降低 78/79 组件链每模块百万级字符串在 reset 前的峰值累积。
+// 参数：obj=向量对象指针；dataOffset/countOffset=数据指针/元素数量 字段偏移
+//   （IR 层经 classFieldOffset 编译期算出，避免硬编码布局）。
+// 语义：数据数组元素是 tracked 字符串（cn_alloc_tracked），逐个 cn_free_tracked
+//   （仅"在册"指针释放，reset 后不存在则忽略，天然防 double-free）。
+extern "C" void __cn_vector_free_strings(void* obj, long long dataOffset,
+                                         long long countOffset) {
+    if (obj == nullptr) return;
+    char* base = static_cast<char*>(obj);
+    char** data = *reinterpret_cast<char***>(base + dataOffset);
+    const long long count = *reinterpret_cast<long long*>(base + countOffset);
+    if (data == nullptr || count <= 0) return;
+    for (long long i = 0; i < count; ++i) {
+        if (data[i] != nullptr) {
+            cn_free_tracked(data[i]);
+        }
+    }
 }
 
 // 累计分配次数（吞吐统计）
@@ -275,17 +300,28 @@ extern "C" void __cn_object_delete(void* ptr) {
 // 不影响 cn_alloc/cn_realloc 分配的内存（向量数据数组由 RAII 析构管理）。
 // 设计参考 C++ 智能指针池和 Rust 的 Drop trait——批量释放仅针对无 RAII 的分配。
 extern "C" void __cn_alloc_reset() {
-    TrackedNode* node = g_trackedHead;
-    while (node != nullptr) {
-        TrackedNode* next = node->next;
-        if (node->ptr != nullptr) {
+    // 自愈式批量释放（2026-08-24 结构性加固）：
+    //   unordered_set 遍历释放——天然去重，同一 ptr 只 free 一次（杜绝 double free）；
+    //   边遍历边按值收集（set 迭代器不因 free 他人而失效）。
+    //   完成后清空注册表；reset 之后旧 ptr 的 unregister/free 走"未找到"忽略。
+    //   注意：reset 只应释放"无外部引用"的 tracked 内存（设计语义：组件间清场）。
+    std::vector<void*> 待释放;
+    待释放.reserve(g_trackedSet.size());
+    for (void* p : g_trackedSet) 待释放.push_back(p);
+    for (void* p : 待释放) {
+        if (p != nullptr) {
             --g_cn_alloc_live;
-            std::free(node->ptr);
+            std::free(p);
         }
-        std::free(node);
-        node = next;
     }
-    g_trackedHead = nullptr;
+    g_trackedSet.clear();
+    g_trackedSize.clear();
+#ifdef _WIN32
+    // 2026-08-25 堆压缩：78/79 组件链连续编译多个模块时，每个模块释放百万级
+    //   小对象后 Windows 堆不把空闲页归还 OS——工作集持续攀升（实测 26GB 失控）。
+    //   _heapmin() 压缩堆并尽量归还空闲页，使 内存::释放全部() 真正回收内存。
+    _heapmin();
+#endif
 }
 
 // ==================== IO API（规格书10.1，Task 2.9 语义调整） ====================

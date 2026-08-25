@@ -188,17 +188,17 @@ TEST(InputApiTest, PrintErr) {
     ASSERT_TRUE(TEST_FOPEN(path.c_str(), "wb", newErr));
     // 保存原始 stderr 文件描述符，重定向 stderr 到临时文件
     // POSIX dup2 成功返回 newfd（非 0），MSVC _dup2 成功返回 0；用 >=0 兼容
-    const int savedStderr = dup(fileno(stderr));
+    const int savedStderr = _dup(_fileno(stderr));
     ASSERT_GE(savedStderr, 0);
-    ASSERT_GE(dup2(fileno(newErr), fileno(stderr)), 0);
+    ASSERT_GE(_dup2(_fileno(newErr), _fileno(stderr)), 0);
     std::fclose(newErr);
 
     __cn_print_err("错误消息测试\n");
     std::fflush(stderr);
 
     // 恢复 stderr
-    ASSERT_GE(dup2(savedStderr, fileno(stderr)), 0);
-    close(savedStderr);
+    ASSERT_GE(_dup2(savedStderr, _fileno(stderr)), 0);
+    _close(savedStderr);
 
     // 读取临时文件内容
     FILE* in = nullptr;

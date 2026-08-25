@@ -234,6 +234,28 @@ target_include_directories(cn_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
 if(WIN32)
     target_link_libraries(cn_runtime PUBLIC shell32)
 endif()
+# ---- E2E 79 自举闭环运行时 obj（2026-08-24 补：CN 版组件链链接用）----
+# 79_bootstrap_closed_loop 的 link 步骤（run_e2e.py）直接链接 target/<名>.obj
+# （历史产物陈旧：MSVC 14.44 构建的 /MDd obj 与 79 的静态 CRT 链接不匹配，
+#   且 io_api.cpp 等的 tracked 加固未同步）。此处每次构建重新编译一份
+#   /MT（静态 CRT）运行时 obj 到 target/，消除陈旧产物与运行时漂移。
+if(MSVC)
+    set(CNRT_79_SRCS
+        io_api runtime string_api i128_api math_api input_api file_api time_api system_api)
+    set(CNRT_79_OBJS "")
+    foreach(_s ${CNRT_79_SRCS})
+        set(_obj ${CMAKE_SOURCE_DIR}/target/${_s}.obj)
+        list(APPEND CNRT_79_OBJS ${_obj})
+        add_custom_command(
+            OUTPUT ${_obj}
+            COMMAND ${CMAKE_CXX_COMPILER} /nologo /c /EHsc /utf-8 /MT
+                    /I${CMAKE_SOURCE_DIR}/src
+                    /Fo${_obj} ${CMAKE_SOURCE_DIR}/src/runtime/${_s}.cpp
+            DEPENDS ${CMAKE_SOURCE_DIR}/src/runtime/${_s}.cpp
+            COMMENT "CNRT 79 obj: ${_s}.obj")
+    endforeach()
+    add_custom_target(cn_runtime_79_objs ALL DEPENDS ${CNRT_79_OBJS})
+endif()
 
 # 编译器可执行文件
 add_executable(cn

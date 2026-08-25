@@ -102,3 +102,19 @@ CN 语言编译器的**运行时内存管理重构**--使用 tracked 注册表�
 - **分支**: develop
 - **未提交工作**: tracked注册表方案实现（io_api.cpp + time_api.cpp），78_chain_build段错误未解决
 - **验证基线**: 单元测试60个内存相关测试通过，78_chain_build内存峰值193MB但段错误
+---
+
+## 2026-08-24/25 会话：缺陷修复记录（E2E 107/109 + 单测 1196/1196）
+
+### 已完成修复
+1. **tracked 注册表结构性加固（src/runtime/io_api.cpp）**：手写链表 → unordered_set + size map（天然去重、O(1) 增删、reset 按值收集释放）
+   - cn_free_tracked 仅当 ptr 确实在册才释放（杜绝 reset 后遗留释放 double-free）
+   - cn_realloc_tracked 恢复 std::realloc（避免 malloc+memcpy 堆碎片），换址原子更新注册表，原地扩展仅更新 size
+2. **run_e2e.py 内存防护 + 管道防死锁**：78/79 等重负载用例轮询工作集，超 4096MB（--max-mem-mb 可调）立即 taskkill 判失败；轮询期间后台线程持续排空 stdout/stderr 管道（此前 64KB 管道缓冲写满导致子进程挂死"卡电脑"）
+3. **CMakeLists.txt**：新增 cn_runtime_79_objs 目标，每次构建自动重编 /MT 静态运行时 obj 到 target/（消除 79 链接的陈旧 obj）
+4. **MSVC 可移植性修复（单测）**：test_input_api.cpp 的 dup/dup2/close/fileno → _dup/_dup2/_close/_fileno；test_bootstrap_lexer.cpp 的 realpath/PATH_MAX → _fullpath + 复用 module::readSourceFile（UTF-8 中文路径）——MSVC 14.44/SDK 26100 下全套构建+1196/1196 全绿
+5. **79 主.cn 内存纪律**（已回退基线，见遗留）
+
+### 遗留问题（组件级，非运行时）
+- **78/79 组件链内存峰值 4GB+**：自举组件（IR生成/代码生成 处理 x64后端 656 行 + arm64后端 788 行合并源码）存在大字节字符串处理（O(n^2) 级），segment 78 修复后从"段错误"变为"内存超限被防护拦停"；79 修复版（加 reset）触发 reset-UAF → 已恢复 8/17 基线版并以防护兜底。根治需组件内部流式处理（IR生成 逐行而非整体拼接），列 P 级后续
+- **79 真实闭环待组件性能修复后复验**（ml64/link 闭环本身完好）

@@ -516,11 +516,30 @@ void IRGenerator::genClassDestructorCalls() {
         setCurrentBlock(block.get());
         for (const auto& ov : objVars) {
             if (returnedVars.count(ov.unique) > 0) continue;  // 所有权转移：跳过析构
-            // 变量槽地址 -> Load 对象指针 -> DeleteObject
+            // 变量槽地址 -> Load 对象指针
             ir::IRValue objPtr = emitResult(
                 ir::Opcode::Load,
                 {ir::IRValue::var(ov.unique, "ptr")},
                 "ptr", ov.unique, SourceLocation());
+            // 方案A RAII（2026-08-25，学习 C++ vector<string>）：向量<字符串>
+            //   局部变量析构时先释放元素字符串，使字符串随局部向量离开作用域自动
+            //   清理，降低 78/79 组件链每模块百万级字符串在 reset 前的峰值累积。
+            //   canonical 后实例化符号形如 向量$字符串（X = 元素类型）。
+            const std::string canonSrc = types::canonical(ov.srcType);
+            const bool isVectorOfString = (canonSrc.size() > 3 &&
+                canonSrc.rfind("向量$", 0) == 0 && canonSrc.find("字符串") != std::string::npos);
+            if (isVectorOfString) {
+                const int dataOff = semantic_->classFieldOffset(canonSrc, "数据");
+                const int countOff = semantic_->classFieldOffset(canonSrc, "元素数量");
+                if (dataOff >= 0 && countOff >= 0) {
+                    emit(ir::Opcode::Call,
+                         {objPtr,
+                          ir::IRValue::constant(std::to_string(dataOff), "整64"),
+                          ir::IRValue::constant(std::to_string(countOff), "整64")},
+                         ir::IRValue(), "__cn_vector_free_strings", "void",
+                         SourceLocation());
+                }
+            }
             emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
                  ov.srcType, "void", SourceLocation());
         }
