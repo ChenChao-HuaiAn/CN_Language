@@ -1733,6 +1733,8 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     //   实例化类统一由第二趟c 检查（每个类恰一次）。
     for (auto& kv : classes_) {
         if (kv.first.find('$') != std::string::npos) continue;
+        if (checkedClasses_.count(kv.first) > 0) continue;  // H3：幂等
+        checkedClasses_.insert(kv.first);
         checkClassMethods(const_cast<ClassInfo&>(kv.second));
     }
     // 第二趟b：逐个检查函数体
@@ -1749,6 +1751,8 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     //   （名含 $ 的类，原泛型类名不含 $）。
     for (auto& kv : classes_) {
         if (kv.first.find('$') != std::string::npos) {
+            if (checkedClasses_.count(kv.first) > 0) continue;  // H3：幂等
+            checkedClasses_.insert(kv.first);
             checkClassMethods(const_cast<ClassInfo&>(kv.second));
         }
     }

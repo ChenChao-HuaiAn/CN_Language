@@ -300,20 +300,29 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
                 node->name.substr(genLt + 1, genGt - genLt - 1);
             std::vector<std::string> args;
             std::size_t pos = 0;
+            // 2026-08-25 H3：平衡逗号分割（嵌套内层 < 中 , 非外层分隔）
+            int angleDepth = 0;
+            std::size_t segStart = 0;
             while (pos <= inner.size()) {
-                const std::size_t comma = inner.find(',', pos);
-                if (comma == std::string::npos) {
-                    args.push_back(inner.substr(pos));
-                    break;
+                if (pos == inner.size() || (inner[pos] == ',' && angleDepth == 0)) {
+                    args.push_back(inner.substr(segStart, pos - segStart));
+                    segStart = pos + 1;
+                    if (pos == inner.size()) break;
+                } else if (inner[pos] == '<') {
+                    angleDepth++;
+                } else if (inner[pos] == '>') {
+                    angleDepth--;
                 }
-                args.push_back(inner.substr(pos, comma - pos));
-                pos = comma + 1;
+                pos++;
             }
             for (auto& a : args) {
                 const std::size_t b = a.find_first_not_of(" \t");
                 const std::size_t e = a.find_last_not_of(" \t");
                 if (b != std::string::npos && e != std::string::npos) {
                     a = a.substr(b, e - b + 1);
+                }
+                if (a.find('<') != std::string::npos) {
+                    a = resolveGenericTypeName(a, node->location);
                 }
             }
             const std::string instName =

@@ -127,6 +127,12 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
     for (std::size_t i = 0; i < n; ++i) {
         if (!types::isReference(paramTypes[i])) continue;
         Expr* arg = node->arguments[i].get();
+        // 2026-08-25 H3 幂等：实参已是 &x（AddressOf）——共享 AST 重复检查时
+        //   二次 wrapRefArgs 不再包装（否则 前驱 -> &前驱 -> &(&前驱)=整64*）
+        if (arg->getType() == NodeType::UnaryExpr &&
+            static_cast<UnaryExpr*>(arg)->op == Operator::AddressOf) {
+            continue;
+        }
         bool isLvalue = false;
         switch (arg->getType()) {
             case NodeType::IdentifierExpr: {
@@ -140,7 +146,10 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
                 isLvalue = true;
                 break;
             case NodeType::UnaryExpr:
-                isLvalue = (static_cast<UnaryExpr*>(arg)->op == Operator::Deref);
+                // 2026-08-25 H3：Deref 与 AddressOf（已 wrap 过 &前驱）都是左值——
+                //   嵌套实例化共享 AST 二次检查时 &前驱 不应再报"非左值"
+                isLvalue = (static_cast<UnaryExpr*>(arg)->op == Operator::Deref ||
+                            static_cast<UnaryExpr*>(arg)->op == Operator::AddressOf);
                 break;
             default:
                 isLvalue = false;
@@ -667,7 +676,16 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                         std::to_string(argTypes.size()) + " 个");
             } else {
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (!canConvertType(argTypes[i], method->paramTypes[i])) {
+                    // 2026-08-25 H3：形参是引用（整64&）且实参已是 &x（AddressOf）——
+                    //   共享 AST（实例化类同一 mi.ast）二次检查时已 wrap，引用已满足，
+                    //   跳过转换比较（否则 &前驱=整64* 误报"无法转 整64&"）
+                    bool refAlready =
+                        types::isReference(method->paramTypes[i]) &&
+                        node->arguments[i]->getType() == NodeType::UnaryExpr &&
+                        static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
+                            Operator::AddressOf;
+                    if (!refAlready &&
+                        !canConvertType(argTypes[i], method->paramTypes[i])) {
                         diagnostics_.report(
                             DiagnosticLevel::Error, node->arguments[i]->location,
                             "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +

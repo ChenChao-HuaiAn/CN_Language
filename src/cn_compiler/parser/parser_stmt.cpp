@@ -108,6 +108,13 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
                     i++;
                     continue;
                 }
+                // 2026-08-25 H3：嵌套泛型闭合 '>>'（GreaterGreater）按 2 层闭合计
+                if (t == TokenType::GreaterGreater) {
+                    angleDepth -= 2;
+                    if (angleDepth <= 0) { angleClosed = true; break; }
+                    i++;
+                    continue;
+                }
                 if (t == TokenType::EndOfFile) break;
                 i++;
             }

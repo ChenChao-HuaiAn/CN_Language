@@ -539,6 +539,9 @@ private:
 
     // ---- 阶段3：类/接口/泛型符号表 ----
     std::unordered_map<std::string, ClassInfo> classes_;       // 类符号表（Task 3.1）
+    // 2026-08-25 H3：已检查方法体的类集合（checkClassMethods 幂等——第二趟a/c
+    //   或嵌套实例化对共享 AST 重复检查时，wrapRefArgs 会二次包装引用实参）
+    std::unordered_set<std::string> checkedClasses_;
     std::unordered_map<std::string, InterfaceInfo> interfaces_; // 接口符号表（Task 3.3）
     // P3-19：接口方法全局槽位（接口::方法 -> 全局槽；接口分派 B1 方案）
     std::unordered_map<std::string, int> interfaceSlot_;
