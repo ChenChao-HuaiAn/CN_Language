@@ -55,7 +55,10 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
         const std::string t = types::canonical(args[0]);
         const std::string e = types::canonical(args[1]);
         structName = SemanticAnalyzer::resultStructName(t, e);
-        valueType = t;
+        // 宿主缺陷根治（2026-08-25）：错误(码) 存 E（错误值类型，如 整32），
+        //   正常(值) 存 T——原恒用 T 导致 错误() 分支把 T（结构体）当存储类型，
+        //   CopyStruct 从错误码值（如 7）读 32 字节 -> 访问地址 7 崩溃 0xC0000005。
+        valueType = (name == "错误") ? e : t;
     } else if (isOptional) {
         const std::string t =
             types::canonical(SemanticAnalyzer::optionalTypeArg(node->resolvedType));
@@ -108,28 +111,37 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
             if (f.name == "值") { valueOffset = semantic_->fieldOffsetOf(decl, f.name); }
         }
     }
-    // Task 6.1（泛型类 ensureLoweredType 生成的合成结构体）：fieldOffsetOf 可能因
-    //   联合体布局时机返回错误偏移（1 而非 8）——结果/可选合成结构体首字段 布尔(1)，
-    //   值/联合字段按 8 字节对齐。防御：偏移 < 8 时用 8（与 standard layout 一致）。
-    if (valueOffset < 0 || valueOffset < 8) valueOffset = 8;
+    // 宿主缺陷根治（2026-08-25）：valueOffset 取真实布局（computeLayout）——
+    //   整64/结构体 联合体偏移 8、整32 偏移 4。原强制 8 使 结果<整32,整32>（联合体
+    //   真实偏移 4）写/读偏移错位（坏.错误 读 0 实测）。仅未找到字段时防御用 8。
+    if (valueOffset < 0) valueOffset = 8;
     ir::IRValue valAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                      std::to_string(valueOffset), node->location);
 
     // 实参值（构造器单参数）
     if (!node->arguments.empty()) {
         ir::IRValue val = genExpr(node->arguments[0].get());
-        const std::string valIrType = mapType(valueType.empty() ? "整32" : valueType);
-        // 值类型适配：i32 -> i64 槽（StorePtr 按目标类型）；字符串/类 = ptr
-        std::string storeType = valIrType;
-        if (storeType != "ptr" && storeType != "f64" && storeType != "i1" &&
-            storeType != "i128" && storeType != "u128") {
-            storeType = "i64";
+        // 宿主缺陷根治（2026-08-25）：结构体值（正常(s)）须 CopyStruct 拷入联合体
+        //   内联存储——原 StorePtr 只存 8 字节地址，结果.值 读到地址而非结构体数据，
+        //   嵌套 查.值.名ID 把地址当字段值（打印地址 实测）、直接拷贝读地址字节。
+        //   Result<结构体> 的 值 字段 = 结构体数据本体（值语义，与布局 totalSize 一致）。
+        if (semantic_ != nullptr && semantic_->isStructType(types::canonical(valueType))) {
+            const int size = semantic_->typeSizeOf(valueType);
+            emit(ir::Opcode::CopyStruct, {valAddr, val}, ir::IRValue(),
+                 std::to_string(size), "void", node->location);
+        } else {
+            const std::string valIrType = mapType(valueType.empty() ? "整32" : valueType);
+            // 宿主缺陷根治（2026-08-25）：按值类型自然宽度存储——整32 -> i32（4 字节）、
+            //   整64/字符串/指针 -> i64/ptr（8 字节）、布尔 -> i8（1 字节）。原强制 i64
+            //   使 结果<整32,整32>（联合体 4 字节）写入越界（坏.错误 读 0 实测）。
+            std::string storeType = valIrType;
+            if (storeType == "i1") storeType = "i8";
+            if (val.type != storeType && !storeType.empty()) {
+                val = emitResult(ir::Opcode::Cast, {val}, storeType, "", node->location);
+            }
+            emit(ir::Opcode::StorePtr, {valAddr, val}, ir::IRValue(), "",
+                 storeType, node->location);
         }
-        if (val.type != storeType && !storeType.empty()) {
-            val = emitResult(ir::Opcode::Cast, {val}, storeType, "", node->location);
-        }
-        emit(ir::Opcode::StorePtr, {valAddr, val}, ir::IRValue(), "",
-             storeType, node->location);
     }
 
     // 结果 = 结构体地址（ptr）；调用方按结构体路径 CopyStruct

@@ -315,6 +315,22 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                 if (ci != nullptr) return ci->baseName;
             }
             return "";
+        case NodeType::CallExpr: {
+            // 宿主缺陷根治（2026-08-25）：函数调用结果源码类型——优先语义层写回的
+            //   resolvedType（正常/错误 等内置），普通函数调用 resolvedType 为空时
+            //   按被调函数返回类型解析（安全除法(a,b) -> 结果<整32,整32>）。原缺
+            //   CallExpr 分支返回空串，? 运算符读偏移按操作数类型推导失败（默认 8 读错位）。
+            const CallExpr* call = static_cast<CallExpr*>(node);
+            if (!call->resolvedType.empty()) return call->resolvedType;
+            if (call->callee->getType() == NodeType::IdentifierExpr &&
+                semantic_ != nullptr) {
+                const std::string fn =
+                    static_cast<const IdentifierExpr*>(call->callee.get())->name;
+                const std::string sig = semantic_->funcFirstSigKey(fn);
+                return semantic_->funcReturnTypeOf(sig.empty() ? fn : sig);
+            }
+            return "";
+        }
         case NodeType::MemberExpr: {
             MemberExpr* mem = static_cast<MemberExpr*>(node);
             const std::string objType = exprSrcType(mem->object.get());

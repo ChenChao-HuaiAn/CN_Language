@@ -1,0 +1,17 @@
+根治嵌套结构体字段访问宿主缺陷（结果<结构体>.值.字段）+ 错误传播?运算符宽错误码
+
+五个叠加宿主缺陷根治（2026-08-25，用户批准）：
+① 结果/可选 局部变量合成结构体未提前降级（semantic_decl visitVarDecl
+   补 ensureLoweredType）→ IR 槽 1 槽（应 2+）CopyStruct 溢出覆盖相邻变量
+   （p.x 被写 &p 实测）
+② visitMemberExpr 嵌套成员对象类型推导不识别 结果.值 成员映射（返回常量 0）
+③ handleResultCtor 结构体值 StorePtr 存地址（改 CopyStruct 内联）+ 结构体字段
+   读 LoadPtr（改返回字段地址）+ 错误() 存 E 而非 T（错误码当地址 0xC0000005）
+   + 真实联合体偏移（整32=4/整64=8，原强制 8）+ 自然宽度存储（i32 不强制 i64）
+④ memberObjStructType 结果成员映射（lvalueAddress 嵌套偏移）
+⑤ ? 运算符 propagateType=函数返回类型（原=操作数类型）+ 读/写偏移分离
+   + exprSrcType 补 CallExpr 分支 + 宽错误码传播（E 整32->整64）
+
+新增 E2E 114_宿主缺陷_嵌套结构体字段访问（嵌套 5/101、临时 5、错误 7）；
+60_error_propagate 错误传播全 PASS。回归 E2E 114/116（78/79 已知遗留）、
+单测 1196/1196。plans/014 已更新。

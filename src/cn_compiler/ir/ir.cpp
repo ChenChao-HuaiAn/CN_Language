@@ -511,6 +511,23 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
                 }
             }
         }
+        // 宿主缺陷根治（2026-08-25）：结果/可选 .值/.错误 不是合成结构体直接字段
+        //   （在联合体内）——嵌套成员（查.值.类型ID）须按结果/可选成员映射推导，
+        //   否则 lvalueAddress 找不到对象类型而不加外层字段偏移（类型ID 在偏移8
+        //   读成 0 偏移 名ID 值 实测）。
+        if (objType.empty()) {
+            const std::string canonInner = types::canonical(innerType);
+            if (SemanticAnalyzer::isResultType(canonInner)) {
+                const std::vector<std::string> rargs =
+                    SemanticAnalyzer::resultTypeArgs(canonInner);
+                if (inner->memberName == "值" && rargs.size() == 2) objType = rargs[0];
+                else if (inner->memberName == "错误" && rargs.size() == 2) objType = rargs[1];
+                else if (inner->memberName == "正常") objType = "布尔";
+            } else if (SemanticAnalyzer::isOptionalType(canonInner)) {
+                if (inner->memberName == "值") objType = SemanticAnalyzer::optionalTypeArg(canonInner);
+                else if (inner->memberName == "有值") objType = "布尔";
+            }
+        }
     } else if (node->object->getType() == NodeType::IndexExpr) {
         IndexExpr* idx = static_cast<IndexExpr*>(node->object.get());
         if (idx->object->getType() == NodeType::IdentifierExpr) {

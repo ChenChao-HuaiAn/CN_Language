@@ -644,7 +644,13 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
             //   可选->可选）；传播后值类型 = T（正常分支取 .值）。
             //   失败分支由 IR 层生成"构造错误结果并返回"（Rust ? 语义）
             {
-                node->propagateType = operandType;  // 回填（IR 层降级用）
+                // 宿主缺陷根治（2026-08-25）：propagateType 应为当前函数返回类型
+                //   （currentReturnType_）而非操作数类型——宽错误码传播（操作数
+                //   结果<整32,整32>、函数返回 结果<整32,整64>）原用操作数类型，
+                //   IR 层错误临时按 结果$整32$整32（8 字节/偏移 4）分配，返回时
+                //   按 16 字节拷贝溢出 -> 主函数读 .错误 错位（4294967296 实测）。
+                //   IR 层读侧偏移/类型按操作数类型、写侧按 propagateType 分别取。
+                node->propagateType = currentReturnType_;
                 if (isResultType(operandType) || isOptionalType(operandType)) {
                     const std::vector<std::string> args = resultTypeArgs(operandType);
                     if (isResultType(operandType) && args.size() == 2) {

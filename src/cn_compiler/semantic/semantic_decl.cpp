@@ -146,6 +146,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         varType = resolveTypeName(varType, mod, node->location);
         if (!node->typeName.empty()) node->typeName = varType;
     }
+    // 宿主缺陷根治（2026-08-25）：结果/可选 局部变量的合成结构体须在 IR 槽分配前
+    //   降级——lowerResultOptionalTypes（第一趟f）只处理函数签名/返回，局部变量
+    //   类型（结果<点,整32>）未降级 -> IR registerVarSlots 的 isStructType 判 false
+    //   -> 1 槽分配（应 2 槽），CopyStruct 16 字节溢出覆盖相邻变量槽（p.x 被写 &p 实测）。
+    if (SemanticAnalyzer::isResultType(varType) ||
+        SemanticAnalyzer::isOptionalType(varType)) {
+        ensureLoweredType(varType);
+    }
     // H7 补完（2026-08-25）：类类型栈变量无初始化器裸声明（类名 变量）须可默认构造——
     //   类声明了构造但无 0 参构造（仅有带参构造）时无法默认构造，编译报错
     //   （与 C++ 语义一致；无构造类允许默认构造仅分配，与 类名() 语义一致）。

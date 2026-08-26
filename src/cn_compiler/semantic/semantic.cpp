@@ -906,11 +906,6 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
 int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& fieldName) const {
     for (const auto& f : decl->fields) {
         if (f.name == fieldName) {
-            // Task 6.1（ensureLoweredType 生成的合成结构体）：错误值联合
-            //   （.值/.错误 所在）布局可能因联合体 align 时机返回错误偏移
-            //   （1 而非 8）——合成结构体首字段 布尔(1) + 8 字节对齐联合体，
-            //   统一按 8 字节偏移（与 lowerResultOptionalTypes 标准布局一致）。
-            if (fieldName == "错误值联合" && !decl->isUnion && f.offset < 8) return 8;
             return decl->isUnion ? 0 : f.offset;
         }
     }
@@ -927,17 +922,12 @@ int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& f
     if (mapped != fieldName) {
         for (const auto& f : decl->fields) {
             if (f.name == mapped) {
-                // Task 6.1（ensureLoweredType 生成的合成结构体）：错误值联合
-                //   （.值/.错误 所在）布局可能因联合体 align 时机返回错误偏移
-                //   （1 而非 8）——合成结构体首字段 布尔(1) + 8 字节对齐联合体，
-                //   统一按 8 字节偏移（与 lowerResultOptionalTypes 标准布局一致）。
-                if (mapped == "错误值联合" && !decl->isUnion) return 8;
+                // 宿主缺陷根治（2026-08-25）：联合体偏移按真实布局（computeLayout
+                //   ——整64/结构体 联合体偏移 8、整32 偏移 4），不再强制 8——原强制
+                //   8 使 结果<整32,整32>（联合体真实偏移 4）写/读偏移错位（坏.错误 读 0）。
                 return decl->isUnion ? 0 : f.offset;
             }
         }
-        // Task 6.1 防御：结果 合成结构体映射到 错误值联合 但字段未找到（布局错），
-        //   恒返回 8（标准偏移）。
-        if (mapped == "错误值联合" && !decl->isUnion) return 8;
     }
     return -1;
 }
