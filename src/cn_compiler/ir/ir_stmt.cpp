@@ -680,8 +680,40 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                         ir::Opcode::NewObject,
                         {ir::IRValue::constant(canonTgt, "ptr")},
                         "ptr", extra, node->location);
-                    emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
-                         std::to_string(ci->totalSize), "void", node->location);
+                    // 方案A（2026-08-25）：目标类有拷贝构造（类名(类名& 其他)）
+                    //   时，初始化拷贝改调拷贝构造（深拷贝），而非 CopyStruct 浅拷贝
+                    //   （含裸指针字段浅拷贝析构双释放 0xC0000374，映射 乙 = 甲 实测）。
+                    //   byRef ABI：拷贝构造引用参数按"被引用左值地址"传参——
+                    //   源为标识符变量时传 源变量槽地址（&甲），体内经 byRef
+                    //   解引用得源对象指针（与 ir_expr.cpp 类赋值路径一致）。
+                    const ClassMemberInfo* copyCtor =
+                        semantic_->findCopyConstructor(canonTgt);
+                    if (copyCtor != nullptr) {
+                        const std::string copyOwner =
+                            copyCtor->ownerClass.empty() ? canonTgt
+                                                         : copyCtor->ownerClass;
+                        const std::string initName =
+                            static_cast<IdentifierExpr*>(node->initializer.get())->name;
+                        const std::string srcUnique = lookupVarName(initName);
+                        ir::IRValue srcAddr;
+                        if (isByRefCapture(initName)) {
+                            // 源为引用参数：槽内存被引用对象地址（Load 槽）
+                            srcAddr = emitResult(
+                                ir::Opcode::Load,
+                                {ir::IRValue::var(srcUnique, "ptr")},
+                                "ptr", srcUnique, node->location);
+                        } else {
+                            srcAddr = emitResult(ir::Opcode::AddrOf,
+                                                 {ir::IRValue::var(srcUnique, "i64")},
+                                                 "ptr", srcUnique, node->location);
+                        }
+                        emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
+                             methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
+                             node->location);
+                    } else {
+                        emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
+                             std::to_string(ci->totalSize), "void", node->location);
+                    }
                     emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique,
                          "ptr", node->location);
                     return;
@@ -693,6 +725,44 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         }
         emit(ir::Opcode::Store, {value}, ir::IRValue(),
              unique, irType, node->location);
+    }
+    // H7 根治（2026-08-25，宿主缺陷）：类类型栈变量无初始化器声明（类名 变量）——
+    //   此前缺 NewObject + 默认构造调用，变量槽存未初始化地址 -> 空指针解引用
+    //   （0xC0000409 / 运行时错误3「空指针解引用」）。泛型实例化（盒子$整64）与
+    //   非泛型类（简单盒）同样受影响（H7 记录：genVarDecl 对泛型类栈变量缺失
+    //   NewObject+构造+析构生成）。语义与 `类名 变量 = 类名()` 一致：
+    //   NewObject 分配 + 本类自身声明的无参构造调用（有则调，ownerClass 限定同
+    //   ir_oop_call.cpp 构造调用路径）；无构造 -> 默认构造仅分配。
+    //   RAII 析构由上方 oopVarSrcTypes_ 登记 + genClassDestructorCalls 统一收尾
+    //   （有析构函数类函数返回前 DeleteObject，与既有类变量一致）。
+    if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
+        semantic_ != nullptr) {
+        const std::string canonSrc = types::canonical(srcType);
+        const ClassInfo* ci = semantic_->findClass(canonSrc);
+        if (ci != nullptr && !ci->isAbstract) {
+            // NewObject：extra = "类名|大小字节"（与 ir_oop_call.cpp 构造调用一致）
+            const std::string extra = canonSrc + "|" + std::to_string(ci->totalSize);
+            ir::IRValue obj = emitResult(
+                ir::Opcode::NewObject,
+                {ir::IRValue::constant(canonSrc, "ptr")},
+                "ptr", extra, node->location);
+            // 变量槽存对象指针
+            emit(ir::Opcode::Store, {obj}, ir::IRValue(), unique, "ptr",
+                 node->location);
+            // 默认构造调用：本类自身声明的无参构造（有则调用，this = 对象指针）
+            for (const auto& mk : ci->methods) {
+                if (mk.second.isConstructor && mk.second.hasBody &&
+                    mk.second.ownerClass == canonSrc &&
+                    mk.second.paramTypes.empty()) {
+                    std::vector<ir::IRValue> args;
+                    args.push_back(obj);  // this（对象指针）
+                    emit(ir::Opcode::Call, args, ir::IRValue(),
+                         methodSymbolKey(canonSrc, mk.second.sigKey), "void",
+                         node->location);
+                    break;
+                }
+            }
+        }
     }
 }
 void IRGenerator::genBlock(BlockStmt* node) {

@@ -829,6 +829,16 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "无法将 '" + valueType + "' 隐式转换为 '" + targetType + "'");
     }
+    // 方案A 强制规则（2026-08-25）：类对象赋值拷贝（乙 = 甲，两者为类变量）——
+    //   有析构类须有拷贝构造（函数 类名(类名& 其他) 深拷贝），否则浅拷贝裸指针
+    //   字段析构双释放 0xC0000374。引用目标（类& 乙 = 甲 后 乙 = 丙）为指针
+    //   写回非拷贝，跳过。
+    if (targetType != "未知" && valueType != "未知" &&
+        !types::isReference(targetType) &&
+        isClassType(types::canonical(targetType)) &&
+        isClassType(types::canonical(valueType))) {
+        checkCopyRequiresCtor(types::canonical(targetType), node->location);
+    }
     lastType_ = targetType == "未知" ? valueType : targetType;
 }
 void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
@@ -1310,12 +1320,15 @@ void SemanticAnalyzer::collectLambdaCaptures(
     }
 }
 void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
+    // H8 补完（2026-08-25）：SizeofExpr AST 节点被泛型多实例共享——不可改写
+    //   node->typeName（最后一次检查的实例特定值污染所有实例，IR 取同一值）。
+    //   类型解析移交 IR 层：按各自 genericTypeParams_ 用 substGenericType +
+    //   resolveGenericTypeName 重算（本层仅计算一次供防御，IR 不依赖）。
     // 泛型上下文：类型参数 T 替换为当前实例化实参（向量$整32 方法体内 T -> 整32）
-    std::string t = resolveGenericTypeName(node->typeName, node->location);
+    const std::string t = resolveGenericTypeName(node->typeName, node->location);
     // A-2（crate 分桶）：多模块同名类型按当前模块解析（限定键）
-    t = resolveTypeName(t, currentModuleName_, node->location);
-    node->typeName = t;
-    node->size = typeSizeOf(t);
+    const std::string resolved = resolveTypeName(t, currentModuleName_, node->location);
+    node->size = typeSizeOf(resolved);
     lastType_ = "整64";
 }
 void SemanticAnalyzer::visitCastExpr(CastExpr* node) {

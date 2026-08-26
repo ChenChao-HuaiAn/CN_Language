@@ -64,6 +64,7 @@ struct ClassMemberInfo {
     std::string ownerClass;                    // 所属类名（沿继承链查找时记录来源类）
     bool isConstructor = false;                // 构造函数（函数名 == 类名）
     bool isDestructor = false;                 // 析构函数（~类名）
+    bool isCopyConstructor = false;            // 拷贝构造（单参同类型引用：类名(类名& 其他)）
     bool hasBody = false;                      // 是否有方法体（抽象/接口签名为空）
     const ClassMember* ast = nullptr;          // AST 节点指针（供 IR 层生成）
     std::string sigKey;                        // 方法签名 key（名#参数串，mangling 用）
@@ -98,6 +99,11 @@ struct ClassInfo {
     int ifaceRegionSize = 0;                   // 接口分派区字节数 (maxSlot+1)*8
     bool isAbstract = false;                   // 含抽象方法（不可实例化）
     const ClassDecl* ast = nullptr;            // AST 节点指针
+    // H8 根治（2026-08-25）：泛型类实例化实参列表（instantiateGeneric 存储）。
+    //   方法体 genericTypeParams_ 解析用——嵌套实参（向量$映射$整64$整64 的
+    //   映射$整64$整64）内含 $，无法从实例化名朴素反解（原实现截成模板名 映射，
+    //   类型大小(T) 兜底 8）。仿照 genericFuncInstances_（泛型函数已存 args）。
+    std::vector<std::string> typeArgs;
 };
 
 // 接口符号信息：只含虚函数签名（Task 3.3）
@@ -210,6 +216,14 @@ public:
     const ClassMemberInfo* lookupClassMember(const std::string& className,
                                              const std::string& memberName,
                                              std::string& ownerClass) const;
+    // 2026-08-25 方案A：查类的拷贝构造（单参同类型引用 类名(类名& 其他)）；
+    //   有则返回（按值拷贝走深拷贝），无则返回 nullptr
+    const ClassMemberInfo* findCopyConstructor(const std::string& className) const;
+    // 2026-08-25 方案A 强制规则：有析构类按值拷贝（初始化/赋值）须有拷贝构造，
+    //   否则编译报错（浅拷贝裸指针字段析构双释放 0xC0000374）。调用方仅在
+    //   确认发生"类对象拷贝"时调用（无析构类保持浅拷贝，不触发）。
+    void checkCopyRequiresCtor(const std::string& className,
+                               const SourceLocation& loc);
     // 查询类虚函数表槽位（方法名 -> 槽位索引；非虚/未找到返回-1）
     int classVtableIndex(const std::string& className, const std::string& methodName) const;
     // 查询类布局（实例总大小/对齐）
@@ -219,6 +233,12 @@ public:
     // 查询泛型声明（未找到返回nullptr）。Debug 子任务修复（泛型类方法体提升
     //   需解析 实例化类名$实参 的类型参数映射）——公开转发供 IR 层访问。
     const GenericInfo* findGeneric(const std::string& name) const;
+    // 泛型实例化类型名替换（Task 3.8）：名<实参> -> 实例化类名（容器$整32）；
+    //   非泛型类型原样返回。H8 补完（2026-08-25）：公开供 IR 层 类型大小(T)
+    //   按各实例 genericTypeParams_ 重算时实例化具体泛型源形式（映射<整64,整64>
+    //   -> 映射$整64$整64）——共享 AST 的 node->size 被最后一次检查污染。
+    std::string resolveGenericTypeName(const std::string& typeName,
+                                       const SourceLocation& loc);
     // ---- 第 4 层（v2.0 决策9，P1-4）：顶层常量查询（IR 层编译期折叠）----
     // 查询顶层常量值文本（未注册返回空串；值为字面量 raw 文本）
     std::string globalConstValue(const std::string& name) const {
@@ -293,9 +313,6 @@ private:
     void popScope();                               // 退出当前作用域
     // 声明变量（同作用域重复声明返回false并报告错误）
     bool declareVar(const std::string& name, const std::string& type, const SourceLocation& loc);
-    // 泛型实例化类型名替换（Task 3.8）：名<实参> -> 实例化类名（容器$整32）；
-    //   非泛型类型原样返回。供 visitVarDecl 等在使用前统一替换。
-    std::string resolveGenericTypeName(const std::string& typeName, const SourceLocation& loc);
     // 注册结构体/枚举类型名（同模块重复注册报错；跨模块同名允许 = crate 分桶，
     //   A-2 2026-08：类型按模块隔离，引用经 resolveTypeName 解析到所属模块）
     void declareTypeName(const std::string& name, const std::string& module,

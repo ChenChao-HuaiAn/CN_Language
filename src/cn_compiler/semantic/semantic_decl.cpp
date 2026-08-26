@@ -146,6 +146,34 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         varType = resolveTypeName(varType, mod, node->location);
         if (!node->typeName.empty()) node->typeName = varType;
     }
+    // H7 补完（2026-08-25）：类类型栈变量无初始化器裸声明（类名 变量）须可默认构造——
+    //   类声明了构造但无 0 参构造（仅有带参构造）时无法默认构造，编译报错
+    //   （与 C++ 语义一致；无构造类允许默认构造仅分配，与 类名() 语义一致）。
+    //   IR 层裸声明按"无参构造调用/仅分配"生成 NewObject，无默认构造时静默
+    //   分配未初始化对象是安全隐患，须在语义层拦截（H7 根治补完）。
+    if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
+        !varType.empty() && isClassType(varType)) {
+        const ClassInfo* ci = findClass(varType);
+        if (ci != nullptr) {
+            bool hasAnyCtor = false;
+            bool hasDefaultCtor = false;
+            for (const auto& mk : ci->methods) {
+                if (mk.second.isConstructor && mk.second.hasBody &&
+                    mk.second.ownerClass == varType) {
+                    hasAnyCtor = true;
+                    if (mk.second.paramTypes.empty()) {
+                        hasDefaultCtor = true;
+                        break;
+                    }
+                }
+            }
+            if (hasAnyCtor && !hasDefaultCtor) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "类类型变量 '" + node->name + "' 无默认构造（类 '" +
+                                    varType + "' 仅声明带参构造），裸声明须可默认构造");
+            }
+        }
+    }
     // P3-18（引用参数 A-1 扩展）：引用变量声明（变量 整32& r = x）——
     //   槽存被引用左值地址，读/写经 byRef 解引用。绑定目标须为左值：
     //   标识符 / 下标 / 解引用 / 成员 / 引用返回调用（P3-18 补完）。
@@ -233,6 +261,19 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (varType.empty()) {
         // 无类型标注且无初始值：类型未知
         varType = "未知";
+    }
+    // 方案A 强制规则（2026-08-25）：类对象初始化拷贝（类名 乙 = 甲，甲 为类变量）——
+    //   有析构类须有拷贝构造（函数 类名(类名& 其他) 深拷贝），否则浅拷贝裸指针
+    //   字段析构双释放 0xC0000374（checkCopyRequiresCtor 仅在确认发生拷贝时拦截）。
+    if (node->initializer != nullptr &&
+        node->initializer->getType() == NodeType::IdentifierExpr &&
+        !varType.empty() && varType != "未知" && isClassType(varType)) {
+        std::string initVarType;
+        if (lookupVar(static_cast<IdentifierExpr*>(node->initializer.get())->name,
+                      initVarType) &&
+            isClassType(types::canonical(initVarType))) {
+            checkCopyRequiresCtor(varType, node->location);
+        }
     }
     declareVar(node->name, varType, node->location);
 }

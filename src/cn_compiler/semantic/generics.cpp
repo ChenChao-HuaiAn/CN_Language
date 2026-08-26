@@ -434,9 +434,31 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 // 规范化析构名：~类名（与语义层 resolveClass 一致，IR 层符号解析依赖）
                 if (mi.isDestructor) mi.name = "~" + src->name;
                 for (auto& p : member->params) {
-                    mi.paramTypes.push_back(
-                        types::canonicalParam(substTypeParam(p->typeName, gen->typeParams, args)));
+                    // 2026-08-25 H6 根治：参数类型里的当前类模板名（src->name=盒子）
+                    //   替换为实例名（instanceName=盒子$整64）——substTypeParam 只
+                    //   替换类型参数 T，不替换"当前泛型类自身"；拷贝构造
+                    //   函数 盒子(盒子& 其他) 的参数类型否则仍 盒子&，
+                    //   调用点报"无法将 盒子$整64 隐式转换 盒子&"。
+                    std::string pt = substTypeParam(p->typeName, gen->typeParams, args);
+                    if (!pt.empty() && types::canonical(types::stripRef(pt)) == src->name) {
+                        const std::size_t plen = pt.size();
+                        const std::string psuffix =
+                            (!pt.empty() && pt.back() == '&') ? "&" : "";
+                        const std::size_t pbase = psuffix.empty() ? plen : plen - 1;
+                        pt = instanceName + pt.substr(pbase) + psuffix;
+                    }
+                    mi.paramTypes.push_back(types::canonicalParam(pt));
                 }
+                // 2026-08-25 方案A：拷贝构造识别（泛型实例化类：类名(类名& 其他)）
+                //   H6 补完（2026-08-25）：参数类型经上方 H6 模板名替换后已是实例名
+                //   （映射$整64$整64&），比较对象须为 instanceName（实例名）而非
+                //   src->name（模板名 映射）——原判定恒 false，isCopyConstructor
+                //   从未置位 -> findCopyConstructor 返回空 -> 拷贝退化浅拷贝
+                //   （裸指针字段共享析构双释放 0xC0000374）。
+                mi.isCopyConstructor = mi.isConstructor &&
+                    mi.paramTypes.size() == 1 &&
+                    types::isReference(mi.paramTypes[0]) &&
+                    types::canonical(types::stripRef(mi.paramTypes[0])) == instanceName;
                 mi.sigKey = signatureKey(mi.name, mi.paramTypes);
                 // Debug 子任务修复（构造函数重载）：泛型实例化类同样用 sigKey 作
                 //   构造/析构 methods key（多版本构造共存），普通方法按名（与
@@ -517,6 +539,10 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 ensureLoweredType(mk.second.type);
             }
         }
+        // H8 根治（2026-08-25）：存储实例化实参列表——方法体 genericTypeParams_
+        //   解析用（checkClassMethods/emitClassMethod 改读此表，不再朴素 $ 反解
+        //   实例化名；嵌套实参 映射$整64$整64 含 $ 无法从名字反解）。
+        info.typeArgs = args;
         classes_[instanceName] = std::move(info);
         // 实例化类名登记到类型名表
         typeNames_.insert(instanceName);

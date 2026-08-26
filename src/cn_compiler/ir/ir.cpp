@@ -448,6 +448,12 @@ std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
         if (semantic_->isStructType(types::canonical(elem))) {
             return semantic_->typeSizeOf(elem);
         }
+        // H8 补完（2026-08-25）：类类型指针元素（向量<T> 数据 = T*，T=映射
+        //   56 字节）步长须按类总大小——原兜底 8 导致 追加/元素/删除 错位越界
+        //   0xC0000374（分配已按 sizeof 但索引按 8）。
+        if (semantic_->isClassType(types::canonical(elem))) {
+            return semantic_->typeSizeOf(elem);
+        }
         // 修复集成审查 BUG #5：i128/正128 指针元素 stride = 16 字节
         if (types::isI128(types::canonical(elem))) {
             return 16;

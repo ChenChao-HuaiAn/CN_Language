@@ -113,6 +113,43 @@ const ClassMemberInfo* SemanticAnalyzer::lookupClassMember(
     return nullptr;
 }
 
+// 2026-08-25 方案A：查类的拷贝构造（单参同类型引用 类名(类名& 其他)）。
+//   有析构的结构体按值拷贝须走拷贝构造（深拷贝），否则浅拷贝析构双释放。
+//   返回拷贝构造方法（ownerClass=所属类）；无则 nullptr。
+const ClassMemberInfo* SemanticAnalyzer::findCopyConstructor(
+    const std::string& className) const {
+    const ClassInfo* info = findClass(className);
+    while (info != nullptr) {
+        // 构造/析构 methods 按 sigKey 存储（构造 key = 名#参数串）
+        for (const auto& mk : info->methods) {
+            if (mk.second.isCopyConstructor) {
+                return &mk.second;
+            }
+        }
+        info = info->baseName.empty() ? nullptr : findClass(info->baseName);
+    }
+    return nullptr;
+}
+
+// 2026-08-25 方案A 强制规则：有析构类按值拷贝（初始化/赋值）须有拷贝构造
+//   （函数 类名(类名& 其他) 深拷贝），否则编译报错——浅拷贝裸指针字段
+//   析构双释放 0xC0000374。无析构类保持浅拷贝（零开销），不触发。
+//   调用方仅在确认发生"类对象拷贝"时调用（标识符初始化/标识符赋值）。
+void SemanticAnalyzer::checkCopyRequiresCtor(const std::string& className,
+                                             const SourceLocation& loc) {
+    const ClassInfo* info = findClass(className);
+    if (info == nullptr) return;
+    bool hasDtor = false;
+    for (const auto& mk : info->methods) {
+        if (mk.second.isDestructor) { hasDtor = true; break; }
+    }
+    if (!hasDtor) return;  // 无析构：保持浅拷贝
+    if (findCopyConstructor(className) != nullptr) return;  // 有拷贝构造：深拷贝
+    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "有析构类 '" + className + "' 按值拷贝须有拷贝构造（函数 " +
+                            className + "(" + className + "& 其他)）");
+}
+
 // 查询类虚函数表槽位（方法名 -> 槽位索引；非虚/未找到返回-1）
 int SemanticAnalyzer::classVtableIndex(const std::string& className,
                                        const std::string& methodName) const {
@@ -485,6 +522,13 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                                         ? p->funcPtr.toString()
                                         : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));
         }
+        // 2026-08-25 方案A：拷贝构造识别——构造函数 + 单参 + 参数类型 == 同类型引用
+        //   （类名(类名& 其他)）。有析构结构体按值拷贝须走拷贝构造（深拷贝），
+        //   否则浅拷贝析构双释放（0xC0000374）。
+        mi.isCopyConstructor = mi.isConstructor &&
+            mi.paramTypes.size() == 1 &&
+            types::isReference(mi.paramTypes[0]) &&
+            types::canonical(types::stripRef(mi.paramTypes[0])) == node->name;
         mi.sigKey = signatureKey(mi.name, mi.paramTypes);
         // Debug 子任务修复（构造函数重载覆盖）：构造函数/析构 用 sigKey（名#参数串）
         //   作 methods 表 key——多版本构造（盒子() / 盒子(整64)）允许共存
@@ -807,6 +851,10 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         // Task 6.1（嵌套泛型 链表$整32 方法体内 节点<T>）：实例化类名含 $，
         //   解析类型实参（链表$整32 -> T=整32）设置 genericTypeParams_，
         //   供 resolveGenericTypeName 替换方法体内的 节点<T> 为 节点$整32。
+        // H8 根治（2026-08-25）：改读 instantiateGeneric 存储的实参列表
+        //   （info.typeArgs）——原实现朴素 $ 分割反解实例化名，嵌套实参
+        //   （向量$映射$整64$整64 的 映射$整64$整64）含 $ 被截成模板名 映射，
+        //   T 映射错导致 类型大小(T) 兜底 8（映射 应 56）。
         std::unordered_map<std::string, std::string> savedTypeParams =
             genericTypeParams_;
         genericTypeParams_.clear();
@@ -815,15 +863,10 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
             const std::string genName = info.name.substr(0, dollar);
             const GenericInfo* ginfo = findGeneric(genName);
             if (ginfo != nullptr) {
-                std::string rest = info.name.substr(dollar + 1);
-                std::size_t apos = 0;
-                for (std::size_t ti = 0; ti < ginfo->typeParams.size(); ++ti) {
-                    const std::size_t delim = rest.find('$', apos);
-                    const std::string arg = (delim == std::string::npos)
-                        ? rest.substr(apos) : rest.substr(apos, delim - apos);
-                    genericTypeParams_[ginfo->typeParams[ti]] = arg;
-                    if (delim == std::string::npos) break;
-                    apos = delim + 1;
+                for (std::size_t ti = 0;
+                     ti < ginfo->typeParams.size() && ti < info.typeArgs.size();
+                     ++ti) {
+                    genericTypeParams_[ginfo->typeParams[ti]] = info.typeArgs[ti];
                 }
             }
         }
@@ -846,6 +889,20 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
                 ptype = paramTypes[pi];
             } else {
                 ptype = resolveGenericTypeName(types::canonicalParam(p->typeName), p->location);
+            }
+            // 2026-08-25 H6 根治：泛型实例化类方法体内，参数类型中的当前类模板名
+            //   （盒子，dollar 前段）须替换为实例名（盒子$整64）——拷贝构造
+            //   函数 盒子(盒子& 其他) 的 其他 类型 paramTypes 里仍是 盒子&
+            //   （substTypeParam 只替换类型参数 T，不替换"当前类模板名自身"），
+            //   导致 其他.值 访问报"类型 盒子 不是类类型"。
+            if (dollar != std::string::npos && !ptype.empty()) {
+                const std::string ptypeBase = types::canonical(types::stripRef(ptype));
+                const std::string genNameHere = info.name.substr(0, dollar);
+                if (ptypeBase == genNameHere) {
+                    const std::string suffix =
+                        ptype.substr(ptypeBase.size());
+                    ptype = info.name + suffix;
+                }
             }
             if (!declareVar(p->name, ptype, p->location)) {
                 // 参数重复声明（防御）

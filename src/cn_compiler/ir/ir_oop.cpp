@@ -55,17 +55,18 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     if (dollar != std::string::npos && semantic_ != nullptr) {
         const std::string genName = className.substr(0, dollar);
         const GenericInfo* ginfo = semantic_->findGeneric(genName);
-        if (ginfo != nullptr) {
+        const ClassInfo* ci = semantic_->findClass(className);
+        if (ginfo != nullptr && ci != nullptr) {
             genericTypeParams_.clear();
-            std::string rest = className.substr(dollar + 1);
-            std::size_t apos = 0;
-            for (std::size_t ti = 0; ti < ginfo->typeParams.size(); ++ti) {
-                const std::size_t delim = rest.find('$', apos);
-                const std::string arg = (delim == std::string::npos)
-                    ? rest.substr(apos) : rest.substr(apos, delim - apos);
-                genericTypeParams_[ginfo->typeParams[ti]] = arg;
-                if (delim == std::string::npos) break;
-                apos = delim + 1;
+            // H8 根治（2026-08-25）：读 instantiateGeneric 存储的实参列表
+            //   （ci->typeArgs）——原实现朴素 $ 分割反解实例化名，嵌套实参
+            //   （向量$映射$整64$整64 的 映射$整64$整64）含 $ 被截成模板名，
+            //   T 映射错导致 类型大小(T) 兜底 8（映射 应 56）、字段/局部类型
+            //   解析错（与语义层 checkClassMethods 同步修复）。
+            for (std::size_t ti = 0;
+                 ti < ginfo->typeParams.size() && ti < ci->typeArgs.size();
+                 ++ti) {
+                genericTypeParams_[ginfo->typeParams[ti]] = ci->typeArgs[ti];
             }
         }
     }
@@ -186,11 +187,23 @@ void IRGenerator::setupMethodParams(ir::IRFunction& func, const ClassMemberInfo&
         //   函数指针参数 mi.paramTypes 存 funcPtr.toString()，仍按 ptr 处理。
         std::string paramType =
             (pi < mi.paramTypes.size()) ? mi.paramTypes[pi] : param->typeName;
+        // H6 根治（2026-08-25）：类方法引用参数（简单盒& / 盒子$整64& 其他）——
+        //   原实现未设 byRef 标志，体内读取/成员访问把"被引用变量地址"当值用
+        //   （源.值 读到对象指针而非字段值，实测 b: 2227986720736 而非 7）。
+        //   与 visitFunctionDecl 引用参数（ir_decl.cpp）同规则：参数槽存"被引用
+        //   左值地址"（8 字节），体内读取经 byRef 机制解引用（LoadPtr 得对象
+        //   指针/基础值），类/结构体/标量引用参数统一按此语义。
+        const bool isRefParam = !param->funcPtr.isFunctionPtr() &&
+                                types::isReference(paramType);
         std::string unique = param->name + "$" + std::to_string(varCounter_++);
         std::string paramIrType = param->funcPtr.isFunctionPtr()
                                       ? "ptr" : mapType(paramType);
-        registerVarSlots(unique, param->funcPtr.isFunctionPtr() ? "" : paramType);
-        if (semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
+        if (isRefParam) paramIrType = "ptr";  // 引用参数按地址传递（槽存地址）
+        registerVarSlots(unique, isRefParam ? ""
+                            : (param->funcPtr.isFunctionPtr() ? "" : paramType));
+        // 结构体按值参数标记：引用参数（账户&）按地址传递（非按值结构体拷贝），
+        //   须排除（与 ir_decl.cpp 同规则）
+        if (!isRefParam && semantic_ != nullptr && !param->funcPtr.isFunctionPtr() &&
             semantic_->isStructType(types::canonical(paramType))) {
             func.structParamIndexes.insert(static_cast<int>(pi) + (mi.isStatic ? 0 : 1));
         }
@@ -201,8 +214,10 @@ void IRGenerator::setupMethodParams(ir::IRFunction& func, const ClassMemberInfo&
         VarEntry entry;
         entry.regId = reg.id;
         entry.uniqueName = unique;
-        entry.type = reg.type;
+        // 体内"值类型"仍为被引用基础类型/对象指针：读取经 byRef 解引用返回
+        entry.type = isRefParam ? mapType(types::stripRef(paramType)) : reg.type;
         entry.srcType = paramType;
+        entry.byRef = isRefParam;  // H6：引用参数按 byRef 语义读写
         varStack_.back()[param->name] = entry;
     }
 }
