@@ -888,7 +888,8 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         if (lowered != nullptr) {
             for (const auto& f : lowered->fields) {
                 if (f.name == memberName) {
-                    lastType_ = canonicalType(f.type);
+                    lastType_ = canonicalType(
+                        resolveGenericTypeName(f.type, node->location));
                     return;
                 }
             }
@@ -1045,10 +1046,15 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         lastType_ = "未知";
         return;
     }
-    // 字段类型（从声明中查找）
+    // 字段类型（从声明中查找）——宿主缺陷根治（2026-08-25）：泛型容器字段
+    //   （结构体 { 向量<整64> 数据 }）类型须归一为实例名（向量$整64）——原仅
+    //   canonicalType（模板形式 向量<整64>），后续 数据.方法() 的 findClass
+    //   （类表存 向量$整64）未命中 -> 误报"不是结构体/联合体/类类型，无法访问
+    //   成员"（与函数参数 resolveGenericTypeName 归一一致）。
     for (const auto& f : decl->fields) {
         if (f.name == memberName) {
-            lastType_ = canonicalType(f.type);
+            lastType_ = canonicalType(
+                resolveGenericTypeName(f.type, node->location));
             return;
         }
     }
@@ -1131,11 +1137,12 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "结构体初始化字段 '" + fieldName + "' 重复");
         }
-        // 字段类型
+        // 字段类型（泛型容器字段归一为实例名，与 visitMemberExpr 字段读取一致）
         std::string fieldType;
         for (const auto& f : decl->fields) {
             if (f.name == fieldName) {
-                fieldType = canonicalType(f.type);
+                fieldType = canonicalType(
+                    resolveGenericTypeName(f.type, node->location));
                 break;
             }
         }

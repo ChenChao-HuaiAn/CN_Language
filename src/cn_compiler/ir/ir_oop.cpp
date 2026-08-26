@@ -540,7 +540,15 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                 const StructDecl* decl = semantic_->findStruct(types::canonical(objType));
                 if (decl != nullptr) {
                     for (const auto& f : decl->fields) {
-                        if (f.name == mem->memberName) return f.type;
+                        // 宿主缺陷根治（2026-08-25）：结构体字段为泛型容器
+                        //   （结构体 { 映射<整64,整64> 表 }）时返回实例名（映射$整64$整64）
+                        //   ——原返回模板形式（映射<整64,整64>），handleClassCallExpr
+                        //   isClassType 未命中 -> 对象.方法() 降级为间接调用 this=0
+                        //   崩溃 0xC0000005（与语义层字段类型归一一致）。
+                        if (f.name == mem->memberName) {
+                            return types::canonical(
+                                semantic_->resolveGenericTypeName(f.type, node->location));
+                        }
                     }
                 }
             }
