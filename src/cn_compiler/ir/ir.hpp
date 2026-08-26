@@ -504,6 +504,13 @@ private:
     void emitClassMethod(const std::string& className, const ClassMemberInfo& mi);
     // 生成方法体 IRFunction 的参数装载（this + 显式参数进入 varStack_ 最外层作用域）
     void setupMethodParams(ir::IRFunction& func, const ClassMemberInfo& mi);
+    // Feature 2 完整版（2026-08-25）：向量<T> 元素自动析构——编译器级注入。
+    //   向量 持有内联类元素（T* 数据）。当 T 为有析构类时，~向量/清空 注入全量
+    //   元素析构循环、删除(位置) 注入单元素析构（守卫 位置<元素数量），
+    //   无需组件显式调用 stdlib 释放内部数组()。
+    void injectVectorElemDestroy(const std::string& className,
+                                 const ClassMemberInfo& mi,
+                                 const SourceLocation& loc);
     // ---- 阶段3 OOP 表达式/调用/字段钩子（ir_oop.cpp 实现，ir.cpp 调用点插入） ----
     // 构造调用（类名(实参) -> NewObject + 构造体调用）与成员方法调用
     //   （对象.方法：虚 -> VirtualCall；非虚 -> 直接 Call；类名.静态方法；父类.方法）

@@ -135,6 +135,10 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             }
         }
     }
+    // Feature 2 完整版（2026-08-25）：向量<T> 元素自动析构——入口块生成后、
+    //   原方法体生成前注入元素析构（~向量/清空 全量循环、删除(位置) 单元素，
+    //   仅当实例化元素 T 为有析构类时）。
+    injectVectorElemDestroy(className, mi, member->body->location);
     genBlock(member->body.get());
     // 无终止指令：补充默认返回（构造/析构/空类型 方法）
     if (!function_->blocks.empty()) {
@@ -219,6 +223,131 @@ void IRGenerator::setupMethodParams(ir::IRFunction& func, const ClassMemberInfo&
         entry.srcType = paramType;
         entry.byRef = isRefParam;  // H6：引用参数按 byRef 语义读写
         varStack_.back()[param->name] = entry;
+    }
+}
+
+// ==================== 向量<T> 元素自动析构注入（Feature 2 完整版） ====================
+
+// Feature 2 完整版（2026-08-25）：向量<T> 元素自动析构——编译器级注入，使容器
+//   自动管理内联类元素生命周期（对标 C++ vector<T> 析构语义）。
+//   向量 持有内联类元素（T* 数据）。当实例化元素 T 为有析构类（如 映射$整64$符号）
+//   时：
+//     ~向量()  -> 注入全量元素析构循环（销毁 数据[0..元素数量) 后原体释放数组）
+//     清空()   -> 注入全量元素析构循环（销毁后原体置 元素数量=0）
+//     删除(位置)-> 注入单元素析构（守卫 位置<元素数量 后销毁 数据[位置]）
+//   元素析构 = Call T$析构函数（this=元素内联地址）——析构方法释放元素自身堆资源
+//   （如 映射 的 键/值/链/桶 数组），元素内存本身由向量数组持有（释放(数据) 归还）。
+//   效果：作用域栈 弹出 只需 删除(末尾) 即自动销毁 映射 元素（原需显式调
+//   stdlib 释放内部数组()）；任意 向量<有析构类> 的 清空/销毁 均自动清理元素。
+//   无析构类元素（标量/结构体）不注入（无资源需释放，保持原语义）。
+// 注入时机：emitClassMethod 生成 向量$T 方法体前（入口块之后、原方法体之前）。
+void IRGenerator::injectVectorElemDestroy(const std::string& className,
+                                          const ClassMemberInfo& mi,
+                                          const SourceLocation& loc) {
+    if (semantic_ == nullptr || function_ == nullptr) return;
+    const std::string canonClass = types::canonical(className);
+    // Feature 2 范围：仅 向量 容器（链表/栈/队列 弹出语义不同——弹出返回元素
+    //   所有权转移给调用方，不需析构；后续专项）。
+    if (canonClass.rfind("向量$", 0) != 0) return;
+    // 方法匹配：~向量/清空 -> 全量销毁；删除 -> 单元素销毁
+    const bool isFull = (mi.name == "~向量" || mi.name == "清空");
+    const bool isSingle = (mi.name == "删除");
+    if (!isFull && !isSingle) return;
+    // 元素类型 T（emitClassMethod 已按本实例实参设置 genericTypeParams_）
+    std::string elemType;
+    auto tit = genericTypeParams_.find("T");
+    if (tit != genericTypeParams_.end()) elemType = tit->second;
+    if (elemType.empty()) return;
+    // T 须为有析构类：类 + 析构方法（沿继承链合并后的 methods 表）
+    const std::string elemCanon = types::canonical(elemType);
+    const ClassInfo* eci = semantic_->findClass(elemCanon);
+    if (eci == nullptr) return;
+    std::string dtorSig;
+    for (const auto& mk : eci->methods) {
+        if (mk.second.isDestructor) { dtorSig = mk.second.sigKey; break; }
+    }
+    if (dtorSig.empty()) return;  // 无析构：不注入（标量/结构体元素）
+    const std::string thisUnique = lookupVarName("自身");
+    if (thisUnique.empty()) return;
+    // 容器字段：数据（T*）/ 元素数量（整64）
+    const int dataOff = semantic_->classFieldOffset(canonClass, "数据");
+    const int countOff = semantic_->classFieldOffset(canonClass, "元素数量");
+    if (dataOff < 0 || countOff < 0) return;
+    const int stride = semantic_->typeSizeOf(elemCanon);
+    if (stride <= 0) return;
+    const std::string dtorSym = methodSymbolKey(elemCanon, dtorSig);
+    // this + 数据/元素数量 字段加载（循环外只读一次，循环内不修改）
+    ir::IRValue selfPtr = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(thisUnique, "ptr")},
+                                     "ptr", thisUnique, loc);
+    ir::IRValue dataAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
+                                      std::to_string(dataOff), loc);
+    ir::IRValue dataPtr = emitResult(ir::Opcode::LoadPtr, {dataAddr}, "ptr", "", loc);
+    ir::IRValue countAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
+                                       std::to_string(countOff), loc);
+    ir::IRValue count = emitResult(ir::Opcode::LoadPtr, {countAddr}, "i64", "", loc);
+
+    if (isFull) {
+        // ---- 全量元素析构循环（~向量/清空）----
+        // 结构：idx 槽=0; if 数据==无 goto 继续; 循环 加载idx<元素数量 ->
+        //   析构 数据+idx*stride / idx++ 存储; 之后继续原方法体。
+        // 循环计数器须用可变 Alloca 槽（每次迭代 Load/Store），不能是常量寄存器。
+        const std::string idxUnique = "?vecdi" + std::to_string(varCounter_++);
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"),
+             idxUnique, "i64", loc);
+        emit(ir::Opcode::Store,
+             {emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc)},
+             ir::IRValue(), idxUnique, "i64", loc);
+        const std::string loopL = "bb" + std::to_string(blockCounter_++);
+        const std::string bodyL = "bb" + std::to_string(blockCounter_++);
+        const std::string doneL = "bb" + std::to_string(blockCounter_++);
+        // 数据 无 守卫（空向量/未分配：跳过循环）
+        ir::IRValue nullC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+        ir::IRValue dataIsNull = emitResult(ir::Opcode::Eq, {dataPtr, nullC}, "i1", "",
+                                           loc);
+        endBranch(dataIsNull.toString(), doneL, loopL);
+        setCurrentBlock(newBlock(loopL));
+        ir::IRValue idx = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(idxUnique, "i64")},
+                                     "i64", idxUnique, loc);
+        ir::IRValue loopCond = emitResult(ir::Opcode::Lt, {idx, count}, "i1", "", loc);
+        endBranch(loopCond.toString(), bodyL, doneL);
+        setCurrentBlock(newBlock(bodyL));
+        ir::IRValue scaled = emitResult(ir::Opcode::Mul,
+                                        {idx, ir::IRValue::constant(
+                                                  std::to_string(stride), "i64")},
+                                        "i64", "", loc);
+        ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {dataPtr, scaled}, "ptr",
+                                          "", loc);
+        emit(ir::Opcode::Call, {elemAddr}, ir::IRValue(), dtorSym, "void", loc);
+        ir::IRValue one = emitResult(ir::Opcode::ConstInt, {}, "i64", "1", loc);
+        ir::IRValue next = emitResult(ir::Opcode::Add, {idx, one}, "i64", "", loc);
+        emit(ir::Opcode::Store, {next}, ir::IRValue(), idxUnique, "i64", loc);
+        endJump(loopL);
+        setCurrentBlock(newBlock(doneL));
+    } else if (isSingle) {
+        // ---- 单元素析构（删除(位置)）----
+        // 结构：守卫 位置<元素数量（越界由原方法体返回错误，此处跳过析构）后
+        //   析构 数据[位置]；之后继续原方法体（原体移位覆盖已销毁槽）。
+        const std::string posUnique = lookupVarName("位置");
+        if (posUnique.empty()) return;
+        ir::IRValue pos = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(posUnique, "i64")},
+                                     "i64", posUnique, loc);
+        const std::string destroyL = "bb" + std::to_string(blockCounter_++);
+        const std::string skipL = "bb" + std::to_string(blockCounter_++);
+        ir::IRValue ge = emitResult(ir::Opcode::Ge, {pos, count}, "i1", "", loc);
+        endBranch(ge.toString(), skipL, destroyL);  // 越界 -> 跳过（原体报错）
+        setCurrentBlock(newBlock(destroyL));
+        ir::IRValue scaled = emitResult(ir::Opcode::Mul,
+                                        {pos, ir::IRValue::constant(
+                                                  std::to_string(stride), "i64")},
+                                        "i64", "", loc);
+        ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {dataPtr, scaled}, "ptr",
+                                          "", loc);
+        emit(ir::Opcode::Call, {elemAddr}, ir::IRValue(), dtorSym, "void", loc);
+        endJump(skipL);
+        setCurrentBlock(newBlock(skipL));
     }
 }
 
