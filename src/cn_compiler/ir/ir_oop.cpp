@@ -483,7 +483,7 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             }
             return "";
         case NodeType::CallExpr: {
-            // 宿主缺陷根治（2026-08-25）：函数调用结果源码类型——优先语义层写回的
+            // 宿主缺陷根治（2026-08-25）：函数/方法调用结果源码类型——优先语义层写回的
             //   resolvedType（正常/错误 等内置），普通函数调用 resolvedType 为空时
             //   按被调函数返回类型解析（安全除法(a,b) -> 结果<整32,整32>）。原缺
             //   CallExpr 分支返回空串，? 运算符读偏移按操作数类型推导失败（默认 8 读错位）。
@@ -496,12 +496,44 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
                 const std::string sig = semantic_->funcFirstSigKey(fn);
                 return semantic_->funcReturnTypeOf(sig.empty() ? fn : sig);
             }
+            // 宿主缺陷根治（2026-08-25）：对象.方法() 调用——解析方法返回类型
+            //   （表.元素(0) -> 映射$整64$整64）。原缺此分支导致链式方法调用
+            //   （元素(0).设置()）对象类型推导失败 -> handleClassCallExpr 未识别
+            //   类方法 -> 通用间接调用（this=0）崩溃 0xC0000005 实测。
+            if (call->callee->getType() == NodeType::MemberExpr &&
+                semantic_ != nullptr) {
+                const MemberExpr* mem =
+                    static_cast<const MemberExpr*>(call->callee.get());
+                const std::string objType = exprSrcType(mem->object.get());
+                if (!objType.empty()) {
+                    std::string owner;
+                    const ClassMemberInfo* m = semantic_->lookupClassMember(
+                        types::canonical(objType), mem->memberName, owner);
+                    if (m != nullptr && !m->type.empty()) return m->type;
+                }
+            }
             return "";
         }
         case NodeType::MemberExpr: {
             MemberExpr* mem = static_cast<MemberExpr*>(node);
             const std::string objType = exprSrcType(mem->object.get());
             if (objType.empty()) return "";
+            // 宿主缺陷根治（2026-08-25）：结果/可选 成员映射——结果<T,E>.值/.错误 ->
+            //   T/E；.正常 -> 布尔；可选<T>.值/.有值 -> T/布尔。原缺此映射导致
+            //   exprSrcType(查.值) 返回空（值 不是合成结构体直接字段），链式
+            //   （结果<类>.值.字段 / 结果.值.方法）的对象类型推导失败 -> 类字段
+            //   访问/方法调用未识别 -> findStruct(类)=null 防御返回 0（打印 0 实测）。
+            const std::string canonObj = types::canonical(objType);
+            if (SemanticAnalyzer::isResultType(canonObj)) {
+                const std::vector<std::string> rargs =
+                    SemanticAnalyzer::resultTypeArgs(canonObj);
+                if (mem->memberName == "值" && rargs.size() == 2) return rargs[0];
+                if (mem->memberName == "错误" && rargs.size() == 2) return rargs[1];
+                if (mem->memberName == "正常") return "布尔";
+            } else if (SemanticAnalyzer::isOptionalType(canonObj)) {
+                if (mem->memberName == "值") return SemanticAnalyzer::optionalTypeArg(canonObj);
+                if (mem->memberName == "有值") return "布尔";
+            }
             const std::string fieldType = classFieldType(objType, mem->memberName);
             if (!fieldType.empty()) return fieldType;
             if (semantic_ != nullptr) {
