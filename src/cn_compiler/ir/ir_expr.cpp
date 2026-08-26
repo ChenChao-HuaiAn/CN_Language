@@ -1008,13 +1008,14 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 // 标识符结构体变量 -> AddrOf（结构体内联）；标识符类变量 ->
                 //   Load 槽（槽存对象指针，CopyStruct 源 = 对象地址，56 字节对象本体）
                 ir::IRValue srcAddr;
+                std::string srcUniqueId;  // 标识符源唯一名（拷贝构造 byRef 传参用）
                 if (node->value->getType() == NodeType::IndexExpr ||
                     node->value->getType() == NodeType::MemberExpr) {
                     srcAddr = lvalueAddress(node->value.get());
                 } else if (node->value->getType() == NodeType::IdentifierExpr) {
                     const std::string srcName =
                         static_cast<IdentifierExpr*>(node->value.get())->name;
-                    const std::string srcUnique = lookupVarName(srcName);
+                    srcUniqueId = lookupVarName(srcName);
                     const std::string srcST = lookupSrcType(srcName);
                     // H8 补完：类源（向量 追加 的 值 参数 = 映射 对象指针）——
                     //   AddrOf 槽 会取到 指向指针的指针，CopyStruct 读到指针值+
@@ -1022,18 +1023,39 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                     if (semantic_ != nullptr &&
                         semantic_->isClassType(types::canonical(types::stripRef(srcST)))) {
                         srcAddr = emitResult(ir::Opcode::Load,
-                                             {ir::IRValue::var(srcUnique, "ptr")},
-                                             "ptr", srcUnique, node->location);
+                                             {ir::IRValue::var(srcUniqueId, "ptr")},
+                                             "ptr", srcUniqueId, node->location);
                     } else {
                         srcAddr = emitResult(ir::Opcode::AddrOf,
-                                             {ir::IRValue::var(srcUnique, "i64")},
-                                             "ptr", srcUnique, node->location);
+                                             {ir::IRValue::var(srcUniqueId, "i64")},
+                                             "ptr", srcUniqueId, node->location);
                     }
                 }
                 if (srcAddr.id >= 0) {
-                    const int size = semantic_->typeSizeOf(types::canonical(tElemSrc));
-                    emit(ir::Opcode::CopyStruct, {addr, srcAddr}, ir::IRValue(),
-                         std::to_string(size), "void", node->location);
+                    // H8-⑤ 补完（2026-08-25 容器持有类对象）：类元素且有拷贝构造
+                    //   且源为类变量（向量 追加 的 值）——调用拷贝构造深拷贝
+                    //   （this=内联元素地址，实参=&源槽 byRef 解引用得源对象），
+                    //   元素独立拥有内部数组（浅拷贝共享指针 + RAII 双释放 0xC0000374）。
+                    //   注：源为 IndexExpr 元素（插入/删除移位）暂保持 CopyStruct
+                    //   浅拷贝（byRef 无法引用内联元素），容器仅尾部追加/弹出安全。
+                    const ClassMemberInfo* copyCtor =
+                        semantic_->findCopyConstructor(tElemCanon);
+                    if (copyCtor != nullptr && !srcUniqueId.empty()) {
+                        const std::string copyOwner =
+                            copyCtor->ownerClass.empty() ? tElemCanon
+                                                         : copyCtor->ownerClass;
+                        const ir::IRValue srcRef = emitResult(
+                            ir::Opcode::AddrOf,
+                            {ir::IRValue::var(srcUniqueId, "i64")},
+                            "ptr", srcUniqueId, node->location);
+                        emit(ir::Opcode::Call, {addr, srcRef}, ir::IRValue(),
+                             methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
+                             node->location);
+                    } else {
+                        const int size = semantic_->typeSizeOf(types::canonical(tElemSrc));
+                        emit(ir::Opcode::CopyStruct, {addr, srcAddr}, ir::IRValue(),
+                             std::to_string(size), "void", node->location);
+                    }
                     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0",
                                            node->location);
                     return;

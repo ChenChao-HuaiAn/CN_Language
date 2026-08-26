@@ -550,6 +550,10 @@ private:
                                    const SourceLocation& loc);
     // 推导表达式源码类型（标识符查变量表 / 自身=当前类 / 成员字段类型 / 调用返回类型）
     std::string exprSrcType(Expr* node) const;
+    // H8-⑤（容器持有类对象，2026-08-25）：是否容器元素视图——向量/链表/栈/队列
+    //   的 元素() 调用返回内联元素地址（非独立堆对象）。绑定到类变量时为
+    //   非拥有式视图：跳过 RAII 析构登记（避免释放数组内指针）。
+    bool isContainerElementView(Expr* init) const;
     // 查询类字段源码类型（沿继承链；未找到返回空串）
     std::string classFieldType(const std::string& className,
                                const std::string& fieldName) const;

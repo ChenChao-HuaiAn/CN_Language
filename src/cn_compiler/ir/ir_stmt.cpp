@@ -470,7 +470,11 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         }
     }
     // 登记变量源码类型（OOP 析构扫描用：类类型局部变量有析构函数时函数收尾 DeleteObject）
-    if (!unique.empty()) {
+    // H8-5（容器持有类对象，2026-08-25）：类名 顶层 = 容器.元素(i) 为非拥有式
+    //   视图（顶层 指向容器数组内联元素，非独立堆对象）——跳过析构登记，避免
+    //   RAII DeleteObject 释放数组内指针（双重释放 0xC0000374）。容器负责元素
+    //   生命周期（追加深拷贝/弹出销毁）。
+    if (!unique.empty() && !isContainerElementView(node->initializer.get())) {
         oopVarSrcTypes_[unique] = srcType;
     }
 

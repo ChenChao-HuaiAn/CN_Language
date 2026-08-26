@@ -336,6 +336,21 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
     }
 }
 
+// H8-⑤（容器持有类对象，2026-08-25）：是否容器元素视图——向量/链表/栈/队列
+//   的 元素() 调用返回内联元素地址（非独立堆对象，由容器拥有）。绑定到类变量
+//   时为非拥有式视图：跳过 RAII 析构登记（避免释放数组内指针 0xC0000374）。
+bool IRGenerator::isContainerElementView(Expr* init) const {
+    if (init == nullptr || init->getType() != NodeType::CallExpr) return false;
+    const CallExpr* call = static_cast<const CallExpr*>(init);
+    if (call->callee->getType() != NodeType::MemberExpr) return false;
+    const MemberExpr* mem = static_cast<const MemberExpr*>(call->callee.get());
+    if (mem->memberName != "元素") return false;
+    const std::string objSrc = exprSrcType(mem->object.get());
+    const std::string canon = types::canonical(objSrc);
+    return canon.rfind("向量$", 0) == 0 || canon.rfind("链表$", 0) == 0 ||
+           canon.rfind("栈$", 0) == 0 || canon.rfind("队列$", 0) == 0;
+}
+
 // 查询类字段源码类型（沿继承链；未找到返回空串）
 std::string IRGenerator::classFieldType(const std::string& className,
                                         const std::string& fieldName) const {
