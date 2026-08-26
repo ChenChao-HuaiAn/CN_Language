@@ -257,12 +257,17 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     const std::string base = canonClass.substr(0, canonClass.find('$'));
     // 方法匹配：
     //   全量析构：~类名 / 清空
-    //   单元素析构：向量 删除(位置)（索引=参数 位置）、链表 删除头部/删除尾部（头/尾索引字段）
+    //   单元素析构：
+    //     向量 析构元素(索引)（编译器注入辅助，stdlib 删除 移位循环调用）-> 参数 索引
+    //     链表 删除头部/删除尾部 -> 头/尾索引 字段
+    //   向量 删除(位置)：移位槽泄漏已由 stdlib 显式 析构元素() 根治（move 语义），
+    //     不再方法体前注入（被移除元素由 析构元素(移动=位置) 析构）。
     //   栈 弹出 / 队列 出队：所有权转移，不析构（不匹配即不注入）
     const bool isFull = (mi.name == ("~" + base) || mi.name == "清空");
     bool isSingle = false;
-    std::string indexField;  // 单元素析构的索引来源：""=参数 位置（向量）；"头索引"/"尾索引"=字段
-    if (mi.name == "删除") { isSingle = true; indexField = ""; }
+    std::string indexParam;  // 单元素析构的索引参数名（析构元素=索引）；空=从字段
+    std::string indexField;  // 单元素析构的索引字段名（链表 头索引/尾索引）；空=从参数
+    if (mi.name == "析构元素") { isSingle = true; indexParam = "索引"; }
     else if (mi.name == "删除头部") { isSingle = true; indexField = "头索引"; }
     else if (mi.name == "删除尾部") { isSingle = true; indexField = "尾索引"; }
     if (!isFull && !isSingle) return;
@@ -339,11 +344,11 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
         endJump(loopL);
         setCurrentBlock(newBlock(doneL));
     } else if (isSingle) {
-        // ---- 单元素析构（向量 删除(位置) / 链表 删除头部/删除尾部）----
-        // 索引来源：向量 = 参数 位置；链表 = 头索引/尾索引 字段（方法体前读取旧值）。
+        // ---- 单元素析构（向量 析构元素(索引) / 链表 删除头部/删除尾部）----
+        // 索引来源：析构元素 = 参数 索引；链表 = 头索引/尾索引 字段（方法体前读取旧值）。
         ir::IRValue pos;
-        if (indexField.empty()) {
-            const std::string posUnique = lookupVarName("位置");
+        if (!indexParam.empty()) {
+            const std::string posUnique = lookupVarName(indexParam);
             if (posUnique.empty()) return;
             pos = emitResult(ir::Opcode::Load,
                              {ir::IRValue::var(posUnique, "i64")},
@@ -357,13 +362,17 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
         }
         const std::string destroyL = "bb" + std::to_string(blockCounter_++);
         const std::string skipL = "bb" + std::to_string(blockCounter_++);
-        // 守卫：向量 位置>=元素数量（越界由原方法体返回错误，此处跳过析构）；
-        //   链表 索引<0（空容器 头/尾索引=-1）。
+        // 守卫：析构元素（向量，参数索引）用 索引<0 或 >=元素数量（位置是元素序号，
+        //   越界由调用方保证，防御性守卫）；链表 删头/删尾（字段索引）只用 索引<0——
+        //   链表是链式，删除后元素数量减少但 头/尾索引 是槽索引（可能 >= 新元素数量），
+        //   不能与 元素数量 比较（否则删尾误判越界跳过析构）。
+        ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
         ir::IRValue skipCond;
-        if (indexField.empty()) {
-            skipCond = emitResult(ir::Opcode::Ge, {pos, count}, "i1", "", loc);
+        if (!indexParam.empty()) {
+            ir::IRValue neg = emitResult(ir::Opcode::Lt, {pos, zeroC}, "i1", "", loc);
+            ir::IRValue ge = emitResult(ir::Opcode::Ge, {pos, count}, "i1", "", loc);
+            skipCond = emitResult(ir::Opcode::Or, {neg, ge}, "i1", "", loc);
         } else {
-            ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
             skipCond = emitResult(ir::Opcode::Lt, {pos, zeroC}, "i1", "", loc);
         }
         endBranch(skipCond.toString(), skipL, destroyL);
