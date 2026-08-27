@@ -11,6 +11,9 @@
 //   - 单态化：为 类型名<实参> 生成实例化类符号（替换类型参数后的成员表）
 //   - 接口约束校验：实参类型须实现约束接口
 //   IR 层的单态化展开（方法体生成）由后续 codegen 子任务基于本模块产物完成。
+#define _CRT_SECURE_NO_WARNINGS
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>

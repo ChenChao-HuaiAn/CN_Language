@@ -75,6 +75,11 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     func.name = className + "." + mi.name;
     func.mangledName = methodSymbolKey(className, mi.sigKey);
     func.returnType = mapType(mi.type.empty() ? "空类型" : mi.type);
+    // 宿主缺陷根治（2026-08-25）：泛型类方法体 AST 共享——node->resolvedType 被
+    //   多实例检查覆盖（映射$整64$整64.获取 与 映射$整64$符号.获取 共享 AST，
+    //   残留 结果<符号,整32>）。设置 returnTypeSrc（本实例 mi.type，instantiateGeneric
+    //   已按 typeArgs 替换）供 handleResultCtor 优先用实例返回类型。
+    func.returnTypeSrc = mi.type.empty() ? "空类型" : mi.type;
     // 结构体/类返回值标记（隐藏返回指针，Win x64 ABI）
     if (semantic_ != nullptr && !mi.type.empty()) {
         const std::string canon = types::canonical(mi.type);

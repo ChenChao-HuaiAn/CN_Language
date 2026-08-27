@@ -4,7 +4,10 @@
 //   2. 变量作用域栈：进入代码块/循环体时压栈，退出时弹栈
 //   3. 类型检查：隐式转换（整型宽化/浮点宽化/字符↔整型）、条件必须为布尔
 //   4. 语义错误：未声明符号、重复声明、类型不匹配、非循环中中断/继续、缺返回
+#define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <unordered_set>
 #include <utility>

@@ -9,6 +9,9 @@
 // 语义层 visitCallExpr 已推导实际类型并写回 node->resolvedType
 //   （如 结果<整32,整32>/可选<字符串>），本模块按此降级。
 // 规范：英文API命名，中文仅注释；函数<=100行
+#define _CRT_SECURE_NO_WARNINGS
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -29,6 +32,18 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     const std::string name =
         static_cast<IdentifierExpr*>(node->callee.get())->name;
     if (name != "正常" && name != "错误" && name != "某些") return false;
+    // 宿主缺陷根治（2026-08-25）：泛型类方法体 AST 共享——node->resolvedType 被
+    //   多实例检查覆盖（最后实例残留，如 映射$整64$整64.获取 残留 结果<符号,整32>，
+    //   CopyStruct 32 溢出崩溃）。优先用当前函数返回类型（returnTypeSrc，
+    //   emitClassMethod 按实例 mi.type 设置）——返回 正常()/错误(码) 的 结果<T,E>
+    //   与函数返回类型一致；仅当 returnTypeSrc 为空才回退共享 resolvedType。
+    if (function_ != nullptr && !function_->returnTypeSrc.empty()) {
+        const std::string retCanon = types::canonical(function_->returnTypeSrc);
+        if (SemanticAnalyzer::isResultType(retCanon) ||
+            SemanticAnalyzer::isOptionalType(retCanon)) {
+            node->resolvedType = function_->returnTypeSrc;
+        }
+    }
     if (node->resolvedType.empty()) {
         // Task 6.1（泛型类实例化方法体 向量$整32.追加 等）：语义层对实例化类
         //   方法体的 resolvedType 推导可能缺失（泛型上下文），回退用当前函数

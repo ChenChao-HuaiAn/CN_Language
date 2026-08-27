@@ -10,7 +10,10 @@
 //   7. 静态成员 / 常量成员函数 / 友元
 //   8. 运算符重载：成员 运算符X 解析与决议（顺序②：左操作数类型查成员）
 // 设计：英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
+#define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -870,6 +873,7 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
                 }
             }
         }
+
 
         // 参数入作用域（方法参数 + this 隐式参数 + 类字段）
         pushScope();
