@@ -1021,7 +1021,10 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             advance();  // 消费 静态
             // 兼容"静态 变量 名称"（parseStaticVarDecl 同款）
             if (check(TokenType::Kw_Var)) advance();
-            decl->typeName = parseTypeName();
+            // 2026-08-30 根治（P3-8 补全）：parseTypeNameEx 支持泛型/指针/数组类型
+            //   （静态 向量<整64> 全局表——原 parseTypeName 只吃标识符，遇 '<' 报
+            //   「预期变量名，实际为 '<'」，顶层容器变量无法声明）
+            decl->typeName = parseTypeNameEx();
             if (check(TokenType::Identifier)) {
                 decl->name = current().getValue();
                 advance();

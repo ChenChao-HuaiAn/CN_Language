@@ -1667,7 +1667,10 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     //   静态：登记符号名（globalStaticNames_），供 IR 层生成全局存储。
     //   常量值文本直接取字面量 raw（整数/浮点）或字符串内容（去引号）。
     for (auto& g : node->globals) {
-        if (g->initializer == nullptr) continue;
+        // 2026-08-30 根治（P3-8 补全）：无初始值的静态变量也应登记
+        //   （静态 向量<整64> 全局表 零初始化 .data；原 continue 跳过导致
+        //   静态容器变量整个漏登记——IR 无 gstatic、函数体引用报「模块未导入」）
+        if (g->initializer == nullptr && !g->isStatic) continue;
         if (g->isConst) {
             Expr* init = g->initializer.get();
             std::string constText;
@@ -1699,8 +1702,13 @@ void SemanticAnalyzer::visitProgram(Program* node) {
         } else if (g->isStatic) {
             // 第 9 层 Debug：顶层静态记录源码类型（IR 层生成 .data 全局存储），
             //   此前仅登记符号名导致函数体内引用落入 FuncAddr 分支（rbp0 汇编错误）
+            // 2026-08-30 根治（P3-8 补全）：泛型归一——静态容器变量须走
+            //   resolveGenericTypeName（容器<整64> -> 容器$整64），否则成员访问
+            //   findClass("容器<整64>") 失败报「不是类类型」（局部变量 visitVarDecl
+            //   已归一，全局静态此前漏接）。
             const std::string stType =
-                g->typeName.empty() ? "自动" : canonicalType(g->typeName);
+                g->typeName.empty() ? "自动"
+                                    : resolveGenericTypeName(g->typeName, g->location);
             // A-2（静态 crate 分桶）：同常量——多模块同名静态登记限定键（模块$名）
             staticModules_[g->name].insert(g->moduleName);
             if (globalStatics_.find(g->name) == globalStatics_.end()) {

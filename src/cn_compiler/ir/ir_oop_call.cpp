@@ -327,7 +327,20 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     if (m->isStatic) return false;   // 实例.静态方法 语义允许，但走静态路径（防御）
 
     // this 实参：自身/父类 -> this 指针；类变量 -> 变量值（对象指针）
-    ir::IRValue thisArg = genExpr(mem->object.get());
+    // 第 9 层 Debug（P3-8）：顶层静态对象方法调用（全局表.大小()）——this 须为
+    //   全局 .data 符号地址（?gstatic_名），而非 LoadPtr 读值（会把对象首 8 字节
+    //   （如数据指针）当 this 传入 -> 大小() 判空/读偏移全错）。
+    ir::IRValue thisArg;
+    if (mem->object->getType() == NodeType::IdentifierExpr &&
+        semantic_->isGlobalStatic(
+            static_cast<IdentifierExpr*>(mem->object.get())->name)) {
+        thisArg = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                             "?gstatic_" +
+                                 static_cast<IdentifierExpr*>(mem->object.get())->name,
+                             node->location);
+    } else {
+        thisArg = genExpr(mem->object.get());
+    }
 
     // ---- 虚调用：方法在虚表中有槽位（虚拟 或 重写，vtableIndex>=0）且非 父类. 限定调用 ----
     // 重写方法 isVirtual=false 但 vtableIndex>=0（覆盖父类槽位），同样须虚分派。

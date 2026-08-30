@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
@@ -445,7 +446,20 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
         std::string initText;
         const auto initIt = module.globalStaticInits.find(name);
         if (initIt != module.globalStaticInits.end()) initText = initIt->second;
-        // 按类型分配：i128 16 字节双槽；f32 4 字节；其余 8 字节
+        // 按类型分配：i128 16 字节双槽；f32 4 字节；容器/结构体按类型大小；其余 8 字节
+        // 第 9 层 Debug（P3-8）根治：顶层静态容器/结构体（向量$整64 等）须按
+        //   typeSizeOf 分配完整对象字节（向量=24 字节：数据/元素数量/容量），
+        //   否则实例方法 this=符号地址后，读 数据 偏移 0 已越界/读到相邻符号。
+        int qwords = 1;
+        if (semantic_ != nullptr &&
+            semantic_->isClassType(stType) && !types::isPointer(stType)) {
+            const int sz = semantic_->typeSizeOf(stType);
+            if (sz > 8) qwords = (sz + 7) / 8;
+        } else if (semantic_ != nullptr &&
+                   semantic_->isStructType(stType) && !types::isPointer(stType)) {
+            const int sz = semantic_->typeSizeOf(stType);
+            if (sz > 8) qwords = (sz + 7) / 8;
+        }
         if (stType == "整128" || stType == "正128") {
             writer.raw(sym + " dq 0, 0");
         } else if (stType == "浮32") {
@@ -456,6 +470,11 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
             // f64 初始值：dq floatBitsHex（MASM 无浮点立即数，须位模式十六进制）
             writer.raw(sym + " dq " +
                        (!initText.empty() ? floatBitsHex(initText, true) : "0"));
+        } else if (qwords > 1) {
+            // 容器/结构体对象：按类型大小分配多 qword（零初始化）
+            std::string line = sym + " dq 0";
+            for (int qi = 1; qi < qwords; ++qi) line += ", 0";
+            writer.raw(line);
         } else {
             if (!initText.empty() && initText.find_first_of(".eE") == std::string::npos) {
                 // 整数初始值直接写入（十六进制文本经 MASM 十进制；字符串不可作 .data 初始值）

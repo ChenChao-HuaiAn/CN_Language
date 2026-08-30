@@ -462,6 +462,13 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             const std::string st = lookupSrcType(name);
             if (!st.empty()) return st;
             if (semantic_ != nullptr && semantic_->isClassType(name)) return name;
+            // 第 9 层 Debug（P3-8）：顶层静态变量——exprSrcType 须返回全局静态的
+            //   源码类型（如 向量$整64），否则 全局表.大小() 的对象类型解析失败
+            //   （空串 -> isClassType 判定 false -> 走通用间接调用路径，callee
+            //   MemberExpr 被当字段访问生成空 extra 的 AddrOf -> [rbp0] A2006）。
+            if (semantic_ != nullptr && semantic_->isGlobalStatic(name)) {
+                return semantic_->globalStaticType(name);
+            }
             // Task 6.1（泛型嵌套容器 栈<T> 组合 向量<T>）：方法体内直接字段名
             //   （数据）——exprSrcType 需返回字段源码类型（向量$整32），否则
             //   handleClassCallExpr 对 数据.设置() 的对象类型解析失败（空串 ->
