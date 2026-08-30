@@ -46,7 +46,18 @@ std::vector<std::string> SemanticAnalyzer::resultTypeArgs(const std::string& typ
     const std::size_t gt = type.rfind('>');
     if (lt == std::string::npos || gt == std::string::npos || gt <= lt) return result;
     const std::string inner = type.substr(lt + 1, gt - lt - 1);
-    const std::size_t comma = inner.find(',');
+    // 2026-08-30 根治：嵌套泛型实参（结果<映射<整64, 整64>, 整32>）的逗号
+    //   须平衡扫描——原 find(',') 在 映射<整64, 整64> 内部逗号处误切，
+    //   t 截断成 映射<整64（成员访问报「映射<整64 不是类类型」）。
+    std::size_t comma = std::string::npos;
+    {
+        int depth = 0;
+        for (std::size_t i = 0; i < inner.size(); ++i) {
+            if (inner[i] == '<') depth++;
+            else if (inner[i] == '>') depth--;
+            else if (inner[i] == ',' && depth == 0) { comma = i; break; }
+        }
+    }
     if (comma == std::string::npos) return result;
     const std::string t = inner.substr(0, comma);
     const std::string e = inner.substr(comma + 1);

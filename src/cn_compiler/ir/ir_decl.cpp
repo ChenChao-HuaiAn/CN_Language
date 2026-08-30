@@ -27,6 +27,8 @@ void IRGenerator::visitProgram(Program* node) {
                 if (!stType.empty()) {
                     module_->globalStatics[g->name] = stType;
                 }
+                const bool isClassStatic =
+                    !stType.empty() && semantic_->isClassType(stType);
                 if (g->initializer != nullptr) {
                     const NodeType it = g->initializer->getType();
                     if (it == NodeType::IntegerLiteral) {
@@ -41,7 +43,19 @@ void IRGenerator::visitProgram(Program* node) {
                     } else if (it == NodeType::BoolLiteral) {
                         module_->globalStaticInits[g->name] =
                             static_cast<BoolLiteral*>(g->initializer.get())->value ? "1" : "0";
+                    } else if (it == NodeType::CallExpr) {
+                        // P3-8 补全（2026-08-30）：容器/类对象 静态（全局表 = 映射<...>()）——
+                        //   .data 段只分配零字节，构造函数（桶数组=分配 等）须在 main 开头注入调用。
+                        module_->staticCtorNames.push_back(g->name);
+                        staticCtorInit_[g->name] = g->initializer.get();
+                    } else if (isClassStatic) {
+                        // 非字面量初始化表达式（如 向量 全局表 = 空向量 表达式）——零初始化 + 构造
+                        module_->staticCtorNames.push_back(g->name);
                     }
+                } else if (isClassStatic) {
+                    // P3-8 补全：无初始值的类类型静态（静态 映射<...> 模块表）——
+                    //   .data 零对象无桶数组，main 注入无参构造（映射() 分配桶数组）。
+                    module_->staticCtorNames.push_back(g->name);
                 }
             }
         }
@@ -223,6 +237,53 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     blockCounter_ = 0;
     // 入口基本块（ASCII标签 bbN：ml64 不识别中文标识符，阶段一统一 ASCII）
     ir::IRBlock* entry = newBlock("bb0");
+    // P3-8 补全（2026-08-30）：入口 主 函数开头注入顶层静态构造初始化——
+    //   容器/类对象静态（静态 映射<...> 全局表 = 映射<...>()）的构造函数
+    //   （桶数组=分配 等）须在程序入口执行，否则 .data 零对象无桶数组
+    //   -> 首次 设置/获取 写 null 崩溃（段错误实测）。
+    if (node->name == "主" && module_ != nullptr) {
+        for (const auto& sname : module_->staticCtorNames) {
+            ir::IRValue obj;
+            auto initIt = staticCtorInit_.find(sname);
+            if (initIt != staticCtorInit_.end() && initIt->second != nullptr) {
+                // 有构造初始化表达式：genExpr(映射<...>()) -> NewObject + 构造调用
+                obj = genExpr(initIt->second);
+            } else if (semantic_ != nullptr) {
+                // 无初始化表达式：静态对象内联在 .data（已分配 typeSizeOf 字节），
+                //   直接在 .data 符号地址上调用无参构造（this=符号地址，非 NewObject——
+                //   对象不是堆分配，.data 就是对象本体；映射() 分配桶数组字段）。
+                const std::string stType = semantic_->globalStaticType(sname);
+                if (!stType.empty() && semantic_->isClassType(stType)) {
+                    const ClassInfo* ci = semantic_->findClass(stType);
+                    if (ci != nullptr) {
+                        const ClassMemberInfo* ctor = nullptr;
+                        for (const auto& mk : ci->methods) {
+                            if (mk.second.isConstructor && mk.second.paramTypes.empty() &&
+                                mk.second.ownerClass == stType) {
+                                ctor = &mk.second;
+                                break;
+                            }
+                        }
+                        if (ctor != nullptr) {
+                            ir::IRValue symAddr = emitResult(
+                                ir::Opcode::ConstString, {}, "ptr",
+                                "?gstatic_" + sname, SourceLocation());
+                            emit(ir::Opcode::Call, {symAddr}, ir::IRValue(),
+                                 methodSymbolKey(stType, ctor->sigKey), "void",
+                                 SourceLocation());
+                        }
+                    }
+                }
+                continue;  // 无 init：构造已完成（this=符号地址），无需 StorePtr
+            }
+            if (obj.id < 0 && obj.isConstant == false && obj.extra.empty()) continue;
+            // 存入 .data 符号（?gstatic_名）
+            ir::IRValue symAddr = emitResult(
+                ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + sname, SourceLocation());
+            emit(ir::Opcode::StorePtr, {symAddr, obj}, ir::IRValue(), "", "ptr",
+                 SourceLocation());
+        }
+    }
     // 函数体
     if (node->body != nullptr) {
         genBlock(node->body.get());

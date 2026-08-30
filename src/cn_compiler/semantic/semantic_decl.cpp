@@ -150,6 +150,22 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   降级——lowerResultOptionalTypes（第一趟f）只处理函数签名/返回，局部变量
     //   类型（结果<点,整32>）未降级 -> IR registerVarSlots 的 isStructType 判 false
     //   -> 1 槽分配（应 2 槽），CopyStruct 16 字节溢出覆盖相邻变量槽（p.x 被写 &p 实测）。
+    // 2026-08-30 根治：结果/可选 内部实参递归归一——结果<映射<整64, 整64>, 整32>
+    //   的内部实参 映射<整64, 整64> 须归一为 映射$整64$整64（resolveGenericTypeName
+    //   对 结果 模板头原样返回，内部嵌套泛型不归一 -> .值 推导出模板形式，链式
+    //   .获取() 的 findClass 失败报「映射<整64 不是类类型」）。
+    if (SemanticAnalyzer::isResultType(varType)) {
+        const std::vector<std::string> rargs = resultTypeArgs(varType);
+        if (rargs.size() == 2) {
+            varType = "结果<" + resolveGenericTypeName(rargs[0], node->location) +
+                      ", " + resolveGenericTypeName(rargs[1], node->location) + ">";
+        }
+    } else if (SemanticAnalyzer::isOptionalType(varType)) {
+        const std::string oarg = optionalTypeArg(varType);
+        if (!oarg.empty()) {
+            varType = "可选<" + resolveGenericTypeName(oarg, node->location) + ">";
+        }
+    }
     if (SemanticAnalyzer::isResultType(varType) ||
         SemanticAnalyzer::isOptionalType(varType)) {
         ensureLoweredType(varType);

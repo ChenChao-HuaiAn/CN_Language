@@ -216,6 +216,9 @@ struct IRModule {
     std::vector<IRFunction> functions;                  // 函数列表
     std::vector<std::string> stringConstants;           // 字符串常量池（@str0/@str1...）
     std::unordered_map<std::string, int> stringIndex;   // 文本 -> 常量池ID
+    // P3-8 补全（2026-08-30）：需构造初始化的顶层静态（容器/类对象 静态 全局表 = 映射<...>()）——
+    //   main 函数开头注入 NewObject+构造调用（.data 段只分配零，无构造则 桶数组=null 崩溃）。
+    std::vector<std::string> staticCtorNames;
     // ---- 第 9 层 Debug（P3-8）：顶层静态变量全局存储 ----
     // 静态变量名 -> 源码类型（codegen 在 .data 段分配 8 字节槽，符号 ?gstatic_名）
     std::unordered_map<std::string, std::string> globalStatics;
@@ -417,6 +420,9 @@ private:
     // 提升泛型函数实例化函数体（名$实参）：从 泛型声明 innerFunc 生成 IRFunction
     void emitGenericFuncInstance(const GenericFuncInstance& gfi);
     ir::IRModule* module_ = nullptr;            // 当前模块
+    // P3-8 补全（2026-08-30）：静态名 -> 构造初始化表达式节点（main 注入时
+    //   genExpr 生成 NewObject+构造，结果 StorePtr 到 .data 符号）
+    std::unordered_map<std::string, Expr*> staticCtorInit_;
     ir::IRFunction* function_ = nullptr;        // 当前函数
     ir::IRBlock* currentBlock_ = nullptr;       // 当前生成块
     ir::IRValue lastExpr_;                      // 最近一次表达式生成的结果
