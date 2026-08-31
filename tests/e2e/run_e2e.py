@@ -424,6 +424,18 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
             return "失败", "79闭环用例仅支持 win-x64（依赖 ml64/link）"
         return 执行79闭环(编译器路径, 用例目录, 输出目录, 详细)
 
+    # ============ 119 v2 自举链接闭环用例：特殊编排 ============
+    # v1 79 闭环是 C++ 版产物 + CN 组件链；119 是 v2 重建产物 + 宿主运行时：
+    #   宿主编译 v2 组件（入口 主.cn）-> v2p.exe -> 编译多文件程序
+    #   （入口 主.cn + 导入模块 计算.cn，P6h 多源文件支持）-> v2asm.asm
+    #   -> ml64/link（对齐宿主链接命令：/ENTRY:WinMainCRTStartup + 运行时 obj）
+    #   -> 运行 v2 产物 exe，退出码须等于 加倍(7)=14（v2 代码真实执行验证）
+    # 仅 win-x64 平台支持（依赖 ml64/link 与运行时 .obj）
+    if 名称 == "119_v2_多文件链接闭环":
+        if 目标平台 != "win-x64":
+            return "失败", "119闭环用例仅支持 win-x64（依赖 ml64/link）"
+        return 执行119v2闭环(编译器路径, 用例目录, 输出目录, 详细)
+
     # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
     可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
     输出可执行 = 输出目录 / f"{名称}{可执行后缀}"
@@ -672,6 +684,156 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     # 两者逐字节一致 = 「CN版编译器再次编译自身源码 -> 产物行为一致」（阶段7验收步骤2）。
     # 这同时蕴含固定点：CN版自编译两次产物也必然一致（同为CN版组件行为）。
     return "通过", "自举闭环成立：CN自编译版组件产物与C++版逐字节一致（阶段7验收步骤2：产物行为一致）"
+
+
+def 执行119v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+                   输出目录: pathlib.Path, 详细: bool) -> tuple:
+    """执行 119 v2 自举链接闭环：v2 多文件编译 -> 链接宿主运行时 -> 运行"""
+    名称 = "119_v2_多文件链接闭环"
+    源文件 = 查找源文件(用例目录)
+    期望文件 = 查找期望文件(源文件)
+    import shutil
+
+    # 产物全部落 target/（规则19）：v2p=宿主编译的 v2 编译器；v2asm=项目根/target
+    审计目录 = 项目根目录 / "target" / "audit2"
+    审计目录.mkdir(parents=True, exist_ok=True)
+    v2源码目录 = 项目根目录 / "CN语言编译器v2"
+    v2p = 审计目录 / "v2p.exe"
+    v2asm路径 = 项目根目录 / "target" / "v2asm.asm"
+
+    # 工具链绝对路径（VS 2022，与79同源探测）
+    MSVC根 = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
+    ML64 = None
+    LINK = None
+    for 版本 in ("14.44.35207", "14.38.33130"):
+        候选ml64 = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "ml64.exe"
+        候选link = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "link.exe"
+        if 候选ml64.exists() and ML64 is None:
+            ML64 = 候选ml64
+        if 候选link.exists() and LINK is None:
+            LINK = 候选link
+    if ML64 is None or LINK is None:
+        return "失败", "未找到 ml64/link（VS 2022 MSVC 工具链）"
+
+    # LIB 路径（MSVC + Windows Kits）
+    msvc版本目录 = ML64.parent.parent.parent.parent
+    kits根 = pathlib.Path(r"C:\Program Files (x86)\Windows Kits\10\lib")
+    kits版 = sorted((p for p in kits根.glob("10.*") if p.is_dir()), reverse=True) if kits根.exists() else []
+    if not kits版:
+        return "失败", f"未找到 Windows Kits lib 目录: {kits根}\\10.*（请确认 Win10 SDK 安装）"
+    LIB路径们 = [
+        str(msvc版本目录 / "lib" / "x64"),
+        str(kits版[0] / "ucrt" / "x64"),
+        str(kits版[0] / "um" / "x64"),
+    ]
+    for lib路径 in LIB路径们:
+        if not pathlib.Path(lib路径).exists():
+            return "失败", f"LIB 路径不存在: {lib路径}"
+
+    # 运行时 .obj（C++ 版构建产物；对齐宿主链接命令 10 个）
+    运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
+                "math_api", "input_api", "file_api", "time_api", "system_api"]
+    运行时objs = [项目根目录 / "target" / f"{m}.obj" for m in 运行时名们]
+    for obj in 运行时objs:
+        if not obj.exists():
+            return "失败", f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
+
+    # ===== 步骤1：宿主编译 v2 组件（入口 主.cn，自动加载 6 个模块）-> v2p.exe =====
+    if v2p.exists():
+        v2p.unlink()
+    if 详细:
+        print(f"    [119-1] {编译器路径} build 主.cn -> v2p.exe")
+    编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
+                      "--target", "win-x64", "--output", str(v2p)], 项目根目录)
+    if 编译结果.returncode != 0:
+        return "失败", f"119-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+    if not v2p.exists():
+        return "失败", "119-1 编译返回成功但未生成 v2p.exe"
+
+    # ===== 步骤2：准备多文件程序（入口 主.cn + 导入模块 计算.cn） =====
+    v2src目录 = 审计目录 / "v2src119"
+    v2src目录.mkdir(parents=True, exist_ok=True)
+    for 文件名 in ("主.cn", "计算.cn"):
+        src = 用例目录 / 文件名
+        if not src.exists():
+            return "失败", f"119-2 缺少用例文件: {文件名}"
+        shutil.copy2(src, v2src目录 / 文件名)
+
+    # ===== 步骤3：运行 v2p（多文件编译：入口 + 自动加载导入模块） =====
+    入口参数 = "target/audit2/v2src119/主.cn"
+    if v2asm路径.exists():
+        v2asm路径.unlink()
+    if 详细:
+        print(f"    [119-3] {v2p.name} {入口参数}")
+    运行结果 = 运行命令([str(v2p), 入口参数], 项目根目录, 内存上限MB=内存上限MB默认)
+    if 运行结果.returncode != 0:
+        return "失败", f"119-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
+    if not v2asm路径.exists():
+        return "失败", "119-3 v2p 未生成 target/v2asm.asm"
+    # 输出比对：.expected 每行（去空）须为 v2p 实际输出的子串（数值列不参与精确比对）
+    期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
+    实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+    for 行 in 期望行们:
+        if 行 not in 实际输出:
+            return "失败", f"119-3 v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
+    # 入口符号自检：v2 生成的 asm 必须含 cn_main（对齐宿主，链接后由运行时 entry 调用）
+    asm内容 = v2asm路径.read_text(encoding="utf-8", errors="replace")
+    if "cn_main PROC" not in asm内容:
+        return "失败", "119-4 v2asm.asm 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
+
+    # ===== 步骤4：ml64 汇编 target/v2asm.asm -> v2asm.obj =====
+    v2obj = 审计目录 / "v2asm.obj"
+    if v2obj.exists():
+        v2obj.unlink()
+    if 详细:
+        print("    [119-4] ml64 v2asm.asm")
+    汇编结果 = 运行命令([str(ML64), "/nologo", "/c", f"/Fo{v2obj}", str(v2asm路径)], 项目根目录)
+    if 汇编结果.returncode != 0:
+        return "失败", f"119-4 ml64 汇编失败(退出码{汇编结果.returncode}): {汇编结果.stdout.strip()[:300]}"
+    if not v2obj.exists():
+        return "失败", "119-4 ml64 返回成功但未生成 v2asm.obj"
+
+    # ===== 步骤5：链接（对齐宿主链接命令 /ENTRY:WinMainCRTStartup + 运行时 obj）=====
+    输出exe = 审计目录 / "v2out.exe"
+    if 输出exe.exists():
+        输出exe.unlink()
+    响应文件 = 审计目录 / "119_link.rsp"
+    rsp_lines = [
+        "/nologo", "/ENTRY:WinMainCRTStartup", "/SUBSYSTEM:CONSOLE",
+        "/STACK:8388608",
+    ]
+    for lib in LIB路径们:
+        rsp_lines.append(f"/LIBPATH:{lib}")
+    rsp_lines += ["/DEFAULTLIB:libcmt.lib", "/DEFAULTLIB:libucrt.lib",
+                  "/DEFAULTLIB:kernel32.lib", "/DEFAULTLIB:shell32.lib",
+                  f"/OUT:{输出exe}"]
+    rsp_lines += [str(v2obj)] + [str(o) for o in 运行时objs]
+    # map 文件供符号方向自检（v2asm.obj 必须贡献 cn_main）
+    map文件 = 审计目录 / "119_link.map"
+    if map文件.exists():
+        map文件.unlink()
+    rsp_lines.append(f"/MAP:{map文件}")
+    with open(响应文件, "w", encoding="utf-8") as f:
+        for 行 in rsp_lines:
+            f.write(f'"{行}"\n')
+    if 详细:
+        print(f"    [119-5] link -> {输出exe.name}")
+    链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录)
+    if 链接结果.returncode != 0:
+        return "失败", f"119-5 链接失败(退出码{链接结果.returncode}): {链接结果.stdout.strip()[:300]}"
+    if not 输出exe.exists():
+        return "失败", "119-5 链接返回成功但未生成 exe"
+    # 符号方向自检（防虚假验收：cn_main 必须来自 v2asm.obj 而非其他 obj）
+    map内容 = map文件.read_text(encoding="utf-8", errors="replace") if map文件.exists() else ""
+    if "v2asm.obj" not in map内容 or "cn_main" not in map内容:
+        return "失败", "119-5.5 符号自检失败: map 中未找到来自 v2asm.obj 的 cn_main"
+
+    # ===== 步骤6：运行 v2 产物 exe -> 退出码须为 加倍(7)=14 =====
+    运行结果2 = 运行命令([str(输出exe)], 项目根目录)
+    if 运行结果2.returncode != 14:
+        return "失败", (f"119-6 v2 产物运行退出码={运行结果2.returncode}"
+                        f"（期望 14=加倍(7)）: {(运行结果2.stderr or '').strip()[:200]}")
+    return "通过", "v2 多文件编译 -> ml64/link（对齐宿主链接命令）-> 运行 闭环成立（退出码 14=加倍(7)）"
 
 
 def 打印汇总(总数: int, 通过数: int, 失败数: int, 未实现数: int, 跳过数: int = 0) -> None:
