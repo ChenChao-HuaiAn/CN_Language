@@ -431,15 +431,21 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     #   -> ml64/link（对齐宿主链接命令：/ENTRY:WinMainCRTStartup + 运行时 obj）
     #   -> 运行 v2 产物 exe，退出码须等于用例预期值（v2 代码真实执行验证）
     # 仅 win-x64 平台支持（依赖 ml64/link 与运行时 .obj）
+    # 元组第三元素（可缺省）= 是否链接 v2p.obj（P7b 容器用例：v2 生成代码调用
+    #   宿主编译的容器类方法符号，实现在 v2p.obj——stdlib 源码级并入编译产物）
     v2闭环用例们 = {
         "119_v2_多文件链接闭环": (["主.cn", "计算.cn"], 14),   # 加倍(7)
         "120_v2_顶层常量": (["主.cn", "常量库.cn"], 62),       # 常量和() + 系数*增量 = 38+24
+        "123_v2_容器": (["主.cn"], 21333, True),              # P7b：向量/映射/结果/字符串/RAII = 21333
     }
     if 名称 in v2闭环用例们:
         if 目标平台 != "win-x64":
             return "失败", f"{名称} 闭环用例仅支持 win-x64（依赖 ml64/link）"
-        源文件名们, 预期退出码 = v2闭环用例们[名称]
-        return 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 源文件名们, 预期退出码)
+        条目 = v2闭环用例们[名称]
+        源文件名们, 预期退出码 = 条目[0], 条目[1]
+        链接v2pobj = 条目[2] if len(条目) > 2 else False
+        return 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 源文件名们, 预期退出码,
+                        链接v2pobj)
 
     # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
     可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
@@ -693,11 +699,14 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 
 def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                输出目录: pathlib.Path, 详细: bool,
-               源文件名们: list, 预期退出码: int) -> tuple:
+               源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False) -> tuple:
     """执行 v2 自举链接闭环（119/120… 通用）：v2 多文件编译 -> 链接宿主运行时 -> 运行
 
     源文件名们 = 用例的全部源文件（首个为主入口 主.cn，须含导入模块文件）；
-    预期退出码 = v2 产物 exe 运行的期望退出码（用例断言值）。"""
+    预期退出码 = v2 产物 exe 运行的期望退出码（用例断言值）；
+    链接v2pobj = 是否链接 v2p.obj（P7b 容器用例：容器方法实现来自宿主编译的
+      v2 组件 obj——rustc 预编译 std 模式；/FORCE:MULTIPLE + v2asm.obj 在前
+      保证 cn_main 绑定 v2 产物，容器符号绑定 v2p.obj，map 自检双方向）。"""
     名称 = 用例目录.name
     编号 = 名称.split("_")[0]  # 步骤号前缀与 v2src 目录名后缀（119/120…）
     期望文件 = 查找期望文件(用例目录 / 源文件名们[0])
@@ -816,7 +825,16 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     rsp_lines += ["/DEFAULTLIB:libcmt.lib", "/DEFAULTLIB:libucrt.lib",
                   "/DEFAULTLIB:kernel32.lib", "/DEFAULTLIB:shell32.lib",
                   f"/OUT:{输出exe}"]
-    rsp_lines += [str(v2obj)] + [str(o) for o in 运行时objs]
+    if 链接v2pobj:
+        # P7b：v2p.obj 提供 stdlib 容器类方法实现；与 v2asm.obj 的 cn_main 双定义
+        #   -> /FORCE:MULTIPLE + v2asm.obj 在前（79 防虚假验收同款：命令行靠前定义胜出）
+        v2pobj = 审计目录 / "v2p.obj"
+        if not v2pobj.exists():
+            return "失败", "123-5 缺少 target/audit2/v2p.obj（步骤1 cn build 未产出）"
+        rsp_lines.append("/FORCE:MULTIPLE")
+        rsp_lines += [str(v2obj), str(v2pobj)] + [str(o) for o in 运行时objs]
+    else:
+        rsp_lines += [str(v2obj)] + [str(o) for o in 运行时objs]
     # map 文件供符号方向自检（v2asm.obj 必须贡献 cn_main）
     map文件 = 审计目录 / f"{编号}_link.map"
     if map文件.exists():
@@ -836,6 +854,14 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     map内容 = map文件.read_text(encoding="utf-8", errors="replace") if map文件.exists() else ""
     if "v2asm.obj" not in map内容 or "cn_main" not in map内容:
         return "失败", f"{编号}-5.5 符号自检失败: map 中未找到来自 v2asm.obj 的 cn_main"
+    if 链接v2pobj:
+        # P7b 双向自检：容器方法符号（向量$... 构造/追加）必须来自 v2p.obj——
+        #   否则容器链路退化为其他来源，闭环是假的
+        import re as _re
+        向量行 = [l for l in map内容.splitlines()
+                if "E59091E9878F" in l and "v2p.obj" in l and " f " in l]
+        if not 向量行:
+            return "失败", "123-5.5 符号自检失败: map 中未找到来自 v2p.obj 的向量类方法符号"
 
     # ===== 步骤6：运行 v2 产物 exe -> 退出码须等于用例预期值 =====
     运行结果2 = 运行命令([str(输出exe)], 项目根目录)
