@@ -9,6 +9,7 @@
 // 生命周期：编译器进程内常驻（随进程退出回收），不参与 内存::释放全部()（reset），
 //   避免 reset 破坏符号表引用。
 
+#include <deque>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -17,7 +18,14 @@ namespace {
 // 内容 -> ID（经典哈希 + 游动指针定位字节池）
 struct InternState {
     std::unordered_map<std::string, int> map;
-    std::vector<std::string> pool;  // pool[id] = 文本（ID 从 1 开始，0 保留空串）
+    // 宿主缺陷根治（2026-09-01，用户令缺陷零容忍·体内二分定位）：pool 原为
+    //   vector<string>——扩容搬移全部 string，已发放的 c_str() 指针悬垂
+    //   （__cn_intern_text 返回的指针被编译器全链长期持有：v2 组件 驻留文本
+    //   取回后跨多轮调用使用，任何后续 驻留 触发扩容即读到搬家后旧内存——
+    //   表现为「字符串参数跨调用被随机清空/混入无关文本」的 UB，破坏位置
+    //   随扩容时机漂移）。deque 的 push_back 不使已有元素指针失效（标准保证）
+    //   ——对标 rustc StringPool 的指针稳定性要求。
+    std::deque<std::string> pool;  // pool[id] = 文本（ID 从 1 开始，0 保留空串）
 };
 InternState& internState() {
     static InternState s;
