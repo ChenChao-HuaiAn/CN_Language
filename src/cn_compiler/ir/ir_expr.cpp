@@ -1964,6 +1964,12 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
                 objSrcType = types::pointeeOf(ptrType);
             }
         }
+    } else if (node->object->getType() == NodeType::CallExpr) {
+        // 宿主缺陷根治（2026-09-01，用户令缺陷零容忍）：对象是函数/方法调用
+        //   （向量.元素(i).字段）——原只认 变量/嵌套成员/下标，CallExpr 推导空
+        //   -> decl==nullptr -> 字段读取降级常量 0。补经 exprSrcType 解析返回
+        //   类型（与 lvalueAddress 的同款补丁配套：地址层 + 类型/宽度层双修复）。
+        objSrcType = exprSrcType(node->object.get());
     }
     if (node->isArrow && types::isPointer(objSrcType)) {
         objSrcType = types::pointeeOf(objSrcType);

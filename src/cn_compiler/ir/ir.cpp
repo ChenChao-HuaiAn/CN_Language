@@ -749,8 +749,19 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
                                : lvalueAddress(member->object.get());
         if (semantic_ == nullptr) return base;
         // 对象源码类型：变量 / 嵌套成员 / 数组字段元素（memberObjStructType 递归
-        //   处理 arrow 指针剥除，修复10/10b）
+        // 处理 arrow 指针剥除，修复10/10b）
         std::string objSrcType = memberObjStructType(member);
+        // 宿主缺陷根治（2026-09-01，用户令缺陷零容忍）：对象是函数/方法调用
+        //   （向量.元素(i).字段 / 返回结构体函数 f().字段）——memberObjStructType
+        //   不认 CallExpr 返回空 -> decl==null 防御 return base 丢字段偏移 ->
+        //   LoadPtr 读结构体首 8 字节拼合值（元素(19).附加 读出 19|(1<<32)）。
+        //   补 CallExpr 分支经 exprSrcType 解析返回类型（其 CallExpr 分支已支持
+        //   方法/函数返回类型），FieldAddr(base, 偏移) 正常落地；base 来自尾部分支
+        //   genExpr(调用)=structReturn 隐藏返回缓冲基址，值即结构体地址。
+        if (objSrcType.empty() &&
+            member->object->getType() == NodeType::CallExpr) {
+            objSrcType = exprSrcType(member->object.get());
+        }
         if (objSrcType.empty() && member->isArrow &&
             member->object->getType() == NodeType::BinaryExpr) {
             // 指针算术结果成员：(名单 + (n-1))->分数 — 从左操作数推导元素类型
