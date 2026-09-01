@@ -144,16 +144,21 @@ void Arm64CodeGenerator::emitNewObject(Arm64AsmWriter& writer,
 // DeleteObject：operand[0] = 对象指针，extra = "类名"
 // 展开：this=x0=对象指针；bl 析构函数（沿继承链解析实际析构名）；
 //       x0 = 对象指针；bl __cn_object_delete
+// 宿主根治（2026-09-01，与 x64 同步）：对象指针为 空指针 时跳过析构+释放
+//   （RAII 收尾对未执行声明路径读到确定性空指针——IR 层 genVarDecl 已零初始化）。
 void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
                                           const ir::IRInstruction& inst) {
     const std::string className = inst.extra.empty() ? "" : inst.extra;
-    const std::string objOp = operandText(inst.operands[0]);
-    // 1. 对象指针入 x0（this）
+    // 空指针跳过标签（GAS 用 L 前缀，与 Lptr_ok 一致；模块级递增避免重复）
+    const int skipId = ptrCheckCounter_++;
+    const std::string skipLabel = "Lobjdel_ok" + std::to_string(skipId);
+    // 1. 对象指针入 x0（this）；空指针 -> 跳过
     if (inst.operands[0].id >= 0) {
         emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x0", "ptr");
     } else {
         emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
     }
+    writer.line("cbz x0, " + skipLabel);
     // 2. 调用析构函数（沿继承链解析实际析构方法名）
     std::string dtorName;
     if (semantic_ != nullptr && !className.empty()) {
@@ -176,6 +181,7 @@ void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
         emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
     }
     writer.line("bl __cn_object_delete");
+    writer.line(skipLabel + ":");
 }
 
 // ==================== 虚调用（VirtualCall） ====================

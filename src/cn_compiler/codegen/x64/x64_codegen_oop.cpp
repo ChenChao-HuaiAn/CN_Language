@@ -145,11 +145,19 @@ void X64CodeGenerator::emitNewObject(AsmWriter& writer, const ir::IRInstruction&
 // DeleteObject：operand[0] = 对象指针，extra = "类名"
 // 展开：调用析构函数（沿继承链解析实际析构名：子类无自身析构时继承父类析构，
 //   IR 层提升的析构符号 = 子类$~父类析构名；this=rcx=对象指针），再 __cn_object_delete
+// 宿主根治（2026-09-01，缺陷：分支未执行时类局部被无条件析构）：对象指针为 空指针
+//   时跳过析构+释放（RAII 收尾对未执行声明路径的槽读到确定性空指针——IR 层
+//   genVarDecl 已零初始化；原先对栈垃圾调用析构 -> 野指针崩溃，5 行最小复现 100%）。
 void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstruction& inst) {
     const std::string className = inst.extra.empty() ? "" : inst.extra;
     const std::string objOp = operandText(inst.operands[0]);
-    // 1. 对象指针入 rcx（this）
+    // 空指针跳过标签（模块级递增，避免重复）
+    const int skipId = ptrCheckCounter_++;
+    const std::string skipLabel = "@objdel_ok" + std::to_string(skipId);
+    // 1. 对象指针入 rcx（this）；空指针 -> 跳过析构+释放
     writer.line("mov rcx, " + objOp);
+    writer.line("test rcx, rcx");
+    writer.line("je " + skipLabel);
     // 2. 调用析构函数。继承链解析实际析构方法名：
     //    语义层 ClassInfo.methods 含继承并入的析构（~父类析构名，Task 3.1 缺陷修复——
     //    子类无自身析构时 IR 层仍提升父类析构到子类符号 子类$~动物），
@@ -175,6 +183,7 @@ void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstructi
     writer.line("sub rsp, 32");
     writer.line("call __cn_object_delete");
     writer.line("add rsp, 32");
+    writer.raw(skipLabel + ":");
 }
 
 // ==================== 虚调用（VirtualCall） ====================

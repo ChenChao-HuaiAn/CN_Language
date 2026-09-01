@@ -327,20 +327,11 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     if (m->isStatic) return false;   // 实例.静态方法 语义允许，但走静态路径（防御）
 
     // this 实参：自身/父类 -> this 指针；类变量 -> 变量值（对象指针）
-    // 第 9 层 Debug（P3-8）：顶层静态对象方法调用（全局表.大小()）——this 须为
-    //   全局 .data 符号地址（?gstatic_名），而非 LoadPtr 读值（会把对象首 8 字节
-    //   （如数据指针）当 this 传入 -> 大小() 判空/读偏移全错）。
-    ir::IRValue thisArg;
-    if (mem->object->getType() == NodeType::IdentifierExpr &&
-        semantic_->isGlobalStatic(
-            static_cast<IdentifierExpr*>(mem->object.get())->name)) {
-        thisArg = emitResult(ir::Opcode::ConstString, {}, "ptr",
-                             "?gstatic_" +
-                                 static_cast<IdentifierExpr*>(mem->object.get())->name,
-                             node->location);
-    } else {
-        thisArg = genExpr(mem->object.get());
-    }
+    // 宿主根治（2026-09-01）：顶层静态对象方法调用（全局表.大小()）不再特判——
+    //   类静态统一「指针槽模型」（.data 槽存对象指针，主 入口 NewObject 入槽），
+    //   genExpr(静态标识符) = 符号地址 + LoadPtr = 对象指针，与局部类变量
+    //   读取完全一致。原特判传 .data 符号地址（对象内联模型）已随模型统一废弃。
+    ir::IRValue thisArg = genExpr(mem->object.get());
 
     // ---- 虚调用：方法在虚表中有槽位（虚拟 或 重写，vtableIndex>=0）且非 父类. 限定调用 ----
     // 重写方法 isVirtual=false 但 vtableIndex>=0（覆盖父类槽位），同样须虚分派。
@@ -533,6 +524,25 @@ void IRGenerator::genClassDestructorCalls() {
         }
     }
     if (objVars.empty()) return;
+    // 宿主根治（2026-09-01，缺陷：分支未执行时类局部被无条件析构）：
+    //   函数入口块最前统一零初始化全部类局部槽（Store 空指针）——类局部声明
+    //   可能位于未执行的分支内，声明处初始化不运行、槽为栈垃圾（新鲜栈零页
+    //   时碰巧为空属侥幸，实测叠加前序调用污染栈后 100% 崩溃）；入口零初始化
+    //   保证任意执行路径下未构造槽为确定性 空指针，配合 codegen DeleteObject
+    //   空安全跳过（x64/arm64），RAII 收尾不再触碰野指针。
+    {
+        ir::IRBlock* entryBlock = function_->blocks.front().get();
+        for (auto it = objVars.rbegin(); it != objVars.rend(); ++it) {
+            ir::IRInstruction zeroInst;
+            zeroInst.opcode = ir::Opcode::Store;
+            zeroInst.operands.push_back(ir::IRValue::constant("0", "i64"));
+            zeroInst.result = ir::IRValue();
+            zeroInst.extra = it->unique;   // Store 目标：变量槽（唯一内部名）
+            zeroInst.type = "ptr";
+            entryBlock->instructions.insert(entryBlock->instructions.begin(),
+                                            zeroInst);
+        }
+    }
     // 在每个"返回终止"块的指令列表末尾追加 DeleteObject（RAII：return 前释放）。
     // 说明：IRBlock 终止信息是块级属性（termKind/termReturnValue），指令列表不含
     //   return 指令；codegen emitBlock 输出顺序为 指令序列 + 终止——在返回块

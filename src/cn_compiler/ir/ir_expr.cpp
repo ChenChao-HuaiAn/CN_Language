@@ -1184,6 +1184,79 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         const std::string stType = semantic_->globalStaticType(ident->name);
         const std::string irT = mapType(stType.empty() ? "整64" : stType);
         ir::IRValue value = genExpr(node->value.get());
+        // 宿主根治（2026-09-01）：类静态赋值深拷贝——右值为类对象标识符时
+        //   NewObject + 拷贝构造/CopyStruct（与局部类赋值一致），防共享指针
+        //   悬挂（源 RAII 析构后静态槽残留 freed 指针 -> 堆损坏）；右值为构造
+        //   调用/临时对象（表 = 向量<...>()）本就是新对象，直接指针入槽。
+        if (!isCompoundAssignOp(node->op) &&
+            semantic_->isClassType(types::canonical(stType)) &&
+            node->value->getType() == NodeType::IdentifierExpr) {
+            const std::string rhsName =
+                static_cast<IdentifierExpr*>(node->value.get())->name;
+            std::string rhsSrc = lookupSrcType(rhsName);
+            const bool rhsIsStatic =
+                rhsSrc.empty() && semantic_->isGlobalStatic(rhsName);
+            if (rhsIsStatic) rhsSrc = semantic_->globalStaticType(rhsName);
+            if (semantic_->isClassType(types::canonical(rhsSrc))) {
+                const std::string canonTgt = types::canonical(stType);
+                const ClassInfo* ci = semantic_->findClass(canonTgt);
+                if (ci != nullptr) {
+                    const std::string extra = canonTgt + "|" +
+                                              std::to_string(ci->totalSize);
+                    ir::IRValue newObj = emitResult(
+                        ir::Opcode::NewObject,
+                        {ir::IRValue::constant(canonTgt, "ptr")},
+                        "ptr", extra, node->location);
+                    const ClassMemberInfo* copyCtor =
+                        semantic_->findCopyConstructor(canonTgt);
+                    bool copied = false;
+                    if (copyCtor != nullptr) {
+                        const std::string copyOwner = copyCtor->ownerClass.empty()
+                                                          ? canonTgt
+                                                          : copyCtor->ownerClass;
+                        ir::IRValue srcAddr;
+                        if (rhsIsStatic) {
+                            // 源为顶层类静态：槽地址 = ?gstatic_名 符号地址
+                            srcAddr = emitResult(
+                                ir::Opcode::ConstString, {}, "ptr",
+                                "?gstatic_" + rhsName, node->location);
+                        } else {
+                            const std::string srcUnique = lookupVarName(rhsName);
+                            if (!srcUnique.empty()) {
+                                if (isByRefCapture(rhsName)) {
+                                    srcAddr = emitResult(
+                                        ir::Opcode::Load,
+                                        {ir::IRValue::var(srcUnique, "ptr")},
+                                        "ptr", srcUnique, node->location);
+                                } else {
+                                    srcAddr = emitResult(
+                                        ir::Opcode::AddrOf,
+                                        {ir::IRValue::var(srcUnique, "i64")},
+                                        "ptr", srcUnique, node->location);
+                                }
+                            }
+                        }
+                        if (srcAddr.id >= 0) {
+                            emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
+                                 methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
+                                 node->location);
+                            copied = true;
+                        }
+                    }
+                    if (!copied) {
+                        emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
+                             std::to_string(ci->totalSize), "void", node->location);
+                    }
+                    ir::IRValue slotAddr = emitResult(
+                        ir::Opcode::ConstString, {}, "ptr",
+                        "?gstatic_" + ident->name, node->location);
+                    emit(ir::Opcode::StorePtr, {slotAddr, newObj}, ir::IRValue(),
+                         "", "ptr", node->location);
+                    lastExpr_ = newObj;
+                    return;
+                }
+            }
+        }
         // 复合赋值（+= 等）：先读后算再写
         if (isCompoundAssignOp(node->op)) {
             ir::IRValue addrR = emitResult(

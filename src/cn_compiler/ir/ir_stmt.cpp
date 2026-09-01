@@ -669,15 +669,25 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         //   正确语义：新建独立堆对象 + 逐字段 CopyStruct 深拷贝。
         if (semantic_ != nullptr && value.type == "ptr" &&
             node->initializer->getType() == NodeType::IdentifierExpr) {
-            const std::string initSrcType = lookupSrcType(
-                static_cast<IdentifierExpr*>(node->initializer.get())->name);
+            const std::string initName =
+                static_cast<IdentifierExpr*>(node->initializer.get())->name;
+            std::string initSrcType = lookupSrcType(initName);
+            // 宿主根治（2026-09-01）：源为顶层类静态（不在 varStack_，lookupSrcType
+            //   为空）——类型取 globalStaticType；拷贝构造 byRef 传静态槽地址
+            //   （&?gstatic_名，解引用即对象指针——指针槽模型与局部变量槽同构）。
+            //   原实现漏此分支：浅 Store 共享指针，RAII 析构双释放堆损坏（0xC0000374）。
+            const bool initIsStatic =
+                initSrcType.empty() && semantic_->isGlobalStatic(initName);
+            if (initIsStatic) {
+                initSrcType = semantic_->globalStaticType(initName);
+            }
             const std::string canonSrc = types::canonical(initSrcType);
             const std::string canonTgt = types::canonical(srcType);
             if (semantic_->isClassType(canonTgt) &&
                 semantic_->isClassType(canonSrc)) {
                 const ClassInfo* ci = semantic_->findClass(canonTgt);
                 if (ci != nullptr) {
-                    // value 即源对象指针（Load 源变量槽）
+                    // value 即源对象指针（Load 源变量槽 / LoadPtr 静态槽）
                     const std::string extra = canonTgt + "|" +
                                               std::to_string(ci->totalSize);
                     ir::IRValue newObj = emitResult(
@@ -696,11 +706,14 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                         const std::string copyOwner =
                             copyCtor->ownerClass.empty() ? canonTgt
                                                          : copyCtor->ownerClass;
-                        const std::string initName =
-                            static_cast<IdentifierExpr*>(node->initializer.get())->name;
                         const std::string srcUnique = lookupVarName(initName);
                         ir::IRValue srcAddr;
-                        if (isByRefCapture(initName)) {
+                        if (initIsStatic) {
+                            // 源为顶层类静态：槽地址 = ?gstatic_名 符号地址
+                            srcAddr = emitResult(
+                                ir::Opcode::ConstString, {}, "ptr",
+                                "?gstatic_" + initName, node->location);
+                        } else if (isByRefCapture(initName)) {
                             // 源为引用参数：槽内存被引用对象地址（Load 槽）
                             srcAddr = emitResult(
                                 ir::Opcode::Load,
@@ -773,6 +786,13 @@ void IRGenerator::genBlock(BlockStmt* node) {
     varStack_.emplace_back();  // 进入子作用域
     for (auto& stmt : node->statements) {
         genStmt(stmt.get());
+        // 宿主根治（2026-09-01，缺陷：块顶层级中途回Return 被无视）：当前块已终止
+        //   （返回/中断/继续）后，本语句列表的剩余语句为死代码——原实现继续生成进
+        //   同一线性块（首个 返回 的块级终止被后续语句覆盖，实测 返回 5 后跟语句
+        //   最终返回 7）。跳过剩余语句（语言语义：返回 后代码不可达）。
+        if (currentBlock_ != nullptr && currentBlock_->terminated) {
+            break;
+        }
     }
     varStack_.pop_back();  // 退出子作用域
 }

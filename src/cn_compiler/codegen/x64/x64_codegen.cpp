@@ -446,17 +446,15 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
         std::string initText;
         const auto initIt = module.globalStaticInits.find(name);
         if (initIt != module.globalStaticInits.end()) initText = initIt->second;
-        // 按类型分配：i128 16 字节双槽；f32 4 字节；容器/结构体按类型大小；其余 8 字节
-        // 第 9 层 Debug（P3-8）根治：顶层静态容器/结构体（向量$整64 等）须按
-        //   typeSizeOf 分配完整对象字节（向量=24 字节：数据/元素数量/容量），
-        //   否则实例方法 this=符号地址后，读 数据 偏移 0 已越界/读到相邻符号。
+        // 按类型分配：i128 16 字节双槽；f32 4 字节；结构体按类型大小；其余 8 字节
+        // 宿主根治（2026-09-01）：类/容器静态统一「指针槽模型」——.data 符号只存
+        //   8 字节对象指针（主 入口 NewObject + 构造 + StorePtr 入槽，与局部类
+        //   变量槽同构）。原按 typeSizeOf 分配对象本体是「对象内联 .data」模型
+        //   （与读取路径 LoadPtr 不符——读出首 8 字节字段当指针，实测空指针崩溃）。
+        //   结构体静态保持值语义按类型大小分配（无构造/指针语义）。
         int qwords = 1;
         if (semantic_ != nullptr &&
-            semantic_->isClassType(stType) && !types::isPointer(stType)) {
-            const int sz = semantic_->typeSizeOf(stType);
-            if (sz > 8) qwords = (sz + 7) / 8;
-        } else if (semantic_ != nullptr &&
-                   semantic_->isStructType(stType) && !types::isPointer(stType)) {
+            semantic_->isStructType(stType) && !types::isPointer(stType)) {
             const int sz = semantic_->typeSizeOf(stType);
             if (sz > 8) qwords = (sz + 7) / 8;
         }

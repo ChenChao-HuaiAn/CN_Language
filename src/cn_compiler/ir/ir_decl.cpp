@@ -237,10 +237,15 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     blockCounter_ = 0;
     // 入口基本块（ASCII标签 bbN：ml64 不识别中文标识符，阶段一统一 ASCII）
     ir::IRBlock* entry = newBlock("bb0");
-    // P3-8 补全（2026-08-30）：入口 主 函数开头注入顶层静态构造初始化——
-    //   容器/类对象静态（静态 映射<...> 全局表 = 映射<...>()）的构造函数
-    //   （桶数组=分配 等）须在程序入口执行，否则 .data 零对象无桶数组
-    //   -> 首次 设置/获取 写 null 崩溃（段错误实测）。
+    // P3-8 补全（2026-08-30）+ 宿主根治（2026-09-01）：顶层静态构造初始化——
+    //   类/容器静态统一「指针槽模型」：.data 符号存 8 字节对象指针（与局部类
+    //   变量槽同构），主 入口注入 NewObject + 无参构造 + StorePtr 指针入槽。
+    //   原实现按「有无初始化表达式」分裂两种模型：有初始化 = NewObject 后
+    //   StorePtr 指针入槽；无初始化 = 构造函数打在 .data 符号地址（对象内联
+    //   本体）。读取路径（LoadPtr）只对指针模型正确——无初始化静态被读出
+    //   首 8 字节字段（如 数据 指针）当对象指针，复制/方法调用全错（实测
+    //   运行时错误3 空指针）。统一后标识符读、方法 this、拷贝构造 byRef 传参
+    //   （槽地址解引用即对象指针）全部与局部类变量一致。
     if (node->name == "主" && module_ != nullptr) {
         for (const auto& sname : module_->staticCtorNames) {
             ir::IRValue obj;
@@ -249,32 +254,40 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
                 // 有构造初始化表达式：genExpr(映射<...>()) -> NewObject + 构造调用
                 obj = genExpr(initIt->second);
             } else if (semantic_ != nullptr) {
-                // 无初始化表达式：静态对象内联在 .data（已分配 typeSizeOf 字节），
-                //   直接在 .data 符号地址上调用无参构造（this=符号地址，非 NewObject——
-                //   对象不是堆分配，.data 就是对象本体；映射() 分配桶数组字段）。
+                // 无初始化表达式：NewObject + 无参构造（this=新对象），
+                //   StorePtr 指针入 .data 槽（指针槽模型，与局部类变量一致）
                 const std::string stType = semantic_->globalStaticType(sname);
                 if (!stType.empty() && semantic_->isClassType(stType)) {
                     const ClassInfo* ci = semantic_->findClass(stType);
                     if (ci != nullptr) {
+                        const std::string extra =
+                            stType + "|" + std::to_string(ci->totalSize);
+                        ir::IRValue newObj = emitResult(
+                            ir::Opcode::NewObject,
+                            {ir::IRValue::constant(stType, "ptr")},
+                            "ptr", extra, SourceLocation());
                         const ClassMemberInfo* ctor = nullptr;
                         for (const auto& mk : ci->methods) {
-                            if (mk.second.isConstructor && mk.second.paramTypes.empty() &&
+                            if (mk.second.isConstructor &&
+                                mk.second.paramTypes.empty() &&
                                 mk.second.ownerClass == stType) {
                                 ctor = &mk.second;
                                 break;
                             }
                         }
                         if (ctor != nullptr) {
-                            ir::IRValue symAddr = emitResult(
-                                ir::Opcode::ConstString, {}, "ptr",
-                                "?gstatic_" + sname, SourceLocation());
-                            emit(ir::Opcode::Call, {symAddr}, ir::IRValue(),
+                            emit(ir::Opcode::Call, {newObj}, ir::IRValue(),
                                  methodSymbolKey(stType, ctor->sigKey), "void",
                                  SourceLocation());
                         }
+                        ir::IRValue symAddr = emitResult(
+                            ir::Opcode::ConstString, {}, "ptr",
+                            "?gstatic_" + sname, SourceLocation());
+                        emit(ir::Opcode::StorePtr, {symAddr, newObj}, ir::IRValue(),
+                             "", "ptr", SourceLocation());
                     }
                 }
-                continue;  // 无 init：构造已完成（this=符号地址），无需 StorePtr
+                continue;  // 类静态：NewObject 路径已 StorePtr；非类静态无构造需求
             }
             if (obj.id < 0 && obj.isConstant == false && obj.extra.empty()) continue;
             // 存入 .data 符号（?gstatic_名）
