@@ -781,6 +781,23 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             }
         }
     }
+    // 缺陷2 根治（2026-09-02）：结构体栈变量无初始化器声明（结构体名 变量）——
+    //   多槽为栈垃圾：含容器字段（v2 组件 函数IR.指令 = 向量<IR指令>）时内联容器
+    //   头为野指针，追加 段错误（p3 实证）。按总大小逐槽零初始化（对齐 v2 自举
+    //   B1 结构体局部零初始化语义：未初始化字段确定性为 0/无——Rust 级确定性）。
+    if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
+        semantic_ != nullptr &&
+        semantic_->isStructType(types::canonical(srcType))) {
+        const int size = semantic_->typeSizeOf(types::canonical(srcType));
+        const int slots = (size + 7) / 8;
+        for (int s = 0; s < slots; ++s) {
+            const std::string slotName =
+                s == 0 ? unique : unique + "$s" + std::to_string(s);
+            emit(ir::Opcode::Store,
+                 {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
+                 slotName, "i64", node->location);
+        }
+    }
 }
 void IRGenerator::genBlock(BlockStmt* node) {
     varStack_.emplace_back();  // 进入子作用域

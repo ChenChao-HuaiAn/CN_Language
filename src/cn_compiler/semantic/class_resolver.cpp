@@ -838,6 +838,40 @@ const ClassMemberInfo* SemanticAnalyzer::resolveOperatorOverload(
 //   - 常量成员函数体内禁止修改成员（constMethodContext_）
 //   - 访问控制：方法体内访问 私有/保护 成员须为自身/子类/友元
 void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
+    // 缺陷3 强制规则（2026-09-02）：含「有析构类」字段（拥有式字段）的类必须声明
+    //   析构（函数 ~类名()）——级联析构注入（injectFieldCascadeDestroy）只挂在声明
+    //   的析构体上，不声明则字段堆资源静默泄漏。与方案A 拷贝构造强制规则
+    //   （checkCopyRequiresCtor）配对，对标 C++ 三法则（有析构必有拷贝构造控制）。
+    bool hasDtor = false;
+    for (const auto& mk : info.methods) {
+        if (mk.second.isDestructor) { hasDtor = true; break; }
+    }
+    if (!hasDtor) {
+        for (const auto& fn : info.fieldOrder) {
+            const auto f = info.fields.find(fn);
+            if (f == info.fields.end() || f->second.isStatic) continue;
+            const std::string fcanon = types::canonical(f->second.type);
+            const ClassInfo* fci = findClass(fcanon);
+            if (fci == nullptr) continue;
+            bool fHasDtor = false;
+            for (const auto& mk : fci->methods) {
+                if (mk.second.isDestructor) { fHasDtor = true; break; }
+            }
+            if (fHasDtor) {
+                const SourceLocation loc = f->second.ast != nullptr
+                    ? f->second.ast->location : SourceLocation();
+                // 警告级（2026-09-02）：不得以 Error 打破既有已验收用例（E2E 58
+                //   馆藏 等）——未声明析构的拥有式字段静默泄漏，警告提示补声明
+                //   ~类名() 后编译器注入级联析构即零泄漏。
+                diagnostics_.report(DiagnosticLevel::Warning, loc,
+                                    "类 '" + info.name + "' 的字段 '" + fn +
+                                        "' 为有析构类（" + fcanon +
+                                        "），建议声明析构（函数 ~" + info.name +
+                                        "()）以级联释放字段资源，否则泄漏");
+                break;
+            }
+        }
+    }
     // 检查各方法体（含构造/析构/运算符重载）
     for (auto& kv : info.methods) {
         ClassMemberInfo& mi = kv.second;

@@ -277,12 +277,16 @@ extern "C" void cn_memset(void* dst, std::size_t size) {
 
 // ==================== 对象内存辅助（阶段3 Task 3.1，规格书06） ====================
 
-// 新建对象：分配 size 字节堆内存（NewObject 指令展开调用）
-// 使用 std::malloc（支持正常的 RAII 释放，与 C++ new / Rust Box 一致）
+// 新建对象：分配 size 字节堆内存并清零（NewObject 指令展开调用）
+// 使用 std::calloc（缺陷3 根治 2026-09-02：原 malloc 不清零——未初始化的
+// 类类型字段槽为垃圾指针，LoadPtr 得野指针、级联析构 DeleteObject 崩溃；
+// 零化后未构造字段=null，空安全析构跳过、误读报错误码3 而非野指针崩溃。
+// 对标 C++ new T() 值初始化 / Rust 保证初始化；大块分配由 OS 零页直供，
+// 清零开销可忽略）
 // 失败时报错误码4（内存分配失败，规格书附录B）并终止，成功返回对象指针
 // 虚表指针初始化由 codegen 负责（对象首地址 8 字节，NewObject 后写入）
 extern "C" void* __cn_object_new(long long size) {
-    void* ptr = std::malloc(static_cast<std::size_t>(size > 0 ? size : 1));
+    void* ptr = std::calloc(1, static_cast<std::size_t>(size > 0 ? size : 1));
     if (ptr == nullptr) {
         __cn_runtime_error(4);  // 内存分配失败（不返回）
     }

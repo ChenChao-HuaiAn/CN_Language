@@ -145,6 +145,11 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     //   向量 删除/链表 删除头部/删除尾部 单元素，仅当实例化元素 T 为有析构类时）。
     injectContainerElemDestroy(className, mi, member->body->location);
     genBlock(member->body.get());
+    // 缺陷3 根治（2026-09-02）：类字段级联析构注入——析构体后按字段逆序析构
+    //   「有析构类」字段（对标 C++ 成员析构语义；详见 injectFieldCascadeDestroy）
+    if (mi.isDestructor && !mi.isStatic) {
+        injectFieldCascadeDestroy(member);
+    }
     // 无终止指令：补充默认返回（构造/析构/空类型 方法）
     if (!function_->blocks.empty()) {
         ir::IRBlock* last = function_->blocks.back().get();
@@ -161,6 +166,52 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     currentMethodConst_ = savedConst;
     genericTypeParams_ = savedTypeParams;  // 恢复泛型类型参数映射（emitClassMethod 开头设置）
     if (!varStack_.empty()) varStack_.pop_back();
+}
+
+// 缺陷3 根治（2026-09-02）：类字段级联析构注入——~类名() 体生成后、默认返回前，
+//   按字段逆序对本类「有析构类」字段发射 DeleteObject（对标 C++ 成员析构语义）：
+//     this 指针 → FieldAddr(字段偏移) → LoadPtr（字段槽存堆对象指针）→ DeleteObject
+//   （空安全：未构造字段经 __cn_object_new 清零为 null，codegen test/je 跳过——
+//   原 CN 无字段析构原语，容器字段只能泄漏，stdlib 全库被迫用裸指针+分配/释放 规避）。
+//   边界：父类字段由父类析构链负责；析构体内提前 返回 不覆盖（C++ 同语义不保证）；
+//   静态字段与无析构类字段不注入。
+void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
+    if (semantic_ == nullptr || member == nullptr) return;
+    ir::IRFunction* fn = function_;
+    if (fn == nullptr || fn->blocks.empty()) return;
+    ir::IRBlock* last = fn->blocks.back().get();
+    if (last->terminated) return;  // 体尾已终止（提前 返回）：不注入（见上边界）
+    setCurrentBlock(last);
+    const ClassInfo* ci = semantic_->findClass(currentClass_);
+    if (ci == nullptr) return;
+    const std::string thisUnique = lookupVarName("自身");
+    if (thisUnique.empty()) return;
+    for (auto it = ci->fieldOrder.rbegin(); it != ci->fieldOrder.rend(); ++it) {
+        const auto f = ci->fields.find(*it);
+        if (f == ci->fields.end() || f->second.isStatic) continue;
+        const std::string ftype = classFieldType(currentClass_, *it);
+        const std::string fcanon = types::canonical(ftype);
+        if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
+        const ClassInfo* fci = semantic_->findClass(fcanon);
+        bool hasDtor = false;
+        if (fci != nullptr) {
+            for (const auto& mk : fci->methods) {
+                if (mk.second.isDestructor) { hasDtor = true; break; }
+            }
+        }
+        if (!hasDtor) continue;
+        const int offset = semantic_->classFieldOffset(currentClass_, *it);
+        if (offset < 0) continue;
+        ir::IRValue thisPtr = emitResult(
+            ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
+            "ptr", thisUnique, member->body->location);
+        ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
+                                      std::to_string(offset), member->body->location);
+        ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
+                                        member->body->location);
+        emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
+             fcanon, "void", member->body->location);
+    }
 }
 
 // 方法参数装载：this（自身）+ 显式参数进入 varStack_ 最外层作用域。
@@ -599,6 +650,27 @@ std::string IRGenerator::classFieldType(const std::string& className,
     return "";
 }
 
+// 成员字段源码类型（结构体/类对象统一；宿主缺陷1'根治 2026-09-02）：
+//   下标 MemberExpr 分支原只查 StructDecl（类对象查不到 -> 步长兜底 8），
+//   致 拷贝构造 其他.数据[索引]（T*>8字节）读源错位（p9 实证重叠写入形态）。
+std::string IRGenerator::memberFieldSrcType(MemberExpr* node) const {
+    if (semantic_ == nullptr || node == nullptr) return "";
+    const std::string objType = memberObjStructType(node);
+    if (objType.empty()) return "";
+    const std::string canon = types::canonical(objType);
+    const StructDecl* decl = semantic_->findStruct(canon);
+    if (decl != nullptr) {
+        for (const auto& f : decl->fields) {
+            if (f.name == node->memberName) return f.type;
+        }
+        return "";
+    }
+    if (semantic_->isClassType(canon)) {
+        return classFieldType(canon, node->memberName);
+    }
+    return "";
+}
+
 // ==================== 实例/静态字段地址 ====================
 
 // 生成实例字段地址：this 指针（Load 自身参数槽）+ FieldAddr（类字段偏移）。
@@ -860,10 +932,20 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
     if (offset < 0) return false;
     ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                   std::to_string(offset), node->location);
-    // 数组/类字段退化：返回字段地址（供 字段[i] / 字段.成员 / 按值传参）
-    if (types::isArray(fieldType) ||
-        semantic_->isClassType(types::canonical(fieldType))) {
+    // 数组字段退化：返回字段地址（供 字段[i] 下标访问）
+    if (types::isArray(fieldType)) {
         lastExpr_ = addr;
+        return true;
+    }
+    // 宿主缺陷1根治（2026-09-02）：类类型字段读取返回"对象指针"（LoadPtr）——
+    //   对齐方法内直访路径（handleClassFieldRead 的 A-4 语义）：字段槽存堆对象
+    //   指针，链式字段.方法()（e.表.大小()）的 this 与按值传参需要指针本身；
+    //   原返回字段地址致 this=槽地址（p2 空指针崩溃、p6 其他.表.大小() 静默 0
+    //   -> 深拷贝失效）。下标访问（其他.数据[索引]）走 lvalueAddress/visitIndexExpr
+    //   的成员路径，不受影响。
+    if (semantic_->isClassType(types::canonical(fieldType))) {
+        lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
+                               node->location);
         return true;
     }
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},

@@ -1702,6 +1702,20 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 }
             }
         }
+        // 宿主缺陷1'根治（2026-09-02）：类对象/结构体的指针与数组字段下标读侧
+        //   （拷贝构造 其他.数据[索引]：其他 为类对象非 StructDecl，原兜底 8）
+        if (stride == 8) {
+            const std::string ftype = memberFieldSrcType(inner);
+            if (types::isPointer(ftype)) {
+                stride = ptrElemStride(ftype);
+            } else if (types::isArray(ftype)) {
+                const std::string elemSrc = types::arrayElemOf(ftype);
+                stride = (semantic_->isStructType(types::canonical(elemSrc))
+                              ? semantic_->typeSizeOf(elemSrc)
+                              : types::typeSize(elemSrc));
+                emitBoundsCheck(index, types::arrayLenOf(ftype), node->location);
+            }
+        }
     }
     // 元素 IR 类型（Task 完善A）：数组字段（一班.分数[i]）按字段数组元素类型；
     //   结构体元素返回地址（供按值传参），普通元素 LoadPtr 按元素类型
@@ -1726,6 +1740,22 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 if (f.name == inner->memberName && types::canonical(f.type) == "字符串") {
                     elemIrType = "i8";
                     break;
+                }
+            }
+        }
+        // 宿主缺陷1'根治（2026-09-02）：类对象/结构体的指针字段下标元素形态
+        //   （拷贝构造 其他.数据[索引] 读侧：元素为结构体/类值时返回地址，
+        //   原 LoadPtr 只读首 8 字节）。与 IdentifierExpr 分支（:1754）同规则。
+        if (!elemIsStruct) {
+            const std::string ftype = memberFieldSrcType(inner);
+            if (types::isPointer(ftype)) {
+                const std::string elemSrc = types::pointeeOf(ftype);
+                elemIrType = mapType(elemSrc);
+                const std::string elemCanon = types::canonical(elemSrc);
+                if (semantic_ != nullptr &&
+                    (semantic_->isStructType(elemCanon) ||
+                     semantic_->isClassType(elemCanon))) {
+                    elemIsStruct = true;
                 }
             }
         }
@@ -2024,6 +2054,10 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
         return;
     }
     // 字段加载（LoadPtr 含空指针检查：错误码3）
+    //   容器/类类型字段（函数IR.指令）：LoadPtr 读首 8 字节=堆对象指针（统一
+    //   指针槽模型，与类字段 A-4/byRef 机制一致——缺陷2 根治 2026-09-02 定案：
+    //   结构体容器字段=typeSizeOf 保留区+首槽指针，构造赋值 Store 指针、
+    //   读取 LoadPtr、方法 this=对象指针；结构体局部零初始化保未构造槽为 null）。
     lastExpr_ = emitResult(ir::Opcode::LoadPtr, {fieldAddr},
                            mapType(fieldSrcType), "", node->location);
 }

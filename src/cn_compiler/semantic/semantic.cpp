@@ -1639,18 +1639,42 @@ void SemanticAnalyzer::visitProgram(Program* node) {
             }
         }
     }
-    // 第一趟b：计算全部结构体/联合体布局（递归，循环引用检测）
-    for (auto& s : node->structs) {
-        computeLayout(s.get());
+    // 第一趟e（阶段3）：注册泛型声明（泛型类/函数模板）——须在类解析之前：
+    //   A-4（2026-08）跨模块泛型类字段（馆藏 类字段 向量<整64>）在 resolveClass
+    //   期间经 resolveGenericTypeName 触发实例化，需 findGeneric 已注册
+    registerGenerics(node);
+    // 缺陷2 根治（2026-09-02，趟序重排）：结构体容器字段（函数IR.指令 =
+    //   向量<IR指令>，v2 自举组件核心用法）——原 第一趟b 在 registerGenerics
+    //   之前算布局，容器类未实例化 typeSizeOf 防御兜底 8（字段 24 被算成 8，
+    //   结构体总大小/槽区/零初始化全错位——p3 实证 表 字段只零 2 槽段错误）。
+    //   修正：泛型注册后先对结构体字段类型实例化归一（向量<IR指令> ->
+    //   向量$IR指令，触发实例化注册），再计算布局。
+    //   ⚠ 迭代稳定性（ASAN 实证 heap-use-after-free）：resolveGenericTypeName ->
+    //   instantiateGeneric -> ensureLoweredType 会向 node->structs 追加合成结构体
+    //   （结果<T,E> 降级）触发 vector 重分配——不得持有 vector 槽引用；
+    //   unique_ptr 重分配不移动 StructDecl 堆本体，缓存裸指针按索引重取安全。
+    for (std::size_t si = 0; si < node->structs.size(); ++si) {
+        StructDecl* s = node->structs[si].get();
+        for (std::size_t fi = 0; fi < s->fields.size(); ++fi) {
+            const std::string ftype = s->fields[fi].type;
+            if (!ftype.empty() && ftype.find('<') != std::string::npos) {
+                const std::string resolved =
+                    resolveGenericTypeName(ftype, s->location);
+                if (!resolved.empty() && resolved != ftype) {
+                    s->fields[fi].type = resolved;
+                }
+            }
+        }
+    }
+    // 第一趟b：计算全部结构体/联合体布局（递归，循环引用检测）。
+    //   同上迭代稳定性：computeLayout -> typeSizeOf 可能触发降级追加，按索引取本体。
+    for (std::size_t si = 0; si < node->structs.size(); ++si) {
+        computeLayout(node->structs[si].get());
     }
     // 第一趟c：枚举成员值求值（自动递增/显式赋值/负数）
     for (auto& e : node->enums) {
         computeEnumValues(e.get());
     }
-    // 第一趟e（阶段3）：注册泛型声明（泛型类/函数模板）——须在类解析之前：
-    //   A-4（2026-08）跨模块泛型类字段（馆藏 类字段 向量<整64>）在 resolveClass
-    //   期间经 resolveGenericTypeName 触发实例化，需 findGeneric 已注册
-    registerGenerics(node);
     // 第一趟d（阶段3）：注册类/接口符号（类名 + 成员解析 + 虚表 + 接口验证 + 布局）
     registerClassAndInterfaces(node);
     // 第一趟f（阶段3）：结果/可选类型降级（生成合成结构体并布局）

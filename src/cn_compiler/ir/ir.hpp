@@ -479,6 +479,11 @@ private:
     //   返回 对象指向的结构体源码类型（如 方形 -> 形状；方形.顶点[0] -> 坐标）。
     //   arrow 成员（方形指针->顶点）自动剥指针；数组字段元素类型递归推导。
     std::string memberObjStructType(MemberExpr* node) const;
+    // 推导成员表达式的"字段源码类型"（宿主缺陷1'根治 2026-09-02）：
+    //   对象类型经 memberObjStructType 解析后，结构体查 StructDecl 字段、
+    //   类查 classFieldType（沿继承链）。供下标步进/元素形态推导
+    //   （拷贝构造 其他.数据[索引]：其他 为类对象，数据 为 T* 字段）。
+    std::string memberFieldSrcType(MemberExpr* node) const;
     // 指针算术步进（字节）：普通指针8；结构体指针 = 结构体总大小（Task 2.7 修复）
     std::int64_t ptrElemStride(const std::string& srcType) const;
     // 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）：
@@ -521,6 +526,10 @@ private:
     void injectContainerElemDestroy(const std::string& className,
                                     const ClassMemberInfo& mi,
                                     const SourceLocation& loc);
+    // 缺陷3 根治（2026-09-02）：~类名() 体后按字段逆序级联析构「有析构类」字段
+    //   （DeleteObject 空安全；对标 C++ 成员析构语义——原 CN 无字段析构原语，
+    //   容器字段只能泄漏，stdlib 被迫用裸指针+分配/释放 规避组合字段）。
+    void injectFieldCascadeDestroy(const ClassMember* member);
     // ---- 阶段3 OOP 表达式/调用/字段钩子（ir_oop.cpp 实现，ir.cpp 调用点插入） ----
     // 构造调用（类名(实参) -> NewObject + 构造体调用）与成员方法调用
     //   （对象.方法：虚 -> VirtualCall；非虚 -> 直接 Call；类名.静态方法；父类.方法）

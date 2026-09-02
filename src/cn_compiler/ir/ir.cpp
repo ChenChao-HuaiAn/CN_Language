@@ -712,6 +712,22 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
                     }
                 }
             }
+            // 宿主缺陷1'根治（2026-09-02）：类对象/结构体的指针与数组字段下标
+            //   （拷贝构造 其他.数据[索引] 写侧；其他 为类对象非 StructDecl，
+            //   原兜底 8 -> T*>8字节元素错位）。按字段源码类型推导：
+            //   指针字段 ptrElemStride（结构体/类元素按总大小）、数组字段按元素大小。
+            if (stride == 8) {
+                const std::string ftype = memberFieldSrcType(inner);
+                if (types::isPointer(ftype)) {
+                    stride = ptrElemStride(ftype);
+                } else if (types::isArray(ftype)) {
+                    const std::string elemSrc = types::arrayElemOf(ftype);
+                    stride = (semantic_->isStructType(types::canonical(elemSrc))
+                                  ? semantic_->typeSizeOf(elemSrc)
+                                  : types::typeSize(elemSrc));
+                    emitBoundsCheck(index, types::arrayLenOf(ftype), idx->location);
+                }
+            }
         }
         ir::IRValue scaled = emitResult(
             ir::Opcode::Mul, {index, ir::IRValue::constant(std::to_string(stride), "i64")},
