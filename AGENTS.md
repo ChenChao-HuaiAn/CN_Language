@@ -1,9 +1,11 @@
-# AGENTS.md — CN 语言编译器项目规则（DSH）
+# AGENTS.md — CN 语言编译器项目规则（ZCode）
 
-> 本文件是 DSH 自动加载的项目规则（agent-instructions 插件读取项目根目录 AGENTS.md）。
-> 旧版 Claude Code 规则在 `.ai-coder/rules/*`（25 条 user_rules 仍有效，本文是其 DSH 化提炼与补充）；
-> 历史记忆体系在 `.ai-coder/memory` 与根目录 `lessons.md`（任务前必读）。
+> 本文件是 ZCode 工作区指令文件：ZCode 原生自动加载项目根目录 AGENTS.md（无需插件），
+> 用户级默认指令在 `~/.zcode/AGENTS.md`，本文件后加载、可覆盖其默认。
+> 旧版 Claude Code 规则在 `.ai-coder/rules/*`（25 条 user_rules 仍有效，本文是其提炼与补充）；
+> 历史记忆体系在 `.ai-coder/memory` 与根目录 `lessons.md`（任务前必读）；项目技能集在 `.zcode/skills/`（cn-language-spec 等）。
 > 若与 .ai-coder/rules 冲突，以本文 + user_rules 为准；语法规范以 plans/001 与 cn-language-spec 为准。
+> 本文件只写规则、不记进度：项目进度与现状一律以 plans/ 内对应任务文档（随任务创建，不固定某一份）与 `HANDOFF.md` 为准。
 
 ## 1. 项目是什么
 
@@ -59,7 +61,9 @@ arena 一次性分配、字符串驻留（Symbol 整数 ID）、哈希符号表�
 - 新增 E2E 用例目录约定：`tests/e2e/<编号>_<名称>/<用例>.cn` + 同名 `.expected`（逐行比对）；
   多文件用例入口必须叫 `主.cn`（定义 `函数 主() -> 整32`）；可选 `.input`（标准输入）与 `.args`（每行一个参数）。
 - **防虚假验收**：测试必须走真实生产链路（编译→链接→运行→比对），禁止直接构造组件实例绕过编译流程；
-  编译产物（`.exe/.asm/.obj`）一律放 `target/`，不得散落工作区。
+  编译产物（`.exe/.asm/.obj`）一律放 `target/`（已 gitignore，不进版本库），不得散落工作区。
+- **中间产物与实验清理**：调试中间产物、实验性脚本/临时用例，任务完成时必须删除；
+  确有保留价值的，转正为正式 E2E 用例（`tests/e2e/`）或移入专门位置，禁止以「临时/实验」名义遗留在工作区。
 - 缺陷修复后，必须把 `plans/*` 与 `lessons.md` 中对应条目**显著标注为已修复**（避免后续 AI 误判为未修复）。
 
 ## 5. 构建与验证门禁（提交前必须全绿）
@@ -70,8 +74,8 @@ powershell -ExecutionPolicy Bypass -File scripts/ci.ps1        # 构建(零警�
 powershell -ExecutionPolicy Bypass -File build.ps1 -Test       # 构建 + 测试（等效）
 # 手动分步：
 cmake -S . -B target/build && cmake --build target/build --config Debug
-target/Debug/cn_unit_tests.exe                                  # 单测（当前 1196/1196）
-python tests/e2e/run_e2e.py --cn target/Debug/cn.exe            # E2E 全量（当前 122 用例）
+target/Debug/cn_unit_tests.exe                                  # 单测
+python tests/e2e/run_e2e.py --cn target/Debug/cn.exe            # E2E 全量
 python tests/e2e/run_e2e.py --filter 01_hello --verbose         # 单用例调试
 ```
 
@@ -86,27 +90,10 @@ Linux ARM64 后端验证：`python tests/e2e/run_e2e.py --target linux-arm64 --c
 2. **更新 `更新日志.md`**：覆盖写入本次修改内容（格式以 `## 功能完善总结` 开头，只保留本次说明），提交前必须更新。
 3. **plans 文档实时打勾**：完成任务对应 Task 复选框，并确认 plans/001 里程碑与 plans/014 状态表同步。
 4. **HANDOFF.md**：会话结束前写交接文档（做什么/已完成/发现的问题/卡点/下一步/踩过的坑），写给无上下文的新会话看。
-5. 推送远程仓库：remote 名为 `gitcode`，默认分支 `develop`。
+5. 推送远程仓库：gitcode.com 仓库（本机 remote 名为 `origin`），默认分支 `develop`。
 
 ## 7. 错误与诚实报告
 
 - 工具/命令出错时：记录具体命令、完整错误输出、根因分析与预防措施到 `lessons.md`（避免模板化描述，同一错误不重复记录）。
 - 每次工具调用后检查结果；**未完成不得声称完成**。
 - 完成前确认：所有子任务完成、所有测试通过、plans/更新日志/HANDOFF 已同步、无未处理错误。
-
-## 8. 项目现状速查（2026-08-25+ 最新）
-
-- **v2 自举重建进度**：P5 IR 生成完成 → P6 代码生成 asm 实际运行验证成功（`加(3,4)=7`）→
-  **函数调用 Call 完成**（`双倍(3)=6`，跨函数调用正确）→ **控制流 如果/当 完成**
-  （2026-08-30：`主()` 如果/否则 返回 4、`阶乘(5)` 当循环 返回 120，跳转/条件跳转/标签
-  全链路实际运行验证）→ **指针/字段访问 完成**（`位置.x=7; 位置.y=9; 指针=&位置.x; *指针=10;
-  返回 位置.x+位置.y` = 19，取地址/解引用/字段偏移 全链路运行验证）→ **中断/继续 验证完成**
-  （`1..10 奇数和`=15、嵌套循环=12，单层/嵌套 循环上下文栈正确）；下一步：v2 编译自身。
-- v2 组件（`CN语言编译器v2/`，共 1460 行）：词法分析.cn / 语法分析.cn / 语义分析.cn / IR生成.cn / 代码生成.cn / abi辅助.cn / 主.cn。
-- **宿主缺陷根治**（plans/014）：H3 嵌套泛型 / H6 类方法引用参数 / H7 类类型栈变量 RAII / 方案A 拷贝构造全链路 /
-  H8 嵌套泛型实参·sizeof·步长·向量类元素 / 容器持有类对象所有权 / Feature2 容器元素自动析构 / move 语义 /
-  链式方法调用与类值链式访问 —— 全部根治，E2E 108~118 覆盖。
-- **已知遗留（非宿主缺陷）**：78/79 E2E 内存超限（v1 旧架构字符串行 IR 峰值 4.1GB）——这正是推倒重建的动机，
-  随 v2 完成自然解决；**不在旧组件上做治标修补**（旧架构将被 v2 替代）。
-- **测试基线**：E2E 122 用例（78/79 已知遗留）、单测 1196/1196、构建 0 错 0 警。
-- **v2 双目标（用户令 2026-09-01）**：① 性能——v2 完成后 CN/C++ 组件链耗时比 < 1.0（超过 C++ 编译器），通过 bench 验证（scripts/bench_self_host.py）；② 安全——接近 Rust 语言（悬垂/越界/泄漏零容忍，RAII/空安全/零初始化为强制惯例）。
