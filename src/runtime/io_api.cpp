@@ -305,10 +305,11 @@ extern "C" void __cn_alloc_reset() {
     //   边遍历边按值收集（set 迭代器不因 free 他人而失效）。
     //   完成后清空注册表；reset 之后旧 ptr 的 unregister/free 走"未找到"忽略。
     //   注意：reset 只应释放"无外部引用"的 tracked 内存（设计语义：组件间清场）。
-    std::vector<void*> 待释放;
-    待释放.reserve(g_trackedSet.size());
-    for (void* p : g_trackedSet) 待释放.push_back(p);
-    for (void* p : 待释放) {
+    // 标识符用 ASCII（待释放）——GCC 9/7 不支持 UTF-8 标识符，中文标识符会中断 Linux 构建
+    std::vector<void*> to_free;
+    to_free.reserve(g_trackedSet.size());
+    for (void* p : g_trackedSet) to_free.push_back(p);
+    for (void* p : to_free) {
         if (p != nullptr) {
             --g_cn_alloc_live;
             std::free(p);
