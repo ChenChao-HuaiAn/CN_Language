@@ -434,11 +434,15 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     #   （v2 新增 GAS 后端，v2p 第 2 参数 目标平台 分派；链接对齐宿主 linux 命令）
     # 元组第三元素（可缺省）= 是否链接 v2p.obj（P7b 容器用例：v2 生成代码调用
     #   宿主编译的容器类方法符号，实现在 v2p.obj——stdlib 源码级并入编译产物）
+    # 元组第四元素（可缺省）= 供给源列表（②b B7，2026-09-02）：用例目录下的 .cn
+    #   经宿主真实管线编译为 .o 参与链接且置于 v2p.obj 之前——v2p 只实例化过
+    #   v2 自身用到的类型（如 126 的 词条），用例自有类型须供给符号与布局权威
     v2闭环用例们 = {
         "119_v2_多文件链接闭环": (["主.cn", "计算.cn"], 14),   # 加倍(7)
         "120_v2_顶层常量": (["主.cn", "常量库.cn"], 62),       # 常量和() + 系数*增量 = 38+24
         "123_v2_容器": (["主.cn"], 21333, True),              # P7b：向量/映射/结果/字符串/RAII = 21333
         "125_v2_控制流与短路与转义": (["主.cn"], 0, True),    # 三缺陷根治：中途回退/短路/转义 = 0
+        "126_v2_结构体元素容器": (["主.cn"], 0, True, ["供给.cn"]),  # ②b：布局/视图/传参/深拷贝析构 = 0
     }
     if 名称 in v2闭环用例们:
         if 目标平台 != "win-x64" and 目标平台 != "linux-arm64":
@@ -446,8 +450,9 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         条目 = v2闭环用例们[名称]
         源文件名们, 预期退出码 = 条目[0], 条目[1]
         链接v2pobj = 条目[2] if len(条目) > 2 else False
+        供给源们 = 条目[3] if len(条目) > 3 else []
         return 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 目标平台, 源文件名们, 预期退出码,
-                        链接v2pobj)
+                        链接v2pobj, 供给源们)
 
     # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
     可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
@@ -700,17 +705,22 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 
 
 def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
-                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool,
-                    期望文件, 审计目录: pathlib.Path, v2源码目录: pathlib.Path,
-                    用例目录: pathlib.Path, 名称: str, 编号: str) -> tuple:
+                   源文件名们: list, 预期退出码: int, 链接v2pobj: bool,
+                   期望文件, 审计目录: pathlib.Path, v2源码目录: pathlib.Path,
+                   用例目录: pathlib.Path, 名称: str, 编号: str,
+                   供给源们: list = None) -> tuple:
     """执行 v2 自举链接闭环（linux-arm64，阶段A 2026-09-02）：v2 GAS 后端 -> as -> g++ -> 运行
 
     链接对齐宿主 linux 命令（cn_main.cpp）：g++ -no-pie + 运行时 .o（-DCNRT_LINUX_MAIN）；
     链接 v2p_linux.o 时 cn_main 双定义 -> -Wl,-z,muldefs + v2asm.o 命令行在前
     （靠前定义胜出——对齐 win64 /FORCE:MULTIPLE 编排）。
+    供给源们（②b B7）：用例自有类型符号供给——宿主 cn build 编译（.o 为构建副
+    产品留存），链接置于 v2p_linux.o 之前（用例结构体布局权威）。
     POSIX 退出码 8 位截断：退出码比对取 预期退出码 % 256（win64 为 32 位全值）。"""
     import shutil
     import os
+    if 供给源们 is None:
+        供给源们 = []
 
     # 工具链探测（对齐宿主 cn_main.cpp：CN_AS/CN_CXX 环境变量优先，PATH，便携 gcc7 兜底）
     as工具 = os.environ.get("CN_AS") or shutil.which("as") or "/home/user/gcc7/usr/bin/as"
@@ -754,6 +764,33 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
         return "失败", f"{编号}-1 编译返回成功但未生成 v2p_linux"
     if not v2pobj.exists():
         return "失败", f"{编号}-1 中间产物 v2p_linux.o 未留存（容器符号提供者）"
+
+    # ===== 步骤1.5：供给源编译（②b B7）——用例自有类型符号，宿主真实管线 =====
+    #   注意：宿主模块系统按规范08-四 仅以 主.cn 为入口模块（其余按导入模块合并
+    #   公开声明）——供给源须拷贝为独立目录的 主.cn 再编译，函数才完整发射。
+    供给objs = []
+    for 供给名 in 供给源们:
+        供给src = 用例目录 / 供给名
+        if not 供给src.exists():
+            return "失败", f"{编号}-1.5 缺少供给源文件: {供给名}"
+        供给目录 = 审计目录 / f"供给{编号}_{pathlib.Path(供给名).stem}"
+        供给目录.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(供给src, 供给目录 / "主.cn")
+        供给输出 = 供给目录 / "供给"
+        供给obj = 供给目录 / "供给.o"
+        if 供给输出.exists():
+            供给输出.unlink()
+        if 供给obj.exists():
+            供给obj.unlink()
+        if 详细:
+            print(f"    [{编号}-1.5] {编译器路径} build {供给名} -> {供给obj.name}（符号供给）")
+        供给编译 = 运行命令([str(编译器路径), "build", str(供给目录 / "主.cn"),
+                          "--target", "linux-arm64", "--output", str(供给输出)], 项目根目录)
+        if 供给编译.returncode != 0:
+            return "失败", f"{编号}-1.5 供给源 {供给名} 编译失败(退出码{供给编译.returncode}): {(供给编译.stderr or 供给编译.stdout).strip()[:200]}"
+        if not 供给obj.exists():
+            return "失败", f"{编号}-1.5 供给源 {供给名} 未产出 {供给obj.name}"
+        供给objs.append(供给obj)
 
     # ===== 步骤2：准备多文件程序（入口 主.cn + 导入模块文件） =====
     v2src目录 = 审计目录 / f"v2src{编号}"
@@ -807,6 +844,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
         # cn_main 双定义（v2asm 与 v2p 各有 主()）——muldefs + 命令行在前者胜出
         链接命令.append("-Wl,-z,muldefs")
     链接命令 += ["-o", str(输出exe), str(v2obj)]
+    # 供给 .o 置于 v2p_linux.o 之前（②b B7：用例自有类型布局权威——muldefs 下先定义胜出）
+    链接命令 += [str(o) for o in 供给objs]
     if 链接v2pobj:
         链接命令.append(str(v2pobj))
     链接命令 += [str(o) for o in 运行时objs]
@@ -838,7 +877,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
 
 def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                输出目录: pathlib.Path, 详细: bool, 目标平台: str,
-               源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False) -> tuple:
+               源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False,
+               供给源们: list = None) -> tuple:
     """执行 v2 自举链接闭环（119/120… 通用，双平台）：v2 多文件编译 -> 链接宿主运行时 -> 运行
 
     目标平台 = win-x64（ml64/link 原路径）| linux-arm64（as/g++，阶段A 2026-09-02）；
@@ -846,10 +886,14 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     预期退出码 = v2 产物 exe 运行的期望退出码（用例断言值）；
     链接v2pobj = 是否链接 v2p.obj（P7b 容器用例：容器方法实现来自宿主编译的
       v2 组件 obj——rustc 预编译 std 模式；/FORCE:MULTIPLE + v2asm.obj 在前
-      保证 cn_main 绑定 v2 产物，容器符号绑定 v2p.obj，map 自检双方向）。"""
+      保证 cn_main 绑定 v2 产物，容器符号绑定 v2p.obj，map 自检双方向）；
+    供给源们 = 用例自有类型的符号供给 .cn 列表（②b B7，2026-09-02）——宿主真实
+      管线编译为 .obj，链接置于 v2p.obj 之前（用例结构体布局权威）。"""
     名称 = 用例目录.name
     编号 = 名称.split("_")[0]  # 步骤号前缀与 v2src 目录名后缀（119/120…）
     期望文件 = 查找期望文件(用例目录 / 源文件名们[0])
+    if 供给源们 is None:
+        供给源们 = []
     import shutil
 
     审计目录 = 项目根目录 / "target" / "audit2"
@@ -859,7 +903,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     # ---- linux-arm64 分支（阶段A：v2 GAS 后端 + as/g++ 编排）----
     if 目标平台 == "linux-arm64":
         return 执行v2闭环Linux(编译器路径, 详细, 源文件名们, 预期退出码, 链接v2pobj,
-                              期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号)
+                              期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号, 供给源们)
 
     # ---- win-x64 原路径（ml64/link，P6h/P7b 既有编排不变）----
     v2p = 审计目录 / "v2p.exe"
@@ -923,6 +967,32 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             return "失败", f"{编号}-2 缺少用例文件: {文件名}"
         shutil.copy2(src, v2src目录 / 文件名)
 
+    # ===== 步骤2.5：供给源编译（②b B7，对齐 linux 分支）——用例自有类型符号 =====
+    #   同 linux：须拷贝为独立目录 主.cn（宿主仅以 主.cn 为入口模块，规范08-四）
+    供给objs = []
+    for 供给名 in 供给源们:
+        供给src = 用例目录 / 供给名
+        if not 供给src.exists():
+            return "失败", f"{编号}-2.5 缺少供给源文件: {供给名}"
+        供给目录 = 审计目录 / f"供给{编号}_{pathlib.Path(供给名).stem}"
+        供给目录.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(供给src, 供给目录 / "主.cn")
+        供给输出 = 供给目录 / "供给.exe"
+        供给obj = 供给目录 / "供给.obj"
+        if 供给输出.exists():
+            供给输出.unlink()
+        if 供给obj.exists():
+            供给obj.unlink()
+        if 详细:
+            print(f"    [{编号}-2.5] {编译器路径} build {供给名} -> {供给obj.name}（符号供给）")
+        供给编译 = 运行命令([str(编译器路径), "build", str(供给目录 / "主.cn"),
+                          "--target", "win-x64", "--output", str(供给输出)], 项目根目录)
+        if 供给编译.returncode != 0:
+            return "失败", f"{编号}-2.5 供给源 {供给名} 编译失败(退出码{供给编译.returncode}): {(供给编译.stderr or 供给编译.stdout).strip()[:200]}"
+        if not 供给obj.exists():
+            return "失败", f"{编号}-2.5 供给源 {供给名} 未产出 {供给obj.name}"
+        供给objs.append(供给obj)
+
     # ===== 步骤3：运行 v2p（多文件编译：入口 + 自动加载导入模块） =====
     入口参数 = f"target/audit2/v2src{编号}/主.cn"
     if v2asm路径.exists():
@@ -978,7 +1048,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         if not v2pobj.exists():
             return "失败", "123-5 缺少 target/audit2/v2p.obj（步骤1 cn build 未产出）"
         rsp_lines.append("/FORCE:MULTIPLE")
-        rsp_lines += [str(v2obj), str(v2pobj)] + [str(o) for o in 运行时objs]
+        # 供给 .obj 置于 v2p.obj 之前（②b B7：用例自有类型布局权威）
+        rsp_lines += [str(v2obj)] + [str(o) for o in 供给objs] + [str(v2pobj)] + [str(o) for o in 运行时objs]
     else:
         rsp_lines += [str(v2obj)] + [str(o) for o in 运行时objs]
     # map 文件供符号方向自检（v2asm.obj 必须贡献 cn_main）
