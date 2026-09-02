@@ -1,0 +1,12 @@
+[ir1] 自检设置: 1
+[ir1] 自检获取后
+[ir1] 自检获取: 100
+[p6h] 入口: target/audit2/v2src126/主.cn
+[cga] 目标平台: linux-arm64
+[p6h] 已解析: target/audit2/v2src126/主.cn 节点=167
+[sem5] 正确程序 错误数=0
+[ir1] IR生成调用后 函数数=1
+[cg1] asm 行数=950
+[cg1] asm 已写 target/v2asm.s
+[sem5] 错误程序 错误数=1
+[sem5] 诊断: [错误] 未声明标识符: x
