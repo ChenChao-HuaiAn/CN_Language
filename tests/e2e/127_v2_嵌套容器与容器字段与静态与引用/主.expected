@@ -1,10 +1,10 @@
 [ir1] 自检设置: 1
 [ir1] 自检获取后
 [ir1] 自检获取: 100
-[p6h] 入口: target/audit2/v2src126/主.cn
-[p6h] 已解析: target/audit2/v2src126/主.cn 节点=260
+[p6h] 入口: target/audit2/v2src127/主.cn
+[p6h] 已解析: target/audit2/v2src127/主.cn 节点=567
 [sem5] 正确程序 错误数=0
-[ir1] IR生成调用后 函数数=1
+[ir1] IR生成调用后 函数数=6
 [cg1] asm 行数=
 [cg1] asm 已写 target/v2asm.asm
 [sem5] 错误程序 错误数=1

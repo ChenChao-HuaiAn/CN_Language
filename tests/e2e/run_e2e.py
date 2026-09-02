@@ -443,6 +443,7 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         "123_v2_容器": (["主.cn"], 21333, True),              # P7b：向量/映射/结果/字符串/RAII = 21333
         "125_v2_控制流与短路与转义": (["主.cn"], 0, True),    # 三缺陷根治：中途回退/短路/转义 = 0
         "126_v2_结构体元素容器": (["主.cn"], 0, True, ["供给.cn"]),  # ②b：布局/视图/传参/深拷贝析构 = 0
+        "127_v2_嵌套容器与容器字段与静态与引用": (["主.cn"], 0, True, ["供给.cn"]),  # ②c 四项：嵌套/容器字段/静态/& = 0
     }
     if 名称 in v2闭环用例们:
         if 目标平台 != "win-x64" and 目标平台 != "linux-arm64":
@@ -773,11 +774,13 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
         供给src = 用例目录 / 供给名
         if not 供给src.exists():
             return "失败", f"{编号}-1.5 缺少供给源文件: {供给名}"
-        供给目录 = 审计目录 / f"供给{编号}_{pathlib.Path(供给名).stem}"
+        # 供给产物路径一律 ASCII（supplyN_M）：rsp/命令行传给 ml64/link/as/g++ 的路径
+        # 若含中文，会按系统代码页误读（win GBK 下 UTF-8 路径成乱码，LNK1181）
+        供给目录 = 审计目录 / f"supply{编号}_{len(供给objs)}"
         供给目录.mkdir(parents=True, exist_ok=True)
         shutil.copy2(供给src, 供给目录 / "主.cn")
-        供给输出 = 供给目录 / "供给"
-        供给obj = 供给目录 / "供给.o"
+        供给输出 = 供给目录 / "supply"
+        供给obj = 供给目录 / "supply.o"
         if 供给输出.exists():
             供给输出.unlink()
         if 供给obj.exists():
@@ -974,11 +977,13 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         供给src = 用例目录 / 供给名
         if not 供给src.exists():
             return "失败", f"{编号}-2.5 缺少供给源文件: {供给名}"
-        供给目录 = 审计目录 / f"供给{编号}_{pathlib.Path(供给名).stem}"
+        # 供给产物路径一律 ASCII（supplyN_M）：rsp 传给 link.exe 的路径含中文时
+        # 按系统代码页（GBK）误读 UTF-8 → LNK1181（对齐 linux 分支同款惯例）
+        供给目录 = 审计目录 / f"supply{编号}_{len(供给objs)}"
         供给目录.mkdir(parents=True, exist_ok=True)
         shutil.copy2(供给src, 供给目录 / "主.cn")
-        供给输出 = 供给目录 / "供给.exe"
-        供给obj = 供给目录 / "供给.obj"
+        供给输出 = 供给目录 / "supply.exe"
+        供给obj = 供给目录 / "supply.obj"
         if 供给输出.exists():
             供给输出.unlink()
         if 供给obj.exists():
