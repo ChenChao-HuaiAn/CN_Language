@@ -428,23 +428,25 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     # v1 79 闭环是 C++ 版产物 + CN 组件链；v2 系列闭环是 v2 重建产物 + 宿主运行时：
     #   宿主编译 v2 组件（入口 主.cn）-> v2p.exe -> 编译多文件程序
     #   （入口 主.cn + 导入模块，P6h 多源文件支持）-> v2asm.asm
-    #   -> ml64/link（对齐宿主链接命令：/ENTRY:WinMainCRTStartup + 运行时 obj）
+    #   -> ml64/link（对齐宿主链接命令：/ENTRY:WinMainCRTStartup + 运行时 .obj）
     #   -> 运行 v2 产物 exe，退出码须等于用例预期值（v2 代码真实执行验证）
-    # 仅 win-x64 平台支持（依赖 ml64/link 与运行时 .obj）
+    # 阶段A（2026-09-02）双平台：win-x64 走 ml64/link；linux-arm64 走 as/g++
+    #   （v2 新增 GAS 后端，v2p 第 2 参数 目标平台 分派；链接对齐宿主 linux 命令）
     # 元组第三元素（可缺省）= 是否链接 v2p.obj（P7b 容器用例：v2 生成代码调用
     #   宿主编译的容器类方法符号，实现在 v2p.obj——stdlib 源码级并入编译产物）
     v2闭环用例们 = {
         "119_v2_多文件链接闭环": (["主.cn", "计算.cn"], 14),   # 加倍(7)
         "120_v2_顶层常量": (["主.cn", "常量库.cn"], 62),       # 常量和() + 系数*增量 = 38+24
         "123_v2_容器": (["主.cn"], 21333, True),              # P7b：向量/映射/结果/字符串/RAII = 21333
+        "125_v2_控制流与短路与转义": (["主.cn"], 0, True),    # 三缺陷根治：中途回退/短路/转义 = 0
     }
     if 名称 in v2闭环用例们:
-        if 目标平台 != "win-x64":
-            return "失败", f"{名称} 闭环用例仅支持 win-x64（依赖 ml64/link）"
+        if 目标平台 != "win-x64" and 目标平台 != "linux-arm64":
+            return "失败", f"{名称} 闭环用例仅支持 win-x64 / linux-arm64（当前 {目标平台}）"
         条目 = v2闭环用例们[名称]
         源文件名们, 预期退出码 = 条目[0], 条目[1]
         链接v2pobj = 条目[2] if len(条目) > 2 else False
-        return 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 源文件名们, 预期退出码,
+        return 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 目标平台, 源文件名们, 预期退出码,
                         链接v2pobj)
 
     # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
@@ -697,11 +699,149 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     return "通过", "自举闭环成立：CN自编译版组件产物与C++版逐字节一致（阶段7验收步骤2：产物行为一致）"
 
 
-def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
-               输出目录: pathlib.Path, 详细: bool,
-               源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False) -> tuple:
-    """执行 v2 自举链接闭环（119/120… 通用）：v2 多文件编译 -> 链接宿主运行时 -> 运行
+def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
+                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool,
+                    期望文件, 审计目录: pathlib.Path, v2源码目录: pathlib.Path,
+                    用例目录: pathlib.Path, 名称: str, 编号: str) -> tuple:
+    """执行 v2 自举链接闭环（linux-arm64，阶段A 2026-09-02）：v2 GAS 后端 -> as -> g++ -> 运行
 
+    链接对齐宿主 linux 命令（cn_main.cpp）：g++ -no-pie + 运行时 .o（-DCNRT_LINUX_MAIN）；
+    链接 v2p_linux.o 时 cn_main 双定义 -> -Wl,-z,muldefs + v2asm.o 命令行在前
+    （靠前定义胜出——对齐 win64 /FORCE:MULTIPLE 编排）。
+    POSIX 退出码 8 位截断：退出码比对取 预期退出码 % 256（win64 为 32 位全值）。"""
+    import shutil
+    import os
+
+    # 工具链探测（对齐宿主 cn_main.cpp：CN_AS/CN_CXX 环境变量优先，PATH，便携 gcc7 兜底）
+    as工具 = os.environ.get("CN_AS") or shutil.which("as") or "/home/user/gcc7/usr/bin/as"
+    cxx工具 = os.environ.get("CN_CXX") or shutil.which("g++") or "/home/user/gcc7/usr/bin/g++"
+    if shutil.which(as工具) is None and not pathlib.Path(as工具).exists():
+        return "失败", f"未找到 as 汇编器（{as工具}）"
+    if shutil.which(cxx工具) is None and not pathlib.Path(cxx工具).exists():
+        return "失败", f"未找到 g++ 链接器（{cxx工具}）"
+
+    v2p = 审计目录 / "v2p_linux"
+    v2pobj = 审计目录 / "v2p_linux.o"
+    v2asm路径 = 项目根目录 / "target" / "v2asm.s"
+
+    # 运行时 .o（对齐宿主编译命令 g++ -c -std=c++17 -fno-exceptions -fno-rtti
+    #   -DCNRT_LINUX_MAIN；缺则现编——宿主 cn build 缓存可能被清，此处保证自包含）
+    运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
+                "math_api", "input_api", "file_api", "time_api", "system_api"]
+    运行时objs = []
+    for 模块 in 运行时名们:
+        obj = 审计目录 / f"{模块}.o"
+        if not obj.exists():
+            编译rt = 运行命令([cxx工具, "-c", "-std=c++17", "-fno-exceptions", "-fno-rtti",
+                            "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
+                            f"src/runtime/{模块}.cpp"], 项目根目录)
+            if 编译rt.returncode != 0:
+                return "失败", f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
+        运行时objs.append(obj)
+
+    # ===== 步骤1：宿主编译 v2 组件（linux-arm64）-> v2p_linux（中间 .o 留存供链接）=====
+    if v2p.exists():
+        v2p.unlink()
+    if v2pobj.exists():
+        v2pobj.unlink()
+    if 详细:
+        print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p_linux（linux-arm64）")
+    编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
+                      "--target", "linux-arm64", "--output", str(v2p)], 项目根目录)
+    if 编译结果.returncode != 0:
+        return "失败", f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+    if not v2p.exists():
+        return "失败", f"{编号}-1 编译返回成功但未生成 v2p_linux"
+    if not v2pobj.exists():
+        return "失败", f"{编号}-1 中间产物 v2p_linux.o 未留存（容器符号提供者）"
+
+    # ===== 步骤2：准备多文件程序（入口 主.cn + 导入模块文件） =====
+    v2src目录 = 审计目录 / f"v2src{编号}"
+    v2src目录.mkdir(parents=True, exist_ok=True)
+    for 文件名 in 源文件名们:
+        src = 用例目录 / 文件名
+        if not src.exists():
+            return "失败", f"{编号}-2 缺少用例文件: {文件名}"
+        shutil.copy2(src, v2src目录 / 文件名)
+
+    # ===== 步骤3：运行 v2p（第 2 参数 linux-arm64 分派 GAS 后端）=====
+    入口参数 = f"target/audit2/v2src{编号}/主.cn"
+    if v2asm路径.exists():
+        v2asm路径.unlink()
+    if 详细:
+        print(f"    [{编号}-3] {v2p.name} {入口参数} linux-arm64")
+    运行结果 = 运行命令([str(v2p), 入口参数, "linux-arm64"], 项目根目录, 内存上限MB=内存上限MB默认)
+    if 运行结果.returncode != 0:
+        return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
+    if not v2asm路径.exists():
+        return "失败", f"{编号}-3 v2p 未生成 target/v2asm.s"
+    期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
+    实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+    for 行 in 期望行们:
+        # 平台适配（不改测试文件）：GAS 后端输出 target/v2asm.s（win64 期望为 .asm）
+        适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
+        if 适配行 not in 实际输出:
+            return "失败", f"{编号}-3 v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
+    asm内容 = v2asm路径.read_text(encoding="utf-8", errors="replace")
+    if ".globl cn_main" not in asm内容:
+        return "失败", f"{编号}-3.5 v2asm.s 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
+
+    # ===== 步骤4：as 汇编 target/v2asm.s -> v2asm_linux.o =====
+    v2obj = 审计目录 / "v2asm_linux.o"
+    if v2obj.exists():
+        v2obj.unlink()
+    if 详细:
+        print(f"    [{编号}-4] as v2asm.s")
+    汇编结果 = 运行命令([as工具, "-o", str(v2obj), str(v2asm路径)], 项目根目录)
+    if 汇编结果.returncode != 0:
+        return "失败", f"{编号}-4 as 汇编失败(退出码{汇编结果.returncode}): {(汇编结果.stderr or 汇编结果.stdout).strip()[:300]}"
+    if not v2obj.exists():
+        return "失败", f"{编号}-4 as 返回成功但未生成 v2asm_linux.o"
+
+    # ===== 步骤5：链接（对齐宿主 linux 链接命令 g++ -no-pie + 运行时 .o）=====
+    输出exe = 审计目录 / "v2out_linux"
+    if 输出exe.exists():
+        输出exe.unlink()
+    链接命令 = [cxx工具, "-no-pie"]
+    if 链接v2pobj:
+        # cn_main 双定义（v2asm 与 v2p 各有 主()）——muldefs + 命令行在前者胜出
+        链接命令.append("-Wl,-z,muldefs")
+    链接命令 += ["-o", str(输出exe), str(v2obj)]
+    if 链接v2pobj:
+        链接命令.append(str(v2pobj))
+    链接命令 += [str(o) for o in 运行时objs]
+    if 详细:
+        print(f"    [{编号}-5] g++ -no-pie -> {输出exe.name}")
+    链接结果 = 运行命令(链接命令, 项目根目录)
+    if 链接结果.returncode != 0:
+        return "失败", f"{编号}-5 链接失败(退出码{链接结果.returncode}): {(链接结果.stderr or 链接结果.stdout).strip()[:300]}"
+    if not 输出exe.exists():
+        return "失败", f"{编号}-5 链接返回成功但未生成 exe"
+    # 符号自检（防虚假验收，对齐 win64 map 自检）：cn_main 须由 v2asm_linux.o 定义；
+    #   容器用例的 向量$ 方法符号须来自 v2p_linux.o（muldefs 下 v2asm 在前绑定 cn_main）
+    nm检查 = 运行命令(["nm", str(v2obj)], 项目根目录)
+    if " T cn_main" not in (nm检查.stdout or ""):
+        return "失败", f"{编号}-5.5 符号自检失败: v2asm_linux.o 未定义 T cn_main"
+    if 链接v2pobj:
+        nm检查2 = 运行命令(["nm", str(v2pobj)], 项目根目录)
+        if "T _E59091E9878F24" not in (nm检查2.stdout or ""):  # 向量$（E59091E9878F24）hex 前缀
+            return "失败", f"{编号}-5.5 符号自检失败: v2p_linux.o 缺少向量类方法符号"
+
+    # ===== 步骤6：运行 v2 产物 -> 退出码须等于用例预期值（POSIX 8 位截断）=====
+    运行结果2 = 运行命令([str(输出exe)], 项目根目录)
+    预期值 = 预期退出码 % 256
+    if 运行结果2.returncode != 预期值:
+        return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
+                        f"（期望 {预期值} = {预期退出码} % 256）: {(运行结果2.stderr or '').strip()[:200]}")
+    return "通过", f"v2 多文件编译（{名称}）-> as/g++（对齐宿主 linux 链接命令）-> 运行 闭环成立（退出码 {预期值}）"
+
+
+def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+               输出目录: pathlib.Path, 详细: bool, 目标平台: str,
+               源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False) -> tuple:
+    """执行 v2 自举链接闭环（119/120… 通用，双平台）：v2 多文件编译 -> 链接宿主运行时 -> 运行
+
+    目标平台 = win-x64（ml64/link 原路径）| linux-arm64（as/g++，阶段A 2026-09-02）；
     源文件名们 = 用例的全部源文件（首个为主入口 主.cn，须含导入模块文件）；
     预期退出码 = v2 产物 exe 运行的期望退出码（用例断言值）；
     链接v2pobj = 是否链接 v2p.obj（P7b 容器用例：容器方法实现来自宿主编译的
@@ -712,10 +852,16 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     期望文件 = 查找期望文件(用例目录 / 源文件名们[0])
     import shutil
 
-    # 产物全部落 target/（规则19）：v2p=宿主编译的 v2 编译器；v2asm=项目根/target
     审计目录 = 项目根目录 / "target" / "audit2"
     审计目录.mkdir(parents=True, exist_ok=True)
     v2源码目录 = 项目根目录 / "CN语言编译器v2"
+
+    # ---- linux-arm64 分支（阶段A：v2 GAS 后端 + as/g++ 编排）----
+    if 目标平台 == "linux-arm64":
+        return 执行v2闭环Linux(编译器路径, 详细, 源文件名们, 预期退出码, 链接v2pobj,
+                              期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号)
+
+    # ---- win-x64 原路径（ml64/link，P6h/P7b 既有编排不变）----
     v2p = 审计目录 / "v2p.exe"
     v2asm路径 = 项目根目录 / "target" / "v2asm.asm"
 
