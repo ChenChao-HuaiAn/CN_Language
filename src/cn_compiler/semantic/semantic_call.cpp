@@ -191,7 +191,8 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     //   即：内置限定名仅在"无同名用户模块公开函数"时生效，二者不冲突。
     if (node->callee->getType() == NodeType::MemberExpr) {
         MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
-        if (!mem->isArrow) {
+        // v2.1（2026-09-03）：-> 语法已废除（成员访问统一 .），限定路径调用
+        //   不再有 isArrow 排除分支——原守卫删除，路径重写逻辑无条件进入。
         // 第 4 层（v2.0 决策1）：多段路径 包::模块::符号 解析——parser 将
         //   数学::平方根 折叠为 MemberExpr(标识符"数学", "平方根")；多段
         //   包::模块::符号 折叠为嵌套 MemberExpr(MemberExpr(标识符"包","模块"),"符号")。
@@ -330,7 +331,6 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                             funcBaseName + "）");
                 }
             }
-        }
     }
     }  // 模块限定调用重写块结束（Task 3.6 / 第 4 层 P1-1）
     bool isDirect = false;
@@ -673,9 +673,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 objTypeForClass = types::pointeeOf(objTypeForClass);
             }
         }
-        const std::string clsName = mem->isArrow
-                                        ? canonicalType(types::pointeeOf(objTypeForClass))
-                                        : canonicalType(objTypeForClass);
+        // v2.1（成员访问统一 .）：对象为类指针（账户* 账.方法()）自动解引用
+        //   一级（≡ (*账).方法()）——类型驱动剥指针，不依赖语义遍历顺序。
+        const std::string clsName =
+            types::isPointer(objTypeForClass)
+                ? canonicalType(types::pointeeOf(objTypeForClass))
+                : canonicalType(objTypeForClass);
         const ClassMemberInfo* method = lookupClassMember(clsName, methodName, ownerClass);
         if (method != nullptr && !method->isStatic) {
             // 实例方法调用：校验参数个数与类型

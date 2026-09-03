@@ -312,9 +312,11 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     }
 
     // 实例方法调用：对象为类实例（源码类型是类）。
-    // -> 访问：对象源码类型为 类名*（指针），剥指针取类名（与语义层 clsName 一致）。
+    // v2.1 统一 .：对象源码类型为 类名*（指针）时剥指针取类名（与语义层
+    //   clsName 类型驱动剥法一致）。注意方法调用路径不经过 visitMemberExpr
+    //   （被调 MemberExpr 只检查 object），不能依赖 isDerefAccess——纯类型驱动。
     std::string canonObjForMethod = canonObj;
-    if (mem->isArrow && types::isPointer(canonObjForMethod)) {
+    if (types::isPointer(canonObjForMethod)) {
         canonObjForMethod = types::canonical(types::pointeeOf(canonObjForMethod));
     }
     if (!semantic_->isClassType(canonObjForMethod)) {

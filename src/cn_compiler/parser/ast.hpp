@@ -174,9 +174,8 @@ enum class Operator {
     // 错误传播（C-1 2026-08，规格书07 Rust ? 运算符等价物）：后缀 ?——
     //   结果<T,E>/可选<T> 表达式的值提取：正常 -> 值；否则从当前函数返回错误
     Propagate,         // ?（后缀错误传播，postfix=true）
-    // 成员访问(2)
-    Dot,               // .
-    Arrow,             // ->
+    // 成员访问(1)
+    Dot,               // .（v2.1 统一：指针自动解引用一级，-> 已废除）
 };
 
 // ==================== 访问者基类 ====================
@@ -449,17 +448,21 @@ public:
     std::string moduleFilter;
 };
 
-// 成员访问：对象.成员 或 对象->成员
+// 成员访问：对象.成员（v2.1 成员访问统一 .：对象为指针时自动解引用一级，≡ (*对象).成员）
 class MemberExpr : public Expr {
 public:
-    MemberExpr(std::unique_ptr<Expr> object, std::string memberName, bool isArrow = false)
+    MemberExpr(std::unique_ptr<Expr> object, std::string memberName,
+               bool derefAccess = false)
         : Expr(NodeType::MemberExpr), object(std::move(object)),
-          memberName(std::move(memberName)), isArrow(isArrow) {}
+          memberName(std::move(memberName)), isDerefAccess(derefAccess) {}
     void accept(AstVisitor& visitor) override { visitor.visitMemberExpr(this); }
 
     std::unique_ptr<Expr> object;  // 对象表达式
     std::string memberName;        // 成员名
-    bool isArrow;                  // true 表示 -> 访问（通过指针）
+    // v2.1（2026-09-03，用户裁决废除 ->）：经指针访问标记——语义层
+    // visitMemberExpr 按对象类型写回（对象为指针 = true，≡ (*对象).成员，
+    // IR 层据此选基址：指针值 / 对象地址）；解析层恒 false（语法上只有 .）。
+    bool isDerefAccess;
     // P3-23 补完（2026-08）：实例方法作值标记（对象.实例方法 非调用上下文）。
     // 语义层 visitMemberExpr 写回；IR 合成"绑定 this"闭包并在变量绑定态登记。
     bool isMethodValue = false;

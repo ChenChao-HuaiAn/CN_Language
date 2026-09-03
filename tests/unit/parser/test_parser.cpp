@@ -408,20 +408,22 @@ TEST(ParserTest, ExprMemberAccess) {
     ASSERT_EQ(expr->getType(), NodeType::MemberExpr);
     MemberExpr* member = static_cast<MemberExpr*>(expr);
     EXPECT_EQ(member->memberName, "成员");
-    EXPECT_FALSE(member->isArrow);
+    EXPECT_FALSE(member->isDerefAccess);
     ASSERT_EQ(member->object->getType(), NodeType::IdentifierExpr);
 }
 
-// 箭头成员访问 obj->member
-TEST(ParserTest, ExprArrowAccess) {
+// 箭头成员访问 obj->member 已废除（v2.1，2026-09-03）：硬错误+迁移提示，
+// 恢复路径按 . 折叠 MemberExpr（isDerefAccess=false）
+TEST(ParserTest, ExprArrowAccessRejected) {
     auto result = parseProgram("函数 测试() -> 整32 { 返回 指针->成员 }");
-    ASSERT_FALSE(result.diagnostics.hasErrors());
+    EXPECT_TRUE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
-    ASSERT_NE(expr, nullptr);
-    ASSERT_EQ(expr->getType(), NodeType::MemberExpr);
-    MemberExpr* member = static_cast<MemberExpr*>(expr);
-    EXPECT_EQ(member->memberName, "成员");
-    EXPECT_TRUE(member->isArrow);
+    if (expr != nullptr) {  // 恢复路径仍折叠出 MemberExpr（防级联报错）
+        ASSERT_EQ(expr->getType(), NodeType::MemberExpr);
+        MemberExpr* member = static_cast<MemberExpr*>(expr);
+        EXPECT_EQ(member->memberName, "成员");
+        EXPECT_FALSE(member->isDerefAccess);
+    }
 }
 
 // 混合表达式：含多种运算符与括号

@@ -227,22 +227,24 @@ TEST(ParserArrayPtrTest, AddressOfIndex) {
     EXPECT_EQ(unary->operand->getType(), NodeType::IndexExpr);
 }
 
-// ==================== -> 语法解析 ====================
+// ==================== 成员访问（v2.1 统一 .） ====================
 
-// 指针->成员：MemberExpr(isArrow=true)
-TEST(ParserArrayPtrTest, ArrowMember) {
+// -> 成员访问已废除（v2.1，2026-09-03）：解析层硬错误 + 迁移提示；
+// 恢复策略按 . 折叠 MemberExpr（isDerefAccess=false）避免级联报错
+TEST(ParserArrayPtrTest, ArrowMemberRejected) {
     ParseResult result;
     Stmt* stmt = parseStmt("x = p->字段", result);
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+    // 恢复路径：仍折叠出 MemberExpr（产物不进入后续阶段，仅防级联）
     AssignmentExpr* assign = asAssign(stmt);
     ASSERT_NE(assign, nullptr);
     ASSERT_EQ(assign->value->getType(), NodeType::MemberExpr);
     MemberExpr* member = static_cast<MemberExpr*>(assign->value.get());
-    EXPECT_TRUE(member->isArrow);
+    EXPECT_FALSE(member->isDerefAccess);
     EXPECT_EQ(member->memberName, "字段");
-    EXPECT_EQ(member->object->getType(), NodeType::IdentifierExpr);
 }
 
-// 点访问：. 成员访问（isArrow=false）
+// 点访问：. 成员访问（解析层 isDerefAccess 恒 false——语义层按对象类型置位）
 TEST(ParserArrayPtrTest, DotMember) {
     ParseResult result;
     Stmt* stmt = parseStmt("x = 对象.字段", result);
@@ -250,7 +252,7 @@ TEST(ParserArrayPtrTest, DotMember) {
     ASSERT_NE(assign, nullptr);
     ASSERT_EQ(assign->value->getType(), NodeType::MemberExpr);
     MemberExpr* member = static_cast<MemberExpr*>(assign->value.get());
-    EXPECT_FALSE(member->isArrow);
+    EXPECT_FALSE(member->isDerefAccess);
 }
 
 // ==================== 初始化列表 ====================

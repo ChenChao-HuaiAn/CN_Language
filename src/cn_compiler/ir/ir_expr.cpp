@@ -917,8 +917,10 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         if (handleClassMemberAssign(member, node->value.get(), node->location)) {
             return;
         }
-        // 枚举成员赋值不合法（枚举值为只读常量）
-        if (!member->isArrow && member->object->getType() == NodeType::IdentifierExpr) {
+        // 枚举成员赋值不合法（枚举值为只读常量；枚举类型名非指针，
+        //   isDerefAccess 恒 false——v2.1 保留原防御结构）
+        if (!member->isDerefAccess &&
+            member->object->getType() == NodeType::IdentifierExpr) {
             IdentifierExpr* ident = static_cast<IdentifierExpr*>(member->object.get());
             std::int64_t v = 0;
             if (semantic_ != nullptr && semantic_->isEnumType(ident->name) &&
@@ -963,7 +965,7 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 }
             }
         }
-        if (member->isArrow && types::isPointer(objSrcType)) {
+        if (member->isDerefAccess && types::isPointer(objSrcType)) {
             objSrcType = types::pointeeOf(objSrcType);
         }
         std::string targetType = "i64";
@@ -1904,8 +1906,9 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     if (handleClassMemberExpr(node)) {
         return;
     }
-    // 枚举引用：枚举名.成员 → 整数值（Task 2.7）
-    if (!node->isArrow && node->object->getType() == NodeType::IdentifierExpr) {
+    // 枚举引用：枚举名.成员 → 整数值（Task 2.7；枚举类型名非指针，
+    //   isDerefAccess 恒 false——v2.1 保留原防御结构）
+    if (!node->isDerefAccess && node->object->getType() == NodeType::IdentifierExpr) {
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->object.get());
         std::int64_t enumVal = 0;
         if (semantic_ != nullptr && semantic_->isEnumType(ident->name) &&
@@ -1916,17 +1919,17 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
         }
     }
     // 结构体字段访问：计算字段地址（FieldAddr），再按字段类型 LoadPtr
-    // 地址：直接调用 lvalueAddress(node) 递归处理（. 对象为变量/嵌套成员/下标；
-    //        -> 对象为指针值——lvalueAddress 对 MemberExpr 已按 isArrow 区分）
-    // 说明：lvalueAddress(MemberExpr) 递归计算 基址+偏移，-> 隐含空指针检查（错误码3）
+    // 地址：直接调用 lvalueAddress(node) 递归处理（值对象为变量/嵌套成员/下标；
+    //        经指针对象为指针值——lvalueAddress 对 MemberExpr 已按 isDerefAccess 区分）
+    // 说明：lvalueAddress(MemberExpr) 递归计算 基址+偏移，经指针访问隐含空指针检查（错误码3）
     ir::IRValue fieldAddr = lvalueAddress(node);
     // 查询字段类型（语义层布局，递归解析对象类型）
     if (semantic_ == nullptr) {
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return;
     }
-    // 对象源码类型：. 访问为变量源码类型（含嵌套 r.左上 的字段类型递归）；
-    //               -> 访问为指针所指类型
+    // 对象源码类型：值对象访问为变量源码类型（含嵌套 r.左上 的字段类型递归）；
+    //               经指针对象访问（v2.1 统一 .，isDerefAccess）为指针所指类型
     std::string objSrcType = "";
     if (node->object->getType() == NodeType::IdentifierExpr) {
         objSrcType = lookupSrcType(static_cast<IdentifierExpr*>(node->object.get())->name);
@@ -1937,6 +1940,15 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
         if (inner->object->getType() == NodeType::IdentifierExpr) {
             innerObjType = lookupSrcType(
                 static_cast<IdentifierExpr*>(inner->object.get())->name);
+            // 宿主缺陷根治（2026-09-03，E2E 134 当场揪出）：嵌套成员链第一层为
+            //   指针变量（外层* wq; wq.内.x）——findStruct("外层*") 不剥指针 ->
+            //   innerDecl==null -> objSrcType 空 -> decl==null -> 字段读降级常量 0
+            //   （比较恒真/打印恒 0，静默错行为）。原 -> 语法同形态同缺陷（旧用例
+            //   嵌套链均隔下标层走 IndexExpr 分支未踩中）。修：剥指针一级再查
+            //   （与下方 1995 行 memberObjStructType 内 isDerefAccess 剥法一致）。
+            if (types::isPointer(innerObjType)) {
+                innerObjType = types::pointeeOf(innerObjType);
+            }
         }
         const StructDecl* innerDecl = semantic_->findStruct(types::canonical(innerObjType));
         if (innerDecl != nullptr) {
@@ -1968,6 +1980,20 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
                 } else if (inner->memberName == "有值") {
                     objSrcType = "布尔";
                 }
+            }
+        }
+    } else if (node->object->getType() == NodeType::UnaryExpr) {
+        // 显式解引用成员 (*q).x —— 对象经 * 解引用后为所指结构体，类型=所指类型。
+        //   宿主缺陷根治（2026-09-03，E2E 134 第四节当场揪出）：原分支表不认
+        //   UnaryExpr 对象 -> objSrcType 空 -> decl==null -> 降级常量 0（既有缺陷，
+        //   v2.1 统一 . 后 p.字段 ≡ (*p).字段 两形态须等价可互换）。
+        UnaryExpr* u = static_cast<UnaryExpr*>(node->object.get());
+        if (u->op == Operator::Deref &&
+            u->operand->getType() == NodeType::IdentifierExpr) {
+            const std::string pType = lookupSrcType(
+                static_cast<IdentifierExpr*>(u->operand.get())->name);
+            if (types::isPointer(pType)) {
+                objSrcType = types::pointeeOf(pType);
             }
         }
     } else if (node->object->getType() == NodeType::IndexExpr) {
@@ -2002,8 +2028,8 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
                 }
             }
         }
-    } else if (node->isArrow && node->object->getType() == NodeType::BinaryExpr) {
-        // 指针算术结果成员：(名单 + (n-1))->分数 — 从左操作数（指针变量）
+    } else if (node->isDerefAccess && node->object->getType() == NodeType::BinaryExpr) {
+        // 指针算术结果成员：(名单 + (n-1)).分数 — 从左操作数（指针变量）
         // 推导元素类型（Task 2.7 集成修复：此前 decl==nullptr 返回占位0，
         // 导致结构体指针算术+成员访问组合读取恒为0）
         BinaryExpr* bin = static_cast<BinaryExpr*>(node->object.get());
@@ -2021,7 +2047,7 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
         //   类型（与 lvalueAddress 的同款补丁配套：地址层 + 类型/宽度层双修复）。
         objSrcType = exprSrcType(node->object.get());
     }
-    if (node->isArrow && types::isPointer(objSrcType)) {
+    if (node->isDerefAccess && types::isPointer(objSrcType)) {
         objSrcType = types::pointeeOf(objSrcType);
     }
     const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));

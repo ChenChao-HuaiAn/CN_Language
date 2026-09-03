@@ -50,8 +50,7 @@ const char* AstPrinter::operatorText(Operator op) {
         case Operator::Increment: return "++";
         case Operator::Decrement: return "--";
         case Operator::Propagate: return "?";
-        case Operator::Dot: return ".";
-        case Operator::Arrow: return "->";
+        case Operator::Dot: return ".";  // v2.1：成员访问统一 .（Arrow 已废除）
     }
     return "?";
 }
@@ -464,8 +463,7 @@ void AstPrinter::visitCallExpr(CallExpr* node) {
 }
 
 void AstPrinter::visitMemberExpr(MemberExpr* node) {
-    printHeader("成员访问", node->location,
-                (node->isArrow ? "->" : ".") + node->memberName);
+    printHeader("成员访问", node->location, "." + node->memberName);
     ++depth_;
     if (node->object != nullptr) {
         node->object->accept(*this);

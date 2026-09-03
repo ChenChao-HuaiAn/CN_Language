@@ -957,6 +957,11 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     const std::string memberName = node->memberName;
     const std::string objectVar = objectVarName(node->object.get());
     std::string objectType = checkExpr(node->object.get());
+    // v2.1（2026-09-03，用户裁决废除 ->）：成员访问统一 .——对象为指针时
+    //   自动解引用一级（≡ (*对象).成员，Go 先例）。isDerefAccess 按对象类型
+    //   写回（IR 层据此选基址：指针值 / 对象地址）；解析层恒 false。
+    //   结果/可选/枚举/接口对象均非此指针语义或各自先行处理，统一置位无害。
+    node->isDerefAccess = types::isPointer(objectType);
     // 结果/可选成员检查（Task 3.5 规则2/3）：.正常/.有值/.值/.错误
     if (isResultType(objectType) || isOptionalType(objectType)) {
         // 结果<T,E> / 可选<T> 经降级为合成结构体，其成员 .正常/.有值/.值/.错误
@@ -1007,7 +1012,8 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     }
     // 枚举值引用：枚举名.成员（如 颜色.红，Task 2.7）
     // object 为标识符且其类型是枚举类型名 → 求值为枚举成员整数值
-    if (!node->isArrow && node->object->getType() == NodeType::IdentifierExpr) {
+    // （v2.1：枚举类型名非指针，原 !isArrow 守卫随 -> 废除删除）
+    if (node->object->getType() == NodeType::IdentifierExpr) {
         const std::string enumName = objectType;
         std::int64_t enumValue = 0;
         if (isEnumType(enumName) && enumValueOf(enumName, memberName, enumValue)) {
@@ -1021,22 +1027,21 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
             return;
         }
     }
-    std::string structType;  // 承载字段的结构体类型名（.为对象类型，->为指针所指）
-    // 自身（this）指针：自身.成员 应剥指针取类类型（Task 3.1，规格书06-七）
-    if (node->object->getType() == NodeType::SelfExpr) {
-        structType = canonicalType(types::isPointer(objectType)
-                                       ? types::pointeeOf(objectType)
-                                       : objectType);
-    } else if (node->isArrow) {
-        // -> 访问：object 须为指针
-        if (types::isPointer(objectType)) {
-            structType = canonicalType(types::pointeeOf(objectType));
-        } else {
+    std::string structType;  // 承载字段的结构体/类类型名
+    // v2.1（2026-09-03，用户裁决废除 ->）：成员访问统一 .——对象为指针时
+    //   自动解引用**一级**（≡ (*对象).成员，Go 先例；自身 this 指针同此剥法，
+    //   原专门分支并入）；多级指针不继续解引用，报错可见化。
+    if (types::isPointer(objectType)) {
+        const std::string pointee = types::pointeeOf(objectType);
+        if (types::isPointer(pointee)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "-> 成员访问要求左侧为指针，实际为 '" + objectType + "'");
+                                "多级指针 '" + objectType +
+                                    "' 不自动解引用：请显式 * 解引用一级后再访问成员 '" +
+                                    memberName + "'");
             lastType_ = "未知";
             return;
         }
+        structType = canonicalType(pointee);
     } else {
         structType = canonicalType(objectType);
     }

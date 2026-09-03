@@ -336,8 +336,19 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
             advance();  // 消费 '?'
             expr = std::make_unique<UnaryExpr>(Operator::Propagate, std::move(expr), true);
             expr->location = loc;
+        } else if (check(TokenType::Arrow)) {
+            // v2.1（2026-09-03，用户裁决）：废除 -> 成员访问——成员访问统一用 .，
+            //   指针自动解引用一级（Go 先例，对齐 Rust 与旧版 Rust 风格 CN）。
+            //   硬错误 + 迁移提示（"可能想写"提示家族）；恢复策略：按 . 折叠
+            //   MemberExpr 继续解析（isDerefAccess=false，避免级联报错；本错误
+            //   已致命，产物不会进入后续阶段）。-> 记号仍用于返回类型/lambda 返回。
+            reportError(current().getLocation(),
+                        "'->' 成员访问已废除（v2.1 成员访问统一 '.'，"
+                        "指针自动解引用一级）：请改用 '.'，"
+                        "如 '指针->字段' 应写作 '指针.字段'");
+            expr = parseCallOrMember(std::move(expr));
         } else if (check(TokenType::LeftParen) || check(TokenType::Dot) ||
-                   check(TokenType::Arrow) || check(TokenType::ColonColon)) {
+                   check(TokenType::ColonColon)) {
             // 第 4 层（v2.0 决策1/6）：:: 限定路径 模块::符号 解析——与 . 成员访问
             //   同语义（限定调用），复用 parseCallOrMember 折叠为 MemberExpr，
             //   语义层 visitCallExpr 按 use 导入表重写。多段路径 包::模块::符号
@@ -390,18 +401,17 @@ std::unique_ptr<Expr> Parser::parseCallOrMember(std::unique_ptr<Expr> expr) {
         consume(TokenType::RightParen, "')'");
         return call;
     }
-    // 成员访问（. 或 ->）或 v2.0 路径限定（::）
+    // 成员访问（.）或 v2.0 路径限定（::）
     const SourceLocation loc = expr->location;
-    const bool isArrow = check(TokenType::Arrow);
-    const bool isPath = check(TokenType::ColonColon);
-    (void)isPath;  // :: 与 . 同为成员访问路径（MemberExpr.isArrow=false），标记仅文档用
     advance();
     std::string memberName = current().getValue();
     advance();
-    // 第 4 层：:: 限定路径折叠为 MemberExpr（isArrow=false 与 . 同路径），
+    // 第 4 层：:: 限定路径折叠为 MemberExpr（isDerefAccess=false 与 . 同路径），
     //   供语义层 use 导入表重写（模块::符号 限定调用）；memberName 可能为
     //   关键字（核心::可选 等路径段），token 值直接取文本。
-    auto mem = std::make_unique<MemberExpr>(std::move(expr), memberName, isArrow);
+    //   v2.1：isDerefAccess 由语义层按对象类型写回（指针自动解引用一级），
+    //   解析层恒 false——语法上只剩 . 一种成员访问形式（-> 已废除）。
+    auto mem = std::make_unique<MemberExpr>(std::move(expr), memberName);
     mem->location = loc;
     return mem;
 }

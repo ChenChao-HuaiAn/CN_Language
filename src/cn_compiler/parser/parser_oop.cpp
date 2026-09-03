@@ -34,7 +34,8 @@ bool isOverloadableOperator(TokenType t) {
         case TokenType::AndAnd: case TokenType::OrOr: case TokenType::Bang:
         case TokenType::Amp: case TokenType::Pipe: case TokenType::Caret:
         case TokenType::Tilde: case TokenType::LessLess: case TokenType::GreaterGreater:
-        case TokenType::LeftBracket: case TokenType::LeftParen: case TokenType::Arrow:
+        case TokenType::LeftBracket: case TokenType::LeftParen:
+            // v2.1：可重载集合删 ->（成员访问统一 .，该运算符已废除）
             return true;
         default:
             return false;
@@ -66,8 +67,7 @@ const char* operatorSymbolText(TokenType t) {
         case TokenType::GreaterGreater: return ">>";
         case TokenType::LeftBracket: return "[]";
         case TokenType::LeftParen: return "()";
-        case TokenType::Arrow: return "->";
-        default: return "";
+        default: return "";  // v2.1：-> 已从可重载集合移除
     }
 }
 

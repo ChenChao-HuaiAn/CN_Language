@@ -106,25 +106,25 @@ TEST(StructSemanticTest, FieldAccessValidAndInvalid) {
     EXPECT_NE(r.messages.find("没有成员"), std::string::npos);
 }
 
-// -> 访问：结构体指针解引用访问字段（类型正确）
+// 经指针访问（v2.1 统一 .，自动解引用一级）：结构体指针访问字段（类型正确）
 TEST(StructSemanticTest, ArrowFieldAccess) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x 整32 y }\n"
         "函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1, y = 2 }\n"
         "  点* ptr = &p\n"
-        "  整32 a = ptr->x\n"
+        "  整32 a = ptr.x\n"
         "  返回 0\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
 
-// -> 访问：非结构体指针报错（整32* -> 字段）
+// 经指针访问：非结构体指针报错（整32* . 字段）
 TEST(StructSemanticTest, ArrowOnNonStruct) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
         "  整32* p = 无\n"
-        "  整32 a = p->字段\n"
+        "  整32 a = p.字段\n"
         "  返回 0\n"
         "}\n");
     EXPECT_FALSE(r.ok);

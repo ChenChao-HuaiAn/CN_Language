@@ -454,9 +454,11 @@ bool SemanticAnalyzer::refReturnLvalueBase(const Expr* e, std::string& baseName)
                 static_cast<const IndexExpr*>(e)->object.get(), baseName);
         case NodeType::MemberExpr: {
             // 成员字段：解到对象名（对象生命周期决定字段引用是否悬垂）；
-            // -> 成员 = 指针所指（*p 同类），可作返回（指向堆/调用方存储）
+            // v2.1：经指针访问（p.字段 ≡ (*p).字段，语义层 isDerefAccess 标记
+            //   ——返回检查前 checkExpr 已按对象类型置位）= 指针所指（*p 同类），
+            //   可作返回（指向堆/调用方存储）；值对象递归解到对象名。
             const MemberExpr* m = static_cast<const MemberExpr*>(e);
-            if (m->isArrow) return true;
+            if (m->isDerefAccess) return true;
             return refReturnLvalueBase(m->object.get(), baseName);
         }
         case NodeType::UnaryExpr: {

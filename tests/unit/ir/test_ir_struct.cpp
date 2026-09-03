@@ -126,14 +126,15 @@ TEST(IrStructTest, EnumNegativeConst) {
     EXPECT_TRUE(foundMinusOne);
 }
 
-// -> 成员访问：指针->x 生成 FieldAddr（含空指针检查语义在 codegen）
+// 经指针成员访问（v2.1 统一 .，自动解引用一级）：ptr.y 生成 FieldAddr
+//   （含空指针检查语义在 codegen）
 TEST(IrStructTest, ArrowFieldAccess) {
     IrResult r = generateIr(
         "结构体 点 { 整32 x 整32 y }\n"
         "函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1, y = 2 }\n"
         "  点* ptr = &p\n"
-        "  整32 a = ptr->y\n"
+        "  整32 a = ptr.y\n"
         "  返回 a\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -196,8 +197,8 @@ TEST(IrStructTest, ArrayFieldAccessGeneratesBoundsCheck) {
     EXPECT_TRUE(moduleHasOpcode(r.module, "主", Opcode::Call));
 }
 
-// BUG10b：箭头指针 + 数组字段（方形指针->顶点[1].x）应正确展开元素步进，
-//   原实现 objSrcType 推导失败（形状* 未剥指针）返回占位0
+// BUG10b：经指针访问 + 数组字段（形状指针 p.顶点[1].x，v2.1 统一 .）应正确展开
+//   元素步进，原实现 objSrcType 推导失败（形状* 未剥指针）返回占位0
 TEST(IrStructTest, ArrowArrayFieldAccessWorks) {
     IrResult r = generateIr(
         "结构体 坐标 { 整32 x\n 整32 y }\n"
@@ -206,10 +207,10 @@ TEST(IrStructTest, ArrowArrayFieldAccessWorks) {
         "  形状 方形\n"
         "  方形.顶点[1].x = 10\n"
         "  形状* p = &方形\n"
-        "  返回 p->顶点[1].x\n"
+        "  返回 p.顶点[1].x\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
-    // 箭头数组字段：FieldAddr + Add（步进）+ LoadPtr（读取）
+    // 经指针数组字段：FieldAddr + Add（步进）+ LoadPtr（读取）
     EXPECT_TRUE(moduleHasOpcode(r.module, "主", Opcode::FieldAddr));
     EXPECT_TRUE(moduleHasOpcode(r.module, "主", Opcode::Add));
     EXPECT_TRUE(moduleHasOpcode(r.module, "主", Opcode::LoadPtr));

@@ -158,24 +158,24 @@ TEST(ParserStructTest, MemberAccessDotAndArrow) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
         "    整32 a = p.x\n"
-        "    整32 b = ptr->y\n"
+        "    整32 b = ptr.y\n"
         "    返回 0\n"
         "}\n");
     ASSERT_EQ(r.program->declarations.size(), 1u);
     FunctionDecl* func = r.program->declarations[0].get();
     ASSERT_GE(func->body->statements.size(), 2u);
-    // p.x
+    // p.x（值对象）
     VarDecl* v1 = static_cast<VarDecl*>(func->body->statements[0].get());
     ASSERT_EQ(v1->initializer->getType(), NodeType::MemberExpr);
     MemberExpr* m1 = static_cast<MemberExpr*>(v1->initializer.get());
     EXPECT_EQ(m1->memberName, "x");
-    EXPECT_FALSE(m1->isArrow);
-    // ptr->y
+    EXPECT_FALSE(m1->isDerefAccess);
+    // ptr.y（v2.1 统一 .：解析层恒 false，语义层按对象是否为指针置位）
     VarDecl* v2 = static_cast<VarDecl*>(func->body->statements[1].get());
     ASSERT_EQ(v2->initializer->getType(), NodeType::MemberExpr);
     MemberExpr* m2 = static_cast<MemberExpr*>(v2->initializer.get());
     EXPECT_EQ(m2->memberName, "y");
-    EXPECT_TRUE(m2->isArrow);
+    EXPECT_FALSE(m2->isDerefAccess);
 }
 
 // 嵌套结构体初始化：矩形{ 左上 = 点{ x = 1, y = 2 }, ... }

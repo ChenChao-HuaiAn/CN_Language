@@ -255,7 +255,7 @@ TEST(IrOopEmitTest, VirtualCallDispatch) {
 }
 函数 主() -> 整32 {
     动物* 实例 = 无
-    字符串 声 = 实例->叫声()
+    字符串 声 = 实例.叫声()
     返回 0
 }
 )CN");

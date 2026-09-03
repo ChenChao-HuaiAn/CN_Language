@@ -137,7 +137,7 @@ std::unique_ptr<Expr> cloneNameExpr(Expr* node) {
         case NodeType::MemberExpr: {
             auto* m = static_cast<MemberExpr*>(node);
             return std::make_unique<MemberExpr>(cloneNameExpr(m->object.get()),
-                                                m->memberName, m->isArrow);
+                                                m->memberName, m->isDerefAccess);
         }
         case NodeType::IndexExpr: {
             auto* ix = static_cast<IndexExpr*>(node);
@@ -307,7 +307,7 @@ std::unique_ptr<Expr> cloneExpr(Expr* node) {
         case NodeType::MemberExpr: {
             auto* n = static_cast<MemberExpr*>(node);
             out = std::make_unique<MemberExpr>(cloneExpr(n->object.get()),
-                                               n->memberName, n->isArrow);
+                                               n->memberName, n->isDerefAccess);
             break;
         }
         case NodeType::IndexExpr: {

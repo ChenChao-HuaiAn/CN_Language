@@ -555,8 +555,9 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
             }
         }
     }
-    // arrow 成员：对象是结构体指针 -> 剥指针取所指类型
-    if (node->isArrow && types::isPointer(objType)) {
+    // v2.1 经指针成员（isDerefAccess，语义层按对象类型置位）：对象是结构体指针
+    //   -> 剥指针取所指类型（p.字段 ≡ (*p).字段）
+    if (node->isDerefAccess && types::isPointer(objType)) {
         objType = types::pointeeOf(objType);
     }
     return objType;
@@ -752,7 +753,8 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
             return oopAddr;
         }
         // 枚举引用不是左值，防御性按值处理
-        if (!member->isArrow && member->object->getType() == NodeType::IdentifierExpr) {
+        if (!member->isDerefAccess &&
+            member->object->getType() == NodeType::IdentifierExpr) {
             IdentifierExpr* ident = static_cast<IdentifierExpr*>(member->object.get());
             std::int64_t v = 0;
             if (semantic_ != nullptr && semantic_->isEnumType(ident->name) &&
@@ -760,8 +762,9 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
                 return genExpr(node);
             }
         }
-        // 基址：-> 为指针值；. 为对象地址（递归处理嵌套成员/数组元素）
-        ir::IRValue base = member->isArrow
+        // 基址（v2.1 统一 .，语义层 isDerefAccess 置位）：经指针（对象为指针，
+        //   p.字段 ≡ (*p).字段）取指针值；值对象取对象地址（递归嵌套成员/数组元素）
+        ir::IRValue base = member->isDerefAccess
                                ? genExpr(member->object.get())
                                : lvalueAddress(member->object.get());
         if (semantic_ == nullptr) return base;
@@ -779,9 +782,9 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
             member->object->getType() == NodeType::CallExpr) {
             objSrcType = exprSrcType(member->object.get());
         }
-        if (objSrcType.empty() && member->isArrow &&
+        if (objSrcType.empty() && member->isDerefAccess &&
             member->object->getType() == NodeType::BinaryExpr) {
-            // 指针算术结果成员：(名单 + (n-1))->分数 — 从左操作数推导元素类型
+            // 指针算术结果成员：(名单 + (n-1)).分数 — 从左操作数推导元素类型
             BinaryExpr* bin = static_cast<BinaryExpr*>(member->object.get());
             if (bin->left->getType() == NodeType::IdentifierExpr) {
                 const std::string ptrType = lookupSrcType(

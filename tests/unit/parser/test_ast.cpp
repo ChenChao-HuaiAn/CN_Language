@@ -249,15 +249,16 @@ TEST(AstTest, CallExprNode) {
     EXPECT_EQ(callByExpr.callee->getType(), NodeType::MemberExpr);
 }
 
-// 成员访问：. 与 ->
+// 成员访问：.（v2.1 统一——isDerefAccess 由语义层按对象类型置位，构造层默认 false）
 TEST(AstTest, MemberExprNode) {
     MemberExpr dot(std::make_unique<IdentifierExpr>("对象"), "成员", false);
     EXPECT_EQ(dot.getType(), NodeType::MemberExpr);
     EXPECT_EQ(dot.memberName, "成员");
-    EXPECT_FALSE(dot.isArrow);
+    EXPECT_FALSE(dot.isDerefAccess);
 
-    MemberExpr arrow(std::make_unique<IdentifierExpr>("指针"), "成员", true);
-    EXPECT_TRUE(arrow.isArrow);
+    // 语义层经指针访问标记位（p.字段 ≡ (*p).字段）可在构造时显式置位
+    MemberExpr deref(std::make_unique<IdentifierExpr>("指针"), "成员", true);
+    EXPECT_TRUE(deref.isDerefAccess);
 }
 
 // 控制流语句节点构建
