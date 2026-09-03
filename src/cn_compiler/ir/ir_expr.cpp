@@ -1524,17 +1524,13 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             if (index.type != "i64") {
                 index = emitResult(ir::Opcode::Cast, {index}, "i64", "", node->location);
             }
+            // 元素间距：按元素类型大小（缺陷③根治统一 C 布局——typeSizeOf 含
+            //   结构体总大小（Task 2.7）/i128=16（BUG #5）/标量 4/2/1；原标量
+            //   兜底 8 与数组 8 槽布局互洽，见 ir.cpp registerVarSlots 注）
             std::int64_t elemStride = 8;
             if (semantic_ != nullptr) {
-                if (semantic_->isStructType(elemSrc)) {
-                    elemStride = semantic_->typeSizeOf(elemSrc);
-                }
-            }
-            // 修复集成审查 BUG #5：i128/正128 数组元素 stride = 16 字节
-            //   （原实现只处理结构体类型，i128 数组 `大数[1]` 步进 8 字节
-            //   读到 大数[0] 高64位槽 -> 求和值错误）
-            if (types::isI128(types::canonical(elemSrc))) {
-                elemStride = 16;
+                const int size = semantic_->typeSizeOf(elemSrc);
+                if (size > 0) elemStride = size;
             }
             ir::IRValue scaled = emitResult(
                 ir::Opcode::Mul,
@@ -1623,8 +1619,9 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                                                                     : types::typeSize(elemSrc));
                 emitBoundsCheck(index, types::arrayLenOf(fieldType), node->location);
             } else if (types::isPointer(fieldType)) {
-                // 指针字段（T* 数据）：堆元素按槽模型步进（标量 8 字节槽、
-                //   结构体按总大小、i128 双槽——与容器库 槽大小 分配一致）
+                // 指针字段（T* 数据）：步进统一按所指元素 typeSizeOf（缺陷③根治
+                //   2026-09-03——与 ptrElemStride/容器库紧凑分配一致；原「标量 8
+                //   字节槽」与写侧按元素大小混用 -> 窄元素读写错位腐坏，30 实证）
                 elemSrc = types::pointeeOf(fieldType);
                 const std::string elemCanon = types::canonical(elemSrc);
                 // H8 补完（2026-08-25）：类元素（向量<T> 数据 T*，T=映射/简单盒）
@@ -1633,8 +1630,10 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 elemIsStruct = semantic_ != nullptr &&
                                (semantic_->isStructType(elemCanon) ||
                                 semantic_->isClassType(elemCanon));
-                stride = elemIsStruct ? semantic_->typeSizeOf(elemSrc)
-                         : (types::isI128(elemCanon) ? 16 : 8);
+                const int elemSize = (semantic_ != nullptr)
+                                         ? semantic_->typeSizeOf(elemSrc) : 0;
+                stride = elemSize > 0 ? elemSize
+                                      : (types::isI128(elemCanon) ? 16 : 8);
             } else if (types::canonical(fieldType) == "字符串") {
                 // 自举前置 A-1：字符串字段（自身.源码[i]）——字符* 字节步进 1
                 elemSrc = "字符";

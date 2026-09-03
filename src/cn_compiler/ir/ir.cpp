@@ -386,14 +386,24 @@ void IRGenerator::registerVarSlots(const std::string& unique, const std::string&
             function_->varSlots[unique] = 1;
             return;
         }
+        // 缺陷③根治（2026-09-03）：槽数按数组 C 总大小 ceil(元素大小×长度/8)——
+        //   与 typeSizeOf(数组)（.data 静态数组布局）及元素步进统一。原实现标量
+        //   元素固定 8 槽/元素（非 C 布局），与「指针步进兜底 8」双错互洽；结构体
+        //   数组元素间预留超量槽（len*ceil(大小/8) ≥ C 总大小）同批收口。
+        if (semantic_ != nullptr) {
+            const int bytes = semantic_->typeSizeOf(srcType);
+            if (bytes > 0) {
+                function_->varSlots[unique] = (bytes + 7) / 8;
+                return;
+            }
+        }
+        // 语义层缺位防御：旧特判约定（结构体按大小、i128 双槽、标量 1 槽）
         const std::string elemSrc = types::arrayElemOf(srcType);
         int elemSlots = 1;
         if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
-            // 结构体数组：每元素占 ceil(结构体大小/8) 个 8 字节槽
             const int size = semantic_->typeSizeOf(elemSrc);
             elemSlots = (size + 7) / 8;
         } else if (types::isI128(types::canonical(elemSrc))) {
-            // i128 数组：每元素 2 槽
             elemSlots = 2;
         }
         function_->varSlots[unique] = len * elemSlots;
@@ -445,21 +455,15 @@ bool IRGenerator::isByRefCapture(const std::string& name) const {
 std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
     if (semantic_ != nullptr && types::isPointer(srcType)) {
         const std::string elem = types::pointeeOf(srcType);
-        if (semantic_->isStructType(types::canonical(elem))) {
-            return semantic_->typeSizeOf(elem);
-        }
-        // H8 补完（2026-08-25）：类类型指针元素（向量<T> 数据 = T*，T=映射
-        //   56 字节）步长须按类总大小——原兜底 8 导致 追加/元素/删除 错位越界
-        //   0xC0000374（分配已按 sizeof 但索引按 8）。
-        if (semantic_->isClassType(types::canonical(elem))) {
-            return semantic_->typeSizeOf(elem);
-        }
-        // 修复集成审查 BUG #5：i128/正128 指针元素 stride = 16 字节
-        if (types::isI128(types::canonical(elem))) {
-            return 16;
-        }
+        // 缺陷③根治（2026-09-03）：步进统一按所指元素 typeSizeOf（基础类型/
+        //   结构体/类/枚举/结果——含 i128=16、H8 类元素、Task 2.7 结构体元素）。
+        //   原实现仅特判 结构体/类/i128、其余兜底 8——标量指针（整32*/整16*/
+        //   整8*）步进错 8：指向结构体紧凑字段的指针 p[1] 跨字段错位读脏值
+        //   （130 用例实锤），与「数组局部 8 槽布局」互洽的历史欠账一并统一。
+        const int size = semantic_->typeSizeOf(elem);
+        if (size > 0) return size;
     }
-    return 8;
+    return 8;  // 语义层缺位/未知类型防御
 }
 std::string IRGenerator::pointerPointeeSrcType(Expr* node) const {
     if (node == nullptr) return "";
@@ -636,17 +640,14 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
                     index = emitResult(ir::Opcode::Cast, {index}, "i64", "",
                                        idx->location);
                 }
-                // 元素间距：结构体数组按结构体总大小（Task 2.7），普通类型 8 字节
+                // 元素间距：按元素类型大小（缺陷③根治统一 C 布局——typeSizeOf 含
+                //   结构体总大小（Task 2.7）/i128=16（BUG #5）/标量 4/2/1；原标量
+                //   兜底 8 与数组 8 槽布局互洽的欠账，见 registerVarSlots 注）
                 std::int64_t elemStride = 8;
                 if (semantic_ != nullptr) {
                     const std::string elemSrc = types::arrayElemOf(srcType);
-                    if (semantic_->isStructType(elemSrc)) {
-                        elemStride = semantic_->typeSizeOf(elemSrc);
-                    }
-                    // 修复集成审查 BUG #5：i128/正128 数组元素 stride = 16
-                    if (types::isI128(types::canonical(elemSrc))) {
-                        elemStride = 16;
-                    }
+                    const int size = semantic_->typeSizeOf(elemSrc);
+                    if (size > 0) elemStride = size;
                 }
                 ir::IRValue scaled = emitResult(
                     ir::Opcode::Mul, {index,

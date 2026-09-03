@@ -488,14 +488,13 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         const std::string elemSrc = types::arrayElemOf(srcType);
         const std::string elemIrType = mapType(elemSrc);
         const int arrayLen = types::arrayLenOf(srcType);
-        // 元素间距：结构体数组按结构体总大小（Task 2.7），普通类型 8 字节
+        // 元素间距：按元素类型大小（缺陷③根治统一 C 布局——typeSizeOf 含
+        //   结构体总大小（Task 2.7）/i128=16（BUG #5）/标量 4/2/1；原标量
+        //   兜底 8 与数组 8 槽布局互洽，见 ir.cpp registerVarSlots 注）
         std::int64_t elemStride = 8;
-        if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
-            elemStride = semantic_->typeSizeOf(elemSrc);
-        }
-        // 修复集成审查 BUG #5：i128/正128 数组初始化元素 stride = 16
-        if (types::isI128(types::canonical(elemSrc))) {
-            elemStride = 16;
+        if (semantic_ != nullptr) {
+            const int size = semantic_->typeSizeOf(elemSrc);
+            if (size > 0) elemStride = size;
         }
         // 逐元素存储：目标为 数组槽[i]（地址 = 数组基址 + i*元素大小，基址槽最深）
         for (std::size_t i = 0; i < initList->elements.size(); ++i) {
@@ -524,7 +523,14 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             emit(ir::Opcode::StorePtr, {addr, elem}, ir::IRValue(), "", elemIrType,
                  node->location);
         }
-        // 部分初始化补零：剩余槽置0（C语义；结构体数组按元素间距步进）
+        // 部分初始化补零：剩余元素置0（C语义；结构体数组按元素间距步进）。
+        //   写入宽度（缺陷③配套）：C 布局窄整型元素紧凑排布，固定 i64 8 字节写
+        //   会覆盖下一元素/末元素越界踩相邻变量——窄整型按元素宽度写；
+        //   i128（常量无双槽）/浮点（movss 不接受立即数）/指针 保持 i64 原行为
+        const std::string zeroIrType =
+            (elemIrType == "i8" || elemIrType == "i16" ||
+             elemIrType == "u8" || elemIrType == "u16" ||
+             elemIrType == "i32" || elemIrType == "u32") ? elemIrType : "i64";
         if (arrayLen > 0 && static_cast<int>(initList->elements.size()) < arrayLen) {
             ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
                                           node->location);
@@ -537,7 +543,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                                 node->location);
                 ir::IRValue addr = emitResult(ir::Opcode::Add, {base, offset}, "ptr", "",
                                               node->location);
-                emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", "i64",
+                emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", zeroIrType,
                      node->location);
             }
         }

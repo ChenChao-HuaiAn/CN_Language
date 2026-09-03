@@ -1273,7 +1273,13 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
     }
     // 注意：rax 此时保存目标地址，值加载必须使用 rcx（mov eax/movzx eax 会清零 rax 高32位，破坏地址）
     if (inst.type == "i8" || inst.type == "i16") {
-        writer.line("movsx rcx, " + memSizePtr(inst.type) + value);
+        // 值为立即数常量（显式强转 整8(7)/整16(-5) 折叠直达 StorePtr）：movsx 不接受
+        //   立即数操作数（A2070），mov 直载全 64 位（写 cl/cx 取低字节=补码截断）
+        if (inst.operands[1].isConstant) {
+            writer.line("mov rcx, " + value);
+        } else {
+            writer.line("movsx rcx, " + memSizePtr(inst.type) + value);
+        }
         const std::string sub = (inst.type == "i8") ? "cl" : "cx";
         writer.line("mov " + memSizePtr(inst.type) + "[rax], " + sub);
         return;
@@ -1294,7 +1300,12 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         return;
     }
     if (inst.type == "u8" || inst.type == "u16") {
-        writer.line("movzx rcx, " + memSizePtr(inst.type) + value);
+        // 同上：立即数常量走 mov 直载（movzx 不接受立即数，A2070）
+        if (inst.operands[1].isConstant) {
+            writer.line("mov rcx, " + value);
+        } else {
+            writer.line("movzx rcx, " + memSizePtr(inst.type) + value);
+        }
         const std::string sub = (inst.type == "u8") ? "cl" : "cx";
         writer.line("mov " + memSizePtr(inst.type) + "[rax], " + sub);
         return;
