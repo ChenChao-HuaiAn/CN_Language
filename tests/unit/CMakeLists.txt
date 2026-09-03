@@ -35,6 +35,7 @@ add_executable(cn_unit_tests
     semantic/test_lambda.cpp
     semantic/test_semantic_oop.cpp
     semantic/test_semantic_error.cpp
+    semantic/test_lvalue_check.cpp
     semantic/test_semantic_generic.cpp
     semantic/test_reference_params.cpp
     semantic/test_error_propagate.cpp

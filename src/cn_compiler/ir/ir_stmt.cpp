@@ -804,6 +804,24 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                  slotName, "i64", node->location);
         }
     }
+    // 缺陷B根治（2026-09-03，单位机 ARM64 探针发现、win-x64 同现=IR 公共层）：
+    //   数组栈变量无初始化器声明（整64[3] 数组）——元素槽为栈垃圾：数组[2] +=
+    //   数组[1] 读到未初始化值（每次运行不同）。缺陷2 根治漏了数组同族形态，
+    //   同款逐槽零初始化补齐（槽区间为变量自身存储，i64 整槽写零对窄元素安全——
+    //   与结构体路径同约定；槽数取 registerVarSlots 登记权威值）
+    if (node->initializer == nullptr && !node->funcPtr.isFunctionPtr() &&
+        semantic_ != nullptr && types::isArray(srcType) && !unique.empty()) {
+        auto slotIt = function_->varSlots.find(unique);
+        if (slotIt != function_->varSlots.end() && slotIt->second > 0) {
+            for (int s = 0; s < slotIt->second; ++s) {
+                const std::string slotName =
+                    s == 0 ? unique : unique + "$s" + std::to_string(s);
+                emit(ir::Opcode::Store,
+                     {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
+                     slotName, "i64", node->location);
+            }
+        }
+    }
 }
 void IRGenerator::genBlock(BlockStmt* node) {
     varStack_.emplace_back();  // 进入子作用域

@@ -762,6 +762,27 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                     }
                 }
             }
+            // 缺陷A根治（2026-09-03，单位机 ARM64 探针发现、win-x64 同现=IR 公共层
+            //   缺陷非单后端）：成员/下标/解引用目标的写回——原实现仅标识符
+            //   （+类字段/顶层静态专用路径）写回，语义层已放行的成员/下标/解引用
+            //   左值（p.y-- / 数组[1]++ / (*p)++）只读不写=存储静默丢弃。读-算-写回
+            //   与赋值语句同款（lvalueAddress 左值地址）；宽度按操作数类型
+            //   （②b B5：字段宽度禁默认 8 字节，窄整型按元素宽度写）
+            if (node->operand->getType() == NodeType::MemberExpr ||
+                node->operand->getType() == NodeType::IndexExpr ||
+                (node->operand->getType() == NodeType::UnaryExpr &&
+                 static_cast<UnaryExpr*>(node->operand.get())->op ==
+                     Operator::Deref)) {
+                ir::IRValue addr = lvalueAddress(node->operand.get());
+                ir::IRValue incdecResult = emitResult(
+                    node->op == Operator::Increment ? ir::Opcode::Add
+                                                    : ir::Opcode::Sub,
+                    {operand, delta}, operand.type, "", node->location);
+                emit(ir::Opcode::StorePtr, {addr, incdecResult}, ir::IRValue(), "",
+                     operand.type, node->location);
+                lastExpr_ = incdecResult;
+                break;
+            }
             lastExpr_ = result;
             break;
         }
