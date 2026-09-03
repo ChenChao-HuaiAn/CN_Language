@@ -251,9 +251,13 @@ bool cnEvalConstExpr(const std::unordered_map<std::string, std::string>& vals,
 
 void SemanticAnalyzer::pushScope() {
     scopes_.emplace_back();
+    scopeConsts_.emplace_back();  // 缺陷②配套：与 scopes_ 平行维护
 }
 void SemanticAnalyzer::popScope() {
-    if (scopes_.size() > 1) scopes_.pop_back();
+    if (scopes_.size() > 1) {
+        scopes_.pop_back();
+        if (scopeConsts_.size() > 1) scopeConsts_.pop_back();  // 与 scopes_ 同步
+    }
 }
 void SemanticAnalyzer::declareTypeName(const std::string& name, const std::string& module,
                                        const SourceLocation& loc) {
@@ -989,6 +993,19 @@ bool SemanticAnalyzer::lookupVar(const std::string& name, std::string& type) con
         if (found != it->end()) {
             type = found->second;
             return true;
+        }
+    }
+    return false;
+}
+// 缺陷②配套（2026-09-03）：名字解析处是否为常量——按 lookupVar 同序从内到外，
+//   命中作用域后判 scopeConsts_（局部 常量）或（全局作用域）globalConstValues_
+//   裸名命中（顶层常量经 declareVar 入 scopes_[0]；多模块同名常量裸名亦命中）。
+bool SemanticAnalyzer::isConstVarName(const std::string& name) const {
+    for (std::size_t i = scopes_.size(); i-- > 0; ) {
+        if (scopes_[i].find(name) != scopes_[i].end()) {
+            if (i < scopeConsts_.size() && scopeConsts_[i].count(name) > 0) return true;
+            if (i == 0 && globalConstValues_.count(name) > 0) return true;
+            return false;  // 解析处为变量（含内层变量遮蔽外层常量的情形）
         }
     }
     return false;

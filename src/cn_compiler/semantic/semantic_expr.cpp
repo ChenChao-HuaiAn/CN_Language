@@ -711,7 +711,34 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
             }
             break;
         case Operator::Increment:
-        case Operator::Decrement:
+        case Operator::Decrement: {
+            // 缺陷②同族（2026-09-03）：自增/自减是隐式赋值——目标须为可写左值
+            //   （变量[非常量]/成员/下标/解引用；引用返回调用不支持，与 C 一致）。
+            //   原实现只查数值/指针类型不查左值性，(a + 1)++ 静默通过。
+            const NodeType ot = node->operand->getType();
+            bool incLvalue = (ot == NodeType::IdentifierExpr || ot == NodeType::IndexExpr ||
+                              ot == NodeType::MemberExpr ||
+                              (ot == NodeType::UnaryExpr &&
+                               static_cast<UnaryExpr*>(node->operand.get())->op ==
+                                   Operator::Deref));
+            if (!incLvalue) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "自增/自减目标必须是可赋值的左值（变量/成员/下标/解引用）");
+                lastType_ = operandType;
+                break;
+            }
+            if (ot == NodeType::IdentifierExpr) {
+                const IdentifierExpr* ident =
+                    static_cast<IdentifierExpr*>(node->operand.get());
+                if (isConstVarName(ident->name)) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "不能对常量 '" + ident->name + "' 自增/自减（常量初始化后不可修改）");
+                    lastType_ = operandType;
+                    break;
+                }
+            }
             // 自增/自减：数值 或 指针（Task 2.4 指针 ++/-- 按元素大小步进）
             if (!isNumeric(operandType) && !isPointerType(operandType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -720,6 +747,7 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
             }
             lastType_ = operandType;
             break;
+        }
         default:
             lastType_ = operandType;
             break;
@@ -751,6 +779,39 @@ void SemanticAnalyzer::visitTernaryExpr(TernaryExpr* node) {
         return;
     }
     lastType_ = trueType;
+}
+// 缺陷②（2026-09-03 用户裁决立案）：赋值目标非左值的统一拒绝诊断。
+//   附诊断③（顺带裁决）：赋值运算符行号大于目标起始行号 = 跨行赋值语句——
+//   换行≡空格（01a §三）规范行为下行首运算符会并入上一行（如 b = a 换行
+//   *a = 7 粘连为 b = ((a * a) = 7)），多为本意为两条语句的粘连形态，
+//   按 rustc「you might have meant to write a semicolon here」同款附提示。
+void SemanticAnalyzer::reportNonLvalueTarget(AssignmentExpr* node) {
+    std::string kindName = "该表达式";
+    switch (node->target->getType()) {
+        case NodeType::BinaryExpr: kindName = "运算结果表达式"; break;
+        case NodeType::IntegerLiteral:
+        case NodeType::FloatLiteral:
+        case NodeType::StringLiteral:
+        case NodeType::CharLiteral:
+        case NodeType::BoolLiteral:
+        case NodeType::NullLiteral:
+            kindName = "字面量";
+            break;
+        case NodeType::TernaryExpr: kindName = "三元条件表达式"; break;
+        case NodeType::CastExpr: kindName = "类型转换结果"; break;
+        case NodeType::AssignmentExpr: kindName = "嵌套赋值表达式"; break;
+        case NodeType::UnaryExpr: kindName = "一元运算结果"; break;
+        default: break;
+    }
+    std::string msg =
+        "赋值目标必须是可赋值的左值（变量/成员/下标/解引用/引用返回调用），不能给" +
+        kindName + "赋值";
+    const int targetLine = node->target->location.getLine();
+    if (targetLine > 0 && node->location.getLine() > targetLine) {
+        msg += "\n  提示：赋值语句跨行——CN 换行等同空格，行首运算符会并入上一行；"
+               "若本意为两条语句，请在上一行末尾加分号";
+    }
+    diagnostics_.report(DiagnosticLevel::Error, node->target->location, msg);
 }
 void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     // 常量成员函数检查（Task 3.9）：常量方法体内修改成员 -> 错误
@@ -784,34 +845,76 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             }
         }
     }
-    // 检查左值（标识符/下标访问/解引用为可写左值；Task 2.4 扩展下标与解引用）
+    // 检查左值——可写左值统一白名单（缺陷②根治，2026-09-03 用户裁决立案：
+    //   非左值赋值静默接受 → 硬错误，Rust E0070 / C++ 赋值约束同款）。
+    //   合法形态：标识符（非常量）/下标/解引用（*，Star 一元）/成员/引用返回调用；
+    //   其余（二元运算结果/字面量/三元/强转/嵌套赋值/非 Star 一元等）显式拒绝。
+    //   原 else 分支「其他左值形式（成员访问等）：后续Task实现」只查类型不查
+    //   左值性——a + 1 = 7 静默通过、存储被丢弃（半实现形态），本轮收口。
     std::string targetType = "未知";
-    if (node->target->getType() == NodeType::IdentifierExpr) {
-        IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
-        std::string varType;
-        if (lookupVar(ident->name, varType)) {
-            targetType = varType;
-        } else {
-            diagnostics_.report(DiagnosticLevel::Error, ident->location,
-                                "赋值目标未声明：'" + ident->name + "'");
+    bool lvalueOk = false;
+    switch (node->target->getType()) {
+        case NodeType::IdentifierExpr: {
+            IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
+            std::string varType;
+            if (lookupVar(ident->name, varType)) {
+                targetType = varType;
+                lvalueOk = true;
+                // 缺陷②同族：常量初始化后不可修改（局部 常量 / 顶层常量）
+                if (isConstVarName(ident->name)) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, ident->location,
+                        "不能给常量 '" + ident->name + "' 赋值（常量初始化后不可修改）");
+                    lvalueOk = false;
+                }
+            } else {
+                diagnostics_.report(DiagnosticLevel::Error, ident->location,
+                                    "赋值目标未声明：'" + ident->name + "'");
+            }
+            break;
         }
-    } else if (node->target->getType() == NodeType::IndexExpr ||
-               node->target->getType() == NodeType::UnaryExpr) {
-        // 下标访问（数组[i]）/解引用（*p）均为可写左值
-        targetType = checkExpr(node->target.get());
-    } else if (node->target->getType() == NodeType::CallExpr) {
-        // P3-18 补完：引用返回调用可作赋值目标（获取() = 值 写回被引用对象）
-        lastExprIsRefReturn_ = false;
-        targetType = checkExpr(node->target.get());
-        if (!lastExprIsRefReturn_) {
-            diagnostics_.report(
-                DiagnosticLevel::Error, node->location,
-                "赋值目标须为可写左值（标识符/下标/解引用/成员/引用返回调用）");
-            targetType = "未知";
+        case NodeType::IndexExpr:
+        case NodeType::MemberExpr:
+            // 下标访问（数组[i]）/成员访问（对象.字段）均为可写左值
+            targetType = checkExpr(node->target.get());
+            lvalueOk = true;
+            break;
+        case NodeType::UnaryExpr: {
+            // 解引用（*p，Deref）为可写左值；其余一元结果（负号/逻辑非/取地址）
+            // 不可赋值——原实现整类放行为缺陷②形态
+            UnaryExpr* u = static_cast<UnaryExpr*>(node->target.get());
+            if (u->op == Operator::Deref) {
+                targetType = checkExpr(node->target.get());
+                lvalueOk = true;
+            } else {
+                reportNonLvalueTarget(node);
+            }
+            break;
         }
-    } else {
-        // 其他左值形式（成员访问等）：后续Task实现
-        targetType = checkExpr(node->target.get());
+        case NodeType::CallExpr: {
+            // P3-18 补完：引用返回调用可作赋值目标（获取() = 值 写回被引用对象）
+            lastExprIsRefReturn_ = false;
+            targetType = checkExpr(node->target.get());
+            if (lastExprIsRefReturn_) {
+                lvalueOk = true;
+            } else {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "赋值目标须为可写左值（标识符/下标/解引用/成员/引用返回调用）");
+                targetType = "未知";
+            }
+            break;
+        }
+        default:
+            // 缺陷②：二元运算结果/字面量/三元/强转/嵌套赋值等均非可写左值
+            reportNonLvalueTarget(node);
+            break;
+    }
+    if (!lvalueOk) {
+        // 左值性已失败：右值仍检查（级联诊断更完整），类型按未知处理并提前返回
+        checkExpr(node->value.get());
+        lastType_ = "未知";
+        return;
     }
 
     // 检查右值

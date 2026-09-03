@@ -335,6 +335,13 @@ private:
     void computeEnumValues(EnumDecl* decl);
     // 从内到外查找变量类型（未找到返回false）
     bool lookupVar(const std::string& name, std::string& type) const;
+    // 缺陷②配套（2026-09-03 用户裁决立案）：名字在作用域链解析处是否为常量
+    // （局部 常量 登记于 scopeConsts_；顶层常量按 globalConstValues_ 裸名命中）。
+    // 与 lookupVar 同序（内层遮蔽外层）；供赋值/自增目标拒绝用。
+    bool isConstVarName(const std::string& name) const;
+    // 缺陷②：赋值目标非左值统一拒绝（含诊断③「想写分号」跨行提示——
+    //   换行≡空格规范行为下行首运算符并入上一行的粘连形态）
+    void reportNonLvalueTarget(class AssignmentExpr* node);
     // A-1（引用参数）：实参自动取地址——引用参数按地址传递，调用点把实参重写为
     //   &左值（AddressOf UnaryExpr）；实参须为左值（变量/下标/解引用/字段）
     void wrapRefArgs(CallExpr* node, const std::vector<std::string>& paramTypes);
@@ -538,6 +545,9 @@ private:
     std::string currentModuleName_;
     std::unordered_set<std::string> typeNames_;    // 结构体/枚举类型名表（Task 2.7）
     std::vector<std::unordered_map<std::string, std::string>> scopes_; // 变量作用域栈
+    // 缺陷②配套（2026-09-03）：各作用域常量名集合（与 scopes_ 平行，push/popScope
+    //   同步维护；visitVarDecl 登记 isConst 局部）。isConstVarName 据此判定。
+    std::vector<std::unordered_set<std::string>> scopeConsts_;
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
     // P3-18 补完（2026-08）：当前函数是否为引用返回（visitReturnStmt 校验用）

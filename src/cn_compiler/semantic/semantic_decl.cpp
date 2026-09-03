@@ -299,7 +299,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             checkCopyRequiresCtor(varType, node->location);
         }
     }
-    declareVar(node->name, varType, node->location);
+    if (declareVar(node->name, varType, node->location) && node->isConst &&
+        !scopeConsts_.empty()) {
+        // 缺陷②配套（2026-09-03）：局部 常量 登记当前作用域常量集
+        //   （赋值/自增目标拒绝用，isConstVarName）
+        scopeConsts_.back().insert(node->name);
+    }
 }
 void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     if (node == nullptr || node->segments.empty()) return;
