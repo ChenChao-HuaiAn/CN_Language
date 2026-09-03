@@ -53,10 +53,12 @@ if hasattr(sys.stderr, "reconfigure"):
 
 # 平台限制用例跳过列表：某些用例因平台特性差异（API/ABI/工具链）无法在特定平台运行
 # 键 = 目标平台，值 = 用例目录名前缀列表（不含编号前缀的短名匹配）
+# 注：65_string_index 的 ARM64 跳过已摘除（2026-09-03）——原「char 符号扩展差异」
+#   在宿主 LoadPtr i8 双后端统一符号扩展（movsx/ldrsb）后不再成立，手动实测输出
+#   与期望逐行一致（字节和 -376），随全量回归复验。
 平台跳过 = {
     "linux-arm64": [
         "62_ffi",                # 依赖 Windows API GetTickCount64
-        "65_string_index",       # ARM64 char 默认为 unsigned char，符号扩展差异
         "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
         "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
     ],
@@ -445,6 +447,7 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         "126_v2_结构体元素容器": (["主.cn"], 0, True, ["供给.cn"]),  # ②b：布局/视图/传参/深拷贝析构 = 0
         "127_v2_嵌套容器与容器字段与静态与引用": (["主.cn"], 0, True, ["供给.cn"]),  # ②c 四项：嵌套/容器字段/静态/& = 0
         "128_v2_内置函数与字符串拼接": (["主.cn"], 0),  # ③ 前第一波：内置符号直调/str_concat 拼接/类型大小折叠/打印族 = 0
+        "129_v2_字符串下标与复合赋值与登记补全": (["主.cn"], 0, True, ["供给.cn"]),  # ③ 第二波：下标 A-1 语义/复合赋值五形态/登记点三缺口 = 0（映射$整64$字符串 经供给）
     }
     if 名称 in v2闭环用例们:
         if 目标平台 != "win-x64" and 目标平台 != "linux-arm64":
