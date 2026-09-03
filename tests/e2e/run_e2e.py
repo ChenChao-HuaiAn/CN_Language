@@ -452,6 +452,11 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         "132_v2_可写左值全形态闭环": (["主.cn"], 0),  # 缺陷②根治：可写左值全形态不误伤 + v2p 负测自检行固化（非左值/常量赋值拒绝）= 0
         "133_v2_限定名内置IO与文件": (["主.cn"], 0),  # ③ 第五波：IO::打印到错误 + 文件::读写字链（裸内置直调 __cn_print_err/__cn_file_*）+ 空类型返回函数 = 0
         "137_v2_三元运算符": (["主.cn"], 0),  # ③ 第六波：三元条件（优先级1.5右结合/惰性求值副作用双向/除零保护/整数族宽化/字符串分支）= 0
+        # 灰色点根治（2026-09-04 用户裁决·缺陷零容忍）：①③④ 正路径（真/假 布尔
+        #   字面量 T_布尔 拼接锚定/解引用复合赋值/窄宽强转截断）= 0
+        "138_v2_灰色点收口": (["主.cn"], 0),
+        # 灰色点⑤：语义错误即中止——负路径闭环（预期退出码 None：v2p 须失败且不产 asm）
+        "139_v2_语义错误中止": (["主.cn"], None),
     }
     if 名称 in v2闭环用例们:
         if 目标平台 != "win-x64" and 目标平台 != "linux-arm64":
@@ -913,6 +918,10 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 
     # ---- linux-arm64 分支（阶段A：v2 GAS 后端 + as/g++ 编排）----
     if 目标平台 == "linux-arm64":
+        if 预期退出码 is None:
+            # 灰色点⑤负路径（139）本轮仅 win-x64 实证——linux 侧中止行为同源码
+            #   （v2 主.cn 平台无关），待 ARM64 复验轮一并验证后放开
+            return "失败", f"{编号} 负路径闭环（语义错误中止）linux-arm64 侧待 ARM64 复验轮对齐（本轮 win-x64 实证）"
         return 执行v2闭环Linux(编译器路径, 详细, 源文件名们, 预期退出码, 链接v2pobj,
                               期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号, 供给源们)
 
@@ -968,6 +977,34 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         return "失败", f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
     if not v2p.exists():
         return "失败", f"{编号}-1 编译返回成功但未生成 v2p.exe"
+
+    # ===== 负路径闭环（灰色点⑤，2026-09-04）：预期退出码 None = v2p 须编译失败 =====
+    #   语义错误即中止纪律的 E2E 锚定：v2p 退出码非 0、target/v2asm.asm 不产出、
+    #   中止诊断行（.expected 固化）在输出中——防「报错仍产 asm」回归
+    if 预期退出码 is None:
+        入口参数 = f"target/audit2/v2src{编号}/主.cn"
+        v2src目录 = 审计目录 / f"v2src{编号}"
+        v2src目录.mkdir(parents=True, exist_ok=True)
+        for 文件名 in 源文件名们:
+            src = 用例目录 / 文件名
+            if not src.exists():
+                return "失败", f"{编号}-N 缺少用例文件: {文件名}"
+            shutil.copy2(src, v2src目录 / 文件名)
+        if v2asm路径.exists():
+            v2asm路径.unlink()
+        if 详细:
+            print(f"    [{编号}-N] {v2p.name} {入口参数}（预期语义错误中止）")
+        运行结果 = 运行命令([str(v2p), 入口参数], 项目根目录, 内存上限MB=内存上限MB默认)
+        if 运行结果.returncode == 0:
+            return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
+        if v2asm路径.exists():
+            return "失败", f"{编号}-N v2p 语义错误中止后仍产出 target/v2asm.asm（错误产物纪律回归）"
+        期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
+        实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+        for 行 in 期望行们:
+            if 行 not in 实际输出:
+                return "失败", f"{编号}-N v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
+        return "通过", f"v2 语义错误中止负路径闭环成立（退出码 {运行结果.returncode}，无 asm 产出，诊断行固化）"
 
     # ===== 步骤2：准备多文件程序（入口 主.cn + 导入模块文件） =====
     v2src目录 = 审计目录 / f"v2src{编号}"
