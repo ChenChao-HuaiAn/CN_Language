@@ -27,6 +27,7 @@ __pycache__/
 
 # DSH技能发现链接（junction，指向 .ai-coder/skills 与设计系统）
 .agents/
+.ai-coder/
 design-system/
 
 # CMake

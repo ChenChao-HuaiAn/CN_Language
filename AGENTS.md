@@ -2,9 +2,13 @@
 
 > 本文件是 ZCode 工作区指令文件：ZCode 原生自动加载项目根目录 AGENTS.md（无需插件），
 > 用户级默认指令在 `~/.zcode/AGENTS.md`，本文件后加载、可覆盖其默认。
-> 旧版 Claude Code 规则在 `.ai-coder/rules/*`（25 条 user_rules 仍有效，本文是其提炼与补充）；
-> 历史记忆体系在 `.ai-coder/memory` 与根目录 `lessons.md`（任务前必读）；项目技能集在 `.zcode/skills/`（cn-language-spec 等）。
-> 若与 .ai-coder/rules 冲突，以本文 + user_rules 为准；语法规范以 plans/001 与 cn-language-spec 为准。
+> 历史规则体系 `.ai-coder/`（旧 aicode 客户端，含其 AI 记忆体 memory.db）自 2026-09-03
+> 起不入库（gitignore，本地保留供 aicode 软件使用）——其 25 条 user_rules 与项目规则
+> **已提炼并入本文**（16/17 条 Orchestrator 协作规范经用户裁决不适用于 ZCode，未并入；
+> 项目收尾机制以 §5 门禁为准）；error-detection.md 规则随
+> `.zcode/skills/ai-error-record/` 技能自包含。
+> 历史记忆体系见根目录 `lessons.md`（任务前必读）；项目技能集在 `.zcode/skills/`（cn-language-spec 等）。
+> 语法规范以 plans/001 与 cn-language-spec 为准。
 > 本文件只写规则、不记进度：项目进度与现状一律以 plans/ 内对应任务文档（随任务创建，不固定某一份）与 `HANDOFF.md` 为准。
 
 ## 1. 项目是什么

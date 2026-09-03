@@ -2,13 +2,13 @@
 name: ai-error-record
 description: |
   自动记录错误和经验教训到 lessons.md 文件。当 AI 执行命令失败、文件操作错误、语法错误或工具调用异常时触发。
-  与 `.ai-coder/rules/error-detection.md` 规则文件协同工作，实现错误自动检测和记录。
+  与 [error-detection.md](error-detection.md) 规则文件协同工作（v2.1 起随技能自包含，原 .ai-coder/rules 副本已移除入库），实现错误自动检测和记录。
 ---
 
 # AI 错误记录技能
 
 自动记录错误和经验教训到 lessons.md 文件。当 AI 执行命令失败、文件操作错误、语法错误或工具调用异常时触发。
-与 `.ai-coder/rules/error-detection.md` 规则文件协同工作，实现错误自动检测和记录。
+与 [error-detection.md](error-detection.md) 规则文件协同工作（v2.1 起随技能自包含，原 .ai-coder/rules 副本已移除入库），实现错误自动检测和记录。
 
 ---
 

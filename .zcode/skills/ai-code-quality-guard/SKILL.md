@@ -249,14 +249,14 @@ description: |
 ## 相关文件
 
 - **提示模板**：
-  - [`prompts/pre-check.md`](.ai-coder/skills/ai-code-quality-guard/prompts/pre-check.md) - 任务预检提示
-  - [`prompts/forbidden-check.md`](.ai-coder/skills/ai-code-quality-guard/prompts/forbidden-check.md) - 禁区检测提示
-  - [`prompts/self-check.md`](.ai-coder/skills/ai-code-quality-guard/prompts/self-check.md) - 自检报告提示
+  - [`prompts/pre-check.md`](prompts/pre-check.md) - 任务预检提示
+  - [`prompts/forbidden-check.md`](prompts/forbidden-check.md) - 禁区检测提示
+  - [`prompts/self-check.md`](prompts/self-check.md) - 自检报告提示
 
 - **检查清单模板**：
-  - [`templates/task-pre-checklist.md`](.ai-coder/skills/ai-code-quality-guard/templates/task-pre-checklist.md) - 任务预检清单
-  - [`templates/code-delivery-report.md`](.ai-coder/skills/ai-code-quality-guard/templates/code-delivery-report.md) - 代码交付自检报告
-  - [`templates/violation-log.md`](.ai-coder/skills/ai-code-quality-guard/templates/violation-log.md) - 违规记录模板
+  - [`templates/task-pre-checklist.md`](templates/task-pre-checklist.md) - 任务预检清单
+  - [`templates/code-delivery-report.md`](templates/code-delivery-report.md) - 代码交付自检报告
+  - [`templates/violation-log.md`](templates/violation-log.md) - 违规记录模板
 
 ---
 

@@ -71,11 +71,19 @@
    须 linux-arm64 全量 E2E 复验（单侧绿≠双侧对称）。
 
 ## 灰色点披露（待用户裁，未立案）
-- ~~cn-language-spec .zcode 与 .agents 双副本在 02/04 历史分叉~~ **已收口（2026-09-03
-  用户裁决「实施」）**：三向分叉定向同步——02 用 .zcode（字符串驻留条目）、04/06 用
-  .agents（P3-18/23/19 细节），全目录 diff -rq 零差异；防复发纪律入 lessons
-  （改任一副本必同步另一副本，提交前 diff 须零输出；分叉时逐文件对 plans/001 判
-  方向，禁整目录单向覆盖）。
+- ~~cn-language-spec 双副本分叉~~ **已根治（2026-09-03 两步收口，用户裁决）**：
+  ①内容收口（提交 290db51）：02 取 .zcode/04/06 取 .agents 定向同步零差异；②**单一事实源**：
+  `.agents/skills/cn-language-spec` 改为 **junction 指向 `.zcode/skills/cn-language-spec`**
+  （.agents/ 本就在 .gitignore 不入库，junction 无 Git 副作用、无多机风险）——此后只改
+  .zcode 一处即可，双副本同步纪律作废。
+- ~~.ai-coder 去跟踪~~ **已完成（2026-09-03 用户裁决，同轮）**：`git rm -r --cached`（85
+  文件）+ .gitignore 加 `.ai-coder/`，**物理保留**（memory.db 是 aicode 软件 AI 记忆体，
+  活跃写入中勿删）。移植仅一项：error-detection.md → .zcode/skills/ai-error-record/
+  （技能引用同步修正；ai-code-quality-guard 尾部 6 处 .ai-coder 过时链接改自身相对
+  路径）；user_rules 25 条已全被 AGENTS.md 覆盖（16/17 Orchestrator 规范经用户裁决
+  「撤掉」未并入——本项目收尾机制以 §5 E2E 门禁为准）；test_rules 413 行为通用模板
+  且与「禁 Mock」现行纪律矛盾，不移植；同名技能 .zcode 侧 diff 一致无落后。AGENTS.md
+  头部引用已同步改写。
 - v2 `打印(真)` 输出 `1`；v2 二元 `==/!=` 字符串指针比较；`*p += 1` 不支持；
   v2 整8/整16 强转白名单未覆盖；v2p 语义错误后仍继续 IR 生成（均沿用）。
 
