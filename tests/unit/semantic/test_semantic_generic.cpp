@@ -52,19 +52,19 @@ TEST(SemanticGenericTest, GenericClassDecl) {
 泛型 <类型 T>
 类 向量 {
 私有:
-    T* 数据
-    整64 长度
+    T* 数据;
+    整64 长度;
 公开:
     函数 向量(整64 容量) {
-        数据 = 无
-        长度 = 0
+        数据 = 无;
+        长度 = 0;
     }
     函数 推入(T 值) -> 空类型 {
-        长度++
+        长度++;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -76,10 +76,10 @@ TEST(SemanticGenericTest, GenericFunctionDecl) {
     auto r = analyzeSource(R"CN(
 泛型 <类型 T>
 函数 交换(T 值) -> T {
-    返回 值
+    返回 值;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -94,20 +94,20 @@ TEST(SemanticGenericTest, GenericClassInstantiation) {
 泛型 <类型 T>
 类 盒子 {
 公开:
-    T 内容
+    T 内容;
     函数 盒子(T 初始) {
-        内容 = 初始
+        内容 = 初始;
     }
     函数 获取() -> T {
-        返回 内容
+        返回 内容;
     }
 }
 函数 主() -> 整32 {
     // H7 语义补完（2026-08-25）：类仅有带参构造时裸声明（类名 变量）无默认构造，
     // 编译报错（与 C++ 语义一致）；此处用构造调用初始化（正确构造模式）。
-    盒子<整32> 整数盒子 = 盒子<整32>(10)
-    整32 值 = 整数盒子.获取()
-    返回 值
+    盒子<整32> 整数盒子 = 盒子<整32>(10);
+    整32 值 = 整数盒子.获取();
+    返回 值;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -120,11 +120,11 @@ TEST(SemanticGenericTest, GenericArgCountMismatch) {
 泛型 <类型 T>
 类 盒子 {
 公开:
-    T 内容
+    T 内容;
 }
 函数 主() -> 整32 {
-    盒子<整32, 整64> 错误盒子
-    返回 0
+    盒子<整32, 整64> 错误盒子;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -138,10 +138,10 @@ TEST(SemanticGenericTest, GenericFunctionDeclared) {
     auto r = analyzeSource(R"CN(
 泛型 <类型 T>
 函数 恒等(T 值) -> T {
-    返回 值
+    返回 值;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -160,16 +160,16 @@ TEST(SemanticGenericTest, GenericConstraintSatisfied) {
 类 人 : 可命名 {
 公开:
     重写 函数 获取名字() -> 字符串 {
-        返回 "人"
+        返回 "人";
     }
 }
 泛型 <类型 T : 可命名>
 函数 打印名字(T 实体) -> 空类型 {
-    打印行(实体.获取名字())
+    打印行(实体.获取名字());
 }
 函数 主() -> 整32 {
-    人 张三 = 人()
-    返回 0
+    人 张三 = 人();
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -184,16 +184,16 @@ TEST(SemanticGenericTest, GenericConstraintViolated) {
 }
 类 数字 {
 公开:
-    整32 值
+    整32 值;
 }
 泛型 <类型 T : 可命名>
 函数 打印名字(T 实体) -> 空类型 {
-    打印行(实体.获取名字())
+    打印行(实体.获取名字());
 }
 函数 主() -> 整32 {
-    数字 n = 数字()
-    打印名字<数字>(n)
-    返回 0
+    数字 n = 数字();
+    打印名字<数字>(n);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);

@@ -60,7 +60,7 @@ Stmt* firstStmt(Program* program, std::size_t index = 0) {
 
 // 便捷：解析单条语句（包裹在函数内）
 Stmt* parseStmt(const std::string& stmt, ParseResult& out) {
-    std::string source = "函数 主() -> 整32 {\n" + stmt + "\n返回 0\n}";
+    std::string source = "函数 主() -> 整32 {\n" + stmt + "\n返回 0;\n}";
     out = parseProgram(source);
     return firstStmt(out.program.get());
 }

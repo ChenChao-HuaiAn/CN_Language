@@ -110,8 +110,8 @@ TEST(I128SemanticTest, SplitI128Max) {
 TEST(I128SemanticTest, Int128LiteralLargeAccepted) {
     const std::string src = R"(
 函数 主() -> 整32 {
-    整128 大 = 170141183460469231731687303715884105727
-    返回 0
+    整128 大 = 170141183460469231731687303715884105727;
+    返回 0;
 }
 )";
     SemanticResult r = analyzeSource(src);
@@ -123,8 +123,8 @@ TEST(I128SemanticTest, Int128LiteralLargeAccepted) {
 TEST(I128SemanticTest, Int128LiteralOverflowRejected) {
     const std::string src = R"(
 函数 主() -> 整32 {
-    整128 大 = 170141183460469231731687303715884105728
-    返回 0
+    整128 大 = 170141183460469231731687303715884105728;
+    返回 0;
 }
 )";
     SemanticResult r = analyzeSource(src);
@@ -136,10 +136,10 @@ TEST(I128SemanticTest, Int128LiteralOverflowRejected) {
 TEST(I128SemanticTest, Int128AddOps) {
     const std::string src = R"(
 函数 主() -> 整32 {
-    整128 a = 9223372036854775808
-    整128 b = 9223372036854775809
-    整128 c = a + b
-    返回 0
+    整128 a = 9223372036854775808;
+    整128 b = 9223372036854775809;
+    整128 c = a + b;
+    返回 0;
 }
 )";
     SemanticResult r = analyzeSource(src);

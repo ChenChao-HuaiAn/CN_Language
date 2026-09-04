@@ -49,9 +49,9 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(SemanticTernaryTest, BoolCondStringBranchesOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 10
-    变量 t = x > 0 ? "正" : "负"
-    返回 0
+    整32 x = 10;
+    变量 t = x > 0 ? "正" : "负";
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -62,9 +62,9 @@ TEST(SemanticTernaryTest, BoolCondStringBranchesOk) {
 TEST(SemanticTernaryTest, NumericWidenBranchesOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 10
-    变量 t = x > 5 ? 100 : 2.5
-    返回 0
+    整32 x = 10;
+    变量 t = x > 5 ? 100 : 2.5;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -75,9 +75,9 @@ TEST(SemanticTernaryTest, NumericWidenBranchesOk) {
 TEST(SemanticTernaryTest, BoolLiteralCondOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 n = 真 ? 1 : 2
-    变量 m = 假 ? 3 : 4
-    返回 0
+    变量 n = 真 ? 1 : 2;
+    变量 m = 假 ? 3 : 4;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -88,9 +88,9 @@ TEST(SemanticTernaryTest, BoolLiteralCondOk) {
 TEST(SemanticTernaryTest, NestedTernaryOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 10
-    变量 t = x > 0 ? (x > 5 ? "大" : "小") : "非正"
-    返回 0
+    整32 x = 10;
+    变量 t = x > 0 ? (x > 5 ? "大" : "小") : "非正";
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -101,8 +101,8 @@ TEST(SemanticTernaryTest, NestedTernaryOk) {
 TEST(SemanticTernaryTest, NonBoolCondError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 t = 5 ? "a" : "b"
-    返回 0
+    变量 t = 5 ? "a" : "b";
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -115,8 +115,8 @@ TEST(SemanticTernaryTest, NonBoolCondError) {
 TEST(SemanticTernaryTest, MismatchedBranchTypesError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 t = 真 ? "a" : 42
-    返回 0
+    变量 t = 真 ? "a" : 42;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -127,11 +127,11 @@ TEST(SemanticTernaryTest, MismatchedBranchTypesError) {
 TEST(SemanticTernaryTest, StringPlusNumberOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    打印("值" + 42)
-    打印("浮" + 3.5)
-    打印("布" + 真)
-    打印("字" + 'A')
-    返回 0
+    打印("值" + 42);
+    打印("浮" + 3.5);
+    打印("布" + 真);
+    打印("字" + 'A');
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -142,11 +142,11 @@ TEST(SemanticTernaryTest, StringPlusNumberOk) {
 TEST(SemanticTernaryTest, PrintAndFormatBuiltinsOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    打印("你好")
-    打印行("不换行")
-    字符串 s = 格式化("值%d", 42)
-    字符串释放(s)
-    返回 0
+    打印("你好");
+    打印行("不换行");
+    字符串 s = 格式化("值%d", 42);
+    字符串释放(s);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -157,9 +157,9 @@ TEST(SemanticTernaryTest, PrintAndFormatBuiltinsOk) {
 TEST(SemanticTernaryTest, StringPlusPointerError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32* p = 无
-    打印("x" + p)
-    返回 0
+    整32* p = 无;
+    打印("x" + p);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);

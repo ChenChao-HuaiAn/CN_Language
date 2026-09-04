@@ -186,9 +186,17 @@ void Parser::consume(TokenType type, const std::string& expected) {
     reportErrorHere("预期 " + expected + "，实际为 '" + current().getValue() + "'");
 }
 
-// 消费可选分号（CN规范示例无分号，任务描述带分号，两种均兼容）
+// 消费语句终结分号（plans/015 方案B 强制分号，2026-09-04 用户裁决）：
+// 语句必须 ';' 终结——缺失即报错「语句缺少分号 ';'」（错误即诊断，杜绝静默
+// 粘连事故链），诊断位置取语句结尾 Token（行列定位）；不消费当前 Token，
+// 上层循环/synchronize 继续解析，保证一次编译报出全量缺分号位置。
+// 非语句终结场景（结构体字段分隔/模块声明/接口方法签名/函数原型后等
+// 声明体成员分隔）一律用 match(TokenType::Semicolon) 表达可选语义。
 void Parser::consumeSemicolon() {
-    if (check(TokenType::Semicolon)) advance();
+    if (match(TokenType::Semicolon)) return;
+    const SourceLocation loc = pos_ > 0 ? tokens_[pos_ - 1].getLocation()
+                                        : current().getLocation();
+    reportError(loc, "语句缺少分号 ';'");
 }
 
 // 是否处于语句边界（} ; EOF 或新语句起始关键字）
@@ -656,7 +664,7 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
             break;
         }
         decl->fields.push_back(std::move(field));
-        consumeSemicolon();  // 字段分隔（可选分号）
+        match(TokenType::Semicolon);  // 字段分隔（声明体成员分隔：可选，plans/015 语义区分）
     }
     consume(TokenType::RightBrace, "'}'");
     return decl;
@@ -768,7 +776,14 @@ std::unique_ptr<BlockStmt> Parser::parseBlockStmt() {
     block->location = current().getLocation();
     consume(TokenType::LeftBrace, "'{'");
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
+        const std::size_t before = pos_;
         block->statements.push_back(parseStmt());
+        if (pos_ == before) {
+            // 零消费防御（plans/015 强制分号连带）：语句完全未消费（如孤立运算符/
+            // 逗号）——原样循环会死循环；报错并跳过一个 Token 恢复（v2 解析块 同款纪律）
+            reportErrorHere("无法解析的 token '" + current().getValue() + "'，已跳过");
+            advance();
+        }
     }
     consume(TokenType::RightBrace, "'}'");
     return block;
@@ -918,14 +933,14 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 func->access = moduleAccess;
                 program->declarations.push_back(std::move(func));
             }
-            consumeSemicolon();
+            match(TokenType::Semicolon);  // 外部函数原型后（原型分隔：可选，未裁决项维持现状）
         } else if (check(TokenType::Kw_Function)) {
             auto func = parseFunctionDecl();
             if (!func->name.empty() || func->body) {
                 func->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->declarations.push_back(std::move(func));
             }
-            consumeSemicolon();  // 函数原型后的可选分号
+            match(TokenType::Semicolon);  // 函数原型后的可选分号（定义 } 自终结；原型未裁决维持可选）
         } else if (check(TokenType::Kw_Struct)) {
             // 结构体声明（Task 2.7）
             auto decl = parseStructDecl(false);
@@ -1011,6 +1026,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 }
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->globals.push_back(std::move(decl));
+                consumeSemicolon();  // plans/015 裁决：顶层常量声明须 ';' 终结
             }
         } else if (check(TokenType::Kw_Static)) {
             // 顶层静态变量（第 4 层，v2.0 决策8，P3-8）：静态 [类型] 名 [= 值]
@@ -1034,6 +1050,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 }
                 decl->access = moduleAccess;  // 记录模块级可见性（Task 3.6）
                 program->globals.push_back(std::move(decl));
+                consumeSemicolon();  // plans/015 裁决：顶层静态声明须 ';' 终结
             } else {
                 reportErrorHere("预期变量名，实际为 '" + current().getValue() + "'");
                 synchronize();

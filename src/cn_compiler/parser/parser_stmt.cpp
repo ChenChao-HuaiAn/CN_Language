@@ -445,8 +445,10 @@ std::unique_ptr<Stmt> Parser::parseSwitchStmt() {
             stmt->defaultCase = std::move(label);
         } else {
             // 普通语句：追加到当前标签（无标签时也吸收，错误恢复场景）
+            // plans/015 强制分号连带：parseStmt 内部已消费语句终结分号——
+            //   此处原「可选再吃」在新语义下变成双重要求（缺第二个分号误报），
+            //   删除冗余消费
             auto s = parseStmt();
-            consumeSemicolon();
             if (owner != nullptr && owner->getType() == NodeType::CaseLabel) {
                 static_cast<CaseLabel*>(owner)->statements.push_back(std::move(s));
             } else if (owner != nullptr && owner->getType() == NodeType::DefaultLabel) {

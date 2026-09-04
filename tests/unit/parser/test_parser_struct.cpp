@@ -51,10 +51,10 @@ ParseResult parseProgram(const std::string& source) {
 TEST(ParserStructTest, StructDecl) {
     ParseResult r = parseProgram(
         "结构体 点 {\n"
-        "    整32 x\n"
-        "    整32 y\n"
+        "    整32 x;\n"
+        "    整32 y;\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.program->structs.size(), 1u);
     StructDecl* decl = r.program->structs[0].get();
     EXPECT_EQ(decl->name, "点");
@@ -68,9 +68,9 @@ TEST(ParserStructTest, StructDecl) {
 // 结构体嵌套字段（字段类型为另一个结构体名）
 TEST(ParserStructTest, StructNestedField) {
     ParseResult r = parseProgram(
-        "结构体 点 { 整32 x }\n"
-        "结构体 矩形 { 点 左上 }\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "结构体 点 { 整32 x; }\n"
+        "结构体 矩形 { 点 左上; }\n"
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.program->structs.size(), 2u);
     StructDecl* rect = r.program->structs[1].get();
     EXPECT_EQ(rect->name, "矩形");
@@ -82,10 +82,10 @@ TEST(ParserStructTest, StructNestedField) {
 TEST(ParserStructTest, UnionDecl) {
     ParseResult r = parseProgram(
         "联合体 数值 {\n"
-        "    整32 整数部分\n"
-        "    浮64 浮点部分\n"
+        "    整32 整数部分;\n"
+        "    浮64 浮点部分;\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.program->structs.size(), 1u);
     StructDecl* decl = r.program->structs[0].get();
     EXPECT_EQ(decl->name, "数值");
@@ -103,7 +103,7 @@ TEST(ParserStructTest, EnumDeclAuto) {
         "    绿,\n"
         "    蓝\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.program->enums.size(), 1u);
     EnumDecl* decl = r.program->enums[0].get();
     EXPECT_EQ(decl->name, "颜色");
@@ -121,7 +121,7 @@ TEST(ParserStructTest, EnumDeclExplicitAndNegative) {
         "    中 = 0,\n"
         "    下 = 1\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.program->enums.size(), 1u);
     EnumDecl* decl = r.program->enums[0].get();
     ASSERT_EQ(decl->members.size(), 3u);
@@ -135,8 +135,8 @@ TEST(ParserStructTest, EnumDeclExplicitAndNegative) {
 TEST(ParserStructTest, StructInitExpr) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    点 p = 点{ x = 10, y = 20 }\n"
-        "    返回 0\n"
+        "    点 p = 点{ x = 10, y = 20 };\n"
+        "    返回 0;\n"
         "}\n");
     ASSERT_EQ(r.program->declarations.size(), 1u);
     FunctionDecl* func = r.program->declarations[0].get();
@@ -157,9 +157,9 @@ TEST(ParserStructTest, StructInitExpr) {
 TEST(ParserStructTest, MemberAccessDotAndArrow) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    整32 a = p.x\n"
-        "    整32 b = ptr.y\n"
-        "    返回 0\n"
+        "    整32 a = p.x;\n"
+        "    整32 b = ptr.y;\n"
+        "    返回 0;\n"
         "}\n");
     ASSERT_EQ(r.program->declarations.size(), 1u);
     FunctionDecl* func = r.program->declarations[0].get();
@@ -182,8 +182,8 @@ TEST(ParserStructTest, MemberAccessDotAndArrow) {
 TEST(ParserStructTest, NestedStructInit) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    矩形 r = 矩形{ 左上 = 点{ x = 1, y = 2 } }\n"
-        "    返回 0\n"
+        "    矩形 r = 矩形{ 左上 = 点{ x = 1, y = 2 } };\n"
+        "    返回 0;\n"
         "}\n");
     FunctionDecl* func = r.program->declarations[0].get();
     VarDecl* varDecl = static_cast<VarDecl*>(func->body->statements[0].get());
@@ -201,8 +201,8 @@ TEST(ParserStructTest, NestedStructInit) {
 // 结构体声明错误恢复：缺少右花括号报告错误（不会崩溃）
 TEST(ParserStructTest, StructDeclMissingBrace) {
     ParseResult r = parseProgram(
-        "结构体 点 { 整32 x\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "结构体 点 { 整32 x;\n"
+        "函数 主() -> 整32 { 返回 0; }\n");
     // 缺失 } 触发 consume 错误；解析器尽力恢复（结构体声明已部分构建）
     EXPECT_TRUE(r.diagnostics.hasErrors());
 }

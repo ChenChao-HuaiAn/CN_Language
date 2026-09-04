@@ -90,7 +90,7 @@ std::unique_ptr<ImportDecl> Parser::parseModuleDecl() {
     } else {
         reportErrorHere("模块声明预期模块名（标识符）");
     }
-    consumeSemicolon();  // 可选分号（无强制分号，兼容 C 习惯）
+    match(TokenType::Semicolon);  // 模块声明后（可选：未裁决项维持现状，plans/015 语义区分）
     return decl;
 }
 
@@ -106,7 +106,7 @@ std::unique_ptr<ImportDecl> Parser::parseImportDecl() {
     decl->location = current().getLocation();
     if (!check(TokenType::Kw_Import)) {
         reportErrorHere("预期'导入'");
-        consumeSemicolon();
+        match(TokenType::Semicolon);
         return decl;
     }
     advance();  // 消费"导入"
@@ -165,7 +165,7 @@ std::unique_ptr<ImportDecl> Parser::parseImportDecl() {
         advance();  // 消费 *
         decl->wildcard = true;
     }
-    consumeSemicolon();  // 导入语句后的可选分号
+    consumeSemicolon();  // plans/015 裁决：导入语句须 ';' 终结（Rust use 同款）
     return decl;
 }
 
@@ -285,7 +285,7 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
         }
         // 接口方法无实现体（签名后直接下一个成员/右花括号）
         decl->members.push_back(std::make_unique<ClassMember>(std::move(member)));
-        consumeSemicolon();  // 可选分号
+        match(TokenType::Semicolon);  // 接口方法签名后（声明体成员分隔：可选）
     }
     consume(TokenType::RightBrace, "'}'");
     return decl;

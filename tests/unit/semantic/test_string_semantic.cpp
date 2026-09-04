@@ -52,9 +52,9 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(StringSemanticTest, StringVarDecl) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "你好"
-    打印行(s)
-    返回 0
+    字符串 s = "你好";
+    打印行(s);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -65,9 +65,9 @@ TEST(StringSemanticTest, StringVarDecl) {
 TEST(StringSemanticTest, CharPtrVarDecl) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符* p = "你好"
-    打印行(p)
-    返回 0
+    字符* p = "你好";
+    打印行(p);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -78,10 +78,10 @@ TEST(StringSemanticTest, CharPtrVarDecl) {
 TEST(StringSemanticTest, StringToCharPtrConversion) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "你好"
-    字符* p = s          // 字符串 -> 字符*
-    字符串 s2 = p        // 字符* -> 字符串
-    返回 0
+    字符串 s = "你好";
+    字符* p = s;          // 字符串 -> 字符*
+    字符串 s2 = p;        // 字符* -> 字符串
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -94,9 +94,9 @@ TEST(StringSemanticTest, StringToCharPtrConversion) {
 TEST(StringSemanticTest, StringConcat) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "你好" + "世界"
-    打印行(s)
-    返回 0
+    字符串 s = "你好" + "世界";
+    打印行(s);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -107,10 +107,10 @@ TEST(StringSemanticTest, StringConcat) {
 TEST(StringSemanticTest, StringConcatCharPtr) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "你好"
-    字符* p = "世界"
-    打印行(s + p)
-    返回 0
+    字符串 s = "你好";
+    字符* p = "世界";
+    打印行(s + p);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -121,8 +121,8 @@ TEST(StringSemanticTest, StringConcatCharPtr) {
 TEST(StringSemanticTest, StringPlusIntOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "你好" + 42
-    返回 0
+    字符串 s = "你好" + 42;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -135,9 +135,9 @@ TEST(StringSemanticTest, StringPlusIntOk) {
 TEST(StringSemanticTest, StringLenBuiltin) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整64 n = 字符串长度("hello")
-    打印(n)
-    返回 0
+    整64 n = 字符串长度("hello");
+    打印(n);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -149,9 +149,9 @@ TEST(StringSemanticTest, StringEqBuiltin) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     如果 (字符串比较("abc", "abc")) {
-        打印行("相等")
+        打印行("相等");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -162,10 +162,10 @@ TEST(StringSemanticTest, StringEqBuiltin) {
 TEST(StringSemanticTest, StringConcatAndCopyBuiltin) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 a = 字符串连接("你", "好")
-    字符串 b = 字符串复制(a)
-    打印行(b)
-    返回 0
+    字符串 a = 字符串连接("你", "好");
+    字符串 b = 字符串复制(a);
+    打印行(b);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -176,9 +176,9 @@ TEST(StringSemanticTest, StringConcatAndCopyBuiltin) {
 TEST(StringSemanticTest, StringFindBuiltin) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整64 pos = 字符串查找("hello world", "world")
-    打印(pos)
-    返回 0
+    整64 pos = 字符串查找("hello world", "world");
+    打印(pos);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -189,8 +189,8 @@ TEST(StringSemanticTest, StringFindBuiltin) {
 TEST(StringSemanticTest, StringLenWrongArgType) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整64 n = 字符串长度(42)
-    返回 0
+    整64 n = 字符串长度(42);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -203,8 +203,8 @@ TEST(StringSemanticTest, StringLenWrongArgType) {
 TEST(StringSemanticTest, PrintLineMultiArgs) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    打印行("值:", 42, 3.5)
-    返回 0
+    打印行("值:", 42, 3.5);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -215,10 +215,10 @@ TEST(StringSemanticTest, PrintLineMultiArgs) {
 TEST(StringSemanticTest, PrintLineMultiArgsVars) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "你好"
-    字符* p = "世界"
-    打印行(s, "与", p)
-    返回 0
+    字符串 s = "你好";
+    字符* p = "世界";
+    打印行(s, "与", p);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

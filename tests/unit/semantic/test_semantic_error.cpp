@@ -57,18 +57,18 @@ TEST(SemanticErrorTest, ResultTypeFullFlow) {
     auto r = analyzeSource(R"CN(
 函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {
     如果 b == 0 {
-        返回 错误(1)
+        返回 错误(1);
     }
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 主() -> 整32 {
-    变量 除法结果 = 除法(10, 2)
+    变量 除法结果 = 除法(10, 2);
     如果 除法结果.正常 {
-        打印行(除法结果.值)
+        打印行(除法结果.值);
     } 否则 {
-        打印行(除法结果.错误)
+        打印行(除法结果.错误);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -81,18 +81,18 @@ TEST(SemanticErrorTest, OptionalTypeFullFlow) {
     auto r = analyzeSource(R"CN(
 函数 查找(整32 键) -> 可选<整32> {
     如果 键 > 0 {
-        返回 某些(键 * 2)
+        返回 某些(键 * 2);
     }
-    返回 无
+    返回 无;
 }
 函数 主() -> 整32 {
-    变量 查找结果 = 查找(42)
+    变量 查找结果 = 查找(42);
     如果 查找结果.有值 {
-        打印行(查找结果.值)
+        打印行(查找结果.值);
     } 否则 {
-        打印行("未找到")
+        打印行("未找到");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -103,10 +103,10 @@ TEST(SemanticErrorTest, OptionalTypeFullFlow) {
 TEST(SemanticErrorTest, BuiltinConstructorRedefine) {
     auto r = analyzeSource(R"CN(
 函数 正常(整32 x) -> 整32 {
-    返回 x
+    返回 x;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -119,11 +119,11 @@ TEST(SemanticErrorTest, BuiltinConstructorRedefine) {
 TEST(SemanticErrorTest, Rule1ResultDiscarded) {
     auto r = analyzeSource(R"CN(
 函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 主() -> 整32 {
-    除法(10, 2)
-    返回 0
+    除法(10, 2);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -135,16 +135,16 @@ TEST(SemanticErrorTest, Rule1ResultDiscarded) {
 TEST(SemanticErrorTest, Rule1ResultAssigned) {
     auto r = analyzeSource(R"CN(
 函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 主() -> 整32 {
-    变量 除法结果 = 除法(10, 2)
+    变量 除法结果 = 除法(10, 2);
     如果 除法结果.正常 {
-        打印行(除法结果.值)
+        打印行(除法结果.值);
     } 否则 {
-        打印行(除法结果.错误)
+        打印行(除法结果.错误);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -156,14 +156,14 @@ TEST(SemanticErrorTest, Rule1ResultAssigned) {
 TEST(SemanticErrorTest, Rule2MissingElseWarning) {
     auto r = analyzeSource(R"CN(
 函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 主() -> 整32 {
-    变量 除法结果 = 除法(10, 2)
+    变量 除法结果 = 除法(10, 2);
     如果 除法结果.正常 {
-        打印行(除法结果.值)
+        打印行(除法结果.值);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     // 规则2 为警告：不阻断编译（ok 仍为 true，无错误）
@@ -178,12 +178,12 @@ TEST(SemanticErrorTest, Rule2MissingElseWarning) {
 TEST(SemanticErrorTest, Rule3OptionalValueBeforeCheck) {
     auto r = analyzeSource(R"CN(
 函数 查找(整32 键) -> 可选<整32> {
-    返回 某些(键)
+    返回 某些(键);
 }
 函数 主() -> 整32 {
-    变量 查找结果 = 查找(42)
-    打印行(查找结果.值)
-    返回 0
+    变量 查找结果 = 查找(42);
+    打印行(查找结果.值);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -195,14 +195,14 @@ TEST(SemanticErrorTest, Rule3OptionalValueBeforeCheck) {
 TEST(SemanticErrorTest, Rule3OptionalValueAfterCheck) {
     auto r = analyzeSource(R"CN(
 函数 查找(整32 键) -> 可选<整32> {
-    返回 某些(键)
+    返回 某些(键);
 }
 函数 主() -> 整32 {
-    变量 查找结果 = 查找(42)
+    变量 查找结果 = 查找(42);
     如果 查找结果.有值 {
-        打印行(查找结果.值)
+        打印行(查找结果.值);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -213,12 +213,12 @@ TEST(SemanticErrorTest, Rule3OptionalValueAfterCheck) {
 TEST(SemanticErrorTest, Rule3ResultValueBeforeCheck) {
     auto r = analyzeSource(R"CN(
 函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 主() -> 整32 {
-    变量 除法结果 = 除法(10, 2)
-    打印行(除法结果.值)
-    返回 0
+    变量 除法结果 = 除法(10, 2);
+    打印行(除法结果.值);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -231,16 +231,16 @@ TEST(SemanticErrorTest, Rule3ResultErrorAccess) {
     // 否则分支内访问 .错误：合法
     auto r = analyzeSource(R"CN(
 函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 主() -> 整32 {
-    变量 除法结果 = 除法(10, 2)
+    变量 除法结果 = 除法(10, 2);
     如果 除法结果.正常 {
-        打印行(除法结果.值)
+        打印行(除法结果.值);
     } 否则 {
-        打印行(除法结果.错误)
+        打印行(除法结果.错误);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -253,8 +253,8 @@ TEST(SemanticErrorTest, Rule3ResultErrorAccess) {
 TEST(SemanticErrorTest, OptionalNullAssignment) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    可选<整32> 可选结果 = 无
-    返回 0
+    可选<整32> 可选结果 = 无;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

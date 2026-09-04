@@ -80,10 +80,10 @@ const cn_compiler::ir::IRFunction* findFunction(const IRModule& module,
 // 结构体参数应被标记（structParamIndexes 含索引0）
 TEST(IRStructValueTest, StructParamMarked) {
     const std::string src = R"(
-结构体 学生 { 整32 学号; 整32 成绩; 整32 班级 }
+结构体 学生 { 整32 学号; 整32 成绩; 整32 班级; }
 函数 加分(学生 入) -> 学生 {
-    学生 出 = 入
-    返回 出
+    学生 出 = 入;
+    返回 出;
 }
 )";
     IrResult r = generateIr(src);
@@ -98,10 +98,10 @@ TEST(IRStructValueTest, StructParamMarked) {
 // 返回结构体的函数：structReturn=true 且 structReturnSize=12
 TEST(IRStructValueTest, StructReturnMarked) {
     const std::string src = R"(
-结构体 学生 { 整32 学号; 整32 成绩; 整32 班级 }
+结构体 学生 { 整32 学号; 整32 成绩; 整32 班级; }
 函数 加分(学生 入) -> 学生 {
-    学生 出 = 入
-    返回 出
+    学生 出 = 入;
+    返回 出;
 }
 )";
     IrResult r = generateIr(src);
@@ -115,7 +115,7 @@ TEST(IRStructValueTest, StructReturnMarked) {
 // 非结构体返回：structReturn=false
 TEST(IRStructValueTest, NonStructReturnNotMarked) {
     const std::string src = R"(
-函数 加(整32 a) -> 整32 { 返回 a + 1 }
+函数 加(整32 a) -> 整32 { 返回 a + 1; }
 )";
     IrResult r = generateIr(src);
     ASSERT_TRUE(r.ok) << r.messages;
@@ -129,11 +129,11 @@ TEST(IRStructValueTest, NonStructReturnNotMarked) {
 // 结构体变量声明时整体赋值：生成 CopyStruct 且字节数=结构体大小
 TEST(IRStructValueTest, CopyStructAssignment) {
     const std::string src = R"(
-结构体 点对 { 整32 x; 整32 y }
+结构体 点对 { 整32 x; 整32 y; }
 函数 主() -> 整32 {
-    点对 a = 点对{ x = 1, y = 2 }
-    点对 b = a
-    返回 0
+    点对 a = 点对{ x = 1, y = 2 };
+    点对 b = a;
+    返回 0;
 }
 )";
     IrResult r = generateIr(src);
@@ -156,11 +156,11 @@ TEST(IRStructValueTest, CopyStructAssignment) {
 // 含数组字段结构体整体赋值：CopyStruct 字节数=结构体总大小（含数组）
 TEST(IRStructValueTest, CopyStructWithArrayField) {
     const std::string src = R"(
-结构体 班级 { 整32 编号; 整32[3] 分数 }
+结构体 班级 { 整32 编号; 整32[3] 分数; }
 函数 主() -> 整32 {
-    班级 一班 = 班级{ 编号 = 1, 分数 = { 80, 90, 70 } }
-    班级 二班 = 一班
-    返回 0
+    班级 一班 = 班级{ 编号 = 1, 分数 = { 80, 90, 70 } };
+    班级 二班 = 一班;
+    返回 0;
 }
 )";
     IrResult r = generateIr(src);
@@ -184,15 +184,15 @@ TEST(IRStructValueTest, CopyStructWithArrayField) {
 // 调用返回结构体的函数：生成返回缓冲区分配（Alloca __retbuf）与 Call
 TEST(IRStructValueTest, StructReturnCallAllocatesBuffer) {
     const std::string src = R"(
-结构体 学生 { 整32 学号; 整32 成绩; 整32 班级 }
+结构体 学生 { 整32 学号; 整32 成绩; 整32 班级; }
 函数 加分(学生 入) -> 学生 {
-    学生 出 = 入
-    返回 出
+    学生 出 = 入;
+    返回 出;
 }
 函数 主() -> 整32 {
-    学生 张三 = 学生{ 学号 = 1, 成绩 = 80, 班级 = 3 }
-    学生 张三加 = 加分(张三)
-    返回 张三加.成绩
+    学生 张三 = 学生{ 学号 = 1, 成绩 = 80, 班级 = 3 };
+    学生 张三加 = 加分(张三);
+    返回 张三加.成绩;
 }
 )";
     IrResult r = generateIr(src);

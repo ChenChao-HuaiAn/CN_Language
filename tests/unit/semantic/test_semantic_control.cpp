@@ -51,18 +51,18 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(SemanticSwitchTest, BasicSwitchOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 v = 2
+    整数 v = 2;
     选择(v) {
         情况 1:
-            打印行("一")
-            中断
+            打印行("一");
+            中断;
         情况 2:
-            打印行("二")
-            中断
+            打印行("二");
+            中断;
         默认:
-            打印行("其他")
+            打印行("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -73,15 +73,15 @@ TEST(SemanticSwitchTest, BasicSwitchOk) {
 TEST(SemanticSwitchTest, BreakInsideSwitchOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
         情况 1:
-            打印行("一")
-            中断
+            打印行("一");
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -92,15 +92,15 @@ TEST(SemanticSwitchTest, BreakInsideSwitchOk) {
 TEST(SemanticSwitchTest, CharConditionOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符 c = 'A'
+    字符 c = 'A';
     选择(c) {
         情况 'A':
-            打印行("A")
-            中断
+            打印行("A");
+            中断;
         默认:
-            打印行("其他")
+            打印行("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -111,14 +111,14 @@ TEST(SemanticSwitchTest, CharConditionOk) {
 TEST(SemanticSwitchTest, BreakInLoopStillOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 i = 0
+    整数 i = 0;
     当 (i < 5) {
         如果 (i == 3) {
-            中断
+            中断;
         }
-        i++
+        i++;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -131,16 +131,16 @@ TEST(SemanticSwitchTest, BreakInLoopStillOk) {
 TEST(SemanticSwitchTest, DuplicateCaseValue) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
         情况 1:
-            中断
+            中断;
         情况 1:
-            中断
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -153,14 +153,14 @@ TEST(SemanticSwitchTest, DuplicateCaseValue) {
 TEST(SemanticSwitchTest, StringConditionError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "abc"
+    字符串 s = "abc";
     选择(s) {
         情况 1:
-            中断
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -171,14 +171,14 @@ TEST(SemanticSwitchTest, StringConditionError) {
 TEST(SemanticSwitchTest, BoolConditionError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    布尔 b = 真
+    布尔 b = 真;
     选择(b) {
         情况 1:
-            中断
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -189,9 +189,9 @@ TEST(SemanticSwitchTest, BoolConditionError) {
 TEST(SemanticSwitchTest, BreakOutsideLoopAndSwitchError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 x = 1
-    中断
-    返回 0
+    整数 x = 1;
+    中断;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -204,19 +204,19 @@ TEST(SemanticSwitchTest, BreakOutsideLoopAndSwitchError) {
 TEST(SemanticSwitchTest, BreakInLoopInsideSwitchOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 v = 2
+    整数 v = 2;
     选择(v) {
         情况 2:
-            整数 i = 0
+            整数 i = 0;
             当 (i < 3) {
-                中断      // 跳出当循环（不是跳出switch）
-                i++
+                中断;      // 跳出当循环（不是跳出switch）
+                i++;
             }
-            中断          // 跳出switch
+            中断;          // 跳出switch
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -227,15 +227,15 @@ TEST(SemanticSwitchTest, BreakInLoopInsideSwitchOk) {
 TEST(SemanticSwitchTest, ContinueInsideSwitchError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
         情况 1:
-            继续
-            中断
+            继续;
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -246,21 +246,21 @@ TEST(SemanticSwitchTest, ContinueInsideSwitchError) {
 TEST(SemanticSwitchTest, NestedSwitchBothOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整数 v = 2
+    整数 v = 2;
     选择(v) {
         情况 2:
-            整数 n = 1
+            整数 n = 1;
             选择(n) {
                 情况 1:
-                    中断      // 跳出内层switch
+                    中断;      // 跳出内层switch
                 默认:
-                    中断
+                    中断;
             }
-            中断            // 跳出外层switch
+            中断;            // 跳出外层switch
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

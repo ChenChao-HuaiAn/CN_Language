@@ -52,8 +52,8 @@ SemanticResult analyzeSource(const std::string& source) {
 // 结构体布局：整32 字段对齐 4、总大小对齐
 TEST(StructSemanticTest, LayoutBasic) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x 整32 y }\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "结构体 点 { 整32 x; 整32 y; }\n"
+        "函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     ASSERT_EQ(r.program->structs.size(), 1u);
     const auto& decl = r.program->structs[0];
@@ -67,8 +67,8 @@ TEST(StructSemanticTest, LayoutBasic) {
 // 结构体布局：混合类型（整8 + 整64）C风格对齐
 TEST(StructSemanticTest, LayoutMixedAlign) {
     SemanticResult r = analyzeSource(
-        "结构体 混合 { 整8 a 整64 b }\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "结构体 混合 { 整8 a; 整64 b; }\n"
+        "函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     const auto& decl = r.program->structs[0];
     // 整8 a 在偏移0；整64 b 对齐到8 → 偏移8；总大小16（对齐8）
@@ -81,8 +81,8 @@ TEST(StructSemanticTest, LayoutMixedAlign) {
 // 联合体布局：所有字段偏移0、大小=最大字段大小
 TEST(StructSemanticTest, UnionLayout) {
     SemanticResult r = analyzeSource(
-        "联合体 数值 { 整32 整数部分 浮64 浮点部分 }\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "联合体 数值 { 整32 整数部分; 浮64 浮点部分; }\n"
+        "函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     const auto& decl = r.program->structs[0];
     EXPECT_TRUE(decl->isUnion);
@@ -95,12 +95,12 @@ TEST(StructSemanticTest, UnionLayout) {
 // 字段访问检查：p.x 有效；p.不存在字段 报错
 TEST(StructSemanticTest, FieldAccessValidAndInvalid) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x 整32 y }\n"
+        "结构体 点 { 整32 x; 整32 y; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p = 点{ x = 1, y = 2 }\n"
-        "  整32 a = p.x\n"
-        "  整32 b = p.z\n"
-        "  返回 0\n"
+        "  点 p = 点{ x = 1, y = 2 };\n"
+        "  整32 a = p.x;\n"
+        "  整32 b = p.z;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("没有成员"), std::string::npos);
@@ -109,12 +109,12 @@ TEST(StructSemanticTest, FieldAccessValidAndInvalid) {
 // 经指针访问（v2.1 统一 .，自动解引用一级）：结构体指针访问字段（类型正确）
 TEST(StructSemanticTest, ArrowFieldAccess) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x 整32 y }\n"
+        "结构体 点 { 整32 x; 整32 y; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p = 点{ x = 1, y = 2 }\n"
-        "  点* ptr = &p\n"
-        "  整32 a = ptr.x\n"
-        "  返回 0\n"
+        "  点 p = 点{ x = 1, y = 2 };\n"
+        "  点* ptr = &p;\n"
+        "  整32 a = ptr.x;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -123,9 +123,9 @@ TEST(StructSemanticTest, ArrowFieldAccess) {
 TEST(StructSemanticTest, ArrowOnNonStruct) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32* p = 无\n"
-        "  整32 a = p.字段\n"
-        "  返回 0\n"
+        "  整32* p = 无;\n"
+        "  整32 a = p.字段;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("不是结构体"), std::string::npos);
@@ -135,9 +135,9 @@ TEST(StructSemanticTest, ArrowOnNonStruct) {
 TEST(StructSemanticTest, DotOnNonStruct) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32 n = 10\n"
-        "  整32 a = n.字段\n"
-        "  返回 0\n"
+        "  整32 n = 10;\n"
+        "  整32 a = n.字段;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -147,7 +147,7 @@ TEST(StructSemanticTest, EnumValues) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿, 蓝, 自定义 = 100, 之后 }\n"
         "枚举 方向 { 上 = -1, 中, 下 }\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     ASSERT_EQ(r.program->enums.size(), 2u);
     const auto& colors = r.program->enums[0];
@@ -167,9 +167,9 @@ TEST(StructSemanticTest, EnumUse) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
         "函数 主() -> 整32 {\n"
-        "  颜色 c = 颜色.绿\n"
-        "  整32 v = 颜色.蓝\n"
-        "  返回 0\n"
+        "  颜色 c = 颜色.绿;\n"
+        "  整32 v = 颜色.蓝;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -179,8 +179,8 @@ TEST(StructSemanticTest, EnumMemberNotFound) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿 }\n"
         "函数 主() -> 整32 {\n"
-        "  整32 v = 颜色.紫\n"
-        "  返回 0\n"
+        "  整32 v = 颜色.紫;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("没有成员"), std::string::npos);
@@ -191,16 +191,16 @@ TEST(StructSemanticTest, EnumInSwitch) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
         "函数 主() -> 整32 {\n"
-        "  颜色 c = 颜色.绿\n"
+        "  颜色 c = 颜色.绿;\n"
         "  选择 (c) {\n"
         "    情况 颜色.红:\n"
-        "      返回 1\n"
+        "      返回 1;\n"
         "    情况 颜色.绿:\n"
-        "      返回 2\n"
+        "      返回 2;\n"
         "    默认:\n"
-        "      返回 0\n"
+        "      返回 0;\n"
         "  }\n"
-        "  返回 0\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -208,10 +208,10 @@ TEST(StructSemanticTest, EnumInSwitch) {
 // 结构体初始化列表：字段类型不匹配报错
 TEST(StructSemanticTest, StructInitTypeMismatch) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x }\n"
+        "结构体 点 { 整32 x; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p = 点{ x = 1.5 }\n"
-        "  返回 0\n"
+        "  点 p = 点{ x = 1.5 };\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("无法将"), std::string::npos);
@@ -220,10 +220,10 @@ TEST(StructSemanticTest, StructInitTypeMismatch) {
 // 结构体初始化列表：字段不存在报错
 TEST(StructSemanticTest, StructInitUnknownField) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x }\n"
+        "结构体 点 { 整32 x; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p = 点{ 不存在 = 1 }\n"
-        "  返回 0\n"
+        "  点 p = 点{ 不存在 = 1 };\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("没有字段"), std::string::npos);
@@ -232,12 +232,12 @@ TEST(StructSemanticTest, StructInitUnknownField) {
 // 嵌套结构体初始化：值类型可隐式转换
 TEST(StructSemanticTest, NestedStructInit) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x 整32 y }\n"
-        "结构体 矩形 { 点 左上 点 右下 }\n"
+        "结构体 点 { 整32 x; 整32 y; }\n"
+        "结构体 矩形 { 点 左上 点 右下; }\n"
         "函数 主() -> 整32 {\n"
-        "  矩形 r = 矩形{ 左上 = 点{ x = 1, y = 2 }, 右下 = 点{ x = 3, y = 4 } }\n"
-        "  整32 a = r.左上.x\n"
-        "  返回 0\n"
+        "  矩形 r = 矩形{ 左上 = 点{ x = 1, y = 2 }, 右下 = 点{ x = 3, y = 4 } };\n"
+        "  整32 a = r.左上.x;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -245,8 +245,8 @@ TEST(StructSemanticTest, NestedStructInit) {
 // 循环引用检测：结构体直接包含自身（无限大小）报错
 TEST(StructSemanticTest, SelfReference) {
     SemanticResult r = analyzeSource(
-        "结构体 节点 { 节点 下一个 }\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "结构体 节点 { 节点 下一个; }\n"
+        "函数 主() -> 整32 { 返回 0; }\n");
     // 布局计算防无限递归（layoutComputed 提前标记），不崩溃；字段为不完整类型
     // 语义层允许（C++ 同款：不完整类型字段），此处验证不崩溃且可通过
     EXPECT_TRUE(r.ok) << r.messages;
@@ -255,9 +255,9 @@ TEST(StructSemanticTest, SelfReference) {
 // 重复类型名声明报错
 TEST(StructSemanticTest, DuplicateTypeName) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x }\n"
-        "结构体 点 { 整32 y }\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "结构体 点 { 整32 x; }\n"
+        "结构体 点 { 整32 y; }\n"
+        "函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("重复声明类型"), std::string::npos);
 }
@@ -265,12 +265,12 @@ TEST(StructSemanticTest, DuplicateTypeName) {
 // 联合体共享内存：写整字段后读浮字段（语义层允许，无类型错误）
 TEST(StructSemanticTest, UnionFieldAccess) {
     SemanticResult r = analyzeSource(
-        "联合体 数值 { 整32 整数部分 浮64 浮点部分 }\n"
+        "联合体 数值 { 整32 整数部分; 浮64 浮点部分; }\n"
         "函数 主() -> 整32 {\n"
-        "  数值 u = 数值{ 整数部分 = 42 }\n"
-        "  整32 v = u.整数部分\n"
-        "  浮64 f = u.浮点部分\n"
-        "  返回 v\n"
+        "  数值 u = 数值{ 整数部分 = 42 };\n"
+        "  整32 v = u.整数部分;\n"
+        "  浮64 f = u.浮点部分;\n"
+        "  返回 v;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -278,10 +278,10 @@ TEST(StructSemanticTest, UnionFieldAccess) {
 // 结构体变量无初始化器：允许（字段未初始化，Task 2.7 不做未初始化检查）
 TEST(StructSemanticTest, StructVarNoInit) {
     SemanticResult r = analyzeSource(
-        "结构体 点 { 整32 x }\n"
+        "结构体 点 { 整32 x; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p\n"
-        "  返回 0\n"
+        "  点 p;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }

@@ -72,8 +72,8 @@ int countOpcode(IRModule& module, std::size_t funcIndex, Opcode opcode) {
 TEST(IRStringTest, NormalStringConstantPool) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行("你好")
-    返回 0
+    打印行("你好");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -90,9 +90,9 @@ TEST(IRStringTest, NormalStringConstantPool) {
 TEST(IRStringTest, StringConstantDedup) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行("相同")
-    打印行("相同")
-    返回 0
+    打印行("相同");
+    打印行("相同");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -104,8 +104,8 @@ TEST(IRStringTest, StringConstantDedup) {
 TEST(IRStringTest, NormalStringEscapeDecode) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行("a\nb\tc")
-    返回 0
+    打印行("a\nb\tc");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -117,8 +117,8 @@ TEST(IRStringTest, NormalStringEscapeDecode) {
 TEST(IRStringTest, UnicodeEscapeDecode) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行("\u{4E2D}")
-    返回 0
+    打印行("\u{4E2D}");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -132,8 +132,8 @@ TEST(IRStringTest, UnicodeEscapeDecode) {
 TEST(IRStringTest, RawStringNoEscape) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行(原始"^\d+\.\d+$")
-    返回 0
+    打印行(原始"^\d+\.\d+$");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -145,8 +145,8 @@ TEST(IRStringTest, RawStringNoEscape) {
 TEST(IRStringTest, MultiLineStringEscapeDecode) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行(多行"""第一行\n第二行""")
-    返回 0
+    打印行(多行"""第一行\n第二行""");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -158,8 +158,8 @@ TEST(IRStringTest, MultiLineStringEscapeDecode) {
 TEST(IRStringTest, RawMultiLineNoEscape) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行(原始多行"""A\nB""")
-    返回 0
+    打印行(原始多行"""A\nB""");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -173,8 +173,8 @@ TEST(IRStringTest, RawMultiLineNoEscape) {
 TEST(IRStringTest, StringConcatCall) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "你" + "好"
-    返回 0
+    字符串 s = "你" + "好";
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -190,8 +190,8 @@ TEST(IRStringTest, StringConcatCall) {
 TEST(IRStringTest, StringLenCall) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整64 n = 字符串长度("hello")
-    返回 0
+    整64 n = 字符串长度("hello");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -205,8 +205,8 @@ TEST(IRStringTest, StringLenCall) {
 TEST(IRStringTest, StringEqCall) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    布尔 b = 字符串比较("a", "b")
-    返回 0
+    布尔 b = 字符串比较("a", "b");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -220,9 +220,9 @@ TEST(IRStringTest, StringEqCall) {
 TEST(IRStringTest, StringConcatCopyApiCall) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 a = 字符串连接("你", "好")
-    字符串 b = 字符串复制(a)
-    返回 0
+    字符串 a = 字符串连接("你", "好");
+    字符串 b = 字符串复制(a);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -233,8 +233,8 @@ TEST(IRStringTest, StringConcatCopyApiCall) {
 TEST(IRStringTest, StringFindCall) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整64 pos = 字符串查找("hello", "ell")
-    返回 0
+    整64 pos = 字符串查找("hello", "ell");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -250,8 +250,8 @@ TEST(IRStringTest, StringFindCall) {
 TEST(IRStringTest, PrintMultiArgsExpansion) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印("值:", 42)
-    返回 0
+    打印("值:", 42);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -280,8 +280,8 @@ TEST(IRStringTest, PrintMultiArgsExpansion) {
 TEST(IRStringTest, PrintLineSingleArgNoNewline) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印行("你好")
-    返回 0
+    打印行("你好");
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());

@@ -70,8 +70,8 @@ int countTerminated(IRModule& module, std::size_t funcIndex, const std::string& 
 TEST(IRTernaryTest, LazyCfgStructure) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 t = x > 0 ? 100 : 200
-    返回 0
+    变量 t = x > 0 ? 100 : 200;
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.module.functions.empty());
@@ -90,9 +90,9 @@ TEST(IRTernaryTest, LazyCfgStructure) {
 TEST(IRTernaryTest, NestedTernaryCfg) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 t = 假 ? "一" : 假 ? "二" : "三"
-    打印(t)
-    返回 0
+    变量 t = 假 ? "一" : 假 ? "二" : "三";
+    打印(t);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.module.functions.empty());
@@ -104,8 +104,8 @@ TEST(IRTernaryTest, NestedTernaryCfg) {
 TEST(IRTernaryTest, StringPlusNumberExpand) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印("值" + 42)
-    返回 0
+    打印("值" + 42);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.module.functions.empty());
@@ -127,8 +127,8 @@ TEST(IRTernaryTest, StringPlusNumberExpand) {
 TEST(IRTernaryTest, StringPlusBoolExpand) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    打印("布尔=" + 真)
-    返回 0
+    打印("布尔=" + 真);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.module.functions.empty());
@@ -149,9 +149,9 @@ TEST(IRTernaryTest, StringPlusBoolExpand) {
 TEST(IRTernaryTest, FormatExpand) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 格式化("值%d 浮点%f", 42, 3.14)
-    字符串释放(s)
-    返回 0
+    字符串 s = 格式化("值%d 浮点%f", 42, 3.14);
+    字符串释放(s);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.module.functions.empty());

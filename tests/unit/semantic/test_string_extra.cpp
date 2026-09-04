@@ -51,9 +51,9 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(StringExtraSemanticTest, SubRegister) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 字符串子串("Hello", 1, 2)
-    字符串释放(s)
-    返回 0
+    字符串 s = 字符串子串("Hello", 1, 2);
+    字符串释放(s);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -64,9 +64,9 @@ TEST(StringExtraSemanticTest, SubRegister) {
 TEST(StringExtraSemanticTest, CmpRegister) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整64 c = 字符串字典序("a", "b")
-    打印(c)
-    返回 0
+    整64 c = 字符串字典序("a", "b");
+    打印(c);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -77,15 +77,15 @@ TEST(StringExtraSemanticTest, CmpRegister) {
 TEST(StringExtraSemanticTest, TransformRegister) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 a = 字符串大写("hi")
-    字符串 b = 字符串小写("HI")
-    字符串 c = 字符串修剪("  x  ")
-    字符串 d = 字符串反转("abc")
-    字符串释放(a)
-    字符串释放(b)
-    字符串释放(c)
-    字符串释放(d)
-    返回 0
+    字符串 a = 字符串大写("hi");
+    字符串 b = 字符串小写("HI");
+    字符串 c = 字符串修剪("  x  ");
+    字符串 d = 字符串反转("abc");
+    字符串释放(a);
+    字符串释放(b);
+    字符串释放(c);
+    字符串释放(d);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -96,10 +96,10 @@ TEST(StringExtraSemanticTest, TransformRegister) {
 TEST(StringExtraSemanticTest, PredicateRegister) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    如果 (字符串前缀("hello", "he")) { 打印行("前") }
-    如果 (字符串后缀("hello", "lo")) { 打印行("后") }
-    如果 (字符串包含("hello", "ell")) { 打印行("含") }
-    返回 0
+    如果 (字符串前缀("hello", "he")) { 打印行("前"); }
+    如果 (字符串后缀("hello", "lo")) { 打印行("后"); }
+    如果 (字符串包含("hello", "ell")) { 打印行("含"); }
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -110,13 +110,13 @@ TEST(StringExtraSemanticTest, PredicateRegister) {
 TEST(StringExtraSemanticTest, ConvertRegister) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 i = 整数转字符串(42)
-    字符串 f = 浮点转字符串(3.5)
-    字符串 c = 字符转字符串('A')
-    字符串释放(i)
-    字符串释放(f)
-    字符串释放(c)
-    返回 0
+    字符串 i = 整数转字符串(42);
+    字符串 f = 浮点转字符串(3.5);
+    字符串 c = 字符转字符串('A');
+    字符串释放(i);
+    字符串释放(f);
+    字符串释放(c);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -129,8 +129,8 @@ TEST(StringExtraSemanticTest, ConvertRegister) {
 TEST(StringExtraSemanticTest, SubTypeError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 字符串子串(42, 1, 2)
-    返回 0
+    字符串 s = 字符串子串(42, 1, 2);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -141,8 +141,8 @@ TEST(StringExtraSemanticTest, SubTypeError) {
 TEST(StringExtraSemanticTest, SubArityError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 字符串子串("Hello", 1)
-    返回 0
+    字符串 s = 字符串子串("Hello", 1);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -153,8 +153,8 @@ TEST(StringExtraSemanticTest, SubArityError) {
 TEST(StringExtraSemanticTest, FreeTypeError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串释放(42)
-    返回 0
+    字符串释放(42);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -165,8 +165,8 @@ TEST(StringExtraSemanticTest, FreeTypeError) {
 TEST(StringExtraSemanticTest, FreeVoidReturn) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 字符串释放("x")
-    返回 0
+    字符串 s = 字符串释放("x");
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -177,8 +177,8 @@ TEST(StringExtraSemanticTest, FreeVoidReturn) {
 TEST(StringExtraSemanticTest, UnknownFunctionError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 字符串不存在("x")
-    返回 0
+    字符串 s = 字符串不存在("x");
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);

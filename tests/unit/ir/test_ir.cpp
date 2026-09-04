@@ -75,7 +75,7 @@ int countOpcode(IRModule& module, std::size_t funcIndex, Opcode opcode) {
 TEST(IRTest, FunctionIR) {
     auto r = buildIR(R"CN(
 函数 加(整32 a, 整32 b) -> 整32 {
-    返回 a + b
+    返回 a + b;
 }
 )CN");
     ASSERT_EQ(r.module.functions.size(), 1u);
@@ -97,7 +97,7 @@ TEST(IRTest, FunctionIR) {
 TEST(IRTest, VoidFunctionDefaultReturn) {
     auto r = buildIR(R"CN(
 函数 打印() {
-    返回
+    返回;
 }
 )CN");
     ASSERT_EQ(r.module.functions.size(), 1u);
@@ -114,7 +114,7 @@ TEST(IRTest, VoidFunctionDefaultReturn) {
 TEST(IRTest, IntegerLiteralIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    返回 42
+    返回 42;
 }
 )CN");
     auto& inst = insts(r.module, 0, 0);
@@ -128,7 +128,7 @@ TEST(IRTest, IntegerLiteralIR) {
 TEST(IRTest, FloatLiteralIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    返回 3.14
+    返回 3.14;
 }
 )CN");
     auto& inst = insts(r.module, 0, 0);
@@ -141,8 +141,8 @@ TEST(IRTest, FloatLiteralIR) {
 TEST(IRTest, ArithmeticIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 x = 1 + 2 * 3
-    返回 x
+    变量 x = 1 + 2 * 3;
+    返回 x;
 }
 )CN");
     EXPECT_GE(countOpcode(r.module, 0, Opcode::Add), 1);
@@ -153,7 +153,7 @@ TEST(IRTest, ArithmeticIR) {
 TEST(IRTest, ComparisonIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 布尔 {
-    返回 1 < 2
+    返回 1 < 2;
 }
 )CN");
     auto& inst = insts(r.module, 0, 0);
@@ -171,7 +171,7 @@ TEST(IRTest, ComparisonIR) {
 TEST(IRTest, LogicalIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 布尔 {
-    返回 真 && 假 || !真
+    返回 真 && 假 || !真;
 }
 )CN");
     EXPECT_GE(countOpcode(r.module, 0, Opcode::And), 1);
@@ -185,8 +185,8 @@ TEST(IRTest, LogicalIR) {
 TEST(IRTest, VarDeclIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 x = 10
-    返回 x
+    变量 x = 10;
+    返回 x;
 }
 )CN");
     EXPECT_GE(countOpcode(r.module, 0, Opcode::Alloca), 1);
@@ -199,9 +199,9 @@ TEST(IRTest, VarDeclIR) {
 TEST(IRTest, VarAssignIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 x = 1
-    x = x + 1
-    返回 x
+    变量 x = 1;
+    x = x + 1;
+    返回 x;
 }
 )CN");
     EXPECT_GE(countOpcode(r.module, 0, Opcode::Load), 1);
@@ -215,13 +215,13 @@ TEST(IRTest, VarAssignIR) {
 TEST(IRTest, IfStmtIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 x = 0
+    变量 x = 0;
     如果 (x > 0) {
-        x = 1
+        x = 1;
     } 否则 {
-        x = 2
+        x = 2;
     }
-    返回 x
+    返回 x;
 }
 )CN");
     // 应生成多个基本块（入口/真/假/汇合）
@@ -240,11 +240,11 @@ TEST(IRTest, IfStmtIR) {
 TEST(IRTest, WhileLoopIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 i = 0
+    变量 i = 0;
     当 (i < 10) {
-        i = i + 1
+        i = i + 1;
     }
-    返回 i
+    返回 i;
 }
 )CN");
     ASSERT_GE(r.module.functions[0].blocks.size(), 3u);
@@ -261,14 +261,14 @@ TEST(IRTest, WhileLoopIR) {
 TEST(IRTest, ForLoopIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    变量 总和 = 0
+    变量 总和 = 0;
     循环 (变量 i = 0; i < 10; i = i + 1) {
         如果 (i == 5) {
-            中断
+            中断;
         }
-        总和 = 总和 + i
+        总和 = 总和 + i;
     }
-    返回 总和
+    返回 总和;
 }
 )CN");
     ASSERT_GE(r.module.functions[0].blocks.size(), 5u);
@@ -285,9 +285,9 @@ TEST(IRTest, InfiniteLoopIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
     循环 {
-        中断
+        中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_GE(r.module.functions[0].blocks.size(), 2u);
@@ -299,10 +299,10 @@ TEST(IRTest, InfiniteLoopIR) {
 TEST(IRTest, CallIR) {
     auto r = buildIR(R"CN(
 函数 加(整32 a, 整32 b) -> 整32 {
-    返回 a + b
+    返回 a + b;
 }
 函数 主() -> 整32 {
-    返回 加(1, 2)
+    返回 加(1, 2);
 }
 )CN");
     ASSERT_EQ(r.module.functions.size(), 2u);
@@ -325,10 +325,10 @@ TEST(IRTest, CallIR) {
 TEST(IRTest, StringConstants) {
     auto r = buildIR(R"CN(
 函数 主() -> 空类型 {
-    变量 a = "你好"
-    变量 b = "你好"
-    变量 c = "世界"
-    返回
+    变量 a = "你好";
+    变量 b = "你好";
+    变量 c = "世界";
+    返回;
 }
 )CN");
     ASSERT_EQ(r.module.stringConstants.size(), 2u);
@@ -354,17 +354,17 @@ TEST(IRTest, FullProgramIR) {
     auto r = buildIR(R"CN(
 函数 阶乘(整32 n) -> 整32 {
     如果 (n <= 1) {
-        返回 1
+        返回 1;
     }
-    返回 n * 阶乘(n - 1)
+    返回 n * 阶乘(n - 1);
 }
 函数 主() -> 整32 {
-    变量 答案 = 阶乘(5)
-    变量 消息 = "完成"
+    变量 答案 = 阶乘(5);
+    变量 消息 = "完成";
     当 (答案 > 0) {
-        答案 = 答案 - 1
+        答案 = 答案 - 1;
     }
-    返回 答案
+    返回 答案;
 }
 )CN");
     ASSERT_EQ(r.module.functions.size(), 2u);

@@ -70,18 +70,18 @@ SwitchStmt* firstSwitch(Program* program, std::size_t index = 0) {
 TEST(ParserSwitchTest, BasicSwitch) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 2
+    整数 v = 2;
     选择(v) {
         情况 1:
-            打印行("一")
-            中断
+            打印行("一");
+            中断;
         情况 2:
-            打印行("二")
-            中断
+            打印行("二");
+            中断;
         默认:
-            打印行("其他")
+            打印行("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -103,16 +103,16 @@ TEST(ParserSwitchTest, BasicSwitch) {
 TEST(ParserSwitchTest, SwitchWithoutDefault) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
         情况 1:
-            打印行("一")
-            中断
+            打印行("一");
+            中断;
         情况 2:
-            打印行("二")
-            中断
+            打印行("二");
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -126,18 +126,18 @@ TEST(ParserSwitchTest, SwitchWithoutDefault) {
 TEST(ParserSwitchTest, CaseValueBases) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 0x10
+    整数 v = 0x10;
     选择(v) {
         情况 0x10:
-            中断
+            中断;
         情况 0b1010:
-            中断
+            中断;
         情况 0o17:
-            中断
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -153,15 +153,15 @@ TEST(ParserSwitchTest, CaseValueBases) {
 TEST(ParserSwitchTest, CaseValueChar) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    字符 c = 'A'
+    字符 c = 'A';
     选择(c) {
         情况 'A':
-            打印行("A")
-            中断
+            打印行("A");
+            中断;
         默认:
-            打印行("其他")
+            打印行("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -177,17 +177,17 @@ TEST(ParserSwitchTest, CaseValueChar) {
 TEST(ParserSwitchTest, FallthroughWithoutBreak) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 w = 1
+    整数 w = 1;
     选择(w) {
         情况 1:
-            打印行("fall1")
+            打印行("fall1");
         情况 2:
-            打印行("fall2")
-            中断
+            打印行("fall2");
+            中断;
         默认:
-            打印行("fall默认")
+            打印行("fall默认");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -202,29 +202,29 @@ TEST(ParserSwitchTest, FallthroughWithoutBreak) {
 TEST(ParserSwitchTest, NestedSwitchAndControl) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 2
+    整数 v = 2;
     选择(v) {
         情况 2:
-            整数 n = 0
+            整数 n = 0;
             当 (n < 2) {
-                打印行("嵌套")
-                n++
+                打印行("嵌套");
+                n++;
             }
             如果 (v == 2) {
-                打印行("内层如果")
+                打印行("内层如果");
             }
             选择(n) {
                 情况 1:
-                    打印行("内层选择")
-                    中断
+                    打印行("内层选择");
+                    中断;
                 默认:
-                    中断
+                    中断;
             }
-            中断
+            中断;
         默认:
-            打印行("默认")
+            打印行("默认");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -240,11 +240,11 @@ TEST(ParserSwitchTest, NestedSwitchAndControl) {
 TEST(ParserSwitchTest, MissingRightParen) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v {
         情况 1:
             中断
-    }
+    };
     返回 0
 }
 )CN");
@@ -258,11 +258,11 @@ TEST(ParserSwitchTest, MissingRightParen) {
 TEST(ParserSwitchTest, MissingLeftBrace) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
-    选择(v)
+    整数 v = 1;
+    选择(v);
         情况 1:
-            中断
-    返回 0
+            中断;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(result.diagnostics.hasErrors());
@@ -274,12 +274,12 @@ TEST(ParserSwitchTest, MissingLeftBrace) {
 TEST(ParserSwitchTest, CaseValueNotConstant) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
         情况 v:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(result.diagnostics.hasErrors());
@@ -289,10 +289,10 @@ TEST(ParserSwitchTest, CaseValueNotConstant) {
 TEST(ParserSwitchTest, EmptySwitchBody) {
     auto result = parseProgram(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(result.diagnostics.hasErrors());

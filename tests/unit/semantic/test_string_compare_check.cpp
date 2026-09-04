@@ -51,7 +51,7 @@ StrCmpResult analyzeSource(const std::string& source) {
 // 变量 == 变量：同内容异地址恒假（拼接产物静默陷阱——方案A 根治目标形态）
 TEST(StringCompareCheckTest, RejectStringEqString) {
     auto r = analyzeSource(
-        R"CN(函数 坏() -> 整32 { 字符串 a = "甲" 字符串 b = "甲" 如果 (a == b) { 返回 1 } 返回 0 })CN");
+        R"CN(函数 坏() -> 整32 { 字符串 a = "甲"; 字符串 b = "甲"; 如果 (a == b) { 返回 1; } 返回 0; })CN");
     EXPECT_GE(r.errorCount, 1);
     EXPECT_NE(r.messages.find("字符串不支持 ==/!=/</> 等比较运算符（按地址比较而非内容）——"
                               "相等用 字符串比较(a,b)，全序用 字符串字典序(a,b)"),
@@ -61,7 +61,7 @@ TEST(StringCompareCheckTest, RejectStringEqString) {
 // 变量 != 变量（不等形态同拒）
 TEST(StringCompareCheckTest, RejectStringNeString) {
     auto r = analyzeSource(
-        R"CN(函数 坏() -> 整32 { 字符串 a = "甲" 字符串 b = "乙" 当 (a != b) { 返回 1 } 返回 0 })CN");
+        R"CN(函数 坏() -> 整32 { 字符串 a = "甲"; 字符串 b = "乙"; 当 (a != b) { 返回 1; } 返回 0; })CN");
     EXPECT_GE(r.errorCount, 1);
     EXPECT_NE(r.messages.find("字符串不支持 ==/!=/</> 等比较运算符"), std::string::npos);
 }
@@ -69,7 +69,7 @@ TEST(StringCompareCheckTest, RejectStringNeString) {
 // 字面量直比："甲" == "乙"（两侧均字符串字面量）
 TEST(StringCompareCheckTest, RejectLiteralEqLiteral) {
     auto r = analyzeSource(
-        R"CN(函数 坏() -> 整32 { 如果 ("甲" == "乙") { 返回 1 } 返回 0 })CN");
+        R"CN(函数 坏() -> 整32 { 如果 ("甲" == "乙") { 返回 1; } 返回 0; })CN");
     EXPECT_GE(r.errorCount, 1);
     EXPECT_NE(r.messages.find("字符串不支持 ==/!=/</> 等比较运算符"), std::string::npos);
 }
@@ -77,7 +77,7 @@ TEST(StringCompareCheckTest, RejectLiteralEqLiteral) {
 // 顺序比较同拒（</> 家族——规范未定义变体，等价 字符串字典序）
 TEST(StringCompareCheckTest, RejectStringLtString) {
     auto r = analyzeSource(
-        R"CN(函数 坏() -> 整32 { 字符串 a = "甲" 字符串 b = "乙" 如果 (a < b) { 返回 1 } 返回 0 })CN");
+        R"CN(函数 坏() -> 整32 { 字符串 a = "甲"; 字符串 b = "乙"; 如果 (a < b) { 返回 1; } 返回 0; })CN");
     EXPECT_GE(r.errorCount, 1);
     EXPECT_NE(r.messages.find("字符串不支持 ==/!=/</> 等比较运算符"), std::string::npos);
 }
@@ -85,7 +85,7 @@ TEST(StringCompareCheckTest, RejectStringLtString) {
 // 字符* 交叉同拒（字符* 承载字符串语义）
 TEST(StringCompareCheckTest, RejectCharPtrEqString) {
     auto r = analyzeSource(
-        R"CN(函数 坏(字符* p) -> 整32 { 如果 (p == "甲") { 返回 1 } 返回 0 })CN");
+        R"CN(函数 坏(字符* p) -> 整32 { 如果 (p == "甲") { 返回 1; } 返回 0; })CN");
     EXPECT_GE(r.errorCount, 1);
     EXPECT_NE(r.messages.find("字符串不支持 ==/!=/</> 等比较运算符"), std::string::npos);
 }
@@ -95,27 +95,27 @@ TEST(StringCompareCheckTest, RejectCharPtrEqString) {
 // 字符串比较/字符串字典序 内置（等价能力正路）
 TEST(StringCompareCheckTest, AllowBuiltinStrEqAndCmp) {
     auto r = analyzeSource(
-        R"CN(函数 好() -> 整32 { 字符串 a = "甲" 字符串 b = "甲" 如果 (字符串比较(a, b)) { 返回 1 } 如果 (字符串字典序(a, b) < 0) { 返回 2 } 返回 0 })CN");
+        R"CN(函数 好() -> 整32 { 字符串 a = "甲"; 字符串 b = "甲"; 如果 (字符串比较(a, b)) { 返回 1; } 如果 (字符串字典序(a, b) < 0) { 返回 2; } 返回 0; })CN");
     EXPECT_EQ(r.errorCount, 0) << r.messages;
 }
 
 // 字符串 != 无 判空保留（133 EOF 载体、stdlib 读行判定）
 TEST(StringCompareCheckTest, AllowStringNeNull) {
     auto r = analyzeSource(
-        R"CN(函数 好(字符串 行) -> 整32 { 如果 (行 != 无) { 返回 1 } 返回 0 })CN");
+        R"CN(函数 好(字符串 行) -> 整32 { 如果 (行 != 无) { 返回 1; } 返回 0; })CN");
     EXPECT_EQ(r.errorCount, 0) << r.messages;
 }
 
 // 真指针类型间判空比较保留（p == 无 / p != 无）
 TEST(StringCompareCheckTest, AllowPointerNullCompare) {
     auto r = analyzeSource(
-        R"CN(函数 好(整64* p) -> 整32 { 如果 (p == 无) { 返回 1 } 如果 (p != 无) { 返回 2 } 返回 0 })CN");
+        R"CN(函数 好(整64* p) -> 整32 { 如果 (p == 无) { 返回 1; } 如果 (p != 无) { 返回 2; } 返回 0; })CN");
     EXPECT_EQ(r.errorCount, 0) << r.messages;
 }
 
 // 字符串拼接 + 数值语境不受影响（拼接语义与比较检查正交）
 TEST(StringCompareCheckTest, AllowConcatUnaffected) {
     auto r = analyzeSource(
-        R"CN(函数 好() -> 整32 { 字符串 s = "值=" + 5 如果 (字符串长度(s) > 0) { 返回 1 } 返回 0 })CN");
+        R"CN(函数 好() -> 整32 { 字符串 s = "值=" + 5; 如果 (字符串长度(s) > 0) { 返回 1; } 返回 0; })CN");
     EXPECT_EQ(r.errorCount, 0) << r.messages;
 }

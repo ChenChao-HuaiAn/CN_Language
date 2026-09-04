@@ -288,9 +288,9 @@ TEST(BootstrapCodegenTest, ModuleContractPresent) {
     EXPECT_NE(src.find("函数 代码生成(向量<字符串> IR行) -> 向量<字符串>"), std::string::npos);
     EXPECT_NE(src.find("函数 代码生成平台(向量<字符串> IR行, 字符串 目标) -> 向量<字符串>"),
               std::string::npos);
-    EXPECT_NE(src.find("导入 后端接口::后端接口"), std::string::npos);
-    EXPECT_NE(src.find("导入 后端工厂::创建后端"), std::string::npos);
-    EXPECT_NE(src.find("导入 IR遍历::IR遍历"), std::string::npos);
+    EXPECT_NE(src.find("导入 后端接口::后端接口;"), std::string::npos);
+    EXPECT_NE(src.find("导入 后端工厂::创建后端;"), std::string::npos);
+    EXPECT_NE(src.find("导入 IR遍历::IR遍历;"), std::string::npos);
     EXPECT_NE(src.find("创建后端(目标)"), std::string::npos);
     EXPECT_NE(src.find("IR遍历(IR行, 后端)"), std::string::npos);
 }

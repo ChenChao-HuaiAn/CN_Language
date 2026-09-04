@@ -50,12 +50,12 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(RangeForTest, ArrayIterationOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32[3] 数据 = { 1, 2, 3 }
-    整32 总和 = 0
+    整32[3] 数据 = { 1, 2, 3 };
+    整32 总和 = 0;
     遍历 数据 中 每个 x {
-        总和 += x
+        总和 += x;
     }
-    返回 总和
+    返回 总和;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -67,22 +67,22 @@ TEST(RangeForTest, ClassContainerOk) {
     auto r = analyzeSource(R"CN(
 类 迷你表 {
 私有:
-    整32[3] 数据
+    整32[3] 数据;
 公开:
     常量 函数 大小() -> 整64 {
-        返回 3
+        返回 3;
     }
     函数 元素(整64 位置) -> 整32 {
-        返回 数据[位置]
+        返回 数据[位置];
     }
 }
 函数 主() -> 整32 {
-    迷你表 表
-    整32 总和 = 0
+    迷你表 表;
+    整32 总和 = 0;
     遍历 表 中 每个 x {
-        总和 += x
+        总和 += x;
     }
-    返回 总和
+    返回 总和;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -93,15 +93,15 @@ TEST(RangeForTest, ClassContainerOk) {
 TEST(RangeForTest, MemberIterableOk) {
     auto r = analyzeSource(R"CN(
 结构体 班级 {
-    整32[3] 成绩
+    整32[3] 成绩;
 }
 函数 主() -> 整32 {
-    班级 班 = 班级{ 成绩 = { 1, 2, 3 } }
-    整32 总和 = 0
+    班级 班 = 班级{ 成绩 = { 1, 2, 3 } };
+    整32 总和 = 0;
     遍历 班.成绩 中 每个 成绩 {
-        总和 += 成绩
+        总和 += 成绩;
     }
-    返回 总和
+    返回 总和;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -112,17 +112,17 @@ TEST(RangeForTest, MemberIterableOk) {
 TEST(RangeForTest, NestedIterationOk) {
     auto r = analyzeSource(R"CN(
 结构体 班级 {
-    整32[2] 成绩
+    整32[2] 成绩;
 }
 函数 主() -> 整32 {
-    班级[2] 各班 = { 班级{ 成绩 = { 1, 2 } }, 班级{ 成绩 = { 3, 4 } } }
-    整32 总和 = 0
+    班级[2] 各班 = { 班级{ 成绩 = { 1, 2 } }, 班级{ 成绩 = { 3, 4 } } };
+    整32 总和 = 0;
     遍历 各班 中 每个 班 {
         遍历 班.成绩 中 每个 成绩 {
-            总和 += 成绩
+            总和 += 成绩;
         }
     }
-    返回 总和
+    返回 总和;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -133,11 +133,11 @@ TEST(RangeForTest, NestedIterationOk) {
 TEST(RangeForTest, NonContainerError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 5
+    整32 x = 5;
     遍历 x 中 每个 v {
-        打印(v)
+        打印(v);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -151,15 +151,15 @@ TEST(RangeForTest, MissingElementMethodError) {
 类 无元素表 {
 公开:
     常量 函数 大小() -> 整64 {
-        返回 3
+        返回 3;
     }
 }
 函数 主() -> 整32 {
-    无元素表 表
+    无元素表 表;
     遍历 表 中 每个 x {
-        打印(x)
+        打印(x);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -171,14 +171,14 @@ TEST(RangeForTest, MissingElementMethodError) {
 TEST(RangeForTest, NonNameIterableTemp) {
     auto r = analyzeSource(R"CN(
 函数 取数组() -> 整32[3] {
-    整32[3] 数据 = { 1, 2, 3 }
-    返回 数据
-}
+    整32[3] 数据 = { 1, 2, 3 };
+    返回 数据;
+};
 函数 主() -> 整32 {
     遍历 取数组() 中 每个 x {
-        打印(x)
+        打印(x);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     // P3-24：临时迭代对象编译通过（求值一次后再遍历）；数组按值返回运行期另有缺口（非本量表）
@@ -189,11 +189,11 @@ TEST(RangeForTest, NonNameIterableTemp) {
 TEST(RangeForTest, LoopVarScopedError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32[3] 数据 = { 1, 2, 3 }
+    整32[3] 数据 = { 1, 2, 3 };
     遍历 数据 中 每个 x {
-        打印(x)
+        打印(x);
     }
-    返回 x
+    返回 x;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -205,11 +205,11 @@ TEST(RangeForTest, LoopVarScopedError) {
 TEST(RangeForTest, BodyTypeErrorReported) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32[3] 数据 = { 1, 2, 3 }
+    整32[3] 数据 = { 1, 2, 3 };
     遍历 数据 中 每个 x {
-        字符串 错误 = x
+        字符串 错误 = x;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -220,16 +220,16 @@ TEST(RangeForTest, BodyTypeErrorReported) {
 TEST(RangeForTest, MultipleLoopsSameScopeOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32[2] 甲 = { 1, 2 }
-    整32[2] 乙 = { 3, 4 }
-    整32 总和 = 0
+    整32[2] 甲 = { 1, 2 };
+    整32[2] 乙 = { 3, 4 };
+    整32 总和 = 0;
     遍历 甲 中 每个 a {
-        总和 += a
+        总和 += a;
     }
     遍历 乙 中 每个 b {
-        总和 += b
+        总和 += b;
     }
-    返回 总和
+    返回 总和;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

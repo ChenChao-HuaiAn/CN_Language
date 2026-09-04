@@ -75,14 +75,14 @@ TEST(X64OopTest, ClassLayoutOffsets) {
     auto r = generateAsm(R"CN(
 类 动物 {
 公开:
-    整32 年龄
-    整64 体重
+    整32 年龄;
+    整64 体重;
     虚拟 函数 叫声() -> 字符串 {
-        返回 "..."
+        返回 "...";
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -98,20 +98,20 @@ TEST(X64OopTest, VtableSlotOverride) {
 类 动物 {
 公开:
     虚拟 函数 叫声() -> 字符串 {
-        返回 "..."
+        返回 "...";
     }
     虚拟 函数 年龄() -> 整32 {
-        返回 0
+        返回 0;
     }
 }
 类 狗 : 动物 {
 公开:
     重写 函数 叫声() -> 字符串 {
-        返回 "汪汪"
+        返回 "汪汪";
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -127,11 +127,11 @@ TEST(X64OopTest, ClassMethodSymbolInVtable) {
 类 形状 {
 公开:
     虚拟 函数 面积() -> 浮64 {
-        返回 0.0
+        返回 0.0;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -146,16 +146,16 @@ TEST(X64OopTest, StaticFieldDataAlloc) {
     auto r = generateAsm(R"CN(
 类 计数器 {
 公开:
-    静态 整32 总数 = 0
+    静态 整32 总数 = 0;
     函数 计数器() {
-        总数++
+        总数++;
     }
     静态 函数 获取总数() -> 整32 {
-        返回 总数
+        返回 总数;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -171,18 +171,18 @@ TEST(X64OopTest, ResultOptionalStructCodegen) {
     auto r = generateAsm(R"CN(
 函数 除(整32 a, 整32 b) -> 结果<整32, 整32> {
     如果 (b == 0) {
-        返回 错误(-1)
+        返回 错误(-1);
     }
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 主() -> 整32 {
-    结果<整32, 整32> r = 除(10, 2)
+    结果<整32, 整32> r = 除(10, 2);
     如果 (r.正常) {
-        打印(r.值)
+        打印(r.值);
     } 否则 {
-        打印(r.错误)
+        打印(r.错误);
     }
-    返回 0
+    返回 0;
 }
 )CN");
     // 结果/可选降级结构体由 IR 层生成 FieldAddr/CopyStruct；

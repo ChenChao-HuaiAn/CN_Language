@@ -73,9 +73,9 @@ int countOp(const cn_compiler::ir::IRModule& module, Opcode opcode) {
 TEST(IRPointerTest, AddressOfEmit) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 x = 42
-    整32* p = &x
-    返回 0
+    整32 x = 42;
+    整32* p = &x;
+    返回 0;
 }
 )CN");
     const auto* addr = findFirst(r.module, Opcode::AddrOf);
@@ -87,10 +87,10 @@ TEST(IRPointerTest, AddressOfEmit) {
 TEST(IRPointerTest, DerefLoadPtr) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 x = 42
-    整32* p = &x
-    整32 y = *p
-    返回 0
+    整32 x = 42;
+    整32* p = &x;
+    整32 y = *p;
+    返回 0;
 }
 )CN");
     ASSERT_NE(findFirst(r.module, Opcode::LoadPtr), nullptr);
@@ -100,10 +100,10 @@ TEST(IRPointerTest, DerefLoadPtr) {
 TEST(IRPointerTest, DerefStorePtr) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 x = 42
+    整32 x = 42;
     整32* p = &x;
     *p = 99;
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_NE(findFirst(r.module, Opcode::StorePtr), nullptr);
@@ -115,10 +115,10 @@ TEST(IRPointerTest, DerefStorePtr) {
 TEST(IRPointerTest, PointerAdd) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32[3] 数据 = { 1, 2, 3 }
-    整32* p = &数据[0]
-    整32* q = p + 1
-    返回 0
+    整32[3] 数据 = { 1, 2, 3 };
+    整32* p = &数据[0];
+    整32* q = p + 1;
+    返回 0;
 }
 )CN");
     // 指针加法：Mul（i64, 8）随后 Add（ptr）
@@ -132,10 +132,10 @@ TEST(IRPointerTest, PointerAdd) {
 TEST(IRPointerTest, PointerSub) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32[3] 数据 = { 1, 2, 3 }
-    整32* p = &数据[0]
-    整32* q = p - 1
-    返回 0
+    整32[3] 数据 = { 1, 2, 3 };
+    整32* p = &数据[0];
+    整32* q = p - 1;
+    返回 0;
 }
 )CN");
     // 指针减法：Sub 结果类型 ptr
@@ -156,10 +156,10 @@ TEST(IRPointerTest, PointerSub) {
 TEST(IRPointerTest, ArrayIndexEmit) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32[5] 数据 = { 1, 2, 3, 4, 5 }
-    整32 i = 2
-    整32 v = 数据[i]
-    返回 0
+    整32[5] 数据 = { 1, 2, 3, 4, 5 };
+    整32 i = 2;
+    整32 v = 数据[i];
+    返回 0;
 }
 )CN");
     ASSERT_NE(findFirst(r.module, Opcode::AddrOf), nullptr);
@@ -174,10 +174,10 @@ TEST(IRPointerTest, ArrayIndexEmit) {
 TEST(IRPointerTest, BoundsCheckEmit) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32[5] 数据 = { 1, 2, 3, 4, 5 }
-    整32 i = 2
-    整32 v = 数据[i]
-    返回 0
+    整32[5] 数据 = { 1, 2, 3, 4, 5 };
+    整32 i = 2;
+    整32 v = 数据[i];
+    返回 0;
 }
 )CN");
     // 越界检查生成：Lt（i<0）、Ge（i>=5）、Or 合并
@@ -203,8 +203,8 @@ TEST(IRPointerTest, BoundsCheckEmit) {
 TEST(IRPointerTest, InitListStore) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32[3] 数据 = { 1, 2, 3 }
-    返回 0
+    整32[3] 数据 = { 1, 2, 3 };
+    返回 0;
 }
 )CN");
     // 3个元素 -> 至少3条 StorePtr
@@ -215,8 +215,8 @@ TEST(IRPointerTest, InitListStore) {
 TEST(IRPointerTest, ArrayVarSlots) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32[5] 数据 = { 1, 2, 3, 4, 5 }
-    返回 0
+    整32[5] 数据 = { 1, 2, 3, 4, 5 };
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.module.functions.empty());
@@ -234,8 +234,8 @@ TEST(IRPointerTest, ArrayVarSlots) {
 TEST(IRPointerTest, NullLiteralConst) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32* p = 无
-    返回 0
+    整32* p = 无;
+    返回 0;
 }
 )CN");
     // p = 无：ConstInt(0, ptr) + Store（ptr槽）
@@ -251,9 +251,9 @@ TEST(IRPointerTest, NullLiteralConst) {
 TEST(IRPointerTest, ArrayDecayAddr) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32[3] 数据 = { 1, 2, 3 }
-    整32* p = 数据
-    返回 0
+    整32[3] 数据 = { 1, 2, 3 };
+    整32* p = 数据;
+    返回 0;
 }
 )CN");
     // 数组名退化生成 AddrOf

@@ -73,8 +73,8 @@ int countOp(const cn_compiler::ir::IRModule& module, Opcode opcode) {
 TEST(IRTypeTest, IntLiteralDefaultI32) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 x = 42
-    返回 x
+    整32 x = 42;
+    返回 x;
 }
 )CN");
     ASSERT_NE(findFirst(r.module, Opcode::ConstInt), nullptr);
@@ -85,8 +85,8 @@ TEST(IRTypeTest, IntLiteralDefaultI32) {
 TEST(IRTypeTest, IntLiteralSuffixL) {
     auto r = generateIR(R"CN(
 函数 主() -> 整64 {
-    整64 x = 42L
-    返回 x
+    整64 x = 42L;
+    返回 x;
 }
 )CN");
     ASSERT_NE(findFirst(r.module, Opcode::ConstInt), nullptr);
@@ -97,8 +97,8 @@ TEST(IRTypeTest, IntLiteralSuffixL) {
 TEST(IRTypeTest, IntLiteralSuffixLL) {
     auto r = generateIR(R"CN(
 函数 主() -> 整128 {
-    整128 x = 42LL
-    返回 x
+    整128 x = 42LL;
+    返回 x;
 }
 )CN");
     ASSERT_NE(findFirst(r.module, Opcode::ConstInt), nullptr);
@@ -109,10 +109,10 @@ TEST(IRTypeTest, IntLiteralSuffixLL) {
 TEST(IRTypeTest, IntLiteralUnsignedSuffix) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    正32 a = 1U
-    正64 b = 2UL
-    正128 c = 3ULL
-    返回 0
+    正32 a = 1U;
+    正64 b = 2UL;
+    正128 c = 3ULL;
+    返回 0;
 }
 )CN");
     EXPECT_EQ(countOp(r.module, Opcode::ConstInt), 4);
@@ -138,9 +138,9 @@ TEST(IRTypeTest, IntLiteralUnsignedSuffix) {
 TEST(IRTypeTest, FloatLiteralSuffixF) {
     auto r = generateIR(R"CN(
 函数 主() -> 浮32 {
-    浮32 a = 1.5f
-    浮64 b = 2.5
-    返回 a
+    浮32 a = 1.5f;
+    浮64 b = 2.5;
+    返回 a;
 }
 )CN");
     bool hasF32 = false, hasF64 = false;
@@ -164,9 +164,9 @@ TEST(IRTypeTest, FloatLiteralSuffixF) {
 TEST(IRTypeTest, CastIntWidenAssign) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 a = 100
-    整64 b = a
-    返回 0
+    整32 a = 100;
+    整64 b = a;
+    返回 0;
 }
 )CN");
     const auto* cast = findFirst(r.module, Opcode::Cast);
@@ -179,9 +179,9 @@ TEST(IRTypeTest, CastIntWidenAssign) {
 TEST(IRTypeTest, CastIntToFloat) {
     auto r = generateIR(R"CN(
 函数 主() -> 浮64 {
-    整32 a = 100
-    浮64 b = a
-    返回 b
+    整32 a = 100;
+    浮64 b = a;
+    返回 b;
 }
 )CN");
     const auto* cast = findFirst(r.module, Opcode::Cast);
@@ -193,9 +193,9 @@ TEST(IRTypeTest, CastIntToFloat) {
 TEST(IRTypeTest, CastFloat32To64) {
     auto r = generateIR(R"CN(
 函数 主() -> 浮64 {
-    浮32 a = 1.5f
-    浮64 b = a
-    返回 b
+    浮32 a = 1.5f;
+    浮64 b = a;
+    返回 b;
 }
 )CN");
     const auto* cast = findFirst(r.module, Opcode::Cast);
@@ -210,12 +210,12 @@ TEST(IRTypeTest, CastFloat32To64) {
 TEST(IRTypeTest, BitwiseOpsIR) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 a = 0b1100
-    整32 b = 0b1010
-    整32 c = a & b
-    整32 d = a | b
-    整32 e = a ^ b
-    返回 c
+    整32 a = 0b1100;
+    整32 b = 0b1010;
+    整32 c = a & b;
+    整32 d = a | b;
+    整32 e = a ^ b;
+    返回 c;
 }
 )CN");
     EXPECT_GE(countOp(r.module, Opcode::BitAnd), 1);
@@ -227,10 +227,10 @@ TEST(IRTypeTest, BitwiseOpsIR) {
 TEST(IRTypeTest, ShiftOpsIR) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 a = 12
-    整32 b = a << 2
-    整32 c = a >> 1
-    返回 b
+    整32 a = 12;
+    整32 b = a << 2;
+    整32 c = a >> 1;
+    返回 b;
 }
 )CN");
     EXPECT_GE(countOp(r.module, Opcode::Shl), 1);
@@ -241,9 +241,9 @@ TEST(IRTypeTest, ShiftOpsIR) {
 TEST(IRTypeTest, BitwiseNotIR) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整32 a = 12
-    整32 b = ~a
-    返回 b
+    整32 a = 12;
+    整32 b = ~a;
+    返回 b;
 }
 )CN");
     EXPECT_GE(countOp(r.module, Opcode::BitXor), 1);
@@ -253,11 +253,11 @@ TEST(IRTypeTest, BitwiseNotIR) {
 TEST(IRTypeTest, SmallIntTypeMapping) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整8 a = 10
-    整16 b = 100
-    正8 c = 200
-    正16 d = 300
-    返回 0
+    整8 a = 10;
+    整16 b = 100;
+    正8 c = 200;
+    正16 d = 300;
+    返回 0;
 }
 )CN");
     bool hasI8 = false, hasI16 = false, hasU8 = false, hasU16 = false;
@@ -285,11 +285,11 @@ TEST(IRTypeTest, SmallIntTypeMapping) {
 TEST(IRTypeTest, Int128AddSubIR) {
     auto r = generateIR(R"CN(
 函数 主() -> 整128 {
-    整128 a = 1000000LL
-    整128 b = 2000000LL
-    整128 c = a + b
-    整128 d = b - a
-    返回 c
+    整128 a = 1000000LL;
+    整128 b = 2000000LL;
+    整128 c = a + b;
+    整128 d = b - a;
+    返回 c;
 }
 )CN");
     // 查找 Add 指令（类型 i128）
@@ -310,19 +310,19 @@ TEST(IRTypeTest, Int128AddSubIR) {
 TEST(IRTypeTest, MapTypeCoverage) {
     auto r = generateIR(R"CN(
 函数 主() -> 整32 {
-    整8 a8 = 1
-    整16 a16 = 1
-    整32 a32 = 1
-    整64 a64 = 1L
-    整128 a128 = 1LL
-    正8 b8 = 1
-    正16 b16 = 1
-    正32 b32 = 1U
-    正64 b64 = 1UL
-    正128 b128 = 1ULL
-    浮32 c32 = 1.5f
-    浮64 c64 = 1.5
-    返回 0
+    整8 a8 = 1;
+    整16 a16 = 1;
+    整32 a32 = 1;
+    整64 a64 = 1L;
+    整128 a128 = 1LL;
+    正8 b8 = 1;
+    正16 b16 = 1;
+    正32 b32 = 1U;
+    正64 b64 = 1UL;
+    正128 b128 = 1ULL;
+    浮32 c32 = 1.5f;
+    浮64 c64 = 1.5;
+    返回 0;
 }
 )CN");
     EXPECT_EQ(r.diagnostics.getErrorCount(), 0);

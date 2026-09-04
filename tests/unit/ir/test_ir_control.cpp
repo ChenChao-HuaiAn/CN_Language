@@ -79,18 +79,18 @@ int countTerminated(IRModule& module, std::size_t funcIndex, const std::string& 
 TEST(IRSwitchTest, SwitchCFGStructure) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整数 v = 2
+    整数 v = 2;
     选择(v) {
         情况 1:
-            打印行("一")
-            中断
+            打印行("一");
+            中断;
         情况 2:
-            打印行("二")
-            中断
+            打印行("二");
+            中断;
         默认:
-            打印行("其他")
+            打印行("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -112,16 +112,16 @@ TEST(IRSwitchTest, SwitchCFGStructure) {
 TEST(IRSwitchTest, SwitchWithoutDefaultCFG) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
         情况 1:
-            打印行("一")
-            中断
+            打印行("一");
+            中断;
         情况 2:
-            打印行("二")
-            中断
+            打印行("二");
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -136,17 +136,17 @@ TEST(IRSwitchTest, SwitchWithoutDefaultCFG) {
 TEST(IRSwitchTest, FallthroughJumpsToNextBody) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整数 w = 1
+    整数 w = 1;
     选择(w) {
         情况 1:
-            打印行("fall1")
+            打印行("fall1");
         情况 2:
-            打印行("fall2")
-            中断
+            打印行("fall2");
+            中断;
         默认:
-            打印行("fall默认")
+            打印行("fall默认");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -164,15 +164,15 @@ TEST(IRSwitchTest, FallthroughJumpsToNextBody) {
 TEST(IRSwitchTest, BreakJumpsToExit) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整数 v = 1
+    整数 v = 1;
     选择(v) {
         情况 1:
-            打印行("一")
-            中断
+            打印行("一");
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -188,16 +188,16 @@ TEST(IRSwitchTest, BreakJumpsToExit) {
 TEST(IRSwitchTest, CharConditionIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符 c = 'B'
+    字符 c = 'B';
     选择(c) {
         情况 'A':
-            打印行("A")
-            中断
+            打印行("A");
+            中断;
         情况 'B':
-            打印行("B")
-            中断
+            打印行("B");
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -209,21 +209,21 @@ TEST(IRSwitchTest, CharConditionIR) {
 TEST(IRSwitchTest, NestedSwitchIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整数 v = 2
+    整数 v = 2;
     选择(v) {
         情况 2:
-            整数 n = 1
+            整数 n = 1;
             选择(n) {
                 情况 1:
-                    中断
+                    中断;
                 默认:
-                    中断
+                    中断;
             }
-            中断
+            中断;
         默认:
-            中断
+            中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());

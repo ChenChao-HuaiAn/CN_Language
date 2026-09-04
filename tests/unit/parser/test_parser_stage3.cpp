@@ -66,8 +66,8 @@ TEST(ParserStage3Test, ClassBasicDecl) {
     auto result = parseProgram(
         "类 动物 {\n"
         "公开:\n"
-        "    字符串 名称\n"
-        "    函数 叫声() -> 字符串 { 返回 \"...\" }\n"
+        "    字符串 名称;\n"
+        "    函数 叫声() -> 字符串 { 返回 \"...\"; }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -92,7 +92,7 @@ TEST(ParserStage3Test, ClassInheritance) {
     auto result = parseProgram(
         "类 狗 : 动物 {\n"
         "公开:\n"
-        "    重写 函数 叫声() -> 字符串 { 返回 \"汪汪\" }\n"
+        "    重写 函数 叫声() -> 字符串 { 返回 \"汪汪\"; }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -133,7 +133,7 @@ TEST(ParserStage3Test, ConstructorDestructor) {
     auto result = parseProgram(
         "类 狗 : 动物 {\n"
         "公开:\n"
-        "    函数 狗(字符串 名) { 名称 = 名 }\n"
+        "    函数 狗(字符串 名) { 名称 = 名; }\n"
         "    函数 ~狗() { }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -157,7 +157,7 @@ TEST(ParserStage3Test, VirtualOverrideAbstract) {
     auto result = parseProgram(
         "类 形状 {\n"
         "公开:\n"
-        "    虚拟 函数 面积() -> 浮64 { 返回 0.0 }\n"
+        "    虚拟 函数 面积() -> 浮64 { 返回 0.0; }\n"
         "    抽象 函数 周长() -> 浮64\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -196,7 +196,7 @@ TEST(ParserStage3Test, ClassImplementsInterface) {
     auto result = parseProgram(
         "类 圆形 : 可绘制 {\n"
         "公开:\n"
-        "    浮64 半径\n"
+        "    浮64 半径;\n"
         "    重写 函数 绘制() -> 空类型 { }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -215,8 +215,8 @@ TEST(ParserStage3Test, SelfAndSuperExpr) {
         "类 子类 : 父类 {\n"
         "公开:\n"
         "    重写 函数 方法() -> 空类型 {\n"
-        "        自身.字段 = 20\n"
-        "        父类.方法()\n"
+        "        自身.字段 = 20;\n"
+        "        父类.方法();\n"
         "    }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -254,7 +254,7 @@ TEST(ParserStage3Test, SelfAndSuperExpr) {
 TEST(ParserStage3Test, ResultTemplateReturnType) {
     auto result = parseProgram(
         "函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {\n"
-        "    返回 正常(a / b)\n"
+        "    返回 正常(a / b);\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 1u);
@@ -266,7 +266,7 @@ TEST(ParserStage3Test, ResultTemplateReturnType) {
 TEST(ParserStage3Test, OptionalTemplateReturnType) {
     auto result = parseProgram(
         "函数 查找(整32 键) -> 可选<字符串> {\n"
-        "    返回 某些(\"找到\")\n"
+        "    返回 某些(\"找到\");\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 1u);
@@ -278,8 +278,8 @@ TEST(ParserStage3Test, OptionalTemplateReturnType) {
 TEST(ParserStage3Test, BuiltinConstructorsAsCalls) {
     auto result = parseProgram(
         "函数 除法(整32 a, 整32 b) -> 结果<整32, 整32> {\n"
-        "    如果 b == 0 { 返回 错误(1) }\n"
-        "    返回 正常(a / b)\n"
+        "    如果 b == 0 { 返回 错误(1); }\n"
+        "    返回 正常(a / b);\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = result.program->declarations[0].get();
@@ -301,9 +301,9 @@ TEST(ParserStage3Test, BuiltinConstructorsAsCalls) {
 TEST(ParserStage3Test, ResultMemberAccess) {
     auto result = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    除法结果 = 除法(10, 2)\n"
-        "    如果 除法结果.正常 { 打印行(除法结果.值) } 否则 { 打印行(除法结果.错误) }\n"
-        "    返回 0\n"
+        "    除法结果 = 除法(10, 2);\n"
+        "    如果 除法结果.正常 { 打印行(除法结果.值); } 否则 { 打印行(除法结果.错误); }\n"
+        "    返回 0;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = result.program->declarations[0].get();
@@ -320,9 +320,9 @@ TEST(ParserStage3Test, ResultMemberAccess) {
 TEST(ParserStage3Test, OptionalMemberAccess) {
     auto result = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    查找结果 = 查找(42)\n"
-        "    如果 查找结果.有值 { 打印行(查找结果.值) }\n"
-        "    返回 0\n"
+        "    查找结果 = 查找(42);\n"
+        "    如果 查找结果.有值 { 打印行(查找结果.值); }\n"
+        "    返回 0;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = result.program->declarations[0].get();
@@ -342,7 +342,7 @@ TEST(ParserStage3Test, GenericClassDecl) {
         "泛型 <类型 T>\n"
         "类 向量 {\n"
         "公开:\n"
-        "    T* 数据\n"
+        "    T* 数据;\n"
         "    函数 推入(T 值) { }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
@@ -366,7 +366,7 @@ TEST(ParserStage3Test, GenericFunctionDecl) {
     auto result = parseProgram(
         "泛型 <类型 T>\n"
         "函数 交换(T& a, T& b) -> 空类型 {\n"
-        "    T 临时 = a\n"
+        "    T 临时 = a;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->generics.size(), 1u);
@@ -401,8 +401,8 @@ TEST(ParserStage3Test, GenericInterfaceConstraint) {
 TEST(ParserStage3Test, GenericInstantiationType) {
     auto result = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    向量<整32> 整数列表 = 向量<整32>(10)\n"
-        "    返回 0\n"
+        "    向量<整32> 整数列表 = 向量<整32>(10);\n"
+        "    返回 0;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = result.program->declarations[0].get();
@@ -419,7 +419,7 @@ TEST(ParserStage3Test, GenericInstantiationType) {
 
 // 路径导入（v2.0：:: 分隔）：导入 数学::平方根
 TEST(ParserStage3Test, ImportWholeModule) {
-    auto result = parseProgram("导入 数学::平方根\n导入 网络协议::HTTP::请求");
+    auto result = parseProgram("导入 数学::平方根;\n导入 网络协议::HTTP::请求;");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->imports.size(), 2u);
     ImportDecl* imp0 = result.program->imports[0].get();
@@ -441,7 +441,7 @@ TEST(ParserStage3Test, ImportWholeModule) {
 
 // 花括号导入（v2.0，替代 v1.0 从...导入）：导入 数学::{正弦, 余弦}
 TEST(ParserStage3Test, BraceImportNames) {
-    auto result = parseProgram("导入 数学::{正弦, 余弦}");
+    auto result = parseProgram("导入 数学::{正弦, 余弦};");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->imports.size(), 1u);
     ImportDecl* imp = result.program->imports[0].get();
@@ -457,7 +457,7 @@ TEST(ParserStage3Test, BraceImportNames) {
 
 // 花括号导入 + 逐项重命名：导入 核心::可选::{某些 作为 有值, 无}
 TEST(ParserStage3Test, BraceImportWithAlias) {
-    auto result = parseProgram("导入 核心::可选::{某些 作为 有值, 无}");
+    auto result = parseProgram("导入 核心::可选::{某些 作为 有值, 无};");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->imports.size(), 1u);
     ImportDecl* imp = result.program->imports[0].get();
@@ -473,7 +473,7 @@ TEST(ParserStage3Test, BraceImportWithAlias) {
 
 // 重命名导入：导入 核心::列表 作为 动态数组
 TEST(ParserStage3Test, RenameImport) {
-    auto result = parseProgram("导入 核心::列表 作为 动态数组");
+    auto result = parseProgram("导入 核心::列表 作为 动态数组;");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->imports.size(), 1u);
     ImportDecl* imp = result.program->imports[0].get();
@@ -485,7 +485,7 @@ TEST(ParserStage3Test, RenameImport) {
 
 // 通配符导入：导入 核心::集合::*
 TEST(ParserStage3Test, WildcardImport) {
-    auto result = parseProgram("导入 核心::集合::*");
+    auto result = parseProgram("导入 核心::集合::*;");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->imports.size(), 1u);
     ImportDecl* imp = result.program->imports[0].get();
@@ -516,8 +516,8 @@ TEST(ParserStage3Test, ModuleDecl) {
 // 模块级默认私有：无标签顶层声明 -> access == Private（v2.0 变更，原默认公开）
 TEST(ParserStage3Test, ModuleDefaultPrivate) {
     auto result = parseProgram(
-        "函数 默认函数() -> 整32 { 返回 0 }\n"
-        "结构体 默认结构体 { 整32 x }\n"
+        "函数 默认函数() -> 整32 { 返回 0; }\n"
+        "结构体 默认结构体 { 整32 x; }\n"
         "枚举 默认枚举 { A }\n"
         "类 默认类 { }\n"
         "接口 默认接口 { 虚拟 函数 方法() -> 整32 }\n");
@@ -537,12 +537,12 @@ TEST(ParserStage3Test, ModuleDefaultPrivate) {
 // 模块级标签生效：公开: 后 Public、私有: 后 Private、无标签默认 Private
 TEST(ParserStage3Test, ModuleAccessLabelsV2) {
     auto result = parseProgram(
-        "函数 首函数() -> 整32 { 返回 1 }\n"   // 无标签 -> 默认私有
+        "函数 首函数() -> 整32 { 返回 1; }\n"   // 无标签 -> 默认私有
         "公开:\n"
-        "函数 公开函数() -> 整32 { 返回 2 }\n"
-        "函数 公开函数2() -> 整32 { 返回 3 }\n"
+        "函数 公开函数() -> 整32 { 返回 2; }\n"
+        "函数 公开函数2() -> 整32 { 返回 3; }\n"
         "私有:\n"
-        "函数 私有函数() -> 整32 { 返回 4 }\n");
+        "函数 私有函数() -> 整32 { 返回 4; }\n");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 4u);
     EXPECT_EQ(result.program->declarations[0]->access, AccessSpecifier::Private);
@@ -556,9 +556,9 @@ TEST(ParserStage3Test, ClassMemberDefaultPrivate) {
     auto result = parseProgram(
         "类 账户 {\n"
         "    字符串 用户名\n"                 // 无标签 -> 默认私有
-        "    函数 内部函数() -> 整32 { 返回 0 }\n"
+        "    函数 内部函数() -> 整32 { 返回 0; }\n"
         "公开:\n"
-        "    函数 公开函数() -> 整32 { 返回 1 }\n"
+        "    函数 公开函数() -> 整32 { 返回 1; }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -578,9 +578,9 @@ TEST(ParserStage3Test, OperatorOverloadMethod) {
     auto result = parseProgram(
         "类 复数 {\n"
         "公开:\n"
-        "    浮64 实部\n"
-        "    函数 运算符+(复数 右) -> 复数 { 返回 复数{实部, 右.实部} }\n"
-        "    函数 运算符==(复数 右) -> 布尔 { 返回 真 }\n"
+        "    浮64 实部;\n"
+        "    函数 运算符+(复数 右) -> 复数 { 返回 复数{实部, 右.实部}; }\n"
+        "    函数 运算符==(复数 右) -> 布尔 { 返回 真; }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -606,8 +606,8 @@ TEST(ParserStage3Test, StaticMembers) {
     auto result = parseProgram(
         "类 计数器 {\n"
         "公开:\n"
-        "    静态 整32 总数 = 0\n"
-        "    静态 函数 获取总数() -> 整32 { 返回 总数 }\n"
+        "    静态 整32 总数 = 0;\n"
+        "    静态 函数 获取总数() -> 整32 { 返回 总数; }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -626,9 +626,9 @@ TEST(ParserStage3Test, ConstMethod) {
     auto result = parseProgram(
         "类 只读包装 {\n"
         "私有:\n"
-        "    整32 值\n"
+        "    整32 值;\n"
         "公开:\n"
-        "    常量 函数 获取() -> 整32 { 返回 值 }\n"
+        "    常量 函数 获取() -> 整32 { 返回 值; }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -645,9 +645,9 @@ TEST(ParserStage3Test, FriendFunction) {
     auto result = parseProgram(
         "类 账户 {\n"
         "私有:\n"
-        "    整64 余额\n"
+        "    整64 余额;\n"
         "公开:\n"
-        "    友元 函数 审计(账户& 账)\n"
+        "    友元 函数 审计(账户& 账);\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ClassDecl* cls = firstClass(result.program.get());
@@ -684,13 +684,13 @@ TEST(ParserStage3Test, ComprehensiveOOPClass) {
     auto result = parseProgram(
         "类 子类 : 父类 {\n"
         "私有:\n"
-        "    整32 内部ID\n"
+        "    整32 内部ID;\n"
         "公开:\n"
-        "    函数 子类(整32 id) { 内部ID = id }\n"
+        "    函数 子类(整32 id) { 内部ID = id; }\n"
         "    重写 函数 方法() -> 结果<整32, 整32> {\n"
-        "        自身.内部ID = 10\n"
-        "        父类.方法()\n"
-        "        返回 正常(内部ID)\n"
+        "        自身.内部ID = 10;\n"
+        "        父类.方法();\n"
+        "        返回 正常(内部ID);\n"
         "    }\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());

@@ -68,11 +68,11 @@ int findFunction(const IRModule& module, const std::string& name) {
 // 函数指针：赋值生成 FuncAddr，调用生成 CallIndirect（operand[0]=指针寄存器）
 TEST(IRFunctionTest, FuncPtrCallIndirect) {
     auto r = buildIR(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    回调 = 加
-    返回 回调(10, 20)
+    整32(*回调)(整32, 整32);
+    回调 = 加;
+    返回 回调(10, 20);
 }
 )CN");
     EXPECT_FALSE(r.diagnostics.hasErrors());
@@ -89,14 +89,14 @@ TEST(IRFunctionTest, FuncPtrCallIndirect) {
 // 函数指针作为参数传递：被调函数内间接调用
 TEST(IRFunctionTest, FuncPtrAsParamIndirect) {
     auto r = buildIR(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 执行(整32(*func)(整32, 整32), 整32 x, 整32 y) -> 整32 {
-    返回 func(x, y)
-}
+    返回 func(x, y);
+};
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    回调 = 加
-    返回 执行(回调, 10, 20)
+    整32(*回调)(整32, 整32);
+    回调 = 加;
+    返回 执行(回调, 10, 20);
 }
 )CN");
     EXPECT_FALSE(r.diagnostics.hasErrors());
@@ -120,7 +120,7 @@ TEST(IRFunctionTest, FuncPtrAsParamIndirect) {
 TEST(IRFunctionTest, PrototypeNoIRFunction) {
     auto r = buildIR(R"CN(
 函数 计算(整32 n) -> 整32
-函数 计算(整32 n) -> 整32 { 返回 n * 2 }
+函数 计算(整32 n) -> 整32 { 返回 n * 2; }
 )CN");
     EXPECT_FALSE(r.diagnostics.hasErrors());
     // 计算 只应出现一次（定义），原型不生成
@@ -144,8 +144,8 @@ TEST(IRFunctionTest, PrototypeOnlyNoFunction) {
 TEST(IRFunctionTest, RecursionDirectCall) {
     auto r = buildIR(R"CN(
 函数 阶乘(整32 n) -> 整32 {
-    如果 (n <= 1) { 返回 1 }
-    返回 n * 阶乘(n - 1)
+    如果 (n <= 1) { 返回 1; }
+    返回 n * 阶乘(n - 1);
 }
 )CN");
     EXPECT_FALSE(r.diagnostics.hasErrors());
@@ -170,9 +170,9 @@ TEST(IRFunctionTest, ForwardReferenceCall) {
     auto r = buildIR(R"CN(
 函数 计算(整32 n) -> 整32
 函数 使用() -> 整32 {
-    返回 计算(10)
+    返回 计算(10);
 }
-函数 计算(整32 n) -> 整32 { 返回 n * 2 }
+函数 计算(整32 n) -> 整32 { 返回 n * 2; }
 )CN");
     EXPECT_FALSE(r.diagnostics.hasErrors());
     int useIdx = findFunction(r.module, "使用");

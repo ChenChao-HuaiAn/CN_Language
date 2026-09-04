@@ -50,20 +50,20 @@ TEST(ErrorPropagateTest, ResultPropagateOk) {
     auto r = analyzeSource(R"CN(
 函数 安全除法(整32 a, 整32 b) -> 结果<整32, 整32> {
     如果 b == 0 {
-        返回 错误(1)
+        返回 错误(1);
     }
-    返回 正常(a / b)
+    返回 正常(a / b);
 }
 函数 外层(整32 a, 整32 b) -> 结果<整32, 整32> {
-    整32 商 = 安全除法(a, b)?
-    返回 正常(商)
+    整32 商 = 安全除法(a, b)?;
+    返回 正常(商);
 }
 函数 主() -> 整32 {
-    结果<整32, 整32> r = 外层(10, 2)
+    结果<整32, 整32> r = 外层(10, 2);
     如果 r.正常 {
-        返回 0
+        返回 0;
     }
-    返回 1
+    返回 1;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -75,20 +75,20 @@ TEST(ErrorPropagateTest, OptionalPropagateOk) {
     auto r = analyzeSource(R"CN(
 函数 查找(整32 编号) -> 可选<整32> {
     如果 编号 == 0 {
-        返回 无
+        返回 无;
     }
-    返回 某些(编号)
+    返回 某些(编号);
 }
 函数 外层(整32 编号) -> 可选<整32> {
-    整32 v = 查找(编号)?
-    返回 某些(v + 1)
+    整32 v = 查找(编号)?;
+    返回 某些(v + 1);
 }
 函数 主() -> 整32 {
-    可选<整32> r = 外层(1)
+    可选<整32> r = 外层(1);
     如果 r.有值 {
-        返回 r.值
+        返回 r.值;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -99,18 +99,18 @@ TEST(ErrorPropagateTest, OptionalPropagateOk) {
 TEST(ErrorPropagateTest, PropagateInArgumentAndBinaryOk) {
     auto r = analyzeSource(R"CN(
 函数 读数() -> 结果<整32, 整32> {
-    返回 正常(10)
+    返回 正常(10);
 }
 函数 外层() -> 结果<整32, 整32> {
-    打印("值: ", 读数()? + 1)
-    返回 正常(0)
+    打印("值: ", 读数()? + 1);
+    返回 正常(0);
 }
 函数 主() -> 整32 {
-    结果<整32, 整32> r = 外层()
+    结果<整32, 整32> r = 外层();
     如果 r.正常 {
-        返回 0
+        返回 0;
     }
-    返回 1
+    返回 1;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -121,12 +121,12 @@ TEST(ErrorPropagateTest, PropagateInArgumentAndBinaryOk) {
 TEST(ErrorPropagateTest, NonResultOperandError) {
     auto r = analyzeSource(R"CN(
 函数 外层() -> 结果<整32, 整32> {
-    整32 x = 5
-    整32 y = x?
-    返回 正常(y)
+    整32 x = 5;
+    整32 y = x?;
+    返回 正常(y);
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -138,11 +138,11 @@ TEST(ErrorPropagateTest, NonResultOperandError) {
 TEST(ErrorPropagateTest, NonResultFunctionError) {
     auto r = analyzeSource(R"CN(
 函数 读数() -> 结果<整32, 整32> {
-    返回 正常(10)
+    返回 正常(10);
 }
 函数 主() -> 整32 {
-    整32 x = 读数()?
-    返回 x
+    整32 x = 读数()?;
+    返回 x;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -154,14 +154,14 @@ TEST(ErrorPropagateTest, NonResultFunctionError) {
 TEST(ErrorPropagateTest, ValueTypeMismatchError) {
     auto r = analyzeSource(R"CN(
 函数 读数() -> 结果<整32, 整32> {
-    返回 正常(10)
+    返回 正常(10);
 }
 函数 外层() -> 结果<整64, 整32> {
-    整64 x = 读数()?
-    返回 正常(x)
+    整64 x = 读数()?;
+    返回 正常(x);
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -173,14 +173,14 @@ TEST(ErrorPropagateTest, ValueTypeMismatchError) {
 TEST(ErrorPropagateTest, ErrorTypeMismatchError) {
     auto r = analyzeSource(R"CN(
 函数 读数() -> 结果<整32, 字符串> {
-    返回 错误("失败")
+    返回 错误("失败");
 }
 函数 外层() -> 结果<整32, 整32> {
-    整32 x = 读数()?
-    返回 正常(x)
+    整32 x = 读数()?;
+    返回 正常(x);
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -192,18 +192,18 @@ TEST(ErrorPropagateTest, ErrorTypeMismatchError) {
 TEST(ErrorPropagateTest, ErrorTypeConvertibleOk) {
     auto r = analyzeSource(R"CN(
 函数 读数() -> 结果<整32, 整32> {
-    返回 错误(1)
+    返回 错误(1);
 }
 函数 外层() -> 结果<整32, 整64> {
-    整32 x = 读数()?
-    返回 正常(x)
+    整32 x = 读数()?;
+    返回 正常(x);
 }
 函数 主() -> 整32 {
-    结果<整32, 整64> r = 外层()
+    结果<整32, 整64> r = 外层();
     如果 r.正常 {
-        返回 0
+        返回 0;
     }
-    返回 1
+    返回 1;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

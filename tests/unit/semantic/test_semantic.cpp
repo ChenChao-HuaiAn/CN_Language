@@ -53,8 +53,8 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(SemanticTest, VarDeclAndReference) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 x = 10
-    返回 x
+    变量 x = 10;
+    返回 x;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -65,9 +65,9 @@ TEST(SemanticTest, VarDeclAndReference) {
 TEST(SemanticTest, VarDeclExplicitType) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 10
-    浮64 y = 3.14
-    返回 x
+    整32 x = 10;
+    浮64 y = 3.14;
+    返回 x;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -78,12 +78,12 @@ TEST(SemanticTest, VarDeclExplicitType) {
 TEST(SemanticTest, ScopeShadowing) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 x = 1
+    变量 x = 1;
     如果 (真) {
-        变量 x = 2
-        返回 x
+        变量 x = 2;
+        返回 x;
     }
-    返回 x
+    返回 x;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -95,9 +95,9 @@ TEST(SemanticTest, ScopeExitVarInvisible) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     如果 (真) {
-        变量 x = 2
+        变量 x = 2;
     }
-    返回 x
+    返回 x;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -110,9 +110,9 @@ TEST(SemanticTest, ScopeExitVarInvisible) {
 TEST(SemanticTest, ArithmeticTypeInference) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 a = 1 + 2
-    变量 b = 3.5 * 2
-    返回 a
+    变量 a = 1 + 2;
+    变量 b = 3.5 * 2;
+    返回 a;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -123,8 +123,8 @@ TEST(SemanticTest, ArithmeticTypeInference) {
 TEST(SemanticTest, ModuloRequiresInteger) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 x = 7 % 2
-    返回 x
+    变量 x = 7 % 2;
+    返回 x;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -134,7 +134,7 @@ TEST(SemanticTest, ModuloRequiresInteger) {
 TEST(SemanticTest, ComparisonReturnsBool) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 布尔 {
-    返回 1 < 2
+    返回 1 < 2;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -144,7 +144,7 @@ TEST(SemanticTest, ComparisonReturnsBool) {
 TEST(SemanticTest, LogicalOpBoolOperands) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 布尔 {
-    返回 真 && 假
+    返回 真 && 假;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -154,7 +154,7 @@ TEST(SemanticTest, LogicalOpBoolOperands) {
 TEST(SemanticTest, UnaryMinusNumeric) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    返回 -5
+    返回 -5;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -164,7 +164,7 @@ TEST(SemanticTest, UnaryMinusNumeric) {
 TEST(SemanticTest, LogicalNotRequiresBool) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 布尔 {
-    返回 !1
+    返回 !1;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -176,9 +176,9 @@ TEST(SemanticTest, ConditionMustBeBool) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     如果 (1) {
-        返回 0
+        返回 0;
     }
-    返回 1
+    返回 1;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -189,9 +189,9 @@ TEST(SemanticTest, ConditionMustBeBool) {
 TEST(SemanticTest, AssignmentTypeMismatch) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 x = 1
-    x = "字符串"
-    返回 x
+    变量 x = 1;
+    x = "字符串";
+    返回 x;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -202,8 +202,8 @@ TEST(SemanticTest, AssignmentTypeMismatch) {
 TEST(SemanticTest, InitTypeMismatch) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = "字符串"
-    返回 x
+    整32 x = "字符串";
+    返回 x;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -214,8 +214,8 @@ TEST(SemanticTest, InitTypeMismatch) {
 TEST(SemanticTest, IntegerWidening) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整64 {
-    整64 x = 10
-    返回 x
+    整64 x = 10;
+    返回 x;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -227,10 +227,10 @@ TEST(SemanticTest, IntegerWidening) {
 TEST(SemanticTest, CallArgsMatch) {
     auto r = analyzeSource(R"CN(
 函数 加(整32 a, 整32 b) -> 整32 {
-    返回 a + b
+    返回 a + b;
 }
 函数 主() -> 整32 {
-    返回 加(1, 2)
+    返回 加(1, 2);
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -240,10 +240,10 @@ TEST(SemanticTest, CallArgsMatch) {
 TEST(SemanticTest, CallArgCountMismatch) {
     auto r = analyzeSource(R"CN(
 函数 加(整32 a, 整32 b) -> 整32 {
-    返回 a + b
+    返回 a + b;
 }
 函数 主() -> 整32 {
-    返回 加(1)
+    返回 加(1);
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -254,10 +254,10 @@ TEST(SemanticTest, CallArgCountMismatch) {
 TEST(SemanticTest, CallArgTypeMismatch) {
     auto r = analyzeSource(R"CN(
 函数 加(整32 a, 整32 b) -> 整32 {
-    返回 a + b
+    返回 a + b;
 }
 函数 主() -> 整32 {
-    返回 加(1, "字符串")
+    返回 加(1, "字符串");
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -268,10 +268,10 @@ TEST(SemanticTest, CallArgTypeMismatch) {
 TEST(SemanticTest, ForwardCall) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    返回 平方(3)
+    返回 平方(3);
 }
 函数 平方(整32 x) -> 整32 {
-    返回 x * x
+    返回 x * x;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -283,7 +283,7 @@ TEST(SemanticTest, ForwardCall) {
 TEST(SemanticTest, UndeclaredVariable) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    返回 不存在
+    返回 不存在;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -294,7 +294,7 @@ TEST(SemanticTest, UndeclaredVariable) {
 TEST(SemanticTest, UndeclaredFunction) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    返回 不存在的函数(1)
+    返回 不存在的函数(1);
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -305,9 +305,9 @@ TEST(SemanticTest, UndeclaredFunction) {
 TEST(SemanticTest, DuplicateVariable) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 x = 1
-    变量 x = 2
-    返回 x
+    变量 x = 1;
+    变量 x = 2;
+    返回 x;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -318,10 +318,10 @@ TEST(SemanticTest, DuplicateVariable) {
 TEST(SemanticTest, DuplicateFunction) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 函数 主() -> 整32 {
-    返回 1
+    返回 1;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -332,8 +332,8 @@ TEST(SemanticTest, DuplicateFunction) {
 TEST(SemanticTest, BreakOutsideLoop) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    中断
-    返回 0
+    中断;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -344,8 +344,8 @@ TEST(SemanticTest, BreakOutsideLoop) {
 TEST(SemanticTest, ContinueOutsideLoop) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    继续
-    返回 0
+    继续;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -357,15 +357,15 @@ TEST(SemanticTest, BreakContinueInLoop) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     当 (真) {
-        中断
+        中断;
     }
     循环 (变量 i = 0; i < 10; i = i + 1) {
         如果 (i == 3) {
-            继续
+            继续;
         }
-        中断
+        中断;
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -377,7 +377,7 @@ TEST(SemanticTest, BreakContinueInLoop) {
 TEST(SemanticTest, CorrectReturnValue) {
     auto r = analyzeSource(R"CN(
 函数 加(整32 a, 整32 b) -> 整32 {
-    返回 a + b
+    返回 a + b;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -387,7 +387,7 @@ TEST(SemanticTest, CorrectReturnValue) {
 TEST(SemanticTest, ReturnTypeMismatch) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    返回 "字符串"
+    返回 "字符串";
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -398,7 +398,7 @@ TEST(SemanticTest, ReturnTypeMismatch) {
 TEST(SemanticTest, MissingReturnStatement) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 x = 1
+    变量 x = 1;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -409,7 +409,7 @@ TEST(SemanticTest, MissingReturnStatement) {
 TEST(SemanticTest, VoidFunctionReturnsValue) {
     auto r = analyzeSource(R"CN(
 函数 无返回值() {
-    返回 1
+    返回 1;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -420,7 +420,7 @@ TEST(SemanticTest, VoidFunctionReturnsValue) {
 TEST(SemanticTest, VoidFunctionNoReturn) {
     auto r = analyzeSource(R"CN(
 函数 无返回值() {
-    返回
+    返回;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -433,18 +433,18 @@ TEST(SemanticTest, MixedCode) {
     auto r = analyzeSource(R"CN(
 函数 阶乘(整32 n) -> 整32 {
     如果 (n <= 1) {
-        返回 1
+        返回 1;
     }
-    返回 n * 阶乘(n - 1)
+    返回 n * 阶乘(n - 1);
 }
 函数 主() -> 整32 {
-    变量 答案 = 阶乘(5)
+    变量 答案 = 阶乘(5);
     循环 (变量 i = 0; i < 10; i = i + 1) {
         如果 (i == 5) {
-            中断
+            中断;
         }
     }
-    返回 答案
+    返回 答案;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -456,9 +456,9 @@ TEST(SemanticTest, RecursiveFunction) {
     auto r = analyzeSource(R"CN(
 函数 斐波那契(整32 n) -> 整32 {
     如果 (n < 2) {
-        返回 n
+        返回 n;
     }
-    返回 斐波那契(n - 1) + 斐波那契(n - 2)
+    返回 斐波那契(n - 1) + 斐波那契(n - 2);
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -468,10 +468,10 @@ TEST(SemanticTest, RecursiveFunction) {
 TEST(SemanticTest, IncrementDecrement) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    变量 i = 0
-    i++
-    变量 x = i--
-    返回 x
+    变量 i = 0;
+    i++;
+    变量 x = i--;
+    返回 x;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

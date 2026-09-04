@@ -62,8 +62,8 @@ Expr* varInit(const Program* program, std::size_t index = 0) {
 TEST(ParserTernaryTest, BasicTernary) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    变量 t = x > 0 ? \"正\" : \"负\"\n"
-        "    返回 0\n"
+        "    变量 t = x > 0 ? \"正\" : \"负\";\n"
+        "    返回 0;\n"
         "}\n");
     ASSERT_EQ(r.program->declarations.size(), 1u);
     Expr* init = varInit(r.program.get());
@@ -82,8 +82,8 @@ TEST(ParserTernaryTest, BasicTernary) {
 TEST(ParserTernaryTest, NumericBranchAndAssignPriority) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    变量 n = x > 5 ? 100 : 200\n"
-        "    返回 0\n"
+        "    变量 n = x > 5 ? 100 : 200;\n"
+        "    返回 0;\n"
         "}\n");
     Expr* init = varInit(r.program.get());
     ASSERT_EQ(init->getType(), NodeType::TernaryExpr);
@@ -96,8 +96,8 @@ TEST(ParserTernaryTest, NumericBranchAndAssignPriority) {
 TEST(ParserTernaryTest, NestedTernary) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    变量 t = x > 0 ? (x > 5 ? \"大\" : \"小\") : \"非正\"\n"
-        "    返回 0\n"
+        "    变量 t = x > 0 ? (x > 5 ? \"大\" : \"小\") : \"非正\";\n"
+        "    返回 0;\n"
         "}\n");
     Expr* init = varInit(r.program.get());
     ASSERT_EQ(init->getType(), NodeType::TernaryExpr);
@@ -110,8 +110,8 @@ TEST(ParserTernaryTest, NestedTernary) {
 TEST(ParserTernaryTest, RightAssociative) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    变量 t = 假 ? \"一\" : 假 ? \"二\" : \"三\"\n"
-        "    返回 0\n"
+        "    变量 t = 假 ? \"一\" : 假 ? \"二\" : \"三\";\n"
+        "    返回 0;\n"
         "}\n");
     Expr* init = varInit(r.program.get());
     ASSERT_EQ(init->getType(), NodeType::TernaryExpr);
@@ -125,8 +125,8 @@ TEST(ParserTernaryTest, RightAssociative) {
 TEST(ParserTernaryTest, PriorityBelowLogicalOr) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    变量 t = x > 0 || y ? \"a\" : \"b\"\n"
-        "    返回 0\n"
+        "    变量 t = x > 0 || y ? \"a\" : \"b\";\n"
+        "    返回 0;\n"
         "}\n");
     Expr* init = varInit(r.program.get());
     ASSERT_EQ(init->getType(), NodeType::TernaryExpr);
@@ -141,8 +141,8 @@ TEST(ParserTernaryTest, PriorityBelowLogicalOr) {
 TEST(ParserTernaryTest, TernaryAsArg) {
     ParseResult r = parseProgram(
         "函数 主() -> 整32 {\n"
-        "    打印(x > 0 ? \"正\" : \"负\")\n"
-        "    返回 0\n"
+        "    打印(x > 0 ? \"正\" : \"负\");\n"
+        "    返回 0;\n"
         "}\n");
     const FunctionDecl* fn = r.program->declarations[0].get();
     Stmt* stmt = fn->body->statements[0].get();

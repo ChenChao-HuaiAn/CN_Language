@@ -116,10 +116,10 @@ TEST(PointerSemanticTest, PointerStrict) {
 TEST(PointerSemanticTest, PointerFullChain) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32 x = 42\n"
-        "  整32* p = &x\n"
-        "  整32 y = *p\n"
-        "  返回 0\n"
+        "  整32 x = 42;\n"
+        "  整32* p = &x;\n"
+        "  整32 y = *p;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -128,13 +128,13 @@ TEST(PointerSemanticTest, PointerFullChain) {
 TEST(PointerSemanticTest, PointerArith) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32[3] 数据 = { 1, 2, 3 }\n"
+        "  整32[3] 数据 = { 1, 2, 3 };\n"
         "  整32* p = &数据[0];\n"
         "  整32* q = p + 1;\n"
         "  整32* r = p - 1;\n"
         "  p++;\n"
         "  p--;\n"
-        "  返回 0\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -143,11 +143,11 @@ TEST(PointerSemanticTest, PointerArith) {
 TEST(PointerSemanticTest, ArrayIndex) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32[5] 数据 = { 1, 2, 3, 4, 5 }\n"
-        "  整32 i = 2\n"
-        "  整32 v = 数据[i]\n"
-        "  数据[0] = 100\n"
-        "  返回 0\n"
+        "  整32[5] 数据 = { 1, 2, 3, 4, 5 };\n"
+        "  整32 i = 2;\n"
+        "  整32 v = 数据[i];\n"
+        "  数据[0] = 100;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -156,8 +156,8 @@ TEST(PointerSemanticTest, ArrayIndex) {
 TEST(PointerSemanticTest, InitListTypeMismatch) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32[3] 数据 = { 1, 2.5, 3 }\n"
-        "  返回 0\n"
+        "  整32[3] 数据 = { 1, 2.5, 3 };\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -166,8 +166,8 @@ TEST(PointerSemanticTest, InitListTypeMismatch) {
 TEST(PointerSemanticTest, InitListTooLong) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32[2] 数据 = { 1, 2, 3 }\n"
-        "  返回 0\n"
+        "  整32[2] 数据 = { 1, 2, 3 };\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -176,11 +176,11 @@ TEST(PointerSemanticTest, InitListTooLong) {
 TEST(PointerSemanticTest, NullPointer) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32* p = 无\n"
+        "  整32* p = 无;\n"
         "  如果 (p == 无) {\n"
-        "    整32 x = 1\n"
+        "    整32 x = 1;\n"
         "  }\n"
-        "  返回 0\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -189,10 +189,10 @@ TEST(PointerSemanticTest, NullPointer) {
 TEST(PointerSemanticTest, VoidPtrAssign) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32* p = 无\n"
-        "  空类型* vp = p\n"
-        "  整32* q = vp\n"
-        "  返回 0\n"
+        "  整32* p = 无;\n"
+        "  空类型* vp = p;\n"
+        "  整32* q = vp;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -201,9 +201,9 @@ TEST(PointerSemanticTest, VoidPtrAssign) {
 TEST(PointerSemanticTest, ArrayDecaySemantic) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32[5] 数据 = { 1, 2, 3, 4, 5 }\n"
-        "  整32* p = 数据\n"
-        "  返回 0\n"
+        "  整32[5] 数据 = { 1, 2, 3, 4, 5 };\n"
+        "  整32* p = 数据;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
@@ -212,9 +212,9 @@ TEST(PointerSemanticTest, ArrayDecaySemantic) {
 TEST(PointerSemanticTest, DerefNonPointer) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32 x = 42\n"
-        "  整32 y = *x\n"
-        "  返回 0\n"
+        "  整32 x = 42;\n"
+        "  整32 y = *x;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -223,10 +223,10 @@ TEST(PointerSemanticTest, DerefNonPointer) {
 TEST(PointerSemanticTest, AddressOfNonLvalue) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32 x = 1\n"
-        "  整32 y = 2\n"
-        "  整32* p = &(x + y)\n"
-        "  返回 0\n"
+        "  整32 x = 1;\n"
+        "  整32 y = 2;\n"
+        "  整32* p = &(x + y);\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -235,10 +235,10 @@ TEST(PointerSemanticTest, AddressOfNonLvalue) {
 TEST(PointerSemanticTest, PointerIntCompare) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32* p = 无\n"
+        "  整32* p = 无;\n"
         "  如果 p == 1 {\n"
         "  }\n"
-        "  返回 0\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -247,9 +247,9 @@ TEST(PointerSemanticTest, PointerIntCompare) {
 TEST(PointerSemanticTest, IndexNonArray) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32 x = 5\n"
-        "  整32 y = x[0]\n"
-        "  返回 0\n"
+        "  整32 x = 5;\n"
+        "  整32 y = x[0];\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -258,10 +258,10 @@ TEST(PointerSemanticTest, IndexNonArray) {
 TEST(PointerSemanticTest, IndexNonInteger) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32[3] 数据 = { 1, 2, 3 }\n"
-        "  浮64 f = 1.5\n"
-        "  整32 y = 数据[f]\n"
-        "  返回 0\n"
+        "  整32[3] 数据 = { 1, 2, 3 };\n"
+        "  浮64 f = 1.5;\n"
+        "  整32 y = 数据[f];\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
 }
@@ -270,9 +270,9 @@ TEST(PointerSemanticTest, IndexNonInteger) {
 TEST(PointerSemanticTest, ArrowOnNonStructPointer) {
     SemanticResult r = analyzeSource(
         "函数 主() -> 整32 {\n"
-        "  整32* p = 无\n"
-        "  整32 y = p->字段\n"
-        "  返回 0\n"
+        "  整32* p = 无;\n"
+        "  整32 y = p->字段;\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("不是结构体"), std::string::npos);
@@ -282,12 +282,12 @@ TEST(PointerSemanticTest, ArrowOnNonStructPointer) {
 TEST(PointerSemanticTest, PointerParamReturn) {
     SemanticResult r = analyzeSource(
         "函数 取首元素(整32* p) -> 整32 {\n"
-        "  返回 *p\n"
+        "  返回 *p;\n"
         "}\n"
         "函数 主() -> 整32 {\n"
-        "  整32[3] 数据 = { 1, 2, 3 }\n"
-        "  整32 v = 取首元素(&数据[0])\n"
-        "  返回 0\n"
+        "  整32[3] 数据 = { 1, 2, 3 };\n"
+        "  整32 v = 取首元素(&数据[0]);\n"
+        "  返回 0;\n"
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }

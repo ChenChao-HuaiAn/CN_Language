@@ -66,8 +66,8 @@ const cn_compiler::ir::IRFunction* findFunction(const IRModule& module,
 TEST(IRI128Test, I128VarDoubleSlot) {
     const std::string src = R"(
 函数 主() -> 整32 {
-    整128 大 = 9223372036854775808
-    返回 0
+    整128 大 = 9223372036854775808;
+    返回 0;
 }
 )";
     IrResult r = generateIr(src);
@@ -89,10 +89,10 @@ TEST(IRI128Test, I128VarDoubleSlot) {
 TEST(IRI128Test, I128MulIR) {
     const std::string src = R"(
 函数 主() -> 整32 {
-    整128 a = 170141183460469231731687303715884105727
-    整128 b = 2
-    整128 c = a * b
-    返回 0
+    整128 a = 170141183460469231731687303715884105727;
+    整128 b = 2;
+    整128 c = a * b;
+    返回 0;
 }
 )";
     IrResult r = generateIr(src);
@@ -119,10 +119,10 @@ TEST(IRI128Test, I128MulIR) {
 TEST(IRI128Test, I128DivIR) {
     const std::string src = R"(
 函数 主() -> 整32 {
-    整128 a = 170141183460469231731687303715884105727
-    整128 b = 3
-    整128 c = a / b
-    返回 0
+    整128 a = 170141183460469231731687303715884105727;
+    整128 b = 3;
+    整128 c = a / b;
+    返回 0;
 }
 )";
     IrResult r = generateIr(src);
@@ -147,10 +147,10 @@ TEST(IRI128Test, I128DivIR) {
 TEST(IRI128Test, U128DivIR) {
     const std::string src = R"(
 函数 主() -> 整32 {
-    正128 a = 340282366920938463463374607431768211455ULL
-    正128 b = 2
-    正128 c = a / b
-    返回 0
+    正128 a = 340282366920938463463374607431768211455ULL;
+    正128 b = 2;
+    正128 c = a / b;
+    返回 0;
 }
 )";
     IrResult r = generateIr(src);

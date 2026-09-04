@@ -92,7 +92,7 @@ Expr* returnExpr(Program* program) {
 
 // 无参无返回类型函数
 TEST(ParserTest, FunctionNoParamNoReturn) {
-    auto result = parseProgram("函数 主() { 打印行(\"你好\") }");
+    auto result = parseProgram("函数 主() { 打印行(\"你好\"); }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
     ASSERT_NE(func, nullptr);
@@ -105,7 +105,7 @@ TEST(ParserTest, FunctionNoParamNoReturn) {
 
 // 有参有返回类型函数
 TEST(ParserTest, FunctionWithParamsAndReturn) {
-    auto result = parseProgram("函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }");
+    auto result = parseProgram("函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
     ASSERT_NE(func, nullptr);
@@ -145,7 +145,7 @@ TEST(ParserTest, FunctionVoidReturn) {
 
 // 冒号后置参数（兼容写法：a: 整32）
 TEST(ParserTest, FunctionColonParams) {
-    auto result = parseProgram("函数 加(a: 整32, b: 整32) -> 整32 { 返回 a + b }");
+    auto result = parseProgram("函数 加(a: 整32, b: 整32) -> 整32 { 返回 a + b; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
     ASSERT_NE(func, nullptr);
@@ -156,7 +156,7 @@ TEST(ParserTest, FunctionColonParams) {
 
 // 多函数顶层声明
 TEST(ParserTest, MultipleFunctions) {
-    auto result = parseProgram("函数 甲() { } 函数 乙() -> 整32 { 返回 1 }");
+    auto result = parseProgram("函数 甲() { } 函数 乙() -> 整32 { 返回 1; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 2u);
     EXPECT_EQ(result.program->declarations[0]->name, "甲");
@@ -167,7 +167,7 @@ TEST(ParserTest, MultipleFunctions) {
 
 // 变量声明（类型推断）
 TEST(ParserTest, VarDeclInferred) {
-    auto result = parseProgram("函数 测试() { 变量 x = 10 }");
+    auto result = parseProgram("函数 测试() { 变量 x = 10; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -182,7 +182,7 @@ TEST(ParserTest, VarDeclInferred) {
 
 // 变量声明（显式类型前置）
 TEST(ParserTest, VarDeclExplicitType) {
-    auto result = parseProgram("函数 测试() { 整32 y = 20 }");
+    auto result = parseProgram("函数 测试() { 整32 y = 20; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -195,7 +195,7 @@ TEST(ParserTest, VarDeclExplicitType) {
 
 // 变量声明（无初始值）
 TEST(ParserTest, VarDeclNoInit) {
-    auto result = parseProgram("函数 测试() { 变量 x }");
+    auto result = parseProgram("函数 测试() { 变量 x; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -207,7 +207,7 @@ TEST(ParserTest, VarDeclNoInit) {
 
 // 常量声明（常量关键字，词法层为标识符文本）
 TEST(ParserTest, ConstDecl) {
-    auto result = parseProgram("函数 测试() { 常量 PI = 3.14 }");
+    auto result = parseProgram("函数 测试() { 常量 PI = 3.14; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -221,7 +221,7 @@ TEST(ParserTest, ConstDecl) {
 
 // 冒号后置类型声明（变量 x: 整32 = 10，兼容写法）
 TEST(ParserTest, VarDeclColonType) {
-    auto result = parseProgram("函数 测试() { 变量 x: 整32 = 10 }");
+    auto result = parseProgram("函数 测试() { 变量 x: 整32 = 10; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -233,7 +233,7 @@ TEST(ParserTest, VarDeclColonType) {
 
 // 多变量声明
 TEST(ParserTest, MultipleVarDecls) {
-    auto result = parseProgram("函数 测试() { 变量 x = 1 整32 y = 2 字符串 s = \"a\" }");
+    auto result = parseProgram("函数 测试() { 变量 x = 1; 整32 y = 2; 字符串 s = \"a\"; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     EXPECT_EQ(firstFunction(result.program.get())->body->statements.size(), 3u);
     EXPECT_EQ(firstStmt(result.program.get(), 0)->getType(), NodeType::VarDecl);
@@ -245,7 +245,7 @@ TEST(ParserTest, MultipleVarDecls) {
 
 // 优先级：乘法高于加法 a + b * c
 TEST(ParserTest, ExprMultiplicativePrecedence) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 a + b * c }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 a + b * c; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -259,7 +259,7 @@ TEST(ParserTest, ExprMultiplicativePrecedence) {
 
 // 括号改变优先级 (a + b) * c
 TEST(ParserTest, ExprParenPrecedence) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 (a + b) * c }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 (a + b) * c; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -272,7 +272,7 @@ TEST(ParserTest, ExprParenPrecedence) {
 
 // 逻辑与优先级高于逻辑或 a || b && c
 TEST(ParserTest, ExprLogicalPrecedence) {
-    auto result = parseProgram("函数 测试() -> 布尔 { 返回 a || b && c }");
+    auto result = parseProgram("函数 测试() -> 布尔 { 返回 a || b && c; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -285,7 +285,7 @@ TEST(ParserTest, ExprLogicalPrecedence) {
 
 // 比较优先级高于逻辑与 a && b == c
 TEST(ParserTest, ExprComparisonPrecedence) {
-    auto result = parseProgram("函数 测试() -> 布尔 { 返回 a && b == c }");
+    auto result = parseProgram("函数 测试() -> 布尔 { 返回 a && b == c; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -298,7 +298,7 @@ TEST(ParserTest, ExprComparisonPrecedence) {
 
 // 左结合性：a - b - c => (a - b) - c
 TEST(ParserTest, ExprLeftAssoc) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 a - b - c }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 a - b - c; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -312,7 +312,7 @@ TEST(ParserTest, ExprLeftAssoc) {
 
 // 右结合性：a = b = c => a = (b = c)
 TEST(ParserTest, ExprAssignRightAssoc) {
-    auto result = parseProgram("函数 测试() { 变量 a = 1 变量 b = 1 变量 c = 1 a = b = c }");
+    auto result = parseProgram("函数 测试() { 变量 a = 1; 变量 b = 1; 变量 c = 1; a = b = c; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = firstExpr(result.program.get());
     // firstStmt是变量声明，取第3条语句（赋值表达式语句）
@@ -330,7 +330,7 @@ TEST(ParserTest, ExprAssignRightAssoc) {
 
 // 一元前缀：-x !x ~x
 TEST(ParserTest, ExprUnaryPrefix) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 -x + !b }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 -x + !b; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -371,7 +371,7 @@ TEST(ParserTest, ExprPrefixIncDec) {
 
 // 后缀自增 i++
 TEST(ParserTest, ExprPostfixIncDec) {
-    auto result = parseProgram("函数 测试() { 变量 i = 0 i++ }");
+    auto result = parseProgram("函数 测试() { 变量 i = 0; i++; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get(), 1);
     ASSERT_NE(stmt, nullptr);
@@ -386,7 +386,7 @@ TEST(ParserTest, ExprPostfixIncDec) {
 
 // 函数调用
 TEST(ParserTest, ExprCall) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 加(10, 20) }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 加(10, 20); }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -401,7 +401,7 @@ TEST(ParserTest, ExprCall) {
 
 // 成员访问 obj.member
 TEST(ParserTest, ExprMemberAccess) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 对象.成员 }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 对象.成员; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -415,7 +415,7 @@ TEST(ParserTest, ExprMemberAccess) {
 // 箭头成员访问 obj->member 已废除（v2.1，2026-09-03）：硬错误+迁移提示，
 // 恢复路径按 . 折叠 MemberExpr（isDerefAccess=false）
 TEST(ParserTest, ExprArrowAccessRejected) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 指针->成员 }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 指针->成员; }");
     EXPECT_TRUE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     if (expr != nullptr) {  // 恢复路径仍折叠出 MemberExpr（防级联报错）
@@ -429,7 +429,7 @@ TEST(ParserTest, ExprArrowAccessRejected) {
 // 混合表达式：含多种运算符与括号
 TEST(ParserTest, ExprMixed) {
     auto result = parseProgram(
-        "函数 测试() -> 整32 { 返回 (a + b) * 2 - c / d % e }");
+        "函数 测试() -> 整32 { 返回 (a + b) * 2 - c / d % e; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -451,7 +451,7 @@ TEST(ParserTest, ExprMixed) {
 
 // 如果语句（无否则）
 TEST(ParserTest, IfStmtBasic) {
-    auto result = parseProgram("函数 测试() { 如果 (x > 0) { 返回 1 } }");
+    auto result = parseProgram("函数 测试() { 如果 (x > 0) { 返回 1; } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -467,7 +467,7 @@ TEST(ParserTest, IfStmtBasic) {
 // 如果-否则语句
 TEST(ParserTest, IfElseStmt) {
     auto result = parseProgram(
-        "函数 测试() { 如果 (x > 0) { 返回 1 } 否则 { 返回 2 } }");
+        "函数 测试() { 如果 (x > 0) { 返回 1; } 否则 { 返回 2; } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     IfStmt* ifStmt = static_cast<IfStmt*>(firstStmt(result.program.get()));
     ASSERT_NE(ifStmt, nullptr);
@@ -478,8 +478,8 @@ TEST(ParserTest, IfElseStmt) {
 // 如果-否则如果-否则链
 TEST(ParserTest, IfElseIfChain) {
     auto result = parseProgram(
-        "函数 测试() { 如果 (x > 0) { 返回 1 } "
-        "否则 如果 (x < 0) { 返回 -1 } 否则 { 返回 0 } }");
+        "函数 测试() { 如果 (x > 0) { 返回 1; } "
+        "否则 如果 (x < 0) { 返回 -1; } 否则 { 返回 0; } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     IfStmt* ifStmt = static_cast<IfStmt*>(firstStmt(result.program.get()));
     ASSERT_NE(ifStmt, nullptr);
@@ -494,7 +494,7 @@ TEST(ParserTest, IfElseIfChain) {
 // 当循环
 TEST(ParserTest, WhileStmt) {
     auto result = parseProgram(
-        "函数 测试() { 当 (i < 10) { i++ } }");
+        "函数 测试() { 当 (i < 10) { i++; } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -508,7 +508,7 @@ TEST(ParserTest, WhileStmt) {
 // 循环语句（for风格）
 TEST(ParserTest, ForStmt) {
     auto result = parseProgram(
-        "函数 测试() { 循环 (整32 i = 0; i < 10; i++) { 打印(i) } }");
+        "函数 测试() { 循环 (整32 i = 0; i < 10; i++) { 打印(i); } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -524,7 +524,7 @@ TEST(ParserTest, ForStmt) {
 
 // 循环语句（无限循环）
 TEST(ParserTest, InfiniteLoop) {
-    auto result = parseProgram("函数 测试() { 循环 { 中断 } }");
+    auto result = parseProgram("函数 测试() { 循环 { 中断; } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Stmt* stmt = firstStmt(result.program.get());
     ASSERT_NE(stmt, nullptr);
@@ -538,7 +538,7 @@ TEST(ParserTest, InfiniteLoop) {
 
 // 返回语句（带值/不带值）
 TEST(ParserTest, ReturnStmt) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 42 } 函数 空() { 返回 }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 42; } 函数 空() { 返回; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 2u);
     // 第一个函数：返回带值
@@ -556,7 +556,7 @@ TEST(ParserTest, ReturnStmt) {
 
 // 中断语句
 TEST(ParserTest, BreakStmt) {
-    auto result = parseProgram("函数 测试() { 循环 { 中断 } }");
+    auto result = parseProgram("函数 测试() { 循环 { 中断; } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ForStmt* forStmt = static_cast<ForStmt*>(firstStmt(result.program.get()));
     ASSERT_NE(forStmt, nullptr);
@@ -567,7 +567,7 @@ TEST(ParserTest, BreakStmt) {
 // 继续语句
 TEST(ParserTest, ContinueStmt) {
     auto result = parseProgram(
-        "函数 测试() { 循环 (整32 i = 0; i < 10; i++) { 如果 (i % 2 == 0) { 继续 } } }");
+        "函数 测试() { 循环 (整32 i = 0; i < 10; i++) { 如果 (i % 2 == 0) { 继续; } } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ForStmt* forStmt = static_cast<ForStmt*>(firstStmt(result.program.get()));
     ASSERT_NE(forStmt, nullptr);
@@ -582,7 +582,7 @@ TEST(ParserTest, ContinueStmt) {
 // 嵌套代码块
 TEST(ParserTest, NestedBlock) {
     auto result = parseProgram(
-        "函数 测试() { 如果 (x) { { 变量 y = 1 } } }");
+        "函数 测试() { 如果 (x) { { 变量 y = 1; } } }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     IfStmt* ifStmt = static_cast<IfStmt*>(firstStmt(result.program.get()));
     ASSERT_NE(ifStmt, nullptr);
@@ -617,7 +617,7 @@ TEST(ParserTest, ErrorMissingRightParen) {
 
 // 缺少右花括号
 TEST(ParserTest, ErrorMissingRightBrace) {
-    auto result = parseProgram("函数 测试() { 变量 x = 1");
+    auto result = parseProgram("函数 测试() { 变量 x = 1;");
     EXPECT_TRUE(result.diagnostics.hasErrors());
     // 到达EOF也应有函数
     FunctionDecl* func = firstFunction(result.program.get());
@@ -627,7 +627,7 @@ TEST(ParserTest, ErrorMissingRightBrace) {
 
 // 函数名缺失
 TEST(ParserTest, ErrorMissingFunctionName) {
-    auto result = parseProgram("函数 () -> 整32 { 返回 1 }");
+    auto result = parseProgram("函数 () -> 整32 { 返回 1; };");
     EXPECT_TRUE(result.diagnostics.hasErrors());
 }
 
@@ -662,9 +662,9 @@ TEST(ParserTest, ErrorRecoveryContinue) {
 TEST(ParserTest, MixedFactorial) {
     auto result = parseProgram(
         "函数 阶乘(整32 n) -> 整32 {"
-        "  如果 (n <= 1) { 返回 1 }"
+        "  如果 (n <= 1) { 返回 1; }"
         "  返回 n * 阶乘(n - 1)"
-        "}");
+        ";}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
     ASSERT_NE(func, nullptr);
@@ -680,11 +680,11 @@ TEST(ParserTest, MixedSumLoop) {
     auto result = parseProgram(
         "函数 求和(整32 n) -> 整32 {"
         "  整32 总和 = 0"
-        "  循环 (整32 i = 1; i <= n; i++) {"
+        ";  循环 (整32 i = 1; i <= n; i++) {"
         "    总和 += i"
-        "  }"
+        ";  }"
         "  返回 总和"
-        "}");
+        ";}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
     ASSERT_NE(func, nullptr);
@@ -700,11 +700,11 @@ TEST(ParserTest, MixedSumLoop) {
 // 完整示例：主函数调用其他函数
 TEST(ParserTest, MixedMain) {
     auto result = parseProgram(
-        "函数 打印问候() { 打印行(\"你好\") }"
+        "函数 打印问候() { 打印行(\"你好\"); }"
         "函数 主() -> 整32 {"
         "  打印问候()"
-        "  返回 0"
-        "}");
+        ";  返回 0"
+        ";}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 2u);
     // 第二个函数主
@@ -721,9 +721,9 @@ TEST(ParserTest, MixedTypeSyntax) {
     auto result = parseProgram(
         "函数 测试(a: 整32, 整32 b) -> 整32 {"
         "  变量 x: 整32 = a"
-        "  整32 y = b"
-        "  返回 x + y"
-        "}");
+        ";  整32 y = b"
+        ";  返回 x + y"
+        ";}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
     ASSERT_NE(func, nullptr);
@@ -736,7 +736,7 @@ TEST(ParserTest, MixedTypeSyntax) {
 
 // 布尔字面量
 TEST(ParserTest, BoolLiteralExpr) {
-    auto result = parseProgram("函数 测试() -> 布尔 { 返回 真 && 假 }");
+    auto result = parseProgram("函数 测试() -> 布尔 { 返回 真 && 假; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
     ASSERT_NE(expr, nullptr);
@@ -751,7 +751,7 @@ TEST(ParserTest, BoolLiteralExpr) {
 // 整数/浮点字面量值
 TEST(ParserTest, LiteralValues) {
     auto result = parseProgram(
-        "函数 测试() -> 浮64 { 返回 3.14 } 函数 整() -> 整32 { 返回 42 }");
+        "函数 测试() -> 浮64 { 返回 3.14; } 函数 整() -> 整32 { 返回 42; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(result.program->declarations.size(), 2u);
     // 第一个函数返回浮点
@@ -776,7 +776,7 @@ TEST(ParserTest, LiteralValues) {
 
 // 无分号单语句：变量声明无分号合法
 TEST(ParserTest, StmtNoSemicolonVarDecl) {
-    auto result = parseProgram("函数 测试() { 变量 a = 1 }");
+    auto result = parseProgram("函数 测试() { 变量 a = 1; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(firstFunction(result.program.get())->body->statements.size(), 1u);
     EXPECT_EQ(firstStmt(result.program.get())->getType(), NodeType::VarDecl);
@@ -784,14 +784,14 @@ TEST(ParserTest, StmtNoSemicolonVarDecl) {
 
 // 无分号单语句：返回无分号合法
 TEST(ParserTest, StmtNoSemicolonReturn) {
-    auto result = parseProgram("函数 测试() -> 整32 { 返回 1 }");
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 1; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(firstStmt(result.program.get())->getType(), NodeType::ReturnStmt);
 }
 
 // 无分号单语句：表达式语句（函数调用）无分号合法
 TEST(ParserTest, StmtNoSemicolonExpr) {
-    auto result = parseProgram("函数 测试() { 打印行(\"你好\") }");
+    auto result = parseProgram("函数 测试() { 打印行(\"你好\"); }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(firstStmt(result.program.get())->getType(), NodeType::ExprStmt);
 }
@@ -802,14 +802,14 @@ TEST(ParserTest, StmtSemicolonOptional) {
     ASSERT_FALSE(withSemi.diagnostics.hasErrors());
     EXPECT_EQ(firstFunction(withSemi.program.get())->body->statements.size(), 2u);
 
-    auto withoutSemi = parseProgram("函数 测试() { 变量 a = 1 变量 b = 2 }");
+    auto withoutSemi = parseProgram("函数 测试() { 变量 a = 1; 变量 b = 2; }");
     ASSERT_FALSE(withoutSemi.diagnostics.hasErrors());
     EXPECT_EQ(firstFunction(withoutSemi.program.get())->body->statements.size(), 2u);
 }
 
 // 无分号关键字边界：变量 x = 1 整32 y = 2 解析为两条声明（整32 触发新声明）
 TEST(ParserTest, StmtKeywordBoundaryTwoDecls) {
-    auto result = parseProgram("函数 测试() { 变量 x = 1 整32 y = 2 }");
+    auto result = parseProgram("函数 测试() { 变量 x = 1; 整32 y = 2; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
     ASSERT_EQ(func->body->statements.size(), 2u);
@@ -829,7 +829,7 @@ TEST(ParserTest, StmtContinuationCallMultiLine) {
     auto result = parseProgram(
         "函数 测试() -> 整32 {\n"
         "  返回 加(10,\n"
-        "            20)\n"
+        "            20);\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
@@ -845,7 +845,7 @@ TEST(ParserTest, StmtContinuationIndexMultiLine) {
         "函数 测试() -> 整32 {\n"
         "  返回 数组[\n"
         "      1 + 2\n"
-        "  ]\n"
+        "  ];\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
@@ -858,7 +858,7 @@ TEST(ParserTest, StmtContinuationParenMultiLine) {
     auto result = parseProgram(
         "函数 测试() -> 整32 {\n"
         "  返回 (1 +\n"
-        "          2) * 3\n"
+        "          2) * 3;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
@@ -876,8 +876,8 @@ TEST(ParserTest, StmtContinuationOperatorEndOfLine) {
     auto result = parseProgram(
         "函数 测试() -> 整32 {\n"
         "  变量 s = 1 +\n"
-        "          2\n"
-        "  返回 s\n"
+        "          2;\n"
+        "  返回 s;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
@@ -898,7 +898,7 @@ TEST(ParserTest, StmtContinuationLeadingOperator) {
     auto result = parseProgram(
         "函数 测试() -> 整32 {\n"
         "  返回 a\n"
-        "         - b\n"
+        "         - b;\n"
         "}");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     Expr* expr = returnExpr(result.program.get());
@@ -974,4 +974,62 @@ TEST(ParserTest, StmtForHeaderSemicolonsOk) {
 TEST(ParserTest, StmtForHeaderMissingSemicolonIllegal) {
     auto result = parseProgram("函数 测试() { 循环(整32 j = 0; j < 10) { } }");
     EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// ---- 规则1（2026-09-04 plans/015 方案B 反转）：语句必须 ';' 终结 ----
+
+// 缺分号变量声明报错（原「无分号合法」断言随规范反转废止，见 plans/015）
+TEST(ParserTest, StmtMissingSemicolonVarDeclIllegal) {
+    auto result = parseProgram("函数 测试() { 变量 a = 1 }");
+    ASSERT_TRUE(result.diagnostics.hasErrors());
+    // 诊断信息含「语句缺少分号」
+    bool found = false;
+    for (const auto& d : result.diagnostics.getAll()) {
+        if (d.message.find("语句缺少分号") != std::string::npos) found = true;
+    }
+    EXPECT_TRUE(found);
+}
+
+// 缺分号返回语句报错（} 前语句同样须终结）
+TEST(ParserTest, StmtMissingSemicolonReturnIllegal) {
+    auto result = parseProgram("函数 测试() -> 整32 { 返回 1 }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 缺分号表达式语句报错（两条相邻语句间无分号——原静默粘连家族现显式诊断）
+TEST(ParserTest, StmtMissingSemicolonExprIllegal) {
+    auto result = parseProgram("函数 测试() { 打印行(\"你好\") 返回 0; }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 顶层常量声明缺分号报错（plans/015 裁决：常量 T = 2; 强制）
+TEST(ParserTest, TopLevelConstMissingSemicolonIllegal) {
+    auto result = parseProgram("常量 上限 = 10 函数 测试() -> 整32 { 返回 上限; }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 顶层静态声明缺分号报错（plans/015 裁决：静态 类型 名 = 值; 强制）
+TEST(ParserTest, TopLevelStaticMissingSemicolonIllegal) {
+    auto result = parseProgram("静态 整32 计数 = 0 函数 测试() -> 整32 { 返回 计数; }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 导入语句缺分号报错（plans/015 裁决：导入 路径; 强制，Rust use 同款）
+TEST(ParserTest, ImportMissingSemicolonIllegal) {
+    auto result = parseProgram("导入 容器::向量 函数 测试() -> 整32 { 返回 0; }");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
+}
+
+// 带分号全形态合法（正测锚定：分号终结 + } 自终结不加分号）
+TEST(ParserTest, StmtSemicolonTerminatedAllLegal) {
+    auto result = parseProgram(
+        "常量 上限 = 10;\n"
+        "导入 容器::向量;\n"
+        "函数 测试() -> 整32 {\n"
+        "  变量 a = 1;\n"
+        "  如果 (a > 0) { a = 2; }\n"
+        "  返回 a;\n"
+        "}");
+    ASSERT_FALSE(result.diagnostics.hasErrors());
+    EXPECT_EQ(firstFunction(result.program.get())->body->statements.size(), 3u);
 }

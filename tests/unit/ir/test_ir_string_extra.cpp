@@ -70,9 +70,9 @@ const cn_compiler::ir::IRInstruction* findCall(IRModule& module, std::size_t fun
 TEST(IRStringExtraTest, SubMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 字符串子串("Hello", 1, 2)
-    字符串释放(s)
-    返回 0
+    字符串 s = 字符串子串("Hello", 1, 2);
+    字符串释放(s);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -86,9 +86,9 @@ TEST(IRStringExtraTest, SubMapping) {
 TEST(IRStringExtraTest, CmpMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    整64 c = 字符串字典序("a", "b")
-    打印(c)
-    返回 0
+    整64 c = 字符串字典序("a", "b");
+    打印(c);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -102,15 +102,15 @@ TEST(IRStringExtraTest, CmpMapping) {
 TEST(IRStringExtraTest, TransformMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 a = 字符串大写("hi")
-    字符串 b = 字符串小写("HI")
-    字符串 c = 字符串修剪("  x  ")
-    字符串 d = 字符串反转("abc")
-    字符串释放(a)
-    字符串释放(b)
-    字符串释放(c)
-    字符串释放(d)
-    返回 0
+    字符串 a = 字符串大写("hi");
+    字符串 b = 字符串小写("HI");
+    字符串 c = 字符串修剪("  x  ");
+    字符串 d = 字符串反转("abc");
+    字符串释放(a);
+    字符串释放(b);
+    字符串释放(c);
+    字符串释放(d);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -124,10 +124,10 @@ TEST(IRStringExtraTest, TransformMapping) {
 TEST(IRStringExtraTest, PredicateMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    如果 (字符串前缀("hello", "he")) { 打印行("前") }
-    如果 (字符串后缀("hello", "lo")) { 打印行("后") }
-    如果 (字符串包含("hello", "ell")) { 打印行("含") }
-    返回 0
+    如果 (字符串前缀("hello", "he")) { 打印行("前"); }
+    如果 (字符串后缀("hello", "lo")) { 打印行("后"); }
+    如果 (字符串包含("hello", "ell")) { 打印行("含"); }
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -143,13 +143,13 @@ TEST(IRStringExtraTest, PredicateMapping) {
 TEST(IRStringExtraTest, ConvertMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 i = 整数转字符串(42)
-    字符串 f = 浮点转字符串(3.5)
-    字符串 c = 字符转字符串('A')
-    字符串释放(i)
-    字符串释放(f)
-    字符串释放(c)
-    返回 0
+    字符串 i = 整数转字符串(42);
+    字符串 f = 浮点转字符串(3.5);
+    字符串 c = 字符转字符串('A');
+    字符串释放(i);
+    字符串释放(f);
+    字符串释放(c);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -165,9 +165,9 @@ TEST(IRStringExtraTest, ConvertMapping) {
 TEST(IRStringExtraTest, FreeMapping) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 i = 整数转字符串(42)
-    字符串释放(i)
-    返回 0
+    字符串 i = 整数转字符串(42);
+    字符串释放(i);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -178,9 +178,9 @@ TEST(IRStringExtraTest, FreeMapping) {
 TEST(IRStringExtraTest, FreeNoResultReg) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串 s = 字符串复制("x")
-    字符串释放(s)
-    返回 0
+    字符串 s = 字符串复制("x");
+    字符串释放(s);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());
@@ -193,11 +193,11 @@ TEST(IRStringExtraTest, FreeNoResultReg) {
 TEST(IRStringExtraTest, StringArray) {
     auto r = buildIR(R"CN(
 函数 主() -> 整32 {
-    字符串[3] 列表
-    列表[0] = "一"
-    列表[1] = "二"
-    打印行(列表[1])
-    返回 0
+    字符串[3] 列表;
+    列表[0] = "一";
+    列表[1] = "二";
+    打印行(列表[1]);
+    返回 0;
 }
 )CN");
     ASSERT_FALSE(r.diagnostics.hasErrors());

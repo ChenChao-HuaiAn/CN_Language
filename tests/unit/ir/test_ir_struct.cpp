@@ -69,11 +69,11 @@ bool moduleHasOpcode(const IRModule& module, const std::string& funcName, Opcode
 // 结构体字段读取：p.x 生成 FieldAddr（偏移4）+ LoadPtr
 TEST(IrStructTest, FieldLoadGeneratesFieldAddr) {
     IrResult r = generateIr(
-        "结构体 点 { 整32 x 整32 y }\n"
+        "结构体 点 { 整32 x; 整32 y; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p = 点{ x = 1, y = 2 }\n"
-        "  整32 a = p.y\n"
-        "  返回 a\n"
+        "  点 p = 点{ x = 1, y = 2 };\n"
+        "  整32 a = p.y;\n"
+        "  返回 a;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     EXPECT_TRUE(moduleHasOpcode(r.module, "主", Opcode::FieldAddr));
@@ -86,8 +86,8 @@ TEST(IrStructTest, EnumConstInt) {
     IrResult r = generateIr(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
         "函数 主() -> 整32 {\n"
-        "  整32 v = 颜色.蓝\n"
-        "  返回 v\n"
+        "  整32 v = 颜色.蓝;\n"
+        "  返回 v;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     // 主函数中应有 ConstInt（枚举值以常量加载）
@@ -108,8 +108,8 @@ TEST(IrStructTest, EnumNegativeConst) {
     IrResult r = generateIr(
         "枚举 方向 { 上 = -1, 中, 下 }\n"
         "函数 主() -> 整32 {\n"
-        "  整32 v = 方向.上\n"
-        "  返回 v\n"
+        "  整32 v = 方向.上;\n"
+        "  返回 v;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     bool foundMinusOne = false;
@@ -130,12 +130,12 @@ TEST(IrStructTest, EnumNegativeConst) {
 //   （含空指针检查语义在 codegen）
 TEST(IrStructTest, ArrowFieldAccess) {
     IrResult r = generateIr(
-        "结构体 点 { 整32 x 整32 y }\n"
+        "结构体 点 { 整32 x; 整32 y; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p = 点{ x = 1, y = 2 }\n"
-        "  点* ptr = &p\n"
-        "  整32 a = ptr.y\n"
-        "  返回 a\n"
+        "  点 p = 点{ x = 1, y = 2 };\n"
+        "  点* ptr = &p;\n"
+        "  整32 a = ptr.y;\n"
+        "  返回 a;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     EXPECT_TRUE(moduleHasOpcode(r.module, "主", Opcode::FieldAddr));
@@ -145,11 +145,11 @@ TEST(IrStructTest, ArrowFieldAccess) {
 // 结构体字段写：p.x = 10 生成 FieldAddr + StorePtr
 TEST(IrStructTest, FieldStore) {
     IrResult r = generateIr(
-        "结构体 点 { 整32 x 整32 y }\n"
+        "结构体 点 { 整32 x; 整32 y; }\n"
         "函数 主() -> 整32 {\n"
-        "  点 p = 点{ x = 1, y = 2 }\n"
-        "  p.x = 10\n"
-        "  返回 p.x\n"
+        "  点 p = 点{ x = 1, y = 2 };\n"
+        "  p.x = 10;\n"
+        "  返回 p.x;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     EXPECT_TRUE(moduleHasOpcode(r.module, "主", Opcode::FieldAddr));
@@ -161,16 +161,16 @@ TEST(IrStructTest, EnumInSwitch) {
     IrResult r = generateIr(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
         "函数 主() -> 整32 {\n"
-        "  颜色 c = 颜色.绿\n"
+        "  颜色 c = 颜色.绿;\n"
         "  选择 (c) {\n"
         "    情况 颜色.红:\n"
-        "      返回 1\n"
+        "      返回 1;\n"
         "    情况 颜色.绿:\n"
-        "      返回 2\n"
+        "      返回 2;\n"
         "    默认:\n"
-        "      返回 0\n"
+        "      返回 0;\n"
         "  }\n"
-        "  返回 0\n"
+        "  返回 0;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     // 选择语句展开为级联比较：应有 Eq 比较指令
@@ -183,12 +183,12 @@ TEST(IrStructTest, EnumInSwitch) {
 //   原实现把数组字段当值 LoadPtr 读取（垃圾指针 -> 空指针错误/访问冲突崩溃）
 TEST(IrStructTest, ArrayFieldAccessGeneratesBoundsCheck) {
     IrResult r = generateIr(
-        "结构体 坐标 { 整32 x\n 整32 y }\n"
-        "结构体 形状 { 坐标[4] 顶点 }\n"
+        "结构体 坐标 { 整32 x;\n 整32 y; }\n"
+        "结构体 形状 { 坐标[4] 顶点; }\n"
         "函数 主() -> 整32 {\n"
-        "  形状 方形\n"
-        "  方形.顶点[1].x = 10\n"
-        "  返回 方形.顶点[1].x\n"
+        "  形状 方形;\n"
+        "  方形.顶点[1].x = 10;\n"
+        "  返回 方形.顶点[1].x;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     // 数组字段访问应含：FieldAddr（字段地址）+ Add（元素步进）+ __cn_runtime_error（越界检查）
@@ -201,13 +201,13 @@ TEST(IrStructTest, ArrayFieldAccessGeneratesBoundsCheck) {
 //   元素步进，原实现 objSrcType 推导失败（形状* 未剥指针）返回占位0
 TEST(IrStructTest, ArrowArrayFieldAccessWorks) {
     IrResult r = generateIr(
-        "结构体 坐标 { 整32 x\n 整32 y }\n"
-        "结构体 形状 { 坐标[4] 顶点 }\n"
+        "结构体 坐标 { 整32 x;\n 整32 y; }\n"
+        "结构体 形状 { 坐标[4] 顶点; }\n"
         "函数 主() -> 整32 {\n"
-        "  形状 方形\n"
-        "  方形.顶点[1].x = 10\n"
-        "  形状* p = &方形\n"
-        "  返回 p.顶点[1].x\n"
+        "  形状 方形;\n"
+        "  方形.顶点[1].x = 10;\n"
+        "  形状* p = &方形;\n"
+        "  返回 p.顶点[1].x;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     // 经指针数组字段：FieldAddr + Add（步进）+ LoadPtr（读取）
@@ -219,11 +219,11 @@ TEST(IrStructTest, ArrowArrayFieldAccessWorks) {
 // BUG10c：数组字段越界应插桩运行时错误调用（错误码2）
 TEST(IrStructTest, ArrayFieldOutOfBoundsEmitsError) {
     IrResult r = generateIr(
-        "结构体 坐标 { 整32 x\n 整32 y }\n"
-        "结构体 形状 { 坐标[4] 顶点 }\n"
+        "结构体 坐标 { 整32 x;\n 整32 y; }\n"
+        "结构体 形状 { 坐标[4] 顶点; }\n"
         "函数 主() -> 整32 {\n"
-        "  形状 方形\n"
-        "  返回 方形.顶点[4].x\n"
+        "  形状 方形;\n"
+        "  返回 方形.顶点[4].x;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     // 越界检查：生成 Call __cn_runtime_error（错误码2）

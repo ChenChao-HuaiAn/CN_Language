@@ -56,14 +56,14 @@ TEST(SemanticOopTest, ClassBasicDecl) {
     auto r = analyzeSource(R"CN(
 类 动物 {
 公开:
-    字符串 名称
-    整32 年龄
+    字符串 名称;
+    整32 年龄;
     函数 设置名称(字符串 名) -> 空类型 {
-        名称 = 名
+        名称 = 名;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -75,21 +75,21 @@ TEST(SemanticOopTest, ClassInheritance) {
     auto r = analyzeSource(R"CN(
 类 动物 {
 公开:
-    整32 年龄
+    整32 年龄;
     函数 获取年龄() -> 整32 {
-        返回 年龄
+        返回 年龄;
     }
 }
 类 狗 : 动物 {
 公开:
     函数 狗() {
-        年龄 = 3
+        年龄 = 3;
     }
 }
 函数 主() -> 整32 {
-    狗 实例 = 狗()
-    整32 岁 = 实例.获取年龄()
-    返回 岁
+    狗 实例 = 狗();
+    整32 岁 = 实例.获取年龄();
+    返回 岁;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -101,19 +101,19 @@ TEST(SemanticOopTest, ConstructorDetection) {
     auto r = analyzeSource(R"CN(
 类 点 {
 公开:
-    整32 x
-    整32 y
+    整32 x;
+    整32 y;
     函数 点(整32 初始x, 整32 初始y) {
-        x = 初始x
-        y = 初始y
+        x = 初始x;
+        y = 初始y;
     }
     函数 获取X() -> 整32 {
-        返回 x
+        返回 x;
     }
 }
 函数 主() -> 整32 {
-    点 p = 点(1, 2)
-    返回 p.获取X()
+    点 p = 点(1, 2);
+    返回 p.获取X();
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -125,10 +125,10 @@ TEST(SemanticOopTest, MissingBaseClass) {
     auto r = analyzeSource(R"CN(
 类 狗 : 不存在类 {
 公开:
-    整32 年龄
+    整32 年龄;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -144,17 +144,17 @@ TEST(SemanticOopTest, VtableSlotAssignment) {
 类 动物 {
 公开:
     虚拟 函数 叫声() -> 字符串 {
-        返回 "..."
+        返回 "...";
     }
 }
 类 狗 : 动物 {
 公开:
     重写 函数 叫声() -> 字符串 {
-        返回 "汪汪"
+        返回 "汪汪";
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -167,17 +167,17 @@ TEST(SemanticOopTest, OverrideSignatureMismatch) {
 类 动物 {
 公开:
     虚拟 函数 叫声() -> 字符串 {
-        返回 "..."
+        返回 "...";
     }
 }
 类 狗 : 动物 {
 公开:
     重写 函数 叫声() -> 整32 {
-        返回 1
+        返回 1;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -195,13 +195,13 @@ TEST(SemanticOopTest, InterfaceImplementation) {
 }
 类 圆形 : 可绘制 {
 公开:
-    浮64 半径
+    浮64 半径;
     重写 函数 绘制() -> 空类型 {
-        半径 = 1.0
+        半径 = 1.0;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -221,7 +221,7 @@ TEST(SemanticOopTest, InterfaceMissingMethod) {
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -236,19 +236,19 @@ TEST(SemanticOopTest, PrivateAccessInside) {
     auto r = analyzeSource(R"CN(
 类 账户 {
 私有:
-    整64 余额
+    整64 余额;
 公开:
     函数 账户(整64 初始余额) {
-        余额 = 初始余额
+        余额 = 初始余额;
     }
     函数 获取余额() -> 整64 {
-        返回 余额
+        返回 余额;
     }
 }
 函数 主() -> 整32 {
-    账户 a = 账户(100)
-    整64 余额 = a.获取余额()
-    返回 0
+    账户 a = 账户(100);
+    整64 余额 = a.获取余额();
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -260,16 +260,16 @@ TEST(SemanticOopTest, PrivateAccessOutside) {
     auto r = analyzeSource(R"CN(
 类 账户 {
 私有:
-    整64 余额
+    整64 余额;
 公开:
     函数 账户(整64 初始余额) {
-        余额 = 初始余额
+        余额 = 初始余额;
     }
 }
 函数 主() -> 整32 {
-    账户 a = 账户(100)
-    整64 余额 = a.余额
-    返回 0
+    账户 a = 账户(100);
+    整64 余额 = a.余额;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -282,21 +282,21 @@ TEST(SemanticOopTest, ProtectedAccessInSubclass) {
     auto r = analyzeSource(R"CN(
 类 动物 {
 保护:
-    整32 年龄
+    整32 年龄;
 公开:
     函数 动物() {
-        年龄 = 0
+        年龄 = 0;
     }
 }
 类 狗 : 动物 {
 公开:
     函数 设置年龄(整32 岁) -> 空类型 {
-        年龄 = 岁
+        年龄 = 岁;
     }
 }
 函数 主() -> 整32 {
-    狗 d = 狗()
-    返回 0
+    狗 d = 狗();
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -308,21 +308,21 @@ TEST(SemanticOopTest, PrivateAccessInSubclass) {
     auto r = analyzeSource(R"CN(
 类 动物 {
 私有:
-    整32 内部ID
+    整32 内部ID;
 公开:
     函数 动物() {
-        内部ID = 0
+        内部ID = 0;
     }
 }
 类 狗 : 动物 {
 公开:
     函数 获取ID() -> 整32 {
-        返回 自身.内部ID
+        返回 自身.内部ID;
     }
 }
 函数 主() -> 整32 {
-    狗 d = 狗()
-    返回 0
+    狗 d = 狗();
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -336,21 +336,21 @@ TEST(SemanticOopTest, OperatorOverload) {
     auto r = analyzeSource(R"CN(
 类 复数 {
 公开:
-    浮64 实部
-    浮64 虚部
+    浮64 实部;
+    浮64 虚部;
     函数 复数(浮64 实, 浮64 虚) {
-        实部 = 实
-        虚部 = 虚
+        实部 = 实;
+        虚部 = 虚;
     }
     函数 运算符+(复数 右) -> 复数 {
-        返回 复数(实部 + 右.实部, 虚部 + 右.虚部)
+        返回 复数(实部 + 右.实部, 虚部 + 右.虚部);
     }
 }
 函数 主() -> 整32 {
-    复数 a = 复数(1.0, 2.0)
-    复数 b = 复数(3.0, 4.0)
-    复数 c = a + b
-    返回 0
+    复数 a = 复数(1.0, 2.0);
+    复数 b = 复数(3.0, 4.0);
+    复数 c = a + b;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -361,10 +361,10 @@ TEST(SemanticOopTest, OperatorOverload) {
 TEST(SemanticOopTest, OperatorBuiltinStillWorks) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 a = 1
-    整32 b = 2
-    整32 c = a + b
-    返回 c
+    整32 a = 1;
+    整32 b = 2;
+    整32 c = a + b;
+    返回 c;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -378,18 +378,18 @@ TEST(SemanticOopTest, StaticMember) {
     auto r = analyzeSource(R"CN(
 类 计数器 {
 公开:
-    静态 整32 总数 = 0
+    静态 整32 总数 = 0;
     函数 计数器() {
-        总数++
+        总数++;
     }
     静态 函数 获取总数() -> 整32 {
-        返回 总数
+        返回 总数;
     }
 }
 函数 主() -> 整32 {
-    计数器.总数 = 10
-    整32 当前 = 计数器.获取总数()
-    返回 当前
+    计数器.总数 = 10;
+    整32 当前 = 计数器.获取总数();
+    返回 当前;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -403,18 +403,18 @@ TEST(SemanticOopTest, ConstMethodReadOnly) {
     auto r = analyzeSource(R"CN(
 类 只读包装 {
 私有:
-    整32 值
+    整32 值;
 公开:
     函数 只读包装(整32 v) {
-        值 = v
+        值 = v;
     }
     常量 函数 获取() -> 整32 {
-        返回 值
+        返回 值;
     }
 }
 函数 主() -> 整32 {
-    只读包装 w = 只读包装(42)
-    返回 w.获取()
+    只读包装 w = 只读包装(42);
+    返回 w.获取();
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -426,18 +426,18 @@ TEST(SemanticOopTest, ConstMethodModifyField) {
     auto r = analyzeSource(R"CN(
 类 只读包装 {
 私有:
-    整32 值
+    整32 值;
 公开:
     函数 只读包装(整32 v) {
-        值 = v
+        值 = v;
     }
     常量 函数 修改() -> 空类型 {
-        值 = 10
+        值 = 10;
     }
 }
 函数 主() -> 整32 {
-    只读包装 w = 只读包装(42)
-    返回 0
+    只读包装 w = 只读包装(42);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -452,20 +452,20 @@ TEST(SemanticOopTest, FriendFunctionAccess) {
     auto r = analyzeSource(R"CN(
 类 账户 {
 私有:
-    整64 余额
+    整64 余额;
 公开:
-    友元 函数 审计余额(账户 账)
+    友元 函数 审计余额(账户 账);
     函数 账户(整64 初始) {
-        余额 = 初始
+        余额 = 初始;
     }
 }
 函数 审计余额(账户 账) -> 整64 {
-    返回 账.余额
+    返回 账.余额;
 }
 函数 主() -> 整32 {
-    账户 a = 账户(100)
-    整64 余额 = 审计余额(a)
-    返回 0
+    账户 a = 账户(100);
+    整64 余额 = 审计余额(a);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -478,17 +478,17 @@ TEST(SemanticOopTest, SelfMemberAccess) {
     auto r = analyzeSource(R"CN(
 类 动物 {
 公开:
-    整32 年龄
+    整32 年龄;
     函数 动物() {
-        自身.年龄 = 3
+        自身.年龄 = 3;
     }
     函数 获取年龄() -> 整32 {
-        返回 自身.年龄
+        返回 自身.年龄;
     }
 }
 函数 主() -> 整32 {
-    动物 a = 动物()
-    返回 a.获取年龄()
+    动物 a = 动物();
+    返回 a.获取年龄();
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -501,18 +501,18 @@ TEST(SemanticOopTest, SuperMethodCall) {
 类 动物 {
 公开:
     函数 叫声() -> 字符串 {
-        返回 "..."
+        返回 "...";
     }
 }
 类 狗 : 动物 {
 公开:
     函数 介绍() -> 字符串 {
-        返回 父类.叫声()
+        返回 父类.叫声();
     }
 }
 函数 主() -> 整32 {
-    狗 d = 狗()
-    返回 0
+    狗 d = 狗();
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

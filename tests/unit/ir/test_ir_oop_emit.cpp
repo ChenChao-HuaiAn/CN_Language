@@ -101,16 +101,16 @@ TEST(IrOopEmitTest, ClassMethodPromotedWithThis) {
     auto r = generateIr(R"CN(
 类 动物 {
 公开:
-    整32 年龄
+    整32 年龄;
     函数 设置年龄(整32 值) -> 空类型 {
-        年龄 = 值
+        年龄 = 值;
     }
     函数 获取年龄() -> 整32 {
-        返回 年龄
+        返回 年龄;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -139,13 +139,13 @@ TEST(IrOopEmitTest, StaticMethodNoThis) {
     auto r = generateIr(R"CN(
 类 计数器 {
 公开:
-    静态 整32 总数 = 0
+    静态 整32 总数 = 0;
     静态 函数 获取总数() -> 整32 {
-        返回 总数
+        返回 总数;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -173,19 +173,19 @@ TEST(IrOopEmitTest, ConstructorNewObject) {
     auto r = generateIr(R"CN(
 类 点 {
 公开:
-    整32 x
-    整32 y
+    整32 x;
+    整32 y;
     函数 点(整32 初始x, 整32 初始y) {
-        x = 初始x
-        y = 初始y
+        x = 初始x;
+        y = 初始y;
     }
     函数 获取X() -> 整32 {
-        返回 x
+        返回 x;
     }
 }
 函数 主() -> 整32 {
-    点 p = 点(1, 2)
-    返回 p.获取X()
+    点 p = 点(1, 2);
+    返回 p.获取X();
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -215,11 +215,11 @@ TEST(IrOopEmitTest, DefaultConstructorNewObject) {
     auto r = generateIr(R"CN(
 类 盒子 {
 公开:
-    整32 内容
+    整32 内容;
 }
 函数 主() -> 整32 {
-    盒子 b = 盒子()
-    返回 0
+    盒子 b = 盒子();
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -244,19 +244,19 @@ TEST(IrOopEmitTest, VirtualCallDispatch) {
 类 动物 {
 公开:
     虚拟 函数 叫声() -> 字符串 {
-        返回 "..."
+        返回 "...";
     }
 }
 类 狗 : 动物 {
 公开:
     重写 函数 叫声() -> 字符串 {
-        返回 "汪汪"
+        返回 "汪汪";
     }
 }
 函数 主() -> 整32 {
-    动物* 实例 = 无
-    字符串 声 = 实例.叫声()
-    返回 0
+    动物* 实例 = 无;
+    字符串 声 = 实例.叫声();
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -280,20 +280,20 @@ TEST(IrOopEmitTest, VirtualCallFromMethod) {
 类 动物 {
 公开:
     虚拟 函数 叫声() -> 字符串 {
-        返回 "..."
+        返回 "...";
     }
     函数 介绍() -> 字符串 {
-        返回 自身.叫声()
+        返回 自身.叫声();
     }
 }
 类 狗 : 动物 {
 公开:
     重写 函数 叫声() -> 字符串 {
-        返回 "汪汪"
+        返回 "汪汪";
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -314,17 +314,17 @@ TEST(IrOopEmitTest, SuperCallDirect) {
 类 基类 {
 公开:
     函数 方法() -> 整32 {
-        返回 10
+        返回 10;
     }
 }
 类 派生 : 基类 {
 公开:
     重写 函数 方法() -> 整32 {
-        返回 父类.方法() + 1
+        返回 父类.方法() + 1;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -352,13 +352,13 @@ TEST(IrOopEmitTest, SelfExprLoadsThis) {
     auto r = generateIr(R"CN(
 类 账户 {
 公开:
-    整32 余额
+    整32 余额;
     函数 查看() -> 整32 {
-        返回 自身.余额
+        返回 自身.余额;
     }
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -389,20 +389,20 @@ TEST(IrOopEmitTest, InstanceFieldAccess) {
     auto r = generateIr(R"CN(
 类 点 {
 公开:
-    整32 x
-    整32 y
+    整32 x;
+    整32 y;
     函数 设置(整32 新x) -> 空类型 {
-        自身.x = 新x
+        自身.x = 新x;
     }
     函数 读取() -> 整32 {
-        返回 自身.y
+        返回 自身.y;
     }
 }
 函数 主() -> 整32 {
-    点 p = 点()
-    p.x = 5
-    整32 值 = p.y
-    返回 值
+    点 p = 点();
+    p.x = 5;
+    整32 值 = p.y;
+    返回 值;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -424,12 +424,12 @@ TEST(IrOopEmitTest, StaticFieldAccess) {
     auto r = generateIr(R"CN(
 类 计数器 {
 公开:
-    静态 整32 总数 = 0
+    静态 整32 总数 = 0;
 }
 函数 主() -> 整32 {
-    计数器.总数 = 10
-    整32 当前 = 计数器.总数
-    返回 当前
+    计数器.总数 = 10;
+    整32 当前 = 计数器.总数;
+    返回 当前;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -463,8 +463,8 @@ TEST(IrOopEmitTest, DeleteObjectRaii) {
     }
 }
 函数 主() -> 整32 {
-    资源 r = 资源()
-    返回 0
+    资源 r = 资源();
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -482,11 +482,11 @@ TEST(IrOopEmitTest, NoDeleteWithoutDtor) {
     auto r = generateIr(R"CN(
 类 纯数据 {
 公开:
-    整32 值
+    整32 值;
 }
 函数 主() -> 整32 {
-    纯数据 d = 纯数据()
-    返回 0
+    纯数据 d = 纯数据();
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;
@@ -502,21 +502,21 @@ TEST(IrOopEmitTest, OperatorOverloadCall) {
     auto r = generateIr(R"CN(
 类 复数 {
 公开:
-    浮64 实部
-    浮64 虚部
+    浮64 实部;
+    浮64 虚部;
     函数 复数(浮64 实, 浮64 虚) {
-        实部 = 实
-        虚部 = 虚
+        实部 = 实;
+        虚部 = 虚;
     }
     函数 运算符+(复数 右) -> 复数 {
-        返回 复数(实部 + 右.实部, 虚部 + 右.虚部)
+        返回 复数(实部 + 右.实部, 虚部 + 右.虚部);
     }
 }
 函数 主() -> 整32 {
-    复数 a = 复数(1.0, 2.0)
-    复数 b = 复数(3.0, 4.0)
-    复数 c = a + b
-    返回 0
+    复数 a = 复数(1.0, 2.0);
+    复数 b = 复数(3.0, 4.0);
+    复数 c = a + b;
+    返回 0;
 }
 )CN");
     ASSERT_TRUE(r.ok) << r.messages;

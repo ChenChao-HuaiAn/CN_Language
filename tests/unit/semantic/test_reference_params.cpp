@@ -49,15 +49,15 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(RefParamTest, BasicSwapOk) {
     auto r = analyzeSource(R"CN(
 函数 交换(整32& a, 整32& b) -> 空类型 {
-    整32 临时 = a
-    a = b
-    b = 临时
+    整32 临时 = a;
+    a = b;
+    b = 临时;
 }
 函数 主() -> 整32 {
-    整32 x = 1
-    整32 y = 2
-    交换(x, y)
-    返回 0
+    整32 x = 1;
+    整32 y = 2;
+    交换(x, y);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -68,13 +68,13 @@ TEST(RefParamTest, BasicSwapOk) {
 TEST(RefParamTest, OverloadValueVsRefCoexist) {
     auto r = analyzeSource(R"CN(
 函数 双倍(整32 值) -> 整32 {
-    返回 值 * 2
+    返回 值 * 2;
 }
 函数 双倍(整32& 值) -> 整32 {
-    返回 值 * 2
+    返回 值 * 2;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -86,14 +86,14 @@ TEST(RefParamTest, OverloadValueVsRefCoexist) {
 TEST(RefParamTest, ValueVsRefCallAmbiguous) {
     auto r = analyzeSource(R"CN(
 函数 双倍(整32 值) -> 整32 {
-    返回 值 * 2
+    返回 值 * 2;
 }
 函数 双倍(整32& 值) -> 整32 {
-    返回 值 * 2
+    返回 值 * 2;
 }
 函数 主() -> 整32 {
-    整32 x = 5
-    返回 双倍(x)
+    整32 x = 5;
+    返回 双倍(x);
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -104,13 +104,13 @@ TEST(RefParamTest, ValueVsRefCallAmbiguous) {
 TEST(RefParamTest, NonLvalueArgError) {
     auto r = analyzeSource(R"CN(
 函数 交换(整32& a, 整32& b) -> 空类型 {
-    整32 临时 = a
-    a = b
-    b = 临时
+    整32 临时 = a;
+    a = b;
+    b = 临时;
 }
 函数 主() -> 整32 {
-    交换(1, 2)
-    返回 0
+    交换(1, 2);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -121,10 +121,10 @@ TEST(RefParamTest, NonLvalueArgError) {
 TEST(RefParamTest, RefDefaultValueError) {
     auto r = analyzeSource(R"CN(
 函数 问候(整32& 值 = 1) -> 空类型 {
-    值 += 1
+    值 += 1;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -134,14 +134,14 @@ TEST(RefParamTest, RefDefaultValueError) {
 // P3-18 补完：引用返回全局/静态对象（存活) -> 语义通过
 TEST(RefParamTest, RefReturnGlobalOk) {
     auto r = analyzeSource(R"CN(
-静态 整32 全局值 = 42
+静态 整32 全局值 = 42;
 函数 取引用() -> 整32& {
-    返回 全局值
+    返回 全局值;
 }
 函数 主() -> 整32 {
-    整32& r = 取引用()
-    取引用() = 9
-    返回 0
+    整32& r = 取引用();
+    取引用() = 9;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -152,11 +152,11 @@ TEST(RefParamTest, RefReturnGlobalOk) {
 TEST(RefParamTest, RefReturnLocalError) {
     auto r = analyzeSource(R"CN(
 函数 坏() -> 整32& {
-    整32 局部 = 5
-    返回 局部
+    整32 局部 = 5;
+    返回 局部;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -167,10 +167,10 @@ TEST(RefParamTest, RefReturnLocalError) {
 TEST(RefParamTest, RefReturnByValueParamError) {
     auto r = analyzeSource(R"CN(
 函数 坏(整32 v) -> 整32& {
-    返回 v
+    返回 v;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -181,13 +181,13 @@ TEST(RefParamTest, RefReturnByValueParamError) {
 TEST(RefParamTest, RefReturnRefParamOk) {
     auto r = analyzeSource(R"CN(
 函数 传回(整32& x) -> 整32& {
-    返回 x
+    返回 x;
 }
 函数 主() -> 整32 {
-    整32 值 = 100
-    整32& 别名 = 传回(值)
-    传回(值) = 300
-    返回 0
+    整32 值 = 100;
+    整32& 别名 = 传回(值);
+    传回(值) = 300;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -198,10 +198,10 @@ TEST(RefParamTest, RefReturnRefParamOk) {
 TEST(RefParamTest, RefReturnNonLvalueError) {
     auto r = analyzeSource(R"CN(
 函数 坏() -> 整32& {
-    返回 42
+    返回 42;
 }
 函数 主() -> 整32 {
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -212,9 +212,9 @@ TEST(RefParamTest, RefReturnNonLvalueError) {
 TEST(RefParamTest, RefVarDeclOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 1
-    整32& r = x
-    返回 0
+    整32 x = 1;
+    整32& r = x;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -224,8 +224,8 @@ TEST(RefParamTest, RefVarDeclOk) {
 TEST(RefParamTest, RefVarDeclRvalueError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32& r = 42
-    返回 0
+    整32& r = 42;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -237,15 +237,15 @@ TEST(RefParamTest, GenericRefParamOk) {
     auto r = analyzeSource(R"CN(
 泛型 <类型 T>
 函数 引用交换(T& a, T& b) -> 空类型 {
-    T 临时 = a
-    a = b
-    b = 临时
+    T 临时 = a;
+    a = b;
+    b = 临时;
 }
 函数 主() -> 整32 {
-    整64 p = 100
-    整64 q = 200
-    引用交换<整64>(p, q)
-    返回 0
+    整64 p = 100;
+    整64 q = 200;
+    引用交换<整64>(p, q);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -256,17 +256,17 @@ TEST(RefParamTest, GenericRefParamOk) {
 TEST(RefParamTest, StructRefParamOk) {
     auto r = analyzeSource(R"CN(
 结构体 点 {
-    整32 x
-    整32 y
+    整32 x;
+    整32 y;
 }
 函数 移动(点& p, 整32 dx) -> 空类型 {
-    p.x += dx
-    p.y += dx
+    p.x += dx;
+    p.y += dx;
 }
 函数 主() -> 整32 {
-    点 原点 = 点{ x = 1, y = 2 }
-    移动(原点, 10)
-    返回 0
+    点 原点 = 点{ x = 1, y = 2 };
+    移动(原点, 10);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -277,12 +277,12 @@ TEST(RefParamTest, StructRefParamOk) {
 TEST(RefParamTest, ArrayElementRefArgOk) {
     auto r = analyzeSource(R"CN(
 函数 加一(整32& 值) -> 空类型 {
-    值 += 1
+    值 += 1;
 }
 函数 主() -> 整32 {
-    整32[3] 表 = { 5, 6, 7 }
-    加一(表[0])
-    返回 0
+    整32[3] 表 = { 5, 6, 7 };
+    加一(表[0]);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

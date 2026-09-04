@@ -50,18 +50,18 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(PatternMatchTest, StringSwitchOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 命令 = "开始"
+    字符串 命令 = "开始";
     选择 (命令) {
         情况 "开始":
-            打印("开始")
-            中断
+            打印("开始");
+            中断;
         情况 "停止":
-            打印("停止")
-            中断
+            打印("停止");
+            中断;
         默认:
-            打印("未知")
+            打印("未知");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -77,21 +77,21 @@ TEST(PatternMatchTest, BareEnumMemberOk) {
     蓝
 }
 函数 主() -> 整32 {
-    颜色 c = 颜色.绿
+    颜色 c = 颜色.绿;
     选择 (c) {
         情况 红:
-            打印("红")
-            中断
+            打印("红");
+            中断;
         情况 绿:
-            打印("绿")
-            中断
+            打印("绿");
+            中断;
         情况 蓝:
-            打印("蓝")
-            中断
+            打印("蓝");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -102,18 +102,18 @@ TEST(PatternMatchTest, BareEnumMemberOk) {
 TEST(PatternMatchTest, MultiValueCaseOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 级别 = 2
+    整32 级别 = 2;
     选择 (级别) {
         情况 0, 1:
-            打印("低")
-            中断
+            打印("低");
+            中断;
         情况 2, 3:
-            打印("中")
-            中断
+            打印("中");
+            中断;
         默认:
-            打印("高")
+            打印("高");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -130,18 +130,18 @@ TEST(PatternMatchTest, MultiValueEnumOk) {
     自定义 = 100
 }
 函数 主() -> 整32 {
-    颜色 c = 颜色.自定义
+    颜色 c = 颜色.自定义;
     选择 (c) {
         情况 颜色.红, 颜色.绿:
-            打印("基础")
-            中断
+            打印("基础");
+            中断;
         情况 颜色.自定义:
-            打印("自定义")
-            中断
+            打印("自定义");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -152,15 +152,15 @@ TEST(PatternMatchTest, MultiValueEnumOk) {
 TEST(PatternMatchTest, StringCaseInIntSwitchError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 1
+    整32 x = 1;
     选择 (x) {
         情况 "文字":
-            打印("x")
-            中断
+            打印("x");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -172,15 +172,15 @@ TEST(PatternMatchTest, StringCaseInIntSwitchError) {
 TEST(PatternMatchTest, IntCaseInStringSwitchError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "x"
+    字符串 s = "x";
     选择 (s) {
         情况 1:
-            打印("s")
-            中断
+            打印("s");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -192,15 +192,15 @@ TEST(PatternMatchTest, IntCaseInStringSwitchError) {
 TEST(PatternMatchTest, BareMemberInIntSwitchError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 1
+    整32 x = 1;
     选择 (x) {
         情况 红:
-            打印("x")
-            中断
+            打印("x");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -215,15 +215,15 @@ TEST(PatternMatchTest, UnknownBareMemberError) {
     绿
 }
 函数 主() -> 整32 {
-    颜色 c = 颜色.红
+    颜色 c = 颜色.红;
     选择 (c) {
         情况 蓝:
-            打印("c")
-            中断
+            打印("c");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -235,18 +235,18 @@ TEST(PatternMatchTest, UnknownBareMemberError) {
 TEST(PatternMatchTest, DuplicateStringCaseError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    字符串 s = "x"
+    字符串 s = "x";
     选择 (s) {
         情况 "甲":
-            打印("甲")
-            中断
+            打印("甲");
+            中断;
         情况 "甲":
-            打印("甲2")
-            中断
+            打印("甲2");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -258,15 +258,15 @@ TEST(PatternMatchTest, DuplicateStringCaseError) {
 TEST(PatternMatchTest, DuplicateMultiValueError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 1
+    整32 x = 1;
     选择 (x) {
         情况 1, 1:
-            打印("x")
-            中断
+            打印("x");
+            中断;
         默认:
-            打印("其他")
+            打印("其他");
     }
-    返回 0
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);

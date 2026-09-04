@@ -47,12 +47,12 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(DefaultParamTest, SingleDefault) {
     auto r = analyzeSource(R"CN(
 函数 问候(字符串 名字 = "世界") -> 字符串 {
-    返回 "你好，" + 名字
+    返回 "你好，" + 名字;
 }
 函数 主() -> 整32 {
-    字符串 a = 问候()
-    字符串 b = 问候("张三")
-    返回 0
+    字符串 a = 问候();
+    字符串 b = 问候("张三");
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -63,13 +63,13 @@ TEST(DefaultParamTest, SingleDefault) {
 TEST(DefaultParamTest, MultiDefaultRightToLeft) {
     auto r = analyzeSource(R"CN(
 函数 求和(整32 a, 整32 b = 10, 整32 c = 20) -> 整32 {
-    返回 a + b + c
+    返回 a + b + c;
 }
 函数 主() -> 整32 {
-    整32 x = 求和(1)
-    整32 y = 求和(1, 2)
-    整32 z = 求和(1, 2, 3)
-    返回 0
+    整32 x = 求和(1);
+    整32 y = 求和(1, 2);
+    整32 z = 求和(1, 2, 3);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -79,7 +79,7 @@ TEST(DefaultParamTest, MultiDefaultRightToLeft) {
 // 非法：默认参数中间出现无默认参数（f(a=1, b)）
 TEST(DefaultParamTest, NonRightmostDefaultError) {
     auto r = analyzeSource(R"CN(
-函数 错误(整32 a = 1, 整32 b) -> 整32 { 返回 a + b }
+函数 错误(整32 a = 1, 整32 b) -> 整32 { 返回 a + b; }
 )CN");
     EXPECT_FALSE(r.ok);
     EXPECT_GT(r.errorCount, 0);
@@ -88,13 +88,13 @@ TEST(DefaultParamTest, NonRightmostDefaultError) {
 // 默认参数与重载协同：同一函数名不同签名
 TEST(DefaultParamTest, OverloadWithDefault) {
     auto r = analyzeSource(R"CN(
-函数 取(整32 a, 整32 b = 5) -> 整32 { 返回 a + b }
-函数 取(浮64 a) -> 浮64 { 返回 a * 2 }
+函数 取(整32 a, 整32 b = 5) -> 整32 { 返回 a + b; }
+函数 取(浮64 a) -> 浮64 { 返回 a * 2; }
 函数 主() -> 整32 {
-    整32 x = 取(1)
-    整32 y = 取(1, 2)
-    浮64 z = 取(3.5)
-    返回 0
+    整32 x = 取(1);
+    整32 y = 取(1, 2);
+    浮64 z = 取(3.5);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -104,11 +104,11 @@ TEST(DefaultParamTest, OverloadWithDefault) {
 TEST(DefaultParamTest, LiteralDefaults) {
     auto r = analyzeSource(R"CN(
 函数 测(整32 a = 100, 浮64 b = 3.14, 布尔 c = 真) -> 整32 {
-    返回 a
+    返回 a;
 }
 函数 主() -> 整32 {
-    整32 x = 测()
-    返回 0
+    整32 x = 测();
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -118,8 +118,8 @@ TEST(DefaultParamTest, LiteralDefaults) {
 TEST(DefaultParamTest, NonConstantDefaultError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 5
-    返回 0
+    整32 x = 5;
+    返回 0;
 }
 )CN");
     // 控制组：合法代码应通过（验证测试框架本身）

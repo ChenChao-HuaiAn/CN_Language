@@ -47,10 +47,10 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(CastExprTest, IntFloatConversions) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    浮64 比例 = 浮64(3) / 4
-    整32 截断 = 整32(3.99)
-    浮64 转回 = 浮64(整32(7))
-    返回 0
+    浮64 比例 = 浮64(3) / 4;
+    整32 截断 = 整32(3.99);
+    浮64 转回 = 浮64(整32(7));
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -61,10 +61,10 @@ TEST(CastExprTest, IntFloatConversions) {
 TEST(CastExprTest, PointerIntConversions) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整64 地址值 = 123456
-    指针 通用指针 = 指针(地址值)
-    整64 回读 = 整64(通用指针)
-    返回 0
+    整64 地址值 = 123456;
+    指针 通用指针 = 指针(地址值);
+    整64 回读 = 整64(通用指针);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -75,11 +75,11 @@ TEST(CastExprTest, PointerIntConversions) {
 TEST(CastExprTest, NarrowingExplicitOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整64 大 = 10000000000L
-    整32 小 = 整32(大)
-    浮64 d = 3.14159
-    浮32 f = 浮32(d)
-    返回 0
+    整64 大 = 10000000000L;
+    整32 小 = 整32(大);
+    浮64 d = 3.14159;
+    浮32 f = 浮32(d);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -89,9 +89,9 @@ TEST(CastExprTest, NarrowingExplicitOk) {
 TEST(CastExprTest, CharIntConversion) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 码 = 整32('A')
-    字符 字 = 字符(码)
-    返回 0
+    整32 码 = 整32('A');
+    字符 字 = 字符(码);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -101,8 +101,8 @@ TEST(CastExprTest, CharIntConversion) {
 TEST(CastExprTest, StringToIntError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 整32("abc")
-    返回 0
+    整32 x = 整32("abc");
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -113,11 +113,11 @@ TEST(CastExprTest, StringToIntError) {
 // 非法：结构体 → 整32 报错
 TEST(CastExprTest, StructToIntError) {
     auto r = analyzeSource(R"CN(
-结构体 点 { 整32 x; 整32 y }
+结构体 点 { 整32 x; 整32 y; }
 函数 主() -> 整32 {
-    点 p = 点{ x = 1, y = 2 }
-    整32 v = 整32(p)
-    返回 0
+    点 p = 点{ x = 1, y = 2 };
+    整32 v = 整32(p);
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -128,9 +128,9 @@ TEST(CastExprTest, StructToIntError) {
 TEST(CastExprTest, ParseAmbiguityResolved) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 x = 整32(3.99)     // 类型关键字 -> Cast
-    打印("值", x)           // 函数名 -> Call
-    返回 0
+    整32 x = 整32(3.99);     // 类型关键字 -> Cast
+    打印("值", x);           // 函数名 -> Call
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -141,9 +141,9 @@ TEST(CastExprTest, ParseAmbiguityResolved) {
 TEST(CastExprTest, BoolToIntConversion) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 a = 整32(真)
-    整64 b = 整64(假)
-    返回 0
+    整32 a = 整32(真);
+    整64 b = 整64(假);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -154,8 +154,8 @@ TEST(CastExprTest, BoolToIntConversion) {
 TEST(CastExprTest, CastInArgContext) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    打印("比例", 浮64(3) / 4)
-    返回 0
+    打印("比例", 浮64(3) / 4);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

@@ -53,11 +53,11 @@ TEST(SemanticFunctionTest, ForwardReferenceOk) {
 函数 计算(整32 n) -> 整32
 
 函数 使用() -> 整32 {
-    返回 计算(10)
+    返回 计算(10);
 }
 
 函数 计算(整32 n) -> 整32 {
-    返回 n * 2
+    返回 n * 2;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -68,7 +68,7 @@ TEST(SemanticFunctionTest, ForwardReferenceOk) {
 TEST(SemanticFunctionTest, PrototypeAndDefMatchOk) {
     auto r = analyzeSource(R"CN(
 函数 加(整32 a, 整32 b) -> 整32
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
     EXPECT_EQ(r.errorCount, 0);
@@ -78,7 +78,7 @@ TEST(SemanticFunctionTest, PrototypeAndDefMatchOk) {
 TEST(SemanticFunctionTest, PrototypeReturnMismatchError) {
     auto r = analyzeSource(R"CN(
 函数 加(整32 a, 整32 b) -> 整32
-函数 加(整32 a, 整32 b) -> 整64 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整64 { 返回 a + b; }
 )CN");
     EXPECT_FALSE(r.ok);
     EXPECT_GT(r.errorCount, 0);
@@ -88,7 +88,7 @@ TEST(SemanticFunctionTest, PrototypeReturnMismatchError) {
 TEST(SemanticFunctionTest, PrototypeParamMismatchError) {
     auto r = analyzeSource(R"CN(
 函数 加(整32 a, 整32 b) -> 整32
-函数 加(浮64 a, 整32 b) -> 整32 { 返回 0 }
+函数 加(浮64 a, 整32 b) -> 整32 { 返回 0; }
 )CN");
     EXPECT_FALSE(r.ok);
     EXPECT_GT(r.errorCount, 0);
@@ -97,8 +97,8 @@ TEST(SemanticFunctionTest, PrototypeParamMismatchError) {
 // 重复定义（两个函数体）报错
 TEST(SemanticFunctionTest, DuplicateDefinitionError) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a - b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a - b; }
 )CN");
     EXPECT_FALSE(r.ok);
     EXPECT_GT(r.errorCount, 0);
@@ -119,8 +119,8 @@ TEST(SemanticFunctionTest, PrototypeOnlyOk) {
 TEST(SemanticFunctionTest, RecursionOk) {
     auto r = analyzeSource(R"CN(
 函数 阶乘(整32 n) -> 整32 {
-    如果 (n <= 1) { 返回 1 }
-    返回 n * 阶乘(n - 1)
+    如果 (n <= 1) { 返回 1; }
+    返回 n * 阶乘(n - 1);
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -131,12 +131,12 @@ TEST(SemanticFunctionTest, RecursionOk) {
 TEST(SemanticFunctionTest, MutualRecursionOk) {
     auto r = analyzeSource(R"CN(
 函数 偶数(整32 n) -> 布尔 {
-    如果 (n == 0) { 返回 真 }
-    返回 奇数(n - 1)
+    如果 (n == 0) { 返回 真; }
+    返回 奇数(n - 1);
 }
 函数 奇数(整32 n) -> 布尔 {
-    如果 (n == 0) { 返回 假 }
-    返回 偶数(n - 1)
+    如果 (n == 0) { 返回 假; }
+    返回 偶数(n - 1);
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -148,12 +148,12 @@ TEST(SemanticFunctionTest, MutualRecursionOk) {
 // 函数指针声明+赋值+调用合法（规格书5.8 C风格）
 TEST(SemanticFunctionTest, FuncPtrDeclAssignCallOk) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    回调 = 加
-    整32 r = 回调(10, 20)
-    返回 r
+    整32(*回调)(整32, 整32);
+    回调 = 加;
+    整32 r = 回调(10, 20);
+    返回 r;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -163,11 +163,11 @@ TEST(SemanticFunctionTest, FuncPtrDeclAssignCallOk) {
 // 函数指针赋值类型不匹配报错（返回类型不同）
 TEST(SemanticFunctionTest, FuncPtrAssignReturnMismatchError) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 主() -> 整32 {
-    整64(*回调)(整32, 整32)
-    回调 = 加
-    返回 0
+    整64(*回调)(整32, 整32);
+    回调 = 加;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -177,11 +177,11 @@ TEST(SemanticFunctionTest, FuncPtrAssignReturnMismatchError) {
 // 函数指针赋值类型不匹配报错（参数类型不同）
 TEST(SemanticFunctionTest, FuncPtrAssignParamMismatchError) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 主() -> 整32 {
-    整32(*回调)(浮64, 整32)
-    回调 = 加
-    返回 0
+    整32(*回调)(浮64, 整32);
+    回调 = 加;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -191,11 +191,11 @@ TEST(SemanticFunctionTest, FuncPtrAssignParamMismatchError) {
 // 函数指针调用参数数量错误报错
 TEST(SemanticFunctionTest, FuncPtrCallArgCountError) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    回调 = 加
-    整32 结果 = 回调(10)
+    整32(*回调)(整32, 整32);
+    回调 = 加;
+    整32 结果 = 回调(10);
     返回 结果
 }
 )CN");
@@ -206,11 +206,11 @@ TEST(SemanticFunctionTest, FuncPtrCallArgCountError) {
 // 函数指针调用参数类型错误报错
 TEST(SemanticFunctionTest, FuncPtrCallArgTypeError) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    回调 = 加
-    整32 结果 = 回调("字符串", 20)
+    整32(*回调)(整32, 整32);
+    回调 = 加;
+    整32 结果 = 回调("字符串", 20);
     返回 结果
 }
 )CN");
@@ -221,14 +221,14 @@ TEST(SemanticFunctionTest, FuncPtrCallArgTypeError) {
 // 函数指针作为函数参数（回调模式）
 TEST(SemanticFunctionTest, FuncPtrAsParamOk) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 执行(整32(*func)(整32, 整32), 整32 x, 整32 y) -> 整32 {
-    返回 func(x, y)
-}
+    返回 func(x, y);
+};
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    回调 = 加
-    返回 执行(回调, 10, 20)
+    整32(*回调)(整32, 整32);
+    回调 = 加;
+    返回 执行(回调, 10, 20);
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -238,14 +238,14 @@ TEST(SemanticFunctionTest, FuncPtrAsParamOk) {
 // 函数指针作实参类型不匹配报错
 TEST(SemanticFunctionTest, FuncPtrArgMismatchError) {
     auto r = analyzeSource(R"CN(
-函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b }
+函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }
 函数 执行(整32(*func)(整32, 整32), 整32 x, 整32 y) -> 整32 {
-    返回 func(x, y)
-}
+    返回 func(x, y);
+};
 函数 主() -> 整32 {
-    整64(*回调)(整32, 整32)
-    回调 = 加
-    返回 执行(回调, 10, 20)
+    整64(*回调)(整32, 整32);
+    回调 = 加;
+    返回 执行(回调, 10, 20);
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -256,9 +256,9 @@ TEST(SemanticFunctionTest, FuncPtrArgMismatchError) {
 TEST(SemanticFunctionTest, FuncPtrAssignUndefinedError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    回调 = 不存在的函数
-    返回 0
+    整32(*回调)(整32, 整32);
+    回调 = 不存在的函数;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -270,9 +270,9 @@ TEST(SemanticFunctionTest, FuncPtrAssignUndefinedError) {
 TEST(SemanticFunctionTest, FuncPtrCallUninitializedCompiles) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32(*回调)(整32, 整32)
-    整32 r = 回调(10, 20)
-    返回 r
+    整32(*回调)(整32, 整32);
+    整32 r = 回调(10, 20);
+    返回 r;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

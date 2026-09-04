@@ -43,10 +43,10 @@ ParseResult parseProgram(const std::string& source) {
 // 自定义结构体类型作参数：学生* 名单（Task 2.7 集成修复）
 TEST(ParserStructParamTest, StructPointerParam) {
     ParseResult r = parseProgram(
-        "结构体 学生 { 整32 分数 }\n"
+        "结构体 学生 { 整32 分数; }\n"
         "函数 冒泡排序(学生* 名单, 整32 人数) {\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.diagnostics.getErrorCount(), 0);
     ASSERT_EQ(r.program->declarations.size(), 2u);
     FunctionDecl* fn = static_cast<FunctionDecl*>(r.program->declarations[0].get());
@@ -60,10 +60,10 @@ TEST(ParserStructParamTest, StructPointerParam) {
 // 自定义结构体值作参数：学生 s（无复合后缀）
 TEST(ParserStructParamTest, StructValueParam) {
     ParseResult r = parseProgram(
-        "结构体 学生 { 整32 分数 }\n"
+        "结构体 学生 { 整32 分数; }\n"
         "函数 打印学生(学生 s) {\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.diagnostics.getErrorCount(), 0);
     ASSERT_EQ(r.program->declarations.size(), 2u);
     FunctionDecl* fn = static_cast<FunctionDecl*>(r.program->declarations[0].get());
@@ -76,10 +76,10 @@ TEST(ParserStructParamTest, StructValueParam) {
 // （Task 2.7 集成修复：parseFuncPtrType 参数类型用 parseTypeNameEx 解析复合类型）
 TEST(ParserStructParamTest, FuncPtrParamWithStructPtr) {
     ParseResult r = parseProgram(
-        "结构体 学生 { 整32 分数 }\n"
+        "结构体 学生 { 整32 分数; }\n"
         "函数 索引排序(学生* 名单, 整32 人数, 整32(*比较)(学生*, 学生*)) {\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.diagnostics.getErrorCount(), 0);
     ASSERT_EQ(r.program->declarations.size(), 2u);
     FunctionDecl* fn = static_cast<FunctionDecl*>(r.program->declarations[0].get());
@@ -95,10 +95,10 @@ TEST(ParserStructParamTest, FuncPtrParamWithStructPtr) {
 // 结构体数组类型作参数：学生[5] 名单
 TEST(ParserStructParamTest, StructArrayParam) {
     ParseResult r = parseProgram(
-        "结构体 学生 { 整32 分数 }\n"
+        "结构体 学生 { 整32 分数; }\n"
         "函数 处理(学生[5] 名单) {\n"
         "}\n"
-        "函数 主() -> 整32 { 返回 0 }\n");
+        "函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_EQ(r.diagnostics.getErrorCount(), 0);
     ASSERT_EQ(r.program->declarations.size(), 2u);
     FunctionDecl* fn = static_cast<FunctionDecl*>(r.program->declarations[0].get());

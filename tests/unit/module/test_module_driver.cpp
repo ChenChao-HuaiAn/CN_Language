@@ -61,7 +61,7 @@ std::string writeTempFile(const std::string& name, const std::string& content) {
 // -> loadModuleTree 递归加载依赖失败 -> 编译失败（返回非0，符合预期）
 TEST(ModuleDriverTest, ImportMissingModuleFileFails) {
     const std::string entryPath =
-        writeTempFile("main_missing_dep_entry.cn", "导入 missing_mod\n函数 主() -> 整32 { 返回 0 }\n");
+        writeTempFile("main_missing_dep_entry.cn", "导入 missing_mod;\n函数 主() -> 整32 { 返回 0; }\n");
     ASSERT_FALSE(entryPath.empty()) << "无法创建临时入口文件";
 
     DriverOptions options;
@@ -77,10 +77,10 @@ TEST(ModuleDriverTest, ImportMissingModuleFileFails) {
 // 模块名 = 文件名主干：依赖文件 dep_exist_mod.cn -> 导入 dep_exist_mod
 TEST(ModuleDriverTest, ImportExistingModuleFileSucceeds) {
     const std::string depPath = writeTempFile("dep_exist_mod.cn",
-                                              "公开:\n函数 双倍(整32 n) -> 整32 { 返回 n * 2 }\n");
+                                              "公开:\n函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n");
     const std::string entryPath =
         writeTempFile("main_exist_dep_entry.cn",
-                      "导入 dep_exist_mod\n函数 主() -> 整32 {\n    变量 数值 = 双倍(21)\n    返回 0\n}\n");
+                      "导入 dep_exist_mod;\n函数 主() -> 整32 {\n    变量 数值 = 双倍(21);\n    返回 0;\n}\n");
     ASSERT_FALSE(depPath.empty()) << "无法创建临时依赖文件";
     ASSERT_FALSE(entryPath.empty()) << "无法创建临时入口文件";
 
@@ -115,15 +115,15 @@ TEST(ModuleDriverTest, ModuleTreeSubdirectory) {
     std::ofstream netOut(netPath, std::ios::binary);
     netOut <<
         "公开:\n"
-        "模块 transport\n"
-        "函数 entry() -> 整32 { 返回 1 }\n";
+        "模块 transport;\n"
+        "函数 entry() -> 整32 { 返回 1; }\n";
     netOut.close();
     // net/transport.cn：公开函数（子模块符号）
     const std::string subPath = netDir + "/transport.cn";
     std::ofstream subOut(subPath, std::ios::binary);
     subOut <<
         "公开:\n"
-        "函数 send() -> 整32 { 返回 42 }\n";
+        "函数 send() -> 整32 { 返回 42; }\n";
     subOut.close();
     // 主.cn：导入 net（模块树），调用 net::transport::send（多段限定）
     const std::string entryPath = rootDir + "/主.cn";
@@ -132,11 +132,11 @@ TEST(ModuleDriverTest, ModuleTreeSubdirectory) {
     //   UTF-8 宽路径读取兼容；文件内容保持 UTF-8 字节，不转 UTF-16）
     {
         const std::string content =
-            "导入 net\n"
+            "导入 net;\n"
             "函数 主() -> 整32 {\n"
-            "    变量 数值1 = net::transport::send()\n"
-            "    变量 数值2 = net::entry()\n"
-            "    返回 0\n"
+            "    变量 数值1 = net::transport::send();\n"
+            "    变量 数值2 = net::entry();\n"
+            "    返回 0;\n"
             "}\n";
         const int pathLen = MultiByteToWideChar(CP_UTF8, 0, entryPath.c_str(), -1, nullptr, 0);
         std::vector<wchar_t> widePath(static_cast<std::size_t>(pathLen));
@@ -149,11 +149,11 @@ TEST(ModuleDriverTest, ModuleTreeSubdirectory) {
     }
 #else
     std::ofstream(entryPath) <<
-        "导入 net\n"
+        "导入 net;\n"
         "函数 主() -> 整32 {\n"
-        "    变量 数值1 = net::transport::send()\n"
-        "    变量 数值2 = net::entry()\n"
-        "    返回 0\n"
+        "    变量 数值1 = net::transport::send();\n"
+        "    变量 数值2 = net::entry();\n"
+        "    返回 0;\n"
         "}\n";
 #endif
 

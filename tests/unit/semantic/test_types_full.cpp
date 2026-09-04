@@ -153,19 +153,19 @@ TEST(TypeSystemTest, CommonNumericType) {
 TEST(TypeSystemSemanticTest, AllWidthTypesDecl) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整8 a = 10
-    整16 b = 100
-    整32 c = 1000
-    整64 d = 100000L
-    整128 e = 100000LL
-    正8 f = 200
-    正16 g = 300
-    正32 h = 400U
-    正64 i = 500UL
-    正128 j = 600ULL
-    浮32 k = 1.5f
-    浮64 l = 2.5
-    返回 0
+    整8 a = 10;
+    整16 b = 100;
+    整32 c = 1000;
+    整64 d = 100000L;
+    整128 e = 100000LL;
+    正8 f = 200;
+    正16 g = 300;
+    正32 h = 400U;
+    正64 i = 500UL;
+    正128 j = 600ULL;
+    浮32 k = 1.5f;
+    浮64 l = 2.5;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -176,12 +176,12 @@ TEST(TypeSystemSemanticTest, AllWidthTypesDecl) {
 TEST(TypeSystemSemanticTest, ImplicitConversionAssign) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 a = 100
-    整64 b = a
-    浮32 f = 1.5f
-    浮64 g = f
-    浮64 h = a
-    返回 0
+    整32 a = 100;
+    整64 b = a;
+    浮32 f = 1.5f;
+    浮64 g = f;
+    浮64 h = a;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -192,15 +192,15 @@ TEST(TypeSystemSemanticTest, ImplicitConversionAssign) {
 TEST(TypeSystemSemanticTest, BitwiseAndShift) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 a = 0b1100
-    整32 b = 0b1010
-    整32 c = a & b
-    整32 d = a | b
-    整32 e = a ^ b
-    整32 f = ~a
-    整32 g = a << 2
-    整32 h = a >> 1
-    返回 c
+    整32 a = 0b1100;
+    整32 b = 0b1010;
+    整32 c = a & b;
+    整32 d = a | b;
+    整32 e = a ^ b;
+    整32 f = ~a;
+    整32 g = a << 2;
+    整32 h = a >> 1;
+    返回 c;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -211,10 +211,10 @@ TEST(TypeSystemSemanticTest, BitwiseAndShift) {
 TEST(TypeSystemSemanticTest, BitwiseOnFloatError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    浮64 a = 1.5
-    浮64 b = 2.5
-    浮64 c = a & b
-    返回 0
+    浮64 a = 1.5;
+    浮64 b = 2.5;
+    浮64 c = a & b;
+    返回 0;
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -225,12 +225,12 @@ TEST(TypeSystemSemanticTest, BitwiseOnFloatError) {
 TEST(TypeSystemSemanticTest, Int128BasicOps) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整128 a = 1000000LL
-    整128 b = 2000000LL
-    整128 c = a + b
-    整128 d = b - a
-    布尔 e = (c == 3000000LL)
-    返回 0
+    整128 a = 1000000LL;
+    整128 b = 2000000LL;
+    整128 c = a + b;
+    整128 d = b - a;
+    布尔 e = (c == 3000000LL);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -241,13 +241,13 @@ TEST(TypeSystemSemanticTest, Int128BasicOps) {
 TEST(TypeSystemSemanticTest, SmallIntArithmetic) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整8 a = 10
-    整8 b = 20
-    整32 c = a + b
-    正8 d = 100
-    正16 e = 200
-    正32 f = d + e
-    返回 0
+    整8 a = 10;
+    整8 b = 20;
+    整32 c = a + b;
+    正8 d = 100;
+    正16 e = 200;
+    正32 f = d + e;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -258,10 +258,10 @@ TEST(TypeSystemSemanticTest, SmallIntArithmetic) {
 TEST(TypeSystemSemanticTest, HexBinOctLiterals) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    整32 a = 0xFF
-    整32 b = 0b1010
-    整32 c = 0o777
-    返回 a
+    整32 a = 0xFF;
+    整32 b = 0b1010;
+    整32 c = 0o777;
+    返回 a;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -272,11 +272,11 @@ TEST(TypeSystemSemanticTest, HexBinOctLiterals) {
 TEST(TypeSystemSemanticTest, FloatArithmetic) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    浮64 a = 1.5 + 2.25
-    浮64 b = 5.0 * 2.0
-    浮64 c = 7.5 / 2.0
-    浮64 d = 10.0 - 3.5
-    返回 0
+    浮64 a = 1.5 + 2.25;
+    浮64 b = 5.0 * 2.0;
+    浮64 c = 7.5 / 2.0;
+    浮64 d = 10.0 - 3.5;
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -287,12 +287,12 @@ TEST(TypeSystemSemanticTest, FloatArithmetic) {
 TEST(TypeSystemSemanticTest, FloatFunctionCall) {
     auto r = analyzeSource(R"CN(
 函数 加浮(浮64 a, 浮64 b) -> 浮64 {
-    返回 a + b
+    返回 a + b;
 }
 
 函数 主() -> 整32 {
-    浮64 r = 加浮(1.5, 2.5)
-    返回 0
+    浮64 r = 加浮(1.5, 2.5);
+    返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;

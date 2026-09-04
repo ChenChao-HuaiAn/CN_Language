@@ -52,14 +52,14 @@ TEST(FfiExternTest, ExternDeclAndCallOk) {
 外部 函数 toupper(整32 c) -> 整32
 外部 函数 GetTickCount64() -> 正64
 函数 主() -> 整32 {
-    整64 n = strlen("中文")
-    整32 up = toupper(97)
-    正64 tick = GetTickCount64()
-    布尔 ok = tick > 0
+    整64 n = strlen("中文");
+    整32 up = toupper(97);
+    正64 tick = GetTickCount64();
+    布尔 ok = tick > 0;
     如果 (ok) {
-        返回 整32(n + up)
+        返回 整32(n + up);
     }
-    返回 1
+    返回 1;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -70,10 +70,10 @@ TEST(FfiExternTest, ExternDeclAndCallOk) {
 TEST(FfiExternTest, ExternWithBodyError) {
     auto r = analyzeSource(R"CN(
 外部 函数 取数() -> 整32 {
-    返回 5
+    返回 5;
 }
 函数 主() -> 整32 {
-    返回 取数()
+    返回 取数();
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -86,7 +86,7 @@ TEST(FfiExternTest, ExternArgTypeChecked) {
     auto r = analyzeSource(R"CN(
 外部 函数 toupper(整32 c) -> 整32
 函数 主() -> 整32 {
-    返回 toupper("错误")
+    返回 toupper("错误");
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -97,7 +97,7 @@ TEST(FfiExternTest, ExternArgTypeChecked) {
 TEST(FfiExternTest, UndeclaredFunctionError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    返回 不存在的函数(1)
+    返回 不存在的函数(1);
 }
 )CN");
     EXPECT_FALSE(r.ok);
@@ -110,7 +110,7 @@ TEST(FfiExternTest, DuplicateExternAllowed) {
 外部 函数 取数() -> 整32
 外部 函数 取数() -> 整32
 函数 主() -> 整32 {
-    返回 取数()
+    返回 取数();
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
@@ -123,10 +123,10 @@ TEST(FfiExternTest, ExternLocksSignatureError) {
     auto r = analyzeSource(R"CN(
 外部 函数 处理(整32 x) -> 整32
 函数 处理(字符串 s) -> 整32 {
-    返回 0
+    返回 0;
 }
 函数 主() -> 整32 {
-    返回 处理(1)
+    返回 处理(1);
 }
 )CN");
     EXPECT_FALSE(r.ok);
