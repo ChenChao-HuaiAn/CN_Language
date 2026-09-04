@@ -732,6 +732,9 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
     （靠前定义胜出——对齐 win64 /FORCE:MULTIPLE 编排）。
     供给源们（②b B7）：用例自有类型符号供给——宿主 cn build 编译（.o 为构建副
     产品留存），链接置于 v2p_linux.o 之前（用例结构体布局权威）。
+    预期退出码 None（139/141 负路径，2026-09-04 ARM64 复验轮对齐）：v2p 须编译失败
+    ——退出码非 0、target/v2asm.s 不产出、中止诊断行（.expected 固化）在输出中
+    （v2 语义错误即中止纪律平台无关，win64 同款）。
     POSIX 退出码 8 位截断：退出码比对取 预期退出码 % 256（win64 为 32 位全值）。"""
     import shutil
     import os
@@ -780,6 +783,39 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
         return "失败", f"{编号}-1 编译返回成功但未生成 v2p_linux"
     if not v2pobj.exists():
         return "失败", f"{编号}-1 中间产物 v2p_linux.o 未留存（容器符号提供者）"
+
+    # ===== 负路径闭环（139/141，win64 同款 2026-09-04；linux 侧 ARM64 复验轮对齐）：
+    #   预期退出码 None = v2p 须编译失败——语义错误即中止纪律的 E2E 锚定：
+    #   v2p 退出码非 0、target/v2asm.s 不产出、中止诊断行（.expected 固化）在
+    #   输出中——防「报错仍产 asm」回归。v2p 运行须带 linux-arm64 第 2 参数
+    #   （GAS 后端分派；win64 默认后端无需参数）=====
+    if 预期退出码 is None:
+        v2src目录 = 审计目录 / f"v2src{编号}"
+        v2src目录.mkdir(parents=True, exist_ok=True)
+        for 文件名 in 源文件名们:
+            src = 用例目录 / 文件名
+            if not src.exists():
+                return "失败", f"{编号}-N 缺少用例文件: {文件名}"
+            shutil.copy2(src, v2src目录 / 文件名)
+        入口参数 = f"target/audit2/v2src{编号}/主.cn"
+        if v2asm路径.exists():
+            v2asm路径.unlink()
+        if 详细:
+            print(f"    [{编号}-N] {v2p.name} {入口参数} linux-arm64（预期语义错误中止）")
+        运行结果 = 运行命令([str(v2p), 入口参数, "linux-arm64"], 项目根目录, 内存上限MB=内存上限MB默认)
+        if 运行结果.returncode == 0:
+            return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
+        if v2asm路径.exists():
+            return "失败", f"{编号}-N v2p 语义错误中止后仍产出 target/v2asm.s（错误产物纪律回归）"
+        期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
+        实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+        for 行 in 期望行们:
+            # 平台适配（与正路径步骤3 同款）：期望若引用 win64 路径须替换为 GAS 产物名
+            适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
+            if 适配行 not in 实际输出:
+                return "失败", f"{编号}-N v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
+        return "通过", (f"v2 语义错误中止负路径闭环成立（linux-arm64，退出码 {运行结果.returncode}，"
+                        "无 asm 产出，诊断行固化）")
 
     # ===== 步骤1.5：供给源编译（②b B7）——用例自有类型符号，宿主真实管线 =====
     #   注意：宿主模块系统按规范08-四 仅以 主.cn 为入口模块（其余按导入模块合并
@@ -919,11 +955,9 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     v2源码目录 = 项目根目录 / "CN语言编译器v2"
 
     # ---- linux-arm64 分支（阶段A：v2 GAS 后端 + as/g++ 编排）----
+    #   负路径（预期退出码 None，139/141）已对齐（2026-09-04 ARM64 复验轮）——
+    #   执行v2闭环Linux 内同款分支：v2p 须失败且不产 target/v2asm.s
     if 目标平台 == "linux-arm64":
-        if 预期退出码 is None:
-            # 灰色点⑤负路径（139）本轮仅 win-x64 实证——linux 侧中止行为同源码
-            #   （v2 主.cn 平台无关），待 ARM64 复验轮一并验证后放开
-            return "失败", f"{编号} 负路径闭环（语义错误中止）linux-arm64 侧待 ARM64 复验轮对齐（本轮 win-x64 实证）"
         return 执行v2闭环Linux(编译器路径, 详细, 源文件名们, 预期退出码, 链接v2pobj,
                               期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号, 供给源们)
 
