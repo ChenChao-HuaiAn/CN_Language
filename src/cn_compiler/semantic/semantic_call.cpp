@@ -675,10 +675,15 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         }
         // v2.1（成员访问统一 .）：对象为类指针（账户* 账.方法()）自动解引用
         //   一级（≡ (*账).方法()）——类型驱动剥指针，不依赖语义遍历顺序。
+        // 簇⑥根治（2026-09-04，与 visitMemberExpr 同款）：泛型实例名可含实参
+        //   星号（盒子$整64*——合成名保留尾 *），尾 * 非对象指针语义——原名
+        //   查类命中即用原名；真指针（盒子$整64**）不命中类表自然落入剥分支。
         const std::string clsName =
-            types::isPointer(objTypeForClass)
-                ? canonicalType(types::pointeeOf(objTypeForClass))
-                : canonicalType(objTypeForClass);
+            (findClass(objTypeForClass) != nullptr)
+                ? canonicalType(objTypeForClass)
+                : (types::isPointer(objTypeForClass)
+                       ? canonicalType(types::pointeeOf(objTypeForClass))
+                       : canonicalType(objTypeForClass));
         const ClassMemberInfo* method = lookupClassMember(clsName, methodName, ownerClass);
         if (method != nullptr && !method->isStatic) {
             // 实例方法调用：校验参数个数与类型

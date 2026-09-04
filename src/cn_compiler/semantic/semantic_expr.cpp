@@ -1047,7 +1047,16 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     // v2.1（2026-09-03，用户裁决废除 ->）：成员访问统一 .——对象为指针时
     //   自动解引用**一级**（≡ (*对象).成员，Go 先例；自身 this 指针同此剥法，
     //   原专门分支并入）；多级指针不继续解引用，报错可见化。
-    if (types::isPointer(objectType)) {
+    // 簇⑥根治（2026-09-04，宿主缺陷优先纪律）：泛型实例名可含实参星号
+    //   （盒子<整64*> -> 盒子$整64*——合成名按 canonical 保留尾 *），尾 * 是
+    //   实例名一部分而非对象指针语义——原 isPointer 按尾 * 判定会把实例名剥成
+    //   盒子$整64（findClass 失败，「不是结构体/联合体/类类型」，最小复现=
+    //   泛型<类型 T> 类 盒子 + 盒子<整64*> b; b.值，探针打印实证 varType 全程
+    //   正确、丢点在此消费侧）。修复：先按**全名**查类命中即用原名（真指针
+    //   盒子$整64** 不会命中类表，自然落入下方解引用分支——行为不回退）。
+    if (findClass(objectType) != nullptr) {
+        structType = canonicalType(objectType);
+    } else if (types::isPointer(objectType)) {
         const std::string pointee = types::pointeeOf(objectType);
         if (types::isPointer(pointee)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
