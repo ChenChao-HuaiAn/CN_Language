@@ -76,9 +76,17 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
     // 探测形式2：标识符(类型名) + 星号(指针) + 标识符(变量名)：点* ptr
     // 探测形式3：标识符(类型名) + [长度] + 标识符(变量名)：点[3] 点数组
     //           （须 ] 后跟变量名 Identifier，避免误判 点数组[0] = v 下标赋值）
+    // 探测形式6（2026-09-04 缺陷零容忍收口）：标识符(类型名) + &(引用) +
+    //   标识符(变量名)：点& 引用名 = 左值——裸类型引用局部声明（P3-18 引用
+    //   变量 A-1 扩展的 parser 缺口；泛型形态 向量<项>& r 经 形式4 typeTemplateVar
+    //   可过、裸类型被当位与表达式报「赋值目标必须是可赋值的左值」）。歧义面
+    //   a & b（位与孤立语句=无副作用死代码）误判后语义层报「a 不是类型」——
+    //   与 形式2 a * b 同款既有惯例。
     if (check(TokenType::Identifier)) {
         const bool typeThenVar = (peek(1).getType() == TokenType::Identifier);
         const bool typePtrVar = (peek(1).getType() == TokenType::Star &&
+                                 peek(2).getType() == TokenType::Identifier);
+        const bool typeRefVar = (peek(1).getType() == TokenType::Amp &&
                                  peek(2).getType() == TokenType::Identifier);
         const bool typeArrayVar = (peek(1).getType() == TokenType::LeftBracket &&
                                    peek(2).getType() == TokenType::IntegerLiteral &&
@@ -130,7 +138,7 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
                                        (isTypeKeyword(peek(2).getType()) ||
                                         peek(2).getType() == TokenType::Identifier) &&
                                        peek(3).getType() == TokenType::Identifier);
-        if (typeThenVar || typePtrVar || typeArrayVar || typeTemplateVar ||
+        if (typeThenVar || typePtrVar || typeRefVar || typeArrayVar || typeTemplateVar ||
             typeQualifiedVar) {
             auto stmt = parseTypePrefixVarDecl();
             consumeSemicolon();

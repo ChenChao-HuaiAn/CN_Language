@@ -430,6 +430,12 @@ private:
     int blockCounter_ = 0;                      // 基本块编号（全局递增）
     int varCounter_ = 0;                        // 变量唯一名计数器（函数级递增）
     int lambdaCounter_ = 0;                     // lambda 匿名函数计数器（Task 2.10）
+    // 引用返回读值抑制（2026-09-04 缺陷零容忍收口）：visitCallExpr 对引用返回
+    //   调用默认做 lvalue-to-rvalue（LoadPtr，C++ 语义——原返回裸地址被右值
+    //   消费=静默错误代码，实测 整64 a = 取值(p) 读出地址）；赋值目标/复合
+    //   赋值（ir_expr CallExpr 目标路径经 tgtAddr StorePtr）与引用局部绑定
+    //   （ir_stmt 引用变量初始化须存左值地址）上下文置位抑制。
+    bool suppressRefDeref_ = false;
     // P3/D4（2026-08）：接口间接调用 CFI 校验开关（--cfi 透传，默认关保性能）
     bool cfiEnabled_ = false;
     // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。

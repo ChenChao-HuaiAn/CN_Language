@@ -1174,8 +1174,13 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     }
     // P3-18 补完（2026-08）：引用返回调用作赋值目标（获取() = 值 / 获取() += 值）——
     //   目标调用结果即被引用左值地址（ptr），StorePtr 写回。
+    //   2026-09-04 缺陷零容忍收口：目标生成须抑制读值解引用（suppressRefDeref_——
+    //   visitCallExpr 引用返回默认 lvalue-to-rvalue；赋值目标要地址不要值）。
     if (node->target->getType() == NodeType::CallExpr) {
+        const bool oldSuppress = suppressRefDeref_;
+        suppressRefDeref_ = true;
         ir::IRValue tgtAddr = genExpr(node->target.get());
+        suppressRefDeref_ = oldSuppress;
         ir::IRValue val = genExpr(node->value.get());
         if (isCompoundAssignOp(node->op)) {
             ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {tgtAddr}, val.type,

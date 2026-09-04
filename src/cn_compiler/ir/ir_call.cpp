@@ -411,6 +411,21 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             lastExpr_ = ir::IRValue();
             return;
         }
+        // 引用返回读值默认 lvalue-to-rvalue（2026-09-04 缺陷零容忍收口）：
+        //   引用返回调用（resultType="ptr" 且被调为引用返回用户函数）作为右值
+        //   须解引用读值（C++ 语义）——原返回裸地址被右值消费=静默错误代码
+        //   （整64 a = 取值(p) 实测读出地址）；赋值目标/复合赋值/引用绑定
+        //   上下文经 suppressRefDeref_ 抑制（取地址语义）
+        if (resultType == "ptr" && semantic_ != nullptr &&
+            semantic_->funcReturnsRef(calleeName) && !suppressRefDeref_) {
+            std::string baseRet = semantic_->funcReturnTypeOf(calleeName);
+            if (!baseRet.empty() && baseRet.back() == '&') {
+                baseRet.pop_back();
+            }
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
+                                   mapType(baseRet), "", node->location);
+            return;
+        }
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType, calleeName,
                                node->location);
         return;

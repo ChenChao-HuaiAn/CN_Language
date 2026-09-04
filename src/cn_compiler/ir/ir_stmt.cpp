@@ -85,7 +85,11 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                                    types::isReference(function_->returnTypeSrc);
         if (isRefReturnFn) {
             if (node->value->getType() == NodeType::CallExpr) {
+                // 2026-09-04 缺陷零容忍收口：转发取地址——抑制读值默认解引用
+                const bool oldSuppress0 = suppressRefDeref_;
+                suppressRefDeref_ = true;
                 value = genExpr(node->value.get());
+                suppressRefDeref_ = oldSuppress0;
             } else {
                 value = lvalueAddress(node->value.get());
             }
@@ -457,8 +461,12 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                     {ir::IRValue::var(initUnique, "ptr")}, "ptr", initUnique,
                     node->location);
             } else if (callInit) {
-                // 引用返回调用：调用结果本身即被引用左值地址（ptr）
+                // 引用返回调用：调用结果本身即被引用左值地址（ptr）——
+                //   2026-09-04 缺陷零容忍收口：抑制读值默认解引用
+                const bool oldSuppress1 = suppressRefDeref_;
+                suppressRefDeref_ = true;
                 targetAddr = genExpr(node->initializer.get());
+                suppressRefDeref_ = oldSuppress1;
             } else {
                 // 下标/解引用/成员：取左值地址
                 targetAddr = lvalueAddress(node->initializer.get());
