@@ -390,6 +390,22 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
             lastType_ = "布尔";
             return;
         }
+        // 灰色点②方案A（2026-09-04 用户裁决）：字符串/字符* 之间的比较运算符
+        //   显式拒绝——原「指针间（含字符串）比较按地址」放行 = 同内容异地址的
+        //   字符串 ==/!= 恒假（静默陷阱，拼接产物必踩）。规格书 Task 2.8（比较
+        //   运算符仅定义整型与浮点变体，字符串不参与运算符比较）；等价能力由
+        //   字符串比较（相等）与 字符串字典序（全序）提供。字符串/字符* 与
+        //   空类型*（无）的判空比较保留（Task 6.2，133 EOF 载体）；真指针类型
+        //   间按地址比较保留（判空/同址判定）。
+        const bool leftStrOnly = (leftType == "字符串" || leftType == "字符*");
+        const bool rightStrOnly = (rightType == "字符串" || rightType == "字符*");
+        if (leftStrOnly && rightStrOnly) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "字符串不支持 ==/!=/</> 等比较运算符（按地址比较而非内容）——"
+                                "相等用 字符串比较(a,b)，全序用 字符串字典序(a,b)");
+            lastType_ = "布尔";
+            return;
+        }
         // 指针比较（Task 2.4）：两指针（或指针与空指针）按地址比较；
         // 指针与整型禁止隐式比较（规格书3.7：指针与整数禁止隐式转换）
         // Task 6.2（IO/文件库）：字符串/字符* 本质是 char* 指针，与 空类型*（无）
