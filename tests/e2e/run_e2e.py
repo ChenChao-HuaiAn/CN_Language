@@ -173,7 +173,8 @@ def 终止进程树(进程: subprocess.Popen) -> None:
 
 
 def 运行命令(命令列表: list, 工作目录: pathlib.Path,
-             标准输入: str = "", 内存上限MB: int = 0) -> subprocess.CompletedProcess:
+             标准输入: str = "", 内存上限MB: int = 0,
+             超时秒数: int = 0) -> subprocess.CompletedProcess:
     """执行命令并返回结果（捕获stdout/stderr，UTF-8解码容错）
 
     标准输入: 可选 stdin 注入字符串（Task 6.2 IO 输入用例用，默认空）
@@ -262,6 +263,24 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
             命令列表, 进程.returncode, 收集输出["stdout"], 收集输出["stderr"])
 
     # ---- 普通路径（无内存保护）：与历史行为完全一致 ----
+    #    缺陷④防护（2026-09-04 用户裁决 C4）：编译步骤偶发零 CPU 挂起（终门禁
+    #    cn build 66_switch_all 实测一次，taskkill 后单跑正常——疑 AV/文件锁/
+    #    句柄竞争）——超时秒数 >0 时启用超时保护+重试一次，防偶发挂起拖死门禁
+    if 超时秒数 and 超时秒数 > 0:
+        for 尝试轮 in range(2):
+            try:
+                return subprocess.run(
+                    命令列表, cwd=str(工作目录), capture_output=True,
+                    text=True, encoding="utf-8", errors="replace",
+                    input=标准输入, preexec_fn=preexec_fn, timeout=超时秒数)
+            except subprocess.TimeoutExpired as 超时异常:
+                标记 = f"[runner] 命令超时({超时秒数}s)第{尝试轮 + 1}次: {' '.join(str(c) for c in 命令列表[:3])}"
+                print(标记, file=sys.stderr)
+                if 尝试轮 == 1:
+                    return subprocess.CompletedProcess(
+                        命令列表, -9, (超时异常.stdout or b"").decode("utf-8", errors="replace") if isinstance(超时异常.stdout, bytes) else (超时异常.stdout or ""),
+                        标记 + "\n")
+        # 不可达（上方 return 覆盖两轮）
     return subprocess.run(
         命令列表, cwd=str(工作目录), capture_output=True,
         text=True, encoding="utf-8", errors="replace",
@@ -346,10 +365,14 @@ def 查找参数文件(源文件: pathlib.Path) -> list:
 # ============ 核心逻辑 ============
 
 
-def 解码诊断(原始字节: bytes) -> str:
+def 解码诊断(原始字节) -> str:
     """解码编译器诊断：cn.exe 的 stderr 为 UTF-16LE（FF FE BOM），stdout 为 UTF-8"""
     if not 原始字节:
         return ""
+    if isinstance(原始字节, str):
+        # C4 连带：运行命令 走 text=True 路径时已是解码后字符串（旧裸
+        # subprocess.run 无 text 传 bytes——两种形态兼容）
+        return 原始字节
     if 原始字节.startswith(b"\xff\xfe"):
         return 原始字节.decode("utf-16-le", errors="replace")
     if 原始字节.startswith(b"\xfe\xff"):
@@ -382,7 +405,7 @@ def 执行负用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if 详细:
         print(f"    [负编译] {' '.join(编译命令)}")
     # 字节模式采集：cn.exe stderr 为 UTF-16LE，须按字节解码诊断
-    编译结果 = subprocess.run(编译命令, cwd=str(项目根目录), capture_output=True)
+    编译结果 = 运行命令([str(c) for c in 编译命令], 项目根目录, 超时秒数=180)
     if 编译结果.returncode == 0:
         return "失败", f"预期编译失败但编译成功: {源文件.name}"
     输出 = 解码诊断(编译结果.stderr) + 解码诊断(编译结果.stdout)

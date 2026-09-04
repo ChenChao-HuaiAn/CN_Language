@@ -772,32 +772,32 @@ TEST(ParserTest, LiteralValues) {
 
 // ==================== 8. 语句终止与续行（cn-language-spec 01a第三节 / 03第零节） ====================
 
-// ---- 规则1：语句终止（无终止符 + 可选分号 + 关键字边界） ----
+// ---- 规则1：语句终止（plans/015 方案B 反转：强制分号终结） ----
 
-// 无分号单语句：变量声明无分号合法
-TEST(ParserTest, StmtNoSemicolonVarDecl) {
+// 变量声明分号终结（原「无分号合法」断言随规范反转，源码已迁移）
+TEST(ParserTest, StmtSemicolonTerminatedVarDecl) {
     auto result = parseProgram("函数 测试() { 变量 a = 1; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(firstFunction(result.program.get())->body->statements.size(), 1u);
     EXPECT_EQ(firstStmt(result.program.get())->getType(), NodeType::VarDecl);
 }
 
-// 无分号单语句：返回无分号合法
-TEST(ParserTest, StmtNoSemicolonReturn) {
+// 返回语句分号终结（原「无分号合法」断言随规范反转，源码已迁移）
+TEST(ParserTest, StmtSemicolonTerminatedReturn) {
     auto result = parseProgram("函数 测试() -> 整32 { 返回 1; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(firstStmt(result.program.get())->getType(), NodeType::ReturnStmt);
 }
 
-// 无分号单语句：表达式语句（函数调用）无分号合法
-TEST(ParserTest, StmtNoSemicolonExpr) {
+// 表达式语句分号终结（原「无分号合法」断言随规范反转，源码已迁移）
+TEST(ParserTest, StmtSemicolonTerminatedExpr) {
     auto result = parseProgram("函数 测试() { 打印行(\"你好\"); }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     ASSERT_EQ(firstStmt(result.program.get())->getType(), NodeType::ExprStmt);
 }
 
-// 可选分号：带分号与不带分号均合法，语句数一致
-TEST(ParserTest, StmtSemicolonOptional) {
+// 两条语句均分号终结，语句数一致（原「可选分号」断言随规范反转）
+TEST(ParserTest, StmtSemicolonTerminatedPair) {
     auto withSemi = parseProgram("函数 测试() { 变量 a = 1; 变量 b = 2; }");
     ASSERT_FALSE(withSemi.diagnostics.hasErrors());
     EXPECT_EQ(firstFunction(withSemi.program.get())->body->statements.size(), 2u);
@@ -807,8 +807,8 @@ TEST(ParserTest, StmtSemicolonOptional) {
     EXPECT_EQ(firstFunction(withoutSemi.program.get())->body->statements.size(), 2u);
 }
 
-// 无分号关键字边界：变量 x = 1 整32 y = 2 解析为两条声明（整32 触发新声明）
-TEST(ParserTest, StmtKeywordBoundaryTwoDecls) {
+// 单行双语句分号分隔解析为两条声明（原「关键字边界」形态随规范反转改为分号分隔）
+TEST(ParserTest, StmtSemicolonSeparatedTwoDecls) {
     auto result = parseProgram("函数 测试() { 变量 x = 1; 整32 y = 2; }");
     ASSERT_FALSE(result.diagnostics.hasErrors());
     FunctionDecl* func = firstFunction(result.program.get());
