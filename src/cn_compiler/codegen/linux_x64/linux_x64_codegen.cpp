@@ -809,8 +809,11 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
             ++intIdx;
             const int words = bytes / 8;
             for (int w = 0; w < words; ++w) {
-                writer.line("mov r9, qword ptr [r10+" + std::to_string(w * 8) + "]");
-                writer.line("mov qword ptr " + stackMemText(slotOffset + w * 8) + ", r9");
+                // 数据临时须用 r11：r9 是第6整型参数寄存器，若本结构体参数位号
+                // 早于第6参数且函数整型参数满6个，用 r9 会把未保存的参数值覆盖成
+                // 拷贝残留（v2p 生成如果 实测崩溃：指令引用被覆盖为池容量）
+                writer.line("mov r11, qword ptr [r10+" + std::to_string(w * 8) + "]");
+                writer.line("mov qword ptr " + stackMemText(slotOffset + w * 8) + ", r11");
             }
             writer.comment("结构体参数 " + function.params[i].first +
                            " 拷贝 " + std::to_string(bytes) + " 字节");
@@ -832,13 +835,14 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
         }
         if (intIdx < 6) {
             if (paramType == "i128" || paramType == "u128") {
-                // i128 参数：双槽地址指针 -> 参数双槽拷贝 16 字节
+                // i128 参数：双槽地址指针 -> 参数双槽拷贝 16 字节（数据临时用 r11，
+                //   理由同结构体按值拷贝——r9 可能承载尚未保存的第6参数）
                 const std::string srcReg = intParameterRegister(intIdx);
                 writer.line("mov r10, " + srcReg);
-                writer.line("mov r9, qword ptr [r10]");
-                writer.line("mov qword ptr " + stackMemText(slotOffset) + ", r9");
-                writer.line("mov r9, qword ptr [r10+8]");
-                writer.line("mov qword ptr " + stackMemText(slotOffset + 8) + ", r9");
+                writer.line("mov r11, qword ptr [r10]");
+                writer.line("mov qword ptr " + stackMemText(slotOffset) + ", r11");
+                writer.line("mov r11, qword ptr [r10+8]");
+                writer.line("mov qword ptr " + stackMemText(slotOffset + 8) + ", r11");
                 writer.comment("i128 参数 " + function.params[i].first + " 拷贝 16 字节");
             } else {
                 emitStackStore(writer, slotOffset, intParameterRegister(intIdx), paramType);
@@ -848,11 +852,12 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
             writer.line("mov r10, qword ptr " + stackMemText(16 + stackIdx * 8));
             ++stackIdx;
             if (paramType == "i128" || paramType == "u128") {
-                // i128 栈参数：槽内是双槽地址指针，拷 16 字节
-                writer.line("mov r9, qword ptr [r10]");
-                writer.line("mov qword ptr " + stackMemText(slotOffset) + ", r9");
-                writer.line("mov r9, qword ptr [r10+8]");
-                writer.line("mov qword ptr " + stackMemText(slotOffset + 8) + ", r9");
+                // i128 栈参数：槽内是双槽地址指针，拷 16 字节（数据临时用 r11，
+                //   理由同结构体按值拷贝——r9 可能承载尚未保存的第6参数）
+                writer.line("mov r11, qword ptr [r10]");
+                writer.line("mov qword ptr " + stackMemText(slotOffset) + ", r11");
+                writer.line("mov r11, qword ptr [r10+8]");
+                writer.line("mov qword ptr " + stackMemText(slotOffset + 8) + ", r11");
                 writer.comment("i128 栈参数 " + function.params[i].first + " 拷贝 16 字节");
             } else {
                 emitStackStore(writer, slotOffset, "r10", paramType);

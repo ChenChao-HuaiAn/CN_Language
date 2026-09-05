@@ -504,3 +504,52 @@ TEST(LinuxX64CodegenTest, IndirectCallViaR11) {
 
     EXPECT_NE(asmText.find("call r11"), std::string::npos);
 }
+
+// ==================== 参数拷贝临时寄存器冲突（E2E 153 同源防回归） ====================
+// 结构体按值/i128 参数拷贝的数据临时必须用 r11——r9 是 SysV 第 6 整型参数
+// 寄存器：结构体参数位于第 6 位之前且函数整型参数满 6 个时，用 r9 会把尚未
+// 保存的第 6 参数覆盖成拷贝残留（v2p「生成如果」实测段错误 exit 139：
+// 指令引用被覆盖为节点池容量 41）。r11 在 prologue 参数装载阶段无职责。
+TEST(LinuxX64CodegenTest, StructParamCopyMustNotClobberR9) {
+    Diagnostics diagnostics;
+    LinuxX64CodeGenerator generator(diagnostics);
+
+    IRModule module;
+    IRFunction func;
+    func.name = "f";
+    func.returnType = "i64";
+    // 参数序列：s=结构体按值（位0，rdi）、a~e=5个整型（位1~5，rsi..r9）
+    func.params = {{"s", "ptr"}, {"a", "i64"}, {"b", "i64"},
+                   {"c", "i64"}, {"d", "i64"}, {"e", "i64"}};
+    func.structParamIndexes = {0};
+    func.varSlots["s"] = 3;  // 24 字节结构体（3 槽拷贝）
+    func.varSlots["a"] = 1;
+    func.varSlots["b"] = 1;
+    func.varSlots["c"] = 1;
+    func.varSlots["d"] = 1;
+    func.varSlots["e"] = 1;
+
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    block->terminated = true;
+    block->termKind = "返回";
+    block->termReturnValue = "%v1";
+    IRInstruction ret;
+    ret.opcode = Opcode::Add;
+    ret.result = IRValue::reg(1, "i64");
+    ret.type = "i64";
+    ret.operands = {IRValue::reg(0, "i64"), IRValue::reg(0, "i64")};
+    block->instructions.push_back(ret);
+    func.blocks.push_back(std::move(block));
+    func.nextRegId = 2;
+    module.functions.push_back(std::move(func));
+
+    std::string asmText = generator.generateAssembly(module);
+
+    // 结构体拷贝循环：数据临时必须是 r11，绝不允许 r9（第 6 参数在拷贝时未保存）
+    EXPECT_NE(asmText.find("mov r11, qword ptr [r10+0]"), std::string::npos);
+    EXPECT_NE(asmText.find("mov r11, qword ptr [r10+16]"), std::string::npos);
+    EXPECT_EQ(asmText.find("mov r9, qword ptr [r10"), std::string::npos);
+    // 第 6 参数 e 仍经 r9 直存到槽（拷贝不再破坏它——"mov qword ptr [rbp-N], r9"）
+    EXPECT_NE(asmText.find("], r9"), std::string::npos);
+}
