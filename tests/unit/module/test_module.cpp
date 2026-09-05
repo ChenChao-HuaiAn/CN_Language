@@ -29,6 +29,8 @@ using cn_compiler::module::parseSourceText;
 namespace {
 
 // 辅助：从源码解析出 ModuleUnit（词法+语法+导入收集）
+// 簇⑥ 根治（2026-09-05）适配：单测直构图（无 loadModuleTree），入口标记
+//   isEntryUnit 按 主.cn 约定模拟命令行入口（生产中由 loadModuleTree 根调用写入）。
 std::unique_ptr<ModuleUnit> makeUnit(const std::string& source, const std::string& fileName,
                                      Diagnostics& diags) {
     auto unit = std::make_unique<ModuleUnit>();
@@ -38,6 +40,7 @@ std::unique_ptr<ModuleUnit> makeUnit(const std::string& source, const std::strin
     std::string base = (slash == std::string::npos) ? fileName : fileName.substr(slash + 1);
     const std::size_t dot = base.find_last_of('.');
     unit->moduleName = (dot == std::string::npos) ? base : base.substr(0, dot);
+    unit->isEntryUnit = (unit->moduleName == "主");
     parseSourceText(source, fileName, unit->moduleName, unit->ast, unit->imports, diags);
     return unit;
 }

@@ -5,7 +5,8 @@
 //   3. ModuleGraph：依赖图 + DFS 拓扑排序（三色标记检测循环依赖）
 //   4. mergeModules：公开符号合并 + 跨模块类型重名冲突检测
 //      所有权转移：源 AST 声明节点 release() 移交目标 Program（避免 double-free）
-//   5. isEntryModule：入口识别（模块名 == 主，即 主.cn）
+//   5. 入口判定：ModuleUnit::isEntryUnit（命令行显式入口标记，簇⑥ 根治 2026-09-05）；
+//      isEntryModule（模块名 == 主）为文件名约定查询保留，非入口语义依据
 // 单文件 <=1000 行、单函数 <=100 行约束。
 #include "cn_compiler/module/module.hpp"
 
@@ -554,20 +555,22 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
 
 // 合并多个模块 AST 为单一 Program（Task 3.6；第 4 层 crate 分桶）
 // ordered 为拓扑排序结果（被依赖者在前）。
-// 入口模块判定 = isEntryModule（模块名 == 主，即 主.cn，规范08-四）：
-//   其全部声明（含私有）保留；被导入模块（非入口）仅合并公开声明。
+// 入口模块判定 = ModuleUnit::isEntryUnit（簇⑥ 根治，2026-09-05 方案A：命令行
+//   显式入口标记，loadModuleTree 根调用写入）：入口全部声明（含私有）保留；
+//   被导入模块（递归加载的依赖）仅合并公开声明 + 公开函数闭包引用的私有函数。
+//   取代旧「模块名==主 + 单模块特判」双轨判定——两者均会把含导入的非主.cn
+//   命令行入口误判为被导入模块（E2E 26 单文件形态 / 簇⑥ 组件自检形态两度发作）。
 // v2.0 crate 隔离：类型重名按模块分桶（跨模块同名允许），函数重复定义
 //   由语义层 registerFunction 按 moduleName 分模块判定（同模块重名才报错）。
 bool mergeModules(const std::vector<ModuleUnit*>& ordered, Program* out, Diagnostics& diags) {
     CrateTypeBuckets typeBuckets;  // 模块名 -> 已合并类型名集合（crate 分桶）
     bool ok = true;
-    // 单模块场景（无导入）：唯一模块即入口（E2E 26 修复——单文件用例模块名
-    //   非 主（如 泛型模板.cn），isEntryModule 判 false 导致泛型/私有被过滤，
-    //   单测走 Parser.parse 无此问题，runModulePipeline 必经 mergeModules）。
+    // singleModule 仅用于 mergeModuleDecls 的 crateName 前缀决策（单文件不加
+    //   模块名链接前缀）——不再参与入口判定（isEntryUnit 已统一覆盖单文件形态）。
     const bool singleModule = (ordered.size() == 1);
     for (ModuleUnit* unit : ordered) {
         if (unit == nullptr || unit->ast == nullptr) continue;
-        const bool isEntry = singleModule || isEntryModule(*unit);
+        const bool isEntry = unit->isEntryUnit;
         if (!mergeModuleDecls(*unit, out, isEntry, singleModule, typeBuckets, diags)) ok = false;
     }
     return ok;
@@ -575,7 +578,9 @@ bool mergeModules(const std::vector<ModuleUnit*>& ordered, Program* out, Diagnos
 
 // ==================== 入口识别 ====================
 
-// 该模块是否为程序入口：模块名 == 主（即文件名 主.cn，不含扩展名）
+// 模块名 == 主（即文件名 主.cn，规范08-四 的文件名约定查询）。
+// 注意：合并阶段入口判定已由 isEntryUnit 承担（簇⑥ 根治）——本函数仅供
+//   文件名约定查询（单测覆盖），不再是入口语义依据。
 bool isEntryModule(const ModuleUnit& unit) {
     return unit.moduleName == "主";
 }

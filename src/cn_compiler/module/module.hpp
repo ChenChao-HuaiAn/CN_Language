@@ -29,6 +29,13 @@ struct ModuleUnit {
     // 相对入口目录的模块路径前缀（:: 路径对应 / 目录）。入口=空；
     //   网络/传输控制.cn 的 moduleDir = "网络"；子模块声明从父模块目录加载。
     std::string moduleDir;
+    // ---- 簇⑥ 根治（2026-09-05 方案A）：命令行入口标记 ----
+    // 命令行显式指定的入口文件（loadModuleTree 根调用）为 true，递归加载的
+    //   导入依赖为 false。mergeModules 据此判定入口（入口全部声明保留含私有；
+    //   仅被导入依赖按可见性过滤）——取代「模块名==主」文件名判定与单模块特判
+    //   （两者均会把「含导入的非主.cn 命令行入口」误判为被导入模块，私有函数
+    //   体被静默丢弃=check 假绿，E2E 26 单文件形态 / 簇⑥ 组件自检形态两度发作）。
+    bool isEntryUnit = false;
     std::unique_ptr<Program> ast;          // 解析后的 AST（词法+语法）
     std::vector<std::string> imports;      // 导入的模块名列表（去重，依赖边）
 };
@@ -64,14 +71,17 @@ private:
 };
 
 // 合并多个模块 AST 为单一 Program（Task 3.6）：
-//   1. 被导入模块（非入口）仅合并 公开 声明（access == Public）；私有声明不跨模块可见
-//   2. 入口模块（ordered 最后一个）的全部声明保留
+//   1. 被导入模块（非入口，isEntryUnit=false）仅合并 公开 声明（access == Public）
+//      + 公开函数闭包引用的私有函数；其余私有声明不跨模块可见
+//   2. 入口模块（isEntryUnit=true，即命令行显式入口）的全部声明保留（簇⑥ 根治）
 //   3. 导入声明（ImportDecl）不合并（编译期模块解析，运行时无导入概念）
 //   4. 跨模块类型重名（结构体/枚举/类/接口）报错（写入 diags）
 // 返回 false 表示存在跨模块类型冲突（diags 已记录）
 bool mergeModules(const std::vector<ModuleUnit*>& ordered, Program* out, Diagnostics& diags);
 
-// 入口识别：该模块是否为程序入口（模块名 == 主，即 主.cn）
+// 入口识别（历史保留）：模块名 == 主，即 主.cn（规范08-四 文件名约定查询）。
+// 注意：合并阶段的入口判定已由 ModuleUnit::isEntryUnit（命令行来源标记）承担
+//   （簇⑥ 根治，2026-09-05）——本函数不再是入口语义依据，仅供文件名约定查询。
 bool isEntryModule(const ModuleUnit& unit);
 
 } // namespace module

@@ -64,11 +64,14 @@ bool tryReadSource(const std::string& path, std::string& out) {
 //   3. stdlib 兜底：options.stdlibDir + 依赖名.cn（未声明依赖但 stdlib 存在，如 核心）
 // 未找到 -> 报「无法打开源文件」（与 v1.0 一致）
 // 返回 false 表示加载/解析失败（diags 已输出或 error 已写入）
+// isRootCall（簇⑥ 根治，2026-09-05）：仅命令行入口的首次调用为 true（递归
+//   加载依赖恒 false）——写入 unit->isEntryUnit，mergeModules 据此判定入口
+//   （命令行文件全部声明保留；仅被导入依赖按可见性过滤）。
 bool loadModuleTree(const std::string& filePath, const std::string& dir,
                     const std::string& entryDir,
                     module::ModuleGraph& graph, std::string& error,
                     const std::unordered_set<std::string>& macros,
-                    const DriverOptions& options) {
+                    const DriverOptions& options, bool isRootCall = false) {
     // 模块名 = 文件相对**入口目录**的路径主干（网络/传输控制.cn -> 网络::传输控制）
     std::string relPart;
     if (filePath.size() > entryDir.size() && filePath.compare(0, entryDir.size(), entryDir) == 0) {
@@ -120,6 +123,7 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     auto unit = std::make_unique<module::ModuleUnit>();
     unit->filePath = filePath;
     unit->moduleName = moduleName;
+    unit->isEntryUnit = isRootCall;  // 簇⑥ 根治：命令行入口标记（递归依赖恒 false）
     // 模块目录前缀（相对入口；网络/传输控制.cn -> 网络/），子模块从该目录加载。
     // 外部模块（stdlib/依赖目录）moduleDir 为空——子模块从文件所在目录加载。
     unit->moduleDir = externalModule ? "" : pathDir(relPart);
@@ -304,10 +308,12 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     // 1. 加载模块树：入口 + 依赖
     //    第 5 层：依赖查找按 options 中货舱.toml 配置 + stdlib 目录扩展
     //    （入口同目录优先；货舱 [依赖] 次之；stdlib 兜底）
+    //    簇⑥ 根治：根调用 isRootCall=true 写入命令行入口的 isEntryUnit 标记
     module::ModuleGraph graph;
     std::string error;
     const std::string dir = pathDir(entryFile);
-    if (!loadModuleTree(entryFile, dir, dir, graph, error, options.macros, options)) {
+    if (!loadModuleTree(entryFile, dir, dir, graph, error, options.macros, options,
+                        /*isRootCall=*/true)) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
     }
