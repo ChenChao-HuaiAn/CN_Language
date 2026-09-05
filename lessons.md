@@ -1449,3 +1449,41 @@
   - **描述**: cn-language-spec 技能同时存在于 .zcode/skills/（ZCode 加载）与 .agents/skills/（旧 agent 体系）两处——历史演进各改一侧形成**三向分叉**：02（.zcode 独有字符串驻留条目，2026-08-25）、04（.agents 独有 P3-18 引用返回/P3-23 方法作值，.zcode 侧还留着已被推翻的「引用返回编译报错」旧文案）、06（.agents 独有 P3-19 接口分派三行）。同一规范两处异版=AI 按加载侧不同得出不同答案。
   - **解决**: 逐文件以 plans/001+实现现状（E2E）判权威方向定向 cp（02 用 .zcode、04/06 用 .agents——**不可整目录单向覆盖**），diff -rq 零差异收口；全 skills 树排查确认仅此一处双副本。
   - **预防**: 修改 cn-language-spec 任一副本时必须同步另一副本（提交前 `diff -rq .zcode/skills/cn-language-spec/ .agents/skills/cn-language-spec/` 须零输出）；两副本出现差异时先逐文件对 plans/001 判方向，禁止默认单侧权威。权重 5.0
+
+
+## 高权重问题（plans/016 linux-x86_64 后端专项：六枚汇编/ABI 缺陷三层实证根治，2026-09-05 深度系统 x86_64 本机）
+
+**权重：10.5（新后端首发轮——六枚缺陷同根链：MASM 直译≠x86_64 汇编器语义 + 32 位类型的 64 位运算位模式坑）**
+
+### 事件
+plans/016 linux-x86_64 后端（GAS Intel 语法 + SysV ABI）首轮实施，E2E 全量跑出六枚缺陷，
+汇编器报错（imul/movss）/运行时结果错（负数枚举/除法/retbuf 悬垂）/gdb rip=0（push-pop 配对）三层症状齐全。
+全部当场根治，最终门禁全绿（单测 1238/1238 + E2E 127 过/0 败/27 跳过）。
+
+### 教训（预防要点）
+1. **MASM 直译≠x86_64 汇编器语义，逐形态过 as**：x86_64 无 `imul r64,r64,r64` 三寄存器形式
+   （仅立即数三操作数）——乘法一律双操作数 `imul dst, src`；`movss` 配 `qword ptr` 报
+   operand size mismatch——宽度前缀（byte/word/dword/qword）必须与助记符宽度精确匹配。
+   **新指令形态发射后立即本机 as 验证**（本机原生闭环是 x86_64 后端的独有优势，勿攒批验证）。
+2. **32 位类型的 64 位运算「看似可行」暗藏位模式坑（比较/除法双双实证）**：
+   i32 变量装载 `mov r10d`（清高32=零扩展位模式）与 64 位常量 `mov r9, -1`（全1）在 64 位
+   `cmp` 下位模式不一致——负数枚举 `-1 == -1` 误判不等（选择语句落默认分支）；i32 负数
+   `cqo+idiv r64` 按正数除（-8/2 商 2147483644）。**宽度语义跟随源类型**：非宽类型
+   `cmp r10d, r9d` + `cdq+idiv r9d`（ARM64 w9/w10 策略的本质原因——此前只知其形不知其因）。
+3. **push/pop 严格逆序配对**：push rbx 先、push rbp 后（rbp 紧邻返回地址），epilogue
+   `mov rsp,rbp / pop rbp / pop rbx / ret`——顺序颠倒时 rbp 弹到返回地址、ret 读垃圾
+   （gdb 实证 rip=0 + 栈顶 3/4 相邻位模式锁定参数槽写入区）。**写 prologue 时同步写 epilogue
+   并配对审计**（gdb batch + dmesg segfault ip/sp 三分钟定位，勿肉眼对汇编猜）。
+4. **跨调用持久的缓冲区必须帧内固定区（rbp 相对）**：emitCall 的 rsp 临时区 `add rsp` 后
+   悬垂——win x64 2026-08 同款修复（retbufFrameOffset_）先查已有平台实现再动手（本轮
+   该坑因未先读 win 的 emitCall 全文而重踩，gdb 两轮才收敛；**跨平台后端先行通读兄弟平台
+   同名函数全文是零成本预防**）。
+5. **IR 层调用契约先 dump 实证再写调用方**：结构体返回调用（形态 A）由 IR 层预插
+   retbuf 地址为 operands[0]、result.type=void——`cn ir` dump + ARM64 双平台汇编对照
+   锁定「原样传递自然落位0」的正确语义（arm64 版注释/单位机全量绿双锚定）；凭 win 注释
+   （第4路 calleeReturnsStruct）推测会做出 argOffset=1 的错位实现。
+6. **终端肉眼验证输出会被 echo 拼接误导**（换行缺失不可见，"1407参数"实为 140 无换行接
+   echo 文本）——E2E 逐行比对是唯一可信验收，探针期就应走 expected 比对而非肉眼。
+
+### 关联
+plans/016 第七节（实施结果+八项差异清单）；形态 A 契约与 win 第4路差异的呈报见 HANDOFF「下一步2」。

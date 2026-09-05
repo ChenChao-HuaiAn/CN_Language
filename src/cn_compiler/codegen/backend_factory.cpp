@@ -2,13 +2,15 @@
 // 实现要点：
 //   1. win-x64 -> X64CodeGenerator（MASM，MSVC 工具链）
 //   2. linux-arm64 -> Arm64CodeGenerator（GAS，as/g++ 工具链）
-//   3. 未知平台：向诊断引擎报告错误并返回 nullptr（调用方负责空指针检查）
+//   3. linux-x86_64 -> LinuxX64CodeGenerator（GAS Intel语法 + SysV ABI，plans/016）
+//   4. 未知平台：向诊断引擎报告错误并返回 nullptr（调用方负责空指针检查）
 // 单文件 <=1000 行、单函数 <=100 行约束。
 #include "cn_compiler/codegen/backend_factory.hpp"
 
 #include <memory>
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
+#include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/common/source_location.hpp"
@@ -42,8 +44,16 @@ std::unique_ptr<Backend> createBackend(const std::string& target,
         backend->setDebugInfoEnabled(debugInfo);
         return backend;
     }
+    if (target == "linux-x86_64") {
+        // plans/016：System V AMD64 ABI + GAS Intel 语法（对齐 arm64 的
+        //   寄存器分配决策：默认关闭，保持全栈帧，正确性最高优先）
+        auto backend = std::make_unique<LinuxX64CodeGenerator>(diag, sem);
+        backend->setRegAllocEnabled(false);
+        backend->setDebugInfoEnabled(debugInfo);
+        return backend;
+    }
     diag.report(Diagnostic::error("", 0, 0,
-                 "未知目标平台: " + target + "（应为 win-x64 或 linux-arm64）"));
+                 "未知目标平台: " + target + "（应为 win-x64、linux-arm64 或 linux-x86_64）"));
     return nullptr;
 }
 

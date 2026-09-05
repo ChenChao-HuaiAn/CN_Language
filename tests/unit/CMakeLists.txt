@@ -64,6 +64,7 @@ add_executable(cn_unit_tests
     ir/test_ir_oop_emit.cpp
     codegen/test_x64_codegen.cpp
     codegen/test_arm64_codegen.cpp
+    codegen/test_linux_x64_codegen.cpp
     codegen/test_x64_function.cpp
     codegen/test_x64_types.cpp
     codegen/test_x64_pointer.cpp

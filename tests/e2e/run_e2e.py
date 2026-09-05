@@ -14,6 +14,7 @@ import os
 import pathlib
 import signal
 import subprocess
+import platform
 import sys
 import time
 
@@ -61,6 +62,39 @@ if hasattr(sys.stderr, "reconfigure"):
         "62_ffi",                # 依赖 Windows API GetTickCount64
         "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
         "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
+    ],
+    # plans/016（2026-09-05）：linux-x86_64 平台——宿主后端已支持（本机原生闭环）；
+    #   v2 自举编译器（CN语言编译器v2/）尚无 x86_64 代码生成（后续专项），其闭环
+    #   用例按平台跳过；62/69/79 与 linux-arm64 同因。
+    "linux-x86_64": [
+        "62_ffi",                # 依赖 Windows API GetTickCount64
+        "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
+        "78_chain_build",        # v1 链（v1 编译器仅 MASM 后端）
+        "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
+        # ---- v2 自举闭环用例（v2p 仅支持 win-x64 / linux-arm64 两目标） ----
+        "119_v2_多文件链接闭环",
+        "120_v2_顶层常量",
+        "123_v2_容器",
+        "125_v2_控制流与短路与转义",
+        "126_v2_结构体元素容器",
+        "127_v2_嵌套容器与容器字段与静态与引用",
+        "128_v2_内置函数与字符串拼接",
+        "129_v2_字符串下标与复合赋值与登记补全",
+        "130_v2_指针下标读写",
+        "132_v2_可写左值全形态闭环",
+        "133_v2_限定名内置IO与文件",
+        "137_v2_三元运算符",
+        "138_v2_灰色点收口",
+        "139_v2_语义错误中止",
+        "141_v2_字符串比较拒绝",
+        "142_v2_自减全链",
+        "143_v2_导入项裸名改写",
+        "144_v2_泛型星号实参",
+        "146_v2_缺分号拒绝",
+        "147_v2_局部引用声明",
+        "148_v2_函数返回结构体",
+        "149_v2_IR层错误中止",
+        "150_v2_引用返回与裸引用与无符号窄宽",
     ],
     "win-x64": [
         # win-x64 暂无非平台限制用例
@@ -1311,10 +1345,11 @@ def 主程序() -> int:
                "  python3 run_e2e.py\n"
                "  python3 run_e2e.py --cn target/Debug/cn --verbose\n"
                "  python3 run_e2e.py --target linux-arm64 --cn target/Debug/cn\n"
+               "  python3 run_e2e.py --target linux-x86_64 --cn target/cn\n"
                "  python3 run_e2e.py --filter 01_hello")
     解析器.add_argument("--cn", help="cn编译器路径（默认自动探测 target/Debug 等）")
     解析器.add_argument("--target", default=None,
-                        help="目标平台（win-x64 | linux-arm64；默认按本机平台自动推断）")
+                        help="目标平台（win-x64 | linux-arm64 | linux-x86_64；默认按本机平台自动推断）")
     解析器.add_argument("--max-mem-mb", type=int, default=内存上限MB默认,
                         help=f"重负载用例（78/79）运行子进程内存上限MB，超过自动终止（默认 {内存上限MB默认}MB；0=不启用）")
     解析器.add_argument("--verbose", "-v", action="store_true", help="详细输出（显示编译/运行命令）")
@@ -1328,12 +1363,19 @@ def 主程序() -> int:
     if 参数.max_mem_mb is not None and 参数.max_mem_mb >= 0:
         内存上限MB默认 = 参数.max_mem_mb
 
-    # 目标平台：显式指定优先；否则按本机平台自动推断（Windows -> win-x64，其他 -> linux-arm64）
+    # 目标平台：显式指定优先；否则按本机平台自动推断
+    #   （Windows -> win-x64；Linux ARM64 -> linux-arm64；Linux x86_64 -> linux-x86_64，
+    #    plans/016 起原生支持本机闭环）
     目标平台 = 参数.target
     if 目标平台 is None:
-        目标平台 = "win-x64" if sys.platform == "win32" else "linux-arm64"
-    if 目标平台 not in ("win-x64", "linux-arm64"):
-        print(红色(f"错误: 无效目标平台 {目标平台}（应为 win-x64 或 linux-arm64）"))
+        if sys.platform == "win32":
+            目标平台 = "win-x64"
+        elif platform.machine() in ("x86_64", "AMD64", "amd64"):
+            目标平台 = "linux-x86_64"
+        else:
+            目标平台 = "linux-arm64"
+    if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
+        print(红色(f"错误: 无效目标平台 {目标平台}（应为 win-x64、linux-arm64 或 linux-x86_64）"))
         return 2
 
     # 探测编译器与输出目录

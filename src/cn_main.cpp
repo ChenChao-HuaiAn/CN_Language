@@ -58,7 +58,7 @@ struct CliOptions {
 // 打印版本信息
 void printVersion() {
     std::cout << "CN语言编译器 cn 0.1.0\n";
-    std::cout << "目标平台: win-x64 (初期), linux-arm64 (初期)\n";
+    std::cout << "目标平台: win-x64 (初期), linux-arm64 (初期), linux-x86_64 (plans/016)\n";
 }
 
 // 打印帮助信息
@@ -73,7 +73,7 @@ void printHelp() {
     std::cout << "  ast <文件.cn>          输出AST（调试用）\n";
     std::cout << "  token <文件.cn>        输出Token流（调试用）\n";
     std::cout << "\n选项:\n";
-    std::cout << "  --target <平台>        目标平台 (win-x64 | linux-arm64)\n";
+    std::cout << "  --target <平台>        目标平台 (win-x64 | linux-arm64 | linux-x86_64)\n";
     std::cout << "  -O0/-O1/-O2/-O3       优化级别（规格书9.1+完善C；-O1=折叠+DCE+代数简化+复写传播，\n";
     std::cout << "                         -O2 增加 CSE+跨块DCE，-O3 增加全局值传播）\n";
     std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2 | 3)（兼容写法，等价 -O<级别>）\n";
@@ -101,8 +101,10 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
         if (current == "--target") {
             if (index + 1 >= args.size()) return "选项 --target 缺少参数";
             options.target = args[++index];
-            if (options.target != "win-x64" && options.target != "linux-arm64")
-                return "无效目标平台: " + options.target + "（应为 win-x64 或 linux-arm64）";
+            if (options.target != "win-x64" && options.target != "linux-arm64" &&
+                options.target != "linux-x86_64")
+                return "无效目标平台: " + options.target +
+                       "（应为 win-x64、linux-arm64 或 linux-x86_64）";
         } else if (current == "-O0" || current == "-O1" ||
                    current == "-O2" || current == "-O3") {
             // 优化级别（规格书9.1 + 完善C）：-O0 无优化；
@@ -494,9 +496,15 @@ static int runToolchainCommand(const std::string& vcvarsBat, const std::string& 
 #endif
 }
 
-// 目标平台辅助：是否为 win-x64（Windows 工具链）或 linux-arm64（as/g++ 工具链）
+// 目标平台辅助：是否为 win-x64（Windows 工具链）或 linux-arm64/linux-x86_64（as/g++ 工具链）
+// linux-x86_64 与 linux-arm64 共用同一套 as/g++ 命令形态（本机原生工具链）
 static bool isWinX64(const std::string& target) { return target == "win-x64"; }
 static bool isLinuxArm64(const std::string& target) { return target == "linux-arm64"; }
+static bool isLinuxX64(const std::string& target) { return target == "linux-x86_64"; }
+// 是否为 as/g++ 工具链平台（linux-arm64 + linux-x86_64，汇编/运行时编译/链接命令共用）
+static bool isGnuToolchain(const std::string& target) {
+    return isLinuxArm64(target) || isLinuxX64(target);
+}
 
 // Linux 工具链探测：环境变量 CN_AS / CN_CXX 优先，其次便携工具链（~/gcc7），最后 PATH
 //   本机为无系统 g++ 的 ARM64 环境，便携工具链位于 /home/user/gcc7/usr/bin/g++
@@ -641,9 +649,10 @@ static bool linkExe(const std::string& target, const std::string& vcvarsBat,
 // 返回: 0 成功；非0 失败（错误消息已写入 error 或已打印诊断）
 static int buildExe(const CliOptions& options, const std::string& file,
                     std::string& exePath, std::string& error) {
-    // 支持平台：win-x64（MASM + MSVC）/ linux-arm64（GAS + as/g++）
-    if (!isWinX64(options.target) && !isLinuxArm64(options.target)) {
-        error = "该命令不支持目标平台 " + options.target + "（应为 win-x64 或 linux-arm64）";
+    // 支持平台：win-x64（MASM + MSVC）/ linux-arm64 / linux-x86_64（GAS + as/g++）
+    if (!isWinX64(options.target) && !isGnuToolchain(options.target)) {
+        error = "该命令不支持目标平台 " + options.target +
+                "（应为 win-x64、linux-arm64 或 linux-x86_64）";
         return 1;
     }
 
@@ -745,12 +754,12 @@ static int runBuild(const CliOptions& options, const std::string& file) {
     return 0;
 }
 
-// compile 命令：仅编译生成汇编文件（win-x64 .asm / linux-arm64 .s）
+// compile 命令：仅编译生成汇编文件（win-x64 .asm / linux .s）
 static int runCompile(const CliOptions& options, const std::string& file) {
-    // 支持平台：win-x64 / linux-arm64
-    if (!isWinX64(options.target) && !isLinuxArm64(options.target)) {
+    // 支持平台：win-x64 / linux-arm64 / linux-x86_64
+    if (!isWinX64(options.target) && !isGnuToolchain(options.target)) {
         std::cerr << "错误: compile 命令不支持目标平台 " << options.target
-                  << "（应为 win-x64 或 linux-arm64）\n";
+                  << "（应为 win-x64、linux-arm64 或 linux-x86_64）\n";
         return 1;
     }
     std::string source;
