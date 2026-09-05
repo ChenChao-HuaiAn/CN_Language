@@ -86,3 +86,15 @@
 8. **形态 A retbuf 契约锚定**：用户结构体返回调用由 IR 层预插 retbuf 地址为 operands[0]（`调用 %v62 10 2 (void)`），后端原样传递自然落 rdi（SysV 隐藏指针位）——对齐 ARM64；win x64 第4路 calleeReturnsStruct 与本实现的差异（本后端三路判定）已在 ARM64 单位机全量 E2E + 本机全量 E2E 双平台锚定。
 
 **遗留/后续**：v2 自举编译器的 linux-x86_64 代码生成（代码生成X64Linux.cn）=后续专项；win x64 第4路判定与形态 A 的交互建议家机复核一轮（本机无 MSVC 无法回归 win）。
+
+## 八、呈报复核闭环（2026-09-05 家机 win-x64，用户裁决方案A 当轮根治）
+
+**呈报事项**：win x64 第4路 `calleeReturnsStruct` 与形态 A retbuf 契约的交互（深度系统机无 MSVC 无法回归 win）。
+
+**复核结论**：win 侧**不存在**形态 A 实参错位——四重实证：①探针 IR dump `调用 %v25 3 4 (void)`（形态A 契约：retbuf 预插 operands[0]、result.type=void）；②调用方 asm `mov rcx, r12; mov rdx, 3; mov r8, 4`（operands[0] 原样落 rcx=Win ABI 隐藏指针位，实参无后移）；③被调方 asm structReturn=true 协议（prologue 收 rcx 入 retbuf 槽、参数从 edx 起、epilogue 按字节拷回）；④最小探针（结果+结构体双形态带参直调）运行输出 7/30/40。E2E 全量 154 用例 152 过/2 败（78/79 已知 OOM 家族），24 错误处理等结构体返回密集用例全绿——呈报锚定完成。
+
+**复核连带揪出新缺陷（已根治）**：win 第 4 路 `calleeReturnsStruct` 是**从未生效的死代码**——`activeModule_` 全仓无赋值恒 nullptr，首行短路恒返 false；2026-08「自举检查修复」注释所声称的机制从未运行，当年转绿真因=IR 层形态A预插（双巧合互洽掩盖死代码）。linux_x64 后端同款函数（本机有赋值=活的）**零调用点**——同为死代码。**危险反事实**：若激活第4路，形态A调用会 argOffset=1 把预插 retbuf 当实参推到 rdx，全量错位。
+
+**根治（方案A，行为零变化）**：①win 删第4路+函数+`activeModule_` 成员，hasBigRet 收敛三路（i128/u128/struct*）——与本后端判定完全同构；②linux_x64 删同族死函数（617-625）与赋值行（1050）；③ir_decl.cpp/linux_x64_instructions.cpp 注释归真。验证：构建零警告+单测 1238/1238+E2E 全量零回归（详见提交记录）。
+
+**经验**：呈报中「与 win 第4路的差异」表述沿用了 win 侧虚假注释的叙事——移植/对齐前应核实被移植侧函数的真实活性（有赋值/有调用点），注释与 grep 事实矛盾时以事实为准（详见 lessons 同日条目）。

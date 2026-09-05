@@ -161,10 +161,14 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
     if (semantic_ != nullptr && !node->returnType.empty() &&
         semantic_->isStructType(types::canonical(node->returnType))) {
-        // 结果/可选 返回同样走隐藏返回指针协议（Win x64 ABI）——调用方
-        //   emitCall 按被调函数 structReturn 标志传返回缓冲（calleeReturnsStruct）。
+        // 结果/可选 返回同样走隐藏返回指针协议（Win x64 ABI）——IR 层对结构体
+        //   返回调用预插 retbuf 地址为 operands[0]（形态A契约，见 ir_call.cpp），
+        //   各后端原样传递自然落隐藏指针位（win=rcx / SysV=rdi / arm64=x0）；
+        //   func.structReturn 标志供**被调方**生成接收/回写协议（paramOffset=1）。
         //   若走 __rctor 栈临时返回，调用方跨调用读 .值 悬垂（空类型结果调用处
-        //   result.type=void 使原 hasBigRet 判定失效，2026-08 自举检查发现）
+        //   result.type=void 使仅按 result.type 的判定失效，2026-08 自举检查发现；
+        //   2026-09-05 家机复核归真：win 第4路被调查询因 activeModule_ 恒 null
+        //   从未生效，真正生效的一直是本处形态A预插，plans/016）
         func.structReturn = true;
         // 记录精确大小（字节）：epilogue 按此拷贝到隐藏返回缓冲区（避免 64 字节
         //   硬编码越界写破坏相邻栈变量——班级 16 字节被写 64 字节越界 48 字节）

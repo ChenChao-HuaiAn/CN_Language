@@ -290,11 +290,6 @@ private:
     // 参数类型是否结构体按值（IR 层类型 ptr + structParamIndexes 判定）
     bool isStructParam(const ir::IRFunction& function, std::size_t index) const;
 
-    // 被调函数是否走隐藏返回指针（结构体/结果/可选 返回）：按模块函数表
-    //   structReturn 标志判定——调用处 result.type 可能为 void/ptr（结果<空类型>
-    //   场景），hasBigRet 四路判定之关键路（对齐 win x64 的 calleeReturnsStruct）
-    bool calleeReturnsStruct(const std::string& callee) const;
-
     // ==================== 变量槽映射 ====================
 
     // 登记一个变量（参数/局部）到变量槽映射，返回槽索引
@@ -351,8 +346,6 @@ private:
 
     // 语义分析器指针（类布局/虚表槽位/静态字段查询；可空）
     SemanticAnalyzer* semantic_ = nullptr;
-    // 当前生成模块（calleeReturnsStruct 查被调函数 structReturn 标志用）
-    const ir::IRModule* activeModule_ = nullptr;
     // 已生成虚表符号集合（去重，供 .rodata 发射）
     std::unordered_set<std::string> emittedVtables_;
     // 已生成静态字段符号集合（去重，供 .data 发射）

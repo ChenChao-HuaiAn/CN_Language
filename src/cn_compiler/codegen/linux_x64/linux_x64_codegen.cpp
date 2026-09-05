@@ -611,19 +611,6 @@ bool LinuxX64CodeGenerator::isStructParam(const ir::IRFunction& function,
            function.structParamIndexes.count(static_cast<int>(index)) > 0;
 }
 
-// 被调函数是否走隐藏返回指针：按模块函数表 structReturn 标志判定
-// （对齐 win x64 的 calleeReturnsStruct——2026-08 自举检查修复：调用处
-//   result.type 可能为 void/ptr，仅按 result.type 判定会与被调方 paramOffset 错位）
-bool LinuxX64CodeGenerator::calleeReturnsStruct(const std::string& callee) const {
-    if (callee.empty() || activeModule_ == nullptr) return false;
-    for (const auto& f : activeModule_->functions) {
-        if (f.mangledName == callee || f.name == callee) {
-            return f.structReturn;
-        }
-    }
-    return false;
-}
-
 // ==================== 模块级段生成 ====================
 
 // 生成 .data 段（字符串常量池 LstrN + 浮点常量池 LfpN + 顶层静态 _cn_gstatic_N）
@@ -1047,7 +1034,6 @@ void LinuxX64CodeGenerator::emitBlock(LinuxX64AsmWriter& writer, const ir::IRBlo
 
 // 主入口：生成完整汇编文件
 std::string LinuxX64CodeGenerator::generateAssembly(const ir::IRModule& module) {
-    activeModule_ = &module;  // 供 calleeReturnsStruct 查被调函数 structReturn
     floatConstLabels_.clear();
     floatConstOrder_.clear();
     i128ConstLabels_.clear();

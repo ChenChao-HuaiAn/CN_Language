@@ -1328,30 +1328,25 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
 // 间接调用时 inst.extra 为空，operand[0] 为函数指针值（寄存器/变量槽）
 // 被调函数是否走隐藏返回指针（结果/可选/结构体 返回）：按模块函数表 structReturn
 //   标志判定（2026-08 自举检查修复：空类型结果调用处 result.type=void 场景）
-bool X64CodeGenerator::calleeReturnsStruct(const std::string& callee) const {
-    if (callee.empty() || activeModule_ == nullptr) return false;
-    for (const auto& f : activeModule_->functions) {
-        if (f.mangledName == callee || f.name == callee) {
-            return f.structReturn;
-        }
-    }
-    return false;
-}
 void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst) {
     const bool isIndirect = (inst.opcode == ir::Opcode::CallIndirect);
     std::string callee = inst.extra;  // 直接调用：函数名（中文需修饰）
     // 参数从 operand 的偏移：间接调用 operand[0] 是指针，实参从 index 1 起
     const std::size_t argBase = isIndirect ? 1 : 0;
     const std::size_t argCount = inst.operands.size() - argBase;
-    // i128/结构体返回（Task 完善A）：调用方在栈上分配返回缓冲区（16字节对齐扩展），
-    //   隐藏返回指针（rcx）传给被调函数（Win x64 ABI 隐藏返回指针占第一个整型参数位）
-    // 修复（2026-08 自举检查发现）：结果/可选 返回的调用处 result.type 可能为
-    //   void（空类型结果，如 结果<空类型,整32>），原 hasBigRet 判定失效 -> 调用方
-    //   不传返回缓冲，与被调 structReturn=true（paramOffset=1）错位，值参数从 r9
-    //   读垃圾。按**被调函数**的 structReturn 标志判定（module.functions 查找）。
+    // i128/结构体返回：隐藏返回指针占第一个整型参数位（Win x64 ABI）
+    // 形态A契约（2026-09-05 家机复核归真，plans/016）：结构体返回调用的 IR 由
+    //   IR 层预插 retbuf 地址为 operands[0]（ir_call.cpp，result.type=void），
+    //   本后端 argOffset=0 原样传递自然落 rcx（隐藏指针位）——与被调方
+    //   paramOffset=1 接收协议对齐；用户实参从 operands[1] 起依位装载。
+    // 历史（勿复辙）：此处曾有第 4 路 calleeReturnsStruct（按被调函数表
+    //   structReturn 查询），因 activeModule_ 从未赋值恒 null 而**从未生效**
+    //   ——2026-08 注释声称的「自举检查修复」实为假修复，当年真正生效的是
+    //   IR 层形态A预插；死代码已删（三路判定对齐 linux-x86_64/arm64 后端），
+    //   防后人据虚假注释再走「按被调查询」弯路（若激活会与形态A预插双重
+    //   传参：retbuf 被推到 rdx 实参全错位）。
     const bool hasBigRet = (inst.result.type == "i128" || inst.result.type == "u128" ||
-                            inst.result.type.rfind("struct", 0) == 0 ||
-                            calleeReturnsStruct(callee));
+                            inst.result.type.rfind("struct", 0) == 0);
     const int bigRetPad = hasBigRet ? 16 : 0;  // 返回缓冲区
     // 一次性分配影子空间 + 返回缓冲区 + 栈参数区（并对齐16）。
     // Win x64 ABI：无论参数多少，调用方必须在 call 前预留 32 字节影子空间，

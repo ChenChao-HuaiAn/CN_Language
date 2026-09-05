@@ -1,5 +1,13 @@
 # lessons.md - AI错误记录与经验教训
 
+## 高权重问题（plans/016 呈报复核轮：win 第4路 calleeReturnsStruct 死代码归真，2026-09-05 家机 win-x64）
+
+- [2026-09-05 15:30] **问题类型**: 死代码+虚假注释（假修复）（权重 9.5）**✅ 方案A用户裁决当轮根治（构建零警告+单测 1238/1238+E2E 全量 78/79 已知家族零回归）**
+  - **描述**: plans/016 深度系统机呈报「win 第4路 calleeReturnsStruct 与形态A retbuf 契约交互待家机复核」——复核揪出**双后端同族死代码+假修复注释**：①win 侧 `calleeReturnsStruct`（x64_instructions.cpp，2026-08「自举检查修复」注释声称「按被调函数 structReturn 标志判定」）因 `activeModule_` 成员**全仓无赋值恒 nullptr** 首行短路**从未生效**——hasBigRet 恒三路；②linux_x64 新后端按「对齐 win x64」移植了同款函数（这次 activeModule_ 有赋值=活的）**但零调用点**——复制了叙事而未核实被移植侧行为。**双巧合互洽掩盖死代码**：win 侧 IR 层形态A预插（ir_call.cpp hiddenArgs 首插 retbuf、result.type=void）恰好使 operands[0] 在 hasBigRet=false 下原样落 rcx（Win ABI 隐藏指针位）= 与被调方 paramOffset=1 协议对齐——「假修复」与「真机制」当时同期上线，删除 purported 修复无任何行为变化。**危险反事实**：若按注释激活第4路（补赋值），形态A调用 hasBigRet 变 true → argOffset=1 → 预插 retbuf 被当普通实参推到 rdx → 实参全错位（探针 IR dump/调用方/被调方 asm/运行输出四重实证定位）。
+  - **解决**: 方案A（用户裁决「立刻修复」）：①win 删第4路调用+`calleeReturnsStruct`+`activeModule_` 成员，hasBigRet 收敛三路（i128/u128/struct* result.type）——**行为零变化**（现状第4路恒 false）；②linux_x64 删同族死函数与赋值行——三后端（win/SysV/arm64）判定逻辑完全同构；③ir_decl.cpp/linux_x64_instructions.cpp 注释归真（如实记录形态A契约：IR 层预插 operands[0]、后端原样传递自然落隐藏指针位 win=rcx/SysV=rdi/arm64=x0；structReturn 标志仅供被调方 paramOffset 协议）。
+  - **预防**: **①「修复生效」的验收标准是可观测的行为变化或直接实证，不是注释与测试转绿**——若某修复上线时「另一机制同时生效」（本例=形态A预插），回滚测试（删掉 purported 修复看是否回归）是唯一可信验收：本例删第4路行为零变化即证明其从未起效；**②「对齐/移植」复制的是行为不是注释叙事**——移植前核实目标函数在被移植侧是否真的活着（有赋值/有调用点/单测可达），注释声称的行为与 grep 事实矛盾时以事实为准；**③死代码（无调用点函数/恒短路分支/恒 null 成员）当缺陷对待**——它与「从不触发的检查」同族，掩盖机制真貌并误导后续移植（本例误导跨机跨后端两轮）。
+  - **权重**: 9.5（设计缺陷9 × 详细分析1.6 × 解决方案1.0 × 预防措施1.5 × 已解决0.8）
+
 ## 高权重问题（呈报①②方案A实施轮：check 假绿根治+常量诡异触发归因反转，2026-09-05 家机 win-x64）
 
 - [2026-09-05 09:30] **问题类型**: 设计缺陷+归因错误（权重 10）**✅ 两项同轮根治（E2E 151 六链冒烟全绿）；呈报①定性反转：与常量对无关**

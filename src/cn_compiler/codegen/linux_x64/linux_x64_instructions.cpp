@@ -711,8 +711,8 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
     //   IR 契约（ir_call.cpp「隐藏返回指针作为第一个参数」）：用户结构体返回调用
     //   由 IR 层预插 retbuf 地址为 operands[0]、result.type=void——本后端原样
     //   传递使其自然落位0（rdi，SysV 隐藏指针位），无需 argOffset 后移
-    //   （ARM64 单位机全量 E2E 锚定此形态；与 win x64 第4路 calleeReturnsStruct
-    //   的差异见 plans/016 呈报事项）
+    //   （ARM64 单位机全量 E2E 锚定此形态；win x64 已于 2026-09-05 归真为同款
+    //   三路判定+形态A原样传递，其旧第4路被调查询系死代码已删，plans/016）
     const bool hasBigRet = (inst.result.type == "i128" ||
                             inst.result.type == "u128" ||
                             inst.result.type.rfind("struct", 0) == 0);
