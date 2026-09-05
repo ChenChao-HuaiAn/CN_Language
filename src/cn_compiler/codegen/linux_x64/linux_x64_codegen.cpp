@@ -786,9 +786,14 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
     const std::size_t paramOffset =
         (function.structReturn || function.returnType == "i128" ||
          function.returnType == "u128") ? 1 : 0;
+    // 被调方栈参数锚定基：needHiddenRet（=paramOffset）时 prologue 多 push rbx
+    //   （保存隐藏返回指针，位于 [rbp+8]），真实栈参数自 [rbp+24] 起——旧恒 16
+    //   会把「返回地址」当第 7 参数读（v2p 建IR指令：7 参+返回结构体，类型字段
+    //   被返回地址污染实测；arm64 侧同构处理=16+16*needHiddenRet，见其 685 行）
+    const int stackAnchor = 16 + 8 * static_cast<int>(paramOffset);
     int intIdx = static_cast<int>(paramOffset);  // 整型参数位号（rdi=0 起）
     int floatIdx = 0;                            // 浮点参数位号（xmm0 起）
-    int stackIdx = 0;                            // 栈参数序号（[rbp+16+8k]）
+    int stackIdx = 0;                            // 栈参数序号（[rbp+锚+8k]）
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         const std::string& unique = (i < function.paramUniques.size())
                                         ? function.paramUniques[i]
@@ -803,7 +808,7 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
             if (intIdx < 6) {
                 writer.line("mov r10, " + intParameterRegister(intIdx));
             } else {
-                writer.line("mov r10, qword ptr " + stackMemText(16 + stackIdx * 8));
+                writer.line("mov r10, qword ptr " + stackMemText(stackAnchor + stackIdx * 8));
                 ++stackIdx;
             }
             ++intIdx;
@@ -826,7 +831,7 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
                                paramType);
             } else {
                 writer.line("mov" + std::string(paramType == "f64" ? "sd" : "ss") +
-                            " xmm0, qword ptr " + stackMemText(16 + stackIdx * 8));
+                            " xmm0, qword ptr " + stackMemText(stackAnchor + stackIdx * 8));
                 emitStackStore(writer, slotOffset, "xmm0", paramType);
                 ++stackIdx;
             }
@@ -848,8 +853,8 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
                 emitStackStore(writer, slotOffset, intParameterRegister(intIdx), paramType);
             }
         } else {
-            // 第7整型参数位起：从调用者栈帧拷贝到本函数参数槽
-            writer.line("mov r10, qword ptr " + stackMemText(16 + stackIdx * 8));
+            // 第7整型参数位起：从调用者栈帧拷贝到本函数参数槽（锚含 saved rbx）
+            writer.line("mov r10, qword ptr " + stackMemText(stackAnchor + stackIdx * 8));
             ++stackIdx;
             if (paramType == "i128" || paramType == "u128") {
                 // i128 栈参数：槽内是双槽地址指针，拷 16 字节（数据临时用 r11，

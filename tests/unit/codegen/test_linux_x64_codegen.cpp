@@ -553,3 +553,47 @@ TEST(LinuxX64CodegenTest, StructParamCopyMustNotClobberR9) {
     // 第 6 参数 e 仍经 r9 直存到槽（拷贝不再破坏它——"mov qword ptr [rbp-N], r9"）
     EXPECT_NE(asmText.find("], r9"), std::string::npos);
 }
+
+// plans/017 根治回归：needHiddenRet（返回结构体）时 prologue push rbx 使栈参数
+// 自 [rbp+24] 起——旧锚 16 会把「返回地址」当第 7 参数读（v2p 建IR指令 实测：
+// 第 6 参被返回地址污染）。断言：返回结构体+8 整型参数的第 7 参装载锚为 24。
+TEST(LinuxX64CodegenTest, HiddenRetStackParamAnchor24) {
+    Diagnostics diagnostics;
+    LinuxX64CodeGenerator generator(diagnostics);
+    IRModule module;
+
+    IRFunction func;
+    func.name = "建对";
+    func.returnType = "struct 对";   // 结构体返回 -> structReturn 路径
+    func.structReturn = true;         // needHiddenRet=true -> prologue push rbx
+    for (const char* p : {"a", "b", "c", "d", "e", "f", "g", "h"}) {
+        func.params.emplace_back(p, "i64");
+        func.paramUniques.push_back(p);
+        func.varSlots[p] = 1;
+    }
+
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    block->terminated = true;
+    block->termKind = "返回";
+    IRInstruction add;
+    add.opcode = Opcode::Add;
+    add.result = IRValue::reg(1, "i64");
+    add.type = "i64";
+    add.operands = {IRValue::reg(0, "i64"), IRValue::reg(0, "i64")};
+    block->instructions.push_back(add);
+    func.blocks.push_back(std::move(block));
+    func.nextRegId = 2;
+    module.functions.push_back(std::move(func));
+
+    std::string asmText = generator.generateAssembly(module);
+
+    // 8 个整型参数：a..f 走 rdi,rsi,rdx,rcx,r8,r9；g（第 7）/h（第 8）走栈——
+    // needHiddenRet 下锚定基=24（跳过 saved rbx），修复前为 16（读到返回地址）
+    EXPECT_NE(asmText.find("mov r10, qword ptr [rbp+24]"), std::string::npos);
+    EXPECT_NE(asmText.find("mov r10, qword ptr [rbp+32]"), std::string::npos);
+    // 旧缺陷形态（锚 16 读返回地址）不得出现
+    EXPECT_EQ(asmText.find("mov r10, qword ptr [rbp+16]\n"), std::string::npos);
+    // prologue 须有 push rbx（隐藏返回指针保存——锚 24 的前提）
+    EXPECT_NE(asmText.find("push rbx"), std::string::npos);
+}
