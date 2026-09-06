@@ -63,38 +63,15 @@ if hasattr(sys.stderr, "reconfigure"):
         "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
         "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
     ],
-    # plans/016（2026-09-05）：linux-x86_64 平台——宿主后端已支持（本机原生闭环）；
-    #   v2 自举编译器（CN语言编译器v2/）尚无 x86_64 代码生成（后续专项），其闭环
-    #   用例按平台跳过；62/69/79 与 linux-arm64 同因。
+    # plans/016（2026-09-05）：linux-x86_64 平台——宿主后端已支持（本机原生闭环）。
+    # plans/017 T3（2026-09-06）：v2 自举编译器 X64L 后端（SysV GAS）落地 +
+    #   run_e2e.py v2 闭环编排平台参数化——v2 闭环 23 例在本机解锁真实运行，
+    #   跳过清单摘除（T7 门禁预期跳过仅剩 62/69/78/79 四例，与 linux-arm64 同因）。
     "linux-x86_64": [
         "62_ffi",                # 依赖 Windows API GetTickCount64
         "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
         "78_chain_build",        # v1 链（v1 编译器仅 MASM 后端）
         "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
-        # ---- v2 自举闭环用例（v2p 仅支持 win-x64 / linux-arm64 两目标） ----
-        "119_v2_多文件链接闭环",
-        "120_v2_顶层常量",
-        "123_v2_容器",
-        "125_v2_控制流与短路与转义",
-        "126_v2_结构体元素容器",
-        "127_v2_嵌套容器与容器字段与静态与引用",
-        "128_v2_内置函数与字符串拼接",
-        "129_v2_字符串下标与复合赋值与登记补全",
-        "130_v2_指针下标读写",
-        "132_v2_可写左值全形态闭环",
-        "133_v2_限定名内置IO与文件",
-        "137_v2_三元运算符",
-        "138_v2_灰色点收口",
-        "139_v2_语义错误中止",
-        "141_v2_字符串比较拒绝",
-        "142_v2_自减全链",
-        "143_v2_导入项裸名改写",
-        "144_v2_泛型星号实参",
-        "146_v2_缺分号拒绝",
-        "147_v2_局部引用声明",
-        "148_v2_函数返回结构体",
-        "149_v2_IR层错误中止",
-        "150_v2_引用返回与裸引用与无符号窄宽",
     ],
     "win-x64": [
         # win-x64 暂无非平台限制用例
@@ -534,6 +511,8 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     #   -> 运行 v2 产物 exe，退出码须等于用例预期值（v2 代码真实执行验证）
     # 阶段A（2026-09-02）双平台：win-x64 走 ml64/link；linux-arm64 走 as/g++
     #   （v2 新增 GAS 后端，v2p 第 2 参数 目标平台 分派；链接对齐宿主 linux 命令）
+    # plans/017 T3（2026-09-06）：linux-x86_64 并入 as/g++ 编排——执行v2闭环Linux
+    #   平台参数化（宿主编译 --target 与 v2p 第 2 参数随平台；v2 X64L 后端）
     # 元组第三元素（可缺省）= 是否链接 v2p.obj（P7b 容器用例：v2 生成代码调用
     #   宿主编译的容器类方法符号，实现在 v2p.obj——stdlib 源码级并入编译产物）
     # 元组第四元素（可缺省）= 供给源列表（②b B7，2026-09-02）：用例目录下的 .cn
@@ -598,10 +577,16 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         #   引用初始化下标+正8/正16 无符号窄宽（movzx/uxtb）= 0；宿主 sanity
         #   先行 exit=0（引用返回读值缺陷 suppressRefDeref_ 连带根治）
         "150_v2_引用返回与裸引用与无符号窄宽": (["主.cn"], 0),
+        # plans/017 T4（2026-09-06）：v2 版 SysV AMD64 ABI 分歧面专项（三平台
+        #   语义一致，重点锚定 linux-x86_64 X64L 后端）——第 6/7 参数边界（第 7
+        #   走栈）/结构体返回（rdi 隐藏 retbuf）/结构体按值参数拷贝×满 6 整型
+        #   寄存器位（宿主第十八轮 r9 缺陷 v2 侧同款探针，r10/r11 数据临时
+        #   纪律）/结构体返回+7 参数（retbuf 占位后实参整体后移）/递归对齐 = 0
+        "158_v2_linuxx64_系统V调用约定": (["主.cn"], 0),
     }
     if 名称 in v2闭环用例们:
-        if 目标平台 != "win-x64" and 目标平台 != "linux-arm64":
-            return "失败", f"{名称} 闭环用例仅支持 win-x64 / linux-arm64（当前 {目标平台}）"
+        if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
+            return "失败", f"{名称} 闭环用例仅支持 win-x64 / linux-arm64 / linux-x86_64（当前 {目标平台}）"
         条目 = v2闭环用例们[名称]
         源文件名们, 预期退出码 = 条目[0], 条目[1]
         链接v2pobj = 条目[2] if len(条目) > 2 else False
@@ -859,18 +844,23 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     return "通过", "自举闭环成立：CN自编译版组件产物与C++版逐字节一致（阶段7验收步骤2：产物行为一致）"
 
 
-def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
+def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细: bool,
                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool,
                    期望文件, 审计目录: pathlib.Path, v2源码目录: pathlib.Path,
                    用例目录: pathlib.Path, 名称: str, 编号: str,
                    供给源们: list = None) -> tuple:
-    """执行 v2 自举链接闭环（linux-arm64，阶段A 2026-09-02）：v2 GAS 后端 -> as -> g++ -> 运行
+    """执行 v2 自举链接闭环（linux 两平台，阶段A 2026-09-02 ARM64 首建；plans/017 T3
+    2026-09-06 平台参数化并入 linux-x86_64）：v2 GAS 后端 -> as -> g++ -> 运行
 
+    目标平台 = linux-arm64 | linux-x86_64（宿主编译 --target 与 v2p 第 2 参数
+    随平台分派；linux-x86_64 走 v2 X64L 后端，SysV GAS）。arm64 产物沿用
+    v2p_linux* 原名（行为零变化）；x86_64 用 v2p_linuxx64*（两平台全量先后
+    运行中间产物不互踩）。
     链接对齐宿主 linux 命令（cn_main.cpp）：g++ -no-pie + 运行时 .o（-DCNRT_LINUX_MAIN）；
-    链接 v2p_linux.o 时 cn_main 双定义 -> -Wl,-z,muldefs + v2asm.o 命令行在前
+    链接 v2p .o 时 cn_main 双定义 -> -Wl,-z,muldefs + v2asm.o 命令行在前
     （靠前定义胜出——对齐 win64 /FORCE:MULTIPLE 编排）。
     供给源们（②b B7）：用例自有类型符号供给——宿主 cn build 编译（.o 为构建副
-    产品留存），链接置于 v2p_linux.o 之前（用例结构体布局权威）。
+    产品留存），链接置于 v2p .o 之前（用例结构体布局权威）。
     预期退出码 None（139/141 负路径，2026-09-04 ARM64 复验轮对齐）：v2p 须编译失败
     ——退出码非 0、target/v2asm.s 不产出、中止诊断行（.expected 固化）在输出中
     （v2 语义错误即中止纪律平台无关，win64 同款）。
@@ -888,8 +878,11 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
     if shutil.which(cxx工具) is None and not pathlib.Path(cxx工具).exists():
         return "失败", f"未找到 g++ 链接器（{cxx工具}）"
 
-    v2p = 审计目录 / "v2p_linux"
-    v2pobj = 审计目录 / "v2p_linux.o"
+    # 产物命名（plans/017 T3）：arm64 保持 v2p_linux 原名（行为零变化）；
+    #   x86_64 用 v2p_linuxx64（防两平台先后全量运行互踩中间产物）
+    产物后缀 = "linux" if 目标平台 == "linux-arm64" else "linuxx64"
+    v2p = 审计目录 / f"v2p_{产物后缀}"
+    v2pobj = 审计目录 / f"v2p_{产物后缀}.o"
     v2asm路径 = 项目根目录 / "target" / "v2asm.s"
 
     # 运行时 .o（对齐宿主编译命令 g++ -c -std=c++17 -fno-exceptions -fno-rtti
@@ -907,26 +900,26 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
                 return "失败", f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
         运行时objs.append(obj)
 
-    # ===== 步骤1：宿主编译 v2 组件（linux-arm64）-> v2p_linux（中间 .o 留存供链接）=====
+    # ===== 步骤1：宿主编译 v2 组件（目标平台）-> v2p（中间 .o 留存供链接）=====
     if v2p.exists():
         v2p.unlink()
     if v2pobj.exists():
         v2pobj.unlink()
     if 详细:
-        print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p_linux（linux-arm64）")
+        print(f"    [{编号}-1] {编译器路径} build 主.cn -> {v2p.name}（{目标平台}）")
     编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
-                      "--target", "linux-arm64", "--output", str(v2p)], 项目根目录)
+                      "--target", 目标平台, "--output", str(v2p)], 项目根目录)
     if 编译结果.returncode != 0:
         return "失败", f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
     if not v2p.exists():
-        return "失败", f"{编号}-1 编译返回成功但未生成 v2p_linux"
+        return "失败", f"{编号}-1 编译返回成功但未生成 {v2p.name}"
     if not v2pobj.exists():
-        return "失败", f"{编号}-1 中间产物 v2p_linux.o 未留存（容器符号提供者）"
+        return "失败", f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
 
     # ===== 负路径闭环（139/141，win64 同款 2026-09-04；linux 侧 ARM64 复验轮对齐）：
     #   预期退出码 None = v2p 须编译失败——语义错误即中止纪律的 E2E 锚定：
     #   v2p 退出码非 0、target/v2asm.s 不产出、中止诊断行（.expected 固化）在
-    #   输出中——防「报错仍产 asm」回归。v2p 运行须带 linux-arm64 第 2 参数
+    #   输出中——防「报错仍产 asm」回归。v2p 运行须带目标平台第 2 参数
     #   （GAS 后端分派；win64 默认后端无需参数）=====
     if 预期退出码 is None:
         v2src目录 = 审计目录 / f"v2src{编号}"
@@ -940,8 +933,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
         if v2asm路径.exists():
             v2asm路径.unlink()
         if 详细:
-            print(f"    [{编号}-N] {v2p.name} {入口参数} linux-arm64（预期语义错误中止）")
-        运行结果 = 运行命令([str(v2p), 入口参数, "linux-arm64"], 项目根目录, 内存上限MB=内存上限MB默认)
+            print(f"    [{编号}-N] {v2p.name} {入口参数} {目标平台}（预期语义错误中止）")
+        运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 项目根目录, 内存上限MB=内存上限MB默认)
         if 运行结果.returncode == 0:
             return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
         if v2asm路径.exists():
@@ -953,7 +946,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
             适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
             if 适配行 not in 实际输出:
                 return "失败", f"{编号}-N v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
-        return "通过", (f"v2 语义错误中止负路径闭环成立（linux-arm64，退出码 {运行结果.returncode}，"
+        return "通过", (f"v2 语义错误中止负路径闭环成立（{目标平台}，退出码 {运行结果.returncode}，"
                         "无 asm 产出，诊断行固化）")
 
     # ===== 步骤1.5：供给源编译（②b B7）——用例自有类型符号，宿主真实管线 =====
@@ -978,7 +971,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
         if 详细:
             print(f"    [{编号}-1.5] {编译器路径} build {供给名} -> {供给obj.name}（符号供给）")
         供给编译 = 运行命令([str(编译器路径), "build", str(供给目录 / "主.cn"),
-                          "--target", "linux-arm64", "--output", str(供给输出)], 项目根目录)
+                          "--target", 目标平台, "--output", str(供给输出)], 项目根目录)
         if 供给编译.returncode != 0:
             return "失败", f"{编号}-1.5 供给源 {供给名} 编译失败(退出码{供给编译.returncode}): {(供给编译.stderr or 供给编译.stdout).strip()[:200]}"
         if not 供给obj.exists():
@@ -994,13 +987,13 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
             return "失败", f"{编号}-2 缺少用例文件: {文件名}"
         shutil.copy2(src, v2src目录 / 文件名)
 
-    # ===== 步骤3：运行 v2p（第 2 参数 linux-arm64 分派 GAS 后端）=====
+    # ===== 步骤3：运行 v2p（第 2 参数目标平台分派 GAS 后端）=====
     入口参数 = f"target/audit2/v2src{编号}/主.cn"
     if v2asm路径.exists():
         v2asm路径.unlink()
     if 详细:
-        print(f"    [{编号}-3] {v2p.name} {入口参数} linux-arm64")
-    运行结果 = 运行命令([str(v2p), 入口参数, "linux-arm64"], 项目根目录, 内存上限MB=内存上限MB默认)
+        print(f"    [{编号}-3] {v2p.name} {入口参数} {目标平台}")
+    运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 项目根目录, 内存上限MB=内存上限MB默认)
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
@@ -1016,8 +1009,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
     if ".globl cn_main" not in asm内容:
         return "失败", f"{编号}-3.5 v2asm.s 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
 
-    # ===== 步骤4：as 汇编 target/v2asm.s -> v2asm_linux.o =====
-    v2obj = 审计目录 / "v2asm_linux.o"
+    # ===== 步骤4：as 汇编 target/v2asm.s -> v2asm_<平台>.o =====
+    v2obj = 审计目录 / f"v2asm_{产物后缀}.o"
     if v2obj.exists():
         v2obj.unlink()
     if 详细:
@@ -1029,7 +1022,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
         return "失败", f"{编号}-4 as 返回成功但未生成 v2asm_linux.o"
 
     # ===== 步骤5：链接（对齐宿主 linux 链接命令 g++ -no-pie + 运行时 .o）=====
-    输出exe = 审计目录 / "v2out_linux"
+    输出exe = 审计目录 / f"v2out_{产物后缀}"
     if 输出exe.exists():
         输出exe.unlink()
     链接命令 = [cxx工具, "-no-pie"]
@@ -1065,16 +1058,17 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 详细: bool,
     if 运行结果2.returncode != 预期值:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
                         f"（期望 {预期值} = {预期退出码} % 256）: {(运行结果2.stderr or '').strip()[:200]}")
-    return "通过", f"v2 多文件编译（{名称}）-> as/g++（对齐宿主 linux 链接命令）-> 运行 闭环成立（退出码 {预期值}）"
+    return "通过", f"v2 多文件编译（{名称}）-> as/g++（对齐宿主 linux 链接命令，{目标平台}）-> 运行 闭环成立（退出码 {预期值}）"
 
 
 def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                输出目录: pathlib.Path, 详细: bool, 目标平台: str,
                源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False,
                供给源们: list = None) -> tuple:
-    """执行 v2 自举链接闭环（119/120… 通用，双平台）：v2 多文件编译 -> 链接宿主运行时 -> 运行
+    """执行 v2 自举链接闭环（119/120… 通用，三平台）：v2 多文件编译 -> 链接宿主运行时 -> 运行
 
-    目标平台 = win-x64（ml64/link 原路径）| linux-arm64（as/g++，阶段A 2026-09-02）；
+    目标平台 = win-x64（ml64/link 原路径）| linux-arm64 / linux-x86_64（as/g++，
+      阶段A 2026-09-02 ARM64 首建；plans/017 T3 2026-09-06 平台参数化并入 x86_64）；
     源文件名们 = 用例的全部源文件（首个为主入口 主.cn，须含导入模块文件）；
     预期退出码 = v2 产物 exe 运行的期望退出码（用例断言值）；
     链接v2pobj = 是否链接 v2p.obj（P7b 容器用例：容器方法实现来自宿主编译的
@@ -1093,11 +1087,11 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     审计目录.mkdir(parents=True, exist_ok=True)
     v2源码目录 = 项目根目录 / "CN语言编译器v2"
 
-    # ---- linux-arm64 分支（阶段A：v2 GAS 后端 + as/g++ 编排）----
+    # ---- linux 分支（阶段A：v2 GAS 后端 + as/g++ 编排；plans/017 T3 参数化双平台）----
     #   负路径（预期退出码 None，139/141）已对齐（2026-09-04 ARM64 复验轮）——
     #   执行v2闭环Linux 内同款分支：v2p 须失败且不产 target/v2asm.s
-    if 目标平台 == "linux-arm64":
-        return 执行v2闭环Linux(编译器路径, 详细, 源文件名们, 预期退出码, 链接v2pobj,
+    if 目标平台 in ("linux-arm64", "linux-x86_64"):
+        return 执行v2闭环Linux(编译器路径, 目标平台, 详细, 源文件名们, 预期退出码, 链接v2pobj,
                               期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号, 供给源们)
 
     # ---- win-x64 原路径（ml64/link，P6h/P7b 既有编排不变）----
