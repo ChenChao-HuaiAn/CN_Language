@@ -316,13 +316,13 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     std::string moduleName = node->segments[0];
     UseImportInfo& use = useImports_[moduleName];
     if (node->wildcard) {
-        // 导入 模块::*：通配符导入（模块全部公开符号）
+        // 导入 模块::*：通配符导入（模块全部公开符号，③ 通配层）
         use.wildcard = true;
         importedModules_.insert(moduleName);
         return;
     }
     if (!node->names.empty()) {
-        // 导入 路径::{项1 [作为 别名], ...}：花括号导入
+        // 导入 路径::{项1 [作为 别名], ...}：花括号导入（② 具名绑定）
         // A-5（花括号项别名跨模块同名）：记录每个导入项的来源模块**完整路径**
         //   （工具库::格式化）——纯名调用重写回原符号名后按完整路径过滤；
         //   首段（工具库）过滤在跨 crate 场景会漏掉 格式化 模块条目
@@ -345,26 +345,73 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
         importedModules_.insert(moduleName);
         return;
     }
-    // 路径导入 / 重命名导入：导入整个模块（限定访问 模块::符号）。
-    // 第 4 层：路径导入语义 = 该模块任意公开符号可限定访问（与通配符导入
-    //   对 useHasSymbol 判定等价）——设 wildcard=true，使 visitCallExpr
-    //   的 useHasSymbol 校验通过（模块公开符号表 modulePublicSymbols_ 实际
-    //   决定符号存在性，wildcard 仅放宽"符号已导入"校验）。
-    use.wildcard = true;
-    if (!node->alias.empty()) {
-        // 重命名导入：导入 模块 作为 别名——别名绑定到模块级符号
-        //   （调用 别名::符号 时按原模块解析；本层别名表记录）
-        use.aliases[node->alias] = moduleName;
-        // A-5（整路径重命名绑定模块级别名）：别名绑定完整路径（含子模块/包
-        //   路径 甲::乙），并登记别名本身可导入（别名::符号 限定调用路径解析）
-        std::string fullPath;
-        for (std::size_t si = 0; si < node->segments.size(); ++si) {
-            if (si > 0) fullPath += "::";
-            fullPath += node->segments[si];
+    // ---- 路径导入（无花括号）----
+    // plans/018 呈报一B（2026-09-07 用户终裁）：「导入 m::符号」= 具名绑定②
+    //   （Rust use m::f 一致）——把尾段符号真搬进本文件命名空间，与本文件
+    //   本地定义同名 = 编译错误（E0255，checkImportLocalConflicts）。
+    //   旧实现「模块级通配（wildcard=true）」废止；限定调用资格由
+    //   「模块已加载」判定（visitCallExpr，P1-1 废止），不再依赖导入。
+    // 未合并单文件（ownerModule 空，runPipeline/单测直构 Program）：无模块
+    //   加载概念，保持旧通配行为（与 checkImportLocalConflicts 的 owner
+    //   空跳过同口径）。
+    if (node->ownerModule.empty() || node->segments.size() < 2) {
+        // 单段无别名 = 模块整体导入（③ 通配层）；模块重命名（导入 模块 作为
+        //   别名）同层——别名绑定模块级符号（调用 别名::符号 按原模块解析）
+        use.wildcard = true;
+        if (!node->alias.empty()) {
+            use.aliases[node->alias] = moduleName;
+            // A-5（整路径重命名绑定模块级别名）：别名绑定完整路径（含子模块/包
+            //   路径 甲::乙），并登记别名本身可导入（别名::符号 限定调用路径解析）
+            std::string fullPath;
+            for (std::size_t si = 0; si < node->segments.size(); ++si) {
+                if (si > 0) fullPath += "::";
+                fullPath += node->segments[si];
+            }
+            moduleAliases_[node->alias] = fullPath;
+            importedModules_.insert(node->alias);
+            useImports_[node->alias].wildcard = true;
         }
-        moduleAliases_[node->alias] = fullPath;
-        importedModules_.insert(node->alias);
-        useImports_[node->alias].wildcard = true;
+        importedModules_.insert(moduleName);
+        return;
+    }
+    // 完整路径（join 全部段）：命中已加载模块名 = 尾段是模块（如 自举组件
+    //   导入 CN语言编译器::词法分析; / 父挂子 导入 网络库::内部工具;）——
+    //   ③ 模块导入（Rust use a::b 绑定模块名；限定调用按加载判定放行，
+    //   旧通配语义对限定调用无观察差异，保持防回归）。
+    std::string fullPath;
+    for (std::size_t si = 0; si < node->segments.size(); ++si) {
+        if (si > 0) fullPath += "::";
+        fullPath += node->segments[si];
+    }
+    if (knownModules_.count(fullPath) > 0) {
+        use.wildcard = true;
+        if (!node->alias.empty()) {
+            // 导入 甲::乙 作为 丙（甲::乙 是模块）：模块重命名（A-5）
+            use.aliases[node->alias] = fullPath;
+            moduleAliases_[node->alias] = fullPath;
+            importedModules_.insert(node->alias);
+            useImports_[node->alias].wildcard = true;
+        }
+        importedModules_.insert(moduleName);
+        return;
+    }
+    // 尾段是符号：② 具名绑定。来源模块完整路径 = 去尾段
+    //   （工具库::格式化::版本 -> 工具库::格式化；网络库::传输控制::连接 ->
+    //   网络库::传输控制）——纯名调用重写按此过滤（A-5 同款）。
+    std::string srcModule;
+    for (std::size_t si = 0; si + 1 < node->segments.size(); ++si) {
+        if (si > 0) srcModule += "::";
+        srcModule += node->segments[si];
+    }
+    const std::string& sym = node->segments.back();
+    const std::string bindName = node->alias.empty() ? sym : node->alias;
+    // 自导入（来源首段 == 归属模块，如 52 的 导入 主::版本;）：不引入绑定名
+    //   （本地定义恒 ① 优先），仅登记模块已加载（限定自引用 主::版本() 放行）
+    const bool selfImport = (moduleName == node->ownerModule);
+    if (!selfImport) {
+        use.symbols.insert(sym);
+        use.aliases[bindName] = sym;
+        itemAliasModules_[bindName] = srcModule;
     }
     importedModules_.insert(moduleName);
 }
@@ -382,7 +429,11 @@ void SemanticAnalyzer::visitGenericDecl(GenericDecl* node) {
 }
 void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     // 函数符号必须已注册（原型声明无函数体）。Task 2.10：按签名 key 查询
-    auto it = functions_.find(node->sigKey);
+    // plans/018 呈报二 A′：注册键 = 函数链接键公式键（registerFunction 同源），
+    //   跨模块条目形如 模块名$名#参数串——按裸 sigKey 查会漏（函数体被静默
+    //   跳过检查），须按公式键查。
+    auto it = functions_.find(functionLinkKey(node->moduleName, node->name,
+                                              node->sigKey));
     if (it == functions_.end()) return;
     if (node->body == nullptr) return;  // 函数原型声明：无需检查体
 

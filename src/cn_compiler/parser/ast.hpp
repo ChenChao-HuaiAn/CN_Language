@@ -1007,6 +1007,12 @@ public:
     // 顶层声明：常量 名 = 值（crate 级常量，编译期求值）与 静态 [类型] 名 [= 值]
     // （crate 级静态变量）。VarDecl 承载（isConst/isStatic），含模块级可见性。
     std::vector<std::unique_ptr<VarDecl>> globals;            // 顶层常量/静态变量声明
+    // ---- plans/018 呈报一B（2026-09-07 用户终裁）：已加载模块名清单 ----
+    // driver（runModulePipeline）注入：依赖图内全部模块名 + 货舱 [依赖] 包名。
+    //   P1-1 废止后限定调用按「模块已加载」放行——crate/包名（如 工具库）不
+    //   产生声明（其模块声明名为文件主干），须由此清单提供给语义层
+    //   （knownModules_）。单文件管线（runPipeline）不填：无加载概念。
+    std::vector<std::string> loadedModules;
 };
 
 } // namespace cn_compiler

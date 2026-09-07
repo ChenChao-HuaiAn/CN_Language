@@ -373,6 +373,16 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         std::cerr << diagnostics.format();
         return 1;
     }
+    // plans/018 呈报一B（2026-09-07 用户终裁）：注入已加载模块名清单——
+    //   依赖图内全部模块名（含入口/子模块/外部文件主干）+ 货舱 [依赖] 包名
+    //   （crate 根名如 工具库 不产生声明，限定调用 工具库::模块::符号 按
+    //   「模块已加载」放行须依赖本清单；P1-1 废止的加载判定数据源）。
+    for (module::ModuleUnit* u : ordered) {
+        if (u != nullptr) program->loadedModules.push_back(u->moduleName);
+    }
+    for (const auto& dep : options.cargoConfig.deps) {
+        program->loadedModules.push_back(dep.name);
+    }
 
     // 4. 语义分析（符号表/类型检查/类解析/错误码传播）
     SemanticAnalyzer semantic(diagnostics);

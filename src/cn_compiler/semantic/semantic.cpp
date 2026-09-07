@@ -555,6 +555,21 @@ std::string SemanticAnalyzer::signatureKey(const std::string& name,
     }
     return key;
 }
+// plans/018 呈报二 A′：函数链接键公式实现（唯一归属，注释见 semantic.hpp 声明处）。
+//   例外三形态与 codegen symbolName 映射对齐：
+//   ① moduleName 空（单文件编译，mergeModules singleModule 不写 crate 名）；
+//   ② moduleName=="主"（入口 crate 根文件——主->cn_main 映射基于纯名）；
+//   ③ funcName=="主"（入口函数本身，codegen 映射 cn_main）；
+//   ④ moduleName 以 __cn_ 开头（内置运行时符号直通）。
+std::string SemanticAnalyzer::functionLinkKey(const std::string& moduleName,
+                                              const std::string& funcName,
+                                              const std::string& sigKey) {
+    if (moduleName.empty() || moduleName == "主" || funcName == "主" ||
+        moduleName.rfind("__cn_", 0) == 0) {
+        return sigKey;
+    }
+    return moduleName + "$" + sigKey;
+}
 bool SemanticAnalyzer::hasFunctionName(const std::string& name) const {
     if (functions_.find(name) != functions_.end()) return true;  // 内置纯名 key
     for (const auto& kv : functions_) {
@@ -699,7 +714,11 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
         if (!moduleFilter.empty()) {
             // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
-            if (entryModule == moduleFilter) {
+            //   呈报一B 补充（2026-09-07）：moduleName 空 = 单文件管线
+            //   （runPipeline 未合并 / mergeModules singleModule）——全部声明
+            //   同属唯一模块，限定调用过滤器（自导入 主::版本 等）恒命中本
+            //   模块；多文件管线声明恒带模块名，不受影响。
+            if (entryModule == moduleFilter || entryModule.empty()) {
                 // 精确匹配：同包限定调用（网络::传输控制::发送 -> 网络::传输控制）
             } else {
                 // A-5（父模块名限定调用子模块函数）：entryModule（网络::传输控制）
@@ -1471,18 +1490,30 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     // 跨模块同名同签名函数允许（crate 隔离：包A::工具 与 包B::工具 独立符号）；
     // 仅同模块内重名报错。moduleName 由 mergeModules 合并阶段写入 FunctionDecl。
     info.moduleName = node->moduleName;
-    auto it = functions_.find(node->sigKey);
+    // plans/018 呈报二 A′（2026-09-07 用户裁决）：注册键 = 函数链接键公式键。
+    //   注册侧与定义侧（ir_decl mangledName）同源单一公式——消灭旧「首注册占
+    //   裸键、后注册得 模块$键」的顺序依赖（依赖先注册抢走裸键时，入口同名
+    //   函数纯名调用解析到 主$键 而定义侧发射裸键 → 链接 undefined reference，
+    //   base3 探针汇编实证）。Rust 对照：rustc 符号=f(def-id)，定义时即定，
+    //   「同名抢裸键」结构上不存在。
+    const std::string linkKey =
+        functionLinkKey(node->moduleName, node->name, node->sigKey);
+    auto it = functions_.find(linkKey);
     if (it != functions_.end()) {
         // 同签名重名（模块分桶判定）：原型+定义 组合须同模块才配对；
-        //   跨模块同名同签名 -> crate 隔离，允许（本签名加入 funcSigModules_）
+        //   公式键已内嵌模块名（除 主/空模块 裸键形态），跨模块命中同一键
+        //   = 裸键形态碰撞（两模块同名同签名函数均归一为裸键，如依赖模块
+        //   定义了与入口同名的 主 函数）——链接符号必然冲突，fail fast 报错。
         const bool sameModule = (it->second.moduleName == node->moduleName);
         if (!sameModule) {
-            // 跨模块同名同签名：crate 隔离允许——原符号保留，本符号注册为
-            //   模块名$sigKey（与 IR 层 mangledName 前缀一致）。resolveOverload
-            //   按 moduleFilter 过滤：限定调用 模块::函数 时在 functions_ 中
-            //   查找 模块名$sigKey 条目（moduleFilter 匹配模块名）。
+            // 跨模块同名同签名且公式键归一为同一裸键：链接层面不可共存
+            //   （两定义同符号），诊断拒绝（绝不静默覆盖丢函数）
             funcSigModules_[node->sigKey].insert(node->moduleName);
-            functions_[node->moduleName + "$" + node->sigKey] = info;
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "函数 '" + node->name + "' 链接符号冲突（模块 '" +
+                    it->second.moduleName + "' 与 '" + node->moduleName +
+                    "' 同名同签名且链接键归一为裸键，无法共存）");
             return;
         }
         // 同签名重名：允许"原型声明 + 定义"组合，其余为重复定义
@@ -1508,10 +1539,21 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     //   但"原型声明 + 不同签名定义"是错误（原型已锁定签名，定义须一致）。
     //   规则：同名存在 原型（无体）且 当前是定义（有体）→ 签名必须与原型一致
     //   （仅同模块内检查——跨模块原型不约束其他模块的定义）。
+    //   A′：键含公式前缀（模块名$名#参数）须先剥前缀再取同名 base（与
+    //   resolveOverload 的形态判定一致）。
     for (const auto& kv : functions_) {
-        const std::size_t hashPos = kv.first.find('#');
-        const std::string base = (hashPos == std::string::npos) ? kv.first
-                                                                : kv.first.substr(0, hashPos);
+        std::string k = kv.first;
+        const std::size_t hashFirst = k.find('#');
+        const std::size_t dollarPos = k.find('$');
+        if (dollarPos != std::string::npos &&
+            (hashFirst != std::string::npos
+                 ? dollarPos < hashFirst
+                 : node->name.find('$') == std::string::npos)) {
+            k = k.substr(dollarPos + 1);
+        }
+        const std::size_t hashPos = k.find('#');
+        const std::string base = (hashPos == std::string::npos) ? k
+                                                                : k.substr(0, hashPos);
         if (base == node->name && kv.second.moduleName == node->moduleName &&
             !kv.second.hasBody && info.hasBody) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -1521,7 +1563,8 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         }
     }
     funcSigModules_[node->sigKey].insert(node->moduleName);
-    functions_[node->sigKey] = info;
+    // A′：注册键 = 公式键（与定义侧 mangledName 同源，消顺序依赖）
+    functions_[linkKey] = info;
 }
 // C-3（FFI）：查询签名 key 对应函数是否为 外部 函数（链接符号=纯名）
 bool SemanticAnalyzer::isExternFunc(const std::string& sigKey) const {
@@ -1595,46 +1638,41 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     // 第零趟b（阶段3，Task 3.6）：收集导入模块名（限定调用识别用）
     //   注：多文件编译时 driver 已合并被导入模块的公开声明到本 Program，
     //   导入声明（ImportDecl）仍保留在 AST 中供此处收集模块名。
-    // 第 4 层（P1-3）：visitImportDecl 构建 use 导入表（符号集合/别名/通配符）。
-    for (auto& imp : node->imports) {
-        visitImportDecl(imp.get());
-    }
-    // plans/018 P6b 工作流2（规格08-三 3.6 名称解析）：显式导入冲突检查
-    //   （①×② 导入与本地定义同名 / ②×② 多次显式导入同名——纯 AST 扫描，
-    //   不依赖函数注册趟；声明 moduleName == 导入 ownerModule 即本地定义）
-    // 【停用待启用（2026-09-07 呈报一A 用户裁决）】：checkImportLocalConflicts
-    //   现按旧 ② 定义把「路径导入 m::符号」也判具名绑定——呈报一A 已裁决
-    //   ② 收窄为花括号项、路径导入=③ 模块级通配（specs/08 3.6 差异注记），
-    //   须把 bindings 提取收窄为 !imp->names.empty() 分支后启用本调用；
-    //   现状停用防误拦 52_library/CrateIsolateNoParamQualifiedCall 的
-    //   路径导入遮蔽形态（全量 E2E 156 过/1 败已知 OOM 零回归实证）。
-    // checkImportLocalConflicts(node);
-    // 第 4 层（crate 分桶）：构建模块公开符号表（模块名 -> 公开符号名集合）。
-    // 合并后的声明自带 moduleName（mergeModules 写入）：按模块收集公开符号，
-    // 供限定调用验证（未导入模块的限定调用报「未声明的标识符」，P1-1 修复）、
-    // 花括号导入符号验证、可见性交集检查（模块私有类不导出）使用。
+    // 第 4 层（crate 分桶）：构建已加载模块集合 + 模块公开符号表（须在导入表
+    //   构建之前——plans/018 呈报一B 路径导入「尾段是模块还是符号」消歧要查
+    //   knownModules_）。
+    //   knownModules_：全部声明 moduleName 全集 + driver 注入的加载模块清单
+    //   （Program::loadedModules：依赖图模块名 + 货舱 [依赖] 包名）——P1-1
+    //   废止后限定调用按「模块已加载」放行的判定数据源。
+    //   modulePublicSymbols_：按模块收集公开符号，供可见性交集检查（模块私有
+    //   类不导出）与花括号导入符号验证使用。
     for (const auto& f : node->declarations) {
+        if (!f->moduleName.empty()) knownModules_.insert(f->moduleName);
         if (f->access == AccessSpecifier::Public && !f->moduleName.empty()) {
             modulePublicSymbols_[f->moduleName].insert(f->name);
         }
     }
     for (const auto& s : node->structs) {
+        if (!s->moduleName.empty()) knownModules_.insert(s->moduleName);
         if (s->access == AccessSpecifier::Public && !s->moduleName.empty()) {
             modulePublicSymbols_[s->moduleName].insert(s->name);
         }
     }
     for (const auto& e : node->enums) {
+        if (!e->moduleName.empty()) knownModules_.insert(e->moduleName);
         if (e->access == AccessSpecifier::Public && !e->moduleName.empty()) {
             modulePublicSymbols_[e->moduleName].insert(e->name);
         }
     }
     for (const auto& c : node->classes) {
+        if (!c->moduleName.empty()) knownModules_.insert(c->moduleName);
         if (c->access == AccessSpecifier::Public && !c->moduleName.empty()) {
             modulePublicSymbols_[c->moduleName].insert(c->name);
             modulePublicClasses_[c->moduleName].insert(c->name);
         }
     }
     for (const auto& i : node->interfaces) {
+        if (!i->moduleName.empty()) knownModules_.insert(i->moduleName);
         if (i->access == AccessSpecifier::Public && !i->moduleName.empty()) {
             modulePublicSymbols_[i->moduleName].insert(i->name);
         }
@@ -1644,11 +1682,26 @@ void SemanticAnalyzer::visitProgram(Program* node) {
                                    ? (g->innerClass->access == AccessSpecifier::Public)
                                    : (g->innerFunc != nullptr &&
                                       g->innerFunc->access == AccessSpecifier::Public);
+        if (!g->moduleName.empty()) knownModules_.insert(g->moduleName);
         if (!genPublic || g->moduleName.empty()) continue;
         const std::string gname = (g->innerClass != nullptr) ? g->innerClass->name
                                    : (g->innerFunc != nullptr) ? g->innerFunc->name : "";
         if (!gname.empty()) modulePublicSymbols_[g->moduleName].insert(gname);
     }
+    for (const auto& m : node->loadedModules) {
+        if (!m.empty()) knownModules_.insert(m);
+    }
+    // 第 4 层（P1-3）：visitImportDecl 构建 use 导入表（符号集合/别名/通配符）。
+    for (auto& imp : node->imports) {
+        visitImportDecl(imp.get());
+    }
+    // plans/018 P6b 工作流2（规格08-三 3.6 名称解析）：显式导入冲突检查
+    //   （①×② 导入与本地定义同名 / ②×② 多次显式导入同名——纯 AST 扫描，
+    //   不依赖函数注册趟；声明 moduleName == 导入 ownerModule 即本地定义）。
+    //   【已启用（2026-09-07 呈报一B 用户终裁）】：「导入 m::符号」= 具名绑定
+    //   ②（Rust 一致），与本文件本地定义同名 = 编译错误（E0255 对应）——
+    //   旧「路径导入=模块级通配」实现随之废止（visitImportDecl 已改为真绑定）。
+    checkImportLocalConflicts(node);
     // 第一趟a：注册全部结构体/联合体/枚举类型名（支持前向引用：字段可引用后定义的类型）
     // A-2（crate 分桶）：类型按所属模块注册（同模块重复报错，跨模块同名允许）
     for (auto& s : node->structs) {

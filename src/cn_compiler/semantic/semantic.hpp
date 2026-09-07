@@ -143,6 +143,18 @@ public:
     // 主入口：分析程序AST，返回是否成功（无错误）
     bool analyze(Program* program);
 
+    // plans/018 呈报二 A′（2026-09-07 用户裁决）：函数链接键——全编译器唯一公式。
+    //   链接键(模块名, 函数名, 签名键) = (模块名空 或 =="主" 或 函数名=="主"
+    //   或模块名以 __cn_ 开头) ? 签名键 : 模块名$签名键。
+    //   注册侧（registerFunction）、定义侧（ir_decl mangledName）共同调用本函数，
+    //   消灭「注册键归属顺序依赖 vs 定义侧恒公式」不对称（同名同签名 + 入口纯名
+    //   调用 → 链接 undefined reference 主$X 的错编缺陷根治）。Rust 对照：
+    //   rustc 符号=f(def-id 规范路径) 定义时即定、公式全编译器唯一。
+    //   public：IR 层（ir_decl.cpp）跨层调用（frontend→ir 单向依赖合法）。
+    static std::string functionLinkKey(const std::string& moduleName,
+                                       const std::string& funcName,
+                                       const std::string& sigKey);
+
     // ==================== 结构体/枚举查询（Task 2.7，供IR层复用布局） ====================
     // 是否结构体/联合体类型名
     bool isStructType(const std::string& type) const;
@@ -525,6 +537,11 @@ private:
     std::unordered_map<std::string, std::string> itemAliasModules_;
     // 模块公开符号表：模块名 -> 公开符号名集合（crate 分桶 + 限定调用验证 + 交集检查）
     std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicSymbols_;
+    // plans/018 呈报一B（2026-09-07 用户终裁）：已加载模块名集合（合并声明 moduleName
+    //   全集 + driver 注入的 Program::loadedModules [图内模块名 + 货舱依赖包名]）。
+    //   P1-1 废止后限定调用 校验「模块已加载」而非「已导入」——导入只影响
+    //   不带前缀的名字（② 具名绑定），模块只要被加载（含 crate/包名）即可限定调用。
+    std::unordered_set<std::string> knownModules_;
     // 模块公开类名集合：模块名 -> 公开类名（可见性交集检查：跨模块类成员访问须类公开）
     std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicClasses_;
     // ---- 第 4 层（v2.0 决策8/9，P1-4/P3-8）：顶层常量/静态 ----

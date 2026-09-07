@@ -584,12 +584,12 @@ TEST(ModuleTest, SemanticOverloadAcrossModules) {
     EXPECT_TRUE(r.ok) << r.messages;
 }
 
-// 未导入模块的限定调用：主.cn 直接写 数学.函数 但未写任何导入语句
-// 实测（2026-08-15，真实编译器验证 target/import_test/单独.cn）：
-//   当前实现构建成功（r.ok=true），未报"未声明的标识符 数学"——已知缺陷 P1
-//   （语义层成员调用分支对未导入模块名静默放行）。本子任务聚焦测试补全，
-//   不做语义层高风险修复；缺陷记录于 HANDOFF/lessons，供阶段7 Debug 根治。
-//   断言当前行为（r.ok=true）以显式标记该缺陷存在，避免误判为通过。
+// 未导入限定调用：主.cn 直接写 工具::双倍 但未写任何导入语句
+// 【plans/018 呈报一B（2026-09-07 用户终裁）行为反转】：P1-1「先导入才能
+//   限定调用」废止——限定调用按「模块已加载」放行（Rust 习惯），导入只影响
+//   不带前缀的名字。工具.cn 经合并加载（声明 moduleName=工具）→ 免导入
+//   限定调用编译通过。负覆盖见 SemanticQualifiedCallWithoutImportRegression
+//   （未加载模块仍报错）。
 TEST(ModuleTest, SemanticQualifiedCallWithoutImport) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
@@ -604,12 +604,8 @@ TEST(ModuleTest, SemanticQualifiedCallWithoutImport) {
         "}\n",
         "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
-    // P1-1 修复（第 4 层）：未导入模块的限定调用 -> 报「未声明的标识符」。
-    //   工具.cn 是用户模块（公开函数 双倍 合并），非 prelude 内置——
-    //   主.cn 未写 导入 工具 直接 工具::双倍(10) -> 编译错误。
-    //   注：内置函数（数学::平方根 等 24 个 prelude 限定名）是例外，无需导入。
-    EXPECT_FALSE(r.ok) << "P1-1 修复：未导入模块限定调用应报错，实际通过\n" << r.messages;
-    EXPECT_NE(r.messages.find("未声明的标识符"), std::string::npos) << r.messages;
+    // 呈报一B：已加载模块免导入限定调用 -> 通过（E0255 具名绑定冲突检查补位）
+    EXPECT_TRUE(r.ok) << "呈报一B：已加载模块限定调用应放行，实际报错\n" << r.messages;
 }
 
 // ==================== 第 4 层新增测试（crate 模型核心重构） ====================
@@ -973,8 +969,10 @@ TEST(ModuleTest, UseImportRenameConflictLastWins) {
     EXPECT_TRUE(r.ok) << r.messages;
 }
 
-// 未导入限定调用仍报错（P1-1 修复反转确认）：主.cn 未写 导入 直接 工具::双倍(10)
-//   -> 报「未声明的标识符」（用户模块非 prelude 内置例外）
+// 限定调用「模块已加载」判定（呈报一B 反转确认 + 负覆盖保留）：
+//   ①已加载模块 工具::双倍(10) 免导入 -> 通过；
+//   ②从未加载的模块 缺失::双倍(10) -> 仍报「未声明的标识符」
+//   （P1-1 旧规已废止，保护性错误只针对真正不存在的模块）
 TEST(ModuleTest, SemanticQualifiedCallWithoutImportRegression) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
@@ -984,13 +982,14 @@ TEST(ModuleTest, SemanticQualifiedCallWithoutImportRegression) {
         "工具.cn", diags1));
     units.push_back(makeUnit(
         "函数 主() -> 整32 {\n"
-        "    变量 数值 = 工具::双倍(10);\n"  // 未导入模块
+        "    变量 数值 = 工具::双倍(10);\n"     // 已加载模块：免导入放行（B）
+        "    变量 坏值 = 缺失::双倍(10);\n"     // 从未加载的模块：报错
         "    返回 0;\n"
         "}\n",
         "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
-    // P1-1 修复：未导入模块的限定调用 -> 报「未声明的标识符」
-    EXPECT_FALSE(r.ok) << "P1-1 修复：未导入模块限定调用应报错，实际通过\n" << r.messages;
+    // 呈报一B：加载判定失败（缺失 模块不存在）-> 「未声明的标识符」保留
+    EXPECT_FALSE(r.ok) << "未加载模块限定调用应报错，实际通过\n" << r.messages;
     EXPECT_NE(r.messages.find("未声明的标识符"), std::string::npos) << r.messages;
 }
 
@@ -1019,11 +1018,11 @@ TEST(ModuleTest, SemanticModuleTreeReexportChain) {
     EXPECT_TRUE(r.ok) << r.messages;
 }
 
-// 第 8 层缺陷修复（52_library 实测）：无参函数（sigKey 无 '#'）跨模块同名
-//   注册 key = 模块名$函数名（如 格式化$版本）。resolveOverload/hasFunctionName
-//   的 key 解析此前仅处理 模块名$名#参数（'$' 在 '#' 之前），无 '#' 时 keyModule
-//   不提取、base=格式化$版本 ≠ 版本 -> 限定调用 格式化::版本() 报"未找到匹配"。
-//   修复：无 '#' 且调用名不含 '$'（区别于泛型实例 排序$整32）时剥离 '$' 前缀。
+// 第 8 层缺陷修复（52_library 实测）+ 呈报一B 适配：无参函数（sigKey 无 '#'）
+//   跨模块同名注册键 = 公式键 模块名$函数名（如 格式化$版本）。限定调用
+//   格式化::版本() 按 moduleFilter 精确解析。呈报一B 后「导入 格式化::版本;」
+//   与主模块本地 版本 同名 = E0255 编译错误（具名绑定语义）——源码适配删除
+//   两行具名导入，限定调用按「模块已加载」放行（P1-1 废止）。
 TEST(ModuleTest, CrateIsolateNoParamQualifiedCall) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
@@ -1033,11 +1032,9 @@ TEST(ModuleTest, CrateIsolateNoParamQualifiedCall) {
         "函数 价格(浮64 金额) -> 浮64 { 返回 金额; }\n",
         "格式化.cn", diags1));
     units.push_back(makeUnit(
-        "导入 格式化::版本;\n"
-        "导入 格式化::价格;\n"
         "函数 版本() -> 整64 { 返回 100; }\n"          // 主 模块同名（crate 隔离）
         "函数 主() -> 整32 {\n"
-        "    变量 主版本 = 格式化::版本();\n"          // 无参跨模块限定调用
+        "    变量 主版本 = 格式化::版本();\n"          // 免导入限定调用（呈报一B）
         "    变量 价 = 格式化::价格(1.5);\n"
         "    返回 0;\n"
         "}\n",
@@ -1160,4 +1157,134 @@ TEST(ModuleTest, BareCallPrefersCurrentModule) {
         "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
     EXPECT_TRUE(r.ok) << "纯名调用当前模块优先解析失败（A-5）";
+}
+
+// ==================== plans/018 P6b（呈报一B + 呈报二 A′，2026-09-07） ====================
+
+// E0255 ①×②（路径导入形态）：「导入 工具::版本;」与本地 版本() 同名 = 错误
+//   （呈报一B：路径导入=具名绑定②，Rust use m::f 撞名 E0252 一致）
+TEST(ModuleTest, ImportConflictPathFormE0255) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 版本() -> 整64 { 返回 200; }\n",
+        "工具.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 工具::版本;\n"
+        "函数 版本() -> 整64 { 返回 100; }\n"
+        "函数 主() -> 整32 {\n"
+        "    整64 v = 版本();\n"
+        "    返回 0;\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_FALSE(r.ok) << "路径导入与本地定义同名应报 E0255";
+    EXPECT_NE(r.messages.find("导入与本地定义同名"), std::string::npos) << r.messages;
+}
+
+// E0255 ①×②（花括号导入形态）：「导入 工具::{价格};」与本地 价格() 同名 = 错误
+TEST(ModuleTest, ImportConflictBraceFormE0255) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 价格(整64 金额) -> 整64 { 返回 金额; }\n",
+        "工具.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 工具::{价格};\n"
+        "函数 价格(整64 金额) -> 整64 { 返回 金额 + 1; }\n"
+        "函数 主() -> 整32 {\n"
+        "    整64 v = 价格(10);\n"
+        "    返回 0;\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_FALSE(r.ok) << "花括号导入与本地定义同名应报 E0255";
+    EXPECT_NE(r.messages.find("导入与本地定义同名"), std::string::npos) << r.messages;
+}
+
+// E0255 自导入豁免：「导入 主::版本;」（来源首段==归属模块）不引入绑定名，
+//   与本地定义不构成冲突（本地定义恒 ① 优先；52_library 同款形态）
+TEST(ModuleTest, ImportSelfImportNoConflict) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1;
+    units.push_back(makeUnit(
+        "导入 主::版本;\n"
+        "函数 版本() -> 整64 { 返回 100; }\n"
+        "函数 主() -> 整32 {\n"
+        "    整64 v = 主::版本();\n"
+        "    返回 0;\n"
+        "}\n",
+        "主.cn", diags1));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << "自导入不应与本地定义构成 E0255 冲突";
+}
+
+// E0255 ②×②：同归属文件把同一绑定名从不同外部来源显式导入 = 错误
+//   （同来源重复导入幂等合法，不触发）
+TEST(ModuleTest, ImportDoubleExplicitSameNameE0255) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2, diags3;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 版本() -> 整64 { 返回 200; }\n",
+        "工具.cn", diags1));
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 版本() -> 整64 { 返回 300; }\n",
+        "组件.cn", diags2));
+    units.push_back(makeUnit(
+        "导入 工具::版本;\n"
+        "导入 组件::版本;\n"
+        "函数 主() -> 整32 {\n"
+        "    整64 v = 版本();\n"
+        "    返回 0;\n"
+        "}\n",
+        "主.cn", diags3));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_FALSE(r.ok) << "不同来源同名显式导入应报错";
+    EXPECT_NE(r.messages.find("多次显式导入同名"), std::string::npos) << r.messages;
+}
+
+// A′ 函数链接键公式：主/空模块/主 函数/__cn_ 恒裸键；普通模块 键=模块$签名键
+TEST(ModuleTest, FunctionLinkKeyFormula) {
+    using cn_compiler::SemanticAnalyzer;
+    // 入口模块（主）与单文件（空模块名）：裸键
+    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("主", "版本", "版本#"), "版本#");
+    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("", "版本", "版本#"), "版本#");
+    // 入口函数本身（名==主）：裸键（codegen 主->cn_main 映射依赖）
+    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("工具", "主", "主#整32"), "主#整32");
+    // 内置运行时符号（__cn_ 前缀模块）：裸键直通
+    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("__cn_rt", "辅助", "辅助#"), "辅助#");
+    // 普通依赖模块：模块$签名键
+    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("工具库", "版本", "版本#"),
+              "工具库$版本#");
+    EXPECT_EQ(SemanticAnalyzer::functionLinkKey("网络::传输控制", "连接", "连接#整64"),
+              "网络::传输控制$连接#整64");
+}
+
+// A′ ①×③ 遮蔽正测（错编修复锚定，E2E 160 同款形态单测层）：
+//   依赖与入口同名同签名 + 入口纯名调用 -> 语义通过（A′ 前注册键顺序依赖
+//   使调用侧解析 主$版本 而定义侧发射裸版本 → 链接 undefined reference）
+TEST(ModuleTest, LinkKeyDependencyEntrySameSigPureCall) {
+    std::vector<std::unique_ptr<ModuleUnit>> units;
+    Diagnostics diags1, diags2;
+    units.push_back(makeUnit(
+        "公开:\n"
+        "函数 版本() -> 整64 { 返回 200; }\n"
+        "函数 双倍(整64 n) -> 整64 { 返回 n * 10; }\n",
+        "工具库.cn", diags1));
+    units.push_back(makeUnit(
+        "导入 工具库;\n"
+        "函数 版本() -> 整64 { 返回 100; }\n"
+        "函数 主() -> 整32 {\n"
+        "    整64 v = 版本();\n"           // ① 本模块优先（A′ 锚定行）
+        "    整64 w = 工具库::版本();\n"   // 限定调用恒明确
+        "    整64 d = 双倍(5);\n"          // ③ glob 纯名直调
+        "    返回 0;\n"
+        "}\n",
+        "主.cn", diags2));
+    auto r = analyzeModules(std::move(units));
+    EXPECT_TRUE(r.ok) << "A′ 同名同签名遮蔽形态应语义通过";
 }

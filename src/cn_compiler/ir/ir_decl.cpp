@@ -134,19 +134,14 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   （__cn_*）不加前缀（保持链接；主 -> cn_main 映射、内置走 __cn_ 路径）。
     func.name = node->name;
     std::string linkName = node->sigKey.empty() ? node->name : node->sigKey;
-    // 第 4 层（v2.0 决策4/6，P2-6）：crate 前缀——跨模块同名函数链接符号加
-    //   模块名$ 前缀（包A$函数 与 包B$函数 不冲突）。例外：
-    //   ① 入口 主 函数（name=="主"）不加前缀（codegen 映射 cn_main）；
-    //   ② 内置运行时符号（__cn_*）不加前缀（保持链接）；
-    //   ③ 单文件模块（moduleName==文件主干，非 主）中 主 函数同样不加——
-    //      由 codegen symbolName 的 name=="主" -> cn_main 映射处理；
-    //   ④ 入口文件 主.cn 的辅助函数（moduleName=="主"）同样不加前缀——
-    //      入口 crate 根文件的函数调用按纯名重写（语义层不感知入口模块前缀），
-    //      若加 主$ 前缀则定义侧与调用侧符号不匹配（38_tool 链接失败实测）。
-    if (!node->moduleName.empty() && node->moduleName != "主" &&
-        node->name != "主" && node->moduleName.find("__cn_") != 0) {
-        linkName = node->moduleName + "$" + linkName;
-    }
+    // plans/018 呈报二 A′（2026-09-07 用户裁决）：定义侧链接键改调全编译器唯一
+    //   公式 functionLinkKey（与注册侧 registerFunction 同源单一归属）——
+    //   消灭旧「内联条件 vs 注册键顺序依赖」不对称（依赖+入口同名同签名 +
+    //   入口纯名调用 → 链接 undefined reference 主$版本，base3 探针实证）。
+    //   公式例外（主/空模块/主 函数/__cn_ 运行时 恒裸键）与 codegen
+    //   symbolName 的 主->cn_main / __cn_ 直通映射对齐，注释详见 semantic.hpp。
+    linkName = SemanticAnalyzer::functionLinkKey(node->moduleName, node->name,
+                                                 linkName);
     func.mangledName = linkName;
     // P3-18 补完（2026-08）：引用返回（T&）——IR 返回类型映射为 指针（返回被引用
     //   左值的地址）；epilogue 走默认整型 rax 返回（无 structReturn/i128 特判）。

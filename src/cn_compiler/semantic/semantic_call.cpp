@@ -251,36 +251,29 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 const std::string mid = pathPrefix.substr(0, pathPrefix.size() - 2);
                 subModule = moduleName + "::" + mid;
             }
-            // 第 4 层（P1-1）：use 导入表验证——导入的符号才允许访问。
-            //   模块已导入（路径/花括号/通配符）且符号在导入集合或通配符导入中。
-            //   子模块：父模块 wildcard 导入即视为子模块符号已导入（模块树）。
-            // A-5：use 导入表双查（重命名导入的别名名 + 重映射后的模块名）
-            const auto useIt = useImports_.find(moduleName);
-            const auto useItRaw = useImports_.find(moduleNameRaw);
-            bool useHasSymbol = false;
-            if (useIt != useImports_.end()) {
-                useHasSymbol = useIt->second.wildcard ||
-                               useIt->second.symbols.count(funcBaseName) > 0 ||
-                               useIt->second.aliases.count(funcBaseName) > 0;
-            }
-            if (!useHasSymbol && useItRaw != useImports_.end()) {
-                useHasSymbol = useItRaw->second.wildcard ||
-                               useItRaw->second.symbols.count(funcBaseName) > 0 ||
-                               useItRaw->second.aliases.count(funcBaseName) > 0;
-            }
-            // 用户模块公开函数（模块公开符号表验证，含泛型；子模块按完整路径查）
+            // plans/018 呈报一B（2026-09-07 用户终裁）：P1-1 废止——限定调用
+            //   按语音「模块已加载」放行（Rust 习惯：路径项 m::f() 恒可用，
+            //   导入 use 只影响不带前缀的名字）。加载判定 = 显式导入过（任意
+            //   形式导入均登记首段模块名）或模块在已加载集合 knownModules_
+            //   （合并声明 moduleName 全集 + driver 注入的 crate/包名）。
+            //   「先导入才能限定调用」旧规废止，E0255 具名绑定冲突检查补位。
+            const bool moduleLoaded =
+                moduleImported || knownModules_.count(moduleName) > 0 ||
+                knownModules_.count(subModule) > 0;
+            // 用户模块公开函数（全局符号表存在该函数名，含泛型；限定调用的
+            //   模块归属过滤由 resolveOverload 按 moduleFilter 完成——符号不属
+            //   该模块时决议失败报「未找到匹配的函数」，归属校验单一归属）
             const bool userFuncExists =
-                (moduleImported && useHasSymbol &&
-                 (hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr)) ||
-                (!pathPrefix.empty() && modulePublicSymbols_.count(subModule) > 0 &&
-                 modulePublicSymbols_[subModule].count(funcBaseName) > 0 &&
-                 (hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr));
+                hasFunctionName(funcBaseName) || findGeneric(funcBaseName) != nullptr;
             // prelude 例外（第 4 层）：内置限定名（数学::平方根 等 24 个）无需
             //   显式导入即可用（核心 包 prelude）；用户模块公开函数优先。
             const bool builtinQualified = hasFunctionName(qualified) ||
                                           hasFunctionName(qualifiedDot);
+            const bool qualifiedClass = isClassType(qualified);
+            // 内置限定名（prelude）独立于模块加载判定——核心包内置函数恒可用
             if (!isTypeName &&
-                (userFuncExists || builtinQualified || moduleImported)) {
+                (builtinQualified ||
+                 (moduleLoaded && (userFuncExists || qualifiedClass)))) {
                 // 用户模块公开函数：重写为直接函数名（成员方法调用分支不再命中 MemberExpr）。
                 //   泛型函数保留 名<实参> 完整形态（下方 visitCallExpr 泛型单态化识别）；
                 //   普通函数重写为纯名（含 数学.平方根 内置限定名的既有路径）。
@@ -302,33 +295,33 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 } else if (hasFunctionName(qualifiedDot)) {
                     // 兼容旧点号内置名（数学.平方根，v1.0）：保留点号限定名
                     node->callee = std::make_unique<IdentifierExpr>(qualifiedDot);
-                } else if (isClassType(qualified)) {
+                } else if (qualifiedClass) {
                     // P2-16：模块限定类构造调用（模块::类(...)）——
                     //   保留 :: 限定名走类构造路径（findClass 模块感知解析）
                     node->callee = std::make_unique<IdentifierExpr>(qualified);
                     node->moduleFilter = moduleName;
-                } else if (moduleImported) {
-                    // 已导入模块但符号不存在 → 报错，避免走"函数指针间接调用"静默路径
+                } else {
+                    // 模块已加载但既非已知函数/内置限定名/类：公开符号不存在
+                    //   → 报错，避免走"函数指针间接调用"静默路径
                     node->callee = std::make_unique<IdentifierExpr>(funcName);
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "模块 '" + moduleName + "' 没有公开符号 '" +
                                             funcName + "'");
                 }
-            } else if (!isTypeName && !moduleImported && !builtinQualified) {
+            } else if (!isTypeName && !moduleLoaded && !builtinQualified) {
                 // 对象方法调用排除：object 是局部变量/参数（动物.描述()）时，
-                //   moduleName 是变量名而非模块名——跳过 P1-1，走下方成员方法
+                //   moduleName 是变量名而非模块名——跳过，走下方成员方法
                 //   调用路径（防误判：变量名不在类型名/模块名中）。
                 std::string objType;
                 const bool objIsVar = lookupVar(moduleName, objType);
                 if (!objIsVar) {
-                    // P1-1 修复：未导入模块的限定调用 -> 报「未声明的标识符」
-                    //   （内置函数 prelude 例外：builtinQualified 已排除）
+                    // plans/018 呈报一B：P1-1 旧文「未导入」废止——模块从未被
+                    //   加载（未导入且合并声明/依赖包均无此模块）才报错
                     node->callee = std::make_unique<IdentifierExpr>(funcName);
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "未声明的标识符 '" + qualified +
                                             "'（模块 '" + moduleName +
-                                            "' 未导入；请先写 导入 " + moduleName + "::" +
-                                            funcBaseName + "）");
+                                            "' 未加载；请检查模块是否存在或在货舱.toml 声明依赖）");
                 }
             }
     }
@@ -337,24 +330,36 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     std::string calleeName;
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         calleeName = static_cast<IdentifierExpr*>(node->callee.get())->name;
-        // 第 4 层（use 导入表）：花括号导入别名重写——导入 数学::{正弦 作为 正}
-        //   后调用 正() 时，calleeName 是别名；查 useImports_ 各模块别名表映射回
-        //   原符号名（正弦）。须在 isDirect 判定之前（别名名未注册为函数名，
-        //   hasFunctionName("正") 失败会导致 isDirect=false 走间接调用路径报错）。
-        if (calleeName.find('<') == std::string::npos) {
+        // 第 4 层（use 导入表）：花括号/路径导入绑定名重写——导入 数学::{正弦 作为 正}
+        //   或（呈报一B）导入 数学::正弦 后调用 绑定名() 时，calleeName 是绑定名；
+        //   查 useImports_ 各模块别名表映射回原符号名（正弦）。须在 isDirect 判定
+        //   之前（绑定名未注册为函数名，hasFunctionName("正") 失败会导致
+        //   isDirect=false 走间接调用路径报错）。
+        //   限定调用重写（上方 MemberExpr 块）已设置 moduleFilter 时跳过——
+        //   呈报一B 后路径导入也登记绑定名（模块X::双倍 绑定 双倍），限定调用
+        //   模块Y::双倍 重写为纯名后会被本块按 绑定名 双倍（来源 模块X）二次
+        //   重写覆盖过滤器 → 解析到错误模块（44_crate_isolate 实测）。限定
+        //   调用的过滤器优先（调用点已显式指定模块归属）。
+        if (calleeName.find('<') == std::string::npos &&
+            node->moduleFilter.empty()) {
             for (const auto& ui : useImports_) {
                 const auto& aliases = ui.second.aliases;
                 const auto aliasIt = aliases.find(calleeName);
                 if (aliasIt != aliases.end() && aliasIt->second != ui.first) {
-                    calleeName = aliasIt->second;  // 别名 -> 原符号名
-                    static_cast<IdentifierExpr*>(node->callee.get())->name = calleeName;
                     // A-5（花括号项别名跨模块同名歧义根治）：重写回原符号名时
                     //   携带来源模块（moduleFilter）——resolveOverload 按模块过滤，
                     //   跨模块同名（模块X$双倍 与 模块Y$双倍）纯名别名调用不再歧义。
-                    //   优先用导入项的来源完整路径（工具库::格式化，跨 crate
-                    //   场景首段 工具库 过滤会漏掉 格式化 模块条目——52_library
-                    //   的 格式价格 回归实测），回退首段（同包模块）
-                    auto iamIt = itemAliasModules_.find(calleeName);
+                    //   来源模块查 itemAliasModules_：按**原绑定名**查（别名 与
+                    //   原符号名 不同名时，重写后查原符号名会命中同名的其他绑定
+                    //   条目——91_别名跨模块同名 实测 Y双倍 误取 双倍 的来源模块），
+                    //   未命中再回退重写后的符号名（自映射绑定 条目以符号名为键）。
+                    const std::string bindingName = calleeName;
+                    calleeName = aliasIt->second;  // 绑定名 -> 原符号名
+                    static_cast<IdentifierExpr*>(node->callee.get())->name = calleeName;
+                    auto iamIt = itemAliasModules_.find(bindingName);
+                    if (iamIt == itemAliasModules_.end()) {
+                        iamIt = itemAliasModules_.find(calleeName);
+                    }
                     if (iamIt != itemAliasModules_.end()) {
                         node->moduleFilter = iamIt->second;
                     } else {
@@ -818,34 +823,13 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             }
             return;
         }
-        // 第 4 层（v2.0 决策4/6，P2-6）：crate 前缀——resolvedSignature 拼上
-        //   被调用函数所属模块名（模块名$sigKey），与定义侧 visitFunctionDecl
-        //   的 mangledName 前缀一致（跨模块同名函数链接符号不冲突）。
-        //   入口 主 / 单文件（moduleName 空）不加前缀（保持 主->cn_main 等映射）。
-        //   跨模块条目（sigKey 形如 模块名$名#参数）已带前缀，不再重复。
+        // plans/018 呈报二 A′（2026-09-07 用户裁决）：resolvedSignature = 注册键。
+        //   注册键在 registerFunction 已按函数链接键公式生成（模块条目自带
+        //   模块$ 前缀、主/单文件恒裸键），与定义侧 mangledName 同源——
+        //   旧「决议后按 it->second.moduleName 补拼前缀」的补丁块删除
+        //   （其仅为旧裸键注册方案的对齐补丁，公式化后结构上不存在劈叉）。
         node->resolvedSignature = sigKey;
         auto it = functions_.find(sigKey);
-        // 主 函数不加前缀（codegen 映射 cn_main，与 IR 层 visitFunctionDecl 同规则）
-        // 修复（2026-08 自举 Task 7.1 发现）："是否已带 crate 前缀"不能只看
-        //   sigKey.find('$')——泛型容器参数签名含实例名分隔符（记录#向量$字符串,
-        //   字符串,整64），$ 出现在 # 之后的参数串中，被误判"已带前缀"导致
-        //   模块前缀缺失 -> 与定义侧（词法分析$记录#...）链接符号不匹配
-        //   （LNK2019 未解析外部符号，CN 词法分析器模块实测）。正确判定：
-        //   模块前缀的 $ 位于 # 之前（跨模块条目 模块名$名#参数），与
-        //   resolveOverload/hasFunctionName 的既有形态判定一致。
-        const std::size_t sigHash = sigKey.find('#');
-        const std::size_t sigDollar = sigKey.find('$');
-        // 已带前缀 = 跨模块条目（$ 在 # 前）或 泛型实例名（$ 且无 #，如 排序$整32
-        //   ——非函数签名形态，不可再拼模块前缀）。仅 纯名#参数 形态（$ 全部位于
-        //   # 后的参数串中，如 记录#向量$字符串,字符串,整64）需拼模块前缀。
-        const bool alreadyPrefixed =
-            (sigDollar != std::string::npos &&
-             (sigHash == std::string::npos || sigDollar < sigHash));
-        if (it != functions_.end() && !it->second.moduleName.empty() &&
-            it->second.moduleName != "主" && calleeName != "主" &&
-            !alreadyPrefixed) {
-            node->resolvedSignature = it->second.moduleName + "$" + sigKey;
-        }
         const FunctionInfo& info = it->second;
         // A-1（引用参数）：引用形参的实参自动取地址（重写为 &左值）——
         //   须在 IR 层实参求值之前（IR genExpr 对 AddressOf 生成 lvalueAddress）
