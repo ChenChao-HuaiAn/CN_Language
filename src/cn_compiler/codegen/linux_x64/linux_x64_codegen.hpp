@@ -111,9 +111,15 @@ private:
     // 操作码 + 结果类型 -> 汇编指令助记符（用于诊断/分派辅助）
     std::string selectInstruction(ir::Opcode opcode, const std::string& type) const;
 
-    // 第 index 个整型类参数的传递位置（前6寄存器 rdi..r9，第7起栈上 [rbp+16+8k]）
+    // 第 index 个整型类参数的传递位置（前6寄存器 rdi..r9，第7起栈上）
     // 隐藏返回指针占用 rdi 时真实参数位号后移（调用方在 IR 层已计入 paramOffset）
     std::string intParameterRegister(int index) const;
+
+    // 被调方栈参数锚定基（单一归属）：needHiddenRet 时 prologue 在 mov rbp,rsp
+    //   前 push rbx（保存隐藏返回指针），rbp = 入口 rsp - 16，真实栈参数自
+    //   [rbp+24] 起——intParameterRegister 与 emitParamSetup 的 stackAnchor
+    //   必须同源于此（2026-09-07 随 E2E 154 arm64 同族根治收敛）
+    int stackParamAnchorBase() const;
 
     // 中文符号名 -> GAS 风格修饰名（_ + UTF-8 十六进制；ASCII 原样返回）
     static std::string nameMangle(const std::string& name);

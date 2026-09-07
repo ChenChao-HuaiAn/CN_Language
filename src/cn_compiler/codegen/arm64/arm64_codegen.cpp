@@ -148,12 +148,16 @@ std::string Arm64CodeGenerator::symbolName(const std::string& name) {
 // 第index个整型参数（0起）的传递位置：前8用寄存器 x0~x7，第9起在栈上
 // AAPCS64：整型/指针参数 x0~x7；栈参数位于调用方栈顶。
 //   被调方 prologue 依次压栈：stp x29,x30（16B）、stp x19,xzr（16B，仅
-//   currentNeedHiddenRet_ 时）——故栈参数相对 x29 的偏移 = 16 + 16*needHiddenRet。
+//   currentNeedHiddenRet_ 时）——栈参数锚定基单一归属 stackParamBase()。
+int Arm64CodeGenerator::stackParamBase() const {
+    return currentNeedHiddenRet_ ? 32 : 16;
+}
+
 std::string Arm64CodeGenerator::parameterRegister(int index) const {
     static const char* regs[] = {"x0", "x1", "x2", "x3",
                                  "x4", "x5", "x6", "x7"};
     if (index < 8) return regs[index];
-    const int base = currentNeedHiddenRet_ ? 32 : 16;
+    const int base = stackParamBase();
     return "[x29,#" + std::to_string(base + (index - 8) * 8) + "]";
 }
 
@@ -607,6 +611,12 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
     }
     // ---- 第 9 层 Debug（P3-8）：顶层静态变量 .data 全局存储 ----
     // 符号 _cn_gstatic_名（与 arm64_instructions.cpp ConstString 转换一致）
+    // .align 3（2026-09-07）：.quad 槽 8 对齐——全局符号虽可借命名重定位绕过
+    // 汇编期对齐检查，但运行期静态访存须对齐（Rust/LLVM 对照：对齐=发射期
+    // 布局契约，非对齐访存不进产物）
+    if (!module.globalStatics.empty()) {
+        writer.raw(".align 3");
+    }
     for (const auto& kv : module.globalStatics) {
         const std::string& name = kv.first;
         const std::string stType = kv.second;
@@ -682,7 +692,7 @@ void Arm64CodeGenerator::emitFunctionHeader(Arm64AsmWriter& writer,
 //   - x29 帧指针、x30 链接寄存器，均被调用者保存
 //   - 需要保存隐藏返回指针（结构体/i128 返回）时用 x19（被调用者保存），
 //     在 x29/x30 之后压 stp x19, xzr（xzr 占位保持 16 对齐），恢复时 ldp 丢弃
-//   - 压栈顺序固定：先 x29,x30 再 x19（栈参数偏移 = 16 + 16*needHiddenRet，
+//   - 压栈顺序固定：先 x29,x30 再 x19（栈参数偏移 = stackParamBase() + 8k，
 //     与 parameterRegister 一致）
 // 栈调整辅助：|amount| <= 4095 用单条 sub/add；否则先 mov 到 x13 再 sub/add
 // AArch64 立即数栈调整最大 4095（12 位），大栈帧（如 4224 字节）需分段
@@ -771,14 +781,16 @@ void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
                            " 拷贝 " + std::to_string(bytes) + " 字节");
             continue;
         }
-        // 浮点参数：sN/dN 独立编址（位号 = i，不受 paramOffset 影响；f32 用 s、f64 用 d）
+        // 浮点参数：sN/dN 独立编址（位号 = 参数位号 paramPos=i+paramOffset，
+        //   与调用方 v<位号> 装载一致；f32 用 s、f64 用 d）
         if (isFloatType(paramType)) {
-            if (i < 8) {
+            const std::size_t floatPos = i + paramOffset;
+            if (floatPos < 8) {
                 const std::string vreg = (paramType == "f64") ? "d" : "s";
-                emitStackStore(writer, slotOffset, vreg + std::to_string(i), paramType);
+                emitStackStore(writer, slotOffset, vreg + std::to_string(floatPos), paramType);
             } else {
                 const std::string mem = stackMemText(
-                    16 + (static_cast<int>(i) - 8) * 8, writer);
+                    stackParamBase() + (static_cast<int>(floatPos) - 8) * 8, writer);
                 writer.line("ldr x10, " + mem);
                 emitStackStore(writer, slotOffset, "x10", "i64");
             }
@@ -801,9 +813,10 @@ void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
                 emitStackStore(writer, slotOffset, reg, paramType);
             }
         } else {
-            // 第9参数位起：从调用者栈帧拷贝到本函数参数槽
+            // 第9参数位起：从调用者栈帧拷贝到本函数参数槽（锚定基单一归属
+            //   stackParamBase——隐藏返回时 prologue 多压 x19，真实栈参上移 16）
             const std::string stackSrc = stackMemText(
-                16 + (actualIdx - 8) * 8, writer);
+                stackParamBase() + (actualIdx - 8) * 8, writer);
             if (paramType == "i128" || paramType == "u128") {
                 writer.line("ldr x10, " + stackSrc);  // i128 双槽地址指针
                 emitStackAddr(writer, "x12", slotOffset);

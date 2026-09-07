@@ -573,3 +573,104 @@ TEST(Arm64CodegenTest, DirectCall) {
     // 运行时符号映射 + bl 调用（方案C：打印 -> printLine，遗留 打印行整数 已删除）
     EXPECT_NE(asmText.find("bl printLine"), std::string::npos);
 }
+
+// ==================== 栈参数锚定基单一归属（E2E 154 arm64 同族根治锚定） ====================
+
+// 辅助：构造 sret + N 个整型参数模块（空块，聚焦参数装载发射）
+static IRModule buildSretI64ParamsModule(int paramCount) {
+    IRModule module;
+    IRFunction func;
+    func.name = "buildp";
+    func.returnType = "struct16";
+    func.structReturn = true;
+    for (int p = 0; p < paramCount; ++p) {
+        func.params.push_back({"p" + std::to_string(p), "i64"});
+    }
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    block->terminated = true;
+    block->termKind = "返回";
+    func.blocks.push_back(std::move(block));
+    func.nextRegId = 0;
+    module.functions.push_back(std::move(func));
+    return module;
+}
+
+// 隐藏返回（sret）+ 9 个整型参数：第 9 参数位（actualIdx=8）走栈——prologue
+//   多压 stp x19,xzr（16B）后真实栈参在 [x29,#32]，锚定基须同源
+//   stackParamBase()。旧旁路硬编码 16 读到被保存的旧 x19 槽（垃圾栈地址
+//   0x7FFDAF6CE0 实测，E2E 154 arm64 首跑失败）
+TEST(Arm64CodegenTest, SretStackParamAnchorBase32) {
+    Diagnostics diagnostics;
+    Arm64CodeGenerator generator(diagnostics);
+    IRModule module = buildSretI64ParamsModule(9);
+
+    std::string asmText = generator.generateAssembly(module);
+
+    // 隐藏返回 prologue：x19 保存
+    EXPECT_NE(asmText.find("stp x19, xzr, [sp, #-16]!"), std::string::npos);
+    // 第 9 参数位从 [x29,#32] 读入（基 32 = 16 + 16*needHiddenRet）
+    EXPECT_NE(asmText.find("ldr x10, [x29,#32]"), std::string::npos);
+    // 不得出现旧缺陷锚 [x29,#16]（= 被保存的旧 x19 槽）
+    EXPECT_EQ(asmText.find("ldr x10, [x29,#16]"), std::string::npos);
+}
+
+// 无隐藏返回 + 9 个整型参数：锚定基恒 16（平凡路径不受 sret 修复影响）
+TEST(Arm64CodegenTest, PlainStackParamAnchorBase16) {
+    Diagnostics diagnostics;
+    Arm64CodeGenerator generator(diagnostics);
+    IRModule module;
+    IRFunction func;
+    func.name = "plainp";
+    func.returnType = "i64";
+    for (int p = 0; p < 9; ++p) {
+        func.params.push_back({"p" + std::to_string(p), "i64"});
+    }
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    block->terminated = true;
+    block->termKind = "返回";
+    func.blocks.push_back(std::move(block));
+    func.nextRegId = 0;
+    module.functions.push_back(std::move(func));
+
+    std::string asmText = generator.generateAssembly(module);
+
+    EXPECT_EQ(asmText.find("stp x19, xzr, [sp, #-16]!"), std::string::npos);
+    EXPECT_NE(asmText.find("ldr x10, [x29,#16]"), std::string::npos);
+    EXPECT_EQ(asmText.find("ldr x10, [x29,#32]"), std::string::npos);
+}
+
+// 隐藏返回 + 浮点参数位号：被调方浮点位号 = 参数位号 paramPos（与调用方
+//   v<paramPos> 装载一致）——寄存器位 f64（paramPos=2）从 d2 装；栈位
+//   （paramPos=8/9）从 [x29,#32]/[x29,#40] 位模式读入。旧实现用源序号 i
+//   （d0 错位 + 栈锚硬编码 16 双重偏差）
+TEST(Arm64CodegenTest, SretFloatParamPositionAndAnchor) {
+    Diagnostics diagnostics;
+    Arm64CodeGenerator generator(diagnostics);
+    IRModule module;
+    IRFunction func;
+    func.name = "mixfp";
+    func.returnType = "struct16";
+    func.structReturn = true;
+    func.params = {{"a", "i64"}, {"f0", "f64"},
+                   {"g0", "i64"}, {"g1", "i64"}, {"g2", "i64"}, {"g3", "i64"},
+                   {"g4", "i64"}, {"g5", "i64"}, {"g6", "i64"}, {"g7", "i64"}};
+    auto block = std::make_unique<IRBlock>();
+    block->label = "块0";
+    block->terminated = true;
+    block->termKind = "返回";
+    func.blocks.push_back(std::move(block));
+    func.nextRegId = 0;
+    module.functions.push_back(std::move(func));
+
+    std::string asmText = generator.generateAssembly(module);
+
+    // f0 位于参数位 2（a 占 1）——被调方 str d2（旧缺陷为 d0）
+    EXPECT_NE(asmText.find("str d2, [x29,#"), std::string::npos);
+    EXPECT_EQ(asmText.find("str d0, [x29,#"), std::string::npos);
+    EXPECT_EQ(asmText.find("str d1, [x29,#"), std::string::npos);
+    // g5/g6/g7 位于参数位 8/9/10——栈位读入 [x29,#32]/[x29,#40]（位模式经 x10）
+    EXPECT_NE(asmText.find("ldr x10, [x29,#32]"), std::string::npos);
+    EXPECT_NE(asmText.find("ldr x10, [x29,#40]"), std::string::npos);
+}

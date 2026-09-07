@@ -753,7 +753,8 @@ void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
 //      从 [sp] 起依次存放（第9参数 [sp]、第10 [sp+8]...）
 //   3. 隐藏返回指针（结构体/i128 返回）占 x0，实参寄存器位号后移 1
 //   4. call 前 sp 必须 16 字节对齐
-//   5. 被调方 prologue 后栈参数位于 [x29, #16/32 + ...]（见 parameterRegister）
+//   5. 被调方 prologue 后栈参数位于 [x29, #16/32 + ...]（见 stackParamBase/
+//      parameterRegister——锚定基单一归属）
 void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
                                   const ir::IRInstruction& inst) {
     const bool isIndirect = (inst.opcode == ir::Opcode::CallIndirect);

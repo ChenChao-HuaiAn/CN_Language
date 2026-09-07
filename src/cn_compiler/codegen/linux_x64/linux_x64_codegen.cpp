@@ -144,12 +144,18 @@ std::string LinuxX64CodeGenerator::symbolName(const std::string& name) {
 }
 
 // 第index个整型类参数（0起）的传递位置：前6用寄存器 rdi,rsi,rdx,rcx,r8,r9，
-// 第7起在栈上 [rbp+16+8k]（返回地址8 + saved rbp8 锚定，与 rbx 压栈无关——
-// rbx 位于 rbp 下方，栈参数在 rbp 上方）
+// 第7起在栈上 [rbp+锚定基+8k]——锚定基单一归属 stackParamAnchorBase()
+//（needHiddenRet 时 prologue 在 mov rbp,rsp 前 push rbx，栈参整体上移 8；
+//   2026-09-07 归真：原「与 rbx 压栈无关——栈参在 rbp 上方恒 16」注释系
+//   第二十二轮 E2E 154 实测证伪的旧叙事，rbx 在 mov rbp,rsp 之前压入）
+int LinuxX64CodeGenerator::stackParamAnchorBase() const {
+    return currentNeedHiddenRet_ ? 24 : 16;
+}
+
 std::string LinuxX64CodeGenerator::intParameterRegister(int index) const {
     static const char* regs[] = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
     if (index < 6) return regs[index];
-    return stackMemText(16 + (index - 6) * 8);
+    return stackMemText(stackParamAnchorBase() + (index - 6) * 8);
 }
 
 // 操作码 + 结果类型 -> 指令助记符（用于诊断/分派辅助，与 ARM64 对齐）
@@ -786,11 +792,11 @@ void LinuxX64CodeGenerator::emitParamSetup(LinuxX64AsmWriter& writer,
     const std::size_t paramOffset =
         (function.structReturn || function.returnType == "i128" ||
          function.returnType == "u128") ? 1 : 0;
-    // 被调方栈参数锚定基：needHiddenRet（=paramOffset）时 prologue 多 push rbx
-    //   （保存隐藏返回指针，位于 [rbp+8]），真实栈参数自 [rbp+24] 起——旧恒 16
-    //   会把「返回地址」当第 7 参数读（v2p 建IR指令：7 参+返回结构体，类型字段
-    //   被返回地址污染实测；arm64 侧同构处理=16+16*needHiddenRet，见其 685 行）
-    const int stackAnchor = 16 + 8 * static_cast<int>(paramOffset);
+    // 被调方栈参数锚定基：单一归属 stackParamAnchorBase()（needHiddenRet 时
+    //   prologue 在 mov rbp,rsp 前 push rbx 保存隐藏返回指针，真实栈参数自
+    //   [rbp+24] 起——旧恒 16 会把「返回地址」当第 7 参数读，E2E 154 实测；
+    //   arm64 侧同构=stackParamBase()，2026-09-07 同族收敛）
+    const int stackAnchor = stackParamAnchorBase();
     int intIdx = static_cast<int>(paramOffset);  // 整型参数位号（rdi=0 起）
     int floatIdx = 0;                            // 浮点参数位号（xmm0 起）
     int stackIdx = 0;                            // 栈参数序号（[rbp+锚+8k]）

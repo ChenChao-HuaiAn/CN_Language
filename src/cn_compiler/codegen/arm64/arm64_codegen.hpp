@@ -112,6 +112,13 @@ private:
     // 第 index 个整型参数的传递位置（前8寄存器 x0~x7，第9起栈上）
     std::string parameterRegister(int index) const;
 
+    // 栈参数锚定基（单一归属）：被调方 prologue 压 x29,x30（16B），隐藏返回
+    // （sret/i128/u128）再压 stp x19,xzr（16B），x29 = 入口 sp - 16/32；调用方
+    // 首个栈参数在入口 [sp]——故栈参数 k（0起）位于 [x29, #本基 + 8k]。
+    // parameterRegister 与 emitParamSetup 标量/浮点旁路必须同源于此
+    // （2026-09-07 E2E 154 arm64 首跑失败根治：旁路曾硬编码 16 读到旧 x19 槽）
+    int stackParamBase() const;
+
     // 中文符号名 -> GAS 风格修饰名（_ + UTF-8 十六进制；ASCII 原样返回）
     static std::string nameMangle(const std::string& name);
     // 中文块标签名 -> GAS 标签（L + UTF-8 十六进制；ASCII 原样返回）
