@@ -583,6 +583,12 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         #   寄存器位（宿主第十八轮 r9 缺陷 v2 侧同款探针，r10/r11 数据临时
         #   纪律）/结构体返回+7 参数（retbuf 占位后实参整体后移）/递归对齐 = 0
         "158_v2_linuxx64_系统V调用约定": (["主.cn"], 0),
+        # plans/018 P6b（2026-09-07 第三十一轮下半程）：v2 侧模块系统加载器——
+        #   164 父挂子模块 声明自动加载强语义（传输件 无人导入仍被编译，
+        #   定位收紧合法形态②）；165 货舱.toml 纯 CN 解析器（货舱解析.cn）
+        #   + 依赖查找链（[依赖] 声明 → 依赖/<名>/<名>.cn 候选）
+        "164_v2_模块自动加载": (["主.cn"], 0),
+        "165_v2_货舱依赖发现": (["主.cn"], 0),
     }
     if 名称 in v2闭环用例们:
         if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
@@ -986,6 +992,11 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         if not src.exists():
             return "失败", f"{编号}-2 缺少用例文件: {文件名}"
         shutil.copy2(src, v2src目录 / 文件名)
+    # plans/018 P6b（2026-09-07）：模块系统加载器用例目录树——父挂子子模块
+    #   （<名>/<子>.cn）、货舱.toml、依赖/<名>/… 须随入口整树复制（ignore
+    #   期望/输入文件；既有平铺用例行为等价）
+    shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
 
     # ===== 步骤3：运行 v2p（第 2 参数目标平台分派 GAS 后端）=====
     入口参数 = f"target/audit2/v2src{编号}/主.cn"
@@ -1183,6 +1194,11 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         if not src.exists():
             return "失败", f"{编号}-2 缺少用例文件: {文件名}"
         shutil.copy2(src, v2src目录 / 文件名)
+    # plans/018 P6b（2026-09-07）：模块系统加载器用例目录树——父挂子子模块
+    #   （<名>/<子>.cn）、货舱.toml、依赖/<名>/… 须随入口整树复制（ignore
+    #   期望/输入文件；既有平铺用例行为等价）
+    shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
 
     # ===== 步骤2.5：供给源编译（②b B7，对齐 linux 分支）——用例自有类型符号 =====
     #   同 linux：须拷贝为独立目录 主.cn（宿主仅以 主.cn 为入口模块，规范08-四）
