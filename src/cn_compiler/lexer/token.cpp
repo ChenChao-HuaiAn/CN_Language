@@ -54,8 +54,6 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         // ---- 模块系统关键字(4，v2.0 新增) ----
         {TokenType::Kw_Module, "模块"},
         {TokenType::Kw_As, "作为"},
-        {TokenType::Kw_Package, "包"},
-        {TokenType::Kw_Cargo, "货舱"},
         // ---- 常量关键字(4) ----
         {TokenType::Kw_True, "真"},
         {TokenType::Kw_False, "假"},
@@ -160,9 +158,8 @@ const std::string& Token::tokenTypeToString(TokenType type) {
 }
 
 // 判断是否为关键字：枚举值落在关键字区间 [Kw_If, Kw_Generic]
-// v2.0 模块系统：新增 模块/作为/包/货舱、删除 从 后，关键字枚举区间为
-//   [Kw_If, Kw_Generic] 且包含新模块关键字（Kw_Module~Kw_Cargo 位于
-//   Kw_Auto 之后、常量区之前，均落在区间内）——共 61 个
+// v2.0 模块系统：新增 模块/作为、删除 从；plans/018 摘除（2026-09-07 用户裁决
+//   方案A） Kw_Package/Kw_Cargo 死保留字（包/货舱 无语法消费点）——现 59 个
 bool Token::isKeyword(TokenType type) {
     return type >= TokenType::Kw_If && type <= TokenType::Kw_Generic;
 }

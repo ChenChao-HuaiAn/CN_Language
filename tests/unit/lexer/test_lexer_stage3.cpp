@@ -82,8 +82,8 @@ TEST(LexerStage3Test, KeywordCount61) {
     // v2.0 模块系统关键字
     EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Module));
     EXPECT_TRUE(Token::isKeyword(TokenType::Kw_As));
-    EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Package));
-    EXPECT_TRUE(Token::isKeyword(TokenType::Kw_Cargo));
+    // plans/018 摘除（2026-09-07 用户裁决方案A）：包/货舱 死保留字摘除，
+    //   Kw_Package/Kw_Cargo 枚举已删（原 isKeyword 断言随之移除）
     // 运算符 不是保留字（isKeyword 区间外，落为 Identifier）
     EXPECT_FALSE(Token::isKeyword(TokenType::Identifier));
 }

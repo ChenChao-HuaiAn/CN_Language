@@ -75,7 +75,7 @@ TEST(LexerTest, EmptySource) {
 // ==================== 2. 关键字识别（61个全部，v2.0） ====================
 
 // 全部61个关键字：文本 -> 类型（v2.0：删 从，增 模块/作为/包/货舱）
-TEST(LexerTest, All61Keywords) {
+TEST(LexerTest, AllKeywords) {
     const std::vector<std::pair<std::string, TokenType>> kKeywords = {
         // 控制流(10)
         {"如果", TokenType::Kw_If}, {"否则", TokenType::Kw_Else},
@@ -101,9 +101,8 @@ TEST(LexerTest, All61Keywords) {
         {"导入", TokenType::Kw_Import},
         {"公开", TokenType::Kw_Public}, {"私有", TokenType::Kw_Private},
         {"静态", TokenType::Kw_Static}, {"自动", TokenType::Kw_Auto},
-        // 模块系统(4，v2.0 新增)
+        // 模块系统(2，v2.0 新增；plans/018 摘除 包/货舱 死保留字 2026-09-07)
         {"模块", TokenType::Kw_Module}, {"作为", TokenType::Kw_As},
-        {"包", TokenType::Kw_Package}, {"货舱", TokenType::Kw_Cargo},
         // 常量(4)
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
         {"无", TokenType::Kw_None}, {"常量", TokenType::Kw_Const},
@@ -120,13 +119,13 @@ TEST(LexerTest, All61Keywords) {
         // 泛型(1)
         {"泛型", TokenType::Kw_Generic},
     };
-    ASSERT_EQ(kKeywords.size(), static_cast<size_t>(61));
+    ASSERT_EQ(kKeywords.size(), static_cast<size_t>(59));
     std::string source;
     for (const auto& entry : kKeywords) {
         source += entry.first + " ";
     }
     auto tokens = withoutEof(analyze(source));
-    ASSERT_EQ(tokens.size(), static_cast<size_t>(61));
+    ASSERT_EQ(tokens.size(), static_cast<size_t>(59));
     for (size_t i = 0; i < kKeywords.size(); i++) {
         EXPECT_EQ(tokens[i].getType(), kKeywords[i].second) << "关键字: " << kKeywords[i].first;
         EXPECT_EQ(tokens[i].getValue(), kKeywords[i].first);
@@ -162,9 +161,10 @@ TEST(LexerTest, ModuleSystemKeywords) {
     EXPECT_EQ(tokens[2].getType(), TokenType::Kw_As);
     EXPECT_EQ(tokens[2].getValue(), "作为");
     EXPECT_EQ(tokens[3].getType(), TokenType::Identifier);  // 别名
-    EXPECT_EQ(tokens[4].getType(), TokenType::Kw_Package);
+    // plans/018 摘除（2026-09-07 用户裁决方案A）：包/货舱 死保留字→标识符自由
+    EXPECT_EQ(tokens[4].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[4].getValue(), "包");
-    EXPECT_EQ(tokens[5].getType(), TokenType::Kw_Cargo);
+    EXPECT_EQ(tokens[5].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[5].getValue(), "货舱");
 }
 

@@ -92,22 +92,25 @@ TEST(LexerKeywordTest, AsKeyword) {
     EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
 }
 
-// 包 关键字识别（v2.0 新增）：包名概念
-TEST(LexerKeywordTest, PackageKeyword) {
+// 包 已摘除关键字（plans/018，2026-09-07 用户裁决方案A）：普通位置是标识符
+//   （死保留字摘除——包/货舱 在 CN 源码语法中无语法位置，包.cn/货舱.toml 是
+//   文件名约定；Rust 对照 cargo 非保留字；恢复标识符自由）
+TEST(LexerKeywordTest, PackageRemovedIsIdentifier) {
     auto tokens = lexSource("包 名");
     ASSERT_GE(tokens.size(), 2u);
-    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Package);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[0].getValue(), "包");
+    EXPECT_FALSE(tokens[0].isKeyword());
     EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
 }
 
-// 货舱 关键字识别（v2.0 新增）：货舱.toml 节
-TEST(LexerKeywordTest, CargoKeyword) {
+// 货舱 已摘除关键字（plans/018，2026-09-07 用户裁决方案A）：普通位置是标识符
+TEST(LexerKeywordTest, CargoRemovedIsIdentifier) {
     auto tokens = lexSource("货舱");
     ASSERT_FALSE(tokens.empty());
-    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Cargo);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[0].getValue(), "货舱");
-    EXPECT_TRUE(tokens[0].isKeyword());
+    EXPECT_FALSE(tokens[0].isKeyword());
 }
 
 // 从 已删除关键字：普通位置是标识符（v2.0）
@@ -132,6 +135,5 @@ TEST(LexerKeywordTest, ImportStillKeyword) {
 TEST(LexerKeywordTest, ModuleSystemKeywordToString) {
     EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Module), "模块");
     EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_As), "作为");
-    EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Package), "包");
-    EXPECT_EQ(Token::tokenTypeToString(TokenType::Kw_Cargo), "货舱");
+    // plans/018 摘除：Kw_Package/Kw_Cargo 枚举已删（包/货舱 死保留字）
 }

@@ -60,8 +60,6 @@ const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     // ---- 模块系统关键字(4，v2.0 新增) ----
     {TokenType::Kw_Module, "模块"},
     {TokenType::Kw_As, "作为"},
-    {TokenType::Kw_Package, "包"},
-    {TokenType::Kw_Cargo, "货舱"},
     // ---- 常量关键字(4) ----
     {TokenType::Kw_True, "真"},
     {TokenType::Kw_False, "假"},
@@ -157,8 +155,8 @@ const std::vector<std::pair<TokenType, std::string>> kDelimiterTable = {
 
 // 构造61个关键字Token并验证类型与文本（v2.0）
 // 注：测试名使用英文（GCC 7 不支持中文标识符，中文仅用于注释与字符串）
-TEST(TokenTest, ConstructAll61Keywords) {
-    ASSERT_EQ(kKeywordTable.size(), static_cast<size_t>(61));
+TEST(TokenTest, ConstructAllKeywords) {
+    ASSERT_EQ(kKeywordTable.size(), static_cast<size_t>(59));
     for (const auto& entry : kKeywordTable) {
         Token token(entry.first, entry.second, SourceLocation("测试.cn", 1, 1));
         EXPECT_EQ(token.getType(), entry.first);
