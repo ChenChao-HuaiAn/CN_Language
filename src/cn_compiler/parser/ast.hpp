@@ -878,6 +878,13 @@ public:
     // parser 顶层循环识别 `公开` 前缀后调用 parseImportDecl 并设置本字段；
     // 语义层 visitImportDecl 依此把公开导入的符号注册到包级导出表。
     AccessSpecifier access = AccessSpecifier::Private;
+
+    // ---- 来源模块归属（plans/018 P6b 工作流2，E0255 冲突检查用）----
+    // 声明此导入的文件所属模块名（mergeModules 合并时写入 unit.moduleName）。
+    //   合并把全部文件的 ImportDecl 收进单一 Program::imports，丢失「谁导入的」
+    //   归属；「导入与本地定义同名」判定须按归属文件的本模块定义比对
+    //   （声明 moduleName == ownerModule 的项 = 该文件本地定义）。
+    std::string ownerModule;
 };
 
 // 类成员：类体内的字段/方法/构造/析构/运算符重载/友元（Task 3.1，规格书06）

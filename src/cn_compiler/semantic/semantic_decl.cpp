@@ -491,4 +491,126 @@ bool SemanticAnalyzer::argIsBoundMethodValue(const Expr* e) {
     return e != nullptr && e->getType() == NodeType::MemberExpr &&
            static_cast<const MemberExpr*>(e)->isMethodValue;
 }
+
+// plans/018 P6b 工作流2（规格08-三 3.6 名称解析，Rust E0252 对照）：
+//   显式导入冲突检查——visitProgram 第零趟b（导入表构建）后调用。
+//   ①×②：显式导入符号与归属文件本地定义同名 = 编译错误「导入与本地定义同名」
+//     （此前静默接受且错编：纯名调用绑定 模块$符号 而定义侧发射不一致，
+//     链接期 undefined reference——基线 p6b_base3 实证）。
+//   ②×②：同归属文件把同一绑定名从不同外部来源显式导入 = 编译错误「多次显式
+//     导入同名」（同来源重复导入幂等合法；纯名使用点歧义另有既有诊断覆盖）。
+//   自导入（来源首段 == 归属模块，如 52 的 导入 主::版本）完全跳过：不引入
+//     新名字（本地定义恒 ① 优先），仅启用限定自引用，与任何导入不构成冲突。
+//   显式导入 = 花括号项 / 多段路径尾段（含 作为 别名改写绑定名）；模块整体
+//     导入（单段无别名）与通配符属 ③ 通配层，不参与本检查（③×③ 冲突由
+//     使用点歧义诊断覆盖，A-2 类型/常量多模块限定诊断已实证）。
+void SemanticAnalyzer::checkImportLocalConflicts(Program* node) {
+    // 绑定名 -> (归属模块, 来源路径)：同归属不同来源 = ②×②
+    std::unordered_map<std::string,
+                       std::pair<std::string, std::string>> explicitImports;
+    for (const auto& imp : node->imports) {
+        if (imp->isModuleDecl || imp->wildcard) continue;
+        // 提取显式导入的绑定名（别名优先——绑定名是 别名）
+        std::vector<std::string> bindings;
+        if (!imp->names.empty()) {
+            for (const auto& item : imp->names) {
+                bindings.push_back(item.alias.empty() ? item.name : item.alias);
+            }
+        } else if (imp->segments.size() >= 2) {
+            bindings.push_back(imp->alias.empty() ? imp->segments.back() : imp->alias);
+        } else {
+            continue;  // 单段无别名 = 模块整体导入（③ 通配层）
+        }
+        const std::string& owner = imp->ownerModule;
+        if (owner.empty()) continue;  // 未合并单文件（无归属），无冲突面
+        const bool selfImport =
+            (!imp->segments.empty() && imp->segments[0] == owner);
+        for (const auto& bind : bindings) {
+            // ②×②：同归属文件、不同外部来源的同名显式导入
+            auto it = explicitImports.find(bind);
+            if (it != explicitImports.end()) {
+                if (!selfImport && it->second.first == owner &&
+                    it->second.second != imp->importPath) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, imp->location,
+                        "多次显式导入同名 '" + bind + "'（" + it->second.second +
+                            " 与 " + imp->importPath + "，规格08-三 名称解析）");
+                }
+                continue;
+            }
+            if (!selfImport) {
+                explicitImports[bind] = {owner, imp->importPath};
+            }
+            if (selfImport) continue;  // 自导入不参与 ①×②（与本地定义同源）
+            // ①×②：与归属文件本地定义同名（函数/结构体/枚举/类/接口/泛型/
+            //        顶层常量与静态——合并后 moduleName == owner 即本地定义）
+            bool conflicted = false;
+            for (const auto& f : node->declarations) {
+                if (f->moduleName == owner && f->name == bind) {
+                    conflicted = true;
+                    break;
+                }
+            }
+            if (!conflicted) {
+                for (const auto& t : node->structs) {
+                    if (t->moduleName == owner && t->name == bind) {
+                        conflicted = true;
+                        break;
+                    }
+                }
+            }
+            if (!conflicted) {
+                for (const auto& t : node->enums) {
+                    if (t->moduleName == owner && t->name == bind) {
+                        conflicted = true;
+                        break;
+                    }
+                }
+            }
+            if (!conflicted) {
+                for (const auto& c : node->classes) {
+                    if (c->moduleName == owner && c->name == bind) {
+                        conflicted = true;
+                        break;
+                    }
+                }
+            }
+            if (!conflicted) {
+                for (const auto& i : node->interfaces) {
+                    if (i->moduleName == owner && i->name == bind) {
+                        conflicted = true;
+                        break;
+                    }
+                }
+            }
+            if (!conflicted) {
+                for (const auto& g : node->generics) {
+                    const std::string gname =
+                        (g->innerClass != nullptr) ? g->innerClass->name
+                                                   : (g->innerFunc != nullptr)
+                                                         ? g->innerFunc->name
+                                                         : "";
+                    if (g->moduleName == owner && gname == bind) {
+                        conflicted = true;
+                        break;
+                    }
+                }
+            }
+            if (!conflicted) {
+                for (const auto& g : node->globals) {
+                    if (g->moduleName == owner && g->name == bind) {
+                        conflicted = true;
+                        break;
+                    }
+                }
+            }
+            if (conflicted) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, imp->location,
+                    "导入与本地定义同名 '" + bind + "'（导入 " + imp->importPath +
+                        " 与当前文件定义冲突，规格08-三 名称解析）");
+            }
+        }
+    }
+}
 } // namespace cn_compiler

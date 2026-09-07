@@ -499,10 +499,10 @@
   - **预防**: 凡「语义层登记符号（globalStaticNames_ 类）」必须有 IR 层消费（visitProgram 遍历 + 读/写/自增路径）+ codegen 发射三件套；E2E 只测合法路径，缺陷先实测编译确认再修
   - **权重**: 8.4（逻辑错误8 × 详细分析1.5 × 解决方案1.3 × 预防措施1.3 × 已解决1.0）
 
-- [2026-08-15 16:30] **问题类型**: 设计缺陷（权重 9.2）**📌 已评估已知限制（第 9 层，非缺陷）**
+- [2026-08-15 16:30] **问题类型**: 设计缺陷（权重 9.2）**✅ 已修复（fecab2b A-2：类型/常量 crate 分桶，plans/018 第 31 轮实证翻案）**
   - **描述**: **跨模块同名类型/常量未隔离**——merge 阶段已按模块分桶允许（CrateTypeBuckets，模块X/模块Y 各定义 结构体 记录 合并成功），但语义层 typeNames_（declareTypeName）/globalConstValues_（declareVar）/scopes_ 仍全局去重 → 语义阶段报「重复声明类型 '记录'」「重复声明变量 '常量值'」+ 类型混淆（模块Y 的记录 读到 X 的字段）。v2.0 用户核心诉求「跨包同名符号不冲突」的**函数维度已隔离**（44 验证），类型/常量维度缺失
   - **原因**: 第 4 层 crate 分桶只覆盖函数（moduleName 前缀）与 merge 阶段类型（CrateTypeBuckets），语义层类型表（typeNames_/结构体符号表）与顶层常量/静态表未按模块分域——类型系统核心改造未同步
-  - **解决**: 📌 标注为已知限制——锚点单测 `SemanticTypeConstCrossModuleNotIsolated`（断言 r.ok=false 显式标记）+ 44 注释 + HANDOFF/plans/更新日志。**根治方向**：类型级 crate 分桶（类型表按 moduleName 分域）+ 限定调用类型解析（模块名::类型）+ 类型 mangling（IR/codegen 30+ 处），中高风险列入后续里程碑
+  - **解决**: ✅ **已修复（提交 fecab2b，A-2）**：类型级 crate 分桶（declareTypeName 按模块+typeModules_/constModules_/staticModules_ + 限定键 globalConstValuesQualified_）+ 限定类型语法 `甲::记录` + 引用按当前模块解析重写；锚点单测翻转为正断言 + E2E 56_type_isolation。**plans/018（2026-09-07）实证复核**：类型/常量跨模块同名 rc=0、glob 歧义三维度（函数/类型/常量）诊断齐全 rc=1——本条原「📌 已知限制」状态过时，防后续 AI 误判为未修（教训：已知限制条目在修复提交后必须同步翻状态，且「锚点单测消失」=状态已变的信号）
   - **预防**: 写跨模块同名测试前先实测语义层行为（merge 通过 ≠ 语义通过）；类型/常量隔离须三处同步（merge 分桶 + 语义分域 + IR mangling）
   - **权重**: 9.2（设计缺陷10 × 详细分析1.5 × 解决方案1.3 × 预防措施1.3 × 已评估0.6）
 

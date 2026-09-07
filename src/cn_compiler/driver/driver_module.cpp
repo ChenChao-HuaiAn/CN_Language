@@ -147,6 +147,12 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
 
     // 递归加载依赖模块（目录层级：候选1 当前文件目录 / 候选2 当前模块树目录）
     module::ModuleUnit* cur = graph.findModule(moduleName);
+    // plans/018 P6b 工作流2（定位收紧，规格08-二）：收集本文件的 模块 声明
+    //   挂载清单——依赖环对挂载类依赖收紧解析（仅 crate 根同级聚合 / 父模块
+    //   子目录挂载两种合法形态，其余一律定位诊断）。
+    for (const auto& imp : cur->ast->imports) {
+        if (imp->isModuleDecl) cur->moduleMounts.insert(imp->importPath);
+    }
     const std::string depBase = dir + cur->moduleDir;
     // 当前模块名最后段（网络::传输控制 -> 传输控制；网络 -> 网络）
     std::string lastSeg = moduleName;
@@ -166,6 +172,42 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
         for (std::size_t pos = relPath.find("::"); pos != std::string::npos;
              pos = relPath.find("::", pos + 1)) {
             relPath.replace(pos, 2, "/");
+        }
+        // ---- plans/018 P6b 工作流2：模块 声明挂载收紧解析（规格08-二）----
+        //   模块 声明仅限两种树结构位置，物理路径必须与之对应：
+        //   ① crate 根（命令行入口 / 包.cn）成员聚合 -> 同级 <S>.cn（候选1 形态，
+        //      52 主.cn 挂 图书、47 包.cn 挂 网络）；
+        //   ② 父模块挂子模块 -> 本模块子目录 <lastSeg>/<S>.cn（候选2 形态，
+        //      网络库.cn 挂 网络库/内部工具.cn、网络.cn 挂 网络/传输控制.cn）。
+        //   其余一切命中路径（兄弟文件/上溯/stdlib/货舱依赖）=「普通文件的模块
+        //   路径由文件名+目录唯一决定」违背，报定位诊断（取代误导性的
+        //   「无法打开源文件」——路径本身就不该被探测）。已加载去重检查在先：
+        //   已在图中的挂载名不重复校验（首探测点已定去留）。
+        if (cur->moduleMounts.count(dep) > 0) {
+            const std::string baseName =
+                cur->filePath.substr(cur->filePath.find_last_of("/\\") + 1);
+            const bool isRootUnit = cur->isEntryUnit || baseName == "包.cn";
+            std::string mountCand;
+            std::string mountDir;
+            if (isRootUnit) {
+                mountCand = depBase + relPath + ".cn";
+                mountDir = depBase;
+            } else {
+                mountCand = depBase + lastSeg + "/" + relPath + ".cn";
+                mountDir = dir + cur->moduleDir + lastSeg + "/";
+            }
+            std::string mountSrc;
+            if (!tryReadSource(mountCand, mountSrc)) {
+                error = "模块声明 '" + dep + "' 非当前模块 '" + moduleName +
+                        "' 的子模块（模块 声明仅限 包根成员聚合/父模块挂子模块，"
+                        "规格08-二）";
+                return false;
+            }
+            if (!loadModuleTree(mountCand, mountDir, entryDir, graph, error, macros,
+                                options)) {
+                return false;
+            }
+            continue;
         }
         // 依赖首段作为包名（候选2b 目录包 与 候选3 货舱依赖 共用）
         std::string pkgName = dep;

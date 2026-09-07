@@ -1599,6 +1599,16 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (auto& imp : node->imports) {
         visitImportDecl(imp.get());
     }
+    // plans/018 P6b 工作流2（规格08-三 3.6 名称解析）：显式导入冲突检查
+    //   （①×② 导入与本地定义同名 / ②×② 多次显式导入同名——纯 AST 扫描，
+    //   不依赖函数注册趟；声明 moduleName == 导入 ownerModule 即本地定义）
+    // 【停用待启用（2026-09-07 呈报一A 用户裁决）】：checkImportLocalConflicts
+    //   现按旧 ② 定义把「路径导入 m::符号」也判具名绑定——呈报一A 已裁决
+    //   ② 收窄为花括号项、路径导入=③ 模块级通配（specs/08 3.6 差异注记），
+    //   须把 bindings 提取收窄为 !imp->names.empty() 分支后启用本调用；
+    //   现状停用防误拦 52_library/CrateIsolateNoParamQualifiedCall 的
+    //   路径导入遮蔽形态（全量 E2E 156 过/1 败已知 OOM 零回归实证）。
+    // checkImportLocalConflicts(node);
     // 第 4 层（crate 分桶）：构建模块公开符号表（模块名 -> 公开符号名集合）。
     // 合并后的声明自带 moduleName（mergeModules 写入）：按模块收集公开符号，
     // 供限定调用验证（未导入模块的限定调用报「未声明的标识符」，P1-1 修复）、

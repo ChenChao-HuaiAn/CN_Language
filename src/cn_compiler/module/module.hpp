@@ -38,6 +38,11 @@ struct ModuleUnit {
     bool isEntryUnit = false;
     std::unique_ptr<Program> ast;          // 解析后的 AST（词法+语法）
     std::vector<std::string> imports;      // 导入的模块名列表（去重，依赖边）
+    // 模块声明挂载清单（plans/018 P6b 工作流2，定位收紧，规格08-二）：
+    //   isModuleDecl 导入（模块 X）的模块名。driver 依赖环对挂载类依赖收紧
+    //   解析——仅允许 crate 根（入口/包.cn）同级聚合 或 父模块子目录挂载；
+    //   其余路径命中 = 定位诊断（普通文件的模块路径由文件名+目录唯一决定）。
+    std::unordered_set<std::string> moduleMounts;
 };
 
 // 读取 UTF-8 源文件（自动去除 BOM），失败返回 false 并写入 error

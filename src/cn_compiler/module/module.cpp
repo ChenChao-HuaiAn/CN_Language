@@ -402,6 +402,10 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
     //   "模块.函数" 重写识别用）。被导入模块内部的限定调用同样需要重写，
     //   故全部模块的 ImportDecl 一并合并（合并阶段不校验符号，仅记录模块名）。
     for (auto& imp : unit.ast->imports) {
+        // plans/018 P6b 工作流2：写入来源模块归属（「导入与本地定义同名」
+        //   E0255 检查按归属文件的本模块定义比对——合并后声明 moduleName
+        //   == ownerModule 的项即该文件的本地定义）
+        imp->ownerModule = unit.moduleName;
         out->imports.push_back(std::unique_ptr<ImportDecl>(imp.release()));
     }
     // ---- 函数（含重载）：所有权转移；重复定义检测交给语义层 registerFunction
