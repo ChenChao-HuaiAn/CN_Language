@@ -818,6 +818,23 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                        static_cast<UnaryExpr*>(node->operand.get())->op == Operator::Deref) {
                 // &*p：等价 p（解引用的地址即指针值）
                 lastExpr_ = genExpr(static_cast<UnaryExpr*>(node->operand.get())->operand.get());
+            } else if (node->operand->getType() == NodeType::IdentifierExpr &&
+                       semantic_ != nullptr &&
+                       semantic_->isGlobalStatic(
+                           static_cast<IdentifierExpr*>(node->operand.get())->name)) {
+                // plans/018 根治（2026-09-07，缺陷零容忍）：顶层静态变量取地址——
+                //   ?gstatic_名 符号地址即变量槽地址（.data 槽本身=存储位置），直接
+                //   以符号地址为取地址结果。原落 else 读值兜底（genExpr→LoadPtr 读
+                //   槽内容）：引用形参实参经语义层 wrapRefArgs 包装为 &静态 后，此处
+                //   取地址退化成读值——引用形参收到的是槽内容（容器=句柄值），被调
+                //   方对引用形参的读取=再解引用一次（空容器句柄 0=错误码3；非空=
+                //   读写容器对象头=静默错位）。v2self 语义分析多文件(6 个 & 静态
+                //   容器实参) 首次踩中。Rust 对照：&static mut 的引用恒指向存储
+                //   位置本身，绝不解引用重解释。
+                lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                       "?gstatic_" + static_cast<IdentifierExpr*>(
+                                           node->operand.get())->name,
+                                       node->location);
             } else {
                 // 其他左值：直接使用其地址值（表达式本身是地址）
                 lastExpr_ = genExpr(node->operand.get());
