@@ -1203,6 +1203,11 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             if not src.exists():
                 return "失败", f"{编号}-N 缺少用例文件: {文件名}"
             shutil.copy2(src, v2src目录 / 文件名)
+        # plans/018 跨机轮 win 侧对齐（2026-09-09）：负路径与 linux 分支/正路径
+        #   同款整树复制——模块系统负测（168~170）的导入依赖模块文件须随入口
+        #   就位（ignore 期望/输入文件；既有平铺负测 139/141/146/149 行为等价）
+        shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
         if v2asm路径.exists():
             v2asm路径.unlink()
         if 详细:

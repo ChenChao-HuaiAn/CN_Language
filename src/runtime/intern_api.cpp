@@ -16,6 +16,19 @@
 #include <unordered_map>
 #include <vector>
 
+// 调用者返回地址获取的编译器内建分流（2026-09-09 跨机轮 win 侧根治）：
+//   __builtin_return_address 为 GCC/Clang 专属内建，MSVC 无此标识符（构建
+//   error C3861）——入库时深度机 GCC 编译通过掩盖了不可移植。两编译器各自
+//   原生内建均为编译期展开零运行时开销（性能无损），诊断 ra 反解能力全平台
+//   对等（安全无损）；rustc 同构：平台差异用原生内建分流，不设运行时抽象层。
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define CN_INTERN_RA() ((void*)_ReturnAddress())
+#else
+#define CN_INTERN_RA() ((void*)__builtin_return_address(0))
+#endif
+
 namespace {
 // 内容 -> ID（经典哈希 + 游动指针定位字节池）
 struct InternState {
@@ -56,13 +69,22 @@ extern "C" long long __cn_intern(const char* text) {
     {
         static int traceOn = -1;     // -1=未判定；1=开；0=关
         if (traceOn < 0) {
+#if defined(_MSC_VER)
+            // MSVC 安全 CRT（项目先例 cn_main.cpp getEnvVar 同款纪律）：getenv
+            //   触发 C4996 在 /WX 下视为错误；此处只判存在性，getenv_s 空值查询
+            //   免分配免释放——找到时 len=长度+1，未找到 len=0。
+            std::size_t raLen = 0;
+            traceOn = (getenv_s(&raLen, nullptr, 0, "CN_INTERN_TRACE") == 0 &&
+                       raLen > 0) ? 1 : 0;
+#else
             traceOn = getenv("CN_INTERN_TRACE") != nullptr ? 1 : 0;
+#endif
         }
         if (traceOn == 1) {
             // ra=调用者返回地址（nm 排序表二分可反解 CN 函数符号名——两二进制
             //   各自解析后按函数名对比，定位「首次驻留」的漂移调用点）
             std::fprintf(stderr, "[intern] %d %s ra=%p\n", id, text,
-                         __builtin_return_address(0));
+                         CN_INTERN_RA());
         }
     }
     return static_cast<long long>(id);

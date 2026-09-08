@@ -27,6 +27,34 @@ namespace cn_compiler {
 //   返回类型不参与签名——重载仅按参数区分，返回编码省略）。
 //   纯函数名（无 '#'）：保持既有 ?XX@@Y 形式（兼容阶段一 C 链接）。
 std::string X64CodeGenerator::nameMangle(const std::string& name) {
+    return shortenLongSymbol(nameMangleImpl(name));
+}
+
+// MASM 标识符 247 字符硬上限（ml64 A2043 identifier too long）：符号超限时
+//   PROC 打开/闭合状态被破坏（超长 PROC 定义被弃），后续函数局部标签全部
+//   落入同一未闭合作用域 → A2005 symbol redefinition 雪崩（2026-09-09 跨机轮
+//   win 侧根治：第三十四/三十八轮「项目内包根成员统一 包名::主干 命名」使
+//   组件链限定名加长，hex-mangle 每汉字 6 字符膨胀后超限——GAS 无此限制，
+//   linux/arm64 侧全绿掩盖）。对策：超长 mangled 产物收缩为
+//   「头段$L<原长>H<FNV-1a64>」——内容哈希含参数串（重载不冲突）、嵌入原长
+//   使碰撞面 2^-64，头段保留 hex 头（包名/模块路径段）供人工归类；LLVM/rustc
+//   对超长 mangle 用内容哈希截断同构。阈值 200：短化后 ≤202 留足 247 内余量；
+//   仅超长符号短化——短符号与既有产物逐字节一致（字节级对拍纪律零扰动）；
+//   nameMangle 单点包裹保证 PROC/ENDP/call/EXTERN/虚表/静态 全部引用一致。
+std::string X64CodeGenerator::shortenLongSymbol(const std::string& mangled) {
+    if (mangled.size() <= 200) return mangled;
+    std::uint64_t h = 1469598103934665603ull;  // FNV-1a 64 offset basis
+    for (unsigned char c : mangled) {
+        h ^= static_cast<std::uint64_t>(c);
+        h *= 1099511628211ull;                 // FNV-1a 64 prime
+    }
+    char buf[24];
+    std::snprintf(buf, sizeof(buf), "%016llX", static_cast<unsigned long long>(h));
+    return mangled.substr(0, 180) + "$L" + std::to_string(mangled.size()) +
+           "H" + std::string(buf);
+}
+
+std::string X64CodeGenerator::nameMangleImpl(const std::string& name) {
     // 解析签名 key：名#参数类型串（逗号分隔，类型为源码规范名）
     std::string baseName = name;
     std::vector<std::string> paramTypes;

@@ -104,8 +104,13 @@ private:
     // 第index个整型参数的传递位置（前4寄存器，第5起栈上）
     std::string parameterRegister(int index) const;
 
-    // 中文符号名 -> UTF-8十六进制修饰名（ASCII原样返回）
+    // 中文符号名 -> UTF-8十六进制修饰名（ASCII原样返回；超长符号哈希短化）
     static std::string nameMangle(const std::string& name);
+    // nameMangle 实现体（不含超长收缩层，仅 nameMangle 内部调用）
+    static std::string nameMangleImpl(const std::string& name);
+    // MASM 247 字符标识符上限收缩：>200 时「头段$L<原长>H<FNV-1a64>」
+    //   （A2043→PROC 配对崩坏→A2005 雪崩的根治，详见 x64_codegen.cpp 注释）
+    static std::string shortenLongSymbol(const std::string& mangled);
     // 源码类型名 -> 附录C 类型编码（重载 mangling 用，Task 2.10）
     static std::string mangleTypeCode(const std::string& typeRaw);
 
