@@ -383,7 +383,20 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
         if (si > 0) fullPath += "::";
         fullPath += node->segments[si];
     }
-    if (knownModules_.count(fullPath) > 0) {
+    // 千行拆分轮（2026-09-08）：尾段本身=已加载模块名（v1 再导出包
+    //   CN语言编译器/包.cn 的 导入 CN语言编译器::IR生成，IR生成=组件 unit 名）
+    //   同样判③模块导入——旧只查完整路径，尾段被误判符号走②具名绑定，
+    //   itemAliasModules_[IR生成]=首段 crate 名 -> 纯名调用 moduleFilter=
+    //   首段 -> 决议过滤器拒绝真实条目（entryModule=IR生成）→「未找到
+    //   匹配的函数」。Rust 对照：use a::b 按 b 的实际 def（模块/符号）分派。
+    // 尾段命中收窄为「两段导入」（a::b，b=已加载 unit 名——v1 再导出包
+    //   形态）：三段及以上（网络库::传输控制::连接，第 8 层跨 crate 符号
+    //   导入）保持原 fullPath 判定——「连接」等函数名与无关 unit 撞名时
+    //   不得误判为模块导入（47_package_cargo 回归实测）。
+    const std::string& importLastSeg = node->segments.back();
+    const bool twoSegModuleImport = node->segments.size() == 2 &&
+                                    knownModules_.count(importLastSeg) > 0;
+    if (knownModules_.count(fullPath) > 0 || twoSegModuleImport) {
         use.wildcard = true;
         if (!node->alias.empty()) {
             // 导入 甲::乙 作为 丙（甲::乙 是模块）：模块重命名（A-5）
@@ -411,7 +424,12 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     if (!selfImport) {
         use.symbols.insert(sym);
         use.aliases[bindName] = sym;
-        itemAliasModules_[bindName] = srcModule;
+        // 两段符号导入（crate::符号，如 47 的 导入 网络库::连接）：过滤器置
+        //   空哨兵——crate 名（网络库）与实现文件的注册模块名（传输控制，
+        //   pathStem 归一）不同名，非空过滤器会让决议拒绝真实条目（2026-09-08
+        //   回归实测）；空=纯名决议回退全局唯一命中，跨模块同名歧义由 44/91
+        //   的三段/花括号形态锚定（不受影响）。空串条目占位防回退取 ui.first。
+        itemAliasModules_[bindName] = node->segments.size() == 2 ? "" : srcModule;
     }
     importedModules_.insert(moduleName);
 }

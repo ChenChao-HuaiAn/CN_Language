@@ -126,6 +126,17 @@ bool parseSourceText(const std::string& source, const std::string& filePath,
         std::string dep = imp->importPath;
         const std::size_t sep = dep.find("::");
         if (sep != std::string::npos) dep = dep.substr(0, sep);
+        // 模块声明（挂载）恒登记：树结构声明而非依赖引用。旧 dep != moduleName
+        //   自引用过滤对目录包根误伤——包根 moduleName=包目录名（代码生成/包.cn
+        //   -> 代码生成）后，同名成员挂载（模块 代码生成;）被丢弃 -> 挂载循环
+        //   不可见 -> 成员文件永不加载（2026-09-08 千行拆分轮 探针实证）。
+        if (imp->isModuleDecl) {
+            if (!dep.empty() &&
+                std::find(imports.begin(), imports.end(), dep) == imports.end()) {
+                imports.push_back(dep);
+            }
+            continue;
+        }
         if (!dep.empty() && dep != moduleName &&
             std::find(imports.begin(), imports.end(), dep) == imports.end()) {
             imports.push_back(dep);

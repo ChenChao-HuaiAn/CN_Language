@@ -106,7 +106,21 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     const bool isPkgEntry =
         (relPart.size() > 7 &&
          relPart.rfind("/包.cn") == relPart.size() - 7);  // "/包.cn" UTF-8 7 字节
-    if (relPart == filePath || inCargoDeps || inStdlib || isPkgEntry) {
+    if (isPkgEntry) {
+        // 目录包根（<目录>/包.cn）：模块名 = 包目录名（词法/包.cn -> 词法）。
+        //   旧实现 pathStem（"包"）使全部目录包根撞名——graph.findModule("包")
+        //   去重把第二个及以后的目录包整树静默跳过（成员模块不加载、公开符号
+        //   不合并；2026-09-08 千行拆分轮 探针实证）。模块名=目录名与成员模块
+        //   名前缀（词法::词法分析）同源，与候选2bPkg 探测键（dep 首段）一致。
+        std::string dirPart = relPart.substr(0, relPart.size() - 7);
+        while (!dirPart.empty() && (dirPart.back() == '/' || dirPart.back() == '\\')) {
+            dirPart.pop_back();
+        }
+        const std::size_t lastSep = dirPart.find_last_of("/\\");
+        if (lastSep != std::string::npos) dirPart = dirPart.substr(lastSep + 1);
+        moduleName = dirPart;
+        externalModule = true;
+    } else if (relPart == filePath || inCargoDeps || inStdlib) {
         // 仅当路径含目录时视为外部（纯文件名如 主.cn 保持原逻辑）
         const std::size_t slash = moduleName.find("::");
         if (slash != std::string::npos) {
@@ -159,12 +173,26 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     const std::size_t lastColon = lastSeg.rfind("::");
     if (lastColon != std::string::npos) lastSeg = lastSeg.substr(lastColon + 2);
     for (const auto& dep : cur->imports) {
+        // 自包/包祖先导入（目录包成员 导入 自包名，如 IR::IR生成 导入 IR）：
+        //   本包符号经合并阶段全局可见，无需加载；依赖边必须省略——否则
+        //   「包根聚合边（IR -> IR布局）」与「成员导入边（IR布局 -> IR）」
+        //   构成拓扑环（topoSort 报 模块循环依赖，2026-09-08 千行拆分轮实证）。
+        //   仅限非挂载依赖：包根的 同名成员挂载（代码生成/包.cn 声明
+        //   模块 代码生成;，dep==包根本身 moduleName）必须放行到挂载分支。
+        if (cur->moduleMounts.count(dep) == 0 &&
+            (dep == cur->moduleName ||
+             cur->moduleName.rfind(std::string(dep) + "::", 0) == 0)) {
+            continue;
+        }
         // A-5（子目录模块无法导入父目录 根治）：依赖模块已在图中（父模块是
         //   当前模块名 网络::传输控制 的前缀层级 网络，加载链祖先）——直接跳过
         //   候选路径探测（父目录文件不在子模块目录下，探测必失败报
         //   "无法打开源文件"）。符号经合并阶段全局可见（依赖主导入链全局合并），
         //   语义层 use 导入表按 导入 网络 正常登记。
-        if (graph.findModule(dep) != nullptr) {
+        //   前置去重仅适用于非挂载依赖（2026-09-08 探针实证）：目录包根声明
+        //   同名成员挂载时 findModule 命中包根自身 -> 挂载被跳过 -> 成员永不
+        //   加载；挂载重复防护由 loadModuleTree 内部 findModule 去重兜底（幂等）。
+        if (cur->moduleMounts.count(dep) == 0 && graph.findModule(dep) != nullptr) {
             continue;
         }
         // :: 分隔的依赖路径（网络::传输控制）转为目录层级（网络/传输控制.cn）
@@ -240,7 +268,11 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
             // entryDir 可能为相对路径（E2E 从项目根调用）：逐级上溯到空前缀
             //   （空前缀 = 相对 cwd，即项目根）。tests/e2e/NN_x -> tests/e2e ->
             //   tests -> 空 -> <cwd>/CN语言编译器/词法分析.cn 命中。
-            std::string upDir = entryDir;
+            // 起点=当前文件目录（dir+cur->moduleDir）而非 entryDir——包成员
+            //   引用兄弟包（阶段目录包形态：IR/IR签名.cn 导入 词法/包.cn）
+            //   时必须从成员文件目录向上查找；上溯链祖先段自然覆盖 entryDir
+            //   （2026-09-08 千行拆分轮探针实证：旧起点下兄弟包导入不可达）。
+            std::string upDir = depBase;
             while (!upDir.empty() && (upDir.back() == '/' || upDir.back() == '\\')) {
                 upDir.pop_back();  // 去尾斜杠（pathDir 带尾），防 cand2bPkg 双斜杠
             }
