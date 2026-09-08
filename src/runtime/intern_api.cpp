@@ -9,6 +9,8 @@
 // 生命周期：编译器进程内常驻（随进程退出回收），不参与 内存::释放全部()（reset），
 //   避免 reset 破坏符号表引用。
 
+#include <cstdio>
+#include <cstdlib>
 #include <deque>
 #include <string>
 #include <unordered_map>
@@ -46,6 +48,23 @@ extern "C" long long __cn_intern(const char* text) {
     const int id = static_cast<int>(s.pool.size());
     s.pool.push_back(key);           // 拷贝存档（内容只存一份）
     s.map.emplace(key, id);
+    // 驻留轨迹（灰色点取证专用，2026-09-08）：CN_INTERN_TRACE=1 时逐条打印
+    //   新驻留（重复驻留不打印——池不变）。仅新驻留分支执行 getenv 判定
+    //   （static 缓存零重复开销），默认关闭=零输出零开销。取证用法：
+    //   v2p 与 cn_self 各跑同一入口，diff 两条轨迹——首个分叉条目即
+    //   「一侧多驻留」的字符串内容与时机（组件对拍编号漂移根因定位）。
+    {
+        static int traceOn = -1;     // -1=未判定；1=开；0=关
+        if (traceOn < 0) {
+            traceOn = getenv("CN_INTERN_TRACE") != nullptr ? 1 : 0;
+        }
+        if (traceOn == 1) {
+            // ra=调用者返回地址（nm 排序表二分可反解 CN 函数符号名——两二进制
+            //   各自解析后按函数名对比，定位「首次驻留」的漂移调用点）
+            std::fprintf(stderr, "[intern] %d %s ra=%p\n", id, text,
+                         __builtin_return_address(0));
+        }
+    }
     return static_cast<long long>(id);
 }
 

@@ -309,6 +309,60 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
     }
 }
 void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
+    // ---- 逻辑与/或短路求值（2026-09-08 根治，缺陷零容忍；rustc 同构手法）----
+    // 原实现走通用二元路径：两侧先各自 genExpr 再发单条 And/Or 指令=RHS 无条件
+    //   求值，与短路语义分歧——RHS 带副作用时（函数调用/除法/驻留等）行为错误。
+    //   组件对拍灰色点（v2p 与 cn_self 字符串池编号稳定差 2）即其可观测指纹：
+    //   v2 编译器源码大量「当前ID(...) == 驻留("&")」判定，宿主全求值使 驻留("&")
+    //   提前入池，v2p 与 cn_self 的池序漂移。v2 自举编译器已正确短路（条件块
+    //   发射实证），根治=宿主对齐 rustc HIR->THIR：&&/|| 在 IR 生成期脱糖为
+    //   控制流（性能：跳过不需 BraHS 求值更快；安全：副作用按语义执行）。
+    //   a && b : 结果槽预置 假 -> a 真? 求值 b 存槽 : 直达汇合
+    //   a || b : 结果槽预置 真 -> a 真? 直达汇合 : 求值 b 存槽
+    // 语义层保证逻辑操作数恒为布尔（IR i1），LHS/RHS 均无需真值转换。
+    // And/Or 指令保留：编译器内部布尔组合（空/边界检查，ir.cpp/ir_oop*.cpp）
+    //   操作数均为纯值，全求值语义等价，不受本修复影响。
+    if (node->op == Operator::AndAnd || node->op == Operator::OrOr) {
+        const bool isAnd = (node->op == Operator::AndAnd);
+        ir::IRValue lhs = genExpr(node->left.get());
+        // 三块结构（对齐 genIf 惯例：endBranch 时条件指令必须在块尾——若在其后
+        //   夹入 Alloca/Store，条件寄存器会挂错指令，分支读到错误条件）：
+        //   主块(LHS 求值 -> endBranch) -> {RHS块(求值b存槽) | 默认块(存短路值)} -> 汇合块
+        //   a && b : a 真? -> RHS块（结果=b） : -> 默认块（结果=假）
+        //   a || b : a 真? -> 默认块（结果=真） : -> RHS块（结果=b）
+        // 结果临时槽（__sc$N，对齐 __ternary$N 模式：8 字节槽，i1 按 Store/Load
+        //   的 type 字段决定读写宽度）
+        std::string tempName = "__sc$" + std::to_string(varCounter_++);
+        std::string rhsLabel = "bb" + std::to_string(blockCounter_++);
+        std::string defaultLabel = "bb" + std::to_string(blockCounter_++);
+        std::string endLabel = "bb" + std::to_string(blockCounter_++);
+        endBranch(lhs.toString(),
+                  isAnd ? rhsLabel : defaultLabel,
+                  isAnd ? defaultLabel : rhsLabel);
+        // RHS 块：仅语义需要时进入（短路保证）
+        setCurrentBlock(newBlock(rhsLabel));
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"),
+             tempName, "i64", node->location);
+        function_->varSlots[tempName] = 1;
+        ir::IRValue rhs = genExpr(node->right.get());
+        emit(ir::Opcode::Store, {rhs}, ir::IRValue(), tempName, rhs.type,
+             node->location);
+        if (!currentBlock_->terminated) endJump(endLabel);
+        // 默认块：短路直达（&& 左假=假 / || 左真=真）
+        setCurrentBlock(newBlock(defaultLabel));
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"),
+             tempName, "i64", node->location);
+        ir::IRValue defaultVal = ir::IRValue::constant(isAnd ? "假" : "真", "i1");
+        // i1 常量文本契约：loadOperandToX 仅识别 "真"/"假"（其余装载 0）
+        emit(ir::Opcode::Store, {defaultVal}, ir::IRValue(), tempName, "i1",
+             node->location);
+        if (!currentBlock_->terminated) endJump(endLabel);
+        setCurrentBlock(newBlock(endLabel));
+        lastExpr_ = emitResult(ir::Opcode::Load,
+                               {ir::IRValue::var(tempName, "i1")}, "i1", "",
+                               node->location);
+        return;
+    }
     ir::IRValue left = genExpr(node->left.get());
     ir::IRValue right = genExpr(node->right.get());
     // ---- 阶段3 OOP（Task 3.7）：运算符重载降级为成员方法调用 ----

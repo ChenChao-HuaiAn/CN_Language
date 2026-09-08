@@ -167,16 +167,38 @@ TEST(IRTest, ComparisonIR) {
     EXPECT_TRUE(foundLt);
 }
 
-// 逻辑运算 -> And/Or/Not
+// 逻辑运算 -> 短路求值控制流（2026-09-08 随宿主短路求值根治适配，行为反转锚定）
+// 原断言锚定 And/Or 单指令发射=全求值（RHS 无条件求值），与短路语义分歧——
+//   RHS 带副作用（函数调用/除法/驻留）时行为错误，v2p/cn_self 组件对拍字符串
+//   池编号漂移（灰色点）即其可观测指纹。根治后 &&/|| 在 IR 生成期脱糖为条件
+//   块（rustc HIR->THIR 同构）：主块+RHS块+汇合块 >= 3 块；全求值指令 And/Or
+//   不得再出现（编译器内部纯值布尔组合除外，AST 路径已不发）；一元 ! 仍为 Not。
 TEST(IRTest, LogicalIR) {
     auto r = buildIR(R"CN(
 函数 主() -> 布尔 {
     返回 真 && 假 || !真;
 }
 )CN");
-    EXPECT_GE(countOpcode(r.module, 0, Opcode::And), 1);
-    EXPECT_GE(countOpcode(r.module, 0, Opcode::Or), 1);
+    EXPECT_GE(r.module.functions[0].blocks.size(), 3);
+    EXPECT_EQ(countOpcode(r.module, 0, Opcode::And), 0);
+    EXPECT_EQ(countOpcode(r.module, 0, Opcode::Or), 0);
     EXPECT_GE(countOpcode(r.module, 0, Opcode::Not), 1);
+}
+
+// 短路求值语义锚定：&& 左操作数为字面量 假 时，RHS（函数调用=副作用）所在指令
+//   必须位于条件块内而非顺序发射——锚定形态：函数块数 > 1（存在 RHS 块）且无
+//   And 指令。全求值回归（RHS 顺序化）时块结构坍缩回单块，此处即失败。
+TEST(IRTest, LogicalShortCircuit) {
+    auto r = buildIR(R"CN(
+函数 辅助() -> 布尔 {
+    返回 真;
+}
+函数 主() -> 布尔 {
+    返回 假 && 辅助();
+}
+)CN");
+    EXPECT_GE(r.module.functions[1].blocks.size(), 3);
+    EXPECT_EQ(countOpcode(r.module, 1, Opcode::And), 0);
 }
 
 // ==================== 变量声明IR生成 ====================
