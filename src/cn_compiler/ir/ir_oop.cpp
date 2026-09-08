@@ -110,6 +110,9 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
 
     setupMethodParams(func, mi);
 
+    // 栈帧膨胀根治（2026-09-08 v2self 锚定轮）：寄存器号每函数复位，与
+    //   visitFunctionDecl 同点同构（详见 ir_decl.cpp 注记）
+    regCounter_ = 0;
     blockCounter_ = 0;
     newBlock("bb0");  // 入口基本块
     // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——在构造体首部调用父构造

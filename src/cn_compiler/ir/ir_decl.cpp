@@ -233,6 +233,14 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     }
     // 注意：varCounter_ 不可重置！参数已用 varCounter_ 生成唯一名，
     // 若重置则函数体内同名遮蔽变量会生成相同唯一名（如 x$0）导致槽冲突
+    // 栈帧膨胀根治（2026-09-08 v2self 锚定轮，探针实证）：regCounter_ 与
+    //   blockCounter_ 同点每函数复位——虚拟寄存器是函数内 SSA 值（跨函数仅经
+    //   符号名引用），原全模块递增使 computeFrameSize 按 maxRegId 定帧时后段
+    //   函数帧线性膨胀（20 函数探针 80B→1152B；v2self 18 万行后段函数帧达
+    //   290KB，8MB 栈深递归解析 SIGSEGV——三后端共用 IR 层同源受益）。
+    //   标签唯一性由函数名前缀保证（codegen currentBlockPrefix_），
+    //   块号复位既有先例同构。
+    regCounter_ = 0;
     blockCounter_ = 0;
     // 入口基本块（ASCII标签 bbN：ml64 不识别中文标识符，阶段一统一 ASCII）
     ir::IRBlock* entry = newBlock("bb0");
