@@ -67,11 +67,27 @@ bool tryReadSource(const std::string& path, std::string& out) {
 // isRootCall（簇⑥ 根治，2026-09-05）：仅命令行入口的首次调用为 true（递归
 //   加载依赖恒 false）——写入 unit->isEntryUnit，mergeModules 据此判定入口
 //   （命令行文件全部声明保留；仅被导入依赖按可见性过滤）。
+// pkgPrefix（挂账1 根治，2026-09-08）：目录包成员的模块名包前缀——项目内
+//   目录包根挂载成员时传包根名（IR布局.cn -> IR::IR布局），与整体构建形态
+//   （相对入口目录路径自然带前缀）对齐，模块名只由包目录结构决定、不随
+//   入口目录漂移；根治单文件入口形态成员与包根同名撞车（代码生成/包.cn 挂
+//   模块 代码生成;，主干名=包根目录名，findModule 去重曾致成员永不加载）。
+//   货舱依赖目录包根（候选3）不传——成员保持文件主干（既有符号面零变化）。
+// cargoDepRoot（挂账1 根治，2026-09-08）：本次加载经由候选3 货舱 [依赖] 声明
+//   路径——命中 包.cn（isPkgEntry）时写入 cargoPkgRoot 标记，其挂载成员模块
+//   名保持文件主干（依赖包成员历史 bare 形态，E2E 47 等符号面零变化）。
 bool loadModuleTree(const std::string& filePath, const std::string& dir,
                     const std::string& entryDir,
                     module::ModuleGraph& graph, std::string& error,
                     const std::unordered_set<std::string>& macros,
-                    const DriverOptions& options, bool isRootCall = false) {
+                    const DriverOptions& options, bool isRootCall = false,
+                    const std::string& pkgPrefix = "",
+                    bool cargoDepRoot = false) {
+    // 源文件路径去重（挂账1 根治，2026-09-08；v2 编译文件 按 路径ID 已加载
+    //   去重同构）：同一文件经不同链路加载（包根挂载链 vs 命令行入口/依赖
+    //   候选链）模块名可能不同（各形态命名差异）——按路径去重防同文件双
+    //   单元重复解析/重复合并（包上下文恢复场景：入口先载、包根后聚合）。
+    if (graph.findByPath(filePath) != nullptr) return true;  // 已加载：去重
     // 模块名 = 文件相对**入口目录**的路径主干（网络/传输控制.cn -> 网络::传输控制）
     std::string relPart;
     if (filePath.size() > entryDir.size() && filePath.compare(0, entryDir.size(), entryDir) == 0) {
@@ -128,6 +144,26 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
             externalModule = true;
         }
     }
+    // 包前缀覆盖（挂账1 根治，2026-09-08）：目录包根挂载成员的模块名 =
+    //   包根名::相对包目录路径主干（IR布局.cn -> IR::IR布局）——与整体构建
+    //   形态（相对入口目录路径自然带前缀）逐字节对齐，成员命名只由包目录
+    //   结构决定、不随入口目录漂移。货舱依赖包成员（pkgPrefix 空）保持
+    //   文件主干历史形态。注意：放在外部判定之后（moduleDir 语义不受影响
+    //   ——包成员 moduleDir 经下方尾匹配置空，两形态一致）。
+    if (!pkgPrefix.empty()) {
+        std::string relToPkg = filePath;
+        if (relToPkg.size() > dir.size() &&
+            relToPkg.compare(0, dir.size(), dir) == 0) {
+            relToPkg = filePath.substr(dir.size());
+        }
+        const std::size_t dotPkg = relToPkg.find_last_of('.');
+        if (dotPkg != std::string::npos) relToPkg = relToPkg.substr(0, dotPkg);
+        for (std::size_t pos = relToPkg.find_first_of("/\\"); pos != std::string::npos;
+             pos = relToPkg.find_first_of("/\\", pos + 1)) {
+            relToPkg.replace(pos, 1, "::");
+        }
+        moduleName = pkgPrefix + "::" + relToPkg;
+    }
     if (graph.findModule(moduleName) != nullptr) return true;  // 已加载：去重
 
     std::string source;
@@ -138,6 +174,8 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     unit->filePath = filePath;
     unit->moduleName = moduleName;
     unit->isEntryUnit = isRootCall;  // 簇⑥ 根治：命令行入口标记（递归依赖恒 false）
+    unit->pkgRoot = pkgPrefix;  // 目录包归属（rustc crate 结构关系；非包成员为空）
+    unit->cargoPkgRoot = isPkgEntry && cargoDepRoot;  // 货舱依赖包根标记（挂载成员命名 bare）
     // 模块目录前缀（相对入口；网络/传输控制.cn -> 网络/），子模块从该目录加载。
     // 外部模块（stdlib/依赖目录）moduleDir 为空——子模块从文件所在目录加载。
     unit->moduleDir = externalModule ? "" : pathDir(relPart);
@@ -177,11 +215,16 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
         //   本包符号经合并阶段全局可见，无需加载；依赖边必须省略——否则
         //   「包根聚合边（IR -> IR布局）」与「成员导入边（IR布局 -> IR）」
         //   构成拓扑环（topoSort 报 模块循环依赖，2026-09-08 千行拆分轮实证）。
-        //   仅限非挂载依赖：包根的 同名成员挂载（代码生成/包.cn 声明
-        //   模块 代码生成;，dep==包根本身 moduleName）必须放行到挂载分支。
+        //   判定双通道（挂账1 根治 2026-09-08）：①模块名前缀（整体形态
+        //   IR::IR布局）②结构归属 pkgRoot（单文件入口形态成员名无前缀，
+        //   前缀判定曾漏判致假环 + 多余路径探测）。rustc 同构：crate 成员
+        //   引用本 crate 符号无需跨 crate 加载。仅限非挂载依赖：包根的
+        //   同名成员挂载（代码生成/包.cn 声明 模块 代码生成;，dep==包根
+        //   本身 moduleName）必须放行到挂载分支。
         if (cur->moduleMounts.count(dep) == 0 &&
             (dep == cur->moduleName ||
-             cur->moduleName.rfind(std::string(dep) + "::", 0) == 0)) {
+             cur->moduleName.rfind(std::string(dep) + "::", 0) == 0 ||
+             dep == cur->pkgRoot)) {
             continue;
         }
         // A-5（子目录模块无法导入父目录 根治）：依赖模块已在图中（父模块是
@@ -231,8 +274,19 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
                         "规格08-二）";
                 return false;
             }
+            // 成员模块名包前缀（挂账1 根治 2026-09-08；v2 加载挂载声明 模块
+            //   路径规则对齐）：项目内目录包根（包.cn 且非货舱依赖包）挂载
+            //   成员 -> 包根名前缀（IR布局 -> IR::IR布局，整体/单文件两形态
+            //   对齐+成员与包根同名撞车根治）；父挂子（普通文件挂子模块）->
+            //   本模块完整名前缀（网络.cn 挂 传输控制 -> 网络::传输控制，
+            //   v2 本模块路径::挂载名同构）；crate 根主.cn 同级挂载（52 挂
+            //   图书）与货舱依赖包成员 -> 无前缀（历史 bare 形态）。
+            std::string memberPrefix;
+            if (!cur->cargoPkgRoot && !(isRootUnit && baseName != "包.cn")) {
+                memberPrefix = cur->moduleName;
+            }
             if (!loadModuleTree(mountCand, mountDir, entryDir, graph, error, macros,
-                                options)) {
+                                options, /*isRootCall=*/false, memberPrefix)) {
                 return false;
             }
             continue;
@@ -345,7 +399,9 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
                     const std::string candLocal2 = depRoot + "包.cn";
                     if (tryReadSource(candLocal2, srcBuf)) {
                         if (!loadModuleTree(candLocal2, depRoot, entryDir,
-                                            graph, error, macros, options)) {
+                                            graph, error, macros, options,
+                                            /*isRootCall=*/false, /*pkgPrefix=*/"",
+                                            /*cargoDepRoot=*/true)) {
                             return false;
                         }
                         continue;
@@ -371,6 +427,45 @@ bool loadModuleTree(const std::string& filePath, const std::string& dir,
     return true;
 }
 
+// 包上下文恢复（挂账1 根治，2026-09-08）：单文件入口若是项目内目录包成员——
+//   所在目录存在 包.cn 且其声明了入口文件主干名的 模块 挂载——则加载包根聚合
+//   （兄弟成员补入依赖闭包）。背景：包内兄弟符号经合并阶段全局池解析（无显式
+//   导入），命令行入口绕过包根挂载链单独加载时兄弟文件不在依赖闭包——
+//   「未声明函数」错误族（2026-09-08 第三十七轮挂账：语义检查.cn 入口报
+//   未声明函数: 取语义诊断 等 137 错实证）。
+//   时序：入口先载（isEntryUnit 标记成立）→ 包根后聚合——包根挂载入口同
+//   文件经 loadModuleTree 路径去重跳过（findByPath，同文件不双载、入口标记
+//   不被挂载链覆盖）。
+//   成员判定精确：包根未声明入口主干挂载（入口只是恰好位于包目录的非成员
+//   文件）不触发恢复，防误载无关包符号；入口自身即 包.cn 时主干=「包」不与
+//   任何挂载名相同，天然跳过。返回 false=触发恢复但包根加载失败（error 已写）。
+bool restorePackageContext(const std::string& entryFile,
+                           module::ModuleGraph& graph, std::string& error,
+                           const std::unordered_set<std::string>& macros,
+                           const DriverOptions& options) {
+    const std::string dir = pathDir(entryFile);
+    const std::string pkgCand = dir + "包.cn";
+    std::string pkgSrc;
+    if (!tryReadSource(pkgCand, pkgSrc)) return true;  // 所在目录无包根：非包成员
+    std::unique_ptr<Program> pkgAst;
+    std::vector<std::string> pkgImports;
+    Diagnostics pkgDiags;
+    if (!module::parseSourceText(pkgSrc, pkgCand, pathStem(pkgCand), pkgAst,
+                                 pkgImports, pkgDiags, macros)) {
+        return true;  // 包根本身解析失败：交由其正式加载链路报错
+    }
+    const std::string stem = pathStem(entryFile);
+    bool isMember = false;
+    for (const auto& imp : pkgAst->imports) {
+        if (imp->isModuleDecl && imp->importPath == stem) {
+            isMember = true;
+            break;
+        }
+    }
+    if (!isMember) return true;  // 包根未挂载入口主干：非包成员文件
+    return loadModuleTree(pkgCand, dir, dir, graph, error, macros, options);
+}
+
 } // namespace
 
 // 多文件编译流水线（Task 3.6 模块系统）：
@@ -388,6 +483,13 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     const std::string dir = pathDir(entryFile);
     if (!loadModuleTree(entryFile, dir, dir, graph, error, options.macros, options,
                         /*isRootCall=*/true)) {
+        if (!error.empty()) std::cerr << "错误: " << error << "\n";
+        return 1;
+    }
+
+    // 1.5 包上下文恢复（挂账1 根治，2026-09-08）：入口是项目内目录包成员时
+    //     聚合包根（兄弟成员补入依赖闭包；入口文件经路径去重不双载）
+    if (!restorePackageContext(entryFile, graph, error, options.macros, options)) {
         if (!error.empty()) std::cerr << "错误: " << error << "\n";
         return 1;
     }

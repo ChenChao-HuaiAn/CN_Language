@@ -733,11 +733,21 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
                     //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
                     //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
                     //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
+                    //   挂账1 包前缀化扩展（2026-09-08）：目录包/父挂子成员模块名
+                    //   带包前缀（语义::内置）——条目名**末段**与 filterLast 对齐即
+                    //   命中（v1 自举组件 语义::语义::内置::行类型 实测：条目
+                    //   语义::内置 末段 内置 == filterLast 内置）。与跨 crate 末段
+                    //   按名匹配同族：精确/前缀匹配优先，末段为松匹配兜底。
                     const std::size_t lastColon = moduleFilter.rfind("::");
                     const std::string filterLast = (lastColon == std::string::npos)
                                                         ? moduleFilter
                                                         : moduleFilter.substr(lastColon + 2);
-                    if (entryModule != filterLast) continue;
+                    const std::size_t entryLastColon = entryModule.rfind("::");
+                    const std::string entryLast =
+                        (entryLastColon == std::string::npos)
+                            ? entryModule
+                            : entryModule.substr(entryLastColon + 2);
+                    if (entryModule != filterLast && entryLast != filterLast) continue;
                 }
             }
         } else if (currentHasName && !entryModule.empty() &&

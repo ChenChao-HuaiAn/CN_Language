@@ -152,6 +152,9 @@ bool ModuleGraph::addModule(std::unique_ptr<ModuleUnit> unit) {
     if (unit == nullptr) return false;
     const std::string& name = unit->moduleName;
     if (units_.find(name) != units_.end()) return false;  // 已存在
+    // 路径索引登记（findByPath O(1) 查询；unordered_map 节点地址稳定，
+    //   unique_ptr 迁移不影响 ModuleUnit* 有效性）
+    pathIndex_[unit->filePath] = unit.get();
     units_[name] = std::move(unit);
     return true;
 }
@@ -160,6 +163,12 @@ bool ModuleGraph::addModule(std::unique_ptr<ModuleUnit> unit) {
 ModuleUnit* ModuleGraph::findModule(const std::string& moduleName) {
     auto it = units_.find(moduleName);
     return (it == units_.end()) ? nullptr : it->second.get();
+}
+
+// 按源文件路径查找模块（未找到返回 nullptr；挂账1 根治 2026-09-08）
+ModuleUnit* ModuleGraph::findByPath(const std::string& filePath) {
+    auto it = pathIndex_.find(filePath);
+    return (it == pathIndex_.end()) ? nullptr : it->second;
 }
 
 // DFS 拓扑排序辅助：三色标记（0=未访问 1=访问中 2=已完成）
@@ -196,7 +205,13 @@ bool dfsTopo(const std::unordered_map<std::string, std::unique_ptr<ModuleUnit>>&
             std::string dep = imp->importPath;
             const std::size_t sep = dep.find("::");
             if (sep != std::string::npos) dep = dep.substr(0, sep);
-            if (!dep.empty() && dep != name) {
+            // 自包导入边省略（挂账1 根治，2026-09-08；rustc crate 模型同构）：
+            //   目录包成员 导入 自包名（IR布局 导入 IR）是包内符号引用（合并
+            //   期全局池可见）而非跨包依赖——与包根聚合边（IR -> IR布局）不构
+            //   成拓扑环。结构归属（pkgRoot）判定而非模块名前缀文本推断：
+            //   单文件入口形态成员名无包前缀（历史形态文件主干），前缀判定
+            //   漏洞曾致假环（IR -> IR布局 -> IR，2026-09-08 单文件入口实测）。
+            if (!dep.empty() && dep != name && dep != it->second->pkgRoot) {
                 if (!dfsTopo(units, dep, color, ordered, path, error)) return false;
             }
         }

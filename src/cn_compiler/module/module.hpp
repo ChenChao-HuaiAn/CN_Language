@@ -43,6 +43,19 @@ struct ModuleUnit {
     //   解析——仅允许 crate 根（入口/包.cn）同级聚合 或 父模块子目录挂载；
     //   其余路径命中 = 定位诊断（普通文件的模块路径由文件名+目录唯一决定）。
     std::unordered_set<std::string> moduleMounts;
+    // ---- 挂账1 根治（2026-09-08，rustc crate 模型同构）：目录包结构归属 ----
+    // 所属目录包的包根名（IR/IR布局.cn -> "IR"）：成员「导入 自包名」是包内
+    //   符号引用（合并期全局可见）而非跨包依赖——拓扑边省略（包根聚合边
+    //   IR->IR布局 与 成员导入边 IR布局->IR 不构成环）。rustc 同构：crate
+    //   成员引用本 crate 符号无需跨 crate 依赖边（DefId 树结构关系，非路径
+    //   文本推断）。非目录包成员（含包根本身的模块名判定）为空。
+    std::string pkgRoot;
+    // 本单元是货舱依赖目录包的包根（候选3 加载）：其挂载成员模块名保持
+    //   文件主干（整体形态历史行为，E2E 47 等既有用例符号面零变化）；
+    //   项目内目录包根（入口同目录/上溯/挂载命中）为 false——成员模块名
+    //   统一 包名::主干（单文件入口形态与整体形态对齐，根治成员与包根
+    //   同名撞车：代码生成/包.cn 挂 模块 代码生成;）。
+    bool cargoPkgRoot = false;
 };
 
 // 读取 UTF-8 源文件（自动去除 BOM），失败返回 false 并写入 error
@@ -59,10 +72,16 @@ bool parseSourceText(const std::string& source, const std::string& filePath,
 // 模块依赖图：按导入关系建立并拓扑排序（被依赖者在前；入口模块最后）
 class ModuleGraph {
 public:
-    // 添加模块（同模块名去重：重复添加返回 false）
+    // 添加模块（同模块名去重：重复添加返回 false；同文件路径去重见 findByPath）
     bool addModule(std::unique_ptr<ModuleUnit> unit);
     // 查找模块（未找到返回 nullptr）
     ModuleUnit* findModule(const std::string& moduleName);
+    // 按文件路径查找模块（未找到返回 nullptr）。
+    // 挂账1 根治（2026-09-08）：源文件是模块身份的唯一真相（v2 编译文件 按
+    //   路径ID 已加载去重同构；rustc FileId 同源）——包根挂载链与命令行入口
+    //   加载同一文件时（包上下文恢复：入口先载、包根后聚合）经此去重，防
+    //   同文件双单元（模块名各形态不同）重复解析/重复合并。
+    ModuleUnit* findByPath(const std::string& filePath);
     // 全部模块（遍历用）
     const std::unordered_map<std::string, std::unique_ptr<ModuleUnit>>& units() const {
         return units_;
@@ -73,6 +92,8 @@ public:
 
 private:
     std::unordered_map<std::string, std::unique_ptr<ModuleUnit>> units_;
+    // 源文件路径 -> 模块单元索引（addModule 登记 findByPath 供 O(1) 查询）
+    std::unordered_map<std::string, ModuleUnit*> pathIndex_;
 };
 
 // 合并多个模块 AST 为单一 Program（Task 3.6）：
