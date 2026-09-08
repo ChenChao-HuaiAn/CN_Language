@@ -192,3 +192,45 @@ TEST(IRFunctionTest, ForwardReferenceCall) {
     ASSERT_GE(calcIdx, 0);
     EXPECT_EQ(r.module.functions.size(), 2u);  // 使用 + 计算
 }
+
+// 栈帧膨胀根治（2026-09-08 v2self 锚定轮）：寄存器号每函数复位——同模块多函数
+//   的最大虚拟寄存器 ID 互不继承（原 regCounter_ 全模块递增使 codegen 帧大小
+//   按 maxRegId 线性膨胀：20 函数探针 80B→1152B；v2self 18 万行后段函数帧达
+//   290KB，8MB 栈深递归解析 SIGSEGV）。锚定：后段函数的 maxRegId 不得超过
+//   其自身指令所需的量级（独立于模块内函数总数）。
+TEST(IRFunctionTest, RegIdResetPerFunction) {
+    auto r = buildIR(R"CN(
+函数 头部函数(整64 x) -> 整64 { 返回 x + 1; }
+函数 中间函数(整64 y) -> 整64 { 返回 y + 2; }
+函数 填充一(整64 a) -> 整64 { 返回 a * 3; }
+函数 填充二(整64 b) -> 整64 { 返回 b * 4; }
+函数 填充三(整64 c) -> 整64 { 返回 c * 5; }
+函数 填充四(整64 d) -> 整64 { 返回 d * 6; }
+函数 尾部函数(整64 z) -> 整64 { 返回 z + 7; }
+)CN");
+    EXPECT_FALSE(r.diagnostics.hasErrors());
+    // 全部函数生成
+    EXPECT_EQ(r.module.functions.size(), 7u);
+    // 逐函数最大寄存器 ID（含 i128 双寄存器扩展语义——此处标量简单函数恒小）
+    auto maxRegId = [](const cn_compiler::ir::IRFunction& f) {
+        int m = -1;
+        for (auto& block : f.blocks) {
+            for (auto& inst : block->instructions) {
+                if (inst.result.id > m) m = inst.result.id;
+                for (auto& op : inst.operands) {
+                    if (op.id > m) m = op.id;
+                }
+            }
+        }
+        return m;
+    };
+    // 尾部函数与头部函数同为单表达式函数——寄存器号不应随模块内位置增长
+    int headIdx = findFunction(r.module, "头部函数");
+    int tailIdx = findFunction(r.module, "尾部函数");
+    ASSERT_GE(headIdx, 0);
+    ASSERT_GE(tailIdx, 0);
+    int headMax = maxRegId(r.module.functions[headIdx]);
+    int tailMax = maxRegId(r.module.functions[tailIdx]);
+    EXPECT_LE(tailMax, headMax + 4);  // 同形态函数：寄存器号同量级（复位后恒小）
+    EXPECT_LT(tailMax, 32);           // 修复杂锚：全局递增下尾部函数继承 6 个前驱的号
+}

@@ -158,6 +158,9 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     }
 
     // 4. 函数体生成（入口块 + 语句）
+    // 栈帧膨胀根治（2026-09-08 v2self 锚定轮）：寄存器号每函数复位，与
+    //   visitFunctionDecl 同点同构（详见 ir_decl.cpp 注记）
+    regCounter_ = 0;
     blockCounter_ = 0;
     newBlock("bb0");
     if (node->body != nullptr) {
