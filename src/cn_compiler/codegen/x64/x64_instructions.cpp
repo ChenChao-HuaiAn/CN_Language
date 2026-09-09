@@ -988,9 +988,57 @@ void X64CodeGenerator::emitCompare(AsmWriter& writer, const ir::IRInstruction& i
     const bool isUnsigned = (cmpType == "u8" || cmpType == "u16" ||
                              cmpType == "u32" || cmpType == "u64" ||
                              cmpType == "u128");
+    // 常量操作数文本归一（2026-09-09 第四十一轮，A2084）：
+    //   ① 0x/0b/0o 前缀原始文本转数值（ConstInt 路径同款防御——比较直挂的
+    //     常量未经 ConstInt 发射点时 extra 可为源码原始文本）
+    //   ② op1 64 位域大值须十六进制文本（十进制立即数被 ml64 按 32 位截断，
+    //     ConstInt 审查修复同源）
+    //   ③ op2 超 imm32 编码域（cmp reg64 仅 imm32 符号扩展形态）先 mov rcx
+    //     64 位立即数（hex 文本）再 cmp w, rcx——与 emitBinary imm32 域检查
+    //     同构；32 位类型比较值域恒在 imm32 内，不触发中转（无尺寸错配面）
+    auto normalizeConstText = [](const std::string& text) -> std::string {
+        if (text.size() > 1 && text[0] == '0' &&
+            (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' ||
+             text[1] == 'B' || text[1] == 'o' || text[1] == 'O')) {
+            try {
+                const std::uint64_t raw = std::stoull(
+                    text.substr(2), nullptr,
+                    (text[1] == 'x' || text[1] == 'X') ? 16 :
+                    (text[1] == 'b' || text[1] == 'B') ? 2 : 8);
+                return std::to_string(raw);
+            } catch (...) {
+                return text;  // 解析失败原样（防御性）
+            }
+        }
+        return text;
+    };
+    std::string op1Text = normalizeConstText(op1);
+    std::string op2Text = normalizeConstText(op2);
+    if (inst.operands[0].isConstant) {
+        try {
+            const long long v = std::stoll(op1Text);
+            if (v > 2147483647LL || v < -2147483648LL) {
+                op1Text = uint64HexText(std::stoull(op1Text));
+            }
+        } catch (...) {
+            // 解析失败按立即数原样（防御性）
+        }
+    }
+    if (inst.operands[1].isConstant) {
+        try {
+            const long long v = std::stoll(op2Text);
+            if (v > 2147483647LL || v < -2147483648LL) {
+                const unsigned long long uv = std::stoull(op2Text);
+                writer.line("mov rcx, " + uint64HexText(uv));
+                op2Text = "rcx";
+            }
+        } catch (...) {
+            // 解析失败按立即数原样（防御性）
+        }
+    }
     std::string w = widthFor(cmpType, "rax");
-    writer.line("mov " + w + ", " + op1);
-    writer.line("cmp " + w + ", " + op2);
+    writer.line("mov " + w + ", " + op1Text);
+    writer.line("cmp " + w + ", " + op2Text);
     if (isUnsigned) {
         // 无符号 setcc：Eq/Ne 相同，序比较用 a/b 系列
         std::string cc;
