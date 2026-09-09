@@ -1,48 +1,50 @@
 # HANDOFF 交接文档
 
-**交接时间**: 2026-09-09 第四十四轮（**家机 win-x64**）——跨机轮 win 侧动态收口（纯验证轮零源码改动）：第四十三轮四项改动（v2 位运算五算子/构造字面量/路径归一/FNV 族原生位运算重写）win 实物全绿，收缩符号黄金值三方锚定（$L328HAEAEDCD4D2F8988F），路径归一双侧五形态 rc=0，E2E 176~182 win 首验 7/7。深度机轮（linux-x86_64）=下一跨机轮。
+**交接时间**: 2026-09-09 第四十五轮（**深度系统 x86_64**）——跨机轮 X64L 侧动态收口（纯验证轮零源码改动）：全量门禁复验（清场重建 GCC 零警告+单测 1251/1251+E2E 184 用例 180 过/0 败/4 跳）、E2E 176~182 X64L 首验 7/7、组件对拍 29/29 全量逐字节归零、v2self 固定点 fix_p≡fix_s（224118 行 X64L 锚定确立）、字面量位模式八形态动态运行复验+movabs 实物落定。**三平台验证矩阵（linux-x86_64/linux-arm64/win-x64）当前处于全绿同步态，无新增挂账。**
 
 ---
 
 ## 一、本轮做了什么（写给无上下文的新会话）
 
-1. **拉取并快进合并** 32b84a9（第四十二轮）+009368d（第四十三轮，单位机麒麟 ARM64 大改动轮），按 HANDOFF 挂账1 执行家机 win 侧动态收口。
-2. **全量门禁（清场重建）**：MSVC /W4 /WX 零警告+单测 **1251/1251**+全量 E2E win-x64 **184 用例 182 过/2 败/0 跳**（败=78 4116MB/79 4112MB 已知 OOM 家族，与第四十一轮基线 4117/4101MB 同族零回归）。
-3. **E2E 176~182 win 侧首验 7/7 PASS**——其中 **180_v2_位运算形态（rc=176）是第四十三轮 ARM64 上静态编写的 v2 win 后端位运算发射（and/or/xor+shl/sar cl）首次 ml64 实物验证**，跨机轮拦截面归零；30 个 v2 闭环用例全绿=v2p（第四十三轮大改后 v2 全树）win 后端编译 rc=0 全链实证。
-4. **收缩符号黄金值复验**（挂账②）：54 汉字函数名探针（原串 328 字符>247）——宿主↔v2p 产物收缩符号逐字节一致 `$L328HAEAEDCD4D2F8988F`+python 按代码内常量独立复算一致+探针 ml64 rc=0。**FNV 原生位运算重写等价性传递链闭合**：第四十一轮锚（模拟版↔宿主）→第四十三轮（重写版↔模拟版 LCG 3000 组）→本轮（重写版↔宿主 win 实物直接一致）。
-5. **路径归一复验**（挂账③）：v2p 反斜杠相对/绝对路径编译 v2 自身 主.cn 双 rc=0（第四十一轮此场景 183 错双载歧义）+正斜杠对照 rc=0 无回归+宿主 cn.exe 反斜杠绝对/相对双 rc=0（cn_main.cpp 归一 win 门禁兑现）+v2p 反斜杠产物 ml64 rc=0。
-6. **教训一条入 lessons**（权重 6）：独立复算必须用被验系统的代码内常量——本项目 FNV seed=1469598103934665603（**非标准 basis**，标准=...56037 尾多一个 7），教科书常量复算得假阴性（05121C41... vs 实际 AEAEDCD4...）。
+1. **拉取并快进合并** 5fa9a66（第四十四轮家机 win-x64），按 HANDOFF 挂账1 执行深度机（linux-x86_64）动态收口。
+2. **全量门禁（清场重建）**：GCC 零警告 rc=0+单测 **1251/1251**+全量 E2E linux-x86_64 **184 用例 180 过/0 败/4 跳**（跳=62/69/78/79 既有平台限制；深度机无 win 侧 OOM 败面），零回归。
+3. **E2E 176~182 X64L 首验 7/7 PASS**：其中 **180_v2_位运算形态（rc=176 闭环）=第四十三轮 v2 X64L 后端位运算发射实物首验**；178 移位掩码六形态/179 构造穷举负测/181 构造字面量（rc=42）/182 穷举负测（None 通道）全过。
+4. **v2self 锚定链**：v2p（E2E 产出 audit2/v2p_linuxx64）编译 v2 自身 → fix_p.s（224118 行）→ as+g++ 链接 cn_self45（cn_self45.o 在前+v2p_linuxx64.o 借链容器符号+rt objs 现编+muldefs）→ **绑定自检（决定性）**：链接 map 实证 cn_main（0x4cc3c8）落在 cn_self45.o 的 .text 区间 [0x402586,0x4CFDBE) 内=第二代自举编译器成立 → cn_self45 编译 v2 自身 → fix_s.s（224118 行）→ **固定点 fix_p≡fix_s 裸逐字节一致**（X64L 侧锚定确立；第四十三轮 302433 行为 arm64 口径，不跨后端比较）→ 运行级三用例 hello=0/119=14/173=173 全对齐第三十八轮口径。
+5. **组件对拍 29/29 全量逐字节归零**：v2 全树非主.cn 文件 29 个（6 包根+23 成员；**历史口径 30→29 系第四十一轮删除 abi辅助.cn，非遗漏**），v2p 与 cn_self45 各编译后 asm 逐字节 cmp 全过；「strData 编号平移规范化对拍」未触发（同源同代逐字节一致）。
+6. **字面量位模式 X64L 动态复验**（第四十二轮静态旁证→实物）：E2E 176 八形态探针源宿主与 v2p 双侧编译运行**输出逐字节一致**+rc=0；v2 产物 asm 实证 `movabs r10, 36028797018963968`/`movabs r10, 9223372036854775807`（与静态旁证逐字吻合；宿主 `mov r10, imm64` 形态各异语义等价——specs/08「键形态细节允许各自定义」）。
 
 ## 二、验证链（下轮接手可复跑）
 
 ```bash
-uname / 系统确认                                     # 家机 win-x64（本行）
-rm -rf target/build && powershell -ExecutionPolicy Bypass -File scripts/ci.ps1   # 构建零警告+单测+E2E 全量（约 50 分钟）
-# 黄金值探针（产物留 target/probe44/）：
-./target/Debug/cn.exe compile target/probe44/golden50.cn --target win-x64 --output target/probe44/golden50_host.asm
-./target/audit2/v2p.exe target/probe44/golden50.cn win-x64 && cp target/v2asm.asm target/probe44/golden50_v2.asm
-python target/probe44/check_golden.py               # 对拍：两侧 $L328HAEAEDCD4D2F8988F 一致
-# 路径归一探针：
-./target/audit2/v2p.exe "CN语言编译器v2\\主.cn" win-x64        # 反斜杠 → rc=0（修复前 183 错）
-./target/Debug/cn.exe compile "CN语言编译器v2\\主.cn" --target win-x64 --output target/probe44/x.asm  # rc=0
+uname -m                                    # x86_64=深度机（本行）/ aarch64=单位机
+rm -rf target/build && cmake -S . -B target/build && cmake --build target/build -j8   # 零警告
+./target/cn_unit_tests 2>&1 | tail -1       # 1251/1251
+python3 tests/e2e/run_e2e.py --target linux-x86_64 --cn target/cn   # 184 用例 180 过/0 败/4 跳
+# v2self 锚定链（rt objs 现编防旧产物：audit2 旧 .o 早于第四十轮 intern_api 分流）：
+mkdir -p target/rt45 && for m in io_api intern_api runtime string_api i128_api math_api input_api file_api time_api system_api; do g++ -c -std=c++17 -fno-exceptions -fno-rtti -DCNRT_LINUX_MAIN -Isrc src/runtime/$m.cpp -o target/rt45/$m.o & done; wait
+./target/audit2/v2p_linuxx64 CN语言编译器v2/主.cn linux-x86_64 && cp target/v2asm.s target/fix_p.s   # 224118 行
+as target/fix_p.s -o target/cn_self45.o && g++ -no-pie target/cn_self45.o target/audit2/v2p_linuxx64.o target/rt45/*.o -o target/cn_self45 -Wl,-z,muldefs
+./target/cn_self45 CN语言编译器v2/主.cn linux-x86_64 && cp target/v2asm.s target/fix_s.s
+cmp target/fix_p.s target/fix_s.s           # 逐字节一致=固定点
+# 组件对拍 29 项：for f in $(find CN语言编译器v2 -name "*.cn" ! -name "主.cn"); v2p 与 cn_self45 各产 target/v2asm.s 后 cmp
+# 运行级：cn_self45 编 tests/e2e/01_hello/hello.cn（注意文件名非主.cn）→as→g++ 链接→运行 rc=0；119=14；173=173
+# 绑定自检：g++ ... -Wl,-Map=/tmp/m.map 后查 cn_main 地址落点（cn_self45.o 区间内=绑定正确）
 ```
-
-注：v2p.exe 由 E2E 每个 v2 用例自动重建（target/audit2/v2p.exe），或 `python target/rebuild_v2p.py` 手动重建。
 
 ## 三、挂账（按优先级）
 
-1. **深度机轮（linux-x86_64）下一跨机轮**：全量门禁例行复验；E2E 176~182 X64L 侧首验；组件对拍 30/30（strData 编号平移须规范化对拍）；v2self 字节级固定点 fix_p≡fix_s 复现（第四十三轮 302433 行锚定）；X64L 动态运行复验（字面量位模式 movabs 形态第四十二轮静态旁证后转实物）。
-2. 观察项三项（非阻塞，随语法覆盖轮/类型系统轮）：v2 二元比较层合并 ==/!= 与 < > <= >=（规范分 8/7 两级，`a<b==c<d` 形态与宿主分叉）；v2 无符号类型面缺 正32/正64（逻辑右移以 `>>`+掩码惯用式表达）；构造字面量赋值位 `p = 点{...}` v2 未实现（报语法错误=可见失败，宿主表达式位已支持）。
-3. 无新增待裁决项（第四十一轮呈报三项已随第四十三轮全部落地）。
+1. **无新增挂账**：三平台验证矩阵全绿同步。下一轮可回归特性开发（plans/018 工作流3 剩余层：v2 语义/IR 模块分桶+可见性强制；或观察项随语法覆盖轮）。
+2. 观察项三项延续（非阻塞，随语法覆盖轮/类型系统轮）：v2 二元比较层合并 ==/!= 与 < > <= >=（规范分 8/7 两级，`a<b==c<d` 形态与宿主分叉）；v2 无符号类型面缺 正32/正64（逻辑右移以 `>>`+掩码惯用式表达）；构造字面量赋值位 `p = 点{...}` v2 未实现（报语法错误=可见失败，宿主表达式位已支持）。
+3. 探针产物 target/probe45/、cn_self45、rt objs target/rt45/ 不入库（target/ 已 gitignore）。
 
-## 四、本轮踩坑
+## 四、本轮踩坑（未入 lessons——均为已知条目的当轮复现，防再犯）
 
-1. **独立复算假阴性**（已入 lessons 权重 6）：python 按标准 FNV basis 复算黄金值首跑 False——本项目 seed 尾差一位（1469598103934665603 vs 标准 14695981039346656037）。**教训：复算/参考实现必须 grep 被验代码内实际常量，不得凭记忆填教科书常量；注释「FNV-1a」只锁定算法家族不锁定常量**。
-2. **run_e2e.py 输出全缓冲**：E2E 进度经重定向后日志尾部停在启动行——判活看进程（python.exe 内存渐进增长），结束时缓冲一次性刷出。
-3. （承第四十三轮）管道 tail 掩盖真实 rc：长命令一律 `cmd > log 2>&1; echo rc=$?`。
+1. **编译失败后旧产物续用**（lessons 第四十三轮权重7 已录）：cn_self45 编译错名入口 rc=2 后仍链接了旧 target/v2asm.s（4.5MB 全树产物）得到成片无效 undefined reference——**rc≠0 立即停，不得消费该次未更新的产物**。
+2. **入口文件名约定**：早期用例 01_hello 的文件名是 hello.cn（非主.cn 约定立规前的产物）——引用 主.cn 路径前先 ls 实名；v2p/cn_self 对不存在入口双侧 rc=2 一致（失败语义对照实证反而白捡）。
+3. **muldefs 绑定自检的可视化方法**：指纹法（objdump 反汇编 md5）受重定位干扰不可靠——**用 `-Wl,-Map` 查符号地址落点区间**是决定性证据（本轮 cn_main 0x4cc3c8 ∈ cn_self45.o [0x402586,0x4CFDBE)）。
 
 ## 五、诚实边界
 
-- 本轮为纯验证轮：零编译器源码改动；探针/脚本留 target/probe44/（不入库）。
-- 收缩符号黄金值探针为 54 汉字/328 字符原串（新构造），非第四十一轮 50 汉字/319 原串原样复现——等价性以「同输入三方一致」锚定（v2 重写版↔宿主基准↔python 复算），原 319 锚（EFF9F723240DB1BE）经第四十三轮 LCG 等价探针传递覆盖。
-- X64L 侧全部动态复验=深度机轮；78/79 OOM 为 win 侧固有败面（v1 旧架构内存占用，基线稳定）。
+- 本轮为纯验证轮：零编译器源码改动。
+- 组件对拍基线 29（非历史 30）：abi辅助.cn 已于第四十一轮删除（git log 可查），find 实数核对。
+- 固定点行数锚定分后端口径：X64L=224118 行（本轮确立）/ arm64=302433 行（第四十三轮）/ 历史 win 侧另计——行数比较只在同后端内有效。
