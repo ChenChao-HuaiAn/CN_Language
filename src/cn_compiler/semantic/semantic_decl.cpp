@@ -222,6 +222,20 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (varType.empty() && node->initializer != nullptr) {
         // 类型推断：无显式类型时从初始值推断
         varType = checkExpr(node->initializer.get());
+        // 46-c 宿主同款根治（2026-09-10 第四十九轮）：结构体值源回填写回 AST
+        //   节点——语义与 IR 共享同一 AST 树，IR genVarDecl 的 srcType/槽布局
+        //   （registerVarSlots 结构体多槽）全按 node->typeName 取类型；原仅更新
+        //   符号表不写回节点，结构体值源（成员读/标识符拷贝/调用返回）在 IR 层
+        //   落空 typeName→单 i32 槽+结构体拷贝截断=静默垃圾（t_min 探针
+        //   变量 t = r.左上 后 t.x 垃圾值 rc=16 实锤；显式 点 t = r.左上 同源码
+        //   rc=0 对照）。
+        //   限定仅结构体：标量（布尔/整64 调用返回等）回填会改变既有打印分派
+        //   行为（布尔 真/假 vs 0/1——E2E 184 expected 固化前者 0/1 为既有形态，
+        //   测试文件纪律不擅改）；标量推断的 IR 类型面完善随标量推断轮裁决。
+        if (!varType.empty() && varType != "未知" &&
+            isStructType(types::canonical(varType))) {
+            node->typeName = varType;
+        }
     } else if (node->initializer != nullptr && !varType.empty()) {
         // 数组初始化列表（Task 2.4）：整32[5] 数据 = { 1, 2, 3 }
         if (node->initializer->getType() == NodeType::InitListExpr &&
