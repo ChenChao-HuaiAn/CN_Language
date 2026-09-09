@@ -978,6 +978,68 @@ void IRGenerator::visitTernaryExpr(TernaryExpr* node) {
     lastExpr_ = emitResult(ir::Opcode::Load, {ir::IRValue::var(tempName, "i64")},
                            trueTypeForLoad.type, "", node->location);
 }
+
+// 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源——原机制内联
+//   于 visitAssignmentExpr 下标目标分支（集成验证修复+H8 类补完），成员目标
+//   分支（r.左上 = a）无此通道：genExpr(结构体标识符源) 落标量值 + StorePtr
+//   只写 8 字节（源地址截断入首字段、其余字段栈残留垃圾），探针静默数据损坏
+//   实锤（11/22 打出 12582296/128）。Rust place 拷贝同构：结构体赋值=整体
+//   按值拷贝（POD Copy）。
+bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
+                                        Expr* valueNode,
+                                        const std::string& dstElemCanon,
+                                        const SourceLocation& loc) {
+    if (semantic_ == nullptr) return false;
+    if (!(semantic_->isStructType(dstElemCanon) ||
+          semantic_->isClassType(dstElemCanon))) {
+        return false;
+    }
+    // 右值源地址三形态（与下标位既有机制逐点一致）：
+    //   IndexExpr/MemberExpr -> 元素/字段内联地址（lvalueAddress）；
+    //   IdentifierExpr -> 结构体 AddrOf 槽 / 类 Load 槽（槽存对象指针，
+    //   AddrOf 槽会取到指向指针的指针——CopyStruct 读到指针值+栈垃圾）。
+    ir::IRValue srcAddr;
+    std::string srcUniqueId;  // 标识符源唯一名（拷贝构造 byRef 传参用）
+    if (valueNode->getType() == NodeType::IndexExpr ||
+        valueNode->getType() == NodeType::MemberExpr) {
+        srcAddr = lvalueAddress(valueNode);
+    } else if (valueNode->getType() == NodeType::IdentifierExpr) {
+        const std::string srcName =
+            static_cast<IdentifierExpr*>(valueNode)->name;
+        srcUniqueId = lookupVarName(srcName);
+        const std::string srcST = lookupSrcType(srcName);
+        if (semantic_->isClassType(types::canonical(types::stripRef(srcST)))) {
+            srcAddr = emitResult(ir::Opcode::Load,
+                                 {ir::IRValue::var(srcUniqueId, "ptr")},
+                                 "ptr", srcUniqueId, loc);
+        } else {
+            srcAddr = emitResult(ir::Opcode::AddrOf,
+                                 {ir::IRValue::var(srcUniqueId, "i64")},
+                                 "ptr", srcUniqueId, loc);
+        }
+    }
+    if (srcAddr.id < 0) return false;
+    // 类元素且有拷贝构造且源为类变量——调用拷贝构造深拷贝（this=内联元素
+    //   地址，实参=&源槽 byRef 解引用得源对象），元素独立拥有内部数组
+    //   （浅拷贝共享指针 + RAII 双释放 0xC0000374）。源为成员/下标元素
+    //   （byRef 无法引用内联元素）保持 CopyStruct 浅拷贝。
+    const ClassMemberInfo* copyCtor = semantic_->findCopyConstructor(dstElemCanon);
+    if (copyCtor != nullptr && !srcUniqueId.empty()) {
+        const std::string copyOwner =
+            copyCtor->ownerClass.empty() ? dstElemCanon : copyCtor->ownerClass;
+        const ir::IRValue srcRef = emitResult(
+            ir::Opcode::AddrOf, {ir::IRValue::var(srcUniqueId, "i64")},
+            "ptr", srcUniqueId, loc);
+        emit(ir::Opcode::Call, {dstAddr, srcRef}, ir::IRValue(),
+             methodSymbolKey(copyOwner, copyCtor->sigKey), "void", loc);
+    } else {
+        const int size = semantic_->typeSizeOf(dstElemCanon);
+        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+             std::to_string(size), "void", loc);
+    }
+    return true;
+}
+
 void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     // 结构体字段左值：p.x = v / 指针->x = v（Task 2.7）
     // 通过 lvalueAddress 计算字段地址（FieldAddr），StorePtr 写入
@@ -1027,6 +1089,36 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 emitStructInitTo(init, fieldAddr, node->location);
                 lastExpr_ = fieldAddr;   // 与整体赋值链式语义一致（值=目标地址）
                 return;
+            }
+        }
+        // 46-a 根治（2026-09-09 第四十八轮）：成员结构体作值写（r.左上 = a /
+        //   r.右下 = r.左上）——字段为结构体/类时同走整体赋值单一助手
+        //   emitStructWholeAssign（与下标位 H8 同构，Rust place 拷贝语义）。
+        //   原无此通道：标量通用路径 StorePtr 只写 8 字节静默数据损坏。
+        //   类型检查前置（与 D2 同型）：非结构体/类字段零冗余落回标量路径
+        //   （lvalueAddress 有发射副作用，落回即双发）。
+        if (semantic_ != nullptr && !isCompoundAssignOp(node->op)) {
+            const std::string ownerStructW = memberObjStructType(member);
+            const StructDecl* ownerDeclW =
+                semantic_->findStruct(types::canonical(ownerStructW));
+            std::string fieldStructW;
+            if (ownerDeclW != nullptr) {
+                for (const auto& f : ownerDeclW->fields) {
+                    if (f.name == member->memberName) {
+                        fieldStructW = types::canonical(f.type);
+                        break;
+                    }
+                }
+            }
+            if (!fieldStructW.empty() &&
+                (semantic_->isStructType(fieldStructW) ||
+                 semantic_->isClassType(fieldStructW))) {
+                ir::IRValue fieldAddrW = lvalueAddress(node->target.get());
+                if (emitStructWholeAssign(fieldAddrW, node->value.get(),
+                                          fieldStructW, node->location)) {
+                    lastExpr_ = fieldAddrW;  // 值=目标地址（链式语义与 D2 一致）
+                    return;
+                }
             }
         }
         ir::IRValue value = genExpr(node->value.get());
@@ -1187,62 +1279,14 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
             // H8 补完（2026-08-25）：类类型元素整体赋值（向量<映射<...>> 追加
             //   的 数据[元素数量] = 值）同样走 CopyStruct（56 字节）——原只处理
             //   结构体，类元素落 StorePtr 只写 8 字节指针 -> 元素数据破坏。
+            //   46-a 根治（2026-09-09）：机制提取为 emitStructWholeAssign 单一
+            //   事实源（成员目标分支同构复用），本分支行为逐点不变。
             if (!tElemSrc.empty() &&
                 (semantic_->isStructType(tElemCanon) ||
                  semantic_->isClassType(tElemCanon)) &&
                 !isCompoundAssignOp(node->op)) {
-                // 右值：IndexExpr 结构体元素 -> 其地址（lvalueAddress）；
-                // 标识符结构体变量 -> AddrOf（结构体内联）；标识符类变量 ->
-                //   Load 槽（槽存对象指针，CopyStruct 源 = 对象地址，56 字节对象本体）
-                ir::IRValue srcAddr;
-                std::string srcUniqueId;  // 标识符源唯一名（拷贝构造 byRef 传参用）
-                if (node->value->getType() == NodeType::IndexExpr ||
-                    node->value->getType() == NodeType::MemberExpr) {
-                    srcAddr = lvalueAddress(node->value.get());
-                } else if (node->value->getType() == NodeType::IdentifierExpr) {
-                    const std::string srcName =
-                        static_cast<IdentifierExpr*>(node->value.get())->name;
-                    srcUniqueId = lookupVarName(srcName);
-                    const std::string srcST = lookupSrcType(srcName);
-                    // H8 补完：类源（向量 追加 的 值 参数 = 映射 对象指针）——
-                    //   AddrOf 槽 会取到 指向指针的指针，CopyStruct 读到指针值+
-                    //   栈垃圾；须 Load 槽得对象地址（对象本体 56 字节）
-                    if (semantic_ != nullptr &&
-                        semantic_->isClassType(types::canonical(types::stripRef(srcST)))) {
-                        srcAddr = emitResult(ir::Opcode::Load,
-                                             {ir::IRValue::var(srcUniqueId, "ptr")},
-                                             "ptr", srcUniqueId, node->location);
-                    } else {
-                        srcAddr = emitResult(ir::Opcode::AddrOf,
-                                             {ir::IRValue::var(srcUniqueId, "i64")},
-                                             "ptr", srcUniqueId, node->location);
-                    }
-                }
-                if (srcAddr.id >= 0) {
-                    // H8-⑤ 补完（2026-08-25 容器持有类对象）：类元素且有拷贝构造
-                    //   且源为类变量（向量 追加 的 值）——调用拷贝构造深拷贝
-                    //   （this=内联元素地址，实参=&源槽 byRef 解引用得源对象），
-                    //   元素独立拥有内部数组（浅拷贝共享指针 + RAII 双释放 0xC0000374）。
-                    //   注：源为 IndexExpr 元素（插入/删除移位）暂保持 CopyStruct
-                    //   浅拷贝（byRef 无法引用内联元素），容器仅尾部追加/弹出安全。
-                    const ClassMemberInfo* copyCtor =
-                        semantic_->findCopyConstructor(tElemCanon);
-                    if (copyCtor != nullptr && !srcUniqueId.empty()) {
-                        const std::string copyOwner =
-                            copyCtor->ownerClass.empty() ? tElemCanon
-                                                         : copyCtor->ownerClass;
-                        const ir::IRValue srcRef = emitResult(
-                            ir::Opcode::AddrOf,
-                            {ir::IRValue::var(srcUniqueId, "i64")},
-                            "ptr", srcUniqueId, node->location);
-                        emit(ir::Opcode::Call, {addr, srcRef}, ir::IRValue(),
-                             methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
-                             node->location);
-                    } else {
-                        const int size = semantic_->typeSizeOf(types::canonical(tElemSrc));
-                        emit(ir::Opcode::CopyStruct, {addr, srcAddr}, ir::IRValue(),
-                             std::to_string(size), "void", node->location);
-                    }
+                if (emitStructWholeAssign(addr, node->value.get(),
+                                          tElemCanon, node->location)) {
                     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0",
                                            node->location);
                     return;

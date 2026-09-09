@@ -366,6 +366,16 @@ private:
     //   普通字段 genExpr 后 Cast 到字段IR类型再 StorePtr。
     void emitStructInitTo(StructInitExpr* init, const ir::IRValue& targetBase,
                           const SourceLocation& loc);
+    // 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源）：
+    //   目标地址 + 右值节点 + 目标类型(canonical)。右值三形态取源地址：
+    //   IndexExpr/MemberExpr -> lvalueAddress（元素/字段内联地址）；
+    //   IdentifierExpr -> 结构体 AddrOf 槽 / 类 Load 槽（槽存对象指针）。
+    //   类且有拷贝构造且源为变量 -> 拷贝构造深拷贝；其余 CopyStruct 按语义
+    //   大小整体拷贝。目标类型非结构体/类或源形态不可取址返回 false（调用方
+    //   落回标量路径）；lastExpr_ 由调用方设置（下标位=常量0，成员位=目标地址）。
+    bool emitStructWholeAssign(const ir::IRValue& dstAddr, Expr* valueNode,
+                               const std::string& dstElemCanon,
+                               const SourceLocation& loc);
     // 分配变量寄存器：Alloca并登记映射（Task 2.4：srcType 记录源码复合类型）
     ir::IRValue allocVar(const std::string& name, const std::string& irType,
                          const std::string& srcType, const SourceLocation& loc);
