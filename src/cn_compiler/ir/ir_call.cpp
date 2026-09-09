@@ -264,6 +264,32 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
 
     std::vector<ir::IRValue> args;
     for (std::size_t ai = 0; ai < node->arguments.size(); ++ai) {
+        // D3 根治（2026-09-09 第四十六轮）：构造字面量实参位——求和(点{x=3, y=4})：
+        //   结构体实参按 byRef ABI 传地址，字面量须先物化到调用方临时变量再传
+        //   地址（与返回位 __ret 临时 ir_stmt.cpp 同构；Rust：值上下文临时
+        //   place 物化）。原直接 genExpr -> 空桩常量0 被 Cast 成 i64 当地址传
+        //   -> 被调方解引用空指针段错误（探针 rc=139 实锤，静默内存违例）。
+        //   类型守卫用字面量自身类型名（语义层已模块解析）——非结构体形态不可
+        //   达（visitStructInitExpr 已拒绝未声明类型）。
+        if (semantic_ != nullptr &&
+            node->arguments[ai]->getType() == NodeType::StructInitExpr) {
+            StructInitExpr* argInit =
+                static_cast<StructInitExpr*>(node->arguments[ai].get());
+            const std::string argStruct = types::canonical(argInit->typeName);
+            if (semantic_->isStructType(argStruct)) {
+                const std::string temp = "__arginit" + std::to_string(varCounter_++);
+                emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                     temp, "ptr", node->location);
+                function_->varSlots[temp] = 8;
+                registerVarSlots(temp, argStruct);
+                ir::IRValue base = emitResult(ir::Opcode::AddrOf,
+                                              {ir::IRValue::var(temp, "i64")},
+                                              "ptr", temp, node->location);
+                emitStructInitTo(argInit, base, node->location);
+                args.push_back(base);
+                continue;
+            }
+        }
         ir::IRValue argVal = genExpr(node->arguments[ai].get());
         // Task 2.3：8/16位整数实参先扩展为 i64；i128/u128 实参截断为 i64
         // （Win x64 ABI 整参按64位传递；否则 emitCall 的 mov rax, op 读到槽中高位垃圾）

@@ -1000,6 +1000,35 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 return;  // 语义层已报错（只读）
             }
         }
+        // D2 根治（2026-09-09 第四十六轮）：构造字面量赋值（成员目标）——
+        //   r.右下 = 点{ x = 11, y = 12 }（字段为结构体）同走 emitStructInitTo
+        //   单点逐字段写（与下标位 Task 2.7 / 标识符位 / 声明位同构——Rust 目标
+        //   place 语义，穷举纪律在语义层 visitStructInitExpr）。原无此分支：
+        //   空桩常量0 落 StorePtr 只写 8 字节 -> 字段静默零填（E2E 183 探针
+        //   实锤 11/12 打出 0/0）。目标地址 = lvalueAddress(成员左值)。
+        if (semantic_ != nullptr && !isCompoundAssignOp(node->op) &&
+            node->value->getType() == NodeType::StructInitExpr) {
+            StructInitExpr* init = static_cast<StructInitExpr*>(node->value.get());
+            // 对象所属结构体（memberObjStructType 递归+指针解引用剥离）-> 字段类型
+            const std::string ownerStruct = memberObjStructType(member);
+            const StructDecl* ownerDecl =
+                semantic_->findStruct(types::canonical(ownerStruct));
+            std::string fieldStruct;
+            if (ownerDecl != nullptr) {
+                for (const auto& f : ownerDecl->fields) {
+                    if (f.name == member->memberName) {
+                        fieldStruct = types::canonical(f.type);
+                        break;
+                    }
+                }
+            }
+            if (!fieldStruct.empty() && semantic_->isStructType(fieldStruct)) {
+                ir::IRValue fieldAddr = lvalueAddress(node->target.get());
+                emitStructInitTo(init, fieldAddr, node->location);
+                lastExpr_ = fieldAddr;   // 与整体赋值链式语义一致（值=目标地址）
+                return;
+            }
+        }
         ir::IRValue value = genExpr(node->value.get());
         // 目标类型：字段IR类型
         // 修复10：对象可为 变量（方形.x）/ 数组字段元素（方形.顶点[0].x）/
@@ -1449,6 +1478,34 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 lastExpr_ = newObj;
                 return;
             }
+        }
+    }
+    // D2 根治（2026-09-09 第四十六轮）：构造字面量赋值（标识符目标）——
+    //   p = 点{ x = 7, y = 9 } 与下标位（Task 2.7）/声明位同走 emitStructInitTo
+    //   单点逐字段写（Rust 同构：构造字面量在任意值上下文=目标 place 逐字段
+    //   初始化，穷举纪律在语义层 visitStructInitExpr）。原无此分支：genExpr
+    //   空桩（常量0）落入通用 Store 只写首槽 8 字节 -> B1 零填假成功（静默
+    //   错误代码，E2E 183 探针实锤 p.x 打出 0）。链式赋值 a = p = 点{...} 的
+    //   外层经 isChainedAssign 路径取本分支返回的目标地址，语义一致。
+    if (semantic_ != nullptr && !unique.empty() && !isCompoundAssignOp(node->op) &&
+        node->value->getType() == NodeType::StructInitExpr) {
+        StructInitExpr* init = static_cast<StructInitExpr*>(node->value.get());
+        const std::string tgtCanon = types::canonical(lookupSrcType(ident->name));
+        if (semantic_->isStructType(tgtCanon)) {
+            // A-1（引用参数）：目标为引用参数时目标地址 = Load 槽（槽内存被引用对象地址）
+            ir::IRValue dstAddr;
+            if (isByRefCapture(ident->name)) {
+                dstAddr = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(unique, "ptr")},
+                                     "ptr", unique, node->location);
+            } else {
+                dstAddr = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(unique, "i64")},
+                                     "ptr", unique, node->location);
+            }
+            emitStructInitTo(init, dstAddr, node->location);
+            lastExpr_ = dstAddr;   // 与整体赋值链式语义一致（值=目标地址）
+            return;
         }
     }
     ir::IRValue value = genExpr(node->value.get());

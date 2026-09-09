@@ -390,6 +390,19 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             }
         }
     }
+    // D1 根治（2026-09-09 第四十六轮）：变量 q = 点{...} 推断声明位——构造字面量
+    //   自带类型名（语义层 visitStructInitExpr 已按模块解析改写），提前回填
+    //   node->typeName 使 srcType/槽类型/结构体初始化分支/成员寻址全链取到真实
+    //   类型。原推断枚举（下方字面量分支族）无 StructInitExpr 分支：irType 兜底
+    //   i32 单槽 + srcType 空——初始化分支按空 typeName 查表失败静默零填，
+    //   成员寻址退化（读=常量0/写=丢字段偏移，E2E 183 探针实锤）。
+    //   Rust 同构：let 绑定从值表达式取类型，声明位与赋值位同一 lowering。
+    if (semantic_ != nullptr && node->typeName.empty() && !node->funcPtr.isFunctionPtr() &&
+        node->initializer != nullptr &&
+        node->initializer->getType() == NodeType::StructInitExpr) {
+        node->typeName =
+            static_cast<StructInitExpr*>(node->initializer.get())->typeName;
+    }
     // 源码类型（Task 2.4：整32* / 整32[5] 复合类型保留用于元素类型推断/数组槽数）
     // Task 6.1（泛型函数实例化）：T/T*/结果<T,E> 等类型参数替换为实参类型
     //   （交换<整32> 函数体内 `T 临时`、`数据[位置]` 的元素类型推断须用实参类型）
