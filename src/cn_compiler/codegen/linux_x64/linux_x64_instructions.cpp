@@ -309,11 +309,30 @@ void LinuxX64CodeGenerator::emitFloatBinary(LinuxX64AsmWriter& writer,
     emitStackStore(writer, regSlotOffset(inst.result.id), "xmm0", inst.type);
 }
 
+// 移位量常量文本解析（0x/0b/0o 前缀感知——std::stoi 对 "0x10" 返回 0 的潜伏
+// 缺陷修复，2026-09-09；loadOperandToX 前缀转换同构）。异常兜底 0。
+static int shiftAmtOf(const std::string& text) {
+    if (text.size() > 2 && text[0] == '0' &&
+        (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' || text[1] == 'B' ||
+         text[1] == 'o' || text[1] == 'O')) {
+        const int base = (text[1] == 'x' || text[1] == 'X') ? 16
+                         : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
+        try { return static_cast<int>(std::stoull(text.substr(2), nullptr, base)); }
+        catch (...) { return 0; }
+    }
+    try { return static_cast<int>(std::stoll(text)); }
+    catch (...) { return 0; }
+}
+
 // ==================== 移位（Task 2.3） ====================
 
 // 移位运算：dst = op1 << op2 / op1 >> op2
 // shl（左移）/ sar（有符号算术右移）/ shr（无符号逻辑右移）
 // x86_64 可变移位量必须经 cl：寄存器操作数先 mov ecx, r9d
+// 移位量语义（2026-09-09 规范化，Rust release 掩码同构，与 const_fold 一致）：
+//   按操作数类型位宽取模。本后端统一经 64 位寄存器运算，硬件按 64 取模——
+//   ≤32 位类型须显式 and 掩码到类型位宽（否则 mod 64 与折叠 mod 32/8/16
+//   分叉）；常量路径编译期掩码（零运行时开销）。
 void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
                                       const ir::IRInstruction& inst) {
     const std::string& srcType = inst.operands[0].type;
@@ -321,13 +340,19 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
                              srcType == "u32" || srcType == "u64");
     const std::string sh = (inst.opcode == ir::Opcode::Shl) ? "shl"
                            : (isUnsigned ? "shr" : "sar");
+    const int shiftMask = (srcType == "i64" || srcType == "u64") ? 63
+                          : (srcType == "i32" || srcType == "u32") ? 31
+                          : (srcType == "i16" || srcType == "u16") ? 15 : 7;
     loadOperandToX(writer, inst.operands[0], "r10");
     if (inst.operands[1].isConstant) {
-        const int shiftAmt = std::stoi(inst.operands[1].extra);
+        const int shiftAmt = shiftAmtOf(inst.operands[1].extra) & shiftMask;
         writer.line(sh + " r10, " + std::to_string(shiftAmt));
     } else {
         loadOperandToX(writer, inst.operands[1], "r9");
         writer.line("mov ecx, r9d");
+        if (shiftMask < 63) {
+            writer.line("and ecx, " + std::to_string(shiftMask));
+        }
         writer.line(sh + " r10, cl");
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);

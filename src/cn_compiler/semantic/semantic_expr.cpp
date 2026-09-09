@@ -1308,6 +1308,19 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
                                 "' 隐式转换为 '" + fieldType + "'");
         }
     }
+    // 穷举纪律（2026-09-09 用户裁决，Rust E0063 同构）：构造字面量必须穷举全部
+    //   字段——缺字段=编译错误。构造字面量是显式初始化契约，静默零填=半实现
+    //   错误源（拼漏字段静默得 0）；裸声明 B1 零初始化确定语义不受影响。
+    //   豁免联合体：C 惯例=单成员激活初始化，穷举无意义。
+    if (!decl->isUnion) {
+        for (const auto& f : decl->fields) {
+            if (seenFields.count(f.name) == 0) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "结构体 '" + decl->name + "' 初始化缺少字段 '" +
+                                        f.name + "'");
+            }
+        }
+    }
     lastType_ = structType;
 }
 void SemanticAnalyzer::visitSelfExpr(SelfExpr* node) {

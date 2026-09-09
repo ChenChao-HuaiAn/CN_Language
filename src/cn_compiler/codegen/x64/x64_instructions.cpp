@@ -629,6 +629,21 @@ void X64CodeGenerator::emitFloatBinary(AsmWriter& writer, const ir::IRInstructio
     writer.line(load + " " + mp + dst + ", xmm0");
 }
 
+// 移位量常量文本解析（0x/0b/0o 前缀感知——std::stoi 对 "0x10" 返回 0 的潜伏
+// 缺陷修复，2026-09-09；loadOperandToX 前缀转换同构）。异常兜底 0。
+static int shiftAmtOf(const std::string& text) {
+    if (text.size() > 2 && text[0] == '0' &&
+        (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' || text[1] == 'B' ||
+         text[1] == 'o' || text[1] == 'O')) {
+        const int base = (text[1] == 'x' || text[1] == 'X') ? 16
+                         : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
+        try { return static_cast<int>(std::stoull(text.substr(2), nullptr, base)); }
+        catch (...) { return 0; }
+    }
+    try { return static_cast<int>(std::stoll(text)); }
+    catch (...) { return 0; }
+}
+
 // ==================== 移位（Task 2.3） ====================
 
 // 移位运算：dst = op1 << op2 / op1 >> op2
@@ -646,17 +661,24 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
     const std::string sh = (inst.opcode == ir::Opcode::Shl) ? "shl"
                            : (isUnsigned ? "shr" : "sar");
     // 8/16位：扩展后按32位运算（与 emitIntBinary 一致）
+    // 移位量语义（2026-09-09 规范化，Rust release 掩码同构，与 const_fold 一致）：
+    //   按操作数类型位宽取模。8/16 位经 32 位寄存器运算，硬件按 32 取模——须显
+    //   式 and 掩码到类型位宽（否则 mod 32 与折叠 mod 8/16 分叉）；32/64 位路径
+    //   硬件按操作数宽度取模恰为定义语义（常量 imm8 亦按宽度取模），零改动。
     if (srcType == "i8" || srcType == "i16" || srcType == "u8" || srcType == "u16") {
         const std::string ext = (srcType == "i8" || srcType == "i16") ? "movsx" : "movzx";
         const std::string mp = memSizePtr(srcType);
+        const int shiftMask = (srcType == "i16" || srcType == "u16") ? 15 : 7;
         writer.line(ext + " eax, " + mp + op1);
         // 移位量：常量 -> 立即数；否则 -> cl
         if (inst.operands[1].isConstant) {
-            writer.line(sh + " eax, " + op2);
+            const int shiftAmt = shiftAmtOf(inst.operands[1].extra) & shiftMask;
+            writer.line(sh + " eax, " + std::to_string(shiftAmt));
         } else {
             // 移位量须装载到 cl（rcx 低8位）：物理寄存器（寄存器分配）用 32 位名
             //   （mov ecx, r14 尺寸不匹配 A2022；mov ecx, r14d 写低32位值语义一致）
             writer.line("mov ecx, " + widthFor("i32", op2));
+            writer.line("and ecx, " + std::to_string(shiftMask));
             writer.line(sh + " eax, cl");
         }
         writer.line("mov " + dst + ", eax");

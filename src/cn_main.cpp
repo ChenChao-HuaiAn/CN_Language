@@ -927,6 +927,17 @@ int main(int argc, char** argv) {
     //   ml64/link 等工具链按 ANSI 解释路径，UTF-8 中文会乱码（E2E 18/19 回归）。
     //   货舱.toml 自动发现的中文文件名由 applyCargoConfig 做 UTF-8 -> ANSI 适配。
     std::vector<std::string> args(argv + 1, argv + argc);
+#ifdef _WIN32
+    // 路径身份归一（2026-09-09 用户裁决，Rust std::path 分隔符等价同构）：win 下
+    //   '\' 与 '/' 均为合法分隔符，argv 反斜杠形态与编译器内部构造的正斜杠路径
+    //   文本失配=包上下文恢复失配/已加载去重失效双载歧义。入口单点归一 '\'->'/'，
+    //   下游全部字符串路径身份自然一致（unix 下 '\' 是合法文件名字符，不动）。
+    for (auto& a : args) {
+        for (auto& ch : a) {
+            if (ch == '\\') ch = '/';
+        }
+    }
+#endif
 
     // 无参数：打印帮助
     if (args.empty()) {
