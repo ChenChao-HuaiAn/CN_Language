@@ -10,12 +10,14 @@
 
 import argparse
 import ctypes
+import hashlib
 import os
 import pathlib
 import signal
 import subprocess
 import platform
 import sys
+import threading
 import time
 
 # 强制stdout/stderr使用UTF-8输出（避免Windows管道/控制台代码页导致中文乱码）
@@ -518,217 +520,25 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     # 元组第四元素（可缺省）= 供给源列表（②b B7，2026-09-02）：用例目录下的 .cn
     #   经宿主真实管线编译为 .o 参与链接且置于 v2p.obj 之前——v2p 只实例化过
     #   v2 自身用到的类型（如 126 的 词条），用例自有类型须供给符号与布局权威
-    v2闭环用例们 = {
-        "119_v2_多文件链接闭环": (["主.cn", "计算.cn"], 14),   # 加倍(7)
-        "120_v2_顶层常量": (["主.cn", "常量库.cn"], 62),       # 常量和() + 系数*增量 = 38+24
-        "123_v2_容器": (["主.cn"], 21333, True),              # P7b：向量/映射/结果/字符串/RAII = 21333
-        "125_v2_控制流与短路与转义": (["主.cn"], 0, True),    # 三缺陷根治：中途回退/短路/转义 = 0
-        "126_v2_结构体元素容器": (["主.cn"], 0, True, ["供给.cn"]),  # ②b：布局/视图/传参/深拷贝析构 = 0
-        "127_v2_嵌套容器与容器字段与静态与引用": (["主.cn"], 0, True, ["供给.cn"]),  # ②c 四项：嵌套/容器字段/静态/& = 0
-        "128_v2_内置函数与字符串拼接": (["主.cn"], 0),  # ③ 前第一波：内置符号直调/str_concat 拼接/类型大小折叠/打印族 = 0
-        "129_v2_字符串下标与复合赋值与登记补全": (["主.cn"], 0, True, ["供给.cn"]),  # ③ 第二波：下标 A-1 语义/复合赋值五形态/登记点三缺口 = 0（映射$整64$字符串 经供给）
-        "130_v2_指针下标读写": (["主.cn"], 0),  # ③ 第三波：指针下标读写（出参/步进按元素宽度/负下标/复合赋值/写透/强转操作数）= 0
-        "132_v2_可写左值全形态闭环": (["主.cn"], 0),  # 缺陷②根治：可写左值全形态不误伤 + v2p 负测自检行固化（非左值/常量赋值拒绝）= 0
-        "133_v2_限定名内置IO与文件": (["主.cn"], 0),  # ③ 第五波：IO::打印到错误 + 文件::读写字链（裸内置直调 __cn_print_err/__cn_file_*）+ 空类型返回函数 = 0
-        "137_v2_三元运算符": (["主.cn"], 0),  # ③ 第六波：三元条件（优先级1.5右结合/惰性求值副作用双向/除零保护/整数族宽化/字符串分支）= 0
-        # 灰色点根治（2026-09-04 用户裁决·缺陷零容忍）：①③④ 正路径（真/假 布尔
-        #   字面量 T_布尔 拼接锚定/解引用复合赋值/窄宽强转截断）= 0
-        "138_v2_灰色点收口": (["主.cn"], 0),
-        # 灰色点⑤：语义错误即中止——负路径闭环（预期退出码 None：v2p 须失败且不产 asm）
-        "139_v2_语义错误中止": (["主.cn"], None),
-        # 灰色点②方案A：字符串比较运算符拒绝——宿主负测见 140，v2 负路径同款
-        "141_v2_字符串比较拒绝": (["主.cn"], None),
-        # 簇③根治·C1（2026-09-04 用户裁决）：词法 -- / 节点_自减 前后缀 / 语义常量
-        #   拒绝 / IR 发射自增自减 共享（局部/参数/引用写回/静态）= 0（v2p 尾部
-        #   常量自减/未声明自减两负测自检行固化）
-        "142_v2_自减全链": (["主.cn"], 0),
-        # 簇②根治·B1（2026-09-04 用户裁决+B1a 边界裁决）：导入项登记+裸名改写限定名
-        #   （裸指针契约锚定，stdlib 包装契约分叉随并入专项收口）= 0（未导入裸调
-        #   负测自检行固化）
-        "143_v2_导入项裸名改写": (["主.cn"], 0),
-        # 簇④+簇⑥根治（2026-09-04）：v2 泛型实参星号后缀消费并入合成名（簇④）+
-        #   宿主泛型实例名含实参星号的三处误剥根治（簇⑥：visitMemberExpr/
-        #   semantic_call/ir_oop_call 原名查类优先）——向量<整64*> 全链 = 0；
-        #   供给 向量$整64* 方法符号宿主实例化（B7）；v2p 尾部 结果字面量初始化
-        #   负测行固化（簇⑤拒绝）
-        "144_v2_泛型星号实参": (["主.cn"], 0, True, ["供给.cn"]),
-        # plans/015 方案B（2026-09-04 用户裁决）v2 侧负路径：缺分号拒绝——
-        #   吃分号（16 分支+顶层常量/静态）诊断+语法错误数 计数+语法错误即中止
-        "146_v2_缺分号拒绝": (["主.cn"], None),
-        # IR生成.cn 冒烟 96 错根因收口（2026-09-04）：v2 泛型引用局部声明
-        #   （向量<项>& r = h.表）——语法层形态检测 '& 标识符' + IR 层引用局部
-        #   =绑定（槽登记 引用参数槽们 与引用参数同构）= 0；供给 向量$项 方法
-        #   符号宿主实例化（B7）；宿主 sanity 双文件先行锚定（裸类型引用局部
-        #   项& q 宿主亦不支持——双侧一致边界入档）
-        "147_v2_局部引用声明": (["主.cn"], 0, True, ["供给.cn"]),
-        # IR生成.cn 冒烟 [ir2] 缺口根治（2026-09-04）：用户函数返回结构体
-        #   retbuf ABI 全链（被调方拷贝+rax / 调用方位0+帧尾共享区）+ 结构体
-        #   =调用返回初始化 + 结构体按值实参=嵌套调用（655 条误报根治——
-        #   rax=retbuf 地址即按值实参地址）= 0；冒烟刚需形态
-        #   IR指令 项 = 建IR指令(...) / IR追加(指令, 建IR指令(...))
-        "148_v2_函数返回结构体": (["主.cn"], 0, True),
-        # IR 层错误即中止（2026-09-04，IR生成.cn 冒烟 [ir2] 纪律收口）：
-        #   [ir2] 统一计数（IR层诊断 单点）+ 主.cn IR 生成后中止不产 asm——
-        #   对齐 139 语义错误即中止；触发形态 类型大小(变量)（语义放行/IR 拒）
-        "149_v2_IR层错误中止": (["主.cn"], None),
-        # 缺陷零容忍收口轮（2026-09-04 用户裁决：搁置条目全部立即根治）：
-        #   引用返回全链（宿主 P3-18 对齐——读值默认解引用/赋值目标/复合赋值/
-        #   引用绑定）+裸类型引用局部（宿主 parser 形式6/v2 语法层 '&' 形态）+
-        #   引用初始化下标+正8/正16 无符号窄宽（movzx/uxtb）= 0；宿主 sanity
-        #   先行 exit=0（引用返回读值缺陷 suppressRefDeref_ 连带根治）
-        "150_v2_引用返回与裸引用与无符号窄宽": (["主.cn"], 0),
-        # plans/017 T4（2026-09-06）：v2 版 SysV AMD64 ABI 分歧面专项（三平台
-        #   语义一致，重点锚定 linux-x86_64 X64L 后端）——第 6/7 参数边界（第 7
-        #   走栈）/结构体返回（rdi 隐藏 retbuf）/结构体按值参数拷贝×满 6 整型
-        #   寄存器位（宿主第十八轮 r9 缺陷 v2 侧同款探针，r10/r11 数据临时
-        #   纪律）/结构体返回+7 参数（retbuf 占位后实参整体后移）/递归对齐 = 0
-        "158_v2_linuxx64_系统V调用约定": (["主.cn"], 0),
-        # plans/018 P6b（2026-09-07 第三十一轮下半程）：v2 侧模块系统加载器——
-        #   164 父挂子模块 声明自动加载强语义（传输件 无人导入仍被编译，
-        #   定位收紧合法形态②）；165 货舱.toml 纯 CN 解析器（货舱解析.cn）
-        #   + 依赖查找链（[依赖] 声明 → 依赖/<名>/<名>.cn 候选）
-        "164_v2_模块自动加载": (["主.cn"], 0),
-        "165_v2_货舱依赖发现": (["主.cn"], 0),
-        # plans/018 P6b 工作流3 第 3/4 层（2026-09-07 第三十一轮下半程·续2 后续轮）：
-        #   语义分桶+三级名称解析+可见性强制 锚定——167 ①遮蔽③+限定直达（正测）；
-        #   168 E0255 导入与本地定义同名（负测）；169 ③×③ 使用点歧义 E0659（负测，
-        #   双模块 glob 同名公开符号）；170 私有符号导入拒绝（可见性强制负测）；
-        #   171 跨模块同名同签名合法共存（链接符号 模块$名#参数串 隔离——错编
-        #   缺陷家族的 v2 侧锚定，对应宿主 E2E 160）
-        "167_v2_三级解析遮蔽": (["主.cn"], 0),
-        "168_v2_E0255导入同名": (["主.cn"], None),
-        "169_v2_glob歧义": (["主.cn"], None),
-        "170_v2_私有不可导入": (["主.cn"], None),
-        "171_v2_跨模块同名共存": (["主.cn"], 0),
-        # plans/018 类型/常量布局分桶（2026-09-08 第三十三轮）：跨模块同名结构体
-        #   布局独立（甲 16B sret vs 主 4B——修复前大小表纯名平铺被覆盖 → sret
-        #   降级标量返回 ABI 错乱）+ 同名常量值独立（修复前后收集覆盖串值）+
-        #   限定类型语法（甲::记录 变量声明/跨模块实参——宿主 E2E 56 对齐）+
-        #   类型引用存在性/私有/歧义诊断数据面基础 = 0（五断言和校验 rc）
-        "172_v2_类型常量分桶": (["主.cn"], 0),
-        # R0 测试面解耦轮（2026-09-08 用户批准）：v2 主.cn 内置负测自检链（源码2~13）
-        #   删除——12 拒绝形态迁移本合集负路径用例承接（语义层全量收集诊断，
-        #   expected 固化全部 [错误] 契约行+计数中止行；对齐 139 纪律）
-        "174_v2_语义拒绝合集": (["主.cn"], None),
-        # plans/018 v2self 锚定轮（2026-09-08 第三十五轮）：目录包根与成员模块
-        #   路径撞名（设备/包.cn 候选1b=模块名 + 成员 设备.cn 挂载名=同名）——
-        #   模块路径们 是文件级快照含重复条目，③ 合并全局可见构建 全部模块ID们
-        #   须经模块集合去重；修复前同签名双计数假报 E0659「符号歧义: 设备」
-        #   （v2self 编译 v2 自身实测同款，来源们=自拼接「设备/设备」），
-        #   合法程序被拒。期望：编译通过，纯名调用同名字函数 rc=173
-        "173_v2_目录包根撞名成员": (["主.cn"], 173),
-        # 第四十一轮 字面量位模式 共用层根治的自身源码之外探针（2026-09-09 第四十二轮
-        #   单位机跨机轮转正，lessons 权重10「凡编译器支持的语法必须有自身源码之外的
-        #   探针锚定后端发射」）——0x/0b/0o 进制前缀+L/U 后缀+超 imm32 十进制+2^63-1
-        #   边界+负常量补码；原 arm64/X64L 本地解析只认十进制（0x 静默解析为 0 潜伏
-        #   缺陷）。176 为宿主侧同源用例。= 0（八断言全过）
-        "177_v2_字面量进制形态": (["主.cn"], 0),
-        # 第四十三轮（2026-09-09 用户裁决三项+④妥协重做）：位运算五算子+复合赋值
-        #   全链（规范 01b§5.4；IR_位与/位或/位异或 预留启用+左移/右移 68/69）+
-        #   结构体构造字面量（规范 05 二穷举纪律，Rust E0063/E0062 同构）。
-        #   180：五算子+复合赋值+移位掩码（1<<70 mod64=64）校验和闭环；181：
-        #   构造字面量全字段赋值语义；182：缺字段编译失败负路径（语法错误数中止）。
-        "180_v2_位运算形态": (["主.cn"], 176),
-        "181_v2_构造字面量形态": (["主.cn"], 42),
-        "182_v2_构造穷举负测": (["主.cn"], None),
-        # 第四十六轮（2026-09-09 观察项①③，规范 01b§6 对齐）：相等(6)/比较(7)
-        #   两级拆分 + 构造字面量赋值位（标识符/成员目标，Rust 目标 place 同构，
-        #   穷举纪律与声明位单一助手同源）。185：分级校验和（合并层=13/拆分=14）；
-        #   186：赋值位全字段语义 s1+s2*10；187：赋值位缺字段负路径（中止不产 asm）。
-        "185_v2_比较层分级": (["主.cn"], 14),
-        "186_v2_构造赋值位": (["主.cn"], 84),
-        "187_v2_构造赋值穷举负测": (["主.cn"], None),
-        # 第四十八轮（2026-09-09 观察项 46-a/46-b 根治）：成员结构体作值读写——
-        #   声明位读 原把 LoadPtr 取的 8 字节值当源地址结构体拷贝（解引用垃圾
-        #   地址=win 0xC0000005/linux rc=139 段错误实锤）；赋值位读 右值原限定
-        #   标识符可见失败；链式读 成员链中间跳偏移不可标注。188：A写/B声明位读/
-        #   C赋值位读/D成员成员/E实参回归锚 六形态校验和 c=63 + L1 链式读打印
-        #   （宿主侧同源用例 188）。
-        "188_v2_成员结构体值读写": (["主.cn"], 63),
-        # 第四十九轮（2026-09-10 观察项 46-e 根治）：联合体类型面 v2 闭环——
-        #   解析结构体声明 联合体关键字分支（字段偏移全 0+大小=最大字段向上
-        #   对齐，C 布局宿主 computeLayout isUnion 同构；仍产 节点_结构体，
-        #   语义/成员访问/整体赋值/传参全链复用）。修复前「未声明的类型」
-        #   可见失败。五形态校验和：A成员写读+1/B内存共享+2/C声明位整体
-        #   赋值+4/D赋值位整体拷贝+8/E值传参+16=31（宿主侧同源用例 189）。
-        "189_v2_联合体值语义": (["主.cn"], 31),
-        # 第四十九轮（2026-09-10 观察项 46-c 根治）：类型推断声明 v2 闭环——
-        #   解析层「变量」分支（类型节点文本=空串哨兵）+语义层 表达式类型ID
-        #   推导（成员/二元新推导函数，同构 IR 解析成员链结构体ID 范本）+
-        #   推断声明类型表（跨层：语义登记 -> IR 生成变量声明 查表回填布局
-        #   分派）。修复前「语句缺少分号」可见失败。八形态校验和：A字面量+1/
-        #   B字符串+2/C拷贝+4/DL后缀+8/E调用+16/F成员结构体+32/G嵌套成员
-        #   +64/H二元+128=255（宿主侧同源用例 190；宿主同轮根治推断回填
-        #   AST typeName 缺口）。
-        "190_v2_变量推断声明": (["主.cn"], 255),
-        # 第五十轮（2026-09-10 46-f 用户裁决方案A）：无符号类型语义 v2 闭环——
-        #   T_正32=70/T_正64=71 独立类型码（类型码() 归一拆分+二元指令类型字段
-        #   取操作数登记类型）+三后端按码分派（div/shr/setb 族、udiv/lsr/lo 族）
-        #   +正32 存储点 IR_位与 0xFFFFFFFF 截断（对齐宿主 4 字节槽）+访存 32 位
-        #   零扩展读回。修复前：除法恒 idiv（2^63/2 出负）/右移恒 sar/比较恒
-        #   setl 族/无 32 位截断。七面校验和：A除法+1/B右移+2/C截断+4/D比较
-        #   +8/E小于假+16/F边界+32/G全精度+64=127（宿主侧同源用例 191）。
-        "191_v2_无符号语义": (["主.cn"], 127),
-        # 混合符号二元运算拒绝·v2 负路径闭环（2026-09-10 第五十一轮 方案A 用户
-        #   裁决，Rust 对齐；规范 plans/001 §3.7）——语义检查表达式.cn 检查混合
-        #   符号二元+语义检查.cn 二元分支扩算术/位运算调用；预期退出码 None=
-        #   v2p 语义错误中止（4 诊断行固化 主.expected；不产 asm）
-        "192_v2_混合符号二元运算拒绝": (["主.cn"], None),
-        # 混合符号显式转换 v2 闭环（同轮正测对偶）——显式 整64(小) 转换+字面量
-        #   豁免+同符号宽化放行且发射语义正确。五锚校验和：显式转换真+1/显式
-        #   转换假+0/字面量豁免+4/整64字面量+8/同符号+16=29（宿主侧同源 193）
-        "193_v2_混合符号显式转换": (["主.cn"], 29),
-        # 窄宽（正8/正16）显式转换→64 位目标锚定（2026-09-10 第五十五轮 观察项
-        #   ②收口）——正8/正16 经 类型码() 归一登记 T_整64、方案甲源分派归入
-        #   T_正64 64 位直拷（64 位槽零扩展写入保证高位干净）；结构体字段层经
-        #   类型宽度码() T_整8 窄宽读回（1 字节布局+movzx/uxtb 分支=活代码）。
-        #   九形态校验和：变量显式转换五形态（+1/+2/+4/+8/+16）+ 字段面四形态
-        #   （+1/+2/+4/+8）→ 返回 累计+累计2*32，全对=511→POSIX 255
-        #   （宿主侧同源 194：stdout 五锚 31/65535/255/15/12345）
-        "194_v2_窄宽显式转换锚定": (["主.cn"], 255),
-        # 55-c 方案A 落地·赋值/传参/返回面混合符号拒绝 v2 负路径（2026-09-10
-        #   第五十六轮 用户裁决，Rust E0308 对齐）——声明/赋值/返回三面（检查
-        #   混合符号赋值，宿主 canConvert+字面量豁免同构）；字面量初始化豁免。
-        #   诚实边界：传参面 v2 暂不查（实参边界未记录另轮），诊断 3 行+中止
-        "195_v2_混合符号赋值传参拒绝": (["主.cn"], None),
-        # plans/019 阶段1 · 显式转移 v2 正路径（2026-09-10 第五十七轮）——
-        #   v2 侧 转移() 指针/字符串全位置（检查调用表达式 特判+表标记转移+
-        #   生成调用 展开）；三形态校验和：指针交接 *r==55 +1 / 字符串转移
-        #   长度 3 +2 / 遮蔽新指针声明读 55 +4 → 全对 rc=7。容器声明位 v2
-        #   随阶段3 浅拷贝对齐（宿主 196 已锚定——诚实边界）
-        "196_v2_显式转移": (["主.cn"], 7),
-        # plans/019 阶段1 · 转移后使用拒绝 v2 负路径——五形态（读值/赋值/
-        #   传参/返回/标量复制语义），v2 语义诊断+中止行（195_v2 同款）
-        "197_v2_转移后使用拒绝": (["主.cn"], None),
-        # plans/019 阶段2 · 引用/指针逃逸 v2 负路径（2026-09-10 第五十八轮）——
-        #   静态持局部地址（赋值位）+指针返回 &局部（缺陷② -> 整64* 返回类型
-        #   解析修复后的新能力面）；v2 语义诊断+中止行
-        "198_v2_引用逃逸拒绝": (["主.cn"], None),
-        # 缺陷②载体 · v2 指针返回类型正路径——返回 &静态 合法形态零误伤+
-        #   解引用读回校验和（*p==7 +1 / 基=9 后 *p==9 +2 → rc=3）
-        "199_v2_推断声明字符串拷贝": (["主.cn"], 3),
-        # plans/019 阶段3 · 常量只读引用 v2 正路径（2026-09-10 第五十九轮）——
-        #   语法层 常量 前缀（类型节点附加 256→257）+赋值面只读检查；
-        #   只读读链校验和 42+1/42+2 → rc=3
-        "200_v2_常量引用只读借用": (["主.cn"], 3),
-        # plans/019 阶段3 · 只读赋值拒 v2 负路径（赋值面；传可变/互斥随实参
-        #   边界另轮——诚实边界）
-        "201_v2_常量引用写拒绝": (["主.cn"], None),
-        # plans/019 阶段3b · 转移浅交接 v2 正路径（2026-09-10 第六十一轮）——
-        #   容器声明位转移放开（豁免模型浅交接零 IR 改动）；校验和
-        #   大小=2 +1 / 元素0=10 +2 / 元素1=32 +4 → rc=7
-        "203_v2_转移浅交接": (["主.cn"], 7, True),
-        # plans/019 阶段3b 残余 · 调用借用纪律 v2 对齐（2026-09-10 第六十五轮）——
-        #   实参末位表+函数参数借用位表载体：传可变拒+同调用互斥（2 诊断+中止）
-        "207_v2_传参与互斥拒绝": (["主.cn"], None),
-    }
-    if 名称 in v2闭环用例们:
+    # v2 闭环用例（数据驱动，2026-09-11 用户裁决去硬编码）：用例目录含
+    #   v2闭环.txt 即走 v2 自举链（宿主构建 v2p -> v2p 编译用例 -> as/g++ ->
+    #   运行 -> 退出码比对）——配置全在用例目录（新增 v2 用例零 runner 改动）：
+    #     退出码=N|负（负=预期 v2p 编译中止的负路径）
+    #     源文件=主.cn,依赖.cn（默认 主.cn）
+    #     借链=是|否（链接 v2p.obj——容器符号供给）
+    #     供给=供给.cn（宿主管线编译供给源——用例自有类型布局权威）
+    #   链接v2pobj（P7b 容器用例：v2 生成代码调用宿主编译的容器类方法符号，
+    #   实现在 v2p.obj——stdlib 源码级并入编译产物）；供给源们（②b B7）：v2p
+    #   只实例化过 v2 自身用到的类型（如 126 的 词条），用例自有类型须供给符号
+    v2配置路径 = 用例目录 / "v2闭环.txt"
+    if v2配置路径.exists():
         if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
             return "失败", f"{名称} 闭环用例仅支持 win-x64 / linux-arm64 / linux-x86_64（当前 {目标平台}）"
-        条目 = v2闭环用例们[名称]
-        源文件名们, 预期退出码 = 条目[0], 条目[1]
-        链接v2pobj = 条目[2] if len(条目) > 2 else False
-        供给源们 = 条目[3] if len(条目) > 3 else []
+        v2配置 = 解析v2闭环配置(v2配置路径)
+        源文件名们 = v2配置["源文件们"]
+        预期退出码 = v2配置["预期退出码"]
+        链接v2pobj = v2配置["链接v2pobj"]
+        供给源们 = v2配置["供给源们"]
         return 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 目标平台, 源文件名们, 预期退出码,
                         链接v2pobj, 供给源们)
 
@@ -982,6 +792,115 @@ def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     return "通过", "自举闭环成立：CN自编译版组件产物与C++版逐字节一致（阶段7验收步骤2：产物行为一致）"
 
 
+# v2 闭环用例配置解析（数据驱动，2026-09-11 用户裁决去硬编码）：用例目录的
+#   v2闭环.txt 键值行取代 runner 内注册表——新增 v2 用例只需建目录+配置文件。
+#   键：退出码（整数|负=负路径）、源文件（逗号分隔，默认 主.cn）、
+#       借链（是|否）、供给（逗号分隔）；# 后为注释。
+def 解析v2闭环配置(配置路径: pathlib.Path) -> dict:
+    配置 = {"源文件们": ["主.cn"], "预期退出码": 0, "链接v2pobj": False, "供给源们": []}
+    for 原行 in 配置路径.read_text(encoding="utf-8").splitlines():
+        行 = 原行.split("#", 1)[0].strip()
+        if not 行 or "=" not in 行:
+            continue
+        键, 值 = (x.strip() for x in 行.split("=", 1))
+        if 键 == "退出码":
+            配置["预期退出码"] = None if 值 == "负" else int(值)
+        elif 键 == "源文件":
+            配置["源文件们"] = [x.strip() for x in 值.split(",") if x.strip()] or ["主.cn"]
+        elif 键 == "借链":
+            配置["链接v2pobj"] = 值 in ("是", "true", "True", "1")
+        elif 键 == "供给":
+            配置["供给源们"] = [x.strip() for x in 值.split(",") if x.strip()]
+        else:
+            raise ValueError(f"v2闭环.txt 未知配置键: {键}（{配置路径}）")
+    return 配置
+
+
+# 判定用例是否 v2 闭环（分桶并行/预热共用——文件存在性判定）
+def 是v2闭环用例(用例目录: pathlib.Path) -> bool:
+    return (用例目录 / "v2闭环.txt").exists()
+
+
+
+def 计算v2构建指纹(编译器路径: pathlib.Path) -> str:
+    """v2p 构建缓存指纹（2026-09-11 并行提速）：v2 全树 .cn 的（相对路径+大小+
+    mtime）排序汇总 + 宿主编译器（大小+mtime）——任一变化即指纹变化，触发重建。
+    对齐 cargo 增量构建理念：输入未变不重建（30+ v2 用例全量 E2E 的最大瓶颈）。"""
+    v2目录 = 项目根目录 / "CN语言编译器v2"
+    项们 = []
+    for f in sorted(v2目录.rglob("*.cn")):
+        st = f.stat()
+        项们.append(f"{f.relative_to(项目根目录)}:{st.st_size}:{int(st.st_mtime)}")
+    if 编译器路径.exists():
+        cst = 编译器路径.stat()
+        项们.append(f"cn:{cst.st_size}:{int(cst.st_mtime)}")
+    return hashlib.md5("\n".join(项们).encode("utf-8")).hexdigest()
+
+
+def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str, 详细: bool, 编号: str = "PRE"):
+    """v2 闭环共享工件就绪（2026-09-11 全量并行裁决）：工具链探测 + 运行时 .o
+    （缺则现编）+ v2p 构建缓存（指纹=v2 全树 .cn mtime/size+编译器 mtime/size，
+    cargo 增量构建理念——输入不变不重建）。
+    返回 (v2p, v2pobj, 运行时objs, as工具, cxx工具)；失败返回 (None, 错误信息)。
+    并行纪律：主程序在统一并行池启动前调用一次（预热——消除并发构建竞态），
+    各 v2 用例再调用时必命中缓存（纯只读，无竞态）。"""
+    import shutil
+    import os
+    审计目录 = 项目根目录 / "target" / "audit2"
+    审计目录.mkdir(parents=True, exist_ok=True)
+
+    # 工具链探测（对齐宿主 cn_main.cpp：CN_AS/CN_CXX 环境变量优先，PATH，便携 gcc7 兜底）
+    as工具 = os.environ.get("CN_AS") or shutil.which("as") or "/home/user/gcc7/usr/bin/as"
+    cxx工具 = os.environ.get("CN_CXX") or shutil.which("g++") or "/home/user/gcc7/usr/bin/g++"
+    if shutil.which(as工具) is None and not pathlib.Path(as工具).exists():
+        return None, f"未找到 as 汇编器（{as工具}）"
+    if shutil.which(cxx工具) is None and not pathlib.Path(cxx工具).exists():
+        return None, f"未找到 g++ 链接器（{cxx工具}）"
+
+    # 运行时 .o（对齐宿主编译命令 g++ -c -std=c++17 -fno-exceptions -fno-rtti
+    #   -DCNRT_LINUX_MAIN；缺则现编——宿主 cn build 缓存可能被清，此处保证自包含）
+    运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
+                "math_api", "input_api", "file_api", "time_api", "system_api"]
+    运行时objs = []
+    for 模块 in 运行时名们:
+        obj = 审计目录 / f"{模块}.o"
+        if not obj.exists():
+            编译rt = 运行命令([cxx工具, "-c", "-std=c++17", "-fno-exceptions", "-fno-rtti",
+                            "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
+                            f"src/runtime/{模块}.cpp"], 项目根目录)
+            if 编译rt.returncode != 0:
+                return None, f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
+        运行时objs.append(obj)
+
+    # v2p 构建缓存（30+ v2 用例全量 E2E 最大瓶颈——每个全树构建数十秒）
+    产物后缀 = "linux" if 目标平台 == "linux-arm64" else "linuxx64"
+    v2p = 审计目录 / f"v2p_{产物后缀}"
+    v2pobj = 审计目录 / f"v2p_{产物后缀}.o"
+    缓存键路径 = 审计目录 / f"v2p_build_key_{产物后缀}.txt"
+    本次指纹 = 计算v2构建指纹(编译器路径)
+    if (v2p.exists() and v2pobj.exists() and 缓存键路径.exists()
+            and 缓存键路径.read_text(encoding="utf-8") == 本次指纹):
+        if 详细:
+            print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变），复用 {v2p.name}")
+        return v2p, v2pobj, 运行时objs, as工具, cxx工具
+    if v2p.exists():
+        v2p.unlink()
+    if v2pobj.exists():
+        v2pobj.unlink()
+    if 详细:
+        print(f"    [{编号}-1] {编译器路径} build 主.cn -> {v2p.name}（{目标平台}）")
+    编译结果 = 运行命令([str(编译器路径), "build", str(项目根目录 / "CN语言编译器v2" / "主.cn"),
+                      "--target", 目标平台, "--output", str(v2p)], 项目根目录)
+    if 编译结果.returncode != 0:
+        return None, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+    if not v2p.exists():
+        return None, f"{编号}-1 编译返回成功但未生成 {v2p.name}"
+    if not v2pobj.exists():
+        return None, f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
+    缓存键路径.write_text(本次指纹, encoding="utf-8")
+    return v2p, v2pobj, 运行时objs, as工具, cxx工具
+
+
 def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细: bool,
                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool,
                    期望文件, 审计目录: pathlib.Path, v2源码目录: pathlib.Path,
@@ -1008,51 +927,24 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     if 供给源们 is None:
         供给源们 = []
 
-    # 工具链探测（对齐宿主 cn_main.cpp：CN_AS/CN_CXX 环境变量优先，PATH，便携 gcc7 兜底）
-    as工具 = os.environ.get("CN_AS") or shutil.which("as") or "/home/user/gcc7/usr/bin/as"
-    cxx工具 = os.environ.get("CN_CXX") or shutil.which("g++") or "/home/user/gcc7/usr/bin/g++"
-    if shutil.which(as工具) is None and not pathlib.Path(as工具).exists():
-        return "失败", f"未找到 as 汇编器（{as工具}）"
-    if shutil.which(cxx工具) is None and not pathlib.Path(cxx工具).exists():
-        return "失败", f"未找到 g++ 链接器（{cxx工具}）"
-
-    # 产物命名（plans/017 T3）：arm64 保持 v2p_linux 原名（行为零变化）；
-    #   x86_64 用 v2p_linuxx64（防两平台先后全量运行互踩中间产物）
+    就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 详细, 编号)
+    if 就绪[0] is None:
+        return "失败", 就绪[1]
+    v2p, v2pobj, 运行时objs, as工具, cxx工具 = 就绪
     产物后缀 = "linux" if 目标平台 == "linux-arm64" else "linuxx64"
-    v2p = 审计目录 / f"v2p_{产物后缀}"
-    v2pobj = 审计目录 / f"v2p_{产物后缀}.o"
-    v2asm路径 = 项目根目录 / "target" / "v2asm.s"
-
-    # 运行时 .o（对齐宿主编译命令 g++ -c -std=c++17 -fno-exceptions -fno-rtti
-    #   -DCNRT_LINUX_MAIN；缺则现编——宿主 cn build 缓存可能被清，此处保证自包含）
-    运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
-                "math_api", "input_api", "file_api", "time_api", "system_api"]
-    运行时objs = []
-    for 模块 in 运行时名们:
-        obj = 审计目录 / f"{模块}.o"
-        if not obj.exists():
-            编译rt = 运行命令([cxx工具, "-c", "-std=c++17", "-fno-exceptions", "-fno-rtti",
-                            "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
-                            f"src/runtime/{模块}.cpp"], 项目根目录)
-            if 编译rt.returncode != 0:
-                return "失败", f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
-        运行时objs.append(obj)
-
-    # ===== 步骤1：宿主编译 v2 组件（目标平台）-> v2p（中间 .o 留存供链接）=====
-    if v2p.exists():
-        v2p.unlink()
-    if v2pobj.exists():
-        v2pobj.unlink()
-    if 详细:
-        print(f"    [{编号}-1] {编译器路径} build 主.cn -> {v2p.name}（{目标平台}）")
-    编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
-                      "--target", 目标平台, "--output", str(v2p)], 项目根目录)
-    if 编译结果.returncode != 0:
-        return "失败", f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
-    if not v2p.exists():
-        return "失败", f"{编号}-1 编译返回成功但未生成 {v2p.name}"
-    if not v2pobj.exists():
-        return "失败", f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
+    # v2 产物按用例隔离（2026-09-11 全量并行裁决）：v2p 的 asm 输出路径为相对
+    #   cwd 的 target/v2asm.s（v2 驱动器写死相对路径）——每用例独立工作目录
+    #   （cwd 隔离，对齐 cargo test 进程隔离理念），v2asm/obj/exe 互不踩；
+    #   入口参数改绝对路径（cwd 不再是项目根），日志锚行比对前把绝对前缀
+    #   适配回相对（.expected 文件保持相对路径文本不动）。
+    工作目录 = 审计目录 / f"v2work{编号}"
+    (工作目录 / "target").mkdir(parents=True, exist_ok=True)
+    # v2p 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
+    #   workdir 内软链到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，唯此一处）
+    stdlib链 = 工作目录 / "stdlib"
+    if not stdlib链.exists():
+        os.symlink(项目根目录 / "stdlib", stdlib链)
+    v2asm路径 = 工作目录 / "target" / "v2asm.s"
 
     # ===== 负路径闭环（139/141，win64 同款 2026-09-04；linux 侧 ARM64 复验轮对齐）：
     #   预期退出码 None = v2p 须编译失败——语义错误即中止纪律的 E2E 锚定：
@@ -1072,18 +964,21 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         #   输入文件；既有平铺负测（139/141/146/149）行为等价）
         shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
-        入口参数 = f"target/audit2/v2src{编号}/主.cn"
+        入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
         if v2asm路径.exists():
             v2asm路径.unlink()
         if 详细:
             print(f"    [{编号}-N] {v2p.name} {入口参数} {目标平台}（预期语义错误中止）")
-        运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 项目根目录, 内存上限MB=内存上限MB默认)
+        运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 工作目录, 内存上限MB=内存上限MB默认)
         if 运行结果.returncode == 0:
             return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
         if v2asm路径.exists():
             return "失败", f"{编号}-N v2p 语义错误中止后仍产出 target/v2asm.s（错误产物纪律回归）"
         期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
-        实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+        # 入口为绝对路径（cwd 隔离）——日志锚行比对前把绝对前缀适配回相对
+        #   （.expected 保持相对路径文本不动，与既有 win64 .asm 平台适配同族）
+        实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
+            str(项目根目录) + "/", "")
         for 行 in 期望行们:
             # 平台适配（与正路径步骤3 同款）：期望若引用 win64 路径须替换为 GAS 产物名
             适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
@@ -1136,18 +1031,20 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
                     ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
 
     # ===== 步骤3：运行 v2p（第 2 参数目标平台分派 GAS 后端）=====
-    入口参数 = f"target/audit2/v2src{编号}/主.cn"
+    入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
     if v2asm路径.exists():
         v2asm路径.unlink()
     if 详细:
         print(f"    [{编号}-3] {v2p.name} {入口参数} {目标平台}")
-    运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 项目根目录, 内存上限MB=内存上限MB默认)
+    运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 工作目录, 内存上限MB=内存上限MB默认)
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
         return "失败", f"{编号}-3 v2p 未生成 target/v2asm.s"
     期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
-    实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+    # 入口为绝对路径（cwd 隔离）——日志锚行比对前把绝对前缀适配回相对
+    实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
+        str(项目根目录) + "/", "")
     for 行 in 期望行们:
         # 平台适配（不改测试文件）：GAS 后端输出 target/v2asm.s（win64 期望为 .asm）
         适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
@@ -1158,7 +1055,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         return "失败", f"{编号}-3.5 v2asm.s 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
 
     # ===== 步骤4：as 汇编 target/v2asm.s -> v2asm_<平台>.o =====
-    v2obj = 审计目录 / f"v2asm_{产物后缀}.o"
+    v2obj = 审计目录 / f"v2asm_{编号}_{产物后缀}.o"
     if v2obj.exists():
         v2obj.unlink()
     if 详细:
@@ -1170,7 +1067,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         return "失败", f"{编号}-4 as 返回成功但未生成 v2asm_linux.o"
 
     # ===== 步骤5：链接（对齐宿主 linux 链接命令 g++ -no-pie + 运行时 .o）=====
-    输出exe = 审计目录 / f"v2out_{产物后缀}"
+    输出exe = 审计目录 / f"v2out_{编号}_{产物后缀}"
     if 输出exe.exists():
         输出exe.unlink()
     链接命令 = [cxx工具, "-no-pie"]
@@ -1284,16 +1181,24 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             return "失败", f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
 
     # ===== 步骤1：宿主编译 v2 组件（入口 主.cn，自动加载 6 个模块）-> v2p.exe =====
-    if v2p.exists():
-        v2p.unlink()
-    if 详细:
-        print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p.exe")
-    编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
-                      "--target", "win-x64", "--output", str(v2p)], 项目根目录)
-    if 编译结果.returncode != 0:
-        return "失败", f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
-    if not v2p.exists():
-        return "失败", f"{编号}-1 编译返回成功但未生成 v2p.exe"
+    # v2p 构建缓存（同 Linux 分支——输入未变不重建）
+    缓存键路径 = 审计目录 / "v2p_build_key_win.txt"
+    本次指纹 = 计算v2构建指纹(编译器路径)
+    if v2p.exists() and 缓存键路径.exists() and 缓存键路径.read_text(encoding="utf-8") == 本次指纹:
+        if 详细:
+            print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变），复用 {v2p.name}")
+    else:
+        if v2p.exists():
+            v2p.unlink()
+        if 详细:
+            print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p.exe")
+        编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
+                          "--target", "win-x64", "--output", str(v2p)], 项目根目录)
+        if 编译结果.returncode != 0:
+            return "失败", f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+        if not v2p.exists():
+            return "失败", f"{编号}-1 编译返回成功但未生成 v2p.exe"
+        缓存键路径.write_text(本次指纹, encoding="utf-8")
 
     # ===== 负路径闭环（灰色点⑤，2026-09-04）：预期退出码 None = v2p 须编译失败 =====
     #   语义错误即中止纪律的 E2E 锚定：v2p 退出码非 0、target/v2asm.asm 不产出、
@@ -1509,6 +1414,10 @@ def 主程序() -> int:
     解析器.add_argument("--target-dir", default="target", help="可执行文件输出目录（默认 target）")
     解析器.add_argument("--strict", action="store_true",
                         help="将'未实现'用例视为失败（阶段一完成后全量验证用）")
+    解析器.add_argument("--jobs", "-j", type=int, default=1,
+                        help="并行任务数（默认 1=串行原行为；>1 时非 v2 用例并行执行、"
+                             "v2 用例保持串行——v2 用例共享 target/v2asm.s 与 v2p 构建缓存。"
+                             "v2p 构建缓存在任何模式下生效：v2 源码与编译器未变不重建）")
     参数 = 解析器.parse_args()
 
     # 覆盖模块级默认（超限自动终止的防护阈值）
@@ -1547,27 +1456,92 @@ def 主程序() -> int:
         print(黄色("未找到E2E用例目录（过滤条件无匹配或无用例）"))
         return 1
 
-    # 逐个执行并统计
+    # 逐个执行并统计（--jobs>1 并行模式，2026-09-11 用户裁决「E2E 太慢」提速：
+    #   非 v2 用例并行池 + v2 用例单线程池**并发**执行——v2 用例共享 target/v2asm.s
+    #   固定产物路径与 v2p 构建缓存，必须串行；宿主用例产物按用例目录名隔离
+    #   （target/<用例名>）可安全并行；对齐 cargo test / cargo-nextest 进程隔离
+    #   并行理念——测试链路本身零变化，仅并发调度。任务内详细 print 以行粒度
+    #   交错为可接受代价（与 cargo 并行测试输出一致），结果行经打印锁整块输出）
     通过数 = 0
     跳过数 = 0
     失败列表 = []
     未实现列表 = []
-    for 用例目录 in 用例目录们:
-        print(f"运行用例: {用例目录.name}")
-        状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 参数.verbose, 目标平台)
+
+    def 记录结果(用例目录, 状态, 原因, 即时打印: bool) -> None:
+        nonlocal 通过数, 跳过数
         if 状态 == "通过":
             通过数 += 1
-            print(f"  {绿色('PASS')} 通过")
+            if 即时打印:
+                print(f"  {绿色('PASS')} 通过")
         elif 状态 == "跳过":
             跳过数 += 1
-            print(f"  {青色('SKIP')} {原因}")
+            if 即时打印:
+                print(f"  {青色('SKIP')} {原因}")
         elif 状态 == "未实现":
             未实现列表.append((用例目录.name, 原因))
-            print(f"  {黄色('SKIP')} 未实现: {原因}")
+            if 即时打印:
+                print(f"  {黄色('SKIP')} 未实现: {原因}")
         else:
             失败列表.append((用例目录.name, 原因))
-            print(f"  {红色('FAIL')} {原因}")
-        print()
+            if 即时打印:
+                print(f"  {红色('FAIL')} {原因}")
+
+    if 参数.jobs <= 1:
+        for 用例目录 in 用例目录们:
+            print(f"运行用例: {用例目录.name}")
+            状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 参数.verbose, 目标平台)
+            记录结果(用例目录, 状态, 原因, 即时打印=True)
+            print()
+    else:
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        打印锁 = threading.Lock()
+
+        def 并行任务(用例目录):
+            状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 参数.verbose, 目标平台)
+            with 打印锁:
+                print(f"运行用例: {用例目录.name}")
+                记录结果(用例目录, 状态, 原因, 即时打印=True)
+                print()
+            return 状态
+
+        # 全量统一并行（2026-09-11 用户裁决：01 起全部用例一个池）——Linux 双平台
+        #   v2 产物已按用例隔离（v2work 编号 workdir/v2asm_N/v2out_N），唯一共享
+        #   工件 v2p/运行时 .o 在池启动前预热（确保v2p与运行时就绪——消除并发
+        #   构建竞态；预热本身数秒级，缓存命中时瞬时）。win-x64 的 v2 产物路径
+        #   未隔离（ml64/link 原编排）——v2 桶保持单线程串行兜底。
+        池们 = []
+        if 目标平台 in ("linux-arm64", "linux-x86_64"):
+            v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
+            if v2用例们:
+                print(青色(f"预热: v2p 构建缓存（{len(v2用例们)} 个 v2 用例共享工件）..."))
+                就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 参数.verbose)
+                if 就绪[0] is None:
+                    print(红色(f"预热失败: {就绪[1]}"))
+                    return 1
+            print(青色(f"并行模式: jobs={参数.jobs}（{len(用例目录们)} 个用例统一并行）"))
+            print()
+            池们.append(("统一", ThreadPoolExecutor(max_workers=参数.jobs),
+                         [(d, "统一") for d in 用例目录们]))
+        else:
+            v2桶 = [d for d in 用例目录们 if 是v2闭环用例(d)]
+            普通桶 = [d for d in 用例目录们 if not 是v2闭环用例(d)]
+            print(青色(f"并行模式: jobs={参数.jobs}（非 v2 用例 {len(普通桶)} 个并行，"
+                       f"v2 用例 {len(v2桶)} 个串行——win v2 产物未隔离）"))
+            print()
+            池们.append(("v2串行", ThreadPoolExecutor(max_workers=1), [(d, "v2串行") for d in v2桶]))
+            池们.append(("普通", ThreadPoolExecutor(max_workers=参数.jobs), [(d, "普通") for d in 普通桶]))
+
+        futures = []
+        with 池们[0][1] as _池0:
+            futures += [_池0.submit(并行任务, d) for d, _ in 池们[0][2]]
+            if len(池们) > 1:
+                with 池们[1][1] as _池1:
+                    futures += [_池1.submit(并行任务, d) for d, _ in 池们[1][2]]
+                    for fu in as_completed(futures):
+                        fu.result()
+            else:
+                for fu in as_completed(futures):
+                    fu.result()
 
     # 汇总与退出码：有真实失败返回1；strict模式下未实现也算失败
     总数 = len(用例目录们)
