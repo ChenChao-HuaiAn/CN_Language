@@ -63,6 +63,20 @@ bool isArithmeticOp(Operator op) {
            op == Operator::Modulo;
 }
 
+// 整数字面量形态（含一元负号作用于整数字面量，如 -1）——混合符号二元运算
+// 的字面量豁免判定用（规范 plans/001 §3.7，2026-09-10 方案A）
+bool isIntLiteralExpr(const Expr* e) {
+    if (e == nullptr) return false;
+    if (e->getType() == NodeType::IntegerLiteral) return true;
+    if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        return u->op == Operator::Subtract && !u->postfix &&
+               u->operand != nullptr &&
+               u->operand->getType() == NodeType::IntegerLiteral;
+    }
+    return false;
+}
+
 // 指针类型辅助（Task 2.4）：是否指针类型 / 是否数组类型
 bool isPointerType(const std::string& type) {
     return types::isPointer(type);
@@ -382,6 +396,25 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
         }
         lastType_ = "布尔";
         return;
+    }
+
+    // 混合符号二元运算拒绝（2026-09-10 方案A 用户裁决，Rust 对齐）：
+    //   有符号（整N）与无符号（正M）的「变量间」比较/算术/位运算编译期拒绝——
+    //   隐式宽化在混合符号下静默改变值语义（探针实证 target/p50x64l/mixed_cmp：
+    //   正64(2^63) vs 整64(-1) 比较值域反转；正32 vs 整64 负值形态宿主 rc=9 /
+    //   v2 rc=11 / 数学真值 13 双侧分叉）。须显式 类型名(表达式) 构造转换。
+    //   字面量豁免：一侧为整数字面量（含一元负号字面量）按另一侧类型参与
+    //   （Rust 字面量推断同款惯例，E2E 191「大 > 100」锚保留）；同符号混合
+    //   宽度（正32 vs 正64）维持既有宽化。规范 plans/001 §3.7。
+    if ((isComparisonOp(node->op) || isArithmeticOp(node->op) || isBitwiseOp(node->op)) &&
+        leftType != "未知" && rightType != "未知" &&
+        isInteger(leftType) && isInteger(rightType) &&
+        types::isUnsigned(leftType) != types::isUnsigned(rightType) &&
+        !isIntLiteralExpr(node->left.get()) && !isIntLiteralExpr(node->right.get())) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "混合符号二元运算禁止：'" + leftType + "' 与 '" + rightType +
+                            "' —— 须显式转换（如 整64(表达式)/正64(表达式)）；"
+                            "字面量豁免（Rust 对齐，2026-09-10 方案A）");
     }
 
     if (isComparisonOp(node->op)) {
