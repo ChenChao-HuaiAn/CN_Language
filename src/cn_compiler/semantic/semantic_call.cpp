@@ -672,6 +672,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                         }
                     }
                 }
+                // plans/019 阶段3b：构造调用面借用纪律（与普通函数面同构）
+                checkConstRefBorrowDiscipline(node, ctor->paramTypes,
+                                              ctor->constParams);
                 // A-1（引用参数）：构造形参为引用时实参自动取地址
                 wrapRefArgs(node, ctor->paramTypes);
                 // 记录选中的构造 sigKey（IR 层按此生成构造体 Call 符号）
@@ -799,7 +802,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 }
             }
             // A-1（引用参数）：实例方法引用形参的实参自动取地址
-            wrapRefArgs(node, method->paramTypes);
+            checkConstRefBorrowDiscipline(node, method->paramTypes,
+                                              method->constParams);  // plans/019 阶段3b
+                wrapRefArgs(node, method->paramTypes);
             // 访问控制检查（Task 3.4）
             const std::string contextClass = contextClassStack_.empty()
                                                  ? ""
@@ -830,7 +835,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                         std::to_string(argTypes.size()) + " 个");
             }
             // A-1（引用参数）：静态方法引用形参的实参自动取地址
-            wrapRefArgs(node, method->paramTypes);
+            checkConstRefBorrowDiscipline(node, method->paramTypes,
+                                              method->constParams);  // plans/019 阶段3b
+                wrapRefArgs(node, method->paramTypes);
             lastType_ = method->type;
             lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
             return;

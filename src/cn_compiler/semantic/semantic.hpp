@@ -71,6 +71,9 @@ struct ClassMemberInfo {
     bool hasBody = false;                      // 是否有方法体（抽象/接口签名为空）
     const ClassMember* ast = nullptr;          // AST 节点指针（供 IR 层生成）
     std::string sigKey;                        // 方法签名 key（名#参数串，mangling 用）
+    // plans/019 阶段3b（2026-09-10）：常量 只读引用参数位表（构造/方法调用面
+    //   借用纪律用；与 paramTypes 等长——普通函数 FunctionInfo.constParams 同构）
+    std::vector<bool> constParams;
 };
 
 // 类符号信息：成员表 + 继承 + 虚表 + 接口实现 + 布局（Task 3.1~3.3）

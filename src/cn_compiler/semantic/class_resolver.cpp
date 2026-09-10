@@ -237,6 +237,8 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
             mi.ownerClass = iface->name;
             mi.hasBody = false;
             for (auto& p : member->params) {
+                // plans/019 阶段3b：常量 只读引用参数位登记（借用纪律用）
+                mi.constParams.push_back(p->isConstParam);
                 mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                             ? p->funcPtr.toString()
                                             : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));
@@ -435,6 +437,8 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
             mi.operatorSym = member->operatorSym;
             mi.ast = member.get();
             for (auto& p : member->params) {
+                // plans/019 阶段3b：常量 只读引用参数位登记（借用纪律用）
+                mi.constParams.push_back(p->isConstParam);
                 mi.paramTypes.push_back(p->funcPtr.isFunctionPtr()
                                             ? p->funcPtr.toString()
                                             : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));

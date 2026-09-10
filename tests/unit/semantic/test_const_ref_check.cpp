@@ -77,6 +77,33 @@ TEST(ConstRefCheckTest, RejectMutAndConstBorrowSameVar) {
                   "的可变借用与只读借用互斥"), std::string::npos);
 }
 
+// 3b（2026-09-10 第六十轮）：可变×可变双别名互斥（存量预审零命中）
+TEST(ConstRefCheckTest, RejectDoubleMutableBorrowSameVar) {
+    auto r = analyzeSource(R"CN(函数 双改(整64& 甲, 整64& 乙) -> 空类型 { 甲 = 甲 + 乙; }
+函数 坏() -> 整32 {
+    整64 x = 5;
+    双改(x, x);
+    返回 0;
+})CN");
+    EXPECT_GE(r.errorCount, 1);
+    EXPECT_NE(r.messages.find("被可变借用两次"), std::string::npos);
+}
+
+TEST(ConstRefCheckTest, RejectDoubleMutableBorrowCtorFace) {
+    auto r = analyzeSource(R"CN(类 计数 {
+公开:
+    整64 值;
+    函数 计数(整64& 甲, 整64& 乙) { 值 = 甲 + 乙; }
+}
+函数 坏() -> 整32 {
+    整64 x = 5;
+    计数 c = 计数(x, x);
+    返回 0;
+})CN");
+    EXPECT_GE(r.errorCount, 1);
+    EXPECT_NE(r.messages.find("被可变借用两次"), std::string::npos);
+}
+
 TEST(ConstRefCheckTest, AcceptReadAndConstChain) {
     auto r = analyzeSource(R"CN(函数 读数(常量 整64& 值) -> 整64 { 返回 值 * 2; }
 函数 借读(常量 整64& 值) -> 整64 { 返回 读数(值); }

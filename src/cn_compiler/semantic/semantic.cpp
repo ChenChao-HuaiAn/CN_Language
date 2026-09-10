@@ -317,6 +317,15 @@ void SemanticAnalyzer::checkConstRefBorrowDiscipline(
                     "常量引用参数 '" + name +
                         "' 是只读借用，不能再作为可变引用传参");
             }
+            // 3b（2026-09-10）：可变×可变双别名拒（同调用两处可变借用同一变量
+            //   =别名可变冲突；存量预审零命中——tests/e2e+stdlib+v2 全树）
+            if (mutSeen && mutBase == name) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, arg->location,
+                    "同一调用中变量 '" + name +
+                        "' 被可变借用两次（别名可变冲突）");
+                return;
+            }
             if (!mutSeen) {
                 mutBase = name;
                 mutSeen = true;
