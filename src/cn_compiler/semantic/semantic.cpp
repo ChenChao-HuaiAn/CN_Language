@@ -252,12 +252,52 @@ bool cnEvalConstExpr(const std::unordered_map<std::string, std::string>& vals,
 void SemanticAnalyzer::pushScope() {
     scopes_.emplace_back();
     scopeConsts_.emplace_back();  // 缺陷②配套：与 scopes_ 平行维护
+    scopeMoved_.emplace_back();   // plans/019 阶段1：与 scopes_ 平行维护
 }
 void SemanticAnalyzer::popScope() {
     if (scopes_.size() > 1) {
         scopes_.pop_back();
         if (scopeConsts_.size() > 1) scopeConsts_.pop_back();  // 与 scopes_ 同步
+        if (scopeMoved_.size() > 1) scopeMoved_.pop_back();    // 与 scopes_ 同步
     }
+}
+
+// ==================== plans/019 阶段1：显式转移 转移() 已转移检查 ====================
+
+void SemanticAnalyzer::markMovedVar(const std::string& name, int line) {
+    // 与 lookupVar 同序：从内到外找到声明层，标记写入该层（遮蔽语义正确——
+    // 内层同名新声明在新层，外层标记不污染内层变量）
+    for (std::size_t i = scopes_.size(); i-- > 0;) {
+        if (scopes_[i].count(name) > 0) {
+            if (i < scopeMoved_.size()) scopeMoved_[i][name] = line;
+            return;
+        }
+    }
+}
+
+bool SemanticAnalyzer::lookupMoved(const std::string& name, int& outLine) const {
+    for (std::size_t i = scopes_.size(); i-- > 0;) {
+        if (scopes_[i].count(name) > 0) {
+            if (i < scopeMoved_.size()) {
+                auto it = scopeMoved_[i].find(name);
+                if (it != scopeMoved_[i].end()) {
+                    outLine = it->second;
+                    return true;
+                }
+            }
+            return false;  // 声明层无标记即未转移（外层同名不继续查）
+        }
+    }
+    return false;
+}
+
+bool SemanticAnalyzer::reportMovedUse(const std::string& name, const SourceLocation& loc) {
+    int movedLine = -1;
+    if (!lookupMoved(name, movedLine)) return false;
+    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "变量 '" + name + "' 已转移，不能继续使用（转移发生在 行" +
+                            std::to_string(movedLine) + "；显式转移后源变量禁用）");
+    return true;
 }
 void SemanticAnalyzer::declareTypeName(const std::string& name, const std::string& module,
                                        const SourceLocation& loc) {

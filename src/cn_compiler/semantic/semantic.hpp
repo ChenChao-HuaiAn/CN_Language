@@ -155,6 +155,11 @@ public:
                                        const std::string& funcName,
                                        const std::string& sigKey);
 
+    // plans/019 阶段1（2026-09-10）：表达式是否为 转移(单实参) 内置函数调用
+    //   （callee 为标识符 "转移" 且实参数==1）——public 供 IR 层（ir_call.cpp）
+    //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
+    static bool isTransferCall(const class CallExpr* node);
+
     // ==================== 结构体/枚举查询（Task 2.7，供IR层复用布局） ====================
     // 是否结构体/联合体类型名
     bool isStructType(const std::string& type) const;
@@ -351,6 +356,20 @@ private:
     // （局部 常量 登记于 scopeConsts_；顶层常量按 globalConstValues_ 裸名命中）。
     // 与 lookupVar 同序（内层遮蔽外层）；供赋值/自增目标拒绝用。
     bool isConstVarName(const std::string& name) const;
+    // plans/019 阶段1（2026-09-10）：转移(变量) 标记——沿作用域链找到 name 的
+    //   声明层，写入该层 scopeMoved_（名 -> 转移点行号，诊断定位用）。
+    //   幂等：重复标记（理论上不会再转移已转移变量——visitCallExpr 已拒）。
+    void markMovedVar(const std::string& name, int line);
+    // plans/019 阶段1：名字在作用域链解析处是否已转移（与 lookupVar 同序：
+    //   从内到外第一层含该名的层；内层同名新声明=新变量，外层标记不影响）。
+    //   命中返回 true 并回填转移点行号。
+    bool lookupMoved(const std::string& name, int& outLine) const;
+    // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
+    bool reportMovedUse(const std::string& name, const SourceLocation& loc);
+    // plans/019 阶段1：转移实参类型放行判定（资源语义类型白名单）——
+    //   返回 0=放行（指针/字符串，任意表达式位=值交接）；1=标量（复制语义拒绝）；
+    //   2=声明初始化位限定类型（容器/类/结构体/结果/可选/数组——表达式位随阶段3）
+    int transferArgKind(const std::string& type) const;
     // 缺陷②：赋值目标非左值统一拒绝（含诊断③「想写分号」跨行提示——
     //   换行≡空格规范行为下行首运算符并入上一行的粘连形态）
     void reportNonLvalueTarget(class AssignmentExpr* node);
@@ -589,6 +608,16 @@ private:
     // 缺陷②配套（2026-09-03）：各作用域常量名集合（与 scopes_ 平行，push/popScope
     //   同步维护；visitVarDecl 登记 isConst 局部）。isConstVarName 据此判定。
     std::vector<std::unordered_set<std::string>> scopeConsts_;
+    // plans/019 阶段1（2026-09-10）：各作用域已转移变量表（名 -> 转移点行号；
+    //   与 scopes_ 平行，push/popScope 同步）。转移(变量) 后源变量禁用（E0382 对标）。
+    //   与 lookupVar 同序解析（内层遮蔽正确：内层同名新声明在新作用域层，查不到
+    //   外层转移标记）。
+    std::vector<std::unordered_map<std::string, int>> scopeMoved_;
+    // plans/019 阶段1：转移改写豁免窗口——visitVarDecl 把 initializer 改写为
+    //   实参标识符后、常规初始化检查（checkExpr 实参）期间置 true，
+    //   visitIdentifierExpr 的已转移检查在此窗口内跳过（该"使用"是改写产物
+    //   而非用户代码）；窗口在 visitVarDecl 收尾关闭并真正标记源变量。
+    bool inTransferRewrite_ = false;
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
     // P3-18 补完（2026-08）：当前函数是否为引用返回（visitReturnStmt 校验用）

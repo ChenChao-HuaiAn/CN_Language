@@ -123,6 +123,16 @@ void SemanticAnalyzer::registerErrorBuiltins() {
     someInfo.paramTypes = {"自动"};
     someInfo.hasBody = true;
     functions_["某些"] = someInfo;
+
+    // plans/019 阶段1（2026-09-10）：显式转移 转移(变量)——占位注册防用户重定义
+    //   （内置构造器独占惯例）；实际检查/标记/AST 改写在 visitCallExpr（表达式位）
+    //   与 visitVarDecl（声明初始化位）特判，不走路由——resolvedType 写实参类型
+    //   供 IR 层展开（ir_call 特判=实参值加载）。
+    FunctionInfo moveInfo;
+    moveInfo.returnType = "自动";
+    moveInfo.paramTypes = {"自动"};
+    moveInfo.hasBody = true;
+    functions_["转移"] = moveInfo;
 }
 
 // ==================== 结果/可选类型降级（Task 3.5） ====================

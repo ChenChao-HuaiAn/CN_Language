@@ -198,6 +198,54 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             }
         }
     }
+    // plans/019 阶段1（2026-09-10）：声明初始化位显式转移 类型 u = 转移(v); ——
+    //   先行拦截（引用分支与常规初始化检查之前）：类型白名单（复制语义拒绝）+
+    //   标记源变量已转移（scopeMoved_，行号=转移调用点）+ AST 改写 initializer
+    //   为实参标识符（所有权移出 CallExpr）——改写后走既有初始化路径：容器/类=
+    //   NewObject+拷贝构造深拷贝（u/v 各自 RAII 析构，恰好各释放各的）、指针/
+    //   字符串=值交接、推断声明=按实参类型推断。运行行为与直接标识符初始化
+    //   完全一致（安全保证=编译期源变量禁用；浅转移优化随阶段3）。
+    std::string transferSrcName;  // plans/019 阶段1：转移改写源（豁免窗口收尾标记）
+    int transferLine = 0;
+    if (node->initializer != nullptr &&
+        node->initializer->getType() == NodeType::CallExpr) {
+        CallExpr* initCall = static_cast<CallExpr*>(node->initializer.get());
+        if (isTransferCall(initCall)) {
+            if (!varType.empty() && types::isReference(varType)) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "引用变量声明不支持转移初始化（引用是借用而非所有权）");
+                return;
+            }
+            Expr* arg = initCall->arguments[0].get();
+            if (arg->getType() != NodeType::IdentifierExpr) {
+                diagnostics_.report(DiagnosticLevel::Error, initCall->location,
+                                    "转移目标须为变量（标识符）——成员/下标/解引用形态"
+                                    "的转移随 plans/019 阶段3 支持");
+                return;
+            }
+            IdentifierExpr* srcIdent = static_cast<IdentifierExpr*>(arg);
+            std::string srcType;
+            if (!lookupVar(srcIdent->name, srcType)) {
+                diagnostics_.report(DiagnosticLevel::Error, srcIdent->location,
+                                    "未声明的标识符 '" + srcIdent->name + "'");
+                return;
+            }
+            if (transferArgKind(srcType) == 1) {
+                diagnostics_.report(DiagnosticLevel::Error, initCall->location,
+                                    "变量 '" + srcIdent->name + "'（类型 '" + srcType +
+                                        "'）具有复制语义，无需转移");
+                return;
+            }
+            if (reportMovedUse(srcIdent->name, initCall->location)) {
+                return;  // 再转移=使用已转移变量
+            }
+            transferSrcName = srcIdent->name;
+            transferLine = initCall->location.getLine();
+            inTransferRewrite_ = true;  // 豁免窗口开：改写产物的常规检查不算使用
+            // AST 改写：initializer = 实参标识符（CallExpr 即刻销毁，无人再引用）
+            node->initializer = std::move(initCall->arguments[0]);
+        }
+    }
     // P3-18（引用参数 A-1 扩展）：引用变量声明（变量 整32& r = x）——
     //   槽存被引用左值地址，读/写经 byRef 解引用。绑定目标须为左值：
     //   标识符 / 下标 / 解引用 / 成员 / 引用返回调用（P3-18 补完）。
@@ -321,6 +369,13 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             isClassType(types::canonical(initVarType))) {
             checkCopyRequiresCtor(varType, node->location);
         }
+    }
+    // plans/019 阶段1：转移改写收尾——常规初始化检查（对改写后实参标识符的
+    //   checkExpr）已毕，此刻真正标记源变量已转移（豁免窗口关闭，此后任何
+    //   使用/再转移均拒绝）。
+    if (inTransferRewrite_) {
+        inTransferRewrite_ = false;
+        if (!transferSrcName.empty()) markMovedVar(transferSrcName, transferLine);
     }
     if (declareVar(node->name, varType, node->location) && node->isConst &&
         !scopeConsts_.empty()) {

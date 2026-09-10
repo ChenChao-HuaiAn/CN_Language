@@ -16,6 +16,15 @@
 namespace cn_compiler {
 
 void IRGenerator::visitCallExpr(CallExpr* node) {
+    // ---- plans/019 阶段1（2026-09-10）：显式转移 转移(变量) 展开 ----
+    // 语义层已检查放行（声明初始化位在 visitVarDecl 已改写为标识符，不会到这；
+    // 此处=表达式位指针/字符串值交接）。展开=实参标识符的值加载（转移() 零运行
+    // 时指令，纯编译期标记语义）。resolvedType 非空且 callee 为 转移 双重判定，
+    // 防用户经占位注册签名外的同名调用误入。
+    if (SemanticAnalyzer::isTransferCall(node) && !node->resolvedType.empty()) {
+        (void)genExpr(node->arguments[0].get());  // lastExpr_=实参求值结果（值交接）
+        return;
+    }
     // ---- 阶段3 OOP（Task 3.1/3.2）：构造调用/成员方法调用/虚调用 ----
     // 构造调用 类名(实参)：callee 为类类型名（NewObject + 构造体 Call）；
     // 成员方法调用 对象.方法(实参)：callee 为 MemberExpr（虚 -> VirtualCall，

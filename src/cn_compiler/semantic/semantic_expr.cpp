@@ -239,6 +239,13 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
     }
     std::string varType;
     if (lookupVar(node->name, varType)) {
+        // plans/019 阶段1（2026-09-10）：已转移变量使用拒绝（E0382 对标）——
+        //   一切读值的根拦截点（表达式/成员与下标对象侧/调用实参/返回/操作数
+        //   均经此）；转移(变量) 调用自身不走此路径（visitCallExpr/visitVarDecl
+        //   先行拦截，不触发误报）。报错后仍返回类型（诊断已记 Error，编译将
+        //   失败；继续供级联诊断最小化）。转移改写豁免窗口内跳过（visitVarDecl
+        //   改写产物的常规检查不是用户代码的使用）。
+        if (!inTransferRewrite_) reportMovedUse(node->name, node->location);
         // A-1（引用参数）：表达式值是"被引用对象的值"（读取自动解引用），
         //   类型为剥 & 后的基础类型——与 IR 层 byRef 解引用读取一致；
         //   引用性仅保留在变量登记（IR byRef 标记）与参数签名（&）中
@@ -923,6 +930,11 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, ident->location,
                         "不能给常量 '" + ident->name + "' 赋值（常量初始化后不可修改）");
+                    lvalueOk = false;
+                }
+                // plans/019 阶段1（2026-09-10）：已转移变量不可作赋值目标
+                //   （赋值=使用；转移后获得新值请使用新变量名）
+                else if (reportMovedUse(ident->name, ident->location)) {
                     lvalueOk = false;
                 }
             } else {

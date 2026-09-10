@@ -169,10 +169,78 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
         node->arguments[i]->location = loc;
     }
 }
+// ==================== plans/019 阶段1（2026-09-10）：显式转移 转移() ====================
+
+bool SemanticAnalyzer::isTransferCall(const CallExpr* node) {
+    return node != nullptr &&
+           node->callee->getType() == NodeType::IdentifierExpr &&
+           static_cast<const IdentifierExpr*>(node->callee.get())->name == "转移" &&
+           node->arguments.size() == 1;
+}
+
+int SemanticAnalyzer::transferArgKind(const std::string& type) const {
+    // 复制语义类型：转移无意义（Rust Copy 类型惯例）
+    if (types::isInteger(type) || types::isFloat(type) || type == "布尔" ||
+        type == "字符" || types::isFuncPtr(type) || isEnumType(type)) {
+        return 1;
+    }
+    // 值交接类型（无 RAII，纯槽位值）：任意表达式位放行
+    if (types::isPointer(type) || type == "字符串") return 0;
+    // 拥有资源类型（容器/类/结构体/结果/可选/数组）：仅声明初始化位
+    //   （visitVarDecl 改写路径=深拷贝既有语义；表达式位随阶段3 浅拷贝优化）
+    return 2;
+}
 void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // P3-18 补完：本轮默认非引用返回；决议到引用返回函数时置 true
     node->isRefReturnCall = false;
     lastExprIsRefReturn_ = false;
+    // plans/019 阶段1：显式转移 转移(变量)——表达式位特判（声明初始化位由
+    //   visitVarDecl 先行拦截改写，不会到达此处）。表达式位仅放行指针/字符串
+    //   （值交接无 RAII，ir_call 按 resolvedType 特判展开为实参值加载）；
+    //   容器/类等拥有资源类型拒绝（防浅句柄接管撞 RAII 双析构），随阶段3 放开。
+    if (isTransferCall(node)) {
+        Expr* arg = node->arguments[0].get();
+        if (arg->getType() != NodeType::IdentifierExpr) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "转移目标须为变量（标识符）——成员/下标/解引用形态"
+                                "的转移随 plans/019 阶段3 支持");
+            lastType_ = "未知";
+            return;
+        }
+        IdentifierExpr* ident = static_cast<IdentifierExpr*>(arg);
+        std::string varType;
+        if (!lookupVar(ident->name, varType)) {
+            diagnostics_.report(DiagnosticLevel::Error, ident->location,
+                                "未声明的标识符 '" + ident->name + "'");
+            lastType_ = "未知";
+            return;
+        }
+        const int kind = transferArgKind(varType);
+        if (kind == 1) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "变量 '" + ident->name + "'（类型 '" + varType +
+                                    "'）具有复制语义，无需转移");
+            lastType_ = "未知";
+            return;
+        }
+        if (kind == 2) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "变量 '" + ident->name + "'（类型 '" + varType +
+                                    "'）的转移仅支持声明初始化位"
+                                "（类型 名 = 转移(变量);），表达式位转移随 plans/019"
+                                " 阶段3 浅拷贝优化支持");
+            lastType_ = "未知";
+            return;
+        }
+        if (reportMovedUse(ident->name, node->location)) {  // 再转移=使用已转移变量
+            lastType_ = "未知";
+            return;
+        }
+        markMovedVar(ident->name, node->location.getLine());
+        node->resolvedType = varType;  // IR 层展开识别（ir_call 特判）
+        lastType_ = varType;
+        return;
+    }
     // 分派依据：callee 若是函数名（在函数符号表中）→ 直接调用；
     //           否则检查其类型，若是函数指针变量 → 间接调用；
     //           阶段3：成员方法调用（对象.方法(...)）、内置构造器（正常/错误/某些）、
