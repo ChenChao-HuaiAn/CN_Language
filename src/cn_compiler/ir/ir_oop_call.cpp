@@ -503,6 +503,77 @@ bool IRGenerator::handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue
 // 说明：类对象在 CN 中为堆对象（NewObject 分配），变量槽存对象指针；
 //   RAII 风格：函数退出时自动释放（调用析构 + __cn_object_delete）。
 // 实现：仅在函数最后块（未终止）前插入；简化版不做异常安全（阶段三范围）。
+// plans/019 阶段4'（2026-09-10 方案A 用户裁决）：拥有型字符串 RAII——与类
+// RAII（genClassDestructorCalls）同模型：①入口块最前零初始化（未执行分支/
+// 裸声明槽垃圾防线）；②每个返回块指令末尾注入 __cn_str_free（多返回点全覆
+// 盖；空安全——零句柄/已清零槽安全跳过）；③返回值=该槽 Load 跳过（所有权
+// 移出）。名单=Alloca 槽源类型为字符串 ∩ 语义层 isOwnedStringLocal（非拥有
+// 形态赋值与返回已在语义层剔除——free 只读段=UB 的静态防线）。
+void IRGenerator::genStringFrees() {
+    if (semantic_ == nullptr || function_ == nullptr) return;
+    if (function_->blocks.empty()) return;
+    // 收集：本函数 Alloca 指令（函数内天然隔离——oopVarSrcTypes_ 为模块级表，
+    //   直接扫表会跨函数串槽）∩ oopVarSrcTypes_ 源类型=字符串 ∩ 非污染
+    //   （stringTainted_：赋值右值非拥有形态的变量整剔——IR 期自持）
+    std::vector<std::string> ownedSlots;
+    for (const auto& block : function_->blocks) {
+        for (const auto& inst : block->instructions) {
+            if (inst.opcode != ir::Opcode::Alloca) continue;
+            const std::string& unique = inst.extra;
+            if (unique.empty()) continue;
+            auto srcIt = oopVarSrcTypes_.find(unique);
+            if (srcIt == oopVarSrcTypes_.end() || srcIt->second != "字符串")
+                continue;
+            const std::size_t dl = unique.rfind('$');
+            const std::string srcName =
+                (dl == std::string::npos) ? unique : unique.substr(0, dl);
+            if (stringTainted_.count(srcName) > 0) continue;
+            ownedSlots.push_back(unique);
+        }
+    }
+    if (ownedSlots.empty()) return;
+    // 入口块零初始化（与类 RAII 同款前置插入）
+    ir::IRBlock* entryBlock = function_->blocks.front().get();
+    for (const auto& unique : ownedSlots) {
+        ir::IRInstruction zeroInst;
+        zeroInst.opcode = ir::Opcode::Store;
+        zeroInst.operands.push_back(ir::IRValue::constant("0", "i64"));
+        zeroInst.result = ir::IRValue();
+        zeroInst.extra = unique;
+        zeroInst.type = "ptr";
+        entryBlock->instructions.insert(entryBlock->instructions.begin(),
+                                        zeroInst);
+    }
+    // 返回块末尾注入 __cn_str_free（返回值=该槽 Load 时跳过——IR 识别双保险）
+    for (const auto& block : function_->blocks) {
+        if (!block->terminated) continue;
+        if (block->termKind != "返回") continue;
+        std::unordered_set<std::string> returnedSlots;
+        const std::string& rv = block->termReturnValue;
+        if (rv.size() > 2 && rv[0] == '%' && rv[1] == 'v') {
+            const int retId = std::stoi(rv.substr(2));
+            for (const auto& inst : block->instructions) {
+                if (inst.result.id == retId && inst.opcode == ir::Opcode::Load &&
+                    !inst.operands.empty() && inst.operands[0].id < 0 &&
+                    !inst.operands[0].isConstant) {
+                    returnedSlots.insert(inst.operands[0].extra);
+                    break;
+                }
+            }
+        }
+        setCurrentBlock(block.get());
+        for (const auto& unique : ownedSlots) {
+            if (returnedSlots.count(unique) > 0) continue;
+            ir::IRValue strPtr = emitResult(
+                ir::Opcode::Load,
+                {ir::IRValue::var(unique, "ptr")}, "ptr", unique,
+                SourceLocation());
+            emit(ir::Opcode::Call, {strPtr}, ir::IRValue(),
+                 "__cn_str_free", "void", SourceLocation());
+        }
+    }
+}
+
 void IRGenerator::genClassDestructorCalls() {
     if (semantic_ == nullptr || function_ == nullptr) return;
     if (function_->blocks.empty()) return;

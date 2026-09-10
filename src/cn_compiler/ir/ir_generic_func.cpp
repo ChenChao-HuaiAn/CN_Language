@@ -175,6 +175,7 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     }
     // 类类型局部变量析构（RAII，与普通函数一致）
     genClassDestructorCalls();
+    genStringFrees();  // plans/019 阶段4'：拥有型字符串 RAII
     module_->functions.push_back(std::move(func));
     function_ = nullptr;
     if (!varStack_.empty()) varStack_.pop_back();

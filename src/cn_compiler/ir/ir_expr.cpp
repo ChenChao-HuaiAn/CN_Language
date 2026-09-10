@@ -1197,6 +1197,27 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         (node->target->getType() == NodeType::UnaryExpr &&
          static_cast<UnaryExpr*>(node->target.get())->op == Operator::Deref)) {
         ir::IRValue value = genExpr(node->value.get());
+        // plans/019 阶段4' 方案A：下标目标为字符串元素（字符串数组/字符串* 元素）
+        //   且右值为字符串变量标识符 -> 值被外部槽持有（指针逃逸模型，38_tool
+        //   姓名[]=$副本 形态）-> 右值变量污染退出 RAII（出口 free=悬垂源头）。
+        {
+            IndexExpr* idxX =
+                node->target->getType() == NodeType::IndexExpr
+                    ? static_cast<IndexExpr*>(node->target.get()) : nullptr;
+            if (idxX != nullptr &&
+                idxX->object->getType() == NodeType::IdentifierExpr) {
+                const std::string stX = lookupSrcType(
+                    static_cast<IdentifierExpr*>(idxX->object.get())->name);
+                std::string elemX;
+                if (types::isArray(stX)) elemX = types::arrayElemOf(stX);
+                else if (types::isPointer(stX)) elemX = types::pointeeOf(stX);
+                if (elemX == "字符串" &&
+                    node->value->getType() == NodeType::IdentifierExpr) {
+                    stringTainted_.insert(
+                        static_cast<IdentifierExpr*>(node->value.get())->name);
+                }
+            }
+        }
         // 目标类型：语义层已推导（整32 元素 / 解引用元素类型）
         std::string targetType = "i64";
         if (node->target->getType() == NodeType::IndexExpr) {
@@ -1677,6 +1698,54 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
             }
             lastExpr_ = combined;
             return;
+        }
+    }
+    // plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串赋值——三拥有形态
+    //   （字面量/标识符/调用）时 free 旧值（__cn_str_free 空安全）+ 新值拥有化
+    //   （字面量/标识符经 __cn_str_copy 落堆，调用返回直存）；**其余形态
+    //   （解引用/成员等）整变量污染（stringTainted_）退出 RAII**——来源静态
+    //   不可保证恒为堆串，free 只读段=UB，宁可放弃自动释放保安全。
+    const std::string ownTargetSrcType = lookupSrcType(ident->name);
+    if (ownTargetSrcType == "字符串" && targetType == "ptr" &&
+        !isCompoundAssignOp(node->op) &&
+        stringTainted_.count(ident->name) == 0) {
+        const NodeType ownAt = node->value->getType();
+        // 调用返回=白名单拥有（内置分配族；驻留文本/用户函数可能借用——同
+        //   声明位判定，污染退出 RAII）
+        bool ownAssign = ownAt == NodeType::StringLiteral ||
+                         ownAt == NodeType::IdentifierExpr;
+        if (ownAt == NodeType::CallExpr) {
+            const CallExpr* ace =
+                static_cast<const CallExpr*>(node->value.get());
+            if (ace->callee->getType() == NodeType::IdentifierExpr) {
+                const std::string& cn =
+                    static_cast<const IdentifierExpr*>(ace->callee.get())->name;
+                ownAssign = cn == "字符串复制" || cn == "字符串连接" ||
+                            cn == "字符串拼接" || cn == "字符串子串" ||
+                            cn == "字符串大写" || cn == "字符串小写" ||
+                            cn == "字符串修剪" || cn == "字符串反转";
+            }
+        }
+        if (ownAssign) {
+            if (ownAt != NodeType::CallExpr) {
+                // 先 free 旧（drop 旧再 move 新——Rust/C++ 赋值语义；调用形态
+                // 的 free 由下方公共段统一发？——不：调用形态同样须 free 旧。
+                ir::IRValue oldPtr = emitResult(
+                    ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
+                    unique, node->location);
+                emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",
+                     "void", node->location);
+                value = emitResult(ir::Opcode::Call, {value}, "ptr",
+                                   "__cn_str_copy", node->location);
+            } else {
+                ir::IRValue oldPtr = emitResult(
+                    ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
+                    unique, node->location);
+                emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",
+                     "void", node->location);
+            }
+        } else {
+            stringTainted_.insert(ident->name);
         }
     }
     // 简单赋值（Task 2.3：右值类型与目标类型不同时先隐式转换 Cast，

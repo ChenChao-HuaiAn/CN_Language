@@ -324,6 +324,8 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     // 注意：必须在块终止补齐后调用（genClassDestructorCalls 在最后一个未终止块
     //   末尾插入 DeleteObject；若函数已有返回则不插入，避免破坏既有终止）
     genClassDestructorCalls();
+    genStringFrees();
+    stringTainted_.clear();  // plans/019 阶段4'：函数级污染集复位  // plans/019 阶段4'：拥有型字符串 RAII（返回块注入释放）
     module_->functions.push_back(std::move(func));
     function_ = nullptr;
     // 修复（2026-08 自举前置 A-3a 发现）：弹出参数作用域——原实现漏 pop，

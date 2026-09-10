@@ -784,6 +784,40 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 }
             }
         }
+        // plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串初始化拥有化——
+        //   字面量（只读段标签）与标识符拷贝（浅共享指针）经 __cn_str_copy 落堆
+        //   （变量一律拥有堆串，RAII 返回块释放安全；Rust "x".to_string() 同款
+        //   代价）；调用返回形态（拼接/复制等 runtime 串）本就堆分配直存；
+        //   转移初始化已在浅交接分支（句柄直拷+源清零）先行返回，不经此处。
+        if (srcType == "字符串" && value.type == "ptr" &&
+            node->initializer != nullptr) {
+            const NodeType ownIt = node->initializer->getType();
+            if (ownIt == NodeType::StringLiteral ||
+                ownIt == NodeType::IdentifierExpr) {
+                value = emitResult(ir::Opcode::Call, {value}, "ptr",
+                                   "__cn_str_copy", node->location);
+            } else if (ownIt == NodeType::CallExpr) {
+                // 调用返回拥有判定=白名单（内置 runtime 分配族：复制/连接/拼接/
+                //   子串/大小写/修剪/反转——其余一律污染退出 RAII）：驻留文本 返回
+                //   驻留表内部指针（借用）；用户函数可能返回借用包装（v2 的
+                //   当前文本 -> 驻留文本 即是，v2p 自举实测崩因）——单 字符串
+                //   类型无法静态区分拥有/借用返回，第一版白名单保守（用户函数
+                //   返回拥有语义随第二批类型区分落地）。
+                const CallExpr* ice =
+                    static_cast<const CallExpr*>(node->initializer.get());
+                bool ownRet = false;
+                if (ice->callee->getType() == NodeType::IdentifierExpr) {
+                    const std::string& cn =
+                        static_cast<const IdentifierExpr*>(ice->callee.get())
+                            ->name;
+                    ownRet = cn == "字符串复制" || cn == "字符串连接" ||
+                             cn == "字符串拼接" || cn == "字符串子串" ||
+                             cn == "字符串大写" || cn == "字符串小写" ||
+                             cn == "字符串修剪" || cn == "字符串反转";
+                }
+                if (!ownRet) stringTainted_.insert(node->name);
+            }
+        }
         if (value.type != irType && !irType.empty()) {
             value = emitResult(ir::Opcode::Cast, {value}, irType, "", node->location);
         }

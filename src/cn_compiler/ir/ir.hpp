@@ -520,8 +520,17 @@ private:
     // ---- 阶段3 OOP 调用/析构（ir_oop_call.cpp 实现） ----
     // 函数收尾钩子：类类型局部变量（有析构函数）离开作用域 -> DeleteObject（RAII）
     void genClassDestructorCalls();
+    // plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串 RAII——收集 Alloca 字符串
+    //   槽∩语义名单（isOwnedStringLocal），入口块零初始化 + 每个返回块末尾注入
+    //   __cn_str_free（空安全）；返回值=该槽 Load 时跳过（所有权移出，语义层
+    //   已剔除名单，此处 IR 识别为双保险）。
+    void genStringFrees();
     // 变量唯一内部名 -> 源码类型（genVarDecl 登记，析构扫描用）
     std::unordered_map<std::string, std::string> oopVarSrcTypes_;
+    // plans/019 阶段4'（2026-09-10 方案A）：本函数字符串污染集——赋值右值为
+    //   非拥有形态（解引用/成员等）的字符串目标整变量退出 RAII（free 只读段
+    //   =UB 静态防线）；genFunctionDecl 开头复位、genStringFrees 消费。
+    std::unordered_set<std::string> stringTainted_;
 
     // ==================== 阶段3 OOP：类方法体/指令发射（Task 3.1/3.2，串联集成） ====================
     // 提升单个类方法体为独立 IRFunction：
