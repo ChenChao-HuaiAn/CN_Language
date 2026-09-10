@@ -572,14 +572,16 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 if (mi.paramTypes.size() != argTypes.size()) continue;
                 bool ok = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (conversionLevel(argTypes[i], mi.paramTypes[i]) < 0) { ok = false; break; }
+                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
+                                        isIntLiteralExpr(node->arguments[i].get())) < 0) { ok = false; break; }
                 }
                 if (!ok) continue;
                 ctor = &mi;
                 // 精确类型匹配（全部 0 级转换）优先
                 bool exact = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (conversionLevel(argTypes[i], mi.paramTypes[i]) != 0) { exact = false; break; }
+                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
+                                        isIntLiteralExpr(node->arguments[i].get())) != 0) { exact = false; break; }
                 }
                 if (exact) { ctorExact = &mi; break; }
             }
@@ -593,7 +595,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                             std::to_string(argTypes.size()) + " 个");
                 } else {
                     for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        if (!canConvertType(argTypes[i], ctor->paramTypes[i])) {
+                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i])) {
                             diagnostics_.report(
                                 DiagnosticLevel::Error, node->arguments[i]->location,
                                 "构造函数 '" + className + "' 第 " + std::to_string(i + 1) +
@@ -652,7 +654,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                             " 个实参，实际提供 " + std::to_string(argTypes.size()) + " 个");
                 } else {
                     for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        if (!canConvertType(argTypes[i], imit->second.paramTypes[i])) {
+                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i])) {
                             diagnostics_.report(
                                 DiagnosticLevel::Error, node->arguments[i]->location,
                                 "接口方法 '" + methodName + "' 第 " +
@@ -719,7 +721,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                         static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
                             Operator::AddressOf;
                     if (!refAlready &&
-                        !canConvertType(argTypes[i], method->paramTypes[i])) {
+                        !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], method->paramTypes[i])) {
                         diagnostics_.report(
                             DiagnosticLevel::Error, node->arguments[i]->location,
                             "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
@@ -805,8 +807,14 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             }
         }
         // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）
+        // 55-c 方案A：实参字面量标志供决议豁免（`读值(100)` 传 正32 形参保留）
+        std::vector<bool> argLitFlags;
+        argLitFlags.reserve(node->arguments.size());
+        for (const auto& a : node->arguments) {
+            argLitFlags.push_back(isIntLiteralExpr(a.get()));
+        }
         std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
-                                             node->moduleFilter);
+                                             node->moduleFilter, argLitFlags);
         if (sigKey.empty()) {
             // 决议失败（参数个数/类型不匹配或歧义）：恢复兼容——若纯名存在（内置
             // 单版本函数），按旧逻辑检查，避免错误级联导致 IR 层找不到符号
@@ -834,10 +842,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         // A-1（引用参数）：引用形参的实参自动取地址（重写为 &左值）——
         //   须在 IR 层实参求值之前（IR genExpr 对 AddressOf 生成 lvalueAddress）
         wrapRefArgs(node, info.paramTypes);
-        // 参数类型检查（决议已保证可转换；此处再逐个报告具体错误位置）
+        // 参数类型检查（决议已保证可转换；此处再逐个报告具体错误位置）。
+        //   55-c 方案A：字面量实参豁免与决议豁免（conversionLevel）同步——
+        //   决议按宽化级放行的字面量形态此处不再误报
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
             const std::string& paramType = info.paramTypes[i];
-            if (!canConvertType(argTypes[i], paramType)) {
+            if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
                                     "函数 '" + calleeName + "' 第 " + std::to_string(i + 1) +
                                     " 个参数无法将 '" + argTypes[i] + "' 隐式转换为 '" +
@@ -876,7 +886,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
             std::string argType = checkExpr(node->arguments[i].get());
             const std::string& paramType = paramTypes[i];
-            if (!canConvertType(argType, paramType)) {
+            if (!canConvertWithLiteral(node->arguments[i].get(), argType, paramType)) {
                 diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
                                     "函数指针第 " + std::to_string(i + 1) +
                                     " 个参数无法将 '" + argType + "' 隐式转换为 '" +

@@ -613,14 +613,23 @@ std::string SemanticAnalyzer::funcFirstSigKey(const std::string& name) const {
     return best;
 }
 int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
-                                      const std::string& paramTypeRaw) {
+                                      const std::string& paramTypeRaw,
+                                      bool argIsLiteral) {
     // A-1（引用参数）：按值/按引用双方均剥 & 后比较——引用参数绑定左值实参，
     //   实参与参数的数据形状一致（都是被引用类型的值）；引用 vs 按值 的区分
     //   由签名 key（& 保留在 paramTypes）完成，决议只看形状
     const std::string arg = types::stripRef(canonicalType(argTypeRaw));
     const std::string param = types::stripRef(canonicalType(paramTypeRaw));
     if (arg == param) return 0;
-    if (!canConvertType(arg, param)) return -1;
+    if (!canConvertType(arg, param)) {
+        // 55-c 方案A（2026-09-10 用户裁决）：整数字面量实参豁免——源/目标均为
+        //   整数族时按宽化级参与决议（字面量按目标类型解释，Rust 字面量推断
+        //   惯例；`读值(100)` 传 正32 形参等形态保留）
+        if (argIsLiteral && types::isInteger(arg) && types::isInteger(param)) {
+            return 1;
+        }
+        return -1;
+    }
     // 枚举 -> 整数：按宽化处理（枚举本质为整32，值域不损失）
     if (isEnumType(arg) && !isEnumType(param) && types::isInteger(param)) return 1;
     // 整数族内部：同符号宽化（整8->整16->整32->整64、正8->正16->...）
@@ -644,7 +653,8 @@ int SemanticAnalyzer::conversionLevel(const std::string& argTypeRaw,
 std::string SemanticAnalyzer::resolveOverload(const std::string& name,
                                               const std::vector<std::string>& argTypes,
                                               const SourceLocation& loc,
-                                              const std::string& moduleFilter) {
+                                              const std::string& moduleFilter,
+                                              const std::vector<bool>& argIsLiteral) {
     std::string bestKey;
     int bestTotal = INT32_MAX;
     bool ambiguous = false;
@@ -767,7 +777,9 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
         int total = 0;
         bool ok = true;
         for (int i = 0; i < given; ++i) {
-            const int level = conversionLevel(argTypes[i], info.paramTypes[i]);
+            const bool lit = argIsLiteral.size() > static_cast<std::size_t>(i) &&
+                             argIsLiteral[static_cast<std::size_t>(i)];
+            const int level = conversionLevel(argTypes[i], info.paramTypes[i], lit);
             if (level < 0) { ok = false; break; }
             total += level;
         }
@@ -855,6 +867,37 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
         }
     }
     return types::canConvert(from, to);
+}
+// 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
+//   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含 -1）
+//   时放行。赋值初始化（visitVarDecl）/传参（visitCallExpr 逐参）/返回
+//   （visitReturnStmt）三面统一走本函数；二元运算面豁免在 visitBinaryExpr
+//   内联（isIntLiteralExpr 判定后跳过混合符号检查）。
+bool SemanticAnalyzer::canConvertWithLiteral(const Expr* value,
+                                             const std::string& fromRaw,
+                                             const std::string& toRaw) const {
+    if (canConvertType(fromRaw, toRaw)) return true;
+    // 字面量豁免仅整数族→整数族（浮点/字符串等其它拒绝面不豁免）
+    if (!types::isInteger(fromRaw) || !types::isInteger(toRaw)) return false;
+    return isIntLiteralExpr(value);
+}
+// 混合符号赋值专用诊断（55-c 方案A，2026-09-10 用户裁决·Rust E0308 对齐）——
+//   消息风格与二元面「混合符号二元运算禁止」对仗；主三面（声明初始化/赋值/
+//   返回）接入，函数指针/构造/接口/方法等次要面维持通用消息（拒绝语义已生效）
+bool SemanticAnalyzer::reportMixedSignAssign(const Expr* value,
+                                             const std::string& from,
+                                             const std::string& to,
+                                             const SourceLocation& loc) {
+    if (types::isInteger(from) && types::isInteger(to) &&
+        types::isUnsigned(from) != types::isUnsigned(to) &&
+        !isIntLiteralExpr(value)) {
+        diagnostics_.report(DiagnosticLevel::Error, loc,
+                            "混合符号赋值禁止：'" + from + "' 与 '" + to +
+                            "' —— 须显式转换（如 整64(表达式)/正64(表达式)）；"
+                            "字面量豁免（Rust 对齐，2026-09-10 方案A）");
+        return true;
+    }
+    return false;
 }
 std::string SemanticAnalyzer::genericClassInstanceName(const std::string& typeRaw) const {
     const std::string type = canonicalType(typeRaw);

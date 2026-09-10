@@ -115,15 +115,26 @@ TEST(TypeSystemTest, ImplicitConversionCharInt) {
     EXPECT_TRUE(canConvert("字符", "整64"));
 }
 
-// 整型宽化：小位宽 -> 大位宽（同符号方向）
+// 整型宽化：小位宽 -> 大位宽（同符号方向）；跨符号拒绝（55-c 方案A，2026-09-10
+// 用户裁决·Rust E0308 对齐——同秩跨符号放行+异秩不看符号放行的旧行为废止，
+// 断言改写经用户裁决批准；字面量豁免在语义层 canConvertWithLiteral，本表只测
+// canConvert 纯类型规则）
 TEST(TypeSystemTest, ImplicitConversionIntWiden) {
     EXPECT_TRUE(canConvert("整8", "整32"));
     EXPECT_TRUE(canConvert("整32", "整64"));
     EXPECT_TRUE(canConvert("整64", "整128"));
     EXPECT_TRUE(canConvert("正8", "正64"));
-    // 同秩跨符号允许隐式（位模式一致，仅解释不同；正64 传 整64 参数等场景）
-    EXPECT_TRUE(canConvert("正32", "整32"));
-    EXPECT_TRUE(canConvert("整32", "正32"));
+    // 55-c 方案A：跨符号（同秩/异秩）一律拒绝隐式——须显式构造转换
+    //（原断言 EXPECT_TRUE(canConvert("正32","整32")/"整32","正32") 随裁决改写）
+    EXPECT_FALSE(canConvert("正32", "整32"));
+    EXPECT_FALSE(canConvert("整32", "正32"));
+    EXPECT_FALSE(canConvert("整32", "正64"));   // 异秩跨符号宽化同样拒绝
+    EXPECT_FALSE(canConvert("正32", "整64"));
+    EXPECT_FALSE(canConvert("整64", "正32"));   // 跨符号窄化拒绝
+    // 同符号 128->64 窄化特例（方案C 2026-08-14 保留）；跨符号组合拒绝
+    EXPECT_TRUE(canConvert("整128", "整64"));
+    EXPECT_TRUE(canConvert("正128", "正64"));
+    EXPECT_FALSE(canConvert("整128", "正64"));
     // 降位宽不允许（变量/表达式；字面量窄化在变量声明处单独处理）
     EXPECT_FALSE(canConvert("整64", "整32"));
 }

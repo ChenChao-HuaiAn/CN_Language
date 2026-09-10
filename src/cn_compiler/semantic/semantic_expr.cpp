@@ -63,19 +63,8 @@ bool isArithmeticOp(Operator op) {
            op == Operator::Modulo;
 }
 
-// 整数字面量形态（含一元负号作用于整数字面量，如 -1）——混合符号二元运算
-// 的字面量豁免判定用（规范 plans/001 §3.7，2026-09-10 方案A）
-bool isIntLiteralExpr(const Expr* e) {
-    if (e == nullptr) return false;
-    if (e->getType() == NodeType::IntegerLiteral) return true;
-    if (e->getType() == NodeType::UnaryExpr) {
-        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
-        return u->op == Operator::Subtract && !u->postfix &&
-               u->operand != nullptr &&
-               u->operand->getType() == NodeType::IntegerLiteral;
-    }
-    return false;
-}
+// （isIntLiteralExpr 已提升为 SemanticAnalyzer 静态成员——见 semantic.hpp/
+//    semantic_expr.cpp 成员实现区；55-c 方案A 赋值面豁免点跨文件共用）
 
 // 指针类型辅助（Task 2.4）：是否指针类型 / 是否数组类型
 bool isPointerType(const std::string& type) {
@@ -376,6 +365,20 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
                         "未声明的标识符 '" + node->name + "'");
     lastType_ = "未知";
 }
+// 整数字面量形态（含一元负号作用于整数字面量，如 -1）——混合符号检查的
+//   字面量豁免判定（二元运算面 visitBinaryExpr 与赋值面 canConvertWithLiteral
+//   共用；55-c 方案A 从匿名函数提升为静态成员供跨文件豁免点复用）
+bool SemanticAnalyzer::isIntLiteralExpr(const Expr* e) {
+    if (e == nullptr) return false;
+    if (e->getType() == NodeType::IntegerLiteral) return true;
+    if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        return u->op == Operator::Subtract && !u->postfix &&
+               u->operand != nullptr &&
+               u->operand->getType() == NodeType::IntegerLiteral;
+    }
+    return false;
+}
 void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     std::string leftType = checkExpr(node->left.get());
     std::string rightType = checkExpr(node->right.get());
@@ -461,9 +464,15 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
             return;
         }
         if (!canConvert(leftType, rightType) && !canConvert(rightType, leftType)) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "比较运算操作数类型不兼容：'" + leftType + "' 与 '" +
-                                rightType + "'");
+            // 55-c 方案A：混合符号+字面量豁免形态（如 大 > 100——canConvertType
+            //   对跨符号拒绝后，无字面量豁免会把既有惯用形态误报「类型不兼容」；
+            //   该形态已过上方混合符号检查=字面量豁免分支，按另一侧类型参与）
+            if (!(isInteger(leftType) && isInteger(rightType) &&
+                  (isIntLiteralExpr(node->left.get()) || isIntLiteralExpr(node->right.get())))) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "比较运算操作数类型不兼容：'" + leftType + "' 与 '" +
+                                    rightType + "'");
+            }
         }
         lastType_ = "布尔";
         return;
@@ -984,11 +993,15 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         return;
     }
 
-    // 简单赋值 =：要求右值可隐式转换为左值类型
+    // 简单赋值 =：要求右值可隐式转换为左值类型（55-c 方案A：字面量豁免走
+    //   canConvertWithLiteral——跨符号拒绝后 `正32 a; a = 5` 等字面量赋值保留）
     if (targetType != "未知" && valueType != "未知" &&
-        !canConvertType(valueType, targetType)) {
-        diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "无法将 '" + valueType + "' 隐式转换为 '" + targetType + "'");
+        !canConvertWithLiteral(node->value.get(), valueType, targetType)) {
+        if (!reportMixedSignAssign(node->value.get(), valueType, targetType,
+                                   node->location)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "无法将 '" + valueType + "' 隐式转换为 '" + targetType + "'");
+        }
     }
     // 方案A 强制规则（2026-08-25）：类对象赋值拷贝（乙 = 甲，两者为类变量）——
     //   有析构类须有拷贝构造（函数 类名(类名& 其他) 深拷贝），否则浅拷贝裸指针
@@ -1324,7 +1337,7 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
                 for (auto& elem : list->elements) {
                     std::string elemValueType = checkExpr(elem.get());
                     if (!elemValueType.empty() && elemValueType != "未知" &&
-                        !canConvertType(elemValueType, elemType)) {
+                        !canConvertWithLiteral(elem.get(), elemValueType, elemType)) {
                         diagnostics_.report(DiagnosticLevel::Error, elem->location,
                                             "结构体数组字段 '" + fieldName + "' 元素无法将 '" +
                                             elemValueType + "' 隐式转换为 '" + elemType + "'");
@@ -1335,7 +1348,8 @@ void SemanticAnalyzer::visitStructInitExpr(StructInitExpr* node) {
         }
         // 值类型检查（嵌套结构体初始化递归检查：checkExpr 返回内层类型）
         std::string valueType = checkExpr(fieldPair.second.get());
-        if (!fieldType.empty() && valueType != "未知" && !canConvertType(valueType, fieldType)) {
+        if (!fieldType.empty() && valueType != "未知" &&
+            !canConvertWithLiteral(fieldPair.second.get(), valueType, fieldType)) {
             diagnostics_.report(DiagnosticLevel::Error, fieldPair.second->location,
                                 "结构体字段 '" + fieldName + "' 无法将 '" + valueType +
                                 "' 隐式转换为 '" + fieldType + "'");

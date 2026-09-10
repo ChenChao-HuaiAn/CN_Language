@@ -717,10 +717,15 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
     if (currentReturnType_ == "空类型") {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "空类型函数不允许返回值");
-    } else if (!canConvertType(valueType, currentReturnType_)) {
-        diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "无法将 '" + valueType + "' 隐式转换为返回类型 '" +
-                            currentReturnType_ + "'");
+    } else if (!canConvertWithLiteral(node->value.get(), valueType, currentReturnType_)) {
+        // 55-c 方案A：返回面字面量豁免（返回 小[正32变量] 于 整64 函数=拒绝；
+        // 返回 100 字面量于 正32 函数=豁免放行）；混合符号报专用消息
+        if (!reportMixedSignAssign(node->value.get(), valueType,
+                                   currentReturnType_, node->location)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "无法将 '" + valueType + "' 隐式转换为返回类型 '" +
+                                currentReturnType_ + "'");
+        }
     }
     // P3-18 补完（2026-08）：引用返回函数——返回值须为可绑定左值；禁止返回
     //   本函数局部变量（含按值参数）的地址（随栈帧消亡的悬垂引用）。

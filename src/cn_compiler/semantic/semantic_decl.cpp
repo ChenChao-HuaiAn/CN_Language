@@ -243,10 +243,11 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             InitListExpr* initList = static_cast<InitListExpr*>(node->initializer.get());
             const std::string elemType = types::arrayElemOf(varType);
             const int arrayLen = types::arrayLenOf(varType);
-            // 每个元素须可隐式转换为数组元素类型
+            // 每个元素须可隐式转换为数组元素类型（55-c 方案A：字面量元素豁免——
+            //   `正32[2] a = { 5, 6 }` 等形态保留）
             for (auto& elem : initList->elements) {
                 std::string elemInitType = checkExpr(elem.get());
-                if (!canConvert(elemInitType, elemType)) {
+                if (!canConvertWithLiteral(elem.get(), elemInitType, elemType)) {
                     diagnostics_.report(DiagnosticLevel::Error, elem->location,
                                         "数组元素无法将 '" + elemInitType +
                                         "' 隐式转换为 '" + elemType + "'");
@@ -276,15 +277,23 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             if (!canConvertType(initType, varType)) {
                 // Task 2.3：字面量常量窄化（整8 a = 10：10 默认整32，但值是编译期
                 // 常量且适配目标位宽）——无后缀整数字面量允许窄化到目标整数类型；
-                // 非字面量（变量/表达式）仍按严格隐式转换规则拒绝窄化
+                // 非字面量（变量/表达式）仍按严格隐式转换规则拒绝窄化。
+                // 55-c 方案A（第五十六轮）：豁免扩展至 canConvertWithLiteral——
+                //   跨符号拒绝后，带后缀整数字面量（整64 戊 = 7U 等）按 §3.7
+                //   「字面量按另一侧类型参与」条文豁免（原无后缀判定漏覆盖）
                 const bool isIntLiteral =
-                    (node->initializer->getType() == NodeType::IntegerLiteral) &&
-                    types::literalTypeOf(
-                        static_cast<IntegerLiteral*>(node->initializer.get())->raw, false) == "整32" &&
-                    types::isInteger(varType);
+                    ((node->initializer->getType() == NodeType::IntegerLiteral) &&
+                     types::literalTypeOf(
+                         static_cast<IntegerLiteral*>(node->initializer.get())->raw, false) == "整32" &&
+                     types::isInteger(varType)) ||
+                    canConvertWithLiteral(node->initializer.get(), initType, varType);
                 if (!isIntLiteral) {
-                    diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                        "无法将 '" + initType + "' 隐式转换为 '" + varType + "'");
+                    // 55-c 方案A：跨符号变量间拒绝报专用消息（与二元面对仗）
+                    if (!reportMixedSignAssign(node->initializer.get(), initType,
+                                               varType, node->location)) {
+                        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                            "无法将 '" + initType + "' 隐式转换为 '" + varType + "'");
+                    }
                 }
             }
         }

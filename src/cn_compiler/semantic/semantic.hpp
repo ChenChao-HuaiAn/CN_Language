@@ -371,6 +371,22 @@ private:
     // 扩展隐式转换（Task 2.7 + 阶段3）：在 types::canConvert 基础上增加 枚举↔整数、
     //   结构体须同名、结果/可选 模板兼容、空类型* -> 可选<T>（空可选值）
     bool canConvertType(const std::string& from, const std::string& to) const;
+    // 55-c 方案A（2026-09-10 用户裁决，Rust E0308 对齐）：canConvertType 拒绝时的
+    //   整数字面量豁免——源/目标均为整数族且值表达式为整数字面量形态（含一元
+    //   负号字面量 -1）时放行（字面量按目标类型解释，Rust 字面量推断惯例；
+    //   `正64 b = 5`、`readU(100)` 等初始化/传参惯用形态保留）。
+    //   赋值初始化/传参/返回面的混合符号检查统一走本函数。
+    bool canConvertWithLiteral(const Expr* value, const std::string& from,
+                               const std::string& to) const;
+    // 混合符号赋值专用诊断（55-c 方案A）：canConvertWithLiteral 拒绝且为
+    //   「变量间」跨符号（整数族+符号相异+非字面量）时报专用消息并返回 true
+    //   （调用方不再报通用转换消息）——与二元面「混合符号二元运算禁止」对仗
+    bool reportMixedSignAssign(const Expr* value, const std::string& from,
+                               const std::string& to, const SourceLocation& loc);
+    // 整数字面量形态（含一元负号作用于整数字面量，如 -1）——混合符号检查的
+    //   字面量豁免判定（二元运算面 visitBinaryExpr 与赋值面 canConvertWithLiteral
+    //   共用；原 semantic_expr.cpp 匿名函数提升为成员供跨文件豁免点复用）
+    static bool isIntLiteralExpr(const Expr* e);
     // 数值运算的结果类型（整型取宽、整浮混合取浮）
     static std::string commonNumericType(const std::string& a, const std::string& b) {
         return types::commonNumericType(a, b);
@@ -429,10 +445,14 @@ private:
     std::string resolveOverload(const std::string& name,
                                 const std::vector<std::string>& argTypes,
                                 const SourceLocation& loc,
-                                const std::string& moduleFilter = "");
+                                const std::string& moduleFilter = "",
+                                const std::vector<bool>& argIsLiteral = {});
     // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换 -1=不可转
     //（非静态：需调用 canConvertType/isEnumType 等成员，Task 2.10）
-    int conversionLevel(const std::string& argType, const std::string& paramType);
+    // argIsLiteral（55-c 方案A）：整数字面量实参豁免——源/目标均整数族时按
+    //   宽化级参与决议（字面量按目标类型解释，Rust 字面量推断惯例）
+    int conversionLevel(const std::string& argType, const std::string& paramType,
+                        bool argIsLiteral = false);
     // 判断类型字符串是否为函数指针类型（函数指针<返回>(参数,...)）
     static bool isFuncPtrType(const std::string& type);
     // 从函数指针类型字符串提取返回类型（空串表示非法输入）
