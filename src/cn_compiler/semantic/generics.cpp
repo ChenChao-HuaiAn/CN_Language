@@ -425,6 +425,7 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 mi.isAbstract = member->isAbstract;
                 mi.isStatic = member->isStatic;
                 mi.isConstMethod = member->isConstMethod;
+                mi.isUnsafe = member->isUnsafe;  // plans/019 阶段4 第二批：泛型实例化方法修饰位拷贝
                 mi.hasBody = (member->body != nullptr);
                 mi.ast = member.get();
                 mi.isConstructor = (member->kind == ClassMemberKind::Constructor ||

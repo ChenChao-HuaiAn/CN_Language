@@ -218,9 +218,15 @@ std::unique_ptr<GenericDecl> Parser::parseGenericDecl() {
         break;
     }
     consume(TokenType::Greater, "'>'");
-    // 被泛型修饰的 类 或 函数
+    // 被泛型修饰的 类 或 函数（plans/019 阶段4 第二批：泛型 不安全 函数——
+    //   修饰语法扩展，第一批 stdlib 迁移中 逆序 暴露的规则缺口）
     if (check(TokenType::Kw_Class)) {
         decl->innerClass = parseClassDecl();
+    } else if (check(TokenType::Kw_Unsafe) &&
+               peek(1).getType() == TokenType::Kw_Function) {
+        advance();  // 消费 不安全
+        decl->innerFunc = parseFunctionDecl();
+        if (decl->innerFunc != nullptr) decl->innerFunc->isUnsafe = true;
     } else if (check(TokenType::Kw_Function)) {
         decl->innerFunc = parseFunctionDecl();
     } else {
