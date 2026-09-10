@@ -932,6 +932,15 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                         "不能给常量 '" + ident->name + "' 赋值（常量初始化后不可修改）");
                     lvalueOk = false;
                 }
+                // plans/019 阶段3（2026-09-10）：常量引用参数是只读借用——不可
+                //   作赋值目标（写=可变借用，与只读冲突）
+                else if (currentConstRefParams_.count(ident->name) > 0) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, ident->location,
+                        "常量引用参数 '" + ident->name +
+                            "' 是只读借用，不能赋值");
+                    lvalueOk = false;
+                }
                 // plans/019 阶段1（2026-09-10）：已转移变量不可作赋值目标
                 //   （赋值=使用；转移后获得新值请使用新变量名）
                 else if (reportMovedUse(ident->name, ident->location)) {
@@ -944,11 +953,27 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             break;
         }
         case NodeType::IndexExpr:
-        case NodeType::MemberExpr:
-            // 下标访问（数组[i]）/成员访问（对象.字段）均为可写左值
+        case NodeType::MemberExpr: {
+            // 下标访问（数组[i]）/成员访问（对象.字段）均为可写左值；
+            // plans/019 阶段3：对象为常量引用参数（只读借用经成员链写=写借用
+            //   对象）——拒绝
+            if (node->target->getType() == NodeType::MemberExpr) {
+                const Expr* obj =
+                    static_cast<MemberExpr*>(node->target.get())->object.get();
+                if (obj->getType() == NodeType::IdentifierExpr &&
+                    currentConstRefParams_.count(
+                        static_cast<const IdentifierExpr*>(obj)->name) > 0) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->target->location,
+                        "常量引用参数 '" +
+                            static_cast<const IdentifierExpr*>(obj)->name +
+                            "' 是只读借用，不能经成员访问赋值");
+                }
+            }
             targetType = checkExpr(node->target.get());
             lvalueOk = true;
             break;
+        }
         case NodeType::UnaryExpr: {
             // 解引用（*p，Deref）为可写左值；其余一元结果（负号/逻辑非/取地址）
             // 不可赋值——原实现整类放行为缺陷②形态

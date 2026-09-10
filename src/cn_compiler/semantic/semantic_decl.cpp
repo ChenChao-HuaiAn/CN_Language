@@ -572,6 +572,8 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
         if (!param->funcPtr.isFunctionPtr() && types::isReference(param->typeName)) {
             currentRefParams_.insert(param->name);
         }
+        // plans/019 阶段3：常量 只读引用参数收集（只读借用纪律判定）
+        if (param->isConstParam) currentConstRefParams_.insert(param->name);
     }
     // 当前函数作用域起始索引：scopes_ 中索引 >= 该值的绑定属函数局部
     // （引用返回局部检查：返回本函数局部变量/按值参数地址 -> 悬垂引用报错）
@@ -605,6 +607,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentReturnType_.clear();
     currentIsRefReturn_ = false;
     currentRefParams_.clear();
+    currentConstRefParams_.clear();  // plans/019 阶段3：只读借用状态复位
     refLocalBases_.clear();     // plans/019 阶段2：逃逸分析状态为函数级
     ptrLocalPointees_.clear();
     funcScopeStart_ = -1;

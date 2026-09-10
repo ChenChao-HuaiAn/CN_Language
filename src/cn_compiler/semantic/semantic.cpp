@@ -291,6 +291,48 @@ bool SemanticAnalyzer::lookupMoved(const std::string& name, int& outLine) const 
     return false;
 }
 
+// plans/019 阶段3（2026-09-10）：常量引用借用纪律（普通函数调用面）。
+void SemanticAnalyzer::checkConstRefBorrowDiscipline(
+    CallExpr* node, const std::vector<std::string>& paramTypes,
+    const std::vector<bool>& constParams) {
+    const std::size_t n = std::min(node->arguments.size(), paramTypes.size());
+    std::string mutBase;                     // 首个可变引用实参的基础名
+    bool mutSeen = false;
+    for (std::size_t i = 0; i < n; ++i) {
+        if (!types::isReference(paramTypes[i])) continue;
+        const bool isConstRef = (i < constParams.size()) && constParams[i];
+        // 实参基础名（标识符/& 包装 unwrap；其余形态不参与第一版判定）
+        const Expr* arg = node->arguments[i].get();
+        if (arg->getType() == NodeType::UnaryExpr &&
+            static_cast<const UnaryExpr*>(arg)->op == Operator::AddressOf) {
+            arg = static_cast<const UnaryExpr*>(arg)->operand.get();
+        }
+        if (arg->getType() != NodeType::IdentifierExpr) continue;
+        const std::string& name = static_cast<const IdentifierExpr*>(arg)->name;
+        if (!isConstRef) {
+            // ①只读借出可变：实参是当前函数常量引用参数而形参可变引用
+            if (currentConstRefParams_.count(name) > 0) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, arg->location,
+                    "常量引用参数 '" + name +
+                        "' 是只读借用，不能再作为可变引用传参");
+            }
+            if (!mutSeen) {
+                mutBase = name;
+                mutSeen = true;
+            }
+        } else if (mutSeen && mutBase == name) {
+            // ②借用互斥（第一版：同调用 可变×只读 同基础变量；可变×可变
+            //   双可变别名随阶段3b）
+            diagnostics_.report(
+                DiagnosticLevel::Error, arg->location,
+                "同一调用中变量 '" + name +
+                    "' 的可变借用与只读借用互斥（借用互斥第一版：语句级）");
+            return;
+        }
+    }
+}
+
 // plans/019 阶段2（2026-09-10）：表达式是否求值为「当前函数局部的地址」。
 bool SemanticAnalyzer::isLocalAddressValue(const Expr* e, std::string& baseName) const {
     baseName.clear();
@@ -1588,6 +1630,8 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     }
     std::reverse(info.hasDefault.begin(), info.hasDefault.end());  // 恢复参数顺序
     for (auto& param : node->params) {
+        // plans/019 阶段3：常量 只读引用参数位登记（与 paramTypes 等长）
+        info.constParams.push_back(param->isConstParam);
         // 函数指针参数：整32(*func)(整32, 整32) 类型存规范化字符串
         if (param->funcPtr.isFunctionPtr()) {
             info.paramTypes.push_back(param->funcPtr.toString());

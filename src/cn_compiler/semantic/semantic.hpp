@@ -32,6 +32,9 @@ struct FunctionInfo {
     bool isExtern = false;                 // C-3：外部 函数 声明（C 链接符号=纯名）
     // ---- Task 2.10：默认参数 ----
     std::vector<bool> hasDefault;          // 每个参数是否有默认值（与 paramTypes 等长）
+    // plans/019 阶段3（2026-09-10）：常量 只读引用参数位表（与 paramTypes 等长；
+    //   常量 T& 形参=只读借用——体内赋值/传可变引用/与可变借用互斥均拒绝）
+    std::vector<bool> constParams;
     // 默认值表达式按需求值：IR 层展开；语义层仅记录个数（defaultCount 为尾部连续
     // 带默认值的参数个数，调用时用于"实参个数 + 可补全"匹配）
     int defaultCount = 0;                  // 尾部默认参数个数（从右向左连续声明）
@@ -366,6 +369,14 @@ private:
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
+    // plans/019 阶段3（2026-09-10）：常量引用借用纪律——①实参为当前函数
+    //   常量引用参数而形参为可变引用（只读借用不能借出可变）；②同一调用中
+    //   可变引用位与常量引用位实参解析到同一基础变量（借用互斥第一版：
+    //   语句级保守，跨语句活跃区间随阶段3b）。普通函数调用面接入
+    //   （构造/方法/函数指针随 3b——plans/019 跟踪表注记）。
+    void checkConstRefBorrowDiscipline(class CallExpr* node,
+                                       const std::vector<std::string>& paramTypes,
+                                       const std::vector<bool>& constParams);
     // plans/019 阶段2（2026-09-10）：表达式是否求值为「当前函数局部的地址」——
     //   ①取地址 &局部（AddressOf 一元，基础名经 refReturnLvalueBase 解剖）
     //   ②引用局部标识符（登记于 refLocalBases_ 且绑定基础名为当前函数局部）。
@@ -635,6 +646,9 @@ private:
     bool currentIsRefReturn_ = false;
     // 当前函数引用参数名集合：引用返回局部检查用——引用参数可被返回（指向调用方存储）
     std::unordered_set<std::string> currentRefParams_;
+    // plans/019 阶段3（2026-09-10）：当前函数 常量 只读引用参数名集——体内
+    //   赋值目标/传可变借用实参 的只读纪律判定（checkFunctionBody 收集/复位）。
+    std::unordered_set<std::string> currentConstRefParams_;
     // 当前函数作用域起始索引（scopes_ 中索引 >= 该值 的绑定属函数局部；-1=无函数上下文）
     int funcScopeStart_ = -1;
     // 最近一次 checkExpr 求值是否"引用返回调用"（调用点/赋值目标/引用绑定/取地址识别）

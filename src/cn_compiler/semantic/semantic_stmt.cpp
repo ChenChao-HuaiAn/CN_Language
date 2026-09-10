@@ -743,6 +743,14 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
                 DiagnosticLevel::Error, node->location,
                 "引用返回不能返回局部变量的地址（'" + baseName + "'）");
         }
+        // plans/019 阶段3 补：常量引用参数是只读借用——不能作为可变引用（T&）
+        //   返回（借出升级违反只读）
+        if (!baseName.empty() && currentConstRefParams_.count(baseName) > 0) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "常量引用参数 '" + baseName +
+                    "' 是只读借用，不能作为可变引用返回");
+        }
     }
     // plans/019 阶段2（2026-09-10）：指针返回（T*）——返回值求值为当前函数
     //   局部的地址（&局部 / 引用局部绑局部 / 指向局部的局部指针[直接 &局部

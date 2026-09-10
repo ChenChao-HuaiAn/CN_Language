@@ -907,6 +907,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         node->resolvedSignature = sigKey;
         auto it = functions_.find(sigKey);
         const FunctionInfo& info = it->second;
+        // plans/019 阶段3（2026-09-10）：常量引用借用纪律（只读借出可变拒 +
+        //   同调用可变×只读互斥）——置于 wrapRefArgs 之前按原始实参形态判定
+        checkConstRefBorrowDiscipline(node, info.paramTypes, info.constParams);
         // A-1（引用参数）：引用形参的实参自动取地址（重写为 &左值）——
         //   须在 IR 层实参求值之前（IR genExpr 对 AddressOf 生成 lvalueAddress）
         wrapRefArgs(node, info.paramTypes);

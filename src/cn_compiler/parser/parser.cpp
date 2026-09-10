@@ -518,6 +518,15 @@ bool Parser::parseFuncPtrType(FuncPtrTypeInfo& out) {
 std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
     auto param = std::make_unique<ParamDecl>();
     param->location = current().getLocation();
+    // plans/019 阶段3（2026-09-10）：常量 只读引用参数前缀（常量 向量<整64>&
+    //   数据）——常量 后随类型起点（类型关键字/标识符类型）时消费并置位；
+    //   仅 常量 后跟 & 的形态暂不支持（须显式类型）。
+    if (check(TokenType::Kw_Const) &&
+        (isTypeKeyword(peek(1).getType()) ||
+         peek(1).getType() == TokenType::Identifier)) {
+        param->isConstParam = true;
+        advance();  // 消费 常量
+    }
     if (isTypeKeyword(currentType())) {
         // 探测函数指针参数：<类型> ( * 名 ) ( 参数列表 )
         if (peek(1).getType() == TokenType::LeftParen &&

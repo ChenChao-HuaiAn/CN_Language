@@ -803,6 +803,9 @@ public:
     FuncPtrTypeInfo funcPtr;  // 函数指针类型信息（非空表示本参数为函数指针）
     bool hasDefault = false;  // 是否有默认值（Task 2.10）
     std::unique_ptr<Expr> defaultExpr;  // 默认值表达式（编译期常量，Task 2.10）
+    // plans/019 阶段3（2026-09-10）：常量 只读引用参数（常量 T& 名）——只读
+    //   借用（Rust &T 对标）；体内赋值/传可变引用/与可变借用互斥均拒绝。
+    bool isConstParam = false;
 };
 
 // 函数声明：函数 名称(参数列表) [-> 返回类型] { 函数体 }
