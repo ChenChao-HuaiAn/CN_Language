@@ -744,6 +744,28 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
                 "引用返回不能返回局部变量的地址（'" + baseName + "'）");
         }
     }
+    // plans/019 阶段2（2026-09-10）：指针返回（T*）——返回值求值为当前函数
+    //   局部的地址（&局部 / 引用局部绑局部 / 指向局部的局部指针[直接 &局部
+    //   赋值登记]）时拒绝（栈帧消亡悬垂；引用返回已上方覆盖，本块补 T* 面）。
+    if (types::isPointer(currentReturnType_) && node->value != nullptr) {
+        std::string escBase;
+        if (isLocalAddressValue(node->value.get(), escBase)) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "返回局部变量的地址（'" + escBase +
+                    "'）——函数返回后栈帧消亡将成悬垂");
+        } else if (node->value->getType() == NodeType::IdentifierExpr) {
+            const std::string& name =
+                static_cast<IdentifierExpr*>(node->value.get())->name;
+            auto pit = ptrLocalPointees_.find(name);
+            if (pit != ptrLocalPointees_.end()) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "返回局部变量的地址（'" + pit->second + "'，经指针 '" + name +
+                        "'）——函数返回后栈帧消亡将成悬垂");
+            }
+        }
+    }
 }
 void SemanticAnalyzer::visitBreakStmt(BreakStmt* node) {
     if (loopDepth_ == 0 && switchDepth_ == 0) {

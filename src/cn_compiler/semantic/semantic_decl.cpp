@@ -280,8 +280,11 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         //   限定仅结构体：标量（布尔/整64 调用返回等）回填会改变既有打印分派
         //   行为（布尔 真/假 vs 0/1——E2E 184 expected 固化前者 0/1 为既有形态，
         //   测试文件纪律不擅改）；标量推断的 IR 类型面完善随标量推断轮裁决。
+        // 缺陷①方案A（2026-09-10 用户裁决）：回填扩展至字符串——原「限定仅
+        //   结构体」使 `变量 乙 = 甲;`（字符串标识符拷贝）的类型不传 IR，
+        //   打印分派打指针值（E2E 199 载体）；布尔维持现状（184 行为契约）。
         if (!varType.empty() && varType != "未知" &&
-            isStructType(types::canonical(varType))) {
+            (isStructType(types::canonical(varType)) || varType == "字符串")) {
             node->typeName = varType;
         }
     } else if (node->initializer != nullptr && !varType.empty()) {
@@ -376,6 +379,32 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (inTransferRewrite_) {
         inTransferRewrite_ = false;
         if (!transferSrcName.empty()) markMovedVar(transferSrcName, transferLine);
+    }
+    // plans/019 阶段2（2026-09-10）：引用局部登记（绑定基础名——赋值/返回
+    //   逃逸检查用；绑定形态无法静态解剖基础名（解引用/引用返回调用链）时
+    //   不登记=检不出诚实边界）
+    if (!varType.empty() && types::isReference(varType) &&
+        node->initializer != nullptr) {
+        std::string bindBase;
+        if (refReturnLvalueBase(node->initializer.get(), bindBase) &&
+            !bindBase.empty()) {
+            refLocalBases_[node->name] = bindBase;
+        }
+    }
+    // plans/019 阶段2 补丁：局部指针声明初始化指向登记（整64* p = &x; 与赋值
+    //   位 visitAssignmentExpr 同款——返回检查「返回指向局部的局部指针」覆盖
+    //   声明位形态；指针间传递不跟踪=诚实边界不变）
+    if (!varType.empty() && types::isPointer(varType) &&
+        node->initializer != nullptr &&
+        node->initializer->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(node->initializer.get())->op == Operator::AddressOf) {
+        std::string bn;
+        if (refReturnLvalueBase(
+                static_cast<UnaryExpr*>(node->initializer.get())->operand.get(),
+                bn) &&
+            !bn.empty()) {
+            ptrLocalPointees_[node->name] = bn;
+        }
     }
     if (declareVar(node->name, varType, node->location) && node->isConst &&
         !scopeConsts_.empty()) {
@@ -576,6 +605,8 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentReturnType_.clear();
     currentIsRefReturn_ = false;
     currentRefParams_.clear();
+    refLocalBases_.clear();     // plans/019 阶段2：逃逸分析状态为函数级
+    ptrLocalPointees_.clear();
     funcScopeStart_ = -1;
     currentFunctionName_.clear();  // 阶段3：退出函数上下文
     currentModuleName_ = savedModule;  // A-2：恢复外层模块上下文

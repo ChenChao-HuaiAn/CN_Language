@@ -1026,6 +1026,87 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         checkCopyRequiresCtor(types::canonical(targetType), node->location);
     }
     lastType_ = targetType == "未知" ? valueType : targetType;
+    // plans/019 阶段2（2026-09-10）：局部地址逃逸检查——右值求值为当前函数
+    //   局部的地址（&局部 / 引用局部绑局部）而赋值目标是比其寿命长的存储
+    //   （静态/全局变量、静态/全局对象的字段或元素）时编译期拒绝（悬垂防线
+    //   前移）。局部指针/局部对象字段/局部数组元素接收局部地址合法（随所在
+    //   作用域消亡）；局部指针指向登记供返回检查（直接 &局部 形态）。
+    {
+        std::string escBase;
+        if (isLocalAddressValue(node->value.get(), escBase)) {
+            bool escapes = false;
+            std::string dstDesc;
+            switch (node->target->getType()) {
+                case NodeType::IdentifierExpr: {
+                    const std::string& name =
+                        static_cast<IdentifierExpr*>(node->target.get())->name;
+                    std::string vt;
+                    if (lookupVar(name, vt) && !isCurrentFnLocal(name)) {
+                        escapes = true;
+                        dstDesc = name;
+                    }
+                    break;
+                }
+                case NodeType::MemberExpr:
+                case NodeType::IndexExpr: {
+                    // 自行解剖对象链基础名（refReturnLvalueBase 对指针解引用
+                    // 访问短路返回空=放行；静态指针 p.f 的存储=静态指向对象，
+                    // 须按 p 判定逃逸）
+                    std::string objBase;
+                    const Expr* obj =
+                        node->target->getType() == NodeType::MemberExpr
+                            ? static_cast<MemberExpr*>(node->target.get())->object.get()
+                            : static_cast<IndexExpr*>(node->target.get())->object.get();
+                    while (obj != nullptr &&
+                           (obj->getType() == NodeType::MemberExpr ||
+                            obj->getType() == NodeType::IndexExpr)) {
+                        obj = obj->getType() == NodeType::MemberExpr
+                                  ? static_cast<const MemberExpr*>(obj)->object.get()
+                                  : static_cast<const IndexExpr*>(obj)->object.get();
+                    }
+                    if (obj != nullptr &&
+                        obj->getType() == NodeType::IdentifierExpr) {
+                        objBase = static_cast<const IdentifierExpr*>(obj)->name;
+                    }
+                    std::string objVt;
+                    if (!objBase.empty() && lookupVar(objBase, objVt) &&
+                        !isCurrentFnLocal(objBase)) {
+                        escapes = true;
+                        dstDesc = objBase + " 的字段/元素";
+                    }
+                    break;
+                }
+                default:
+                    break;
+            }
+            if (escapes) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "不能将局部变量 '" + escBase + "' 的地址存入静态/全局存储（'" +
+                        dstDesc + "' 比其寿命长，将成悬垂）");
+            }
+        }
+        // 指向登记：局部指针 = &局部（直接形态）；指针间传递（p = q）不跟踪
+        // = 诚实边界（返回检查只认直接赋值登记的指向）
+        if (node->target->getType() == NodeType::IdentifierExpr) {
+            const std::string& name =
+                static_cast<IdentifierExpr*>(node->target.get())->name;
+            std::string vt;
+            if (isCurrentFnLocal(name) && lookupVar(name, vt) &&
+                types::isPointer(vt) &&
+                node->value->getType() == NodeType::UnaryExpr &&
+                static_cast<UnaryExpr*>(node->value.get())->op ==
+                    Operator::AddressOf) {
+                std::string bn;
+                if (refReturnLvalueBase(
+                        static_cast<UnaryExpr*>(node->value.get())->operand.get(),
+                        bn) &&
+                    !bn.empty()) {
+                    ptrLocalPointees_[name] = bn;
+                }
+            }
+        }
+    }
 }
 void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     const std::string memberName = node->memberName;

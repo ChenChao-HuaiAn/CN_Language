@@ -291,6 +291,37 @@ bool SemanticAnalyzer::lookupMoved(const std::string& name, int& outLine) const 
     return false;
 }
 
+// plans/019 阶段2（2026-09-10）：表达式是否求值为「当前函数局部的地址」。
+bool SemanticAnalyzer::isLocalAddressValue(const Expr* e, std::string& baseName) const {
+    baseName.clear();
+    if (e == nullptr) return false;
+    // ①取地址 &左值——基础名经 refReturnLvalueBase 解剖（标识符/成员/下标链；
+    //   解引用/引用返回调用链 baseName 空=指向不明，不判逃逸=诚实边界）
+    if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        if (u->op == Operator::AddressOf) {
+            std::string bn;
+            if (refReturnLvalueBase(u->operand.get(), bn) && !bn.empty() &&
+                isCurrentFnLocal(bn)) {
+                baseName = bn;
+                return true;
+            }
+        }
+        return false;
+    }
+    // ②引用局部标识符（绑定为当前函数局部）
+    if (e->getType() == NodeType::IdentifierExpr) {
+        const std::string& name = static_cast<const IdentifierExpr*>(e)->name;
+        auto it = refLocalBases_.find(name);
+        if (it != refLocalBases_.end() && !it->second.empty() &&
+            isCurrentFnLocal(it->second)) {
+            baseName = it->second;
+            return true;
+        }
+    }
+    return false;
+}
+
 bool SemanticAnalyzer::reportMovedUse(const std::string& name, const SourceLocation& loc) {
     int movedLine = -1;
     if (!lookupMoved(name, movedLine)) return false;

@@ -366,6 +366,11 @@ private:
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
+    // plans/019 阶段2（2026-09-10）：表达式是否求值为「当前函数局部的地址」——
+    //   ①取地址 &局部（AddressOf 一元，基础名经 refReturnLvalueBase 解剖）
+    //   ②引用局部标识符（登记于 refLocalBases_ 且绑定基础名为当前函数局部）。
+    //   命中返回 true 并回填 baseName（逃逸检查与指针返回检查共用）。
+    bool isLocalAddressValue(const Expr* e, std::string& baseName) const;
     // plans/019 阶段1：转移实参类型放行判定（资源语义类型白名单）——
     //   返回 0=放行（指针/字符串，任意表达式位=值交接）；1=标量（复制语义拒绝）；
     //   2=声明初始化位限定类型（容器/类/结构体/结果/可选/数组——表达式位随阶段3）
@@ -618,6 +623,12 @@ private:
     //   visitIdentifierExpr 的已转移检查在此窗口内跳过（该"使用"是改写产物
     //   而非用户代码）；窗口在 visitVarDecl 收尾关闭并真正标记源变量。
     bool inTransferRewrite_ = false;
+    // plans/019 阶段2（2026-09-10）：引用局部绑定表（引用局部名 -> 绑定基础名，
+    //   visitVarDecl 登记 / checkFunctionBody 入口清空）与局部指针指向表
+    //   （局部指针名 -> 直接 &局部 赋值的指向基础名；指针间传递不跟踪=诚实
+    //   边界）——isLocalAddressValue / 返回与赋值逃逸检查共用。
+    std::unordered_map<std::string, std::string> refLocalBases_;
+    std::unordered_map<std::string, std::string> ptrLocalPointees_;
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
     // P3-18 补完（2026-08）：当前函数是否为引用返回（visitReturnStmt 校验用）
