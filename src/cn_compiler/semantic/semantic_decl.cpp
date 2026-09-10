@@ -378,7 +378,11 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   使用/再转移均拒绝）。
     if (inTransferRewrite_) {
         inTransferRewrite_ = false;
-        if (!transferSrcName.empty()) markMovedVar(transferSrcName, transferLine);
+        if (!transferSrcName.empty()) {
+            markMovedVar(transferSrcName, transferLine);
+            // plans/019 阶段3b：登记转移声明（节点键）——IR genVarDecl 浅交接分派
+            transferDeclSources_[static_cast<const void*>(node)] = transferSrcName;
+        }
     }
     // plans/019 阶段2（2026-09-10）：引用局部登记（绑定基础名——赋值/返回
     //   逃逸检查用；绑定形态无法静态解剖基础名（解引用/引用返回调用链）时

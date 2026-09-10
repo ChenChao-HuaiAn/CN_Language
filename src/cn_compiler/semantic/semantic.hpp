@@ -166,6 +166,15 @@ public:
     //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
     static bool isTransferCall(const class CallExpr* node);
 
+    // plans/019 阶段3b（2026-09-10）：IR 层查询——声明是否转移初始化（浅交接
+    //   分派用：跳过深拷贝改槽位交接）；命中返回 true 并回填源变量名。
+    bool isTransferDecl(const void* varDeclNode, std::string& outSrcName) const {
+        auto it = transferDeclSources_.find(varDeclNode);
+        if (it == transferDeclSources_.end()) return false;
+        outSrcName = it->second;
+        return true;
+    }
+
     // ==================== 结构体/枚举查询（Task 2.7，供IR层复用布局） ====================
     // 是否结构体/联合体类型名
     bool isStructType(const std::string& type) const;
@@ -652,6 +661,10 @@ private:
     // plans/019 阶段3（2026-09-10）：当前函数 常量 只读引用参数名集——体内
     //   赋值目标/传可变借用实参 的只读纪律判定（checkFunctionBody 收集/复位）。
     std::unordered_set<std::string> currentConstRefParams_;
+    // plans/019 阶段3b（2026-09-10）：转移声明位登记（VarDecl 节点 -> 源变量名）
+    //   ——浅拷贝优化通道：语义层 AST 改写后 IR 无从识别转移，IR genVarDecl 经
+    //   isTransferDecl 查本表走槽位交接（句柄直拷+源槽清零）而非深拷贝。
+    std::unordered_map<const void*, std::string> transferDeclSources_;
     // 当前函数作用域起始索引（scopes_ 中索引 >= 该值 的绑定属函数局部；-1=无函数上下文）
     int funcScopeStart_ = -1;
     // 最近一次 checkExpr 求值是否"引用返回调用"（调用点/赋值目标/引用绑定/取地址识别）

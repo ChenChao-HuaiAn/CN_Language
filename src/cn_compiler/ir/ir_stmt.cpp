@@ -691,6 +691,26 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             lastExpr_ = value;
             return;
         }
+        // plans/019 阶段3b（2026-09-10）：转移浅交接（性能主项）——语义层已把
+        //   转移(源) 改写为源标识符并登记节点；此处跳过 NewObject+拷贝构造深拷贝，
+        //   改为句柄直拷 + **源槽清零**：源变量 RAII 析构对零句柄走既有空安全
+        //   跳过（DeleteObject test/je），目标析构真句柄=恰好一次释放；条件分支
+        //   两路径均正确（条件假=转移未执行=句柄仍在源槽=源析构正常释放）。
+        std::string transferSrcNameIr;
+        if (semantic_ != nullptr && value.type == "ptr" &&
+            node->initializer != nullptr &&
+            node->initializer->getType() == NodeType::IdentifierExpr &&
+            semantic_->isTransferDecl(static_cast<const void*>(node),
+                                      transferSrcNameIr)) {
+            emit(ir::Opcode::Store, {value}, ir::IRValue(), unique,
+                 "ptr", node->location);
+            const std::string srcUnique = lookupVarName(transferSrcNameIr);
+            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                          node->location);
+            emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique,
+                 "i64", node->location);
+            return;
+        }
         // 缺陷1 修复：类对象初始化（资源 乙 = 甲）——类对象是堆指针语义，
         //   直接 Store 源指针会让两个变量共享同一堆地址，RAII 重复释放堆损坏。
         //   正确语义：新建独立堆对象 + 逐字段 CopyStruct 深拷贝。
