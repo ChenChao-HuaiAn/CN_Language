@@ -78,6 +78,9 @@ struct ClassMemberInfo {
     // plans/019 阶段3b（2026-09-10）：常量 只读引用参数位表（构造/方法调用面
     //   借用纪律用；与 paramTypes 等长——普通函数 FunctionInfo.constParams 同构）
     std::vector<bool> constParams;
+    // plans/019 阶段4 第二层第一批（2026-09-10）：不安全 方法修饰（安全区边界
+    //   ——方法体内五类越界操作豁免观察期警告）
+    bool isUnsafe = false;
 };
 
 // 类符号信息：成员表 + 继承 + 虚表 + 接口实现 + 布局（Task 3.1~3.3）

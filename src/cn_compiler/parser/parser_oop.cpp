@@ -456,6 +456,12 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
             advance();
             continue;
         }
+        // plans/019 阶段4 第二层第一批（2026-09-10）：类方法 不安全 修饰位
+        if (check(TokenType::Kw_Unsafe) && peek(1).getType() == TokenType::Kw_Function) {
+            out.isUnsafe = true;
+            advance();
+            continue;
+        }
         break;
     }
 

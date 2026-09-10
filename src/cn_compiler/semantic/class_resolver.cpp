@@ -510,6 +510,7 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
         mi.isAbstract = member->isAbstract;
         mi.isStatic = member->isStatic;
         mi.isConstMethod = member->isConstMethod;
+        mi.isUnsafe = member->isUnsafe;  // plans/019 阶段4 第二层第一批
         mi.hasBody = (member->body != nullptr);
         mi.ast = member.get();
         // 构造/析构判定（Task 3.1 约定：函数名 == 类名 为构造）
@@ -887,6 +888,9 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         contextClassStack_.push_back(info.name);
         const bool savedConst = constMethodContext_;
         constMethodContext_ = mi.isConstMethod;
+        // plans/019 阶段4 第二层第一批：不安全方法体内豁免安全区边界观察期警告
+        const bool savedUnsafe = currentFnUnsafe_;
+        currentFnUnsafe_ = mi.isUnsafe;
         const std::string savedFuncName = currentFunctionName_;
         currentFunctionName_ = mi.name;
         // Task 6.1（嵌套泛型 链表$整32 方法体内 节点<T>）：实例化类名含 $，
@@ -1018,6 +1022,7 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         // 恢复上下文
         currentFunctionName_ = savedFuncName;
         constMethodContext_ = savedConst;
+        currentFnUnsafe_ = savedUnsafe;  // plans/019 阶段4
         genericTypeParams_ = savedTypeParams;
         contextClassStack_.pop_back();
     }

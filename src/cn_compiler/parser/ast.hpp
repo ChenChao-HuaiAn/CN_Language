@@ -933,6 +933,7 @@ public:
     bool isAbstract = false;                       // 抽象 修饰（纯虚函数，无实现体）
     bool isConstMethod = false;                    // 常量 修饰（常量成员函数，Task 3.9）
     bool isStatic = false;                         // 静态 修饰（静态方法/字段，Task 3.9）
+    bool isUnsafe = false;                         // 不安全 修饰（安全区边界，plans/019 阶段4 第二层第一批）
     std::vector<std::unique_ptr<ParamDecl>> params;// 参数列表
     std::string returnType;                        // 返回类型（方法/运算符重载）
     std::string operatorSym;                       // 运算符符号（kind=Operator，如 "+"）
