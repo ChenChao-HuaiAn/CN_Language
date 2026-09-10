@@ -291,6 +291,18 @@ bool SemanticAnalyzer::lookupMoved(const std::string& name, int& outLine) const 
     return false;
 }
 
+// plans/019 阶段4（2026-09-10）：安全区边界观察期警告——安全（非 不安全）函数
+// 体内出现越界操作时发警告（分批收口后变错误；不安全函数体内=豁免零警告）。
+void SemanticAnalyzer::warnUnsafeBoundary(const SourceLocation& loc,
+                                          const std::string& kind,
+                                          const std::string& detail) {
+    if (currentFnUnsafe_) return;  // 不安全函数体内合法（审计面=不安全函数清单）
+    diagnostics_.report(DiagnosticLevel::Warning, loc,
+                        "[安全区边界·观察期] " + kind +
+                            "应在 不安全 函数 内（" + detail +
+                            "；plans/019 阶段4 分批收口后变错误）");
+}
+
 // plans/019 阶段3（2026-09-10）：常量引用借用纪律（普通函数调用面）。
 void SemanticAnalyzer::checkConstRefBorrowDiscipline(
     CallExpr* node, const std::vector<std::string>& paramTypes,
@@ -1591,6 +1603,8 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     // C-3（FFI）：外部 函数 声明——无函数体（C 符号由链接期解析）；
     //   有函数体属误用（外部=外部定义，禁止 CN 侧实现）
     info.isExtern = node->isExtern;
+    // plans/019 阶段4：不安全 函数 修饰登记（安全区边界观察期检查用）
+    info.isUnsafe = node->isUnsafe;
     if (node->isExtern && node->body != nullptr) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "外部 函数 声明不能有函数体（C 符号由外部库提供）");

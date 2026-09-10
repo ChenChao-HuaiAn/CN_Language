@@ -524,6 +524,12 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         std::cerr << diagnostics.format();
         return 1;
     }
+    // plans/019 阶段4（2026-09-10）：观察期警告可见性——仅警告无错误时同样
+    //   输出（安全区边界警告原被 hasErrors 短路吞掉；模块主管线=check/build
+    //   实际路径）
+    if (!diagnostics.hasErrors() && diagnostics.getWarningCount() > 0) {
+        std::cerr << diagnostics.format();
+    }
 
     // 5. IR 生成（绑定语义引用：类布局/虚表/结构体布局查询）
     IRGenerator irGen(diagnostics, &semantic);

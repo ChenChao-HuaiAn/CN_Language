@@ -930,6 +930,18 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             }
             continue;
         }
+        // plans/019 阶段4（2026-09-10）：不安全 函数 名(...) —— 安全区边界
+        //   修饰（不安全 为真关键字 Kw_Unsafe）：体内方可指针算术/指针下标写/
+        //   联合体访问/外部函数调用/裸释放（观察期=警告）。
+        if (check(TokenType::Kw_Unsafe) &&
+            peek(1).getType() == TokenType::Kw_Function) {
+            advance();  // 消费 不安全
+            auto func = parseFunctionDecl();
+            func->isUnsafe = true;
+            func->access = moduleAccess;
+            program->declarations.push_back(std::move(func));
+            continue;
+        }
         // C-3（2026-08）FFI 最小集：外部 函数 名(参数) -> 类型 ——
         //   上下文关键字探测（外部 为普通标识符，仅"外部 + 函数"组合触发），
         //   声明 C 链接外部函数（无函数体，链接期解析符号）

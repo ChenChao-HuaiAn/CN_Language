@@ -71,6 +71,7 @@ enum class TokenType {
     Kw_False,         // 假（布尔假值）
     Kw_None,          // 无（空值/可选无值）
     Kw_Const,         // 常量（常量声明/常量成员函数/常量表达式，Task 3.9）
+    Kw_Unsafe,        // 不安全（不安全 函数 修饰——plans/019 阶段4 安全区边界）
 
     // ---- OOP关键字(9) ----
     Kw_Class,         // 类（类定义）

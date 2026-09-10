@@ -914,6 +914,15 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         node->resolvedSignature = sigKey;
         auto it = functions_.find(sigKey);
         const FunctionInfo& info = it->second;
+        // plans/019 阶段4（2026-09-10）：安全区边界观察期——外部 函数 调用
+        //   （FFI=C 边界，类型安全不保证）与裸释放（释放=手动内存管理）应在
+        //   不安全 函数 内
+        if (info.isExtern) {
+            warnUnsafeBoundary(node->location, "外部函数调用", calleeName);
+        }
+        if (calleeName == "释放") {
+            warnUnsafeBoundary(node->location, "裸释放", "释放(指针)");
+        }
         // plans/019 阶段3（2026-09-10）：常量引用借用纪律（只读借出可变拒 +
         //   同调用可变×只读互斥）——置于 wrapRefArgs 之前按原始实参形态判定
         checkConstRefBorrowDiscipline(node, info.paramTypes, info.constParams);

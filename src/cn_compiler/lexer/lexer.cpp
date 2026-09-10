@@ -82,6 +82,8 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
         // ---- 常量(4) ----
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
         {"无", TokenType::Kw_None}, {"常量", TokenType::Kw_Const},
+        // ---- 安全区边界(1，plans/019 阶段4) ----
+        {"不安全", TokenType::Kw_Unsafe},
         // ---- OOP(10) ----
         {"类", TokenType::Kw_Class}, {"接口", TokenType::Kw_Interface},
         {"保护", TokenType::Kw_Protected}, {"虚拟", TokenType::Kw_Virtual},

@@ -32,6 +32,10 @@ struct FunctionInfo {
     bool isExtern = false;                 // C-3：外部 函数 声明（C 链接符号=纯名）
     // ---- Task 2.10：默认参数 ----
     std::vector<bool> hasDefault;          // 每个参数是否有默认值（与 paramTypes 等长）
+    // plans/019 阶段4（2026-09-10）：不安全 函数 修饰——安全区边界（观察期
+    //   =警告：安全函数体内指针算术/指针下标写/联合体访问/外部函数调用/裸
+    //   释放 发警告不报错；分批收口后变错误）
+    bool isUnsafe = false;
     // plans/019 阶段3（2026-09-10）：常量 只读引用参数位表（与 paramTypes 等长；
     //   常量 T& 形参=只读借用——体内赋值/传可变引用/与可变借用互斥均拒绝）
     std::vector<bool> constParams;
@@ -389,6 +393,11 @@ private:
     void checkConstRefBorrowDiscipline(class CallExpr* node,
                                        const std::vector<std::string>& paramTypes,
                                        const std::vector<bool>& constParams);
+    // plans/019 阶段4（2026-09-10）：安全区边界观察期警告——安全函数（非
+    //   不安全）内出现越界操作时发警告（收口后变错误）。kind：指针算术/指针
+    //   下标写/联合体访问/外部函数调用/裸释放。
+    void warnUnsafeBoundary(const SourceLocation& loc, const std::string& kind,
+                            const std::string& detail);
     // plans/019 阶段2（2026-09-10）：表达式是否求值为「当前函数局部的地址」——
     //   ①取地址 &局部（AddressOf 一元，基础名经 refReturnLvalueBase 解剖）
     //   ②引用局部标识符（登记于 refLocalBases_ 且绑定基础名为当前函数局部）。
@@ -661,6 +670,8 @@ private:
     // plans/019 阶段3（2026-09-10）：当前函数 常量 只读引用参数名集——体内
     //   赋值目标/传可变借用实参 的只读纪律判定（checkFunctionBody 收集/复位）。
     std::unordered_set<std::string> currentConstRefParams_;
+    // plans/019 阶段4：当前函数是否 不安全 函数（checkFunctionBody 设定/复位）
+    bool currentFnUnsafe_ = false;
     // plans/019 阶段3b（2026-09-10）：转移声明位登记（VarDecl 节点 -> 源变量名）
     //   ——浅拷贝优化通道：语义层 AST 改写后 IR 无从识别转移，IR genVarDecl 经
     //   isTransferDecl 查本表走槽位交接（句柄直拷+源槽清零）而非深拷贝。

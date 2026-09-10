@@ -52,6 +52,11 @@ int runPipeline(const std::string& source, const std::string& fileName,
         std::cerr << diagnostics.format();
         return 1;
     }
+    // plans/019 阶段4（2026-09-10）：观察期警告可见性——仅警告无错误时同样
+    //   输出（安全区边界警告原被 hasErrors 短路吞掉，观察期失去意义）
+    if (!diagnostics.hasErrors() && diagnostics.getWarningCount() > 0) {
+        std::cerr << diagnostics.format();
+    }
 
     // 4. IR生成（传入语义分析器引用：结构体布局/枚举值查询，Task 2.7）
     IRGenerator irGen(diagnostics, &semantic);
@@ -136,6 +141,10 @@ int runCheck(const std::string& source, const std::string& fileName,
     if (!semantic.analyze(program.get())) {
         std::cerr << diagnostics.format();
         return 1;
+    }
+    // plans/019 阶段4：观察期警告可见性（安全区边界警告输出——仅警告不阻断）
+    if (diagnostics.getWarningCount() > 0) {
+        std::cerr << diagnostics.format();
     }
     return 0;
 }

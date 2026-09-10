@@ -416,6 +416,13 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     //   字面量豁免：一侧为整数字面量（含一元负号字面量）按另一侧类型参与
     //   （Rust 字面量推断同款惯例，E2E 191「大 > 100」锚保留）；同符号混合
     //   宽度（正32 vs 正64）维持既有宽化。规范 plans/001 §3.7。
+    // plans/019 阶段4（2026-09-10）：安全区边界观察期——指针算术（指针 +/- 整数
+    //   产生新指针=可越出对象边界）应在 不安全 函数 内
+    if ((node->op == Operator::Add || node->op == Operator::Subtract) &&
+        (types::isPointer(leftType) || types::isPointer(rightType))) {
+        warnUnsafeBoundary(node->location, "指针算术",
+                           "指针 +/- 整数");
+    }
     if ((isComparisonOp(node->op) || isArithmeticOp(node->op) || isBitwiseOp(node->op)) &&
         leftType != "未知" && rightType != "未知" &&
         isInteger(leftType) && isInteger(rightType) &&
@@ -952,7 +959,24 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             }
             break;
         }
-        case NodeType::IndexExpr:
+        case NodeType::IndexExpr: {
+            // plans/019 阶段4：安全区边界观察期——指针下标写（p[i] = x 经裸
+            //   指针偏移写=可越界）应在 不安全 函数 内（数组下标写=运行时越界
+            //   检查保护，不在此列）
+            if (node->target->getType() == NodeType::IndexExpr) {
+                const Expr* iobj =
+                    static_cast<IndexExpr*>(node->target.get())->object.get();
+                if (iobj->getType() == NodeType::IdentifierExpr) {
+                    std::string iot;
+                    if (lookupVar(static_cast<const IdentifierExpr*>(iobj)->name, iot) &&
+                        types::isPointer(iot)) {
+                        warnUnsafeBoundary(node->location, "指针下标写",
+                            static_cast<const IdentifierExpr*>(iobj)->name + "[i] = ...");
+                    }
+                }
+            }
+            [[fallthrough]];
+        }
         case NodeType::MemberExpr: {
             // 下标访问（数组[i]）/成员访问（对象.字段）均为可写左值；
             // plans/019 阶段3：对象为常量引用参数（只读借用经成员链写=写借用
@@ -1142,6 +1166,21 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   写回（IR 层据此选基址：指针值 / 对象地址）；解析层恒 false。
     //   结果/可选/枚举/接口对象均非此指针语义或各自先行处理，统一置位无害。
     node->isDerefAccess = types::isPointer(objectType);
+    // plans/019 阶段4（2026-09-10）：安全区边界观察期——联合体字段访问（共享
+    //   内存无 tag=类型安全结构性缺口，Rust union 同为 unsafe-only）应在
+    //   不安全 函数 内
+    {
+        std::string probeType = types::isPointer(objectType)
+                                    ? types::pointeeOf(objectType)
+                                    : objectType;
+        if (!probeType.empty()) {
+            const StructDecl* sd = findStruct(types::canonical(probeType));
+            if (sd != nullptr && sd->isUnion) {
+                warnUnsafeBoundary(node->location, "联合体字段访问",
+                                   probeType + "." + memberName);
+            }
+        }
+    }
     // 结果/可选成员检查（Task 3.5 规则2/3）：.正常/.有值/.值/.错误
     if (isResultType(objectType) || isOptionalType(objectType)) {
         // 结果<T,E> / 可选<T> 经降级为合成结构体，其成员 .正常/.有值/.值/.错误
