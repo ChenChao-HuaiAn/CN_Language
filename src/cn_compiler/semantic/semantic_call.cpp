@@ -956,11 +956,16 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             }
         }
         lastType_ = info.returnType;
-        // A2：泛型单态化产物（签名键含 $，如 逆序$整32）不置位——泛型体返回
-        //   T 来源字符串=借用（容器元素访问，Rust Vec::get -> &T 同款），
-        //   保守不登记=安全方向（调用方 free 容器内部元素=悬垂）
+        // A2（方案甲）：被调者返回类型 字符串=拥有——调用方登记 RAII（Rust
+        //   签名即契约：fn f() -> String 拥有 / -> &str 借用）。泛型单态化产物
+        //   （签名键含 $，如 逆序$整32）不置位——泛型体返回 T 来源字符串=借用
+        //   （容器元素访问，Rust Vec::get -> &T 同款），保守不登记=安全方向
+        //   （调用方 free 容器内部元素=悬垂）。
+        // 70-a 根治（2026-09-11 用户裁决方案A）：恢复轮1 二分调试残留的
+        //   false && 前缀——当时为排查 119/167-172 回归临时禁用，真根因
+        //   （IR容器 字符串入容器浅共享悬垂，c668919）已另行根治。
         node->retOwnedString =
-            (false && lastType_ == "字符串" && sigKey.find('$') == std::string::npos);
+            (lastType_ == "字符串" && sigKey.find('$') == std::string::npos);
         // P3-18 补完：引用返回函数调用結果可作左值（整32& r = 获取() / 获取()=值 / &获取()）
         if (info.isRefReturn) {
             node->isRefReturnCall = true;

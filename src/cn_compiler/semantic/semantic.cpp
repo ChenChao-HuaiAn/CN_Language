@@ -1553,7 +1553,10 @@ void SemanticAnalyzer::registerBuiltins() {
         functions_[name] = info;
     };
     regSysFn("系统::参数个数", "整64", {});
-    regSysFn("系统::参数", "字符串", {"整64"});
+    // 70-a（2026-09-11 方案A 补完）：argv 由 CRT 持有=借用视图——返回类型
+    //   字符串（A2 拥有契约下调用方 free=悬垂）改 字符*（A2 C 类纯借用改法，
+    //   驻留文本 同款）；stdlib 系统.cn 包装层显式 复制 装箱
+    regSysFn("系统::参数", "字符*", {"整64"});
 
     // ---- 内存管理API（Task 6.1 核心库/容器库，规格书10.2 内存管理）----
     // 运行时符号：分配 -> cn_alloc、释放 -> cn_free、重新分配 -> cn_realloc、

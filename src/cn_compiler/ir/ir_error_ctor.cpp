@@ -159,6 +159,26 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
         }
     }
 
+    // 70-a（2026-09-11 方案A 用户裁决）：装箱 move 语义——正常(拥有字符串局部) 的
+    //   所有权转入结果/可选结构体（Rust Ok(s) move 同款零拷贝）：值字段写入后
+    //   源槽清零（与 转移() 浅交接同模型），函数返回块 genStringFrees 对已清零
+    //   槽空安全跳过——根治「装箱浅共享×局部 RAII 释放=悬垂」家族第五实例
+    //   （stdlib 文件/IO 读取行包装链实证：装箱值随源 free 悬垂，v2p 读源文件
+    //   全空）。借用装箱（污染名单内）不清零——指针共享随源存活。
+    if ((name == "正常" || name == "某些") && !node->arguments.empty() &&
+        node->arguments[0]->getType() == NodeType::IdentifierExpr &&
+        types::canonical(valueType) == "字符串") {
+        const std::string srcName = static_cast<const IdentifierExpr*>(
+            node->arguments[0].get())->name;
+        if (stringTainted_.count(srcName) == 0) {
+            const std::string slot = lookupVarName(srcName);
+            if (!slot.empty()) {
+                emit(ir::Opcode::Store, {ir::IRValue::constant("0", "i64")},
+                     ir::IRValue(), slot, "ptr", node->location);
+            }
+        }
+    }
+
     // 结果 = 结构体地址（ptr）；调用方按结构体路径 CopyStruct
     lastExpr_ = base;
     (void)structSize;
