@@ -1710,14 +1710,16 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         !isCompoundAssignOp(node->op) &&
         stringTainted_.count(ident->name) == 0) {
         const NodeType ownAt = node->value->getType();
-        // 调用返回=白名单拥有（内置分配族；驻留文本/用户函数可能借用——同
-        //   声明位判定，污染退出 RAII）
+        // 调用返回=白名单 ∪ 返回类型契约（A2 2026-09-11 方案甲）——被调者返回
+        //   字符串 即拥有（语义层 retOwnedString 写回，全调用路径统一）；
+        //   其余非白名单调用污染退出 RAII（借用安全方向）
         bool ownAssign = ownAt == NodeType::StringLiteral ||
                          ownAt == NodeType::IdentifierExpr;
         if (ownAt == NodeType::CallExpr) {
             const CallExpr* ace =
                 static_cast<const CallExpr*>(node->value.get());
-            if (ace->callee->getType() == NodeType::IdentifierExpr) {
+            ownAssign = ownAssign || ace->retOwnedString;
+            if (!ownAssign && ace->callee->getType() == NodeType::IdentifierExpr) {
                 const std::string& cn =
                     static_cast<const IdentifierExpr*>(ace->callee.get())->name;
                 ownAssign = cn == "字符串复制" || cn == "字符串连接" ||

@@ -352,6 +352,19 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         } else {
             // 显式类型：检查初始值可隐式转换
             std::string initType = checkExpr(node->initializer.get());
+            // plans/019 阶段4' A2（2026-09-11 方案甲）：字符* 借用视图装入拥有
+            //   变量收紧——字符* → 字符串 须显式 字符串复制(...)（Rust &str ->
+            //   String 的 to_string 显式哲学：分配成本可见）。A1 拦下标/成员/
+            //   解引用借出；此处拦类型层字符*（驻留文本/借用返回函数/字符*
+            //   变量）。拥有→借用方向（字符串 → 字符*）自动放行（安全方向）。
+            if (types::canonical(varType) == "字符串" && initType == "字符*") {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "字符串变量 '" + node->name +
+                        "' 不能以字符* 借用视图隐式初始化——须 字符串复制(...) "
+                        "显式落堆拥有化（借用→拥有显式；拥有→借用自动）");
+                return;
+            }
             if (!canConvertType(initType, varType)) {
                 // Task 2.3：字面量常量窄化（整8 a = 10：10 默认整32，但值是编译期
                 // 常量且适配目标位宽）——无后缀整数字面量允许窄化到目标整数类型；
@@ -601,12 +614,14 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     // 收集当前函数引用参数名：引用返回允许"返回引用参数"（指向调用方存储，
     // 悬垂只发生在返回本函数局部/按值参数时）
     currentRefParams_.clear();
+    currentFnParamNames_.clear();  // plans/019 阶段4' A2：参数名集（返回位借用判定）
     for (auto& param : node->params) {
         if (!param->funcPtr.isFunctionPtr() && types::isReference(param->typeName)) {
             currentRefParams_.insert(param->name);
         }
         // plans/019 阶段3：常量 只读引用参数收集（只读借用纪律判定）
         if (param->isConstParam) currentConstRefParams_.insert(param->name);
+        currentFnParamNames_.insert(param->name);
     }
     // 当前函数作用域起始索引：scopes_ 中索引 >= 该值的绑定属函数局部
     // （引用返回局部检查：返回本函数局部变量/按值参数地址 -> 悬垂引用报错）
@@ -641,6 +656,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentIsRefReturn_ = false;
     currentFnUnsafe_ = false;  // plans/019 阶段4：函数级复位
     currentRefParams_.clear();
+    currentFnParamNames_.clear();  // plans/019 阶段4' A2：参数名集复位
     currentConstRefParams_.clear();  // plans/019 阶段3：只读借用状态复位
     refLocalBases_.clear();     // plans/019 阶段2：逃逸分析状态为函数级
     ptrLocalPointees_.clear();

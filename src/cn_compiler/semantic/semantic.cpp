@@ -1332,7 +1332,11 @@ void SemanticAnalyzer::registerBuiltins() {
     functions_["驻留"] = internInfo;
 
     FunctionInfo internTextInfo;
-    internTextInfo.returnType = "字符串";
+    // plans/019 阶段4' A2（2026-09-11 方案甲）：返回类型 字符串->字符*——
+    //   驻留文本 返回驻留表内部指针=借用视图（拥有→借用安全方向自动隐式）；
+    //   原 字符串 返回在 A2 拥有契约下调用方会登记 free=释放驻留表条目（灾难）。
+    //   调用方须持有时显式 字符串复制(驻留文本(...)) 落堆（Rust intern.get().to_string() 同款）。
+    internTextInfo.returnType = "字符*";
     internTextInfo.paramTypes = {"整64"};
     internTextInfo.hasBody = true;
     functions_["驻留文本"] = internTextInfo;

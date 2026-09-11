@@ -96,6 +96,16 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         } else {
             value = genExpr(node->value.get());
         }
+        // plans/019 阶段4' A2（2026-09-11 方案甲）：返回位字面量拥有化——
+        //   返回类型 字符串=拥有契约（调用方登记 RAII free），字面量驻只读段
+        //   须 __cn_str_copy 落堆（否则调用方 free 只读段指针=崩溃）。拥有变量
+        //   返回=槽 Load 堆串直传（移出）；拼接/复制等调用=堆串直传——均直落。
+        if (function_ != nullptr &&
+            types::canonical(function_->returnTypeSrc) == "字符串" &&
+            node->value->getType() == NodeType::StringLiteral) {
+            value = emitResult(ir::Opcode::Call, {value}, "ptr",
+                               "__cn_str_copy", node->location);
+        }
         if (function_ != nullptr) {
             const std::string retType = function_->returnType;
             if (value.type != retType && !retType.empty() && retType != "void" &&
@@ -797,16 +807,16 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 value = emitResult(ir::Opcode::Call, {value}, "ptr",
                                    "__cn_str_copy", node->location);
             } else if (ownIt == NodeType::CallExpr) {
-                // 调用返回拥有判定=白名单（内置 runtime 分配族：复制/连接/拼接/
-                //   子串/大小写/修剪/反转——其余一律污染退出 RAII）：驻留文本 返回
-                //   驻留表内部指针（借用）；用户函数可能返回借用包装（v2 的
-                //   当前文本 -> 驻留文本 即是，v2p 自举实测崩因）——单 字符串
-                //   类型无法静态区分拥有/借用返回，第一版白名单保守（用户函数
-                //   返回拥有语义随第二批类型区分落地）。
+                // 调用返回拥有判定=白名单 ∪ 返回类型契约（A2 2026-09-11 方案甲）：
+                //   白名单（内置 runtime 分配族：复制/连接/拼接/子串/大小写/修剪/
+                //   反转）之外，被调者返回类型=字符串 即拥有（语义层决议写回
+                //   retOwnedString——普通函数/类方法/接口方法/内置全路径统一；
+                //   驻留文本 已改 字符* 返回=借用不登记）。Rust 签名即契约：
+                //   fn f() -> String 拥有 / -> &str 借用。
                 const CallExpr* ice =
                     static_cast<const CallExpr*>(node->initializer.get());
-                bool ownRet = false;
-                if (ice->callee->getType() == NodeType::IdentifierExpr) {
+                bool ownRet = ice->retOwnedString;
+                if (!ownRet && ice->callee->getType() == NodeType::IdentifierExpr) {
                     const std::string& cn =
                         static_cast<const IdentifierExpr*>(ice->callee.get())
                             ->name;

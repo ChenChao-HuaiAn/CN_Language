@@ -714,6 +714,51 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
         return;
     }
     std::string valueType = checkExpr(node->value.get());
+    // plans/019 阶段4' A2（2026-09-11 方案甲 用户批准）：返回位拥有契约——
+    //   返回类型 字符串=拥有（调用方登记 RAII 自动 free，Rust fn f() -> String）；
+    //   借用形态返回（下标/成员/解引用借出、字符* 表达式、参数/全局/静态/
+    //   类字段标识符）拒绝——调用方 free 借用指针=悬垂/UAF。拥有化须显式：
+    //   字符串复制(...)（落堆）或改返回类型 字符*（借用视图，调用方不登记）。
+    //   局部拥有变量返回=所有权移出（放行）；字面量=IR 返回位自动拥有化（放行）。
+    //   **泛型单态化体内豁免**（A2）：实例化类方法体（genericTypeParams_ 非空）
+    //   的 T 来源字符串（如 容器 元素() 返回 数据[位置]）=借用语义——Rust
+    //   Vec::get -> &T 同款，泛型体不可拥有化（字符串复制 对非字符串 T 不成立）。
+    if (types::canonical(currentReturnType_) == "字符串" &&
+        genericTypeParams_.empty()) {
+        const NodeType retKindA2 = node->value->getType();
+        bool borrowRetA2 = false;
+        std::string whyA2;
+        if (retKindA2 == NodeType::IndexExpr || retKindA2 == NodeType::MemberExpr) {
+            borrowRetA2 = true;
+            whyA2 = "下标/成员借出";
+        } else if (retKindA2 == NodeType::UnaryExpr &&
+                   static_cast<const UnaryExpr*>(node->value.get())->op ==
+                       Operator::Deref) {
+            borrowRetA2 = true;
+            whyA2 = "解引用借出";
+        } else if (valueType == "字符*") {
+            borrowRetA2 = true;
+            whyA2 = "字符* 借用（如 驻留文本/借用返回函数）";
+        } else if (retKindA2 == NodeType::IdentifierExpr) {
+            const std::string& rn =
+                static_cast<const IdentifierExpr*>(node->value.get())->name;
+            if (currentFnParamNames_.count(rn) > 0) {
+                borrowRetA2 = true;
+                whyA2 = "参数 '" + rn + "'（参数=借用）";
+            } else if (!isCurrentFnLocal(rn)) {
+                // 不在函数作用域=全局/静态/类字段（方法体裸字段名不在 scopes_
+                // 中，恰好落入此分支）——均借用
+                borrowRetA2 = true;
+                whyA2 = "'" + rn + "'（全局/静态/类字段=借用）";
+            }
+        }
+        if (borrowRetA2) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "函数返回类型 '字符串'=拥有契约，不能返回" + whyA2 +
+                    "——须 字符串复制(...) 显式落堆，或改返回类型为 '字符*'（借用视图）");
+        }
+    }
     if (currentReturnType_ == "空类型") {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
                             "空类型函数不允许返回值");

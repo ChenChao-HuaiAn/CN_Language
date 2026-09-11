@@ -1039,6 +1039,45 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     // 检查右值
     std::string valueType = checkExpr(node->value.get());
 
+    // plans/019 阶段4' A2（2026-09-11 方案甲）：赋值位字符* 借用收紧——
+    //   字符串（拥有）变量赋值 字符* 借用视图须显式 字符串复制(...)（与
+    //   初始化位 A1/A2 同款；拥有→借用自动、借用→拥有显式）。赋值给
+    //   字符* 目标=纯借用视图存储，不受限。
+    if (targetType == "字符串" && valueType == "字符*") {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "字符串（拥有）变量不能以字符* 借用视图隐式赋值——须 字符串复制(...) "
+            "显式落堆拥有化（借用→拥有显式；拥有→借用自动）");
+        return;
+    }
+
+    // plans/019 阶段4' A2 补全：赋值位借出装入拒绝（A1 同款收紧到赋值位）——
+    //   「字符串 变量=恒拥有槽」不变量（Rust String 槽恒拥有/&str 承担借用）。
+    //   原赋值位借出靠 IR 污染（不 free 保安全）——但污染变量可经 返回 位
+    //   移出（语义层无污染状态）→调用方按返回类型登记 free 借用指针=悬垂
+    //   （v2p 全解析瘫痪实测：free 损坏驻留/静态区）。收紧后赋值位借出
+    //   一律显式拥有化，污染路径成为不可达防御。**泛型单态化体内豁免**：
+    //   实例化类方法体（genericTypeParams_ 非空）的 T 元素搬移（容器拷贝/
+    //   移位的 数据[i]=其他.数据[i]）=容器内部存储管理（析构元素 特判
+    //   释放），Rust Vec 内部 ptr::write 同类。
+    if (targetType == "字符串" && genericTypeParams_.empty()) {
+        const NodeType valKindA2 = node->value->getType();
+        bool borrowAssignA2 = valKindA2 == NodeType::IndexExpr ||
+                              valKindA2 == NodeType::MemberExpr;
+        if (valKindA2 == NodeType::UnaryExpr &&
+            static_cast<const UnaryExpr*>(node->value.get())->op ==
+                Operator::Deref) {
+            borrowAssignA2 = true;
+        }
+        if (borrowAssignA2) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "字符串（拥有）变量不能以下标/成员/解引用借出隐式赋值——须 "
+                "字符串复制(...) 显式落堆拥有化（字符* 借用视图另用 字符* 变量）");
+            return;
+        }
+    }
+
     // 复合赋值：+= -= 等要求数值
     if (isCompoundAssign(node->op)) {
         if (!isNumeric(targetType) || !isNumeric(valueType)) {

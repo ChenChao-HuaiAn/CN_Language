@@ -194,6 +194,10 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // P3-18 补完：本轮默认非引用返回；决议到引用返回函数时置 true
     node->isRefReturnCall = false;
     lastExprIsRefReturn_ = false;
+    // plans/019 阶段4' A2（2026-09-11 方案甲）：本轮默认非拥有字符串返回；
+    //   决议到返回 字符串 的被调者时置 true（IR 初始化位/赋值位消费——登记
+    //   RAII 依据；驻留文本 已改 字符* 返回=自动不置位）
+    node->retOwnedString = false;
     // plans/019 阶段1：显式转移 转移(变量)——表达式位特判（声明初始化位由
     //   visitVarDecl 先行拦截改写，不会到达此处）。表达式位仅放行指针/字符串
     //   （值交接无 RAII，ir_call 按 resolvedType 特判展开为实参值加载）；
@@ -736,6 +740,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     }
                 }
                 lastType_ = imit->second.type;
+                node->retOwnedString = (lastType_ == "字符串");  // A2：接口方法拥有契约
                 lastExprIsRefReturn_ = false;  // 接口方法引用返回暂不支持（方法返回类型 canonical 剥 &）
                 return;
             }
@@ -812,6 +817,10 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             checkAccess(*findClass(ownerClass), *method, contextClass, node->location,
                         "方法");
             lastType_ = method->type;
+            // A2：泛型实例化类成员（ownerClass 含 $，如 向量$字符串）不置位
+            //   ——T 来源返回=借用（容器元素访问），保守不登记
+            node->retOwnedString = (lastType_ == "字符串" &&
+                                    ownerClass.find('$') == std::string::npos);
             lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
             return;
         }
@@ -839,6 +848,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                               method->constParams);  // plans/019 阶段3b
                 wrapRefArgs(node, method->paramTypes);
             lastType_ = method->type;
+            // A2：泛型实例化类成员（ownerClass 含 $）不置位——同实例方法口径
+            node->retOwnedString = (lastType_ == "字符串" &&
+                                    ownerClass.find('$') == std::string::npos);
             lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
             return;
         }
@@ -867,6 +879,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 }
             }
             lastType_ = info.returnType;
+            node->retOwnedString = (lastType_ == "字符串");  // A2：变参路径拥有契约
             return;
         }
         // 非变参直接调用：重载决议（先检查实参类型）
@@ -895,9 +908,10 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             // 单版本函数），按旧逻辑检查，避免错误级联导致 IR 层找不到符号
             auto fallback = functions_.find(calleeName);
             if (fallback != functions_.end()) {
-                lastType_ = fallback->second.returnType;
-                // P3-18 补完：引用返回函数调用結果可作左值
-                if (fallback->second.isRefReturn) {
+            lastType_ = fallback->second.returnType;
+            node->retOwnedString = (lastType_ == "字符串");  // A2：内置单版本拥有契约
+            // P3-18 补完：引用返回函数调用結果可作左值
+            if (fallback->second.isRefReturn) {
                     node->isRefReturnCall = true;
                     lastExprIsRefReturn_ = true;
                 }
@@ -942,6 +956,11 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             }
         }
         lastType_ = info.returnType;
+        // A2：泛型单态化产物（签名键含 $，如 逆序$整32）不置位——泛型体返回
+        //   T 来源字符串=借用（容器元素访问，Rust Vec::get -> &T 同款），
+        //   保守不登记=安全方向（调用方 free 容器内部元素=悬垂）
+        node->retOwnedString =
+            (false && lastType_ == "字符串" && sigKey.find('$') == std::string::npos);
         // P3-18 补完：引用返回函数调用結果可作左值（整32& r = 获取() / 获取()=值 / &获取()）
         if (info.isRefReturn) {
             node->isRefReturnCall = true;

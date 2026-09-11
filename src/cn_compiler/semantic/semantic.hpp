@@ -674,6 +674,10 @@ private:
     // plans/019 阶段3（2026-09-10）：当前函数 常量 只读引用参数名集——体内
     //   赋值目标/传可变借用实参 的只读纪律判定（checkFunctionBody 收集/复位）。
     std::unordered_set<std::string> currentConstRefParams_;
+    // plans/019 阶段4' A2（2026-09-11）：当前函数全部参数名集——返回位拥有契约
+    //   判定用（参数=借用，返回 字符串 函数不能 返回 参数名；checkFunctionBody
+    //   收集/复位）。与 currentRefParams_（仅引用参数）互补。
+    std::unordered_set<std::string> currentFnParamNames_;
     // plans/019 阶段4：当前函数是否 不安全 函数（checkFunctionBody 设定/复位）
     bool currentFnUnsafe_ = false;
     // plans/019 阶段3b（2026-09-10）：转移声明位登记（VarDecl 节点 -> 源变量名）
