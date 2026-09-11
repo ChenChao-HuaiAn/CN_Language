@@ -510,12 +510,39 @@ private:
     struct LoopContext {
         std::string breakTarget;    // 中断跳转目标块标签
         std::string continueTarget; // 继续跳转目标块标签
+        // 72-a（2026-09-11 第七十二轮）：循环体内的块级作用域析构——中断/继续
+        //   跳出前先释放本块新增拥有资源（Rust drop-on-jump）。栈基线=进入循环
+        //   体时的 作用域基线栈 深度与字符串基线。
+        std::size_t scopeDepth = 0;
+        std::size_t stringBase = 0;
     };
     std::vector<LoopContext> loopStack_;
     // 选择控制流：中断跳出目标栈（选择语句出口块标签）
     std::vector<std::string> switchStack_;
     // i128 临时变量计数器（每个临时变量分配独立唯一名 __i128tN）
     int i128TempCounter_ = 0;
+
+    // ---- 72-a（2026-09-11 第七十二轮）：块级作用域 RAII（对齐 v2 块出口析构）----
+    //   宿主原为函数级（仅返回块注入释放）——循环体内声明的字符串/容器只有末次
+    //   迭代被释放，中间迭代永久泄漏（探针 66 实测：循环体 4 轮残留 3）。改为
+    //   块出口析构：genBlock 进入时记录各名单基线，出口对本块新增项逆序释放并
+    //   截断名单（作用域精确、Rust 作用域 drop 同构）；返回/中断/继续 跳出时
+    //   的未走到出口路径由函数级兜底（返回块全量释放）+ 循环跳出前置释放覆盖。
+    std::vector<std::size_t> scopeStringBase_;   // genBlock 进入时 拥有串名单 基线
+    std::vector<std::size_t> scopeClassBase_;    // genBlock 进入时 类对象名单 基线
+    // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
+    std::vector<std::string> ownedStringOrder_;
+    // 本函数类对象名单（genVarDecl 登记：类类型局部——沿用 oopVarSrcTypes_ 判定）
+    std::vector<std::string> ownedClassOrder_;
+
+    // 块出口析构（genBlock 出口调用）：释放本块新增的字符串/类对象并截断名单
+    void genBlockExitDestruct();
+    // 中断/继续 跳出循环体时的块级释放（drop-on-jump）——按进入循环体时的基线
+    void genLoopJumpDestruct(const LoopContext& ctx);
+    // 释放单个字符串槽（Load + __cn_str_free 空安全）
+    void emitStringFreeFor(const std::string& unique);
+    // 释放单个类对象槽（Load + DeleteObject 空安全）
+    void emitClassDeleteFor(const std::string& unique, const std::string& canon);
 
     // ---- 阶段3 OOP 调用/析构（ir_oop_call.cpp 实现） ----
     // 函数收尾钩子：类类型局部变量（有析构函数）离开作用域 -> DeleteObject（RAII）

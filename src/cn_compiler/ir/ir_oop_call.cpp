@@ -683,6 +683,100 @@ void IRGenerator::genClassDestructorCalls() {
     }
 }
 
+// ==================== 72-a 块级作用域 RAII（2026-09-11 第七十二轮） ====================
+// 槽唯一内部名（名$槽序）-> 源码名：污染集 stringTainted_ 按源码名键控
+//   （genVarDecl/赋值位/下标借出/字段借出登记），此处统一剥离 '$' 后缀。
+static std::string blockExitSrcName(const std::string& unique) {
+    const std::size_t dl = unique.rfind('$');
+    return (dl == std::string::npos) ? unique : unique.substr(0, dl);
+}
+// 背景：宿主 RAII 原为函数级（genStringFrees/genClassDestructorCalls 仅在返回块
+//   注入释放）——循环体内声明的资源只有末次迭代被释放，中间迭代永久泄漏
+//   （探针 66 实测：循环体字符串 4 轮残留 3、容器 4 轮残留 3）。v2 侧已有
+//   块出口析构模型（生成块 出口对基线后新增项逆序释放），此处对齐（Rust 作用域
+//   drop 同构）：genBlock 进入记录基线，出口释放本块新增项并截断名单。
+// 跳出路径：返回=返回块全量兜底（既有）；中断/继续=跳出前先发循环体基线的
+//   块级释放（drop-on-jump），随后函数级兜底覆盖剩余。
+// 释放+清零（幂等）：块出口/跳出/函数级兜底多路径共用同一槽——清零后
+//   后续路径对该槽 free(nullptr) 空安全，杜绝「条件释放 + 兜底释放」双重释放
+//   （循环体反复声明同槽、中断跳出与落空出口并存等场景）。
+void IRGenerator::emitStringFreeFor(const std::string& unique) {
+    ir::IRValue strPtr = emitResult(ir::Opcode::Load,
+                                    {ir::IRValue::var(unique, "ptr")},
+                                    "ptr", unique, SourceLocation());
+    emit(ir::Opcode::Call, {strPtr}, ir::IRValue(), "__cn_str_free", "void",
+         SourceLocation());
+    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                  SourceLocation());
+    emit(ir::Opcode::Store, {zero}, ir::IRValue(), unique, "ptr",
+         SourceLocation());
+}
+void IRGenerator::emitClassDeleteFor(const std::string& unique,
+                                     const std::string& canon) {
+    ir::IRValue objPtr = emitResult(ir::Opcode::Load,
+                                    {ir::IRValue::var(unique, "ptr")},
+                                    "ptr", unique, SourceLocation());
+    // 向量<字符串>：先释放元素串（与 genClassDestructorCalls 同款，方案A RAII）
+    if (canon.size() > 3 && canon.rfind("向量$", 0) == 0 &&
+        canon.find("字符串") != std::string::npos) {
+        const int dataOff = semantic_->classFieldOffset(canon, "数据");
+        const int countOff = semantic_->classFieldOffset(canon, "元素数量");
+        if (dataOff >= 0 && countOff >= 0) {
+            emit(ir::Opcode::Call,
+                 {objPtr,
+                  ir::IRValue::constant(std::to_string(dataOff), "整64"),
+                  ir::IRValue::constant(std::to_string(countOff), "整64")},
+                 ir::IRValue(), "__cn_vector_free_strings", "void",
+                 SourceLocation());
+        }
+    }
+    emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(), canon, "void",
+         SourceLocation());
+    ir::IRValue z = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                               SourceLocation());
+    emit(ir::Opcode::Store, {z}, ir::IRValue(), unique, "ptr", SourceLocation());
+}
+
+// 块出口析构：释放本块新增的拥有串/类对象（逆序=后声明先析构）并截断名单。
+//   调用点=genBlock 正常出口（未终止路径）；已终止（返回/中断/继续 已跳）时
+//   不调用（不可达，且各自跳转路径已/将由兜底释放覆盖）。
+void IRGenerator::genBlockExitDestruct() {
+    while (ownedStringOrder_.size() > scopeStringBase_.back()) {
+        const std::string unique = ownedStringOrder_.back();
+        ownedStringOrder_.pop_back();
+        if (stringTainted_.count(blockExitSrcName(unique)) > 0) continue;  // 借用视图不释放
+        emitStringFreeFor(unique);
+    }
+    (void)0;
+    while (ownedClassOrder_.size() > scopeClassBase_.back()) {
+        const std::string unique = ownedClassOrder_.back();
+        ownedClassOrder_.pop_back();
+        auto it = oopVarSrcTypes_.find(unique);
+        if (it == oopVarSrcTypes_.end()) continue;
+        emitClassDeleteFor(unique, types::canonical(it->second));
+    }
+}
+
+void IRGenerator::genLoopJumpDestruct(const LoopContext& ctx) {
+    // 中断/继续 跳出循环体：按进入循环体时的基线释放本块新增资源（drop-on-jump）。
+    //   名单截断至基线（外层块随后经 genBlock 出口/函数级兜底处理）。
+    // 注意：不截断编译期名单（落空路径的块出口析构仍须覆盖）——只发射释放+清零，
+    //   释放后槽=0，落空路径/函数级兜底再释放即空安全（幂等）。
+    const std::size_t strEnd = ownedStringOrder_.size();
+    for (std::size_t i = ctx.stringBase; i < strEnd; ++i) {
+        const std::string& unique = ownedStringOrder_[i];
+        if (stringTainted_.count(blockExitSrcName(unique)) > 0) continue;
+        emitStringFreeFor(unique);
+    }
+    const std::size_t clsEnd = ownedClassOrder_.size();
+    for (std::size_t i = ctx.scopeDepth; i < clsEnd; ++i) {
+        const std::string& unique = ownedClassOrder_[i];
+        auto it = oopVarSrcTypes_.find(unique);
+        if (it == oopVarSrcTypes_.end()) continue;
+        emitClassDeleteFor(unique, types::canonical(it->second));
+    }
+}
+
 void IRGenerator::emitCfiCheck(const ir::IRValue& target,
                                const std::string& ifaceName,
                                const std::string& methodName,

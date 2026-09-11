@@ -121,6 +121,9 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
 void IRGenerator::visitBreakStmt(BreakStmt* node) {
     (void)node;
     if (!loopStack_.empty()) {
+        // 72-a：跳出前释放循环体内的块级资源（drop-on-jump，Rust 同款）——
+        //   中断路径绕过 genBlock 出口析构，此处按进入循环体时的基线释放本块新增
+        genLoopJumpDestruct(loopStack_.back());
         endJump(loopStack_.back().breakTarget);
     } else if (!switchStack_.empty()) {
         endJump(switchStack_.back());
@@ -129,6 +132,7 @@ void IRGenerator::visitBreakStmt(BreakStmt* node) {
 void IRGenerator::visitContinueStmt(ContinueStmt* node) {
     (void)node;
     if (!loopStack_.empty()) {
+        genLoopJumpDestruct(loopStack_.back());
         endJump(loopStack_.back().continueTarget);
     }
 }
@@ -185,7 +189,10 @@ void IRGenerator::genWhile(WhileStmt* node) {
     endBranch(cond.toString(), bodyLabel, endLabel);
     // 循环体
     setCurrentBlock(newBlock(bodyLabel));
-    loopStack_.push_back(LoopContext{endLabel, condLabel});  // 继续 -> 条件块
+    // 72-a：循环体块级基线——中断/继续 跳出前的释放范围（drop-on-jump）
+    loopStack_.push_back(LoopContext{endLabel, condLabel,
+                                     ownedClassOrder_.size(),
+                                     ownedStringOrder_.size()});  // 继续 -> 条件块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
     if (!currentBlock_->terminated) endJump(condLabel);
@@ -218,7 +225,9 @@ void IRGenerator::genFor(ForStmt* node) {
     }
     // 循环体
     setCurrentBlock(newBlock(bodyLabel));
-    loopStack_.push_back(LoopContext{endLabel, updLabel});  // 继续 -> 更新块
+    loopStack_.push_back(LoopContext{endLabel, updLabel,
+                                     ownedClassOrder_.size(),
+                                     ownedStringOrder_.size()});  // 继续 -> 更新块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
     if (!currentBlock_->terminated) endJump(updLabel);
@@ -507,6 +516,15 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     //   生命周期（追加深拷贝/弹出销毁）。
     if (!unique.empty() && !isContainerElementView(node->initializer.get())) {
         oopVarSrcTypes_[unique] = srcType;
+        // 72-a（2026-09-11 第七十二轮）：块级作用域 RAII 名单登记——本块声明的
+        //   拥有串/类对象在 genBlock 出口释放（此前仅函数级=循环体中间迭代泄漏）。
+        //   污染名（stringTainted_，借用视图）不登记（宁可不释放保安全）。
+        if (srcType == "字符串") {
+            ownedStringOrder_.push_back(unique);
+        } else if (semantic_ != nullptr && !srcType.empty() &&
+                   semantic_->isClassType(types::canonical(srcType))) {
+            ownedClassOrder_.push_back(unique);
+        }
     }
 
     // 初始值处理：
@@ -910,6 +928,11 @@ void IRGenerator::genVarDecl(VarDecl* node) {
 }
 void IRGenerator::genBlock(BlockStmt* node) {
     varStack_.emplace_back();  // 进入子作用域
+    // 72-a（2026-09-11 第七十二轮）：块级作用域 RAII 基线——本块声明的拥有串/
+    //   类对象在出口释放（Rust 作用域 drop；函数级 genStringFrees/
+    //   genClassDestructorCalls 保留为返回/跳出路径兜底）。
+    scopeStringBase_.push_back(ownedStringOrder_.size());
+    scopeClassBase_.push_back(ownedClassOrder_.size());
     for (auto& stmt : node->statements) {
         genStmt(stmt.get());
         // 宿主根治（2026-09-01，缺陷：块顶层级中途回Return 被无视）：当前块已终止
@@ -920,6 +943,19 @@ void IRGenerator::genBlock(BlockStmt* node) {
             break;
         }
     }
+    // 出口析构：本块未终止（未终止路径必经此处）——释放本块新增资源。
+    //   已终止（返回/中断/继续 已跳转）=不可达，不发射（各自路径兜底覆盖）。
+    if (currentBlock_ != nullptr && !currentBlock_->terminated) {
+        genBlockExitDestruct();
+    } else {
+        // 已终止：仅截断名单（析构由跳转路径的兜底/循环跳出前置释放覆盖）
+        while (ownedStringOrder_.size() > scopeStringBase_.back())
+            ownedStringOrder_.pop_back();
+        while (ownedClassOrder_.size() > scopeClassBase_.back())
+            ownedClassOrder_.pop_back();
+    }
+    scopeStringBase_.pop_back();
+    scopeClassBase_.pop_back();
     varStack_.pop_back();  // 退出子作用域
 }
 } // namespace cn_compiler
