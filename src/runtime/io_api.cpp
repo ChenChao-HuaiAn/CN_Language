@@ -222,6 +222,55 @@ extern "C" void __cn_map_free_strings(void* obj, long long keysOffset,
     }
 }
 
+// 76-a（2026-09-12 第七十六轮）：映射<K,V> **单槽**字符串释放（删除/覆盖写路径）。
+//   缺口（探针 76 实证）：交换式删除把被删项的键/值槽覆盖丢弃（值串泄漏，探针
+//   76-A/B）；设置覆盖已有键丢弃旧值串（泄漏，探针 76-C）——两者都是**单槽**
+//   释放，不适用全量遍历（被删槽在交换前被释放、覆盖写只换值不换键）。
+//   调用方（stdlib）：映射.删除 在链摘除后、与末元素交换**前**调用挂点 析构键值
+//   （键+值）；映射.设置 覆盖分支写入新值**前**调用挂点 析构值（仅值，键保留）。
+//   freeKeys/freeValues 由 IR 层按实例化 K/V 是否为字符串编译期决定（非 0=释放该侧）。
+//   不变量：**释放后槽清零**（与 __cn_map_free_strings 同款）——清零后交换/覆盖
+//   写入新句柄；即使未来多路径再次经过本槽，cn_free_tracked(nullptr) 空安全。
+//   index 合法性由 stdlib 保证（链查找返回值恒 < 元素数量）；此处仅防御负值。
+extern "C" void __cn_map_free_slot(void* obj, long long keysOffset,
+                                   long long valuesOffset, long long index,
+                                   long long freeKeys, long long freeValues) {
+    if (obj == nullptr || index < 0) return;
+    if (freeKeys == 0 && freeValues == 0) return;
+    char* base = static_cast<char*>(obj);
+    if (freeKeys != 0) {
+        char** keys = *reinterpret_cast<char***>(base + keysOffset);
+        if (keys != nullptr && keys[index] != nullptr) {
+            cn_free_tracked(keys[index]);
+            keys[index] = nullptr;
+        }
+    }
+    if (freeValues != 0) {
+        char** values = *reinterpret_cast<char***>(base + valuesOffset);
+        if (values != nullptr && values[index] != nullptr) {
+            cn_free_tracked(values[index]);
+            values[index] = nullptr;
+        }
+    }
+}
+
+// 76-a（2026-09-12 第七十六轮）：平铺数组容器（向量/栈/集合）**单槽**字符串释放。
+//   缺口（探针 76 实证）：向量.删除(位置)（V1：移位浅拷覆盖被删槽）、向量.设置
+//   覆盖（V2）、集合.删除(值)（前移覆盖）——被移除/被覆盖槽的串句柄丢失即泄漏。
+//   调用方（stdlib 挂点 析构元素(索引)）：向量.删除 移位循环 / 向量.设置 覆盖前 /
+//   集合.删除 前移前；IR 层对 T=字符串 实例注入本调用（T=有析构类 走 Call T$析构）。
+//   不变量：**释放后槽清零**（同族模型）——清零后移位/覆盖写入新句柄。
+//   边界：链式容器（链表 头/尾索引=槽序号，可 >= 元素数量）不做 count 上界检查
+//   （index 合法性由 stdlib 保证；仅防御负值——与既有单元素析构注入同口径）。
+extern "C" void __cn_seq_free_slot(void* obj, long long dataOffset, long long index) {
+    if (obj == nullptr || index < 0) return;
+    char* base = static_cast<char*>(obj);
+    char** data = *reinterpret_cast<char***>(base + dataOffset);
+    if (data == nullptr || data[index] == nullptr) return;
+    cn_free_tracked(data[index]);
+    data[index] = nullptr;
+}
+
 // 74-a（2026-09-11 第七十四轮）：链式容器（链表/队列）元素串释放。//   链表/队列 为「数组槽 + 下一索引链」模型：有效元素自 头索引 起沿 下一索引 串联，
 //   而 出队/删除头部 会把元素**所有权转移给调用方**（元素槽序号可能 < 元素数量）——
 //   故不能像 向量/栈 那样按 0..元素数量 平铺释放（会把已转移给调用方的串释放掉 =

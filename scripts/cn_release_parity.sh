@@ -37,6 +37,20 @@ echo "  调用点："
 grep -rn "发射容器析构(\|发射字符串释放(\|发射容器字段析构(\|循环跳出析构(\|块出口析构(" CN语言编译器v2/IR/ 2>/dev/null \
     | grep -v "函数 " | sed 's|CN语言编译器v2/IR/||' | cut -d: -f1,2 | sed 's/^/    /' | sort
 echo
+echo "── 76-a（第七十六轮）移除路径释放挂点（映射/集合/向量）──"
+echo "  宿主 运行时释放函数定义（全量+单槽）："
+for f in __cn_vector_free_strings __cn_chain_free_strings __cn_map_free_strings \
+         __cn_map_free_slot __cn_seq_free_slot; do
+    n=$(grep -rh "extern \"C\" void $f" src/runtime/ 2>/dev/null | wc -l)
+    printf "    %-28s 定义 %s 处\n" "$f" "$n"
+done
+echo "  宿主 注入挂点方法名（injectContainerElemDestroy 匹配表；映射 与 容器 分支）："
+grep -n 'mi.name == "析构\|mi.name == "释放内部数组' src/cn_compiler/ir/ir_oop.cpp | sed 's/^/    /'
+echo "  v2 判定函数（元素串释放面 / 归一化面）："
+grep -n "^函数 是字符串元素容器\|^函数 是字符串值映射" CN语言编译器v2/IR/IR容器.cn | sed 's/^/    /'
+echo "  stdlib 挂点调用点（移除-覆盖-清空路径）："
+grep -rn "自身.析构元素(\|自身.析构被移除(\|自身.析构键值(\|自身.析构值(" stdlib/*.cn | sed 's/^/    /'
+echo
 echo "── 人工核对三列（逐条问，勿跳）──────────────────"
 echo "  时机：释放发生在块出口 / 跳出前 / 函数尾 的哪一种？两侧一致吗？"
 echo "  条件：跳过名单（返回移出/装箱 move/污染名）两侧一致吗？"
@@ -48,9 +62,13 @@ echo "── 不变量证据：释放+槽清零 幂等模型（两侧都应有�
 h1=$(grep -rh "void IRGenerator::emitStringFreeFor" src/cn_compiler/ir/ 2>/dev/null | wc -l)
 h2=$(grep -rc "void IRGenerator::emitClassDeleteFor" src/cn_compiler/ir/ 2>/dev/null | awk -F: '{s+=$2} END{print s+0}')
 v1=$(grep -rh "零寄存器" CN语言编译器v2/IR/ 2>/dev/null | wc -l)
+# 76-a：单槽释放的清零（__cn_map_free_slot / __cn_seq_free_slot 内的槽清零）
+h3=$(grep -rhE "keys\[index\] = nullptr|values\[index\] = nullptr|data\[index\] = nullptr" \
+     src/runtime/io_api.cpp 2>/dev/null | wc -l)
 echo "  宿主 emitStringFreeFor=$h1（内含 Store 0 清零）emitClassDeleteFor=$h2（同）"
+echo "  宿主 76-a 单槽释放清零=$h3（__cn_map_free_slot/__cn_seq_free_slot 槽清零）"
 echo "  v2   零寄存器 引用=$v1（释放点清零 + 预扫回填）"
-if [ "$h1" -eq 0 ] || [ "$h2" -eq 0 ] || [ "$v1" -eq 0 ]; then
+if [ "$h1" -eq 0 ] || [ "$h2" -eq 0 ] || [ "$v1" -eq 0 ] || [ "$h3" -eq 0 ]; then
     echo "  ⚠ 单侧为 0——「释放+清零」不变量可能未同步到该侧（73-a 首版 SIGSEGV 即漏此条）"
 fi
 echo

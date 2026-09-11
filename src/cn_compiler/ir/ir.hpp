@@ -583,9 +583,12 @@ private:
     static int containerInsertValueArgIndex(const std::string& name);
     // 容器元素释放：运行时辅助函数名（按实例化类名分派；非字符串元素容器返回空）
     std::string containerElemFreeFn(const std::string& canonClass) const;
-    // 字符串元素容器判定（元素类型恰为 字符串 的 向量/链表/栈/队列 实例化）
+    // 字符串元素容器判定（元素类型恰为 字符串 的 向量/链表/栈/队列/集合 实例化）
     static bool isStringElemContainer(const std::string& canonClass);
-    // 容器元素数组字段名（向量/栈=数据；链表/队列=值表）；非容器返回空串
+    // 76-a：字符串值映射判定（映射$K$字符串）——入容器位（设置 的值实参）归一化用；
+    //   释放面由 ir_oop.cpp 映射分支处理，不经 containerElemFreeFn
+    static bool isStringValuedMap(const std::string& canonClass);
+    // 容器元素数组字段名（向量/栈=数据；链表/队列=值表；集合=数据数组）；非容器空串
     static std::string containerElemArrayField(const std::string& canonClass);
     // 槽是否为本函数拥有串局部（ownedStringOrder_ ∩ 非污染）——转移() 真 move 判据
     bool isOwnedStringSlot(const std::string& unique,

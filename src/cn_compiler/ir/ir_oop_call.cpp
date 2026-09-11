@@ -58,15 +58,31 @@ int IRGenerator::containerInsertValueArgIndex(const std::string& name) {
 //   注：嵌套形态（向量$映射$整64$字符串）元素是容器不是串，不予匹配
 //   （元素释放须按元素类型各自分派，此处收紧防误释放——原实现按 find("字符串")
 //   宽松匹配，对嵌套形态会以 元素=char* 语义释放容器对象指针）。
+//   76-a（2026-09-12 第七十六轮）：加 集合$字符串（探针 76-E/S1 实证：集合元素
+//   串无释放面——析构/清空路径泄漏；元素=独立平铺数组，模型同 向量/栈）。
 bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
     const std::size_t dl = canonClass.find('$');
     if (dl == std::string::npos) return false;
     const std::string head = canonClass.substr(0, dl);
     const std::string elem = canonClass.substr(dl + 1);
-    if (head != "向量" && head != "链表" && head != "栈" && head != "队列") {
+    if (head != "向量" && head != "链表" && head != "栈" && head != "队列" &&
+        head != "集合") {
         return false;
     }
     return elem == "字符串";
+}
+
+// 76-a：字符串值映射判定（映射$K$字符串）——入容器位归一化用（映射值在实参下标1）。
+//   释放面由 ir_oop.cpp 的映射分支处理（__cn_map_free_strings/_slot——键/值两数组
+//   非单元素数组模型），不经 containerElemFreeFn（故不进 isStringElemContainer）。
+//   背景（探针 76-F 实证）：映射析构/清空会释放值槽句柄——不归一化=借用来源
+//   （形参/局部）句柄浅存 → 容器析构释放调用方串（UAF，74-a 缺陷①在映射上的重演）。
+bool IRGenerator::isStringValuedMap(const std::string& canonClass) {
+    if (canonClass.rfind("映射$", 0) != 0) return false;
+    const std::size_t first = canonClass.find('$');
+    const std::size_t second = canonClass.find('$', first + 1);
+    if (second == std::string::npos) return false;
+    return canonClass.substr(second + 1) == "字符串";
 }
 
 // 容器元素数组字段名：向量/栈=数据（平铺数组）；链表/队列=值表（槽+下一索引链）
@@ -76,6 +92,7 @@ std::string IRGenerator::containerElemArrayField(const std::string& canonClass) 
     const std::string head = canonClass.substr(0, dl);
     if (head == "向量" || head == "栈") return "数据";
     if (head == "链表" || head == "队列") return "值表";
+    if (head == "集合") return "数据数组";   // 76-a（元素独立平铺数组）
     return std::string();
 }
 
@@ -84,6 +101,7 @@ std::string IRGenerator::containerElemFreeFn(const std::string& canonClass) cons
     if (!isStringElemContainer(canonClass)) return std::string();
     const std::string head = canonClass.substr(0, canonClass.find('$'));
     if (head == "向量" || head == "栈") return "__cn_vector_free_strings";
+    if (head == "集合") return "__cn_vector_free_strings";   // 76-a 平铺同款
     return "__cn_chain_free_strings";   // 链表/队列（链游释放，见运行时注释）
 }
 
@@ -183,14 +201,16 @@ ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
     return emitResult(ir::Opcode::Call, {v}, "ptr", "__cn_str_copy", loc);
 }
 
-// 方法调用实参构建：入容器位（对象类型=字符串元素容器 且 方法∈入容器位）时
-//   对值实参做所有权归一化，其余实参/其余调用等价 buildCallArgsOop。
+// 方法调用实参构建：入容器位（对象类型=字符串元素容器 或 字符串值映射 且 方法∈
+//   入容器位）时对值实参做所有权归一化，其余实参/其余调用等价 buildCallArgsOop。
+//   76-a：映射纳入——释放侧（__cn_map_free_strings/_slot）假定值槽句柄恒为
+//   「容器独有或驻留常量」（不变量①），不归一化=容器析构释放他人串（UAF，探针 76-F）。
 std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
     CallExpr* node, const std::string& canonObj, const std::string& methodName) {
     std::vector<ir::IRValue> out;
-    const int valueIdx = isStringElemContainer(canonObj)
-                             ? containerInsertValueArgIndex(methodName)
-                             : -1;
+    const bool ownsStrElem = isStringElemContainer(canonObj) ||
+                             isStringValuedMap(canonObj);
+    const int valueIdx = ownsStrElem ? containerInsertValueArgIndex(methodName) : -1;
     if (valueIdx < 0 ||
         static_cast<std::size_t>(valueIdx) >= node->arguments.size()) {
         return buildCallArgsOop(node->arguments, node->location);

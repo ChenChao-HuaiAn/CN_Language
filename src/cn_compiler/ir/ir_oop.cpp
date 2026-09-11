@@ -324,9 +324,18 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     //   元素模型：映射删除用「与末元素交换」→ 有效元素恒为 键/值数组的
     //   [0, 元素数量) → 平铺释放安全（同 向量/栈 模型）。仅当 K/V 至少一侧为
     //   字符串时注入（其它类型无堆资源）。
-    //   时机：~映射/清空 方法体前（清空的 元素数量=0 在方法体内——先释放后归零）。
-    if (canonClass.rfind("映射$", 0) == 0 &&
-        (mi.name == "~映射" || mi.name == "清空")) {
+    //   时机：~映射/清空/释放内部数组 方法体前（清空的 元素数量=0 在方法体内
+    //   ——先释放后归零；释放内部数组 的数组释放也在方法体内——先释放字符串
+    //   后释放数组，顺序不可倒）。
+    // ---- 76-a（2026-09-12 第七十六轮）：映射三路径补齐（探针 76 实证）----
+    //   ① ~映射/清空 → 全量平铺释放（75-a）；**释放内部数组** 同为「容器元素
+    //      显式销毁」路径（H8-5），漏注入=字符串键/值泄漏（探针 76-D）——并入全量；
+    //   ② **析构键值(索引)** ＝ 单槽释放（键+值）：映射.删除 在链摘除后、与
+    //      末元素交换前调用（交换会覆盖被删槽——不先释放即泄漏，探针 76-A/B）；
+    //   ③ **析构值(索引)** ＝ 单槽释放（仅值）：映射.设置 覆盖已有键时写入新值
+    //      前调用（旧值句柄被覆盖即泄漏，探针 76-C；键保留=仍是有效元素）。
+    //   K/V 为字符串时才注入（其余类型无堆资源，空体调用零开销）。
+    if (canonClass.rfind("映射$", 0) == 0) {
         std::string kType;
         std::string vType;
         auto kit = genericTypeParams_.find("K");
@@ -345,22 +354,49 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
         ir::IRValue selfPtrM = emitResult(ir::Opcode::Load,
                                           {ir::IRValue::var(thisUniqueM, "ptr")},
                                           "ptr", thisUniqueM, loc);
+        const bool isMapFull = (mi.name == "~映射" || mi.name == "清空" ||
+                                mi.name == "释放内部数组");
+        const bool isMapSlot = (mi.name == "析构键值" || mi.name == "析构值");
+        if (!isMapFull && !isMapSlot) {
+            return;   // 映射其余方法不注入
+        }
+        if (isMapFull) {
+            emit(ir::Opcode::Call,
+                 {selfPtrM,
+                  ir::IRValue::constant(std::to_string(keysOff), "整64"),
+                  ir::IRValue::constant(std::to_string(valsOff), "整64"),
+                  ir::IRValue::constant(std::to_string(cntOffM), "整64"),
+                  ir::IRValue::constant(kStr ? "1" : "0", "整64"),
+                  ir::IRValue::constant(vStr ? "1" : "0", "整64")},
+                 ir::IRValue(), "__cn_map_free_strings", "void", loc);
+            return;   // 映射不参与「有析构类元素循环」注入（元素是 K/V 值，非 T）
+        }
+        // ---- 单槽释放（析构键值/析构值）----
+        const std::string posUniqueM = lookupVarName("索引");
+        if (posUniqueM.empty()) return;
+        ir::IRValue posM = emitResult(ir::Opcode::Load,
+                                      {ir::IRValue::var(posUniqueM, "i64")},
+                                      "i64", posUniqueM, loc);
+        const bool freeK = (mi.name == "析构键值" && kStr);
+        const bool freeV = vStr;
+        if (!freeK && !freeV) return;
         emit(ir::Opcode::Call,
              {selfPtrM,
               ir::IRValue::constant(std::to_string(keysOff), "整64"),
               ir::IRValue::constant(std::to_string(valsOff), "整64"),
-              ir::IRValue::constant(std::to_string(cntOffM), "整64"),
-              ir::IRValue::constant(kStr ? "1" : "0", "整64"),
-              ir::IRValue::constant(vStr ? "1" : "0", "整64")},
-             ir::IRValue(), "__cn_map_free_strings", "void", loc);
-        return;   // 映射不参与「有析构类元素循环」注入（元素是 K/V 值，非 T）
+              posM,
+              ir::IRValue::constant(freeK ? "1" : "0", "整64"),
+              ir::IRValue::constant(freeV ? "1" : "0", "整64")},
+             ir::IRValue(), "__cn_map_free_slot", "void", loc);
+        return;
     }
-    // 容器识别 + 数组字段名（向量/栈=数据；链表/队列=值表）
+    // 容器识别 + 数组字段名（向量/栈=数据；链表/队列=值表；集合=数据数组）
     std::string arrayField;
     if (canonClass.rfind("向量$", 0) == 0) arrayField = "数据";
     else if (canonClass.rfind("链表$", 0) == 0) arrayField = "值表";
     else if (canonClass.rfind("栈$", 0) == 0) arrayField = "数据";
     else if (canonClass.rfind("队列$", 0) == 0) arrayField = "值表";
+    else if (canonClass.rfind("集合$", 0) == 0) arrayField = "数据数组";  // 76-a
     else return;
     const std::string base = canonClass.substr(0, canonClass.find('$'));
     // 方法匹配：
@@ -371,21 +407,82 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     //   向量 删除(位置)：移位槽泄漏已由 stdlib 显式 析构元素() 根治（move 语义），
     //     不再方法体前注入（被移除元素由 析构元素(移动=位置) 析构）。
     //   栈 弹出 / 队列 出队：所有权转移，不析构（不匹配即不注入）
+    // ---- 76-a（2026-09-12 第七十六轮）：字符串元素路径（探针 76 实证）----
+    //   字符串不是「有析构类」（内置类型），但元素是堆串（有堆资源）——原有注入
+    //   只覆盖「T 有析构类」，字符串元素容器的移除路径全部静默泄漏：
+    //   向量 删除(位置)/设置覆盖（探针 76-V1/V2）、链表 删除头部/删除尾部（76-L1/L2）、
+    //   链表/队列 清空（76-L3/Q1）、集合 析构/清空/删除（76-E/S1）。
+    //   本分支与「有析构类」路径一一对应：全量（~容器/清空）经 emitContainerElemFreeFor
+    //   （按元素模型分派 __cn_vector/__cn_chain_free_strings）；单槽（析构元素/删除
+    //   头部/删除尾部）经 __cn_seq_free_slot（释放 + 槽清零，幂等不变量）。
     const bool isFull = (mi.name == ("~" + base) || mi.name == "清空");
     bool isSingle = false;
     std::string indexParam;  // 单元素析构的索引参数名（析构元素=索引）；空=从字段
     std::string indexField;  // 单元素析构的索引字段名（链表 头索引/尾索引）；空=从参数
     if (mi.name == "析构元素") { isSingle = true; indexParam = "索引"; }
+    else if (mi.name == "析构被移除") { isSingle = true; indexParam = "索引"; }
     else if (mi.name == "删除头部") { isSingle = true; indexField = "头索引"; }
     else if (mi.name == "删除尾部") { isSingle = true; indexField = "尾索引"; }
     if (!isFull && !isSingle) return;
+    // 76-a：字符串元素的单槽释放只服务「**唯一持有者**槽」（被移除槽）——
+    //   析构被移除（向量/集合 删除前释放的被移除槽）、删除头部/删除尾部
+    //   （链表 被摘槽：出链后无其他槽引用）；析构元素（移位目标槽/末尾移出槽）
+    //   对字符串是**重复引用**（下标赋值=浅拷句柄），释放即悬垂（探针 76-V1
+    //   修复首版实证）→ 不注入。有析构类元素反之（析构元素链负责，见下）。
+    const bool strOwnedSlot = (mi.name == "析构被移除" ||
+                               mi.name == "删除头部" || mi.name == "删除尾部");
     // 元素类型 T（emitClassMethod 已按本实例实参设置 genericTypeParams_）
     std::string elemType;
     auto tit = genericTypeParams_.find("T");
     if (tit != genericTypeParams_.end()) elemType = tit->second;
     if (elemType.empty()) return;
-    // T 须为有析构类：类 + 析构方法（沿继承链合并后的 methods 表）
     const std::string elemCanon = types::canonical(elemType);
+    // ---- 字符串元素：单槽/全量释放经运行时辅助（槽清零=幂等，同 75-a 模型）----
+    if (elemCanon == "字符串") {
+        const std::string thisUniqueS = lookupVarName("自身");
+        if (thisUniqueS.empty()) return;
+        ir::IRValue selfPtrS = emitResult(ir::Opcode::Load,
+                                          {ir::IRValue::var(thisUniqueS, "ptr")},
+                                          "ptr", thisUniqueS, loc);
+        if (isFull) {
+            // 全量（~容器/清空；清空的 元素数量=0 在方法体内——先释放后归零）；
+            //   链表/队列 按链游（清空前链有效，已摘槽不在链上=不重复释放）
+            emitContainerElemFreeFor(canonClass, selfPtrS, loc);
+            return;
+        }
+        // 76-a：字符串元素只注入「唯一持有者槽」的释放（析构被移除/删除头部/
+        //   删除尾部）；析构元素（移位目标槽/末尾移出槽）**不注入**——字符串
+        //   下标赋值=浅拷句柄，源槽与有效槽重复引用，释放即悬垂（探针 76-V1 实证）
+        if (!strOwnedSlot) return;
+        // 单槽：索引来自 参数（析构元素=索引）或 字段（链表 头索引/尾索引——
+        //   注入在方法体前，字段仍是删除前旧值）
+        ir::IRValue posS;
+        if (!indexParam.empty()) {
+            const std::string posUniqueS = lookupVarName(indexParam);
+            if (posUniqueS.empty()) return;
+            posS = emitResult(ir::Opcode::Load,
+                              {ir::IRValue::var(posUniqueS, "i64")},
+                              "i64", posUniqueS, loc);
+        } else {
+            const int idxOffS = semantic_->classFieldOffset(canonClass, indexField);
+            if (idxOffS < 0) return;
+            ir::IRValue idxAddrS = emitResult(ir::Opcode::FieldAddr, {selfPtrS}, "ptr",
+                                              std::to_string(idxOffS), loc);
+            posS = emitResult(ir::Opcode::LoadPtr, {idxAddrS}, "i64", "", loc);
+        }
+        const int arrayOffS = semantic_->classFieldOffset(canonClass, arrayField);
+        if (arrayOffS < 0) return;
+        emit(ir::Opcode::Call,
+             {selfPtrS,
+              ir::IRValue::constant(std::to_string(arrayOffS), "整64"),
+              posS},
+             ir::IRValue(), "__cn_seq_free_slot", "void", loc);
+        return;
+    }
+    // T 须为有析构类：类 + 析构方法（沿继承链合并后的 methods 表）
+    //   76-a：析构被移除（唯一持有者槽）只服务字符串——有析构类该槽的析构由
+    //   析构元素 链（向量 删除循环首步）/删除头部/删除尾部 原路径负责，零行为变化
+    if (mi.name == "析构被移除") return;
     const ClassInfo* eci = semantic_->findClass(elemCanon);
     if (eci == nullptr) return;
     std::string dtorSig;
