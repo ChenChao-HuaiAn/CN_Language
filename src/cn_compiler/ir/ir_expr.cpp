@@ -1177,6 +1177,33 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         }
         // 字段地址 = 基址 + 偏移（FieldAddr；含空指针检查错误码3）
         ir::IRValue addr = lvalueAddress(node->target.get());
+        // 72-a 根治（2026-09-11 第七十二轮）：结构体字段=x 目标字段类型为
+        //   字符串 且右值为字符串变量 -> 值被外部槽持有（指针逃逸模型，与
+        //   下标路径同款：数组元素借出=借用）。源变量污染退出 RAII——否则
+        //   源出口释放 + 字段/后继容器浅共享 = 悬垂（v2 树 货舱解析 的
+        //   `项.名称 = 键` → 依赖们.追加(项) 形态，E2E 165 回归实证）。
+        if (targetType == "ptr" && !isCompoundAssignOp(node->op) &&
+            node->value->getType() == NodeType::IdentifierExpr) {
+            const std::string fieldFieldType = [&]() -> std::string {
+                if (decl != nullptr) {
+                    for (const auto& f : decl->fields) {
+                        if (f.name == member->memberName) return f.type;
+                    }
+                }
+                // 类实例字段（对象.字段，class 路径）
+                if (semantic_ != nullptr && !objSrcType.empty() &&
+                    semantic_->isClassType(types::canonical(objSrcType))) {
+                    const std::string ft = classFieldType(
+                        types::canonical(objSrcType), member->memberName);
+                    if (!ft.empty()) return ft;
+                }
+                return "";
+            }();
+            if (types::canonical(fieldFieldType) == "字符串") {
+                stringTainted_.insert(
+                    static_cast<IdentifierExpr*>(node->value.get())->name);
+            }
+        }
         // 复合赋值（p.x += 1 等）
         if (isCompoundAssignOp(node->op)) {
             ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addr}, targetType,
@@ -1706,6 +1733,82 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     //   （解引用/成员等）整变量污染（stringTainted_）退出 RAII**——来源静态
     //   不可保证恒为堆串，free 只读段=UB，宁可放弃自动释放保安全。
     const std::string ownTargetSrcType = lookupSrcType(ident->name);
+    // 72-a 根治（2026-09-11 第七十二轮，UAF 级别）：赋值位显式转移
+    //   目标 = 转移(源) —— 真 move（Rust 对照：`a = b` 对 String 即 move=
+    //   句柄移交 + 源失效；CN 默认深拷贝，显式 转移() 才 move）。原实现把
+    //   转移(源) 当普通右值（实参值加载）走下方路径：目标与源共用同一堆句柄，
+    //   而源仍在拥有名单中于作用域出口释放 -> 目标悬垂（stdlib 字符串扩展::
+    //   替换 的 缓冲 = 转移(拼接) 实测输出乱码）。此处置为声明位浅交接
+    //   （genVarDecl 分支）同模型：drop 旧目标 + 句柄直存 + 源槽清零
+    //   （源 RAII 对零句柄空安全跳过）。自转移 甲 = 转移(甲) 语义=无操作
+    //   （free 后存已释放值=UAF，直接跳过交接）。
+    // 72-a 根治（2026-09-11 第七十二轮，UAF 级别）：引用参数（T& 出参）赋值
+    //   拥有型串——写调用方槽后本函数出口释放源局部 = 调用方悬垂（探针 78：
+    //   `输出 = 甲;` 后调用方读到垃圾；v2 树 解析货舱/拆限定名 两函数踩中，
+    //   E2E 165 回归实证）。Rust 对照：`*out = s`（&mut String）对 String 即
+    //   move——出参槽获得所有权、源失效。此处=句柄直写调用方槽 + 源槽清零
+    //   （源 RAII 对零句柄空安全跳过）；源为污染名（借用视图）=不转移所有权
+    //   （调用方不得登记 RAII，按借用视图读）。
+    //   注：引用参数 entryInfo.srcType 保留 "T&" 形态（ir_decl 登记原样），
+    //   判定须 canonical 剥引用后缀。
+    if (types::canonical(ownTargetSrcType) == "字符串" && targetType == "ptr" &&
+        !isCompoundAssignOp(node->op) &&
+        stringTainted_.count(ident->name) == 0 &&
+        isByRefCapture(ident->name) &&
+        node->value->getType() == NodeType::IdentifierExpr) {
+        const std::string rpSrcName =
+            static_cast<const IdentifierExpr*>(node->value.get())->name;
+        const std::string rpSrcUnique = lookupVarName(rpSrcName);
+        const bool rpSrcTainted = stringTainted_.count(rpSrcName) > 0;
+        if (!rpSrcUnique.empty() && !rpSrcTainted) {
+            ir::IRValue byRefAddr = emitResult(
+                ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
+                unique, node->location);
+            emit(ir::Opcode::StorePtr, {byRefAddr, value}, ir::IRValue(), "",
+                 targetType, node->location);
+            ir::IRValue rpZero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                            node->location);
+            emit(ir::Opcode::Store, {rpZero}, ir::IRValue(), rpSrcUnique, "i64",
+                 node->location);
+            lastExpr_ = value;
+            return;
+        }
+    }
+    if (ownTargetSrcType == "字符串" && targetType == "ptr" &&
+        !isCompoundAssignOp(node->op) &&
+        stringTainted_.count(ident->name) == 0 &&
+        node->value->getType() == NodeType::CallExpr &&
+        SemanticAnalyzer::isTransferCall(
+            static_cast<const CallExpr*>(node->value.get()))) {
+        const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
+        if (!tr->arguments.empty() &&
+            tr->arguments[0]->getType() == NodeType::IdentifierExpr) {
+            const std::string srcName =
+                static_cast<const IdentifierExpr*>(tr->arguments[0].get())->name;
+            const std::string srcUnique = lookupVarName(srcName);
+            if (!srcUnique.empty() && srcUnique != unique) {
+                const bool srcTainted = stringTainted_.count(srcName) > 0;
+                // drop 旧目标（拥有链维护下旧值必为堆串；空安全）——Rust 赋值
+                //   语义=旧值在移交前析构
+                ir::IRValue oldPtr = emitResult(
+                    ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
+                    unique, node->location);
+                emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",
+                     "void", node->location);
+                // 句柄移交（value=转移展开的源槽加载值）+ 源槽清零
+                emit(ir::Opcode::Store, {value}, ir::IRValue(), unique, "ptr",
+                     node->location);
+                ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                              node->location);
+                emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique, "i64",
+                     node->location);
+                // 源为借用视图（污染名）=移交的是借用句柄——目标不得登记 RAII
+                if (srcTainted) stringTainted_.insert(ident->name);
+                lastExpr_ = value;
+                return;
+            }
+        }
+    }
     if (ownTargetSrcType == "字符串" && targetType == "ptr" &&
         !isCompoundAssignOp(node->op) &&
         stringTainted_.count(ident->name) == 0) {

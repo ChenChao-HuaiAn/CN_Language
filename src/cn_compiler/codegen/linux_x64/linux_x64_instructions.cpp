@@ -18,6 +18,13 @@
 
 namespace cn_compiler {
 
+// 变参 C 库函数判定（SysV 调用点须设 AL）：__cn_format 为唯一 vdprintf 族
+//   （string_api.cpp `__cn_format(const char*, ...)`）；后续新增变参运行时符号
+//   在此追加。
+static bool isVariadicCallee(const std::string& callee) {
+    return callee == "__cn_format";
+}
+
 // ==================== 类型辅助 ====================
 
 // 类型是否浮点
@@ -836,6 +843,20 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
         } else {
             loadOperandToX(writer, av, intParameterRegister(argPos[i]));
         }
+    }
+    // ---- 变参调用：AL = 使用的向量寄存器个数（SysV AMD64 ABI 强制契约） ----
+    //   F6（2026-09-11 第七十二轮根治）：变参函数（vdprintf 族/__cn_format）经
+    //   stdarg 读取 xmm0..xmm7 的保存区，AL 告诉被调方存了几个；不设 AL 时
+    //   glibc 的 va_arg 按 AL 值判定——rax 被前序调用/释放污染后浮点实参读到
+    //   0（探针：包装函数链下 `格式化("¥%.2f", 29.50)` 输出 ¥0.00；直连形态
+    //   靠 rax 残留侥幸正确）。Rust/C 编译器对此无条件发 mov al, N
+    //   （clang/gcc 变参调用点均有 xor eax,eax 或 mov al,imm）。
+    if (!isIndirect && isVariadicCallee(callee)) {
+        int vecUsed = 0;
+        for (std::size_t i = 0; i < argCount; ++i) {
+            if (argKind[i] == 1) ++vecUsed;
+        }
+        writer.line("mov eax, " + std::to_string(vecUsed));  // AL=变参向量寄存器个数（SysV 契约）
     }
     // ---- 调用（间接：函数指针经 r11——SysV 惯例 call-clobbered 非传参寄存器） ----
     if (isIndirect) {

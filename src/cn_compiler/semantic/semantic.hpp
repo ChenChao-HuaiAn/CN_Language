@@ -173,6 +173,11 @@ public:
     //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
     static bool isTransferCall(const class CallExpr* node);
 
+    // plans/019 阶段4' A2（2026-09-11 第七十二轮 72-a 根治）：签名键是否为泛型
+    //   函数单态化实例（精确判定替代 sigKey.find('$') 符号名模式——后者把跨模块
+    //   链接键 模块$名 误判为泛型产物，令拥有型字符串契约跨模块整体失效）。
+    bool isGenericFuncInstanceName(const std::string& sigKey) const;
+
 
     // plans/019 阶段3b（2026-09-10）：IR 层查询——声明是否转移初始化（浅交接
     //   分派用：跳过深拷贝改槽位交接）；命中返回 true 并回填源变量名。

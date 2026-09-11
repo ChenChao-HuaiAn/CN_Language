@@ -178,6 +178,20 @@ bool SemanticAnalyzer::isTransferCall(const CallExpr* node) {
            node->arguments.size() == 1;
 }
 
+// plans/019 阶段4' A2（2026-09-11 第七十二轮 72-a 根治）：签名键是否为泛型函数
+//   单态化实例（名$实参串，如 逆序$整32）。
+//   原判定 sigKey.find('$') 是符号名模式匹配，会把**跨模块链接键**（模块$名，
+//   functionLinkKey 公式）一并命中——凡导入模块的函数返回 字符串，调用方
+//   retOwnedString 一律不置位=A2 拥有契约跨模块整体失效（静默永久泄漏）。
+//   改按泛型实例表精确判定：genericFuncInstances_ 的 instanceName 即真实例名
+//   （instantiateGeneric 登记）；Rust 对照=rustc 按 DefId 判实例，不做名字模式推断。
+bool SemanticAnalyzer::isGenericFuncInstanceName(const std::string& sigKey) const {
+    for (const auto& gi : genericFuncInstances_) {
+        if (gi.instanceName == sigKey) return true;
+    }
+    return false;
+}
+
 int SemanticAnalyzer::transferArgKind(const std::string& type) const {
     // 复制语义类型：转移无意义（Rust Copy 类型惯例）
     if (types::isInteger(type) || types::isFloat(type) || type == "布尔" ||
@@ -958,14 +972,20 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         lastType_ = info.returnType;
         // A2（方案甲）：被调者返回类型 字符串=拥有——调用方登记 RAII（Rust
         //   签名即契约：fn f() -> String 拥有 / -> &str 借用）。泛型单态化产物
-        //   （签名键含 $，如 逆序$整32）不置位——泛型体返回 T 来源字符串=借用
-        //   （容器元素访问，Rust Vec::get -> &T 同款），保守不登记=安全方向
-        //   （调用方 free 容器内部元素=悬垂）。
+        //   （如 逆序$整32）不置位——泛型体返回 T 来源字符串=借用（容器元素
+        //   访问，Rust Vec::get -> &T 同款），保守不登记=安全方向（调用方 free
+        //   容器内部元素=悬垂）。
         // 70-a 根治（2026-09-11 用户裁决方案A）：恢复轮1 二分调试残留的
         //   false && 前缀——当时为排查 119/167-172 回归临时禁用，真根因
         //   （IR容器 字符串入容器浅共享悬垂，c668919）已另行根治。
+        // 72-a 根治（2026-09-11 第七十二轮）：原判定 sigKey.find('$') 把
+        //   **跨模块链接键**（模块$名，functionLinkKey 公式）误当泛型产物——
+        //   凡导入模块的函数返回 字符串，调用方一律不登记 RAII=静默永久泄漏
+        //   （探针：本模块 本地造串 → 有 free；跨模块 工具$造串 → 无 free）。
+        //   改按泛型实例表精确判定（genericFuncInstances_ 登记的真单态化产物；
+        //   rustc 按 DefId 判定实例、不用符号名模式同款）。
         node->retOwnedString =
-            (lastType_ == "字符串" && sigKey.find('$') == std::string::npos);
+            (lastType_ == "字符串" && !isGenericFuncInstanceName(sigKey));
         // P3-18 补完：引用返回函数调用結果可作左值（整32& r = 获取() / 获取()=值 / &获取()）
         if (info.isRefReturn) {
             node->isRefReturnCall = true;
