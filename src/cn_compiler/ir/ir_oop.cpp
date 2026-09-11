@@ -317,6 +317,44 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
                                              const SourceLocation& loc) {
     if (semantic_ == nullptr || function_ == nullptr) return;
     const std::string canonClass = types::canonical(className);
+    // ---- 75-a（2026-09-12 第七十五轮）：映射<K,V> 字符串键/值释放 ----
+    //   缺口（探针实证，矩阵 A17 同族）：映射的 ~映射/清空 只释放四个内部数组
+    //   （键/值/链/桶），不释放**字符串键/值本身**=每个字符串元素永久泄漏；
+    //   嵌套场景（向量<映射<…,字符串>>）同样由本注入覆盖（元素的析构经 ~映射）。
+    //   元素模型：映射删除用「与末元素交换」→ 有效元素恒为 键/值数组的
+    //   [0, 元素数量) → 平铺释放安全（同 向量/栈 模型）。仅当 K/V 至少一侧为
+    //   字符串时注入（其它类型无堆资源）。
+    //   时机：~映射/清空 方法体前（清空的 元素数量=0 在方法体内——先释放后归零）。
+    if (canonClass.rfind("映射$", 0) == 0 &&
+        (mi.name == "~映射" || mi.name == "清空")) {
+        std::string kType;
+        std::string vType;
+        auto kit = genericTypeParams_.find("K");
+        auto vit = genericTypeParams_.find("V");
+        if (kit != genericTypeParams_.end()) kType = kit->second;
+        if (vit != genericTypeParams_.end()) vType = vit->second;
+        const bool kStr = (types::canonical(kType) == "字符串");
+        const bool vStr = (types::canonical(vType) == "字符串");
+        if (!kStr && !vStr) return;
+        const std::string thisUniqueM = lookupVarName("自身");
+        if (thisUniqueM.empty()) return;
+        const int keysOff = semantic_->classFieldOffset(canonClass, "键数组");
+        const int valsOff = semantic_->classFieldOffset(canonClass, "值数组");
+        const int cntOffM = semantic_->classFieldOffset(canonClass, "元素数量");
+        if (keysOff < 0 || valsOff < 0 || cntOffM < 0) return;
+        ir::IRValue selfPtrM = emitResult(ir::Opcode::Load,
+                                          {ir::IRValue::var(thisUniqueM, "ptr")},
+                                          "ptr", thisUniqueM, loc);
+        emit(ir::Opcode::Call,
+             {selfPtrM,
+              ir::IRValue::constant(std::to_string(keysOff), "整64"),
+              ir::IRValue::constant(std::to_string(valsOff), "整64"),
+              ir::IRValue::constant(std::to_string(cntOffM), "整64"),
+              ir::IRValue::constant(kStr ? "1" : "0", "整64"),
+              ir::IRValue::constant(vStr ? "1" : "0", "整64")},
+             ir::IRValue(), "__cn_map_free_strings", "void", loc);
+        return;   // 映射不参与「有析构类元素循环」注入（元素是 K/V 值，非 T）
+    }
     // 容器识别 + 数组字段名（向量/栈=数据；链表/队列=值表）
     std::string arrayField;
     if (canonClass.rfind("向量$", 0) == 0) arrayField = "数据";

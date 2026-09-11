@@ -865,7 +865,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                              cn == "字符串大写" || cn == "字符串小写" ||
                              cn == "字符串修剪" || cn == "字符串反转";
                 }
-                if (!ownRet) stringTainted_.insert(node->name);
+                if (!ownRet) markStringTainted(node->name);
             }
         }
         if (value.type != irType && !irType.empty()) {

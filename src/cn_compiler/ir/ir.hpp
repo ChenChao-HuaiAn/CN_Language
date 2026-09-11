@@ -616,6 +616,15 @@ private:
     //   非拥有形态（解引用/成员等）的字符串目标整变量退出 RAII（free 只读段
     //   =UB 静态防线）；genFunctionDecl 开头复位、genStringFrees 消费。
     std::unordered_set<std::string> stringTainted_;
+    // 75-a（2026-09-12 第七十五轮）：字符串污染登记**唯一入口**。污染名单同时是
+    //   ①释放侧跳过依据（块出口/跳出/函数级兜底/`isOwnedStringSlot`）与
+    //   ②入容器位「实参是否拥有」判定的共同依据——漏登记会产生双向错误：
+    //   释放侧误释放借用视图（悬垂）/ 归一化误判拥有（容器接管借用句柄 → 容器
+    //   析构释放他人串=UAF）。原五处登记点（初始化非拥有/结构体字段借出/下标
+    //   借出/转移污染传播/赋值非拥有）统一经此入口，新增登记点一律经此。
+    void markStringTainted(const std::string& name) {
+        stringTainted_.insert(name);
+    }
 
     // ==================== 阶段3 OOP：类方法体/指令发射（Task 3.1/3.2，串联集成） ====================
     // 提升单个类方法体为独立 IRFunction：

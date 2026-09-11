@@ -1200,7 +1200,7 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 return "";
             }();
             if (types::canonical(fieldFieldType) == "字符串") {
-                stringTainted_.insert(
+                markStringTainted(
                     static_cast<IdentifierExpr*>(node->value.get())->name);
             }
         }
@@ -1240,7 +1240,7 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 else if (types::isPointer(stX)) elemX = types::pointeeOf(stX);
                 if (elemX == "字符串" &&
                     node->value->getType() == NodeType::IdentifierExpr) {
-                    stringTainted_.insert(
+                    markStringTainted(
                         static_cast<IdentifierExpr*>(node->value.get())->name);
                 }
             }
@@ -1803,7 +1803,7 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique, "i64",
                      node->location);
                 // 源为借用视图（污染名）=移交的是借用句柄——目标不得登记 RAII
-                if (srcTainted) stringTainted_.insert(ident->name);
+                if (srcTainted) markStringTainted(ident->name);
                 lastExpr_ = value;
                 return;
             }
@@ -1850,7 +1850,7 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                      "void", node->location);
             }
         } else {
-            stringTainted_.insert(ident->name);
+            markStringTainted(ident->name);
         }
     }
     // 简单赋值（Task 2.3：右值类型与目标类型不同时先隐式转换 Cast，

@@ -190,8 +190,39 @@ extern "C" void __cn_vector_free_strings(void* obj, long long dataOffset,
     }
 }
 
-// 74-a（2026-09-11 第七十四轮）：链式容器（链表/队列）元素串释放。
-//   链表/队列 为「数组槽 + 下一索引链」模型：有效元素自 头索引 起沿 下一索引 串联，
+// 75-a（2026-09-12 第七十五轮）：映射<K,V> 字符串键/值释放。
+//   缺口（探针实证）：~映射/清空 只释放四个内部数组，不释放字符串键/值本身
+//   ——每个字符串元素永久泄漏；嵌套场景（向量<映射<…,字符串>> 的元素析构经
+//   ~映射）同样由此覆盖。
+//   元素模型：映射删除用「与末元素交换」→ 有效元素恒为 [0, 元素数量) → 平铺释放
+//   安全（同 向量/栈）。freeKeys/freeValues 由 IR 层按实例化实参 K/V 是否为
+//   字符串编译期决定（非 0=释放该侧）。
+//   不变量：**释放后槽清零**——清空/析构多路径共享同一键/值数组（清空注入先
+//   释放后 元素数量=0，若再析构则 count=0 天然跳过；清零为双保险），
+//   cn_free_tracked 对驻留常量（非在册）空安全。
+extern "C" void __cn_map_free_strings(void* obj, long long keysOffset,
+                                     long long valuesOffset, long long countOffset,
+                                     long long freeKeys, long long freeValues) {
+    if (obj == nullptr) return;
+    if (freeKeys == 0 && freeValues == 0) return;
+    char* base = static_cast<char*>(obj);
+    char** keys = *reinterpret_cast<char***>(base + keysOffset);
+    char** values = *reinterpret_cast<char***>(base + valuesOffset);
+    const long long count = *reinterpret_cast<long long*>(base + countOffset);
+    if (count <= 0) return;
+    for (long long i = 0; i < count; ++i) {
+        if (freeKeys != 0 && keys != nullptr && keys[i] != nullptr) {
+            cn_free_tracked(keys[i]);
+            keys[i] = nullptr;
+        }
+        if (freeValues != 0 && values != nullptr && values[i] != nullptr) {
+            cn_free_tracked(values[i]);
+            values[i] = nullptr;
+        }
+    }
+}
+
+// 74-a（2026-09-11 第七十四轮）：链式容器（链表/队列）元素串释放。//   链表/队列 为「数组槽 + 下一索引链」模型：有效元素自 头索引 起沿 下一索引 串联，
 //   而 出队/删除头部 会把元素**所有权转移给调用方**（元素槽序号可能 < 元素数量）——
 //   故不能像 向量/栈 那样按 0..元素数量 平铺释放（会把已转移给调用方的串释放掉 =
 //   双释放/悬垂）。此处按链游释放，只释放仍在容器内的元素。
