@@ -123,16 +123,20 @@ void IRGenerator::visitBreakStmt(BreakStmt* node) {
     if (!loopStack_.empty()) {
         // 72-a：跳出前释放循环体内的块级资源（drop-on-jump，Rust 同款）——
         //   中断路径绕过 genBlock 出口析构，此处按进入循环体时的基线释放本块新增
-        genLoopJumpDestruct(loopStack_.back());
+        genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase);
         endJump(loopStack_.back().breakTarget);
     } else if (!switchStack_.empty()) {
-        endJump(switchStack_.back());
+        // 72-a 收尾（2026-09-11）：选择分支不走 genBlock（语句直接生成）——分支内
+        //   声明的资源同样在 中断 跳出前按分支基线释放，与循环口径对齐；
+        //   fallthrough/汇合路径仍由函数级兜底（返回块全量释放）覆盖。
+        genJumpDestructFrom(switchStack_.back().stringBase, switchStack_.back().classBase);
+        endJump(switchStack_.back().exitLabel);
     }
 }
 void IRGenerator::visitContinueStmt(ContinueStmt* node) {
     (void)node;
     if (!loopStack_.empty()) {
-        genLoopJumpDestruct(loopStack_.back());
+        genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase);
         endJump(loopStack_.back().continueTarget);
     }
 }
@@ -297,7 +301,9 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
         endBranch(cmp.toString(), bodyLabels[i], nextTarget);
         // 体块（嵌套控制流在此处 newBlock 自增，不影响已分配标签的唯一性）
         setCurrentBlock(newBlock(bodyLabels[i]));
-        switchStack_.push_back(endLabel);  // case 分支内中断跳出选择
+        // 72-a 收尾：分支基线随栈压入（中断 跳出时的 drop 范围）
+        switchStack_.push_back(
+            SwitchContext{endLabel, ownedClassOrder_.size(), ownedStringOrder_.size()});
         for (auto& stmt : node->cases[i]->statements) {
             genStmt(stmt.get());
         }
@@ -316,7 +322,9 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
     // 默认体块（若存在）
     if (node->defaultCase != nullptr) {
         setCurrentBlock(newBlock(defLabel));
-        switchStack_.push_back(endLabel);  // 默认分支内中断跳出选择
+        // 72-a 收尾：默认分支基线随栈压入（同 情况 分支）
+        switchStack_.push_back(
+            SwitchContext{endLabel, ownedClassOrder_.size(), ownedStringOrder_.size()});
         for (auto& stmt : node->defaultCase->statements) {
             genStmt(stmt.get());
         }
@@ -518,7 +526,9 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         oopVarSrcTypes_[unique] = srcType;
         // 72-a（2026-09-11 第七十二轮）：块级作用域 RAII 名单登记——本块声明的
         //   拥有串/类对象在 genBlock 出口释放（此前仅函数级=循环体中间迭代泄漏）。
-        //   污染名（stringTainted_，借用视图）不登记（宁可不释放保安全）。
+        //   污染名（借用视图）同样登记：名单只管作用域范围，释放侧统一按
+        //   stringTainted_ 跳过污染名（登记+跳过 双保险，宁可不释放保安全），
+        //   保证名单截断逻辑对污染名同样正确回卷。
         if (srcType == "字符串") {
             ownedStringOrder_.push_back(unique);
         } else if (semantic_ != nullptr && !srcType.empty() &&

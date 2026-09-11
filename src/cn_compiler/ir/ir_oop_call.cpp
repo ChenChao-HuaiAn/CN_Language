@@ -747,7 +747,6 @@ void IRGenerator::genBlockExitDestruct() {
         if (stringTainted_.count(blockExitSrcName(unique)) > 0) continue;  // 借用视图不释放
         emitStringFreeFor(unique);
     }
-    (void)0;
     while (ownedClassOrder_.size() > scopeClassBase_.back()) {
         const std::string unique = ownedClassOrder_.back();
         ownedClassOrder_.pop_back();
@@ -757,19 +756,19 @@ void IRGenerator::genBlockExitDestruct() {
     }
 }
 
-void IRGenerator::genLoopJumpDestruct(const LoopContext& ctx) {
-    // 中断/继续 跳出循环体：按进入循环体时的基线释放本块新增资源（drop-on-jump）。
-    //   名单截断至基线（外层块随后经 genBlock 出口/函数级兜底处理）。
-    // 注意：不截断编译期名单（落空路径的块出口析构仍须覆盖）——只发射释放+清零，
-    //   释放后槽=0，落空路径/函数级兜底再释放即空安全（幂等）。
+// 中断/继续 跳出循环体或选择分支：按进入该分支时记录的基线释放新增资源
+//   （drop-on-jump）。调用方：循环=LoopContext 基线、选择=SwitchContext 基线。
+// 注意：不截断编译期名单（落空路径的块出口析构仍须覆盖）——只发射释放+清零，
+//   释放后槽=0，落空路径/函数级兜底再释放即空安全（幂等）。
+void IRGenerator::genJumpDestructFrom(std::size_t stringBase, std::size_t classBase) {
     const std::size_t strEnd = ownedStringOrder_.size();
-    for (std::size_t i = ctx.stringBase; i < strEnd; ++i) {
+    for (std::size_t i = stringBase; i < strEnd; ++i) {
         const std::string& unique = ownedStringOrder_[i];
         if (stringTainted_.count(blockExitSrcName(unique)) > 0) continue;
         emitStringFreeFor(unique);
     }
     const std::size_t clsEnd = ownedClassOrder_.size();
-    for (std::size_t i = ctx.scopeDepth; i < clsEnd; ++i) {
+    for (std::size_t i = classBase; i < clsEnd; ++i) {
         const std::string& unique = ownedClassOrder_[i];
         auto it = oopVarSrcTypes_.find(unique);
         if (it == oopVarSrcTypes_.end()) continue;

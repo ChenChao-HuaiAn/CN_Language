@@ -161,6 +161,17 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             endReturn("");
         }
     }
+    // 72-a 收尾（2026-09-11）：函数级 RAII 兜底 + 状态复位——类方法是第三类
+    //   函数级生成单元（visitFunctionDecl/emitGenericFuncInstance 之外的独漏）：
+    //   方法体内声明拥有串后中途 返回 绕过 genBlock 出口析构，且无返回块兜底
+    //   =泄漏（探针 87 实证残留 1）。visitProgram 第 3 步批量生成，clear 安全。
+    genClassDestructorCalls();
+    genStringFrees();
+    stringTainted_.clear();
+    ownedStringOrder_.clear();
+    ownedClassOrder_.clear();
+    scopeStringBase_.clear();
+    scopeClassBase_.clear();
     module_->functions.push_back(std::move(func));
     function_ = nullptr;
     // 恢复上下文并清除方法参数作用域

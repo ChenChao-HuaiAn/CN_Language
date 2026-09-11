@@ -176,6 +176,15 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     // 类类型局部变量析构（RAII，与普通函数一致）
     genClassDestructorCalls();
     genStringFrees();  // plans/019 阶段4'：拥有型字符串 RAII
+    // 72-a 收尾（2026-09-11）：函数级状态复位（与 visitFunctionDecl 出口对称）。
+    //   泛型实例由 visitProgram 第 4 步模块级批量生成（所有普通函数之后），
+    //   不嵌套于其他函数体生成中——clear 不会破坏宿主函数活状态；补齐可防
+    //   实例间名单/基线栈/污染集的串扰残留（行为原由 genBlock 出口截断自愈）。
+    stringTainted_.clear();
+    ownedStringOrder_.clear();
+    ownedClassOrder_.clear();
+    scopeStringBase_.clear();
+    scopeClassBase_.clear();
     module_->functions.push_back(std::move(func));
     function_ = nullptr;
     if (!varStack_.empty()) varStack_.pop_back();

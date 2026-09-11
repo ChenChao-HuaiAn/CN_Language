@@ -511,14 +511,22 @@ private:
         std::string breakTarget;    // 中断跳转目标块标签
         std::string continueTarget; // 继续跳转目标块标签
         // 72-a（2026-09-11 第七十二轮）：循环体内的块级作用域析构——中断/继续
-        //   跳出前先释放本块新增拥有资源（Rust drop-on-jump）。栈基线=进入循环
-        //   体时的 作用域基线栈 深度与字符串基线。
-        std::size_t scopeDepth = 0;
-        std::size_t stringBase = 0;
+        //   跳出前先释放本块新增拥有资源（Rust drop-on-jump）。基线=进入循环体
+        //   时的 类对象名单/拥有串名单 长度（drop 范围=基线之后的新增项）。
+        std::size_t classBase = 0;   // 类对象名单基线（ownedClassOrder_）
+        std::size_t stringBase = 0;  // 拥有串名单基线（ownedStringOrder_）
     };
     std::vector<LoopContext> loopStack_;
-    // 选择控制流：中断跳出目标栈（选择语句出口块标签）
-    std::vector<std::string> switchStack_;
+    // 选择控制流：中断跳出目标栈——72-a 收尾（2026-09-11）：选择体（情况/默认
+    //   分支）不走 genBlock（语句直接生成，无块作用域），分支内声明的资源原本
+    //   仅由函数级兜底释放；对齐循环口径，中断 跳出前按分支进入时的基线发射
+    //   块级释放（drop-on-jump），fallthrough/汇合路径仍由函数级兜底覆盖。
+    struct SwitchContext {
+        std::string exitLabel;      // 中断跳转目标块标签（选择汇合块）
+        std::size_t classBase = 0;  // 分支进入时 类对象名单基线
+        std::size_t stringBase = 0; // 分支进入时 拥有串名单基线
+    };
+    std::vector<SwitchContext> switchStack_;
     // i128 临时变量计数器（每个临时变量分配独立唯一名 __i128tN）
     int i128TempCounter_ = 0;
 
@@ -537,8 +545,10 @@ private:
 
     // 块出口析构（genBlock 出口调用）：释放本块新增的字符串/类对象并截断名单
     void genBlockExitDestruct();
-    // 中断/继续 跳出循环体时的块级释放（drop-on-jump）——按进入循环体时的基线
-    void genLoopJumpDestruct(const LoopContext& ctx);
+    // 中断/继续 跳出循环体或选择分支时的块级释放（drop-on-jump）——
+    //   按进入该分支时记录的名单基线，释放基线之后的新增项（循环 LoopContext
+    //   与选择 SwitchContext 共用；只发射释放+清零，不截断编译期名单）
+    void genJumpDestructFrom(std::size_t stringBase, std::size_t classBase);
     // 释放单个字符串槽（Load + __cn_str_free 空安全）
     void emitStringFreeFor(const std::string& unique);
     // 释放单个类对象槽（Load + DeleteObject 空安全）
