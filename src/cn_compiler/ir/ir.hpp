@@ -515,6 +515,9 @@ private:
         //   时的 类对象名单/拥有串名单 长度（drop 范围=基线之后的新增项）。
         std::size_t classBase = 0;   // 类对象名单基线（ownedClassOrder_）
         std::size_t stringBase = 0;  // 拥有串名单基线（ownedStringOrder_）
+        // 72-b（2026-09-11 用户裁决方案B·C 语义）：进入序——中断 绑定「最近的
+        //   选择或循环」（enterSeq 大者=最近进入），与 SwitchContext 比较。
+        std::size_t enterSeq = 0;
     };
     std::vector<LoopContext> loopStack_;
     // 选择控制流：中断跳出目标栈——72-a 收尾（2026-09-11）：选择体（情况/默认
@@ -525,8 +528,11 @@ private:
         std::string exitLabel;      // 中断跳转目标块标签（选择汇合块）
         std::size_t classBase = 0;  // 分支进入时 类对象名单基线
         std::size_t stringBase = 0; // 分支进入时 拥有串名单基线
+        std::size_t enterSeq = 0;   // 进入序（72-b：与 LoopContext 比较定最近）
     };
     std::vector<SwitchContext> switchStack_;
+    // 中断绑定序（72-b：单调递增，genWhile/genFor/genSwitch 压栈时取号）
+    std::size_t breakScopeSeq_ = 0;
     // i128 临时变量计数器（每个临时变量分配独立唯一名 __i128tN）
     int i128TempCounter_ = 0;
 

@@ -115,6 +115,8 @@ ir::IRModule IRGenerator::generate(Program* program) {
     varCounter_ = 0;
     varStack_.clear();
     loopStack_.clear();
+    switchStack_.clear();   // 72-b：复位补齐（原漏——防御跨 generate 残留）
+    breakScopeSeq_ = 0;     // 72-b：中断绑定序（选择/循环压栈取号）每模块复位
     oopVarSrcTypes_.clear();
     currentClass_.clear();
     currentMethodStatic_ = false;

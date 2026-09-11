@@ -120,7 +120,14 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
 }
 void IRGenerator::visitBreakStmt(BreakStmt* node) {
     (void)node;
-    if (!loopStack_.empty()) {
+    // 72-b（2026-09-11 用户裁决方案B·C 语义）：中断 绑定**最近进入**的选择或
+    //   循环（enterSeq 大者=最近）——原实现 loopStack_ 恒优先，循环内选择体的
+    //   中断 误吞整个循环（探针 88 与 C 对照实测：C 的 break 只跳出 switch，
+    //   循环继续；原实现直接终止循环）。存量代码该形态扫描=0 处（迁移零影响）。
+    const bool useLoop = !loopStack_.empty() &&
+                         (switchStack_.empty() || loopStack_.back().enterSeq >
+                                                      switchStack_.back().enterSeq);
+    if (useLoop) {
         // 72-a：跳出前释放循环体内的块级资源（drop-on-jump，Rust 同款）——
         //   中断路径绕过 genBlock 出口析构，此处按进入循环体时的基线释放本块新增
         genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase);
@@ -196,7 +203,8 @@ void IRGenerator::genWhile(WhileStmt* node) {
     // 72-a：循环体块级基线——中断/继续 跳出前的释放范围（drop-on-jump）
     loopStack_.push_back(LoopContext{endLabel, condLabel,
                                      ownedClassOrder_.size(),
-                                     ownedStringOrder_.size()});  // 继续 -> 条件块
+                                     ownedStringOrder_.size(),
+                                     breakScopeSeq_++});  // 继续 -> 条件块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
     if (!currentBlock_->terminated) endJump(condLabel);
@@ -231,7 +239,8 @@ void IRGenerator::genFor(ForStmt* node) {
     setCurrentBlock(newBlock(bodyLabel));
     loopStack_.push_back(LoopContext{endLabel, updLabel,
                                      ownedClassOrder_.size(),
-                                     ownedStringOrder_.size()});  // 继续 -> 更新块
+                                     ownedStringOrder_.size(),
+                                     breakScopeSeq_++});  // 继续 -> 更新块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
     if (!currentBlock_->terminated) endJump(updLabel);
@@ -301,9 +310,11 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
         endBranch(cmp.toString(), bodyLabels[i], nextTarget);
         // 体块（嵌套控制流在此处 newBlock 自增，不影响已分配标签的唯一性）
         setCurrentBlock(newBlock(bodyLabels[i]));
-        // 72-a 收尾：分支基线随栈压入（中断 跳出时的 drop 范围）
+        // 72-a 收尾：分支基线随栈压入（中断 跳出时的 drop 范围）；
+        //   72-b：enterSeq 取号（中断 绑定最近的选择或循环）
         switchStack_.push_back(
-            SwitchContext{endLabel, ownedClassOrder_.size(), ownedStringOrder_.size()});
+            SwitchContext{endLabel, ownedClassOrder_.size(),
+                          ownedStringOrder_.size(), breakScopeSeq_++});
         for (auto& stmt : node->cases[i]->statements) {
             genStmt(stmt.get());
         }
@@ -322,9 +333,10 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
     // 默认体块（若存在）
     if (node->defaultCase != nullptr) {
         setCurrentBlock(newBlock(defLabel));
-        // 72-a 收尾：默认分支基线随栈压入（同 情况 分支）
+        // 72-a 收尾：默认分支基线随栈压入（同 情况 分支）；72-b：enterSeq 取号
         switchStack_.push_back(
-            SwitchContext{endLabel, ownedClassOrder_.size(), ownedStringOrder_.size()});
+            SwitchContext{endLabel, ownedClassOrder_.size(),
+                          ownedStringOrder_.size(), breakScopeSeq_++});
         for (auto& stmt : node->defaultCase->statements) {
             genStmt(stmt.get());
         }
