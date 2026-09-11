@@ -246,6 +246,33 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             node->initializer = std::move(initCall->arguments[0]);
         }
     }
+    // plans/019 阶段4' A1（2026-09-11 方案A 用户批准）：字符串借出初始化拒绝——
+    //   下标/成员/解引用初值是借用视图（数组元素/字段/指向），隐式装入拥有变量
+    //   =编译器注入 __cn_str_free 行使他人指针的所有权（实测 UAF：s=名单[0] 后
+    //   重新赋值 s→赋值位 free 旧堆串→数组元素悬垂于函数中途→读取乱码；驻留
+    //   指针形态被 cn_free_tracked 注册表防御静默跳过=语义错位）。拥有化须
+    //   显式：字符串复制(...)（既有白名单函数落堆）；字符* 借用视图随第三批 A2。
+    //   推断声明形态（类型哨兵空串）不在此拦——其类型回填在初始化检查之后，
+    //   存量预审为零（诚实边界，随 A2 类型区分一并收口）。
+    if (node->initializer != nullptr && !varType.empty() &&
+        !node->funcPtr.isFunctionPtr() &&
+        types::canonical(varType) == "字符串") {
+        const NodeType initKindA1 = node->initializer->getType();
+        bool borrowInitA1 = initKindA1 == NodeType::IndexExpr ||
+                            initKindA1 == NodeType::MemberExpr;
+        if (initKindA1 == NodeType::UnaryExpr) {
+            borrowInitA1 = static_cast<const UnaryExpr*>(
+                               node->initializer.get())->op == Operator::Deref;
+        }
+        if (borrowInitA1) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "字符串变量 '" + node->name +
+                                    "' 不能以下标/成员/解引用借出隐式初始化"
+                                    "——须 字符串复制(...) 显式落堆拥有化"
+                                    "（字符* 借用视图随 plans/019 第三批）");
+            return;
+        }
+    }
     // P3-18（引用参数 A-1 扩展）：引用变量声明（变量 整32& r = x）——
     //   槽存被引用左值地址，读/写经 byRef 解引用。绑定目标须为左值：
     //   标识符 / 下标 / 解引用 / 成员 / 引用返回调用（P3-18 补完）。
