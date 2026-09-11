@@ -560,6 +560,48 @@ private:
     // 释放单个类对象槽（Load + DeleteObject 空安全）
     void emitClassDeleteFor(const std::string& unique, const std::string& canon);
 
+    // ---- 74-a（2026-09-11 第七十四轮）：容器元素所有权归一化 ----
+    // 背景（探针 74 实证）：容器析构**无条件释放元素串**（__cn_*_free_strings 由
+    //   本文件 emitClassDeleteFor 注入，假定「元素所有权归容器」），而**入容器位
+    //   不接管所有权**（实参句柄被浅存）——两侧机制矛盾，产生一族静默缺陷：
+    //     ① 借用句柄入容器 → 容器析构释放调用方拥有的串（跨函数 UAF，探针 L）；
+    //     ② 局部拥有串裸标识符入容器 → 源 RAII 释放 + 元素浅共享 = 悬垂（探针 A）；
+    //     ③ 转移(源) 入容器非真 move（源槽未清零，源出口释放移交句柄，探针 J）。
+    // 修复（方案A，性能第一/安全第二，Rust Vec<String> 对照）：入容器位编译器
+    //   接管所有权，按实参来源分级归一化——
+    //     · 字面量/驻留文本   → 驻留借用（进程生命周期，零复制开销）
+    //     · 调用返回（拥有契约）→ 直接接管（零拷贝）
+    //     · 转移(拥有局部)    → 真 move（句柄直存 + 源槽清零，零拷贝；Rust push(s)）
+    //     · 转移(借用来源)    → 复制（所有权无法自借用移交，源="已转移"仍成立）
+    //     · 标识符/成员/下标等 → __cn_str_copy 落堆（容器独立拥有；Rust push(s.clone())
+    //                            由编译器代写——CN 值语义深拷贝，源不受影响可继续用）
+    //   释放面同步补全：容器元素串释放从 向量 扩到 栈（数组模型）+ 链表/队列（链式
+    //   模型走链游释放，探针 N：原三容器元素串从不释放，各残留 1）。
+    // 入容器位方法名（元素所有权转移入口，与 stdlib/容器.cn 方法表一致）
+    static bool isContainerInsertMethod(const std::string& name);
+    // 入容器位值实参下标（追加/压入/入队/头部追加=0；插入/设置=1）；-1=非入容器位
+    static int containerInsertValueArgIndex(const std::string& name);
+    // 容器元素释放：运行时辅助函数名（按实例化类名分派；非字符串元素容器返回空）
+    std::string containerElemFreeFn(const std::string& canonClass) const;
+    // 字符串元素容器判定（元素类型恰为 字符串 的 向量/链表/栈/队列 实例化）
+    static bool isStringElemContainer(const std::string& canonClass);
+    // 容器元素数组字段名（向量/栈=数据；链表/队列=值表）；非容器返回空串
+    static std::string containerElemArrayField(const std::string& canonClass);
+    // 槽是否为本函数拥有串局部（ownedStringOrder_ ∩ 非污染）——转移() 真 move 判据
+    bool isOwnedStringSlot(const std::string& unique,
+                           const std::string& srcName) const;
+    // 发射容器元素串释放（单点事实源：flat 模型传 数据/元素数量；链式模型传
+    //   值表/下一索引/头索引/元素数量）——三处释放路径（函数级兜底/块出口/跳出）
+    //   共用，避免各写一份字段偏移（plans/020 移植纪律 8「释放路径两侧对照」）。
+    void emitContainerElemFreeFor(const std::string& canonClass,
+                                  const ir::IRValue& objPtr,
+                                  const SourceLocation& loc);
+    // 入容器位实参所有权归一化：按来源分级发 __cn_str_copy / 源槽清零（返回值实参值）
+    ir::IRValue normalizeContainerInsertArg(Expr* arg, const SourceLocation& loc);
+    // 方法调用实参构建（含入容器位归一化；其余形态等价 buildCallArgsOop）
+    std::vector<ir::IRValue> buildCallArgsForMethod(
+        CallExpr* node, const std::string& canonObj, const std::string& methodName);
+
     // ---- 阶段3 OOP 调用/析构（ir_oop_call.cpp 实现） ----
     // 函数收尾钩子：类类型局部变量（有析构函数）离开作用域 -> DeleteObject（RAII）
     void genClassDestructorCalls();

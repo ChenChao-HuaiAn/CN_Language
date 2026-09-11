@@ -181,7 +181,40 @@ extern "C" void __cn_vector_free_strings(void* obj, long long dataOffset,
     for (long long i = 0; i < count; ++i) {
         if (data[i] != nullptr) {
             cn_free_tracked(data[i]);
+            // 74-a（2026-09-11 第七十四轮，「释放+清零」幂等模型，plans/020 移植
+            //   纪律 7）：释放后槽清零——多路径（块出口/跳出/函数级兜底/清空）共享
+            //   同一元素数组，清零后重复经过的释放点 cn_free_tracked(nullptr) 空安全，
+            //   杜绝二次释放（宿主 72-a 与 v2 73-a 同一模型）。
+            data[i] = nullptr;
         }
+    }
+}
+
+// 74-a（2026-09-11 第七十四轮）：链式容器（链表/队列）元素串释放。
+//   链表/队列 为「数组槽 + 下一索引链」模型：有效元素自 头索引 起沿 下一索引 串联，
+//   而 出队/删除头部 会把元素**所有权转移给调用方**（元素槽序号可能 < 元素数量）——
+//   故不能像 向量/栈 那样按 0..元素数量 平铺释放（会把已转移给调用方的串释放掉 =
+//   双释放/悬垂）。此处按链游释放，只释放仍在容器内的元素。
+// 参数：obj=容器对象指针；dataOffset/nextOffset/headOffset/countOffset 字段偏移
+//   （IR 层经 classFieldOffset 编译期算出）。count 作链游上界防御（链损坏时不无限循环）。
+extern "C" void __cn_chain_free_strings(void* obj, long long dataOffset,
+                                        long long nextOffset, long long headOffset,
+                                        long long countOffset) {
+    if (obj == nullptr) return;
+    char* base = static_cast<char*>(obj);
+    char** data = *reinterpret_cast<char***>(base + dataOffset);
+    long long* next = *reinterpret_cast<long long**>(base + nextOffset);
+    const long long head = *reinterpret_cast<long long*>(base + headOffset);
+    const long long count = *reinterpret_cast<long long*>(base + countOffset);
+    if (data == nullptr || next == nullptr || head < 0 || count <= 0) return;
+    long long idx = head;
+    for (long long n = 0; n < count; ++n) {
+        if (idx < 0) break;
+        if (data[idx] != nullptr) {
+            cn_free_tracked(data[idx]);
+            data[idx] = nullptr;   // 幂等：释放后槽清零（同 __cn_vector_free_strings）
+        }
+        idx = next[idx];
     }
 }
 

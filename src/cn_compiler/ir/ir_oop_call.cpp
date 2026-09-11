@@ -15,6 +15,7 @@
 //   DeleteObject.extra = "类名"
 // 规范：英文API命名，中文仅注释；函数<=100行
 #include <cstdio>
+#include <algorithm>
 #include <string>
 #include <utility>
 #include <vector>
@@ -24,6 +25,187 @@
 #include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
+
+// ==================== 74-a：容器元素所有权（入容器位归一化） ====================
+// 语义依据（plans/019 §2 设计哲学 + Rust Vec<String> 对照）：
+//   · 默认路径零规则（CN 值语义深拷贝）——标识符入容器由编译器代写深拷贝
+//     （等价 Rust push(s.clone())），源变量不受影响、可继续使用；
+//   · 显式放弃拷贝换性能——转移(x) 入容器=真 move（等价 Rust push(s)），
+//     零拷贝且源变量自调用点起「已转移」（语义层已禁用后续使用）；
+//   · 编译器不产生悬垂——借用来源（形参/借出视图/字面量）不能把所有权交给
+//     容器（源的生命周期不归本函数），一律复制或驻留借用。
+// 不变量（plans/020 移植纪律 7「机制主体+依赖不变量」）：
+//   主体 = 入容器位按来源分级归一化；不变量 = ①容器元素串恒为堆串或驻留常量
+//   （释放侧 __cn_*_free_strings 对驻留常量 cn_free_tracked 空安全）；②真 move
+//   分支源槽必须清零（否则源 RAII 释放已移交句柄 = 元素悬垂，幂等模型前提）。
+
+// 入容器位方法名（stdlib/容器.cn 中「把值交给容器」的全部入口）
+bool IRGenerator::isContainerInsertMethod(const std::string& name) {
+    return name == "追加" || name == "插入" || name == "设置" ||
+           name == "压入" || name == "入队" || name == "头部追加" ||
+           name == "添加";
+}
+
+// 值实参下标：插入(位置,值)/设置(位置,值) 的值在 1；其余（追加/压入/入队/
+//   头部追加/添加）值在 0。返回 -1 表示非入容器位方法。
+int IRGenerator::containerInsertValueArgIndex(const std::string& name) {
+    if (name == "插入" || name == "设置") return 1;
+    if (isContainerInsertMethod(name)) return 0;
+    return -1;
+}
+
+// 字符串元素容器判定：实例化名 前缀$元素类型 —— 元素类型恰为 字符串。
+//   注：嵌套形态（向量$映射$整64$字符串）元素是容器不是串，不予匹配
+//   （元素释放须按元素类型各自分派，此处收紧防误释放——原实现按 find("字符串")
+//   宽松匹配，对嵌套形态会以 元素=char* 语义释放容器对象指针）。
+bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
+    const std::size_t dl = canonClass.find('$');
+    if (dl == std::string::npos) return false;
+    const std::string head = canonClass.substr(0, dl);
+    const std::string elem = canonClass.substr(dl + 1);
+    if (head != "向量" && head != "链表" && head != "栈" && head != "队列") {
+        return false;
+    }
+    return elem == "字符串";
+}
+
+// 容器元素数组字段名：向量/栈=数据（平铺数组）；链表/队列=值表（槽+下一索引链）
+std::string IRGenerator::containerElemArrayField(const std::string& canonClass) {
+    const std::size_t dl = canonClass.find('$');
+    if (dl == std::string::npos) return std::string();
+    const std::string head = canonClass.substr(0, dl);
+    if (head == "向量" || head == "栈") return "数据";
+    if (head == "链表" || head == "队列") return "值表";
+    return std::string();
+}
+
+// 容器元素串释放辅助函数名（按容器模型分派）——非字符串元素容器返回空串
+std::string IRGenerator::containerElemFreeFn(const std::string& canonClass) const {
+    if (!isStringElemContainer(canonClass)) return std::string();
+    const std::string head = canonClass.substr(0, canonClass.find('$'));
+    if (head == "向量" || head == "栈") return "__cn_vector_free_strings";
+    return "__cn_chain_free_strings";   // 链表/队列（链游释放，见运行时注释）
+}
+
+// 发射容器元素串释放（三处释放路径共用单点事实源）
+//   平铺模型（向量/栈）：__cn_vector_free_strings(obj, 数据偏移, 元素数量偏移)
+//   链式模型（链表/队列）：__cn_chain_free_strings(obj, 值表, 下一索引, 头索引,
+//     元素数量)——须按链游释放：出队/删除头部 已把元素所有权转移给调用方，
+//     槽序号可能 < 元素数量，平铺释放会误释放已移交的串（UAF）。
+void IRGenerator::emitContainerElemFreeFor(const std::string& canonClass,
+                                          const ir::IRValue& objPtr,
+                                          const SourceLocation& loc) {
+    const std::string freeFn = containerElemFreeFn(canonClass);
+    if (freeFn.empty() || semantic_ == nullptr) return;
+    const std::string head = canonClass.substr(0, canonClass.find('$'));
+    const bool chainModel = (head == "链表" || head == "队列");
+    const int dataOff =
+        semantic_->classFieldOffset(canonClass, containerElemArrayField(canonClass));
+    const int countOff = semantic_->classFieldOffset(canonClass, "元素数量");
+    if (dataOff < 0 || countOff < 0) return;
+    std::vector<ir::IRValue> args{objPtr};
+    if (chainModel) {
+        const int nextOff = semantic_->classFieldOffset(canonClass, "下一索引");
+        const int headOff = semantic_->classFieldOffset(canonClass, "头索引");
+        if (nextOff < 0 || headOff < 0) return;
+        args.push_back(ir::IRValue::constant(std::to_string(dataOff), "整64"));
+        args.push_back(ir::IRValue::constant(std::to_string(nextOff), "整64"));
+        args.push_back(ir::IRValue::constant(std::to_string(headOff), "整64"));
+        args.push_back(ir::IRValue::constant(std::to_string(countOff), "整64"));
+    } else {
+        args.push_back(ir::IRValue::constant(std::to_string(dataOff), "整64"));
+        args.push_back(ir::IRValue::constant(std::to_string(countOff), "整64"));
+    }
+    emit(ir::Opcode::Call, args, ir::IRValue(), freeFn, "void", loc);
+}
+
+// 槽是否为本函数拥有串局部（真 move 判据）：登记在拥有名单且未被污染
+//   （污染名=借用视图，所有权不归本函数——转移只能复制不能移交）。
+bool IRGenerator::isOwnedStringSlot(const std::string& unique,
+                                    const std::string& srcName) const {
+    if (unique.empty()) return false;
+    if (stringTainted_.count(srcName) > 0) return false;
+    return std::find(ownedStringOrder_.begin(), ownedStringOrder_.end(), unique) !=
+           ownedStringOrder_.end();
+}
+
+// 入容器位实参所有权归一化（方案A 核心）——按来源分级：
+//   ① 字面量               → 驻留借用（只读段常量，释放侧空安全，零复制开销）
+//   ② 调用返回（拥有契约） → 直接接管（运行时已落堆，零拷贝）
+//   ③ 转移(拥有局部)       → 真 move（句柄直存 + 源槽清零，零拷贝）
+//   ④ 转移(借用来源)       → 复制（所有权无法自借用移交；源="已转移"仍成立）
+//   ⑤ 其余（标识符/成员/下标/借出/解引用/借用返回）→ __cn_str_copy 落堆
+ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
+                                                     const SourceLocation& loc) {
+    if (arg == nullptr) return ir::IRValue();
+    const NodeType kind = arg->getType();
+    // ① 字面量：驻留借用（进程生命周期，容器释放对其空安全）
+    if (kind == NodeType::StringLiteral) return genExprForOop(arg);
+    // ②/③/④ 调用形态：转移 特判 + 拥有契约
+    if (kind == NodeType::CallExpr) {
+        CallExpr* ce = static_cast<CallExpr*>(arg);
+        if (SemanticAnalyzer::isTransferCall(ce) && !ce->arguments.empty() &&
+            ce->arguments[0]->getType() == NodeType::IdentifierExpr) {
+            const std::string srcName =
+                static_cast<IdentifierExpr*>(ce->arguments[0].get())->name;
+            const std::string srcUnique = lookupVarName(srcName);
+            ir::IRValue moved = genExprForOop(arg);   // 源槽句柄加载
+            if (isOwnedStringSlot(srcUnique, srcName)) {
+                // ③ 真 move：源槽清零（源 RAII 出口 free(nullptr) 空安全）
+                ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                              loc);
+                emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique, "ptr",
+                     loc);
+                return moved;
+            }
+            // ④ 借用来源：复制（安全方向——借用不能移交所有权）
+            return emitResult(ir::Opcode::Call, {moved}, "ptr", "__cn_str_copy",
+                              loc);
+        }
+        // ② 拥有返回（A2 契约：签名即契约）→ 直接接管；借用返回 → 复制
+        bool ownRet = ce->retOwnedString;
+        if (!ownRet && ce->callee->getType() == NodeType::IdentifierExpr) {
+            const std::string& cn =
+                static_cast<IdentifierExpr*>(ce->callee.get())->name;
+            ownRet = cn == "字符串复制" || cn == "字符串连接" ||
+                     cn == "字符串拼接" || cn == "字符串子串" ||
+                     cn == "字符串大写" || cn == "字符串小写" ||
+                     cn == "字符串修剪" || cn == "字符串反转";
+        }
+        ir::IRValue v = genExprForOop(arg);
+        if (ownRet) return v;
+        return emitResult(ir::Opcode::Call, {v}, "ptr", "__cn_str_copy", loc);
+    }
+    // ⑤ 标识符（拥有局部/形参/静态）与借出视图（成员/下标/解引用）——一律复制：
+    //   拥有局部=值语义深拷贝（源照常拥有并释放）；借用来源=容器独立拥有
+    //   （源由他人持有，容器不得与之共享句柄）
+    ir::IRValue v = genExprForOop(arg);
+    return emitResult(ir::Opcode::Call, {v}, "ptr", "__cn_str_copy", loc);
+}
+
+// 方法调用实参构建：入容器位（对象类型=字符串元素容器 且 方法∈入容器位）时
+//   对值实参做所有权归一化，其余实参/其余调用等价 buildCallArgsOop。
+std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
+    CallExpr* node, const std::string& canonObj, const std::string& methodName) {
+    std::vector<ir::IRValue> out;
+    const int valueIdx = isStringElemContainer(canonObj)
+                             ? containerInsertValueArgIndex(methodName)
+                             : -1;
+    if (valueIdx < 0 ||
+        static_cast<std::size_t>(valueIdx) >= node->arguments.size()) {
+        return buildCallArgsOop(node->arguments, node->location);
+    }
+    const std::size_t vi = static_cast<std::size_t>(valueIdx);
+    for (std::size_t i = 0; i < node->arguments.size(); ++i) {
+        if (i == vi) {
+            out.push_back(normalizeContainerInsertArg(node->arguments[i].get(),
+                                                      node->location));
+        } else {
+            out.push_back(genExprForOop(node->arguments[i].get()));
+        }
+    }
+    return out;
+}
 
 // ==================== 辅助：实参提升与实参装载 ====================
 
@@ -265,6 +447,7 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         }
         if (ctor != nullptr) {
             // 构造体 Call：符号 = 类名$构造sigKey，实参 = [obj(this)] + 实参
+            //   （构造实参不是容器元素所有权入口——不做入容器位归一化）
             std::vector<ir::IRValue> args;
             args.push_back(obj);  // this（对象指针）
             std::vector<ir::IRValue> userArgs =
@@ -371,7 +554,7 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     std::vector<ir::IRValue> args;
     args.push_back(thisArg);  // this 为第一个实参（参数位 0）
     std::vector<ir::IRValue> userArgs =
-        buildCallArgsOop(node->arguments, node->location);
+        buildCallArgsForMethod(node, canonObjForMethod, methodName);
     for (auto& a : userArgs) args.push_back(a);
     const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
     // Task 6.1（容器库 追加/读取 返回 结果<空类型,整32> 合成结构体）：方法返回
@@ -658,25 +841,14 @@ void IRGenerator::genClassDestructorCalls() {
                 ir::Opcode::Load,
                 {ir::IRValue::var(ov.unique, "ptr")},
                 "ptr", ov.unique, SourceLocation());
-            // 方案A RAII（2026-08-25，学习 C++ vector<string>）：向量<字符串>
-            //   局部变量析构时先释放元素字符串，使字符串随局部向量离开作用域自动
-            //   清理，降低 78/79 组件链每模块百万级字符串在 reset 前的峰值累积。
-            //   canonical 后实例化符号形如 向量$字符串（X = 元素类型）。
+            // 方案A RAII（2026-08-25，学习 C++ vector<string>）：容器局部变量
+            //   析构时先释放元素字符串，使字符串随局部容器离开作用域自动清理，
+            //   降低 78/79 组件链每模块百万级字符串在 reset 前的峰值累积。
+            //   74-a（2026-09-11）：单点事实源 emitContainerElemFreeFor——从
+            //   向量 扩到 栈（平铺模型）+ 链表/队列（链式模型，探针 N 实证原三
+            //   容器元素串从不释放）。
             const std::string canonSrc = types::canonical(ov.srcType);
-            const bool isVectorOfString = (canonSrc.size() > 3 &&
-                canonSrc.rfind("向量$", 0) == 0 && canonSrc.find("字符串") != std::string::npos);
-            if (isVectorOfString) {
-                const int dataOff = semantic_->classFieldOffset(canonSrc, "数据");
-                const int countOff = semantic_->classFieldOffset(canonSrc, "元素数量");
-                if (dataOff >= 0 && countOff >= 0) {
-                    emit(ir::Opcode::Call,
-                         {objPtr,
-                          ir::IRValue::constant(std::to_string(dataOff), "整64"),
-                          ir::IRValue::constant(std::to_string(countOff), "整64")},
-                         ir::IRValue(), "__cn_vector_free_strings", "void",
-                         SourceLocation());
-                }
-            }
+            emitContainerElemFreeFor(canonSrc, objPtr, SourceLocation());
             emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
                  ov.srcType, "void", SourceLocation());
         }
@@ -716,20 +888,9 @@ void IRGenerator::emitClassDeleteFor(const std::string& unique,
     ir::IRValue objPtr = emitResult(ir::Opcode::Load,
                                     {ir::IRValue::var(unique, "ptr")},
                                     "ptr", unique, SourceLocation());
-    // 向量<字符串>：先释放元素串（与 genClassDestructorCalls 同款，方案A RAII）
-    if (canon.size() > 3 && canon.rfind("向量$", 0) == 0 &&
-        canon.find("字符串") != std::string::npos) {
-        const int dataOff = semantic_->classFieldOffset(canon, "数据");
-        const int countOff = semantic_->classFieldOffset(canon, "元素数量");
-        if (dataOff >= 0 && countOff >= 0) {
-            emit(ir::Opcode::Call,
-                 {objPtr,
-                  ir::IRValue::constant(std::to_string(dataOff), "整64"),
-                  ir::IRValue::constant(std::to_string(countOff), "整64")},
-                 ir::IRValue(), "__cn_vector_free_strings", "void",
-                 SourceLocation());
-        }
-    }
+    // 容器元素串释放（方案A RAII；74-a 单点事实源——从 向量 扩到 栈/链表/队列，
+    //   探针 N 实证原三容器元素串从不释放，各残留 1）
+    emitContainerElemFreeFor(canon, objPtr, SourceLocation());
     emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(), canon, "void",
          SourceLocation());
     ir::IRValue z = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
