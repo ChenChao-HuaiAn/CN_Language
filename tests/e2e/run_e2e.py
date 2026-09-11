@@ -837,10 +837,33 @@ def 计算v2构建指纹(编译器路径: pathlib.Path) -> str:
     return hashlib.md5("\n".join(项们).encode("utf-8")).hexdigest()
 
 
+def 计算运行时构建指纹(cxx工具: str) -> str:
+    """rt objs 构建缓存指纹（2026-09-11 68-a 方案A 根治）：src/runtime/*.cpp 的
+    （相对路径+大小+mtime）排序汇总 + 编译命令（cxx 路径+编译标志串）——任一
+    变化即指纹变化，触发整批重编。与 计算v2构建指纹 同构（cargo fingerprint
+    理念：命令行也纳入指纹）；此前「缺则现编」只查 .o 存在性，跨机 pull 后
+    .cpp 已变而旧 .o 仍参与门禁链接（68-a 立案实证：陈旧 io/intern objs 掩盖
+    8de2103/ea600b0 运行时修复）。"""
+    项们 = []
+    for f in sorted((项目根目录 / "src" / "runtime").glob("*.cpp")):
+        st = f.stat()
+        项们.append(f"{f.relative_to(项目根目录)}:{st.st_size}:{int(st.st_mtime)}")
+    # 编译命令面：cxx 路径/大小/mtime + 标志串（命令行变化=产物语义变化，cargo 同款）
+    cxx路径 = pathlib.Path(cxx工具)
+    if cxx路径.exists():
+        cst = cxx路径.stat()
+        项们.append(f"cxx:{cst.st_size}:{int(cst.st_mtime)}")
+    else:
+        项们.append(f"cxx:{cxx工具}")
+    项们.append("flags:-std=c++17 -fno-exceptions -fno-rtti -DCNRT_LINUX_MAIN -Isrc")
+    return hashlib.md5("\n".join(项们).encode("utf-8")).hexdigest()
+
+
 def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str, 详细: bool, 编号: str = "PRE"):
     """v2 闭环共享工件就绪（2026-09-11 全量并行裁决）：工具链探测 + 运行时 .o
-    （缺则现编）+ v2p 构建缓存（指纹=v2 全树 .cn mtime/size+编译器 mtime/size，
-    cargo 增量构建理念——输入不变不重建）。
+    （指纹缓存=src/runtime 全部 .cpp 路径/大小/mtime+cxx+标志串，不符整批重编
+    ——68-a 方案A 根治，杜绝陈旧 .o 参与门禁链接）+ v2p 构建缓存（指纹=v2 全树
+    .cn mtime/size+编译器 mtime/size，cargo 增量构建理念——输入不变不重建）。
     返回 (v2p, v2pobj, 运行时objs, as工具, cxx工具)；失败返回 (None, 错误信息)。
     并行纪律：主程序在统一并行池启动前调用一次（预热——消除并发构建竞态），
     各 v2 用例再调用时必命中缓存（纯只读，无竞态）。"""
@@ -858,19 +881,30 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
         return None, f"未找到 g++ 链接器（{cxx工具}）"
 
     # 运行时 .o（对齐宿主编译命令 g++ -c -std=c++17 -fno-exceptions -fno-rtti
-    #   -DCNRT_LINUX_MAIN；缺则现编——宿主 cn build 缓存可能被清，此处保证自包含）
+    #   -DCNRT_LINUX_MAIN）+ 指纹缓存（2026-09-11 68-a 方案A 根治：指纹=src/runtime
+    #   全部 .cpp 路径/大小/mtime+cxx+标志串，不符整批重编——杜绝跨机 pull 后陈旧
+    #   .o 参与门禁链接；整批原子重编避免半新半旧混链，与 v2p 缓存同款模式）
     运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
                 "math_api", "input_api", "file_api", "time_api", "system_api"]
-    运行时objs = []
-    for 模块 in 运行时名们:
-        obj = 审计目录 / f"{模块}.o"
-        if not obj.exists():
+    rt缓存键路径 = 审计目录 / "rt_build_key.txt"
+    rt指纹 = 计算运行时构建指纹(cxx工具)
+    rt全部存在 = all((审计目录 / f"{模块}.o").exists() for 模块 in 运行时名们)
+    if rt全部存在 and rt缓存键路径.exists() \
+            and rt缓存键路径.read_text(encoding="utf-8") == rt指纹:
+        if 详细:
+            print(f"    [{编号}-0] rt objs 缓存命中（src/runtime 未变），复用 {审计目录}/*.o")
+    else:
+        for 模块 in 运行时名们:
+            obj = 审计目录 / f"{模块}.o"
+            if obj.exists():
+                obj.unlink()
             编译rt = 运行命令([cxx工具, "-c", "-std=c++17", "-fno-exceptions", "-fno-rtti",
                             "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
                             f"src/runtime/{模块}.cpp"], 项目根目录)
             if 编译rt.returncode != 0:
                 return None, f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
-        运行时objs.append(obj)
+        rt缓存键路径.write_text(rt指纹, encoding="utf-8")
+    运行时objs = [审计目录 / f"{模块}.o" for 模块 in 运行时名们]
 
     # v2p 构建缓存（30+ v2 用例全量 E2E 最大瓶颈——每个全树构建数十秒）
     产物后缀 = "linux" if 目标平台 == "linux-arm64" else "linuxx64"
