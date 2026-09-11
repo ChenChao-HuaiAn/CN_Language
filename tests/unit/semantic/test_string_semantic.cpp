@@ -74,18 +74,32 @@ TEST(StringSemanticTest, CharPtrVarDecl) {
     EXPECT_EQ(r.errorCount, 0);
 }
 
-// 字符串 -> 字符* 隐式转换（双向）
+// 字符串 -> 字符* 自动（拥有→借用安全方向）；字符* -> 字符串 收紧
+// （A2 2026-09-11 方案甲：借用→拥有须显式 字符串复制——Rust &str -> String
+// 的 to_string 显式哲学，分配成本可见）
 TEST(StringSemanticTest, StringToCharPtrConversion) {
+    // 拥有->借用自动 + 借用->拥有显式复制：合法
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     字符串 s = "你好";
-    字符* p = s;          // 字符串 -> 字符*
-    字符串 s2 = p;        // 字符* -> 字符串
+    字符* p = s;                        // 字符串 -> 字符*（自动）
+    字符串 s2 = 字符串复制(p);          // 字符* -> 字符串（显式落堆）
     返回 0;
 }
 )CN");
     EXPECT_TRUE(r.ok) << r.messages;
     EXPECT_EQ(r.errorCount, 0);
+    // 借用->拥有隐式收紧：拒绝（A2）
+    auto r2 = analyzeSource(R"CN(
+函数 主() -> 整32 {
+    字符串 s = "你好";
+    字符* p = s;
+    字符串 s2 = p;          // 隐式收紧拒绝
+    返回 0;
+}
+)CN");
+    EXPECT_FALSE(r2.ok);
+    EXPECT_NE(r2.messages.find("字符* 借用视图隐式初始化"), std::string::npos);
 }
 
 // ==================== 2. + 连接类型检查 ====================
