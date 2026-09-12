@@ -139,12 +139,20 @@ bool IRGenerator::isOwnedStringSlot(const std::string& unique,
 //   ③ 转移(拥有局部)       → 真 move（句柄直存 + 源槽清零，零拷贝）
 //   ④ 转移(借用来源)       → 复制（所有权无法自借用移交；源="已转移"仍成立）
 //   ⑤ 其余（标识符/成员/下标/借出/解引用/借用返回）→ __cn_str_copy 落堆
-ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
-                                                     const SourceLocation& loc) {
-    if (arg == nullptr) return ir::IRValue();
+// 79-a：已求值字符串值的来源分级归一化（value 已由调用方求值——避免二次求值：
+//   二次求值=多余分配泄漏，P6/P7 探针实证）
+//   ① 字面量               → 驻留借用（只读段常量，释放侧空安全，零复制开销）
+//   ② 调用返回（拥有契约） → 直接接管（运行时已落堆，零拷贝）
+//   ③ 转移(拥有局部)       → 真 move（源槽清零，零拷贝）
+//   ④ 转移(借用来源)       → 复制（所有权无法自借用移交）
+//   ⑤ 其余（标识符/成员/下标/借出/解引用/借用返回）→ __cn_str_copy 落堆
+ir::IRValue IRGenerator::normalizeStringValueSource(Expr* arg,
+                                                    const ir::IRValue& value,
+                                                    const SourceLocation& loc) {
+    if (arg == nullptr) return value;
     const NodeType kind = arg->getType();
-    // ① 字面量：驻留借用（进程生命周期，容器释放对其空安全）
-    if (kind == NodeType::StringLiteral) return genExprForOop(arg);
+    // ① 字面量：驻留借用（进程生命周期，释放对其空安全）
+    if (kind == NodeType::StringLiteral) return value;
     // ②/③/④ 调用形态：转移 特判 + 拥有契约
     if (kind == NodeType::CallExpr) {
         CallExpr* ce = static_cast<CallExpr*>(arg);
@@ -153,17 +161,16 @@ ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
             const std::string srcName =
                 static_cast<IdentifierExpr*>(ce->arguments[0].get())->name;
             const std::string srcUnique = lookupVarName(srcName);
-            ir::IRValue moved = genExprForOop(arg);   // 源槽句柄加载
             if (isOwnedStringSlot(srcUnique, srcName)) {
                 // ③ 真 move：源槽清零（源 RAII 出口 free(nullptr) 空安全）
                 ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
                                               loc);
                 emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique, "ptr",
                      loc);
-                return moved;
+                return value;
             }
             // ④ 借用来源：复制（安全方向——借用不能移交所有权）
-            return emitResult(ir::Opcode::Call, {moved}, "ptr", "__cn_str_copy",
+            return emitResult(ir::Opcode::Call, {value}, "ptr", "__cn_str_copy",
                               loc);
         }
         // ② 拥有返回（A2 契约：签名即契约）→ 直接接管；借用返回 → 复制
@@ -176,15 +183,21 @@ ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
                      cn == "字符串大写" || cn == "字符串小写" ||
                      cn == "字符串修剪" || cn == "字符串反转";
         }
-        ir::IRValue v = genExprForOop(arg);
-        if (ownRet) return v;
-        return emitResult(ir::Opcode::Call, {v}, "ptr", "__cn_str_copy", loc);
+        if (ownRet) return value;
+        return emitResult(ir::Opcode::Call, {value}, "ptr", "__cn_str_copy", loc);
     }
     // ⑤ 标识符（拥有局部/形参/静态）与借出视图（成员/下标/解引用）——一律复制：
     //   拥有局部=值语义深拷贝（源照常拥有并释放）；借用来源=容器独立拥有
     //   （源由他人持有，容器不得与之共享句柄）
-    ir::IRValue v = genExprForOop(arg);
-    return emitResult(ir::Opcode::Call, {v}, "ptr", "__cn_str_copy", loc);
+    return emitResult(ir::Opcode::Call, {value}, "ptr", "__cn_str_copy", loc);
+}
+
+// 入容器位实参归一化（求值 + 分级）——旧入口保持（求值一次后委托分级助手）
+ir::IRValue IRGenerator::normalizeContainerInsertArg(Expr* arg,
+                                                     const SourceLocation& loc) {
+    if (arg == nullptr) return ir::IRValue();
+    const ir::IRValue v = genExprForOop(arg);
+    return normalizeStringValueSource(arg, v, loc);
 }
 
 // 方法调用实参构建：入容器位（对象类型=字符串元素容器 或 字符串值映射 且 方法∈
@@ -202,6 +215,18 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
         return buildCallArgsOop(node->arguments, node->location);
     }
     const std::size_t vi = static_cast<std::size_t>(valueIdx);
+    // 79-a：入容器位的「含串字段结构体」实参——结构体按值浅拷入容器（元素内存
+    //   独立、字段串句柄共享），容器元素字段串释放面未开（矩阵靶子）：源结构体
+    //   若照常释放其字段串，容器元素即悬垂。标记源为字段污染（字段串不释放）——
+    //   宁漏勿错（泄漏维持既有边界；深拷 + 元素字段释放随容器元素专项）。
+    if (node->arguments[vi]->getType() == NodeType::IdentifierExpr) {
+        const std::string srcName =
+            static_cast<IdentifierExpr*>(node->arguments[vi].get())->name;
+        const std::string srcType = lookupSrcType(srcName);
+        if (!srcType.empty() && !ownedStrFieldsOf(srcType).empty()) {
+            markFieldTainted(srcName);
+        }
+    }
     for (std::size_t i = 0; i < node->arguments.size(); ++i) {
         if (i == vi) {
             out.push_back(normalizeContainerInsertArg(node->arguments[i].get(),
@@ -761,6 +786,40 @@ void IRGenerator::genStringFrees() {
                  "__cn_str_free", "void", SourceLocation());
         }
     }
+    // 79-a（2026-09-12 第七十九轮）：聚合拥有型字符串字段函数尾兜底——
+    //   含串字段的结构体/结果/可选局部，逐字段 free+清槽（单点事实源
+    //   emitOwnedFieldFreesFor）。返回移出豁免：返回块返回值为 AddrOf(槽)
+    //   （结构体按值返回 = 地址 + 被调方 epilogue memcpy 到调用方缓冲）时，
+    //   该槽字段所有权移交调用方（接收方登记接管）——跳过，否则调用方
+    //   拿到已释放句柄（跨函数 UAF）。
+    if (!ownedFieldOrder_.empty()) {
+        std::unordered_set<std::string> returnedFieldSlots;
+        for (const auto& block : function_->blocks) {
+            if (!block->terminated || block->termKind != "返回") continue;
+            const std::string& rv = block->termReturnValue;
+            if (rv.size() <= 2 || rv[0] != '%' || rv[1] != 'v') continue;
+            const int retId = std::stoi(rv.substr(2));
+            for (const auto& inst : block->instructions) {
+                if (inst.result.id == retId && inst.opcode == ir::Opcode::AddrOf &&
+                    !inst.operands.empty()) {
+                    returnedFieldSlots.insert(inst.operands[0].extra);
+                    break;
+                }
+            }
+        }
+        for (const auto& block : function_->blocks) {
+            if (!block->terminated || block->termKind != "返回") continue;
+            setCurrentBlock(block.get());
+            for (const auto& unique : ownedFieldOrder_) {
+                if (returnedFieldSlots.count(unique) > 0) continue;
+                if (isFieldTainted(unique)) continue;  // 入容器共享源：字段串不释放
+                auto it = oopVarSrcTypes_.find(unique);
+                if (it == oopVarSrcTypes_.end()) continue;
+                emitOwnedFieldFreesFor(unique, types::canonical(it->second),
+                                       SourceLocation());
+            }
+        }
+    }
 }
 
 void IRGenerator::genClassDestructorCalls() {
@@ -921,13 +980,24 @@ void IRGenerator::genBlockExitDestruct() {
         if (it == oopVarSrcTypes_.end()) continue;
         emitClassDeleteFor(unique, types::canonical(it->second));
     }
+    // 79-a：含串字段聚合局部——块出口逆序释放字段串（free+清槽，幂等）
+    while (ownedFieldOrder_.size() > scopeFieldBase_.back()) {
+        const std::string unique = ownedFieldOrder_.back();
+        ownedFieldOrder_.pop_back();
+        if (isFieldTainted(unique)) continue;  // 入容器共享源：字段串不释放
+        auto it = oopVarSrcTypes_.find(unique);
+        if (it == oopVarSrcTypes_.end()) continue;
+        emitOwnedFieldFreesFor(unique, types::canonical(it->second),
+                               SourceLocation());
+    }
 }
 
 // 中断/继续 跳出循环体或选择分支：按进入该分支时记录的基线释放新增资源
 //   （drop-on-jump）。调用方：循环=LoopContext 基线、选择=SwitchContext 基线。
 // 注意：不截断编译期名单（落空路径的块出口析构仍须覆盖）——只发射释放+清零，
 //   释放后槽=0，落空路径/函数级兜底再释放即空安全（幂等）。
-void IRGenerator::genJumpDestructFrom(std::size_t stringBase, std::size_t classBase) {
+void IRGenerator::genJumpDestructFrom(std::size_t stringBase, std::size_t classBase,
+                                     std::size_t fieldBase) {
     const std::size_t strEnd = ownedStringOrder_.size();
     for (std::size_t i = stringBase; i < strEnd; ++i) {
         const std::string& unique = ownedStringOrder_[i];
@@ -940,6 +1010,17 @@ void IRGenerator::genJumpDestructFrom(std::size_t stringBase, std::size_t classB
         auto it = oopVarSrcTypes_.find(unique);
         if (it == oopVarSrcTypes_.end()) continue;
         emitClassDeleteFor(unique, types::canonical(it->second));
+    }
+    // 79-a：含串字段聚合局部——跳出前按基线释放字段串（drop-on-jump，
+    //   不截断名单：同块其他路径仍须各自发射释放；清槽保证幂等）
+    const std::size_t fldEnd = ownedFieldOrder_.size();
+    for (std::size_t i = fieldBase; i < fldEnd; ++i) {
+        const std::string& unique = ownedFieldOrder_[i];
+        if (isFieldTainted(unique)) continue;  // 入容器共享源：字段串不释放
+        auto it = oopVarSrcTypes_.find(unique);
+        if (it == oopVarSrcTypes_.end()) continue;
+        emitOwnedFieldFreesFor(unique, types::canonical(it->second),
+                               SourceLocation());
     }
 }
 

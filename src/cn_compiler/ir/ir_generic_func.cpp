@@ -181,6 +181,7 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     //   不嵌套于其他函数体生成中——clear 不会破坏宿主函数活状态；补齐可防
     //   实例间名单/基线栈/污染集的串扰残留（行为原由 genBlock 出口截断自愈）。
     stringTainted_.clear();
+    fieldTainted_.clear();
     ownedStringOrder_.clear();
     ownedClassOrder_.clear();
     scopeStringBase_.clear();

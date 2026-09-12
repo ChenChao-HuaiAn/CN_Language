@@ -130,20 +130,23 @@ void IRGenerator::visitBreakStmt(BreakStmt* node) {
     if (useLoop) {
         // 72-a：跳出前释放循环体内的块级资源（drop-on-jump，Rust 同款）——
         //   中断路径绕过 genBlock 出口析构，此处按进入循环体时的基线释放本块新增
-        genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase);
+        genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase,
+                            loopStack_.back().fieldBase);
         endJump(loopStack_.back().breakTarget);
     } else if (!switchStack_.empty()) {
         // 72-a 收尾（2026-09-11）：选择分支不走 genBlock（语句直接生成）——分支内
         //   声明的资源同样在 中断 跳出前按分支基线释放，与循环口径对齐；
         //   fallthrough/汇合路径仍由函数级兜底（返回块全量释放）覆盖。
-        genJumpDestructFrom(switchStack_.back().stringBase, switchStack_.back().classBase);
+        genJumpDestructFrom(switchStack_.back().stringBase, switchStack_.back().classBase,
+                            switchStack_.back().fieldBase);
         endJump(switchStack_.back().exitLabel);
     }
 }
 void IRGenerator::visitContinueStmt(ContinueStmt* node) {
     (void)node;
     if (!loopStack_.empty()) {
-        genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase);
+        genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase,
+                            loopStack_.back().fieldBase);
         endJump(loopStack_.back().continueTarget);
     }
 }
@@ -204,6 +207,7 @@ void IRGenerator::genWhile(WhileStmt* node) {
     loopStack_.push_back(LoopContext{endLabel, condLabel,
                                      ownedClassOrder_.size(),
                                      ownedStringOrder_.size(),
+                                     ownedFieldOrder_.size(),
                                      breakScopeSeq_++});  // 继续 -> 条件块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
@@ -240,6 +244,7 @@ void IRGenerator::genFor(ForStmt* node) {
     loopStack_.push_back(LoopContext{endLabel, updLabel,
                                      ownedClassOrder_.size(),
                                      ownedStringOrder_.size(),
+                                     ownedFieldOrder_.size(),
                                      breakScopeSeq_++});  // 继续 -> 更新块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
@@ -314,7 +319,8 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
         //   72-b：enterSeq 取号（中断 绑定最近的选择或循环）
         switchStack_.push_back(
             SwitchContext{endLabel, ownedClassOrder_.size(),
-                          ownedStringOrder_.size(), breakScopeSeq_++});
+                          ownedStringOrder_.size(), ownedFieldOrder_.size(),
+                          breakScopeSeq_++});
         for (auto& stmt : node->cases[i]->statements) {
             genStmt(stmt.get());
         }
@@ -336,7 +342,8 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
         // 72-a 收尾：默认分支基线随栈压入（同 情况 分支）；72-b：enterSeq 取号
         switchStack_.push_back(
             SwitchContext{endLabel, ownedClassOrder_.size(),
-                          ownedStringOrder_.size(), breakScopeSeq_++});
+                          ownedStringOrder_.size(), ownedFieldOrder_.size(),
+                          breakScopeSeq_++});
         for (auto& stmt : node->defaultCase->statements) {
             genStmt(stmt.get());
         }
@@ -546,6 +553,13 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         } else if (semantic_ != nullptr && !srcType.empty() &&
                    semantic_->isClassType(types::canonical(srcType))) {
             ownedClassOrder_.push_back(unique);
+        } else if (semantic_ != nullptr && !srcType.empty() &&
+                   !ownedStrFieldsOf(srcType).empty()) {
+            // 79-a（2026-09-12 第七十九轮）：含拥有型字符串字段的聚合局部
+            //   （结构体/结果/可选）→ 字段级释放名单：块出口/跳出/函数尾按
+            //   字段偏移 free+清槽；写入位 pre-free 判据（拥有槽才可释放旧值）。
+            //   聚合整体拷贝由 emitStructCopyWithFields 深拷（源保持拥有）。
+            ownedFieldOrder_.push_back(unique);
         }
     }
 
@@ -729,15 +743,42 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         }
         // 结构体变量初始化值为"函数返回的结构体地址（ptr）"（Task 完善A）：
         //   学生 张三加 = 加分(张三) —— 值是指向返回临时结构体的指针，
-        //   需 CopyStruct 到本变量槽区（按值拷贝）
+        //   需拷贝到本变量槽区（按值拷贝）。
+        // 79-a（2026-09-12 第七十九轮）：含串字段结构体——源为调用返回（retbuf，
+        //   被调方返回移出已跳过字段释放）=浅拷接管（零拷贝，句柄唯一持有者转为
+        //   目标）；源为标识符/成员（值语义拷贝）=深拷（字段级 __cn_str_copy 落堆，
+        //   源保持拥有）——浅拷共享 + 双端释放=悬垂，深拷是安全前提。
         if (semantic_ != nullptr && value.type == "ptr" &&
             semantic_->isStructType(types::canonical(node->typeName))) {
-            const int size = semantic_->typeSizeOf(types::canonical(node->typeName));
+            const std::string declCanon = types::canonical(node->typeName);
             ir::IRValue dstAddr = emitResult(ir::Opcode::AddrOf,
                                              {ir::IRValue::var(unique, "i64")},
                                              "ptr", unique, node->location);
-            emit(ir::Opcode::CopyStruct, {dstAddr, value}, ir::IRValue(),
-                 std::to_string(size), "void", node->location);
+            // 79-a 探针新证缺陷（既有，非本轮引入）：可选<T> 声明初始化为 无
+            //   （NullLiteral）——零值语义（无值），不是结构体地址。原实现按
+            //   CopyStruct 从「地址 0」拷贝 -> 段错误（可选<字符串> 空 = 无 实测
+            //   mov r9,[rbp-200(=0)] 崩）。改为逐槽零初始化：条件位=0（释放面
+            //   条件释放跳过）、值位=0（空安全）。
+            if (node->initializer != nullptr &&
+                node->initializer->getType() == NodeType::NullLiteral) {
+                auto slotIt = function_->varSlots.find(unique);
+                const int slots =
+                    (slotIt != function_->varSlots.end() && slotIt->second > 0)
+                        ? slotIt->second : 1;
+                for (int s = 0; s < slots; ++s) {
+                    const std::string slotName =
+                        s == 0 ? unique : unique + "$s" + std::to_string(s);
+                    emit(ir::Opcode::Store,
+                         {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
+                         slotName, "i64", node->location);
+                }
+                lastExpr_ = dstAddr;
+                return;
+            }
+            const bool srcIsCall = node->initializer != nullptr &&
+                                   node->initializer->getType() == NodeType::CallExpr;
+            emitStructCopyWithFields(dstAddr, value, declCanon, node->location,
+                                     /*preFree=*/false, /*deepCopy=*/!srcIsCall);
             lastExpr_ = value;
             return;
         }
@@ -955,6 +996,7 @@ void IRGenerator::genBlock(BlockStmt* node) {
     //   genClassDestructorCalls 保留为返回/跳出路径兜底）。
     scopeStringBase_.push_back(ownedStringOrder_.size());
     scopeClassBase_.push_back(ownedClassOrder_.size());
+    scopeFieldBase_.push_back(ownedFieldOrder_.size());
     for (auto& stmt : node->statements) {
         genStmt(stmt.get());
         // 宿主根治（2026-09-01，缺陷：块顶层级中途回Return 被无视）：当前块已终止
@@ -975,9 +1017,12 @@ void IRGenerator::genBlock(BlockStmt* node) {
             ownedStringOrder_.pop_back();
         while (ownedClassOrder_.size() > scopeClassBase_.back())
             ownedClassOrder_.pop_back();
+        while (ownedFieldOrder_.size() > scopeFieldBase_.back())
+            ownedFieldOrder_.pop_back();
     }
     scopeStringBase_.pop_back();
     scopeClassBase_.pop_back();
+    scopeFieldBase_.pop_back();
     varStack_.pop_back();  // 退出子作用域
 }
 } // namespace cn_compiler

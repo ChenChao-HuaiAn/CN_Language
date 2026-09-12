@@ -9,6 +9,9 @@
 #include <string>
 #include <utility>
 
+#include <cstdio>
+#include <cstdlib>
+
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/type_system.hpp"
@@ -988,7 +991,8 @@ void IRGenerator::visitTernaryExpr(TernaryExpr* node) {
 bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
                                         Expr* valueNode,
                                         const std::string& dstElemCanon,
-                                        const SourceLocation& loc) {
+                                        const SourceLocation& loc,
+                                        bool preFree) {
     if (semantic_ == nullptr) return false;
     if (!(semantic_->isStructType(dstElemCanon) ||
           semantic_->isClassType(dstElemCanon))) {
@@ -1033,9 +1037,12 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         emit(ir::Opcode::Call, {dstAddr, srcRef}, ir::IRValue(),
              methodSymbolKey(copyOwner, copyCtor->sigKey), "void", loc);
     } else {
-        const int size = semantic_->typeSizeOf(dstElemCanon);
-        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
-             std::to_string(size), "void", loc);
+        // 79-a：含串字段结构体——源为调用返回（retbuf）=浅拷接管（零拷贝）；
+        //   源为标识符/成员=深拷（字段级 __cn_str_copy 落堆）。无串字段类型
+        //   原路径不变（ownedStrFieldsOf 空=纯 memcpy 零开销）。
+        const bool srcIsCall = valueNode->getType() == NodeType::CallExpr;
+        emitStructCopyWithFields(dstAddr, srcAddr, dstElemCanon, loc, preFree,
+                                 /*deepCopy=*/!srcIsCall);
     }
     return true;
 }
@@ -1182,8 +1189,12 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         //   下标路径同款：数组元素借出=借用）。源变量污染退出 RAII——否则
         //   源出口释放 + 字段/后继容器浅共享 = 悬垂（v2 树 货舱解析 的
         //   `项.名称 = 键` → 依赖们.追加(项) 形态，E2E 165 回归实证）。
-        if (targetType == "ptr" && !isCompoundAssignOp(node->op) &&
-            node->value->getType() == NodeType::IdentifierExpr) {
+        // 79-a（2026-09-12 第七十九轮）：字符串字段写入归一化——取代 72-a 的
+        //   「源污染」模型（浅拷共享：源不释放=泄漏 + 字段释放即悬垂）。新模型=
+        //   字段独立拥有：来源按 74-a 同款分级归一化（转移=move／拥有返回=接管／
+        //   字面量=驻留／其余=复制落堆），目标为拥有槽时先释放旧值（幂等清槽）——
+        //   源保持拥有并照常释放，零共享、零悬垂、零泄漏。
+        if (!isCompoundAssignOp(node->op)) {
             const std::string fieldFieldType = [&]() -> std::string {
                 if (decl != nullptr) {
                     for (const auto& f : decl->fields) {
@@ -1200,8 +1211,23 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 return "";
             }();
             if (types::canonical(fieldFieldType) == "字符串") {
-                markStringTainted(
-                    static_cast<IdentifierExpr*>(node->value.get())->name);
+                // 顺序（自赋值安全）：值已由上方 genExpr 求值（勿二次求值——
+                //   二次求值=多余分配泄漏，P6/P7 探针实证）；此处按来源分级
+                //   归一化（复制落堆/接管/move），新值独立于旧值内存后才 drop 旧值
+                ir::IRValue normalized = normalizeStringValueSource(
+                    node->value.get(), value, node->location);
+                std::string objUnique;
+                if (member->object->getType() == NodeType::IdentifierExpr) {
+                    objUnique = lookupVarName(
+                        static_cast<IdentifierExpr*>(member->object.get())->name);
+                }
+                if (isOwnedFieldSlot(objUnique)) {
+                    emitFieldStringFreeAt(addr, node->location);  // 旧值幂等释放+清槽
+                }
+                emit(ir::Opcode::StorePtr, {addr, normalized}, ir::IRValue(), "",
+                     "ptr", node->location);
+                lastExpr_ = normalized;
+                return;
             }
         }
         // 复合赋值（p.x += 1 等）
@@ -1645,7 +1671,8 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
         }
         if (semantic_->isStructType(types::canonical(targetSrcType)) &&
             semantic_->isStructType(types::canonical(valueSrcType))) {
-            const int size = semantic_->typeSizeOf(types::canonical(targetSrcType));
+            // 79-a：目标聚合规范名（emitStructCopyWithFields 内部按类型定尺寸）
+            const std::string assignCanonTop = types::canonical(targetSrcType);
             // A-1（引用参数）：目标为引用参数时目标地址 = Load 槽（槽内存被引用对象地址）
             ir::IRValue dstAddr;
             if (isByRefCapture(ident->name)) {
@@ -1696,9 +1723,21 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 emit(ir::Opcode::Call, {dstAddr, srcAddr}, ir::IRValue(),
                      methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
                      node->location);
+            } else if (node->value->getType() == NodeType::IdentifierExpr &&
+                       static_cast<IdentifierExpr*>(node->value.get())->name ==
+                           ident->name) {
+                // 79-a：自赋值（甲 = 甲）no-op——preFree 会先释放目标字段串，随后
+                //   memcpy 把已释放句柄拷回，深拷再复制已释放内存（UAF）。值语义
+                //   自赋值恒无副作用，直接跳过。
             } else {
-                emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
-                     std::to_string(size), "void", node->location);
+                // 79-a：含串字段结构体整体赋值——preFree（目标为拥有槽时释放旧
+                //   字段串，幂等清槽）+ memcpy + 深拷（源非调用返回）/浅拷接管
+                //   （源=调用返回 retbuf）。无串字段类型走纯 memcpy（原路径）。
+                emitStructCopyWithFields(dstAddr, srcAddr, assignCanonTop,
+                                         node->location,
+                                         /*preFree=*/isOwnedFieldSlot(unique),
+                                         /*deepCopy=*/!isStructReturnCall &&
+                                             !isChainedAssign);
             }
             lastExpr_ = value;
             return;
@@ -2231,14 +2270,25 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
             continue;
         }
         // 普通字段：生成值 + Cast + StorePtr
-        ir::IRValue value = genExpr(fieldPair.second.get());
+        std::string fieldSrcTypeName;
         std::string fieldIrType = "i32";
         for (const auto& f : decl->fields) {
             if (f.name == fieldName) {
+                fieldSrcTypeName = f.type;
                 fieldIrType = mapType(f.type);
                 break;
             }
         }
+        // 79-a：字符串字段写入归一化（来源分级——借用来源复制落堆，字段独立
+        //   拥有；字面量驻留；拥有返回接管；转移() move）——与赋值位同款
+        if (types::canonical(fieldSrcTypeName) == "字符串") {
+            ir::IRValue normalized =
+                normalizeContainerInsertArg(fieldPair.second.get(), loc);
+            emit(ir::Opcode::StorePtr, {fieldAddr, normalized}, ir::IRValue(), "",
+                 "ptr", loc);
+            continue;
+        }
+        ir::IRValue value = genExpr(fieldPair.second.get());
         if (value.type != fieldIrType && !fieldIrType.empty() && value.type != "") {
             value = emitResult(ir::Opcode::Cast, {value}, fieldIrType, "", loc);
         }

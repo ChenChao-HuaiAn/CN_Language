@@ -374,8 +374,9 @@ private:
     //   大小整体拷贝。目标类型非结构体/类或源形态不可取址返回 false（调用方
     //   落回标量路径）；lastExpr_ 由调用方设置（下标位=常量0，成员位=目标地址）。
     bool emitStructWholeAssign(const ir::IRValue& dstAddr, Expr* valueNode,
-                               const std::string& dstElemCanon,
-                               const SourceLocation& loc);
+                                        const std::string& dstElemCanon,
+                                        const SourceLocation& loc,
+                                        bool preFree = false);
     // 分配变量寄存器：Alloca并登记映射（Task 2.4：srcType 记录源码复合类型）
     ir::IRValue allocVar(const std::string& name, const std::string& irType,
                          const std::string& srcType, const SourceLocation& loc);
@@ -515,6 +516,8 @@ private:
         //   时的 类对象名单/拥有串名单 长度（drop 范围=基线之后的新增项）。
         std::size_t classBase = 0;   // 类对象名单基线（ownedClassOrder_）
         std::size_t stringBase = 0;  // 拥有串名单基线（ownedStringOrder_）
+        // 79-a（2026-09-12 第七十九轮）：含串字段聚合局部名单基线（ownedFieldOrder_）
+        std::size_t fieldBase = 0;
         // 72-b（2026-09-11 用户裁决方案B·C 语义）：进入序——中断 绑定「最近的
         //   选择或循环」（enterSeq 大者=最近进入），与 SwitchContext 比较。
         std::size_t enterSeq = 0;
@@ -528,6 +531,7 @@ private:
         std::string exitLabel;      // 中断跳转目标块标签（选择汇合块）
         std::size_t classBase = 0;  // 分支进入时 类对象名单基线
         std::size_t stringBase = 0; // 分支进入时 拥有串名单基线
+        std::size_t fieldBase = 0;  // 79-a：分支进入时 含串字段聚合名单基线
         std::size_t enterSeq = 0;   // 进入序（72-b：与 LoopContext 比较定最近）
     };
     std::vector<SwitchContext> switchStack_;
@@ -544,21 +548,78 @@ private:
     //   的未走到出口路径由函数级兜底（返回块全量释放）+ 循环跳出前置释放覆盖。
     std::vector<std::size_t> scopeStringBase_;   // genBlock 进入时 拥有串名单 基线
     std::vector<std::size_t> scopeClassBase_;    // genBlock 进入时 类对象名单 基线
+    // 79-a（2026-09-12 第七十九轮）：genBlock 进入时 含串字段聚合名单 基线
+    std::vector<std::size_t> scopeFieldBase_;
     // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
     std::vector<std::string> ownedStringOrder_;
     // 本函数类对象名单（genVarDecl 登记：类类型局部——沿用 oopVarSrcTypes_ 判定）
     std::vector<std::string> ownedClassOrder_;
+    // 79-a：本函数「含拥有型字符串字段」的聚合局部名单（结构体/结果/可选——
+    //   genVarDecl 登记；块出口/跳出/函数尾释放字段串，写入位 pre-free 判据）
+    std::vector<std::string> ownedFieldOrder_;
 
     // 块出口析构（genBlock 出口调用）：释放本块新增的字符串/类对象并截断名单
     void genBlockExitDestruct();
     // 中断/继续 跳出循环体或选择分支时的块级释放（drop-on-jump）——
     //   按进入该分支时记录的名单基线，释放基线之后的新增项（循环 LoopContext
     //   与选择 SwitchContext 共用；只发射释放+清零，不截断编译期名单）
-    void genJumpDestructFrom(std::size_t stringBase, std::size_t classBase);
+    void genJumpDestructFrom(std::size_t stringBase, std::size_t classBase,
+                             std::size_t fieldBase);
     // 释放单个字符串槽（Load + __cn_str_free 空安全）
     void emitStringFreeFor(const std::string& unique);
     // 释放单个类对象槽（Load + DeleteObject 空安全）
     void emitClassDeleteFor(const std::string& unique, const std::string& canon);
+
+    // ---- 79-a（2026-09-12 第七十九轮）：聚合拥有型字符串字段 drop glue ----
+    // 背景（探针 P1/P2 实证，plans/020 矩阵 #16/#17）：结构体/装箱（结果/可选）
+    //   的字符串字段原为「借用面无 RAII」——拥有型串存入字段即泄漏（宿主/v2 各
+    //   残留 1）；且浅拷共享使「只加释放面」必然引入悬垂。方案甲（性能第一/
+    //   安全第二）：字段=拥有型槽位——写入位归一化（来源分级，复用 74-a）、
+    //   拷贝位深拷（编译器代写 __cn_str_copy）、消亡位按偏移释放（free+清槽）。
+    // 不变量：①释放+清槽幂等（多路径共享槽）；②联合体字段条件释放（结果/可选
+    //   的值/错误同偏移——非正常分支下值位是错误码整数，无条件 free=崩）；
+    //   ③深拷先复制后释放（自赋值 甲=甲 安全）。
+    struct OwnedStrField {
+        int offset = 0;       // 相对聚合基址的字节偏移
+        int condOffset = -1;  // -1=无条件释放；否则条件字段（布尔）偏移
+    };
+    // 收集聚合类型（结构体/结果/可选，递归展开值语义嵌套）的拥有型字符串字段
+    std::vector<OwnedStrField> ownedStrFieldsOf(const std::string& canon) const;
+    void collectOwnedStrFields(const std::string& canon, int base, int cond,
+                               std::vector<OwnedStrField>& out,
+                               std::vector<std::string>& visiting) const;
+    // 单字段释放（无条件 / condAddr 非零时）+ 清槽——释放面单点事实源
+    void emitFieldStringFreeAt(const ir::IRValue& fieldAddr,
+                               const SourceLocation& loc);
+    void emitFieldStringFreeIf(const ir::IRValue& condAddr,
+                               const ir::IRValue& fieldAddr,
+                               const SourceLocation& loc);
+    // 聚合基址上的全部字段释放（字段地址 = 基址 + 偏移；条件字段经条件分支）
+    void emitOwnedStrFieldFreesAt(const ir::IRValue& base,
+                                  const std::string& canon,
+                                  const SourceLocation& loc);
+    // 局部槽版本（按名单 unique 取 AddrOf 基址）
+    void emitOwnedFieldFreesFor(const std::string& unique, const std::string& canon,
+                                const SourceLocation& loc);
+    // 深拷两阶段：preFree=释放目标旧字段值（须在 memcpy 之前；无条件句柄空安全）
+    void emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
+                                  const std::string& canon,
+                                  const SourceLocation& loc);
+    void emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase,
+                                   const ir::IRValue& srcBase,
+                                   const std::string& canon,
+                                   const SourceLocation& loc);
+    // 结构体整体拷贝单一事实源：含串字段=preFree + memcpy + 深拷（postCopy），
+    //   否则纯 memcpy（零开销——无串字段类型原路径不变）。
+    //   deepCopy=字段级深拷（源保持拥有——标识符/成员来源）；假=浅拷接管
+    //   （调用返回来源：retbuf 句柄唯一持有者转为目标，被调方返回移出已跳过释放）。
+    void emitStructCopyWithFields(const ir::IRValue& dstAddr,
+                                  const ir::IRValue& srcAddr,
+                                  const std::string& canon,
+                                  const SourceLocation& loc, bool preFree,
+                                  bool deepCopy = true);
+    // 该聚合局部是否在字段释放名单中（写入位 pre-free 判据：仅拥有槽可释放旧值）
+    bool isOwnedFieldSlot(const std::string& unique) const;
 
     // ---- 74-a（2026-09-11 第七十四轮）：容器元素所有权归一化 ----
     // 背景（探针 74 实证）：容器析构**无条件释放元素串**（__cn_*_free_strings 由
@@ -601,6 +662,11 @@ private:
                                   const SourceLocation& loc);
     // 入容器位实参所有权归一化：按来源分级发 __cn_str_copy / 源槽清零（返回值实参值）
     ir::IRValue normalizeContainerInsertArg(Expr* arg, const SourceLocation& loc);
+    // 79-a：已求值字符串值按来源分级归一化（值由调用方 genExpr 求得——避免二次
+    //   求值：二次求值=多余分配泄漏，P6 探针实证）。字面量=驻留借用；转移(拥有
+    //   局部)=真 move（源槽清零）；拥有契约调用=接管；其余=__cn_str_copy 落堆。
+    ir::IRValue normalizeStringValueSource(Expr* arg, const ir::IRValue& value,
+                                           const SourceLocation& loc);
     // 方法调用实参构建（含入容器位归一化；其余形态等价 buildCallArgsOop）
     std::vector<ir::IRValue> buildCallArgsForMethod(
         CallExpr* node, const std::string& canonObj, const std::string& methodName);
@@ -619,12 +685,27 @@ private:
     //   非拥有形态（解引用/成员等）的字符串目标整变量退出 RAII（free 只读段
     //   =UB 静态防线）；genFunctionDecl 开头复位、genStringFrees 消费。
     std::unordered_set<std::string> stringTainted_;
+    // 79-a：含串字段聚合的「字段污染」集（源码名键控）——入容器位的结构体
+    //   实参=容器元素浅拷共享（容器元素字段串释放面未开=靶子），源字段串不得
+    //   释放（否则元素悬垂）；宁漏勿错（与 74-a 容器元素归一化前的借用来源同口径）。
+    std::unordered_set<std::string> fieldTainted_;
     // 75-a（2026-09-12 第七十五轮）：字符串污染登记**唯一入口**。污染名单同时是
     //   ①释放侧跳过依据（块出口/跳出/函数级兜底/`isOwnedStringSlot`）与
     //   ②入容器位「实参是否拥有」判定的共同依据——漏登记会产生双向错误：
     //   释放侧误释放借用视图（悬垂）/ 归一化误判拥有（容器接管借用句柄 → 容器
     //   析构释放他人串=UAF）。原五处登记点（初始化非拥有/结构体字段借出/下标
     //   借出/转移污染传播/赋值非拥有）统一经此入口，新增登记点一律经此。
+    void markFieldTainted(const std::string& name) {
+        fieldTainted_.insert(name);
+    }
+    // 字段污染判定（unique 名剥 '$' 后缀后按源码名键控，与 stringTainted_ 同款）
+    bool isFieldTainted(const std::string& unique) const {
+        if (unique.empty()) return false;
+        const std::size_t dl = unique.rfind('$');
+        const std::string srcName =
+            (dl == std::string::npos) ? unique : unique.substr(0, dl);
+        return fieldTainted_.count(srcName) > 0;
+    }
     void markStringTainted(const std::string& name) {
         stringTainted_.insert(name);
     }

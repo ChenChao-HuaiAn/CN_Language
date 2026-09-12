@@ -168,10 +168,13 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     genClassDestructorCalls();
     genStringFrees();
     stringTainted_.clear();
+    fieldTainted_.clear();
     ownedStringOrder_.clear();
     ownedClassOrder_.clear();
+    ownedFieldOrder_.clear();
     scopeStringBase_.clear();
     scopeClassBase_.clear();
+    scopeFieldBase_.clear();
     module_->functions.push_back(std::move(func));
     function_ = nullptr;
     // 恢复上下文并清除方法参数作用域
