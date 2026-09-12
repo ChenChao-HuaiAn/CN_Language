@@ -157,6 +157,9 @@ python3 scripts/check_progress_sync.py   # 总表同步自检（每轮收尾必�
 > io_api,string_api,i128_api,math_api,input_api,file_api,time_api,system_api}.o -Wl,-z,muldefs` →
 > 运行取退出码。**反证手法（修订版，91-a 教训）**：①**先**备份文件 + md5 存档 → ②python 注入 →
 > ③重建（**输出到独立路径**）→ ④跑用例应复现诊断 → ⑤恢复后**以①的 md5** 复核（禁与 bak 自证）。
+> **远程推送现状（2026-09-13 实测）**：本机只有 `gitcode` remote（主仓库推送正常）；**未配置
+> `github` 镜像 remote**，且 github.com 直连超时（curl 15s 无响应；无代理/gh CLI/凭据文件）——
+> 镜像补推需网络可达的机器代做，或先配置 URL+凭据（同 gitcode 账号名 `ChenChao_GitCode`）。
 
 ### 五、诚实边界
 
