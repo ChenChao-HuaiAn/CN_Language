@@ -2451,6 +2451,15 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
     if (node->isDerefAccess && types::isPointer(objSrcType)) {
         objSrcType = types::pointeeOf(objSrcType);
     }
+    // 82-d（2026-09-12 第八十四轮后续）：**成员链嵌套深度兜底**——上方手写推理只
+    //   覆盖「一层嵌套」（inner->object 须为标识符）：三级链 `丙.d.b.a` 的 objSrcType
+    //   退化空 → decl==nullptr → **字段读降级常量 0**（静默错行为；探针 P29/P30 实证：
+    //   三级链读 0、二级/一级正常）。以既有递归辅助 `memberObjStructType`（成员链任意
+    //   深度 + 下标 + 指针剥离 + 结果/可选成员映射）兜底填空。Rust 对照：rustc 字段
+    //   访问按 base 类型递归解析（field.ty()），深度不限。
+    if (objSrcType.empty()) {
+        objSrcType = memberObjStructType(node);
+    }
     const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));
     if (decl == nullptr) {
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);

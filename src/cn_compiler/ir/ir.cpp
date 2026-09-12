@@ -560,6 +560,14 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
     if (node->isDerefAccess && types::isPointer(objType)) {
         objType = types::pointeeOf(objType);
     }
+    // 82-d（2026-09-12 第八十四轮后续）：**裸指针对象统一剥一级**——成员链任意深度
+    //   推导时，中间/末端对象可能是指针（`外层* wq; wq.内.x`、`p.表.元素(0).x`）：
+    //   findStruct("矩形*") 恒 null → 字段类型推导失败 → 字段读降级常量 0（静默错
+    //   行为，2026-09-03 E2E 134 同族）。指针对象字段访问 ≡ 解引用（v2.1 统一 `.`
+    //   语义），剥一级后按所指结构体取字段类型。
+    if (!objType.empty() && types::isPointer(types::canonical(objType))) {
+        objType = types::pointeeOf(types::canonical(objType));
+    }
     return objType;
 }
 void IRGenerator::emitBoundsCheck(const ir::IRValue& indexRaw, int arrayLen,
