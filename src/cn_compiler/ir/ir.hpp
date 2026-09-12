@@ -378,6 +378,15 @@ private:
                                         const std::string& dstElemCanon,
                                         const SourceLocation& loc,
                                         bool preFree = false);
+    // 87-a（2026-09-12 第八十七轮）：顶层静态变量初始化注入（入口函数 entry 块）。
+    //   静态变量的初值语义分三类（性能第一）：
+    //     ① 标量字面量（整/浮/布/字符）——.data 直存（codegen 折叠，零运行期开销）；
+    //     ② 结构体（字面量/表达式）——逐字段原地构造（emitStructInitTo）或整体
+    //        拷贝（emitStructWholeAssign，Rust place 化初始化）；
+    //     ③ 字符串（字面量=驻留常量地址 / 表达式=求值）与类/容器（NewObject +
+    //        构造，P3-8 指针槽模型）——运行期物化后存入 .data 槽。
+    //   调用点=visitFunctionDecl 的 主 入口（多文件下仅入口模块注入，与类静态同限制）。
+    void emitStaticInitsAtEntry();
     // 分配变量寄存器：Alloca并登记映射（Task 2.4：srcType 记录源码复合类型）
     ir::IRValue allocVar(const std::string& name, const std::string& irType,
                          const std::string& srcType, const SourceLocation& loc);

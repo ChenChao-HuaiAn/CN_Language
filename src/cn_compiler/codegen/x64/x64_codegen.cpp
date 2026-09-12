@@ -480,34 +480,40 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
         //   变量槽同构）。原按 typeSizeOf 分配对象本体是「对象内联 .data」模型
         //   （与读取路径 LoadPtr 不符——读出首 8 字节字段当指针，实测空指针崩溃）。
         //   结构体静态保持值语义按类型大小分配（无构造/指针语义）。
+        // 87-a（2026-09-12 第八十七轮）：与 linux_x64/arm64 口径统一——ALIGN 8
+        //   （字符串常量池 .byte 长度任意，静态槽前须 8 对齐）+ canonical 判定 +
+        //   字符串初值文本（含引号）恒零（不可作 .data 初始值；运行期入口注入）。
+        const std::string canonStatic = types::canonical(stType);
         int qwords = 1;
         if (semantic_ != nullptr &&
-            semantic_->isStructType(stType) && !types::isPointer(stType)) {
+            semantic_->isStructType(canonStatic) && !types::isPointer(canonStatic)) {
             const int sz = semantic_->typeSizeOf(stType);
             if (sz > 8) qwords = (sz + 7) / 8;
         }
-        if (stType == "整128" || stType == "正128") {
+        writer.raw("ALIGN 8");
+        if (canonStatic == "整128" || canonStatic == "正128") {
             writer.raw(sym + " dq 0, 0");
-        } else if (stType == "浮32") {
+        } else if (canonStatic == "浮32") {
             // f32 初始值：dd floatBitsHex；无初始值零初始化
             writer.raw(sym + " dd " +
                        (!initText.empty() ? floatBitsHex(initText, false) : "0"));
-        } else if (stType == "浮64") {
+        } else if (canonStatic == "浮64") {
             // f64 初始值：dq floatBitsHex（MASM 无浮点立即数，须位模式十六进制）
             writer.raw(sym + " dq " +
                        (!initText.empty() ? floatBitsHex(initText, true) : "0"));
         } else if (qwords > 1) {
-            // 容器/结构体对象：按类型大小分配多 qword（零初始化）
+            // 结构体对象：按类型大小分配多 qword（零初始化；初值由入口注入逐字段写）
             std::string line = sym + " dq 0";
             for (int qi = 1; qi < qwords; ++qi) line += ", 0";
             writer.raw(line);
         } else {
-            if (!initText.empty() && initText.find_first_of(".eE") == std::string::npos) {
-                // 整数初始值直接写入（十六进制文本经 MASM 十进制；字符串不可作 .data 初始值）
-                writer.raw(sym + " dq " + initText);
-            } else if (!initText.empty() && initText.front() == '"') {
-                // 字符串初始值：先置零（初始值由首个赋值写入，防御性）
+            if (!initText.empty() && initText.front() == '"') {
+                // 字符串初始值：置零（不可作 .data 初始值——运行期入口注入物化）
                 writer.raw(sym + " dq 0");
+            } else if (!initText.empty() &&
+                       initText.find_first_of(".eE") == std::string::npos) {
+                // 整数/布尔/字符初始值直接写入（十进制文本；MASM dq 立即数）
+                writer.raw(sym + " dq " + initText);
             } else {
                 writer.raw(sym + " dq 0");
             }

@@ -213,9 +213,19 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
         //   放在 lookupVar 失败后（局部变量优先，防止同名遮蔽误读全局）。
         if (semantic_ != nullptr && semantic_->isGlobalStatic(node->name)) {
             const std::string stType = semantic_->globalStaticType(node->name);
-            const std::string irT = mapType(stType.empty() ? "整64" : stType);
+            const std::string canonStatic = types::canonical(stType);
             ir::IRValue addr = emitResult(
                 ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + node->name, node->location);
+            // 87-a（2026-09-12 第八十七轮）：结构体静态——值语义=**地址**（与局部
+            //   结构体变量同款的「表达式值为结构体地址」约定）。原实现无条件
+            //   LoadPtr 读 8 字节：读出首字段句柄当结构体地址 → 按值传参时被调方
+            //   从该地址 rep movsb（探针 P50b 崩溃堆栈实证：取参 → __cn_str_copy
+            //   SIGSEGV）；整体拷贝/成员链基址同源失效。
+            if (semantic_->isStructType(canonStatic)) {
+                lastExpr_ = addr;
+                return;
+            }
+            const std::string irT = mapType(stType.empty() ? "整64" : stType);
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, irT, "", node->location);
             return;
         }
@@ -1016,16 +1026,25 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
     } else if (valueNode->getType() == NodeType::IdentifierExpr) {
         const std::string srcName =
             static_cast<IdentifierExpr*>(valueNode)->name;
-        srcUniqueId = lookupVarName(srcName);
-        const std::string srcST = lookupSrcType(srcName);
-        if (semantic_->isClassType(types::canonical(types::stripRef(srcST)))) {
-            srcAddr = emitResult(ir::Opcode::Load,
-                                 {ir::IRValue::var(srcUniqueId, "ptr")},
-                                 "ptr", srcUniqueId, loc);
+        // 87-a（2026-09-12 第八十七轮）：源为顶层静态变量——?gstatic_名 符号地址
+        //   即源存储位置（与 lvalueAddress 静态分支同口径）。原实现取局部槽
+        //   （lookupVarName 对静态名空）→ AddrOf 无效槽 → 结构体整体赋值静默
+        //   错源（静态→局部/静态→静态赋值面）。
+        if (semantic_->isGlobalStatic(srcName)) {
+            srcAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                 "?gstatic_" + srcName, loc);
         } else {
-            srcAddr = emitResult(ir::Opcode::AddrOf,
-                                 {ir::IRValue::var(srcUniqueId, "i64")},
-                                 "ptr", srcUniqueId, loc);
+            srcUniqueId = lookupVarName(srcName);
+            const std::string srcST = lookupSrcType(srcName);
+            if (semantic_->isClassType(types::canonical(types::stripRef(srcST)))) {
+                srcAddr = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(srcUniqueId, "ptr")},
+                                     "ptr", srcUniqueId, loc);
+            } else {
+                srcAddr = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(srcUniqueId, "i64")},
+                                     "ptr", srcUniqueId, loc);
+            }
         }
     }
     if (srcAddr.id < 0) return false;
@@ -1435,7 +1454,63 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
     // 第 9 层 Debug（P3-8）：顶层静态变量赋值——全局 .data 符号 StorePtr。
     if (semantic_ != nullptr && semantic_->isGlobalStatic(ident->name)) {
         const std::string stType = semantic_->globalStaticType(ident->name);
+        const std::string canonStatic = types::canonical(stType);
         const std::string irT = mapType(stType.empty() ? "整64" : stType);
+        // 87-a（2026-09-12 第八十七轮）：静态聚合目标——结构体/字符串按值整体写。
+        //   原实现无条件落下方 8 字节 StorePtr：结构体只写首 8 字节（丢值 + 槽
+        //   越界写相邻 .data 符号，静默内存破坏）；字符串只替换句柄（旧值泄漏）。
+        //   结构体来源分派与局部变量赋值位同构（Rust place 语义：字面量=原地逐
+        //   字段构造；调用返回=浅拷接管；标识符/成员/下标/三元=深拷归一化），
+        //   唯一差别=目标地址为 ?gstatic_ 符号地址、preFree 恒真（静态槽长期
+        //   存活，重复赋值须释放旧字段串——与局部块出口释放等效的 drop glue）。
+        if (!isCompoundAssignOp(node->op) && semantic_->isStructType(canonStatic)) {
+            ir::IRValue dstAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                             "?gstatic_" + ident->name,
+                                             node->location);
+            if (node->value->getType() == NodeType::StructInitExpr) {
+                // 字面量：preFree（释放旧字段串防泄漏，零槽空安全）+ 原地逐字段写
+                emitOwnedStrFieldPreFree(dstAddr, canonStatic, node->location);
+                emitStructInitTo(static_cast<StructInitExpr*>(node->value.get()),
+                                 dstAddr, node->location);
+                lastExpr_ = dstAddr;
+                return;
+            }
+            if (node->value->getType() == NodeType::CallExpr) {
+                // 结构体返回调用：genExpr 物化返回（retbuf 一次性槽）→ 浅拷接管
+                //   （源句柄随返回值移出）+ preFree 释放旧字段串
+                ir::IRValue src = genExpr(node->value.get());
+                emitStructCopyWithFields(dstAddr, src, canonStatic, node->location,
+                                         /*preFree=*/true, /*deepCopy=*/false);
+                lastExpr_ = dstAddr;
+                return;
+            }
+            if (emitStructWholeAssign(dstAddr, node->value.get(), canonStatic,
+                                      node->location, /*preFree=*/true)) {
+                lastExpr_ = dstAddr;
+                return;
+            }
+            // 源形态未识别（语义层已诊断）：保持旧值（宁漏勿错），不落 8 字节写
+        }
+        // 87-a：静态字符串赋值——drop 旧（free，空安全）+ 来源分级归一化
+        //   （normalizeStringValueSource：字面量=驻留常量零分配；拥有返回=接管；
+        //   其余借用来源=__cn_str_copy 落堆）。归一化在 free 之前完成——自赋值
+        //   s = s 时复制产物已独立于旧句柄（与局部赋值位同款顺序纪律）。
+        if (!isCompoundAssignOp(node->op) && canonStatic == "字符串") {
+            ir::IRValue addr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                          "?gstatic_" + ident->name,
+                                          node->location);
+            ir::IRValue val = genExpr(node->value.get());
+            ir::IRValue norm = normalizeStringValueSource(node->value.get(), val,
+                                                          node->location);
+            ir::IRValue oldPtr = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "",
+                                            node->location);
+            emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free", "void",
+                 node->location);
+            emit(ir::Opcode::StorePtr, {addr, norm}, ir::IRValue(), "", "ptr",
+                 node->location);
+            lastExpr_ = norm;
+            return;
+        }
         ir::IRValue value = genExpr(node->value.get());
         // 宿主根治（2026-09-01）：类静态赋值深拷贝——右值为类对象标识符时
         //   NewObject + 拷贝构造/CopyStruct（与局部类赋值一致），防共享指针

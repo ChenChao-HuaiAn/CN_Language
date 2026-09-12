@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
+#include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
@@ -665,6 +666,17 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
     }
     // ---- 第 9 层 Debug（P3-8）：顶层静态变量 .data 全局存储 ----
     // 符号 _cn_gstatic_名（与 instructions ConstString 转换一致，同 ARM64）
+    // 87-a（2026-09-12 第八十七轮）两项根治：
+    //   ① 槽尺寸按类型分配：结构体静态按 typeSizeOf（8 字节取整、存值语义本体）；
+    //      其余恒 8 字节（类/容器=指针槽、字符串=句柄、标量=8 字节槽）。原实现
+    //      恒 `.quad 0`：结构体整体赋值写 16/24… 字节时**越界写相邻 .data 符号**
+    //      （静默内存破坏），且读取第二字段落到他人数据（探针 P50b 实证）。
+    //   ② 标量初值直存：整型/布尔/字符初值原被完全忽略（恒 0——静态 整64 x =
+    //      11111 读出 0；与 win-x64 后端 `dq initText` 口径分叉）。字符串初值
+    //      为驻留句柄（运行期由入口注入物化），.data 保持 0。
+    //   .align 8（x86 GAS 语义：.align N = 对齐到 N 字节——区别于 AArch64 的
+    //   2^N 指数语义 .align 3）：字符串常量池 .byte 长度任意，静态槽前须对齐
+    //   （非对齐 i64 访存在严格平台为 UB；对齐=性能/安全双收益）。
     for (const auto& kv : module.globalStatics) {
         const std::string& name = kv.first;
         const std::string stType = kv.second;
@@ -672,20 +684,40 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
         std::string initText;
         const auto initIt = module.globalStaticInits.find(name);
         if (initIt != module.globalStaticInits.end()) initText = initIt->second;
+        const std::string canonStatic = types::canonical(stType);
+        // 槽尺寸（字节）：结构体按类型大小（取整到 8 的倍数——后续槽对齐不变式）
+        std::size_t bytes = 8;
+        if (semantic_ != nullptr && !types::isPointer(canonStatic) &&
+            semantic_->isStructType(canonStatic)) {
+            const int sz = semantic_->typeSizeOf(stType);
+            if (sz > 8) bytes = static_cast<std::size_t>((sz + 7) / 8) * 8;
+        }
+        writer.raw(".align 8");
         writer.raw(".globl " + sym);
         writer.raw(".type " + sym + ", @object");
         writer.raw(sym + ":");
-        if (stType == "整128" || stType == "正128") {
+        if (canonStatic == "整128" || canonStatic == "正128") {
             writer.raw("    .quad 0");
             writer.raw("    .quad 0");
-        } else if (stType == "浮32") {
+        } else if (canonStatic == "浮32") {
             writer.raw("    .long " +
                        (!initText.empty() ? floatBitsHex(initText, false) : "0"));
-        } else if (stType == "浮64") {
+        } else if (canonStatic == "浮64") {
             writer.raw("    .quad " +
                        (!initText.empty() ? floatBitsHex(initText, true) : "0"));
+        } else if (bytes > 8) {
+            // 结构体静态：值本体按类型尺寸零初始化（初值由入口注入逐字段写）
+            writer.raw("    .zero " + std::to_string(bytes));
         } else {
-            writer.raw("    .quad 0");
+            // 标量静态：常量初值直存（整型/布尔/字符文本；字符串句柄等不可直存
+            //   形态保持 0——运行期由入口注入物化）
+            std::string text = "0";
+            if (!initText.empty() && (types::isInteger(canonStatic) ||
+                                      canonStatic == "布尔" ||
+                                      canonStatic == "字符")) {
+                text = initText;
+            }
+            writer.raw("    .quad " + text);
         }
         writer.comment("顶层静态 " + name + "（" + stType + "）");
         hasAny = true;

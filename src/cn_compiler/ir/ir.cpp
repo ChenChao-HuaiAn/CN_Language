@@ -501,8 +501,18 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
     if (semantic_ == nullptr) return "";
     std::string objType = "";
     if (node->object->getType() == NodeType::IdentifierExpr) {
-        objType = lookupSrcType(
-            static_cast<IdentifierExpr*>(node->object.get())->name);
+        const std::string objName =
+            static_cast<IdentifierExpr*>(node->object.get())->name;
+        objType = lookupSrcType(objName);
+        // 87-a（2026-09-12 第八十七轮）：顶层静态基址——静态名不在 varStack_
+        //   （lookupSrcType 空），须经全局静态类型表回退（与 exprSrcType 静态
+        //   分支同款）。原缺此回退 → 静态结构体字段访问 objType 空 →
+        //   decl==nullptr → 字段读静默降级常量 0（86-a「类型推导失败→静默降级」
+        //   同族，静态聚合面）。
+        if (objType.empty() && semantic_ != nullptr &&
+            semantic_->isGlobalStatic(objName)) {
+            objType = semantic_->globalStaticType(objName);
+        }
     } else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
@@ -611,6 +621,14 @@ void IRGenerator::emitBoundsCheck(const ir::IRValue& indexRaw, int arrayLen,
 ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
     if (node->getType() == NodeType::IdentifierExpr) {
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(node);
+        // 87-a（2026-09-12 第八十七轮）：顶层静态左值——?gstatic_名 符号地址即
+        //   存储位置本身（与 &静态 分支同款，plans/018 根治口径）。原实现直接
+        //   AddrOf(局部槽)：静态变量不在 varStack_（lookupVarName 空），结构体
+        //   整体赋值/成员链基址落到无效槽——静态聚合左值地址单一事实源。
+        if (semantic_ != nullptr && semantic_->isGlobalStatic(ident->name)) {
+            return emitResult(ir::Opcode::ConstString, {}, "ptr",
+                              "?gstatic_" + ident->name, node->location);
+        }
         const std::string unique = lookupVarName(ident->name);
         const std::string srcType = lookupSrcType(ident->name);
         // 缺陷修复（[&] 引用捕获左值）：参数槽存被捕获变量地址，取地址 = Load 参数槽
