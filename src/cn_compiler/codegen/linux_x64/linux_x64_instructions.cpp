@@ -691,8 +691,12 @@ void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
         const std::string& type = inst.type;
         if (isFloatType(type)) {
             const std::string vreg = "xmm0";
+            // 92-a 根治（H2）：宽度前缀必须按类型分派——原写死 qword ptr 使
+            //   f32 发射 movss + qword ptr（汇编器 operand size mismatch 直接
+            //   编译失败）；与 emitConstLoad/loadOperandToV 同规则、对齐 win-x64
+            //   后端（x64_instructions.cpp LoadPtr 早有 mp 分派）。
             writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + vreg +
-                        ", qword ptr [r10]");
+                        ", " + (type == "f64" ? "qword ptr" : "dword ptr") + " [r10]");
             emitStackStore(writer, regSlotOffset(inst.result.id), vreg, type);
             return;
         }
@@ -732,7 +736,10 @@ void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
     const std::string& type = inst.type;
     if (isFloatType(type)) {
         loadOperandToV(writer, inst.operands[1], "xmm0");
-        writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " qword ptr [r10], xmm0");
+        // 92-a 根治（H2）：宽度前缀按类型分派（原写死 qword ptr — f32 的
+        //   movss 配 qword ptr 汇编失败），与 LoadPtr 分支同规则。
+        writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " +
+                    (type == "f64" ? "qword ptr" : "dword ptr") + " [r10], xmm0");
         return;
     }
     if (type == "i128" || type == "u128") {

@@ -523,6 +523,8 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
         return;
     }
     // 公共类型（浮点优先 f64；整型取 rank 高者由语义层保证可转换）
+    // 92-a：浮点算术公共类型（f32 op f32 -> f32 单精度；跨类型统一 f64）
+    std::string floatCommon;
     if (!isFloat && left.type != right.type &&
         left.type != "i1" && right.type != "i1" &&
         left.type != "ptr" && right.type != "ptr") {
@@ -542,7 +544,8 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
             right = emitResult(ir::Opcode::Cast, {right}, common, "", node->location);
         }
     } else if (isFloat && left.type != right.type) {
-        // 整 + 浮：整侧转浮64；浮32 + 浮64：浮32转浮64
+        // 整 + 浮：整侧转浮64（整型无损转 f64=安全方向，规范「仅允许无损或宽化」）；
+        // 浮32 + 浮64：浮32转浮64
         const std::string common = "f64";
         if (left.type != common) {
             left = emitResult(ir::Opcode::Cast, {left}, common, "", node->location);
@@ -550,6 +553,14 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
         if (right.type != common) {
             right = emitResult(ir::Opcode::Cast, {right}, common, "", node->location);
         }
+        floatCommon = common;
+    } else if (isFloat) {
+        // 92-a 根治（H2）：同类型浮点保持操作数类型——浮32 op 浮32 = 单精度运算
+        //   （规格书「加浮32」变体 + Rust f32 语义）。原实现算术结果类型恒取
+        //   f64（阶段一简化），与 f32 操作数的 4 字节装载错配：movss 装载清零
+        //   xmm 高 96 位、addsd 把 f32 位模式当 f64 读（退化为 ~1e-315 非规格
+        //   化数，加法恒得 0），且结果按 8 字节存 4 字节槽（栈溢出破坏）。
+        floatCommon = left.type;
     }
     ir::Opcode opcode;
     std::string resultType;
@@ -557,7 +568,7 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
         // 结果类型推导：
         //   比较/逻辑 -> i1
         //   位运算/移位 -> 整型（取左操作数类型，与语义 commonNumericType 一致）
-        //   算术 -> 浮点取 f64（阶段一简化）/整型取左操作数类型
+        //   算术 -> 浮点取公共类型（92-a：f32/f64 精确，原恒 f64）/整型取左操作数类型
         switch (node->op) {
             case Operator::EqualEqual: case Operator::BangEqual:
             case Operator::Less: case Operator::LessEqual:
@@ -570,7 +581,7 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
                 resultType = left.type;
                 break;
             default:
-                resultType = isFloat ? "f64" : left.type;
+                resultType = isFloat ? floatCommon : left.type;
                 break;
         }
         lastExpr_ = emitResult(opcode, {left, right}, resultType, "", node->location);
@@ -792,7 +803,13 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 }
             }
             // 自增/自减：数值 x = x ± 1；指针 x = x ± 元素大小（Task 2.4）
-            std::string deltaText = "1";
+            // 92-a 根治（H2）：结果类型=操作数类型（原恒 "ptr"——浮点自增走整型
+            //   Add，只改 IEEE754 位模式最低位使 ++ 对浮点静默失效；写回按 8 字节
+            //   存 4 字节槽溢出）。浮点 delta 用同精度 1.0（ConstFloat 按类型入
+            //   常量池，浮32 得 1.0f）。
+            const bool floatIncOperand = (operand.type == "f32" ||
+                                          operand.type == "f64");
+            std::string deltaText = floatIncOperand ? "1.0" : "1";
             if (operand.type == "ptr") {
                 // 指针步进：元素大小。IR层指针统一为ptr，元素大小通过操作数
                 // 源码类型推断（结构体指针按结构体总大小，普通指针8字节，
@@ -804,11 +821,12 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 }
                 deltaText = std::to_string(ptrElemStride(srcType));
             }
-            ir::IRValue delta = emitResult(ir::Opcode::ConstInt, {}, "i64", deltaText,
-                                           node->location);
+            ir::IRValue delta = emitResult(
+                floatIncOperand ? ir::Opcode::ConstFloat : ir::Opcode::ConstInt, {},
+                floatIncOperand ? operand.type : "i64", deltaText, node->location);
             ir::IRValue result = emitResult(
                 node->op == Operator::Increment ? ir::Opcode::Add : ir::Opcode::Sub,
-                {operand, delta}, "ptr", "", node->location);
+                {operand, delta}, operand.type, "", node->location);
             // 仅当操作数为变量引用时写回（用唯一内部名定位槽）
             if (node->operand->getType() == NodeType::IdentifierExpr) {
                 IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->operand.get());
@@ -822,10 +840,10 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                             ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")},
                             "ptr", unique, node->location);
                         emit(ir::Opcode::StorePtr, {capAddr, result},
-                             ir::IRValue(), "", "ptr", node->location);
+                             ir::IRValue(), "", operand.type, node->location);
                     } else {
                         emit(ir::Opcode::Store, {result}, ir::IRValue(),
-                             lookupVarName(ident->name), "ptr", node->location);
+                             lookupVarName(ident->name), operand.type, node->location);
                     }
                 }
             }

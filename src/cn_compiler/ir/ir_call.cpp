@@ -325,8 +325,25 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             (argIs128 && !paramIs128)) {
             argVal = emitResult(ir::Opcode::Cast, {argVal}, "i64", "", node->location);
         } else if (argVal.type == "f32") {
-            // f32 实参提升为 f64（Win x64 ABI 浮点参数按 xmm 传双精度）
-            argVal = emitResult(ir::Opcode::Cast, {argVal}, "f64", "", node->location);
+            // 92-a 根治（H2）：f32 实参**不再无条件提升 f64**——原注释「Win x64
+            //   ABI 浮点参数按 xmm 传双精度」是错误假设：SysV AMD64 / Win64 /
+            //   AAPCS64 的 float 形参均在 xmm 低 32 位（仅 double 用满 64 位）。
+            //   无条件提升 → 被调方按 f32 读 xmm 低位 = double 位模式的低 32 位
+            //   （1.5 的 double 低 32 位为 0）→ 浮32 参数恒 0。
+            //   现按形参类型分派：形参 浮64 → 提升（隐式宽化，规范 §七）；
+            //   形参 浮32 → 原样单精度传递；变参/未知（实参超出形参表 = 变参
+            //   调用按 C 默认实参提升；内置 runtime 浮点形参为 double）→ 提升。
+            bool promoteF32 = true;
+            if (isDirect && semantic_ != nullptr) {
+                const auto paramTypes = semantic_->funcParamTypesOf(calleeName);
+                if (ai < paramTypes.size()) {
+                    promoteF32 = (types::canonical(paramTypes[ai]) == "浮64");
+                }
+            }
+            if (promoteF32) {
+                argVal = emitResult(ir::Opcode::Cast, {argVal}, "f64", "",
+                                    node->location);
+            }
         }
         args.push_back(argVal);
     }
