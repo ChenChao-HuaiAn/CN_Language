@@ -388,5 +388,38 @@ int typeSize(const std::string& typeRaw) {
     return 0;  // 数组/结构体/其他：由调用方递归计算
 }
 
+// ==================== 字符串元素容器/映射判定（语义与IR共用） ====================
+// 字符串元素容器判定：实例化名 前缀$元素类型 —— 元素类型恰为 字符串。
+//   注：嵌套形态（向量$映射$整64$字符串）元素是容器不是串，不予匹配
+//   （元素释放须按元素类型各自分派，此处收紧防误释放——原实现按 find("字符串")
+//   宽松匹配，对嵌套形态会以 元素=char* 语义释放容器对象指针）。
+//   76-a（2026-09-12 第七十六轮）：加 集合$字符串（探针 76-E/S1 实证：集合元素
+//   串无释放面——析构/清空路径泄漏；元素=独立平铺数组，模型同 向量/栈）。
+//   77-a（第七十七轮）：自 IR 层上提共享——语义层借出视图生命周期检查同一口径。
+bool isStringElemContainer(const std::string& canonClass) {
+    const std::size_t dl = canonClass.find('$');
+    if (dl == std::string::npos) return false;
+    const std::string head = canonClass.substr(0, dl);
+    const std::string elem = canonClass.substr(dl + 1);
+    if (head != "向量" && head != "链表" && head != "栈" && head != "队列" &&
+        head != "集合") {
+        return false;
+    }
+    return elem == "字符串";
+}
+
+// 字符串值映射判定（映射$K$字符串）——入容器位归一化用（映射值在实参下标1）。
+//   释放面由 IR 层的映射分支处理（__cn_map_free_strings/_slot——键/值两数组
+//   非单元素数组模型），不经 containerElemFreeFn（故不进 isStringElemContainer）。
+//   背景（探针 76-F 实证）：映射析构/清空会释放值槽句柄——不归一化=借用来源
+//   （形参/局部）句柄浅存 → 容器析构释放调用方串（UAF，74-a 缺陷①在映射上的重演）。
+bool isStringValuedMap(const std::string& canonClass) {
+    if (canonClass.rfind("映射$", 0) != 0) return false;
+    const std::size_t first = canonClass.find('$');
+    const std::size_t second = canonClass.find('$', first + 1);
+    if (second == std::string::npos) return false;
+    return canonClass.substr(second + 1) == "字符串";
+}
+
 } // namespace types
 } // namespace cn_compiler

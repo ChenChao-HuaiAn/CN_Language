@@ -1006,6 +1006,16 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         }
         // 检查方法体
         currentReturnType_ = mi.type;
+        // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：方法体为
+        //   独立函数级检查单元——保存/恢复外层状态（嵌套安全：泛型实例化触发
+        //   的方法体检查若嵌在其它检查期内，不会丢弃外层借出登记）
+        std::vector<SemanticAnalyzer::BorrowViewInfo> savedBorrowViews =
+            std::move(borrowViews_);
+        std::vector<SemanticAnalyzer::ContainerMutationInfo> savedBorrowMutations =
+            std::move(containerMutations_);
+        std::vector<std::unordered_map<std::string, std::size_t>> savedBorrowScopes =
+            std::move(borrowViewScopes_);
+        clearBorrowViewState();
         for (auto& stmt : member->body->statements) {
             checkStmt(stmt.get());
         }
@@ -1016,6 +1026,10 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
                                 "方法 '" + mi.name + "' 缺少返回语句，返回类型为 '" +
                                     mi.type + "'");
         }
+        checkBorrowViewLifetimes();
+        borrowViews_ = std::move(savedBorrowViews);
+        containerMutations_ = std::move(savedBorrowMutations);
+        borrowViewScopes_ = std::move(savedBorrowScopes);
         currentReturnType_.clear();
         popScope();
 

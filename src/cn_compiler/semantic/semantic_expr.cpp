@@ -246,6 +246,9 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         //   失败；继续供级联诊断最小化）。转移改写豁免窗口内跳过（visitVarDecl
         //   改写产物的常规检查不是用户代码的使用）。
         if (!inTransferRewrite_) reportMovedUse(node->name, node->location);
+        // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出视图
+        //   使用登记（活跃区间右端 + 跨作用域逃逸实时判定——容器先亡即报错）
+        noteBorrowViewUse(node->name, node->location);
         // A-1（引用参数）：表达式值是"被引用对象的值"（读取自动解引用），
         //   类型为剥 & 后的基础类型——与 IR 层 byRef 解引用读取一致；
         //   引用性仅保留在变量登记（IR byRef 标记）与参数签名（&）中
@@ -1039,6 +1042,17 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     // 检查右值
     std::string valueType = checkExpr(node->value.get());
 
+    // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：赋值位借出绑定
+    //   登记（借出视图转入既有变量：s = 表.元素(0)——容器内句柄浅拷；重新绑定
+    //   时更新活跃区间起点=新借用取代旧借用，NLL 语义同款）。
+    if (lastExprIsBorrowView_ && node->value.get() == lastBorrowCallNode_ &&
+        node->target->getType() == NodeType::IdentifierExpr) {
+        registerBorrowView(
+            static_cast<IdentifierExpr*>(node->target.get())->name,
+            node->location);
+        lastExprIsBorrowView_ = false;
+    }
+
     // plans/019 阶段4' A2（2026-09-11 方案甲）：赋值位字符* 借用收紧——
     //   字符串（拥有）变量赋值 字符* 借用视图须显式 字符串复制(...)（与
     //   初始化位 A1/A2 同款；拥有→借用自动、借用→拥有显式）。赋值给
@@ -1080,6 +1094,13 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
 
     // 复合赋值：+= -= 等要求数值
     if (isCompoundAssign(node->op)) {
+        // plans/019 阶段3 扩展（A21，第七十七轮）：复合赋值读旧值=使用借出视图
+        //   （活跃区间右端；字符串 += 拼接重析为二元同覆盖）
+        if (node->target->getType() == NodeType::IdentifierExpr) {
+            noteBorrowViewUse(
+                static_cast<IdentifierExpr*>(node->target.get())->name,
+                node->location);
+        }
         if (!isNumeric(targetType) || !isNumeric(valueType)) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "复合赋值要求数值操作数，实际为 '" + targetType +

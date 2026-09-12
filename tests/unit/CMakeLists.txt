@@ -40,6 +40,7 @@ add_executable(cn_unit_tests
     semantic/test_escape_check.cpp
     semantic/test_const_ref_check.cpp
     semantic/test_unsafe_boundary.cpp
+    semantic/test_borrowview_check.cpp
     semantic/test_string_compare_check.cpp
     semantic/test_semantic_generic.cpp
     semantic/test_reference_params.cpp

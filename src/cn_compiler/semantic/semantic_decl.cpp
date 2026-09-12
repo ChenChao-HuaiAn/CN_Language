@@ -207,6 +207,9 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   完全一致（安全保证=编译期源变量禁用；浅转移优化随阶段3）。
     std::string transferSrcName;  // plans/019 阶段1：转移改写源（豁免窗口收尾标记）
     int transferLine = 0;
+    // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：初始化位借出
+    //   调用标记捕获（checkExpr 后立即捕获——中间检查可能覆盖该标记）
+    bool initBorrowViewCaptured = false;
     if (node->initializer != nullptr &&
         node->initializer->getType() == NodeType::CallExpr) {
         CallExpr* initCall = static_cast<CallExpr*>(node->initializer.get());
@@ -297,6 +300,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (varType.empty() && node->initializer != nullptr) {
         // 类型推断：无显式类型时从初始值推断
         varType = checkExpr(node->initializer.get());
+        // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：捕获借出调用
+        //   标记（后续检查可能触发其它 checkExpr 覆盖 lastExprIsBorrowView_）；
+        //   须「顶层表达式即该借出调用」——字符串复制(表.元素(0)) 等包裹形态
+        //   已拥有化/被消费，不属借出视图（按 AST 节点指针精确比对）
+        initBorrowViewCaptured = (lastExprIsBorrowView_ &&
+                                  node->initializer.get() == lastBorrowCallNode_);
         // 46-c 宿主同款根治（2026-09-10 第四十九轮）：结构体值源回填写回 AST
         //   节点——语义与 IR 共享同一 AST 树，IR genVarDecl 的 srcType/槽布局
         //   （registerVarSlots 结构体多槽）全按 node->typeName 取类型；原仅更新
@@ -352,6 +361,9 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         } else {
             // 显式类型：检查初始值可隐式转换
             std::string initType = checkExpr(node->initializer.get());
+            // plans/019 阶段3 扩展（A21，第七十七轮）：捕获借出调用标记（同推断分支）
+            initBorrowViewCaptured = (lastExprIsBorrowView_ &&
+                                      node->initializer.get() == lastBorrowCallNode_);
             // plans/019 阶段4' A2（2026-09-11 方案甲）：字符* 借用视图装入拥有
             //   变量收紧——字符* → 字符串 须显式 字符串复制(...)（Rust &str ->
             //   String 的 to_string 显式哲学：分配成本可见）。A1 拦下标/成员/
@@ -455,6 +467,16 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         // 缺陷②配套（2026-09-03）：局部 常量 登记当前作用域常量集
         //   （赋值/自增目标拒绝用，isConstVarName）
         scopeConsts_.back().insert(node->name);
+    }
+    // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：初始化位借出
+    //   绑定登记【变量 s = 表.元素(0) / 结果<…> r = 表.读取(0)——容器内句柄
+    //   浅拷；登记来源容器与活跃区间起点，供「容器失效点/容器先亡 × 后续使用」
+    //   检查（NLL 顺序近似，Rust 借用检查器同构）】。须在 declareVar 之后
+    //   （绑定登记写入当前作用域层的 borrowViewScopes_）。
+    if (initBorrowViewCaptured) {
+        lastExprIsBorrowView_ = true;
+        registerBorrowView(node->name, node->location);
+        lastExprIsBorrowView_ = false;
     }
 }
 void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
@@ -626,6 +648,9 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     // 当前函数作用域起始索引：scopes_ 中索引 >= 该值的绑定属函数局部
     // （引用返回局部检查：返回本函数局部变量/按值参数地址 -> 悬垂引用报错）
     funcScopeStart_ = static_cast<int>(scopes_.size());
+    // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：函数级状态清空
+    //   （泛型实例化可能对同一 AST 二次检查；函数间互不污染）
+    clearBorrowViewState();
     // 阶段3（Task 3.9）：记录当前上下文函数名（友元函数访问检查用）
     currentFunctionName_ = node->name;
     // A-2（crate 分桶）：记录当前分析上下文模块名——类型/常量/静态引用按此解析
@@ -660,6 +685,10 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentConstRefParams_.clear();  // plans/019 阶段3：只读借用状态复位
     refLocalBases_.clear();     // plans/019 阶段2：逃逸分析状态为函数级
     ptrLocalPointees_.clear();
+    // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：函数级结算
+    //   （同作用域失效形态报错）+ 状态清空（须在 popScope 前——结算不依赖
+    //   scopes_，但保持一致时序）
+    checkBorrowViewLifetimes();
     funcScopeStart_ = -1;
     currentFunctionName_.clear();  // 阶段3：退出函数上下文
     currentModuleName_ = savedModule;  // A-2：恢复外层模块上下文

@@ -208,6 +208,10 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     // P3-18 补完：本轮默认非引用返回；决议到引用返回函数时置 true
     node->isRefReturnCall = false;
     lastExprIsRefReturn_ = false;
+    // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：本轮默认非
+    //   借出调用；方法分支决议到字符串元素容器借出方法时置 true（绑定位消费）
+    lastExprIsBorrowView_ = false;
+    lastBorrowCallNode_ = nullptr;
     // plans/019 阶段4' A2（2026-09-11 方案甲）：本轮默认非拥有字符串返回；
     //   决议到返回 字符串 的被调者时置 true（IR 初始化位/赋值位消费——登记
     //   RAII 依据；驻留文本 已改 字符* 返回=自动不置位）
@@ -835,6 +839,12 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             //   ——T 来源返回=借用（容器元素访问），保守不登记
             node->retOwnedString = (lastType_ == "字符串" &&
                                     ownerClass.find('$') == std::string::npos);
+            // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出调用
+            //   标记（字符串元素容器 元素/读取/栈顶/队首/头部元素/读取头部/
+            //   读取尾部/获取=容器内句柄浅拷）与容器失效点登记（删除/设置/
+            //   清空/弹出/出队/删除头部/删除尾部/释放内部数组）——绑定位
+            //   （声明初始化/赋值）消费标记，函数尾结算与活跃区间比对。
+            noteBorrowCallSite(*mem, clsName, methodName, node);
             lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
             return;
         }

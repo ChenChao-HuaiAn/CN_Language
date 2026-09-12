@@ -96,6 +96,18 @@ std::string literalTypeOf(const std::string& raw, bool isFloat);
 // 剥离字面量文本的后缀，返回纯数字文本（"123ULL" -> "123"，"3.5f" -> "3.5"）
 std::string stripLiteralSuffix(const std::string& raw);
 
+// ==================== 字符串元素容器/映射判定（语义与IR共用，单一事实源） ====================
+// 第七十七轮（A21 借出视图生命周期检查）：判定原在 IR 层 isStringElemContainer/
+//   isStringValuedMap（74-a/76-a 容器元素释放面确立），语义层新增借出视图生命周期
+//   检查需要同一口径——上提 types:: 共享，IR 层委托调用（避免双实现分叉）。
+
+// 字符串元素容器判定：实例化名 前缀$元素类型（向量/链表/栈/队列/集合），元素类型恰为 字符串。
+//   严格口径：嵌套形态（向量$映射$整64$字符串）元素是容器对象非字符串，不予匹配。
+bool isStringElemContainer(const std::string& canonClass);
+
+// 字符串值映射判定：映射$K$字符串——值侧恰为 字符串（键侧任意）。
+bool isStringValuedMap(const std::string& canonClass);
+
 // ==================== 128位整数文本工具（Task 完善A：i128 完整支持） ====================
 
 // 是否 128 位整数类型（整128/正128）

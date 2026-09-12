@@ -54,22 +54,11 @@ int IRGenerator::containerInsertValueArgIndex(const std::string& name) {
     return -1;
 }
 
-// 字符串元素容器判定：实例化名 前缀$元素类型 —— 元素类型恰为 字符串。
-//   注：嵌套形态（向量$映射$整64$字符串）元素是容器不是串，不予匹配
-//   （元素释放须按元素类型各自分派，此处收紧防误释放——原实现按 find("字符串")
-//   宽松匹配，对嵌套形态会以 元素=char* 语义释放容器对象指针）。
-//   76-a（2026-09-12 第七十六轮）：加 集合$字符串（探针 76-E/S1 实证：集合元素
-//   串无释放面——析构/清空路径泄漏；元素=独立平铺数组，模型同 向量/栈）。
 bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
-    const std::size_t dl = canonClass.find('$');
-    if (dl == std::string::npos) return false;
-    const std::string head = canonClass.substr(0, dl);
-    const std::string elem = canonClass.substr(dl + 1);
-    if (head != "向量" && head != "链表" && head != "栈" && head != "队列" &&
-        head != "集合") {
-        return false;
-    }
-    return elem == "字符串";
+    // 77-a（第七十七轮）：判定上提 types:: 共享（语义层借出视图生命周期检查
+    //   同一口径），此处委托调用——原实现与完整注释见 semantic/type_system.cpp
+    //   （含 76-a 集合扩面、嵌套形态严格口径两处沿革）。
+    return types::isStringElemContainer(canonClass);
 }
 
 // 76-a：字符串值映射判定（映射$K$字符串）——入容器位归一化用（映射值在实参下标1）。
@@ -78,11 +67,8 @@ bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
 //   背景（探针 76-F 实证）：映射析构/清空会释放值槽句柄——不归一化=借用来源
 //   （形参/局部）句柄浅存 → 容器析构释放调用方串（UAF，74-a 缺陷①在映射上的重演）。
 bool IRGenerator::isStringValuedMap(const std::string& canonClass) {
-    if (canonClass.rfind("映射$", 0) != 0) return false;
-    const std::size_t first = canonClass.find('$');
-    const std::size_t second = canonClass.find('$', first + 1);
-    if (second == std::string::npos) return false;
-    return canonClass.substr(second + 1) == "字符串";
+    // 77-a：同 上提 types::（原实现与沿革注释见 semantic/type_system.cpp）。
+    return types::isStringValuedMap(canonClass);
 }
 
 // 容器元素数组字段名：向量/栈=数据（平铺数组）；链表/队列=值表（槽+下一索引链）

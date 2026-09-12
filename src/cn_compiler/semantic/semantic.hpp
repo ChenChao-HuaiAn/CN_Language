@@ -394,6 +394,56 @@ private:
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
+    // ==================== plans/019 阶段3 扩展：A21 借出视图生命周期检查 ====================
+    // （第七十七轮；plans/020 矩阵 A21 格靶子：借出视图 × 容器移除=UAF）
+    // 借出视图 = 容器内元素句柄的浅拷（字符串元素容器的 元素/读取/栈顶/队首/
+    //   头部元素/读取头部/读取尾部/获取 返回值）——容器释放该元素（失效方法）
+    //   或容器作用域结束（析构释放元素）后，借出视图即悬垂。
+    // 判据 = NLL 顺序近似（Rust 非词法生命周期：引用活跃区间=绑定→最后一次使用），
+    //   零运行时开销（纯编译期，与 Rust 借用检查器 E0502 同构）。
+    // 两个子形态（探针 77/77-2 实证，宿主侧内容损坏）：
+    //   ①同作用域失效：容器失效方法调用落在（绑定行, 最后使用行）之间；
+    //   ②跨作用域逃逸：借出视图在容器声明作用域之外仍被使用（容器先亡）。
+    struct BorrowViewInfo {
+        std::string viewVar;        // 借出视图变量名
+        std::string container;      // 来源容器变量名
+        int containerVarId = 0;     // 容器变量身份 ID（declareVar 分配，防同名遮蔽误配）
+        int bindLine = 0;           // 绑定行（诊断定位）
+        int lastUseLine = 0;        // 最后使用行（NLL 活跃区间右端）
+        std::string containerType;  // 容器实例化名（诊断展示）
+        SourceLocation bindLoc;     // 绑定位置（诊断用）
+        bool reported = false;      // 已报错（同绑定不重复刷屏）
+    };
+    struct ContainerMutationInfo {
+        std::string container;
+        int containerVarId = 0;
+        int line = 0;
+        std::string method;
+        std::string containerType;
+    };
+    // 借出方法名判定（元素/读取/栈顶/队首/头部元素/读取头部/读取尾部/获取）
+    static bool isBorrowViewMethod(const std::string& methodName);
+    // 容器失效方法判定（按实例化头分派——名称相同语义不同的 清空 在此区分：
+    //   链表/队列/映射 清空=全量释放；向量 清空=仅计数归零不释放，不入面）
+    static bool isContainerInvalidateCall(const std::string& containerCanon,
+                                          const std::string& methodName);
+    // 字符串元素容器/字符串值映射统一判定（types:: 共享，与 IR 释放面同口径）
+    static bool isBorrowSourceContainer(const std::string& canonType);
+    // 变量身份 ID：沿作用域链解析（与 lookupVar 同序）——返回 -1=不可见/未命中，
+    //   0=可见但无 ID（未追踪绑定），>0=身份 ID；outScopeIndex 回填层索引
+    int lookupVarId(const std::string& name, int* outScopeIndex) const;
+    // 方法调用点登记（visitCallExpr 方法分支）：借出视图标记 或 容器失效点登记
+    void noteBorrowCallSite(const class MemberExpr& mem, const std::string& clsName,
+                            const std::string& methodName,
+                            const class CallExpr* callNode);
+    // 借出绑定登记（声明初始化位/赋值位；同层同名=重新绑定，更新既有记录）
+    void registerBorrowView(const std::string& viewVar, const SourceLocation& loc);
+    // 借出视图使用登记（visitIdentifierExpr 根拦截点：更新活跃区间右端 +
+    //   跨作用域逃逸实时判定——容器已不可见即容器先亡）
+    void noteBorrowViewUse(const std::string& name, const SourceLocation& loc);
+    // 函数级结算（函数体/方法体尾部）：同作用域失效形态报错 + 状态清空
+    void checkBorrowViewLifetimes();
+    void clearBorrowViewState();
     // plans/019 阶段3（2026-09-10）：常量引用借用纪律——①实参为当前函数
     //   常量引用参数而形参为可变引用（只读借用不能借出可变）；②同一调用中
     //   可变引用位与常量引用位实参解析到同一基础变量（借用互斥第一版：
@@ -659,6 +709,26 @@ private:
     //   与 lookupVar 同序解析（内层遮蔽正确：内层同名新声明在新作用域层，查不到
     //   外层转移标记）。
     std::vector<std::unordered_map<std::string, int>> scopeMoved_;
+    // plans/019 阶段3 扩展（第七十七轮 A21 借出视图生命周期检查）：
+    //   borrowViews_ = 全部借出绑定（函数级结算用）；borrowViewScopes_ 与 scopes_
+    //   平行（层 -> 变量名 -> borrowViews_ 下标；内层遮蔽/块出口清理）；
+    //   containerMutations_ = 容器失效方法调用点；scopeVarIds_ 与 scopes_ 平行
+    //   （变量身份 ID，防同名遮蔽误配容器）。
+    std::vector<BorrowViewInfo> borrowViews_;
+    std::vector<ContainerMutationInfo> containerMutations_;
+    std::vector<std::unordered_map<std::string, std::size_t>> borrowViewScopes_;
+    std::vector<std::unordered_map<std::string, int>> scopeVarIds_;
+    int nextVarId_ = 1;
+    // visitCallExpr 方法分支写、visitVarDecl/visitAssignmentExpr 读：最近一次
+    //   求值是否为「字符串元素容器借出调用」（借出绑定识别）
+    bool lastExprIsBorrowView_ = false;
+    // 最近一次借出调用的 AST 节点（绑定位须「顶层表达式即该调用」才登记——
+    //   防 字符串复制(表.元素(0))/入容器等包裹形态误登记为借出视图）
+    const void* lastBorrowCallNode_ = nullptr;
+    std::string lastBorrowContainer_;
+    int lastBorrowContainerId_ = 0;
+    int lastBorrowContainerScope_ = 0;
+    std::string lastBorrowContainerType_;
     // plans/019 阶段1：转移改写豁免窗口——visitVarDecl 把 initializer 改写为
     //   实参标识符后、常规初始化检查（checkExpr 实参）期间置 true，
     //   visitIdentifierExpr 的已转移检查在此窗口内跳过（该"使用"是改写产物

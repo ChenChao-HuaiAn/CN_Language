@@ -117,6 +117,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/class_resolver.cpp
     src/cn_compiler/semantic/error_analysis.cpp
     src/cn_compiler/semantic/generics.cpp
+    src/cn_compiler/semantic/semantic_borrowview.cpp
 )
 target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_compiler_parser cn_compiler_common)
 

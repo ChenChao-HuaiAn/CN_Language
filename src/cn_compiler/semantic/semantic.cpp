@@ -253,12 +253,17 @@ void SemanticAnalyzer::pushScope() {
     scopes_.emplace_back();
     scopeConsts_.emplace_back();  // 缺陷②配套：与 scopes_ 平行维护
     scopeMoved_.emplace_back();   // plans/019 阶段1：与 scopes_ 平行维护
+    // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：与 scopes_ 平行维护
+    borrowViewScopes_.emplace_back();  // 借出绑定登记（层 -> 名 -> 记录下标）
+    scopeVarIds_.emplace_back();       // 变量身份 ID（同名遮蔽防误配容器）
 }
 void SemanticAnalyzer::popScope() {
     if (scopes_.size() > 1) {
         scopes_.pop_back();
         if (scopeConsts_.size() > 1) scopeConsts_.pop_back();  // 与 scopes_ 同步
         if (scopeMoved_.size() > 1) scopeMoved_.pop_back();    // 与 scopes_ 同步
+        if (borrowViewScopes_.size() > 1) borrowViewScopes_.pop_back();
+        if (scopeVarIds_.size() > 1) scopeVarIds_.pop_back();
     }
 }
 
@@ -1191,6 +1196,10 @@ bool SemanticAnalyzer::declareVar(const std::string& name, const std::string& ty
         return false;
     }
     current[name] = canonicalType(type);
+    // plans/019 阶段3 扩展（A21，第七十七轮）：变量身份 ID 分配（与 scopes_ 平行；
+    //   借出视图检查用——同名遮蔽时区分「同一容器」与「同名不同变量」）
+    if (scopeVarIds_.size() < scopes_.size()) scopeVarIds_.resize(scopes_.size());
+    if (!scopeVarIds_.empty()) scopeVarIds_.back()[name] = nextVarId_++;
     return true;
 }
 bool SemanticAnalyzer::lookupVar(const std::string& name, std::string& type) const {
