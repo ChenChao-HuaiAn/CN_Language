@@ -101,6 +101,99 @@ bool IRGenerator::isOwnedFieldSlot(const std::string& unique) const {
            ownedFieldOrder_.end();
 }
 
+// 85-a（2026-09-12 第八十五轮）：返回值「借用来源」判定（聚合返回位所有权保证）。
+//   聚合返回契约（79-a/82-a）：返回值的拥有型句柄归**调用方**——各接收位一律按
+//   owned 处理（声明/赋值=浅拷接管、入容器=元素槽独立、实参位=调用后清理）。
+//   因此被调方必须保证返回值自带所有权（Rust `-> T` 同款：返回值必须是拥有值）。
+//   借用来源（按值形参=调用方 place 的浅拷副本 / 全局静态 / 成员链 / 下标 /
+//   解引用）的句柄归**别人**：直接 memcpy 返回 = 句柄共享 → 调用方（或其 place
+//   持有者）释放后返回值字段悬垂（探针 P38/P40 两侧实测打印乱码）。
+//   拥有来源（拥有局部=移出 / 调用返回 / 字面量 / 转移）= 保持零拷贝直传。
+bool IRGenerator::isBorrowedAggregateSource(const Expr* e) const {
+    if (e == nullptr) return false;
+    // 77-a 借出视图方法**豁免**：容器内元素读出接口（元素/读取/栈顶/队首/头部元素/
+    //   读取头部/读取尾部/获取）**设计上**即返回容器内句柄的借出视图——Rust
+    //   `Vec::get -> &T` 同款：调用方按污染名（借出）处理、**不登记释放**，其生命周期
+    //   由 77-a 编译期检查器（容器失效点/容器先亡）保证。返回值不是「拥有值」，
+    //   拥有化落堆必与调用方“不释放”的口径冲突（实测 235/234/238/240 残留断言
+    //   全失）——故这些方法体（如 向量<T>.元素 的 `返回 数据[位置];`）不适用本规则。
+    //   与语义层 A2 字符串检查的「泛型单态化体内豁免」同口径（同一 Rust 类比）。
+    if (function_ != nullptr) {
+        const std::string& fn = function_->name;
+        const std::size_t dot = fn.rfind('.');
+        const std::size_t dollar = fn.rfind('$');
+        const std::size_t sep = (dot == std::string::npos)
+                                    ? dollar
+                                    : ((dollar == std::string::npos)
+                                           ? dot
+                                           : (dot > dollar ? dot : dollar));
+        const std::string last =
+            (sep == std::string::npos) ? fn : fn.substr(sep + 1);
+        if (SemanticAnalyzer::isBorrowViewMethod(last)) return false;
+    }
+    switch (e->getType()) {
+        case NodeType::IdentifierExpr: {
+            const std::string& nm = static_cast<const IdentifierExpr*>(e)->name;
+            const std::string uniq = lookupVarName(nm);
+            if (!uniq.empty()) {
+                // 按值形参：被调方持有的是调用方 place 的浅拷副本（借出视图）
+                if (function_ != nullptr) {
+                    for (const std::string& p : function_->paramUniques) {
+                        if (p == uniq) return true;
+                    }
+                }
+                return false;   // 拥有局部 → 所有权移出（零拷贝）
+            }
+            // 不在函数作用域（无局部绑定）：全局/静态/类字段（方法体裸字段名）
+            //   ——句柄归别人，一律按借用（与语义层 A2 返回位判定同口径）
+            return true;
+        }
+        case NodeType::MemberExpr:      // 成员/类字段借出（含形参/全局/局部子对象）
+            return true;
+        case NodeType::IndexExpr:       // 下标借出（数组元素）
+            return true;
+        case NodeType::UnaryExpr:       // *p 解引用借出
+            return static_cast<const UnaryExpr*>(e)->op == Operator::Deref;
+        case NodeType::SelfExpr:        // 自身（this 所指对象字段的基）
+            return true;
+        default:
+            // 调用返回（拥有契约）/ 结构体字面量 / 转移(...) / 三元与转换结果
+            return false;
+    }
+}
+
+// 85-a：聚合返回位所有权保证（返回类型含拥有型串字段 + 借用来源 → 物化独立副本）。
+//   调用点：visitReturnStmt（单个 if + endReturn）。返回 true=已处理（返回地址出
+//   srcAddr），false=走原路径（拥有来源/无串字段/非聚合返回）。
+bool IRGenerator::genOwnedAggregateReturn(Expr* value, const SourceLocation& loc,
+                                          std::string& srcAddr) {
+    if (value == nullptr || semantic_ == nullptr || function_ == nullptr) return false;
+    if (!function_->structReturn || function_->structReturnSize <= 0) return false;
+    const std::string retCanon = types::canonical(function_->returnTypeSrc);
+    if (ownedStrFieldsOf(retCanon).empty()) return false;
+    if (!isBorrowedAggregateSource(value)) return false;
+    // 物化临时：新槽（preFree=false——未初始化内存无旧句柄可释放）；deepCopy=true
+    //   （源保持拥有——形参 place/全局/容器元素各由其持有者释放）。临时槽**不登记**
+    //   字段释放名单：句柄随返回值移出（epilogue 按 structReturnSize 拷入调用方
+    //   retbuf），登记即双重释放。
+    const std::string temp = "__retown" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"), temp, "ptr",
+         loc);
+    registerVarSlots(temp, retCanon);
+    ir::IRValue ownBase = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(temp, "i64")}, "ptr", temp,
+                                     loc);
+    // 源地址取**左值地址**而非读值：借用来源均为 place（形参槽/成员字段地址/
+    //   下标元素地址/解引用=指针值本身）。genExpr 对结构体 place 的读值语义不定
+    //   （解引用形态实测降级为 LoadPtr 首字 = 把结构体首字段当地址，探针 P40④
+    //   基线段错误 rc=139）；lvalueAddress 是左值地址单一事实源。
+    ir::IRValue src = lvalueAddress(value);
+    emitStructCopyWithFields(ownBase, src, retCanon, loc, /*preFree=*/false,
+                             /*deepCopy=*/true);
+    srcAddr = ownBase.toString();
+    return true;
+}
+
 // ==================== ② 释放发射（单点事实源） ====================
 
 // 单字段释放 + 清槽（无条件；句柄 0/驻留常量经 __cn_str_free 空安全跳过）

@@ -621,6 +621,18 @@ private:
                                   bool deepCopy = true);
     // 该聚合局部是否在字段释放名单中（写入位 pre-free 判据：仅拥有槽可释放旧值）
     bool isOwnedFieldSlot(const std::string& unique) const;
+    // 85-a：返回值「借用来源」判定（聚合返回位所有权保证用）——返回类型含拥有型
+    //   串字段时，返回值的句柄必须归调用方所有（调用方各接收位一律按 owned
+    //   处理：声明/赋值=浅拷接管、入容器=元素槽独立）。借用来源（按值形参/全局
+    //   静态/成员链/下标/解引用）的句柄归**别人**（调用方实参place/全局/容器），
+    //   直接 memcpy 返回 = 句柄共享 → 调用方释放其持有者后返回值字段悬垂（探针
+    //   P38/P40 两侧实测乱码）。Rust 对照：`-> T` 必须有所有权，借用来源须 clone。
+    //   拥有局部（移出）/调用返回/字面量/转移 = 拥有来源（保持零拷贝）。
+    bool isBorrowedAggregateSource(const Expr* e) const;
+    // 85-a：聚合返回位所有权保证发射（借用来源 → 物化独立副本并返回其地址）。
+    //   调用点 ir_stmt.cpp visitReturnStmt：true 时调用方 endReturn(srcAddr)。
+    bool genOwnedAggregateReturn(Expr* value, const SourceLocation& loc,
+                                 std::string& srcAddr);
 
     // ---- 74-a（2026-09-11 第七十四轮）：容器元素所有权归一化 ----
     // 背景（探针 74 实证）：容器析构**无条件释放元素串**（__cn_*_free_strings 由

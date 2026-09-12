@@ -173,6 +173,14 @@ public:
     //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
     static bool isTransferCall(const class CallExpr* node);
 
+    // 85-a（2026-09-12 第八十五轮）：借出方法名判定**上提 public**——IR 侧聚合
+    //   返回位所有权保证（ir_fields.cpp isBorrowedAggregateSource）须按被调方
+    //   方法名豁免：容器元素读出接口（元素/读取/栈顶/队首/头部元素/读取头部/
+    //   读取尾部/获取）**设计上**返回借出视图（调用方不登记释放；生命周期由
+    //   77-a 检查器保证），返回值不得拥有化（Rust `Vec::get -> &T` 同款）。
+    //   单一事实源：语义层 77-a 与 IR 侧 85-a 共用同一清单。
+    static bool isBorrowViewMethod(const std::string& methodName);
+
     // plans/019 阶段4' A2（2026-09-11 第七十二轮 72-a 根治）：签名键是否为泛型
     //   函数单态化实例（精确判定替代 sigKey.find('$') 符号名模式——后者把跨模块
     //   链接键 模块$名 误判为泛型产物，令拥有型字符串契约跨模块整体失效）。
@@ -426,7 +434,7 @@ private:
         std::string containerType;
     };
     // 借出方法名判定（元素/读取/栈顶/队首/头部元素/读取头部/读取尾部/获取）
-    static bool isBorrowViewMethod(const std::string& methodName);
+    //   ——85-a：声明上提 public（IR 侧同用，见 public 段同名声明的注释）
     // 容器失效方法判定（按实例化头分派——名称相同语义不同的 清空 在此区分：
     //   链表/队列/映射 清空=全量释放；向量 清空=仅计数归零不释放，不入面）
     static bool isContainerInvalidateCall(const std::string& containerCanon,

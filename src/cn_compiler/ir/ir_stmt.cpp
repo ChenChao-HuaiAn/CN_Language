@@ -78,6 +78,21 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                 return;
             }
         }
+        // 85-a（2026-09-12 第八十五轮）：聚合返回位所有权保证——返回类型含拥有型
+        //   串字段（结构体/结果/可选）而返回表达式是**借用来源**（按值形参/全局
+        //   静态/成员链/下标/解引用）时，物化独立副本（memcpy + 字段级 __cn_str_copy）
+        //   再返回。否则返回值句柄与调用方 place/全局共享 → 调用方释放其持有者后
+        //   返回值字段悬垂（探针 P38/P40：`盒子 收 = 收盒(盒子{名=字符串复制(...)})`
+        //   跨块读出乱码，两侧同现；数据正确性/安全级）。
+        //   Rust 对照：`-> T` 必须有所有权，借用来源须 clone；拥有局部（移出）/
+        //   调用返回/字面量/转移=拥有来源，保持零拷贝（原路径不变）。
+        //   实现归属 ir_fields.cpp（79-a 拥有权单一归属文件）。
+        std::string ownedRetAddr;
+        if (genOwnedAggregateReturn(node->value.get(), node->location,
+                                    ownedRetAddr)) {
+            endReturn(ownedRetAddr);
+            return;
+        }
         // P3-18 补完（2026-08）：引用返回函数——返回值取"被引用左值的地址"
         //   （返回地址而非值快照）；引用返回调用链本身已是地址（ptr）直接复用。
         ir::IRValue value;
