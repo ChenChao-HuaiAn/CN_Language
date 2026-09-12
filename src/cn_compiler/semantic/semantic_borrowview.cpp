@@ -68,6 +68,84 @@ bool SemanticAnalyzer::isBorrowSourceContainer(const std::string& canonType) {
            types::isStringValuedMap(canonType);
 }
 
+// 表达式路径文本重建（标识符/成员/下标/解引用）——容器引用键的成员链形态用。
+//   下标统一记 `[]`（不展开下标表达式：`p[0].表` 与 `p[1].表` 同键——保守合并，
+//   不同下标的区分列为诚实边界）；解引用记 `*` 前缀；未知形态记 `?`（调用方拒绝）。
+void SemanticAnalyzer::buildPathText(const Expr* e, std::string& out) {
+    if (e == nullptr) {
+        out += "?";
+        return;
+    }
+    switch (e->getType()) {
+        case NodeType::IdentifierExpr:
+            out += static_cast<const IdentifierExpr*>(e)->name;
+            break;
+        case NodeType::MemberExpr: {
+            const MemberExpr* m = static_cast<const MemberExpr*>(e);
+            buildPathText(m->object.get(), out);
+            out += ".";
+            out += m->memberName;
+            break;
+        }
+        case NodeType::IndexExpr:
+            buildPathText(static_cast<const IndexExpr*>(e)->object.get(), out);
+            out += "[]";
+            break;
+        case NodeType::UnaryExpr: {
+            const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+            if (u->op == Operator::Deref) out += "*";
+            buildPathText(u->operand.get(), out);
+            break;
+        }
+        default:
+            out += "?";
+            break;
+    }
+}
+
+// 表达式 → 容器引用键（77-a 扩展②：成员链接收者支持）。
+//   标识符 → 键=变量名；成员链/下标链/解引用 → 键=基础名.成员路径文本（基础名经
+//   refReturnLvalueBase 解剖，ID 取基础名）；其余形态（调用/字面量/二元等）→ false。
+bool SemanticAnalyzer::resolveContainerRef(const Expr* e, std::string& outKey,
+                                           int& outVarId) const {
+    outKey.clear();
+    outVarId = 0;
+    if (e == nullptr) return false;
+    const NodeType t = e->getType();
+    if (t == NodeType::IdentifierExpr) {
+        outKey = static_cast<const IdentifierExpr*>(e)->name;
+        if (outKey.empty()) return false;
+        outVarId = lookupVarId(outKey, nullptr);
+        return true;
+    }
+    if (t == NodeType::MemberExpr || t == NodeType::IndexExpr ||
+        (t == NodeType::UnaryExpr &&
+         static_cast<const UnaryExpr*>(e)->op == Operator::Deref)) {
+        std::string base;
+        if (!refReturnLvalueBase(e, base) || base.empty()) return false;
+        std::string path;
+        buildPathText(e, path);
+        if (path.empty() || path.find('?') != std::string::npos) return false;
+        outKey = path;
+        outVarId = lookupVarId(base, nullptr);
+        return true;
+    }
+    return false;
+}
+
+// 按名解析活跃借出登记（与 lookupVar 同序：从内到外第一层含该名的层——内层同名的
+//   重新声明=新变量，遮蔽语义正确）。SIZE_MAX=未命中。
+std::size_t SemanticAnalyzer::findActiveBorrowView(const std::string& name) const {
+    if (borrowViews_.empty() || borrowViewScopes_.empty()) {
+        return static_cast<std::size_t>(-1);
+    }
+    for (std::size_t i = borrowViewScopes_.size(); i-- > 0;) {
+        auto it = borrowViewScopes_[i].find(name);
+        if (it != borrowViewScopes_[i].end()) return it->second;
+    }
+    return static_cast<std::size_t>(-1);
+}
+
 // 变量身份 ID：沿作用域链解析（与 lookupVar 同序——内层遮蔽正确）。
 //   返回 -1=不可见（未声明/已出作用域），0=可见但无 ID（未追踪绑定，如全局层），
 //   >0=身份 ID。ID 由 declareVar 分配（同名不同声明=不同 ID，防跨作用域误配）。
@@ -98,13 +176,11 @@ void SemanticAnalyzer::noteBorrowCallSite(const MemberExpr& mem,
     lastExprIsBorrowView_ = false;
     lastBorrowCallNode_ = nullptr;
     if (!isBorrowSourceContainer(clsName)) return;
-    if (mem.object == nullptr ||
-        mem.object->getType() != NodeType::IdentifierExpr) {
-        return;
-    }
-    const std::string recv =
-        static_cast<const IdentifierExpr*>(mem.object.get())->name;
-    const int id = lookupVarId(recv, nullptr);
+    // 接收者 → 容器引用键（标识符=名；成员链=基础名.成员路径——77-a 扩展②；
+    //   调用/字面量接收者不登记=诚实边界）
+    std::string recv;
+    int id = 0;
+    if (!resolveContainerRef(mem.object.get(), recv, id)) return;
     if (isBorrowViewMethod(methodName)) {
         lastExprIsBorrowView_ = true;
         lastBorrowCallNode_ = callNode;   // 仅「顶层即该调用」的绑定位才登记
@@ -170,21 +246,17 @@ void SemanticAnalyzer::registerBorrowView(const std::string& viewVar,
 //     = 容器先亡（析构已释放元素），立即报错（位置=使用点，体验优于函数尾）。
 void SemanticAnalyzer::noteBorrowViewUse(const std::string& name,
                                         const SourceLocation& loc) {
-    if (borrowViews_.empty() || borrowViewScopes_.empty()) return;
-    std::size_t idx = static_cast<std::size_t>(-1);
-    for (std::size_t i = borrowViewScopes_.size(); i-- > 0;) {
-        auto it = borrowViewScopes_[i].find(name);
-        if (it != borrowViewScopes_[i].end()) {
-            idx = it->second;
-            break;
-        }
-    }
+    const std::size_t idx = findActiveBorrowView(name);
     if (idx == static_cast<std::size_t>(-1) || idx >= borrowViews_.size()) return;
     BorrowViewInfo& bv = borrowViews_[idx];
     if (loc.getLine() > bv.lastUseLine) bv.lastUseLine = loc.getLine();
     if (bv.reported) return;
     // 容器可见性判定：全局静态=进程生命周期（永远可见，豁免）；
     //   -1=不可见（已出作用域）→ 逃逸；>0 且与绑定 ID 不同=指到别的同名变量 → 逃逸。
+    // 逃逸判定只对「标识符容器」形态（成员链容器的可见性判定复杂——键含 `.`/`[`/`*`
+    //   时跳过，登记为诚实边界；成员链仍参与失效点判定）。
+    const bool plainName = bv.container.find_first_of(".[*") == std::string::npos;
+    if (!plainName) return;
     const bool isGlobalStatic =
         globalStatics_.count(bv.container) > 0 ||
         globalStaticsQualified_.count(bv.container) > 0;
@@ -213,6 +285,55 @@ void SemanticAnalyzer::noteBorrowViewUse(const std::string& name,
     }
 }
 
+// 调用点同源互斥（77-a 扩展①，跨函数别名窄面）：同一调用的实参列表中，
+//   「容器引用键 = C」与「来源为 C 的借出视图实参」并存 → 拒绝。
+//   动机（探针 A 实证 UAF）：`帮忙改(表, 借出)` —— 被调函数形参 表 与调用方容器
+//   共享句柄（CN 容器形参=借用），被调函数若删除元素，调用方的借出视图即悬垂
+//   （实测长度 3 vs 期望 13）；编译器无法知道被调者是否修改容器 → 保守拒绝
+//   （与阶段 3b「同调用可变×只读互斥」同哲学）。Rust 对照：`f(&mut v, &v[0])`
+//   被借用检查器拒绝（同调用容器与其视图不可并存）。
+//   覆盖面=「实参标识符已登记为借出视图」（探针 A 形态）；内联形态
+//   `f(表, 表.元素(0))` 与经结构体/全局中转的别名列诚实边界。
+void SemanticAnalyzer::checkBorrowViewCallArgs(CallExpr* node) {
+    if (node == nullptr || node->arguments.size() < 2) return;
+    if (borrowViews_.empty()) return;
+    for (std::size_t i = 0; i < node->arguments.size(); ++i) {
+        const Expr* a = node->arguments[i].get();
+        if (a == nullptr || a->getType() != NodeType::IdentifierExpr) continue;
+        const std::string viewName =
+            static_cast<const IdentifierExpr*>(a)->name;
+        const std::size_t vi = findActiveBorrowView(viewName);
+        if (vi == static_cast<std::size_t>(-1) || vi >= borrowViews_.size()) {
+            continue;
+        }
+        if (borrowViews_[vi].reported) continue;
+        // 同调用其他实参中查找同源容器
+        for (std::size_t j = 0; j < node->arguments.size(); ++j) {
+            if (j == i) continue;
+            std::string ckey;
+            int cid = 0;
+            if (!resolveContainerRef(node->arguments[j].get(), ckey, cid)) {
+                continue;
+            }
+            if (ckey != borrowViews_[vi].container) continue;
+            if (borrowViews_[vi].containerVarId > 0 && cid > 0 &&
+                cid != borrowViews_[vi].containerVarId) {
+                continue;
+            }
+            borrowViews_[vi].reported = true;
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "实参 '" + viewName + "' 是容器 '" + borrowViews_[vi].container +
+                    "' 的借出视图（绑定 行" +
+                    std::to_string(borrowViews_[vi].bindLine) +
+                    "），与该容器同时作为实参传入——被调函数若修改容器该视图即悬垂；"
+                    "须先 字符串复制(...) 取拥有副本"
+                    "（Rust 借用检查器同类拒绝：同调用容器与其视图不可并存）");
+            break;
+        }
+    }
+}
+
 // 函数级结算（checkFunctionBody / 类方法体 / lambda 体尾部）：
 //   同作用域失效形态——容器失效点落在（绑定行, 最后使用行）之间 → 借出视图悬垂。
 //   诊断按（绑定行, 失效行）排序输出（跨嵌套函数定义顺序稳定）。
@@ -229,10 +350,12 @@ void SemanticAnalyzer::checkBorrowViewLifetimes() {
             if (bv.reported || bv.lastUseLine <= bv.bindLine) continue;
             for (const auto& mu : containerMutations_) {
                 if (mu.line <= bv.bindLine || mu.line >= bv.lastUseLine) continue;
+                // 容器身份：引用键相同 ∧（ID 相同或任一为 0——成员链基础名/全局）
                 const bool same =
-                    (bv.containerVarId > 0 && mu.containerVarId > 0)
-                        ? (bv.containerVarId == mu.containerVarId)
-                        : (bv.container == mu.container);
+                    (bv.container == mu.container) &&
+                    ((bv.containerVarId > 0 && mu.containerVarId > 0)
+                         ? (bv.containerVarId == mu.containerVarId)
+                         : true);
                 if (!same) continue;
                 Hit h;
                 h.bindLine = bv.bindLine;

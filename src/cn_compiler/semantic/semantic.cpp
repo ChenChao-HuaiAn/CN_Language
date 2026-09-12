@@ -2082,6 +2082,12 @@ bool SemanticAnalyzer::analyze(Program* program) {
 std::string SemanticAnalyzer::checkExpr(Expr* node) {
     if (node == nullptr) return "未知";
     node->accept(*this);
+    // plans/019 阶段3 扩展（A21 77-a 扩展①，第七十七轮后续）：调用点同源互斥——
+    //   `f(容器, 该容器的借出视图)` 保守拒绝（跨函数别名窄面；实参检查已毕=
+    //   借出登记/容器类型均就绪，此处单点覆盖全部调用形态）
+    if (node->getType() == NodeType::CallExpr) {
+        checkBorrowViewCallArgs(static_cast<CallExpr*>(node));
+    }
     return lastType_;
 }
 void SemanticAnalyzer::checkBlock(BlockStmt* node) {

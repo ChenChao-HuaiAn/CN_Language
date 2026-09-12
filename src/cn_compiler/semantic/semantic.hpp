@@ -404,10 +404,14 @@ private:
     // 两个子形态（探针 77/77-2 实证，宿主侧内容损坏）：
     //   ①同作用域失效：容器失效方法调用落在（绑定行, 最后使用行）之间；
     //   ②跨作用域逃逸：借出视图在容器声明作用域之外仍被使用（容器先亡）。
+    // 容器引用键（container 字段）：标识符接收者=变量名（如 `表`）；成员链接收者=
+    //   规范化路径文本（如 `架.表`——基础名 + 成员路径，下标统一记 `[]`、解引用记 `*`）；
+    //   containerVarId=接收者基础名的变量身份 ID（0=成员链基础名不可解析/全局）。
+    //   同名遮蔽防护：键相同且（ID 相同或任一为 0）视为同一容器。
     struct BorrowViewInfo {
         std::string viewVar;        // 借出视图变量名
-        std::string container;      // 来源容器变量名
-        int containerVarId = 0;     // 容器变量身份 ID（declareVar 分配，防同名遮蔽误配）
+        std::string container;      // 来源容器引用键（标识符=名/成员链=路径文本）
+        int containerVarId = 0;     // 容器（基础名）身份 ID——同名遮蔽防误配
         int bindLine = 0;           // 绑定行（诊断定位）
         int lastUseLine = 0;        // 最后使用行（NLL 活跃区间右端）
         std::string containerType;  // 容器实例化名（诊断展示）
@@ -415,7 +419,7 @@ private:
         bool reported = false;      // 已报错（同绑定不重复刷屏）
     };
     struct ContainerMutationInfo {
-        std::string container;
+        std::string container;      // 容器引用键（同 BorrowViewInfo.container 口径）
         int containerVarId = 0;
         int line = 0;
         std::string method;
@@ -432,6 +436,18 @@ private:
     // 变量身份 ID：沿作用域链解析（与 lookupVar 同序）——返回 -1=不可见/未命中，
     //   0=可见但无 ID（未追踪绑定），>0=身份 ID；outScopeIndex 回填层索引
     int lookupVarId(const std::string& name, int* outScopeIndex) const;
+    // 表达式 → 容器引用键（标识符=名；成员链/下标链/解引用=基础名解析 + 路径文本；
+    //   其余形态（调用/字面量等）返回 false）——成员链接收者支持（77-a 扩展②）
+    bool resolveContainerRef(const class Expr* e, std::string& outKey,
+                             int& outVarId) const;
+    // 表达式路径文本重建（标识符/成员/下标/解引用；供容器引用键用）
+    static void buildPathText(const class Expr* e, std::string& out);
+    // 按名解析活跃借出登记（与 lookupVar 同序的作用域链 + 内层遮蔽；SIZE_MAX=未命中）
+    std::size_t findActiveBorrowView(const std::string& name) const;
+    // 调用点同源互斥（77-a 扩展①，跨函数别名窄面）：同一调用中「容器 C」与
+    //   「来源为 C 的借出视图实参」并存 → 拒绝（被调函数可能修改容器；Rust 借用
+    //   检查器对 `f(&mut v, &v[0])` 同类拒绝）。checkExpr 出口统一挂点。
+    void checkBorrowViewCallArgs(class CallExpr* node);
     // 方法调用点登记（visitCallExpr 方法分支）：借出视图标记 或 容器失效点登记
     void noteBorrowCallSite(const class MemberExpr& mem, const std::string& clsName,
                             const std::string& methodName,
