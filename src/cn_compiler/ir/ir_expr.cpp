@@ -1005,7 +1005,13 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
     ir::IRValue srcAddr;
     std::string srcUniqueId;  // 标识符源唯一名（拷贝构造 byRef 传参用）
     if (valueNode->getType() == NodeType::IndexExpr ||
-        valueNode->getType() == NodeType::MemberExpr) {
+        valueNode->getType() == NodeType::MemberExpr ||
+        valueNode->getType() == NodeType::TernaryExpr) {
+        // 86-a（2026-09-12 复审缺陷①）：三元聚合右值——lvalueAddress 尾部分支
+        //   按 genExpr(三元) 处理 = visitTernaryExpr 汇合块 Load 的**选中 place
+        //   地址**（聚合三元地址透传约定）→ 与成员/下标来源同构的源地址。
+        //   原落「其他」→ srcAddr.id<0 返回 false → 调用方落标量 StorePtr
+        //   8 字节静默损坏（P47 形六实证：成员位赋值后跨块读乱码）。
         srcAddr = lvalueAddress(valueNode);
     } else if (valueNode->getType() == NodeType::IdentifierExpr) {
         const std::string srcName =
@@ -1122,7 +1128,8 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                  semantic_->isClassType(fieldStructW))) {
                 ir::IRValue fieldAddrW = lvalueAddress(node->target.get());
                 if (emitStructWholeAssign(fieldAddrW, node->value.get(),
-                                          fieldStructW, node->location)) {
+                                          fieldStructW, node->location,
+                                          /*preFree=*/true)) {
                     lastExpr_ = fieldAddrW;  // 值=目标地址（链式语义与 D2 一致）
                     return;
                 }
@@ -1668,6 +1675,16 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
             //   .正常/.值 读到地址值导致越界判断失效（Task 6.1 E2E 发现）。
             isStructReturnCall = true;
             valueSrcType = targetSrcType;
+        } else if (node->value->getType() == NodeType::TernaryExpr) {
+            // 86-a（2026-09-12 复审缺陷①）：三元聚合右值——类型递归两分支推导
+            //   （exprSrcType 单一事实源，86-a 新增 TernaryExpr 分支）。原缺此
+            //   分支 → valueSrcType 空 → 落标量 Store 路径只写 8 字节（P46
+            //   实证：丙 = (真 ? 甲 : 乙) 后跨块读乱码）。
+            //   源地址 = lvalueAddress(三元) = genExpr(三元) = 选中 place 地址
+            //   （visitTernaryExpr 聚合约定：分支 Store 地址、汇合 Load 地址），
+            //   与成员/下标来源同构 → 后续 emitStructCopyWithFields 深拷（源非
+            //   调用返回）正确落堆。
+            valueSrcType = exprSrcType(node->value.get());
         }
         if (semantic_->isStructType(types::canonical(targetSrcType)) &&
             semantic_->isStructType(types::canonical(valueSrcType))) {
@@ -2277,6 +2294,33 @@ void IRGenerator::emitStructInitTo(StructInitExpr* init, const ir::IRValue& targ
                 fieldSrcTypeName = f.type;
                 fieldIrType = mapType(f.type);
                 break;
+            }
+        }
+        // 86-a（2026-09-12 复审缺陷①扩展面）：字段值为**结构体类型**（标识符/
+        //   成员/下标/三元/调用来源——非嵌套字面量形态）——整体拷贝写入（Rust
+        //   place 拷贝语义；与声明/赋值位 emitStructCopyWithFields 同款）。
+        //   原实现落下方标量路径 genExpr+StorePtr 只写 8 字节（首字段值），>8 字节
+        //   或含串字段的结构体字段静默损坏（探针 t244v 实证：`箱{ 内盒 = 收, … }`
+        //   后 内盒.名 读出失败——收=拥有变量存活仍坏=写入本身错，非悬垂）。
+        //   深拷=非调用来源（标识符/成员/下标/三元=值语义拷贝，源保持拥有）；
+        //   调用返回=浅拷接管（retbuf 一次性物化槽，与声明位「返回接收接管」同）。
+        //   目标字段=字面量新槽（未初始化）→ preFree=false。
+        {
+            const std::string fieldCanonW = types::canonical(fieldSrcTypeName);
+            const NodeType vnt = fieldPair.second->getType();
+            const bool isAggValue =
+                semantic_->isStructType(fieldCanonW) &&
+                (vnt == NodeType::IdentifierExpr || vnt == NodeType::MemberExpr ||
+                 vnt == NodeType::IndexExpr || vnt == NodeType::TernaryExpr ||
+                 vnt == NodeType::CallExpr);
+            if (isAggValue) {
+                const bool srcIsCallW = (vnt == NodeType::CallExpr);
+                ir::IRValue srcAddrW = srcIsCallW
+                                           ? genExpr(fieldPair.second.get())
+                                           : lvalueAddress(fieldPair.second.get());
+                emitStructCopyWithFields(fieldAddr, srcAddrW, fieldCanonW, loc,
+                                         /*preFree=*/false, /*deepCopy=*/!srcIsCallW);
+                continue;
             }
         }
         // 79-a：字符串字段写入归一化（来源分级——借用来源复制落堆，字段独立

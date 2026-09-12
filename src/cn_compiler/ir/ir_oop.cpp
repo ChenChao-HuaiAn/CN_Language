@@ -892,6 +892,17 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
         }
         case NodeType::SelfExpr:
             return currentClass_;
+        case NodeType::TernaryExpr: {
+            // 86-a（2026-09-12 复审缺陷①）：三元结果的源码类型——递归真/假分支
+            //   （语义层已保证两分支类型统一；防御：真分支空时取假分支）。
+            //   原缺此分支 → 三元聚合右值的类型推导为空 → 赋值/声明/返回等消费位
+            //   退化（P46 赋值位落标量 8 字节路径 = 静默数据损坏；P41 返回位不深拷
+            //   = 悬垂）。与 84-d「类型推导失败→静默降级」同族范式，第三次复发。
+            const TernaryExpr* te = static_cast<const TernaryExpr*>(node);
+            std::string t = exprSrcType(te->trueValue.get());
+            if (t.empty()) t = exprSrcType(te->falseValue.get());
+            return t;
+        }
         case NodeType::SuperExpr:
             if (semantic_ != nullptr && !currentClass_.empty()) {
                 const ClassInfo* ci = semantic_->findClass(currentClass_);

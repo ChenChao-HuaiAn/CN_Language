@@ -532,6 +532,12 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
                 else if (inner->memberName == "有值") objType = "布尔";
             }
         }
+    } else if (node->object->getType() == NodeType::TernaryExpr) {
+        // 86-a（2026-09-12 复审缺陷①）：三元成员基（(条 ? 甲 : 乙).名）——对象
+        //   类型经 exprSrcType 递归两分支推导（86-a 新增 TernaryExpr 分支）。
+        //   原缺此分支 → objType 空 → 字段偏移缺失（读降级 / 写错址），P47 形八
+        //   实证（(真 ? 甲 : 乙).号 读 0）。与 84-d「类型推导失败→静默降级」同族。
+        objType = exprSrcType(node->object.get());
     } else if (node->object->getType() == NodeType::IndexExpr) {
         IndexExpr* idx = static_cast<IndexExpr*>(node->object.get());
         if (idx->object->getType() == NodeType::IdentifierExpr) {

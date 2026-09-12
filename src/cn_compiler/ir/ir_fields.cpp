@@ -118,6 +118,8 @@ bool IRGenerator::isBorrowedAggregateSource(const Expr* e) const {
     //   拥有化落堆必与调用方“不释放”的口径冲突（实测 235/234/238/240 残留断言
     //   全失）——故这些方法体（如 向量<T>.元素 的 `返回 数据[位置];`）不适用本规则。
     //   与语义层 A2 字符串检查的「泛型单态化体内豁免」同口径（同一 Rust 类比）。
+    //   86-a：豁免判定=方法名 ∈ 清单 **且** 所属类 ∈ 容器集合（下方）——名字单独
+    //   不构成豁免依据（P44 用户同名函数误伤实证）。
     if (function_ != nullptr) {
         const std::string& fn = function_->name;
         const std::size_t dot = fn.rfind('.');
@@ -129,7 +131,25 @@ bool IRGenerator::isBorrowedAggregateSource(const Expr* e) const {
                                            : (dot > dollar ? dot : dollar));
         const std::string last =
             (sep == std::string::npos) ? fn : fn.substr(sep + 1);
-        if (SemanticAnalyzer::isBorrowViewMethod(last)) return false;
+        if (SemanticAnalyzer::isBorrowViewMethod(last)) {
+            // 86-a（2026-09-12 复审缺陷③）：豁免必须带**容器类型约束**——豁免依据是
+            //   「stdlib 容器读出接口设计上返回借出视图」（77-a 台账），与方法名本身
+            //   无关。P44 实证：用户顶层函数恰名 获取（合法标识符）+ 返回 借用形参
+            //   → 纯名字匹配被误豁免深拷 → 句柄共享悬垂乱码（两侧同现）。
+            //   同源先例：77-a 借出检查 isBorrowSourceContainer 前置；72-a 教训
+            //   「精确判定替代符号名模式」（isGenericFuncInstanceName）。
+            //   约束口径=字符串元素容器 / 含串结构体元素容器 / 字符串值映射
+            //   （与 74-a/76-a/81-a 容器释放面同一集合）。
+            const std::string owner = currentClass_.empty()
+                                          ? std::string()
+                                          : types::canonical(currentClass_);
+            if (!owner.empty() &&
+                (types::isStringElemContainer(owner) ||
+                 isOwnedStrFieldElemContainer(owner) ||
+                 types::isStringValuedMap(owner))) {
+                return false;
+            }
+        }
     }
     switch (e->getType()) {
         case NodeType::IdentifierExpr: {
@@ -156,8 +176,19 @@ bool IRGenerator::isBorrowedAggregateSource(const Expr* e) const {
             return static_cast<const UnaryExpr*>(e)->op == Operator::Deref;
         case NodeType::SelfExpr:        // 自身（this 所指对象字段的基）
             return true;
+        case NodeType::TernaryExpr: {
+            // 86-a（2026-09-12 复审缺陷①）：三元 = 借用来源的**透传包装**——
+            //   visitTernaryExpr 对聚合分支按「选中 place 的地址」透传（分支 Store
+            //   地址、汇合 Load 地址），值语义与选中分支同款。任一分支为借用来源
+            //   → 整个三元为借用（须深拷归一化）。P41 实证：原 default 判 false
+            //   → 按位 memcpy 直传 → 与选中 place 的句柄共享 → 悬垂乱码（宿主
+            //   数据正确性级；v2 侧同款为段错误 rc=139）。
+            const TernaryExpr* te = static_cast<const TernaryExpr*>(e);
+            return isBorrowedAggregateSource(te->trueValue.get()) ||
+                   isBorrowedAggregateSource(te->falseValue.get());
+        }
         default:
-            // 调用返回（拥有契约）/ 结构体字面量 / 转移(...) / 三元与转换结果
+            // 调用返回（拥有契约）/ 结构体字面量 / 转移(...) / 转换结果
             return false;
     }
 }
