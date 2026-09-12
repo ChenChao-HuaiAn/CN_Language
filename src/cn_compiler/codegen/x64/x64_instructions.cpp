@@ -970,9 +970,12 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
 // ==================== 比较与逻辑 ====================
 
 // 比较运算：整型 cmp op1, op2；浮点 ucomisd/ucomiss op1, op2；setcc al ; movzx 结果
-// 浮点比较（Task 2.3）：ucomisd 设置 CF/ZF 标志（xmm0 < xmm1 -> CF=1；相等 -> ZF=1）
-//   Lt -> setb（CF）；Le -> setbe（CF或ZF）；Gt -> seta（CF=0且ZF=0）；Ge -> setae
-//   Eq -> sete（ZF）；Ne -> setne。NaN 时 ZF=CF=PF=1（保守按"不等"处理）
+// 浮点比较（2026-09-13 第九十一轮 H1 根治，对齐 Rust f64 比较 = IEEE ordered）：
+//   原 setcc 直配（Lt->setb / Le->setbe / Eq->sete / Ne->setne）在 NaN 时因
+//   ucomisd 置 ZF=CF=PF=1，判出「NaN==NaN 真 / NaN!=NaN 假 / NaN<x 真」的非
+//   IEEE 结果（arm64 后端 mi/ls/gt/ge 组合本已正确，x86 两后端=缺陷面）。
+//   修复：< / <= 交换操作数走 seta/setae（NaN 时 CF=1 自然判假，LLVM ordered
+//   比较同款编码）；== / != 加 setnp/setp 组合。
 void X64CodeGenerator::emitCompare(AsmWriter& writer, const ir::IRInstruction& inst) {
     std::string dst = resultText(inst.result);
     std::string op1 = operandText(inst.operands[0]);
@@ -983,21 +986,37 @@ void X64CodeGenerator::emitCompare(AsmWriter& writer, const ir::IRInstruction& i
         const std::string load = isDouble ? "movsd" : "movss";
         const std::string cmp = isDouble ? "ucomisd" : "ucomiss";
         const std::string mp = isDouble ? "qword ptr " : "dword ptr ";
-        writer.line(load + " xmm0, " + mp + op1);
-        writer.line(load + " xmm1, " + mp + op2);
+        // 交换装载：Lt/Le 用「op2 vs op1 + seta/setae」等价表达（NaN 安全）
+        const bool 交换 = (inst.opcode == ir::Opcode::Lt ||
+                           inst.opcode == ir::Opcode::Le);
+        const std::string& 左文本 = 交换 ? op2 : op1;
+        const std::string& 右文本 = 交换 ? op1 : op2;
+        writer.line(load + " xmm0, " + mp + 左文本);
+        writer.line(load + " xmm1, " + mp + 右文本);
         writer.line(cmp + " xmm0, xmm1");
-        // 根据比较操作码选择 setcc（浮点标志语义与整型不同）
-        std::string cc;
         switch (inst.opcode) {
-            case ir::Opcode::Eq: cc = "sete"; break;
-            case ir::Opcode::Ne: cc = "setne"; break;
-            case ir::Opcode::Lt: cc = "setb"; break;
-            case ir::Opcode::Le: cc = "setbe"; break;
-            case ir::Opcode::Gt: cc = "seta"; break;
-            case ir::Opcode::Ge: cc = "setae"; break;
-            default: cc = "setne"; break;
+            case ir::Opcode::Eq:
+                writer.line("sete al");
+                writer.line("setnp cl");
+                writer.line("and al, cl");
+                break;
+            case ir::Opcode::Ne:
+                writer.line("setne al");
+                writer.line("setp cl");
+                writer.line("or al, cl");
+                break;
+            case ir::Opcode::Lt:
+            case ir::Opcode::Gt:
+                writer.line("seta al");   // 交换后 Lt=右>左；Gt=左>右（NaN 假）
+                break;
+            case ir::Opcode::Le:
+            case ir::Opcode::Ge:
+                writer.line("setae al");  // 同上（NaN 假）
+                break;
+            default:
+                writer.line("setne al");
+                break;
         }
-        writer.line(cc + " al");
         writer.line("movzx eax, al");
         writer.line("mov " + dst + ", eax");
         return;

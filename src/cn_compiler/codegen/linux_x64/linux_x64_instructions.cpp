@@ -516,7 +516,13 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
 
 // ==================== 比较与逻辑 ====================
 
-// 比较运算：整型 cmp r10, r9 + setcc；浮点 ucomisd/ucomiss + setcc（与 X64 同映射）
+// 比较运算：整型 cmp r10, r9 + setcc；浮点 ucomisd/ucomiss + NaN 安全 setcc。
+// 浮点语义（2026-09-13 第九十一轮 H1 根治，对齐 Rust f64 比较 = IEEE ordered）：
+//   原 setcc 直配（Lt->setb / Le->setbe / Eq->sete / Ne->setne）在 NaN 时因
+//   ucomisd 置 ZF=CF=PF=1，判出「NaN==NaN 真 / NaN!=NaN 假 / NaN<x 真」的非
+//   IEEE 结果（arm64 后端 mi/ls/gt/ge 组合本已正确，x86 两后端=缺陷面）。
+//   修复：< / <= 交换操作数走 seta/setae（NaN 时 CF=1 自然判假，LLVM ordered
+//   比较同款编码）；== / != 加 setnp/setp 组合（各 2 条额外指令）。
 void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
                                         const ir::IRInstruction& inst) {
     const std::string& cmpType = inst.operands[0].type;
@@ -524,23 +530,57 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
     const bool isUnsigned = (cmpType == "u8" || cmpType == "u16" ||
                              cmpType == "u32" || cmpType == "u64");
     if (isFloat) {
-        loadOperandToV(writer, inst.operands[0], "xmm0");
-        loadOperandToV(writer, inst.operands[1], "xmm1");
-        writer.line(std::string("ucomis") + (cmpType == "f64" ? "d" : "s") + " xmm0, xmm1");
-    } else {
-        loadOperandToX(writer, inst.operands[0], "r10");
-        loadOperandToX(writer, inst.operands[1], "r9");
-        // 32 位类型（i32/u32/i1/窄型）用 32 位比较（cmp r10d, r9d）——
-        //   i32 变量装载（mov r10d 清高32=零扩展位模式）与 64 位常量装载
-        //   （mov r9, -1 全1）在 64 位 cmp 下位模式不一致（负数枚举 -1 ==
-        //   -1 误判不等实测）；低 32 位比较与 ARM64 的 w9/w10 策略语义一致
-        const bool wideCmp = (cmpType == "i64" || cmpType == "u64" ||
-                              cmpType == "ptr");
-        writer.line(wideCmp ? "cmp r10, r9" : "cmp r10d, r9d");
+        const bool isDouble = (cmpType == "f64");
+        const std::string cmp = std::string("ucomis") + (isDouble ? "d" : "s");
+        // 交换装载：Lt/Le 用「op2 vs op1 + seta/setae」等价表达（NaN 安全）
+        const bool 交换 = (inst.opcode == ir::Opcode::Lt ||
+                           inst.opcode == ir::Opcode::Le);
+        if (交换) {
+            loadOperandToV(writer, inst.operands[1], "xmm0");
+            loadOperandToV(writer, inst.operands[0], "xmm1");
+        } else {
+            loadOperandToV(writer, inst.operands[0], "xmm0");
+            loadOperandToV(writer, inst.operands[1], "xmm1");
+        }
+        writer.line(cmp + " xmm0, xmm1");
+        switch (inst.opcode) {
+            case ir::Opcode::Eq:
+                writer.line("sete r9b");
+                writer.line("setnp r10b");
+                writer.line("and r9b, r10b");
+                break;
+            case ir::Opcode::Ne:
+                writer.line("setne r9b");
+                writer.line("setp r10b");
+                writer.line("or r9b, r10b");
+                break;
+            case ir::Opcode::Lt:
+            case ir::Opcode::Gt:
+                writer.line("seta r9b");   // 交换后 Lt=右>左；Gt=左>右（NaN 假）
+                break;
+            case ir::Opcode::Le:
+            case ir::Opcode::Ge:
+                writer.line("setae r9b");  // 同上（NaN 假）
+                break;
+            default:
+                writer.line("setne r9b");
+                break;
+        }
+        writer.line("movzx r10, r9b");
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
+        return;
     }
+    loadOperandToX(writer, inst.operands[0], "r10");
+    loadOperandToX(writer, inst.operands[1], "r9");
+    // 32 位类型（i32/u32/i1/窄型）用 32 位比较（cmp r10d, r9d）——
+    //   i32 变量装载（mov r10d 清高32=零扩展位模式）与 64 位常量装载
+    //   （mov r9, -1 全1）在 64 位 cmp 下位模式不一致（负数枚举 -1 ==
+    //   -1 误判不等实测）；低 32 位比较与 ARM64 的 w9/w10 策略语义一致
+    const bool wideCmp = (cmpType == "i64" || cmpType == "u64" ||
+                          cmpType == "ptr");
+    writer.line(wideCmp ? "cmp r10, r9" : "cmp r10d, r9d");
     // setcc -> movzx 到 64 位（setcc 只写 8 位，movzx 清高位保证 store 确定性）
-    const std::string cc = setccFor(inst.opcode, isUnsigned, isFloat);
-    writer.line(cc + " r9b");
+    const std::string cc = setccFor(inst.opcode, isUnsigned, isFloat);    writer.line(cc + " r9b");
     writer.line("movzx r10, r9b");
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i1");
 }
