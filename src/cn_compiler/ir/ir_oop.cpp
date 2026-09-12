@@ -13,6 +13,7 @@
 //   NewObject.extra = "类名|大小字节"；VirtualCall.extra = "类名.虚方法名"；
 //   VtableAddr.extra = 类名；DeleteObject.extra = 类名
 // 规范：英文API命名，中文仅注释；函数<=100行
+#include <functional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -168,7 +169,6 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     genClassDestructorCalls();
     genStringFrees();
     stringTainted_.clear();
-    fieldTainted_.clear();
     ownedStringOrder_.clear();
     ownedClassOrder_.clear();
     ownedFieldOrder_.clear();
@@ -420,13 +420,15 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     //   头部/删除尾部）经 __cn_seq_free_slot（释放 + 槽清零，幂等不变量）。
     const bool isFull = (mi.name == ("~" + base) || mi.name == "清空");
     bool isSingle = false;
+    bool isMove = false;   // 81-a：元素移动挂点（移位循环单点，按元素类型注入）
     std::string indexParam;  // 单元素析构的索引参数名（析构元素=索引）；空=从字段
     std::string indexField;  // 单元素析构的索引字段名（链表 头索引/尾索引）；空=从参数
     if (mi.name == "析构元素") { isSingle = true; indexParam = "索引"; }
     else if (mi.name == "析构被移除") { isSingle = true; indexParam = "索引"; }
     else if (mi.name == "删除头部") { isSingle = true; indexField = "头索引"; }
     else if (mi.name == "删除尾部") { isSingle = true; indexField = "尾索引"; }
-    if (!isFull && !isSingle) return;
+    else if (mi.name == "移动元素") { isMove = true; }   // 81-a：元素移动挂点
+    if (!isFull && !isSingle && !isMove) return;
     // 76-a：字符串元素的单槽释放只服务「**唯一持有者**槽」（被移除槽）——
     //   析构被移除（向量/集合 删除前释放的被移除槽）、删除头部/删除尾部
     //   （链表 被摘槽：出链后无其他槽引用）；析构元素（移位目标槽/末尾移出槽）
@@ -440,6 +442,61 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     if (tit != genericTypeParams_.end()) elemType = tit->second;
     if (elemType.empty()) return;
     const std::string elemCanon = types::canonical(elemType);
+    // ---- 81-a：元素移动挂点（移位循环单点，所有元素类型统一注入）----
+    //   注入：CopyStruct(数据[目标] ← 数据[源], 步长) + **源槽资源清零**——含拥有型
+    //   串字段的元素：字段串句柄随 memcpy 移交目标槽，源槽清零使目标槽成为唯一
+    //   持有者（Rust `ptr::copy` + 源失效同款，零拷贝）。无串字段元素 = 纯 memcpy
+    //   （标量/字符串/类对象，零行为变化）。调用方（stdlib 移位循环）保证目标槽
+    //   旧值已清（删除=被移除槽先行释放+清零；插入/前移=上一步移动已清零源槽）。
+    //   背景（探针 P8 实证）：原移位写成 `数据[移动] = 数据[移动 + 1]` 走 79-a 的
+    //   结构体整体赋值深拷（preFree + memcpy + __cn_str_copy）——既多一次分配，
+    //   又把源槽句柄留在超范围槽（容器析构不遍历）=泄漏 1/元素。
+    if (mi.name == "移动元素") {
+        const std::string dstUniqueM = lookupVarName("目标");
+        const std::string srcUniqueM = lookupVarName("源");
+        const std::string thisUniqueMv = lookupVarName("自身");
+        if (dstUniqueM.empty() || srcUniqueM.empty() || thisUniqueMv.empty()) return;
+        const int arrayOffM = semantic_->classFieldOffset(canonClass, arrayField);
+        const int strideM = semantic_->typeSizeOf(elemCanon);
+        if (arrayOffM < 0 || strideM <= 0) return;
+        ir::IRValue selfPtrMv = emitResult(ir::Opcode::Load,
+                                           {ir::IRValue::var(thisUniqueMv, "ptr")},
+                                           "ptr", thisUniqueMv, loc);
+        ir::IRValue arrayAddrM = emitResult(ir::Opcode::FieldAddr, {selfPtrMv}, "ptr",
+                                            std::to_string(arrayOffM), loc);
+        ir::IRValue arrayPtrM = emitResult(ir::Opcode::LoadPtr, {arrayAddrM}, "ptr", "",
+                                           loc);
+        ir::IRValue dstPos = emitResult(ir::Opcode::Load,
+                                        {ir::IRValue::var(dstUniqueM, "i64")}, "i64",
+                                        dstUniqueM, loc);
+        ir::IRValue srcPos = emitResult(ir::Opcode::Load,
+                                        {ir::IRValue::var(srcUniqueM, "i64")}, "i64",
+                                        srcUniqueM, loc);
+        ir::IRValue dstAddr = emitResult(
+            ir::Opcode::Add,
+            {arrayPtrM,
+             emitResult(ir::Opcode::Mul,
+                        {dstPos, ir::IRValue::constant(std::to_string(strideM), "i64")},
+                        "i64", "", loc)},
+            "ptr", "", loc);
+        ir::IRValue srcAddr = emitResult(
+            ir::Opcode::Add,
+            {arrayPtrM,
+             emitResult(ir::Opcode::Mul,
+                        {srcPos, ir::IRValue::constant(std::to_string(strideM), "i64")},
+                        "i64", "", loc)},
+            "ptr", "", loc);
+        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+             std::to_string(strideM), "void", loc);
+        // 源槽资源清零（句柄已随 memcpy 移交目标槽；只清点字段槽不释放——联合体安全）
+        for (const auto& f : ownedStrFieldsOf(elemCanon)) {
+            ir::IRValue fAddr = emitResult(ir::Opcode::FieldAddr, {srcAddr}, "ptr",
+                                           std::to_string(f.offset), loc);
+            ir::IRValue zeroM = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+            emit(ir::Opcode::StorePtr, {fAddr, zeroM}, ir::IRValue(), "", "ptr", loc);
+        }
+        return;
+    }
     // ---- 字符串元素：单槽/全量释放经运行时辅助（槽清零=幂等，同 75-a 模型）----
     if (elemCanon == "字符串") {
         const std::string thisUniqueS = lookupVarName("自身");
@@ -482,6 +539,50 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
              ir::IRValue(), "__cn_seq_free_slot", "void", loc);
         return;
     }
+    // ---- 81-a（第八十一轮）：元素 = 含拥有型串字段的结构体（含嵌套结构体/结果/可选）----
+    //   元素槽的字段串由 stdlib `数据[n] = 值` 结构体写入深拷（79-a）保证「容器
+    //   独有或驻留常量」——本分支补**容器消亡/移除路径的释放面**（原缺口：每元素
+    //   泄漏其字段串，宿主/v2 同缺，探针 P1/P2 实证）：
+    //     · 全量（~容器/清空）：按元素模型遍历（平铺/链游）逐元素释放字段串
+    //       （嵌套结构体递归 + 结果/可选 联合体条件释放——emitOwnedStrFieldFreesAt）；
+    //     · 单槽（析构被移除/删除头部/删除尾部）：唯一持有者槽单次释放；
+    //   释放体自带「释放+清槽」幂等（多路径共享槽安全，plans/020 移植纪律 7）。
+    if (isOwnedStrFieldElemContainer(canonClass)) {
+        const std::string thisUniqueE = lookupVarName("自身");
+        if (thisUniqueE.empty()) return;
+        const int arrayOffE = semantic_->classFieldOffset(canonClass, arrayField);
+        const int countOffE = semantic_->classFieldOffset(canonClass, "元素数量");
+        const int strideE = semantic_->typeSizeOf(elemCanon);
+        if (arrayOffE < 0 || countOffE < 0 || strideE <= 0) return;
+        ir::IRValue selfPtrE = emitResult(ir::Opcode::Load,
+                                          {ir::IRValue::var(thisUniqueE, "ptr")},
+                                          "ptr", thisUniqueE, loc);
+        ir::IRValue arrayAddrE = emitResult(ir::Opcode::FieldAddr, {selfPtrE}, "ptr",
+                                            std::to_string(arrayOffE), loc);
+        ir::IRValue arrayPtrE = emitResult(ir::Opcode::LoadPtr, {arrayAddrE}, "ptr", "",
+                                          loc);
+        const std::function<void(const ir::IRValue&)> releaseElem =
+            [&](const ir::IRValue& elemAddr) {
+                emitOwnedStrFieldFreesAt(elemAddr, elemCanon, loc);
+            };
+        if (isFull) {
+            ir::IRValue countAddrE = emitResult(ir::Opcode::FieldAddr, {selfPtrE},
+                                                "ptr", std::to_string(countOffE), loc);
+            ir::IRValue countE = emitResult(ir::Opcode::LoadPtr, {countAddrE}, "i64",
+                                            "", loc);
+            emitContainerElemWalk(canonClass, selfPtrE, arrayPtrE, countE, strideE, loc,
+                                  releaseElem);
+            return;
+        }
+        if (!isSingle || !strOwnedSlot) return;
+        ir::IRValue countAddrE2 = emitResult(ir::Opcode::FieldAddr, {selfPtrE}, "ptr",
+                                             std::to_string(countOffE), loc);
+        ir::IRValue countE2 = emitResult(ir::Opcode::LoadPtr, {countAddrE2}, "i64", "",
+                                         loc);
+        emitSingleElemRelease(canonClass, selfPtrE, arrayPtrE, countE2, strideE,
+                              indexParam, indexField, loc, releaseElem);
+        return;
+    }
     // T 须为有析构类：类 + 析构方法（沿继承链合并后的 methods 表）
     //   76-a：析构被移除（唯一持有者槽）只服务字符串——有析构类该槽的析构由
     //   析构元素 链（向量 删除循环首步）/删除头部/删除尾部 原路径负责，零行为变化
@@ -512,89 +613,189 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     ir::IRValue countAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
                                        std::to_string(countOff), loc);
     ir::IRValue count = emitResult(ir::Opcode::LoadPtr, {countAddr}, "i64", "", loc);
-
+    // 81-a：全量/单槽统一经元素遍历/单槽助手——**链式容器（链表/队列）按链游**
+    //   （原实现全量平铺：删除头部/尾部 摘链后槽内容仍在且槽序号可能 >= 元素数量，
+    //   平铺会漏释有效元素 + 误触越界槽二次析构，探针 P7 实证：链表<向量<字符串>>
+    //   三元素删头×2 → 有效元素泄漏 1 + 越界槽二次调用 ~T）。
+    const std::function<void(const ir::IRValue&)> dtorBody =
+        [&](const ir::IRValue& elemAddr) {
+            emit(ir::Opcode::Call, {elemAddr}, ir::IRValue(), dtorSym, "void", loc);
+        };
     if (isFull) {
-        // ---- 全量元素析构循环（~类名/清空）----
-        // 结构：idx 槽=0; if 数组==无 goto 继续; 循环 加载idx<元素数量 ->
-        //   析构 数组+idx*stride / idx++ 存储; 之后继续原方法体。
-        // 循环计数器须用可变 Alloca 槽（每次迭代 Load/Store），不能是常量寄存器。
-        const std::string idxUnique = "?vecdi" + std::to_string(varCounter_++);
-        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"),
-             idxUnique, "i64", loc);
-        emit(ir::Opcode::Store,
-             {emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc)},
-             ir::IRValue(), idxUnique, "i64", loc);
-        const std::string loopL = "bb" + std::to_string(blockCounter_++);
-        const std::string bodyL = "bb" + std::to_string(blockCounter_++);
-        const std::string doneL = "bb" + std::to_string(blockCounter_++);
-        // 数组 无 守卫（空容器/未分配：跳过循环）
-        ir::IRValue nullC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
-        ir::IRValue arrayIsNull = emitResult(ir::Opcode::Eq, {arrayPtr, nullC}, "i1", "",
-                                             loc);
-        endBranch(arrayIsNull.toString(), doneL, loopL);
-        setCurrentBlock(newBlock(loopL));
-        ir::IRValue idx = emitResult(ir::Opcode::Load,
-                                     {ir::IRValue::var(idxUnique, "i64")},
-                                     "i64", idxUnique, loc);
-        ir::IRValue loopCond = emitResult(ir::Opcode::Lt, {idx, count}, "i1", "", loc);
-        endBranch(loopCond.toString(), bodyL, doneL);
-        setCurrentBlock(newBlock(bodyL));
-        ir::IRValue scaled = emitResult(ir::Opcode::Mul,
-                                        {idx, ir::IRValue::constant(
-                                                  std::to_string(stride), "i64")},
-                                        "i64", "", loc);
-        ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {arrayPtr, scaled}, "ptr",
-                                          "", loc);
-        emit(ir::Opcode::Call, {elemAddr}, ir::IRValue(), dtorSym, "void", loc);
-        ir::IRValue one = emitResult(ir::Opcode::ConstInt, {}, "i64", "1", loc);
-        ir::IRValue next = emitResult(ir::Opcode::Add, {idx, one}, "i64", "", loc);
-        emit(ir::Opcode::Store, {next}, ir::IRValue(), idxUnique, "i64", loc);
-        endJump(loopL);
-        setCurrentBlock(newBlock(doneL));
+        emitContainerElemWalk(canonClass, selfPtr, arrayPtr, count, stride, loc, dtorBody);
     } else if (isSingle) {
-        // ---- 单元素析构（向量 析构元素(索引) / 链表 删除头部/删除尾部）----
-        // 索引来源：析构元素 = 参数 索引；链表 = 头索引/尾索引 字段（方法体前读取旧值）。
-        ir::IRValue pos;
-        if (!indexParam.empty()) {
-            const std::string posUnique = lookupVarName(indexParam);
-            if (posUnique.empty()) return;
-            pos = emitResult(ir::Opcode::Load,
-                             {ir::IRValue::var(posUnique, "i64")},
-                             "i64", posUnique, loc);
-        } else {
-            const int idxOff = semantic_->classFieldOffset(canonClass, indexField);
-            if (idxOff < 0) return;
-            ir::IRValue idxAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
-                                             std::to_string(idxOff), loc);
-            pos = emitResult(ir::Opcode::LoadPtr, {idxAddr}, "i64", "", loc);
-        }
-        const std::string destroyL = "bb" + std::to_string(blockCounter_++);
-        const std::string skipL = "bb" + std::to_string(blockCounter_++);
-        // 守卫：析构元素（向量，参数索引）用 索引<0 或 >=元素数量（位置是元素序号，
-        //   越界由调用方保证，防御性守卫）；链表 删头/删尾（字段索引）只用 索引<0——
-        //   链表是链式，删除后元素数量减少但 头/尾索引 是槽索引（可能 >= 新元素数量），
-        //   不能与 元素数量 比较（否则删尾误判越界跳过析构）。
-        ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
-        ir::IRValue skipCond;
-        if (!indexParam.empty()) {
-            ir::IRValue neg = emitResult(ir::Opcode::Lt, {pos, zeroC}, "i1", "", loc);
-            ir::IRValue ge = emitResult(ir::Opcode::Ge, {pos, count}, "i1", "", loc);
-            skipCond = emitResult(ir::Opcode::Or, {neg, ge}, "i1", "", loc);
-        } else {
-            skipCond = emitResult(ir::Opcode::Lt, {pos, zeroC}, "i1", "", loc);
-        }
-        endBranch(skipCond.toString(), skipL, destroyL);
-        setCurrentBlock(newBlock(destroyL));
-        ir::IRValue scaled = emitResult(ir::Opcode::Mul,
-                                        {pos, ir::IRValue::constant(
-                                                  std::to_string(stride), "i64")},
-                                        "i64", "", loc);
-        ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {arrayPtr, scaled}, "ptr",
-                                          "", loc);
-        emit(ir::Opcode::Call, {elemAddr}, ir::IRValue(), dtorSym, "void", loc);
-        endJump(skipL);
-        setCurrentBlock(newBlock(skipL));
+        emitSingleElemRelease(canonClass, selfPtr, arrayPtr, count, stride, indexParam,
+                              indexField, loc, dtorBody);
     }
+}
+
+// ==================== 81-a：容器元素遍历/单槽释放助手 ====================
+// 背景（探针 P1~P7 实证，plans/020 矩阵靶子 #1）：元素槽资源（含串字段结构体的
+//   字段串 / 有析构类元素的对象）在容器消亡（~容器/清空）与移除路径需按**元素模型**
+//   释放——平铺数组（向量/栈/集合）与链式槽（链表/队列）的「有效元素集合」不同：
+//   链式容器的 删除头部/删除尾部 摘链后槽内容仍在（且槽序号可能 >= 元素数量），
+//   平铺遍历会漏释有效元素 + 误触越界槽（探针 P7：链表<向量<字符串>> 三元素删头
+//   ×2 → 有效元素泄漏 1 + 越界槽二次析构）。故全量释放统一经本遍历循环：
+//     · 平铺：idx=0..元素数量；
+//     · 链式：idx=头索引 沿 下一索引 游走（步数上限=元素数量，链损坏时不死循环）。
+// 不变量：循环计数器用可变 Alloca 槽（每次迭代 Load/Store）；数组==无 守卫跳过；
+//   body 内的释放体自身「释放+清槽」幂等（多路径共享槽，plans/020 移植纪律 7）。
+
+// 容器元素类型（实例化实参 canonical；非容器/无实参返回空串）
+std::string IRGenerator::containerElemTypeOf(const std::string& canonClass) const {
+    const std::size_t dl = canonClass.find('$');
+    if (dl == std::string::npos) return std::string();
+    const std::string head = canonClass.substr(0, dl);
+    if (head != "向量" && head != "链表" && head != "栈" && head != "队列" &&
+        head != "集合") {
+        return std::string();  // 映射=双实参 K$V，非单元素数组模型（另路径）
+    }
+    return types::canonical(canonClass.substr(dl + 1));
+}
+
+// 元素含拥有型串字段判定（结构体/结果/可选，递归展开；字符串元素走既有路径）
+bool IRGenerator::isOwnedStrFieldElemContainer(const std::string& canonClass) const {
+    const std::string elem = containerElemTypeOf(canonClass);
+    if (elem.empty() || elem == "字符串") return false;
+    return !ownedStrFieldsOf(elem).empty();
+}
+
+// 元素遍历循环（全量释放路径单点事实源；body 由调用方发射）
+void IRGenerator::emitContainerElemWalk(
+    const std::string& canonClass, const ir::IRValue& selfPtr,
+    const ir::IRValue& arrayPtr, const ir::IRValue& count, int stride,
+    const SourceLocation& loc,
+    const std::function<void(const ir::IRValue&)>& body) {
+    if (stride <= 0 || semantic_ == nullptr) return;
+    const std::string head = canonClass.substr(0, canonClass.find('$'));
+    const bool chain = (head == "链表" || head == "队列");
+    ir::IRValue nextPtr = ir::IRValue::reg(-1, "ptr");
+    ir::IRValue headIdx = ir::IRValue::reg(-1, "i64");
+    if (chain) {
+        const int nextOff = semantic_->classFieldOffset(canonClass, "下一索引");
+        const int headOff = semantic_->classFieldOffset(canonClass, "头索引");
+        if (nextOff < 0 || headOff < 0) return;
+        ir::IRValue nextAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
+                                          std::to_string(nextOff), loc);
+        nextPtr = emitResult(ir::Opcode::LoadPtr, {nextAddr}, "ptr", "", loc);
+        ir::IRValue headAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
+                                          std::to_string(headOff), loc);
+        headIdx = emitResult(ir::Opcode::LoadPtr, {headAddr}, "i64", "", loc);
+    }
+    ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+    const std::string idxUnique = "?ewi" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"), idxUnique,
+         "i64", loc);
+    emit(ir::Opcode::Store, {chain ? headIdx : zeroC}, ir::IRValue(), idxUnique,
+         "i64", loc);
+    std::string cntUnique;  // 链式：链游步数（上限=元素数量，防环）
+    if (chain) {
+        cntUnique = "?ewn" + std::to_string(varCounter_++);
+        emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"),
+             cntUnique, "i64", loc);
+        emit(ir::Opcode::Store, {zeroC}, ir::IRValue(), cntUnique, "i64", loc);
+    }
+    const std::string loopL = "bb" + std::to_string(blockCounter_++);
+    const std::string bodyL = "bb" + std::to_string(blockCounter_++);
+    const std::string doneL = "bb" + std::to_string(blockCounter_++);
+    // 数组==无 守卫（空容器/未分配：跳过循环）
+    ir::IRValue arrayIsNull = emitResult(ir::Opcode::Eq, {arrayPtr, zeroC}, "i1", "",
+                                         loc);
+    endBranch(arrayIsNull.toString(), doneL, loopL);
+    setCurrentBlock(newBlock(loopL));
+    ir::IRValue idx = emitResult(ir::Opcode::Load,
+                                 {ir::IRValue::var(idxUnique, "i64")}, "i64",
+                                 idxUnique, loc);
+    ir::IRValue cond;
+    if (chain) {
+        // 有效 = !(idx < 0 || n >= 元素数量)
+        ir::IRValue neg = emitResult(ir::Opcode::Lt, {idx, zeroC}, "i1", "", loc);
+        ir::IRValue n = emitResult(ir::Opcode::Load,
+                                   {ir::IRValue::var(cntUnique, "i64")}, "i64",
+                                   cntUnique, loc);
+        ir::IRValue over = emitResult(ir::Opcode::Ge, {n, count}, "i1", "", loc);
+        ir::IRValue bad = emitResult(ir::Opcode::Or, {neg, over}, "i1", "", loc);
+        cond = emitResult(ir::Opcode::Not, {bad}, "i1", "", loc);
+    } else {
+        cond = emitResult(ir::Opcode::Lt, {idx, count}, "i1", "", loc);
+    }
+    endBranch(cond.toString(), bodyL, doneL);
+    setCurrentBlock(newBlock(bodyL));
+    ir::IRValue scaled = emitResult(
+        ir::Opcode::Mul,
+        {idx, ir::IRValue::constant(std::to_string(stride), "i64")}, "i64", "", loc);
+    ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {arrayPtr, scaled}, "ptr", "",
+                                      loc);
+    body(elemAddr);
+    ir::IRValue one = emitResult(ir::Opcode::ConstInt, {}, "i64", "1", loc);
+    ir::IRValue next;
+    if (chain) {
+        // 下一索引 数组按 8 字节步长（整64 槽）
+        ir::IRValue idxScaled = emitResult(ir::Opcode::Mul,
+                                           {idx, ir::IRValue::constant("8", "i64")},
+                                           "i64", "", loc);
+        ir::IRValue nAddr = emitResult(ir::Opcode::Add, {nextPtr, idxScaled}, "ptr",
+                                       "", loc);
+        next = emitResult(ir::Opcode::LoadPtr, {nAddr}, "i64", "", loc);
+    } else {
+        next = emitResult(ir::Opcode::Add, {idx, one}, "i64", "", loc);
+    }
+    emit(ir::Opcode::Store, {next}, ir::IRValue(), idxUnique, "i64", loc);
+    if (chain) {
+        ir::IRValue n2 = emitResult(ir::Opcode::Load,
+                                    {ir::IRValue::var(cntUnique, "i64")}, "i64",
+                                    cntUnique, loc);
+        ir::IRValue nInc = emitResult(ir::Opcode::Add, {n2, one}, "i64", "", loc);
+        emit(ir::Opcode::Store, {nInc}, ir::IRValue(), cntUnique, "i64", loc);
+    }
+    endJump(loopL);
+    setCurrentBlock(newBlock(doneL));
+}
+
+// 单槽元素释放（守卫 + 体块；索引来源：参数 索引 / 字段 头索引·尾索引）
+void IRGenerator::emitSingleElemRelease(
+    const std::string& canonClass, const ir::IRValue& selfPtr,
+    const ir::IRValue& arrayPtr, const ir::IRValue& count, int stride,
+    const std::string& indexParam, const std::string& indexField,
+    const SourceLocation& loc,
+    const std::function<void(const ir::IRValue&)>& body) {
+    if (stride <= 0 || semantic_ == nullptr) return;
+    ir::IRValue pos;
+    if (!indexParam.empty()) {
+        const std::string posUnique = lookupVarName(indexParam);
+        if (posUnique.empty()) return;
+        pos = emitResult(ir::Opcode::Load, {ir::IRValue::var(posUnique, "i64")},
+                         "i64", posUnique, loc);
+    } else {
+        const int idxOff = semantic_->classFieldOffset(canonClass, indexField);
+        if (idxOff < 0) return;
+        ir::IRValue idxAddr = emitResult(ir::Opcode::FieldAddr, {selfPtr}, "ptr",
+                                         std::to_string(idxOff), loc);
+        pos = emitResult(ir::Opcode::LoadPtr, {idxAddr}, "i64", "", loc);
+    }
+    const std::string releaseL = "bb" + std::to_string(blockCounter_++);
+    const std::string skipL = "bb" + std::to_string(blockCounter_++);
+    // 守卫：析构元素/析构被移除（向量/集合，参数索引）= 索引<0 或 >=元素数量；
+    //   链表 删头/删尾（字段索引）只用 索引<0（链式槽序号可能 >= 元素数量）
+    ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+    ir::IRValue skipCond;
+    if (!indexParam.empty()) {
+        ir::IRValue neg = emitResult(ir::Opcode::Lt, {pos, zeroC}, "i1", "", loc);
+        ir::IRValue ge = emitResult(ir::Opcode::Ge, {pos, count}, "i1", "", loc);
+        skipCond = emitResult(ir::Opcode::Or, {neg, ge}, "i1", "", loc);
+    } else {
+        skipCond = emitResult(ir::Opcode::Lt, {pos, zeroC}, "i1", "", loc);
+    }
+    endBranch(skipCond.toString(), skipL, releaseL);
+    setCurrentBlock(newBlock(releaseL));
+    ir::IRValue scaled = emitResult(
+        ir::Opcode::Mul,
+        {pos, ir::IRValue::constant(std::to_string(stride), "i64")}, "i64", "", loc);
+    ir::IRValue elemAddr = emitResult(ir::Opcode::Add, {arrayPtr, scaled}, "ptr", "",
+                                      loc);
+    body(elemAddr);
+    endJump(skipL);
+    setCurrentBlock(newBlock(skipL));
 }
 
 // ==================== visitClassDecl / visitClassMember ====================

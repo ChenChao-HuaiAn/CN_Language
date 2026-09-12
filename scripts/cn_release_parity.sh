@@ -15,7 +15,7 @@ set -u
 cd "$(dirname "$0")/.."
 
 HOST_DEFS=("genStringFrees" "genClassDestructorCalls" "genJumpDestructFrom" "genBlockExitDestruct")
-V2_DEFS=("发射字符串释放" "发射容器析构" "发射容器字段析构" "循环跳出析构" "块出口析构")
+V2_DEFS=("发射字符串释放" "发射容器析构" "发射资源字段析构" "循环跳出析构" "块出口析构")
 
 echo "═══ 释放路径两侧对照（plans/020 移植纪律 8）═══"
 echo
@@ -34,7 +34,7 @@ for f in "${V2_DEFS[@]}"; do
     printf "  %-26s 定义 %s 处\n" "$f" "$n"
 done
 echo "  调用点："
-grep -rn "发射容器析构(\|发射字符串释放(\|发射容器字段析构(\|循环跳出析构(\|块出口析构(" CN语言编译器v2/IR/ 2>/dev/null \
+grep -rn "发射容器析构(\|发射字符串释放(\|发射资源字段析构(\|循环跳出析构(\|块出口析构(" CN语言编译器v2/IR/ 2>/dev/null \
     | grep -v "函数 " | sed 's|CN语言编译器v2/IR/||' | cut -d: -f1,2 | sed 's/^/    /' | sort
 echo
 echo "── 76-a（第七十六轮）移除路径释放挂点（映射/集合/向量）──"
@@ -50,6 +50,23 @@ echo "  v2 判定函数（元素串释放面 / 归一化面）："
 grep -n "^函数 是字符串元素容器\|^函数 是字符串值映射" CN语言编译器v2/IR/IR容器.cn | sed 's/^/    /'
 echo "  stdlib 挂点调用点（移除-覆盖-清空路径）："
 grep -rn "自身.析构元素(\|自身.析构被移除(\|自身.析构键值(\|自身.析构值(" stdlib/*.cn | sed 's/^/    /'
+echo
+echo "── 81-a（第八十一轮）容器元素结构体字段 释放/移动挂点 ──"
+echo "  宿主 元素遍历循环（全量释放单点事实源；平铺/链游分派）："
+grep -rn "IRGenerator::emitContainerElemWalk\|IRGenerator::emitSingleElemRelease\|IRGenerator::isOwnedStrFieldElemContainer" \
+    src/cn_compiler/ir/ | sed 's|src/cn_compiler/ir/||' | sed 's/^/    /'
+echo "  宿主 元素移动挂点注入（memcpy + 源槽清零；stdlib 移位循环单点）："
+grep -n 'mi.name == "移动元素"' src/cn_compiler/ir/ir_oop.cpp | sed 's/^/    /'
+grep -rn "自身.移动元素(" stdlib/*.cn | sed 's/^/    /'
+echo "  宿主 字段释放单点事实源（79-a 延续；81-a 元素字段复用）："
+grep -n "IRGenerator::emitOwnedStrFieldFreesAt\|IRGenerator::emitOwnedFieldFreesFor" \
+    src/cn_compiler/ir/ir_fields.cpp | sed 's/^/    /'
+echo "  v2 判定函数（元素串释放经供给 obj 的 ~容器 注入；结构体元素不在 v2 侧生成）："
+grep -n "^函数 是字符串元素容器\|^函数 是纯串字段结构体" CN语言编译器v2/IR/IR容器.cn | sed 's/^/    /'
+echo "  v2 容器元素释放调用点（v2 生成代码路径；结构体元素经 obj）："
+grep -rn "发射容器元素释放(" CN语言编译器v2/IR/ | grep -v "函数 " | sed 's|CN语言编译器v2/IR/||' | cut -d: -f1,2 | sed 's/^/    /' | sort
+echo "  注：结构体元素字段串释放**单点在宿主**（stdlib 容器方法体注入，v2 经 obj 复用）"
+echo "      ——两侧机制不同（v2 无对应生成面）= 设计选择，三列核对时按「v2 侧无此挂点」判读。"
 echo
 echo "── 人工核对三列（逐条问，勿跳）──────────────────"
 echo "  时机：释放发生在块出口 / 跳出前 / 函数尾 的哪一种？两侧一致吗？"

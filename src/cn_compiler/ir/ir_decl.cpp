@@ -328,7 +328,6 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     genClassDestructorCalls();
     genStringFrees();
     stringTainted_.clear();
-    fieldTainted_.clear();  // plans/019 阶段4'：函数级污染集复位  // plans/019 阶段4'：拥有型字符串 RAII（返回块注入释放）
     // 72-a（2026-09-11 第七十二轮）：块级作用域名单复位（函数级状态——下一函数干净）
     ownedStringOrder_.clear();
     ownedClassOrder_.clear();

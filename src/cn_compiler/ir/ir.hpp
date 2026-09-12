@@ -8,6 +8,7 @@
 //   6. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释
 #pragma once
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -660,6 +661,51 @@ private:
     void emitContainerElemFreeFor(const std::string& canonClass,
                                   const ir::IRValue& objPtr,
                                   const SourceLocation& loc);
+    // ---- 81-a（第八十一轮）：容器元素=含拥有型串字段结构体 ----
+    // 背景（探针 P1~P7 实证，plans/020 矩阵靶子 #1）：元素槽字段串由 stdlib 的
+    //   `数据[n] = 值` 结构体写入深拷（79-a）保证「容器独有」——但**容器消亡/移除
+    //   路径无释放面**：每元素泄漏其字段串（宿主/v2 同缺）；链表/队列（链式模型）
+    //   的「有析构类元素」全量析构为平铺（越界槽双释 + 有效元素漏释，探针 P7）。
+    // 元素类型（容器实例化实参；非容器/无实参返回空串）
+    std::string containerElemTypeOf(const std::string& canonClass) const;
+    // 元素含拥有型串字段判定（结构体/结果/可选，递归展开；字符串元素另路径）
+    bool isOwnedStrFieldElemContainer(const std::string& canonClass) const;
+    // 元素遍历循环（全量释放路径单点事实源）——按容器元素模型分派：
+    //   平铺（向量/栈/集合）：idx=0..元素数量，元素地址 = 数组 + idx*stride；
+    //   链式（链表/队列）：idx=头索引 沿 下一索引 游走（上限 = 元素数量，防环）；
+    //   空数组守卫（数组==无 跳过）；body 为逐元素释放体（由调用方发射）。
+    void emitContainerElemWalk(const std::string& canonClass,
+                               const ir::IRValue& selfPtr,
+                               const ir::IRValue& arrayPtr,
+                               const ir::IRValue& count, int stride,
+                               const SourceLocation& loc,
+                               const std::function<void(const ir::IRValue&)>& body);
+    // 单槽元素释放（含既有守卫；body 为单元素释放体）：
+    //   索引来源——析构元素/析构被移除=参数 索引（守卫 索引<0 || >=元素数量）；
+    //              链表 删除头部/删除尾部=索引字段（仅 索引<0 跳过——链式槽序号
+    //              可能 >= 元素数量，不能与计数比较）；不可发射时整段跳过。
+    void emitSingleElemRelease(const std::string& canonClass,
+                               const ir::IRValue& selfPtr,
+                               const ir::IRValue& arrayPtr,
+                               const ir::IRValue& count, int stride,
+                               const std::string& indexParam,
+                               const std::string& indexField,
+                               const SourceLocation& loc,
+                               const std::function<void(const ir::IRValue&)>& body);
+    // 结构体字面量实参物化（D3 根治共享助手）：Alloca 临时 + emitStructInitTo +
+    //   返回地址（按值结构体参数 ABI 传地址）——普通调用路径原实现，81-a 提取
+    //   供方法调用路径复用（原方法调用路径无此物化 → 实参地址=空指针 → 段错误）。
+    ir::IRValue materializeStructInitArg(StructInitExpr* init,
+                                         const SourceLocation& loc);
+    // 81-a：实参求值 + 「调用返回结构体临时」清理登记——返回类型含拥有型串字段的
+    //   调用返回实参（`表.追加(造盒子())`）：被调方返回移出（所有权移交调用方
+    //   retbuf），入容器深拷给元素槽后 retbuf 句柄无人释放=泄漏 1/次（探针 P1⑥）。
+    //   修法：调用发射后释放该临时（元素槽持有独立副本，释放安全；幂等清零）。
+    ir::IRValue genArgValueWithCleanup(Expr* arg, const SourceLocation& loc);
+    // 调用发射后统一清理本次调用新增的实参临时（base=进入本次调用时的列表基准，
+    //   嵌套调用各自持基准——内层清理只覆盖内层新增项）
+    void flushPendingArgCleanups(std::size_t base);
+    std::vector<std::pair<ir::IRValue, std::string>> pendingArgCleanups_;
     // 入容器位实参所有权归一化：按来源分级发 __cn_str_copy / 源槽清零（返回值实参值）
     ir::IRValue normalizeContainerInsertArg(Expr* arg, const SourceLocation& loc);
     // 79-a：已求值字符串值按来源分级归一化（值由调用方 genExpr 求得——避免二次
@@ -685,27 +731,12 @@ private:
     //   非拥有形态（解引用/成员等）的字符串目标整变量退出 RAII（free 只读段
     //   =UB 静态防线）；genFunctionDecl 开头复位、genStringFrees 消费。
     std::unordered_set<std::string> stringTainted_;
-    // 79-a：含串字段聚合的「字段污染」集（源码名键控）——入容器位的结构体
-    //   实参=容器元素浅拷共享（容器元素字段串释放面未开=靶子），源字段串不得
-    //   释放（否则元素悬垂）；宁漏勿错（与 74-a 容器元素归一化前的借用来源同口径）。
-    std::unordered_set<std::string> fieldTainted_;
     // 75-a（2026-09-12 第七十五轮）：字符串污染登记**唯一入口**。污染名单同时是
     //   ①释放侧跳过依据（块出口/跳出/函数级兜底/`isOwnedStringSlot`）与
     //   ②入容器位「实参是否拥有」判定的共同依据——漏登记会产生双向错误：
     //   释放侧误释放借用视图（悬垂）/ 归一化误判拥有（容器接管借用句柄 → 容器
     //   析构释放他人串=UAF）。原五处登记点（初始化非拥有/结构体字段借出/下标
     //   借出/转移污染传播/赋值非拥有）统一经此入口，新增登记点一律经此。
-    void markFieldTainted(const std::string& name) {
-        fieldTainted_.insert(name);
-    }
-    // 字段污染判定（unique 名剥 '$' 后缀后按源码名键控，与 stringTainted_ 同款）
-    bool isFieldTainted(const std::string& unique) const {
-        if (unique.empty()) return false;
-        const std::size_t dl = unique.rfind('$');
-        const std::string srcName =
-            (dl == std::string::npos) ? unique : unique.substr(0, dl);
-        return fieldTainted_.count(srcName) > 0;
-    }
     void markStringTainted(const std::string& name) {
         stringTainted_.insert(name);
     }

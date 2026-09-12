@@ -6,6 +6,7 @@
 //   4. 控制流：如果/当/循环生成基本块与跳转；中断/继续通过循环上下文解析目标
 //   5. 函数调用 -> Call（extra=函数名，操作数=实参寄存器）
 //   6. 字符串常量 -> 模块常量池去重收集
+#include <cstdio>
 #include <string>
 #include <utility>
 
@@ -16,6 +17,16 @@
 namespace cn_compiler {
 
 void IRGenerator::visitCallExpr(CallExpr* node) {
+    // 81-a：调用返回结构体实参临时清理（RAII 守卫，单点覆盖全部 return 路径）。
+    //   实参求值期登记（genArgValueWithCleanup），本函数返回（=调用已发射）后
+    //   统一释放——元素槽/形参槽已持有独立副本，释放安全；幂等清零。
+    //   基准式隔离：嵌套调用（实参本身是调用）各自持基准，内层只清理内层新增项。
+    struct ArgCleanupGuard {
+        IRGenerator* gen;
+        std::size_t base;
+        ~ArgCleanupGuard() { gen->flushPendingArgCleanups(base); }
+    } argCleanupGuard{this, pendingArgCleanups_.size()};
+    (void)argCleanupGuard;
     // ---- plans/019 阶段1（2026-09-10）：显式转移 转移(变量) 展开 ----
     // 语义层已检查放行（声明初始化位在 visitVarDecl 已改写为标识符，不会到这；
     // 此处=表达式位指针/字符串值交接）。展开=实参标识符的值加载（转移() 零运行
@@ -278,28 +289,20 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         //   地址（与返回位 __ret 临时 ir_stmt.cpp 同构；Rust：值上下文临时
         //   place 物化）。原直接 genExpr -> 空桩常量0 被 Cast 成 i64 当地址传
         //   -> 被调方解引用空指针段错误（探针 rc=139 实锤，静默内存违例）。
-        //   类型守卫用字面量自身类型名（语义层已模块解析）——非结构体形态不可
-        //   达（visitStructInitExpr 已拒绝未声明类型）。
-        if (semantic_ != nullptr &&
-            node->arguments[ai]->getType() == NodeType::StructInitExpr) {
+        //   81-a：物化逻辑提取为 materializeStructInitArg 共享助手（方法调用
+        //   路径 buildCallArgsOop 同用——原缺失致同一崩形，探针 P3 形态六实证）。
+        if (node->arguments[ai]->getType() == NodeType::StructInitExpr) {
             StructInitExpr* argInit =
                 static_cast<StructInitExpr*>(node->arguments[ai].get());
             const std::string argStruct = types::canonical(argInit->typeName);
-            if (semantic_->isStructType(argStruct)) {
-                const std::string temp = "__arginit" + std::to_string(varCounter_++);
-                emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
-                     temp, "ptr", node->location);
-                function_->varSlots[temp] = 8;
-                registerVarSlots(temp, argStruct);
-                ir::IRValue base = emitResult(ir::Opcode::AddrOf,
-                                              {ir::IRValue::var(temp, "i64")},
-                                              "ptr", temp, node->location);
-                emitStructInitTo(argInit, base, node->location);
-                args.push_back(base);
+            if (semantic_ != nullptr && semantic_->isStructType(argStruct)) {
+                args.push_back(materializeStructInitArg(argInit, node->location));
                 continue;
             }
         }
-        ir::IRValue argVal = genExpr(node->arguments[ai].get());
+        // 81-a：实参求值 + 调用返回结构体临时清理登记（见 genArgValueWithCleanup）
+        ir::IRValue argVal = genArgValueWithCleanup(node->arguments[ai].get(),
+                                                    node->location);
         // Task 2.3：8/16位整数实参先扩展为 i64；i128/u128 实参截断为 i64
         // （Win x64 ABI 整参按64位传递；否则 emitCall 的 mov rax, op 读到槽中高位垃圾）
         // 所有 <64位 整数实参统一 Cast 到 i64（Win x64 ABI 整参按64位传递；
@@ -469,5 +472,78 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     ir::IRValue calleeVal = genExpr(node->callee.get());
     args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器
     lastExpr_ = emitResult(ir::Opcode::CallIndirect, args, "i32", "", node->location);
+}
+
+// 结构体字面量实参物化（D3 根治逻辑提取为共享助手，81-a）：按值结构体参数的 ABI
+//   为「传地址」（callee 侧 rep movsb 拷贝），故字面量须先物化到调用方临时变量再
+//   传地址——原仅普通调用路径有物化，方法调用路径（buildCallArgsOop）无此处理 →
+//   实参寄存器为空值（汇编 mov rdx, 0）→ 被调方解引用空指针段错误（探针 P3 形态六
+//   实锤：向量<盒子>.追加(盒子{...}) rc=139）。Rust 对照：值上下文临时 place 物化。
+ir::IRValue IRGenerator::materializeStructInitArg(StructInitExpr* init,
+                                                  const SourceLocation& loc) {
+    if (init == nullptr || semantic_ == nullptr || function_ == nullptr) {
+        return ir::IRValue::reg(-1, "");
+    }
+    const std::string argStruct = types::canonical(init->typeName);
+    if (!semantic_->isStructType(argStruct)) return ir::IRValue::reg(-1, "");
+    const std::string temp = "__arginit" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"), temp, "ptr",
+         loc);
+    function_->varSlots[temp] = 8;
+    registerVarSlots(temp, argStruct);
+    // 81-a：物化临时登记为「含串字段聚合局部」→ 块出口按字段偏移释放（字面量字段
+    //   在构造时已归一化落堆或为驻留借用，释放面空安全）——原实现只物化不登记 =
+    //   含串字段的结构体字面量实参每调用泄漏其字段串（E2E 235 ②③⑦⑧ 实证：帧内
+    //   临时无人释放）；与 79-a 的聚合字段 RAII 同名单同机制（块基线 scopeFieldBase_）。
+    oopVarSrcTypes_[temp] = argStruct;
+    if (!ownedStrFieldsOf(argStruct).empty()) {
+        ownedFieldOrder_.push_back(temp);
+    }
+    ir::IRValue base = emitResult(ir::Opcode::AddrOf,
+                                  {ir::IRValue::var(temp, "i64")}, "ptr", temp, loc);
+    emitStructInitTo(init, base, loc);
+    return base;
+}
+
+// 81-a：实参求值 + 「调用返回结构体临时」清理登记（泄漏面见 ir.hpp 声明注释）
+ir::IRValue IRGenerator::genArgValueWithCleanup(Expr* arg,
+                                                const SourceLocation& loc) {
+    (void)loc;   // 位置仅用于诊断归属（清理发射用默认位置，与块出口释放同款）
+    ir::IRValue v = genExprForOop(arg);
+    if (arg == nullptr || semantic_ == nullptr) return v;
+    if (arg->getType() != NodeType::CallExpr) return v;
+    // 结构体字面量实参走 materializeStructInitArg（已物化，无临时泄漏面）
+    CallExpr* ce = static_cast<CallExpr*>(arg);
+    std::string retCanon = types::canonical(ce->resolvedType);
+    if (retCanon.empty() && ce->callee != nullptr &&
+        ce->callee->getType() == NodeType::IdentifierExpr) {
+        // 语义层 resolvedType 只对内置构造器写回——普通调用按「重载决议签名键 /
+        //   裸名」两路回退查返回类型（functions_ 键为 名#签名）
+        const std::string nm =
+            static_cast<IdentifierExpr*>(ce->callee.get())->name;
+        const std::string keys[2] = {ce->resolvedSignature, nm};
+        for (const std::string& key : keys) {
+            if (key.empty()) continue;
+            const std::string rt = types::canonical(semantic_->funcReturnTypeOf(key));
+            if (!rt.empty()) { retCanon = rt; break; }
+        }
+    }
+    if (retCanon.empty()) return v;
+    if (ownedStrFieldsOf(retCanon).empty()) return v;
+    pendingArgCleanups_.emplace_back(v, retCanon);
+    return v;
+}
+
+// 调用发射后统一清理（只清理 base 之后新增项；释放幂等清零，嵌套调用各自持基准）
+void IRGenerator::flushPendingArgCleanups(std::size_t base) {
+    if (base >= pendingArgCleanups_.size()) {
+        pendingArgCleanups_.resize(base);   // 防御：截断到基准
+        return;
+    }
+    for (std::size_t i = base; i < pendingArgCleanups_.size(); ++i) {
+        emitOwnedStrFieldFreesAt(pendingArgCleanups_[i].first,
+                                 pendingArgCleanups_[i].second, SourceLocation());
+    }
+    pendingArgCleanups_.resize(base);
 }
 } // namespace cn_compiler

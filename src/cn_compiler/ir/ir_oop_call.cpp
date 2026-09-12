@@ -215,24 +215,22 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
         return buildCallArgsOop(node->arguments, node->location);
     }
     const std::size_t vi = static_cast<std::size_t>(valueIdx);
-    // 79-a：入容器位的「含串字段结构体」实参——结构体按值浅拷入容器（元素内存
-    //   独立、字段串句柄共享），容器元素字段串释放面未开（矩阵靶子）：源结构体
-    //   若照常释放其字段串，容器元素即悬垂。标记源为字段污染（字段串不释放）——
-    //   宁漏勿错（泄漏维持既有边界；深拷 + 元素字段释放随容器元素专项）。
-    if (node->arguments[vi]->getType() == NodeType::IdentifierExpr) {
-        const std::string srcName =
-            static_cast<IdentifierExpr*>(node->arguments[vi].get())->name;
-        const std::string srcType = lookupSrcType(srcName);
-        if (!srcType.empty() && !ownedStrFieldsOf(srcType).empty()) {
-            markFieldTainted(srcName);
-        }
-    }
+    // 81-a：结构体元素容器（含拥有型串字段的结构体）**不在此归一化**——元素槽
+    //   字段串的独立性由 stdlib 容器方法体的 `数据[n] = 值` 结构体写入深拷（79-a
+    //   emitStructCopyWithFields，宿主编译 stdlib 时生成）保证：每槽独立拥有其
+    //   字段串，源结构体照常拥有并释放（探针 P3 实证：追加产生元素副本分配；
+    //   源块出口正常释放字段串）。79-a 的「入容器位标记源为字段污染」是**双重
+    //   死代码**（①写入点在 valueIdx<0 提前返回之后——结构体元素容器 valueIdx
+    //   恒 -1，标记不可达；②读取点仅跳过释放、集合恒空=恒假）——81-a 整链删除
+    //   （成员 + 3 处读取点 + 复位），语义与实测一致：元素独立拥有；容器消亡/
+    //   移除路径的释放面见 injectContainerElemDestroy 的含串结构体元素分支。
     for (std::size_t i = 0; i < node->arguments.size(); ++i) {
         if (i == vi) {
             out.push_back(normalizeContainerInsertArg(node->arguments[i].get(),
                                                       node->location));
         } else {
-            out.push_back(genExprForOop(node->arguments[i].get()));
+            out.push_back(genArgValueWithCleanup(node->arguments[i].get(),
+                                                 node->location));
         }
     }
     return out;
@@ -243,12 +241,24 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsForMethod(
 // 生成调用实参（与 visitCallExpr 的整参扩展逻辑一致：<64位整型 Cast i64、
 // f32 -> f64、i128/u128 实参传给 i128 参数不截断）。
 // 实现为 IRGenerator 成员（public 声明，ir.hpp），OOP 调用展开复用。
+// 81-a：结构体字面量实参物化（materializeStructInitArg）——原方法调用路径缺失
+//   该处理，字面量实参寄存器为空值（汇编 mov rdx, 0），被调方按值拷贝即解引用
+//   空指针段错误（探针 P3 形态六：向量<盒子>.追加(盒子{...}) rc=139）；与普通
+//   调用路径（ir_call.cpp D3 根治）同款，共享助手单一事实源。
 std::vector<ir::IRValue> IRGenerator::buildCallArgsOop(
     const std::vector<std::unique_ptr<Expr>>& args, const SourceLocation& loc) {
     (void)loc;  // loc 保留给后续实参类型扩展（与 visitCallExpr 整参提升对齐）
     std::vector<ir::IRValue> out;
     for (auto& arg : args) {
-        out.push_back(genExprForOop(arg.get()));
+        if (arg != nullptr && arg->getType() == NodeType::StructInitExpr) {
+            StructInitExpr* init = static_cast<StructInitExpr*>(arg.get());
+            const std::string argStruct = types::canonical(init->typeName);
+            if (semantic_ != nullptr && semantic_->isStructType(argStruct)) {
+                out.push_back(materializeStructInitArg(init, loc));
+                continue;
+            }
+        }
+        out.push_back(genArgValueWithCleanup(arg.get(), loc));
     }
     return out;
 }
@@ -745,45 +755,54 @@ void IRGenerator::genStringFrees() {
             ownedSlots.push_back(unique);
         }
     }
-    if (ownedSlots.empty()) return;
-    // 入口块零初始化（与类 RAII 同款前置插入）
-    ir::IRBlock* entryBlock = function_->blocks.front().get();
-    for (const auto& unique : ownedSlots) {
-        ir::IRInstruction zeroInst;
-        zeroInst.opcode = ir::Opcode::Store;
-        zeroInst.operands.push_back(ir::IRValue::constant("0", "i64"));
-        zeroInst.result = ir::IRValue();
-        zeroInst.extra = unique;
-        zeroInst.type = "ptr";
-        entryBlock->instructions.insert(entryBlock->instructions.begin(),
-                                        zeroInst);
-    }
-    // 返回块末尾注入 __cn_str_free（返回值=该槽 Load 时跳过——IR 识别双保险）
-    for (const auto& block : function_->blocks) {
-        if (!block->terminated) continue;
-        if (block->termKind != "返回") continue;
-        std::unordered_set<std::string> returnedSlots;
-        const std::string& rv = block->termReturnValue;
-        if (rv.size() > 2 && rv[0] == '%' && rv[1] == 'v') {
-            const int retId = std::stoi(rv.substr(2));
-            for (const auto& inst : block->instructions) {
-                if (inst.result.id == retId && inst.opcode == ir::Opcode::Load &&
-                    !inst.operands.empty() && inst.operands[0].id < 0 &&
-                    !inst.operands[0].isConstant) {
-                    returnedSlots.insert(inst.operands[0].extra);
-                    break;
+    // 81-a（2026-09-12 第八十一轮）：原此处 `if (ownedSlots.empty()) return;`
+    //   提前返回会**连带跳过**下方 79-a 的「含串字段聚合局部」返回块兜底段——
+    //   函数内无字符串局部但有含串字段结构体局部（如 `存入(表, 值)` 内
+    //   `盒子 局 = 盒子{名=值}`，值=形参）时，局 的字段串只在块出口释放；
+    //   函数带 `返回 X;`（块尾部终止）时块出口析构不发射 → 兜底段被挡 → 泄漏 1
+    //   （探针 P12/P13/P14 变体矩阵实证：无返回语句的变体残留 0、带返回的残留 1；
+    //   asm 对照：存入甲函数体零 __cn_str_free）。修法：字符串段改为条件包裹，
+    //   字段兜底段无条件执行。
+    if (!ownedSlots.empty()) {
+        // 入口块零初始化（与类 RAII 同款前置插入）
+        ir::IRBlock* entryBlock = function_->blocks.front().get();
+        for (const auto& unique : ownedSlots) {
+            ir::IRInstruction zeroInst;
+            zeroInst.opcode = ir::Opcode::Store;
+            zeroInst.operands.push_back(ir::IRValue::constant("0", "i64"));
+            zeroInst.result = ir::IRValue();
+            zeroInst.extra = unique;
+            zeroInst.type = "ptr";
+            entryBlock->instructions.insert(entryBlock->instructions.begin(),
+                                            zeroInst);
+        }
+        // 返回块末尾注入 __cn_str_free（返回值=该槽 Load 时跳过——IR 识别双保险）
+        for (const auto& block : function_->blocks) {
+            if (!block->terminated) continue;
+            if (block->termKind != "返回") continue;
+            std::unordered_set<std::string> returnedSlots;
+            const std::string& rv = block->termReturnValue;
+            if (rv.size() > 2 && rv[0] == '%' && rv[1] == 'v') {
+                const int retId = std::stoi(rv.substr(2));
+                for (const auto& inst : block->instructions) {
+                    if (inst.result.id == retId && inst.opcode == ir::Opcode::Load &&
+                        !inst.operands.empty() && inst.operands[0].id < 0 &&
+                        !inst.operands[0].isConstant) {
+                        returnedSlots.insert(inst.operands[0].extra);
+                        break;
+                    }
                 }
             }
-        }
-        setCurrentBlock(block.get());
-        for (const auto& unique : ownedSlots) {
-            if (returnedSlots.count(unique) > 0) continue;
-            ir::IRValue strPtr = emitResult(
-                ir::Opcode::Load,
-                {ir::IRValue::var(unique, "ptr")}, "ptr", unique,
-                SourceLocation());
-            emit(ir::Opcode::Call, {strPtr}, ir::IRValue(),
-                 "__cn_str_free", "void", SourceLocation());
+            setCurrentBlock(block.get());
+            for (const auto& unique : ownedSlots) {
+                if (returnedSlots.count(unique) > 0) continue;
+                ir::IRValue strPtr = emitResult(
+                    ir::Opcode::Load,
+                    {ir::IRValue::var(unique, "ptr")}, "ptr", unique,
+                    SourceLocation());
+                emit(ir::Opcode::Call, {strPtr}, ir::IRValue(),
+                     "__cn_str_free", "void", SourceLocation());
+            }
         }
     }
     // 79-a（2026-09-12 第七十九轮）：聚合拥有型字符串字段函数尾兜底——
@@ -812,7 +831,6 @@ void IRGenerator::genStringFrees() {
             setCurrentBlock(block.get());
             for (const auto& unique : ownedFieldOrder_) {
                 if (returnedFieldSlots.count(unique) > 0) continue;
-                if (isFieldTainted(unique)) continue;  // 入容器共享源：字段串不释放
                 auto it = oopVarSrcTypes_.find(unique);
                 if (it == oopVarSrcTypes_.end()) continue;
                 emitOwnedFieldFreesFor(unique, types::canonical(it->second),
@@ -984,7 +1002,6 @@ void IRGenerator::genBlockExitDestruct() {
     while (ownedFieldOrder_.size() > scopeFieldBase_.back()) {
         const std::string unique = ownedFieldOrder_.back();
         ownedFieldOrder_.pop_back();
-        if (isFieldTainted(unique)) continue;  // 入容器共享源：字段串不释放
         auto it = oopVarSrcTypes_.find(unique);
         if (it == oopVarSrcTypes_.end()) continue;
         emitOwnedFieldFreesFor(unique, types::canonical(it->second),
@@ -1016,7 +1033,6 @@ void IRGenerator::genJumpDestructFrom(std::size_t stringBase, std::size_t classB
     const std::size_t fldEnd = ownedFieldOrder_.size();
     for (std::size_t i = fieldBase; i < fldEnd; ++i) {
         const std::string& unique = ownedFieldOrder_[i];
-        if (isFieldTainted(unique)) continue;  // 入容器共享源：字段串不释放
         auto it = oopVarSrcTypes_.find(unique);
         if (it == oopVarSrcTypes_.end()) continue;
         emitOwnedFieldFreesFor(unique, types::canonical(it->second),

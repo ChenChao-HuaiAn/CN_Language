@@ -1012,13 +1012,18 @@ void IRGenerator::genBlock(BlockStmt* node) {
     if (currentBlock_ != nullptr && !currentBlock_->terminated) {
         genBlockExitDestruct();
     } else {
-        // 已终止：仅截断名单（析构由跳转路径的兜底/循环跳出前置释放覆盖）
+        // 已终止：仅截断字符串/类名单（这两类的释放由「独立收集」的兜底路径
+        //   genStringFrees/genClassDestructorCalls 覆盖，名单截断不影响）
         while (ownedStringOrder_.size() > scopeStringBase_.back())
             ownedStringOrder_.pop_back();
         while (ownedClassOrder_.size() > scopeClassBase_.back())
             ownedClassOrder_.pop_back();
-        while (ownedFieldOrder_.size() > scopeFieldBase_.back())
-            ownedFieldOrder_.pop_back();
+        // 81-a（2026-09-12 第八十一轮）：**字段名单不截断**——含串字段聚合局部的
+        //   函数级兜底（genStringFrees 返回块段）**按名单**释放，截断即令兜底
+        //   看不到该局部（探针 P14 变体矩阵实证：`存入` 内 `盒子 局` + `返回 X;`
+        //   组合 = 局 字段串泄漏 1，函数体零 __cn_str_free）。保留名单安全：
+        //   各路径释放点自带「释放+清槽」幂等（73-a 模型）；跳出路径本就不截断
+        //   （genJumpDestructFrom 注释「不截断编译期名单」同款纪律）。
     }
     scopeStringBase_.pop_back();
     scopeClassBase_.pop_back();
