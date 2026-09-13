@@ -132,6 +132,9 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_com
 #   ir_expr_unary.cpp（一元/三元）、ir_expr_assign.cpp（赋值）、
 #   ir_expr_index.cpp（下标）、ir_expr_member.cpp（结构体整体赋值/构造/成员访问）
 #   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
+# D1 行数整改 113-a（单文件<=1000行约束）：ir_oop.cpp 1381 行按族拆分——
+#   ir_oop_container.cpp（容器<T> 元素自动析构注入）、ir_oop_field.cpp（类字段访问）
+#   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
     src/cn_compiler/ir/ir_expr.cpp
@@ -144,6 +147,8 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_stmt_decl.cpp
     src/cn_compiler/ir/ir_decl.cpp
     src/cn_compiler/ir/ir_oop.cpp
+    src/cn_compiler/ir/ir_oop_container.cpp
+    src/cn_compiler/ir/ir_oop_field.cpp
     src/cn_compiler/ir/ir_oop_call.cpp
     src/cn_compiler/ir/ir_error_ctor.cpp
     src/cn_compiler/ir/ir_fields.cpp
