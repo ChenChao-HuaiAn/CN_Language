@@ -112,6 +112,8 @@ target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
 add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic.cpp
     src/cn_compiler/semantic/semantic_expr.cpp
+    src/cn_compiler/semantic/semantic_expr_op.cpp
+    src/cn_compiler/semantic/semantic_expr_access.cpp
     src/cn_compiler/semantic/semantic_call.cpp
     src/cn_compiler/semantic/semantic_stmt.cpp
     src/cn_compiler/semantic/semantic_decl.cpp
@@ -138,6 +140,11 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_com
 # D1 行数整改 114-a（单文件<=1000行约束）：ir_oop_call.cpp 1155 行按族拆分——
 #   ir_oop_call_release.cpp（类析构/拥有型字符串释放族）
 #   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
+# D1 行数整改 115-a（重复消除）：semantic_internal.hpp 共享头（11 个语义层 helper
+#   × 5 文件 55 处重复 → inline 单一定义）
+# D1 行数整改 116-a（单文件<=1000行约束）：semantic_expr.cpp 1778 行按族拆分——
+#   semantic_expr_op.cpp（运算符/赋值检查）、semantic_expr_access.cpp（成员/下标检查）
+#   （纯重构零行为变更；成员函数声明仍在 semantic.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
     src/cn_compiler/ir/ir_expr.cpp
