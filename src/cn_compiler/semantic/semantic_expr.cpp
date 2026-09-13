@@ -1361,6 +1361,19 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
             lastType_ = "未知";
             return;
         }
+        // 缺陷根治（第九十三轮，2026-09-13 B2 立案复现）：实例.静态成员 —— 静态
+        //   成员须经类名访问（Rust E0599 同款：关联常量/函数不经实例访问；规范
+        //   06-十「类外访问用 类名.静态成员」）。原实现静默按实例路径生成
+        //   （this+字段偏移）：静态字段不在实例字段表 → classFieldOffset=-1 →
+        //   读 this 首 8 字节/暗写错位（探针 M5b/M5c 实证：读恒 0、写不生效）。
+        if (!objectIsTypeName && member->isStatic) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "静态成员 '" + memberName + "' 须经类名访问（" +
+                                    structType + "." + memberName +
+                                    "），不能经实例访问");
+            lastType_ = "未知";
+            return;
+        }
         // 静态成员引用：直接给类型（供 IR 层取静态字段/静态方法地址）
         if (member->isStatic) {
             // P3-23：静态方法作值（函数指针）——类型为方法签名

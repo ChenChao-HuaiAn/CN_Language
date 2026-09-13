@@ -396,6 +396,179 @@ TEST(SemanticOopTest, StaticMember) {
     EXPECT_EQ(r.errorCount, 0);
 }
 
+// ==================== 成员静态性不匹配拒绝（第九十三轮 93-a） ====================
+// B2 立案缺陷根治：类名.实例成员 / 实例.静态成员 / 接口名.方法 —— 编译期拒绝
+//   （修复前：运行期段错误〈NULL 间接调用〉或静默错误〈读 this 首 8 字节/写不生效〉）。
+//   纪律依据：规范 06-十「类外访问用 类名.静态成员」+ Rust（E0061/E0599）。
+
+// ① 类名.实例方法() —— 拒绝
+TEST(SemanticOopTest, ClassNameInstanceMethodRejected) {
+    auto r = analyzeSource(R"CN(
+类 盒子 {
+公开:
+    整64 值;
+    函数 盒子(整64 v) {
+        值 = v;
+    }
+    函数 读值() -> 整64 {
+        返回 值;
+    }
+}
+函数 主() -> 整32 {
+    盒子.读值();
+    返回 0;
+}
+)CN");
+    EXPECT_GT(r.errorCount, 0) << r.messages;
+    EXPECT_NE(r.messages.find("须经实例调用"), std::string::npos) << r.messages;
+}
+
+// ② 类名.实例字段（读）—— 拒绝（既有纪律，回归锚定）
+TEST(SemanticOopTest, ClassNameInstanceFieldRejected) {
+    auto r = analyzeSource(R"CN(
+类 盒子 {
+公开:
+    整64 值;
+    函数 盒子(整64 v) {
+        值 = v;
+    }
+}
+函数 主() -> 整32 {
+    整64 x = 盒子.值;
+    返回 0;
+}
+)CN");
+    EXPECT_GT(r.errorCount, 0) << r.messages;
+    EXPECT_NE(r.messages.find("要求成员为静态"), std::string::npos) << r.messages;
+}
+
+// ③ 实例.静态方法() —— 拒绝（修复前段错误）
+TEST(SemanticOopTest, InstanceStaticMethodRejected) {
+    auto r = analyzeSource(R"CN(
+类 盒子 {
+公开:
+    整64 值;
+    静态 整64 计数 = 0;
+    函数 盒子(整64 v) {
+        值 = v;
+    }
+    静态 函数 取计数() -> 整64 {
+        返回 计数;
+    }
+}
+函数 主() -> 整32 {
+    盒子 甲 = 盒子(7);
+    整64 计数读 = 甲.取计数();
+    返回 0;
+}
+)CN");
+    EXPECT_GT(r.errorCount, 0) << r.messages;
+    EXPECT_NE(r.messages.find("须经类名调用"), std::string::npos) << r.messages;
+}
+
+// ④ 实例.静态字段 —— 拒绝（修复前静默读 0 / 写不生效）
+TEST(SemanticOopTest, InstanceStaticFieldRejected) {
+    auto r = analyzeSource(R"CN(
+类 盒子 {
+公开:
+    整64 值;
+    静态 整64 计数 = 0;
+    函数 盒子(整64 v) {
+        值 = v;
+    }
+}
+函数 主() -> 整32 {
+    盒子 甲 = 盒子(7);
+    整64 计数直读 = 甲.计数;
+    返回 0;
+}
+)CN");
+    EXPECT_GT(r.errorCount, 0) << r.messages;
+    EXPECT_NE(r.messages.find("不能经实例访问"), std::string::npos) << r.messages;
+}
+
+// ⑤ 接口名.方法() —— 拒绝（修复前段错误）
+TEST(SemanticOopTest, InterfaceNameMethodRejected) {
+    auto r = analyzeSource(R"CN(
+接口 形状 {
+    函数 面积() -> 整64;
+}
+类 方形 : 形状 {
+公开:
+    整64 边;
+    函数 方形(整64 s) {
+        边 = s;
+    }
+    重写 函数 面积() -> 整64 {
+        返回 边 * 边;
+    }
+}
+函数 主() -> 整32 {
+    形状.面积();
+    返回 0;
+}
+)CN");
+    EXPECT_GT(r.errorCount, 0) << r.messages;
+    EXPECT_NE(r.messages.find("须经接口对象调用"), std::string::npos) << r.messages;
+}
+
+// ⑥ 子类名.父类实例方法() —— 拒绝（同族形态：成员查找沿继承链命中）
+TEST(SemanticOopTest, SubClassNameBaseInstanceMethodRejected) {
+    auto r = analyzeSource(R"CN(
+类 基 {
+公开:
+    整64 值;
+    函数 基(整64 v) {
+        值 = v;
+    }
+    函数 读基() -> 整64 {
+        返回 值;
+    }
+}
+类 子 : 基 {
+公开:
+    函数 子(整64 v) {
+        值 = v;
+    }
+}
+函数 主() -> 整32 {
+    子.读基();
+    返回 0;
+}
+)CN");
+    EXPECT_GT(r.errorCount, 0) << r.messages;
+    EXPECT_NE(r.messages.find("须经实例调用"), std::string::npos) << r.messages;
+}
+
+// 合法形态回归锚定：类名.静态成员（方法/字段）+ 实例.实例成员 不受影响
+TEST(SemanticOopTest, StaticAccessLegalFormsUnaffected) {
+    auto r = analyzeSource(R"CN(
+类 盒子 {
+公开:
+    整64 值;
+    静态 整64 计数 = 0;
+    函数 盒子(整64 v) {
+        值 = v;
+    }
+    函数 读值() -> 整64 {
+        返回 值;
+    }
+    静态 函数 取计数() -> 整64 {
+        返回 计数;
+    }
+}
+函数 主() -> 整32 {
+    盒子 甲 = 盒子(7);
+    盒子.计数 = 3;
+    整64 计数读 = 盒子.取计数();
+    整64 甲读值 = 甲.读值();
+    返回 0;
+}
+)CN");
+    EXPECT_TRUE(r.ok) << r.messages;
+    EXPECT_EQ(r.errorCount, 0);
+}
+
 // ==================== 常量成员函数（Task 3.9） ====================
 
 // 常量成员函数：只读成员 -> 合法

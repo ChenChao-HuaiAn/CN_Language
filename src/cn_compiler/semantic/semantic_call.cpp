@@ -721,6 +721,22 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 types::isPointer(objType) ? types::pointeeOf(objType) : objType);
             const InterfaceInfo* iface = findInterface(ifaceName);
             if (iface != nullptr) {
+                // 缺陷根治（第九十三轮，2026-09-13 B2 同族扫面）：接口名.方法()
+                //   ——接口方法须经接口对象调用（receiver 为接口类型名时无对象
+                //   可取，运行期 NULL 分派 → 段错误，探针 M10 实证）。Rust 同款
+                //   纪律：trait 方法须经实现者实例调用。
+                if (mem->object->getType() == NodeType::IdentifierExpr) {
+                    const std::string& objName =
+                        static_cast<IdentifierExpr*>(mem->object.get())->name;
+                    if (isInterfaceType(objName)) {
+                        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                            "接口名.方法() 非法：接口方法 '" +
+                                                methodName +
+                                                "' 须经接口对象调用（接口类型名无实例）");
+                        lastType_ = "未知";
+                        return;
+                    }
+                }
                 const auto imit = iface->methods.find(methodName);
                 if (imit == iface->methods.end()) {
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
@@ -786,6 +802,36 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                        ? canonicalType(types::pointeeOf(objTypeForClass))
                        : canonicalType(objTypeForClass));
         const ClassMemberInfo* method = lookupClassMember(clsName, methodName, ownerClass);
+        // 缺陷根治（第九十三轮，2026-09-13 B2 立案复现）：类名.实例方法() ——
+        //   调用路径漏检（visitMemberExpr 对 类名.实例成员 已有拒绝，本路径
+        //   直查成员表后即按实例方法调用生成，无 this → IR 生成 NULL 间接调用
+        //   → 运行期段错误〈宿主探针 M1/M7 实证〉/垃圾值〈v2 侧实证〉）。Rust
+        //   同款纪律（E0061：实例方法须经实例调用；类名.成员 仅静态成员合法）。
+        //   同处一并拒绝 实例.静态方法()（Rust E0599：关联函数不经实例访问；
+        //   原实现同样崩——探针 M5）。receiver 判定与 visitMemberExpr 同款
+        //   （IdentifierExpr 且 isClassType）；自身/父类 receiver 非类名 →
+        //   实例语义（自身.方法/父类.方法 合法形态不受影响）。
+        bool receiverIsTypeName = false;
+        if (mem->object->getType() == NodeType::IdentifierExpr) {
+            const std::string& objName =
+                static_cast<IdentifierExpr*>(mem->object.get())->name;
+            receiverIsTypeName = isClassType(objName);
+        }
+        if (method != nullptr && receiverIsTypeName && !method->isStatic) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "类名.实例方法() 非法：方法 '" + methodName +
+                                    "' 是非静态方法，须经实例调用");
+            lastType_ = "未知";
+            return;
+        }
+        if (method != nullptr && !receiverIsTypeName && method->isStatic) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "实例.静态方法() 非法：静态方法 '" + methodName +
+                                    "' 须经类名调用（" + ownerClass + "." +
+                                    methodName + "）");
+            lastType_ = "未知";
+            return;
+        }
         if (method != nullptr && !method->isStatic) {
             // 实例方法调用：校验参数个数与类型
             std::vector<std::string> argTypes;
