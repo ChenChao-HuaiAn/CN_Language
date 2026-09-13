@@ -31,6 +31,15 @@ struct GenericFuncInstance;  // 前向声明（Task 6.1：泛型函数实例化�
 // （ir_oop.cpp 定义，ir_oop_call.cpp 调用）
 std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
 
+// 95-a（2026-09-13 第九十五轮 缺陷根治）：字符字面量 raw（含单引号）-> Unicode 码点。
+//   规范 01b 三「字符类型为 4 字节 Unicode 标量值」：转义序列（\n \t \r \0 \\ \' \"）+
+//   Unicode 转义 \u{XXXX} + UTF-8 多字节（'中'=0x4E2D=20013）全解码。
+//   修复前 3 处消费点同款「去引号取首字节」（ir_decl charLiteralCodeText / ir_expr
+//   evalDefaultExpr / ir_expr visitCharLiteral）——'\n'=92（反斜杠）、'中'=228（UTF-8
+//   首字节），违反规范且与 v2 侧（词法 字符码点 全解码）静默分叉（探针 ch1/ch2 双侧
+//   diff 实证）。单一归属：本函数（v2 侧 词法分析.字符码点 同口径）。
+int charLiteralCodePoint(const std::string& raw);
+
 namespace ir {
 
 // IR指令操作码（规格书7.3指令分类，阶段一子集 + Task 2.3 类型系统完善）

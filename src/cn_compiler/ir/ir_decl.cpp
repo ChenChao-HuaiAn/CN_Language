@@ -17,14 +17,11 @@ namespace cn_compiler {
 
 namespace {
 // 87-a（2026-09-12 第八十七轮）：字符字面量 raw（含单引号）→ 字符码文本。
-//   与 visitCharLiteral 同口径（去引号取首字节）——.data 直存初值用。
+//   95-a（2026-09-13 第九十五轮）：改走 单一归属 charLiteralCodePoint（转义 +
+//   \u{XXXX} + UTF-8 全解码，规范 01b 三「4 字节 Unicode 标量值」）——原
+//   「去引号取首字节」（'\n'=92 / '中'=228）违反规范且与 v2 侧分叉。
 std::string charLiteralCodeText(const std::string& raw) {
-    std::string text = raw;
-    if (text.size() >= 2 && text.front() == '\'' && text.back() == '\'') {
-        text = text.substr(1, text.size() - 2);
-    }
-    const int code = text.empty() ? 0 : static_cast<unsigned char>(text[0]);
-    return std::to_string(code);
+    return std::to_string(charLiteralCodePoint(raw));
 }
 }  // namespace
 

@@ -129,16 +129,10 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr, ir::IRFunction& func) {
         }
         case NodeType::CharLiteral: {
             CharLiteral* lit = static_cast<CharLiteral*>(expr);
-            std::string text = lit->raw;
-            // 字符字面量：单引号内首字符码点（'A' -> 65；'\u{4E2D}' 全解码）
-            if (text.size() >= 3 && text.front() == '\'' && text.back() == '\'') {
-                const std::string inner = text.substr(1, text.size() - 2);
-                if (inner.size() == 1) {
-                    return ir::IRValue::constant(
-                        std::to_string(static_cast<unsigned char>(inner[0])), "i32");
-                }
-            }
-            return ir::IRValue::constant("0", "i32");
+            // 95-a：字符字面量码点（单一归属 charLiteralCodePoint——转义/\u{}/UTF-8
+            //   全解码，规范 01b 三；原「单引号取首字节」注释声称全解码实为未实现）
+            return ir::IRValue::constant(
+                std::to_string(charLiteralCodePoint(lit->raw)), "i32");
         }
         case NodeType::UnaryExpr: {
             // 一元负号：-N（常量取负）
@@ -162,12 +156,8 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr, ir::IRFunction& func) {
     }
 }
 void IRGenerator::visitCharLiteral(CharLiteral* node) {
-    std::string text = node->raw;
-    if (text.size() >= 2 && text.front() == '\'' && text.back() == '\'') {
-        text = text.substr(1, text.size() - 2);
-    }
-    int code = 0;
-    if (!text.empty()) code = static_cast<unsigned char>(text[0]);
+    // 95-a：字符字面量码点（单一归属 charLiteralCodePoint——转义/\u{}/UTF-8 全解码）
+    const int code = charLiteralCodePoint(node->raw);
     lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", std::to_string(code),
                            node->location);
 }

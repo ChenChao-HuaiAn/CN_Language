@@ -92,6 +92,35 @@ static void appendUtf8(std::string& out, char32_t cp) {
     }
 }
 
+// 前向声明（95-a：charLiteralCodePoint 于 decodeEscapes 定义之前使用）
+static std::string decodeEscapes(const std::string& body);
+
+// 95-a：字符字面量 raw -> Unicode 码点（规范 01b 三；声明见 ir.hpp）
+int charLiteralCodePoint(const std::string& raw) {
+    std::string text = raw;
+    if (text.size() >= 2 && text.front() == '\'' && text.back() == '\'') {
+        text = text.substr(1, text.size() - 2);
+    }
+    const std::string decoded = decodeEscapes(text);  // 转义 + \u{XXXX} -> UTF-8 字节串
+    if (decoded.empty()) return 0;
+    const unsigned char b0 = static_cast<unsigned char>(decoded[0]);
+    if (b0 < 0x80) return static_cast<int>(b0);
+    auto cont = [&decoded](std::size_t i) -> int {
+        return (i < decoded.size())
+                   ? (static_cast<unsigned char>(decoded[i]) & 0x3F) : 0;
+    };
+    if ((b0 & 0xE0) == 0xC0) {
+        return ((b0 & 0x1F) << 6) | cont(1);
+    }
+    if ((b0 & 0xF0) == 0xE0) {
+        return ((b0 & 0x0F) << 12) | (cont(1) << 6) | cont(2);
+    }
+    if ((b0 & 0xF8) == 0xF0) {
+        return ((b0 & 0x07) << 18) | (cont(1) << 12) | (cont(2) << 6) | cont(3);
+    }
+    return static_cast<int>(b0);
+}
+
 // 解码转义序列（\n \t \r \0 \\ \" \' \u{XXXX}），返回解码后的字符串
 // （B-1 拆分时从 ir.cpp 中部移回主文件的自由函数，decodeString 依赖）
 static std::string decodeEscapes(const std::string& body) {
