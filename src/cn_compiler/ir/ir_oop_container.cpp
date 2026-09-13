@@ -118,44 +118,8 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     }
     // ---- 字符串元素：单槽/全量释放经运行时辅助（槽清零=幂等，同 75-a 模型）----
     if (elemCanon == "字符串") {
-        const std::string thisUniqueS = lookupVarName("自身");
-        if (thisUniqueS.empty()) return;
-        ir::IRValue selfPtrS = emitResult(ir::Opcode::Load,
-                                          {ir::IRValue::var(thisUniqueS, "ptr")},
-                                          "ptr", thisUniqueS, loc);
-        if (isFull) {
-            // 全量（~容器/清空；清空的 元素数量=0 在方法体内——先释放后归零）；
-            //   链表/队列 按链游（清空前链有效，已摘槽不在链上=不重复释放）
-            emitContainerElemFreeFor(canonClass, selfPtrS, loc);
-            return;
-        }
-        // 76-a：字符串元素只注入「唯一持有者槽」的释放（析构被移除/删除头部/
-        //   删除尾部）；析构元素（移位目标槽/末尾移出槽）**不注入**——字符串
-        //   下标赋值=浅拷句柄，源槽与有效槽重复引用，释放即悬垂（探针 76-V1 实证）
-        if (!strOwnedSlot) return;
-        // 单槽：索引来自 参数（析构元素=索引）或 字段（链表 头索引/尾索引——
-        //   注入在方法体前，字段仍是删除前旧值）
-        ir::IRValue posS;
-        if (!indexParam.empty()) {
-            const std::string posUniqueS = lookupVarName(indexParam);
-            if (posUniqueS.empty()) return;
-            posS = emitResult(ir::Opcode::Load,
-                              {ir::IRValue::var(posUniqueS, "i64")},
-                              "i64", posUniqueS, loc);
-        } else {
-            const int idxOffS = semantic_->classFieldOffset(canonClass, indexField);
-            if (idxOffS < 0) return;
-            ir::IRValue idxAddrS = emitResult(ir::Opcode::FieldAddr, {selfPtrS}, "ptr",
-                                              std::to_string(idxOffS), loc);
-            posS = emitResult(ir::Opcode::LoadPtr, {idxAddrS}, "i64", "", loc);
-        }
-        const int arrayOffS = semantic_->classFieldOffset(canonClass, arrayField);
-        if (arrayOffS < 0) return;
-        emit(ir::Opcode::Call,
-             {selfPtrS,
-              ir::IRValue::constant(std::to_string(arrayOffS), "整64"),
-              posS},
-             ir::IRValue(), "__cn_seq_free_slot", "void", loc);
+        injectStrElemDestroy(canonClass, loc, arrayField, elemCanon, isFull, strOwnedSlot,
+                               indexParam, indexField);
         return;
     }
     // ---- 81-a（第八十一轮）：元素 = 含拥有型串字段的结构体（含嵌套结构体/结果/可选）----
@@ -247,6 +211,58 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
                               indexField, loc, dtorBody);
     }
 }
+
+// D1 131-a：字符串元素释放（全量通循环 / 单槽 __cn_seq_free_slot；
+//   自 injectContainerElemDestroy 按族拆出——“if 包 + return”模式；纯重构零行为变更）
+void IRGenerator::injectStrElemDestroy(const std::string& canonClass,
+                                            const SourceLocation& loc,
+                                            const std::string& arrayField,
+                                            const std::string& elemCanon, bool isFull,
+                                            bool strOwnedSlot, const std::string& indexParam,
+                                            const std::string& indexField) {
+    if (elemCanon == "字符串") {
+        const std::string thisUniqueS = lookupVarName("自身");
+        if (thisUniqueS.empty()) return;
+        ir::IRValue selfPtrS = emitResult(ir::Opcode::Load,
+                                          {ir::IRValue::var(thisUniqueS, "ptr")},
+                                          "ptr", thisUniqueS, loc);
+        if (isFull) {
+            // 全量（~容器/清空；清空的 元素数量=0 在方法体内——先释放后归零）；
+            //   链表/队列 按链游（清空前链有效，已摘槽不在链上=不重复释放）
+            emitContainerElemFreeFor(canonClass, selfPtrS, loc);
+            return;
+        }
+        // 76-a：字符串元素只注入「唯一持有者槽」的释放（析构被移除/删除头部/
+        //   删除尾部）；析构元素（移位目标槽/末尾移出槽）**不注入**——字符串
+        //   下标赋值=浅拷句柄，源槽与有效槽重复引用，释放即悬垂（探针 76-V1 实证）
+        if (!strOwnedSlot) return;
+        // 单槽：索引来自 参数（析构元素=索引）或 字段（链表 头索引/尾索引——
+        //   注入在方法体前，字段仍是删除前旧值）
+        ir::IRValue posS;
+        if (!indexParam.empty()) {
+            const std::string posUniqueS = lookupVarName(indexParam);
+            if (posUniqueS.empty()) return;
+            posS = emitResult(ir::Opcode::Load,
+                              {ir::IRValue::var(posUniqueS, "i64")},
+                              "i64", posUniqueS, loc);
+        } else {
+            const int idxOffS = semantic_->classFieldOffset(canonClass, indexField);
+            if (idxOffS < 0) return;
+            ir::IRValue idxAddrS = emitResult(ir::Opcode::FieldAddr, {selfPtrS}, "ptr",
+                                              std::to_string(idxOffS), loc);
+            posS = emitResult(ir::Opcode::LoadPtr, {idxAddrS}, "i64", "", loc);
+        }
+        const int arrayOffS = semantic_->classFieldOffset(canonClass, arrayField);
+        if (arrayOffS < 0) return;
+        emit(ir::Opcode::Call,
+             {selfPtrS,
+              ir::IRValue::constant(std::to_string(arrayOffS), "整64"),
+              posS},
+             ir::IRValue(), "__cn_seq_free_slot", "void", loc);
+        return;
+    }
+}
+
 
 // D1 130-a：移动元素挂点（移位循环单点：memcpy + 源槽资源清零；
 //   自 injectContainerElemDestroy 按族拆出——“if 包 + return”模式；纯重构零行为变更）
