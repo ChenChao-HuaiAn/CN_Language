@@ -88,7 +88,8 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
             const std::size_t dlC = fieldCanonC.find('$');
             const std::string headC =
                 dlC == std::string::npos ? fieldCanonC : fieldCanonC.substr(0, dlC);
-            if (!fieldCanonC.empty() && headC == "向量" &&
+            if (!fieldCanonC.empty() &&
+                (headC == "向量" || headC == "栈") &&
                 semantic_->isClassType(fieldCanonC)) {
                 const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
                 if (!dtorKeyC.empty()) {

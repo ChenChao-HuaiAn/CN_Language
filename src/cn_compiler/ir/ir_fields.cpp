@@ -110,11 +110,13 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
             //       写回（无拷贝构造不纳入——浅拷共享下加释放=双删，发现三）；
             //     · 收窄向量族：链表/栈/队列（链式释放协议）与用户自定义类=后续轮
             //       逐族扩展（116 回归教训：链式模型需独立验证）。
+            // 140-a：向量族 → 扩「栈」（平铺模型，同 __cn_vector_free_strings 释放
+            //   协议）；链表/队列（链式模型 __cn_chain_free_strings）后续轮独立验证
             const std::size_t dl = fieldCanon.find('$');
             const std::string head = dl == std::string::npos
                                          ? fieldCanon
                                          : fieldCanon.substr(0, dl);
-            if (head != "向量") continue;
+            if (head != "向量" && head != "栈") continue;
             const ClassInfo* fci = semantic_->findClass(fieldCanon);
             bool hasDtor = false;
             if (fci != nullptr) {
