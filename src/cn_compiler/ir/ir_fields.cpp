@@ -119,7 +119,9 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
             const std::string head = dl == std::string::npos
                                          ? fieldCanon
                                          : fieldCanon.substr(0, dl);
-            if (head != "向量" && head != "栈") continue;
+            if (head != "向量" && head != "栈" && head != "链表" && head != "队列") {
+                continue;
+            }
             const ClassInfo* fci = semantic_->findClass(fieldCanon);
             bool hasDtor = false;
             if (fci != nullptr) {
