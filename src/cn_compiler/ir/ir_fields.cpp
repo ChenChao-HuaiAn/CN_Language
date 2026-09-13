@@ -79,11 +79,17 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
                    semantic_->isStructType(fieldCanon)) {
             collectOwnedStrFields(fieldCanon, base + f.offset, cond, out, visiting);
         } else if (types::isArray(fieldCanon) &&
-                   types::arrayElemOf(fieldCanon) == "字符串") {
-            // 99-a（C11）：**字符串数组字段**（结构体字段数组，元素=拥有串句柄）
-            //   ——逐元素释放（97-a 字段数组读写 × 98-a 数组元素释放的合龙；
-            //   原「数组字段：面外」注释处立项）。元素步进=元素类型大小（=8）。
-            int stride = semantic_->typeSizeOf("字符串");
+                   (types::arrayElemOf(fieldCanon) == "字符串" ||
+                    (semantic_->isStructType(
+                         types::canonical(types::arrayElemOf(fieldCanon))) &&
+                     !ownedStrFieldsOf(types::arrayElemOf(fieldCanon)).empty()))) {
+            // 99-a（C11）/100-a（C12）：**字段数组**——元素=拥有串句柄（字符串）
+            //   或元素=含串字段结构体（逐元素递归释放其串字段；97-a 字段数组读写
+            //   × 98-a 元素释放 × 79-a 字段递归的合龙；原「数组字段：面外」立项）。
+            //   元素步进=元素类型真实大小（typeSizeOf 单点——H4 教训）。
+            const std::string elemCanon = types::canonical(
+                types::arrayElemOf(fieldCanon));
+            int stride = semantic_->typeSizeOf(elemCanon);
             if (stride <= 0) stride = 8;
             int len = types::arrayLenOf(fieldCanon);
             if (len > 0) {
@@ -92,6 +98,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
                 fld.condOffset = cond;
                 fld.arrayLen = len;
                 fld.arrayStride = stride;
+                if (elemCanon != "字符串") { fld.elemCanon = elemCanon; }
                 out.push_back(fld);
             }
         }
@@ -274,8 +281,14 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                            std::to_string(f.offset), loc);
         if (f.arrayLen > 0) {
-            // 99-a（C11）：字符串数组字段——逐元素释放（基址 + i×步进 -> free -> 清槽）
-            emitStrArrayElemFreesAt(fieldAddr, f.arrayLen, f.arrayStride, loc);
+            // 99-a（C11）/100-a（C12）：字段数组——元素=字符串逐元素 free；
+            //   元素=含串字段结构体逐元素递归字段释放
+            if (f.elemCanon.empty()) {
+                emitStrArrayElemFreesAt(fieldAddr, f.arrayLen, f.arrayStride, loc);
+            } else {
+                emitStrArrayStructFreesAt(fieldAddr, f.arrayLen, f.arrayStride,
+                                          f.elemCanon, loc);
+            }
             continue;
         }
         if (f.condOffset < 0) {
@@ -307,6 +320,26 @@ void IRGenerator::emitStrArrayElemFreesAt(const ir::IRValue& base, int len,
     }
 }
 
+// 100-a（C12）：字段数组元素=**含串字段结构体**——逐元素递归释放（元素地址 =
+//   基址 + i×步进 -> 递归 emitOwnedStrFieldFreesAt(elemCanon)：元素结构体的
+//   串字段/嵌套结构体/结果可选字段全谱系，与聚合局部同源单点）。
+void IRGenerator::emitStrArrayStructFreesAt(const ir::IRValue& base, int len,
+                                            int stride, const std::string& elemCanon,
+                                            const SourceLocation& loc) {
+    if (len <= 0 || stride <= 0 || elemCanon.empty()) return;
+    for (int i = 0; i < len; ++i) {
+        ir::IRValue addr = base;
+        if (i > 0) {
+            ir::IRValue off = emitResult(
+                ir::Opcode::ConstInt, {}, "i64",
+                std::to_string(static_cast<long long>(i) * stride), loc);
+            addr = emitResult(ir::Opcode::Add, {base, off}, "ptr", "", loc);
+        }
+        emitOwnedStrFieldFreesAt(addr, elemCanon, loc);
+    }
+}
+
+// 99-a（C11）：字段数组元素=字符串——逐元素 free+清槽（基址 + i×步进）
 void IRGenerator::emitOwnedFieldFreesFor(const std::string& unique,
                                          const std::string& canon,
                                          const SourceLocation& loc) {
@@ -328,8 +361,13 @@ void IRGenerator::emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
                                            std::to_string(f.offset), loc);
         if (f.arrayLen > 0) {
-            // 99-a（C11）：字符串数组字段——深拷前置释放旧元素（同款逐元素）
-            emitStrArrayElemFreesAt(fieldAddr, f.arrayLen, f.arrayStride, loc);
+            // 99-a/100-a：字段数组——深拷前置释放旧元素（同款逐元素/递归）
+            if (f.elemCanon.empty()) {
+                emitStrArrayElemFreesAt(fieldAddr, f.arrayLen, f.arrayStride, loc);
+            } else {
+                emitStrArrayStructFreesAt(fieldAddr, f.arrayLen, f.arrayStride,
+                                          f.elemCanon, loc);
+            }
             continue;
         }
         if (f.condOffset < 0) {

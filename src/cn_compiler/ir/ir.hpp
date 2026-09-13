@@ -616,6 +616,11 @@ private:
         //   i×arrayStride -> LoadPtr -> __cn_str_free -> StorePtr 0），长度=arrayLen
         int arrayLen = 0;
         int arrayStride = 0;
+        // 100-a（C12）：arrayLen > 0 且 elemCanon 非空 = **元素是含串字段结构体**
+        //   （逐元素递归释放其串字段；空=元素本身即字符串句柄）。
+        //   默认成员初始化器：聚合初始化 {base, cond} 保持合法（-Wmissing-field-
+        //   initializers 在有 NSDMI 时不报警——CMake -Werror 门禁要求）
+        std::string elemCanon = std::string();
     };
     // 收集聚合类型（结构体/结果/可选，递归展开值语义嵌套）的拥有型字符串字段
     std::vector<OwnedStrField> ownedStrFieldsOf(const std::string& canon) const;
@@ -626,6 +631,10 @@ private:
     // 99-a（C11）：字符串数组字段元素释放发射（基址 + i×步进 逐元素 free+清槽）
     void emitStrArrayElemFreesAt(const ir::IRValue& base, int len, int stride,
                                  const SourceLocation& loc);
+    // 100-a（C12）：字段数组元素=含串字段结构体——逐元素递归字段释放
+    void emitStrArrayStructFreesAt(const ir::IRValue& base, int len, int stride,
+                                   const std::string& elemCanon,
+                                   const SourceLocation& loc);
     void emitFieldStringFreeAt(const ir::IRValue& fieldAddr,
                                const SourceLocation& loc);
     void emitFieldStringFreeIf(const ir::IRValue& condAddr,
