@@ -113,49 +113,7 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     //   结构体整体赋值深拷（preFree + memcpy + __cn_str_copy）——既多一次分配，
     //   又把源槽句柄留在超范围槽（容器析构不遍历）=泄漏 1/元素。
     if (mi.name == "移动元素") {
-        const std::string dstUniqueM = lookupVarName("目标");
-        const std::string srcUniqueM = lookupVarName("源");
-        const std::string thisUniqueMv = lookupVarName("自身");
-        if (dstUniqueM.empty() || srcUniqueM.empty() || thisUniqueMv.empty()) return;
-        const int arrayOffM = semantic_->classFieldOffset(canonClass, arrayField);
-        const int strideM = semantic_->typeSizeOf(elemCanon);
-        if (arrayOffM < 0 || strideM <= 0) return;
-        ir::IRValue selfPtrMv = emitResult(ir::Opcode::Load,
-                                           {ir::IRValue::var(thisUniqueMv, "ptr")},
-                                           "ptr", thisUniqueMv, loc);
-        ir::IRValue arrayAddrM = emitResult(ir::Opcode::FieldAddr, {selfPtrMv}, "ptr",
-                                            std::to_string(arrayOffM), loc);
-        ir::IRValue arrayPtrM = emitResult(ir::Opcode::LoadPtr, {arrayAddrM}, "ptr", "",
-                                           loc);
-        ir::IRValue dstPos = emitResult(ir::Opcode::Load,
-                                        {ir::IRValue::var(dstUniqueM, "i64")}, "i64",
-                                        dstUniqueM, loc);
-        ir::IRValue srcPos = emitResult(ir::Opcode::Load,
-                                        {ir::IRValue::var(srcUniqueM, "i64")}, "i64",
-                                        srcUniqueM, loc);
-        ir::IRValue dstAddr = emitResult(
-            ir::Opcode::Add,
-            {arrayPtrM,
-             emitResult(ir::Opcode::Mul,
-                        {dstPos, ir::IRValue::constant(std::to_string(strideM), "i64")},
-                        "i64", "", loc)},
-            "ptr", "", loc);
-        ir::IRValue srcAddr = emitResult(
-            ir::Opcode::Add,
-            {arrayPtrM,
-             emitResult(ir::Opcode::Mul,
-                        {srcPos, ir::IRValue::constant(std::to_string(strideM), "i64")},
-                        "i64", "", loc)},
-            "ptr", "", loc);
-        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
-             std::to_string(strideM), "void", loc);
-        // 源槽资源清零（句柄已随 memcpy 移交目标槽；只清点字段槽不释放——联合体安全）
-        for (const auto& f : ownedStrFieldsOf(elemCanon)) {
-            ir::IRValue fAddr = emitResult(ir::Opcode::FieldAddr, {srcAddr}, "ptr",
-                                           std::to_string(f.offset), loc);
-            ir::IRValue zeroM = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
-            emit(ir::Opcode::StorePtr, {fAddr, zeroM}, ir::IRValue(), "", "ptr", loc);
-        }
+        injectMoveElemDestroy(canonClass, mi, loc, arrayField, elemCanon);
         return;
     }
     // ---- 字符串元素：单槽/全量释放经运行时辅助（槽清零=幂等，同 75-a 模型）----
@@ -289,6 +247,62 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
                               indexField, loc, dtorBody);
     }
 }
+
+// D1 130-a：移动元素挂点（移位循环单点：memcpy + 源槽资源清零；
+//   自 injectContainerElemDestroy 按族拆出——“if 包 + return”模式；纯重构零行为变更）
+void IRGenerator::injectMoveElemDestroy(const std::string& canonClass,
+                                             const ClassMemberInfo& mi,
+                                             const SourceLocation& loc,
+                                             const std::string& arrayField,
+                                             const std::string& elemCanon) {
+    if (mi.name == "移动元素") {
+        const std::string dstUniqueM = lookupVarName("目标");
+        const std::string srcUniqueM = lookupVarName("源");
+        const std::string thisUniqueMv = lookupVarName("自身");
+        if (dstUniqueM.empty() || srcUniqueM.empty() || thisUniqueMv.empty()) return;
+        const int arrayOffM = semantic_->classFieldOffset(canonClass, arrayField);
+        const int strideM = semantic_->typeSizeOf(elemCanon);
+        if (arrayOffM < 0 || strideM <= 0) return;
+        ir::IRValue selfPtrMv = emitResult(ir::Opcode::Load,
+                                           {ir::IRValue::var(thisUniqueMv, "ptr")},
+                                           "ptr", thisUniqueMv, loc);
+        ir::IRValue arrayAddrM = emitResult(ir::Opcode::FieldAddr, {selfPtrMv}, "ptr",
+                                            std::to_string(arrayOffM), loc);
+        ir::IRValue arrayPtrM = emitResult(ir::Opcode::LoadPtr, {arrayAddrM}, "ptr", "",
+                                           loc);
+        ir::IRValue dstPos = emitResult(ir::Opcode::Load,
+                                        {ir::IRValue::var(dstUniqueM, "i64")}, "i64",
+                                        dstUniqueM, loc);
+        ir::IRValue srcPos = emitResult(ir::Opcode::Load,
+                                        {ir::IRValue::var(srcUniqueM, "i64")}, "i64",
+                                        srcUniqueM, loc);
+        ir::IRValue dstAddr = emitResult(
+            ir::Opcode::Add,
+            {arrayPtrM,
+             emitResult(ir::Opcode::Mul,
+                        {dstPos, ir::IRValue::constant(std::to_string(strideM), "i64")},
+                        "i64", "", loc)},
+            "ptr", "", loc);
+        ir::IRValue srcAddr = emitResult(
+            ir::Opcode::Add,
+            {arrayPtrM,
+             emitResult(ir::Opcode::Mul,
+                        {srcPos, ir::IRValue::constant(std::to_string(strideM), "i64")},
+                        "i64", "", loc)},
+            "ptr", "", loc);
+        emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
+             std::to_string(strideM), "void", loc);
+        // 源槽资源清零（句柄已随 memcpy 移交目标槽；只清点字段槽不释放——联合体安全）
+        for (const auto& f : ownedStrFieldsOf(elemCanon)) {
+            ir::IRValue fAddr = emitResult(ir::Opcode::FieldAddr, {srcAddr}, "ptr",
+                                           std::to_string(f.offset), loc);
+            ir::IRValue zeroM = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+            emit(ir::Opcode::StorePtr, {fAddr, zeroM}, ir::IRValue(), "", "ptr", loc);
+        }
+        return;
+    }
+}
+
 
 // D1 128-a：映射<K,V> 字符串键／值释放注入（自 injectContainerElemDestroy 按族拆出；
 //   族内所有路径均 return（原语义等价：主函数外层 if 块接管返回）。

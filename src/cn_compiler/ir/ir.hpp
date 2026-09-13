@@ -368,6 +368,10 @@ private:
     // 结果写入临时双槽并返回其地址（ptr）
     ir::IRValue genI128Binary(ir::IRValue left, ir::IRValue right, ir::Opcode op,
                               const SourceLocation& loc);
+    // D1 130-a：移动元素挂点子方法
+    void injectMoveElemDestroy(const std::string& canonClass, const ClassMemberInfo& mi,
+                               const SourceLocation& loc, const std::string& arrayField,
+                               const std::string& elemCanon);
     // 生成 i128 比较（返回 i1 布尔值）
     ir::IRValue genI128Compare(ir::IRValue left, ir::IRValue right, ir::Opcode op,
                                const SourceLocation& loc);
