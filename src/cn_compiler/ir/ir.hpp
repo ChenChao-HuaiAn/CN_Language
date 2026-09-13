@@ -611,6 +611,11 @@ private:
     struct OwnedStrField {
         int offset = 0;       // 相对聚合基址的字节偏移
         int condOffset = -1;  // -1=无条件释放；否则条件字段（布尔）偏移
+        // 99-a（C11, 2026-09-13 第九十九轮）：**字符串数组字段**——arrayLen > 0 时
+        //   该字段是「字符串[长度]」（元素=拥有串句柄）：释放=逐元素（fieldAddr +
+        //   i×arrayStride -> LoadPtr -> __cn_str_free -> StorePtr 0），长度=arrayLen
+        int arrayLen = 0;
+        int arrayStride = 0;
     };
     // 收集聚合类型（结构体/结果/可选，递归展开值语义嵌套）的拥有型字符串字段
     std::vector<OwnedStrField> ownedStrFieldsOf(const std::string& canon) const;
@@ -618,6 +623,9 @@ private:
                                std::vector<OwnedStrField>& out,
                                std::vector<std::string>& visiting) const;
     // 单字段释放（无条件 / condAddr 非零时）+ 清槽——释放面单点事实源
+    // 99-a（C11）：字符串数组字段元素释放发射（基址 + i×步进 逐元素 free+清槽）
+    void emitStrArrayElemFreesAt(const ir::IRValue& base, int len, int stride,
+                                 const SourceLocation& loc);
     void emitFieldStringFreeAt(const ir::IRValue& fieldAddr,
                                const SourceLocation& loc);
     void emitFieldStringFreeIf(const ir::IRValue& condAddr,

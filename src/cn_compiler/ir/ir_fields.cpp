@@ -78,8 +78,24 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
                    fieldCanon.rfind("可选$", 0) == 0 ||
                    semantic_->isStructType(fieldCanon)) {
             collectOwnedStrFields(fieldCanon, base + f.offset, cond, out, visiting);
+        } else if (types::isArray(fieldCanon) &&
+                   types::arrayElemOf(fieldCanon) == "字符串") {
+            // 99-a（C11）：**字符串数组字段**（结构体字段数组，元素=拥有串句柄）
+            //   ——逐元素释放（97-a 字段数组读写 × 98-a 数组元素释放的合龙；
+            //   原「数组字段：面外」注释处立项）。元素步进=元素类型大小（=8）。
+            int stride = semantic_->typeSizeOf("字符串");
+            if (stride <= 0) stride = 8;
+            int len = types::arrayLenOf(fieldCanon);
+            if (len > 0) {
+                OwnedStrField fld;
+                fld.offset = base + f.offset;
+                fld.condOffset = cond;
+                fld.arrayLen = len;
+                fld.arrayStride = stride;
+                out.push_back(fld);
+            }
         }
-        // 类/容器/指针/数组字段：面外（数组元素持串=矩阵 #15 靶子独立立项）
+        // 类/容器/指针字段：面外
     }
     visiting.pop_back();
 }
@@ -257,6 +273,11 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
     for (const auto& f : ownedStrFieldsOf(canon)) {
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                            std::to_string(f.offset), loc);
+        if (f.arrayLen > 0) {
+            // 99-a（C11）：字符串数组字段——逐元素释放（基址 + i×步进 -> free -> 清槽）
+            emitStrArrayElemFreesAt(fieldAddr, f.arrayLen, f.arrayStride, loc);
+            continue;
+        }
         if (f.condOffset < 0) {
             emitFieldStringFreeAt(fieldAddr, loc);
         } else {
@@ -264,6 +285,25 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
                                               std::to_string(f.condOffset), loc);
             emitFieldStringFreeIf(condAddr, fieldAddr, loc);
         }
+    }
+}
+
+// 99-a（C11）：字符串数组字段元素释放发射——编译期展开逐元素：地址 = 基址 +
+//   i×元素步进 -> LoadPtr(ptr) -> __cn_str_free -> StorePtr 0（释放+清槽幂等）。
+//   与 98-a 宿主局部数组元素释放（emitStrArrayElemFreesFor）同款模型（此处基址
+//   为字段地址，故独立 helper 接收 base 值）。
+void IRGenerator::emitStrArrayElemFreesAt(const ir::IRValue& base, int len,
+                                          int stride, const SourceLocation& loc) {
+    if (len <= 0 || stride <= 0) return;
+    for (int i = 0; i < len; ++i) {
+        ir::IRValue addr = base;
+        if (i > 0) {
+            ir::IRValue off = emitResult(
+                ir::Opcode::ConstInt, {}, "i64",
+                std::to_string(static_cast<long long>(i) * stride), loc);
+            addr = emitResult(ir::Opcode::Add, {base, off}, "ptr", "", loc);
+        }
+        emitFieldStringFreeAt(addr, loc);
     }
 }
 
@@ -287,6 +327,11 @@ void IRGenerator::emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
     for (const auto& f : ownedStrFieldsOf(canon)) {
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
                                            std::to_string(f.offset), loc);
+        if (f.arrayLen > 0) {
+            // 99-a（C11）：字符串数组字段——深拷前置释放旧元素（同款逐元素）
+            emitStrArrayElemFreesAt(fieldAddr, f.arrayLen, f.arrayStride, loc);
+            continue;
+        }
         if (f.condOffset < 0) {
             emitFieldStringFreeAt(fieldAddr, loc);
         } else {

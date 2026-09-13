@@ -2127,9 +2127,12 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 elemSrc = types::arrayElemOf(fieldType);
                 elemIsStruct = semantic_ != nullptr &&
                                semantic_->isStructType(types::canonical(elemSrc));
-                stride = elemIsStruct ? semantic_->typeSizeOf(elemSrc)
-                         : (types::isI128(types::canonical(elemSrc)) ? 16
-                                                                    : types::typeSize(elemSrc));
+                // H4 根治（99-a, 2026-09-13 第九十九轮）：元素步进统一
+                //   semantic typeSizeOf（原 非结构体走 types::typeSize——该表
+                //   **无「字符串」**返回 0 -> 字段数组下标不缩放，探针 fldmem2
+                //   实证「再读0=乙」；同族四消费点一并核查）
+                stride = (semantic_ != nullptr) ? semantic_->typeSizeOf(elemSrc) : 8;
+                if (stride <= 0) stride = 8;
                 emitBoundsCheck(index, types::arrayLenOf(fieldType), node->location);
             } else if (types::isPointer(fieldType)) {
                 // 指针字段（T* 数据）：步进统一按所指元素 typeSizeOf（缺陷③根治
@@ -2201,9 +2204,10 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             for (const auto& f : innerDecl->fields) {
                 if (f.name == inner->memberName && types::isArray(f.type)) {
                     const std::string elemSrc = types::arrayElemOf(f.type);
-                    stride = semantic_->isStructType(elemSrc)
-                                 ? semantic_->typeSizeOf(elemSrc)
-                                 : types::typeSize(elemSrc);
+                    // H4 根治（99-a）：统一 typeSizeOf（字符串元素=8；原 typeSize=0
+                    //   -> 读侧下标不缩放）
+                    stride = semantic_->typeSizeOf(elemSrc);
+                    if (stride <= 0) stride = 8;
                     emitBoundsCheck(index, types::arrayLenOf(f.type), node->location);
                     break;
                 }
@@ -2222,9 +2226,9 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 stride = ptrElemStride(ftype);
             } else if (types::isArray(ftype)) {
                 const std::string elemSrc = types::arrayElemOf(ftype);
-                stride = (semantic_->isStructType(types::canonical(elemSrc))
-                              ? semantic_->typeSizeOf(elemSrc)
-                              : types::typeSize(elemSrc));
+                // H4 根治（99-a）：统一 typeSizeOf（同 ②）
+                stride = semantic_->typeSizeOf(elemSrc);
+                if (stride <= 0) stride = 8;
                 emitBoundsCheck(index, types::arrayLenOf(ftype), node->location);
             }
         }
