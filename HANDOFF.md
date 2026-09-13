@@ -9,49 +9,57 @@
 
 ## 家机 win-x64 节
 
-**最近交接**：2026-09-13 深夜——**第一百一十四轮（114-a）：D1 行数存量整改第五波**（`ir_oop_call.cpp` 1155→**763 行**，
-拆出 `ir_oop_call_release.cpp` 408＝类析构/拥有型字符串释放族）。**本会话连做三轮 D1 拆分**（同日 112-a/113-a/114-a，
-合计 -3.3k 行：`ir_expr.cpp` 2798→734、`ir_oop.cpp` 1381→508、`ir_oop_call.cpp` 1155→763），
-同款方法论：族边界勘定（匿名 ns/static 依赖矩阵）→ 行级多重集校验 → **产物 asm 五样本逐字节一致** →
-全量门禁（E2E 290/292、单测 1313、锚定链固定点 **406097 连续三次不变**、对拍 34/34、运行级 3/3）。
+**最近交接**：2026-09-13 深夜——**第一百一十五轮（115-a）：D1 行数整改第六波——`semantic_internal.hpp` 共享头建立**。
+**11 个语义层 helper 在 5 个文件中重复定义 55 处（~600 行）收敛为 inline 单一定义**（Rust 对照：rustc crate 内共享工具
+模块）；`semantic_call.cpp` 顺带 1093→**988 行**（<1000 出列）。纯去重零行为变更，三重验证：
+**删除段≡头核心逐行多重集** + 产物 asm 五样本逐字节一致 + 全量门禁（E2E 290/292、单测 1313、锚定链固定点
+**406097 连续第四次不变**、对拍 34/34、运行级 3/3）。
 
-### 一、本轮交付（D1 第五波）
+### 一、本轮交付（D1 第六波：语义层去重）
 
-| 文件 | 变化 | 说明 |
+**新建 `src/cn_compiler/semantic/semantic_internal.hpp`**（119 行，11 个 inline helper）：
+- 收敛对象：`isComparisonOp`/`isLogicalOp`/`isBitwiseOp`/`isArithmeticOp`/`isPointerType`/`isArrayType`/
+  `arrayTotalSize`/`canonicalType`/`isFuncPtrTypeStr`/`funcPtrReturn`/`funcPtrParams`
+- **查证：11 个 helper 在 5 文件的副本实现逐字一致**（去 `[[maybe_unused]]` 规范化后哈希相同）→ 统一 = 纯去重 ✓
+- 5 文件改造（删各自匿名 ns 副本 + `#include` 头 + 调用点零改动）：
+
+| 文件 | 行数变化 | 备注 |
 |---|---|---|
-| `ir_oop_call.cpp` | 1155 → **763** | 保留（容器插入归一化/handleClassCallExpr/运算符重载/CFI 检查） |
-| `ir_oop_call_release.cpp` | 新增 **408** | 类析构/拥有型字符串释放族（genStringFrees + genClassDestructorCalls + emitStringFreeFor + emitClassDeleteFor + genBlockExitDestruct + emitStrArrayElemFreesFor + genJumpDestructFrom + static blockExitSrcName——族内唯一引用点随族走） |
+| `semantic.cpp` | 2102 → **1995**（-107） | 保留 cnStripLiteralSuffix 族（本文件独有）+ cnEvalConstExpr（仅主文件用）|
+| `semantic_call.cpp` | 1093 → **988**（-105） | **<1000 出列**（主体仍是 885 行 visitCallExpr=函数级面）|
+| `semantic_decl.cpp` | 877 → **767**（-110） | |
+| `semantic_expr.cpp` | 1890 → **1777**（-113） | |
+| `semantic_stmt.cpp` | 927 → **826**（-101） | 保留 cloneNameExpr 族（本文件独有）|
 
-### 二、D1 会话累计（112-a ~ 114-a，同款验证口径）
+### 二、验证（全绿口径）
 
-| 轮次 | 文件 | 行数变化 | 等价性 |
-|---|---|---|---|
-| 112-a | `ir_expr.cpp` | 2798 → **734**（4 族拆出） | 产物 asm 五样本逐字节一致 |
-| 113-a | `ir_oop.cpp` | 1381 → **508**（2 族拆出） | 同上 |
-| 114-a | `ir_oop_call.cpp` | 1155 → **763**（1 族拆出） | 同上 |
+| 项 | 结果 |
+|---|---|
+| 去重等价 | **删除段 ≡ 头文件核心**（逐行多重集，5 文件各 60 行归一后全等）|
+| 宿主构建 | `build.ps1`（`/W4 /WX`）**零警告** |
+| 产物等价 | **5 样本 asm 逐字节一致**（含 v2 全树 404786 行）|
+| 单测 | **1313/1313** |
+| 全量 E2E | **292 用例 290 过 / 2 败**（78/79 OOM 既有）|
+| 锚定链 | 固定点 **406097 行不变**（连续第四次）+ 绑定自检 ✓ |
+| 组件对拍 | **34/34**；运行级 **3/3** |
 
-门禁（三轮各自全绿）：零警告构建 + 单测 **1313/1313** + 全量 E2E **290/292**（78/79 OOM 既有）+
-锚定链固定点 **406097 行**（112-a/113-a/114-a 连续三次一致，cn_main 地址亦同）+ 对拍 **34/34** + 运行级 **3/3**。
+### 三、踩坑 / 方法论（入 lessons）
 
-### 三、踩坑（入 lessons）
-
-- **后台长任务必须单独一条命令启动**（113-a 实测）：`前置命令 && nohup 长任务 &` 的后台链在工具
-  会话结束后未启动长任务（单测 rc=0 但 E2E 从未运行、日志文件都不存在）→ 长任务一律单独
-  `nohup ... &` + 立即核验日志文件已创建。
-- 112-a 方法论三度复用（成本 2h→40min→50min）：勘定脚本化 + 多重集校验 + 产物多样本等价 = 拆分类
-  任务的标准 checklist。
+- **扫描正则必须覆盖全部函数定义形态**：首轮扫描漏掉 `[[maybe_unused]] int arrayTotalSize(...)`（属性前缀）
+  与 `std::vector<std::string> funcPtrParams(...)`（模板返回类型）→ 11 个重复被低估为 9 个。
+  预防：宽判据（匿名 ns 区间内「列 0 起始 + 含 '(' + 非注释」）+ **人工复核清单**。
+- **「删除段 ≡ 新位置内容」校验法**（去重/搬迁类改动的硬校验，112-a 多重集法的迁移版）：
+  逐文件把删除段与头文件核心规范化后比对（本次 5×60 行全等）——比 diff 目测可靠。
+- **头文件化匿名 ns helper 的等价替代**：原匿名 ns 内部链接 → 头文件 `inline`（ODR 齐一、多 TU 安全、
+  未使用无警告）——调用点零改动（同名可见）。**先查明全项目无同名外部链接定义**再采用。
 
 ### 四、下一步（新会话按序）
 
-1. **D1 后续波次**（本机可续做）：`semantic.cpp` 2101（**需先建 `semantic_internal.hpp`**——`canonicalType`
-   被四族共用须 inline 头化；`cnEvalConstExpr` 仅主文件用可留）/ `semantic_expr.cpp` 1889（匿名 ns @21
-   待勘定）/ `semantic_call.cpp` 1092（主体=885 行 `visitCallExpr`→**函数级**拆分对象）/ `ast.hpp` 1032
-   （头文件——策略不同）+ codegen 面 4 文件（x64_instructions 1811 等）+ v2 侧 6 文件 +
-   函数级拆分（`visitAssignmentExpr` 931 行、`injectContainerElemDestroy` 326 行、`visitCallExpr` 885 行等）。
-2. **单位机 arm64 跨机轮**（93-a~114-a）未做；**X64L/ARM64 窄返回规范化修复的动态复验**待跨机轮
-   （111-a 遗留，静态产物已验证）。
-3. **plans/021 §3 队列余项**：B3/B4/B5（**待用户裁决**——111-a 已呈报）；C2 维持排程；
-   D3/D4/D5 维持登记；E1 待并发标准库立项；F 组待规划轮重评。
+1. **D1 后续波次**：`semantic.cpp` 1995（**现在可以直接按族拆**——helper 已头化）/ `semantic_expr.cpp` 1777
+   （同）/ `ast.hpp` 1032（头文件策略不同）+ codegen 面 4 文件 + v2 侧 6 文件 +
+   函数级拆分（`visitCallExpr` 885 行 / `visitAssignmentExpr` 931 行等）。
+2. **单位机 arm64 跨机轮**（93-a~115-a）未做；**X64L/ARM64 窄返回规范化修复动态复验**待跨机轮（111-a 遗留）。
+3. **plans/021 §3 队列余项**：B3/B4/B5（**待用户裁决**）；C2 维持排程；D3/D4/D5 维持登记；E1 外部依赖；F 组待重评。
 
 ## 深度机 linux-x86_64 节
 
