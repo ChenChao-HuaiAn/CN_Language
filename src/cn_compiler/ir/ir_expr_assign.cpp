@@ -85,12 +85,14 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                     }
                 }
             }
+            // 142-a（泛化尝试→回退）：用户类场景实测 0xC0000374（用户类拷贝构造的
+            //   this 字段初值/类析构字段级联与新设施交互未明）——按纪律回退，保留
+            //   四族收窄；**泛化=专项**（plans/020 第五十四节）。
             const std::size_t dlC = fieldCanonC.find('$');
             const std::string headC =
                 dlC == std::string::npos ? fieldCanonC : fieldCanonC.substr(0, dlC);
             if (!fieldCanonC.empty() &&
-                (headC == "向量" || headC == "栈" || headC == "链表" ||
-                 headC == "队列") &&
+                (headC == "向量" || headC == "栈") &&
                 semantic_->isClassType(fieldCanonC)) {
                 const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
                 if (!dtorKeyC.empty()) {
