@@ -46,7 +46,16 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     //   宽度（正32 vs 正64）维持既有宽化。规范 plans/001 §3.7。
     // plans/019 阶段4（2026-09-10）：安全区边界观察期——指针算术（指针 +/- 整数
     //   产生新指针=可越出对象边界）应在 不安全 函数 内
-    if ((node->op == Operator::Add || node->op == Operator::Subtract) &&
+    // plans/022 波 1（2026-09-13 用户裁决）：字符串拼接不是指针算术——+ 涉及
+    //   字符串语义类型（字符串/字符*）时下方算术分支按拼接分派（字符* 是字符串
+    //   视图，IR 层同为 ptr）；原按类型文本 '*' 后缀判指针对该形态误报（宿主
+    //   check v2 树 75 处实证全部为 驻留文本(...)/字符串变量 拼接）。字符* 的
+    //   -（指针步进，语义层按指针算术分派）与真指针（整N*/类*）的 +/- 保持原判。
+    const bool 拼接加 =
+        node->op == Operator::Add &&
+        (isStringSemanticType(leftType) || isStringSemanticType(rightType));
+    if (!拼接加 &&
+        (node->op == Operator::Add || node->op == Operator::Subtract) &&
         (types::isPointer(leftType) || types::isPointer(rightType))) {
         warnUnsafeBoundary(node->location, "指针算术",
                            "指针 +/- 整数");
@@ -137,9 +146,10 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     if (isArithmeticOp(node->op)) {
         // ---- 字符串连接（Task 2.5）：两个字符串/字符* 的 + -> 连接，结果为字符串 ----
         // 说明：字符串与字符* 在 IR 层均为 ptr；语义层需区分"字符串连接"与"指针算术"。
-        //       字符串类型（字符串/字符*）的 + 视为连接（字符* 也承载字符串语义）
-        const bool leftStr = (leftType == "字符串" || leftType == "字符*");
-        const bool rightStr = (rightType == "字符串" || rightType == "字符*");
+        //       字符串类型（字符串/字符*）的 + 视为连接（字符* 也承载字符串语义）；
+        //       判定与顶部安全区边界检查共用 isStringSemanticType（plans/022 波 1）。
+        const bool leftStr = isStringSemanticType(leftType);
+        const bool rightStr = isStringSemanticType(rightType);
         if (node->op == Operator::Add && leftStr && rightStr) {
             lastType_ = "字符串";  // 连接结果为字符串
             return;

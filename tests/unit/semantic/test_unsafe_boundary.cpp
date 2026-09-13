@@ -121,3 +121,36 @@ TEST(UnsafeBoundaryTest, NoWarnCallingUnsafeFn) {
     EXPECT_EQ(r.errorCount, 0);
     EXPECT_EQ(r.warningCount, 0) << r.messages;
 }
+
+// plans/022 波 1（2026-09-13 用户裁决）：字符串拼接不是指针算术——字符*/字符串
+//   参与 + 按拼接分派（字符* 是字符串视图，IR 层同为 ptr）；修复前该四形态
+//   全部被按「指针算术」误报（宿主 check v2 树 75 处同类误报的根治验证）。
+TEST(UnsafeBoundaryTest, NoWarnStringConcatInSafeFn) {
+    auto r = analyzeSource(R"CN(函数 取() -> 字符* {
+    返回 "甲";
+}
+函数 主() -> 整32 {
+    字符串 a = "甲";
+    字符* p = "乙";
+    字符串 s = p + "丙";
+    字符串 t = a + p;
+    字符串 u = 取() + "丁";
+    字符串 v = "戊" + 取();
+    返回 0;
+})CN");
+    EXPECT_EQ(r.errorCount, 0);
+    EXPECT_EQ(r.warningCount, 0) << r.messages;
+}
+
+// 波 1 边界：字符* 的减法按指针步进分派（语义层既有行为）——仍属指针算术，
+//   安全函数内警告保留（修复只排除 + 拼接，不豁免真指针算术）。
+TEST(UnsafeBoundaryTest, WarnCharPtrSubtractInSafeFn) {
+    auto r = analyzeSource(R"CN(函数 主() -> 整32 {
+    字符* p = "甲";
+    字符* q = p - 1;
+    返回 0;
+})CN");
+    EXPECT_EQ(r.errorCount, 0);
+    EXPECT_GE(r.warningCount, 1);
+    EXPECT_NE(r.messages.find("[安全区边界·观察期] 指针算术"), std::string::npos);
+}

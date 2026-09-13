@@ -61,6 +61,14 @@ namespace cn_compiler {
 [[maybe_unused]] inline bool isArrayType(const std::string& type) {
     return types::isArray(type);
 }
+// 字符串语义类型（字符串/字符*）：+ 参与按字符串拼接分派（Task 2.5/2.9）。
+//   字符* 在 IR 层同为 ptr、类型文本以 '*' 结尾，但语义是字符串视图——指针类
+//   检查（安全区边界·指针算术等）须据此排除（plans/022 波 1：宿主 check v2 树
+//   75 处 字符* 拼接被按「指针算术」误报的根治；拼接分派与指针检查共用本判定，
+//   保证永不漂移）。
+[[maybe_unused]] inline bool isStringSemanticType(const std::string& type) {
+    return type == "字符串" || type == "字符*";
+}
 // 计算数组总字节大小（元素大小 × 长度）
 // GCC -Wunused-function 下标记 maybe_unused（MSVC 不报，GCC 严格）
 [[maybe_unused]] inline int arrayTotalSize(const std::string& type) {
