@@ -111,6 +111,9 @@ target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
 #   按职责拆分子模块：class_resolver/error_analysis/generics，供编译器与单元测试共用）
 add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic.cpp
+    src/cn_compiler/semantic/semantic_types.cpp
+    src/cn_compiler/semantic/semantic_sig.cpp
+    src/cn_compiler/semantic/semantic_builtins.cpp
     src/cn_compiler/semantic/semantic_expr.cpp
     src/cn_compiler/semantic/semantic_expr_op.cpp
     src/cn_compiler/semantic/semantic_expr_access.cpp
@@ -144,6 +147,10 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_com
 #   × 5 文件 55 处重复 → inline 单一定义）
 # D1 行数整改 116-a（单文件<=1000行约束）：semantic_expr.cpp 1778 行按族拆分——
 #   semantic_expr_op.cpp（运算符/赋值检查）、semantic_expr_access.cpp（成员/下标检查）
+#   （纯重构零行为变更；成员函数声明仍在 semantic.hpp）
+# D1 行数整改 117-a（单文件<=1000行约束）：semantic.cpp 1996 行按族拆分——
+#   semantic_types.cpp（类型系统：类型解析+布局）、semantic_sig.cpp（函数签名/重载/隐式转换）、
+#   semantic_builtins.cpp（内置函数注册）
 #   （纯重构零行为变更；成员函数声明仍在 semantic.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
