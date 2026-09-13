@@ -116,6 +116,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_stmt.cpp
     src/cn_compiler/semantic/semantic_decl.cpp
     src/cn_compiler/semantic/class_resolver.cpp
+    src/cn_compiler/semantic/class_resolver_access.cpp
     src/cn_compiler/semantic/error_analysis.cpp
     src/cn_compiler/semantic/generics.cpp
     src/cn_compiler/semantic/semantic_borrowview.cpp
@@ -132,6 +133,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_expr.cpp
     src/cn_compiler/ir/ir_call.cpp
     src/cn_compiler/ir/ir_stmt.cpp
+    src/cn_compiler/ir/ir_stmt_decl.cpp
     src/cn_compiler/ir/ir_decl.cpp
     src/cn_compiler/ir/ir_oop.cpp
     src/cn_compiler/ir/ir_oop_call.cpp
