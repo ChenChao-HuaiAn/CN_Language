@@ -128,9 +128,17 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_com
 # 阶段3 拆分子模块（单文件<=1000行约束）：ir_oop.cpp（类方法体提升/自身/父类/字段访问）、
 #   ir_oop_call.cpp（构造/虚调用/方法调用/运算符重载/DeleteObject）、
 #   ir_error_ctor.cpp（结果/可选内置构造器降级）
+# D1 行数整改 112-a（单文件<=1000行约束）：ir_expr.cpp 2798 行按族拆分——
+#   ir_expr_unary.cpp（一元/三元）、ir_expr_assign.cpp（赋值）、
+#   ir_expr_index.cpp（下标）、ir_expr_member.cpp（结构体整体赋值/构造/成员访问）
+#   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
 add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir.cpp
     src/cn_compiler/ir/ir_expr.cpp
+    src/cn_compiler/ir/ir_expr_unary.cpp
+    src/cn_compiler/ir/ir_expr_assign.cpp
+    src/cn_compiler/ir/ir_expr_index.cpp
+    src/cn_compiler/ir/ir_expr_member.cpp
     src/cn_compiler/ir/ir_call.cpp
     src/cn_compiler/ir/ir_stmt.cpp
     src/cn_compiler/ir/ir_stmt_decl.cpp
