@@ -189,6 +189,12 @@ private:
     // 生成比较运算（cmp + setcc 到结果槽）
     void emitCompare(AsmWriter& writer, const ir::IRInstruction& inst);
 
+    // D1 127-a：emitCompare 子方法
+    bool emitCompareFloat(AsmWriter& writer, const ir::IRInstruction& inst,
+        const std::string& dst, const std::string& op1, const std::string& op2);
+    void emitCompareInt(AsmWriter& writer, const ir::IRInstruction& inst,
+        const std::string& dst, const std::string& op1, const std::string& op2);
+
     // 生成逻辑非（cmp + sete，i1 语义）
     void emitNot(AsmWriter& writer, const ir::IRInstruction& inst);
 

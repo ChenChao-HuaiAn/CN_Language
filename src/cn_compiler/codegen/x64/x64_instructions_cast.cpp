@@ -51,6 +51,26 @@ void X64CodeGenerator::emitCompare(AsmWriter& writer, const ir::IRInstruction& i
     std::string dst = resultText(inst.result);
     std::string op1 = operandText(inst.operands[0]);
     std::string op2 = operandText(inst.operands[1]);
+    // D1 127-a：按族拆出浮点／整数两个子方法（纯重构零行为变更）
+    if (emitCompareFloat(writer, inst, dst, op1, op2)) return;
+    emitCompareInt(writer, inst, dst, op1, op2);
+}
+
+// 逻辑非（i1语义）：cmp x, 0 ; sete al
+void X64CodeGenerator::emitNot(AsmWriter& writer, const ir::IRInstruction& inst) {
+    std::string dst = resultText(inst.result);
+    std::string op = operandText(inst.operands[0]);
+    writer.line("mov eax, " + op);
+    writer.line("cmp eax, 0");
+    writer.line("sete al");
+    writer.line("movzx eax, al");
+    writer.line("mov " + dst + ", eax");
+}
+
+
+// D1 127-a：浮点比较（SSE ucomiss/ucomisd + NaN 安全 setcc）；真=已处理
+bool X64CodeGenerator::emitCompareFloat(AsmWriter& writer, const ir::IRInstruction& inst,
+    const std::string& dst, const std::string& op1, const std::string& op2) {
     if (isFloatType(inst.operands[0].type)) {
         // 浮点比较：SSE
         const bool isDouble = (inst.operands[0].type == "f64");
@@ -90,8 +110,14 @@ void X64CodeGenerator::emitCompare(AsmWriter& writer, const ir::IRInstruction& i
         }
         writer.line("movzx eax, al");
         writer.line("mov " + dst + ", eax");
-        return;
+        return true;
     }
+    return false;
+}
+
+// D1 127-a：整数比较（常量归一 + 无符号 setcc）
+void X64CodeGenerator::emitCompareInt(AsmWriter& writer, const ir::IRInstruction& inst,
+    const std::string& dst, const std::string& op1, const std::string& op2) {
     // 修复4（无符号比较）：正N（uN）类型必须用无符号条件跳转
     //   seta（>）/setae（>=）/setb（<）/setbe（<=）。
     //   原实现统一 setg/setl（有符号），正32 4294967295 > 100 被按
@@ -171,16 +197,6 @@ void X64CodeGenerator::emitCompare(AsmWriter& writer, const ir::IRInstruction& i
     writer.line("mov " + dst + ", eax");
 }
 
-// 逻辑非（i1语义）：cmp x, 0 ; sete al
-void X64CodeGenerator::emitNot(AsmWriter& writer, const ir::IRInstruction& inst) {
-    std::string dst = resultText(inst.result);
-    std::string op = operandText(inst.operands[0]);
-    writer.line("mov eax, " + op);
-    writer.line("cmp eax, 0");
-    writer.line("sete al");
-    writer.line("movzx eax, al");
-    writer.line("mov " + dst + ", eax");
-}
 
 // 浮点类转换（浮->整128 / 浮->整 / 整->浮）；真=已处理
 bool X64CodeGenerator::emitCastFloatFamily(AsmWriter& writer, const ir::IRInstruction& inst,
