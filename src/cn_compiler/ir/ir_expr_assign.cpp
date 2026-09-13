@@ -64,6 +64,80 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 return;
             }
         }
+        // 139-a（波 3 最小闭环；plans/020 第五十节发现四则）：成员赋值位——目标
+        //   字段=**类对象（向量族；指针槽语义）**归一化赋值（写入位）：
+        //     · preFree：元素释放 + DeleteObject（空跳过）+ 清槽；
+        //     · 源分级：构造调用/临时=新对象直接接管（零拷贝）；值来源=NewObject
+        //       + 拷贝构造（**引用实参=源左值地址〔槽地址〕**——发现二）深拷；
+        //     · 结果指针 StorePtr 入槽。
+        //   原路径经 46-a 通道对 8 字节指针槽做整块 CopyStruct（越界写+浅拷共享
+        //   双删——形四 0xC0000374 实证）。
+        if (semantic_ != nullptr && !isCompoundAssignOp(node->op)) {
+            const std::string ownerStructC = memberObjStructType(member);
+            const StructDecl* ownerDeclC =
+                semantic_->findStruct(types::canonical(ownerStructC));
+            std::string fieldCanonC;
+            if (ownerDeclC != nullptr) {
+                for (const auto& fc : ownerDeclC->fields) {
+                    if (fc.name == member->memberName) {
+                        fieldCanonC = types::canonical(fc.type);
+                        break;
+                    }
+                }
+            }
+            const std::size_t dlC = fieldCanonC.find('$');
+            const std::string headC =
+                dlC == std::string::npos ? fieldCanonC : fieldCanonC.substr(0, dlC);
+            if (!fieldCanonC.empty() && headC == "向量" &&
+                semantic_->isClassType(fieldCanonC)) {
+                const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
+                if (!dtorKeyC.empty()) {
+                    ir::IRValue fieldAddrC = lvalueAddress(node->target.get());
+                    ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddrC},
+                                                    "ptr", "", node->location);
+                    emitContainerElemFreeFor(fieldCanonC, oldObj, node->location);
+                    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), fieldCanonC,
+                         "void", node->location);
+                    ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                                   node->location);
+                    emit(ir::Opcode::StorePtr, {fieldAddrC, zeroC}, ir::IRValue(), "",
+                         "ptr", node->location);
+                    const bool srcIsCtorC =
+                        node->value->getType() == NodeType::CallExpr;
+                    const std::string copyKeyC = classCopyCtorSymbolKey(fieldCanonC);
+                    if (srcIsCtorC || copyKeyC.empty()) {
+                        ir::IRValue srcPtrC = genExpr(node->value.get());
+                        emit(ir::Opcode::StorePtr, {fieldAddrC, srcPtrC}, ir::IRValue(),
+                             "", "ptr", node->location);
+                    } else {
+                        const ir::IRValue srcRefC = lvalueAddress(node->value.get());
+                        if (srcRefC.id < 0) {
+                            // 非左值来源（三元等）防御：对象指针直存（借用接管；
+                            //   登记边界，后续轮收口）
+                            ir::IRValue srcPtrC = genExpr(node->value.get());
+                            emit(ir::Opcode::StorePtr, {fieldAddrC, srcPtrC},
+                                 ir::IRValue(), "", "ptr", node->location);
+                            lastExpr_ = fieldAddrC;
+                            return;
+                        }
+                        const ClassInfo* ciC = semantic_->findClass(fieldCanonC);
+                        const std::string extraC =
+                            fieldCanonC + "|" +
+                            std::to_string(ciC != nullptr ? ciC->totalSize : 0);
+                        ir::IRValue newObjC = emitResult(
+                            ir::Opcode::NewObject,
+                            {ir::IRValue::constant(fieldCanonC, "ptr")}, "ptr", extraC,
+                            node->location);
+                        emit(ir::Opcode::Call, {newObjC, srcRefC}, ir::IRValue(),
+                             copyKeyC, "void", node->location);
+                        emit(ir::Opcode::StorePtr, {fieldAddrC, newObjC}, ir::IRValue(),
+                             "", "ptr", node->location);
+                    }
+                    lastExpr_ = fieldAddrC;
+                    return;
+                }
+            }
+        }
         // 46-a 根治（2026-09-09 第四十八轮）：成员结构体作值写（r.左上 = a /
         //   r.右下 = r.左上）——字段为结构体/类时同走整体赋值单一助手
         //   emitStructWholeAssign（与下标位 H8 同构，Rust place 拷贝语义）。

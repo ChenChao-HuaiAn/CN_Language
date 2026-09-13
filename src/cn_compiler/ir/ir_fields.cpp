@@ -101,8 +101,40 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
                 if (elemCanon != "字符串") { fld.elemCanon = elemCanon; }
                 out.push_back(fld);
             }
+        } else if (!types::isArray(fieldCanon) && semantic_->isClassType(fieldCanon)) {
+            // 139-a（波 3 最小闭环）：**类对象字段（指针槽语义，含容器）**——原
+            //   「类/容器字段：面外」缺口由本轮打开（最小面=**向量族**）：
+            //   收集条件=「有析构类」且「有拷贝构造」且 head=="向量"——
+            //     · 有析构：释放=LoadPtr + 元素释放 + DeleteObject + 清槽；
+            //     · 有拷贝构造：拷贝位=NewObject + 拷贝构造（引用实参=源槽地址）+
+            //       写回（无拷贝构造不纳入——浅拷共享下加释放=双删，发现三）；
+            //     · 收窄向量族：链表/栈/队列（链式释放协议）与用户自定义类=后续轮
+            //       逐族扩展（116 回归教训：链式模型需独立验证）。
+            const std::size_t dl = fieldCanon.find('$');
+            const std::string head = dl == std::string::npos
+                                         ? fieldCanon
+                                         : fieldCanon.substr(0, dl);
+            if (head != "向量") continue;
+            const ClassInfo* fci = semantic_->findClass(fieldCanon);
+            bool hasDtor = false;
+            if (fci != nullptr) {
+                for (const auto& mk : fci->methods) {
+                    if (mk.second.isDestructor) {
+                        hasDtor = true;
+                        break;
+                    }
+                }
+            }
+            if (!hasDtor) continue;
+            if (semantic_->findCopyConstructor(fieldCanon) == nullptr) continue;
+            OwnedStrField fld;
+            fld.offset = base + f.offset;
+            fld.condOffset = cond;
+            fld.kind = OwnedStrField::Kind::ClassObj;
+            fld.classCanon = fieldCanon;
+            out.push_back(fld);
         }
-        // 类/容器/指针字段：面外
+        // 指针/数组（类对象元素）字段：面外（登记，后续轮）
     }
     visiting.pop_back();
 }
@@ -280,6 +312,23 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
     for (const auto& f : ownedStrFieldsOf(canon)) {
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                            std::to_string(f.offset), loc);
+        // 139-a（波 3 最小闭环）：类对象字段（指针槽）——元素释放（74-a 单点；
+        //   非容器类内部空返回；runtime 清槽幂等）+ DeleteObject（析构 +
+        //   __cn_object_delete，空指针跳过=零初始化槽安全）+ 清槽（多路径幂等）。
+        if (f.kind == OwnedStrField::Kind::ClassObj) {
+            const std::string dtorKey = classDestructorSymbolKey(f.classCanon);
+            if (!dtorKey.empty()) {
+                ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr",
+                                                "", loc);
+                emitContainerElemFreeFor(f.classCanon, objPtr, loc);
+                emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(), f.classCanon,
+                     "void", loc);
+                ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+                emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "", "ptr",
+                     loc);
+            }
+            continue;
+        }
         if (f.arrayLen > 0) {
             // 99-a（C11）/100-a（C12）：字段数组——元素=字符串逐元素 free；
             //   元素=含串字段结构体逐元素递归字段释放
@@ -360,6 +409,23 @@ void IRGenerator::emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
     for (const auto& f : ownedStrFieldsOf(canon)) {
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
                                            std::to_string(f.offset), loc);
+        // 139-a：类对象字段——释放目标旧对象（元素释放 + DeleteObject + 清槽；
+        //   空指针跳过=零初始化槽安全）。memcpy 后目标槽被源指针覆盖 → postCopy
+        //   新建独立副本写回（浅拷中间态不释放——那不是目标拥有物）。
+        if (f.kind == OwnedStrField::Kind::ClassObj) {
+            const std::string dtorKey = classDestructorSymbolKey(f.classCanon);
+            if (!dtorKey.empty()) {
+                ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr",
+                                                "", loc);
+                emitContainerElemFreeFor(f.classCanon, objPtr, loc);
+                emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(), f.classCanon,
+                     "void", loc);
+                ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+                emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "", "ptr",
+                     loc);
+            }
+            continue;
+        }
         if (f.arrayLen > 0) {
             // 99-a/100-a：字段数组——深拷前置释放旧元素（同款逐元素/递归）
             if (f.elemCanon.empty()) {
@@ -387,6 +453,34 @@ void IRGenerator::emitOwnedStrFieldPostCopy(const ir::IRValue& dstBase,
                                             const std::string& canon,
                                             const SourceLocation& loc) {
     for (const auto& f : ownedStrFieldsOf(canon)) {
+        // 139-a：类对象字段——**指针槽深拷**：NewObject 新堆对象 + 拷贝构造
+        //   （**引用实参=源字段槽地址**——发现二：CN 引用参数约定=槽地址，callee
+        //   内一层 Load 得对象；传对象指针=多解一层崩）+ 新对象指针写回目标槽。
+        //   前置 preFree 已删目标旧对象；memcpy 复制的源指针被写回覆盖（不复释）。
+        if (f.kind == OwnedStrField::Kind::ClassObj) {
+            const std::string copyKey = classCopyCtorSymbolKey(f.classCanon);
+            if (!copyKey.empty() && f.condOffset < 0) {
+                ir::IRValue srcFieldAddr = emitResult(ir::Opcode::FieldAddr, {srcBase},
+                                                      "ptr", std::to_string(f.offset),
+                                                      loc);
+                ir::IRValue dstFieldAddr = emitResult(ir::Opcode::FieldAddr, {dstBase},
+                                                      "ptr", std::to_string(f.offset),
+                                                      loc);
+                const ClassInfo* ci =
+                    semantic_ != nullptr ? semantic_->findClass(f.classCanon) : nullptr;
+                const std::string extra =
+                    f.classCanon + "|" +
+                    std::to_string(ci != nullptr ? ci->totalSize : 0);
+                ir::IRValue newObj = emitResult(
+                    ir::Opcode::NewObject,
+                    {ir::IRValue::constant(f.classCanon, "ptr")}, "ptr", extra, loc);
+                emit(ir::Opcode::Call, {newObj, srcFieldAddr}, ir::IRValue(), copyKey,
+                     "void", loc);
+                emit(ir::Opcode::StorePtr, {dstFieldAddr, newObj}, ir::IRValue(), "",
+                     "ptr", loc);
+            }
+            continue;
+        }
         if (f.condOffset < 0) {
             ir::IRValue srcFieldAddr = emitResult(ir::Opcode::FieldAddr, {srcBase},
                                                   "ptr", std::to_string(f.offset),
@@ -445,6 +539,33 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
     // 浅拷接管（调用返回）：源句柄唯一持有者转为目标（被调方返回移出已跳过释放），
     //   零拷贝——Rust move 语义在「值返回」路径上的等价物。
     if (deepCopy) emitOwnedStrFieldPostCopy(dstAddr, srcAddr, canon, loc);
+}
+
+// ==================== 139-a（波 3 最小闭环）：ClassObj 字段符号键解析 ============
+
+// 析构符号键：ClassInfo.methods 中 isDestructor 项（含继承并入——与 DeleteObject
+//   codegen 的解析口径一致）。
+std::string IRGenerator::classDestructorSymbolKey(const std::string& canon) const {
+    if (semantic_ == nullptr) return "";
+    const ClassInfo* ci = semantic_->findClass(canon);
+    if (ci == nullptr) return "";
+    for (const auto& mk : ci->methods) {
+        if (mk.second.isDestructor) {
+            const std::string owner =
+                mk.second.ownerClass.empty() ? canon : mk.second.ownerClass;
+            return methodSymbolKey(owner, mk.second.sigKey);
+        }
+    }
+    return "";
+}
+
+// 拷贝构造符号键（findCopyConstructor；空=无拷贝构造——收集面已排除，防御空返回）
+std::string IRGenerator::classCopyCtorSymbolKey(const std::string& canon) const {
+    if (semantic_ == nullptr) return "";
+    const ClassMemberInfo* cc = semantic_->findCopyConstructor(canon);
+    if (cc == nullptr) return "";
+    const std::string owner = cc->ownerClass.empty() ? canon : cc->ownerClass;
+    return methodSymbolKey(owner, cc->sigKey);
 }
 
 }  // namespace cn_compiler

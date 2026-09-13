@@ -640,12 +640,28 @@ private:
         //   默认成员初始化器：聚合初始化 {base, cond} 保持合法（-Wmissing-field-
         //   initializers 在有 NSDMI 时不报警——CMake -Werror 门禁要求）
         std::string elemCanon = std::string();
+        // 139-a（波 3 最小闭环；plans/022 §三 B3 + plans/020 第五十节发现四则）：
+        //   资源种类——Str=拥有串句柄；ClassObj=**类对象字段（指针槽语义）**——
+        //   IR 铁证：字段槽存堆对象指针（NewObject 构造 / StorePtr/LoadPtr 访问，
+        //   与类字段同构）；释放=LoadPtr + 元素释放 + DeleteObject（含
+        //   __cn_object_delete）+ 清槽；深拷=NewObject + 拷贝构造（**引用实参=
+        //   源槽地址**——发现二）+ 新对象指针写回。收集条件=「有析构类」且
+        //   「有拷贝构造」且**向量族收窄**（最小闭环：链表/栈/队列逐族扩展——
+        //   116 回归教训）。
+        enum class Kind { Str, ClassObj };
+        Kind kind = Kind::Str;
+        // ClassObj：字段类型 canon（析构/拷贝构造符号键与元素释放协议用）；Str：空
+        std::string classCanon = std::string();
     };
     // 收集聚合类型（结构体/结果/可选，递归展开值语义嵌套）的拥有型字符串字段
     std::vector<OwnedStrField> ownedStrFieldsOf(const std::string& canon) const;
     void collectOwnedStrFields(const std::string& canon, int base, int cond,
                                std::vector<OwnedStrField>& out,
                                std::vector<std::string>& visiting) const;
+    // 139-a：ClassObj 字段的析构/拷贝构造符号键（空=不可用；classDestructor 的
+    //   methods 项含继承并入——与 DeleteObject codegen 解析口径一致）
+    std::string classDestructorSymbolKey(const std::string& canon) const;
+    std::string classCopyCtorSymbolKey(const std::string& canon) const;
     // 单字段释放（无条件 / condAddr 非零时）+ 清槽——释放面单点事实源
     // 99-a（C11）：字符串数组字段元素释放发射（基址 + i×步进 逐元素 free+清槽）
     void emitStrArrayElemFreesAt(const ir::IRValue& base, int len, int stride,
