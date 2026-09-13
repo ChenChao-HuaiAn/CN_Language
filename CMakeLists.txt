@@ -93,6 +93,7 @@ target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
 add_library(cn_compiler_parser STATIC
     src/cn_compiler/parser/ast.cpp
     src/cn_compiler/parser/parser.cpp
+    src/cn_compiler/parser/parser_type.cpp
     src/cn_compiler/parser/parser_oop.cpp
     src/cn_compiler/parser/parser_stmt.cpp
     src/cn_compiler/parser/parser_expr.cpp
