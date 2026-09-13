@@ -146,14 +146,16 @@ void IRGenerator::visitBreakStmt(BreakStmt* node) {
         // 72-a：跳出前释放循环体内的块级资源（drop-on-jump，Rust 同款）——
         //   中断路径绕过 genBlock 出口析构，此处按进入循环体时的基线释放本块新增
         genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase,
-                            loopStack_.back().fieldBase);
+                            loopStack_.back().fieldBase,
+                            loopStack_.back().strArrayBase);
         endJump(loopStack_.back().breakTarget);
     } else if (!switchStack_.empty()) {
         // 72-a 收尾（2026-09-11）：选择分支不走 genBlock（语句直接生成）——分支内
         //   声明的资源同样在 中断 跳出前按分支基线释放，与循环口径对齐；
         //   fallthrough/汇合路径仍由函数级兜底（返回块全量释放）覆盖。
         genJumpDestructFrom(switchStack_.back().stringBase, switchStack_.back().classBase,
-                            switchStack_.back().fieldBase);
+                            switchStack_.back().fieldBase,
+                            switchStack_.back().strArrayBase);
         endJump(switchStack_.back().exitLabel);
     }
 }
@@ -161,7 +163,8 @@ void IRGenerator::visitContinueStmt(ContinueStmt* node) {
     (void)node;
     if (!loopStack_.empty()) {
         genJumpDestructFrom(loopStack_.back().stringBase, loopStack_.back().classBase,
-                            loopStack_.back().fieldBase);
+                            loopStack_.back().fieldBase,
+                            loopStack_.back().strArrayBase);
         endJump(loopStack_.back().continueTarget);
     }
 }
@@ -223,6 +226,7 @@ void IRGenerator::genWhile(WhileStmt* node) {
                                      ownedClassOrder_.size(),
                                      ownedStringOrder_.size(),
                                      ownedFieldOrder_.size(),
+                                     ownedStrArrayOrder_.size(),   // 98-a（C9）
                                      breakScopeSeq_++});  // 继续 -> 条件块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
@@ -260,6 +264,7 @@ void IRGenerator::genFor(ForStmt* node) {
                                      ownedClassOrder_.size(),
                                      ownedStringOrder_.size(),
                                      ownedFieldOrder_.size(),
+                                     ownedStrArrayOrder_.size(),   // 98-a（C9）
                                      breakScopeSeq_++});  // 继续 -> 更新块
     if (node->body != nullptr) genBlock(node->body.get());
     loopStack_.pop_back();
@@ -335,6 +340,7 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
         switchStack_.push_back(
             SwitchContext{endLabel, ownedClassOrder_.size(),
                           ownedStringOrder_.size(), ownedFieldOrder_.size(),
+                          ownedStrArrayOrder_.size(),   // 98-a（C9）
                           breakScopeSeq_++});
         for (auto& stmt : node->cases[i]->statements) {
             genStmt(stmt.get());
@@ -358,6 +364,7 @@ void IRGenerator::genSwitch(SwitchStmt* node) {
         switchStack_.push_back(
             SwitchContext{endLabel, ownedClassOrder_.size(),
                           ownedStringOrder_.size(), ownedFieldOrder_.size(),
+                          ownedStrArrayOrder_.size(),   // 98-a（C9）
                           breakScopeSeq_++});
         for (auto& stmt : node->defaultCase->statements) {
             genStmt(stmt.get());
@@ -500,6 +507,14 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）
     allocVar(node->name, irType, srcType, node->location);
     const std::string unique = lookupVarName(node->name);
+    // 98-a（C9, 2026-09-13 第九十八轮）：字符串元素数组登记——**须在数组初始化
+    //   列表分支（该分支以 return 结束）之前**（首版置于函数后段=带初始化列表的
+    //   数组声明不可达、产物零 __cn_str_free，asm 实证）；块出口/跳出/函数尾
+    //   逐元素 __cn_str_free（元素=字符串；宿主 79-a 靶子面「数组元素残留 2」收口）
+    if (semantic_ != nullptr && types::isArray(srcType) && !unique.empty() &&
+        types::arrayElemOf(types::canonical(srcType)) == "字符串") {
+        ownedStrArrayOrder_.push_back(unique);
+    }
     // P3-18：引用变量（整32& r = x）——槽存被引用左值地址，条目 byRef=true
     //   （读/写/&r 经 Load/StorePtr 解引用；与 [&] 引用捕获同机制，codegen 已支持）
     //   P3-18 补完：绑定目标扩充到下标/解引用/成员/引用返回调用（同样取左值地址）。
@@ -1012,6 +1027,7 @@ void IRGenerator::genBlock(BlockStmt* node) {
     scopeStringBase_.push_back(ownedStringOrder_.size());
     scopeClassBase_.push_back(ownedClassOrder_.size());
     scopeFieldBase_.push_back(ownedFieldOrder_.size());
+    scopeStrArrayBase_.push_back(ownedStrArrayOrder_.size());   // 98-a（C9）
     for (auto& stmt : node->statements) {
         genStmt(stmt.get());
         // 宿主根治（2026-09-01，缺陷：块顶层级中途回Return 被无视）：当前块已终止
@@ -1033,6 +1049,10 @@ void IRGenerator::genBlock(BlockStmt* node) {
             ownedStringOrder_.pop_back();
         while (ownedClassOrder_.size() > scopeClassBase_.back())
             ownedClassOrder_.pop_back();
+        // 98-a（C9）：字符串元素数组名单截断（释放由函数级兜底覆盖=与字符串/
+        //   类对象同款截断纪律）
+        while (ownedStrArrayOrder_.size() > scopeStrArrayBase_.back())
+            ownedStrArrayOrder_.pop_back();
         // 81-a（2026-09-12 第八十一轮）：**字段名单不截断**——含串字段聚合局部的
         //   函数级兜底（genStringFrees 返回块段）**按名单**释放，截断即令兜底
         //   看不到该局部（探针 P14 变体矩阵实证：`存入` 内 `盒子 局` + `返回 X;`
@@ -1041,6 +1061,7 @@ void IRGenerator::genBlock(BlockStmt* node) {
         //   （genJumpDestructFrom 注释「不截断编译期名单」同款纪律）。
     }
     scopeStringBase_.pop_back();
+    scopeStrArrayBase_.pop_back();   // 98-a（C9）
     scopeClassBase_.pop_back();
     scopeFieldBase_.pop_back();
     varStack_.pop_back();  // 退出子作用域

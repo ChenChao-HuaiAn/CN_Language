@@ -537,6 +537,8 @@ private:
         std::size_t stringBase = 0;  // 拥有串名单基线（ownedStringOrder_）
         // 79-a（2026-09-12 第七十九轮）：含串字段聚合局部名单基线（ownedFieldOrder_）
         std::size_t fieldBase = 0;
+        // 98-a（C9）：字符串元素数组名单基线（ownedStrArrayOrder_）
+        std::size_t strArrayBase = 0;
         // 72-b（2026-09-11 用户裁决方案B·C 语义）：进入序——中断 绑定「最近的
         //   选择或循环」（enterSeq 大者=最近进入），与 SwitchContext 比较。
         std::size_t enterSeq = 0;
@@ -551,6 +553,7 @@ private:
         std::size_t classBase = 0;  // 分支进入时 类对象名单基线
         std::size_t stringBase = 0; // 分支进入时 拥有串名单基线
         std::size_t fieldBase = 0;  // 79-a：分支进入时 含串字段聚合名单基线
+        std::size_t strArrayBase = 0;  // 98-a（C9）：分支进入时 字符串元素数组基线
         std::size_t enterSeq = 0;   // 进入序（72-b：与 LoopContext 比较定最近）
     };
     std::vector<SwitchContext> switchStack_;
@@ -576,6 +579,13 @@ private:
     // 79-a：本函数「含拥有型字符串字段」的聚合局部名单（结构体/结果/可选——
     //   genVarDecl 登记；块出口/跳出/函数尾释放字段串，写入位 pre-free 判据）
     std::vector<std::string> ownedFieldOrder_;
+    // 98-a（C9, 2026-09-13 第九十八轮）：本函数「字符串元素数组」局部名单
+    //   （genVarDecl 登记：源码类型=数组 且元素=字符串）——块出口/跳出/函数尾
+    //   逐元素 __cn_str_free（元素槽释放+清零=幂等模型；宿主 79-a 靶子面
+    //   「数组元素残留 2」收口）
+    std::vector<std::string> ownedStrArrayOrder_;
+    // 98-a：genBlock 进入时 字符串元素数组名单 基线（与 scopeStringBase_ 同款）
+    std::vector<std::size_t> scopeStrArrayBase_;
 
     // 块出口析构（genBlock 出口调用）：释放本块新增的字符串/类对象并截断名单
     void genBlockExitDestruct();
@@ -583,7 +593,7 @@ private:
     //   按进入该分支时记录的名单基线，释放基线之后的新增项（循环 LoopContext
     //   与选择 SwitchContext 共用；只发射释放+清零，不截断编译期名单）
     void genJumpDestructFrom(std::size_t stringBase, std::size_t classBase,
-                             std::size_t fieldBase);
+                             std::size_t fieldBase, std::size_t strArrayBase);
     // 释放单个字符串槽（Load + __cn_str_free 空安全）
     void emitStringFreeFor(const std::string& unique);
     // 释放单个类对象槽（Load + DeleteObject 空安全）
@@ -618,6 +628,8 @@ private:
                                   const std::string& canon,
                                   const SourceLocation& loc);
     // 局部槽版本（按名单 unique 取 AddrOf 基址）
+    // 98-a（C9）：字符串元素数组逐元素释放发射（编译期展开 N 次；元素槽清槽幂等）
+    void emitStrArrayElemFreesFor(const std::string& unique);
     void emitOwnedFieldFreesFor(const std::string& unique, const std::string& canon,
                                 const SourceLocation& loc);
     // 深拷两阶段：preFree=释放目标旧字段值（须在 memcpy 之前；无条件句柄空安全）

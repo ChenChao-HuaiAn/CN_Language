@@ -763,6 +763,35 @@ void IRGenerator::genStringFrees() {
     //   （探针 P12/P13/P14 变体矩阵实证：无返回语句的变体残留 0、带返回的残留 1；
     //   asm 对照：存入甲函数体零 __cn_str_free）。修法：字符串段改为条件包裹，
     //   字段兜底段无条件执行。
+    // 98-a（C9）：字符串元素数组——函数级兜底（返回块全量逐元素释放）。
+    //   收集方式与字符串段同款=**扫本函数 Alloca ∩ oopVarSrcTypes_**（不可用
+    //   ownedStrArrayOrder_ 名单：块出口析构已把名单截断到基线——函数顶层块
+    //   出口即清空，此处看不到；mem6 探针「后=2」实证）。入口零初始化由数组
+    //   声明路径既有逐槽零初始化覆盖。
+    std::vector<std::string> ownedStrArrays;
+    for (const auto& block : function_->blocks) {
+        for (const auto& inst : block->instructions) {
+            if (inst.opcode != ir::Opcode::Alloca) continue;
+            const std::string& unique = inst.extra;
+            if (unique.empty()) continue;
+            auto srcIt2 = oopVarSrcTypes_.find(unique);
+            if (srcIt2 == oopVarSrcTypes_.end()) continue;
+            const std::string st2 = types::canonical(srcIt2->second);
+            if (types::isArray(st2) && types::arrayElemOf(st2) == "字符串") {
+                ownedStrArrays.push_back(unique);
+            }
+        }
+    }
+    if (!ownedStrArrays.empty()) {
+        for (const auto& block : function_->blocks) {
+            if (!block->terminated) continue;
+            if (block->termKind != "返回") continue;
+            setCurrentBlock(block.get());
+            for (std::size_t i = ownedStrArrays.size(); i > 0; --i) {
+                emitStrArrayElemFreesFor(ownedStrArrays[i - 1]);
+            }
+        }
+    }
     if (!ownedSlots.empty()) {
         // 入口块零初始化（与类 RAII 同款前置插入）
         ir::IRBlock* entryBlock = function_->blocks.front().get();
@@ -1007,6 +1036,47 @@ void IRGenerator::genBlockExitDestruct() {
         emitOwnedFieldFreesFor(unique, types::canonical(it->second),
                                SourceLocation());
     }
+    // 98-a（C9）：字符串元素数组——块出口逆序逐元素释放 + 名单截断
+    while (ownedStrArrayOrder_.size() > scopeStrArrayBase_.back()) {
+        const std::string unique = ownedStrArrayOrder_.back();
+        ownedStrArrayOrder_.pop_back();
+        emitStrArrayElemFreesFor(unique);
+    }
+}
+
+// 98-a（C9, 2026-09-13 第九十八轮）：字符串元素数组元素释放发射——编译期展开
+//   逐元素（长度已知）：地址 = 数组基址 + i×元素大小 → LoadPtr → __cn_str_free
+//   → StorePtr 0（释放+清槽幂等模型：块出口/跳出/函数尾多路径共享数组区，
+//   重复经过的释放点对已清槽空安全跳过）。数组基址 = AddrOf(unique)（数组变量
+//   槽区最深槽=基址，宿主 C 布局 registerVarSlots）。
+void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
+    if (semantic_ == nullptr) return;
+    auto it = oopVarSrcTypes_.find(unique);
+    if (it == oopVarSrcTypes_.end()) return;
+    const std::string srcType = types::canonical(it->second);
+    if (!types::isArray(srcType)) return;
+    if (types::arrayElemOf(srcType) != "字符串") return;
+    const int len = types::arrayLenOf(srcType);
+    if (len <= 0) return;
+    int elemStride = semantic_->typeSizeOf(types::arrayElemOf(srcType));
+    if (elemStride <= 0) elemStride = 8;
+    const SourceLocation loc;
+    ir::IRValue base = emitResult(ir::Opcode::AddrOf,
+                                  {ir::IRValue::var(unique, "ptr")}, "ptr",
+                                  unique, loc);
+    for (int i = 0; i < len; ++i) {
+        ir::IRValue addr = base;
+        if (i > 0) {
+            ir::IRValue off = emitResult(
+                ir::Opcode::ConstInt, {}, "i64",
+                std::to_string(static_cast<long long>(i) * elemStride), loc);
+            addr = emitResult(ir::Opcode::Add, {base, off}, "ptr", "", loc);
+        }
+        ir::IRValue handle = emitResult(ir::Opcode::LoadPtr, {addr}, "ptr", "", loc);
+        emitResult(ir::Opcode::Call, {handle}, "i32", "__cn_str_free", loc);
+        emitResult(ir::Opcode::StorePtr, {addr, ir::IRValue::constant("0", "i64")},
+                   "", "", loc);
+    }
 }
 
 // 中断/继续 跳出循环体或选择分支：按进入该分支时记录的基线释放新增资源
@@ -1014,7 +1084,11 @@ void IRGenerator::genBlockExitDestruct() {
 // 注意：不截断编译期名单（落空路径的块出口析构仍须覆盖）——只发射释放+清零，
 //   释放后槽=0，落空路径/函数级兜底再释放即空安全（幂等）。
 void IRGenerator::genJumpDestructFrom(std::size_t stringBase, std::size_t classBase,
-                                     std::size_t fieldBase) {
+                                     std::size_t fieldBase, std::size_t strArrayBase) {
+    // 98-a（C9）：字符串元素数组——按基线逐元素释放（drop-on-jump，不截断名单）
+    for (std::size_t i = strArrayBase; i < ownedStrArrayOrder_.size(); ++i) {
+        emitStrArrayElemFreesFor(ownedStrArrayOrder_[i]);
+    }
     const std::size_t strEnd = ownedStringOrder_.size();
     for (std::size_t i = stringBase; i < strEnd; ++i) {
         const std::string& unique = ownedStringOrder_[i];
