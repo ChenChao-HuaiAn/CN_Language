@@ -13,6 +13,7 @@ import ctypes
 import hashlib
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import platform
@@ -300,6 +301,64 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
         input=标准输入, preexec_fn=preexec_fn)
 
 
+# ============ asm size 说明符静态门禁（plans/021 §3-C14，111-a 落地）============
+# 背景：MASM 的 movsd/movss 内存操作数须显式 qword/dword ptr（缺 → ml64 报 A2070）；
+#   linux GAS 无此要求，缺陷只在 win 侧暴露（109-a 补 10 处 + 110-a 补 4 处两轮漏网）。
+# 挂点（win 平台编译产物、ml64 之前静态扫描——把汇编器错误提前为门禁失败并给出定位）：
+#   ① v2 闭环产物 target/v2asm.asm（v2 win 后端 = 两轮漏网的主缺陷面）
+#   ② 双编译对照宿主侧产物 hostout.asm（宿主 win 后端同族面）
+# 规则：去注释（; 起）后，movsd/movss 任一操作数含 '[' 但不含 'ptr' 即违规。
+# 自检：正/负样本内联于 asm说明符扫描器自检（探测器本身也是被测对象——110-a 教训：
+#   首版计数 bug 经注入反证才暴露）；E2E 每次启动即自检，扫描器失效先于被测物报错。
+asm说明符_违规样本 = (
+    "    movsd xmm0, [rbp-152]\n"
+    "    movss [rax], xmm1\n"
+    "    movsd xmm0, xmm1\n")
+asm说明符_合规样本 = (
+    "    movsd xmm0, qword ptr [rbp-152]\n"
+    "    movss dword ptr [rax], xmm1\n"
+    "    movsd qword ptr [rbp-232], xmm0\n"
+    "    movsd xmm0, xmm1\n"
+    "    movsd xmm0, qword ptr [rbp-8] ; movsd [rbp-16], xmm0\n")
+
+
+def 扫描浮点访存说明符(asm文本: str) -> list:
+    """静态扫描 movsd/movss 裸内存操作数（缺 size 说明符）；返回 [(行号, 行原文)]"""
+    违规 = []
+    for 序号, 原行 in enumerate(asm文本.split("\n"), 1):
+        行 = 原行.split(";", 1)[0].strip()
+        匹配 = re.match(r"^(movs[sd])\s+(.+)$", 行)
+        if not 匹配:
+            continue
+        for 操作数 in 匹配.group(2).split(","):
+            if "[" in 操作数 and "ptr" not in 操作数:
+                违规.append((序号, 原行.strip()))
+    return 违规
+
+
+def asm说明符扫描器自检() -> str:
+    """扫描器正/负样本自检（空串=通过；非空=扫描器自身失效描述）"""
+    合规违规 = 扫描浮点访存说明符(asm说明符_合规样本)
+    if 合规违规:
+        return f"合规样本误报: {合规违规[:2]}"
+    违规检出 = 扫描浮点访存说明符(asm说明符_违规样本)
+    if len(违规检出) != 2:
+        return f"违规样本漏报（检出 {len(违规检出)}/2）"
+    return ""
+
+
+def 扫描asm产物说明符(asm路径: pathlib.Path, 标签: str) -> str:
+    """扫描 win 编译产物 asm 的 size 说明符；返回 ""（合规）或含定位的失败描述"""
+    if not asm路径.exists():
+        return ""
+    违规 = 扫描浮点访存说明符(asm路径.read_text(encoding="utf-8", errors="replace"))
+    if not 违规:
+        return ""
+    例 = "\n".join(f"      L{行号}: {原文}" for 行号, 原文 in 违规[:5])
+    return (f"{标签} 产物 asm 有 {len(违规)} 处 movsd/movss 裸内存操作数"
+            f"（缺 qword/dword ptr → ml64 A2070；{asm路径.name}）:\n{例}")
+
+
 def 探测编译器(显式路径: str) -> pathlib.Path:
     """确定编译器路径：优先使用 --cn 显式参数，否则按候选路径自动探测"""
     if 显式路径:
@@ -548,11 +607,12 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     #   动机：宿主与 v2 是两套独立实现（v2 为重实现非移植），同一机制两侧各自重写——
     #   「各自用例全绿」推不出「行为等价」（73-a 实证：v2 块级 RAII 从未生效而 v2 用例族
     #   全绿，因那些用例只断言内容，泄漏不改内容）。本编排是发现重实现分叉的门禁。
-    #   仅 linux 双平台支持（需 v2 GAS 后端 as/g++ 链；win-x64 的 v2 产物路径未隔离=家机轮）。
+    #   三平台全支持（111-a 放开 win-x64）：win 侧 v2 产物已按用例隔离（v2work<编号>），
+    #   宿主侧产物在隔离宿主目录（hostout）——两侧互不踩，31 个平台守卫用例转真跑。
     双编译配置路径 = 用例目录 / "双编译对照.txt"
     if 双编译配置路径.exists():
-        if 目标平台 not in ("linux-arm64", "linux-x86_64"):
-            return "失败", f"{名称} 双编译对照仅支持 linux-arm64 / linux-x86_64（当前 {目标平台}）"
+        if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
+            return "失败", f"{名称} 双编译对照仅支持 win-x64 / linux-arm64 / linux-x86_64（当前 {目标平台}）"
         双配置 = 解析v2闭环配置(双编译配置路径)
         return 执行双编译对照(编译器路径, 用例目录, 输出目录, 详细, 目标平台,
                             双配置["源文件们"], 双配置["预期退出码"],
@@ -832,9 +892,10 @@ def 解析v2闭环配置(配置路径: pathlib.Path) -> dict:
     return 配置
 
 
-# 判定用例是否 v2 系（分桶并行/预热共用——文件存在性判定）：
+# 判定用例是否 v2 系（预热共用——文件存在性判定）：
 #   v2闭环.txt（纯 v2 用例）与 双编译对照.txt（双编译对照用例，内部调用 v2 闭环）
-#   都依赖共享工件 v2p/v2 运行时 .o，故同进 v2 桶（预热 + 串行）。
+#   都依赖共享工件 v2p/v2 运行时 .o，故同进预热面（111-a 起三平台统一并行，
+#   v2 产物已按用例隔离）。
 def 是v2闭环用例(用例目录: pathlib.Path) -> bool:
     return (用例目录 / "v2闭环.txt").exists() or (用例目录 / "双编译对照.txt").exists()
 
@@ -951,6 +1012,82 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
         return None, f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
     缓存键路径.write_text(本次指纹, encoding="utf-8")
     return v2p, v2pobj, 运行时objs, as工具, cxx工具
+
+
+def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str = "PRE"):
+    """win-x64 侧 v2p 就绪（111-a：自 执行v2闭环 原内联步骤0/1 提取，供预热与各用例共用）：
+    工具链探测（ml64/link + MSVC/Kits LIB 路径）→ 运行时 .obj 存在性 → v2p 构建缓存
+    （v2 全树指纹，输入未变不重建）。
+    并发安全：池启动前单线程预热一次（写缓存），此后各用例只读命中——消除并发首建
+    竞态（对齐 linux 分支 确保v2p与运行时就绪 的同款预热模式）。
+    返回 (v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们)；失败返回 (None, 错误描述)。"""
+    审计目录 = 项目根目录 / "target" / "audit2"
+    审计目录.mkdir(parents=True, exist_ok=True)
+    v2源码目录 = 项目根目录 / "CN语言编译器v2"
+    v2p = 审计目录 / "v2p.exe"
+    v2pobj = 审计目录 / "v2p.obj"
+
+    # 工具链绝对路径（VS 2022，与79同源探测）
+    MSVC根 = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
+    ML64 = None
+    LINK = None
+    for 版本 in ("14.44.35207", "14.38.33130"):
+        候选ml64 = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "ml64.exe"
+        候选link = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "link.exe"
+        if 候选ml64.exists() and ML64 is None:
+            ML64 = 候选ml64
+        if 候选link.exists() and LINK is None:
+            LINK = 候选link
+    if ML64 is None or LINK is None:
+        return None, "未找到 ml64/link（VS 2022 MSVC 工具链）"
+
+    # LIB 路径（MSVC + Windows Kits）
+    msvc版本目录 = ML64.parent.parent.parent.parent
+    kits根 = pathlib.Path(r"C:\Program Files (x86)\Windows Kits\10\lib")
+    kits版 = sorted((p for p in kits根.glob("10.*") if p.is_dir()), reverse=True) if kits根.exists() else []
+    if not kits版:
+        return None, f"未找到 Windows Kits lib 目录: {kits根}\\10.*（请确认 Win10 SDK 安装）"
+    LIB路径们 = [
+        str(msvc版本目录 / "lib" / "x64"),
+        str(kits版[0] / "ucrt" / "x64"),
+        str(kits版[0] / "um" / "x64"),
+    ]
+    for lib路径 in LIB路径们:
+        if not pathlib.Path(lib路径).exists():
+            return None, f"LIB 路径不存在: {lib路径}"
+
+    # 运行时 .obj（C++ 版构建产物；对齐宿主链接命令 10 个）
+    运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
+                "math_api", "input_api", "file_api", "time_api", "system_api"]
+    运行时objs = [项目根目录 / "target" / f"{m}.obj" for m in 运行时名们]
+    for obj in 运行时objs:
+        if not obj.exists():
+            return None, f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
+
+    # v2p 构建缓存（同 Linux 分支——输入未变不重建）
+    缓存键路径 = 审计目录 / "v2p_build_key_win.txt"
+    本次指纹 = 计算v2构建指纹(编译器路径)
+    if (v2p.exists() and v2pobj.exists() and 缓存键路径.exists()
+            and 缓存键路径.read_text(encoding="utf-8") == 本次指纹):
+        if 详细:
+            print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变），复用 {v2p.name}")
+        return v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们
+    if v2p.exists():
+        v2p.unlink()
+    if v2pobj.exists():
+        v2pobj.unlink()
+    if 详细:
+        print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p.exe")
+    编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
+                      "--target", "win-x64", "--output", str(v2p)], 项目根目录)
+    if 编译结果.returncode != 0:
+        return None, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
+    if not v2p.exists():
+        return None, f"{编号}-1 编译返回成功但未生成 v2p.exe"
+    if not v2pobj.exists():
+        return None, f"{编号}-1 中间产物 {v2pobj.name} 未留存（容器符号提供者）"
+    缓存键路径.write_text(本次指纹, encoding="utf-8")
+    return v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们
 
 
 def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细: bool,
@@ -1191,72 +1328,36 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         return 执行v2闭环Linux(编译器路径, 目标平台, 详细, 源文件名们, 预期退出码, 链接v2pobj,
                               期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号, 供给源们)
 
-    # ---- win-x64 原路径（ml64/link，P6h/P7b 既有编排不变）----
-    v2p = 审计目录 / "v2p.exe"
-    v2asm路径 = 项目根目录 / "target" / "v2asm.asm"
+    # ---- win-x64 原路径（ml64/link）----
+    # v2 产物按用例隔离（111-a，对齐 linux 分支）：v2 驱动器 asm 输出路径为相对
+    #   cwd 的 target/v2asm.asm——此前共享项目根 target/v2asm.asm（v2 用例被迫
+    #   单线程串行，并发即互踩）。现每用例独立工作目录（cwd 隔离，对齐 cargo test
+    #   进程隔离理念），v2asm/obj/exe 互不踩；入口参数改绝对路径（cwd 不再是项目
+    #   根），日志锚行比对前把绝对前缀适配回相对（同 linux 分支做法——v2 输出
+    #   路径已归一为正斜杠形式）。
+    工作目录 = 审计目录 / f"v2work{编号}"
+    (工作目录 / "target").mkdir(parents=True, exist_ok=True)
+    # v2p 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
+    #   workdir 内 junction 到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，
+    #   唯此一处）；junction 不需管理员权限（对齐 linux 分支 os.symlink 同款）
+    stdlib链 = 工作目录 / "stdlib"
+    if not stdlib链.exists():
+        subprocess.run(["cmd", "/c", "mklink", "/J", str(stdlib链),
+                        str(项目根目录 / "stdlib")], capture_output=True)
+    v2asm路径 = 工作目录 / "target" / "v2asm.asm"
 
-    # 工具链绝对路径（VS 2022，与79同源探测）
-    MSVC根 = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
-    ML64 = None
-    LINK = None
-    for 版本 in ("14.44.35207", "14.38.33130"):
-        候选ml64 = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "ml64.exe"
-        候选link = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "link.exe"
-        if 候选ml64.exists() and ML64 is None:
-            ML64 = 候选ml64
-        if 候选link.exists() and LINK is None:
-            LINK = 候选link
-    if ML64 is None or LINK is None:
-        return "失败", "未找到 ml64/link（VS 2022 MSVC 工具链）"
-
-    # LIB 路径（MSVC + Windows Kits）
-    msvc版本目录 = ML64.parent.parent.parent.parent
-    kits根 = pathlib.Path(r"C:\Program Files (x86)\Windows Kits\10\lib")
-    kits版 = sorted((p for p in kits根.glob("10.*") if p.is_dir()), reverse=True) if kits根.exists() else []
-    if not kits版:
-        return "失败", f"未找到 Windows Kits lib 目录: {kits根}\\10.*（请确认 Win10 SDK 安装）"
-    LIB路径们 = [
-        str(msvc版本目录 / "lib" / "x64"),
-        str(kits版[0] / "ucrt" / "x64"),
-        str(kits版[0] / "um" / "x64"),
-    ]
-    for lib路径 in LIB路径们:
-        if not pathlib.Path(lib路径).exists():
-            return "失败", f"LIB 路径不存在: {lib路径}"
-
-    # 运行时 .obj（C++ 版构建产物；对齐宿主链接命令 10 个）
-    运行时名们 = ["io_api", "intern_api", "runtime", "string_api", "i128_api",
-                "math_api", "input_api", "file_api", "time_api", "system_api"]
-    运行时objs = [项目根目录 / "target" / f"{m}.obj" for m in 运行时名们]
-    for obj in 运行时objs:
-        if not obj.exists():
-            return "失败", f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
-
-    # ===== 步骤1：宿主编译 v2 组件（入口 主.cn，自动加载 6 个模块）-> v2p.exe =====
-    # v2p 构建缓存（同 Linux 分支——输入未变不重建）
-    缓存键路径 = 审计目录 / "v2p_build_key_win.txt"
-    本次指纹 = 计算v2构建指纹(编译器路径)
-    if v2p.exists() and 缓存键路径.exists() and 缓存键路径.read_text(encoding="utf-8") == 本次指纹:
-        if 详细:
-            print(f"    [{编号}-1] v2p 构建缓存命中（v2 源码与编译器未变），复用 {v2p.name}")
-    else:
-        if v2p.exists():
-            v2p.unlink()
-        if 详细:
-            print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p.exe")
-        编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
-                          "--target", "win-x64", "--output", str(v2p)], 项目根目录)
-        if 编译结果.returncode != 0:
-            return "失败", f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
-        if not v2p.exists():
-            return "失败", f"{编号}-1 编译返回成功但未生成 v2p.exe"
-        缓存键路径.write_text(本次指纹, encoding="utf-8")
+    # 工具链/运行时/v2p 就绪（111-a 提取为函数：主程序池启动前单线程预热，消除
+    #   并发首建竞态；此处调用为 filter 直跑等路径的兜底——缓存命中时零重建）
+    就绪 = 确保v2p就绪win(编译器路径, 详细, 编号)
+    if 就绪[0] is None:
+        return "失败", 就绪[1]
+    v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们 = 就绪
 
     # ===== 负路径闭环（灰色点⑤，2026-09-04）：预期退出码 None = v2p 须编译失败 =====
     #   语义错误即中止纪律的 E2E 锚定：v2p 退出码非 0、target/v2asm.asm 不产出、
     #   中止诊断行（.expected 固化）在输出中——防「报错仍产 asm」回归
     if 预期退出码 is None:
-        入口参数 = f"target/audit2/v2src{编号}/主.cn"
+        入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
         v2src目录 = 审计目录 / f"v2src{编号}"
         v2src目录.mkdir(parents=True, exist_ok=True)
         for 文件名 in 源文件名们:
@@ -1273,13 +1374,16 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             v2asm路径.unlink()
         if 详细:
             print(f"    [{编号}-N] {v2p.name} {入口参数}（预期语义错误中止）")
-        运行结果 = 运行命令([str(v2p), 入口参数], 项目根目录, 内存上限MB=内存上限MB默认)
+        运行结果 = 运行命令([str(v2p), 入口参数], 工作目录, 内存上限MB=内存上限MB默认)
         if 运行结果.returncode == 0:
             return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
         if v2asm路径.exists():
             return "失败", f"{编号}-N v2p 语义错误中止后仍产出 target/v2asm.asm（错误产物纪律回归）"
         期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
-        实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+        # 入口为绝对路径（cwd 隔离）——日志锚行比对前把绝对前缀适配回相对
+        #   （.expected 保持相对路径文本不动；v2 输出路径已归一为正斜杠）
+        实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
+            str(项目根目录).replace("\\", "/") + "/", "")
         for 行 in 期望行们:
             if 行 not in 实际输出:
                 return "失败", f"{编号}-N v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
@@ -1328,19 +1432,23 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         供给objs.append(供给obj)
 
     # ===== 步骤3：运行 v2p（多文件编译：入口 + 自动加载导入模块） =====
-    入口参数 = f"target/audit2/v2src{编号}/主.cn"
+    #   入口绝对路径 + cwd=隔离工作目录（111-a）——v2 产物 target/v2asm.asm 落工作目录
+    入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
     if v2asm路径.exists():
         v2asm路径.unlink()
     if 详细:
         print(f"    [{编号}-3] {v2p.name} {入口参数}")
-    运行结果 = 运行命令([str(v2p), 入口参数], 项目根目录, 内存上限MB=内存上限MB默认)
+    运行结果 = 运行命令([str(v2p), 入口参数], 工作目录, 内存上限MB=内存上限MB默认)
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
         return "失败", f"{编号}-3 v2p 未生成 target/v2asm.asm"
     # 输出比对：.expected 每行（去空）须为 v2p 实际输出的子串（数值列不参与精确比对）
     期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
-    实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or ""))
+    # 入口为绝对路径（cwd 隔离）——日志锚行比对前把绝对前缀适配回相对
+    #   （.expected 保持相对路径文本不动；v2 输出路径已归一为正斜杠）
+    实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
+        str(项目根目录).replace("\\", "/") + "/", "")
     for 行 in 期望行们:
         if 行 not in 实际输出:
             return "失败", f"{编号}-3 v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
@@ -1349,8 +1457,16 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if "cn_main PROC" not in asm内容:
         return "失败", f"{编号}-3.5 v2asm.asm 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
 
+    # ===== 步骤3.8：asm size 说明符静态门禁（plans/021 C14，111-a 落地）=====
+    #   win 后端固有面：movsd/movss 内存操作数缺 qword/dword ptr → ml64 A2070。
+    #   在汇编前扫描产出 asm，把汇编器错误提前为带定位的门禁失败（109-a/110-a
+    #   两轮补漏的第三轮防线）。
+    扫描失败 = 扫描asm产物说明符(v2asm路径, f"{编号} v2 产物")
+    if 扫描失败:
+        return "失败", 扫描失败
+
     # ===== 步骤4：ml64 汇编 target/v2asm.asm -> v2asm.obj =====
-    v2obj = 审计目录 / "v2asm.obj"
+    v2obj = 工作目录 / "v2asm.obj"
     if v2obj.exists():
         v2obj.unlink()
     if 详细:
@@ -1362,10 +1478,10 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         return "失败", f"{编号}-4 ml64 返回成功但未生成 v2asm.obj"
 
     # ===== 步骤5：链接（对齐宿主链接命令 /ENTRY:WinMainCRTStartup + 运行时 obj）=====
-    输出exe = 审计目录 / "v2out.exe"
+    输出exe = 工作目录 / "v2out.exe"
     if 输出exe.exists():
         输出exe.unlink()
-    响应文件 = 审计目录 / f"{编号}_link.rsp"
+    响应文件 = 工作目录 / f"{编号}_link.rsp"
     rsp_lines = [
         "/nologo", "/ENTRY:WinMainCRTStartup", "/SUBSYSTEM:CONSOLE",
         "/STACK:8388608",
@@ -1378,7 +1494,6 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if 链接v2pobj:
         # P7b：v2p.obj 提供 stdlib 容器类方法实现；与 v2asm.obj 的 cn_main 双定义
         #   -> /FORCE:MULTIPLE + v2asm.obj 在前（79 防虚假验收同款：命令行靠前定义胜出）
-        v2pobj = 审计目录 / "v2p.obj"
         if not v2pobj.exists():
             return "失败", "123-5 缺少 target/audit2/v2p.obj（步骤1 cn build 未产出）"
         rsp_lines.append("/FORCE:MULTIPLE")
@@ -1387,7 +1502,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     else:
         rsp_lines += [str(v2obj)] + [str(o) for o in 运行时objs]
     # map 文件供符号方向自检（v2asm.obj 必须贡献 cn_main）
-    map文件 = 审计目录 / f"{编号}_link.map"
+    map文件 = 工作目录 / f"{编号}_link.map"
     if map文件.exists():
         map文件.unlink()
     rsp_lines.append(f"/MAP:{map文件}")
@@ -1408,7 +1523,6 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if 链接v2pobj:
         # P7b 双向自检：容器方法符号（向量$... 构造/追加）必须来自 v2p.obj——
         #   否则容器链路退化为其他来源，闭环是假的
-        import re as _re
         向量行 = [l for l in map内容.splitlines()
                 if "E59091E9878F" in l and "v2p.obj" in l and " f " in l]
         if not 向量行:
@@ -1463,7 +1577,7 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
     shutil.copytree(用例目录, 宿主目录, dirs_exist_ok=True,
                     ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args",
                                                   "v2闭环.txt", "双编译对照.txt"))
-    宿主可执行 = 宿主目录 / "hostout"
+    宿主可执行 = 宿主目录 / ("hostout.exe" if 目标平台 == "win-x64" else "hostout")
     if 宿主可执行.exists():
         宿主可执行.unlink()
     入口 = 宿主目录 / 源文件名们[0]
@@ -1476,6 +1590,14 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
                         f"{(宿主编译.stderr or 宿主编译.stdout).strip()[:200]}")
     if not 宿主可执行.exists():
         return "失败", f"{编号}-D1 宿主侧编译返回成功但未生成可执行文件"
+
+    # ===== 步骤1.5：宿主产物 asm 的 size 说明符扫描（plans/021 C14，仅 win 平台）=====
+    #   宿主 win 后端产物 asm 落在输出路径旁（stem + .asm）——与 v2 侧同款静态门禁
+    #   （宿主侧同族缺陷面；GAS 无 size 说明符要求，仅 win 平台挂）
+    if 目标平台 == "win-x64":
+        扫描失败 = 扫描asm产物说明符(宿主可执行.with_suffix(".asm"), f"{编号} 宿主侧")
+        if 扫描失败:
+            return "失败", 扫描失败
 
     # ===== 步骤2：宿主侧运行取实测退出码 =====
     宿主运行 = 运行命令([str(宿主可执行)], 项目根目录)
@@ -1576,6 +1698,13 @@ def 主程序() -> int:
     print(f"  编译器: {青色(str(编译器路径))}")
     print(f"  目标平台: {青色(目标平台)}")
     print(f"  输出目录: {输出目录}")
+
+    # 门禁自身自检（探测器也是被测对象——110-a 教训）：asm size 说明符扫描器
+    #   正/负样本内联自检——扫描器失效时先于被测物报错，防"门禁恒绿"假象
+    扫描器问题 = asm说明符扫描器自检()
+    if 扫描器问题:
+        print(红色(f"错误: asm size 说明符扫描器自检失败（{扫描器问题}）——门禁不可信，中止"))
+        return 2
     print()
 
     # 收集用例
@@ -1632,11 +1761,11 @@ def 主程序() -> int:
                 print()
             return 状态
 
-        # 全量统一并行（2026-09-11 用户裁决：01 起全部用例一个池）——Linux 双平台
-        #   v2 产物已按用例隔离（v2work 编号 workdir/v2asm_N/v2out_N），唯一共享
-        #   工件 v2p/运行时 .o 在池启动前预热（确保v2p与运行时就绪——消除并发
-        #   构建竞态；预热本身数秒级，缓存命中时瞬时）。win-x64 的 v2 产物路径
-        #   未隔离（ml64/link 原编排）——v2 桶保持单线程串行兜底。
+        # 全量统一并行（2026-09-11 用户裁决：01 起全部用例一个池）——三平台同款：
+        #   v2 产物已按用例隔离（v2work<编号> workdir / v2asm.obj / v2out.exe），
+        #   唯一共享工件 v2p/运行时 .o 在池启动前预热（确保v2p与运行时就绪 /
+        #   确保v2p就绪win——消除并发构建竞态；预热本身数秒级，缓存命中时瞬时）。
+        #   win-x64 自 111-a 起同款（此前 v2 产物共享 target/v2asm.asm → v2 桶串行）。
         池们 = []
         if 目标平台 in ("linux-arm64", "linux-x86_64"):
             v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
@@ -1651,13 +1780,17 @@ def 主程序() -> int:
             池们.append(("统一", ThreadPoolExecutor(max_workers=参数.jobs),
                          [(d, "统一") for d in 用例目录们]))
         else:
-            v2桶 = [d for d in 用例目录们 if 是v2闭环用例(d)]
-            普通桶 = [d for d in 用例目录们 if not 是v2闭环用例(d)]
-            print(青色(f"并行模式: jobs={参数.jobs}（非 v2 用例 {len(普通桶)} 个并行，"
-                       f"v2 用例 {len(v2桶)} 个串行——win v2 产物未隔离）"))
+            v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
+            if v2用例们:
+                print(青色(f"预热: v2p 构建缓存（{len(v2用例们)} 个 v2 用例共享工件）..."))
+                就绪 = 确保v2p就绪win(编译器路径, 参数.verbose)
+                if 就绪[0] is None:
+                    print(红色(f"预热失败: {就绪[1]}"))
+                    return 1
+            print(青色(f"并行模式: jobs={参数.jobs}（{len(用例目录们)} 个用例统一并行）"))
             print()
-            池们.append(("v2串行", ThreadPoolExecutor(max_workers=1), [(d, "v2串行") for d in v2桶]))
-            池们.append(("普通", ThreadPoolExecutor(max_workers=参数.jobs), [(d, "普通") for d in 普通桶]))
+            池们.append(("统一", ThreadPoolExecutor(max_workers=参数.jobs),
+                         [(d, "统一") for d in 用例目录们]))
 
         futures = []
         with 池们[0][1] as _池0:

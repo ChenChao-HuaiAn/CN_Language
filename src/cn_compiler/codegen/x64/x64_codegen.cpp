@@ -891,7 +891,16 @@ void X64CodeGenerator::emitEpilogue(AsmWriter& writer, const std::string& return
             const std::string mp = (currentReturnType_ == "f64") ? "qword ptr " : "dword ptr ";
             writer.line(load + " xmm0, " + mp + returnReg);
         } else {
-            writer.line("mov rax, " + returnReg);
+            // 111-a（2026-09-13）：按返回类型宽度装载（与 linux 后端
+            //   emitStackLoad(..., "rax", currentReturnType_) 对齐）——≤32 位返回类型
+            //   （i1/i8/i16/i32/u8/u16/u32）用 32 位读（mov eax，32 位写自动清零
+            //   rax 高 32 位），保证 ABI 契约「窄返回值高位干净」（Rust/LLVM
+            //   zeroext 语义）；原无条件 8 字节读（mov rax）使 rax 高 32 位携带
+            //   栈垃圾——v2 win 后端消费者按 64 位比较（cmp rax, 0）时被垃圾
+            //   污染（E2E 221 形态①实证：映射$包含 布尔返回 → 校验位丢失）。
+            //   槽内窄类型为 32 位提升形式（widthFor 注释同款纪律），故 32 位读
+            //   与槽内实际有效宽度一致。
+            writer.line("mov " + widthFor(currentReturnType_, "rax") + ", " + returnReg);
         }
     }
     // 阶段C（Task 4.3）：恢复被调用者保存寄存器（逆序 pop，与 prologue 压栈相反）
