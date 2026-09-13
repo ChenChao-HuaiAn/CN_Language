@@ -210,8 +210,12 @@ void IRGenerator::emitStaticInitsAtEntry() {
                  loc);
             continue;
         }
-        // ④ 类/容器静态（P3-8 指针槽模型）
+        // ④ 类/容器与标量静态（P3-8 指针槽模型 + 标量初值直存）
         ir::IRValue obj;
+        const bool isScalarStatic =
+            types::isInteger(canonStatic) || types::isFloat(canonStatic) ||
+            canonStatic == "布尔" || canonStatic == "字符" ||
+            types::isPointer(canonStatic) || semantic_->isEnumType(canonStatic);
         if (initExpr != nullptr) {
             // 有构造初始化表达式：genExpr(映射<...>()) -> NewObject + 构造调用
             obj = genExpr(initExpr);
@@ -222,16 +226,25 @@ void IRGenerator::emitStaticInitsAtEntry() {
             //   （探针 multi4：非入口模块容器静态 `静态 向量<整64> 表` 实证
             //   「初始大小=」后 运行时错误(错误码3)）。与「无初始化」路径同款
             //   指针槽模型（本缺陷对**任何模块**均存在——入口模块同形态亦崩）。
+            // 110-a（2026-09-13 家机 win-x64）：102-a 版此处无条件 `continue`，
+            //   使下方标量族段成为死代码——MSVC C4702 → /WX 构建失败（GCC 不报
+            //   = 跨平台分叉温床），且丢失 isScalarStatic 守卫（数组等聚合会被
+            //   8 字节 StorePtr 写越界 = 87-a 的安全边界）。恢复守卫：标量落下方
+            //   统一 StorePtr；类/容器指针槽 StorePtr；其余聚合保持 .data 零。
             const bool obj有效 = !(obj.id < 0 && obj.isConstant == false &&
                                     obj.extra.empty());
-            if (obj有效) {
-                ir::IRValue symAddr = emitResult(
-                    ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + sname,
-                    initExpr->location);
-                emit(ir::Opcode::StorePtr, {symAddr, obj}, ir::IRValue(), "",
-                     "ptr", initExpr->location);
+            if (!isScalarStatic) {
+                if (obj有效 && semantic_->isClassType(canonStatic)) {
+                    ir::IRValue symAddr = emitResult(
+                        ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + sname,
+                        initExpr->location);
+                    emit(ir::Opcode::StorePtr, {symAddr, obj}, ir::IRValue(), "",
+                         "ptr", initExpr->location);
+                }
+                continue;  // 类/容器以外聚合（数组等）：保持 .data 零（宁漏勿错）
             }
-            continue;
+            if (!obj有效) continue;
+            // 标量：落入下方标量族统一 StorePtr
         } else {
             // 无初始化表达式：NewObject + 无参构造（this=新对象），
             //   StorePtr 指针入 .data 槽（指针槽模型，与局部类变量一致）
@@ -267,14 +280,8 @@ void IRGenerator::emitStaticInitsAtEntry() {
             continue;
         }
         // 标量族（整/浮/布/字符/指针/枚举）非字面量初值 → 入口求值 + StorePtr
-        //   入 .data 槽；数组等其他聚合（无初值注入面）保持 .data 零（宁漏勿错——
+        //   入 .data 槽；类/容器与数组等其他聚合已在上方分支 continue（宁漏勿错——
         //   8 字节 StorePtr 会把 >8 字节聚合写越界，安全优先）。
-        const bool isScalarStatic =
-            types::isInteger(canonStatic) || types::isFloat(canonStatic) ||
-            canonStatic == "布尔" || canonStatic == "字符" ||
-            types::isPointer(canonStatic) || semantic_->isEnumType(canonStatic);
-        if (!isScalarStatic) continue;
-        if (obj.id < 0 && obj.isConstant == false && obj.extra.empty()) continue;
         // 存入 .data 符号（?gstatic_名）
         ir::IRValue symAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + sname, SourceLocation());
