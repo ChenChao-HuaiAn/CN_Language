@@ -164,6 +164,16 @@ private:
     // 生成类型转换（Cast：扩展/截断/整浮互转/浮32<->浮64，Task 2.3）
     void emitCast(AsmWriter& writer, const ir::IRInstruction& inst);
 
+    // D1 126-a：emitCast 子方法（各返回 真=该族已发射并完成）
+    bool emitCastFloatFamily(AsmWriter& writer, const ir::IRInstruction& inst,
+        const std::string& dst, const std::string& src, const std::string& from, const std::string& to,
+        bool fromFloat, bool toFloat);
+    bool emitCastPtrAndFloatPair(AsmWriter& writer,
+        const std::string& dst, const std::string& src, const std::string& from, const std::string& to,
+        bool fromFloat, bool toFloat);
+    bool emitCastIntWidth(AsmWriter& writer, const ir::IRInstruction& inst,
+        const std::string& dst, const std::string& src, const std::string& from, const std::string& to);
+
     // 生成i128双槽运算（低/高64位分开处理，Task 2.3 / Task 完善A 全128位）
     void emitInt128Binary(AsmWriter& writer, const ir::IRInstruction& inst);
 
