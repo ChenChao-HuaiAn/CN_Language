@@ -51,6 +51,7 @@ void IRGenerator::visitProgram(Program* node) {
                 if ((isStructStatic || isStringStatic) &&
                     g->initializer != nullptr) {
                     module_->staticCtorNames.push_back(g->name);
+
                     staticCtorInit_[g->name] = g->initializer.get();
                     continue;
                 }
@@ -81,20 +82,24 @@ void IRGenerator::visitProgram(Program* node) {
                         // P3-8 补全（2026-08-30）：容器/类对象 静态（全局表 = 映射<...>()）——
                         //   .data 段只分配零字节，构造函数（桶数组=分配 等）须在 main 开头注入调用。
                         module_->staticCtorNames.push_back(g->name);
+
                         staticCtorInit_[g->name] = g->initializer.get();
                     } else if (isClassStatic) {
                         // 非字面量初始化表达式（如 向量 全局表 = 空向量 表达式）——零初始化 + 构造
                         module_->staticCtorNames.push_back(g->name);
+
                     } else {
                         // 87-a：其余表达式（标量非字面量初值，如 静态 整64 x = 取数()）——
                         //   原实现静默落 .data 零（初值丢失）；统一经入口注入求值一次。
                         module_->staticCtorNames.push_back(g->name);
+
                         staticCtorInit_[g->name] = g->initializer.get();
                     }
                 } else if (isClassStatic) {
                     // P3-8 补全：无初始值的类类型静态（静态 映射<...> 模块表）——
                     //   .data 零对象无桶数组，main 注入无参构造（映射() 分配桶数组）。
                     module_->staticCtorNames.push_back(g->name);
+
                 }
             }
         }
@@ -163,6 +168,10 @@ void IRGenerator::visitProgram(Program* node) {
 //     诚实边界，非本轮引入）。
 void IRGenerator::emitStaticInitsAtEntry() {
     if (module_ == nullptr || semantic_ == nullptr) return;
+    // 102-a（C4 核验）：`module_` 为**全量合并单模块**（宿主多文件=单 Program 模型，
+    //   共享节点池/全局符号表）——本函数在 主 生成时遍历已覆盖**全部模块**的静态
+    //   构造（v2 侧全树合并模型同款）。原 C4 登记「仅入口模块注入」在现架构下
+    //   不成立（反证 B 实证：回退尝试仍通过）；**真实缺陷=H5**（见下 ④ 分支）。
     for (const auto& sname : module_->staticCtorNames) {
         const std::string stType = semantic_->globalStaticType(sname);
         const std::string canonStatic = types::canonical(stType);
@@ -206,6 +215,23 @@ void IRGenerator::emitStaticInitsAtEntry() {
         if (initExpr != nullptr) {
             // 有构造初始化表达式：genExpr(映射<...>()) -> NewObject + 构造调用
             obj = genExpr(initExpr);
+            // 102-a（C4, 2026-09-13 第一百零二轮）**缺陷根治**：有初始化表达式
+            //   路径补 **StorePtr**——原实现 `obj` 落尾端标量族判定
+            //   （isScalarStatic=false）→ `continue` 跳过 StorePtr：对象已构造但
+            //   指针**未写入 .data 静态槽**（槽=0）→ 读/方法调用空指针崩溃
+            //   （探针 multi4：非入口模块容器静态 `静态 向量<整64> 表` 实证
+            //   「初始大小=」后 运行时错误(错误码3)）。与「无初始化」路径同款
+            //   指针槽模型（本缺陷对**任何模块**均存在——入口模块同形态亦崩）。
+            const bool obj有效 = !(obj.id < 0 && obj.isConstant == false &&
+                                    obj.extra.empty());
+            if (obj有效) {
+                ir::IRValue symAddr = emitResult(
+                    ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + sname,
+                    initExpr->location);
+                emit(ir::Opcode::StorePtr, {symAddr, obj}, ir::IRValue(), "",
+                     "ptr", initExpr->location);
+            }
+            continue;
         } else {
             // 无初始化表达式：NewObject + 无参构造（this=新对象），
             //   StorePtr 指针入 .data 槽（指针槽模型，与局部类变量一致）
