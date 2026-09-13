@@ -191,6 +191,9 @@ add_library(cn_compiler_codegen STATIC
     src/cn_compiler/codegen/debug_info.cpp
     src/cn_compiler/codegen/x64/x64_codegen.cpp
     src/cn_compiler/codegen/x64/x64_instructions.cpp
+    src/cn_compiler/codegen/x64/x64_instructions_i128.cpp
+    src/cn_compiler/codegen/x64/x64_instructions_cast.cpp
+    src/cn_compiler/codegen/x64/x64_instructions_mem.cpp
     src/cn_compiler/codegen/x64/x64_codegen_oop.cpp
     src/cn_compiler/codegen/x64/x64_codegen_vtable.cpp
     src/cn_compiler/codegen/arm64/arm64_codegen.cpp
