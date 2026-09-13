@@ -377,6 +377,11 @@ private:
                               const std::string& arrayField, const std::string& elemCanon,
                               bool isFull, bool strOwnedSlot,
                               const std::string& indexParam, const std::string& indexField);
+    // D1 132-a：含拥有型串字段元素释放子方法
+    void injectOwnedStrFieldElemDestroy(const std::string& canonClass, const SourceLocation& loc,
+                                        const std::string& arrayField, const std::string& elemCanon,
+                                        bool isFull, bool isSingle, bool strOwnedSlot,
+                                        const std::string& indexParam, const std::string& indexField);
     // 生成 i128 比较（返回 i1 布尔值）
     ir::IRValue genI128Compare(ir::IRValue left, ir::IRValue right, ir::Opcode op,
                                const SourceLocation& loc);

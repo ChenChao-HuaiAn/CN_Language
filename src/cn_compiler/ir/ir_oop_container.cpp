@@ -131,39 +131,8 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     //     · 单槽（析构被移除/删除头部/删除尾部）：唯一持有者槽单次释放；
     //   释放体自带「释放+清槽」幂等（多路径共享槽安全，plans/020 移植纪律 7）。
     if (isOwnedStrFieldElemContainer(canonClass)) {
-        const std::string thisUniqueE = lookupVarName("自身");
-        if (thisUniqueE.empty()) return;
-        const int arrayOffE = semantic_->classFieldOffset(canonClass, arrayField);
-        const int countOffE = semantic_->classFieldOffset(canonClass, "元素数量");
-        const int strideE = semantic_->typeSizeOf(elemCanon);
-        if (arrayOffE < 0 || countOffE < 0 || strideE <= 0) return;
-        ir::IRValue selfPtrE = emitResult(ir::Opcode::Load,
-                                          {ir::IRValue::var(thisUniqueE, "ptr")},
-                                          "ptr", thisUniqueE, loc);
-        ir::IRValue arrayAddrE = emitResult(ir::Opcode::FieldAddr, {selfPtrE}, "ptr",
-                                            std::to_string(arrayOffE), loc);
-        ir::IRValue arrayPtrE = emitResult(ir::Opcode::LoadPtr, {arrayAddrE}, "ptr", "",
-                                          loc);
-        const std::function<void(const ir::IRValue&)> releaseElem =
-            [&](const ir::IRValue& elemAddr) {
-                emitOwnedStrFieldFreesAt(elemAddr, elemCanon, loc);
-            };
-        if (isFull) {
-            ir::IRValue countAddrE = emitResult(ir::Opcode::FieldAddr, {selfPtrE},
-                                                "ptr", std::to_string(countOffE), loc);
-            ir::IRValue countE = emitResult(ir::Opcode::LoadPtr, {countAddrE}, "i64",
-                                            "", loc);
-            emitContainerElemWalk(canonClass, selfPtrE, arrayPtrE, countE, strideE, loc,
-                                  releaseElem);
-            return;
-        }
-        if (!isSingle || !strOwnedSlot) return;
-        ir::IRValue countAddrE2 = emitResult(ir::Opcode::FieldAddr, {selfPtrE}, "ptr",
-                                             std::to_string(countOffE), loc);
-        ir::IRValue countE2 = emitResult(ir::Opcode::LoadPtr, {countAddrE2}, "i64", "",
-                                         loc);
-        emitSingleElemRelease(canonClass, selfPtrE, arrayPtrE, countE2, strideE,
-                              indexParam, indexField, loc, releaseElem);
+        injectOwnedStrFieldElemDestroy(canonClass, loc, arrayField, elemCanon, isFull, isSingle,
+                                          strOwnedSlot, indexParam, indexField);
         return;
     }
     // T 须为有析构类：类 + 析构方法（沿继承链合并后的 methods 表）
@@ -211,6 +180,55 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
                               indexField, loc, dtorBody);
     }
 }
+
+// D1 132-a：元素 = 含拥有型串字段的结构体——
+//   字段串释放（递归字段释放 + 全量/单槽遍历）；自 injectContainerElemDestroy 按族拆出
+//   （“if 包 + return”模式；纯重构零行为变更）
+void IRGenerator::injectOwnedStrFieldElemDestroy(const std::string& canonClass,
+                                                      const SourceLocation& loc,
+                                                      const std::string& arrayField,
+                                                      const std::string& elemCanon, bool isFull,
+                                                      bool isSingle, bool strOwnedSlot,
+                                                      const std::string& indexParam,
+                                                      const std::string& indexField) {
+    if (isOwnedStrFieldElemContainer(canonClass)) {
+        const std::string thisUniqueE = lookupVarName("自身");
+        if (thisUniqueE.empty()) return;
+        const int arrayOffE = semantic_->classFieldOffset(canonClass, arrayField);
+        const int countOffE = semantic_->classFieldOffset(canonClass, "元素数量");
+        const int strideE = semantic_->typeSizeOf(elemCanon);
+        if (arrayOffE < 0 || countOffE < 0 || strideE <= 0) return;
+        ir::IRValue selfPtrE = emitResult(ir::Opcode::Load,
+                                          {ir::IRValue::var(thisUniqueE, "ptr")},
+                                          "ptr", thisUniqueE, loc);
+        ir::IRValue arrayAddrE = emitResult(ir::Opcode::FieldAddr, {selfPtrE}, "ptr",
+                                            std::to_string(arrayOffE), loc);
+        ir::IRValue arrayPtrE = emitResult(ir::Opcode::LoadPtr, {arrayAddrE}, "ptr", "",
+                                          loc);
+        const std::function<void(const ir::IRValue&)> releaseElem =
+            [&](const ir::IRValue& elemAddr) {
+                emitOwnedStrFieldFreesAt(elemAddr, elemCanon, loc);
+            };
+        if (isFull) {
+            ir::IRValue countAddrE = emitResult(ir::Opcode::FieldAddr, {selfPtrE},
+                                                "ptr", std::to_string(countOffE), loc);
+            ir::IRValue countE = emitResult(ir::Opcode::LoadPtr, {countAddrE}, "i64",
+                                            "", loc);
+            emitContainerElemWalk(canonClass, selfPtrE, arrayPtrE, countE, strideE, loc,
+                                  releaseElem);
+            return;
+        }
+        if (!isSingle || !strOwnedSlot) return;
+        ir::IRValue countAddrE2 = emitResult(ir::Opcode::FieldAddr, {selfPtrE}, "ptr",
+                                             std::to_string(countOffE), loc);
+        ir::IRValue countE2 = emitResult(ir::Opcode::LoadPtr, {countAddrE2}, "i64", "",
+                                         loc);
+        emitSingleElemRelease(canonClass, selfPtrE, arrayPtrE, countE2, strideE,
+                              indexParam, indexField, loc, releaseElem);
+        return;
+    }
+}
+
 
 // D1 131-a：字符串元素释放（全量通循环 / 单槽 __cn_seq_free_slot；
 //   自 injectContainerElemDestroy 按族拆出——“if 包 + return”模式；纯重构零行为变更）
