@@ -756,6 +756,9 @@ private:
     //   供方法调用路径复用（原方法调用路径无此物化 → 实参地址=空指针 → 段错误）。
     ir::IRValue materializeStructInitArg(StructInitExpr* init,
                                          const SourceLocation& loc);
+    // D1 128-a：injectContainerElemDestroy 子方法（映射<K,V> 字符串键/值释放注入族）
+    void injectMapElemDestroy(const std::string& canonClass, const ClassMemberInfo& mi,
+                             const SourceLocation& loc);
     // 81-a：实参求值 + 「调用返回结构体临时」清理登记——返回类型含拥有型串字段的
     //   调用返回实参（`表.追加(造盒子())`）：被调方返回移出（所有权移交调用方
     //   retbuf），入容器深拷给元素槽后 retbuf 句柄无人释放=泄漏 1/次（探针 P1⑥）。

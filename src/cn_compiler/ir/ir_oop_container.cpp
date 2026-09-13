@@ -51,58 +51,7 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     //      前调用（旧值句柄被覆盖即泄漏，探针 76-C；键保留=仍是有效元素）。
     //   K/V 为字符串时才注入（其余类型无堆资源，空体调用零开销）。
     if (canonClass.rfind("映射$", 0) == 0) {
-        std::string kType;
-        std::string vType;
-        auto kit = genericTypeParams_.find("K");
-        auto vit = genericTypeParams_.find("V");
-        if (kit != genericTypeParams_.end()) kType = kit->second;
-        if (vit != genericTypeParams_.end()) vType = vit->second;
-        const bool kStr = (types::canonical(kType) == "字符串");
-        const bool vStr = (types::canonical(vType) == "字符串");
-        if (!kStr && !vStr) return;
-        const std::string thisUniqueM = lookupVarName("自身");
-        if (thisUniqueM.empty()) return;
-        const int keysOff = semantic_->classFieldOffset(canonClass, "键数组");
-        const int valsOff = semantic_->classFieldOffset(canonClass, "值数组");
-        const int cntOffM = semantic_->classFieldOffset(canonClass, "元素数量");
-        if (keysOff < 0 || valsOff < 0 || cntOffM < 0) return;
-        ir::IRValue selfPtrM = emitResult(ir::Opcode::Load,
-                                          {ir::IRValue::var(thisUniqueM, "ptr")},
-                                          "ptr", thisUniqueM, loc);
-        const bool isMapFull = (mi.name == "~映射" || mi.name == "清空" ||
-                                mi.name == "释放内部数组");
-        const bool isMapSlot = (mi.name == "析构键值" || mi.name == "析构值");
-        if (!isMapFull && !isMapSlot) {
-            return;   // 映射其余方法不注入
-        }
-        if (isMapFull) {
-            emit(ir::Opcode::Call,
-                 {selfPtrM,
-                  ir::IRValue::constant(std::to_string(keysOff), "整64"),
-                  ir::IRValue::constant(std::to_string(valsOff), "整64"),
-                  ir::IRValue::constant(std::to_string(cntOffM), "整64"),
-                  ir::IRValue::constant(kStr ? "1" : "0", "整64"),
-                  ir::IRValue::constant(vStr ? "1" : "0", "整64")},
-                 ir::IRValue(), "__cn_map_free_strings", "void", loc);
-            return;   // 映射不参与「有析构类元素循环」注入（元素是 K/V 值，非 T）
-        }
-        // ---- 单槽释放（析构键值/析构值）----
-        const std::string posUniqueM = lookupVarName("索引");
-        if (posUniqueM.empty()) return;
-        ir::IRValue posM = emitResult(ir::Opcode::Load,
-                                      {ir::IRValue::var(posUniqueM, "i64")},
-                                      "i64", posUniqueM, loc);
-        const bool freeK = (mi.name == "析构键值" && kStr);
-        const bool freeV = vStr;
-        if (!freeK && !freeV) return;
-        emit(ir::Opcode::Call,
-             {selfPtrM,
-              ir::IRValue::constant(std::to_string(keysOff), "整64"),
-              ir::IRValue::constant(std::to_string(valsOff), "整64"),
-              posM,
-              ir::IRValue::constant(freeK ? "1" : "0", "整64"),
-              ir::IRValue::constant(freeV ? "1" : "0", "整64")},
-             ir::IRValue(), "__cn_map_free_slot", "void", loc);
+        injectMapElemDestroy(canonClass, mi, loc);
         return;
     }
     // 容器识别 + 数组字段名（向量/栈=数据；链表/队列=值表；集合=数据数组）
@@ -340,6 +289,67 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
                               indexField, loc, dtorBody);
     }
 }
+
+// D1 128-a：映射<K,V> 字符串键／值释放注入（自 injectContainerElemDestroy 按族拆出；
+//   族内所有路径均 return（原语义等价：主函数外层 if 块接管返回）。
+void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
+                                          const ClassMemberInfo& mi,
+                                          const SourceLocation& loc) {
+        std::string kType;
+        std::string vType;
+        auto kit = genericTypeParams_.find("K");
+        auto vit = genericTypeParams_.find("V");
+        if (kit != genericTypeParams_.end()) kType = kit->second;
+        if (vit != genericTypeParams_.end()) vType = vit->second;
+        const bool kStr = (types::canonical(kType) == "字符串");
+        const bool vStr = (types::canonical(vType) == "字符串");
+        if (!kStr && !vStr) return;
+        const std::string thisUniqueM = lookupVarName("自身");
+        if (thisUniqueM.empty()) return;
+        const int keysOff = semantic_->classFieldOffset(canonClass, "键数组");
+        const int valsOff = semantic_->classFieldOffset(canonClass, "值数组");
+        const int cntOffM = semantic_->classFieldOffset(canonClass, "元素数量");
+        if (keysOff < 0 || valsOff < 0 || cntOffM < 0) return;
+        ir::IRValue selfPtrM = emitResult(ir::Opcode::Load,
+                                          {ir::IRValue::var(thisUniqueM, "ptr")},
+                                          "ptr", thisUniqueM, loc);
+        const bool isMapFull = (mi.name == "~映射" || mi.name == "清空" ||
+                                mi.name == "释放内部数组");
+        const bool isMapSlot = (mi.name == "析构键值" || mi.name == "析构值");
+        if (!isMapFull && !isMapSlot) {
+            return;   // 映射其余方法不注入
+        }
+        if (isMapFull) {
+            emit(ir::Opcode::Call,
+                 {selfPtrM,
+                  ir::IRValue::constant(std::to_string(keysOff), "整64"),
+                  ir::IRValue::constant(std::to_string(valsOff), "整64"),
+                  ir::IRValue::constant(std::to_string(cntOffM), "整64"),
+                  ir::IRValue::constant(kStr ? "1" : "0", "整64"),
+                  ir::IRValue::constant(vStr ? "1" : "0", "整64")},
+                 ir::IRValue(), "__cn_map_free_strings", "void", loc);
+            return;   // 映射不参与「有析构类元素循环」注入（元素是 K/V 值，非 T）
+        }
+        // ---- 单槽释放（析构键值/析构值）----
+        const std::string posUniqueM = lookupVarName("索引");
+        if (posUniqueM.empty()) return;
+        ir::IRValue posM = emitResult(ir::Opcode::Load,
+                                      {ir::IRValue::var(posUniqueM, "i64")},
+                                      "i64", posUniqueM, loc);
+        const bool freeK = (mi.name == "析构键值" && kStr);
+        const bool freeV = vStr;
+        if (!freeK && !freeV) return;
+        emit(ir::Opcode::Call,
+             {selfPtrM,
+              ir::IRValue::constant(std::to_string(keysOff), "整64"),
+              ir::IRValue::constant(std::to_string(valsOff), "整64"),
+              posM,
+              ir::IRValue::constant(freeK ? "1" : "0", "整64"),
+              ir::IRValue::constant(freeV ? "1" : "0", "整64")},
+             ir::IRValue(), "__cn_map_free_slot", "void", loc);
+        return;
+}
+
 
 // ==================== 81-a：容器元素遍历/单槽释放助手 ====================
 // 背景（探针 P1~P7 实证，plans/020 矩阵靶子 #1）：元素槽资源（含串字段结构体的

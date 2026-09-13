@@ -2983,3 +2983,15 @@ plans/016 第七节（实施结果+八项差异清单）；形态 A 契约与 wi
 - **0-based 与 1-based 索引混用**（本轮两度 off-by-one 断言失败）：dump 输出用 1-based 行号，脚本内
   `split()` 后用 0-based 索引——**换算必须显式**（本轮 `行N` → `L[N-1]`），且**边界断言宜用「内容特征」
   而非纯行号位置**（如 `assert 行们[k].strip() == "return;"` 前先打印该行确认）。
+
+## 第一百二十八轮踩坑（2026-09-14 凌晨，家机 win-x64：128-a injectContainerElemDestroy 映射族提取）
+
+- **提取模式二（「if 包 + return」，本轮立）**：当族是「独立 if 块且块内所有路径都 return」时，提取为 **void
+  子方法**，主函数写 `if (进入条件) { 子方法(...); return; }`——子方法内 `return;` 原样保留。
+  **优于 bool 模式之处**：无「族内全 return → 子方法末尾 return false 不可达」的 C4702 风险（/WX 下即错误）、
+  无冗余布尔流转。**两模式选用判据**：族是「顺序尾、后接主流程」→ bool 模式（126/127-a）；族是「独立 if 块、
+  块内全 return」→ if 包 + return 模式（128-a）。
+- **多行函数声明的 hpp 插入锚点必须取「声明末行」**：本轮 hpp 锚匹配了 3 行声明的**首行**
+  （`void injectContainerElemDestroy(const std::string& className,`）→ 新声明被插入到多行签名**中间** →
+  C2143/C2079「ClassMemberInfo 未定义」等连锁 5 错。**规则**：头文件声明插入前，先**向下扫描到含结尾分号的
+  那行**作锚（或用「整段多行声明」作为待替换文本、把它整体重写）。
