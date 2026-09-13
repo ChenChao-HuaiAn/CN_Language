@@ -382,6 +382,11 @@ private:
                                         const std::string& arrayField, const std::string& elemCanon,
                                         bool isFull, bool isSingle, bool strOwnedSlot,
                                         const std::string& indexParam, const std::string& indexField);
+    // D1 133-a：有析构类元素释放子方法（真=已处理）
+    bool injectClassElemDestroy(const std::string& canonClass, const ClassMemberInfo& mi,
+                               const SourceLocation& loc, const std::string& arrayField,
+                               const std::string& elemCanon, bool isFull, bool isSingle,
+                               const std::string& indexParam, const std::string& indexField);
     // 生成 i128 比较（返回 i1 布尔值）
     ir::IRValue genI128Compare(ir::IRValue left, ir::IRValue right, ir::Opcode op,
                                const SourceLocation& loc);

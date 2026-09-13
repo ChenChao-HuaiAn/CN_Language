@@ -135,25 +135,41 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
                                           strOwnedSlot, indexParam, indexField);
         return;
     }
+    if (injectClassElemDestroy(canonClass, mi, loc, arrayField, elemCanon, isFull, isSingle,
+                               indexParam, indexField)) {
+        return;
+    }
+}
+
+// D1 133-a：有析构类元素释放（析构方法调用 + 全量/单槽遍历；
+//   自 injectContainerElemDestroy 按族拆出——顺序尾形态：bool 模式（真=已处理/提前结束）
+//   各段原顺序/条件/语句逐字不动；纯重构零行为变更）
+bool IRGenerator::injectClassElemDestroy(const std::string& canonClass,
+                                            const ClassMemberInfo& mi,
+                                            const SourceLocation& loc,
+                                            const std::string& arrayField,
+                                            const std::string& elemCanon, bool isFull,
+                                            bool isSingle, const std::string& indexParam,
+                                            const std::string& indexField) {
     // T 须为有析构类：类 + 析构方法（沿继承链合并后的 methods 表）
     //   76-a：析构被移除（唯一持有者槽）只服务字符串——有析构类该槽的析构由
     //   析构元素 链（向量 删除循环首步）/删除头部/删除尾部 原路径负责，零行为变化
-    if (mi.name == "析构被移除") return;
+    if (mi.name == "析构被移除") return true;
     const ClassInfo* eci = semantic_->findClass(elemCanon);
-    if (eci == nullptr) return;
+    if (eci == nullptr) return true;
     std::string dtorSig;
     for (const auto& mk : eci->methods) {
         if (mk.second.isDestructor) { dtorSig = mk.second.sigKey; break; }
     }
-    if (dtorSig.empty()) return;  // 无析构：不注入（标量/结构体元素）
+    if (dtorSig.empty()) return true;  // 无析构：不注入（标量/结构体元素）
     const std::string thisUnique = lookupVarName("自身");
-    if (thisUnique.empty()) return;
+    if (thisUnique.empty()) return true;
     // 容器字段：数组（T*）/ 元素数量（整64）
     const int arrayOff = semantic_->classFieldOffset(canonClass, arrayField);
     const int countOff = semantic_->classFieldOffset(canonClass, "元素数量");
-    if (arrayOff < 0 || countOff < 0) return;
+    if (arrayOff < 0 || countOff < 0) return true;
     const int stride = semantic_->typeSizeOf(elemCanon);
-    if (stride <= 0) return;
+    if (stride <= 0) return true;
     const std::string dtorSym = methodSymbolKey(elemCanon, dtorSig);
     // this + 数组/元素数量 字段加载（循环外只读一次，循环内不修改）
     ir::IRValue selfPtr = emitResult(ir::Opcode::Load,
@@ -179,7 +195,9 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
         emitSingleElemRelease(canonClass, selfPtr, arrayPtr, count, stride, indexParam,
                               indexField, loc, dtorBody);
     }
+    return false;
 }
+
 
 // D1 132-a：元素 = 含拥有型串字段的结构体——
 //   字段串释放（递归字段释放 + 全量/单槽遍历）；自 injectContainerElemDestroy 按族拆出
