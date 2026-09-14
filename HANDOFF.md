@@ -60,70 +60,65 @@
 
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百七十轮（**深度机 linux-x86_64**）——**170-a D1 函数级拆分第五波：`visitCallExpr` 族A struct 化收尾**（用户特批接手家机认领后关机中断的任务；基线 a1dda26）。本会话 1 个开发轮。
+**交接时间**: 2026-09-15 第一百七十二轮（**深度机 linux-x86_64**）——**172-a D1 v2 侧拆分：`生成赋值语句` 分派化 + 度量口径根治 + 行尾归一**（基线 a64e1ea；与家机 171-a 双锁并行）。本会话 2 个开发轮（170-a 接手 + 172-a）。
 
-### 一、本轮做了什么（写给无上下文的新会话）
+### 一、本轮（172-a）做了什么（写给无上下文的新会话）
 
-1. **拆分面（纯重构零行为变更）**：`semantic_call.cpp` 的 `visitCallExpr` 剩余族A 模块限定调用块（原 132~268，137 行，
-   12 个跨段共享变量）→ **`QualifiedCallInfo`**（`semantic.hpp` 类内嵌套 struct，11 跨段共享字段：pathPrefix/moduleName/
-   funcName/qualified/qualifiedDot/subModule + isTypeName/moduleLoaded/userFuncExists/builtinQualified/qualifiedClass）
-   + 两方法：`collectQualifiedCallInfo`（展平嵌套 MemberExpr 路径 + 重写销毁旧 MemberExpr 前值拷贝全部名称 + 算齐判定
-   布尔；返回「首段是否标识符」早退反转）与 `rewriteQualifiedCall`（五分支重写/未加载诊断，只消费 info）；原 116~131
-   语义注释随方法搬移。**`visitCallExpr` 239 → 96 行（≤100 达标）**。
-2. **★169-a 残留缺陷根治（跨平台构建缺陷·GCC 侧）**：`checkDirectCall` 残留 `auto builtinIt = functions_.find(calleeName);`
-   死行（169-a 族D 提取边界残留；MSVC 不报 unused-but-set → 家机门禁未拦截；**169-a 提交在 GCC `-Werror` 下不可构建**）
-   ——按缺陷零容忍纪律三方案呈报（删残留/假消费/回退拆分），用户未答复按默认纪律自主裁决**方案甲删残留**（纯死代码；
-   子方法内同名变量有完整消费=功能零丢失，git 对比 169-a^ 原版确证）；教训入 lessons 170 段（预防 154：行多重集
-   「重复」盲区 + MSVC/GCC 警告面互补）。
-3. **等价性三重证据**：①行多重集缺失 52 项全预期改写（struct 字段赋值/const 化/早退反转/fullPath+qualified 冗余中转
-   消除/折行）；②新旧编译器全量产物对拍 **63 样本（一致 59/不一致 0/跳过 4=负测 rc 一致）**；③**v2 全树 asm（15.3MB）
-   md5 逐字节一致**（`124bc194…`）。基线=a1dda26 + builtinIt 死行删除（唯一内容差异，已论证零行为影响）。
+1. **★度量缺陷根治（check_fn_length.py）**：两处口径缺陷——①universal newlines 把 `\r\r\n` 行尾文件**行数虚高
+   一倍**（v2 树 10 文件受染：`生成赋值语句` 实为 **318 逻辑行**，166-a 起台账流传的「635」系虚高）；②`{}` 配对
+   未剥字符串字面量。修复后 **D1 计数 76→70**（拆分 -1 + 消除 5 个虚高假候选）。**166~171-a 的 D1 v2 侧数字
+   均系虚高口径**——引用历史台账时注意。
+2. **源码卫生**：v2 树 10 文件 `\r\r\n` 行尾归一为 LF（零影响实证=归一后 v2p 产物 .s md5 逐字节不变 `124bc194…`）。
+3. **拆分面**：`生成赋值语句` 318 行 → 主分派 14 行 + 5 族方法入**新文件 `CN语言编译器v2/IR/生成语句赋值.cn`**
+   （IR/包.cn 注册）：`生成标识符赋值`/`生成成员解引用赋值`/`尝试成员结构体整体写`/`发射拥有串赋值`/
+   `发射成员串字段写入`。行多重集双查：缺失仅 1 行（`} 否则 {` 包装=预期改写）、无重复残留。
 
 ### 二、本轮验证（linux-x86_64 口径）
 
-- GCC 零警告构建 + 单测 **1317/1317**
-- 全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**（跳=62_ffi/69_memory_management 平台守卫）
-- **78_v2/79_v2 linux 侧首次动态验证双 PASS**（163-a 家机通告的首验点闭环；绑定自检含于用例）
-- 锚定链 fix_p ≡ fix_s **394251 行逐字节一致**（md5 `2760ce6d…`；**linux-x86_64 口径新锚**；产物在
-  `target/audit2/selfwork79/fix_{p,s}.asm`；不跨后端比较——win 410416 / arm64 555442 各自口径）
-- D1 计数 **77→76**（`python scripts/check_fn_length.py`；新首列=`CN语言编译器v2/IR/生成语句.cn` 生成赋值语句 635）
+- 单测 **1317/1317**；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**（44 双编译对照用例全过=行为等价实证）
+- 锚定链**重锚 394251→394959 行**（fix_p ≡ fix_s 逐字节，md5 `10f24dbb…`）；runner 重建 v2p 与手工构建
+  逐字节一致（`324ed472…`）
+- **v2 拆分验证链与宿主侧分野（lessons 预防 158）**：v2 源码重组必然改变 v2p 产物布局（字符串驻留序/块标签
+  键基/函数排布）——asm md5 对拍不适用；宿主侧纯重构才用新旧编译器产物对拍路径
+- 170-a 轮（本会话上一轮）门禁七面全绿记录见 git 提交 a64e1ea 与 plans/019 第一百七十轮行
 
 ### 三、下一轮任务（按序）
 
-1. **D1 续波（长期滚动，76 个）**：首列=v2 侧 `生成语句.cn` 生成赋值语句 635（**须双编译对照 + 锚定链重锚**）→
-   宿主 `handleClassCallExpr` 362 → `semantic_expr_op.cpp` visitAssignmentExpr 349 → v2 `生成返回语句` 335。
+1. **D1 续波（修正口径 70 个）**：首列=宿主 `handleClassCallExpr` 362（家机 171-a 认领拆分中——认领前先 fetch
+   看板避免撞车）→ `semantic_expr_op.cpp` visitAssignmentExpr 349 → `ir_expr.cpp` visitBinaryExpr 269 →
+   `semantic.cpp` visitProgram 256 → v2 `语义检查语句.cn` 检查变量声明语句 180。
 2. **C3 波 3 剩余**：149-a IR diff → 泛化 → 元素级深拷〔前置=波 4〕→ H7/H11 收口。
 3. **联合体条件释放设施专项（登记）**：结果/可选 全释放面（108-a 定位路径）。
 4. 其余登记：D6 / C2（维持排程）/ 波 4 `复制(x)` / 波 7 NLL / D3 / D4。
-5. **跨机轮**：arm64 侧 161~170-a 契约面复验（单位机；linux-x86_64 已由本轮 170-a 覆盖 E2E 全量+锚定链）。
+5. **跨机轮**：arm64 侧 161~172-a 契约面复验（单位机）。
 
 ### 四、验证链（本机复现口径）
 
 ```
 > 验证链命令一律串行；**对拍/锚定链必须独立串行且不得相互交错**（102-a 假 DIFF 教训）。
 > **全量门禁**：`rm -rf target/build && cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Debug &&
-> cmake --build target/build -j $(nproc)`（查 warning 计数=0）→ `./target/cn_unit_tests` →
-> `python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8`（306 用例：304 过/0 败/2 跳；含 78_v2/79_v2
-> linux 真跑=锚定链自洽 + 组件对拍 + 运行级）。
-> **等价性对拍（纯重构轮）**：`python3 scripts/refactor_parity.py target/cn_p170base target/cn_p170new`
-> ——**对拍二进制必须放 target/ 下**（stdlib 兜底=从可执行文件目录上溯 ≤3 层；/tmp 下探测失败→假 SKIP，
-> lessons 预防 156）；基线构建须在**编辑冻结**状态（lessons 预防 155）。
-> **D1 度量**：`python scripts/check_fn_length.py`。
-> **手工 v2p 重建（改 v2 源码后）**：`target/cn build CN语言编译器v2/主.cn --target linux-x86_64
-> --output target/audit2/v2p_linuxx64`（E2E runner 指纹变更自动重建；入口必须绝对路径 + stdlib 兜底靠
-> target/cn 部署位置）。
-> **远程推送现状（2026-09-15 实测）**：本机已补配 `github` remote（CN_Language_C.git）；本轮 github
-> 直连可达性待验证（推送失败属正常，下轮补推）。
+> cmake --build target/build -j $(nproc)`（warning=0）→ `./target/cn_unit_tests` →
+> `python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8`（306 用例：304 过/0 败/2 跳）。
+> **D1 度量**：`python scripts/check_fn_length.py`（172-a 已修口径：显式行尾 + 剥字面量配对）。
+> **改 v2 源码的轮次（验证链分野·预防 158）**：v2p 必然变化 → ①行多重集缺失+重复双查（源码级）
+> ②全量 E2E 双编译对照（行为级）③锚定链 fix_p≡fix_s 重锚（自洽级）；asm md5 对拍不适用。
+> **宿主纯重构轮（v2 树零变化）**：新旧编译器产物对拍 `python3 scripts/refactor_parity.py
+> target/cn_<轮>base target/cn_<轮>new`——对拍二进制必须放 target/ 下（stdlib 兜底上溯；预防 156）；
+> 基线构建须编辑冻结态（预防 155）。
+> **手工 v2p 重建**：`target/cn build $PWD/CN语言编译器v2/主.cn --target linux-x86_64 --output <路径>`
+> （入口绝对路径；v2 树已全 LF——此前 10 文件 \r\r\n 污染已根治）。
+> **远程推送现状（2026-09-15 实测）**：gitcode 正常；github remote 已配置但**缺认证凭据**
+>（非交互 push 报 could not read Username）——镜像推送待凭据配置或他机代推。
 ```
 
 ### 五、诚实边界
 
-- **基线差异声明**：本轮等价性基线 = a1dda26（=169-a 产物）+ builtinIt 死行删除——该删除已论证零行为影响
-  （未消费的只读查找；GCC 构建失败下不可能有「169-a linux 基线编译器」，此为唯一可行基线）。
-- 169-a 家机产物对拍为 MSVC 口径；本轮 GCC 口径下 builtinIt 已修，两平台警告面互补的残余风险=低
-  （行多重集「重复」检查已在本轮人工核对中覆盖；脚本化待 D1 续波顺手固化）。
-- v2 树 50→49 个超百行函数未动（76 个 D1 残余中 v2 侧约 20 个；**改 v2 须双编译对照 + 锚定链重锚**）。
-- 探针/对拍临时件：`/tmp/p170base/`、`/tmp/p170new/`、`target/parity_cmp/`（约 400MB，可删）——不入库。
+- **D1 台账口径修正**：166~171-a 期间 v2 侧超百行函数行数系 universal newlines 虚高口径（约一倍），
+  本轮已在 plans/021 §3-D/§5 与脚本三处修正；宿主侧数字不受影响。
+- v2 拆分的产物布局变化（锚定链重锚 394251→394959，+708 行）属字符串驻留序/标签键基/函数排布的
+  预期变化，非语义回归——行为等价由 44 双编译对照用例承载。
+- 171-a（家机）认领的是宿主 `handleClassCallExpr` 拆分——本轮未触碰该文件，写集不相交无冲突。
+- 探针/对拍临时件：`/tmp/p170*`、`/tmp/p172*`（不入库）；`target/audit2/selfwork79/` 为 runner 管理产物。
 
 
 

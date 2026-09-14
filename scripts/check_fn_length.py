@@ -22,12 +22,36 @@ def texts(root):
 
 
 def scan(path):
-    lines = open(path, encoding='utf-8', errors='replace').read().split('\n')
-    # 大括号配对（忽略行内字符串/注释中的括号：项目风格下行注释不含裸括号影响可控）
+    # 172-a 口径修复（两处）：① newline='' 禁用 universal newlines——含 \r\r\n
+    #   污染的文件此前被按「\r 也断行」虚计一倍行数（生成赋值语句 实为 318
+    #   逻辑行而原报 635）；② {} 配对前剥离字符串/字符字面量（含转义）——
+    #   格式串中的花括号会破坏配对产生越界假区间。
+    raw = open(path, 'rb').read().replace(b'\r\n', b'\n').replace(b'\r', b'\n')
+    lines = raw.decode('utf-8', errors='replace').split('\n')
+
+    def strip_literals(ln):
+        out, i, n = [], 0, len(ln)
+        while i < n:
+            c = ln[i]
+            if c in ('"', "'"):
+                q = c
+                i += 1
+                while i < n and ln[i] != q:
+                    i += 2 if ln[i] == '\\' else 1
+                i += 1
+                out.append('""')
+            elif ln.startswith('//', i):
+                break
+            else:
+                out.append(c)
+                i += 1
+        return ''.join(out)
+
+    # 大括号配对（字符串/字符字面量已剥离；行注释同步剥离）
     stack = []
     pairs = []
     for idx, ln in enumerate(lines):
-        code = ln.split('//')[0]
+        code = strip_literals(ln)
         for ch in code:
             if ch == '{':
                 stack.append(idx)
