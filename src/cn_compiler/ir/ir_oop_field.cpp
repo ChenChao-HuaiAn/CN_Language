@@ -169,6 +169,70 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
     const std::string fieldType = classFieldType(currentClass_, ident->name);
     std::string targetIrType = mapType(fieldType);
     if (targetIrType.empty()) targetIrType = "i64";
+    // 180-a（甲通道实装·对齐 memberClassFieldAssign 形态 b）：方法体内直接
+    //   字段赋值（无 自身. 前缀=隐式 this）的**拥有型容器字段**深拷——
+    //   149-a 定位（plans/020 第六十八节）：拷贝构造内 表 = 其他.表 原生成
+    //   「读源槽指针 → 存本槽」= 指针共享 → 出口双重释放（uF 0xC0000374 铁证）。
+    //   四族收窄（142-a 教训：用户类泛化未明交互，不扩）+ 构造内初始化豁免。
+    if (semantic_ != nullptr) {
+        const std::string fieldCanon = types::canonical(fieldType);
+        const std::size_t dl = fieldCanon.find('$');
+        const std::string head =
+            dl == std::string::npos ? fieldCanon : fieldCanon.substr(0, dl);
+        const bool isOwnedContainer =
+            (head == "向量" || head == "栈" || head == "链表" || head == "队列") &&
+            semantic_->isClassType(fieldCanon) &&
+            !classDestructorSymbolKey(fieldCanon).empty();
+        if (isOwnedContainer) {
+            ir::IRValue fieldAddr = genInstanceFieldAddr(ident->name, loc);
+            // 145-a 同款：构造体内 this 字段赋值=初始化语义（目标槽未初始化），
+            //   跳过 preFree（读垃圾句柄 DeleteObject=崩）；非构造内=完整
+            //   preFree（旧容器元素释放 + DeleteObject + 清槽）。
+            if (!currentMethodIsCtor_) {
+                ir::IRValue oldObj =
+                    emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr", "", loc);
+                emitContainerElemFreeFor(fieldCanon, oldObj, loc);
+                emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), fieldCanon,
+                     "void", loc);
+                ir::IRValue zero =
+                    emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+                emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "",
+                     "ptr", loc);
+            }
+            // 源分级（形态 b 同款）：构造调用/临时=新对象直接接管（零拷贝）；
+            //   值来源=NewObject + 拷贝构造（引用实参=源左值槽地址〔发现二〕）。
+            const bool srcIsCtor = value->getType() == NodeType::CallExpr;
+            const std::string copyKey = classCopyCtorSymbolKey(fieldCanon);
+            if (srcIsCtor || copyKey.empty()) {
+                ir::IRValue srcPtr = genExpr(value);
+                emit(ir::Opcode::StorePtr, {fieldAddr, srcPtr}, ir::IRValue(), "",
+                     "ptr", loc);
+            } else {
+                const ir::IRValue srcRef = lvalueAddress(value);
+                if (srcRef.id < 0) {
+                    // 非左值来源（三元等）防御：对象指针直存（借用接管）
+                    ir::IRValue srcPtr = genExpr(value);
+                    emit(ir::Opcode::StorePtr, {fieldAddr, srcPtr}, ir::IRValue(),
+                         "", "ptr", loc);
+                } else {
+                    const ClassInfo* ci = semantic_->findClass(fieldCanon);
+                    const std::string extra =
+                        fieldCanon + "|" +
+                        std::to_string(ci != nullptr ? ci->totalSize : 0);
+                    ir::IRValue newObj = emitResult(
+                        ir::Opcode::NewObject,
+                        {ir::IRValue::constant(fieldCanon, "ptr")}, "ptr", extra,
+                        loc);
+                    emit(ir::Opcode::Call, {newObj, srcRef}, ir::IRValue(),
+                         copyKey, "void", loc);
+                    emit(ir::Opcode::StorePtr, {fieldAddr, newObj}, ir::IRValue(),
+                         "", "ptr", loc);
+                }
+            }
+            lastExpr_ = fieldAddr;
+            return true;
+        }
+    }
     ir::IRValue val = genExpr(value);
     if (val.type != targetIrType && !targetIrType.empty()) {
         val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
