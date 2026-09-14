@@ -321,6 +321,15 @@ public:
     // 族⑤：公共类型转换（92-a 浮点公共类型）+ 算术/比较发射
     void genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
                                  ir::IRValue& right, bool isFloat);
+    // ---- lvalueAddress 族子方法（178-a 函数级拆分·原 225 行函数）----
+    // 族①：标识符左值地址——静态符号地址 / [&] 引用捕获 Load / 普通变量 AddrOf
+    ir::IRValue genIdentifierLvalue(Expr* node);
+    // 族②：数组变量元素地址（标识符数组路径）。true = 已计算。
+    bool genArrayVarElemAddress(IndexExpr* idx, ir::IRValue& result);
+    // 族③：通用下标地址——指针 p[i] / 数组字段（基址 + index*元素大小）
+    ir::IRValue genGenericIndexAddress(IndexExpr* idx);
+    // 族④：成员左值地址——类字段钩子/枚举防御/FieldAddr（基址+偏移）
+    ir::IRValue genMemberLvalueAddress(Expr* node);
 
     void visitUnaryExpr(UnaryExpr* node) override;
     void visitAssignmentExpr(AssignmentExpr* node) override;

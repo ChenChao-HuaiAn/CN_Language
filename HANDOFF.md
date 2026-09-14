@@ -60,29 +60,30 @@
 
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百七十七轮（**深度机 linux-x86_64**）——**177-a D1 函数级续波：visitProgram 256→45 行 ≤100 达标**（基线 fe3cfc7）。本会话 8 个开发轮（170-a 接手 + 172~177-a 六连）。
+**交接时间**: 2026-09-15 第一百七十八轮（**深度机 linux-x86_64**）——**178-a D1 函数级续波：lvalueAddress 225→30 行 ≤100 达标**（基线 8819c63）。本会话 9 个开发轮（170-a 接手 + 172~178-a 六连）。
 
-### 一、本轮（177-a）做了什么（写给无上下文的新会话）
+### 一、本轮（178-a）做了什么（写给无上下文的新会话）
 
-1. **拆分面（多趟流水线分派化·段正文逐字复制+完整性断言先行）**：`semantic.cpp` 的 `visitProgram`
-   （256 行）按「多趟流水线」提取为 **6 个趟族子方法**（semantic.hpp +6 声明）：
-   collectModulePublicSymbols（crate 分桶）/ registerAndResolveTypeNames（类型名注册+字段解析）/
-   registerGenericsAndComputeLayout（泛型注册+归一+布局）/ checkUnionsAndEnums（A4 联合体限定+
-   枚举求值）/ registerGlobalConstsAndStatics（顶层常量/静态）/ checkClassAndFunctionBodies
-   （第二趟 a/b/c）。主函数收缩为趟序分派（45 行）。**多重集核验缺失 0 行**。
-   **D1 计数 68→67**（新首列=`ir.cpp` lvalueAddress 225）。本轮顺利无踩坑。
+1. **拆分面（纯搬运+包装行改写）**：`ir.cpp` 的 `lvalueAddress`（225 行）按「左值形态」提取为
+   **4 个族子方法**（ir.hpp +4 声明）：genIdentifierLvalue（静态符号地址/[&] 引用捕获/AddrOf）/
+   genArrayVarElemAddress（数组变量元素路径·bool+输出引用承载穿透语义）/ genGenericIndexAddress
+   （通用下标）/ genMemberLvalueAddress（类字段钩子/枚举防御/FieldAddr）。主骨架 30 行。
+   **D1 计数 67→66**（新首列=`ir_expr_member.cpp` visitMemberExpr 218）。
+2. **★169-a 三坑复现于包装行（lessons 预防 163/164）**：影子参数+unused parameter×2、non-void 缺
+   防御 return——三次构建失败全落包装行（段内搬运行零错误）。**教训=提取轮先列「包装行清单」**
+   （签名参数集=段内重新声明的外部量、段尾防御 return 归属、穿透控制流转 bool+输出引用、fallthrough）。
 
 ### 二、本轮验证（linux-x86_64 口径）
 
 - 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`324ed472…`）；**锚定链不变**（394959 行，
   md5 `10f24dbb…`）；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**
-- 170~176-a 七轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 与
-  plans/019 对应轮次行
+- 170~177-a 八轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 / 8819c63
+  与 plans/019 对应轮次行
 
 ### 三、下一轮任务（按序）
 
-1. **D1 续波（修正口径 67 个）**：函数级首列=宿主 `ir.cpp` lvalueAddress 225 →
-   `ir_expr_member.cpp` visitMemberExpr 218 → `semantic_expr_op.cpp` visitUnaryExpr 204 →
+1. **D1 续波（修正口径 66 个）**：函数级首列=宿主 `ir_expr_member.cpp` visitMemberExpr 218 →
+   `semantic_expr_op.cpp` visitUnaryExpr 204 → `semantic_expr.cpp` visitIdentifierExpr 198 →
    v2 `语义检查语句.cn` 检查变量声明语句 180。
    （认领前先 fetch 看板避免撞车。）
 2. **C3 波 3 剩余**：149-a IR diff → 泛化 → 元素级深拷〔前置=波 4〕→ H7/H11 收口。
@@ -119,7 +120,7 @@
   refactor_parity.py 全量对拍（两轮=成员函数实现跨 TU 搬移、逻辑零变化，v2p 最复杂输入已逐字节
   一致；如需更强证据可后补，脚本与基线二进制 target/cn_173base、cn_174base 保留）。
 - github 镜像自 170-a 起未推送（本机无凭据：ssh/gh/credential store/.netrc 全缺）——170~174-a 五轮
-  待补推；**需用户配置 GitHub 凭据（personal access token）或由有凭据的机器代推**（170~177-a 八轮待补推）。
+  待补推；**需用户配置 GitHub 凭据（personal access token）或由有凭据的机器代推**（170~178-a 九轮待补推）。
 
 
 

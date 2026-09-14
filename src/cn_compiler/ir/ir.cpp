@@ -648,7 +648,36 @@ void IRGenerator::emitBoundsCheck(const ir::IRValue& indexRaw, int arrayLen,
     setCurrentBlock(newBlock(okLabel));
 }
 ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
+    // 178-a：本函数 225 行按「左值形态」提取为 4 个族子方法（纯搬运零行为
+    //   变更——多重集核验先行于构建）。
     if (node->getType() == NodeType::IdentifierExpr) {
+        return genIdentifierLvalue(node);
+    }
+    if (node->getType() == NodeType::IndexExpr) {
+        IndexExpr* idx = static_cast<IndexExpr*>(node);
+        // 下标左值：数组变量元素路径命中则直达；否则走通用地址计算
+        ir::IRValue result;
+        if (genArrayVarElemAddress(idx, result)) return result;
+        return genGenericIndexAddress(idx);
+    }
+    // 解引用 *p：地址即指针值（指针本身的值），而非 LoadPtr 读取的元素值
+    if (node->getType() == NodeType::UnaryExpr &&
+        static_cast<UnaryExpr*>(node)->op == Operator::Deref) {
+        return genExpr(static_cast<UnaryExpr*>(node)->operand.get());
+    }
+    // 结构体字段左值：p.x / 指针->x（Task 2.7）
+    if (node->getType() == NodeType::MemberExpr) {
+        return genMemberLvalueAddress(node);
+    }
+    // 其他表达式（防御性）：按表达式值处理
+    return genExpr(node);
+}
+
+// ==================== 178-a 族子方法（原 lvalueAddress 651~871 段） ====================
+
+// 族①：标识符左值地址（原 651~675 段）——顶层静态符号地址 / [&] 引用捕获
+//   Load 参数槽 / 普通变量 AddrOf 槽地址。
+ir::IRValue IRGenerator::genIdentifierLvalue(Expr* node) {
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(node);
         // 87-a（2026-09-12 第八十七轮）：顶层静态左值——?gstatic_名 符号地址即
         //   存储位置本身（与 &静态 分支同款，plans/018 根治口径）。原实现直接
@@ -672,10 +701,12 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
         return emitResult(ir::Opcode::AddrOf,
                           {ir::IRValue::var(unique, irType)},
                           "ptr", unique, node->location);
-    }
-    if (node->getType() == NodeType::IndexExpr) {
-        // 下标左值：计算数组元素地址（数组槽向栈下方扩展：元素 i 在 基址 + i*8）
-        IndexExpr* idx = static_cast<IndexExpr*>(node);
+}
+
+// 族②：数组变量元素地址（原 679~724 段；标识符数组路径）。true = 已计算。
+//   下标左值：计算数组元素地址（数组槽向栈下方扩展：元素 i 在 基址 + i*8）。
+//   未命中（对象非标识符/非数组形态）返回 false=调用方走通用路径。
+bool IRGenerator::genArrayVarElemAddress(IndexExpr* idx, ir::IRValue& result) {
         if (idx->object->getType() == NodeType::IdentifierExpr) {
             IdentifierExpr* ident = static_cast<IdentifierExpr*>(idx->object.get());
             const std::string unique = lookupVarName(ident->name);
@@ -718,10 +749,17 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
                 // 数组元素 i 的地址 = base + i*元素大小（C语义，与指针算术方向一致）：
                 // codegen 逆序登记使基址槽最深（元素0），元素 i 槽在基址上方
                 // （元素1 = base+步长、元素2 = base+2*步长 ... 位于变量槽区内）
-                return emitResult(ir::Opcode::Add, {base, scaled}, "ptr", "",
-                                  idx->location);
+                result = emitResult(ir::Opcode::Add, {base, scaled}, "ptr", "",
+                          idx->location);
+                return true;
             }
-        }
+        }    return false;
+}
+
+// 族③：通用下标地址（原 725~805 段）——其他对象（指针 p[i] / 数组字段
+//   方形.顶点[i]）：地址 = 基址 + index*元素大小（结构体指针/数组字段按
+//   元素大小，普通指针8字节；Task 2.7/修复10）。
+ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
         // 其他对象（指针 p[i] / 数组字段 方形.顶点[i]）：地址 = 基址 + index*元素大小
         // （结构体指针/数组字段按元素大小，普通指针8字节；Task 2.7/修复10）
         ir::IRValue obj = genExpr(idx->object.get());
@@ -803,12 +841,11 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
             ir::Opcode::Mul, {index, ir::IRValue::constant(std::to_string(stride), "i64")},
             "i64", "", idx->location);
         return emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "", idx->location);
-    }
-    // 解引用 *p：地址即指针值（指针本身的值），而非 LoadPtr 读取的元素值
-    if (node->getType() == NodeType::UnaryExpr &&
-        static_cast<UnaryExpr*>(node)->op == Operator::Deref) {
-        return genExpr(static_cast<UnaryExpr*>(node)->operand.get());
-    }
+}
+
+// 族④：成员左值地址（原 812~871 段）——p.x / 指针->x（Task 2.7）。
+//   字段地址 = 基址 + 偏移（FieldAddr；-> 隐含空指针检查错误码3）。
+ir::IRValue IRGenerator::genMemberLvalueAddress(Expr* node) {
     // 结构体字段左值：p.x / 指针->x（Task 2.7）
     // 字段地址 = 基址 + 偏移（FieldAddr；-> 隐含空指针检查错误码3）
     if (node->getType() == NodeType::MemberExpr) {
@@ -869,7 +906,7 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
         return emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                           std::to_string(offset), member->location);
     }
-    // 其他表达式（防御性）：按表达式值处理
+    // 其他表达式（防御性）：按表达式值处理（原函数尾段归属本方法兜底）
     return genExpr(node);
 }
 ir::IRValue IRGenerator::genExpr(Expr* node) {
