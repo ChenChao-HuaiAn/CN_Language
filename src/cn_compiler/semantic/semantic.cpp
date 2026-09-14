@@ -550,6 +550,30 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (std::size_t si = 0; si < node->structs.size(); ++si) {
         computeLayout(node->structs[si].get());
     }
+    // 第一趟b'（164-a A4·plans/023 §十二 方案A）：联合体成员类型限定——成员须
+    //   可平凡复制（标量/指针/纯标量聚合/结果可选实参递归）；拥有型（字符串/
+    //   容器类/类对象/含拥有型聚合）→ 编译期硬错误（对标 Rust union 成员须 Copy）。
+    //   成员标注「手动释放」（方案D·ManuallyDrop 同构）则放行——编译器不生成其
+    //   自动释放，用户须在 不安全 函数 内显式释放（字符串释放 等）；字段访问
+    //   仍受 A3（联合体字段访问=不安全区）约束。
+    for (auto& s : node->structs) {
+        if (!s->isUnion) continue;
+        // 合成联合体（结果/可选 降级内部联合体 结果联合$T$E）不受本规则约束——
+        //   其外层合成结构体带 tag（正常/有值），条件释放已实现（79-a/12.2-3）；
+        //   computeLayout 迭代期可能已追加合成体，故此处按内部命名豁免
+        if (s->name.rfind("结果联合$", 0) == 0) continue;
+        for (auto& f : s->fields) {
+            if (f.manualRelease) continue;
+            std::vector<std::string> visiting;
+            if (!isTriviallyCopyable(f.type, visiting)) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, f.location,
+                    "联合体成员 '" + f.name + "' 的类型 '" + types::canonical(f.type) +
+                        "' 为拥有型——联合体成员须可平凡复制（对标 Rust union 成员须 Copy）；"
+                        "如需手动管理请标注「手动释放」（责任移交 不安全 函数 内显式释放）");
+            }
+        }
+    }
     // 第一趟c：枚举成员值求值（自动递增/显式赋值/负数）
     for (auto& e : node->enums) {
         computeEnumValues(e.get());

@@ -42,6 +42,11 @@ struct StructField {
     std::string name;      // 字段名
     std::string type;      // 字段类型（源码类型名，规范化后）
     int offset = 0;        // 字段偏移（字节，语义层计算）
+    // 164-a（A4 方案D·plans/023 §十二）：联合体成员「手动释放」标注——语义层放行
+    //   拥有型成员但编译器不生成自动释放（对标 Rust ManuallyDrop<T>）；仅联合体
+    //   成员位识别；用户须在 不安全 函数 内显式释放（字符串释放 等）
+    bool manualRelease = false;
+    SourceLocation location;   // 字段声明位置（164-a：联合体成员类型诊断精确位置）
 };
 
 // 结构体/联合体声明：结构体 名 { 类型 字段; ... } / 联合体 名 { ... }（Task 2.7）

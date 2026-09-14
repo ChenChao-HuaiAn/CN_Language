@@ -652,12 +652,19 @@ private:
         Kind kind = Kind::Str;
         // ClassObj：字段类型 canon（析构/拷贝构造符号键与元素释放协议用）；Str：空
         std::string classCanon = std::string();
+        // 164-a（A4·plans/023 §十二 方案D）：**来自联合体成员**——联合体「共享偏移 +
+        //   无 tag」语义下，自动释放/写入归一化（preFree 清旧）不可判（p13 泄漏/
+        //   p14 误释放 UAF 根因）——释放面（FreesAt/PreFree）跳过本类条目；
+        //   写入/深拷面（PostCopy/赋值）保留（值仍须可写）。用户经「手动释放」
+        //   标注显式管理释放责任（对标 Rust ManuallyDrop<T>）。
+        bool viaUnion = false;
     };
     // 收集聚合类型（结构体/结果/可选，递归展开值语义嵌套）的拥有型字符串字段
     std::vector<OwnedStrField> ownedStrFieldsOf(const std::string& canon) const;
     void collectOwnedStrFields(const std::string& canon, int base, int cond,
                                std::vector<OwnedStrField>& out,
-                               std::vector<std::string>& visiting) const;
+                               std::vector<std::string>& visiting,
+                               bool viaUnion = false) const;
     // 139-a：ClassObj 字段的析构/拷贝构造符号键（空=不可用；classDestructor 的
     //   methods 项含继承并入——与 DeleteObject codegen 解析口径一致）
     std::string classDestructorSymbolKey(const std::string& canon) const;

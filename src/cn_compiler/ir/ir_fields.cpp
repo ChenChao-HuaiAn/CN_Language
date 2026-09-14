@@ -33,13 +33,16 @@ namespace cn_compiler {
 // 递归收集（base=相对聚合基址字节偏移；cond=条件字段偏移，-1=无条件）
 void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int cond,
                                         std::vector<OwnedStrField>& out,
-                                        std::vector<std::string>& visiting) const {
+                                        std::vector<std::string>& visiting,
+                                        bool viaUnion) const {
     if (semantic_ == nullptr) return;
     if (out.size() > 64) return;  // 防御：展开上限（值语义自包含=非法，环另防）
     if (std::find(visiting.begin(), visiting.end(), canon) != visiting.end()) return;
     // 字符串本身：值语义字段
     if (canon == "字符串") {
-        out.push_back(OwnedStrField{base, cond});
+        OwnedStrField fld{base, cond};
+        fld.viaUnion = viaUnion;
+        out.push_back(fld);
         return;
     }
     // 结果$T$E / 可选$T：值字段 T=字符串 → 条件释放（值/错误 共用联合体偏移）
@@ -62,22 +65,38 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
         const int vo = semantic_->fieldOffsetOf(decl, "值");
         const int co = semantic_->fieldOffsetOf(decl, isResult ? "正常" : "有值");
         if (vo < 0 || co < 0) return;
-        out.push_back(OwnedStrField{base + vo, base + co});
+        OwnedStrField fld{base + vo, base + co};
+        fld.viaUnion = viaUnion;
+        out.push_back(fld);
         return;
     }
     // 类类型：不展开（类对象字段归 ~类 级联/容器 RAII——本轮面外）
     if (semantic_->isClassType(canon)) return;
     const StructDecl* decl = semantic_->findStruct(canon);
     if (decl == nullptr) return;
+
     visiting.push_back(canon);
+    // 164-a（A4）：联合体作用域标记——本次收集产出的所有条目经联合体路径
+    //   （含嵌套：结构体含联合体字段/联合体含结构体字段）均标 viaUnion——
+    //   释放面（FreesAt/PreFree）据以跳过（用户手动管理）；写入/深拷面保留。
+    // 164-a（A4·plans/023 §十二）：联合体作用域标记——本次收集产出的所有条目经
+    //   联合体路径（含嵌套）均标 viaUnion（释放面跳过）。**合成联合体豁免**：
+    //   结果/可选 降级内部联合体（结果联合$T$E）——其外层合成结构体带 tag
+    //   （正常/有值），条件释放由既有路径负责（79-a），不属用户联合体语义；
+    //   若标记将切断结果/可选的串字段条件释放（校验和回归实测：230/237/245/263）。
+    const bool unionScope = viaUnion ||
+                            (decl->isUnion && decl->name.rfind("结果联合$", 0) != 0);
     for (const auto& f : decl->fields) {
         const std::string fieldCanon = types::canonical(f.type);
         if (fieldCanon == "字符串") {
-            out.push_back(OwnedStrField{base + f.offset, cond});
+            OwnedStrField fld{base + f.offset, cond};
+            fld.viaUnion = unionScope;
+            out.push_back(fld);
         } else if (fieldCanon.rfind("结果$", 0) == 0 ||
                    fieldCanon.rfind("可选$", 0) == 0 ||
                    semantic_->isStructType(fieldCanon)) {
-            collectOwnedStrFields(fieldCanon, base + f.offset, cond, out, visiting);
+            collectOwnedStrFields(fieldCanon, base + f.offset, cond, out, visiting,
+                                  unionScope);
         } else if (types::isArray(fieldCanon) &&
                    (types::arrayElemOf(fieldCanon) == "字符串" ||
                     (semantic_->isStructType(
@@ -99,6 +118,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
                 fld.arrayLen = len;
                 fld.arrayStride = stride;
                 if (elemCanon != "字符串") { fld.elemCanon = elemCanon; }
+                fld.viaUnion = unionScope;   // 164-a：联合体内数组字段同标
                 out.push_back(fld);
             }
         } else if (!types::isArray(fieldCanon) && semantic_->isClassType(fieldCanon)) {
@@ -139,6 +159,7 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
             fld.condOffset = cond;
             fld.kind = OwnedStrField::Kind::ClassObj;
             fld.classCanon = fieldCanon;
+            fld.viaUnion = unionScope;   // 164-a：联合体内类对象字段同标
             out.push_back(fld);
         }
         // 指针/数组（类对象元素）字段：面外（登记，后续轮）
@@ -317,6 +338,9 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
                                            const SourceLocation& loc) {
     if (base.id < 0 && !base.isConstant) return;  // 防御：无有效基址
     for (const auto& f : ownedStrFieldsOf(canon)) {
+        // 164-a（A4·plans/023 §十二）：联合体成员=用户手动管理（方案D）——
+        //   自动释放跳过（p13 泄漏/p14 误释放 UAF 的结构性消除）
+        if (f.viaUnion) continue;
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                            std::to_string(f.offset), loc);
         // 139-a（波 3 最小闭环）：类对象字段（指针槽）——元素释放（74-a 单点；
@@ -414,6 +438,9 @@ void IRGenerator::emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
                                            const std::string& canon,
                                            const SourceLocation& loc) {
     for (const auto& f : ownedStrFieldsOf(canon)) {
+        // 164-a（A4）：联合体成员的写入归一化（清旧）跳过——旧值释放=用户责任
+        //   （方案A「删除写入归一化」；新值写入/深拷面保留——见 PostCopy）
+        if (f.viaUnion) continue;
         ir::IRValue fieldAddr = emitResult(ir::Opcode::FieldAddr, {dstBase}, "ptr",
                                            std::to_string(f.offset), loc);
         // 139-a：类对象字段——释放目标旧对象（元素释放 + DeleteObject + 清槽；

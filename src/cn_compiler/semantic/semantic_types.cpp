@@ -147,6 +147,60 @@ std::string SemanticAnalyzer::resolveTypeName(const std::string& type,
                             "），请使用 模块名::" + type + " 限定");
     return type;
 }
+// 164-a（A4 方案A·plans/023 §十二）：可平凡复制判定（对标 Rust Copy）——
+//   联合体成员类型限定的判定核心（递归：结构与联合体同构走 fields；数组走元素；
+//   结果/可选走实参）。判据=「无拥有型语义」：字符串（值语义句柄）/容器类/
+//   类对象（析构+拷贝构造语义）为拥有型；指针（含 字符* 借用视图）按可平凡复制
+//   放行（Rust 裸指针 Copy 同构）。未识别类型兜底 false（默认拒绝=方案A方向）。
+bool SemanticAnalyzer::isTriviallyCopyable(const std::string& type,
+                                           std::vector<std::string>& visiting) const {
+    const std::string canon = types::canonical(type);
+    if (canon.empty()) return false;
+    if (canon == "布尔" || canon == "字符" || canon == "空类型") return true;
+    if (types::isNumeric(canon)) return true;
+    if (types::isFuncPtr(canon)) return true;
+    if (types::isPointer(canon)) return true;   // 指针/借用视图：可平凡复制
+    if (types::isArray(canon)) {
+        return isTriviallyCopyable(types::arrayElemOf(canon), visiting);
+    }
+    if (std::find(visiting.begin(), visiting.end(), canon) != visiting.end()) {
+        return true;  // 递归类型引用（防御；CN 无自引用值语义）
+    }
+    // 结果/可选：递归判定实参（值/错误两侧）
+    if (isResultType(canon)) {
+        const std::vector<std::string> args = resultTypeArgs(canon);
+        if (args.size() != 2) return false;
+        visiting.push_back(canon);
+        const bool ok = isTriviallyCopyable(args[0], visiting) &&
+                        isTriviallyCopyable(args[1], visiting);
+        visiting.pop_back();
+        return ok;
+    }
+    if (isOptionalType(canon)) {
+        const std::string arg = optionalTypeArg(canon);
+        if (arg.empty()) return false;
+        visiting.push_back(canon);
+        const bool ok = isTriviallyCopyable(arg, visiting);
+        visiting.pop_back();
+        return ok;
+    }
+    if (isClassType(canon)) return false;   // 类对象（析构/拷贝构造语义=拥有型）
+    if (isStructType(canon)) {
+        const StructDecl* decl = findStruct(canon);
+        if (decl == nullptr) return false;
+        visiting.push_back(canon);
+        for (const auto& f : decl->fields) {
+            if (!isTriviallyCopyable(f.type, visiting)) {
+                visiting.pop_back();
+                return false;
+            }
+        }
+        visiting.pop_back();
+        return true;
+    }
+    return false;   // 字符串/容器/未识别类型：默认拒绝（方案A 方向）
+}
+
 bool SemanticAnalyzer::isStructType(const std::string& type) const {
     if (type.empty() || program_ == nullptr) return false;
     // A-2：限定键（甲::记录）按模块精确匹配；裸名匹配任一模块（既有行为）

@@ -281,7 +281,15 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                     objUnique = lookupVarName(
                         static_cast<IdentifierExpr*>(member->object.get())->name);
                 }
-                if (isOwnedFieldSlot(objUnique)) {
+                // 164-a（A4·plans/023 §十二 方案A/D）：**目标对象类型为联合体**时
+                //   跳过旧值释放——联合体成员共享偏移+无 tag，「旧值」身份不可判
+                //   （把非活跃成员位当句柄 free=p13/p14 缺陷根因）；方案A 删除写入
+                //   归一化，旧值释放=用户责任（手动释放 标注成员在 不安全 函数 内
+                //   显式处理）。新值写入/来源归一化保留（值仍须可写）。
+                const StructDecl* objDeclU = semantic_ != nullptr
+                    ? semantic_->findStruct(types::canonical(objSrcType)) : nullptr;
+                const bool unionTarget = objDeclU != nullptr && objDeclU->isUnion;
+                if (!unionTarget && isOwnedFieldSlot(objUnique)) {
                     emitFieldStringFreeAt(addr, node->location);  // 旧值幂等释放+清槽
                 }
                 emit(ir::Opcode::StorePtr, {addr, normalized}, ir::IRValue(), "",

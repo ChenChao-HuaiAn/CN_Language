@@ -436,6 +436,15 @@ std::unique_ptr<StructDecl> Parser::parseStructDecl(bool isUnion) {
         if (check(TokenType::RightBrace)) break;
         StructField field;
         field.name.clear();
+        field.location = current().getLocation();
+        // 164-a（A4 方案D）：联合体成员「手动释放」前缀标注（上下文词——仅在
+        //   联合体成员起始位 + 后随类型起点时识别；其余语境为普通标识符，
+        //   不占命名空间——与 A5 十词上下文化同纪律）
+        if (isUnion && checkText("手动释放") &&
+            (isTypeKeyword(peek(1).getType()) || peek(1).getType() == TokenType::Identifier)) {
+            field.manualRelease = true;
+            advance();
+        }
         // 字段类型：类型关键字/自定义类型名（含指针/数组后缀）
         if (isTypeKeyword(currentType()) || check(TokenType::Identifier)) {
             field.type = parseTypeNameEx();

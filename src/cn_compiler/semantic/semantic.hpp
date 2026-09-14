@@ -203,6 +203,13 @@ public:
     bool isEnumType(const std::string& type) const;
     // 查找结构体/联合体定义（未找到返回nullptr）
     const StructDecl* findStruct(const std::string& name) const;
+
+    // 164-a（A4 方案A·plans/023 §十二）：可平凡复制判定（对标 Rust Copy）——
+    //   标量/指针/枚举/函数指针；递归聚合（结构体/联合体/数组/结果/可选实参）
+    //   全部成员可平凡复制。拥有型（字符串/容器类/类对象/含拥有型聚合）→ false。
+    //   visiting=环防护（递归类型引用时按可平凡复制放行）。
+    bool isTriviallyCopyable(const std::string& type,
+                             std::vector<std::string>& visiting) const;
     // 查找枚举定义（未找到返回nullptr）
     const EnumDecl* findEnum(const std::string& name) const;
     // 计算类型大小（字节）：基本类型/指针/数组/结构体/枚举/结果/可选/类
