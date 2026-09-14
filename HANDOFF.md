@@ -9,77 +9,58 @@
 
 ## 家机 win-x64 节
 
-**最近交接**：2026-09-14——**第一百六十六轮（166-a）：D1 函数级拆分第一波**（最大优先首项
-`visitAssignmentExpr` 1034 行 → 25 个族子方法，最大 96 行；纯重构，产物 asm/IR 逐字节一致为
-等价性硬证据；**过程中捕获并根治一处拆分引入的语义偏差**〔引用参数字符串赋值调用点漏判返回值〕）。
-本会话累计五轮：161-a（A8 冒号后置移除）+ 162-a（A5+A3 关键字体系；与并行会话 163-a 合并后
-302 用例零失败）+ 164-a（A4 联合体收口；回归修复后 306 用例零失败）+ 165-a（C16 规范落盘）+
-166-a（D1 函数级拆分第一波）。**下一步=跨机轮（深度机/单位机全量复跑——161~166-a 契约面）→
-波 3 剩余（149-a IR diff）→ D1 函数级残余（实测 77 个，按最大优先继续）**。
+**最近交接**：2026-09-14——**第一百六十七轮（167-a）：D1 函数级拆分第二波**（`SemanticAnalyzer::visitCallExpr`
+886 → 757 行，逐族提取 3 方法；纯重构，产物 asm 逐字节对拍一致）。本会话累计六轮：161-a（A8 冒号后置移除）+
+162-a（A5+A3 关键字体系）+ 164-a（A4 联合体收口）+ 165-a（C16 规范落盘）+ 166-a（`visitAssignmentExpr` 1034→25
+族子方法）+ 167-a（`visitCallExpr` 逐族提取）。**下一步=跨机轮（深度机/单位机全量复跑——161~167-a 契约面）→
+D1 逐族续波（`visitCallExpr` 剩余族 / `生成语句.cn` 生成赋值语句 635 / `handleClassCallExpr` 362）→ 波 3 剩余（149-a IR diff）**。
 
-### 一、166-a 做了什么（D1 函数级拆分第一波）
+### 一、167-a 做了什么（D1 函数级拆分第二波）
 
-1. **拆分面**：`src/cn_compiler/ir/ir_expr_assign.cpp` 原 1050 行（`visitAssignmentExpr` 1034 行占全程）
-   → **25 个子方法**：主入口分派（成员/下标·解引用/调用/标识符）+ 成员族 6 + 下标族 4 + 调用族 1 +
-   标识符族 11；`ir.hpp` 新增 23 个私有声明。全部 ≤100 行（最大 `memberClassFieldAssign` 96 行）。
-2. **纯重构方法**：按段机械搬运（脚本切分）+ `return;` → `return true;` 包装（段内 return 原即整函数
-   返回；调用点 `if (子方法(...)) return true;` 等价）。补 `return false;` 与否按段末尾形态区分
-   （末尾 `return true;` 不补=C4702 不可达；末尾 `}` 闭合必须补=C4715）。
-3. **★捕获并根治一处拆分引入的语义偏差**：`identifierStringAssign` 调用点漏判返回值 → byRef 字符串
-   赋值重复写回（+16 字节栈帧 / 2 个多余标签）。**4 个小用例全过、v2 全树对拍暴露**；`cn ir` 输出
-   对比定位；**修复后 `解析货舱.cn` IR 逐字节一致** + 全量对拍一致。教训入 lessons 166 段（5 条）。
-4. **D1 残余实测**：`scripts/check_fn_length.py` 固化（口径 = `{}` 配对 ≥100 行）——宿主 27 + v2 树 50
-   = **77 个**（165-a 记「70」=脚本未留档的口径差异；本轮以脚本为准）。首列 `semantic_call.cpp`
-   visitCallExpr 885。
+1. **拆分面**：`src/cn_compiler/semantic/semantic_call.cpp` 的 `visitCallExpr`（886 行）按**顶层块**（8 个，脚本枚举）
+   提取 3 族：**族1** 转移特判（43 行，5 处诊断早退）/ **族2** 内置构造器类型推导（55 行）/ **族3** 函数指针调用
+   参数检查（26 行）；`semantic.hpp` +3 私有声明。剩余 5 块（模块限定调用 137 / IdentifierExpr 族 115·111 / 成员被调者
+   216 / isDirect 121）留后续轮。
+2. **方法论复用 + 新教训**：机械搬运 + `return;`→`return true;` + **调用点逐个判返回值**（166-a 教训直接落实）；
+   新增坑=**脚本把 `} // namespace` 一起搬进主体**（新函数落在命名空间外，C2653/C2065 一片）→ 修正 + **生成后
+   命名空间计数自检**。
+3. **D1 口径**：残余 77 个（宿主 27 + v2 树 50）**计数不变**——逐族提取降的是最大者（1034→885→757），
+   计数在函数 ≤100 行时才减；度量=`python scripts/check_fn_length.py`。
 
-### 二、门禁（166-a 实测）
+### 二、门禁（167-a 实测）
 
-零警告构建（`/W4 /WX`）+ 单测 **1317/1317** + 全量 E2E **306 用例 306 过 / 0 败 / 0 跳过**（含
-`78_v2_自举链构建` / `79_v2_自举闭环`）+ 锚定链 **fix_p ≡ fix_s 逐字节自洽**（410415 行 wc 口径；
-164-a 记 410416=计数口径，自洽性为唯一断言）+ **组件对拍 44/44**（v2p vs cn_self 逐组件 asm；并发跑时
-`IR容器.cn` 一度差异=与运行级脚本共用 `target/v2asm.asm` 的污染，顺序复验逐字节一致消解）+
-**宿主产物对拍全一致**（新旧二进制编译 v2 全树 8.25MB + 全部组件 + 赋值密集用例，asm 逐字节 md5）+
-运行级 **3/3**（01_hello rc=0 / 119 rc=14 / 173 rc=173）+ `解析货舱.cn` IR 逐字节一致。
+零警告构建 + 单测 **1317/1317** + 全量 E2E **306 用例 306 过 / 0 败 / 0 跳过**（含 78_v2/79_v2 自举链）+
+锚定链 **fix_p ≡ fix_s 逐字节自洽** + 组件对拍 **44/44** + 运行级 **3/3** + **等价性对拍 21 样本（一致 17/不一致 0/
+跳过 4=负测 rc 一致）**（含 v2 全树 8.25MB asm）+ 行多重集缺失 0 行。
 
 ### 三、下一步（新会话按序）
 
-1. **跨机轮（首要）**：深度机（linux-x86_64）/ 单位机（arm64）拉取后全量复跑——161~166-a 契约面：
-   关键字 46 词（89/71/72/272/273/274）+ A4 用例（275~278）+ 78_v2/79_v2 linux 分支首验 +
-   规范文本（plans/001/spec）核对；**166-a 宿主改动不影响 v2 产物**（产物对拍一致）但需复跑确认。
-2. **C16 前置补记**：波 6 终验的**深度机 linux-x86_64 复验**仍缺（arm64 已 158-a、win 已 157-a）。
-3. **波 3 剩余**：149-a IR diff（uF 根因）→ 泛化 → 元素级深拷（前置=波 4）→ H7/H11 收口。
-4. **D1 滚动（下一批）**：`semantic_call.cpp` visitCallExpr 885 / `生成语句.cn` 生成赋值语句 635 /
-   `ir_oop_call.cpp` handleClassCallExpr 362 / `semantic_expr_op.cpp` visitAssignmentExpr 349 …
-   （清单：`python scripts/check_fn_length.py`）。
-5. 排班余项：D6（B11 变量常量传播）/ C2（NLL 维持登记）/ 波 4 / 波 7。
+1. **跨机轮（首要）**：深度机/单位机复跑 161~167-a 契约面（关键字 46 词 / A4 用例 275~278 / 78_v2·79_v2 linux 首验 /
+   规范文本核对）；166/167-a 均经产物对拍证明对 v2 产物零影响，复跑为最终确认。
+2. **D1 续波（逐族，方法论已固化）**：`visitCallExpr` 剩余 5 块 → `生成语句.cn` 生成赋值语句 635（v2 侧，须双编译
+   对照 + 锚定链重锚）→ `handleClassCallExpr` 362 → `semantic_expr_op.cpp` visitAssignmentExpr 349。
+3. **波 3 剩余（C3）**：149-a IR diff（uF 根因）→ 泛化 → 元素级深拷（前置=波 4）→ H7/H11 收口。
+4. 排班余项：D6（B11 变量常量传播）/ C2（NLL 维持登记）/ 波 4 / 波 7。
 
 ### 四、验证链（本机复现口径）
 
 ```
-> 全量门禁：powershell -ExecutionPolicy Bypass -File build.ps1   → 零警告（/W4 /WX）
->           → ./target/Debug/cn_unit_tests.exe                    → 1317/1317
->           → python tests/e2e/run_e2e.py --cn target/Debug/cn.exe  → 306/306（含 78_v2/79_v2 自举链）
-> 等价性对拍（纯重构轮必需；小用例不足以覆盖）：python target/cmp166.py <旧cn.exe> <新cn.exe>
->   （口径：v2 全树 + v2 树全部组件 + 赋值密集用例，产物 asm 逐字节 md5；本轮实证 4 个小用例全过
->    但 v2 全树暴露偏差）
-> 单一硬证据：cn.exe ir <文件> 输出逐字节对比（IR 层等价 = 最强单点证据）
-> 组件对拍：python target/p166/comp_diff166.py（v2p=E2E 重建的 target/audit2/v2p.exe vs
->   cn_self=target/audit2/selfwork79/cn_self.exe，44 组件 asm 逐字节）
-> 运行级：python target/p166/run_level166.py（cn_self 编译 → ml64 → link〔/ENTRY:WinMainCRTStartup，
->   运行时 obj 在 target/*.obj〕→ 运行 rc 对齐 0/14/173）
-> D1 度量：python scripts/check_fn_length.py（{} 配对 ≥100 行）
-> **基线核验纪律（本轮新增）**：对拍前核对「旧编译器二进制 ↔ 目标源码」（构建时间 vs 提交时间）；
->   不确定时以「回退源码重建」验证基线（本轮实证：重建产物 = 旧产物 → 基线有效）。
+> 全量门禁：powershell -ExecutionPolicy Bypass -File build.ps1 → ./target/Debug/cn_unit_tests.exe
+>           → python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
+> 等价性对拍：python scripts/refactor_parity.py <旧cn.exe> <新cn.exe>（v2 全树 + 全部组件 + 用例；串行执行）
+> 逐族/函数拆分循环：①脚本枚举顶层块（depth 2→3 起始 + 括号配对）②机械搬运（return;→return true;、调用点判返回值）
+>   ③行多重集检查（缺失必须为 0）④生成后 `} // namespace` 计数自检 ⑤构建零警告 ⑥产物对拍
+> 组件对拍/运行级：python target/p166/comp_diff166.py、target/p166/run_level166.py（复用 p166 版；**与其它
+>   使用 target/v2asm.asm 的脚本互斥串行**——并发=产物污染假差异，lessons 166 段）
+> D1 度量：python scripts/check_fn_length.py
 ```
 
 ### 五、诚实边界
 
-- **D1 未清零**（长期滚动）：残余 77 个超百行函数（宿主 27 + v2 树 50），按最大优先逐轮推进；
-  度量口径脚本本轮固化（`scripts/check_fn_length.py`；165-a 的「70」为未留档口径，以后者/本脚本为准）。
-- **拆分中发现的语义偏差已根治**（非遗留）；教训（调用点返回值/大样本对拍/IR diff 定位/基线核验/
-  C4702-C4715 镜像坑）已入 lessons 166 段。
-- v2 树 50 个超百行函数未动（v2 侧 D1 面属后续轮；v2 改动须走双编译对照 + 锚定链重锚）。
-- 本机未做跨机轮（linux-x86_64 / arm64 复跑随三机轮）；166-a 提交双推（gitcode + github）。
+- **D1 未清零**：残余 77 个（计数口径不变；最大者已从 1034 降到 757）；`visitCallExpr` 仍 757 行（>100），
+  后续族待续轮（每轮 1~3 族，逐族提取为项目既有惯例）。
+- v2 树 50 个超百行函数未动（改动须双编译对照 + 锚定链重锚）。
+- 跨机轮未做（家机无 linux 工具链）；本会话两轮（166/167-a）提交均已双推（gitcode + github）。
 
 ## 深度机 linux-x86_64 节
 

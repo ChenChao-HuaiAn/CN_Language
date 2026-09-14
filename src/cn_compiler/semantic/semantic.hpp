@@ -523,6 +523,14 @@ private:
     //   负号字面量 -1）时放行（字面量按目标类型解释，Rust 字面量推断惯例；
     //   `正64 b = 5`、`readU(100)` 等初始化/传参惯用形态保留）。
     //   赋值初始化/传参/返回面的混合符号检查统一走本函数。
+    // ---- visitCallExpr 族子方法（167-a 逐族提取；行为等价于原 886 行函数）----
+    // 族1：显式转移 转移(变量) 表达式位特判（原 semantic_call.cpp 115~161 段）
+    bool checkTransferCall(CallExpr* node);
+    // 族2：内置构造器 正常/错误/某些（原 433~490 段）
+    bool checkBuiltinCtorCall(CallExpr* node);
+    // 族3：函数指针间接调用（原 949~981 段）
+    bool checkFuncPtrCall(CallExpr* node, const std::string& calleeType);
+
     bool canConvertWithLiteral(const Expr* value, const std::string& from,
                                const std::string& to) const;
     // 混合符号赋值专用诊断（55-c 方案A）：canConvertWithLiteral 拒绝且为

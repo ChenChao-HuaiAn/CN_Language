@@ -112,53 +112,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     //   决议到返回 字符串 的被调者时置 true（IR 初始化位/赋值位消费——登记
     //   RAII 依据；驻留文本 已改 字符* 返回=自动不置位）
     node->retOwnedString = false;
-    // plans/019 阶段1：显式转移 转移(变量)——表达式位特判（声明初始化位由
-    //   visitVarDecl 先行拦截改写，不会到达此处）。表达式位仅放行指针/字符串
-    //   （值交接无 RAII，ir_call 按 resolvedType 特判展开为实参值加载）；
-    //   容器/类等拥有资源类型拒绝（防浅句柄接管撞 RAII 双析构），随阶段3 放开。
-    if (isTransferCall(node)) {
-        Expr* arg = node->arguments[0].get();
-        if (arg->getType() != NodeType::IdentifierExpr) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "转移目标须为变量（标识符）——成员/下标/解引用形态"
-                                "的转移随 plans/019 阶段3 支持");
-            lastType_ = "未知";
-            return;
-        }
-        IdentifierExpr* ident = static_cast<IdentifierExpr*>(arg);
-        std::string varType;
-        if (!lookupVar(ident->name, varType)) {
-            diagnostics_.report(DiagnosticLevel::Error, ident->location,
-                                "未声明的标识符 '" + ident->name + "'");
-            lastType_ = "未知";
-            return;
-        }
-        const int kind = transferArgKind(varType);
-        if (kind == 1) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "变量 '" + ident->name + "'（类型 '" + varType +
-                                    "'）具有复制语义，无需转移");
-            lastType_ = "未知";
-            return;
-        }
-        if (kind == 2) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "变量 '" + ident->name + "'（类型 '" + varType +
-                                    "'）的转移仅支持声明初始化位"
-                                "（类型 名 = 转移(变量);），表达式位转移随 plans/019"
-                                " 阶段3 浅拷贝优化支持");
-            lastType_ = "未知";
-            return;
-        }
-        if (reportMovedUse(ident->name, node->location)) {  // 再转移=使用已转移变量
-            lastType_ = "未知";
-            return;
-        }
-        markMovedVar(ident->name, node->location.getLine());
-        node->resolvedType = varType;  // IR 层展开识别（ir_call 特判）
-        lastType_ = varType;
-        return;
-    }
+    if (checkTransferCall(node)) return;   // 族1：显式转移表达式位特判
     // 分派依据：callee 若是函数名（在函数符号表中）→ 直接调用；
     //           否则检查其类型，若是函数指针变量 → 间接调用；
     //           阶段3：成员方法调用（对象.方法(...)）、内置构造器（正常/错误/某些）、
@@ -430,64 +384,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         if (hasFunctionName(calleeName)) isDirect = true;
     }
 
-    // ---- 阶段3：内置构造器 正常(值)/错误(值)/某些(值)（Task 3.5）----
-    // 这些函数已注册在 functions_（纯名 key），但返回类型含占位符"自动"；
-    // 此处按"参数类型 + 返回上下文"推导实际 结果<T,E>/可选<T> 类型。
-    if (node->callee->getType() == NodeType::IdentifierExpr) {
-        const std::string builtinName =
-            static_cast<IdentifierExpr*>(node->callee.get())->name;
-        auto bit = functions_.find(builtinName);
-        if (bit != functions_.end() &&
-            (builtinName == "正常" || builtinName == "错误" || builtinName == "某些")) {
-            // 参数类型检查：正常/错误/某些 期望 1 个实参；例外——正常() 无参数
-            //   用于 结果<空类型,E>（空类型正常值，容器库 追加/删除 等返回
-            //   结果<空类型,整32> 的 返回 正常()，Task 6.1）。
-            if (node->arguments.size() != 1 &&
-                !(builtinName == "正常" && node->arguments.empty())) {
-                diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                    "内置构造器 '" + builtinName + "' 期望 1 个实参");
-            }
-            std::string argType = "未知";
-            for (auto& arg : node->arguments) {
-                argType = checkExpr(arg.get());
-            }
-            // 正常() 无参数：正常值类型 = 返回上下文 T（结果<空类型,E> -> 空类型）
-            if (builtinName == "正常" && node->arguments.empty()) {
-                argType = "空类型";
-            }
-            // 构造器返回类型推导：
-            //   正常(v) -> 结果<typeof(v), E>（E 由返回上下文/默认整32 决定）
-            //   错误(v) -> 结果<T, typeof(v)>（T 由返回上下文/默认整32 决定）
-            //   某些(v) -> 可选<typeof(v)>
-            // 返回上下文推断（Task 3.5 E2E 24 修复）：构造器用于 返回 语句时，
-            //   从当前函数返回类型 结果<T,E> 取缺失的 T/E（如 打开配置 返回
-            //   结果<字符串,整32>，`返回 错误(5)` 的 T 推断为 字符串）。
-            std::string ctxT = "";
-            std::string ctxE = "";
-            if (!currentReturnType_.empty() && isResultType(currentReturnType_)) {
-                const std::vector<std::string> args = resultTypeArgs(currentReturnType_);
-                if (args.size() == 2) {
-                    ctxT = args[0];
-                    ctxE = args[1];
-                }
-            } else if (!currentReturnType_.empty() && isOptionalType(currentReturnType_)) {
-                ctxT = optionalTypeArg(currentReturnType_);
-            }
-            if (builtinName == "正常") {
-                const std::string e = (ctxE.empty() ? "整32" : ctxE);
-                lastType_ = "结果<" + (argType == "未知" ? "整32" : argType) + "," + e + ">";
-            } else if (builtinName == "错误") {
-                const std::string t = (ctxT.empty() ? "整32" : ctxT);
-                lastType_ = "结果<" + t + "," + (argType == "未知" ? "整32" : argType) + ">";
-            } else {
-                lastType_ = "可选<" + (argType == "未知" ? "整32" : argType) + ">";
-            }
-            // 写回推导类型（Task 3.5 E2E 24 修复）：IR 层按 resolvedType 降级为
-            //   合成结构体构造（分配槽 + 写 是否正常/是否某些 + 值/错误值）
-            node->resolvedType = lastType_;
-            return;
-        }
-    }
+    if (checkBuiltinCtorCall(node)) return;   // 族2：内置构造器 正常/错误/某些
     // ---- 阶段3：构造函数调用 类名(实参)（Task 3.1，规格书06-三）----
     // 语法：点 p = 点(1, 2)——callee 为类类型名时视为构造调用。
     // 构造返回对象（结果类型 = 类名）；校验参数个数与类型（查构造方法）。
@@ -953,6 +850,131 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         lastType_ = "未知";
         return;
     }
+    if (checkFuncPtrCall(node, calleeType)) return;   // 族3：函数指针间接调用
+
+    // 其他被调者（成员函数等）：后续Task实现，跳过
+    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "无法调用非函数类型 '" + calleeType + "'");
+    lastType_ = "未知";
+}
+
+// 族1：显式转移 转移(变量)——表达式位特判（原 visitCallExpr 115~161 段）
+//   （声明初始化位由 visitVarDecl 先行拦截改写，不会到达此处）。表达式位仅放行
+//   指针/字符串（值交接无 RAII，ir_call 按 resolvedType 特判展开为实参值加载）；
+//   容器/类等拥有资源类型拒绝（防浅柄接管撞 RAII 双析构），随阶段3 放开。
+bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
+    if (isTransferCall(node)) {
+        Expr* arg = node->arguments[0].get();
+        if (arg->getType() != NodeType::IdentifierExpr) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "转移目标须为变量（标识符）——成员/下标/解引用形态"
+                                "的转移随 plans/019 阶段3 支持");
+            lastType_ = "未知";
+            return true;
+        }
+        IdentifierExpr* ident = static_cast<IdentifierExpr*>(arg);
+        std::string varType;
+        if (!lookupVar(ident->name, varType)) {
+            diagnostics_.report(DiagnosticLevel::Error, ident->location,
+                                "未声明的标识符 '" + ident->name + "'");
+            lastType_ = "未知";
+            return true;
+        }
+        const int kind = transferArgKind(varType);
+        if (kind == 1) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "变量 '" + ident->name + "'（类型 '" + varType +
+                                    "'）具有复制语义，无需转移");
+            lastType_ = "未知";
+            return true;
+        }
+        if (kind == 2) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "变量 '" + ident->name + "'（类型 '" + varType +
+                                    "'）的转移仅支持声明初始化位"
+                                "（类型 名 = 转移(变量);），表达式位转移随 plans/019"
+                                " 阶段3 浅拷贝优化支持");
+            lastType_ = "未知";
+            return true;
+        }
+        if (reportMovedUse(ident->name, node->location)) {  // 再转移=使用已转移变量
+            lastType_ = "未知";
+            return true;
+        }
+        markMovedVar(ident->name, node->location.getLine());
+        node->resolvedType = varType;  // IR 层展开识别（ir_call 特判）
+        lastType_ = varType;
+        return true;
+    }
+    return false;
+}
+
+// 族2：内置构造器 正常(值)/错误(值)/某些(值)（Task 3.5；原 visitCallExpr 433~490 段）——
+//   按「参数类型 + 返回上下文」推导实际 结果<T,E>/可选<T> 类型。
+bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
+    // ---- 阶段3：内置构造器 正常(值)/错误(值)/某些(值)（Task 3.5）----
+    // 这些函数已注册在 functions_（纯名 key），但返回类型含占位符"自动"；
+    // 此处按"参数类型 + 返回上下文"推导实际 结果<T,E>/可选<T> 类型。
+    if (node->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string builtinName =
+            static_cast<IdentifierExpr*>(node->callee.get())->name;
+        auto bit = functions_.find(builtinName);
+        if (bit != functions_.end() &&
+            (builtinName == "正常" || builtinName == "错误" || builtinName == "某些")) {
+            // 参数类型检查：正常/错误/某些 期望 1 个实参；例外——正常() 无参数
+            //   用于 结果<空类型,E>（空类型正常值，容器库 追加/删除 等返回
+            //   结果<空类型,整32> 的 返回 正常()，Task 6.1）。
+            if (node->arguments.size() != 1 &&
+                !(builtinName == "正常" && node->arguments.empty())) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "内置构造器 '" + builtinName + "' 期望 1 个实参");
+            }
+            std::string argType = "未知";
+            for (auto& arg : node->arguments) {
+                argType = checkExpr(arg.get());
+            }
+            // 正常() 无参数：正常值类型 = 返回上下文 T（结果<空类型,E> -> 空类型）
+            if (builtinName == "正常" && node->arguments.empty()) {
+                argType = "空类型";
+            }
+            // 构造器返回类型推导：
+            //   正常(v) -> 结果<typeof(v), E>（E 由返回上下文/默认整32 决定）
+            //   错误(v) -> 结果<T, typeof(v)>（T 由返回上下文/默认整32 决定）
+            //   某些(v) -> 可选<typeof(v)>
+            // 返回上下文推断（Task 3.5 E2E 24 修复）：构造器用于 返回 语句时，
+            //   从当前函数返回类型 结果<T,E> 取缺失的 T/E（如 打开配置 返回
+            //   结果<字符串,整32>，`返回 错误(5)` 的 T 推断为 字符串）。
+            std::string ctxT = "";
+            std::string ctxE = "";
+            if (!currentReturnType_.empty() && isResultType(currentReturnType_)) {
+                const std::vector<std::string> args = resultTypeArgs(currentReturnType_);
+                if (args.size() == 2) {
+                    ctxT = args[0];
+                    ctxE = args[1];
+                }
+            } else if (!currentReturnType_.empty() && isOptionalType(currentReturnType_)) {
+                ctxT = optionalTypeArg(currentReturnType_);
+            }
+            if (builtinName == "正常") {
+                const std::string e = (ctxE.empty() ? "整32" : ctxE);
+                lastType_ = "结果<" + (argType == "未知" ? "整32" : argType) + "," + e + ">";
+            } else if (builtinName == "错误") {
+                const std::string t = (ctxT.empty() ? "整32" : ctxT);
+                lastType_ = "结果<" + t + "," + (argType == "未知" ? "整32" : argType) + ">";
+            } else {
+                lastType_ = "可选<" + (argType == "未知" ? "整32" : argType) + ">";
+            }
+            // 写回推导类型（Task 3.5 E2E 24 修复）：IR 层按 resolvedType 降级为
+            //   合成结构体构造（分配槽 + 写 是否正常/是否某些 + 值/错误值）
+            node->resolvedType = lastType_;
+            return true;
+        }
+    }
+    return false;
+}
+
+// 族3：函数指针间接调用（回调(10, 20)；原 visitCallExpr 949~981 段）——参数数量/类型检查。
+bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calleeType) {
     if (isFuncPtrType(calleeType)) {
         std::string retType = funcPtrReturnOf(calleeType);
         std::vector<std::string> paramTypes = funcPtrParamsOf(calleeType);
@@ -963,7 +985,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                                 " 个参数，实际提供 " +
                                 std::to_string(node->arguments.size()) + " 个");
             lastType_ = retType;
-            return;
+            return true;
         }
         // 参数类型检查
         for (std::size_t i = 0; i < node->arguments.size(); i++) {
@@ -977,12 +999,9 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             }
         }
         lastType_ = retType;
-        return;
+        return true;
     }
-
-    // 其他被调者（成员函数等）：后续Task实现，跳过
-    diagnostics_.report(DiagnosticLevel::Error, node->location,
-                        "无法调用非函数类型 '" + calleeType + "'");
-    lastType_ = "未知";
+    return false;
 }
+
 } // namespace cn_compiler
