@@ -538,6 +538,63 @@ void SemanticAnalyzer::reportNonLvalueTarget(AssignmentExpr* node) {
 }
 void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     // 常量成员函数检查（Task 3.9）：常量方法体内修改成员 -> 错误
+    // 172-a→175-a：本函数 349 行按「左值白名单 / 借出视图 / 复合赋值 / 局部
+    //   地址逃逸」两层提取为 7 个族子方法（纯搬运零行为变更——逐行核验）。
+    checkConstMethodMemberAssign(node);
+    // 检查左值——可写左值统一白名单（缺陷②根治，2026-09-03 用户裁决立案：
+    //   非左值赋值静默接受 → 硬错误，Rust E0070 / C++ 赋值约束同款）。
+    //   合法形态：标识符（非常量）/下标/解引用（*，Star 一元）/成员/引用返回调用；
+    //   其余（二元运算结果/字面量/三元/强转/嵌套赋值/非 Star 一元等）显式拒绝。
+    bool lvalueOk = false;
+    std::string targetType = checkAssignLvalueTarget(node, lvalueOk);
+    if (!lvalueOk) {
+        // 左值性已失败：右值仍检查（级联诊断更完整），类型按未知处理并提前返回
+        checkExpr(node->value.get());
+        lastType_ = "未知";
+        return;
+    }
+
+    // 检查右值
+    std::string valueType = checkExpr(node->value.get());
+
+    // 借出视图登记 + 字符* 借用收紧（A21/A2 族）：true = 已诊断并终止
+    if (checkBorrowViewAssign(node, targetType, valueType)) return;
+
+    // 复合赋值：+= -= 等要求数值：true = 已处理并终止
+    if (checkCompoundAssign(node, targetType, valueType)) return;
+
+    // 简单赋值 =：要求右值可隐式转换为左值类型（55-c 方案A：字面量豁免走
+    //   canConvertWithLiteral——跨符号拒绝后 `正32 a; a = 5` 等字面量赋值保留）
+    if (targetType != "未知" && valueType != "未知" &&
+        !canConvertWithLiteral(node->value.get(), valueType, targetType)) {
+        if (!reportMixedSignAssign(node->value.get(), valueType, targetType,
+                                   node->location)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "无法将 '" + valueType + "' 隐式转换为 '" + targetType + "'");
+        }
+    }
+    // 方案A 强制规则（2026-08-25）：类对象赋值拷贝（乙 = 甲，两者为类变量）——
+    //   有析构类须有拷贝构造（函数 类名(类名& 其他) 深拷贝），否则浅拷贝裸指针
+    //   字段析构双释放 0xC0000374。引用目标（类& 乙 = 甲 后 乙 = 丙）为指针
+    //   写回非拷贝，跳过。
+    if (targetType != "未知" && valueType != "未知" &&
+        !types::isReference(targetType) &&
+        isClassType(types::canonical(targetType)) &&
+        isClassType(types::canonical(valueType))) {
+        checkCopyRequiresCtor(types::canonical(targetType), node->location);
+    }
+    lastType_ = targetType == "未知" ? valueType : targetType;
+    // plans/019 阶段2（2026-09-10）：局部地址逃逸检查——右值求值为当前函数
+    //   局部的地址（&局部 / 引用局部绑局部）而赋值目标是比其寿命长的存储
+    //   （静态/全局变量、静态/全局对象的字段或元素）时编译期拒绝（悬垂防线
+    //   前移）+ 局部指针指向登记（返回检查依据）。
+    checkLocalAddressEscapeAssign(node);
+}
+
+// ==================== 175-a 族子方法（原 visitAssignmentExpr 541~886 段） ====================
+
+// 族①：常量成员函数检查（原 541~570 段）——常量方法体内修改成员/直接字段 -> 错误。
+void SemanticAnalyzer::checkConstMethodMemberAssign(AssignmentExpr* node) {
     if (isConstMethodContext()) {
         // 赋值目标为 自身.字段 或 直接字段引用（类方法体内）
         if (node->target->getType() == NodeType::MemberExpr) {
@@ -568,148 +625,170 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             }
         }
     }
-    // 检查左值——可写左值统一白名单（缺陷②根治，2026-09-03 用户裁决立案：
-    //   非左值赋值静默接受 → 硬错误，Rust E0070 / C++ 赋值约束同款）。
-    //   合法形态：标识符（非常量）/下标/解引用（*，Star 一元）/成员/引用返回调用；
-    //   其余（二元运算结果/字面量/三元/强转/嵌套赋值/非 Star 一元等）显式拒绝。
-    //   原 else 分支「其他左值形式（成员访问等）：后续Task实现」只查类型不查
-    //   左值性——a + 1 = 7 静默通过、存储被丢弃（半实现形态），本轮收口。
+}
+
+// ==================== 族②：左值白名单 switch（原 571~702 段） ====================
+// 主分派（switch 薄化）：各 case 体提取为三族子方法。返回 targetType；
+//   lvalueOk=false = 目标不可写（调用方做右值级联检查后提前返回）。
+std::string SemanticAnalyzer::checkAssignLvalueTarget(AssignmentExpr* node,
+                                                      bool& lvalueOk) {
     std::string targetType = "未知";
-    bool lvalueOk = false;
+    lvalueOk = false;
     switch (node->target->getType()) {
-        case NodeType::IdentifierExpr: {
-            IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
-            // 150-a（plans/023 B10 实施）：可变静态变量写观察期警告（读安全——
-            //   plans/023 §四 B10：Rust static mut 对照的 CN 裁剪）
-            if (isGlobalStatic(ident->name)) {
-                reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
-            }
-            std::string varType;
-            if (lookupVar(ident->name, varType)) {
-                targetType = varType;
-                lvalueOk = true;
-                // 缺陷②同族：常量初始化后不可修改（局部 常量 / 顶层常量）
-                if (isConstVarName(ident->name)) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, ident->location,
-                        "不能给常量 '" + ident->name + "' 赋值（常量初始化后不可修改）");
-                    lvalueOk = false;
-                }
-                // plans/019 阶段3（2026-09-10）：常量引用参数是只读借用——不可
-                //   作赋值目标（写=可变借用，与只读冲突）
-                else if (currentConstRefParams_.count(ident->name) > 0) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, ident->location,
-                        "常量引用参数 '" + ident->name +
-                            "' 是只读借用，不能赋值");
-                    lvalueOk = false;
-                }
-                // plans/019 阶段1（2026-09-10）：已转移变量不可作赋值目标
-                //   （赋值=使用；转移后获得新值请使用新变量名）
-                else if (reportMovedUse(ident->name, ident->location)) {
-                    lvalueOk = false;
-                }
-            } else {
-                diagnostics_.report(DiagnosticLevel::Error, ident->location,
-                                    "赋值目标未声明：'" + ident->name + "'");
-            }
+        case NodeType::IdentifierExpr:
+            checkIdentifierAssignTarget(node, targetType, lvalueOk);
             break;
-        }
-        case NodeType::IndexExpr: {
-            // plans/019 阶段4：安全区边界观察期——指针下标写（p[i] = x 经裸
-            //   指针偏移写=可越界）应在 不安全 函数 内（数组下标写=运行时越界
-            //   检查保护，不在此列）
-            if (node->target->getType() == NodeType::IndexExpr) {
-                const Expr* iobj =
-                    static_cast<IndexExpr*>(node->target.get())->object.get();
-                if (iobj->getType() == NodeType::IdentifierExpr) {
-                    std::string iot;
-                    if (lookupVar(static_cast<const IdentifierExpr*>(iobj)->name, iot) &&
-                        types::isPointer(iot)) {
-                        reportUnsafeBoundary(node->location, "指针下标写",
-                            static_cast<const IdentifierExpr*>(iobj)->name + "[i] = ...");
-                    }
-                }
-            }
-            [[fallthrough]];
-        }
-        case NodeType::MemberExpr: {
-            // 下标访问（数组[i]）/成员访问（对象.字段）均为可写左值；
-            // plans/019 阶段3：对象为常量引用参数（只读借用经成员链写=写借用
-            //   对象）——拒绝
-            if (node->target->getType() == NodeType::MemberExpr) {
-                const Expr* obj =
-                    static_cast<MemberExpr*>(node->target.get())->object.get();
-                if (obj->getType() == NodeType::IdentifierExpr &&
-                    currentConstRefParams_.count(
-                        static_cast<const IdentifierExpr*>(obj)->name) > 0) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, node->target->location,
-                        "常量引用参数 '" +
-                            static_cast<const IdentifierExpr*>(obj)->name +
-                            "' 是只读借用，不能经成员访问赋值");
-                }
-            }
-            assignmentTargetDepth_++;  // 150-a：抑制 target 求值中的 B6/B8/B9 读判
-            targetType = checkExpr(node->target.get());
-            assignmentTargetDepth_--;
-            lvalueOk = true;
+        case NodeType::IndexExpr:
+        case NodeType::MemberExpr:
+            // 下标访问（数组[i]）/成员访问（对象.字段）均为可写左值
+            // （IndexExpr→MemberExpr 原为 [[fallthrough]]——子方法内按形态
+            // 分派等价实现）
+            checkIndexMemberAssignTarget(node, targetType, lvalueOk);
             break;
-        }
-        case NodeType::UnaryExpr: {
-            // 解引用（*p，Deref）为可写左值；其余一元结果（负号/逻辑非/取地址）
-            // 不可赋值——原实现整类放行为缺陷②形态
-            UnaryExpr* u = static_cast<UnaryExpr*>(node->target.get());
-            if (u->op == Operator::Deref) {
-                // 150-a（plans/023 B7 实施）：解引用写观察期警告（B6 在 Deref
-                //   分支被 assignmentTargetDepth_ 抑制——同一形态单报）。
-                assignmentTargetDepth_++;
-                targetType = checkExpr(node->target.get());
-                assignmentTargetDepth_--;
-                if (!isStringSemanticType(targetType)) {
-                    // B7-a（plans/023 待裁决子项）：字符* 解引用写暂不豁免（默认）。
-                    //   注：targetType=所指元素类型——用操作数（指针）类型判定语义族。
-                    const std::string uPtr = checkExpr(u->operand.get());
-                    if (!isStringSemanticType(uPtr)) {
-                        reportUnsafeBoundary(node->location, "裸指针解引用写",
-                                           "指针解引用写（*p = x）");
-                    }
-                }
-                lvalueOk = true;
-            } else {
-                reportNonLvalueTarget(node);
-            }
+        case NodeType::UnaryExpr:
+        case NodeType::CallExpr:
+            // 解引用（*p）与引用返回调用为可写左值；其余一元结果不可赋值
+            checkUnaryCallAssignTarget(node, targetType, lvalueOk);
             break;
-        }
-        case NodeType::CallExpr: {
-            // P3-18 补完：引用返回调用可作赋值目标（获取() = 值 写回被引用对象）
-            lastExprIsRefReturn_ = false;
-            targetType = checkExpr(node->target.get());
-            if (lastExprIsRefReturn_) {
-                lvalueOk = true;
-            } else {
-                diagnostics_.report(
-                    DiagnosticLevel::Error, node->location,
-                    "赋值目标须为可写左值（标识符/下标/解引用/成员/引用返回调用）");
-                targetType = "未知";
-            }
-            break;
-        }
         default:
             // 缺陷②：二元运算结果/字面量/三元/强转/嵌套赋值等均非可写左值
             reportNonLvalueTarget(node);
             break;
     }
-    if (!lvalueOk) {
-        // 左值性已失败：右值仍检查（级联诊断更完整），类型按未知处理并提前返回
-        checkExpr(node->value.get());
-        lastType_ = "未知";
+    return targetType;
+}
+
+// 族③：标识符左值 case 体（原 580~617 段）——静态写警告/常量/常量引用/
+//   已转移拒绝；未声明报错。
+void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
+                                                   std::string& targetType,
+                                                   bool& lvalueOk) {
+    IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
+    // 150-a（plans/023 B10 实施）：可变静态变量写观察期警告（读安全——
+    //   plans/023 §四 B10：Rust static mut 对照的 CN 裁剪）
+    if (isGlobalStatic(ident->name)) {
+        reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
+    }
+    std::string varType;
+    if (lookupVar(ident->name, varType)) {
+        targetType = varType;
+        lvalueOk = true;
+        // 缺陷②同族：常量初始化后不可修改（局部 常量 / 顶层常量）
+        if (isConstVarName(ident->name)) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, ident->location,
+                "不能给常量 '" + ident->name + "' 赋值（常量初始化后不可修改）");
+            lvalueOk = false;
+        }
+        // plans/019 阶段3（2026-09-10）：常量引用参数是只读借用——不可
+        //   作赋值目标（写=可变借用，与只读冲突）
+        else if (currentConstRefParams_.count(ident->name) > 0) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, ident->location,
+                "常量引用参数 '" + ident->name +
+                    "' 是只读借用，不能赋值");
+            lvalueOk = false;
+        }
+        // plans/019 阶段1（2026-09-10）：已转移变量不可作赋值目标
+        //   （赋值=使用；转移后获得新值请使用新变量名）
+        else if (reportMovedUse(ident->name, ident->location)) {
+            lvalueOk = false;
+        }
+    } else {
+        diagnostics_.report(DiagnosticLevel::Error, ident->location,
+                            "赋值目标未声明：'" + ident->name + "'");
+    }
+}
+
+// 族④：下标/成员左值 case 体（原 618~658 段，含原 [[fallthrough]] 等价实现）
+//   ——指针下标写警告 / 常量引用参数经成员写拒绝 / 目标求值。
+void SemanticAnalyzer::checkIndexMemberAssignTarget(AssignmentExpr* node,
+                                                    std::string& targetType,
+                                                    bool& lvalueOk) {
+    // plans/019 阶段4：安全区边界观察期——指针下标写（p[i] = x 经裸
+    //   指针偏移写=可越界）应在 不安全 函数 内（数组下标写=运行时越界
+    //   检查保护，不在此列）
+    if (node->target->getType() == NodeType::IndexExpr) {
+        const Expr* iobj =
+            static_cast<IndexExpr*>(node->target.get())->object.get();
+        if (iobj->getType() == NodeType::IdentifierExpr) {
+            std::string iot;
+            if (lookupVar(static_cast<const IdentifierExpr*>(iobj)->name, iot) &&
+                types::isPointer(iot)) {
+                reportUnsafeBoundary(node->location, "指针下标写",
+                    static_cast<const IdentifierExpr*>(iobj)->name + "[i] = ...");
+            }
+        }
+    }
+    // plans/019 阶段3：对象为常量引用参数（只读借用经成员链写=写借用
+    //   对象）——拒绝
+    if (node->target->getType() == NodeType::MemberExpr) {
+        const Expr* obj =
+            static_cast<MemberExpr*>(node->target.get())->object.get();
+        if (obj->getType() == NodeType::IdentifierExpr &&
+            currentConstRefParams_.count(
+                static_cast<const IdentifierExpr*>(obj)->name) > 0) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->target->location,
+                "常量引用参数 '" +
+                    static_cast<const IdentifierExpr*>(obj)->name +
+                    "' 是只读借用，不能经成员访问赋值");
+        }
+    }
+    assignmentTargetDepth_++;  // 150-a：抑制 target 求值中的 B6/B8/B9 读判
+    targetType = checkExpr(node->target.get());
+    assignmentTargetDepth_--;
+    lvalueOk = true;
+}
+
+// 族⑤：解引用/引用返回调用左值 case 体（原 659~701 段）——Deref 白名单
+//   （裸指针解引用写警告）/ 引用返回调用 / 其余拒绝。
+void SemanticAnalyzer::checkUnaryCallAssignTarget(AssignmentExpr* node,
+                                                  std::string& targetType,
+                                                  bool& lvalueOk) {
+    if (node->target->getType() == NodeType::UnaryExpr) {
+        // 解引用（*p，Deref）为可写左值；其余一元结果（负号/逻辑非/取地址）
+        // 不可赋值——原实现整类放行为缺陷②形态
+        UnaryExpr* u = static_cast<UnaryExpr*>(node->target.get());
+        if (u->op == Operator::Deref) {
+            // 150-a（plans/023 B7 实施）：解引用写观察期警告（B6 在 Deref
+            //   分支被 assignmentTargetDepth_ 抑制——同一形态单报）。
+            assignmentTargetDepth_++;
+            targetType = checkExpr(node->target.get());
+            assignmentTargetDepth_--;
+            if (!isStringSemanticType(targetType)) {
+                // B7-a（plans/023 待裁决子项）：字符* 解引用写暂不豁免（默认）。
+                //   注：targetType=所指元素类型——用操作数（指针）类型判定语义族。
+                const std::string uPtr = checkExpr(u->operand.get());
+                if (!isStringSemanticType(uPtr)) {
+                    reportUnsafeBoundary(node->location, "裸指针解引用写",
+                                         "指针解引用写（*p = x）");
+                }
+            }
+            lvalueOk = true;
+        } else {
+            reportNonLvalueTarget(node);
+        }
         return;
     }
+    // P3-18 补完：引用返回调用可作赋值目标（获取() = 值 写回被引用对象）
+    lastExprIsRefReturn_ = false;
+    targetType = checkExpr(node->target.get());
+    if (lastExprIsRefReturn_) {
+        lvalueOk = true;
+    } else {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "赋值目标须为可写左值（标识符/下标/解引用/成员/引用返回调用）");
+        targetType = "未知";
+    }
+}
 
-    // 检查右值
-    std::string valueType = checkExpr(node->value.get());
-
+// ==================== 族⑥：借出视图登记 + 字符* 借用收紧（原 713~761 段） ====================
+// true = 已诊断并终止（调用方 return）。
+bool SemanticAnalyzer::checkBorrowViewAssign(AssignmentExpr* node,
+                                             const std::string& targetType,
+                                             const std::string& valueType) {
     // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：赋值位借出绑定
     //   登记（借出视图转入既有变量：s = 表.元素(0)——容器内句柄浅拷；重新绑定
     //   时更新活跃区间起点=新借用取代旧借用，NLL 语义同款）。
@@ -730,7 +809,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             DiagnosticLevel::Error, node->location,
             "字符串（拥有）变量不能以字符* 借用视图隐式赋值——须 字符串复制(...) "
             "显式落堆拥有化（借用→拥有显式；拥有→借用自动）");
-        return;
+        return true;
     }
 
     // plans/019 阶段4' A2 补全：赋值位借出装入拒绝（A1 同款收紧到赋值位）——
@@ -756,11 +835,17 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                 DiagnosticLevel::Error, node->location,
                 "字符串（拥有）变量不能以下标/成员/解引用借出隐式赋值——须 "
                 "字符串复制(...) 显式落堆拥有化（字符* 借用视图另用 字符* 变量）");
-            return;
+            return true;
         }
     }
+    return false;
+}
 
-    // 复合赋值：+= -= 等要求数值
+// ==================== 族⑦：复合赋值（原 763~783 段） ====================
+// true = 已处理并终止（调用方 return）。
+bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
+                                           const std::string& targetType,
+                                           const std::string& valueType) {
     if (isCompoundAssign(node->op)) {
         // plans/019 阶段3 扩展（A21，第七十七轮）：复合赋值读旧值=使用借出视图
         //   （活跃区间右端；字符串 += 拼接重析为二元同覆盖）
@@ -776,38 +861,21 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         }
         if (targetType == "未知") {
             lastType_ = valueType;
-            return;
+            return true;
         }
         lastType_ = targetType;
-        return;
+        return true;
     }
+    return false;
+}
 
-    // 简单赋值 =：要求右值可隐式转换为左值类型（55-c 方案A：字面量豁免走
-    //   canConvertWithLiteral——跨符号拒绝后 `正32 a; a = 5` 等字面量赋值保留）
-    if (targetType != "未知" && valueType != "未知" &&
-        !canConvertWithLiteral(node->value.get(), valueType, targetType)) {
-        if (!reportMixedSignAssign(node->value.get(), valueType, targetType,
-                                   node->location)) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "无法将 '" + valueType + "' 隐式转换为 '" + targetType + "'");
-        }
-    }
-    // 方案A 强制规则（2026-08-25）：类对象赋值拷贝（乙 = 甲，两者为类变量）——
-    //   有析构类须有拷贝构造（函数 类名(类名& 其他) 深拷贝），否则浅拷贝裸指针
-    //   字段析构双释放 0xC0000374。引用目标（类& 乙 = 甲 后 乙 = 丙）为指针
-    //   写回非拷贝，跳过。
-    if (targetType != "未知" && valueType != "未知" &&
-        !types::isReference(targetType) &&
-        isClassType(types::canonical(targetType)) &&
-        isClassType(types::canonical(valueType))) {
-        checkCopyRequiresCtor(types::canonical(targetType), node->location);
-    }
-    lastType_ = targetType == "未知" ? valueType : targetType;
-    // plans/019 阶段2（2026-09-10）：局部地址逃逸检查——右值求值为当前函数
-    //   局部的地址（&局部 / 引用局部绑局部）而赋值目标是比其寿命长的存储
-    //   （静态/全局变量、静态/全局对象的字段或元素）时编译期拒绝（悬垂防线
-    //   前移）。局部指针/局部对象字段/局部数组元素接收局部地址合法（随所在
-    //   作用域消亡）；局部指针指向登记供返回检查（直接 &局部 形态）。
+// ==================== 族⑧：局部地址逃逸检查 + 指向登记（原 806~886 段） ====================
+// plans/019 阶段2（2026-09-10）：局部地址逃逸检查——右值求值为当前函数
+//   局部的地址（&局部 / 引用局部绑局部）而赋值目标是比其寿命长的存储
+//   （静态/全局变量、静态/全局对象的字段或元素）时编译期拒绝（悬垂防线
+//   前移）。局部指针/局部对象字段/局部数组元素接收局部地址合法（随所在
+//   作用域消亡）；局部指针指向登记供返回检查（直接 &局部 形态）。
+void SemanticAnalyzer::checkLocalAddressEscapeAssign(AssignmentExpr* node) {
     {
         std::string escBase;
         if (isLocalAddressValue(node->value.get(), escBase)) {

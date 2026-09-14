@@ -586,6 +586,35 @@ private:
     // 族A-重写：按收集信息执行 callee 重写/未加载诊断（原 214~266 段）
     void rewriteQualifiedCall(CallExpr* node, const QualifiedCallInfo& info);
 
+    // ---- visitAssignmentExpr 族子方法（175-a 函数级拆分·原 349 行函数）----
+    // 族①：常量成员函数检查——常量方法体内修改成员/直接字段 -> 错误（原 541~570 段）
+    void checkConstMethodMemberAssign(AssignmentExpr* node);
+    // 族②：左值白名单 switch 主分派（原 571~702 段）——返回 targetType；
+    //   lvalueOk=false = 目标不可写（调用方做右值级联检查后提前返回）
+    std::string checkAssignLvalueTarget(AssignmentExpr* node, bool& lvalueOk);
+    // 族③：标识符左值 case 体（原 580~617 段）——静态写警告/常量/常量引用/
+    //   已转移拒绝；未声明报错
+    void checkIdentifierAssignTarget(AssignmentExpr* node, std::string& targetType,
+                                     bool& lvalueOk);
+    // 族④：下标/成员左值 case 体（原 618~658 段，含原 [[fallthrough]] 等价实现）
+    //   ——指针下标写警告 / 常量引用参数经成员写拒绝 / 目标求值
+    void checkIndexMemberAssignTarget(AssignmentExpr* node, std::string& targetType,
+                                      bool& lvalueOk);
+    // 族⑤：解引用/引用返回调用左值 case 体（原 659~701 段）——Deref 白名单
+    //   （裸指针解引用写警告）/ 引用返回调用 / 其余拒绝
+    void checkUnaryCallAssignTarget(AssignmentExpr* node, std::string& targetType,
+                                    bool& lvalueOk);
+    // 族⑥：借出视图登记 + 字符* 借用收紧（A21/A2 族·原 713~761 段）
+    //   true = 已诊断并终止（调用方 return）
+    bool checkBorrowViewAssign(AssignmentExpr* node, const std::string& targetType,
+                               const std::string& valueType);
+    // 族⑦：复合赋值（原 763~783 段）——数值要求 + 借出视图使用登记
+    //   true = 已处理并终止（调用方 return）
+    bool checkCompoundAssign(AssignmentExpr* node, const std::string& targetType,
+                             const std::string& valueType);
+    // 族⑧：局部地址逃逸检查 + 局部指针指向登记（阶段2·原 806~886 段）
+    void checkLocalAddressEscapeAssign(AssignmentExpr* node);
+
 
 
     bool canConvertWithLiteral(const Expr* value, const std::string& from,

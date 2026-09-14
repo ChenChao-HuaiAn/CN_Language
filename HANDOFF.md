@@ -60,29 +60,32 @@
 
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百七十四轮（**深度机 linux-x86_64**）——**174-a D1 文件级回补收口：ir_expr_assign.cpp 1261→588 行 ≤1000 门禁达标**（基线 adfb8f3）。本会话 4 个开发轮（170-a 接手 + 172-a v2 侧 + 173/174-a 文件级两连）。
+**交接时间**: 2026-09-15 第一百七十五轮（**深度机 linux-x86_64**）——**175-a D1 函数级续波：visitAssignmentExpr 349→48 行 ≤100 达标**（基线 0a2efab）。本会话 6 个开发轮（170-a 接手 + 172~175-a 四连）。
 
-### 一、本轮（174-a）做了什么（写给无上下文的新会话）
+### 一、本轮（175-a）做了什么（写给无上下文的新会话）
 
-1. **拆分面（纯搬运零改写）**：标识符左值族（`assignToIdentifierTarget` 分派 + 全局静态/类对象深拷/结构体
-   构造字面量/结构体整体赋值/一般赋值/拥有型字符串四形态，共 12 方法 672 行）自 `ir_expr_assign.cpp`
-   **整段搬至新文件 `ir_expr_assign_ident.cpp`**（692 行，CMakeLists.txt 已注册）。
-   ir_expr_assign.cpp **1261→588 行 ≤1000 达标**。**家机审查立案两文件（semantic_call/ir_expr_assign）
-   全部收口**。搬移段与原文 672 行逐行一致（difflib 核验）。
-2. 本轮顺利无踩坑（lessons 无新增）。
+1. **拆分面（改写式拆分·switch 薄化）**：`semantic_expr_op.cpp` 的 `visitAssignmentExpr`（349 行）按
+   「左值白名单 / 借出视图 / 复合赋值 / 局部地址逃逸」两层提取为 **8 个族子方法**（semantic.hpp +8 声明）：
+   checkConstMethodMemberAssign / checkAssignLvalueTarget（switch 薄化主分派）/ checkIdentifierAssignTarget /
+   checkIndexMemberAssignTarget（**原 [[fallthrough]] 于方法内按形态分派等价实现**）/ checkUnaryCallAssignTarget /
+   checkBorrowViewAssign / checkCompoundAssign / checkLocalAddressEscapeAssign。主骨架 48 行。
+   **D1 计数 70→69**；semantic_expr_op.cpp 888→956 行（≤1000 维持）。
+2. **★推断补写翻车被核验拦截（lessons 预防 159）**：方法①成员查找凭记忆写成 `cls->findMember(...)`
+   （原文=`lookupClassMember(cls->name, name, owner)`）——多重集核验+git show 对照在**构建前**发现修正。
+   **教训=提取段每行必须复制自原文；改写式拆分（case 体提取/分派包装）最易踩，核验必须先行于构建**；
+   另预防 160：case fallthrough 提取须在子方法内按形态分派等价重构。
 
 ### 二、本轮验证（linux-x86_64 口径）
 
-- 零警告构建 + 单测 **1317/1317**
-- **v2p 产物 .s md5 不变**（`324ed472…`）+ **锚定链不变**（fix_p ≡ fix_s 394959 行，md5 `10f24dbb…`）
-- 全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**
-- 170~173-a 三轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 与 plans/019 对应轮次行
+- 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`324ed472…`）；**锚定链不变**（394959 行，
+  md5 `10f24dbb…`）；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**
+- 170~174-a 五轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab 与 plans/019 对应轮次行
 
 ### 三、下一轮任务（按序）
 
-1. **D1 续波（修正口径 70 个，文件级立案已清零）**：函数级首列=宿主 `semantic_expr_op.cpp`
-   visitAssignmentExpr 349 → `ir_expr.cpp` visitBinaryExpr 269 → `semantic.cpp` visitProgram 256 →
-   v2 `语义检查语句.cn` 检查变量声明语句 180。
+1. **D1 续波（修正口径 69 个）**：函数级首列=宿主 `ir_expr.cpp` visitBinaryExpr 269 →
+   `semantic.cpp` visitProgram 256 → `ir.cpp` lvalueAddress 225 → `ir_expr_member.cpp`
+   visitMemberExpr 218 → v2 `语义检查语句.cn` 检查变量声明语句 180。
    （认领前先 fetch 看板避免撞车。）
 2. **C3 波 3 剩余**：149-a IR diff → 泛化 → 元素级深拷〔前置=波 4〕→ H7/H11 收口。
 3. **联合体条件释放设施专项（登记）**：结果/可选 全释放面（108-a 定位路径）。
@@ -118,7 +121,7 @@
   refactor_parity.py 全量对拍（两轮=成员函数实现跨 TU 搬移、逻辑零变化，v2p 最复杂输入已逐字节
   一致；如需更强证据可后补，脚本与基线二进制 target/cn_173base、cn_174base 保留）。
 - github 镜像自 170-a 起未推送（本机无凭据：ssh/gh/credential store/.netrc 全缺）——170~174-a 五轮
-  待补推；**需用户配置 GitHub 凭据（personal access token）或由有凭据的机器代推**。
+  待补推；**需用户配置 GitHub 凭据（personal access token）或由有凭据的机器代推**（170~175-a 六轮待补推）。
 
 
 
