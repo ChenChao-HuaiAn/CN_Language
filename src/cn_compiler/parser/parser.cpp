@@ -212,13 +212,15 @@ bool Parser::atStatementBoundary() const {
     switch (currentType()) {
         case TokenType::Kw_Return: case TokenType::Kw_If: case TokenType::Kw_While:
         case TokenType::Kw_For: case TokenType::Kw_Break: case TokenType::Kw_Continue:
-        case TokenType::Kw_Var: case TokenType::Kw_Const: case TokenType::Kw_Static:
+        case TokenType::Kw_Var:
         case TokenType::Kw_Class: case TokenType::Kw_Interface: case TokenType::Kw_Import:
         case TokenType::Kw_Generic:
             return true;
         default:
             break;
     }
+    // 常量/静态 已上下文化（162-a）：语句起始位按文本判定
+    if (checkText("常量") || checkText("静态")) return true;
     return isTypeKeyword(currentType());
 }
 
@@ -305,7 +307,7 @@ std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
     // plans/019 阶段3（2026-09-10）：常量 只读引用参数前缀（常量 向量<整64>&
     //   数据）——常量 后随类型起点（类型关键字/标识符类型）时消费并置位；
     //   仅 常量 后跟 & 的形态暂不支持（须显式类型）。
-    if (check(TokenType::Kw_Const) &&
+    if (checkText("常量") &&
         (isTypeKeyword(peek(1).getType()) ||
          peek(1).getType() == TokenType::Identifier)) {
         param->isConstParam = true;
@@ -680,13 +682,13 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
     AccessSpecifier moduleAccess = AccessSpecifier::Private;
     while (!check(TokenType::EndOfFile)) {
         // 模块级可见性标签：公开: / 私有:（仅顶层作用域识别；类体内由 parseClassDecl 处理）
-        if (check(TokenType::Kw_Public) && peek(1).getType() == TokenType::Colon) {
+        if (checkText("公开") && peek(1).getType() == TokenType::Colon) {
             advance();
             advance();
             moduleAccess = AccessSpecifier::Public;
             continue;
         }
-        if (check(TokenType::Kw_Private) && peek(1).getType() == TokenType::Colon) {
+        if (checkText("私有") && peek(1).getType() == TokenType::Colon) {
             advance();
             advance();
             moduleAccess = AccessSpecifier::Private;
@@ -695,7 +697,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
         // 包.cn 再导出（第 5 层，规格书09-三）：公开 导入 路径
         //   公开 导入 网络::连接 -> 再导出为包级 API（外部 包名::连接 可用）
         //   无冒号形式（区别于 公开: 标签）；access=Public 记录再导出标记
-        if (check(TokenType::Kw_Public) && peek(1).getType() == TokenType::Kw_Import) {
+        if (checkText("公开") && peek(1).getType() == TokenType::Kw_Import) {
             advance();  // 消费 公开
             auto decl = parseImportDecl();
             if (!decl->segments.empty()) {
@@ -782,7 +784,10 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             if (!decl->segments.empty()) {
                 program->imports.push_back(std::move(decl));
             }
-        } else if (check(TokenType::Kw_Module)) {
+        } else if (checkText("模块") && isModulePathSegmentAhead()) {
+            // 162-a 上下文化：模块 后随路径段即模块声明（分号可选，plans/015 维持现状；
+            // 与删词前 Kw_Module token 判定行为等价——模块 作类型名的顶层声明为
+            // 上下文关键字固有限制，规范 §2.1a 已显式化）
             // 模块声明（Task 3.6，规格书08-二，v2.0 新增）：模块 标识符
             //   引用 .cn 文件模块（建立模块树引用关系；复用 ImportDecl 承载）
             auto decl = parseModuleDecl();
@@ -800,7 +805,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             if (decl->innerClass != nullptr || decl->innerFunc != nullptr) {
                 program->generics.push_back(std::move(decl));
             }
-        } else if (check(TokenType::Kw_Const)) {
+        } else if (checkText("常量")) {
             // 顶层常量（第 4 层，v2.0 决策9，P1-4）：常量 名 = 值（crate 级常量）。
             // 解析为 VarDecl(isConst=true) 存入 Program::globals（模块级可见性记录）。
             // 语法：常量 名 = 常量表达式（类型推断；语义层校验常量性并注册符号）。
@@ -823,7 +828,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
                 program->globals.push_back(std::move(decl));
                 consumeSemicolon();  // plans/015 裁决：顶层常量声明须 ';' 终结
             }
-        } else if (check(TokenType::Kw_Static)) {
+        } else if (checkText("静态")) {
             // 顶层静态变量（第 4 层，v2.0 决策8，P3-8）：静态 [类型] 名 [= 值]
             // （crate 级静态变量）。解析为 VarDecl(isStatic=true) 存入 globals。
             auto decl = std::make_unique<VarDecl>();

@@ -25,22 +25,17 @@ std::unique_ptr<Stmt> Parser::parseStmt() {
             consumeSemicolon();
             return stmt;
         }
-        case TokenType::Kw_Auto: {
-            // 自动 名称 = 初始值（类型推断声明，Task 2.10 lambda 赋值目标）
-            auto stmt = parseVarDeclAfterKeyword(false);
-            consumeSemicolon();
-            return stmt;
-        }
+        // Kw_Auto 分支已删（162-a A3：自动 与 变量 二合一，plans/024 §7.1）
         case TokenType::LeftBrace: return parseBlockStmt();  // 嵌套代码块
         default:
             break;
     }
-    if (check(TokenType::Kw_Const)) {
+    if (checkText("常量")) {  // 162-a 上下文化：常量 声明前缀位按文本判定
         auto stmt = parseVarDeclAfterKeyword(true);
         consumeSemicolon();
         return stmt;
     }
-    if (check(TokenType::Kw_Static)) {
+    if (checkText("静态")) {  // 162-a 上下文化：静态 声明前缀位按文本判定
         auto stmt = parseStaticVarDecl();
         consumeSemicolon();
         return stmt;
@@ -245,7 +240,7 @@ std::unique_ptr<Stmt> Parser::parseForStmt() {
         if (!check(TokenType::Semicolon)) {
             if (check(TokenType::Kw_Var)) {
                 stmt->init = parseVarDeclAfterKeyword(false);
-            } else if (check(TokenType::Kw_Const)) {
+            } else if (checkText("常量")) {  // 162-a 上下文化（for-init 位）
                 stmt->init = parseVarDeclAfterKeyword(true);
             } else if (isTypeKeyword(currentType())) {
                 stmt->init = parseTypePrefixVarDecl();

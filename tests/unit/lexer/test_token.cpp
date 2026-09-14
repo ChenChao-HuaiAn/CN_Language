@@ -49,14 +49,13 @@ const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     {TokenType::Kw_Struct, "结构体"},
     {TokenType::Kw_Union, "联合体"},
     {TokenType::Kw_Enum, "枚举"},
-    // ---- 声明关键字(7) ----
+    // ---- 声明关键字(6；Kw_Auto 枚举已删 162-a) ----
     {TokenType::Kw_Function, "函数"},
     {TokenType::Kw_Var, "变量"},
     {TokenType::Kw_Import, "导入"},
     {TokenType::Kw_Public, "公开"},
     {TokenType::Kw_Private, "私有"},
     {TokenType::Kw_Static, "静态"},
-    {TokenType::Kw_Auto, "自动"},
     // ---- 模块系统关键字(4，v2.0 新增) ----
     {TokenType::Kw_Module, "模块"},
     {TokenType::Kw_As, "作为"},
@@ -65,14 +64,13 @@ const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     {TokenType::Kw_False, "假"},
     {TokenType::Kw_None, "无"},
     {TokenType::Kw_Const, "常量"},
-    // ---- OOP关键字(10) ----
+    // ---- OOP关键字(9；Kw_Implements 枚举已删 162-a) ----
     {TokenType::Kw_Class, "类"},
     {TokenType::Kw_Interface, "接口"},
     {TokenType::Kw_Protected, "保护"},
     {TokenType::Kw_Virtual, "虚拟"},
     {TokenType::Kw_Override, "重写"},
     {TokenType::Kw_Abstract, "抽象"},
-    {TokenType::Kw_Implements, "实现"},
     {TokenType::Kw_Self, "自身"},
     {TokenType::Kw_Super, "父类"},
     {TokenType::Kw_Friend, "友元"},
@@ -80,8 +78,6 @@ const std::vector<std::pair<TokenType, std::string>> kKeywordTable = {
     {TokenType::Kw_Result, "结果"},
     {TokenType::Kw_Optional, "可选"},
     // ---- 字面量前缀关键字(2) ----
-    {TokenType::Kw_Raw, "原始"},
-    {TokenType::Kw_MultiLine, "多行"},
     // ---- 泛型关键字(1) ----
     {TokenType::Kw_Generic, "泛型"},
 };
@@ -156,7 +152,8 @@ const std::vector<std::pair<TokenType, std::string>> kDelimiterTable = {
 // 构造61个关键字Token并验证类型与文本（v2.0）
 // 注：测试名使用英文（GCC 7 不支持中文标识符，中文仅用于注释与字符串）
 TEST(TokenTest, ConstructAllKeywords) {
-    ASSERT_EQ(kKeywordTable.size(), static_cast<size_t>(59));
+    // 162-a：59→55（Kw_Auto/Kw_Implements/Kw_Raw/Kw_MultiLine 枚举删除；其余 10 枚举保留非保留化）
+    ASSERT_EQ(kKeywordTable.size(), static_cast<size_t>(55));
     for (const auto& entry : kKeywordTable) {
         Token token(entry.first, entry.second, SourceLocation("测试.cn", 1, 1));
         EXPECT_EQ(token.getType(), entry.first);

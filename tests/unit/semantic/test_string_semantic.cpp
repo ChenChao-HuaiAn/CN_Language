@@ -78,7 +78,7 @@ TEST(StringSemanticTest, CharPtrVarDecl) {
 // （A2 2026-09-11 方案甲：借用→拥有须显式 字符串复制——Rust &str -> String
 // 的 to_string 显式哲学，分配成本可见）
 TEST(StringSemanticTest, StringToCharPtrConversion) {
-    // 拥有->借用自动 + 借用->拥有显式复制：合法
+    // 拥有->借用变量 + 借用->拥有显式复制：合法
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     字符串 s = "你好";

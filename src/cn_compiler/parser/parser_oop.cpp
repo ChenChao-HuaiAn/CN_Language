@@ -118,7 +118,7 @@ std::unique_ptr<ImportDecl> Parser::parseImportDecl() {
         decl->importPath += decl->segments[i];
     }
     // 形式分支（按当前 token 判定）
-    if (check(TokenType::Kw_As)) {
+    if (checkText("作为")) {  // 162-a 上下文化
         // 重命名导入：导入 路径 作为 标识符
         advance();  // 消费"作为"
         if (check(TokenType::Identifier)) {
@@ -138,7 +138,7 @@ std::unique_ptr<ImportDecl> Parser::parseImportDecl() {
                 item.name = current().getValue();
                 advance();
                 // 导入项可选 作为 别名
-                if (check(TokenType::Kw_As)) {
+                if (checkText("作为")) {  // 162-a 上下文化
                     advance();
                     if (isModulePathSegment()) {
                         item.alias = current().getValue();
@@ -260,11 +260,11 @@ std::unique_ptr<InterfaceDecl> Parser::parseInterfaceDecl() {
         member.location = current().getLocation();
         member.access = AccessSpecifier::Public;
         // 接口方法必须 虚拟 或 重写 前缀（宽松解析：允许裸 函数）
-        if (check(TokenType::Kw_Virtual)) {
+        if (checkText("虚拟")) {  // 162-a 上下文化
             member.isVirtual = true;
             advance();
         }
-        if (check(TokenType::Kw_Override)) {
+        if (checkText("重写")) {  // 162-a 上下文化
             member.isOverride = true;
             advance();
         }
@@ -343,19 +343,19 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
     AccessSpecifier currentAccess = AccessSpecifier::Private;
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         // 访问标签：公开: / 保护: / 私有:
-        if (check(TokenType::Kw_Public) && peek(1).getType() == TokenType::Colon) {
+        if (checkText("公开") && peek(1).getType() == TokenType::Colon) {  // 162-a
             advance();
             advance();
             currentAccess = AccessSpecifier::Public;
             continue;
         }
-        if (check(TokenType::Kw_Protected) && peek(1).getType() == TokenType::Colon) {
+        if (checkText("保护") && peek(1).getType() == TokenType::Colon) {  // 162-a
             advance();
             advance();
             currentAccess = AccessSpecifier::Protected;
             continue;
         }
-        if (check(TokenType::Kw_Private) && peek(1).getType() == TokenType::Colon) {
+        if (checkText("私有") && peek(1).getType() == TokenType::Colon) {  // 162-a
             advance();
             advance();
             currentAccess = AccessSpecifier::Private;
@@ -437,27 +437,27 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
     // ---- 方法修饰符：虚拟 / 重写 / 抽象 / 常量 / 静态（按任意顺序出现） ----
     // 这些修饰符后必须跟"函数"才构成方法；静态 也可修饰字段（静态 类型 名称）
     while (true) {
-        if (check(TokenType::Kw_Virtual)) {
+        if (checkText("虚拟")) {  // 162-a 上下文化：修饰位按文本判定
             out.isVirtual = true;
             advance();
             continue;
         }
-        if (check(TokenType::Kw_Override)) {
+        if (checkText("重写")) {
             out.isOverride = true;
             advance();
             continue;
         }
-        if (check(TokenType::Kw_Abstract)) {
+        if (checkText("抽象")) {
             out.isAbstract = true;
             advance();
             continue;
         }
-        if (check(TokenType::Kw_Const)) {
+        if (checkText("常量")) {
             out.isConstMethod = true;
             advance();
             continue;
         }
-        if (check(TokenType::Kw_Static)) {
+        if (checkText("静态")) {
             out.isStatic = true;
             advance();
             continue;

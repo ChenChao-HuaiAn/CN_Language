@@ -53,14 +53,14 @@ enum class TokenType {
     Kw_Function,      // 函数（函数定义/声明）
     Kw_Var,           // 变量（变量声明）
     Kw_Import,        // 导入（导入模块）
-    Kw_Public,        // 公开（公开可见性标签）
-    Kw_Private,       // 私有（私有可见性标签）
-    Kw_Static,        // 静态（静态变量/函数）
-    Kw_Auto,          // 自动（类型推断声明，Task 2.10 lambda 赋值目标）
+    Kw_Public,        // 公开（上下文关键字：冒号标签位，162-a 非保留化）
+    Kw_Private,       // 私有（上下文关键字：冒号标签位，162-a 非保留化）
+    Kw_Static,        // 静态（上下文关键字：声明前缀位，162-a 非保留化）
+    // Kw_Auto 枚举已删（162-a A3：自动 与 变量 二合一，plans/024 §7.1）
 
     // ---- 模块系统关键字(4，v2.0 新增) ----
-    Kw_Module,        // 模块（模块声明：模块 网络 引用文件模块）
-    Kw_As,            // 作为（导入重命名/花括号导入项别名）
+    Kw_Module,        // 模块（上下文关键字：顶层声明位，162-a 非保留化）
+    Kw_As,            // 作为（上下文关键字：导入重命名位，162-a 非保留化）
     // plans/018 摘除（2026-09-07 用户裁决方案A）：Kw_Package/Kw_Cargo 死保留字
     //   摘除——包/货舱 在 CN 源码语法中无任何语法位置（包.cn/货舱.toml 是文件名
     //   约定、[货舱]/[依赖] 是 TOML 数据文本），parser 从未消费且剥夺标识符自由
@@ -70,17 +70,17 @@ enum class TokenType {
     Kw_True,          // 真（布尔真值）
     Kw_False,         // 假（布尔假值）
     Kw_None,          // 无（空值/可选无值）
-    Kw_Const,         // 常量（常量声明/常量成员函数/常量表达式，Task 3.9）
+    Kw_Const,         // 常量（上下文关键字：声明前缀/成员修饰位，162-a 非保留化）
     Kw_Unsafe,        // 不安全（不安全 函数 修饰——plans/019 阶段4 安全区边界）
 
     // ---- OOP关键字(9) ----
     Kw_Class,         // 类（类定义）
     Kw_Interface,     // 接口（接口定义）
-    Kw_Protected,     // 保护（保护可见性标签）
-    Kw_Virtual,       // 虚拟（虚函数）
-    Kw_Override,      // 重写（函数重写）
-    Kw_Abstract,      // 抽象（抽象成员/类）
-    Kw_Implements,    // 实现（接口实现）
+    Kw_Protected,     // 保护（上下文关键字：冒号标签位，162-a 非保留化）
+    Kw_Virtual,       // 虚拟（上下文关键字：成员修饰位，162-a 非保留化）
+    Kw_Override,      // 重写（上下文关键字：成员修饰位，162-a 非保留化）
+    Kw_Abstract,      // 抽象（上下文关键字：成员修饰位，162-a 非保留化）
+    // Kw_Implements 枚举已删（162-a A3：实现 死关键字零使用，plans/024 §7.2）
     Kw_Self,          // 自身（访问自身成员）
     Kw_Super,         // 父类（调用父类方法）
     Kw_Friend,        // 友元（友元声明，授权访问私有/保护成员，Task 3.9）
@@ -89,9 +89,8 @@ enum class TokenType {
     Kw_Result,        // 结果（结果<T,E>类型）
     Kw_Optional,      // 可选（可选<T>类型）
 
-    // ---- 字面量前缀关键字(2) ----
-    Kw_Raw,           // 原始（原始字符串前缀）
-    Kw_MultiLine,     // 多行（多行字符串前缀）
+    // Kw_Raw/Kw_MultiLine 枚举已删（162-a A3：原始/多行 非保留化——lexer 按
+    //   「后紧跟引号」上下文识别，非前缀语境回退标识符；plans/024 §7.3）
 
     // ---- 泛型与类型推导关键字(1，自动已在声明区) ----
     Kw_Generic,       // 泛型（泛型/模板声明 泛型 <类型 T>，Task 3.8）

@@ -40,13 +40,14 @@ std::vector<Token> withoutEof(const std::vector<Token>& tokens) {
 
 // ==================== 1. 新增关键字识别（常量/友元/泛型） ====================
 
-// 常量 关键字：词法层识别为 Kw_Const（此前为标识符，parser 用 checkText）
+// 常量 已上下文化（162-a A5）：词法层为标识符，声明位由 parser checkText 识别
+// （原「词法层识别为 Kw_Const」断言随非保留化迁移——语义位判定见 parser 单测）
 TEST(LexerStage3Test, ConstKeyword) {
     auto tokens = withoutEof(lexSource("常量 最大 = 100"));
     ASSERT_EQ(tokens.size(), 4u);
-    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Const);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[0].getValue(), "常量");
-    EXPECT_TRUE(tokens[0].isKeyword());
+    EXPECT_FALSE(tokens[0].isKeyword());
 }
 
 // 友元 关键字：词法层识别为 Kw_Friend
@@ -174,11 +175,12 @@ TEST(LexerStage3Test, LessThanComparisonTokens) {
 
 // ==================== 4. 新关键字保留字检查 ====================
 
-// 常量 作为保留字：不可作标识符（词法层识别为关键字）
+// 常量 非保留化（162-a A5）：可作标识符（变量名）
 TEST(LexerStage3Test, ConstReserved) {
     auto tokens = withoutEof(lexSource("整32 常量"));
     ASSERT_GE(tokens.size(), 2u);
-    EXPECT_EQ(tokens[1].getType(), TokenType::Kw_Const);
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[1].getValue(), "常量");
 }
 
 // 友元 作为保留字

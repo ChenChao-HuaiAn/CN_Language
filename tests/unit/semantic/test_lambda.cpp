@@ -47,7 +47,7 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(LambdaTest, NoCaptureExplicitReturn) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    自动 加倍 = [](整32 x) -> 整32 { 返回 x * 2; };
+    变量 加倍 = [](整32 x) -> 整32 { 返回 x * 2; };
     整32 值 = 加倍(21);
     返回 0;
 }
@@ -60,7 +60,7 @@ TEST(LambdaTest, NoCaptureExplicitReturn) {
 TEST(LambdaTest, NoCaptureReturnInfer) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    自动 平方 = [](整32 x) { 返回 x * x; };
+    变量 平方 = [](整32 x) { 返回 x * x; };
     整32 值 = 平方(9);
     返回 0;
 }
@@ -73,7 +73,7 @@ TEST(LambdaTest, ByValueCapture) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 因子 = 5;
-    自动 乘因子 = [=](整32 x) { 返回 x * 因子; };
+    变量 乘因子 = [=](整32 x) { 返回 x * 因子; };
     整32 值 = 乘因子(6);
     返回 0;
 }
@@ -86,7 +86,7 @@ TEST(LambdaTest, ByRefCapture) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 计数 = 10;
-    自动 加计数 = [&](整32 x) { 返回 x + 计数; };
+    变量 加计数 = [&](整32 x) { 返回 x + 计数; };
     整32 值 = 加计数(5);
     返回 0;
 }
@@ -99,7 +99,7 @@ TEST(LambdaTest, ExplicitCapture) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 增量 = 100;
-    自动 加增量 = [增量](整32 x) { 返回 x + 增量; };
+    变量 加增量 = [增量](整32 x) { 返回 x + 增量; };
     整32 值 = 加增量(1);
     返回 0;
 }
@@ -111,7 +111,7 @@ TEST(LambdaTest, ExplicitCapture) {
 TEST(LambdaTest, UndeclaredCaptureError) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    自动 坏 = [不存在](整32 x) { 返回 x; };
+    变量 坏 = [不存在](整32 x) { 返回 x; };
     返回 0;
 }
 )CN");
@@ -123,7 +123,7 @@ TEST(LambdaTest, UndeclaredCaptureError) {
 TEST(LambdaTest, NoParamReturnString) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
-    自动 说你好 = [] { 返回 "你好" + "lambda"; };
+    变量 说你好 = [] { 返回 "你好" + "lambda"; };
     字符串 s = 说你好();
     返回 0;
 }
@@ -138,7 +138,7 @@ TEST(LambdaTest, BodyRefOuterVarOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 因子 = 5;
-    自动 闭包 = [](整32 x) { 返回 x * 因子; };
+    变量 闭包 = [](整32 x) { 返回 x * 因子; };
     整32 值 = 闭包(6);
     返回 0;
 }
@@ -153,7 +153,7 @@ TEST(LambdaTest, ExplicitCaptureNoParamOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 外层 = 100;
-    自动 读取 = [外层] { 返回 外层 + 1; };
+    变量 读取 = [外层] { 返回 外层 + 1; };
     整32 值 = 读取();
     返回 0;
 }
@@ -169,8 +169,8 @@ TEST(LambdaTest, ByValueSnapshotVsByRefLatest) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 值 = 101;
-    自动 快照 = [=]() -> 整32 { 返回 值; };
-    自动 引用 = [&]() -> 整32 { 返回 值; };
+    变量 快照 = [=]() -> 整32 { 返回 值; };
+    变量 引用 = [&]() -> 整32 { 返回 值; };
     值 = 1000;
     整32 快 = 快照();
     整32 引 = 引用();
@@ -186,7 +186,7 @@ TEST(LambdaTest, ByRefWriteBack) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 计数 = 10;
-    自动 加一 = [&]() { 计数 = 计数 + 1; };
+    变量 加一 = [&]() { 计数 = 计数 + 1; };
     加一();
     返回 计数;
 }
@@ -200,7 +200,7 @@ TEST(LambdaTest, ByValueWriteIsolated) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 外部 = 5;
-    自动 改值 = [=]() { 外部 = 99; };
+    变量 改值 = [=]() { 外部 = 99; };
     改值();
     返回 外部;
 }
@@ -216,8 +216,8 @@ TEST(LambdaTest, NestedLambdaCaptureOk) {
     auto r = analyzeSource(R"CN(
 函数 主() -> 整32 {
     整32 外层值 = 100;
-    自动 外层闭包 = [=]() -> 整32 {
-        自动 内层闭包 = [=]() -> 整32 { 返回 外层值; };
+    变量 外层闭包 = [=]() -> 整32 {
+        变量 内层闭包 = [=]() -> 整32 { 返回 外层值; };
         返回 内层闭包();
     };
     外层值 = 999;
@@ -239,7 +239,7 @@ TEST(LambdaTest, StructByValueCaptureSnapshot) {
 }
 函数 主() -> 整32 {
     点 p = 点{ x = 1, y = 2 };
-    自动 fp = [=]() -> 整32 { 返回 p.x; };
+    变量 fp = [=]() -> 整32 { 返回 p.x; };
     p.x = 100;
     返回 fp();
 }

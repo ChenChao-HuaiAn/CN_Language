@@ -9,6 +9,10 @@ Write-Host "[CI] 0/4 ASCII 标识符门禁（跨机-a 防复发，GCC9 拒 UTF-8
 python scripts/check_ascii_idents.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] ASCII 标识符门禁失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 0.5/4 关键字清单同步门禁（plans/024 §7.5 单一事实源）..." -ForegroundColor Cyan
+python scripts/check_keywords_sync.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 关键字清单同步门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }

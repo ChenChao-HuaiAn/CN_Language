@@ -96,36 +96,29 @@ TEST(LexerTest, AllKeywords) {
         {"字符串", TokenType::Kw_String}, {"空类型", TokenType::Kw_Void},
         {"结构体", TokenType::Kw_Struct}, {"联合体", TokenType::Kw_Union},
         {"枚举", TokenType::Kw_Enum},
-        // 声明(7)
+        // 声明(3；公开/私有/静态 已上下文化、自动 已删 162-a)
         {"函数", TokenType::Kw_Function}, {"变量", TokenType::Kw_Var},
         {"导入", TokenType::Kw_Import},
-        {"公开", TokenType::Kw_Public}, {"私有", TokenType::Kw_Private},
-        {"静态", TokenType::Kw_Static}, {"自动", TokenType::Kw_Auto},
-        // 模块系统(2，v2.0 新增；plans/018 摘除 包/货舱 死保留字 2026-09-07)
-        {"模块", TokenType::Kw_Module}, {"作为", TokenType::Kw_As},
-        // 常量(4)
+        // 常量(3；常量 已上下文化 162-a)
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
-        {"无", TokenType::Kw_None}, {"常量", TokenType::Kw_Const},
-        // OOP(10)
+        {"无", TokenType::Kw_None},
+        {"不安全", TokenType::Kw_Unsafe},
+        // OOP(5；保护/虚拟/重写/抽象 已上下文化、实现 已删 162-a)
         {"类", TokenType::Kw_Class}, {"接口", TokenType::Kw_Interface},
-        {"保护", TokenType::Kw_Protected}, {"虚拟", TokenType::Kw_Virtual},
-        {"重写", TokenType::Kw_Override}, {"抽象", TokenType::Kw_Abstract},
-        {"实现", TokenType::Kw_Implements}, {"自身", TokenType::Kw_Self},
+        {"自身", TokenType::Kw_Self},
         {"父类", TokenType::Kw_Super}, {"友元", TokenType::Kw_Friend},
         // 错误处理(2)
         {"结果", TokenType::Kw_Result}, {"可选", TokenType::Kw_Optional},
-        // 字面量前缀(2)
-        {"原始", TokenType::Kw_Raw}, {"多行", TokenType::Kw_MultiLine},
         // 泛型(1)
         {"泛型", TokenType::Kw_Generic},
     };
-    ASSERT_EQ(kKeywords.size(), static_cast<size_t>(59));
+    ASSERT_EQ(kKeywords.size(), static_cast<size_t>(46));  // 162-a：60→46（删 自动/实现 + 原始/多行/10 词上下文化；补 不安全）
     std::string source;
     for (const auto& entry : kKeywords) {
         source += entry.first + " ";
     }
     auto tokens = withoutEof(analyze(source));
-    ASSERT_EQ(tokens.size(), static_cast<size_t>(59));
+    ASSERT_EQ(tokens.size(), static_cast<size_t>(46));  // 162-a：60→46
     for (size_t i = 0; i < kKeywords.size(); i++) {
         EXPECT_EQ(tokens[i].getType(), kKeywords[i].second) << "关键字: " << kKeywords[i].first;
         EXPECT_EQ(tokens[i].getValue(), kKeywords[i].first);
@@ -150,15 +143,15 @@ TEST(LexerTest, KeywordNeedsSeparator) {
 
 // ==================== 2b. 模块系统关键字与 ::（v2.0） ====================
 
-// 模块/作为/包/货舱 新关键字识别（v2.0）
+// 模块/作为 已上下文化（162-a A5）：非语法位置为标识符（同 包/货舱 先例）
 TEST(LexerTest, ModuleSystemKeywords) {
     auto tokens = withoutEof(analyze("模块 网络 作为 别名 包 货舱"));
     ASSERT_EQ(tokens.size(), 6u);
-    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Module);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);  // 模块（162-a）
     EXPECT_EQ(tokens[0].getValue(), "模块");
-    EXPECT_TRUE(tokens[0].isKeyword());
+    EXPECT_FALSE(tokens[0].isKeyword());
     EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);  // 网络
-    EXPECT_EQ(tokens[2].getType(), TokenType::Kw_As);
+    EXPECT_EQ(tokens[2].getType(), TokenType::Identifier);  // 作为（162-a）
     EXPECT_EQ(tokens[2].getValue(), "作为");
     EXPECT_EQ(tokens[3].getType(), TokenType::Identifier);  // 别名
     // plans/018 摘除（2026-09-07 用户裁决方案A）：包/货舱 死保留字→标识符自由
@@ -382,12 +375,32 @@ TEST(LexerTest, RawMultiLineString) {
     EXPECT_EQ(tokens[0].getValue(), "原始多行\"\"\"第一行\n第二行\"\"\"");
 }
 
-// 原始/多行作为独立关键字（后不跟引号）
+// 原始 前缀误用诊断保留（162-a A3，plans/024 §7.3）：前缀后仅空白再跟引号
+//   → 明确报「字符串前缀后必须紧跟引号」（不得退化为普通语法错误）
+TEST(LexerTest, RawPrefixAbuseDiagnostic) {
+    Diagnostics d = analyzeWithDiagnostics("原始 \"x\"");
+    ASSERT_TRUE(d.hasErrors());
+    EXPECT_NE(d.format().find("字符串前缀后必须紧跟引号"), std::string::npos);
+}
+
+// 原始/多行 作变量名/字段名/函数名合法（162-a 非保留化核心验收）
+TEST(LexerTest, RawMultiLineAsIdentifier) {
+    auto tokens = withoutEof(analyze("整64 原始 = 1; 整64 多行 = 2;"));
+    ASSERT_GE(tokens.size(), 7u);
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[1].getValue(), "原始");
+    EXPECT_EQ(tokens[6].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[6].getValue(), "多行");
+}
+
+// 原始/多行 非保留化（162-a A3）：非前缀语境（后不跟引号）回退标识符
 TEST(LexerTest, RawMultiLineAsKeyword) {
     auto tokens = withoutEof(analyze("原始 多行"));
     ASSERT_EQ(tokens.size(), 2u);
-    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Raw);
-    EXPECT_EQ(tokens[1].getType(), TokenType::Kw_MultiLine);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[0].getValue(), "原始");
+    EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
+    EXPECT_EQ(tokens[1].getValue(), "多行");
 }
 
 // ==================== 8. 错误处理 ====================

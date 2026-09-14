@@ -1,5 +1,5 @@
 // 词法分析器实现：UTF-8字符处理、关键字匹配、字面量与运算符识别（Task 1.2）
-// 覆盖：59个中文关键字（v2.0 含模块系统关键字；plans/018 摘除 包/货舱 死保留字）、整数/浮点/字符串/字符字面量（含原始/多行前缀）、
+// 覆盖：46个中文保留字（162-a 关键字体系收口：删 自动/实现，原始/多行 与 10 词上下文化后；plans/024 §七/§十）、整数/浮点/字符串/字符字面量（含原始/多行前缀）、
 //       39个运算符（含++/--）、9个分隔符（含 ::）、注释（块注释嵌套）、错误诊断
 #include <cstddef>
 #include <string>
@@ -40,17 +40,22 @@ bool isAsciiAlpha(char32_t c) {
     return (c >= U'a' && c <= U'z') || (c >= U'A' && c <= U'Z');
 }
 
-// 61个关键字 -> TokenType 映射表（v2.0）
+// 46个保留字 -> TokenType 映射表（162-a 关键字体系收口后，plans/024 §七/§十）
 // 控制流(10)：如果/否则/当/循环/返回/中断/继续/选择/情况/默认
 // 类型(21)：整数/小数/整8~整128/正8~正128/浮32/浮64/布尔/字符/字符串/空类型/结构体/联合体/枚举
-// 声明(9)：函数/变量/导入/公开/私有/静态/自动 + 模块系统(2)：模块/作为
-// 常量(4)：真/假/无/常量
-// OOP(10)：类/接口/保护/虚拟/重写/抽象/实现/自身/父类/友元
+// 声明(3)：函数/变量/导入
+// 常量(3)：真/假/无
+// 安全区边界(1)：不安全
+// OOP(5)：类/接口/自身/父类/友元
 // 错误处理(2)：结果/可选
-// 字面量前缀(2)：原始/多行
 // 泛型(1)：泛型
-// 注：运算符 为上下文关键字（非保留字），不在此表，仅当后随运算符符号且处于
-//     类/结构体函数定义上下文时由 parser 识别（Task 3.7）
+// 注：以下词已移出保留字表（2026-09-14 用户裁决，plans/024）：
+//   - 删除：自动（与 变量 二合一）/ 实现（死关键字）——Kw 枚举同轮删除
+//   - 上下文化（parser 固定语法位置按 Identifier+文本识别，语法零变化）：
+//     原始/多行（字面量前缀位）、保护/虚拟/重写/抽象（类成员修饰位）、
+//     公开/私有（冒号标签位）、静态/常量（声明前缀位）、作为（重命名导入位）、
+//     模块（顶层声明位）
+//   - 既有上下文词：运算符/遍历/每个/属于/对（规范 §2.2 先例）
 const std::unordered_map<std::string, TokenType>& keywordTable() {
     static const std::unordered_map<std::string, TokenType> kTable = {
         // ---- 控制流(10) ----
@@ -72,28 +77,22 @@ const std::unordered_map<std::string, TokenType>& keywordTable() {
         {"字符串", TokenType::Kw_String}, {"空类型", TokenType::Kw_Void},
         {"结构体", TokenType::Kw_Struct}, {"联合体", TokenType::Kw_Union},
         {"枚举", TokenType::Kw_Enum},
-        // ---- 声明(9) ----
+        // ---- 声明(3；公开/私有/静态/常量 已上下文化 162-a) ----
         {"函数", TokenType::Kw_Function}, {"变量", TokenType::Kw_Var},
         {"导入", TokenType::Kw_Import},
-        {"公开", TokenType::Kw_Public}, {"私有", TokenType::Kw_Private},
-        {"静态", TokenType::Kw_Static}, {"自动", TokenType::Kw_Auto},
-        // ---- 模块系统关键字(4，v2.0 新增) ----
-        {"模块", TokenType::Kw_Module}, {"作为", TokenType::Kw_As},
-        // ---- 常量(4) ----
+        // ---- 常量(3；常量 已上下文化 162-a) ----
         {"真", TokenType::Kw_True}, {"假", TokenType::Kw_False},
-        {"无", TokenType::Kw_None}, {"常量", TokenType::Kw_Const},
+        {"无", TokenType::Kw_None},
         // ---- 安全区边界(1，plans/019 阶段4) ----
         {"不安全", TokenType::Kw_Unsafe},
-        // ---- OOP(10) ----
+        // ---- OOP(5；保护/虚拟/重写/抽象 已上下文化，实现 已删除 162-a) ----
         {"类", TokenType::Kw_Class}, {"接口", TokenType::Kw_Interface},
-        {"保护", TokenType::Kw_Protected}, {"虚拟", TokenType::Kw_Virtual},
-        {"重写", TokenType::Kw_Override}, {"抽象", TokenType::Kw_Abstract},
-        {"实现", TokenType::Kw_Implements}, {"自身", TokenType::Kw_Self},
+        {"自身", TokenType::Kw_Self},
         {"父类", TokenType::Kw_Super}, {"友元", TokenType::Kw_Friend},
         // ---- 错误处理(2) ----
         {"结果", TokenType::Kw_Result}, {"可选", TokenType::Kw_Optional},
-        // ---- 字面量前缀(2) ----
-        {"原始", TokenType::Kw_Raw}, {"多行", TokenType::Kw_MultiLine},
+        // （原始/多行 已非保留化 162-a：lexer 在 readIdentifierOrKeyword 内按
+        //   「后紧跟引号」上下文识别，非前缀语境回退标识符——plans/024 §7.3）
         // ---- 泛型(1) ----
         {"泛型", TokenType::Kw_Generic},
     };
@@ -231,13 +230,20 @@ Token Lexer::readIdentifierOrKeyword() {
         text += currentUtf8();
         advance();
     }
-    TokenType type;
-    if (lookupKeyword(text, type)) {
-        // 原始/多行字符串前缀：关键字后紧跟引号才是字符串字面量
-        if ((type == TokenType::Kw_Raw || type == TokenType::Kw_MultiLine) &&
-            peek() == U'"') {
+    // 原始/多行 前缀上下文识别（162-a 非保留化，plans/024 §7.3）：词后紧跟
+    //   引号才是字符串字面量；前缀后仅空白再跟引号=前缀误用，报友好诊断；
+    //   其余语境回退普通标识符（原始/多行 可作变量名/字段名/函数名）
+    if (text == "原始" || text == "多行") {
+        if (peek() == U'"') {
             return readPrefixedString(text, loc);
         }
+        if (prefixAbuseNextQuote()) {
+            reportError(loc, "字符串前缀后必须紧跟引号");
+        }
+        return Token(TokenType::Identifier, text, loc);
+    }
+    TokenType type;
+    if (lookupKeyword(text, type)) {
         return Token(type, text, loc);
     }
     // 组合前缀：原始多行 / 多行原始（连续无空白）后紧跟引号 → 字符串字面量
@@ -245,6 +251,17 @@ Token Lexer::readIdentifierOrKeyword() {
         return readPrefixedString(text, loc);
     }
     return Token(TokenType::Identifier, text, loc);
+}
+
+// 前缀误用探测（162-a）：当前位置起跳过空格/制表后是否紧跟引号——
+//   命中则由调用方报「字符串前缀后必须紧跟引号」（诊断后不消费，回退标识符）
+bool Lexer::prefixAbuseNextQuote() const {
+    std::size_t p = pos_;
+    while (p < source_.size() &&
+           (source_[p] == ' ' || source_[p] == '	')) {
+        p++;
+    }
+    return p < source_.size() && source_[p] == '"';
 }
 
 // 读取带前缀的字符串字面量：支持 原始 / 多行 / 原始多行 / 多行原始 组合

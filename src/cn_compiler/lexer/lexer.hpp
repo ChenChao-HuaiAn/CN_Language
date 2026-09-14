@@ -51,7 +51,9 @@ private:
     Token readOperatorOrDelimiter();         // 读取运算符或分隔符（贪婪最长匹配）
 
     // ---- 工具 ----
-    static bool lookupKeyword(const std::string& text, TokenType& type); // 查找53个关键字
+    static bool lookupKeyword(const std::string& text, TokenType& type); // 查找46个保留字
+    // 前缀误用探测（162-a 非保留化）：跳过空格/制表后紧跟引号（诊断用，不消费）
+    bool prefixAbuseNextQuote() const;
     void reportError(const SourceLocation& loc, const std::string& message); // 报告词法错误
 
     std::string source_;       // 源码全文（预处理裁剪后）

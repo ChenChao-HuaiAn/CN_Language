@@ -106,16 +106,21 @@ bool Parser::isTemplateAngleOpen() const {
 // 但须排除语法分隔 作为（Kw_As）——重命名导入 导入 路径 作为 别名 的别名不应被
 // 误吞为路径段。其余关键字（含 包/结果/可选/无 等）均可作为路径段/导入项名。
 bool Parser::isModulePathSegment() const {
-    return check(TokenType::Identifier) ||
-           (Token::isKeyword(currentType()) && !check(TokenType::Kw_As));
+    if (check(TokenType::Identifier)) {
+        // 作为 已上下文化（162-a）：语法分隔位按文本排除
+        return !checkText("作为");
+    }
+    return Token::isKeyword(currentType());
 }
 
 // 路径段前瞻判定：peek(1) 是否为合法路径段（parseModulePath 循环中
 //   当前 token 是 ::，须检查其后 token 而非当前）
 bool Parser::isModulePathSegmentAhead() const {
-    const TokenType t = peek(1).getType();
-    return t == TokenType::Identifier ||
-           (Token::isKeyword(t) && t != TokenType::Kw_As);
+    const Token& t = peek(1);
+    if (t.getType() == TokenType::Identifier) {
+        return t.getValue() != "作为";  // 162-a 上下文化：文本排除语法分隔位
+    }
+    return Token::isKeyword(t.getType());
 }
 
 // 模块路径解析（Task 3.6，v2.0）：标识符 (:: 标识符)*（ColonColon 分隔）

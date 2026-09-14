@@ -648,7 +648,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                     if (argIsBoundMethodValue(arg.get())) {
                         diagnostics_.report(
                             DiagnosticLevel::Error, arg->location,
-                            "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+                            "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                     }
                 }
                 if (argTypes.size() != imit->second.paramTypes.size()) {
@@ -737,7 +737,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 if (argIsBoundMethodValue(arg.get())) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, arg->location,
-                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                 }
             }
             if (argTypes.size() != method->paramTypes.size()) {
@@ -799,7 +799,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
                 if (argIsBoundMethodValue(arg.get())) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, arg->location,
-                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                 }
             }
             if (argTypes.size() != method->paramTypes.size()) {
@@ -857,7 +857,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
             if (argIsBoundMethodValue(arg.get())) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, arg->location,
-                    "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：自动 cb = 对象.方法）");
+                    "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
             }
         }
         // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）

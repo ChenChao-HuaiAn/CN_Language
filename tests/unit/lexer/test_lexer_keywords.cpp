@@ -73,21 +73,22 @@ TEST(LexerKeywordTest, UnionToString) {
 
 // ==================== v2.0 模块系统关键字 ====================
 
-// 模块 关键字识别（v2.0 新增）：模块 网络
+// 模块 已上下文化（162-a A5，plans/024 §十）：词法层为标识符，
+//   顶层声明位「模块 名;」由 parser 文本判定（语法层识别点，词法零保留）
 TEST(LexerKeywordTest, ModuleKeyword) {
     auto tokens = lexSource("模块 网络");
     ASSERT_GE(tokens.size(), 2u);
-    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_Module);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[0].getValue(), "模块");
-    EXPECT_TRUE(tokens[0].isKeyword());
+    EXPECT_FALSE(tokens[0].isKeyword());
     EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);  // 网络
 }
 
-// 作为 关键字识别（v2.0 新增）：导入重命名
+// 作为 已上下文化（162-a A5）：词法层为标识符，重命名导入位由 parser 文本判定
 TEST(LexerKeywordTest, AsKeyword) {
     auto tokens = lexSource("作为 别名");
     ASSERT_GE(tokens.size(), 2u);
-    EXPECT_EQ(tokens[0].getType(), TokenType::Kw_As);
+    EXPECT_EQ(tokens[0].getType(), TokenType::Identifier);
     EXPECT_EQ(tokens[0].getValue(), "作为");
     EXPECT_EQ(tokens[1].getType(), TokenType::Identifier);
 }

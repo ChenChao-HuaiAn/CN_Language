@@ -50,8 +50,7 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Public, "公开"},
         {TokenType::Kw_Private, "私有"},
         {TokenType::Kw_Static, "静态"},
-        {TokenType::Kw_Auto, "自动"},
-        // ---- 模块系统关键字(4，v2.0 新增) ----
+                // ---- 模块系统关键字(4，v2.0 新增) ----
         {TokenType::Kw_Module, "模块"},
         {TokenType::Kw_As, "作为"},
         // ---- 常量关键字(4) ----
@@ -66,17 +65,14 @@ const std::unordered_map<TokenType, std::string>& tokenTypeToStringMap() {
         {TokenType::Kw_Virtual, "虚拟"},
         {TokenType::Kw_Override, "重写"},
         {TokenType::Kw_Abstract, "抽象"},
-        {TokenType::Kw_Implements, "实现"},
-        {TokenType::Kw_Self, "自身"},
+                {TokenType::Kw_Self, "自身"},
         {TokenType::Kw_Super, "父类"},
         {TokenType::Kw_Friend, "友元"},
         // ---- 错误处理关键字(2) ----
         {TokenType::Kw_Result, "结果"},
         {TokenType::Kw_Optional, "可选"},
         // ---- 字面量前缀关键字(2) ----
-        {TokenType::Kw_Raw, "原始"},
-        {TokenType::Kw_MultiLine, "多行"},
-        // ---- 泛型关键字(1) ----
+                        // ---- 泛型关键字(1) ----
         {TokenType::Kw_Generic, "泛型"},
         // ---- 标识符与字面量 ----
         {TokenType::Identifier, "标识符"},
