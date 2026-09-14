@@ -615,6 +615,20 @@ private:
     // 族⑧：局部地址逃逸检查 + 局部指针指向登记（阶段2·原 806~886 段）
     void checkLocalAddressEscapeAssign(AssignmentExpr* node);
 
+    // ---- visitProgram 趟族子方法（177-a 函数级拆分·原 256 行函数）----
+    // 族①：第 4 层（crate 分桶）——knownModules_ + 模块公开符号表（原 440~492 段）
+    void collectModulePublicSymbols(Program* node);
+    // 族②：第一趟a——类型名注册 + 字段类型引用解析（原 504~520 段）
+    void registerAndResolveTypeNames(Program* node);
+    // 族③：第一趟e 泛型注册 + 字段实例化归一 + 第一趟b 布局计算（原 521~552 段）
+    void registerGenericsAndComputeLayout(Program* node);
+    // 族④：第一趟b' 联合体成员限定 + 第一趟c 枚举求值（原 553~580 段）
+    void checkUnionsAndEnums(Program* node);
+    // 族⑤：第 4 层顶层常量/静态注册（P1-4/P3-8·原 591~651 段）
+    void registerGlobalConstsAndStatics(Program* node);
+    // 族⑥：第二趟a/b/c——类方法体/函数体检查 + 实例化泛型类补查（原 652~683 段）
+    void checkClassAndFunctionBodies(Program* node);
+
 
 
     bool canConvertWithLiteral(const Expr* value, const std::string& from,

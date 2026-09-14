@@ -434,9 +434,44 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     //         阶段3：注册 正常/错误/某些 内置构造器（用户不可重定义）
     registerBuiltins();
     registerErrorBuiltins();
+    // 177-a：本函数 256 行按「多趟流水线」提取为 6 个趟族子方法（纯搬运零
+    //   行为变更——趟序即调用序，逐行核验）。
     // 第零趟b（阶段3，Task 3.6）：收集导入模块名（限定调用识别用）
-    //   注：多文件编译时 driver 已合并被导入模块的公开声明到本 Program，
-    //   导入声明（ImportDecl）仍保留在 AST 中供此处收集模块名。
+    collectModulePublicSymbols(node);
+    for (auto& imp : node->imports) {
+        visitImportDecl(imp.get());
+    }
+    checkImportLocalConflicts(node);
+    // 第一趟a/e/b/b'：类型名注册 + 字段类型解析 + 泛型注册 + 布局计算
+    registerAndResolveTypeNames(node);
+    registerGenericsAndComputeLayout(node);
+    // 第一趟b'（164-a A4 联合体限定）+ 第一趟c（枚举求值）
+    checkUnionsAndEnums(node);
+    // 第一趟d（类/接口注册）+ 第一趟f（结果/可选降级）+ 第一趟g（函数符号注册）
+    registerClassAndInterfaces(node);
+    lowerResultOptionalTypes(node);
+    for (auto& decl : node->declarations) {
+        if (decl->getType() == NodeType::FunctionDecl) {
+            registerFunction(decl.get());
+        }
+    }
+    // 第 4 层（v2.0 决策8/9，P1-4/P3-8）：注册顶层常量/静态（crate 级）
+    registerGlobalConstsAndStatics(node);
+    // 第二趟a/b/c：类方法体检查 + 函数体检查 + 实例化泛型类补查
+    checkClassAndFunctionBodies(node);
+    popScope();
+}
+// ==================== 177-a 趟族子方法（原 visitProgram 437~683 段） ====================
+
+// 族①：第 4 层（crate 分桶）——构建已加载模块集合 + 模块公开符号表（原 440~492 段）。
+//   须在导入表构建之前——plans/018 呈报一B 路径导入「尾段是模块还是符号」
+//   消歧要查 knownModules_。
+//   knownModules_：全部声明 moduleName 全集 + driver 注入的加载模块清单
+//   （Program::loadedModules：依赖图模块名 + 货舱 [依赖] 包名）——P1-1
+//   废止后限定调用按「模块已加载」放行的判定数据源。
+//   modulePublicSymbols_：按模块收集公开符号，供可见性交集检查（模块私有
+//   类不导出）与花括号导入符号验证使用。
+void SemanticAnalyzer::collectModulePublicSymbols(Program* node) {
     // 第 4 层（crate 分桶）：构建已加载模块集合 + 模块公开符号表（须在导入表
     //   构建之前——plans/018 呈报一B 路径导入「尾段是模块还是符号」消歧要查
     //   knownModules_）。
@@ -490,17 +525,12 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (const auto& m : node->loadedModules) {
         if (!m.empty()) knownModules_.insert(m);
     }
-    // 第 4 层（P1-3）：visitImportDecl 构建 use 导入表（符号集合/别名/通配符）。
-    for (auto& imp : node->imports) {
-        visitImportDecl(imp.get());
-    }
-    // plans/018 P6b 工作流2（规格08-三 3.6 名称解析）：显式导入冲突检查
-    //   （①×② 导入与本地定义同名 / ②×② 多次显式导入同名——纯 AST 扫描，
-    //   不依赖函数注册趟；声明 moduleName == 导入 ownerModule 即本地定义）。
-    //   【已启用（2026-09-07 呈报一B 用户终裁）】：「导入 m::符号」= 具名绑定
-    //   ②（Rust 一致），与本文件本地定义同名 = 编译错误（E0255 对应）——
-    //   旧「路径导入=模块级通配」实现随之废止（visitImportDecl 已改为真绑定）。
-    checkImportLocalConflicts(node);
+}
+// 族②：第一趟a——类型名注册 + 结构体/联合体字段类型引用解析（原 504~520 段）。
+//   A-2（crate 分桶）：类型按所属模块注册（同模块重复报错，跨模块同名允许）；
+//   字段类型按所属模块解析多模块同名类型，改写字段类型为限定键
+//   （computeLayout/字段访问经 findStruct 精确命中）。
+void SemanticAnalyzer::registerAndResolveTypeNames(Program* node) {
     // 第一趟a：注册全部结构体/联合体/枚举类型名（支持前向引用：字段可引用后定义的类型）
     // A-2（crate 分桶）：类型按所属模块注册（同模块重复报错，跨模块同名允许）
     for (auto& s : node->structs) {
@@ -518,6 +548,17 @@ void SemanticAnalyzer::visitProgram(Program* node) {
             }
         }
     }
+}
+// 族③：第一趟e 泛型注册 + 字段实例化归一 + 第一趟b 布局计算（原 521~552 段）。
+//   泛型注册须在类解析之前：A-4（2026-08）跨模块泛型类字段在 resolveClass
+//   期间经 resolveGenericTypeName 触发实例化，需 findGeneric 已注册。
+//   缺陷2 根治（2026-09-02，趟序重排）：泛型注册后先对结构体字段类型实例化
+//   归一，再计算布局（原顺序致容器类布局错位——p3 实证）。
+//   ⚠ 迭代稳定性（ASAN 实证 heap-use-after-free）：resolveGenericTypeName ->
+//   instantiateGeneric -> ensureLoweredType 会向 node->structs 追加合成结构体
+//   （结果<T,E> 降级）触发 vector 重分配——不得持有 vector 槽引用；
+//   unique_ptr 重分配不移动 StructDecl 堆本体，缓存裸指针按索引重取安全。
+void SemanticAnalyzer::registerGenericsAndComputeLayout(Program* node) {
     // 第一趟e（阶段3）：注册泛型声明（泛型类/函数模板）——须在类解析之前：
     //   A-4（2026-08）跨模块泛型类字段（馆藏 类字段 向量<整64>）在 resolveClass
     //   期间经 resolveGenericTypeName 触发实例化，需 findGeneric 已注册
@@ -550,6 +591,12 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (std::size_t si = 0; si < node->structs.size(); ++si) {
         computeLayout(node->structs[si].get());
     }
+}
+// 族④：第一趟b'（164-a A4）联合体成员类型限定 + 第一趟c 枚举成员值求值（原 553~580 段）。
+//   联合体成员须可平凡复制（对标 Rust union 成员须 Copy）；标注「手动释放」
+//   （方案D·ManuallyDrop 同构）则放行——编译器不生成其自动释放，用户须在
+//   不安全 函数 内显式释放。
+void SemanticAnalyzer::checkUnionsAndEnums(Program* node) {
     // 第一趟b'（164-a A4·plans/023 §十二 方案A）：联合体成员类型限定——成员须
     //   可平凡复制（标量/指针/纯标量聚合/结果可选实参递归）；拥有型（字符串/
     //   容器类/类对象/含拥有型聚合）→ 编译期硬错误（对标 Rust union 成员须 Copy）。
@@ -578,16 +625,12 @@ void SemanticAnalyzer::visitProgram(Program* node) {
     for (auto& e : node->enums) {
         computeEnumValues(e.get());
     }
-    // 第一趟d（阶段3）：注册类/接口符号（类名 + 成员解析 + 虚表 + 接口验证 + 布局）
-    registerClassAndInterfaces(node);
-    // 第一趟f（阶段3）：结果/可选类型降级（生成合成结构体并布局）
-    lowerResultOptionalTypes(node);
-    // 第一趟g：注册全部函数符号（含前向调用）
-    for (auto& decl : node->declarations) {
-        if (decl->getType() == NodeType::FunctionDecl) {
-            registerFunction(decl.get());
-        }
-    }
+}
+// 族⑤：第 4 层（v2.0 决策8/9，P1-4/P3-8）——注册顶层常量/静态（crate 级）（原 591~651 段）。
+//   常量：编译期常量折叠——初始值为字面量（整/浮/字符串）时求值存入
+//   globalConstValues_（常量名 -> 值文本），visitIdentifierExpr 引用时替换。
+//   静态：登记符号名（globalStaticNames_），供 IR 层生成全局存储。
+void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
     // 第 4 层（v2.0 决策8/9，P1-4/P3-8）：注册顶层常量/静态（crate 级）。
     //   常量：编译期常量折叠——初始值为字面量（整/浮/字符串）时求值存入
     //   globalConstValues_（常量名 -> 值文本），visitIdentifierExpr 引用时替换。
@@ -649,6 +692,10 @@ void SemanticAnalyzer::visitProgram(Program* node) {
             }
         }
     }
+}
+// 族⑥：第二趟a/b/c（原 652~683 段）——类方法体检查 + 函数体检查 +
+//   实例化泛型类方法体补查。
+void SemanticAnalyzer::checkClassAndFunctionBodies(Program* node) {
     // 第二趟a（阶段3）：检查类方法体（自身/父类/访问控制/常量 上下文）
     // 自举前置 A-3a（2026-08）：跳过实例化类（名含 $）——实例化可能已在第一趟g
     //   （registerFunction 泛型参数统一）发生，若此处检查、第二趟c 再检查同一
@@ -681,7 +728,6 @@ void SemanticAnalyzer::visitProgram(Program* node) {
             checkClassMethods(const_cast<ClassInfo&>(kv.second));
         }
     }
-    popScope();
 }
 void SemanticAnalyzer::visitStructDecl(StructDecl* node) {
     // 由 visitProgram 驱动注册/布局；单独访问时仅注册类型名（防御性）
