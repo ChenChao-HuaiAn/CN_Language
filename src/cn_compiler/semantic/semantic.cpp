@@ -191,16 +191,17 @@ bool SemanticAnalyzer::lookupMoved(const std::string& name, int& outLine) const 
     return false;
 }
 
-// plans/019 阶段4（2026-09-10）：安全区边界观察期警告——安全（非 不安全）函数
-// 体内出现越界操作时发警告（分批收口后变错误；不安全函数体内=豁免零警告）。
-void SemanticAnalyzer::warnUnsafeBoundary(const SourceLocation& loc,
+// plans/019 阶段4（2026-09-10 立）/ plans/023 §6.5（2026-09-17 157-a 收口）：
+// 安全区边界硬错误——安全（非 不安全）函数体内出现越界操作=编译错误
+// （观察期结束；Rust E0133 同构：非 unsafe 上下文做 unsafe 操作=编译期拒绝；
+// 不安全函数体内=豁免零诊断，审计面=不安全函数清单）。
+void SemanticAnalyzer::reportUnsafeBoundary(const SourceLocation& loc,
                                           const std::string& kind,
                                           const std::string& detail) {
     if (currentFnUnsafe_) return;  // 不安全函数体内合法（审计面=不安全函数清单）
-    diagnostics_.report(DiagnosticLevel::Warning, loc,
-                        "[安全区边界·观察期] " + kind +
-                            "应在 不安全 函数 内（" + detail +
-                            "；plans/019 阶段4 分批收口后变错误）");
+    diagnostics_.report(DiagnosticLevel::Error, loc,
+                        "[安全区边界] " + kind +
+                            "应在 不安全 函数 内（" + detail + "）");
 }
 
 // plans/019 阶段3（2026-09-10）：常量引用借用纪律（普通函数调用面）。

@@ -51,7 +51,7 @@ TEST(FfiExternTest, ExternDeclAndCallOk) {
 外部 函数 strlen(字符串 s) -> 整64
 外部 函数 toupper(整32 c) -> 整32
 外部 函数 GetTickCount64() -> 正64
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     整64 n = strlen("中文");
     整32 up = toupper(97);
     正64 tick = GetTickCount64();
@@ -72,7 +72,7 @@ TEST(FfiExternTest, ExternWithBodyError) {
 外部 函数 取数() -> 整32 {
     返回 5;
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     返回 取数();
 }
 )CN");
@@ -85,7 +85,7 @@ TEST(FfiExternTest, ExternWithBodyError) {
 TEST(FfiExternTest, ExternArgTypeChecked) {
     auto r = analyzeSource(R"CN(
 外部 函数 toupper(整32 c) -> 整32
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     返回 toupper("错误");
 }
 )CN");
@@ -96,7 +96,7 @@ TEST(FfiExternTest, ExternArgTypeChecked) {
 // 未声明的外部函数调用：按普通决议报错（外部不豁免符号解析）
 TEST(FfiExternTest, UndeclaredFunctionError) {
     auto r = analyzeSource(R"CN(
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     返回 不存在的函数(1);
 }
 )CN");
@@ -109,7 +109,7 @@ TEST(FfiExternTest, DuplicateExternAllowed) {
     auto r = analyzeSource(R"CN(
 外部 函数 取数() -> 整32
 外部 函数 取数() -> 整32
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     返回 取数();
 }
 )CN");
@@ -122,10 +122,10 @@ TEST(FfiExternTest, DuplicateExternAllowed) {
 TEST(FfiExternTest, ExternLocksSignatureError) {
     auto r = analyzeSource(R"CN(
 外部 函数 处理(整32 x) -> 整32
-函数 处理(字符串 s) -> 整32 {
+不安全 函数 处理(字符串 s) -> 整32 {
     返回 0;
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     返回 处理(1);
 }
 )CN");

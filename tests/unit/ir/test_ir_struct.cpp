@@ -70,7 +70,7 @@ bool moduleHasOpcode(const IRModule& module, const std::string& funcName, Opcode
 TEST(IrStructTest, FieldLoadGeneratesFieldAddr) {
     IrResult r = generateIr(
         "结构体 点 { 整32 x; 整32 y; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1, y = 2 };\n"
         "  整32 a = p.y;\n"
         "  返回 a;\n"
@@ -85,7 +85,7 @@ TEST(IrStructTest, FieldLoadGeneratesFieldAddr) {
 TEST(IrStructTest, EnumConstInt) {
     IrResult r = generateIr(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 v = 颜色.蓝;\n"
         "  返回 v;\n"
         "}\n");
@@ -107,7 +107,7 @@ TEST(IrStructTest, EnumConstInt) {
 TEST(IrStructTest, EnumNegativeConst) {
     IrResult r = generateIr(
         "枚举 方向 { 上 = -1, 中, 下 }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 v = 方向.上;\n"
         "  返回 v;\n"
         "}\n");
@@ -131,7 +131,7 @@ TEST(IrStructTest, EnumNegativeConst) {
 TEST(IrStructTest, ArrowFieldAccess) {
     IrResult r = generateIr(
         "结构体 点 { 整32 x; 整32 y; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1, y = 2 };\n"
         "  点* ptr = &p;\n"
         "  整32 a = ptr.y;\n"
@@ -146,7 +146,7 @@ TEST(IrStructTest, ArrowFieldAccess) {
 TEST(IrStructTest, FieldStore) {
     IrResult r = generateIr(
         "结构体 点 { 整32 x; 整32 y; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1, y = 2 };\n"
         "  p.x = 10;\n"
         "  返回 p.x;\n"
@@ -160,7 +160,7 @@ TEST(IrStructTest, FieldStore) {
 TEST(IrStructTest, EnumInSwitch) {
     IrResult r = generateIr(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  颜色 c = 颜色.绿;\n"
         "  选择 (c) {\n"
         "    情况 颜色.红:\n"
@@ -185,7 +185,7 @@ TEST(IrStructTest, ArrayFieldAccessGeneratesBoundsCheck) {
     IrResult r = generateIr(
         "结构体 坐标 { 整32 x;\n 整32 y; }\n"
         "结构体 形状 { 坐标[4] 顶点; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  形状 方形;\n"
         "  方形.顶点[1].x = 10;\n"
         "  返回 方形.顶点[1].x;\n"
@@ -203,7 +203,7 @@ TEST(IrStructTest, ArrowArrayFieldAccessWorks) {
     IrResult r = generateIr(
         "结构体 坐标 { 整32 x;\n 整32 y; }\n"
         "结构体 形状 { 坐标[4] 顶点; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  形状 方形;\n"
         "  方形.顶点[1].x = 10;\n"
         "  形状* p = &方形;\n"
@@ -221,7 +221,7 @@ TEST(IrStructTest, ArrayFieldOutOfBoundsEmitsError) {
     IrResult r = generateIr(
         "结构体 坐标 { 整32 x;\n 整32 y; }\n"
         "结构体 形状 { 坐标[4] 顶点; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  形状 方形;\n"
         "  返回 方形.顶点[4].x;\n"
         "}\n");

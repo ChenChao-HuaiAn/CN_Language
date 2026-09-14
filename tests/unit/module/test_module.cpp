@@ -122,9 +122,9 @@ TEST(ModuleTest, ModuleAccessLabels) {
     Diagnostics diags;
     auto unit = makeUnit(
         "公开:\n"
-        "函数 公开函数() -> 整32 { 返回 1; }\n"
+        "不安全 函数 公开函数() -> 整32 { 返回 1; }\n"
         "私有:\n"
-        "函数 私有函数() -> 整32 { 返回 2; }\n",
+        "不安全 函数 私有函数() -> 整32 { 返回 2; }\n",
         "数学.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
     ASSERT_NE(unit->ast, nullptr);
@@ -136,7 +136,7 @@ TEST(ModuleTest, ModuleAccessLabels) {
 // 默认可见性（v2.0 变更）：无标签时顶层声明为 Private（原默认公开）
 TEST(ModuleTest, ModuleDefaultPrivate) {
     Diagnostics diags;
-    auto unit = makeUnit("函数 默认函数() -> 整32 { 返回 0; }", "数学.cn", diags);
+    auto unit = makeUnit("不安全 函数 默认函数() -> 整32 { 返回 0; }", "数学.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
     ASSERT_EQ(unit->ast->declarations.size(), 1u);
     EXPECT_EQ(unit->ast->declarations[0]->access, AccessSpecifier::Private);
@@ -149,9 +149,9 @@ TEST(ModuleTest, ClassAccessLabelScopeIsolation) {
         "私有:\n"
         "类 示例 {\n"
         "    公开:\n"
-        "    函数 公开方法() -> 整32 { 返回 1; }\n"
+        "    不安全 函数 公开方法() -> 整32 { 返回 1; }\n"
         "    私有:\n"
-        "    函数 私有方法() -> 整32 { 返回 2; }\n"
+        "    不安全 函数 私有方法() -> 整32 { 返回 2; }\n"
         "}\n",
         "类模块.cn", diags);
     EXPECT_FALSE(diags.hasErrors());
@@ -170,14 +170,14 @@ TEST(ModuleTest, ClassAccessLabelScopeIsolation) {
 // 主.cn（模块名 == 主）为程序入口
 TEST(ModuleTest, EntryModuleMain) {
     Diagnostics diags;
-    auto unit = makeUnit("函数 主() -> 整32 { 返回 0; }", "主.cn", diags);
+    auto unit = makeUnit("不安全 函数 主() -> 整32 { 返回 0; }", "主.cn", diags);
     EXPECT_TRUE(isEntryModule(*unit));
 }
 
 // 非 主.cn 不是入口（即使含 主 函数）
 TEST(ModuleTest, EntryModuleNonMain) {
     Diagnostics diags;
-    auto unit = makeUnit("函数 主() -> 整32 { 返回 0; }", "工具.cn", diags);
+    auto unit = makeUnit("不安全 函数 主() -> 整32 { 返回 0; }", "工具.cn", diags);
     EXPECT_FALSE(isEntryModule(*unit));
 }
 
@@ -187,7 +187,7 @@ TEST(ModuleTest, EntryModuleNonMain) {
 TEST(ModuleTest, TopoSortChain) {
     Diagnostics diags;
     ModuleGraph graph;
-    graph.addModule(makeUnit("函数 a() -> 整32 { 返回 1; }", "A.cn", diags));
+    graph.addModule(makeUnit("不安全 函数 a() -> 整32 { 返回 1; }", "A.cn", diags));
     graph.addModule(makeUnit("导入 A;\n函数 b() -> 整32 { 返回 2; }", "B.cn", diags));
     graph.addModule(makeUnit("导入 B;\n函数 主() -> 整32 { 返回 0; }", "主.cn", diags));
     EXPECT_FALSE(diags.hasErrors());
@@ -221,8 +221,8 @@ TEST(ModuleTest, TopoSortCycle) {
 TEST(ModuleTest, TopoSortIndependent) {
     Diagnostics diags;
     ModuleGraph graph;
-    graph.addModule(makeUnit("函数 a() -> 整32 { 返回 1; }", "甲.cn", diags));
-    graph.addModule(makeUnit("函数 b() -> 整32 { 返回 2; }", "乙.cn", diags));
+    graph.addModule(makeUnit("不安全 函数 a() -> 整32 { 返回 1; }", "甲.cn", diags));
+    graph.addModule(makeUnit("不安全 函数 b() -> 整32 { 返回 2; }", "乙.cn", diags));
     EXPECT_FALSE(diags.hasErrors());
 
     std::vector<ModuleUnit*> ordered;
@@ -237,8 +237,8 @@ TEST(ModuleTest, TopoSortIndependent) {
 TEST(ModuleTest, AddModuleDedup) {
     Diagnostics diags;
     ModuleGraph graph;
-    EXPECT_TRUE(graph.addModule(makeUnit("函数 a() -> 整32 { 返回 1; }", "A.cn", diags)));
-    EXPECT_FALSE(graph.addModule(makeUnit("函数 b() -> 整32 { 返回 2; }", "A.cn", diags)));
+    EXPECT_TRUE(graph.addModule(makeUnit("不安全 函数 a() -> 整32 { 返回 1; }", "A.cn", diags)));
+    EXPECT_FALSE(graph.addModule(makeUnit("不安全 函数 b() -> 整32 { 返回 2; }", "A.cn", diags)));
     EXPECT_EQ(graph.findModule("A")->ast->declarations.size(), 1u);
 }
 
@@ -250,13 +250,13 @@ TEST(ModuleTest, MergePublicOnly) {
     ModuleGraph graph;
     graph.addModule(makeUnit(
         "公开:\n"
-        "函数 公开函数() -> 整32 { 返回 1; }\n"
+        "不安全 函数 公开函数() -> 整32 { 返回 1; }\n"
         "私有:\n"
-        "函数 私有函数() -> 整32 { 返回 2; }\n",
+        "不安全 函数 私有函数() -> 整32 { 返回 2; }\n",
         "数学.cn", diags));
     graph.addModule(makeUnit(
         "导入 数学;\n"
-        "函数 主() -> 整32 { 返回 0; }\n",
+        "不安全 函数 主() -> 整32 { 返回 0; }\n",
         "主.cn", diags));
 
     std::vector<ModuleUnit*> ordered;
@@ -299,7 +299,7 @@ TEST(ModuleTest, MergeClassConflictPrivateSkipped) {
     graph.addModule(makeUnit(
         "私有:\n"
         "类 动物 { }\n"
-        "函数 主() -> 整32 { 返回 0; }\n",
+        "不安全 函数 主() -> 整32 { 返回 0; }\n",
         "主.cn", diags));
 
     std::vector<ModuleUnit*> ordered;
@@ -369,11 +369,11 @@ TEST(ModuleTest, SemanticQualifiedCallRewrite) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 平方根(浮64 x) -> 浮64 { 返回 x; }\n",
+        "不安全 函数 平方根(浮64 x) -> 浮64 { 返回 x; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::平方根;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 结果 = 数学::平方根(16.0);\n"
         "    返回 0;\n"
         "}\n",
@@ -388,12 +388,12 @@ TEST(ModuleTest, SemanticBraceImportQualifiedCall) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 正弦(浮64 x) -> 浮64 { 返回 x; }\n"
-        "函数 余弦(浮64 x) -> 浮64 { 返回 x; }\n",
+        "不安全 函数 正弦(浮64 x) -> 浮64 { 返回 x; }\n"
+        "不安全 函数 余弦(浮64 x) -> 浮64 { 返回 x; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::{正弦, 余弦};\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 结果 = 数学::正弦(1.0) + 数学::余弦(2.0);\n"
         "    返回 0;\n"
         "}\n",
@@ -408,11 +408,11 @@ TEST(ModuleTest, SemanticPrivateNotVisibleAcrossModules) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "私有:\n"
-        "函数 内部辅助(整32 n) -> 整32 { 返回 n * 2; }\n",
+        "不安全 函数 内部辅助(整32 n) -> 整32 { 返回 n * 2; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 数值 = 数学::内部辅助(10);\n"
         "    返回 0;\n"
         "}\n",
@@ -429,11 +429,11 @@ TEST(ModuleTest, SemanticPublicVisibleAcrossModules) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 结果 = 双倍(21);\n"
         "    返回 0;\n"
         "}\n",
@@ -448,11 +448,11 @@ TEST(ModuleTest, SemanticEntryMainPipeline) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n",
+        "不安全 函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n",
         "计算.cn", diags1));
     units.push_back(makeUnit(
         "导入 计算;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 总和 = 计算.加(1, 2);\n"
         "    返回 0;\n"
         "}\n",
@@ -469,13 +469,13 @@ TEST(ModuleTest, MergePrivateDependencyClosure) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 三倍(整32 n) -> 整32 { 返回 内部辅助(n); }\n"
+        "不安全 函数 三倍(整32 n) -> 整32 { 返回 内部辅助(n); }\n"
         "私有:\n"
-        "函数 内部辅助(整32 n) -> 整32 { 返回 n * 3; }\n",
+        "不安全 函数 内部辅助(整32 n) -> 整32 { 返回 n * 3; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 数值 = 三倍(10);\n"
         "    返回 0;\n"
         "}\n",
@@ -497,11 +497,11 @@ TEST(ModuleTest, SemanticImportMissingSymbol) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 平方根(浮64 x) -> 浮64 { 返回 x; }\n",
+        "不安全 函数 平方根(浮64 x) -> 浮64 { 返回 x; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::平方根;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 数值 = 数学::不存在函数(1.0);\n"
         "    返回 0;\n"
         "}\n",
@@ -519,11 +519,11 @@ TEST(ModuleTest, SemanticBraceImportMissingName) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 正弦(浮64 x) -> 浮64 { 返回 x; }\n",
+        "不安全 函数 正弦(浮64 x) -> 浮64 { 返回 x; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::{不存在名};\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 数值 = 不存在名(1.0);\n"
         "    返回 0;\n"
         "}\n",
@@ -541,15 +541,15 @@ TEST(ModuleTest, SemanticDuplicateFunctionAcrossModules) {
     Diagnostics diags1, diags2, diags3;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 3; }\n",
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 3; }\n",
         "工具.cn", diags2));
     units.push_back(makeUnit(
         "导入 数学;\n导入 工具;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 数值 = 数学::双倍(10);\n"  // 限定调用按模块解析（crate 隔离）
         "    返回 0;\n"
         "}\n",
@@ -565,15 +565,15 @@ TEST(ModuleTest, SemanticOverloadAcrossModules) {
     Diagnostics diags1, diags2, diags3;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(浮64 n) -> 浮64 { 返回 n * 2.0; }\n",
+        "不安全 函数 双倍(浮64 n) -> 浮64 { 返回 n * 2.0; }\n",
         "工具.cn", diags2));
     units.push_back(makeUnit(
         "导入 数学;\n导入 工具;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 整结果 = 双倍(10);\n"
         "    变量 浮结果 = 双倍(1.5);\n"
         "    返回 0;\n"
@@ -595,10 +595,10 @@ TEST(ModuleTest, SemanticQualifiedCallWithoutImport) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
         "工具.cn", diags1));
     units.push_back(makeUnit(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 数值 = 工具::双倍(10);\n"
         "    返回 0;\n"
         "}\n",
@@ -633,8 +633,8 @@ TEST(ModuleTest, CrateBucketSameModuleDuplicateFunction) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 3; }\n",
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n"
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 3; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit("导入 数学;\n函数 主() -> 整32 { 返回 0; }", "主.cn", diags2));
     auto r = analyzeModules(std::move(units));
@@ -649,12 +649,12 @@ TEST(ModuleTest, UseImportBraceAlias) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 正弦(浮64 x) -> 浮64 { 返回 x; }\n"
-        "函数 余弦(浮64 x) -> 浮64 { 返回 x + 1; }\n",
+        "不安全 函数 正弦(浮64 x) -> 浮64 { 返回 x; }\n"
+        "不安全 函数 余弦(浮64 x) -> 浮64 { 返回 x + 1; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::{正弦 作为 正, 余弦};\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    浮64 值1 = 正(0.5);\n"       // 别名 正 -> 正弦
         "    浮64 值2 = 余弦(0.5)\n"     // 花括号项直用
         "    返回 0;\n"
@@ -670,11 +670,11 @@ TEST(ModuleTest, UseImportWildcard) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 加法(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n",
+        "不安全 函数 加法(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::*;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 数学::加法(1, 2);\n"
         "    返回 0;\n"
         "}\n",
@@ -688,7 +688,7 @@ TEST(ModuleTest, BuiltinQualifiedColonColonPrelude) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1;
     units.push_back(makeUnit(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    浮64 根 = 数学::平方根(9.0);\n"
         "    返回 0;\n"
         "}\n",
@@ -703,7 +703,7 @@ TEST(ModuleTest, BuiltinQualifiedDotCompat) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1;
     units.push_back(makeUnit(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    浮64 根 = 数学.平方根(9.0);\n"
         "    返回 0;\n"
         "}\n",
@@ -718,7 +718,7 @@ TEST(ModuleTest, TopLevelConstDecl) {
     ModuleGraph graph;
     graph.addModule(makeUnit(
         "常量 最大容量 = 42;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 最大容量;\n"
         "    返回 0;\n"
         "}\n",
@@ -745,11 +745,11 @@ TEST(ModuleTest, TopLevelStaticDecl) {
     ModuleGraph graph;
     graph.addModule(makeUnit(
         "静态 整64 计数器 = 0;\n"
-        "函数 步进() -> 整64 {\n"
+        "不安全 函数 步进() -> 整64 {\n"
         "    计数器 = 计数器 + 1;\n"
         "    返回 计数器;\n"
         "}\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 步进();\n"
         "    返回 0;\n"
         "}\n",
@@ -778,14 +778,14 @@ TEST(ModuleTest, VisibilityIntersectionPrivateClassNotExported) {
         "私有:\n"
         "类 隐藏类 {\n"
         "    公开:\n"
-        "    函数 隐藏方法() -> 整32 { 返回 1; }\n"
+        "    不安全 函数 隐藏方法() -> 整32 { 返回 1; }\n"
         "}\n"
         "公开:\n"
-        "函数 公开入口() -> 整32 { 返回 0; }\n",
+        "不安全 函数 公开入口() -> 整32 { 返回 0; }\n",
         "甲.cn", diags1));
     units.push_back(makeUnit(
         "导入 甲;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 甲::公开入口();\n"  // 模块公开函数可访问（交集：模块公开）
         "    返回 0;\n"
         "}\n",
@@ -815,11 +815,11 @@ TEST(ModuleTest, SemanticDefaultPrivateNotExported) {
     std::vector<std::unique_ptr<ModuleUnit>> units;
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
-        "函数 默认私有函数(整32 n) -> 整32 { 返回 n * 2; }\n",  // 无 公开: -> 默认私有
+        "不安全 函数 默认私有函数(整32 n) -> 整32 { 返回 n * 2; }\n",  // 无 公开: -> 默认私有
         "数据.cn", diags1));
     units.push_back(makeUnit(
         "导入 数据;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 数据::默认私有函数(10);\n"
         "    返回 0;\n"
         "}\n",
@@ -837,12 +837,12 @@ TEST(ModuleTest, SemanticDefaultPrivatePublicFunctionClosure) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 公开函数(整32 n) -> 整32 { 返回 默认私有函数(n); }\n"
-        "函数 默认私有函数(整32 n) -> 整32 { 返回 n + 100; }\n",  // 无标签 -> 默认私有
+        "不安全 函数 公开函数(整32 n) -> 整32 { 返回 默认私有函数(n); }\n"
+        "不安全 函数 默认私有函数(整32 n) -> 整32 { 返回 n + 100; }\n",  // 无标签 -> 默认私有
         "数据.cn", diags1));
     units.push_back(makeUnit(
         "导入 数据::公开函数;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 公开函数(5);\n"
         "    返回 0;\n"
         "}\n",
@@ -861,11 +861,11 @@ TEST(ModuleTest, SemanticClassDefaultPrivateMemberAccess) {
         "类 计数器 {\n"
         "    私有:\n"
         "    整32 数值;\n"
-        "    函数 计数器() -> 空类型 { 自身.数值 = 0; }\n"  // 无标签 -> 默认私有
+        "    不安全 函数 计数器() -> 空类型 { 自身.数值 = 0; }\n"  // 无标签 -> 默认私有
         "    公开:\n"
-        "    函数 读取() -> 整32 { 返回 自身.数值; }\n"
+        "    不安全 函数 读取() -> 整32 { 返回 自身.数值; }\n"
         "}\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    计数器 计数1 = 计数器();\n"
         "    变量 值 = 计数1.读取();\n"   // 公开成员可访问
         "    返回 0;\n"
@@ -884,12 +884,12 @@ TEST(ModuleTest, SemanticClassDefaultPrivateAccessOutside) {
         "类 计数器 {\n"
         "    私有:\n"
         "    整32 数值;\n"
-        "    函数 计数器() -> 空类型 { 自身.数值 = 0; }\n"  // 无标签 -> 默认私有
-        "    函数 隐藏操作() -> 整32 { 返回 自身.数值 + 1; }\n"  // 无标签 -> 默认私有
+        "    不安全 函数 计数器() -> 空类型 { 自身.数值 = 0; }\n"  // 无标签 -> 默认私有
+        "    不安全 函数 隐藏操作() -> 整32 { 返回 自身.数值 + 1; }\n"  // 无标签 -> 默认私有
         "    公开:\n"
-        "    函数 读取() -> 整32 { 返回 自身.数值; }\n"
+        "    不安全 函数 读取() -> 整32 { 返回 自身.数值; }\n"
         "}\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    计数器 计数1 = 计数器();\n"
         "    变量 值 = 计数1.隐藏操作();\n"   // 类外访问默认私有成员 -> 报错
         "    返回 0;\n"
@@ -910,12 +910,12 @@ TEST(ModuleTest, VisibilityIntersectionPrivateClassNotImportable) {
         "私有:\n"
         "类 隐藏类 {\n"
         "    公开:\n"
-        "    函数 隐藏方法() -> 整32 { 返回 1; }\n"
+        "    不安全 函数 隐藏方法() -> 整32 { 返回 1; }\n"
         "}\n",
         "甲.cn", diags1));
     units.push_back(makeUnit(
         "导入 甲;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    隐藏类 实例 = 隐藏类();\n"  // 模块私有类整体不可见（交集=私有）
         "    返回 0;\n"
         "}\n",
@@ -932,11 +932,11 @@ TEST(ModuleTest, UseImportWildcardQualifiedCall) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 加法(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n",
+        "不安全 函数 加法(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::*;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 数学::加法(1, 2);\n"  // 限定调用（通配符导入放行）
         "    返回 0;\n"
         "}\n",
@@ -954,12 +954,12 @@ TEST(ModuleTest, UseImportRenameConflictLastWins) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n"
-        "函数 乘(整32 a, 整32 b) -> 整32 { 返回 a * b; }\n",
+        "不安全 函数 加(整32 a, 整32 b) -> 整32 { 返回 a + b; }\n"
+        "不安全 函数 乘(整32 a, 整32 b) -> 整32 { 返回 a * b; }\n",
         "数学.cn", diags1));
     units.push_back(makeUnit(
         "导入 数学::{加 作为 运算, 乘 作为 运算};\n"  // 同名别名：后者覆盖
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 运算(6, 7);\n"
         "    返回 0;\n"
         "}\n",
@@ -978,10 +978,10 @@ TEST(ModuleTest, SemanticQualifiedCallWithoutImportRegression) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
+        "不安全 函数 双倍(整32 n) -> 整32 { 返回 n * 2; }\n",
         "工具.cn", diags1));
     units.push_back(makeUnit(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 数值 = 工具::双倍(10);\n"     // 已加载模块：免导入放行（B）
         "    变量 坏值 = 缺失::双倍(10);\n"     // 从未加载的模块：报错
         "    返回 0;\n"
@@ -1004,11 +1004,11 @@ TEST(ModuleTest, SemanticModuleTreeReexportChain) {
     units.push_back(makeUnit(
         "公开:\n"
         "公开 导入 甲::连接;\n"   // 再导出声明（importPath=甲::连接）
-        "函数 连接() -> 整32 { 返回 42; }\n",
+        "不安全 函数 连接() -> 整32 { 返回 42; }\n",
         "甲.cn", diags1));
     units.push_back(makeUnit(
         "导入 甲::连接;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 甲::连接();\n"
         "    返回 0;\n"
         "}\n",
@@ -1028,12 +1028,12 @@ TEST(ModuleTest, CrateIsolateNoParamQualifiedCall) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 版本() -> 整64 { 返回 200; }\n"
-        "函数 价格(浮64 金额) -> 浮64 { 返回 金额; }\n",
+        "不安全 函数 版本() -> 整64 { 返回 200; }\n"
+        "不安全 函数 价格(浮64 金额) -> 浮64 { 返回 金额; }\n",
         "格式化.cn", diags1));
     units.push_back(makeUnit(
-        "函数 版本() -> 整64 { 返回 100; }\n"          // 主 模块同名（crate 隔离）
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 版本() -> 整64 { 返回 100; }\n"          // 主 模块同名（crate 隔离）
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 主版本 = 格式化::版本();\n"          // 免导入限定调用（呈报一B）
         "    变量 价 = 格式化::价格(1.5);\n"
         "    返回 0;\n"
@@ -1053,11 +1053,11 @@ TEST(ModuleTest, CrateIsolateCrossCrateLastSegmentFilter) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 版本() -> 整64 { 返回 200; }\n",          // 外部 crate：模块名=格式化
+        "不安全 函数 版本() -> 整64 { 返回 200; }\n",          // 外部 crate：模块名=格式化
         "格式化.cn", diags1));
     units.push_back(makeUnit(
         "导入 工具库::格式化::版本;\n"                  // 跨 crate 多级路径
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    变量 值 = 工具库::格式化::版本();\n"       // 限定调用末段=格式化
         "    返回 0;\n"
         "}\n",
@@ -1084,20 +1084,20 @@ TEST(ModuleTest, SemanticTypeConstCrossModuleIsolated) {
         "公开:\n"
         "常量 常量值 = 10;\n"
         "公开:\n"
-        "函数 甲值() -> 整64 { 返回 常量值; }\n"
+        "不安全 函数 甲值() -> 整64 { 返回 常量值; }\n"
         "公开:\n"
-        "函数 创建记录(整64 标识) -> 记录 { 返回 记录{ 标识 = 标识 }; }\n"
+        "不安全 函数 创建记录(整64 标识) -> 记录 { 返回 记录{ 标识 = 标识 }; }\n"
         "公开:\n"
-        "函数 读标识(记录 r) -> 整64 { 返回 r.标识; }\n",
+        "不安全 函数 读标识(记录 r) -> 整64 { 返回 r.标识; }\n",
         "甲.cn", diags1));
     units.push_back(makeUnit(
         "导入 甲;\n"
         "结构体 记录 { 字符串 名称; }\n"
         "常量 常量值 = 20;\n"
-        "函数 主值() -> 整64 { 返回 常量值; }\n"
-        "函数 创建记录(字符串 名称) -> 记录 { 返回 记录{ 名称 = 名称 }; }\n"
-        "函数 读名称(记录 r) -> 字符串 { 返回 字符串复制(r.名称); }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主值() -> 整64 { 返回 常量值; }\n"
+        "不安全 函数 创建记录(字符串 名称) -> 记录 { 返回 记录{ 名称 = 名称 }; }\n"
+        "不安全 函数 读名称(记录 r) -> 字符串 { 返回 字符串复制(r.名称); }\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    甲::记录 r = 甲::创建记录(42);\n"
         "    整64 标识 = 甲::读标识(r);\n"
         "    字符串 名称 = 读名称(创建记录(\"书\"));\n"
@@ -1119,16 +1119,16 @@ TEST(ModuleTest, BraceAliasCrossModuleResolvesBySourceModule) {
     Diagnostics diags1, diags2, diags3;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整64 值) -> 整64 { 返回 值 * 2; }\n",
+        "不安全 函数 双倍(整64 值) -> 整64 { 返回 值 * 2; }\n",
         "模块X.cn", diags1));
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 双倍(整64 值) -> 整64 { 返回 值 * 3; }\n",
+        "不安全 函数 双倍(整64 值) -> 整64 { 返回 值 * 3; }\n",
         "模块Y.cn", diags2));
     units.push_back(makeUnit(
         "导入 模块X::{双倍 作为 X双倍};\n"
         "导入 模块Y::{双倍 作为 Y双倍};\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    整64 a = X双倍(21);\n"
         "    整64 b = Y双倍(21);\n"
         "    返回 0;\n"
@@ -1145,12 +1145,12 @@ TEST(ModuleTest, BareCallPrefersCurrentModule) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 版本() -> 整64 { 返回 200; }\n",
+        "不安全 函数 版本() -> 整64 { 返回 200; }\n",
         "工具.cn", diags1));
     units.push_back(makeUnit(
         "导入 工具;\n"
-        "函数 版本() -> 整64 { 返回 100; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 版本() -> 整64 { 返回 100; }\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    整64 v = 版本();\n"
         "    返回 0;\n"
         "}\n",
@@ -1168,12 +1168,12 @@ TEST(ModuleTest, ImportConflictPathFormE0255) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 版本() -> 整64 { 返回 200; }\n",
+        "不安全 函数 版本() -> 整64 { 返回 200; }\n",
         "工具.cn", diags1));
     units.push_back(makeUnit(
         "导入 工具::版本;\n"
-        "函数 版本() -> 整64 { 返回 100; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 版本() -> 整64 { 返回 100; }\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    整64 v = 版本();\n"
         "    返回 0;\n"
         "}\n",
@@ -1189,12 +1189,12 @@ TEST(ModuleTest, ImportConflictBraceFormE0255) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 价格(整64 金额) -> 整64 { 返回 金额; }\n",
+        "不安全 函数 价格(整64 金额) -> 整64 { 返回 金额; }\n",
         "工具.cn", diags1));
     units.push_back(makeUnit(
         "导入 工具::{价格};\n"
-        "函数 价格(整64 金额) -> 整64 { 返回 金额 + 1; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 价格(整64 金额) -> 整64 { 返回 金额 + 1; }\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    整64 v = 价格(10);\n"
         "    返回 0;\n"
         "}\n",
@@ -1211,8 +1211,8 @@ TEST(ModuleTest, ImportSelfImportNoConflict) {
     Diagnostics diags1;
     units.push_back(makeUnit(
         "导入 主::版本;\n"
-        "函数 版本() -> 整64 { 返回 100; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 版本() -> 整64 { 返回 100; }\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    整64 v = 主::版本();\n"
         "    返回 0;\n"
         "}\n",
@@ -1228,16 +1228,16 @@ TEST(ModuleTest, ImportDoubleExplicitSameNameE0255) {
     Diagnostics diags1, diags2, diags3;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 版本() -> 整64 { 返回 200; }\n",
+        "不安全 函数 版本() -> 整64 { 返回 200; }\n",
         "工具.cn", diags1));
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 版本() -> 整64 { 返回 300; }\n",
+        "不安全 函数 版本() -> 整64 { 返回 300; }\n",
         "组件.cn", diags2));
     units.push_back(makeUnit(
         "导入 工具::版本;\n"
         "导入 组件::版本;\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    整64 v = 版本();\n"
         "    返回 0;\n"
         "}\n",
@@ -1272,13 +1272,13 @@ TEST(ModuleTest, LinkKeyDependencyEntrySameSigPureCall) {
     Diagnostics diags1, diags2;
     units.push_back(makeUnit(
         "公开:\n"
-        "函数 版本() -> 整64 { 返回 200; }\n"
-        "函数 双倍(整64 n) -> 整64 { 返回 n * 10; }\n",
+        "不安全 函数 版本() -> 整64 { 返回 200; }\n"
+        "不安全 函数 双倍(整64 n) -> 整64 { 返回 n * 10; }\n",
         "工具库.cn", diags1));
     units.push_back(makeUnit(
         "导入 工具库;\n"
-        "函数 版本() -> 整64 { 返回 100; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 版本() -> 整64 { 返回 100; }\n"
+        "不安全 函数 主() -> 整32 {\n"
         "    整64 v = 版本();\n"           // ① 本模块优先（A′ 锚定行）
         "    整64 w = 工具库::版本();\n"   // 限定调用恒明确
         "    整64 d = 双倍(5);\n"          // ③ glob 纯名直调

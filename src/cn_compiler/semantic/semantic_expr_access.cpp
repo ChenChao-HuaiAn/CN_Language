@@ -27,7 +27,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   警告（排除字符串语义=字符串视图；赋值场景的写面由 B7/A2 族承担）。
     if (node->isDerefAccess && assignmentTargetDepth_ == 0 &&
         !isStringSemanticType(objectType)) {
-        warnUnsafeBoundary(node->location, "指针成员访问", "指针成员访问（p.字段）");
+        reportUnsafeBoundary(node->location, "指针成员访问", "指针成员访问（p.字段）");
     }
     // plans/019 阶段4（2026-09-10）：安全区边界观察期——联合体字段访问（共享
     //   内存无 tag=类型安全结构性缺口，Rust union 同为 unsafe-only）应在
@@ -39,7 +39,7 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         if (!probeType.empty()) {
             const StructDecl* sd = findStruct(types::canonical(probeType));
             if (sd != nullptr && sd->isUnion) {
-                warnUnsafeBoundary(node->location, "联合体字段访问",
+                reportUnsafeBoundary(node->location, "联合体字段访问",
                                    probeType + "." + memberName);
             }
         }
@@ -303,7 +303,7 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         //   target case 的 A2「指针下标写」报（assignmentTargetDepth_>0 抑制本处）；
         //   排除字符串语义（字符串/字符*=字符串视图）。
         if (assignmentTargetDepth_ == 0 && !isStringSemanticType(objectType)) {
-            warnUnsafeBoundary(node->location, "指针下标读", "指针下标（p[i]）");
+            reportUnsafeBoundary(node->location, "指针下标读", "指针下标（p[i]）");
         }
         return;
     }

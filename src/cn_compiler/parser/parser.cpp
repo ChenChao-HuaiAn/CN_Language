@@ -724,6 +724,10 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             func->isUnsafe = true;
             func->access = moduleAccess;
             program->declarations.push_back(std::move(func));
+            // 157-a 缺陷修复：原型后可选分号消费（与 函数 分支 748 行同款）——
+            //   修复前 `不安全 函数 原型(...);` 的分号残留致顶层解析错位
+            //   （「预期顶层声明，实际为 ';'」；09_integration 原型迁移实证）。
+            match(TokenType::Semicolon);
             continue;
         }
         // C-3（2026-08）FFI 最小集：外部 函数 名(参数) -> 类型 ——

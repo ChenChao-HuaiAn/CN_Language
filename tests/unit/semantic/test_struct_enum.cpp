@@ -53,7 +53,7 @@ SemanticResult analyzeSource(const std::string& source) {
 TEST(StructSemanticTest, LayoutBasic) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; 整32 y; }\n"
-        "函数 主() -> 整32 { 返回 0; }\n");
+        "不安全 函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     ASSERT_EQ(r.program->structs.size(), 1u);
     const auto& decl = r.program->structs[0];
@@ -68,7 +68,7 @@ TEST(StructSemanticTest, LayoutBasic) {
 TEST(StructSemanticTest, LayoutMixedAlign) {
     SemanticResult r = analyzeSource(
         "结构体 混合 { 整8 a; 整64 b; }\n"
-        "函数 主() -> 整32 { 返回 0; }\n");
+        "不安全 函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     const auto& decl = r.program->structs[0];
     // 整8 a 在偏移0；整64 b 对齐到8 → 偏移8；总大小16（对齐8）
@@ -82,7 +82,7 @@ TEST(StructSemanticTest, LayoutMixedAlign) {
 TEST(StructSemanticTest, UnionLayout) {
     SemanticResult r = analyzeSource(
         "联合体 数值 { 整32 整数部分; 浮64 浮点部分; }\n"
-        "函数 主() -> 整32 { 返回 0; }\n");
+        "不安全 函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     const auto& decl = r.program->structs[0];
     EXPECT_TRUE(decl->isUnion);
@@ -96,7 +96,7 @@ TEST(StructSemanticTest, UnionLayout) {
 TEST(StructSemanticTest, FieldAccessValidAndInvalid) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; 整32 y; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1, y = 2 };\n"
         "  整32 a = p.x;\n"
         "  整32 b = p.z;\n"
@@ -110,7 +110,7 @@ TEST(StructSemanticTest, FieldAccessValidAndInvalid) {
 TEST(StructSemanticTest, ArrowFieldAccess) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; 整32 y; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1, y = 2 };\n"
         "  点* ptr = &p;\n"
         "  整32 a = ptr.x;\n"
@@ -122,7 +122,7 @@ TEST(StructSemanticTest, ArrowFieldAccess) {
 // 经指针访问：非结构体指针报错（整32* . 字段）
 TEST(StructSemanticTest, ArrowOnNonStruct) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32* p = 无;\n"
         "  整32 a = p.字段;\n"
         "  返回 0;\n"
@@ -134,7 +134,7 @@ TEST(StructSemanticTest, ArrowOnNonStruct) {
 // . 访问：非结构体类型（整32.字段）报错
 TEST(StructSemanticTest, DotOnNonStruct) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 n = 10;\n"
         "  整32 a = n.字段;\n"
         "  返回 0;\n"
@@ -147,7 +147,7 @@ TEST(StructSemanticTest, EnumValues) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿, 蓝, 自定义 = 100, 之后 }\n"
         "枚举 方向 { 上 = -1, 中, 下 }\n"
-        "函数 主() -> 整32 { 返回 0; }\n");
+        "不安全 函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_TRUE(r.ok) << r.messages;
     ASSERT_EQ(r.program->enums.size(), 2u);
     const auto& colors = r.program->enums[0];
@@ -166,7 +166,7 @@ TEST(StructSemanticTest, EnumValues) {
 TEST(StructSemanticTest, EnumUse) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  颜色 c = 颜色.绿;\n"
         "  整32 v = 颜色.蓝;\n"
         "  返回 0;\n"
@@ -178,7 +178,7 @@ TEST(StructSemanticTest, EnumUse) {
 TEST(StructSemanticTest, EnumMemberNotFound) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿 }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 v = 颜色.紫;\n"
         "  返回 0;\n"
         "}\n");
@@ -190,7 +190,7 @@ TEST(StructSemanticTest, EnumMemberNotFound) {
 TEST(StructSemanticTest, EnumInSwitch) {
     SemanticResult r = analyzeSource(
         "枚举 颜色 { 红, 绿, 蓝 }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  颜色 c = 颜色.绿;\n"
         "  选择 (c) {\n"
         "    情况 颜色.红:\n"
@@ -209,7 +209,7 @@ TEST(StructSemanticTest, EnumInSwitch) {
 TEST(StructSemanticTest, StructInitTypeMismatch) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p = 点{ x = 1.5 };\n"
         "  返回 0;\n"
         "}\n");
@@ -221,7 +221,7 @@ TEST(StructSemanticTest, StructInitTypeMismatch) {
 TEST(StructSemanticTest, StructInitUnknownField) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p = 点{ 不存在 = 1 };\n"
         "  返回 0;\n"
         "}\n");
@@ -234,7 +234,7 @@ TEST(StructSemanticTest, NestedStructInit) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; 整32 y; }\n"
         "结构体 矩形 { 点 左上 点 右下; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  矩形 r = 矩形{ 左上 = 点{ x = 1, y = 2 }, 右下 = 点{ x = 3, y = 4 } };\n"
         "  整32 a = r.左上.x;\n"
         "  返回 0;\n"
@@ -246,7 +246,7 @@ TEST(StructSemanticTest, NestedStructInit) {
 TEST(StructSemanticTest, SelfReference) {
     SemanticResult r = analyzeSource(
         "结构体 节点 { 节点 下一个; }\n"
-        "函数 主() -> 整32 { 返回 0; }\n");
+        "不安全 函数 主() -> 整32 { 返回 0; }\n");
     // 布局计算防无限递归（layoutComputed 提前标记），不崩溃；字段为不完整类型
     // 语义层允许（C++ 同款：不完整类型字段），此处验证不崩溃且可通过
     EXPECT_TRUE(r.ok) << r.messages;
@@ -257,7 +257,7 @@ TEST(StructSemanticTest, DuplicateTypeName) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; }\n"
         "结构体 点 { 整32 y; }\n"
-        "函数 主() -> 整32 { 返回 0; }\n");
+        "不安全 函数 主() -> 整32 { 返回 0; }\n");
     EXPECT_FALSE(r.ok);
     EXPECT_NE(r.messages.find("重复声明类型"), std::string::npos);
 }
@@ -266,7 +266,7 @@ TEST(StructSemanticTest, DuplicateTypeName) {
 TEST(StructSemanticTest, UnionFieldAccess) {
     SemanticResult r = analyzeSource(
         "联合体 数值 { 整32 整数部分; 浮64 浮点部分; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  数值 u = 数值{ 整数部分 = 42 };\n"
         "  整32 v = u.整数部分;\n"
         "  浮64 f = u.浮点部分;\n"
@@ -279,7 +279,7 @@ TEST(StructSemanticTest, UnionFieldAccess) {
 TEST(StructSemanticTest, StructVarNoInit) {
     SemanticResult r = analyzeSource(
         "结构体 点 { 整32 x; }\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  点 p;\n"
         "  返回 0;\n"
         "}\n");

@@ -57,7 +57,7 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     if (!拼接加 &&
         (node->op == Operator::Add || node->op == Operator::Subtract) &&
         (types::isPointer(leftType) || types::isPointer(rightType))) {
-        warnUnsafeBoundary(node->location, "指针算术",
+        reportUnsafeBoundary(node->location, "指针算术",
                            "指针 +/- 整数");
     }
     if ((isComparisonOp(node->op) || isArithmeticOp(node->op) || isBitwiseOp(node->op)) &&
@@ -355,7 +355,7 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
                         "编译期常量空指针解引用（确定性错误；plans/023 B11）");
                 } else if (assignmentTargetDepth_ == 0 &&
                            !isStringSemanticType(operandType)) {
-                    warnUnsafeBoundary(node->location, "裸指针解引用读",
+                    reportUnsafeBoundary(node->location, "裸指针解引用读",
                                        "指针解引用（*p）");
                 }
             } else {
@@ -582,7 +582,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             // 150-a（plans/023 B10 实施）：可变静态变量写观察期警告（读安全——
             //   plans/023 §四 B10：Rust static mut 对照的 CN 裁剪）
             if (isGlobalStatic(ident->name)) {
-                warnUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
+                reportUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
             }
             std::string varType;
             if (lookupVar(ident->name, varType)) {
@@ -626,7 +626,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                     std::string iot;
                     if (lookupVar(static_cast<const IdentifierExpr*>(iobj)->name, iot) &&
                         types::isPointer(iot)) {
-                        warnUnsafeBoundary(node->location, "指针下标写",
+                        reportUnsafeBoundary(node->location, "指针下标写",
                             static_cast<const IdentifierExpr*>(iobj)->name + "[i] = ...");
                     }
                 }
@@ -671,7 +671,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                     //   注：targetType=所指元素类型——用操作数（指针）类型判定语义族。
                     const std::string uPtr = checkExpr(u->operand.get());
                     if (!isStringSemanticType(uPtr)) {
-                        warnUnsafeBoundary(node->location, "裸指针解引用写",
+                        reportUnsafeBoundary(node->location, "裸指针解引用写",
                                            "指针解引用写（*p = x）");
                     }
                 }

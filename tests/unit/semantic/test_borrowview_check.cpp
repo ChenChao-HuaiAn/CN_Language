@@ -56,13 +56,13 @@ const char* k向量定义 = R"CN(泛型 <类型 T>
 私有:
     T* 数据;
 公开:
-    函数 向量() { 数据 = 无; }
-    函数 元素(整64 位置) -> T { 返回 数据[位置]; }
-    函数 读取(整64 位置) -> 结果<T, 整32> { 返回 正常(数据[位置]); }
-    函数 追加(T 值) -> 结果<空类型, 整32> { 返回 正常(); }
-    函数 设置(整64 位置, T 值) -> 结果<空类型, 整32> { 返回 正常(); }
-    函数 删除(整64 位置) -> 结果<空类型, 整32> { 返回 正常(); }
-    函数 清空() { }
+    不安全 函数 向量() { 数据 = 无; }
+    不安全 函数 元素(整64 位置) -> T { 返回 数据[位置]; }
+    不安全 函数 读取(整64 位置) -> 结果<T, 整32> { 返回 正常(数据[位置]); }
+    不安全 函数 追加(T 值) -> 结果<空类型, 整32> { 返回 正常(); }
+    不安全 函数 设置(整64 位置, T 值) -> 结果<空类型, 整32> { 返回 正常(); }
+    不安全 函数 删除(整64 位置) -> 结果<空类型, 整32> { 返回 正常(); }
+    不安全 函数 清空() { }
 }
 )CN";
 
@@ -72,9 +72,9 @@ const char* k映射定义 = R"CN(泛型 <类型 K, 类型 V>
 私有:
     V* 值表;
 公开:
-    函数 映射() { 值表 = 无; }
-    函数 获取(K 键) -> 结果<V, 整32> { 返回 正常(值表[0]); }
-    函数 删除(K 键) -> 布尔 { 返回 真; }
+    不安全 函数 映射() { 值表 = 无; }
+    不安全 函数 获取(K 键) -> 结果<V, 整32> { 返回 正常(值表[0]); }
+    不安全 函数 删除(K 键) -> 布尔 { 返回 真; }
 }
 )CN";
 
@@ -84,7 +84,7 @@ const char* k映射定义 = R"CN(泛型 <类型 K, 类型 V>
 
 // 主形态：向量元素借出 × 删除 × 后用
 TEST(BorrowViewCheckTest, RejectElemAfterRemove) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 坏() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     结果<空类型, 整32> 删 = 表.删除(0);
@@ -98,7 +98,7 @@ TEST(BorrowViewCheckTest, RejectElemAfterRemove) {
 
 // 结果形态：向量读取 × 设置覆盖 × 后用（结果.值 是借出句柄）
 TEST(BorrowViewCheckTest, RejectReadResultAfterOverwrite) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 坏() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     结果<字符串, 整32> 读 = 表.读取(0);
     结果<空类型, 整32> 设 = 表.设置(0, 字符串复制("新值"));
@@ -114,7 +114,7 @@ TEST(BorrowViewCheckTest, RejectReadResultAfterOverwrite) {
 
 // 映射值侧借出 × 删除 × 后用
 TEST(BorrowViewCheckTest, RejectMapGetAfterRemove) {
-    auto r = analyzeSource(std::string(k映射定义) + R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(std::string(k映射定义) + R"CN(不安全 函数 坏() -> 整32 {
     映射<整64, 字符串> 表 = 映射<整64, 字符串>();
     结果<字符串, 整32> 取 = 表.获取(1);
     布尔 删 = 表.删除(1);
@@ -129,7 +129,7 @@ TEST(BorrowViewCheckTest, RejectMapGetAfterRemove) {
 
 // 赋值位绑定形态：s 先声明、后借出（活跃区间从赋值点起算）
 TEST(BorrowViewCheckTest, RejectAssignFormBinding) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 坏() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = "";
     借出 = 表.元素(0);
@@ -144,7 +144,7 @@ TEST(BorrowViewCheckTest, RejectAssignFormBinding) {
 
 // 块内容器 → 借出赋给块外变量 → 块外使用
 TEST(BorrowViewCheckTest, RejectContainerDiesBeforeUse) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 坏() -> 整32 {
     字符串 借出 = "";
     如果 (1 == 1) {
         向量<字符串> 表 = 向量<字符串>();
@@ -160,7 +160,7 @@ TEST(BorrowViewCheckTest, RejectContainerDiesBeforeUse) {
 
 // 立即消费（借出不绑定）——修改点在后也不报
 TEST(BorrowViewCheckTest, AllowImmediateConsume) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     如果 (字符串比较(表.元素(0), "甲")) { 返回 1; }
     结果<空类型, 整32> 删 = 表.删除(0);
@@ -171,7 +171,7 @@ TEST(BorrowViewCheckTest, AllowImmediateConsume) {
 
 // 显式 字符串复制 取拥有副本后容器修改（副本独立于容器）
 TEST(BorrowViewCheckTest, AllowExplicitCopy) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 副本 = 字符串复制(表.元素(0));
     结果<空类型, 整32> 删 = 表.删除(0);
@@ -182,7 +182,7 @@ TEST(BorrowViewCheckTest, AllowExplicitCopy) {
 
 // 借出 → 消费 → 容器修改（NLL 活跃区间已结束）
 TEST(BorrowViewCheckTest, AllowUseThenRemove) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     整32 长度 = 整32(字符串长度(借出));
@@ -194,7 +194,7 @@ TEST(BorrowViewCheckTest, AllowUseThenRemove) {
 
 // 借出后容器修改但不再使用借出
 TEST(BorrowViewCheckTest, AllowRemoveWithoutLaterUse) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     结果<空类型, 整32> 删 = 表.删除(0);
@@ -205,7 +205,7 @@ TEST(BorrowViewCheckTest, AllowRemoveWithoutLaterUse) {
 
 // 非字符串元素容器：元素()=值语义深拷贝，非借用面
 TEST(BorrowViewCheckTest, AllowNumericElemContainer) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<整64> 表 = 向量<整64>();
     整64 借出值 = 表.元素(0);
     结果<空类型, 整32> 删 = 表.删除(0);
@@ -216,7 +216,7 @@ TEST(BorrowViewCheckTest, AllowNumericElemContainer) {
 
 // 扩容类修改点（追加）不在失效面：字符串句柄指向独立堆块，槽位搬移不失效
 TEST(BorrowViewCheckTest, AllowAppendAfterBorrow) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     结果<空类型, 整32> 增 = 表.追加(字符串复制("填充"));
@@ -227,7 +227,7 @@ TEST(BorrowViewCheckTest, AllowAppendAfterBorrow) {
 
 // 循环内每轮重新借出（每轮消费后再修改——下一轮重建借出，NLL 正确）
 TEST(BorrowViewCheckTest, AllowRebindEachIteration) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     整64 i = 0;
     当 (i < 3) {
@@ -244,7 +244,7 @@ TEST(BorrowViewCheckTest, AllowRebindEachIteration) {
 // 非字符串元素容器的 清空 不入面（向量 清空=仅计数归零不释放）；
 //   且字符串容器的 追加（扩容）不入面——防「过度拦截」回归
 TEST(BorrowViewCheckTest, AllowVectorClearOnStringElem) {
-    auto r = analyzeSource(std::string(k向量定义) + R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(std::string(k向量定义) + R"CN(不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     表.清空();
@@ -259,7 +259,7 @@ TEST(BorrowViewCheckTest, AllowVectorClearOnStringElem) {
 const char* k货架类定义 = R"CN(类 货架 {
 公开:
     向量<字符串> 表;
-    函数 货架() {
+    不安全 函数 货架() {
         表 = 向量<字符串>();
     }
 }
@@ -268,7 +268,7 @@ const char* k货架类定义 = R"CN(类 货架 {
 // 负形态：成员链接收者（架.表.元素(0) × 架.表.删除(0)）——容器引用键=架.表
 TEST(BorrowViewCheckTest, RejectMemberChainBorrow) {
     auto r = analyzeSource(std::string(k向量定义) + std::string(k货架类定义) +
-        R"CN(函数 坏() -> 整32 {
+        R"CN(不安全 函数 坏() -> 整32 {
     货架 架 = 货架();
     字符串 借出 = 架.表.元素(0);
     结果<空类型, 整32> 删 = 架.表.删除(0);
@@ -282,12 +282,12 @@ TEST(BorrowViewCheckTest, RejectMemberChainBorrow) {
 // 负形态：调用点同源互斥（容器与其借出视图同时作实参传入）
 TEST(BorrowViewCheckTest, RejectContainerAndViewAsArgs) {
     auto r = analyzeSource(std::string(k向量定义) + R"CN(
-函数 帮忙(向量<字符串> 表, 字符串 视图) -> 整32 {
+不安全 函数 帮忙(向量<字符串> 表, 字符串 视图) -> 整32 {
     结果<空类型, 整32> 删 = 表.删除(0);
     如果 (!删.正常) { 返回 0; }
     返回 整32(字符串长度(视图));
 }
-函数 坏() -> 整32 {
+不安全 函数 坏() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     返回 帮忙(表, 借出);
@@ -299,10 +299,10 @@ TEST(BorrowViewCheckTest, RejectContainerAndViewAsArgs) {
 // 正形态：借出视图单独作实参（容器不在同调用中——不误报）
 TEST(BorrowViewCheckTest, AllowViewArgAlone) {
     auto r = analyzeSource(std::string(k向量定义) + R"CN(
-函数 量(字符串 值) -> 整32 {
+不安全 函数 量(字符串 值) -> 整32 {
     返回 整32(字符串长度(值));
 }
-函数 好() -> 整32 {
+不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     整32 长度 = 量(借出);
@@ -315,10 +315,10 @@ TEST(BorrowViewCheckTest, AllowViewArgAlone) {
 // 正形态：容器与无关字符串同调用（非同源——不误报）
 TEST(BorrowViewCheckTest, AllowContainerWithUnrelatedArg) {
     auto r = analyzeSource(std::string(k向量定义) + R"CN(
-函数 两长(字符串 甲, 字符串 乙) -> 整32 {
+不安全 函数 两长(字符串 甲, 字符串 乙) -> 整32 {
     返回 整32(字符串长度(甲) + 字符串长度(乙));
 }
-函数 好() -> 整32 {
+不安全 函数 好() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     字符串 借出 = 表.元素(0);
     字符串 无关 = 字符串复制("无关内容甲乙丙丁戊己庚辛壬癸");

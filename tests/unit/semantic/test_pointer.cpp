@@ -115,7 +115,7 @@ TEST(PointerSemanticTest, PointerStrict) {
 // 指针声明/取地址/解引用全链路
 TEST(PointerSemanticTest, PointerFullChain) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 x = 42;\n"
         "  整32* p = &x;\n"
         "  整32 y = *p;\n"
@@ -127,7 +127,7 @@ TEST(PointerSemanticTest, PointerFullChain) {
 // 指针算术：p + 1 结果仍为指针；p - 1；指针自增
 TEST(PointerSemanticTest, PointerArith) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32[3] 数据 = { 1, 2, 3 };\n"
         "  整32* p = &数据[0];\n"
         "  整32* q = p + 1;\n"
@@ -142,7 +142,7 @@ TEST(PointerSemanticTest, PointerArith) {
 // 数组下标读写 + 变量下标
 TEST(PointerSemanticTest, ArrayIndex) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32[5] 数据 = { 1, 2, 3, 4, 5 };\n"
         "  整32 i = 2;\n"
         "  整32 v = 数据[i];\n"
@@ -155,7 +155,7 @@ TEST(PointerSemanticTest, ArrayIndex) {
 // 数组初始化列表：元素类型不匹配报错
 TEST(PointerSemanticTest, InitListTypeMismatch) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32[3] 数据 = { 1, 2.5, 3 };\n"
         "  返回 0;\n"
         "}\n");
@@ -165,7 +165,7 @@ TEST(PointerSemanticTest, InitListTypeMismatch) {
 // 数组初始化超长报错
 TEST(PointerSemanticTest, InitListTooLong) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32[2] 数据 = { 1, 2, 3 };\n"
         "  返回 0;\n"
         "}\n");
@@ -175,7 +175,7 @@ TEST(PointerSemanticTest, InitListTooLong) {
 // 空指针：无 赋给指针、与指针比较
 TEST(PointerSemanticTest, NullPointer) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32* p = 无;\n"
         "  如果 (p == 无) {\n"
         "    整32 x = 1;\n"
@@ -188,7 +188,7 @@ TEST(PointerSemanticTest, NullPointer) {
 // 空类型* 双向转换赋值
 TEST(PointerSemanticTest, VoidPtrAssign) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32* p = 无;\n"
         "  空类型* vp = p;\n"
         "  整32* q = vp;\n"
@@ -200,7 +200,7 @@ TEST(PointerSemanticTest, VoidPtrAssign) {
 // 数组名退化：整32[5] 变量赋给 整32*
 TEST(PointerSemanticTest, ArrayDecaySemantic) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32[5] 数据 = { 1, 2, 3, 4, 5 };\n"
         "  整32* p = 数据;\n"
         "  返回 0;\n"
@@ -211,7 +211,7 @@ TEST(PointerSemanticTest, ArrayDecaySemantic) {
 // 解引用非指针报错
 TEST(PointerSemanticTest, DerefNonPointer) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 x = 42;\n"
         "  整32 y = *x;\n"
         "  返回 0;\n"
@@ -222,7 +222,7 @@ TEST(PointerSemanticTest, DerefNonPointer) {
 // 取地址非常量左值报错（&(x + 1)）
 TEST(PointerSemanticTest, AddressOfNonLvalue) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 x = 1;\n"
         "  整32 y = 2;\n"
         "  整32* p = &(x + y);\n"
@@ -234,7 +234,7 @@ TEST(PointerSemanticTest, AddressOfNonLvalue) {
 // 指针与整数比较报错（规格书3.7：指针与整数禁止隐式转换）
 TEST(PointerSemanticTest, PointerIntCompare) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32* p = 无;\n"
         "  如果 p == 1 {\n"
         "  }\n"
@@ -246,7 +246,7 @@ TEST(PointerSemanticTest, PointerIntCompare) {
 // 下标对象非数组/指针报错
 TEST(PointerSemanticTest, IndexNonArray) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32 x = 5;\n"
         "  整32 y = x[0];\n"
         "  返回 0;\n"
@@ -257,7 +257,7 @@ TEST(PointerSemanticTest, IndexNonArray) {
 // 下标非整型报错
 TEST(PointerSemanticTest, IndexNonInteger) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32[3] 数据 = { 1, 2, 3 };\n"
         "  浮64 f = 1.5;\n"
         "  整32 y = 数据[f];\n"
@@ -269,7 +269,7 @@ TEST(PointerSemanticTest, IndexNonInteger) {
 // -> 成员访问：非结构体指针报错（Task 2.7 结构体语义接通后，整32* -> 字段 报类型错误）
 TEST(PointerSemanticTest, ArrowOnNonStructPointer) {
     SemanticResult r = analyzeSource(
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32* p = 无;\n"
         "  整32 y = p->字段;\n"
         "  返回 0;\n"
@@ -281,10 +281,10 @@ TEST(PointerSemanticTest, ArrowOnNonStructPointer) {
 // 指针返回类型与参数
 TEST(PointerSemanticTest, PointerParamReturn) {
     SemanticResult r = analyzeSource(
-        "函数 取首元素(整32* p) -> 整32 {\n"
+        "不安全 函数 取首元素(整32* p) -> 整32 {\n"
         "  返回 *p;\n"
         "}\n"
-        "函数 主() -> 整32 {\n"
+        "不安全 函数 主() -> 整32 {\n"
         "  整32[3] 数据 = { 1, 2, 3 };\n"
         "  整32 v = 取首元素(&数据[0]);\n"
         "  返回 0;\n"

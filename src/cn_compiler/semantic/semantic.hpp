@@ -476,10 +476,11 @@ private:
     void checkConstRefBorrowDiscipline(class CallExpr* node,
                                        const std::vector<std::string>& paramTypes,
                                        const std::vector<bool>& constParams);
-    // plans/019 阶段4（2026-09-10）：安全区边界观察期警告——安全函数（非
-    //   不安全）内出现越界操作时发警告（收口后变错误）。kind：指针算术/指针
-    //   下标写/联合体访问/外部函数调用/裸释放。
-    void warnUnsafeBoundary(const SourceLocation& loc, const std::string& kind,
+    // plans/019 阶段4（2026-09-10 立）/ plans/023 §6.5（2026-09-17 157-a 收口）：
+    //   安全区边界硬错误——安全函数（非 不安全）内出现越界操作=编译错误
+    //   （Rust E0133 同构；观察期结束）。kind：指针算术/指针下标写/联合体访问/
+    //   外部函数调用/裸释放。
+    void reportUnsafeBoundary(const SourceLocation& loc, const std::string& kind,
                             const std::string& detail);
     // plans/019 阶段2（2026-09-10）：表达式是否求值为「当前函数局部的地址」——
     //   ①取地址 &局部（AddressOf 一元，基础名经 refReturnLvalueBase 解剖）

@@ -1,7 +1,9 @@
-// plans/019 阶段4（2026-09-10）：不安全 函数 修饰+安全区边界观察期 单元测试
-// 覆盖：安全函数内五类越界操作各发警告（观察期=不阻断：errorCount==0 且
-//       warningCount 增加）；不安全函数内同操作零警告；警告消息子串锚定。
-// 收口后（分批）本测试的观察期断言将随方案升级为错误断言。
+// plans/019 阶段4（2026-09-10 立）/ plans/023 §6.5（2026-09-17 157-a 收口）：
+//   不安全 函数 修饰+安全区边界 单元测试
+// 覆盖：安全函数内越界操作=编译硬错误（errorCount 增加、warningCount 归零；
+//       Rust E0133 同构）；不安全函数内同操作零诊断；错误消息子串锚定。
+// 历史：观察期版本（2026-09-10~2026-09-17）断言 errorCount==0 且警告——收口轮
+//       随语义变更升级为错误断言（本文件头原注已预告「收口后升级」）。
 #include <gtest/gtest.h>
 #include <memory>
 #include <string>
@@ -39,17 +41,17 @@ UnsafeResult analyzeSource(const std::string& source) {
 }
 }  // namespace
 
-// 安全函数内指针算术：警告不报错（观察期）
-TEST(UnsafeBoundaryTest, WarnPointerArithmeticInSafeFn) {
+// 安全函数内指针算术：编译期硬错误（157-a 收口——观察期结束）
+TEST(UnsafeBoundaryTest, ErrorPointerArithmeticInSafeFn) {
     auto r = analyzeSource(R"CN(函数 主() -> 整32 {
     整64 x = 5;
     整64* p = &x;
     整64* q = p + 1;
     返回 0;
 })CN");
-    EXPECT_EQ(r.errorCount, 0);
-    EXPECT_GE(r.warningCount, 1);
-    EXPECT_NE(r.messages.find("[安全区边界·观察期] 指针算术"), std::string::npos);
+    EXPECT_GE(r.errorCount, 1);
+    EXPECT_EQ(r.warningCount, 0);
+    EXPECT_NE(r.messages.find("[安全区边界] 指针算术"), std::string::npos);
 }
 
 // 不安全函数内指针算术：零警告
@@ -62,8 +64,8 @@ TEST(UnsafeBoundaryTest, NoWarnInUnsafeFn) {
     EXPECT_EQ(r.warningCount, 0) << r.messages;
 }
 
-// 安全函数内联合体访问：警告
-TEST(UnsafeBoundaryTest, WarnUnionAccessInSafeFn) {
+// 安全函数内联合体访问：编译期硬错误（157-a 收口）
+TEST(UnsafeBoundaryTest, ErrorUnionAccessInSafeFn) {
     auto r = analyzeSource(R"CN(联合体 数值 {
     整32 甲;
     浮64 乙;
@@ -73,21 +75,21 @@ TEST(UnsafeBoundaryTest, WarnUnionAccessInSafeFn) {
     u.甲 = 3;
     返回 u.甲;
 })CN");
-    EXPECT_EQ(r.errorCount, 0);
-    EXPECT_GE(r.warningCount, 1);
-    EXPECT_NE(r.messages.find("联合体字段访问"), std::string::npos);
+    EXPECT_GE(r.errorCount, 1);
+    EXPECT_EQ(r.warningCount, 0);
+    EXPECT_NE(r.messages.find("[安全区边界] 联合体字段访问"), std::string::npos);
 }
 
-// 安全函数内裸释放：警告
-TEST(UnsafeBoundaryTest, WarnBareFreeInSafeFn) {
+// 安全函数内裸释放：编译期硬错误（157-a 收口）
+TEST(UnsafeBoundaryTest, ErrorBareFreeInSafeFn) {
     auto r = analyzeSource(R"CN(函数 主() -> 整32 {
     整64* p = 分配(8);
     释放(p);
     返回 0;
 })CN");
-    EXPECT_EQ(r.errorCount, 0);
-    EXPECT_GE(r.warningCount, 1);
-    EXPECT_NE(r.messages.find("裸释放"), std::string::npos);
+    EXPECT_GE(r.errorCount, 1);
+    EXPECT_EQ(r.warningCount, 0);
+    EXPECT_NE(r.messages.find("[安全区边界] 裸释放"), std::string::npos);
 }
 
 // 不安全函数内联合体+释放：零警告（多形态豁免）
@@ -143,14 +145,14 @@ TEST(UnsafeBoundaryTest, NoWarnStringConcatInSafeFn) {
 }
 
 // 波 1 边界：字符* 的减法按指针步进分派（语义层既有行为）——仍属指针算术，
-//   安全函数内警告保留（修复只排除 + 拼接，不豁免真指针算术）。
-TEST(UnsafeBoundaryTest, WarnCharPtrSubtractInSafeFn) {
+//   安全函数内=硬错误保留（修复只排除 + 拼接，不豁免真指针算术；157-a 收口）。
+TEST(UnsafeBoundaryTest, ErrorCharPtrSubtractInSafeFn) {
     auto r = analyzeSource(R"CN(函数 主() -> 整32 {
     字符* p = "甲";
     字符* q = p - 1;
     返回 0;
 })CN");
-    EXPECT_EQ(r.errorCount, 0);
-    EXPECT_GE(r.warningCount, 1);
-    EXPECT_NE(r.messages.find("[安全区边界·观察期] 指针算术"), std::string::npos);
+    EXPECT_GE(r.errorCount, 1);
+    EXPECT_EQ(r.warningCount, 0);
+    EXPECT_NE(r.messages.find("[安全区边界] 指针算术"), std::string::npos);
 }

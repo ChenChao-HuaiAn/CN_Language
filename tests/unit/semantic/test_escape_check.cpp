@@ -52,7 +52,7 @@ EscapeResult analyzeSource(const std::string& source) {
 // 静态变量持局部地址
 TEST(EscapeCheckTest, RejectStaticHoldsLocalAddress) {
     auto r = analyzeSource(R"CN(静态 整64* 槽 = 无;
-函数 坏() -> 整32 {
+不安全 函数 坏() -> 整32 {
     整64 x = 5;
     槽 = &x;
     返回 0;
@@ -67,7 +67,7 @@ TEST(EscapeCheckTest, RejectStaticHoldsLocalAddress) {
 TEST(EscapeCheckTest, RejectStaticPointerMemberHoldsLocal) {
     auto r = analyzeSource(R"CN(结构体 节点 { 整64* 下一个; }
 静态 节点* 头 = 无;
-函数 坏() -> 整32 {
+不安全 函数 坏() -> 整32 {
     整64 x = 5;
     头.下一个 = &x;
     返回 0;
@@ -80,7 +80,7 @@ TEST(EscapeCheckTest, RejectStaticPointerMemberHoldsLocal) {
 
 // 指针返回直接 &局部
 TEST(EscapeCheckTest, RejectPointerReturnAddressOfLocal) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整64* {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整64* {
     整64 x = 5;
     返回 &x;
 })CN");
@@ -90,7 +90,7 @@ TEST(EscapeCheckTest, RejectPointerReturnAddressOfLocal) {
 
 // 返回指向局部的局部指针（声明位登记）
 TEST(EscapeCheckTest, RejectPointerReturnViaLocalPointer) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整64* {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整64* {
     整64 x = 5;
     整64* p = &x;
     返回 p;
@@ -103,7 +103,7 @@ TEST(EscapeCheckTest, RejectPointerReturnViaLocalPointer) {
 
 // 引用返回经引用局部（既有覆盖回归锚定）
 TEST(EscapeCheckTest, RejectRefReturnViaRefLocal) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整64& {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整64& {
     整64 x = 5;
     整64& r = x;
     返回 r;
@@ -118,7 +118,7 @@ TEST(EscapeCheckTest, RejectRefReturnViaRefLocal) {
 
 // 局部指针指向局部（合法模式）
 TEST(EscapeCheckTest, AcceptLocalPointerToLocal) {
-    auto r = analyzeSource(R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 好() -> 整32 {
     整64 x = 5;
     整64* p = &x;
     *p = 7;
@@ -130,7 +130,7 @@ TEST(EscapeCheckTest, AcceptLocalPointerToLocal) {
 // 局部对象字段持局部地址（随对象消亡）
 TEST(EscapeCheckTest, AcceptLocalObjectMemberHoldsLocal) {
     auto r = analyzeSource(R"CN(结构体 节点 { 整64* 下一个; }
-函数 好() -> 整32 {
+不安全 函数 好() -> 整32 {
     整64 x = 5;
     节点 n;
     n.下一个 = &x;
@@ -144,8 +144,8 @@ TEST(EscapeCheckTest, AcceptLocalObjectMemberHoldsLocal) {
 
 // 引用局部读写与传引用参（借用合法面）
 TEST(EscapeCheckTest, AcceptRefLocalReadWriteAndPass) {
-    auto r = analyzeSource(R"CN(函数 消(整64& v) -> 空类型 { v = 9; }
-函数 好() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 消(整64& v) -> 空类型 { v = 9; }
+不安全 函数 好() -> 整32 {
     整64 x = 5;
     整64& r = x;
     r = r + 1;
@@ -159,7 +159,7 @@ TEST(EscapeCheckTest, AcceptRefLocalReadWriteAndPass) {
 TEST(EscapeCheckTest, AcceptStaticHoldsGlobalAddress) {
     auto r = analyzeSource(R"CN(静态 整64 g = 5;
 静态 整64* 槽 = 无;
-函数 好() -> 整32 {
+不安全 函数 好() -> 整32 {
     槽 = &g;
     返回 0;
 })CN");
@@ -169,7 +169,7 @@ TEST(EscapeCheckTest, AcceptStaticHoldsGlobalAddress) {
 // 指针返回非局部（堆/全局指向）
 TEST(EscapeCheckTest, AcceptPointerReturnNonLocal) {
     auto r = analyzeSource(R"CN(静态 整64 g = 5;
-函数 好() -> 整64* {
+不安全 函数 好() -> 整64* {
     返回 &g;
 })CN");
     EXPECT_EQ(r.errorCount, 0) << r.messages;

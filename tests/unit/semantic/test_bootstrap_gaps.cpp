@@ -54,7 +54,7 @@ SemanticResult analyzeSource(const std::string& source) {
 // 字符串下标：结果类型 字符，可赋给 字符 变量（O(1) 字节视图）
 TEST(BootstrapGapTest, StringIndexByteAccess) {
     auto r = analyzeSource(R"CN(
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     字符串 s = "ABC";
     字符 c = s[0];
     打印行(整32(c));
@@ -67,7 +67,7 @@ TEST(BootstrapGapTest, StringIndexByteAccess) {
 // 字符串下标 + 整64 索引混用（词法器逐字节扫描模式）
 TEST(BootstrapGapTest, StringIndexI64Index) {
     auto r = analyzeSource(R"CN(
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     字符串 s = "你好";
     整64 i = 0;
     整64 总和 = 0;
@@ -88,7 +88,7 @@ TEST(BootstrapGapTest, StringFieldIndex) {
 结构体 记录 {
     字符串 标题;
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     记录 名片 = 记录 { 标题 = "你好" };
     字符 c = 名片.标题[0];
     打印行(整32(c));
@@ -104,7 +104,7 @@ TEST(BootstrapGapTest, StringFieldIndex) {
 TEST(BootstrapGapTest, SwitchAllBranchReturn) {
     auto r = analyzeSource(R"CN(
 枚举 类型名 { 数字, 文本, 布尔值 }
-函数 类型转名称(类型名 t) -> 字符串 {
+不安全 函数 类型转名称(类型名 t) -> 字符串 {
     选择 (t) {
         情况 数字:
             返回 "数字";
@@ -116,7 +116,7 @@ TEST(BootstrapGapTest, SwitchAllBranchReturn) {
             返回 "未知";
     }
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     打印行(类型转名称(类型名.数字));
     返回 0;
 }
@@ -127,7 +127,7 @@ TEST(BootstrapGapTest, SwitchAllBranchReturn) {
 // 字符串选择 + 多值分组（情况 "继续", "暂停":）全分支返回
 TEST(BootstrapGapTest, SwitchStringMultiValueReturn) {
     auto r = analyzeSource(R"CN(
-函数 命令处理(字符串 命令) -> 整64 {
+不安全 函数 命令处理(字符串 命令) -> 整64 {
     选择 (命令) {
         情况 "开始":
             返回 1;
@@ -137,7 +137,7 @@ TEST(BootstrapGapTest, SwitchStringMultiValueReturn) {
             返回 0;
     }
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     打印行(命令处理("开始"));
     返回 0;
 }
@@ -149,7 +149,7 @@ TEST(BootstrapGapTest, SwitchStringMultiValueReturn) {
 TEST(BootstrapGapTest, SwitchMissingDefaultStillErrors) {
     auto r = analyzeSource(R"CN(
 枚举 类型名 { 数字, 文本 }
-函数 类型转名称(类型名 t) -> 字符串 {
+不安全 函数 类型转名称(类型名 t) -> 字符串 {
     选择 (t) {
         情况 数字:
             返回 "数字";
@@ -157,7 +157,7 @@ TEST(BootstrapGapTest, SwitchMissingDefaultStillErrors) {
             返回 "文本";
     }
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     打印行(类型转名称(类型名.数字));
     返回 0;
 }
@@ -169,14 +169,14 @@ TEST(BootstrapGapTest, SwitchMissingDefaultStillErrors) {
 // 如果/否则 双分支均返回：不报"缺少返回语句"
 TEST(BootstrapGapTest, IfElseAllBranchReturn) {
     auto r = analyzeSource(R"CN(
-函数 取绝对值(整64 x) -> 整64 {
+不安全 函数 取绝对值(整64 x) -> 整64 {
     如果 (x >= 0) {
         返回 x;
     } 否则 {
         返回 -x;
     }
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     打印行(取绝对值(-5));
     返回 0;
 }
@@ -197,7 +197,7 @@ TEST(BootstrapGapTest, GenericClassParam) {
     整64 元素数量;
     整64 数组容量;
 公开:
-    函数 向量() {
+    不安全 函数 向量() {
         数据 = 无;
         元素数量 = 0;
         数组容量 = 0;
@@ -205,16 +205,16 @@ TEST(BootstrapGapTest, GenericClassParam) {
     常量 函数 大小() -> 整64 {
         返回 元素数量;
     }
-    函数 追加(T 值) -> 结果<空类型, 整32> {
+    不安全 函数 追加(T 值) -> 结果<空类型, 整32> {
         数据[元素数量] = 值;
         元素数量++;
         返回 正常();
     }
 }
-函数 词频统计(向量<字符串> 词表) -> 整64 {
+不安全 函数 词频统计(向量<字符串> 词表) -> 整64 {
     返回 词表.大小();
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     向量<字符串> 表 = 向量<字符串>();
     结果<空类型, 整32> 加 = 表.追加("你好");
     如果 (加.正常) {
@@ -235,11 +235,11 @@ TEST(BootstrapGapTest, GenericClassParamMultiple) {
     T* 数据;
     整64 元素数量;
 公开:
-    函数 向量() {
+    不安全 函数 向量() {
         数据 = 无;
         元素数量 = 0;
     }
-    函数 追加(T 值) -> 结果<空类型, 整32> {
+    不安全 函数 追加(T 值) -> 结果<空类型, 整32> {
         数据[元素数量] = 值;
         元素数量++;
         返回 正常();
@@ -248,10 +248,10 @@ TEST(BootstrapGapTest, GenericClassParamMultiple) {
         返回 元素数量;
     }
 }
-函数 双表大小(向量<字符串> 甲, 向量<整64> 乙) -> 整64 {
+不安全 函数 双表大小(向量<字符串> 甲, 向量<整64> 乙) -> 整64 {
     返回 甲.大小() + 乙.大小();
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     向量<字符串> 甲 = 向量<字符串>();
     向量<整64> 乙 = 向量<整64>();
     打印行(双表大小(甲, 乙));
@@ -273,11 +273,11 @@ TEST(BootstrapGapTest, GenericClassReturn) {
     T* 数据;
     整64 元素数量;
 公开:
-    函数 向量() {
+    不安全 函数 向量() {
         数据 = 无;
         元素数量 = 0;
     }
-    函数 追加(T 值) -> 结果<空类型, 整32> {
+    不安全 函数 追加(T 值) -> 结果<空类型, 整32> {
         数据[元素数量] = 值;
         元素数量++;
         返回 正常();
@@ -286,7 +286,7 @@ TEST(BootstrapGapTest, GenericClassReturn) {
         返回 元素数量;
     }
 }
-函数 构建词表() -> 向量<字符串> {
+不安全 函数 构建词表() -> 向量<字符串> {
     向量<字符串> 表 = 向量<字符串>();
     结果<空类型, 整32> 加 = 表.追加("你好");
     如果 (!加.正常) {
@@ -294,7 +294,7 @@ TEST(BootstrapGapTest, GenericClassReturn) {
     }
     返回 表;
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     向量<字符串> 表 = 构建词表();
     打印行(表.大小());
     返回 0;
@@ -312,11 +312,11 @@ TEST(BootstrapGapTest, GenericFuncReturnContainer) {
     T* 数据;
     整64 元素数量;
 公开:
-    函数 向量() {
+    不安全 函数 向量() {
         数据 = 无;
         元素数量 = 0;
     }
-    函数 追加(T 值) -> 结果<空类型, 整32> {
+    不安全 函数 追加(T 值) -> 结果<空类型, 整32> {
         数据[元素数量] = 值;
         元素数量++;
         返回 正常();
@@ -326,7 +326,7 @@ TEST(BootstrapGapTest, GenericFuncReturnContainer) {
     }
 }
 泛型 <类型 T>
-函数 新建向量(T 首元素) -> 向量<T> {
+不安全 函数 新建向量(T 首元素) -> 向量<T> {
     向量<T> 表 = 向量<T>();
     结果<空类型, 整32> 加 = 表.追加(首元素);
     如果 (!加.正常) {
@@ -334,7 +334,7 @@ TEST(BootstrapGapTest, GenericFuncReturnContainer) {
     }
     返回 表;
 }
-函数 主() -> 整32 {
+不安全 函数 主() -> 整32 {
     向量<字符串> 表 = 新建向量<字符串>("你好");
     打印行(表.大小());
     返回 0;

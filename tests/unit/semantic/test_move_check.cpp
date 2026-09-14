@@ -50,7 +50,7 @@ MoveResult analyzeSource(const std::string& source) {
 
 // 转移后读值（E0382 主形态）
 TEST(MoveCheckTest, RejectReadAfterTransfer) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整32 {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(q);
@@ -63,7 +63,7 @@ TEST(MoveCheckTest, RejectReadAfterTransfer) {
 
 // 转移后赋值目标
 TEST(MoveCheckTest, RejectAssignTargetAfterTransfer) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整32 {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(q);
@@ -76,8 +76,8 @@ TEST(MoveCheckTest, RejectAssignTargetAfterTransfer) {
 
 // 转移后传参
 TEST(MoveCheckTest, RejectArgAfterTransfer) {
-    auto r = analyzeSource(R"CN(函数 消(整64* p) -> 空类型 { }
-函数 坏() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 消(整64* p) -> 空类型 { }
+不安全 函数 坏() -> 整32 {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(q);
@@ -90,7 +90,7 @@ TEST(MoveCheckTest, RejectArgAfterTransfer) {
 
 // 转移后返回
 TEST(MoveCheckTest, RejectReturnAfterTransfer) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整64* {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整64* {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(q);
@@ -102,7 +102,7 @@ TEST(MoveCheckTest, RejectReturnAfterTransfer) {
 
 // 再转移（转移已转移变量）
 TEST(MoveCheckTest, RejectDoubleTransfer) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整32 {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(q);
@@ -115,7 +115,7 @@ TEST(MoveCheckTest, RejectDoubleTransfer) {
 
 // 转移后取地址
 TEST(MoveCheckTest, RejectAddressOfAfterTransfer) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整32 {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(q);
@@ -128,7 +128,7 @@ TEST(MoveCheckTest, RejectAddressOfAfterTransfer) {
 
 // 标量误转移（复制语义）
 TEST(MoveCheckTest, RejectScalarTransfer) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整32 {
     整32 a = 5;
     整32 b = 转移(a);
     返回 0;
@@ -139,7 +139,7 @@ TEST(MoveCheckTest, RejectScalarTransfer) {
 
 // 转移目标非变量（解引用形态）
 TEST(MoveCheckTest, RejectNonVariableTransferTarget) {
-    auto r = analyzeSource(R"CN(函数 坏() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 坏() -> 整32 {
     整64 基 = 5;
     整64* q = &基;
     整64* r = 转移(*q);
@@ -152,8 +152,8 @@ TEST(MoveCheckTest, RejectNonVariableTransferTarget) {
 // 拥有资源类型（类）表达式位转移受限（仅声明初始化位）
 TEST(MoveCheckTest, RejectClassTransferAtExprPosition) {
     auto r = analyzeSource(R"CN(类 甲 { 公开: 整64 值; }
-函数 消(甲 a) -> 空类型 { }
-函数 坏() -> 整32 {
+不安全 函数 消(甲 a) -> 空类型 { }
+不安全 函数 坏() -> 整32 {
     甲 a;
     消(转移(a));
     返回 0;
@@ -166,7 +166,7 @@ TEST(MoveCheckTest, RejectClassTransferAtExprPosition) {
 
 // 指针转移链 + 解引用读（新变量接管）
 TEST(MoveCheckTest, AcceptPointerTransferChain) {
-    auto r = analyzeSource(R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 好() -> 整32 {
     整64 基 = 55;
     整64* q = &基;
     整64* r = 转移(q);
@@ -179,7 +179,7 @@ TEST(MoveCheckTest, AcceptPointerTransferChain) {
 // 类声明位转移 + 新变量成员访问（遮蔽语义另测）
 TEST(MoveCheckTest, AcceptClassTransferAtDeclPosition) {
     auto r = analyzeSource(R"CN(类 甲 { 公开: 整64 值; }
-函数 好() -> 整32 {
+不安全 函数 好() -> 整32 {
     甲 a;
     甲 b = 转移(a);
     b.值 = 7;
@@ -190,7 +190,7 @@ TEST(MoveCheckTest, AcceptClassTransferAtDeclPosition) {
 
 // 遮蔽：外层已转移，内层同名新声明不受影响
 TEST(MoveCheckTest, AcceptShadowingNewDeclaration) {
-    auto r = analyzeSource(R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 好() -> 整32 {
     整64 基 = 5;
     {
         整64* q = &基;
@@ -207,7 +207,7 @@ TEST(MoveCheckTest, AcceptShadowingNewDeclaration) {
 
 // 字符串转移 + 新变量使用
 TEST(MoveCheckTest, AcceptStringTransfer) {
-    auto r = analyzeSource(R"CN(函数 好() -> 整32 {
+    auto r = analyzeSource(R"CN(不安全 函数 好() -> 整32 {
     字符串 甲 = "左";
     字符串 乙 = 转移(甲);
     打印(乙);
