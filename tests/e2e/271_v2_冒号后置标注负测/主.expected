@@ -1,0 +1,4 @@
+[p6h] 已解析: target/audit2/v2src271/主.cn 节点=12
+[parse] 语句缺少分号 ';'（行=5）
+[parse] 语句解析中断于不可解析 token，块内后续语句被丢弃（位置=4）
+[parse] 语法错误 1 个，中止编译（不产 IR/asm）

@@ -85,7 +85,7 @@ public:
     std::string moduleName;  // 所属模块（crate 域）名，mergeModules 合并阶段写入
 };
 
-// 变量声明：变量/常量/静态 类型前置或冒号后置（CN规范类型前置，兼容冒号后置）
+// 变量声明：变量/常量/静态 类型前置（CN规范唯一形态；冒号后置已 A8 收口拒绝）
 class VarDecl : public Stmt {
 public:
     VarDecl() : Stmt(NodeType::VarDecl) {}

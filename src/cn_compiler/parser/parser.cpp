@@ -5,7 +5,7 @@
 //      13后缀 -> 12一元 -> 11乘除 -> 10加减 -> 9移位 -> 8比较 -> 7相等
 //      -> 6位与 -> 5位异或 -> 4位或 -> 3逻辑与 -> 2逻辑或 -> 1赋值
 //   2. 可选分号策略：兼容规范示例（无分号）与任务描述（带分号）
-//   3. 类型前置（CN规范）为主，同时兼容冒号后置（变量 x: 类型）写法
+//   3. 类型前置（CN规范）为唯一声明形态（冒号后置 x: 类型 非规范语法，A8 收口拒绝）
 //   4. 错误恢复：synchronize() 同步到下一个语句边界
 //   5. &/* 一元二元歧义（规格书4.4）：操作数位置（parseUnary前缀）解析为
 //      取地址/解引用（一元），二元位置（parseBitAnd/parseMultiplicative）解析为
@@ -298,7 +298,7 @@ bool Parser::parseFuncPtrType(FuncPtrTypeInfo& out) {
     return true;
 }
 
-// 解析参数声明：类型 名称（CN规范）或 名称: 类型（冒号后置兼容）
+// 解析参数声明：类型 名称（CN规范；冒号后置 名称: 类型 非规范语法，A8 收口拒绝）
 std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
     auto param = std::make_unique<ParamDecl>();
     param->location = current().getLocation();
@@ -355,22 +355,16 @@ std::unique_ptr<ParamDecl> Parser::parseParamDecl() {
             }
             return param;
         }
-        // 冒号后置：a: 整32
-        param->name = current().getValue();
+        // 前一个标识符是自定义类型名（Foo x，无复合后缀）；
+        // 冒号后置标注（x: 整32）非规范语法（spec 03 否决），一律拒绝（A8 收口）
+        param->typeName = current().getValue();
         advance();
-        if (check(TokenType::Colon)) {
+        if (check(TokenType::Identifier)) {
+            param->name = current().getValue();
             advance();
-            param->typeName = parseTypeName();
         } else {
-            // 前一个标识符实际是自定义类型名（Foo x，无复合后缀）
-            param->typeName = param->name;
-            if (check(TokenType::Identifier)) {
-                param->name = current().getValue();
-                advance();
-            } else {
-                param->name.clear();
-                reportErrorHere("预期参数名");
-            }
+            param->name.clear();
+            reportErrorHere("预期参数名");
         }
     } else {
         reportErrorHere("预期参数声明，实际为 '" + current().getValue() + "'");
@@ -582,7 +576,8 @@ std::unique_ptr<BlockStmt> Parser::parseBlockStmt() {
     return block;
 }
 
-// 解析已消费 变量/常量 关键字后的声明体：名称 [: 类型] [= 初始值]
+// 解析已消费 变量/常量 关键字后的声明体：名称 [= 初始值]
+// （冒号后置类型标注 x: 整32 非规范语法〔spec 03 否决〕，A8 收口移除——类型前置为唯一形态）
 std::unique_ptr<Stmt> Parser::parseVarDeclAfterKeyword(bool isConst) {
     auto decl = std::make_unique<VarDecl>();
     decl->location = current().getLocation();
@@ -595,11 +590,6 @@ std::unique_ptr<Stmt> Parser::parseVarDeclAfterKeyword(bool isConst) {
     }
     decl->name = current().getValue();
     advance();
-    // 冒号后置类型标注（变量 x: 整32 = 10，兼容写法）
-    if (check(TokenType::Colon)) {
-        advance();
-        decl->typeName = parseTypeName();
-    }
     // 初始值（= 表达式）
     if (check(TokenType::Equal)) {
         advance();
@@ -824,11 +814,7 @@ std::unique_ptr<Program> Parser::parse(const std::vector<Token>& tokens) {
             } else {
                 decl->name = current().getValue();
                 advance();
-                // 冒号后置类型标注（常量 名: 整32 = 10，兼容写法）
-                if (check(TokenType::Colon)) {
-                    advance();
-                    decl->typeName = parseTypeName();
-                }
+                // （冒号后置类型标注 名: 整32 非规范语法〔spec 03 否决〕，A8 收口移除）
                 if (check(TokenType::Equal)) {
                     advance();
                     decl->initializer = parseExpr();

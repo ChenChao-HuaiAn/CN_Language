@@ -145,13 +145,10 @@ TEST(ParserTest, FunctionVoidReturn) {
 
 // 冒号后置参数（兼容写法：a: 整32）
 TEST(ParserTest, FunctionColonParams) {
+    // A8 收口（2026-09-14）：冒号后置参数标注为规范外语法（spec 03 否决），必须报错
+    // （原「兼容解析」断言随语法移除而迁移为负断言；E2E 268 同步负测锚定）
     auto result = parseProgram("函数 加(a: 整32, b: 整32) -> 整32 { 返回 a + b; }");
-    ASSERT_FALSE(result.diagnostics.hasErrors());
-    FunctionDecl* func = firstFunction(result.program.get());
-    ASSERT_NE(func, nullptr);
-    ASSERT_EQ(func->params.size(), 2u);
-    EXPECT_EQ(func->params[0]->name, "a");
-    EXPECT_EQ(func->params[0]->typeName, "整32");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
 }
 
 // 多函数顶层声明
@@ -221,14 +218,10 @@ TEST(ParserTest, ConstDecl) {
 
 // 冒号后置类型声明（变量 x: 整32 = 10，兼容写法）
 TEST(ParserTest, VarDeclColonType) {
+    // A8 收口（2026-09-14）：变量冒号后置类型标注为规范外语法，必须报错
+    // （原「兼容解析」断言随语法移除而迁移为负断言；E2E 269 同步负测锚定）
     auto result = parseProgram("函数 测试() { 变量 x: 整32 = 10; }");
-    ASSERT_FALSE(result.diagnostics.hasErrors());
-    Stmt* stmt = firstStmt(result.program.get());
-    ASSERT_NE(stmt, nullptr);
-    ASSERT_EQ(stmt->getType(), NodeType::VarDecl);
-    VarDecl* decl = static_cast<VarDecl*>(stmt);
-    EXPECT_EQ(decl->name, "x");
-    EXPECT_EQ(decl->typeName, "整32");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
 }
 
 // 多变量声明
@@ -716,7 +709,8 @@ TEST(ParserTest, MixedMain) {
     EXPECT_EQ(main->body->statements[1]->getType(), NodeType::ReturnStmt);
 }
 
-// 混合：冒号后置 + 类型前置混用
+// 混合：冒号后置 + 类型前置混用——A8 收口（2026-09-14）后冒号后置一律报错
+// （原「混合兼容解析」断言随语法移除而迁移为负断言；E2E 268/269 同步负测锚定）
 TEST(ParserTest, MixedTypeSyntax) {
     auto result = parseProgram(
         "函数 测试(a: 整32, 整32 b) -> 整32 {"
@@ -724,14 +718,7 @@ TEST(ParserTest, MixedTypeSyntax) {
         ";  整32 y = b"
         ";  返回 x + y"
         ";}");
-    ASSERT_FALSE(result.diagnostics.hasErrors());
-    FunctionDecl* func = firstFunction(result.program.get());
-    ASSERT_NE(func, nullptr);
-    ASSERT_EQ(func->params.size(), 2u);
-    EXPECT_EQ(func->params[0]->name, "a");
-    EXPECT_EQ(func->params[0]->typeName, "整32");
-    EXPECT_EQ(func->params[1]->name, "b");
-    EXPECT_EQ(func->params[1]->typeName, "整32");
+    EXPECT_TRUE(result.diagnostics.hasErrors());
 }
 
 // 布尔字面量
