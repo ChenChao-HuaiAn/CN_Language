@@ -530,6 +530,11 @@ private:
     bool checkBuiltinCtorCall(CallExpr* node);
     // 族3：函数指针间接调用（原 949~981 段）
     bool checkFuncPtrCall(CallExpr* node, const std::string& calleeType);
+    // 子族A：use 导入绑定名重写（原 semantic_call.cpp 273~311 段）
+    void rewriteUseImportAlias(CallExpr* node, std::string& calleeName);
+    // 子族B：泛型函数调用单态化（原 312~383 段）
+    void rewriteGenericFuncCall(CallExpr* node, std::string& calleeName);
+
 
     bool canConvertWithLiteral(const Expr* value, const std::string& from,
                                const std::string& to) const;

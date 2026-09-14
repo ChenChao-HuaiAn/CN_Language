@@ -9,58 +9,52 @@
 
 ## 家机 win-x64 节
 
-**最近交接**：2026-09-14——**第一百六十七轮（167-a）：D1 函数级拆分第二波**（`SemanticAnalyzer::visitCallExpr`
-886 → 757 行，逐族提取 3 方法；纯重构，产物 asm 逐字节对拍一致）。本会话累计六轮：161-a（A8 冒号后置移除）+
-162-a（A5+A3 关键字体系）+ 164-a（A4 联合体收口）+ 165-a（C16 规范落盘）+ 166-a（`visitAssignmentExpr` 1034→25
-族子方法）+ 167-a（`visitCallExpr` 逐族提取）。**下一步=跨机轮（深度机/单位机全量复跑——161~167-a 契约面）→
-D1 逐族续波（`visitCallExpr` 剩余族 / `生成语句.cn` 生成赋值语句 635 / `handleClassCallExpr` 362）→ 波 3 剩余（149-a IR diff）**。
+**最近交接**：2026-09-14——**第一百六十八轮（168-a）：D1 函数级拆分第三波**（`visitCallExpr` 757 → 658 行，
+提取 use 导入重写 / 泛型单态化两子族；纯重构，行多重集缺失 0 + 产物对拍 21 样本一致 17/不一致 0）。
+本会话累计七轮：161-a（A8）+ 162-a（A5+A3）+ 164-a（A4 联合体）+ 165-a（C16）+ 166-a（`visitAssignmentExpr`
+1034→25 子方法）+ 167-a（`visitCallExpr` 3 族）+ 168-a（同函数 2 子族）。**下一步=跨机轮（深度机/单位机
+161~168-a 契约面）→ D1 续波（`visitCallExpr` 剩 3 块 / v2 `生成语句.cn` 635 / `handleClassCallExpr` 362）→
+波 3 剩余（149-a IR diff）**。
 
-### 一、167-a 做了什么（D1 函数级拆分第二波）
+### 一、168-a 做了什么
 
-1. **拆分面**：`src/cn_compiler/semantic/semantic_call.cpp` 的 `visitCallExpr`（886 行）按**顶层块**（8 个，脚本枚举）
-   提取 3 族：**族1** 转移特判（43 行，5 处诊断早退）/ **族2** 内置构造器类型推导（55 行）/ **族3** 函数指针调用
-   参数检查（26 行）；`semantic.hpp` +3 私有声明。剩余 5 块（模块限定调用 137 / IdentifierExpr 族 115·111 / 成员被调者
-   216 / isDirect 121）留后续轮。
-2. **方法论复用 + 新教训**：机械搬运 + `return;`→`return true;` + **调用点逐个判返回值**（166-a 教训直接落实）；
-   新增坑=**脚本把 `} // namespace` 一起搬进主体**（新函数落在命名空间外，C2653/C2065 一片）→ 修正 + **生成后
-   命名空间计数自检**。
-3. **D1 口径**：残余 77 个（宿主 27 + v2 树 50）**计数不变**——逐族提取降的是最大者（1034→885→757），
-   计数在函数 ≤100 行时才减；度量=`python scripts/check_fn_length.py`。
+1. **拆分面**：`visitCallExpr` **757 → 658 行**，两子族提取：`rewriteUseImportAlias`（41 行，use 导入绑定名
+   重写 + moduleFilter 携带）/ `rewriteGenericFuncCall`（74 行，泛型函数单态化 + 实例登记）；`semantic.hpp` +2 声明。
+   剩余 3 块（模块限定调用 137 / 成员被调者 216 / isDirect 121）待续轮。
+2. **★脚本边界坑二次复现 → 断言固化（关键教训）**：167-a 的「`} // namespace` 被一并搬进主体」在本轮首版生成器
+   **再次发生**（同款 C2653/C2065 一片）——根因是教训只写进 lessons、未固化为脚本断言。修正=生成器显式定位
+   `ns_end` + **双断言**（计数 == 1 **且** 新函数位置 < namespace 位置；**位置断言**才是防坑的那条）。
+   **通用原则：生成器脚本的每条边界纪律都要变成 assert，不能只写在文档里。**
+3. **等价性**：行多重集缺失 0；产物对拍（基线=166-a 编译器，覆盖两轮改动）21 样本 一致 17/不一致 0/跳过 4。
 
-### 二、门禁（167-a 实测）
+### 二、门禁（168-a 实测）
 
-零警告构建 + 单测 **1317/1317** + 全量 E2E **306 用例 306 过 / 0 败 / 0 跳过**（含 78_v2/79_v2 自举链）+
-锚定链 **fix_p ≡ fix_s 逐字节自洽** + 组件对拍 **44/44** + 运行级 **3/3** + **等价性对拍 21 样本（一致 17/不一致 0/
-跳过 4=负测 rc 一致）**（含 v2 全树 8.25MB asm）+ 行多重集缺失 0 行。
+零警告构建 + 单测 **1317/1317** + 全量 E2E **306 用例 306 过 / 0 败 / 0 跳过** + 锚定链 **fix_p ≡ fix_s 逐字节自洽**
++ 组件对拍 **44/44** + 运行级 **3/3** + 等价性对拍 21 样本（一致 17/不一致 0/跳过 4）+ 行多重集缺失 0。
 
 ### 三、下一步（新会话按序）
 
-1. **跨机轮（首要）**：深度机/单位机复跑 161~167-a 契约面（关键字 46 词 / A4 用例 275~278 / 78_v2·79_v2 linux 首验 /
-   规范文本核对）；166/167-a 均经产物对拍证明对 v2 产物零影响，复跑为最终确认。
-2. **D1 续波（逐族，方法论已固化）**：`visitCallExpr` 剩余 5 块 → `生成语句.cn` 生成赋值语句 635（v2 侧，须双编译
-   对照 + 锚定链重锚）→ `handleClassCallExpr` 362 → `semantic_expr_op.cpp` visitAssignmentExpr 349。
-3. **波 3 剩余（C3）**：149-a IR diff（uF 根因）→ 泛化 → 元素级深拷（前置=波 4）→ H7/H11 收口。
-4. 排班余项：D6（B11 变量常量传播）/ C2（NLL 维持登记）/ 波 4 / 波 7。
+1. **跨机轮（首要）**：深度机/单位机复跑 161~168-a 契约面。
+2. **D1 续波**：`visitCallExpr` 剩 3 块 → `生成语句.cn` 生成赋值语句 635（v2 侧）→ `handleClassCallExpr` 362 →
+   `semantic_expr_op.cpp` visitAssignmentExpr 349（清单：`python scripts/check_fn_length.py`）。
+3. **波 3 剩余（C3）**：149-a IR diff → 泛化 → 元素级深拷 → H7/H11 收口。
+4. 排班余项：D6 / C2 / 波 4 / 波 7。
 
-### 四、验证链（本机复现口径）
+### 四、验证链（同 167-a；拆分生成器脚本模板已含双断言）
 
 ```
-> 全量门禁：powershell -ExecutionPolicy Bypass -File build.ps1 → ./target/Debug/cn_unit_tests.exe
->           → python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
-> 等价性对拍：python scripts/refactor_parity.py <旧cn.exe> <新cn.exe>（v2 全树 + 全部组件 + 用例；串行执行）
-> 逐族/函数拆分循环：①脚本枚举顶层块（depth 2→3 起始 + 括号配对）②机械搬运（return;→return true;、调用点判返回值）
->   ③行多重集检查（缺失必须为 0）④生成后 `} // namespace` 计数自检 ⑤构建零警告 ⑥产物对拍
-> 组件对拍/运行级：python target/p166/comp_diff166.py、target/p166/run_level166.py（复用 p166 版；**与其它
->   使用 target/v2asm.asm 的脚本互斥串行**——并发=产物污染假差异，lessons 166 段）
-> D1 度量：python scripts/check_fn_length.py
+> 全量门禁：build.ps1 → cn_unit_tests.exe → python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
+> 等价性对拍：python scripts/refactor_parity.py <旧cn.exe> <新cn.exe>（串行；v2 全树 + 组件 + 用例）
+> 逐族提取循环：①脚本枚举顶层块 ②机械搬运 ③**行多重集缺失必须为 0** ④生成器双断言（namespace 计数 + 新函数位置）
+>   ⑤构建零警告 ⑥产物对拍 ⑦组件对拍/运行级（与其它 target/v2asm.asm 使用者互斥串行）
+> D1 度量：python scripts/check_fn_length.py（残余计数 + 最大者行数**两者同报**）
 ```
 
 ### 五、诚实边界
 
-- **D1 未清零**：残余 77 个（计数口径不变；最大者已从 1034 降到 757）；`visitCallExpr` 仍 757 行（>100），
-  后续族待续轮（每轮 1~3 族，逐族提取为项目既有惯例）。
-- v2 树 50 个超百行函数未动（改动须双编译对照 + 锚定链重锚）。
-- 跨机轮未做（家机无 linux 工具链）；本会话两轮（166/167-a）提交均已双推（gitcode + github）。
+- `visitCallExpr` 仍 658 行（>100，剩 3 块待续轮）；D1 计数口径仍 77（逐族降最大者）。
+- v2 树 50 个超百行函数未动（须双编译对照 + 锚定链重锚）；跨机轮未做（家机无 linux 工具链）。
+- 本会话三轮（166/167/168-a）提交均已双推（gitcode + github）。
 
 ## 深度机 linux-x86_64 节
 

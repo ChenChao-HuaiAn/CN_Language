@@ -280,107 +280,8 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         //   模块Y::双倍 重写为纯名后会被本块按 绑定名 双倍（来源 模块X）二次
         //   重写覆盖过滤器 → 解析到错误模块（44_crate_isolate 实测）。限定
         //   调用的过滤器优先（调用点已显式指定模块归属）。
-        if (calleeName.find('<') == std::string::npos &&
-            node->moduleFilter.empty()) {
-            for (const auto& ui : useImports_) {
-                const auto& aliases = ui.second.aliases;
-                const auto aliasIt = aliases.find(calleeName);
-                if (aliasIt != aliases.end() && aliasIt->second != ui.first) {
-                    // A-5（花括号项别名跨模块同名歧义根治）：重写回原符号名时
-                    //   携带来源模块（moduleFilter）——resolveOverload 按模块过滤，
-                    //   跨模块同名（模块X$双倍 与 模块Y$双倍）纯名别名调用不再歧义。
-                    //   来源模块查 itemAliasModules_：按**原绑定名**查（别名 与
-                    //   原符号名 不同名时，重写后查原符号名会命中同名的其他绑定
-                    //   条目——91_别名跨模块同名 实测 Y双倍 误取 双倍 的来源模块），
-                    //   未命中再回退重写后的符号名（自映射绑定 条目以符号名为键）。
-                    const std::string bindingName = calleeName;
-                    calleeName = aliasIt->second;  // 绑定名 -> 原符号名
-                    static_cast<IdentifierExpr*>(node->callee.get())->name = calleeName;
-                    auto iamIt = itemAliasModules_.find(bindingName);
-                    if (iamIt == itemAliasModules_.end()) {
-                        iamIt = itemAliasModules_.find(calleeName);
-                    }
-                    if (iamIt != itemAliasModules_.end()) {
-                        node->moduleFilter = iamIt->second;
-                    } else {
-                        node->moduleFilter = ui.first;
-                    }
-                    break;
-                }
-            }
-        }
-        // ---- Task 6.1（泛型函数调用打通）：函数名<类型>(实参) 泛型实例化调用 ----
-        // 语法：最小<整32>(3, 7)——parser 把 callee 生成 IdentifierExpr("最小<整32>")。
-        // 26_generics 遗留限制「泛型函数调用单态化注册未接入」：语义层此前只对
-        //   泛型类构造（名<实参>(...)）触发单态化，泛型函数调用落入"非函数类型"错误。
-        // 本子任务打通：识别 名<类型> 形态，若 名 是已注册泛型函数 -> 触发单态化
-        //   （instantiateGeneric 注册 名$实参 函数符号），重写 callee 为实例化名，
-        //   复用下方"直接函数名调用"路径（重载决议/参数检查/IR 符号生成均无需改动）。
-        const std::size_t genLt = calleeName.find('<');
-        const std::size_t genGt = calleeName.rfind('>');
-        if (genLt != std::string::npos && genGt != std::string::npos &&
-            genGt > genLt) {
-            const std::string head = calleeName.substr(0, genLt);
-            if (findGeneric(head) != nullptr &&
-                findGeneric(head)->ast->innerFunc != nullptr) {
-                const std::string inner =
-                    calleeName.substr(genLt + 1, genGt - genLt - 1);
-                std::vector<std::string> args;
-                std::size_t pos = 0;
-                int angleDepth = 0;
-                std::size_t segStart = 0;
-                while (pos <= inner.size()) {
-                    if (pos == inner.size() ||
-                        (inner[pos] == ',' && angleDepth == 0)) {
-                        args.push_back(inner.substr(segStart, pos - segStart));
-                        segStart = pos + 1;
-                        if (pos == inner.size()) break;
-                    } else if (inner[pos] == '<') {
-                        angleDepth++;
-                    } else if (inner[pos] == '>') {
-                        angleDepth--;
-                    }
-                    pos++;
-                }
-                for (auto& a : args) {
-                    const std::size_t b = a.find_first_not_of(" \t");
-                    const std::size_t e = a.find_last_not_of(" \t");
-                    if (b != std::string::npos && e != std::string::npos) {
-                        a = a.substr(b, e - b + 1);
-                    }
-                    // Task 6.1（嵌套泛型 链表$整32 内 节点<T>() 构造）：类型实参
-                    //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
-                    auto pit = genericTypeParams_.find(a);
-                    if (pit != genericTypeParams_.end()) a = pit->second;
-                    if (a.find('<') != std::string::npos) {
-                        a = resolveGenericTypeName(a, node->location);
-                    }
-                }
-                const std::string instName =
-                    instantiateGeneric(head, args, node->location);
-                if (!instName.empty()) {
-                    // 重写 callee 为实例化函数名（名$实参），直接函数调用路径命中
-                    node->callee = std::make_unique<IdentifierExpr>(instName);
-                    calleeName = instName;
-                    // 登记泛型函数实例化记录（供 IR 层生成函数体）：
-                    //   记录 实例化名 + 原泛型声明 + 类型实参（替换类型参数用）
-                    const GenericInfo* ginfo = findGeneric(head);
-                    if (ginfo != nullptr && ginfo->ast->innerFunc != nullptr) {
-                        bool exists = false;
-                        for (const auto& gi : genericFuncInstances_) {
-                            if (gi.instanceName == instName) { exists = true; break; }
-                        }
-                        if (!exists) {
-                            GenericFuncInstance gfi;
-                            gfi.instanceName = instName;
-                            gfi.gen = ginfo->ast;
-                            gfi.args = args;
-                            genericFuncInstances_.push_back(std::move(gfi));
-                        }
-                    }
-                }
-            }
-        }
+        rewriteUseImportAlias(node, calleeName);      // 子族A：use 导入绑定名重写
+        rewriteGenericFuncCall(node, calleeName);     // 子族B：泛型函数调用单态化
         if (hasFunctionName(calleeName)) isDirect = true;
     }
 
@@ -1002,6 +903,128 @@ bool SemanticAnalyzer::checkFuncPtrCall(CallExpr* node, const std::string& calle
         return true;
     }
     return false;
+}
+
+
+// 子族A：第 4 层 use 导入表——花括号/路径导入绑定名重写（原 visitCallExpr 273~311 段）：
+//   calleeName 为绑定名时映射回原符号名，并携带来源模块（moduleFilter）。
+void SemanticAnalyzer::rewriteUseImportAlias(CallExpr* node, std::string& calleeName) {
+        // 第 4 层（use 导入表）：花括号/路径导入绑定名重写——导入 数学::{正弦 作为 正}
+        //   或（呈报一B）导入 数学::正弦 后调用 绑定名() 时，calleeName 是绑定名；
+        //   查 useImports_ 各模块别名表映射回原符号名（正弦）。须在 isDirect 判定
+        //   之前（绑定名未注册为函数名，hasFunctionName("正") 失败会导致
+        //   isDirect=false 走间接调用路径报错）。
+        //   限定调用重写（上方 MemberExpr 块）已设置 moduleFilter 时跳过——
+        //   呈报一B 后路径导入也登记绑定名（模块X::双倍 绑定 双倍），限定调用
+        //   模块Y::双倍 重写为纯名后会被本块按 绑定名 双倍（来源 模块X）二次
+        //   重写覆盖过滤器 → 解析到错误模块（44_crate_isolate 实测）。限定
+        //   调用的过滤器优先（调用点已显式指定模块归属）。
+        if (calleeName.find('<') == std::string::npos &&
+            node->moduleFilter.empty()) {
+            for (const auto& ui : useImports_) {
+                const auto& aliases = ui.second.aliases;
+                const auto aliasIt = aliases.find(calleeName);
+                if (aliasIt != aliases.end() && aliasIt->second != ui.first) {
+                    // A-5（花括号项别名跨模块同名歧义根治）：重写回原符号名时
+                    //   携带来源模块（moduleFilter）——resolveOverload 按模块过滤，
+                    //   跨模块同名（模块X$双倍 与 模块Y$双倍）纯名别名调用不再歧义。
+                    //   来源模块查 itemAliasModules_：按**原绑定名**查（别名 与
+                    //   原符号名 不同名时，重写后查原符号名会命中同名的其他绑定
+                    //   条目——91_别名跨模块同名 实测 Y双倍 误取 双倍 的来源模块），
+                    //   未命中再回退重写后的符号名（自映射绑定 条目以符号名为键）。
+                    const std::string bindingName = calleeName;
+                    calleeName = aliasIt->second;  // 绑定名 -> 原符号名
+                    static_cast<IdentifierExpr*>(node->callee.get())->name = calleeName;
+                    auto iamIt = itemAliasModules_.find(bindingName);
+                    if (iamIt == itemAliasModules_.end()) {
+                        iamIt = itemAliasModules_.find(calleeName);
+                    }
+                    if (iamIt != itemAliasModules_.end()) {
+                        node->moduleFilter = iamIt->second;
+                    } else {
+                        node->moduleFilter = ui.first;
+                    }
+                    break;
+                }
+            }
+        }
+}
+
+// 子族B：Task 6.1 泛型函数调用单态化（原 visitCallExpr 312~383 段）：识别 名<类型>(实参)，
+//   实例化（instantiateGeneric 注册 名$实参）并重写 callee；登记 genericFuncInstances_。
+void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calleeName) {
+        // ---- Task 6.1（泛型函数调用打通）：函数名<类型>(实参) 泛型实例化调用 ----
+        // 语法：最小<整32>(3, 7)——parser 把 callee 生成 IdentifierExpr("最小<整32>")。
+        // 26_generics 遗留限制「泛型函数调用单态化注册未接入」：语义层此前只对
+        //   泛型类构造（名<实参>(...)）触发单态化，泛型函数调用落入"非函数类型"错误。
+        // 本子任务打通：识别 名<类型> 形态，若 名 是已注册泛型函数 -> 触发单态化
+        //   （instantiateGeneric 注册 名$实参 函数符号），重写 callee 为实例化名，
+        //   复用下方"直接函数名调用"路径（重载决议/参数检查/IR 符号生成均无需改动）。
+        const std::size_t genLt = calleeName.find('<');
+        const std::size_t genGt = calleeName.rfind('>');
+        if (genLt != std::string::npos && genGt != std::string::npos &&
+            genGt > genLt) {
+            const std::string head = calleeName.substr(0, genLt);
+            if (findGeneric(head) != nullptr &&
+                findGeneric(head)->ast->innerFunc != nullptr) {
+                const std::string inner =
+                    calleeName.substr(genLt + 1, genGt - genLt - 1);
+                std::vector<std::string> args;
+                std::size_t pos = 0;
+                int angleDepth = 0;
+                std::size_t segStart = 0;
+                while (pos <= inner.size()) {
+                    if (pos == inner.size() ||
+                        (inner[pos] == ',' && angleDepth == 0)) {
+                        args.push_back(inner.substr(segStart, pos - segStart));
+                        segStart = pos + 1;
+                        if (pos == inner.size()) break;
+                    } else if (inner[pos] == '<') {
+                        angleDepth++;
+                    } else if (inner[pos] == '>') {
+                        angleDepth--;
+                    }
+                    pos++;
+                }
+                for (auto& a : args) {
+                    const std::size_t b = a.find_first_not_of(" \t");
+                    const std::size_t e = a.find_last_not_of(" \t");
+                    if (b != std::string::npos && e != std::string::npos) {
+                        a = a.substr(b, e - b + 1);
+                    }
+                    // Task 6.1（嵌套泛型 链表$整32 内 节点<T>() 构造）：类型实参
+                    //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
+                    auto pit = genericTypeParams_.find(a);
+                    if (pit != genericTypeParams_.end()) a = pit->second;
+                    if (a.find('<') != std::string::npos) {
+                        a = resolveGenericTypeName(a, node->location);
+                    }
+                }
+                const std::string instName =
+                    instantiateGeneric(head, args, node->location);
+                if (!instName.empty()) {
+                    // 重写 callee 为实例化函数名（名$实参），直接函数调用路径命中
+                    node->callee = std::make_unique<IdentifierExpr>(instName);
+                    calleeName = instName;
+                    // 登记泛型函数实例化记录（供 IR 层生成函数体）：
+                    //   记录 实例化名 + 原泛型声明 + 类型实参（替换类型参数用）
+                    const GenericInfo* ginfo = findGeneric(head);
+                    if (ginfo != nullptr && ginfo->ast->innerFunc != nullptr) {
+                        bool exists = false;
+                        for (const auto& gi : genericFuncInstances_) {
+                            if (gi.instanceName == instName) { exists = true; break; }
+                        }
+                        if (!exists) {
+                            GenericFuncInstance gfi;
+                            gfi.instanceName = instName;
+                            gfi.gen = ginfo->ast;
+                            gfi.args = args;
+                            genericFuncInstances_.push_back(std::move(gfi));
+                        }
+                    }
+                }
+            }
+        }
 }
 
 } // namespace cn_compiler
