@@ -116,6 +116,7 @@ add_library(cn_compiler_semantic STATIC
     src/cn_compiler/semantic/semantic_builtins.cpp
     src/cn_compiler/semantic/semantic_expr.cpp
     src/cn_compiler/semantic/semantic_expr_op.cpp
+    src/cn_compiler/semantic/semantic_expr_unary.cpp
     src/cn_compiler/semantic/semantic_expr_access.cpp
     src/cn_compiler/semantic/semantic_call.cpp
     src/cn_compiler/semantic/semantic_call_qualified.cpp

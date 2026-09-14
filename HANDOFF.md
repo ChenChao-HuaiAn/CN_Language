@@ -60,20 +60,21 @@
 
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百七十九轮（**深度机 linux-x86_64**）——**179-a D1 函数级续波：visitMemberExpr 216→92 行 ≤100 达标**（基线 8c8862e）。本会话 10 个开发轮（170-a 接手 + 172~179-a 七连）。
+**交接时间**: 2026-09-15 第一百八十一轮（**深度机 linux-x86_64**）——**181-a D1 函数级续波：visitUnaryExpr 204→42 行 ≤100 达标 + 文件级达标**（基线 8c8862e）。本会话 11 个开发轮（170-a 接手 + 172~179-a + 181-a）。
 
-### 一、本轮（179-a）做了什么（写给无上下文的新会话）
+### 一、本轮（181-a）做了什么（写给无上下文的新会话）
 
-1. **拆分面（纯搬运+包装行改写·先列包装行清单〔预防 163〕）**：`ir_expr_member.cpp` 的
-   `visitMemberExpr`（216 行）按「读取管线」提取为 **4 个族子方法**（ir.hpp +4 声明）：
-   resolveMemberObjSrcType（对象源码类型推导分派）/ resolveNestedMemberObjSrcType（嵌套成员+
-   结果/可选 映射+指针剥离）/ resolveIndexObjSrcType（下标对象元素类型）/
-   resolveMemberFieldSrcType（结果/可选 成员名映射+字段查表，decl 参数承接主流程已解析结构体）。
-   主函数收缩为「钩子→枚举→fieldAddr→推导→兜底→查表→映射→退化/LoadPtr」管线 92 行。
-   **D1 计数 66→65**（新首列=`semantic_expr_op.cpp` visitUnaryExpr 204）。
-2. **三处包装行修正 + 行号锚失准教训（lessons 预防 165/166）**：影子声明 inner/idx×2（签名已
-   承载）+缺 decl 参数（族④依赖主流程已解析结构体）——构建兜底报出后修正；工具显示行号与实际
-   文件差 1 致段起点错位——**行号锚必须 grep 实证、组装脚本清单化拼装**。
+1. **拆分面（switch 薄化·程序化切片重建）**：`semantic_expr_op.cpp` 的 `visitUnaryExpr`（204 行）
+   按操作符 case 提取为 **5 个族子方法**（semantic.hpp +5 声明）：checkUnaryOperatorOverload（P2-14
+   重载·返回 bool）/ checkAddressOfUnary（取地址 &）/ checkDerefUnary（解引用 *·B11/B6 警告）/
+   checkPropagateUnary（错误传播 ?）/ checkIncDecUnary（自增自减）。主 switch 薄化 42 行。
+2. **★整族迁出至新文件 `semantic_expr_unary.cpp`**（269 行·CMakeLists 注册）——visitUnaryExpr
+   函数级拆分使 semantic_expr_op.cpp 1007 行超门禁，整族迁出后 **752/269 双 ≤1000**。
+3. **★组装三次失败→程序化切片重建（lessons 预防 168/169）**：整族段尾锚误用文件尾 namespace 闭合
+   卷入后续函数 500 行、多次盲改累积文件损坏——git checkout 回退后改两步法（第一步文件级纯搬移
+   +v2p md5 不变验证；第二步新文件内程序化切片拆分）成功。
+
+### 二、本轮验证（linux-x86_64 口径）
 
 ### 二、本轮验证（linux-x86_64 口径）
 
@@ -84,9 +85,9 @@
 
 ### 三、下一轮任务（按序）
 
-1. **D1 续波（修正口径 65 个）**：函数级首列=宿主 `semantic_expr_op.cpp` visitUnaryExpr 204 →
-   `semantic_expr.cpp` visitIdentifierExpr 198 → v2 `语义检查语句.cn` 检查变量声明语句 180 →
-   `语义检查赋值语句` 178。
+1. **D1 续波（修正口径 64 个）**：函数级首列=宿主 `semantic_expr.cpp` visitIdentifierExpr 198 →
+   v2 `语义检查语句.cn` 检查变量声明语句 180 → `语义检查赋值语句` 178 →
+   宿主 `semantic_builtins.cpp` registerFunction 173。
    （认领前先 fetch 看板避免撞车。）
 2. **C3 波 3 剩余**：149-a IR diff → 泛化 → 元素级深拷〔前置=波 4〕→ H7/H11 收口。
 3. **联合体条件释放设施专项（登记）**：结果/可选 全释放面（108-a 定位路径）。
@@ -122,7 +123,7 @@
   refactor_parity.py 全量对拍（两轮=成员函数实现跨 TU 搬移、逻辑零变化，v2p 最复杂输入已逐字节
   一致；如需更强证据可后补，脚本与基线二进制 target/cn_173base、cn_174base 保留）。
 - github 镜像自 170-a 起未推送（本机无凭据：ssh/gh/credential store/.netrc 全缺）——170~174-a 五轮
-  待补推；**需用户配置 GitHub 凭据（personal access token）或由有凭据的机器代推**（170~179-a 十轮待补推）。
+  待补推；**需用户配置 GitHub 凭据（personal access token）或由有凭据的机器代推**（170~181-a 十一轮待补推）。
 
 
 

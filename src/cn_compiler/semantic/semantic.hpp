@@ -629,6 +629,18 @@ private:
     // 族⑥：第二趟a/b/c——类方法体/函数体检查 + 实例化泛型类补查（原 652~683 段）
     void checkClassAndFunctionBodies(Program* node);
 
+    // ---- visitUnaryExpr 族子方法（181-a 函数级拆分·原 204 行函数；实现于 semantic_expr_unary.cpp）----
+    // 族①：单目运算符重载检查（P2-14）。true = 类重载命中已处理
+    bool checkUnaryOperatorOverload(UnaryExpr* node, const std::string& operandType);
+    // 族②：取地址 & 左值校验（数组退化/左值形态/&引用返回调用）
+    void checkAddressOfUnary(UnaryExpr* node, const std::string& operandType);
+    // 族③：解引用 * 校验（指针要求 + B11 常量空指针硬错误 + B6 裸指针读警告）
+    void checkDerefUnary(UnaryExpr* node, const std::string& operandType);
+    // 族④：错误传播 ? 校验（结果/可选 操作数 + 返回类型兼容）
+    void checkPropagateUnary(UnaryExpr* node, const std::string& operandType);
+    // 族⑤：自增/自减校验（左值性/常量/数值或指针要求）
+    void checkIncDecUnary(UnaryExpr* node, const std::string& operandType);
+
 
 
     bool canConvertWithLiteral(const Expr* value, const std::string& from,
