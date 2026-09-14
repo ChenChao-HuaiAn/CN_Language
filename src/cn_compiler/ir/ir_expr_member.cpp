@@ -243,14 +243,108 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
         return;
     }
-    // 对象源码类型：值对象访问为变量源码类型（含嵌套 r.左上 的字段类型递归）；
-    //               经指针对象访问（v2.1 统一 .，isDerefAccess）为指针所指类型
+    // 179-a：原 246~367 的 objSrcType 手写推导链提取为 resolveMemberObjSrcType
+    //   （嵌套成员/下标两子族再分 resolveNestedMemberObjSrcType / resolveIndexObjSrcType）；
+    //   原 382~411 的字段类型映射提取为 resolveMemberFieldSrcType（纯搬运零行为变更）。
+    std::string objSrcType = resolveMemberObjSrcType(node);
+    // 82-d（2026-09-12 第八十四轮后续）：**成员链嵌套深度兜底**——上方手写推理只
+    //   覆盖「一层嵌套」（inner->object 须为标识符）：三级链 `丙.d.b.a` 的 objSrcType
+    //   退化空 → decl==nullptr → **字段读降级常量 0**（静默错行为；探针 P29/P30 实证：
+    //   三级链读 0、二级/一级正常）。以既有递归辅助 `memberObjStructType`（成员链任意
+    //   深度 + 下标 + 指针剥离 + 结果/可选成员映射）兜底填空。Rust 对照：rustc 字段
+    //   访问按 base 类型递归解析（field.ty()），深度不限。
+    if (objSrcType.empty()) {
+        objSrcType = memberObjStructType(node);
+    }
+    const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));
+    if (decl == nullptr) {
+        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
+        return;
+    }
+    std::string fieldSrcType =
+        resolveMemberFieldSrcType(node, objSrcType, decl);
+    // 修复10（数组字段退化）：结构体数组字段（如 方形.顶点）作为值表达式时，
+    //   按 C 语义退化为指向首元素的指针——返回字段地址（FieldAddr）而非 LoadPtr
+    //   读取字段处 8 字节当指针（垃圾值 -> 空指针错误3/访问冲突崩溃）。
+    //   后续 方形.顶点[i] 的基址即此字段地址。
+    // 宿主缺陷根治（2026-08-25）：结构体字段（结果.值 为 点/符号 结构体值）同样
+    //   返回字段地址（值语义）——原 LoadPtr 只读首 8 字节当值，内联结构体数据
+    //   拷贝给调用方时 CopyStruct(首字段值) 崩（地址 7 读取 0xC0000005）；
+    //   嵌套 查.值.名ID 也依赖字段地址作基址。
+    if (types::isArray(fieldSrcType) ||
+        (semantic_ != nullptr &&
+         semantic_->isStructType(types::canonical(fieldSrcType)))) {
+        lastExpr_ = fieldAddr;
+        return;
+    }
+    // 字段加载（LoadPtr 含空指针检查：错误码3）
+    //   容器/类类型字段（函数IR.指令）：LoadPtr 读首 8 字节=堆对象指针（统一
+    //   指针槽模型，与类字段 A-4/byRef 机制一致——缺陷2 根治 2026-09-02 定案：
+    //   结构体容器字段=typeSizeOf 保留区+首槽指针，构造赋值 Store 指针、
+    //   读取 LoadPtr、方法 this=对象指针；结构体局部零初始化保未构造槽为 null）。
+    lastExpr_ = emitResult(ir::Opcode::LoadPtr, {fieldAddr},
+                           mapType(fieldSrcType), "", node->location);
+}
+
+// ==================== 179-a 族子方法（原 visitMemberExpr 246~411 段） ====================
+
+// 族①：对象源码类型推导（原 246~367 段）——按对象 AST 形态分派：
+//   标识符（变量源码类型）/ 嵌套成员（resolveNestedMemberObjSrcType）/
+//   显式解引用（*q).x / 下标（resolveIndexObjSrcType）/ 指针算术结果 /
+//   调用返回（exprSrcType）；末尾 isDerefAccess 剥指针一级。
+std::string IRGenerator::resolveMemberObjSrcType(MemberExpr* node) {
     std::string objSrcType = "";
     if (node->object->getType() == NodeType::IdentifierExpr) {
         objSrcType = lookupSrcType(static_cast<IdentifierExpr*>(node->object.get())->name);
     } else if (node->object->getType() == NodeType::MemberExpr) {
+        objSrcType = resolveNestedMemberObjSrcType(
+            static_cast<MemberExpr*>(node->object.get()));
+    } else if (node->object->getType() == NodeType::UnaryExpr) {
+        // 显式解引用成员 (*q).x —— 对象经 * 解引用后为所指结构体，类型=所指类型。
+        //   宿主缺陷根治（2026-09-03，E2E 134 第四节当场揪出）：原分支表不认
+        //   UnaryExpr 对象 -> objSrcType 空 -> decl==null -> 降级常量 0（既有缺陷，
+        //   v2.1 统一 . 后 p.字段 ≡ (*p).字段 两形态须等价可互换）。
+        UnaryExpr* u = static_cast<UnaryExpr*>(node->object.get());
+        if (u->op == Operator::Deref &&
+            u->operand->getType() == NodeType::IdentifierExpr) {
+            const std::string pType = lookupSrcType(
+                static_cast<IdentifierExpr*>(u->operand.get())->name);
+            if (types::isPointer(pType)) {
+                objSrcType = types::pointeeOf(pType);
+            }
+        }
+    } else if (node->object->getType() == NodeType::IndexExpr) {
+        objSrcType = resolveIndexObjSrcType(static_cast<IndexExpr*>(node->object.get()));
+    } else if (node->isDerefAccess && node->object->getType() == NodeType::BinaryExpr) {
+        // 指针算术结果成员：(名单 + (n-1)).分数 — 从左操作数（指针变量）
+        // 推导元素类型（Task 2.7 集成修复：此前 decl==nullptr 返回占位0，
+        // 导致结构体指针算术+成员访问组合读取恒为0）
+        BinaryExpr* bin = static_cast<BinaryExpr*>(node->object.get());
+        if (bin->left->getType() == NodeType::IdentifierExpr) {
+            const std::string ptrType = lookupSrcType(
+                static_cast<IdentifierExpr*>(bin->left.get())->name);
+            if (types::isPointer(ptrType)) {
+                objSrcType = types::pointeeOf(ptrType);
+            }
+        }
+    } else if (node->object->getType() == NodeType::CallExpr) {
+        // 宿主缺陷根治（2026-09-01，用户令缺陷零容忍）：对象是函数/方法调用
+        //   （向量.元素(i).字段）——原只认 变量/嵌套成员/下标，CallExpr 推导空
+        //   -> decl==nullptr -> 字段读取降级常量 0。补经 exprSrcType 解析返回
+        //   类型（与 lvalueAddress 的同款补丁配套：地址层 + 类型/宽度层双修复）。
+        objSrcType = exprSrcType(node->object.get());
+    }
+    if (node->isDerefAccess && types::isPointer(objSrcType)) {
+        objSrcType = types::pointeeOf(objSrcType);
+    }
+    return objSrcType;
+}
+
+// 族②：嵌套成员对象类型推导（原 252~299 段）——r.左上 的类型 = 外层结构体
+//   "矩形"的字段"左上"类型；含结果/可选 成员映射与指针剥离。
+std::string IRGenerator::resolveNestedMemberObjSrcType(MemberExpr* inner) {
+    std::string objSrcType = "";
         // 嵌套成员：r.左上 的类型 = 外层结构体"矩形"的字段"左上"类型
-        MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         std::string innerObjType = "";
         if (inner->object->getType() == NodeType::IdentifierExpr) {
             innerObjType = lookupSrcType(
@@ -297,23 +391,14 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
                 }
             }
         }
-    } else if (node->object->getType() == NodeType::UnaryExpr) {
-        // 显式解引用成员 (*q).x —— 对象经 * 解引用后为所指结构体，类型=所指类型。
-        //   宿主缺陷根治（2026-09-03，E2E 134 第四节当场揪出）：原分支表不认
-        //   UnaryExpr 对象 -> objSrcType 空 -> decl==null -> 降级常量 0（既有缺陷，
-        //   v2.1 统一 . 后 p.字段 ≡ (*p).字段 两形态须等价可互换）。
-        UnaryExpr* u = static_cast<UnaryExpr*>(node->object.get());
-        if (u->op == Operator::Deref &&
-            u->operand->getType() == NodeType::IdentifierExpr) {
-            const std::string pType = lookupSrcType(
-                static_cast<IdentifierExpr*>(u->operand.get())->name);
-            if (types::isPointer(pType)) {
-                objSrcType = types::pointeeOf(pType);
-            }
-        }
-    } else if (node->object->getType() == NodeType::IndexExpr) {
+    return objSrcType;
+}
+
+// 族③：下标对象元素类型推导（原 315~345 段）——数组元素成员：点数组[1].x —
+//   元素类型 = 数组元素类型（结构体）；含指针下标与数组字段元素形态。
+std::string IRGenerator::resolveIndexObjSrcType(IndexExpr* idx) {
+    std::string objSrcType = "";
         // 数组元素成员：点数组[1].x — 元素类型 = 数组元素类型（结构体）
-        IndexExpr* idx = static_cast<IndexExpr*>(node->object.get());
         if (idx->object->getType() == NodeType::IdentifierExpr) {
             const std::string arrType = lookupSrcType(
                 static_cast<IdentifierExpr*>(idx->object.get())->name);
@@ -343,42 +428,14 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
                 }
             }
         }
-    } else if (node->isDerefAccess && node->object->getType() == NodeType::BinaryExpr) {
-        // 指针算术结果成员：(名单 + (n-1)).分数 — 从左操作数（指针变量）
-        // 推导元素类型（Task 2.7 集成修复：此前 decl==nullptr 返回占位0，
-        // 导致结构体指针算术+成员访问组合读取恒为0）
-        BinaryExpr* bin = static_cast<BinaryExpr*>(node->object.get());
-        if (bin->left->getType() == NodeType::IdentifierExpr) {
-            const std::string ptrType = lookupSrcType(
-                static_cast<IdentifierExpr*>(bin->left.get())->name);
-            if (types::isPointer(ptrType)) {
-                objSrcType = types::pointeeOf(ptrType);
-            }
-        }
-    } else if (node->object->getType() == NodeType::CallExpr) {
-        // 宿主缺陷根治（2026-09-01，用户令缺陷零容忍）：对象是函数/方法调用
-        //   （向量.元素(i).字段）——原只认 变量/嵌套成员/下标，CallExpr 推导空
-        //   -> decl==nullptr -> 字段读取降级常量 0。补经 exprSrcType 解析返回
-        //   类型（与 lvalueAddress 的同款补丁配套：地址层 + 类型/宽度层双修复）。
-        objSrcType = exprSrcType(node->object.get());
-    }
-    if (node->isDerefAccess && types::isPointer(objSrcType)) {
-        objSrcType = types::pointeeOf(objSrcType);
-    }
-    // 82-d（2026-09-12 第八十四轮后续）：**成员链嵌套深度兜底**——上方手写推理只
-    //   覆盖「一层嵌套」（inner->object 须为标识符）：三级链 `丙.d.b.a` 的 objSrcType
-    //   退化空 → decl==nullptr → **字段读降级常量 0**（静默错行为；探针 P29/P30 实证：
-    //   三级链读 0、二级/一级正常）。以既有递归辅助 `memberObjStructType`（成员链任意
-    //   深度 + 下标 + 指针剥离 + 结果/可选成员映射）兜底填空。Rust 对照：rustc 字段
-    //   访问按 base 类型递归解析（field.ty()），深度不限。
-    if (objSrcType.empty()) {
-        objSrcType = memberObjStructType(node);
-    }
-    const StructDecl* decl = semantic_->findStruct(types::canonical(objSrcType));
-    if (decl == nullptr) {
-        lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i32", "0", node->location);
-        return;
-    }
+    return objSrcType;
+}
+
+// 族④：字段源码类型映射（原 382~411 段）——结果/可选 合成结构体成员名映射
+//   （与 fieldOffsetOf 一致）+ 普通字段查表。
+std::string IRGenerator::resolveMemberFieldSrcType(MemberExpr* node,
+                                                   const std::string& objSrcType,
+                                                   const StructDecl* decl) {
     // 字段类型（IR类型）
     // 阶段3（Task 3.5）：结果/可选 合成结构体成员名映射（与 fieldOffsetOf 一致）——
     //   源码 .正常/.值/.错误/.有值 对应 是否正常/错误值联合/是否某些；
@@ -409,26 +466,6 @@ void IRGenerator::visitMemberExpr(MemberExpr* node) {
             }
         }
     }
-    // 修复10（数组字段退化）：结构体数组字段（如 方形.顶点）作为值表达式时，
-    //   按 C 语义退化为指向首元素的指针——返回字段地址（FieldAddr）而非 LoadPtr
-    //   读取字段处 8 字节当指针（垃圾值 -> 空指针错误3/访问冲突崩溃）。
-    //   后续 方形.顶点[i] 的基址即此字段地址。
-    // 宿主缺陷根治（2026-08-25）：结构体字段（结果.值 为 点/符号 结构体值）同样
-    //   返回字段地址（值语义）——原 LoadPtr 只读首 8 字节当值，内联结构体数据
-    //   拷贝给调用方时 CopyStruct(首字段值) 崩（地址 7 读取 0xC0000005）；
-    //   嵌套 查.值.名ID 也依赖字段地址作基址。
-    if (types::isArray(fieldSrcType) ||
-        (semantic_ != nullptr &&
-         semantic_->isStructType(types::canonical(fieldSrcType)))) {
-        lastExpr_ = fieldAddr;
-        return;
-    }
-    // 字段加载（LoadPtr 含空指针检查：错误码3）
-    //   容器/类类型字段（函数IR.指令）：LoadPtr 读首 8 字节=堆对象指针（统一
-    //   指针槽模型，与类字段 A-4/byRef 机制一致——缺陷2 根治 2026-09-02 定案：
-    //   结构体容器字段=typeSizeOf 保留区+首槽指针，构造赋值 Store 指针、
-    //   读取 LoadPtr、方法 this=对象指针；结构体局部零初始化保未构造槽为 null）。
-    lastExpr_ = emitResult(ir::Opcode::LoadPtr, {fieldAddr},
-                           mapType(fieldSrcType), "", node->location);
+    return fieldSrcType;
 }
 } // namespace cn_compiler

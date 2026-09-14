@@ -330,6 +330,16 @@ public:
     ir::IRValue genGenericIndexAddress(IndexExpr* idx);
     // 族④：成员左值地址——类字段钩子/枚举防御/FieldAddr（基址+偏移）
     ir::IRValue genMemberLvalueAddress(Expr* node);
+    // ---- visitMemberExpr 族子方法（179-a 函数级拆分·原 218 行函数）----
+    // 族①：对象源码类型推导——按对象 AST 形态分派 + isDerefAccess 剥指针
+    std::string resolveMemberObjSrcType(MemberExpr* node);
+    // 族②：嵌套成员对象类型推导（含结果/可选 成员映射与指针剥离）
+    std::string resolveNestedMemberObjSrcType(MemberExpr* inner);
+    // 族③：下标对象元素类型推导（数组/指针/数组字段元素）
+    std::string resolveIndexObjSrcType(IndexExpr* idx);
+    // 族④：字段源码类型映射（结果/可选 成员名映射 + 普通字段查表；decl=主流程已解析的目标结构体）
+    std::string resolveMemberFieldSrcType(MemberExpr* node, const std::string& objSrcType,
+                                          const StructDecl* decl);
 
     void visitUnaryExpr(UnaryExpr* node) override;
     void visitAssignmentExpr(AssignmentExpr* node) override;
