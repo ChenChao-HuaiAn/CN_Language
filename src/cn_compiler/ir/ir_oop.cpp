@@ -45,6 +45,10 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     const ClassMember* member = mi.ast;
     if (member == nullptr || member->body == nullptr) return;  // 抽象/接口签名无体
     if (!mi.hasBody) return;
+    // 145-a：构造体标志（构造/拷贝构造体内 this 字段赋值=初始化语义——写入位
+    //   拦截据此跳过 preFree；嵌套方法体生成时保存/恢复）。
+    const bool savedIsCtor = currentMethodIsCtor_;
+    currentMethodIsCtor_ = mi.isConstructor;
 
     // Debug 子任务修复（泛型类方法内循环遍历第一个泛型字段）：泛型单态化类
     //   （盒子$整64）方法体提升时须设置 genericTypeParams_（T -> 整64）——
@@ -183,6 +187,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     currentMethodStatic_ = savedStatic;
     currentMethodConst_ = savedConst;
     genericTypeParams_ = savedTypeParams;  // 恢复泛型类型参数映射（emitClassMethod 开头设置）
+    currentMethodIsCtor_ = savedIsCtor;    // 145-a：恢复构造体标志
     if (!varStack_.empty()) varStack_.pop_back();
 }
 

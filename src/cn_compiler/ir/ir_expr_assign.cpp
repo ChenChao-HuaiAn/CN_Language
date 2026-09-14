@@ -98,15 +98,29 @@ void IRGenerator::visitAssignmentExpr(AssignmentExpr* node) {
                 const std::string dtorKeyC = classDestructorSymbolKey(fieldCanonC);
                 if (!dtorKeyC.empty()) {
                     ir::IRValue fieldAddrC = lvalueAddress(node->target.get());
-                    ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddrC},
-                                                    "ptr", "", node->location);
-                    emitContainerElemFreeFor(fieldCanonC, oldObj, node->location);
-                    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), fieldCanonC,
-                         "void", node->location);
-                    ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
-                                                   node->location);
-                    emit(ir::Opcode::StorePtr, {fieldAddrC, zeroC}, ir::IRValue(), "",
-                         "ptr", node->location);
+                    // 145-a：**构造体（含拷贝构造）内对 this 字段的赋值=初始化语义**
+                    //   （Rust 对照：构造即初始化）——跳过 preFree：目标字段无旧值，
+                    //   NewObject 分配未初始化，原 preFree 读垃圾句柄 DeleteObject=崩
+                    //   （用户类探针 0xC0000374 实证）。非 this 接收者（如 其他.表）
+                    //   仍走完整 preFree。
+                    bool isCtorThisField = false;
+                    if (currentMethodIsCtor_ &&
+                        member->object->getType() == NodeType::IdentifierExpr) {
+                        const auto* objId =
+                            static_cast<const IdentifierExpr*>(member->object.get());
+                        if (objId->name == "自身") isCtorThisField = true;
+                    }
+                    if (!isCtorThisField) {
+                        ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {fieldAddrC},
+                                                        "ptr", "", node->location);
+                        emitContainerElemFreeFor(fieldCanonC, oldObj, node->location);
+                        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
+                             fieldCanonC, "void", node->location);
+                        ir::IRValue zeroC = emitResult(ir::Opcode::ConstInt, {}, "i64",
+                                                       "0", node->location);
+                        emit(ir::Opcode::StorePtr, {fieldAddrC, zeroC}, ir::IRValue(),
+                             "", "ptr", node->location);
+                    }
                     const bool srcIsCtorC =
                         node->value->getType() == NodeType::CallExpr;
                     const std::string copyKeyC = classCopyCtorSymbolKey(fieldCanonC);

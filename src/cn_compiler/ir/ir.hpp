@@ -920,6 +920,11 @@ private:
     bool currentMethodStatic_ = false;
     // 当前方法是否常量成员函数（常量方法体内禁止修改成员，Task 3.9 语义已检查）
     bool currentMethodConst_ = false;
+    // 145-a：当前方法是否为构造函数（含拷贝构造）——构造体内对 **this 字段**的赋值
+    //   = 初始化语义（Rust 对照：构造即初始化）：写入位拦截跳过 preFree（目标字段
+    //   无旧值；NewObject 分配未初始化——原 preFree 读垃圾句柄 DeleteObject=崩，
+    //   145-a 用户类探针 0xC0000374 实证）。
+    bool currentMethodIsCtor_ = false;
 };
 
 } // namespace cn_compiler
