@@ -51,10 +51,10 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
     //   视图，IR 层同为 ptr）；原按类型文本 '*' 后缀判指针对该形态误报（宿主
     //   check v2 树 75 处实证全部为 驻留文本(...)/字符串变量 拼接）。字符* 的
     //   -（指针步进，语义层按指针算术分派）与真指针（整N*/类*）的 +/- 保持原判。
-    const bool 拼接加 =
+    const bool concatAdd =
         node->op == Operator::Add &&
         (isStringSemanticType(leftType) || isStringSemanticType(rightType));
-    if (!拼接加 &&
+    if (!concatAdd &&
         (node->op == Operator::Add || node->op == Operator::Subtract) &&
         (types::isPointer(leftType) || types::isPointer(rightType))) {
         reportUnsafeBoundary(node->location, "指针算术",

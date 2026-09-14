@@ -118,13 +118,17 @@ extern "C" char* __cn_str_sub(const char* str, long long start, long long len) {
     return result;
 }
 
-// 字典序比较：等价 C strcmp（<0/0/>0），为 字符串比较(相等) 提供全序比较能力。
-// 注：规格书未定义字符串 < > 运算符（比较运算符仅整型与浮点变体，见运算符表），
+// 字典序比较：归一化返回 -1/0/+1（规范 <0/0/>0 符号语义的跨平台确定化）。
+// 注 1：规格书未定义字符串 < > 运算符（比较运算符仅整型与浮点变体，见运算符表），
 //     本 API 提供显式函数等价能力。
+// 注 2：C 标准对 strcmp 只保证符号、幅值实现定义——麒麟 glibc 2.31 aarch64 实测
+//     按指针对齐分叉（未对齐 rodata 走字节路径差值 1、16 对齐堆指针走 SIMD 路径
+//     差值 56），同一 CN 程序三平台输出不同；归一化后与 Rust Ordering 同构。
 extern "C" long long __cn_str_cmp(const char* a, const char* b) {
     if (a == nullptr) a = "";
     if (b == nullptr) b = "";
-    return static_cast<long long>(std::strcmp(a, b));
+    const int r = std::strcmp(a, b);
+    return (r > 0) ? 1 : (r < 0 ? -1 : 0);
 }
 
 // ASCII 大写：仅 'a'-'z' 转大写，非ASCII字节（UTF-8 中文等）原样保留。

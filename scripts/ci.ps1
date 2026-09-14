@@ -5,16 +5,20 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
-Write-Host "[CI] 1/3 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
+Write-Host "[CI] 0/4 ASCII 标识符门禁（跨机-a 防复发，GCC9 拒 UTF-8 标识符）..." -ForegroundColor Cyan
+python scripts/check_ascii_idents.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] ASCII 标识符门禁失败" -ForegroundColor Red; exit 1 }
+
+Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }
 
-Write-Host "[CI] 2/3 单元测试..." -ForegroundColor Cyan
+Write-Host "[CI] 2/4 单元测试..." -ForegroundColor Cyan
 & target/Debug/cn_unit_tests.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 单元测试失败" -ForegroundColor Red; exit 1 }
 
-Write-Host "[CI] 3/3 E2E 测试..." -ForegroundColor Cyan
+Write-Host "[CI] 3/4 E2E 测试..." -ForegroundColor Cyan
 python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] E2E 失败" -ForegroundColor Red; exit 1 }
 
-Write-Host "[CI] 全部门禁通过" -ForegroundColor Green
+Write-Host "[CI] 4/4 全部门禁通过" -ForegroundColor Green

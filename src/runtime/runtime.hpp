@@ -68,7 +68,7 @@ extern "C" {
 
     // ---- Task 2.8 补充字符串API（规格书10.1 标注"常见字符串库补充"，内存语义：调用方负责释放） ----
     CNRT_EXPORT char* __cn_str_sub(const char* str, long long start, long long len);   // 子串（字节偏移，动态分配）
-    CNRT_EXPORT long long __cn_str_cmp(const char* a, const char* b); // 字典序比较（<0/0/>0，替代未定义的字符串比较运算符）
+    CNRT_EXPORT long long __cn_str_cmp(const char* a, const char* b); // 字典序比较（归一化 -1/0/+1，替代未定义的字符串比较运算符）
     CNRT_EXPORT char* __cn_str_upper(const char* str);               // ASCII 大写（动态分配，非ASCII字节原样保留）
     CNRT_EXPORT char* __cn_str_lower(const char* str);               // ASCII 小写（动态分配，非ASCII字节原样保留）
     CNRT_EXPORT long long __cn_str_starts_with(const char* str, const char* prefix); // 前缀判断（1=是，0=否）

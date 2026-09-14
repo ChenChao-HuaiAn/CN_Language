@@ -231,10 +231,10 @@ void IRGenerator::emitStaticInitsAtEntry() {
             //   = 跨平台分叉温床），且丢失 isScalarStatic 守卫（数组等聚合会被
             //   8 字节 StorePtr 写越界 = 87-a 的安全边界）。恢复守卫：标量落下方
             //   统一 StorePtr；类/容器指针槽 StorePtr；其余聚合保持 .data 零。
-            const bool obj有效 = !(obj.id < 0 && obj.isConstant == false &&
+            const bool objValid = !(obj.id < 0 && obj.isConstant == false &&
                                     obj.extra.empty());
             if (!isScalarStatic) {
-                if (obj有效 && semantic_->isClassType(canonStatic)) {
+                if (objValid && semantic_->isClassType(canonStatic)) {
                     ir::IRValue symAddr = emitResult(
                         ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + sname,
                         initExpr->location);
@@ -243,7 +243,7 @@ void IRGenerator::emitStaticInitsAtEntry() {
                 }
                 continue;  // 类/容器以外聚合（数组等）：保持 .data 零（宁漏勿错）
             }
-            if (!obj有效) continue;
+            if (!objValid) continue;
             // 标量：落入下方标量族统一 StorePtr
         } else {
             // 无初始化表达式：NewObject + 无参构造（this=新对象），

@@ -78,12 +78,12 @@ bool X64CodeGenerator::emitCompareFloat(AsmWriter& writer, const ir::IRInstructi
         const std::string cmp = isDouble ? "ucomisd" : "ucomiss";
         const std::string mp = isDouble ? "qword ptr " : "dword ptr ";
         // 交换装载：Lt/Le 用「op2 vs op1 + seta/setae」等价表达（NaN 安全）
-        const bool 交换 = (inst.opcode == ir::Opcode::Lt ||
+        const bool swapped = (inst.opcode == ir::Opcode::Lt ||
                            inst.opcode == ir::Opcode::Le);
-        const std::string& 左文本 = 交换 ? op2 : op1;
-        const std::string& 右文本 = 交换 ? op1 : op2;
-        writer.line(load + " xmm0, " + mp + 左文本);
-        writer.line(load + " xmm1, " + mp + 右文本);
+        const std::string& leftText = swapped ? op2 : op1;
+        const std::string& rightText = swapped ? op1 : op2;
+        writer.line(load + " xmm0, " + mp + leftText);
+        writer.line(load + " xmm1, " + mp + rightText);
         writer.line(cmp + " xmm0, xmm1");
         switch (inst.opcode) {
             case ir::Opcode::Eq:

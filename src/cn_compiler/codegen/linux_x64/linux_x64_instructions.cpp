@@ -533,9 +533,9 @@ void LinuxX64CodeGenerator::emitCompare(LinuxX64AsmWriter& writer,
         const bool isDouble = (cmpType == "f64");
         const std::string cmp = std::string("ucomis") + (isDouble ? "d" : "s");
         // 交换装载：Lt/Le 用「op2 vs op1 + seta/setae」等价表达（NaN 安全）
-        const bool 交换 = (inst.opcode == ir::Opcode::Lt ||
+        const bool swapped = (inst.opcode == ir::Opcode::Lt ||
                            inst.opcode == ir::Opcode::Le);
-        if (交换) {
+        if (swapped) {
             loadOperandToV(writer, inst.operands[1], "xmm0");
             loadOperandToV(writer, inst.operands[0], "xmm1");
         } else {
