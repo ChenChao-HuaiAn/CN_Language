@@ -888,6 +888,51 @@ private:
     // 方法体内直接字段赋值（visitAssignmentExpr 钩子）：字段名 = v
     bool handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                                 const SourceLocation& loc);
+    // ---- visitAssignmentExpr 族子方法（166-a 函数级拆分；行为等价于原 1034 行单函数）----
+    // 族：成员左值（原 ir_expr_assign.cpp 19~314 段）
+    bool assignToMemberTarget(AssignmentExpr* node);
+    bool memberStructLiteralAssign(AssignmentExpr* node, MemberExpr* member);
+    bool memberClassFieldAssign(AssignmentExpr* node, MemberExpr* member);
+    bool memberWholeStructAssign(AssignmentExpr* node, MemberExpr* member);
+    bool memberGenericAssign(AssignmentExpr* node, MemberExpr* member);
+    std::string memberAssignObjSrcType(MemberExpr* member);
+    bool memberStringFieldAssign(AssignmentExpr* node, MemberExpr* member,
+                                 const StructDecl* decl, const std::string& objSrcType,
+                                 const ir::IRValue& addr, const ir::IRValue& value);
+    // 族：下标/解引用左值（原 320~459 段）
+    bool assignToIndexTarget(AssignmentExpr* node);
+    void markIndexStringElemTainted(AssignmentExpr* node);
+    std::string indexAssignElemType(AssignmentExpr* node);
+    bool indexStructElemAssign(AssignmentExpr* node, const ir::IRValue& addr);
+    // 族：调用左值（原 461~484 段）
+    bool assignToCallTarget(AssignmentExpr* node);
+    // 族：标识符左值（原 490~1048 段）
+    bool assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr* ident);
+    bool assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ident);
+    bool globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                 const std::string& stType, const ir::IRValue& value);
+    bool identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                   const std::string& unique);
+    bool identifierStructLiteralAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                       const std::string& unique);
+    void identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                 const std::string& unique);
+    std::string assignValueSrcType(AssignmentExpr* node, const std::string& targetSrcType,
+                                   bool& isChainedAssign, bool& isStructReturnCall);
+    bool identifierStructWholeAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                     const std::string& unique, const ir::IRValue& value);
+    bool identifierStringAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                const std::string& unique, const std::string& targetType,
+                                ir::IRValue& value);
+    bool identifierStringByRefAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                     const std::string& unique, const std::string& targetType,
+                                     const std::string& ownTargetSrcType, ir::IRValue& value);
+    bool identifierStringTransferAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                        const std::string& unique, const std::string& targetType,
+                                        const std::string& ownTargetSrcType, ir::IRValue& value);
+    bool identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                   const std::string& unique, const std::string& targetType,
+                                   const std::string& ownTargetSrcType, ir::IRValue& value);
     // 方法体内直接字段自增/自减（visitUnaryExpr 钩子）：字段名++ / 字段名--
     //   （缺陷5 修复：静态/实例字段不在 varStack_，原自增路径只读不写，须读-算-写回）
     bool handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
