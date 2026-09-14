@@ -138,6 +138,9 @@ target_link_libraries(cn_compiler_semantic PUBLIC cn_compiler_type_system cn_com
 #   ir_expr_unary.cpp（一元/三元）、ir_expr_assign.cpp（赋值）、
 #   ir_expr_index.cpp（下标）、ir_expr_member.cpp（结构体整体赋值/构造/成员访问）
 #   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
+# D1 行数整改 174-a（单文件<=1000行约束）：ir_expr_assign.cpp 1261 行续拆——
+#   ir_expr_assign_ident.cpp（标识符左值族；家机历史成果审查专项立案回补）
+#   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
 # D1 行数整改 113-a（单文件<=1000行约束）：ir_oop.cpp 1381 行按族拆分——
 #   ir_oop_container.cpp（容器<T> 元素自动析构注入）、ir_oop_field.cpp（类字段访问）
 #   （纯重构零行为变更；成员函数声明仍在 ir.hpp）
@@ -158,6 +161,7 @@ add_library(cn_compiler_ir STATIC
     src/cn_compiler/ir/ir_expr.cpp
     src/cn_compiler/ir/ir_expr_unary.cpp
     src/cn_compiler/ir/ir_expr_assign.cpp
+    src/cn_compiler/ir/ir_expr_assign_ident.cpp
     src/cn_compiler/ir/ir_expr_index.cpp
     src/cn_compiler/ir/ir_expr_member.cpp
     src/cn_compiler/ir/ir_call.cpp
