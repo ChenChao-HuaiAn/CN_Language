@@ -561,6 +561,31 @@ private:
     // 族D 主体：非变参直接调用（原 626~631 + 649~667 + 687~744 段）
     bool checkDirectCall(CallExpr* node, const std::string& calleeName);
 
+    // ---- visitCallExpr 族A（170-a struct 化提取·收尾该函数 ≤100 行）----
+    // 模块限定调用上下文（169-a 判定「12 个跨段共享局部变量需变量重组」——
+    //   struct 化为收集/重写两段共享的信息载体）：收集面在重写销毁旧 MemberExpr
+    //   （callee 整体替换致 mem 悬垂）之前，把全部所需名称值拷贝进本结构并算齐
+    //   判定布尔；重写面只消费本结构，不再触碰原表达式树。
+    struct QualifiedCallInfo {
+        std::string pathPrefix;    // 嵌套路径前缀（包::模块；单段为空）
+        std::string moduleName;    // 首段模块名（别名映射后）
+        std::string funcName;      // 函数名（可能含泛型实参，如 交换<整32>）
+        std::string qualified;     // :: 分隔完整限定名（数学::平方根）
+        std::string qualifiedDot;  // 旧点号限定名（数学.平方根，v1.0 兼容面）
+        std::string subModule;     // 子模块完整路径（net::transport；无中段=moduleName）
+        bool isTypeName = false;        // 首段是类型名（结构体/枚举/类/接口）→ 非模块调用
+        bool moduleLoaded = false;      // 模块已加载（显式导入或已知模块集合）
+        bool userFuncExists = false;    // 用户模块公开函数存在（纯名，含泛型）
+        bool builtinQualified = false;  // 内置限定名存在（prelude，无需导入）
+        bool qualifiedClass = false;    // 限定名是类类型（模块::类 构造调用）
+    };
+    // 族A-收集：展平嵌套 MemberExpr 路径 + 值拷贝名称 + 算齐判定布尔
+    //   （原 semantic_call.cpp 132~211 段；返回 false = 路径首段非标识符，
+    //   不属于模块限定调用面——调用方直接跳过，走下方成员方法调用路径）
+    bool collectQualifiedCallInfo(const MemberExpr& mem, QualifiedCallInfo& info);
+    // 族A-重写：按收集信息执行 callee 重写/未加载诊断（原 214~266 段）
+    void rewriteQualifiedCall(CallExpr* node, const QualifiedCallInfo& info);
+
 
 
     bool canConvertWithLiteral(const Expr* value, const std::string& from,
