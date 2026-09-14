@@ -306,6 +306,22 @@ public:
     void visitNullLiteral(NullLiteral* node) override;
     void visitIdentifierExpr(IdentifierExpr* node) override;
     void visitBinaryExpr(BinaryExpr* node) override;
+    // ---- visitBinaryExpr 族子方法（176-a 函数级拆分·原 269 行函数）----
+    // 族①：逻辑与/或短路求值（rustc 同构手法）。true = 已处理。
+    bool genShortCircuitBinary(BinaryExpr* node);
+    // 族②③：字符串连接（Task 2.5 ptr+ptr）+ 字符串+数值隐式拼接（Task 2.9）
+    //   + 字符串+整128/正128（双槽 ptr 形态）。true = 已处理。
+    bool genStringConcatBinary(BinaryExpr* node, const ir::IRValue& left,
+                               const ir::IRValue& right);
+    bool genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
+                             const ir::IRValue& right);
+    // 族④：指针算术 ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
+    bool genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
+                              const ir::IRValue& right);
+    // 族⑤：公共类型转换（92-a 浮点公共类型）+ 算术/比较发射
+    void genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
+                                 ir::IRValue& right, bool isFloat);
+
     void visitUnaryExpr(UnaryExpr* node) override;
     void visitAssignmentExpr(AssignmentExpr* node) override;
     void visitCallExpr(CallExpr* node) override;

@@ -313,19 +313,36 @@ bool IRGenerator::isStringTypedExpr(Expr* node) const {
     }
 }
 void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
+    // 176-a：本函数 269 行按「短路求值 / 字符串连接族 / 指针算术 / 公共类型
+    //   算术」提取为 5 个族子方法（纯搬运零行为变更——逐行核验）。
     // ---- 逻辑与/或短路求值（2026-09-08 根治，缺陷零容忍；rustc 同构手法）----
-    // 原实现走通用二元路径：两侧先各自 genExpr 再发单条 And/Or 指令=RHS 无条件
-    //   求值，与短路语义分歧——RHS 带副作用时（函数调用/除法/驻留等）行为错误。
-    //   组件对拍灰色点（v2p 与 cn_self 字符串池编号稳定差 2）即其可观测指纹：
-    //   v2 编译器源码大量「当前ID(...) == 驻留("&")」判定，宿主全求值使 驻留("&")
-    //   提前入池，v2p 与 cn_self 的池序漂移。v2 自举编译器已正确短路（条件块
-    //   发射实证），根治=宿主对齐 rustc HIR->THIR：&&/|| 在 IR 生成期脱糖为
-    //   控制流（性能：跳过不需 BraHS 求值更快；安全：副作用按语义执行）。
-    //   a && b : 结果槽预置 假 -> a 真? 求值 b 存槽 : 直达汇合
-    //   a || b : 结果槽预置 真 -> a 真? 直达汇合 : 求值 b 存槽
-    // 语义层保证逻辑操作数恒为布尔（IR i1），LHS/RHS 均无需真值转换。
-    // And/Or 指令保留：编译器内部布尔组合（空/边界检查，ir.cpp/ir_oop*.cpp）
-    //   操作数均为纯值，全求值语义等价，不受本修复影响。
+    //   &&/|| 在 IR 生成期脱糖为控制流（RHS 带副作用时按短路语义执行）。
+    //   And/Or 指令保留：编译器内部布尔组合（空/边界检查）不受影响。
+    if (genShortCircuitBinary(node)) return;
+    ir::IRValue left = genExpr(node->left.get());
+    ir::IRValue right = genExpr(node->right.get());
+    // ---- 阶段3 OOP（Task 3.7）：运算符重载降级为成员方法调用 ----
+    //   须在字符串连接/指针算术分支之前（语义层重载决议优先于隐式转换）。
+    if (handleOperatorOverload(node, left, right)) {
+        return;
+    }
+    bool isFloat = (left.type == "f32" || left.type == "f64" ||
+                    right.type == "f32" || right.type == "f64");
+    // ---- 字符串连接族（Task 2.5/2.9 + i128 段）：ptr + 数值/i128 -> 运行时拼接 ----
+    if (genStringConcatBinary(node, left, right)) return;
+    if (genStringConcatI128(node, left, right)) return;
+    // ---- 指针算术（Task 2.4）：ptr ± 整型 -> 指针（偏移量×元素大小） ----
+    if (genPointerArithmetic(node, left, right)) return;
+    // ---- 公共类型转换 + 算术/比较发射（92-a 浮点公共类型）----
+    genCommonTypeArithmetic(node, left, right, isFloat);
+}
+
+// ==================== 176-a 族子方法（原 visitBinaryExpr 316~582 段） ====================
+
+// 族①：逻辑与/或短路求值（原 316~369 段；rustc 同构手法）。true = 已处理。
+//   a && b : 结果槽预置 假 -> a 真? 求值 b 存槽 : 直达汇合
+//   a || b : 结果槽预置 真 -> a 真? 直达汇合 : 求值 b 存槽
+bool IRGenerator::genShortCircuitBinary(BinaryExpr* node) {
     if (node->op == Operator::AndAnd || node->op == Operator::OrOr) {
         const bool isAnd = (node->op == Operator::AndAnd);
         ir::IRValue lhs = genExpr(node->left.get());
@@ -365,39 +382,33 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::Load,
                                {ir::IRValue::var(tempName, "i1")}, "i1", "",
                                node->location);
-        return;
+        return true;
     }
-    ir::IRValue left = genExpr(node->left.get());
-    ir::IRValue right = genExpr(node->right.get());
-    // ---- 阶段3 OOP（Task 3.7）：运算符重载降级为成员方法调用 ----
-    // 左操作数为类实例且类有 运算符X 成员（+ - * / % == != < > <= >=）时，
-    //   this=左操作数指针，实参=右操作数，Call 类名$运算符X#参数串（非虚）。
-    // 注意：须在字符串连接/指针算术分支之前（语义层重载决议优先于隐式转换）。
-    if (handleOperatorOverload(node, left, right)) {
-        return;
-    }
-    bool isFloat = (left.type == "f32" || left.type == "f64" ||
-                    right.type == "f32" || right.type == "f64");
-    // ---- 字符串连接（Task 2.5）：两个指针（字符串/字符*）的 + -> 运行时连接 ----
-    // 说明：字符串类型在IR层映射为 ptr；两操作数均为 ptr 且运算符为 + 时视为连接
-    //       （指针+整数 仍走下方指针算术分支；指针+指针 由语义层保证为字符串连接）
+    return false;
+}
+
+// ==================== 族②：字符串连接（Task 2.5）+ 字符串+数值隐式拼接（Task 2.9） ====================
+// （原 381~461 段）true = 已处理。
+// 说明：字符串类型在IR层映射为 ptr；两操作数均为 ptr 且运算符为 + 时视为连接
+//       （指针+整数 仍走指针算术分支；指针+指针 由语义层保证为字符串连接）
+// 多操作数左结合："a" + 1 + 2 = ("a"+1)+2：内层结果为 ptr（连接产物），外层再拼。
+//   连接/转换产物为动态内存，调用方负责 字符串释放（与 Task 2.5 语义一致）。
+// 注意：Call 有副作用，CSE 已排除（cse.cpp isSideEffect），不会被错误合并。
+// 关键区分：ptr 左操作数可能是 字符串（拼接）或 普通指针（指针算术 q + 1）。
+//   拼接仅当 左操作数源码类型为 字符串/字符*（字面量 或 字符串变量/数组元素）；
+//   普通指针 + 整数 必须走指针算术分支（05_array_pointer 回归教训）。
+// 展开：右操作数先转字符串（__cn_str_from_int/float/char/bool），再 __cn_str_concat。
+//   整数/枚举 -> __cn_str_from_int（整32 先 Cast i64；整128 截断 i64——值域≤2^63 语义正确）
+//   浮点      -> __cn_str_from_float（f32 先 Cast f64）
+//   字符      -> __cn_str_from_char（i32 值）
+//   布尔      -> __cn_str_from_bool（i1 -> "真"/"假"）
+bool IRGenerator::genStringConcatBinary(BinaryExpr* node, const ir::IRValue& left,
+                                        const ir::IRValue& right) {
     if (left.type == "ptr" && right.type == "ptr" && node->op == Operator::Add) {
         lastExpr_ = emitResult(ir::Opcode::Call, {left, right}, "ptr",
                                "__cn_str_concat", node->location);
-        return;
+        return true;
     }
-    // ---- 字符串 + 数值 隐式拼接（Task 2.9）：左为字符串(ptr)，右为数值/布尔/字符/枚举 ----
-    // 展开：右操作数先转字符串（__cn_str_from_int/float/char/bool），再 __cn_str_concat。
-    //   整数/枚举 -> __cn_str_from_int（整32 先 Cast i64；整128 截断 i64——值域≤2^63 语义正确）
-    //   浮点      -> __cn_str_from_float（f32 先 Cast f64）
-    //   字符      -> __cn_str_from_char（i32 值）
-    //   布尔      -> __cn_str_from_bool（i1 -> "真"/"假"）
-    // 多操作数左结合："a" + 1 + 2 = ("a"+1)+2：内层结果为 ptr（连接产物），外层再拼。
-    //   连接/转换产物为动态内存，调用方负责 字符串释放（与 Task 2.5 语义一致）。
-    // 注意：Call 有副作用，CSE 已排除（cse.cpp isSideEffect），不会被错误合并。
-    // 关键区分：ptr 左操作数可能是 字符串（拼接）或 普通指针（指针算术 q + 1）。
-    //   拼接仅当 左操作数源码类型为 字符串/字符*（字面量 或 字符串变量/数组元素）；
-    //   普通指针 + 整数 必须走下方指针算术分支（05_array_pointer 回归教训）。
     const bool leftIsString = isStringTypedExpr(node->left.get());
     if (leftIsString && left.type == "ptr" && node->op == Operator::Add &&
         right.type != "ptr" && right.type != "i128" && right.type != "u128") {
@@ -457,13 +468,20 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
                                           convFn, node->location);
         lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
                                "__cn_str_concat", node->location);
-        return;
+        return true;
     }
-    // 字符串 + 整128/正128（IR 双槽 ptr 形态）：转字符串（截断 i64）再连接
-    // i128 值在 IR 层为"指向16字节双槽内存的 ptr"（低64位槽+高64位槽），
-    // right 本身就是该地址（变量槽地址或临时双槽地址）。取低64位 LoadPtr 转整64
-    //（值域≤2^63 语义正确；超范围拼接场景后续 Task 再支持全量转换）。
-    if (leftIsString && left.type == "ptr" && node->op == Operator::Add &&
+    return false;
+}
+
+// ==================== 族③：字符串 + 整128/正128（原 462~479 段） ====================
+// i128 值在 IR 层为"指向16字节双槽内存的 ptr"（低64位槽+高64位槽），
+// right 本身就是该地址（变量槽地址或临时双槽地址）。取低64位 LoadPtr 转整64
+//（值域≤2^63 语义正确；超范围拼接场景后续 Task 再支持全量转换）。
+// true = 已处理。
+bool IRGenerator::genStringConcatI128(BinaryExpr* node, const ir::IRValue& left,
+                                      const ir::IRValue& right) {
+    if (isStringTypedExpr(node->left.get()) && left.type == "ptr" &&
+        node->op == Operator::Add &&
         (right.type == "i128" || right.type == "u128")) {
         // i128 值是"双槽寄存器值"（IRValue.id=高64位槽、id+1=低64位槽），
         // 而非指针地址——不能用 LoadPtr 解引用（会把槽值当地址访问导致
@@ -475,9 +493,15 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
                                           "__cn_str_from_int", node->location);
         lastExpr_ = emitResult(ir::Opcode::Call, {left, rightStr}, "ptr",
                                "__cn_str_concat", node->location);
-        return;
+        return true;
     }
-    // ---- 指针算术（Task 2.4）：ptr ± 整型 -> 指针（偏移量×元素大小） ----
+    return false;
+}
+
+// ==================== 族④：指针算术（Task 2.4） ====================
+// （原 480~515 段）ptr ± 整型 -> 指针（偏移量×元素大小）。true = 已处理。
+bool IRGenerator::genPointerArithmetic(BinaryExpr* node, const ir::IRValue& left,
+                                       const ir::IRValue& right) {
     if ((left.type == "ptr" && right.type != "ptr") ||
         (right.type == "ptr" && left.type != "ptr")) {
         const bool ptrLeft = (left.type == "ptr");
@@ -486,7 +510,7 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
         // 仅 + / - 允许指针算术（语义层已检查）
         if (node->op != Operator::Add && node->op != Operator::Subtract) {
             lastExpr_ = ptr;
-            return;
+            return true;
         }
         // 偏移量转 i64；步进 = 指针所指元素大小（结构体指针按结构体总大小，
         // 普通指针8字节；Task 2.7 修复）
@@ -511,8 +535,15 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
         lastExpr_ = emitResult(
             node->op == Operator::Add ? ir::Opcode::Add : ir::Opcode::Sub,
             {ptr, scaled}, "ptr", "", node->location);
-        return;
+        return true;
     }
+    return false;
+}
+
+// ==================== 族⑤：公共类型转换 + 算术/比较发射（92-a 浮点公共类型） ====================
+// （原 516~582 段）left/right 经 Cast 后按 opcode 发射；left/right 为引用进出。
+void IRGenerator::genCommonTypeArithmetic(BinaryExpr* node, ir::IRValue& left,
+                                          ir::IRValue& right, bool isFloat) {
     // 公共类型（浮点优先 f64；整型取 rank 高者由语义层保证可转换）
     // 92-a：浮点算术公共类型（f32 op f32 -> f32 单精度；跨类型统一 f64）
     std::string floatCommon;
