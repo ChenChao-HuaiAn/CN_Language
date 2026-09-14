@@ -9,52 +9,54 @@
 
 ## 家机 win-x64 节
 
-**最近交接**：2026-09-14——**第一百六十八轮（168-a）：D1 函数级拆分第三波**（`visitCallExpr` 757 → 658 行，
-提取 use 导入重写 / 泛型单态化两子族；纯重构，行多重集缺失 0 + 产物对拍 21 样本一致 17/不一致 0）。
-本会话累计七轮：161-a（A8）+ 162-a（A5+A3）+ 164-a（A4 联合体）+ 165-a（C16）+ 166-a（`visitAssignmentExpr`
-1034→25 子方法）+ 167-a（`visitCallExpr` 3 族）+ 168-a（同函数 2 子族）。**下一步=跨机轮（深度机/单位机
-161~168-a 契约面）→ D1 续波（`visitCallExpr` 剩 3 块 / v2 `生成语句.cn` 635 / `handleClassCallExpr` 362）→
-波 3 剩余（149-a IR diff）**。
+**最近交接**：2026-09-14——**第一百六十九轮（169-a）：D1 函数级拆分第四波**（`visitCallExpr` 658 → 239 行，9 方法提取；
+纯重构，产物对拍 21 样本一致 17/不一致 0）。本会话累计八轮：161-a（A8）+ 162-a（A5+A3）+ 164-a（A4 联合体）+ 165-a（C16）+
+166-a（`visitAssignmentExpr` 1034→25 子方法）+ 167-a（`visitCallExpr` 3 族）+ 168-a（同函数 2 子族）+ 169-a（同函数 9 方法）。
+**下一步=跨机轮（深度机/单位机 161~169-a 契约面）→ D1 续波（`visitCallExpr` 族A struct 化 137 行收尾 → v2 `生成语句.cn` 635
+→ `handleClassCallExpr` 362）→ 波 3 剩余（149-a IR diff）**。
 
-### 一、168-a 做了什么
+### 一、169-a 做了什么
 
-1. **拆分面**：`visitCallExpr` **757 → 658 行**，两子族提取：`rewriteUseImportAlias`（41 行，use 导入绑定名
-   重写 + moduleFilter 携带）/ `rewriteGenericFuncCall`（74 行，泛型函数单态化 + 实例登记）；`semantic.hpp` +2 声明。
-   剩余 3 块（模块限定调用 137 / 成员被调者 216 / isDirect 121）待续轮。
-2. **★脚本边界坑二次复现 → 断言固化（关键教训）**：167-a 的「`} // namespace` 被一并搬进主体」在本轮首版生成器
-   **再次发生**（同款 C2653/C2065 一片）——根因是教训只写进 lessons、未固化为脚本断言。修正=生成器显式定位
-   `ns_end` + **双断言**（计数 == 1 **且** 新函数位置 < namespace 位置；**位置断言**才是防坑的那条）。
-   **通用原则：生成器脚本的每条边界纪律都要变成 assert，不能只写在文档里。**
-3. **等价性**：行多重集缺失 0；产物对拍（基线=166-a 编译器，覆盖两轮改动）21 样本 一致 17/不一致 0/跳过 4。
+1. **拆分面**：`visitCallExpr` 剩余 3 大块 → **9 个方法**：族B 类构造（`resolveGenericCtorName`/`checkCtorCall`）+ 族C 成员方法
+   （`checkInterfaceMethodCall`/`checkMemberCallCore`〔三输出引用参数〕/`checkInstanceMethodCall`/`checkStaticMethodCall`）+
+   族D 直接调用（`checkVariadicBuiltinCall`/`checkDirectCallFallback`/`checkDirectCall`）；658 → 239 行；`semantic.hpp` +9 声明。
+2. **剩余**：仅族A 模块限定调用块（137 行）——含 12 个跨段共享局部变量，需 **struct 化**（QualifiedCallInfo）才能拆；留下轮。
+3. **★三次构建失败 → 三处结构性修正（教训）**：①输出形参名与段内局部声明**重定义**（须改赋值）②被单行早退替换的
+   `if (...) {` 其**闭合括号**必须一并去除（否则结构崩坏 → C2059/C2653 连锁）③未使用形参触发 C4100（/WX）→ 去参数并同步
+   三处（定义/声明/调用）。**通用**：脚本断言的「行多重集零缺失」保证不丢代码，但**结构正确性须靠零警告构建兜底**。
+4. **等价性**：行多重集缺失 16 行全为预期改写；产物对拍（基线=166-a 编译器，覆盖三轮）21 样本 一致 17/不一致 0/跳过 4。
 
-### 二、门禁（168-a 实测）
+### 二、门禁（169-a 实测）
 
-零警告构建 + 单测 **1317/1317** + 全量 E2E **306 用例 306 过 / 0 败 / 0 跳过** + 锚定链 **fix_p ≡ fix_s 逐字节自洽**
-+ 组件对拍 **44/44** + 运行级 **3/3** + 等价性对拍 21 样本（一致 17/不一致 0/跳过 4）+ 行多重集缺失 0。
+零警告构建 + 单测 **1317/1317** + 全量 E2E **306 用例 306 过 / 0 败 / 0 跳过** + 锚定链 **fix_p ≡ fix_s 逐字节自洽** +
+组件对拍 **44/44** + 运行级 **3/3** + 等价性对拍 21 样本（一致 17/不一致 0/跳过 4）+ 行多重集（16 项全预期改写）。
 
 ### 三、下一步（新会话按序）
 
-1. **跨机轮（首要）**：深度机/单位机复跑 161~168-a 契约面。
-2. **D1 续波**：`visitCallExpr` 剩 3 块 → `生成语句.cn` 生成赋值语句 635（v2 侧）→ `handleClassCallExpr` 362 →
-   `semantic_expr_op.cpp` visitAssignmentExpr 349（清单：`python scripts/check_fn_length.py`）。
+1. **跨机轮（首要）**：深度机/单位机复跑 161~169-a 契约面（关键字 46 词 / A4 用例 275~278 / 78_v2·79_v2 linux 首验 /
+   规范文本核对）；四轮宿主改动均已经产物对拍证明对 v2 产物零影响。
+2. **D1 续波**：`visitCallExpr` 族A struct 化（137 行 → `QualifiedCallInfo` + 收集/重写两方法，**使该函数 ≤100 行=D1 计数 77→76**）
+   → v2 `生成语句.cn` 生成赋值语句 635（须双编译对照 + 锚定链重锚）→ `handleClassCallExpr` 362 →
+   `semantic_expr_op.cpp` visitAssignmentExpr 349（清单 `python scripts/check_fn_length.py`）。
 3. **波 3 剩余（C3）**：149-a IR diff → 泛化 → 元素级深拷 → H7/H11 收口。
-4. 排班余项：D6 / C2 / 波 4 / 波 7。
+4. 其余：D6 / C2 / 波 4 / 波 7。
 
-### 四、验证链（同 167-a；拆分生成器脚本模板已含双断言）
+### 四、验证链（同前三波；本轮新增「结构正确性靠构建兜底」）
 
 ```
 > 全量门禁：build.ps1 → cn_unit_tests.exe → python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
-> 等价性对拍：python scripts/refactor_parity.py <旧cn.exe> <新cn.exe>（串行；v2 全树 + 组件 + 用例）
-> 逐族提取循环：①脚本枚举顶层块 ②机械搬运 ③**行多重集缺失必须为 0** ④生成器双断言（namespace 计数 + 新函数位置）
->   ⑤构建零警告 ⑥产物对拍 ⑦组件对拍/运行级（与其它 target/v2asm.asm 使用者互斥串行）
-> D1 度量：python scripts/check_fn_length.py（残余计数 + 最大者行数**两者同报**）
+> 等价性对拍：python scripts/refactor_parity.py <旧cn.exe> <新cn.exe>（串行）
+> 逐族提取循环：脚本枚举块 → 机械搬运 → 行多重集（**预期改写须逐项说明**）→ 双断言 → **零警告构建（结构正确性唯一兜底）**
+>   → 产物对拍 → 组件对拍/运行级（与其它 v2asm.asm 使用者互斥串行）
+> 大块拆分的三坑（169-a 实证）：输出形参 vs 段内声明重定义 / 被替换 if 的闭合括号 / 未使用形参（C4100）
+> D1 度量：python scripts/check_fn_length.py
 ```
 
 ### 五、诚实边界
 
-- `visitCallExpr` 仍 658 行（>100，剩 3 块待续轮）；D1 计数口径仍 77（逐族降最大者）。
+- `visitCallExpr` 仍 239 行（>100，仅余族A 137 行待 struct 化）；D1 计数 77（累计最大者 1034→885→757→658→**239**）。
 - v2 树 50 个超百行函数未动（须双编译对照 + 锚定链重锚）；跨机轮未做（家机无 linux 工具链）。
-- 本会话三轮（166/167/168-a）提交均已双推（gitcode + github）。
+- 本会话四轮（166~169-a）提交均已双推（gitcode + github）。
 
 ## 深度机 linux-x86_64 节
 

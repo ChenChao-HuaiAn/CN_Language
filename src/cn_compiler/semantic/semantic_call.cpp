@@ -295,113 +295,8 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     if (node->callee->getType() == NodeType::IdentifierExpr) {
         std::string className =
             static_cast<IdentifierExpr*>(node->callee.get())->name;
-        const std::size_t genLt = className.find('<');
-        const std::size_t genGt = className.rfind('>');
-        if (genLt != std::string::npos && genGt != std::string::npos &&
-            genGt > genLt) {
-            const std::string head = className.substr(0, genLt);
-            if (findGeneric(head) != nullptr) {
-                const std::string inner =
-                    className.substr(genLt + 1, genGt - genLt - 1);
-                std::vector<std::string> args;
-                std::size_t pos = 0;
-                int angleDepth = 0;
-                std::size_t segStart = 0;
-                while (pos <= inner.size()) {
-                    if (pos == inner.size() ||
-                        (inner[pos] == ',' && angleDepth == 0)) {
-                        args.push_back(inner.substr(segStart, pos - segStart));
-                        segStart = pos + 1;
-                        if (pos == inner.size()) break;
-                    } else if (inner[pos] == '<') {
-                        angleDepth++;
-                    } else if (inner[pos] == '>') {
-                        angleDepth--;
-                    }
-                    pos++;
-                }
-                for (auto& a : args) {
-                    const std::size_t b = a.find_first_not_of(" \t");
-                    const std::size_t e = a.find_last_not_of(" \t");
-                    if (b != std::string::npos && e != std::string::npos) {
-                        a = a.substr(b, e - b + 1);
-                    }
-                    // Task 6.1（嵌套泛型 链表$整32 内 节点<T>() 构造）：类型实参
-                    //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
-                    auto pit = genericTypeParams_.find(a);
-                    if (pit != genericTypeParams_.end()) a = pit->second;
-                    if (a.find('<') != std::string::npos) {
-                        a = resolveGenericTypeName(a, node->location);
-                    }
-                }
-                const std::string instName =
-                    instantiateGeneric(head, args, node->location);
-                if (!instName.empty()) className = instName;
-            }
-        }
-        const ClassInfo* ctorCls = findClass(className);
-        if (ctorCls != nullptr) {
-            // 查找构造函数（函数名 == 类名）。Debug 子任务修复（构造函数重载）：
-            //   methods 表构造条目 key=sigKey（名#参数串），遍历按 isConstructor +
-            //   ownerClass（排除父类构造，阶段A-3）+ 实参个数 + 类型可转换 匹配最优。
-            std::vector<std::string> argTypes;
-            for (auto& arg : node->arguments) {
-                argTypes.push_back(checkExpr(arg.get()));
-            }
-            const ClassMemberInfo* ctor = nullptr;
-            const ClassMemberInfo* ctorExact = nullptr;
-            for (const auto& mk : ctorCls->methods) {
-                const ClassMemberInfo& mi = mk.second;
-                if (!mi.isConstructor || mi.ownerClass != className) continue;
-                if (mi.paramTypes.size() != argTypes.size()) continue;
-                bool ok = true;
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
-                                        isIntLiteralExpr(node->arguments[i].get())) < 0) { ok = false; break; }
-                }
-                if (!ok) continue;
-                ctor = &mi;
-                // 精确类型匹配（全部 0 级转换）优先
-                bool exact = true;
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
-                                        isIntLiteralExpr(node->arguments[i].get())) != 0) { exact = false; break; }
-                }
-                if (exact) { ctorExact = &mi; break; }
-            }
-            if (ctorExact != nullptr) ctor = ctorExact;
-            if (ctor != nullptr) {
-                if (argTypes.size() != ctor->paramTypes.size()) {
-                    diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                        "构造函数 '" + className + "' 期望 " +
-                                            std::to_string(ctor->paramTypes.size()) +
-                                            " 个实参，实际提供 " +
-                                            std::to_string(argTypes.size()) + " 个");
-                } else {
-                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i])) {
-                            diagnostics_.report(
-                                DiagnosticLevel::Error, node->arguments[i]->location,
-                                "构造函数 '" + className + "' 第 " + std::to_string(i + 1) +
-                                    " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
-                                    ctor->paramTypes[i] + "'");
-                        }
-                    }
-                }
-                // plans/019 阶段3b：构造调用面借用纪律（与普通函数面同构）
-                checkConstRefBorrowDiscipline(node, ctor->paramTypes,
-                                              ctor->constParams);
-                // A-1（引用参数）：构造形参为引用时实参自动取地址
-                wrapRefArgs(node, ctor->paramTypes);
-                // 记录选中的构造 sigKey（IR 层按此生成构造体 Call 符号）
-                node->resolvedSignature = className + "$" + ctor->sigKey;
-                lastType_ = className;  // 构造返回对象
-                return;
-            }
-            // 无构造函数：允许默认构造（返回类类型）
-            lastType_ = className;
-            return;
-        }
+        resolveGenericCtorName(node, className);        // 族B1：泛型类构造单态化
+        if (checkCtorCall(node, className)) return;      // 族B2：类构造调用检查
     }
     // ---- 阶段3：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)（Task 3.1/3.9）----
     if (node->callee->getType() == NodeType::MemberExpr) {
@@ -409,340 +304,26 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
         const std::string objType = checkExpr(mem->object.get());
         const std::string methodName = mem->memberName;
         std::string ownerClass;
-        // P3-19：接口对象方法调用（图形.方法(实参)）——接口方法经全局槽位运行时分派
-        {
-            const std::string ifaceName = canonicalType(
-                types::isPointer(objType) ? types::pointeeOf(objType) : objType);
-            const InterfaceInfo* iface = findInterface(ifaceName);
-            if (iface != nullptr) {
-                // 缺陷根治（第九十三轮，2026-09-13 B2 同族扫面）：接口名.方法()
-                //   ——接口方法须经接口对象调用（receiver 为接口类型名时无对象
-                //   可取，运行期 NULL 分派 → 段错误，探针 M10 实证）。Rust 同款
-                //   纪律：trait 方法须经实现者实例调用。
-                if (mem->object->getType() == NodeType::IdentifierExpr) {
-                    const std::string& objName =
-                        static_cast<IdentifierExpr*>(mem->object.get())->name;
-                    if (isInterfaceType(objName)) {
-                        diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                            "接口名.方法() 非法：接口方法 '" +
-                                                methodName +
-                                                "' 须经接口对象调用（接口类型名无实例）");
-                        lastType_ = "未知";
-                        return;
-                    }
-                }
-                const auto imit = iface->methods.find(methodName);
-                if (imit == iface->methods.end()) {
-                    diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                        "接口 '" + ifaceName + "' 没有成员 '" +
-                                            methodName + "'");
-                    lastType_ = "未知";
-                    return;
-                }
-                std::vector<std::string> argTypes;
-                for (auto& arg : node->arguments) {
-                    argTypes.push_back(checkExpr(arg.get()));
-                    // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-                    if (argIsBoundMethodValue(arg.get())) {
-                        diagnostics_.report(
-                            DiagnosticLevel::Error, arg->location,
-                            "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
-                    }
-                }
-                if (argTypes.size() != imit->second.paramTypes.size()) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, node->location,
-                        "接口方法 '" + methodName + "' 期望 " +
-                            std::to_string(imit->second.paramTypes.size()) +
-                            " 个实参，实际提供 " + std::to_string(argTypes.size()) + " 个");
-                } else {
-                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i])) {
-                            diagnostics_.report(
-                                DiagnosticLevel::Error, node->arguments[i]->location,
-                                "接口方法 '" + methodName + "' 第 " +
-                                    std::to_string(i + 1) + " 个实参无法将 '" +
-                                    argTypes[i] + "' 隐式转换为 '" +
-                                    imit->second.paramTypes[i] + "'");
-                        }
-                    }
-                }
-                lastType_ = imit->second.type;
-                node->retOwnedString = (lastType_ == "字符串");  // A2：接口方法拥有契约
-                lastExprIsRefReturn_ = false;  // 接口方法引用返回暂不支持（方法返回类型 canonical 剥 &）
-                return;
-            }
-        }
-        // 对象为类实例 或 类名.静态方法
-        // 集成修复（自身/父类）：自身 类型为 类名*（this 指针），父类 类型为 父类名*，
-        //   方法调用须剥指针取类类型（与 visitMemberExpr 的自身.成员 处理一致）；
-        //   -> 访问 自身->方法() 同样剥指针。
-        std::string objTypeForClass = objType;
-        if (mem->object->getType() == NodeType::SelfExpr ||
-            mem->object->getType() == NodeType::SuperExpr) {
-            if (types::isPointer(objTypeForClass)) {
-                objTypeForClass = types::pointeeOf(objTypeForClass);
-            }
-        }
-        // v2.1（成员访问统一 .）：对象为类指针（账户* 账.方法()）自动解引用
-        //   一级（≡ (*账).方法()）——类型驱动剥指针，不依赖语义遍历顺序。
-        // 簇⑥根治（2026-09-04，与 visitMemberExpr 同款）：泛型实例名可含实参
-        //   星号（盒子$整64*——合成名保留尾 *），尾 * 非对象指针语义——原名
-        //   查类命中即用原名；真指针（盒子$整64**）不命中类表自然落入剥分支。
-        const std::string clsName =
-            (findClass(objTypeForClass) != nullptr)
-                ? canonicalType(objTypeForClass)
-                : (types::isPointer(objTypeForClass)
-                       ? canonicalType(types::pointeeOf(objTypeForClass))
-                       : canonicalType(objTypeForClass));
-        const ClassMemberInfo* method = lookupClassMember(clsName, methodName, ownerClass);
-        // 缺陷根治（第九十三轮，2026-09-13 B2 立案复现）：类名.实例方法() ——
-        //   调用路径漏检（visitMemberExpr 对 类名.实例成员 已有拒绝，本路径
-        //   直查成员表后即按实例方法调用生成，无 this → IR 生成 NULL 间接调用
-        //   → 运行期段错误〈宿主探针 M1/M7 实证〉/垃圾值〈v2 侧实证〉）。Rust
-        //   同款纪律（E0061：实例方法须经实例调用；类名.成员 仅静态成员合法）。
-        //   同处一并拒绝 实例.静态方法()（Rust E0599：关联函数不经实例访问；
-        //   原实现同样崩——探针 M5）。receiver 判定与 visitMemberExpr 同款
-        //   （IdentifierExpr 且 isClassType）；自身/父类 receiver 非类名 →
-        //   实例语义（自身.方法/父类.方法 合法形态不受影响）。
-        bool receiverIsTypeName = false;
-        if (mem->object->getType() == NodeType::IdentifierExpr) {
-            const std::string& objName =
-                static_cast<IdentifierExpr*>(mem->object.get())->name;
-            receiverIsTypeName = isClassType(objName);
-        }
-        if (method != nullptr && receiverIsTypeName && !method->isStatic) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "类名.实例方法() 非法：方法 '" + methodName +
-                                    "' 是非静态方法，须经实例调用");
-            lastType_ = "未知";
-            return;
-        }
-        if (method != nullptr && !receiverIsTypeName && method->isStatic) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "实例.静态方法() 非法：静态方法 '" + methodName +
-                                    "' 须经类名调用（" + ownerClass + "." +
-                                    methodName + "）");
-            lastType_ = "未知";
-            return;
-        }
+        if (checkInterfaceMethodCall(node, mem, objType, methodName)) return;  // 族C1：接口方法
+        std::string clsName;
+        const ClassMemberInfo* method = nullptr;
+        if (checkMemberCallCore(node, mem, methodName, objType, clsName, ownerClass,
+                                method)) return;          // 族C2：类解析+静态性检查
         if (method != nullptr && !method->isStatic) {
-            // 实例方法调用：校验参数个数与类型
-            std::vector<std::string> argTypes;
-            for (auto& arg : node->arguments) {
-                argTypes.push_back(checkExpr(arg.get()));
-                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-                if (argIsBoundMethodValue(arg.get())) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, arg->location,
-                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
-                }
-            }
-            if (argTypes.size() != method->paramTypes.size()) {
-                diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                    "方法 '" + methodName + "' 期望 " +
-                                        std::to_string(method->paramTypes.size()) +
-                                        " 个实参，实际提供 " +
-                                        std::to_string(argTypes.size()) + " 个");
-            } else {
-                for (std::size_t i = 0; i < argTypes.size(); ++i) {
-                    // 2026-08-25 H3：形参是引用（整64&）且实参已是 &x（AddressOf）——
-                    //   共享 AST（实例化类同一 mi.ast）二次检查时已 wrap，引用已满足，
-                    //   跳过转换比较（否则 &前驱=整64* 误报"无法转 整64&"）
-                    bool refAlready =
-                        types::isReference(method->paramTypes[i]) &&
-                        node->arguments[i]->getType() == NodeType::UnaryExpr &&
-                        static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
-                            Operator::AddressOf;
-                    if (!refAlready &&
-                        !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], method->paramTypes[i])) {
-                        diagnostics_.report(
-                            DiagnosticLevel::Error, node->arguments[i]->location,
-                            "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
-                                " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
-                                method->paramTypes[i] + "'");
-                    }
-                }
-            }
-            // A-1（引用参数）：实例方法引用形参的实参自动取地址
-            checkConstRefBorrowDiscipline(node, method->paramTypes,
-                                              method->constParams);  // plans/019 阶段3b
-                wrapRefArgs(node, method->paramTypes);
-            // 访问控制检查（Task 3.4）
-            const std::string contextClass = contextClassStack_.empty()
-                                                 ? ""
-                                                 : contextClassStack_.back();
-            checkAccess(*findClass(ownerClass), *method, contextClass, node->location,
-                        "方法");
-            lastType_ = method->type;
-            // A2：泛型实例化类成员（ownerClass 含 $，如 向量$字符串）不置位
-            //   ——T 来源返回=借用（容器元素访问），保守不登记
-            node->retOwnedString = (lastType_ == "字符串" &&
-                                    ownerClass.find('$') == std::string::npos);
-            // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出调用
-            //   标记（字符串元素容器 元素/读取/栈顶/队首/头部元素/读取头部/
-            //   读取尾部/获取=容器内句柄浅拷）与容器失效点登记（删除/设置/
-            //   清空/弹出/出队/删除头部/删除尾部/释放内部数组）——绑定位
-            //   （声明初始化/赋值）消费标记，函数尾结算与活跃区间比对。
-            noteBorrowCallSite(*mem, clsName, methodName, node);
-            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
-            return;
+            if (checkInstanceMethodCall(node, mem, clsName, methodName, ownerClass,
+                                        method)) return;  // 族C3：实例方法调用
         }
         if (method != nullptr && method->isStatic) {
-            // 静态方法调用（类名.静态方法(...)）
-            std::vector<std::string> argTypes;
-            for (auto& arg : node->arguments) {
-                argTypes.push_back(checkExpr(arg.get()));
-                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-                if (argIsBoundMethodValue(arg.get())) {
-                    diagnostics_.report(
-                        DiagnosticLevel::Error, arg->location,
-                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
-                }
-            }
-            if (argTypes.size() != method->paramTypes.size()) {
-                diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                    "静态方法 '" + methodName + "' 期望 " +
-                                        std::to_string(method->paramTypes.size()) +
-                                        " 个实参，实际提供 " +
-                                        std::to_string(argTypes.size()) + " 个");
-            }
-            // A-1（引用参数）：静态方法引用形参的实参自动取地址
-            checkConstRefBorrowDiscipline(node, method->paramTypes,
-                                              method->constParams);  // plans/019 阶段3b
-                wrapRefArgs(node, method->paramTypes);
-            lastType_ = method->type;
-            // A2：泛型实例化类成员（ownerClass 含 $）不置位——同实例方法口径
-            node->retOwnedString = (lastType_ == "字符串" &&
-                                    ownerClass.find('$') == std::string::npos);
-            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
-            return;
+            if (checkStaticMethodCall(node, methodName, ownerClass, method)) return;  // 族C4：静态方法
+        }
         }
         // 非类成员：继续走通用路径（结构体字段函数指针等）
-    }
 
     // ---- 直接函数名调用：函数名(实参) ----
     if (isDirect) {
-        // 变参内置函数（打印/打印行/格式化 Task 2.5/2.9）：纯名 key 直接查，
-        // 参数个数不限，逐个检查类型（字符串/字符*/整型/浮点/布尔/字符/枚举均允许）
-        // 方案C审查（2026-08-14）：okNum 补 字符——旧 打印行整数('A')（字符→整64
-        //   隐式转换）替换为 打印('A') 后，IR 层 字符(i32) Cast i64 走 __cn_print_int
-        //   输出ASCII码（65），行为等价；缺此检查会误拒 打印(字符变量)/打印('A')
-        auto builtinIt = functions_.find(calleeName);
-        if (builtinIt != functions_.end() && builtinIt->second.variadic) {
-            const FunctionInfo& info = builtinIt->second;
-            for (auto& arg : node->arguments) {
-                std::string argType = checkExpr(arg.get());
-                const bool okStr = (argType == "字符串" || argType == "字符*" ||
-                                    argType == "字符串*");
-                const bool okNum = (isNumeric(argType) || argType == "布尔" ||
-                                    argType == "字符" || isEnumType(argType));
-                if (!okStr && !okNum) {
-                    diagnostics_.report(DiagnosticLevel::Error, arg->location,
-                                        "打印行 参数类型不支持：'" + argType + "'");
-                }
-            }
-            lastType_ = info.returnType;
-            node->retOwnedString = (lastType_ == "字符串");  // A2：变参路径拥有契约
-            return;
-        }
-        // 非变参直接调用：重载决议（先检查实参类型）
-        std::vector<std::string> argTypes;
-        argTypes.reserve(node->arguments.size());
-        for (auto& arg : node->arguments) {
-            argTypes.push_back(checkExpr(arg.get()));
-            // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-            if (argIsBoundMethodValue(arg.get())) {
-                diagnostics_.report(
-                    DiagnosticLevel::Error, arg->location,
-                    "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
-            }
-        }
-        // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）
-        // 55-c 方案A：实参字面量标志供决议豁免（`读值(100)` 传 正32 形参保留）
-        std::vector<bool> argLitFlags;
-        argLitFlags.reserve(node->arguments.size());
-        for (const auto& a : node->arguments) {
-            argLitFlags.push_back(isIntLiteralExpr(a.get()));
-        }
-        std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
-                                             node->moduleFilter, argLitFlags);
-        if (sigKey.empty()) {
-            // 决议失败（参数个数/类型不匹配或歧义）：恢复兼容——若纯名存在（内置
-            // 单版本函数），按旧逻辑检查，避免错误级联导致 IR 层找不到符号
-            auto fallback = functions_.find(calleeName);
-            if (fallback != functions_.end()) {
-            lastType_ = fallback->second.returnType;
-            node->retOwnedString = (lastType_ == "字符串");  // A2：内置单版本拥有契约
-            // P3-18 补完：引用返回函数调用結果可作左值
-            if (fallback->second.isRefReturn) {
-                    node->isRefReturnCall = true;
-                    lastExprIsRefReturn_ = true;
-                }
-            } else {
-                lastType_ = "未知";
-            }
-            return;
-        }
-        // plans/018 呈报二 A′（2026-09-07 用户裁决）：resolvedSignature = 注册键。
-        //   注册键在 registerFunction 已按函数链接键公式生成（模块条目自带
-        //   模块$ 前缀、主/单文件恒裸键），与定义侧 mangledName 同源——
-        //   旧「决议后按 it->second.moduleName 补拼前缀」的补丁块删除
-        //   （其仅为旧裸键注册方案的对齐补丁，公式化后结构上不存在劈叉）。
-        node->resolvedSignature = sigKey;
-        auto it = functions_.find(sigKey);
-        const FunctionInfo& info = it->second;
-        // plans/019 阶段4（2026-09-10）：安全区边界观察期——外部 函数 调用
-        //   （FFI=C 边界，类型安全不保证）与裸释放（释放=手动内存管理）应在
-        //   不安全 函数 内
-        if (info.isExtern) {
-            reportUnsafeBoundary(node->location, "外部函数调用", calleeName);
-        }
-        if (calleeName == "释放") {
-            reportUnsafeBoundary(node->location, "裸释放", "释放(指针)");
-        }
-        // plans/019 阶段3（2026-09-10）：常量引用借用纪律（只读借出可变拒 +
-        //   同调用可变×只读互斥）——置于 wrapRefArgs 之前按原始实参形态判定
-        checkConstRefBorrowDiscipline(node, info.paramTypes, info.constParams);
-        // A-1（引用参数）：引用形参的实参自动取地址（重写为 &左值）——
-        //   须在 IR 层实参求值之前（IR genExpr 对 AddressOf 生成 lvalueAddress）
-        wrapRefArgs(node, info.paramTypes);
-        // 参数类型检查（决议已保证可转换；此处再逐个报告具体错误位置）。
-        //   55-c 方案A：字面量实参豁免与决议豁免（conversionLevel）同步——
-        //   决议按宽化级放行的字面量形态此处不再误报
-        for (std::size_t i = 0; i < node->arguments.size(); i++) {
-            const std::string& paramType = info.paramTypes[i];
-            if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType)) {
-                diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
-                                    "函数 '" + calleeName + "' 第 " + std::to_string(i + 1) +
-                                    " 个参数无法将 '" + argTypes[i] + "' 隐式转换为 '" +
-                                    paramType + "'");
-            }
-        }
-        lastType_ = info.returnType;
-        // A2（方案甲）：被调者返回类型 字符串=拥有——调用方登记 RAII（Rust
-        //   签名即契约：fn f() -> String 拥有 / -> &str 借用）。泛型单态化产物
-        //   （如 逆序$整32）不置位——泛型体返回 T 来源字符串=借用（容器元素
-        //   访问，Rust Vec::get -> &T 同款），保守不登记=安全方向（调用方 free
-        //   容器内部元素=悬垂）。
-        // 70-a 根治（2026-09-11 用户裁决方案A）：恢复轮1 二分调试残留的
-        //   false && 前缀——当时为排查 119/167-172 回归临时禁用，真根因
-        //   （IR容器 字符串入容器浅共享悬垂，c668919）已另行根治。
-        // 72-a 根治（2026-09-11 第七十二轮）：原判定 sigKey.find('$') 把
-        //   **跨模块链接键**（模块$名，functionLinkKey 公式）误当泛型产物——
-        //   凡导入模块的函数返回 字符串，调用方一律不登记 RAII=静默永久泄漏
-        //   （探针：本模块 本地造串 → 有 free；跨模块 工具$造串 → 无 free）。
-        //   改按泛型实例表精确判定（genericFuncInstances_ 登记的真单态化产物；
-        //   rustc 按 DefId 判定实例、不用符号名模式同款）。
-        node->retOwnedString =
-            (lastType_ == "字符串" && !isGenericFuncInstanceName(sigKey));
-        // P3-18 补完：引用返回函数调用結果可作左值（整32& r = 获取() / 获取()=值 / &获取()）
-        if (info.isRefReturn) {
-            node->isRefReturnCall = true;
-            lastExprIsRefReturn_ = true;
-        }
-        return;
+        if (checkDirectCall(node, calleeName)) return;   // 族D：直接函数名调用
     }
+
 
     // ---- 函数指针间接调用：回调(10, 20) ----
     std::string calleeType = checkExpr(node->callee.get());
@@ -1025,6 +606,505 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
                 }
             }
         }
+}
+
+
+// ===== 族B：构造函数调用 类名(实参)（原 visitCallExpr 295~405 段）=====
+// 族B1：泛型类构造单态化（原 298~341 段）——名<实参> → 实例化类符号（盒子$整32）。
+void SemanticAnalyzer::resolveGenericCtorName(CallExpr* node, std::string& className) {
+        const std::size_t genLt = className.find('<');
+        const std::size_t genGt = className.rfind('>');
+        if (genLt != std::string::npos && genGt != std::string::npos &&
+            genGt > genLt) {
+            const std::string head = className.substr(0, genLt);
+            if (findGeneric(head) != nullptr) {
+                const std::string inner =
+                    className.substr(genLt + 1, genGt - genLt - 1);
+                std::vector<std::string> args;
+                std::size_t pos = 0;
+                int angleDepth = 0;
+                std::size_t segStart = 0;
+                while (pos <= inner.size()) {
+                    if (pos == inner.size() ||
+                        (inner[pos] == ',' && angleDepth == 0)) {
+                        args.push_back(inner.substr(segStart, pos - segStart));
+                        segStart = pos + 1;
+                        if (pos == inner.size()) break;
+                    } else if (inner[pos] == '<') {
+                        angleDepth++;
+                    } else if (inner[pos] == '>') {
+                        angleDepth--;
+                    }
+                    pos++;
+                }
+                for (auto& a : args) {
+                    const std::size_t b = a.find_first_not_of(" \t");
+                    const std::size_t e = a.find_last_not_of(" \t");
+                    if (b != std::string::npos && e != std::string::npos) {
+                        a = a.substr(b, e - b + 1);
+                    }
+                    // Task 6.1（嵌套泛型 链表$整32 内 节点<T>() 构造）：类型实参
+                    //   T 替换为当前泛型上下文实参（整32）——否则 节点$T 实例化失败。
+                    auto pit = genericTypeParams_.find(a);
+                    if (pit != genericTypeParams_.end()) a = pit->second;
+                    if (a.find('<') != std::string::npos) {
+                        a = resolveGenericTypeName(a, node->location);
+                    }
+                }
+                const std::string instName =
+                    instantiateGeneric(head, args, node->location);
+                if (!instName.empty()) className = instName;
+            }
+        }
+}
+
+// 族B2：类构造调用检查（原 342~404 段）——构造函数匹配（精确优先）+ 参数检查 +
+//   借用纪律/引用实参包装 + resolvedSignature 记录。true = 已处理。
+bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& className) {
+        const ClassInfo* ctorCls = findClass(className);
+        if (ctorCls != nullptr) {
+            // 查找构造函数（函数名 == 类名）。Debug 子任务修复（构造函数重载）：
+            //   methods 表构造条目 key=sigKey（名#参数串），遍历按 isConstructor +
+            //   ownerClass（排除父类构造，阶段A-3）+ 实参个数 + 类型可转换 匹配最优。
+            std::vector<std::string> argTypes;
+            for (auto& arg : node->arguments) {
+                argTypes.push_back(checkExpr(arg.get()));
+            }
+            const ClassMemberInfo* ctor = nullptr;
+            const ClassMemberInfo* ctorExact = nullptr;
+            for (const auto& mk : ctorCls->methods) {
+                const ClassMemberInfo& mi = mk.second;
+                if (!mi.isConstructor || mi.ownerClass != className) continue;
+                if (mi.paramTypes.size() != argTypes.size()) continue;
+                bool ok = true;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
+                                        isIntLiteralExpr(node->arguments[i].get())) < 0) { ok = false; break; }
+                }
+                if (!ok) continue;
+                ctor = &mi;
+                // 精确类型匹配（全部 0 级转换）优先
+                bool exact = true;
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    if (conversionLevel(argTypes[i], mi.paramTypes[i],
+                                        isIntLiteralExpr(node->arguments[i].get())) != 0) { exact = false; break; }
+                }
+                if (exact) { ctorExact = &mi; break; }
+            }
+            if (ctorExact != nullptr) ctor = ctorExact;
+            if (ctor != nullptr) {
+                if (argTypes.size() != ctor->paramTypes.size()) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "构造函数 '" + className + "' 期望 " +
+                                            std::to_string(ctor->paramTypes.size()) +
+                                            " 个实参，实际提供 " +
+                                            std::to_string(argTypes.size()) + " 个");
+                } else {
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], ctor->paramTypes[i])) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->arguments[i]->location,
+                                "构造函数 '" + className + "' 第 " + std::to_string(i + 1) +
+                                    " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                    ctor->paramTypes[i] + "'");
+                        }
+                    }
+                }
+                // plans/019 阶段3b：构造调用面借用纪律（与普通函数面同构）
+                checkConstRefBorrowDiscipline(node, ctor->paramTypes,
+                                              ctor->constParams);
+                // A-1（引用参数）：构造形参为引用时实参自动取地址
+                wrapRefArgs(node, ctor->paramTypes);
+                // 记录选中的构造 sigKey（IR 层按此生成构造体 Call 符号）
+                node->resolvedSignature = className + "$" + ctor->sigKey;
+                lastType_ = className;  // 构造返回对象
+                return true;
+            }
+            // 无构造函数：允许默认构造（返回类类型）
+            lastType_ = className;
+            return true;
+        }
+    return false;
+}
+
+// ===== 族C：成员方法调用 对象.方法(实参) / 类名.静态方法(实参)（原 visitCallExpr 407~622 段）=====
+// 族C1：接口对象方法调用（原 413~475 段，接口方法经全局槽位运行时分派）。true = 已处理。
+bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
+                                                const std::string& objType,
+                                                const std::string& methodName) {
+            const std::string ifaceName = canonicalType(
+                types::isPointer(objType) ? types::pointeeOf(objType) : objType);
+            const InterfaceInfo* iface = findInterface(ifaceName);
+            if (iface != nullptr) {
+                // 缺陷根治（第九十三轮，2026-09-13 B2 同族扫面）：接口名.方法()
+                //   ——接口方法须经接口对象调用（receiver 为接口类型名时无对象
+                //   可取，运行期 NULL 分派 → 段错误，探针 M10 实证）。Rust 同款
+                //   纪律：trait 方法须经实现者实例调用。
+                if (mem->object->getType() == NodeType::IdentifierExpr) {
+                    const std::string& objName =
+                        static_cast<IdentifierExpr*>(mem->object.get())->name;
+                    if (isInterfaceType(objName)) {
+                        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                            "接口名.方法() 非法：接口方法 '" +
+                                                methodName +
+                                                "' 须经接口对象调用（接口类型名无实例）");
+                        lastType_ = "未知";
+                        return true;
+                    }
+                }
+                const auto imit = iface->methods.find(methodName);
+                if (imit == iface->methods.end()) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "接口 '" + ifaceName + "' 没有成员 '" +
+                                            methodName + "'");
+                    lastType_ = "未知";
+                    return true;
+                }
+                std::vector<std::string> argTypes;
+                for (auto& arg : node->arguments) {
+                    argTypes.push_back(checkExpr(arg.get()));
+                    // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+                    if (argIsBoundMethodValue(arg.get())) {
+                        diagnostics_.report(
+                            DiagnosticLevel::Error, arg->location,
+                            "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
+                    }
+                }
+                if (argTypes.size() != imit->second.paramTypes.size()) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "接口方法 '" + methodName + "' 期望 " +
+                            std::to_string(imit->second.paramTypes.size()) +
+                            " 个实参，实际提供 " + std::to_string(argTypes.size()) + " 个");
+                } else {
+                    for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                        if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], imit->second.paramTypes[i])) {
+                            diagnostics_.report(
+                                DiagnosticLevel::Error, node->arguments[i]->location,
+                                "接口方法 '" + methodName + "' 第 " +
+                                    std::to_string(i + 1) + " 个实参无法将 '" +
+                                    argTypes[i] + "' 隐式转换为 '" +
+                                    imit->second.paramTypes[i] + "'");
+                        }
+                    }
+                }
+                lastType_ = imit->second.type;
+                node->retOwnedString = (lastType_ == "字符串");  // A2：接口方法拥有契约
+                lastExprIsRefReturn_ = false;  // 接口方法引用返回暂不支持（方法返回类型 canonical 剥 &）
+                return true;
+            }
+    return false;
+}
+
+// 族C2：类解析 + 静态性纪律检查（原 476~528 段）——objTypeForClass/clsName 推导、
+//   成员查找、类名.实例方法() 与 实例.静态方法() 拒绝。输出 clsName/ownerClass/method。
+bool SemanticAnalyzer::checkMemberCallCore(CallExpr* node, MemberExpr* mem,
+                                          const std::string& methodName,
+                                          const std::string& objType,
+                                          std::string& clsName, std::string& ownerClass,
+                                          const ClassMemberInfo*& method) {
+        // 对象为类实例 或 类名.静态方法
+        // 集成修复（自身/父类）：自身 类型为 类名*（this 指针），父类 类型为 父类名*，
+        //   方法调用须剥指针取类类型（与 visitMemberExpr 的自身.成员 处理一致）；
+        //   -> 访问 自身->方法() 同样剥指针。
+        std::string objTypeForClass = objType;
+        if (mem->object->getType() == NodeType::SelfExpr ||
+            mem->object->getType() == NodeType::SuperExpr) {
+            if (types::isPointer(objTypeForClass)) {
+                objTypeForClass = types::pointeeOf(objTypeForClass);
+            }
+        }
+        // v2.1（成员访问统一 .）：对象为类指针（账户* 账.方法()）自动解引用
+        //   一级（≡ (*账).方法()）——类型驱动剥指针，不依赖语义遍历顺序。
+        // 簇⑥根治（2026-09-04，与 visitMemberExpr 同款）：泛型实例名可含实参
+        //   星号（盒子$整64*——合成名保留尾 *），尾 * 非对象指针语义——原名
+        //   查类命中即用原名；真指针（盒子$整64**）不命中类表自然落入剥分支。
+        clsName =
+            (findClass(objTypeForClass) != nullptr)
+                ? canonicalType(objTypeForClass)
+                : (types::isPointer(objTypeForClass)
+                       ? canonicalType(types::pointeeOf(objTypeForClass))
+                       : canonicalType(objTypeForClass));
+        method = lookupClassMember(clsName, methodName, ownerClass);
+        // 缺陷根治（第九十三轮，2026-09-13 B2 立案复现）：类名.实例方法() ——
+        //   调用路径漏检（visitMemberExpr 对 类名.实例成员 已有拒绝，本路径
+        //   直查成员表后即按实例方法调用生成，无 this → IR 生成 NULL 间接调用
+        //   → 运行期段错误〈宿主探针 M1/M7 实证〉/垃圾值〈v2 侧实证〉）。Rust
+        //   同款纪律（E0061：实例方法须经实例调用；类名.成员 仅静态成员合法）。
+        //   同处一并拒绝 实例.静态方法()（Rust E0599：关联函数不经实例访问；
+        //   原实现同样崩——探针 M5）。receiver 判定与 visitMemberExpr 同款
+        //   （IdentifierExpr 且 isClassType）；自身/父类 receiver 非类名 →
+        //   实例语义（自身.方法/父类.方法 合法形态不受影响）。
+        bool receiverIsTypeName = false;
+        if (mem->object->getType() == NodeType::IdentifierExpr) {
+            const std::string& objName =
+                static_cast<IdentifierExpr*>(mem->object.get())->name;
+            receiverIsTypeName = isClassType(objName);
+        }
+        if (method != nullptr && receiverIsTypeName && !method->isStatic) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "类名.实例方法() 非法：方法 '" + methodName +
+                                    "' 是非静态方法，须经实例调用");
+            lastType_ = "未知";
+            return true;
+        }
+        if (method != nullptr && !receiverIsTypeName && method->isStatic) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "实例.静态方法() 非法：静态方法 '" + methodName +
+                                    "' 须经类名调用（" + ownerClass + "." +
+                                    methodName + "）");
+            lastType_ = "未知";
+            return true;
+        }
+    return false;
+}
+
+// 族C3：实例方法调用（原 529~590 段）——参数检查（含 H3 引用已包装豁免）+ 借用纪律 +
+//   访问控制 + 借出调用点登记（noteBorrowCallSite）。true = 已处理。
+bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
+                                              const std::string& clsName,
+                                              const std::string& methodName,
+                                              const std::string& ownerClass,
+                                              const ClassMemberInfo* method) {
+        if (method != nullptr && !method->isStatic) {
+            // 实例方法调用：校验参数个数与类型
+            std::vector<std::string> argTypes;
+            for (auto& arg : node->arguments) {
+                argTypes.push_back(checkExpr(arg.get()));
+                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+                if (argIsBoundMethodValue(arg.get())) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, arg->location,
+                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
+                }
+            }
+            if (argTypes.size() != method->paramTypes.size()) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "方法 '" + methodName + "' 期望 " +
+                                        std::to_string(method->paramTypes.size()) +
+                                        " 个实参，实际提供 " +
+                                        std::to_string(argTypes.size()) + " 个");
+            } else {
+                for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                    // 2026-08-25 H3：形参是引用（整64&）且实参已是 &x（AddressOf）——
+                    //   共享 AST（实例化类同一 mi.ast）二次检查时已 wrap，引用已满足，
+                    //   跳过转换比较（否则 &前驱=整64* 误报"无法转 整64&"）
+                    bool refAlready =
+                        types::isReference(method->paramTypes[i]) &&
+                        node->arguments[i]->getType() == NodeType::UnaryExpr &&
+                        static_cast<UnaryExpr*>(node->arguments[i].get())->op ==
+                            Operator::AddressOf;
+                    if (!refAlready &&
+                        !canConvertWithLiteral(node->arguments[i].get(), argTypes[i], method->paramTypes[i])) {
+                        diagnostics_.report(
+                            DiagnosticLevel::Error, node->arguments[i]->location,
+                            "方法 '" + methodName + "' 第 " + std::to_string(i + 1) +
+                                " 个实参无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                method->paramTypes[i] + "'");
+                    }
+                }
+            }
+            // A-1（引用参数）：实例方法引用形参的实参自动取地址
+            checkConstRefBorrowDiscipline(node, method->paramTypes,
+                                              method->constParams);  // plans/019 阶段3b
+                wrapRefArgs(node, method->paramTypes);
+            // 访问控制检查（Task 3.4）
+            const std::string contextClass = contextClassStack_.empty()
+                                                 ? ""
+                                                 : contextClassStack_.back();
+            checkAccess(*findClass(ownerClass), *method, contextClass, node->location,
+                        "方法");
+            lastType_ = method->type;
+            // A2：泛型实例化类成员（ownerClass 含 $，如 向量$字符串）不置位
+            //   ——T 来源返回=借用（容器元素访问），保守不登记
+            node->retOwnedString = (lastType_ == "字符串" &&
+                                    ownerClass.find('$') == std::string::npos);
+            // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出调用
+            //   标记（字符串元素容器 元素/读取/栈顶/队首/头部元素/读取头部/
+            //   读取尾部/获取=容器内句柄浅拷）与容器失效点登记（删除/设置/
+            //   清空/弹出/出队/删除头部/删除尾部/释放内部数组）——绑定位
+            //   （声明初始化/赋值）消费标记，函数尾结算与活跃区间比对。
+            noteBorrowCallSite(*mem, clsName, methodName, node);
+            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
+            return true;
+        }
+    return false;
+}
+
+// 族C4：静态方法调用 类名.静态方法(实参)（原 591~620 段）。true = 已处理。
+bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& methodName,
+                                            const std::string& ownerClass,
+                                            const ClassMemberInfo* method) {
+        if (method != nullptr && method->isStatic) {
+            // 静态方法调用（类名.静态方法(...)）
+            std::vector<std::string> argTypes;
+            for (auto& arg : node->arguments) {
+                argTypes.push_back(checkExpr(arg.get()));
+                // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+                if (argIsBoundMethodValue(arg.get())) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, arg->location,
+                        "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
+                }
+            }
+            if (argTypes.size() != method->paramTypes.size()) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "静态方法 '" + methodName + "' 期望 " +
+                                        std::to_string(method->paramTypes.size()) +
+                                        " 个实参，实际提供 " +
+                                        std::to_string(argTypes.size()) + " 个");
+            }
+            // A-1（引用参数）：静态方法引用形参的实参自动取地址
+            checkConstRefBorrowDiscipline(node, method->paramTypes,
+                                              method->constParams);  // plans/019 阶段3b
+                wrapRefArgs(node, method->paramTypes);
+            lastType_ = method->type;
+            // A2：泛型实例化类成员（ownerClass 含 $）不置位——同实例方法口径
+            node->retOwnedString = (lastType_ == "字符串" &&
+                                    ownerClass.find('$') == std::string::npos);
+            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
+            return true;
+        }
+    return false;
+}
+
+// ===== 族D：直接函数名调用 函数名(实参)（原 visitCallExpr 625~745 段）=====
+// 族D-1：变参内置函数（打印/打印行/格式化）——参数个数不限、逐个类型检查。true = 已处理。
+bool SemanticAnalyzer::checkVariadicBuiltinCall(CallExpr* node, const std::string& calleeName) {
+    auto builtinIt = functions_.find(calleeName);
+        if (builtinIt != functions_.end() && builtinIt->second.variadic) {
+            const FunctionInfo& info = builtinIt->second;
+            for (auto& arg : node->arguments) {
+                std::string argType = checkExpr(arg.get());
+                const bool okStr = (argType == "字符串" || argType == "字符*" ||
+                                    argType == "字符串*");
+                const bool okNum = (isNumeric(argType) || argType == "布尔" ||
+                                    argType == "字符" || isEnumType(argType));
+                if (!okStr && !okNum) {
+                    diagnostics_.report(DiagnosticLevel::Error, arg->location,
+                                        "打印行 参数类型不支持：'" + argType + "'");
+                }
+            }
+            lastType_ = info.returnType;
+            node->retOwnedString = (lastType_ == "字符串");  // A2：变参路径拥有契约
+            return true;
+        }
+    return false;
+}
+
+// 族D-2：决议失败回退（原 670~686 段）——纯名存在（内置单版本函数）时按旧逻辑放行。
+//   true = 已处理（含决议失败但放行/报错）。
+bool SemanticAnalyzer::checkDirectCallFallback(CallExpr* node, const std::string& calleeName,
+                                              const std::string& sigKey) {
+    if (!sigKey.empty()) return false;
+            // 决议失败（参数个数/类型不匹配或歧义）：恢复兼容——若纯名存在（内置
+            // 单版本函数），按旧逻辑检查，避免错误级联导致 IR 层找不到符号
+            auto fallback = functions_.find(calleeName);
+            if (fallback != functions_.end()) {
+            lastType_ = fallback->second.returnType;
+            node->retOwnedString = (lastType_ == "字符串");  // A2：内置单版本拥有契约
+            // P3-18 补完：引用返回函数调用結果可作左值
+            if (fallback->second.isRefReturn) {
+                    node->isRefReturnCall = true;
+                    lastExprIsRefReturn_ = true;
+                }
+            } else {
+                lastType_ = "未知";
+            }
+            return true;
+    return false;
+}
+
+// 族D 主体：非变参直接调用（原 626~631 + 649~667 + 687~744）——实参类型/字面量标志收集、
+//   重载决议、外部函数/裸释放安全区边界、借用纪律、引用实参包装、参数检查、拥有契约。
+bool SemanticAnalyzer::checkDirectCall(CallExpr* node, const std::string& calleeName) {
+        // 变参内置函数（打印/打印行/格式化 Task 2.5/2.9）：纯名 key 直接查，
+        // 参数个数不限，逐个检查类型（字符串/字符*/整型/浮点/布尔/字符/枚举均允许）
+        // 方案C审查（2026-08-14）：okNum 补 字符——旧 打印行整数('A')（字符→整64
+        //   隐式转换）替换为 打印('A') 后，IR 层 字符(i32) Cast i64 走 __cn_print_int
+        //   输出ASCII码（65），行为等价；缺此检查会误拒 打印(字符变量)/打印('A')
+        auto builtinIt = functions_.find(calleeName);
+    if (checkVariadicBuiltinCall(node, calleeName)) return true;
+        // 非变参直接调用：重载决议（先检查实参类型）
+        std::vector<std::string> argTypes;
+        argTypes.reserve(node->arguments.size());
+        for (auto& arg : node->arguments) {
+            argTypes.push_back(checkExpr(arg.get()));
+            // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
+            if (argIsBoundMethodValue(arg.get())) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, arg->location,
+                    "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
+            }
+        }
+        // 第 4 层（crate 隔离）：限定调用按模块过滤（数学::双倍 只解析数学.cn 的）
+        // 55-c 方案A：实参字面量标志供决议豁免（`读值(100)` 传 正32 形参保留）
+        std::vector<bool> argLitFlags;
+        argLitFlags.reserve(node->arguments.size());
+        for (const auto& a : node->arguments) {
+            argLitFlags.push_back(isIntLiteralExpr(a.get()));
+        }
+        std::string sigKey = resolveOverload(calleeName, argTypes, node->location,
+                                             node->moduleFilter, argLitFlags);
+    if (checkDirectCallFallback(node, calleeName, sigKey)) return true;
+        // plans/018 呈报二 A′（2026-09-07 用户裁决）：resolvedSignature = 注册键。
+        //   注册键在 registerFunction 已按函数链接键公式生成（模块条目自带
+        //   模块$ 前缀、主/单文件恒裸键），与定义侧 mangledName 同源——
+        //   旧「决议后按 it->second.moduleName 补拼前缀」的补丁块删除
+        //   （其仅为旧裸键注册方案的对齐补丁，公式化后结构上不存在劈叉）。
+        node->resolvedSignature = sigKey;
+        auto it = functions_.find(sigKey);
+        const FunctionInfo& info = it->second;
+        // plans/019 阶段4（2026-09-10）：安全区边界观察期——外部 函数 调用
+        //   （FFI=C 边界，类型安全不保证）与裸释放（释放=手动内存管理）应在
+        //   不安全 函数 内
+        if (info.isExtern) {
+            reportUnsafeBoundary(node->location, "外部函数调用", calleeName);
+        }
+        if (calleeName == "释放") {
+            reportUnsafeBoundary(node->location, "裸释放", "释放(指针)");
+        }
+        // plans/019 阶段3（2026-09-10）：常量引用借用纪律（只读借出可变拒 +
+        //   同调用可变×只读互斥）——置于 wrapRefArgs 之前按原始实参形态判定
+        checkConstRefBorrowDiscipline(node, info.paramTypes, info.constParams);
+        // A-1（引用参数）：引用形参的实参自动取地址（重写为 &左值）——
+        //   须在 IR 层实参求值之前（IR genExpr 对 AddressOf 生成 lvalueAddress）
+        wrapRefArgs(node, info.paramTypes);
+        // 参数类型检查（决议已保证可转换；此处再逐个报告具体错误位置）。
+        //   55-c 方案A：字面量实参豁免与决议豁免（conversionLevel）同步——
+        //   决议按宽化级放行的字面量形态此处不再误报
+        for (std::size_t i = 0; i < node->arguments.size(); i++) {
+            const std::string& paramType = info.paramTypes[i];
+            if (!canConvertWithLiteral(node->arguments[i].get(), argTypes[i], paramType)) {
+                diagnostics_.report(DiagnosticLevel::Error, node->arguments[i]->location,
+                                    "函数 '" + calleeName + "' 第 " + std::to_string(i + 1) +
+                                    " 个参数无法将 '" + argTypes[i] + "' 隐式转换为 '" +
+                                    paramType + "'");
+            }
+        }
+        lastType_ = info.returnType;
+        // A2（方案甲）：被调者返回类型 字符串=拥有——调用方登记 RAII（Rust
+        //   签名即契约：fn f() -> String 拥有 / -> &str 借用）。泛型单态化产物
+        //   （如 逆序$整32）不置位——泛型体返回 T 来源字符串=借用（容器元素
+        //   访问，Rust Vec::get -> &T 同款），保守不登记=安全方向（调用方 free
+        //   容器内部元素=悬垂）。
+        // 70-a 根治（2026-09-11 用户裁决方案A）：恢复轮1 二分调试残留的
+        //   false && 前缀——当时为排查 119/167-172 回归临时禁用，真根因
+        //   （IR容器 字符串入容器浅共享悬垂，c668919）已另行根治。
+        // 72-a 根治（2026-09-11 第七十二轮）：原判定 sigKey.find('$') 把
+        //   **跨模块链接键**（模块$名，functionLinkKey 公式）误当泛型产物——
+        //   凡导入模块的函数返回 字符串，调用方一律不登记 RAII=静默永久泄漏
+        //   （探针：本模块 本地造串 → 有 free；跨模块 工具$造串 → 无 free）。
+        //   改按泛型实例表精确判定（genericFuncInstances_ 登记的真单态化产物；
+        //   rustc 按 DefId 判定实例、不用符号名模式同款）。
+        node->retOwnedString =
+            (lastType_ == "字符串" && !isGenericFuncInstanceName(sigKey));
+        // P3-18 补完：引用返回函数调用結果可作左值（整32& r = 获取() / 获取()=值 / &获取()）
+        if (info.isRefReturn) {
+            node->isRefReturnCall = true;
+            lastExprIsRefReturn_ = true;
+        }
+        return true;
 }
 
 } // namespace cn_compiler
