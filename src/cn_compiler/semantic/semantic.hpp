@@ -788,6 +788,10 @@ private:
     // 最近一次 checkExpr 求值是否"引用返回调用"（调用点/赋值目标/引用绑定/取地址识别）
     bool lastExprIsRefReturn_ = false;
     int loopDepth_ = 0;                            // 循环嵌套深度（中断/继续合法性）
+    // 150-a（plans/023 B6/B7 实施）：赋值目标求值深度——>0 时一元 `*p` 为
+    //   解引用**写**（B7，在赋值 target case 报）；==0 时=解引用读（B6，在
+    //   Deref 分支报）——避免同一 `*p = x` 双报（§六.2 避免重复报告）。
+    int assignmentTargetDepth_ = 0;
     int switchDepth_ = 0;                          // 选择嵌套深度（中断跳出选择合法性）
     // ---- lambda 返回类型推导（Task 2.10） ----
     bool lambdaInferMode_ = false;                 // 是否处于 lambda 无标注返回推导模式

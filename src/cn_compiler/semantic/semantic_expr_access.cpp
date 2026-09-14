@@ -23,6 +23,12 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   写回（IR 层据此选基址：指针值 / 对象地址）；解析层恒 false。
     //   结果/可选/枚举/接口对象均非此指针语义或各自先行处理，统一置位无害。
     node->isDerefAccess = types::isPointer(objectType);
+    // 150-a（plans/023 B9 实施）：指针成员访问（p.字段 自动解引用一级）观察期
+    //   警告（排除字符串语义=字符串视图；赋值场景的写面由 B7/A2 族承担）。
+    if (node->isDerefAccess && assignmentTargetDepth_ == 0 &&
+        !isStringSemanticType(objectType)) {
+        warnUnsafeBoundary(node->location, "指针成员访问", "指针成员访问（p.字段）");
+    }
     // plans/019 阶段4（2026-09-10）：安全区边界观察期——联合体字段访问（共享
     //   内存无 tag=类型安全结构性缺口，Rust union 同为 unsafe-only）应在
     //   不安全 函数 内
@@ -293,6 +299,12 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
                                 "数组下标必须是整型，实际为 '" + indexType + "'");
         }
         lastType_ = types::pointeeOf(objectType);
+        // 150-a（plans/023 B8 实施）：指针下标读观察期警告——写路径由赋值
+        //   target case 的 A2「指针下标写」报（assignmentTargetDepth_>0 抑制本处）；
+        //   排除字符串语义（字符串/字符*=字符串视图）。
+        if (assignmentTargetDepth_ == 0 && !isStringSemanticType(objectType)) {
+            warnUnsafeBoundary(node->location, "指针下标读", "指针下标（p[i]）");
+        }
         return;
     }
     // 自举前置 A-1（plans/004）：字符串[i] 逐字节 O(1) 访问——字符串即

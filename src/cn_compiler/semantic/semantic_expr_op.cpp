@@ -345,6 +345,19 @@ void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
             // 解引用 *：操作数须为指针类型，结果为所指元素类型（可写左值）
             if (isPointerType(operandType)) {
                 lastType_ = types::pointeeOf(operandType);
+                // 150-a（plans/023 B6/B11 实施）：安全区边界族群——
+                //   B11（硬错误）：编译期常量空指针解引用（操作数=无 字面量）；
+                //   B6（观察期警告）：裸指针解引用读（排除字符串语义=字符串视图；
+                //     赋值目标位（assignmentTargetDepth_>0）由 target case 报 B7）。
+                if (node->operand->getType() == NodeType::NullLiteral) {
+                    diagnostics_.report(
+                        DiagnosticLevel::Error, node->location,
+                        "编译期常量空指针解引用（确定性错误；plans/023 B11）");
+                } else if (assignmentTargetDepth_ == 0 &&
+                           !isStringSemanticType(operandType)) {
+                    warnUnsafeBoundary(node->location, "裸指针解引用读",
+                                       "指针解引用（*p）");
+                }
             } else {
                 diagnostics_.report(DiagnosticLevel::Error, node->location,
                                     "'*'解引用要求指针操作数，实际为 '" + operandType + "'");
@@ -566,6 +579,11 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     switch (node->target->getType()) {
         case NodeType::IdentifierExpr: {
             IdentifierExpr* ident = static_cast<IdentifierExpr*>(node->target.get());
+            // 150-a（plans/023 B10 实施）：可变静态变量写观察期警告（读安全——
+            //   plans/023 §四 B10：Rust static mut 对照的 CN 裁剪）
+            if (isGlobalStatic(ident->name)) {
+                warnUnsafeBoundary(node->location, "静态变量写", "静态变量赋值");
+            }
             std::string varType;
             if (lookupVar(ident->name, varType)) {
                 targetType = varType;
@@ -632,7 +650,9 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
                             "' 是只读借用，不能经成员访问赋值");
                 }
             }
+            assignmentTargetDepth_++;  // 150-a：抑制 target 求值中的 B6/B8/B9 读判
             targetType = checkExpr(node->target.get());
+            assignmentTargetDepth_--;
             lvalueOk = true;
             break;
         }
@@ -641,7 +661,20 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
             // 不可赋值——原实现整类放行为缺陷②形态
             UnaryExpr* u = static_cast<UnaryExpr*>(node->target.get());
             if (u->op == Operator::Deref) {
+                // 150-a（plans/023 B7 实施）：解引用写观察期警告（B6 在 Deref
+                //   分支被 assignmentTargetDepth_ 抑制——同一形态单报）。
+                assignmentTargetDepth_++;
                 targetType = checkExpr(node->target.get());
+                assignmentTargetDepth_--;
+                if (!isStringSemanticType(targetType)) {
+                    // B7-a（plans/023 待裁决子项）：字符* 解引用写暂不豁免（默认）。
+                    //   注：targetType=所指元素类型——用操作数（指针）类型判定语义族。
+                    const std::string uPtr = checkExpr(u->operand.get());
+                    if (!isStringSemanticType(uPtr)) {
+                        warnUnsafeBoundary(node->location, "裸指针解引用写",
+                                           "指针解引用写（*p = x）");
+                    }
+                }
                 lvalueOk = true;
             } else {
                 reportNonLvalueTarget(node);
