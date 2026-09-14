@@ -1,0 +1,9 @@
+# 79_v2 自举闭环（v2 锚定链用例，2026-09-14 自 v1 79_bootstrap_closed_loop 迁移）
+# 对象 = v2 自举编译器全树自身（CN语言编译器v2/，无用例源码——特殊编排见 run_e2e.py）
+#   阶段=闭环：链构建 + 汇编 fix_p -> 链接 cn_self（cn_self.obj 在前 + v2p.obj 借链；
+#   绑定自检 cn_main 归属 cn_self.obj=防虚假验收，v1 79 教训）-> cn_self 再编译 v2 全树
+#   -> fix_s.asm -> 固定点 fix_p ≡ fix_s 逐字节一致（断言=自洽性，对 v2 树演进稳定）
+# v1 对应物 79_bootstrap_closed_loop：C++ 版产物 + v1 组件链两代落盘比对
+#   （因字符串行 IR 内存失控 OOM 失败）；v2 版以锚定链口径承载同一语义。
+# 三平台：win-x64 ml64/link；linux-arm64 / linux-x86_64 as/g++。
+阶段=闭环

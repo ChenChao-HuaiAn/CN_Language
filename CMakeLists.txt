@@ -284,9 +284,11 @@ target_include_directories(cn_runtime PUBLIC ${CMAKE_SOURCE_DIR}/src)
 if(WIN32)
     target_link_libraries(cn_runtime PUBLIC shell32)
 endif()
-# ---- E2E 79 自举闭环运行时 obj（2026-08-24 补：CN 版组件链链接用）----
-# 79_bootstrap_closed_loop 的 link 步骤（run_e2e.py）直接链接 target/<名>.obj
-# （历史产物陈旧：MSVC 14.44 构建的 /MDd obj 与 79 的静态 CRT 链接不匹配，
+# ---- E2E v2 锚定链运行时 obj（2026-08-24 补：CN 版组件链链接用；
+#   2026-09-14 78/79 迁移 v2 后沿用，v2 锚定链/闭环用例同链接此份）----
+# v2 锚定链用例（78_v2/79_v2）与 v2 闭环用例的 link 步骤（run_e2e.py）直接链接
+#   target/<名>.obj
+# （历史产物陈旧：MSVC 14.44 构建的 /MDd obj 与锚定链的静态 CRT 链接不匹配，
 #   且 io_api.cpp 等的 tracked 加固未同步）。此处每次构建重新编译一份
 #   /MT（静态 CRT）运行时 obj 到 target/，消除陈旧产物与运行时漂移。
 if(MSVC)

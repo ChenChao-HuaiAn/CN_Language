@@ -47,12 +47,13 @@ if hasattr(sys.stderr, "reconfigure"):
 # 编译器"尚未实现"标记（阶段零预期输出，用于区分真实失败）
 未实现标记 = "尚未实现"
 
-# 运行子进程内存保护（2026-08-24 用户要求）：
-# 79_bootstrap_closed_loop 等大规模编译用例运行时，子进程（如 CN 组件链编译器）
-# 内存可能失控（实测 26GB+ 卡死）。超过 内存上限MB 的进程将被自动终止并判为失败。
-# 单位：MB。0 = 不启用（默认仅对 78/79 等重负载用例启用，避免小用例轮询开销）。
+# 运行子进程内存保护（2026-08-24 用户要求；78/79 迁移 v2 版后随迁，2026-09-14）：
+# v2 锚定链用例（78_v2 自举链构建 / 79_v2 自举闭环）等大规模编译用例运行时，
+# 子进程（v2p / cn_self 编译 v2 全树）内存可能失控（v1 时代旧组件链实测 26GB+ 卡死）。
+# 超过 内存上限MB 的进程将被自动终止并判为失败。
+# 单位：MB。0 = 不启用（默认仅对 v2 锚定链等重负载用例启用，避免小用例轮询开销）。
 内存上限MB默认 = 4096
-内存保护用例前缀 = ("78_chain_build", "79_bootstrap_closed_loop")
+内存保护用例前缀 = ("78_v2_自举链构建", "79_v2_自举闭环")
 内存轮询间隔秒 = 0.5
 
 # 平台限制用例跳过列表：某些用例因平台特性差异（API/ABI/工具链）无法在特定平台运行
@@ -64,17 +65,16 @@ if hasattr(sys.stderr, "reconfigure"):
     "linux-arm64": [
         "62_ffi",                # 依赖 Windows API GetTickCount64
         "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
-        "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
     ],
     # plans/016（2026-09-05）：linux-x86_64 平台——宿主后端已支持（本机原生闭环）。
     # plans/017 T3（2026-09-06）：v2 自举编译器 X64L 后端（SysV GAS）落地 +
-    #   run_e2e.py v2 闭环编排平台参数化——v2 闭环 23 例在本机解锁真实运行，
-    #   跳过清单摘除（T7 门禁预期跳过仅剩 62/69/78/79 四例，与 linux-arm64 同因）。
+    #   run_e2e.py v2 闭环编排平台参数化——v2 闭环 23 例在本机解锁真实运行。
+    # 78/79 迁移（2026-09-14）：v1 的 78_chain_build（v1 链仅 MASM 后端）与
+    #   79_bootstrap_closed_loop（依赖 ml64/link）已迁移为 v2 版（78_v2/79_v2，
+    #   三平台支持：win ml64/link；linux as/g++）——跳过项随 v1 用例一并摘除。
     "linux-x86_64": [
         "62_ffi",                # 依赖 Windows API GetTickCount64
         "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
-        "78_chain_build",        # v1 链（v1 编译器仅 MASM 后端）
-        "79_bootstrap_closed_loop",  # 依赖 ml64/link MSVC 工具链
     ],
     "win-x64": [
         # win-x64 暂无非平台限制用例
@@ -194,8 +194,8 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
     标准输入: 可选 stdin 注入字符串（Task 6.2 IO 输入用例用，默认空）
     内存上限MB: >0 时启用内存保护——每 内存轮询间隔秒 轮询子进程工作集，
       超过上限立即 终止进程树 并以退出码 -9（returncode）标记失败，
-      stderr 给出"内存超限"原因。防 79 等大规模编译用例内存失控卡死机器
-      （2026-08-24 实测：79_bootstrap_closed_loop.exe 工作集涨到 26GB+）。
+      stderr 给出"内存超限"原因。防 v2 锚定链等大规模编译用例内存失控卡死机器
+      （2026-08-24 实测：v1 时代旧组件链（79_bootstrap_closed_loop）工作集涨到 26GB+）。
     """
     # Linux 下增大栈大小限制（CN自举编译器函数栈帧较大，默认8MB可能不足）
     preexec_fn = None
@@ -548,21 +548,23 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     if (用例目录 / "期望check失败.txt").exists():
         return 执行check负用例(编译器路径, 用例目录, 详细, 目标平台)
 
+    # ============ v2 锚定链用例（78_v2/79_v2，2026-09-14 自 v1 78/79 迁移）：特殊编排 ============
+    # 对象=v2 自举编译器全树**自身**（用例目录无 主.cn——检测须先于 查找源文件）：
+    #   阶段=链构建：宿主编译 v2 全树建 v2p（复用指纹缓存）-> v2p 编译 v2 全树
+    #     -> fix_p.asm（v1 78_chain_build 的 v2 对应物：CN 版编译器编译自身全部源码）
+    #   阶段=闭环：链构建 + 汇编 fix_p -> 链接 cn_self（绑定自检 cn_main 归属
+    #     cn_self.obj，防虚假验收——v1 79 教训）-> cn_self 再编译 v2 全树 -> fix_s.asm
+    #     -> fix_p ≡ fix_s 逐字节（自举固定点；断言=自洽性，对 v2 树演进稳定）
+    # 三平台支持：win-x64 走 ml64/link；linux-arm64 / linux-x86_64 走 as/g++
+    #   （对齐既有 v2 闭环编排；linux 分支动态验证随跨机轮）
+    if (用例目录 / "v2锚定链.txt").exists():
+        return 执行v2锚定链(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
+
     try:
         源文件 = 查找源文件(用例目录)
         期望文件 = 查找期望文件(源文件)
     except FileNotFoundError as 异常:
         return "失败", str(异常)
-
-    # ============ 79 自举闭环用例：特殊编排 ============
-    # 流程：编译79主.cn -> 运行落盘5个链.asm(第一次) -> ml64汇编5个.obj
-    #       -> 链接(79入口obj提供cn_main+向量方法, 链.obj提供CN组件函数)
-    #       -> 运行CN版编译器exe再次落盘(第二次) -> 比对两次产物一致
-    # 仅 win-x64 平台支持（依赖 ml64/link 与运行时 .obj）
-    if 名称 == "79_bootstrap_closed_loop":
-        if 目标平台 != "win-x64":
-            return "失败", "79闭环用例仅支持 win-x64（依赖 ml64/link）"
-        return 执行79闭环(编译器路径, 用例目录, 输出目录, 详细)
 
     # ============ v2 自举链接闭环用例（119/120…）：特殊编排 ============
     # v1 79 闭环是 C++ 版产物 + CN 组件链；v2 系列闭环是 v2 重建产物 + 宿主运行时：
@@ -676,196 +678,233 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     return "通过", ""
 
 
-# ============ 79 自举闭环用例编排 ============
-# 完整闭环：C++版编译79主.cn -> 运行落盘5个链.asm(第一次,CN组件链产物)
-#   -> ml64汇编5个.obj -> 链接(79入口obj提供cn_main+向量方法, 链.obj提供CN组件函数)
-#   -> 运行CN版编译器exe再次落盘(第二次) -> 比对两次产物一致 => 自举闭环成立
-# 产物全部落 target/audit2/（规则19），不污染工作区源码目录
+# ============ v2 锚定链用例编排（78_v2 自举链构建 / 79_v2 自举闭环）============
+# 2026-09-14 自 v1 78_chain_build / 79_bootstrap_closed_loop 迁移：对象由 v1 组件链
+#   （CN语言编译器/，因字符串行 IR 内存失控被推倒）改为 v2 自举编译器全树自身
+#   （CN语言编译器v2/）。锚定链口径（对齐既有 target/p111win/self_chain111.py 实践）：
+#   [1] 宿主编译 v2 全树 -> v2p（ml64/link 或 as/g++；复用 确保v2p就绪* 指纹缓存）
+#   [2] fix_p：v2p 编译 v2 全树自身 -> fix_p.asm（阶段=链构建 到此即通过）
+#   [3] ml64/as 汇编 fix_p -> cn_self.obj
+#   [4] link cn_self：cn_self.obj 在前 + v2p.obj 借链 + 运行时 objs，靠前定义胜出
+#       （/FORCE:MULTIPLE | -Wl,-z,muldefs——防 v1 79 虚假验收教训重演）
+#   [5] 绑定自检：cn_main 归属须为 cn_self.obj（win=map 解析；linux=ld -Map + nm 双检）
+#   [6] fix_s：cn_self 编译 v2 全树自身 -> fix_s.asm
+#   [7] 固定点：fix_p ≡ fix_s 逐字节一致（断言=自洽性，不依赖绝对行数——
+#       v2 树每次变更行数锚即变，绝对行数锚会把树演化误判为用例失败）
+# 三平台：win-x64 走 ml64/link；linux-arm64 / linux-x86_64 走 as/g++
+#   （linux 分支对齐既有 v2 闭环编排；动态验证随跨机轮）
+# 产物全部落 target/audit2/selfwork<编号>/（规则19），不污染工作区源码目录
 
 
-def 执行79闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
-               输出目录: pathlib.Path, 详细: bool) -> tuple:
-    """执行 79 自举闭环用例：编译->落盘->汇编->链接->再落盘->比对"""
-    名称 = "79_bootstrap_closed_loop"
-    源文件 = 查找源文件(用例目录)
-    期望文件 = 查找期望文件(源文件)
+def 解析v2锚定链配置(配置路径: pathlib.Path) -> dict:
+    """v2锚定链.txt 键值解析：阶段（链构建|闭环，默认 闭环）；# 后为注释。"""
+    配置 = {"阶段": "闭环"}
+    for 原行 in 配置路径.read_text(encoding="utf-8").splitlines():
+        行 = 原行.split("#", 1)[0].strip()
+        if not 行 or "=" not in 行:
+            continue
+        键, 值 = (x.strip() for x in 行.split("=", 1))
+        if 键 == "阶段":
+            if 值 not in ("链构建", "闭环"):
+                raise ValueError(f"v2锚定链.txt 阶段取值非法: {值}（须 链构建|闭环）")
+            配置["阶段"] = 值
+        else:
+            raise ValueError(f"v2锚定链.txt 未知配置键: {键}（{配置路径}）")
+    return 配置
 
-    # 工作目录：target/audit2/（全部产物落此，规则19）
+
+def 锚定链编译v2全树(exe, 工作目录: pathlib.Path, 主入口: str, 目标asm: pathlib.Path,
+                    详细: bool, 标签: str, 目标平台: str) -> tuple:
+    """[2]/[6] 共用：exe 编译 v2 全树自身 -> 工作目录/target/v2asm.{asm|s} -> 拷贝为 目标asm。
+    断言：退出码 0 + 产物存在 + 含入口符号 cn_main（防「报错仍产 asm / 空产物」假绿）。
+    返回 (状态, 说明, 行数)；非「通过」时 行数=0。"""
+    if 目标平台 == "win-x64":
+        asm路径 = 工作目录 / "target" / "v2asm.asm"
+        入口标记 = "cn_main PROC"
+        命令 = [str(exe), 主入口]
+    else:
+        asm路径 = 工作目录 / "target" / "v2asm.s"
+        入口标记 = ".globl cn_main"
+        命令 = [str(exe), 主入口, 目标平台]  # GAS 后端分派（v2p 第 2 参数）
+    if asm路径.exists():
+        asm路径.unlink()
+    if 详细:
+        print(f"    [{标签}] {pathlib.Path(exe).name} {主入口}")
+    运行结果 = 运行命令(命令, 工作目录, 内存上限MB=内存上限MB默认)
+    if 运行结果.returncode != 0:
+        return "失败", (f"{标签} 编译 v2 全树失败(退出码{运行结果.returncode}): "
+                        f"{(运行结果.stderr or 运行结果.stdout or '').strip()[:300]}"), 0
+    if not asm路径.exists():
+        return "失败", f"{标签} 未生成 {asm路径.name}（v2 编译未落盘）", 0
+    内容 = asm路径.read_text(encoding="utf-8", errors="replace")
+    if 入口标记 not in 内容:
+        return "失败", f"{标签} 产物缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）", 0
+    目标asm.write_bytes(asm路径.read_bytes())
+    return "通过", "", 内容.count("\n") + 1
+
+
+def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
+                 输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
+    """执行 v2 锚定链用例（78_v2 自举链构建 / 79_v2 自举闭环）——详见上方编排注释。"""
+    import filecmp
+    名称 = 用例目录.name
+    编号 = 名称.split("_")[0]
+    配置 = 解析v2锚定链配置(用例目录 / "v2锚定链.txt")
+    阶段 = 配置["阶段"]
+    if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
+        return "失败", f"{名称} v2 锚定链仅支持 win-x64 / linux-arm64 / linux-x86_64（当前 {目标平台}）"
     审计目录 = 项目根目录 / "target" / "audit2"
     审计目录.mkdir(parents=True, exist_ok=True)
+    主入口 = str((项目根目录 / "CN语言编译器v2" / "主.cn").resolve())
+    # 产物行数下界（防「近乎空产物」假绿；win 首锚口径 408105 行，下界取约四分之一保守）
+    行数下界 = 100000
 
-    # 工具链绝对路径（VS 2022）
-    MSVC根 = r"C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC"
-    ML64 = None
-    LINK = None
-    for 版本 in ("14.44.35207", "14.38.33130"):
-        候选ml64 = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "ml64.exe"
-        候选link = pathlib.Path(MSVC根) / 版本 / "bin" / "Hostx64" / "x64" / "link.exe"
-        if 候选ml64.exists() and ML64 is None:
-            ML64 = 候选ml64
-        if 候选link.exists() and LINK is None:
-            LINK = 候选link
-    if ML64 is None or LINK is None:
-        return "失败", "未找到 ml64/link（VS 2022 MSVC 工具链）"
+    # 工作目录隔离（对齐 v2work<编号> 模式）：v2 驱动器输出路径为相对 cwd 的
+    #   target/v2asm.*，各用例独立工作目录（cwd 隔离），产物互不踩
+    工作目录 = 审计目录 / f"selfwork{编号}"
+    (工作目录 / "target").mkdir(parents=True, exist_ok=True)
+    # v2p/cn_self 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
+    #   workdir 内链接到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，唯此一处；
+    #   win junction 不需管理员权限 / linux symlink）
+    stdlib链 = 工作目录 / "stdlib"
+    if not stdlib链.exists():
+        if 目标平台 == "win-x64":
+            subprocess.run(["cmd", "/c", "mklink", "/J", str(stdlib链),
+                            str(项目根目录 / "stdlib")], capture_output=True)
+        else:
+            os.symlink(项目根目录 / "stdlib", stdlib链)
 
-    # LIB 路径（MSVC + Windows Kits）--MSVC lib 随已探测版本，Windows Kits 用已装最新版
-    # ML64 位于 <MSVC根>\<版本>\bin\Hostx64\x64\ml64.exe -> lib 在 <MSVC根>\<版本>\lib\x64
-    msvc版本目录 = ML64.parent.parent.parent.parent
-    kits根 = pathlib.Path(r"C:\Program Files (x86)\Windows Kits\10\lib")
-    kits版 = sorted((p for p in kits根.glob("10.*") if p.is_dir()), reverse=True) if kits根.exists() else []
-    if not kits版:
-        return "失败", f"未找到 Windows Kits lib 目录: {kits根}\\10.*（请确认 Win10 SDK 安装）"
-    LIB路径们 = [
-        str(msvc版本目录 / "lib" / "x64"),
-        str(kits版[0] / "ucrt" / "x64"),
-        str(kits版[0] / "um" / "x64"),
-    ]
-    for lib路径 in LIB路径们:
-        if not pathlib.Path(lib路径).exists():
-            return "失败", f"LIB 路径不存在: {lib路径}"
+    # [1] 就绪：v2p（宿主编译 v2 全树；指纹缓存命中零重建）+ 工具链 + 运行时
+    if 目标平台 == "win-x64":
+        就绪 = 确保v2p就绪win(编译器路径, 详细, 编号)
+        if 就绪[0] is None:
+            return "失败", 就绪[1]
+        v2p, v2pobj, 运行时objs, ML64, LINK, LIB路径们 = 就绪
+    else:
+        就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 详细, 编号)
+        if 就绪[0] is None:
+            return "失败", 就绪[1]
+        v2p, v2pobj, 运行时objs, as工具, cxx工具 = 就绪
 
-    # 运行时 .obj（C++ 版构建产物，target/ 下）
-    运行时名们 = ["io_api", "runtime", "string_api", "i128_api", "math_api",
-                "input_api", "file_api", "time_api", "system_api"]
-    运行时objs = [项目根目录 / "target" / f"{m}.obj" for m in 运行时名们]
-    for obj in 运行时objs:
-        if not obj.exists():
-            return "失败", f"缺少运行时 .obj: {obj.name}（请先构建 C++ 版编译器）"
+    # ===== [2] fix_p：v2p 编译 v2 全树自身 -> fix_p.asm =====
+    fixp = 工作目录 / "fix_p.asm"
+    状态, 说明, 行数p = 锚定链编译v2全树(v2p, 工作目录, 主入口, fixp, 详细,
+                                        f"{编号}-2 fix_p", 目标平台)
+    if 状态 != "通过":
+        return 状态, 说明
+    if 行数p < 行数下界:
+        return "失败", (f"{编号}-2 fix_p 行数 {行数p} < 下界 {行数下界}"
+                        "（产物近乎空/严重退化——防假绿下界触发）")
+    if 阶段 == "链构建":
+        return "通过", (f"v2 链构建成立：v2p 编译 v2 全树自身 -> fix_p（{行数p} 行，"
+                        f"含 cn_main；{目标平台}）")
 
-    # 模块名 -> ASCII 名（避免 link 响应文件中文路径在 GBK 代码页下乱码）
-    模块们 = [("词法分析", "lexer"), ("语法分析", "parser"), ("语义分析", "semantic"),
-            ("IR生成", "irgen"), ("代码生成", "codegen")]
-
-    # ===== 步骤1：C++版编译 79 主.cn -> 79_bootstrap_closed_loop.exe =====
-    输出可执行 = 输出目录 / f"{名称}.exe"
-    if 输出可执行.exists():
-        输出可执行.unlink()
-    if 详细:
-        print(f"    [79-1] {编译器路径} build {源文件.name} --output {输出可执行}")
-    编译结果 = 运行命令([str(编译器路径), "build", str(源文件),
-                      "--target", "win-x64", "--output", str(输出可执行)],
-                     项目根目录)
-    if 编译结果.returncode != 0:
-        return "失败", f"79-1 编译失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
-    if not 输出可执行.exists():
-        return "失败", "79-1 编译返回成功但未生成可执行文件"
-
-    # ===== 步骤2：运行 -> 落盘 5 个 *_链.asm（第一次，CN 组件链产物） =====
-    # 内存保护（2026-08-24 用户要求）：组件链编译器内存可能失控（实测 26GB+），
-    # 超过 内存上限MB默认 立即自动终止并判失败
-    运行结果 = 运行命令([str(输出可执行)], 项目根目录, 内存上限MB=内存上限MB默认)
-    if 运行结果.returncode != 0:
-        return "失败", f"79-2 运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
-    # 校验 5 个 .asm 已落盘
-    for 模块, _ in 模块们:
-        asm = 审计目录 / f"{模块}_链.asm"
-        if not asm.exists():
-            return "失败", f"79-2 未生成 {asm.name}"
-    # 备份第一次产物
-    第一次目录 = 审计目录 / "79_第一次"
-    第一次目录.mkdir(parents=True, exist_ok=True)
-    for 模块, _ in 模块们:
-        import shutil
-        shutil.copy2(审计目录 / f"{模块}_链.asm", 第一次目录 / f"{模块}_链.asm")
-
-    # ===== 步骤3：ml64 汇编 5 个 .asm -> 5 个 .obj =====
-    for 模块, ascii名 in 模块们:
-        asm = 审计目录 / f"{模块}_链.asm"
-        obj = 审计目录 / f"{ascii名}_chain.obj"
+    # ===== [3] 汇编 fix_p -> cn_self.obj =====
+    cn_self_obj = 工作目录 / "cn_self.obj"
+    cn_self_exe = 工作目录 / "cn_self.exe"
+    if cn_self_obj.exists():
+        cn_self_obj.unlink()
+    if 目标平台 == "win-x64":
         if 详细:
-            print(f"    [79-3] ml64 {asm.name}")
-        汇编结果 = 运行命令([str(ML64), "/nologo", "/c", f"/Fo{obj}", str(asm)],
-                         项目根目录)
-        if 汇编结果.returncode != 0:
-            return "失败", f"79-3 ml64 汇编 {模块} 失败(退出码{汇编结果.returncode}): {汇编结果.stdout.strip()[:200]}"
+            print(f"    [{编号}-3] ml64 汇编 fix_p.asm")
+        汇编结果 = 运行命令([str(ML64), "/nologo", "/c", f"/Fo{cn_self_obj}", str(fixp)],
+                          项目根目录)
+    else:
+        if 详细:
+            print(f"    [{编号}-3] as 汇编 fix_p.s")
+        汇编结果 = 运行命令([as工具, "-o", str(cn_self_obj), str(fixp)], 项目根目录)
+    if 汇编结果.returncode != 0:
+        return "失败", (f"{编号}-3 汇编 fix_p 失败(退出码{汇编结果.returncode}): "
+                        f"{(汇编结果.stderr or 汇编结果.stdout or '').strip()[:300]}")
+    if not cn_self_obj.exists():
+        return "失败", f"{编号}-3 汇编返回成功但未生成 cn_self.obj"
 
-    # ===== 步骤4：链接 -> CN 版编译器 exe =====
-    # 【防虚假验收关键】链接顺序必须是：链.obj（CN组件自编译产物）在前，
-    # 入口obj（C++版 cn build 产物，其中内联了同名组件函数）在后。
-    # /FORCE:MULTIPLE 下 MSVC link 保留命令行靠前的第一个定义--
-    # 若入口obj在前，组件符号全部绑定C++版内联实现，链.obj被LNK4006整体忽略，
-    # 第二次落盘实际由C++版组件执行，「CN vs CN」固定点沦为「C++ vs C++」假验证。
-    入口obj = 输出目录 / f"{名称}.obj"
-    if not 入口obj.exists():
-        return "失败", f"79-4 缺少入口 obj: {入口obj.name}（cn build 未产出 .obj）"
-    链objs = [审计目录 / f"{ascii名}_chain.obj" for _, ascii名 in 模块们]
-    输出exe = 审计目录 / "cn_compiler_self.exe"
-    # 响应文件（避免中文路径在 GBK 代码页下乱码）
-    响应文件 = 审计目录 / "79_link.rsp"
-    rsp_lines = [
-        "/nologo", "/ENTRY:WinMainCRTStartup", "/SUBSYSTEM:CONSOLE",
-        "/STACK:8388608", "/FORCE:MULTIPLE",
-    ]
-    for lib in LIB路径们:
-        rsp_lines.append(f"/LIBPATH:{lib}")
-    rsp_lines += ["/DEFAULTLIB:libcmt.lib", "/DEFAULTLIB:libucrt.lib",
-                  "/DEFAULTLIB:kernel32.lib", "/DEFAULTLIB:shell32.lib",
-                  f"/OUT:{输出exe}"]
-    # 链.obj 必须排在入口obj之前（见上方防虚假验收说明）
-    rsp_lines += [str(o) for o in 链objs] + [str(入口obj)] + [str(o) for o in 运行时objs]
-    # 生成 map 文件供符号保留方向自检（防组件符号被C++版内联定义覆盖）
-    map文件 = 审计目录 / "79_link.map"
+    # ===== [4] 链接 cn_self（cn_self.obj 在前 + v2p.obj 借链 + 运行时；靠前定义胜出）=====
+    if cn_self_exe.exists():
+        cn_self_exe.unlink()
+    map文件 = 工作目录 / f"{编号}_self_link.map"
     if map文件.exists():
         map文件.unlink()
-    rsp_lines.append(f"/MAP:{map文件}")
-    with open(响应文件, "w", encoding="utf-8") as f:
-        for 行 in rsp_lines:
-            f.write(f'"{行}"\n')
-    if 详细:
-        print(f"    [79-4] link -> {输出exe.name}")
-    链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录)
-    if 链接结果.returncode != 0:
-        return "失败", f"79-4 链接失败(退出码{链接结果.returncode}): {链接结果.stdout.strip()[:300]}"
-    if not 输出exe.exists():
-        return "失败", "79-4 链接返回成功但未生成 exe"
+    if 目标平台 == "win-x64":
+        响应文件 = 工作目录 / f"{编号}_self_link.rsp"
+        rsp_lines = ["/nologo", "/ENTRY:WinMainCRTStartup", "/SUBSYSTEM:CONSOLE",
+                     "/STACK:8388608", "/FORCE:MULTIPLE"]
+        for lib in LIB路径们:
+            rsp_lines.append(f"/LIBPATH:{lib}")
+        rsp_lines += ["/DEFAULTLIB:libcmt.lib", "/DEFAULTLIB:libucrt.lib",
+                      "/DEFAULTLIB:kernel32.lib", "/DEFAULTLIB:shell32.lib",
+                      f"/OUT:{cn_self_exe}", f"/MAP:{map文件}"]
+        # cn_self.obj 必须在 v2p.obj 之前（防 v1 79 虚假验收教训：命令行靠前定义胜出）
+        rsp_lines += [str(cn_self_obj), str(v2pobj)] + [str(o) for o in 运行时objs]
+        with open(响应文件, "w", encoding="utf-8") as f:
+            for 行 in rsp_lines:
+                f.write(f'"{行}"\n')
+        if 详细:
+            print(f"    [{编号}-4] link -> cn_self.exe（cn_self.obj 在前 + v2p.obj 借链）")
+        链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录)
+        if 链接结果.returncode != 0:
+            return "失败", (f"{编号}-4 链接失败(退出码{链接结果.returncode}): "
+                            f"{(链接结果.stdout or '').strip()[:300]}")
+    else:
+        链接命令 = [cxx工具, "-no-pie", "-Wl,-z,muldefs", "-Wl,-Map," + str(map文件),
+                    "-o", str(cn_self_exe), str(cn_self_obj), str(v2pobj)]
+        链接命令 += [str(o) for o in 运行时objs]
+        if 详细:
+            print(f"    [{编号}-4] g++ -no-pie -Wl,-z,muldefs -> cn_self（cn_self.obj 在前）")
+        链接结果 = 运行命令(链接命令, 项目根目录)
+        if 链接结果.returncode != 0:
+            return "失败", (f"{编号}-4 链接失败(退出码{链接结果.returncode}): "
+                            f"{(链接结果.stderr or 链接结果.stdout or '').strip()[:300]}")
+    if not cn_self_exe.exists():
+        return "失败", f"{编号}-4 链接返回成功但未生成 cn_self.exe"
 
-    # ===== 步骤4.5：符号保留方向自检（防虚假验收） =====
-    # /MAP 产物中：每个链.obj 必须实际贡献符号（组件函数绑定CN自编译版本），
-    # cn_main 必须来自入口obj；否则闭环退化为C++版自演（入口obj内联组件覆盖链.obj）
-    map内容 = map文件.read_text(encoding="utf-8", errors="replace") if map文件.exists() else ""
-    for ascii名 in [a for _, a in 模块们]:
-        链obj名 = f"{ascii名}_chain.obj"
-        if 链obj名 not in map内容:
-            return "失败", (f"79-4.5 符号自检失败: map 中 {链obj名} 未贡献任何符号"
-                            "（组件符号被入口obj的C++内联版覆盖，闭环是假的）")
-    if "cn_main" not in map内容 or 入口obj.name not in map内容:
-        return "失败", f"79-4.5 符号自检失败: map 中未找到来自 {入口obj.name} 的 cn_main"
+    # ===== [5] 绑定自检：cn_main 归属须为 cn_self.obj（防虚假验收——v1 79 教训）=====
+    if 目标平台 == "win-x64":
+        map内容 = map文件.read_text(encoding="utf-8", errors="replace") if map文件.exists() else ""
+        cn_main行 = [l.strip() for l in map内容.splitlines()
+                    if re.search(r"\bcn_main\b", l) and "Rva" not in l]
+        归属 = [l for l in cn_main行 if l.endswith("cn_self.obj")]
+        if not 归属:
+            return "失败", (f"{编号}-5 绑定自检失败：cn_main 未绑定 cn_self.obj"
+                            f"（虚假验收风险——链接顺序/借链失效）\n    map 行: {cn_main行[:5]}")
+        归属说明 = "map: cn_main ∈ cn_self.obj ✓"
+    else:
+        # linux：ld -Map 解析（段块内符号归属）+ nm 复核（cn_self.obj 定义 T cn_main）
+        map内容 = map文件.read_text(encoding="utf-8", errors="replace") if map文件.exists() else ""
+        当前obj = None
+        cn_main归属 = None
+        for l in map内容.splitlines():
+            m = re.match(r"^\s+\.\S+\s+0x[0-9a-fA-F]+\s+0x[0-9a-fA-F]+\s+(\S+)", l)
+            if m:
+                当前obj = m.group(1)
+                continue
+            if 当前obj and re.match(r"^\s+0x[0-9a-fA-F]+\s+cn_main$", l):
+                cn_main归属 = 当前obj
+                break
+        nm检查 = 运行命令(["nm", str(cn_self_obj)], 项目根目录)
+        if " T cn_main" not in (nm检查.stdout or ""):
+            return "失败", f"{编号}-5 绑定自检失败: cn_self.obj 未定义 T cn_main"
+        if cn_main归属 is None or "cn_self.obj" not in cn_main归属:
+            return "失败", (f"{编号}-5 绑定自检失败：ld -Map 中 cn_main 归属 {cn_main归属!r}"
+                            "（非 cn_self.obj——虚假验收风险）")
+        归属说明 = "ld -Map: cn_main ∈ cn_self.obj ✓ + nm T cn_main ✓"
 
-    # ===== 步骤5：运行 CN 版编译器 exe -> 再次落盘（第二次） =====
-    # 【防假通过】先删除 5 个旧的 *_链.asm：若第二次运行未真正写文件，
-    # 步骤6 的存在性检查与比对将用第一次的旧产物蒙混过关
-    # （写入虽是截断重写，但删旧文件可确保「存在=第二次真的写了」）
-    for 模块, _ in 模块们:
-        旧asm = 审计目录 / f"{模块}_链.asm"
-        if 旧asm.exists():
-            旧asm.unlink()
-    # CN 版编译器同样启用内存保护（与步骤2一致）
-    运行结果2 = 运行命令([str(输出exe)], 项目根目录, 内存上限MB=内存上限MB默认)
-    if 运行结果2.returncode != 0:
-        return "失败", f"79-5 CN版编译器运行失败(退出码{运行结果2.returncode}): {运行结果2.stderr.strip()[:200]}"
+    # ===== [6] fix_s：cn_self 编译 v2 全树自身 -> fix_s.asm =====
+    fixs = 工作目录 / "fix_s.asm"
+    状态, 说明, 行数s = 锚定链编译v2全树(cn_self_exe, 工作目录, 主入口, fixs, 详细,
+                                        f"{编号}-6 fix_s", 目标平台)
+    if 状态 != "通过":
+        return 状态, 说明
 
-    # ===== 步骤6：比对两次产物一致（自举固定点） =====
-    for 模块, _ in 模块们:
-        第一次 = 第一次目录 / f"{模块}_链.asm"
-        第二次 = 审计目录 / f"{模块}_链.asm"
-        if not 第二次.exists():
-            return "失败", f"79-6 第二次未生成 {第二次.name}"
-        内容1 = 第一次.read_bytes()
-        内容2 = 第二次.read_bytes()
-        if 内容1 != 内容2:
-            return "失败", (f"79-6 自举固定点不一致: {模块} "
-                            f"(第一次{len(内容1)}字节 vs 第二次{len(内容2)}字节)")
-
-    # ===== 步骤7：比对运行输出与期望 =====
-    期望 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines()]
-    实际 = [行.rstrip() for 行 in 运行结果2.stdout.splitlines()]
-    if 实际 != 期望:
-        return "失败", f"79-7 输出不一致\n    期望: {期望}\n    实际: {实际}"
-
-    # 判据说明：第一次落盘=C++版编译产物运行结果，第二次落盘=CN自编译版组件运行结果，
-    # 两者逐字节一致 = 「CN版编译器再次编译自身源码 -> 产物行为一致」（阶段7验收步骤2）。
-    # 这同时蕴含固定点：CN版自编译两次产物也必然一致（同为CN版组件行为）。
-    return "通过", "自举闭环成立：CN自编译版组件产物与C++版逐字节一致（阶段7验收步骤2：产物行为一致）"
+    # ===== [7] 固定点判定：fix_p ≡ fix_s 逐字节一致 =====
+    if filecmp.cmp(str(fixp), str(fixs), shallow=False):
+        return "通过", (f"v2 自举闭环成立：fix_p ≡ fix_s 逐字节一致（{行数p} 行；"
+                        f"{归属说明}；{目标平台}）")
+    内容p = fixp.read_text(encoding="utf-8", errors="replace").splitlines()
+    内容s = fixs.read_text(encoding="utf-8", errors="replace").splitlines()
+    差异行 = [i for i, (x, y) in enumerate(zip(内容p, 内容s)) if x != y]
+    return "失败", (f"{编号}-7 固定点不一致！fix_p={len(内容p)} 行 fix_s={len(内容s)} 行，"
+                    f"首个差异行号={差异行[:5]}（v2 编译确定性/代码生成分叉）")
 
 
 # v2 闭环用例配置解析（数据驱动，2026-09-11 用户裁决去硬编码）：用例目录的
@@ -893,11 +932,13 @@ def 解析v2闭环配置(配置路径: pathlib.Path) -> dict:
 
 
 # 判定用例是否 v2 系（预热共用——文件存在性判定）：
-#   v2闭环.txt（纯 v2 用例）与 双编译对照.txt（双编译对照用例，内部调用 v2 闭环）
+#   v2闭环.txt（纯 v2 用例）/ 双编译对照.txt（双编译对照用例，内部调用 v2 闭环）/
+#   v2锚定链.txt（78_v2/79_v2 自举链构建与闭环，共享 v2p）
 #   都依赖共享工件 v2p/v2 运行时 .o，故同进预热面（111-a 起三平台统一并行，
 #   v2 产物已按用例隔离）。
 def 是v2闭环用例(用例目录: pathlib.Path) -> bool:
-    return (用例目录 / "v2闭环.txt").exists() or (用例目录 / "双编译对照.txt").exists()
+    return ((用例目录 / "v2闭环.txt").exists() or (用例目录 / "双编译对照.txt").exists()
+            or (用例目录 / "v2锚定链.txt").exists())
 
 
 
