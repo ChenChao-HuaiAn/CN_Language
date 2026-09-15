@@ -759,6 +759,12 @@ private:
                                      const ir::IRValue& srcAddr,
                                      const SourceLocation& loc);
     void endSelfAssignGuard(const std::string& skipLabel);
+    // 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置发射——按实参类型
+    //   分派：字符串=__cn_str_copy／标量/指针=直通（值语义天然）／结构体（含结果/
+    //   可选）=临时槽+emitStructCopyWithFields 深拷（返回槽地址，调用方按「调用
+    //   返回接管」浅收=零共享）／容器类=NewObject+拷贝构造（place 实参=槽地址
+    //   直取；调用返回实参=指针入临时槽再取地址）。语义层已拒绝无拷贝构造类。
+    void genCopyBuiltin(CallExpr* node, const SourceLocation& loc);
     // 该聚合局部是否在字段释放名单中（写入位 pre-free 判据：仅拥有槽可释放旧值）
     bool isOwnedFieldSlot(const std::string& unique) const;
     // 85-a：返回值「借用来源」判定（聚合返回位所有权保证用）——返回类型含拥有型

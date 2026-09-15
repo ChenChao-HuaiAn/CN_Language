@@ -36,6 +36,16 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         (void)genExpr(node->arguments[0].get());  // lastExpr_=实参求值结果（值交接）
         return;
     }
+    // ---- 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置 ----
+    //   语义层已推导 resolvedType（=实参类型，genCopyBuiltin 分派依据）。
+    //   与 转移(x) 构成显式「复制/移动」双内置（C++ copy/move 对照物）。
+    if (node->callee->getType() == NodeType::IdentifierExpr &&
+        !node->resolvedType.empty() &&
+        static_cast<IdentifierExpr*>(node->callee.get())->name == "复制" &&
+        node->arguments.size() == 1) {
+        genCopyBuiltin(node, node->location);
+        return;
+    }
     // ---- 阶段3 OOP（Task 3.1/3.2）：构造调用/成员方法调用/虚调用 ----
     // 构造调用 类名(实参)：callee 为类类型名（NewObject + 构造体 Call）；
     // 成员方法调用 对象.方法(实参)：callee 为 MemberExpr（虚 -> VirtualCall，

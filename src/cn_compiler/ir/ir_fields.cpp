@@ -614,6 +614,93 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
     endSelfAssignGuard(skipLabel);
 }
 
+// ==================== 206-b（波 4·plans/022 §四.5）：复制(x) 泛型克隆内置 =======
+
+// 复制(表达式) 发射（与 转移(x) 构成显式「复制/移动」双内置·C++ copy/move 对照物）。
+//   语义层已推导 resolvedType=实参类型并拒绝无拷贝构造类；此处按类型分派：
+//     ①字符串        → __cn_str_copy（落堆独立拥有）
+//     ②标量/指针     → 直通（值语义天然，零开销）
+//     ③容器/类对象   → NewObject + 拷贝构造（引用实参=源槽地址·发现二约定）
+//     ④结构体        → 临时槽 + emitStructCopyWithFields 深拷（返回槽地址——
+//                      调用方按「调用返回接管」浅收，tmp 即独立深拷，零共享）
+//   实参形态分级：place（标识符/成员/下标/三元）=lvalueAddress；调用返回（含嵌套
+//   复制）=genExpr（retbuf/临时槽地址）。
+void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
+    if (node->arguments.empty()) return;
+    Expr* arg = node->arguments[0].get();
+    const std::string type = types::canonical(node->resolvedType);
+    // ⓪ 实参=拥有调用返回（retOwnedString=A2 契约归表达式／结构体调用返回=
+    //   retbuf 临时归表达式）：临时本就独立拥有 → **接管**（零额外拷贝——
+    //   复制(造串()) 对临时再 copy 会泄漏原临时，探针⑤实证残留 1）
+    if (arg->getType() == NodeType::CallExpr) {
+        CallExpr* ce = static_cast<CallExpr*>(arg);
+        const bool ownedCall = ce->retOwnedString || semantic_->isStructType(type);
+        if (ownedCall) {
+            lastExpr_ = genExpr(arg);
+            return;
+        }
+    }
+    // ② 标量/指针：值语义天然（直通零开销）
+    if (!semantic_->isStructType(type) && !semantic_->isClassType(type) &&
+        type != "字符串") {
+        lastExpr_ = genExpr(arg);
+        return;
+    }
+    // ① 字符串：__cn_str_copy 落堆（独立拥有）
+    if (type == "字符串") {
+        ir::IRValue v = genExpr(arg);
+        lastExpr_ = emitResult(ir::Opcode::Call, {v}, "ptr", "__cn_str_copy", loc);
+        return;
+    }
+    // ③ 容器/类对象：NewObject + 拷贝构造（语义层已保证拷贝构造存在）
+    if (semantic_->isClassType(type)) {
+        ir::IRValue srcSlot;
+        if (arg->getType() == NodeType::CallExpr) {
+            // 调用返回：对象指针入临时槽再取槽地址（拷贝构造引用实参=槽地址）
+            ir::IRValue ptr = genExpr(arg);
+            const std::string hold = "__copyhold" + std::to_string(varCounter_++);
+            emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                 hold, "ptr", loc);
+            registerVarSlots(hold, type);
+            emit(ir::Opcode::Store, {ptr}, ir::IRValue(), hold, "ptr", loc);
+            srcSlot = emitResult(ir::Opcode::AddrOf,
+                                 {ir::IRValue::var(hold, "i64")}, "ptr", hold, loc);
+        } else {
+            srcSlot = lvalueAddress(arg);
+        }
+        const std::string copyKey = classCopyCtorSymbolKey(type);
+        if (copyKey.empty()) return;  // 语义层已拒绝，防御
+        const ClassInfo* ciC = semantic_->findClass(type);
+        const std::string extra =
+            type + "|" + std::to_string(ciC != nullptr ? ciC->totalSize : 0);
+        ir::IRValue newObj = emitResult(
+            ir::Opcode::NewObject, {ir::IRValue::constant(type, "ptr")}, "ptr",
+            extra, loc);
+        emit(ir::Opcode::Call, {newObj, srcSlot}, ir::IRValue(), copyKey, "void",
+             loc);
+        lastExpr_ = newObj;
+        return;
+    }
+    // ④ 结构体（含结果/可选 合成结构体）：临时槽 + 深拷，返回槽地址
+    ir::IRValue srcAddr;
+    if (arg->getType() == NodeType::CallExpr) {
+        srcAddr = genExpr(arg);  // 调用返回结构体=retbuf/临时槽地址
+    } else {
+        srcAddr = lvalueAddress(arg);
+    }
+    if (srcAddr.id < 0 && !srcAddr.isConstant) return;
+    const std::string tmp = "__copytmp" + std::to_string(varCounter_++);
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"), tmp,
+         "ptr", loc);
+    registerVarSlots(tmp, type);
+    ir::IRValue tmpAddr = emitResult(ir::Opcode::AddrOf,
+                                     {ir::IRValue::var(tmp, "i64")}, "ptr", tmp,
+                                     loc);
+    emitStructCopyWithFields(tmpAddr, srcAddr, type, loc, /*preFree=*/false,
+                             /*deepCopy=*/true);
+    lastExpr_ = tmpAddr;
+}
+
 // ==================== 139-a（波 3 最小闭环）：ClassObj 字段符号键解析 ============
 
 // 析构符号键：ClassInfo.methods 中 isDestructor 项（含继承并入——与 DeleteObject

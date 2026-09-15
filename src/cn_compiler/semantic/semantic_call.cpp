@@ -118,6 +118,7 @@ void SemanticAnalyzer::visitCallExpr(CallExpr* node) {
     //   RAII 依据；驻留文本 已改 字符* 返回=自动不置位）
     node->retOwnedString = false;
     if (checkTransferCall(node)) return;   // 族1：显式转移表达式位特判
+    if (checkCopyBuiltinCall(node)) return;  // 族1.5：复制 泛型克隆内置（206-a 波 4）
     // ---- 阶段3（Task 3.6）：模块限定调用 模块.函数(实参)——族A（170-a 提取）----
     //   分派依据/识别语法/内置优先级策略详见 collectQualifiedCallInfo 与
     //   rewriteQualifiedCall 方法头注释（原 116~268 段整体搬移）。
@@ -251,6 +252,38 @@ bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
         return true;
     }
     return false;
+}
+
+// 206-b（2026-09-15 波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置——
+//   与 转移(x) 构成显式「复制/移动」双内置（C++ copy/move 对照物）。返回类型=
+//   实参类型（泛型内置无法用固定签名注册 functions_ 表 → 调用处特判）；字符串
+//   实参置 retOwnedString（A2 拥有契约：克隆产物归调用方拥有，接收位不复制）。
+//   类实参要求类型定义拷贝构造（无则拒绝——复制 语义要求独立拥有，浅柄共享
+//   违背克隆契约）；IR 层 genCopyBuiltin 按类型分派发射（ir_fields.cpp）。
+bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
+    if (node == nullptr || node->callee->getType() != NodeType::IdentifierExpr)
+        return false;
+    if (static_cast<IdentifierExpr*>(node->callee.get())->name != "复制")
+        return false;
+    if (node->arguments.size() != 1) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "复制(表达式) 恰好接收 1 个实参");
+        lastType_ = "未知";
+        return true;
+    }
+    Expr* arg = node->arguments[0].get();
+    lastType_ = checkExpr(arg);
+    // 类实参：须有拷贝构造（克隆契约——无拷贝构造类型无法独立拥有副本）
+    if (!lastType_.empty() && !types::isArray(lastType_) &&
+        isClassType(types::canonical(lastType_)) &&
+        findCopyConstructor(types::canonical(lastType_)) == nullptr) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "类型 '" + lastType_ + "' 未定义拷贝构造，无法 复制");
+        lastType_ = "未知";
+    }
+    node->resolvedType = lastType_;  // IR 层 genCopyBuiltin 分派依据
+    node->retOwnedString = (lastType_ == "字符串");  // A2：克隆产物归调用方拥有
+    return true;
 }
 
 // 族2：内置构造器 正常(值)/错误(值)/某些(值)（Task 3.5；原 visitCallExpr 433~490 段）——

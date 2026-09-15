@@ -173,6 +173,11 @@ public:
     //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
     static bool isTransferCall(const class CallExpr* node);
 
+    // 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置——返回类型=
+    //   实参类型（调用处特判：泛型内置无法用固定签名注册 functions_ 表）；
+    //   字符串实参置 retOwnedString（A2 拥有契约：克隆产物归调用方拥有）。
+    bool checkCopyBuiltinCall(class CallExpr* node);
+
     // 85-a（2026-09-12 第八十五轮）：借出方法名判定**上提 public**——IR 侧聚合
     //   返回位所有权保证（ir_fields.cpp isBorrowedAggregateSource）须按被调方
     //   方法名豁免：容器元素读出接口（元素/读取/栈顶/队首/头部元素/读取头部/
