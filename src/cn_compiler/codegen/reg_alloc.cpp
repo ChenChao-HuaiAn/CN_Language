@@ -109,6 +109,42 @@ LinearScanAllocator::LinearScanAllocator(TargetArch arch,
 // 返回按 start 升序排序的活跃区间列表
 std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
     const ir::IRFunction& function) {
+    // 190-a：本函数 179 行按「四步流水线」提取为 4 个静态族子方法（纯搬运
+    //   零行为变更——多重集核验先行于构建）。
+    // ---- 第1步：函数级线性化指令序数 ----
+    const auto blockRanges = computeBlockRanges(function);
+    // ---- 第2步：块级 def/use 集合（跨块活跃传播用） ----
+    std::vector<std::unordered_set<int>> blockDef(function.blocks.size());
+    std::vector<std::unordered_set<int>> blockUse(function.blocks.size());
+    computeBlockDefUse(function, blockRanges, blockDef, blockUse);
+    // ---- 第3步：跨块活跃传播（迭代数据流，in/out 集合） ----
+    const auto in = computeLivenessIn(function, blockDef, blockUse);
+    // ---- 第4步：生成活跃区间（def/use 精确序数 + 跨块活跃扩展） ----
+    auto intervalMap = buildLiveIntervalMap(function, blockRanges, in, blockDef);
+    // 结束点修正：仅 def 无 use 的寄存器 end < start 时，end = start（单点活跃）
+    std::vector<LiveInterval> intervals;
+    intervals.reserve(intervalMap.size());
+    for (auto& kv : intervalMap) {
+        if (kv.second.end < kv.second.start) {
+            kv.second.end = kv.second.start;
+        }
+        intervals.push_back(kv.second);
+    }
+    // 按 start 升序排序（线性扫描要求）
+    std::sort(intervals.begin(), intervals.end(),
+              [](const LiveInterval& a, const LiveInterval& b) {
+                  if (a.start != b.start) return a.start < b.start;
+                  return a.regId < b.regId;
+              });
+    return intervals;
+}
+
+// ==================== 190-a 流水线族子方法（原 computeLiveIntervals 112~287 段） ====================
+
+// 族①：块序线性化——块序 -> (起始序数, 块内指令数)。每条指令一个序数；
+//   终止指令附在块末。块间跳转不分配序数（活跃传播用块级集合，与线性序数解耦）。
+std::vector<std::pair<int, int>> LinearScanAllocator::computeBlockRanges(
+    const ir::IRFunction& function) {
     // ---- 第1步：函数级线性化指令序数 ----
     // 块序 -> (块起始序数, 块内指令数)。每条指令一个序数；终止指令附在块末。
     // 块间跳转不分配序数（活跃传播用块级集合，与线性序数解耦）。
@@ -118,12 +154,18 @@ std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
         blockRanges.emplace_back(cursor, static_cast<int>(block->instructions.size()));
         cursor += static_cast<int>(block->instructions.size());
     }
-    const int totalPoints = cursor;  // 最后一个指令序数 + 1
+    return blockRanges;
+}
 
+// 族②：块级 def/use 集合（原 123~148 段）——def[B]：块内定义的寄存器（结果）；
+//   use[B]：块内使用（操作数 + 终止）。同时收集每块指令的 def/use（供区间 end 精确化）。
+void LinearScanAllocator::computeBlockDefUse(
+    const ir::IRFunction& function,
+    const std::vector<std::pair<int, int>>& blockRanges,
+    std::vector<std::unordered_set<int>>& blockDef,
+    std::vector<std::unordered_set<int>>& blockUse) {
     // ---- 第2步：块级 def/use 集合（跨块活跃传播用） ----
     // def[B]：块内定义的寄存器（结果）；use[B]：块内使用（操作数 + 终止）
-    std::vector<std::unordered_set<int>> blockDef(function.blocks.size());
-    std::vector<std::unordered_set<int>> blockUse(function.blocks.size());
     // 同时收集每块指令的 def/use（供区间 end 精确化）
     for (std::size_t b = 0; b < function.blocks.size(); ++b) {
         const auto& block = function.blocks[b];
@@ -144,9 +186,15 @@ std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
         for (int tid : termUsedRegIds(*block)) {
             blockUse[b].insert(tid);
         }
-        (void)totalPoints;
     }
+}
 
+// 族③：跨块活跃传播（原 150~203 段）——块索引->label 映射构建前驱/后继，
+//   迭代求解 in[B] = use[B] ∪ (out[B] - def[B])；out[B] = ∪ succ in[S]。返回 in 集合。
+std::vector<std::unordered_set<int>> LinearScanAllocator::computeLivenessIn(
+    const ir::IRFunction& function,
+    const std::vector<std::unordered_set<int>>& blockDef,
+    const std::vector<std::unordered_set<int>>& blockUse) {
     // ---- 第3步：跨块活跃传播（迭代数据流，in/out 集合） ----
     // 块索引 -> label 映射（构造前驱/后继）
     std::unordered_map<std::string, int> labelIndex;
@@ -201,7 +249,17 @@ std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
             }
         }
     }
+    return in;
+}
 
+// 族④：活跃区间生成（原 205~255 段）——寄存器 -> 区间（start=首次 def 或 use，
+//   end=最后一次 use；def 处 start）。Alloca 结果排除（栈上分配无实际值）。
+std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
+    const ir::IRFunction& function,
+    const std::vector<std::pair<int, int>>& blockRanges,
+    const std::vector<std::unordered_set<int>>& in,
+    const std::vector<std::unordered_set<int>>& blockDef) {
+    const std::size_t n = function.blocks.size();
     // ---- 第4步：生成活跃区间（def/use 精确序数 + 跨块活跃扩展） ----
     // 寄存器 -> 区间（start=首次 def 或 use，end=最后一次 use；def 处 start）
     std::unordered_map<int, LiveInterval> intervalMap;
@@ -253,6 +311,7 @@ std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
             }
         }
     }
+    return intervalMap;
     // 第二遍：跨块活跃扩展——块入口 in 集合中、且在该块内未被 def 的寄存器，
     //   其 end 延伸到该块出口序数（保证跨块使用被覆盖）
     for (std::size_t b = 0; b < n; ++b) {
@@ -269,22 +328,6 @@ std::vector<LiveInterval> LinearScanAllocator::computeLiveIntervals(
             }
         }
     }
-    // 结束点修正：仅 def 无 use 的寄存器 end < start 时，end = start（单点活跃）
-    std::vector<LiveInterval> intervals;
-    intervals.reserve(intervalMap.size());
-    for (auto& kv : intervalMap) {
-        if (kv.second.end < kv.second.start) {
-            kv.second.end = kv.second.start;
-        }
-        intervals.push_back(kv.second);
-    }
-    // 按 start 升序排序（线性扫描要求）
-    std::sort(intervals.begin(), intervals.end(),
-              [](const LiveInterval& a, const LiveInterval& b) {
-                  if (a.start != b.start) return a.start < b.start;
-                  return a.regId < b.regId;
-              });
-    return intervals;
 }
 
 // 线性扫描主循环：按 start 升序扫描，活跃集合按 end 小顶堆

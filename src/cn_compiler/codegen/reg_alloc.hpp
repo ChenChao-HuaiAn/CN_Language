@@ -76,6 +76,25 @@ public:
     // 静态：活跃区间计算（暴露供单测直接验证 def-use / 跨块活跃）
     //  - 返回按 start 升序排序的活跃区间列表
     static std::vector<LiveInterval> computeLiveIntervals(const ir::IRFunction& function);
+    // ---- computeLiveIntervals 流水线族子方法（190-a 函数级拆分·原 179 行函数）----
+    // 族①：块序线性化——块序 -> (起始序数, 块内指令数)
+    static std::vector<std::pair<int, int>> computeBlockRanges(const ir::IRFunction& function);
+    // 族②：块级 def/use 集合（跨块活跃传播用）
+    static void computeBlockDefUse(const ir::IRFunction& function,
+                                   const std::vector<std::pair<int, int>>& blockRanges,
+                                   std::vector<std::unordered_set<int>>& blockDef,
+                                   std::vector<std::unordered_set<int>>& blockUse);
+    // 族③：跨块活跃传播（迭代数据流）——返回 in 集合
+    static std::vector<std::unordered_set<int>> computeLivenessIn(
+        const ir::IRFunction& function,
+        const std::vector<std::unordered_set<int>>& blockDef,
+        const std::vector<std::unordered_set<int>>& blockUse);
+    // 族④：活跃区间生成（def/use 精确序数；Alloca 结果排除）
+    static std::unordered_map<int, LiveInterval> buildLiveIntervalMap(
+        const ir::IRFunction& function,
+        const std::vector<std::pair<int, int>>& blockRanges,
+        const std::vector<std::unordered_set<int>>& in,
+        const std::vector<std::unordered_set<int>>& blockDef);
 
     // 静态：判断 IR 类型是否可参与寄存器分配（i64/u64/ptr；非浮点、非 i128）
     static bool isAllocableType(const std::string& type);

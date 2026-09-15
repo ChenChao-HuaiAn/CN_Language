@@ -53,19 +53,49 @@
 
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百八十六轮（**深度机 linux-x86_64**）——**186-a D1 函数级续波：parseClassMember（清单标签「运算符X」）198→47 行 ≤100 达标**（基线 fdbfb02）。本会话 17 个开发轮（170-a 接手 + 172~186-a）。
+**交接时间**: 2026-09-15 第一百九十轮（**深度机 linux-x86_64**）——**190-a D1 函数级续波：computeLiveIntervals 179→44 行 ≤100 达标**（基线 fdbfb02 后）。本会话 20 个开发轮（170-a 接手 + 172~190-a）。
 
-### 一、本轮（186-a）做了什么（写给无上下文的新会话）
+### 一、本轮（190-a）做了什么（写给无上下文的新会话）
 
-1. **拆分面（成员形态分派·纯搬运零改写）**：`parser_oop.cpp` 的 `parseClassMember`（198 行）
-   按成员形态提取为 **4 个族子方法**（parser.hpp +4 声明）：parseFriendMember（友元声明）/
-   parseMethodModifiers（虚拟/重写/抽象/常量/静态/不安全修饰循环）/ parseFunctionMember
-   （方法/构造/析构/运算符重载+参数/父构造初始化/返回类型/函数体）/ parseFieldMember
-   （字段声明+模板类型+初始值）。主函数收缩为成员形态分派 47 行。
-   **D1 计数 62**（parseClassMember 出列）。
-2. 一次构建失败即修正（两处 bool 方法补不可达尾 return false——预防 163 清单预判生效）。
-3. **D1 标签勘误**：check_fn_length 输出的「运算符X」实为 parseClassMember（脚本名字回溯
-   对 parse 类函数不可靠——以区间+构建验证为准）。
+1. **拆分面（四步流水线分派化·纯搬运零改写）**：`codegen/reg_alloc.cpp` 的
+   `computeLiveIntervals`（179 行）按「四步流水线」提取为 **4 个静态族子方法**
+   （reg_alloc.hpp +4 声明）：computeBlockRanges（块序线性化）/ computeBlockDefUse
+   （块级 def/use 集合）/ computeLivenessIn（跨块活跃传播·返回 in 集合）/
+   buildLiveIntervalMap（活跃区间生成+跨块扩展·in/blockDef 消费）。
+   主函数收缩为流水线调用+修正排序 44 行。**D1 计数实测 58**
+   （computeLiveIntervals 出列）。
+2. 三次构建失败即修正（totalPoints 未使用/主函数声明 replace 误删/族④缺
+   blockDef 参数+n 归属——lessons 190 段预防 173 replace 首匹配陷阱/
+   174 段-变量归属表）。
+
+### 二、本轮验证（linux-x86_64 口径）
+
+- 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`3bebee1b…`=186-a 版本——宿主
+  纯重构 v2 树零变化）；**锚定链不变**（395505 行，md5 `02d691aa…`）；全量 E2E **306 用例 304 过 /
+  0 失败 / 2 跳**（44 双编译对照全过）
+- 历轮全记录见 git 提交（a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 /
+  8819c63 / ab75deb / 13f152f / 4706dd3）与 plans/019 对应轮次行
+
+### 三、下一轮任务（按序）
+
+1. **D1 续波（实测 58 个）**：ir_oop_call.cpp handleClassCallExpr 362
+   （家机 183-a 写集相关，避让中）→ v2 `语义检查语句.cn` 检查推断声明语句等
+   （清单 `python scripts/check_fn_length.py`）。
+   （认领前先 fetch 看板避免撞车。）
+
+### 四、历史轮记录（170~189-a 摘要）
+
+- **189-a** registerFunction 173→57（semantic_builtins.cpp 注册流水线 4 族方法）
+- **186-a** parseClassMember（清单标签「运算符X」）198→47（parser_oop.cpp 成员形态 4 族方法）
+- **185-a** 检查赋值语句 178→47（语义检查语句.cn 左值形态 2 族方法·锚定链重锚 395505）
+- **184-a** 检查变量声明语句 180→92（语义检查语句.cn 2 族方法·类型ID/声明类型名ID 双引用输出·锚定链重锚 395347）
+- **182-a** visitIdentifierExpr 198→46（semantic_expr.cpp 识别链 4 族方法）
+- **181-a** visitUnaryExpr 204→42（semantic_expr_op.cpp switch 薄化 5 族方法·整族迁出 semantic_expr_unary.cpp）
+- **180/183-a** 家机甲通道实装/用户类字段泛化重试（C3 波 3）
+- **177~178-a** visitProgram 256→45 / lvalueAddress 225→30
+- **175~176-a** visitAssignmentExpr 349→48 / visitBinaryExpr 269→34
+- **172-a** v2 侧生成赋值语句拆分+check_fn_length.py 口径根治+10 文件行尾归一
+- **170-a** visitCallExpr 族A struct 化 239→96+169-a 残留 GCC 构建缺陷根治
 
 ### 二、本轮验证（linux-x86_64 口径）
 
