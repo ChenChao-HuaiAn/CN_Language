@@ -1,4 +1,4 @@
-# CN 语言编译器 CI 门禁脚本（B-2 2026-08）
+﻿# CN 语言编译器 CI 门禁脚本（B-2 2026-08）
 # 本地/远程 CI 统一入口：构建（零警告）+ 单测 + E2E
 # 用法：powershell -ExecutionPolicy Bypass -File scripts/ci.ps1
 $ErrorActionPreference = "Stop"
@@ -12,6 +12,10 @@ if ($LASTEXITCODE -ne 0) { Write-Host "[CI] ASCII 标识符门禁失败" -Foregr
 Write-Host "[CI] 0.5/4 关键字清单同步门禁（plans/024 §7.5 单一事实源）..." -ForegroundColor Cyan
 python scripts/check_keywords_sync.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 关键字清单同步门禁失败" -ForegroundColor Red; exit 1 }
+
+Write-Host "[CI] 0.7/4 规范覆盖映射有效性门禁（支柱一·plans/026 §2.1）..." -ForegroundColor Cyan
+python scripts/check_spec_coverage.py --ci
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 规范覆盖映射门禁失败" -ForegroundColor Red; exit 1 }
 
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug

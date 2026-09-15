@@ -170,14 +170,14 @@ bool StrengthReducePass::run(ir::IRModule& module) {
                 // F1-29：有符号 Div x, 2^n → 4 条修正序列（1 条指令原位展开；
                 //   仅 aggressive 模式（-O3）启用——默认保守保持既有行为）
                 if (!signedDivEnabled_) continue;
-                std::vector<ir::IRInstruction> 展开;
-                if (tryExpandSignedDiv(insts[i], insts[i].type, nextReg, 展开)) {
-                    insts[i] = 展开[0];
-                    for (std::size_t k = 1; k < 展开.size(); ++k) {
+                std::vector<ir::IRInstruction> unfoldedSeq;
+                if (tryExpandSignedDiv(insts[i], insts[i].type, nextReg, unfoldedSeq)) {
+                    insts[i] = unfoldedSeq[0];
+                    for (std::size_t k = 1; k < unfoldedSeq.size(); ++k) {
                         insts.insert(insts.begin() + static_cast<std::ptrdiff_t>(i + k),
-                                     展开[k]);
+                                     unfoldedSeq[k]);
                     }
-                    i += 展开.size() - 1;
+                    i += unfoldedSeq.size() - 1;
                     changed = true;
                 }
             }
