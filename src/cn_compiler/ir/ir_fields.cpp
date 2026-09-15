@@ -135,11 +135,24 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
             //   0xC0000374**（局部容器场景——与结构体字段收集面交互未明）。
             //   按纪律回退至「向量+栈」（139-a/140-a 全绿基线）；泛化与链式族
             //   =专项（plans/020 第五十四节：先做「局部容器 vs 结构体字段」影响面分析）。
-            const std::size_t dl = fieldCanon.find('$');
-            const std::string head = dl == std::string::npos
-                                         ? fieldCanon
-                                         : fieldCanon.substr(0, dl);
-            if (head != "向量" && head != "栈" && head != "链表" && head != "队列") {
+            // 183-a（2026-09-15）：**泛化重试（142-a ① 遗留专项·uD 根治）**——
+            //   去四族 head 白名单，收集条件=「有析构 ∧ 有拷贝构造」（双条件保留）。
+            //   142-a ① 崩因经 149-a 定位=uF（用户类拷贝构造内容器字段赋值
+            //   **浅拷共享**→级联双释放 0xC0000374），**180-a 甲通道已根治上游**
+            //   （拷贝构造内字段赋值=新建对象+容器拷贝构造深拷）——崩因不在
+            //   收集面本身；用户类字段（壳.内=盒子）从此获得与四族容器字段同款
+            //   三件套（preFree 释放 / 出口 DeleteObject / postCopy 级联深拷）。
+            //   探针基线实测（180-a 版宿主）：uD「D ok」浅拷不崩、userclass
+            //   形一/形二/形四残留各 2（壳 出口不释放用户类字段=泄漏）。
+            //   ★183-a 补充（116 回归定位）：**联合体宿主（用户联合体 + 合成
+            //   结果联合$）内的类字段一律不收集**——用户联合体多型激活无法静态
+            //   判定活跃成员（164-a 宁漏勿错；拥有型成员本就被 A4 硬错误挡住，
+            //   此处=防御完备）；合成结果联合$ 的类值字段=「所有权转移接收」
+            //   语义面（116 栈弹出/队列出队：容器弹出元素与按值实参槽浅拷共享、
+            //   由源局部析构交接，自动管理=双释放 0xC0000374 实测），顶层
+            //   「结果$T$E 值≠字符串」豁免（79-a/107-a 口径）经该递归绕行的
+            //   缺口由此补齐完备。串字段收集不受影响（164-a/79-a 条件通道）。
+            if (unionScope || decl->isUnion) {
                 continue;
             }
             const ClassInfo* fci = semantic_->findClass(fieldCanon);
@@ -432,6 +445,26 @@ void IRGenerator::emitOwnedFieldFreesFor(const std::string& unique,
 
 // ==================== ③ 深拷（preFree + memcpy + postCopy） ====================
 
+// 183-a：自赋值守卫两段式（ir.hpp 注记）——Eq(ptr,ptr) 结果经 Branch 分派；
+//   begin 后调用方在「拷贝块」内发射拷贝段，end 收口跳回汇合块（块模型与
+//   emitFieldStringFreeIf 的条件释放同款）。
+std::string IRGenerator::beginSelfAssignGuard(const ir::IRValue& dstAddr,
+                                              const ir::IRValue& srcAddr,
+                                              const SourceLocation& loc) {
+    ir::IRValue same = emitResult(ir::Opcode::Eq, {dstAddr, srcAddr}, "i1", "",
+                                  loc);
+    const std::string skipLabel = "bb" + std::to_string(blockCounter_++);
+    const std::string bodyLabel = "bb" + std::to_string(blockCounter_++);
+    endBranch(same.toString(), skipLabel, bodyLabel);
+    setCurrentBlock(newBlock(bodyLabel));
+    return skipLabel;
+}
+
+void IRGenerator::endSelfAssignGuard(const std::string& skipLabel) {
+    endJump(skipLabel);
+    setCurrentBlock(newBlock(skipLabel));
+}
+
 // 阶段一（memcpy 之前）：释放目标旧字段值——须在源数据覆盖目标槽之前发射；
 //   条件字段用「目标旧条件」判断（memcpy 后旧条件已被源条件覆盖，无法补做）。
 void IRGenerator::emitOwnedStrFieldPreFree(const ir::IRValue& dstBase,
@@ -565,6 +598,11 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
              std::to_string(size), "void", loc);
         return;
     }
+    // 183-a：拥有型字段路径自赋值守卫——preFree 先释放后深拷的序列在
+    //   dst≡src 时=破坏数据/复制已释放内存（UAF）；`r.子 = r.子`（成员位
+    //   自赋值）实测复现（79-a 起含串字段成员位既有缺口，标识符位已有
+    //   编译期 no-op）。纯值路径（上方 empty 分支）不包裹=零开销。
+    const std::string skipLabel = beginSelfAssignGuard(dstAddr, srcAddr, loc);
     if (preFree) emitOwnedStrFieldPreFree(dstAddr, canon, loc);
     const int size = semantic_->typeSizeOf(types::canonical(canon));
     emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr}, ir::IRValue(),
@@ -573,6 +611,7 @@ void IRGenerator::emitStructCopyWithFields(const ir::IRValue& dstAddr,
     // 浅拷接管（调用返回）：源句柄唯一持有者转为目标（被调方返回移出已跳过释放），
     //   零拷贝——Rust move 语义在「值返回」路径上的等价物。
     if (deepCopy) emitOwnedStrFieldPostCopy(dstAddr, srcAddr, canon, loc);
+    endSelfAssignGuard(skipLabel);
 }
 
 // ==================== 139-a（波 3 最小闭环）：ClassObj 字段符号键解析 ============

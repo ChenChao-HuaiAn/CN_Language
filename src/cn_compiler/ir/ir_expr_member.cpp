@@ -82,6 +82,46 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
             "ptr", srcUniqueId, loc);
         emit(ir::Opcode::Call, {dstAddr, srcRef}, ir::IRValue(),
              methodSymbolKey(copyOwner, copyCtor->sigKey), "void", loc);
+    } else if (semantic_->isClassType(dstElemCanon) && copyCtor != nullptr &&
+               (valueNode->getType() == NodeType::MemberExpr ||
+                valueNode->getType() == NodeType::IndexExpr ||
+                valueNode->getType() == NodeType::TernaryExpr)) {
+        // 183-a（2026-09-15）：**类目标 · 源=成员/下标/三元 深拷通道**（uE 根治
+        //   ·180-a 甲通道同款源分级）——原路径落 emitStructCopyWithFields，而
+        //   收集器对类类型顶层不展开（类内部字段归 ~类 级联）→ 纯 CopyStruct
+        //   **浅拷共享**：无释放面时代=泄漏不崩（180-a 前 uE rc=0 口径）；
+        //   183-a 收集面泛化装上字段释放面后=双 DeleteObject 0xC0000374
+        //   （probe_userclass 形四实证）。
+        //   生成=「preFree（有析构旧值释放）+ NewObject + 拷贝构造(源槽地址)
+        //   + StorePtr」——源槽地址=lvalueAddress 结果（发现二：CN 引用实参
+        //   约定=槽地址，callee 内一层 Load 得对象；三元=选中 place 地址
+        //   透传〔86-a〕同构）。有析构∧有拷贝构造双条件与收集面 183-a 泛化
+        //   口径一致；无拷贝构造类不进本通道（浅拷共享下加释放=双删，发现三；
+        //   无析构类不发射 DeleteObject=无释放面维持现状）。
+        const std::string dtorKey = classDestructorSymbolKey(dstElemCanon);
+        const std::string skipLabelW =
+            beginSelfAssignGuard(dstAddr, srcAddr, loc);
+        if (!dtorKey.empty()) {
+            ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {dstAddr}, "ptr",
+                                            "", loc);
+            emitContainerElemFreeFor(dstElemCanon, oldObj, loc);
+            emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(), dstElemCanon,
+                 "void", loc);
+        }
+        const std::string copyOwner =
+            copyCtor->ownerClass.empty() ? dstElemCanon : copyCtor->ownerClass;
+        const ClassInfo* ciW = semantic_->findClass(dstElemCanon);
+        const std::string newObjExtra =
+            dstElemCanon + "|" +
+            std::to_string(ciW != nullptr ? ciW->totalSize : 0);
+        ir::IRValue newObj = emitResult(
+            ir::Opcode::NewObject, {ir::IRValue::constant(dstElemCanon, "ptr")},
+            "ptr", newObjExtra, loc);
+        emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
+             methodSymbolKey(copyOwner, copyCtor->sigKey), "void", loc);
+        emit(ir::Opcode::StorePtr, {dstAddr, newObj}, ir::IRValue(), "", "ptr",
+             loc);
+        endSelfAssignGuard(skipLabelW);
     } else {
         // 79-a：含串字段结构体——源为调用返回（retbuf）=浅拷接管（零拷贝）；
         //   源为标识符/成员=深拷（字段级 __cn_str_copy 落堆）。无串字段类型

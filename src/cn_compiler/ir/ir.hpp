@@ -749,6 +749,16 @@ private:
                                   const std::string& canon,
                                   const SourceLocation& loc, bool preFree,
                                   bool deepCopy = true);
+    // 183-a：聚合自赋值运行时守卫（dst≡src → 拷贝段 no-op）——begin 发射
+    //   「Eq + Branch」并切入拷贝块，返回汇合块标签；end 在拷贝段尾发射跳转
+    //   并切到汇合块。Rust 同 place 赋值 no-op / C++ copy-assign 守卫同型：
+    //   preFree 先释放再深拷的自赋值序列=破坏数据/复制已释放内存（UAF），
+    //   编译期文本判定（79-a 标识符位 no-op）之外的成员/下标/链式形态在
+    //   拥有型字段路径上运行时兜底（纯值结构体路径不包裹=零开销）。
+    std::string beginSelfAssignGuard(const ir::IRValue& dstAddr,
+                                     const ir::IRValue& srcAddr,
+                                     const SourceLocation& loc);
+    void endSelfAssignGuard(const std::string& skipLabel);
     // 该聚合局部是否在字段释放名单中（写入位 pre-free 判据：仅拥有槽可释放旧值）
     bool isOwnedFieldSlot(const std::string& unique) const;
     // 85-a：返回值「借用来源」判定（聚合返回位所有权保证用）——返回类型含拥有型
