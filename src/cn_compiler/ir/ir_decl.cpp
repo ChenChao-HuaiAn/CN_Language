@@ -311,6 +311,9 @@ ir::IRModule IRGenerator::generate(Program* program) {
 void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     if (node->body == nullptr) return;  // 函数原型声明：不生成IR函数（链接期缺失检测）
     ir::IRFunction func;
+    // 191-a：本函数 171 行按「注册流水线」提取为 2 个族子方法（纯搬运零行为
+    //   变更——多重集核验先行于构建）：参数登记+默认参数收集 / RAII 收尾+入列。
+    if (node->body == nullptr) return;  // 函数原型声明：不生成IR函数（链接期缺失检测）
     // Task 2.10 重载：func.name 保持源码名（可读/测试契约）；
     //   mangledName 存签名 key（名#参数串），codegen 按此生成附录C符号。
     //   无参函数 sigKey 即纯名（mangledName==name，保持 主->cn_main 等映射）。
@@ -358,6 +361,60 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     //   在参数循环内即可生效（此前 function_ 在循环后设置，结构体参数
     //   的 varSlots 登记被 registerVarSlots 的 function_==nullptr 检查跳过）
     function_ = &func;
+    // 参数登记（参数循环+varStack_ 压栈+默认参数收集）
+    registerFunctionParams(node, func);
+    // 注意：varCounter_ 不可重置！参数已用 varCounter_ 生成唯一名，
+    // 若重置则函数体内同名遮蔽变量会生成相同唯一名（如 x$0）导致槽冲突
+    // 栈帧膨胀根治（2026-09-08 v2self 锚定轮，探针实证）：regCounter_ 与
+    //   blockCounter_ 同点每函数复位——虚拟寄存器是函数内 SSA 值（跨函数仅经
+    //   符号名引用），原全模块递增使 computeFrameSize 按 maxRegId 定帧时后段
+    //   函数帧线性膨胀（20 函数探针 80B→1152B；v2self 18 万行后段函数帧达
+    //   290KB，8MB 栈深递归解析 SIGSEGV——三后端共用 IR 层同源受益）。
+    //   标签唯一性由函数名前缀保证（codegen currentBlockPrefix_），
+    //   块号复位既有先例同构。
+    regCounter_ = 0;
+    blockCounter_ = 0;
+    // 入口基本块（ASCII标签 bbN：ml64 不识别中文标识符，阶段一统一 ASCII）
+    ir::IRBlock* entry = newBlock("bb0");
+    // P3-8 补全（2026-08-30）+ 宿主根治（2026-09-01）：顶层静态构造初始化——
+    //   类/容器静态统一「指针槽模型」：.data 符号存 8 字节对象指针（与局部类
+    //   变量槽同构），主 入口注入 NewObject + 无参构造 + StorePtr 指针入槽。
+    //   原实现按「有无初始化表达式」分裂两种模型：有初始化 = NewObject 后
+    //   StorePtr 指针入槽；无初始化 = 构造函数打在 .data 符号地址（对象内联
+    //   本体）。读取路径（LoadPtr）只对指针模型正确——无初始化静态被读出
+    //   首 8 字节字段（如 数据 指针）当对象指针，复制/方法调用全错（实测
+    //   运行时错误3 空指针）。统一后标识符读、方法 this、拷贝构造 byRef 传参
+    //   （槽地址解引用即对象指针）全部与局部类变量一致。
+    if (node->name == "主" && module_ != nullptr) {
+        emitStaticInitsAtEntry();
+    }
+    // 函数体
+    if (node->body != nullptr) {
+        genBlock(node->body.get());
+    }
+    // 无终止指令：补充默认返回（空类型函数 / 原型声明）
+    if (!function_->blocks.empty()) {
+        ir::IRBlock* last = function_->blocks.back().get();
+        if (!last->terminated) {
+            setCurrentBlock(last);
+            endReturn("");
+        }
+    } else if (node->body == nullptr) {
+        // 原型声明：生成空入口块 + 默认返回
+        setCurrentBlock(entry);
+        endReturn("");
+    }
+    // RAII 收尾（析构 DeleteObject/串释放/名单复位）+ IR 函数入列 + 作用域弹出
+    finishFunctionEmit(func);
+}
+
+// ==================== 191-a 流水线族子方法（原 visitFunctionDecl 361~480 段） ====================
+
+// 族①：参数登记（原 361~418 段）——参数进入最外层作用域（varStack_ 压栈，
+//   与 finishFunctionEmit 的 pop 配对），生成唯一内部名（name$N）；引用参数
+//   按地址传递（byRef 机制）；结构体按值参数标记；默认参数值收集
+//   （funcDefaultArgs_，签名 key -> 默认值 IR 常量列表）。
+void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& func) {
     // 参数进入最外层作用域，生成唯一内部名（name$N）。
     // params 保留源码名（对外可读/测试契约），paramUniques 存唯一名，
     // 代码生成层按 paramUniques 登记/查询栈槽，保证遮蔽变量各自独立槽
@@ -416,47 +473,12 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
             funcDefaultArgs_[func.mangledName] = defaults;
         }
     }
-    // 注意：varCounter_ 不可重置！参数已用 varCounter_ 生成唯一名，
-    // 若重置则函数体内同名遮蔽变量会生成相同唯一名（如 x$0）导致槽冲突
-    // 栈帧膨胀根治（2026-09-08 v2self 锚定轮，探针实证）：regCounter_ 与
-    //   blockCounter_ 同点每函数复位——虚拟寄存器是函数内 SSA 值（跨函数仅经
-    //   符号名引用），原全模块递增使 computeFrameSize 按 maxRegId 定帧时后段
-    //   函数帧线性膨胀（20 函数探针 80B→1152B；v2self 18 万行后段函数帧达
-    //   290KB，8MB 栈深递归解析 SIGSEGV——三后端共用 IR 层同源受益）。
-    //   标签唯一性由函数名前缀保证（codegen currentBlockPrefix_），
-    //   块号复位既有先例同构。
-    regCounter_ = 0;
-    blockCounter_ = 0;
-    // 入口基本块（ASCII标签 bbN：ml64 不识别中文标识符，阶段一统一 ASCII）
-    ir::IRBlock* entry = newBlock("bb0");
-    // P3-8 补全（2026-08-30）+ 宿主根治（2026-09-01）：顶层静态构造初始化——
-    //   类/容器静态统一「指针槽模型」：.data 符号存 8 字节对象指针（与局部类
-    //   变量槽同构），主 入口注入 NewObject + 无参构造 + StorePtr 指针入槽。
-    //   原实现按「有无初始化表达式」分裂两种模型：有初始化 = NewObject 后
-    //   StorePtr 指针入槽；无初始化 = 构造函数打在 .data 符号地址（对象内联
-    //   本体）。读取路径（LoadPtr）只对指针模型正确——无初始化静态被读出
-    //   首 8 字节字段（如 数据 指针）当对象指针，复制/方法调用全错（实测
-    //   运行时错误3 空指针）。统一后标识符读、方法 this、拷贝构造 byRef 传参
-    //   （槽地址解引用即对象指针）全部与局部类变量一致。
-    if (node->name == "主" && module_ != nullptr) {
-        emitStaticInitsAtEntry();
-    }
-    // 函数体
-    if (node->body != nullptr) {
-        genBlock(node->body.get());
-    }
-    // 无终止指令：补充默认返回（空类型函数 / 原型声明）
-    if (!function_->blocks.empty()) {
-        ir::IRBlock* last = function_->blocks.back().get();
-        if (!last->terminated) {
-            setCurrentBlock(last);
-            endReturn("");
-        }
-    } else if (node->body == nullptr) {
-        // 原型声明：生成空入口块 + 默认返回
-        setCurrentBlock(entry);
-        endReturn("");
-    }
+}
+
+// 族②：函数发射收尾（原 460~480 段）——类类型局部变量析构 DeleteObject
+//   （RAII，须在块终止补齐后调用）/串释放/函数级名单复位/IR 函数入列/
+//   参数作用域弹出（A-3a：漏 pop 修复）。
+void IRGenerator::finishFunctionEmit(ir::IRFunction& func) {
     // 阶段3 OOP（Task 3.1）：类类型局部变量（有析构函数）函数收尾 DeleteObject（RAII）。
     // 注意：必须在块终止补齐后调用（genClassDestructorCalls 在最后一个未终止块
     //   末尾插入 DeleteObject；若函数已有返回则不插入，避免破坏既有终止）

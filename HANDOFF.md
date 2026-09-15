@@ -53,20 +53,21 @@
 
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百九十轮（**深度机 linux-x86_64**）——**190-a D1 函数级续波：computeLiveIntervals 179→44 行 ≤100 达标**（基线 fdbfb02 后）。本会话 20 个开发轮（170-a 接手 + 172~190-a）。
+**交接时间**: 2026-09-15 第一百九十一轮（**深度机 linux-x86_64**）——**191-a D1 函数级续波：visitFunctionDecl 171→分派+2 流水段方法 ≤100 达标**（基线 3c57f00）。本会话 21 个开发轮（170-a 接手 + 172~191-a）。
 
-### 一、本轮（190-a）做了什么（写给无上下文的新会话）
+### 一、本轮（191-a）做了什么（写给无上下文的新会话）
 
-1. **拆分面（四步流水线分派化·纯搬运零改写）**：`codegen/reg_alloc.cpp` 的
-   `computeLiveIntervals`（179 行）按「四步流水线」提取为 **4 个静态族子方法**
-   （reg_alloc.hpp +4 声明）：computeBlockRanges（块序线性化）/ computeBlockDefUse
-   （块级 def/use 集合）/ computeLivenessIn（跨块活跃传播·返回 in 集合）/
-   buildLiveIntervalMap（活跃区间生成+跨块扩展·in/blockDef 消费）。
-   主函数收缩为流水线调用+修正排序 44 行。**D1 计数实测 58**
-   （computeLiveIntervals 出列）。
-2. 三次构建失败即修正（totalPoints 未使用/主函数声明 replace 误删/族④缺
-   blockDef 参数+n 归属——lessons 190 段预防 173 replace 首匹配陷阱/
-   174 段-变量归属表）。
+1. **拆分面（三明治形态·纯搬运零改写）**：`ir_decl.cpp` 的 `visitFunctionDecl`（171 行）
+   按注册流水线提取为 **2 个流水段族子方法**（ir.hpp +2 声明）：registerFunctionParams
+   （参数循环+varStack_ 压栈+引用/结构体/函数指针参数形态+默认参数值收集，58 行）/
+   finishFunctionEmit（析构 DeleteObject RAII+串释放+名单复位+IR 函数入列+作用域弹出，
+   21 行）。主函数保留「原型拦截+基础信息/linkName/返回类型/structReturn/function_ 绑定+
+   计数器复位+入口块+静态注入+函数体+默认返回」94 行。
+   **多重集核验缺失 0 行**。**D1 计数实测 57**（visitFunctionDecl 出列）。
+2. 一次构建失败即修正（keep_head 段内 func 声明重复+finishFunctionEmit 的 node 参数
+   未使用——签名收窄+三处同步）。lessons 191 段（三明治形态正向记录）。
+
+### 二、本轮验证（linux-x86_64 口径）
 
 ### 二、本轮验证（linux-x86_64 口径）
 

@@ -276,6 +276,12 @@ public:
     // 声明节点
     void visitProgram(Program* node) override;
     void visitFunctionDecl(FunctionDecl* node) override;
+    // ---- visitFunctionDecl 流水线族子方法（191-a 函数级拆分·原 171 行函数）----
+    // 族①：参数登记（varStack_ 压栈+唯一内部名+引用/结构体/函数指针参数形态+
+    //       默认参数值收集 funcDefaultArgs_）。与 finishFunctionEmit 的 pop 配对。
+    void registerFunctionParams(FunctionDecl* node, ir::IRFunction& func);
+    // 族②：函数发射收尾（析构 DeleteObject RAII/串释放/名单复位/入列/作用域弹出）
+    void finishFunctionEmit(ir::IRFunction& func);
     void visitParamDecl(ParamDecl* node) override;
     void visitVarDecl(VarDecl* node) override;
     void visitStructDecl(StructDecl* node) override;
