@@ -13,6 +13,17 @@
 
 namespace cn_compiler {
 
+// 234-a（A7 第二层根治）：复制 内置调用判定（callee=标识符「复制」+ 单实参 +
+//   语义层已推导 resolvedType——与 ir_call.cpp 生成特判同口径）。
+static bool isCopyBuiltinCall(Expr* node) {
+    if (node == nullptr || node->getType() != NodeType::CallExpr) return false;
+    CallExpr* call = static_cast<CallExpr*>(node);
+    return call->callee->getType() == NodeType::IdentifierExpr &&
+           static_cast<IdentifierExpr*>(call->callee.get())->name == "复制" &&
+           call->arguments.size() == 1 &&
+           !call->resolvedType.empty();
+}
+
 // 结构体/类整体赋值发射（46-a 根治 2026-09-09 提取的单一事实源——原机制内联
 //   于 visitAssignmentExpr 下标目标分支（集成验证修复+H8 类补完），成员目标
 //   分支（r.左上 = a）无此通道：genExpr(结构体标识符源) 落标量值 + StorePtr
@@ -44,6 +55,19 @@ bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
         //   原落「其他」→ srcAddr.id<0 返回 false → 调用方落标量 StorePtr
         //   8 字节静默损坏（P47 形六实证：成员位赋值后跨块读乱码）。
         srcAddr = lvalueAddress(valueNode);
+    } else if (valueNode->getType() == NodeType::CallExpr &&
+               isCopyBuiltinCall(valueNode)) {
+        // 234-a（A7 第二层根治·plans/020 第七十五节）：**复制调用**作整体赋值
+        //   右值——genCopyBuiltin 分派④ 返回 __copytmp 独立深拷槽地址（82-a
+        //   槽地址契约），作源地址继续 CopyStruct 内容拷贝。原分派漏此形态 →
+        //   srcAddr.id<0 → return false → 调用方落 StorePtr 只存**槽地址 8 字节**
+        //   ——`数据[索引] = 复制(其他.数据[索引])`（stdlib 拷贝构造元素级深拷
+        //   切换）元素槽=栈地址低 32 位（探针 乙0号=-1347670232 实锤）。
+        //   ★收窄纪律：仅 复制 调用进本分支（其发射=tmp 槽+CopyStruct，
+        //   **无控制流**）——一般结构体返回调用可能含条件块（正常/错误构造器），
+        //   在 dst 地址已发射后触发会打乱调用方块时序（全量 v2 树编译实证
+        //   285 失败）——该面维持既有发射（StorePtr），登记 plans/021 待查。
+        srcAddr = genExpr(valueNode);
     } else if (valueNode->getType() == NodeType::IdentifierExpr) {
         const std::string srcName =
             static_cast<IdentifierExpr*>(valueNode)->name;

@@ -298,6 +298,18 @@ public:
     // 查询泛型声明（未找到返回nullptr）。Debug 子任务修复（泛型类方法体提升
     //   需解析 实例化类名$实参 的类型参数映射）——公开转发供 IR 层访问。
     const GenericInfo* findGeneric(const std::string& name) const;
+    // 234-a（A7 根治·plans/020 第七十五节）：IR 生成泛型实例方法体前的重检查。
+    //   缺陷：实例化类方法体 AST 为全实例共享（mi.ast 指向模板成员），语义检查
+    //   的「写回型注记」（CallExpr::resolvedType/resolvedSignature、retOwnedString、
+    //   node->size 等）写在共享节点上——第二趟c 逐实例检查互相覆盖，检查毕残留
+    //   「最后检查实例」的值；IR 层逐实例生成时全部读到残留值（A7 实证：
+    //   复制(下标链) resolvedType 残留 IR指令 -> 全实例误走结构体深拷分派④
+    //   CopyStruct 56B + 写回槽地址）。本入口按本实例 typeArgs 重走方法体检查
+    //   （与 checkClassMethods 单体检查同一段），注记刷新为本实例正确值；
+    //   重放期诊断经快照回滚（语义阶段已定案，不重复输出）。
+    //   注意：member 必须属于 instanceName 的类成员；非泛型实例（名无 $）空操作。
+    void recheckGenericMethodBody(const std::string& instanceName,
+                                  const ClassMember* member);
     // 泛型实例化类型名替换（Task 3.8）：名<实参> -> 实例化类名（容器$整32）；
     //   非泛型类型原样返回。H8 补完（2026-08-25）：公开供 IR 层 类型大小(T)
     //   按各实例 genericTypeParams_ 重算时实例化具体泛型源形式（映射<整64,整64>
@@ -794,6 +806,9 @@ private:
     void computeClassLayout(ClassInfo& info);
     // 检查类方法体（第二趟：设置 自身/父类/访问控制 上下文后检查方法体）
     void checkClassMethods(ClassInfo& info);
+    // 单个方法体检查（234-a 从 checkClassMethods 迭代体提取——纯重构零行为
+    //   变更；checkClassMethods 与 recheckGenericMethodBody 共用同一段）
+    void checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& mi);
     // 访问控制检查：当前上下文访问 ownerClass 的成员是否合法（自身/子类/友元）
     bool checkAccess(const ClassInfo& owner, const ClassMemberInfo& member,
                      const std::string& contextClass, const SourceLocation& loc,

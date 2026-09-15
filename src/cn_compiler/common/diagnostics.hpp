@@ -47,6 +47,14 @@ struct Diagnostic {
 // 诊断引擎：收集所有诊断，统计错误/警告数量，并提供格式化输出
 class Diagnostics {
 public:
+    // 诊断快照（234-a A7 根治）：列表长度 + 计数的整体快照——供「重放检查」
+    //   后回滚重放期诊断（语义阶段已定案；重放只刷新 AST 写回注记，不重复输出）
+    struct Snapshot {
+        std::size_t size;        // 诊断列表长度
+        int errorCount;          // 错误计数
+        int warningCount;        // 警告计数
+    };
+
     // 报告一条诊断（按级别/位置/消息）
     void report(DiagnosticLevel level, const SourceLocation& location, const std::string& message);
     // 报告一条已构造的诊断
@@ -60,6 +68,18 @@ public:
     int getWarningCount() const { return warningCount_; }
     // 获取全部诊断
     const std::vector<Diagnostic>& getAll() const { return diagnostics_; }
+    // 取当前快照
+    Snapshot takeSnapshot() const { return {diagnostics_.size(), errorCount_, warningCount_}; }
+    // 回滚到快照（截断快照后新增的诊断 + 恢复计数——重放期诊断全部不可见）
+    void restoreTo(const Snapshot& snap) {
+        if (snap.size < diagnostics_.size()) {
+            diagnostics_.erase(diagnostics_.begin() +
+                                   static_cast<std::ptrdiff_t>(snap.size),
+                               diagnostics_.end());
+        }
+        errorCount_ = snap.errorCount;
+        warningCount_ = snap.warningCount;
+    }
     // 格式化输出所有诊断信息
     std::string format() const;
     // 清空所有诊断与计数

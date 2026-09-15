@@ -190,6 +190,16 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         if (!mi.hasBody) continue;  // 抽象/接口签名无体
         const ClassMember* member = mi.ast;
         if (member == nullptr || member->body == nullptr) continue;
+        checkSingleMethodBody(info, mi);
+    }
+}
+
+// 234-a（A7 根治）：单方法体检查——原 checkClassMethods 迭代体**原样提取**
+//   （纯重构零行为变更；缩进保持循环体原样），供 checkClassMethods 与
+//   recheckGenericMethodBody（IR 生成泛型实例方法体前的重检查）共用。
+void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& mi) {
+    const ClassMember* member = mi.ast;
+    if (member == nullptr || member->body == nullptr) return;
 
         // 设置方法上下文（自身类名 + 常量成员标记）
         contextClassStack_.push_back(info.name);
@@ -363,6 +373,36 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         currentFnUnsafe_ = savedUnsafe;  // plans/019 阶段4
         genericTypeParams_ = savedTypeParams;
         contextClassStack_.pop_back();
+}
+
+// 234-a（A7 根治·plans/020 第七十五节）：IR 生成泛型实例方法体前的重检查。
+//   缺陷：实例化类方法体 AST 为全实例共享（mi.ast 指向模板成员），语义检查的
+//   「写回型注记」（CallExpr::resolvedType/resolvedSignature、retOwnedString、
+//   node->size 等）写在共享节点上——第二趟c 逐实例检查互相覆盖，检查毕残留
+//   「最后检查实例」的值；IR 层逐实例生成时全部读到残留值。A7 实证：
+//   stdlib 拷贝构造 `数据[索引] = 复制(其他.数据[索引])` 的 resolvedType 在
+//   v2 树多实例编译下残留 IR指令（56B 结构体）→ 全实例误走结构体深拷分派④
+//   （CopyStruct 56B + 写回临时槽地址=值损坏/越界）。单实例程序巧合正确
+//   （最后检查者=唯一实例）——这正是 225-a「同模块用户泛型类正确」对照的
+//   真因（变量=实例数量，非模块归属）。
+//   修复：生成前按本实例 typeArgs 重走方法体检查（checkSingleMethodBody 同段），
+//   注记刷新为本实例正确值。重放副作用已被既有机制覆盖：wrapRefArgs H3 幂等
+//   （AddressOf 跳过）/转移标记与借用登记作用域栈随 push/pop 清空/null 系列表
+//   进出函数体保存恢复/this 类上下文保存恢复——唯一跨检查面=诊断列表，经
+//   快照回滚（语义阶段已定案，重放不重复输出、计数不漂移）。
+void SemanticAnalyzer::recheckGenericMethodBody(const std::string& instanceName,
+                                                const ClassMember* member) {
+    if (member == nullptr) return;
+    if (instanceName.find('$') == std::string::npos) return;  // 非泛型实例空操作
+    const auto cit = classes_.find(instanceName);
+    if (cit == classes_.end()) return;
+    ClassInfo& info = cit->second;
+    for (auto& kv : info.methods) {
+        if (kv.second.ast != member) continue;   // 定位本方法（共享 AST 指针比对）
+        const Diagnostics::Snapshot snap = diagnostics_.takeSnapshot();
+        checkSingleMethodBody(info, kv.second);
+        diagnostics_.restoreTo(snap);
+        return;
     }
 }
 } // namespace cn_compiler

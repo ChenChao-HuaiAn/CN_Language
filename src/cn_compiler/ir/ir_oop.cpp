@@ -66,7 +66,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             genericTypeParams_.clear();
             // H8 根治（2026-08-25）：读 instantiateGeneric 存储的实参列表
             //   （ci->typeArgs）——原实现朴素 $ 分割反解实例化名，嵌套实参
-            //   （向量$映射$整64$整64 的 映射$整64$整64）含 $ 被截成模板名，
+            //   （向量$映射$整64$整64 的 映射$整64$整64）含 $ 被截成模板名 映射，
             //   T 映射错导致 类型大小(T) 兜底 8（映射 应 56）、字段/局部类型
             //   解析错（与语义层 checkClassMethods 同步修复）。
             for (std::size_t ti = 0;
@@ -75,6 +75,14 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
                 genericTypeParams_[ginfo->typeParams[ti]] = ci->typeArgs[ti];
             }
         }
+        // 234-a（A7 根治·plans/020 第七十五节）：生成前重检查本实例方法体。
+        //   共享 AST 的写回型注记（resolvedType/resolvedSignature/retOwnedString/
+        //   node->size…）被「最后检查实例」残留，生成时读到错误值——A7 实证：
+        //   拷贝构造 复制(下标链) 的 resolvedType 残留 IR指令（56B）→ 全实例
+        //   误走结构体深拷分派④（CopyStruct 56B + 写回槽地址=值损坏/越界）。
+        //   此处按本实例 typeArgs 重走方法体检查刷新注记；重放期诊断经快照
+        //   回滚（语义阶段已定案），其余副作用由既有作用域/幂等机制覆盖。
+        semantic_->recheckGenericMethodBody(className, member);
     }
 
     ir::IRFunction func;
