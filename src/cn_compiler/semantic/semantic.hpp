@@ -355,6 +355,11 @@ public:
                            std::unique_ptr<Expr> elemExpr,
                            std::unique_ptr<VarDecl> tempIterableDecl);
     void visitReturnStmt(ReturnStmt* node) override;
+    // 217-a（D1 行数整改）：visitReturnStmt 拆分的两个族方法（宿主纯重构零行为变更）。
+    // A2 拥有契约：返回类型 字符串=拥有——借用形态返回拒绝（泛型单态化体内豁免）。
+    void checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType);
+    // 引用返回（T&）与指针返回（T*）的局部地址逃逸检查（悬垂拒绝）。
+    void checkReturnAddressEscape(ReturnStmt* node);
     void visitBreakStmt(BreakStmt* node) override;
     void visitContinueStmt(ContinueStmt* node) override;
     void visitSwitchStmt(SwitchStmt* node) override;

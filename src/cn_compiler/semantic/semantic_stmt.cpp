@@ -640,15 +640,32 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
         return;
     }
     std::string valueType = checkExpr(node->value.get());
-    // plans/019 阶段4' A2（2026-09-11 方案甲 用户批准）：返回位拥有契约——
-    //   返回类型 字符串=拥有（调用方登记 RAII 自动 free，Rust fn f() -> String）；
-    //   借用形态返回（下标/成员/解引用借出、字符* 表达式、参数/全局/静态/
-    //   类字段标识符）拒绝——调用方 free 借用指针=悬垂/UAF。拥有化须显式：
-    //   字符串复制(...)（落堆）或改返回类型 字符*（借用视图，调用方不登记）。
-    //   局部拥有变量返回=所有权移出（放行）；字面量=IR 返回位自动拥有化（放行）。
-    //   **泛型单态化体内豁免**（A2）：实例化类方法体（genericTypeParams_ 非空）
-    //   的 T 来源字符串（如 容器 元素() 返回 数据[位置]）=借用语义——Rust
-    //   Vec::get -> &T 同款，泛型体不可拥有化（字符串复制 对非字符串 T 不成立）。
+    // 217-a（2026-09-16 第两百一十七轮，D1 行数整改）：A2 拥有契约检查迁
+    //   checkReturnBorrowA2；引用/指针返回的地址逃逸检查迁 checkReturnAddressEscape
+    //   （宿主纯重构零行为变更）。
+    checkReturnBorrowA2(node, valueType);
+    if (currentReturnType_ == "空类型") {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "空类型函数不允许返回值");
+    } else if (!canConvertWithLiteral(node->value.get(), valueType, currentReturnType_)) {
+        // 55-c 方案A：返回面字面量豁免（返回 小[正32变量] 于 整64 函数=拒绝；
+        // 返回 100 字面量于 正32 函数=豁免放行）；混合符号报专用消息
+        if (!reportMixedSignAssign(node->value.get(), valueType,
+                                   currentReturnType_, node->location)) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "无法将 '" + valueType + "' 隐式转换为返回类型 '" +
+                                currentReturnType_ + "'");
+        }
+    }
+    checkReturnAddressEscape(node);
+}
+
+// 217-a：族① A2 拥有契约检查——返回类型 字符串=拥有（调用方登记 RAII 自动 free，
+//   Rust fn f() -> String）；借用形态返回（下标/成员/解引用借出、字符* 表达式、
+//   参数/全局/静态/类字段标识符）拒绝——调用方 free 借用指针=悬垂/UAF。拥有化须显式：
+//   字符串复制(...)（落堆）或改返回类型 字符*（借用视图）。泛型单态化体内豁免（A2）：
+//   实例化类方法体的 T 来源字符串=借用语义（Rust Vec::get -> &T 同款）。
+void SemanticAnalyzer::checkReturnBorrowA2(ReturnStmt* node, const std::string& valueType) {
     if (types::canonical(currentReturnType_) == "字符串" &&
         genericTypeParams_.empty()) {
         const NodeType retKindA2 = node->value->getType();
@@ -685,19 +702,12 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
                     "——须 字符串复制(...) 显式落堆，或改返回类型为 '字符*'（借用视图）");
         }
     }
-    if (currentReturnType_ == "空类型") {
-        diagnostics_.report(DiagnosticLevel::Error, node->location,
-                            "空类型函数不允许返回值");
-    } else if (!canConvertWithLiteral(node->value.get(), valueType, currentReturnType_)) {
-        // 55-c 方案A：返回面字面量豁免（返回 小[正32变量] 于 整64 函数=拒绝；
-        // 返回 100 字面量于 正32 函数=豁免放行）；混合符号报专用消息
-        if (!reportMixedSignAssign(node->value.get(), valueType,
-                                   currentReturnType_, node->location)) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "无法将 '" + valueType + "' 隐式转换为返回类型 '" +
-                                currentReturnType_ + "'");
-        }
-    }
+}
+
+// 217-a：族② 引用返回（T&）与指针返回（T*）的局部地址逃逸检查——引用返回须可绑定
+//   左值且禁止返回本函数局部（含按值参数）地址；常量引用参数只读借出不可升级为可变
+//   引用返回；指针返回补 T* 面（&局部/引用局部绑局部/局部指针指向局部）。
+void SemanticAnalyzer::checkReturnAddressEscape(ReturnStmt* node) {
     // P3-18 补完（2026-08）：引用返回函数——返回值须为可绑定左值；禁止返回
     //   本函数局部变量（含按值参数）的地址（随栈帧消亡的悬垂引用）。
     if (currentIsRefReturn_) {
@@ -746,6 +756,7 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
         }
     }
 }
+
 void SemanticAnalyzer::visitBreakStmt(BreakStmt* node) {
     if (loopDepth_ == 0 && switchDepth_ == 0) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
