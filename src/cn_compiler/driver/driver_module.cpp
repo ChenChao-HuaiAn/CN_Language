@@ -541,6 +541,22 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
             std::cerr << diagnostics.format();
             return 1;
         }
+        // 243-a（D17 防线）：主 返回 结果/可选/聚合类型——运行时入口 ABI 仅支持
+        //   整32 返回（runtime entry 期望 int，聚合返回走 sret 隐藏指针 → 调用
+        //   约定错位 → 退出路径段错误 0xC0000005）。退出码语义（正常→值/错误→
+        //   错误码）待规范定义（呈报 plans/021 §3-D17），在此之前编译期拒绝
+        //   （把必然崩溃的程序挡在编译期——诚实防线非最终形态）。
+        for (auto& d : program->declarations) {
+            if (d != nullptr && d->name == "主" && !d->returnType.empty() &&
+                d->returnType != "整32") {
+                diagnostics.report(DiagnosticLevel::Error, d->location,
+                                   "入口函数 主 的返回类型 '" + d->returnType +
+                                       "' 暂不支持（运行时入口 ABI 仅支持 整32；"
+                                       "结果 类型退出码语义待规范定义——见 plans/021 D17）");
+                std::cerr << diagnostics.format();
+                return 1;
+            }
+        }
     }
 
     // 4. 语义分析（符号表/类型检查/类解析/错误码传播）

@@ -761,6 +761,18 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                                               const std::string& methodName,
                                               const std::string& ownerClass,
                                               const ClassMemberInfo* method) {
+        // 243-a（D18 观察期警告）：常量成员函数内经 自身 调用非常量成员方法——
+        //   非常量 this 路径绕过常量性承诺。**警告后放行（fallthrough 走完整
+        //   调用语义）**——观察期版本（对齐 plans/019 阶段4 先例）：stdlib
+        //   映射集合等存量违约形态迁移（D19）完成后升硬错误。教训：检查块
+        //   return true 会跳过 retOwnedString/借用登记等正常语义（220 崩因）。
+        if (isConstMethodContext() && method != nullptr && !method->isStatic &&
+            !method->isConstMethod &&
+            mem->object->getType() == NodeType::SelfExpr) {
+            diagnostics_.report(DiagnosticLevel::Warning, node->location,
+                                "常量成员函数内不能调用非常量成员方法 '" +
+                                    methodName + "'");
+        }
         if (method != nullptr && !method->isStatic) {
             // 实例方法调用：校验参数个数与类型
             std::vector<std::string> argTypes;
