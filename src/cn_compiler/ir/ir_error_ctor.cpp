@@ -32,55 +32,12 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     const std::string name =
         static_cast<IdentifierExpr*>(node->callee.get())->name;
     if (name != "正常" && name != "错误" && name != "某些") return false;
-    // 宿主缺陷根治（2026-08-25）：泛型类方法体 AST 共享——node->resolvedType 被
-    //   多实例检查覆盖（最后实例残留，如 映射$整64$整64.获取 残留 结果<符号,整32>，
-    //   CopyStruct 32 溢出崩溃）。优先用当前函数返回类型（returnTypeSrc，
-    //   emitClassMethod 按实例 mi.type 设置）——返回 正常()/错误(码) 的 结果<T,E>
-    //   与函数返回类型一致；仅当 returnTypeSrc 为空才回退共享 resolvedType。
-    if (function_ != nullptr && !function_->returnTypeSrc.empty()) {
-        const std::string retCanon = types::canonical(function_->returnTypeSrc);
-        if (SemanticAnalyzer::isResultType(retCanon) ||
-            SemanticAnalyzer::isOptionalType(retCanon)) {
-            node->resolvedType = function_->returnTypeSrc;
-        }
-    }
-    if (node->resolvedType.empty()) {
-        // Task 6.1（泛型类实例化方法体 向量$整32.追加 等）：语义层对实例化类
-        //   方法体的 resolvedType 推导可能缺失（泛型上下文），回退用当前函数
-        //   返回类型（function_->returnTypeSrc，如 结果<空类型,整32>）——
-        //   返回 正常()/返回 错误(码) 的 结果<T,E> 与函数返回类型一致。
-        if (function_ == nullptr || function_->returnTypeSrc.empty()) return false;
-        node->resolvedType = function_->returnTypeSrc;
-        // 错误(码)：错误值类型 = 实参类型（如 错误码.内存 -> 整32 枚举）
-        if (name == "错误" && !node->arguments.empty()) {
-            // 保持 结果<T,E> 的 E = 实参推导；若返回类型 E 与实参不匹配，
-            //   canConvert 已检查；此处直接用函数返回类型（E 一致）。
-        }
-    }
-
-    // 解析推导类型：结果<T,E> / 可选<T>
-    std::string structName;   // 合成结构体名（结果$T$E / 可选$T）
-    std::string valueType;    // 值字段类型（T）
-    bool isResult = SemanticAnalyzer::isResultType(node->resolvedType);
-    bool isOptional = SemanticAnalyzer::isOptionalType(node->resolvedType);
-    if (isResult) {
-        const std::vector<std::string> args =
-            SemanticAnalyzer::resultTypeArgs(node->resolvedType);
-        if (args.size() != 2) return false;
-        const std::string t = types::canonical(args[0]);
-        const std::string e = types::canonical(args[1]);
-        structName = SemanticAnalyzer::resultStructName(t, e);
-        // 宿主缺陷根治（2026-08-25）：错误(码) 存 E（错误值类型，如 整32），
-        //   正常(值) 存 T——原恒用 T 导致 错误() 分支把 T（结构体）当存储类型，
-        //   CopyStruct 从错误码值（如 7）读 32 字节 -> 访问地址 7 崩溃 0xC0000005。
-        valueType = (name == "错误") ? e : t;
-    } else if (isOptional) {
-        const std::string t =
-            types::canonical(SemanticAnalyzer::optionalTypeArg(node->resolvedType));
-        if (t.empty()) return false;
-        structName = SemanticAnalyzer::optionalStructName(t);
-        valueType = t;
-    } else {
+    std::string structName;   // 合成结构体名（结果$T$E / 可选$T）——209-a 提升至主函数
+    std::string valueType;    // 值字段类型（T/E）
+    // 209-a（2026-09-15 第两百零九轮，D1 行数整改）：目标类型解析迁
+    //   resolveResultCtorTargetType（resolvedType 修复+结果/可选 推导——false=交回
+    //   原路径）；实参值写入+70-a 装箱 move 迁 emitResultCtorValue。宿主纯重构。
+    if (!resolveResultCtorTargetType(node, name, structName, valueType)) {
         return false;
     }
 
@@ -119,6 +76,8 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     // 结果<T,E>：值/错误值 共用联合体，偏移 = 对齐(布尔=1)后 -> 8；
     // 可选<T>：值字段偏移 = 对齐(布尔=1)后 -> 8。
     int valueOffset = -1;
+    // 209-a：值偏移段本地推导（isResult/isOptional 声明已随推导分支迁族①）
+    const bool isResult = SemanticAnalyzer::isResultType(node->resolvedType);
     for (const auto& f : decl->fields) {
         if (isResult) {
             if (f.name == "错误值联合") { valueOffset = semantic_->fieldOffsetOf(decl, f.name); }
@@ -133,6 +92,78 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
     ir::IRValue valAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                      std::to_string(valueOffset), node->location);
 
+    emitResultCtorValue(node, name, valAddr, valueType);
+
+    // 结果 = 结构体地址（ptr）；调用方按结构体路径 CopyStruct
+    lastExpr_ = base;
+    (void)structSize;
+    return true;
+}
+
+
+// 209-a：族① 构造器目标类型解析——resolvedType 修复（泛型类方法体 AST 共享缺陷根治：
+//   returnTypeSrc 优先）+ 结果<T,E>/可选<T> 推导（错误() 存 E 正常() 存 T——2026-08-25
+//   CopyStruct 崩溃根治）。false=非构造器语境（交回原路径）。
+bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string& name,
+                                              std::string& structName,
+                                              std::string& valueType) {
+    // 宿主缺陷根治（2026-08-25）：泛型类方法体 AST 共享——node->resolvedType 被
+    //   多实例检查覆盖（最后实例残留，如 映射$整64$整64.获取 残留 结果<符号,整32>，
+    //   CopyStruct 32 溢出崩溃）。优先用当前函数返回类型（returnTypeSrc，
+    //   emitClassMethod 按实例 mi.type 设置）——返回 正常()/错误(码) 的 结果<T,E>
+    //   与函数返回类型一致；仅当 returnTypeSrc 为空才回退共享 resolvedType。
+    if (function_ != nullptr && !function_->returnTypeSrc.empty()) {
+        const std::string retCanon = types::canonical(function_->returnTypeSrc);
+        if (SemanticAnalyzer::isResultType(retCanon) ||
+            SemanticAnalyzer::isOptionalType(retCanon)) {
+            node->resolvedType = function_->returnTypeSrc;
+        }
+    }
+    if (node->resolvedType.empty()) {
+        // Task 6.1（泛型类实例化方法体 向量$整32.追加 等）：语义层对实例化类
+        //   方法体的 resolvedType 推导可能缺失（泛型上下文），回退用当前函数
+        //   返回类型（function_->returnTypeSrc，如 结果<空类型,整32>）——
+        //   返回 正常()/返回 错误(码) 的 结果<T,E> 与函数返回类型一致。
+        if (function_ == nullptr || function_->returnTypeSrc.empty()) return false;
+        node->resolvedType = function_->returnTypeSrc;
+        // 错误(码)：错误值类型 = 实参类型（如 错误码.内存 -> 整32 枚举）
+        if (name == "错误" && !node->arguments.empty()) {
+            // 保持 结果<T,E> 的 E = 实参推导；若返回类型 E 与实参不匹配，
+            //   canConvert 已检查；此处直接用函数返回类型（E 一致）。
+        }
+    }
+
+    // 解析推导类型：结果<T,E> / 可选<T>
+    bool isResult = SemanticAnalyzer::isResultType(node->resolvedType);
+    bool isOptional = SemanticAnalyzer::isOptionalType(node->resolvedType);
+    if (isResult) {
+        const std::vector<std::string> args =
+            SemanticAnalyzer::resultTypeArgs(node->resolvedType);
+        if (args.size() != 2) return false;
+        const std::string t = types::canonical(args[0]);
+        const std::string e = types::canonical(args[1]);
+        structName = SemanticAnalyzer::resultStructName(t, e);
+        // 宿主缺陷根治（2026-08-25）：错误(码) 存 E（错误值类型，如 整32），
+        //   正常(值) 存 T——原恒用 T 导致 错误() 分支把 T（结构体）当存储类型，
+        //   CopyStruct 从错误码值（如 7）读 32 字节 -> 访问地址 7 崩溃 0xC0000005。
+        valueType = (name == "错误") ? e : t;
+    } else if (isOptional) {
+        const std::string t =
+            types::canonical(SemanticAnalyzer::optionalTypeArg(node->resolvedType));
+        if (t.empty()) return false;
+        structName = SemanticAnalyzer::optionalStructName(t);
+        valueType = t;
+    } else {
+        return false;
+    }
+    return true;
+}
+
+// 209-a：族② 实参值写入——结构体值 CopyStruct 内联拷贝（2026-08-25 根治：地址当数据）/
+//   标量按值类型自然宽度 Cast+StorePtr（整32->i32 等）；70-a 装箱 move（正常/某些+
+//   字符串值+非污染 → 源槽清零，与 转移() 浅交接同模型）。
+void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
+                                      ir::IRValue valAddr, const std::string& valueType) {
     // 实参值（构造器单参数）
     if (!node->arguments.empty()) {
         ir::IRValue val = genExpr(node->arguments[0].get());
@@ -178,11 +209,7 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
             }
         }
     }
-
-    // 结果 = 结构体地址（ptr）；调用方按结构体路径 CopyStruct
-    lastExpr_ = base;
-    (void)structSize;
-    return true;
 }
+
 
 } // namespace cn_compiler

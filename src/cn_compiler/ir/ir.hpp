@@ -1000,6 +1000,15 @@ private:
     //   -> 分配结果/可选合成结构体临时槽 + 写 是否正常/是否某些 + 值/错误值，
     //   返回结构体地址（ptr）。返回 true 表示已处理（lastExpr_ 已设置）。
     bool handleResultCtor(CallExpr* node);
+    // 209-a（D1 行数整改）：handleResultCtor 拆分的两个族方法（宿主纯重构零行为变更）。
+    // 解析构造器目标类型：resolvedType 修复（returnTypeSrc 优先）+ 结果/可选 推导
+    //   ——输出合成结构体名与值字段类型；false=非构造器语境（交回原路径）。
+    bool resolveResultCtorTargetType(CallExpr* node, const std::string& name,
+                                     std::string& structName, std::string& valueType);
+    // 实参值写入：结构体值 CopyStruct 内联 / 标量按自然宽度 Cast+StorePtr；
+    //   70-a 装箱 move（正常/某些 + 字符串值 + 非污染 → 源槽清零）。
+    void emitResultCtorValue(CallExpr* node, const std::string& name,
+                             ir::IRValue valAddr, const std::string& valueType);
     // 生成 实例字段地址：this 指针（Load 自身参数槽）+ FieldAddr(类字段偏移)
     ir::IRValue genInstanceFieldAddr(const std::string& fieldName,
                                      const SourceLocation& loc);
