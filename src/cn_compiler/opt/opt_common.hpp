@@ -64,6 +64,9 @@ inline std::string normalizeIntText(const std::string& text) {
 
 // 是否整型 IR 类型（i8~u64；i128 双槽特殊处理，不参与代数简化/CSE）
 inline bool isIntType(const std::string& type) {
+    // 注：i128/u128 **不在此列**——各 pass 的 64 位解析对它不适用（单测
+    //   I128AddZeroSkipped/I128MulNotReduced 锁定既有保守行为）；i128 的
+    //   常量折叠由 ConstFold 内部单独判据承担（D9·228-a）。
     return type == "i8" || type == "u8" || type == "i16" || type == "u16" ||
            type == "i32" || type == "u32" || type == "i64" || type == "u64";
 }

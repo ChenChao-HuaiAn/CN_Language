@@ -30,6 +30,13 @@ namespace opt {
 // 代数简化 Pass（规格书9.2：恒等变换/代数恒等式）
 class AlgebraicSimplifyPass : public Pass {
 public:
+    // D9（228-a）：aggressiveFloat=true 启用**浮点恒等式**（仅 IEEE 754 下
+    //   逐条验证恒真者：x*1.0/x/1.0/x-(+0.0) → x；不放开 x+0.0〔-0.0+0.0=+0.0〕/
+    //   x*0.0〔NaN 传播与 -0 符号〕/x-x〔NaN〕/x/x〔Inf/Inf=NaN〕）；
+    //   默认保守（既有行为不变），由 pass_manager 按 -O3 联动。
+    explicit AlgebraicSimplifyPass(bool aggressiveFloat = false)
+        : floatIdentEnabled_(aggressiveFloat) {}
+
     // 遍历模块全部函数的全部基本块，对纯整型运算做恒等简化
     // 返回: 是否发生了至少一次简化
     bool run(ir::IRModule& module) override;
@@ -43,13 +50,25 @@ private:
     // regRewrite: 寄存器->寄存器映射（result.id -> 等价寄存器 id）
     static int simplifyInstruction(ir::IRInstruction& inst,
                                    ir::IRValue& constResult,
-                                   int& replaceReg);
+                                   int& replaceReg,
+                                   bool floatIdent = false,
+                                   const std::unordered_map<int, ir::IRValue>* regConsts = nullptr);
+
+    // D9（228-a）：浮点恒等式判定（仅 IEEE 754 下恒真者）。
+    //   regConsts=块内常量追踪表（浮点常量经 ConstFloat 指令到寄存器）
+    static int simplifyFloatIdentity(ir::IRInstruction& inst,
+                                     ir::IRValue& constResult,
+                                     int& replaceReg,
+                                     const std::unordered_map<int, ir::IRValue>* regConsts);
 
     // 操作数是否为整型常量文本（-1 判全1用），返回是否
     static bool isIntConst(const ir::IRValue& op, const std::string& type);
 
     // 是否整型常量 -1（全1位模式，按类型位宽）
     static bool isMinusOneConst(const ir::IRValue& op, const std::string& type);
+
+    // D9 开关（构造参数；默认 false=保守）
+    bool floatIdentEnabled_ = false;
 
     // 将指令原地替换为常量指令（保留结果寄存器与尾部操作数——Branch 条件契约）
     static void replaceWithConstant(ir::IRInstruction& inst,

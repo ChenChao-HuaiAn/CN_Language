@@ -9,6 +9,7 @@
 //        函数级第二遍替换所有引用点（SSA 下无条件安全），
 //        原指令成为死代码由 DCE 清理
 //   3. 类型安全：简化前后类型不变（x+0 的 0 是操作数类型位宽内的 0）
+#include <cmath>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -69,16 +70,80 @@ void AlgebraicSimplifyPass::replaceWithConstant(ir::IRInstruction& inst,
     for (auto& t : tail) inst.operands.push_back(t);
 }
 
+// D9（228-a）：浮点恒等式（只有 IEEE 754 下**逐条验证恒真**者放开）：
+//   · x * 1.0 → x   ：NaN*1=NaN、±Inf*1=±Inf、±0*1=±0（符号保持）——恒真 ✓
+//   · x / 1.0 → x   ：同上（除数 1.0 无除零风险）——恒真 ✓
+//   · x - (+0.0) → x：+0-+0=+0、-0-+0=-0、NaN-+0=NaN——恒真 ✓
+//   ★不放开：x + 0.0（-0.0 + +0.0 = +0.0，丢 -0 符号）；x * 0.0（NaN 传播；
+//     -1*+0=-0 符号）；x - (-0.0)（-0 - -0 = +0 ≠ -0）；x - x（NaN-NaN=NaN）；
+//     x / x（Inf/Inf、0/0 = NaN）——各有反例，保持保守。
+//   常量解析（D9 核心）：浮点常量在 IR 中经 `ConstFloat` 指令产出到**寄存器**
+//   （227-a 打点实测 aConst=0 bConst=0），非内联常量——b 为寄存器时查块内常量
+//   追踪表得常量值；内联常量（整数风格）优先。
+//   +0/-0 区分：signbit（stod("-0.0")==0.0 但符号位为 1——x-(-0.0) 不恒真）。
+int AlgebraicSimplifyPass::simplifyFloatIdentity(ir::IRInstruction& inst,
+                                                 ir::IRValue& constResult,
+                                                 int& replaceReg,
+                                                 const std::unordered_map<int, ir::IRValue>* regConsts) {
+    (void)constResult;
+    if (inst.operands.size() < 2) return 0;
+    const ir::IRValue& a = inst.operands[0];
+    const ir::IRValue& b = inst.operands[1];
+    // 仅「寄存器 op 常量」形态（双常量由 ConstFold 处理）
+    if (a.isConstant || a.id < 0) return 0;
+    double cval = 0.0;
+    bool hasConst = false;
+    if (b.isConstant) {
+        try {
+            cval = std::stod(b.extra);
+            hasConst = true;
+        } catch (...) {
+            return 0;
+        }
+    } else if (regConsts != nullptr && b.id >= 0) {
+        auto itc = regConsts->find(b.id);
+        if (itc == regConsts->end()) return 0;
+        try {
+            cval = std::stod(itc->second.extra);
+            hasConst = true;
+        } catch (...) {
+            return 0;
+        }
+    }
+    if (!hasConst) return 0;
+    const bool cIsPlusZero = (cval == 0.0 && !std::signbit(cval));
+    if (inst.opcode == ir::Opcode::Mul && cval == 1.0) {
+        replaceReg = a.id;
+        return 2;
+    }
+    if (inst.opcode == ir::Opcode::Div && cval == 1.0) {
+        replaceReg = a.id;
+        return 2;
+    }
+    if (inst.opcode == ir::Opcode::Sub && cIsPlusZero) {
+        replaceReg = a.id;
+        return 2;
+    }
+    return 0;
+}
+
 // 尝试简化单条指令（整型二元运算/逻辑运算），返回简化结果：
 //   0 = 未简化；1 = 指令原地替换为常量（已生效）；2 = 登记寄存器替换
 int AlgebraicSimplifyPass::simplifyInstruction(ir::IRInstruction& inst,
                                                ir::IRValue& constResult,
-                                               int& replaceReg) {
+                                               int& replaceReg,
+                                               bool floatIdent,
+                                               const std::unordered_map<int, ir::IRValue>* regConsts) {
     // 操作数数量不足（一元/异常形态）不简化
     if (inst.operands.size() < 2) return 0;
     const ir::IRValue& a = inst.operands[0];
     const ir::IRValue& b = inst.operands[1];
     const std::string type = inst.type;
+
+    // ---- D9（228-a）：浮点恒等式（仅 aggressive 模式·IEEE 恒真者） ----
+    if (floatIdent && (type == "f32" || type == "f64")) {
+        return simplifyFloatIdentity(inst, constResult, replaceReg, regConsts);
+    }
 
     // ---- 仅整型（浮点/i128/ptr/void 跳过；逻辑运算 i1 单独处理） ----
     const bool isLogic = (inst.opcode == ir::Opcode::And || inst.opcode == ir::Opcode::Or);
@@ -242,14 +307,20 @@ bool AlgebraicSimplifyPass::run(ir::IRModule& module) {
     for (auto& fn : module.functions) {
         RegRewriteMap regRewrite;      // 寄存器->寄存器（SSA 下无条件替换）
         ConstRewriteMap constRewrite;  // 寄存器->常量（仅可传播指令 + 白名单）
+        // D9（228-a）：块内常量追踪表（常量定义寄存器 -> 常量值）——浮点常量
+        //   经 ConstFloat 指令到寄存器，恒等式判据经此表解析；跨块不传播
+        //   （保守：块入口清空），def 覆盖即更新（Const*）或失效（其余）。
+        std::unordered_map<int, ir::IRValue> regConsts;
         for (auto& block : fn.blocks) {
+            regConsts.clear();
             for (auto& inst : block->instructions) {
                 // 第一步：应用已收集的替换（本块内先前简化 + 前序块的寄存器替换）
                 if (replaceUses(inst, regRewrite, constRewrite)) changed = true;
                 // 第二步：尝试简化
                 ir::IRValue constResult;
                 int replaceReg = -1;
-                const int status = simplifyInstruction(inst, constResult, replaceReg);
+                const int status = simplifyInstruction(inst, constResult, replaceReg,
+                                                       floatIdentEnabled_, &regConsts);
                 if (status == 1) {
                     // 常量结果：原地替换为 ConstInt/ConstBool（保留结果寄存器）
                     replaceWithConstant(inst, constResult.extra, constResult.type,
@@ -259,6 +330,21 @@ bool AlgebraicSimplifyPass::run(ir::IRModule& module) {
                     // 寄存器结果：登记映射（后续指令/块替换引用点）
                     regRewrite[inst.result.id] = replaceReg;
                     changed = true;
+                }
+                // 第三步（D9）：更新块内常量追踪表（本指令 def 供后续指令消费）
+                if (inst.result.id >= 0) {
+                    if (inst.opcode == ir::Opcode::ConstInt ||
+                        inst.opcode == ir::Opcode::ConstFloat ||
+                        inst.opcode == ir::Opcode::ConstBool ||
+                        inst.opcode == ir::Opcode::ConstString) {
+                        ir::IRValue cv;
+                        cv.isConstant = true;
+                        cv.type = inst.type;
+                        cv.extra = inst.extra;
+                        regConsts[inst.result.id] = cv;
+                    } else {
+                        regConsts.erase(inst.result.id);
+                    }
                 }
             }
         }

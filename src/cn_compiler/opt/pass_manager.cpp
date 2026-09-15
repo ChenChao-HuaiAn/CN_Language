@@ -55,7 +55,8 @@ bool runOptLevel(ir::IRModule& module, int optLevel) {
     // ---- 代数简化（-O1）：恒等变换（x+0/x*1/x*0...），产生新折叠机会 ----
     //      （F1-29 浮点恒等式面：判据需常量追踪〔浮点常量在 IR 为 ConstFloat
     //        寄存器而非内联常量〕——本轮登记 D9，见 plans/021） ----
-    manager.addPass(std::make_unique<AlgebraicSimplifyPass>());
+    //      D9（228-a）：-O3 启用浮点恒等式面（仅 IEEE 恒真者·默认保守） ----
+    manager.addPass(std::make_unique<AlgebraicSimplifyPass>(optLevel >= 3));
     // ---- 复写传播（-O1）：块内 Store->Load 转发（别名保守） ----
     manager.addPass(std::make_unique<CopyPropagationPass>());
     if (optLevel >= 2) {
