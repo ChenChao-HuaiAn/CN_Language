@@ -53,6 +53,8 @@ bool runOptLevel(ir::IRModule& module, int optLevel) {
     // ---- 基础 Pass（-O1）：常量折叠 + 死代码消除 ----
     manager.addPass(std::make_unique<ConstFoldPass>());
     // ---- 代数简化（-O1）：恒等变换（x+0/x*1/x*0...），产生新折叠机会 ----
+    //      （F1-29 浮点恒等式面：判据需常量追踪〔浮点常量在 IR 为 ConstFloat
+    //        寄存器而非内联常量〕——本轮登记 D9，见 plans/021） ----
     manager.addPass(std::make_unique<AlgebraicSimplifyPass>());
     // ---- 复写传播（-O1）：块内 Store->Load 转发（别名保守） ----
     manager.addPass(std::make_unique<CopyPropagationPass>());
@@ -65,8 +67,10 @@ bool runOptLevel(ir::IRModule& module, int optLevel) {
         //      （规格书9.2：-O2 含循环优化；仅在循环外提后不改变执行次数语义） ----
         manager.addPass(std::make_unique<LICMPass>());
         // ---- 强度削减（-O2，阶段B Task 4.2）：乘/除 2 的幂 -> 移位
-        //      （i*4/i*8 数组寻址核心场景；LICM 后循环内指令更纯净） ----
-        manager.addPass(std::make_unique<StrengthReducePass>());
+        //      （i*4/i*8 数组寻址核心场景；LICM 后循环内指令更纯净）
+        //      F1-29（227-a）：-O3 启用激进面（有符号除法展开为无分支修正序列
+        //      ——逐 pass 独立开关·默认保守保持既有行为） ----
+        manager.addPass(std::make_unique<StrengthReducePass>(optLevel >= 3));
         // ---- 尾调用优化（-O2，阶段B Task 4.2）：尾递归转为循环
         //      （函数级安全变换，节省栈帧；规格书9.2 TCO） ----
         manager.addPass(std::make_unique<TailCallPass>());
