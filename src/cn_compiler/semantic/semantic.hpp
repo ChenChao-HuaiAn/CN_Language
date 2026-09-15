@@ -336,6 +336,19 @@ public:
     void visitWhileStmt(WhileStmt* node) override;
     void visitForStmt(ForStmt* node) override;
     void visitRangeForStmt(RangeForStmt* node) override;  // C-2：遍历...中每个 降级为 循环
+    // 207-a（D1 行数整改）：visitRangeForStmt 拆分的两个族方法（宿主纯重构零行为变更）。
+    // 降糖判定：数组/类容器（大小()+元素(整64) 接口）三分支——输出元素类型/长度表达式/
+    //   元素表达式与成败标记（引用输出）。
+    void desugarRangeForIterable(RangeForStmt* node, const std::string& containerType,
+                                 const std::string& idxName, std::string& elemType,
+                                 std::unique_ptr<Expr>& lenExpr, std::unique_ptr<Expr>& elemExpr,
+                                 bool& desugarOk);
+    // 构建降级 循环 语句（init/condition/update/body + P3-24 临时迭代对象块包装）
+    //   并检查降级树；lenExpr/elemExpr/tempIterableDecl 按移动接管。
+    void buildRangeForLoop(RangeForStmt* node, const std::string& idxName,
+                           const std::string& elemType, std::unique_ptr<Expr> lenExpr,
+                           std::unique_ptr<Expr> elemExpr,
+                           std::unique_ptr<VarDecl> tempIterableDecl);
     void visitReturnStmt(ReturnStmt* node) override;
     void visitBreakStmt(BreakStmt* node) override;
     void visitContinueStmt(ContinueStmt* node) override;

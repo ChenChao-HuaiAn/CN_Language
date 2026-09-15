@@ -474,6 +474,29 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
         tempIterableDecl->location = node->location;
         node->iterable = std::make_unique<IdentifierExpr>(tmpName);
     }
+    // 207-a（2026-09-15 第两百零七轮，D1 行数整改）：降糖判定链迁 desugarRangeForIterable
+    //   （数组/类容器/错误 三分支·4 项引用输出）；降级树构建迁 buildRangeForLoop
+    //   （unique_ptr 移动接管）——宿主纯重构零行为变更。
+    desugarRangeForIterable(node, containerType, idxName, elemType, lenExpr, elemExpr,
+                            desugarOk);
+    if (!desugarOk) {
+        // 保留体检查（减少连锁错误）；无降级树（IR 层防御性跳过）
+        if (node->body != nullptr) checkStmt(node->body.get());
+        return;
+    }
+    buildRangeForLoop(node, idxName, elemType, std::move(lenExpr), std::move(elemExpr),
+                      std::move(tempIterableDecl));
+}
+
+// 207-a：族① 降糖判定（数组=编译期长度+下标元素；类容器=大小()/元素(整64) 接口
+//   （P6e 泛型实例名解析）；其余报错。引用输出 elemType/lenExpr/elemExpr/desugarOk）。
+void SemanticAnalyzer::desugarRangeForIterable(RangeForStmt* node,
+                                               const std::string& containerType,
+                                               const std::string& idxName,
+                                               std::string& elemType,
+                                               std::unique_ptr<Expr>& lenExpr,
+                                               std::unique_ptr<Expr>& elemExpr,
+                                               bool& desugarOk) {
     if (types::isArray(containerType)) {
         // 数组：长度编译期已知，元素 = 容器[索引]
         elemType = types::arrayElemOf(containerType);
@@ -534,14 +557,16 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
                                 containerType + "'");
         desugarOk = false;
     }
+}
 
-    if (!desugarOk) {
-        // 保留体检查（减少连锁错误）；无降级树（IR 层防御性跳过）
-        if (node->body != nullptr) checkStmt(node->body.get());
-        return;
-    }
-
-    // ---- 构建降级 循环 语句 ----
+// 207-a：族② 降级 循环 构建（init 索引归零/condition 索引<长度/update 索引++/
+//   body 元素声明+用户体克隆；P3-24 临时迭代对象→块包装）+检查降级树；
+//   lenExpr/elemExpr/tempIterableDecl 移动接管。
+void SemanticAnalyzer::buildRangeForLoop(RangeForStmt* node, const std::string& idxName,
+                                         const std::string& elemType,
+                                         std::unique_ptr<Expr> lenExpr,
+                                         std::unique_ptr<Expr> elemExpr,
+                                         std::unique_ptr<VarDecl> tempIterableDecl) {
     // init：整64 __对循环$索引 = 0
     auto initDecl = std::make_unique<VarDecl>();
     initDecl->name = idxName;
@@ -588,6 +613,7 @@ void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {
     // 检查降级树（类型解析/错误报告与用户书写代码同路径）
     checkStmt(node->desugared.get());
 }
+
 void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
     // lambda 返回类型推导模式（Task 2.10）：currentReturnType_ 为空，
     // 不报"只能出现在函数体内"，而是收集返回表达式类型作为推导候选
