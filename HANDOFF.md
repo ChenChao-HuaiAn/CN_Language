@@ -45,69 +45,47 @@
 
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第两百二十五轮（**深度机 linux-x86_64**）——**225-a：A7 根治专项轮·部分收口**
-（plans/021 §3-A A7·唯一「立即」项；基线 1fe0dd0，认领 8e95f89）。**已完成**：同族既有越界
-（CopyStruct 8 字节取整写·linux_x64+arm64）根治并门禁全绿；**A7 本体定位至最后一层**（导入模块泛型体
-复制展开误走分派④）。**待续**：A7 本体根治→stdlib 六处切换一次性重新应用。
+**交接时间**: 2026-09-15 第两百三十轮（**深度机 linux-x86_64**）——**230-a：文档指针化轮**
+（用户裁决 A 方案；基线 eeebb02，认领 9e69221）。上一实质轮 225-a（A7 部分收口）见 git 60c1d13。
 
-### 一、本轮做了什么（写给无上下文的新会话）
+### 一、本轮做了什么
 
-1. **方法论**：A7 在 linux 自发暴露率极低（30+ 次运行含 MALLOC_PERTURB_ 放大零复现）——改用
-   **valgrind memcheck 直抓**（v2p 编译任意探针=33 errors/9 contexts 一次抓全；符号=十六进制
-   UTF-8 中文名，python bytes.fromhex 解码归因）。lessons 202。
-2. **根治 CopyStruct 8 字节取整写**（`linux_x64_codegen_dispatch.cpp`+`arm64_codegen_dispatch.cpp`
-   两处）：`(bytes+7)/8` 整槽拷贝×容器槽按 类型大小 精确分配→12B 结构体（Token=3×整32）尾元素
-   越界 4B。修复=主循环 8B+尾部 4/2/1 精确读写（memcpy 语义；win `rep movsb` 天然精确无此缺陷）。
-3. **A7 本体定位**（切换态 v2p 内）：所有泛型实例 `向量$X.向量` 拷贝构造的 `复制(其他.数据[索引])`
-   展开=**分派④（__copytmp+CopyStruct 56 字节·与元素类型无关）+写回值=临时槽地址低 32 位（值损坏）**；
-   **同模块用户泛型类同形态完全正确**（复制直通 i32·IR 实证 /tmp/a7_ir6.txt）——缺陷锁定在
-   **导入模块（stdlib）泛型体的单态化/类型替换路径**（疑 semantic 单态化未做体内类型重推导）。
-4. **stdlib 六处深拷切换回退**（A7 本体未根治·缺陷零容忍，与家机 206-c 同口径；留档 plans/020
-   第七十三节 §三/§四）。
+1. **看板**：三行收窄（≤300 字符）+删 4 段过期通告（188-a/187-a/163-a/144-a）；95→26 行。
+2. **plans/021**：戳 8→2 行；§二标题名实相符+门禁大表指针化；§五 156 行收紧为四列一句话表；
+   §三/§四 20 行超宽台账行指针化；§六补导航。493→479 行、单行全 ≤400 字符。
+3. **门禁**：check_handoff.py 新增 plans/021 戳块 ≤5 行/单行 ≤400 字符、看板行宽 ≤300；
+   反例（HEAD 版）exit=1 全数拦截、正例 exit=0。
+4. **AGENTS**：§8.2 看板行格式、§8.3 plans/021 指针化格式（标注裁决来源）。
 
-### 二、本轮验证（linux-x86_64 口径）
+### 二、验证
 
-- 零警告重建（exit=0/warning=0）+ 单测 **1327/1327**
-- E2E **313 用例 311 过/0 失败/2 跳** + 锚定链重锚 **404685→410460 行**
-  （fix_p≡fix_s 逐字节 `f169a55e8036ba54…`；增量含家机 206-c 宿主修复+v2 复制支持——本机首锚）
-- **反证矩阵**（valgrind 双态×修复前后）：回退态 31→**6**（Invalid write/read 全消·剩 uninit 2
-  contexts=独立案）；切换态 33→**13**（差值 7=A7 本体）；宿主 12B 探针 2→**0**
+check_handoff.py（扩展后）反例拦截/正例通过；check_progress_sync.py ✓；源码零改动。
 
-### 三、下一轮任务（按序·A7 收口轮）
+### 三、下一轮任务（按序）
 
-1. **A7 本体根治**：semantic 层导入模块泛型体 `复制(下标链)` 的 resolvedType 推导（单态化后类型
-   重推导；或 genCopyBuiltin 分派④前置「类型参数未绑定」守卫）。**验收**=切换态 v2p valgrind
-   与回退态同水平（≤6·无 Invalid 无新增 uninit）+ stdlib 六处切换重新应用 + E2E 285 双侧 +
-   锚定链重锚 + valgrind 反证（回退修复→切换态 errors 回升）。
-2. **「读取文件行」uninit 独立案**（回退态剩余 6 errors）：`文件::读取文件行` 错误分支 结果<字符串,整32>
-   载荷未初始化值流入 `__cn_str_free`——查结果联合体载荷×析构判据/内置返回部分写入。**验收**=回退态
-   v2p valgrind **0 errors**。
-3. **v2p 缓存指纹盲区**：stdlib 源码级并入 v2p.obj 但指纹只覆盖 v2 树——stdlib 态变更后必须
-   `rm target/audit2/v2p_*`；根治=指纹纳入 stdlib/*.cn（登记 plans/020 第七十四节 §四.3）。
-4. **plans/021 整文件重复结构修复**（§〇~§六 ×2——「追加代替替换」又一实例；本轮两处同改保持
-   一致，整体重排须单独轮+用户批阅）。
-5. D1 续波（实测 40 个）等队列照旧。
+1. **227-a 已被家机占用（F1-29）；本机下一轮=231-a 候选**：A7 本体根治收口（导入泛型体
+   `复制(下标链)` resolvedType 推导/分派④守卫→stdlib 六处切换重新应用→285→锚定链→valgrind 反证；
+   全套定位数据在 plans/020 第七十四节 §三/§四+记忆 cn-a7-copystuct-family）。
+2. 「读取文件行」uninit 独立案（回退态 v2p valgrind 剩余 6 errors——根治验收=归零）。
+3. D1 续波等队列照旧（plans/021 §三）。
 
 ### 四、验证链（本机复现口径）
 
 ```
 > 全量门禁：rm -rf target/build && cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Debug &&
-> cmake --build target/build -j $(nproc)（warning=0）→ ./target/cn_unit_tests →
+> cmake --build target/build -j $(nproc) → ./target/cn_unit_tests →
 > python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8（313 用例：311 过/0 败/2 跳）。
-> **valgrind 纪律（本轮新增）**：apt install valgrind；v2p 编译探针一次即抓潜伏越界——
->   cd target/audit2/v2work123 && valgrind --error-exitcode=99 ../../audit2/v2p_linuxx64 <abs>/主.cn linux-x86_64
-> **stdlib 态变更后必 rm target/audit2/v2p_***（指纹不含 stdlib·v2p 缓存盲区 lessons 204）。
-> 改代码生成发射的轮次：产物 asm 变化属预期（CopyStruct 非对齐结构体指令变少）→ 锚定链重锚。
-> 共享文档自检：python3 scripts/check_handoff.py + python3 scripts/check_progress_sync.py。
-> github 镜像：本机无凭据/仓库未建——待用户建仓（记忆 cn-github-mirror-push）。
+> 共享文档自检：python3 scripts/check_handoff.py（四文件含行宽/戳块上限）＋
+> python3 scripts/check_progress_sync.py——提交前必跑。
+> stdlib 态变更后必 rm target/audit2/v2p_*（指纹盲区）；valgrind 已装（apt）。
 ```
 
 ### 五、诚实边界
 
-- **A7 本体未根治**（本轮部分收口）：stdlib 切换继续回退=波 4 深拷收口继续阻塞（家机 206-c 同口径）；
-  win 侧同族推定（arm64 修复未跨机验证——随单位机跨机轮）。
-- 探针/临时件：/tmp/a7*（probe_a7.py/hostprobe/genprobe/fileprobe/valgrind*.log/ir*.txt）不入库。
-- valgrind 为本机新装（apt）——他机若复用本验证链需自行安装。
+- §五 索引保留 156 轮一句话行（表体 ~160 行）——未砍除：按轮号快速定位有导航价值；行宽已锁死。
+- §三/§四 部分台账行的压缩以「指针」替代原文细节——细节权威源=plans/019/020 各节与 git 提交信息，
+  若发现某指针失准请以 git log --grep=轮次号 为准修正。
+- github 镜像仍缺仓库（待用户建仓）。
 
 ## 单位机 ARM64 节
 
