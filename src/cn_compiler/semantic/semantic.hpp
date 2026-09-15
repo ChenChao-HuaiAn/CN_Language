@@ -680,7 +680,17 @@ private:
     // 注册CN语言内置函数符号（打印/打印行/格式化 + 字符串API，供函数调用检查）
     // 方案C（2026-08-14）✅ 已修复：遗留的 打印行整数/打印行浮点 已删除，统一用 打印（变参）
     void registerBuiltins();
-    void registerFunction(FunctionDecl* node);     // 第一趟：注册函数符号
+    void registerFunction(FunctionDecl* node);
+    // ---- registerFunction 流水线族子方法（189-a 函数级拆分·原 173 行函数）----
+    // 族①：默认参数规则检查（从右向左连续声明+引用参数无默认）
+    void checkDefaultParams(FunctionDecl* node, FunctionInfo& info);
+    // 族②：参数类型归一（crate 分桶解析/泛型归一/函数指针规范化）
+    void resolveParamTypes(FunctionDecl* node, FunctionInfo& info);
+    // 族③：重复定义检查（crate 模型分桶判定）。true = 已诊断并终止
+    bool checkDuplicateRegistration(FunctionDecl* node, FunctionInfo& info,
+                                    const std::string& linkKey);
+    // 族④：重载原型一致性检查（同名原型与定义签名一致）。true = 已诊断并终止
+    bool checkOverloadProtoConsistency(FunctionDecl* node, const FunctionInfo& info);     // 第一趟：注册函数符号
     void checkFunctionBody(FunctionDecl* node);    // 第二趟：检查函数体
     // plans/018 P6b 工作流2（规格08-三 3.6 名称解析）：显式导入冲突检查
     //   ①×② 显式导入与归属文件本地定义同名 = 错误；②×② 同文件不同外部来源

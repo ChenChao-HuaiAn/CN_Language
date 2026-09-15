@@ -376,6 +376,28 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     if (!node->returnType.empty() && types::isReference(node->returnType)) {
         info.isRefReturn = true;
     }
+    // 189-a：本函数 173 行按「注册流水线」提取为 4 个族子方法（纯搬运零行为
+    //   变更——多重集核验先行于构建）。
+    checkDefaultParams(node, info);                       // 默认参数规则检查
+    resolveParamTypes(node, info);                        // 参数类型归一（crate 分桶）
+    // 生成签名 key（名 + "#" + 参数类型串，mangling 与决议共用）
+    node->sigKey = signatureKey(node->name, info.paramTypes);
+    const std::string linkKey =
+        functionLinkKey(node->moduleName, node->name, node->sigKey);
+    // 重复定义检查（crate 模型分桶判定）——true=已诊断并终止
+    if (checkDuplicateRegistration(node, info, linkKey)) return;
+    // 重载原型一致性检查——true=已诊断并终止
+    if (checkOverloadProtoConsistency(node, info)) return;
+    funcSigModules_[node->sigKey].insert(node->moduleName);
+    // A′：注册键 = 公式键（与定义侧 mangledName 同源，消顺序依赖）
+    functions_[linkKey] = info;
+}
+
+// ==================== 189-a 流水线族子方法（原 registerFunction 379~515 段） ====================
+
+// 族①：默认参数规则检查（原 379~414 段）——从右向左连续声明 + 引用参数
+//   不能有默认值（引用须绑定调用方左值）。写入 info.defaultCount/hasDefault。
+void SemanticAnalyzer::checkDefaultParams(FunctionDecl* node, FunctionInfo& info) {
     // 默认参数规则检查：从右向左连续声明（f(a=1, b) 非法——默认参数左侧出现无默认参数；
     //   f(a, b=1, c=2) 合法——最左侧参数可无默认）。
     // 正确判定：从左到右，一旦遇到无默认参数，其后所有参数都须无默认；
@@ -412,6 +434,11 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
         }
     }
     std::reverse(info.hasDefault.begin(), info.hasDefault.end());  // 恢复参数顺序
+}
+
+// 族②：参数类型归一（原 415~437 段）——常量参数位登记/函数指针参数规范化/
+//   crate 分桶解析/泛型实例化类型参数归一。写入 info.paramTypes/constParams。
+void SemanticAnalyzer::resolveParamTypes(FunctionDecl* node, FunctionInfo& info) {
     for (auto& param : node->params) {
         // plans/019 阶段3：常量 只读引用参数位登记（与 paramTypes 等长）
         info.constParams.push_back(param->isConstParam);
@@ -435,8 +462,13 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
             info.paramTypes.push_back(types::canonicalParam(param->typeName));
         }
     }
-    // 生成签名 key（名 + "#" + 参数类型串，mangling 与决议共用）
-    node->sigKey = signatureKey(node->name, info.paramTypes);
+}
+
+// 族③：重复定义检查（原 438~487 段，含签名 key/crate 模型分桶/公式键判定）。
+//   true = 已诊断并终止（调用方 return）。
+bool SemanticAnalyzer::checkDuplicateRegistration(FunctionDecl* node,
+                                                  FunctionInfo& info,
+                                                  const std::string& linkKey) {
     // ---- crate 模型（第 4 层，v2.0 决策4）：重复定义按模块分桶 ----
     // 跨模块同名同签名函数允许（crate 隔离：包A::工具 与 包B::工具 独立符号）；
     // 仅同模块内重名报错。moduleName 由 mergeModules 合并阶段写入 FunctionDecl。
@@ -447,8 +479,6 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
     //   函数纯名调用解析到 主$键 而定义侧发射裸键 → 链接 undefined reference，
     //   base3 探针汇编实证）。Rust 对照：rustc 符号=f(def-id)，定义时即定，
     //   「同名抢裸键」结构上不存在。
-    const std::string linkKey =
-        functionLinkKey(node->moduleName, node->name, node->sigKey);
     auto it = functions_.find(linkKey);
     if (it != functions_.end()) {
         // 同签名重名（模块分桶判定）：原型+定义 组合须同模块才配对；
@@ -465,7 +495,7 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
                 "函数 '" + node->name + "' 链接符号冲突（模块 '" +
                     it->second.moduleName + "' 与 '" + node->moduleName +
                     "' 同名同签名且链接键归一为裸键，无法共存）");
-            return;
+            return true;
         }
         // 同签名重名：允许"原型声明 + 定义"组合，其余为重复定义
         bool isProtoPlusDef = !it->second.hasBody && info.hasBody;
@@ -483,8 +513,16 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
                                 "模块 '" + node->moduleName + "' 内重复定义函数 '" + node->name +
                                 "'（参数类型相同；仅返回类型不同不构成重载）");
         }
-        return;
+        return true;
     }
+    return false;
+}
+
+// 族④：重载原型一致性检查（原 488~515 段）——同名原型（无体）与定义（有体）
+//   签名必须一致；仅同模块内检查（跨模块原型不约束其他模块的定义）。
+//   true = 已诊断并终止（调用方 return）。
+bool SemanticAnalyzer::checkOverloadProtoConsistency(FunctionDecl* node,
+                                                     const FunctionInfo& info) {
     // Task 2.10 重载兼容：签名 key 未命中但同名已有其他签名——
     //   合法重载（加(整32,整32) 与 加(浮64,浮64)）；
     //   但"原型声明 + 不同签名定义"是错误（原型已锁定签名，定义须一致）。
@@ -510,12 +548,10 @@ void SemanticAnalyzer::registerFunction(FunctionDecl* node) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "函数 '" + node->name +
                                 "' 原型声明与定义签名不一致（重载须参数类型不同）");
-            return;
+            return true;
         }
     }
-    funcSigModules_[node->sigKey].insert(node->moduleName);
-    // A′：注册键 = 公式键（与定义侧 mangledName 同源，消顺序依赖）
-    functions_[linkKey] = info;
+    return false;
 }
 // C-3（FFI）：查询签名 key 对应函数是否为 外部 函数（链接符号=纯名）
 bool SemanticAnalyzer::isExternFunc(const std::string& sigKey) const {
