@@ -197,6 +197,25 @@ def 查看板() -> list[str]:
     return 问题
 
 
+def 查冲突标记() -> list[str]:
+    """四文件 git 冲突标记检查（233-a 立：229-a 收尾曾把未解决冲突标记推入 plans/021 在库多日）。
+
+    判据=「<<<<<<< 」与「>>>>>>> 」在同一文件成对出现即拦截（单独的 ======= 可能是合法分隔线，不误报）。
+    """
+    问题: list[str] = []
+    for 名 in ("HANDOFF.md", "更新日志.md", "plans/021-任务进度观察表.md", "三机任务看板.md"):
+        路径 = 仓库根 / 名
+        if not 路径.exists():
+            continue
+        行们 = 路径.read_text(encoding="utf-8").splitlines()
+        起们 = [n + 1 for n, 行 in enumerate(行们) if 行.startswith("<<<<<<< ")]
+        止们 = [n + 1 for n, 行 in enumerate(行们) if 行.startswith(">>>>>>> ")]
+        if 起们 or 止们:
+            问题.append(f"{名} 存在未解决的 git 冲突标记（<<<<<<< 行 {起们} / >>>>>>> 行 {止们}）——"
+                        "rebase 冲突必须当场解决并 grep 复查后才能提交")
+    return 问题
+
+
 def 主流程() -> int:
     print("=== 共享文档结构门禁（六纪律机械自检，只读）===")
     交接路径 = 仓库根 / "HANDOFF.md"
@@ -205,7 +224,7 @@ def 主流程() -> int:
         for 标题, 内容 in 按二号标题分节(交接路径.read_text(encoding="utf-8").splitlines()).items():
             print(f"    {标题[:44]}：{len(内容)} 行")
 
-    全部问题 = 查交接() + 查日志() + 查总表() + 查看板()
+    全部问题 = 查交接() + 查日志() + 查总表() + 查看板() + 查冲突标记()
     if 全部问题:
         print(f"\n结论：结构缺陷 {len(全部问题)} 项，禁止提交 ✗")
         for 问题 in 全部问题:
