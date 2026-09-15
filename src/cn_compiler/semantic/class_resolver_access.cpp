@@ -323,9 +323,26 @@ void SemanticAnalyzer::checkClassMethods(ClassInfo& info) {
         std::vector<std::unordered_map<std::string, std::size_t>> savedBorrowScopes =
             std::move(borrowViewScopes_);
         clearBorrowViewState();
+        // 188-a（D6 B11 变量常量传播）：方法体为独立函数级检查单元——同款保存/
+        //   恢复外层恒空判定表（嵌套安全：泛型实例化触发的方法体检查不丢外层登记）
+        std::unordered_set<std::string> savedNullSeeded = std::move(nullSeeded_);
+        std::unordered_set<std::string> savedNullDisq = std::move(nullDisqualified_);
+        std::vector<std::pair<std::string, std::string>> savedNullEdges =
+            std::move(nullAssignEdges_);
+        std::vector<NullUseSite> savedNullUses = std::move(nullUseSites_);
+        nullSeeded_.clear();
+        nullDisqualified_.clear();
+        nullAssignEdges_.clear();
+        nullUseSites_.clear();
         for (auto& stmt : member->body->statements) {
             checkStmt(stmt.get());
         }
+        // 188-a 同族收尾：方法体恒空指针使用点判定（报硬错误）
+        reportNullConstUses();
+        nullSeeded_ = std::move(savedNullSeeded);
+        nullDisqualified_ = std::move(savedNullDisq);
+        nullAssignEdges_ = std::move(savedNullEdges);
+        nullUseSites_ = std::move(savedNullUses);
         // 构造/析构/空类型 方法不要求返回；其他须保证返回
         if (mi.type != "空类型" && !mi.isConstructor && !mi.isDestructor &&
             !bodyGuaranteesReturn(member->body.get())) {

@@ -37,6 +37,11 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
             case NodeType::IdentifierExpr: {
                 std::string vt;
                 isLvalue = lookupVar(static_cast<IdentifierExpr*>(arg)->name, vt);
+                // 188-a（D6 B11 变量常量传播）：引用实参=别名逃逸（被调方可能改写
+                //   该变量）→ 恒空判定失格（保守，防假阳性）
+                if (isLvalue) {
+                    noteNullEscape(static_cast<IdentifierExpr*>(arg)->name);
+                }
                 break;
             }
             case NodeType::IndexExpr:

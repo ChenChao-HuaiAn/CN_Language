@@ -941,6 +941,31 @@ private:
     //   Deref 分支报）——避免同一 `*p = x` 双报（§六.2 避免重复报告）。
     int assignmentTargetDepth_ = 0;
     int switchDepth_ = 0;                          // 选择嵌套深度（中断跳出选择合法性）
+    // ---- 188-a（D6·plans/023 B11 变量常量传播）：函数级「恒空指针」判定表 ----
+    //   背景：B11 原判据=操作数为 `无` 字面量；plans/023 §九 已批准定义含
+    //   「编译期常量」形态（`整64* p = 无; *p`）——本表把它落实。
+    //   判定（保守·零假阳性）：变量 v 判「恒空」⇔ ① 至少一次以 `无` 字面量
+    //   初始化/赋值（nullSeeded_，含经赋值/初始化传播自另一恒空变量——
+    //   nullAssignEdges_ 不动点）∧ ② 全函数内无任何其他写入（nullDisqualified_：
+    //   非 `无` 赋值/复合赋值/自增自减/取地址/引用参数实参）。使用点在
+    //   nullUseSites_ 延迟登记，函数体检查收尾统一判定并报硬错误（Rust
+    //   deref_nullptr lint 同构：编译期零运行期开销）。
+    struct NullUseSite {
+        std::string name;          // 使用点操作数（标识符名）
+        SourceLocation location;   // 报错行
+        const char* face;          // "解引用" / "成员访问" / "下标"
+    };
+    std::unordered_set<std::string> nullSeeded_;        // 至少一次 无 字面量赋值
+    std::unordered_set<std::string> nullDisqualified_;  // 非空写入/别名逃逸 → 失格
+    std::vector<std::pair<std::string, std::string>> nullAssignEdges_;  // (目标, 源) 传播边
+    std::vector<NullUseSite> nullUseSites_;             // 待判定使用点（函数收尾统一判）
+    // 登记助手（定义在 semantic_decl.cpp，与 checkFunctionBody 同址）
+    void noteNullAssign(const std::string& name, const Expr* value);
+    void noteNullWriteOther(const std::string& name);   // 非 无 写入/复合/自增自减
+    void noteNullEscape(const std::string& name);       // 取地址/引用实参（别名逃逸）
+    void noteNullUse(const std::string& name, const SourceLocation& loc, const char* face);
+    void reportNullConstUses();                         // 函数收尾：不动点 + 判定报错
+    static bool isNullConstEligibleType(const std::string& type);  // 指针（尾 *）或 字符串
     // ---- lambda 返回类型推导（Task 2.10） ----
     bool lambdaInferMode_ = false;                 // 是否处于 lambda 无标注返回推导模式
     std::vector<std::string> lambdaReturnCandidate_; // 推导模式下的返回表达式类型候选

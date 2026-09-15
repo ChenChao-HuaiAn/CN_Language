@@ -291,3 +291,116 @@ TEST(PointerSemanticTest, PointerParamReturn) {
         "}\n");
     EXPECT_TRUE(r.ok) << r.messages;
 }
+
+// ==================== 188-a（D6·plans/023 B11 变量常量传播） ====================
+//   判定=无字面量种子 + 全函数无其他写入 + 传播闭包 + 取地址/引用实参失格。
+//   使用点三操作面（解引用/成员访问/下标访问）函数收尾统一判定报硬错误。
+
+// 变量形态解引用：`整64* p = 无; *p` -> 编译期硬错误（原判据只认 `*无` 字面量）
+TEST(PointerSemanticTest, NullConstPropagationDeref) {
+    SemanticResult r = analyzeSource(
+        "不安全 函数 主() -> 整32 {\n"
+        "  整64* p = 无;\n"
+        "  整64 v = *p;\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.messages.find("编译期常量空指针解引用"), std::string::npos);
+}
+
+// 判空比较合法：`如果 (p == 无)` 不触发（Task 6.2 判空惯用法）
+TEST(PointerSemanticTest, NullConstPropagationGuardOk) {
+    SemanticResult r = analyzeSource(
+        "不安全 函数 主() -> 整32 {\n"
+        "  整64* p = 无;\n"
+        "  如果 (p == 无) {\n"
+        "    返回 1;\n"
+        "  }\n"
+        "  返回 0;\n"
+        "}\n");
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 非空写入即失格：分支内 取地址 赋值后解引用（保守判定——不报）
+TEST(PointerSemanticTest, NullConstPropagationDisqualifiedByWrite) {
+    SemanticResult r = analyzeSource(
+        "静态 整64 甲 = 5;\n"
+        "不安全 函数 主(布尔 c) -> 整32 {\n"
+        "  整64* p = 无;\n"
+        "  如果 (c) {\n"
+        "    p = &甲;\n"
+        "  }\n"
+        "  整64 v = *p;\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 取地址失格：别名可改写 -> 不报（保守，防假阳性）
+TEST(PointerSemanticTest, NullConstPropagationDisqualifiedByEscape) {
+    SemanticResult r = analyzeSource(
+        "不安全 函数 主() -> 整32 {\n"
+        "  整64* p = 无;\n"
+        "  整64** pp = &p;\n"
+        "  整64 v = *p;\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_TRUE(r.ok) << r.messages;
+}
+
+// 传播闭包：`整64* q = p;`（p 恒空）-> q 亦恒空 -> 解引用硬错误
+TEST(PointerSemanticTest, NullConstPropagationEdge) {
+    SemanticResult r = analyzeSource(
+        "不安全 函数 主() -> 整32 {\n"
+        "  整64* p = 无;\n"
+        "  整64* q = p;\n"
+        "  整64 v = *q;\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.messages.find("编译期常量空指针解引用"), std::string::npos);
+}
+
+// 成员访问面：`点* q = 无; q.x`
+TEST(PointerSemanticTest, NullConstPropagationMember) {
+    SemanticResult r = analyzeSource(
+        "结构体 点 { 整64 x; }\n"
+        "不安全 函数 主() -> 整32 {\n"
+        "  点* q = 无;\n"
+        "  整64 v = q.x;\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.messages.find("编译期常量空指针成员访问"), std::string::npos);
+}
+
+// 下标访问面：`整64* p = 无; p[0]`
+TEST(PointerSemanticTest, NullConstPropagationIndex) {
+    SemanticResult r = analyzeSource(
+        "不安全 函数 主() -> 整32 {\n"
+        "  整64* p = 无;\n"
+        "  整64 v = p[0];\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_FALSE(r.ok);
+    EXPECT_NE(r.messages.find("编译期常量空指针下标访问"), std::string::npos);
+}
+
+// 字面量面补齐：`无.字段` / `无[0]` 直接报 B11（原为间接类型错误）
+TEST(PointerSemanticTest, NullConstLiteralMemberAndIndex) {
+    SemanticResult r1 = analyzeSource(
+        "结构体 点 { 整64 x; }\n"
+        "不安全 函数 主() -> 整32 {\n"
+        "  整64 v = 无.x;\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_FALSE(r1.ok);
+    EXPECT_NE(r1.messages.find("编译期常量空指针成员访问"), std::string::npos);
+    SemanticResult r2 = analyzeSource(
+        "不安全 函数 主() -> 整32 {\n"
+        "  整64 v = 无[0];\n"
+        "  返回 整32(v);\n"
+        "}\n");
+    EXPECT_FALSE(r2.ok);
+    EXPECT_NE(r2.messages.find("编译期常量空指针下标访问"), std::string::npos);
+}

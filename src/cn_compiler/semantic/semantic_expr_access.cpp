@@ -17,12 +17,29 @@ namespace cn_compiler {
 void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     const std::string memberName = node->memberName;
     const std::string objectVar = objectVarName(node->object.get());
+    // 188-a（D6·plans/023 B11 变量常量传播）：`无.字段` 字面量形态（编译期常量
+    //   空指针成员访问）——硬错误（plans/023 §九 负例 `点* q = 无; 返回 q.x;` 的
+    //   字面量孪生形态；原实现只报「类型 '空类型' 不是结构体…」间接错误）。
+    if (node->object->getType() == NodeType::NullLiteral) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "编译期常量空指针成员访问（确定性错误；plans/023 B11）");
+        lastType_ = "未知";
+        return;
+    }
     std::string objectType = checkExpr(node->object.get());
     // v2.1（2026-09-03，用户裁决废除 ->）：成员访问统一 .——对象为指针时
     //   自动解引用一级（≡ (*对象).成员，Go 先例）。isDerefAccess 按对象类型
     //   写回（IR 层据此选基址：指针值 / 对象地址）；解析层恒 false。
     //   结果/可选/枚举/接口对象均非此指针语义或各自先行处理，统一置位无害。
     node->isDerefAccess = types::isPointer(objectType);
+    // 188-a（D6 B11 变量常量传播）：成员访问基对象为标识符 → 使用点登记
+    //   （仅指针基对象=自动解引用一级；判定在函数体检查收尾统一做）
+    if (node->isDerefAccess &&
+        node->object->getType() == NodeType::IdentifierExpr) {
+        noteNullUse(static_cast<IdentifierExpr*>(node->object.get())->name,
+                    node->location, "成员访问");
+    }
     // 150-a（plans/023 B9 实施）：指针成员访问（p.字段 自动解引用一级）观察期
     //   警告（排除字符串语义=字符串视图；赋值场景的写面由 B7/A2 族承担）。
     if (node->isDerefAccess && assignmentTargetDepth_ == 0 &&
@@ -276,11 +293,28 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     lastType_ = "未知";
 }
 void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
+    // 188-a（D6·plans/023 B11 变量常量传播）：`无[i]` 字面量形态（编译期常量
+    //   空指针下标访问）——硬错误（原实现只报后续类型转换间接错误）。
+    if (node->object->getType() == NodeType::NullLiteral) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, node->location,
+            "编译期常量空指针下标访问（确定性错误；plans/023 B11）");
+        lastType_ = "未知";
+        return;
+    }
     std::string objectType = checkExpr(node->object.get());
     std::string indexType = checkExpr(node->index.get());
     if (objectType == "未知") {
         lastType_ = "未知";
         return;
+    }
+    // 188-a（D6 B11 变量常量传播）：下标基对象为标识符（指针/数组/字符串）→
+    //   使用点登记（读写两路径共用本函数——写路径 assignmentTargetDepth_>0 仅
+    //   抑制观察期警告，空指针下标=确定性 UB 两侧同判）
+    if (node->object->getType() == NodeType::IdentifierExpr &&
+        isNullConstEligibleType(objectType)) {
+        noteNullUse(static_cast<IdentifierExpr*>(node->object.get())->name,
+                    node->location, "下标访问");
     }
     // 数组退化：数组名作下标对象（数据[i]）按元素类型处理
     if (isArrayType(objectType)) {

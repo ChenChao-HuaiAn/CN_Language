@@ -109,6 +109,12 @@ void SemanticAnalyzer::checkAddressOfUnary(UnaryExpr* node,
                        node->operand->getType() == NodeType::IndexExpr ||
                        node->operand->getType() == NodeType::MemberExpr) {
                 lastType_ = operandType + "*";
+                // 188-a（D6·plans/023 B11 变量常量传播）：取地址=别名逃逸——外部
+                //   可经别名改写该变量 → 恒空判定失格（保守，防假阳性）
+                if (node->operand->getType() == NodeType::IdentifierExpr) {
+                    noteNullEscape(
+                        static_cast<IdentifierExpr*>(node->operand.get())->name);
+                }
             } else if (node->operand->getType() == NodeType::CallExpr) {
                 // P3-18 补完：&引用返回调用 = 取得被引用者的地址（须确认为引用返回）
                 if (lastExprIsRefReturn_) {
@@ -142,8 +148,16 @@ void SemanticAnalyzer::checkDerefUnary(UnaryExpr* node,
                     diagnostics_.report(
                         DiagnosticLevel::Error, node->location,
                         "编译期常量空指针解引用（确定性错误；plans/023 B11）");
-                } else if (assignmentTargetDepth_ == 0 &&
-                           !isStringSemanticType(operandType)) {
+                } else if (node->operand->getType() == NodeType::IdentifierExpr) {
+                    // 188-a（D6 B11 变量常量传播）：标识符操作数 → 使用点登记
+                    //   （判定在函数体检查收尾统一做——恒空表见 semantic.hpp）
+                    noteNullUse(
+                        static_cast<IdentifierExpr*>(node->operand.get())->name,
+                        node->location, "解引用");
+                }
+                if (node->operand->getType() != NodeType::NullLiteral &&
+                    assignmentTargetDepth_ == 0 &&
+                    !isStringSemanticType(operandType)) {
                     reportUnsafeBoundary(node->location, "裸指针解引用读",
                                        "指针解引用（*p）");
                 }
@@ -249,6 +263,8 @@ void SemanticAnalyzer::checkIncDecUnary(UnaryExpr* node,
             if (ot == NodeType::IdentifierExpr) {
                 const IdentifierExpr* ident =
                     static_cast<IdentifierExpr*>(node->operand.get());
+                // 188-a（D6）：自增/自减=隐式非空写入 → 恒空判定失格
+                noteNullWriteOther(ident->name);
                 if (isConstVarName(ident->name)) {
                     diagnostics_.report(
                         DiagnosticLevel::Error, node->location,

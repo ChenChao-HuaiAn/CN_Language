@@ -469,6 +469,12 @@ void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
     if (lookupVar(ident->name, varType)) {
         targetType = varType;
         lvalueOk = true;
+        // 188-a（D6 B11 变量常量传播）：赋值位登记——RHS 形态分级（`无` 字面量=
+        //   种子／标识符=传播边／其余（复合赋值/调用/运算…）=失格），仅指针/字符串
+        //   类型参与（非指针变量的 `无` 初始化与空指针判定无关）
+        if (isNullConstEligibleType(varType)) {
+            noteNullAssign(ident->name, node->value.get());
+        }
         // 缺陷②同族：常量初始化后不可修改（局部 常量 / 顶层常量）
         if (isConstVarName(ident->name)) {
             diagnostics_.report(

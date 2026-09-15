@@ -359,6 +359,13 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         //   （赋值/自增目标拒绝用，isConstVarName）
         scopeConsts_.back().insert(node->name);
     }
+    // 188-a（D6 B11 变量常量传播）：声明初始化位登记（指针/字符串类型；RHS 形态
+    //   分级同赋值位——`无` 字面量=种子／标识符=传播边／其余=失格）。转移改写
+    //   （阶段1）后 initializer 已是实参标识符 → 自动走传播边（转移源自恒空则
+    //   目标恒空——正确）。
+    if (node->initializer != nullptr && isNullConstEligibleType(varType)) {
+        noteNullAssign(node->name, node->initializer.get());
+    }
     // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：初始化位借出
     //   绑定登记【变量 s = 表.元素(0) / 结果<…> r = 表.读取(0)——容器内句柄
     //   浅拷；登记来源容器与活跃区间起点，供「容器失效点/容器先亡 × 后续使用」
@@ -497,6 +504,79 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     }
     importedModules_.insert(moduleName);
 }
+// ==================== 188-a（D6·plans/023 B11 变量常量传播）登记助手 ====================
+//   判定模型见 semantic.hpp「函数级恒空指针判定表」注释。核心不变式：
+//   ① 只在「指针（尾 *）/字符串」类型变量上做（非指针变量的 `无` 初始化不参与）；
+//   ② 使用点延迟登记（nullUseSites_），函数体检查收尾 reportNullConstUses()
+//      统一不动点判定 + 报硬错误——流不敏感（全函数视角）=零假阳性（分支内
+//      非空赋值亦计入失格），代价是保守漏报（登记为诚实边界）。
+bool SemanticAnalyzer::isNullConstEligibleType(const std::string& type) {
+    return types::isPointer(type) || type == "字符串";
+}
+
+// 赋值/初始化位登记：值形态分级——`无` 字面量=种子；标识符=传播边（源为恒空
+//   时目标亦恒空，收尾不动点展开）；其余（调用/运算/成员/下标/字面量…）=失格。
+void SemanticAnalyzer::noteNullAssign(const std::string& name, const Expr* value) {
+    if (name.empty() || value == nullptr) return;
+    if (value->getType() == NodeType::NullLiteral) {
+        nullSeeded_.insert(name);
+        return;
+    }
+    if (value->getType() == NodeType::IdentifierExpr) {
+        nullAssignEdges_.emplace_back(name,
+                                      static_cast<const IdentifierExpr*>(value)->name);
+        return;
+    }
+    nullDisqualified_.insert(name);
+}
+
+// 非 `无` 写入（复合赋值/自增自减）：直接失格。
+void SemanticAnalyzer::noteNullWriteOther(const std::string& name) {
+    if (!name.empty()) nullDisqualified_.insert(name);
+}
+
+// 别名逃逸（取地址 &x / 作为引用参数实参 / 转移源）：外部可能改写该变量 → 失格。
+void SemanticAnalyzer::noteNullEscape(const std::string& name) {
+    if (!name.empty()) nullDisqualified_.insert(name);
+}
+
+// 使用点登记（解引用/成员访问/下标 三操作面）：此处不判定——写入可能出现在
+//   使用点之后（流不敏感判定必须全函数视角），统一由 reportNullConstUses 收尾判。
+void SemanticAnalyzer::noteNullUse(const std::string& name, const SourceLocation& loc,
+                                   const char* face) {
+    if (name.empty()) return;
+    nullUseSites_.push_back(NullUseSite{name, loc, face});
+}
+
+// 函数体检查收尾：传播闭包不动点（p = q 且 q 恒空 → p 恒空）→ 判定使用点 →
+//   报 B11 硬错误（文案与字面量形态同族：「编译期常量空指针<面>（确定性错误；
+//   plans/023 B11）」——面 ∈ 解引用/成员访问/下标）。
+void SemanticAnalyzer::reportNullConstUses() {
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const auto& edge : nullAssignEdges_) {
+            const std::string& dst = edge.first;
+            const std::string& src = edge.second;
+            if (dst.empty() || src.empty()) continue;
+            if (nullDisqualified_.count(src) != 0) continue;
+            if (nullSeeded_.count(src) == 0) continue;
+            if (nullSeeded_.insert(dst).second) changed = true;
+        }
+    }
+    for (const auto& site : nullUseSites_) {
+        if (nullSeeded_.count(site.name) == 0) continue;
+        if (nullDisqualified_.count(site.name) != 0) continue;
+        diagnostics_.report(DiagnosticLevel::Error, site.location,
+                            std::string("编译期常量空指针") + site.face +
+                                "（确定性错误；plans/023 B11）");
+    }
+    nullSeeded_.clear();
+    nullDisqualified_.clear();
+    nullAssignEdges_.clear();
+    nullUseSites_.clear();
+}
+
 void SemanticAnalyzer::visitClassDecl(ClassDecl* node) {
     (void)node;
 }
@@ -542,6 +622,11 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：函数级状态清空
     //   （泛型实例化可能对同一 AST 二次检查；函数间互不污染）
     clearBorrowViewState();
+    // 188-a（D6 B11 变量常量传播）：函数级恒空指针判定表清空（同上——函数间互不污染）
+    nullSeeded_.clear();
+    nullDisqualified_.clear();
+    nullAssignEdges_.clear();
+    nullUseSites_.clear();
     // 阶段3（Task 3.9）：记录当前上下文函数名（友元函数访问检查用）
     currentFunctionName_ = node->name;
     // A-2（crate 分桶）：记录当前分析上下文模块名——类型/常量/静态引用按此解析
@@ -562,6 +647,10 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     for (auto& stmt : node->body->statements) {
         checkStmt(stmt.get());
     }
+    // 188-a（D6 B11 变量常量传播）：函数体检查收尾统一判定（恒空指针使用点报硬
+    //   错误）——须在体语句检查之后（全函数视角的不动点判定），与其它函数级
+    //   结算（借出视图等）并列
+    reportNullConstUses();
     // 缺少返回语句检查：有返回类型且函数体不保证返回
     if (currentReturnType_ != "空类型" && !bodyGuaranteesReturn(node->body.get())) {
         diagnostics_.report(DiagnosticLevel::Error, node->location,
