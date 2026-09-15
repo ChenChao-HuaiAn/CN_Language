@@ -393,7 +393,33 @@ std::unique_ptr<ClassDecl> Parser::parseClassDecl() {
 //   友元    ：友元 函数 名(参数) | 友元 类 名（Task 3.9）
 bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
     out.access = access;
+    // 186-a：本函数 198 行按「成员形态」提取为 4 个族子方法（纯搬运零行为
+    //   变更——多重集核验先行于构建）。
     // ---- 友元声明（Task 3.9）：友元 函数 名(...) | 友元 类 名 ----
+    if (check(TokenType::Kw_Friend)) {
+        return parseFriendMember(out);
+    }
+    // ---- 方法修饰符：虚拟 / 重写 / 抽象 / 常量 / 静态（按任意顺序出现） ----
+    // 这些修饰符后必须跟"函数"才构成方法；静态 也可修饰字段（静态 类型 名称）
+    parseMethodModifiers(out);
+    // ---- 方法/构造/析构/运算符重载：函数 ... ----
+    if (check(TokenType::Kw_Function)) {
+        return parseFunctionMember(out);
+    }
+    // ---- 字段声明：[静态] 类型 名称 [= 初始值] ----
+    // 类型：类型关键字/自定义类型名/模板类型（结果<T,E> 等，parseTypeNameEx 支持）
+    if (isTypeKeyword(currentType()) || check(TokenType::Identifier) ||
+        check(TokenType::Kw_Result) || check(TokenType::Kw_Optional)) {
+        return parseFieldMember(out);
+    }
+    reportErrorHere("无法识别的类成员，实际为 '" + current().getValue() + "'");
+    return false;
+}
+
+// ==================== 186-a 族子方法（原 parseClassMember 396~586 段） ====================
+
+// 族①：友元声明（原 396~435 段）——友元 函数 名(...) | 友元 类 名。
+bool Parser::parseFriendMember(ClassMember& out) {
     if (check(TokenType::Kw_Friend)) {
         advance();  // 消费"友元"
         out.kind = ClassMemberKind::Friend;
@@ -433,9 +459,12 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
         }
         return true;
     }
+    return false;
+}
 
-    // ---- 方法修饰符：虚拟 / 重写 / 抽象 / 常量 / 静态（按任意顺序出现） ----
-    // 这些修饰符后必须跟"函数"才构成方法；静态 也可修饰字段（静态 类型 名称）
+// 族②：方法修饰符循环（原 437~472 段）——虚拟/重写/抽象/常量/静态/不安全
+//   按任意顺序出现；这些修饰符后必须跟"函数"才构成方法。
+void Parser::parseMethodModifiers(ClassMember& out) {
     while (true) {
         if (checkText("虚拟")) {  // 162-a 上下文化：修饰位按文本判定
             out.isVirtual = true;
@@ -470,8 +499,11 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
         }
         break;
     }
+}
 
-    // ---- 方法/构造/析构/运算符重载：函数 ... ----
+// 族③：方法/构造/析构/运算符重载（原 474~548 段）——函数 名(...)/函数
+//   运算符X(...)/函数 ~类名()；含参数列表/父构造初始化列表/返回类型/函数体。
+bool Parser::parseFunctionMember(ClassMember& out) {
     if (check(TokenType::Kw_Function)) {
         advance();  // 消费"函数"
         // 运算符重载（Task 3.7）：函数 运算符X(...)（运算符 为上下文关键字，Identifier）
@@ -546,11 +578,12 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
         }
         return true;
     }
+    return false;
+}
 
-    // ---- 字段声明：[静态] 类型 名称 [= 初始值] ----
-    // 类型：类型关键字/自定义类型名/模板类型（结果<T,E> 等，parseTypeNameEx 支持）
-    if (isTypeKeyword(currentType()) || check(TokenType::Identifier) ||
-        check(TokenType::Kw_Result) || check(TokenType::Kw_Optional)) {
+// 族④：字段声明（原 550~586 段）——[静态] 类型 名称 [= 初始值]；模板类型
+//   （结果<T,E> 等与自定义类型名<）经 parseTypeNameEx 支持。
+bool Parser::parseFieldMember(ClassMember& out) {
         // 模板类型探测：结果< 可选< 与自定义类型名< 形态
         if ((check(TokenType::Kw_Result) || check(TokenType::Kw_Optional)) &&
             peek(1).getType() == TokenType::Less) {
@@ -584,10 +617,6 @@ bool Parser::parseClassMember(ClassMember& out, AccessSpecifier access) {
             }
         }
         return true;
-    }
-
-    reportErrorHere("无法识别的类成员，实际为 '" + current().getValue() + "'");
-    return false;
 }
 
 } // namespace cn_compiler

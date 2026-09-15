@@ -83,6 +83,15 @@ private:
     // 类成员解析：当前访问标签段下的字段/方法/构造/析构/运算符重载/友元（parser_oop.cpp）
     //   返回 true 表示成功解析一个成员并填充 out（带访问标签）
     bool parseClassMember(ClassMember& out, AccessSpecifier access);
+    // ---- parseClassMember 族子方法（186-a 函数级拆分·原 198 行函数）----
+    // 族①：友元声明（友元 函数 名(...) | 友元 类 名）
+    bool parseFriendMember(ClassMember& out);
+    // 族②：方法修饰符循环（虚拟/重写/抽象/常量/静态/不安全）
+    void parseMethodModifiers(ClassMember& out);
+    // 族③：方法/构造/析构/运算符重载（函数 ...）
+    bool parseFunctionMember(ClassMember& out);
+    // 族④：字段声明（[静态] 类型 名称 [= 初始值]）
+    bool parseFieldMember(ClassMember& out);
     std::unique_ptr<ParamDecl> parseParamDecl();        // 参数：类型 名称 或 名称: 类型
     // 模板实参形态探测（Task 3.5/3.8）：当前为 '<'，判断是否为模板尖括号
     //   （类型名 < 类型[,...] >），而非小于比较运算符。lookahead 扫描不消费 token。

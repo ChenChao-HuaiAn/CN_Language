@@ -52,124 +52,68 @@
 - 家机 170-a 成果仍在本地存档分支（未入 develop，用户已裁决由深度机独立实现替代）。
 
 ## 深度机 linux-x86_64 节
-## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百八十五轮（**深度机 linux-x86_64**）——**185-a D1 v2 侧续波：检查赋值语句 178→47 行 ≤100 达标**（基线 422e13f）。本会话 15 个开发轮（170-a 接手 + 172~185-a）。
+**交接时间**: 2026-09-15 第一百八十六轮（**深度机 linux-x86_64**）——**186-a D1 函数级续波：parseClassMember（清单标签「运算符X」）198→47 行 ≤100 达标**（基线 fdbfb02）。本会话 17 个开发轮（170-a 接手 + 172~186-a）。
 
-### 一、本轮（185-a）做了什么（写给无上下文的新会话）
+### 一、本轮（186-a）做了什么（写给无上下文的新会话）
 
-1. **拆分面（左值形态分派·纯搬运零改写）**：`语义检查语句.cn` 的检查赋值语句（178 行）
-   提取为 **2 个族子方法**（同文件）：检查标识符左值赋值（未声明/常量/已转移/常量引用/
-   B10 静态写/A2 字符* 收紧，43 行）/ 检查下标左值形态（字符串下标只读拒/指针下标写
-   B10+数组豁免/字段数组元素可写 97-a，48 行）。主函数收缩为分派+偏移/混合/逃逸/
-   表达式循环 47 行。**多重集核验缺失 0 行**。**D1 计数 63→62**（新首列=
-   `parser_oop.cpp` 运算符X 198）。本轮顺利（方法论组合首次一轮通过）。
-
-### 二、本轮验证（linux-x86_64 口径）
-
-### 二、本轮验证（linux-x86_64 口径）
+1. **拆分面（成员形态分派·纯搬运零改写）**：`parser_oop.cpp` 的 `parseClassMember`（198 行）
+   按成员形态提取为 **4 个族子方法**（parser.hpp +4 声明）：parseFriendMember（友元声明）/
+   parseMethodModifiers（虚拟/重写/抽象/常量/静态/不安全修饰循环）/ parseFunctionMember
+   （方法/构造/析构/运算符重载+参数/父构造初始化/返回类型/函数体）/ parseFieldMember
+   （字段声明+模板类型+初始值）。主函数收缩为成员形态分派 47 行。
+   **D1 计数 62**（parseClassMember 出列）。
+2. 一次构建失败即修正（两处 bool 方法补不可达尾 return false——预防 163 清单预判生效）。
+3. **D1 标签勘误**：check_fn_length 输出的「运算符X」实为 parseClassMember（脚本名字回溯
+   对 parse 类函数不可靠——以区间+构建验证为准）。
 
 ### 二、本轮验证（linux-x86_64 口径）
 
-- 零警告构建 + 单测 **1317/1317**；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**（44 双编译对照全过）
-- **锚定链重锚 395347→395505 行**（fix_p ≡ fix_s 逐字节，md5 `02d691aa…`）——v2 拆分布局变化
-- 170~181-a 轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 /
-  8819c63 / ab75deb / 13f152f 与 plans/019 对应轮次行
+- 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`3bebee1b…`=185-a 版本——宿主
+  纯重构 v2 树零变化）；**锚定链不变**（395505 行，md5 `02d691aa…`）；全量 E2E **306 用例
+  304 过 / 0 失败 / 2 跳**（44 双编译对照全过）
+- 历轮全记录见 git 提交（a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 /
+  8819c63 / ab75deb / 13f152f / 4706dd3）与 plans/019 第一百七十~一百八十五轮行
 
 ### 三、下一轮任务（按序）
 
-1. **D1 续波（修正口径 63 个）**：函数级首列=v2 `语义检查语句.cn` 检查变量声明语句 180 →
-   `语义检查赋值语句` 178 → 宿主 `semantic_builtins.cpp` registerFunction 173 →
-   宿主 `semantic_sig.cpp`/`semantic_types.cpp` 等（清单 `python scripts/check_fn_length.py`）。
+1. **D1 续波（修正口径 62 个）**：函数级首列=宿主 `semantic_builtins.cpp` registerFunction
+   173 → `codegen/reg_alloc.cpp` computeLiveIntervals 178 → v2 `语义检查语句.cn`
+   检查推断声明语句等（清单 `python scripts/check_fn_length.py`）。
    （认领前先 fetch 看板避免撞车。）
-
-### 四、上一轮（181-a）记录（写给无上下文的新会话）
-
-**181-a D1 函数级续波：visitUnaryExpr 204→42 行 ≤100 达标 + 文件级达标**（基线 8c8862e）：
-
-1. **拆分面（switch 薄化·程序化切片重建）**：`semantic_expr_op.cpp` 的 `visitUnaryExpr`（204 行）
-   按操作符 case 提取为 **5 个族子方法**（semantic.hpp +5 声明）：checkUnaryOperatorOverload（P2-14
-   重载·返回 bool）/ checkAddressOfUnary（取地址 &）/ checkDerefUnary（解引用 *·B11/B6 警告）/
-   checkPropagateUnary（错误传播 ?）/ checkIncDecUnary（自增自减）。主 switch 薄化 42 行。
-2. **★整族迁出至新文件 `semantic_expr_unary.cpp`**（269 行·CMakeLists 注册）——visitUnaryExpr
-   函数级拆分使 semantic_expr_op.cpp 1007 行超门禁，整族迁出后 **752/269 双 ≤1000**。
-3. **★组装三次失败→程序化切片重建（lessons 预防 168/169）**：整族段尾锚误用文件尾 namespace 闭合
-   卷入后续函数 500 行、多次盲改累积文件损坏——git checkout 回退后改两步法（第一步文件级纯搬移
-   +v2p md5 不变验证；第二步新文件内程序化切片拆分）成功。
-4. 验证：零警告 + 单测 1317/1317 + v2p md5 不变（324ed472…）+ E2E 306/304/0/2 + 锚定链不变 394959。
-
-### 二、上轮验证（linux-x86_64 口径）
-
-- 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`324ed472…`）；**锚定链不变**（394959 行，
-  md5 `10f24dbb…`）；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**
-- 170~179-a 轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 / 8819c63
-  / ab75deb 与 plans/019 对应轮次行
-
-### 三、上上轮任务（已完成的 181-a 前计划，仅存档）
-
-1. **拆分面（switch 薄化·程序化切片重建）**：`semantic_expr_op.cpp` 的 `visitUnaryExpr`（204 行）
-   按操作符 case 提取为 **5 个族子方法**（semantic.hpp +5 声明）：checkUnaryOperatorOverload（P2-14
-   重载·返回 bool）/ checkAddressOfUnary（取地址 &）/ checkDerefUnary（解引用 *·B11/B6 警告）/
-   checkPropagateUnary（错误传播 ?）/ checkIncDecUnary（自增自减）。主 switch 薄化 42 行。
-2. **★整族迁出至新文件 `semantic_expr_unary.cpp`**（269 行·CMakeLists 注册）——visitUnaryExpr
-   函数级拆分使 semantic_expr_op.cpp 1007 行超门禁，整族迁出后 **752/269 双 ≤1000**。
-3. **★组装三次失败→程序化切片重建（lessons 预防 168/169）**：整族段尾锚误用文件尾 namespace 闭合
-   卷入后续函数 500 行、多次盲改累积文件损坏——git checkout 回退后改两步法（第一步文件级纯搬移
-   +v2p md5 不变验证；第二步新文件内程序化切片拆分）成功。
-
-### 二、本轮验证（linux-x86_64 口径）
-
-### 二、本轮验证（linux-x86_64 口径）
-
-- 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`324ed472…`）；**锚定链不变**（394959 行，
-  md5 `10f24dbb…`）；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**
-- 170~178-a 九轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 /
-  8819c63 与 plans/019 对应轮次行
-
-### 三、下一轮任务（按序）
-
-1. **D1 续波（修正口径 62 个）**：函数级首列=`parser_oop.cpp` 运算符X 198 →
-   宿主 `semantic_builtins.cpp` registerFunction 173 → `codegen/reg_alloc.cpp`
-   computeLiveIntervals 178 → v2 `语义检查语句.cn` 检查推断声明语句等
-   （清单 `python scripts/check_fn_length.py`）。
-   （认领前先 fetch 看板避免撞车。）
-2. **C3 波 3 剩余**：149-a IR diff → 泛化 → 元素级深拷〔前置=波 4〕→ H7/H11 收口。
-3. **联合体条件释放设施专项（登记）**：结果/可选 全释放面（108-a 定位路径）。
-4. 其余登记：D6 / C2（维持排程）/ 波 4 `复制(x)` / 波 7 NLL / D3 / D4。
-5. **跨机轮**：arm64 侧 161~174-a 契约面复验（单位机）。
+2. **C3 波 3 剩余**：甲通道实装（家机 180-a 进行中）→ 用户类字段泛化重试（家机 183-a
+   进行中）→ 元素级深拷〔前置=波 4〕→ H7/H11 收口。
+3. 其余登记：D6 / C2（维持排程）/ 波 4 `复制(x)` / 波 7 NLL / D3 / D4。
+4. **跨机轮**：arm64 侧 161~186-a 契约面复验（单位机）。
 
 ### 四、验证链（本机复现口径）
 
 ```
-> 验证链命令一律串行；**对拍/锚定链必须独立串行且不得相互交错**（102-a 假 DIFF 教训）。
+> 验证链命令一律串行；对拍/锚定链必须独立串行且不得相互交错（102-a 假 DIFF 教训）。
 > **全量门禁**：`rm -rf target/build && cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Debug &&
 > cmake --build target/build -j $(nproc)`（warning=0）→ `./target/cn_unit_tests` →
 > `python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8`（306 用例：304 过/0 败/2 跳）。
-> **D1 度量**：`python scripts/check_fn_length.py`（172-a 已修口径：显式行尾 + 剥字面量配对）。
-> **改 v2 源码的轮次（验证链分野·预防 158）**：v2p 必然变化 → ①行多重集缺失+重复双查（源码级）
-> ②全量 E2E 双编译对照（行为级）③锚定链 fix_p≡fix_s 重锚（自洽级）；asm md5 对拍不适用。
-> **宿主纯重构轮（v2 树零变化）**：证据=①v2p 产物 .s md5 不变（单点强证据）②锚定链不变
-> ③全量 E2E；文件级纯搬运另加「搬移段与原文逐行一致」difflib 核验。
+> **D1 度量**：`python scripts/check_fn_length.py`（172-a 已修口径：显式行尾 + 剥字面量配对；
+> 注意名字回溯对 parse 类函数不可靠——以区间+构建验证为准）。
+> **改 v2 源码的轮次（验证链分野·预防 158）**：v2p 必然变化 → ①行多重集缺失+重复双查
+> ②全量 E2E 双编译对照 ③锚定链 fix_p≡fix_s 重锚；asm md5 对拍不适用。
+> **宿主纯重构轮（v2 树零变化）**：证据=①v2p 产物 .s md5 不变 ②锚定链不变 ③全量 E2E；
+> 文件级纯搬运另加「搬移段与原文逐行一致」difflib 核验。
 > **对拍脚本（编译器逻辑结构有改动的重构轮）**：`python3 scripts/refactor_parity.py
-> target/cn_<轮>base target/cn_<轮>new`——对拍二进制必须放 target/ 下（stdlib 兜底上溯；预防 156）；
+> target/cn_<轮>base target/cn_<轮>new`——对拍二进制必须放 target/ 下（预防 156）；
 > 基线构建须编辑冻结态（预防 155）。
-> **手工 v2p 重建**：`target/cn build $PWD/CN语言编译器v2/主.cn --target linux-x86_64 --output <路径>`
-> （v2 树已全 LF；入口绝对路径）。
-> **远程推送现状（2026-09-15 实测）**：gitcode 正常；github remote 已配置但**本机无任何凭据**
->（无 ssh 密钥/gh CLI/credential store/.netrc，非交互 push 直接失败）——镜像推送待用户配置凭据或他机代推。
+> **远程推送现状（2026-09-15 实测）**：gitcode 正常；github remote 已配置但本机无任何凭据
+> （ssh/gh/credential store/.netrc 全缺）——镜像推送待用户配置 token 或他机代推。
 ```
 
 ### 五、诚实边界
 
-- **D1 台账口径修正（172-a）**：166~171-a 期间 v2 侧超百行函数行数系 universal newlines 虚高口径
-  （约一倍），已在 plans/021 §3-D/§5 与脚本三处修正；宿主侧数字不受影响。
-- 173-a/174-a 的等价性证据为「v2p md5 不变 + 锚定链不变 + E2E 全绿 + 搬移段逐行一致」四件——未跑
-  refactor_parity.py 全量对拍（两轮=成员函数实现跨 TU 搬移、逻辑零变化，v2p 最复杂输入已逐字节
-  一致；如需更强证据可后补，脚本与基线二进制 target/cn_173base、cn_174base 保留）。
-- github 镜像自 170-a 起未推送（本机无凭据：ssh/gh/credential store/.netrc 全缺）——170~174-a 五轮
-  待补推；**需用户配置 GitHub 凭据（personal access token）或由有凭据的机器代推**（170~181-a 十一轮待补推）。
-
-
+- **D1 台账口径修正（172-a）**：166~171-a 期间 v2 侧超百行函数行数系 universal newlines
+  虚高口径（约一倍），已在 plans/021 §3-D/§5 与脚本三处修正；宿主侧数字不受影响。
+- **181-a 程序化切片重建方法论**（预防 168/169）与 **178/179 轮包装行清单**（预防 163/171）
+  为本会话 D1 拆分的核心教训，后续拆分轮必须遵守。
+- github 镜像自 170-a 起未推送（本机无凭据）——170~186-a 十六轮待补推。
+- 探针/对拍临时件：/tmp/p170*、/tmp/p172*、/tmp/p184*、/tmp/p186*（不入库）。
 
 ## 单位机 ARM64 节
 
