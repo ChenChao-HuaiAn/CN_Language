@@ -29,6 +29,8 @@ struct DriverOptions {
     // 239-a：发布构建旗标（--发布）——内建编译期常量 调试模式 的取值依据
     //   （默认=调试构建（调试模式=真）；--发布 时 调试模式=假）
     bool releaseMode = false;
+    // 242-a（D13）：build/compile 强制入口 主 函数检查（check 允许检查库组件不强制）
+    bool requireEntryMain = false;
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关
     //   useRegAlloc：-O2 及以上默认启用（可被 --no-regalloc 关闭）；-O0/-O1 恒 false
     //   debugInfo：--debug 开启，汇编中嵌入源码位置注释

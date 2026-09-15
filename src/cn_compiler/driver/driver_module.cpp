@@ -518,6 +518,31 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         program->loadedModules.push_back(dep.name);
     }
 
+    // 3.5（241-a 立 D13·242-a 根治）：入口主函数缺失编译期诊断——
+    //   合并后的入口模块顶层若没有 主 函数，编译期即报错（原静默到链接期
+    //   才爆 LNK2019 cn_main）。入口模块=拓扑排序最后一个（入口最后）；
+    //   库模块无 主 不参与判定。
+    {
+        // 注意：mergeModules 以 release() 摘除各 unit 的声明（原 unit->ast 数组
+        //   留空壳）——入口判定必须遍历合并后的 program，不能回看 unit->ast。
+        const bool requireMain = options.requireEntryMain;  // 242-a：check 库组件不强制主
+        bool hasMain = !requireMain;
+        for (auto& d : program->declarations) {
+            if (d != nullptr && d->name == "主") { hasMain = true; break; }
+        }
+        if (!hasMain) {
+            std::string entryName = "主";
+            for (module::ModuleUnit* u : ordered) {
+                if (u != nullptr && u->isEntryUnit) { entryName = u->moduleName; break; }
+            }
+            diagnostics.report(DiagnosticLevel::Error, program->location,
+                               "入口模块 '" + entryName +
+                                   "' 未定义入口函数 主（程序入口必须为 函数 主()）");
+            std::cerr << diagnostics.format();
+            return 1;
+        }
+    }
+
     // 4. 语义分析（符号表/类型检查/类解析/错误码传播）
     SemanticAnalyzer semantic(diagnostics);
     // 239-a：内建编译期常量 调试模式 取值（--发布=假）

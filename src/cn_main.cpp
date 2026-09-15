@@ -688,6 +688,8 @@ static int buildExe(const CliOptions& options, const std::string& file,
         return 1;
     }
     cn_compiler::driver::PipelineOutput output;
+    // 242-a（D13）：build 强制入口 主 函数（编译期诊断）
+    dopts.requireEntryMain = true;
     // 入口文件转 UTF-8 传给 driver（依赖查找/模块名判定统一 UTF-8；
     //   工具链路径保持 GBK file——ml64/link 按 ANSI 解释中文名）
     if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
@@ -793,6 +795,8 @@ static int runCompile(const CliOptions& options, const std::string& file) {
     cn_compiler::driver::PipelineOutput output;
     // Task 3.6：compile 命令走多文件流水线（自动加载导入依赖）；
     //   入口文件转 UTF-8（依赖查找/模块名判定统一 UTF-8）
+    // 242-a（D13）：compile 同 build 强制入口 主 函数
+    dopts.requireEntryMain = true;
     if (cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output) != 0) {
         return 1;
     }
