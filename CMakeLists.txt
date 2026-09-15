@@ -107,14 +107,6 @@ add_library(cn_compiler_lexer STATIC
 )
 target_link_libraries(cn_compiler_lexer PUBLIC cn_compiler_common)
 
-# 类型系统基础层库（235-a 案戊阶段1：自 semantic/ 下沉 types/——被四层共享的纯数据+查询层，
-#   供语义/IR/后端/语法共用；依赖方向自此单向：types 只依赖 common）
-add_library(cn_compiler_type_system STATIC
-    src/cn_compiler/types/type_system.cpp
-)
-target_include_directories(cn_compiler_type_system PUBLIC ${CMAKE_SOURCE_DIR}/src)
-target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
-
 # 语法模块库：AST节点定义 + 语法分析器（Task 1.3 + Task 1.4，供编译器与单元测试共用）
 # 单文件 <=1000 行约束：parser.cpp 拆分为 4 个模块——
 #   parser.cpp（基础辅助+类型+声明+主入口）、parser_oop.cpp（类/接口/导入/泛型）、
@@ -127,7 +119,14 @@ add_library(cn_compiler_parser STATIC
     src/cn_compiler/parser/parser_stmt.cpp
     src/cn_compiler/parser/parser_expr.cpp
 )
-target_link_libraries(cn_compiler_parser PUBLIC cn_compiler_lexer cn_compiler_common cn_compiler_type_system)
+target_link_libraries(cn_compiler_parser PUBLIC cn_compiler_lexer cn_compiler_common)
+
+# 类型系统子模块库：类型工具（Task 2.3，供语义分析器与IR生成器共用）
+add_library(cn_compiler_type_system STATIC
+    src/cn_compiler/semantic/type_system.cpp
+)
+target_include_directories(cn_compiler_type_system PUBLIC ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(cn_compiler_type_system PUBLIC cn_compiler_common)
 
 # 语义模块库：语义分析器（Task 1.5 + Task 2.3 类型系统 + 阶段3 OOP/错误处理/泛型，
 #   按职责拆分子模块：class_resolver/error_analysis/generics，供编译器与单元测试共用）

@@ -13,7 +13,7 @@
 #include "cn_compiler/parser/ast.hpp"
 #include "cn_compiler/parser/parser.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
-#include "cn_compiler/types/type_system.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
 
 using cn_compiler::Diagnostics;
 using cn_compiler::Lexer;

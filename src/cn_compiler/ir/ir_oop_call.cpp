@@ -23,7 +23,7 @@
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
-#include "cn_compiler/types/type_system.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -57,7 +57,7 @@ int IRGenerator::containerInsertValueArgIndex(const std::string& name) {
 
 bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
     // 77-a（第七十七轮）：判定上提 types:: 共享（语义层借出视图生命周期检查
-    //   同一口径），此处委托调用——原实现与完整注释见 types/type_system.cpp
+    //   同一口径），此处委托调用——原实现与完整注释见 semantic/type_system.cpp
     //   （含 76-a 集合扩面、嵌套形态严格口径两处沿革）。
     return types::isStringElemContainer(canonClass);
 }
@@ -68,7 +68,7 @@ bool IRGenerator::isStringElemContainer(const std::string& canonClass) {
 //   背景（探针 76-F 实证）：映射析构/清空会释放值槽句柄——不归一化=借用来源
 //   （形参/局部）句柄浅存 → 容器析构释放调用方串（UAF，74-a 缺陷①在映射上的重演）。
 bool IRGenerator::isStringValuedMap(const std::string& canonClass) {
-    // 77-a：同 上提 types::（原实现与沿革注释见 types/type_system.cpp）。
+    // 77-a：同 上提 types::（原实现与沿革注释见 semantic/type_system.cpp）。
     return types::isStringValuedMap(canonClass);
 }
 

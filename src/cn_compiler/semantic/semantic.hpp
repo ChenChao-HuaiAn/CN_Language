@@ -19,7 +19,7 @@
 
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/parser/ast.hpp"
-#include "cn_compiler/types/type_system.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -541,7 +541,7 @@ private:
     void wrapRefArgs(CallExpr* node, const std::vector<std::string>& paramTypes);
 
     // ==================== 类型工具（静态，委托 type_system 子模块 Task 2.3） ====================
-    // 类型工具抽取到 types/type_system.hpp 子模块（types::命名空间），
+    // 类型工具抽取到 semantic/type_system.hpp 子模块（types::命名空间），
     // 语义与IR共用同一套类型逻辑（别名规范化/位宽秩/隐式转换），避免双实现不一致
     static bool isNumeric(const std::string& type) { return types::isNumeric(type); }
     static bool isInteger(const std::string& type) { return types::isInteger(type); }
