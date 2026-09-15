@@ -40,7 +40,7 @@ refactor_parity 不适用）。产物=use target/p183win/（探针/对比 v2p/�
 rebase 远程 184~192-a 后 win 复验 E2E 115/235/245 三败 → bisect+asm diff 定位=**190-a 拆分
 `computeLiveIntervals` 时把「第二遍：跨块活跃扩展」错位到 return 之后=死代码**（活功能静默丢失；
 v2p md5 假绿；MSVC /WX 拦 C4702 才暴露）。修复=移回 return 之前（`reg_alloc.cpp` in/blockDef/n 恢复；
-hpp 声明同步）。**第一轮「当死代码删」的错误定性被 E2E 三败纠正**（lessons 预防 178~180）。
+hpp 声明同步）。**第一轮「当死代码删」的错误定性被 E2E 三败纠正**（lessons 预防 186~188）。
 修复后三用例+282 全 PASS+单测 1325/1325+零警告。**深度机注意：190-a 的「纯搬运」定性不成立，
 其行已由家机在 plans/019 §7.1 追加补记（§8.3 提交说明报备）。**
 
