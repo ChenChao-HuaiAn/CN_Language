@@ -311,9 +311,13 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
             }
         }
     }
-    return intervalMap;
     // 第二遍：跨块活跃扩展——块入口 in 集合中、且在该块内未被 def 的寄存器，
-    //   其 end 延伸到该块出口序数（保证跨块使用被覆盖）
+    //   其 end 延伸到该块出口序数（保证跨块使用被覆盖）。
+    //   ★183-a 复验根治（win 合并重建 E2E 115/235/245 三败定位）：190-a 拆分时
+    //   本段被组装脚本错位到 return 之后=死代码（GCC 不报 C4702、MSVC /WX 拦截
+    //   才暴露；「v2p md5 不变」系 v2 树恰无跨块活跃形态=假绿）——跨块活跃扩展
+    //   静默丢失→寄存器被提前回收重分配→运行行为改变。本轮移回 return 之前
+    //   （完成 190-a 本意的纯搬运落位）；以「190-a 前基线 E2E 全绿」为等价锚。
     for (std::size_t b = 0; b < n; ++b) {
         if (in[b].empty()) continue;
         const int blockStart = blockRanges[b].first;
@@ -328,6 +332,7 @@ std::unordered_map<int, LiveInterval> LinearScanAllocator::buildLiveIntervalMap(
             }
         }
     }
+    return intervalMap;
 }
 
 // 线性扫描主循环：按 start 升序扫描，活跃集合按 end 小顶堆
