@@ -4113,3 +4113,13 @@ plans/016 第七节（实施结果+八项差异清单）；形态 A 契约与 wi
     - **（新增 206）放开「共享判据函数」前必须跑单测看锁定面**：`opt_common.hpp` 的 `isIntType`/白名单等被多 pass 共用——加一个类型=同时放开 N 个 pass 的行为面；**改前先 grep 消费点 + 改后立即跑单测**（本轮 2 个单测即时拦截，避免了静默扩大优化面）。需要单点放开时**在消费侧单独判**（本轮即收窄为 `foldIntBinary` 内部判 i128）。
     - **（新增 207）IR 值模型的「地址 vs 值」决定优化可行性**：写常量折叠/恒等式/传播类 pass 前，**先确认操作数是「常量值」还是「槽地址」**——整数/浮点=内联常量或 Const 指令寄存器（可追踪）；**i128=双槽地址（值在内存里）**、结构体=值语义地址——**后者需 mem2reg/SROA 值化**（=F1-26）才能折叠。**「实测不生效 → 撤销 + 根因登记」是本项目的正确交付**（不留未生效代码、不假装完成）。
   - **权重**: 4（单测即时拦截放大的行为面 × i128 值模型根因（转依赖 F1-26）× 交付纪律再验证）
+
+## 第两百二十九轮踩坑（2026-09-15，家机 win-x64：229-a F1-30-ASan——构建接入 + 单测面检出）
+
+- [2026-09-15 第两百二十九轮] **问题类型**: ①**ASan 选项块的 CMake 位置决定成败**——首版把 `option(CN_ENABLE_ASAN)` 块放在「编译警告」区（第 74+ 行·**gtest target 定义之后**）→ gtest 无 ASan STL 注解而主目标有 → 链接 **LNK2038（annotate_string/vector/optional 不匹配）6 项**；移到**所有 target 定义之前**后一次通过（`add_compile_options` 只影响**其后**定义的 target）。同轮另一处：从原位置**删除块时块边界算错**（`endif` 配对漏删一个）→ `CMakeLists.txt:94 (endif)` 配置失败——**删 CMake 块须核对 `endif/if` 配对**。②**两构建共用输出目录**——`CMAKE_RUNTIME_OUTPUT_DIRECTORY=target/` 使 ASan 构建与普通构建**输出到同一 `target/Debug`** → ASan 产物覆盖普通产物（混用后重建报 `LNK1319 237 项不匹配`）→ **恢复流程=清理 `target/Debug/*.{exe,lib,exp}` 后重建**。③**ASan 与「分配失败测试」的语义冲突**——`AllocFailureReturnsNull` 故意请求 `0x7fffffffffffffff` 字节（验证分配失败返回 null），ASan 默认对超大分配 **abort** → 该单测在 ASan 下必然「失败」；**标准解法=`ASAN_OPTIONS=allocator_may_return_null=1`**（非缺陷、非改测试）。
+  - **预防**:
+    - **（新增 208）CMake 全局选项块的位置=target 定义之前**：`add_compile_options`/`add_link_options` 只作用于**其后**定义的 target——**gtest/第三方与主目标若一个带 ASan 一个不带 → LNK2038 注解不匹配**；**CMake 块删除后用 `cmake -S . -B <新目录>` 最小验证**（配置阶段即暴露 `endif` 配对错），不要等到构建。
+    - **（新增 209）多配置构建共享输出目录的覆盖风险**：同一 RUNTIME_OUTPUT_DIRECTORY 下，**任何实验性构建（ASan/Release/特殊 flags）都会覆盖正式产物**——实验后**必须重建正式构建**；混用产物的典型症状=`LNK1319 不匹配项`（obj 注解/lib 版本混杂）→ 清理对应输出目录的 `*.exe/*.lib/*.exp` 后重建。
+    - **（新增 210）检测工具与测试语义的冲突按「工具选项」化解**：ASan 的 abort-on-huge-alloc vs 「分配失败返回 null」测试 → 用 `ASAN_OPTIONS=allocator_may_return_null=1`（**不改测试、不改被测代码**）；同理 MSVC ASan **无 LeakSanitizer**（Windows 限制）→ 泄漏检出面须由 Linux ASan（`detect_leaks=1`）或 valgrind 承担（深度机 225-a 已在用）——**工具的检出面=诚实边界，须显式登记**。
+  - **权重**: 4（CMake 位置/块边界两连坑 × 输出目录覆盖 × 检测工具语义冲突 + 边界登记）
+

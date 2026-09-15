@@ -17,6 +17,27 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target)
 
+# F1-30-ASan（229-a）：可选 AddressSanitizer 构建——开发期内存错误检测（泄漏/越界/UAF；
+#   与 valgrind 同族但编译期插桩，开销 ~2x vs ~20x）。默认 OFF=发布构建零影响。
+#   开启：cmake -S . -B target/build-asan -DCN_ENABLE_ASAN=ON
+#   ★位置要求：必须在**所有 target 定义之前**（add_compile_options 只影响其后的 target；
+#   否则 gtest 无 ASan 注解而主目标有 → LNK2038 STL 注解不匹配）。
+option(CN_ENABLE_ASAN "启用 AddressSanitizer（开发期内存错误检测构建）" OFF)
+if(CN_ENABLE_ASAN)
+    if(MSVC)
+        # /fsanitize=address 与 /RTC1（Debug 默认运行时检查）互相冲突 —— 显式移除
+        string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+        string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+        add_compile_options(/fsanitize=address)
+        add_link_options(/INCREMENTAL:NO)
+        message(STATUS "[CN] ASan 已启用（MSVC /fsanitize=address）")
+    else()
+        add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+        add_link_options(-fsanitize=address)
+        message(STATUS "[CN] ASan 已启用（-fsanitize=address）")
+    endif()
+endif()
+
 # Google Test：优先使用系统安装，否则使用本地第三方源码构建
 # （环境可能无外网，FetchContent 拉取 github 会失败，故回退到本地 third-party 源码）
 find_package(GTest QUIET)
