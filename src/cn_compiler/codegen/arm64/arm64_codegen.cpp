@@ -16,7 +16,7 @@
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/types/type_system.hpp"
 
 namespace cn_compiler {
 

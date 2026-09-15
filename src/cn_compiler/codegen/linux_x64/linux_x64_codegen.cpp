@@ -22,7 +22,7 @@
 
 #include "cn_compiler/codegen/linux_x64/linux_x64_codegen.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
-#include "cn_compiler/semantic/type_system.hpp"
+#include "cn_compiler/types/type_system.hpp"
 
 namespace cn_compiler {
 
