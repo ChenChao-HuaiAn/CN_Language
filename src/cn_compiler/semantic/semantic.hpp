@@ -153,6 +153,9 @@ public:
     // 构造函数：绑定诊断引擎引用
     explicit SemanticAnalyzer(Diagnostics& diagnostics) : diagnostics_(diagnostics) {}
 
+    // 239-a：内建编译期常量 调试模式 的取值（true=发布构建→调试模式=假）
+    void setBuiltinReleaseMode(bool release) { builtinReleaseMode_ = release; }
+
     // 主入口：分析程序AST，返回是否成功（无错误）
     bool analyze(Program* program);
 
@@ -867,7 +870,8 @@ private:
     void checkGenericConstraint(const std::string& argType, const std::string& constraint,
                                 const SourceLocation& loc);
     // ==================== 成员状态 ====================
-    Diagnostics& diagnostics_;                     // 诊断引擎引用
+    Diagnostics& diagnostics_;
+    bool builtinReleaseMode_ = false;  // 239-a：发布构建旗标（内建常量 调试模式 取值）                     // 诊断引擎引用
     std::unordered_map<std::string, FunctionInfo> functions_;   // 函数符号表
     // ---- crate 模型（第 4 层）----
     // 签名 key -> 已注册该签名的模块名集合（跨模块同名函数允许；限定调用验证用）

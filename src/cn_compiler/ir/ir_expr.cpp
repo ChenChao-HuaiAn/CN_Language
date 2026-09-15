@@ -186,6 +186,10 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                 if (strVal.size() >= 2) strVal = strVal.substr(1, strVal.size() - 2);
                 lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr", strVal,
                                        node->location);
+            } else if (constText == "真" || constText == "假") {
+                // 239-a：布尔常量（内建 调试模式 等）——纯值返回不发射指令（对齐
+                //   BoolLiteral 形态）：isConstant 使 如果(常量) 走 genIfConst 直取
+                lastExpr_ = ir::IRValue::constant(constText, "i1");
             } else if (constText.find_first_of(".eE") != std::string::npos) {
                 lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, "f64", constText,
                                        node->location);

@@ -692,6 +692,15 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             }
         }
     }
+    // 239-a：内建编译期常量 调试模式（规格书 3.8）——
+    //   默认（调试构建）=真；--发布（builtinReleaseMode_）=假。
+    //   在用户顶层常量注册之后注入：用户同名常量已登记时跳过（用户定义优先），
+    //   避免静默覆盖；引用处经 checkConstIdentifier 常量折叠+IR 常量直取，
+    //   如果(调试模式) 走普通 if（两分支均过语义检查），死分支由 IR 常量条件直取消除。
+    if (globalConstValues_.find("调试模式") == globalConstValues_.end()) {
+        globalConstValues_["调试模式"] = builtinReleaseMode_ ? "假" : "真";
+        declareVar("调试模式", "自动", node->location);
+    }
 }
 // 族⑥：第二趟a/b/c（原 652~683 段）——类方法体检查 + 函数体检查 +
 //   实例化泛型类方法体补查。

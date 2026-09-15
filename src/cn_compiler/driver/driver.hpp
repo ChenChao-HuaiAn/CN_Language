@@ -26,6 +26,9 @@ struct DriverOptions {
     bool verbose = false;            // 详细输出
     // Task 6.6 条件编译：命令行注入宏（-D 宏名），供 #如果定义 判定
     std::unordered_set<std::string> macros;  // 注入宏集合
+    // 239-a：发布构建旗标（--发布）——内建编译期常量 调试模式 的取值依据
+    //   （默认=调试构建（调试模式=真）；--发布 时 调试模式=假）
+    bool releaseMode = false;
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关
     //   useRegAlloc：-O2 及以上默认启用（可被 --no-regalloc 关闭）；-O0/-O1 恒 false
     //   debugInfo：--debug 开启，汇编中嵌入源码位置注释

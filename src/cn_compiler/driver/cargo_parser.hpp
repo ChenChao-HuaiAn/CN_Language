@@ -25,6 +25,9 @@ struct CargoConfig {
     std::string name;                         // 包（crate）名（[货舱] 名称，可选）
     std::string version;                      // 语义化版本（[货舱] 版本，可选）
     std::vector<CargoDependency> deps;        // [依赖] 声明列表
+    // 239-a（规格书 4.7 特性声明制）：[特性] 节 启用 = ["名1", "名2"]——
+    //   声明并启用的特性名集合（条件编译旗标，编译期并入注入宏集合）
+    std::vector<std::string> features;
 
     // 按依赖名查找（未找到返回 nullptr）
     const CargoDependency* findDependency(const std::string& depName) const;

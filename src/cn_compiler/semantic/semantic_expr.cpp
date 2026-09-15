@@ -147,6 +147,8 @@ bool SemanticAnalyzer::checkConstIdentifier(IdentifierExpr* node) {
             // 字符串字面量（含引号）-> 字符串；含 . / e / E -> 浮点；否则整数
             if (constText.front() == '"' || constText.front() == '\'') {
                 lastType_ = "字符串";
+            } else if (constText == "真" || constText == "假") {
+                lastType_ = "布尔";  // 239-a：内建常量 调试模式（布尔值文本）
             } else if (constText.find_first_of(".eE") != std::string::npos) {
                 lastType_ = "浮64";
             } else {
@@ -161,6 +163,8 @@ bool SemanticAnalyzer::checkConstIdentifier(IdentifierExpr* node) {
         // 字符串字面量（含引号）-> 字符串；含 . / e / E -> 浮点；否则整数
         if (!text.empty() && (text.front() == '"' || text.front() == '\'')) {
             lastType_ = "字符串";
+        } else if (text == "真" || text == "假") {
+            lastType_ = "布尔";  // 239-a：内建常量 调试模式（布尔值文本）
         } else if (text.find_first_of(".eE") != std::string::npos) {
             lastType_ = "浮64";
         } else {

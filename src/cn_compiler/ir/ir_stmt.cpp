@@ -186,8 +186,15 @@ void IRGenerator::visitCaseLabel(CaseLabel* node) {
 void IRGenerator::visitDefaultLabel(DefaultLabel* node) {
     (void)node;
 }
-void IRGenerator::genIf(IfStmt* node) {
-    ir::IRValue cond = genExpr(node->condition.get());
+void IRGenerator::genIf(IfStmt* node, const ir::IRValue* preCond) {
+    ir::IRValue cond = (preCond != nullptr) ? *preCond : genExpr(node->condition.get());
+    // 239-a（规格书 3.8）：条件为编译期 i1 常量 → 常量直取路径
+    //   （死分支不生成 IR；两分支均已经过语义检查——普通如果语义）
+    if (cond.isConstant && cond.type == "i1" &&
+        (cond.extra == "真" || cond.extra == "假")) {
+        genIfConst(node, cond);
+        return;
+    }
     std::string thenLabel = "bb" + std::to_string(blockCounter_++);
     std::string elseLabel = "bb" + std::to_string(blockCounter_++);
     std::string endLabel = "bb" + std::to_string(blockCounter_++);
@@ -208,6 +215,50 @@ void IRGenerator::genIf(IfStmt* node) {
     }
     if (!currentBlock_->terminated) endJump(endLabel);
     // 汇合块
+    setCurrentBlock(newBlock(endLabel));
+}
+// 239-a：编译期常量条件的如果链直取——
+//   仅当条件为编译期 i1 常量时进入。真 → 只生成 then 体；
+//   假 → then 不生成（死分支的块/字面量/字符串常量登记全部不发生，
+//   与词法裁剪产物等价），沿 否则如果 链继续判定；链项非常量时
+//   常规生成（条件已求值经 preCond 复用，不重复发射）。
+void IRGenerator::genIfConst(IfStmt* node, const ir::IRValue& cond) {
+    // 块不变量纪律：当前块（判定点所在块）必须显式终结后才能切入新块。
+    const std::string endLabel = "bb" + std::to_string(blockCounter_++);
+    if (cond.extra == "真") {
+        const std::string thenLabel = "bb" + std::to_string(blockCounter_++);
+        endJump(thenLabel);  // 终结判定块
+        setCurrentBlock(newBlock(thenLabel));
+        if (node->thenBranch != nullptr) genBlock(node->thenBranch.get());
+        if (!currentBlock_->terminated) endJump(endLabel);
+        setCurrentBlock(newBlock(endLabel));
+        return;
+    }
+    // 常量假：否则侧
+    if (node->elseBranch == nullptr) {
+        endJump(endLabel);  // 无否则体：直接进汇合块
+        setCurrentBlock(newBlock(endLabel));
+        return;
+    }
+    if (node->elseBranch->getType() == NodeType::IfStmt) {
+        IfStmt* next = static_cast<IfStmt*>(node->elseBranch.get());
+        // 链判定在当前块继续（不终结——递归分支层负责终结）
+        ir::IRValue nextCond = genExpr(next->condition.get());
+        if (nextCond.isConstant && nextCond.type == "i1" &&
+            (nextCond.extra == "真" || nextCond.extra == "假")) {
+            genIfConst(next, nextCond);
+            return;
+        }
+        // 链项非常量：从该项起常规分派（条件已求值，复用；
+        //   genIf 常规体 endBranch 负责终结当前块）
+        genIf(next, &nextCond);
+        return;
+    }
+    const std::string elseLabel = "bb" + std::to_string(blockCounter_++);
+    endJump(elseLabel);  // 终结判定块
+    setCurrentBlock(newBlock(elseLabel));
+    genBlock(static_cast<BlockStmt*>(node->elseBranch.get()));
+    if (!currentBlock_->terminated) endJump(endLabel);
     setCurrentBlock(newBlock(endLabel));
 }
 void IRGenerator::genWhile(WhileStmt* node) {

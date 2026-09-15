@@ -70,8 +70,39 @@ const CargoDependency* CargoConfig::findDependency(const std::string& depName) c
     return nullptr;
 }
 
+// 解析 TOML 字符串数组值：["名1", "名2"]（239-a [特性] 启用 用）。
+//   提取方括号内全部双引号字符串（逗号/空白分隔；空数组 [] 合法）。
+//   失败返回 false 并写 error。
+bool parseQuotedArray(const std::string& line, std::vector<std::string>& out,
+                      std::string& error) {
+    const std::size_t open = line.find('[');
+    if (open == std::string::npos) {
+        error = "值应为字符串数组 [\"名\", ...]: " + line;
+        return false;
+    }
+    const std::size_t close = line.find(']', open);
+    if (close == std::string::npos) {
+        error = "数组缺少 ]: " + line;
+        return false;
+    }
+    std::string body = line.substr(open + 1, close - open - 1);
+    std::size_t pos = 0;
+    while (true) {
+        const std::size_t first = body.find('"', pos);
+        if (first == std::string::npos) break;
+        const std::size_t last = body.find('"', first + 1);
+        if (last == std::string::npos) {
+            error = "数组元素缺少结束引号: " + line;
+            return false;
+        }
+        out.push_back(body.substr(first + 1, last - first - 1));
+        pos = last + 1;
+    }
+    return true;
+}
+
 // 解析 货舱.toml 文本（TOML 子集）：
-//   [货舱]  -> 名称/版本；[依赖] -> 名称 = "版本"
+//   [货舱]  -> 名称/版本；[依赖] -> 名称 = "版本"；[特性] -> 启用 = ["名", ...]
 // 未知节/未知键忽略（宽容扩展）；[依赖] 中 键 = "值" 每行一个依赖。
 bool parseCargoToml(const std::string& text, CargoConfig& out, std::string& error) {
     out = CargoConfig();  // 重置（幂等解析）
@@ -116,6 +147,11 @@ bool parseCargoToml(const std::string& text, CargoConfig& out, std::string& erro
             // 其他键忽略（宽容）
         } else if (section == "依赖") {
             out.deps.push_back(CargoDependency{key, value});
+        } else if (section == "特性") {
+            // 239-a：启用 = ["名1", "名2"]（其余键宽容忽略）
+            if (key == "启用") {
+                if (!parseQuotedArray(valueLine, out.features, error)) return false;
+            }
         }
         // 其他节忽略（宽容扩展，如 [构建] 等）
     }

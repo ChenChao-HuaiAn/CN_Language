@@ -48,6 +48,8 @@ int runPipeline(const std::string& source, const std::string& fileName,
 
     // 3. 语义分析
     SemanticAnalyzer semantic(diagnostics);
+    // 239-a：内建编译期常量 调试模式 取值（--发布=假）
+    semantic.setBuiltinReleaseMode(options.releaseMode);
     if (!semantic.analyze(output.program.get())) {
         std::cerr << diagnostics.format();
         return 1;
@@ -138,6 +140,8 @@ int runCheck(const std::string& source, const std::string& fileName,
     }
 
     SemanticAnalyzer semantic(diagnostics);
+    // 239-a：内建编译期常量 调试模式 取值（--发布=假）
+    semantic.setBuiltinReleaseMode(options.releaseMode);
     if (!semantic.analyze(program.get())) {
         std::cerr << diagnostics.format();
         return 1;

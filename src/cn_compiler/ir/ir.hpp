@@ -465,7 +465,9 @@ private:
     ir::IRValue lookupVar(const std::string& name);
 
     // ==================== 控制流 ====================
-    void genIf(IfStmt* node);                   // 如果/否则如果/否则
+    void genIf(IfStmt* node, const ir::IRValue* preCond = nullptr);  // 如果/否则如果/否则
+    // 239-a：编译期常量条件直取（条件为 i1 常量时死分支不生成 IR）
+    void genIfConst(IfStmt* node, const ir::IRValue& cond);
     void genWhile(WhileStmt* node);             // 当循环
     void genFor(ForStmt* node);                 // 循环（for风格/无限）
     void genSwitch(SwitchStmt* node);           // 选择语句（级联条件跳转）

@@ -520,6 +520,8 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
 
     // 4. 语义分析（符号表/类型检查/类解析/错误码传播）
     SemanticAnalyzer semantic(diagnostics);
+    // 239-a：内建编译期常量 调试模式 取值（--发布=假）
+    semantic.setBuiltinReleaseMode(options.releaseMode);
     if (!semantic.analyze(program.get())) {
         std::cerr << diagnostics.format();
         return 1;

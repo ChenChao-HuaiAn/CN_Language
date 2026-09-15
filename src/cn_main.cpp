@@ -42,6 +42,7 @@ struct CliOptions {
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息
     bool useRegAlloc = true;         // 是否启用寄存器分配（-O2 起联动；--no-regalloc 显式关闭）
     bool debugInfo = false;          // 是否嵌入源码位置注释（--debug）
+    bool releaseMode = false;        // 239-a：发布构建（--发布/--release）——内建常量 调试模式=假
     bool verifyIr = false;           // 是否验证 IR 结构不变量（--验证-ir，B-4）
     bool useCfi = false;             // P3/D4：接口间接调用 CFI 校验（--cfi，默认关保性能）
     // Task 6.6 条件编译：命令行注入宏（-D 宏名，可多次；#如果定义 判定用）
@@ -79,8 +80,8 @@ void printHelp() {
     std::cout << "  --opt <级别>           优化级别 (0 | 1 | 2 | 3)（兼容写法，等价 -O<级别>）\n";
     std::cout << "  --no-regalloc          关闭寄存器分配（阶段C：-O2 起默认启用，保持全栈帧）\n";
     std::cout << "  --debug                汇编中嵌入源码位置注释（阶段C 调试信息）\n";
-    std::cout << "  --验证-ir              优化前后验证 IR 结构不变量（规格书9.3，B-4；ASCII 别名 --verify-ir）\n";
-    std::cout << "  --cfi                  接口间接调用控制流完整性校验（目标∈已知实现表，默认关保性能）\n";
+    std::cout << "  --发布 | --release     发布构建（内建常量 调试模式=假；规格书 3.8）\n";
+
     std::cout << "  --output <路径>        输出文件路径\n";
     std::cout << "  --verbose              详细输出\n";
     // 模块系统 v2.0 第 5 层（规格书09）：货舱.toml 依赖管理
@@ -124,6 +125,14 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
         } else if (current == "--debug") {
             // 阶段C（Task 4.4）：汇编中嵌入源码位置注释
             options.debugInfo = true;
+        } else if (current == "--发布" || current == "--release") {
+            // 239-a（规格书 3.8）：发布构建旗标——内建编译期常量 调试模式 取 假
+            //   （ASCII 别名同 --验证-ir 先例：Windows argv GBK 乱码兜底）
+            options.releaseMode = true;
+        } else if (current == "--发布" || current == "--release") {
+            // 239-a（规格书 3.8）：发布构建旗标——内建编译期常量 调试模式 取 假
+            //   （ASCII 别名同 --验证-ir 先例：Windows argv GBK 乱码兜底）
+            options.releaseMode = true;
         } else if (current == "--验证-ir" || current == "--verify-ir") {
             // B-4（2026-08，规格书9.3）：优化前后验证 IR 结构不变量
             // （--verify-ir 为 ASCII 别名：Windows argv 为 GBK 编码，
@@ -374,6 +383,12 @@ static bool applyCargoConfig(const CliOptions& options, const std::string& file,
     dopts.hasCargoConfig = true;
     dopts.cargoConfig = config;
     dopts.cargoDir = pathDirPart(tomlPath);
+    // 239-a（规格书 4.7 特性声明制）：货舱 [特性] 启用名单并入注入宏集合——
+    //   每个启用特性即一个条件编译旗标（#如果定义(名) 命中），
+    //   与命令行 -D 同通道；未启用特性不在集合（裁剪为假分支）。
+    for (const std::string& feature : config.features) {
+        dopts.macros.insert(feature);
+    }
     return true;
 }
 
@@ -386,6 +401,8 @@ static bool toDriverOptions(const CliOptions& options, const std::string& file,
     dopts.verbose = options.verbose;
     // Task 6.6 条件编译：命令行注入宏集合透传
     dopts.macros = options.macros;
+    // 239-a：发布构建旗标透传（内建编译期常量 调试模式 取值）
+    dopts.releaseMode = options.releaseMode;
     // 阶段C（Task 4.3）：寄存器分配联动——-O2 及以上默认启用，
     //   --no-regalloc 显式关闭（options.useRegAlloc=false 覆盖）
     dopts.useRegAlloc = (options.optLevel >= 2) && options.useRegAlloc;
