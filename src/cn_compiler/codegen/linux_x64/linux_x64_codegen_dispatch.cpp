@@ -130,16 +130,40 @@ void LinuxX64CodeGenerator::emitInstruction(LinuxX64AsmWriter& writer,
             break;
         case ir::Opcode::CopyStruct:
             // 结构体整体赋值：内存拷贝（operand[0]=目标地址, operand[1]=源地址,
-            //   extra=字节数）；r10=目标 / r9=源 / r11=逐8字节中转
+            //   extra=字节数）；r10=目标 / r9=源 / r11=逐8字节中转。
+            //   A7 根治（2026-09-15，225-a）：主循环 8 字节 + 尾部按剩余宽度
+            //   （4/2/1）精确写——原 (bytes+7)/8 整槽写对「精确按类型大小分配」
+            //   的容器槽（拷贝构造 重新分配(容量*类型大小)，如 12 字节 Token）
+            //   尾元素越界 4 字节（valgrind Invalid write 实证；win 后端
+            //   rep movsb 精确无此缺陷）。语义=memcpy（Rust
+            //   copy_nonoverlapping 同构：精确字节数）。
             {
                 loadOperandToX(writer, inst.operands[0], "r10");
                 loadOperandToX(writer, inst.operands[1], "r9");
                 const long long bytes = std::stoll(inst.extra);
-                const int words = static_cast<int>((bytes + 7) / 8);
-                for (int w = 0; w < words; ++w) {
-                    const std::string off = "+" + std::to_string(w * 8);
-                    writer.line("mov r11, qword ptr [r9" + off + "]");
-                    writer.line("mov qword ptr [r10" + off + "], r11");
+                long long off = 0;
+                while (off + 8 <= bytes) {
+                    const std::string o = "+" + std::to_string(off);
+                    writer.line("mov r11, qword ptr [r9" + o + "]");
+                    writer.line("mov qword ptr [r10" + o + "], r11");
+                    off += 8;
+                }
+                if (bytes - off >= 4) {
+                    const std::string o = "+" + std::to_string(off);
+                    writer.line("mov r11d, dword ptr [r9" + o + "]");
+                    writer.line("mov dword ptr [r10" + o + "], r11d");
+                    off += 4;
+                }
+                if (bytes - off >= 2) {
+                    const std::string o = "+" + std::to_string(off);
+                    writer.line("mov r11w, word ptr [r9" + o + "]");
+                    writer.line("mov word ptr [r10" + o + "], r11w");
+                    off += 2;
+                }
+                if (bytes - off >= 1) {
+                    const std::string o = "+" + std::to_string(off);
+                    writer.line("mov r11b, byte ptr [r9" + o + "]");
+                    writer.line("mov byte ptr [r10" + o + "], r11b");
                 }
             }
             break;

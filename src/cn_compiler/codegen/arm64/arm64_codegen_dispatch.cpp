@@ -133,11 +133,36 @@ void Arm64CodeGenerator::emitInstruction(Arm64AsmWriter& writer,
             {
                 loadOperandToX(writer, inst.operands[0], "x9");
                 loadOperandToX(writer, inst.operands[1], "x10");
-                const long long bytes = std::stoll(inst.extra);
-                const int words = static_cast<int>((bytes + 7) / 8);
-                for (int w = 0; w < words; ++w) {
-                    writer.line("ldr x11, [x10, #" + std::to_string(w * 8) + "]");
-                    writer.line("str x11, [x9, #" + std::to_string(w * 8) + "]");
+                // A7 根治（2026-09-15，225-a）：主循环 8 字节 + 尾部按剩余宽度
+                //   （4/2/1）精确读写——原 (bytes+7)/8 整槽写对「精确按类型大小
+                //   分配」的容器槽尾元素越界（同 linux_x64，valgrind 实证同族）。
+                //   语义=memcpy（Rust copy_nonoverlapping 同构：精确字节数）。
+                {
+                    const long long bytes = std::stoll(inst.extra);
+                    long long off = 0;
+                    while (off + 8 <= bytes) {
+                        const std::string o = std::to_string(off);
+                        writer.line("ldr x11, [x10, #" + o + "]");
+                        writer.line("str x11, [x9, #" + o + "]");
+                        off += 8;
+                    }
+                    if (bytes - off >= 4) {
+                        const std::string o = std::to_string(off);
+                        writer.line("ldr w11, [x10, #" + o + "]");
+                        writer.line("str w11, [x9, #" + o + "]");
+                        off += 4;
+                    }
+                    if (bytes - off >= 2) {
+                        const std::string o = std::to_string(off);
+                        writer.line("ldrh w11, [x10, #" + o + "]");
+                        writer.line("strh w11, [x9, #" + o + "]");
+                        off += 2;
+                    }
+                    if (bytes - off >= 1) {
+                        const std::string o = std::to_string(off);
+                        writer.line("ldrb w11, [x10, #" + o + "]");
+                        writer.line("strb w11, [x9, #" + o + "]");
+                    }
                 }
             }
             break;

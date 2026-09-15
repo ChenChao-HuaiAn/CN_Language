@@ -45,65 +45,69 @@
 
 ## 深度机 linux-x86_64 节
 
-> **插队修复轮（2026-09-16·用户令）**：本节曾被「锚点局部插入＋旧文保留」的编辑方式逐轮翻倍——
-> 实测最严重时 36462 行／129 份轮记录／1215 行粘连标题，本轮按纪律**整节重建**（仅保留最新
-> 224-a 记录；历史轮明细在 git 历史＋plans/019/plans/021）。成因、纪律与门禁：
-> **AGENTS.md §8.3「共享文档编辑六纪律」＋§6 第 6 项＋`scripts/check_handoff.py`（提交前必跑）**，
-> 事故全录 lessons.md「插队事故段」。看板同款病灶（本机行被追加成两行）已一并修复。
+**交接时间**: 2026-09-15 第两百二十五轮（**深度机 linux-x86_64**）——**225-a：A7 根治专项轮·部分收口**
+（plans/021 §3-A A7·唯一「立即」项；基线 1fe0dd0，认领 8e95f89）。**已完成**：同族既有越界
+（CopyStruct 8 字节取整写·linux_x64+arm64）根治并门禁全绿；**A7 本体定位至最后一层**（导入模块泛型体
+复制展开误走分派④）。**待续**：A7 本体根治→stdlib 六处切换一次性重新应用。
 
-**交接时间**: 2026-09-16 第两百二十四轮（**深度机 linux-x86_64**）——**224-a**：发射普通函数
-调用（119 行·v2 IR/生成表达式求值.cn）拆分完成——主函数 78 行 + 回扫结构体与引用实参 17 行 +
-物化结构体返回值 18 行 + 发射引用返回加载 12 行（全 ≤100）。**D1 计数实测 40**。
+### 一、本轮做了什么（写给无上下文的新会话）
 
-### 一、本轮（224-a）做了什么（写给无上下文的新会话）
-
-1. **顺序流水线拆分**（202-a/209-a 模板）：族① 回扫结构体与引用实参/族② 物化结构体返回值
-   （81-a-v2 甲案·布尔返回）/族③ 发射引用返回加载；主函数保留 retbuf 决策+发射+登记+压栈。
-2. **一次快验拦截即修**：主函数残留引用返回段——判定段（是引用返回v/返回名v 前置推导）留
-   主函数、执行段迁族（lessons 224 段：判定/执行段分开归属）。
-3. **验证链全绿**：单测 1325/1325 + E2E 312 用例 310 过/0 失败/2 跳 + 锚定链重锚
-   404154→404685 行（fix_p≡fix_s 逐字节 `fef77a07…`）+ 多重集缺失 6 行全为预期归因。
+1. **方法论**：A7 在 linux 自发暴露率极低（30+ 次运行含 MALLOC_PERTURB_ 放大零复现）——改用
+   **valgrind memcheck 直抓**（v2p 编译任意探针=33 errors/9 contexts 一次抓全；符号=十六进制
+   UTF-8 中文名，python bytes.fromhex 解码归因）。lessons 202。
+2. **根治 CopyStruct 8 字节取整写**（`linux_x64_codegen_dispatch.cpp`+`arm64_codegen_dispatch.cpp`
+   两处）：`(bytes+7)/8` 整槽拷贝×容器槽按 类型大小 精确分配→12B 结构体（Token=3×整32）尾元素
+   越界 4B。修复=主循环 8B+尾部 4/2/1 精确读写（memcpy 语义；win `rep movsb` 天然精确无此缺陷）。
+3. **A7 本体定位**（切换态 v2p 内）：所有泛型实例 `向量$X.向量` 拷贝构造的 `复制(其他.数据[索引])`
+   展开=**分派④（__copytmp+CopyStruct 56 字节·与元素类型无关）+写回值=临时槽地址低 32 位（值损坏）**；
+   **同模块用户泛型类同形态完全正确**（复制直通 i32·IR 实证 /tmp/a7_ir6.txt）——缺陷锁定在
+   **导入模块（stdlib）泛型体的单态化/类型替换路径**（疑 semantic 单态化未做体内类型重推导）。
+4. **stdlib 六处深拷切换回退**（A7 本体未根治·缺陷零容忍，与家机 206-c 同口径；留档 plans/020
+   第七十三节 §三/§四）。
 
 ### 二、本轮验证（linux-x86_64 口径）
 
-- 单测 1325/1325；E2E 312 用例 310 过/0 失败/2 跳
-- 锚定链：`target/audit2/selfwork79/fix_p.asm ≡ fix_s.asm`（404685 行·`fef77a07…`）
+- 零警告重建（exit=0/warning=0）+ 单测 **1327/1327**
+- E2E **313 用例 311 过/0 失败/2 跳** + 锚定链重锚 **404685→410460 行**
+  （fix_p≡fix_s 逐字节 `f169a55e8036ba54…`；增量含家机 206-c 宿主修复+v2 复制支持——本机首锚）
+- **反证矩阵**（valgrind 双态×修复前后）：回退态 31→**6**（Invalid write/read 全消·剩 uninit 2
+  contexts=独立案）；切换态 33→**13**（差值 7=A7 本体）；宿主 12B 探针 2→**0**
 
-### 三、下一轮任务（按序）
+### 三、下一轮任务（按序·A7 收口轮）
 
-1. **D1 续波（实测 40 个）**：用 check_fn_length.py 实测取列（继续避让家机在飞写集、
-   handleClassCallExpr 362、arm64 后端族）。
-2. **C3**：波 4 收口后 → 元素级深拷 → 波 7 NLL。
-3. 其余登记：D7（单位机 214-a 在飞）/ C2 / D3 / D4。
-4. **预防编号体系三方案待用户裁决**（lessons 201·补；丙案先行）。
+1. **A7 本体根治**：semantic 层导入模块泛型体 `复制(下标链)` 的 resolvedType 推导（单态化后类型
+   重推导；或 genCopyBuiltin 分派④前置「类型参数未绑定」守卫）。**验收**=切换态 v2p valgrind
+   与回退态同水平（≤6·无 Invalid 无新增 uninit）+ stdlib 六处切换重新应用 + E2E 285 双侧 +
+   锚定链重锚 + valgrind 反证（回退修复→切换态 errors 回升）。
+2. **「读取文件行」uninit 独立案**（回退态剩余 6 errors）：`文件::读取文件行` 错误分支 结果<字符串,整32>
+   载荷未初始化值流入 `__cn_str_free`——查结果联合体载荷×析构判据/内置返回部分写入。**验收**=回退态
+   v2p valgrind **0 errors**。
+3. **v2p 缓存指纹盲区**：stdlib 源码级并入 v2p.obj 但指纹只覆盖 v2 树——stdlib 态变更后必须
+   `rm target/audit2/v2p_*`；根治=指纹纳入 stdlib/*.cn（登记 plans/020 第七十四节 §四.3）。
+4. **plans/021 整文件重复结构修复**（§〇~§六 ×2——「追加代替替换」又一实例；本轮两处同改保持
+   一致，整体重排须单独轮+用户批阅）。
+5. D1 续波（实测 40 个）等队列照旧。
 
 ### 四、验证链（本机复现口径）
 
 ```
-> 验证链命令一律串行；对拍/锚定链必须独立串行且不得相互交错（102-a 假 DIFF 教训）。
-> **全量门禁**：`rm -rf target/build && cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Debug &&
-> cmake --build target/build -j $(nproc)`（warning=0）→ `./target/cn_unit_tests` →
-> `python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8`（312 用例：310 过/0 败/2 跳）。
-> **D1 度量**：`python scripts/check_fn_length.py`（172-a 已修口径；名字回溯对 parse 类
-> 函数不可靠——以区间+构建验证为准）。
-> **改 v2 源码的轮次（预防 158）**：v2p 必然变化 → ①行多重集缺失+重复双查 ②全量 E2E
-> 双编译对照 ③锚定链 fix_p≡fix_s 重锚；asm md5 对拍不适用。
-> **宿主纯重构轮（v2 树零变化）**：v2p 产物 .s md5 不变+锚定链不变+全量 E2E；
-> 文件级纯搬运另加「搬移段与原文逐行一致」difflib 核验。
-> **共享文档自检（2026-09-16 新增）**：`python3 scripts/check_handoff.py`（六纪律机械门禁）＋
-> `python3 scripts/check_progress_sync.py`——提交前必跑（AGENTS §6）。
-> **远程推送现状（2026-09-15 实测）**：gitcode 正常；github 已配置但本机无凭据——
-> 待用户配置 token 或他机代推。
+> 全量门禁：rm -rf target/build && cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Debug &&
+> cmake --build target/build -j $(nproc)（warning=0）→ ./target/cn_unit_tests →
+> python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8（313 用例：311 过/0 败/2 跳）。
+> **valgrind 纪律（本轮新增）**：apt install valgrind；v2p 编译探针一次即抓潜伏越界——
+>   cd target/audit2/v2work123 && valgrind --error-exitcode=99 ../../audit2/v2p_linuxx64 <abs>/主.cn linux-x86_64
+> **stdlib 态变更后必 rm target/audit2/v2p_***（指纹不含 stdlib·v2p 缓存盲区 lessons 204）。
+> 改代码生成发射的轮次：产物 asm 变化属预期（CopyStruct 非对齐结构体指令变少）→ 锚定链重锚。
+> 共享文档自检：python3 scripts/check_handoff.py + python3 scripts/check_progress_sync.py。
+> github 镜像：本机无凭据/仓库未建——待用户建仓（记忆 cn-github-mirror-push）。
 ```
 
 ### 五、诚实边界
 
-- **D1 台账口径修正（172-a）**：166~171-a 期间 v2 侧行数系虚高口径，已三处修正。
-- **在飞工作会话为旧规则会话**：224-a 收工于六纪律入库（9071ce5）之前——若该会话继续连跑后续
-  轮次，HANDOFF 仍可能按旧方式追加膨胀；**下一轮次起应开新会话**（新会话启动即载入六纪律），
-  且收工门禁 check_handoff.py 会拦截膨胀提交。
-- github 镜像自 170-a 起未推送（本机无凭据/仓库未建）——待用户建仓后一次性补推。
-- 探针/对拍临时件：/tmp/p17*、/tmp/p18*、/tmp/p19*（不入库）。
+- **A7 本体未根治**（本轮部分收口）：stdlib 切换继续回退=波 4 深拷收口继续阻塞（家机 206-c 同口径）；
+  win 侧同族推定（arm64 修复未跨机验证——随单位机跨机轮）。
+- 探针/临时件：/tmp/a7*（probe_a7.py/hostprobe/genprobe/fileprobe/valgrind*.log/ir*.txt）不入库。
+- valgrind 为本机新装（apt）——他机若复用本验证链需自行安装。
 
 ## 单位机 ARM64 节
 
