@@ -641,6 +641,16 @@ private:
     // 族⑤：自增/自减校验（左值性/常量/数值或指针要求）
     void checkIncDecUnary(UnaryExpr* node, const std::string& operandType);
 
+    // ---- visitIdentifierExpr 识别链族子方法（182-a 函数级拆分·原 198 行函数；实现于 semantic_expr.cpp）----
+    // 族①：常量引用 + crate 分桶（编译期常量折叠/限定键重写）。true = 命中已处理
+    bool checkConstIdentifier(IdentifierExpr* node);
+    // 族②：静态变量 + crate 分桶（限定键重写 + globalStatics_ 查表）。true = 命中已处理
+    bool checkStaticIdentifier(IdentifierExpr* node);
+    // 族③：泛型实例化类型名（平衡扫描 + 单态化）。true = 已处理
+    bool checkGenericInstantiation(IdentifierExpr* node);
+    // 族④：函数名作值——构造函数指针类型（funcFirstSigKey 确定性选择）。true = 已处理
+    bool checkFunctionNameValue(IdentifierExpr* node);
+
 
 
     bool canConvertWithLiteral(const Expr* value, const std::string& from,

@@ -67,6 +67,48 @@ void SemanticAnalyzer::visitNullLiteral(NullLiteral* node) {
     lastType_ = "空类型*";
 }
 void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
+    // 182-a：本函数 198 行按「识别链」提取为 4 个族子方法（纯搬运零行为
+    //   变更——true=已识别并返回；链序=原识别顺序，多重集核验先行于构建）。
+    if (checkConstIdentifier(node)) return;
+    std::string varType;
+    if (lookupVar(node->name, varType)) {
+        // plans/019 阶段1（2026-09-10）：已转移变量使用拒绝（E0382 对标）——
+        //   一切读值的根拦截点（表达式/成员与下标对象侧/调用实参/返回/操作数
+        //   均经此）；转移(变量) 调用自身不走此路径（visitCallExpr/visitVarDecl
+        //   先行拦截，不触发误报）。报错后仍返回类型（诊断已记 Error，编译将
+        //   失败；继续供级联诊断最小化）。转移改写豁免窗口内跳过（visitVarDecl
+        //   改写产物的常规检查不是用户代码的使用）。
+        if (!inTransferRewrite_) reportMovedUse(node->name, node->location);
+        // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出视图
+        //   使用登记（活跃区间右端 + 跨作用域逃逸实时判定——容器先亡即报错）
+        noteBorrowViewUse(node->name, node->location);
+        // A-1（引用参数）：表达式值是"被引用对象的值"（读取自动解引用），
+        //   类型为剥 & 后的基础类型——与 IR 层 byRef 解引用读取一致；
+        //   引用性仅保留在变量登记（IR byRef 标记）与参数签名（&）中
+        lastType_ = types::isReference(varType) ? types::stripRef(varType) : varType;
+        return;
+        return;
+    }
+    if (checkStaticIdentifier(node)) return;
+    // 枚举/结构体/类/接口类型名作标识符（供 枚举名.成员、&结构体、类名.静态成员，Task 2.7/3.x）
+    if (isEnumType(node->name) || isStructType(node->name) ||
+        isClassType(node->name) || isInterfaceType(node->name)) {
+        lastType_ = node->name;
+        return;
+    }
+    if (checkGenericInstantiation(node)) return;
+    if (checkFunctionNameValue(node)) return;
+    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                        "未声明的标识符 '" + node->name + "'");
+    lastType_ = "未知";
+}
+
+// ==================== 182-a 识别链族子方法（原 visitIdentifierExpr 70~262 段） ====================
+
+// 族①：常量引用 + crate 分桶（原 70~128 段）。true = 常量命中已处理。
+//   第 4 层（v2.0 决策9，P1-4）：编译期常量折叠——常量已在 visitProgram 注册到
+//   globalConstValues_（值文本）；A-2 多模块同名常量按当前模块解析重写限定键。
+bool SemanticAnalyzer::checkConstIdentifier(IdentifierExpr* node) {
     // 第 4 层（v2.0 决策9，P1-4）：顶层常量引用——编译期常量折叠。
     //   常量已在 visitProgram 注册到 globalConstValues_（值文本）且 declareVar
     //   为全局变量；此处识别常量名（globalConstValues_ 命中）并把类型改为
@@ -110,7 +152,7 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
             } else {
                 lastType_ = "整32";
             }
-            return;
+            return true;
         }
     }
     auto constIt = globalConstValues_.find(node->name);
@@ -124,26 +166,14 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         } else {
             lastType_ = "整32";
         }
-        return;
+        return true;
     }
-    std::string varType;
-    if (lookupVar(node->name, varType)) {
-        // plans/019 阶段1（2026-09-10）：已转移变量使用拒绝（E0382 对标）——
-        //   一切读值的根拦截点（表达式/成员与下标对象侧/调用实参/返回/操作数
-        //   均经此）；转移(变量) 调用自身不走此路径（visitCallExpr/visitVarDecl
-        //   先行拦截，不触发误报）。报错后仍返回类型（诊断已记 Error，编译将
-        //   失败；继续供级联诊断最小化）。转移改写豁免窗口内跳过（visitVarDecl
-        //   改写产物的常规检查不是用户代码的使用）。
-        if (!inTransferRewrite_) reportMovedUse(node->name, node->location);
-        // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出视图
-        //   使用登记（活跃区间右端 + 跨作用域逃逸实时判定——容器先亡即报错）
-        noteBorrowViewUse(node->name, node->location);
-        // A-1（引用参数）：表达式值是"被引用对象的值"（读取自动解引用），
-        //   类型为剥 & 后的基础类型——与 IR 层 byRef 解引用读取一致；
-        //   引用性仅保留在变量登记（IR byRef 标记）与参数签名（&）中
-        lastType_ = types::isReference(varType) ? types::stripRef(varType) : varType;
-        return;
-    }
+    return false;
+}
+
+// 族②：静态变量 + crate 分桶（原 147~178 段）。true = 静态命中已处理。
+//   多模块同名静态按当前模块解析重写限定键；本地变量优先（lookupVar 先行返回）。
+bool SemanticAnalyzer::checkStaticIdentifier(IdentifierExpr* node) {
     // A-2（静态 crate 分桶）：多模块同名静态变量按当前模块解析——重写节点名为
     //   限定键（模块$名），IR 层 isGlobalStatic/globalStaticType 按限定键命中；
     //   唯一定义（或当前模块独占）的静态保持裸名（既有行为）。本地变量优先
@@ -168,20 +198,21 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         auto git = globalStatics_.find(node->name);
         if (git != globalStatics_.end()) {
             lastType_ = git->second;
-            return;
+            return true;
         }
         auto gqit = globalStaticsQualified_.find(node->name);
         if (gqit != globalStaticsQualified_.end()) {
             lastType_ = gqit->second;
-            return;
+            return true;
         }
     }
-    // 枚举/结构体/类/接口类型名作标识符（供 枚举名.成员、&结构体、类名.静态成员，Task 2.7/3.x）
-    if (isEnumType(node->name) || isStructType(node->name) ||
-        isClassType(node->name) || isInterfaceType(node->name)) {
-        lastType_ = node->name;
-        return;
-    }
+    return false;
+}
+
+// 族③：泛型实例化类型名（原 185~240 段）。true = 已单态化并返回实例化类名。
+//   阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名 名<实参>（如 盒子<整32>）
+//   作标识符（构造调用 callee / 类型引用）——触发单态化，返回实例化类名。
+bool SemanticAnalyzer::checkGenericInstantiation(IdentifierExpr* node) {
     // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名 名<实参>（如 盒子<整32>）
     //   作标识符（构造调用 callee / 类型引用）——触发单态化，返回实例化类名。
     const std::size_t genLt = node->name.find('<');
@@ -234,10 +265,16 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
                 instantiateGeneric(head, args, node->location);
             if (!instName.empty()) {
                 lastType_ = instName;
-                return;
+                return true;
             }
         }
     }
+    return false;
+}
+
+// 族④：函数名作值——构造函数指针类型（Task 2.10 重载；原 241~262 段）。
+//   多签名取第一个（funcFirstSigKey 确定性选择）。
+bool SemanticAnalyzer::checkFunctionNameValue(IdentifierExpr* node) {
     // 函数名作为值（Task 2.10 重载）：构造函数指针类型。
     // 有多个签名时取第一个（确定性选择，见 funcFirstSigKey 修复——原实现
     //   遍历 unordered_map 依赖哈希顺序，GCC/MSVC 平台行为不一致）。
@@ -256,13 +293,11 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
                 }
                 funcPtrType += ")";
                 lastType_ = funcPtrType;
-                return;
+                return true;
             }
         }
     }
-    diagnostics_.report(DiagnosticLevel::Error, node->location,
-                        "未声明的标识符 '" + node->name + "'");
-    lastType_ = "未知";
+    return false;
 }
 // 整数字面量形态（含一元负号作用于整数字面量，如 -1）——混合符号检查的
 //   字面量豁免判定（二元运算面 visitBinaryExpr 与赋值面 canConvertWithLiteral

@@ -54,9 +54,54 @@
 ## 深度机 linux-x86_64 节
 ## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-15 第一百八十一轮（**深度机 linux-x86_64**）——**181-a D1 函数级续波：visitUnaryExpr 204→42 行 ≤100 达标 + 文件级达标**（基线 8c8862e）。本会话 11 个开发轮（170-a 接手 + 172~179-a + 181-a）。
+**交接时间**: 2026-09-15 第一百八十二轮（**深度机 linux-x86_64**）——**182-a D1 函数级续波：visitIdentifierExpr 198→46 行 ≤100 达标**（基线 13f152f）。本会话 12 个开发轮（170-a 接手 + 172~182-a）。
 
-### 一、本轮（181-a）做了什么（写给无上下文的新会话）
+### 一、本轮（182-a）做了什么（写给无上下文的新会话）
+
+1. **拆分面（识别链分派化）**：`semantic_expr.cpp` 的 `visitIdentifierExpr`（198 行）按「识别链」
+   提取为 **4 个族子方法**（semantic.hpp +4 声明）：checkConstIdentifier（常量引用+crate 分桶+
+   限定键重写）/ checkStaticIdentifier（静态变量+分桶）/ checkGenericInstantiation（泛型实例化·
+   平衡扫描+单态化）/ checkFunctionNameValue（函数名作值）。主函数收缩为识别链分派 46 行。
+   **D1 计数 64→63**（新首列=v2 `语义检查语句.cn` 检查变量声明语句 180）。
+2. lessons 182 段（预防 170：段切片边界深度复核防重叠复制 + bool 方法 return 语义一次性全量转换）。
+
+### 二、本轮验证（linux-x86_64 口径）
+
+- 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`324ed472…`）；**锚定链不变**（394959 行，
+  md5 `10f24dbb…`）；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**
+- 170~181-a 轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 /
+  8819c63 / ab75deb / 13f152f 与 plans/019 对应轮次行
+
+### 三、下一轮任务（按序）
+
+1. **D1 续波（修正口径 63 个）**：函数级首列=v2 `语义检查语句.cn` 检查变量声明语句 180 →
+   `语义检查赋值语句` 178 → 宿主 `semantic_builtins.cpp` registerFunction 173 →
+   宿主 `semantic_sig.cpp`/`semantic_types.cpp` 等（清单 `python scripts/check_fn_length.py`）。
+   （认领前先 fetch 看板避免撞车。）
+
+### 四、上一轮（181-a）记录（写给无上下文的新会话）
+
+**181-a D1 函数级续波：visitUnaryExpr 204→42 行 ≤100 达标 + 文件级达标**（基线 8c8862e）：
+
+1. **拆分面（switch 薄化·程序化切片重建）**：`semantic_expr_op.cpp` 的 `visitUnaryExpr`（204 行）
+   按操作符 case 提取为 **5 个族子方法**（semantic.hpp +5 声明）：checkUnaryOperatorOverload（P2-14
+   重载·返回 bool）/ checkAddressOfUnary（取地址 &）/ checkDerefUnary（解引用 *·B11/B6 警告）/
+   checkPropagateUnary（错误传播 ?）/ checkIncDecUnary（自增自减）。主 switch 薄化 42 行。
+2. **★整族迁出至新文件 `semantic_expr_unary.cpp`**（269 行·CMakeLists 注册）——visitUnaryExpr
+   函数级拆分使 semantic_expr_op.cpp 1007 行超门禁，整族迁出后 **752/269 双 ≤1000**。
+3. **★组装三次失败→程序化切片重建（lessons 预防 168/169）**：整族段尾锚误用文件尾 namespace 闭合
+   卷入后续函数 500 行、多次盲改累积文件损坏——git checkout 回退后改两步法（第一步文件级纯搬移
+   +v2p md5 不变验证；第二步新文件内程序化切片拆分）成功。
+4. 验证：零警告 + 单测 1317/1317 + v2p md5 不变（324ed472…）+ E2E 306/304/0/2 + 锚定链不变 394959。
+
+### 二、上轮验证（linux-x86_64 口径）
+
+- 零警告构建 + 单测 **1317/1317**；**v2p 产物 .s md5 不变**（`324ed472…`）；**锚定链不变**（394959 行，
+  md5 `10f24dbb…`）；全量 E2E **306 用例 304 过 / 0 失败 / 2 跳**
+- 170~179-a 轮全记录见 git 提交 a64e1ea / bc39bb4 / adfb8f3 / 0a2efab / c5c632f / fe3cfc7 / 8819c63
+  / ab75deb 与 plans/019 对应轮次行
+
+### 三、上上轮任务（已完成的 181-a 前计划，仅存档）
 
 1. **拆分面（switch 薄化·程序化切片重建）**：`semantic_expr_op.cpp` 的 `visitUnaryExpr`（204 行）
    按操作符 case 提取为 **5 个族子方法**（semantic.hpp +5 声明）：checkUnaryOperatorOverload（P2-14
