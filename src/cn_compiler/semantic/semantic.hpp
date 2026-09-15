@@ -863,6 +863,12 @@ private:
         std::unordered_map<std::string, std::string> aliases;    // 别名 -> 原符号名
         bool wildcard = false;                                   // 导入 模块::*
     };
+    // 218-a（D1 行数整改）：visitImportDecl 拆分（宿主纯重构零行为变更）。
+    // 路径段 join（"::" 连接）——visitImportDecl 内三处同构循环的单一归属。
+    static std::string joinPathSegments(const std::vector<std::string>& segments);
+    // 尾段符号具名绑定（② 具名绑定 + A-5 过滤哨兵 + 自导入豁免）。
+    void bindImportedSymbols(ImportDecl* node, UseImportInfo& use,
+                             const std::string& moduleName);
     std::unordered_map<std::string, UseImportInfo> useImports_;
     // A-5（整路径重命名）：模块级别名 -> 完整路径（导入 甲::乙 作为 丙 ->
     //   丙::符号 解析为 甲::乙::符号；此前别名绑定首段导致限定调用失效）

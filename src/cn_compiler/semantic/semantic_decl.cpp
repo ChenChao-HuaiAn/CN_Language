@@ -397,11 +397,7 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
         // A-5（花括号项别名跨模块同名）：记录每个导入项的来源模块**完整路径**
         //   （工具库::格式化）——纯名调用重写回原符号名后按完整路径过滤；
         //   首段（工具库）过滤在跨 crate 场景会漏掉 格式化 模块条目
-        std::string braceFullPath;
-        for (std::size_t si = 0; si < node->segments.size(); ++si) {
-            if (si > 0) braceFullPath += "::";
-            braceFullPath += node->segments[si];
-        }
+        const std::string braceFullPath = joinPathSegments(node->segments);
         for (const auto& item : node->names) {
             if (item.name.empty()) continue;
             use.symbols.insert(item.name);
@@ -433,11 +429,7 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
             use.aliases[node->alias] = moduleName;
             // A-5（整路径重命名绑定模块级别名）：别名绑定完整路径（含子模块/包
             //   路径 甲::乙），并登记别名本身可导入（别名::符号 限定调用路径解析）
-            std::string fullPath;
-            for (std::size_t si = 0; si < node->segments.size(); ++si) {
-                if (si > 0) fullPath += "::";
-                fullPath += node->segments[si];
-            }
+            const std::string fullPath = joinPathSegments(node->segments);
             moduleAliases_[node->alias] = fullPath;
             importedModules_.insert(node->alias);
             useImports_[node->alias].wildcard = true;
@@ -449,11 +441,7 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     //   导入 CN语言编译器::词法分析; / 父挂子 导入 网络库::内部工具;）——
     //   ③ 模块导入（Rust use a::b 绑定模块名；限定调用按加载判定放行，
     //   旧通配语义对限定调用无观察差异，保持防回归）。
-    std::string fullPath;
-    for (std::size_t si = 0; si < node->segments.size(); ++si) {
-        if (si > 0) fullPath += "::";
-        fullPath += node->segments[si];
-    }
+    const std::string fullPath = joinPathSegments(node->segments);
     // 千行拆分轮（2026-09-08）：尾段本身=已加载模块名（v1 再导出包
     //   CN语言编译器/包.cn 的 导入 CN语言编译器::IR生成，IR生成=组件 unit 名）
     //   同样判③模块导入——旧只查完整路径，尾段被误判符号走②具名绑定，
@@ -479,9 +467,17 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
         importedModules_.insert(moduleName);
         return;
     }
-    // 尾段是符号：② 具名绑定。来源模块完整路径 = 去尾段
-    //   （工具库::格式化::版本 -> 工具库::格式化；网络库::传输控制::连接 ->
-    //   网络库::传输控制）——纯名调用重写按此过滤（A-5 同款）。
+    // 尾段是符号：② 具名绑定（218-a 迁 bindImportedSymbols——A-5 过滤哨兵/
+    //   自导入豁免随体迁移）。
+    bindImportedSymbols(node, use, moduleName);
+}
+
+// 218-a（2026-09-16 第两百一十八轮，D1 行数整改）：尾段符号具名绑定——来源模块
+//   完整路径=去尾段（工具库::格式化::版本 -> 工具库::格式化）——纯名调用重写按此
+//   过滤（A-5 同款）；自导入（来源首段 == 归属模块）不引入绑定名（本地定义恒
+//   ① 优先）；两段符号导入过滤器置空哨兵（crate 名与注册模块名不同名回归根治）。
+void SemanticAnalyzer::bindImportedSymbols(ImportDecl* node, UseImportInfo& use,
+                                           const std::string& moduleName) {
     std::string srcModule;
     for (std::size_t si = 0; si + 1 < node->segments.size(); ++si) {
         if (si > 0) srcModule += "::";
@@ -489,20 +485,23 @@ void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     }
     const std::string& sym = node->segments.back();
     const std::string bindName = node->alias.empty() ? sym : node->alias;
-    // 自导入（来源首段 == 归属模块，如 52 的 导入 主::版本;）：不引入绑定名
-    //   （本地定义恒 ① 优先），仅登记模块已加载（限定自引用 主::版本() 放行）
     const bool selfImport = (moduleName == node->ownerModule);
     if (!selfImport) {
         use.symbols.insert(sym);
         use.aliases[bindName] = sym;
-        // 两段符号导入（crate::符号，如 47 的 导入 网络库::连接）：过滤器置
-        //   空哨兵——crate 名（网络库）与实现文件的注册模块名（传输控制，
-        //   pathStem 归一）不同名，非空过滤器会让决议拒绝真实条目（2026-09-08
-        //   回归实测）；空=纯名决议回退全局唯一命中，跨模块同名歧义由 44/91
-        //   的三段/花括号形态锚定（不受影响）。空串条目占位防回退取 ui.first。
         itemAliasModules_[bindName] = node->segments.size() == 2 ? "" : srcModule;
     }
     importedModules_.insert(moduleName);
+}
+
+// 218-a：路径段 join（"::" 连接）——visitImportDecl 内三处同构循环的单一归属。
+std::string SemanticAnalyzer::joinPathSegments(const std::vector<std::string>& segments) {
+    std::string joined;
+    for (std::size_t si = 0; si < segments.size(); ++si) {
+        if (si > 0) joined += "::";
+        joined += segments[si];
+    }
+    return joined;
 }
 // ==================== 188-a（D6·plans/023 B11 变量常量传播）登记助手 ====================
 //   判定模型见 semantic.hpp「函数级恒空指针判定表」注释。核心不变式：

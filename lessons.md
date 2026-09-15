@@ -4002,3 +4002,9 @@ plans/016 第七节（实施结果+八项差异清单）；形态 A 契约与 wi
 - [2026-09-16 第两百一十七轮] **零构建失败+验证链一次全绿**——顺序检查管线形态：族① checkReturnBorrowA2（A2 拥有契约·泛型单态化豁免）/族② checkReturnAddressEscape（引用返回+指针返回的局部地址逃逸悬垂拒绝两段合并——同属「地址逃逸」家族）；主函数保留 lambda 守卫+无返回值+valueType+类型转换检查。
   - **方法论沉淀**：**「安全检查家族」合并提取**——引用返回与指针返回两段检查虽独立立案（P3-18/阶段2/阶段3），但同属「返回地址逃逸」语义家族，合并为一族后主函数管线更清晰（与 210-a 守卫随族判据配套：两段守卫均引用 currentReturnType_/currentIsRefReturn_ 成员——成员函数天然可访问）。
   - **权重**: 2（无错误 × 家族合并判据）
+
+## 第两百一十八轮踩坑（2026-09-16，深度机 linux-x86_64：218-a 宿主侧 D1——visitImportDecl 127 行拆分）
+
+- [2026-09-16 第两百一十八轮] **hpp 嵌套类型声明的三处修正**——①bindImportedSymbols 用类内嵌套类型 UseImportInfo 作参数，声明放 visitImportDecl 后（定义点前）报「has not been declared」→ **嵌套类型成员函数声明必须置于该类型定义之后**；②namespace 级前向声明 `struct UseImportInfo;` 引入**第二个同名类型**（cn_compiler::UseImportInfo ≠ SemanticAnalyzer::UseImportInfo）→ cannot convert 错误——前向声明方案作废；③声明移位中断残留孤行（签名第二行）→ grep 修删。
+  - **拆分面**：消重+族提取——visitImportDecl 内三处同构路径 join 循环消重为 static joinPathSegments（单一归属）；尾段符号具名绑定迁 bindImportedSymbols（A-5 过滤哨兵/自导入豁免随体）。
+  - **权重**: 3（构建级 × 嵌套类型声明位置规则固化）
