@@ -501,7 +501,12 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
     std::string w = widthFor(srcType, "rax");
     writer.line("mov " + w + ", " + op1);
     if (inst.operands[1].isConstant) {
-        writer.line(sh + " " + w + ", " + op2);
+        // 246-a（D20 根治）：常量移位量按操作数位宽取模后发射——
+        //   负/超域立即数原文直发 A2070（`shl eax, -997`·CN-Smith 首采 109 例）。
+        //   对齐第四十三轮 arm64 emitShift 常量掩码修复（win 侧余债）。
+        const int width = (srcType == "i64" || srcType == "u64") ? 64 : 32;
+        const int shiftAmt = shiftAmtOf(inst.operands[1].extra) & (width - 1);
+        writer.line(sh + " " + w + ", " + std::to_string(shiftAmt));
     } else {
         // 移位量须装载到 cl（rcx 低8位）：物理寄存器（寄存器分配）用 32 位名
         //   （mov ecx, r14 尺寸不匹配 A2022；mov ecx, r14d 写低32位值语义一致）

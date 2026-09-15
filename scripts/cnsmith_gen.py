@@ -101,22 +101,68 @@ class Gen:
         return line
 
 
+# 负向注入（246-a）：对合法程序注入一个随机语法/结构错误——
+#   验证编译器「必有诊断、永不崩溃」（T6 族机械化）。
+#   注入器=字符串级手术（生成后再破坏），不追求语义多样性（覆盖语法层防线）。
+INJECTIONS = [
+    "删分号",       # 语句缺少分号
+    "缺右括号",     # 括号不闭合
+    "缺右花括号",   # 块不闭合
+    "非法字符",     # 词法层未知符号
+    "截断文件",     # 结构突然中断
+]
+
+
+def inject_error(src, rng):
+    kind = rng.choice(INJECTIONS)
+    lines = src.split(NL)
+    if kind == "删分号" and len(lines) > 4:
+        i = rng.randrange(1, len(lines) - 1)
+        lines[i] = lines[i].replace(";", "", 1)
+    elif kind == "缺右括号" and len(lines) > 4:
+        i = rng.randrange(1, len(lines) - 1)
+        if "(" in lines[i]:
+            j = lines[i].rfind(")")
+            lines[i] = lines[i][:j] + lines[i][j + 1:]
+    elif kind == "缺右花括号":
+        # 删除最后一个 }（函数体不闭合）
+        for i in range(len(lines) - 1, -1, -1):
+            if lines[i].strip() == "}":
+                lines.pop(i)
+                break
+    elif kind == "非法字符":
+        i = rng.randrange(1, len(lines))
+        lines[i] = lines[i] + " @#$"
+    elif kind == "截断文件":
+        cut = rng.randrange(len(lines) // 2, len(lines))
+        lines = lines[:cut]
+    return (NL.join(lines) + NL + "# 注入类型: " + kind + NL), kind
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--count", type=int, default=10)
     ap.add_argument("--out", default="target/cnsmith")
     ap.add_argument("--stmts", type=int, default=14)
+    ap.add_argument("--negative", action="store_true",
+                    help="负向注入模式：生成非法程序（验证必有诊断不崩溃）")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     for i in range(a.count):
         seed = a.seed + i
         g = Gen(seed)
         src = g.program(a.stmts)
-        with open(os.path.join(a.out, "s%d.cn" % seed), "w",
+        ext = ".cn"
+        if a.negative:
+            rng = random.Random(seed * 31 + 7)
+            src, kind = inject_error(src, rng)
+            ext = ".cn"
+        with open(os.path.join(a.out, "s%d%s" % (seed, ext)), "w",
                   encoding="utf-8", newline="") as f:
             f.write(src)
-    print("生成 %d 个程序 -> %s" % (a.count, a.out))
+    mode = "负向注入" if a.negative else "合法"
+    print("生成 %d 个程序（%s） -> %s" % (a.count, mode, a.out))
 
 
 if __name__ == "__main__":

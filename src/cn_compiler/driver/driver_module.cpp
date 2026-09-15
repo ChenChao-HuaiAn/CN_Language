@@ -541,21 +541,68 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
             std::cerr << diagnostics.format();
             return 1;
         }
-        // 243-a（D17 防线）：主 返回 结果/可选/聚合类型——运行时入口 ABI 仅支持
-        //   整32 返回（runtime entry 期望 int，聚合返回走 sret 隐藏指针 → 调用
-        //   约定错位 → 退出路径段错误 0xC0000005）。退出码语义（正常→值/错误→
-        //   错误码）待规范定义（呈报 plans/021 §3-D17），在此之前编译期拒绝
-        //   （把必然崩溃的程序挡在编译期——诚实防线非最终形态）。
+        // 243-a（D17）重新归因：主 返回 聚合类型时 runtime entry（期望 int）
+        //   与 sret 隐藏指针调用约定错位 → 退出路径段错误。
+        // 244-b（D17 根治·用户裁决 2026-09-16 退出码语义=正常→.值 截断/错误→.错误 码）：
+        //   主 返回 结果<T,E> 时 AST 合成整32 wrapper——
+        //     函数 主() -> 整32 { 结果<T,E> 甲 = 主_impl();
+        //       如果 甲.正常 { 返回 整32(甲.值); } 返回 整32(甲.错误); }
+        //   原 主 改名 主_impl（cn_main 符号=合成 主·整32 → ABI 恢复正常）。
+        //   合成函数流过完整语义/IR/优化器管线（平台无关）。
         for (auto& d : program->declarations) {
-            if (d != nullptr && d->name == "主" && !d->returnType.empty() &&
-                d->returnType != "整32") {
-                diagnostics.report(DiagnosticLevel::Error, d->location,
-                                   "入口函数 主 的返回类型 '" + d->returnType +
-                                       "' 暂不支持（运行时入口 ABI 仅支持 整32；"
-                                       "结果 类型退出码语义待规范定义——见 plans/021 D17）");
-                std::cerr << diagnostics.format();
-                return 1;
+            if (d == nullptr || d->name != "主") continue;
+            const std::string& rt = d->returnType;
+            if (rt.empty() || rt == "整32") continue;
+            if (rt.rfind("结果<", 0) == 0) {
+                // 原 主 改名（入口函数一般不被显式调用；显式调用场景见诚实边界）
+                d->name = "主_impl";
+                auto wrapper = std::make_unique<FunctionDecl>();
+                wrapper->name = "主";
+                wrapper->returnType = "整32";
+                wrapper->moduleName = d->moduleName;
+                auto body = std::make_unique<BlockStmt>();
+                // 结果<T,E> 甲 = 主_impl();
+                auto vd = std::make_unique<VarDecl>();
+                vd->name = "甲";
+                vd->typeName = rt;
+                vd->initializer = std::make_unique<CallExpr>("主_impl");
+                vd->moduleName = d->moduleName;
+                body->statements.push_back(std::move(vd));
+                // 如果 甲.正常 { 返回 整32(甲.值); } 否则 { 返回 整32(甲.错误); }
+                auto ifstmt = std::make_unique<IfStmt>();
+                ifstmt->condition = std::make_unique<MemberExpr>(
+                    std::make_unique<IdentifierExpr>("甲"), "正常");
+                auto thenB = std::make_unique<BlockStmt>();
+                auto retOk = std::make_unique<ReturnStmt>();
+                retOk->value = std::make_unique<CastExpr>(
+                    "整32", std::make_unique<MemberExpr>(
+                                std::make_unique<IdentifierExpr>("甲"), "值"));
+                thenB->statements.push_back(std::move(retOk));
+                ifstmt->thenBranch = std::move(thenB);
+                auto elseB = std::make_unique<BlockStmt>();
+                auto retErr = std::make_unique<ReturnStmt>();
+                retErr->value = std::make_unique<CastExpr>(
+                    "整32", std::make_unique<MemberExpr>(
+                                std::make_unique<IdentifierExpr>("甲"), "错误"));
+                elseB->statements.push_back(std::move(retErr));
+                ifstmt->elseBranch = std::move(elseB);
+                body->statements.push_back(std::move(ifstmt));
+                // 兜底返回（不可达——分支完备；满足「整32 函数全路径返回」检查）
+                auto retZero = std::make_unique<ReturnStmt>();
+                retZero->value = std::make_unique<IntegerLiteral>(0, "0");
+                body->statements.push_back(std::move(retZero));
+                wrapper->body = std::move(body);
+                program->declarations.push_back(std::move(wrapper));
+                continue;
             }
+            // 非 结果 聚合（可选/结构体等）：退出码语义未定义，维持编译期拒绝
+            diagnostics.report(DiagnosticLevel::Error, d->location,
+                               "入口函数 主 的返回类型 '" + rt +
+                                   "' 暂不支持（运行时入口 ABI 仅支持 整32 与 "
+                                   "结果<T, E>——退出码=正常取 .值/错误取 .错误 码；"
+                                   "其他聚合类型退出码语义待规范定义）");
+            std::cerr << diagnostics.format();
+            return 1;
         }
     }
 
