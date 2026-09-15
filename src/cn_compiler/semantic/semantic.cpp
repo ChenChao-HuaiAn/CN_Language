@@ -100,6 +100,10 @@ bool cnEvalConstExpr(const std::unordered_map<std::string, std::string>& vals,
         case NodeType::IntegerLiteral: out = static_cast<IntegerLiteral*>(e)->raw; return true;
         case NodeType::FloatLiteral: out = static_cast<FloatLiteral*>(e)->raw; return true;
         case NodeType::StringLiteral: out = static_cast<StringLiteral*>(e)->raw; return true;
+        case NodeType::BoolLiteral:
+            // 241-a（D14 根治）：布尔字面量常量表达式——值文本与 IR 布尔常量同口径（真/假）
+            out = static_cast<BoolLiteral*>(e)->raw;
+            return true;
         case NodeType::IdentifierExpr: {
             const std::string n = static_cast<IdentifierExpr*>(e)->name;
             auto it = vals.find(n);

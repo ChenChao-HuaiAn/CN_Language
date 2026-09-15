@@ -444,6 +444,29 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                                             : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));
             }
             mi.sigKey = signatureKey(mi.name, mi.paramTypes);
+            // 241-a（D16 根治）：运算符重载参数个数校验——
+            //   单目运算符（! ~ 前置负号形态）0 个右参数；双目算术/比较/逻辑/位
+            //   与下标 [] 恰 1 个右参数。- 与 + 双义（单目负号/双目加）：0 或 1 皆合法；
+            //   其余运算符不在可重载集合——此处仅校验个数，集合合法性由决议处兜底。
+            {
+                const std::string& sym = member->operatorSym;
+                const std::size_t pc = mi.paramTypes.size();
+                bool unaryOnly = (sym == "!" || sym == "~");
+                bool binaryOnly = (sym == "*" || sym == "/" || sym == "%" ||
+                                   sym == "==" || sym == "!=" || sym == "<" ||
+                                   sym == "<=" || sym == ">" || sym == ">=" ||
+                                   sym == "&&" || sym == "||" || sym == "[]" ||
+                                   sym == "+=" || sym == "-=" || sym == "*=" ||
+                                   sym == "/=");
+                bool countBad = (unaryOnly && pc != 0) ||
+                                (binaryOnly && pc != 1) ||
+                                ((sym == "+" || sym == "-") && pc > 1);
+                if (countBad) {
+                    diagnostics_.report(DiagnosticLevel::Error, member->location,
+                                        "运算符 '" + sym + "' 重载参数个数错误（单目 0 个、双目 1 个右参数）");
+                    continue;
+                }
+            }
             if (info.methods.find(mi.name) != info.methods.end()) {
                 diagnostics_.report(DiagnosticLevel::Error, member->location,
                                     "类 '" + node->name + "' 重复定义运算符 '" +

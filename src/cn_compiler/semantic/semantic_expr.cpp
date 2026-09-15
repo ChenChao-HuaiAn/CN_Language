@@ -571,6 +571,31 @@ void SemanticAnalyzer::visitSizeofExpr(SizeofExpr* node) {
     const std::string t = resolveGenericTypeName(node->typeName, node->location);
     // A-2（crate 分桶）：多模块同名类型按当前模块解析（限定键）
     const std::string resolved = resolveTypeName(t, currentModuleName_, node->location);
+    // 241-a（D15 根治）：实参类型存在性校验——未知类型编译期诊断
+    //   （原实现静默 typeSizeOf 兜底，错误类型名静默通过）。
+    {
+        // 泛型类型参数豁免：泛型模板体检查时 T 尚未实例化（实例化后由 IR 层
+        //   按 genericTypeParams_ 重算——见上方 H8 注释），T 本身即合法实参。
+        if (genericTypeParams_.find(node->typeName) == genericTypeParams_.end() &&
+            genericTypeParams_.find(t) == genericTypeParams_.end() &&
+            genericTypeParams_.find(resolved) == genericTypeParams_.end()) {
+            const std::string canon = types::canonical(resolved);
+            const bool known = canon == "字符串" ||  // 字符串=指针别名（types::typeSize 不含，99-a 口径）
+                           types::typeSize(canon) > 0 ||  // 基本类型（含指针）
+                               canon.find('*') != std::string::npos ||
+                               canon.find('[') != std::string::npos ||
+                               isStructType(canon) || isEnumType(canon) ||
+                               findClass(canon) != nullptr ||
+                               canon.rfind("结果<", 0) == 0 ||
+                               canon.rfind("可选<", 0) == 0;
+            if (!known) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "类型大小: 未声明类型 '" + node->typeName + "'");
+                lastType_ = "整64";
+                return;
+            }
+        }
+    }
     node->size = typeSizeOf(resolved);
     lastType_ = "整64";
 }
