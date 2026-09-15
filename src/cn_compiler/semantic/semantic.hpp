@@ -734,6 +734,13 @@ private:
                                 const SourceLocation& loc,
                                 const std::string& moduleFilter = "",
                                 const std::vector<bool>& argIsLiteral = {});
+    // 206-a（D1 行数整改）：resolveOverload 拆分的两个族方法（宿主纯重构零行为变更）。
+    // A-5 前置扫描：当前模块是否定义过该函数名（crate 隔离纯名调用的遮蔽判定）。
+    bool hasCurrentModuleDefinition(const std::string& name);
+    // 单条签名候选的 key 形态剥离 + 模块过滤匹配（true=参与决议；false=跳过）。
+    bool overloadEntryMatch(const std::string& rawKey, const std::string& name,
+                            const FunctionInfo& info, const std::string& moduleFilter,
+                            bool currentHasName);
     // 实参类型到参数类型的转换等级：0=精确 1=宽化 2=隐式转换 -1=不可转
     //（非静态：需调用 canConvertType/isEnumType 等成员，Task 2.10）
     // argIsLiteral（55-c 方案A）：整数字面量实参豁免——源/目标均整数族时按

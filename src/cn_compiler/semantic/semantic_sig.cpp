@@ -186,112 +186,15 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
     int bestTotal = INT32_MAX;
     bool ambiguous = false;
     std::string ambiguousDetail;
-    // A-5（crate 隔离纯名调用）：前置扫描——当前模块是否定义过该函数名。
-    //   若定义过，其他模块的同名条目不参与纯名决议（作用域遮蔽导入语义：
-    //   跨模块同名函数纯名调用不再一律报歧义，当前模块版本优先）；
-    //   当前模块无定义时才回退导入条目（唯一导入/歧义判定照旧）。
-    bool currentHasName = false;
-    if (moduleFilter.empty() && !currentModuleName_.empty()) {
-        for (const auto& kv : functions_) {
-            std::string k2 = kv.first;
-            const std::size_t h2 = k2.find('#');
-            const std::size_t d2 = k2.find('$');
-            std::string km2;
-            if (d2 != std::string::npos && h2 != std::string::npos && d2 < h2) {
-                km2 = k2.substr(0, d2);
-                k2 = k2.substr(d2 + 1);
-            } else if (h2 == std::string::npos && d2 != std::string::npos &&
-                       name.find('$') == std::string::npos) {
-                km2 = k2.substr(0, d2);
-                k2 = k2.substr(d2 + 1);
-            }
-            const std::size_t hp = k2.find('#');
-            const std::string b2 = (hp == std::string::npos) ? k2 : k2.substr(0, hp);
-            if (b2 != name) continue;
-            const std::string em2 = km2.empty() ? kv.second.moduleName : km2;
-            if (em2 == currentModuleName_) {
-                currentHasName = true;
-                break;
-            }
-        }
-    }
+    // 206-a（2026-09-15 第两百零六轮，D1 行数整改）：三段提取——A-5 前置扫描迁
+    //   hasCurrentModuleDefinition；主循环内 key 剥离+模块过滤迁 overloadEntryMatch
+    //   （continue → return false 转换）；主函数保留状态变量+循环骨架+参数个数/
+    //   转换等级+最优更新+歧义/未命中诊断（宿主纯重构零行为变更）。
+    const bool currentHasName = moduleFilter.empty() && !currentModuleName_.empty() &&
+                                hasCurrentModuleDefinition(name);
     for (const auto& kv : functions_) {
-        // 第 4 层：key 形态兼容——普通签名（名#参数）与跨模块条目
-        //   （模块名$名#参数）。模块条目 key 含 '$' 前缀（模块名$），
-        //   base 提取须剥离 模块名$ 前缀。
-        // 注意：泛型实例名（排序$整32）与重载签名（名#参数）不含模块前缀——
-        //   仅当 '#' 存在且 '$' 位于 '#' 之前（模块名$名#参数）才剥离；
-        //   排序$整32 无 '#' -> 不剥离（base 保持 排序$整32 匹配泛型调用）。
-        std::string key = kv.first;
-        std::string keyModule;  // key 携带的模块名（跨模块条目）
-        const std::size_t hashFirst = key.find('#');
-        const std::size_t dollarPos = key.find('$');
-        if (dollarPos != std::string::npos && hashFirst != std::string::npos &&
-            dollarPos < hashFirst) {
-            keyModule = key.substr(0, dollarPos);
-            key = key.substr(dollarPos + 1);
-        } else if (hashFirst == std::string::npos && dollarPos != std::string::npos &&
-                   name.find('$') == std::string::npos) {
-            // 第 8 层（52_library 实测缺陷）：无参函数（sigKey 无 '#'）跨模块
-            //   注册 key = 模块名$函数名（如 格式化$版本）。调用 name 不含 '$'
-            //   （普通函数调用，区别于泛型实例名 排序$整32）——剥离 '$' 前缀。
-            keyModule = key.substr(0, dollarPos);
-            key = key.substr(dollarPos + 1);
-        }
-        const std::size_t hashPos = key.find('#');
-        const std::string base = (hashPos == std::string::npos) ? key
-                                                                : key.substr(0, hashPos);
-        if (base != name) continue;  // 仅同名的签名参与决议
         const FunctionInfo& info = kv.second;
-        // 第 4 层（crate 隔离）：限定调用按模块过滤——跨模块同名函数各自独立，
-        //   仅匹配调用模块的签名（数学::双倍 只解析 数学.cn 的双倍）。
-        // A-5（2026-08）：纯名调用（moduleFilter 空）当前模块条目优先——
-        //   crate 隔离同名函数纯名调用不再一律歧义（作用域遮蔽导入语义，
-        //   与 52_library 的 主::版本() 自限定等价）。
-        const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
-        if (!moduleFilter.empty()) {
-            // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
-            //   呈报一B 补充（2026-09-07）：moduleName 空 = 单文件管线
-            //   （runPipeline 未合并 / mergeModules singleModule）——全部声明
-            //   同属唯一模块，限定调用过滤器（自导入 主::版本 等）恒命中本
-            //   模块；多文件管线声明恒带模块名，不受影响。
-            if (entryModule == moduleFilter || entryModule.empty()) {
-                // 精确匹配：同包限定调用（网络::传输控制::发送 -> 网络::传输控制）
-            } else {
-                // A-5（父模块名限定调用子模块函数）：entryModule（网络::传输控制）
-                //   以 moduleFilter + "::"（网络::）为前缀即视为同一模块——
-                //   子模块属于父模块命名空间（网络::连接() 解析到 网络::传输控制::连接）
-                const std::string filterPrefix = moduleFilter + "::";
-                const bool isSubModule =
-                    entryModule.compare(0, filterPrefix.size(), filterPrefix) == 0;
-                if (!isSubModule) {
-                    // 第 8 层（52_library 实测缺陷）：跨 crate 限定调用
-                    //   （工具库::格式化::版本）——外部依赖模块注册 moduleName =
-                    //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
-                    //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
-                    //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
-                    //   挂账1 包前缀化扩展（2026-09-08）：目录包/父挂子成员模块名
-                    //   带包前缀（语义::内置）——条目名**末段**与 filterLast 对齐即
-                    //   命中（v1 自举组件 语义::语义::内置::行类型 实测：条目
-                    //   语义::内置 末段 内置 == filterLast 内置）。与跨 crate 末段
-                    //   按名匹配同族：精确/前缀匹配优先，末段为松匹配兜底。
-                    const std::size_t lastColon = moduleFilter.rfind("::");
-                    const std::string filterLast = (lastColon == std::string::npos)
-                                                        ? moduleFilter
-                                                        : moduleFilter.substr(lastColon + 2);
-                    const std::size_t entryLastColon = entryModule.rfind("::");
-                    const std::string entryLast =
-                        (entryLastColon == std::string::npos)
-                            ? entryModule
-                            : entryModule.substr(entryLastColon + 2);
-                    if (entryModule != filterLast && entryLast != filterLast) continue;
-                }
-            }
-        } else if (currentHasName && !entryModule.empty() &&
-                   entryModule != currentModuleName_) {
-            // A-5（crate 隔离纯名调用）：当前模块有同名函数时，其他模块条目
-            //   不参与决议（作用域遮蔽导入；52_library 的 主::版本() 自限定
-            //   语义等价，纯名 版本() 现在直接命中当前模块版本）
+        if (!overloadEntryMatch(kv.first, name, info, moduleFilter, currentHasName)) {
             continue;
         }
         // 参数个数匹配：实参个数 + 可补全的默认参数数 >= 参数总数
@@ -333,6 +236,130 @@ std::string SemanticAnalyzer::resolveOverload(const std::string& name,
     }
     return bestKey;
 }
+
+
+// 206-a：A-5 前置扫描（crate 隔离纯名调用）——当前模块是否定义过该函数名；
+//   定义过则其他模块同名条目不参与纯名决议（作用域遮蔽导入语义：跨模块同名
+//   函数纯名调用不再一律报歧义，当前模块版本优先）；调用方守卫 moduleFilter 空
+//   与 currentModuleName_ 非空（206-a：条件留主函数，族① 语义纯粹）。
+bool SemanticAnalyzer::hasCurrentModuleDefinition(const std::string& name) {
+    bool currentHasName = false;
+    if (!currentModuleName_.empty()) {
+        for (const auto& kv : functions_) {
+            std::string k2 = kv.first;
+            const std::size_t h2 = k2.find('#');
+            const std::size_t d2 = k2.find('$');
+            std::string km2;
+            if (d2 != std::string::npos && h2 != std::string::npos && d2 < h2) {
+                km2 = k2.substr(0, d2);
+                k2 = k2.substr(d2 + 1);
+            } else if (h2 == std::string::npos && d2 != std::string::npos &&
+                       name.find('$') == std::string::npos) {
+                km2 = k2.substr(0, d2);
+                k2 = k2.substr(d2 + 1);
+            }
+            const std::size_t hp = k2.find('#');
+            const std::string b2 = (hp == std::string::npos) ? k2 : k2.substr(0, hp);
+            if (b2 != name) continue;
+            const std::string em2 = km2.empty() ? kv.second.moduleName : km2;
+            if (em2 == currentModuleName_) {
+                currentHasName = true;
+                break;
+            }
+        }
+    }
+    return currentHasName;
+}
+
+// 206-a：单条签名候选的 key 形态剥离 + crate 隔离模块过滤——
+//   普通/跨模块/无参/泛型形态剥离（第 4/8 层）；精确/父前缀/末段三级模块匹配
+//   （52_library 实测缺陷+挂账1 包前缀化）；A-5 纯名遮蔽。返回 false=跳过该条目
+//   （原 continue 语义），true=参与决议。
+bool SemanticAnalyzer::overloadEntryMatch(const std::string& rawKey,
+                                          const std::string& name,
+                                          const FunctionInfo& info,
+                                          const std::string& moduleFilter,
+                                          bool currentHasName) {
+        // 第 4 层：key 形态兼容——普通签名（名#参数）与跨模块条目
+        //   （模块名$名#参数）。模块条目 key 含 '$' 前缀（模块名$），
+        //   base 提取须剥离 模块名$ 前缀。
+        // 注意：泛型实例名（排序$整32）与重载签名（名#参数）不含模块前缀——
+        //   仅当 '#' 存在且 '$' 位于 '#' 之前（模块名$名#参数）才剥离；
+        //   排序$整32 无 '#' -> 不剥离（base 保持 排序$整32 匹配泛型调用）。
+        std::string key = rawKey;
+        std::string keyModule;  // key 携带的模块名（跨模块条目）
+        const std::size_t hashFirst = key.find('#');
+        const std::size_t dollarPos = key.find('$');
+        if (dollarPos != std::string::npos && hashFirst != std::string::npos &&
+            dollarPos < hashFirst) {
+            keyModule = key.substr(0, dollarPos);
+            key = key.substr(dollarPos + 1);
+        } else if (hashFirst == std::string::npos && dollarPos != std::string::npos &&
+                   name.find('$') == std::string::npos) {
+            // 第 8 层（52_library 实测缺陷）：无参函数（sigKey 无 '#'）跨模块
+            //   注册 key = 模块名$函数名（如 格式化$版本）。调用 name 不含 '$'
+            //   （普通函数调用，区别于泛型实例名 排序$整32）——剥离 '$' 前缀。
+            keyModule = key.substr(0, dollarPos);
+            key = key.substr(dollarPos + 1);
+        }
+        const std::size_t hashPos = key.find('#');
+        const std::string base = (hashPos == std::string::npos) ? key
+                                                                : key.substr(0, hashPos);
+        if (base != name) return false;  // 仅同名的签名参与决议
+        // 第 4 层（crate 隔离）：限定调用按模块过滤——跨模块同名函数各自独立，
+        //   仅匹配调用模块的签名（数学::双倍 只解析 数学.cn 的双倍）。
+        // A-5（2026-08）：纯名调用（moduleFilter 空）当前模块条目优先——
+        //   crate 隔离同名函数纯名调用不再一律歧义（作用域遮蔽导入语义，
+        //   与 52_library 的 主::版本() 自限定等价）。
+        const std::string entryModule = keyModule.empty() ? info.moduleName : keyModule;
+        if (!moduleFilter.empty()) {
+            // 模块过滤：普通条目按 info.moduleName，跨模块条目按 key 前缀模块
+            //   呈报一B 补充（2026-09-07）：moduleName 空 = 单文件管线
+            //   （runPipeline 未合并 / mergeModules singleModule）——全部声明
+            //   同属唯一模块，限定调用过滤器（自导入 主::版本 等）恒命中本
+            //   模块；多文件管线声明恒带模块名，不受影响。
+            if (entryModule == moduleFilter || entryModule.empty()) {
+                // 精确匹配：同包限定调用（网络::传输控制::发送 -> 网络::传输控制）
+            } else {
+                // A-5（父模块名限定调用子模块函数）：entryModule（网络::传输控制）
+                //   以 moduleFilter + "::"（网络::）为前缀即视为同一模块——
+                //   子模块属于父模块命名空间（网络::连接() 解析到 网络::传输控制::连接）
+                const std::string filterPrefix = moduleFilter + "::";
+                const bool isSubModule =
+                    entryModule.compare(0, filterPrefix.size(), filterPrefix) == 0;
+                if (!isSubModule) {
+                    // 第 8 层（52_library 实测缺陷）：跨 crate 限定调用
+                    //   （工具库::格式化::版本）——外部依赖模块注册 moduleName =
+                    //   文件主干（格式化），而调用路径 subModule = 工具库::格式化。
+                    //   最后段匹配：moduleFilter 末段（:: 之后）== entryModule 即视为
+                    //   同一模块（跨 crate 限定调用解析到依赖包内同名模块）。
+                    //   挂账1 包前缀化扩展（2026-09-08）：目录包/父挂子成员模块名
+                    //   带包前缀（语义::内置）——条目名**末段**与 filterLast 对齐即
+                    //   命中（v1 自举组件 语义::语义::内置::行类型 实测：条目
+                    //   语义::内置 末段 内置 == filterLast 内置）。与跨 crate 末段
+                    //   按名匹配同族：精确/前缀匹配优先，末段为松匹配兜底。
+                    const std::size_t lastColon = moduleFilter.rfind("::");
+                    const std::string filterLast = (lastColon == std::string::npos)
+                                                        ? moduleFilter
+                                                        : moduleFilter.substr(lastColon + 2);
+                    const std::size_t entryLastColon = entryModule.rfind("::");
+                    const std::string entryLast =
+                        (entryLastColon == std::string::npos)
+                            ? entryModule
+                            : entryModule.substr(entryLastColon + 2);
+                    if (entryModule != filterLast && entryLast != filterLast) return false;
+                }
+            }
+        } else if (currentHasName && !entryModule.empty() &&
+                   entryModule != currentModuleName_) {
+            // A-5（crate 隔离纯名调用）：当前模块有同名函数时，其他模块条目
+            //   不参与决议（作用域遮蔽导入；52_library 的 主::版本() 自限定
+            //   语义等价，纯名 版本() 现在直接命中当前模块版本）
+            return false;
+        }
+    return true;
+}
+
 bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
                                       const std::string& toRaw) const {
     const std::string from = canonicalType(fromRaw);
