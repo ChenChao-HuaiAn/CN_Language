@@ -75,12 +75,90 @@ void IRGenerator::genStringFrees() {
         }
     }
     if (!ownedStrArrays.empty()) {
+        // 206-c 宿主缺陷根治（H 级·堆损坏 0xC0000374）：**字符串元素数组入口块
+        //   零初始化**——原注释「入口零初始化由数组声明路径既有逐槽零初始化
+        //   覆盖」只对**无初始化器**数组成立（声明路径零初始化条件，见
+        //   ir_stmt_decl.cpp 缺陷2 根治）；有初始化器数组在提前返回路径上
+        //   元素槽为栈垃圾 → 返回块逐元素释放读垃圾指针。收集口径与释放段
+        //   一致（扫本函数 Alloca ∩ oopVarSrcTypes_，名单在块出口已截断不可用）。
+        {
+            ir::IRBlock* entryBlock = function_->blocks.front().get();
+            for (auto it = ownedStrArrays.rbegin(); it != ownedStrArrays.rend();
+                 ++it) {
+                auto slotIt = function_->varSlots.find(*it);
+                if (slotIt == function_->varSlots.end() || slotIt->second <= 0)
+                    continue;
+                for (int s = slotIt->second - 1; s >= 0; --s) {
+                    const std::string slotName =
+                        s == 0 ? *it : *it + "$s" + std::to_string(s);
+                    ir::IRInstruction zeroInst;
+                    zeroInst.opcode = ir::Opcode::Store;
+                    zeroInst.operands.push_back(ir::IRValue::constant("0", "i64"));
+                    zeroInst.result = ir::IRValue();
+                    zeroInst.extra = slotName;
+                    zeroInst.type = "i64";
+                    entryBlock->instructions.insert(
+                        entryBlock->instructions.begin(), zeroInst);
+                }
+            }
+        }
         for (const auto& block : function_->blocks) {
             if (!block->terminated) continue;
             if (block->termKind != "返回") continue;
             setCurrentBlock(block.get());
             for (std::size_t i = ownedStrArrays.size(); i > 0; --i) {
                 emitStrArrayElemFreesFor(ownedStrArrays[i - 1]);
+            }
+        }
+    }
+    // 206-c 宿主缺陷根治（H 级·堆损坏 0xC0000374）：**聚合局部（含拥有型字段的
+    //   结构体/结果/可选）入口块零初始化**——字段释放设施（ownedFieldOrder_
+    //   名单，登记点 genVarDecl；块出口/跳出/返回块三路释放）此前**只**依赖
+    //   「声明点零初始化」，而声明点零初始化仅在无初始化器声明发射；提前返回
+    //   （语法/语义错误中止等）路径上声明点未执行 → 槽为栈垃圾 → 释放设施读
+    //   垃圾对象指针 → __cn_object_delete(垃圾) 堆损坏 0xC0000374（v2p 错误
+    //   路径实测：修复前 rc=0xC0000374，补零初始化后 rc=1/2 正常）。最小复现
+    //   =结构体声明置于 返回 之后的同帧形态（d3 探针：bb1 析构读未初始化槽，
+    //   新鲜栈页侥幸为 0，叠加前序调用污染栈即崩）。与 字符串/类 局部同款
+    //   「入口块最前」前置插入；收集=扫本函数 Alloca ∩ oopVarSrcTypes_ ∩
+    //   判据（聚合=ownedStrFieldsOf 非空，与释放设施精确对齐；类/字符串/
+    //   字符串元素数组各有专段不再重复）。
+    {
+        std::vector<std::string> ownedAggSlots;
+        for (const auto& block : function_->blocks) {
+            for (const auto& inst : block->instructions) {
+                if (inst.opcode != ir::Opcode::Alloca) continue;
+                const std::string& unique = inst.extra;
+                if (unique.empty()) continue;
+                auto srcIt3 = oopVarSrcTypes_.find(unique);
+                if (srcIt3 == oopVarSrcTypes_.end()) continue;
+                const std::string canon3 = types::canonical(srcIt3->second);
+                if (canon3 == "字符串") continue;
+                if (semantic_->isClassType(canon3)) continue;
+                if (types::isArray(canon3)) continue;  // 数组段已覆盖
+                if (ownedStrFieldsOf(canon3).empty()) continue;
+                ownedAggSlots.push_back(unique);
+            }
+        }
+        if (!ownedAggSlots.empty()) {
+            ir::IRBlock* entryBlock = function_->blocks.front().get();
+            for (auto it = ownedAggSlots.rbegin(); it != ownedAggSlots.rend();
+                 ++it) {
+                auto slotIt = function_->varSlots.find(*it);
+                if (slotIt == function_->varSlots.end() || slotIt->second <= 0)
+                    continue;
+                for (int s = slotIt->second - 1; s >= 0; --s) {
+                    const std::string slotName =
+                        s == 0 ? *it : *it + "$s" + std::to_string(s);
+                    ir::IRInstruction zeroInst;
+                    zeroInst.opcode = ir::Opcode::Store;
+                    zeroInst.operands.push_back(ir::IRValue::constant("0", "i64"));
+                    zeroInst.result = ir::IRValue();
+                    zeroInst.extra = slotName;
+                    zeroInst.type = "i64";
+                    entryBlock->instructions.insert(
+                        entryBlock->instructions.begin(), zeroInst);
+                }
             }
         }
     }
