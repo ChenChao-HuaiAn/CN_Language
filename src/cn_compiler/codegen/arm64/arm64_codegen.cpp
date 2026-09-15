@@ -151,9 +151,10 @@ std::string Arm64CodeGenerator::symbolName(const std::string& name) {
 // 第index个整型参数（0起）的传递位置：前8用寄存器 x0~x7，第9起在栈上
 // AAPCS64：整型/指针参数 x0~x7；栈参数位于调用方栈顶。
 //   被调方 prologue 依次压栈：stp x29,x30（16B）、stp x19,xzr（16B，仅
-//   currentNeedHiddenRet_ 时）——栈参数锚定基单一归属 stackParamBase()。
+//   currentNeedHiddenRet_ 时）、被调用者保存寄存器对（16B/对，寄存器分配启用时）
+//   ——栈参数锚定基单一归属 stackParamBase()
 int Arm64CodeGenerator::stackParamBase() const {
-    return currentNeedHiddenRet_ ? 32 : 16;
+    return (currentNeedHiddenRet_ ? 32 : 16) + calleeSavedPairs_ * 16;
 }
 
 std::string Arm64CodeGenerator::parameterRegister(int index) const {
@@ -190,8 +191,32 @@ std::string Arm64CodeGenerator::selectInstruction(ir::Opcode opcode,
 
 // ==================== 栈槽分配 ====================
 
-// 虚拟寄存器ID -> 栈槽偏移（寄存器槽区：-8*id-8，紧贴x29向下）
-int Arm64CodeGenerator::regSlotOffset(int regId) {
+// 虚拟寄存器ID -> 分配到的物理寄存器名（未分配/未启用返回空串）
+std::string Arm64CodeGenerator::allocRegOf(int regId) const {
+    if (regId < 0 || !regAllocEnabled_) return std::string();
+    auto it = regAllocMap_.find(regId);
+    if (it == regAllocMap_.end()) return std::string();
+    return it->second.assignedReg;
+}
+
+// 文本是否为被调用者保存物理寄存器名（x19~x28）
+//   判据仅覆盖分配器可用集——x0~x18/x29/x30 不会作为返回值文本出现
+bool Arm64CodeGenerator::isPhysRegName(const std::string& text) {
+    if (text.size() < 3 || text.size() > 4 || text[0] != 'x') return false;
+    if (text[1] != '1' && text[1] != '2') return false;
+    try {
+        const int n = std::stoi(text.substr(1));
+        return n >= 19 && n <= 28;
+    } catch (...) {
+        return false;
+    }
+}
+
+// 虚拟寄存器ID -> 栈槽偏移（寄存器槽区：-8*id-8，紧贴x29）
+//   已分配到物理寄存器时返回 0：该栈槽弃用（值流走物理寄存器），
+//   使取槽地址/取槽文本等旁路退化为无害空操作（偏移 0 = [x29]，不被读写）。
+int Arm64CodeGenerator::regSlotOffset(int regId) const {
+    if (hasPhysReg(regId)) return 0;
     return -8 * regId - 8;
 }
 
@@ -201,9 +226,44 @@ int Arm64CodeGenerator::varSlotOffset(int index) const {
 }
 
 // 虚拟寄存器 -> 栈槽内存操作数文本（[x29, #-8*id-8]）
-std::string Arm64CodeGenerator::regSlotMem(int regId) {
+std::string Arm64CodeGenerator::regSlotMem(int regId) const {
     const int off = regSlotOffset(regId);
     return "[x29,#" + std::to_string(off) + "]";
+}
+
+// ==================== 结果落位统一入口（F1-28） ====================
+
+// 虚拟寄存器结果落位：已分配到物理寄存器时 mov 物理寄存器, srcReg（同名跳过）；
+//   否则保持原栈槽存储。整型/指针类结果专用（含 i1 布尔结果）。
+void Arm64CodeGenerator::storeVirtualResult(Arm64AsmWriter& writer, int resultId,
+                                            const std::string& srcReg,
+                                            const std::string& type) {
+    const std::string dst = allocRegOf(resultId);
+    if (!dst.empty()) {
+        if (dst != srcReg) {
+            writer.line("mov " + dst + ", " + srcReg);
+            writer.comment("寄存器分配：结果 %v" + std::to_string(resultId) +
+                           " -> " + dst);
+        }
+        return;
+    }
+    emitStackStore(writer, regSlotOffset(resultId), srcReg, type);
+}
+
+// 同上，源为浮点寄存器（sN/dN）：已分配时 fmov dN, src；否则栈槽 store。
+//   注意：分配器当前只覆盖 i64/u64/ptr，浮点结果不会被分配——此入口为
+//   与类型面解耦的统一落位通道（分配面扩展时无需改调用点）。
+void Arm64CodeGenerator::storeVirtualResultFp(Arm64AsmWriter& writer, int resultId,
+                                              const std::string& srcFp,
+                                              const std::string& type) {
+    const std::string dst = allocRegOf(resultId);
+    if (!dst.empty()) {
+        writer.line("fmov " + dst + ", " + srcFp);
+        writer.comment("寄存器分配：浮点结果 %v" + std::to_string(resultId) +
+                       " -> " + dst);
+        return;
+    }
+    emitStackStore(writer, regSlotOffset(resultId), srcFp, type);
 }
 
 // 登记变量到变量槽映射（记录槽偏移，返回槽索引）
@@ -439,11 +499,34 @@ void Arm64CodeGenerator::emitPrologue(Arm64AsmWriter& writer,
         writer.line("mov x19, x0");
         writer.comment("保存隐藏返回指针（入口 x0 -> x19）");
     }
+    // F1-28：被调用者保存寄存器（寄存器分配占用）成对压栈
+    //   必须在 mov x29, sp 之前——栈参数基址（stackParamBase）随之补偿压栈对数
+    for (int p = 0; p + 1 < static_cast<int>(calleeSavedRegs_.size()); p += 2) {
+        writer.line("stp " + calleeSavedRegs_[p] + ", " + calleeSavedRegs_[p + 1] +
+                    ", [sp, #-16]!");
+    }
+    if (static_cast<int>(calleeSavedRegs_.size()) % 2 != 0) {
+        writer.line("stp " + calleeSavedRegs_.back() + ", xzr, [sp, #-16]!");
+    }
     writer.line("mov x29, sp");
     const int frameSize = computeFrameSize(function);
     currentFrameSize_ = frameSize;
     if (frameSize > 0) {
         emitStackAdjust(writer, -frameSize);
+    }
+}
+
+// 尾声恢复被调用者保存寄存器（逆序弹出，与序言压栈相反）
+void Arm64CodeGenerator::emitRestoreCalleeSaved(Arm64AsmWriter& writer) {
+    const int count = static_cast<int>(calleeSavedRegs_.size());
+    int p = count - 1;
+    if (count % 2 != 0) {
+        writer.line("ldp " + calleeSavedRegs_[count - 1] + ", xzr, [sp], #16");
+        p = count - 2;
+    }
+    for (; p >= 1; p -= 2) {
+        writer.line("ldp " + calleeSavedRegs_[p - 1] + ", " + calleeSavedRegs_[p] +
+                    ", [sp], #16");
     }
 }
 
@@ -584,6 +667,7 @@ if (currentStructReturn_ && !returnReg.empty()) {
         emitStackAdjust(writer, currentFrameSize_);
         // 恢复顺序与压栈相反：x19 后压（栈顶），先弹 x19 再弹 x29/x30
         // （prologue: stp x29,x30 先、stp x19,xzr 后；mov x29,sp 在 x19 压栈后）
+        emitRestoreCalleeSaved(writer);
         if (currentNeedHiddenRet_) writer.line("ldp x19, xzr, [sp], #16");
         writer.line("ldp x29, x30, [sp], #16");
         writer.line("ret");
@@ -605,6 +689,7 @@ if (currentStructReturn_ && !returnReg.empty()) {
             writer.line("str x10, [x0, #8]");
             writer.line("mov x0, x19");
             emitStackAdjust(writer, currentFrameSize_);
+            emitRestoreCalleeSaved(writer);
             if (currentNeedHiddenRet_) writer.line("ldp x19, xzr, [sp], #16");
             writer.line("ldp x29, x30, [sp], #16");
             writer.line("ret");
@@ -612,7 +697,10 @@ if (currentStructReturn_ && !returnReg.empty()) {
         }
         if (currentReturnType_ == "f64" || currentReturnType_ == "f32") {
             const std::string vreg = (currentReturnType_ == "f64") ? "d0" : "s0";
-            if (returnReg.compare(0, 6, "[x29,#") == 0) {
+            if (isPhysRegName(returnReg)) {
+                // F1-28：返回值为已分配虚拟寄存器（整型寄存器驻留的浮点位模式）
+                writer.line("fmov " + vreg + ", " + returnReg);
+            } else if (returnReg.compare(0, 6, "[x29,#") == 0) {
                 const int off = parseStackOffset(returnReg);
                 emitStackLoad(writer, off, vreg, currentReturnType_);
             } else if (returnReg.size() > 2 && returnReg[0] == '%' && returnReg[1] == 'v') {
@@ -622,6 +710,9 @@ if (currentStructReturn_ && !returnReg.empty()) {
                 // 常量文本返回（如 "0"/"1"）：浮点常量池加载
                 loadOperandToV(writer, ir::IRValue::constant(returnReg, currentReturnType_), vreg);
             }
+        } else if (isPhysRegName(returnReg)) {
+            // F1-28：返回值为已分配虚拟寄存器（物理寄存器直接入 x0）
+            if (returnReg != "x0") writer.line("mov x0, " + returnReg);
         } else if (returnReg.compare(0, 6, "[x29,#") == 0) {
             const int off = parseStackOffset(returnReg);
             emitStackLoad(writer, off, "x0", currentReturnType_);
@@ -636,6 +727,7 @@ if (currentStructReturn_ && !returnReg.empty()) {
     }
     emitStackAdjust(writer, currentFrameSize_);
     // 恢复顺序与压栈相反（x19 后压先弹）
+    emitRestoreCalleeSaved(writer);
     if (currentNeedHiddenRet_) writer.line("ldp x19, xzr, [sp], #16");
     writer.line("ldp x29, x30, [sp], #16");
     writer.line("ret");
@@ -648,6 +740,32 @@ std::string Arm64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& f
     currentNeedHiddenRet_ = (function.structReturn ||
                              function.returnType == "i128" ||
                              function.returnType == "u128");
+    // ---- F1-28：线性扫描寄存器分配（镜 x64 的 -O2 联动与保守策略） ----
+    //   • 隐藏返回指针（结构体/i128/u128 返回）场景强制关闭：x19 已被返回缓冲区
+    //     指针占用，且 epilogue 有多条提前 return 路径（与 x64 保留 r12 同款）
+    //   • 仅 i64/u64/ptr 类虚拟寄存器参与（分配器内部过滤）；f32/f64/i8/i16/i32/i128
+    //     仍走栈槽（天然安全）
+    //   • 只用被调用者保存寄存器 x19~x28（序言压栈/尾声恢复，调用点无需保存）
+    regAllocMap_.clear();
+    calleeSavedRegs_.clear();
+    calleeSavedPairs_ = 0;
+    const bool useRegAlloc = regAllocEnabled_ && !currentNeedHiddenRet_;
+    if (useRegAlloc) {
+        regalloc::LinearScanAllocator allocator(regalloc::TargetArch::Arm64);
+        regAllocMap_ = allocator.allocate(function);
+        for (const auto& kv : regAllocMap_) {
+            if (!kv.second.assignedReg.empty()) {
+                calleeSavedRegs_.push_back(kv.second.assignedReg);
+            }
+        }
+        // 去重 + 稳定升序（x19~x28）
+        std::sort(calleeSavedRegs_.begin(), calleeSavedRegs_.end());
+        calleeSavedRegs_.erase(
+            std::unique(calleeSavedRegs_.begin(), calleeSavedRegs_.end()),
+            calleeSavedRegs_.end());
+        // 成对压栈（每对 16 字节；奇数个时末位与 xzr 配对占位）
+        calleeSavedPairs_ = (static_cast<int>(calleeSavedRegs_.size()) + 1) / 2;
+    }
     // 登记参数槽（使用唯一内部名 paramUniques）
     for (std::size_t i = 0; i < function.params.size(); ++i) {
         const std::string& unique = (i < function.paramUniques.size())

@@ -2396,36 +2396,73 @@ checkReturnAddressEscape 47 行（全 ≤100）。**D1 计数实测 35**（含�
 
 ## 单位机 ARM64 节
 
-**最近交接**：2026-09-15——**第一百九十六轮（196-a）：arm64 寄存器分配接线尝试 → 按纪律回退（源码零净变更）**；
-留档=接线图谱 + 3 项既有缺陷 + 根因（分配器循环携带值）+ 新立 **D7**。上轮 193-a（F1/F2 重评）见 git 1727cd7。
+**最近交接**：2026-09-15——**第两百二十二轮（222-a）：F1-28 arm64 寄存器分配接线落地 + D7 归因修正**
+（基线 28d6c02；认领 fb28ccd；★轮次更正：原报 214-a 与深度机撞号 → 顺延 222-a）。
 
-### 一、本轮（196-a）做了什么（写给无上下文的新会话）
+### 一、本轮做了什么（写给无上下文的新会话）
 
-1. **目标**（用户批阅优先级①）：arm64 启用 `LinearScanAllocator`（镜像 x64：-O2 联动、structReturn/i128 forceDisable）。
-2. **已实现的接线点（图谱可直接复用）**：
-   - 读侧统一入口 `loadOperandToX`（`operand.id>=0` 且已分配 → `mov`）；
-   - **文本形态** `operandText` / `resultText` 必须感知分配（否则值流分叉）；
-   - 结果落位 ≈25~40 处 → `storeResult(writer, inst.result, src, type)` 助手（**两类形态都要覆盖**：多行格式与 `dstOff` 局部变量）；
-   - `id` 型取数旁路（含 `emitStackLoad(writer, regSlotOffset(x.id))`）统一走 `emitLoadVirtualTo`；
-   - 返回位 = `emitTerminator`（`%vN`→槽文本转换处）+ `emitEpilogue` 需接受物理寄存器名；
-   - 序言/尾声 = 被调用者保存对（x19~x28；隐藏返回指针场景 x19 已占 → forceDisable）；
-   - **`stackParamBase()` 必须按 `calleeSavedSlots_*16` 补偿**（序言压栈在 `mov x29,sp` 之前）；
-   - 开关 = `backend_factory.cpp` arm64 分支。
-3. **接线期修掉的 3 个既有缺陷**：`resultText` 未感知分配 / `emitTerminator` 槽文本转换 / 批量替换自调用（ASAN 栈溢出）。
-4. **阻断根因（★D7）**：`reg_alloc.cpp` 活跃区间对「**循环体内被重定义、跨块/跨迭代使用**」的值判定过短 → 同寄存器双占；
-   实证 E2E **115**（`向量$资源.清空` 少析构 1 次）/ **235** / **245**（校验和 191≠255）；最小对照=简单循环正常。
-5. **处置**：按 `plans/025` §三.2 §5 既定口径回退（`git checkout`，源码零净变更）；探针正确 + 单测 1325/1325 复验。
+1. **★D7 被实测推翻（最重要）**：196-a 把门禁失败归因于「`reg_alloc.cpp` 活跃区间对循环体内重定义/跨迭代使用值
+   判定过短」。本轮写**区间覆盖校验器**（对每个可分配 vreg 断言全部 def/use 点 ∈ `[start,end]`），在**原分配器
+   未改**前提下跑 **v2 全树编译 + 全量 E2E 语料 → 违例 0** → 该归因**不成立**（区间 end = 全部 def/use 点最大序数，
+   第一遍精确遍历结构性保证）。真因＝**196-a 接线实现的消费面遗漏**（值流分叉）。
+   **处置**：不实施 `out[b]` 保守扩展（无收益且伤性能），改为把不变量固化为单测（`IntervalsCoverAllUses{CrossBlock,LoopCarried}`）。
+2. **F1-28 接线（结构性消除值流分叉）**：
+   - 读侧统一入口 `loadOperandToX`/`loadOperandToV`（已分配 → `mov`/`fmov`）；
+   - **结果落位唯一通道** `storeVirtualResult`/`storeVirtualResultFp`（57 处程序化替换；助手自身排除防自调用递归）；
+   - **`regSlotOffset`/`regSlotMem` 对已分配寄存器返回 0** —— 弃用槽的取地址/取文本旁路（AddrOf/i128 基址等）
+     自动退化为无害空操作（这是与 196-a 做法的关键差异：196-a 让文本与值流双轨，本做法让槽彻底不存在）；
+   - `operandText`/`resultText` 感知分配；序言成对 `stp`/尾声 `ldp` 逆序（**三处返回路径**：正常/结构体返回/i128 返回）；
+   - `stackParamBase()` 按压栈对数补偿（`(隐藏返回?32:16) + 对数*16`）；
+   - 返回位 `emitTerminator` 对已分配返回寄存器**直传物理寄存器名**（`isPhysRegName` 判据）；
+   - `backend_factory.cpp` arm64 启用 `-O2` 联动；隐藏返回指针场景后端 forceDisable（`calleeSavedRegs_` 空 → 恢复为 no-op）。
+3. **接线踩坑 3 处（均已修）**：① 统一通道替换后 5 处 `dstOff` 成死变量（`-Werror=unused-variable` 拦截 → 删除）；
+   ② 读侧旁路 5 处直读槽（oop 对象指针 3 + 虚表指针 1 + Load 寄存器操作数 1）未走 `loadOperandToX` → 已改
+   （i128 面 8 处经确认不在分配面维持直读）；③ 返回位传槽文本会使 epilogue 读弃用槽 → 改直传物理寄存器。
+4. **中段 rebase**：撞出深度机 213~219-a 共存（v2 树含其改动），看板冲突按分区规则合并（本机行取本机、深度机行取远程）。
 
-### 二、下一轮（**197-a** 预登记，`plans/025` §〇）——建议按此序
+### 二、本轮验证（linux-arm64 口径）
 
-1. **D7 专项（建议优先）**：分配器活跃区间保守扩展（回边/循环携带值 → 扩展至循环尾）+ **x64 同族核查**
-   （win-x64 同用该分配器：复跑 115/235/245 类用例）+ 反证探针；完成后即可重接 arm64（本轮图谱直接复用）；
-2. **F2-33 纯 stdlib 三项**（随机数/迭代器/正则——零语言变更、与在飞任务零交叠）；
-3. D1 续波（`scripts/check_fn_length.py` 实测 55 项）/ D3（未初始化槽加固）。
+- 零警告构建（GCC 9.3 `-Wall -Wextra -Werror`）+ 单测 **1327/1327**（+2 不变量用例）
+- 全量 E2E：`python3 tests/e2e/run_e2e.py --cn target/cn --target linux-arm64 --jobs 4` → **312 用例 310 过 / 0 失败 / 2 跳**（rc=0）
+- **锚定链重锚 561364 → 558209 行**（md5 `534c3dd8…`；`fix_p ≡ fix_s` 逐字节；-3155 行＝寄存器驻留消除栈访存）
+- **性能锚**：栈访存 **1077 vs `--no-regalloc` 2379（-54.7%）**；运行时间 0.36s vs 0.37s（不劣化）
+- **反证**：`--no-regalloc` 两态输出**逐字节一致** + 产物回全栈帧形态（唯一变量=开关）
+- ASCII 门禁：`python3 scripts/check_ascii_idents.py` → 252 文件合规 ✓
 
-### 三、诚实边界
+### 三、下一轮任务（按序）
 
-- **本轮未交付功能**（回退）；arm64 寄存器分配收益（探针实测访存 -64%）待 D7 后兑现；
-- D7 的 x64 同族面**未实测**（win 侧 306/306 通过 → 形态可能未触发）——家机复跑可留意；
-- ASAN 构建须隔离产物目录（本轮曾污染 `target/*.a`，已清场重建）；
-- github 镜像本机无凭据未推。
+1. **D8（本轮登记·性能）**：寄存器分配**冗余 mov 消除**——实测 245 用例 1121 条 `mov xN, 临时寄存器`（指令先算
+   x9/x10 再搬运到分配寄存器）。首步＝**指令选择层寄存器感知**：算术/比较/访存发射方法直接以分配寄存器为写入目标
+   （ARM64 三地址语义天然支持原地运算）；验收＝mov 条数显著下降 + 全量 E2E 全绿 + 锚定链自洽 + 性能锚不劣化。
+2. **F1-26（Phi 落地）**：arm64 regalloc 已接线 → 同链收口（`pass_manager` -O3 注册 SSAPass 但 codegen 未落地，实测 3 处「阶段一预留」）。
+3. **F2-33 纯 stdlib 三项**（随机数/迭代器/正则——零语言变更，可独立出轮）。
+4. **linux-x86_64 后端 regalloc**（同款接线可复用 arm64 本轮改动；当前仍写死关闭）。
+5. 其余：F1-29（pass 边界放开）/ F1-30-ASan / D1 续波 / D3。
+6. **文档缺陷清理（本轮发现）**：`plans/021` §一~§五 存在历史重复段（第二份为旧副本）——本轮两处同步本机行保一致，
+   建议下一轮持锁时整体去重。
+
+### 四、验证链（本机复现口径）
+
+```
+# 全量门禁（arm64）
+rm -rf target/build && cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Debug &&
+  cmake --build target/build -j 8            # 零警告
+./target/cn_unit_tests                       # 1327/1327
+python3 tests/e2e/run_e2e.py --cn target/cn --target linux-arm64 --jobs 4   # 312/310/0/2
+# 锚定链（arm64）：79_v2 单跑（v2p 缓存命中后约 3 分钟）
+python3 tests/e2e/run_e2e.py --cn target/cn --target linux-arm64 --filter 79_v2 --verbose
+#   → target/audit2/selfwork79/fix_p.asm ≡ fix_s.asm（558209 行 / 534c3dd8…）
+# 性能锚：cn compile <用例> --target linux-arm64 -O2 [--no-regalloc] → grep -c '\[x29, #-'
+# ASCII 门禁（C++ 改动后必跑）：python3 scripts/check_ascii_idents.py
+> 注意：v2 锚定链用例首建 v2p 时勿用 --jobs 6（并行内存压力曾致 78_v2 偶发失败；--jobs 4 全绿）。
+> 远程推送现状（2026-09-15 实测）：gitcode 正常；github 本机无凭据（沿既有口径待他机代推）。
+```
+
+### 五、诚实边界
+
+- **冗余 mov 1121 条未消除**（净收益仍为正：栈访存 -54.7% 远大于等量寄存器 mov）；已登记 D8。
+- **win-x64 同族动态核查本机做不到**（无 MSVC/无 x86 执行环境）——本轮结论「D7 撤销 ⇒ 无同族缺陷」，
+  家机复跑全量 E2E 即可复核；arm64/x64 同用 `reg_alloc.cpp`，本轮其零改动。
+- **linux-x86_64 后端仍写死关闭**（本轮只启用 arm64）。
+- 探针/中间产物：`/tmp/d7work/`（不入库）；`target/audit2/selfwork79/` 为锚定链正式产物。
+- github 镜像本机无凭据未推（170-a 起累积）。

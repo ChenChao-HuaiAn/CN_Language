@@ -292,6 +292,15 @@ std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
         return reg;
     }
     if (operand.id >= 0) {
+        // 寄存器分配（F1-28）：已分配到物理寄存器 -> mov reg, 物理寄存器
+        //   （同名零指令；物理寄存器被调用者保存，调用点无需再保存）
+        const std::string src = allocRegOf(operand.id);
+        if (!src.empty()) {
+            if (src != reg) {
+                writer.line("mov " + reg + ", " + src);
+            }
+            return reg;
+        }
         emitStackLoad(writer, regSlotOffset(operand.id), reg, operand.type);
         return reg;
     }
@@ -311,6 +320,13 @@ void Arm64CodeGenerator::loadOperandToV(Arm64AsmWriter& writer,
         return;
     }
     if (operand.id >= 0) {
+        // 寄存器分配（F1-28）：整型虚拟寄存器不参与浮点装载（分配面仅 i64/u64/ptr），
+        //   但为与分配面解耦，命中时直接 fmov 到浮点寄存器
+        const std::string src = allocRegOf(operand.id);
+        if (!src.empty()) {
+            writer.line("fmov " + vreg + ", " + src);
+            return;
+        }
         emitStackLoad(writer, regSlotOffset(operand.id), vreg, operand.type);
         return;
     }

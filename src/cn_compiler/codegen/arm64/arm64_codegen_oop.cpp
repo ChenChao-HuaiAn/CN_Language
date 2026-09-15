@@ -100,7 +100,6 @@ void Arm64CodeGenerator::emitNewObject(Arm64AsmWriter& writer,
         (bar == std::string::npos) ? inst.extra : inst.extra.substr(0, bar);
     const std::string sizeText =
         (bar == std::string::npos) ? "0" : inst.extra.substr(bar + 1);
-    const int dstOff = regSlotOffset(inst.result.id);
     // 1. 堆分配：x0 = size；bl __cn_object_new -> x0（对象指针）
     try {
         emitMovImm(writer, "x0", static_cast<std::uint64_t>(std::stoll(sizeText)));
@@ -136,7 +135,7 @@ void Arm64CodeGenerator::emitNewObject(Arm64AsmWriter& writer,
         }
     }
     // 3. 结果槽 = 对象指针
-    emitStackStore(writer, dstOff, "x0", "ptr");
+    storeVirtualResult(writer, inst.result.id, "x0", "ptr");
 }
 
 // ==================== 删除对象（DeleteObject） ====================
@@ -154,7 +153,7 @@ void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
     const std::string skipLabel = "Lobjdel_ok" + std::to_string(skipId);
     // 1. 对象指针入 x0（this）；空指针 -> 跳过
     if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x0", "ptr");
+        loadOperandToX(writer, inst.operands[0], "x0");
     } else {
         emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
     }
@@ -176,7 +175,7 @@ void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
     }
     // 3. 释放内存（对象指针重新装载——bl 会破坏 x0）
     if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x0", "ptr");
+        loadOperandToX(writer, inst.operands[0], "x0");
     } else {
         emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
     }
@@ -211,7 +210,7 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
     const std::size_t argCount = inst.operands.size() - 1;
     // 1. this 入 x0
     if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x0", "ptr");
+        loadOperandToX(writer, inst.operands[0], "x0");
     } else {
         emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
     }
@@ -259,12 +258,10 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
     writer.line("blr x9");
     // 6. 返回值 -> 结果槽（浮点 d0/s0，整型 x0）
     if (inst.result.id >= 0) {
-        const int dstOff = regSlotOffset(inst.result.id);
         if (isFloatType(inst.result.type)) {
-            emitStackStore(writer, dstOff, (inst.result.type == "f64") ? "d0" : "s0",
-                           inst.result.type);
+            storeVirtualResultFp(writer, inst.result.id, (inst.result.type == "f64") ? "d0" : "s0", inst.result.type);
         } else {
-            emitStackStore(writer, dstOff, "x0", inst.result.type);
+            storeVirtualResult(writer, inst.result.id, "x0", inst.result.type);
         }
     }
 }
@@ -286,16 +283,15 @@ void Arm64CodeGenerator::emitOopInstruction(Arm64AsmWriter& writer,
             emitVirtualCall(writer, inst);
             break;
         case ir::Opcode::VtableAddr: {
-            const int dstOff = regSlotOffset(inst.result.id);
             if (!inst.operands.empty() && inst.operands[0].id >= 0) {
                 // 取对象虚表指针：x9 = [对象首地址]
-                emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x9", "ptr");
+                loadOperandToX(writer, inst.operands[0], "x9");
                 writer.line("ldr x9, [x9]");
             } else {
                 // 加载类虚表地址：adrp+add
                 emitLoadSymbolAddr(writer, "x9", vtableSymbol(inst.extra));
             }
-            emitStackStore(writer, dstOff, "x9", "ptr");
+            storeVirtualResult(writer, inst.result.id, "x9", "ptr");
             break;
         }
         default:

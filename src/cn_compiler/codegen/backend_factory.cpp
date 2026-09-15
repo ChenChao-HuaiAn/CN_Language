@@ -38,9 +38,10 @@ std::unique_ptr<Backend> createBackend(const std::string& target,
     }
     if (target == "linux-arm64") {
         auto backend = std::make_unique<Arm64CodeGenerator>(diag, sem);
-        // arm64 寄存器分配作为可开关特性（阶段C 设计决策：默认关闭，
-        //   保持全栈帧行为，正确性最高优先；reg_alloc 模块独立可用）
-        backend->setRegAllocEnabled(false);
+        // F1-28（214-a）：arm64 启用线性扫描寄存器分配——与 win-x64 同款 -O2 联动
+        //   （regAllocOn = optLevel>=2 && useRegAlloc）。保守点：隐藏返回指针场景
+        //   （结构体/i128/u128 返回）由后端内部 forceDisable（x19 已被占用）。
+        backend->setRegAllocEnabled(regAllocOn);
         backend->setDebugInfoEnabled(debugInfo);
         return backend;
     }

@@ -21,7 +21,11 @@ void Arm64CodeGenerator::emitTerminator(Arm64AsmWriter& writer,
         if (!block.termReturnValue.empty()) {
             std::string s = block.termReturnValue;
             if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
-                returnReg = regSlotMem(std::stoi(s.substr(2)));
+                const int id = std::stoi(s.substr(2));
+                // F1-28：返回位感知寄存器分配——已分配则直接传物理寄存器名
+                //   （传槽文本会使 epilogue 从弃用槽读数 = 值流分叉）
+                const std::string phys = allocRegOf(id);
+                returnReg = phys.empty() ? regSlotMem(id) : phys;
             } else {
                 returnReg = s;
             }

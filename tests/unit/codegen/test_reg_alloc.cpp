@@ -1,10 +1,10 @@
 // 线性扫描寄存器分配器单元测试（阶段C Task 4.3）
 // 覆盖：
-//   1. 活跃区间计算：def-use 链 + 跨块活跃传播（简单顺序/分支/循环场景）
+//   1. 活跃区间计算：def-use 链 + 跨blk活跃传播（简单顺序/分支/循环场景）
 //   2. 分配无冲突：同一物理寄存器不被两个活跃区间同时占用（重叠区间不同寄存器）
 //   3. 溢出正确：物理寄存器不足时溢出到栈槽（spillSlot >= 0）
 //   4. 被调用者保存寄存器：分配结果只使用被调用者保存寄存器（rbx/r12~r15 / x19~x28）
-//   5. 类型过滤：仅 i64/u64/ptr 参与分配，i32/浮点/i128 保持栈槽
+//   5. kind型过滤：仅 i64/u64/ptr 参与分配，i32/浮point/i128 保持栈槽
 //   6. 保留寄存器：x64 隐藏返回指针场景保留 r12
 // 构造方式：直接手工构造 ir::IRFunction（不经过前端链路，聚焦分配器本身）
 // 注意：GCC 7 不支持中文标识符，测试名必须使用英文
@@ -28,7 +28,7 @@ using cn_compiler::regalloc::TargetArch;
 
 namespace {
 
-// 辅助：构造单块函数——连续 ConstInt/Add 链
+// 辅助：构造单blk函数——连续 ConstInt/Add 链
 //   %v0 = ConstInt 1（i64）
 //   %v1 = ConstInt 2（i64）
 //   %v2 = Add %v0, %v1（i64）
@@ -39,7 +39,7 @@ IRFunction buildSimpleFunc() {
     func.name = "simple";
     func.returnType = "i64";
     auto block = std::make_unique<IRBlock>();
-    block->label = "块0";
+    block->label = "blk0";
 
     auto addConst = [&block](int id, const std::string& val) {
         IRInstruction c;
@@ -70,9 +70,9 @@ IRFunction buildSimpleFunc() {
     return func;
 }
 
-// 辅助：构造跨块函数（条件跳转，验证跨块活跃传播）
-//   块0: %v0 = ConstInt 1; %v1 = ConstInt 2; 条件跳转（%v0 活跃跨块）
-//   块1: %v2 = Add %v0, %v1; 返回 %v2
+// 辅助：构造跨blk函数（条件跳转，验证跨blk活跃传播）
+//   blk0: %v0 = ConstInt 1; %v1 = ConstInt 2; 条件跳转（%v0 活跃跨blk）
+//   blk1: %v2 = Add %v0, %v1; 返回 %v2
 IRFunction buildBranchFunc() {
     IRFunction func;
     func.name = "branch";
@@ -80,7 +80,7 @@ IRFunction buildBranchFunc() {
     func.nextRegId = 3;
 
     auto block0 = std::make_unique<IRBlock>();
-    block0->label = "块0";
+    block0->label = "blk0";
     IRInstruction c0;
     c0.opcode = Opcode::ConstInt;
     c0.result = IRValue::reg(0, "i64");
@@ -93,14 +93,14 @@ IRFunction buildBranchFunc() {
     c1.type = "i64";
     c1.extra = "2";
     block0->instructions.push_back(c1);
-    // 条件跳转：条件 = %v0（i1 不参与分配，但 %v0 用作 %v0 需要活跃跨块）
+    // 条件跳转：条件 = %v0（i1 不参与分配，但 %v0 用作 %v0 需要活跃跨blk）
     block0->terminated = true;
     block0->termKind = "条件跳转";
-    block0->termTrueTarget = "块1";
-    block0->termFalseTarget = "块1";
+    block0->termTrueTarget = "blk1";
+    block0->termFalseTarget = "blk1";
 
     auto block1 = std::make_unique<IRBlock>();
-    block1->label = "块1";
+    block1->label = "blk1";
     IRInstruction a;
     a.opcode = Opcode::Add;
     a.result = IRValue::reg(2, "i64");
@@ -117,6 +117,189 @@ IRFunction buildBranchFunc() {
 }
 
 } // namespace
+
+// ---- 0. 区间覆盖不变量（D7 实测固化，214-a） ----
+// 不变量：**每个可分配虚拟寄存器的全部 def/use point都必须落在其活跃区间内**。
+//   这是「同物理寄存器双占」的唯一防线：区间若漏掉任一使用point，线性扫描会提前
+//   回收该寄存器并重新分配给别的val → 双占 → 静默错码。
+//   机理（214-a 实测结论）：区间 end 取「全部 use point + 全部 def point」的最大序数，
+//   由第一遍 def/use 遍历保证——无需额外的 out[b] 保守扩展即天然成立。
+//   本测试把该不变量固化为回归门禁（任何破坏它的改动在此拦截）。
+namespace {
+
+// 返回violations描述列表（空 = 全部覆盖）
+std::vector<std::string> verifyIntervalCoverage(const IRFunction& func) {
+    std::vector<std::string> violations;
+    const auto intervals = LinearScanAllocator::computeLiveIntervals(func);
+    std::unordered_map<int, LiveInterval> byId;
+    for (const auto& li : intervals) byId[li.regId] = li;
+    const auto blockRanges = LinearScanAllocator::computeBlockRanges(func);
+    for (std::size_t b = 0; b < func.blocks.size(); ++b) {
+        const auto& blk = func.blocks[b];
+        const int base = blockRanges[b].first;
+        for (std::size_t i = 0; i < blk->instructions.size(); ++i) {
+            const auto& inst = blk->instructions[i];
+            const int point = base + static_cast<int>(i);
+            if (inst.opcode == Opcode::Alloca) continue;
+            auto noteViolation = [&](int id, const char* kind) {
+                auto it = byId.find(id);
+                if (it == byId.end() || point < it->second.start || point > it->second.end) {
+                    violations.push_back(std::string(kind) + " v" + std::to_string(id) +
+                                   " @" + std::to_string(point));
+                }
+            };
+            if (inst.result.id >= 0 &&
+                LinearScanAllocator::isAllocableType(inst.result.type)) {
+                noteViolation(inst.result.id, "def");
+            }
+            for (const auto& op : inst.operands) {
+                if (op.id >= 0 && !op.isConstant &&
+                    LinearScanAllocator::isAllocableType(op.type)) {
+                    noteViolation(op.id, "use");
+                }
+            }
+        }
+    }
+    return violations;
+}
+
+// 跨blk链：bb0 定义 v0/v1 -> bb1 用 v0/v1 算 v2 -> 再用 v2 算 v3 -> 返回 v3
+IRFunction buildCrossBlockChain() {
+    IRFunction func;
+    func.name = "cross-block chain";
+    func.returnType = "i64";
+    func.nextRegId = 4;
+    auto mkConst = [](int id) {
+        IRInstruction c;
+        c.opcode = Opcode::ConstInt;
+        c.result = IRValue::reg(id, "i64");
+        c.type = "i64";
+        c.extra = std::to_string(id + 1);
+        return c;
+    };
+    auto mkAdd = [](int id, int a, int b) {
+        IRInstruction x;
+        x.opcode = Opcode::Add;
+        x.result = IRValue::reg(id, "i64");
+        x.type = "i64";
+        x.operands = {IRValue::reg(a, "i64"), IRValue::reg(b, "i64")};
+        return x;
+    };
+    auto bb0 = std::make_unique<IRBlock>();
+    bb0->label = "bb0";
+    bb0->instructions.push_back(mkConst(0));
+    bb0->instructions.push_back(mkConst(1));
+    bb0->terminated = true;
+    bb0->termKind = "跳转";
+    bb0->termTarget = "bb1";
+
+    auto bb1 = std::make_unique<IRBlock>();
+    bb1->label = "bb1";
+    bb1->instructions.push_back(mkAdd(2, 0, 1));
+    bb1->instructions.push_back(mkAdd(3, 2, 0));
+    bb1->terminated = true;
+    bb1->termKind = "返回";
+    bb1->termReturnValue = "%v3";
+
+    func.blocks.push_back(std::move(bb0));
+    func.blocks.push_back(std::move(bb1));
+    return func;
+}
+
+// 循环携带val：bb1 头mkLt -> bb2 体更新 v0（自增）-> 回边 bb1 -> bb3 用 v0 返回
+IRFunction buildLoopCarried() {
+    IRFunction func;
+    func.name = "循环携带val";
+    func.returnType = "i64";
+    func.nextRegId = 6;
+    auto mkConst = [](int id, const std::string& val) {
+        IRInstruction c;
+        c.opcode = Opcode::ConstInt;
+        c.result = IRValue::reg(id, "i64");
+        c.type = "i64";
+        c.extra = val;
+        return c;
+    };
+    auto mkAdd = [](int id, int a, int b) {
+        IRInstruction x;
+        x.opcode = Opcode::Add;
+        x.result = IRValue::reg(id, "i64");
+        x.type = "i64";
+        x.operands = {IRValue::reg(a, "i64"), IRValue::reg(b, "i64")};
+        return x;
+    };
+    auto mkLt = [](int id, int a, int b) {
+        IRInstruction x;
+        x.opcode = Opcode::Lt;
+        x.result = IRValue::reg(id, "i1");
+        x.type = "i1";
+        x.operands = {IRValue::reg(a, "i64"), IRValue::reg(b, "i64")};
+        return x;
+    };
+    auto bb0 = std::make_unique<IRBlock>();
+    bb0->label = "bb0";
+    bb0->instructions.push_back(mkConst(0, "0"));
+    bb0->instructions.push_back(mkConst(1, "10"));
+    bb0->terminated = true;
+    bb0->termKind = "跳转";
+    bb0->termTarget = "bb1";
+
+    auto bb1 = std::make_unique<IRBlock>();  // 循环头（v0/v1 跨迭代活跃）
+    bb1->label = "bb1";
+    bb1->instructions.push_back(mkLt(2, 0, 1));
+    bb1->terminated = true;
+    bb1->termKind = "条件跳转";
+    bb1->termTrueTarget = "bb2";
+    bb1->termFalseTarget = "bb3";
+
+    auto bb2 = std::make_unique<IRBlock>();  // 循环体（v0 被重新定义 = 循环携带）
+    bb2->label = "bb2";
+    bb2->instructions.push_back(mkConst(4, "1"));
+    bb2->instructions.push_back(mkAdd(5, 0, 4));  // v0 = v0 + 1
+    bb2->terminated = true;
+    bb2->termKind = "跳转";
+    bb2->termTarget = "bb1";
+
+    auto bb3 = std::make_unique<IRBlock>();
+    bb3->label = "bb3";
+    bb3->instructions.push_back(mkAdd(3, 0, 1));
+    bb3->terminated = true;
+    bb3->termKind = "返回";
+    bb3->termReturnValue = "%v3";
+
+    func.blocks.push_back(std::move(bb0));
+    func.blocks.push_back(std::move(bb1));
+    func.blocks.push_back(std::move(bb2));
+    func.blocks.push_back(std::move(bb3));
+    return func;
+}
+
+} // namespace
+
+TEST(RegAllocTest, IntervalsCoverAllUsesCrossBlock) {
+    const IRFunction func = buildCrossBlockChain();
+    const std::vector<std::string> violations = verifyIntervalCoverage(func);
+    EXPECT_TRUE(violations.empty()) << "cross-block chain区间覆盖violations: " << (violations.empty() ? "" : violations[0]);
+}
+
+TEST(RegAllocTest, IntervalsCoverAllUsesLoopCarried) {
+    // D7 原描述场景：循环体内被重定义、跨迭代使用的val
+    const IRFunction func = buildLoopCarried();
+    const std::vector<std::string> violations = verifyIntervalCoverage(func);
+    EXPECT_TRUE(violations.empty()) << "循环携带val区间覆盖violations: " << (violations.empty() ? "" : violations[0]);
+    // 附加断言：循环携带值 v0 的区间必须跨越回边。序数实测（先打印再断言，防 off-by-one）：
+    //   bb0[0..1] bb1[2] bb2[3..4] bb3[5]（终止指令不单独占序数）
+    //   v0 使用点 = bb1 比较@2 / bb2 自增@4 / bb3 出口@5 → end 必须 >= 5
+    const auto intervals = LinearScanAllocator::computeLiveIntervals(func);
+    bool found = false;
+    for (const auto& li : intervals) {
+        if (li.regId == 0) {
+            found = true;
+            EXPECT_GE(li.end, 5) << "v0 区间未覆盖循环出口使用点（end=" << li.end << "）";
+        }
+    }
+    EXPECT_TRUE(found) << "v0 应有活跃区间";
+}
 
 // ---- 1. 活跃区间计算 ----
 

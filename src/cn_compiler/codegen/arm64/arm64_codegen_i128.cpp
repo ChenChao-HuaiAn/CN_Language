@@ -53,12 +53,12 @@ void Arm64CodeGenerator::emitInt128Binary(Arm64AsmWriter& writer,
     loadI128Part(inst.operands[0], false, "x9");
     loadI128Part(inst.operands[1], false, "x10");
     writer.line(std::string(isAdd ? "adds" : "subs") + " x9, x9, x10");
-    emitStackStore(writer, regSlotOffset(dstLoId), "x9", "i64");
+    storeVirtualResult(writer, dstLoId, "x9", "i64");
     // 高64位：adc/sbcs x9 = hi1 +/- hi2（带进位/借位）
     loadI128Part(inst.operands[0], true, "x9");
     loadI128Part(inst.operands[1], true, "x10");
     writer.line(std::string(isAdd ? "adc" : "sbcs") + " x9, x9, x10");
-    emitStackStore(writer, regSlotOffset(dstHiId), "x9", "i64");
+    storeVirtualResult(writer, dstHiId, "x9", "i64");
 }
 
 // ==================== i128 乘/除/取余（Task 完善A：运行时辅助函数） ====================
@@ -189,7 +189,7 @@ void Arm64CodeGenerator::emitInt128Compare(Arm64AsmWriter& writer,
     }
     (void)isUnsignedCmp;  // 返回值 int 一律有符号比较
     writer.line("cset x9, " + cc);
-    emitStackStore(writer, regSlotOffset(inst.result.id), "x9", "i1");
+    storeVirtualResult(writer, inst.result.id, "x9", "i1");
 }
 
 } // namespace cn_compiler

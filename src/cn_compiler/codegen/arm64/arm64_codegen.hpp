@@ -149,6 +149,9 @@ private:
     // 生成函数 epilogue（恢复栈帧并返回）
     void emitEpilogue(Arm64AsmWriter& writer, const std::string& returnReg);
 
+    // 尾声恢复被调用者保存寄存器（F1-28：逆序弹出，与序言压栈相反）
+    void emitRestoreCalleeSaved(Arm64AsmWriter& writer);
+
     // 栈调整辅助：|amount|<=4095 单条 add/sub，否则 mov 到 x13 再 add/sub
     // （AArch64 立即数栈调整最大 4095，大栈帧如 4224 字节需分段）
     void emitStackAdjust(Arm64AsmWriter& writer, int amount);
@@ -214,14 +217,36 @@ private:
 
     // ==================== 操作数与寄存器分配 ====================
 
+    // 虚拟寄存器ID -> 分配到的物理寄存器名（未分配/未启用返回空串）
+    std::string allocRegOf(int regId) const;
+
+    // 文本是否为被调用者保存物理寄存器名（x19~x28）——返回位/取值位的形态判据
+    static bool isPhysRegName(const std::string& text);
+
+    // 虚拟寄存器是否分配到物理寄存器（值流走寄存器，栈槽弃用）
+    bool hasPhysReg(int regId) const { return !allocRegOf(regId).empty(); }
+
     // 虚拟寄存器ID -> 栈槽偏移（-8*id-8，寄存器槽区紧贴x29）
-    static int regSlotOffset(int regId);
+    //   已分配到物理寄存器时返回 0——该槽弃用（取值/落值走物理寄存器），
+    //   返回 0 使调用方（取地址/取槽文本等旁路）退化为无害空操作。
+    int regSlotOffset(int regId) const;
 
     // 变量槽index -> 栈槽偏移（寄存器槽区之后：-8*regCount-8*(index+1)）
     int varSlotOffset(int index) const;
 
     // 虚拟寄存器 -> 栈槽内存操作数文本（[x29, #-8*id-8]）
-    static std::string regSlotMem(int regId);
+    std::string regSlotMem(int regId) const;
+
+    // ==================== 结果落位统一入口（F1-28） ====================
+
+    // 虚拟寄存器结果落位：已分配到物理寄存器时 mov 物理寄存器, srcReg
+    //   （srcReg 为物理寄存器名，同名则零指令）；否则写原栈槽。
+    //   虚拟寄存器结果的**唯一**落位通道——替换全部 emitStackStore(regSlotOffset(...))
+    void storeVirtualResult(Arm64AsmWriter& writer, int resultId,
+                            const std::string& srcReg, const std::string& type);
+    // 同上，但源为浮点寄存器（sN/dN）：已分配时 fmov dN, src；否则栈槽 store
+    void storeVirtualResultFp(Arm64AsmWriter& writer, int resultId,
+                              const std::string& srcFp, const std::string& type);
 
     // ==================== ARM64 访存/立即数/操作数装载辅助 ====================
 
@@ -345,11 +370,16 @@ private:
     std::unordered_set<std::string> vtableRefs_;
     std::unordered_set<std::string> staticRefs_;
 
-    // ---- 阶段C：寄存器分配（Task 4.3） ----
+    // ---- 阶段C：寄存器分配（Task 4.3 / F1-28 arm64 接线） ----
     // 注入的寄存器分配结果（外部线性扫描分配器产生；空 = 全栈槽映射）
     regalloc::RegAssignmentMap regAllocMap_;
     // 是否启用寄存器分配（默认关闭——arm64 保持全栈帧行为，正确性优先）
     bool regAllocEnabled_ = false;
+    // 本函数实际占用的被调用者保存寄存器（升序去重：x19~x28）
+    //   序言按对压栈（stp xA,xB,[sp,#-16]!）、尾声逆序弹出；栈参数基址随之补偿
+    std::vector<std::string> calleeSavedRegs_;
+    // 被调用者保存寄存器压栈对数（每对 16 字节，补偿 stackParamBase）
+    int calleeSavedPairs_ = 0;
 
     // ---- 阶段C：调试信息（Task 4.4） ----
     debuginfo::DebugInfoCollector debugInfo_;  // 源码行号映射收集器
