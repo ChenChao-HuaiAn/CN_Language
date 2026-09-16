@@ -402,6 +402,25 @@ def 查找源文件(用例目录: pathlib.Path) -> pathlib.Path:
     return cn文件们[0]
 
 
+def 比对运行输出逐行(实际stdout: str, 期望文件: pathlib.Path, 标签: str) -> str:
+    """断言输出=是 的运行级 stdout 逐行全等比对（261-a C20 波1 断言升级）。
+
+    口径与宿主普通编排一致（逐行 rstrip 后全等）——区别于 v2p 编译日志的
+    「期望行为实际输出子串」口径：运行输出是程序自身的确定性打印，须逐行
+    全等才称得上双测。返回空串=通过；非空=差异描述（首个差异行定位）。"""
+    期望 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines()]
+    实际 = [行.rstrip() for 行 in 实际stdout.splitlines()]
+    if 实际 == 期望:
+        return ""
+    for i in range(max(len(期望), len(实际))):
+        e = 期望[i] if i < len(期望) else "<缺行>"
+        a = 实际[i] if i < len(实际) else "<多行>"
+        if e != a:
+            return (f"{标签} 运行输出不一致（第{i+1}行）\n"
+                    f"    期望: {e}\n    实际: {a}")
+    return f"{标签} 运行输出不一致"
+
+
 def 查找期望文件(源文件: pathlib.Path) -> pathlib.Path:
     """查找与源文件同名的 .expected 期望输出文件"""
     期望文件 = 源文件.with_suffix(".expected")
@@ -634,7 +653,8 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         双配置 = 解析v2闭环配置(双编译配置路径)
         return 执行双编译对照(编译器路径, 用例目录, 输出目录, 详细, 目标平台,
                             双配置["源文件们"], 双配置["预期退出码"],
-                            双配置["链接v2pobj"], 双配置["供给源们"])
+                            双配置["链接v2pobj"], 双配置["供给源们"],
+                            双配置["断言输出"])
 
     # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
     可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
@@ -929,7 +949,8 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 #   键：退出码（整数|负=负路径）、源文件（逗号分隔，默认 主.cn）、
 #       借链（是|否）、供给（逗号分隔）；# 后为注释。
 def 解析v2闭环配置(配置路径: pathlib.Path) -> dict:
-    配置 = {"源文件们": ["主.cn"], "预期退出码": 0, "链接v2pobj": False, "供给源们": []}
+    配置 = {"源文件们": ["主.cn"], "预期退出码": 0, "链接v2pobj": False, "供给源们": [],
+            "断言输出": False}
     for 原行 in 配置路径.read_text(encoding="utf-8").splitlines():
         行 = 原行.split("#", 1)[0].strip()
         if not 行 or "=" not in 行:
@@ -943,6 +964,10 @@ def 解析v2闭环配置(配置路径: pathlib.Path) -> dict:
             配置["链接v2pobj"] = 值 in ("是", "true", "True", "1")
         elif 键 == "供给":
             配置["供给源们"] = [x.strip() for x in 值.split(",") if x.strip()]
+        elif 键 == "断言输出":
+            # 261-a C20 波1 断言升级：两侧运行 stdout 逐行比对 .expected（正测双测
+            # 形态）——默认否=存量口径（.expected 充当 v2p 编译日志锚行）完全不变
+            配置["断言输出"] = 值 in ("是", "true", "True", "1")
         else:
             raise ValueError(f"v2闭环.txt 未知配置键: {键}（{配置路径}）")
     return 配置
@@ -1152,7 +1177,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool,
                    期望文件, 审计目录: pathlib.Path, v2源码目录: pathlib.Path,
                    用例目录: pathlib.Path, 名称: str, 编号: str,
-                   供给源们: list = None) -> tuple:
+                   供给源们: list = None, 断言运行输出: bool = False) -> tuple:
     """执行 v2 自举链接闭环（linux 两平台，阶段A 2026-09-02 ARM64 首建；plans/017 T3
     2026-09-06 平台参数化并入 linux-x86_64）：v2 GAS 后端 -> as -> g++ -> 运行
 
@@ -1278,7 +1303,9 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
                     ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
 
     # ===== 步骤3：运行 v2p（第 2 参数目标平台分派 GAS 后端）=====
-    入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
+    #   261-a C20 波1：入口改按配置 源文件名们[0]（非 主.cn 源名的用例〔01_hello
+    #   等〕双编译对照需要；默认值不变=存量行为等价）
+    入口参数 = str((审计目录 / f"v2src{编号}" / 源文件名们[0]).resolve())
     if v2asm路径.exists():
         v2asm路径.unlink()
     if 详细:
@@ -1345,18 +1372,28 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
             return "失败", f"{编号}-5.5 符号自检失败: v2p_linux.o 缺少向量类方法符号"
 
     # ===== 步骤6：运行 v2 产物 -> 退出码须等于用例预期值（POSIX 8 位截断）=====
-    运行结果2 = 运行命令([str(输出exe)], 项目根目录)
+    入口名 = pathlib.Path(源文件名们[0])
+    标准输入2 = 查找输入文件(用例目录 / 入口名)
+    输入文本2 = 标准输入2.read_text(encoding="utf-8") if 标准输入2 is not None else ""
+    参数列表2 = 查找参数文件(用例目录 / 入口名)
+    运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2)
     预期值 = 预期退出码 % 256
     if 运行结果2.returncode != 预期值:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
                         f"（期望 {预期值} = {预期退出码} % 256）: {(运行结果2.stderr or '').strip()[:200]}")
+    if 断言运行输出:
+        # 261-a C20 波1：断言输出=是 —— v2 产物运行 stdout 逐行比对 .expected
+        差异 = 比对运行输出逐行(运行结果2.stdout or "", 查找期望文件(用例目录 / 入口名),
+                              f"{编号}-6a v2 侧")
+        if 差异:
+            return "失败", 差异
     return "通过", f"v2 多文件编译（{名称}）-> as/g++（对齐宿主 linux 链接命令，{目标平台}）-> 运行 闭环成立（退出码 {预期值}）"
 
 
 def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                输出目录: pathlib.Path, 详细: bool, 目标平台: str,
                源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False,
-               供给源们: list = None) -> tuple:
+               供给源们: list = None, 断言运行输出: bool = False) -> tuple:
     """执行 v2 自举链接闭环（119/120… 通用，三平台）：v2 多文件编译 -> 链接宿主运行时 -> 运行
 
     目标平台 = win-x64（ml64/link 原路径）| linux-arm64 / linux-x86_64（as/g++，
@@ -1384,7 +1421,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     #   执行v2闭环Linux 内同款分支：v2p 须失败且不产 target/v2asm.s
     if 目标平台 in ("linux-arm64", "linux-x86_64"):
         return 执行v2闭环Linux(编译器路径, 目标平台, 详细, 源文件名们, 预期退出码, 链接v2pobj,
-                              期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号, 供给源们)
+                              期望文件, 审计目录, v2源码目录, 用例目录, 名称, 编号,
+                              供给源们, 断言运行输出)
 
     # ---- win-x64 原路径（ml64/link）----
     # v2 产物按用例隔离（111-a，对齐 linux 分支）：v2 驱动器 asm 输出路径为相对
@@ -1491,7 +1529,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 
     # ===== 步骤3：运行 v2p（多文件编译：入口 + 自动加载导入模块） =====
     #   入口绝对路径 + cwd=隔离工作目录（111-a）——v2 产物 target/v2asm.asm 落工作目录
-    入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
+    #   261-a C20 波1：入口改按 源文件名们[0]（非 主.cn 源名用例；默认等价）
+    入口参数 = str((审计目录 / f"v2src{编号}" / 源文件名们[0]).resolve())
     if v2asm路径.exists():
         v2asm路径.unlink()
     if 详细:
@@ -1502,14 +1541,17 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if not v2asm路径.exists():
         return "失败", f"{编号}-3 v2p 未生成 target/v2asm.asm"
     # 输出比对：.expected 每行（去空）须为 v2p 实际输出的子串（数值列不参与精确比对）
-    期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
-    # 入口为绝对路径（cwd 隔离）——日志锚行比对前把绝对前缀适配回相对
-    #   （.expected 保持相对路径文本不动；v2 输出路径已归一为正斜杠）
-    实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
-        str(项目根目录).replace("\\", "/") + "/", "")
-    for 行 in 期望行们:
-        if 行 not in 实际输出:
-            return "失败", f"{编号}-3 v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
+    #   断言输出=是（261-a C20 波1 正测双测形态）时跳过：.expected 此处是运行
+    #   打印内容而非编译日志锚行——运行级比对在步骤6 做（逐行全等）
+    if not 断言运行输出:
+        期望行们 = [行.rstrip() for 行 in 期望文件.read_text(encoding="utf-8").splitlines() if 行.rstrip()]
+        # 入口为绝对路径（cwd 隔离）——日志锚行比对前把绝对前缀适配回相对
+        #   （.expected 保持相对路径文本不动；v2 输出路径已归一为正斜杠）
+        实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
+            str(项目根目录).replace("\\", "/") + "/", "")
+        for 行 in 期望行们:
+            if 行 not in 实际输出:
+                return "失败", f"{编号}-3 v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
     # 入口符号自检：v2 生成的 asm 必须含 cn_main（对齐宿主，链接后由运行时 entry 调用）
     asm内容 = v2asm路径.read_text(encoding="utf-8", errors="replace")
     if "cn_main PROC" not in asm内容:
@@ -1587,10 +1629,20 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             return "失败", "123-5.5 符号自检失败: map 中未找到来自 v2p.obj 的向量类方法符号"
 
     # ===== 步骤6：运行 v2 产物 exe -> 退出码须等于用例预期值 =====
-    运行结果2 = 运行命令([str(输出exe)], 项目根目录)
+    入口名2 = pathlib.Path(源文件名们[0])
+    输入文件2 = 查找输入文件(用例目录 / 入口名2)
+    输入文本2 = 输入文件2.read_text(encoding="utf-8") if 输入文件2 is not None else ""
+    参数列表2 = 查找参数文件(用例目录 / 入口名2)
+    运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2)
     if 运行结果2.returncode != 预期退出码:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
                         f"（期望 {预期退出码}）: {(运行结果2.stderr or '').strip()[:200]}")
+    if 断言运行输出:
+        # 261-a C20 波1：断言输出=是 —— v2 产物运行 stdout 逐行比对 .expected
+        差异 = 比对运行输出逐行(运行结果2.stdout or "",
+                              查找期望文件(用例目录 / 入口名2), f"{编号}-6a v2 侧")
+        if 差异:
+            return "失败", 差异
     return "通过", f"v2 多文件编译（{名称}）-> ml64/link（对齐宿主链接命令）-> 运行 闭环成立（退出码 {预期退出码}）"
 
 
@@ -1610,7 +1662,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                    输出目录: pathlib.Path, 详细: bool, 目标平台: str,
                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False,
-                   供给源们: list = None) -> tuple:
+                   供给源们: list = None, 断言运行输出: bool = False) -> tuple:
     """同一源码两侧（宿主真实管线 / v2 自举链）各编各跑，断言退出码一致。
 
     实现：宿主侧编译 + 运行取实测退出码 H（断言 H == 用例期望值）→ v2 侧以 H 为期望
@@ -1642,7 +1694,7 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
     if 详细:
         print(f"    [{编号}-D1] 宿主侧 {编译器路径.name} build {入口.name} --target {目标平台}")
     宿主编译 = 运行命令([str(编译器路径), "build", str(入口), "--target", 目标平台,
-                     "--output", str(宿主可执行)], 项目根目录)
+                     "--output", str(宿主可执行), *查找编译选项文件(用例目录)], 项目根目录)
     if 宿主编译.returncode != 0:
         return "失败", (f"{编号}-D1 宿主侧编译失败(退出码{宿主编译.returncode}): "
                         f"{(宿主编译.stderr or 宿主编译.stdout).strip()[:200]}")
@@ -1657,19 +1709,29 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
         if 扫描失败:
             return "失败", 扫描失败
 
-    # ===== 步骤2：宿主侧运行取实测退出码 =====
-    宿主运行 = 运行命令([str(宿主可执行)], 项目根目录)
+    # ===== 步骤2：宿主侧运行取实测退出码（stdin/args 与普通编排同口径注入）=====
+    宿主输入文件 = 查找输入文件(用例目录 / 源文件名们[0])
+    宿主输入文本 = 宿主输入文件.read_text(encoding="utf-8") if 宿主输入文件 is not None else ""
+    宿主参数列表 = 查找参数文件(用例目录 / 源文件名们[0])
+    宿主运行 = 运行命令([str(宿主可执行)] + 宿主参数列表, 项目根目录, 宿主输入文本)
     宿主码 = 宿主运行.returncode
     宿主期望 = 预期退出码 % 256
     if 宿主码 != 宿主期望:
         return "失败", (f"{编号}-D2 宿主侧退出码={宿主码}（期望 {宿主期望} = {预期退出码} % 256）"
                         f": {(宿主运行.stderr or '').strip()[:200]}")
+    if 断言运行输出:
+        # 261-a C20 波1：断言输出=是 —— 宿主侧运行 stdout 逐行比对 .expected
+        # （转双编译后宿主侧不再只锚退出码——打印面断言随双测恢复）
+        差异 = 比对运行输出逐行(宿主运行.stdout or "",
+                              查找期望文件(用例目录 / 源文件名们[0]), f"{编号}-D2a 宿主侧")
+        if 差异:
+            return "失败", 差异
     if 详细:
         print(f"    [{编号}-D2] 宿主侧退出码={宿主码}（== 用例期望值，宿主语义锚定通过）")
 
     # ===== 步骤3：v2 侧——以宿主实测码为期望走既有 v2 闭环（等价性判据）=====
     状态, 说明 = 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 目标平台,
-                          源文件名们, 宿主码, 链接v2pobj, 供给源们)
+                          源文件名们, 宿主码, 链接v2pobj, 供给源们, 断言运行输出)
     if 状态 != "通过":
         return "失败", (f"{编号}-D3 双编译对照失败：宿主侧退出码={宿主码}，"
                         f"v2 侧未达同值 → {说明}")
