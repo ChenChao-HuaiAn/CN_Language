@@ -326,6 +326,17 @@ bool X64CodeGenerator::emitCastPtrAndFloatPair(AsmWriter& writer,
     }
     // ---- 浮32 <-> 浮64 ----
     if (fromFloat && toFloat) {
+        // 274-a T15 残余面：恒等浮点转换（from==to）=64 位整数直拷不插转换——
+        //   原 else 分支对 f64→f64 恒等形态恒发 cvtsd2ss 单精度舍入+movss
+        //   dword 4 字节存（目标槽高 4 字节残留·修前指纹 f112 win 目标实证：
+        //   7.0→7.000001 与深度机 linux_x64 立案同病）。MASM movsd 内存写
+        //   形式有 A2070 尺寸歧义（v2 110-a 教训）→ 经 rax 位模式直拷，
+        //   对齐 v2 代码生成.cn「同码直拷」既有口径
+        if (from == to) {
+            writer.line("mov rax, qword ptr " + src);
+            writer.line("mov qword ptr " + dst + ", rax");
+            return true;
+        }
         if (from == "f32" && to == "f64") {
             writer.line("movss xmm0, dword ptr " + src);
             writer.line("cvtss2sd xmm0, xmm0");

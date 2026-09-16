@@ -53,6 +53,18 @@ if hasattr(sys.stderr, "reconfigure"):
 # 超过 内存上限MB 的进程将被自动终止并判为失败。
 # 单位：MB。0 = 不启用（默认仅对 v2 锚定链等重负载用例启用，避免小用例轮询开销）。
 内存上限MB默认 = 4096
+
+
+def 提取用例编号(名称: str) -> str:
+    """274-a 根治（2026-09-17 深度机）：编号提取保留 _v2 段——
+    原 split("_")[0] 把 194_v2_x 与 194_x 都提为 "194"，宿主版与 v2 版用例
+    共享 v2src/v2work/dualhost/v2asm/v2out 全部产物路径，并行池下互踩
+    （单跑必过、jobs 8 稳定挂 = 互踩签名：-5.5 符号自检/-5 未生成 exe/
+    -6 rc=0 空产物三形态）。_v2 段并入编号后产物路径天然隔离。"""
+    段们 = 名称.split("_")
+    if len(段们) > 1 and 段们[1] == "v2":
+        return 段们[0] + "_v2"
+    return 段们[0]
 内存保护用例前缀 = ("78_v2_自举链构建", "79_v2_自举闭环")
 内存轮询间隔秒 = 0.5
 
@@ -785,7 +797,7 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     """执行 v2 锚定链用例（78_v2 自举链构建 / 79_v2 自举闭环）——详见上方编排注释。"""
     import filecmp
     名称 = 用例目录.name
-    编号 = 名称.split("_")[0]
+    编号 = 提取用例编号(名称)
     配置 = 解析v2锚定链配置(用例目录 / "v2锚定链.txt")
     阶段 = 配置["阶段"]
     if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
@@ -1251,9 +1263,12 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         #   （.expected 保持相对路径文本不动，与既有 win64 .asm 平台适配同族）
         实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
             str(项目根目录) + "/", "")
+        主段 = 编号.split("_")[0]
         for 行 in 期望行们:
             # 平台适配（与正路径步骤3 同款）：期望若引用 win64 路径须替换为 GAS 产物名
             适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
+            # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
+            适配行 = 适配行.replace(f"v2src{主段}/", f"v2src{编号}/")
             if 适配行 not in 实际输出:
                 return "失败", f"{编号}-N v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
         return "通过", (f"v2 语义错误中止负路径闭环成立（{目标平台}，退出码 {运行结果.returncode}，"
@@ -1319,11 +1334,21 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     # 入口为绝对路径（cwd 隔离）——日志锚行比对前把绝对前缀适配回相对
     实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
         str(项目根目录) + "/", "")
-    for 行 in 期望行们:
-        # 平台适配（不改测试文件）：GAS 后端输出 target/v2asm.s（win64 期望为 .asm）
-        适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
-        if 适配行 not in 实际输出:
-            return "失败", f"{编号}-3 v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
+    # 274-a 根治（2026-09-17 深度机）：断言输出=是（261-a C20 波1 正测双测形态）
+    #   时跳过锚行比对——.expected 此处是运行打印内容而非编译日志锚行，运行级
+    #   比对在步骤 6a 做（逐行全等）。261-a 升级时 win 分支补了本跳过条件而
+    #   linux 分支漏补→A 类断言用例在 linux 全量挂 -3（74 处·261-a 基线即挂，
+    #   与编译器改动无关；深度机 261-a 后未跑全量故延至今日暴露）。对齐 win
+    #   分支既有同款条件（本文件 win 路径 if not 断言运行输出 段）。
+    if not 断言运行输出:
+        主段 = 编号.split("_")[0]
+        for 行 in 期望行们:
+            # 平台适配（不改测试文件）：GAS 后端输出 target/v2asm.s（win64 期望为 .asm）
+            适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
+            # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
+            适配行 = 适配行.replace(f"v2src{主段}/", f"v2src{编号}/")
+            if 适配行 not in 实际输出:
+                return "失败", f"{编号}-3 v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
     asm内容 = v2asm路径.read_text(encoding="utf-8", errors="replace")
     if ".globl cn_main" not in asm内容:
         return "失败", f"{编号}-3.5 v2asm.s 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
@@ -1406,7 +1431,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     供给源们 = 用例自有类型的符号供给 .cn 列表（②b B7，2026-09-02）——宿主真实
       管线编译为 .obj，链接置于 v2p.obj 之前（用例结构体布局权威）。"""
     名称 = 用例目录.name
-    编号 = 名称.split("_")[0]  # 步骤号前缀与 v2src 目录名后缀（119/120…）
+    编号 = 提取用例编号(名称)  # 步骤号前缀与 v2src 目录名后缀（119/120…）
     期望文件 = 查找期望文件(用例目录 / 源文件名们[0])
     if 供给源们 is None:
         供给源们 = []
@@ -1480,7 +1505,10 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         #   （.expected 保持相对路径文本不动；v2 输出路径已归一为正斜杠）
         实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
             str(项目根目录).replace("\\", "/") + "/", "")
+        主段 = 编号.split("_")[0]
         for 行 in 期望行们:
+            # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
+            行 = 行.replace(f"v2src{主段}/", f"v2src{编号}/")
             if 行 not in 实际输出:
                 return "失败", f"{编号}-N v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
         return "通过", f"v2 语义错误中止负路径闭环成立（退出码 {运行结果.returncode}，无 asm 产出，诊断行固化）"
@@ -1549,7 +1577,10 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         #   （.expected 保持相对路径文本不动；v2 输出路径已归一为正斜杠）
         实际输出 = ((运行结果.stderr or "") + "\n" + (运行结果.stdout or "")).replace(
             str(项目根目录).replace("\\", "/") + "/", "")
+        主段 = 编号.split("_")[0]
         for 行 in 期望行们:
+            # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
+            行 = 行.replace(f"v2src{主段}/", f"v2src{编号}/")
             if 行 not in 实际输出:
                 return "失败", f"{编号}-3 v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
     # 入口符号自检：v2 生成的 asm 必须含 cn_main（对齐宿主，链接后由运行时 entry 调用）
@@ -1672,7 +1703,7 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
     if 供给源们 is None:
         供给源们 = []
     名称 = 用例目录.name
-    编号 = 名称.split("_")[0]
+    编号 = 提取用例编号(名称)
     审计目录 = 项目根目录 / "target" / "audit2"
     审计目录.mkdir(parents=True, exist_ok=True)
 

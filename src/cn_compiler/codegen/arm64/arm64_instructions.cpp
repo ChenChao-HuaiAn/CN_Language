@@ -442,6 +442,16 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     }
     // ---- 浮32 <-> 浮64 ----
     if (fromFloat && toFloat) {
+        // 274-a T15 残余面：恒等浮点转换（from==to）=同宽寄存器装载直存不插
+        //   转换——原 else 分支对 f64→f64 恒等形态恒发 fcvt s0,d0 单精度
+        //   舍入+str s0 32 位存（目标槽高 32 位残留·修前指纹 f112 arm64
+        //   目标实证）；str 写宽由寄存器名分派（s0=4B/d0=8B）语义自洽
+        if (from == to) {
+            const std::string vreg = (from == "f64") ? "d0" : "s0";
+            loadOperandToV(writer, inst.operands[0], vreg);
+            storeVirtualResultFp(writer, inst.result.id, vreg, to);
+            return;
+        }
         if (from == "f32" && to == "f64") {
             loadOperandToV(writer, inst.operands[0], "s0");
             writer.line("fcvt d0, s0");

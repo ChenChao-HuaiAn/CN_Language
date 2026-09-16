@@ -641,6 +641,14 @@ void IRGenerator::visitSizeofExpr(SizeofExpr* node) {
 void IRGenerator::visitCastExpr(CastExpr* node) {
     ir::IRValue operand = genExpr(node->operand.get());
     const std::string target = mapType(node->targetType);
+    // 274-a T15 残余面：同型显式转换=恒等透传不发射 Cast——原对 浮64(浮64
+    //   表达式) 也发射 Cast(f64,f64)，曾驱动后端浮↔浮分派误走单精度舍入
+    //   （7.0→7.000001·双级别一致值污染）。同型 no-op（Rust as 同型语义）；
+    //   空类型文本（防御）回落原发射路径。真转换（异型）不受影响。
+    if (!operand.type.empty() && operand.type == target) {
+        lastExpr_ = operand;
+        return;
+    }
     // 源类型为 i128/u128 且目标为浮点：Cast 指令源类型按双槽约定
     // （codegen emitCast 已按 from==i128/u128 走辅助函数 __cn_*_to_f64）。
     // 指针 -> 整数 / 整数 -> 指针：IR 层类型均为 8 字节槽（ptr/i64），
