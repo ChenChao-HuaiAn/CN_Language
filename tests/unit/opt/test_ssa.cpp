@@ -3,6 +3,7 @@
 //       幂等性（重复运行不重复插入）、非汇合点无 Phi
 // 测试方式：直接构造 IRModule 调用 SSAPass / DomTree（opt 为纯内部模块）
 // 注意：测试名必须使用英文（GCC 7 不支持中文标识符，注释可为中文）
+#include <algorithm>
 #include <cstdio>
 #include <gtest/gtest.h>
 #include <memory>
@@ -221,6 +222,51 @@ TEST(SSATest, JoinPointWithoutLoadNoPhi) {
     fn.blocks.push_back(std::move(b3));
     fn.blocks.push_back(std::move(b4));
     module.functions.push_back(std::move(fn));
+    EXPECT_FALSE(SSAPass().run(module));
+    EXPECT_EQ(countPhi(module), 0);
+}
+
+
+// ==================== D32: Phi precondition (Store in every pred) ====================
+
+// s266 root cause (CN-Smith differential, P1 variable confusion): join-point Load
+//   whose slot has NO Store in a predecessor block (Store lives in the linear
+//   segment AFTER the join). Must NOT Phi-lower: the placeholder path injects a
+//   Load into the pred BEFORE the Store executes = uninitialized stack read (UB).
+TEST(SSATest, PhiSkippedWhenPredLacksStore) {
+    auto module = makeJoinModule();
+    // strip the Store from 块2 so one pred has no def for x$0
+    auto& b2 = module.functions[0].blocks[2]->instructions;
+    b2.erase(std::remove_if(b2.begin(), b2.end(),
+                            [](const IRInstruction& in) {
+                                return in.opcode == Opcode::Store;
+                            }),
+             b2.end());
+    EXPECT_FALSE(SSAPass().run(module));
+    EXPECT_EQ(countPhi(module), 0);
+    // the Load in the join block must survive untouched (stack semantics kept)
+    bool loadKept = false;
+    for (const auto& inst : module.functions[0].blocks[4]->instructions) {
+        if (inst.opcode == Opcode::Load && inst.result.id == 5) loadKept = true;
+    }
+    EXPECT_TRUE(loadKept);
+    // no Load/Copy may be injected into the stripped pred (placeholder path dead)
+    for (const auto& inst : module.functions[0].blocks[2]->instructions) {
+        EXPECT_NE(inst.opcode, Opcode::Load);
+        EXPECT_NE(inst.opcode, Opcode::Copy);
+    }
+}
+
+// mixed preds (block2 has the Store, block3 stripped): same verdict - a partial
+//   def is still an undefined value along the stripped path.
+TEST(SSATest, PhiSkippedWhenOnePredLacksStore) {
+    auto module = makeJoinModule();
+    auto& b3 = module.functions[0].blocks[3]->instructions;
+    b3.erase(std::remove_if(b3.begin(), b3.end(),
+                            [](const IRInstruction& in) {
+                                return in.opcode == Opcode::Store;
+                            }),
+             b3.end());
     EXPECT_FALSE(SSAPass().run(module));
     EXPECT_EQ(countPhi(module), 0);
 }

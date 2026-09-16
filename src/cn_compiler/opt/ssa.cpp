@@ -40,6 +40,14 @@ bool SSAPass::lastStoreValue(const ir::IRBlock& pred, const std::string& slot,
     return false;
 }
 
+// 前驱块内是否存在该槽的 Store（Phi 化前提判定用，不取值）
+static bool hasStoreTo(const ir::IRBlock& pred, const std::string& slot) {
+    for (const auto& inst : pred.instructions) {
+        if (inst.opcode == ir::Opcode::Store && inst.extra == slot) return true;
+    }
+    return false;
+}
+
 // 单函数 SSA 构造：构建支配树 + 汇合点 Load 插入 Phi
 bool SSAPass::buildFunction(ir::IRFunction& fn) {
     if (fn.blocks.size() < 2) return false;  // 单块无汇合点
@@ -89,6 +97,21 @@ bool SSAPass::buildFunction(ir::IRFunction& fn) {
                     inst.result.id == le.resultId) { exists = true; break; }
             }
             if (exists) continue;
+            // Phi 化前提（D32 根治，s266 实证）：每个前驱块内都必须存在该槽的
+            //   Store——「前驱无 Store 沿用槽值」的占位兜底仅在「槽值沿路径必达
+            //   定义」时语义正确；对「Store 位于汇合块之后的顺序段」的槽（典型=
+            //   变量定义在分支汇合之后），占位会让前驱块在 Store 前注入 Load 读
+            //   未初始化栈槽（UB，CN-Smith s266 变量混淆 P1 根因）。任一前驱
+            //   miss 即放弃该 Load 的 Phi 化，Load 保留原栈语义（正确性边界内
+            //   的保守=少一次优化机会，不是妥协——错误 Phi 化才是）。
+            bool allPredsStored = true;
+            for (const int p : preds) {
+                if (!hasStoreTo(*fn.blocks[static_cast<std::size_t>(p)], le.slot)) {
+                    allPredsStored = false;
+                    break;
+                }
+            }
+            if (!allPredsStored) continue;
             // 组装 Phi 操作数：各前驱的最近值
             std::vector<ir::IRValue> phiOps;
             for (const int p : preds) {
@@ -97,6 +120,9 @@ bool SSAPass::buildFunction(ir::IRFunction& fn) {
                     phiOps.push_back(val);
                 } else {
                     // 前驱无 Store：沿用槽值（占位寄存器 id=-1，语义由 Load 兜底）
+                    //   （D32 后不可达：Phi 化前提已保证全前驱有 Store——本分支
+                    //    仅剩 lastStoreValue 内部 operands.empty() 防御失败一途，
+                    //    保留以维持 IR 构造完整性，不可依赖）
                     phiOps.push_back(ir::IRValue::reg(-1, le.resultType));
                 }
             }

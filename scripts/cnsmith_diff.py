@@ -5,13 +5,25 @@
 对生成的 CN 程序做 -O0 vs -O3 编译运行输出逐字节比对（CSmith 同款
 优化器差分）：分歧=优化器缺陷候选（立案+反证三件套）。
 
+并行架构（260-a·用户令「每次运行太慢→设计并行」）：
+  - 样本级并行：ThreadPoolExecutor（子进程等待期释放 GIL，无序列化开销）
+  - --jobs N（默认=CPU 核数；1=串行调试口径）
+  - 预热：并行前串行编译首个样本——建立运行时 obj 缓存（target/ 固定
+    落点·cache miss 并发写=踩踏），之后并行阶段全部命中只读
+  - 每样本产物名唯一（<stem>_O0/_O3）＝中间 .asm/.obj 天然隔离
+  - 结果按样本名排序聚合＝输出与串行口径逐字节一致（可复现）
+
 用法：
   python scripts/cnsmith_diff.py --dir target/cnsmith [--cn target/Debug/cn.exe]
+                                 [--jobs 8]
 """
 import argparse
+import concurrent.futures
 import os
 import subprocess
 import sys
+import threading
+import time
 
 
 def 探测目标平台(target=None):
@@ -49,34 +61,74 @@ def run_one(cn, src, out_dir, level, target=None):
     return "ok", r.stdout
 
 
+def run_sample(cn, src, out_dir, target):
+    """单样本全链：O0 编译运行 + O3 编译运行 + 输出比对。
+返回 (样本名, 类别, 详情)；类别 ∈ {ok, diff, build_err, run_err}。"""
+    name = os.path.basename(src)
+    s0, o0 = run_one(cn, src, out_dir, "-O0", target)
+    if s0 != "ok":
+        return name, ("build_err" if s0 == "build_err" else "run_err"), o0
+    s3, o3 = run_one(cn, src, out_dir, "-O3", target)
+    if s3 != "ok":
+        return name, "run_err", "O3 运行失败: " + o3
+    if o0 != o3:
+        return name, "diff", "输出分歧 O0/O3"
+    return name, "ok", ""
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dir", default="target/cnsmith")
     ap.add_argument("--cn", default="target/Debug/cn.exe")
     ap.add_argument("--out", default="target/cnsmith/work")
     ap.add_argument("--target", default=None, help="构建目标平台（默认按架构探测）")
+    ap.add_argument("--jobs", type=int, default=0,
+                    help="并行度（0=CPU 核数，1=串行）")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     srcs = sorted(f for f in os.listdir(a.dir) if f.endswith(".cn"))
-    n_ok = n_diff = n_berr = n_rerr = 0
-    diffs = []
-    for src_name in srcs:
-        src = os.path.join(a.dir, src_name)
-        s0, o0 = run_one(a.cn, src, a.out, "-O0", a.target)
-        if s0 != "ok":
-            n_berr += 1 if s0 == "build_err" else 0
-            n_rerr += 1 if s0 == "run_err" else 0
-            continue
-        s3, o3 = run_one(a.cn, src, a.out, "-O3", a.target)
-        if s3 != "ok":
-            n_rerr += 1
-            diffs.append((src_name, "O3 运行失败: " + o3))
-            continue
-        if o0 != o3:
-            n_diff += 1
-            diffs.append((src_name, "输出分歧 O0/O3"))
-        else:
-            n_ok += 1
+    jobs = a.jobs if a.jobs > 0 else (os.cpu_count() or 4)
+    target = 探测目标平台(a.target)
+
+    t0 = time.time()
+    results = []
+    if not srcs:
+        print("=== CN-Smith 优化器差分采样 ===")
+        print("总数 0 ｜ 一致 0 ｜ 分歧 0 ｜ 编译失败 0 ｜ 运行失败 0")
+        sys.exit(0)
+
+    # 预热：串行编译首个样本——建立运行时 obj 缓存（target/ 固定落点，
+    #   cache miss 并发写会踩踏；预热后并行阶段全部命中只读）
+    done = 0
+    lock = threading.Lock()
+
+    def 计数():
+        nonlocal done
+        with lock:
+            done += 1
+            return done
+
+    # 预热用 O0 单级别即可建缓存（O3 复用同一运行时 obj）
+    run_one(a.cn, os.path.join(a.dir, srcs[0]), a.out, "-O0", target)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as pool:
+        futs = {}
+        for name in srcs:
+            src = os.path.join(a.dir, name)
+            futs[pool.submit(run_sample, a.cn, src, a.out, target)] = name
+        for fut in concurrent.futures.as_completed(futs):
+            results.append(fut.result())
+            n = 计数()
+            if jobs > 1 and n % 50 == 0:
+                print("  进度 %d/%d（%.1fs）" % (n, len(srcs), time.time() - t0),
+                      flush=True)
+
+    results.sort(key=lambda r: r[0])
+    n_ok = sum(1 for _, k, _ in results if k == "ok")
+    n_diff = sum(1 for _, k, _ in results if k == "diff")
+    n_berr = sum(1 for _, k, _ in results if k == "build_err")
+    n_rerr = sum(1 for _, k, _ in results if k == "run_err")
+    diffs = [(n, d) for n, k, d in results if k != "ok"]
     print("=== CN-Smith 优化器差分采样 ===")
     print("总数 %d ｜ 一致 %d ｜ 分歧 %d ｜ 编译失败 %d ｜ 运行失败 %d"
           % (len(srcs), n_ok, n_diff, n_berr, n_rerr))
