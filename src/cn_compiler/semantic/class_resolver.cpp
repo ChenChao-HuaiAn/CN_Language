@@ -553,6 +553,14 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                                         ? p->funcPtr.toString()
                                         : resolveGenericTypeName(types::canonicalParam(p->typeName), p->location));
         }
+        // D23 根治（248-a）：构造函数尾部默认参数个数（从右向左连续声明）——
+        //   调用决议按「实参个数 + 可补全」匹配；缺省值由 IR 层展开。
+        if (mi.isConstructor) {
+            for (auto rit = member->params.rbegin();
+                 rit != member->params.rend() && (*rit)->hasDefault; ++rit) {
+                mi.defaultCount++;
+            }
+        }
         // 2026-08-25 方案A：拷贝构造识别——构造函数 + 单参 + 参数类型 == 同类型引用
         //   （类名(类名& 其他)）。有析构结构体按值拷贝须走拷贝构造（深拷贝），
         //   否则浅拷贝析构双释放（0xC0000374）。

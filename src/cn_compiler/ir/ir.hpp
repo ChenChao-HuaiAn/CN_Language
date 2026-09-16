@@ -490,7 +490,7 @@ private:
     //   普通指针/整型等 → false。用于区分"字符串+数值拼接"与"指针算术"（ptr + 整型）
     bool isStringTypedExpr(Expr* node) const;
     // 默认参数常量求值（Task 2.10）：字面量 -> IR 常量（ConstInt/Float/String/Bool）
-    ir::IRValue evalDefaultExpr(Expr* expr, ir::IRFunction& func);
+    ir::IRValue evalDefaultExpr(Expr* expr);
     // 空串入常量池并返回 @str 编号（默认字符串参数补全）
     int internEmptyString();
 
@@ -533,6 +533,15 @@ private:
     // 函数签名 key -> 尾部默认参数 IR 常量值（Task 2.10 默认实参补全）。
     // 顺序与函数参数一致（仅含带默认值的尾部参数）；调用补全时按此精确展开。
     std::unordered_map<std::string, std::vector<ir::IRValue>> funcDefaultArgs_;
+    // D23（248-a）：visitProgram 预收集全部类的构造默认值（类方法提升晚于
+    //   主函数生成——生成期收集会晚于调用点查表）；emitClassMethod 内同款
+    //   收集保留（幂等跳过）作兜底。
+    void collectCtorDefaults(const std::string& className, const ClassMemberInfo& mi);
+    // D23 根治（248-a）：签名 -> 参数总数（含默认参数）——构造（emitClassMethod）
+    //   不入 functions_，funcParamTypesOf 查空时补缺点以「given+defaults 数」回退
+    //   会把显式传满参的调用也误补（乙(3) 追加默认 9）；两侧收集时同步登记总数，
+    //   补缺点优先查本表精确判定缺省个数。
+    std::unordered_map<std::string, std::size_t> funcDefaultTotal_;
     // 当前调用待补全的默认实参（visitCallExpr 收集后追加到 args）
     std::vector<ir::IRValue> defaultArgValues_;
     // 最近一次 lambda 生成的匿名函数名与捕获变量列表（Task 2.10，

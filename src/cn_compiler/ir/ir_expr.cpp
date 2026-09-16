@@ -95,8 +95,7 @@ int IRGenerator::internEmptyString() {
     module_->stringIndex[""] = index;
     return index;
 }
-ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr, ir::IRFunction& func) {
-    (void)func;
+ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr) {
     switch (expr->getType()) {
         case NodeType::IntegerLiteral: {
             IntegerLiteral* lit = static_cast<IntegerLiteral*>(expr);
@@ -139,7 +138,7 @@ ir::IRValue IRGenerator::evalDefaultExpr(Expr* expr, ir::IRFunction& func) {
             // 一元负号：-N（常量取负）
             UnaryExpr* un = static_cast<UnaryExpr*>(expr);
             if (un->op == Operator::Subtract) {
-                ir::IRValue inner = evalDefaultExpr(un->operand.get(), func);
+                ir::IRValue inner = evalDefaultExpr(un->operand.get());
                 if (inner.isConstant && inner.type != "ptr" && inner.type != "i1") {
                     try {
                         const long long v = std::stoll(inner.extra);

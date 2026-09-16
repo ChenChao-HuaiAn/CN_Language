@@ -282,7 +282,12 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
             declareVar(fname, f->second.type, member->location);
         }
         // P3-20：父类构造初始化列表（函数 子(...) : 父(实参)）——校验父类名与实参类型
-        if (mi.isConstructor && !member->ctorInitBase.empty()) {
+        // D22 根治（248-a）：校验仅限**自身构造**（构造方法名=所属类名）。继承并入
+        //   的祖先构造副本（mi.name=原类名≠info.name）已在原类语境校验过——
+        //   checkClassMethods 遍历并入副本时 info=提升目标类，ctorInitBase 与
+        //   info.baseName 比对必误拒三级链（丙:乙:甲 中 乙(n):甲(n) 报
+        //   「目标 '甲' 必须是直接父类 '乙'」的自相矛盾诊断）。
+        if (mi.isConstructor && !member->ctorInitBase.empty() && mi.name == info.name) {
             if (member->ctorInitBase != info.baseName) {
                 diagnostics_.report(
                     DiagnosticLevel::Error, member->location,
@@ -293,12 +298,20 @@ void SemanticAnalyzer::checkSingleMethodBody(ClassInfo& info, ClassMemberInfo& m
                     ? nullptr : findClass(info.baseName);
                 const ClassMemberInfo* pc = nullptr;
                 if (parentI != nullptr) {
+                    // D23（248-a）：父构造匹配按「实参个数 + defaultCount 可补全」
+                    //   （与 IR 层 emitClassMethod 同口径）——带默认参数的父构造
+                    //   少参初始化列表（: 甲() 匹配 甲(整32 n = 9)）原按严格个数漏配。
                     for (const auto& mk : parentI->methods) {
                         const ClassMemberInfo& pm = mk.second;
-                        if (pm.isConstructor &&
-                            pm.paramTypes.size() == member->ctorInitArgs.size()) {
-                            pc = &pm; break;
+                        if (!pm.isConstructor) continue;
+                        const int required = static_cast<int>(pm.paramTypes.size()) -
+                                             pm.defaultCount;
+                        const int given = static_cast<int>(member->ctorInitArgs.size());
+                        if (given < required ||
+                            given > static_cast<int>(pm.paramTypes.size())) {
+                            continue;
                         }
+                        pc = &pm; break;
                     }
                 }
                 if (pc == nullptr) {

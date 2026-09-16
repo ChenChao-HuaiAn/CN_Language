@@ -104,6 +104,17 @@ void IRGenerator::visitProgram(Program* node) {
             }
         }
     }
+    // D23 根治（248-a）：类构造默认值**预收集**——类方法体提升（下方步骤 2）
+    //   晚于本函数的 FunctionDecl 循环（主函数生成即调用点查表），生成期收集
+    //   会 miss；此处先于全部函数生成对全部类（AST+泛型实例）预收集，
+    //   emitClassMethod 内同款收集保留（幂等跳过）作兜底。
+    if (semantic_ != nullptr) {
+        for (const auto& kv : semantic_->classes()) {
+            for (const auto& mk : kv.second.methods) {
+                collectCtorDefaults(kv.second.name, mk.second);
+            }
+        }
+    }
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             visitFunctionDecl(static_cast<FunctionDecl*>(decl.get()));
@@ -464,13 +475,16 @@ void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& fun
         std::vector<ir::IRValue> defaults;
         for (auto& param : node->params) {
             if (param->hasDefault && param->defaultExpr != nullptr) {
-                defaults.push_back(evalDefaultExpr(param->defaultExpr.get(), func));
+                defaults.push_back(evalDefaultExpr(param->defaultExpr.get()));
             }
         }
         if (!defaults.empty()) {
             // 用 mangledName（签名 key 名#参数串）作 key——调用方按
             // node->resolvedSignature（同 sigKey）查找补全
             funcDefaultArgs_[func.mangledName] = defaults;
+            // D23（248-a）：同步登记参数总数（补缺点精确判定缺省个数，
+            //   防回退口径把显式传满参的调用误补）
+            funcDefaultTotal_[func.mangledName] = node->params.size();
         }
     }
 }

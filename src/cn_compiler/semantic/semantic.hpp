@@ -78,6 +78,10 @@ struct ClassMemberInfo {
     // plans/019 阶段3b（2026-09-10）：常量 只读引用参数位表（构造/方法调用面
     //   借用纪律用；与 paramTypes 等长——普通函数 FunctionInfo.constParams 同构）
     std::vector<bool> constParams;
+    // D23 根治（248-a）：构造函数尾部默认参数个数（从右向左连续声明）——
+    //   构造调用决议按「实参个数 + 可补全」匹配（FunctionInfo.defaultCount 同构）；
+    //   缺省实参值由 IR 层 funcDefaultArgs_（emitClassMethod 收集）展开。
+    int defaultCount = 0;
     // plans/019 阶段4 第二层第一批（2026-09-10）：不安全 方法修饰（安全区边界
     //   ——方法体内五类越界操作豁免观察期警告）
     bool isUnsafe = false;

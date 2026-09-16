@@ -35,6 +35,29 @@ std::string methodSymbolKey(const std::string& className, const std::string& sig
     return className + "$" + sigKey;
 }
 
+// D23（248-a）：构造默认值预收集（幂等）——键=methodSymbolKey(类名$sigKey)，
+//   与调用点 resolvedSignature（类名$名#参数串）一致；缺省值=尾部默认参数
+//   常量求值。visitProgram 先于全部函数生成预收集（类方法体提升晚于主函数
+//   生成——生成期收集会晚于调用点查表而 miss）；emitClassMethod 内同款
+//   调用保留作兜底。
+void IRGenerator::collectCtorDefaults(const std::string& className,
+                                      const ClassMemberInfo& mi) {
+    if (!mi.isConstructor || mi.ast == nullptr || mi.sigKey.empty()) return;
+    if (mi.defaultCount <= 0) return;
+    const std::string key = methodSymbolKey(className, mi.sigKey);
+    if (funcDefaultArgs_.count(key) > 0) return;  // 幂等
+    std::vector<ir::IRValue> defaults;
+    for (const auto& param : mi.ast->params) {
+        if (param->hasDefault && param->defaultExpr != nullptr) {
+            defaults.push_back(evalDefaultExpr(param->defaultExpr.get()));
+        }
+    }
+    if (!defaults.empty()) {
+        funcDefaultArgs_[key] = defaults;
+        funcDefaultTotal_[key] = mi.ast->params.size();
+    }
+}
+
 // 提升单个类方法体为独立 IRFunction：
 //   - func.name = 类名.方法名（可读/测试契约）
 //   - func.mangledName = 类名$sigKey（codegen 链接符号）
@@ -124,6 +147,11 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
 
     setupMethodParams(func, mi);
 
+    // D23 根治（248-a）：构造默认值收集（visitProgram 已预收集，此处幂等兜底）
+    if (mi.isConstructor) {
+        collectCtorDefaults(className, mi);
+    }
+
     // 栈帧膨胀根治（2026-09-08 v2self 锚定轮）：寄存器号每函数复位，与
     //   visitFunctionDecl 同点同构（详见 ir_decl.cpp 注记）
     regCounter_ = 0;
@@ -134,13 +162,23 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     if (mi.isConstructor && !member->ctorInitBase.empty() && semantic_ != nullptr) {
         const ClassInfo* parentI = semantic_->findClass(member->ctorInitBase);
         if (parentI != nullptr) {
+            // D23（248-a）：父构造匹配按「实参个数 + defaultCount 可补全」——
+            //   带默认参数的父构造少参初始化列表（: 甲() 匹配 甲(整32 n = 9)）
+            //   原按严格个数漏配（parentCtorSig 空=父构造静默不跑）。
             std::string parentCtorSig;
+            const ClassMemberInfo* parentCtor = nullptr;
             for (const auto& mk : parentI->methods) {
                 const ClassMemberInfo& pm = mk.second;
-                if (pm.isConstructor &&
-                    pm.paramTypes.size() == member->ctorInitArgs.size()) {
-                    parentCtorSig = pm.sigKey; break;
+                if (!pm.isConstructor) continue;
+                const int required =
+                    static_cast<int>(pm.paramTypes.size()) - pm.defaultCount;
+                const int given = static_cast<int>(member->ctorInitArgs.size());
+                if (given < required || given > static_cast<int>(pm.paramTypes.size())) {
+                    continue;
                 }
+                parentCtorSig = pm.sigKey;
+                parentCtor = &pm;
+                break;
             }
             if (!parentCtorSig.empty()) {
                 std::vector<ir::IRValue> ctorArgs;
@@ -150,6 +188,22 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
                                        : ir::IRValue::var(thisUnique, "ptr"));
                 for (auto& argExpr : member->ctorInitArgs) {
                     ctorArgs.push_back(genExpr(argExpr.get()));
+                }
+                // D23（248-a）：初始化列表少参部分补父构造默认值（defaultExpr
+                //   常量求值；尾部连续默认——从第一个缺省位起逐位取）。
+                if (parentCtor != nullptr && parentCtor->ast != nullptr) {
+                    std::size_t di = 0;
+                    for (const auto& pp : parentCtor->ast->params) {
+                        const std::size_t pi =
+                            static_cast<std::size_t>(&pp - parentCtor->ast->params.data());
+                        if (pi < member->ctorInitArgs.size()) continue;
+                        if (pp->hasDefault && pp->defaultExpr != nullptr) {
+                            ctorArgs.push_back(
+                                evalDefaultExpr(pp->defaultExpr.get()));
+                        }
+                        di++;
+                        (void)di;
+                    }
                 }
                 emit(ir::Opcode::Call, ctorArgs, ir::IRValue(),
                      methodSymbolKey(parentI->name, parentCtorSig), "void",

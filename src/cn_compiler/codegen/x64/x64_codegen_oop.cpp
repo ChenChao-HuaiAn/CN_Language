@@ -158,25 +158,27 @@ void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstructi
     writer.line("mov rcx, " + objOp);
     writer.line("test rcx, rcx");
     writer.line("je " + skipLabel);
-    // 2. 调用析构函数。继承链解析实际析构方法名：
-    //    语义层 ClassInfo.methods 含继承并入的析构（~父类析构名，Task 3.1 缺陷修复——
-    //    子类无自身析构时 IR 层仍提升父类析构到子类符号 子类$~动物），
-    //    与 IR 层提升符号一致；未绑定 semantic 时回退 类名$~类名（防御性）。
-    std::string dtorName;  // 实际析构方法名（如 ~动物；空=无析构，仅释放）
+    // 2. 调用析构函数。
+    // D21 根治（248-a）：沿继承链**逐级**调用各级自身析构（派生先于基类，
+    //    spec 06 §三「析构函数内联清理资源后调用父类析构」C++ 同款）。
+    //    原实现沿链找第一个 isDestructor 即停——methods 为 unordered_map
+    //    （继承并入含全部祖先析构副本），迭代序不稳定：两级链只调 ~派生、
+    //    三级链哈希命中 ~基（实测「祖析构」唯一输出）＝基类析构随机缺失。
+    //    判据=各级自身析构键恒为 "~本级类名"（并入副本键为 ~祖先名，名字
+    //    精确匹配天然排除非确定遍历）；各级析构共享同一对象指针（this）。
     if (semantic_ != nullptr && !className.empty()) {
-        const ClassInfo* ci = semantic_->findClass(className);
-        while (ci != nullptr) {
-            for (const auto& mk : ci->methods) {
-                if (mk.second.isDestructor) { dtorName = mk.first; break; }
+        std::string level = className;
+        while (!level.empty()) {
+            const ClassInfo* ci = semantic_->findClass(level);
+            if (ci == nullptr) break;
+            auto it = ci->methods.find("~" + level);
+            if (it != ci->methods.end() && it->second.isDestructor) {
+                writer.line("sub rsp, 32");
+                writer.line("call " + classMethodSymbol(level, it->first, {}));
+                writer.line("add rsp, 32");
             }
-            if (!dtorName.empty()) break;
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName);
+            level = ci->baseName;
         }
-    }
-    if (!dtorName.empty()) {
-        writer.line("sub rsp, 32");
-        writer.line("call " + classMethodSymbol(className, dtorName, {}));
-        writer.line("add rsp, 32");
     }
     // 3. 释放内存（对象指针仍在 rcx——调用会破坏 rcx，重新装载）
     writer.line("mov rcx, " + objOp);

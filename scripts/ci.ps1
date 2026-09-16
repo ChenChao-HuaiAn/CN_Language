@@ -25,8 +25,8 @@ Write-Host "[CI] 2/4 单元测试..." -ForegroundColor Cyan
 & target/Debug/cn_unit_tests.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 单元测试失败" -ForegroundColor Red; exit 1 }
 
-Write-Host "[CI] 3/4 E2E 测试..." -ForegroundColor Cyan
-python tests/e2e/run_e2e.py --cn target/Debug/cn.exe
+Write-Host "[CI] 3/4 E2E 测试（--jobs 8：非 v2 用例并行·v2 用例串行，248-a 用户裁决提速）..." -ForegroundColor Cyan
+python tests/e2e/run_e2e.py --cn target/Debug/cn.exe --jobs 8
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] E2E 失败" -ForegroundColor Red; exit 1 }
 
 Write-Host "[CI] 4/4 全部门禁通过" -ForegroundColor Green

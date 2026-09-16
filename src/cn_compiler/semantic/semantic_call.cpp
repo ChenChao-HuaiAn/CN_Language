@@ -570,7 +570,14 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
             for (const auto& mk : ctorCls->methods) {
                 const ClassMemberInfo& mi = mk.second;
                 if (!mi.isConstructor || mi.ownerClass != className) continue;
-                if (mi.paramTypes.size() != argTypes.size()) continue;
+                // D23 根治（248-a）：构造匹配按「实参个数 + 可补全」（与普通函数
+                //   决议 defaultCount 同构）——原实现严格等个数，带默认参数的构造
+                //   少参调用不匹配而静默落「无构造=默认构造」分支（初始化列表不跑，
+                //   探针 乙():甲(n=9) 值=0）。
+                const int ctorRequired =
+                    static_cast<int>(mi.paramTypes.size()) - mi.defaultCount;
+                if (static_cast<int>(argTypes.size()) < ctorRequired ||
+                    argTypes.size() > mi.paramTypes.size()) continue;
                 bool ok = true;
                 for (std::size_t i = 0; i < argTypes.size(); ++i) {
                     if (conversionLevel(argTypes[i], mi.paramTypes[i],
@@ -588,7 +595,10 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
             }
             if (ctorExact != nullptr) ctor = ctorExact;
             if (ctor != nullptr) {
-                if (argTypes.size() != ctor->paramTypes.size()) {
+                const int selRequired =
+                    static_cast<int>(ctor->paramTypes.size()) - ctor->defaultCount;
+                if (static_cast<int>(argTypes.size()) < selRequired ||
+                    argTypes.size() > ctor->paramTypes.size()) {
                     diagnostics_.report(DiagnosticLevel::Error, node->location,
                                         "构造函数 '" + className + "' 期望 " +
                                             std::to_string(ctor->paramTypes.size()) +

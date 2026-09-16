@@ -495,6 +495,30 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
             std::vector<ir::IRValue> userArgs =
                 buildCallArgsOop(node->arguments, node->location);
             for (auto& a : userArgs) args.push_back(a);
+            // D23 根治（248-a）：构造缺省实参补全——构造调用经 handleClassCallExpr
+            //   提前展开（visitCallExpr 通用补缺段不可达），此处按语义层选中的
+            //   resolvedSignature 查 funcDefaultArgs_/funcDefaultTotal_（visitProgram
+            //   预收集）把缺省实参精确展开；显式传满参不补。
+            if (!node->resolvedSignature.empty()) {
+                auto defIt = funcDefaultArgs_.find(node->resolvedSignature);
+                if (defIt != funcDefaultArgs_.end()) {
+                    auto totIt = funcDefaultTotal_.find(node->resolvedSignature);
+                    std::size_t totalParams = node->arguments.size();
+                    if (totIt != funcDefaultTotal_.end()) {
+                        totalParams = totIt->second;
+                    }
+                    const std::size_t given = node->arguments.size();
+                    if (given < totalParams &&
+                        totalParams - given <= defIt->second.size()) {
+                        const std::size_t missing = totalParams - given;
+                        const auto& defaults = defIt->second;
+                        for (std::size_t k = defaults.size() - missing;
+                             k < defaults.size(); ++k) {
+                            args.push_back(defaults[k]);
+                        }
+                    }
+                }
+            }
             emit(ir::Opcode::Call, args, ir::IRValue(),
                  methodSymbolKey(className, ctor->sigKey), "void", node->location);
         }

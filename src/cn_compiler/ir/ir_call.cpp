@@ -110,10 +110,17 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         if (defIt != funcDefaultArgs_.end()) {
             const auto& defaults = defIt->second;
             const std::size_t given = node->arguments.size();
-            // 参数总数：语义层注册的 paramTypes 长度（含默认参数）
-            const std::size_t totalParams = semantic_ != nullptr
-                ? semantic_->funcParamTypesOf(node->resolvedSignature).size()
-                : given + defaults.size();
+            // 参数总数：优先 funcDefaultTotal_（D23：两侧收集点同步登记，构造
+            //   不入 functions_ 回退口径 given+defaults 会把显式传满参的调用误补）；
+            //   次选语义层注册的 paramTypes 长度（普通函数）。
+            std::size_t totalParams = 0;
+            auto totIt = funcDefaultTotal_.find(node->resolvedSignature);
+            if (totIt != funcDefaultTotal_.end()) {
+                totalParams = totIt->second;
+            } else if (semantic_ != nullptr) {
+                totalParams = semantic_->funcParamTypesOf(node->resolvedSignature).size();
+            }
+            if (totalParams == 0) totalParams = given;
             // 缺省个数 = 参数总数 - 实参个数（0 ~ defaults.size()）
             if (given < totalParams) {
                 const std::size_t missing = totalParams - given;

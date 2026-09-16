@@ -158,20 +158,22 @@ void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
         emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x0", "ptr");
     }
     writer.line("cbz x0, " + skipLabel);
-    // 2. 调用析构函数（沿继承链解析实际析构方法名）
-    std::string dtorName;
+    // 2. 调用析构函数。
+    // D21 根治（248-a）：沿继承链逐级调用各级自身析构（派生先于基类，spec 06
+    //    §三 C++ 同款）——原实现沿链找第一个 isDestructor 即停且 methods 为
+    //    unordered_map（迭代序不稳定）＝基类析构随机缺失；判据=各级自身析构键
+    //    恒为 "~本级类名"（并入副本键为 ~祖先名，精确匹配排除非确定遍历）。
     if (semantic_ != nullptr && !className.empty()) {
-        const ClassInfo* ci = semantic_->findClass(className);
-        while (ci != nullptr) {
-            for (const auto& mk : ci->methods) {
-                if (mk.second.isDestructor) { dtorName = mk.first; break; }
+        std::string level = className;
+        while (!level.empty()) {
+            const ClassInfo* ci = semantic_->findClass(level);
+            if (ci == nullptr) break;
+            auto it = ci->methods.find("~" + level);
+            if (it != ci->methods.end() && it->second.isDestructor) {
+                writer.line("bl " + classMethodSymbol(level, it->first, {}));
             }
-            if (!dtorName.empty()) break;
-            ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName);
+            level = ci->baseName;
         }
-    }
-    if (!dtorName.empty()) {
-        writer.line("bl " + classMethodSymbol(className, dtorName, {}));
     }
     // 3. 释放内存（对象指针重新装载——bl 会破坏 x0）
     if (inst.operands[0].id >= 0) {
