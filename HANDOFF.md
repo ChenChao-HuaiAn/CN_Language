@@ -23,7 +23,10 @@
 
 ### 二、下一步（新会话按序）
 
-1. **T12 根治**（ir.cpp termReturnValue 文本产生面·272-a 线索已锁）。
+1. **T12 根治收尾（施工法已备·275-a 候选）**：emitStackLoad 34 调用点清单已枚举
+   （emit.cpp 4/codegen.cpp 6/i128 1/oop 7/instructions 16）——**marker 二分法**=
+   签名加 `const char* caller` 默认参数+各调用点传 `__LINE__`+offset==0 时 stderr
+   打 caller 行号——一次重编精确定位 [rbp] 裸读调用者（须开发锁轮实施）。
 2. T13（待深度机探针回传）；T19~T21；D35 波B（? 特性大轮）；C20 波2（待 D28/D29）。
 3. T14/T15/T16 的 x64l 运行级复验=跨机口径（已登记）。
 
