@@ -48,6 +48,7 @@ private:
     Token readNumber();                      // 读取数字（十进制/十六进制/二进制/八进制/浮点）
     void collectNumberSuffix(std::string& text); // 收集整数/浮点后缀 f/L/LL/U/UL/ULL
     Token readChar();                        // 读取字符字面量（含转义与\u{}）
+    bool validateUnicodeEscape(const std::string& hexBody, const SourceLocation& loc); // 278-a T5：\u{} 三态校验（空/超限/代理区+非法hex）
     Token readOperatorOrDelimiter();         // 读取运算符或分隔符（贪婪最长匹配）
 
     // ---- 工具 ----

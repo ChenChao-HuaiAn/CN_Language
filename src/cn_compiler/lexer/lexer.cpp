@@ -334,6 +334,33 @@ std::string Lexer::readStringBody(bool multiLine, bool raw) {
             text += currentUtf8();
             advance();
             if (isAtEnd()) break;
+            // 278-a T5：\u{ 结构感知+三态校验（原宽松 +1 字符收集不识别结构）
+            if (peek() == U'u') {
+                text += currentUtf8();
+                advance();
+                if (peek() == U'{') {
+                    text += currentUtf8();
+                    advance();
+                    const std::size_t hexStart = text.size();
+                    while (!isAtEnd() && peek() != U'}') {
+                        text += currentUtf8();
+                        advance();
+                    }
+                    const std::string hexBody = text.substr(hexStart);
+                    if (peek() == U'}') {
+                        text += currentUtf8();
+                        advance();
+                    } else {
+                        reportError(currentLocation(), "无效的Unicode转义：缺少 }");
+                    }
+                    validateUnicodeEscape(hexBody, currentLocation());
+                    continue;
+                }
+                reportError(currentLocation(), "无效的Unicode转义：缺少 {");
+                text += currentUtf8();
+                advance();
+                continue;
+            }
             text += currentUtf8();
             advance();
             continue;
@@ -460,6 +487,36 @@ Token Lexer::readNumber() {
     return Token(isFloat ? TokenType::FloatLiteral : TokenType::IntegerLiteral, text, loc);
 }
 
+// 278-a T5：\u{...} 十六进制体三态校验（空转义/超码点>U+10FFFF/代理区
+//   U+D800~U+DFFF）+非法十六进制字符——四态均 reportError（词法期拒绝，
+//   消除 decodeEscapes 生成非法 UTF-8 字节的面）。
+bool Lexer::validateUnicodeEscape(const std::string& hexBody, const SourceLocation& loc) {
+    if (hexBody.empty()) {
+        reportError(loc, "无效的Unicode转义：\\u{} 空转义（须为 Unicode 码点）");
+        return false;
+    }
+    char32_t cp = 0;
+    for (char h : hexBody) {
+        cp *= 16;
+        if (h >= '0' && h <= '9') cp += h - '0';
+        else if (h >= 'a' && h <= 'f') cp += h - 'a' + 10;
+        else if (h >= 'A' && h <= 'F') cp += h - 'A' + 10;
+        else {
+            reportError(loc, "无效的Unicode转义：非十六进制字符");
+            return false;
+        }
+    }
+    if (cp > 0x10FFFF) {
+        reportError(loc, "无效的Unicode转义：码点超过 U+10FFFF 上限");
+        return false;
+    }
+    if (cp >= 0xD800 && cp <= 0xDFFF) {
+        reportError(loc, "无效的Unicode转义：代理区码点（U+D800~U+DFFF）不可直接使用");
+        return false;
+    }
+    return true;
+}
+
 // 读取字符字面量：'X'、'\n'、'\t'、'\0'、'\\'、'\''、'\"'、'\u{XXXX}'
 Token Lexer::readChar() {
     SourceLocation loc = currentLocation();
@@ -479,22 +536,28 @@ Token Lexer::readChar() {
         }
         const char32_t esc = peek();
         if (esc == U'u') {
-            // Unicode转义 \u{XXXX}
+            // Unicode转义 \u{XXXX}——278-a T5：结构严格化（缺 { 拒绝）+
+            //   收集 hex 体后三态校验（空/超限/代理区）
             text += currentUtf8();
             advance(); // 消费 u
-            if (peek() == U'{') {
+            if (peek() != U'{') {
+                reportError(loc, "无效的Unicode转义：缺少 {");
+            } else {
                 text += currentUtf8();
                 advance(); // 消费 {
-            }
-            while (!isAtEnd() && peek() != U'}') {
-                text += currentUtf8();
-                advance();
-            }
-            if (peek() == U'}') {
-                text += currentUtf8();
-                advance();
-            } else {
-                reportError(loc, "无效的Unicode转义：缺少 }");
+                const std::size_t hexStart = text.size();
+                while (!isAtEnd() && peek() != U'}') {
+                    text += currentUtf8();
+                    advance();
+                }
+                const std::string hexBody = text.substr(hexStart);
+                if (peek() == U'}') {
+                    text += currentUtf8();
+                    advance();
+                } else {
+                    reportError(loc, "无效的Unicode转义：缺少 }");
+                }
+                validateUnicodeEscape(hexBody, loc);
             }
         } else if (esc == U'n' || esc == U't' || esc == U'r' || esc == U'0' ||
                    esc == U'\\' || esc == U'\'' || esc == U'"') {

@@ -162,7 +162,14 @@ static std::string decodeEscapes(const std::string& body) {
                             else if (h >= 'A' && h <= 'F') cp += h - 'A' + 10;
                             else { ok = false; break; }
                         }
-                        if (ok) appendUtf8(out, cp);
+                        if (ok) {
+                            // 278-a T5 防御：超码点/代理区不 append（词法层
+                            //   validateUnicodeEscape 已拒·此处防御非法 UTF-8
+                            //   字节生成面——字符/字符串两消费面共用本函数）
+                            if (cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF)) {
+                                appendUtf8(out, cp);
+                            }
+                        }
                         i = j;  // 跳到 '}'（循环 ++i 后到达 '}' 之后）
                     } else {
                         out += '\\';  // 非法 \u{：保留反斜杠
