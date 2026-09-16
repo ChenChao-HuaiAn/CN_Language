@@ -153,9 +153,9 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
     const std::string skipLabel = "Lobjdel_ok" + std::to_string(skipId);
     // 1. 对象指针入 rdi（this）；空指针 -> 跳过
     if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr");
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
     } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr");
+        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
     }
     writer.line("test rdi, rdi");
     writer.line("jz " + skipLabel);
@@ -186,9 +186,9 @@ void LinuxX64CodeGenerator::emitDeleteObject(LinuxX64AsmWriter& writer,
     }
     // 3. 释放内存（对象指针重新装载——call 会破坏 rdi）
     if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr");
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
     } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr");
+        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
     }
     writer.line("call __cn_object_delete");
     writer.raw(skipLabel + ":");
@@ -221,9 +221,9 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     const std::size_t argCount = inst.operands.size() - 1;
     // 1. this 入 rdi
     if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr");
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "rdi", "ptr", __LINE__);
     } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr");
+        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "rdi", "ptr", __LINE__);
     }
     // 2. 虚表指针：r9 = [rdi]（对象首地址存虚表指针）
     writer.line("mov r9, qword ptr [rdi]");
@@ -301,7 +301,7 @@ void LinuxX64CodeGenerator::emitOopInstruction(LinuxX64AsmWriter& writer,
             const int dstOff = regSlotOffset(inst.result.id);
             if (!inst.operands.empty() && inst.operands[0].id >= 0) {
                 // 取对象虚表指针：r10 = [对象首地址]
-                emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "ptr");
+                emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "ptr", __LINE__);
                 writer.line("mov r10, qword ptr [r10]");
             } else {
                 // 加载类虚表地址：lea rip 相对

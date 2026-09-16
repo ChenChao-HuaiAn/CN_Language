@@ -621,10 +621,10 @@ void LinuxX64CodeGenerator::emitEpilogue(LinuxX64AsmWriter& writer,
         //   与 ARM64 的 ldr 装载语义一致
         if (returnReg.compare(0, 1, "[") == 0) {
             const int off = parseStackOffset(returnReg);
-            emitStackLoad(writer, off, "r10", "ptr");
+            emitStackLoad(writer, off, "r10", "ptr", __LINE__);
         } else if (returnReg.size() > 2 && returnReg[0] == '%' && returnReg[1] == 'v') {
             const int id = std::stoi(returnReg.substr(2));
-            emitStackLoad(writer, regSlotOffset(id), "r10", "ptr");
+            emitStackLoad(writer, regSlotOffset(id), "r10", "ptr", __LINE__);
         } else {
             writer.line("mov r10, " + returnReg);
         }

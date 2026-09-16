@@ -49,7 +49,7 @@ void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
         }
         // 寄存器：isHi 取 %vN（高64位）、否则取 %vN+1（低64位）
         const int id = isHi ? v.id : v.id + 1;
-        emitStackLoad(writer, regSlotOffset(id), reg, "i64");
+        emitStackLoad(writer, regSlotOffset(id), reg, "i64", __LINE__);
     };
     const bool isAdd = (inst.opcode == ir::Opcode::Add);
     // 低64位：add/sub r10 = lo1 +/- lo2（设置标志）

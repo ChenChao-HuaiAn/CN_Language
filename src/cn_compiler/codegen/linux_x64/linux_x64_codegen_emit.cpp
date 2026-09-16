@@ -295,10 +295,10 @@ std::string LinuxX64CodeGenerator::loadOperandToX(LinuxX64AsmWriter& writer,
         return reg;
     }
     if (operand.id >= 0) {
-        emitStackLoad(writer, regSlotOffset(operand.id), reg, operand.type);
+        emitStackLoad(writer, regSlotOffset(operand.id), reg, operand.type, __LINE__);
         return reg;
     }
-    emitStackLoad(writer, varSlotOf(operand.extra), reg, operand.type);
+    emitStackLoad(writer, varSlotOf(operand.extra), reg, operand.type, __LINE__);
     return reg;
 }
 
@@ -316,10 +316,10 @@ void LinuxX64CodeGenerator::loadOperandToV(LinuxX64AsmWriter& writer,
         return;
     }
     if (operand.id >= 0) {
-        emitStackLoad(writer, regSlotOffset(operand.id), vreg, operand.type);
+        emitStackLoad(writer, regSlotOffset(operand.id), vreg, operand.type, __LINE__);
         return;
     }
-    emitStackLoad(writer, varSlotOf(operand.extra), vreg, operand.type);
+    emitStackLoad(writer, varSlotOf(operand.extra), vreg, operand.type, __LINE__);
 }
 
 // 参数是否结构体按值
