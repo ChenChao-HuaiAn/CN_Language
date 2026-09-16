@@ -38,6 +38,25 @@ if(CN_ENABLE_ASAN)
     endif()
 endif()
 
+# 检查网第 3 层（250-a）：可选源码覆盖率构建——编译器自身源码行/分支覆盖（GCC/Clang gcov）。
+#   开启：cmake -S . -B target/build-cov -DCN_ENABLE_COVERAGE=ON
+#   配套全链脚本：scripts/check_source_coverage.py（构建→门禁语料→gcov 聚合→报告→阈值门禁→新代码红线）。
+#   ★位置要求：与 ASan 同——必须在所有 target 定义之前（add_compile_options 只影响其后的 target）。
+#   ★输出目录隔离：coverage 产物（cn/cn_unit_tests）输出 target/cov/，不污染常规构建产物 target/。
+option(CN_ENABLE_COVERAGE "启用源码覆盖率构建（GCC/Clang --coverage；检查网第 3 层·plans/026 §2.8）" OFF)
+if(CN_ENABLE_COVERAGE)
+    if(MSVC)
+        message(FATAL_ERROR "CN_ENABLE_COVERAGE 仅支持 GCC/Clang（gcov 设施）；win/MSVC 口径=诚实边界（plans/026 §2.8：先跑 linux 口径）")
+    else()
+        add_compile_options(--coverage)
+        add_link_options(--coverage)
+        set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target/cov)
+        set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target/cov)
+        set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/target/cov)
+        message(STATUS "[CN] 覆盖率已启用（--coverage；产物输出 target/cov/）")
+    endif()
+endif()
+
 # Google Test：优先使用系统安装，否则使用本地第三方源码构建
 # （环境可能无外网，FetchContent 拉取 github 会失败，故回退到本地 third-party 源码）
 find_package(GTest QUIET)

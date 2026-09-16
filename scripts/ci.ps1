@@ -1,6 +1,8 @@
 ﻿# CN 语言编译器 CI 门禁脚本（B-2 2026-08）
 # 本地/远程 CI 统一入口：构建（零警告）+ 单测 + E2E
 # 用法：powershell -ExecutionPolicy Bypass -File scripts/ci.ps1
+#       powershell -ExecutionPolicy Bypass -File scripts/ci.ps1 -Coverage   # 追加第 3 层源码覆盖率门禁（linux gcov 口径）
+param([switch]$Coverage = $false)
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
@@ -32,5 +34,17 @@ if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 单元测试失败" -ForegroundColor
 Write-Host "[CI] 3/4 E2E 测试（--jobs 8：非 v2 用例并行·v2 用例串行，248-a 用户裁决提速）..." -ForegroundColor Cyan
 python tests/e2e/run_e2e.py --cn target/Debug/cn.exe --jobs 8
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] E2E 失败" -ForegroundColor Red; exit 1 }
+
+Write-Host "[CI] 3.5/4 源码覆盖率门禁（检查网第 3 层·plans/026 §2.8·仅 -Coverage 时跑；linux gcov 口径）..." -ForegroundColor Cyan
+if ($Coverage) {
+    if (Test-Path "target/cov/cn") {
+        python scripts/check_source_coverage.py
+        if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 源码覆盖率门禁失败" -ForegroundColor Red; exit 1 }
+    } else {
+        Write-Host "[CI] 无 coverage 构建产物（target/cov/cn）——win/MSVC 无 gcov 口径=诚实边界，跳过（plans/026 §2.8）" -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[CI] 跳过（-Coverage 开关未启用）" -ForegroundColor DarkGray
+}
 
 Write-Host "[CI] 4/4 全部门禁通过" -ForegroundColor Green

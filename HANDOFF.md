@@ -90,68 +90,64 @@
 
 ## 单位机 ARM64 节
 
-**最近交接**：2026-09-17——**249-a 收工：检查网十层总图落 026 + A11/B4 退出码根治 + CLI 契约矩阵五维面 49 格建成**（基线 5b8deaf·认领 6dcd57a）
+**最近交接**：2026-09-16——**250-a 收工：检查网第 3 层·编译器源码覆盖率 gcov 接入建成**（基线 8b820ab·认领 fd4753d）
 
-### 一、本会话已交付（249-a 收工·全门禁绿）
+### 一、本会话已交付（250-a 收工）
 
-1. **B4 根治（A11）**：`cn_main.cpp` 四个 `std::system` 消费点统一经 `systemExitCode()` 归一——POSIX 分支
-   `WIFEXITED/WEXITSTATUS` 解包+信号→128+sig；win 分支维持（MSVC CRT 返回值本就=退出码）。实测
-   `cn run` 退出码 rc=1/3/5/255 正确透传。**反证**：还原 846 裸 `return std::system(...)` → 矩阵「退出码透传」格 FAIL（47/49）→ 复原 → 49/49。
-2. **CLI 契约矩阵建成**（`scripts/check_cli_contract.py`·检查网第 2 层）：**五维面 49 格**——①子命令 7 全
-   ②退出码语义（0/1/3/5/255+运行期错误码）③选项面（四优化级/--opt/--no-regalloc/--debug/--验证-ir/--cfi/
-   --发布/--verbose/--output 含深层/交叉 target/--version/--help/未知选项）④命令行形态（无参/未知命令/
-   缺参/不存在/目录/空文件）⑤通道诊断（stdout-stderr 分流+`文件:行:列: 错误:` 正则+token/ast/ir 分层口径）。
-   接入 ci.ps1「1.5/4」（构建后）。**49/49 绿**（本机 linux-arm64）。
-3. **矩阵首批发现**（面检查价值实证）：①**目录作为输入被静默「检查通过」**（Linux `ifstream` 打开目录
-   「成功」读空）→ 同轮根治（`readSourceFile` 前置目录拒绝·跨平台）+格锚定；②ast/token 对下游层错误
-   放行=分层设计口径（格已锚定）；③`--version` 文案过期（linux-x86_64 标「初期/plans/016」）=轻面登记。
-4. **plans/026 修订**（§2.6 十层总图/§2.7 第 2 层细则/§2.8 第 3 层细则/§三-5「冒一个→校准一层」条款/
-   变更记录/M1 现状列同步）+ plans/021 A11 销项 + plans/025 §三.1 收工回填。
+1. **检查网第 3 层建成**（plans/026 §2.8·第二波·预登记首选）：①CMake `CN_ENABLE_COVERAGE` 选项
+   （GCC `--coverage`；MSVC=FATAL_ERROR；产物隔离 `target/cov/`）；②`scripts/check_source_coverage.py`
+   一键全链=构建零警告→清旧 gcda→单测→全量 E2E（先清 v2p 指纹缓存=强制全树编译刺激）→CLI 矩阵
+   →`gcov -b -i` JSON 聚合→报告入档 `target/coverage/`→**阈值门禁**（行/分支 ≥基线−0.5pp·基线按平台键控
+   入库 `scripts/coverage_baseline.json`）→**新代码红线**（`--diff-base REV`·双重防假绿守卫：gcov 告警拒判
+   +gcda 早于 gcno 失配拒判）；③`ci.ps1 -Coverage` 参数化步（常规链默认不跑——插桩全链约 1 小时）。
+2. **首跑基线（linux-arm64/gcc-9.3.0·全语料）**：行覆盖 **79.5%**/分支 **48.26%**（132 源文件）；首跑即暴露
+   覆盖结构=ir_verify.cpp 0%/linux_x64 后端 5~12%（arm64 语料不运行 x64l 产物=跨机覆盖定量证据）/
+   ast_printer 14.6%——低覆盖清单已登记 plans/021 §三-D25（后续语料补强输入）。
+3. **反证两件全命中**：①阈值——基线人为抬 90%→FAIL→复原 PASS；②红线——`--diff-base HEAD` 绿→注入
+   「从不被调用的探针函数」→FAIL 精确指认 1/3 未触达行→复原 PASS。**实验连带实证 gcda/gcno 失配通道**
+   （gcno 重生成后旧 gcda 被静默弃用=覆盖假归零 1.66pp）→同轮落入脚本双重守卫+阈值门禁真实拦截检验。
+4. **plans/026 修订**：§2.6 第 3 层行 ⬜→✅+§2.8 细则重写（设施/基线/反证/口径/诚实边界）+实施路线第二波
+   标记完成+变更记录；十层检查网现 **第 1/2/3/5 层已建成**。
 
-**门禁实测**：零警告构建 + 单测 **1327/1327** + E2E **398=396/0/2**（arm64 口径 2 跳=平台固有）+
-矩阵 **49/49** + 覆盖率 --strict **100%** + 关键字三处一致 + 双文档门禁。
+**门禁**：coverage 全链（零警告+单测 1327/1327+E2E 396/0/2+矩阵 49/49+聚合+基线门禁 PASS）+常规构建
+reconfigure 绿+双文档门禁。
 
 ### 二、发现的问题（已处置）
 
-- **家机 248-a 回归偶遇**：本机全量 E2E 首跑暴露 **17 例宿主侧失败**（108/116/213/217/219/220/221/225/234/
-  235/237/238/240/245/282/283/284）——**回退对分实验实锤归属** 248-a 的 13 个 src 文件（回退→3 用例全过；
-  恢复→全败）。家机同日独立发现并收口（**5b8deaf**·D21 析构判据改 `ownerClass` 匹配——泛型实例化类
-  析构键=`~模板名` 而键名匹配 `~本级类名` miss 致容器/stdlib 析构全不发射）。本机已同步 5b8deaf 并在
-  修复基线上全门禁复跑全绿。**教训印证**：全量 E2E 是唯一门禁（家机该轮未跑完全量即收工→回归逃逸）。
+- **GCC 9 中文标识符二次复发**（lessons 已追加）：反证②临时探针用了 `探针值`——构建即挂（-Werror 拦截，
+  未污染正式产物）。教训=实验/临时代码同样受「C++ 标识符一律 ASCII」约束。
+- **脚本两缺陷自查自纠**：①全跳语料步时误清 gcda→改为仅在语料步执行时清；②红线对「文件无覆盖数据」
+  静默放行（假绿）→改为 FAIL+失配拒判守卫。
 
 ### 三、下一步
 
-1. **250-a 候选**（预登记 plans/025 §预登记表）：①第 3 层源码覆盖率 gcov 接入（026 §2.8·第二波）②F1-26
-   mem2reg ③F2-33 纯 stdlib 三项——锁空闲时按动态优先级认领。
-2. 跨机欠账（登记）：win 侧 CLI 契约形态（家机 CI 跑同脚本即覆盖）；信号死亡形态端到端格（栈溢探针在
-   本机环境挂起·需受控手段）；路径含空格格。
+1. **第 9 层清单化**（026 §2.6 第一波遗留）：全部 check_* 门禁注册进 ci 步骤矩阵+「新门禁必须注册」规则——
+   下一轮候选首选。
+2. **F1-26 mem2reg**（Phi 接线·性能第一）/ **F2-33 纯 stdlib 三项**（随机数/迭代器/正则）——预登记候选。
+3. **跨机欠账**：深度机 x86_64 口径覆盖率基线（各自 `--update-baseline`）；win 侧 CLI 形态（家机 CI）；
+   信号死亡端到端格；路径含空格格。
 
 ### 四、验证链（本机复现口径）
 
 ```
-# 全量门禁（arm64）
-rm -rf target/build && cmake -S . -B target/build -DCMAKE_BUILD_TYPE=Debug &&
-  cmake --build target/build -j 8            # 零警告
-./target/cn_unit_tests                       # 1327/1327
-python3 tests/e2e/run_e2e.py --cn target/cn --target linux-arm64 --jobs 4   # 398=396/0/2
-python3 scripts/check_cli_contract.py --cn target/cn                        # 49/49（新增·必须跑）
-# 锚定链（arm64）：79_v2 单跑（v2p 缓存命中后约 3 分钟）
-python3 tests/e2e/run_e2e.py --cn target/cn --target linux-arm64 --filter 79_v2 --verbose
-#   → target/audit2/selfwork79/fix_p.asm ≡ fix_s.asm（558209 行 / 534c3dd8…）
-# ASCII 门禁（C++ 改动后必跑）：python3 scripts/check_ascii_idents.py
-> 注意①：v2 锚定链用例首建 v2p 时勿用 --jobs 6（并行内存压力曾致 78_v2 偶发失败；--jobs 4 全绿）。
-> 注意②：改代码生成层（发射方法的寄存器契约）时，必须直接跑全量 E2E——逐组抽样单跑会假绿（lessons 223）。
-> 注意③：cn run 必须在项目根目录调用；--target 缺省 win-x64，本机实测须显式 --target linux-arm64。
-> 远程推送现状（2026-09-17 实测）：gitcode 正常；github 本机无凭据（沿既有口径待他机代推）。
+# 覆盖率全链（专项轮/定期；约 1 小时）
+python3 scripts/check_source_coverage.py                 # 构建零警告+单测+E2E+矩阵+聚合+基线门禁
+python3 scripts/check_source_coverage.py --update-baseline   # 基线更新（首跑/平台首跑）
+python3 scripts/check_source_coverage.py --diff-base HEAD~1  # 新代码红线
+# 报告：target/coverage/report.md + report.json；基线：scripts/coverage_baseline.json
+# 常规门禁不变（HANDOFF 上轮口径）：rm -rf target/build && cmake -S . -B target/build …
+> 注意①：coverage 构建独立目录 target/build-cov、产物 target/cov/——与常规 target/ 互不污染。
+> 注意②：--skip 语料步组合仅在「源码未变的重聚合」合法（gcda 早于 gcno=数据过期，脚本守卫拒判红线）。
+> 注意③：cn run 必须在项目根目录调用；E2E 须显式 --target linux-arm64。
+> 远程推送现状（2026-09-16 实测）：gitcode 正常；github 本机无凭据（沿既有口径待他机代推）。
 ```
 
 ### 五、诚实边界与坑
 
-- **`std::system` 返回值语义坑**（B4 根因·已入矩阵防线）：POSIX 返 waitstatus（N<<8）、Windows 返退出码
-  ——跨平台透传必须解包；「恰好正确」的布尔化（`==0`）可幸存、直接透传必炸。新 `std::system` 消费点
-  必须经 `systemExitCode`（矩阵守卫）。
-- **`cn_main.cpp` 行数 1080+（T1/D1 面 · >1000 行门禁未建）**：本轮 +74 行（助手/目录拒绝/注释）——拆分
-  与文件级门禁随 T1 排班；新一轮如触碰该文件应优先拆分。
-- win 侧契约形态/信号端到端/含空格路径=跨机与设施欠账（见三-2）。
-- 226-a 遗留不变：D8 重做定位法已定 / F1-26 mem2reg 待排；`linux-x86_64 后端仍写死关闭 regalloc`。
+- **win/MSVC 无 gcov**=第 3 层仅 linux 口径（026 §2.8 既批诚实边界）；`CN_ENABLE_COVERAGE` 在 MSVC 下
+  FATAL_ERROR 防误用；ci.ps1 `-Coverage` 在产物缺失（win）时黄字跳过不 FAIL。
+- **「每轮入档」节奏**=涉 src 改动轮收工附注覆盖率数字（专项全链），常规轻轮不强制 1 小时全链——由
+  `-Coverage` 开关与排班承载（026 §2.8 已声明）。
+- 覆盖率数字平台相关（编译器版本/架构）——基线按平台键控，他机首跑各自 `--update-baseline`。
+- 249-a 遗留不变：win 侧契约形态/信号端到端/含空格路径=欠账；`cn_main.cpp` 行数 T1 面随排班。
 - github 镜像本机无凭据未推（170-a 起累积）。
