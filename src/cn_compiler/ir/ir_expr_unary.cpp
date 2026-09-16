@@ -25,7 +25,18 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             lastExpr_ = emitResult(ir::Opcode::Not, {operand}, "i1", "", node->location);
             break;
         case Operator::Subtract: {
-            // 一元负号：0 - 操作数
+            // 269-c/273-a T16：浮点操作数改 x * (-1.0) —— IEEE 符号翻转语义
+            //   （-(+0.0)=-0.0；原「0 - x」降级=0−(+0)=+0 丢负零·深度机浮点
+            //   矩阵 T16 立案）；整型保持 0 - x（两补码取负无负零面）
+            if (operand.type == "f64" || operand.type == "f32") {
+                ir::IRValue negOne = emitResult(ir::Opcode::ConstFloat, {},
+                                                ir::IRValue::constant(
+                                                    "-1.0", operand.type).type,
+                                                "-1.0", node->location);
+                lastExpr_ = emitResult(ir::Opcode::Mul, {operand, negOne},
+                                       operand.type, "", node->location);
+                break;
+            }
             ir::IRValue zero = zeroConst(operand.type);
             lastExpr_ = emitResult(ir::Opcode::Sub, {zero, operand}, operand.type, "",
                                    node->location);
