@@ -24,6 +24,7 @@
 #ifdef _WIN32
 #include <windows.h>
 #else
+#include <sys/wait.h>  // WIFEXITED/WEXITSTATUS（system 返回值解包，249-a）
 #include <unistd.h>  // readlink（stdlib 目录探测）
 #endif
 
@@ -181,6 +182,25 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
 //   先试窄字符（GBK/ASCII），失败再试 UTF-8 -> UTF-16 宽路径（_wfopen），
 //   与 module::readSourceFile 同机制（依赖模块中文名已验证）。
 static bool readSourceFile(const std::string& path, std::string& content, std::string& error) {
+    // 拒绝目录等非常规文件路径（Linux 下 ifstream 打开目录会"成功"且读出空内容——
+    // 曾致目录 .cn 路径静默放行"检查通过"；249-a CLI 契约面发现并根治）
+#ifdef _WIN32
+    {
+        const DWORD attrs = GetFileAttributesA(path.c_str());
+        if (attrs != INVALID_FILE_ATTRIBUTES && (attrs & FILE_ATTRIBUTE_DIRECTORY)) {
+            error = "源文件路径是目录而非文件: " + path;
+            return false;
+        }
+    }
+#else
+    {
+        struct stat st;
+        if (::stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode)) {
+            error = "源文件路径是目录而非文件: " + path;
+            return false;
+        }
+    }
+#endif
 #ifdef _WIN32
     auto readNarrow = [&](const std::string& p, std::string& out) -> bool {
         FILE* fp = nullptr;
@@ -245,6 +265,21 @@ static std::string pathStem(const std::string& path) {
     return (dot == std::string::npos) ? base : base.substr(0, dot);
 }
 
+// 统一 std::system 返回值语义（249-a/B4 根治）：
+//   MSVC CRT：返回值即子进程退出码，直接透传；
+//   POSIX：返回 waitstatus（退出码 N 编码为 N<<8，直接当退出码用会恒为 0）——解包为真实退出码，
+//   信号终止按 shell 惯例 128+信号号（与 Rust Command::status().code() 语义对齐）。
+// 全文件 std::system 消费点必须经本函数归一（check_cli_contract.py 门禁锚定）。
+static int systemExitCode(int status) {
+#ifdef _WIN32
+    return status;
+#else
+    if (WIFEXITED(status)) return WEXITSTATUS(status);
+    if (WIFSIGNALED(status)) return 128 + WTERMSIG(status);
+    return status;
+#endif
+}
+
 // 确保输出目录存在（单层，已存在时返回失败但无害）
 static void ensureTargetDir() {
 #ifdef _WIN32
@@ -277,7 +312,7 @@ static bool ensureDirExists(const std::string& dir) {
     return true;
 #else
     std::string cmd = "mkdir -p \"" + dir + "\" 2>/dev/null";
-    return std::system(cmd.c_str()) == 0;
+    return systemExitCode(std::system(cmd.c_str())) == 0;
 #endif
 }
 
@@ -505,11 +540,11 @@ static int runToolchainCommand(const std::string& vcvarsBat, const std::string& 
     } else {
         full = "call \"" + vcvarsBat + "\" >nul 2>&1 && " + cmdLine;
     }
-    return std::system(full.c_str());
+    return systemExitCode(std::system(full.c_str()));
 #else
     (void)vcvarsBat;  // Linux 下无 vcvars 环境，直接执行
     if (verbose) std::cout << "执行: " << cmdLine << "\n";
-    return std::system(cmdLine.c_str());
+    return systemExitCode(std::system(cmdLine.c_str()));
 #endif
 }
 
@@ -841,9 +876,10 @@ static int runRun(const CliOptions& options, const std::string& file) {
             if (ch == '/') ch = '\\';
         }
     }
-    // 路径含空格时加引号，否则直接执行并透传退出码（Linux 直接执行无后缀可执行文件）
+    // 路径含空格时加引号，否则直接执行（Linux 直接执行无后缀可执行文件）
+    // 退出码透传：经 systemExitCode 归一（POSIX waitstatus 解包——249-a/B4）
     const std::string cmd = (exe.find(' ') != std::string::npos) ? ("\"" + exe + "\"") : exe;
-    return std::system(cmd.c_str());
+    return systemExitCode(std::system(cmd.c_str()));
 }
 
 // check 命令：仅检查语法和类型，不生成代码

@@ -21,6 +21,10 @@ Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cy
 & powershell -ExecutionPolicy Bypass -File build.ps1 -Config Debug
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 构建失败" -ForegroundColor Red; exit 1 }
 
+Write-Host "[CI] 1.5/4 CLI 契约门禁（检查网第 2 层·plans/026 §2.7·249-a 建成：子命令×形态退出码矩阵·B4 锚定格）..." -ForegroundColor Cyan
+python scripts/check_cli_contract.py --cn target/Debug/cn.exe
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] CLI 契约门禁失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 2/4 单元测试..." -ForegroundColor Cyan
 & target/Debug/cn_unit_tests.exe
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 单元测试失败" -ForegroundColor Red; exit 1 }
