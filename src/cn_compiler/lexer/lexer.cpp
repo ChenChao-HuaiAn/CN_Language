@@ -301,10 +301,38 @@ std::string Lexer::readStringBody(bool multiLine, bool raw) {
                 return text;
             }
             if (peek() == U'\\' && !raw) {
-                // 转义序列：原样收集两字符（\ + 转义字符）
                 text += currentUtf8();
                 advance();
                 if (isAtEnd()) break;
+                // 282-a T5 多行段：\u{ 结构感知+三态校验（对齐普通段 278-a
+                //   同款——原宽松 +1 字符收集不识别结构；raw 多行不处理转义
+                //   保持 raw 语义）
+                if (peek() == U'u') {
+                    text += currentUtf8();
+                    advance();
+                    if (peek() != U'{') {
+                        reportError(currentLocation(), "无效的Unicode转义：缺少 {");
+                        text += currentUtf8();
+                        advance();
+                        continue;
+                    }
+                    text += currentUtf8();
+                    advance();
+                    const std::size_t hexStart = text.size();
+                    while (!isAtEnd() && peek() != U'}') {
+                        text += currentUtf8();
+                        advance();
+                    }
+                    const std::string hexBody = text.substr(hexStart);
+                    if (peek() == U'}') {
+                        text += currentUtf8();
+                        advance();
+                    } else {
+                        reportError(currentLocation(), "无效的Unicode转义：缺少 }");
+                    }
+                    validateUnicodeEscape(hexBody, currentLocation());
+                    continue;
+                }
                 text += currentUtf8();
                 advance();
                 continue;
