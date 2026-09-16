@@ -414,6 +414,12 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         // 普通整数：cvtsi2sd/cvtsi2ss——窄型/无符号经装载扩展后 r10 高位
         //   已按符号/零填充，64 位有符号转换语义正确（u32 经 movzx 高位清零）
         loadOperandToX(writer, inst.operands[0], "r10");
+        // 270-a T14：i32 源补 movsxd 符号扩展——i32 槽装载（mov r10d）天然
+        //   零扩展丢符号位，负值经 cvtsi2sd 64 位读=正大数（变量路径双级别
+        //   一致错·正数巧合正确家族）；正值 movsxd 同值=零回归
+        if (from == "i32") {
+            writer.line("movsxd r10, r10d");
+        }
         writer.line(std::string("cvtsi2") + (to == "f64" ? "sd" : "ss") + " xmm0, r10");
         emitStackStore(writer, dstOff, "xmm0", to);
         return;
