@@ -2,12 +2,16 @@
 // 覆盖：打开（写/读/追加）/ 写入 / 读取 / 按行读取 / 文件大小 / 关闭 /
 //       文件存在 / 中文文件名路径（MultiByteToWideChar + _wfopen_s）
 // 测试技术：临时文件（英文与中文名）创建/清理；各用例独立文件避免冲突。
+//   临时文件放系统临时目录专属子目录（2026-09-16 根治：旧实现用相对路径
+//   落在进程 cwd=项目根，跑单测即残留 test_file_api_*.tmp 于工作区）。
 // 注意：测试名英文（GCC 7 不支持中文标识符）；中文仅注释与测试内容
 #include <gtest/gtest.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
+#include <filesystem>
 #include <string>
 
 // 安全的文件打开（MSVC /W4 /WX 下 fopen 触发 C4996 警告即错误）
@@ -21,15 +25,27 @@
 
 namespace {
 
-// 临时文件路径（每用例独立，避免并行冲突；含中英文两种）
-std::string tempFile(const char* tag) {
-    static int counter = 0;
-    return std::string("test_file_api_") + tag + std::to_string(counter++) + ".tmp";
+// 临时文件路径（每用例独立，避免并行冲突；含中英文两种）：系统临时目录
+//   专属子目录，任何 cwd / 运行入口都不污染项目目录（跨平台 std::filesystem）
+std::string tempDir() {
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "cn_test_file_api";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    EXPECT_FALSE(ec) << "创建临时目录失败: " << ec.message();
+    return dir.string();
 }
 
-// 删除临时文件（忽略不存在）
+std::string tempFile(const char* tag) {
+    static int counter = 0;
+    return tempDir() + "/test_file_api_" + tag + std::to_string(counter++) + ".tmp";
+}
+
+// 删除临时文件（忽略不存在；删除失败必须暴露——句柄未关/路径错等都属异常）
 void cleanup(const std::string& path) {
-    std::remove(path.c_str());
+    errno = 0;
+    EXPECT_TRUE(std::remove(path.c_str()) == 0 || errno == ENOENT)
+        << "临时文件删除失败（errno=" << errno << "）: " << path;
 }
 
 } // namespace
@@ -140,7 +156,8 @@ TEST(FileApiTest, AppendMode) {
 
 // 中文文件名路径（UTF-8 -> MultiByteToWideChar + _wfopen_s）
 TEST(FileApiTest, ChineseFilename) {
-    const std::string path = std::string("测试文件_") + tempFile("zh");
+    static int zhCounter = 0;  // 进程内唯一即可（gtest 用例串行执行）
+    const std::string path = tempDir() + "/测试文件_zh" + std::to_string(zhCounter++) + ".tmp";
     cleanup(path);
     void* handle = __cn_file_open(path.c_str(), 2);
     ASSERT_NE(handle, nullptr);
@@ -160,16 +177,17 @@ TEST(FileApiTest, ChineseFilename) {
     EXPECT_EQ(__cn_file_exists(path.c_str()), 0);
 }
 
-// 打开失败：不存在的文件（读模式）返回 nullptr
+// 打开失败：不存在的文件（读模式）返回 nullptr（路径收进临时目录，
+//   不依赖「cwd 恰无同名文件」的巧合）
 TEST(FileApiTest, OpenMissing) {
-    void* handle = __cn_file_open("nonexistent_file_xyz.tmp", 1);
+    void* handle = __cn_file_open((tempDir() + "/nonexistent_file_xyz.tmp").c_str(), 1);
     EXPECT_EQ(handle, nullptr);
 }
 
 // 非法模式：模式 0/4 返回 nullptr
 TEST(FileApiTest, OpenInvalidMode) {
-    void* handle = __cn_file_open("dummy.tmp", 0);
+    void* handle = __cn_file_open((tempDir() + "/dummy.tmp").c_str(), 0);
     EXPECT_EQ(handle, nullptr);
-    handle = __cn_file_open("dummy.tmp", 4);
+    handle = __cn_file_open((tempDir() + "/dummy.tmp").c_str(), 4);
     EXPECT_EQ(handle, nullptr);
 }

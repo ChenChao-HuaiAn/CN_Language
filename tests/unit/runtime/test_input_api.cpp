@@ -4,12 +4,17 @@
 //       __cn_print_err（重定向 stderr 捕获）
 // 测试技术：临时文件重定向 stdin（freopen_s）——每用例独立临时文件，
 //   afterEach 恢复 stdin 并清理。stderr 重定向用 freopen_s 到临时文件。
+//   临时文件放系统临时目录专属子目录（2026-09-16 根治：旧实现用相对路径
+//   落在进程 cwd=项目根，且 Windows 下先删后释放 stdin 句柄必然删除失败，
+//   每次跑单测残留 test_input_api_*.txt 于项目根）。
 // 注意：测试名英文（GCC 7 不支持中文标识符）；中文仅注释
 #include <gtest/gtest.h>
 
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cerrno>
+#include <filesystem>
 #include <string>
 
 #ifdef _WIN32
@@ -44,10 +49,16 @@
 
 namespace {
 
-// 临时文件路径（每用例独立，避免并行冲突）
+// 临时文件路径（每用例独立，避免并行冲突）：系统临时目录专属子目录，
+//   任何 cwd / 运行入口都不污染项目目录（跨平台 std::filesystem）
 std::string tempInputPath() {
     static int counter = 0;
-    return std::string("test_input_api_") + std::to_string(counter++) + ".txt";
+    namespace fs = std::filesystem;
+    const fs::path dir = fs::temp_directory_path() / "cn_test_input_api";
+    std::error_code ec;
+    fs::create_directories(dir, ec);
+    EXPECT_FALSE(ec) << "创建临时目录失败: " << ec.message();
+    return (dir / ("test_input_api_" + std::to_string(counter++) + ".txt")).string();
 }
 
 // 设置 stdin 内容（写入临时文件并 freopen 为 stdin）
@@ -60,15 +71,20 @@ void setStdinText(const std::string& text, const std::string& path) {
     ASSERT_TRUE(TEST_FREOPEN(path.c_str(), "rb", stdin, fp));
 }
 
-// 恢复 stdin 为控制台（Windows 下 NUL，POSIX 下 /dev/null）并删除临时文件
+// 恢复 stdin 为控制台（Windows 下 NUL，POSIX 下 /dev/null）并删除临时文件。
+//   顺序纪律：必须先释放 stdin 对临时文件的句柄再删除——Windows 禁止删除
+//   打开中的文件，旧实现先删后释放导致 remove 静默失败、文件残留。
 void restoreStdin(const std::string& path) {
-    std::remove(path.c_str());
     FILE* fp = nullptr;
 #ifdef _WIN32
     TEST_FREOPEN("NUL", "r", stdin, fp);
 #else
     TEST_FREOPEN("/dev/null", "r", stdin, fp);
 #endif
+    errno = 0;
+    const int rmRet = std::remove(path.c_str());
+    EXPECT_TRUE(rmRet == 0 || errno == ENOENT)
+        << "临时输入文件删除失败（errno=" << errno << "）: " << path;
 }
 
 } // namespace
@@ -219,6 +235,8 @@ TEST(InputApiTest, PrintErr) {
         captured.append(buf, n);
     }
     std::fclose(in);
-    std::remove(path.c_str());
+    errno = 0;
+    EXPECT_TRUE(std::remove(path.c_str()) == 0 || errno == ENOENT)
+        << "临时 stderr 文件删除失败: " << path;
     EXPECT_EQ(captured, "错误消息测试\n");
 }
