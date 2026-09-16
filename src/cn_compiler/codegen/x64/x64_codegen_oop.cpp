@@ -171,10 +171,18 @@ void X64CodeGenerator::emitDeleteObject(AsmWriter& writer, const ir::IRInstructi
         while (!level.empty()) {
             const ClassInfo* ci = semantic_->findClass(level);
             if (ci == nullptr) break;
-            auto it = ci->methods.find("~" + level);
-            if (it != ci->methods.end() && it->second.isDestructor) {
+            const ClassMemberInfo* levelDtor = nullptr;
+            std::string levelDtorKey;
+            for (const auto& mk2 : ci->methods) {
+                if (mk2.second.isDestructor && mk2.second.ownerClass == level) {
+                    levelDtor = &mk2.second;
+                    levelDtorKey = mk2.first;
+                    break;
+                }
+            }
+            if (levelDtor != nullptr) {
                 writer.line("sub rsp, 32");
-                writer.line("call " + classMethodSymbol(level, it->first, {}));
+                writer.line("call " + classMethodSymbol(level, levelDtorKey, {}));
                 writer.line("add rsp, 32");
             }
             level = ci->baseName;

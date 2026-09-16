@@ -168,9 +168,17 @@ void Arm64CodeGenerator::emitDeleteObject(Arm64AsmWriter& writer,
         while (!level.empty()) {
             const ClassInfo* ci = semantic_->findClass(level);
             if (ci == nullptr) break;
-            auto it = ci->methods.find("~" + level);
-            if (it != ci->methods.end() && it->second.isDestructor) {
-                writer.line("bl " + classMethodSymbol(level, it->first, {}));
+            const ClassMemberInfo* levelDtor = nullptr;
+            std::string levelDtorKey;
+            for (const auto& mk2 : ci->methods) {
+                if (mk2.second.isDestructor && mk2.second.ownerClass == level) {
+                    levelDtor = &mk2.second;
+                    levelDtorKey = mk2.first;
+                    break;
+                }
+            }
+            if (levelDtor != nullptr) {
+                writer.line("bl " + classMethodSymbol(level, levelDtorKey, {}));
             }
             level = ci->baseName;
         }
