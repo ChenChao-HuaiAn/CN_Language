@@ -426,6 +426,14 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     }
     // ---- 浮32 <-> 浮64 ----
     if (fromFloat && toFloat) {
+        // 271-a T15：恒等浮点转换（from==to）=直接搬运不插转换——原 else 分支
+        //   对 f64→f64 恒等形态恒发 cvtsd2ss 单精度舍入（7.0→7.000001·
+        //   深度机浮点矩阵立案）；真降精度（f64→f32）保留 cvtsd2ss
+        if (from == to) {
+            loadOperandToV(writer, inst.operands[0], "xmm0");
+            emitStackStore(writer, dstOff, "xmm0", to);
+            return;
+        }
         if (from == "f32" && to == "f64") {
             loadOperandToV(writer, inst.operands[0], "xmm0");
             writer.line("cvtss2sd xmm0, xmm0");
