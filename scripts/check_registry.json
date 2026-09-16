@@ -1,0 +1,77 @@
+{
+  "说明": "检查网第 9 层：静态与结构门禁权威清单（251-a 立·plans/026 §2.6）。本文件=ci 步骤矩阵的机器可读形态——①scripts/check_*.py 门禁必须全部注册于此（check_registry_audit.py 强制·新门禁必须注册）；②scripts/ci.ps1 直接调用的 check_* 也必须已注册（防绕过清单私加）。组含义：ci常规=每轮 ci.ps1 必跑（轻量·阻断提交）；ci扩展=参数化/专项轮跑（重或有存量观察面）；文档轮=共享文档改动时必跑。工具类脚本（bench_self_host/cnsmith_gen/cnsmith_diff/refactor_parity/intern_trace_resolve 等非门禁性质）不注册。",
+  "门禁": [
+    {
+      "名称": "ASCII 标识符门禁",
+      "脚本": "scripts/check_ascii_idents.py",
+      "组": "ci常规",
+      "检查网层": 9,
+      "说明": "跨机-a 防复发：C++ 代码区标识符一律 ASCII（GCC 9 无 UTF-8 标识符）"
+    },
+    {
+      "名称": "关键字清单同步门禁",
+      "脚本": "scripts/check_keywords_sync.py",
+      "组": "ci常规",
+      "检查网层": 9,
+      "说明": "plans/024 §7.5 单一事实源：宿主/规范/E2E 串四处关键字一致"
+    },
+    {
+      "名称": "规范覆盖映射门禁",
+      "脚本": "scripts/check_spec_coverage.py",
+      "参数": ["--strict"],
+      "组": "ci常规",
+      "检查网层": 1,
+      "说明": "支柱一：规范条文×用例矩阵可测格 100%（M1 判据①·B3 口径）"
+    },
+    {
+      "名称": "CLI 契约矩阵门禁",
+      "脚本": "scripts/check_cli_contract.py",
+      "需构建产物": "--cn target/Debug/cn.exe（win）/ target/cn（linux）",
+      "组": "ci常规",
+      "检查网层": 2,
+      "说明": "cn 驱动子命令×形态→退出码+诊断 五维面 49 格（B4 锚定）"
+    },
+    {
+      "名称": "源码覆盖率门禁",
+      "脚本": "scripts/check_source_coverage.py",
+      "组": "ci扩展",
+      "检查网层": 3,
+      "说明": "编译器源码行/分支覆盖全链（约 1 小时·ci.ps1 -Coverage 开关；win/MSVC 无 gcov=跳过）"
+    },
+    {
+      "名称": "函数/文件行数门禁",
+      "脚本": "scripts/check_fn_length.py",
+      "组": "ci扩展",
+      "检查网层": 9,
+      "说明": "单一职责纪律（函数≤100 行/文件≤1000 行）——存量观察面（T1·D1）未清零前进 ci扩展，清零后升 ci常规"
+    },
+    {
+      "名称": "释放路径对照",
+      "脚本": "scripts/cn_release_parity.sh",
+      "组": "ci扩展",
+      "检查网层": 6,
+      "说明": "plans/020 移植纪律 8：宿主/v2 释放挂点清单三列人工核对（结构性对照·非自动断言）"
+    },
+    {
+      "名称": "共享文档结构门禁",
+      "脚本": "scripts/check_handoff.py",
+      "组": "文档轮",
+      "检查网层": 9,
+      "说明": "§8.3 六纪律机械自检（HANDOFF/更新日志/plans021/看板·分机分区+整节替换+行数上限）"
+    },
+    {
+      "名称": "进度总表同步门禁",
+      "脚本": "scripts/check_progress_sync.py",
+      "组": "文档轮",
+      "检查网层": 9,
+      "说明": "plans/021 戳 vs git 历史最新轮次防漂移"
+    },
+    {
+      "名称": "门禁清单审计",
+      "脚本": "scripts/check_registry_audit.py",
+      "组": "ci常规",
+      "检查网层": 9,
+      "说明": "第 9 层本体：check_* 门禁全部必须注册清单+ci.ps1 调用面无绕过（新门禁必须注册·251-a）"
+    }
+  ]
+}

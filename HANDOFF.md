@@ -90,64 +90,53 @@
 
 ## 单位机 ARM64 节
 
-**最近交接**：2026-09-16——**250-a 收工：检查网第 3 层·编译器源码覆盖率 gcov 接入建成**（基线 8b820ab·认领 fd4753d）
+**最近交接**：2026-09-16——**251-a 收工：检查网第 9 层·静态与结构门禁清单化建成**（基线 f6cef13·认领 b74e30d·src 零改动）
 
-### 一、本会话已交付（250-a 收工）
+### 一、本会话已交付（251-a 收工）
 
-1. **检查网第 3 层建成**（plans/026 §2.8·第二波·预登记首选）：①CMake `CN_ENABLE_COVERAGE` 选项
-   （GCC `--coverage`；MSVC=FATAL_ERROR；产物隔离 `target/cov/`）；②`scripts/check_source_coverage.py`
-   一键全链=构建零警告→清旧 gcda→单测→全量 E2E（先清 v2p 指纹缓存=强制全树编译刺激）→CLI 矩阵
-   →`gcov -b -i` JSON 聚合→报告入档 `target/coverage/`→**阈值门禁**（行/分支 ≥基线−0.5pp·基线按平台键控
-   入库 `scripts/coverage_baseline.json`）→**新代码红线**（`--diff-base REV`·双重防假绿守卫：gcov 告警拒判
-   +gcda 早于 gcno 失配拒判）；③`ci.ps1 -Coverage` 参数化步（常规链默认不跑——插桩全链约 1 小时）。
-2. **首跑基线（linux-arm64/gcc-9.3.0·全语料）**：行覆盖 **79.5%**/分支 **48.26%**（132 源文件）；首跑即暴露
-   覆盖结构=ir_verify.cpp 0%/linux_x64 后端 5~12%（arm64 语料不运行 x64l 产物=跨机覆盖定量证据）/
-   ast_printer 14.6%——低覆盖清单已登记 plans/021 §三-D25（后续语料补强输入）。
-3. **反证两件全命中**：①阈值——基线人为抬 90%→FAIL→复原 PASS；②红线——`--diff-base HEAD` 绿→注入
-   「从不被调用的探针函数」→FAIL 精确指认 1/3 未触达行→复原 PASS。**实验连带实证 gcda/gcno 失配通道**
-   （gcno 重生成后旧 gcda 被静默弃用=覆盖假归零 1.66pp）→同轮落入脚本双重守卫+阈值门禁真实拦截检验。
-4. **plans/026 修订**：§2.6 第 3 层行 ⬜→✅+§2.8 细则重写（设施/基线/反证/口径/诚实边界）+实施路线第二波
-   标记完成+变更记录；十层检查网现 **第 1/2/3/5 层已建成**。
+1. **门禁权威清单** `scripts/check_registry.json`（新）：10 件门禁按组注册——ci常规（清单审计/ASCII/
+   关键字/规范覆盖/CLI 矩阵·每轮必跑）/ ci扩展（源码覆盖率〔-Coverage〕/fn_length〔T1·D1 存量观察面〕/
+   release_parity〔人工对照〕）/ 文档轮（handoff/progress_sync）；工具类（bench/cnsmith/refactor_parity/
+   intern_trace）不入清单（边界写明）。
+2. **审计门禁** `scripts/check_registry_audit.py`（新）：审计①glob `check_*.py` 全部必须注册（**新门禁
+   必须注册**机械化）+清单脚本存在+必填字段；审计②ci.ps1 直接调用的 check_* 必须已注册（防绕过清单
+   私加）。**首跑即抓到审计脚本自身未注册=机制自证**（自指注册收口）。
+3. **ci.ps1** 加「0.2/4 门禁清单审计」步（每轮强制·轻量）。
+4. **反证两件全命中**：①未注册假门禁→审计 FAIL 精确指认→删除→PASS；②ci.ps1 私加未注册调用→FAIL
+   精确指认→复原→PASS。
+5. **plans/026** §2.6 第 9 层行 ⬜→✅+实施路线标注**第一/二波全部完成**（第 2+9 层=249-a/251-a；
+   第 3 层=250-a）+变更记录——十层检查网现 **第 1/2/3/5/9 层已建成**。
 
-**门禁**：coverage 全链（零警告+单测 1327/1327+E2E 396/0/2+矩阵 49/49+聚合+基线门禁 PASS）+常规构建
-reconfigure 绿+双文档门禁。
+**门禁**：审计 PASS（10 件注册·9 glob 全注册·ci 6 调用全注册）+常规构建增量绿+ASCII/关键字/规范覆盖
+--strict 全绿+双文档门禁。**src 零改动**（锚定链零扰动）。
 
 ### 二、发现的问题（已处置）
 
-- **GCC 9 中文标识符二次复发**（lessons 已追加）：反证②临时探针用了 `探针值`——构建即挂（-Werror 拦截，
-  未污染正式产物）。教训=实验/临时代码同样受「C++ 标识符一律 ASCII」约束。
-- **脚本两缺陷自查自纠**：①全跳语料步时误清 gcda→改为仅在语料步执行时清；②红线对「文件无覆盖数据」
-  静默放行（假绿）→改为 FAIL+失配拒判守卫。
+无新缺陷。清单分组设计规避了一个潜在冲突：fn_length（存量违规未清零）若进 ci常规会挡所有提交——
+留 ci扩展组，T1/D1 清零后升级（清单「说明」已注明升级路径）。
 
 ### 三、下一步
 
-1. **第 9 层清单化**（026 §2.6 第一波遗留）：全部 check_* 门禁注册进 ci 步骤矩阵+「新门禁必须注册」规则——
-   下一轮候选首选。
-2. **F1-26 mem2reg**（Phi 接线·性能第一）/ **F2-33 纯 stdlib 三项**（随机数/迭代器/正则）——预登记候选。
-3. **跨机欠账**：深度机 x86_64 口径覆盖率基线（各自 `--update-baseline`）；win 侧 CLI 形态（家机 CI）；
-   信号死亡端到端格；路径含空格格。
+1. **F1-26 mem2reg/Phi 接线**（性能第一·前置 F1-28 已落地）——252-a 首选候选。
+2. **F2-33 纯 stdlib 三项**（随机数/迭代器/正则·零语言变更）/ **D25 低覆盖语料补强**（ir_verify
+   --验证-ir 负测语料）——候选。
+3. 026 第三波起=支柱四 ASan 扩面→支柱三（前置 F1-26）→支柱四矩阵→M6/M8 并行。
+4. 跨机欠账：ci.ps1 0.2/4 步执行验证=家机下次 CI；深度机 x86_64 覆盖率基线。
 
 ### 四、验证链（本机复现口径）
 
 ```
-# 覆盖率全链（专项轮/定期；约 1 小时）
-python3 scripts/check_source_coverage.py                 # 构建零警告+单测+E2E+矩阵+聚合+基线门禁
-python3 scripts/check_source_coverage.py --update-baseline   # 基线更新（首跑/平台首跑）
-python3 scripts/check_source_coverage.py --diff-base HEAD~1  # 新代码红线
-# 报告：target/coverage/report.md + report.json；基线：scripts/coverage_baseline.json
-# 常规门禁不变（HANDOFF 上轮口径）：rm -rf target/build && cmake -S . -B target/build …
-> 注意①：coverage 构建独立目录 target/build-cov、产物 target/cov/——与常规 target/ 互不污染。
-> 注意②：--skip 语料步组合仅在「源码未变的重聚合」合法（gcda 早于 gcno=数据过期，脚本守卫拒判红线）。
-> 注意③：cn run 必须在项目根目录调用；E2E 须显式 --target linux-arm64。
+python3 scripts/check_registry_audit.py    # 第 9 层审计（每轮·新门禁必须注册）
+# 清单：scripts/check_registry.json（新门禁注册处：名称/脚本/组/检查网层/说明）
+# 常规门禁与 coverage 全链复现口径见 git 历史（250-a 轮 HANDOFF 已载）
 > 远程推送现状（2026-09-16 实测）：gitcode 正常；github 本机无凭据（沿既有口径待他机代推）。
 ```
 
 ### 五、诚实边界与坑
 
-- **win/MSVC 无 gcov**=第 3 层仅 linux 口径（026 §2.8 既批诚实边界）；`CN_ENABLE_COVERAGE` 在 MSVC 下
-  FATAL_ERROR 防误用；ci.ps1 `-Coverage` 在产物缺失（win）时黄字跳过不 FAIL。
-- **「每轮入档」节奏**=涉 src 改动轮收工附注覆盖率数字（专项全链），常规轻轮不强制 1 小时全链——由
-  `-Coverage` 开关与排班承载（026 §2.8 已声明）。
-- 覆盖率数字平台相关（编译器版本/架构）——基线按平台键控，他机首跑各自 `--update-baseline`。
-- 249-a 遗留不变：win 侧契约形态/信号端到端/含空格路径=欠账；`cn_main.cpp` 行数 T1 面随排班。
-- github 镜像本机无凭据未推（170-a 起累积）。
+- **本机无 PowerShell**：ci.ps1 新步=模式照抄的最小插入（静态审读+审计②静态扫描验证调用面），
+  执行验证=家机下次 CI（跨机欠账，已登记 plans/025 §三.3）。
+- ci.ps1「由清单驱动执行」的形态演进未做（本轮=完整性审计强制·执行面保持现结构）——判据
+  「ci 步骤矩阵全绿」不受影响，登记后续演进。
+- 250-a 遗留不变：win/MSVC 无 gcov（linux 口径）；「每轮入档」节奏=涉 src 轮附注数字；
+  github 镜像本机无凭据未推。

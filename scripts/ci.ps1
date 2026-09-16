@@ -7,6 +7,10 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
+Write-Host "[CI] 0.2/4 门禁清单审计（检查网第 9 层·plans/026 §2.6·新门禁必须注册）..." -ForegroundColor Cyan
+python scripts/check_registry_audit.py
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 门禁清单审计失败" -ForegroundColor Red; exit 1 }
+
 Write-Host "[CI] 0/4 ASCII 标识符门禁（跨机-a 防复发，GCC9 拒 UTF-8 标识符）..." -ForegroundColor Cyan
 python scripts/check_ascii_idents.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] ASCII 标识符门禁失败" -ForegroundColor Red; exit 1 }
