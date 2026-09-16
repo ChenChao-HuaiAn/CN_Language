@@ -118,6 +118,7 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             std::string elemSrc = fieldType;
             bool elemIsStruct = semantic_ != nullptr &&
                                 semantic_->isStructType(types::canonical(fieldType));
+            bool isStringView = false;   // D30 根治（255-a）：发射宽走 i8（字节视图）
             if (types::isArray(fieldType)) {
                 // 数组字段：按元素大小步进 + 越界检查（与成员数组字段同规则，
                 //   结构体内嵌数组按 C 布局紧凑排布）
@@ -148,9 +149,13 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 stride = elemSize > 0 ? elemSize
                                       : (types::isI128(elemCanon) ? 16 : 8);
             } else if (types::canonical(fieldType) == "字符串") {
-                // 自举前置 A-1：字符串字段（自身.源码[i]）——字符* 字节步进 1
+                // 自举前置 A-1：字符串字段（自身.源码[i]）——字符* 字节视图
+                // D30 根治（255-a）：加载宽=i8——原走 mapType("字符")="i32"
+                //   -> 4 字节打包读（内容[0]="ax" 得 30817）；mapType 无 "i8"
+                //   直通（落自定义->ptr 8 字节），故发射端特判传 "i8"
                 elemSrc = "字符";
                 stride = 1;
+                isStringView = true;
             } else if (elemIsStruct) {
                 stride = semantic_->typeSizeOf(fieldType);
             }
@@ -164,7 +169,8 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 lastExpr_ = addr;  // 结构体元素：返回地址（结构体值语义）
                 return;
             }
-            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, mapType(elemSrc), "",
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr},
+                                   (isStringView ? std::string("i8") : mapType(elemSrc)), "",
                                    node->location);
             return;
         }
@@ -221,6 +227,11 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             const std::string ftype = memberFieldSrcType(inner);
             if (types::isPointer(ftype)) {
                 stride = ptrElemStride(ftype);
+            } else if (types::canonical(ftype) == "字符串") {
+                // D30 根治（255-a）：拥有型字符串字段下标——字符* 字节视图步进 1
+                //   （与 IdentifierExpr 分支的「字符串变量兜底」对称；原兜底 8
+                //   -> 内容[i] 地址偏移 i*8=打包/越界读）
+                stride = 1;
             } else if (types::isArray(ftype)) {
                 const std::string elemSrc = types::arrayElemOf(ftype);
                 // H4 根治（99-a）：统一 typeSizeOf（同 ②）
@@ -270,6 +281,10 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                      semantic_->isClassType(elemCanon))) {
                     elemIsStruct = true;
                 }
+            } else if (types::canonical(ftype) == "字符串") {
+                // D30 根治（255-a）：字符串字段元素=i8（字节视图·与字符串变量
+                //   兜底及「字符串成员 i8」分支对称；原默认 i64 -> 4/8 字节打包读）
+                elemIrType = "i8";
             }
         }
     } else if (node->object->getType() == NodeType::IdentifierExpr) {

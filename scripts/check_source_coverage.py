@@ -92,7 +92,7 @@ def 步骤构建(并行):
 
 
 def 步骤清旧gcda():
-    print("[覆盖 2/6] 清旧 gcda（口径=本轮门禁语料）...", flush=True)
+    print("[覆盖] 清旧 gcda（口径=本轮门禁语料；构建前后各一次防时间戳冲突）...", flush=True)
     n = 0
     for p in 构建目录.rglob("*.gcda"):
         p.unlink()
@@ -348,6 +348,9 @@ def main():
     print(f"[覆盖] 检查网第 3 层全链（平台键 {平台键}·源码口径=编译器本体）", flush=True)
 
     if not 参数.skip_build:
+        # 构建前清残留 gcda：源码变更后旧 gcda 与新 gcno 时间戳冲突会经 libgcov
+        #   在构建期（try_compile 等）打印 profiling error 误触零警告门禁（255-a 实测）
+        步骤清旧gcda()
         步骤构建(参数.jobs)
     # 清旧 gcda 仅在语料步会执行时有意义（口径=本轮语料）；全跳语料=复用已有数据重聚合
     if not (参数.skip_unit and 参数.skip_e2e and 参数.skip_matrix):
