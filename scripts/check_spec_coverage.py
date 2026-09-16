@@ -28,6 +28,21 @@ SPEC_CHAPTERS = ("二、", "三、", "四、", "五、", "附录")  # 语言规�
 SPEC_APPENDIX_OK = ("附录A", "附录B")  # 可测契约附录；附录C=mangling 实现细节、附录D=参考资料，不入矩阵
 COLS = ("正例", "边界例", "负例")
 
+# B3 口径排除（2026-09-16 用户裁决·plans/026 M1 注记）：7 格属「低语义密度」——规范条文不定义
+# 独立可测的新行为（行为由邻近格用例锚定：287/288/302/274/89/301 等，非删测试）。
+# 判据：优先级=求值语义非拒绝规则（4.5）；EBNF=语法记法非独立功能（4.6.2）；续行/别名=合法性
+# 规则无负例形态（4.6#规则2/3.1）；边界=关键字/移除词边界由正例+负例对承载（2.1/2.2）。
+# 分母 183→176；M1 判据=可测格 100%（--strict 按 176 格判定）。
+EXCLUDED_CELLS = (
+    ("2.1", "边界例"),   # 关键字分类表：关键字边界（合法性由 89 穷举正例+301 拒绝负例承载）
+    ("2.2", "边界例"),   # 移除的关键字：移除词边界（合法性由 302 正例+274 拒绝负例承载）
+    ("3.1", "负例"),     # 默认类型别名：等价规则无拒绝面（行为由 04_types 邻近格承载）
+    ("4.5", "负例"),     # 运算符优先级：求值语义非拒绝规则（行为由 287 矩阵承载）
+    ("4.6.2", "边界例"),  # EBNF：语法记法非独立功能
+    ("4.6.2", "负例"),   # EBNF：语法记法非独立功能
+    ("4.6#规则2：续行（换行≡空格，表达式内部天然续行）", "负例"),  # 续行=合法性规则无负例形态（行为由 288 承载）
+)
+
 
 def parse_units():
     """解析规格书标题树 → 可测单元（有序 dict：ID → 标题）。"""
@@ -131,37 +146,59 @@ def main():
             mapped.update(cases)
     orphans = [c for c in all_cases if c not in mapped and c not in exempt]
 
-    # 覆盖统计
+    # 覆盖统计（B3 口径：EXCLUDED_CELLS 不计入分母；若意外已有用例指针则提示移除映射）
     full, partial, zero = [], [], []
     gaps = []
+    strict_missing = []  # --strict 判据面：非排除格的缺口 (uid, [缺格])
+    filled = 0
+    total_cells = 0
+    excluded_seen = []
     for uid in order:
         cols = rows.get(uid)
+        missing = [k for k in COLS if not (cols or {}).get(k)]
+        eff_missing = [k for k in missing if (uid, k) not in EXCLUDED_CELLS]
+        if eff_missing:
+            strict_missing.append((uid, eff_missing))
+        for k in COLS:
+            if (uid, k) in EXCLUDED_CELLS:
+                if cols and cols.get(k):
+                    excluded_seen.append((uid, k))
+                continue
+            total_cells += 1
+            if cols and cols.get(k):
+                filled += 1
         if not cols or not any(cols.values()):
             zero.append(uid)
         elif all(cols[k] for k in COLS):
             full.append(uid)
         else:
             partial.append(uid)
-            gaps.append((uid, [k for k in COLS if not cols.get(k)]))
+            gaps.append((uid, missing, eff_missing))
     for uid in zero:
-        gaps.append((uid, list(COLS)))
-    total_cells = 3 * len(order)
-    filled = sum(1 for uid in order for k in COLS if rows.get(uid, {}).get(k))
+        gaps.append((uid, list(COLS), [k for k in COLS if (uid, k) not in EXCLUDED_CELLS]))
     pct = 100.0 * filled / total_cells if total_cells else 0.0
 
     print("=== 规范覆盖率矩阵（支柱一·plans/026 §2.1）===")
     print("规范可测单元：%d 个（语言面 §二~§五+附录A/B；实现面章节不入矩阵）" % len(order))
-    print("三态覆盖：全 %d ｜ 部分 %d ｜ 零覆盖 %d ｜ 格级覆盖率 %d/%d = %.1f%%"
+    print("三态覆盖（B3 口径：排除 %d 个低语义密度格·分母 %d）：" % (len(EXCLUDED_CELLS), total_cells))
+    print("全 %d ｜ 部分 %d ｜ 零覆盖 %d ｜ 格级覆盖率 %d/%d = %.1f%%"
           % (len(full), len(partial), len(zero), filled, total_cells, pct))
+    if excluded_seen:
+        print("\n—— 口径排除格却存在用例指针（B3 裁决该 7 格不计分母，映射应移除）——")
+        for uid, k in excluded_seen:
+            print("  [%s] %s" % (uid, k))
     if zero:
         print("\n—— 零覆盖单元（缺口=补用例排班队列）——")
         for uid in zero:
             print("  [%s] %s" % (uid, units[uid]))
     if partial:
         print("\n—— 部分覆盖单元缺空格 ——")
-        for uid, missing in gaps:
+        for uid, missing, eff in gaps:
             if uid in partial:
-                print("  [%s] %s ：缺 %s" % (uid, units[uid], "、".join(missing)))
+                if eff:
+                    print("  [%s] %s ：缺 %s" % (uid, units[uid], "、".join(eff)))
+                else:
+                    print("  [%s] %s ：仅缺口径排除格（%s）" % (uid, units[uid], "、".join(missing)))
     if orphans:
         print("\n—— 孤儿用例（未被映射且未豁免：%d 个）——" % len(orphans))
         for c in orphans:
@@ -178,9 +215,13 @@ def main():
         if orphans:
             print("\n[FAIL] 孤儿用例未豁免登记（coverage_map.md 豁免区）")
             sys.exit(1)
-        if strict and (zero or partial):
-            print("\n[FAIL] 严格模式：三态覆盖未达 100%%（当前 %.1f%%）——M1 未达成" % pct)
+        if strict and strict_missing:
+            print("\n[FAIL] 严格模式：可测格（B3 口径 %d 格）未达 100%%（当前 %.1f%%）——M1 未达成" % (total_cells, pct))
+            for uid, ks in strict_missing:
+                print("  [%s] 缺 %s" % (uid, "、".join(ks)))
             sys.exit(1)
+        if strict:
+            print("[PASS] 严格模式：可测格 %d/%d = 100%%（B3 口径）——M1 判据①达成" % (filled, total_cells))
         print("\n[PASS] 规范覆盖映射门禁（--ci：指针有效+零孤儿）通过；覆盖率 %.1f%%（缺口清单见报告模式）" % pct)
     else:
         print("\n报告模式（--ci=硬门禁 / --strict=三态 100%%；缺口清单=自动生成的排班队列）")

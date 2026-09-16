@@ -13,8 +13,8 @@ Write-Host "[CI] 0.5/4 关键字清单同步门禁（plans/024 §7.5 单一事�
 python scripts/check_keywords_sync.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 关键字清单同步门禁失败" -ForegroundColor Red; exit 1 }
 
-Write-Host "[CI] 0.7/4 规范覆盖映射有效性门禁（支柱一·plans/026 §2.1）..." -ForegroundColor Cyan
-python scripts/check_spec_coverage.py --ci
+Write-Host "[CI] 0.7/4 规范覆盖映射门禁（支柱一·plans/026 §2.1·B3 口径可测格 100%——247-a 起 --strict）..." -ForegroundColor Cyan
+python scripts/check_spec_coverage.py --strict
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 规范覆盖映射门禁失败" -ForegroundColor Red; exit 1 }
 
 Write-Host "[CI] 1/4 构建（/W4 /WX 零警告门禁）..." -ForegroundColor Cyan
