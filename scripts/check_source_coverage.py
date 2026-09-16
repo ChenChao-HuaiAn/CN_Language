@@ -252,7 +252,7 @@ def 步骤门禁与基线(文件统计, 行pct, 分支pct, 平台键, 更新基�
             "检查网第 3 层覆盖率基线（平台键控·防劣化门禁；更新用 --update-baseline）",
             "platforms": {}}
         基线["platforms"][平台键] = {"行覆盖%": 行pct, "分支覆盖%": 分支pct,
-                                  "文件数": len(文件统计), "更新轮次": "250-a"}
+                                  "文件数": len(文件统计)}
         基线文件.write_text(json.dumps(基线, ensure_ascii=False, indent=1) + "\n",
                             encoding="utf-8")
         print(f"  基线已更新入库：{基线文件}", flush=True)

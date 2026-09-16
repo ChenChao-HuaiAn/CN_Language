@@ -157,10 +157,16 @@ def 主流程() -> int:
     for o in (0, 1, 2, 3):
         p = 运行(cn, ["check", str(正常), f"-O{o}", *台])
         断言(f"-O{o} rc=0", p.returncode == 0, f"rc={p.returncode}")
-    for opt in ("--opt", "--no-regalloc", "--debug", "--验证-ir", "--cfi", "--发布", "--release"):
+    for opt in ("--opt", "--no-regalloc", "--debug", "--cfi", "--发布", "--release"):
         参数集 = ["check", str(正常), opt, "3", *台] if opt == "--opt" else ["check", str(正常), opt, *台]
         p = 运行(cn, 参数集)
         断言(f"{opt} rc=0", p.returncode == 0, f"rc={p.returncode}")
+
+    # --验证-ir：build 正例（IR 生成后验证器跑优化前后两轮·253-a 自 check 格拆出——
+    #   check 不触发 IR 生成，原格对验证器零触达）
+    验证ir产物 = 仓库根 / "target" / "cli_contract_验证ir"
+    p = 运行(cn, ["build", str(正常), "--验证-ir", "--output", str(验证ir产物), *台])
+    断言("build --验证-ir rc=0（验证器优化前后两轮通过）", p.returncode == 0, f"rc={p.returncode}")
 
     p = 运行(cn, ["check", str(正常), "--verbose", *台])
     断言("--verbose rc=0+附加输出", p.returncode == 0 and "命令:" in 诊断(p), f"rc={p.returncode}")

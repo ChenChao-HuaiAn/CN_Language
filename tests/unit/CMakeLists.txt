@@ -19,6 +19,7 @@ add_executable(cn_unit_tests
     parser/test_parser_struct_param.cpp
     parser/test_parser_ternary.cpp
     parser/test_parser_stage3.cpp
+    parser/test_ast_printer.cpp
     semantic/test_semantic.cpp
     semantic/test_semantic_control.cpp
     semantic/test_function.cpp
@@ -56,6 +57,7 @@ add_executable(cn_unit_tests
     driver/test_cargo_parser.cpp
     ir/test_ir.cpp
     ir/test_ir_control.cpp
+    ir/test_ir_verify.cpp
     ir/test_ir_function.cpp
     ir/test_ir_types.cpp
     ir/test_ir_pointer.cpp
