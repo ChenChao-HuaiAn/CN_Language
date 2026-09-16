@@ -235,7 +235,7 @@ private:
     //   i8/i16 -> movsx；u8/u16 -> movzx；i32 -> mov eax/dword（零扩展高32）；
     //   i64/ptr -> mov；f32/f64 -> movss/movsd（reg 为 xmmN）
     void emitStackLoad(LinuxX64AsmWriter& writer, int offset, const std::string& reg,
-                       const std::string& type);
+                       const std::string& type, int callerLine = 0);
 
     // 存储寄存器到栈槽（reg=64位整型寄存器名 或 xmmN；type 决定宽度）
     void emitStackStore(LinuxX64AsmWriter& writer, int offset, const std::string& reg,

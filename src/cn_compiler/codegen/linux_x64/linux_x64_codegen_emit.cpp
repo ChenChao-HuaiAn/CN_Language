@@ -178,8 +178,13 @@ void LinuxX64CodeGenerator::emitLoadSymbolAddr(LinuxX64AsmWriter& writer,
 // 浮点类型：reg 为 xmmN -> movss/movsd（真浮点装载）；reg 为整型寄存器 ->
 // 按位模式搬运（f32 32位、f64 64位，对齐 ARM64 的 ldr xN 位模式语义）
 void LinuxX64CodeGenerator::emitStackLoad(LinuxX64AsmWriter& writer, int offset,
-                                          const std::string& reg, const std::string& type) {
+                                          const std::string& reg, const std::string& type,
+                                          int callerLine) {
     const std::string mem = stackMemText(offset);
+    if (offset == 0 && callerLine != 0) {
+        std::fprintf(stderr, "[T12marker] callerLine=%d type=%s\n", callerLine,
+                     type.c_str());
+    }
     if (reg.compare(0, 3, "xmm") == 0) {
         writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + reg + ", " + mem);
         return;

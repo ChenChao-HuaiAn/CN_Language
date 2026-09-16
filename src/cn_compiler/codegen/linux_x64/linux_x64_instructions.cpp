@@ -467,7 +467,7 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     // i128 -> i64：截断取低64位
     if ((from == "i128" || from == "u128") && (to == "i64" || to == "u64")) {
         const int srcLoId = inst.operands[0].id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64");
+        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
         emitStackStore(writer, dstOff, "r10", to);
         return;
     }
@@ -502,9 +502,9 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     if ((from == "i128" && to == "i128") || (from == "u128" && to == "u128")) {
         const int srcLoId = inst.operands[0].id + 1;
         const int dstLoId = inst.result.id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64");
+        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
         emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "i64");
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "i64", __LINE__);
         emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i64");
         return;
     }
@@ -620,9 +620,9 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
             const int dstHiId = inst.result.id;
             const int dstLoId = inst.result.id + 1;
             const std::string& varName = inst.operands[0].extra;
-            emitStackLoad(writer, varSlotOf(varName), "r10", "i64");
+            emitStackLoad(writer, varSlotOf(varName), "r10", "i64", __LINE__);
             emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-            emitStackLoad(writer, varSlotOf(varName + "$s1"), "r10", "i64");
+            emitStackLoad(writer, varSlotOf(varName + "$s1"), "r10", "i64", __LINE__);
             emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
             return;
         }
@@ -634,10 +634,10 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
                                  inst.type == "i1");
         if (inst.operands[0].id >= 0) {
             // 寄存器到寄存器（复制槽）
-            emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type);
+            emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
         } else {
             // 变量槽
-            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type);
+            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type, __LINE__);
         }
         emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
                        narrowType ? "i64" : inst.type);
@@ -646,9 +646,9 @@ void LinuxX64CodeGenerator::emitLoadStore(LinuxX64AsmWriter& writer,
         if (inst.type == "i128" || inst.type == "u128") {
             const int srcHiId = inst.operands[0].id;
             const int srcLoId = inst.operands[0].id + 1;
-            emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64");
+            emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
             emitStackStore(writer, varSlotOf(inst.extra), "r10", "i64");
-            emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64");
+            emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64", __LINE__);
             emitStackStore(writer, varSlotOf(inst.extra + "$s1"), "r10", "i64");
             return;
         }
@@ -759,9 +759,9 @@ void LinuxX64CodeGenerator::emitPtrLoadStore(LinuxX64AsmWriter& writer,
     if (type == "i128" || type == "u128") {
         const int srcHiId = inst.operands[1].id;
         const int srcLoId = inst.operands[1].id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r9", "i64");
+        emitStackLoad(writer, regSlotOffset(srcLoId), "r9", "i64", __LINE__);
         writer.line("mov qword ptr [r10], r9");
-        emitStackLoad(writer, regSlotOffset(srcHiId), "r9", "i64");
+        emitStackLoad(writer, regSlotOffset(srcHiId), "r9", "i64", __LINE__);
         writer.line("mov qword ptr [r10+8], r9");
         return;
     }
@@ -955,14 +955,23 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
 //   i128/u128 按低/高双槽搬运（对齐 Load i128 分支）。
 void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
                                      const ir::IRInstruction& inst) {
+    // 271-a/275-b T12 根治：常量源支持——短路链 false 分支的装槽=Copy(「假」→
+    //   __sc$ 槽)，源为常量「假」时原实现走变量路径（varSlotOf(「假」)=0→
+    //   [rbp] 裸读 saved rbp=左假恒真）——常量源改立即数装载
+    if (inst.operands[0].isConstant) {
+        loadOperandToX(writer, inst.operands[0], "r10");
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
+                       (inst.type == "i1") ? "i64" : inst.type);
+        return;
+    }
     if (inst.type == "i128" || inst.type == "u128") {
         const int srcLoId = inst.operands[0].id + 1;
         const int srcHiId = inst.operands[0].id;
         const int dstLoId = inst.result.id + 1;
         const int dstHiId = inst.result.id;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64");
+        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
         emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64");
+        emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64", __LINE__);
         emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
         return;
     }
@@ -971,9 +980,13 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
                              inst.type == "i32" || inst.type == "u32" ||
                              inst.type == "i1");
     if (inst.operands[0].id >= 0) {
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type);
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
     } else {
-        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type);
+        std::fprintf(stderr, "[T12copy] Copy i1 var=%s varSlotOf=%d\n",
+
+                     inst.operands[0].extra.c_str(),
+                     varSlotOf(inst.operands[0].extra));
+        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type, __LINE__);
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
                    narrowType ? "i64" : inst.type);
