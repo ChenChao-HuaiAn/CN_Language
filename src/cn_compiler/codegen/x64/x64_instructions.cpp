@@ -287,6 +287,11 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
 // Task 2.3：8/16位操作数经 movsx/movzx 扩展到32位寄存器运算（两个操作数都扩展，
 //           否则 op2 槽高位垃圾参与运算导致结果错误）；64位直接64位运算。
 //           小宽度结果按32位值存槽（槽为8字节，读取时再按类型扩展）
+// F1-26 方案 A（256-a）：Copy=寄存器搬运（Phi 降级产物·前驱块尾并行拷贝）
+void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst) {
+    writer.line("mov " + resultText(inst.result) + ", " + operandText(inst.operands[0]));
+}
+
 void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction& inst,
                                      const std::string& mnemonic) {
     std::string dst = resultText(inst.result);
@@ -805,6 +810,9 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
         case ir::Opcode::ConstBool:
         case ir::Opcode::FuncAddr:
             emitConstLoad(writer, inst);
+            break;
+        case ir::Opcode::Copy:
+            emitCopy(writer, inst);
             break;
         case ir::Opcode::Add:
             if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);

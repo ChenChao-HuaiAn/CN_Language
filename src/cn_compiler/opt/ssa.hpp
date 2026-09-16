@@ -37,6 +37,9 @@ private:
     // 单函数 SSA 构造：返回是否插入 Phi
     static bool buildFunction(ir::IRFunction& fn);
 
+    // F1-26 方案 A（256-a）：使用点重写 + Phi 降级（前驱块尾并行拷贝+环打破）
+    static void lowerPhis(ir::IRFunction& fn);
+
     // 前驱块对变量 slot 的最近值（反向扫描 Store；无 Store 返回 false）
     static bool lastStoreValue(const ir::IRBlock& pred, const std::string& slot,
                                ir::IRValue& out);

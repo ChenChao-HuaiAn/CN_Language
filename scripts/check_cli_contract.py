@@ -34,6 +34,19 @@ from pathlib import Path
 非法程序 = "函数 主() -> 整32 {\n    返回 ;\n}\n"
 除零程序 = "函数 主() -> 整32 {\n    整32 甲 = 10 / 0;\n    打印行(甲);\n    返回 0;\n}\n"
 语法错程序 = "函数 主() -> 整32 {\n    返回 0\n}\n"   # 缺分号（语法层）
+# 汇合程序（256-a）：-O3 SSA/Phi 降级触达面（ir 打印搬运名/交叉后端 emitCopy）
+汇合程序 = ("函数 取较大(整32 甲, 整32 乙) -> 整32 {\n"
+            "    整32 结果值 = 0;\n"
+            "    如果 (甲 > 乙) {\n"
+            "        结果值 = 甲;\n"
+            "    } 否则 {\n"
+            "        结果值 = 乙;\n"
+            "    }\n"
+            "    返回 结果值;\n"
+            "}\n"
+            "函数 主() -> 整32 {\n"
+            "    返回 取较大(1, 2);\n"
+            "}\n")
 词法错程序 = "函数 主() -> 整32 {\n    返回 @;\n}\n"   # 非法字符（词法层）
 
 
@@ -74,6 +87,8 @@ def 主流程() -> int:
     非法 = 探针 / "非法.cn"
     除零 = 探针 / "除零.cn"
     正常.write_text(合法程序, encoding="utf-8")
+    汇合 = 探针 / "汇合.cn"
+    汇合.write_text(汇合程序, encoding="utf-8")
     非法.write_text(非法程序, encoding="utf-8")
     除零.write_text(除零程序, encoding="utf-8")
     返回码路径 = {}
@@ -185,6 +200,18 @@ def 主流程() -> int:
         p = 运行(cn, ["compile", str(正常), "--target", 交叉, "--output", str(交产物)])
         断言(f"compile --target {交叉}（交叉产物）", p.returncode == 0 and 交产物.exists(),
              f"rc={p.returncode}")
+
+    # -O3 SSA/Phi 降级覆盖触达格（256-a：ir 打印搬运名/交叉后端 emitCopy——
+    #   红线要求新增代码行被门禁语料触达）
+    p = 运行(cn, ["ir", str(汇合), "-O3"])
+    断言("ir -O3 rc=0（SSA 降级指令打印）", p.returncode == 0, f"rc={p.returncode}")
+    for 交叉, 后缀 in (("win-x64", ".asm"), ("linux-x86_64", ".s")):
+        if 交叉 == target:
+            continue
+        交产物3 = 仓库根 / "target" / f"cli_contract_o3_{交叉.replace('-', '_')}{后缀}"
+        p = 运行(cn, ["compile", str(汇合), "-O3", "--target", 交叉, "--output", str(交产物3)])
+        断言(f"compile -O3 --target {交叉}（交叉后端 Copy 发射）",
+             p.returncode == 0 and 交产物3.exists(), f"rc={p.returncode}")
 
     p = 运行(cn, ["--version"])
     断言("--version rc=0+版本串", p.returncode == 0 and "cn 0." in 诊断(p), f"rc={p.returncode}")

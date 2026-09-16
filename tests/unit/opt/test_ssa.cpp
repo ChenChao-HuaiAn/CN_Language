@@ -3,6 +3,7 @@
 //       幂等性（重复运行不重复插入）、非汇合点无 Phi
 // 测试方式：直接构造 IRModule 调用 SSAPass / DomTree（opt 为纯内部模块）
 // 注意：测试名必须使用英文（GCC 7 不支持中文标识符，注释可为中文）
+#include <cstdio>
 #include <gtest/gtest.h>
 #include <memory>
 #include <string>
@@ -147,22 +148,24 @@ TEST(SSATest, DominationCorrect) {
 TEST(SSATest, JoinPointPhiGenerated) {
     auto module = makeJoinModule();
     EXPECT_TRUE(SSAPass().run(module));
-    EXPECT_EQ(countPhi(module), 1);
-    // 找到 Phi 指令并验证操作数
-    const auto& b4 = *module.functions[0].blocks[4];
-    ASSERT_FALSE(b4.instructions.empty());
-    const IRInstruction& phi = b4.instructions[0];
-    EXPECT_EQ(phi.opcode, Opcode::Phi);
-    EXPECT_EQ(phi.result.id, 5);            // 复用 Load 结果寄存器
-    EXPECT_EQ(phi.extra, "x$0");            // 变量名
-    ASSERT_EQ(phi.operands.size(), std::size_t(2));
-    // 前驱块2 Store 2 -> 操作数[0] 为常量 2；块3 Store 3 -> 操作数[1] 为常量 3
-    // （前驱顺序：块2 在 blocks 中索引 2，块3 索引 3——按 pred 顺序）
+    // 256-a 方案 A 语义更新（用户裁决「选 A」）：Phi 生成后随即降级——
+    //   最终模块无 Phi 残留；前驱块尾并行拷贝（前驱常量 2/3 → 结果寄存器 v5）；
+    //   （原断言「countPhi==1 + 块首 Phi 操作数」锁定的「Phi 残留占位」行为
+    //     已随方案 A 落地改变；生成期形态由 lowerPhis 单测族覆盖。）
+    EXPECT_EQ(countPhi(module), 0);
+    int copies = 0;
     bool hasTwo = false, hasThree = false;
-    for (const auto& op : phi.operands) {
-        if (op.isConstant && op.extra == "2") hasTwo = true;
-        if (op.isConstant && op.extra == "3") hasThree = true;
+    for (const auto& blk : module.functions[0].blocks) {
+        for (const auto& inst : blk->instructions) {
+            if (inst.opcode != Opcode::Copy) continue;
+            ++copies;
+            if (inst.result.id == 5 && inst.operands.size() == 1) {
+                if (inst.operands[0].isConstant && inst.operands[0].extra == "2") hasTwo = true;
+                if (inst.operands[0].isConstant && inst.operands[0].extra == "3") hasThree = true;
+            }
+        }
     }
+    EXPECT_EQ(copies, 2);
     EXPECT_TRUE(hasTwo);
     EXPECT_TRUE(hasThree);
 }
@@ -172,9 +175,10 @@ TEST(SSATest, Idempotent) {
     auto module = makeJoinModule();
     SSAPass pass;
     EXPECT_TRUE(pass.run(module));
-    EXPECT_EQ(countPhi(module), 1);
-    EXPECT_FALSE(pass.run(module));  // 第二次无修改
-    EXPECT_EQ(countPhi(module), 1);
+    EXPECT_EQ(countPhi(module), 0);  // 256-a：Phi 生成即降级
+    bool r2 = pass.run(module);
+    EXPECT_FALSE(r2);  // 第二次无修改（无 Phi 可降级）
+    EXPECT_EQ(countPhi(module), 0);
 }
 
 // 非汇合点（单前驱块）无 Phi：构造直线 CFG（块0 -> 块1 单链）

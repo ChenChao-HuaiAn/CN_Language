@@ -44,6 +44,7 @@ const char* opcodeToString(Opcode opcode) {
         case Opcode::And: return "逻辑与";
         case Opcode::Or: return "逻辑或";
         case Opcode::Not: return "逻辑非";
+        case Opcode::Copy: return "搬运";
         case Opcode::Load: return "加载";
         case Opcode::Store: return "存储";
         case Opcode::Alloca: return "分配";

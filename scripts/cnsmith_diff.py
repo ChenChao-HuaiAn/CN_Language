@@ -14,12 +14,26 @@ import subprocess
 import sys
 
 
-def run_one(cn, src, out_dir, level):
+def 探测目标平台(target=None):
+    """按架构探测构建目标（256-a 跨平台化：原硬编码 win-x64=家机口径）。"""
+    if target:
+        return target
+    import platform as _p
+    m = _p.machine().lower()
+    if os.name == "nt":
+        return "win-x64"
+    if m in ("aarch64", "arm64"):
+        return "linux-arm64"
+    return "linux-x86_64"
+
+
+def run_one(cn, src, out_dir, level, target=None):
     """编译（level=优化旗标如 -O0/-O3）+运行，返回 (状态, 输出)。
 状态：ok/build_err/run_err"""
     base = os.path.basename(src)[:-3]
-    exe = os.path.join(out_dir, "%s_%s.exe" % (base, level.strip("-")))
-    b = subprocess.run([cn, "build", src, "--target", "win-x64", level,
+    后缀 = ".exe" if (target or 探测目标平台()) == "win-x64" else ""
+    exe = os.path.join(out_dir, "%s_%s%s" % (base, level.strip("-"), 后缀))
+    b = subprocess.run([cn, "build", src, "--target", 探测目标平台(target), level,
                         "--output", exe],
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=120)
@@ -40,6 +54,7 @@ def main():
     ap.add_argument("--dir", default="target/cnsmith")
     ap.add_argument("--cn", default="target/Debug/cn.exe")
     ap.add_argument("--out", default="target/cnsmith/work")
+    ap.add_argument("--target", default=None, help="构建目标平台（默认按架构探测）")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
     srcs = sorted(f for f in os.listdir(a.dir) if f.endswith(".cn"))
@@ -47,12 +62,12 @@ def main():
     diffs = []
     for src_name in srcs:
         src = os.path.join(a.dir, src_name)
-        s0, o0 = run_one(a.cn, src, a.out, "-O0")
+        s0, o0 = run_one(a.cn, src, a.out, "-O0", a.target)
         if s0 != "ok":
             n_berr += 1 if s0 == "build_err" else 0
             n_rerr += 1 if s0 == "run_err" else 0
             continue
-        s3, o3 = run_one(a.cn, src, a.out, "-O3")
+        s3, o3 = run_one(a.cn, src, a.out, "-O3", a.target)
         if s3 != "ok":
             n_rerr += 1
             diffs.append((src_name, "O3 运行失败: " + o3))

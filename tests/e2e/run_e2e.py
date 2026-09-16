@@ -437,6 +437,21 @@ def 查找参数文件(源文件: pathlib.Path) -> list:
 # ============ 核心逻辑 ============
 
 
+def 查找编译选项文件(用例目录: pathlib.Path) -> list:
+    """用例级编译旗标通道（256-a 立）：用例目录含 `编译选项.txt` 时，其每行
+    （去空行/# 注释）作为一个旗标追加到 cn build 命令行（如 -O3）——
+    第 2 层工具链契约面扩展（三机共享契约：§8.4 广播）。"""
+    标记 = 用例目录 / "编译选项.txt"
+    if not 标记.exists():
+        return []
+    flags = []
+    for line in 标记.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            flags.append(line)
+    return flags
+
+
 def 解码诊断(原始字节) -> str:
     """解码编译器诊断：cn.exe 的 stderr 为 UTF-16LE（FF FE BOM），stdout 为 UTF-8"""
     if not 原始字节:
@@ -473,7 +488,8 @@ def 执行负用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if 输出可执行.exists():
         输出可执行.unlink()
     编译命令 = [str(编译器路径), "build", str(源文件),
-              "--target", 目标平台, "--output", str(输出可执行)]
+              "--target", 目标平台, "--output", str(输出可执行),
+              *查找编译选项文件(用例目录)]
     if 详细:
         print(f"    [负编译] {' '.join(编译命令)}")
     # 字节模式采集：cn.exe stderr 为 UTF-16LE，须按字节解码诊断
@@ -634,9 +650,10 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     if 详细:
         print(f"    [编译] {编译器路径} build {源文件.name} "
               f"--target {目标平台} --output {输出可执行}")
+    额外旗标 = 查找编译选项文件(用例目录)
     编译结果 = 运行命令([str(编译器路径), "build", str(源文件),
                       "--target", 目标平台,
-                      "--output", str(输出可执行)], 项目根目录)
+                      "--output", str(输出可执行), *额外旗标], 项目根目录)
     if 编译结果.returncode != 0:
         提示 = (编译结果.stderr or 编译结果.stdout).strip()
         # 编译器尚未实现build命令：标记为"未实现"而非真实失败（阶段零预期状态）

@@ -28,6 +28,18 @@ static std::vector<std::string> verifyFunction(const IRFunction& func) {
         }
     }
     const auto hasLabel = [&labels](const std::string& l) { return labels.count(l) > 0; };
+    // F1-26 方案 A（256-a）：def-before-use 升级为「函数级定义存在 + 块内顺序」
+    //   ——Phi 降级/使用点重写引入跨块寄存器值流（方案 A 的本质），原「块内
+    //   def-before-use」规则不再适用（bb 引用他块定义的经 Copy 流入的值=合法）。
+    //   新规则：引用的寄存器须在函数内某处有定义（结构性检查）；同一块内
+    //   「先定义后使用」仍强制（防超前引用）。支配关系级数据流检查不在本验证器
+    //   范围（SSA 构造保证；完备验证=后续项）。
+    std::unordered_set<int> funcDefs;
+    for (const auto& block : func.blocks) {
+        for (const auto& inst : block->instructions) {
+            if (inst.result.id >= 0) funcDefs.insert(inst.result.id);
+        }
+    }
     for (const auto& block : func.blocks) {
         // 1. 终止指令
         if (!block->terminated) {
@@ -50,9 +62,18 @@ static std::vector<std::string> verifyFunction(const IRFunction& func) {
                                  ": 条件跳转假目标 '" + block->termFalseTarget + "' 不存在");
             }
         }
-        // 3. 寄存器 def-before-use（块内定义集合；跨块引用不做数据流检查）
-        std::unordered_set<int> defined;
+        // 3. 寄存器 def-before-use（函数级定义存在 + 块内顺序·见上方说明）
+        std::unordered_set<int> blockDefs;
         for (const auto& inst : block->instructions) {
+            if (inst.result.id >= 0) blockDefs.insert(inst.result.id);
+        }
+        std::unordered_set<int> defined;   // 当前可用（外部流入=函数定义集中非本块者）
+        for (const int id : funcDefs) {
+            if (blockDefs.count(id) == 0) defined.insert(id);
+        }
+        for (const auto& inst : block->instructions) {
+            // 先登记本指令结果（保持既有惯例：操作数可自引用本指令 result，
+            //   如比较指令的第 3 操作数=result id）
             if (inst.result.id >= 0) {
                 defined.insert(inst.result.id);
             }

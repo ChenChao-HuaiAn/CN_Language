@@ -61,6 +61,9 @@ void Arm64CodeGenerator::emitInstruction(Arm64AsmWriter& writer,
         case ir::Opcode::FuncAddr:
             emitConstLoad(writer, inst);
             break;
+        case ir::Opcode::Copy:
+            emitCopy(writer, inst);
+            break;
         case ir::Opcode::Add:
             if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "fadd");

@@ -148,6 +148,9 @@ private:
     void emitConstLoad(AsmWriter& writer, const ir::IRInstruction& inst);
 
     // 生成单步整型二元运算（Add/Sub/Mul/And/Or）
+    // F1-26 方案 A（256-a）：寄存器搬运（Phi 降级产物）
+    void emitCopy(AsmWriter& writer, const ir::IRInstruction& inst);
+
     void emitIntBinary(AsmWriter& writer, const ir::IRInstruction& inst,
                        const std::string& mnemonic);
 

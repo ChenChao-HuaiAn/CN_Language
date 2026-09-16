@@ -82,7 +82,9 @@ def 步骤构建(并行):
     日志 = 报告目录 / "build.log"
     报告目录.mkdir(parents=True, exist_ok=True)
     日志.write_text(输出, encoding="utf-8")
-    n_bad = len(re.findall(r"error|warning", 输出, re.IGNORECASE))
+    # 只匹配诊断形态「error:」/「warning:」（GCC 输出 file:line: error: msg）——
+    #   防文件名误伤（ir_error_ctor.cpp 等含 "error" 子串·256-a 实测误报）
+    n_bad = len(re.findall(r"(?:^|[\s:])error:|(?:^|[\s:])warning:", 输出, re.MULTILINE))
     if rc != 0:
         print(输出[-3000:], flush=True)
         sys.exit(f"[覆盖] 构建失败（rc={rc}·日志 {日志}）")

@@ -109,7 +109,217 @@ bool SSAPass::buildFunction(ir::IRFunction& fn) {
             changed = true;
         }
     }
+    if (!changed) {
+        // 无新插 Phi：检查是否已有 Phi 需降级（手构/外来源·幂等面）
+        bool anyPhi = false;
+        for (const auto& blk : fn.blocks) {
+            for (const auto& inst : blk->instructions) {
+                if (inst.opcode == ir::Opcode::Phi) { anyPhi = true; break; }
+            }
+            if (anyPhi) break;
+        }
+        if (!anyPhi) return false;
+    }
+    // ===== F1-26 方案 A（256-a·用户裁决）：使用点重写 + Phi 降级 =====
+    //   ①保守重写：汇合块内（Phi 之后至下一个 Store 槽前）的 Load 槽指令——
+    //     把其消费者的操作数改指 Phi 结果寄存器并删除该 Load（让 Phi 真正被消费）；
+    //   ②降级：每个 Phi 在前驱块尾生成并行拷贝（operand 对应源→Phi 结果），
+    //     消除交换环（贪心可安全写者先行·环内「读全存临时再写」），删除 Phi 指令。
+    lowerPhis(fn);
     return changed;
+}
+
+// ===== F1-26 方案 A：使用点重写 + Phi 降级（256-a） =====
+// 保守重写：仅重写「汇合块内、Phi 之后、下一个 Store 同槽之前」的 Load 槽指令；
+//   消费者操作数改指 Phi 结果寄存器，Load 指令删除（无消费者则仅删 Load）。
+static void rewriteUsesInJoinBlock(ir::IRFunction& fn, ir::IRBlock& block,
+                                   const std::string& slot, int phiReg) {
+    // 收集本块内该槽的 Load 指令 result.id（Phi 之后、下一个 Store 同槽之前）
+    std::vector<int> loadIds;
+    std::vector<std::size_t> loadIdx;
+    for (std::size_t i = 0; i < block.instructions.size(); ++i) {
+        auto& inst = block.instructions[i];
+        if (inst.opcode == ir::Opcode::Phi) continue;   // Phi 本身不参与
+        if (inst.opcode == ir::Opcode::Store && inst.extra == slot) break;  // 槽被重写
+        // Load 的槽名在 operands[0]（变量引用·与 SSA 扫描扫描约定一致；
+        //   256-a 实测：用 inst.extra 匹配 miss->重写未删 Load->幂等破坏）
+        if (inst.opcode == ir::Opcode::Load && !inst.operands.empty() &&
+            inst.operands[0].extra == slot) {
+            loadIds.push_back(inst.result.id);
+            loadIdx.push_back(i);
+        }
+    }
+    if (loadIds.empty()) return;
+    // 消费者重写：把块内后续指令（含 Load 自身之后）引用这些 id 的操作数改指 Phi 结果
+    for (auto& inst : block.instructions) {
+        for (auto& op : inst.operands) {
+            for (const int id : loadIds) {
+                if (op.id == id) op.id = phiReg;
+            }
+        }
+    }
+    // 删除被重写的 Load 指令（按索引倒序删）
+    for (std::size_t k = loadIdx.size(); k-- > 0;) {
+        block.instructions.erase(block.instructions.begin() + static_cast<std::ptrdiff_t>(loadIdx[k]));
+    }
+    (void)fn;
+}
+
+// 降级：并行拷贝调度（贪心 + 环打破），返回前驱块尾追加的指令序列
+static void emitParallelCopies(ir::IRBlock& pred,
+                               const std::vector<std::pair<ir::IRValue, int>>& pairs,
+                               const std::string& retType, int& tmpCounter) {
+    struct Pair { ir::IRValue src; int dst; };
+    std::vector<Pair> remain;
+    for (const auto& p : pairs) remain.push_back({p.first, p.second});
+    auto emitCopy = [&](const ir::IRValue& src, int dst) {
+        ir::IRInstruction cp;
+        cp.opcode = ir::Opcode::Copy;
+        cp.result = ir::IRValue::reg(dst, retType);
+        cp.operands.push_back(src);
+        cp.type = retType;
+        pred.instructions.push_back(std::move(cp));
+    };
+    // 贪心：发射「dst 不被任何剩余 src 使用」的拷贝
+    bool progressed = true;
+    while (!remain.empty() && progressed) {
+        progressed = false;
+        for (std::size_t i = 0; i < remain.size(); ++i) {
+            const int dst = remain[i].dst;
+            bool usedByOther = false;
+            for (std::size_t j = 0; j < remain.size(); ++j) {
+                if (j == i) continue;
+                if (remain[j].src.id == dst) { usedByOther = true; break; }
+            }
+            if (!usedByOther) {
+                emitCopy(remain[i].src, dst);
+                remain.erase(remain.begin() + static_cast<std::ptrdiff_t>(i));
+                progressed = true;
+                break;
+            }
+        }
+    }
+    // 剩余=交换环：环内「读先全存临时、再全写」
+    while (!remain.empty()) {
+        // 从首个 pair 沿 dst->src 链收集环
+        std::vector<std::size_t> ring;
+        int cur = remain[0].dst;
+        std::size_t guard = 0;
+        while (guard++ <= remain.size()) {
+            std::size_t next = remain.size();
+            for (std::size_t j = 0; j < remain.size(); ++j) {
+                if (remain[j].src.id == cur) { next = j; break; }
+            }
+            if (next == remain.size()) break;   // 链断（不应发生：均已贪心过滤）
+            ring.push_back(next);
+            cur = remain[next].dst;
+            if (cur == remain[0].dst) break;    // 回到起点=闭环
+        }
+        if (ring.empty()) ring.push_back(0);    // 防御：单节点自环
+        std::vector<int> tmps;
+        for (const std::size_t idx : ring) {
+            const int tmp = tmpCounter++;
+            emitCopy(remain[idx].src, tmp);
+            tmps.push_back(tmp);
+        }
+        for (std::size_t k = 0; k < ring.size(); ++k) {
+            emitCopy(ir::IRValue::reg(tmps[k], retType), remain[ring[k]].dst);
+        }
+        // 移除环内对（按索引倒序）
+        for (std::size_t k = ring.size(); k-- > 0;) {
+            remain.erase(remain.begin() + static_cast<std::ptrdiff_t>(ring[k]));
+        }
+    }
+}
+
+// 前驱块集合（按块索引升序；按终止指令目标匹配）
+static std::vector<int> predsOf(const ir::IRFunction& fn, std::size_t b) {
+    std::vector<int> out;
+    const std::string& label = fn.blocks[b]->label;
+    for (std::size_t i = 0; i < fn.blocks.size(); ++i) {
+        const auto& blk = fn.blocks[i];
+        if (!blk->terminated) continue;
+        if (blk->termKind == "跳转") {
+            if (blk->termTarget == label) out.push_back(static_cast<int>(i));
+        } else if (blk->termKind == "条件跳转") {
+            if (blk->termTrueTarget == label || blk->termFalseTarget == label) {
+                out.push_back(static_cast<int>(i));
+            }
+        }
+    }
+    return out;
+}
+
+void SSAPass::lowerPhis(ir::IRFunction& fn) {
+    // 降级临时寄存器编号：取函数内现有最大虚拟寄存器 id + 1（不得跳大——寄存器
+    //   分配器的表按 id 索引，超大 id 曾致越界段错误（256-a 实测 rc=139））
+    int tmpCounter = 0;
+    for (const auto& blk : fn.blocks) {
+        for (const auto& inst : blk->instructions) {
+            if (inst.result.id >= tmpCounter) tmpCounter = inst.result.id + 1;
+            for (const auto& op : inst.operands) {
+                if (op.id >= tmpCounter) tmpCounter = op.id + 1;
+            }
+        }
+    }
+    for (std::size_t b = 0; b < fn.blocks.size(); ++b) {
+        auto& block = fn.blocks[b];
+        struct PhiInfo { std::string slot; int resultId; std::string type;
+                         std::vector<ir::IRValue> ops; };
+        std::vector<PhiInfo> phis;
+        for (const auto& inst : block->instructions) {
+            if (inst.opcode != ir::Opcode::Phi) continue;
+            phis.push_back({inst.extra, inst.result.id, inst.type, inst.operands});
+        }
+        if (phis.empty()) continue;
+        // ①保守使用点重写：汇合块内 Load 槽 → Phi 结果（让 Phi 被消费）
+        for (const auto& pi : phis) {
+            rewriteUsesInJoinBlock(fn, *block, pi.slot, pi.resultId);
+        }
+        // ②占位源处理：某前驱对某槽无 Store（操作数 id<0）——在前驱块尾注入
+        //   Load 槽 指令，以其结果作为该 (前驱, Phi) 的拷贝源（语义=沿用槽值）
+        std::vector<int> preds = predsOf(fn, b);
+        std::vector<std::vector<ir::IRValue>> sources(preds.size());
+        for (std::size_t k = 0; k < preds.size(); ++k) {
+            auto& pred = fn.blocks[static_cast<std::size_t>(preds[k])];
+            sources[k].resize(phis.size());
+            for (std::size_t g = 0; g < phis.size(); ++g) {
+                ir::IRValue src = (k < phis[g].ops.size())
+                                      ? phis[g].ops[k]
+                                      : ir::IRValue::reg(-1, phis[g].type);
+                if (src.id < 0 && !src.isConstant) {
+                    // 占位（无 Store 前驱）才注入 Load；常量源（id=-1 但 isConstant）
+                    //   直接作为拷贝源（256-a 实测：误判致冗余 Load+源错）
+                    const int tmp = tmpCounter++;
+                    ir::IRInstruction ld;
+                    ld.opcode = ir::Opcode::Load;
+                    ld.result = ir::IRValue::reg(tmp, phis[g].type);
+                    ld.operands.push_back(ir::IRValue::var(phis[g].slot, phis[g].type));
+                    ld.extra = phis[g].slot;
+                    ld.type = phis[g].type;
+                    pred->instructions.push_back(std::move(ld));
+                    src = ir::IRValue::reg(tmp, phis[g].type);
+                }
+                sources[k][g] = src;
+            }
+        }
+        // ③分前驱成组并行拷贝（交换环由 emitParallelCopies 内部破环）
+        for (std::size_t k = 0; k < preds.size(); ++k) {
+            std::vector<std::pair<ir::IRValue, int>> group;
+            for (std::size_t g = 0; g < phis.size(); ++g) {
+                group.push_back({sources[k][g], phis[g].resultId});
+            }
+            auto& pred = fn.blocks[static_cast<std::size_t>(preds[k])];
+            emitParallelCopies(*pred, group, phis[0].type, tmpCounter);
+        }
+        // ④删除 Phi 指令
+        std::vector<ir::IRInstruction> kept;
+        for (auto& inst : block->instructions) {
+            if (inst.opcode == ir::Opcode::Phi) continue;
+            kept.push_back(std::move(inst));
+        }
+        block->instructions = std::move(kept);
+    }
 }
 
 // 遍历模块全部函数：构建支配树 + 汇合点 Phi 插入

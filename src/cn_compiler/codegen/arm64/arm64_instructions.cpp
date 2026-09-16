@@ -195,6 +195,18 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
 // 单步整型二元运算（Add/Sub/Mul/And/Or/BitAnd/BitOr/BitXor）：dst = op1 op op2
 // AArch64：add/sub/mul/and/orr/eor（32位用 w 寄存器、64位用 x 寄存器）
 // 8/16位操作数：ldrsb/ldrsh/ldrb/ldrh 扩展后按 32/64 位运算
+// F1-26 方案 A（256-a）：Copy=寄存器搬运（Phi 降级产物·前驱块尾并行拷贝）
+//   自拷贝（源与目标同为同一虚拟寄存器映射）由 storeVirtualResult 后自然成
+//   `mov xA, xA` 形态——此处不特判（后端 peephole 面留后续）
+void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
+                                  const ir::IRInstruction& inst) {
+    const std::string& srcType = inst.operands[0].type;
+    const bool is64 = (srcType == "i64" || srcType == "u64" || srcType == "ptr");
+    const std::string xr = is64 ? "x10" : "x9";
+    loadOperandToX(writer, inst.operands[0], xr);
+    storeVirtualResult(writer, inst.result.id, is64 ? "x10" : "w9", inst.type);
+}
+
 void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
                                        const ir::IRInstruction& inst,
                                        const std::string& mnemonic) {

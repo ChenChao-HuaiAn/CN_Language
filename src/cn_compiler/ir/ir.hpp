@@ -83,6 +83,8 @@ enum class Opcode {
     Cast,           // 类型转换（extra 为空）
 
     // ---- 内存操作 ----
+    Copy,           // 寄存器搬运（F1-26 方案 A，2026-09-16）：operand[0]=源寄存器，
+                    //   结果为目标寄存器；Phi 降级（前驱块尾并行拷贝）产物
     Load,           // 从变量加载（operand[0]=变量名）
     Store,          // 存储到变量（operand[0]=值寄存器, extra=变量名）
     Alloca,         // 栈上分配（extra=变量名）

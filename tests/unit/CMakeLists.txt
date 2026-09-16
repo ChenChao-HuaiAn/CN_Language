@@ -85,6 +85,7 @@ add_executable(cn_unit_tests
     codegen/test_reg_alloc.cpp
     codegen/test_debug_info.cpp
     opt/test_const_fold.cpp
+    opt/test_phi_lower.cpp
     opt/test_dce.cpp
     opt/test_pass_manager.cpp
     opt/test_algebraic.cpp
