@@ -81,6 +81,20 @@ private:
     // ---- 类型转换折叠（Cast，常量转换） ----
     static bool foldCast(const std::string& fromType, const std::string& fromText,
                          const std::string& toType, std::string& out, bool& isFloat);
+
+public:
+    // ---- 位域归一化（D31 方案C①·258-a：优化链出口保证） ----
+    // 单个整型常量文本按类型位宽归一化：值->位模式掩码->按类型有符号格式化回文本
+    // （Rust wrapping 同构，与运行期回绕语义一致）。已在域内或不可解析（浮点/布尔/
+    // ptr 标签）时返回 false（无变化）。i128/u128 split 文本不在范围——语义层
+    // splitI128Text 生成时保证域内，后端全走 64 位成对装载无非法编码面。
+    static bool normalizeConstText(const std::string& text, const std::string& type,
+                                   std::string& out);
+
+    // 模块级位域归一化：扫描全部指令的 ConstInt 文本与内联整型常量操作数，
+    // 超出类型位宽域的文本原地归一化。在优化 Pass 链 fixpoint 收敛后调用
+    // （pass_manager runOptLevel 出口），保证到达后端的整型常量必在类型域内。
+    static void normalizeModuleConstWidths(ir::IRModule& module);
 };
 
 } // namespace opt

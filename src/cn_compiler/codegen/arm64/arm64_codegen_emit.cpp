@@ -91,8 +91,15 @@ std::string Arm64CodeGenerator::registerFloatConstant(const std::string& text,
 
 // 生成加载 64 位立即数到寄存器（movz/movk 分段，最多 4 条指令）
 // 首段（最高非零 16 位块）用 movz 清零其余位，后续非零块用 movk 拼接
+// D31 方案C②（258-a）：32 位寄存器（wN）硬防线——AArch64 中 movz/movk 作用于
+//   wN 只允许 lsl #0/16 两种位移，高 16 位块非零会产生 `movk wN,#…,lsl #32/48`
+//   非法编码（汇编器拒绝=编译失败级缺陷，plans/021 D31）。此处按寄存器宽度
+//   截断值（与 x86 imm32 截断同构，回绕语义一致）；上游优化链出口位域归一化
+//   （ConstFoldPass::normalizeModuleConstWidths）保证正常路径值已在域内，
+//   本防线兜底「即使上游漏网也绝不产非法汇编」。
 void Arm64CodeGenerator::emitMovImm(Arm64AsmWriter& writer, const std::string& reg,
                                     std::uint64_t value) {
+    if (!reg.empty() && reg[0] == 'w') value &= 0xFFFFFFFFULL;
     // 收集非零 16 位块（从最高位开始找首块，保证 movz 后其余位清零）
     int firstShift = -1;
     for (int shift = 0; shift < 64; shift += 16) {

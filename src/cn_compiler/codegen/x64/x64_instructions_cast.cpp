@@ -34,8 +34,18 @@ void X64CodeGenerator::emitCast(AsmWriter& writer, const ir::IRInstruction& inst
     // 32 <-> 64（同宽度：mov 传递即可，值语义一致）
     // 修复（2026-08 自举检查发现，A2022）：dst 为 64 位物理寄存器（寄存器分配）
     //   时须用 32 位名（mov r12, eax 非法；mov r12d, eax 写低32位值语义一致）
-    writer.line("mov eax, " + src);
-    writer.line("mov " + widthFor("i32", dst) + ", eax");
+    // 258-a 补 src 对称面：src 为 64 位物理寄存器时同样收缩（mov eax, r14
+    //   A2022 同款非法——CN-Smith s268 实证；E2E 既有用例 RA 分配组合未覆盖）
+    {
+        // r8~r15（RA 新增面）收缩为 r8d~r15d；rax/rbx/rcx/rdx 及槽文本不动
+        const bool isR8toR15 =
+            (src.size() == 2 && src[0] == 'r' && src[1] >= '8' && src[1] <= '9') ||
+            (src.size() == 3 && src[0] == 'r' && src[1] == '1' &&
+             src[2] >= '0' && src[2] <= '5');
+        const std::string src32 = isR8toR15 ? ("e" + src.substr(1)) : src;
+        writer.line("mov eax, " + src32);
+        writer.line("mov " + widthFor("i32", dst) + ", eax");
+    }
 }
 
 // ==================== 比较与逻辑 ====================

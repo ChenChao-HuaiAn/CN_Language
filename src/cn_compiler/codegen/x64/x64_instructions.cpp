@@ -288,8 +288,30 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
 //           否则 op2 槽高位垃圾参与运算导致结果错误）；64位直接64位运算。
 //           小宽度结果按32位值存槽（槽为8字节，读取时再按类型扩展）
 // F1-26 方案 A（256-a）：Copy=寄存器搬运（Phi 降级产物·前驱块尾并行拷贝）
+// 258-a 根治：Phi 降级在汇合块尾产「栈槽→栈槽」Copy，裸 mov mem,mem 非法
+//   （A2070 invalid instruction operands，384 用例 win 面首跑 18 处雪崩；
+//   arm64 侧经 x9/x10 中转故绿——跨机矩阵拦截面）。mem↔mem 时经 eax/rax
+//   中转（宽度按类型）；寄存器分配开启时 dst/src 多为物理寄存器不受影响。
 void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst) {
-    writer.line("mov " + resultText(inst.result) + ", " + operandText(inst.operands[0]));
+    const std::string dst = resultText(inst.result);
+    const std::string src = operandText(inst.operands[0]);
+    const bool srcMem = !src.empty() && src[0] == '[';
+    const bool dstMem = !dst.empty() && dst[0] == '[';
+    const bool srcImm = !srcMem && !src.empty() && src[0] != '[' &&
+                        (src[0] == '-' || (src[0] >= '0' && src[0] <= '9'));
+    if ((srcMem && dstMem) || (srcImm && dstMem)) {
+        // 258-a 两连：src=槽 -> mem-to-mem 非法（A2070·384 首跑实证）；src=立即数 ->
+        //   `mov [rbp-N], imm` 无尺寸前缀同 A2070（MASM 无法推断宽度·CN-Smith s266
+        //   实证）——dst=mem 时一律经 eax/rax 中转（宽度按类型，imm 先装载与
+        //   Store 语义一致；寄存器分配开启时 dst 多为物理寄存器不走此分支）。
+        const std::string& t = inst.type.empty() ? inst.operands[0].type : inst.type;
+        const bool is64 = (t == "i64" || t == "u64" || t == "i128" ||
+                           t == "u128" || t == "ptr");
+        writer.line(std::string("mov ") + (is64 ? "rax" : "eax") + ", " + src);
+        writer.line(std::string("mov ") + dst + ", " + (is64 ? "rax" : "eax"));
+        return;
+    }
+    writer.line("mov " + dst + ", " + src);
 }
 
 void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction& inst,

@@ -197,6 +197,7 @@ private:
 
     // 生成变量加载/存储（Load/Store，经变量槽）
     void emitLoadStore(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
+    void emitCopy(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);
 
     // 生成取地址（AddrOf：lea r10, [rbp+off]）
     void emitAddrOf(LinuxX64AsmWriter& writer, const ir::IRInstruction& inst);

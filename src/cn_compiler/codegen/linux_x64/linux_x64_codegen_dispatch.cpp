@@ -128,6 +128,11 @@ void LinuxX64CodeGenerator::emitInstruction(LinuxX64AsmWriter& writer,
         case ir::Opcode::AddrOf:
             emitAddrOf(writer, inst);
             break;
+        case ir::Opcode::Copy:
+            // F1-26 方案 A（256-a）：Phi 降级产物；258-a 补齐 linux_x64 发射
+            //   （原落 default 静默丢值）
+            emitCopy(writer, inst);
+            break;
         case ir::Opcode::CopyStruct:
             // 结构体整体赋值：内存拷贝（operand[0]=目标地址, operand[1]=源地址,
             //   extra=字节数）；r10=目标 / r9=源 / r11=逐8字节中转。

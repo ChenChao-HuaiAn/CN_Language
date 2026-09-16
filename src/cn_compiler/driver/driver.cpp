@@ -98,6 +98,19 @@ int runPipeline(const std::string& source, const std::string& fileName,
             return 1;
         }
     }
+    // D31 方案C③（258-a）：位宽不变量机械检查——无条件常开（与 --验证-ir 旗标无关）。
+    //   优化链出口归一化（-O0 侧由声明链隐式窄化保证）应使正常面恒通过；违例=编译器
+    //   内部一致性破坏（超域常量将产 arm64 movk wN,lsl#32/48 非法编码），编译期
+    //   100% 机械暴露、绝不放行到后端。
+    {
+        const std::vector<std::string> widthErrors =
+            ir::verifyConstWidths(output.module);
+        if (!widthErrors.empty()) {
+            std::cerr << "IR 位宽不变量验证失败：" << std::endl;
+            for (const auto& e : widthErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
 
     // 5. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）
     // 阶段3（Task 3.1）：绑定 semantic 指针——OOP 指令（NewObject 虚表指针初始化/

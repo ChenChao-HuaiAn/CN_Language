@@ -935,4 +935,34 @@ void LinuxX64CodeGenerator::emitCall(LinuxX64AsmWriter& writer,
 }
 
 
+// F1-26 方案 A（256-a）：Copy=值搬运（Phi 降级产物·前驱块尾并行拷贝）
+// 258-a 补齐：linux_x64 原缺 Copy 分派（落 default 只出注释=静默丢值）。
+//   与 Load 同路径经 r10 中转；窄型按 64 位存槽避免高位残留（对齐窄型纪律）；
+//   i128/u128 按低/高双槽搬运（对齐 Load i128 分支）。
+void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
+                                     const ir::IRInstruction& inst) {
+    if (inst.type == "i128" || inst.type == "u128") {
+        const int srcLoId = inst.operands[0].id + 1;
+        const int srcHiId = inst.operands[0].id;
+        const int dstLoId = inst.result.id + 1;
+        const int dstHiId = inst.result.id;
+        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64");
+        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+        emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64");
+        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+        return;
+    }
+    const bool narrowType = (inst.type == "i8" || inst.type == "i16" ||
+                             inst.type == "u8" || inst.type == "u16" ||
+                             inst.type == "i32" || inst.type == "u32" ||
+                             inst.type == "i1");
+    if (inst.operands[0].id >= 0) {
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type);
+    } else {
+        emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type);
+    }
+    emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
+                   narrowType ? "i64" : inst.type);
+}
+
 } // namespace cn_compiler

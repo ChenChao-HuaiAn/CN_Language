@@ -249,6 +249,13 @@ struct IRModule {
 // （块终止/跳转目标存在/寄存器 def-before-use/标签唯一），返回错误消息（空=通过）
 std::vector<std::string> verifyIRModule(const IRModule& module);
 
+// 位宽不变量验证器（D31 方案C③·258-a）：检查全部整型常量（ConstInt 指令文本与
+// 内联常量操作数）的值必在其类型位宽域内——违例=编译器内部一致性破坏（正常面由
+// 优化链出口位域归一化保证，见 ConstFoldPass::normalizeModuleConstWidths），
+// 编译期机械暴露、绝不放行到后端产非法编码。i128/u128 split 文本与浮点/布尔/ptr
+// 不在检查面（口径与归一化一致）。返回错误消息（空=通过）。
+std::vector<std::string> verifyConstWidths(const IRModule& module);
+
 } // namespace ir
 
 // ==================== IR生成器 ====================

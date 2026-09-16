@@ -27,6 +27,7 @@ using cn_compiler::ir::IRInstruction;
 using cn_compiler::ir::IRModule;
 using cn_compiler::ir::IRValue;
 using cn_compiler::ir::Opcode;
+using cn_compiler::ir::verifyConstWidths;
 using cn_compiler::ir::verifyIRModule;
 
 namespace {
@@ -198,4 +199,102 @@ TEST(IRVerify, UndefRegRefRejected) {
         if (e.find("引用了未定义的寄存器 v99") != std::string::npos) foundUndef = true;
     }
     EXPECT_TRUE(foundUndef);
+}
+
+// ==================== 位宽不变量验证器（D31 方案C③·258-a） ====================
+
+// 辅助：向 validModule 的汇合块追加一条 ConstInt 指令
+static void appendConstInt(IRModule& module, const std::string& text,
+                           const std::string& type) {
+    IRInstruction inst;
+    inst.opcode = Opcode::ConstInt;
+    inst.result = IRValue::reg(7, type);
+    inst.extra = text;
+    inst.type = type;
+    inst.operands.push_back(IRValue::constant(text, type));
+    module.functions[0].blocks[1]->instructions.push_back(std::move(inst));
+}
+
+TEST(ConstWidth, HandBuiltViolationRejected) {
+    IRModule module = validModule();
+    appendConstInt(module, "5000000000", "i32");   // 超 i32 正域
+    std::vector<std::string> errors = verifyConstWidths(module);
+    ASSERT_EQ(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("超出类型 i32 位宽域"), std::string::npos);
+}
+
+TEST(ConstWidth, InDomainAccepted) {
+    IRModule module = validModule();
+    appendConstInt(module, "705032704", "i32");    // 5000000000 回绕产物（域内）
+    appendConstInt(module, "-294967296", "i32");   // 负域内
+    appendConstInt(module, "4000000000", "u32");   // u32 域内大值
+    appendConstInt(module, "-1", "i8");            // 窄域负值
+    appendConstInt(module, "255", "u8");           // 窄域无符号上界
+    appendConstInt(module, "9223372036854775807", "i64");  // i64 上界
+    EXPECT_TRUE(verifyConstWidths(module).empty());
+}
+
+TEST(ConstWidth, NarrowDomainViolationRejected) {
+    IRModule module = validModule();
+    appendConstInt(module, "300", "i8");           // 超 i8（正 127）
+    std::vector<std::string> errors = verifyConstWidths(module);
+    ASSERT_EQ(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("超出类型 i8 位宽域"), std::string::npos);
+}
+
+TEST(ConstWidth, UnsignedNegativeViolationRejected) {
+    IRModule module = validModule();
+    appendConstInt(module, "-1", "u32");           // u 型负值不在域
+    std::vector<std::string> errors = verifyConstWidths(module);
+    ASSERT_EQ(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("超出类型 u32 位宽域"), std::string::npos);
+}
+
+TEST(ConstWidth, InlineOperandViolationRejected) {
+    IRModule module = validModule();
+    // 内联常量操作数（传播产物形态）超域——同一检查面
+    IRInstruction add = makeAdd(1, 2);
+    add.operands[1] = IRValue::constant("5000000000", "i32");
+    module.functions[0].blocks[1]->instructions.push_back(std::move(add));
+    std::vector<std::string> errors = verifyConstWidths(module);
+    ASSERT_EQ(errors.size(), 1u);
+    EXPECT_NE(errors[0].find("超出类型 i32 位宽域"), std::string::npos);
+}
+
+TEST(ConstWidth, FloatBoolPtrI128NotChecked) {
+    IRModule module = validModule();
+    // 浮点/布尔/ptr/i128 split 文本不在检查面（口径与出口归一化一致）
+    IRInstruction f;
+    f.opcode = Opcode::ConstFloat;
+    f.result = IRValue::reg(3, "f64");
+    f.extra = "1e300";
+    f.type = "f64";
+    module.functions[0].blocks[1]->instructions.push_back(std::move(f));
+    IRInstruction b;
+    b.opcode = Opcode::ConstBool;
+    b.result = IRValue::reg(4, "i1");
+    b.extra = "真";
+    b.type = "i1";
+    module.functions[0].blocks[1]->instructions.push_back(std::move(b));
+    IRInstruction wide;
+    wide.opcode = Opcode::ConstInt;
+    wide.result = IRValue::reg(5, "i128");
+    wide.extra = "FFFFFFFFFFFFFFFF:7FFFFFFFFFFFFFFF";  // i128 split lo:hi 形态
+    wide.type = "i128";
+    module.functions[0].blocks[1]->instructions.push_back(std::move(wide));
+    EXPECT_TRUE(verifyConstWidths(module).empty());
+}
+
+TEST(ConstWidth, FullPipelineDeclarationFoldInDomain) {
+    // 全链路：超域字面量声明初始化+常量折叠回绕——出口 IR 必在域内（D31 上游保证实证）
+    const std::string source = R"CN(
+函数 主() -> 整32 {
+    整32 a = 5000000000;
+    整32 b = a + 1;
+    返回 b;
+}
+)CN";
+    PipelineResult r = fullPipelineGenerate(source);
+    ASSERT_TRUE(r.ok);
+    EXPECT_TRUE(verifyConstWidths(r.module).empty());
 }

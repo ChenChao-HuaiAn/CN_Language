@@ -89,7 +89,12 @@ bool runOptLevel(ir::IRModule& module, int optLevel) {
     }
     // DCE 最后运行：清理简化/CSE/LICM/内联/TCO 产生的死代码
     manager.addPass(std::make_unique<DCEPass>());
-    return manager.run(module);
+    const bool changed = manager.run(module);
+    // D31 方案C①（258-a）：优化链出口位域归一化——fixpoint 收敛后统一收口，
+    //   保证任何折叠/强度削减/传播/内联产物中的整型常量必在类型域内
+    //   （超域值直达 arm64 wN 装载会产 movk lsl#32/48 非法编码，见 plans/021 D31）
+    ConstFoldPass::normalizeModuleConstWidths(module);
+    return changed;
 }
 
 } // namespace opt

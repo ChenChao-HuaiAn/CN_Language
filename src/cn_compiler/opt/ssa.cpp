@@ -16,6 +16,7 @@
 //   4. 幂等：块头已有 result.id 相同的 Phi 则跳过
 #include <string>
 #include <unordered_map>
+#include <algorithm>
 #include <vector>
 
 #include "cn_compiler/opt/cfg.hpp"
@@ -225,9 +226,13 @@ static void emitParallelCopies(ir::IRBlock& pred,
         for (std::size_t k = 0; k < ring.size(); ++k) {
             emitCopy(ir::IRValue::reg(tmps[k], retType), remain[ring[k]].dst);
         }
-        // 移除环内对（按索引倒序）
-        for (std::size_t k = ring.size(); k-- > 0;) {
-            remain.erase(remain.begin() + static_cast<std::ptrdiff_t>(ring[k]));
+        // 移除环内对（258-a 根治：ring 收集序沿 dst->src 链、非 remain 索引序——
+        //   原「按 ring 序倒序 erase」在乱序环（如 ring=[2,0,1]）下第二次 erase
+        //   即越界（MSVC Debug 迭代器检查实证崩；GCC 面不查=静默 UB）。
+        //   改为索引排序降序后逐个 erase——始终删当前最大下标，前置索引不受影响）
+        std::sort(ring.begin(), ring.end(), std::greater<std::size_t>());
+        for (const std::size_t idx : ring) {
+            remain.erase(remain.begin() + static_cast<std::ptrdiff_t>(idx));
         }
     }
 }

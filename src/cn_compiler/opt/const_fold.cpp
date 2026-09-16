@@ -696,5 +696,46 @@ bool ConstFoldPass::run(ir::IRModule& module) {
     return changed;
 }
 
+// ==================== 位域归一化（D31 方案C①·258-a：优化链出口保证） ====================
+
+// 单个整型常量文本按类型位宽归一化（-O3 优化链各 pass 折叠/强度削减产物可能出现
+// 「数值超出其类型位宽」的文本——如传播链把整64 域数值带进 整32 常量）。
+// 归一化=值按类型位宽掩码截断后按类型符号性格式化回文本（Rust wrapping 同构，
+// 与运行期回绕语义一致）；域内文本是恒等变换（产物不变，锚定链零影响）。
+// 可解析性失败（浮点/布尔/ptr 标签文本）原样保留返回 false；
+// i128/u128 split 文本不在范围（语义层生成时保证域内+后端全走 64 位成对装载）。
+bool ConstFoldPass::normalizeConstText(const std::string& text, const std::string& type,
+                                       std::string& out) {
+    if (!isIntType(type)) return false;
+    std::uint64_t raw = 0;
+    if (!parseConstInt(text, type, raw)) return false;
+    const std::string normalized = formatSigned(raw, type);
+    if (normalized == text) return false;
+    out = normalized;
+    return true;
+}
+
+// 模块级归一化：ConstInt 指令文本与全部操作数位置的内联整型常量逐一点名检查。
+// 由 runOptLevel 在 fixpoint 收敛后调用（见 pass_manager.cpp），任何优化 pass
+// 的常量产物在出口统一收口——到达后端的整型常量必在类型域内。
+void ConstFoldPass::normalizeModuleConstWidths(ir::IRModule& module) {
+    for (auto& fn : module.functions) {
+        for (auto& block : fn.blocks) {
+            for (auto& inst : block->instructions) {
+                for (auto& op : inst.operands) {
+                    if (!op.isConstant) continue;
+                    std::string out;
+                    if (normalizeConstText(op.extra, op.type, out)) op.extra = out;
+                }
+                // ConstInt 指令：extra 与操作数[0] 常量同源，以归一化后的操作数为准
+                if (inst.opcode == ir::Opcode::ConstInt && !inst.operands.empty() &&
+                    inst.operands[0].isConstant) {
+                    inst.extra = inst.operands[0].extra;
+                }
+            }
+        }
+    }
+}
+
 } // namespace opt
 } // namespace cn_compiler

@@ -130,10 +130,6 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
             // 239-a（规格书 3.8）：发布构建旗标——内建编译期常量 调试模式 取 假
             //   （ASCII 别名同 --验证-ir 先例：Windows argv GBK 乱码兜底）
             options.releaseMode = true;
-        } else if (current == "--发布" || current == "--release") {
-            // 239-a（规格书 3.8）：发布构建旗标——内建编译期常量 调试模式 取 假
-            //   （ASCII 别名同 --验证-ir 先例：Windows argv GBK 乱码兜底）
-            options.releaseMode = true;
         } else if (current == "--验证-ir" || current == "--verify-ir") {
             // B-4（2026-08，规格书9.3）：优化前后验证 IR 结构不变量
             // （--verify-ir 为 ASCII 别名：Windows argv 为 GBK 编码，
@@ -993,6 +989,38 @@ int main(int argc, char** argv) {
         for (auto& ch : a) {
             if (ch == '\\') ch = '/';
         }
+    }
+#endif
+
+    // 258-a（CLI 契约矩阵 --发布/--验证-ir win 格恒败根治）：旗标参数 GBK -> UTF-8 归一。
+    //   Windows argv 窄字符=当前 ANSI 代码页（GBK）字节，源码内旗标字面量=UTF-8 字节——
+    //   中文旗标按字节比较永不命中、只能走 ASCII 别名（绕行非根治）。对 '-' 起头的参数做
+    //   ANSI->UTF-8 转换；已是合法 UTF-8（含非 ASCII）者保持原样防双重转换。路径参数
+    //   （非 '-' 起）不动：ml64/link 按 ANSI 解释路径（E2E 18/19 回归史），不属本变更面。
+#ifdef _WIN32
+    for (auto& a : args) {
+        if (a.size() < 2 || a[0] != '-') continue;
+        bool hasHighByte = false;
+        bool validUtf8 = true;
+        for (std::size_t i = 0; i < a.size(); ++i) {
+            const unsigned char c = static_cast<unsigned char>(a[i]);
+            if (c < 0x80) continue;
+            hasHighByte = true;
+            const int cont = (c & 0xE0) == 0xC0 ? 1 : (c & 0xF0) == 0xE0 ? 2
+                           : (c & 0xF8) == 0xF0 ? 3 : -1;
+            if (cont < 0 || i + static_cast<std::size_t>(cont) >= a.size()) {
+                validUtf8 = false; break;
+            }
+            for (int k = 1; k <= cont; ++k) {
+                if ((static_cast<unsigned char>(a[i + k]) & 0xC0) != 0x80) {
+                    validUtf8 = false; break;
+                }
+            }
+            if (!validUtf8) break;
+            i += static_cast<std::size_t>(cont);
+        }
+        if (hasHighByte && validUtf8) continue;  // 已是 UTF-8，避免二次转换
+        a = ansiToUtf8(a);
     }
 #endif
 
