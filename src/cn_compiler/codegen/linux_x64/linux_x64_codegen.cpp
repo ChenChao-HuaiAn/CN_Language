@@ -729,6 +729,15 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
                 }
                 registerVarSlot(inst.extra);
             }
+            // 280-a T12 补：Copy 指令的源/目标为变量名（__sc$ 短路临时等）
+            //   时同步登记——修前 varSlotOf=0 → [rbp] 裸读 saved rbp
+            if (inst.opcode == ir::Opcode::Copy) {
+                for (const auto& v : {inst.operands[0], inst.result}) {
+                    if (v.id < 0 && !v.extra.empty()) {
+                        registerVarSlot(v.extra);
+                    }
+                }
+            }
         }
     }
     // 阶段C（Task 4.4）：调试信息收集器初始化（源码位置注释）
