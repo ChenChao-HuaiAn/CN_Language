@@ -271,6 +271,70 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
     //   i32 负数经装载清高32（零扩展位模式），64 位 cqo+idiv 会按正数除
     //   （-8/2 实测商 2147483644）；对齐 ARM64 的 sdiv w9/w10 策略
     const bool is32Div = !(type == "i64" || type == "u64");
+    // 319-a（B12 甲·T27 根治）：有符号除法的 INT_MIN/-1 溢出陷阱防护——
+    //   x86 idiv 溢出抛 SIGFPE。两补码统一回绕：x/-1 ≡ -x（neg）·x%-1 ≡ 0。
+    //   ①常量 -1：编译期变换零开销；②非常量：idiv 前运行时特判（r9 与 -1 比）。
+    //   r10 此刻仍持被除数（除零检查只动 r9/rdi）。
+    if (!isUnsigned) {
+        bool divisorIsNegOne = false;
+        if (divisorConst) {
+            try {
+                divisorIsNegOne = (std::stoll(inst.operands[1].extra) == -1);
+            } catch (...) { divisorIsNegOne = false; }
+        }
+        if (divisorIsNegOne) {
+            if (inst.opcode == ir::Opcode::Div) {
+                writer.line("mov rax, r10");
+                if (is32Div) writer.line("mov eax, eax");
+                writer.line("neg rax");
+                emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
+            } else {
+                writer.line("xor eax, eax");
+                emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
+            }
+            return;
+        }
+        if (!divisorConst) {
+            const int negId = ptrCheckCounter_++;
+            const std::string cont = "Ldiv_norm" + std::to_string(negId);
+            const std::string endl = "Ldiv_end" + std::to_string(negId);
+            writer.line("cmp r9, -1");
+            writer.line("jne " + cont);
+            writer.line("mov rax, r10");
+            if (is32Div) writer.line("mov eax, eax");
+            if (inst.opcode == ir::Opcode::Div) {
+                writer.line("neg rax");
+            } else {
+                writer.line("xor eax, eax");
+            }
+            emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
+            writer.line("jmp " + endl);
+            writer.raw(cont + ":");
+            // 正常路径（落入下方通用 idiv 流程后跳回 end）
+            // 注意：通用流程尾部各自 return——此处内联复制通用路径再跳 end
+            writer.line("mov rax, r10");
+            if (is32Div) {
+                writer.line("mov eax, eax");
+                writer.line("cdq");
+                writer.line("idiv r9d");
+                if (inst.opcode == ir::Opcode::Div) {
+                    emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
+                } else {
+                    emitStackStore(writer, regSlotOffset(inst.result.id), "rdx", type);
+                }
+            } else {
+                writer.line("cqo");
+                writer.line("idiv r9");
+                if (inst.opcode == ir::Opcode::Div) {
+                    emitStackStore(writer, regSlotOffset(inst.result.id), "rax", type);
+                } else {
+                    emitStackStore(writer, regSlotOffset(inst.result.id), "rdx", type);
+                }
+            }
+            writer.raw(endl + ":");
+            return;
+        }
+    }
     writer.line("mov rax, r10");
     if (is32Div) {
         writer.line("mov eax, eax");  // 清高32（保留 low32 位模式）

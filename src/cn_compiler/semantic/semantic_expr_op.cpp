@@ -71,6 +71,121 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
                             "字面量豁免（Rust 对齐，2026-09-10 方案A）");
     }
 
+    // 319-a（C18①+T8·用户批量裁决方案甲）：编译期整型常量求值安全检查——
+    //   两侧均为字面量（含一元负号字面量）时按结果类型域预演：
+    //   ①÷/%：常量除零编译期硬错误（T8：原 10/0 编过、运行期才报）；
+    //   ②+/-/*：常量溢出编译期硬错误（原 2147483647+1 静默回绕——Rust debug
+    //     溢出检查同款严格面；变量面回绕语义由 B12 运行时通道承载）。
+    //   比较类不涉溢出；无符号/整128 结果域宽于 int64 预演承载，跳过（不误报）。
+    if (isArithmeticOp(node->op) && isInteger(leftType) && isInteger(rightType) &&
+        leftType != "未知" && rightType != "未知" &&
+        isIntLiteralExpr(node->left.get()) && isIntLiteralExpr(node->right.get())) {
+        auto litValue = [](const Expr* e, bool& ok) -> std::int64_t {
+            ok = true;
+            if (e->getType() == NodeType::IntegerLiteral) {
+                return static_cast<const IntegerLiteral*>(e)->value;
+            }
+            if (e->getType() == NodeType::UnaryExpr) {
+                const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+                if (u->op == Operator::Subtract && !u->postfix &&
+                    u->operand != nullptr &&
+                    u->operand->getType() == NodeType::IntegerLiteral) {
+                    const std::int64_t v =
+                        static_cast<const IntegerLiteral*>(u->operand.get())->value;
+                    // 取负按两补码回绕位模式（INT64_MIN 取负=自身）
+                    return static_cast<std::int64_t>(
+                        ~static_cast<std::uint64_t>(v) + 1);
+                }
+            }
+            ok = false;
+            return 0;
+        };
+        bool okL = false, okR = false;
+        const std::int64_t vL = litValue(node->left.get(), okL);
+        const std::int64_t vR = litValue(node->right.get(), okR);
+        if (okL && okR) {
+            // 预演结果域：字面量操作数按后缀+值提升（对齐 visitIntegerLiteral
+            // 的提升链——语义层 lastType/literalTypeOf 对无后缀字面量恒整32，
+            // 若按其取域会把 int64 值字面量运算误判超整32 域〔420 用例实锤〕）；
+            // 提升至整128（超 int64 无后缀）时域宽于 int64 预演承载，跳过。
+            auto promotedType = [](const Expr* e) -> std::string {
+                if (e->getType() != NodeType::IntegerLiteral) return "";
+                const IntegerLiteral* lit =
+                    static_cast<const IntegerLiteral*>(e);
+                const std::string lt = types::literalTypeOf(lit->raw, false);
+                if (lt != "整32") return lt;  // 带后缀/其他：按后缀类型
+                // 无后缀：按值提升（超 int32 -> 整64；超 int64 -> 整128）
+                if (types::textExceedsInt64(types::stripLiteralSuffix(lit->raw))) {
+                    return "整128";
+                }
+                if (lit->value > 2147483647LL) return "整64";
+                return "整32";
+            };
+            const std::string pL = promotedType(node->left.get());
+            const std::string pR = promotedType(node->right.get());
+            const std::string effL = (!pL.empty() && pL != "整32") ? pL : types::canonical(leftType);
+            const std::string effR = (!pR.empty() && pR != "整32") ? pR : types::canonical(rightType);
+            const std::string rt = types::canonical(
+                types::commonNumericType(effL, effR));
+            auto rangeOf = [](const std::string& t, std::int64_t& lo,
+                              std::int64_t& hi) {
+                if (t == "整8") { lo = -128; hi = 127; return true; }
+                if (t == "整16") { lo = -32768; hi = 32767; return true; }
+                if (t == "整32" || t == "整数") { lo = -2147483648LL; hi = 2147483647LL; return true; }
+                if (t == "整64") { lo = (-9223372036854775807LL - 1); hi = 9223372036854775807LL; return true; }
+                return false;
+            };
+            std::int64_t lo = 0, hi = 0;
+            const bool hasRange = rangeOf(rt, lo, hi);
+            if ((node->op == Operator::Divide || node->op == Operator::Modulo) &&
+                vR == 0) {
+                diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                    "编译期除零：常量表达式除数为零（运行期除零已有"
+                                    "错误码防护，常量折叠面编译期硬错误）");
+            } else if (hasRange && node->op != Operator::Divide &&
+                       node->op != Operator::Modulo) {
+                bool overflow = false;
+                switch (node->op) {
+                    case Operator::Add:
+                        overflow = (vR > 0 && vL > hi - vR) ||
+                                   (vR < 0 && vL < lo - vR);
+                        break;
+                    case Operator::Subtract:
+                        overflow = (vR < 0 && vL > hi + vR) ||
+                                   (vR > 0 && vL < lo + vR);
+                        break;
+                    case Operator::Multiply: {
+                        auto absOf = [](std::int64_t v, std::uint64_t& out) {
+                            out = (v < 0)
+                                ? static_cast<std::uint64_t>(
+                                      ~static_cast<std::uint64_t>(v)) + 1
+                                : static_cast<std::uint64_t>(v);
+                        };
+                        std::uint64_t magL = 0, magR = 0;
+                        absOf(vL, magL);
+                        absOf(vR, magR);
+                        const bool negResult = (vL < 0) != (vR < 0);
+                        const std::uint64_t magHi = negResult
+                            ? static_cast<std::uint64_t>(-(lo + 1)) + 1  // |lo|
+                            : static_cast<std::uint64_t>(hi);
+                        overflow = (magL != 0 && magR != 0) &&
+                                   (magL > magHi / magR ||
+                                    (magL * magR) > magHi);
+                        break;
+                    }
+                    default:
+                        break;
+                }
+                if (overflow) {
+                    diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                        "编译期整数溢出：常量表达式结果超出类型 '" +
+                                        rt + "' 范围（Rust debug 溢出检查对齐；"
+                                        "变量面回绕语义由运行时通道承载）");
+                }
+            }
+        }
+    }
+
     if (isComparisonOp(node->op)) {
         // 比较运算：要求可互相转换的同类操作数，结果为布尔
         if (leftType == "未知" || rightType == "未知") {

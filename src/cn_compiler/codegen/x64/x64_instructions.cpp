@@ -484,6 +484,49 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
             divisor = wide ? "rcx" : "ecx";
         }
     }
+    // 319-a（B12 甲·T27 根治）：有符号除法的 INT_MIN/-1 溢出陷阱防护——
+    //   x86 idiv 对 溢出抛 SIGFPE（0xC0000095）。两补码统一回绕语义：
+    //   x / -1 ≡ -x（INT_MIN 取负回绕=INT_MIN·数学等价）；x % -1 ≡ 0。
+    //   ①常量 -1：编译期直接变换（neg / 置零），零运行时开销；
+    //   ②非常量：idiv 前运行时特判（cmp divisor,-1 -> neg/0 分支）。
+    //   常量 -1 时除零检查已跳过（op2 != "0"）——直接走变换。
+    if (!isUnsigned) {
+        if (divisorConst && op2 == "-1") {
+            if (inst.opcode == ir::Opcode::Div) {
+                writer.line("neg " + w);
+                writer.line("mov " + dst + ", " + w);
+            } else {
+                writer.line("xor " + w + ", " + w);
+                writer.line("mov " + dst + ", " + w);
+            }
+            return;
+        }
+        if (!divisorConst) {
+            const int negId = ptrCheckCounter_++;
+            const std::string contLabel = "@div_norm" + std::to_string(negId);
+            const std::string negLabel = "@div_neg" + std::to_string(negId);
+            // rax 此刻仍为被除数（cdq/cqo 只写 rdx；除零检查只动 rcx）
+            writer.line("cmp " + divisor + ", -1");
+            writer.line("jne " + contLabel);
+            if (inst.opcode == ir::Opcode::Div) {
+                writer.line("neg " + w);           // 商 = -被除数（回绕）
+            } else {
+                writer.line("xor " + w + ", " + w); // 余 = 0
+            }
+            writer.line("jmp @div_end" + std::to_string(negId));
+            writer.raw(contLabel + ":");
+            writer.line(std::string("idiv ") + divisor);
+            if (inst.opcode == ir::Opcode::Div) {
+                // 商已在 w（rax）——落入下方统一写 dst 前需跳过余数装载
+            } else {
+                std::string rw = widthFor(type, "rdx");
+                writer.line("mov " + w + ", " + rw);   // 余数搬入 w 统一出口
+            }
+            writer.raw("@div_end" + std::to_string(negId) + ":");
+            writer.line("mov " + dst + ", " + w);
+            return;
+        }
+    }
     writer.line(std::string(isUnsigned ? "div " : "idiv ") + divisor);
     // 商在 eax/rax，余在 edx/rdx
     if (inst.opcode == ir::Opcode::Div) {

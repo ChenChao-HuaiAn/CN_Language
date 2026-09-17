@@ -276,11 +276,14 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
                 //   跨符号拒绝后，带后缀整数字面量（整64 戊 = 7U 等）按 §3.7
                 //   「字面量按另一侧类型参与」条文豁免（原无后缀判定漏覆盖）
                 const bool isIntLiteral =
-                    ((node->initializer->getType() == NodeType::IntegerLiteral) &&
+                    (((node->initializer->getType() == NodeType::IntegerLiteral) &&
                      types::literalTypeOf(
                          static_cast<IntegerLiteral*>(node->initializer.get())->raw, false) == "整32" &&
                      types::isInteger(varType)) ||
-                    canConvertWithLiteral(node->initializer.get(), initType, varType);
+                    canConvertWithLiteral(node->initializer.get(), initType, varType)) &&
+                    // 319-a（T36·方案甲）：值域门槛——裸字面量与豁免面统一
+                    //   （整16 甲=40000 拒；域内 整8 a=10 过）
+                    intLiteralFitsType(node->initializer.get(), varType);
                 if (!isIntLiteral) {
                     // 55-c 方案A：跨符号变量间拒绝报专用消息（与二元面对仗）
                     if (!reportMixedSignAssign(node->initializer.get(), initType,

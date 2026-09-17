@@ -723,6 +723,9 @@ private:
     //   字面量豁免判定（二元运算面 visitBinaryExpr 与赋值面 canConvertWithLiteral
     //   共用；原 semantic_expr.cpp 匿名函数提升为成员供跨文件豁免点复用）
     static bool isIntLiteralExpr(const Expr* e);
+    // 319-a（T36·方案甲）：整数字面量值域检查——窄化豁免的值域门槛
+    //（整16 甲=40000 静默截断根治；与 isIntLiteralExpr 配对使用）
+    static bool intLiteralFitsType(const Expr* e, const std::string& to);
     // 数值运算的结果类型（整型取宽、整浮混合取浮）
     static std::string commonNumericType(const std::string& a, const std::string& b) {
         return types::commonNumericType(a, b);

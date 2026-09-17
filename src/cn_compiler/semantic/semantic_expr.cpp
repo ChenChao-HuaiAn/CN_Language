@@ -355,6 +355,56 @@ bool SemanticAnalyzer::isIntLiteralExpr(const Expr* e) {
     }
     return false;
 }
+
+// 319-a（T36·方案甲·用户批量裁决）：整数字面量值域检查——窄化豁免的值域门槛
+//（整16 甲=40000 超 32767：原静默截断 -25536 与表达式面〔0+40000 拒〕口径
+// 分裂；Rust 统一严格：超域硬错误，域内保留豁免〔整8 a=10 合法〕）。
+// 非整数类型恒真（豁免面 isInteger 已前置，防御）。
+bool SemanticAnalyzer::intLiteralFitsType(const Expr* e, const std::string& to) {
+    if (e == nullptr) return true;
+    // 提取裸字面量（含一元负号形态——-40000 对 整16 同超域）
+    bool neg = false;
+    const IntegerLiteral* lit = nullptr;
+    if (e->getType() == NodeType::IntegerLiteral) {
+        lit = static_cast<const IntegerLiteral*>(e);
+    } else if (e->getType() == NodeType::UnaryExpr) {
+        const UnaryExpr* u = static_cast<const UnaryExpr*>(e);
+        if (u->op == Operator::Subtract && !u->postfix &&
+            u->operand != nullptr &&
+            u->operand->getType() == NodeType::IntegerLiteral) {
+            lit = static_cast<const IntegerLiteral*>(u->operand.get());
+            neg = true;
+        }
+    }
+    if (lit == nullptr) return true;  // 非字面量形态（canConvert 主链判定）
+    const std::string lt = types::literalTypeOf(lit->raw, false);
+    // 与 literalTypeOf 的无符号后缀语义一致：正N 字面量按无符号域解释值
+    unsigned long long uv = 0;
+    try {
+        uv = static_cast<unsigned long long>(lit->value);  // value=有符号承载位模式
+    } catch (...) {
+        return true;
+    }
+    // 目标类型域表（类型名 -> [有符号最小/最大] 或 [无符号 0/最大]）
+    auto fits = [&](long long lo, long long hi) {
+        const long long v = neg ? -static_cast<long long>(uv)
+                                : static_cast<long long>(uv);
+        return v >= lo && v <= hi;
+    };
+    auto fitsU = [&](unsigned long long hi) {
+        if (neg) return false;  // 负值不入无符号域（-x 超域）
+        return uv <= hi;
+    };
+    if (to == "整8") return fits(-128, 127);
+    if (to == "整16") return fits(-32768, 32767);
+    if (to == "整32" || to == "整数") return fits(-2147483648LL, 2147483647LL);
+    if (to == "整64") return fits(-9223372036854775807LL - 1, 9223372036854775807LL);
+    if (to == "正8") return fitsU(255ULL);
+    if (to == "正16") return fitsU(65535ULL);
+    if (to == "正32") return fitsU(4294967295ULL);
+    if (to == "正64") return fitsU(18446744073709551615ULL);
+    return true;  // 整128/其他：域宽于字面量承载（int64），恒适
+}
 void SemanticAnalyzer::visitInitListExpr(InitListExpr* node) {
     (void)node;
     // 各元素在 visitVarDecl 中结合数组元素类型逐个检查；

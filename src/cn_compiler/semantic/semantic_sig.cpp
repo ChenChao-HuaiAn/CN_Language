@@ -433,7 +433,9 @@ bool SemanticAnalyzer::canConvertWithLiteral(const Expr* value,
     if (canConvertType(fromRaw, toRaw)) return true;
     // 字面量豁免仅整数族→整数族（浮点/字符串等其它拒绝面不豁免）
     if (!types::isInteger(fromRaw) || !types::isInteger(toRaw)) return false;
-    return isIntLiteralExpr(value);
+    // 319-a（T36·方案甲）：值域门槛——豁免=字面量且值在目标类型域内
+    //（整16 甲=40000 超域拒绝，域内 整8 a=10 保留豁免；表达式面口径统一）
+    return isIntLiteralExpr(value) && intLiteralFitsType(value, toRaw);
 }
 // 混合符号赋值专用诊断（55-c 方案A，2026-09-10 用户裁决·Rust E0308 对齐）——
 //   消息风格与二元面「混合符号二元运算禁止」对仗；主三面（声明初始化/赋值/
