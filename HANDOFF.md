@@ -29,41 +29,42 @@
  变真换行·Write 直写修复脚本根治——lessons 既有条目）。
 - daemon win 适配后首跑即绿（无残留平台分叉）；日文件 151 行（上限 1500·余量充足）。
 
-## 深度机 linux-x86_64 节## 深度机 linux-x86_64 节## 深度机 linux-x86_64 节## 深度机 linux-x86_64 节## 深度机 linux-x86_64 节## 深度机 linux-x86_64 节
+## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-17 🏃 **306-a 开发轮收工**（波次2 宿主侧销项 T3/T4/T21+OOM 事故根治与防线加固）。基线 dbd0b88→认领 4d7371c。接手先 `git fetch`；daemon 已重启（PID 见 ps·子进程已带 6GB 内存防线）。
+**交接时间**: 2026-09-17 🧪 **314-a M3 采样轮收工**（x64l 列首测·T44 复验+★T45 立案）。基线 a33e3aa（=src 与 312-a 基线等价·ec3e0a2→a33e3aa src/ 零改动实测）。接手先 `git fetch`；daemon 收工前已按 313-b 新版（日文件制）重启常态化。
 
-### 一、本轮做了什么（306-a·含 OOM 事故全记录）
+### 一、本轮做了什么（314-a）
 
-1. **OOM 事故（18:58·用户侧 ZCode 被关闭）**：cn 进程 28.7GB 被内核 OOM 击杀连坐 ZCode scope。**根因=306-a T21 首版回归**——只收紧了 readIdentifierOrKeyword 收集循环而**主分发循环仍是 `c >= 0x80` 旧口径**：全角字符进收集立即 break 返回空 token 且不消费→主分发无限空转（每轮一个空 Identifier token）→诊断/AST 无限膨胀。**根治**=口径单点化（isIdentifierStartChar/ContChar·主分发+收集共用）——全角样本 bad_alloc→「解析失败」快速退出验证。**教训入 lessons**（同一口径两处分叉=死循环签名）。
-2. **T3 递归结构体拒绝**（宿主）：computeLayout visiting 环检测+字段惰性递归布局——直接/间接环编译期拒绝「无穷大小」（原实现注释自认「循环引用检测」实际没有·间接环还依赖声明顺序出错值）；类引用语义递归合法豁免；**StructSemanticTest.SelfReference 断言随用户裁决更新**（T3 方案甲批量批准·语义变更配套）。
-3. **T4 字符串下标越界检查**（宿主）：emitStrBoundsCheck 运行时长度版（__cn_str_len·与数组 rc=2 同通道）+三读路径插桩（变量/隐式类字段/成员链统一段）——s[99] O0=O3 拦截「运行时错误(错误码2)」；「字符* 指针」形态不误伤（elemIrType=i32 判据）。
-4. **T21 标识符字符集收紧**（宿主·方案甲）：CJK U+4E00~9FFF+扩展A/B 区段化——全角拉丁/中文标点/假名拒绝；存量全量 E2E 零误伤。
-5. **411/412/413 三 E2E 转正**+coverage_map；**daemon 防线加固**：cnsmith_diff 子进程 RLIMIT_AS 6GB（防病态进程 OOM 连坐·28.7GB 实证教训设施化）+重启。
+1. **M3 采样双域零命中**：第五种子域 310000001×500（33s）+第六种子域 311000001×1000（70s）差分 O0/O3 全一致——**x64l 列比 win 列快 ~19 倍**（33s vs 608~670s·后续轮可加大采样量/daemon 提速）。
+2. **负向轨 400**（310100001）：400/400 全拒绝·0 崩溃·0 无行号·0 行号偏离（连续第五轮）。
+3. **回归轨全库 124 件**：命中全旧类零新类别（diff 5 分歧=T27×4+T42；build_err 2=T37+T38；run_err 3=T27×3）；**跨平台呈现差**：m27_02~05 在 x64l 分歧而 win 一致（T27 字面直连通道平台分叉·与 B12 x64 口径吻合·非漂移）。
+4. **T44 x64l 复验**（家机广播点名）：三元族（整128/正128/嵌套）**O0/O3 双级 SIGSEGV**——asm 铁证 `mov qword ptr [rbp], r10`（高半槽偏移 0·GAS 版 [rbp0] 同根因）；**双分支族 x64l 免疫**（O0=O3 对·静默错值=win 单侧）；三前驱✓。T44 行证据已回填。
+5. **★T45 新立案**（§三-G·B9 联想扩面撞出）：**128 位字面量实参 ABI 契约分叉**——调用侧 `mov rsi,[槽]` 值直传低 64 位 vs 被调方按指针解引用（字面量数值当地址）→x64l 双级 SIGSEGV/静默错值 UB 双态。挂面=128 位字面量（含折叠）实参×任意返回类型/位次/丢弃（7 形态）；健康=变量/表达式/结构体实参。实弹 run_err/m45_01/02+面台账行 82+方案甲/乙/丙（推荐甲+丙）——win/arm64 复验归家机/单位机。
+6. **面测试网链条**（/goal 精神）：T44 点（i128 汇合 Copy 槽名）→线（三元/双分支族跨平台定性）→**面（调用位联想→撞出 i128 字面实参装载独立根因 T45）**。
 
 ### 二、验证链（当轮实测）
 
 ```
-python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8   # 431=429/0/2（lexer 全库词法面零回归）
-./target/cn_unit_tests                                 # 1353/1353（SelfReference 断言已随裁决更新）
-python3 scripts/check_spec_coverage.py --strict; python3 scripts/check_matrix_coverage.py; python3 scripts/check_cli_contract.py
-python3 scripts/check_handoff.py; python3 scripts/check_progress_sync.py
-# 三案探针：/tmp/t306/（t3_rec 拒绝/t3_class 豁免/t3_indirect 拒绝/t4_str 97_99/t4_bad rc=1 拦截/t21_bad 快速拒绝/t21_ok 通过）
+python3 scripts/cnsmith_diff.py --dir target/cnsmith_314a --cn target/cn --jobs 8   # 500/500 一致
+python3 scripts/cnsmith_diff.py --dir target/cnsmith_314b --cn target/cn --jobs 8   # 1000/1000 一致
+python3 /tmp/negative_check.py target/cnsmith_314an                                # 400/400 拒绝·0 崩溃·0 偏离
+python3 scripts/cnsmith_diff.py --dir tests/cnsmith_hits/diff --cn target/cn --jobs 8  # 5 旧类分歧
+# T44/T45 探针=target/p314a/（t44_* 5 形态+t45_* 8 形态·O0/O3 双级）
+python3 scripts/check_handoff.py && python3 scripts/check_progress_sync.py && python3 scripts/check_matrix_coverage.py  # 三绿
 ```
 
-### 三、下一轮任务（按序·候选已预登记 plans/025 §2.2）
+### 三、下一轮任务（按序）
 
-1. **306-b=波次2 v2 侧同构**（T3/T4/T21 在 CN语言编译器v2 树+78/79 自举链复验）——优先认领；
-2. 波次3=T6+T7；波次5=C18+B12（本机 B9 补轴实证归属）；
-3. daemon 常态采样续跑（防线已加固）；win/arm64 的 410 复验结论回收（304-a 广播）。
+1. **daemon 常态化采样续跑**（已重启 313-b 新版日文件制·x64l 快可缩轮间睡眠）；新种子域 312000001 起；
+2. T45/T44 修复待用户裁决（建议同轮波次清零·写集零交叠）；🔶 行扩面巡视（候选=行 53/54·T17/T18）；
+3. 波次3=T6+T7；波次5=C18+B12（B9 补轴 i128 helper 修正项含 T27 全族）。
 
 ### 四、诚实边界
 
-- **v2 树三案同构未做**（306-b·立案面=宿主+v2 双侧·本轮宿主侧完整闭环）；
-- T4 越界负形态 E2E 化：运行期 rc 拦截无「期望运行失败」机制=探针实证（O0=O3）+coverage_map 记录·双编译对照形态留后续；
-- T21 未含 CJK 兼容表意区（U+F900~FAFF·方案甲文本未列·需扩展呈报）；
-- __cn_runtime_error(2) 文案「数组越界」字符串越界共用（错误码统一·文案细分后续小项）；
-- T4 插桩每次读一次 strlen（安全优先·双目标安全>性能）。
+- T45 win/arm64 复验未做（归家机/单位机·本机无他平台）；T45 根治未做（待裁决·本轮=立案+证据链完整）；
+- 采样双域零命中=生成器盲区佐证（行 58 欠账·daemon 补布尔/移位形态仍待开发轮）；
+- 负向轨 seed 仅一轮 400（连续第五轮全绿·口径与家机一致）；
+- **HANDOFF 深度机节标题六连写粘连事故（306-a 收工引入·本轮整节替换根治）+check_handoff 未拦截「标题连写」形态=门禁盲区**——已登记 lessons+看板通告（门禁扩条待开发轮）。
 
 ## 单位机 ARM64 节
 
