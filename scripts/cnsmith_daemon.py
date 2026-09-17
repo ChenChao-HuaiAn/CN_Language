@@ -7,8 +7,8 @@
   ② 生成 N 个新样本（种子=时间戳到秒·重启不撞号）+ 回归轨（命中样本库全量重跑=防修复复发）
   ③ 差分（复用 scripts/cnsmith_diff.py -O0 vs -O3·并行）
   ④ 命中样本存档 tests/cnsmith_hits/<类别>/（防 target/ 清场丢失）+ 归类
-  ⑤ 三件套日志（M3 计时秒表）——**按月分文件+变化时记/汇总记法（286-a·S1b 根治）**：
-    - 月文件 tests/cnsmith_hits/日志/YYYY-MM.md；索引指针=tests/cnsmith_hits/采样日志.md（固定 ≤15 行）
+  ⑤ 三件套日志（M3 计时秒表）——**按日分文件+变化时记/汇总记法（286-a·S1b 根治·313-b 月→日）**：
+    - 日文件 tests/cnsmith_hits/日志/YYYY-MM-DD.md；索引指针=tests/cnsmith_hits/采样日志.md（固定 ≤15 行）
     - 连续「零新存·零已修·命中集合与上轮相同·基线无更新」的轮次合并为一行「汇总」
     - 任何变化（新命中/命中消失/已修/新存档/基线更新/编译或运行失败>0）独立成轮完整记录
     —— 单文件追加式旧记法在 ~50s/轮频率下日增 1~3 万行（286-a 用户质询立案），此记法为体积根治。
@@ -36,6 +36,13 @@ import time
 根 = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 库 = os.path.join(根, "tests", "cnsmith_hits")
 月目录 = os.path.join(库, "日志")
+
+
+def 编译器路径():
+    """313-b win 适配：win=target/Debug/cn.exe（MSVC 多配置）；POSIX=target/cn。"""
+    if os.name == "nt":
+        return os.path.join(根, "target", "Debug", "cn.exe")
+    return os.path.join(根, "target", "cn")
 指针文件 = os.path.join(库, "采样日志.md")
 工作 = os.path.join(根, "target", "cnsmith")
 差异清单 = os.path.join(工作, "work", "分歧清单.txt")
@@ -84,7 +91,7 @@ def 拉取并重建():
         rb = 跑(["cmake", "--build", "target/build", "--config", "Debug", "-j", "8"], timeout=3600)
         if rb.returncode != 0:
             说明 += "；重建失败(沿用旧编译器=滞后基线!)"
-        elif os.path.getmtime(os.path.join(根, "target", "cn")) * 1000 < t建:
+        elif os.path.getmtime(编译器路径()) * 1000 < t建:
             说明 += "；重建未更新 target/cn(假重建!沿用旧编译器)"
         else:
             说明 += "；重建成功(产物已核验新鲜)"
@@ -170,7 +177,7 @@ class 日志写手:
     """⑤ 按月分文件+变化时记/汇总记法（S1b）。"""
 
     def __init__(self):
-        self.当前月 = None
+        self.当前日 = None
         self.当前路径 = None
         self.汇总 = None          # 无变化序列缓冲
         self.上轮命中 = None       # set((名,类别))；None=未知（重启首轮）
@@ -179,16 +186,19 @@ class 日志写手:
         #   已修样本永远留库防复发→该集合恒非空→「not 消失回归」恒假→无变化判据永不成立
         #   →每轮退化全量记录（月日志爆 5000 红线根因）。None=重启首轮（基线化不报变化）。
 
-    def _切月(self, st):
-        月 = time.strftime("%Y-%m", st)
-        if 月 != self.当前月:
-            self.当前月 = 月
+    def _切日(self, st):
+        # 313-b 日文件制（用户令「日志不能用月，要日。不然还是太大」）：
+        #   月 5000 行红线仍过大——按日分文件 YYYY-MM-DD.md（单日上限 1500·
+        #   check_handoff 校验）；M3 计时跨日文件连续起算（索引=../采样日志.md）。
+        日 = time.strftime("%Y-%m-%d", st)
+        if 日 != self.当前日:
+            self.当前日 = 日
             os.makedirs(月目录, exist_ok=True)
-            self.当前路径 = os.path.join(月目录, 月 + ".md")
+            self.当前路径 = os.path.join(月目录, 日 + ".md")
             if not os.path.exists(self.当前路径):
                 with open(self.当前路径, "w", encoding="utf-8") as f:
-                    f.write("# CN-Smith 采样日志 %s（S1·三件套·M3 计时秒表·按月分文件）\n\n" % 月)
-                    f.write("> 判据（plans/026 M3）：连续 4 周零新缺陷类别——跨月文件连续起算（索引=../采样日志.md）。\n")
+                    f.write("# CN-Smith 采样日志 %s（S1·三件套·M3 计时秒表·按日分文件）\n\n" % 日)
+                    f.write("> 判据（plans/026 M3）：连续 4 周零新缺陷类别——跨日文件连续起算（索引=../采样日志.md）。\n")
                     f.write("> 记法（286-a·S1b）：变化轮完整记录；连续无变化轮合并为「汇总」行。\n\n")
         return self.当前路径
 
@@ -196,7 +206,7 @@ class 日志写手:
         if not self.汇总:
             return
         m = self.汇总
-        路径 = self._切月(time.localtime(m["末"]))
+        路径 = self._切日(time.localtime(m["末"]))
         with open(路径, "a", encoding="utf-8") as f:
             f.write("## 汇总（%s ~ %s·%d 轮·seed=%d~%d）：采样 %d+回归 %d ｜ %s ｜ 命中集合不变·共 %d 项\n\n"
                     % (time.strftime("%H:%M:%S", time.localtime(m["起"])),
@@ -234,7 +244,7 @@ class 日志写手:
             self.上轮未命中回归 = 未命中回归
             return
         self._冲刷汇总()
-        路径 = self._切月(st)
+        路径 = self._切日(st)
         with open(路径, "a", encoding="utf-8") as f:
             f.write("## 轮（%s）\n" % time.strftime("%Y-%m-%d %H:%M:%S", st))
             f.write("- 基线：%s（%s）\n" % (基线[:9], 说明))
@@ -269,9 +279,9 @@ def 主():
     ap.add_argument("--sleep", type=int, default=600, help="轮间睡眠秒数")
     a = ap.parse_args()
 
-    编译器 = os.path.join(根, "target", "cn")
+    编译器 = 编译器路径()
     if not os.path.exists(编译器):
-        print("编译器不存在：target/cn（先构建）")
+        print("编译器不存在：%s（先构建）" % 编译器)
         return 1
     os.makedirs(工作, exist_ok=True)
     if not os.path.exists(指针文件):
