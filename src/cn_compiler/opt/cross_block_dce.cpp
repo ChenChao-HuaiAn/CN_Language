@@ -30,22 +30,22 @@ bool parseBoolText(const std::string& text, bool& out) {
 } // namespace
 
 // 将条件跳转折叠为无条件跳转（条件常量"真"->真目标，"假"->假目标）
-// 条件取块内最后一条指令 operands 尾部（codegen emitTerminator 契约）
+// 条件取 block.termCondition（280-a T12 字段化，不再寄生于块尾指令）
 bool CrossBlockDCEPass::foldConstantBranch(ir::IRBlock& block) {
-    if (block.termKind != "条件跳转" || block.instructions.empty()) return false;
-    const ir::IRInstruction& last = block.instructions.back();
-    if (last.operands.empty()) return false;
-    // 条件 = 尾部最后一个操作数（Branch 条件寄存器被 ConstFold 替换为常量后
-    // 是 isConstant 的 IRValue）
-    const ir::IRValue& cond = last.operands.back();
-    if (!cond.isConstant) return false;
+    if (block.termKind != "条件跳转") return false;
+    // 条件为常量文本（"真"/"假"/"1"/"0"）时可折叠；寄存器条件不折叠
+    const std::string& cond = block.termCondition;
+    if (cond.empty() || (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v')) {
+        return false;
+    }
     bool value = false;
-    if (!parseBoolText(cond.extra, value)) return false;
+    if (!parseBoolText(cond, value)) return false;
     // 折叠：条件跳转 -> 无条件跳转（目标由条件常量决定）
     block.termKind = "跳转";
     block.termTarget = value ? block.termTrueTarget : block.termFalseTarget;
     block.termTrueTarget.clear();
     block.termFalseTarget.clear();
+    block.termCondition.clear();
     return true;
 }
 

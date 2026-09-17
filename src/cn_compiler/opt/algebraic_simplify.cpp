@@ -313,6 +313,11 @@ bool AlgebraicSimplifyPass::run(ir::IRModule& module) {
         std::unordered_map<int, ir::IRValue> regConsts;
         for (auto& block : fn.blocks) {
             regConsts.clear();
+            // 283-a T12 字段化：块终止条件寄存器同步替换（在指令遍历前应用，
+            //   使本块对条件寄存器的折叠替换同轮可见）
+            if (replaceTermCondition(*block, regRewrite, constRewrite)) {
+                changed = true;
+            }
             for (auto& inst : block->instructions) {
                 // 第一步：应用已收集的替换（本块内先前简化 + 前序块的寄存器替换）
                 if (replaceUses(inst, regRewrite, constRewrite)) changed = true;

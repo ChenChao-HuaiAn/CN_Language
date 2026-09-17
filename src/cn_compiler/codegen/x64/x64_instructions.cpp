@@ -806,12 +806,17 @@ void X64CodeGenerator::emitTerminator(AsmWriter& writer, const ir::IRBlock& bloc
     } else if (block.termKind == "跳转") {
         writer.line("jmp " + block.termTarget);
     } else if (block.termKind == "条件跳转") {
-        // 条件在块最后一条指令的最后一个操作数（i1寄存器）
+        // 条件值 = block.termCondition（280-a T12 字段化：Phi 降级后汇合块
+        //   可为空块，条件不再寄生于块尾指令 operands）；空条件兜底 0
         std::string condReg = "0";
-        if (!block.instructions.empty()) {
-            auto& last = block.instructions.back();
-            if (!last.operands.empty()) {
-                condReg = operandText(last.operands.back());
+        const std::string& cond = block.termCondition;
+        if (!cond.empty()) {
+            if (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v') {
+                condReg = operandText(
+                    ir::IRValue::reg(std::stoi(cond.substr(2)), "i1"));
+            } else {
+                // 常量文本条件（"真"/"假" -> 1/0；数值原样）
+                condReg = operandText(ir::IRValue::constant(cond, "i1"));
             }
         }
         writer.line("mov eax, " + condReg);

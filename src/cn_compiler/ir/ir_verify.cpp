@@ -54,6 +54,13 @@ static std::vector<std::string> verifyFunction(const IRFunction& func) {
                              ": 跳转目标块 '" + block->termTarget + "' 不存在");
         }
         if (block->termKind == "条件跳转") {
+            // 280-a T12 字段化校验：条件值必须在 termCondition 字段
+            //   （寄存器 "%vN" 或常量文本；空=老 IR 缺陷形态，硬错误拦截——
+            //    codegen 空兜底会装载 0 导致条件恒假）
+            if (block->termCondition.empty()) {
+                errors.push_back(func.name + ":" + block->label +
+                                 ": 条件跳转缺少条件值（termCondition 为空）");
+            }
             if (!block->termTrueTarget.empty() && !hasLabel(block->termTrueTarget)) {
                 errors.push_back(func.name + ":" + block->label +
                                  ": 条件跳转真目标 '" + block->termTrueTarget + "' 不存在");

@@ -187,7 +187,9 @@ static void printBlockTerminator(const ir::IRBlock& block) {
     if (block.termKind == "跳转") {
         std::cout << " -> " << block.termTarget;
     } else if (block.termKind == "条件跳转") {
-        std::cout << " 真=" << block.termTrueTarget
+        // 280-a T12 字段化：条件值随终止信息输出（空条件=老 IR 兼容形态）
+        std::cout << " 条件=" << (block.termCondition.empty() ? "?" : block.termCondition)
+                  << " 真=" << block.termTrueTarget
                   << " 假=" << block.termFalseTarget;
     } else if (block.termKind == "返回") {
         std::cout << " 值=" << block.termReturnValue;

@@ -32,16 +32,20 @@ void LinuxX64CodeGenerator::emitTerminator(LinuxX64AsmWriter& writer,
     } else if (block.termKind == "跳转") {
         writer.line("jmp " + currentBlockPrefix_ + labelMangle(block.termTarget));
     } else if (block.termKind == "条件跳转") {
-        // 条件在块最后一条指令的最后一个操作数（i1寄存器）；
-        // 空块防御：先装载 0（真实 IR 块终止前总有指令，此处保汇编合法性）
+        // 条件值 = block.termCondition（280-a T12 字段化：Phi 降级后汇合块
+        //   可为空块，条件不再寄生于块尾指令 operands）；
+        //   空条件兜底装载 0（老 IR 兼容，保汇编合法性）
         std::string condReg = "r10";
-        if (block.instructions.empty()) {
+        const std::string& cond = block.termCondition;
+        if (cond.empty()) {
             writer.line("mov r10, 0");
+        } else if (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v') {
+            const int id = std::stoi(cond.substr(2));
+            emitStackLoad(writer, regSlotOffset(id), condReg, "i1", __LINE__);
         } else {
-            auto& last = block.instructions.back();
-            if (!last.operands.empty()) {
-                condReg = loadOperandToX(writer, last.operands.back(), "r10");
-            }
+            // 常量文本条件（"真"/"假"/数值）
+            condReg = loadOperandToX(writer,
+                                     ir::IRValue::constant(cond, "i1"), condReg);
         }
         writer.line("test " + condReg + ", " + condReg);
         writer.line("jz " + currentBlockPrefix_ + labelMangle(block.termFalseTarget));

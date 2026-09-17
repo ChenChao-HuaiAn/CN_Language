@@ -127,5 +127,39 @@ inline bool replaceUses(ir::IRInstruction& inst,
     return changed;
 }
 
+// 280-a T12 字段化连带：块终止条件跳转的条件寄存器同步替换。
+//   条件已显式存 termCondition（不再寄生于块尾指令 operands），
+//   replaceUses 的指令级遍历覆盖不到——各持 RegRewriteMap 的 Pass
+//   （algebraic_simplify/copy_propagation/global_value）逐块调用本函数。
+//   寄存器替换无条件（SSA 安全）；常量替换经 constCanPropagate 白名单
+//   （条件为 i1，"真"/"假" 文本可传播）。
+inline bool replaceTermCondition(ir::IRBlock& block,
+                                 const RegRewriteMap& regRewrite,
+                                 const ConstRewriteMap& constRewrite) {
+    if (!block.terminated || block.termKind != "条件跳转") return false;
+    const std::string& c = block.termCondition;
+    if (c.size() <= 2 || c[0] != '%' || c[1] != 'v') return false;
+    int id = 0;
+    try {
+        id = std::stoi(c.substr(2));
+    } catch (...) {
+        return false;
+    }
+    const auto rit = regRewrite.find(id);
+    if (rit != regRewrite.end()) {
+        block.termCondition = "%v" + std::to_string(rit->second);
+        return true;
+    }
+    const auto cit = constRewrite.find(id);
+    if (cit != constRewrite.end() && cit->second.isConstant) {
+        ir::IRValue cond = cit->second;
+        if (constCanPropagate(cond, ir::IRValue::reg(id, "i1"))) {
+            block.termCondition = cond.extra;  // "真"/"假"/数值文本
+            return true;
+        }
+    }
+    return false;
+}
+
 } // namespace opt
 } // namespace cn_compiler

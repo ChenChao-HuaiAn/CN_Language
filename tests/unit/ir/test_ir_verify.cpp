@@ -145,6 +145,7 @@ TEST(IRVerify, CondJumpTargetMissingRejected) {
     entry.label = "entry";
     entry.terminated = true;
     entry.termKind = "条件跳转";
+    entry.termCondition = "%v0";  // 283-a 契约：条件值显式字段（校验器拦空条件）
     entry.termTrueTarget = "taken";
     entry.termFalseTarget = "false_missing";
     func.blocks.push_back(std::make_unique<IRBlock>(std::move(entry)));

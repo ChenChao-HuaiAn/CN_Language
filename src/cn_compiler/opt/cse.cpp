@@ -78,6 +78,10 @@ bool CSEPass::run(ir::IRModule& module) {
             std::unordered_map<std::string, int> loadResults;
             // 寄存器替换表：重复指令结果 -> 第一个结果
             RegRewriteMap regRewrite;
+            // 283-a T12 字段化：块终止条件寄存器同步替换
+            if (replaceTermCondition(*block, regRewrite, ConstRewriteMap())) {
+                changed = true;
+            }
             for (auto& inst : block->instructions) {
                 // 第一步：应用已收集的替换（本指令引用点）
                 if (replaceUses(inst, regRewrite, ConstRewriteMap())) changed = true;

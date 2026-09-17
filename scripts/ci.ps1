@@ -1,4 +1,4 @@
-# CN 语言编译器 CI 门禁脚本（B-2 2026-08）
+﻿# CN 语言编译器 CI 门禁脚本（B-2 2026-08）
 # 本地/远程 CI 统一入口：构建（零警告）+ 单测 + E2E
 # 用法：powershell -ExecutionPolicy Bypass -File scripts/ci.ps1
 #       powershell -ExecutionPolicy Bypass -File scripts/ci.ps1 -Coverage   # 追加第 3 层源码覆盖率门禁（linux gcov 口径）

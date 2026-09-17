@@ -42,7 +42,7 @@ std::unique_ptr<IRBlock> makeJumpBlock(const std::string& label,
     return block;
 }
 
-// 新建块（label + 条件跳转到 trueTarget/falseTarget，条件为尾部常量）
+// 新建块（label + 条件跳转到 trueTarget/falseTarget，条件为常量文本）
 std::unique_ptr<IRBlock> makeBranchBlock(const std::string& label,
                                          const std::string& condText,
                                          const std::string& trueTarget,
@@ -51,9 +51,10 @@ std::unique_ptr<IRBlock> makeBranchBlock(const std::string& label,
     block->label = label;
     block->terminated = true;
     block->termKind = "条件跳转";
+    // 283-a 契约：条件值显式存 termCondition（不再寄生于块尾指令 operands）
+    block->termCondition = condText;
     block->termTrueTarget = trueTarget;
     block->termFalseTarget = falseTarget;
-    // 条件常量挂在块内最后一条指令 operands 尾部（codegen emitTerminator 契约）
     IRInstruction cond;
     cond.opcode = Opcode::ConstBool;
     cond.type = "i1";

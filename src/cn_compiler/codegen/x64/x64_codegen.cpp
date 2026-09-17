@@ -804,6 +804,20 @@ std::string X64CodeGenerator::generateFunctionAssembly(const ir::IRFunction& fun
                 }
                 registerVarSlot(inst.extra);  // 基址槽（槽0，offset 最深）
             }
+            // 283-a T12：变量名引用登记（Load/Store/Copy 三种·窄化防白涨帧）
+            if (inst.opcode == ir::Opcode::Load ||
+                inst.opcode == ir::Opcode::Store ||
+                inst.opcode == ir::Opcode::Copy) {
+                for (const auto& v : inst.operands) {
+                    if (v.id < 0 && !v.extra.empty() && !v.isConstant) {
+                        registerVarSlot(v.extra);
+                    }
+                }
+                if (inst.result.id < 0 && !inst.result.extra.empty() &&
+                    !inst.result.isConstant) {
+                    registerVarSlot(inst.result.extra);
+                }
+            }
         }
     }
     AsmWriter writer;

@@ -185,6 +185,21 @@ static void rewriteUsesInJoinBlock(ir::IRFunction& fn, ir::IRBlock& block,
             }
         }
     }
+    // 280-a T12 字段化连带：块终止条件跳转的条件若引用被删 Load 的结果
+    //   （Phi 化后汇合块常退化为「条件跳转」单终止形态），同步改指 Phi 结果——
+    //   否则条件寄存器定义已删，codegen 装载槽垃圾/兜底 0 -> 条件恒假
+    if (block.terminated && block.termKind == "条件跳转") {
+        std::string& c = block.termCondition;
+        if (c.size() > 2 && c[0] == '%' && c[1] == 'v') {
+            const int cid = std::stoi(c.substr(2));
+            for (const int id : loadIds) {
+                if (cid == id) {
+                    c = "%v" + std::to_string(phiReg);
+                    break;
+                }
+            }
+        }
+    }
     // 删除被重写的 Load 指令（按索引倒序删）
     for (std::size_t k = loadIdx.size(); k-- > 0;) {
         block.instructions.erase(block.instructions.begin() + static_cast<std::ptrdiff_t>(loadIdx[k]));

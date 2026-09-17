@@ -691,6 +691,26 @@ bool ConstFoldPass::run(ir::IRModule& module) {
                 // 副作用指令 -> 清空映射（内存可能被修改，保守）
                 updateConstTable(inst, consts);
             }
+            // 283-a T12 字段化：块终止条件寄存器命中常量表 -> 改写为常量文本
+            //   （旧契约把条件挂在块尾指令 operands，由尾部传播机制替换；
+            //    字段化后由本段承接，供 cross_block_dce foldConstantBranch
+            //    折叠恒真/恒假分支）
+            if (block->terminated && block->termKind == "条件跳转") {
+                const std::string& c = block->termCondition;
+                if (c.size() > 2 && c[0] == '%' && c[1] == 'v') {
+                    try {
+                        auto it = consts.find(std::stoi(c.substr(2)));
+                        if (it != consts.end() && it->second.isConstant &&
+                            it->second.type != "f32" && it->second.type != "f64" &&
+                            it->second.type != "i128" && it->second.type != "u128") {
+                            block->termCondition = it->second.extra;
+                            changed = true;
+                        }
+                    } catch (...) {
+                        // 解析失败忽略（防御性）
+                    }
+                }
+            }
         }
     }
     return changed;

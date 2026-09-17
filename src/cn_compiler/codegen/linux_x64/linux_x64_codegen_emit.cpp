@@ -181,10 +181,9 @@ void LinuxX64CodeGenerator::emitStackLoad(LinuxX64AsmWriter& writer, int offset,
                                           const std::string& reg, const std::string& type,
                                           int callerLine) {
     const std::string mem = stackMemText(offset);
-    if (offset == 0 && callerLine != 0) {
-        std::fprintf(stderr, "[T12marker] callerLine=%d type=%s\n", callerLine,
-                     type.c_str());
-    }
+    // callerLine=调用点审计参数（280-a T12 防线）：offset==0 即 "[rbp]" 裸读
+    //   saved rbp，正常产物不应出现——参数保留供断言/校验面使用
+    (void)callerLine;
     if (reg.compare(0, 3, "xmm") == 0) {
         writer.line("mov" + std::string(type == "f64" ? "sd" : "ss") + " " + reg + ", " + mem);
         return;

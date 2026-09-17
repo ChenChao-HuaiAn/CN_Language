@@ -366,13 +366,10 @@ void IRGenerator::endBranch(const std::string& condReg, const std::string& trueT
     currentBlock_->termKind = "条件跳转";
     currentBlock_->termTrueTarget = trueTarget;
     currentBlock_->termFalseTarget = falseTarget;
-    if (condReg.size() > 2 && condReg[0] == '%' && condReg[1] == 'v') {
-        int regId = std::stoi(condReg.substr(2));
-        if (!currentBlock_->instructions.empty()) {
-            currentBlock_->instructions.back().operands.push_back(
-                ir::IRValue::reg(regId, "i1"));
-        }
-    }
+    // 280-a T12 病灶②根治：条件值显式存 termCondition 字段（原契约把条件
+    //   寄存器追加到块尾指令 operands 尾部——Phi 降级后汇合块变空块，
+    //   挂载丢失，codegen 空块防御装载 0 -> 条件恒假）。
+    currentBlock_->termCondition = condReg;
 }
 void IRGenerator::endReturn(const std::string& valueReg) {
     currentBlock_->terminated = true;

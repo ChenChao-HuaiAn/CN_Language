@@ -181,6 +181,12 @@ struct IRBlock {
     std::string termTarget;                     // 无条件跳转目标块标签
     std::string termTrueTarget;                 // 条件跳转真分支目标
     std::string termFalseTarget;                // 条件跳转假分支目标
+    // 条件跳转条件值（"%vN" 寄存器名 / "真"/"假"/数值 常量文本）。
+    //   280-a T12 病灶②根治：原契约把条件寄存器追加到块尾指令 operands 尾部
+    //   （寄生式挂载）——优化层 Phi 化把汇合块 Load 降级为前驱块 Copy 后汇合块
+    //   变空块，codegen 空块防御装载 0 -> 条件恒假 -> 真&&真 误折假。
+    //   条件值显式字段化后不再依赖块尾指令存在。
+    std::string termCondition;                  // 条件跳转条件（寄存器名或常量文本）
     std::string termReturnValue;                // 返回寄存器名（空=无返回值）
 };
 

@@ -729,13 +729,21 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
                 }
                 registerVarSlot(inst.extra);
             }
-            // 280-a T12 补：Copy 指令的源/目标为变量名（__sc$ 短路临时等）
-            //   时同步登记——修前 varSlotOf=0 → [rbp] 裸读 saved rbp
-            if (inst.opcode == ir::Opcode::Copy) {
-                for (const auto& v : {inst.operands[0], inst.result}) {
-                    if (v.id < 0 && !v.extra.empty()) {
+            // 283-a T12：变量名引用登记（Load/Store/Copy 三种·窄化防白涨帧——
+            //   0a37d31 的 Copy 专用版推广至 Load/Store：优化链产物可能残留
+            //   「引用但 Alloca 已消去」的悬空变量（121 面），漏登记即
+            //   varSlotOf=0 → [rbp] 裸读 saved rbp）
+            if (inst.opcode == ir::Opcode::Load ||
+                inst.opcode == ir::Opcode::Store ||
+                inst.opcode == ir::Opcode::Copy) {
+                for (const auto& v : inst.operands) {
+                    if (v.id < 0 && !v.extra.empty() && !v.isConstant) {
                         registerVarSlot(v.extra);
                     }
+                }
+                if (inst.result.id < 0 && !inst.result.extra.empty() &&
+                    !inst.result.isConstant) {
+                    registerVarSlot(inst.result.extra);
                 }
             }
         }

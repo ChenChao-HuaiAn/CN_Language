@@ -85,13 +85,25 @@ bool DCEPass::run(ir::IRModule& module) {
                         if (op.id >= 0) usedRegs.push_back(op.id);
                     }
                 }
-                // 终止信息引用的寄存器（返回寄存器 %vN；条件已挂在指令 operands）
+                // 终止信息引用的寄存器（返回寄存器 %vN；条件跳转条件 %vN——
+                //   280-a T12 字段化：条件显式存 termCondition，须计入活引用，
+                //   否则条件寄存器定义被级联删除 -> 条件装载槽垃圾）
                 if (block->terminated && block->termKind == "返回" &&
                     !block->termReturnValue.empty()) {
                     const std::string& s = block->termReturnValue;
                     if (s.size() > 2 && s[0] == '%' && s[1] == 'v') {
                         try {
                             usedRegs.push_back(std::stoi(s.substr(2)));
+                        } catch (...) {
+                            // 解析失败忽略（防御性）
+                        }
+                    }
+                }
+                if (block->terminated && block->termKind == "条件跳转") {
+                    const std::string& c = block->termCondition;
+                    if (c.size() > 2 && c[0] == '%' && c[1] == 'v') {
+                        try {
+                            usedRegs.push_back(std::stoi(c.substr(2)));
                         } catch (...) {
                             // 解析失败忽略（防御性）
                         }

@@ -53,12 +53,10 @@ std::vector<int> termUsedRegIds(const ir::IRBlock& block) {
     std::vector<int> ids;
     if (!block.terminated) return ids;
     if (block.termKind == "条件跳转") {
-        // 条件寄存器 = 块最后一条指令的最后一个操作数（IR codegen 契约）
-        if (!block.instructions.empty()) {
-            const auto& last = block.instructions.back();
-            if (!last.operands.empty() && last.operands.back().id >= 0) {
-                ids.push_back(last.operands.back().id);
-            }
+        // 280-a T12 字段化：条件值显式存 termCondition（不再寄生于块尾指令）
+        const std::string& c = block.termCondition;
+        if (c.size() > 2 && c[0] == '%' && c[1] == 'v') {
+            ids.push_back(std::stoi(c.substr(2)));
         }
     } else if (block.termKind == "返回") {
         const std::string& s = block.termReturnValue;
