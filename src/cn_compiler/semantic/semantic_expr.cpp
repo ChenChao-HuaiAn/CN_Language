@@ -235,7 +235,8 @@ bool SemanticAnalyzer::checkGenericInstantiation(IdentifierExpr* node) {
     if (genLt != std::string::npos && genGt != std::string::npos &&
         genGt > genLt) {
         const std::string head = node->name.substr(0, genLt);
-        if (findGeneric(head) != nullptr) {
+        const GenericInfo* gi = findGeneric(head);
+        if (gi != nullptr) {
             const std::string inner =
                 node->name.substr(genLt + 1, genGt - genLt - 1);
             std::vector<std::string> args;
@@ -265,6 +266,38 @@ bool SemanticAnalyzer::checkGenericInstantiation(IdentifierExpr* node) {
                     a = resolveGenericTypeName(a, node->location);
                 }
             }
+            // 318-a（T19③）：函数泛型（innerFunc）的名<实参> 作值（赋 fnptr）——
+            //   原一律 lastType_=实例名（类语义），函数实例名被当「类型文本」
+            //   -> 赋值转换拒绝。分叉：innerClass 走原类类型路径；innerFunc
+            //   构造函数指针类型（与 checkFunctionNameValue 同构，按注册签名）。
+            if (gi->ast->innerFunc != nullptr) {
+                const std::string instName =
+                    instantiateGeneric(head, args, node->location);
+                if (!instName.empty()) {
+                    // 重写标识符名为实例名（IR 的 FuncAddr 按 name 取符号——
+                    //   原文 加一<整32> 的 mangle 与实例函数 加一$整32 不匹配
+                    //   = 链接爆 LNK2019）
+                    node->name = instName;
+                    // 登记实例化记录（IR 层生成函数体）——值使用点不经
+                    //   rewriteGenericFuncCall（调用点专用），此处不登记则
+                    //   函数体无人生成 = 链接爆（v1 实锤）。
+                    registerGenericFuncInstance(instName, gi, args);
+                    const auto fit = functions_.find(instName);
+                    if (fit != functions_.end()) {
+                        const FunctionInfo& info = fit->second;
+                        std::string fpt = "函数指针<" + info.returnType + ">(";
+                        for (std::size_t i = 0; i < info.paramTypes.size(); ++i) {
+                            if (i > 0) fpt += ",";
+                            fpt += info.paramTypes[i];
+                        }
+                        lastType_ = fpt + ")";
+                        return true;
+                    }
+                    lastType_ = instName;  // 注册缺失（防御）
+                    return true;
+                }
+                return false;
+            }
             const std::string instName =
                 instantiateGeneric(head, args, node->location);
             if (!instName.empty()) {
@@ -285,7 +318,12 @@ bool SemanticAnalyzer::checkFunctionNameValue(IdentifierExpr* node) {
     // 注：重载函数作函数指针值语义未定义（C++ 需显式类型化），此处保守取首签名，
     //     并允许 回调 = 加 单版本场景（既有测试契约）。
     if (hasFunctionName(node->name)) {
-        const std::string sig = funcFirstSigKey(node->name);
+        // 318-a（T19③）：泛型实例名（加一$整32）是纯名键（instantiateGeneric
+        //   函数分支注册 functions_["名$实参"]·无 名#参数串 形态），
+        //   funcFirstSigKey 按 base 名遍历查不到（泛型原名不注册）——先直查。
+        const std::string sig = (functions_.find(node->name) != functions_.end())
+                                    ? node->name
+                                    : funcFirstSigKey(node->name);
         if (!sig.empty()) {
             const auto it = functions_.find(sig);
             if (it != functions_.end()) {

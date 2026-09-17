@@ -9,26 +9,22 @@
 
 ## 家机 win-x64 节
 
-### 一、本轮交付（🏃 317-a：清零波次4 部分=T19②+T20①〔T19①③ 续轮登记〕·基线 fa1db7c→150e9b9 认领·2026-09-18）
+### 一、本轮交付（🏃 318-a：T19①③ 收官=清零波次4 全清·基线 75e1c3a→924a4a4 认领·2026-09-18）
 
-1. **T20①（泛型形参值传递段错误）根治**：双层根因=①泛型函数体**零语义检查**（26_generics 遗留——体内方法调用无解析注记→IR 发射「间接调用 0」空指针）②实例体 IR 的 srcType 是裸泛型形态（向量<整32>）而类表注册名是 向量$整32（查不到→同落间接调用）。修复=**recheckGenericFuncBody**（A7 recheckGenericMethodBody 同构：生成前按本实例重放检查·name/sigKey/params/return 字段级借用+诊断快照回滚）+**resolveGenericInstanceType**（srcType/retSrc 物化为 $ 实例名·mapType 单点兜底）。
-2. **T19②（体内嵌套泛型调用链接爆）根治**：rewriteGenericFuncCall 新增**推断段**（纯泛型参保守判据+genericTypeParams_ 域替换）+registerGenericFuncInstance 共用 helper+ir_decl **不动点实例循环**（体内注册新实例续生成）。
-3. **两处 UB 根治（定位副产物）**：①checkFunctionBody 的 functions_ 迭代器在体内检查（推断注册）触发 rehash 后悬垂→**FunctionInfo 值拷贝**；②emitGenericFuncInstance 引用形参 gfi 在 genericFuncInstances_ vector 扩容后悬垂（0xC0000005 实锤）→**循环内值拷贝传入**。
-4. **E2E 421**（推断嵌套+泛型形参+主通路推断+健康对照）转正（O0=O3）。
-5. **诚实边界**：**T19①（返回向量<T> 的泛型函数）链接已过但 asm 层运行崩**（IR 全链正确·构造+ptr 返回的 win 发射待挖）·**T19③（实例赋 fnptr）未竟**——均登记续轮（探针 target/p317a/work/{t19a,t19c}.cn）；T20② win 免疫实证（O0=O3=22·x64l 单侧复验=深度机停机欠账）。
+1. **T19①（泛型函数返回向量<T> 运行崩）**：根因=handleClassCallExpr 泛型形态分支拼实例名时 inner 的**类型参数 T 未按当前实例映射替换**（裸拼 `向量$T` 查不到类→回退普通 Call→**NewObject 丢失**→构造错误码 i32 被当对象指针→解引用段错误）。修复=args 分割时逐段 `substGenericType`（317-a 同款 IR 层映射）——t19a 从 SIGSEGV 转「0 1」正确。
+2. **T19③（泛型实例赋 fnptr）三件套**：①族③（checkGenericInstantiation）分叉——innerFunc 的 `名<实参>` 作值不再返回实例名当类型（类语义误用）而是按注册签名**构造 函数指针<返回>(参) 类型**；②node->name **重写为实例名**（IR FuncAddr 按 name 取符号——原文 `加一<整32>` 的 mangle 与实例函数不匹配=LNK2019）；③**registerGenericFuncInstance 登记**（值使用点不经 rewriteGenericFuncCall 调用路径——不登记则函数体无人生成=链接爆）。另 checkFunctionNameValue 补纯名键直查（funcFirstSigKey 按 base 遍历查不到无 # 的实例键）。
+3. **顺带**：linux_x64_instructions.cpp 残留 [T12copy] 调试打印清理（275-a 遗留）。
+4. **E2E 421 扩七形态**（+返回容器+fnptr 回调·O0=O3 实跑等价）重固化。
 
 ### 二、下一轮（按序）
 
-1. T19①③ 续轮（asm 层返回链+fnptr 通道）或清零波次5=C18+B12；锁被持=win 列采样。
+1. 清零波次5=C18+B12（整数语义统一）；锁被持=win 列采样。
 2. T43/T46 待用户裁决。
 
 ### 三、坑与边界
 
-- **探针脚本事故两起**：清插桩脚本按「无结束注释的块」吞真实代码（ir_call/semantic_call/semantic_decl 大段被吞）→checkout+重放真实改动恢复——**插桩必须带结束注释标记**且清理后必须即编译验证。
-- 字面量实参经 ConstInt 指令落寄存器（isConstant=false）——推断谓词须对齐真实 IR 形态（插桩一次定位）。
-- 上下文消耗警示：本轮大量插桩定位（悬垂类 UB 的打点链很长）——**下一步优先学习 VS 栈捕获**替代纯打点。
-- **A7 教训重演（pristine）**：推断声明把 T 写回共享 AST→第二实例映射失效（29/99 错值回归）——recheck 须 pristine 备份体内 VarDecl.typeName；**「写回型注记」清单比想象长**（resolvedSignature/推断类型/typeName 改写）——重放类机制上线必须逐项枚举写回面。
-- 顺手发现：linux_x64_instructions.cpp:998 残留 [T12copy] 调试打印（1f0b623/275-a 历史遗留·非本轮引入·未动——登记下轮清理）。
+- 探针语法笔误教训：t19c 首版用「函数指针<整32>」（无参模板形态——非规范 fnptr 声明）误判为通道缺失——**fnptr 声明唯一形态= C 风格 `整32(*)(整32)`**（带参模板形态 parser 拒绝=正确行为）——探针先查规范语法再写。
+- 值使用点 vs 调用点的实例化登记路径差异（rewriteGenericFuncCall 仅调用）——**新增「泛型名作值」类特性时登记三问**：类型构造？符号名物化？GFI 登记？
 
 
 ## 深度机 linux-x86_64 节

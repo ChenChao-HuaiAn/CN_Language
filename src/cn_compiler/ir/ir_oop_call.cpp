@@ -391,7 +391,14 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
             while (pos <= inner.size()) {
                 if (pos == inner.size() ||
                     (inner[pos] == ',' && angleDepth == 0)) {
-                    args.push_back(inner.substr(segStart, pos - segStart));
+                    std::string seg = inner.substr(segStart, pos - segStart);
+                    // 318-a（T19①）：泛型函数体内构造 向量<T>()——callee AST 保留
+                    //   <T> 原文（语义 recheck 的重写只改 className 引用不改
+                    //   node->callee），类型参数按当前实例映射替换（原裸拼
+                    //   向量$T 查不到类 -> 回退普通 Call = NewObject 丢失 ->
+                    //   构造错误码 i32 被当对象指针 -> 解引用段错误）。
+                    seg = substGenericType(seg);
+                    args.push_back(seg);
                     segStart = pos + 1;
                     if (pos == inner.size()) break;
                 } else if (inner[pos] == '<') {

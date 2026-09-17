@@ -995,10 +995,6 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
     if (inst.operands[0].id >= 0) {
         emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", inst.type, __LINE__);
     } else {
-        std::fprintf(stderr, "[T12copy] Copy i1 var=%s varSlotOf=%d\n",
-
-                     inst.operands[0].extra.c_str(),
-                     varSlotOf(inst.operands[0].extra));
         emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", inst.type, __LINE__);
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10",
