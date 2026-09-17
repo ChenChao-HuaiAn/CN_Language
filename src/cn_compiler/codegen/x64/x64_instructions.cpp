@@ -295,6 +295,19 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
 void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst) {
     const std::string dst = resultText(inst.result);
     const std::string src = operandText(inst.operands[0]);
+    const std::string& copySrcType = inst.type.empty() ? inst.operands[0].type
+                                                       : inst.operands[0].type;
+    if (isFloatType(copySrcType)) {
+        // 浮点 Copy（T25 win 侧根治·297-b）：xmm 中转完整宽度搬运——
+        //   原实现 f64 落入 mem-to-mem 中转分支用 eax（32 位·is64 不含浮点）
+        //   =高 32 位丢（家机 298-a asm 铁证：mov eax,[rbp-80]; mov [rbp-104],eax
+        //   →打印读半槽 0.000000）。movsd（f64）/movss（f32）按类型全宽搬运，
+        //   src/dst 为 mem 或 xmm 寄存器文本均合法。
+        const std::string fpOp = (copySrcType == "f32") ? "movss" : "movsd";
+        writer.line(fpOp + " xmm0, " + src);
+        writer.line(fpOp + " " + dst + ", xmm0");
+        return;
+    }
     const bool srcMem = !src.empty() && src[0] == '[';
     const bool dstMem = !dst.empty() && dst[0] == '[';
     const bool srcImm = !srcMem && !src.empty() && src[0] != '[' &&
