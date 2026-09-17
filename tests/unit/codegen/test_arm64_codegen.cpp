@@ -674,3 +674,45 @@ TEST(Arm64CodegenTest, SretFloatParamPositionAndAnchor) {
     EXPECT_NE(asmText.find("ldr x10, [x29,#32]"), std::string::npos);
     EXPECT_NE(asmText.find("ldr x10, [x29,#40]"), std::string::npos);
 }
+
+// ==================== T22·逻辑立即数 bitmask 编码器（288-a） ====================
+// 期望值全部经 GNU as 逐条实测校准（aarch64 汇编器=判据，2026-09-17）：
+//   全 0/全 1 非法；单 bit/连续块/交替/跨字循环掩码合法；散块（#5/#425/#101）非法
+TEST(Arm64CodegenTest, LogicalBitmaskImmediate32) {
+    struct Case { std::uint64_t v; bool ok; };
+    const Case cases[] = {
+        {0, false},          {1, true},           {2, true},           {5, false},
+        {31, true},          {32, true},          {255, true},         {256, true},
+        {257, false},        {1061, false},       {1316, false},       {1672, false},
+        {65535, true},       {65536, true},       {65792, false},      {0xFFFFFFFFULL, false},
+        {0x7FFFFFFFULL, true}, {0x80000000ULL, true}, {0xAAAAAAAAULL, true},
+        {0x55555555ULL, true}, {0xF0F0F0F0ULL, true}, {0x08000001ULL, false},
+        {0xC0000003ULL, true}, {0xE000001FULL, true},
+        // 编码器派生形态自检：负值无符号视图（-16=0xFFFFFFF0 连续块·合法）
+        {0xFFFFFFF0ULL, true}, {0xFFFFFF00ULL, true},
+    };
+    for (const auto& c : cases) {
+        EXPECT_EQ(Arm64CodeGenerator::isLogicalBitmaskImmediate(c.v, false), c.ok)
+            << "value=" << c.v;
+    }
+}
+
+TEST(Arm64CodegenTest, LogicalBitmaskImmediate64) {
+    struct Case { std::uint64_t v; bool ok; };
+    const Case cases[] = {
+        {0ULL, false},
+        {~0ULL, false},                                   // 全 1（64 位亦非法）
+        {0xFFFFFFFFULL, true},                            // 低 32 连续块
+        {0xFFFFFFFF00000000ULL, true},                    // 高 32 连续块（跨字铺满）
+        {0xAAAAAAAAAAAAAAAAULL, true},                    // 交替
+        {0x7FFFFFFFULL, true},                            // 单块 31·铺满
+        {0x8000000000000000ULL, true},                    // 最高单 bit
+        {0xC000000000000003ULL, true},                    // 跨字循环 4 块
+        {0x0800000000000001ULL, false},                   // 散块
+        {0x1010101010101010ULL, true},                    // 元素 00010000 铺满
+    };
+    for (const auto& c : cases) {
+        EXPECT_EQ(Arm64CodeGenerator::isLogicalBitmaskImmediate(c.v, true), c.ok)
+            << "value=" << c.v;
+    }
+}

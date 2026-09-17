@@ -58,6 +58,12 @@ public:
     explicit Arm64CodeGenerator(Diagnostics& diagnostics, SemanticAnalyzer* semantic)
         : diagnostics_(diagnostics), semantic_(semantic) {}
 
+    // ARM64 逻辑指令（and/orr/eor）立即数 bitmask 可编码判定（T22·288-a）：
+    // 合法形态=「连续 cnt（1<=cnt<=esize-1）个 1 循环右移 r（r<esize）铺满寄存器」，
+    // esize∈{2,4,8,16,32(,64)}——全 0/全 1 非法，单 bit/交替/跨字循环掩码合法
+    // （GNU as 实测校准，2026-09-17）。判据文档=plans/025 §三.11。
+    static bool isLogicalBitmaskImmediate(std::uint64_t value, bool is64);
+
     // 阶段C（Task 4.3/4.4）：寄存器分配与调试信息开关（默认关闭——保持全栈帧行为）
     //   arm64 集成点：reg_alloc 模块完整可用（活跃区间/线性扫描/溢出/被调用者保存），
     //   本后端提供 setRegAllocMap 接口供外部注入分配结果；默认关闭时全栈槽映射不变。
@@ -255,6 +261,8 @@ private:
 
     // 生成加载 64 位立即数到寄存器（movz/movk 分段，最多 4 条指令）
     static void emitMovImm(Arm64AsmWriter& writer, const std::string& reg, std::uint64_t value);
+
+    // 逻辑立即数 bitmask 判定 isLogicalBitmaskImmediate 声明于本类 public 区（单测直调·T22）
 
     // 栈槽偏移 -> 内存操作数文本（[x29,#off]；|off|>255 时生成 x13 地址计算指令）
     std::string stackMemText(int offset, Arm64AsmWriter& writer);

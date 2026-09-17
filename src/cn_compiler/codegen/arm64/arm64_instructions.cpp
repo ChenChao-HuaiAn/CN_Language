@@ -7,11 +7,49 @@
 // 寄存器策略：%vN 映射到 [x29,#-8*N-8] 栈槽；32位用 wN、64位用 xN；
 //            浮点用 sN/dN（AArch64 高级 SIMD 标量寄存器）
 // 规范：英文API命名，中文仅注释；函数<=100行
+#include <set>
 #include <string>
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
 
 namespace cn_compiler {
+
+// ==================== 逻辑立即数 bitmask 编码器（T22 根治·288-a） ====================
+
+// 构造位宽为「宽」的全部合法逻辑立即数集合（元素铺满模型）：
+//   合法值 = 连续 cnt 个 1（1<=cnt<=esize-1）在 esize 位内循环右移 r 后铺满寄存器，
+//   esize ∈ {2,4,8,16,32(,64)}。总量 32 位 1302 项 / 64 位 ~4k 项（函数局部静态）。
+static std::set<std::uint64_t> buildLogicalImmediateSet(unsigned width) {
+    std::set<std::uint64_t> set;
+    const std::uint64_t allOnes = (width == 64) ? ~0ULL : (1ULL << width) - 1;
+    for (unsigned esize = 2; esize <= width; esize *= 2) {
+        // 移位宽度==位宽属 UB——esize=64 全 1 用 ~0 特判
+        const std::uint64_t elemMask = (esize == 64) ? ~0ULL : (1ULL << esize) - 1;
+        for (unsigned cnt = 1; cnt < esize; ++cnt) {
+            const std::uint64_t elem = (1ULL << cnt) - 1;
+            for (unsigned r = 0; r < esize; ++r) {
+                const std::uint64_t rotated =
+                    (r == 0) ? elem
+                             : (((elem >> r) | (elem << (esize - r))) & elemMask);
+                std::uint64_t value = 0;
+                for (unsigned off = 0; off < width; off += esize) value |= rotated << off;
+                set.insert(value & allOnes);
+            }
+        }
+    }
+    return set;
+}
+
+// 判定（GNU as 实测校准 2026-09-17：全 0/全 1 非法；单 bit/交替/跨字循环掩码合法；
+// #0/#5/#425/#FFFFFFF 等「散块」非法——此前沿用 add/sub 的 12 位判定直发即 T22 病灶）
+bool Arm64CodeGenerator::isLogicalBitmaskImmediate(std::uint64_t value, bool is64) {
+    const std::uint64_t allOnes = is64 ? ~0ULL : 0xFFFFFFFFULL;
+    value &= allOnes;
+    if (value == 0 || value == allOnes) return false;
+    static const std::set<std::uint64_t> set32 = buildLogicalImmediateSet(32);
+    static const std::set<std::uint64_t> set64 = buildLogicalImmediateSet(64);
+    return (is64 ? set64 : set32).count(value) != 0;
+}
 
 // ==================== 类型辅助 ====================
 
@@ -217,21 +255,45 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
     loadOperandToX(writer, inst.operands[0], xr);
     // op2 -> x11/x9（常量直接立即数）
     if (inst.operands[1].isConstant) {
-        // 常量：直接作为立即数（AArch64 add/sub 支持 12 位立即数）
+        // 常量：按助记符分派立即数形态（T22 根治·288-a）——
+        //   add/sub 支持 12 位立即数（0~4095）；mul 无立即数形式；
+        //   and/orr/eor 要求 bitmask 编码（不能用 12 位判定直发——
+        //   #425/#0 等会被 as 以「立即数越界」拒绝）
         std::string text = inst.operands[1].extra;
         if (inst.operands[1].type == "i1") {
             text = (text == "真") ? "1" : "0";
         }
-        // 常量立即数：add/sub/and/orr/eor 支持 12 位立即数；
-        // mul 无立即数形式，一律先 mov 到寄存器再运算（AArch64 mul Rd,Rn,Rm 三寄存器）
+        const std::string dst = is64 ? "x10" : "w9";
         try {
             const long long v = std::stoll(text);
-            const std::string dst = is64 ? "x10" : "w9";
-            if (mnemonic != "mul" && v >= 0 && v <= 4095) {
+            const bool logical =
+                (mnemonic == "and" || mnemonic == "orr" || mnemonic == "eor");
+            if (mnemonic == "mul") {
+                // mul：mov 到 x11 再运算（AArch64 mul Rd,Rn,Rm 三寄存器）
+                emitMovImm(writer, "x11", static_cast<std::uint64_t>(v));
+                writer.line(mnemonic + " " + dst + ", " + dst + ", " +
+                            (is64 ? "x11" : "w11"));
+            } else if (logical) {
+                std::uint64_t uv = static_cast<std::uint64_t>(v);
+                if (!is64) uv &= 0xFFFFFFFFULL;
+                if (uv == 0) {
+                    // 恒等/吸收折叠（#0 非 bitmask 不可直发）：
+                    //   and 0 -> 结果恒 0；orr/eor 0 -> 结果=op1（dst 已含，零开销直通）
+                    if (mnemonic == "and") emitMovImm(writer, dst, 0);
+                } else if (isLogicalBitmaskImmediate(uv, is64)) {
+                    writer.line(mnemonic + " " + dst + ", " + dst + ", #" +
+                                std::to_string(v));
+                } else {
+                    // 不可编码：movz/movk 装载临时寄存器 + 寄存器形式（LLVM/GCC 同款）
+                    emitMovImm(writer, "x11", uv);
+                    writer.line(mnemonic + " " + dst + ", " + dst + ", " +
+                                (is64 ? "x11" : "w11"));
+                }
+            } else if (v >= 0 && v <= 4095) {
                 // 12 位立即数范围（add/sub 支持 0~4095）
                 writer.line(mnemonic + " " + dst + ", " + dst + ", #" + std::to_string(v));
             } else {
-                // 超出 12 位 或 mul：mov 到 x11 再运算
+                // 超出 12 位：mov 到 x11 再运算
                 emitMovImm(writer, "x11", static_cast<std::uint64_t>(v));
                 writer.line(mnemonic + " " + dst + ", " + dst + ", " +
                             (is64 ? "x11" : "w11"));
