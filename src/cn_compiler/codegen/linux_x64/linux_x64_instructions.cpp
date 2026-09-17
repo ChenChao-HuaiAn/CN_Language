@@ -351,6 +351,15 @@ void LinuxX64CodeGenerator::emitShift(LinuxX64AsmWriter& writer,
                           : (srcType == "i32" || srcType == "u32") ? 31
                           : (srcType == "i16" || srcType == "u16") ? 15 : 7;
     loadOperandToX(writer, inst.operands[0], "r10");
+    // 287-a（M3 采样 s2026091705·asm 三件套定案）：i32 源补 movsxd 符号扩展——
+    //   同 270-a T14（emitCast 整→浮）零扩展家族：i32 槽装载（mov r10d）天然
+    //   零扩展丢符号位，负值经 64 位 sar 符号位=0（-426 装成 4294956821，
+    //   >>13 出 524286 应为 -1；O0 变量路径一致错·O3 常量折叠 mov reg,imm64
+    //   巧合正确）。i8/i16 装载已 movsx 免疫；u*/i1/常量/shl/shr 免疫；
+    //   win（sar eax）arm64（asr w9）宽度化寄存器免疫；v2 树 D34 出口规范化免疫。
+    if (sh == "sar" && srcType == "i32" && !inst.operands[0].isConstant) {
+        writer.line("movsxd r10, r10d");
+    }
     if (inst.operands[1].isConstant) {
         const int shiftAmt = shiftAmtOf(inst.operands[1].extra) & shiftMask;
         writer.line(sh + " r10, " + std::to_string(shiftAmt));
