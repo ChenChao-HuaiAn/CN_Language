@@ -2,28 +2,29 @@
 // 实现要点：
 //   1. rebuild：建立 label->索引映射 + 前驱/后继表；
 //      入口块 = blocks[0]（IRGenerator 契约）；终止信息解析跳转目标
-//   2. 支配者迭代求解：初始化 入口={入口}，其余={全部}；
-//      反复 支配(b) = {b} ∪ ⋂ 支配(p) for p in 前驱(b)，直到不动点
-//   3. 立即支配者：对每个非入口块 b，在其支配者集合（除自身）中
-//      取"不被 b 的其他支配者支配"的唯一最小元素
-//   4. 自然循环：back edge (t->h) 满足 h 支配 t；循环体 = 从 t 沿
+//   2. 立即支配者（315-a 重写）：CHK（Cooper-Harvey-Kennedy,
+//      "A Simple, Fast Dominance Algorithm"）迭代——逆后序遍历 + 沿
+//      idom 链上溯求交，近线性；替代原"支配者集合 vector + std::find
+//      线性交集"（每轮 O(n³)+idom 推导 O(n³)——500 层如果嵌套 check 102s
+//      的根因，LICM 每函数 rebuild 触发）。idom 解与支配集迭代数学同解。
+//   3. 自然循环：back edge (t->h) 满足 h 支配 t；循环体 = 从 t 沿
 //      反向边（前驱）BFS 收集所有能到达 h 且 h 能到达的块
 #include <algorithm>
 #include <queue>
 #include <unordered_set>
+#include <utility>
 
 #include "cn_compiler/opt/cfg.hpp"
 
 namespace cn_compiler {
 namespace opt {
 
-// 从函数重建支配树（label->索引 + 前驱/后继 + 支配者集合迭代求解）
+// 从函数重建支配树（label->索引 + 前驱/后继 + CHK 迭代立即支配者）
 void DomTree::rebuild(const ir::IRFunction& fn) {
     labels_.clear();
     index_.clear();
     pred_.clear();
     succ_.clear();
-    dom_.clear();
     idom_.clear();
 
     // 1. 建立 label -> 索引映射
@@ -55,81 +56,75 @@ void DomTree::rebuild(const ir::IRFunction& fn) {
         // "返回" 无后继
     }
 
-    // 3. 迭代求解支配者集合（数据流不动点）
-    dom_.assign(static_cast<std::size_t>(n), {});
-    for (int b = 0; b < n; ++b) {
-        for (int c = 0; c < n; ++c) dom_[static_cast<std::size_t>(b)].push_back(c);
-    }
-    // 入口块（blocks[0]）：仅支配自身
-    dom_[0] = {0};
-    bool changed = true;
-    int rounds = 0;
-    while (changed && rounds < 64) {  // 上限保护
-        changed = false;
-        ++rounds;
-        for (int b = 1; b < n; ++b) {
-            // 新支配集 = {b} ∪ ⋂ 前驱支配集（无前驱的不可达块 -> 仅自身）
-            std::vector<int> inter;
-            bool first = true;
-            for (const int p : pred_[static_cast<std::size_t>(b)]) {
-                if (first) {
-                    inter = dom_[static_cast<std::size_t>(p)];
-                    first = false;
-                } else {
-                    // 交集
-                    std::vector<int> merged;
-                    for (const int d : inter) {
-                        if (std::find(dom_[static_cast<std::size_t>(p)].begin(),
-                                      dom_[static_cast<std::size_t>(p)].end(),
-                                      d) != dom_[static_cast<std::size_t>(p)].end()) {
-                            merged.push_back(d);
-                        }
-                    }
-                    inter.swap(merged);
+    // 3a. 从入口沿后继图 DFS 求后序（显式栈——与 T6 同族的递归栈溢出风险
+    //     在此一并杜绝：万块级函数的递归 DFS 会爆编译器自身栈）
+    std::vector<int> postorder;
+    postorder.reserve(static_cast<std::size_t>(n));
+    std::vector<char> visited(static_cast<std::size_t>(n), 0);
+    if (n > 0) {
+        visited[0] = 1;
+        std::vector<std::pair<int, std::size_t>> dfs;
+        dfs.push_back({0, 0});
+        while (!dfs.empty()) {
+            auto& [b, i] = dfs.back();
+            const auto& succs = succ_[static_cast<std::size_t>(b)];
+            if (i < succs.size()) {
+                const int s = succs[i];
+                ++i;
+                if (!visited[static_cast<std::size_t>(s)]) {
+                    visited[static_cast<std::size_t>(s)] = 1;
+                    dfs.push_back({s, 0});
                 }
+            } else {
+                postorder.push_back(b);
+                dfs.pop_back();
             }
-            inter.push_back(b);  // {b} ∪ 交集
-            // 排序去重后比较
-            std::sort(inter.begin(), inter.end());
-            inter.erase(std::unique(inter.begin(), inter.end()), inter.end());
-            auto& cur = dom_[static_cast<std::size_t>(b)];
-            std::sort(cur.begin(), cur.end());
-            if (cur != inter) {
-                cur.swap(inter);
+        }
+    }
+    // 逆后序（RPO）：支配者迭代收敛最快的遍历序
+    std::vector<int> rpo(postorder.rbegin(), postorder.rend());
+    std::vector<int> order(static_cast<std::size_t>(n), -1);  // 块号 -> RPO 序（不可达 = -1）
+    for (std::size_t i = 0; i < rpo.size(); ++i) {
+        order[static_cast<std::size_t>(rpo[i])] = static_cast<int>(i);
+    }
+
+    // 3b. CHK 迭代：idom(entry)=entry（迭代期约定；对外恢复 -1）；
+    //     每块 idom = 全部"已处理"前驱的最近公共支配者
+    idom_.assign(static_cast<std::size_t>(n), -1);
+    if (n > 0) idom_[0] = 0;
+    auto intersect = [&](int a, int b) {
+        // 沿 idom 链上溯到最近公共支配者（两参均为已处理可达块）
+        while (a != b) {
+            while (order[static_cast<std::size_t>(a)] > order[static_cast<std::size_t>(b)]) {
+                a = idom_[static_cast<std::size_t>(a)];
+            }
+            while (order[static_cast<std::size_t>(b)] > order[static_cast<std::size_t>(a)]) {
+                b = idom_[static_cast<std::size_t>(b)];
+            }
+        }
+        return a;
+    };
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (const int b : rpo) {
+            if (b == 0) continue;  // 入口固定
+            int newIdom = -1;
+            for (const int p : pred_[static_cast<std::size_t>(b)]) {
+                // 跳过未处理前驱（首轮序靠后）与不可达前驱
+                // （不可达前驱不参与支配计算——原实现在此被污染为错误支配集）
+                if (idom_[static_cast<std::size_t>(p)] < 0) continue;
+                newIdom = (newIdom < 0) ? p : intersect(p, newIdom);
+            }
+            if (newIdom >= 0 && idom_[static_cast<std::size_t>(b)] != newIdom) {
+                idom_[static_cast<std::size_t>(b)] = newIdom;
                 changed = true;
             }
         }
     }
-
-    // 4. 立即支配者：b 的 idom = 其支配者集合（除自身）中
-    //    不被 b 的其他支配者支配的元素（唯一最小）
-    idom_.assign(static_cast<std::size_t>(n), -1);
-    for (int b = 1; b < n; ++b) {
-        const auto& dset = dom_[static_cast<std::size_t>(b)];
-        // 候选 = 支配 b 且 != b 的块
-        std::vector<int> cands;
-        for (const int d : dset) {
-            if (d != b) cands.push_back(d);
-        }
-        // 立即支配者 = 不被任何其他候选支配的候选（唯一）
-        for (const int c : cands) {
-            bool isIdom = true;
-            for (const int other : cands) {
-                if (other == c) continue;
-                if (std::find(dom_[static_cast<std::size_t>(other)].begin(),
-                              dom_[static_cast<std::size_t>(other)].end(),
-                              c) != dom_[static_cast<std::size_t>(other)].end()) {
-                    // other 支配 c：c 不是最小
-                    isIdom = false;
-                    break;
-                }
-            }
-            if (isIdom) {
-                idom_[static_cast<std::size_t>(b)] = c;
-                break;
-            }
-        }
-    }
+    // 入口对外约定 idom = -1（与原实现一致）；不可达块保持 -1
+    // （dominates 对不可达块仅自身成立——与原"不可达块仅支配自身"等价）
+    if (n > 0) idom_[0] = -1;
 }
 
 // 块索引映射（label -> 索引；未找到返回 -1）

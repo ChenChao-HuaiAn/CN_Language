@@ -1,7 +1,9 @@
 // CN语言优化器：CFG 分析工具（支配树 + 自然循环检测，阶段B Task 4.1/4.2）
 // 设计要点：
 //   1. 支配树：基于 块索引（label -> index 映射）构建前驱/后继表，
-//      迭代数据流求解支配者集合（Cooper 简化版），再推导立即支配者
+//      CHK（Cooper-Harvey-Kennedy）迭代算法直接求立即支配者（315-a：
+//      原"支配者集合 vector + std::find 线性交集"为 O(n³)——深分支 400 块
+//      即秒级（500 层如果嵌套 check 102s 根因）；CHK 近线性，解数学等价）
 //   2. 自然循环检测：找 back edge（跳转目标被自身支配的边），
 //      循环体 = header 起沿反向边 BFS 可达且能回到 header 的块
 //   3. 供 SSA（汇合点 Phi）与 LICM（循环识别/外提）共用
@@ -21,35 +23,34 @@ namespace opt {
 // 支配树分析结果（基于函数内基本块的索引编号）
 class DomTree {
 public:
-    // 从函数重建：label->索引映射 + 前驱/后继表 + 支配者迭代求解
+    // 从函数重建：label->索引映射 + 前驱/后继表 + CHK 迭代求立即支配者
     void rebuild(const ir::IRFunction& fn);
 
     // 块索引映射（label -> 索引；未找到返回 -1）
     int indexOf(const std::string& label) const;
 
-    // a 是否支配 b（含自身）
+    // a 是否支配 b（含自身）：沿 b 的 idom 链上溯（O(树高)）
     bool dominates(int a, int b) const {
-        if (a < 0 || a >= blockCount() || b < 0 || b >= blockCount()) return false;
-        return dom_[b].end() !=
-               std::find(dom_[b].begin(), dom_[b].end(), a);
+        if (a < 0 || b < 0 || a >= blockCount() || b >= blockCount()) return false;
+        for (int c = b; c >= 0; c = idom_[static_cast<std::size_t>(c)]) {
+            if (c == a) return true;
+        }
+        return false;
     }
     // a 是否严格支配 b（a != b 且 a 支配 b）
     bool strictlyDominates(int a, int b) const {
         return a != b && dominates(a, b);
     }
 
-    // 块 b 的立即支配者索引（入口块为 -1）
-    int idom(int b) const { return idom_[b]; }
+    // 块 b 的立即支配者索引（入口块为 -1；不可达块 -1）
+    int idom(int b) const { return idom_[static_cast<std::size_t>(b)]; }
 
     // 块数量
     int blockCount() const { return static_cast<int>(labels_.size()); }
 
-    // 块 b 的支配者集合（含自身）
-    const std::vector<int>& domSet(int b) const { return dom_[b]; }
-
     // 块 b 的前驱/后继索引列表
-    const std::vector<int>& predecessors(int b) const { return pred_[b]; }
-    const std::vector<int>& successors(int b) const { return succ_[b]; }
+    const std::vector<int>& predecessors(int b) const { return pred_[static_cast<std::size_t>(b)]; }
+    const std::vector<int>& successors(int b) const { return succ_[static_cast<std::size_t>(b)]; }
 
     // 自然循环描述：header（头块索引）+ 循环体块索引集合（含 header）
     struct Loop {
@@ -68,8 +69,7 @@ private:
     std::unordered_map<std::string, int> index_; // label -> 索引
     std::vector<std::vector<int>> pred_;         // 前驱索引列表
     std::vector<std::vector<int>> succ_;         // 后继索引列表
-    std::vector<std::vector<int>> dom_;          // 支配者集合（含自身）
-    std::vector<int> idom_;                      // 立即支配者（入口 -1）
+    std::vector<int> idom_;                      // 立即支配者（入口/不可达 -1）
 };
 
 } // namespace opt

@@ -220,12 +220,16 @@ std::vector<std::unordered_set<int>> LinearScanAllocator::computeLivenessIn(
     }
 
     // 迭代求解：in[B] = use[B] ∪ (out[B] - def[B])；out[B] = ∪ succ in[S]
+    // 315-a：后向数据流按**逆序**遍历（b 从尾块到入口）——链式 CFG 一轮收敛；
+    //   原正序对"活跃性向前面块回传"每轮只推进一块 = O(n) 轮迭代（深分支
+    //   千块级函数的立方耗时来源之一）。
     const std::size_t n = function.blocks.size();
     std::vector<std::unordered_set<int>> in(n), out(n);
     bool changed = true;
     while (changed) {
         changed = false;
-        for (std::size_t b = 0; b < n; ++b) {
+        for (std::size_t bi = n; bi-- > 0;) {
+            const std::size_t b = bi;
             // out[B] = ∪ succ in[S]
             std::unordered_set<int> newOut;
             for (int s : succ[b]) {

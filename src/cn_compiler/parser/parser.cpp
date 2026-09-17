@@ -569,9 +569,24 @@ std::unique_ptr<Expr> Parser::parseStructInit(const std::string& typeName) {
 }
 
 // 解析代码块：{ 语句列表 }
+// 315-a（T6）：深度防护挂点——如果/当/循环体等块嵌套递归经此计数；
+//   超限时快速扫到匹配 '}'（不递归展开，栈深度止于首次越界处），返回空块
+//   （诊断已在守卫报出，编译将失败）。
 std::unique_ptr<BlockStmt> Parser::parseBlockStmt() {
+    AstDepthGuard guard(*this);
     auto block = std::make_unique<BlockStmt>();
     block->location = current().getLocation();
+    if (astDepth_ > kMaxAstDepth) {
+        // 超限：原样消费本层 token 到匹配闭括号（计数器平衡），不再解析语句
+        consume(TokenType::LeftBrace, "'{'");
+        int braces = 1;
+        while (braces > 0 && !check(TokenType::EndOfFile)) {
+            if (check(TokenType::LeftBrace)) ++braces;
+            else if (check(TokenType::RightBrace)) --braces;
+            advance();
+        }
+        return block;
+    }
     consume(TokenType::LeftBrace, "'{'");
     while (!check(TokenType::RightBrace) && !check(TokenType::EndOfFile)) {
         const std::size_t before = pos_;

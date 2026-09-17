@@ -9,8 +9,51 @@
 
 namespace cn_compiler {
 
+// ---- 315-a（T6）：AST 深度守卫实现 ----
+// 计数语义 = AST 嵌套深度：
+//   - parseExpr / parseBlockStmt 入口：括号嵌套/块嵌套每层 +1
+//   - parseAssignmentRec / parseTernaryRec / parseUnaryRec 递归调用点：
+//     右结合链（a=b=c）/ 前缀链（!!!!x）每层 +1（直递归不经 parseExpr）
+//   - Pratt 优先级链同级下降（parseExpr→…→parseUnary）不计数
+// 超限报一次诊断并以 0 占位返回，止住新递归层（栈峰值止于首次越界处）。
+Parser::AstDepthGuard::AstDepthGuard(Parser& p) : parser(p) {
+    ++parser.astDepth_;
+    if (parser.astDepth_ == Parser::kMaxAstDepth + 1) {
+        parser.reportErrorHere("表达式/语句嵌套过深（超过 " +
+                               std::to_string(Parser::kMaxAstDepth) +
+                               " 层上限，请重构降低嵌套深度）");
+    }
+}
+Parser::AstDepthGuard::~AstDepthGuard() { --parser.astDepth_; }
+
+// 深度超限时的占位表达式（诊断已报，编译将失败；位置=当前 token）
+std::unique_ptr<Expr> Parser::depthPlaceholder() {
+    auto placeholder = std::make_unique<IntegerLiteral>(0, "0");
+    placeholder->location = current().getLocation();
+    return placeholder;
+}
+
+// 右结合/前缀链的受控递归入口（在递归调用点计数——见上）
+std::unique_ptr<Expr> Parser::parseAssignmentRec() {
+    AstDepthGuard guard(*this);
+    if (astDepth_ > kMaxAstDepth) return depthPlaceholder();
+    return parseAssignment();
+}
+std::unique_ptr<Expr> Parser::parseTernaryRec() {
+    AstDepthGuard guard(*this);
+    if (astDepth_ > kMaxAstDepth) return depthPlaceholder();
+    return parseTernary();
+}
+std::unique_ptr<Expr> Parser::parseUnaryRec() {
+    AstDepthGuard guard(*this);
+    if (astDepth_ > kMaxAstDepth) return depthPlaceholder();
+    return parseUnary();
+}
+
 // 表达式入口（最低优先级）：赋值
 std::unique_ptr<Expr> Parser::parseExpr() {
+    AstDepthGuard guard(*this);
+    if (astDepth_ > kMaxAstDepth) return depthPlaceholder();
     return parseAssignment();
 }
 
@@ -21,7 +64,7 @@ std::unique_ptr<Expr> Parser::parseAssignment() {
         const SourceLocation loc = current().getLocation();  // 赋值运算符位置
         Operator op = toAssignOp(currentType());
         advance();
-        auto value = parseAssignment();  // 右结合：a = b = c
+        auto value = parseAssignmentRec();  // 右结合：a = b = c（受控递归·T6）
         auto expr = std::make_unique<AssignmentExpr>(std::move(left), op, std::move(value));
         expr->location = loc;
         return expr;
@@ -89,7 +132,7 @@ std::unique_ptr<Expr> Parser::parseTernary() {
         advance();  // 消费 '?'
         auto trueValue = parseExpr();      // 真值：完整表达式（可含嵌套三元）
         consume(TokenType::Colon, "':'");
-        auto falseValue = parseTernary();  // 假值：递归调用实现右结合
+        auto falseValue = parseTernaryRec();  // 假值：递归实现右结合（受控递归·T6）
         auto expr = std::make_unique<TernaryExpr>(std::move(condition), std::move(trueValue),
                                                   std::move(falseValue));
         expr->location = loc;
@@ -263,7 +306,7 @@ std::unique_ptr<Expr> Parser::parseUnary() {
         else if (check(TokenType::PlusPlus)) op = Operator::Increment;
         else op = Operator::Decrement;
         advance();
-        auto operand = parseUnary();  // 一元嵌套：- -x
+        auto operand = parseUnaryRec();  // 一元嵌套：- -x（受控递归·T6）
         auto expr = std::make_unique<UnaryExpr>(op, std::move(operand), false);
         expr->location = loc;
         return expr;

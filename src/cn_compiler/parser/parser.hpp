@@ -51,6 +51,31 @@ public:
 private:
     // ==================== 基础辅助 ====================
 
+    // 315-a（T6）：AST 递归深度防护守卫——构造 +1/析构 -1，超上限报错。
+    //   挂点=parseExpr（表达式递归总入口：括号/实参/嵌套三元皆经此）与
+    //   parseBlockStmt（语句块嵌套）。超限报诊断并以"0 占位"表达式返回，
+    //   保证后续遍历（语义/IR visitor 递归同深度）不失控。
+    struct AstDepthGuard {
+        Parser& parser;
+        explicit AstDepthGuard(Parser& p);
+        ~AstDepthGuard();
+        AstDepthGuard(const AstDepthGuard&) = delete;
+        AstDepthGuard& operator=(const AstDepthGuard&) = delete;
+    };
+    friend struct AstDepthGuard;
+    // 上限 128：实测表达式栈崩点 156（win 1MB 主线程栈·每层括号≈13 帧
+    // Pratt 链）、千层块嵌套语义 visitor 崩、一元链 3000 层解析崩——128
+    // 对各递归消费方均留安全边际；Clang -fbracket-depth（括号+花括号
+    // 统一上限）同思路，按本编译器实测栈容量收紧取值。
+    static constexpr int kMaxAstDepth = 128;
+    int astDepth_ = 0;
+    // 深度超限占位表达式（位置=当前 token；诊断已在守卫报出）
+    std::unique_ptr<Expr> depthPlaceholder();
+    // 右结合/前缀链受控递归入口（递归调用点计数·T6 详见 parser_expr.cpp）
+    std::unique_ptr<Expr> parseAssignmentRec();
+    std::unique_ptr<Expr> parseTernaryRec();
+    std::unique_ptr<Expr> parseUnaryRec();
+
     const Token& current() const;                     // 当前Token（永不越界，末尾为EOF）
     TokenType currentType() const;                    // 当前Token类型（便捷访问）
     void advance();                                   // 前进一个Token（不越过EOF）
