@@ -577,4 +577,124 @@ std::string SemanticAnalyzer::instantiateGeneric(
     return "";
 }
 
+
+// 317-a（T19/T20 波次4·D10 面汇合）：泛型函数实例体生成前的重放检查。
+// 原泛型函数体从未被语义检查（26_generics 遗留）：体内泛型类实例化触发
+// （类型注册/构造符号）、方法调用解析、嵌套泛型调用单态化全部缺失
+// （T19①②链接爆 / T20①「间接调用 0」崩溃实锤）。生成前按本实例类型实参
+// 绑定 genericTypeParams_ 重走 checkFunctionBody（A7 recheckGenericMethodBody
+// 同构：诊断快照回滚 + 写回注记刷新为本实例值）。
+// 与类方法体版的关键差异：
+//   1. 类型实参直接来自 GenericFuncInstance.args（类版从实例名反解——H8 存
+//      typeArgs 后同源；函数版 GFI 天然已存，无嵌套 $ 反解问题）；
+//   2. checkFunctionBody 按函数链接键查 functions_——实例名已由
+//      instantiateGeneric 函数分支注册（名$实参），而 innerFunc->name 是原名：
+//      检查期临时绑定 node->name 为实例名，检查完恢复；
+//   3. 参数/返回类型从 AST 文本读取（T 字面）——字段级借用（替换+检查+恢复，
+//      不跨实例残留；体内其余类型文本经 resolveGenericTypeName 消费
+//      genericTypeParams_ 动态替换，无需改写 AST）。
+// 317-a：递归收集语句树内全部 VarDecl 的 typeName（pristine 备份用——
+// visitVarDecl 的推断声明机制会把类型参数 T 改写为推断类型**写回共享 AST**，
+// 第二实例重放时 T 原文已丢失=类型映射失效〔29 交换$浮64 被首实例写回整32
+// 实锤〕；recheckGenericFuncBody 首次进入时备份，每实例重放前恢复原文）。
+static void collectVarDeclTypes(Stmt* stmt,
+                                std::vector<std::pair<VarDecl*, std::string>>& out) {
+    if (stmt == nullptr) return;
+    switch (stmt->getType()) {
+        case NodeType::BlockStmt: {
+            for (auto& s : static_cast<BlockStmt*>(stmt)->statements) {
+                collectVarDeclTypes(s.get(), out);
+            }
+            break;
+        }
+        case NodeType::VarDecl:
+            out.emplace_back(static_cast<VarDecl*>(stmt),
+                             static_cast<VarDecl*>(stmt)->typeName);
+            break;
+        case NodeType::IfStmt: {
+            auto* n = static_cast<IfStmt*>(stmt);
+            collectVarDeclTypes(n->thenBranch.get(), out);
+            collectVarDeclTypes(n->elseBranch.get(), out);
+            break;
+        }
+        case NodeType::WhileStmt:
+            collectVarDeclTypes(static_cast<WhileStmt*>(stmt)->body.get(), out);
+            break;
+        case NodeType::ForStmt:
+            collectVarDeclTypes(static_cast<ForStmt*>(stmt)->body.get(), out);
+            break;
+        case NodeType::RangeForStmt:
+            collectVarDeclTypes(static_cast<RangeForStmt*>(stmt)->body.get(), out);
+            break;
+        default:
+            break;
+    }
+}
+
+void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
+    FunctionDecl* node = const_cast<FunctionDecl*>(gfi.gen->innerFunc.get());
+    if (node == nullptr || node->body == nullptr) return;
+    const GenericDecl* gen = gfi.gen;
+
+    // 0.（317-a）体内局部声明 typeName 的 pristine 备份/恢复——重放检查的
+    //    visitVarDecl（推断声明）会把 T 改写为推断类型写回共享 AST，下一
+    //    实例重放时 T 原文丢失（映射失效）；首次备份，每实例重放前恢复。
+    static std::unordered_map<
+        const GenericDecl*, std::vector<std::pair<VarDecl*, std::string>>>
+        pristineTypes;
+    auto& backup = pristineTypes[gfi.gen];
+    if (backup.empty() && node->body != nullptr) {
+        collectVarDeclTypes(node->body.get(), backup);
+    }
+    for (auto& kv : backup) kv.first->typeName = kv.second;
+
+    // 1. 类型参数绑定（T -> 实参；检查期生效）
+    std::unordered_map<std::string, std::string> savedTypeParams = genericTypeParams_;
+    genericTypeParams_.clear();
+    for (std::size_t i = 0;
+         i < gen->typeParams.size() && i < gfi.args.size(); ++i) {
+        genericTypeParams_[gen->typeParams[i]] = gfi.args[i];
+    }
+
+    // 2. 函数名与链接键临时绑定为实例形态——checkFunctionBody 按
+    //    functionLinkKey(module, name, sigKey) 查 functions_，而 instantiateGeneric
+    //    函数分支注册的键是纯实例名（functions_ 项无 #参数串后缀）——原 name
+    //    （名）+原 sigKey（名#T）构键必然 miss 而静默跳过体检查。故 name 与
+    //    sigKey 都临时绑定为实例名（查询键=instanceName 命中）。返回/参数类型
+    //    从 AST 文本读取（T 字面），按本实例映射替换（字段级借用，不跨实例残留）。
+    const std::string savedName = node->name;
+    const std::string savedSigKey = node->sigKey;
+    node->name = gfi.instanceName;
+    node->sigKey = gfi.instanceName;
+    const std::string savedRet = node->returnType;
+    node->returnType = savedRet.empty() ? savedRet
+        : resolveGenericTypeName(
+              substTypeParam(savedRet, gen->typeParams, gfi.args), node->location);
+    std::vector<std::string> savedParamTypes;
+    savedParamTypes.reserve(node->params.size());
+    for (auto& p : node->params) {
+        savedParamTypes.push_back(p->typeName);
+        if (!p->funcPtr.isFunctionPtr() && !p->typeName.empty()) {
+            p->typeName = resolveGenericTypeName(
+                substTypeParam(p->typeName, gen->typeParams, gfi.args),
+                node->location);
+        }
+    }
+
+    // 3. 重放检查（诊断快照回滚——重放不重复输出、计数不漂移）
+    const Diagnostics::Snapshot snap = diagnostics_.takeSnapshot();
+    checkFunctionBody(node);
+    diagnostics_.restoreTo(snap);
+
+    // 4. 恢复（共享 AST 不得跨实例残留绑定）
+    node->name = savedName;
+    node->sigKey = savedSigKey;
+    node->returnType = savedRet;
+    for (std::size_t pi = 0;
+         pi < node->params.size() && pi < savedParamTypes.size(); ++pi) {
+        node->params[pi]->typeName = savedParamTypes[pi];
+    }
+    genericTypeParams_ = savedTypeParams;
+}
+
 } // namespace cn_compiler

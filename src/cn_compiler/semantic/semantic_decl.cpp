@@ -598,11 +598,16 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     if (it == functions_.end()) return;
     if (node->body == nullptr) return;  // 函数原型声明：无需检查体
 
-    currentReturnType_ = it->second.returnType;
+    // 317-a：FunctionInfo 值拷贝——体内检查可触发泛型实例化注册（recheck 场景
+    //   的推断段 insert functions_），unordered_map 扩容使迭代器失效；后续对
+    //   it->second 的读取均为悬垂 UB（段错误）。
+    const FunctionInfo info = it->second;
+
+    currentReturnType_ = info.returnType;
     // P3-18 补完（2026-08）：当前函数是否引用返回（visitReturnStmt 校验用）
-    currentIsRefReturn_ = it->second.isRefReturn;
+    currentIsRefReturn_ = info.isRefReturn;
     // plans/019 阶段4：不安全 函数 上下文（安全区边界观察期检查用）
-    currentFnUnsafe_ = it->second.isUnsafe;
+    currentFnUnsafe_ = info.isUnsafe;
     // 收集当前函数引用参数名：引用返回允许"返回引用参数"（指向调用方存储，
     // 悬垂只发生在返回本函数局部/按值参数时）
     currentRefParams_.clear();

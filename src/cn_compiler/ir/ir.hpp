@@ -528,6 +528,9 @@ private:
     std::unordered_map<std::string, std::string> genericTypeParams_;
     // 替换源码类型中的类型参数（T/T*/结果<T,整32> 等；非参数原样返回）
     std::string substGenericType(const std::string& type) const;
+    // 317-a：泛型源形态（向量<整32>）物化为实例类名（向量$整32·经语义层
+    // resolveGenericTypeName 触发单态化注册）；非泛型形态原样返回
+    std::string resolveGenericInstanceType(const std::string& type) const;
     // 提升泛型函数实例化函数体（名$实参）：从 泛型声明 innerFunc 生成 IRFunction
     void emitGenericFuncInstance(const GenericFuncInstance& gfi);
     ir::IRModule* module_ = nullptr;            // 当前模块

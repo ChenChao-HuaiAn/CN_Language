@@ -9,24 +9,26 @@
 
 ## 家机 win-x64 节
 
-### 一、本轮交付（🏃 316-a：C22+C23=T44/T45 波次清零〔用户裁决「T44 三合一+T45 甲丙」〕·基线 0a66108→addb1c7 认领·2026-09-17）
+### 一、本轮交付（🏃 317-a：清零波次4 部分=T19②+T20①〔T19①③ 续轮登记〕·基线 fa1db7c→150e9b9 认领·2026-09-18）
 
-1. **C22（T44 三合一）——i128/u128 汇合 Copy 双层根因**：①层一=**T12 槽登记只看 operands/result、漏 Store.extra（存储目标名）**：-O3 SSA 汇合临时 `__ternary$N` 无 Alloca→`varSlotOf(extra/$s1)` 回 0 拼出 `[rbp0]`（A2006·m44_01 与 t06 三元 O3 铁证）；②层二=**emitCopy 无 i128 双半分支**：rbp0 修后 O3 变静默错值（搬运单 mov 只搬高半=低半垃圾·t44ext x01~x04/x06 铁证）。修复=登记补 Store.extra 与 128 位 `$s1`（inst.type/v.type 任一 128 判据）+emitCopy i128 双半（寄存器/变量两形态）。丙=check_asm_width **维4 [rbp0] 扫描**（正负自检+全库 267×3 零命中）。E2E **419**（七形态含双分支静默错值断言+正128 对照·O0=O3 实跑等价）转正。
-2. **C23（T45 甲+丙）——128 位字面量实参 ABI 定标**：根因=i128 形参的窄整实参（字面量物理 i64 寄存器形态）无人定标→emitCall 通用值传（mov rdx, [槽] 低 64 直传）vs 被调方指针解引用=契约分叉。修复=**paramIs128 定标宽化 Cast**：ir_call 直调路径（原仅 argIs128 时查形参→改无条件查）+ir_oop 构造路径（buildCallArgsOop 原只做结构体物化→按 ctor->paramTypes 补定标）+**发射器窄整→128 宽化分支**（cqo 符号扩展/零扩展双半——cast 原有 i128→窄/同款/f→i128 唯独窄→128 缺）。丙=落法 **E2E 420 行为守护**（asm/IR 指纹对值直传不可靠〔i64 参数合法立即数同形〕=不虚设门禁）。E2E **420**（字面量/整64 对照/类构造/变量健康对照/表达式折叠/负值 cqo·O0=O3）转正。
-3. **实弹全转正**：m44_01（A2006→运行正确）、m45_01（SIGSEGV→正确）、m45_02（静默错值→对照 42）、m45_03（类构造 SIGSEGV→正确）——三跑确定同值；t44scan（8 类型×双形态）+t44ext（6 形态）矩阵全绿。
-4. **顺带**：plans/021 §三-C 补 C22/C23 行（深度机 ae875a3 迁移漏落点=文档漂移·收工时按「完成即删」随销项移台账）。
+1. **T20①（泛型形参值传递段错误）根治**：双层根因=①泛型函数体**零语义检查**（26_generics 遗留——体内方法调用无解析注记→IR 发射「间接调用 0」空指针）②实例体 IR 的 srcType 是裸泛型形态（向量<整32>）而类表注册名是 向量$整32（查不到→同落间接调用）。修复=**recheckGenericFuncBody**（A7 recheckGenericMethodBody 同构：生成前按本实例重放检查·name/sigKey/params/return 字段级借用+诊断快照回滚）+**resolveGenericInstanceType**（srcType/retSrc 物化为 $ 实例名·mapType 单点兜底）。
+2. **T19②（体内嵌套泛型调用链接爆）根治**：rewriteGenericFuncCall 新增**推断段**（纯泛型参保守判据+genericTypeParams_ 域替换）+registerGenericFuncInstance 共用 helper+ir_decl **不动点实例循环**（体内注册新实例续生成）。
+3. **两处 UB 根治（定位副产物）**：①checkFunctionBody 的 functions_ 迭代器在体内检查（推断注册）触发 rehash 后悬垂→**FunctionInfo 值拷贝**；②emitGenericFuncInstance 引用形参 gfi 在 genericFuncInstances_ vector 扩容后悬垂（0xC0000005 实锤）→**循环内值拷贝传入**。
+4. **E2E 421**（推断嵌套+泛型形参+主通路推断+健康对照）转正（O0=O3）。
+5. **诚实边界**：**T19①（返回向量<T> 的泛型函数）链接已过但 asm 层运行崩**（IR 全链正确·构造+ptr 返回的 win 发射待挖）·**T19③（实例赋 fnptr）未竟**——均登记续轮（探针 target/p317a/work/{t19a,t19c}.cn）；T20② win 免疫实证（O0=O3=22·x64l 单侧复验=深度机停机欠账）。
 
 ### 二、下一轮（按序）
 
-1. 锁空闲优先清零波次4=T19+T20（泛型×容器）；锁被持=win 列 M3 采样续。
-2. T43（406 唯一败面）仍待用户裁决不抢做；**跨机复验请求**：x64l（T44/T45 运行级）归深度机、arm64 归单位机（修复在 IR 层+发射器公共层·平台无关预判同修）。
+1. T19①③ 续轮（asm 层返回链+fnptr 通道）或清零波次5=C18+B12；锁被持=win 列采样。
+2. T43/T46 待用户裁决。
 
 ### 三、坑与边界
 
-- 定标首版挂在「argVal.isConstant」上无效——字面量实参经 ConstInt 指令落寄存器（isConstant=false·type=i64）；插桩（fprintf 单行）一次定位后改无条件宽化 Cast 路线。
-- /W4 下 getenv 触 C4996→/WX 报错（调试插桩改无条件打印）。
-- emitCopy i128 混合形态（寄存器↔变量）走单 64 位中转=防御兜底（IR 层已拆双半·不可达）；C23 丙指纹不可靠性已文档化。
-- **236 回归弯路（多槽邻接 ABI）**：首版 Store.extra 登记在指令流内→结构体零化 Store 先于 Alloca 抢占基名浅槽→$s1 邻接序破坏→字段寻址错位死循环；终版第二轮专扫修复（236=255 全对+T44 保持）——**槽登记改动必须尊重 Alloca 段布局约定**；E2E 全量曾因 236 产物挂起双跑死锁（runner 等 exe+孤儿进程占文件），杀孤儿+修复后重跑。
+- **探针脚本事故两起**：清插桩脚本按「无结束注释的块」吞真实代码（ir_call/semantic_call/semantic_decl 大段被吞）→checkout+重放真实改动恢复——**插桩必须带结束注释标记**且清理后必须即编译验证。
+- 字面量实参经 ConstInt 指令落寄存器（isConstant=false）——推断谓词须对齐真实 IR 形态（插桩一次定位）。
+- 上下文消耗警示：本轮大量插桩定位（悬垂类 UB 的打点链很长）——**下一步优先学习 VS 栈捕获**替代纯打点。
+- **A7 教训重演（pristine）**：推断声明把 T 写回共享 AST→第二实例映射失效（29/99 错值回归）——recheck 须 pristine 备份体内 VarDecl.typeName；**「写回型注记」清单比想象长**（resolvedSignature/推断类型/typeName 改写）——重放类机制上线必须逐项枚举写回面。
+- 顺手发现：linux_x64_instructions.cpp:998 残留 [T12copy] 调试打印（1f0b623/275-a 历史遗留·非本轮引入·未动——登记下轮清理）。
 
 
 ## 深度机 linux-x86_64 节

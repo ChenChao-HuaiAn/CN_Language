@@ -317,6 +317,18 @@ public:
     //   注意：member 必须属于 instanceName 的类成员；非泛型实例（名无 $）空操作。
     void recheckGenericMethodBody(const std::string& instanceName,
                                   const ClassMember* member);
+    // 317-a（T19/T20 波次4·D10 面汇合）：泛型函数实例体生成前的重放检查——
+    //   原泛型函数体从未被语义检查（26_generics 遗留）：体内泛型类实例化触发
+    //   （类型注册/构造符号）、方法调用解析、嵌套泛型调用单态化全部缺失
+    //   （T19①②链接爆/T20①「间接调用 0」崩溃实锤）。生成前按本实例类型实参
+    //   绑定 genericTypeParams_ 重走 checkFunctionBody（A7 recheckGenericMethodBody
+    //   同构：诊断快照回滚+注记刷新为本实例值）；体内推断式泛型调用经
+    //   rewriteGenericFuncCall 的推断段（317-a）触发嵌套实例化注册。
+    void recheckGenericFuncBody(const GenericFuncInstance& gfi);
+    // 317-a：泛型函数实例化记录登记（去重）——显式 <> 调用段与推断段共用
+    void registerGenericFuncInstance(const std::string& instName,
+                                     const GenericInfo* ginfo,
+                                     const std::vector<std::string>& args);
     // 泛型实例化类型名替换（Task 3.8）：名<实参> -> 实例化类名（容器$整32）；
     //   非泛型类型原样返回。H8 补完（2026-08-25）：公开供 IR 层 类型大小(T)
     //   按各实例 genericTypeParams_ 重算时实例化具体泛型源形式（映射<整64,整64>

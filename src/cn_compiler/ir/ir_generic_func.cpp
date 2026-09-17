@@ -95,6 +95,16 @@ std::string IRGenerator::substGenericType(const std::string& type) const {
 //   2. 符号名 = 实例化名（名$实参），与语义层注册的 名$实参 函数符号一致
 //   3. 参数/返回类型经 substGenericType 替换；局部变量/解引用同理（mapType
 //      调用点见 ir.cpp genVarDecl/visitUnaryExpr——mapType 前先替换）
+//   4.（317-a·T19①/T20①）替换结果若仍是泛型源形态（向量<整32>），经语义层
+//      resolveGenericTypeName 物化为实例类名（向量$整32，触发单态化注册）——
+//      IR 层 isClassType/方法符号解析（handleClassCallExpr 的 exprSrcType 消费
+//      srcType）全部按 $ 实例名查表；原裸替换形态查不到=「间接调用 0」崩溃
+//      （T20①）/构造符号带 <T> 链接爆（T19①）。
+std::string IRGenerator::resolveGenericInstanceType(const std::string& type) const {
+    if (type.empty() || type.find('<') == std::string::npos) return type;
+    if (semantic_ == nullptr) return type;
+    return semantic_->resolveGenericTypeName(type, SourceLocation());
+}
 void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     const FunctionDecl* node = gfi.gen->innerFunc.get();
     if (node == nullptr || node->body == nullptr) return;
@@ -107,12 +117,25 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
         genericTypeParams_[gen->typeParams[i]] = gfi.args[i];
     }
 
+    // 0.5（317-a·T19/T20）：生成前重放语义检查（A7 recheckGenericMethodBody
+    //     同构）——泛型函数体从未被检查（26_generics 遗留）：体内泛型类
+    //     实例化触发/方法调用解析/嵌套泛型调用单态化在此补齐（写回注记
+    //     刷新为本实例值；体内推断式泛型调用触发的新 GFI 由 ir_decl 的
+    //     不动点实例循环续生成）。
+    if (semantic_ != nullptr) {
+        semantic_->recheckGenericFuncBody(gfi);
+    }
+
     // 2. 构建 IRFunction（符号名 = 实例化名 名$实参）
     ir::IRFunction func;
     func.name = gfi.instanceName;
     func.mangledName = gfi.instanceName;
-    const std::string retSrc = substGenericType(
-        node->returnType.empty() ? "空类型" : node->returnType);
+    // 317-a（T19①/T20①）：返回类型经替换后仍是泛型源形态（向量<T> ->
+    //   向量<整32>）时物化为实例类名（向量$整32）——isStructType/isClassType
+    //   与方法符号解析全认 $ 实例名；retSrc 直接决定 returnTypeSrc（调用方
+    //   拷贝构造/析构分派消费）。
+    const std::string retSrc = resolveGenericInstanceType(substGenericType(
+        node->returnType.empty() ? "空类型" : node->returnType));
     func.returnType = mapType(retSrc);
     func.returnTypeSrc = retSrc;
     // 结构体返回值标记（隐藏返回指针）
@@ -125,11 +148,14 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     }
     function_ = &func;
 
-    // 3. 参数装载（类型经替换）
+    // 3. 参数装载（类型经替换；泛型源形态物化为实例类名——srcType 供体内
+    //    方法调用解析（handleClassCallExpr 的 exprSrcType）与结构体按值传参
+    //    标记（isStructType）消费，317-a 同 retSrc 注）
     varStack_.emplace_back();
     for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
         const ParamDecl* param = node->params[pi].get();
-        const std::string paramSrc = substGenericType(param->typeName);
+        const std::string paramSrc = resolveGenericInstanceType(
+            substGenericType(param->typeName));
         // A-1（引用参数 泛型 T& -> 整32&）：参数槽存被引用左值地址，
         //   体内读写经 byRef 解引用（与普通函数 visitFunctionDecl 一致）
         const bool isRefParam = !param->funcPtr.isFunctionPtr() &&

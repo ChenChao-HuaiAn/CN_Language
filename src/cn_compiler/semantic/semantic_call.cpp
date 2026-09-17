@@ -426,9 +426,70 @@ void SemanticAnalyzer::rewriteUseImportAlias(CallExpr* node, std::string& callee
         }
 }
 
+// 317-a：泛型函数实例化记录登记（去重）——显式 <> 调用段与推断段共用。
+void SemanticAnalyzer::registerGenericFuncInstance(
+    const std::string& instName, const GenericInfo* ginfo,
+    const std::vector<std::string>& args) {
+    if (ginfo == nullptr || ginfo->ast->innerFunc == nullptr) return;
+    for (const auto& gi : genericFuncInstances_) {
+        if (gi.instanceName == instName) return;   // 已登记（去重）
+    }
+    GenericFuncInstance gfi;
+    gfi.instanceName = instName;
+    gfi.gen = ginfo->ast;
+    gfi.args = args;
+    genericFuncInstances_.push_back(std::move(gfi));
+}
+
 // 子族B：Task 6.1 泛型函数调用单态化（原 visitCallExpr 312~383 段）：识别 名<类型>(实参)，
 //   实例化（instantiateGeneric 注册 名$实参）并重写 callee；登记 genericFuncInstances_。
 void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calleeName) {
+        // ---- 317-a（T19②）：推断式泛型函数调用（无显式 <类型>） ----
+        // 场景：泛型函数体内嵌套泛型调用 两倍(T 值){ 返回 恒等(值); }——callee
+        //   无 <> 形态，原只有显式段（下方）处理 -> 裸名发射链接爆 `_恒等`
+        //   （26_generics 历史边界）。推断：实参类型（checkExpr）经
+        //   genericTypeParams_ 域替换（T -> 当前实例实参）后按位置对齐。
+        //   保守判据：参数表为纯泛型参（params.size()==typeParams.size()==
+        //   实参数 且每个 param->typeName == 对应 typeParams[i]）——含固定参/
+        //   引用参/函数指针参的混合形态不推断（显式 <> 仍可用），避免错位。
+        if (calleeName.find('<') == std::string::npos && !node->arguments.empty()) {
+            const GenericInfo* gi = findGeneric(calleeName);
+            if (gi != nullptr && gi->ast->innerFunc != nullptr) {
+                const FunctionDecl* src = gi->ast->innerFunc.get();
+                bool pureGeneric =
+                    src->params.size() == gi->typeParams.size() &&
+                    src->params.size() == node->arguments.size();
+                if (pureGeneric) {
+                    for (std::size_t pi = 0; pi < src->params.size(); ++pi) {
+                        if (src->params[pi]->funcPtr.isFunctionPtr() ||
+                            src->params[pi]->typeName != gi->typeParams[pi]) {
+                            pureGeneric = false;
+                            break;
+                        }
+                    }
+                }
+                if (pureGeneric) {
+                    std::vector<std::string> infArgs;
+                    infArgs.reserve(node->arguments.size());
+                    bool inferOk = true;
+                    for (auto& a : node->arguments) {
+                        std::string at = checkExpr(a.get());
+                        at = resolveGenericTypeName(at, node->location);
+                        if (at.empty() || at == "未知") { inferOk = false; break; }
+                        infArgs.push_back(types::canonical(at));
+                    }
+                    if (inferOk) {
+                        const std::string instName =
+                            instantiateGeneric(calleeName, infArgs, node->location);
+                        if (!instName.empty()) {
+                            registerGenericFuncInstance(instName, gi, infArgs);
+                            node->callee = std::make_unique<IdentifierExpr>(instName);
+                            calleeName = instName;
+                        }
+                    }
+                }
+            }
+        }
         // ---- Task 6.1（泛型函数调用打通）：函数名<类型>(实参) 泛型实例化调用 ----
         // 语法：最小<整32>(3, 7)——parser 把 callee 生成 IdentifierExpr("最小<整32>")。
         // 26_generics 遗留限制「泛型函数调用单态化注册未接入」：语义层此前只对
@@ -486,17 +547,7 @@ void SemanticAnalyzer::rewriteGenericFuncCall(CallExpr* node, std::string& calle
                     //   记录 实例化名 + 原泛型声明 + 类型实参（替换类型参数用）
                     const GenericInfo* ginfo = findGeneric(head);
                     if (ginfo != nullptr && ginfo->ast->innerFunc != nullptr) {
-                        bool exists = false;
-                        for (const auto& gi : genericFuncInstances_) {
-                            if (gi.instanceName == instName) { exists = true; break; }
-                        }
-                        if (!exists) {
-                            GenericFuncInstance gfi;
-                            gfi.instanceName = instName;
-                            gfi.gen = ginfo->ast;
-                            gfi.args = args;
-                            genericFuncInstances_.push_back(std::move(gfi));
-                        }
+                        registerGenericFuncInstance(instName, ginfo, args);
                     }
                 }
             }

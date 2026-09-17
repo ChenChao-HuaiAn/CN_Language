@@ -156,9 +156,19 @@ void IRGenerator::visitProgram(Program* node) {
     //    语义层 visitCallExpr 对 名<类型>(实参) 调用登记 GenericFuncInstance
     //    （实例化名 + 原泛型声明 + 类型实参），此处为每个实例生成 IRFunction
     //    （类型参数 T -> 实参类型 替换，符号名 = 名$实参 与调用方一致）。
+    //    317-a（T19②）：改为不动点循环——实例体生成前的重放检查
+    //    （recheckGenericFuncBody）会触发体内嵌套泛型调用注册新 GFI（推断
+    //    形态），range-for 快照遍历会漏掉新实例且迭代器失效。
     if (semantic_ != nullptr) {
-        for (const auto& gfi : semantic_->genericFuncInstances()) {
-            emitGenericFuncInstance(gfi);
+        const std::vector<GenericFuncInstance>& all =
+            semantic_->genericFuncInstances();
+        std::size_t gfiIdx = 0;
+        while (gfiIdx < all.size()) {
+            // 317-a：值拷贝传入——recheck（体内嵌套实例化注册）会向
+            // genericFuncInstances_ 追加元素，vector 扩容搬家使 all[idx]
+            // 与按引用收参的 gfi 悬垂（段错误 0xC0000005 实锤）。
+            emitGenericFuncInstance(GenericFuncInstance(all[gfiIdx]));
+            ++gfiIdx;
         }
     }
 }
