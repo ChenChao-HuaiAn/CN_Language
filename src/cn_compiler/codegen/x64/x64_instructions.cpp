@@ -297,6 +297,41 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
     const std::string src = operandText(inst.operands[0]);
     const std::string& copySrcType = inst.type.empty() ? inst.operands[0].type
                                                        : inst.operands[0].type;
+    // 316-a（C22/T44 甲 补全）：i128/u128 Copy 双半搬运——寄存器约定
+    //   %vN=高64、%vN+1=低64（emitLoadStore i128 分支同源）；-O3 SSA 使用点
+    //   重写注入的 搬运（Copy）原走通用单 mov 只搬高半=低半读垃圾错值
+    //   （t44ext x01~x04/x06 实锤）。变量名形态（id<0）同理双槽
+    //   （基名低半 + $s1 高半）。
+    if (copySrcType == "i128" || copySrcType == "u128" ||
+        inst.type == "i128" || inst.type == "u128") {
+        if (inst.operands[0].id >= 0 && inst.result.id >= 0) {
+            // 寄存器 -> 寄存器：双半各一条
+            writer.line("mov rax, " + regSlot(inst.operands[0].id + 1));  // 低64
+            writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");
+            writer.line("mov rax, " + regSlot(inst.operands[0].id));      // 高64
+            writer.line("mov " + regSlot(inst.result.id) + ", rax");
+            return;
+        }
+        if (inst.operands[0].id < 0 && inst.result.id < 0 &&
+            !inst.operands[0].extra.empty() && !inst.result.extra.empty()) {
+            // 变量 -> 变量：双槽（低半基名槽 + 高半 $s1 槽）
+            const std::string srcLo = "[rbp" + std::to_string(
+                varSlotOf(inst.operands[0].extra)) + "]";
+            const std::string srcHi = "[rbp" + std::to_string(
+                varSlotOf(inst.operands[0].extra + "$s1")) + "]";
+            const std::string dstLo = "[rbp" + std::to_string(
+                varSlotOf(inst.result.extra)) + "]";
+            const std::string dstHi = "[rbp" + std::to_string(
+                varSlotOf(inst.result.extra + "$s1")) + "]";
+            writer.line("mov rax, " + srcLo);
+            writer.line("mov " + dstLo + ", rax");
+            writer.line("mov rax, " + srcHi);
+            writer.line("mov " + dstHi + ", rax");
+            return;
+        }
+        // 混合形态（寄存器<->变量）：走下方通用中转按单 64 位搬（128 位
+        //   语义面不产生此形态——IR 层 Load/Store 已拆双半，防御性兜底）
+    }
     if (isFloatType(copySrcType)) {
         // 浮点 Copy（T25 win 侧根治·297-b）：xmm 中转完整宽度搬运——
         //   原实现 f64 落入 mem-to-mem 中转分支用 eax（32 位·is64 不含浮点）

@@ -494,6 +494,23 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
             args.push_back(obj);  // this（对象指针）
             std::vector<ir::IRValue> userArgs =
                 buildCallArgsOop(node->arguments, node->location);
+            // 316-a（C23/T45 甲）：i128/u128 构造形参的窄整实参定标——与
+            //   ir_call 直调路径同款（类构造字面实参 ABI 契约分叉 m45_03：
+            //   buildCallArgsOop 原只做结构体物化，窄整实参原样 i64 值直传，
+            //   被调方按 i128 指针解引用 SIGSEGV）。宽化 Cast 后走 emitCall
+            //   i128 分支（lea 取地址 = 与变量实参同 ABI）。
+            for (std::size_t ai = 0;
+                 ai < userArgs.size() && ai < ctor->paramTypes.size(); ++ai) {
+                const std::string canon = types::canonical(ctor->paramTypes[ai]);
+                const bool param128 = (canon == "整128" || canon == "正128");
+                if (param128 && userArgs[ai].type != "i128" &&
+                    userArgs[ai].type != "u128" && userArgs[ai].type != "f32" &&
+                    userArgs[ai].type != "f64") {
+                    const std::string kind = (canon == "正128") ? "u128" : "i128";
+                    userArgs[ai] = emitResult(ir::Opcode::Cast, {userArgs[ai]},
+                                              kind, "", node->location);
+                }
+            }
             for (auto& a : userArgs) args.push_back(a);
             // D23 根治（248-a）：构造缺省实参补全——构造调用经 handleClassCallExpr
             //   提前展开（visitCallExpr 通用补缺段不可达），此处按语义层选中的

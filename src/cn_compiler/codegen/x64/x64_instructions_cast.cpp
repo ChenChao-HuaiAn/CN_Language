@@ -400,6 +400,36 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         }
         return true;
     }
+    // 316-a（C23/T45 甲）：窄整 -> i128/u128 宽化——i128 形参的窄整实参定标
+    //   路径（ir_call paramIs128 发射宽化 Cast；原缺失落默认 32 位 mov=错值）。
+    //   结果双寄存器 %vN（高64）+ %vN+1（低64）：低半=源值按源符号性扩展，
+    //   高半=符号扩展（cqo）/零。提升语义由**源**符号性决定（Rust as 同构）。
+    if ((to == "i128" || to == "u128") &&
+        (from == "i8" || from == "i16" || from == "i32" || from == "i64" ||
+         from == "u8" || from == "u16" || from == "u32" || from == "u64")) {
+        const bool fromIsSigned = (from == "i8" || from == "i16" ||
+                                   from == "i32" || from == "i64");
+        if (from == "i8" || from == "i16") {
+            writer.line("movsx eax, " + memSizePtr(from) + src);
+            writer.line("cdqe");
+        } else if (from == "u8" || from == "u16") {
+            writer.line("movzx eax, " + memSizePtr(from) + src);
+        } else if (from == "i32") {
+            writer.line("mov eax, " + src);
+            writer.line("cdqe");
+        } else {
+            writer.line("mov rax, " + src);  // i64/u64（u32 写 eax 已清高 32）
+        }
+        writer.line("mov " + regSlot(inst.result.id + 1) + ", rax");  // 低64
+        if (fromIsSigned) {
+            writer.line("cqo");                                        // 符号扩展高位
+            writer.line("mov " + regSlot(inst.result.id) + ", rdx");   // 高64
+        } else {
+            writer.line("xor eax, eax");
+            writer.line("mov " + regSlot(inst.result.id) + ", rax");   // 高64=0
+        }
+        return true;
+    }
     // 大 -> 小（截断）：mov 低8/16/32位（写低字节，高位清零由槽位决定）
     if (to == "i8" || to == "u8") {
         writer.line("mov al, " + src);

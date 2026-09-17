@@ -47,7 +47,10 @@ LX64_SILENT_DROP = re.compile(r"未支持操作码")
 #   movsx/movzx/movsxd（\bmov\s 不匹配）天然排除
 _R64 = r"(?:rax|rbx|rcx|rdx|rsi|rdi|rbp|rsp|r(?:8|9|1[0-5]))\b"
 _R32 = r"(?:eax|ebx|ecx|edx|esi|edi|ebp|esp|r(?:8|9|1[0-5])d)\b"
+# 4.（316-a·C22 丙/T44）win `[rbp0]` = varSlotOf 未登记回 0 拼接（rbp0 家族·
+#    MASM A2006 undefined symbol·T44 汇合临时槽实锤）——合法槽恒带非零偏移文本。
 WIN_BAD_MIX = re.compile(
+    r"\[rbp0\]|"
     r"\bmov\s+" + _R64 + r"\s*,\s*" + _R32 + r"\s*(?:$|;)|"
     r"\bmov\s+" + _R32 + r"\s*,\s*" + _R64 + r"\s*(?:$|;)",
     re.MULTILINE)
@@ -74,11 +77,14 @@ SELF_WIN_LEGAL = (
     "    movsxd rax, eax\n"       # 符号扩展合法
     "    mov eax, r14d\n"         # r32 <- r32（258-a cast 收缩产物）
     "    mov rax, offset @str0\n"
+    "    mov [rbp-232], rax\n"    # 合法栈槽恒带偏移（316-a C22 丙）
+    "    mov rax, [rbp0abc]\n"    # 非完整记号 [rbp0]（标识符后缀≠命中）
 )
 SELF_WIN_ILLEGAL = (
     "    mov rax, eax\n"          # r64 <- r32 非法（A2022）
     "    mov eax, r14\n"          # r32 <- r64 非法（s268 修复前形态）
     "    mov r9, ecx ; src: a.cn:3\n"     # 带行尾注释同样命中
+    "    mov [rbp0], rax\n"       # rbp0 家族（T44 高半槽偏移 0 拼接·316-a）
 )
 
 
@@ -92,8 +98,8 @@ def self_check() -> None:
     if WIN_BAD_MIX.search(SELF_WIN_LEGAL):
         raise SystemExit("自检失败：win-x64 合法样本被误判:\n"
                          + WIN_BAD_MIX.search(SELF_WIN_LEGAL).group(0))
-    if len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL)) != 3:
-        raise SystemExit("自检失败：win-x64 宽度混配样本漏判，仅命中 "
+    if len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL)) != 4:
+        raise SystemExit("自检失败：win-x64 宽度混配/rbp0 样本漏判，仅命中 "
                          f"{len(WIN_BAD_MIX.findall(SELF_WIN_ILLEGAL))} 处")
 
 

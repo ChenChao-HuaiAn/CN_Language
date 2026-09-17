@@ -329,12 +329,29 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         //   原实现无条件截断为 i64，被调方按 16 字节读参数槽读到垃圾高位。
         bool argIs128 = (argVal.type == "i128" || argVal.type == "u128");
         bool paramIs128 = false;
-        if (argIs128 && isDirect && semantic_ != nullptr) {
+        std::string param128Kind;  // 316-a（C23/T45 甲）：形参 128 位具体类型（i128/u128）
+        if (isDirect && semantic_ != nullptr) {
             const auto paramTypes = semantic_->funcParamTypesOf(calleeName);
             if (ai < paramTypes.size()) {
                 const std::string canon = types::canonical(paramTypes[ai]);
-                paramIs128 = (canon == "整128" || canon == "正128");
+                if (canon == "整128" || canon == "正128") {
+                    paramIs128 = true;
+                    param128Kind = (canon == "正128") ? "u128" : "i128";
+                }
             }
+        }
+        // 316-a（C23/T45 甲·用户裁决）：i128/u128 形参的**窄整实参**统一定标
+        //   128 位——字面量（物理 i64 寄存器形态）/表达式/折叠产物原样保留时
+        //   emitCall 走通用值传分支（mov rdx, [槽] 低 64 位直传），被调方按
+        //   i128 指针 ABI 解引用 = 契约分叉（m45_01 SIGSEGV / m45_02 静默错值 /
+        //   m45_03 类构造字面实参·深度机 314-a 立案）。经宽化 Cast（源符号
+        //   扩展/零扩展双半）定标后走 emitCall i128 分支（lea 取地址 = 与
+        //   变量/表达式实参同 ABI）。
+        if (paramIs128 && !argIs128 && argVal.type != "f32" &&
+            argVal.type != "f64") {
+            argVal = emitResult(ir::Opcode::Cast, {argVal}, param128Kind, "",
+                                node->location);
+            argIs128 = true;
         }
         if (argVal.type == "i8" || argVal.type == "i16" ||
             argVal.type == "u8" || argVal.type == "u16" ||
