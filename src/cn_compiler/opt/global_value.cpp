@@ -45,11 +45,34 @@ bool GlobalValuePass::isMultiSlot(
 bool GlobalValuePass::run(ir::IRModule& module) {
     bool changed = false;
     for (auto& fn : module.functions) {
+        // 304-a T26 根治（B11 波次1）：汇合块（多前驱）感知——
+        //   线性序扫描的常量表必须在汇合块入口失效：汇合块内槽的可见定义
+        //   =各前驱的 phi 值，「后块 Store 覆盖前块记录」在此无顺序语义依据。
+        //   事故形态（s2609179001 实弹）：bb1（乙路径）Store 寄存器→擦除记录，
+        //   bb2（短路路径）Store 常量真→覆盖记录，bb3（汇合）Load→错误折叠为真
+        //   →布尔短路值位 -O3 常量化（O0/O2 无本 pass 故免疫·级别分叉铁证）。
+        //   同族面=整型/布尔一切「分支汇合后读槽」形态（B9 扩散矩阵见 E2E 410）。
+        std::unordered_map<std::string, int> indegree;
+        for (const auto& block : fn.blocks) {
+            if (!block->terminated) continue;
+            if (block->termKind == "跳转") {
+                ++indegree[block->termTarget];
+            } else if (block->termKind == "条件跳转") {
+                ++indegree[block->termTrueTarget];
+                ++indegree[block->termFalseTarget];
+            }
+        }
         // 常量表：唯一内部名 -> 常量值（函数级，跨块线性序维护）
         std::unordered_map<std::string, ir::IRValue> constants;
         // 常量替换表：Load 结果寄存器 -> 常量
         ConstRewriteMap constRewrite;
         for (auto& block : fn.blocks) {
+            // 汇合块（≥2 前驱）：线性序常量表失效——保守清空（块内 Store→Load
+            //   转发从本块头重新记录，仍安全可用）
+            auto indeg = indegree.find(block->label);
+            if (indeg != indegree.end() && indeg->second >= 2) {
+                constants.clear();
+            }
             // 283-a T12 字段化：块终止条件寄存器同步替换（在指令遍历前应用）
             if (replaceTermCondition(*block, RegRewriteMap(), constRewrite)) {
                 changed = true;
