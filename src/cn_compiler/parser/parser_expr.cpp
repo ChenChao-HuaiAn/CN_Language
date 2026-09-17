@@ -34,22 +34,45 @@ std::unique_ptr<Expr> Parser::parseAssignment() {
 // 优先级链：赋值(1) < 三元(1.5) < 逻辑或(2)；右结合：a ? b : c ? d : e = a ? b : (c ? d : e)
 // 实现：先解析 逻辑或（绑定更紧），遇 '?' 后解析真值（parseExpr，完整表达式），
 //       再消费 ':' 解析假值（parseTernary 递归实现右结合）。标签/CFG 在 IR 层处理（惰性求值）。
-// '?' 后能否开始新表达式（三元判定）：'?' 后跟表达式起点 => 三元
-//   （条件?真值:假值）；否则（语句边界 ; ) , ] } EOF、二元运算符等）=> 
-//   后缀错误传播（表达式?）。表达式起点 = parsePrimary 接受的字面量/
-//   标识符/分组/数组/lambda/强制转换类型关键字。
-// 歧义裁决（C-1）：一元前缀运算符（- + ! ~ * & ++ --）不算三元起点——
-//   后缀传播优先级更高，x? + 1 读作 (x?) + 1（常见用法）；三元真值若以
-//   一元运算开头请加括号（a ? (-b) : c），括号后即 LeftParen 判为三元。
-bool Parser::ternaryQuestionNext() {
-    const TokenType q = peek(1).getType();
-    return q == TokenType::IntegerLiteral || q == TokenType::FloatLiteral ||
-           q == TokenType::StringLiteral || q == TokenType::CharLiteral ||
-           q == TokenType::Identifier || q == TokenType::LeftParen ||
-           q == TokenType::LeftBracket || q == TokenType::Kw_True ||
-           q == TokenType::Kw_False || q == TokenType::Kw_None ||
-           q == TokenType::Kw_Self || q == TokenType::Kw_Super ||
-           isTypeKeyword(q);
+// '?' 消歧（B10 方案甲·297-a 用户裁「按你的方式全部修复」）：同层 ':' 前瞻——
+//   从 '?' 下一 token 起扫描，同层（括号/嵌套 '?' 深度外）存在配对 ':' => 三元；
+//   遇本层终止符（; , 或 depth=0 的 ) ] } EndOfFile）=> 后缀错误传播。
+//   相比 C-1 旧「表达式起点白名单」判据（一元前缀 - + ! ~ * & ++ -- 不算起点，
+//   a ? -b : c 须加括号）：token 层 `x ? - 1` 与 `x ? -1 : 2` 同形，':' 配对
+//   存在性是唯一可靠区分（GCC 对 C++ 歧义亦用同款前瞻）。兼容性论证：
+//   旧判据判三元的形态（'?' 后跟起点 token）若同层有 ':' 新判据同样判三元；
+//   旧判据判传播且同层有 ':' 的形态（如 a ? -b : c）旧实现本就解析失败——
+//   新判据只将「失败」转为「成功」，不改变任何可成功编译程序的含义。
+//   `x? + 1` 读作 (x?) + 1 的后缀传播用法保持（同层无 ':' -> 传播）。
+bool Parser::ternaryColonAhead() const {
+    int depth = 0;  // 嵌套深度：( [ { '?' 各增一，配对闭符/配对 ':' 减一
+    for (int i = 1; peek(i).getType() != TokenType::EndOfFile; ++i) {
+        const TokenType t = peek(i).getType();
+        switch (t) {
+            case TokenType::Question:
+            case TokenType::LeftParen:
+            case TokenType::LeftBracket:
+            case TokenType::LeftBrace:
+                ++depth;
+                break;
+            case TokenType::Colon:
+                if (depth == 0) return true;  // 同层配对 => 三元
+                --depth;
+                break;
+            case TokenType::RightParen:
+            case TokenType::RightBracket:
+            case TokenType::RightBrace:
+                if (depth == 0) return false;  // 本层终止 => 传播
+                --depth;
+                break;
+            case TokenType::Semicolon:
+            case TokenType::Comma:
+                return false;
+            default:
+                break;
+        }
+    }
+    return false;
 }
 
 // 三元条件表达式（Task 2.9，规格书4.5 优先级1.5，右结合）：
@@ -57,8 +80,8 @@ bool Parser::ternaryQuestionNext() {
 // 优先级链：赋值(1) < 三元(1.5) < 逻辑或(2)；右结合：a ? b : c ? d : e = a ? b : (c ? d : e)
 // 实现：先解析 逻辑或（绑定更紧），遇 '?' 后解析真值（parseExpr，完整表达式），
 //       再消费 ':' 解析假值（parseTernary 递归实现右结合）。标签/CFG 在 IR 层处理（惰性求值）。
-// C-1 注：后缀传播 '?' 已在 parsePostfix 消费（postfix 优先级更高），
-//   此处 '?' 必为三元（三元判定 ternaryQuestionNext 见上）。
+// B10 注：后缀传播 '?' 已在 parsePostfix 消费（同层无 ':' 时·ternaryColonAhead），
+//   此处 '?' 必为三元。
 std::unique_ptr<Expr> Parser::parseTernary() {
     auto condition = parseLogicalOr();
     if (check(TokenType::Question)) {
@@ -325,7 +348,7 @@ std::unique_ptr<Expr> Parser::parsePostfix() {
             } else {
                 static_cast<MemberExpr*>(expr.get())->memberName = newName;
             }
-        } else if (check(TokenType::Question) && !ternaryQuestionNext()) {
+        } else if (check(TokenType::Question) && !ternaryColonAhead()) {
             // C-1（错误传播运算符，2026-08）：后缀 表达式? ——
             //   '?' 后不能开始新表达式（语句边界/二元运算符）=> 错误传播
             //   （Rust ? 语义：结果/可选 取值，失败则构造错误结果并返回）。

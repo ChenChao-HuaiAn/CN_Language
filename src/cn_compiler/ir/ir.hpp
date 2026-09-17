@@ -1019,7 +1019,7 @@ private:
     // 方法体内直接字段自增/自减（visitUnaryExpr 钩子）：字段名++ / 字段名--
     //   （缺陷5 修复：静态/实例字段不在 varStack_，原自增路径只读不写，须读-算-写回）
     bool handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
-                                const SourceLocation& loc);
+                                const SourceLocation& loc, bool postfix = false);
     // 运算符重载（visitBinaryExpr 钩子）：左操作数为类实例且类有 运算符X 成员 ->
     //   降级为成员方法调用（this=左操作数指针，实参=右操作数）
     bool handleOperatorOverload(BinaryExpr* node, const ir::IRValue& left,

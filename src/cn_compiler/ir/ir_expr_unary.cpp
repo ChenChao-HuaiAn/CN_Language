@@ -210,7 +210,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             if (node->operand->getType() == NodeType::IdentifierExpr &&
                 handleClassFieldIncDec(
                     static_cast<IdentifierExpr*>(node->operand.get()),
-                    node->op, node->location)) {
+                    node->op, node->location, node->postfix)) {
                 break;
             }
             // 第 9 层 Debug（P3-8）：顶层静态变量自增/自减——全局符号"读-算-写回"。
@@ -232,7 +232,8 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                         {cur, delta}, irT, "", node->location);
                     emit(ir::Opcode::StorePtr, {gsAddr, res}, ir::IRValue(), "", irT,
                          node->location);
-                    lastExpr_ = res;
+                    // T24（297-a）：后缀 i++ 表达式值=自增前的旧值
+                    lastExpr_ = node->postfix ? cur : res;
                     break;
                 }
             }
@@ -299,10 +300,13 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                     {operand, delta}, operand.type, "", node->location);
                 emit(ir::Opcode::StorePtr, {addr, incdecResult}, ir::IRValue(), "",
                      operand.type, node->location);
-                lastExpr_ = incdecResult;
+                // T24（297-a）：后缀 i++ 表达式值=自增前的旧值
+                lastExpr_ = node->postfix ? operand : incdecResult;
                 break;
             }
-            lastExpr_ = result;
+            // T24（297-a·根治）：后缀 i++ 表达式值=自增前的旧值（C/C++ 语义；
+            //   前缀 ++i=自增后的新值）——原实现忽略 postfix 一律取新值
+            lastExpr_ = node->postfix ? operand : result;
             break;
         }
         case Operator::AddressOf: {

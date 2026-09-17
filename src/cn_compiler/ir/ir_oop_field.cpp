@@ -248,7 +248,8 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
 //   varStack_ 命中的普通变量写回，类字段不在 varStack_ 中，导致只读不写，
 //   静态字段 总数++ 实测计数恒 0）。
 bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
-                                         const SourceLocation& loc) {
+                                         const SourceLocation& loc,
+                                         bool postfix) {
     // 静态字段直接访问（静态方法/普通方法内均可，Task 3.9）
     if (semantic_ != nullptr && !currentClass_.empty()) {
         const ClassInfo* ci = semantic_->findClass(currentClass_);
@@ -268,7 +269,8 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
                     {cur, delta}, targetIrType, "", loc);
                 emit(ir::Opcode::StorePtr, {addr, result}, ir::IRValue(), "",
                      targetIrType, loc);
-                lastExpr_ = result;
+                // T24（297-a）：后缀 i++ 表达式值=自增前的旧值
+                lastExpr_ = postfix ? cur : result;
                 return true;
             }
             ci = ci->baseName.empty() ? nullptr : semantic_->findClass(ci->baseName);
@@ -285,7 +287,8 @@ bool IRGenerator::handleClassFieldIncDec(IdentifierExpr* ident, Operator op,
         op == Operator::Increment ? ir::Opcode::Add : ir::Opcode::Sub,
         {cur, delta}, targetIrType, "", loc);
     emit(ir::Opcode::StorePtr, {addr, result}, ir::IRValue(), "", targetIrType, loc);
-    lastExpr_ = result;
+    // T24（297-a）：后缀 i++ 表达式值=自增前的旧值
+    lastExpr_ = postfix ? cur : result;
     return true;
 }
 

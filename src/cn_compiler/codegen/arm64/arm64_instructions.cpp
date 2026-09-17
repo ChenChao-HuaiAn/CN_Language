@@ -239,6 +239,16 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
 void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
                                   const ir::IRInstruction& inst) {
     const std::string& srcType = inst.operands[0].type;
+    if (isFloatType(srcType)) {
+        // 浮点 Copy（T25 根治·297-a）：经浮点寄存器装载/落位——
+        //   原实现按整型 is64 分派，f64 落入 32 位分支向 storeVirtualResult
+        //   传 w9 → emitStackStore 浮点分支 str w9 = 32 位截断写（高 32 位丢，
+        //   汇合块读到未初始化高半 → 值归零/垃圾）。f32 用 s0、f64 用 d0。
+        const std::string vreg = (srcType == "f32") ? "s0" : "d0";
+        loadOperandToV(writer, inst.operands[0], vreg);
+        storeVirtualResultFp(writer, inst.result.id, vreg, inst.type);
+        return;
+    }
     const bool is64 = (srcType == "i64" || srcType == "u64" || srcType == "ptr");
     const std::string xr = is64 ? "x10" : "x9";
     loadOperandToX(writer, inst.operands[0], xr);
