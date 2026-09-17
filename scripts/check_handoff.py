@@ -18,6 +18,9 @@
                    B5 三犯案·2026-09-16 用户令生命周期铁律）
   三机任务看板 — 每机状态行恰好 1 行（曾出现同机 2~3 行并存：旧开工行/旧收工行未随收工删除）；
                   空闲行（⬜）各列必须为「-」（曾出现空闲行残留收工总结/通告·232-a 用户令：有任务才填行）
+  采样日志     — tests/cnsmith_hits/：①采样日志.md 为固定索引指针（存在、≤15 行、无「## 轮/## 汇总」
+                  条目——286-a·S1b 起按月分文件，单文件追加式旧记法日增 1~3 万行曾达 2500+ 行）
+                  ②日志/ 月文件名=YYYY-MM.md ③单月文件 ≤5000 行（汇总记法回退=体积再爆炸的信号）
 
 用法：python3 scripts/check_handoff.py
 退出码：0 = 结构正常；1 = 存在结构缺陷（禁止提交，见 AGENTS.md §6.6）。
@@ -243,6 +246,34 @@ def 查冲突标记() -> list[str]:
     return 问题
 
 
+def 查采样日志() -> list[str]:
+    """tests/cnsmith_hits/ 采样日志结构检查（286-a·S1b 分文件化防回退）。"""
+    问题: list[str] = []
+    指针 = 仓库根 / "tests" / "cnsmith_hits" / "采样日志.md"
+    月目录 = 仓库根 / "tests" / "cnsmith_hits" / "日志"
+    if not 指针.exists():
+        return ["tests/cnsmith_hits/采样日志.md 缺失（索引指针·286-a 起=固定指针不追加轮次）"]
+    行们 = 指针.read_text(encoding="utf-8").splitlines()
+    if len(行们) > 15:
+        问题.append(f"采样日志.md（索引指针）{len(行们)} 行 > 上限 15——指针只写判据与路径规则，"
+                    "轮次/汇总条目一律写 日志/YYYY-MM.md（286-a·S1b 单文件追加爆炸根治）")
+    条目 = [行 for 行 in 行们 if re.match(r"^## (轮|汇总)", 行)]
+    if 条目:
+        问题.append(f"采样日志.md（索引指针）出现轮次/汇总条目 {len(条目)} 处——"
+                    "daemon 旧版或手工追加写回了旧单文件结构，须移入 日志/ 月文件")
+    if not 月目录.is_dir():
+        问题.append("tests/cnsmith_hits/日志/ 目录缺失（286-a 起按月分文件）")
+        return 问题
+    for p in sorted(月目录.glob("*.md")):
+        if not re.fullmatch(r"\d{4}-\d{2}\.md", p.name):
+            问题.append(f"日志/{p.name} 文件名不符 YYYY-MM.md 约定")
+        n = len(p.read_text(encoding="utf-8").splitlines())
+        if n > 5000:
+            问题.append(f"日志/{p.name} {n} 行 > 上限 5000（汇总记法回退=体积再爆炸信号——"
+                        "查 daemon 是否旧版在跑/变化轮异常频发）")
+    return 问题
+
+
 def 主流程() -> int:
     print("=== 共享文档结构门禁（六纪律机械自检，只读）===")
     交接路径 = 仓库根 / "HANDOFF.md"
@@ -251,13 +282,13 @@ def 主流程() -> int:
         for 标题, 内容 in 按二号标题分节(交接路径.read_text(encoding="utf-8").splitlines()).items():
             print(f"    {标题[:44]}：{len(内容)} 行")
 
-    全部问题 = 查交接() + 查日志() + 查总表() + 查看板() + 查冲突标记()
+    全部问题 = 查交接() + 查日志() + 查总表() + 查看板() + 查冲突标记() + 查采样日志()
     if 全部问题:
         print(f"\n结论：结构缺陷 {len(全部问题)} 项，禁止提交 ✗")
         for 问题 in 全部问题:
             print("[×] " + 问题)
         return 1
-    print("\n结论：HANDOFF.md / 更新日志.md / plans/021 / 三机任务看板 结构正常 ✓")
+    print("\n结论：HANDOFF.md / 更新日志.md / plans/021 / 三机任务看板 / 采样日志 结构正常 ✓")
     return 0
 
 
