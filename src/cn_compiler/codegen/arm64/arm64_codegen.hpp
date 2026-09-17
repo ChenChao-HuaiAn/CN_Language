@@ -200,6 +200,12 @@ private:
     // 生成i128比较（调用 __cn_cmp_i128/__cn_cmp_u128，返回 int）
     void emitInt128Compare(Arm64AsmWriter& writer, const ir::IRInstruction& inst);
 
+    // 302-a（T39 根治）：i128/u128 位运算（and/orr/eor 双半独立）与移位（完整 128 位·
+    //   移位量按位宽 128 取模——plans/001:289 用户裁决条文）。原经 dispatch 落 64 位
+    //   通用路径=低 64 位槽从未被写（高半写入/低半读未初始化·T39 三后端同缺口）。
+    void emitInt128Bitwise(Arm64AsmWriter& writer, const ir::IRInstruction& inst);
+    void emitInt128Shift(Arm64AsmWriter& writer, const ir::IRInstruction& inst);
+
     // 生成比较运算（cmp + cset 到结果槽，整型/浮点）
     void emitCompare(Arm64AsmWriter& writer, const ir::IRInstruction& inst);
 

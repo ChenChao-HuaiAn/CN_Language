@@ -189,6 +189,17 @@ private:
     //   再与 0 比较 setcc 得到 i1
     void emitInt128Compare(AsmWriter& writer, const ir::IRInstruction& inst);
 
+    // 302-a（T39 根治）：i128/u128 位运算（and/or/xor 双半独立）与移位（完整 128 位·
+    //   移位量按位宽 128 取模——plans/001:289 用户裁决条文）。原实现经 dispatch 落
+    //   64 位通用路径=低 64 位槽从未被写（高半写入/低半读未初始化·T39 采样实锤）。
+    void emitInt128Bitwise(AsmWriter& writer, const ir::IRInstruction& inst);
+    void emitInt128Shift(AsmWriter& writer, const ir::IRInstruction& inst);
+
+    // i128 操作数高低 64 位文本拆分（常量 "LO:HI" 十六进制/纯十进制；寄存器双槽
+    //   %vN 高 / %vN+1 低）——自 emitInt128Binary 内 lambda 提取（零行为变更），
+    //   供 Binary/Bitwise 共享。
+    std::pair<std::string, std::string> splitI128(const ir::IRValue& v);
+
     // 生成比较运算（cmp + setcc 到结果槽）
     void emitCompare(AsmWriter& writer, const ir::IRInstruction& inst);
 

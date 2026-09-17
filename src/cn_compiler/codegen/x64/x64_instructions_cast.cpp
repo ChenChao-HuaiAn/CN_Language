@@ -375,6 +375,31 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
         }
         return true;
     }
+    // i128/u128 -> 窄整：截断取低64位（值域≤2^63时语义正确；函数参数整64 场景）
+    // 注意：i128 双寄存器 %vN（高64位）+ %vN+1（低64位），取低64位槽
+    // 302-a（T39 根治）：目标覆盖全部窄整（i64/u64/i32/u32/i16/u16/i8/u8/i1）——
+    //   原仅 i64/u64，窄目标落**本段下方的通用 i8/i16 截断分支**读高半槽
+    //   （`整16(整128(100))`=0 应 100 实锤）；故本分支须先于通用窄截断判定。
+    if ((from == "i128" || from == "u128") &&
+        (to == "i64" || to == "u64" || to == "i32" || to == "u32" ||
+         to == "i16" || to == "u16" || to == "i8" || to == "u8" || to == "i1")) {
+        const int srcLoId = inst.operands[0].id + 1;
+        if (to == "i64" || to == "u64") {
+            writer.line("mov rax, " + regSlot(srcLoId));
+            writer.line("mov " + dst + ", rax");
+        } else {
+            // 窄目标：写 32 位（eax=低 64 的低 32；i8/i16 读取侧按声明类型窄读，
+            //   低位含正确值）。**不可 widthFor(to, dst)**——dst 为槽文本时
+            //   widthFor("i16","[rbp-X]") 落兜底 "eax"（T39 修复中自查实锤：
+            //   mov eax, eax 空写→结果槽未写→打印读垃圾非确定）；寄存器名（RA
+            //   场景）才经 widthFor 收缩为 32 位名。
+            const std::string dstW32 =
+                (!dst.empty() && dst[0] == '[') ? dst : widthFor("i32", dst);
+            writer.line("mov rax, " + regSlot(srcLoId));
+            writer.line("mov " + dstW32 + ", eax");
+        }
+        return true;
+    }
     // 大 -> 小（截断）：mov 低8/16/32位（写低字节，高位清零由槽位决定）
     if (to == "i8" || to == "u8") {
         writer.line("mov al, " + src);
@@ -384,14 +409,6 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
     if (to == "i16" || to == "u16") {
         writer.line("mov ax, " + src);
         writer.line("mov " + dst + ", ax");
-        return true;
-    }
-    // i128/u128 -> i64：截断取低64位（值域≤2^63时语义正确；函数参数整64 场景）
-    // 注意：i128 双寄存器 %vN（高64位）+ %vN+1（低64位），取低64位槽
-    if ((from == "i128" || from == "u128") && (to == "i64" || to == "u64")) {
-        const int srcLoId = inst.operands[0].id + 1;
-        writer.line("mov rax, " + regSlot(srcLoId));
-        writer.line("mov " + dst + ", rax");
         return true;
     }
     // i1 -> i64/u64（修复集成审查 BUG #4）：布尔值 0/1 零扩展。

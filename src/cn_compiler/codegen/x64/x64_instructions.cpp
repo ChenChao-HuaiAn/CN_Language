@@ -878,18 +878,25 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
             if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
             else emitDivMod(writer, inst);
             break;
+        // 302-a（T39 根治）：i128/u128 位运算走双半专用发射（原落 64 位通用路径
+        //   =低 64 位槽从未被写·消费侧读未初始化实锤）
         case ir::Opcode::BitAnd:
-            emitIntBinary(writer, inst, "and");
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Bitwise(writer, inst);
+            else emitIntBinary(writer, inst, "and");
             break;
         case ir::Opcode::BitOr:
-            emitIntBinary(writer, inst, "or");
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Bitwise(writer, inst);
+            else emitIntBinary(writer, inst, "or");
             break;
         case ir::Opcode::BitXor:
-            emitIntBinary(writer, inst, "xor");
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Bitwise(writer, inst);
+            else emitIntBinary(writer, inst, "xor");
             break;
         case ir::Opcode::Shl:
         case ir::Opcode::Shr:
-            emitShift(writer, inst);
+            // 302-a（T39 根治）：i128/u128 移位走完整 128 位发射（mod 128 语义）
+            if (inst.type == "i128" || inst.type == "u128") emitInt128Shift(writer, inst);
+            else emitShift(writer, inst);
             break;
         case ir::Opcode::Cast:
             emitCast(writer, inst);

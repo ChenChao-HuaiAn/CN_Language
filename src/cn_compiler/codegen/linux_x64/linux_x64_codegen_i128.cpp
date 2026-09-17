@@ -71,6 +71,160 @@ void LinuxX64CodeGenerator::emitInt128Binary(LinuxX64AsmWriter& writer,
 //   a/b/out 均为指向 16 字节双槽内存的指针（i128 值 = 2 个连续虚拟寄存器，
 //   lea 低64位槽地址传给辅助函数；辅助函数按小端读 低64位+高64位）。
 // SysV：参数 rdi/rsi/rdx = a/b/out 地址；返回值无。
+// ==================== 302-a（T39 根治）：i128 位运算 / 移位 ====================
+
+// 移位量常量文本解析（同款：0x/0b/0o 前缀感知 + i128 双槽 "LO:HI" 取低半）
+static int shiftAmtOf128l(const std::string& text) {
+    const std::size_t colon = text.find(':');
+    if (colon != std::string::npos) {
+        try { return static_cast<int>(std::stoull(text.substr(0, colon), nullptr, 16)); }
+        catch (...) { return 0; }
+    }
+    if (text.size() > 2 && text[0] == '0' &&
+        (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' || text[1] == 'B' ||
+         text[1] == 'o' || text[1] == 'O')) {
+        const int base = (text[1] == 'x' || text[1] == 'X') ? 16
+                         : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
+        try { return static_cast<int>(std::stoull(text.substr(2), nullptr, base)); }
+        catch (...) { return 0; }
+    }
+    try { return static_cast<int>(std::stoll(text)); }
+    catch (...) { return 0; }
+}
+
+// i128/u128 位运算（and/or/xor）：双半独立（低64位与高64位各一条逻辑指令）。
+void LinuxX64CodeGenerator::emitInt128Bitwise(LinuxX64AsmWriter& writer,
+                                              const ir::IRInstruction& inst) {
+    const std::string m = (inst.opcode == ir::Opcode::BitAnd) ? "and"
+                         : (inst.opcode == ir::Opcode::BitOr)  ? "or"
+                                                               : "xor";
+    // 操作数半值装载
+    auto loadPart = [this, &writer](const ir::IRValue& v, bool isHi,
+                                    const std::string& reg) {
+        if (v.isConstant) {
+            const std::string& extra = v.extra;
+            const std::size_t colon = extra.find(':');
+            std::uint64_t part = 0;
+            if (colon != std::string::npos) {
+                part = isHi ? std::stoull(extra.substr(colon + 1), nullptr, 16)
+                            : std::stoull(extra.substr(0, colon), nullptr, 16);
+            } else if (!isHi) {
+                try { part = static_cast<std::uint64_t>(std::stoull(extra)); }
+                catch (...) { part = 0; }
+            }
+            writer.line("mov " + reg + ", " + uint64HexText(part));
+            return;
+        }
+        const int id = isHi ? v.id : v.id + 1;
+        emitStackLoad(writer, regSlotOffset(id), reg, "i64", __LINE__);
+    };
+    // 低 64 位
+    loadPart(inst.operands[0], false, "r10");
+    loadPart(inst.operands[1], false, "r9");
+    writer.line(m + " r10, r9");
+    emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r10", "i64");
+    // 高 64 位
+    loadPart(inst.operands[0], true, "r10");
+    loadPart(inst.operands[1], true, "r9");
+    writer.line(m + " r10, r9");
+    emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i64");
+}
+
+// i128/u128 移位：完整 128 位——移位量按位宽 128 取模（plans/001:289）。
+//   k<64 用 shld/shrd（新位=(hi<<k)|(lo>>(64-k))）；k>=64 跨半（sub cl,64）；
+//   常量编译期分路；变量 and ecx,127 + cmp cl,64 二分路（x86 变量移位量仅 cl）。
+//   有符号 sar（符号扩展）/无符号 shr（补零）。
+void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
+                                            const ir::IRInstruction& inst) {
+    const bool isShl = (inst.opcode == ir::Opcode::Shl);
+    const bool isUnsigned = (inst.type == "u128");
+    const std::string rsh = isUnsigned ? "shr" : "sar";
+    const int hiId = inst.operands[0].id;        // %vN 高64位
+    const int loId = inst.operands[0].id + 1;    // %vN+1 低64位
+    const int dstHiId = inst.result.id;
+    const int dstLoId = inst.result.id + 1;
+    if (inst.operands[1].isConstant) {
+        const int k = shiftAmtOf128l(inst.operands[1].extra) & 127;
+        if (k == 0) {
+            emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+            emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+            emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+            return;
+        }
+        if (isShl) {
+            if (k < 64) {
+                emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+                emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+                writer.line("shld r10, r11, " + std::to_string(k));  // 新高位
+                writer.line("shl r11, " + std::to_string(k));        // 新低位
+            } else {
+                emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+                writer.line("shl r11, " + std::to_string(k - 64));
+                writer.line("mov r10, r11");
+                writer.line("xor r11, r11");
+            }
+        } else {
+            if (k < 64) {
+                emitStackLoad(writer, regSlotOffset(loId), "r10", "i64", __LINE__);
+                emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+                writer.line("shrd r10, r11, " + std::to_string(k));  // 新低位
+                writer.line(rsh + " r11, " + std::to_string(k));     // 新高位
+            } else {
+                emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+                writer.line(rsh + " r10, " + std::to_string(k - 64));
+                emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+                writer.line(isUnsigned ? "xor r11, r11" : "sar r11, 63");
+            }
+        }
+        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+        emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+        return;
+    }
+    // ---- 变量移位量：mod 128 + 大小分路 ----
+    // 移位量槽：i128/u128 双槽取低半（%vN+1）；普通整型单槽直用（id 本身）。
+    const ir::IRValue& shOp = inst.operands[1];
+    const int shId = (shOp.type == "i128" || shOp.type == "u128") ? shOp.id + 1 : shOp.id;
+    const int cid = ptrCheckCounter_++;
+    const std::string bigL = "Lsh128_b" + std::to_string(cid);
+    const std::string endL = "Lsh128_e" + std::to_string(cid);
+    emitStackLoad(writer, regSlotOffset(shId), "r10", "i32", __LINE__);
+    writer.line("mov ecx, r10d");
+    writer.line("and ecx, 127");
+    writer.line("cmp cl, 64");
+    writer.line("jae " + bigL);
+    if (isShl) {
+        emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+        emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+        writer.line("shld r10, r11, cl");
+        writer.line("shl r11, cl");
+    } else {
+        emitStackLoad(writer, regSlotOffset(loId), "r10", "i64", __LINE__);
+        emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+        writer.line("shrd r10, r11, cl");
+        writer.line(rsh + " r11, cl");
+    }
+    emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+    emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+    writer.line("jmp " + endL);
+    writer.raw(bigL + ":");
+    writer.line("sub cl, 64");
+    if (isShl) {
+        emitStackLoad(writer, regSlotOffset(loId), "r11", "i64", __LINE__);
+        writer.line("shl r11, cl");
+        writer.line("mov r10, r11");
+        writer.line("xor r11, r11");
+    } else {
+        emitStackLoad(writer, regSlotOffset(hiId), "r10", "i64", __LINE__);
+        writer.line(rsh + " r10, cl");
+        emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
+        writer.line(isUnsigned ? "xor r11, r11" : "sar r11, 63");
+    }
+    emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+    emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+    writer.raw(endL + ":");
+}
+
 void LinuxX64CodeGenerator::emitInt128MulDivMod(LinuxX64AsmWriter& writer,
                                                 const ir::IRInstruction& inst) {
     const bool isUnsigned = (inst.type == "u128");

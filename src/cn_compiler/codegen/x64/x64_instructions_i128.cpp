@@ -15,35 +15,35 @@ namespace cn_compiler {
 //   变量值：x 槽（低64位）+ x$s1 槽（高64位）。
 //   注意：本函数处理 IR 指令 Add/Sub（type=i128），操作数为 i128 值（双槽）。
 //   操作数可能是 i128 常量（extra=LO:HI 十六进制）或 i128 寄存器（%vN）。
+// 302-a（T39 根治）：i128 操作数高低 64 位文本拆分（自 emitInt128Binary 内 lambda
+//   提取为成员·零行为变更）——常量 "LO:HI"(十六进制)/纯十进制；寄存器 %vN 高/%vN+1 低。
+std::pair<std::string, std::string> X64CodeGenerator::splitI128(const ir::IRValue& v) {
+    if (v.isConstant) {
+        const std::string& extra = v.extra;
+        const std::size_t colon = extra.find(':');
+        if (colon != std::string::npos) {
+            const std::uint64_t lo = static_cast<std::uint64_t>(
+                std::stoull(extra.substr(0, colon), nullptr, 16));
+            const std::uint64_t hi = static_cast<std::uint64_t>(
+                std::stoull(extra.substr(colon + 1), nullptr, 16));
+            return {uint64HexText(lo), uint64HexText(hi)};
+        }
+        try {
+            return {uint64HexText(static_cast<std::uint64_t>(std::stoull(extra))), "0"};
+        } catch (...) {
+            return {extra, "0"};
+        }
+    }
+    return {regSlot(v.id + 1), regSlot(v.id)};
+}
+
 void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstruction& inst) {
     // 结果双槽：result.id 为高64位槽（%vN）、result.id+1 为低64位槽（%vN+1）
     const int dstHiId = inst.result.id;
     const int dstLoId = inst.result.id + 1;
     std::string dstLo = regSlot(dstLoId);   // 低64位（较低地址）
     std::string dstHi = regSlot(dstHiId);   // 高64位（较高地址）
-    // 操作数低/高64位文本：i128 常量拆双立即数；i128 寄存器取 双槽
-    auto splitI128 = [this](const ir::IRValue& v) -> std::pair<std::string, std::string> {
-        if (v.isConstant) {
-            // 常量 extra = "LO:HI"（十六进制）或纯十进制（小值）
-            const std::string& extra = v.extra;
-            const std::size_t colon = extra.find(':');
-            if (colon != std::string::npos) {
-                const std::uint64_t lo = static_cast<std::uint64_t>(
-                    std::stoull(extra.substr(0, colon), nullptr, 16));
-                const std::uint64_t hi = static_cast<std::uint64_t>(
-                    std::stoull(extra.substr(colon + 1), nullptr, 16));
-                return {uint64HexText(lo), uint64HexText(hi)};
-            }
-            // 纯十进制：低64位 = 值，高64位 = 0
-            try {
-                return {uint64HexText(static_cast<std::uint64_t>(std::stoull(extra))), "0"};
-            } catch (...) {
-                return {extra, "0"};
-            }
-        }
-        // 寄存器：%vN = 高64位（较高地址）、%vN+1 = 低64位（较低地址）
-        return {regSlot(v.id + 1), regSlot(v.id)};
-    };
+    // 302-a：splitI128 已提取为成员函数（Binary/Bitwise 共享·零行为变更）
     const auto op1 = splitI128(inst.operands[0]);
     const auto op2 = splitI128(inst.operands[1]);
     const bool isAdd = (inst.opcode == ir::Opcode::Add);
@@ -76,6 +76,165 @@ void X64CodeGenerator::emitInt128Binary(AsmWriter& writer, const ir::IRInstructi
 //   a/b/out 均为指向 16 字节双槽内存的指针（i128 值 = 2 个连续虚拟寄存器，
 //   lea 低64位槽地址传给辅助函数；辅助函数按小端读 低64位+高64位）。
 // 辅助函数名：mul -> __cn_mul_i128/u128；div -> __cn_div_i128/u128；mod -> __cn_mod_i128/u128
+// ==================== 302-a（T39 根治）：i128 位运算 / 移位 ====================
+
+// 移位量常量文本解析（与 x64_instructions.cpp 的 shiftAmtOf 同款——文件级 static
+//   互不冲突：0x/0b/0o 前缀感知；异常兜底 0）。
+static int shiftAmtOf128(const std::string& text) {
+    // i128 双槽常量 "LO:HI"（十六进制）——移位量取低 64 位（LO）
+    const std::size_t colon = text.find(':');
+    if (colon != std::string::npos) {
+        try { return static_cast<int>(std::stoull(text.substr(0, colon), nullptr, 16)); }
+        catch (...) { return 0; }
+    }
+    if (text.size() > 2 && text[0] == '0' &&
+        (text[1] == 'x' || text[1] == 'X' || text[1] == 'b' || text[1] == 'B' ||
+         text[1] == 'o' || text[1] == 'O')) {
+        const int base = (text[1] == 'x' || text[1] == 'X') ? 16
+                         : (text[1] == 'b' || text[1] == 'B') ? 2 : 8;
+        try { return static_cast<int>(std::stoull(text.substr(2), nullptr, base)); }
+        catch (...) { return 0; }
+    }
+    try { return static_cast<int>(std::stoll(text)); }
+    catch (...) { return 0; }
+}
+
+// 内存/栈槽文本 → MASM 需显式 qword ptr（逻辑/位运算内存源宽度不可推断 A2070）
+static std::string qwordMem(const std::string& s) {
+    return (s.rfind("rbp", 0) == 0 || s.rfind("[", 0) == 0) ? "qword ptr " + s : s;
+}
+
+// i128/u128 位运算（and/or/xor）：双半独立——低 64 位与高 64 位各一条逻辑指令。
+//   原实现经 dispatch 落 emitIntBinary（64 位单寄存器路径）=低 64 位槽 %vN+1 从未
+//   被写，消费侧读未初始化（T39：isf 非确定/隔离探针丢低位实锤）。
+void X64CodeGenerator::emitInt128Bitwise(AsmWriter& writer, const ir::IRInstruction& inst) {
+    const std::string m = (inst.opcode == ir::Opcode::BitAnd) ? "and"
+                         : (inst.opcode == ir::Opcode::BitOr)  ? "or"
+                                                               : "xor";
+    const std::string dstLo = regSlot(inst.result.id + 1);  // 低64位（较低地址）
+    const std::string dstHi = regSlot(inst.result.id);      // 高64位（较高地址）
+    const auto op1 = splitI128(inst.operands[0]);
+    const auto op2 = splitI128(inst.operands[1]);
+    // 低 64 位：op1Lo and/or/xor op2Lo
+    writer.line("mov rax, " + op1.first);
+    writer.line(m + " rax, " + qwordMem(op2.first));
+    writer.line("mov " + dstLo + ", rax");
+    // 高 64 位：op1Hi and/or/xor op2Hi
+    writer.line("mov rcx, " + op1.second);
+    writer.line(m + " rcx, " + qwordMem(op2.second));
+    writer.line("mov " + dstHi + ", rcx");
+}
+
+// i128/u128 移位：完整 128 位（高低双半整体移位）——移位量按操作数位宽 128 取模
+//   （plans/001:289 用户裁决条文：a << k ≡ a << (k mod 128)，与 const_fold 一致）。
+//   双槽模型：op1 = (%vN 高, %vN+1 低)；dst = (result.id 高, result.id+1 低)。
+//   实现：k<64 用 shld/shrd 双字移位一条到位（新高位=(hi<<k)|(lo>>(64-k))）；
+//   k>=64 跨半（sub cl,64 后单半移位）；常量移位量编译期分路直发；变量移位量
+//   and ecx,127 + cmp cl,64 运行时二分路（x86 变量移位量仅 cl·中间值用 rax/rdx
+//   避免覆盖 cl；大路径的 rcx 复用发生在移位之后）。
+//   有符号右移=sar（符号扩展）；无符号右移=shr（补零·k>=64 时高位补 0）。
+void X64CodeGenerator::emitInt128Shift(AsmWriter& writer, const ir::IRInstruction& inst) {
+    const bool isShl = (inst.opcode == ir::Opcode::Shl);
+    const bool isUnsigned = (inst.type == "u128");
+    const std::string rsh = isUnsigned ? "shr" : "sar";  // 右移助记符
+    const std::string dstLo = regSlot(inst.result.id + 1);
+    const std::string dstHi = regSlot(inst.result.id);
+    const std::string op1Hi = regSlot(inst.operands[0].id);      // %vN 高64位
+    const std::string op1Lo = regSlot(inst.operands[0].id + 1);  // %vN+1 低64位
+    if (inst.operands[1].isConstant) {
+        const int k = shiftAmtOf128(inst.operands[1].extra) & 127;
+        if (k == 0) {  // 直通（含 k≡0 mod 128）
+            writer.line("mov rax, " + op1Lo);
+            writer.line("mov " + dstLo + ", rax");
+            writer.line("mov rax, " + op1Hi);
+            writer.line("mov " + dstHi + ", rax");
+            return;
+        }
+        if (isShl) {
+            if (k < 64) {
+                writer.line("mov rax, " + op1Hi);
+                writer.line("mov rdx, " + op1Lo);
+                writer.line("shld rax, rdx, " + std::to_string(k));  // 新高位
+                writer.line("shl rdx, " + std::to_string(k));       // 新低位
+                writer.line("mov " + dstHi + ", rax");
+                writer.line("mov " + dstLo + ", rdx");
+            } else {  // k in [64,127]：dstHi = lo << (k-64)；dstLo = 0
+                writer.line("mov rax, " + op1Lo);
+                writer.line("shl rax, " + std::to_string(k - 64));
+                writer.line("mov " + dstHi + ", rax");
+                writer.line("mov rax, 0");
+                writer.line("mov " + dstLo + ", rax");
+            }
+        } else {
+            if (k < 64) {
+                writer.line("mov rax, " + op1Lo);
+                writer.line("mov rdx, " + op1Hi);
+                writer.line("shrd rax, rdx, " + std::to_string(k));  // 新低位
+                writer.line(rsh + " rdx, " + std::to_string(k));     // 新高位
+                writer.line("mov " + dstLo + ", rax");
+                writer.line("mov " + dstHi + ", rdx");
+            } else {  // k in [64,127]：dstLo = hi >> (k-64)；dstHi = 符号扩展/零
+                writer.line("mov rax, " + op1Hi);
+                writer.line(rsh + " rax, " + std::to_string(k - 64));
+                writer.line("mov " + dstLo + ", rax");
+                writer.line("mov rcx, " + op1Hi);
+                writer.line(isUnsigned ? "xor rcx, rcx" : "sar rcx, 63");
+                writer.line("mov " + dstHi + ", rcx");
+            }
+        }
+        return;
+    }
+    // ---- 变量移位量：mod 128 + 大小分路 ----
+    const int cid = ptrCheckCounter_++;
+    const std::string bigL = "@sh128_b" + std::to_string(cid);
+    const std::string endL = "@sh128_e" + std::to_string(cid);
+    // 移位量取值：按操作数自身类型分流——i128/u128 双槽取低半（%vN+1·原
+    //   operandText 给高半=符号扩展位 0→移位恒 0 自查实锤）；普通整型单槽直用
+    //   （O0 复合赋值等形态移位量为单槽·误用双槽偏移会读到相邻寄存器）。
+    const ir::IRValue& shOp = inst.operands[1];
+    const std::string shSrc = (shOp.type == "i128" || shOp.type == "u128")
+        ? regSlot(shOp.id + 1) : operandText(shOp);
+    writer.line("mov ecx, " + widthFor("i32", shSrc));
+    writer.line("and ecx, 127");  // 规范：k mod 128
+    writer.line("cmp cl, 64");
+    writer.line("jae " + bigL);
+    // 小路径（k<64·cl 全程保留）
+    if (isShl) {
+        writer.line("mov rax, " + op1Hi);
+        writer.line("mov rdx, " + op1Lo);
+        writer.line("shld rax, rdx, cl");
+        writer.line("shl rdx, cl");
+        writer.line("mov " + dstHi + ", rax");
+        writer.line("mov " + dstLo + ", rdx");
+    } else {
+        writer.line("mov rax, " + op1Lo);
+        writer.line("mov rdx, " + op1Hi);
+        writer.line("shrd rax, rdx, cl");
+        writer.line(rsh + " rdx, cl");
+        writer.line("mov " + dstLo + ", rax");
+        writer.line("mov " + dstHi + ", rdx");
+    }
+    writer.line("jmp " + endL);
+    // 大路径（k>=64：k' = k-64 ∈ [0,63]）
+    writer.raw(bigL + ":");
+    writer.line("sub cl, 64");
+    if (isShl) {
+        writer.line("mov rax, " + op1Lo);
+        writer.line("shl rax, cl");
+        writer.line("mov " + dstHi + ", rax");
+        writer.line("mov rax, 0");
+        writer.line("mov " + dstLo + ", rax");
+    } else {
+        writer.line("mov rax, " + op1Hi);
+        writer.line(rsh + " rax, cl");
+        writer.line("mov " + dstLo + ", rax");
+        writer.line("mov rcx, " + op1Hi);
+        writer.line(isUnsigned ? "xor rcx, rcx" : "sar rcx, 63");
+        writer.line("mov " + dstHi + ", rcx");
+    }
+    writer.raw(endL + ":");
+}
+
 void X64CodeGenerator::emitInt128MulDivMod(AsmWriter& writer, const ir::IRInstruction& inst) {
     const bool isUnsigned = (inst.type == "u128");
     std::string helper;

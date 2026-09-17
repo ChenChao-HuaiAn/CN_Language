@@ -468,15 +468,19 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         return;
     }
     // ---- 大 -> 小（截断）：装载任意宽度，按目标窄宽存储 ----
-    if (to == "i8" || to == "u8" || to == "i16" || to == "u16") {
-        loadOperandToX(writer, inst.operands[0], "r10");
+    // i128/u128 -> 窄整截断：取低64位槽（302-a T39 根治：目标扩展至全窄整——
+    //   原仅 i64/u64，窄目标落下方通用窄截断分支读高半槽（`整16(整128(100))`=0）；
+    //   故本分支须先于通用窄截断判定）
+    if ((from == "i128" || from == "u128") &&
+        (to == "i64" || to == "u64" || to == "i32" || to == "u32" ||
+         to == "i16" || to == "u16" || to == "i8" || to == "u8" || to == "i1")) {
+        const int srcLoId = inst.operands[0].id + 1;
+        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
         emitStackStore(writer, dstOff, "r10", to);
         return;
     }
-    // i128 -> i64：截断取低64位
-    if ((from == "i128" || from == "u128") && (to == "i64" || to == "u64")) {
-        const int srcLoId = inst.operands[0].id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
+    if (to == "i8" || to == "u8" || to == "i16" || to == "u16") {
+        loadOperandToX(writer, inst.operands[0], "r10");
         emitStackStore(writer, dstOff, "r10", to);
         return;
     }
