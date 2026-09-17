@@ -128,10 +128,14 @@ def 差分(编译器):
     分歧 = []
     if os.path.exists(差异清单):
         for line in open(差异清单, encoding="utf-8"):
-            m = re.match(r"(\S+\.cn)[:：]\s*(.*)", line.strip())
+            # T28②根治（303-a）：按清单行结构化标签 [diff/build_err/run_err] 分派——
+            #   原实现靠详情文本含「运行失败」反推，rc=-8/timeout 详情不含该字样
+            #   →必然落空误归 diff/+已归档样本每轮重建副本。
+            m = re.match(r"(\S+\.cn)\s*\[(\w+)\]:\s*(.*)", line.strip())
             if m:
-                名, 说明 = m.group(1), m.group(2)
-                类别 = "build_err" if "编译失败" in 说明 else ("run_err" if "运行失败" in 说明 else "diff")
+                名, 类别, 说明 = m.group(1), m.group(2), m.group(3)
+                if 类别 not in 类别集 and 类别 != "ok":
+                    类别, 说明 = "diff", "[%s] %s" % (类别, 说明)
                 分歧.append((名, 类别, 说明))
     return 汇总行, 分歧
 
@@ -170,6 +174,10 @@ class 日志写手:
         self.当前路径 = None
         self.汇总 = None          # 无变化序列缓冲
         self.上轮命中 = None       # set((名,类别))；None=未知（重启首轮）
+        self.上轮未命中回归 = None  # set(名)——T28③根治（303-a）：回归轨中未命中的稳态全集，
+        #   消失回归=本轮未命中−上轮未命中（增量）。原实现直接用「回归名单−命中名」全集，
+        #   已修样本永远留库防复发→该集合恒非空→「not 消失回归」恒假→无变化判据永不成立
+        #   →每轮退化全量记录（月日志爆 5000 红线根因）。None=重启首轮（基线化不报变化）。
 
     def _切月(self, st):
         月 = time.strftime("%Y-%m", st)
@@ -202,7 +210,11 @@ class 日志写手:
         st = time.localtime(时刻)
         命中 = {(名, 类别) for 名, 类别, _ in 分歧}
         命中名 = {名 for 名, _ in 命中}
-        消失回归 = sorted(set(回归名单) - 命中名)
+        未命中回归 = set(回归名单) - 命中名
+        if self.上轮未命中回归 is None:
+            消失回归 = []      # 重启首轮：稳态全集基线化（不报变化）
+        else:
+            消失回归 = sorted(未命中回归 - self.上轮未命中回归)   # 增量=本轮新消失的
         无变化 = (新存 == 0 and not 消失回归 and 说明 == "无更新"
                   and self.上轮命中 is not None and 命中 == self.上轮命中)
         if 无变化:
@@ -216,6 +228,7 @@ class 日志写手:
             self.汇总["回归"] += 回归数
             self.汇总["末种子"] = 种子
             self.上轮命中 = 命中
+            self.上轮未命中回归 = 未命中回归
             return
         self._冲刷汇总()
         路径 = self._切月(st)
@@ -240,6 +253,7 @@ class 日志写手:
                     f.write("  - …共 %d 条\n" % len(消失回归))
             f.write("- 存档：新存 %d·回归轨已修 %d·用时 %.1fs\n\n" % (新存, len(消失回归), 用时))
         self.上轮命中 = 命中
+        self.上轮未命中回归 = 未命中回归
 
     def 收尾(self):
         self._冲刷汇总()

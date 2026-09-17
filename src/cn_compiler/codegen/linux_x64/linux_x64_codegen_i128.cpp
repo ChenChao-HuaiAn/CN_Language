@@ -177,8 +177,16 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
                 writer.line(isUnsigned ? "xor r11, r11" : "sar r11, 63");
             }
         }
-        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-        emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+        // 存储（303-a 根治）：左移 r10=新高半/r11=新低半；右移经 shrd/sar 发射
+        //   r10=新低半/r11=新高半（寄存器角色相反）——原共用存储行致右移双半写反
+        //   （x64l 运行级复验捕获：大>>1 输出 INT128_MIN=低半真值落高槽）。
+        if (isShl) {
+            emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+            emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+        } else {
+            emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+            emitStackStore(writer, regSlotOffset(dstHiId), "r11", "i64");
+        }
         return;
     }
     // ---- 变量移位量：mod 128 + 大小分路 ----
@@ -204,8 +212,14 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
         writer.line("shrd r10, r11, cl");
         writer.line(rsh + " r11, cl");
     }
-    emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-    emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+    // 303-a 根治：右移 r10=新低半/r11=新高半（与左移相反）——存储分派
+    if (isShl) {
+        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+        emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+    } else {
+        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+        emitStackStore(writer, regSlotOffset(dstHiId), "r11", "i64");
+    }
     writer.line("jmp " + endL);
     writer.raw(bigL + ":");
     writer.line("sub cl, 64");
@@ -220,8 +234,14 @@ void LinuxX64CodeGenerator::emitInt128Shift(LinuxX64AsmWriter& writer,
         emitStackLoad(writer, regSlotOffset(hiId), "r11", "i64", __LINE__);
         writer.line(isUnsigned ? "xor r11, r11" : "sar r11, 63");
     }
-    emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-    emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+    // 303-a 根治：大路存储同款分派（右移 r10=新低半/r11=新高半）
+    if (isShl) {
+        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+        emitStackStore(writer, regSlotOffset(dstLoId), "r11", "i64");
+    } else {
+        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+        emitStackStore(writer, regSlotOffset(dstHiId), "r11", "i64");
+    }
     writer.raw(endL + ":");
 }
 

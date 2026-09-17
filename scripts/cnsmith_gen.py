@@ -104,6 +104,10 @@ class Gen:
 # 负向注入（246-a）：对合法程序注入一个随机语法/结构错误——
 #   验证编译器「必有诊断、永不崩溃」（T6 族机械化）。
 #   注入器=字符串级手术（生成后再破坏），不追求语义多样性（覆盖语法层防线）。
+#   T28①根治（303-a）：①不再追加「# 注入类型」标记行（`#` 是预处理指令起始，
+#   会掩盖真注入错误=判据不纯——注入元数据改落 <样本>.cn.neg 伴随文件）；
+#   ②必真注入=在含目标特征的行中选（重试选行），全特征行缺失时换注入类型，
+#   全类型不可注入则跳过该样本并计数（禁止静默假注入=样本仍合法）。
 INJECTIONS = [
     "删分号",       # 语句缺少分号
     "缺右括号",     # 括号不闭合
@@ -114,29 +118,56 @@ INJECTIONS = [
 
 
 def inject_error(src, rng):
-    kind = rng.choice(INJECTIONS)
+    """注入一个随机语法错误。返回 (源码|None, 注入类型|None, 注入行号 1 基|0)。
+
+    必真注入保证：只在含目标特征的候选行中随机选（该行注入后必然语法非法）；
+    候选为空则换下一个注入类型（随机序）；全部类型不可注入返回 None（调用方跳过）。"""
+    kinds = INJECTIONS[:]
+    rng.shuffle(kinds)
     lines = src.split(NL)
-    if kind == "删分号" and len(lines) > 4:
-        i = rng.randrange(1, len(lines) - 1)
-        lines[i] = lines[i].replace(";", "", 1)
-    elif kind == "缺右括号" and len(lines) > 4:
-        i = rng.randrange(1, len(lines) - 1)
-        if "(" in lines[i]:
-            j = lines[i].rfind(")")
-            lines[i] = lines[i][:j] + lines[i][j + 1:]
+    for kind in kinds:
+        out = _尝试注入(lines, kind, rng)
+        if out is not None:
+            return NL.join(out[0]), kind, out[1]
+    return None, None, 0
+
+
+def _尝试注入(lines, kind, rng):
+    """单类型注入尝试：返回 (新行列表, 注入行号) 或 None（无可注入行）。"""
+    out = list(lines)
+    if kind == "删分号":
+        cand = [i for i, l in enumerate(out) if ";" in l]
+        if not cand:
+            return None
+        i = rng.choice(cand)
+        out[i] = out[i].replace(";", "", 1)
+    elif kind == "缺右括号":
+        cand = [i for i, l in enumerate(out) if ")" in l]
+        if not cand:
+            return None
+        i = rng.choice(cand)
+        j = out[i].rfind(")")
+        out[i] = out[i][:j] + out[i][j + 1:]
     elif kind == "缺右花括号":
-        # 删除最后一个 }（函数体不闭合）
-        for i in range(len(lines) - 1, -1, -1):
-            if lines[i].strip() == "}":
-                lines.pop(i)
-                break
+        cand = [i for i, l in enumerate(out) if l.strip() == "}"]
+        if not cand:
+            return None
+        i = rng.choice(cand)
+        out.pop(i)
     elif kind == "非法字符":
-        i = rng.randrange(1, len(lines))
-        lines[i] = lines[i] + " @#$"
+        cand = [i for i, l in enumerate(out) if l.strip()]
+        if not cand:
+            return None
+        i = rng.choice(cand)
+        out[i] = out[i] + " @@"
     elif kind == "截断文件":
-        cut = rng.randrange(len(lines) // 2, len(lines))
-        lines = lines[:cut]
-    return (NL.join(lines) + NL + "# 注入类型: " + kind + NL), kind
+        if len(out) < 4:
+            return None
+        i = rng.randrange(len(out) // 2, len(out))   # 截断点 ≤ 末行索引：末行 `}` 必被删
+        out = out[:i]
+    else:
+        return None
+    return out, i + 1
 
 
 def main():
@@ -149,20 +180,30 @@ def main():
                     help="负向注入模式：生成非法程序（验证必有诊断不崩溃）")
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
+    跳过 = 0
+    分布 = {}
     for i in range(a.count):
         seed = a.seed + i
         g = Gen(seed)
         src = g.program(a.stmts)
-        ext = ".cn"
         if a.negative:
             rng = random.Random(seed * 31 + 7)
-            src, kind = inject_error(src, rng)
-            ext = ".cn"
-        with open(os.path.join(a.out, "s%d%s" % (seed, ext)), "w",
+            src, kind, 行号 = inject_error(src, rng)
+            if src is None:
+                跳过 += 1          # 全类型不可注入（合法程序行集过小）——不产假注入样本
+                continue
+            分布[kind] = 分布.get(kind, 0) + 1
+            with open(os.path.join(a.out, "s%d.cn.neg" % seed), "w",
+                      encoding="utf-8", newline="") as f:
+                f.write("%s\t%d\n" % (kind, 行号))
+        with open(os.path.join(a.out, "s%d.cn" % seed), "w",
                   encoding="utf-8", newline="") as f:
             f.write(src)
     mode = "负向注入" if a.negative else "合法"
-    print("生成 %d 个程序（%s） -> %s" % (a.count, mode, a.out))
+    print("生成 %d 个程序（%s） -> %s" % (a.count - 跳过, mode, a.out))
+    if a.negative:
+        print("  注入类型分布: %s ｜ 跳过（无可注入行）%d" %
+              (dict(sorted(分布.items())), 跳过))
 
 
 if __name__ == "__main__":

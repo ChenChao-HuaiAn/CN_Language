@@ -128,17 +128,21 @@ def main():
     n_diff = sum(1 for _, k, _ in results if k == "diff")
     n_berr = sum(1 for _, k, _ in results if k == "build_err")
     n_rerr = sum(1 for _, k, _ in results if k == "run_err")
-    diffs = [(n, d) for n, k, d in results if k != "ok"]
+    diffs = [(n, k, d) for n, k, d in results if k != "ok"]
     print("=== CN-Smith 优化器差分采样 ===")
     print("总数 %d ｜ 一致 %d ｜ 分歧 %d ｜ 编译失败 %d ｜ 运行失败 %d"
           % (len(srcs), n_ok, n_diff, n_berr, n_rerr))
-    for name, why in diffs[:10]:
-        print("  分歧:", name, "——", why)
+    for name, kind, why in diffs[:10]:
+        print("  分歧 [%s]:" % kind, name, "——", why)
     if diffs:
+        # T28②根治（303-a）：清单行携带结构化类别标签 [diff/build_err/run_err]——
+        #   原格式「名: 详情」把类别丢在详情文本里（run_err 详情=rc=-8 不含
+        #   「运行失败」字样），daemon 只能文本反推→rc=-8 全部误归 diff/。
         with open(os.path.join(a.out, "分歧清单.txt"), "w",
                   encoding="utf-8", newline="") as f:
-            for name, why in diffs:
-                f.write("%s: %s\n" % (name, why))
+            for name, kind, why in diffs:
+                前缀 = {"build_err": "编译失败: ", "run_err": "运行失败: "}.get(kind, "")
+                f.write("%s [%s]: %s%s\n" % (name, kind, 前缀, why))
     sys.exit(1 if (n_diff or n_rerr) else 0)
 
 
