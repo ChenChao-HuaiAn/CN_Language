@@ -20,19 +20,35 @@
 import argparse
 import concurrent.futures
 import os
-import resource
 import subprocess
 import sys
 import threading
 import time
 
+# 306-a 防线加固：子进程虚拟内存上限（防病态样本/编译器进程内存失控触发系统
+#   OOM 连坐宿主会话——2026-09-17 28.7GB OOM 实证）。
+# 312-b win 兼容修复：resource 为 POSIX 专属模块（Windows 无·306-a 首发后 win
+#   全族差分/回归轨 ModuleNotFoundError 瘫痪）；subprocess preexec_fn 亦为
+#   POSIX 专属参数——win 分支跳过（Job Object 级上限留后续防线轮），linux
+#   行为逐字节不变。
+try:
+    import resource
+    _HAS_RESOURCE = True
+except ImportError:
+    _HAS_RESOURCE = False
+
 
 def 子进程内存上限(gb=6):
-    '''306-a 防线加固：子进程虚拟内存上限（防病态样本/编译器进程内存失控
-    触发系统 OOM 连坐宿主会话——2026-09-17 28.7GB OOM 实证）。'''
     def _limit():
         resource.setrlimit(resource.RLIMIT_AS, (gb * 1024 ** 3,) * 2)
     return _limit
+
+
+def 子进程防线参数():
+    """POSIX=内存上限 preexec_fn；Windows=None（无对应原语·跳过）。"""
+    if _HAS_RESOURCE:
+        return {"preexec_fn": 子进程内存上限()}
+    return {}
 
 
 def 探测目标平台(target=None):
@@ -58,13 +74,13 @@ def run_one(cn, src, out_dir, level, target=None):
                         "--output", exe],
                        capture_output=True, text=True, encoding="utf-8",
                        errors="replace", timeout=120,
-                       preexec_fn=子进程内存上限())
+                       **子进程防线参数())
     if b.returncode != 0:
         return "build_err", ((b.stdout or "") + (b.stderr or ""))[:200]
     try:
         r = subprocess.run([exe], capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=20,
-                           preexec_fn=子进程内存上限())
+                           **子进程防线参数())
     except subprocess.TimeoutExpired:
         return "run_err", "timeout"
     if r.returncode != 0:
