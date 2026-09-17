@@ -380,15 +380,52 @@ int SemanticAnalyzer::fieldOffsetOf(const StructDecl* decl, const std::string& f
     }
     return -1;
 }
+StructDecl* SemanticAnalyzer::findMutableStruct(const std::string& name) {
+    if (program_ == nullptr) return nullptr;
+    for (auto& s : program_->structs) {
+        if (s && s->name == name) return s.get();
+    }
+    return nullptr;
+}
+
 void SemanticAnalyzer::computeLayout(StructDecl* decl) {
     if (decl->layoutComputed) return;
-    // 循环检测：布局计算中递归调用；用 layoutComputed 提前标记防无限递归
+    // T3（306-a 波次2）：值字段递归环=无穷大小类型，编译期拒绝（Rust E0072 同类）。
+    //   原实现仅以 layoutComputed 提前置位防无限递归——递归字段经 typeSizeOf 读到
+    //   totalSize=0 被静默接受（无穷大小静默变 0/8 字节·值语义越界写面），且
+    //   间接递归（甲↔乙）结果依赖声明顺序=错值。现以 visiting 栈捕获环并报错。
+    if (!layoutVisiting_.insert(decl->name).second) {
+        diagnostics_.report(
+            DiagnosticLevel::Error, decl->location,
+            "结构体 '" + decl->name + "' 存在值字段递归（无穷大小类型）——"
+            "请将递归字段改为指针，或改用类（引用语义）");
+        decl->layoutComputed = true;
+        return;  // totalSize 保持 0：错误已报，防连锁误报
+    }
     decl->layoutComputed = true;
     decl->totalSize = 0;
     decl->align = 1;
     int maxAlign = 1;
     int maxFieldSize = 0;
     for (auto& field : decl->fields) {
+        // T3：字段为结构体/合成体时——先查递归环（字段类型 ∈ 计算中栈=环·报错），
+        //   未计算则惰性递归其布局（消除间接递归的声明顺序依赖）
+        if (const StructDecl* fd = findStruct(canonicalType(field.type))) {
+            if (layoutVisiting_.count(fd->name)) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, decl->location,
+                    "结构体 '" + decl->name + "' 的字段 '" + field.name +
+                        "' 递归引用了正在计算布局的结构体 '" + fd->name +
+                        "'（值字段递归=无穷大小类型）——请将该字段改为指针，"
+                        "或改用类（引用语义）");
+                continue;  // 本字段大小按 0 处理：错误已报，防连锁误报
+            }
+            if (!fd->layoutComputed) {
+                if (StructDecl* fm = findMutableStruct(fd->name)) {
+                    computeLayout(fm);
+                }
+            }
+        }
         const int fieldAlign = typeAlignOf(field.type);
         const int fieldSize = typeSizeOf(field.type);
         if (fieldAlign > maxAlign) maxAlign = fieldAlign;
@@ -408,6 +445,7 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
     decl->align = maxAlign;
     // 总大小对齐到最大成员对齐（C语义：sizeof(struct) 是最大对齐的倍数）
     decl->totalSize = (decl->totalSize + maxAlign - 1) / maxAlign * maxAlign;
+    layoutVisiting_.erase(decl->name);  // T3：计算完成出栈
 }
 void SemanticAnalyzer::computeEnumValues(EnumDecl* decl) {
     std::int64_t nextValue = 0;

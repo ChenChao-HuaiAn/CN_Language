@@ -409,7 +409,11 @@ private:
     void genVarDecl(VarDecl* node);             // 变量声明（Alloca + Store）
     // 数组越界检查插桩（Task 2.4）：index < 0 || index >= len 时调用运行时错误(2)
     void emitBoundsCheck(const ir::IRValue& index, int arrayLen,
-                         const SourceLocation& loc);
+                         const SourceLocation& loc);    // T4（306-a 波次2）：字符串下标越界检查（运行时长度版）——
+    //   len=__cn_str_len(ptr)；idx<0||idx>=len -> __cn_runtime_error(2)
+    //   （与数组编译期长度版同错误通道=防线对称）
+    void emitStrBoundsCheck(const ir::IRValue& indexRaw, const ir::IRValue& strPtr,
+                            const SourceLocation& loc);
     // 计算左值地址（标识符/下标/解引用/成员访问 -> 地址值），供赋值使用（Task 2.4/2.7）
     ir::IRValue lvalueAddress(Expr* node);
     // ==================== i128 内存模型（Task 完善A） ====================

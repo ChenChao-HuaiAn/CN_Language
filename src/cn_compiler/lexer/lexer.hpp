@@ -42,7 +42,9 @@ private:
 
     // ---- 读取辅助 ----
     void skipWhitespaceAndComments();        // 跳过空白与注释（//单行、/* */块注释嵌套）
-    Token readIdentifierOrKeyword();         // 读取标识符或关键字（含原始/多行前缀处理）
+    Token readIdentifierOrKeyword();    // T21（306-a）：标识符字符判定（主分发与收集循环共用·区段口径单点防分叉）
+    bool isIdentifierStartChar(char32_t c) const;
+    bool isIdentifierContChar(char32_t c) const;         // 读取标识符或关键字（含原始/多行前缀处理）
     Token readPrefixedString(const std::string& prefixText, const SourceLocation& loc); // 读取带前缀字符串
     std::string readStringBody(bool multiLine, bool raw); // 读取字符串体（返回含引号原文）
     Token readNumber();                      // 读取数字（十进制/十六进制/二进制/八进制/浮点）

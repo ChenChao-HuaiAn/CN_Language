@@ -93,6 +93,8 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
             if (index.type != "i64") {
                 index = emitResult(ir::Opcode::Cast, {index}, "i64", "", node->location);
             }
+            // T4（306-a）：越界检查（原「由调用方约束」=防线不对称·越界读 UB）
+            emitStrBoundsCheck(index, ptr, node->location);
             ir::IRValue addr = emitResult(ir::Opcode::Add, {ptr, index}, "ptr", "",
                                           node->location);
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, "i8", "",
@@ -156,6 +158,8 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                 elemSrc = "字符";
                 stride = 1;
                 isStringView = true;
+                // T4（306-a）：越界检查（ptr=112 行的字符串指针值）
+                emitStrBoundsCheck(index, ptr, node->location);
             } else if (elemIsStruct) {
                 stride = semantic_->typeSizeOf(fieldType);
             }
@@ -314,6 +318,12 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
     ir::IRValue scaled = emitResult(ir::Opcode::Mul,
                                     {index, ir::IRValue::constant(std::to_string(stride), "i64")},
                                     "i64", "", node->location);
+    // T4（306-a）：字符串视图形态（成员链字符串/字符串变量兜底——elemIrType=i8
+    //   且步进 1）统一越界检查；obj 即字符串指针值（字段槽存的 char*/变量值）。
+    //   「字符* 指针」形态 elemIrType=i32（mapType 无 i8 直通）不进入=不误伤。
+    if (elemIrType == "i8" && stride == 1) {
+        emitStrBoundsCheck(index, obj, node->location);
+    }
     ir::IRValue addr = emitResult(ir::Opcode::Add, {obj, scaled}, "ptr", "",
                                   node->location);
     if (elemIsStruct) {

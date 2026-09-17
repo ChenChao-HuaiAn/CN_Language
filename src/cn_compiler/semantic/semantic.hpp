@@ -433,6 +433,11 @@ private:
                                      const std::string& name) const;
     // 计算结构体/联合体布局（C风格对齐，Task 2.7）
     void computeLayout(StructDecl* decl);
+    // T3（306-a 波次2）：布局计算中的结构体名栈——值字段递归环检测
+    //   （环=无穷大小类型·编译期拒绝；Rust E0072 同类）
+    std::unordered_set<std::string> layoutVisiting_;
+    // 按名取非常量结构体声明（306-a T3 惰性递归布局用；跨 program_->structs 线性查）
+    StructDecl* findMutableStruct(const std::string& name);
     // 枚举成员值求值（自动递增/显式赋值/负数，Task 2.7）
     void computeEnumValues(EnumDecl* decl);
     // 从内到外查找变量类型（未找到返回false）

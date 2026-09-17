@@ -247,9 +247,11 @@ TEST(StructSemanticTest, SelfReference) {
     SemanticResult r = analyzeSource(
         "结构体 节点 { 节点 下一个; }\n"
         "不安全 函数 主() -> 整32 { 返回 0; }\n");
-    // 布局计算防无限递归（layoutComputed 提前标记），不崩溃；字段为不完整类型
-    // 语义层允许（C++ 同款：不完整类型字段），此处验证不崩溃且可通过
-    EXPECT_TRUE(r.ok) << r.messages;
+    // T3（306-a 波次2·用户批量裁决方案甲）：值字段递归=无穷大小类型，
+    //   编译期拒绝（Rust E0072 同类）——原断言「允许不完整类型字段」随
+    //   语义变更作废（2026-09-17 用户批量裁决·清零波次2）。
+    EXPECT_FALSE(r.ok) << r.messages;
+    EXPECT_NE(r.messages.find("无穷大小"), std::string::npos);
 }
 
 // 重复类型名声明报错

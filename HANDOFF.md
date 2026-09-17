@@ -34,42 +34,39 @@
 
 ## 深度机 linux-x86_64 节## 深度机 linux-x86_64 节## 深度机 linux-x86_64 节
 
-**交接时间**: 2026-09-17 🏃 **304-a 开发轮收工**（清零波次1=B11 销项：T26 根治+410 转正）。基线 58b7e70→认领 92570ba。接手先 `git fetch`；daemon 常态采样在跑（T28③ 根治后日志恒红线内）。
+**交接时间**: 2026-09-17 🏃 **306-a 开发轮收工**（波次2 宿主侧销项 T3/T4/T21+OOM 事故根治与防线加固）。基线 dbd0b88→认领 4d7371c。接手先 `git fetch`；daemon 已重启（PID 见 ps·子进程已带 6GB 内存防线）。
 
-### 一、本轮做了什么（304-a·执行家机预置计划 plans/025 §1.0a·上轮 303-a 详见 git 历史）
+### 一、本轮做了什么（306-a·含 OOM 事故全记录）
 
-1. **T26 x64l 复现**（预置计划步骤②）：三实弹 s2609179001~003 O3 稳定挂（三跑同值）·O1/O2 免疫=级别分叉闭环；取 IR/asm 双通道归因——asm `mov rdi,1` 忠实发射 **IR 层已折叠常量**（O3 bb3 `调用 真` vs O0 `调用 %v10`）→分叉点不在后端（预置侦查 emitCopy 嫌疑修正）。
-2. **根因**：GlobalValuePass（-O3 独有·pass_manager:81）跨块**线性序**常量传播在多前驱汇合块失效——未执行分支的常量 Store 覆盖执行分支的寄存器 Store→汇合 Load 错误折叠（机制平台无关：「T26=x86_64 单侧/win 免疫」定性存疑·预置侦查①探针形态未触发此链）。
-3. **根治**：global_value.cpp 汇合块（≥2 前驱·终止跳转入度统计）入口清空常量表（保守正确·块内转发保留·单前驱线性块次序语义不动）。
-4. **410_布尔短路汇合矩阵转正**：11 形态 O0=O3 逐字节（布尔 ||/&&/三链/直接消费/嵌套 7+整型 if/else 汇合 3〔B9 扩面·执行路径×两侧〕+整64 负值）；coverage_map 4.4 登记。**反证双件**：回退修复→410 多形态变红（假→真/真→假）→恢复全绿。
-5. **对账**：T26 系 4 实弹（9001~003+m26_01）回归轨消失（daemon「回归轨已修 4」增量记录=T28③ 实战生效）。**B11 完整闭环**：T25（297-a/297-b 修·406 浮点负测）+T26（本轮修·410 布尔负测）双构件齐。
-6. **304-a 认领冲突零发生**：家机 🧪 305-a 验证轮（不占锁）与本轮 🏃 并行·看板互认。
+1. **OOM 事故（18:58·用户侧 ZCode 被关闭）**：cn 进程 28.7GB 被内核 OOM 击杀连坐 ZCode scope。**根因=306-a T21 首版回归**——只收紧了 readIdentifierOrKeyword 收集循环而**主分发循环仍是 `c >= 0x80` 旧口径**：全角字符进收集立即 break 返回空 token 且不消费→主分发无限空转（每轮一个空 Identifier token）→诊断/AST 无限膨胀。**根治**=口径单点化（isIdentifierStartChar/ContChar·主分发+收集共用）——全角样本 bad_alloc→「解析失败」快速退出验证。**教训入 lessons**（同一口径两处分叉=死循环签名）。
+2. **T3 递归结构体拒绝**（宿主）：computeLayout visiting 环检测+字段惰性递归布局——直接/间接环编译期拒绝「无穷大小」（原实现注释自认「循环引用检测」实际没有·间接环还依赖声明顺序出错值）；类引用语义递归合法豁免；**StructSemanticTest.SelfReference 断言随用户裁决更新**（T3 方案甲批量批准·语义变更配套）。
+3. **T4 字符串下标越界检查**（宿主）：emitStrBoundsCheck 运行时长度版（__cn_str_len·与数组 rc=2 同通道）+三读路径插桩（变量/隐式类字段/成员链统一段）——s[99] O0=O3 拦截「运行时错误(错误码2)」；「字符* 指针」形态不误伤（elemIrType=i32 判据）。
+4. **T21 标识符字符集收紧**（宿主·方案甲）：CJK U+4E00~9FFF+扩展A/B 区段化——全角拉丁/中文标点/假名拒绝；存量全量 E2E 零误伤。
+5. **411/412/413 三 E2E 转正**+coverage_map；**daemon 防线加固**：cnsmith_diff 子进程 RLIMIT_AS 6GB（防病态进程 OOM 连坐·28.7GB 实证教训设施化）+重启。
 
-### 二、验证链（本机复现口径·当轮实测）
+### 二、验证链（当轮实测）
 
 ```
-./target/cn build <实弹>.cn --target linux-x86_64 -O0/-O3   # 三实弹双级别+O1/O2 对照
-python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8        # 全量 428=426/0/2 零回归
-./target/cn_unit_tests                                      # 1353/1353
-python3 scripts/check_spec_coverage.py --strict             # 退出码 0
-python3 scripts/check_matrix_coverage.py                    # 80/81 PASS
-python3 scripts/check_cli_contract.py                       # 退出码 0
-python3 scripts/check_handoff.py; python3 scripts/check_progress_sync.py   # 双门禁 0
+python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8   # 431=429/0/2（lexer 全库词法面零回归）
+./target/cn_unit_tests                                 # 1353/1353（SelfReference 断言已随裁决更新）
+python3 scripts/check_spec_coverage.py --strict; python3 scripts/check_matrix_coverage.py; python3 scripts/check_cli_contract.py
+python3 scripts/check_handoff.py; python3 scripts/check_progress_sync.py
+# 三案探针：/tmp/t306/（t3_rec 拒绝/t3_class 豁免/t3_indirect 拒绝/t4_str 97_99/t4_bad rc=1 拦截/t21_bad 快速拒绝/t21_ok 通过）
 ```
 
-### 三、下一轮任务（按序·深度机候选已预登记 plans/025 §1.0a-2）
+### 三、下一轮任务（按序·候选已预登记 plans/025 §2.2）
 
-1. **波次2=T3+T4+T21**（安全防线）——全表空闲时优先认领；
-2. **波次5=C18+B12**（整数语义统一·T27 i128 helper+整64 字面÷通道·本机 B9 补轴实证归属）；
-3. daemon 常态采样续跑+命中对账（T26 系已清·余 T27/T36/T37/T42 系待各波次）；
-4. B8 面台账已立案行复验。
+1. **306-b=波次2 v2 侧同构**（T3/T4/T21 在 CN语言编译器v2 树+78/79 自举链复验）——优先认领；
+2. 波次3=T6+T7；波次5=C18+B12（本机 B9 补轴实证归属）；
+3. daemon 常态采样续跑（防线已加固）；win/arm64 的 410 复验结论回收（304-a 广播）。
 
-### 四、诚实边界与跨机请求
+### 四、诚实边界
 
-- **win/arm64 运行级复验请求（广播·本轮通告段）**：修复在 opt 层（平台无关）——两平台应自动同修；但「win 免疫」旧结论与机制分析矛盾，须两平台跑 410+9001~003 复验定性（归家机/单位机）。
-- 汇合块入口清空=保守放弃非法折叠面（性能影响=汇合后首 Load 不折叠·锚定链全绿佐证）。
-- sync 门禁说明：check_progress_sync 扫 git 提交信息轮次号——家机 305-a（验证轮）可能触发「落后」误报·按记忆档人工核对即可（验证轮不占号不折入总表）。
-- v2 树零改动（v2p 无 GlobalValue pass=天然免疫）。
+- **v2 树三案同构未做**（306-b·立案面=宿主+v2 双侧·本轮宿主侧完整闭环）；
+- T4 越界负形态 E2E 化：运行期 rc 拦截无「期望运行失败」机制=探针实证（O0=O3）+coverage_map 记录·双编译对照形态留后续；
+- T21 未含 CJK 兼容表意区（U+F900~FAFF·方案甲文本未列·需扩展呈报）；
+- __cn_runtime_error(2) 文案「数组越界」字符串越界共用（错误码统一·文案细分后续小项）；
+- T4 插桩每次读一次 strlen（安全优先·双目标安全>性能）。
 
 ## 单位机 ARM64 节
 

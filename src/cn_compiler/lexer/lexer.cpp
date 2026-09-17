@@ -217,6 +217,23 @@ void Lexer::skipWhitespaceAndComments() {
     }
 }
 
+// T21（306-a 波次2·方案甲）：标识符字符判定单点化——
+//   「中文」=汉字区段（CJK 统一表意 U+4E00~U+9FFF+扩展A U+3400~U+4DBF+
+//   扩展B U+20000~U+2A6DF）；拒绝全角形式拉丁/中文标点/假名/谚文等。
+//   **主分发与收集循环必须共用本判定**：原 306-a 首版只收紧收集循环而
+//   主分发仍 `c >= 0x80` 全放行 -> 区段外字符进收集立即 break 返回空
+//   token 且不消费 -> 主分发无限空转（每轮一个空 Identifier token）
+//   -> 诊断/AST 无限膨胀（实测 28.7GB 触发系统 OOM 连坐 ZCode）。
+bool Lexer::isIdentifierStartChar(char32_t c) const {
+    return isAsciiAlpha(c) || c == U'_' ||
+           (c >= 0x4E00 && c <= 0x9FFF) ||    // CJK 统一表意
+           (c >= 0x3400 && c <= 0x4DBF) ||    // CJK 扩展A
+           (c >= 0x20000 && c <= 0x2A6DF);    // CJK 扩展B
+}
+bool Lexer::isIdentifierContChar(char32_t c) const {
+    return isIdentifierStartChar(c) || isAsciiDigit(c);
+}
+
 // 读取标识符或关键字（UTF-8中文/ASCII字母/数字/下划线连续收集，最长匹配）
 // 特殊处理：原始/多行前缀后紧跟引号时转入带前缀字符串读取
 Token Lexer::readIdentifierOrKeyword() {
@@ -224,9 +241,12 @@ Token Lexer::readIdentifierOrKeyword() {
     std::string text;
     while (!isAtEnd()) {
         char32_t c = peek();
-        const bool isIdentifierChar = isAsciiAlpha(c) || isAsciiDigit(c) ||
-                                      c == U'_' || c >= 0x80;
-        if (!isIdentifierChar) break;
+        // T21（306-a 波次2·方案甲）：「中文」限定=汉字区段——CJK 统一表意
+        //   U+4E00~U+9FFF + 扩展A U+3400~U+4DBF + 扩展B U+20000~U+2A6DF；
+        //   拒绝全角形式拉丁/中文标点/假名/谚文等非表意字符入标识符
+        //   （对照 Rust XIDStart/XIDContinue 业界标准；ASCII 面不变）。
+        //   原实现 `c >= 0x80` 对全部非 ASCII 放行=字符集过宽（行59/60 立案）。
+        if (!isIdentifierContChar(c)) break;
         text += currentUtf8();
         advance();
     }
@@ -734,8 +754,9 @@ std::vector<Token> Lexer::tokenize() {
             break;
         }
         const char32_t c = peek();
-        // 标识符/关键字（含中文）
-        if (isAsciiAlpha(c) || c == U'_' || c >= 0x80) {
+        // 标识符/关键字（含中文·T21 区段口径——与收集循环共用判定，
+        //   区段外字符落 readOperatorOrDelimiter 的未知字符错误恢复分支）
+        if (isIdentifierStartChar(c)) {
             tokens.push_back(readIdentifierOrKeyword());
             continue;
         }

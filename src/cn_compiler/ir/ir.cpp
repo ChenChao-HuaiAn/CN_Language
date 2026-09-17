@@ -652,6 +652,34 @@ void IRGenerator::emitBoundsCheck(const ir::IRValue& indexRaw, int arrayLen,
     // 创建继续块（newBlock 内部 blockCounter_++ 推进计数）
     setCurrentBlock(newBlock(okLabel));
 }
+
+// T4（306-a 波次2）：字符串下标越界检查（运行时长度版）。
+//   原字符串[i] 读无任何检查（注释自认「越界由调用方约束」），越界=UB 读垃圾；
+//   数组下标早有 rc=2 检查=防线不对称。长度经 __cn_str_len 运行时取（UTF-8 字节
+//   数·与 字符串长度 内置同源），错误通道与数组一致（__cn_runtime_error(2)）。
+void IRGenerator::emitStrBoundsCheck(const ir::IRValue& indexRaw,
+                                     const ir::IRValue& strPtr,
+                                     const SourceLocation& loc) {
+    if (currentBlock_ == nullptr) return;
+    ir::IRValue idx = indexRaw;
+    if (idx.type != "i64") {
+        idx = emitResult(ir::Opcode::Cast, {idx}, "i64", "", loc);
+    }
+    ir::IRValue len = emitResult(ir::Opcode::Call, {strPtr}, "i64",
+                                 "__cn_str_len", loc);
+    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+    ir::IRValue ltZero = emitResult(ir::Opcode::Lt, {idx, zero}, "i1", "", loc);
+    ir::IRValue geLen = emitResult(ir::Opcode::Ge, {idx, len}, "i1", "", loc);
+    ir::IRValue bad = emitResult(ir::Opcode::Or, {ltZero, geLen}, "i1", "", loc);
+    const std::string errLabel = "bb" + std::to_string(blockCounter_);
+    const std::string okLabel = "bb" + std::to_string(blockCounter_ + 1);
+    endBranch(bad.toString(), errLabel, okLabel);
+    setCurrentBlock(newBlock(errLabel));
+    ir::IRValue errCode = emitResult(ir::Opcode::ConstInt, {}, "i64", "2", loc);
+    emitResult(ir::Opcode::Call, {errCode}, "i32", "__cn_runtime_error", loc);
+    endReturn("");
+    setCurrentBlock(newBlock(okLabel));
+}
 ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
     // 178-a：本函数 225 行按「左值形态」提取为 4 个族子方法（纯搬运零行为
     //   变更——多重集核验先行于构建）。

@@ -20,10 +20,19 @@
 import argparse
 import concurrent.futures
 import os
+import resource
 import subprocess
 import sys
 import threading
 import time
+
+
+def 子进程内存上限(gb=6):
+    '''306-a 防线加固：子进程虚拟内存上限（防病态样本/编译器进程内存失控
+    触发系统 OOM 连坐宿主会话——2026-09-17 28.7GB OOM 实证）。'''
+    def _limit():
+        resource.setrlimit(resource.RLIMIT_AS, (gb * 1024 ** 3,) * 2)
+    return _limit
 
 
 def 探测目标平台(target=None):
@@ -48,12 +57,14 @@ def run_one(cn, src, out_dir, level, target=None):
     b = subprocess.run([cn, "build", src, "--target", 探测目标平台(target), level,
                         "--output", exe],
                        capture_output=True, text=True, encoding="utf-8",
-                       errors="replace", timeout=120)
+                       errors="replace", timeout=120,
+                       preexec_fn=子进程内存上限())
     if b.returncode != 0:
         return "build_err", ((b.stdout or "") + (b.stderr or ""))[:200]
     try:
         r = subprocess.run([exe], capture_output=True, text=True,
-                           encoding="utf-8", errors="replace", timeout=20)
+                           encoding="utf-8", errors="replace", timeout=20,
+                           preexec_fn=子进程内存上限())
     except subprocess.TimeoutExpired:
         return "run_err", "timeout"
     if r.returncode != 0:
