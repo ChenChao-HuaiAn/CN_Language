@@ -233,6 +233,11 @@ bool IRGenerator::memberWholeStructAssign(AssignmentExpr* node, MemberExpr* memb
         if (!fieldStructW.empty() &&
             (semantic_->isStructType(fieldStructW) ||
              semantic_->isClassType(fieldStructW))) {
+            // 348-a（D11 甲方案·源优先序）：右值=一般结构体返回调用 → 先源后目标地址
+            if (structWholeAssignSrcFirst(node->target.get(), node->value.get(),
+                                          fieldStructW, node->location)) {
+                return true;
+            }
             ir::IRValue fieldAddrW = lvalueAddress(node->target.get());
             if (emitStructWholeAssign(fieldAddrW, node->value.get(),
                                       fieldStructW, node->location,
@@ -406,6 +411,20 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
         value = emitResult(ir::Opcode::Cast, {value}, targetType, "",
                            node->location);
     }
+    // 348-a（D11 甲方案·源优先序）：下标目标 = 一般结构体返回调用 → 先求值源
+    //   （可能含条件块）再算目标地址（纯地址计算）——原序致调用块插在 addr
+    //   发射之后（234-a 285 失败根因）。守卫不满足则零行为变更落原路径。
+    {
+        const std::string tElemSrcS = indexTargetElemSrcType(node);
+        if (!tElemSrcS.empty() &&
+            (semantic_->isStructType(types::canonical(tElemSrcS)) ||
+             semantic_->isClassType(types::canonical(tElemSrcS))) &&
+            structWholeAssignSrcFirst(node->target.get(), node->value.get(),
+                                      types::canonical(tElemSrcS),
+                                      node->location)) {
+            return true;
+        }
+    }
     // 复合赋值（*p += 1 等）：先读当前值再运算（简化：直接读地址）
     ir::IRValue addr = lvalueAddress(node->target.get());
     if (indexStructElemAssign(node, addr)) return true;
@@ -509,6 +528,29 @@ std::string IRGenerator::indexAssignElemType(AssignmentExpr* node) {
 }
 
 // 下标目标元素为结构体/类：emitStructWholeAssign 整体赋值（原 397~437 段，H8 补完）。
+// 348-a（纯提取·行为等价）：下标目标元素源码类型推导——自
+//   indexStructElemAssign 首段机械搬移，供「源优先序」挂点在 addr 计算前判型。
+std::string IRGenerator::indexTargetElemSrcType(AssignmentExpr* node) {
+    if (semantic_ == nullptr || node == nullptr) return "";
+    if (node->target->getType() != NodeType::IndexExpr) return "";
+    IndexExpr* tIdx = static_cast<IndexExpr*>(node->target.get());
+    if (tIdx->object->getType() != NodeType::IdentifierExpr) return "";
+    const std::string st = lookupSrcType(
+        static_cast<IdentifierExpr*>(tIdx->object.get())->name);
+    if (types::isArray(st)) return types::arrayElemOf(st);
+    if (types::isPointer(st)) return types::pointeeOf(st);
+    // A-3（2026-08）：隐式类字段对象——结构体元素整体赋值（CopyStruct）
+    if (st.empty() &&
+        isInstanceField(static_cast<IdentifierExpr*>(tIdx->object.get())->name)) {
+        const std::string ft = classFieldType(
+            currentClass_,
+            static_cast<IdentifierExpr*>(tIdx->object.get())->name);
+        if (types::isArray(ft)) return types::arrayElemOf(ft);
+        if (types::isPointer(ft)) return types::pointeeOf(ft);
+    }
+    return "";
+}
+
 bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue& addr) {
     // 集成验证修复 Bug：下标/解引用目标的结构体整体赋值——
     //   `名单[j] = 名单[j+1]`（结构体指针数组元素交换）目标为 IndexExpr，
@@ -516,23 +558,8 @@ bool IRGenerator::indexStructElemAssign(AssignmentExpr* node, const ir::IRValue&
     //   目标元素类型为结构体、右值为结构体值（IndexExpr/标识符）时生成 CopyStruct。
     if (semantic_ != nullptr &&
         node->target->getType() == NodeType::IndexExpr) {
-        IndexExpr* tIdx = static_cast<IndexExpr*>(node->target.get());
-        std::string tElemSrc;
-        if (tIdx->object->getType() == NodeType::IdentifierExpr) {
-            const std::string st = lookupSrcType(
-                static_cast<IdentifierExpr*>(tIdx->object.get())->name);
-            if (types::isArray(st)) tElemSrc = types::arrayElemOf(st);
-            else if (types::isPointer(st)) tElemSrc = types::pointeeOf(st);
-            // A-3（2026-08）：隐式类字段对象——结构体元素整体赋值（CopyStruct）
-            else if (st.empty() &&
-                     isInstanceField(static_cast<IdentifierExpr*>(tIdx->object.get())->name)) {
-                const std::string ft = classFieldType(
-                    currentClass_,
-                    static_cast<IdentifierExpr*>(tIdx->object.get())->name);
-                if (types::isArray(ft)) tElemSrc = types::arrayElemOf(ft);
-                else if (types::isPointer(ft)) tElemSrc = types::pointeeOf(ft);
-            }
-        }
+        // 348-a：类型推导提取至 indexTargetElemSrcType（纯提取·行为等价）
+        const std::string tElemSrc = indexTargetElemSrcType(node);
         const std::string tElemCanon = types::canonical(tElemSrc);
         // H8 补完（2026-08-25）：类类型元素整体赋值（向量<映射<...>> 追加
         //   的 数据[元素数量] = 值）同样走 CopyStruct（56 字节）——原只处理

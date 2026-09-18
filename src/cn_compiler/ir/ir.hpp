@@ -466,6 +466,14 @@ private:
                                         const std::string& dstElemCanon,
                                         const SourceLocation& loc,
                                         bool preFree = false);
+    // 348-a（D11 甲方案·Rust place 语义）：整体赋值「源优先序」通道——右值=一般
+    //   结构体返回调用（非 复制 内置）时：先求值源（可能含条件块）→ 再算目标
+    //   地址（纯地址计算）→ 内容拷贝。返回 true=已处理（lastExpr_ 已设为目标地址）。
+    //   原序（目标地址先发射）致调用块插在地址发射后打乱块时序（234-a 285 失败），
+    //   白名单被迫收窄 → 一般返回调用落标量 StorePtr 8 字节（D11 p29 静默错值）。
+    bool structWholeAssignSrcFirst(Expr* targetExpr, Expr* valueNode,
+                                   const std::string& dstElemCanon,
+                                   const SourceLocation& loc);
     // 87-a（2026-09-12 第八十七轮）：顶层静态变量初始化注入（入口函数 entry 块）。
     //   静态变量的初值语义分三类（性能第一）：
     //     ① 标量字面量（整/浮/布/字符）——.data 直存（codegen 折叠，零运行期开销）；
@@ -1004,6 +1012,9 @@ private:
     void markIndexStringElemTainted(AssignmentExpr* node);
     std::string indexAssignElemType(AssignmentExpr* node);
     bool indexStructElemAssign(AssignmentExpr* node, const ir::IRValue& addr);
+    // 348-a：下标目标元素源码类型推导（自 indexStructElemAssign 首段提取——
+    //   供「源优先序」挂点在 addr 计算前判定目标类型；空=非标识符对象/未定）
+    std::string indexTargetElemSrcType(AssignmentExpr* node);
     // 族：调用左值（原 461~484 段）
     bool assignToCallTarget(AssignmentExpr* node);
     // 族：标识符左值（原 490~1048 段）

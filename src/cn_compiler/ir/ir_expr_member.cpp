@@ -30,6 +30,49 @@ static bool isCopyBuiltinCall(Expr* node) {
 //   只写 8 字节（源地址截断入首字段、其余字段栈残留垃圾），探针静默数据损坏
 //   实锤（11/22 打出 12582296/128）。Rust place 拷贝同构：结构体赋值=整体
 //   按值拷贝（POD Copy）。
+// 348-a（D11 甲方案·Rust place 语义）：整体赋值「源优先序」通道。
+//   右值=一般结构体返回调用（CallExpr 且非 复制 内置）时：
+//     ① 先求值源（genExpr——可能含条件块〔正常/错误构造器 返回分支〕）；
+//     ② 再算目标地址（lvalueAddress——纯地址计算，无块）；
+//     ③ 内容拷贝（emitStructCopyWithFields：preFree 旧串字段 + 浅拷接管 retbuf）。
+//   原序（调用点先 lvalueAddress 再 emitStructWholeAssign）使源调用的块插在目标
+//   地址发射之后 → 打乱块时序（234-a「全量 v2 树编译 285 失败」实证）→ 白名单
+//   被迫收窄（仅 复制 内置进 CallExpr 分支）→ 一般返回调用落标量 StorePtr
+//   8 字节（D11·探针 p29 铁证：成员/下标目标 首字段=返回值地址、其余 0）。
+//   别名安全：源=新鲜 retbuf 一次性槽（与目标无别名）→ preFree 深拷安全。
+//   守卫（任一不满足返回 false·调用方落原路径零行为变更）：右值 CallExpr ∧
+//   非 复制 内置 ∧ 目标为 结构体/类。
+bool IRGenerator::structWholeAssignSrcFirst(Expr* targetExpr, Expr* valueNode,
+                                            const std::string& dstElemCanon,
+                                            const SourceLocation& loc) {
+    if (semantic_ == nullptr || targetExpr == nullptr || valueNode == nullptr) {
+        return false;
+    }
+    if (valueNode->getType() != NodeType::CallExpr) return false;
+    if (isCopyBuiltinCall(valueNode)) return false;
+    // 348-a 修正（v2p 回归归因）：**仅结构体（POD 值语义）目标**进本通道——
+    //   类/容器目标（向量$T 等）必须留给既有 深拷贝（NewObject+拷贝构造/
+    //   DeleteObject 旧值）通道：首版守卫含 isClassType → 抢先命中 v2 树大量
+    //   `程序.函数们 = 向量<...>();` 形态并以浅拷接管覆盖深拷语义 → **v2p 自身
+    //   全探针段错误（错误码 3）回归**（p1/p28/p29 全崩实证）。
+    if (!semantic_->isStructType(dstElemCanon)) return false;
+    if (semantic_->isClassType(dstElemCanon)) return false;
+    // ① 源（可能含块——须在目标地址发射之前）
+    const ir::IRValue srcAddr = genExpr(valueNode);
+    if (srcAddr.id < 0) {
+        // 指令可能已部分发射——**不得**回落原路径（会重复求值）；
+        //   IR 层错误由既有 [ir2] 纪律收口（不产可信产物）。
+        return true;
+    }
+    // ② 目标（纯地址计算）
+    const ir::IRValue dstAddr = lvalueAddress(targetExpr);
+    // ③ 内容拷贝（源 retbuf 接管 + 目标旧串字段 preFree）
+    emitStructCopyWithFields(dstAddr, srcAddr, dstElemCanon, loc,
+                             /*preFree=*/true, /*deepCopy=*/false);
+    lastExpr_ = dstAddr;
+    return true;
+}
+
 bool IRGenerator::emitStructWholeAssign(const ir::IRValue& dstAddr,
                                         Expr* valueNode,
                                         const std::string& dstElemCanon,
