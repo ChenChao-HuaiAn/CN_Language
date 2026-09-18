@@ -25,6 +25,37 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
     if (handleClassFieldAssign(ident, node->value.get(), node->location)) {
         return true;
     }
+    // 320-a（T41）：函数内静态局部赋值——varStack 命中且 isStaticLocal（无栈槽）
+    //   → ?gstatic_键 符号 StorePtr（普通赋值路径的 Store(槽名) 对无槽键会落
+    //   [rbp0] 丢写——计=计+2 后读回 0 实锤）。标量整数面（声明位已限定）。
+    //   写面完备（T41 半截机制回补）：复合赋值须读旧值再运算写回（原无条件
+    //   StorePtr(右值) 把 桩+=1 降级为 *桩=1——272 用例死循环实锤）；
+    //   自增自减见 ir_expr_unary.cpp 同键分支。
+    if (const VarEntry* ve = findVarEntry(ident->name);
+        ve != nullptr && ve->isStaticLocal) {
+        ir::IRValue dstAddr = emitResult(
+            ir::Opcode::ConstString, {}, "ptr",
+            "?gstatic_" + ve->uniqueName, node->location);
+        ir::IRValue val = genExpr(node->value.get());
+        if (isCompoundAssignOp(node->op)) {
+            // 读-算-写回（对齐 identifierGenericAssign 普通变量同款；目标读
+            //   路径经 isStaticLocal 走 ?gstatic_ LoadPtr）
+            ir::IRValue current = genExpr(node->target.get());
+            ir::Opcode opcode;
+            if (mapBinaryOp(baseOpOfCompound(node->op), false, opcode)) {
+                ir::IRValue combined = emitResult(opcode, {current, val}, ve->type,
+                                                  "", node->location);
+                emit(ir::Opcode::StorePtr, {dstAddr, combined}, ir::IRValue(), "",
+                     ve->type, node->location);
+                lastExpr_ = combined;   // 复合赋值表达式值=运算结果
+                return true;
+            }
+        }
+        emit(ir::Opcode::StorePtr, {dstAddr, val}, ir::IRValue(), "", ve->type,
+             node->location);
+        lastExpr_ = val;   // 赋值表达式值=所赋值
+        return true;
+    }
     if (assignToGlobalStatic(node, ident)) return true;
     // 目标变量唯一内部名（后续 普通赋值/类深拷贝 均需，提前计算避免重复查找）
     const std::string unique = lookupVarName(ident->name);

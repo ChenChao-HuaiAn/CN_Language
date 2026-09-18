@@ -352,6 +352,6 @@ void X64CodeGenerator::emitInt128Compare(AsmWriter& writer, const ir::IRInstruct
     }
     writer.line(cc + " al");
     writer.line("movzx eax, al");
-    writer.line("mov " + dst + ", eax");
+    writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
 }
 } // namespace cn_compiler

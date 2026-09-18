@@ -268,12 +268,44 @@ extern "C" char* __cn_str_from_float(double value) {
     return result;
 }
 
-// 字符转字符串：单字节 ASCII 字符（值 0-255）转1字节串。
+// 字符转字符串（320-a·T40 方案甲修正+214 兼容面）：双来源兼容——
+//   ①正值 > 0xFF = Unicode 码点 UTF-8 编码（字符字面量来源·'好'=U+597D 出「好」；
+//     原单字节假设取低 8 位出 '}' 实锤；码点语义对齐 H3 charLiteralCodePoint）；
+//   ②其余（含负值）= UTF-8 字节直放——字符串下标 s[i] 来源：下标按字节取值且
+//     经 int8 符号扩展（0xE5→-27→int 0xFFFFFFE5·纯无符号 ≤0xFF 判定被绕过落
+//     码点分支出 4 字节垃圾=214 回归字节级实锤），故负值一律回低 8 位直放。
+//   诚实边界：U+0080~U+00FF 字面量（如 'é'）与字节值域重叠→落直放分支（1 字节
+//   非合法 UTF-8）——字符串下标语义规范空白（T48 呈报待裁决：字节下标 vs 码点下标）。
 extern "C" char* __cn_str_from_char(int value) {
-    char* result = static_cast<char*>(cn_alloc_tracked(2));
+    if (value < 0 || value <= 0xFF) {
+        char* result = static_cast<char*>(cn_alloc_tracked(2));
+        if (result == nullptr) return nullptr;
+        result[0] = static_cast<char>(value & 0xFF);
+        result[1] = '\0';
+        return result;
+    }
+    const unsigned int cp = static_cast<unsigned int>(value);
+    char buf[5];
+    std::size_t len = 0;
+    if (cp < 0x80) {
+        buf[len++] = static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        buf[len++] = static_cast<char>(0xC0 | (cp >> 6));
+        buf[len++] = static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        buf[len++] = static_cast<char>(0xE0 | (cp >> 12));
+        buf[len++] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        buf[len++] = static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        buf[len++] = static_cast<char>(0xF0 | (cp >> 18));
+        buf[len++] = static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        buf[len++] = static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        buf[len++] = static_cast<char>(0x80 | (cp & 0x3F));
+    }
+    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
     if (result == nullptr) return nullptr;
-    result[0] = static_cast<char>(value & 0xFF);
-    result[1] = '\0';
+    std::memcpy(result, buf, len);
+    result[len] = '\0';
     return result;
 }
 

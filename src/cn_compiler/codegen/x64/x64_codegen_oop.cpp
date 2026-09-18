@@ -261,10 +261,10 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             // 变参兼容：位模式复制到同参数位整型寄存器（MSVC 惯例）
             writer.line("movq " + parameterRegister(regIdx) + ", " + xmm);
         } else if (argType == "i32" || argType == "i1") {
-            writer.line("mov eax, " + op);
+            writer.line("mov eax, " + shrunkOperand("i32", op));
             writer.line("movsxd " + parameterRegister(regIdx) + ", eax");
         } else if (argType == "u32") {
-            writer.line("mov eax, " + op);
+            writer.line("mov eax, " + shrunkOperand("i32", op));
             writer.line("mov " + parameterRegister(regIdx) + ", rax");
         } else {
             // i64/ptr：64 位直接 mov（指针常量 lea 取地址）
@@ -296,7 +296,7 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             writer.line(store + " " + mp + dst + ", xmm0");
         } else {
             std::string w = widthFor(inst.result.type, "rax");
-            writer.line("mov " + dst + ", " + w);
+            writer.line("mov " + shrunkOperand(inst.result.type, dst) + ", " + w);
         }
     }
 }

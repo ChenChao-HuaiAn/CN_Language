@@ -71,6 +71,21 @@ void SemanticAnalyzer::visitBinaryExpr(BinaryExpr* node) {
                             "字面量豁免（Rust 对齐，2026-09-10 方案A）");
     }
 
+    // 320-a（T42·方案甲·Rust () 同款）：空类型操作数禁止参与二元运算——
+    //   空类型调用「无返回值却有值」（原 commonNumericType 兜底整32 静默
+    //   产出垃圾值：5+无返回() 出 15 实锤）；赋值/传参/返回面由 canConvertType
+    //   空类型单点拒绝覆盖。
+    if ((isComparisonOp(node->op) || isArithmeticOp(node->op) || isBitwiseOp(node->op)) &&
+        (leftType == "空类型" || rightType == "空类型")) {
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            std::string("空类型（无返回值）不能参与运算：") +
+                            (leftType == "空类型" ? "左" : "右") +
+                            " 操作数是空类型调用结果（Rust () 同款——无返回值"
+                            "却有值违反类型安全；如需值请改函数返回类型）");
+        lastType_ = "未知";
+        return;
+    }
+
     // 319-a（C18①+T8·用户批量裁决方案甲）：编译期整型常量求值安全检查——
     //   两侧均为字面量（含一元负号字面量）时按结果类型域预演：
     //   ①÷/%：常量除零编译期硬错误（T8：原 10/0 编过、运行期才报）；

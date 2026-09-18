@@ -999,10 +999,16 @@ def 是v2闭环用例(用例目录: pathlib.Path) -> bool:
 def 计算v2构建指纹(编译器路径: pathlib.Path) -> str:
     """v2p 构建缓存指纹（2026-09-11 并行提速）：v2 全树 .cn 的（相对路径+大小+
     mtime）排序汇总 + 宿主编译器（大小+mtime）——任一变化即指纹变化，触发重建。
-    对齐 cargo 增量构建理念：输入未变不重建（30+ v2 用例全量 E2E 的最大瓶颈）。"""
+    对齐 cargo 增量构建理念：输入未变不重建（30+ v2 用例全量 E2E 的最大瓶颈）。
+    320-a 补强：运行时源（src/runtime/*.cpp）纳入指纹——v2p 链接宿主编译的
+    运行时，runtime 语义变化必须触发 v2p 重建（256 用例假红实锤：改装字符转
+    字符串后指纹未变 → v2p 复用旧 obj → v2 侧 \\u{} 解码双重编码 18≠31）。"""
     v2目录 = 项目根目录 / "CN语言编译器v2"
     项们 = []
     for f in sorted(v2目录.rglob("*.cn")):
+        st = f.stat()
+        项们.append(f"{f.relative_to(项目根目录)}:{st.st_size}:{int(st.st_mtime)}")
+    for f in sorted((项目根目录 / "src" / "runtime").glob("*.cpp")):
         st = f.stat()
         项们.append(f"{f.relative_to(项目根目录)}:{st.st_size}:{int(st.st_mtime)}")
     if 编译器路径.exists():

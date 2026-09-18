@@ -39,25 +39,18 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
         }
         if (inst.type == "i8" || inst.type == "i16") {
             writer.line("movsx eax, " + memSizePtr(inst.type) + src);  // 符号扩展 8/16 -> 32
-            writer.line("mov " + dst + ", eax");
+            writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             return;
         }
         if (inst.type == "u8" || inst.type == "u16") {
             writer.line("movzx eax, " + memSizePtr(inst.type) + src);  // 零扩展 8/16 -> 32
-            writer.line("mov " + dst + ", eax");
+            writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             return;
         }
         std::string w = widthFor(inst.type, "rax");
-        // 源为物理寄存器（寄存器分配）：32 位读须用 r14d（mov eax, r14 尺寸不匹配）
-        std::string srcLoad = src;
-        if (inst.type != "i64" && inst.type != "u64" && inst.type != "ptr") {
-            const std::string reg = (src == "rax" || src == "rbx" || src == "rcx" ||
-                                     src == "rdx" || src == "r12" || src == "r13" ||
-                                     src == "r14" || src == "r15")
-                                        ? src : "";
-            if (!reg.empty()) srcLoad = widthFor(inst.type, reg);
-        }
-        writer.line("mov " + w + ", " + srcLoad);
+        // 源为物理寄存器（寄存器分配）：32 位读须用 r14d（mov eax, r14 尺寸不匹配）。
+        // 320-a 统一设施：shrunkOperand 覆盖全寄存器名（原白名单遗漏 rsi/rdi/r8~r11）。
+        writer.line("mov " + w + ", " + shrunkOperand(inst.type, src));
         // 物理寄存器（寄存器分配结果）目标：32 位值须用同宽度装载
         //   （mov r12d, eax），原实现 mov r12, eax 尺寸不匹配（A2022）
         if (hasPhysReg(inst.result.id)) {
@@ -112,13 +105,13 @@ void X64CodeGenerator::emitLoadStore(AsmWriter& writer, const ir::IRInstruction&
             return;
         }
         if (inst.type == "i32") {
-            writer.line("mov eax, " + src);
+            writer.line("mov eax, " + shrunkOperand("i32", src));  // 物理寄存器全名收缩（A2022）
             writer.line("movsxd rax, eax");   // 符号扩展 -> rax（负数打印正确）
             writer.line("mov " + slot + ", rax");
             return;
         }
         if (inst.type == "u32") {
-            writer.line("mov eax, " + src);   // 写 eax 清零高32位
+            writer.line("mov eax, " + shrunkOperand("u32", src));   // 写 eax 清零高32位
             writer.line("mov " + slot + ", rax");
             return;
         }
@@ -209,12 +202,12 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         }
         if (inst.type == "i8" || inst.type == "i16") {
             writer.line("movsx eax, " + memSizePtr(inst.type) + "[rax]");
-            writer.line("mov " + dst + ", eax");
+            writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             return;
         }
         if (inst.type == "u8" || inst.type == "u16") {
             writer.line("movzx eax, " + memSizePtr(inst.type) + "[rax]");
-            writer.line("mov " + dst + ", eax");
+            writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             return;
         }
         if (inst.type == "u32") {
@@ -279,7 +272,8 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         return;
     }
     if (inst.type == "i32" || inst.type == "u32") {
-        writer.line("mov ecx, " + value);
+        // 物理寄存器全名收缩（mov ecx, r14 → mov ecx, r14d，A2022 收缩族）
+        writer.line("mov ecx, " + shrunkOperand("i32", value));
         writer.line("mov [rax], ecx");
         return;
     }

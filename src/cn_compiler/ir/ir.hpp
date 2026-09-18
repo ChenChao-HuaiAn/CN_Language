@@ -600,8 +600,18 @@ private:
         std::string type;
         std::string srcType;   // 源码类型（指针/数组复合类型原样保留）
         bool byRef = false;    // 是否为 [&] 引用捕获参数（lambda 匿名函数内；缺陷修复）
+        // 320-a（T41·方案甲·C static local 同款）：函数内静态局部——存储为
+        //   模块级 .data 槽（?gstatic_$静态$函数名$名 符号·唯一键防多函数同名
+        //   冲突），初始化一次性（.data 直存·非字面量初值诊断拒绝——诚实边界）；
+        //   读写路径（genIdentifierLvalue/标识符读）按本标志走全局符号。
+        bool isStaticLocal = false;
     };
     std::vector<std::unordered_map<std::string, VarEntry>> varStack_;
+    // 320-a（T41 写面完备）：查找最近作用域的变量条目（含 isStaticLocal 标志）——
+    //   静态局部无栈槽（regId 恒 -1，lookupVar 结果与 slot.id>=0 写回守卫均取不到），
+    //   写路径须按标志走 ?gstatic_ 键符号；未找到返回 nullptr。返回指针指向
+    //   varStack_ 内条目，调用方须在无 varStack_ 变更的语句内使用。
+    const VarEntry* findVarEntry(const std::string& name) const;
     // 查找变量的源码类型（指针/数组复合类型；未找到返回空串，Task 2.4）
     std::string lookupSrcType(const std::string& name) const;
     // 推导成员表达式对象的源码类型（变量/嵌套成员/数组字段元素，Task 2.7/修复10）：

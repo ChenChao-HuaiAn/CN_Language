@@ -13,6 +13,58 @@
 namespace cn_compiler {
 
 void IRGenerator::genVarDecl(VarDecl* node) {
+    // 320-a（T41·方案甲·C static local 同款）：函数内静态局部——静态全局化。
+    //   原实现按普通局部（栈帧 Alloca+每次调用重 Store 初值=跨调用状态丢失，
+    //   步进计数 2_2_2 应 2_4_6 实锤）；静态全局通道复用（87-a/P3-8 机制）：
+    //   .data 槽 ?gstatic_$静态$函数名$名 + 字面量初值直存（一次性初始化）。
+    //   诚实边界：非字面量初值诊断拒绝（入口注入机制需语句上下文——后续按需扩）；
+    //   类型面=标量整数族（结构体/容器静态局部留后续——立案面=计数器形态）。
+    if (node->isStatic && function_ != nullptr && !function_->name.empty() &&
+        !node->funcPtr.isFunctionPtr() && !node->name.empty()) {
+        const std::string key = "$静态$" + function_->name + "$" + node->name;
+        const std::string stType =
+            mapType(node->typeName.empty() ? "整32" : substGenericType(node->typeName));
+        const bool scalarInt =
+            stType == "i8" || stType == "i16" || stType == "i32" ||
+            stType == "i64" || stType == "u8" || stType == "u16" ||
+            stType == "u32" || stType == "u64" || stType == "i1" ||
+            stType == "i128" || stType == "u128";
+        if (!scalarInt) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "静态局部变量当前仅支持标量整数类型（'"+ node->name +
+                                "'：" + node->typeName + "）——结构体/容器形态待后续支持");
+            return;
+        }
+        // 初值：字面量直存 .data；非字面量（含无初值=零）——零值直存
+        std::string initText = "0";
+        bool okInit = true;
+        if (node->initializer != nullptr &&
+            node->initializer->getType() == NodeType::IntegerLiteral) {
+            initText = std::to_string(
+                static_cast<IntegerLiteral*>(node->initializer.get())->value);
+        } else if (node->initializer != nullptr) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "静态局部变量初值须为字面量（运行期表达式入口注入"
+                                "待后续支持）");
+            okInit = false;
+        }
+        if (okInit) {
+            module_->globalStatics[key] = stType;
+            // codegen .data 初值：globalStaticInits（字面量文本）
+            //（与顶层静态字面量同通道——87-a）
+            module_->globalStaticInits[key] = initText;
+            // varStack 登记（读写路径按 isStaticLocal 走全局符号）
+            if (!varStack_.empty()) {
+                VarEntry e;
+                e.uniqueName = key;
+                e.type = stType;
+                e.srcType = node->typeName.empty() ? "整32" : substGenericType(node->typeName);
+                e.isStaticLocal = true;
+                varStack_.back()[node->name] = e;
+            }
+        }
+        return;
+    }
     // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名替换——
     //   盒子<整32> -> 盒子$整32（语义层已单态化注册，IR 层按实例化类符号名
     //   （类名$实参）字符串映射，使类初始化/NewObject 存储路径命中 findClass）。

@@ -72,6 +72,42 @@ std::string X64CodeGenerator::widthFor(const std::string& type, const std::strin
     return reg;  // i64/u64/其他：64位寄存器名原样
 }
 
+// 源/目操作数按 8/16 位目标宽度对齐（A2022 收缩族·窄宽分支）：
+//   64 位名 → 8 位名（r14→r14b）或 16 位名（r14→r14w）；槽/立即数原样。
+std::string X64CodeGenerator::narrowOperand(const std::string& type, const std::string& op) {
+    const bool is8 = (type == "i8" || type == "u8");
+    const bool is16 = (type == "i16" || type == "u16");
+    if ((!is8 && !is16) || op.size() < 2 || op[0] != 'r') return op;
+    static const char* k64[] = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi",
+                                "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
+    static const char* k8[]  = {"al", "bl", "cl", "dl", "sil", "dil",
+                                "r8b", "r9b", "r10b", "r11b", "r12b", "r13b", "r14b", "r15b"};
+    static const char* k16[] = {"ax", "bx", "cx", "dx", "si", "di",
+                                "r8w", "r9w", "r10w", "r11w", "r12w", "r13w", "r14w", "r15w"};
+    for (int i = 0; i < 14; ++i) {
+        if (op == k64[i]) return is8 ? k8[i] : k16[i];
+    }
+    return op;
+}
+
+// 源操作数按目标宽度对齐（A2022 收缩族统一设施，320-a 补强）：
+//   regAlloc 下 vreg 直接落 r8~r15 全名，32 位指令按全名装载即 A2022。
+//   仅寄存器名经 widthFor 收缩；槽文本/立即数/64 位及以上类型原样。
+std::string X64CodeGenerator::shrunkOperand(const std::string& type, const std::string& op) {
+    if (type == "i64" || type == "u64" || type == "ptr" ||
+        type == "f32" || type == "f64" || type == "i128" || type == "u128") {
+        return op;
+    }
+    if (op.size() < 2 || op[0] != 'r') return op;  // 槽/立即数/其它：原样
+    static const char* kRegNames[] = {
+        "rax", "rbx", "rcx", "rdx", "rsi", "rdi",
+        "r8", "r9", "r10", "r11", "r12", "r13", "r14", "r15"};
+    for (const char* r : kRegNames) {
+        if (op == r) return widthFor(type, op);
+    }
+    return op;
+}
+
 // 比较操作码 -> 条件跳转助记符
 std::string X64CodeGenerator::condJumpMnemonic(ir::Opcode opcode) {
     switch (opcode) {
@@ -359,7 +395,9 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
         writer.line(std::string("mov ") + dst + ", " + (is64 ? "rax" : "eax"));
         return;
     }
-    writer.line("mov " + dst + ", " + src);
+    // 出口同理按类型宽度收缩（dst/src 可能为物理寄存器全名）
+    const std::string& t2 = inst.type.empty() ? inst.operands[0].type : inst.type;
+    writer.line("mov " + shrunkOperand(t2, dst) + ", " + shrunkOperand(t2, src));
 }
 
 void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction& inst,
@@ -384,7 +422,7 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
             writer.line(ext + " ecx, " + mp2 + op2);   // 槽：扩展 -> ecx
             writer.line(mnemonic + " eax, ecx");
         }
-        writer.line("mov " + dst + ", eax");
+        writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         return;
     }
     std::string w = widthFor(inst.type, "rax");
@@ -406,9 +444,10 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         }
     }
     // mov rax, op1 -> 运算 rax, op2 -> mov dst, rax
-    writer.line("mov " + w + ", " + op1);
-    writer.line(mnemonic + " " + w + ", " + op2Text);
-    writer.line("mov " + dst + ", " + w);
+    //   （op1 为物理寄存器全名时按 32 位名装载——shrunkOperand，A2022 收缩族）
+    writer.line("mov " + w + ", " + shrunkOperand(inst.type, op1));
+    writer.line(mnemonic + " " + w + ", " + shrunkOperand(inst.type, op2Text));
+    writer.line("mov " + shrunkOperand(inst.type, dst) + ", " + w);
 }
 
 // 除/余：有符号 idiv / 无符号 div（商 eax/rax，余 edx/rdx）
@@ -427,7 +466,7 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
     const bool isUnsigned = (type == "u8" || type == "u16" || type == "u32" ||
                              type == "u64" || type == "u128");
     std::string w = widthFor(type, "rax");
-    writer.line("mov " + w + ", " + op1);
+    writer.line("mov " + w + ", " + shrunkOperand(type, op1));  // 物理寄存器全名收缩（A2022）
     if (isUnsigned) {
         writer.line("xor edx, edx");  // 无符号除法：被除数高64位零扩展
     } else if (type == "i32" || type == "i8" || type == "i16") {
@@ -494,10 +533,10 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
         if (divisorConst && op2 == "-1") {
             if (inst.opcode == ir::Opcode::Div) {
                 writer.line("neg " + w);
-                writer.line("mov " + dst + ", " + w);
+                writer.line("mov " + shrunkOperand(type, dst) + ", " + w);
             } else {
                 writer.line("xor " + w + ", " + w);
-                writer.line("mov " + dst + ", " + w);
+                writer.line("mov " + shrunkOperand(type, dst) + ", " + w);
             }
             return;
         }
@@ -523,17 +562,17 @@ void X64CodeGenerator::emitDivMod(AsmWriter& writer, const ir::IRInstruction& in
                 writer.line("mov " + w + ", " + rw);   // 余数搬入 w 统一出口
             }
             writer.raw("@div_end" + std::to_string(negId) + ":");
-            writer.line("mov " + dst + ", " + w);
+            writer.line("mov " + shrunkOperand(type, dst) + ", " + w);
             return;
         }
     }
     writer.line(std::string(isUnsigned ? "div " : "idiv ") + divisor);
     // 商在 eax/rax，余在 edx/rdx
     if (inst.opcode == ir::Opcode::Div) {
-        writer.line("mov " + dst + ", " + w);
+        writer.line("mov " + shrunkOperand(type, dst) + ", " + w);
     } else {
         std::string rw = widthFor(type, "rdx");
-        writer.line("mov " + dst + ", " + rw);
+        writer.line("mov " + shrunkOperand(type, dst) + ", " + rw);
     }
 }
 
@@ -612,12 +651,12 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
             writer.line("and ecx, " + std::to_string(shiftMask));
             writer.line(sh + " eax, cl");
         }
-        writer.line("mov " + dst + ", eax");
+        writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
         return;
     }
     // 32/64位
     std::string w = widthFor(srcType, "rax");
-    writer.line("mov " + w + ", " + op1);
+    writer.line("mov " + w + ", " + shrunkOperand(srcType, op1));  // 物理寄存器全名收缩（A2022）
     if (inst.operands[1].isConstant) {
         // 246-a（D20 根治）：常量移位量按操作数位宽取模后发射——
         //   负/超域立即数原文直发 A2070（`shl eax, -997`·CN-Smith 首采 109 例）。
@@ -631,7 +670,7 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         writer.line("mov ecx, " + widthFor("i32", op2));
         writer.line(sh + " " + w + ", cl");
     }
-    writer.line("mov " + dst + ", " + w);
+    writer.line("mov " + shrunkOperand(srcType, dst) + ", " + w);
 }
 
 // ==================== 类型转换（Cast，Task 2.3） ====================
@@ -729,13 +768,13 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
                 writer.line(store + " " + mp + "[rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], xmm0");
             } else if (argType == "i32" || argType == "i1") {
                 // 32位值：eax 读 + 符号扩展 rax（C ABI int->long long 提升）
-                writer.line("mov eax, " + op);
+                writer.line("mov eax, " + shrunkOperand("i32", op));
                 writer.line("movsxd rax, eax");
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             } else if (argType == "u32") {
                 // 无符号32位栈参数：mov eax 读低32位（写 eax 清零高32位）+ mov rax
                 //   零扩展（缺陷修复：movsxd 符号扩展会把 0x80000000 以上位模式变负）
-                writer.line("mov eax, " + op);
+                writer.line("mov eax, " + shrunkOperand("i32", op));
                 writer.line("mov [rsp+" + std::to_string(32 + (i + argOffset - 4) * 8) + "], rax");
             } else {
                 // Task 2.10：指针常量参数（@strN 标签/函数名）lea 取地址
@@ -809,13 +848,13 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
         } else if (argType == "i32" || argType == "i1") {
             std::string reg = parameterRegister(regIdx);
             // movsxd 需要先装入 eax：mov eax, op; movsxd rcx, eax
-            writer.line("mov eax, " + op);
+            writer.line("mov eax, " + shrunkOperand("i32", op));
             writer.line("movsxd " + reg + ", eax");
         } else if (argType == "u32") {
             // 无符号32位实参：mov 零扩展（写 eax 清零高32位，直接 mov rcx 读槽高位垃圾
             // 会错；movsxd 符号扩展会把 0x80000000 以上位模式扩展成负数——缺陷修复
             // 统一：mov eax 读低32位 + 写 rcx 即零扩展）
-            writer.line("mov eax, " + op);
+            writer.line("mov eax, " + shrunkOperand("i32", op));
             writer.line("mov " + parameterRegister(regIdx) + ", rax");
         } else {
             // i64/指针：64 位直接 mov
@@ -867,7 +906,7 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             writer.line(store + " " + mp + dst + ", xmm0");
         } else {
             std::string w = widthFor(inst.result.type, "rax");
-            writer.line("mov " + dst + ", " + w);
+            writer.line("mov " + shrunkOperand(inst.result.type, dst) + ", " + w);
         }
     }
 }
@@ -910,7 +949,10 @@ void X64CodeGenerator::emitTerminator(AsmWriter& writer, const ir::IRBlock& bloc
                 condReg = operandText(ir::IRValue::constant(cond, "i1"));
             }
         }
-        writer.line("mov eax, " + condReg);
+        // 320-a（A2022·258-a cast 收缩同族）：条件源为分配的物理寄存器
+        //   （r8~r15 族）时按 32 位名收缩（mov eax, r13 宽度混配 A2022——
+        //   424 O3 regAlloc 首跑暴露；i1 布尔值分配器写入 r13d 32 位）
+        writer.line("mov eax, " + widthFor("i32", condReg));
         writer.line("test eax, eax");
         writer.line("jnz " + block.termTrueTarget);
         writer.line("jmp " + block.termFalseTarget);

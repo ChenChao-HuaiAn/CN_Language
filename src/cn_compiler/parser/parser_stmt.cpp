@@ -306,6 +306,62 @@ bool Parser::parseCaseValue(std::int64_t& outValue, std::string& outRaw,
                             bool& outIsString, bool& outIsEnumMember) {
     outIsString = false;
     outIsEnumMember = false;
+    // 320-a（T37·方案甲·C 同款）：整型常量表达式标签——负字面（情况 -1:，
+    //   词法把负号切成独立 Minus token，原 IntegerLiteral 分支不可达）与
+    //   一层折叠（情况 (0-1): / 情况 1,-1:）。窄面：[-]字面 与 ([-]字面 ± [-]字面)
+    //   ——完整常量表达式求值（嵌套/乘除）留后续按需扩（诚实边界）。
+    {
+        const bool hasParen = check(TokenType::LeftParen);
+        const std::size_t save = pos_;
+        if (hasParen) advance();  // 进括号
+        const bool neg1 = match(TokenType::Minus);
+        if (currentType() == TokenType::IntegerLiteral &&
+            peek(1).getType() != TokenType::Dot) {
+            const std::string raw1 = current().getValue();
+            advance();
+            std::int64_t v1 = 0;
+            try {
+                v1 = parseIntValue(raw1);
+            } catch (...) {
+                reportErrorHere("情况标签不是有效的整型常量");
+                return false;
+            }
+            if (neg1) v1 = -v1;
+            if (hasParen &&
+                (check(TokenType::Plus) || check(TokenType::Minus))) {
+                const bool sub = check(TokenType::Minus);
+                advance();
+                const bool neg2 = match(TokenType::Minus);
+                if (currentType() == TokenType::IntegerLiteral) {
+                    std::int64_t v2 = 0;
+                    try {
+                        v2 = parseIntValue(current().getValue());
+                    } catch (...) {
+                        reportErrorHere("情况标签不是有效的整型常量");
+                        return false;
+                    }
+                    if (neg2) v2 = -v2;
+                    v1 = sub ? (v1 - v2) : (v1 + v2);
+                    advance();
+                }
+            }
+            if (hasParen) {
+                if (!match(TokenType::RightParen)) {
+                    pos_ = save;  // 非简单折叠形态——回退通用路径（将报错）
+                } else {
+                    outValue = v1;
+                    outRaw = std::to_string(v1);
+                    return true;
+                }
+            } else {
+                outValue = v1;
+                outRaw = (neg1 ? "-" : "") + raw1;
+                return true;
+            }
+        } else {
+            pos_ = save;  // 回退（非整型常量表达式形态）
+        }
+    }
     if (currentType() == TokenType::StringLiteral) {
         // 字符串情况值（C-4）：rawValue 保留含引号字面量，语义层解码
         outRaw = current().getValue();

@@ -263,6 +263,19 @@ private:
     // 选择整型寄存器宽度（i32->eax / i64->rax）
     static std::string widthFor(const std::string& type, const std::string& reg);
 
+    // 源/目操作数按 8/16 位目标宽度对齐（A2022 收缩族·窄宽分支）：
+    //   64 位名 → 8 位名（r14→r14b·rax→al）或 16 位名（r14→r14w·rax→ax）；
+    //   槽文本/立即数原样。仅 i8/u8/i16/u16 类型生效，其余原样。
+    static std::string narrowOperand(const std::string& type, const std::string& op);
+
+    // 源操作数按目标宽度对齐（A2022 收缩族统一设施，320-a 补强）：
+    //   regAlloc 下 vreg 直接落 r8~r15 全名，32 位指令按全名装载即 A2022
+    //   （mov eax, r14）。寄存器名按 widthFor 收缩（r14→r14d）；槽文本
+    //   （[rbp-X]）/立即数/64 位及以上类型原样返回。所有「装载源操作数」
+    //   的发射点应经本函数（emitIntBinary/emitDivMod/emitShift/emitLoadStore/
+    //   emitPtrLoadStore 等）。
+    static std::string shrunkOperand(const std::string& type, const std::string& op);
+
     // 类型是否浮点
     static bool isFloatType(const std::string& type);
 

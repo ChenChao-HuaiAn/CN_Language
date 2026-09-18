@@ -364,6 +364,10 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
                                       const std::string& toRaw) const {
     const std::string from = canonicalType(fromRaw);
     const std::string to = canonicalType(toRaw);
+    // 320-a（T42·方案甲·Rust () 同款）：空类型不与任何类型互转——空类型
+    //   调用结果参与赋值/传参/返回一律拒绝（「无返回值却有值」违反类型
+    //   安全）；算术/比较面由 visitBinaryExpr 操作数检查覆盖。
+    if ((from == "空类型") != (to == "空类型")) return false;
     // 模板类型兼容（Task 3.5）：结果<T,E> 与 结果<T,E> 须完全一致；
     //   结果<A,B> 与 结果<C,D>（A可转C 且 B可转D）允许（错误码类型宽化）
     const bool fromResult = isResultType(from);

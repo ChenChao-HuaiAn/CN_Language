@@ -437,6 +437,11 @@ void SemanticAnalyzer::visitWhileStmt(WhileStmt* node) {
     loopDepth_--;
 }
 void SemanticAnalyzer::visitForStmt(ForStmt* node) {
+    // 320-a（T38·方案甲·C99 同款）：循环头变量限定循环作用域——init 声明
+    //   与循环体同入子作用域（循环外不可读·同名两循环可并存）；原平铺到
+    //   外层作用域（泄漏终值可读+同名两循环「重复声明」拒绝——两口径同源）。
+    //   块遮蔽（普通块内同名）行为不变（子作用域天然遮蔽）。
+    pushScope();
     if (node->init != nullptr) checkStmt(node->init.get());
     if (node->condition != nullptr) {
         checkCondition(checkExpr(node->condition.get()), node->condition->location, "'循环'");
@@ -445,6 +450,7 @@ void SemanticAnalyzer::visitForStmt(ForStmt* node) {
     loopDepth_++;
     if (node->body != nullptr) checkBlock(node->body.get());
     loopDepth_--;
+    popScope();
 }
 
 void SemanticAnalyzer::visitRangeForStmt(RangeForStmt* node) {

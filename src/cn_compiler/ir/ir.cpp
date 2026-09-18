@@ -472,6 +472,13 @@ ir::IRValue IRGenerator::lookupVar(const std::string& name) {
     }
     return ir::IRValue::reg(-1, "");
 }
+const IRGenerator::VarEntry* IRGenerator::findVarEntry(const std::string& name) const {
+    for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+        auto found = it->find(name);
+        if (found != it->end()) return &found->second;
+    }
+    return nullptr;
+}
 std::string IRGenerator::lookupSrcType(const std::string& name) const {
     for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
         auto found = it->find(name);
@@ -712,6 +719,19 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
 //   Load 参数槽 / 普通变量 AddrOf 槽地址。
 ir::IRValue IRGenerator::genIdentifierLvalue(Expr* node) {
         IdentifierExpr* ident = static_cast<IdentifierExpr*>(node);
+        // 320-a（T41）：函数内静态局部左值——varStack 命中且 isStaticLocal
+        //   （无栈槽）——?gstatic_键 符号地址即存储位置（与顶层静态同款）。
+        {
+            const VarEntry* ve = nullptr;
+            for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+                auto fit = it->find(ident->name);
+                if (fit != it->end()) { ve = &fit->second; break; }
+            }
+            if (ve != nullptr && ve->isStaticLocal) {
+                return emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                  "?gstatic_" + ve->uniqueName, node->location);
+            }
+        }
         // 87-a（2026-09-12 第八十七轮）：顶层静态左值——?gstatic_名 符号地址即
         //   存储位置本身（与 &静态 分支同款，plans/018 根治口径）。原实现直接
         //   AddrOf(局部槽)：静态变量不在 varStack_（lookupVarName 空），结构体

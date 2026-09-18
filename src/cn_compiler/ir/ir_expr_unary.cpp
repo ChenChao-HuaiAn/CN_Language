@@ -205,6 +205,34 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
         }
         case Operator::Increment:
         case Operator::Decrement: {
+            // 320-a（T41 写面完备）：函数内静态局部自增自减——读-算-写回
+            //   （?gstatic_键 符号）。原实现落下方普通路径：lookupVar 对静态局部
+            //   返回 regId=-1，`slot.id>=0` 写回守卫不成立=静默不写回（桩++ 恒旧值）。
+            //   置于类字段/顶层静态分支之前=varStack 命中优先（遮蔽语义对齐读路径：
+            //   同名局部静态遮蔽顶层静态/类字段）。
+            if (node->operand->getType() == NodeType::IdentifierExpr) {
+                const VarEntry* slVe = findVarEntry(
+                    static_cast<IdentifierExpr*>(node->operand.get())->name);
+                if (slVe != nullptr && slVe->isStaticLocal) {
+                    const std::string irT = slVe->type;
+                    ir::IRValue gsAddr = emitResult(
+                        ir::Opcode::ConstString, {}, "ptr",
+                        "?gstatic_" + slVe->uniqueName, node->location);
+                    ir::IRValue cur = emitResult(ir::Opcode::LoadPtr, {gsAddr}, irT, "",
+                                                 node->location);
+                    ir::IRValue delta = emitResult(ir::Opcode::ConstInt, {}, "i64", "1",
+                                                   node->location);
+                    ir::IRValue res = emitResult(
+                        node->op == Operator::Increment ? ir::Opcode::Add
+                                                        : ir::Opcode::Sub,
+                        {cur, delta}, irT, "", node->location);
+                    emit(ir::Opcode::StorePtr, {gsAddr, res}, ir::IRValue(), "", irT,
+                         node->location);
+                    // T24（297-a）：后缀 i++ 表达式值=自增前的旧值
+                    lastExpr_ = node->postfix ? cur : res;
+                    break;
+                }
+            }
             // 缺陷5 修复：类字段（静态/实例）自增自减——字段名不在 varStack_，
             //   须走"读-算-写回"专用路径（原实现只读不写，静态字段 总数++ 恒 0）
             if (node->operand->getType() == NodeType::IdentifierExpr &&

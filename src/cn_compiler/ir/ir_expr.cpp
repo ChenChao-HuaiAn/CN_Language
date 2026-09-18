@@ -202,6 +202,25 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     }
     ir::IRValue reg = lookupVar(node->name);
     if (reg.id < 0) {
+        // 320-a（T41）：函数内静态局部读取——varStack 命中但 regId=-1（无栈槽，
+        //   存储为 .data 全局符号）；按 varStack 层级查 isStaticLocal 标志走
+        //   ?gstatic_键 LoadPtr（局部优先序不变——同名遮蔽由层级天然处理）。
+        {
+            const VarEntry* ve = nullptr;
+            for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
+                auto fit = it->find(node->name);
+                if (fit != it->end()) { ve = &fit->second; break; }
+            }
+            if (ve != nullptr && ve->isStaticLocal) {
+                const std::string irT = ve->type.empty() ? "i32" : ve->type;
+                ir::IRValue addr = emitResult(
+                    ir::Opcode::ConstString, {}, "ptr",
+                    "?gstatic_" + ve->uniqueName, node->location);
+                lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, irT, "",
+                                       node->location);
+                return;
+            }
+        }
         // 第 9 层 Debug（P3-8）：顶层静态变量读取——全局 .data 符号 LoadPtr。
         //   静态变量不在函数局部 varStack_，须按全局符号地址读取（?gstatic_名）；
         //   放在 lookupVar 失败后（局部变量优先，防止同名遮蔽误读全局）。
