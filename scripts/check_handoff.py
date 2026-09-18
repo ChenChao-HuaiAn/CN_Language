@@ -290,6 +290,24 @@ def 当前分支名() -> str | None:
     return 名 or None
 
 
+def 分支已集成() -> bool:
+    """当前 HEAD 是否已包含在集成分支（gitcode/develop 或本地 develop）中。
+
+    已集成分支不再要求看板行——**收工销账（清行）后分支名自然不在看板**，
+    332-a 实测：销账动作本身会触发开工自检误拦（自建制度首日自证 bug），
+    故判据加本条豁免；引用不存在（未 fetch）时保守不豁免。
+    """
+    for 候选 in ("gitcode/develop", "develop"):
+        try:
+            结果 = subprocess.run(["git", "merge-base", "--is-ancestor", "HEAD", 候选],
+                                 cwd=仓库根, capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            return False
+        if 结果.returncode == 0:
+            return True
+    return False
+
+
 def 查开工自检() -> list[str]:
     """开工自检（332-a·用户令 2026-09-18）：当前分支为任务分支时，看板必须已含该分支名。
 
@@ -297,6 +315,7 @@ def 查开工自检() -> list[str]:
     （分支自 develop 开出，故看板内必含本分支名）。把看板更新写进任务分支而未直推时，
     分支内看板不含本分支名 → 本检查拦截（「先动手后填板」不可通过门禁）。跨机 try-build
     在他机分支上跑同样满足（分支名在其机行内）。服务轮/develop 分支不触发。
+    豁免：分支已集成（收工销账清行后，分支名自然不在看板——332-a 自证实测）。
     """
     分支 = 当前分支名()
     if not 分支 or not 分支.startswith("任务/"):
@@ -306,9 +325,11 @@ def 查开工自检() -> list[str]:
         return ["三机任务看板.md 缺失（开工自检无法执行）"]
     if 分支 in 路径.read_text(encoding="utf-8"):
         return []
-    return [f"开工自检：当前分支 {分支} 未出现在看板任何行中——开工第一动作应为「编辑本机小节"
-            "（🏃+分支名）并直推 develop」（AGENTS.md §8.1 看板先行·§8.5 窄通道①）：看板写进"
-            "任务分支＝他机不可见＝等于没写（332-a 实测三机行全在各自分支内·develop 全空）"]
+    if 分支已集成():
+        return []
+    return [f"开工自检：当前分支 {分支} 未出现在看板任何行中（且尚未集成）——开工第一动作应为"
+            "「编辑本机小节（🏃+分支名）并直推 develop」（AGENTS.md §8.1 看板先行·§8.5 窄通道①）："
+            "看板写进任务分支＝他机不可见＝等于没写（332-a 实测三机行全在各自分支内·develop 全空）"]
 
 
 def 查冲突标记() -> list[str]:
