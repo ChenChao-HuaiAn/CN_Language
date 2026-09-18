@@ -935,6 +935,13 @@ private:
     // 方法调用实参构建（含入容器位归一化；其余形态等价 buildCallArgsOop）
     std::vector<ir::IRValue> buildCallArgsForMethod(
         CallExpr* node, const std::string& canonObj, const std::string& methodName);
+    // i128/u128 形参的窄整实参统一宽化（331-a·T53 根治·单一归属）：字面量实参
+    //   在 IR 中为窄整（i64），方法/构造调用须按形参 128 位宽化 Cast——否则被调方
+    //   按 i128 指针解引用（i64 值当地址）→ SIGSEGV。构造路径原已修（m45_03），
+    //   实例方法路径缺失（实弹 run_err/m53_01 容器追加字面量段错误）。
+    void widenI128Args(std::vector<ir::IRValue>& args,
+                       const std::vector<std::string>& paramTypes,
+                       const SourceLocation& loc);
 
     // ---- 阶段3 OOP 调用/析构（ir_oop_call.cpp 实现） ----
     // 函数收尾钩子：类类型局部变量（有析构函数）离开作用域 -> DeleteObject（RAII）

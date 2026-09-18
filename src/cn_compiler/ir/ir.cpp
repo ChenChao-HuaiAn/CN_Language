@@ -504,7 +504,13 @@ bool IRGenerator::isByRefCapture(const std::string& name) const {
 }
 std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
     if (semantic_ != nullptr && types::isPointer(srcType)) {
-        const std::string elem = types::pointeeOf(srcType);
+        // 331-a（T53 根治）：泛型方法内的指针源码类型是泛型名（如 `T*`）——先做
+        //   单态化替换（T → 实参类型）再取元素宽度；否则 typeSizeOf("T") 兜底 8
+        //   （整64 实例巧合正确·i128 需 16 → `数据[索引]=值` 步进错位 → 堆越界
+        //   段错误·实弹 run_err/m53_01）。非泛型上下文（genericTypeParams_ 为空）
+        //   substGenericType 原样返回=零行为变更。
+        const std::string substType = substGenericType(srcType);
+        const std::string elem = types::pointeeOf(substType);
         // 缺陷③根治（2026-09-03）：步进统一按所指元素 typeSizeOf（基础类型/
         //   结构体/类/枚举/结果——含 i128=16、H8 类元素、Task 2.7 结构体元素）。
         //   原实现仅特判 结构体/类/i128、其余兜底 8——标量指针（整32*/整16*/
