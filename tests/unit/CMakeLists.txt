@@ -24,6 +24,7 @@ add_executable(cn_unit_tests
     semantic/test_semantic_control.cpp
     semantic/test_function.cpp
     semantic/test_types_full.cpp
+    semantic/test_static_init_type.cpp
     semantic/test_pointer.cpp
     semantic/test_string_semantic.cpp
     semantic/test_string_extra.cpp

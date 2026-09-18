@@ -405,11 +405,12 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
             // 结构体静态：值本体按类型尺寸零初始化（初值由入口注入逐字段写）
             writer.raw("    .zero " + std::to_string(bytes));
         } else {
-            // 标量静态：常量初值直存（整型/布尔/字符文本；字符串句柄等保持 0）
+            // 标量静态：常量初值直存（整型/布尔/字符文本；字符串句柄等保持 0）。
+            // 331-a（T50 根治）：判定改 types::isStaticScalarInitType（三后端单一
+            //   归属）——原 types::isInteger 只认中文名，函数内静态局部（IR 名
+            //   "i64"）判定失败 → 初值恒 .quad 0 静默丢。
             std::string text = "0";
-            if (!initText.empty() && (types::isInteger(canonStatic) ||
-                                      canonStatic == "布尔" ||
-                                      canonStatic == "字符")) {
+            if (!initText.empty() && types::isStaticScalarInitType(canonStatic)) {
                 text = initText;
             }
             writer.raw("    .quad " + text);

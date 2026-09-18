@@ -26,6 +26,14 @@ std::string canonical(const std::string& type);
 // 是否整数类型（整8~整128/正8~正128/整数，规范后判断）
 bool isInteger(const std::string& type);
 
+// 静态标量初值可否直存 .data 的类型判定（331-a·T50 根治·三后端单一归属）：
+//   中文类型名（整8..正64/字符/布尔）与 IR 类型名（i8..u64/i1）双口径——
+//   函数内静态局部经 mapType 落 IR 名（"i64"），顶层静态落中文名（"整64"），
+//   原判定只认中文名（isInteger），导致函数内静态标量初值在 linux_x64/arm64
+//   恒 .quad 0（静默丢初值；win 侧用「非浮点文本」宽松判定而幸存=三后端
+//   口径分叉）。i128/u128 不在本判定（走双 .quad 分支），字符串句柄不可直存。
+bool isStaticScalarInitType(const std::string& type);
+
 // 是否浮点类型（浮32/浮64/小数，规范后判断）
 bool isFloat(const std::string& type);
 

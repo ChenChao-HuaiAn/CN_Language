@@ -246,9 +246,15 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
                 loadOperandToV(writer, av, "xmm" + std::to_string(floatIdx));
                 ++floatIdx;
             } else {
-                // 浮点栈参数（第9起）：写 [rsp,#(int栈序)*8]——虚调用实参超过
-                //   寄存器容量的场景当前 IR 不产生（方法实参数少），防御性注释
-                writer.comment("虚调用浮点栈参数超出 xmm0~xmm7（未支持形态）");
+                // T11 同族加固（331-a）：虚调用栈参数（浮点第9起/整型第7起）本
+                //   后端未实现（win x64 与 arm64 均已实现=跨后端不对称，已立案 T49）；
+                //   原「防御性静默注释」会丢参数产静默错值，改硬错误（编译失败而非
+                //   错产物）。根治=移植栈参数区（sub rsp + [rsp+seq*8] + 恢复）。
+                diagnostics_.report(Diagnostic::error(
+                    inst.loc,
+                    std::string("虚调用栈参数未实现：浮点实参超出 xmm0~xmm7（") +
+                        targetPlatform() +
+                        " 后端缺口 T49——请减少参数或改用 win/arm64 目标）"));
             }
         } else if (argType == "i128" || argType == "u128") {
             // i128 实参：传双槽地址指针
@@ -257,14 +263,25 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
                             stackMemText(regSlotOffset(av.id + 1)));
                 ++intIdx;
             } else {
-                writer.comment("虚调用 i128 栈参数超出 rdi~r9（未支持形态）");
+                // T11 同族加固（331-a）：i128 栈参数本后端未实现（T49 缺口），
+                //   静默丢参会产错值——改硬错误。
+                diagnostics_.report(Diagnostic::error(
+                    inst.loc,
+                    std::string("虚调用栈参数未实现：i128 实参超出 rdi~r9（") +
+                        targetPlatform() + " 后端缺口 T49）"));
             }
         } else {
             if (intIdx < 6) {
                 loadOperandToX(writer, av, intParameterRegister(intIdx));
                 ++intIdx;
             } else {
-                writer.comment("虚调用整型栈参数超出 rdi~r9（未支持形态）");
+                // T11 同族加固（331-a）：整型栈参数（第7起）本后端未实现
+                //   （win x64 与 arm64 均已实现=跨后端不对称，已立案 T49）；
+                //   静默丢参会产错值——改硬错误。
+                diagnostics_.report(Diagnostic::error(
+                    inst.loc,
+                    std::string("虚调用栈参数未实现：整型实参超出 rdi~r9（") +
+                        targetPlatform() + " 后端缺口 T49）"));
             }
         }
     }
@@ -311,7 +328,15 @@ void LinuxX64CodeGenerator::emitOopInstruction(LinuxX64AsmWriter& writer,
             break;
         }
         default:
-            writer.comment("未支持的OOP操作码");
+            // T11 面②同族加固（331-a）：本函数只处理 4 个 OOP 操作码（由顶层
+            //   dispatch 的 OOP case 转发）；default 命中=新增 OOP 操作码未同步
+            //   本内层 switch（顶层 -Wswitch 守卫抓不到的内层形态）。静默跳过会产
+            //   错误产物（384 同型），故与顶层同款硬错误。
+            diagnostics_.report(Diagnostic::error(
+                inst.loc,
+                std::string("未支持的 OOP 操作码：") +
+                    ir::opcodeToString(inst.opcode) + "——IR 指令未在 " +
+                    targetPlatform() + " 后端 OOP 发射层实现"));
             break;
     }
 }

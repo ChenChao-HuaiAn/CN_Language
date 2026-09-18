@@ -403,11 +403,12 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
             writer.raw("    .zero " + std::to_string(bytes));
         } else {
             // 标量静态：常量初值直存（整型/布尔/字符文本；字符串句柄等不可直存
-            //   形态保持 0——运行期由入口注入物化）
+            //   形态保持 0——运行期由入口注入物化）。
+            // 331-a（T50 根治）：判定改 types::isStaticScalarInitType（三后端单一
+            //   归属）——原 types::isInteger 只认中文名，函数内静态局部（IR 名
+            //   "i64"）判定失败 → 初值恒 .quad 0 静默丢（win 侧宽松判定幸存=分叉）。
             std::string text = "0";
-            if (!initText.empty() && (types::isInteger(canonStatic) ||
-                                      canonStatic == "布尔" ||
-                                      canonStatic == "字符")) {
+            if (!initText.empty() && types::isStaticScalarInitType(canonStatic)) {
                 text = initText;
             }
             writer.raw("    .quad " + text);

@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "cn_compiler/semantic/type_system.hpp"
 
@@ -83,6 +84,19 @@ std::string canonicalParam(const std::string& type) {
 bool isInteger(const std::string& type) {
     const std::string t = canonical(type);
     return intRankTable().count(t) > 0;
+}
+
+// 静态标量初值可否直存 .data（331-a·T50 根治·三后端单一归属）——见头文件说明。
+//   IR 名集合=mapType 产物（函数内静态局部）；中文名集合经 canonical+intRankTable
+//   （顶层静态）。i128/u128 不在本判定（走双 .quad 分支）。
+bool isStaticScalarInitType(const std::string& type) {
+    const std::string t = canonical(type);
+    if (intRankTable().count(t) > 0) return true;   // 中文整数族（整8..正128）
+    if (t == "字符" || t == "布尔") return true;
+    static const std::unordered_set<std::string> kIrScalarInts = {
+        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "i1",
+    };
+    return kIrScalarInts.count(t) > 0;
 }
 
 // 是否浮点类型（浮32/浮64/小数）

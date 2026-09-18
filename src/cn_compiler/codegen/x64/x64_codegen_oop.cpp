@@ -332,7 +332,15 @@ void X64CodeGenerator::emitOopInstruction(AsmWriter& writer, const ir::IRInstruc
             break;
         }
         default:
-            writer.comment("未支持的OOP操作码");
+            // T11 面②同族加固（331-a）：本函数只处理 4 个 OOP 操作码（由顶层
+            //   dispatch 的 OOP case 转发）；default 命中=新增 OOP 操作码未同步
+            //   本内层 switch（顶层 -Wswitch 守卫抓不到的内层形态）。静默跳过会产
+            //   错误产物（384 同型），故与顶层同款硬错误。
+            diagnostics_.report(Diagnostic::error(
+                inst.loc,
+                std::string("未支持的 OOP 操作码：") +
+                    ir::opcodeToString(inst.opcode) + "——IR 指令未在 " +
+                    targetPlatform() + " 后端 OOP 发射层实现"));
             break;
     }
 }

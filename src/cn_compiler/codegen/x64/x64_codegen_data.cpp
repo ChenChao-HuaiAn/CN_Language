@@ -190,12 +190,11 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
             for (int qi = 1; qi < qwords; ++qi) line += ", 0";
             writer.raw(line);
         } else {
-            if (!initText.empty() && initText.front() == '"') {
-                // 字符串初始值：置零（不可作 .data 初始值——运行期入口注入物化）
-                writer.raw(sym + " dq 0");
-            } else if (!initText.empty() &&
-                       initText.find_first_of(".eE") == std::string::npos) {
-                // 整数/布尔/字符初始值直接写入（十进制文本；MASM dq 立即数）
+            // 331-a（T50 根治·三后端单一归属）：整数/布尔/字符初值直存判定改
+            //   types::isStaticScalarInitType（原「非浮点文本」宽松判定与
+            //   linux_x64/arm64 的 types::isInteger 判定分叉——同一源码同一语义
+            //   三后端口径必须一致；字符串句柄仍置零，运行期入口注入物化）。
+            if (!initText.empty() && types::isStaticScalarInitType(canonStatic)) {
                 writer.raw(sym + " dq " + initText);
             } else {
                 writer.raw(sym + " dq 0");
