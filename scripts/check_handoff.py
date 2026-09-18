@@ -325,6 +325,18 @@ def 查开工自检() -> list[str]:
         return ["三机任务看板.md 缺失（开工自检无法执行）"]
     if 分支 in 路径.read_text(encoding="utf-8"):
         return []
+    # 接力分支补判据（351-a·2026-09-18）：接力分支基点＝上一轮分支头，可能**早于**本轮
+    #   看板直推提交（直推落在 develop 窄通道·不在接力基点内）——本地看板不含≠未直推。
+    #   再查**远端 develop 的看板**（已 fetch 的 gitcode/develop）：远端已含分支名＝直推
+    #   已执行（他机可见·门禁本义已满足）→ 放行；远端引用不存在/未 fetch 时保守不豁免。
+    #   反例（本地+远端均不含=真未直推）仍拦截。
+    try:
+        _远端 = subprocess.run(["git", "show", "gitcode/develop:三机任务看板.md"],
+                              cwd=仓库根, capture_output=True, text=True, timeout=10)
+        if _远端.returncode == 0 and 分支 in _远端.stdout:
+            return []
+    except (OSError, subprocess.SubprocessError):
+        pass
     if 分支已集成():
         return []
     return [f"开工自检：当前分支 {分支} 未出现在看板任何行中（且尚未集成）——开工第一动作应为"
