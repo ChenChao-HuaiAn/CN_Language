@@ -340,7 +340,7 @@ def 查重复节标题() -> list[str]:
     节内 ### 标题去重与粘连，**未覆盖 ## 节标题本身** = 假绿。
     """
     问题: list[str] = []
-    for 名 in ("HANDOFF.md", "更新日志.md"):
+    for 名 in ("HANDOFF.md", "更新日志.md", "plans/025-三机任务统筹与实施计划.md"):
         路径 = 仓库根 / 名
         if not 路径.exists():
             continue
