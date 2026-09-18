@@ -519,6 +519,36 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                                node->location);
         return;
     }
+    // 331-a（T53 家系·间接调用路径）：i128/u128 形参的窄整实参宽化——函数指针
+    //   类型（如 `整32(*指)(整128)`）解析形参列表后按 128 位宽化；原缺 →
+    //   字面量实参 i64 直传 → 被调方按 i128 指针解引用 SIGSEGV（探针 p_fnptr）。
+    //   解析=顶层逗号切分（尊重 <> 与 () 嵌套深度）；解析不出形参列表时保守跳过。
+    if (node->callee->getType() == NodeType::IdentifierExpr) {
+        const std::string fnPtrType = lookupSrcType(
+            static_cast<IdentifierExpr*>(node->callee.get())->name);
+        const std::size_t lp = fnPtrType.find('(');
+        const std::size_t rp = fnPtrType.rfind(')');
+        if (lp != std::string::npos && rp != std::string::npos && rp > lp + 1) {
+            const std::string paramStr = fnPtrType.substr(lp + 1, rp - lp - 1);
+            std::vector<std::string> paramTypes;
+            std::string cur;
+            int depth = 0;
+            for (const char c : paramStr) {
+                if (c == '<' || c == '(') ++depth;
+                else if (c == '>' || c == ')') --depth;
+                if (c == ',' && depth == 0) {
+                    paramTypes.push_back(cur);
+                    cur.clear();
+                } else {
+                    cur.push_back(c);
+                }
+            }
+            if (!cur.empty()) paramTypes.push_back(cur);
+            if (!paramTypes.empty() && paramTypes.size() == args.size()) {
+                widenI128Args(args, paramTypes, node->location);
+            }
+        }
+    }
     // 间接调用：先求被调者表达式（函数指针变量），再 CallIndirect
     ir::IRValue calleeVal = genExpr(node->callee.get());
     args.insert(args.begin(), calleeVal);  // operand[0]=指针寄存器

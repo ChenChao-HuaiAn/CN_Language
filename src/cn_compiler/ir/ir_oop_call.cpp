@@ -587,6 +587,10 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         if (!m->isStatic) return false;  // 语义层已报错，防御跳过
         std::vector<ir::IRValue> args =
             buildCallArgsOop(node->arguments, node->location);
+        // 331-a（T53 家系·静态方法路径）：i128/u128 形参的窄整实参宽化——同族
+        //   同修（实例方法/虚调用已接·静态方法原缺 → 字面量实参 i64 直传 →
+        //   被调方按 i128 指针解引用 SIGSEGV·探针 p_static 实证）。
+        widenI128Args(args, m->paramTypes, node->location);
         const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
         // 静态方法返回 空类型 时用 emit（不分配结果寄存器）
         if (resultType == "void" || resultType.empty()) {
