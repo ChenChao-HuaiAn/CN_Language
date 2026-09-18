@@ -41,16 +41,16 @@
 
 1. **面②（T11·发射器静默→硬错误）**：三后端顶层 dispatch（`x64_instructions.cpp` / `linux_x64_codegen_dispatch.cpp` / `arm64_codegen_dispatch.cpp`）**移 default 改硬错误**——case 体 `break`→`return`（守卫代码置 switch 未匹配路径），`Branch` 显式补 case；**编译期守卫**=GCC -Wswitch / MSVC C4062（删任 case → 构建失败✓ 反证）。**首版踩坑**：守卫代码放 switch 之后而 case 体仍 break → 所有 case 落穿（单测 12 红当场暴露）→ 已入 lessons。
 2. **面③（验证器支持面）**：`ir_verify.cpp` 新增 `verifyKnownOpcodes`（44 值全清单·isKnownOpcode 无 default 全覆盖）；driver **双路径**接入——顺带发现并修复 **driver_module.cpp 零验证器调用**（半截机制：模块路径此前绕过 verifyIRModule/verifyConstWidths）。
-3. **同族加固（B9 族扩散）**：三后端 `emitOopInstruction` 内层 default（顶层守卫抓不到的内层形态）→ 硬错误；**linux_x64 `emitVirtualCall` 三处静默**（浮点/整型/i128 栈参数超限）→ 硬错误（win/arm64 均已实现栈参数区=**跨后端不对称**，立案 **T49**）。
+3. **同族加固（B9 族扩散）**：三后端 `emitOopInstruction` 内层 default（顶层守卫抓不到的内层形态）→ 硬错误；**linux_x64 `emitVirtualCall` 栈参数区根治（T49 ✅ 销项）**——先改硬错误（拒绝不产错值）→ 构造触发形态实证（基类方法内 `自身.虚方法(6 整型参数)`）→ 移植栈参数区（位置分配+`sub rsp`+`[rsp+seq*8]` 写入+恢复·契约与 emitCall 一致）+族矩阵 91/204/285 O0=O3+**E2E 431 转正**。
 4. **T50 ✅ 销项**（B9 扩散副产品·426 暴露）：**函数内静态标量初值静默丢**（`静态 整64 甲=11111` → linux_x64/arm64 `.quad 0`、win 正确）——真根因=判定口径分叉：函数内静态 stType 是 IR 名（`i64`），原 `types::isInteger` 只认中文名 → 恒 0；修复=**单一归属** `types::isStaticScalarInitType`（中文名+IR 名双口径）三后端统一调用；**426 转绿**（双编译对照 246/247 两侧同错互证=盲区，已入 lessons）。
-5. **门禁**：零警告构建 + **单测 1363/1363**（+7 OpcodeDefense +3 StaticInitType）+ **E2E 444=442/0/2** + 锚定链 78/79 绿 + 防线零触发（E2E 日志零「未支持操作码/形态」）+ CLI 注入反证（exit=1·诊断精确·无产物）。
+5. **门禁**：零警告构建 + **单测 1363/1363**（+7 OpcodeDefense +3 StaticInitType）+ **E2E 445=443/0/2**（含 431 新用例）+ 锚定链 78/79 绿 + 防线零触发（E2E 日志零「未支持操作码/形态」）+ CLI 注入反证（exit=1·诊断精确·无产物）。
 
 ### 二、验证链（当轮实测）
 
 ```
 cmake --build target/build -j8                                        # 零警告（GCC -Wall -Wextra -Werror）
 ./target/cn_unit_tests                                                # 1363/1363 PASS
-python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8                  # 444=442/0/2（2 跳=平台固有）
+python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8                  # 445=443/0/2（含 431 虚调用栈参数矩阵·2 跳=平台固有）
 # 反证①：临时删 arm64 Phi case → error: enumeration value 'Phi' not handled in switch [-Werror=switch]
 # 反证②：IR 注入 static_cast<Opcode>(9999) → cn build → exit=1「主:bb0: 未知操作码（枚举值 9999）」+无产物
 # T50 探针：静态 整64 甲=11111/乙=100000000000/整32 丙=22222 → .quad 直存·运行 1111110000000000022222
@@ -58,14 +58,14 @@ python3 tests/e2e/run_e2e.py --cn target/cn --jobs 8                  # 444=442/
 
 ### 三、下一轮任务（按序）
 
-1. **T49 根治**（linux_x64 虚调用栈参数区移植 win/arm64 实现·需先构造触发形态探针——当前 E2E 走 CallIndirect 去虚拟化·VirtualCall 零命中）；
+1. **T49 残留边界收口**（v2 侧虚调用栈参数同型面核查 + linux_x64 i128 栈参常量实参口径）；
 2. **try-build 回签等待**：家机 win（**MSVC C4062 编译期守卫实证**：删 case 应构建失败）+单位机 arm64 → 回签后 `python3 scripts/integrate.py --try-build-done` 集成；
 3. 集成后：daemon 常态化采样续跑（x64l 列·本轮期间未跑）；波次7 续候选=T33 窄读泛化 或 D10 泛型函数体零检查。
 
 ### 四、诚实边界
 
 - **MSVC C4062 触发未自证**（本机仅 GCC -Wswitch 实证）——win 编译期守卫的最终证据归家机 try-build；
-- **T49 未根治**：linux_x64 虚调用栈参数（浮点第9/整型第7/i128 超位）仍缺实现，本轮以硬错误拒绝（不产错值）；根治需先造触发形态（探针矩阵）；
+- **T49 已根治**（栈参数区补齐·E2E 431）；残留=v2 侧同型面未核查（v2 生成层是否有同款栈参数缺口待专项）+i128 栈参数常量实参口径（沿既有寄存器路径同口径·未扩面）；
 - 函数内静态 i128 槽尺寸口径分叉（IR 名 `i128` 未入「整128」双 quad 分支→8 字节槽不足）=观察项（登记 T50 行内）；
 - 谓词默认值族（setccFor/setccmnemonic `default: setne` 等 8 处）合法不可达（调用点受上层守卫限定）=扩散矩阵记录·未加固；
 - 本机无 win/arm64 产物运行能力——win/arm64 侧口径归家机/单位机复核。

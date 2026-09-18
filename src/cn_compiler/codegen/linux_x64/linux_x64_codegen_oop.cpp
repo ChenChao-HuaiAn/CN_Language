@@ -233,60 +233,76 @@ void LinuxX64CodeGenerator::emitVirtualCall(LinuxX64AsmWriter& writer,
     } else {
         writer.line("mov r11, qword ptr [r9]");
     }
-    // 4. 装载其余实参（整型位从 1 起：this 占 rdi；浮点位独立从 0 起）
-    //    注意：r11 已保存函数指针，整型参数装载只用 rdi 之后的位（rsi 起），
-    //    临时经源操作数直接装载目标寄存器，不破坏 r11
-    int intIdx = 1;   // rdi 已被 this 占用
-    int floatIdx = 0;
+    // 4. 实参位置分配（第一遍）——331-a T49 根治：**栈参数区补齐**（win x64 与
+    //    arm64 后端此前已实现=跨后端不对称）。布局契约与 emitCall 完全一致：
+    //    整型超 6（this 占 rdi）/浮点超 8 的实参按声明顺序入栈 [rsp+seq*8]，
+    //    rsp 保持 16 字节对齐（alignPad），调用后恢复。
+    std::vector<int> argKind(argCount, 0);   // 0=整型寄存器 1=浮点寄存器 2=栈
+    std::vector<int> argPos(argCount, -1);   // 寄存器位号 或 栈序列号
+    int planIntIdx = 1;      // rdi 已被 this 占用
+    int planFloatIdx = 0;
+    int stackCounter = 0;
     for (std::size_t i = 0; i < argCount; ++i) {
-        const ir::IRValue& av = inst.operands[1 + i];
-        const std::string& argType = av.type;
+        const std::string& argType = inst.operands[1 + i].type;
         if (isFloatType(argType)) {
-            if (floatIdx < 8) {
-                loadOperandToV(writer, av, "xmm" + std::to_string(floatIdx));
-                ++floatIdx;
+            if (planFloatIdx < 8) {
+                argKind[i] = 1;
+                argPos[i] = planFloatIdx++;
             } else {
-                // T11 同族加固（331-a）：虚调用栈参数（浮点第9起/整型第7起）本
-                //   后端未实现（win x64 与 arm64 均已实现=跨后端不对称，已立案 T49）；
-                //   原「防御性静默注释」会丢参数产静默错值，改硬错误（编译失败而非
-                //   错产物）。根治=移植栈参数区（sub rsp + [rsp+seq*8] + 恢复）。
-                diagnostics_.report(Diagnostic::error(
-                    inst.loc,
-                    std::string("虚调用栈参数未实现：浮点实参超出 xmm0~xmm7（") +
-                        targetPlatform() +
-                        " 后端缺口 T49——请减少参数或改用 win/arm64 目标）"));
-            }
-        } else if (argType == "i128" || argType == "u128") {
-            // i128 实参：传双槽地址指针
-            if (intIdx < 6) {
-                writer.line("lea " + intParameterRegister(intIdx) + ", " +
-                            stackMemText(regSlotOffset(av.id + 1)));
-                ++intIdx;
-            } else {
-                // T11 同族加固（331-a）：i128 栈参数本后端未实现（T49 缺口），
-                //   静默丢参会产错值——改硬错误。
-                diagnostics_.report(Diagnostic::error(
-                    inst.loc,
-                    std::string("虚调用栈参数未实现：i128 实参超出 rdi~r9（") +
-                        targetPlatform() + " 后端缺口 T49）"));
+                argKind[i] = 2;
+                argPos[i] = stackCounter++;
             }
         } else {
-            if (intIdx < 6) {
-                loadOperandToX(writer, av, intParameterRegister(intIdx));
-                ++intIdx;
+            if (planIntIdx < 6) {
+                argKind[i] = 0;
+                argPos[i] = planIntIdx++;
             } else {
-                // T11 同族加固（331-a）：整型栈参数（第7起）本后端未实现
-                //   （win x64 与 arm64 均已实现=跨后端不对称，已立案 T49）；
-                //   静默丢参会产错值——改硬错误。
-                diagnostics_.report(Diagnostic::error(
-                    inst.loc,
-                    std::string("虚调用栈参数未实现：整型实参超出 rdi~r9（") +
-                        targetPlatform() + " 后端缺口 T49）"));
+                argKind[i] = 2;
+                argPos[i] = stackCounter++;
             }
         }
     }
-    // 5. 间接调用：call r11
+    const int stackBytes = stackCounter * 8;
+    const int alignPad = (stackBytes % 16 == 0) ? 0 : (16 - stackBytes % 16);
+    const int totalAlloc = stackBytes + alignPad;
+    if (totalAlloc > 0) {
+        writer.line("sub rsp, " + std::to_string(totalAlloc));
+    }
+    // 4a. 栈参数写入（先栈后寄存器：临时 r10/xmm0 中转，不破坏 r9[虚表]/r11[函数针]）
+    for (std::size_t i = 0; i < argCount; ++i) {
+        if (argKind[i] != 2) continue;
+        const ir::IRValue& av = inst.operands[1 + i];
+        const std::string mem = "[rsp+" + std::to_string(argPos[i] * 8) + "]";
+        if (isFloatType(av.type)) {
+            loadOperandToV(writer, av, "xmm0");
+            writer.line("mov" + std::string(av.type == "f64" ? "sd" : "ss") +
+                        " qword ptr " + mem + ", xmm0");
+        } else if (av.type == "i128" || av.type == "u128") {
+            writer.line("lea r10, " + stackMemText(regSlotOffset(av.id + 1)));
+            writer.line("mov qword ptr " + mem + ", r10");
+        } else {
+            const std::string reg = loadOperandToX(writer, av, "r10");
+            writer.line("mov qword ptr " + mem + ", " + reg);
+        }
+    }
+    // 4b. 寄存器参数装载（整型 rsi..r9 / 浮点 xmm0..xmm7；r11 保持函数指针）
+    for (std::size_t i = 0; i < argCount; ++i) {
+        if (argKind[i] == 2) continue;
+        const ir::IRValue& av = inst.operands[1 + i];
+        if (argKind[i] == 1) {
+            loadOperandToV(writer, av, "xmm" + std::to_string(argPos[i]));
+        } else if (av.type == "i128" || av.type == "u128") {
+            writer.line("lea " + intParameterRegister(argPos[i]) + ", " +
+                        stackMemText(regSlotOffset(av.id + 1)));
+        } else {
+            loadOperandToX(writer, av, intParameterRegister(argPos[i]));
+        }
+    }
+    // 5. 间接调用：call r11 + 恢复栈参数区（与 4 的 sub rsp 对称）
     writer.line("call r11");
+    if (totalAlloc > 0) {
+        writer.line("add rsp, " + std::to_string(totalAlloc));
+    }
     // 6. 返回值 -> 结果槽（浮点 xmm0，整型 rax）
     if (inst.result.id >= 0) {
         const int dstOff = regSlotOffset(inst.result.id);
