@@ -472,7 +472,14 @@ void IRGenerator::registerFunctionParams(FunctionDecl* node, ir::IRFunction& fun
         // 基础类型值（与 lambda [&] 捕获 entry.type 规则一致，lambda 处注释同源）
         entryInfo.type = isRefParam ? mapType(types::stripRef(param->typeName))
                                     : reg.type;
-        entryInfo.srcType = param->typeName;  // 指针/数组复合类型源码名
+        // 337-a（T53 家系）：函数指针参数登记完整规范串（`函数指针<返回>(参数,...)`）
+        //   ——与局部变量声明位同口径（funcPtrParamsOfCallee 的形参来源）；原登记
+        //   param->typeName（C 风格声明 `整32(*f)(整128)` 在 funcPtr 形态下为空）
+        //   → 间接调用实参宽化无据可判（同 ir_stmt_decl.cpp 注释）。
+        //   泛型实例体：T→实参类型替换（`函数指针<整32>(T,T)` → `...<整32>(整128,整128)`）
+        //   ——否则实例体内间接调用解析出形参 "T"、128 位判定落空（探针 n 实证：
+        //   泛型实例体 应用$整128 的形参未替换，字面量实参仍窄传）。
+        entryInfo.srcType = substGenericType(paramSrcTypeOf(param.get()));
         entryInfo.byRef = isRefParam;         // A-1：引用参数按 byRef 语义读写
         varStack_.back()[param->name] = entryInfo;
     }

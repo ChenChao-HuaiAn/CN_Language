@@ -75,9 +75,18 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             for (const auto& capArg : closureIt->second.captureArgs) {
                 closureArgs.push_back(capArg);
             }
+            // 337-a（T53 家系·闭包调用路径）：用户实参按闭包形参类型 ABI 定标
+            //   （i128 形参的窄整实参宽化）——展开式 `Call(捕获实参..., 用户实参...)`
+            //   中原缺此步：字面量实参物理 i64 直传、被调方按 i128 指针 ABI 解引用
+            //   SIGSEGV（探针 f_closure〔对象.方法 闭包〕rc=139）。捕获实参不入
+            //   定标面（其形态由捕获机制自身决定）；paramTypes 空=零行为变更。
+            std::vector<ir::IRValue> userArgs;
+            userArgs.reserve(node->arguments.size());
             for (auto& arg : node->arguments) {
-                closureArgs.push_back(genExpr(arg.get()));
+                userArgs.push_back(genExpr(arg.get()));
             }
+            widenI128Args(userArgs, closureIt->second.paramTypes, node->location);
+            closureArgs.insert(closureArgs.end(), userArgs.begin(), userArgs.end());
             // 结果类型：匿名函数返回 IR 类型（非空）；空（如 空类型）用 void
             const std::string retType = closureIt->second.returnIrType.empty()
                                             ? "void" : closureIt->second.returnIrType;
@@ -519,35 +528,18 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                                node->location);
         return;
     }
-    // 331-a（T53 家系·间接调用路径）：i128/u128 形参的窄整实参宽化——函数指针
-    //   类型（如 `整32(*指)(整128)`）解析形参列表后按 128 位宽化；原缺 →
-    //   字面量实参 i64 直传 → 被调方按 i128 指针解引用 SIGSEGV（探针 p_fnptr）。
-    //   解析=顶层逗号切分（尊重 <> 与 () 嵌套深度）；解析不出形参列表时保守跳过。
-    if (node->callee->getType() == NodeType::IdentifierExpr) {
-        const std::string fnPtrType = lookupSrcType(
-            static_cast<IdentifierExpr*>(node->callee.get())->name);
-        const std::size_t lp = fnPtrType.find('(');
-        const std::size_t rp = fnPtrType.rfind(')');
-        if (lp != std::string::npos && rp != std::string::npos && rp > lp + 1) {
-            const std::string paramStr = fnPtrType.substr(lp + 1, rp - lp - 1);
-            std::vector<std::string> paramTypes;
-            std::string cur;
-            int depth = 0;
-            for (const char c : paramStr) {
-                if (c == '<' || c == '(') ++depth;
-                else if (c == '>' || c == ')') --depth;
-                if (c == ',' && depth == 0) {
-                    paramTypes.push_back(cur);
-                    cur.clear();
-                } else {
-                    cur.push_back(c);
-                }
-            }
-            if (!cur.empty()) paramTypes.push_back(cur);
-            if (!paramTypes.empty() && paramTypes.size() == args.size()) {
-                widenI128Args(args, paramTypes, node->location);
-            }
-        }
+    // 337-a（T53 家系·间接调用路径）：i128/u128 形参的窄整实参宽化——函数指针
+    //   调用（如 `整32(*指)(整128)` 的 `指(200000000000)`）原缺宽化 → 字面量实参
+    //   物理 i64 直传 → 被调方按 i128 指针 ABI 解引用 SIGSEGV（探针 p_fnptr rc=139）。
+    //   形参列表来自 callee 表达式的**源码类型串**（`函数指针<返回>(参数,...)`，
+    //   与语义层 funcPtrParamsOf 同口径、同一规范化格式）——声明位/参数位
+    //   登记时即写完整串（「登记字面量 `函数指针` 丢形参」=半截机制的根治）。
+    //   树形态覆盖：标识符（局部变量/函数指针参数/全局）、成员访问（对象字段
+    //   函数指针）；无法解析出形参列表时保守跳过（零行为变更）。
+    if (const std::vector<std::string> fnPtrParams =
+            funcPtrParamsOfCallee(node->callee.get());
+        !fnPtrParams.empty() && fnPtrParams.size() == args.size()) {
+        widenI128Args(args, fnPtrParams, node->location);
     }
     // 间接调用：先求被调者表达式（函数指针变量），再 CallIndirect
     ir::IRValue calleeVal = genExpr(node->callee.get());

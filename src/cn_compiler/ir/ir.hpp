@@ -31,6 +31,25 @@ struct GenericFuncInstance;  // 前向声明（Task 6.1：泛型函数实例化�
 // （ir_oop.cpp 定义，ir_oop_call.cpp 调用）
 std::string methodSymbolKey(const std::string& className, const std::string& sigKey);
 
+// 337-a（T53 家系·半截机制根治）：参数/变量声明位 -> 源码类型串。
+//   函数指针声明（C 风格 `整32(*名)(整128)`，规范 §5.8）的类型信息在
+//   FuncPtrTypeInfo（param->typeName 为空），须取**完整规范串**
+//   `函数指针<返回>(参数,...)`（FuncPtrTypeInfo::toString 单一归属）——
+//   原各登记点取 typeName（函数指针时为空）/字面量 `函数指针`（丢形参列表），
+//   致使间接调用点（funcPtrParamsOfCallee）解析不出形参类型、i128 形参的窄整
+//   实参宽化（widenI128Args）无从判定 → 字面量实参按 i64 直传、被调方按 i128
+//   指针 ABI 解引用 SIGSEGV（探针 p_fnptr/a_var/b_param/f_closure/n_generic_fnptr）。
+//   全部参数登记点共用本函数：普通函数（ir_decl）/泛型实例（ir_generic_func）/
+//   类方法（ir_oop）/lambda（ir_expr）/局部变量声明（ir_stmt_decl）。
+inline std::string funcPtrAwareSrcType(const FuncPtrTypeInfo& funcPtr,
+                                       const std::string& typeName) {
+    return funcPtr.isFunctionPtr() ? funcPtr.toString() : typeName;
+}
+inline std::string paramSrcTypeOf(const ParamDecl* param) {
+    if (param == nullptr) return "";
+    return funcPtrAwareSrcType(param->funcPtr, param->typeName);
+}
+
 // 95-a（2026-09-13 第九十五轮 缺陷根治）：字符字面量 raw（含单引号）-> Unicode 码点。
 //   规范 01b 三「字符类型为 4 字节 Unicode 标量值」：转义序列（\n \t \r \0 \\ \' \"）+
 //   Unicode 转义 \u{XXXX} + UTF-8 多字节（'中'=0x4E2D=20013）全解码。
@@ -586,6 +605,12 @@ private:
     std::string lastLambdaName_;
     std::vector<std::string> lastLambdaCaptures_;
     std::string lastLambdaReturnIrType_;  // 最近 lambda 的返回 IR 类型（闭包调用结果类型）
+    // 337-a（T53 家系·闭包调用路径）：最近一次闭包（lambda / 方法作值）的**用户
+    //   形参源码类型列表**——闭包调用 `cb(实参)` 展开为 `Call(捕获实参..., 用户实参...)`
+    //   时，用户实参须按此定标 ABI（i128 形参的窄整实参宽化；原缺 → 字面量实参
+    //   i64 直传、被调方按 i128 指针解引用 SIGSEGV·探针 f_closure rc=139）。
+    //   来源：lambda=节点 params 类型名；方法作值=ClassMemberInfo.paramTypes。
+    std::vector<std::string> lastLambdaParamTypes_;
     // 最近 lambda 各捕获是否引用捕获（缺陷修复：决定定义处捕获实参是
     //   值快照（[=]/[变量]）还是变量地址指针（[&]），genVarDecl 登记闭包时使用）
     std::vector<bool> lastLambdaCaptureRefs_;
@@ -604,6 +629,9 @@ private:
         std::vector<std::string> captures;      // 捕获变量源码名列表
         std::vector<ir::IRValue> captureArgs;   // 定义处求值的捕获实参（值快照 或 &变量 指针）
         std::string returnIrType;               // 匿名函数返回 IR 类型（结果寄存器类型）
+        // 337-a（T53 家系）：用户形参源码类型列表（不含捕获参数）——闭包调用展开
+        //   用户实参的 ABI 定标依据（widenI128Args 形参来源，见 lastLambdaParamTypes_）。
+        std::vector<std::string> paramTypes;
     };
     std::unordered_map<std::string, ClosureInfo> closureInfo_;
     // 变量作用域栈（BlockStmt 进入压栈/退出弹栈，支持同名遮蔽）。
@@ -638,6 +666,14 @@ private:
     //   类查 classFieldType（沿继承链）。供下标步进/元素形态推导
     //   （拷贝构造 其他.数据[索引]：其他 为类对象，数据 为 T* 字段）。
     std::string memberFieldSrcType(MemberExpr* node) const;
+    // 推导「callee 表达式是函数指针」时的形参类型列表（337-a·T53 家系）：
+    //   被调者形态=标识符（局部变量/函数指针参数/全局）→ lookupSrcType；
+    //   成员访问（对象/自身 字段函数指针）→ memberFieldSrcType。类型串须为
+    //   语义层规范格式 `函数指针<返回>(参数,...)`（声明位/参数位登记时写入）；
+    //   解析不出（非函数指针/类型串残缺）返回空列表=调用方保守跳过。
+    //   精度=语义层同源解析（SemanticAnalyzer::funcPtrParamsOf）；定位=间接
+    //   调用实参 ABI 定标（i128 形参窄整实参宽化 widenI128Args）的形参来源。
+    std::vector<std::string> funcPtrParamsOfCallee(Expr* callee) const;
     // 指针算术步进（字节）：普通指针8；结构体指针 = 结构体总大小（Task 2.7 修复）
     std::int64_t ptrElemStride(const std::string& srcType) const;
     // 推导"指针值表达式"的所指源码类型（供解引用 * 用，Task 审查修复）：

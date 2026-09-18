@@ -495,6 +495,22 @@ std::string IRGenerator::lookupSrcType(const std::string& name) const {
     }
     return "";
 }
+std::vector<std::string> IRGenerator::funcPtrParamsOfCallee(Expr* callee) const {
+    if (callee == nullptr) return {};
+    std::string fnPtrType;
+    if (callee->getType() == NodeType::IdentifierExpr) {
+        fnPtrType = lookupSrcType(static_cast<IdentifierExpr*>(callee)->name);
+    } else if (callee->getType() == NodeType::MemberExpr) {
+        fnPtrType = memberFieldSrcType(static_cast<MemberExpr*>(callee));
+    }
+    if (fnPtrType.empty()) return {};
+    // 泛型实例体：形参类型串里的类型参数替换为实参类型（`函数指针<整32>(T,T)`
+    //   → `...<整32>(整128,整128)`）；非泛型上下文 substGenericType 原样返回
+    //   （幂等，与登记位替换双保险——登记位见 ir_decl.cpp / ir_stmt_decl.cpp）。
+    const std::string substType = substGenericType(fnPtrType);
+    if (!types::isFuncPtr(types::canonical(substType))) return {};
+    return types::funcPtrParamsOf(substType);
+}
 bool IRGenerator::isByRefCapture(const std::string& name) const {
     for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
         auto found = it->find(name);

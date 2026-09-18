@@ -101,27 +101,10 @@ inline std::string canonicalType(const std::string& type) {
 
 // 从函数指针类型字符串提取参数类型列表
 // "函数指针<整32>(整32,整32)" -> ["整32","整32"]
+// 337-a（T53 家系）：实现下沉 types::funcPtrParamsOf（唯一实现）——本函数保留
+//   为语义层内部名（调用点零改动），与 IR 层间接调用点共用同一份解析逻辑。
 [[maybe_unused]] inline std::vector<std::string> funcPtrParams(const std::string& type) {
-    std::vector<std::string> result;
-    std::size_t lp = type.find('(');
-    std::size_t rp = type.rfind(')');
-    if (lp == std::string::npos || rp == std::string::npos || rp <= lp) return result;
-    std::string inner = type.substr(lp + 1, rp - lp - 1);
-    // 按逗号分割（参数为基本类型，无嵌套逗号）
-    std::size_t pos = 0;
-    while (pos <= inner.size()) {
-        std::size_t comma = inner.find(',', pos);
-        if (comma == std::string::npos) comma = inner.size();
-        std::string p = inner.substr(pos, comma - pos);
-        // 去除首尾空白
-        std::size_t b = p.find_first_not_of(" \t");
-        std::size_t e = p.find_last_not_of(" \t");
-        if (b != std::string::npos && e != std::string::npos) {
-            result.push_back(p.substr(b, e - b + 1));
-        }
-        pos = comma + 1;
-    }
-    return result;
+    return types::funcPtrParamsOf(type);
 }
 
 } // namespace cn_compiler

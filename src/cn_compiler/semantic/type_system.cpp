@@ -129,6 +129,32 @@ bool isFuncPtr(const std::string& type) {
     return type.rfind("函数指针<", 0) == 0;
 }
 
+// 函数指针类型串 -> 形参类型列表（337-a·T53 家系；原实现散在语义层内部
+//   semantic_internal.hpp 的 funcPtrParams——随本函数下沉为 types:: 唯一实现，
+//   语义层内部工具与 IR 层间接调用点共用一份，消除「同解析两份实现」分叉）。
+//   取首个 '(' 到末个 ')' 之间按顶层逗号切分（函数指针形参为类型名，无嵌套逗号；
+//   嵌套形态如 函数指针<空类型>(整32*) 亦正确）；首尾空白剔除；空列表=非函数指针串。
+std::vector<std::string> funcPtrParamsOf(const std::string& type) {
+    std::vector<std::string> result;
+    const std::size_t lp = type.find('(');
+    const std::size_t rp = type.rfind(')');
+    if (lp == std::string::npos || rp == std::string::npos || rp <= lp) return result;
+    const std::string inner = type.substr(lp + 1, rp - lp - 1);
+    std::size_t pos = 0;
+    while (pos <= inner.size()) {
+        std::size_t comma = inner.find(',', pos);
+        if (comma == std::string::npos) comma = inner.size();
+        const std::string p = inner.substr(pos, comma - pos);
+        const std::size_t b = p.find_first_not_of(" \t");
+        const std::size_t e = p.find_last_not_of(" \t");
+        if (b != std::string::npos && e != std::string::npos) {
+            result.push_back(p.substr(b, e - b + 1));
+        }
+        pos = comma + 1;
+    }
+    return result;
+}
+
 // 能否隐式转换（规格书3.7 + 整型宽化/浮点宽化/整数->浮点）
 // 规则：
 //   1. 相同类型（别名规范化后）可转

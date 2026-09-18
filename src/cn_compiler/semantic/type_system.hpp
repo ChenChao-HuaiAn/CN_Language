@@ -49,6 +49,12 @@ int intRank(const std::string& type);
 // 是否函数指针类型（函数指针<返回>(参数,...)，Task 2.2 规范化字符串）
 bool isFuncPtr(const std::string& type);
 
+// 从函数指针类型字符串提取形参类型列表（337-a·T53 家系）：
+//   "函数指针<整32>(整32,整128)" -> ["整32","整128"]；非函数指针串/
+//   无参数列表返回空列表。**唯一实现**——语义层内部工具 funcPtrParams 与
+//   IR 层间接调用点（funcPtrParamsOfCallee）均转发至此（消除同解析两份实现）。
+std::vector<std::string> funcPtrParamsOf(const std::string& type);
+
 // ==================== 指针/数组复合类型（Task 2.4） ====================
 
 // 是否指针类型（类型名以 * 结尾，如 整32* / 空类型*）
