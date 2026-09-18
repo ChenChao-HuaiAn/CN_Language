@@ -509,6 +509,14 @@ private:
     static bool isCompoundAssignOp(Operator op);
     // 复合赋值的基础运算符（+= -> +）
     static Operator baseOpOfCompound(Operator op);
+    // 复合赋值右值宽化（331-a·T51 单一归属）：目标类型为 128 位（i128/u128）且
+    //   右值类型不同时插 转换(Cast) 指令——普通二元表达式路径（ir_expr.cpp 公共
+    //   类型提升）本就有此步，复合赋值六路原缺 → -O0 发射按未宽化常量处理 →
+    //   `值 += 字面量` 静默不生效（O1+ 由优化层常量折叠掩盖=级别分叉）。
+    //   返回宽化后的右值（无需宽化时原样返回）。
+    ir::IRValue widenCompoundRhs(const ir::IRValue& rhs,
+                                 const std::string& targetType,
+                                 const SourceLocation& loc);
     // 字符串字面量解码（剥离引号，阶段一简单解码）
     static std::string decodeString(const std::string& raw);
     // 判断 AST 表达式是否为字符串类型（Task 2.9 拼接判定）：

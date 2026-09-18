@@ -275,6 +275,7 @@ bool IRGenerator::memberGenericAssign(AssignmentExpr* node, MemberExpr* member) 
         ir::Opcode opcode;
         Operator baseOp = baseOpOfCompound(node->op);
         if (mapBinaryOp(baseOp, false, opcode)) {
+            value = widenCompoundRhs(value, targetType, node->location);  // 331-a T51
             value = emitResult(opcode, {current, value}, targetType, "", node->location);
         }
     }
@@ -423,6 +424,7 @@ bool IRGenerator::assignToIndexTarget(AssignmentExpr* node) {
         ir::Opcode opcode;
         Operator baseOp = baseOpOfCompound(node->op);
         if (mapBinaryOp(baseOp, false, opcode)) {
+            value = widenCompoundRhs(value, targetType, node->location);  // 331-a T51
             value = emitResult(opcode, {current, value}, targetType, "",
                                node->location);
         }
@@ -574,6 +576,7 @@ bool IRGenerator::assignToCallTarget(AssignmentExpr* node) {
             ir::Opcode opcode;
             Operator baseOp = baseOpOfCompound(node->op);
             if (mapBinaryOp(baseOp, false, opcode)) {
+                val = widenCompoundRhs(val, val.type, node->location);  // 331-a T51
                 val = emitResult(opcode, {current, val}, val.type, "", node->location);
             }
         }

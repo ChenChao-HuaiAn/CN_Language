@@ -278,6 +278,15 @@ Operator IRGenerator::baseOpOfCompound(Operator op) {
         default: return Operator::Assign;
     }
 }
+
+// 复合赋值右值宽化（331-a·T51 单一归属）——见 ir.hpp 声明注释。
+ir::IRValue IRGenerator::widenCompoundRhs(const ir::IRValue& rhs,
+                                          const std::string& targetType,
+                                          const SourceLocation& loc) {
+    if (targetType != "i128" && targetType != "u128") return rhs;
+    if (rhs.type == targetType) return rhs;
+    return emitResult(ir::Opcode::Cast, {rhs}, targetType, "", loc);
+}
 std::string IRGenerator::decodeString(const std::string& raw) {
     // 识别前缀（组合前缀 原始多行 / 多行原始 优先）。
     // 注意：中文前缀为 UTF-8 多字节，偏移必须用字节数（substr 按字节切割）：

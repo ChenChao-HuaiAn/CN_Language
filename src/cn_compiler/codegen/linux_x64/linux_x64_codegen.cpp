@@ -389,7 +389,10 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
         writer.raw(".globl " + sym);
         writer.raw(".type " + sym + ", @object");
         writer.raw(sym + ":");
-        if (canonStatic == "整128" || canonStatic == "正128") {
+        // 331-a（T52·T50 同族）：128 位判定双口径（IR 名/中文名）——见 arm64 同款；
+        //   原判定只认中文名 → 函数内静态 128 槽 8 字节（读写错值·实测 485≠1005）。
+        if (canonStatic == "整128" || canonStatic == "正128" ||
+            canonStatic == "i128" || canonStatic == "u128") {
             writer.raw("    .quad 0");
             writer.raw("    .quad 0");
         } else if (canonStatic == "浮32") {

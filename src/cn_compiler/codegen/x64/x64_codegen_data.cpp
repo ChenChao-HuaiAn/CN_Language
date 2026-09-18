@@ -174,7 +174,9 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
             if (sz > 8) qwords = (sz + 7) / 8;
         }
         writer.raw("ALIGN 8");
-        if (canonStatic == "整128" || canonStatic == "正128") {
+        // 331-a（T52·T50 同族）：128 位判定双口径（IR 名/中文名）——见 arm64 同款。
+        if (canonStatic == "整128" || canonStatic == "正128" ||
+            canonStatic == "i128" || canonStatic == "u128") {
             writer.raw(sym + " dq 0, 0");
         } else if (canonStatic == "浮32") {
             // f32 初始值：dd floatBitsHex；无初始值零初始化

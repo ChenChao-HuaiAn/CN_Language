@@ -287,6 +287,10 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             ir::IRValue delta = emitResult(
                 floatIncOperand ? ir::Opcode::ConstFloat : ir::Opcode::ConstInt, {},
                 floatIncOperand ? operand.type : "i64", deltaText, node->location);
+            // 331-a（T51）：128 位操作数的 delta 须宽化——原恒 i64 → Add/Sub(i128, i64)
+            //   未宽化 → -O0 发射静默不生效（O1+ 优化层掩盖=级别分叉）；复用复合
+            //   赋值同一辅助（单一归属）。
+            delta = widenCompoundRhs(delta, operand.type, node->location);
             ir::IRValue result = emitResult(
                 node->op == Operator::Increment ? ir::Opcode::Add : ir::Opcode::Sub,
                 {operand, delta}, operand.type, "", node->location);

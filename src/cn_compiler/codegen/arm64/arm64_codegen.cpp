@@ -392,7 +392,11 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
         writer.raw(".globl " + sym);
         writer.raw(".type " + sym + ", %object");
         writer.raw(sym + ":");
-        if (canonStatic == "整128" || canonStatic == "正128") {
+        // 331-a（T52·T50 同族）：128 位判定双口径——函数内静态局部的 stType
+        //   是 IR 名（i128/u128），顶层静态是中文名；原判定只认中文名 → 函数内
+        //   静态 128 落 8 字节标量分支（槽尺寸不足 → 读写错值）。
+        if (canonStatic == "整128" || canonStatic == "正128" ||
+            canonStatic == "i128" || canonStatic == "u128") {
             writer.raw("    .quad 0");
             writer.raw("    .quad 0");
         } else if (canonStatic == "浮32") {
