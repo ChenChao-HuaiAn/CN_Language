@@ -18,7 +18,10 @@
                    B5 三犯案·2026-09-16 用户令生命周期铁律）
   三机任务看板 — 每机状态行恰好 1 行（曾出现同机 2~3 行并存：旧开工行/旧收工行未随收工删除）；
                   空闲行（⬜）各列必须为「-」（曾出现空闲行残留收工总结/通告·232-a 用户令：有任务才填行）；
-                  开发态（🏃）任务列必含 任务/ 分支名（协议 v2·AGENTS.md §8.1·2026-09-18）
+                  开发态（🏃）任务列必含 任务/ 分支名（协议 v2·AGENTS.md §8.1·2026-09-18）；
+                  开工自检（332-a·用户令）：当前分支为 `任务/*` 时看板必含该分支名——
+                  「开工第一动作＝直推看板本机行」的机械拦截（先动手后填板不可通过）；
+                  结构=每机独立小节（332-a 变更：单表三行相邻→两机同时改各自行 rebase 必冲突）
   采样日志     — tests/cnsmith_hits/：①采样日志.md 为固定索引指针（存在、≤15 行、无「## 轮/## 汇总」
                   条目——286-a·S1b 起按月分文件，单文件追加式旧记法日增 1~3 万行曾达 2500+ 行）
                   ②日志/ 日文件名=YYYY-MM-DD.md（313-b 月→日·用户令）③单日文件 ≤1500 行（汇总记法回退=体积再爆炸的信号）
@@ -29,6 +32,7 @@
 from __future__ import annotations
 
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -223,37 +227,88 @@ def 查总表() -> list[str]:
 
 
 def 查看板() -> list[str]:
-    """三机任务看板.md 结构检查，返回问题清单（空=通过）。"""
+    """三机任务看板.md 结构检查，返回问题清单（空=通过）。
+
+    332-a 结构变更（2026-09-18 用户令同日）：看板表＝**每机独立小节**
+    （`### <机名>` + 4 列单行表），各机只编辑自己小节——单表三行相邻结构下，
+    两机同时更新各自行 rebase **必冲突**（332-a 当日实测两次）。
+    """
     问题: list[str] = []
     路径 = 仓库根 / "三机任务看板.md"
     if not 路径.exists():
         return ["三机任务看板.md 缺失"]
-    行们 = [行 for 行 in 路径.read_text(encoding="utf-8").splitlines()
-            if re.match(r"^\| (家机|深度机|单位机)", 行)]
+    行们 = 路径.read_text(encoding="utf-8").splitlines()
     for 名 in 看板_机器名们:
-        行们机器 = [行 for 行 in 行们 if 行.startswith(f"| {名} |")]
-        if len(行们机器) != 1:
-            样例 = "；".join(行.strip()[:48] for 行 in 行们机器[:3])
-            问题.append(f"看板「{名}」状态行出现 {len(行们机器)} 行（应恰 1 行——"
+        节起 = next((n for n, 行 in enumerate(行们) if 行.strip() == f"### {名}"), None)
+        if 节起 is None:
+            问题.append(f"看板缺「### {名}」小节（332-a 结构：每机独立小节·各机只改自己节）")
+            continue
+        状态行们: list[str] = []
+        for 行 in 行们[节起 + 1:]:
+            if 行.startswith("## ") or 行.startswith("### "):
+                break
+            if not 行.startswith("|"):
+                continue
+            列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
+            if len(列们) != 4 or 列们[0] == "状态" or set(列们[0]) <= set("-: "):
+                continue  # 表头/分隔行
+            状态行们.append(行.rstrip())
+        if len(状态行们) != 1:
+            样例 = "；".join(行[:48] for 行 in 状态行们[:3])
+            问题.append(f"看板「{名}」状态行出现 {len(状态行们)} 行（应恰 1 行——"
                         f"开工/收工须替换本机旧行而非追加新行）：{样例}")
             continue
-        行 = 行们机器[0].rstrip()
+        行 = 状态行们[0]
         if len(行) > 看板_行宽上限:
             问题.append(f"看板「{名}」行 {len(行)} 字符 > 上限 {看板_行宽上限}"
                         "（状态板行=状态+任务名+基线+时间+指针；总结/教训进 plans/025 回填与 lessons）")
         列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
-        if len(列们) >= 3 and 列们[1] == "⬜" and any(列 != "-" for 列 in 列们[2:]):
+        if 列们[0] == "⬜" and any(列 != "-" for 列 in 列们[1:]):
             问题.append(f"看板「{名}」为空闲态（⬜）但行内残留内容（空闲行=各列「-」——"
                         f"有任务才填行，结论/通告一律不留看板·232-a 用户令）：{行[:60]}…")
         # 协议 v2（2026-09-18·AGENTS.md §8.1）：🏃=任务分支开发中，任务列必含分支名
         # ——轮次号 <328（v2 首轮前）的旧协议直推在飞轮豁免（无分支可标·收工清行即不再触发）
-        if len(列们) >= 3 and 列们[1] == "🏃" and "任务/" not in 列们[2]:
-            号匹配 = re.search(r"(\d{1,4})-[a-z]", 列们[2])
+        if 列们[0] == "🏃" and "任务/" not in 列们[1]:
+            号匹配 = re.search(r"(\d{1,4})-[a-z]", 列们[1])
             轮次号 = int(号匹配.group(1)) if 号匹配 else None
             if 轮次号 is None or 轮次号 >= 看板_v2首轮号:
                 问题.append(f"看板「{名}」为开发态（🏃）但任务列缺分支名（协议 v2：🏃 行必含"
                             f" 任务/<机>-<轮次>-<标识> 分支名·AGENTS.md §8.1）：{行[:60]}…")
     return 问题
+
+
+def 当前分支名() -> str | None:
+    """读取当前 git 分支名（非 git 环境或异常时返回 None，供开工自检用）。"""
+    try:
+        结果 = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                             cwd=仓库根, capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if 结果.returncode != 0:
+        return None
+    名 = 结果.stdout.strip()
+    return 名 or None
+
+
+def 查开工自检() -> list[str]:
+    """开工自检（332-a·用户令 2026-09-18）：当前分支为任务分支时，看板必须已含该分支名。
+
+    判据＝分支名出现在看板文件任一行——即「开工第一动作＝直推看板本机行到 develop」已执行
+    （分支自 develop 开出，故看板内必含本分支名）。把看板更新写进任务分支而未直推时，
+    分支内看板不含本分支名 → 本检查拦截（「先动手后填板」不可通过门禁）。跨机 try-build
+    在他机分支上跑同样满足（分支名在其机行内）。服务轮/develop 分支不触发。
+    """
+    分支 = 当前分支名()
+    if not 分支 or not 分支.startswith("任务/"):
+        return []
+    路径 = 仓库根 / "三机任务看板.md"
+    if not 路径.exists():
+        return ["三机任务看板.md 缺失（开工自检无法执行）"]
+    if 分支 in 路径.read_text(encoding="utf-8"):
+        return []
+    return [f"开工自检：当前分支 {分支} 未出现在看板任何行中——开工第一动作应为「编辑本机小节"
+            "（🏃+分支名）并直推 develop」（AGENTS.md §8.1 看板先行·§8.5 窄通道①）：看板写进"
+            "任务分支＝他机不可见＝等于没写（332-a 实测三机行全在各自分支内·develop 全空）"]
 
 
 def 查冲突标记() -> list[str]:
@@ -311,13 +366,14 @@ def 主流程() -> int:
         for 标题, 内容 in 按二号标题分节(交接路径.read_text(encoding="utf-8").splitlines()).items():
             print(f"    {标题[:44]}：{len(内容)} 行")
 
-    全部问题 = 查交接() + 查日志() + 查总表() + 查看板() + 查冲突标记() + 查采样日志()
+    全部问题 = (查交接() + 查日志() + 查总表() + 查看板() + 查冲突标记() + 查采样日志()
+                + 查开工自检())
     if 全部问题:
         print(f"\n结论：结构缺陷 {len(全部问题)} 项，禁止提交 ✗")
         for 问题 in 全部问题:
             print("[×] " + 问题)
         return 1
-    print("\n结论：HANDOFF.md / 更新日志.md / plans/021 / 三机任务看板 / 采样日志 结构正常 ✓")
+    print("\n结论：HANDOFF.md / 更新日志.md / plans/021 / 三机任务看板（含开工自检）/ 采样日志 结构正常 ✓")
     return 0
 
 
