@@ -54,3 +54,6 @@ build_phase4/
 # DSH 会话回滚记录与 Mnemon 本地记忆库（本机 AI 工作数据，不入库）
 .dsh/
 .mnemon/
+
+# ZCode 本地会话计划缓存（本机 AI 工作数据，不入库；.zcode/skills/ 为项目技能集仍入库）
+.zcode/plans/

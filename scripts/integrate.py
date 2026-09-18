@@ -70,8 +70,12 @@ def 前置自检() -> str | None:
     if not 分支名模式.match(当前分支):
         return f"分支名「{当前分支}」不合法——须形如 任务/<机>-<轮次>-<标识>（AGENTS.md §8.1）。"
     状态 = 输出(["git", "status", "--porcelain"])
-    if 状态:
-        return f"工作树不干净（提交或清理后再集成）：\n{状态}"
+    未跟踪 = [行[3:] for 行 in 状态.splitlines() if 行.startswith("?? ")]
+    已跟踪改动 = [行 for 行 in 状态.splitlines() if not 行.startswith("?? ")]
+    if 已跟踪改动:
+        return f"工作树不干净（提交或清理后再集成）：\n{已跟踪改动}"
+    if 未跟踪:
+        print(f"  [警告] 未跟踪文件不阻塞集成（不入提交）：{未跟踪}")
     远端分支 = f"{主远程}/{当前分支}"
     if 输出(["git", "rev-parse", "--verify", f"refs/remotes/{远端分支}"]) == "":
         return f"分支未推远端（{远端分支} 不存在）——推分支=认领（AGENTS.md §8.1），先 git push。"
