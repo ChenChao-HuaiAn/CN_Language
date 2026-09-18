@@ -298,7 +298,12 @@ void LinuxX64CodeGenerator::emitDivMod(LinuxX64AsmWriter& writer,
             const int negId = ptrCheckCounter_++;
             const std::string cont = "Ldiv_norm" + std::to_string(negId);
             const std::string endl = "Ldiv_end" + std::to_string(negId);
-            writer.line("cmp r9, -1");
+            // 324-c（C24/T27·win 319-a 宽度感知同款）：比较宽度须对齐除数
+            //   装载——32 位除数经 mov r9d 零扩展（-1 → 0x00000000FFFFFFFF），
+            //   原恒 64 位 cmp r9,-1（0xFFFFFFFFFFFFFFFF）永不命中→INT_MIN/-1
+            //   落 idiv 溢出 SIGFPE（m27_01/s2609179004 x64l -O0 实锤）；win
+            //   侧宽度感知 ecx/rcx 正确=本判据对齐。
+            writer.line(is32Div ? "cmp r9d, -1" : "cmp r9, -1");
             writer.line("jne " + cont);
             writer.line("mov rax, r10");
             if (is32Div) writer.line("mov eax, eax");
@@ -590,6 +595,11 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         const bool signedSrc = (from == "i8" || from == "i16" ||
                                 from == "i32" || from == "i64");
         loadOperandToX(writer, inst.operands[0], "r10");
+        // 324-c（C24/T27·win 316-a C23 蓝本）：i32 源槽零扩展装载（mov r10d）
+        //   符号丢失——-1 变 +4294967295 + 高半 sar 63 得 0（m27_02~05 O0 错值
+        //   实锤·m27_02 O0=-2147483648=(-2^63)/4294967295 数学反验证吻合）；
+        //   i8/i16 经 emitStackLoad movsx 已 64 位符号扩展·i64/u32/u64 无需求。
+        if (from == "i32") writer.line("movsxd r10, r10d");
         emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r10", "i64");  // 低64位
         if (signedSrc) {
             writer.line("mov r9, r10");
@@ -1041,16 +1051,40 @@ void LinuxX64CodeGenerator::emitCopy(LinuxX64AsmWriter& writer,
                        (inst.type == "i1") ? "i64" : inst.type);
         return;
     }
-    if (inst.type == "i128" || inst.type == "u128") {
-        const int srcLoId = inst.operands[0].id + 1;
-        const int srcHiId = inst.operands[0].id;
-        const int dstLoId = inst.result.id + 1;
-        const int dstHiId = inst.result.id;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
-        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64", __LINE__);
-        emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
-        return;
+    // 324-c（C24/T44 甲·win 316-a emitCopy 蓝本）：i128/u128 双半搬运——
+    //   ①判据扩源类型（copySrcType）——-O3 汇合块 Copy 的 inst.type 可能非
+    //   128（原仅判 inst.type 落通用单 mov 只搬高半=低半读垃圾·t44ext 同源）；
+    //   ②变量名形态（id<0）双槽寻址（基名低半 + $s1 高半·槽补登记段已 ensure）
+    //   ——原实现 id=-1 时 regSlotOffset(0)=[rbp-8] 错槽读。
+    {
+        const std::string& copySrcType = inst.operands[0].type;
+        if (inst.type == "i128" || inst.type == "u128" ||
+            copySrcType == "i128" || copySrcType == "u128") {
+            if (inst.operands[0].id >= 0 && inst.result.id >= 0) {
+                const int srcLoId = inst.operands[0].id + 1;
+                const int srcHiId = inst.operands[0].id;
+                const int dstLoId = inst.result.id + 1;
+                const int dstHiId = inst.result.id;
+                emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
+                emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+                emitStackLoad(writer, regSlotOffset(srcHiId), "r10", "i64", __LINE__);
+                emitStackStore(writer, regSlotOffset(dstHiId), "r10", "i64");
+                return;
+            }
+            if (inst.operands[0].id < 0 && inst.result.id < 0 &&
+                !inst.operands[0].extra.empty() && !inst.result.extra.empty()) {
+                emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "r10", "i64",
+                              __LINE__);
+                emitStackStore(writer, varSlotOf(inst.result.extra), "r10", "i64");
+                emitStackLoad(writer, varSlotOf(inst.operands[0].extra + "$s1"), "r10",
+                              "i64", __LINE__);
+                emitStackStore(writer, varSlotOf(inst.result.extra + "$s1"), "r10",
+                               "i64");
+                return;
+            }
+            // 混合形态（寄存器<->变量）：走下方通用中转按单 64 位搬（128 位
+            //   语义面不产生此形态——IR 层 Load/Store 已拆双半·防御性兜底）
+        }
     }
     const bool narrowType = (inst.type == "i8" || inst.type == "i16" ||
                              inst.type == "u8" || inst.type == "u16" ||

@@ -748,6 +748,45 @@ std::string LinuxX64CodeGenerator::generateFunctionAssembly(const ir::IRFunction
             }
         }
     }
+    // 324-c（C24/T44 甲·win 316-a 第二轮补登记映射）：Store.extra 存储目标名 +
+    //   128 位名高半槽 $s1——①-O3 SSA 使用点重写的汇合临时（__ternary$N）无
+    //   Alloca，emitStackLoad/Store 的 varSlotOf 未登记回 0 拼出裸 [rbp] 偏移 0
+    //   （x64l 双级 SIGSEGV·与 win rbp0 同源）；②i128 双槽经独立槽名寻址
+    //   （各自 varSlotOf），无邻接依赖（$sN 与基名邻接序仅结构体/数组「基址+
+    //   偏移」路径要求·该面由 Alloca 段保证）。须在全部 Alloca 完成后执行
+    //   （顺序同 win 316-a——指令流内提前登记会打乱邻接序·236 回归实证）。
+    for (auto& block : function.blocks) {
+        for (auto& inst : block->instructions) {
+            const bool inst128 = (inst.type == "i128" || inst.type == "u128");
+            if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() &&
+                varSlots_.find(inst.extra) == varSlots_.end()) {
+                registerVarSlot(inst.extra);
+            }
+            const auto ensureS1 = [this](const std::string& name) {
+                if (varSlots_.find(name + "$s1") == varSlots_.end()) {
+                    registerVarSlot(name + "$s1");
+                }
+            };
+            if (inst.opcode == ir::Opcode::Load || inst.opcode == ir::Opcode::Store ||
+                inst.opcode == ir::Opcode::Copy) {
+                if (inst.opcode == ir::Opcode::Store && !inst.extra.empty() && inst128) {
+                    ensureS1(inst.extra);
+                }
+                for (const auto& v : inst.operands) {
+                    if (v.id < 0 && !v.extra.empty() && !v.isConstant &&
+                        (inst128 || v.type == "i128" || v.type == "u128")) {
+                        ensureS1(v.extra);
+                    }
+                }
+                if (inst.result.id < 0 && !inst.result.extra.empty() &&
+                    !inst.result.isConstant &&
+                    (inst128 || inst.result.type == "i128" ||
+                     inst.result.type == "u128")) {
+                    ensureS1(inst.result.extra);
+                }
+            }
+        }
+    }
     // 阶段C（Task 4.4）：调试信息收集器初始化（源码位置注释）
     debugInfo_ = debuginfo::DebugInfoCollector();
     asmLineCounter_ = 0;
