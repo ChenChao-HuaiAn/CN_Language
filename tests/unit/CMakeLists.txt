@@ -83,6 +83,7 @@ add_executable(cn_unit_tests
     codegen/test_x64_oop.cpp
     codegen/test_x64_vtable.cpp
     codegen/test_reg_alloc.cpp
+    codegen/test_opcode_defense.cpp
     codegen/test_debug_info.cpp
     opt/test_const_fold.cpp
     opt/test_phi_lower.cpp

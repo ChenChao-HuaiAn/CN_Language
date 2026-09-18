@@ -262,6 +262,13 @@ std::vector<std::string> verifyIRModule(const IRModule& module);
 // 不在检查面（口径与归一化一致）。返回错误消息（空=通过）。
 std::vector<std::string> verifyConstWidths(const IRModule& module);
 
+// 操作码合法性验证器（T11 面③·331-a）：检查全函数全指令 opcode 必属于已知指令集
+// （44 个枚举值，含仅作保留的 Branch）——违例=IR 构造层写入非法枚举值
+// （static_cast/未初始化/内存损坏）=编译器内部错误。放行到后端会走各后端
+// 「未支持操作码」硬错误（面②防线，T11）；本检查把拦截前移到发射之前，
+// 给出带函数/块位置的干净诊断。返回错误消息（空=通过）。
+std::vector<std::string> verifyKnownOpcodes(const IRModule& module);
+
 } // namespace ir
 
 // ==================== IR生成器 ====================
