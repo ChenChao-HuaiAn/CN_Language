@@ -311,6 +311,10 @@ private:
     // 结果寄存器 -> 目的操作数文本（寄存器槽 / 物理寄存器）
     std::string resultText(const ir::IRValue& result);
 
+    // D8（458-a）结果已分配的物理寄存器名（r12~r15；未分配返回空串）——
+    //   发射方法「计算寄存器=dst 直写」判据（免尾部 mov dst, rax 中转）
+    std::string physRegOf(const ir::IRValue& value) const;
+
     // ==================== 阶段C：寄存器分配 + 调试信息 ====================
 
     // 虚拟寄存器ID -> 寄存器分配结果（未分配返回空映射项）
