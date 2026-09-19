@@ -241,6 +241,11 @@ private:
     // 虚拟寄存器是否分配到物理寄存器（值流走寄存器，栈槽弃用）
     bool hasPhysReg(int regId) const { return !allocRegOf(regId).empty(); }
 
+    // D8（451-a）结果写入目标寄存器：已分配 -> 物理寄存器名（发射方法直写，
+    //   免「固定临时 x9/x10 中转 + storeVirtualResult 搬运」的冗余 mov）；
+    //   未分配/未启用 -> fallback（调用方原默认写入槽，产物逐字节不变）
+    std::string resultTargetReg(int regId, const std::string& fallback) const;
+
     // 虚拟寄存器ID -> 栈槽偏移（-8*id-8，寄存器槽区紧贴x29）
     //   已分配到物理寄存器时返回 0——该槽弃用（取值/落值走物理寄存器），
     //   返回 0 使调用方（取地址/取槽文本等旁路）退化为无害空操作。

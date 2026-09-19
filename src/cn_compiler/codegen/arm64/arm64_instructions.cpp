@@ -163,14 +163,17 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
             // 常量池标签：@strN -> LstrN（GAS 不允许 @ 开头符号，@ 是注释符）
             sym = "L" + sym.substr(1);
         }
-        emitLoadSymbolAddr(writer, "x10", sym);
-        storeVirtualResult(writer, inst.result.id, "x10", "ptr");
+        // D8（451-a）：结果已分配 -> 符号地址直装分配寄存器（免 x10 中转）
+        const std::string res = resultTargetReg(inst.result.id, "x10");
+        emitLoadSymbolAddr(writer, res, sym);
+        storeVirtualResult(writer, inst.result.id, res, "ptr");
         return;
     }
     if (inst.opcode == ir::Opcode::FuncAddr) {
         // 函数地址：adrp+add 加载函数链接符号地址
-        emitLoadSymbolAddr(writer, "x10", symbolName(inst.extra));
-        storeVirtualResult(writer, inst.result.id, "x10", "ptr");
+        const std::string res = resultTargetReg(inst.result.id, "x10");
+        emitLoadSymbolAddr(writer, res, symbolName(inst.extra));
+        storeVirtualResult(writer, inst.result.id, res, "ptr");
         return;
     }
     // i128/u128 常量（Task 完善A）：extra = "LO:HI"（十六进制）或纯十进制小值
@@ -199,7 +202,7 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
         storeVirtualResult(writer, dstHiId, "x10", "i64");
         return;
     }
-    // 整型/布尔常量：立即数 -> x10 -> 结果槽
+    // 整型/布尔常量：立即数 -> 结果目标（已分配直装分配寄存器·免 x10 中转·D8 451-a）
     std::string value = (inst.extra == "真") ? "1" : (inst.extra == "假") ? "0" : inst.extra;
     if (!value.empty() && value[0] == '0' && value.size() > 1 &&
         (value[1] == 'x' || value[1] == 'X' || value[1] == 'b' ||
@@ -213,19 +216,20 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
         } catch (...) {
         }
     }
+    const std::string res = resultTargetReg(inst.result.id, "x10");
     // 有符号解析优先；溢出（如 正64 最大值 > LLONG_MAX）回落无符号，避免装载 0
     try {
         const long long v = std::stoll(value);
-        emitMovImm(writer, "x10", static_cast<std::uint64_t>(v));
+        emitMovImm(writer, res, static_cast<std::uint64_t>(v));
     } catch (...) {
         try {
             const std::uint64_t u = std::stoull(value);
-            emitMovImm(writer, "x10", u);
+            emitMovImm(writer, res, u);
         } catch (...) {
-            emitMovImm(writer, "x10", 0);
+            emitMovImm(writer, res, 0);
         }
     }
-    storeVirtualResult(writer, inst.result.id, "x10", inst.type);
+    storeVirtualResult(writer, inst.result.id, res, inst.type);
 }
 
 // ==================== 整型二元运算 ====================
@@ -250,9 +254,11 @@ void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
         return;
     }
     const bool is64 = (srcType == "i64" || srcType == "u64" || srcType == "ptr");
-    const std::string xr = is64 ? "x10" : "x9";
+    // D8（451-a）：64 位结果已分配 -> 直接装载到分配寄存器（免 x10 中转）；
+    //   32 位结果不参与分配（分配器仅 i64/u64/ptr）-> 保持 x9 装载 + w9 栈存储原路径
+    const std::string xr = resultTargetReg(inst.result.id, is64 ? "x10" : "x9");
     loadOperandToX(writer, inst.operands[0], xr);
-    storeVirtualResult(writer, inst.result.id, is64 ? "x10" : "w9", inst.type);
+    storeVirtualResult(writer, inst.result.id, is64 ? xr : "w9", inst.type);
 }
 
 void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
@@ -261,6 +267,12 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
     const std::string& srcType = inst.operands[0].type;
     const bool is64 = (srcType == "i64" || srcType == "u64" || srcType == "ptr");
     const std::string xr = is64 ? "x10" : "x9";
+    // D8（451-a）目标/源分离：op1 装载在 xr（源槽），结果直写分配寄存器 res
+    //   （AArch64 三地址语义；未分配时 res==xr 原路径产物逐字节不变）。
+    //   32 位结果不参与分配 -> res 恒 w9（xr 装载形态不变）
+    const std::string resX = resultTargetReg(inst.result.id, is64 ? "x10" : "x9");
+    const std::string res = is64 ? resX : std::string("w9");
+    const std::string op1W = is64 ? "x10" : "w9";
     // op1 -> x10/x9
     loadOperandToX(writer, inst.operands[0], xr);
     // op2 -> x11/x9（常量直接立即数）
@@ -273,7 +285,6 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
         if (inst.operands[1].type == "i1") {
             text = (text == "真") ? "1" : "0";
         }
-        const std::string dst = is64 ? "x10" : "w9";
         try {
             const long long v = std::stoll(text);
             const bool logical =
@@ -281,7 +292,7 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
             if (mnemonic == "mul") {
                 // mul：mov 到 x11 再运算（AArch64 mul Rd,Rn,Rm 三寄存器）
                 emitMovImm(writer, "x11", static_cast<std::uint64_t>(v));
-                writer.line(mnemonic + " " + dst + ", " + dst + ", " +
+                writer.line(mnemonic + " " + res + ", " + op1W + ", " +
                             (is64 ? "x11" : "w11"));
             } else if (logical) {
                 std::uint64_t uv = static_cast<std::uint64_t>(v);
@@ -289,37 +300,36 @@ void Arm64CodeGenerator::emitIntBinary(Arm64AsmWriter& writer,
                 if (uv == 0) {
                     // 恒等/吸收折叠（#0 非 bitmask 不可直发）：
                     //   and 0 -> 结果恒 0；orr/eor 0 -> 结果=op1（dst 已含，零开销直通）
-                    if (mnemonic == "and") emitMovImm(writer, dst, 0);
+                    if (mnemonic == "and") emitMovImm(writer, res, 0);
                 } else if (isLogicalBitmaskImmediate(uv, is64)) {
-                    writer.line(mnemonic + " " + dst + ", " + dst + ", #" +
+                    writer.line(mnemonic + " " + res + ", " + op1W + ", #" +
                                 std::to_string(v));
                 } else {
                     // 不可编码：movz/movk 装载临时寄存器 + 寄存器形式（LLVM/GCC 同款）
                     emitMovImm(writer, "x11", uv);
-                    writer.line(mnemonic + " " + dst + ", " + dst + ", " +
+                    writer.line(mnemonic + " " + res + ", " + op1W + ", " +
                                 (is64 ? "x11" : "w11"));
                 }
             } else if (v >= 0 && v <= 4095) {
                 // 12 位立即数范围（add/sub 支持 0~4095）
-                writer.line(mnemonic + " " + dst + ", " + dst + ", #" + std::to_string(v));
+                writer.line(mnemonic + " " + res + ", " + op1W + ", #" + std::to_string(v));
             } else {
                 // 超出 12 位：mov 到 x11 再运算
                 emitMovImm(writer, "x11", static_cast<std::uint64_t>(v));
-                writer.line(mnemonic + " " + dst + ", " + dst + ", " +
+                writer.line(mnemonic + " " + res + ", " + op1W + ", " +
                             (is64 ? "x11" : "w11"));
             }
         } catch (...) {
-            writer.line(mnemonic + " " + (is64 ? "x10" : "w9") + ", " +
-                        (is64 ? "x10" : "w9") + ", #0");
+            writer.line(mnemonic + " " + res + ", " + op1W + ", #0");
         }
     } else {
         // 寄存器操作数：op2 -> x11（或 32 位 w11）
         loadOperandToX(writer, inst.operands[1], "x11");
-        writer.line(mnemonic + " " + (is64 ? "x10" : "w9") + ", " +
-                    (is64 ? "x10" : "w9") + ", " + (is64 ? "x11" : "w11"));
+        writer.line(mnemonic + " " + res + ", " + op1W + ", " +
+                    (is64 ? "x11" : "w11"));
     }
     // 结果存回结果槽（按 inst.type 宽度）
-    storeVirtualResult(writer, inst.result.id, (is64 ? "x10" : "x9"), inst.type);
+    storeVirtualResult(writer, inst.result.id, resX, inst.type);
 }
 
 // 除/余：sdiv/udiv（商）+ msub（余 = 被除数 - 商*除数）
@@ -365,17 +375,20 @@ void Arm64CodeGenerator::emitDivMod(Arm64AsmWriter& writer,
         }
     }
     // 运算：sdiv/udiv（商）+ msub（余）
+    // D8（451-a）：结果直写分配寄存器（64 位结果参与分配；32 位不分配保持 w9）
     const std::string divMnem = isUnsigned ? "udiv" : "sdiv";
     const std::string wd = is64 ? "x" : "w";
+    const std::string resX = resultTargetReg(inst.result.id, "x9");
+    const std::string res = is64 ? resX : std::string("w9");
     if (inst.opcode == ir::Opcode::Div) {
-        writer.line(divMnem + " " + wd + "9, " + wd + "9, " + wd + "10");
-        storeVirtualResult(writer, inst.result.id, "x9", type);
+        writer.line(divMnem + " " + res + ", " + wd + "9, " + wd + "10");
+        storeVirtualResult(writer, inst.result.id, resX, type);
     } else {
         // 余数 = 被除数 - 商*除数（msub Rd, Rn, Rm, Ra：Rd = Rn - Rm*Ra）
         // 先算商到 w11，再 msub：w9 = w9 - w11*w10
         writer.line(divMnem + " " + wd + "11, " + wd + "9, " + wd + "10");
-        writer.line("msub " + wd + "9, " + wd + "11, " + wd + "10, " + wd + "9");
-        storeVirtualResult(writer, inst.result.id, "x9", type);
+        writer.line("msub " + res + ", " + wd + "11, " + wd + "10, " + wd + "9");
+        storeVirtualResult(writer, inst.result.id, resX, type);
     }
 }
 
@@ -429,20 +442,23 @@ void Arm64CodeGenerator::emitShift(Arm64AsmWriter& writer,
     const int shiftMask = is64 ? 63
                           : (srcType == "i32" || srcType == "u32") ? 31
                           : (srcType == "i16" || srcType == "u16") ? 15 : 7;
+    // D8（451-a）：结果直写分配寄存器（64 位结果参与分配；32 位以下不分配保持 w9）
+    const std::string resX = resultTargetReg(inst.result.id, "x9");
+    const std::string res = is64 ? resX : std::string("w9");
     loadOperandToX(writer, inst.operands[0], is64 ? "x9" : "w9");
     if (inst.operands[1].isConstant) {
         const int shiftAmt = shiftAmtOf(inst.operands[1].extra) & shiftMask;
-        writer.line(sh + " " + (is64 ? "x9" : "w9") + ", " +
+        writer.line(sh + " " + res + ", " +
                     (is64 ? "x9" : "w9") + ", #" + std::to_string(shiftAmt));
     } else {
         loadOperandToX(writer, inst.operands[1], "x11");
         if (shiftMask < 31) {
             writer.line("and w11, w11, #" + std::to_string(shiftMask));
         }
-        writer.line(sh + " " + (is64 ? "x9" : "w9") + ", " +
+        writer.line(sh + " " + res + ", " +
                     (is64 ? "x9" : "w9") + ", " + (is64 ? "x11" : "w11"));
     }
-    storeVirtualResult(writer, inst.result.id, "x9", inst.type);
+    storeVirtualResult(writer, inst.result.id, resX, inst.type);
 }
 
 // ==================== 类型转换（Cast，Task 2.3） ====================
@@ -472,8 +488,10 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         const std::string vreg = (from == "f64") ? "d0" : "s0";
         loadOperandToV(writer, inst.operands[0], vreg);
         if (to == "i64" || to == "u64") {
-            writer.line("fcvtzs x9, " + vreg);
-            storeVirtualResult(writer, inst.result.id, "x9", to);
+            // D8（451-a）：64 位结果直写分配寄存器（免 x9 中转）
+            const std::string res = resultTargetReg(inst.result.id, "x9");
+            writer.line("fcvtzs " + res + ", " + vreg);
+            storeVirtualResult(writer, inst.result.id, res, to);
         } else {
             writer.line("fcvtzs w9, " + vreg);
             storeVirtualResult(writer, inst.result.id, "x9", to);
@@ -539,34 +557,41 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     if ((from == "ptr" && (to == "i64" || to == "u64")) ||
         ((from == "i64" || from == "u64") && to == "ptr") ||
         ((from == "i64" || from == "u64") && (to == "i64" || to == "u64"))) {
-        loadOperandToX(writer, inst.operands[0], "x9");
-        storeVirtualResult(writer, inst.result.id, "x9", "i64");
+        // D8（451-a）：64 位结果直写分配寄存器（免 x9 中转）
+        const std::string res = resultTargetReg(inst.result.id, "x9");
+        loadOperandToX(writer, inst.operands[0], res);
+        storeVirtualResult(writer, inst.result.id, res, "i64");
         return;
     }
     // ---- 整数扩展/截断 ----
     if (from == "i8" || from == "i16" || from == "u8" || from == "u16") {
         const bool signedSrc = (from == "i8" || from == "i16");
-        // 修复：有符号用64位目标（ldrsb xN/ldrsh xN），无符号用32位w（ldrb wN/ldrh wN）
+        // D8（451-a）：结果直写分配寄存器——from 窄但 to=i64/u64 时结果参与分配
+        //   （首轮遗漏补齐：ldrsb x21 后 mov x21,x9 中转实证）；窄目标不分配保持 x9。
+        //   无符号 ldrb/ldrh 落 w 形态（写 wN 自动清高 32 位=零扩展语义不变）
+        const std::string resX = resultTargetReg(inst.result.id, "x9");
+        const std::string resW = (resX == "x9") ? std::string("w9")
+                                                : "w" + resX.substr(1);
         if (signedSrc) {
             const std::string ins = (from == "i8") ? "ldrsb" : "ldrsh";
             if (inst.operands[0].id >= 0) {
                 const std::string mem = stackMemText(regSlotOffset(inst.operands[0].id), writer);
-                writer.line(ins + " x9, " + mem);
+                writer.line(ins + " " + resX + ", " + mem);
             } else {
                 const std::string mem = stackMemText(varSlotOf(inst.operands[0].extra), writer);
-                writer.line(ins + " x9, " + mem);
+                writer.line(ins + " " + resX + ", " + mem);
             }
         } else {
             const std::string ins = (from == "u8") ? "ldrb" : "ldrh";
             if (inst.operands[0].id >= 0) {
                 const std::string mem = stackMemText(regSlotOffset(inst.operands[0].id), writer);
-                writer.line(ins + " w9, " + mem);
+                writer.line(ins + " " + resW + ", " + mem);
             } else {
                 const std::string mem = stackMemText(varSlotOf(inst.operands[0].extra), writer);
-                writer.line(ins + " w9, " + mem);
+                writer.line(ins + " " + resW + ", " + mem);
             }
         }
-        storeVirtualResult(writer, inst.result.id, "x9", "i64");
+        storeVirtualResult(writer, inst.result.id, resX, "i64");
         return;
     }
     // 大 -> 小（截断）：strb/strh/str wN（写低字节/低32位）
@@ -593,20 +618,28 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     }
     // i1 -> i64/u64（零扩展）
     if (from == "i1" && (to == "i64" || to == "u64")) {
-        loadOperandToX(writer, inst.operands[0], "x9");
-        storeVirtualResult(writer, inst.result.id, "x9", to);
+        const std::string res = resultTargetReg(inst.result.id, "x9");
+        loadOperandToX(writer, inst.operands[0], res);
+        storeVirtualResult(writer, inst.result.id, res, to);
         return;
     }
     // i32 -> i64（符号扩展 sxtw）；u32 -> i64/u64（零扩展）
     if (from == "i32" && (to == "i64" || to == "u64")) {
+        // D8（451-a）：sxtw 目标直写分配寄存器（w9 装载槽不变·免 x9 中转）
+        const std::string res = resultTargetReg(inst.result.id, "x9");
         loadOperandToX(writer, inst.operands[0], "w9");
-        writer.line("sxtw x9, w9");
-        storeVirtualResult(writer, inst.result.id, "x9", to);
+        writer.line("sxtw " + res + ", w9");
+        storeVirtualResult(writer, inst.result.id, res, to);
         return;
     }
     if ((from == "u32" && to == "i64") || (from == "u32" && to == "u64")) {
-        loadOperandToX(writer, inst.operands[0], "w9");
-        storeVirtualResult(writer, inst.result.id, "x9", to);
+        // D8（451-a）：32 位装载直接落分配寄存器 w 形态（写 wN 自动清高 32 位，
+        //   与原「ldr w9 + mov x19, x9」零扩展语义等价）
+        const std::string resX = resultTargetReg(inst.result.id, "x9");
+        const std::string loadW = (resX == "x9") ? std::string("w9")
+                                                 : "w" + resX.substr(1);
+        loadOperandToX(writer, inst.operands[0], loadW);
+        storeVirtualResult(writer, inst.result.id, resX, to);
         return;
     }
     // i64 -> i32（截断）
@@ -706,16 +739,19 @@ void Arm64CodeGenerator::emitLoadStore(Arm64AsmWriter& writer,
                                  inst.type == "u8" || inst.type == "u16" ||
                                  inst.type == "i32" || inst.type == "u32" ||
                                  inst.type == "i1");
+        // D8（451-a）：64 位结果（i64/u64/ptr 参与分配）直装分配寄存器；
+        //   窄类型不分配 -> res 恒 x9 原路径
+        const std::string res = resultTargetReg(inst.result.id, "x9");
         if (inst.operands[0].id >= 0) {
             // 寄存器到寄存器（复制槽）
-            loadOperandToX(writer, inst.operands[0], "x9");
+            loadOperandToX(writer, inst.operands[0], res);
         } else {
             // 变量槽
-            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), "x9", inst.type);
+            emitStackLoad(writer, varSlotOf(inst.operands[0].extra), res, inst.type);
         }
         // 窄类型用64位存储（ldrsb/ldrsh/ldrb/ldrh/ldr w已扩展到x9/w9，
         //   AArch64 ldr wN 自动清高32位，ldrsb/ldrsh符号扩展到64位xN）
-        storeVirtualResult(writer, inst.result.id, "x9", narrowType ? "i64" : inst.type);
+        storeVirtualResult(writer, inst.result.id, res, narrowType ? "i64" : inst.type);
     } else {
         // Store：operands[0] 值，extra 变量名
         if (inst.type == "i128" || inst.type == "u128") {
@@ -741,34 +777,39 @@ void Arm64CodeGenerator::emitLoadStore(Arm64AsmWriter& writer,
 void Arm64CodeGenerator::emitAddrOf(Arm64AsmWriter& writer,
                                     const ir::IRInstruction& inst) {
     const int off = varSlotOf(inst.extra);
+    // D8（451-a）：地址计算直写分配寄存器（x13 大偏移中间寄存器不变）
+    const std::string res = resultTargetReg(inst.result.id, "x9");
     if (off >= -4095 && off <= 4095) {
         if (off < 0) {
-            writer.line("sub x9, x29, #" + std::to_string(-off));
+            writer.line("sub " + res + ", x29, #" + std::to_string(-off));
         } else {
-            writer.line("add x9, x29, #" + std::to_string(off));
+            writer.line("add " + res + ", x29, #" + std::to_string(off));
         }
     } else {
         if (off < 0) {
             emitMovImm(writer, "x13", static_cast<std::uint64_t>(-off));
-            writer.line("sub x9, x29, x13");
+            writer.line("sub " + res + ", x29, x13");
         } else {
             emitMovImm(writer, "x13", static_cast<std::uint64_t>(off));
-            writer.line("add x9, x29, x13");
+            writer.line("add " + res + ", x29, x13");
         }
     }
-    storeVirtualResult(writer, inst.result.id, "x9", "ptr");
+    storeVirtualResult(writer, inst.result.id, res, "ptr");
 }
 
 // 结构体字段地址（FieldAddr）：基址 + 字段偏移 -> 结果槽（含空指针检查错误码3）
 // GAS 中 @ 是注释符，标签用 L 前缀（Lfield_okN），与块标签命名一致
 void Arm64CodeGenerator::emitFieldAddr(Arm64AsmWriter& writer,
                                        const ir::IRInstruction& inst) {
-    loadOperandToX(writer, inst.operands[0], "x9");
+    // D8（451-a）：基址装载/空指针检查/字段偏移加算全链直写分配寄存器
+    //   （未分配 res 恒 x9 = 原路径产物逐字节不变）
+    const std::string res = resultTargetReg(inst.result.id, "x9");
+    loadOperandToX(writer, inst.operands[0], res);
     const long long fieldOffset = std::stoll(inst.extra);
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "Lfield_ok" + std::to_string(checkId);
-    // 空指针检查：x9 == 0 -> 错误块
-    writer.line("cmp x9, #0");
+    // 空指针检查：res == 0 -> 错误块
+    writer.line("cmp " + res + ", #0");
     writer.line("b.ne " + okLabel);
     emitMovImm(writer, "x0", 3);
     writer.line("bl __cn_runtime_error");
@@ -777,9 +818,9 @@ void Arm64CodeGenerator::emitFieldAddr(Arm64AsmWriter& writer,
     // 字段地址 = 基址 + 偏移
     if (fieldOffset != 0) {
         emitMovImm(writer, "x10", static_cast<std::uint64_t>(fieldOffset));
-        writer.line("add x9, x9, x10");
+        writer.line("add " + res + ", " + res + ", x10");
     }
-    storeVirtualResult(writer, inst.result.id, "x9", "ptr");
+    storeVirtualResult(writer, inst.result.id, res, "ptr");
 }
 
 // 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存（含空指针检查错误码3）
@@ -828,9 +869,11 @@ void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
             storeVirtualResult(writer, inst.result.id, "x10", "i64");
             return;
         } else {
-            writer.line("ldr x10, [x9]");
+            // D8（451-a）：64 位加载直写分配寄存器（地址基址 x9 为检查用中间值不变）
+            const std::string res = resultTargetReg(inst.result.id, "x10");
+            writer.line("ldr " + res + ", [x9]");
+            storeVirtualResult(writer, inst.result.id, res, type);
         }
-        storeVirtualResult(writer, inst.result.id, "x10", type);
         return;
     }
     // StorePtr：operand[1] 为值
