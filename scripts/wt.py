@@ -85,7 +85,7 @@ def 找ninja() -> Path | None:
 
 
 设置脚本模板 = """@echo off
-rem wt.py 生成：Ninja+sccache 开发树配置（ASCII only——cmd 批处理禁中文）
+rem wt.py: Ninja+sccache dev-tree setup (ASCII only - cmd batch must not contain CJK)
 call "{vcvars}" >nul 2>&1
 where cl >nul 2>&1 || (echo [FAIL] cl not found after vcvars & exit /b 1)
 cd /d {树}
@@ -97,7 +97,7 @@ echo [OK] ninja tree configured
 """
 
 构建脚本模板 = """@echo off
-rem wt.py 生成：Ninja+sccache 增量构建（ASCII only）
+rem wt.py: Ninja+sccache incremental build (ASCII only)
 call "{vcvars}" >nul 2>&1
 where cl >nul 2>&1 || (echo [FAIL] cl not found after vcvars & exit /b 1)
 cd /d {树}
@@ -204,13 +204,15 @@ def 删树(轮次: str, 删分支: bool) -> int:
     运行(["git", "worktree", "prune"])
     print("[2] git worktree prune 完成")
     if 删分支 and 分支:
-        fetch = 运行(["git", "fetch", "gitcode", f"{分支}"])
+        运行(["git", "fetch", "gitcode"])
         并入 = 运行(["git", "merge-base", "--is-ancestor", 分支, "gitcode/develop"])
-        if 并入.returncode == 0:
-            运行(["git", "branch", "-d", 分支])
-            print(f"[3] 分支 {分支} 已并入 develop，本地分支已删")
-        else:
+        if 并入.returncode != 0:
             print(f"[3] [拒绝] 分支 {分支} 未并入 develop——保留分支（确认后手动 git branch -D）")
+        else:
+            独有提交 = 输出(["git", "rev-list", "--count", "gitcode/develop..{分支}"])
+            运行(["git", "branch", "-d", 分支])
+            说明 = "已并入 develop（含独有提交）" if int(独有提交 or 0) > 0 else "空分支（无独有提交·刚建即删无损失）"
+            print(f"[3] 分支 {分支} {说明}，本地分支已删")
     elif 分支:
         print(f"[3] 分支 {分支} 保留（--delete-branch 可在已并入时删除）")
     return 0
