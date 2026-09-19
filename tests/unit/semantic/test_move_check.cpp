@@ -149,17 +149,20 @@ TEST(MoveCheckTest, RejectNonVariableTransferTarget) {
     EXPECT_NE(r.messages.find("转移目标须为变量"), std::string::npos);
 }
 
-// 拥有资源类型（类）表达式位转移受限（仅声明初始化位）
-TEST(MoveCheckTest, RejectClassTransferAtExprPosition) {
+// 拥有资源类型（类）表达式位转移放行（459-a 波 4 首件·plans/022 §四 B4 真 move：
+//   原「仅声明初始化位」拒绝解除——实参位转移=句柄直拷+源槽清零（IR 真槽位交接），
+//   moved-from 再用仍被编译期拒绝（197 族防线不变）。
+//   断言迁移声明（437 先例同型）：RejectClassTransferAtExprPosition 的拒绝断言
+//   随 459-a 设计变更过期，改为放行验证；运行级零拷贝+清零行为由 E2E 460 锚定）
+TEST(MoveCheckTest, AcceptClassTransferAtExprPosition) {
     auto r = analyzeSource(R"CN(类 甲 { 公开: 整64 值; }
 不安全 函数 消(甲 a) -> 空类型 { }
-不安全 函数 坏() -> 整32 {
+不安全 函数 好() -> 整32 {
     甲 a;
     消(转移(a));
     返回 0;
 })CN");
-    EXPECT_GE(r.errorCount, 1);
-    EXPECT_NE(r.messages.find("仅支持声明初始化位"), std::string::npos);
+    EXPECT_EQ(r.errorCount, 0) << r.messages;
 }
 
 // ==================== 正形态：零误伤 ====================
