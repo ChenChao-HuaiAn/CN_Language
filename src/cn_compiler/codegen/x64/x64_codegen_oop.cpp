@@ -274,17 +274,22 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
                 writer.line("movq " + 参位 + ", " + xmm);
             }
         } else if (argType == "i32" || argType == "i1") {
-            writer.line("mov eax, " + shrunkOperand("i32", op));
+            // 437-a（T67 根治·win 带参虚调用段错误真根因）：i32 装载**不可经 eax**——
+            //   `mov eax, src` 写 eax=清零 rax 高 32 位，而 rax 正保存着函数指针
+            //   （第 3 步 [rax+槽位] 取得）→ call rax 跳被截断地址=段错误。
+            //   实证：V11 浮点参（xmm0·不碰 rax）绿 vs 整数参（rdx）崩；0 参绿（无装载）。
+            //   经 **r10d** 中转（volatile·不涉 rax）——寄存器位/栈位统一。
+            writer.line("mov r10d, " + shrunkOperand("i32", op));
             if (regIdx >= 4) {
-                // 栈传位：movsxd 目标不能是内存——经 r10 中转（rax 保存函数指针）
-                writer.line("movsxd r10, eax");
+                writer.line("movsxd r10, r10d");
                 writer.line("mov " + 参位 + ", r10");
             } else {
-                writer.line("movsxd " + 参位 + ", eax");
+                writer.line("movsxd " + 参位 + ", r10d");
             }
         } else if (argType == "u32") {
-            writer.line("mov eax, " + shrunkOperand("i32", op));
-            writer.line("mov " + 参位 + ", rax");
+            // 437-a：同上·经 r10d 零扩展（写 r10d 清零高 32=无符号语义）
+            writer.line("mov r10d, " + shrunkOperand("i32", op));
+            writer.line("mov " + 参位 + ", r10");
         } else {
             // i64/ptr：64 位直接 mov（指针常量 lea 取地址）
             const ir::IRValue& av = inst.operands[1 + i];
