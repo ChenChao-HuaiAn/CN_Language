@@ -155,8 +155,10 @@ def 全量门禁(平台: str) -> str | None:
     cn路径 = 仓库根 / "target/build/cn"
     if not cn路径.exists():
         cn路径 = 仓库根 / "target/cn"
-    e2e = 运行([sys.executable, "tests/e2e/run_e2e.py", "--target", 平台, "--cn", str(cn路径), "--jobs", "8"])
-    return None if e2e.returncode == 0 else f"E2E 全量未全绿（--target {平台}）。"
+    # 本机平台键（win/linux-x64）→ run_e2e.py 目标名（win-x64/linux-arm64/linux-x86_64）
+    目标 = {"win": "win-x64", "linux-x64": "linux-x86_64", "linux-arm64": "linux-arm64"}[平台]
+    e2e = 运行([sys.executable, "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "8"])
+    return None if e2e.returncode == 0 else f"E2E 全量未全绿（--target {目标}）。"
 
 
 def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argparse.Namespace) -> tuple[bool, str | None, str | None]:
