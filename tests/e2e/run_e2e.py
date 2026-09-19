@@ -1261,7 +1261,9 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
             v2asm路径.unlink()
         if 详细:
             print(f"    [{编号}-N] {v2p.name} {入口参数} {目标平台}（预期语义错误中止）")
-        运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 工作目录, 内存上限MB=内存上限MB默认)
+        运行结果 = 运行命令([str(v2p), 入口参数, 目标平台,
+                              *查找编译选项文件(用例目录)], 工作目录,
+                            内存上限MB=内存上限MB默认)
         if 运行结果.returncode == 0:
             return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
         if v2asm路径.exists():
@@ -1333,7 +1335,9 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         v2asm路径.unlink()
     if 详细:
         print(f"    [{编号}-3] {v2p.name} {入口参数} {目标平台}")
-    运行结果 = 运行命令([str(v2p), 入口参数, 目标平台], 工作目录, 内存上限MB=内存上限MB默认)
+    运行结果 = 运行命令([str(v2p), 入口参数, 目标平台,
+                              *查找编译选项文件(用例目录)], 工作目录,
+                            内存上限MB=内存上限MB默认)
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
@@ -1503,7 +1507,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             v2asm路径.unlink()
         if 详细:
             print(f"    [{编号}-N] {v2p.name} {入口参数}（预期语义错误中止）")
-        运行结果 = 运行命令([str(v2p), 入口参数], 工作目录, 内存上限MB=内存上限MB默认)
+        运行结果 = 运行命令([str(v2p), 入口参数, "win-x64", *查找编译选项文件(用例目录)], 工作目录,
+                            内存上限MB=内存上限MB默认)
         if 运行结果.returncode == 0:
             return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
         if v2asm路径.exists():
@@ -1571,7 +1576,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         v2asm路径.unlink()
     if 详细:
         print(f"    [{编号}-3] {v2p.name} {入口参数}")
-    运行结果 = 运行命令([str(v2p), 入口参数], 工作目录, 内存上限MB=内存上限MB默认)
+    运行结果 = 运行命令([str(v2p), 入口参数, "win-x64", *查找编译选项文件(用例目录)], 工作目录,
+                            内存上限MB=内存上限MB默认)
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
