@@ -378,3 +378,34 @@ try-build 应答/集成后验证——免分支免轮次号，仅写 §8.5 窄�
   `plans/020`／`交接` 承载，不在本表堆叠；
 - 本表 ≠ `plans/021`：本表=**在飞明细**（滚动替换），`plans/021`=**全局台账**（活跃区只增不删·历史区月度滚转至 `项目记忆/归档/`——§6.7·426-a 修订）；
 - **§四 审计段**（交叠/遗漏/边缘情况）由持有在飞分支的机器在发现新交叠或遗漏时更新，更新处标注轮次。
+
+### 8.8 本机多开规约（worktree 任务池·2026-09-20 用户三裁决批准·449-a 落地）
+
+> 根治同机并行互踩（429-a/431-a 实录根因=多会话共享一个工作树与 `target/`：checkout 带走
+> 未提交内容 / E2E 中途 expected 消失 / cn.exe 占用 LNK1104 / rebase 抢发）。**每并行任务
+> =1 个 git worktree +1 条任务分支 +1 个会话**；容器方案已评估否决（win 门禁死绑 MSVC+MASM，
+> Windows 容器镜像 7GB+/许可/工具链漂移，其隔离收益 worktree 以 1% 成本提供）。
+
+- **worktree 任务池**：树位置=主仓库同级 `wt<轮次>`（如 `Documents/CN/wt449`——**必须距
+  Documents 两级**，gtest 相对路径 `../../third-party` 依赖此深度，449-a 首建三级深度即翻车实证）；
+  生命周期=对齐分支 ≤1 个工作日；管理命令=`python scripts/wt.py create <轮次> <标识>`（fetch→
+  develop 基准→建树+分支→gtest 校验→Ninja+sccache 开发树配置）/`list`（全树分支+干净度）/
+  `remove <轮次> [--delete-branch]`（已并入 develop 才删分支；win 下 rm -rf+prune）。
+- **主工作树职责收窄**：主树=develop 基准+集成（integrate.py）+看板窄通道直推；
+  **禁止在主树开任务分支或写任务代码**（根除 checkout 带走他任务未提交内容）。
+- **会话两形态**（用户裁决并存）：重开发轮=多 ZCode 会话各绑一个 worktree；批量轻任务
+  （famscan/负测转正/定性扫描）=单会话后台并行代理、各在指定 worktree 绝对路径下工作。
+  开工前必 `wt.py list`（看在飞树）+看板他机行（同机多会话共享 `~/.zcode` 只读无害）。
+- **全量门禁串行锁**：`scripts/gate_lock.py`（目录锁=主树 `target/gate.lock`·跨 worktree 共享
+  ·陈锁 4h 心跳接管）——**同机至多一个全量门禁在飞**（防 CPU/内存互抢：78/79 OOM 前科）。
+  ci.ps1 已内置（acquire/finally-release·win 侧）；integrate.py linux 分支经 `gate_lock run --`
+  包装；手动长验证推荐 `python scripts/gate_lock.py run -- <命令>`。
+- **构建提速**：`build.ps1 --parallel`（MSBuild /m）；**sccache 编译缓存**=Ninja 开发树专用
+  （`target/build-ninja`·`cmd /c target\ninja_build.cmd`——VS 生成器 vcxproj ClCompile 原生任务
+  **不支持** `CMAKE_CXX_COMPILER_LAUNCHER`，平台事实勿再试；Ninja+MSVC 必须 `/Z7` 替代 `/Zi`
+  〔多 cl 并发写同一 PDB=C1041，加 /FS 也拦不住〕；勿用 `-DCMAKE_CXX_FLAGS` 覆盖〔顶掉默认
+  /EHsc→C4530 被 /WX 拦〕）。缓存=winget `Mozilla.sccache`·`SCCACHE_DIR=Documents/sccache-cache`
+  ·5GB。实测口径（28 核机）：VS --parallel 冷全量 127s｜Ninja+sccache 冷 23s｜同树删树重建
+  10.7s｜跨树首建 ~21s（48% 命中：共享路径第三方命中、树内绝对路径源码 miss）。
+- **并行度**（28 逻辑核/128GB 实测口径）：活跃开发任务 ≤3 + 全量门禁 ≤1（锁保证）；每树磁盘
+  ~1.7GB（target 双构建树）+缓存 5GB 上限封顶；`.git` 对象库全树共享。
