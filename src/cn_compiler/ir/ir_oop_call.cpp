@@ -293,6 +293,9 @@ static const ClassMemberInfo* findClassMethod(
 
 // 类调用处理（visitCallExpr 钩子）：
 //   返回 true 表示已处理（lastExpr_ 已设置），false 表示非类调用（交回原路径）
+// （D1 拆分 456-a：原 421 行单体收敛为分派器——接口/构造/静态/实例四族各成成员函数，
+//   控制流语义逐点保持：接口段未命中 fall-through；静态段三态〔已处理/交回原路径/
+//   非静态形态 fall-through 实例段〕；构造与实例段的 return false=交回原路径）
 bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     if (semantic_ == nullptr) return false;
     if (node->callee->getType() != NodeType::MemberExpr &&
@@ -300,6 +303,23 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         return false;
     }
 
+    // ---- P3-19：接口对象方法调用（图形.方法(实参)）——B1 全局槽位运行时分派 ----
+    if (tryInterfaceMethodCall(node)) return true;
+
+    // ---- 情形A：构造调用 类名(实参) ----
+    if (node->callee->getType() == NodeType::IdentifierExpr) {
+        return emitConstructorCall(node);
+    }
+
+    // ---- 情形B：成员方法调用 对象.方法(实参) / 类名.静态方法(实参) / 父类.方法(实参) ----
+    return emitMemberMethodCall(node);
+}
+
+// P3-19 接口对象方法调用族（原 handleClassCallExpr 接口段整体迁移）：
+//   返回 true=已处理；false=非接口方法形态（fall-through 构造/成员路径，与原
+//   控制流一致——原接口段未命中时不 return，继续走情形A/B）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+bool IRGenerator::tryInterfaceMethodCall(CallExpr* node) {
     // ---- P3-19：接口对象方法调用（图形.方法(实参)）——B1 全局槽位运行时分派 ----
     // 接口分派区在对象首固定偏差（首个 8 字节为强制虚表指针，region 紧随其后）：
     //   偏移 = 8 + 全局槽*8；LoadPtr 取实现方法地址 -> CallIndirect(方法, [this, 实参])。
@@ -371,87 +391,17 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
             }
         }
     }
+    return false;
+}
 
-    // ---- 情形A：构造调用 类名(实参) ----
-    if (node->callee->getType() == NodeType::IdentifierExpr) {
-        std::string className =
-            static_cast<IdentifierExpr*>(node->callee.get())->name;
-        // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化构造 盒子<整32>(42)——callee
-        //   为 名<实参>（IdentifierExpr 名字含 <），语义层已单态化注册实例化类
-        //   （盒子$整32），此处把 名<实参> 映射到实例化类符号名。
-        const std::size_t genLt = className.find('<');
-        // 2026-08-25 H3：平衡扫描找配对 '>'（嵌套泛型 向量<映射<整64,整64>> 的
-        //   inner 若用 rfind 最后 > 会缺内层闭合，实例名含 '<' -> findClass 失败
-        //   -> 构造调用回退普通 Call（无 NewObject/this）-> 运行段错误）
-        std::size_t genGt = std::string::npos;
-        if (genLt != std::string::npos) {
-            int depth = 0;
-            for (std::size_t i = genLt; i < className.size(); ++i) {
-                if (className[i] == '<') depth++;
-                else if (className[i] == '>') {
-                    depth--;
-                    if (depth == 0) { genGt = i; break; }
-                }
-            }
-        }
-        if (genLt != std::string::npos && genGt != std::string::npos &&
-            genGt > genLt) {
-            const std::string head = className.substr(0, genLt);
-            const std::string inner =
-                className.substr(genLt + 1, genGt - genLt - 1);
-            // 平衡逗号分割（嵌套内层 < 中 , 非外层分隔）
-            std::vector<std::string> args;
-            std::size_t pos = 0;
-            int angleDepth = 0;
-            std::size_t segStart = 0;
-            while (pos <= inner.size()) {
-                if (pos == inner.size() ||
-                    (inner[pos] == ',' && angleDepth == 0)) {
-                    std::string seg = inner.substr(segStart, pos - segStart);
-                    // 318-a（T19①）：泛型函数体内构造 向量<T>()——callee AST 保留
-                    //   <T> 原文（语义 recheck 的重写只改 className 引用不改
-                    //   node->callee），类型参数按当前实例映射替换（原裸拼
-                    //   向量$T 查不到类 -> 回退普通 Call = NewObject 丢失 ->
-                    //   构造错误码 i32 被当对象指针 -> 解引用段错误）。
-                    seg = substGenericType(seg);
-                    args.push_back(seg);
-                    segStart = pos + 1;
-                    if (pos == inner.size()) break;
-                } else if (inner[pos] == '<') {
-                    angleDepth++;
-                } else if (inner[pos] == '>') {
-                    angleDepth--;
-                }
-                pos++;
-            }
-            for (auto& a : args) {
-                const std::size_t b = a.find_first_not_of(" \t");
-                const std::size_t e = a.find_last_not_of(" \t");
-                if (b != std::string::npos && e != std::string::npos) {
-                    a = a.substr(b, e - b + 1);
-                }
-                // H3：嵌套实参（含 '<'）递归实例化为 映射$整64$整64
-                // H3：嵌套实参（含 '<'）转为实例化名（映射<整64,整64> -> 映射$整64$整64）
-                if (a.find('<') != std::string::npos) {
-                    std::string ninst = a.substr(0, a.find('<'));
-                    std::string ninner = a.substr(a.find('<') + 1, a.rfind('>') - a.find('<') - 1);
-                    std::size_t npos = 0;
-                    while (npos <= ninner.size()) {
-                        const std::size_t ncomma = ninner.find(',', npos);
-                        if (ncomma == std::string::npos) { ninst += "$" + ninner.substr(npos); break; }
-                        ninst += "$" + ninner.substr(npos, ncomma - npos);
-                        npos = ncomma + 1;
-                    }
-                    a = ninst;
-                }
-            }
-                        std::string inst = head;
-            for (const auto& a : args) {
-                inst += "$" + types::canonical(a);
-            }
-            // 语义层实例化类符号名 = 类名$实参（instantiateGeneric mangling）
-            if (semantic_->findClass(inst) != nullptr) className = inst;
-        }
+// 情形A 构造调用族（原 handleClassCallExpr 情形A 段迁移）：
+//   泛型实例名解析 -> findClass -> NewObject -> 构造查找 -> 构造 Call 发射。
+//   返回 false=交回原路径（查无此类/抽象类——原语义不变）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+bool IRGenerator::emitConstructorCall(CallExpr* node) {
+    std::string className =
+        static_cast<IdentifierExpr*>(node->callee.get())->name;
+    className = resolveGenericCtorInstanceName(className);
         const ClassInfo* ci = semantic_->findClass(className);
         if (ci == nullptr) return false;
         // 抽象类不可实例化（语义层已报错，防御跳过）
@@ -461,6 +411,101 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         ir::IRValue obj = emitResult(ir::Opcode::NewObject,
                                      {ir::IRValue::constant(className, "ptr")},
                                      "ptr", extra, node->location);
+
+    // 构造函数查找（isConstructor 成员；无构造函数 -> 默认构造（仅分配））：
+    const ClassMemberInfo* ctor = findCtorMember(ci, className, node);
+    if (ctor != nullptr) {
+        emitCtorInvoke(node, className, ctor, obj);
+    }
+    lastExpr_ = obj;
+    return true;
+}
+
+// 泛型实例化构造 盒子<整32>(42) 的实例名映射（原情形A 内联段迁移）：
+//   名<实参> -> 类名$实参1$实参2（语义层 instantiateGeneric mangling 对齐）；
+//   无泛型形态/查无实例化类时原文返回（调用方 findClass 走普通构造路径）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
+    // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化构造 盒子<整32>(42)——callee
+    //   为 名<实参>（IdentifierExpr 名字含 <），语义层已单态化注册实例化类
+    //   （盒子$整32），此处把 名<实参> 映射到实例化类符号名。
+    const std::size_t genLt = className.find('<');
+    // 2026-08-25 H3：平衡扫描找配对 '>'（嵌套泛型 向量<映射<整64,整64>> 的
+    //   inner 若用 rfind 最后 > 会缺内层闭合，实例名含 '<' -> findClass 失败
+    //   -> 构造调用回退普通 Call（无 NewObject/this）-> 运行段错误）
+    std::size_t genGt = std::string::npos;
+    if (genLt != std::string::npos) {
+        int depth = 0;
+        for (std::size_t i = genLt; i < className.size(); ++i) {
+            if (className[i] == '<') depth++;
+            else if (className[i] == '>') {
+                depth--;
+                if (depth == 0) { genGt = i; break; }
+            }
+        }
+    }
+    if (genLt != std::string::npos && genGt != std::string::npos &&
+        genGt > genLt) {
+        const std::string head = className.substr(0, genLt);
+        const std::string inner =
+            className.substr(genLt + 1, genGt - genLt - 1);
+        // 平衡逗号分割（嵌套内层 < 中 , 非外层分隔）
+        std::vector<std::string> args;
+        std::size_t pos = 0;
+        int angleDepth = 0;
+        std::size_t segStart = 0;
+        while (pos <= inner.size()) {
+            if (pos == inner.size() ||
+                (inner[pos] == ',' && angleDepth == 0)) {
+                std::string seg = inner.substr(segStart, pos - segStart);
+                // 318-a（T19①）：泛型函数体内构造 向量<T>()——callee AST 保留
+                //   <T> 原文（语义 recheck 的重写只改 className 引用不改
+                //   node->callee），类型参数按当前实例映射替换（原裸拼
+                //   向量$T 查不到类 -> 回退普通 Call = NewObject 丢失 ->
+                //   构造错误码 i32 被当对象指针 -> 解引用段错误）。
+                seg = substGenericType(seg);
+                args.push_back(seg);
+                segStart = pos + 1;
+                if (pos == inner.size()) break;
+            } else if (inner[pos] == '<') {
+                angleDepth++;
+            } else if (inner[pos] == '>') {
+                angleDepth--;
+            }
+            pos++;
+        }
+        for (auto& a : args) {
+            const std::size_t b = a.find_first_not_of(" \t");
+            const std::size_t e = a.find_last_not_of(" \t");
+            if (b != std::string::npos && e != std::string::npos) {
+                a = a.substr(b, e - b + 1);
+            }
+            // H3：嵌套实参（含 '<'）递归实例化为 映射$整64$整64
+            // H3：嵌套实参（含 '<'）转为实例化名（映射<整64,整64> -> 映射$整64$整64）
+            if (a.find('<') != std::string::npos) {
+                std::string ninst = a.substr(0, a.find('<'));
+                std::string ninner = a.substr(a.find('<') + 1, a.rfind('>') - a.find('<') - 1);
+                std::size_t npos = 0;
+                while (npos <= ninner.size()) {
+                    const std::size_t ncomma = ninner.find(',', npos);
+                    if (ncomma == std::string::npos) { ninst += "$" + ninner.substr(npos); break; }
+                    ninst += "$" + ninner.substr(npos, ncomma - npos);
+                    npos = ncomma + 1;
+                }
+                a = ninst;
+            }
+        }
+                    std::string inst = head;
+        for (const auto& a : args) {
+            inst += "$" + types::canonical(a);
+        }
+        // 语义层实例化类符号名 = 类名$实参（instantiateGeneric mangling）
+        if (semantic_->findClass(inst) != nullptr) className = inst;
+    }
+    return className;
+}
+
+// 构造函数查找（原情形A 内联段迁移）——以下策略注释为原文：
         // 查找构造函数（isConstructor 成员）；无构造函数 -> 默认构造（仅分配）。
         // 缺陷3 修复：泛型实例化类（盒子$整32）的构造方法名 = 原始泛型类名（盒子），
         //   不能用 className（盒子$整32）作 key find——改为遍历 methods 找 isConstructor。
@@ -470,108 +515,130 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         //   命中，会因 unordered_map 遍历顺序（GCC/MSVC 不同）误选父类构造（2 参），
         //   忽略子类自身构造（3 参）导致自身字段未初始化。必须限定 ownerClass == className，
         //   只匹配"本类自己声明"的构造函数（泛型实例化类 ownerClass=实例化名，同样成立）。
-        const ClassMemberInfo* ctor = nullptr;
-        // Debug 子任务修复（构造函数重载）：优先用语义层记录的选中构造
-        //   （node->resolvedSignature = 类名$构造sigKey，visitCallExpr 已按实参匹配），
-        //   精确对应 无参/带参 重载；未记录时遍历 methods 按 实参个数 匹配兜底。
-        if (!node->resolvedSignature.empty()) {
-            const std::size_t ds = node->resolvedSignature.find('$');
-            if (ds != std::string::npos) {
-                const std::string wantSig = node->resolvedSignature.substr(ds + 1);
-                for (const auto& mk : ci->methods) {
-                    if (mk.second.isConstructor && mk.second.sigKey == wantSig &&
-                        mk.second.ownerClass == className) {
-                        ctor = &mk.second;
-                        break;
-                    }
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+const ClassMemberInfo* IRGenerator::findCtorMember(const ClassInfo* ci,
+                                                   const std::string& className,
+                                                   CallExpr* node) {
+    const ClassMemberInfo* ctor = nullptr;
+    // Debug 子任务修复（构造函数重载）：优先用语义层记录的选中构造
+    //   （node->resolvedSignature = 类名$构造sigKey，visitCallExpr 已按实参匹配），
+    //   精确对应 无参/带参 重载；未记录时遍历 methods 按 实参个数 匹配兜底。
+    if (!node->resolvedSignature.empty()) {
+        const std::size_t ds = node->resolvedSignature.find('$');
+        if (ds != std::string::npos) {
+            const std::string wantSig = node->resolvedSignature.substr(ds + 1);
+            for (const auto& mk : ci->methods) {
+                if (mk.second.isConstructor && mk.second.sigKey == wantSig &&
+                    mk.second.ownerClass == className) {
+                    ctor = &mk.second;
+                    break;
                 }
             }
         }
-        if (ctor == nullptr) {
-            // 兜底：按 实参个数 匹配本类构造（与语义层一致的 ownerClass 限定）
-            const std::size_t givenArgs = node->arguments.size();
-            const ClassMemberInfo* fallback = nullptr;
+    }
+    if (ctor == nullptr) {
+        // 兜底：按 实参个数 匹配本类构造（与语义层一致的 ownerClass 限定）
+        const std::size_t givenArgs = node->arguments.size();
+        const ClassMemberInfo* fallback = nullptr;
+        for (const auto& mk : ci->methods) {
+            if (mk.second.isConstructor && mk.second.hasBody &&
+                mk.second.ownerClass == className &&
+                mk.second.paramTypes.size() == givenArgs) {
+                fallback = &mk.second;
+                break;
+            }
+        }
+        if (fallback == nullptr) {
             for (const auto& mk : ci->methods) {
                 if (mk.second.isConstructor && mk.second.hasBody &&
-                    mk.second.ownerClass == className &&
-                    mk.second.paramTypes.size() == givenArgs) {
+                    mk.second.ownerClass == className) {
                     fallback = &mk.second;
                     break;
                 }
             }
-            if (fallback == nullptr) {
-                for (const auto& mk : ci->methods) {
-                    if (mk.second.isConstructor && mk.second.hasBody &&
-                        mk.second.ownerClass == className) {
-                        fallback = &mk.second;
-                        break;
-                    }
-                }
-            }
-            ctor = fallback;
         }
-        if (ctor != nullptr) {
-            // 构造体 Call：符号 = 类名$构造sigKey，实参 = [obj(this)] + 实参
-            //   （构造实参不是容器元素所有权入口——不做入容器位归一化）
-            std::vector<ir::IRValue> args;
-            args.push_back(obj);  // this（对象指针）
-            std::vector<ir::IRValue> userArgs =
-                buildCallArgsOop(node->arguments, node->location);
-            // 316-a（C23/T45 甲）：i128/u128 构造形参的窄整实参定标——与
-            //   ir_call 直调路径同款（类构造字面实参 ABI 契约分叉 m45_03：
-            //   buildCallArgsOop 原只做结构体物化，窄整实参原样 i64 值直传，
-            //   被调方按 i128 指针解引用 SIGSEGV）。宽化 Cast 后走 emitCall
-            //   i128 分支（lea 取地址 = 与变量实参同 ABI）。
-            for (std::size_t ai = 0;
-                 ai < userArgs.size() && ai < ctor->paramTypes.size(); ++ai) {
-                const std::string canon = types::canonical(ctor->paramTypes[ai]);
-                const bool param128 = (canon == "整128" || canon == "正128");
-                if (param128 && userArgs[ai].type != "i128" &&
-                    userArgs[ai].type != "u128" && userArgs[ai].type != "f32" &&
-                    userArgs[ai].type != "f64") {
-                    const std::string kind = (canon == "正128") ? "u128" : "i128";
-                    userArgs[ai] = emitResult(ir::Opcode::Cast, {userArgs[ai]},
-                                              kind, "", node->location);
-                }
-            }
-            for (auto& a : userArgs) args.push_back(a);
-            // D23 根治（248-a）：构造缺省实参补全——构造调用经 handleClassCallExpr
-            //   提前展开（visitCallExpr 通用补缺段不可达），此处按语义层选中的
-            //   resolvedSignature 查 funcDefaultArgs_/funcDefaultTotal_（visitProgram
-            //   预收集）把缺省实参精确展开；显式传满参不补。
-            if (!node->resolvedSignature.empty()) {
-                auto defIt = funcDefaultArgs_.find(node->resolvedSignature);
-                if (defIt != funcDefaultArgs_.end()) {
-                    auto totIt = funcDefaultTotal_.find(node->resolvedSignature);
-                    std::size_t totalParams = node->arguments.size();
-                    if (totIt != funcDefaultTotal_.end()) {
-                        totalParams = totIt->second;
-                    }
-                    const std::size_t given = node->arguments.size();
-                    if (given < totalParams &&
-                        totalParams - given <= defIt->second.size()) {
-                        const std::size_t missing = totalParams - given;
-                        const auto& defaults = defIt->second;
-                        for (std::size_t k = defaults.size() - missing;
-                             k < defaults.size(); ++k) {
-                            args.push_back(defaults[k]);
-                        }
-                    }
-                }
-            }
-            emit(ir::Opcode::Call, args, ir::IRValue(),
-                 methodSymbolKey(className, ctor->sigKey), "void", node->location);
-        }
-        lastExpr_ = obj;
-        return true;
+        ctor = fallback;
     }
+    return ctor;
+}
 
-    // ---- 情形B：成员方法调用 对象.方法(实参) / 类名.静态方法(实参) / 父类.方法(实参) ----
+// 构造 Call 发射（原情形A 内联段迁移）：实参 = [obj(this)] + 实参（i128 宽化+
+//   缺省实参补全 D23 机制原文随迁）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+void IRGenerator::emitCtorInvoke(CallExpr* node, const std::string& className,
+                                 const ClassMemberInfo* ctor, const ir::IRValue& obj) {
+        // 构造体 Call：符号 = 类名$构造sigKey，实参 = [obj(this)] + 实参
+        //   （构造实参不是容器元素所有权入口——不做入容器位归一化）
+        std::vector<ir::IRValue> args;
+        args.push_back(obj);  // this（对象指针）
+        std::vector<ir::IRValue> userArgs =
+            buildCallArgsOop(node->arguments, node->location);
+        // 316-a（C23/T45 甲）：i128/u128 构造形参的窄整实参定标——与
+        //   ir_call 直调路径同款（类构造字面实参 ABI 契约分叉 m45_03：
+        //   buildCallArgsOop 原只做结构体物化，窄整实参原样 i64 值直传，
+        //   被调方按 i128 指针解引用 SIGSEGV）。宽化 Cast 后走 emitCall
+        //   i128 分支（lea 取地址 = 与变量实参同 ABI）。
+        for (std::size_t ai = 0;
+             ai < userArgs.size() && ai < ctor->paramTypes.size(); ++ai) {
+            const std::string canon = types::canonical(ctor->paramTypes[ai]);
+            const bool param128 = (canon == "整128" || canon == "正128");
+            if (param128 && userArgs[ai].type != "i128" &&
+                userArgs[ai].type != "u128" && userArgs[ai].type != "f32" &&
+                userArgs[ai].type != "f64") {
+                const std::string kind = (canon == "正128") ? "u128" : "i128";
+                userArgs[ai] = emitResult(ir::Opcode::Cast, {userArgs[ai]},
+                                          kind, "", node->location);
+            }
+        }
+        for (auto& a : userArgs) args.push_back(a);
+        // D23 根治（248-a）：构造缺省实参补全——构造调用经 handleClassCallExpr
+        //   提前展开（visitCallExpr 通用补缺段不可达），此处按语义层选中的
+        //   resolvedSignature 查 funcDefaultArgs_/funcDefaultTotal_（visitProgram
+        //   预收集）把缺省实参精确展开；显式传满参不补。
+        if (!node->resolvedSignature.empty()) {
+            auto defIt = funcDefaultArgs_.find(node->resolvedSignature);
+            if (defIt != funcDefaultArgs_.end()) {
+                auto totIt = funcDefaultTotal_.find(node->resolvedSignature);
+                std::size_t totalParams = node->arguments.size();
+                if (totIt != funcDefaultTotal_.end()) {
+                    totalParams = totIt->second;
+                }
+                const std::size_t given = node->arguments.size();
+                if (given < totalParams &&
+                    totalParams - given <= defIt->second.size()) {
+                    const std::size_t missing = totalParams - given;
+                    const auto& defaults = defIt->second;
+                    for (std::size_t k = defaults.size() - missing;
+                         k < defaults.size(); ++k) {
+                        args.push_back(defaults[k]);
+                    }
+                }
+            }
+        }
+        emit(ir::Opcode::Call, args, ir::IRValue(),
+             methodSymbolKey(className, ctor->sigKey), "void", node->location);
+}
+
+// 情形B 成员方法调用族（原 handleClassCallExpr 情形B 段迁移）：
+//   静态方法（类名.静态方法）三态分派 + 实例方法（虚/非虚）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+bool IRGenerator::emitMemberMethodCall(CallExpr* node) {
     MemberExpr* mem = static_cast<MemberExpr*>(node->callee.get());
     const std::string methodName = mem->memberName;
     const std::string objSrcType = exprSrcType(mem->object.get());
     const std::string canonObj = types::canonical(objSrcType);
 
+    const int stat = emitStaticMethodCall(node, mem, methodName);
+    if (stat >= 0) return stat == 1;  // 1=已处理；0=交回原路径
+    return emitInstanceMethodCall(node, mem, methodName, canonObj);
+}
+
+// 类名.静态方法族（原情形B 静态段迁移）：
+//   返回 1=已处理；0=交回原路径（非方法/非静态——原 return false 语义不变）；
+//   -1=非静态形态（staticClassName 空——原 fall-through 实例段语义不变）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
+                                      const std::string& methodName) {
     // 类名.静态方法：对象标识符本身是类类型名
     std::string staticClassName;
     if (mem->object->getType() == NodeType::IdentifierExpr) {
@@ -583,8 +650,8 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         std::string owner;
         const ClassMemberInfo* m =
             findClassMethod(semantic_, staticClassName, methodName, owner);
-        if (m == nullptr) return false;  // 非方法（静态字段等，交回原路径）
-        if (!m->isStatic) return false;  // 语义层已报错，防御跳过
+        if (m == nullptr) return 0;  // 非方法（静态字段等，交回原路径）
+        if (!m->isStatic) return 0;  // 语义层已报错，防御跳过
         std::vector<ir::IRValue> args =
             buildCallArgsOop(node->arguments, node->location);
         // 331-a（T53 家系·静态方法路径）：i128/u128 形参的窄整实参宽化——同族
@@ -601,9 +668,17 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
             lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
                                    methodSymbolKey(owner, m->sigKey), node->location);
         }
-        return true;
+        return 1;
     }
+    return -1;  // 非静态方法形态——fall-through 实例方法路径（原控制流）
+}
 
+// 实例方法调用族（原情形B 实例段迁移）：对象类类型解析 -> 方法查找 ->
+//   虚表槽位判定 -> 虚调用（VirtualCall）/非虚直接 Call（含结构体隐藏返回指针）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
+                                         const std::string& methodName,
+                                         const std::string& canonObj) {
     // 实例方法调用：对象为类实例（源码类型是类）。
     // v2.1 统一 .：对象源码类型为 类名*（指针）时剥指针取类名（与语义层
     //   clsName 类型驱动剥法一致）。注意方法调用路径不经过 visitMemberExpr
@@ -642,27 +717,48 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     const int vtableSlot = isSuperCall
         ? -1 : semantic_->classVtableIndex(canonObjForMethod, methodName);
     if (vtableSlot >= 0) {
-        std::vector<ir::IRValue> args;
-        args.push_back(thisArg);  // operand[0] = this
-        std::vector<ir::IRValue> userArgs =
-            buildCallArgsOop(node->arguments, node->location);
-        // 331-a（T53 根治·同族同修）：虚调用路径同样须做 i128/u128 形参宽化
-        //   （buildCallArgsOop 不感知形参类型；此处有 m->paramTypes）。
-        widenI128Args(userArgs, m->paramTypes, node->location);
-        for (auto& a : userArgs) args.push_back(a);
-        const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
-        const std::string extra = owner + "." + methodName;  // "类名.虚方法名"
-        if (resultType == "void" || resultType.empty()) {
-            emit(ir::Opcode::VirtualCall, args, ir::IRValue(),
-                 extra, "void", node->location);
-            lastExpr_ = ir::IRValue();
-        } else {
-            lastExpr_ = emitResult(ir::Opcode::VirtualCall, args, resultType,
-                                   extra, node->location);
-        }
+        emitVirtualMethodCall(node, m, owner, methodName, thisArg);
         return true;
     }
+    emitDirectMethodCall(node, m, owner, methodName, canonObjForMethod, thisArg);
+    return true;
+}
 
+// 虚方法发射（原实例段虚调用分支迁移）：VirtualCall.extra = "类名.虚方法名"。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m,
+                                        const std::string& owner,
+                                        const std::string& methodName,
+                                        const ir::IRValue& thisArg) {
+    std::vector<ir::IRValue> args;
+    args.push_back(thisArg);  // operand[0] = this
+    std::vector<ir::IRValue> userArgs =
+        buildCallArgsOop(node->arguments, node->location);
+    // 331-a（T53 根治·同族同修）：虚调用路径同样须做 i128/u128 形参宽化
+    //   （buildCallArgsOop 不感知形参类型；此处有 m->paramTypes）。
+    widenI128Args(userArgs, m->paramTypes, node->location);
+    for (auto& a : userArgs) args.push_back(a);
+    const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+    const std::string extra = owner + "." + methodName;  // "类名.虚方法名"
+    if (resultType == "void" || resultType.empty()) {
+        emit(ir::Opcode::VirtualCall, args, ir::IRValue(),
+             extra, "void", node->location);
+        lastExpr_ = ir::IRValue();
+    } else {
+        lastExpr_ = emitResult(ir::Opcode::VirtualCall, args, resultType,
+                               extra, node->location);
+    }
+    return;
+}
+
+// 非虚方法/父类.方法 发射（原实例段非虚分支迁移）：直接 Call + 结构体返回
+//   隐藏返回指针（Task 6.1 retbuf 机制原文随迁）。
+// （D1 拆分 456-a：本函数自 handleClassCallExpr 整段迁移，逻辑逐字保留·零行为变更）
+void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
+                                       const std::string& owner,
+                                       const std::string& methodName,
+                                       const std::string& canonObjForMethod,
+                                       const ir::IRValue& thisArg) {
     // ---- 非虚方法 / 父类.方法（直接 Call，非虚分派） ----
     std::vector<ir::IRValue> args;
     args.push_back(thisArg);  // this 为第一个实参（参数位 0）
@@ -701,7 +797,7 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         emit(ir::Opcode::Call, hiddenArgs, ir::IRValue(),
              methodSymbolKey(owner, m->sigKey), "void", node->location);
         lastExpr_ = buf;
-        return true;
+        return;  // （结构体返回分支终止——D1 拆分 void 化，原 return true 由调用点 emitInstanceMethodCall 无条件承接）
     }
     // 符号：父类.方法() 用父类（owner）符号；普通调用用声明类（owner）符号
     if (resultType == "void" || resultType.empty()) {
@@ -712,8 +808,9 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
                                methodSymbolKey(owner, m->sigKey), node->location);
     }
-    return true;
+    return;
 }
+
 
 // ==================== 运算符重载（visitBinaryExpr 钩子） ====================
 
