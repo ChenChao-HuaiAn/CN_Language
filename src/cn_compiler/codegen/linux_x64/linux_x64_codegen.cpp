@@ -389,7 +389,10 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
         writer.raw(".globl " + sym);
         writer.raw(".type " + sym + ", @object");
         writer.raw(sym + ":");
-        if (canonStatic == "整128" || canonStatic == "正128") {
+        // 331-a（T52·T50 同族）：128 位判定双口径（IR 名/中文名）——见 arm64 同款；
+        //   原判定只认中文名 → 函数内静态 128 槽 8 字节（读写错值·实测 485≠1005）。
+        if (canonStatic == "整128" || canonStatic == "正128" ||
+            canonStatic == "i128" || canonStatic == "u128") {
             writer.raw("    .quad 0");
             writer.raw("    .quad 0");
         } else if (canonStatic == "浮32") {
@@ -403,11 +406,12 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
             writer.raw("    .zero " + std::to_string(bytes));
         } else {
             // 标量静态：常量初值直存（整型/布尔/字符文本；字符串句柄等不可直存
-            //   形态保持 0——运行期由入口注入物化）
+            //   形态保持 0——运行期由入口注入物化）。
+            // 331-a（T50 根治）：判定改 types::isStaticScalarInitType（三后端单一
+            //   归属）——原 types::isInteger 只认中文名，函数内静态局部（IR 名
+            //   "i64"）判定失败 → 初值恒 .quad 0 静默丢（win 侧宽松判定幸存=分叉）。
             std::string text = "0";
-            if (!initText.empty() && (types::isInteger(canonStatic) ||
-                                      canonStatic == "布尔" ||
-                                      canonStatic == "字符")) {
+            if (!initText.empty() && types::isStaticScalarInitType(canonStatic)) {
                 text = initText;
             }
             writer.raw("    .quad " + text);

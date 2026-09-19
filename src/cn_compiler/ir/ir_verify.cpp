@@ -209,5 +209,58 @@ std::vector<std::string> verifyConstWidths(const IRModule& module) {
     return errors;
 }
 
+// ==================== 操作码合法性（T11 面③·331-a） ====================
+
+namespace {
+
+// 已知操作码判定：switch 全覆盖（无 default）——枚举扩展未在此同步时，
+//   GCC -Wswitch / MSVC C4062 在编译期直接拦截（与三后端 dispatch 同款守卫）。
+bool isKnownOpcode(Opcode op) {
+    switch (op) {
+        case Opcode::ConstInt: case Opcode::ConstFloat:
+        case Opcode::ConstString: case Opcode::ConstBool:
+        case Opcode::Add: case Opcode::Sub: case Opcode::Mul:
+        case Opcode::Div: case Opcode::Mod:
+        case Opcode::BitAnd: case Opcode::BitOr: case Opcode::BitXor:
+        case Opcode::Shl: case Opcode::Shr:
+        case Opcode::Eq: case Opcode::Ne: case Opcode::Lt:
+        case Opcode::Le: case Opcode::Gt: case Opcode::Ge:
+        case Opcode::And: case Opcode::Or: case Opcode::Not:
+        case Opcode::Cast: case Opcode::Copy:
+        case Opcode::Load: case Opcode::Store: case Opcode::Alloca:
+        case Opcode::AddrOf: case Opcode::LoadPtr: case Opcode::StorePtr:
+        case Opcode::FieldAddr: case Opcode::CopyStruct:
+        case Opcode::Jump: case Opcode::Branch:
+        case Opcode::Call: case Opcode::CallIndirect: case Opcode::Return:
+        case Opcode::NewObject: case Opcode::DeleteObject:
+        case Opcode::VirtualCall: case Opcode::VtableAddr:
+        case Opcode::FuncAddr: case Opcode::Phi:
+            return true;
+    }
+    return false;
+}
+
+} // namespace
+
+// 操作码合法性验证（T11 面③·331-a）：全函数全指令 opcode 须属于已知指令集。
+//   违例 = IR 构造层写入非法枚举值（static_cast/未初始化/内存损坏）=编译器内部
+//   错误；若放行到后端会走各后端「未支持操作码」硬错误（面②）——本检查把拦截
+//   前移到发射之前（优化链出口），给出带函数/块位置的诊断且不产部分汇编。
+std::vector<std::string> verifyKnownOpcodes(const IRModule& module) {
+    std::vector<std::string> errors;
+    for (const auto& func : module.functions) {
+        for (const auto& block : func.blocks) {
+            for (const auto& inst : block->instructions) {
+                if (isKnownOpcode(inst.opcode)) continue;
+                errors.push_back(
+                    func.name + ":" + block->label + ": 未知操作码（枚举值 " +
+                    std::to_string(static_cast<int>(inst.opcode)) +
+                    "）——IR 构造层写入非法操作码（编译器内部错误）");
+            }
+        }
+    }
+    return errors;
+}
+
 } // namespace ir
 } // namespace cn_compiler

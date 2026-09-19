@@ -24,6 +24,7 @@ add_executable(cn_unit_tests
     semantic/test_semantic_control.cpp
     semantic/test_function.cpp
     semantic/test_types_full.cpp
+    semantic/test_static_init_type.cpp
     semantic/test_pointer.cpp
     semantic/test_string_semantic.cpp
     semantic/test_string_extra.cpp
@@ -83,6 +84,7 @@ add_executable(cn_unit_tests
     codegen/test_x64_oop.cpp
     codegen/test_x64_vtable.cpp
     codegen/test_reg_alloc.cpp
+    codegen/test_opcode_defense.cpp
     codegen/test_debug_info.cpp
     opt/test_const_fold.cpp
     opt/test_phi_lower.cpp

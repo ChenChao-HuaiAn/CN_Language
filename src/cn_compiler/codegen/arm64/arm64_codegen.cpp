@@ -392,7 +392,11 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
         writer.raw(".globl " + sym);
         writer.raw(".type " + sym + ", %object");
         writer.raw(sym + ":");
-        if (canonStatic == "整128" || canonStatic == "正128") {
+        // 331-a（T52·T50 同族）：128 位判定双口径——函数内静态局部的 stType
+        //   是 IR 名（i128/u128），顶层静态是中文名；原判定只认中文名 → 函数内
+        //   静态 128 落 8 字节标量分支（槽尺寸不足 → 读写错值）。
+        if (canonStatic == "整128" || canonStatic == "正128" ||
+            canonStatic == "i128" || canonStatic == "u128") {
             writer.raw("    .quad 0");
             writer.raw("    .quad 0");
         } else if (canonStatic == "浮32") {
@@ -405,11 +409,12 @@ void Arm64CodeGenerator::emitDataSection(Arm64AsmWriter& writer,
             // 结构体静态：值本体按类型尺寸零初始化（初值由入口注入逐字段写）
             writer.raw("    .zero " + std::to_string(bytes));
         } else {
-            // 标量静态：常量初值直存（整型/布尔/字符文本；字符串句柄等保持 0）
+            // 标量静态：常量初值直存（整型/布尔/字符文本；字符串句柄等保持 0）。
+            // 331-a（T50 根治）：判定改 types::isStaticScalarInitType（三后端单一
+            //   归属）——原 types::isInteger 只认中文名，函数内静态局部（IR 名
+            //   "i64"）判定失败 → 初值恒 .quad 0 静默丢。
             std::string text = "0";
-            if (!initText.empty() && (types::isInteger(canonStatic) ||
-                                      canonStatic == "布尔" ||
-                                      canonStatic == "字符")) {
+            if (!initText.empty() && types::isStaticScalarInitType(canonStatic)) {
                 text = initText;
             }
             writer.raw("    .quad " + text);

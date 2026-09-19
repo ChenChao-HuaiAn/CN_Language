@@ -278,6 +278,15 @@ Operator IRGenerator::baseOpOfCompound(Operator op) {
         default: return Operator::Assign;
     }
 }
+
+// 复合赋值右值宽化（331-a·T51 单一归属）——见 ir.hpp 声明注释。
+ir::IRValue IRGenerator::widenCompoundRhs(const ir::IRValue& rhs,
+                                          const std::string& targetType,
+                                          const SourceLocation& loc) {
+    if (targetType != "i128" && targetType != "u128") return rhs;
+    if (rhs.type == targetType) return rhs;
+    return emitResult(ir::Opcode::Cast, {rhs}, targetType, "", loc);
+}
 std::string IRGenerator::decodeString(const std::string& raw) {
     // 识别前缀（组合前缀 原始多行 / 多行原始 优先）。
     // 注意：中文前缀为 UTF-8 多字节，偏移必须用字节数（substr 按字节切割）：
@@ -486,6 +495,22 @@ std::string IRGenerator::lookupSrcType(const std::string& name) const {
     }
     return "";
 }
+std::vector<std::string> IRGenerator::funcPtrParamsOfCallee(Expr* callee) const {
+    if (callee == nullptr) return {};
+    std::string fnPtrType;
+    if (callee->getType() == NodeType::IdentifierExpr) {
+        fnPtrType = lookupSrcType(static_cast<IdentifierExpr*>(callee)->name);
+    } else if (callee->getType() == NodeType::MemberExpr) {
+        fnPtrType = memberFieldSrcType(static_cast<MemberExpr*>(callee));
+    }
+    if (fnPtrType.empty()) return {};
+    // 泛型实例体：形参类型串里的类型参数替换为实参类型（`函数指针<整32>(T,T)`
+    //   → `...<整32>(整128,整128)`）；非泛型上下文 substGenericType 原样返回
+    //   （幂等，与登记位替换双保险——登记位见 ir_decl.cpp / ir_stmt_decl.cpp）。
+    const std::string substType = substGenericType(fnPtrType);
+    if (!types::isFuncPtr(types::canonical(substType))) return {};
+    return types::funcPtrParamsOf(substType);
+}
 bool IRGenerator::isByRefCapture(const std::string& name) const {
     for (auto it = varStack_.rbegin(); it != varStack_.rend(); ++it) {
         auto found = it->find(name);
@@ -495,7 +520,13 @@ bool IRGenerator::isByRefCapture(const std::string& name) const {
 }
 std::int64_t IRGenerator::ptrElemStride(const std::string& srcType) const {
     if (semantic_ != nullptr && types::isPointer(srcType)) {
-        const std::string elem = types::pointeeOf(srcType);
+        // 331-a（T53 根治）：泛型方法内的指针源码类型是泛型名（如 `T*`）——先做
+        //   单态化替换（T → 实参类型）再取元素宽度；否则 typeSizeOf("T") 兜底 8
+        //   （整64 实例巧合正确·i128 需 16 → `数据[索引]=值` 步进错位 → 堆越界
+        //   段错误·实弹 run_err/m53_01）。非泛型上下文（genericTypeParams_ 为空）
+        //   substGenericType 原样返回=零行为变更。
+        const std::string substType = substGenericType(srcType);
+        const std::string elem = types::pointeeOf(substType);
         // 缺陷③根治（2026-09-03）：步进统一按所指元素 typeSizeOf（基础类型/
         //   结构体/类/枚举/结果——含 i128=16、H8 类元素、Task 2.7 结构体元素）。
         //   原实现仅特判 结构体/类/i128、其余兜底 8——标量指针（整32*/整16*/

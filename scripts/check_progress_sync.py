@@ -4,7 +4,7 @@
 
 背景：`plans/021-任务进度观察表.md` 是全项目任务进度唯一总入口（AGENTS.md §2.2 开工必读、
 §6.3 收尾必更）。本脚本检查「总表文首『最后更新』戳」是否落后于 git 提交信息里的最新轮次——
-落后即提示先更新总表（AGENTS.md §6.3），避免过期总表误导后续会话；同时检查 HANDOFF.md 是否
+落后即提示先更新总表（AGENTS.md §6.3），避免过期总表误导后续会话；同时检查交接.md（原 HANDOFF.md）是否
 仍含总表指针（AGENTS.md §8.3）。
 
 说明：本检查是**启发式自检**（靠提交信息中的轮次字样），不是硬门禁；报警时请人工核对总表。
@@ -21,7 +21,7 @@ from pathlib import Path
 
 仓库根 = Path(__file__).resolve().parent.parent
 总表路径 = 仓库根 / "plans" / "021-任务进度观察表.md"
-交接路径 = 仓库根 / "HANDOFF.md"
+交接路径 = 仓库根 / "交接.md"
 
 中文位 = {"零": 0, "〇": 0, "一": 1, "二": 2, "三": 3, "四": 4,
           "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
@@ -117,11 +117,11 @@ def 主流程() -> int:
               "并刷新文首「最后更新」戳（AGENTS.md §6.3）")
         return 1
 
-    # ④ HANDOFF 指针（仅警告）
+    # ④ 交接（原 HANDOFF）指针（仅警告）
     if 交接路径.exists() and "plans/021" in 交接路径.read_text(encoding="utf-8"):
-        print("[√] HANDOFF.md 含总表指针")
+        print("[√] 交接.md 含总表指针")
     else:
-        print("[!] 警告：HANDOFF.md 未见指向 plans/021 的指针（建议按 AGENTS.md §8.3 恢复）")
+        print("[!] 警告：交接.md 未见指向 plans/021 的指针（建议按 AGENTS.md §8.3 恢复）")
 
     print("结论：总表与 git 最新轮次同步 ✓")
     return 0

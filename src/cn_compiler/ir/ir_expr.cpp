@@ -755,7 +755,9 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
         entry.regId = reg.id;
         entry.uniqueName = unique;
         entry.type = isRefParam ? mapType(types::stripRef(param->typeName)) : reg.type;
-        entry.srcType = param->typeName;
+        // 337-a（T53 家系）：lambda 形参同款——函数指针取完整规范串
+        //   （paramSrcTypeOf 单一归属，与 ir_decl/ir_generic_func 登记点同口径）。
+        entry.srcType = paramSrcTypeOf(param.get());
         entry.byRef = isRefParam;
         varStack_.back()[param->name] = entry;
     }
@@ -788,6 +790,14 @@ void IRGenerator::visitLambdaExpr(LambdaExpr* node) {
     lastLambdaCaptures_ = capturedNames;
     lastLambdaReturnIrType_ = returnIrType;
     lastLambdaCaptureRefs_ = captureRefs;
+    // 337-a（T53 家系）：lambda 用户形参类型列表（闭包调用展开用户实参的 ABI
+    //   定标依据；函数指针形参登记规范串，与声明位同口径）。
+    lastLambdaParamTypes_.clear();
+    for (const auto& param : node->params) {
+        lastLambdaParamTypes_.push_back(param->funcPtr.isFunctionPtr()
+                                            ? param->funcPtr.toString()
+                                            : param->typeName);
+    }
     // 表达式结果 = 匿名函数地址（赋给 自动 变量；调用经 closureInfo_ 展开）。
     // 注意：FuncAddr 须在外层（主函数）块中生成——function_ 已恢复
     lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr", lambdaName, node->location);

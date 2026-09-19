@@ -264,6 +264,22 @@ std::vector<ir::IRValue> IRGenerator::buildCallArgsOop(
     return out;
 }
 
+// i128/u128 形参的窄整实参统一宽化（331-a·T53 根治）——见 ir.hpp 声明。
+void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
+                                const std::vector<std::string>& paramTypes,
+                                const SourceLocation& loc) {
+    for (std::size_t ai = 0; ai < args.size() && ai < paramTypes.size(); ++ai) {
+        const std::string canon = types::canonical(paramTypes[ai]);
+        const bool param128 = (canon == "整128" || canon == "正128");
+        if (param128 && args[ai].type != "i128" && args[ai].type != "u128" &&
+            args[ai].type != "f32" && args[ai].type != "f64") {
+            const std::string kind = (canon == "正128") ? "u128" : "i128";
+            args[ai] = emitResult(ir::Opcode::Cast, {args[ai]}, kind, "",
+                                  loc);
+        }
+    }
+}
+
 // ==================== 类方法调用/构造调用 ====================
 
 // 查询类方法成员（沿继承链；返回方法信息，ownerClass 输出所属类）
@@ -571,6 +587,10 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         if (!m->isStatic) return false;  // 语义层已报错，防御跳过
         std::vector<ir::IRValue> args =
             buildCallArgsOop(node->arguments, node->location);
+        // 331-a（T53 家系·静态方法路径）：i128/u128 形参的窄整实参宽化——同族
+        //   同修（实例方法/虚调用已接·静态方法原缺 → 字面量实参 i64 直传 →
+        //   被调方按 i128 指针解引用 SIGSEGV·探针 p_static 实证）。
+        widenI128Args(args, m->paramTypes, node->location);
         const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
         // 静态方法返回 空类型 时用 emit（不分配结果寄存器）
         if (resultType == "void" || resultType.empty()) {
@@ -626,6 +646,9 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
         args.push_back(thisArg);  // operand[0] = this
         std::vector<ir::IRValue> userArgs =
             buildCallArgsOop(node->arguments, node->location);
+        // 331-a（T53 根治·同族同修）：虚调用路径同样须做 i128/u128 形参宽化
+        //   （buildCallArgsOop 不感知形参类型；此处有 m->paramTypes）。
+        widenI128Args(userArgs, m->paramTypes, node->location);
         for (auto& a : userArgs) args.push_back(a);
         const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
         const std::string extra = owner + "." + methodName;  // "类名.虚方法名"
@@ -645,6 +668,10 @@ bool IRGenerator::handleClassCallExpr(CallExpr* node) {
     args.push_back(thisArg);  // this 为第一个实参（参数位 0）
     std::vector<ir::IRValue> userArgs =
         buildCallArgsForMethod(node, canonObjForMethod, methodName);
+    // 331-a（T53 根治）：i128/u128 形参的窄整实参（字面量等）统一宽化——与构造
+    //   路径同款（单一归属 widenI128Args）；原缺 → 按 i64 值直传 → 被调方按
+    //   i128 指针解引用段错误（实弹 m53_01 容器 追加(100000000000)）。
+    widenI128Args(userArgs, m->paramTypes, node->location);
     for (auto& a : userArgs) args.push_back(a);
     const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
     // Task 6.1（容器库 追加/读取 返回 结果<空类型,整32> 合成结构体）：方法返回

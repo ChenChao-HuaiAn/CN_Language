@@ -110,13 +110,18 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
         IdentifierExpr* ident2 = static_cast<IdentifierExpr*>(node->object.get());
         const std::string st2 = lookupSrcType(ident2->name);
         if (st2.empty() && isInstanceField(ident2->name)) {
-            const std::string fieldType = classFieldType(currentClass_, ident2->name);
+            const std::string fieldTypeRaw = classFieldType(currentClass_, ident2->name);
             ir::IRValue ptr = genExpr(node->object.get());  // 字段指针值
             ir::IRValue index = genExpr(node->index.get());
             if (index.type != "i64") {
                 index = emitResult(ir::Opcode::Cast, {index}, "i64", "", node->location);
             }
             std::int64_t stride = 8;
+            // 331-a（T53 根治）：泛型方法内的字段类型可能是泛型名（`T`/`T*`）——
+            //   先做单态化替换（T → 实参类型）再参与步进/分类判定；否则
+            //   typeSizeOf("T") 兜底 8（整64 实例巧合正确·i128 需 16 → 元素步进
+            //   错位 → 堆越界段错误·实弹 run_err/m53_01）。非泛型上下文原样返回。
+            const std::string fieldType = substGenericType(fieldTypeRaw);
             std::string elemSrc = fieldType;
             bool elemIsStruct = semantic_ != nullptr &&
                                 semantic_->isStructType(types::canonical(fieldType));

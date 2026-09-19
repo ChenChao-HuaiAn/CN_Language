@@ -43,6 +43,7 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
             ir::IRValue current = genExpr(node->target.get());
             ir::Opcode opcode;
             if (mapBinaryOp(baseOpOfCompound(node->op), false, opcode)) {
+                val = widenCompoundRhs(val, ve->type, node->location);  // 331-a T51
                 ir::IRValue combined = emitResult(opcode, {current, val}, ve->type,
                                                   "", node->location);
                 emit(ir::Opcode::StorePtr, {dstAddr, combined}, ir::IRValue(), "",
@@ -143,6 +144,7 @@ bool IRGenerator::assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ide
             ir::Opcode opcode;
             Operator baseOp = baseOpOfCompound(node->op);
             if (mapBinaryOp(baseOp, false, opcode)) {
+                value = widenCompoundRhs(value, irT, node->location);  // 331-a T51
                 value = emitResult(opcode, {current, value}, irT, "", node->location);
             }
         }
@@ -371,6 +373,7 @@ void IRGenerator::identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* 
         ir::Opcode opcode;
         Operator baseOp = baseOpOfCompound(node->op);
         if (mapBinaryOp(baseOp, false, opcode)) {
+            value = widenCompoundRhs(value, targetType, node->location);  // 331-a T51
             ir::IRValue combined = emitResult(opcode, {current, value}, targetType, "",
                                               node->location);
             // A-1（引用参数）：目标为引用参数时复合赋值经 StorePtr 写回

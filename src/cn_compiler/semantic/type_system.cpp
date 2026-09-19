@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 
 #include "cn_compiler/semantic/type_system.hpp"
 
@@ -85,6 +86,19 @@ bool isInteger(const std::string& type) {
     return intRankTable().count(t) > 0;
 }
 
+// 静态标量初值可否直存 .data（331-a·T50 根治·三后端单一归属）——见头文件说明。
+//   IR 名集合=mapType 产物（函数内静态局部）；中文名集合经 canonical+intRankTable
+//   （顶层静态）。i128/u128 不在本判定（走双 .quad 分支）。
+bool isStaticScalarInitType(const std::string& type) {
+    const std::string t = canonical(type);
+    if (intRankTable().count(t) > 0) return true;   // 中文整数族（整8..正128）
+    if (t == "字符" || t == "布尔") return true;
+    static const std::unordered_set<std::string> kIrScalarInts = {
+        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "i1",
+    };
+    return kIrScalarInts.count(t) > 0;
+}
+
 // 是否浮点类型（浮32/浮64/小数）
 bool isFloat(const std::string& type) {
     const std::string t = canonical(type);
@@ -113,6 +127,32 @@ int intRank(const std::string& type) {
 // 是否函数指针类型（函数指针<返回>(参数,...)，Task 2.2 规范化字符串）
 bool isFuncPtr(const std::string& type) {
     return type.rfind("函数指针<", 0) == 0;
+}
+
+// 函数指针类型串 -> 形参类型列表（337-a·T53 家系；原实现散在语义层内部
+//   semantic_internal.hpp 的 funcPtrParams——随本函数下沉为 types:: 唯一实现，
+//   语义层内部工具与 IR 层间接调用点共用一份，消除「同解析两份实现」分叉）。
+//   取首个 '(' 到末个 ')' 之间按顶层逗号切分（函数指针形参为类型名，无嵌套逗号；
+//   嵌套形态如 函数指针<空类型>(整32*) 亦正确）；首尾空白剔除；空列表=非函数指针串。
+std::vector<std::string> funcPtrParamsOf(const std::string& type) {
+    std::vector<std::string> result;
+    const std::size_t lp = type.find('(');
+    const std::size_t rp = type.rfind(')');
+    if (lp == std::string::npos || rp == std::string::npos || rp <= lp) return result;
+    const std::string inner = type.substr(lp + 1, rp - lp - 1);
+    std::size_t pos = 0;
+    while (pos <= inner.size()) {
+        std::size_t comma = inner.find(',', pos);
+        if (comma == std::string::npos) comma = inner.size();
+        const std::string p = inner.substr(pos, comma - pos);
+        const std::size_t b = p.find_first_not_of(" \t");
+        const std::size_t e = p.find_last_not_of(" \t");
+        if (b != std::string::npos && e != std::string::npos) {
+            result.push_back(p.substr(b, e - b + 1));
+        }
+        pos = comma + 1;
+    }
+    return result;
 }
 
 // 能否隐式转换（规格书3.7 + 整型宽化/浮点宽化/整数->浮点）

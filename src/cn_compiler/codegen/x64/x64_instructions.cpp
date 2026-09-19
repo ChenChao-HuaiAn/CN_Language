@@ -970,66 +970,66 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
         case ir::Opcode::ConstBool:
         case ir::Opcode::FuncAddr:
             emitConstLoad(writer, inst);
-            break;
+            return;
         case ir::Opcode::Copy:
             emitCopy(writer, inst);
-            break;
+            return;
         case ir::Opcode::Add:
             if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "add");
             else emitIntBinary(writer, inst, "add");
-            break;
+            return;
         case ir::Opcode::Sub:
             if (inst.type == "i128" || inst.type == "u128") emitInt128Binary(writer, inst);
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "sub");
             else emitIntBinary(writer, inst, "sub");
-            break;
+            return;
         case ir::Opcode::Mul:
             if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "mul");
             else emitIntBinary(writer, inst, "imul");
-            break;
+            return;
         case ir::Opcode::Div:
             if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
             else if (isFloatType(inst.type)) emitFloatBinary(writer, inst, "div");
             else emitDivMod(writer, inst);
-            break;
+            return;
         case ir::Opcode::Mod:
             if (inst.type == "i128" || inst.type == "u128") emitInt128MulDivMod(writer, inst);
             else emitDivMod(writer, inst);
-            break;
+            return;
         // 302-a（T39 根治）：i128/u128 位运算走双半专用发射（原落 64 位通用路径
         //   =低 64 位槽从未被写·消费侧读未初始化实锤）
         case ir::Opcode::BitAnd:
             if (inst.type == "i128" || inst.type == "u128") emitInt128Bitwise(writer, inst);
             else emitIntBinary(writer, inst, "and");
-            break;
+            return;
         case ir::Opcode::BitOr:
             if (inst.type == "i128" || inst.type == "u128") emitInt128Bitwise(writer, inst);
             else emitIntBinary(writer, inst, "or");
-            break;
+            return;
         case ir::Opcode::BitXor:
             if (inst.type == "i128" || inst.type == "u128") emitInt128Bitwise(writer, inst);
             else emitIntBinary(writer, inst, "xor");
-            break;
+            return;
         case ir::Opcode::Shl:
         case ir::Opcode::Shr:
             // 302-a（T39 根治）：i128/u128 移位走完整 128 位发射（mod 128 语义）
             if (inst.type == "i128" || inst.type == "u128") emitInt128Shift(writer, inst);
             else emitShift(writer, inst);
-            break;
+            return;
         case ir::Opcode::Cast:
             emitCast(writer, inst);
-            break;
+            return;
         case ir::Opcode::And:
             emitIntBinary(writer, inst, "and");
-            break;
+            return;
         case ir::Opcode::Or:
             emitIntBinary(writer, inst, "or");
-            break;
+            return;
         case ir::Opcode::Not:
             emitNot(writer, inst);
-            break;
+            return;
         case ir::Opcode::Eq: case ir::Opcode::Ne:
         case ir::Opcode::Lt: case ir::Opcode::Le:
         case ir::Opcode::Gt: case ir::Opcode::Ge:
@@ -1039,14 +1039,14 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
             } else {
                 emitCompare(writer, inst);
             }
-            break;
+            return;
         case ir::Opcode::Load:
         case ir::Opcode::Store:
             emitLoadStore(writer, inst);
-            break;
+            return;
         case ir::Opcode::AddrOf:
             emitAddrOf(writer, inst);
-            break;
+            return;
         case ir::Opcode::CopyStruct:
             // 结构体整体赋值（Task 完善A）：内存拷贝（rep movsb）
             // operands[0]=目标地址(ptr)、operands[1]=源地址(ptr)、extra=字节数
@@ -1059,43 +1059,53 @@ void X64CodeGenerator::emitInstruction(AsmWriter& writer, const ir::IRInstructio
                 writer.line("mov rcx, " + std::to_string(bytes));  // 字节数
                 writer.line("rep movsb");
             }
-            break;
+            return;
         case ir::Opcode::FieldAddr:
             emitFieldAddr(writer, inst);
-            break;
+            return;
         case ir::Opcode::LoadPtr:
         case ir::Opcode::StorePtr:
             emitPtrLoadStore(writer, inst);
-            break;
+            return;
         case ir::Opcode::Alloca:
             // Alloca 仅登记变量槽（无实际指令，槽映射由 registerVarSlot 处理）
             writer.comment("分配变量 " + inst.extra);
-            break;
+            return;
         case ir::Opcode::Call:
         case ir::Opcode::CallIndirect:
             emitCall(writer, inst);
-            break;
+            return;
         case ir::Opcode::Jump:
             // 无条件跳转（块内出现的Jump由终止处理，此处防御性输出）
             writer.line("jmp " + inst.extra);
-            break;
+            return;
         case ir::Opcode::Return:
             // 块内Return由块终止字段处理，此处防御性空实现
-            break;
+            return;
         case ir::Opcode::Phi:
             writer.comment("Phi节点（阶段一预留，无实际汇编）");
-            break;
+            return;
         // 阶段3 OOP（Task 3.1/3.2）：新建对象/删除对象/虚调用/虚表地址
         case ir::Opcode::NewObject:
         case ir::Opcode::DeleteObject:
         case ir::Opcode::VirtualCall:
         case ir::Opcode::VtableAddr:
             emitOopInstruction(writer, inst);
-            break;
-        default:
-            writer.comment("未支持操作码");
-            break;
+            return;
+        case ir::Opcode::Branch:
+            // 条件跳转不进指令序列（由块终止字段 termKind="条件跳转" 处理）；
+            //   显式列出以满足 -Wswitch 全覆盖守卫（T11 面②·331-a）
+            return;
     }
+    // T11 面②（331-a）：未支持操作码 = 编译器内部错误。原「default: 静默 comment」
+    //   会产出缺指令的错误汇编（384 实弹：静默跳过 → 读未初始化栈 → 全 0/垃圾/
+    //   死循环三症状），现改硬错误：报诊断（带源码位置）→ driver 检查 hasErrors
+    //   即中止编译、不写产物。本 switch 无 default——将来新增 opcode 忘记同步本
+    //   后端时，GCC -Wswitch / MSVC C4062 在编译期直接拦截（防线前移到构建期）。
+    diagnostics_.report(Diagnostic::error(
+        inst.loc,
+        std::string("未支持操作码：") + ir::opcodeToString(inst.opcode) +
+            "——IR 指令未在 " + targetPlatform() + " 后端实现（编译器内部错误）"));
 }
 
 } // namespace cn_compiler

@@ -113,7 +113,13 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     // 源码类型（Task 2.4：整32* / 整32[5] 复合类型保留用于元素类型推断/数组槽数）
     // Task 6.1（泛型函数实例化）：T/T*/结果<T,E> 等类型参数替换为实参类型
     //   （交换<整32> 函数体内 `T 临时`、`数据[位置]` 的元素类型推断须用实参类型）
-    const std::string srcTypeRaw = node->funcPtr.isFunctionPtr() ? "函数指针" : node->typeName;
+    // 337-a（T53 家系）：函数指针变量的源码类型登记**完整规范串**
+    //   （`函数指针<返回>(参数,...)`，与语义层同格式）——原登记字面量
+    //   `函数指针`（丢形参列表）＝半截机制：间接调用点无法取得形参类型，
+    //   i128 形参的窄整实参宽化（widenI128Args）无从判定 → 字面量实参按
+    //   i64 直传、被调方按 i128 指针 ABI 解引用 SIGSEGV（探针 p_fnptr）。
+    //   mapType 对 `函数指针<` 前缀已归 ptr（ir.cpp 同款既有特判）＝零回归。
+    const std::string srcTypeRaw = funcPtrAwareSrcType(node->funcPtr, node->typeName);
     const std::string srcType = substGenericType(srcTypeRaw);
     // 类型推断：无显式类型时按初始值（阶段一简化）
     std::string irType = mapType(node->typeName.empty() ? "整32" : srcType);
@@ -337,6 +343,7 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             info.lambdaName = lastLambdaName_;
             info.captures = lastLambdaCaptures_;
             info.returnIrType = lastLambdaReturnIrType_;
+            info.paramTypes = lastLambdaParamTypes_;  // 337-a：用户形参类型（ABI 定标）
             if (isMethodValueInit) {
                 // 绑定方法：捕获实参 = 被绑定对象地址（对象指针 = Load 槽）
                 const std::string& objName =

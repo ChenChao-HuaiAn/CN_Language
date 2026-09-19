@@ -61,6 +61,32 @@ bool IRGenerator::handleResultCtor(CallExpr* node) {
                                   {ir::IRValue::var(temp, "i64")},
                                   "ptr", temp, node->location);
 
+    // ---- C19 根治（338-a·构造端载荷零初始化）----
+    //   结果<T,E> 的 值/错误值 **共用联合体偏移**：`错误(码)` 构造只写判别位 +
+    //   错误值，值槽（T）保持栈垃圾 → 既有的**无条件**释放路径（块出口/跳出/
+    //   赋值位的 preFree 归一化）把垃圾当字符串指针释放——valgrind 8 errors/
+    //   4 contexts 实证（「读源文件」结果变量值槽 uninit → __cn_str_free →
+    //   trackedUnregister）。语义=C 联合体「未激活成员显式置零」＝Rust drop-flag
+    //   「未初始化成员不得参与 drop」的等价实现（free(0) 天然安全）。
+    //   落点=**构造端**（爆炸半径最小）：236-a 与 338-a 两次「释放面条件化」
+    //   方案均致 76 号用例内存失控（条件释放让**赋值位 preFree 跳过释放旧值**
+    //   → O(n²) 泄漏 → 28.9GB OOM 连坐 ZCode），故释放面保持原样零改动。
+    //   性能：仅 **错误路径** 多 ceil(structSize/8) 次 8 字节零写（结果体通常
+    //   16B=2 次）；成功路径零额外指令（值由 emitResultCtorValue 写满）。
+    if (name == "错误") {
+        for (int off = 0; off < structSize; off += 8) {
+            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                          node->location);
+            ir::IRValue addr = base;
+            if (off > 0) {
+                addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
+                                  std::to_string(off), node->location);
+            }
+            emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", "ptr",
+                 node->location);
+        }
+    }
+
     // ---- 写 是否正常/是否某些（结果首字段偏移0；可选首字段偏移0）----
     // 结构体布局（computeLayout）：布尔 1 字节 + 对齐填充后 联合体/值
     // 标志位常量用 i32（mov rcx, 1/0 存 4 字节；.正常/.有值 读取 i1 取低字节，

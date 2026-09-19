@@ -26,6 +26,14 @@ std::string canonical(const std::string& type);
 // 是否整数类型（整8~整128/正8~正128/整数，规范后判断）
 bool isInteger(const std::string& type);
 
+// 静态标量初值可否直存 .data 的类型判定（331-a·T50 根治·三后端单一归属）：
+//   中文类型名（整8..正64/字符/布尔）与 IR 类型名（i8..u64/i1）双口径——
+//   函数内静态局部经 mapType 落 IR 名（"i64"），顶层静态落中文名（"整64"），
+//   原判定只认中文名（isInteger），导致函数内静态标量初值在 linux_x64/arm64
+//   恒 .quad 0（静默丢初值；win 侧用「非浮点文本」宽松判定而幸存=三后端
+//   口径分叉）。i128/u128 不在本判定（走双 .quad 分支），字符串句柄不可直存。
+bool isStaticScalarInitType(const std::string& type);
+
 // 是否浮点类型（浮32/浮64/小数，规范后判断）
 bool isFloat(const std::string& type);
 
@@ -40,6 +48,12 @@ int intRank(const std::string& type);
 
 // 是否函数指针类型（函数指针<返回>(参数,...)，Task 2.2 规范化字符串）
 bool isFuncPtr(const std::string& type);
+
+// 从函数指针类型字符串提取形参类型列表（337-a·T53 家系）：
+//   "函数指针<整32>(整32,整128)" -> ["整32","整128"]；非函数指针串/
+//   无参数列表返回空列表。**唯一实现**——语义层内部工具 funcPtrParams 与
+//   IR 层间接调用点（funcPtrParamsOfCallee）均转发至此（消除同解析两份实现）。
+std::vector<std::string> funcPtrParamsOf(const std::string& type);
 
 // ==================== 指针/数组复合类型（Task 2.4） ====================
 

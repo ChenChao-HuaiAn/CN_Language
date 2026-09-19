@@ -111,6 +111,18 @@ int runPipeline(const std::string& source, const std::string& fileName,
             return 1;
         }
     }
+    // T11 面③（331-a）：操作码合法性机械检查——无条件常开（与 --验证-ir 旗标无关）。
+    //   违例=IR 构造层写入非法操作码（编译器内部错误）；前置拦截使错误在发射前
+    //   暴露（后端 default 硬错误为第二道防线，两道防线同轮落地）。
+    {
+        const std::vector<std::string> opcodeErrors =
+            ir::verifyKnownOpcodes(output.module);
+        if (!opcodeErrors.empty()) {
+            std::cerr << "IR 操作码合法性验证失败：" << std::endl;
+            for (const auto& e : opcodeErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
 
     // 5. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）
     // 阶段3（Task 3.1）：绑定 semantic 指针——OOP 指令（NewObject 虚表指针初始化/

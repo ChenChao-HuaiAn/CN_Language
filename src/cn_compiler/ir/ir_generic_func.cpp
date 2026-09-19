@@ -154,8 +154,13 @@ void IRGenerator::emitGenericFuncInstance(const GenericFuncInstance& gfi) {
     varStack_.emplace_back();
     for (std::size_t pi = 0; pi < node->params.size(); ++pi) {
         const ParamDecl* param = node->params[pi].get();
+        // 337-a（T53 家系）：函数指针形参取完整规范串（paramSrcTypeOf 单一归属，
+        //   与 ir_decl/ir_oop/ir_expr 各登记点同口径）——原取 param->typeName
+        //   （函数指针形态下为空）→ 实例体内间接调用解析不出形参、i128 形参
+        //   字面量实参不宽化（探针 n_generic_fnptr）。
+        const std::string paramSrcRaw = paramSrcTypeOf(param);
         const std::string paramSrc = resolveGenericInstanceType(
-            substGenericType(param->typeName));
+            substGenericType(paramSrcRaw));
         // A-1（引用参数 泛型 T& -> 整32&）：参数槽存被引用左值地址，
         //   体内读写经 byRef 解引用（与普通函数 visitFunctionDecl 一致）
         const bool isRefParam = !param->funcPtr.isFunctionPtr() &&

@@ -355,6 +355,10 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
             }
             lastLambdaReturnIrType_ =
                 mapType(method->type.empty() ? "空类型" : method->type);
+            // 337-a（T53 家系）：用户形参类型列表随闭包登记（闭包调用展开用户
+            //   实参的 ABI 定标依据——i128 形参窄整实参宽化，见 ir_call.cpp 闭包
+            //   调用段）。
+            lastLambdaParamTypes_ = method->paramTypes;
             lastLambdaCaptureRefs_.clear();
             lastLambdaCaptureRefs_.push_back(true);  // 引用捕获（存对象地址）
             lastExpr_ = emitResult(ir::Opcode::FuncAddr, {}, "ptr",

@@ -635,6 +635,39 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         opt::runOptLevel(output.module, options.optLevel);
     }
 
+    // 5.6 机械验证器（T11 面③·331-a：模块路径此前零验证器调用=半截机制，本轮
+    //   与 runPipeline 对称补齐三道防线）：
+    //   ①--验证-ir 旗标：优化前/后 CFG 结构不变量（与单文件路径同款）；
+    //   ②位宽不变量（D31 方案C③·258-a）：无条件常开；
+    //   ③操作码合法性（T11 面③）：无条件常开——违例=IR 构造层写入非法操作码，
+    //     编译期硬错误、绝不放行到后端（后端 default 硬错误为第二道防线）。
+    if (options.verifyIr) {
+        const std::vector<std::string> verErrors = ir::verifyIRModule(output.module);
+        if (!verErrors.empty()) {
+            std::cerr << "IR 验证失败（模块路径·优化后）：" << std::endl;
+            for (const auto& e : verErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
+    {
+        const std::vector<std::string> widthErrors =
+            ir::verifyConstWidths(output.module);
+        if (!widthErrors.empty()) {
+            std::cerr << "IR 位宽不变量验证失败：" << std::endl;
+            for (const auto& e : widthErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
+    {
+        const std::vector<std::string> opcodeErrors =
+            ir::verifyKnownOpcodes(output.module);
+        if (!opcodeErrors.empty()) {
+            std::cerr << "IR 操作码合法性验证失败：" << std::endl;
+            for (const auto& e : opcodeErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
+
     // 6. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）
     std::unique_ptr<Backend> backend = createBackend(
         options.target, diagnostics, &semantic,

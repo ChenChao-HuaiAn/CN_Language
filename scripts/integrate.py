@@ -146,12 +146,19 @@ def 全量门禁(平台: str) -> str | None:
     单测路径 = 仓库根 / "target/build/tests/unit/cn_unit_tests"
     if not 单测路径.exists():
         单测路径 = 仓库根 / "target/build/cn_unit_tests"
+    if not 单测路径.exists():
+        # CMAKE_RUNTIME_OUTPUT_DIRECTORY 指向 target/（CMakeLists 16 行）——产物实际落 target/ 根
+        单测路径 = 仓库根 / "target/cn_unit_tests"
     单测 = 运行([str(单测路径)])
     if 单测.returncode != 0:
         return "单元测试未全过。"
     cn路径 = 仓库根 / "target/build/cn"
-    e2e = 运行([sys.executable, "tests/e2e/run_e2e.py", "--target", 平台, "--cn", str(cn路径)])
-    return None if e2e.returncode == 0 else f"E2E 全量未全绿（--target {平台}）。"
+    if not cn路径.exists():
+        cn路径 = 仓库根 / "target/cn"
+    # 本机平台键（win/linux-x64）→ run_e2e.py 目标名（win-x64/linux-arm64/linux-x86_64）
+    目标 = {"win": "win-x64", "linux-x64": "linux-x86_64", "linux-arm64": "linux-arm64"}[平台]
+    e2e = 运行([sys.executable, "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "8"])
+    return None if e2e.returncode == 0 else f"E2E 全量未全绿（--target {目标}）。"
 
 
 def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argparse.Namespace) -> tuple[bool, str | None, str | None]:
