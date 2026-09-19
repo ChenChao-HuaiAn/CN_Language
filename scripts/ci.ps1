@@ -7,6 +7,13 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $root
 
+# 449-a：全量门禁串行锁（AGENTS.md §8.8）——同机多 worktree 并行时至多一个全量门禁在飞
+# （防 CPU/内存互抢：78/79 OOM 前科）。锁=主树 target/gate.lock（跨 worktree 共享），
+# 阻塞等待至获得；finally 释放（Ctrl+C/失败路径均覆盖；进程被杀则 4h 陈锁自动接管）。
+python scripts/gate_lock.py acquire
+if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 全量门禁锁等待超时（gate_lock status 查看）" -ForegroundColor Red; exit 1 }
+try {
+
 Write-Host "[CI] 0.2/4 门禁清单审计（检查网第 9 层·plans/026 §2.6·新门禁必须注册）..." -ForegroundColor Cyan
 python scripts/check_registry_audit.py
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 门禁清单审计失败" -ForegroundColor Red; exit 1 }
@@ -56,3 +63,7 @@ if ($Coverage) {
 }
 
 Write-Host "[CI] 4/4 全部门禁通过" -ForegroundColor Green
+
+} finally {
+    python scripts/gate_lock.py release
+}

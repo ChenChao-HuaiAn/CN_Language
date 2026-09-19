@@ -134,13 +134,16 @@ def 快速门禁(文件们: list[str]) -> str | None:
 def 全量门禁(平台: str) -> str | None:
     """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。"""
     if 平台 == "win":
+        # 449-a：gate_lock 串行锁在 ci.ps1 内部（acquire/finally-release）——此处勿再嵌套（死锁）。
         结果 = 运行(["powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/ci.ps1"])
         return None if 结果.returncode == 0 else "ci.ps1 未过（构建/单测/E2E 任一红）。"
     # Linux：分步（单位机 linux-arm64 / 深度机 linux-x64；E2E 须显式 --target——默认 win-x64 会报错）
+    # 449-a：构建/单测/E2E 三段经 gate_lock 串行锁（同机多 worktree 并行防互抢·AGENTS.md §8.8）。
     配置 = 运行(["cmake", "-S", ".", "-B", "target/build"])
     if 配置.returncode != 0:
         return "cmake 配置失败。"
-    构建 = 运行(["cmake", "--build", "target/build", "--parallel"])
+    构建 = 运行([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--",
+               "cmake", "--build", "target/build", "--parallel"])
     if 构建.returncode != 0:
         return "构建失败（零警告要求——见编译输出）。"
     单测路径 = 仓库根 / "target/build/tests/unit/cn_unit_tests"
@@ -149,7 +152,7 @@ def 全量门禁(平台: str) -> str | None:
     if not 单测路径.exists():
         # CMAKE_RUNTIME_OUTPUT_DIRECTORY 指向 target/（CMakeLists 16 行）——产物实际落 target/ 根
         单测路径 = 仓库根 / "target/cn_unit_tests"
-    单测 = 运行([str(单测路径)])
+    单测 = 运行([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--", str(单测路径)])
     if 单测.returncode != 0:
         return "单元测试未全过。"
     cn路径 = 仓库根 / "target/build/cn"
@@ -157,7 +160,8 @@ def 全量门禁(平台: str) -> str | None:
         cn路径 = 仓库根 / "target/cn"
     # 本机平台键（win/linux-x64）→ run_e2e.py 目标名（win-x64/linux-arm64/linux-x86_64）
     目标 = {"win": "win-x64", "linux-x64": "linux-x86_64", "linux-arm64": "linux-arm64"}[平台]
-    e2e = 运行([sys.executable, "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "8"])
+    e2e = 运行([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--", sys.executable,
+               "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "8"])
     return None if e2e.returncode == 0 else f"E2E 全量未全绿（--target {目标}）。"
 
 

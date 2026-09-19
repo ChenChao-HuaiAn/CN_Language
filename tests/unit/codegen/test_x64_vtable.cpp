@@ -84,9 +84,9 @@ TEST(X64VtableTest, VirtualCallThisParamOffset) {
     const std::string asmText = genAsmWithInst(vc);
     // this 入 rcx
     EXPECT_TRUE(asmContains(asmText, "mov rcx, [rbp-16]"));
-    // 实参 i32 装载：mov eax + movsxd rdx（第 1 参数位 = rdx）
-    EXPECT_TRUE(asmContains(asmText, "mov eax, [rbp-24]"));
-    EXPECT_TRUE(asmContains(asmText, "movsxd rdx, eax"));
+    // 实参 i32 装载：mov r10d 中转 + movsxd rdx（第 1 参数位 = rdx·437-a T67 根治后形态·断言迁移经用户批准 2026-09-19·asm 实测复核 mov r10d,[rbp-24]+movsxd rdx,r10d）
+    EXPECT_TRUE(asmContains(asmText, "mov r10d, [rbp-24]"));
+    EXPECT_TRUE(asmContains(asmText, "movsxd rdx, r10d"));
 }
 
 // 虚调用返回浮点：结果经 xmm0 读回结果槽

@@ -372,11 +372,16 @@ void X64CodeGenerator::emitCopy(AsmWriter& writer, const ir::IRInstruction& inst
         // 浮点 Copy（T25 win 侧根治·297-b）：xmm 中转完整宽度搬运——
         //   原实现 f64 落入 mem-to-mem 中转分支用 eax（32 位·is64 不含浮点）
         //   =高 32 位丢（家机 298-a asm 铁证：mov eax,[rbp-80]; mov [rbp-104],eax
-        //   →打印读半槽 0.000000）。movsd（f64）/movss（f32）按类型全宽搬运，
-        //   src/dst 为 mem 或 xmm 寄存器文本均合法。
+        //   →打印读半槽 0.000000）。movsd（f64）/movss（f32）按类型全宽搬运。
+        // 437-a（406 O3 长期红根治·A2070 第三代漏点）：内存操作数**必须**带
+        //   qword/dword ptr（原注释「mem 或 xmm 文本均合法」=误·MASM 无法推断
+        //   宽度→A2070；406 用例 -O3 浮点 Copy 经槽到槽路径 904/905 行实证）。
         const std::string fpOp = (copySrcType == "f32") ? "movss" : "movsd";
-        writer.line(fpOp + " xmm0, " + src);
-        writer.line(fpOp + " " + dst + ", xmm0");
+        const std::string fmp = (copySrcType == "f32") ? "dword ptr " : "qword ptr ";
+        const bool fSrcMem = !src.empty() && src[0] == '[';
+        const bool fDstMem = !dst.empty() && dst[0] == '[';
+        writer.line(fpOp + " xmm0, " + (fSrcMem ? fmp : "") + src);
+        writer.line(fpOp + " " + (fDstMem ? fmp : "") + dst + ", xmm0");
         return;
     }
     const bool srcMem = !src.empty() && src[0] == '[';
@@ -844,12 +849,29 @@ void X64CodeGenerator::emitCall(AsmWriter& writer, const ir::IRInstruction& inst
             const std::string xmm = "xmm" + std::to_string(regIdx);
             writer.line(load + " " + xmm + ", " + mp + op);
             // 浮点位模式复制到同参数位整型寄存器（变参 va_arg 读取路径，MSVC 惯例）
-            writer.line("movq " + parameterRegister(regIdx) + ", " + xmm);
+            // 437-a（A2070 根治）：参数位 ≥4 = 栈传——parameterRegister 返回 [rbp+N]
+            //   内存槽：movq 内存目标须带 qword ptr（缺=A2070·431 用例 win 专属红实证）
+            {
+                const std::string reg = parameterRegister(regIdx);
+                if (!reg.empty() && reg[0] == '[') {
+                    writer.line("movq qword ptr " + reg + ", " + xmm);
+                } else {
+                    writer.line("movq " + reg + ", " + xmm);
+                }
+            }
         } else if (argType == "i32" || argType == "i1") {
             std::string reg = parameterRegister(regIdx);
             // movsxd 需要先装入 eax：mov eax, op; movsxd rcx, eax
             writer.line("mov eax, " + shrunkOperand("i32", op));
-            writer.line("movsxd " + reg + ", eax");
+            // 437-a（A2070 根治）：parameterRegister ≥4 = [rbp+N] 内存槽——movsxd 目标
+            //   不能是内存（编码不存在）：经 rax 64 位中转写槽（8 字节完整写·对齐
+            //   寄存器路径形态）
+            if (!reg.empty() && reg[0] == '[') {
+                writer.line("movsxd r10, eax"); // 437-a：r10 中转（rax 在虚调用保存函数指针·用 rax 会破坏 call rax）
+                writer.line("mov " + reg + ", r10");
+            } else {
+                writer.line("movsxd " + reg + ", eax");
+            }
         } else if (argType == "u32") {
             // 无符号32位实参：mov 零扩展（写 eax 清零高32位，直接 mov rcx 读槽高位垃圾
             // 会错；movsxd 符号扩展会把 0x80000000 以上位模式扩展成负数——缺陷修复

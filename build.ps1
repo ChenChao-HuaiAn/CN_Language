@@ -32,7 +32,7 @@ Write-Host "[CN] 使用 cmake: $cmake" -ForegroundColor Cyan
 # ---- 2. 配置 + 构建（零警告 /W4 /WX 由 CMakeLists 保证） ----
 & $cmake -S . -B target/build
 if ($LASTEXITCODE -ne 0) { Write-Host "[CN] CMake 配置失败" -ForegroundColor Red; exit $LASTEXITCODE }
-& $cmake --build target/build --config $Config
+& $cmake --build target/build --config $Config --parallel
 if ($LASTEXITCODE -ne 0) { Write-Host "[CN] 构建失败（编译警告会被 /WX 拦截）" -ForegroundColor Red; exit $LASTEXITCODE }
 Write-Host "[CN] 构建成功: target/$Config/cn.exe" -ForegroundColor Green
 
