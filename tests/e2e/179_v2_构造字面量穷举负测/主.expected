@@ -1,0 +1,3 @@
+[parse] 结构体 '点' 初始化缺少字段 'y'（行=10）
+[p6h] 已解析: target/audit2/v2src179_v2/主.cn 节点=17
+[parse] 语法错误 1 个，中止编译（不产 IR/asm）
