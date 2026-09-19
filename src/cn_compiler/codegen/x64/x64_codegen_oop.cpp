@@ -253,26 +253,50 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
         const std::string& op = operandText(inst.operands[1 + i]);
         const std::string& argType = inst.operands[1 + i].type;
         const int regIdx = static_cast<int>(i + 1);  // 参数位：this 占 0
+        // 437-a（win 虚调用栈参数根治）：参数位 ≥4 = 栈传——调用者写锚须 [rsp+32+…]
+        //   （sub rsp 后当前 rsp 为基准；被调方入口读 [rbp+48+…]≡caller rsp+32 同址）。
+        //   原 parameterRegister 的 [rbp+48] 是**被调方**锚——在调用者视角错位 96 字节
+        //   （431 5 参虚调用段错误实证·rc=139；普通调用路径 instructions.cpp 的 [rsp+32]
+        //   锚为正确先例）；寄存器位（<4）仍走 parameterRegister。
+        const std::string 参位 = (regIdx >= 4)
+            ? "[rsp+" + std::to_string(32 + (regIdx - 4) * 8) + "]"
+            : parameterRegister(regIdx);
         if (isFloatType(argType)) {
             const std::string load = (argType == "f64") ? "movsd" : "movss";
             const std::string mp = (argType == "f64") ? "qword ptr " : "dword ptr ";
             const std::string xmm = "xmm" + std::to_string(regIdx);
             writer.line(load + " " + xmm + ", " + mp + op);
-            // 变参兼容：位模式复制到同参数位整型寄存器（MSVC 惯例）
-            writer.line("movq " + parameterRegister(regIdx) + ", " + xmm);
+            // 变参兼容：位模式复制到同参数位整型寄存器（MSVC 惯例）；栈传位 movq
+            //   内存目标须带 qword ptr（A2070·431 汇编失败实证）
+            if (regIdx >= 4) {
+                writer.line("movq qword ptr " + 参位 + ", " + xmm);
+            } else {
+                writer.line("movq " + 参位 + ", " + xmm);
+            }
         } else if (argType == "i32" || argType == "i1") {
-            writer.line("mov eax, " + shrunkOperand("i32", op));
-            writer.line("movsxd " + parameterRegister(regIdx) + ", eax");
+            // 437-a（T67 根治·win 带参虚调用段错误真根因）：i32 装载**不可经 eax**——
+            //   `mov eax, src` 写 eax=清零 rax 高 32 位，而 rax 正保存着函数指针
+            //   （第 3 步 [rax+槽位] 取得）→ call rax 跳被截断地址=段错误。
+            //   实证：V11 浮点参（xmm0·不碰 rax）绿 vs 整数参（rdx）崩；0 参绿（无装载）。
+            //   经 **r10d** 中转（volatile·不涉 rax）——寄存器位/栈位统一。
+            writer.line("mov r10d, " + shrunkOperand("i32", op));
+            if (regIdx >= 4) {
+                writer.line("movsxd r10, r10d");
+                writer.line("mov " + 参位 + ", r10");
+            } else {
+                writer.line("movsxd " + 参位 + ", r10d");
+            }
         } else if (argType == "u32") {
-            writer.line("mov eax, " + shrunkOperand("i32", op));
-            writer.line("mov " + parameterRegister(regIdx) + ", rax");
+            // 437-a：同上·经 r10d 零扩展（写 r10d 清零高 32=无符号语义）
+            writer.line("mov r10d, " + shrunkOperand("i32", op));
+            writer.line("mov " + 参位 + ", r10");
         } else {
             // i64/ptr：64 位直接 mov（指针常量 lea 取地址）
             const ir::IRValue& av = inst.operands[1 + i];
             if (av.isConstant && argType == "ptr") {
-                writer.line("lea " + parameterRegister(regIdx) + ", " + op);
+                writer.line("lea " + 参位 + ", " + op);
             } else {
-                writer.line("mov " + parameterRegister(regIdx) + ", " + op);
+                writer.line("mov " + 参位 + ", " + op);
             }
         }
     }
