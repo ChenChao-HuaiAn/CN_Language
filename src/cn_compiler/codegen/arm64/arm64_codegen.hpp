@@ -246,6 +246,12 @@ private:
     //   未分配/未启用 -> fallback（调用方原默认写入槽，产物逐字节不变）
     std::string resultTargetReg(int regId, const std::string& fallback) const;
 
+    // D8（457-a）操作数源寄存器直读：已分配 -> 返回物理寄存器名（零发射·
+    //   AArch64 三地址源操作数可为任意寄存器，免「mov x9, x21」装载中转）；
+    //   未分配/常量/变量槽 -> 装载到 fallback 并返回之（原路径）
+    std::string operandSourceReg(Arm64AsmWriter& writer, const ir::IRValue& operand,
+                                 const std::string& fallback);
+
     // 虚拟寄存器ID -> 栈槽偏移（-8*id-8，寄存器槽区紧贴x29）
     //   已分配到物理寄存器时返回 0——该槽弃用（取值/落值走物理寄存器），
     //   返回 0 使调用方（取地址/取槽文本等旁路）退化为无害空操作。
