@@ -4,7 +4,7 @@
 166-a 固化（实证：4 个赋值密集小用例全过、v2 全树暴露偏差——小样本不足以证明等价）。
 用法：python scripts/refactor_parity.py <基线cn.exe> <新cn.exe>
 覆盖：v2 全树 + v2 树全部 .cn + 赋值形态密集 E2E 用例。
-注意：与其它使用 target/v2asm.asm 的验证脚本互斥串行（并发=产物污染，见 lessons 166 段）。
+注意：与其它使用 target/v2asm.asm 的验证脚本互斥串行（并发=产物污染，见 项目记忆/教训.md 166 段）。
 """
 import hashlib
 import os

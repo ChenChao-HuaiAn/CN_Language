@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """共享文档结构门禁（AGENTS.md §8.3「共享文档编辑六纪律」的机械自检；只读，不改任何文件）。
 
-背景：HANDOFF.md 曾因「锚点局部插入＋旧文保留」的编辑方式逐轮翻倍（642 处重复标题、9268 行），
-本脚本在提交前拦截同类结构缺陷——健康态 HANDOFF.md 约 140 行（三机节各 ~40 行）。
+背景：交接.md（原 HANDOFF.md·425-a 改名）曾因「锚点局部插入＋旧文保留」的编辑方式逐轮翻倍（642 处重复标题、9268 行），
+本脚本在提交前拦截同类结构缺陷——健康态约 140 行（三机节各 ~40 行）。
 
 检查面：
-  HANDOFF.md  — ① 三机节齐全 ② 每机节「### 一、」恰好 1 次（一分区一记录）
+  交接.md   — ① 三机节齐全 ② 每机节「### 一、」恰好 1 次（一分区一记录）
                 ③ 节内标题无重复 ④ 无行中粘连标题（「正文。### 标题」= 事故签名）
                 ⑤ 全文 ≤400 行、每机节 ≤120 行
   更新日志.md — ① 三机节齐全 ② 无行中粘连标题 ③ 全文 ≤400 行
@@ -81,11 +81,11 @@ def 按二号标题分节(行们: list[str]) -> dict[str, list[str]]:
 
 
 def 查交接() -> list[str]:
-    """HANDOFF.md 结构检查，返回问题清单（空=通过）。"""
+    """交接.md（原 HANDOFF.md）结构检查，返回问题清单（空=通过）。"""
     问题: list[str] = []
-    路径 = 仓库根 / "HANDOFF.md"
+    路径 = 仓库根 / "交接.md"
     if not 路径.exists():
-        return ["HANDOFF.md 缺失"]
+        return ["交接.md 缺失（原 HANDOFF.md·425-a 改名）"]
     行们 = 路径.read_text(encoding="utf-8").splitlines()
     节s = 按二号标题分节(行们)
     机器节 = {(名, 标题): 内容
@@ -95,7 +95,7 @@ def 查交接() -> list[str]:
     # ① 三机节齐全
     for 名 in 机器关键词:
         if not any(名 == 短名 for (短名, _标题) in 机器节):
-            问题.append(f"① HANDOFF.md 缺「{名}」分节")
+            问题.append(f"① 交接.md 缺「{名}」分节")
 
     # ②③⑤ 逐机节检查
     for (名, 标题), 内容 in 机器节.items():
@@ -114,12 +114,12 @@ def 查交接() -> list[str]:
     # ④ 全文粘连标题
     粘连 = 粘连行清单(行们)
     if 粘连:
-        问题.append("④ HANDOFF.md 存在行中粘连标题（六纪律 3 事故签名，编辑锚点必选错）：\n"
+        问题.append("④ 交接.md 存在行中粘连标题（六纪律 3 事故签名，编辑锚点必选错）：\n"
                     + "\n".join(粘连[:6]) + (f"\n      …等共 {len(粘连)} 行" if len(粘连) > 6 else ""))
 
     # ⑤ 全文行数
     if len(行们) > HANDOFF_总行上限:
-        问题.append(f"⑤ HANDOFF.md 全文 {len(行们)} 行 > 上限 {HANDOFF_总行上限}")
+        问题.append(f"⑤ 交接.md 全文 {len(行们)} 行 > 上限 {HANDOFF_总行上限}")
     return 问题
 
 
@@ -264,7 +264,7 @@ def 查看板() -> list[str]:
         行 = 状态行们[0]
         if len(行) > 看板_行宽上限:
             问题.append(f"看板「{名}」行 {len(行)} 字符 > 上限 {看板_行宽上限}"
-                        "（状态板行=状态+任务名+基线+时间+指针；总结/教训进 plans/025 回填与 lessons）")
+                        "（状态板行=状态+任务名+基线+时间+指针；总结/教训进 plans/025 回填与 项目记忆/教训.md）")
         列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
         if 列们[0] == "⬜" and any(列 != "-" for 列 in 列们[1:]):
             问题.append(f"看板「{名}」为空闲态（⬜）但行内残留内容（空闲行=各列「-」——"
@@ -417,22 +417,54 @@ def 查采样日志() -> list[str]:
     return 问题
 
 
+
+def 查棘轮() -> list[str]:
+    """文档棘轮基线检查（425-a 立·AGENTS.md §6.7 文档生命周期）：登记文件当前行数 > 基线 → 拦截。
+    基线只紧不松：收割/滚转轮随写集收紧基线值；放宽须在提交信息说明理由。"""
+    问题: list[str] = []
+    基线文件 = 仓库根 / "scripts" / "文档棘轮基线.txt"
+    if not 基线文件.exists():
+        return ["scripts/文档棘轮基线.txt 缺失（425-a 文档生命周期门禁依赖·AGENTS.md §6.7）"]
+    for 行 in 基线文件.read_text(encoding="utf-8").splitlines():
+        行 = 行.strip()
+        if not 行 or 行.startswith("#"):
+            continue
+        路径文本, sep, 数文本 = 行.replace("：", ":").partition(":")
+        if not sep:
+            问题.append(f"棘轮基线行格式异常（应为 路径: 行数）：{行[:60]}")
+            continue
+        try:
+            上限 = int(数文本.strip())
+        except ValueError:
+            问题.append(f"棘轮基线行数非整数：{行[:60]}")
+            continue
+        目标 = 仓库根 / 路径文本.strip()
+        if not 目标.exists():
+            问题.append(f"棘轮登记文件缺失：{路径文本.strip()}")
+            continue
+        实际 = len(目标.read_text(encoding="utf-8").splitlines())
+        if 实际 > 上限:
+            问题.append(f"棘轮超限：{路径文本.strip()} 当前 {实际} 行 > 基线 {上限} 行——"
+                        f"先滚转至 项目记忆/归档/ 再追加（AGENTS.md §6.7·状态/事件分层）")
+    return 问题
+
+
 def 主流程() -> int:
     print("=== 共享文档结构门禁（六纪律机械自检，只读）===")
-    交接路径 = 仓库根 / "HANDOFF.md"
+    交接路径 = 仓库根 / "交接.md"
     if 交接路径.exists():
-        print("  HANDOFF.md 各节行数：")
+        print("  交接.md（原 HANDOFF.md）各节行数：")
         for 标题, 内容 in 按二号标题分节(交接路径.read_text(encoding="utf-8").splitlines()).items():
             print(f"    {标题[:44]}：{len(内容)} 行")
 
     全部问题 = (查交接() + 查日志() + 查总表() + 查看板() + 查重复节标题() + 查冲突标记()
-                + 查采样日志() + 查开工自检())
+                + 查采样日志() + 查开工自检() + 查棘轮())
     if 全部问题:
         print(f"\n结论：结构缺陷 {len(全部问题)} 项，禁止提交 ✗")
         for 问题 in 全部问题:
             print("[×] " + 问题)
         return 1
-    print("\n结论：HANDOFF.md / 更新日志.md / plans/021 / 三机任务看板（含开工自检）/ 采样日志 结构正常 ✓")
+    print("\n结论：交接.md / 更新日志.md / plans/021 / 三机任务看板（含开工自检）/ 采样日志 / 文档棘轮 结构正常 ✓")
     return 0
 
 

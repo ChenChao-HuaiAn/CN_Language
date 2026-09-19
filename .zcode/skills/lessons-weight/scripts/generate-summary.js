@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * lessons.md 摘要生成脚本
+ * 教训.md（项目记忆/教训.md）摘要生成脚本
  * 
  * 用法：
- *   node generate-summary.js <lessons-file-path> [--output <output-path>]
+ *   node generate-summary.js <教训文件路径·项目记忆/教训.md> [--output <output-path>]
  * 
  * 输出：Markdown格式的权重摘要
  */
@@ -96,7 +96,7 @@ function main() {
   const args = process.argv.slice(2);
   
   if (args.length === 0) {
-    console.error('用法: node generate-summary.js <lessons-file-path> [--output <output-path>]');
+    console.error('用法: node generate-summary.js <教训文件路径·项目记忆/教训.md> [--output <output-path>]');
     process.exit(1);
   }
   
