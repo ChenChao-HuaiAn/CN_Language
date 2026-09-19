@@ -258,7 +258,7 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
         //   原 parameterRegister 的 [rbp+48] 是**被调方**锚——在调用者视角错位 96 字节
         //   （431 5 参虚调用段错误实证·rc=139；普通调用路径 instructions.cpp 的 [rsp+32]
         //   锚为正确先例）；寄存器位（<4）仍走 parameterRegister。
-        const std::string 参位 = (regIdx >= 4)
+        const std::string paramSlot = (regIdx >= 4)
             ? "[rsp+" + std::to_string(32 + (regIdx - 4) * 8) + "]"
             : parameterRegister(regIdx);
         if (isFloatType(argType)) {
@@ -269,9 +269,9 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             // 变参兼容：位模式复制到同参数位整型寄存器（MSVC 惯例）；栈传位 movq
             //   内存目标须带 qword ptr（A2070·431 汇编失败实证）
             if (regIdx >= 4) {
-                writer.line("movq qword ptr " + 参位 + ", " + xmm);
+                writer.line("movq qword ptr " + paramSlot + ", " + xmm);
             } else {
-                writer.line("movq " + 参位 + ", " + xmm);
+                writer.line("movq " + paramSlot + ", " + xmm);
             }
         } else if (argType == "i32" || argType == "i1") {
             // 437-a（T67 根治·win 带参虚调用段错误真根因）：i32 装载**不可经 eax**——
@@ -282,21 +282,21 @@ void X64CodeGenerator::emitVirtualCall(AsmWriter& writer, const ir::IRInstructio
             writer.line("mov r10d, " + shrunkOperand("i32", op));
             if (regIdx >= 4) {
                 writer.line("movsxd r10, r10d");
-                writer.line("mov " + 参位 + ", r10");
+                writer.line("mov " + paramSlot + ", r10");
             } else {
-                writer.line("movsxd " + 参位 + ", r10d");
+                writer.line("movsxd " + paramSlot + ", r10d");
             }
         } else if (argType == "u32") {
             // 437-a：同上·经 r10d 零扩展（写 r10d 清零高 32=无符号语义）
             writer.line("mov r10d, " + shrunkOperand("i32", op));
-            writer.line("mov " + 参位 + ", r10");
+            writer.line("mov " + paramSlot + ", r10");
         } else {
             // i64/ptr：64 位直接 mov（指针常量 lea 取地址）
             const ir::IRValue& av = inst.operands[1 + i];
             if (av.isConstant && argType == "ptr") {
-                writer.line("lea " + 参位 + ", " + op);
+                writer.line("lea " + paramSlot + ", " + op);
             } else {
-                writer.line("mov " + 参位 + ", " + op);
+                writer.line("mov " + paramSlot + ", " + op);
             }
         }
     }
