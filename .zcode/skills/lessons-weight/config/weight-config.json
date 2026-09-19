@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "description": "lessons.md 权重计算配置",
+  "description": "教训.md（项目记忆/教训.md）权重计算配置",
   "baseWeights": {
     "设计缺陷": 10,
     "任务未完成": 9,

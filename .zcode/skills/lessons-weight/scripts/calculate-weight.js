@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
 /**
- * lessons.md 权重计算脚本
+ * 教训.md（项目记忆/教训.md）权重计算脚本
  * 
  * 用法：
- *   node calculate-weight.js <lessons-file-path>
+ *   node calculate-weight.js <教训文件路径·项目记忆/教训.md>
  *   node calculate-weight.js --entry "设计缺陷|描述|原因|解决|预防"
  * 
  * 输出：JSON格式的权重计算结果
@@ -92,7 +92,7 @@ function parseEntryFromArg(entryStr) {
 }
 
 /**
- * 解析 lessons.md 文件内容
+ * 解析 教训.md 文件（项目记忆/教训.md）内容
  * @param {string} content - 文件内容
  * @returns {Array} - 解析后的记录数组
  */
@@ -231,7 +231,7 @@ function main() {
   
   if (args.length === 0) {
     console.error('用法:');
-    console.error('  node calculate-weight.js <lessons-file-path>');
+    console.error('  node calculate-weight.js <教训文件路径·项目记忆/教训.md>');
     console.error('  node calculate-weight.js --entry "类型|描述|原因|解决|预防"');
     process.exit(1);
   }
