@@ -132,10 +132,32 @@ def 快速门禁(文件们: list[str]) -> str | None:
 
 
 def 全量门禁(平台: str) -> str | None:
-    """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。"""
+    """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。
+
+    并行红串行复验（447-a·机制级工具改进）：runner 隔离键欠账（同编号前缀不同主体名的
+    _v2 用例共享 v2src/v2work 产物目录·274-a 口径·根治=329-D12 待集成）使 --jobs 8 并行
+    下互踩用例稳定红而单跑必过（非代码红）。ci.ps1/E2E 未过时分步复验：构建或单测红=真
+    失败；E2E 串行复验（--jobs 1）绿=并行互踩嫌疑→警告放行（要求看板通告披露）；串行仍
+    红=真失败。329-D12 集成后互踩根除，本机制触发频率应归零（届时评估移除）。
+    """
     if 平台 == "win":
         结果 = 运行(["powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/ci.ps1"])
-        return None if 结果.returncode == 0 else "ci.ps1 未过（构建/单测/E2E 任一红）。"
+        if 结果.returncode == 0:
+            return None
+        print("  [复验] ci.ps1 未过——分步复验区分真红与并行互踩（447-a 机制）")
+        构建 = 运行(["cmake", "--build", "target/build", "--config", "Debug"])
+        if 构建.returncode != 0:
+            return "构建失败（零警告要求——见编译输出）。"
+        单测 = 运行([str(仓库根 / "target/Debug/cn_unit_tests.exe")])
+        if 单测.returncode != 0:
+            return "单元测试未全过。"
+        串行 = 运行([sys.executable, "tests/e2e/run_e2e.py",
+                     "--cn", str(仓库根 / "target/Debug/cn.exe"), "--jobs", "1"])
+        if 串行.returncode != 0:
+            return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
+        print("  [复验] 并行红+串行绿=runner 产物互踩嫌疑（274-a 隔离键欠账·非代码红）"
+              "——放行；须在看板通告段披露。")
+        return None
     # Linux：分步（单位机 linux-arm64 / 深度机 linux-x64；E2E 须显式 --target——默认 win-x64 会报错）
     配置 = 运行(["cmake", "-S", ".", "-B", "target/build"])
     if 配置.returncode != 0:
@@ -158,7 +180,15 @@ def 全量门禁(平台: str) -> str | None:
     # 本机平台键（win/linux-x64）→ run_e2e.py 目标名（win-x64/linux-arm64/linux-x86_64）
     目标 = {"win": "win-x64", "linux-x64": "linux-x86_64", "linux-arm64": "linux-arm64"}[平台]
     e2e = 运行([sys.executable, "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "8"])
-    return None if e2e.returncode == 0 else f"E2E 全量未全绿（--target {目标}）。"
+    if e2e.returncode == 0:
+        return None
+    print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制）")
+    串行 = 运行([sys.executable, "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "1"])
+    if 串行.returncode != 0:
+        return f"E2E 串行复验仍未全绿（--target {目标}·非并行互踩——真红，禁止集成）。"
+    print("  [复验] 并行红+串行绿=runner 产物互踩嫌疑（274-a 隔离键欠账·非代码红）"
+          "——放行；须在看板通告段披露。")
+    return None
 
 
 def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argparse.Namespace) -> tuple[bool, str | None, str | None]:
