@@ -1,0 +1,3 @@
+[parse] 行 2: 裸分号空语句——预期表达式
+[p6h] 已解析: target/audit2/v2src460/主.cn 节点=5
+[parse] 语法错误 1 个，中止编译（不产 IR/asm）
