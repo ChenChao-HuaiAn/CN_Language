@@ -1,0 +1,4 @@
+[parse] 行 3: 当 体预期 '{'
+[parse] 行 3: 裸分号空语句——预期表达式
+[p6h] 已解析: target/audit2/v2src461/主.cn 节点=13
+[parse] 语法错误 2 个，中止编译（不产 IR/asm）
