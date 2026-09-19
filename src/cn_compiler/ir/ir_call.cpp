@@ -33,7 +33,25 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
     // 时指令，纯编译期标记语义）。resolvedType 非空且 callee 为 转移 双重判定，
     // 防用户经占位注册签名外的同名调用误入。
     if (SemanticAnalyzer::isTransferCall(node) && !node->resolvedType.empty()) {
-        (void)genExpr(node->arguments[0].get());  // lastExpr_=实参求值结果（值交接）
+        (void)genExpr(node->arguments[0].get());  // lastExpr_=实参求值结果（句柄直拷）
+        // plans/022 波 4 首件（459-a·206-d）：源槽清零（moved-from 标记到 IR 槽位）
+        //   ——所有权已移交接收位；源变量 RAII 析构对零句柄走既有空安全跳过
+        //   （字符串 __cn_str_free(nullptr) 忽略 / 容器 __cn_vector_free_strings
+        //   obj==nullptr return / 类 DeleteObject test/je 空安全）——「释放+清零
+        //   幂等模型」同构（74-a 纪律 7·与声明初始化位 ir_stmt_decl 浅交接分派
+        //   同构）。原实现缺此步：实参位转移后源槽仍持句柄，双 free 靠
+        //   cn_free_tracked 注册表兜底侥幸安全（结构性正确升级）。
+        if (node->arguments[0]->getType() == NodeType::IdentifierExpr) {
+            const std::string srcName =
+                static_cast<IdentifierExpr*>(node->arguments[0].get())->name;
+            const std::string srcUnique = lookupVarName(srcName);
+            if (!srcUnique.empty()) {
+                ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                              node->location);
+                emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique,
+                     "i64", node->location);
+            }
+        }
         return;
     }
     // ---- 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置 ----
