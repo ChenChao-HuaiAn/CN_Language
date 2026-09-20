@@ -1,0 +1,5 @@
+[parse] 模块循环依赖: target/audit2/v2src480/循环乙.cn
+[p6h] 已解析: target/audit2/v2src480/循环甲.cn 节点=5
+[p6h] 已解析: target/audit2/v2src480/循环乙.cn 节点=10
+[p6h] 已解析: target/audit2/v2src480/主.cn 节点=15
+[parse] 语法错误 1 个，中止编译（不产 IR/asm）

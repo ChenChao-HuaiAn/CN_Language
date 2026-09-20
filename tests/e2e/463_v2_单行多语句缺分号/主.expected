@@ -1,0 +1,3 @@
+[parse] 语句缺少分号 ';'（行=5）
+[p6h] 已解析: target/audit2/v2src463/主.cn 节点=13
+[parse] 语法错误 1 个，中止编译（不产 IR/asm）
