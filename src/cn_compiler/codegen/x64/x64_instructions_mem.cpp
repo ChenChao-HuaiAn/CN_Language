@@ -162,10 +162,19 @@ void X64CodeGenerator::emitFieldAddr(AsmWriter& writer, const ir::IRInstruction&
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "@field_ok" + std::to_string(checkId);
     const std::string errLabel = "@field_err" + std::to_string(checkId);
-    // 基址入 rax
-    writer.line("mov rax, " + base);
-    // 空指针检查：rax == 0 -> 错误块
-    writer.line("test rax, rax");
+    // D8（483-a）：基址已分配物理寄存器时全程直读该寄存器（免 mov rax 中转；
+    //   ok 标签后到使用点之间无 call，volatile 寄存器值保持；错误块 call 后
+    //   直接 ret 不再回读基址——caller-saved 破坏无影响）。
+    //   槽/常量基址保持 rax 装载路径。
+    std::string addrReg = "rax";
+    const std::string basePhys = physRegOf(inst.operands[0]);
+    if (!basePhys.empty()) {
+        addrReg = widthFor("ptr", basePhys);
+    } else {
+        writer.line("mov rax, " + base);
+    }
+    // 空指针检查：基址 == 0 -> 错误块
+    writer.line("test " + addrReg + ", " + addrReg);
     writer.line("jne " + okLabel);
     // 错误块：__cn_runtime_error(3)（错误码3=空指针解引用）
     writer.line("mov rcx, 3");
@@ -174,12 +183,36 @@ void X64CodeGenerator::emitFieldAddr(AsmWriter& writer, const ir::IRInstruction&
     writer.line("add rsp, 32");
     writer.line("ret");
     writer.raw(okLabel + ":");
-    // 字段地址 = 基址 + 偏移（偏移用 rcx 计算，rax 保持基址）
-    if (fieldOffset != 0) {
-        writer.line("mov rcx, " + std::to_string(fieldOffset));
-        writer.line("add rax, rcx");
+    // 字段地址 = 基址 + 偏移。D8（483-a）：结果已分配时 lea 直接编码
+    //   [基址+偏移]（LLVM 寻址同款）——基址寄存器只读不破坏（原 add 中转
+    //   形态直读会污染仍存活的基址 vreg：p.a/p.b 连续字段寻址时第二个
+    //   FieldAddr 读到累加后的地址，01_hello v2p 段错误实证后当场根治）；
+    //   顺带免 rcx 偏移中转。**未分配路径保持原 mov rcx+add rax 形态
+    //   （基址在 rax 拷贝上偏移=无污染面）——458 红线「未分配 fallback
+    //   产物逐字节不变」严格执行**。
+    {
+        const std::string dstPhys = physRegOf(inst.result);
+        if (!dstPhys.empty()) {
+            const std::string dstReg = widthFor("ptr", dstPhys);
+            if (fieldOffset != 0) {
+                writer.line("lea " + dstReg + ", [" + addrReg + "+" +
+                            std::to_string(fieldOffset) + "]");
+            } else if (dstReg != addrReg) {
+                writer.line("mov " + dstReg + ", " + addrReg);
+            }
+        } else {
+            // 未分配/混合态：rax 中转原形态（全未分配态 addrReg==rax，
+            //   「mov rcx, off + add rax, rcx + mov dst, rax」逐字节不变；
+            //   混合态〔基址已分配·结果未分配〕先把基址寄存器拷贝到 rax——
+            //   基址只读不污染）
+            if (addrReg != "rax") writer.line("mov rax, " + addrReg);
+            if (fieldOffset != 0) {
+                writer.line("mov rcx, " + std::to_string(fieldOffset));
+                writer.line("add rax, rcx");
+            }
+            writer.line("mov " + dst + ", rax");
+        }
     }
-    writer.line("mov " + dst + ", rax");
 }
 
 // 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存
@@ -193,10 +226,17 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "@ptr_ok" + std::to_string(checkId);
     const std::string errLabel = "@ptr_err" + std::to_string(checkId);
-    // 地址入 rax
-    writer.line("mov rax, " + addr);
-    // 空指针检查：rax == 0 -> 错误块（调用 __cn_runtime_error(3) 后返回）
-    writer.line("test rax, rax");
+    // D8（483-a）：地址已分配物理寄存器时全程直读（判据同 emitFieldAddr——
+    //   ok 标签后无 call，错误块 call 后直接 ret）。槽/常量保持 rax 装载。
+    std::string addrReg = "rax";
+    const std::string addrPhys = physRegOf(inst.operands[0]);
+    if (!addrPhys.empty()) {
+        addrReg = widthFor("ptr", addrPhys);
+    } else {
+        writer.line("mov rax, " + addr);
+    }
+    // 空指针检查：地址 == 0 -> 错误块
+    writer.line("test " + addrReg + ", " + addrReg);
     writer.line("jne " + okLabel);
     // 错误块：__cn_runtime_error(3)（错误码3=空指针解引用，规格书附录B）
     // 调用约定：参数 rcx = 错误码（整参按64位）
@@ -214,29 +254,29 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         if (isFloatType(inst.type)) {
             const std::string load = (inst.type == "f64") ? "movsd" : "movss";
             const std::string mp = (inst.type == "f64") ? "qword ptr " : "dword ptr ";
-            writer.line(load + " xmm0, " + mp + "[rax]");
+            writer.line(load + " xmm0, " + mp + "[" + addrReg + "]");
             writer.line(load + " " + mp + dst + ", xmm0");
             return;
         }
         if (inst.type == "i8" || inst.type == "i16") {
-            writer.line("movsx eax, " + memSizePtr(inst.type) + "[rax]");
+            writer.line("movsx eax, " + memSizePtr(inst.type) + "[" + addrReg + "]");
             writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             return;
         }
         if (inst.type == "u8" || inst.type == "u16") {
-            writer.line("movzx eax, " + memSizePtr(inst.type) + "[rax]");
+            writer.line("movzx eax, " + memSizePtr(inst.type) + "[" + addrReg + "]");
             writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
             return;
         }
         if (inst.type == "u32") {
             // 修复5（无符号LoadPtr）：mov eax 读取后高32位已清零（写eax清高32位），
             //   无需 movsxd（原实现符号扩展，0xFFFFFFFF 读成 -1）
-            writer.line("mov eax, dword ptr [rax]");
+            writer.line("mov eax, dword ptr [" + addrReg + "]");
             writer.line("mov " + dst + ", rax");
             return;
         }
         if (inst.type == "i32") {
-            writer.line("mov eax, dword ptr [rax]");
+            writer.line("mov eax, dword ptr [" + addrReg + "]");
             writer.line("movsxd rax, eax");
             writer.line("mov " + dst + ", rax");
             return;
@@ -246,14 +286,14 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             //   原实现漏了 i128 分支，只读 8B 到结果槽高64位残留垃圾 -> 值错误。
             //   i128 双槽约定：%vN=高64、%vN+1=低64；小端内存 [rax]=低64、[rax+8]=高64
             //   （结果槽在寄存器区，regSlot(id) 为高64、regSlot(id+1) 为低64）
-            writer.line("mov rcx, [rax]");        // 低64位
+            writer.line("mov rcx, [" + addrReg + "]");        // 低64位
             writer.line("mov " + regSlot(inst.result.id + 1) + ", rcx");
-            writer.line("mov rcx, [rax+8]");      // 高64位
+            writer.line("mov rcx, [" + addrReg + "+8]");      // 高64位
             writer.line("mov " + regSlot(inst.result.id) + ", rcx");
             return;
         }
         // i64/ptr：64位读取
-        writer.line("mov rcx, [rax]");
+        writer.line("mov rcx, [" + addrReg + "]");
         writer.line("mov " + dst + ", rcx");
         return;
     }
@@ -263,7 +303,7 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         const std::string store = (inst.type == "f64") ? "movsd" : "movss";
         const std::string mp = (inst.type == "f64") ? "qword ptr " : "dword ptr ";
         writer.line(store + " xmm0, " + mp + value);
-        writer.line(store + " " + mp + "[rax], xmm0");
+        writer.line(store + " " + mp + "[" + addrReg + "], xmm0");
         return;
     }
     // 注意：rax 此时保存目标地址，值加载必须使用 rcx（mov eax/movzx eax 会清零 rax 高32位，破坏地址）
@@ -276,7 +316,7 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             writer.line("movsx rcx, " + memSizePtr(inst.type) + value);
         }
         const std::string sub = (inst.type == "i8") ? "cl" : "cx";
-        writer.line("mov " + memSizePtr(inst.type) + "[rax], " + sub);
+        writer.line("mov " + memSizePtr(inst.type) + "[" + addrReg + "], " + sub);
         return;
     }
     if (inst.type == "i128" || inst.type == "u128") {
@@ -292,21 +332,23 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             const bool ok = types::parseInt128InitText(
                 inst.operands[1].extra, inst.type == "i128", lo, hi);
             writer.line("mov rcx, " + (ok ? uint64HexText(lo) : "0"));
-            writer.line("mov qword ptr [rax], rcx");
+            writer.line("mov qword ptr [" + addrReg + "], rcx");
             writer.line("mov rcx, " + (ok ? uint64HexText(hi) : "0"));
-            writer.line("mov qword ptr [rax+8], rcx");
+            writer.line("mov qword ptr [" + addrReg + "+8], rcx");
             return;
         }
         writer.line("mov rcx, " + regSlot(inst.operands[1].id + 1));  // 低64位
-        writer.line("mov [rax], rcx");
+        writer.line("mov [" + addrReg + "], rcx");
         writer.line("mov rcx, " + regSlot(inst.operands[1].id));      // 高64位
-        writer.line("mov [rax+8], rcx");
+        // D8（483-a）漏点补修：高位段同样直读 addrReg（原漏改留 [rax+8]——
+        //   addr 直读态 rax 为残留值=野写 8B，420/433/440 i128 字段写段错误实证）
+        writer.line("mov [" + addrReg + "+8], rcx");
         return;
     }
     if (inst.type == "i32" || inst.type == "u32") {
         // 物理寄存器全名收缩（mov ecx, r14 → mov ecx, r14d，A2022 收缩族）
         writer.line("mov ecx, " + shrunkOperand("i32", value));
-        writer.line("mov [rax], ecx");
+        writer.line("mov [" + addrReg + "], ecx");
         return;
     }
     if (inst.type == "u8" || inst.type == "u16") {
@@ -317,11 +359,11 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
             writer.line("movzx rcx, " + memSizePtr(inst.type) + value);
         }
         const std::string sub = (inst.type == "u8") ? "cl" : "cx";
-        writer.line("mov " + memSizePtr(inst.type) + "[rax], " + sub);
+        writer.line("mov " + memSizePtr(inst.type) + "[" + addrReg + "], " + sub);
         return;
     }
     // i64/ptr：64位存储
     writer.line("mov rcx, " + value);
-    writer.line("mov [rax], rcx");
+    writer.line("mov [" + addrReg + "], rcx");
 }
 } // namespace cn_compiler

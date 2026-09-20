@@ -62,12 +62,26 @@ void X64CodeGenerator::emitCompare(AsmWriter& writer, const ir::IRInstruction& i
 }
 
 // 逻辑非（i1语义）：cmp x, 0 ; sete al
+// D8（483-a）：操作数已分配物理寄存器 -> cmp 直读（免 mov eax 装载中转；
+//   寄存器值由分配器规范化写入，低 32 位即值）。槽操作数保持 rax 装载原路径
+//   （cmp mem,0 需尺寸前缀且 i1 槽宽度语义有分叉面——不直读）。
+//   结果已分配 -> movzx 直写分配寄存器（458-a 结果直写面补漏点）。
 void X64CodeGenerator::emitNot(AsmWriter& writer, const ir::IRInstruction& inst) {
     std::string dst = resultText(inst.result);
     std::string op = operandText(inst.operands[0]);
-    writer.line("mov eax, " + shrunkOperand("i32", op));
-    writer.line("cmp eax, 0");
+    const std::string opPhys = physRegOf(inst.operands[0]);
+    if (!opPhys.empty()) {
+        writer.line("cmp " + widthFor("i32", opPhys) + ", 0");
+    } else {
+        writer.line("mov eax, " + shrunkOperand("i32", op));
+        writer.line("cmp eax, 0");
+    }
     writer.line("sete al");
+    const std::string dstPhys = physRegOf(inst.result);
+    if (!dstPhys.empty()) {
+        writer.line("movzx " + widthFor("i32", dstPhys) + ", al");
+        return;
+    }
     writer.line("movzx eax, al");
     writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
 }
@@ -204,9 +218,19 @@ void X64CodeGenerator::emitCompareInt(AsmWriter& writer, const ir::IRInstruction
         }
         return text;
     };
+    // D8（483-a）：op1 已分配物理寄存器 -> cmp 第一操作数直读（免 mov w 装载
+    //   中转）；比较宽度工作名 w 换为 op1 按宽度收缩名（op2 宽度对齐基准随行）。
+    //   op1 为槽/常量保持 mov w 装载原路径（cmp mem 需尺寸前缀、cmp 首操作数
+    //   不能为立即数——不直读）。
+    const std::string op1Phys = physRegOf(inst.operands[0]);
+    const bool op1Direct = !op1Phys.empty();
+    if (op1Direct) {
+        w = widthFor(cmpType, op1Phys);
+        op1Text = op1Phys;
+    }
     op1Text = alignReg(op1Text);
     op2Text = alignReg(op2Text);
-    writer.line("mov " + w + ", " + op1Text);
+    if (!op1Direct) writer.line("mov " + w + ", " + op1Text);
     writer.line("cmp " + w + ", " + op2Text);
     if (isUnsigned) {
         // 无符号 setcc：Eq/Ne 相同，序比较用 a/b 系列

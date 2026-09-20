@@ -1030,21 +1030,34 @@ void X64CodeGenerator::emitTerminator(AsmWriter& writer, const ir::IRBlock& bloc
         // 条件值 = block.termCondition（280-a T12 字段化：Phi 降级后汇合块
         //   可为空块，条件不再寄生于块尾指令 operands）；空条件兜底 0
         std::string condReg = "0";
+        // D8（483-a）：条件 vreg 已分配物理寄存器 -> test 直读（免 mov eax
+        //   装载中转）；槽/常量条件保持 mov eax + test 原路径。
+        std::string condPhys;
         const std::string& cond = block.termCondition;
         if (!cond.empty()) {
             if (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v') {
-                condReg = operandText(
-                    ir::IRValue::reg(std::stoi(cond.substr(2)), "i1"));
+                ir::IRValue condValue =
+                    ir::IRValue::reg(std::stoi(cond.substr(2)), "i1");
+                condPhys = physRegOf(condValue);
+                condReg = operandText(condValue);
             } else {
                 // 常量文本条件（"真"/"假" -> 1/0；数值原样）
                 condReg = operandText(ir::IRValue::constant(cond, "i1"));
             }
         }
-        // 320-a（A2022·258-a cast 收缩同族）：条件源为分配的物理寄存器
-        //   （r8~r15 族）时按 32 位名收缩（mov eax, r13 宽度混配 A2022——
-        //   424 O3 regAlloc 首跑暴露；i1 布尔值分配器写入 r13d 32 位）
-        writer.line("mov eax, " + widthFor("i32", condReg));
-        writer.line("test eax, eax");
+        if (!condPhys.empty()) {
+            // 320-a（A2022·258-a cast 收缩同族）：按 32 位名直测（i1 布尔值
+            //   分配器写 32 位名；test reg,reg 只设标志不改条件值——分配器
+            //   死点复用安全）
+            const std::string cw = widthFor("i32", condPhys);
+            writer.line("test " + cw + ", " + cw);
+        } else {
+            // 320-a（A2022·258-a cast 收缩同族）：条件源为分配的物理寄存器
+            //   （r8~r15 族）时按 32 位名收缩（mov eax, r13 宽度混配 A2022——
+            //   424 O3 regAlloc 首跑暴露；i1 布尔值分配器写入 r13d 32 位）
+            writer.line("mov eax, " + widthFor("i32", condReg));
+            writer.line("test eax, eax");
+        }
         writer.line("jnz " + block.termTrueTarget);
         writer.line("jmp " + block.termFalseTarget);
     }
