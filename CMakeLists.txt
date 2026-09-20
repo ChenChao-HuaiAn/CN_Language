@@ -277,6 +277,7 @@ add_library(cn_compiler_opt STATIC
     src/cn_compiler/opt/dce.cpp
     src/cn_compiler/opt/algebraic_simplify.cpp
     src/cn_compiler/opt/copy_propagation.cpp
+    src/cn_compiler/opt/mem2reg.cpp
     src/cn_compiler/opt/cse.cpp
     src/cn_compiler/opt/cross_block_dce.cpp
     src/cn_compiler/opt/global_value.cpp

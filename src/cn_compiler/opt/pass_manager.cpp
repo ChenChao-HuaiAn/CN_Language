@@ -5,6 +5,7 @@
 //      收集修改信号，直到一轮内无修改或达到上限轮次
 //   3. runOptLevel 按优化级别构建 Pass 组合（完善C + 阶段B 优化补全）
 //      阶段B（Task 4.1/4.2）：SSA/Phi、LICM、强度削减、内联、尾调用
+#include "cn_compiler/opt/mem2reg.hpp"
 #include "cn_compiler/opt/algebraic_simplify.hpp"
 #include "cn_compiler/opt/const_fold.hpp"
 #include "cn_compiler/opt/copy_propagation.hpp"
@@ -83,6 +84,9 @@ bool runOptLevel(ir::IRModule& module, int optLevel) {
         //      （codegen 对 Phi 输出"无汇编注释"，语义等价；为后续数据流
         //        分析（寄存器分配/全局值传播增强）铺路） ----
         manager.addPass(std::make_unique<SSAPass>());
+        // ---- mem2reg 读侧跨块直递（-O3，F1-26 波1·479-a）：可提升槽的
+        //      Load 沿支配树值流直递（逃逸判据守卫·Store 保留=波2）----
+        manager.addPass(std::make_unique<Mem2RegPass>());
         // ---- 函数内联（-O3，阶段B Task 4.2）：小函数内联展开
         //      （规格书9.2：-O3 含激进内联；启发式阈值 kMaxInlineInsts） ----
         manager.addPass(std::make_unique<InlinePass>());
