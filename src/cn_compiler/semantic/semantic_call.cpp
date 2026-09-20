@@ -233,15 +233,11 @@ bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
             lastType_ = "未知";
             return true;
         }
-        if (kind == 2) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "变量 '" + ident->name + "'（类型 '" + varType +
-                                    "'）的转移仅支持声明初始化位"
-                                "（类型 名 = 转移(变量);），表达式位转移随 plans/019"
-                                " 阶段3 浅拷贝优化支持");
-            lastType_ = "未知";
-            return true;
-        }
+        // plans/022 波 4 首件（459-a·206-d）：拥有资源类型（容器/类/结构体/
+        //   结果/可选/数组）表达式位转移**放行**——IR 层展开=句柄直拷+源槽清零
+        //   （真槽位交接·与声明初始化位 ir_stmt_decl 浅交接分派同构）。原
+        //   「仅声明初始化位」拒绝解除：实参位/返回位等表达式位自此可显式移交
+        //   拥有型资源（Rust move 语义对照：所有权移交+源失效）。
         if (reportMovedUse(ident->name, node->location)) {  // 再转移=使用已转移变量
             lastType_ = "未知";
             return true;
