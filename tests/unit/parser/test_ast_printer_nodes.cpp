@@ -243,7 +243,6 @@ TEST(AstPrinterNodes, ImportDeclVariants) {
 导入 工具库2::*;
 导入 数据库3::{连接, 事务};
 )SRC");
-    if (std::getenv("AST_DBG")) std::cerr << "[dbg]\n" << ast << std::endl;
     EXPECT_TRUE(contains(ast, "模块声明"));
     EXPECT_TRUE(contains(ast, "导入声明"));
     EXPECT_TRUE(contains(ast, "::*"));
