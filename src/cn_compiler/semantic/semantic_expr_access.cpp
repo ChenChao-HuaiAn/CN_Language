@@ -153,6 +153,16 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     } else {
         structType = canonicalType(objectType);
     }
+    // T95（551-a）：泛型方法体内引用参数（向量<T>& v）的类型文本经
+    //   substTypeParam 文本替换保留尖括号形态（向量<整64>）——未经实例物化，
+    //   findClass miss 误报「不是结构体/联合体/类类型」连带返回类型未知
+    //   （p2 探针：返回 v.元素() 报「无法将 '未知' 隐式转换为返回类型」）。
+    //   类表未命中时先 resolveGenericTypeName 物化为合成名（向量$整64）再查
+    //   （幂等：非泛型/已物化/类表已命中路径零行为变化）。
+    if (findClass(structType) == nullptr) {
+        const std::string 物化类型 = resolveGenericTypeName(structType, node->location);
+        if (物化类型 != structType) structType = 物化类型;
+    }
     // 类成员访问（Task 3.1）：对象为类类型 或 类名.静态成员（标识符且是类类型名）
     const ClassInfo* cls = findClass(structType);
     if (cls != nullptr) {
