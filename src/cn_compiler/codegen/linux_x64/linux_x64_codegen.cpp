@@ -389,12 +389,19 @@ void LinuxX64CodeGenerator::emitDataSection(LinuxX64AsmWriter& writer,
         writer.raw(".globl " + sym);
         writer.raw(".type " + sym + ", @object");
         writer.raw(sym + ":");
-        // 331-a（T52·T50 同族）：128 位判定双口径（IR 名/中文名）——见 arm64 同款；
-        //   原判定只认中文名 → 函数内静态 128 槽 8 字节（读写错值·实测 485≠1005）。
-        if (canonStatic == "整128" || canonStatic == "正128" ||
-            canonStatic == "i128" || canonStatic == "u128") {
-            writer.raw("    .quad 0");
-            writer.raw("    .quad 0");
+        // 331-a（T52·T50 同族）：128 位判定——T46（467-a）起收敛
+        //   types::isInt128Type（单一归属）。
+        // T46（467-a）缺口①：发射初值双 quad（低 64 位在前·与双槽内存布局
+        //   一致）——原硬编码 .quad 0×2 无视 initText（.data 恒零占位）。
+        //   初值经 parseInt128InitText 解析（raw 文本可能超出 int64 表示域），
+        //   失败/无初值保持零占位（超界拒绝归 T9 方案 D 辖区）。
+        if (types::isInt128Type(canonStatic)) {
+            unsigned long long lo = 0, hi = 0;
+            const bool ok = !initText.empty() &&
+                types::parseInt128InitText(
+                    initText, types::isInt128Signed(canonStatic), lo, hi);
+            writer.raw("    .quad " + (ok ? uint64HexText(lo) : "0"));
+            writer.raw("    .quad " + (ok ? uint64HexText(hi) : "0"));
         } else if (canonStatic == "浮32") {
             writer.raw("    .long " +
                        (!initText.empty() ? floatBitsHex(initText, false) : "0"));

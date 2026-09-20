@@ -65,6 +65,39 @@ void IRGenerator::visitProgram(Program* node) {
                     if (it == NodeType::IntegerLiteral) {
                         module_->globalStaticInits[g->name] =
                             static_cast<IntegerLiteral*>(g->initializer.get())->raw;
+                    } else if (it == NodeType::UnaryExpr &&
+                               types::isInt128Type(canonStatic)) {
+                        // T46（467-a）缺口①（IR 侧·Rust const-eval 直存 .data
+                        //   同构）：128 位标量的 ±字面量折叠进直存通道（文本=
+                        //   符号×raw·发射层 parseInt128InitText 解析双 quad）——
+                        //   原落 staticCtor 运行时通道且 StorePtr 类型误标
+                        //   "ptr" 半槽写（静态 整128 b = -5; 实测读出 2^64−5）。
+                        //   仅 128 位走新折叠（≤64 位现状 StorePtr 写 8 字节
+                        //   正确·零回归面）。
+                        const Expr* folded = g->initializer.get();
+                        int sign = 1;
+                        while (folded->getType() == NodeType::UnaryExpr) {
+                            const auto* un = static_cast<const UnaryExpr*>(folded);
+                            if (un->postfix) { sign = 0; break; }  // i-- 等非纯符号
+                            if (un->op == Operator::Subtract) {
+                                sign = -sign;
+                            } else if (un->op != Operator::Add) {
+                                sign = 0;  // 非 ± 符号链（! ~ 等）：不折叠
+                                break;
+                            }
+                            folded = un->operand.get();
+                        }
+                        if (sign != 0 &&
+                            folded->getType() == NodeType::IntegerLiteral) {
+                            module_->globalStaticInits[g->name] =
+                                std::string(sign < 0 ? "-" : "") +
+                                static_cast<const IntegerLiteral*>(folded)->raw;
+                        } else {
+                            // 非 ±字面量链（调用等运行期初值）：保持 staticCtor
+                            //   入口注入通道（注入处 StorePtr 对 128 位传 IR 名）
+                            module_->staticCtorNames.push_back(g->name);
+                            staticCtorInit_[g->name] = g->initializer.get();
+                        }
                     } else if (it == NodeType::FloatLiteral) {
                         module_->globalStaticInits[g->name] =
                             static_cast<FloatLiteral*>(g->initializer.get())->raw;
@@ -306,7 +339,16 @@ void IRGenerator::emitStaticInitsAtEntry() {
         // 存入 .data 符号（?gstatic_名）
         ir::IRValue symAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + sname, SourceLocation());
-        emit(ir::Opcode::StorePtr, {symAddr, obj}, ir::IRValue(), "", "ptr",
+        // T46（467-a）缺口②：128 位标量 StorePtr 类型须传 IR 名——原恒传
+        //   "ptr" 使三后端落 64 位存储分支只写低 8 字节（半槽写：静态 整128
+        //   b = -5; 实测读出 2^64−5）。三后端 StorePtr 的 i128 双槽写分支已在
+        //   位（结构体字段写 i128 引入），此处对齐触达；≤64 位标量保持 "ptr"
+        //   （槽 8 字节·零回归面）。常量源由后端 i128 分支的常量子分支直写。
+        std::string storeType = "ptr";
+        if (types::isInt128Type(canonStatic)) {
+            storeType = types::isInt128Signed(canonStatic) ? "i128" : "u128";
+        }
+        emit(ir::Opcode::StorePtr, {symAddr, obj}, ir::IRValue(), "", storeType,
              SourceLocation());
     }
 }

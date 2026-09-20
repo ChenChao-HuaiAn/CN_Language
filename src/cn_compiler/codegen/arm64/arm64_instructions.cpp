@@ -11,6 +11,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/arm64/arm64_codegen.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -919,6 +920,20 @@ void Arm64CodeGenerator::emitPtrLoadStore(Arm64AsmWriter& writer,
         return;
     }
     if (type == "i128" || type == "u128") {
+        if (inst.operands[1].isConstant) {
+            // T46（467-a）：i128 常量源直写双 quad——staticCtor 注入常量
+            //   extra 可为纯十进制（含负号），64 位解析视角会截断符号；
+            //   统一走 parseInt128InitText 128 位解析（范围按 type），
+            //   emitMovImm movz/movk 分段装载。
+            unsigned long long lo = 0, hi = 0;
+            const bool ok = types::parseInt128InitText(
+                inst.operands[1].extra, type == "i128", lo, hi);
+            emitMovImm(writer, "x10", ok ? lo : 0);
+            writer.line("str x10, [x9]");
+            emitMovImm(writer, "x10", ok ? hi : 0);
+            writer.line("str x10, [x9, #8]");
+            return;
+        }
         const int srcHiId = inst.operands[1].id;
         const int srcLoId = inst.operands[1].id + 1;
         emitStackLoad(writer, regSlotOffset(srcLoId), "x10", "i64");

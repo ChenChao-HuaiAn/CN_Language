@@ -99,6 +99,114 @@ bool isStaticScalarInitType(const std::string& type) {
     return kIrScalarInts.count(t) > 0;
 }
 
+// 是否 128 位整数类型（T46·467-a·单一归属）——见头文件说明。
+bool isInt128Type(const std::string& type) {
+    const std::string t = canonical(type);
+    return t == "整128" || t == "正128" || t == "i128" || t == "u128";
+}
+
+// 128 位整数是否有符号（整128/i128 有符号；正128/u128 无符号）——见头文件说明。
+bool isInt128Signed(const std::string& type) {
+    const std::string t = canonical(type);
+    return t == "整128" || t == "i128";
+}
+
+namespace {
+
+// parseInt128InitText 的单字符 digit 值（0~15；非法字符返回 -1）
+int p128DigitValue(char ch) {
+    if (ch >= '0' && ch <= '9') return ch - '0';
+    if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+    if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+    return -1;
+}
+
+} // namespace
+
+// 128 位静态初值文本 → two's complement 双 quad（T46·467-a）——见头文件说明。
+//   128 位累加用 32 位半字分解（loLo/loHi/hiLo/hiHi×base+carry 均 < 2^37·
+//   uint64 安全）；乘 base 与进位逐级上推，最高进位非零 = 超 128 位返回 false。
+bool parseInt128InitText(const std::string& text, bool isSigned,
+                         unsigned long long& loOut, unsigned long long& hiOut) {
+    std::string s = text;
+    while (!s.empty() && (s.front() == ' ' || s.front() == '\t')) s.erase(s.begin());
+    while (!s.empty() && (s.back() == ' ' || s.back() == '\t')) s.pop_back();
+    if (s.empty()) return false;
+    // IR i128 常量约定形态 "lo:hi"（两段十六进制·two's complement 双 quad
+    //   已定型·符号无关）——storePtr 常量源与常量池同口径
+    const std::size_t colon = s.find(':');
+    if (colon != std::string::npos) {
+        const std::string loS = s.substr(0, colon), hiS = s.substr(colon + 1);
+        if (loS.empty() || hiS.empty()) return false;
+        try {
+            loOut = std::stoull(loS, nullptr, 16);
+            hiOut = std::stoull(hiS, nullptr, 16);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+    bool negative = false;
+    if (s[0] == '+' || s[0] == '-') {
+        negative = (s[0] == '-');
+        s.erase(0, 1);
+    }
+    if (s.empty()) return false;
+    unsigned long long base = 10;
+    if (s.size() > 2 && s[0] == '0') {
+        const char c = s[1];
+        if (c == 'x' || c == 'X') { base = 16; s.erase(0, 2); }
+        else if (c == 'b' || c == 'B') { base = 2; s.erase(0, 2); }
+        else if (c == 'o' || c == 'O') { base = 8; s.erase(0, 2); }
+    }
+    if (s.empty()) return false;
+    unsigned long long lo = 0, hi = 0;
+    for (const char ch : s) {
+        const int d = p128DigitValue(ch);
+        if (d < 0 || static_cast<unsigned long long>(d) >= base) return false;
+        // (hi:lo) = (hi:lo)*base + d —— lo 半字分解乘法：
+        const unsigned long long loLo = lo & 0xFFFFFFFFULL, loHi = lo >> 32;
+        const unsigned long long t = loLo * base + static_cast<unsigned long long>(d);
+        unsigned long long carry = t >> 32;
+        unsigned long long newLo = t & 0xFFFFFFFFULL;
+        const unsigned long long t2 = loHi * base + carry;
+        carry = t2 >> 32;
+        newLo |= (t2 & 0xFFFFFFFFULL) << 32;
+        // hi 半字分解乘法 + lo 进位：
+        const unsigned long long hiLo = hi & 0xFFFFFFFFULL, hiHi = hi >> 32;
+        const unsigned long long u = hiLo * base + carry;
+        unsigned long long carry2 = u >> 32;
+        unsigned long long newHi = u & 0xFFFFFFFFULL;
+        const unsigned long long u2 = hiHi * base + carry2;
+        carry2 = u2 >> 32;
+        newHi |= (u2 & 0xFFFFFFFFULL) << 32;
+        if (carry2 != 0) return false;  // 超 128 位
+        lo = newLo;
+        hi = newHi;
+    }
+    if (isSigned) {
+        constexpr unsigned long long kSignBit = 0x8000000000000000ULL;
+        // 范围判定在取负前进行（此时尚未取负：hi:lo = |v| 的绝对值视角）
+        if (negative) {
+            // |v| ≤ 2^127：绝对值 hi < 2^63，或 hi == 2^63 且 lo == 0（最小值特例）
+            if (hi > kSignBit) return false;
+            if (hi == kSignBit && lo != 0) return false;
+        } else if (hi >= kSignBit) {
+            return false;  // 正值：v ≤ 2^127−1
+        }
+    } else if (negative) {
+        return false;  // 无符号类型（正128/u128）：负数文本不在 [0, 2^128)
+    }
+    if (negative) {
+        lo = ~lo;
+        hi = ~hi;
+        if (++lo == 0) ++hi;  // two's complement 取负（-0 回绕=0·正确）
+    }
+    loOut = lo;
+    hiOut = hi;
+    return true;
+}
+
 // 是否浮点类型（浮32/浮64/小数）
 bool isFloat(const std::string& type) {
     const std::string t = canonical(type);
