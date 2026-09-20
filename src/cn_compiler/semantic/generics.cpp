@@ -681,10 +681,28 @@ void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
         }
     }
 
-    // 3. 重放检查（诊断快照回滚——重放不重复输出、计数不漂移）
+    // 3. 重放检查（诊断快照回滚——重放不重复输出、计数不漂移）。
+    //    470-a（D10 残余面·机制级）：「未声明」类真缺口不再随回滚吞没——
+    //    泛型体内未声明调用此前静默到链接期爆（undefined reference；非泛型
+    //    同形态编译期拒绝=检查缺口非泛型专属语义·v2 侧 457 负测对称锚）。
+    //    T 语境噪音理论上已消（实参绑定）；其余诊断（转换/推断类·p2' 类型
+    //    误用面）仍回滚=窄放行——波2 环境映射收口后双侧一起放（021 D10 行）。
     const Diagnostics::Snapshot snap = diagnostics_.takeSnapshot();
     checkFunctionBody(node);
-    diagnostics_.restoreTo(snap);
+    {
+        const auto& all = diagnostics_.getAll();
+        std::vector<Diagnostic> undeclared;
+        for (std::size_t di = snap.size; di < all.size(); ++di) {
+            if (all[di].level == DiagnosticLevel::Error &&
+                all[di].message.find("未声明") != std::string::npos) {
+                undeclared.push_back(all[di]);
+            }
+        }
+        diagnostics_.restoreTo(snap);
+        for (const auto& d : undeclared) {
+            diagnostics_.report(d);
+        }
+    }
 
     // 4. 恢复（共享 AST 不得跨实例残留绑定）
     node->name = savedName;
