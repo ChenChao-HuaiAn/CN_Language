@@ -168,6 +168,14 @@ std::string X64CodeGenerator::resultText(const ir::IRValue& result) {
     return regSlot(result.id);
 }
 
+// D8（458-a）：结果已分配的物理寄存器名（未分配返回空串）——发射方法据此把
+//   计算寄存器从固定临时 rax 换成分配寄存器（免尾部 mov dst, rax 中转）。
+std::string X64CodeGenerator::physRegOf(const ir::IRValue& value) const {
+    const regalloc::RegAssignment* ra = regAllocOf(value.id);
+    return (ra != nullptr && !ra->assignedReg.empty()) ? ra->assignedReg
+                                                       : std::string();
+}
+
 // ==================== 常量加载 ====================
 
 // 常量加载：ConstInt/ConstBool 立即数mov；ConstString LEA取常量池地址；
@@ -209,15 +217,26 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
         if (sym.compare(0, gstaticPrefix.size(), gstaticPrefix) == 0) {
             sym = gstaticPrefix + nameMangle(sym.substr(gstaticPrefix.size()));
         }
-        writer.line("lea rax, " + sym);
-        writer.line("mov " + dst + ", rax");
+        // D8（458-a）：结果已分配 -> LEA 直装分配寄存器（免 mov dst, rax 中转）
+        const std::string symPhys = physRegOf(inst.result);
+        if (!symPhys.empty()) {
+            writer.line("lea " + symPhys + ", " + sym);
+        } else {
+            writer.line("lea rax, " + sym);
+            writer.line("mov " + dst + ", rax");
+        }
         return;
     }
     if (inst.opcode == ir::Opcode::FuncAddr) {
         // 函数地址：LEA 加载函数链接符号地址（回调 = 加）
         // 注意：MASM 取 PROC 地址用 OFFSET 符号（与常量标签一致）
-        writer.line("lea rax, " + symbolName(inst.extra));
-        writer.line("mov " + dst + ", rax");
+        const std::string fnPhys = physRegOf(inst.result);
+        if (!fnPhys.empty()) {
+            writer.line("lea " + fnPhys + ", " + symbolName(inst.extra));
+        } else {
+            writer.line("lea rax, " + symbolName(inst.extra));
+            writer.line("mov " + dst + ", rax");
+        }
         return;
     }
     // i128/u128 常量（Task 完善A）：extra = "LO:HI"（十六进制）或纯十进制小值
@@ -298,8 +317,14 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
                 // 解析失败保持原样（防御性）
             }
         }
-        writer.line("mov rax, " + value);
-        writer.line("mov " + dst + ", rax");
+        // D8（458-a）：结果已分配 -> 立即数直装分配寄存器（免 mov dst, rax 中转）
+        const std::string immPhys = physRegOf(inst.result);
+        if (!immPhys.empty()) {
+            writer.line("mov " + immPhys + ", " + value);
+        } else {
+            writer.line("mov rax, " + value);
+            writer.line("mov " + dst + ", rax");
+        }
     } else {
         // 32 位常量装载：栈槽用 mov eax + mov 槽（宽度明确）；
         // 物理寄存器（寄存器分配结果）用 32 位直接装载 mov r12d, 立即数——
@@ -411,6 +436,9 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
     std::string op1 = operandText(inst.operands[0]);
     std::string op2 = operandText(inst.operands[1]);
     const std::string& srcType = inst.operands[0].type;
+    // D8（458-a）：dst 已分配物理寄存器（r12~r15）时计算直接落 dst（免尾部
+    //   mov dst, rax 中转）；未分配保持 rax 三段（内存槽不可作运算目的）。
+    const std::string dstPhys = physRegOf(inst.result);
     // 8/16位：两个操作数都扩展后按32位运算
     if (srcType == "i8" || srcType == "i16" ||
         srcType == "u8" || srcType == "u16") {
@@ -418,6 +446,19 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         const std::string ext = isSigned ? "movsx" : "movzx";
         // MASM 无法推断内存宽度（A2070）：8/16位内存操作数必须带 byte/word ptr 前缀
         const std::string mp = memSizePtr(srcType);
+        if (!dstPhys.empty()) {
+            // 直写：计算寄存器=dst 的 32 位形态（ecx 是固定临时·与 dst 无冲突面）
+            const std::string dw = widthFor("i32", dstPhys);
+            writer.line(ext + " " + dw + ", " + mp + op1);   // op1 扩展 -> dst
+            if (inst.operands[1].isConstant) {
+                writer.line(mnemonic + " " + dw + ", " + op2);
+            } else {
+                const std::string mp2 = memSizePtr(inst.operands[1].type);
+                writer.line(ext + " ecx, " + mp2 + op2);   // 槽：扩展 -> ecx
+                writer.line(mnemonic + " " + dw + ", ecx");
+            }
+            return;
+        }
         writer.line(ext + " eax, " + mp + op1);   // op1 扩展 -> eax
         // op2 可能是常量/槽：常量直接作为32位立即数（其值本身正确）
         if (inst.operands[1].isConstant) {
@@ -447,6 +488,17 @@ void X64CodeGenerator::emitIntBinary(AsmWriter& writer, const ir::IRInstruction&
         } catch (...) {
             // 解析失败按立即数原样（防御性）
         }
+    }
+    // D8（458-a）：直写判据=dst 已分配 且 op2 不与 dst 同物理寄存器（分配器
+    //   死点复用 op2 死于本指令时可能同寄存器——两地址 op dst, dst 会先覆盖
+    //   op2 原值=错，退回原三段）
+    if (!dstPhys.empty() && op2Text != dstPhys &&
+        shrunkOperand(inst.type, op2Text) != widthFor(inst.type, dstPhys)) {
+        const std::string dw = widthFor(inst.type, dstPhys);
+        // mov dst, op1 -> 运算 dst, op2（免尾部中转·A2022 收缩族同口径）
+        writer.line("mov " + dw + ", " + shrunkOperand(inst.type, op1));
+        writer.line(mnemonic + " " + dw + ", " + shrunkOperand(inst.type, op2Text));
+        return;
     }
     // mov rax, op1 -> 运算 rax, op2 -> mov dst, rax
     //   （op1 为物理寄存器全名时按 32 位名装载——shrunkOperand，A2022 收缩族）
@@ -644,23 +696,38 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         const std::string ext = (srcType == "i8" || srcType == "i16") ? "movsx" : "movzx";
         const std::string mp = memSizePtr(srcType);
         const int shiftMask = (srcType == "i16" || srcType == "u16") ? 15 : 7;
-        writer.line(ext + " eax, " + mp + op1);
+        // D8（458-a）：dst 已分配时计算寄存器=dst 的 32 位形态（cl 固定约束不冲突）
+        const std::string dstPhys = physRegOf(inst.result);
+        std::string ew = "eax";
+        if (!dstPhys.empty()) ew = widthFor("i32", dstPhys);
+        writer.line(ext + " " + ew + ", " + mp + op1);
         // 移位量：常量 -> 立即数；否则 -> cl
         if (inst.operands[1].isConstant) {
             const int shiftAmt = shiftAmtOf(inst.operands[1].extra) & shiftMask;
-            writer.line(sh + " eax, " + std::to_string(shiftAmt));
+            writer.line(sh + " " + ew + ", " + std::to_string(shiftAmt));
         } else {
             // 移位量须装载到 cl（rcx 低8位）：物理寄存器（寄存器分配）用 32 位名
             //   （mov ecx, r14 尺寸不匹配 A2022；mov ecx, r14d 写低32位值语义一致）
             writer.line("mov ecx, " + widthFor("i32", op2));
             writer.line("and ecx, " + std::to_string(shiftMask));
-            writer.line(sh + " eax, cl");
+            writer.line(sh + " " + ew + ", cl");
         }
-        writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
+        if (dstPhys.empty()) {
+            writer.line("mov " + shrunkOperand("i32", dst) + ", eax");
+        }
         return;
     }
     // 32/64位
-    std::string w = widthFor(srcType, "rax");
+    // D8（458-a）：dst 已分配且移位量寄存器（cl）不冲突 -> 计算落 dst 免尾部中转
+    //   （cl=rcx 低 8 位·rcx 非分配池寄存器·与 dst 无冲突面）
+    const std::string dstPhys64 = physRegOf(inst.result);
+    std::string w;
+    const bool direct64 = !dstPhys64.empty();
+    if (direct64) {
+        w = widthFor(srcType, dstPhys64);
+    } else {
+        w = widthFor(srcType, "rax");
+    }
     writer.line("mov " + w + ", " + shrunkOperand(srcType, op1));  // 物理寄存器全名收缩（A2022）
     if (inst.operands[1].isConstant) {
         // 246-a（D20 根治）：常量移位量按操作数位宽取模后发射——
@@ -675,7 +742,9 @@ void X64CodeGenerator::emitShift(AsmWriter& writer, const ir::IRInstruction& ins
         writer.line("mov ecx, " + widthFor("i32", op2));
         writer.line(sh + " " + w + ", cl");
     }
-    writer.line("mov " + shrunkOperand(srcType, dst) + ", " + w);
+    if (dstPhys64.empty()) {
+        writer.line("mov " + shrunkOperand(srcType, dst) + ", " + w);
+    }
 }
 
 // ==================== 类型转换（Cast，Task 2.3） ====================
