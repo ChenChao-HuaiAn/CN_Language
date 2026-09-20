@@ -585,6 +585,14 @@ std::string IRGenerator::memberObjStructType(MemberExpr* node) const {
             semantic_->isGlobalStatic(objName)) {
             objType = semantic_->globalStaticType(objName);
         }
+        // 513-a（T80-host 读路径·与 87-a 静态回退同族）：方法体内**实例字段裸名**
+        //   作成员访问对象（`内.x`·无 自身. 前缀）——既非局部/参数（lookupSrcType
+        //   空）亦非静态 → 按类字段类型表推导（classFieldType 沿继承链；
+        //   isInstanceField 已含遮蔽判据）。原 miss → objType 空 → decl==nullptr
+        //   → 成员读**静默降级常量 0**（探针 `盒$读x` 产物 `mov $0x0,%r10` 铁证）。
+        if (objType.empty() && isInstanceField(objName)) {
+            objType = classFieldType(currentClass_, objName);
+        }
     } else if (node->object->getType() == NodeType::MemberExpr) {
         MemberExpr* inner = static_cast<MemberExpr*>(node->object.get());
         const std::string innerType = memberObjStructType(inner);
