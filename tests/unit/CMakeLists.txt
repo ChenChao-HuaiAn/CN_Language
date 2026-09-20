@@ -13,6 +13,7 @@ add_executable(cn_unit_tests
     lexer/test_preprocessor.cpp
     parser/test_ast.cpp
     parser/test_parser.cpp
+    parser/test_ast_printer_nodes.cpp
     parser/test_parser_control.cpp
     parser/test_parser_array_ptr.cpp
     parser/test_parser_struct.cpp
@@ -58,6 +59,7 @@ add_executable(cn_unit_tests
     module/test_module_driver.cpp
     driver/test_cargo_parser.cpp
     ir/test_ir.cpp
+    ir/test_ir_verify_errors.cpp
     ir/test_ir_control.cpp
     ir/test_ir_verify.cpp
     ir/test_ir_function.cpp

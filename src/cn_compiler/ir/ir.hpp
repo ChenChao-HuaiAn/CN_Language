@@ -288,6 +288,12 @@ std::vector<std::string> verifyConstWidths(const IRModule& module);
 // 给出带函数/块位置的干净诊断。返回错误消息（空=通过）。
 std::vector<std::string> verifyKnownOpcodes(const IRModule& module);
 
+// 间接调用目标合法性验证（T71·476-a）：CallIndirect 的 callee 操作数若为
+//   「常量 0」=符号解析失败被 0 兜底发射（编译器内部错误；运行=call 0 必崩，
+//   t71_min rc=139 实锤）。无条件常开（driver 优化后调用·与位宽/操作码检查
+//   同族），把崩溃拦截前移到发射之前。
+std::vector<std::string> verifyCallIndirectTargets(const IRModule& module);
+
 } // namespace ir
 
 // ==================== IR生成器 ====================
