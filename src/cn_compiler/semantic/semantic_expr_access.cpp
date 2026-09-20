@@ -354,14 +354,17 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         return;
     }
     // 自举前置 A-1（plans/004）：字符串[i] 逐字节 O(1) 访问——字符串即
-    //   字符*（UTF-8 字节视图），下标结果类型 字符。词法器逐字符遍历
-    //   不再每字符一次 子串 malloc（百万级分配不可接受）。
+    //   字符*（UTF-8 字节视图），词法器逐字符遍历不再每字符一次 子串 malloc。
+    //   T48 裁决甲（2026-09-20 用户批准）：下标语义=按 UTF-8 字节索引，结果
+    //   类型 整8（带符号字节值——与 IR 层 i8 符号扩展装载自 A-1 起即一致；
+    //   原「字符」标注与「字符=Unicode 标量值」定义矛盾，属规范空白）。
+    //   完整字符经 字符转字符串（码点路径）/字符串子串（字节路径）按需构造。
     if (objectType == "字符串") {
         if (!isInteger(indexType)) {
             diagnostics_.report(DiagnosticLevel::Error, node->index->location,
                                 "字符串下标必须是整型，实际为 '" + indexType + "'");
         }
-        lastType_ = "字符";
+        lastType_ = "整8";
         return;
     }
     diagnostics_.report(DiagnosticLevel::Error, node->location,
