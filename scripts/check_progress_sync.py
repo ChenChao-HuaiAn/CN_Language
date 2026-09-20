@@ -130,6 +130,27 @@ def 主流程() -> int:
     else:
         print("[!] 警告：交接.md 未见指向 plans/021 的指针（建议按 AGENTS.md §8.3 恢复）")
 
+    # ⑤ 挂账老化审计（2026-09-21 用户批方案甲④·仅警告）：§3 带 🔄/⏸ 的行，
+    #    行内引用最新轮次号落后 git 最新（非窄通道）轮次 >40 → 提醒当轮处置
+    #    （排班/销项/显式降级说明）；无轮次号引用的行不判（⏸ 挂起态以重启触发为准）。
+    try:
+        在队列区 = False
+        for 序, 行 in enumerate(总表路径.read_text(encoding="utf-8").splitlines(), 1):
+            if re.match(r"^## ", 行):
+                在队列区 = 行.startswith("## 三、排班队列")
+                continue
+            if not 在队列区 or ("🔄" not in 行 and "⏸" not in 行) or git值 is None:
+                continue
+            引用 = 提取轮次(行)
+            if 引用:
+                最新引用 = max(引用)
+                if git值 - 最新引用 > 40:
+                    print(f"[!] 老化：L{序}（{行.strip()[:44]}…）行内最新引用=第{最新引用}轮 vs "
+                          f"git 第{git值}轮（差 {git值 - 最新引用}>40）——当轮须处置"
+                          "（排班/销项/显式降级说明·队列纪律④）")
+    except Exception:
+        pass  # 老化审计为增量警告，任何异常不阻断主检
+
     print("结论：总表与 git 最新轮次同步 ✓")
     return 0
 
