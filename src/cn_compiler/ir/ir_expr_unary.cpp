@@ -365,6 +365,17 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                     lastExpr_ = emitResult(ir::Opcode::AddrOf,
                                            {ir::IRValue::var(unique, operand.type)},
                                            "ptr", unique, node->location);
+                } else if (types::isReference(lookupSrcType(operandName))) {
+                    // T94（550-a）：引用变量取地址（&引用参数/&引用局部）=目标地址——
+                    //   引用槽存目标地址（别名语义），&v = Load 槽内容（Rust 对照：
+                    //   引用为首类指针，&alias 得目标地址而非槽地址）；若走 AddrOf
+                    //   (lea 槽) 则槽地址被存入指针字段/传为 this，后续成员方法调用
+                    //   读错位（p1/p3 探针 rc=223 实锤）。与 byRef 捕获分支同构；
+                    //   列 refWrapAddr 之后=内部引用机制链路（A-1 契约）不受影响。
+                    //   判据=语义层源类型文本尾 & 判定（与 588-a 判据同源）。
+                    lastExpr_ = emitResult(ir::Opcode::Load,
+                                           {ir::IRValue::var(unique, "ptr")},
+                                           "ptr", unique, node->location);
                 } else if (semantic_ != nullptr &&
                            semantic_->isClassType(types::canonical(types::stripRef(
                                lookupSrcType(operandName))))) {
