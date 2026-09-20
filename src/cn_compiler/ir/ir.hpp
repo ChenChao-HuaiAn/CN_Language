@@ -23,6 +23,7 @@
 namespace cn_compiler {
 class SemanticAnalyzer;   // 前向声明（Task 2.7：IR 查询结构体布局/枚举值）
 struct ClassMemberInfo;   // 前向声明（阶段3：类方法信息，semantic.hpp 定义）
+struct ClassInfo;         // 前向声明（D1 拆分 456-a：findCtorMember 形参，semantic.hpp 定义）
 struct GenericFuncInstance;  // 前向声明（Task 6.1：泛型函数实例化记录，semantic.hpp 定义）
 
 // 类方法符号 key：类名$sigKey（sigKey=名#参数串）。
@@ -1044,6 +1045,35 @@ private:
     // 构造调用（类名(实参) -> NewObject + 构造体调用）与成员方法调用
     //   （对象.方法：虚 -> VirtualCall；非虚 -> 直接 Call；类名.静态方法；父类.方法）
     bool handleClassCallExpr(CallExpr* node);
+    // D1 拆分（456-a）：handleClassCallExpr 四调用族子函数——逻辑逐字迁移，零行为变更
+    // （验收=锚定链产物逐字节一致）。
+    // 接口方法调用族：true=已处理；false=非接口形态（fall-through 构造/成员路径）
+    bool tryInterfaceMethodCall(CallExpr* node);
+    // 情形A 构造调用族：泛型实例名解析 -> findClass -> NewObject -> 构造查找 -> 发射
+    bool emitConstructorCall(CallExpr* node);
+    std::string resolveGenericCtorInstanceName(std::string className);
+    const ClassMemberInfo* findCtorMember(const ClassInfo* ci,
+                                          const std::string& className,
+                                          CallExpr* node);
+    void emitCtorInvoke(CallExpr* node, const std::string& className,
+                        const ClassMemberInfo* ctor, const ir::IRValue& obj);
+    // 情形B 成员方法调用族
+    bool emitMemberMethodCall(CallExpr* node);
+    // 返回：1=已处理；0=交回原路径；-1=非静态形态（fall-through 实例方法路径）
+    int emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
+                             const std::string& methodName);
+    bool emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
+                                const std::string& methodName,
+                                const std::string& canonObj);
+    void emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m,
+                               const std::string& owner,
+                               const std::string& methodName,
+                               const ir::IRValue& thisArg);
+    void emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
+                              const std::string& owner,
+                              const std::string& methodName,
+                              const std::string& canonObjForMethod,
+                              const ir::IRValue& thisArg);
     // 类字段读取（visitMemberExpr 钩子）：实例字段（对象.字段）与静态字段（类名.字段）
     bool handleClassMemberExpr(MemberExpr* node);
     // P3/D4（2026-08）：接口间接调用 CFI 校验——加载目标 ∈ 该接口已知实现集合，
