@@ -210,8 +210,15 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         // 缺陷①方案A（2026-09-10 用户裁决）：回填扩展至字符串——原「限定仅
         //   结构体」使 `变量 乙 = 甲;`（字符串标识符拷贝）的类型不传 IR，
         //   打印分派打指针值（E2E 199 载体）；布尔维持现状（184 行为契约）。
+        // T71（476-a）根治：回填白名单补**类类型**——原「结构体+字符串」白名单
+        //   漏类，`变量 计 = 计数器();` 推断 varType=计数器 但不写回 node->typeName
+        //   →IR 层按空 typeName 落单 i32 槽+插 ptr→i32 截断 Cast（对象指针高 32 位
+        //   丢失）→后续 成员方法调用 在 i32 类型上走间接 fallback，callee 解析失败
+        //   常量 0 兜底发射 `call 0`（asm mov r11,0/call r11·rc=139 实锤）。语义与
+        //   IR 共享同一 AST——typeName 回填是两层契约（46-c 结构体先例同构）。
         if (!varType.empty() && varType != "未知" &&
-            (isStructType(types::canonical(varType)) || varType == "字符串")) {
+            (isStructType(types::canonical(varType)) || varType == "字符串" ||
+             isClassType(types::canonical(varType)))) {
             node->typeName = varType;
         }
     } else if (node->initializer != nullptr && !varType.empty()) {

@@ -262,5 +262,30 @@ std::vector<std::string> verifyKnownOpcodes(const IRModule& module) {
     return errors;
 }
 
+// ==================== 间接调用目标合法性（T71·476-a） ====================
+
+// CallIndirect 的 callee（operand[0]）若为常量 0 = 符号解析失败被 0 兜底
+//   发射（编译器内部错误）；放行到运行=call 0 必崩（t71_min rc=139 实锤）。
+//   本检查把崩溃拦截前移到发射之前（与位宽/操作码检查同族·无条件常开）。
+std::vector<std::string> verifyCallIndirectTargets(const IRModule& module) {
+    std::vector<std::string> errors;
+    for (const auto& func : module.functions) {
+        for (const auto& block : func.blocks) {
+            for (const auto& inst : block->instructions) {
+                if (inst.opcode != Opcode::CallIndirect) continue;
+                if (inst.operands.empty()) continue;
+                const auto& callee = inst.operands[0];
+                if (callee.isConstant && callee.extra == "0") {
+                    errors.push_back(
+                        func.name + ":" + block->label +
+                        ": 间接调用目标为常量 0——符号解析失败被 0 兜底发射"
+                        "（编译器内部错误，请核查调用点类型解析链）");
+                }
+            }
+        }
+    }
+    return errors;
+}
+
 } // namespace ir
 } // namespace cn_compiler

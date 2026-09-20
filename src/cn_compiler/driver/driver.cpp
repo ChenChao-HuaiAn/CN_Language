@@ -114,6 +114,17 @@ int runPipeline(const std::string& source, const std::string& fileName,
     // T11 面③（331-a）：操作码合法性机械检查——无条件常开（与 --验证-ir 旗标无关）。
     //   违例=IR 构造层写入非法操作码（编译器内部错误）；前置拦截使错误在发射前
     //   暴露（后端 default 硬错误为第二道防线，两道防线同轮落地）。
+    // T71（476-a）：间接调用目标合法性——callee 常量 0=符号解析失败兜底发射
+    //   （运行=call 0 必崩），无条件常开前置拦截（与位宽/操作码检查同族）。
+    {
+        const std::vector<std::string> indirectErrors =
+            ir::verifyCallIndirectTargets(output.module);
+        if (!indirectErrors.empty()) {
+            std::cerr << "IR 间接调用目标验证失败：" << std::endl;
+            for (const auto& e : indirectErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
     {
         const std::vector<std::string> opcodeErrors =
             ir::verifyKnownOpcodes(output.module);
