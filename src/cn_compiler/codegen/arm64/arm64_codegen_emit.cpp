@@ -315,6 +315,18 @@ std::string Arm64CodeGenerator::loadOperandToX(Arm64AsmWriter& writer,
     return reg;
 }
 
+// D8（457-a）：操作数源寄存器直读——已分配 -> 返回物理寄存器名（零发射，
+//   三地址指令源操作数直接读分配寄存器，免「mov x9, x21」装载中转）；
+//   未分配/常量/变量槽 -> 装载到 fallback 并返回之（原路径产物不变）。
+std::string Arm64CodeGenerator::operandSourceReg(Arm64AsmWriter& writer,
+                                                 const ir::IRValue& operand,
+                                                 const std::string& fallback) {
+    const std::string phys = allocRegOf(operand.id);
+    if (!phys.empty()) return phys;
+    loadOperandToX(writer, operand, fallback);
+    return fallback;
+}
+
 // 从任意操作数加载到浮点寄存器 vreg（浮点常量池 / 寄存器槽 / 变量槽）
 void Arm64CodeGenerator::loadOperandToV(Arm64AsmWriter& writer,
                                         const ir::IRValue& operand,

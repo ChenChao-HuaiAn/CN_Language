@@ -199,6 +199,15 @@ std::string Arm64CodeGenerator::allocRegOf(int regId) const {
     return it->second.assignedReg;
 }
 
+// D8（451-a）：结果写入目标寄存器——已分配返回物理寄存器（发射方法直写，
+//   免「固定临时 x9/x10 中转 + storeVirtualResult 搬运」的冗余 mov）；
+//   未分配/未启用返回 fallback（原默认写入槽，未分配路径产物逐字节不变）。
+std::string Arm64CodeGenerator::resultTargetReg(int regId,
+                                                const std::string& fallback) const {
+    const std::string phys = allocRegOf(regId);
+    return phys.empty() ? fallback : phys;
+}
+
 // 文本是否为被调用者保存物理寄存器名（x19~x28）
 //   判据仅覆盖分配器可用集——x0~x18/x29/x30 不会作为返回值文本出现
 bool Arm64CodeGenerator::isPhysRegName(const std::string& text) {
