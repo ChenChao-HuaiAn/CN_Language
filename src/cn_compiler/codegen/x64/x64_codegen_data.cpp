@@ -174,10 +174,20 @@ void X64CodeGenerator::emitDataSection(AsmWriter& writer, const ir::IRModule& mo
             if (sz > 8) qwords = (sz + 7) / 8;
         }
         writer.raw("ALIGN 8");
-        // 331-a（T52·T50 同族）：128 位判定双口径（IR 名/中文名）——见 arm64 同款。
-        if (canonStatic == "整128" || canonStatic == "正128" ||
-            canonStatic == "i128" || canonStatic == "u128") {
-            writer.raw(sym + " dq 0, 0");
+        // 331-a（T52·T50 同族）：128 位判定——T46（467-a）起收敛
+        //   types::isInt128Type（单一归属·原四处四连 ‖ 同串重复）。
+        // T46（467-a）缺口①：128 位分支发射初值双 quad——原硬编码
+        //   "dq 0, 0" 无视 initText（.data 恒零占位·静态 整128 a = 42;
+        //   实测读 0）。初值经 parseInt128InitText 解析（raw 文本可能超出
+        //   int64 表示域·唯一完整信息源），失败/无初值保持零占位
+        //   （超界编译期拒绝归 T9 方案 D 辖区）。
+        if (types::isInt128Type(canonStatic)) {
+            unsigned long long lo = 0, hi = 0;
+            const bool ok = !initText.empty() &&
+                types::parseInt128InitText(
+                    initText, types::isInt128Signed(canonStatic), lo, hi);
+            writer.raw(sym + " dq " + (ok ? uint64HexText(lo) : "0") + ", " +
+                       (ok ? uint64HexText(hi) : "0"));
         } else if (canonStatic == "浮32") {
             // f32 初始值：dd floatBitsHex；无初始值零初始化
             writer.raw(sym + " dd " +

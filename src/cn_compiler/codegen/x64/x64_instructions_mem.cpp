@@ -3,6 +3,7 @@
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
+#include "cn_compiler/semantic/type_system.hpp"
 
 namespace cn_compiler {
 
@@ -282,6 +283,20 @@ void X64CodeGenerator::emitPtrLoadStore(AsmWriter& writer, const ir::IRInstructi
         // i128 指针存储（集成验证发现 Bug 同 LoadPtr）：结构体字段写入 i128
         //   原实现漏了 i128 分支，走 64 位存储只写低 8B -> 高 8B 残留垃圾。
         //   值双槽：operand[1].id=高64（regSlot(id)）、id+1=低64（regSlot(id+1)）
+        if (inst.operands[1].isConstant) {
+            // T46（467-a）：i128 常量源直写双 quad——staticCtor 注入常量
+            //   extra 可为纯十进制（含负号，如 "-5"），splitI128 的 stoull
+            //   64 位视角会截断符号；统一走 parseInt128InitText 128 位解析
+            //   （支持十进制±/前缀/"lo:hi" 常量池形态），范围按 inst.type。
+            unsigned long long lo = 0, hi = 0;
+            const bool ok = types::parseInt128InitText(
+                inst.operands[1].extra, inst.type == "i128", lo, hi);
+            writer.line("mov rcx, " + (ok ? uint64HexText(lo) : "0"));
+            writer.line("mov qword ptr [rax], rcx");
+            writer.line("mov rcx, " + (ok ? uint64HexText(hi) : "0"));
+            writer.line("mov qword ptr [rax+8], rcx");
+            return;
+        }
         writer.line("mov rcx, " + regSlot(inst.operands[1].id + 1));  // 低64位
         writer.line("mov [rax], rcx");
         writer.line("mov rcx, " + regSlot(inst.operands[1].id));      // 高64位

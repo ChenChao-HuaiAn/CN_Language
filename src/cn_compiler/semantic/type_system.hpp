@@ -34,6 +34,24 @@ bool isInteger(const std::string& type);
 //   口径分叉）。i128/u128 不在本判定（走双 .quad 分支），字符串句柄不可直存。
 bool isStaticScalarInitType(const std::string& type);
 
+// 是否 128 位整数类型（T46·467-a·单一归属）：中文（整128/正128）与 IR 名
+//   （i128/u128）双口径——原三后端数据段各自四连 ‖ 判定（同串重复四处），
+//   收敛至此供 IR 层与三后端共用。
+bool isInt128Type(const std::string& type);
+
+// 128 位整数是否有符号（整128/i128=有符号；正128/u128=无符号）——
+//   供 parseInt128InitText 范围判定（有符号 |v| ≤ 2^127；无符号 < 2^128）。
+bool isInt128Signed(const std::string& type);
+
+// 128 位静态初值文本 → two's complement 双 quad（T46·467-a·单一归属）：
+//   text 为字面量 raw 文本（IntegerLiteral::raw——可能超出 int64 表示域，
+//   唯一完整信息源），支持十进制（可带 +/-）、0x/0X、0b/0B、0o/0O 前缀。
+//   纯 uint64 实现（MSVC 无 __int128，跨 MSVC/GCC 单一口径）。
+//   范围：isSigned 时 |v| ≤ 2^127（最小值 −2^127 特例合法）；无符号 < 2^128。
+//   超范围/非法文本返回 false（调用方保持零占位——超界拒绝归 T9 方案 D 辖区）。
+bool parseInt128InitText(const std::string& text, bool isSigned,
+                         unsigned long long& loOut, unsigned long long& hiOut);
+
 // 是否浮点类型（浮32/浮64/小数，规范后判断）
 bool isFloat(const std::string& type);
 
