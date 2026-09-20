@@ -587,9 +587,9 @@ void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
             if (actualIdx >= 8) {
                 writer.line("ldr x10, " + srcReg);
                 srcReg = "x10";
-            } else {
-                writer.line("mov x10, " + srcReg);
             }
+            // D8（525-a）：寄存器参数位（x2~x7）直读作拷贝基址——免
+            //   「mov x10, x2」中转（prologue 无调用介入，参数寄存器稳定）。
             emitStackAddr(writer, "x12", slotOffset);
             const int words = bytes / 8;
             for (int w = 0; w < words; ++w) {

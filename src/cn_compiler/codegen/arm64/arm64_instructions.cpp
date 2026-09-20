@@ -258,6 +258,24 @@ void Arm64CodeGenerator::emitCopy(Arm64AsmWriter& writer,
     // D8（451-a）：64 位结果已分配 -> 直接装载到分配寄存器（免 x10 中转）；
     //   32 位结果不参与分配（分配器仅 i64/u64/ptr）-> 保持 x9 装载 + w9 栈存储原路径
     const std::string xr = resultTargetReg(inst.result.id, is64 ? "x10" : "x9");
+    // D8（525-a）：Copy 源直读——源已分配时免「mov x9/x10, x20」装载中转：
+    //   结果已分配 -> mov dst, phys（必要结果写入·同寄存器零发射）；
+    //   结果未分配 -> 以源物理寄存器直写结果槽（窄结果转 w 形态）；
+    //   源未分配 -> fallback 原路径（装载 xr + 写回·产物逐字节不变）。
+    const std::string phys = allocRegOf(inst.operands[0].id);
+    if (!phys.empty()) {
+        const std::string dst = allocRegOf(inst.result.id);
+        if (!dst.empty()) {
+            if (dst != phys) {
+                writer.line("mov " + dst + ", " + phys);
+            }
+            return;
+        }
+        const std::string w = (!is64 && phys[0] == 'x') ? "w" + phys.substr(1)
+                                                        : phys;
+        emitStackStore(writer, regSlotOffset(inst.result.id), w, inst.type);
+        return;
+    }
     loadOperandToX(writer, inst.operands[0], xr);
     storeVirtualResult(writer, inst.result.id, is64 ? xr : "w9", inst.type);
 }
@@ -545,8 +563,11 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         const bool isUnsigned = (from == "u8" || from == "u16" || from == "u32");
         const bool wide = (from == "i64" || from == "u64");
         const std::string cvt = isUnsigned ? "ucvtf" : "scvtf";
-        loadOperandToX(writer, inst.operands[0], wide ? "x9" : "w9");
-        writer.line(cvt + " " + vreg + ", " + (wide ? "x9" : "w9"));
+        // D8（525-a）：宽源已分配时直读（scvtf/ucvtf 源操作数任意寄存器合法，
+        //   免「mov x9, x21」中转）；窄源不参与分配 -> fallback w9 原路径不变
+        const std::string cvtSrc = operandSourceReg(writer, inst.operands[0],
+                                                    wide ? "x9" : "w9");
+        writer.line(cvt + " " + vreg + ", " + cvtSrc);
         storeVirtualResult(writer, inst.result.id, vreg, to);
         return;
     }
@@ -627,13 +648,16 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         return;
     }
     if (to == "i8" || to == "u8") {
-        loadOperandToX(writer, inst.operands[0], "x9");
-        storeVirtualResult(writer, inst.result.id, "x9", "i8");
+        // D8（525-a）：源直读写槽（strb w 形态由 emitStackStore 转换·免
+        //   「mov x9, x20」中转）；未分配 -> 装载 x9 原路径逐字节不变
+        const std::string src = operandSourceReg(writer, inst.operands[0], "x9");
+        storeVirtualResult(writer, inst.result.id, src, "i8");
         return;
     }
     if (to == "i16" || to == "u16") {
-        loadOperandToX(writer, inst.operands[0], "x9");
-        storeVirtualResult(writer, inst.result.id, "x9", "i16");
+        // D8（525-a）：同上（strh w 形态）
+        const std::string src = operandSourceReg(writer, inst.operands[0], "x9");
+        storeVirtualResult(writer, inst.result.id, src, "i16");
         return;
     }
     // i1 -> i64/u64（零扩展）
@@ -666,8 +690,10 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
     }
     // i64 -> i32（截断）
     if (from == "i64" && to == "i32") {
-        loadOperandToX(writer, inst.operands[0], "x9");
-        storeVirtualResult(writer, inst.result.id, "x9", to);
+        // D8（525-a）：源直读写槽（str w 形态由 emitStackStore 转换·免
+        //   「mov x9, x20」中转）；未分配 -> 装载 x9 原路径逐字节不变
+        const std::string src = operandSourceReg(writer, inst.operands[0], "x9");
+        storeVirtualResult(writer, inst.result.id, src, to);
         return;
     }
     // 同类型 i128 -> i128：双槽复制（须在 普通整数->i128 分支之前，
@@ -837,13 +863,16 @@ void Arm64CodeGenerator::emitFieldAddr(Arm64AsmWriter& writer,
                                        const ir::IRInstruction& inst) {
     // D8（451-a）：基址装载/空指针检查/字段偏移加算全链直写分配寄存器
     //   （未分配 res 恒 x9 = 原路径产物逐字节不变）
+    // D8（525-a）：基址源直读——基址已分配寄存器时直接以物理寄存器作 cmp/add
+    //   操作数（免「mov x9, x28」中转）；未分配 -> 装载到 res（与原装载目标一致：
+    //   结果未分配时 res==x9 逐字节不变；结果已分配时原实现即装载到 res 本身）
     const std::string res = resultTargetReg(inst.result.id, "x9");
-    loadOperandToX(writer, inst.operands[0], res);
+    const std::string base = operandSourceReg(writer, inst.operands[0], res);
     const long long fieldOffset = std::stoll(inst.extra);
     const int checkId = ptrCheckCounter_++;
     const std::string okLabel = "Lfield_ok" + std::to_string(checkId);
-    // 空指针检查：res == 0 -> 错误块
-    writer.line("cmp " + res + ", #0");
+    // 空指针检查：base == 0 -> 错误块
+    writer.line("cmp " + base + ", #0");
     writer.line("b.ne " + okLabel);
     emitMovImm(writer, "x0", 3);
     writer.line("bl __cn_runtime_error");
@@ -852,7 +881,7 @@ void Arm64CodeGenerator::emitFieldAddr(Arm64AsmWriter& writer,
     // 字段地址 = 基址 + 偏移
     if (fieldOffset != 0) {
         emitMovImm(writer, "x10", static_cast<std::uint64_t>(fieldOffset));
-        writer.line("add " + res + ", " + res + ", x10");
+        writer.line("add " + res + ", " + base + ", x10");
     }
     storeVirtualResult(writer, inst.result.id, res, "ptr");
 }
@@ -1052,7 +1081,9 @@ void Arm64CodeGenerator::emitCall(Arm64AsmWriter& writer,
             writer.line("str x10, [sp, #" + std::to_string(memOff) + "]");
         } else {
             // 整型/指针栈参数：值压栈（32位值经 w 寄存器）
-            const std::string reg = loadOperandToX(writer, av, "x10");
+            // D8（525-a）：源直读写栈参（免「mov x10, x27」中转）；
+            //   未分配 -> 装载 x10 原路径逐字节不变
+            const std::string reg = operandSourceReg(writer, av, "x10");
             writer.line("str " + reg + ", [sp, #" + std::to_string(memOff) + "]");
         }
     }

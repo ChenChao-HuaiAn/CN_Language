@@ -246,7 +246,9 @@ void Arm64CodeGenerator::emitVirtualCall(Arm64AsmWriter& writer,
                 writer.line("fmov x10, " + std::string((argType == "f64") ? "d0" : "s0"));
                 writer.line("str x10, [sp, #" + std::to_string(memOff) + "]");
             } else {
-                const std::string reg = loadOperandToX(writer, av, "x10");
+                // D8（525-a）：源直读写栈参（免「mov x10, x27」中转）；
+                //   未分配 -> 装载 x10 原路径逐字节不变
+                const std::string reg = operandSourceReg(writer, av, "x10");
                 writer.line("str " + reg + ", [sp, #" + std::to_string(memOff) + "]");
             }
             continue;
@@ -295,8 +297,12 @@ void Arm64CodeGenerator::emitOopInstruction(Arm64AsmWriter& writer,
         case ir::Opcode::VtableAddr: {
             if (!inst.operands.empty() && inst.operands[0].id >= 0) {
                 // 取对象虚表指针：x9 = [对象首地址]
-                loadOperandToX(writer, inst.operands[0], "x9");
-                writer.line("ldr x9, [x9]");
+                // D8（525-a）：对象指针已分配时直读基址（免「mov x9, x21」中转）；
+                //   未分配 -> 装载 x9（原路径产物逐字节不变；x9 非分配面，
+                //   phys 恒 != x9，写 x9 不破坏基址）
+                const std::string objReg =
+                    operandSourceReg(writer, inst.operands[0], "x9");
+                writer.line("ldr x9, [" + objReg + "]");
             } else {
                 // 加载类虚表地址：adrp+add
                 emitLoadSymbolAddr(writer, "x9", vtableSymbol(inst.extra));
