@@ -237,6 +237,32 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
     if (val.type != targetIrType && !targetIrType.empty()) {
         val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
     }
+    // 512-a（T80-host 根治·第二缺口·与 v2 侧 508-a 同源）：**类字段（结构体
+    //   类型）整体赋值**——目标=字段地址（genInstanceFieldAddr=对象指针+字段
+    //   偏移），源按右值形态取地址（调用=求值产物即结构体地址〔retbuf/物化槽〕；
+    //   标识符/成员/下标=左值地址），CopyStruct 整体拷贝（深拷=真·旧字段串
+    //   preFree=真）。原落下方标量 StorePtr（8 字节）→ 结构体字段只写首 8 字节
+    //   （探针 `内 = p` + 方法调用后 读=0 实证）。
+    {
+        const std::string fieldCanon2 = types::canonical(fieldType);
+        if (semantic_ != nullptr && !fieldCanon2.empty() &&
+            semantic_->isStructType(fieldCanon2)) {
+            ir::IRValue fieldAddr2 = genInstanceFieldAddr(ident->name, loc);
+            ir::IRValue srcAddr2;
+            if (value->getType() == NodeType::CallExpr) {
+                srcAddr2 = genExpr(value);
+            } else {
+                srcAddr2 = lvalueAddress(value);
+                if (srcAddr2.id < 0) { srcAddr2 = genExpr(value); }
+            }
+            if (fieldAddr2.id >= 0 && srcAddr2.id >= 0) {
+                emitStructCopyWithFields(fieldAddr2, srcAddr2, fieldCanon2, loc,
+                                         /*preFree=*/true, /*deepCopy=*/true);
+                lastExpr_ = fieldAddr2;
+                return true;
+            }
+        }
+    }
     ir::IRValue addr = genInstanceFieldAddr(ident->name, loc);
     emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "", targetIrType, loc);
     lastExpr_ = val;

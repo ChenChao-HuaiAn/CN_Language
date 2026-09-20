@@ -953,9 +953,25 @@ ir::IRValue IRGenerator::genMemberLvalueAddress(Expr* node) {
         }
         // 基址（v2.1 统一 .，语义层 isDerefAccess 置位）：经指针（对象为指针，
         //   p.字段 ≡ (*p).字段）取指针值；值对象取对象地址（递归嵌套成员/数组元素）
-        ir::IRValue base = member->isDerefAccess
-                               ? genExpr(member->object.get())
-                               : lvalueAddress(member->object.get());
+        // 512-a（T80-host 根治）：对象=**方法体内类字段名裸标识符**（`内.x`·
+        //   字段类型=结构体/含字段）——基址须=对象指针+字段偏移（genInstanceFieldAddr）；
+        //   原经 lvalueAddress(标识符) 落兜底「AddrOf(对象槽 0)」→ 产物 `lea 0(%rbp)`
+        //   即把 **rbp 当对象指针** → 字段写落到 [rbp+0]=**调用方保存帧指针槽** →
+        //   返回后 rbp=0 → 调用方后续访存段错误（探针 `盒$盒` 反汇编铁证：
+        //   `lea 0x0(%rbp),%r10; test; mov $0,(%r10)`）。isInstanceField 已含
+        //   遮蔽判据（同名局部/参数存在→返回假=保持原路径）。
+        ir::IRValue base;
+        if (member->isDerefAccess) {
+            base = genExpr(member->object.get());
+        } else if (member->object->getType() == NodeType::IdentifierExpr &&
+                   isInstanceField(
+                       static_cast<IdentifierExpr*>(member->object.get())->name)) {
+            base = genInstanceFieldAddr(
+                static_cast<IdentifierExpr*>(member->object.get())->name,
+                member->object->location);
+        } else {
+            base = lvalueAddress(member->object.get());
+        }
         if (semantic_ == nullptr) return base;
         // 对象源码类型：变量 / 嵌套成员 / 数组字段元素（memberObjStructType 递归
         // 处理 arrow 指针剥除，修复10/10b）
