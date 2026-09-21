@@ -122,6 +122,12 @@ def collect_cases(root: pathlib.Path) -> list:
         # 负例（预期编译失败，与 runner 口径同源）不在产物合法性扫描面
         if (d / "期望编译失败.txt").exists() or (d / "期望check失败.txt").exists():
             continue
+        # 569-a C25 波2 转批后的负测双测形态（双编译对照.txt+预期编译失败=是·
+        #   双侧都必须拒绝）：578-a 补同步——此前仅认旧三形态，151 例转批负测
+        #   混入扫描面致编译失败 450（develop 现态 569 直入时本段漏验的隐藏红）
+        dual = d / "双编译对照.txt"
+        if dual.exists() and "预期编译失败=是" in dual.read_text(encoding="utf-8-sig"):
+            continue
         # v2 自举闭环用例：编译器 = v2p 工具链而非宿主，宿主诊断失败是常态面
         if (d / "v2闭环.txt").exists():
             continue

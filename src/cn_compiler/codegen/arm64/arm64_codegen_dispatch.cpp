@@ -36,19 +36,21 @@ void Arm64CodeGenerator::emitTerminator(Arm64AsmWriter& writer,
     } else if (block.termKind == "条件跳转") {
         // 条件值 = block.termCondition（280-a T12 字段化：Phi 降级后汇合块
         //   可为空块，条件不再寄生于块尾指令 operands）；空条件兜底 0
-        std::string condReg = "0";
-        const std::string& cond = block.termCondition;
-        if (!cond.empty()) {
-            if (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v') {
-                condReg = loadOperandToX(
-                    writer, ir::IRValue::reg(std::stoi(cond.substr(2)), "i1"),
-                    "x9");
-            } else {
-                // 常量文本条件（"真"/"假" -> 1/0；数值原样）
-                condReg = loadOperandToX(
-                    writer, ir::IRValue::constant(cond, "i1"), "x9");
+            std::string condReg = "0";
+            const std::string& cond = block.termCondition;
+            if (!cond.empty()) {
+                if (cond.size() > 2 && cond[0] == '%' && cond[1] == 'v') {
+                    // 条件值 i1 不参与分配（isAllocableType=i64/u64/ptr）——
+                    //   直读恒 fallback，保持 x9 装载原路径（525-a 核实定性）
+                    condReg = loadOperandToX(
+                        writer, ir::IRValue::reg(std::stoi(cond.substr(2)), "i1"),
+                        "x9");
+                } else {
+                    // 常量文本条件（"真"/"假" -> 1/0；数值原样）
+                    condReg = loadOperandToX(
+                        writer, ir::IRValue::constant(cond, "i1"), "x9");
+                }
             }
-        }
         writer.line("cbz " + condReg + ", " + currentBlockPrefix_ +
                     labelMangle(block.termFalseTarget));
         writer.line("b " + currentBlockPrefix_ + labelMangle(block.termTrueTarget));
@@ -147,37 +149,40 @@ void Arm64CodeGenerator::emitInstruction(Arm64AsmWriter& writer,
             // 结构体整体赋值：内存拷贝（operand[0]=目标地址, operand[1]=源地址,
             //   extra=字节数）
             {
-                loadOperandToX(writer, inst.operands[0], "x9");
-                loadOperandToX(writer, inst.operands[1], "x10");
+                // D8（525-a）：地址基址直读——已分配寄存器直接作 ldr/str 基址
+                //   （免「mov x9, x19」装载中转·容器/结构体赋值族大头）；未分配
+                //   -> 装载 fallback x9/x10（原路径产物逐字节不变）。
                 // A7 根治（2026-09-15，225-a）：主循环 8 字节 + 尾部按剩余宽度
                 //   （4/2/1）精确读写——原 (bytes+7)/8 整槽写对「精确按类型大小
                 //   分配」的容器槽尾元素越界（同 linux_x64，valgrind 实证同族）。
                 //   语义=memcpy（Rust copy_nonoverlapping 同构：精确字节数）。
+                const std::string dstAddr = operandSourceReg(writer, inst.operands[0], "x9");
+                const std::string srcAddr = operandSourceReg(writer, inst.operands[1], "x10");
                 {
                     const long long bytes = std::stoll(inst.extra);
                     long long off = 0;
                     while (off + 8 <= bytes) {
                         const std::string o = std::to_string(off);
-                        writer.line("ldr x11, [x10, #" + o + "]");
-                        writer.line("str x11, [x9, #" + o + "]");
+                        writer.line("ldr x11, [" + srcAddr + ", #" + o + "]");
+                        writer.line("str x11, [" + dstAddr + ", #" + o + "]");
                         off += 8;
                     }
                     if (bytes - off >= 4) {
                         const std::string o = std::to_string(off);
-                        writer.line("ldr w11, [x10, #" + o + "]");
-                        writer.line("str w11, [x9, #" + o + "]");
+                        writer.line("ldr w11, [" + srcAddr + ", #" + o + "]");
+                        writer.line("str w11, [" + dstAddr + ", #" + o + "]");
                         off += 4;
                     }
                     if (bytes - off >= 2) {
                         const std::string o = std::to_string(off);
-                        writer.line("ldrh w11, [x10, #" + o + "]");
-                        writer.line("strh w11, [x9, #" + o + "]");
+                        writer.line("ldrh w11, [" + srcAddr + ", #" + o + "]");
+                        writer.line("strh w11, [" + dstAddr + ", #" + o + "]");
                         off += 2;
                     }
                     if (bytes - off >= 1) {
                         const std::string o = std::to_string(off);
-                        writer.line("ldrb w11, [x10, #" + o + "]");
-                        writer.line("strb w11, [x9, #" + o + "]");
+                        writer.line("ldrb w11, [" + srcAddr + ", #" + o + "]");
+                        writer.line("strb w11, [" + dstAddr + ", #" + o + "]");
                     }
                 }
             }

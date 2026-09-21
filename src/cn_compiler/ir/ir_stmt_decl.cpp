@@ -5,6 +5,7 @@
 //   块级作用域基线与零初始化兜底。
 #include <string>
 #include <utility>
+#include <cstdio>
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
@@ -147,6 +148,19 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             irType = "ptr";  // Task 2.10：lambda 赋值目标为函数指针（8字节地址）
         } else if (node->initializer->getType() == NodeType::NullLiteral) {
             irType = "ptr";  // 空指针字面量：指针类型（无 = 0）
+        } else if (!node->initializer->semanticType.empty() &&
+                   (mapType(node->initializer->semanticType) == "i128" ||
+                    mapType(node->initializer->semanticType) == "u128")) {
+            // 559-a（T96a·收窄面）：128 位初始化式取语义注记类型——原静默兜底
+            //   「整32」= i128→i32 截断链根（m44_01 实弹·3736928711）。注记文本
+            //   为源码类型名（如「整128」）→mapType 归一后判定（T96b 同法）。
+            //   **收窄理由**：完整推断面（i1/浮点/比较表达式等）会改变存量
+            //   E2E 契约（184 实证：布尔表达式兜底整32 打印 0/1→推断 i1 打印
+            //   真/假=expected 变更须用户批·320-a T47 同模式）——本轮只修
+            //   宽度溢出实弹族（i128/u128），推断面完整化=呈报登记随 T96 收口。
+            irType = mapType(node->initializer->semanticType);
+            // 推断结果同步回填 typeName（D1 同款全链一致：srcType/槽/成员链）
+            node->typeName = node->initializer->semanticType;
         }
     }
     // 分配变量槽（数组自动多槽：registerVarSlots 按数组长度预留）

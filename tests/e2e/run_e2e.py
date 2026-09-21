@@ -65,6 +65,15 @@ def 提取用例编号(名称: str) -> str:
     if len(段们) > 1 and 段们[1] == "v2":
         return 段们[0] + "_v2"
     return 段们[0]
+def 隔离键(名称: str) -> str:
+    """隔离目录键（329-a 根治·「同编号前缀不同用例」并行互踩）：
+    编号前缀 + 完整用例名 8 位哈希——根治 24_preprocessor 与 24_error_handling
+    共享 dualhost24/v2src24/v2work24 产物路径的竞态（实测：深度机 linux-x64
+    首跑 24_error_handling 跑出 24_preprocessor 输出「发布模式: 开启」；
+    274-a 的 _v2 段保留只隔离了「主用例 vs _v2 变体」，同编号不同名不隔离）。
+    纯 ASCII 输出（中文名折叠为哈希，路径 ASCII 友好）。"""
+    import hashlib
+    return 名称.split("_")[0] + "_" + hashlib.md5(名称.encode("utf-8")).hexdigest()[:8]
 # 内存保护用例前缀（338-a 扩面·2026-09-18·事故驱动）：原仅 78/79。
 #   事故：76_self_host_bootstrap 产物 `76_self_host_bo*` **anon-rss 28.9GB** 触发系统
 #   OOM killer（13:09:54 内核日志铁证），该进程属 ZCode 会话 scope → **连坐 ZCode 关闭**
@@ -73,6 +82,7 @@ def 提取用例编号(名称: str) -> str:
 #   超限即杀 + 判失败（防 OOM 卡死拖垮机器）。
 内存保护用例前缀 = ("70_", "71_", "72_", "73_", "74_", "75_", "76_", "77_",
                    "78_v2_自举链构建", "79_v2_自举闭环", "89_")
+
 内存轮询间隔秒 = 0.5
 
 # 平台限制用例跳过列表：某些用例因平台特性差异（API/ABI/工具链）无法在特定平台运行
@@ -618,7 +628,13 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         源文件 = 查找源文件(用例目录)
         期望文件 = 查找期望文件(源文件)
     except FileNotFoundError as 异常:
-        return "失败", str(异常)
+        # 569-a：负测双测通道（双编译对照.txt/v2闭环.txt 存在·负路径不依赖
+        #   运行级 expected——诊断锚行按需自查）放行无 .expected 的负测用例
+        if (用例目录 / "双编译对照.txt").exists() or (用例目录 / "v2闭环.txt").exists():
+            期望文件 = None
+            源文件 = 查找源文件(用例目录)
+        else:
+            return "失败", str(异常)
 
     # ============ v2 自举链接闭环用例（119/120…）：特殊编排 ============
     # v1 79 闭环是 C++ 版产物 + CN 组件链；v2 系列闭环是 v2 重建产物 + 宿主运行时：
@@ -675,7 +691,8 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         return 执行双编译对照(编译器路径, 用例目录, 输出目录, 详细, 目标平台,
                             双配置["源文件们"], 双配置["预期退出码"],
                             双配置["链接v2pobj"], 双配置["供给源们"],
-                            双配置["断言输出"])
+                            双配置["断言输出"], 双配置["预期编译失败"],
+                            双配置["诊断锚"])
 
     # 可执行文件后缀：Windows 下 .exe；Linux 下无后缀
     可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
@@ -807,6 +824,7 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     import filecmp
     名称 = 用例目录.name
     编号 = 提取用例编号(名称)
+    隔离键值 = 隔离键(名称)  # 329-a：隔离目录键（编号前缀+名哈希·防同前缀撞车）
     配置 = 解析v2锚定链配置(用例目录 / "v2锚定链.txt")
     阶段 = 配置["阶段"]
     if 目标平台 not in ("win-x64", "linux-arm64", "linux-x86_64"):
@@ -819,7 +837,7 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 
     # 工作目录隔离（对齐 v2work<编号> 模式）：v2 驱动器输出路径为相对 cwd 的
     #   target/v2asm.*，各用例独立工作目录（cwd 隔离），产物互不踩
-    工作目录 = 审计目录 / f"selfwork{编号}"
+    工作目录 = 审计目录 / f"selfwork{隔离键值}"
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
     # v2p/cn_self 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
     #   workdir 内链接到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，唯此一处；
@@ -880,11 +898,11 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     # ===== [4] 链接 cn_self（cn_self.obj 在前 + v2p.obj 借链 + 运行时；靠前定义胜出）=====
     if cn_self_exe.exists():
         cn_self_exe.unlink()
-    map文件 = 工作目录 / f"{编号}_self_link.map"
+    map文件 = 工作目录 / f"{隔离键值}_self_link.map"
     if map文件.exists():
         map文件.unlink()
     if 目标平台 == "win-x64":
-        响应文件 = 工作目录 / f"{编号}_self_link.rsp"
+        响应文件 = 工作目录 / f"{隔离键值}_self_link.rsp"
         rsp_lines = ["/nologo", "/ENTRY:WinMainCRTStartup", "/SUBSYSTEM:CONSOLE",
                      "/STACK:8388608", "/FORCE:MULTIPLE"]
         for lib in LIB路径们:
@@ -971,7 +989,7 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 #       借链（是|否）、供给（逗号分隔）；# 后为注释。
 def 解析v2闭环配置(配置路径: pathlib.Path) -> dict:
     配置 = {"源文件们": ["主.cn"], "预期退出码": 0, "链接v2pobj": False, "供给源们": [],
-            "断言输出": False}
+            "断言输出": False, "预期编译失败": False, "诊断锚": ""}
     for 原行 in 配置路径.read_text(encoding="utf-8").splitlines():
         行 = 原行.split("#", 1)[0].strip()
         if not 行 or "=" not in 行:
@@ -989,6 +1007,14 @@ def 解析v2闭环配置(配置路径: pathlib.Path) -> dict:
             # 261-a C20 波1 断言升级：两侧运行 stdout 逐行比对 .expected（正测双测
             # 形态）——默认否=存量口径（.expected 充当 v2p 编译日志锚行）完全不变
             配置["断言输出"] = 值 in ("是", "true", "True", "1")
+        elif 键 == "预期编译失败":
+            # 569-a C25 波2 负测双测通道：同一源码宿主与 v2p **都必须编译拒绝**
+            #   （双侧都必须拒绝=负向规范规则的等价性锚定；诊断文本各自锚定，
+            #   跨编译器诊断统一=T63 后案）
+            配置["预期编译失败"] = 值 in ("是", "true", "True", "1")
+        elif 键 == "诊断锚":
+            # 宿主侧负编译的诊断子串锚（可空=只锚 rc≠0；源自原 期望编译失败.txt）
+            配置["诊断锚"] = 值
         else:
             raise ValueError(f"v2闭环.txt 未知配置键: {键}（{配置路径}）")
     return 配置
@@ -1221,6 +1247,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     ——退出码非 0、target/v2asm.s 不产出、中止诊断行（.expected 固化）在输出中
     （v2 语义错误即中止纪律平台无关，win64 同款）。
     POSIX 退出码 8 位截断：退出码比对取 预期退出码 % 256（win64 为 32 位全值）。"""
+    隔离键值 = 隔离键(名称)  # 329-a：隔离目录键（编号前缀+名哈希·防同前缀撞车）
     import shutil
     import os
     if 供给源们 is None:
@@ -1236,7 +1263,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     #   （cwd 隔离，对齐 cargo test 进程隔离理念），v2asm/obj/exe 互不踩；
     #   入口参数改绝对路径（cwd 不再是项目根），日志锚行比对前把绝对前缀
     #   适配回相对（.expected 文件保持相对路径文本不动）。
-    工作目录 = 审计目录 / f"v2work{编号}"
+    工作目录 = 审计目录 / f"v2work{隔离键值}"
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
     # v2p 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
     #   workdir 内软链到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，唯此一处）
@@ -1251,7 +1278,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     #   输出中——防「报错仍产 asm」回归。v2p 运行须带目标平台第 2 参数
     #   （GAS 后端分派；win64 默认后端无需参数）=====
     if 预期退出码 is None:
-        v2src目录 = 审计目录 / f"v2src{编号}"
+        v2src目录 = 审计目录 / f"v2src{隔离键值}"
         v2src目录.mkdir(parents=True, exist_ok=True)
         for 文件名 in 源文件名们:
             src = 用例目录 / 文件名
@@ -1263,7 +1290,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         #   输入文件；既有平铺负测（139/141/146/149）行为等价）
         shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
-        入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
+        入口参数 = str((审计目录 / f"v2src{隔离键值}" / "主.cn").resolve())
         if v2asm路径.exists():
             v2asm路径.unlink()
         if 详细:
@@ -1285,7 +1312,10 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
             # 平台适配（与正路径步骤3 同款）：期望若引用 win64 路径须替换为 GAS 产物名
             适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
             # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
-            适配行 = 适配行.replace(f"v2src{主段}/", f"v2src{编号}/")
+            # 329-a：完整编号形态（含 _v2 段——expected 锚 v2src414_v2/ 等）先适配，
+            #   再兼容主编号旧形态（274-a 前写法）
+            适配行 = 适配行.replace(f"v2src{编号}/", f"v2src{隔离键值}/")
+            适配行 = 适配行.replace(f"v2src{主段}/", f"v2src{隔离键值}/")
             if 适配行 not in 实际输出:
                 return "失败", f"{编号}-N v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
         return "通过", (f"v2 语义错误中止负路径闭环成立（{目标平台}，退出码 {运行结果.returncode}，"
@@ -1301,7 +1331,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
             return "失败", f"{编号}-1.5 缺少供给源文件: {供给名}"
         # 供给产物路径一律 ASCII（supplyN_M）：rsp/命令行传给 ml64/link/as/g++ 的路径
         # 若含中文，会按系统代码页误读（win GBK 下 UTF-8 路径成乱码，LNK1181）
-        供给目录 = 审计目录 / f"supply{编号}_{len(供给objs)}"
+        供给目录 = 审计目录 / f"supply{隔离键值}_{len(供给objs)}"
         供给目录.mkdir(parents=True, exist_ok=True)
         shutil.copy2(供给src, 供给目录 / "主.cn")
         供给输出 = 供给目录 / "supply"
@@ -1321,7 +1351,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         供给objs.append(供给obj)
 
     # ===== 步骤2：准备多文件程序（入口 主.cn + 导入模块文件） =====
-    v2src目录 = 审计目录 / f"v2src{编号}"
+    v2src目录 = 审计目录 / f"v2src{隔离键值}"
     v2src目录.mkdir(parents=True, exist_ok=True)
     for 文件名 in 源文件名们:
         src = 用例目录 / 文件名
@@ -1337,7 +1367,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     # ===== 步骤3：运行 v2p（第 2 参数目标平台分派 GAS 后端）=====
     #   261-a C20 波1：入口改按配置 源文件名们[0]（非 主.cn 源名的用例〔01_hello
     #   等〕双编译对照需要；默认值不变=存量行为等价）
-    入口参数 = str((审计目录 / f"v2src{编号}" / 源文件名们[0]).resolve())
+    入口参数 = str((审计目录 / f"v2src{隔离键值}" / 源文件名们[0]).resolve())
     if v2asm路径.exists():
         v2asm路径.unlink()
     if 详细:
@@ -1365,7 +1395,10 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
             # 平台适配（不改测试文件）：GAS 后端输出 target/v2asm.s（win64 期望为 .asm）
             适配行 = 行.replace("target/v2asm.asm", "target/v2asm.s")
             # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
-            适配行 = 适配行.replace(f"v2src{主段}/", f"v2src{编号}/")
+            # 329-a：完整编号形态（含 _v2 段——expected 锚 v2src414_v2/ 等）先适配，
+            #   再兼容主编号旧形态（274-a 前写法）
+            适配行 = 适配行.replace(f"v2src{编号}/", f"v2src{隔离键值}/")
+            适配行 = 适配行.replace(f"v2src{主段}/", f"v2src{隔离键值}/")
             if 适配行 not in 实际输出:
                 return "失败", f"{编号}-3 v2p 输出缺少期望行: {适配行!r}\n    实际: {实际输出[:400]}"
     asm内容 = v2asm路径.read_text(encoding="utf-8", errors="replace")
@@ -1373,7 +1406,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         return "失败", f"{编号}-3.5 v2asm.s 缺少入口符号 cn_main（v2 代码生成入口未对齐宿主）"
 
     # ===== 步骤4：as 汇编 target/v2asm.s -> v2asm_<平台>.o =====
-    v2obj = 审计目录 / f"v2asm_{编号}_{产物后缀}.o"
+    v2obj = 审计目录 / f"v2asm_{隔离键值}_{产物后缀}.o"
     if v2obj.exists():
         v2obj.unlink()
     if 详细:
@@ -1385,7 +1418,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         return "失败", f"{编号}-4 as 返回成功但未生成 v2asm_linux.o"
 
     # ===== 步骤5：链接（对齐宿主 linux 链接命令 g++ -no-pie + 运行时 .o）=====
-    输出exe = 审计目录 / f"v2out_{编号}_{产物后缀}"
+    输出exe = 审计目录 / f"v2out_{隔离键值}_{产物后缀}"
     if 输出exe.exists():
         输出exe.unlink()
     链接命令 = [cxx工具, "-no-pie"]
@@ -1451,6 +1484,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
       管线编译为 .obj，链接置于 v2p.obj 之前（用例结构体布局权威）。"""
     名称 = 用例目录.name
     编号 = 提取用例编号(名称)  # 步骤号前缀与 v2src 目录名后缀（119/120…）
+    隔离键值 = 隔离键(名称)  # 329-a：隔离目录键（编号前缀+名哈希·防同前缀撞车）
     期望文件 = 查找期望文件(用例目录 / 源文件名们[0])
     if 供给源们 is None:
         供给源们 = []
@@ -1475,7 +1509,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     #   进程隔离理念），v2asm/obj/exe 互不踩；入口参数改绝对路径（cwd 不再是项目
     #   根），日志锚行比对前把绝对前缀适配回相对（同 linux 分支做法——v2 输出
     #   路径已归一为正斜杠形式）。
-    工作目录 = 审计目录 / f"v2work{编号}"
+    工作目录 = 审计目录 / f"v2work{隔离键值}"
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
     # v2p 的 stdlib 签名扫描按相对 cwd 读 stdlib/容器.cn（IR签名.cn:358）——
     #   workdir 内 junction 到项目根 stdlib（模块导入按入口目录解析不受 cwd 影响，
@@ -1497,8 +1531,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     #   语义错误即中止纪律的 E2E 锚定：v2p 退出码非 0、target/v2asm.asm 不产出、
     #   中止诊断行（.expected 固化）在输出中——防「报错仍产 asm」回归
     if 预期退出码 is None:
-        入口参数 = str((审计目录 / f"v2src{编号}" / "主.cn").resolve())
-        v2src目录 = 审计目录 / f"v2src{编号}"
+        入口参数 = str((审计目录 / f"v2src{隔离键值}" / "主.cn").resolve())
+        v2src目录 = 审计目录 / f"v2src{隔离键值}"
         v2src目录.mkdir(parents=True, exist_ok=True)
         for 文件名 in 源文件名们:
             src = 用例目录 / 文件名
@@ -1528,13 +1562,14 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         主段 = 编号.split("_")[0]
         for 行 in 期望行们:
             # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
-            行 = 行.replace(f"v2src{主段}/", f"v2src{编号}/")
+            行 = 行.replace(f"v2src{编号}/", f"v2src{隔离键值}/")
+            行 = 行.replace(f"v2src{主段}/", f"v2src{隔离键值}/")
             if 行 not in 实际输出:
                 return "失败", f"{编号}-N v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
         return "通过", f"v2 语义错误中止负路径闭环成立（退出码 {运行结果.returncode}，无 asm 产出，诊断行固化）"
 
     # ===== 步骤2：准备多文件程序（入口 主.cn + 导入模块文件） =====
-    v2src目录 = 审计目录 / f"v2src{编号}"
+    v2src目录 = 审计目录 / f"v2src{隔离键值}"
     v2src目录.mkdir(parents=True, exist_ok=True)
     for 文件名 in 源文件名们:
         src = 用例目录 / 文件名
@@ -1556,7 +1591,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             return "失败", f"{编号}-2.5 缺少供给源文件: {供给名}"
         # 供给产物路径一律 ASCII（supplyN_M）：rsp 传给 link.exe 的路径含中文时
         # 按系统代码页（GBK）误读 UTF-8 → LNK1181（对齐 linux 分支同款惯例）
-        供给目录 = 审计目录 / f"supply{编号}_{len(供给objs)}"
+        供给目录 = 审计目录 / f"supply{隔离键值}_{len(供给objs)}"
         供给目录.mkdir(parents=True, exist_ok=True)
         shutil.copy2(供给src, 供给目录 / "主.cn")
         供给输出 = 供给目录 / "supply.exe"
@@ -1578,7 +1613,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     # ===== 步骤3：运行 v2p（多文件编译：入口 + 自动加载导入模块） =====
     #   入口绝对路径 + cwd=隔离工作目录（111-a）——v2 产物 target/v2asm.asm 落工作目录
     #   261-a C20 波1：入口改按 源文件名们[0]（非 主.cn 源名用例；默认等价）
-    入口参数 = str((审计目录 / f"v2src{编号}" / 源文件名们[0]).resolve())
+    入口参数 = str((审计目录 / f"v2src{隔离键值}" / 源文件名们[0]).resolve())
     if v2asm路径.exists():
         v2asm路径.unlink()
     if 详细:
@@ -1601,7 +1636,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         主段 = 编号.split("_")[0]
         for 行 in 期望行们:
             # 274-a：_v2 用例编号带 _v2 段——锚行文本写死主编号目录名，适配回实际
-            行 = 行.replace(f"v2src{主段}/", f"v2src{编号}/")
+            行 = 行.replace(f"v2src{编号}/", f"v2src{隔离键值}/")
+            行 = 行.replace(f"v2src{主段}/", f"v2src{隔离键值}/")
             if 行 not in 实际输出:
                 return "失败", f"{编号}-3 v2p 输出缺少期望行: {行!r}\n    实际: {实际输出[:400]}"
     # 入口符号自检：v2 生成的 asm 必须含 cn_main（对齐宿主，链接后由运行时 entry 调用）
@@ -1633,7 +1669,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     输出exe = 工作目录 / "v2out.exe"
     if 输出exe.exists():
         输出exe.unlink()
-    响应文件 = 工作目录 / f"{编号}_link.rsp"
+    响应文件 = 工作目录 / f"{隔离键值}_link.rsp"
     rsp_lines = [
         "/nologo", "/ENTRY:WinMainCRTStartup", "/SUBSYSTEM:CONSOLE",
         "/STACK:8388608",
@@ -1654,7 +1690,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     else:
         rsp_lines += [str(v2obj)] + [str(o) for o in 运行时objs]
     # map 文件供符号方向自检（v2asm.obj 必须贡献 cn_main）
-    map文件 = 工作目录 / f"{编号}_link.map"
+    map文件 = 工作目录 / f"{隔离键值}_link.map"
     if map文件.exists():
         map文件.unlink()
     rsp_lines.append(f"/MAP:{map文件}")
@@ -1714,7 +1750,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
 def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                    输出目录: pathlib.Path, 详细: bool, 目标平台: str,
                    源文件名们: list, 预期退出码: int, 链接v2pobj: bool = False,
-                   供给源们: list = None, 断言运行输出: bool = False) -> tuple:
+                   供给源们: list = None, 断言运行输出: bool = False,
+                   预期编译失败: bool = False, 诊断锚: str = "") -> tuple:
     """同一源码两侧（宿主真实管线 / v2 自举链）各编各跑，断言退出码一致。
 
     实现：宿主侧编译 + 运行取实测退出码 H（断言 H == 用例期望值）→ v2 侧以 H 为期望
@@ -1725,11 +1762,89 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
         供给源们 = []
     名称 = 用例目录.name
     编号 = 提取用例编号(名称)
+    隔离键值 = 隔离键(名称)  # 329-a：隔离目录键（编号前缀+名哈希·防同前缀撞车）
     审计目录 = 项目根目录 / "target" / "audit2"
     审计目录.mkdir(parents=True, exist_ok=True)
 
+    # ===== 负测双测分支（569-a C25 波2）：宿主与 v2p **都必须编译拒绝** =====
+    #   宿主侧：编译 rc≠0 + 诊断锚子串（可空=只锚 rc）；v2 侧：复用 执行v2闭环
+    #   负路径（v2p rc≠0 + 无 asm 产出 + .expected 诊断锚行）。
+    #   语义=负向规范规则的两侧等价拒绝（诊断文本各自锚定·统一=T63 后案）。
+    if 预期编译失败:
+        入口 = 用例目录 / 源文件名们[0]
+        if not 入口.exists():
+            return "失败", f"{编号}-DN 缺少用例文件: {源文件名们[0]}"
+        宿主负输出目录 = 审计目录 / f"dualneg{隔离键值}"
+        宿主负输出目录.mkdir(parents=True, exist_ok=True)
+        可执行后缀 = ".exe" if 目标平台 == "win-x64" else ""
+        宿主负产物 = 宿主负输出目录 / f"{名称}{可执行后缀}"
+        if 宿主负产物.exists():
+            宿主负产物.unlink()
+        宿主负编译 = 运行命令([str(编译器路径), "build", str(入口),
+                          "--target", 目标平台, "--output", str(宿主负产物),
+                          *查找编译选项文件(用例目录)], 项目根目录)
+        if 宿主负编译.returncode == 0:
+            return "失败", f"{编号}-DN 预期宿主编译失败但编译成功: {入口.name}"
+        宿主诊断 = 解码诊断(宿主负编译.stderr) + 解码诊断(宿主负编译.stdout)
+        if 诊断锚 and 诊断锚 not in 宿主诊断:
+            return "失败", (f"{编号}-DN 宿主编译如预期失败但缺期望诊断[{诊断锚}]，"
+                            f"实际输出: {宿主诊断.strip()[:160]}")
+        try:
+            期望文件 = 查找期望文件(入口)
+        except FileNotFoundError:
+            期望文件 = None
+        if 期望文件 is not None and 期望文件.exists():
+            # 有 .expected（诊断锚行固化）→ 走完整 v2 负路径闭环
+            v2态, v2述 = 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 目标平台,
+                                源文件名们, None, 链接v2pobj, 供给源们, False)
+            if v2态 != "通过":
+                return "失败", (f"{编号}-DN 负测双测失败：宿主已拒绝但 v2 侧未拒绝 → {v2述}")
+        else:
+            # 无 .expected（原 期望编译失败 负测面）→ 轻量 v2 负编译断言：
+            #   v2p 编译必须 rc≠0 且不产 asm（错误产物纪律；诊断文本不锚=T63 后案）
+            import shutil as _shutil
+            v2负目录 = 审计目录 / f"dualnegv2{隔离键值}"
+            v2负目录.mkdir(parents=True, exist_ok=True)
+            (v2负目录 / "target").mkdir(parents=True, exist_ok=True)
+            for 文件名 in 源文件名们:
+                源f = 用例目录 / 文件名
+                if not 源f.exists():
+                    return "失败", f"{编号}-DN 缺少用例文件: {文件名}"
+                _shutil.copy2(源f, v2负目录 / 文件名)
+            _shutil.copytree(用例目录, v2负目录, dirs_exist_ok=True,
+                             ignore=_shutil.ignore_patterns("*.expected", "*.input", "*.args",
+                                                            "v2闭环.txt", "双编译对照.txt",
+                                                            "期望编译失败.txt", "期望check失败.txt"))
+            # 577-a 平台分派修复（569-a 硬编码 win 工具链与 win-x64 目标——linux/arm64
+            #   首跑 71 例负测全炸「未找到 ml64/link」；分派对齐 执行v2闭环 同款口径）：
+            #   win=v2p.exe+v2asm.asm；linux/arm64=v2p_<后缀>+v2asm.s（GAS 目标参数）
+            if 目标平台 == "win-x64":
+                就绪 = 确保v2p就绪win(编译器路径, 详细, 编号)
+                v2负asm = v2负目录 / "target" / "v2asm.asm"
+                平台参数 = "win-x64"
+            else:
+                就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 详细, 编号)
+                v2负asm = v2负目录 / "target" / "v2asm.s"
+                平台参数 = 目标平台
+            if 就绪[0] is None:
+                return "失败", 就绪[1]
+            v2p = 就绪[0]
+            v2负入口 = str((v2负目录 / 源文件名们[0]).resolve())
+            if v2负asm.exists():
+                v2负asm.unlink()
+            v2负编译 = 运行命令([str(v2p), v2负入口, 平台参数,
+                             *查找编译选项文件(用例目录)], v2负目录,
+                            内存上限MB=内存上限MB默认)
+            if v2负编译.returncode == 0:
+                return "失败", (f"{编号}-DN 负测双测失败：宿主已拒绝但 v2 侧未拒绝"
+                                f"（v2p 编译成功 rc=0·v2 宽松放行）: {入口.name}")
+            if v2负asm.exists():
+                return "失败", f"{编号}-DN v2p 语义错误中止后仍产出 {v2负asm.name}（错误产物纪律回归）"
+        return "通过", (f"负测双测成立（同一源码两侧等效拒绝）：宿主 rc≠0"
+                        f"{('且含诊断锚[' + 诊断锚 + ']') if 诊断锚 else ''} + v2 负路径闭环")
+
     # ===== 步骤1：宿主侧——源码树复制到隔离工作目录（cwd 无关；模块树随拷）=====
-    宿主目录 = 审计目录 / f"dualhost{编号}"
+    宿主目录 = 审计目录 / f"dualhost{隔离键值}"
     宿主目录.mkdir(parents=True, exist_ok=True)
     for 文件名 in 源文件名们:
         源 = 用例目录 / 文件名

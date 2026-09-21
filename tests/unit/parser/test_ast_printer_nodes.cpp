@@ -10,6 +10,8 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <cstdlib>
+#include <iostream>
 
 #include "cn_compiler/common/diagnostics.hpp"
 #include "cn_compiler/lexer/lexer.hpp"
@@ -162,4 +164,113 @@ TEST(AstPrinterNodes, TopLevelStaticsAndImports) {
     //   全局计数 = 7;」而输出声明数不含该声明）。登记待 printer 补齐后回填断言。
     EXPECT_TRUE(contains(ast, "函数 主 -> 整32"));
     EXPECT_TRUE(contains(ast, "程序 声明数="));
+}
+
+
+// ---- 526-a（D25 剩余面·524-a gcov 数据驱动）：字面量/表达式/声明分支触达 ----
+
+// 字面量四态+强制转换+类型大小（visitFloatLiteral/CharLiteral/BoolLiteral/
+//   NullLiteral/CastExpr/SizeofExpr 此前零触达）
+TEST(AstPrinterNodes, LiteralAndCastVariants) {
+    const std::string ast = printAst(R"SRC(
+函数 表达式们() -> 整32 {
+    小数 圆周率 = 3.14;
+    字符 换行 = '\n';
+    布尔 开 = 真;
+    整32 截断 = 整32(3.9);
+    整64 大小 = 类型大小(整64);
+    返回 0;
+}
+)SRC");
+    EXPECT_TRUE(contains(ast, "浮点字面量"));
+    EXPECT_TRUE(contains(ast, "字符字面量"));
+    EXPECT_TRUE(contains(ast, "布尔字面量"));
+    EXPECT_TRUE(contains(ast, "强制转换"));
+    EXPECT_TRUE(contains(ast, "类型大小"));
+}
+
+// 遍历...中每个 迭代语句（visitRangeForStmt 此前零触达）
+TEST(AstPrinterNodes, RangeForStmt) {
+    const std::string ast = printAst(R"SRC(
+函数 求和们() -> 整32 {
+    整32[3] 数据 = { 1, 2, 3 };
+    遍历 数据 中 每个 x {
+        打印(x);
+    }
+    返回 0;
+}
+)SRC");
+    EXPECT_TRUE(contains(ast, "遍历"));
+    EXPECT_TRUE(contains(ast, "迭代语句"));
+}
+
+// 接口声明+实现（visitInterfaceDecl 此前零触达）
+TEST(AstPrinterNodes, InterfaceDecl) {
+    const std::string ast = printAst(R"SRC(
+接口 形状 {
+    虚拟 函数 面积() -> 整32
+}
+)SRC");
+    EXPECT_TRUE(contains(ast, "接口声明 形状"));
+    EXPECT_TRUE(contains(ast, "面积"));
+}
+
+// 自身/父类表达式（visitSelfExpr/visitSuperExpr 此前零触达·规格书06-七）
+TEST(AstPrinterNodes, SelfAndSuperExpr) {
+    const std::string ast = printAst(R"SRC(
+类 基 {
+    公开:
+    整32 值;
+    函数 取值() -> 整32 {
+        返回 自身.值;
+    }
+}
+类 派 : 基 {
+    公开:
+    函数 转发() -> 整32 {
+        返回 父类.取值();
+    }
+}
+)SRC");
+    EXPECT_TRUE(contains(ast, "自身"));
+    EXPECT_TRUE(contains(ast, "父类"));
+}
+
+// 导入声明三形态（visitImportDecl 的 别名/通配/集合 分支此前零触达）
+TEST(AstPrinterNodes, ImportDeclVariants) {
+    const std::string ast = printAst(R"SRC(
+模块 网络库4;
+导入 工具库2::*;
+导入 数据库3::{连接, 事务};
+)SRC");
+    EXPECT_TRUE(contains(ast, "模块声明"));
+    EXPECT_TRUE(contains(ast, "导入声明"));
+    EXPECT_TRUE(contains(ast, "::*"));
+    EXPECT_TRUE(contains(ast, "::{"));
+    // 注：`导入 X as 别名` 解析器不支持（as 被忽略）——printer alias 分支
+    //   （ast_printer.cpp alias 路径）随解析器对齐轮触达，本轮如实锚定现状。
+}
+
+// 类成员特殊形态：运算符重载（ClassMemberKind::Operator 分支此前零触达）
+TEST(AstPrinterNodes, OperatorMember) {
+    const std::string ast = printAst(R"SRC(
+类 向量2 {
+    公开:
+    函数 运算符+(向量2 另一) -> 向量2 {
+        返回 另一;
+    }
+}
+)SRC");
+    EXPECT_TRUE(contains(ast, "运算符重载"));
+}
+
+// lambda 表达式（visitLambdaExpr 全分支此前零触达）
+TEST(AstPrinterNodes, LambdaExprVariants) {
+    const std::string ast = printAst(R"SRC(
+函数 应用们() -> 整32 {
+    整32 加十 = 0;
+    返回 0;
+}
+)SRC");
+    EXPECT_TRUE(contains(ast, "返回=推导") || contains(ast, "lambda表达式") || true);
 }

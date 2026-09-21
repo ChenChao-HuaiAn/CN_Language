@@ -136,6 +136,16 @@ bool parseCargoToml(const std::string& text, CargoConfig& out, std::string& erro
         const std::string key = trimSpaces(stripped.substr(0, eq));
         const std::string valueLine = trimSpaces(stripped.substr(eq + 1));
         std::string value;
+
+        // 329-a（D12 随载修复）：[特性] 启用 = ["名1", "名2"]——数组形态直接分流，
+        //   不走 parseQuotedValue。原实现先 parseQuotedValue 后 parseQuotedArray，
+        //   空数组 `启用 = []` 被 parseQuotedValue「值应为双引号字符串」误拒
+        //   （与 parseQuotedArray「空数组 [] 合法」注释自相矛盾；实测宿主拒绝 ↔
+        //   v2 接受 = 双侧分叉）。修复后 [特性] 其余键保持引号值口径不变。
+        if (section == "特性" && key == "启用") {
+            if (!parseQuotedArray(valueLine, out.features, error)) return false;
+            continue;
+        }
         if (!parseQuotedValue(valueLine, value, error)) return false;
 
         if (section == "货舱") {
@@ -147,11 +157,6 @@ bool parseCargoToml(const std::string& text, CargoConfig& out, std::string& erro
             // 其他键忽略（宽容）
         } else if (section == "依赖") {
             out.deps.push_back(CargoDependency{key, value});
-        } else if (section == "特性") {
-            // 239-a：启用 = ["名1", "名2"]（其余键宽容忽略）
-            if (key == "启用") {
-                if (!parseQuotedArray(valueLine, out.features, error)) return false;
-            }
         }
         // 其他节忽略（宽容扩展，如 [构建] 等）
     }
