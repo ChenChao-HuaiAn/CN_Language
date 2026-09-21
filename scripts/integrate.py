@@ -88,8 +88,11 @@ def 前置自检() -> str | None:
 
 def 两点间改动(起点: str, 终点: str) -> list[str]:
     """两点间 commit 范围的改动文件清单——写集分类与冲突标记扫描的输入。"""
-    文本 = 输出(["git", "diff", "--name-only", f"{起点}..{终点}"])
-    return [行.strip() for 行 in 文本.splitlines() if 行.strip()]
+    # core.quotepath=false：中文路径默认被转义为带前导双引号的八进制形态（"tests/e2e/...），
+    # 令 分类写集 的 startswith 匹配失效 → 触及中文路径写集被静默降级为快速门禁（586-a 实测：
+    # 93 个 tests 文件全中文目录名，全量门禁被跳过）；冲突标记检查的 仓库根/路径 拼装同样受害。
+    文本 = 输出(["git", "-c", "core.quotepath=false", "diff", "--name-only", f"{起点}..{终点}"])
+    return [行.strip().strip('"') for 行 in 文本.splitlines() if 行.strip()]
 
 
 def 改动文件清单(基准: str) -> list[str]:
