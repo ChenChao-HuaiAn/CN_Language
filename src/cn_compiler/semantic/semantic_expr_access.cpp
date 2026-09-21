@@ -160,8 +160,8 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   类表未命中时先 resolveGenericTypeName 物化为合成名（向量$整64）再查
     //   （幂等：非泛型/已物化/类表已命中路径零行为变化）。
     if (findClass(structType) == nullptr) {
-        const std::string 物化类型 = resolveGenericTypeName(structType, node->location);
-        if (物化类型 != structType) structType = 物化类型;
+        const std::string materializedType = resolveGenericTypeName(structType, node->location);
+        if (materializedType != structType) structType = materializedType;
     }
     // 类成员访问（Task 3.1）：对象为类类型 或 类名.静态成员（标识符且是类类型名）
     const ClassInfo* cls = findClass(structType);
