@@ -441,10 +441,23 @@ void IRGenerator::visitTernaryExpr(TernaryExpr* node) {
         //   codegen i1 Load 读低字节）。
     }
     // 预分配临时槽（唯一内部名 __ternary$N）
+    // 559-a（T96b）：槽类型/槽数按语义层注记分配——m44_01 实弹：i128 真值写入
+    //   硬编码 i64 单槽=越槽写 8 字节，汇合块 Load 16 字节读出栈垃圾（O0 巧合
+    //   对/O3 布局重排读垃圾）。i128/u128=双槽（对齐 ir.cpp:423 i128 变量模型）；
+    //   注记为空（语义未跑到/未知）保持 i64 单槽回退。
     std::string tempName = "__ternary$" + std::to_string(varCounter_++);
-    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "i64"),
-         tempName, "i64", node->location);
-    function_->varSlots[tempName] = 1;
+    std::string slotIRType = "i64";
+    int slotCount = 1;
+    if (!node->semanticType.empty()) {
+        const std::string mapped = mapType(node->semanticType);
+        if (!mapped.empty() && mapped != "未知") {
+            slotIRType = mapped;
+            slotCount = (mapped == "i128" || mapped == "u128") ? 2 : 1;
+        }
+    }
+    emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, slotIRType),
+         tempName, slotIRType, node->location);
+    function_->varSlots[tempName] = slotCount;
 
     // 标签"随建随取"：先取 3 个标签（newBlock 内部自增计数，参照 genIf）
     std::string trueLabel = "bb" + std::to_string(blockCounter_++);
@@ -476,7 +489,8 @@ void IRGenerator::visitTernaryExpr(TernaryExpr* node) {
 
     // 汇合块：Load 临时槽 作为表达式结果（类型用真分支类型，语义层已保证一致）
     setCurrentBlock(newBlock(endLabel));
-    lastExpr_ = emitResult(ir::Opcode::Load, {ir::IRValue::var(tempName, "i64")},
+    lastExpr_ = emitResult(ir::Opcode::Load,
+                           {ir::IRValue::var(tempName, slotIRType)},
                            trueTypeForLoad.type, "", node->location);
 }
 } // namespace cn_compiler

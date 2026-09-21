@@ -274,6 +274,13 @@ class Expr : public AstNode {
 public:
     using AstNode::AstNode;  // 继承构造函数
     ~Expr() override = default;
+
+    // 语义类型注记（559-a/T96a·T96b）：语义分析 checkExpr 单点写回（D1
+    //   StructInitExpr 提前回填 typeName 的同构推广——语义已推导的类型随节点
+    //   走，IR 生成层直接可读）。空串=语义未跑到/未知（消费方保持回退行为）。
+    //   首批消费面=「变量」声明类型推断（ir_stmt_decl）与三元物化槽分配
+    //   （ir_expr_unary）——根治初始化式推断静默兜底整32 与三元槽硬编码 i64。
+    std::string semanticType;
 };
 
 // 语句基类：所有语句节点的公共父类

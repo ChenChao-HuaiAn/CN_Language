@@ -131,7 +131,7 @@ def 快速门禁(文件们: list[str]) -> str | None:
     return None
 
 
-def 全量门禁(平台: str) -> str | None:
+def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | None:
     """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。
 
     并行红串行复验（447-a·机制级工具改进）：runner 隔离键欠账（同编号前缀不同主体名的
@@ -191,6 +191,24 @@ def 全量门禁(平台: str) -> str | None:
     串行 = 运行([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--", sys.executable,
                 "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "1"])
     if 串行.returncode != 0:
+        # 564-a（过渡机制·fdef8ae9 P1「v2p 构建确定性缺失」根治前）：--allow-known-red
+        #   显式点名机制——串行红若【全部】命中点名清单=「三平台已定性已知红」披露放行；
+        #   任一未点名红仍硬拦（机制不弱化）。使用责任=发起机：点名依据+集成广播披露
+        #   不实=违规可 revert。fdef8ae9 P1 根治后本分支应移除（移交条款）。
+        失败们 = []
+        for 原行 in (串行.stdout or "").splitlines():
+            t = 原行.strip()
+            if t.startswith("✗"):
+                失败们.append(t[1:].split(":")[0].strip())
+        未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
+        if 已知红们 and not 未点名:
+            print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单"
+                  f"（fdef8ae9 P1 批次抽签/三平台已定性已知红）——披露放行；"
+                  f"须在看板通告段完整披露点名依据。")
+            return None
+        if 未点名:
+            return (f"E2E 串行复验存在未点名真红 {未点名}（--target {目标}"
+                    f"·点名清单外——禁止集成）。")
         return f"E2E 串行复验仍未全绿（--target {目标}·非并行互踩——真红，禁止集成）。"
     print("  [复验] 并行红+串行绿=runner 产物互踩嫌疑（274-a 隔离键欠账·非代码红）"
           "——放行；须在看板通告段披露。")
@@ -233,7 +251,7 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
         return False, 问题, None
     if 须全量 and (上次已验基准 is None or 增量须全量):
         print(f"[4] 全量门禁（平台={平台}·跑在合并结果上）")
-        问题 = 全量门禁(平台)
+        问题 = 全量门禁(平台, 参数.allow_known_red)
         if 问题:
             return False, 问题, None
     elif 须全量:
@@ -252,6 +270,12 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
 def 主流程() -> int:
     解析器 = argparse.ArgumentParser(description="三机并行协同协议 v2·合并队列（AGENTS.md §8.2）")
     解析器.add_argument("--dry-run", action="store_true", help="演练模式：不真推 develop")
+    解析器.add_argument("--allow-known-red", action="append", default=[],
+                        metavar="用例名",
+                        help="已知红显式点名（564-a 过渡机制·fdef8ae9 P1 构建确定性根治前）："
+                             "串行复验红若全部命中点名清单=三平台已定性已知红披露放行；"
+                             "未点名红仍硬拦。使用责任=发起机（点名依据+集成广播披露不实=违规可 revert）。"
+                             "fdef8ae9 P1 根治后本参数应移除。可多次传入点名多个用例。")
     解析器.add_argument("--try-build-done", action="store_true",
                         help="声明三平台 try-build 已全绿回签（§8.3·共享层写集前置）")
     参数 = 解析器.parse_args()

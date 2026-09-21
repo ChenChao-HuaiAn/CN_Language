@@ -763,6 +763,11 @@ std::string SemanticAnalyzer::checkExpr(Expr* node) {
     if (node->getType() == NodeType::CallExpr) {
         checkBorrowViewCallArgs(static_cast<CallExpr*>(node));
     }
+    // 559-a（T96a/T96b）：语义类型写回 AST（D1 StructInitExpr 先例同构推广）——
+    //   IR 生成层的变量声明类型推断与三元物化槽分配直接读注记，根治
+    //   「非字面量初始化式静默兜底整32」（i128→i32 截断）与「三元槽硬编码 i64」。
+    //   「未知」不注记（消费方走既有回退路径）。
+    if (lastType_ != "未知") node->semanticType = lastType_;
     return lastType_;
 }
 void SemanticAnalyzer::checkBlock(BlockStmt* node) {
