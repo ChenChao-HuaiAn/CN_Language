@@ -3,5 +3,5 @@
 [parse] 语句缺少分号 ';'（行=10）
 [parse] 语句缺少分号 ';'（行=11）
 [parse] 语句缺少分号 ';'（行=12）
-[p6h] 已解析: target/audit2/v2src464/主.cn 节点=18
+[p6h] 已解析: target/audit2/v2src464/主.cn
 [parse] 语法错误 5 个，中止编译（不产 IR/asm）
