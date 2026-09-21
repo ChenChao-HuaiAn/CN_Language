@@ -109,6 +109,16 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
 //   第 4 层（v2.0 决策9，P1-4）：编译期常量折叠——常量已在 visitProgram 注册到
 //   globalConstValues_（值文本）；A-2 多模块同名常量按当前模块解析重写限定键。
 bool SemanticAnalyzer::checkConstIdentifier(IdentifierExpr* node) {
+    // 584-a（011-002·T47 甲「遮蔽生效」）：函数作用域内（scopes_ 非全局层）存在
+    //   同名变量/参数时，读点解析为变量而非顶层常量——块内局部/形参遮蔽常量
+    //   语义生效（346 锚：块内 整32 上限 遮蔽 常量 上限，读点取变量）。只查
+    //   scopes_[1..]：顶层常量自身经 declareVar 入 scopes_[0]，全局层命中不
+    //   触发守卫——顶层常量引用的类型识别口径零变化。
+    for (std::size_t i = scopes_.size(); i-- > 1; ) {
+        if (scopes_[i].find(node->name) != scopes_[i].end()) {
+            return false;
+        }
+    }
     // 第 4 层（v2.0 决策9，P1-4）：顶层常量引用——编译期常量折叠。
     //   常量已在 visitProgram 注册到 globalConstValues_（值文本）且 declareVar
     //   为全局变量；此处识别常量名（globalConstValues_ 命中）并把类型改为

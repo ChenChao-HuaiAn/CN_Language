@@ -172,34 +172,10 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
     if (handleClassFieldRead(node)) {
         return;
     }
-    // 第 4 层（v2.0 决策9，P1-4）：顶层常量引用——编译期常量折叠。
-    //   常量名 -> 字面量值文本（语义层 globalConstValue 查询），直接生成
-    //   常量加载（ConstInt/ConstFloat/ConstString），避免按变量生成栈槽。
-    if (semantic_ != nullptr) {
-        const std::string constText = semantic_->globalConstValue(node->name);
-        if (!constText.empty()) {
-            if (constText.size() >= 2 &&
-                (constText.front() == '"' || constText.front() == '\'')) {
-                // 字符串常量：去引号后入字符串常量池
-                std::string strVal = constText;
-                if (strVal.size() >= 2) strVal = strVal.substr(1, strVal.size() - 2);
-                lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr", strVal,
-                                       node->location);
-            } else if (constText == "真" || constText == "假") {
-                // 239-a：布尔常量（内建 调试模式 等）——纯值返回不发射指令（对齐
-                //   BoolLiteral 形态）：isConstant 使 如果(常量) 走 genIfConst 直取
-                lastExpr_ = ir::IRValue::constant(constText, "i1");
-            } else if (constText.find_first_of(".eE") != std::string::npos) {
-                lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, "f64", constText,
-                                       node->location);
-            } else {
-                // 整数常量（可能为十六进制/负数 raw，codegen 按文本解析）
-                lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64", constText,
-                                       node->location);
-            }
-            return;
-        }
-    }
+    // 584-a（011-002·T47 甲「遮蔽生效」）：常量内联折叠移至变量家族（局部/静态
+    //   局部/顶层静态）读取之后（下方 reg.id<0 分支内）——块内同名变量/参数
+    //   遮蔽顶层常量时读点取变量（346 锚：块内 整32 上限 遮蔽 常量 上限，读点
+    //   读变量槽而非内联 10）；无同名遮蔽的常量引用仍走常量内联（行为零变化）。
     ir::IRValue reg = lookupVar(node->name);
     if (reg.id < 0) {
         // 320-a（T41）：函数内静态局部读取——varStack 命中但 regId=-1（无栈槽，
@@ -241,6 +217,35 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
             const std::string irT = mapType(stType.empty() ? "整64" : stType);
             lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, irT, "", node->location);
             return;
+        }
+        // 第 4 层（v2.0 决策9，P1-4）：顶层常量引用——编译期常量折叠（584-a：
+        //   移至变量家族之后——局部/静态局部/顶层静态均未命中才内联常量）。
+        //   常量名 -> 字面量值文本（语义层 globalConstValue 查询），直接生成
+        //   常量加载（ConstInt/ConstFloat/ConstString），避免按变量生成栈槽。
+        if (semantic_ != nullptr) {
+            const std::string constText = semantic_->globalConstValue(node->name);
+            if (!constText.empty()) {
+                if (constText.size() >= 2 &&
+                    (constText.front() == '"' || constText.front() == '\'')) {
+                    // 字符串常量：去引号后入字符串常量池
+                    std::string strVal = constText;
+                    if (strVal.size() >= 2) strVal = strVal.substr(1, strVal.size() - 2);
+                    lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr", strVal,
+                                           node->location);
+                } else if (constText == "真" || constText == "假") {
+                    // 239-a：布尔常量（内建 调试模式 等）——纯值返回不发射指令（对齐
+                    //   BoolLiteral 形态）：isConstant 使 如果(常量) 走 genIfConst 直取
+                    lastExpr_ = ir::IRValue::constant(constText, "i1");
+                } else if (constText.find_first_of(".eE") != std::string::npos) {
+                    lastExpr_ = emitResult(ir::Opcode::ConstFloat, {}, "f64", constText,
+                                           node->location);
+                } else {
+                    // 整数常量（可能为十六进制/负数 raw，codegen 按文本解析）
+                    lastExpr_ = emitResult(ir::Opcode::ConstInt, {}, "i64", constText,
+                                           node->location);
+                }
+                return;
+            }
         }
         // 未找到变量：可能是函数名（函数指针赋值）。生成函数地址。
         // 防御性：若连函数也不是（语义已报错），仍生成FuncAddr避免IR中断
