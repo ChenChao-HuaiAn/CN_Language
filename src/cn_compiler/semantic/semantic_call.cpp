@@ -68,6 +68,10 @@ void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
         node->arguments[i] = std::make_unique<UnaryExpr>(
             Operator::AddressOf, std::move(node->arguments[i]));
         node->arguments[i]->location = loc;
+        // 588-a（005 甲案）：包装节点=内部引用机制形态（IR 层维持 AddrOf 槽——
+        //   A-1 契约"引用形参槽存被引用左值地址"，探针实证写回/读/方法/换绑
+        //   全链依赖此形态），与用户显式 &（类类型→Load 槽产对象地址）区分。
+        static_cast<UnaryExpr*>(node->arguments[i].get())->refWrapAddr = true;
     }
 }
 // ==================== plans/019 阶段1（2026-09-10）：显式转移 转移() ====================

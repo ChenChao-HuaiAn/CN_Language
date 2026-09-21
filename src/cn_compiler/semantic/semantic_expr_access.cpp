@@ -160,6 +160,8 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     //   类表未命中时先 resolveGenericTypeName 物化为合成名（向量$整64）再查
     //   （幂等：非泛型/已物化/类表已命中路径零行为变化）。
     if (findClass(structType) == nullptr) {
+        // 588-a 集成验收修（红灯治理 §8.3）：标识符改 ASCII（win ASCII 门禁拦截
+        //   非ASCII 标识符——551-a linux 绿/win 红=跨平台静补偿漏面·语义零变化）
         const std::string materializedType = resolveGenericTypeName(structType, node->location);
         if (materializedType != structType) structType = materializedType;
     }

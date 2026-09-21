@@ -394,12 +394,20 @@ bool IRGenerator::handleClassMemberExpr(MemberExpr* node) {
         }
     }
 
-    // ---- 实例字段：对象为类实例（源码类型是类） ----
-    if (!semantic_->isClassType(canonObj)) return false;
-    const std::string fieldType = classFieldType(canonObj, node->memberName);
+    // ---- 实例字段：对象为类实例（源码类型是类或类指针——v2.1 . 自动解引用一级） ----
+    // 588-a（005〔原B-T81〕甲案）：类指针对象（`点* p2 = &p1; p2.x`）剥指针取
+    //   类名（与 emitInstanceMethodCall 类型驱动剥法同款·泛型合成名尾 * 先判
+    //   类直接用）——原不识别指针形态 → findStruct 失败 → 字段读降级常量 0
+    //   （静默错值·probe3 实锤）。
+    std::string canonObjField = canonObj;
+    if (!semantic_->isClassType(canonObjField) && types::isPointer(canonObjField)) {
+        canonObjField = types::canonical(types::pointeeOf(canonObjField));
+    }
+    if (!semantic_->isClassType(canonObjField)) return false;
+    const std::string fieldType = classFieldType(canonObjField, node->memberName);
     if (fieldType.empty()) return false;
     ir::IRValue base = genExpr(node->object.get());  // this / 类变量值（对象指针）
-    const int offset = semantic_->classFieldOffset(canonObj, node->memberName);
+    const int offset = semantic_->classFieldOffset(canonObjField, node->memberName);
     if (offset < 0) return false;
     ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                   std::to_string(offset), node->location);

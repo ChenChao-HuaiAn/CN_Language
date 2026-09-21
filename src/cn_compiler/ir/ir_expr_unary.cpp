@@ -345,15 +345,37 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             // 取地址 &变量（Task 2.4）：AddrOf(变量引用) -> 变量地址
             // 数组名作 & 操作数：数组名已是首元素地址，&数组 与 数组名 等价
             // （C语义；此处直接生成 AddrOf 取变量槽地址）
-            const std::string unique = lookupVarName(
+            const std::string operandName =
                 node->operand->getType() == NodeType::IdentifierExpr
                     ? static_cast<IdentifierExpr*>(node->operand.get())->name
-                    : "");
+                    : "";
+            const std::string unique = lookupVarName(operandName);
             if (node->operand->getType() == NodeType::IdentifierExpr && !unique.empty()) {
                 // 缺陷修复（[&] 引用捕获 &变量）：参数槽存被捕获变量地址，
                 //   &捕获变量 = Load 参数槽（取被捕获变量地址，而非参数槽自身地址）
-                if (isByRefCapture(
-                        static_cast<IdentifierExpr*>(node->operand.get())->name)) {
+                if (isByRefCapture(operandName)) {
+                    lastExpr_ = emitResult(ir::Opcode::Load,
+                                           {ir::IRValue::var(unique, "ptr")},
+                                           "ptr", unique, node->location);
+                } else if (node->refWrapAddr) {
+                    // 588-a（005〔原B-T81〕甲案）：语义层 wrapRefArgs 包装节点=
+                    //   内部引用机制形态——维持 AddrOf(变量槽)（A-1 byRef 契约：
+                    //   引用形参槽存被引用左值地址；探针实证写回/读/方法调用/
+                    //   整体换绑全链依赖此形态，字节级保持）。
+                    lastExpr_ = emitResult(ir::Opcode::AddrOf,
+                                           {ir::IRValue::var(unique, operand.type)},
+                                           "ptr", unique, node->location);
+                } else if (semantic_ != nullptr &&
+                           semantic_->isClassType(types::canonical(types::stripRef(
+                               lookupSrcType(operandName))))) {
+                    // 588-a（005〔原B-T81〕·用户 2026-09-21 裁决甲=取地址语义
+                    //   一致化）：用户显式 &类变量 产**对象地址**——类=指针槽模型
+                    //   （变量槽存句柄），Load 槽即对象地址，与 点* 类型标注一级
+                    //   语义对齐（C++/Rust 对照：&obj 即对象地址）。原无条件
+                    //   AddrOf(槽)=指向槽本身（二级语义），`点* p2 = &p1; p2.读x()`
+                    //   把槽地址当对象地址解引用=静默垃圾值（probe_f1 实锤·E2E
+                    //   零覆盖）。判据与整体赋值源分支同款（ir_expr_member.cpp：
+                    //   结构体 AddrOf 槽 / 类 Load 槽）。
                     lastExpr_ = emitResult(ir::Opcode::Load,
                                            {ir::IRValue::var(unique, "ptr")},
                                            "ptr", unique, node->location);
@@ -375,8 +397,7 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 lastExpr_ = genExpr(static_cast<UnaryExpr*>(node->operand.get())->operand.get());
             } else if (node->operand->getType() == NodeType::IdentifierExpr &&
                        semantic_ != nullptr &&
-                       semantic_->isGlobalStatic(
-                           static_cast<IdentifierExpr*>(node->operand.get())->name)) {
+                       semantic_->isGlobalStatic(operandName)) {
                 // plans/018 根治（2026-09-07，缺陷零容忍）：顶层静态变量取地址——
                 //   ?gstatic_名 符号地址即变量槽地址（.data 槽本身=存储位置），直接
                 //   以符号地址为取地址结果。原落 else 读值兜底（genExpr→LoadPtr 读
@@ -386,10 +407,22 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 //   读写容器对象头=静默错位）。v2self 语义分析多文件(6 个 & 静态
                 //   容器实参) 首次踩中。Rust 对照：&static mut 的引用恒指向存储
                 //   位置本身，绝不解引用重解释。
-                lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr",
-                                       "?gstatic_" + static_cast<IdentifierExpr*>(
-                                           node->operand.get())->name,
-                                       node->location);
+                // 588-a（005 甲案）：用户显式 &静态**类**变量 与局部同口径语义
+                //   一致化——静态槽存句柄，LoadPtr 符号槽=对象地址（一级语义）；
+                //   包装节点（refWrapAddr）与非类静态维持符号地址（槽地址）不变。
+                const std::string stSrc = semantic_->globalStaticType(operandName);
+                if (!node->refWrapAddr &&
+                    semantic_->isClassType(types::canonical(types::stripRef(stSrc)))) {
+                    const ir::IRValue sym = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                                       "?gstatic_" + operandName,
+                                                       node->location);
+                    lastExpr_ = emitResult(ir::Opcode::LoadPtr, {sym}, "ptr",
+                                           "", node->location);
+                } else {
+                    lastExpr_ = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                           "?gstatic_" + operandName,
+                                           node->location);
+                }
             } else {
                 // 其他左值：直接使用其地址值（表达式本身是地址）
                 lastExpr_ = genExpr(node->operand.get());
