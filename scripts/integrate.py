@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""合并队列脚本（三机并行协同协议 v2·AGENTS.md §8.2——develop 唯一入关口）。
+"""合并队列脚本（三机并行协同协议 v3·AGENTS.md §8.2——develop 唯一入关口）。
 
 职责：把当前任务分支安全集成回 develop——
-  前置自检 → fetch → rebase（冲突自己解·禁止 develop 手解）→ 写集分类（try-build 提示）
+  前置自检 → fetch → rebase（冲突自己解·禁止 develop 手解）→ 写集分类（仅门禁深度）
   → 门禁（跑在合并结果上：快速门禁恒跑；写集触及 src/tests 时全量门禁）
   → push gitcode develop（ff-only·CAS 竞争输家自动 rebase 重试 ≤3 次）→ 补推 github 镜像。
-业界对照=rustc/bors 合并队列、GitHub merge queue 的脚本化实现（方案全文=plans/027）。
+v3（581-a·2026-09-21 用户裁决）：**无任何集成前置的他机回签/批准面**——跨平台正确性由
+集成后异步验收+修复义务保障（AGENTS.md §8.3；plans/027 §八 v3 裁决记录）。
+业界对照=rustc/bors 合并队列、GitHub merge queue 的脚本化实现。
 
 用法（在任务分支上运行）：
   python3 scripts/integrate.py                    # 正常集成
   python3 scripts/integrate.py --dry-run          # 演练：全步骤、push 以 --dry-run 代替（不真推）
-  python3 scripts/integrate.py --try-build-done   # 写集触及三平台共享层且 try-build 已全绿回签后声明（§8.3）
 
 退出码：0=集成成功（或演练通过）；1=失败（原因见输出）。
 """
@@ -31,9 +32,8 @@ from pathlib import Path
 分支名模式 = re.compile(r"^任务/(家机|单位机|深度机)-\d+-\S+$")
 最大重试 = 3
 
-# 三平台产物相关写集（触及→须三平台 try-build·AGENTS.md §8.3；纯文档/平台无关脚本不触发）
-try_build_触发模式 = ("src/", "tests/", "CMakeLists.txt", "build.ps1", "scripts/ci.ps1")
-# 全量门禁触发面（触及 src/tests → 除快速门禁外另跑构建+单测+E2E）
+# 全量门禁触发面（触及 src/tests → 除快速门禁外另跑构建+单测+E2E；v3 起无 try-build 分类面——
+# v2 的 try_build_触发模式 随 581-a 废除，写集分类仅区分门禁深度）
 全量门禁触发模式 = ("src/", "tests/")
 
 
@@ -97,11 +97,9 @@ def 改动文件清单(基准: str) -> list[str]:
     return 两点间改动(基准, "HEAD")
 
 
-def 分类写集(文件们: list[str]) -> tuple[bool, bool]:
-    """返回（须 try-build，须全量门禁）。"""
-    须_try = any(文件.startswith(try_build_触发模式) or 文件 in try_build_触发模式 for 文件 in 文件们)
-    须全量 = any(文件.startswith(全量门禁触发模式) for 文件 in 文件们)
-    return 须_try, 须全量
+def 分类写集(文件们: list[str]) -> bool:
+    """返回 须全量门禁与否。v3：写集分类仅区分门禁深度，不存在集成前置的他机批准面（§8.3）。"""
+    return any(文件.startswith(全量门禁触发模式) for 文件 in 文件们)
 
 
 def 冲突标记检查(文件们: list[str]) -> str | None:
@@ -232,23 +230,14 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
     文件们 = 改动文件清单(最新)
     if not 文件们:
         return False, "分支相对 develop 无任何改动（空集成）。", None
-    须_try, 须全量 = 分类写集(文件们)
-    if 须_try and not 参数.try_build_done and not 参数.win_verified:
-        return False, (
-            f"写集触及三平台共享层（{[f for f in 文件们 if f.startswith(try_build_触发模式) or f in try_build_触发模式][:5]}…）"
-            "——须先完成三平台 try-build（推分支→看板通告段点名另两机→全绿回签），再以 --try-build-done 集成（AGENTS.md §8.3）；"
-            "或按 2026-09-21 用户令以 --win-verified 走平台后验模式（win 全量绿即集成·其他平台集成后自验证·发起机看板广播披露）。"
-        ), None
-    if 须_try and 参数.win_verified and not 参数.try_build_done:
-        print("[平台后验模式·用户令 2026-09-21] win 全量门禁已验即集成；"
-              "linux/arm64 由各平台机集成后自验证（集成后验证常设）——发起机须看板广播披露本模式。")
+    须全量 = 分类写集(文件们)
 
     # 门禁跑在合并结果上；重试时仅当 develop 增量（上轮已验 tip→本轮最新）触及 src/tests 才重跑全量门禁
     if 上次已验基准 is None or 上次已验基准 == 最新:
         增量 = 文件们 if 上次已验基准 is None else []
     else:
         增量 = 两点间改动(上次已验基准, 最新)
-    _, 增量须全量 = 分类写集(增量)
+    增量须全量 = 分类写集(增量)
     print(f"[3] 快速门禁（改动 {len(文件们)} 个文件）")
     问题 = 快速门禁(文件们)
     if 问题:
@@ -272,7 +261,7 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
 
 
 def 主流程() -> int:
-    解析器 = argparse.ArgumentParser(description="三机并行协同协议 v2·合并队列（AGENTS.md §8.2）")
+    解析器 = argparse.ArgumentParser(description="三机并行协同协议 v3·合并队列（AGENTS.md §8.2·异步验收制）")
     解析器.add_argument("--dry-run", action="store_true", help="演练模式：不真推 develop")
     解析器.add_argument("--allow-known-red", action="append", default=[],
                         metavar="用例名",
@@ -280,14 +269,18 @@ def 主流程() -> int:
                              "串行复验红若全部命中点名清单=三平台已定性已知红披露放行；"
                              "未点名红仍硬拦。使用责任=发起机（点名依据+集成广播披露不实=违规可 revert）。"
                              "fdef8ae9 P1 根治后本参数应移除。可多次传入点名多个用例。")
+    # v2 遗留旗标（581-a 废除·接受即忽略——v3 下「本机门禁绿即集成」本就是默认行为，
+    # 保留解析仅为不炸他机旧命令行习惯）
     解析器.add_argument("--try-build-done", action="store_true",
-                        help="声明三平台 try-build 已全绿回签（§8.3·共享层写集前置）")
+                        help=argparse.SUPPRESS)
     解析器.add_argument("--win-verified", action="store_true",
-                        help="平台后验模式（2026-09-21 用户令）：win 全量门禁绿即集成，"
-                             "不等另两机回签——linux/arm64 集成后自验证（发起机看板广播披露）")
+                        help=argparse.SUPPRESS)
     参数 = 解析器.parse_args()
+    if 参数.try_build_done or 参数.win_verified:
+        print("[v3] --try-build-done/--win-verified 已随协议 v3 废除（接受即忽略）——"
+              "本机门禁绿即集成，跨平台由集成后异步验收保障（AGENTS.md §8.3）。")
     平台 = 探测平台()
-    print(f"== 合并队列（协议 v2）｜平台={平台}｜模式={'演练' if 参数.dry_run else '集成'} ==")
+    print(f"== 合并队列（协议 v3·异步验收制）｜平台={平台}｜模式={'演练' if 参数.dry_run else '集成'} ==")
 
     问题 = 前置自检()
     if 问题:
@@ -306,7 +299,8 @@ def 主流程() -> int:
                     print(f"  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")
             分支 = 输出(["git", "branch", "--show-current"])
             print(f"\n[集成成功] {分支} → {集成分支}（{输出(['git', 'rev-parse', 'HEAD'])[:8]}）"
-                  f"——请在看板通告段广播影响面（哪些平台需集成后验证·AGENTS.md §8.2 步骤 7）。")
+                  f"——请在看板通告段发验收请求（集成基线 commit+变更要点+影响面·AGENTS.md §8.2 步骤 7/"
+                  f"§8.3 异步验收），并登记本机 🧵 验收基线行。")
             return 0
         if 信息 is None:
             print(f"  [竞争] push 被拒（他人刚集成）——第 {尝试}/{最大重试} 次 rebase 重试")
