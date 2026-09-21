@@ -156,7 +156,18 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
         串行 = 运行([sys.executable, "tests/e2e/run_e2e.py",
                      "--cn", str(仓库根 / "target/Debug/cn.exe"), "--jobs", "1"])
         if 串行.returncode != 0:
-            return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
+            # 591-a（T100·170 集成实测）：win 分支补接 --allow-known-red 点名消费
+            #   （与锁内版 190-215 段同逻辑——原 win ci.ps1 路径漏接·参数已有实现
+            #   未达此处）：串行红全部命中点名=已定性已知红披露放行；任一未点名仍拦。
+            失败们 = []
+            for 原行 in (串行.stdout or "").splitlines():
+                ts = 原行.strip()
+                if ts.startswith("✗"):
+                    失败们.append(ts[1:].split(":")[0].strip())
+            未点名 = [f for f in 失败们 if f not in (已知红们 or [])]
+            if 未点名:
+                return "E2E 串行复验仍未全绿（非并行互踩——真红，禁止集成）。"
+            print(f"  [复验] 串行红 {失败们} 全部命中 --allow-known-red 点名清单——披露放行。")
         print("  [复验] 并行红+串行绿=runner 产物互踩嫌疑（274-a 隔离键欠账·非代码红）"
               "——放行；须在看板通告段披露。")
         return None
