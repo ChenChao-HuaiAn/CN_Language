@@ -628,7 +628,13 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
         源文件 = 查找源文件(用例目录)
         期望文件 = 查找期望文件(源文件)
     except FileNotFoundError as 异常:
-        return "失败", str(异常)
+        # 569-a：负测双测通道（双编译对照.txt/v2闭环.txt 存在·负路径不依赖
+        #   运行级 expected——诊断锚行按需自查）放行无 .expected 的负测用例
+        if (用例目录 / "双编译对照.txt").exists() or (用例目录 / "v2闭环.txt").exists():
+            期望文件 = None
+            源文件 = 查找源文件(用例目录)
+        else:
+            return "失败", str(异常)
 
     # ============ v2 自举链接闭环用例（119/120…）：特殊编排 ============
     # v1 79 闭环是 C++ 版产物 + CN 组件链；v2 系列闭环是 v2 重建产物 + 宿主运行时：
@@ -1783,10 +1789,48 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
         if 诊断锚 and 诊断锚 not in 宿主诊断:
             return "失败", (f"{编号}-DN 宿主编译如预期失败但缺期望诊断[{诊断锚}]，"
                             f"实际输出: {宿主诊断.strip()[:160]}")
-        v2态, v2述 = 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 目标平台,
-                            源文件名们, None, 链接v2pobj, 供给源们, False)
-        if v2态 != "通过":
-            return "失败", (f"{编号}-DN 负测双测失败：宿主已拒绝但 v2 侧未拒绝 → {v2述}")
+        try:
+            期望文件 = 查找期望文件(入口)
+        except FileNotFoundError:
+            期望文件 = None
+        if 期望文件 is not None and 期望文件.exists():
+            # 有 .expected（诊断锚行固化）→ 走完整 v2 负路径闭环
+            v2态, v2述 = 执行v2闭环(编译器路径, 用例目录, 输出目录, 详细, 目标平台,
+                                源文件名们, None, 链接v2pobj, 供给源们, False)
+            if v2态 != "通过":
+                return "失败", (f"{编号}-DN 负测双测失败：宿主已拒绝但 v2 侧未拒绝 → {v2述}")
+        else:
+            # 无 .expected（原 期望编译失败 负测面）→ 轻量 v2 负编译断言：
+            #   v2p 编译必须 rc≠0 且不产 asm（错误产物纪律；诊断文本不锚=T63 后案）
+            import shutil as _shutil
+            v2负目录 = 审计目录 / f"dualnegv2{隔离键值}"
+            v2负目录.mkdir(parents=True, exist_ok=True)
+            (v2负目录 / "target").mkdir(parents=True, exist_ok=True)
+            for 文件名 in 源文件名们:
+                源f = 用例目录 / 文件名
+                if not 源f.exists():
+                    return "失败", f"{编号}-DN 缺少用例文件: {文件名}"
+                _shutil.copy2(源f, v2负目录 / 文件名)
+            _shutil.copytree(用例目录, v2负目录, dirs_exist_ok=True,
+                             ignore=_shutil.ignore_patterns("*.expected", "*.input", "*.args",
+                                                            "v2闭环.txt", "双编译对照.txt",
+                                                            "期望编译失败.txt", "期望check失败.txt"))
+            就绪 = 确保v2p就绪win(编译器路径, 详细, 编号)
+            if 就绪[0] is None:
+                return "失败", 就绪[1]
+            v2p = 就绪[0]
+            v2负入口 = str((v2负目录 / 源文件名们[0]).resolve())
+            v2负asm = v2负目录 / "target" / "v2asm.asm"
+            if v2负asm.exists():
+                v2负asm.unlink()
+            v2负编译 = 运行命令([str(v2p), v2负入口, "win-x64",
+                             *查找编译选项文件(用例目录)], v2负目录,
+                            内存上限MB=内存上限MB默认)
+            if v2负编译.returncode == 0:
+                return "失败", (f"{编号}-DN 负测双测失败：宿主已拒绝但 v2 侧未拒绝"
+                                f"（v2p 编译成功 rc=0·v2 宽松放行）: {入口.name}")
+            if v2负asm.exists():
+                return "失败", f"{编号}-DN v2p 语义错误中止后仍产出 v2asm.asm（错误产物纪律回归）"
         return "通过", (f"负测双测成立（同一源码两侧等效拒绝）：宿主 rc≠0"
                         f"{('且含诊断锚[' + 诊断锚 + ']') if 诊断锚 else ''} + v2 负路径闭环")
 
