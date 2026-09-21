@@ -1815,22 +1815,31 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
                              ignore=_shutil.ignore_patterns("*.expected", "*.input", "*.args",
                                                             "v2闭环.txt", "双编译对照.txt",
                                                             "期望编译失败.txt", "期望check失败.txt"))
-            就绪 = 确保v2p就绪win(编译器路径, 详细, 编号)
+            # 577-a 平台分派修复（569-a 硬编码 win 工具链与 win-x64 目标——linux/arm64
+            #   首跑 71 例负测全炸「未找到 ml64/link」；分派对齐 执行v2闭环 同款口径）：
+            #   win=v2p.exe+v2asm.asm；linux/arm64=v2p_<后缀>+v2asm.s（GAS 目标参数）
+            if 目标平台 == "win-x64":
+                就绪 = 确保v2p就绪win(编译器路径, 详细, 编号)
+                v2负asm = v2负目录 / "target" / "v2asm.asm"
+                平台参数 = "win-x64"
+            else:
+                就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 详细, 编号)
+                v2负asm = v2负目录 / "target" / "v2asm.s"
+                平台参数 = 目标平台
             if 就绪[0] is None:
                 return "失败", 就绪[1]
             v2p = 就绪[0]
             v2负入口 = str((v2负目录 / 源文件名们[0]).resolve())
-            v2负asm = v2负目录 / "target" / "v2asm.asm"
             if v2负asm.exists():
                 v2负asm.unlink()
-            v2负编译 = 运行命令([str(v2p), v2负入口, "win-x64",
+            v2负编译 = 运行命令([str(v2p), v2负入口, 平台参数,
                              *查找编译选项文件(用例目录)], v2负目录,
                             内存上限MB=内存上限MB默认)
             if v2负编译.returncode == 0:
                 return "失败", (f"{编号}-DN 负测双测失败：宿主已拒绝但 v2 侧未拒绝"
                                 f"（v2p 编译成功 rc=0·v2 宽松放行）: {入口.name}")
             if v2负asm.exists():
-                return "失败", f"{编号}-DN v2p 语义错误中止后仍产出 v2asm.asm（错误产物纪律回归）"
+                return "失败", f"{编号}-DN v2p 语义错误中止后仍产出 {v2负asm.name}（错误产物纪律回归）"
         return "通过", (f"负测双测成立（同一源码两侧等效拒绝）：宿主 rc≠0"
                         f"{('且含诊断锚[' + 诊断锚 + ']') if 诊断锚 else ''} + v2 负路径闭环")
 
