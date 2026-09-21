@@ -258,7 +258,10 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
             }
         } else {
             // 显式类型：检查初始值可隐式转换
+            // 574-a：构造器目标上下文压栈（正常/错误/某些 推断优先取目标 T/E）
+            if (varType != "未知") ctorTargetStack_.push_back(varType);
             std::string initType = checkExpr(node->initializer.get());
+            if (varType != "未知") ctorTargetStack_.pop_back();
             // plans/019 阶段3 扩展（A21，第七十七轮）：捕获借出调用标记（同推断分支）
             initBorrowViewCaptured = (lastExprIsBorrowView_ &&
                                       node->initializer.get() == lastBorrowCallNode_);
