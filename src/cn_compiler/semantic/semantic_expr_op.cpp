@@ -481,14 +481,7 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     }
 
     // 检查右值
-    // 574-a：构造器目标上下文压栈（r = 正常(...) 赋值位推断按目标 T/E）
-    if (!targetType.empty() && targetType != "未知") {
-        ctorTargetStack_.push_back(targetType);
-    }
     std::string valueType = checkExpr(node->value.get());
-    if (!targetType.empty() && targetType != "未知") {
-        ctorTargetStack_.pop_back();
-    }
 
     // 借出视图登记 + 字符* 借用收紧（A21/A2 族）：true = 已诊断并终止
     if (checkBorrowViewAssign(node, targetType, valueType)) return;

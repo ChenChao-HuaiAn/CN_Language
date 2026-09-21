@@ -233,11 +233,15 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
     if not 文件们:
         return False, "分支相对 develop 无任何改动（空集成）。", None
     须_try, 须全量 = 分类写集(文件们)
-    if 须_try and not 参数.try_build_done:
+    if 须_try and not 参数.try_build_done and not 参数.win_verified:
         return False, (
             f"写集触及三平台共享层（{[f for f in 文件们 if f.startswith(try_build_触发模式) or f in try_build_触发模式][:5]}…）"
-            "——须先完成三平台 try-build（推分支→看板通告段点名另两机→全绿回签），再以 --try-build-done 集成（AGENTS.md §8.3）。"
+            "——须先完成三平台 try-build（推分支→看板通告段点名另两机→全绿回签），再以 --try-build-done 集成（AGENTS.md §8.3）；"
+            "或按 2026-09-21 用户令以 --win-verified 走平台后验模式（win 全量绿即集成·其他平台集成后自验证·发起机看板广播披露）。"
         ), None
+    if 须_try and 参数.win_verified and not 参数.try_build_done:
+        print("[平台后验模式·用户令 2026-09-21] win 全量门禁已验即集成；"
+              "linux/arm64 由各平台机集成后自验证（集成后验证常设）——发起机须看板广播披露本模式。")
 
     # 门禁跑在合并结果上；重试时仅当 develop 增量（上轮已验 tip→本轮最新）触及 src/tests 才重跑全量门禁
     if 上次已验基准 is None or 上次已验基准 == 最新:
@@ -278,6 +282,9 @@ def 主流程() -> int:
                              "fdef8ae9 P1 根治后本参数应移除。可多次传入点名多个用例。")
     解析器.add_argument("--try-build-done", action="store_true",
                         help="声明三平台 try-build 已全绿回签（§8.3·共享层写集前置）")
+    解析器.add_argument("--win-verified", action="store_true",
+                        help="平台后验模式（2026-09-21 用户令）：win 全量门禁绿即集成，"
+                             "不等另两机回签——linux/arm64 集成后自验证（发起机看板广播披露）")
     参数 = 解析器.parse_args()
     平台 = 探测平台()
     print(f"== 合并队列（协议 v2）｜平台={平台}｜模式={'演练' if 参数.dry_run else '集成'} ==")

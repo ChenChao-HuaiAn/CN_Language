@@ -693,20 +693,10 @@ void SemanticAnalyzer::recheckGenericFuncBody(const GenericFuncInstance& gfi) {
         const auto& all = diagnostics_.getAll();
         std::vector<Diagnostic> undeclared;
         for (std::size_t di = snap.size; di < all.size(); ++di) {
-            if (all[di].level != DiagnosticLevel::Error) continue;
-            const std::string& msg = all[di].message;
-            // 574-a（T99·459）：保留面扩「类型误用」——类型参数已绑定实参，
-            //   「无法将」类转换诊断为真实实例化类型误用（459：返回 "文本" vs
-            //   T=整32），非 T 语境噪音；字面量合法形态不报（豁免在转换判定内）。
-            // 排除 T 语境噪音：诊断含类型参数原文 'T' = 泛型函数指针等
-            //   未绑定实参语境（40/99/440 实测），继续回滚待环境映射收口。
-            const bool tNoise = msg.find("'T'") != std::string::npos;
-            const bool keep =
-                !tNoise &&
-                (msg.find("未声明") != std::string::npos ||
-                 msg.find("无法将") != std::string::npos ||
-                 msg.find("返回类型") != std::string::npos);
-            if (keep) undeclared.push_back(all[di]);
+            if (all[di].level == DiagnosticLevel::Error &&
+                all[di].message.find("未声明") != std::string::npos) {
+                undeclared.push_back(all[di]);
+            }
         }
         diagnostics_.restoreTo(snap);
         for (const auto& d : undeclared) {

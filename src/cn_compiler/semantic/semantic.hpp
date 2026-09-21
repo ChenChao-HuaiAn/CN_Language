@@ -993,10 +993,6 @@ private:
     std::unordered_map<std::string, std::string> ptrLocalPointees_;
     std::string lastType_;                         // 最近一次表达式推断的类型
     std::string currentReturnType_;                // 当前函数返回类型（空表示顶层）
-    // 574-a（T99·211/231）：内置构造器目标类型上下文栈（声明/赋值位压入目标
-    //   结果<T,E>/可选<T>，构造器推断优先取之——Rust Err(7): Result<String,i32>
-    //   同款，缺失侧由目标补全）
-    std::vector<std::string> ctorTargetStack_;
     // P3-18 补完（2026-08）：当前函数是否为引用返回（visitReturnStmt 校验用）
     bool currentIsRefReturn_ = false;
     // 当前函数引用参数名集合：引用返回局部检查用——引用参数可被返回（指向调用方存储）

@@ -319,20 +319,7 @@ bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
             //   结果<字符串,整32>，`返回 错误(5)` 的 T 推断为 字符串）。
             std::string ctxT = "";
             std::string ctxE = "";
-            if (!ctorTargetStack_.empty()) {
-                const std::string& target = ctorTargetStack_.back();
-                if (isResultType(target)) {
-                    const std::vector<std::string> targs = resultTypeArgs(target);
-                    if (targs.size() == 2) {
-                        ctxT = targs[0];
-                        ctxE = targs[1];
-                    }
-                } else if (isOptionalType(target)) {
-                    ctxT = optionalTypeArg(target);
-                }
-            }
-            if (ctxT.empty() && ctxE.empty() &&
-                !currentReturnType_.empty() && isResultType(currentReturnType_)) {
+            if (!currentReturnType_.empty() && isResultType(currentReturnType_)) {
                 const std::vector<std::string> args = resultTypeArgs(currentReturnType_);
                 if (args.size() == 2) {
                     ctxT = args[0];

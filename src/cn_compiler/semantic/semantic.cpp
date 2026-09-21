@@ -271,10 +271,6 @@ bool SemanticAnalyzer::isLocalAddressValue(const Expr* e, std::string& baseName)
             std::string bn;
             if (refReturnLvalueBase(u->operand.get(), bn) && !bn.empty() &&
                 isCurrentFnLocal(bn)) {
-                // 574-a（T99·199 对齐 v2 豁免集）：引用参数（可变/常量）指向调用者
-                //   帧，返回其地址不随本函数栈帧消亡——不构成逃逸（写透语义安全；
-                //   v2 语义检查.cn:916 同款豁免）。赋值逃逸登记共用本判定同受益。
-                if (isRefParamForCurrentFn(bn)) return false;
                 baseName = bn;
                 return true;
             }
