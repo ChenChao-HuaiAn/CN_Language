@@ -426,6 +426,50 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
             return;
         }
     }
+    // 574-a（T99·231）：条件为「&& 且左侧=结果/可选检查形态」的短路守卫——
+    //   左侧为真所蕴含的检查状态传导到右侧与 then 块（!甲.正常 && 甲.错误==5
+    //   形态：此前落入普通路径被规则3 误拒——短路语义下检查状态应传导）。
+    if (node->condition->getType() == NodeType::BinaryExpr) {
+        auto* bin = static_cast<BinaryExpr*>(node->condition.get());
+        if (bin->op == Operator::AndAnd) {
+            Expr* lhs = bin->left.get();
+            bool negated = false;
+            if (lhs->getType() == NodeType::UnaryExpr) {
+                auto* u = static_cast<UnaryExpr*>(lhs);
+                if (u->op == Operator::Bang) {
+                    negated = true;
+                    lhs = u->operand.get();
+                }
+            }
+            if (lhs->getType() == NodeType::MemberExpr) {
+                auto* m = static_cast<MemberExpr*>(lhs);
+                const std::string varName = objectVarName(m->object.get());
+                if (!varName.empty()) {
+                    const std::string objType = checkExpr(m->object.get());
+                    std::string kind;
+                    if (isResultType(objType) && m->memberName == "正常") {
+                        kind = negated ? "错误" : "正常";
+                    } else if (isOptionalType(objType) && m->memberName == "有值" &&
+                               !negated) {
+                        kind = "有值";
+                    }
+                    if (!kind.empty()) {
+                        markChecked(varName, kind);
+                        const std::string rhsType = checkExpr(bin->right.get());
+                        checkCondition(rhsType, bin->right->location, "'如果'");
+                        if (node->thenBranch != nullptr) {
+                            checkBlock(node->thenBranch.get());
+                        }
+                        unmarkChecked(varName);
+                        if (node->elseBranch != nullptr) {
+                            checkStmt(node->elseBranch.get());
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+    }
     checkCondition(checkExpr(node->condition.get()), node->condition->location, "'如果'");
     if (node->thenBranch != nullptr) checkBlock(node->thenBranch.get());
     if (node->elseBranch != nullptr) checkStmt(node->elseBranch.get());

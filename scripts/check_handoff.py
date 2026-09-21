@@ -280,7 +280,6 @@ def 查看板() -> list[str]:
             问题.append(f"看板缺「### {名}」小节（332-a 结构：每机独立小节·各机只改自己节）")
             continue
         状态行们: list[str] = []
-        基线行们: list[str] = []   # 🧵 验收基线行（协议 v3·AGENTS.md §8.3——常驻信息行·不占任务行名额）
         for 行 in 行们[节起 + 1:]:
             if 行.startswith("## ") or 行.startswith("### "):
                 break
@@ -289,9 +288,6 @@ def 查看板() -> list[str]:
             列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
             if len(列们) != 4 or 列们[0] == "状态" or set(列们[0]) <= set("-: "):
                 continue  # 表头/分隔行
-            if 列们[0] == "🧵":
-                基线行们.append(行.rstrip())
-                continue
             状态行们.append(行.rstrip())
         if not (1 <= len(状态行们) <= 8):
             样例 = "；".join(行[:48] for 行 in 状态行们[:3])
@@ -323,19 +319,6 @@ def 查看板() -> list[str]:
             if 列们[0] == "🏃":
                 for 号文本 in re.findall(r"(\d{1,4})-(?:[a-zA-Z]|[\u4e00-\u9fff])", 列们[1]):
                     在飞号们.append((名, int(号文本)))
-        # 验收基线行校验（协议 v3·581-a·AGENTS.md §8.3）：每机 ≤1 行；存在则格式必对
-        # （| 🧵 | 验收基线 | <commit7+> | <日期> |）；缺失不拦（过渡期容忍·他机首次补验收时补行）
-        if len(基线行们) > 1:
-            问题.append(f"看板「{名}」验收基线行（🧵）出现 {len(基线行们)} 行（应 ≤1·更新=整行替换）："
-                        + "；".join(行.strip()[:44] for 行 in 基线行们))
-        for 行 in 基线行们:
-            列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
-            if 列们[1] != "验收基线":
-                问题.append(f"看板「{名}」验收基线行（🧵）第 2 列应为「验收基线」四字：{行.strip()[:60]}…")
-            if not re.fullmatch(r"[0-9a-f]{7,40}", 列们[2]):
-                问题.append(f"看板「{名}」验收基线行（🧵）第 3 列应为 commit 哈希（7~40 位十六进制）：{行.strip()[:60]}…")
-            if not re.fullmatch(r"\d{2,4}-\d{2}(?:-\d{2})?", 列们[3]):
-                问题.append(f"看板「{名}」验收基线行（🧵）第 4 列应为日期（MM-DD 或 YYYY-MM-DD）：{行.strip()[:60]}…")
     # 跨机撞号检查（341-a·用户裁决方案①「认领前先看板、先到先得」）：同一轮次号
     # 被 ≥2 台机器的在飞行占用即拦截——「全表最大+1」三机并行必撞（332-a 实证双 329-a）
     号主们: dict[int, set[str]] = {}
