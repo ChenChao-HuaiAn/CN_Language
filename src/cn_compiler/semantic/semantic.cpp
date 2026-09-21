@@ -492,24 +492,28 @@ void SemanticAnalyzer::collectModulePublicSymbols(Program* node) {
         if (!f->moduleName.empty()) knownModules_.insert(f->moduleName);
         if (f->access == AccessSpecifier::Public && !f->moduleName.empty()) {
             modulePublicSymbols_[f->moduleName].insert(f->name);
+            moduleAllSymbols_[f->moduleName].insert(f->name);
         }
     }
     for (const auto& s : node->structs) {
         if (!s->moduleName.empty()) knownModules_.insert(s->moduleName);
         if (s->access == AccessSpecifier::Public && !s->moduleName.empty()) {
             modulePublicSymbols_[s->moduleName].insert(s->name);
+            moduleAllSymbols_[s->moduleName].insert(s->name);
         }
     }
     for (const auto& e : node->enums) {
         if (!e->moduleName.empty()) knownModules_.insert(e->moduleName);
         if (e->access == AccessSpecifier::Public && !e->moduleName.empty()) {
             modulePublicSymbols_[e->moduleName].insert(e->name);
+            moduleAllSymbols_[e->moduleName].insert(e->name);
         }
     }
     for (const auto& c : node->classes) {
         if (!c->moduleName.empty()) knownModules_.insert(c->moduleName);
         if (c->access == AccessSpecifier::Public && !c->moduleName.empty()) {
             modulePublicSymbols_[c->moduleName].insert(c->name);
+            moduleAllSymbols_[c->moduleName].insert(c->name);
             modulePublicClasses_[c->moduleName].insert(c->name);
         }
     }
@@ -517,6 +521,7 @@ void SemanticAnalyzer::collectModulePublicSymbols(Program* node) {
         if (!i->moduleName.empty()) knownModules_.insert(i->moduleName);
         if (i->access == AccessSpecifier::Public && !i->moduleName.empty()) {
             modulePublicSymbols_[i->moduleName].insert(i->name);
+            moduleAllSymbols_[i->moduleName].insert(i->name);
         }
     }
     for (const auto& g : node->generics) {

@@ -499,6 +499,28 @@ void SemanticAnalyzer::bindImportedSymbols(ImportDecl* node, UseImportInfo& use,
     const std::string& sym = node->segments.back();
     const std::string bindName = node->alias.empty() ? sym : node->alias;
     const bool selfImport = (moduleName == node->ownerModule);
+    // 591-a（T100·170 对齐 v2 sem5/规格08 5.9.3）：跨模块具名导入私有符号拒绝——
+    //   模块已知 且 符号在模块声明全集 但 非公开 → Error（v2 措辞对齐）；
+    //   符号不在全集=不存在 → 保持既有（使用点未声明错·不劫持）。
+    //   豁免：自导入（既有）；ownerModule 空=单文件管线（无模块加载·既有同口径）。
+    if (!selfImport && !node->ownerModule.empty() &&
+        knownModules_.count(moduleName) > 0) {
+        const auto& allIt = moduleAllSymbols_.find(moduleName);
+        const bool symExists = allIt != moduleAllSymbols_.end() &&
+                               allIt->second.count(sym) > 0;
+        if (symExists) {
+            const auto& pubIt = modulePublicSymbols_.find(moduleName);
+            const bool isPublic = pubIt != modulePublicSymbols_.end() &&
+                                  pubIt->second.count(sym) > 0;
+            if (!isPublic) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->location,
+                    "符号 '" + sym + "' 为模块 '" + moduleName +
+                        "' 私有（未以 公开: 标注），不可导入（规格08 5.9.3）");
+                return;
+            }
+        }
+    }
     if (!selfImport) {
         use.symbols.insert(sym);
         use.aliases[bindName] = sym;

@@ -930,6 +930,10 @@ private:
     std::unordered_set<std::string> knownModules_;
     // 模块公开类名集合：模块名 -> 公开类名（可见性交集检查：跨模块类成员访问须类公开）
     std::unordered_map<std::string, std::unordered_set<std::string>> modulePublicClasses_;
+    // 591-a（T100·170）：模块符号全集（不分公私）——导入位可见性检查用：
+    //   「在全集但不在公开集」=私有导入拒绝；「不在全集」=符号不存在（使用点
+    //   未声明错·既有路径不劫持）。
+    std::unordered_map<std::string, std::unordered_set<std::string>> moduleAllSymbols_;
     // ---- 第 4 层（v2.0 决策8/9，P1-4/P3-8）：顶层常量/静态 ----
     // crate 级常量符号表：常量名 -> 常量值（整型文本/浮点文本/字符串文本）。
     //   visitProgram 注册顶层 常量/静态 声明；visitIdentifierExpr 把常量名
