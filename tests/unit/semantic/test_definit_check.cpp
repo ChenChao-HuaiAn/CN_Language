@@ -100,7 +100,9 @@ TEST(DefInitCheckTest, StructFieldAssignThenReadAllowed) {
     EXPECT_EQ(r.errorCount, 0) << r.messages;
 }
 
-TEST(DefInitCheckTest, StructUninitFieldReadRejected) {
+TEST(DefInitCheckTest, StructBareDeclExemptZeroInit) {
+    // 结构体裸声明=编译器入口零初始化注入（257 形二「字段数组零初始化」实锤·
+    //   两侧既有防御）——字段读有定义行为，def-init 豁免（与拥有型同通道）
     auto r = analyzeSource(
         "结构体 点 {\n"
         "    整32 横;\n"
@@ -111,8 +113,7 @@ TEST(DefInitCheckTest, StructUninitFieldReadRejected) {
         "    s.横 = 1;\n"
         "    返回 s.纵;\n"
         "}\n");
-    EXPECT_EQ(r.errorCount, 1);
-    EXPECT_NE(r.messages.find("'s.纵' 未初始化"), std::string::npos) << r.messages;
+    EXPECT_EQ(r.errorCount, 0) << r.messages;
 }
 
 TEST(DefInitCheckTest, CompoundAssignReadsUninitRejected) {

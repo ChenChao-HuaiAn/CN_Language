@@ -54,7 +54,10 @@ bool SemanticAnalyzer::isDefInitTrackedType(const std::string& type) const {
     if (type == "字符串" || isResultType(type) || isOptionalType(type)) return false; // 拥有型
     if (isClassType(type) || findClass(type) != nullptr) return false;               // 类/容器实例
     if (types::arrayLenOf(type) >= 0) return true;        // 数组
-    if (findStruct(type) != nullptr) return true;         // 结构体/联合体
+    // 结构体/联合体豁免：局部结构体裸声明=编译器入口零初始化注入（257 形二
+    //   「字段数组零初始化」断言 r.分数[0]==0 实锤·两侧既有防御）——字段读有
+    //   定义行为，不入 def-init 登记面（与拥有型同通道）
+    if (findStruct(type) != nullptr) return false;
     return isDefInitScalarType(type);                     // 标量
 }
 
