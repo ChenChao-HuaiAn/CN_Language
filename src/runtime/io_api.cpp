@@ -271,6 +271,72 @@ extern "C" void __cn_seq_free_slot(void* obj, long long dataOffset, long long in
     data[index] = nullptr;
 }
 
+// 607-a（001-001）：结构体元素**字段串**释放（撤守卫态 v2p 注入专用；宿主侧同
+//   语义由编译期展开 emitOwnedStrFieldFreesAt 负责，宿主编译器不调用本组符号）。
+//   元素=含拥有型串字段结构体时，容器消亡/移除路径逐元素释放字段串：
+//     __cn_vector_free_field_strings：平铺容器（向量/栈/集合）全量
+//     __cn_chain_free_field_strings：链式容器（链表/队列）全量（链游·83-a 槽复用安全）
+//     __cn_seq_free_field_slot：单槽（析构被移除/删除头部/删除尾部·唯一持有者槽）
+//   fieldOffset=字段在元素内的偏移（嵌套结构体=内联偏移叠加，编译期收集传入）；
+//   多字段=多次调用（每拥有串字段路径一次）。不变量：释放后槽清零（74-a 幂等
+//   模型）；cn_free_tracked 对驻留常量（非在册）空安全——字面量驻留借用形态零影响。
+extern "C" void __cn_vector_free_field_strings(void* obj, long long dataOffset,
+                                               long long countOffset,
+                                               long long stride,
+                                               long long fieldOffset) {
+    if (obj == nullptr || stride <= 0) return;
+    char* base = static_cast<char*>(obj);
+    char* data = *reinterpret_cast<char**>(base + dataOffset);
+    const long long count = *reinterpret_cast<long long*>(base + countOffset);
+    if (data == nullptr || count <= 0) return;
+    for (long long i = 0; i < count; ++i) {
+        char** slot = reinterpret_cast<char**>(data + i * stride + fieldOffset);
+        if (*slot != nullptr) {
+            cn_free_tracked(*slot);
+            *slot = nullptr;
+        }
+    }
+}
+
+extern "C" void __cn_chain_free_field_strings(void* obj, long long dataOffset,
+                                              long long nextOffset,
+                                              long long headOffset,
+                                              long long countOffset,
+                                              long long stride,
+                                              long long fieldOffset) {
+    if (obj == nullptr || stride <= 0) return;
+    char* base = static_cast<char*>(obj);
+    char* data = *reinterpret_cast<char**>(base + dataOffset);
+    long long* next = *reinterpret_cast<long long**>(base + nextOffset);
+    const long long head = *reinterpret_cast<long long*>(base + headOffset);
+    const long long count = *reinterpret_cast<long long*>(base + countOffset);
+    if (data == nullptr || next == nullptr || head < 0 || count <= 0) return;
+    long long idx = head;
+    for (long long n = 0; n < count; ++n) {
+        if (idx < 0) break;
+        char** slot = reinterpret_cast<char**>(data + idx * stride + fieldOffset);
+        if (*slot != nullptr) {
+            cn_free_tracked(*slot);
+            *slot = nullptr;
+        }
+        idx = next[idx];
+    }
+}
+
+extern "C" void __cn_seq_free_field_slot(void* obj, long long dataOffset,
+                                         long long index, long long stride,
+                                         long long fieldOffset) {
+    if (obj == nullptr || index < 0 || stride <= 0) return;
+    char* base = static_cast<char*>(obj);
+    char* data = *reinterpret_cast<char**>(base + dataOffset);
+    if (data == nullptr) return;
+    char** slot = reinterpret_cast<char**>(data + index * stride + fieldOffset);
+    if (*slot != nullptr) {
+        cn_free_tracked(*slot);
+        *slot = nullptr;
+    }
+}
+
 // 74-a（2026-09-11 第七十四轮）：链式容器（链表/队列）元素串释放。//   链表/队列 为「数组槽 + 下一索引链」模型：有效元素自 头索引 起沿 下一索引 串联，
 //   而 出队/删除头部 会把元素**所有权转移给调用方**（元素槽序号可能 < 元素数量）——
 //   故不能像 向量/栈 那样按 0..元素数量 平铺释放（会把已转移给调用方的串释放掉 =
