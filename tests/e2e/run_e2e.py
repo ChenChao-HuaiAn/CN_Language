@@ -589,6 +589,16 @@ def 执行check负用例(编译器路径: pathlib.Path, 用例目录: pathlib.Pa
     return "通过", "check负测试通过（预期检查失败，私有声明未被静默过滤）"
 
 
+def 并行用例任务(项):
+    """进程池 worker 入口（604-a：线程池→进程池根治「多线程进程 fork」死锁——
+    604-a 实锤：8 线程并发 subprocess 启动在 POSIX 下撞内部锁，worker 子进程
+    exec 前 futex 挂死 36 分钟零 CPU；进程池 worker 单线程=fork 无锁竞争，
+    win/POSIX 同构。须为模块级函数方可 pickle 跨进程分发）。"""
+    用例目录, 编译器路径, 输出目录, 详细, 目标平台 = 项
+    状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 详细, 目标平台)
+    return (用例目录.name, 状态, 原因)
+
+
 def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                  输出目录: pathlib.Path, 详细: bool, 目标平台: str) -> tuple:
     """
@@ -1952,10 +1962,11 @@ def 主程序() -> int:
     解析器.add_argument("--target-dir", default="target", help="可执行文件输出目录（默认 target）")
     解析器.add_argument("--strict", action="store_true",
                         help="将'未实现'用例视为失败（阶段一完成后全量验证用）")
-    解析器.add_argument("--jobs", "-j", type=int, default=1,
-                        help="并行任务数（默认 1=串行原行为；>1 时非 v2 用例并行执行、"
-                             "v2 用例保持串行——v2 用例共享 target/v2asm.s 与 v2p 构建缓存。"
-                             "v2p 构建缓存在任何模式下生效：v2 源码与编译器未变不重建）")
+    解析器.add_argument("--jobs", "-j", type=int, default=os.cpu_count() or 1,
+                        help="并行任务数（默认=CPU 核数·并行恒定——568-a 用户令，"
+                             "604-a 落地：串行路径已删，进程池隔离=每用例独立 worker"
+                             " 进程（根治多线程 fork 死锁）。v2p 构建缓存池启动前主进程"
+                             "预热：v2 源码与编译器未变不重建）")
     参数 = 解析器.parse_args()
 
     # 覆盖模块级默认（超限自动终止的防护阈值）
@@ -2012,7 +2023,7 @@ def 主程序() -> int:
     失败列表 = []
     未实现列表 = []
 
-    def 记录结果(用例目录, 状态, 原因, 即时打印: bool) -> None:
+    def 记录结果(名称, 状态, 原因, 即时打印: bool) -> None:
         nonlocal 通过数, 跳过数
         if 状态 == "通过":
             通过数 += 1
@@ -2023,74 +2034,56 @@ def 主程序() -> int:
             if 即时打印:
                 print(f"  {青色('SKIP')} {原因}")
         elif 状态 == "未实现":
-            未实现列表.append((用例目录.name, 原因))
+            未实现列表.append((名称, 原因))
             if 即时打印:
                 print(f"  {黄色('SKIP')} 未实现: {原因}")
         else:
-            失败列表.append((用例目录.name, 原因))
+            失败列表.append((名称, 原因))
             if 即时打印:
                 print(f"  {红色('FAIL')} {原因}")
 
-    if 参数.jobs <= 1:
-        for 用例目录 in 用例目录们:
-            print(f"运行用例: {用例目录.name}")
-            状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 参数.verbose, 目标平台)
-            记录结果(用例目录, 状态, 原因, 即时打印=True)
-            print()
+    # 并行恒定（568-a 用户令·604-a 进程池落地）：全部用例统一进程池，
+    #   串行路径删除（显式 --jobs 1=单 worker 进程等效串行）。
+    #   v2 产物已按用例隔离（v2work<编号>）；唯一共享工件 v2p/运行时 .o
+    #   在池启动前由主进程单线程预热（确保v2p与运行时就绪）——消除并发构建竞态。
+    if 目标平台 in ("linux-arm64", "linux-x86_64"):
+        v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
+        if v2用例们:
+            print(青色(f"预热: v2p 构建缓存（{len(v2用例们)} 个 v2 用例共享工件）..."))
+            就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 参数.verbose)
+            if 就绪[0] is None:
+                print(红色(f"预热失败: {就绪[1]}"))
+                return 1
     else:
-        from concurrent.futures import ThreadPoolExecutor, as_completed
-        打印锁 = threading.Lock()
-
-        def 并行任务(用例目录):
-            状态, 原因 = 执行单个用例(编译器路径, 用例目录, 输出目录, 参数.verbose, 目标平台)
-            with 打印锁:
-                print(f"运行用例: {用例目录.name}")
-                记录结果(用例目录, 状态, 原因, 即时打印=True)
-                print()
-            return 状态
-
-        # 全量统一并行（2026-09-11 用户裁决：01 起全部用例一个池）——三平台同款：
-        #   v2 产物已按用例隔离（v2work<编号> workdir / v2asm.obj / v2out.exe），
-        #   唯一共享工件 v2p/运行时 .o 在池启动前预热（确保v2p与运行时就绪 /
-        #   确保v2p就绪win——消除并发构建竞态；预热本身数秒级，缓存命中时瞬时）。
-        #   win-x64 自 111-a 起同款（此前 v2 产物共享 target/v2asm.asm → v2 桶串行）。
-        池们 = []
-        if 目标平台 in ("linux-arm64", "linux-x86_64"):
-            v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
-            if v2用例们:
-                print(青色(f"预热: v2p 构建缓存（{len(v2用例们)} 个 v2 用例共享工件）..."))
-                就绪 = 确保v2p与运行时就绪(编译器路径, 目标平台, 参数.verbose)
-                if 就绪[0] is None:
-                    print(红色(f"预热失败: {就绪[1]}"))
-                    return 1
-            print(青色(f"并行模式: jobs={参数.jobs}（{len(用例目录们)} 个用例统一并行）"))
+        v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
+        if v2用例们:
+            print(青色(f"预热: v2p 构建缓存（{len(v2用例们)} 个 v2 用例共享工件）..."))
+            就绪 = 确保v2p就绪win(编译器路径, 参数.verbose)
+            if 就绪[0] is None:
+                print(红色(f"预热失败: {就绪[1]}"))
+                return 1
+    print(青色(f"并行模式: jobs={参数.jobs} 进程池（{len(用例目录们)} 个用例统一并行）"))
+    print()
+    from multiprocessing import Pool
+    池 = Pool(processes=参数.jobs)
+    try:
+        异步结果们 = [
+            (d.name, 池.apply_async(并行用例任务,
+                                    ((d, 编译器路径, 输出目录, 参数.verbose, 目标平台),)))
+            for d in 用例目录们
+        ]
+        for 名称, 异步结果 in 异步结果们:
+            print(f"运行用例: {名称}")
+            try:
+                _名称, 状态, 原因 = 异步结果.get(timeout=1800)
+            except Exception:
+                状态, 原因 = "失败", "worker 外层保险终止（超时 1800s/进程崩溃）"
+            记录结果(名称, 状态, 原因, 即时打印=True)
             print()
-            池们.append(("统一", ThreadPoolExecutor(max_workers=参数.jobs),
-                         [(d, "统一") for d in 用例目录们]))
-        else:
-            v2用例们 = [d for d in 用例目录们 if 是v2闭环用例(d)]
-            if v2用例们:
-                print(青色(f"预热: v2p 构建缓存（{len(v2用例们)} 个 v2 用例共享工件）..."))
-                就绪 = 确保v2p就绪win(编译器路径, 参数.verbose)
-                if 就绪[0] is None:
-                    print(红色(f"预热失败: {就绪[1]}"))
-                    return 1
-            print(青色(f"并行模式: jobs={参数.jobs}（{len(用例目录们)} 个用例统一并行）"))
-            print()
-            池们.append(("统一", ThreadPoolExecutor(max_workers=参数.jobs),
-                         [(d, "统一") for d in 用例目录们]))
-
-        futures = []
-        with 池们[0][1] as _池0:
-            futures += [_池0.submit(并行任务, d) for d, _ in 池们[0][2]]
-            if len(池们) > 1:
-                with 池们[1][1] as _池1:
-                    futures += [_池1.submit(并行任务, d) for d, _ in 池们[1][2]]
-                    for fu in as_completed(futures):
-                        fu.result()
-            else:
-                for fu in as_completed(futures):
-                    fu.result()
+        池.close()
+        池.join()
+    finally:
+        池.terminate()
 
     # 汇总与退出码：有真实失败返回1；strict模式下未实现也算失败
     总数 = len(用例目录们)
