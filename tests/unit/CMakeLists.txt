@@ -100,6 +100,7 @@ add_executable(cn_unit_tests
     opt/test_global_value.cpp
     opt/test_opt_levels.cpp
     opt/test_ssa.cpp
+    opt/test_mem2reg.cpp
     opt/test_licm.cpp
     opt/test_strength_reduce.cpp
     opt/test_inline.cpp

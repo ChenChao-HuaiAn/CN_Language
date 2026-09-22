@@ -6,8 +6,10 @@
 //   4. 块标签唯一
 // 返回错误消息列表（空 = 验证通过）。-O0 的 IR 即满足（SSA 唯一性
 //   由优化器 SSA pass 另行保证，本验证器不强制）。
+#include <cstddef>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -70,16 +72,28 @@ static std::vector<std::string> verifyFunction(const IRFunction& func) {
                                  ": 条件跳转假目标 '" + block->termFalseTarget + "' 不存在");
             }
         }
-        // 3. 寄存器 def-before-use（函数级定义存在 + 块内顺序·见上方说明）
+        // 3. 寄存器 def-before-use（函数级定义存在 + 块内顺序·见上方说明）。
+        //    626-a 判据演进：φ 消除（Mem2Reg 波2 复用 lowerPhis）的循环携带
+        //    形态=块顶引用 φ 结果寄存器、同块尾部回边 Copy 定义其新值——
+        //    寄存器活性跨回边（LLVM LiveInterval 语义·汇编层真实形态），
+        //    线性 def-before-use 判据无法表达。窄放行：引用 id 已在函数级
+        //    定义且本块引用点之后存在同 id 的 Copy 定义（φ 消除签名）→合法；
+        //    悬空引用（funcDefs 全无）零容忍不变。
         std::unordered_set<int> blockDefs;
-        for (const auto& inst : block->instructions) {
+        std::unordered_map<int, std::size_t> blockCopyDefAt;  // Copy dst→末次下标
+        for (std::size_t i = 0; i < block->instructions.size(); ++i) {
+            const auto& inst = block->instructions[i];
             if (inst.result.id >= 0) blockDefs.insert(inst.result.id);
+            if (inst.opcode == Opcode::Copy && inst.result.id >= 0) {
+                blockCopyDefAt[inst.result.id] = i;
+            }
         }
         std::unordered_set<int> defined;   // 当前可用（外部流入=函数定义集中非本块者）
         for (const int id : funcDefs) {
             if (blockDefs.count(id) == 0) defined.insert(id);
         }
-        for (const auto& inst : block->instructions) {
+        for (std::size_t i = 0; i < block->instructions.size(); ++i) {
+            const auto& inst = block->instructions[i];
             // 先登记本指令结果（保持既有惯例：操作数可自引用本指令 result，
             //   如比较指令的第 3 操作数=result id）
             if (inst.result.id >= 0) {
@@ -88,11 +102,16 @@ static std::vector<std::string> verifyFunction(const IRFunction& func) {
             // 操作数中的寄存器引用须已定义（常量/变量名/函数名例外：
             //   IRValue::var/constant 的 id 为 -2/-3 等负值标记）
             for (const auto& op : inst.operands) {
-                if (op.id >= 0 && defined.count(op.id) == 0) {
-                    errors.push_back(func.name + ":" + block->label +
-                                     ": 引用了未定义的寄存器 v" +
-                                     std::to_string(op.id));
+                if (op.id < 0) continue;
+                if (defined.count(op.id) != 0) continue;
+                const auto cit = blockCopyDefAt.find(op.id);
+                if (cit != blockCopyDefAt.end() && cit->second > i &&
+                    funcDefs.count(op.id) != 0) {
+                    continue;  // φ 消除循环携带（同块尾部 Copy 定义·活性跨回边）
                 }
+                errors.push_back(func.name + ":" + block->label +
+                                 ": 引用了未定义的寄存器 v" +
+                                 std::to_string(op.id));
             }
         }
     }

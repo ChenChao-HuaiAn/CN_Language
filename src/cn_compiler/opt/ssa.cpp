@@ -17,6 +17,7 @@
 #include <string>
 #include <unordered_map>
 #include <algorithm>
+#include <tuple>
 #include <vector>
 
 #include "cn_compiler/opt/cfg.hpp"
@@ -207,19 +208,23 @@ static void rewriteUsesInJoinBlock(ir::IRFunction& fn, ir::IRBlock& block,
     (void)fn;
 }
 
-// 降级：并行拷贝调度（贪心 + 环打破），返回前驱块尾追加的指令序列
+// 降级：并行拷贝调度（贪心 + 环打破），返回前驱块尾追加的指令序列。
+//   626-a 根治：拷贝类型逐对携带（原全组共用 phis[0].type——同汇合块多槽 φ
+//   类型不同时 Copy 宽度错截断·波2 汇合全量提升后 φ 数量大增必撞）
 static void emitParallelCopies(ir::IRBlock& pred,
-                               const std::vector<std::pair<ir::IRValue, int>>& pairs,
-                               const std::string& retType, int& tmpCounter) {
-    struct Pair { ir::IRValue src; int dst; };
+                               const std::vector<std::tuple<ir::IRValue, int, std::string>>& pairs,
+                               int& tmpCounter) {
+    struct Pair { ir::IRValue src; int dst; std::string type; };
     std::vector<Pair> remain;
-    for (const auto& p : pairs) remain.push_back({p.first, p.second});
-    auto emitCopy = [&](const ir::IRValue& src, int dst) {
+    for (const auto& p : pairs) {
+        remain.push_back({std::get<0>(p), std::get<1>(p), std::get<2>(p)});
+    }
+    auto emitCopy = [&](const ir::IRValue& src, int dst, const std::string& type) {
         ir::IRInstruction cp;
         cp.opcode = ir::Opcode::Copy;
-        cp.result = ir::IRValue::reg(dst, retType);
+        cp.result = ir::IRValue::reg(dst, type);
         cp.operands.push_back(src);
-        cp.type = retType;
+        cp.type = type;
         pred.instructions.push_back(std::move(cp));
     };
     // 贪心：发射「dst 不被任何剩余 src 使用」的拷贝
@@ -234,7 +239,7 @@ static void emitParallelCopies(ir::IRBlock& pred,
                 if (remain[j].src.id == dst) { usedByOther = true; break; }
             }
             if (!usedByOther) {
-                emitCopy(remain[i].src, dst);
+                emitCopy(remain[i].src, remain[i].dst, remain[i].type);
                 remain.erase(remain.begin() + static_cast<std::ptrdiff_t>(i));
                 progressed = true;
                 break;
@@ -261,11 +266,13 @@ static void emitParallelCopies(ir::IRBlock& pred,
         std::vector<int> tmps;
         for (const std::size_t idx : ring) {
             const int tmp = tmpCounter++;
-            emitCopy(remain[idx].src, tmp);
+            // 临时寄存器类型=所存源值对应对的类型（环内临时逐位保真）
+            emitCopy(remain[idx].src, tmp, remain[idx].type);
             tmps.push_back(tmp);
         }
         for (std::size_t k = 0; k < ring.size(); ++k) {
-            emitCopy(ir::IRValue::reg(tmps[k], retType), remain[ring[k]].dst);
+            emitCopy(ir::IRValue::reg(tmps[k], remain[ring[k]].type),
+                     remain[ring[k]].dst, remain[ring[k]].type);
         }
         // 移除环内对（258-a 根治：ring 收集序沿 dst->src 链、非 remain 索引序——
         //   原「按 ring 序倒序 erase」在乱序环（如 ring=[2,0,1]）下第二次 erase
@@ -349,14 +356,14 @@ void SSAPass::lowerPhis(ir::IRFunction& fn) {
                 sources[k][g] = src;
             }
         }
-        // ③分前驱成组并行拷贝（交换环由 emitParallelCopies 内部破环）
+        // ③分前驱成组并行拷贝（交换环由 emitParallelCopies 内部破环·类型逐对）
         for (std::size_t k = 0; k < preds.size(); ++k) {
-            std::vector<std::pair<ir::IRValue, int>> group;
+            std::vector<std::tuple<ir::IRValue, int, std::string>> group;
             for (std::size_t g = 0; g < phis.size(); ++g) {
-                group.push_back({sources[k][g], phis[g].resultId});
+                group.emplace_back(sources[k][g], phis[g].resultId, phis[g].type);
             }
             auto& pred = fn.blocks[static_cast<std::size_t>(preds[k])];
-            emitParallelCopies(*pred, group, phis[0].type, tmpCounter);
+            emitParallelCopies(*pred, group, tmpCounter);
         }
         // ④删除 Phi 指令
         std::vector<ir::IRInstruction> kept;
