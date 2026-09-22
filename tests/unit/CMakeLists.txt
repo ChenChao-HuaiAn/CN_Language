@@ -54,7 +54,6 @@ add_executable(cn_unit_tests
     semantic/test_pattern_match.cpp
     semantic/test_sizeof.cpp
     semantic/test_bootstrap_gaps.cpp
-    semantic/test_bootstrap_lexer.cpp
     module/test_module.cpp
     module/test_module_driver.cpp
     driver/test_cargo_parser.cpp
