@@ -85,7 +85,9 @@ def 获取(超时秒: int) -> Path | None:
             信息 = 读信息(锁)
             持有者 = 信息.get("命令") or 持有者 or "?"  # 锁刚被释放的间隙保留上一次读到的持有者
             if time.time() - 上次打印 >= 30:
-                print(f"[gate_lock] 等待中 {int(time.time() - 起始)}s（{持有者} 持有）", file=sys.stderr)
+                # 595-a（方案甲③）：等待进度改 stdout——全缓冲/管道下 stderr 进度
+                # 对等待方不可见（595 轮排队 2h 零感知教训）；flush 保实时。
+                print(f"[gate_lock] 排队等待中 {int(time.time() - 起始)}s（{持有者} 持有）", flush=True)
                 上次打印 = time.time()
             time.sleep(2)
             continue
@@ -132,7 +134,10 @@ def 主流程() -> int:
     if 参数.命令 == "release":
         释放(主树锁目录())
         return 0
-    锁 = 获取(参数.timeout if 参数.命令 == "acquire" else 7200)
+    # 595-a（方案甲①）：run 形态等待默认无限（0）——串行队列本义=排队总能轮到，
+    #   2h 硬超时制造「假放弃+假退出码」；真死锁由陈锁 4h 心跳接管兜底。
+    #   acquire 形态维持 7200（ci.ps1 内部用·保留快速失败语义），可 --timeout 覆盖。
+    锁 = 获取(参数.timeout if 参数.命令 == "acquire" else 0)
     if 锁 is None:
         print("[gate_lock] 等待超时——另一门禁仍在飞，稍后再试或 gate_lock status 查看", file=sys.stderr)
         return 2
@@ -148,6 +153,15 @@ def 主流程() -> int:
         释放(锁)
         print("[gate_lock] run 缺少命令", file=sys.stderr)
         return 1
+    # 595-a 双层锁防护（方案甲②）：ci.ps1 等门禁脚本**内置 acquire**，再被 run 包一层
+    #   =外层持锁、内层等自己 → 自死锁到超时（495-a 互等 85 分钟/595-a 同款再犯）。
+    #   命中内置锁名单 → 拒绝双层包装并提示裸跑（脚本自己管锁）。
+    命令文本 = " ".join(命令)
+    for 内置 in ("ci.ps1", "integrate.py"):
+        if 内置 in 命令文本:
+            释放(锁)
+            print(f"[gate_lock] 拒绝：{内置} 已内置 acquire/release，请裸跑（勿再包 gate_lock run —— 双层=自死锁）", file=sys.stderr)
+            return 1
     心跳线程(锁 / "info.json")
     try:
         return subprocess.run(命令).returncode
