@@ -158,6 +158,7 @@ void SemanticAnalyzer::pushScope() {
 }
 void SemanticAnalyzer::popScope() {
     if (scopes_.size() > 1) {
+        defInitDropScopeDepth(scopes_.size() - 1);  // 010：出块按层清理未初始化键（同名遮蔽串扰根除）
         scopes_.pop_back();
         if (scopeConsts_.size() > 1) scopeConsts_.pop_back();  // 与 scopes_ 同步
         if (scopeMoved_.size() > 1) scopeMoved_.pop_back();    // 与 scopes_ 同步

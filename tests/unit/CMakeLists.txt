@@ -40,6 +40,7 @@ add_executable(cn_unit_tests
     semantic/test_semantic_oop.cpp
     semantic/test_semantic_error.cpp
     semantic/test_lvalue_check.cpp
+    semantic/test_definit_check.cpp
     semantic/test_move_check.cpp
     semantic/test_escape_check.cpp
     semantic/test_const_ref_check.cpp

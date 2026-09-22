@@ -14,7 +14,12 @@
 namespace cn_compiler {
 
 void SemanticAnalyzer::visitUnaryExpr(UnaryExpr* node) {
+    // 010（def-init）：取地址语境——&x 的 x 是初始化通道（地址逃逸=可能被写，
+    //   Rust &mut maybe-init 同款；v2 树 结构体出参 &签 铁证）——操作数求值前
+    //   置标志，标识符读判定改为整体置位
+    if (node->op == Operator::AddressOf) { inAddrOfCtx_ = true; }
     std::string operandType = checkExpr(node->operand.get());
+    inAddrOfCtx_ = false;
     // P2-14：单目运算符重载（- ! ~）——类类型操作数先查 运算符X（0 参数）成员
     //   （重载决议：类重载优先；无重载则落入下方内置校验/报错）
     // 181-a：本函数 204 行按操作符 case 提取为 5 个族子方法（纯搬运零行为
@@ -114,6 +119,9 @@ void SemanticAnalyzer::checkAddressOfUnary(UnaryExpr* node,
                 if (node->operand->getType() == NodeType::IdentifierExpr) {
                     noteNullEscape(
                         static_cast<IdentifierExpr*>(node->operand.get())->name);
+                    // 010（def-init）：取地址=初始化通道（地址逃逸=可能被写）——
+                    //   保守整体置位（&签 出参惯用法·Rust &mut maybe-init 同款）
+                    defInitMarkAssignTarget(node->operand.get());
                 }
             } else if (node->operand->getType() == NodeType::CallExpr) {
                 // P3-18 补完：&引用返回调用 = 取得被引用者的地址（须确认为引用返回）
@@ -279,6 +287,9 @@ void SemanticAnalyzer::checkIncDecUnary(UnaryExpr* node,
                                     "自增/自减要求数值或指针操作数，实际为 '" +
                                     operandType + "'");
             }
+            // 010（def-init）：自增/自减=隐式写——左值 place 置位（读判定已经
+            //   由操作数 checkExpr 的标识符读判定覆盖）
+            defInitMarkAssignTarget(node->operand.get());
             lastType_ = operandType;
 }
 

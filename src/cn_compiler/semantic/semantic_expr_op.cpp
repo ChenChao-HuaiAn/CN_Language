@@ -485,7 +485,9 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     if (!targetType.empty() && targetType != "未知") {
         ctorTargetStack_.push_back(targetType);
     }
+    inAggregateReadCtx_ = true;  // 010（def-init）：右值=聚合值读语境（数组整体赋值右值）
     std::string valueType = checkExpr(node->value.get());
+    inAggregateReadCtx_ = false;
     if (!targetType.empty() && targetType != "未知") {
         ctorTargetStack_.pop_back();
     }
@@ -522,6 +524,10 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
     //   （静态/全局变量、静态/全局对象的字段或元素）时编译期拒绝（悬垂防线
     //   前移）+ 局部指针指向登记（返回检查依据）。
     checkLocalAddressEscapeAssign(node);
+    // 010（def-init）：写点置位——左值 place（整体/字段链/常量下标）初始化
+    if (lvalueOk) {
+        defInitMarkAssignTarget(node->target.get());
+    }
 }
 
 // ==================== 175-a 族子方法（原 visitAssignmentExpr 541~886 段） ====================
@@ -786,6 +792,9 @@ bool SemanticAnalyzer::checkCompoundAssign(AssignmentExpr* node,
                                            const std::string& targetType,
                                            const std::string& valueType) {
     if (isCompoundAssign(node->op)) {
+        // 010（def-init）：复合赋值=先读后写——左值 place 读判定+写点置位
+        defInitCheckReadAssignTarget(node->target.get(), node->location);
+        defInitMarkAssignTarget(node->target.get());
         // plans/019 阶段3 扩展（A21，第七十七轮）：复合赋值读旧值=使用借出视图
         //   （活跃区间右端；字符串 += 拼接重析为二元同覆盖）
         if (node->target->getType() == NodeType::IdentifierExpr) {

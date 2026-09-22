@@ -737,6 +737,22 @@ private:
     std::string checkExpr(Expr* node);             // 检查表达式，返回推断类型
     void checkStmt(Stmt* node);                    // 检查语句（分发到visit）
     void checkBlock(BlockStmt* node);              // 检查代码块（含作用域进出）
+    // ---- 010 def-init（初始化状态跟踪·semantic_definit.cpp）----
+    bool isDefInitTrackedType(const std::string& type) const;          // 值类型可跟踪判定
+    int defInitLookupDepth(const std::string& name) const;             // 声明层深度（lookupVar 同序）
+    void defInitCollectLeaves(const std::string& type, const std::string& key,
+                              std::vector<std::string>& out) const;    // 叶子 place 键枚举
+    void defInitRegisterDecl(const std::string& name, const std::string& type); // 声明登记
+    void defInitMarkInitPlace(const std::string& name, const std::string& suffix); // 写点置位
+    void defInitCheckReadPlace(const std::string& name, const std::string& suffix,
+                               const SourceLocation& loc); // 读判定
+    void defInitDropScopeDepth(std::size_t depth);                     // 出块按层清理
+    void defInitCheckIf(IfStmt* node);                                 // 如果：两支 clone+交集归并
+    void defInitCheckLoopBody(BlockStmt* body);                        // 循环体：不外溢传播
+    void defInitMarkAssignTarget(Expr* target);                        // 赋值目标置位分派
+    void defInitCheckReadAssignTarget(Expr* target, const SourceLocation& loc); // 复合赋值/自增读判定
+    void defInitCheckMemberBase(Expr* base, const SourceLocation& loc); // 对象侧基名精确字段判定入口
+    bool defInitPlaceOf(const Expr* e, std::string& name, std::string& suffix) const; // place 链解析（含常量下标 "[N]"/非常量 "[]"）
     // 检查条件表达式是否为布尔类型
     void checkCondition(const std::string& type, const SourceLocation& loc, const std::string& ctx);
     // 注册CN语言内置函数符号（打印/打印行/格式化 + 字符串API，供函数调用检查）
@@ -974,6 +990,24 @@ private:
     std::vector<std::unordered_map<std::string, std::size_t>> borrowViewScopes_;
     std::vector<std::unordered_map<std::string, int>> scopeVarIds_;
     int nextVarId_ = 1;
+    // 010（2026-09-23·任务 plans/021 010）：局部值类型变量初始化状态表（def-init，
+    //   Rust E0381 对标·零运行时成本）——place 规范键集合=「尚未初始化」面。键=
+    //   "<声明作用域深度>:<名>[i] / .<字段链>"（深度前缀防同名遮蔽串扰；块出口按
+    //   层清理）。函数级扁平表：控制流传播由语句级 clone/merge 显式管理（如果=
+    //   两支交集归并·循环体不外溢·return 终止支不参与归并）。登记面=局部纯值类型
+    //   （标量/数组/结构体叶子）；拥有型（类/容器/字符串/结果/可选=既有入口零初
+    //   始化或默认构造防御）、指针/引用、静态（零初始化语义）、函数参数不登记。
+    std::unordered_set<std::string> uninitPlaces_;
+    // def-init 语境豁免标志：成员/下标表达式的对象侧（s.横 的 s）是地址基非
+    //   整体值读（后续字段/元素读判定自行精确处理）。写目标语境复用既有的
+    //   assignmentTargetDepth_（150-a）。
+    bool inAddrBaseCtx_ = false;
+    // 聚合值读语境：数组名的值被整体消费（赋值右值/返回）时置位——数组实参位
+    //   （指针退化·出参惯用法 38_tool/455 铁证）与对象侧不判定。
+    bool inAggregateReadCtx_ = false;
+    // 取地址语境（010）：&x 的 x 是初始化通道（地址逃逸=可能被写——Rust &mut
+    //   maybe-init 同款；v2 树 结构体出参 &签 255 处铁证）——置位而非读判定。
+    bool inAddrOfCtx_ = false;
     // visitCallExpr 方法分支写、visitVarDecl/visitAssignmentExpr 读：最近一次
     //   求值是否为「字符串元素容器借出调用」（借出绑定识别）
     bool lastExprIsBorrowView_ = false;

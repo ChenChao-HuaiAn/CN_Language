@@ -159,6 +159,7 @@ TEST(LvalueCheckTest, LegalLvalueFormsNoFalsePositive) {
         "    p.y--;\n"
         "    整64[3] 数组;\n"
         "    数组[1] = 5;\n"
+        "    数组[2] = 5;\n"       // 010（def-init）：下标左值 += 的前提=目标已初始化
         "    数组[2] += 数组[1];\n"
         "    数组[1]++;\n"
         "    整64 v = 8;\n"

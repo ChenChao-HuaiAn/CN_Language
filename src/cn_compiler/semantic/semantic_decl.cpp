@@ -372,6 +372,12 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         //   （赋值/自增目标拒绝用，isConstVarName）
         scopeConsts_.back().insert(node->name);
     }
+    // 010（def-init）：无初始化器的局部值类型声明登记未初始化 place 键
+    //   （拥有型/指针/引用/静态豁免——isDefInitTrackedType 判定；带初始化器
+    //   的声明=已初始化不登记）
+    if (node->initializer == nullptr) {
+        defInitRegisterDecl(node->name, varType);
+    }
     // 188-a（D6 B11 变量常量传播）：声明初始化位登记（指针/字符串类型；RHS 形态
     //   分级同赋值位——`无` 字面量=种子／标识符=传播边／其余=失格）。转移改写
     //   （阶段1）后 initializer 已是实参标识符 → 自动走传播边（转移源自恒空则
@@ -632,6 +638,11 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
                                               node->sigKey));
     if (it == functions_.end()) return;
     if (node->body == nullptr) return;  // 函数原型声明：无需检查体
+
+    // 010（def-init）：函数级状态表清空（参数=已初始化不登记；函数间零串扰）
+    uninitPlaces_.clear();
+    inAddrBaseCtx_ = false;
+    inAggregateReadCtx_ = false;
 
     // 317-a：FunctionInfo 值拷贝——体内检查可触发泛型实例化注册（recheck 场景
     //   的推断段 insert functions_），unordered_map 扩容使迭代器失效；后续对

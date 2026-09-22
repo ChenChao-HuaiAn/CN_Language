@@ -27,7 +27,9 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         lastType_ = "未知";
         return;
     }
+    inAddrBaseCtx_ = true;  // 010（def-init）：对象侧=地址基，抑制整体值读判定
     std::string objectType = checkExpr(node->object.get());
+    inAddrBaseCtx_ = false;
     // v2.1（2026-09-03，用户裁决废除 ->）：成员访问统一 .——对象为指针时
     //   自动解引用一级（≡ (*对象).成员，Go 先例）。isDerefAccess 按对象类型
     //   写回（IR 层据此选基址：指针值 / 对象地址）；解析层恒 false。
@@ -299,6 +301,13 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
         if (f.name == memberName) {
             lastType_ = canonicalType(
                 resolveGenericTypeName(f.type, node->location));
+            // 010（def-init）：结构体叶子字段读判定（写目标/链中间对象侧跳过）
+            if (assignmentTargetDepth_ == 0 && !inAddrBaseCtx_) {
+                std::string diName, diSuffix;
+                if (defInitPlaceOf(node, diName, diSuffix)) {
+                    defInitCheckReadPlace(diName, diSuffix, node->location);
+                }
+            }
             return;
         }
     }
@@ -314,7 +323,9 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         lastType_ = "未知";
         return;
     }
+    inAddrBaseCtx_ = true;  // 010（def-init）：对象侧=地址基，抑制整体值读判定
     std::string objectType = checkExpr(node->object.get());
+    inAddrBaseCtx_ = false;
     std::string indexType = checkExpr(node->index.get());
     if (objectType == "未知") {
         lastType_ = "未知";
@@ -336,6 +347,14 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
                                 "数组下标必须是整型，实际为 '" + indexType + "'");
         }
         lastType_ = types::arrayElemOf(objectType);
+        // 010（def-init）：数组元素读判定（写目标 assignmentTargetDepth_>0 /
+        //   链中间对象侧 inAddrBaseCtx_ 跳过——外层节点精确判定）
+        if (assignmentTargetDepth_ == 0 && !inAddrBaseCtx_) {
+            std::string diName, diSuffix;
+            if (defInitPlaceOf(node, diName, diSuffix)) {
+                defInitCheckReadPlace(diName, diSuffix, node->location);
+            }
+        }
         return;
     }
     if (isPointerType(objectType)) {

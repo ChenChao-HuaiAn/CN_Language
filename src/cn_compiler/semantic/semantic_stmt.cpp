@@ -457,12 +457,34 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
                         markChecked(varName, kind);
                         const std::string rhsType = checkExpr(bin->right.get());
                         checkCondition(rhsType, bin->right->location, "'如果'");
+                        // 010（def-init）：then/else 状态传播（手动归并——本路径
+                        //   markChecked 配对顺序特殊，不走 defInitCheckIf 整体包装）
+                        const std::unordered_set<std::string> diBase = uninitPlaces_;
                         if (node->thenBranch != nullptr) {
                             checkBlock(node->thenBranch.get());
                         }
+                        std::unordered_set<std::string> diAfterThen = uninitPlaces_;
+                        const bool diThenExits = node->thenBranch != nullptr &&
+                            stmtGuaranteesReturn(node->thenBranch.get());
+                        uninitPlaces_ = diBase;
                         unmarkChecked(varName);
                         if (node->elseBranch != nullptr) {
                             checkStmt(node->elseBranch.get());
+                            std::unordered_set<std::string> diAfterElse = uninitPlaces_;
+                            const bool diElseExits =
+                                stmtGuaranteesReturn(node->elseBranch.get());
+                            if (diThenExits && !diElseExits) {
+                                uninitPlaces_ = diAfterElse;
+                            } else if (diElseExits && !diThenExits) {
+                                uninitPlaces_ = std::move(diAfterThen);
+                            } else if (!diThenExits && !diElseExits) {
+                                // 010：并集归并（must analysis——未初始化汇合=并集）
+                                std::unordered_set<std::string> diMerged = diAfterElse;
+                                for (const auto& k : diAfterThen) {
+                                    diMerged.insert(k);
+                                }
+                                uninitPlaces_ = std::move(diMerged);
+                            }
                         }
                         return;
                     }
@@ -471,13 +493,14 @@ void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
         }
     }
     checkCondition(checkExpr(node->condition.get()), node->condition->location, "'如果'");
-    if (node->thenBranch != nullptr) checkBlock(node->thenBranch.get());
-    if (node->elseBranch != nullptr) checkStmt(node->elseBranch.get());
+    // 010（def-init）：then/else 状态 clone+交集归并（终止支/无否则口径见实现）
+    defInitCheckIf(node);
 }
 void SemanticAnalyzer::visitWhileStmt(WhileStmt* node) {
     checkCondition(checkExpr(node->condition.get()), node->condition->location, "'当'");
     loopDepth_++;
-    if (node->body != nullptr) checkBlock(node->body.get());
+    // 010（def-init）：循环体状态不外溢（可能 0 次+回边保守）
+    if (node->body != nullptr) defInitCheckLoopBody(node->body.get());
     loopDepth_--;
 }
 void SemanticAnalyzer::visitForStmt(ForStmt* node) {
@@ -492,7 +515,8 @@ void SemanticAnalyzer::visitForStmt(ForStmt* node) {
     }
     if (node->update != nullptr) checkExpr(node->update.get());
     loopDepth_++;
-    if (node->body != nullptr) checkBlock(node->body.get());
+    // 010（def-init）：循环体状态不外溢（init 声明键随 popScope 层清理）
+    if (node->body != nullptr) defInitCheckLoopBody(node->body.get());
     loopDepth_--;
     popScope();
 }
@@ -689,7 +713,9 @@ void SemanticAnalyzer::visitReturnStmt(ReturnStmt* node) {
         }
         return;
     }
+    inAggregateReadCtx_ = true;  // 010（def-init）：返回值=聚合值读语境
     std::string valueType = checkExpr(node->value.get());
+    inAggregateReadCtx_ = false;
     // 217-a（2026-09-16 第两百一十七轮，D1 行数整改）：A2 拥有契约检查迁
     //   checkReturnBorrowA2；引用/指针返回的地址逃逸检查迁 checkReturnAddressEscape
     //   （宿主纯重构零行为变更）。

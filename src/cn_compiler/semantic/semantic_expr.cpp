@@ -79,6 +79,35 @@ void SemanticAnalyzer::visitIdentifierExpr(IdentifierExpr* node) {
         //   失败；继续供级联诊断最小化）。转移改写豁免窗口内跳过（visitVarDecl
         //   改写产物的常规检查不是用户代码的使用）。
         if (!inTransferRewrite_) reportMovedUse(node->name, node->location);
+        // 010（def-init·E0381）：未初始化读判定——标量/结构体直接判（对象侧
+        //   inAddrBaseCtx_ 时结构体跳过，字段/元素读由 MemberExpr/IndexExpr 精确
+        //   判定）；数组仅聚合值读语境判定（实参位=指针退化出参惯用法豁免）。
+        //   转移改写豁免窗口同 reportMovedUse。
+        if (!inTransferRewrite_ && !inAddrOfCtx_ && assignmentTargetDepth_ == 0) {
+            if (isDefInitTrackedType(varType)) {
+                if (types::arrayLenOf(varType) >= 0) {
+                    if (inAddrBaseCtx_) {
+                        // 下标/成员对象侧——精确判定由 IndexExpr/MemberExpr 负责
+                    } else if (inAggregateReadCtx_) {
+                        defInitCheckReadPlace(node->name, "", node->location);
+                    } else {
+                        // 实参（指针退化）/取地址=地址逃逸——保守视为可能被写
+                        // （出参惯用法：填充(数组,数) 后读元素放行；38_tool 铁证）
+                        defInitMarkInitPlace(node->name, "");
+                    }
+                } else if (findStruct(varType) != nullptr) {
+                    // 结构体：实参=引用语义（可能被写——初始化函数信息字段(函数信息)
+                    //   填充形态铁证）→ 裸引用=地址逃逸通道，保守整体置位；
+                    //   对象侧（s.横 的 s）由成员读精确判定。返回位值消费=漏报
+                    //   诚实边界（Rust move-out 对照的裁剪）
+                    if (!inAddrBaseCtx_) {
+                        defInitMarkAssignTarget(node);
+                    }
+                } else {
+                    defInitCheckReadPlace(node->name, "", node->location);
+                }
+            }
+        }
         // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：借出视图
         //   使用登记（活跃区间右端 + 跨作用域逃逸实时判定——容器先亡即报错）
         noteBorrowViewUse(node->name, node->location);
