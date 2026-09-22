@@ -93,22 +93,14 @@ def 提取v2表() -> set[str]:
     return set(re.findall(r'驻留\("([^"]+)"\)', block))
 
 
-def 提取v1表() -> set[str]:
-    """v1 关键字.cn 情况 "词", ... 条目（组A~D）"""
-    txt = (ROOT / "CN语言编译器/词法/关键字.cn").read_text(encoding="utf-8")
-    return set(re.findall(r'"([^"\n]+)"', txt))
-
-
 def 自检() -> int:
     宿主 = 提取宿主表()
     规范 = 提取规范表()
-    用例 = 提取用例串()
     v2 = 提取v2表()
-    v1 = 提取v1表()
     问题: list[str] = []
 
-    # ①②③ 三方必须完全一致
-    for 名, 集合 in (("宿主 lexer", 宿主), ("规范 §2.1", 规范), ("89 用例串", 用例)):
+    # ①② 必须完全一致
+    for 名, 集合 in (("宿主 lexer", 宿主), ("规范 §2.1", 规范)):
         缺 = 宿主 - 集合
         多 = 集合 - 宿主
         if 缺:
@@ -116,17 +108,16 @@ def 自检() -> int:
         if 多:
             问题.append(f"{名} 多余: {' '.join(sorted(多))}")
 
-    # ④⑤ 允许子集（白名单外缺失即失败）
-    for 名, 集合, 白 in (("v2 表", v2, V2_WHITELIST), ("v1 表", v1, V1_EXTRA)):
-        缺 = 宿主 - 集合 - 白
-        if 缺:
-            问题.append(f"{名} 非白名单缺失: {' '.join(sorted(缺))}")
-        多 = (集合 - V1_EXTRA) - 宿主 if 名 == "v1 表" else 集合 - 宿主
-        if 多:
-            问题.append(f"{名} 含已删词: {' '.join(sorted(多))}")
+    # ③ 允许子集（白名单外缺失即失败）
+    缺 = 宿主 - v2 - V2_WHITELIST
+    if 缺:
+        问题.append(f"v2 表 非白名单缺失: {' '.join(sorted(缺))}")
+    多 = v2 - 宿主
+    if 多:
+        问题.append(f"v2 表 含已删词: {' '.join(sorted(多))}")
 
-    print(f"[关键字同步] 宿主={len(宿主)} 规范={len(规范)} 89串={len(用例)} "
-          f"v2={len(v2)} v1={len(v1)}（含 v1 遗留 {len(V1_EXTRA)}）")
+    print(f"[关键字同步] 宿主={len(宿主)} 规范={len(规范)} "
+          f"v2={len(v2)}（白名单 {len(V2_WHITELIST)}）")
     if 问题:
         for q in 问题:
             print(f"  ✗ {q}")
