@@ -590,10 +590,13 @@ void Arm64CodeGenerator::emitParamSetup(Arm64AsmWriter& writer,
             }
             // D8（525-a）：寄存器参数位（x2~x7）直读作拷贝基址——免
             //   「mov x10, x2」中转（prologue 无调用介入，参数寄存器稳定）。
+            //   D8 596 修复：拷贝循环源基址须用 srcReg——原实现删了
+            //   「mov x10, srcReg」中转却仍硬编码 [x10]，寄存器参数时
+            //   x10 未初始化=垃圾基址（v2p 启动即段错误实锤）
             emitStackAddr(writer, "x12", slotOffset);
             const int words = bytes / 8;
             for (int w = 0; w < words; ++w) {
-                writer.line("ldr x11, [x10, #" + std::to_string(w * 8) + "]");
+                writer.line("ldr x11, [" + srcReg + ", #" + std::to_string(w * 8) + "]");
                 writer.line("str x11, [x12, #" + std::to_string(w * 8) + "]");
             }
             writer.comment("结构体参数 " + function.params[i].first +

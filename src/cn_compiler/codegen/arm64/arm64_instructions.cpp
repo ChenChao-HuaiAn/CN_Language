@@ -910,12 +910,17 @@ void Arm64CodeGenerator::emitFieldAddr(Arm64AsmWriter& writer,
     writer.line("bl __cn_runtime_error");
     writer.line("ret");
     writer.raw(okLabel + ":");
-    // 字段地址 = 基址 + 偏移
+    // 字段地址 = 基址 + 偏移。零偏移时直写 base（D8 596 修复：525-a 缺陷=
+    //   仅 offset!=0 才写 res，零偏移+基址已分配时 res 为未初始化寄存器，
+    //   垃圾值被存为字段地址 -> 读字段即空指针解引用〔v2p 自举编译器
+    //   启动即崩实锤·572 收拢携 525-a 未回签 arm64 入 develop〕）
     if (fieldOffset != 0) {
         emitMovImm(writer, "x10", static_cast<std::uint64_t>(fieldOffset));
         writer.line("add " + res + ", " + base + ", x10");
+        storeVirtualResult(writer, inst.result.id, res, "ptr");
+    } else {
+        storeVirtualResult(writer, inst.result.id, base, "ptr");
     }
-    storeVirtualResult(writer, inst.result.id, res, "ptr");
 }
 
 // 指针加载/存储（LoadPtr/StorePtr）：经指针值地址访存（含空指针检查错误码3）
