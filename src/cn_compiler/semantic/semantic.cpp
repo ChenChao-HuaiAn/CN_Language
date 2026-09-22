@@ -538,6 +538,16 @@ void SemanticAnalyzer::collectModulePublicSymbols(Program* node) {
     for (const auto& m : node->loadedModules) {
         if (!m.empty()) knownModules_.insert(m);
     }
+    // 609-a（T100·170）：未合并私有符号并进全集——mergeModuleDecls 过滤私有
+    //   声明时登记的 <模块名, 符号名>。591-a 导入位私有拒绝的前提（符号在
+    //   模块声明全集·moduleAllSymbols_）对纯私有符号原本永不成立（私有不
+    //   合并→声明面无记录）=检查死代码；此处补齐存在性登记（isPublic 判定
+    //   仍走 modulePublicSymbols_ 公开面·已合并声明路径不变）。
+    for (const auto& reg : node->modulePrivateSymbols) {
+        if (reg.first.empty() || reg.second.empty()) continue;
+        knownModules_.insert(reg.first);
+        moduleAllSymbols_[reg.first].insert(reg.second);
+    }
 }
 // 族②：第一趟a——类型名注册 + 结构体/联合体字段类型引用解析（原 504~520 段）。
 //   A-2（crate 分桶）：类型按所属模块注册（同模块重复报错，跨模块同名允许）；

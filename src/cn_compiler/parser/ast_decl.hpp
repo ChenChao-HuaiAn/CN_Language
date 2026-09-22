@@ -257,5 +257,12 @@ public:
     //   产生声明（其模块声明名为文件主干），须由此清单提供给语义层
     //   （knownModules_）。单文件管线（runPipeline）不填：无加载概念。
     std::vector<std::string> loadedModules;
+    // ---- 609-a（T100·170）：未合并私有符号登记（<模块名, 符号名>）----
+    // mergeModuleDecls 对被导入模块过滤私有声明（私有不跨模块）时登记；
+    // 语义层 collectModulePublicSymbols 并进 moduleAllSymbols_/knownModules_
+    // ——591-a 导入位私有拒绝的前提（符号在模块声明全集）由此成立，否则
+    // 纯私有符号（未合并·声明面无记录）导入永远查无此符号=检查死代码。
+    // 入口模块不登记（其私有声明已合并、moduleName 留空=既有不可导入口径）。
+    std::vector<std::pair<std::string, std::string>> modulePrivateSymbols;
 };
 } // namespace cn_compiler

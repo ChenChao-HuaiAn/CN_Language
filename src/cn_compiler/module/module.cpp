@@ -482,7 +482,12 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
         for (auto& f : unit.ast->declarations) {
             const bool isPublic = (f->access == AccessSpecifier::Public);
             const bool inClosure = (needed.count(f->name) > 0);
-            if (!isPublic && !inClosure) continue;  // 私有且未被引用：不合并
+            if (!isPublic) {
+                // 609-a（T100·170）：私有符号登记（不合并·仅存在性登记——
+                // 语义层 591-a 导入位私有拒绝查全集；含闭包私有=仍不可直接导入）
+                out->modulePrivateSymbols.emplace_back(unit.moduleName, f->name);
+                if (!inClosure) continue;  // 私有且未被引用：不合并
+            }
             f->moduleName = crateName;              // crate 分桶/链接前缀（第 4 层）
             out->declarations.push_back(std::unique_ptr<FunctionDecl>(f.release()));
         }
@@ -496,7 +501,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
     // crate 级常量/静态变量：入口模块全部合并；被导入模块仅合并公开的。
     //   模块级私有常量不跨模块（与函数/类可见性规则一致）。
     for (auto& g : unit.ast->globals) {
-        if (!visible(g->access)) continue;
+        if (!visible(g->access)) {
+            // 609-a（T100·170）：私有常量/静态存在性登记（同函数面）
+            out->modulePrivateSymbols.emplace_back(unit.moduleName, g->name);
+            continue;
+        }
         if (entryModule) {
             g->moduleName = crateName;
             out->globals.push_back(std::unique_ptr<VarDecl>(g.release()));
@@ -507,7 +516,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
     }
     // ---- 结构体/联合体 ----
     for (auto& s : unit.ast->structs) {
-        if (!visible(s->access)) continue;
+        if (!visible(s->access)) {
+            // 609-a（T100·170）：私有类型存在性登记（同函数面）
+            out->modulePrivateSymbols.emplace_back(unit.moduleName, s->name);
+            continue;
+        }
         if (!seenTypes.insert(s->name).second) {
             diags.report(DiagnosticLevel::Error, s->location,
                          "模块 '" + unit.moduleName + "' 内重复声明类型 '" + s->name + "'");
@@ -519,7 +532,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
     }
     // ---- 枚举 ----
     for (auto& e : unit.ast->enums) {
-        if (!visible(e->access)) continue;
+        if (!visible(e->access)) {
+            // 609-a（T100·170）：私有枚举存在性登记（同函数面）
+            out->modulePrivateSymbols.emplace_back(unit.moduleName, e->name);
+            continue;
+        }
         if (!seenTypes.insert(e->name).second) {
             diags.report(DiagnosticLevel::Error, e->location,
                          "模块 '" + unit.moduleName + "' 内重复声明类型 '" + e->name + "'");
@@ -531,7 +548,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
     }
     // ---- 类 ----
     for (auto& c : unit.ast->classes) {
-        if (!visible(c->access)) continue;
+        if (!visible(c->access)) {
+            // 609-a（T100·170）：私有类存在性登记（同函数面）
+            out->modulePrivateSymbols.emplace_back(unit.moduleName, c->name);
+            continue;
+        }
         if (!seenTypes.insert(c->name).second) {
             diags.report(DiagnosticLevel::Error, c->location,
                          "模块 '" + unit.moduleName + "' 内重复声明类型 '" + c->name + "'");
@@ -543,7 +564,11 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
     }
     // ---- 接口 ----
     for (auto& i : unit.ast->interfaces) {
-        if (!visible(i->access)) continue;
+        if (!visible(i->access)) {
+            // 609-a（T100·170）：私有接口存在性登记（同函数面）
+            out->modulePrivateSymbols.emplace_back(unit.moduleName, i->name);
+            continue;
+        }
         if (!seenTypes.insert(i->name).second) {
             diags.report(DiagnosticLevel::Error, i->location,
                          "模块 '" + unit.moduleName + "' 内重复声明类型 '" + i->name + "'");
@@ -565,7 +590,15 @@ bool mergeModuleDecls(ModuleUnit& unit, Program* out, bool entryModule, bool sin
                                    ? (g->innerClass->access == AccessSpecifier::Public)
                                    : (g->innerFunc != nullptr &&
                                       g->innerFunc->access == AccessSpecifier::Public);
-        if (!entryModule && !genPublic) continue;  // 私有泛型不跨模块
+        if (!entryModule && !genPublic) {
+            // 609-a（T100·170）：私有泛型存在性登记（同函数面；符号名在其内层声明）
+            std::string gpname;
+            if (g->innerClass != nullptr) gpname = g->innerClass->name;
+            else if (g->innerFunc != nullptr) gpname = g->innerFunc->name;
+            if (!gpname.empty())
+                out->modulePrivateSymbols.emplace_back(unit.moduleName, gpname);
+            continue;  // 私有泛型不跨模块
+        }
         std::string gname;
         if (g->innerClass != nullptr) gname = g->innerClass->name;
         else if (g->innerFunc != nullptr) gname = g->innerFunc->name;
