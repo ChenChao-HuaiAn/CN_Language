@@ -309,7 +309,11 @@ def 测量M4(目标平台: str, LINK, LIB路径们, v2pobj, cn_self_obj: pathlib
         rsp_lines += ["/DEFAULTLIB:libcmt.lib", "/DEFAULTLIB:libucrt.lib",
                       "/DEFAULTLIB:kernel32.lib", "/DEFAULTLIB:shell32.lib",
                       f"/OUT:{cn_self_exe}", f"/MAP:{map文件}"]
+        # cn_self.obj 必须在 v2p.obj 之前（防 v1 79 虚假验收教训：命令行靠前定义胜出）；
+        #   637-a：win 面补运行时 objs（对齐 run_e2e 执行v2锚定链 [4] 链接清单——
+        #   原只塞 cn_self.obj+v2pobj=None 缺十件运行时=LNK2019 面）
         rsp_lines += [str(cn_self_obj), str(v2pobj)]
+        rsp_lines += [str(项目根目录 / "target" / f"{名}.obj") for 名 in 运行时名们]
         with open(响应文件, "w", encoding="utf-8") as f:
             for 行 in rsp_lines:
                 f.write(f'"{行}"\n')
@@ -472,7 +476,15 @@ def 主程序() -> int:
     if 工作目录.exists():
         shutil.rmtree(工作目录)
     (工作目录 / "target").mkdir(parents=True, exist_ok=True)
-    os.symlink(项目根目录 / "stdlib", 工作目录 / "stdlib")
+    # 637-a win 兼容：os.symlink 需 SeCreateSymbolicLinkPrivilege（开发者模式/
+    #   管理员）——无特权时回退 mklink /J junction（同解析语义·无需特权）
+    链接目标 = 工作目录 / "stdlib"
+    try:
+        os.symlink(项目根目录 / "stdlib", 链接目标)
+    except OSError:
+        subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(链接目标), str(项目根目录 / "stdlib")],
+            check=True, capture_output=True)
 
     输入规模 = 统计输入规模()
     print("CN语言 自举性能基线测量（v2 口径）")
@@ -483,9 +495,20 @@ def 主程序() -> int:
 
     # linux 侧运行时 .o 现场准备（不计时）；win 侧由 cn build 产出 target/*.obj
     v2pobj = None
-    if 目标平台 != "win-x64":
-        print("[准备] 运行时 .o 现场编译（不计入测量点）...")
-        准备运行时objs(目标平台, cxx工具)
+    if 目标平台 == "win-x64":
+        # 637-a 根治：win 面借链 obj=audit2/v2p.obj（cn_self.obj 靠前定义胜出·
+        #   对齐 run_e2e 执行v2锚定链 [4]；原 win 分支 v2pobj=None 直塞 rsp
+        #   → LNK1181「无法打开 None.obj」——bench win 面首次实跑暴露）
+        v2pobj = 项目根目录 / "target" / "audit2" / "v2p.obj"
+        if not v2pobj.exists():
+            print(f"错误: M4 缺少借链 obj: {v2pobj}（先跑 E2E 预热或 78/79 单跑）")
+            sys.exit(1)
+        缺失运行时 = [项目根目录 / "target" / f"{名}.obj"
+                  for 名 in 运行时名们
+                  if not (项目根目录 / "target" / f"{名}.obj").exists()]
+        if 缺失运行时:
+            print(f"错误: M4 缺少运行时 obj（cn build 后即产出）: {缺失运行时[0].name}")
+            sys.exit(1)
 
     # [M1] 宿主 build v2 全树 -> v2p
     v2p = 工作目录 / "v2p"
