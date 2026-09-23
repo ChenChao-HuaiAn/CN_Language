@@ -78,6 +78,18 @@ def 隔离键(名称: str) -> str:
     纯 ASCII 输出（中文名折叠为哈希，路径 ASCII 友好）。"""
     import hashlib
     return 名称.split("_")[0] + "_" + hashlib.md5(名称.encode("utf-8")).hexdigest()[:8]
+
+def 拷贝用例树干净(源目录, 目标目录, ignore=None):
+    """先清理再整树拷贝（629-a·006 供给扩容轮实测撞出的混合态缺陷）：
+    dirs_exist_ok=True 叠加拷贝会残留「源目录已删除的文件」——31 删漂移副本
+    映射集合.cn 后 v2src 仍编残留副本 → v2p 引用副本内部函数面而供给 obj 提供内
+    置实现面 → LNK1120 假象（两侧源码集不一致=防虚假验收红线）。v2src/宿主目录/
+    负测目录等「用例目录快照」一律清理重建，保证快照=源目录真子集的镜像。"""
+    import shutil as _shutil
+    if 目标目录.exists():
+        _shutil.rmtree(目标目录)
+    _shutil.copytree(源目录, 目标目录, ignore=ignore)
+
 # 内存保护用例前缀（338-a 扩面·2026-09-18·事故驱动）：原仅 78/79。
 #   事故：76_self_host_bootstrap 产物 `76_self_host_bo*` **anon-rss 28.9GB** 触发系统
 #   OOM killer（13:09:54 内核日志铁证），该进程属 ZCode 会话 scope → **连坐 ZCode 关闭**
@@ -1309,7 +1321,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         # plans/018（2026-09-07）：负路径与正路径步骤 2 同款整树复制——模块系统
         #   负测用例（168~170 等）的导入依赖模块文件须随入口就位（ignore 期望/
         #   输入文件；既有平铺负测（139/141/146/149）行为等价）
-        shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
+        拷贝用例树干净(用例目录, v2src目录,
                         ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
         入口参数 = str((审计目录 / f"v2src{隔离键值}" / "主.cn").resolve())
         if v2asm路径.exists():
@@ -1382,7 +1394,7 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     # plans/018 P6b（2026-09-07）：模块系统加载器用例目录树——父挂子子模块
     #   （<名>/<子>.cn）、货舱.toml、依赖/<名>/… 须随入口整树复制（ignore
     #   期望/输入文件；既有平铺用例行为等价）
-    shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
+    拷贝用例树干净(用例目录, v2src目录,
                     ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
 
     # ===== 步骤3：运行 v2p（第 2 参数目标平台分派 GAS 后端）=====
@@ -1563,7 +1575,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         # plans/018 跨机轮 win 侧对齐（2026-09-09）：负路径与 linux 分支/正路径
         #   同款整树复制——模块系统负测（168~170）的导入依赖模块文件须随入口
         #   就位（ignore 期望/输入文件；既有平铺负测 139/141/146/149 行为等价）
-        shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
+        拷贝用例树干净(用例目录, v2src目录,
                         ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
         if v2asm路径.exists():
             v2asm路径.unlink()
@@ -1600,7 +1612,7 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     # plans/018 P6b（2026-09-07）：模块系统加载器用例目录树——父挂子子模块
     #   （<名>/<子>.cn）、货舱.toml、依赖/<名>/… 须随入口整树复制（ignore
     #   期望/输入文件；既有平铺用例行为等价）
-    shutil.copytree(用例目录, v2src目录, dirs_exist_ok=True,
+    拷贝用例树干净(用例目录, v2src目录,
                     ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
 
     # ===== 步骤2.5：供给源编译（②b B7，对齐 linux 分支）——用例自有类型符号 =====
@@ -1832,10 +1844,10 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
                 if not 源f.exists():
                     return "失败", f"{编号}-DN 缺少用例文件: {文件名}"
                 _shutil.copy2(源f, v2负目录 / 文件名)
-            _shutil.copytree(用例目录, v2负目录, dirs_exist_ok=True,
-                             ignore=_shutil.ignore_patterns("*.expected", "*.input", "*.args",
-                                                            "v2闭环.txt", "双编译对照.txt",
-                                                            "期望编译失败.txt", "期望check失败.txt"))
+            拷贝用例树干净(用例目录, v2负目录,
+                           ignore=_shutil.ignore_patterns("*.expected", "*.input", "*.args",
+                                                          "v2闭环.txt", "双编译对照.txt",
+                                                          "期望编译失败.txt", "期望check失败.txt"))
             # 577-a 平台分派修复（569-a 硬编码 win 工具链与 win-x64 目标——linux/arm64
             #   首跑 71 例负测全炸「未找到 ml64/link」；分派对齐 执行v2闭环 同款口径）：
             #   win=v2p.exe+v2asm.asm；linux/arm64=v2p_<后缀>+v2asm.s（GAS 目标参数）
@@ -1872,7 +1884,7 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
         if not 源.exists():
             return "失败", f"{编号}-D1 缺少用例文件: {文件名}"
         shutil.copy2(源, 宿主目录 / 文件名)
-    shutil.copytree(用例目录, 宿主目录, dirs_exist_ok=True,
+    拷贝用例树干净(用例目录, 宿主目录,
                     ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args",
                                                   "v2闭环.txt", "双编译对照.txt"))
     宿主可执行 = 宿主目录 / ("hostout.exe" if 目标平台 == "win-x64" else "hostout")
