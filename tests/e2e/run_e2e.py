@@ -102,6 +102,16 @@ def 拷贝用例树干净(源目录, 目标目录, ignore=None):
 
 内存轮询间隔秒 = 0.5
 
+# ============ 子进程超时防线（021 任务 050=568-a 遗欠恢复·2026-09-23）============
+#   568-a 曾实测 73 例宿主编译无限挂死——每类子进程调用带四档闹钟：
+#   超时 -> 终止进程树 -> 普通路径重试一次 -> 仍超时判失败继续（运行命令 内建机制）。
+#   568-a 分支（a0ba39ab）的 26 处防线未随 586-a 摘取集成，604-a 进程池重写后
+#   调用点结构变化，本轮按档逐点恢复并补真（见 运行命令 内存路径超时注释）。
+编译超时秒数 = 600
+构建超时秒数 = 900
+运行超时秒数 = 180
+检查超时秒数 = 60
+
 # 平台限制用例跳过列表：某些用例因平台特性差异（API/ABI/工具链）无法在特定平台运行
 # 键 = 目标平台，值 = 用例目录名前缀列表（不含编号前缀的短名匹配）
 # 注：65_string_index 的 ARM64 跳过已摘除（2026-09-03）——原「char 符号扩展差异」
@@ -297,6 +307,13 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
             线程.daemon = True
             线程.start()
 
+        # 内存保护路径超时（050 补真）：568-a 原版缺口——本循环只查内存不查时间，
+        #   走内存路径的调用点即使传了 超时秒数 也虚设；进程挂死且内存不涨时
+        #   轮询永不退出（73 例挂死同形态）。超时 -> 终止进程树 -> 判失败。
+        #   有意不重试（与普通路径重试一次不对称）：内存路径监控的大规模构建
+        #   （78/79 fix_p 全树 15 分钟级）重试代价极高，且确定性挂死重试必再挂死；
+        #   普通路径防的偶发零 CPU 挂起是一次性事件（AV/文件锁），重试有效。
+        开始时刻 = time.monotonic()
         while 进程.poll() is None:
             内存MB = 查询进程内存MB(进程.pid)
             if 内存MB > 内存上限MB:
@@ -312,6 +329,23 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
                     命令列表, -9, 收集输出["stdout"],
                     f"运行内存超限：工作集 {内存MB}MB > 上限 {内存上限MB}MB，"
                     "已自动终止（防 OOM 卡死）\n--- 终止前 stdout 尾部 ---\n"
+                    + 收集输出["stdout"][-2500:]
+                    + "\n--- 终止前 stderr 尾部 ---\n"
+                    + 收集输出["stderr"][-2500:])
+            if 超时秒数 and 超时秒数 > 0 and time.monotonic() - 开始时刻 > 超时秒数:
+                终止进程树(进程)
+                try:
+                    进程.wait(timeout=30)
+                except Exception:
+                    pass
+                for 线程 in 排空线程们:
+                    线程.join(timeout=2)
+                标记 = (f"[runner] 命令超时({超时秒数}s·内存保护路径·不重试): "
+                        + ' '.join(str(c) for c in 命令列表[:3]))
+                print(标记, file=sys.stderr)
+                return subprocess.CompletedProcess(
+                    命令列表, -9, 收集输出["stdout"],
+                    标记 + "\n--- 终止前 stdout 尾部 ---\n"
                     + 收集输出["stdout"][-2500:]
                     + "\n--- 终止前 stderr 尾部 ---\n"
                     + 收集输出["stderr"][-2500:])
@@ -744,7 +778,8 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     额外旗标 = 查找编译选项文件(用例目录)
     编译结果 = 运行命令([str(编译器路径), "build", str(源文件),
                       "--target", 目标平台,
-                      "--output", str(输出可执行), *额外旗标], 项目根目录)
+                      "--output", str(输出可执行), *额外旗标], 项目根目录,
+                     超时秒数=编译超时秒数)
     if 编译结果.returncode != 0:
         提示 = (编译结果.stderr or 编译结果.stdout).strip()
         # 编译器尚未实现build命令：标记为"未实现"而非真实失败（阶段零预期状态）
@@ -774,7 +809,7 @@ def 执行单个用例(编译器路径: pathlib.Path, 用例目录: pathlib.Path
     运行内存上限 = 内存上限MB默认 if any(
         前缀 in 名称 for 前缀 in 内存保护用例前缀) else 0
     运行结果 = 运行命令([str(输出可执行)] + 参数列表, 项目根目录, 标准输入,
-                     运行内存上限)
+                     运行内存上限, 超时秒数=运行超时秒数)
     if 运行结果.returncode != 0:
         return "失败", f"运行失败(退出码{运行结果.returncode}): {运行结果.stderr.strip()[:200]}"
 
@@ -838,7 +873,8 @@ def 锚定链编译v2全树(exe, 工作目录: pathlib.Path, 主入口: str, 目
         asm路径.unlink()
     if 详细:
         print(f"    [{标签}] {pathlib.Path(exe).name} {主入口}")
-    运行结果 = 运行命令(命令, 工作目录, 内存上限MB=内存上限MB默认)
+    运行结果 = 运行命令(命令, 工作目录, 内存上限MB=内存上限MB默认,
+                     超时秒数=构建超时秒数)
     if 运行结果.returncode != 0:
         return "失败", (f"{标签} 编译 v2 全树失败(退出码{运行结果.returncode}): "
                         f"{(运行结果.stderr or 运行结果.stdout or '').strip()[:300]}"), 0
@@ -917,11 +953,12 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         if 详细:
             print(f"    [{编号}-3] ml64 汇编 fix_p.asm")
         汇编结果 = 运行命令([str(ML64), "/nologo", "/c", f"/Fo{cn_self_obj}", str(fixp)],
-                          项目根目录)
+                          项目根目录, 超时秒数=编译超时秒数)
     else:
         if 详细:
             print(f"    [{编号}-3] as 汇编 fix_p.s")
-        汇编结果 = 运行命令([as工具, "-o", str(cn_self_obj), str(fixp)], 项目根目录)
+        汇编结果 = 运行命令([as工具, "-o", str(cn_self_obj), str(fixp)], 项目根目录,
+                          超时秒数=编译超时秒数)
     if 汇编结果.returncode != 0:
         return "失败", (f"{编号}-3 汇编 fix_p 失败(退出码{汇编结果.returncode}): "
                         f"{(汇编结果.stderr or 汇编结果.stdout or '').strip()[:300]}")
@@ -950,7 +987,8 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
                 f.write(f'"{行}"\n')
         if 详细:
             print(f"    [{编号}-4] link -> cn_self.exe（cn_self.obj 在前 + v2p.obj 借链）")
-        链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录)
+        链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录,
+                         超时秒数=编译超时秒数)
         if 链接结果.returncode != 0:
             return "失败", (f"{编号}-4 链接失败(退出码{链接结果.returncode}): "
                             f"{(链接结果.stdout or '').strip()[:300]}")
@@ -960,7 +998,7 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         链接命令 += [str(o) for o in 运行时objs]
         if 详细:
             print(f"    [{编号}-4] g++ -no-pie -Wl,-z,muldefs -> cn_self（cn_self.obj 在前）")
-        链接结果 = 运行命令(链接命令, 项目根目录)
+        链接结果 = 运行命令(链接命令, 项目根目录, 超时秒数=编译超时秒数)
         if 链接结果.returncode != 0:
             return "失败", (f"{编号}-4 链接失败(退出码{链接结果.returncode}): "
                             f"{(链接结果.stderr or 链接结果.stdout or '').strip()[:300]}")
@@ -990,7 +1028,8 @@ def 执行v2锚定链(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             if 当前obj and re.match(r"^\s+0x[0-9a-fA-F]+\s+cn_main$", l):
                 cn_main归属 = 当前obj
                 break
-        nm检查 = 运行命令(["nm", str(cn_self_obj)], 项目根目录)
+        nm检查 = 运行命令(["nm", str(cn_self_obj)], 项目根目录,
+                       超时秒数=检查超时秒数)
         if " T cn_main" not in (nm检查.stdout or ""):
             return "失败", f"{编号}-5 绑定自检失败: cn_self.obj 未定义 T cn_main"
         if cn_main归属 is None or "cn_self.obj" not in cn_main归属:
@@ -1148,7 +1187,8 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
                 obj.unlink()
             编译rt = 运行命令([cxx工具, "-c", "-std=c++17", "-fno-exceptions", "-fno-rtti",
                             "-DCNRT_LINUX_MAIN", "-Isrc", "-o", str(obj),
-                            f"src/runtime/{模块}.cpp"], 项目根目录)
+                            f"src/runtime/{模块}.cpp"], 项目根目录,
+                           超时秒数=构建超时秒数)
             if 编译rt.returncode != 0:
                 return None, f"{编号}-0 运行时 {模块}.o 编译失败: {(编译rt.stderr or 编译rt.stdout).strip()[:200]}"
         rt缓存键路径.write_text(rt指纹, encoding="utf-8")
@@ -1172,7 +1212,8 @@ def 确保v2p与运行时就绪(编译器路径: pathlib.Path, 目标平台: str
     if 详细:
         print(f"    [{编号}-1] {编译器路径} build 主.cn -> {v2p.name}（{目标平台}）")
     编译结果 = 运行命令([str(编译器路径), "build", str(项目根目录 / "CN语言编译器v2" / "主.cn"),
-                      "--target", 目标平台, "--output", str(v2p)], 项目根目录)
+                      "--target", 目标平台, "--output", str(v2p)], 项目根目录,
+                     超时秒数=构建超时秒数)
     if 编译结果.returncode != 0:
         return None, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
     if not v2p.exists():
@@ -1248,7 +1289,8 @@ def 确保v2p就绪win(编译器路径: pathlib.Path, 详细: bool, 编号: str 
     if 详细:
         print(f"    [{编号}-1] {编译器路径} build 主.cn -> v2p.exe")
     编译结果 = 运行命令([str(编译器路径), "build", str(v2源码目录 / "主.cn"),
-                      "--target", "win-x64", "--output", str(v2p)], 项目根目录)
+                      "--target", "win-x64", "--output", str(v2p)], 项目根目录,
+                     超时秒数=构建超时秒数)
     if 编译结果.returncode != 0:
         return None, f"{编号}-1 编译 v2 组件失败(退出码{编译结果.returncode}): {(编译结果.stderr or 编译结果.stdout).strip()[:200]}"
     if not v2p.exists():
@@ -1330,7 +1372,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
             print(f"    [{编号}-N] {v2p.name} {入口参数} {目标平台}（预期语义错误中止）")
         运行结果 = 运行命令([str(v2p), 入口参数, 目标平台,
                               *查找编译选项文件(用例目录)], 工作目录,
-                            内存上限MB=内存上限MB默认)
+                            内存上限MB=内存上限MB默认,
+                            超时秒数=编译超时秒数)
         if 运行结果.returncode == 0:
             return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
         if v2asm路径.exists():
@@ -1376,7 +1419,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         if 详细:
             print(f"    [{编号}-1.5] {编译器路径} build {供给名} -> {供给obj.name}（符号供给）")
         供给编译 = 运行命令([str(编译器路径), "build", str(供给目录 / "主.cn"),
-                          "--target", 目标平台, "--output", str(供给输出)], 项目根目录)
+                          "--target", 目标平台, "--output", str(供给输出)], 项目根目录,
+                         超时秒数=编译超时秒数)
         if 供给编译.returncode != 0:
             return "失败", f"{编号}-1.5 供给源 {供给名} 编译失败(退出码{供给编译.returncode}): {(供给编译.stderr or 供给编译.stdout).strip()[:200]}"
         if not 供给obj.exists():
@@ -1407,7 +1451,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         print(f"    [{编号}-3] {v2p.name} {入口参数} {目标平台}")
     运行结果 = 运行命令([str(v2p), 入口参数, 目标平台,
                               *查找编译选项文件(用例目录)], 工作目录,
-                            内存上限MB=内存上限MB默认)
+                            内存上限MB=内存上限MB默认,
+                            超时秒数=编译超时秒数)
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
@@ -1444,7 +1489,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
         v2obj.unlink()
     if 详细:
         print(f"    [{编号}-4] as v2asm.s")
-    汇编结果 = 运行命令([as工具, "-o", str(v2obj), str(v2asm路径)], 项目根目录)
+    汇编结果 = 运行命令([as工具, "-o", str(v2obj), str(v2asm路径)], 项目根目录,
+                      超时秒数=编译超时秒数)
     if 汇编结果.returncode != 0:
         return "失败", f"{编号}-4 as 汇编失败(退出码{汇编结果.returncode}): {(汇编结果.stderr or 汇编结果.stdout).strip()[:300]}"
     if not v2obj.exists():
@@ -1466,18 +1512,18 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     链接命令 += [str(o) for o in 运行时objs]
     if 详细:
         print(f"    [{编号}-5] g++ -no-pie -> {输出exe.name}")
-    链接结果 = 运行命令(链接命令, 项目根目录)
+    链接结果 = 运行命令(链接命令, 项目根目录, 超时秒数=编译超时秒数)
     if 链接结果.returncode != 0:
         return "失败", f"{编号}-5 链接失败(退出码{链接结果.returncode}): {(链接结果.stderr or 链接结果.stdout).strip()[:300]}"
     if not 输出exe.exists():
         return "失败", f"{编号}-5 链接返回成功但未生成 exe"
     # 符号自检（防虚假验收，对齐 win64 map 自检）：cn_main 须由 v2asm_linux.o 定义；
     #   容器用例的 向量$ 方法符号须来自 v2p_linux.o（muldefs 下 v2asm 在前绑定 cn_main）
-    nm检查 = 运行命令(["nm", str(v2obj)], 项目根目录)
+    nm检查 = 运行命令(["nm", str(v2obj)], 项目根目录, 超时秒数=检查超时秒数)
     if " T cn_main" not in (nm检查.stdout or ""):
         return "失败", f"{编号}-5.5 符号自检失败: v2asm_linux.o 未定义 T cn_main"
     if 链接v2pobj:
-        nm检查2 = 运行命令(["nm", str(v2pobj)], 项目根目录)
+        nm检查2 = 运行命令(["nm", str(v2pobj)], 项目根目录, 超时秒数=检查超时秒数)
         if "T _E59091E9878F24" not in (nm检查2.stdout or ""):  # 向量$（E59091E9878F24）hex 前缀
             return "失败", f"{编号}-5.5 符号自检失败: v2p_linux.o 缺少向量类方法符号"
 
@@ -1486,7 +1532,8 @@ def 执行v2闭环Linux(编译器路径: pathlib.Path, 目标平台: str, 详细
     标准输入2 = 查找输入文件(用例目录 / 入口名)
     输入文本2 = 标准输入2.read_text(encoding="utf-8") if 标准输入2 is not None else ""
     参数列表2 = 查找参数文件(用例目录 / 入口名)
-    运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2)
+    运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2,
+                      超时秒数=运行超时秒数)
     预期值 = 预期退出码 % 256
     if 运行结果2.returncode != 预期值:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
@@ -1582,7 +1629,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         if 详细:
             print(f"    [{编号}-N] {v2p.name} {入口参数}（预期语义错误中止）")
         运行结果 = 运行命令([str(v2p), 入口参数, "win-x64", *查找编译选项文件(用例目录)], 工作目录,
-                            内存上限MB=内存上限MB默认)
+                            内存上限MB=内存上限MB默认,
+                            超时秒数=编译超时秒数)
         if 运行结果.returncode == 0:
             return "失败", f"{编号}-N 预期 v2p 语义错误中止但退出码 0（错误产物纪律回归）"
         if v2asm路径.exists():
@@ -1636,7 +1684,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         if 详细:
             print(f"    [{编号}-2.5] {编译器路径} build {供给名} -> {供给obj.name}（符号供给）")
         供给编译 = 运行命令([str(编译器路径), "build", str(供给目录 / "主.cn"),
-                          "--target", "win-x64", "--output", str(供给输出)], 项目根目录)
+                          "--target", "win-x64", "--output", str(供给输出)], 项目根目录,
+                         超时秒数=编译超时秒数)
         if 供给编译.returncode != 0:
             return "失败", f"{编号}-2.5 供给源 {供给名} 编译失败(退出码{供给编译.returncode}): {(供给编译.stderr or 供给编译.stdout).strip()[:200]}"
         if not 供给obj.exists():
@@ -1652,7 +1701,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     if 详细:
         print(f"    [{编号}-3] {v2p.name} {入口参数}")
     运行结果 = 运行命令([str(v2p), 入口参数, "win-x64", *查找编译选项文件(用例目录)], 工作目录,
-                            内存上限MB=内存上限MB默认)
+                            内存上限MB=内存上限MB默认,
+                            超时秒数=编译超时秒数)
     if 运行结果.returncode != 0:
         return "失败", f"{编号}-3 v2p 运行失败(退出码{运行结果.returncode}): {(运行结果.stderr or '').strip()[:300]}"
     if not v2asm路径.exists():
@@ -1692,7 +1742,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
         v2obj.unlink()
     if 详细:
         print(f"    [{编号}-4] ml64 v2asm.asm")
-    汇编结果 = 运行命令([str(ML64), "/nologo", "/c", f"/Fo{v2obj}", str(v2asm路径)], 项目根目录)
+    汇编结果 = 运行命令([str(ML64), "/nologo", "/c", f"/Fo{v2obj}", str(v2asm路径)], 项目根目录,
+                      超时秒数=编译超时秒数)
     if 汇编结果.returncode != 0:
         return "失败", f"{编号}-4 ml64 汇编失败(退出码{汇编结果.returncode}): {汇编结果.stdout.strip()[:300]}"
     if not v2obj.exists():
@@ -1732,7 +1783,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
             f.write(f'"{行}"\n')
     if 详细:
         print(f"    [{编号}-5] link -> {输出exe.name}")
-    链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录)
+    链接结果 = 运行命令([str(LINK), f"@{响应文件}"], 项目根目录,
+                     超时秒数=编译超时秒数)
     if 链接结果.returncode != 0:
         return "失败", f"{编号}-5 链接失败(退出码{链接结果.returncode}): {链接结果.stdout.strip()[:300]}"
     if not 输出exe.exists():
@@ -1754,7 +1806,8 @@ def 执行v2闭环(编译器路径: pathlib.Path, 用例目录: pathlib.Path,
     输入文件2 = 查找输入文件(用例目录 / 入口名2)
     输入文本2 = 输入文件2.read_text(encoding="utf-8") if 输入文件2 is not None else ""
     参数列表2 = 查找参数文件(用例目录 / 入口名2)
-    运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2)
+    运行结果2 = 运行命令([str(输出exe)] + 参数列表2, 项目根目录, 输入文本2,
+                      超时秒数=运行超时秒数)
     if 运行结果2.returncode != 预期退出码:
         return "失败", (f"{编号}-6 v2 产物运行退出码={运行结果2.returncode}"
                         f"（期望 {预期退出码}）: {(运行结果2.stderr or '').strip()[:200]}")
@@ -1815,7 +1868,8 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
             宿主负产物.unlink()
         宿主负编译 = 运行命令([str(编译器路径), "build", str(入口),
                           "--target", 目标平台, "--output", str(宿主负产物),
-                          *查找编译选项文件(用例目录)], 项目根目录)
+                          *查找编译选项文件(用例目录)], 项目根目录,
+                         超时秒数=编译超时秒数)
         if 宿主负编译.returncode == 0:
             return "失败", f"{编号}-DN 预期宿主编译失败但编译成功: {入口.name}"
         宿主诊断 = 解码诊断(宿主负编译.stderr) + 解码诊断(宿主负编译.stdout)
@@ -1867,7 +1921,8 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
                 v2负asm.unlink()
             v2负编译 = 运行命令([str(v2p), v2负入口, 平台参数,
                              *查找编译选项文件(用例目录)], v2负目录,
-                            内存上限MB=内存上限MB默认)
+                            内存上限MB=内存上限MB默认,
+                            超时秒数=编译超时秒数)
             if v2负编译.returncode == 0:
                 return "失败", (f"{编号}-DN 负测双测失败：宿主已拒绝但 v2 侧未拒绝"
                                 f"（v2p 编译成功 rc=0·v2 宽松放行）: {入口.name}")
@@ -1894,7 +1949,8 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
     if 详细:
         print(f"    [{编号}-D1] 宿主侧 {编译器路径.name} build {入口.name} --target {目标平台}")
     宿主编译 = 运行命令([str(编译器路径), "build", str(入口), "--target", 目标平台,
-                     "--output", str(宿主可执行), *查找编译选项文件(用例目录)], 项目根目录)
+                     "--output", str(宿主可执行), *查找编译选项文件(用例目录)], 项目根目录,
+                     超时秒数=编译超时秒数)
     if 宿主编译.returncode != 0:
         return "失败", (f"{编号}-D1 宿主侧编译失败(退出码{宿主编译.returncode}): "
                         f"{(宿主编译.stderr or 宿主编译.stdout).strip()[:200]}")
@@ -1913,7 +1969,8 @@ def 执行双编译对照(编译器路径: pathlib.Path, 用例目录: pathlib.P
     宿主输入文件 = 查找输入文件(用例目录 / 源文件名们[0])
     宿主输入文本 = 宿主输入文件.read_text(encoding="utf-8") if 宿主输入文件 is not None else ""
     宿主参数列表 = 查找参数文件(用例目录 / 源文件名们[0])
-    宿主运行 = 运行命令([str(宿主可执行)] + 宿主参数列表, 项目根目录, 宿主输入文本)
+    宿主运行 = 运行命令([str(宿主可执行)] + 宿主参数列表, 项目根目录, 宿主输入文本,
+                     超时秒数=运行超时秒数)
     宿主码 = 宿主运行.returncode
     # 609-a 机制级修复（runner 断言面）：win64 进程退出码=32 位全值——本文件
     #   1266 行注释本意即「win64 为 32 位全值」，v2闭环 win 分支（步骤6）亦为
