@@ -277,7 +277,10 @@ def 主():
     ap.add_argument("--rounds", type=int, default=1, help="循环轮数（0=无限·默认 1）")
     ap.add_argument("--samples", type=int, default=200, help="每轮新样本数")
     ap.add_argument("--sleep", type=int, default=600, help="轮间睡眠秒数")
+    ap.add_argument("--once", action="store_true", help="单轮（=--rounds 1）")
     a = ap.parse_args()
+    if a.once:
+        a.rounds = 1
 
     编译器 = 编译器路径()
     if not os.path.exists(编译器):
