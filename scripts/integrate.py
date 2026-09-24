@@ -312,6 +312,15 @@ def 主流程() -> int:
                 if 镜像.returncode != 0:
                     print(f"  [警告] github 镜像补推失败——按惯例下次提交补推（不影响集成有效性）。")
             分支 = 输出(["git", "branch", "--show-current"])
+            # 集成即删分支（710 治本·AGENTS.md §8.1）：内容已随 ff-only 进入 develop，
+            # 远程任务分支使命完成——不删即积压（9-18~9-24 积压 367 条实证）。
+            if 分支.startswith("任务/") and not 参数.dry_run:
+                清理 = 运行(["git", "push", 主远程, "--delete", 分支])
+                if 清理.returncode == 0:
+                    print(f"  [清理] 远程任务分支 {分支} 已删（内容已入 {集成分支}·AGENTS.md §8.1 集成即删）。")
+                else:
+                    print(f"  [警告] 远程任务分支删除失败（不影响集成有效性）"
+                          f"——稍后 python scripts/branch_cleanup.py 兜底。")
             print(f"\n[集成成功] {分支} → {集成分支}（{输出(['git', 'rev-parse', 'HEAD'])[:8]}）"
                   f"——请在看板通告段发验收请求（集成基线 commit+变更要点+影响面·AGENTS.md §8.2 步骤 7/"
                   f"§8.3 异步验收），并登记本机 🧵 验收基线行。")
