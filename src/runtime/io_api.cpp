@@ -613,13 +613,41 @@ static LONG WINAPI cn_veh_filter(EXCEPTION_POINTERS* info) {
         void* fault = (info->ExceptionRecord->NumberParameters >= 2)
                           ? (void*)info->ExceptionRecord->ExceptionInformation[1]
                           : nullptr;
+        // 721：ASLR 下绝对 RIP 不可对位——打印 RVA（RIP-模块基址）
+        HMODULE mod = nullptr;
+        uintptr_t base = 0;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR)info->ExceptionRecord->ExceptionAddress, &mod);
+        if (mod) { base = (uintptr_t)mod; }
         int n = std::snprintf(buf, sizeof(buf),
-                              "[veh] code=%08X addr=%p RIP=%p RSP=%p fault=%p\n",
+                              "[veh] code=%08X RIP=%p RSP=%p fault=%p base=%p RVA=%llx\n",
                               (unsigned)info->ExceptionRecord->ExceptionCode,
                               (void*)info->ExceptionRecord->ExceptionAddress,
-                              (void*)info->ContextRecord->Rip,
-                              (void*)info->ContextRecord->Rsp, fault);
+                              (void*)info->ContextRecord->Rsp, fault, (void*)base,
+                              (unsigned long long)(info->ContextRecord->Rip - base));
         if (n > 0) { DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)n, &written, nullptr); }
+    }
+    // 721：rbp 链回溯（CN 生成代码 push rbp/mov rbp,rsp 帧链）——打印各层返回地址 RVA
+    {
+        uintptr_t rbp = info->ContextRecord ? info->ContextRecord->Rbp : 0;
+        HMODULE mod2 = nullptr;
+        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR)(info->ContextRecord ? info->ContextRecord->Rip : 0), &mod2);
+        uintptr_t base2 = mod2 ? (uintptr_t)mod2 : 0;
+        for (int depth = 0; depth < 16 && rbp; depth++) {
+            uintptr_t ret = 0, next = 0;
+            SIZE_T rd = 0;
+            if (!ReadProcessMemory(GetCurrentProcess(), (LPCVOID)(rbp + 8), &ret, 8, &rd) || rd != 8) break;
+            ReadProcessMemory(GetCurrentProcess(), (LPCVOID)rbp, &next, 8, &rd);
+            char b2[128];
+            int n2 = std::snprintf(b2, sizeof(b2), "[veh] frame%02d ret RVA=%llx\n", depth,
+                                   (unsigned long long)(ret > base2 ? ret - base2 : ret));
+            if (n2 > 0) { DWORD w; WriteFile(GetStdHandle(STD_ERROR_HANDLE), b2, (DWORD)n2, &w, nullptr); }
+            if (next <= rbp) break;
+            rbp = next;
+        }
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
