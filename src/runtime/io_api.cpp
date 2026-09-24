@@ -583,6 +583,12 @@ extern "C" void __cn_runtime_error(long long errorCode) {
 // UEF 抓 C0000005 等未处理异常，stderr 直写 code/RIP/RSP/fault（WriteFile 不经
 //   stdio 锁）。链接本 obj 的编译器进程经静态初始化自动安装（宿主 cn.exe 无害）。
 #ifdef _WIN32
+// 719：UEF 显式安装入口（runtime.cpp entry() 调用——cn_self 入口 shim 不跑
+//   _initterm，auto_install 静态初始化器不执行，必须显式装）
+static LONG WINAPI cn_crash_filter(EXCEPTION_POINTERS*);
+extern "C" void cn_install_crash_handler() {
+    SetUnhandledExceptionFilter(cn_crash_filter);
+}
 static LONG WINAPI cn_crash_filter(EXCEPTION_POINTERS* info) {
     if (info && info->ExceptionRecord) {
         char buf[256];
