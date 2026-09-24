@@ -18,6 +18,7 @@
 #include <vector>
 #ifdef _WIN32
 #include <malloc.h>  // _heapmin（堆压缩，归还空闲页）
+#include <windows.h>  // ExitProcess/SetUnhandledExceptionFilter（718 崩溃处理器）
 #endif
 
 // ==================== 内存管理API（规格书10.2） ====================
@@ -565,7 +566,47 @@ extern "C" const char* __cn_error_message(long long errorCode) {
 }
 
 // 运行时错误处理：打印错误信息（含错误码）后终止程序
+// 718：终止改 ExitProcess——std::exit 走 atexit/stdio flush 依赖堆锁，堆损坏
+//   场景 exit 内部死锁挂住（cn_self 第二跳「错误码 4 后挂住」实测）。
 extern "C" void __cn_runtime_error(long long errorCode) {
     std::printf("运行时错误(错误码%lld): %s\n", errorCode, __cn_error_message(errorCode));
+    std::fflush(stdout);
+    std::fflush(stderr);
+#ifdef _WIN32
+    ExitProcess(1);
+#else
     std::exit(1);
+#endif
 }
+
+// ==================== 崩溃处理器（718·cn_self 第二跳侦查设施） ====================
+// UEF 抓 C0000005 等未处理异常，stderr 直写 code/RIP/RSP/fault（WriteFile 不经
+//   stdio 锁）。链接本 obj 的编译器进程经静态初始化自动安装（宿主 cn.exe 无害）。
+#ifdef _WIN32
+static LONG WINAPI cn_crash_filter(EXCEPTION_POINTERS* info) {
+    if (info && info->ExceptionRecord) {
+        char buf[256];
+        void* fault = (info->ExceptionRecord->NumberParameters >= 2)
+                          ? (void*)info->ExceptionRecord->ExceptionInformation[1]
+                          : nullptr;
+        int n = std::snprintf(buf, sizeof(buf),
+                              "[crash] code=%08X addr=%p RIP=%p RSP=%p fault=%p\n",
+                              (unsigned)info->ExceptionRecord->ExceptionCode,
+                              (void*)info->ExceptionRecord->ExceptionAddress,
+                              (void*)info->ContextRecord->Rip,
+                              (void*)info->ContextRecord->Rsp, fault);
+        if (n > 0) { DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)n, &written, nullptr); }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+namespace {
+struct cn_crash_auto_install {
+    cn_crash_auto_install() {
+        SetUnhandledExceptionFilter(cn_crash_filter);
+        DWORD written; char m[] = "[crash] UEF installed\n";
+        WriteFile(GetStdHandle(STD_ERROR_HANDLE), m, (DWORD)(sizeof(m) - 1), &written, nullptr);
+    }
+};
+static const cn_crash_auto_install cn_crash_auto_install_instance;
+}
+#endif
