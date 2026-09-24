@@ -43,6 +43,23 @@ def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
     return subprocess.run(命令, cwd=仓库根, **kwargs)
 
 
+def 运行捕获(命令: list[str]) -> subprocess.CompletedProcess:
+    """执行子进程并捕获输出（回放保持可见性）。
+
+    723-a（机制级·安全网失效修复）：E2E 门禁的「已知红点名」消费 `结果.stdout`
+    做解析，而 运行() 默认继承 stdout/stderr ⇒ CompletedProcess.stdout 恒为 None
+    ⇒ 失败清单恒空 ⇒ `未点名`为空 ⇒ **未点名红也被放行**（点名机制形同虚设·
+    722 集成实测：串行红 113/127_v2/79_v2 三项被解析为空清单后「披露放行」）。
+    本函数捕获后回放（stdout 原样、stderr 归错误流），解析与可见性兼具。
+    """
+    结果 = subprocess.run(命令, cwd=仓库根, capture_output=True, text=True)
+    if 结果.stdout:
+        print(结果.stdout, end="")
+    if 结果.stderr:
+        print(结果.stderr, end="", file=sys.stderr)
+    return 结果
+
+
 def 输出(命令: list[str]) -> str:
     """执行子进程并返回 stdout（去尾换行）。"""
     结果 = subprocess.run(命令, cwd=仓库根, capture_output=True, text=True)
@@ -153,7 +170,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
         单测 = 运行([str(仓库根 / "target/Debug/cn_unit_tests.exe")])
         if 单测.returncode != 0:
             return "单元测试未全过。"
-        串行 = 运行([sys.executable, "tests/e2e/run_e2e.py",
+        串行 = 运行捕获([sys.executable, "tests/e2e/run_e2e.py",
                      "--cn", str(仓库根 / "target/Debug/cn.exe"), "--jobs", "1"])
         if 串行.returncode != 0:
             # 591-a（T100·170 集成实测）：win 分支补接 --allow-known-red 点名消费
@@ -195,13 +212,13 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
     # 本机平台键（win/linux-x64）→ run_e2e.py 目标名（win-x64/linux-arm64/linux-x86_64）
     目标 = {"win": "win-x64", "linux-x64": "linux-x86_64", "linux-arm64": "linux-arm64"}[平台]
     # gate_lock 串行锁（449-a）× 并行红串行复验（447-a）合成：锁内 E2E 并行，红后锁内串行复验
-    e2e = 运行([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--", sys.executable,
-               "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "8"])
+    e2e = 运行捕获([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--", sys.executable,
+                 "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "8"])
     if e2e.returncode == 0:
         return None
     print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制·gate_lock 锁内）")
-    串行 = 运行([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--", sys.executable,
-                "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "1"])
+    串行 = 运行捕获([sys.executable, str(仓库根 / "scripts/gate_lock.py"), "run", "--", sys.executable,
+                  "tests/e2e/run_e2e.py", "--target", 目标, "--cn", str(cn路径), "--jobs", "1"])
     if 串行.returncode != 0:
         # 564-a（过渡机制·fdef8ae9 P1「v2p 构建确定性缺失」根治前）：--allow-known-red
         #   显式点名机制——串行红若【全部】命中点名清单=「三平台已定性已知红」披露放行；
