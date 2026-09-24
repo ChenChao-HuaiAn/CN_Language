@@ -200,7 +200,10 @@ def 统计输入规模() -> dict:
 def 编译v2全树(exe: pathlib.Path, 目标平台: str) -> tuple:
     """[M2/M5 共用]：exe 编译 v2 全树自身 -> 工作目录/target/v2asm.{asm|s}。
     断言：退出码 0 + 产物存在 + 含入口符号 cn_main（防假绿·对齐锚定链）。
-    返回 (产物路径, 行数)；失败时 sys.exit(1)。调用方负责计时。"""
+    返回 (产物路径|None, 行数, 错误消息)。**不退出**——调用方定夺：M2 失败=
+    核心指标缺失（硬退出）；M5 失败=缺陷域（cn_self 自身编译失败）→ 降级出
+    报告、保留 M1~M4 成果（720-a linux 首跑实证：M4 链接修复后 cn_self 编译
+    第二跳失败=家机 708-e 链在飞缺陷域，M1~M4 实测成果不该被一起吞掉）。"""
     if 目标平台 == "win-x64":
         asm路径 = 工作目录 / "target" / "v2asm.asm"
         入口标记 = "cn_main PROC"
@@ -213,29 +216,25 @@ def 编译v2全树(exe: pathlib.Path, 目标平台: str) -> tuple:
         asm路径.unlink()
     结果 = 运行命令(命令, 工作目录)
     if 结果.returncode != 0:
-        print(f"错误: 编译 v2 全树失败(退出码{结果.returncode}): "
-              f"{(结果.stderr or 结果.stdout or '').strip()[:300]}")
-        sys.exit(1)
+        return None, 0, (f"编译 v2 全树失败(退出码{结果.returncode}): "
+                         f"{(结果.stderr or 结果.stdout or '').strip()[:300]}")
     if not asm路径.exists():
-        print("错误: 编译退出码 0 但未落盘 v2asm（防假绿）")
-        sys.exit(1)
+        return None, 0, "编译退出码 0 但未落盘 v2asm（防假绿）"
     内容 = asm路径.read_text(encoding="utf-8", errors="replace")
     if 入口标记 not in 内容:
-        print("错误: 产物缺少入口符号 cn_main（v2 代码生成入口未对齐宿主·防假绿）")
-        sys.exit(1)
+        return None, 0, "产物缺少入口符号 cn_main（v2 代码生成入口未对齐宿主·防假绿）"
     行数 = 内容.count("\n") + 1
     if 行数 < 行数下界:
-        print(f"错误: 产物 {行数} 行 < 下界 {行数下界}（近乎空产物·防假绿下界触发）")
-        sys.exit(1)
-    return asm路径, 行数
+        return None, 0, f"产物 {行数} 行 < 下界 {行数下界}（近乎空产物·防假绿下界触发）"
+    return asm路径, 行数, ""
 
 
 def 编译v2全树计时(exe: pathlib.Path, 目标平台: str) -> tuple:
-    """编译 v2 全树并计时，返回 (耗时ms, 行数)"""
+    """编译 v2 全树并计时，返回 (耗时ms, 行数, asm路径|None, 错误消息)"""
     开始 = time.perf_counter()
-    asm路径, 行数 = 编译v2全树(exe, 目标平台)
+    asm路径, 行数, 错误 = 编译v2全树(exe, 目标平台)
     耗时 = (time.perf_counter() - 开始) * 1000.0
-    return (耗时, 行数, asm路径)
+    return (耗时, 行数, asm路径, 错误)
 
 
 # ============ 测量点实现 ============
@@ -259,11 +258,15 @@ def 测量M1(编译器路径: pathlib.Path, 目标平台: str, v2p: pathlib.Path
 
 
 def 测量M2(目标平台: str, v2p: pathlib.Path, fixp: pathlib.Path) -> tuple:
-    """M2: CN版编译 v2 全树 -> fix_p（3 次取中位数）；返回 (中位数, 样本表, 行数)"""
+    """M2: CN版编译 v2 全树 -> fix_p（3 次取中位数）；返回 (中位数, 样本表, 行数)。
+    M2 失败=核心指标缺失（基线不成立）→ 硬退出。"""
     样本 = []
     行数 = 0
     for i in range(3):
-        耗时, 行数, asm = 编译v2全树计时(v2p, 目标平台)
+        耗时, 行数, asm, 错误 = 编译v2全树计时(v2p, 目标平台)
+        if 错误:
+            print(f"错误: [M2] {错误}")
+            sys.exit(1)
         样本.append(耗时)
         shutil.copy2(asm, fixp)
     样本.sort()
@@ -337,15 +340,20 @@ def 测量M4(目标平台: str, LINK, LIB路径们, v2pobj, cn_self_obj: pathlib
 
 
 def 测量M5(目标平台: str, cn_self_exe: pathlib.Path, fixs: pathlib.Path) -> tuple:
-    """M5: cn_self 再编译 v2 全树 -> fix_s（3 次取中位数）"""
+    """M5: cn_self 再编译 v2 全树 -> fix_s（3 次取中位数）。
+    返回 (中位数, 样本表, 行数, 错误消息)。720-a 降级：cn_self 编译失败
+    （cn_self 缺陷域·非基线口径问题）→ 返回 (0.0, [], 0, 原因) 由主程序出
+    降级报告（M1~M4 成果保留）。"""
     样本 = []
     行数 = 0
     for i in range(3):
-        耗时, 行数, asm = 编译v2全树计时(cn_self_exe, 目标平台)
+        耗时, 行数, asm, 错误 = 编译v2全树计时(cn_self_exe, 目标平台)
+        if 错误:
+            return 0.0, [], 0, 错误
         样本.append(耗时)
         shutil.copy2(asm, fixs)
     样本.sort()
-    return 样本[1], [round(v, 3) for v in 样本], 行数
+    return 样本[1], [round(v, 3) for v in 样本], 行数, ""
 
 
 def 测量M6(fixp: pathlib.Path, fixs: pathlib.Path) -> bool:
@@ -399,11 +407,20 @@ def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模
     m1 = 测量结果["M1"]
     m2 = 测量结果["M2"]
     m5 = 测量结果["M5"]
+    m5错误 = 测量结果.get("M5错误", "")
     比值vscpp = (m2 / m1) if m1 > 0 else float("inf")
-    比值自洽 = (m5 / m2) if m2 > 0 else float("inf")
+    比值自洽 = (m5 / m2) if (m2 > 0 and m5 > 0) else float("inf")
 
-    结论 = ("✅ 自举固定点成立（fix_p ≡ fix_s 逐字节）·基线入库"
-            if M6一致 else "❌ 固定点不一致——性能对比无效（M6 失败）")
+    if m5错误:
+        结论 = ("⚠️ 部分基线：M1~M4 有效（M5/M6 未达成——cn_self 自身编译失败·"
+                "缺陷域非口径问题·详见末节）")
+    else:
+        结论 = ("✅ 自举固定点成立（fix_p ≡ fix_s 逐字节）·基线入库"
+                if M6一致 else "❌ 固定点不一致——性能对比无效（M6 失败）")
+    m5显示 = f"{m5:.1f}" if not m5错误 else "失败（降级·见末节）"
+    m6显示 = ("✅ 一致" if M6一致 else
+              ("— 未执行（M5 失败）" if m5错误 else "❌ 不一致"))
+    比值自洽显示 = f"{比值自洽:.3f}x" if 比值自洽 != float("inf") else "—"
 
     行们 = [
         "# CN 语言自举性能基线报告（plans/004 D-1 · 560-a v2 口径）",
@@ -422,15 +439,15 @@ def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模
         f"| M2 | CN 版编译 v2 全树 -> fix_p（3 次中位数·样本 {测量结果['M2样本']}） | {m2:.1f} |",
         f"| M3 | as 汇编 fix_p -> cn_self.obj | {测量结果['M3']:.1f} |",
         f"| M4 | 链接 cn_self（cn_self.obj 在前 + v2p.obj 借链 + 运行时） | {测量结果['M4']:.1f} |",
-        f"| M5 | cn_self 再编译 v2 全树 -> fix_s（3 次中位数·样本 {测量结果['M5样本']}） | {m5:.1f} |",
-        f"| M6 | 固定点 fix_p ≡ fix_s 逐字节 | {'✅ 一致' if M6一致 else '❌ 不一致'} |",
+        f"| M5 | cn_self 再编译 v2 全树 -> fix_s（3 次中位数·样本 {测量结果['M5样本']}） | {m5显示} |",
+        f"| M6 | 固定点 fix_p ≡ fix_s 逐字节 | {m6显示} |",
         "",
         "## 二、性能比值",
         "",
         "| 对比项 | 基准 | CN 版 | 比值 |",
         "|--------|-----:|------:|-----:|",
         f"| 编译 v2 全树（M2/M1） | {m1:.1f} ms（C++ 宿主） | {m2:.1f} ms | {比值vscpp:.2f}x |",
-        f"| 两代自洽（M5/M2·应≈1） | {m2:.1f} ms（v2p） | {m5:.1f} ms（cn_self） | {比值自洽:.3f}x |",
+        f"| 两代自洽（M5/M2·应≈1） | {m2:.1f} ms（v2p） | {m5显示} | {比值自洽显示} |",
         "",
         f"- **v2p / cn_self 产物行数**: {测量结果['M2行数']} / {测量结果['M5行数']}（下界 {行数下界}）",
         f"- **结论**: {结论}",
@@ -441,6 +458,17 @@ def 生成报告(测量结果: dict, 编译器路径: pathlib.Path, 输入规模
         "> 单机口径——跨机比较无意义（CPU/负载不同），仅作本平台纵向基线。",
         "",
     ]
+    if m5错误:
+        行们 += [
+            "## 三、M5 失败降级说明（720-a）",
+            "",
+            f"- **M5 错误**: {m5错误}",
+            "- **性质**：cn_self（v2 自举编译产物）自身编译 v2 全树失败——缺陷域",
+            "  （非基线口径问题）。M1~M4 测量不受影响（v2p=宿主编译产物·有效）。",
+            "- **证据链**：79_v2 自举闭环用例同点失败（run_e2e --filter 79_v2）——",
+            "  同一 cn_self 缺陷；M5/M6 随该缺陷清偿后重跑本脚本回填。",
+            "",
+        ]
     报告路径.parent.mkdir(parents=True, exist_ok=True)
     with open(报告路径, "w", encoding="utf-8") as f:
         f.write("\n".join(行们) + "\n")
@@ -561,15 +589,22 @@ def 主程序() -> int:
     # [M5] cn_self 再编译 v2 全树 -> fix_s（3 次中位数）
     fixs = 工作目录 / ("fix_s.asm" if 目标平台 == "win-x64" else "fix_s.s")
     print("[M5] cn_self 再编译 v2 全树 -> fix_s（3 次取中位数）...")
-    测量结果["M5"], 测量结果["M5样本"], 测量结果["M5行数"] = 测量M5(
-        目标平台, cn_self_exe, fixs)
-    print(f"      样本: {测量结果['M5样本']} -> 中位数 {测量结果['M5']:.1f} ms"
-          f"（{测量结果['M5行数']} 行）")
+    测量结果["M5"], 测量结果["M5样本"], 测量结果["M5行数"], 测量结果["M5错误"] = \
+        测量M5(目标平台, cn_self_exe, fixs)
+    if 测量结果["M5错误"]:
+        print(f"      [M5 失败·降级出报告] {测量结果['M5错误']}")
+    else:
+        print(f"      样本: {测量结果['M5样本']} -> 中位数 {测量结果['M5']:.1f} ms"
+              f"（{测量结果['M5行数']} 行）")
 
-    # [M6] 固定点
-    print("[M6] 正确性验证（fix_p ≡ fix_s）...")
-    M6一致 = 测量M6(fixp, fixs)
-    print(f"      {'✅ 两次产物逐字节一致（自举固定点成立）' if M6一致 else '❌ 不一致'}")
+    # [M6] 固定点（M5 失败时无 fix_s 可比——跳过并标注）
+    if 测量结果["M5错误"]:
+        M6一致 = False
+        print("[M6] 跳过（M5 未产出 fix_s·cn_self 缺陷域）")
+    else:
+        print("[M6] 正确性验证（fix_p ≡ fix_s）...")
+        M6一致 = 测量M6(fixp, fixs)
+        print(f"      {'✅ 两次产物逐字节一致（自举固定点成立）' if M6一致 else '❌ 不一致'}")
 
     报告路径 = 生成报告(测量结果, 编译器路径, 输入规模, M6一致, 目标平台)
     print()
