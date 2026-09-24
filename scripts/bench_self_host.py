@@ -216,13 +216,12 @@ def 编译v2全树(exe: pathlib.Path, 目标平台: str) -> tuple:
         asm路径.unlink()
     结果 = 运行命令(命令, 工作目录)
     if 结果.returncode != 0:
-        # 720-a：落错取尾部——v2p/cn_self 的 [p6h]/[sem5] 输出走 stdout 且前期
-        #   为正常进度流，真错误在末尾（前 300 字符全是进度行·首跑实证）
-        错输出 = (结果.stderr or "").strip()
-        if not 错输出:
-            错输出 = (结果.stdout or "").strip()[-400:]
+        # 720-a：落错取尾部——v2p/cn_self 的 [p6h]/[sem5] 进度流走 stderr，
+        #   真错误在末尾（首跑降级报告实证「前 300 字符全是已解析进度行」
+        #   无诊断价值）；stderr 空则退 stdout。两路统一取尾 300 字符。
+        错输出 = (结果.stderr or "").strip() or (结果.stdout or "").strip()
         return None, 0, (f"编译 v2 全树失败(退出码{结果.returncode}): "
-                         f"{错输出[:300]}")
+                         f"{错输出[-300:]}")
     if not asm路径.exists():
         return None, 0, "编译退出码 0 但未落盘 v2asm（防假绿）"
     内容 = asm路径.read_text(encoding="utf-8", errors="replace")
