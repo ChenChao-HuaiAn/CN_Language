@@ -89,6 +89,14 @@ extern "C" void cn_free(void* ptr) {
 // 计数规则：空指针=新分配（total++/live++）；size=0=释放（live--）；
 //   常规扩容 保持 live 不变（块数不增不减）
 extern "C" void* cn_realloc(void* ptr, std::size_t size) {
+    // 724：异常大尺寸可观测拒绝（>2GB=发射缺陷信号——垃圾尺寸静默 NULL 会
+    //   在调用方解引用时崩·Rust alloc 合同同款：Layout 超限返回分配错误）
+    if (size > (1ull << 31)) {
+        std::fprintf(stderr, "[cnrt] cn_realloc 拒绝异常尺寸 %llu\n",
+                     (unsigned long long)size);
+        std::fflush(stderr);
+        return nullptr;
+    }
     if (ptr == nullptr) {
         void* p = std::realloc(nullptr, size);
         if (p != nullptr) {
