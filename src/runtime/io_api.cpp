@@ -628,12 +628,16 @@ static LONG WINAPI cn_veh_filter(EXCEPTION_POINTERS* info) {
                                GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                            (LPCWSTR)info->ExceptionRecord->ExceptionAddress, &mod);
         if (mod) { base = (uintptr_t)mod; }
+        // 735：实参寄存器并入（追踪入参 NULL 产出方向——rcx=this/rdx=值形参…）
         int n = std::snprintf(buf, sizeof(buf),
-                              "[veh] code=%08X RIP=%p RSP=%p fault=%p base=%p RVA=%llx\n",
+                              "[veh] code=%08X RIP=%p RSP=%p fault=%p base=%p RVA=%llx RAX=%p RCX=%p RDX=%p R8=%p R9=%p\n",
                               (unsigned)info->ExceptionRecord->ExceptionCode,
                               (void*)info->ExceptionRecord->ExceptionAddress,
                               (void*)info->ContextRecord->Rsp, fault, (void*)base,
-                              (unsigned long long)(info->ContextRecord->Rip - base));
+                              (unsigned long long)(info->ContextRecord->Rip - base),
+                              (void*)info->ContextRecord->Rax, (void*)info->ContextRecord->Rcx,
+                              (void*)info->ContextRecord->Rdx, (void*)info->ContextRecord->R8,
+                              (void*)info->ContextRecord->R9);
         if (n > 0) { DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)n, &written, nullptr); }
     }
     // 721：rbp 链回溯（CN 生成代码 push rbp/mov rbp,rsp 帧链）——打印各层返回地址 RVA
