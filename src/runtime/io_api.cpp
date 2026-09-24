@@ -599,6 +599,27 @@ static LONG WINAPI cn_crash_filter(EXCEPTION_POINTERS* info) {
     }
     return EXCEPTION_CONTINUE_SEARCH;
 }
+// 719b：VEH 版（第一顺位）——cn_self 的 C0000005 现场 UEF 未触发（原因待查），
+//   VEH 挂异常分发链头必经。打印 code/RIP/RSP/fault 后 CONTINUE_SEARCH。
+static LONG WINAPI cn_veh_filter(EXCEPTION_POINTERS* info) {
+    if (info && info->ExceptionRecord) {
+        char buf[256];
+        void* fault = (info->ExceptionRecord->NumberParameters >= 2)
+                          ? (void*)info->ExceptionRecord->ExceptionInformation[1]
+                          : nullptr;
+        int n = std::snprintf(buf, sizeof(buf),
+                              "[veh] code=%08X addr=%p RIP=%p RSP=%p fault=%p\n",
+                              (unsigned)info->ExceptionRecord->ExceptionCode,
+                              (void*)info->ExceptionRecord->ExceptionAddress,
+                              (void*)info->ContextRecord->Rip,
+                              (void*)info->ContextRecord->Rsp, fault);
+        if (n > 0) { DWORD written; WriteFile(GetStdHandle(STD_ERROR_HANDLE), buf, (DWORD)n, &written, nullptr); }
+    }
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+extern "C" void cn_install_veh() {
+    AddVectoredExceptionHandler(1, cn_veh_filter);
+}
 namespace {
 struct cn_crash_auto_install {
     cn_crash_auto_install() {

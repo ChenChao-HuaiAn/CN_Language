@@ -7,11 +7,22 @@
 // CN语言入口：函数 主() -> 整32，返回0表示成功
 extern "C" int cn_main();
 
+// 719：崩溃处理器安装（io_api.cpp UEF 设施——打印 code/RIP/RSP/fault 到 stderr）
+//   显式安装于入口：cn_self 链接的入口 shim 不跑 CRT _initterm，静态初始化器
+//   的自动安装不会执行（718 实测「UEF installed」标记未出现）。
+extern "C" void cn_install_crash_handler();
+
+// 719b：VEH（第一顺位·比 UEF 更早看到异常）。UEF 在 cn_self 的 C0000005 现场
+//   未触发（原因待查——VEH 直接挂号异常分发链头），打印后 CONTINUE_SEARCH 放行。
+extern "C" void cn_install_veh();
+
 // 入口：调用 主 函数，将返回值传递给操作系统
 // 对应CN语言 主 函数（规格书10.4：命令行参数预留，阶段一只支持无参签名）
 // Task 6.5（系统库）：将 argc/argv 缓存到全局（__cn_cache_argv），
 //   供 CN 层 系统.参数个数/系统.参数 读取（system_api.cpp）
 extern "C" int entry(int argc, char** argv) {
+    cn_install_crash_handler();
+    cn_install_veh();
     __cn_cache_argv(argc, argv);
     return cn_main();
 }
