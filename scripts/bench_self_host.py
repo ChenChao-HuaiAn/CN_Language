@@ -537,6 +537,10 @@ def 主程序() -> int:
     #   同款「容器符号提供者」——fix_p 缺跨模块符号定义〔实测 词法$Token追加 仅引用
     #   无定义〕，须宿主 obj 借链补齐；cn_self.obj 在前=靠前定义胜出）
     if 目标平台 != "win-x64":
+        # 720-a 恢复：linux 侧运行时 .o 现场编译（不计入测量点）——637-a win 面
+        #   重构时误删本调用（win 需求补回、linux 面漏补·linux-x64 首跑 720 轮实测
+        #   暴露 M4 缺 io_api.o 等 5 件＝M4 链接必败），560 arm64 基线时本调用在。
+        准备运行时objs(目标平台, cxx工具)
         v2pobj = 工作目录 / "v2p.o"
         if not v2pobj.exists():
             print(f"错误: M4 缺少借链 obj: {v2pobj}（cn build 中间产物未留存）")
