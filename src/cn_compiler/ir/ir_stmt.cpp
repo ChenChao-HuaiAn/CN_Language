@@ -87,6 +87,44 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   Rust 对照：`-> T` 必须有所有权，借用来源须 clone；拥有局部（移出）/
         //   调用返回/字面量/转移=拥有来源，保持零拷贝（原路径不变）。
         //   实现归属 ir_fields.cpp（79-a 拥有权单一归属文件）。
+        // 746-a（055 波2a·容器元素类实例返回=深拷独立副本）：容器.元素 方法
+        //   返回类实例（T 有拷贝构造）时，返回值从「池内地址句柄（写穿视图）」
+        //   改为「NewObject+拷贝构造 的独立堆副本」——与 v2 副本语义对齐（052 甲），
+        //   消除「取回-设置-写回」模式的 self 覆盖毁源（740-a 实测段错误域）。
+        //   Rust 对照：&self[i] 借出 vs 返回 T 值语义。
+        if (function_ != nullptr && function_->name == "元素" &&
+            semantic_ != nullptr && !function_->returnTypeSrc.empty() &&
+            semantic_->isClassType(types::canonical(function_->returnTypeSrc)) &&
+            node->value != nullptr) {
+            const std::string elemCanon =
+                types::canonical(function_->returnTypeSrc);
+            std::string copyKey;
+            const ClassInfo* eci = semantic_->findClass(elemCanon);
+            if (eci != nullptr) {
+                for (const auto& mk : eci->methods) {
+                    if (mk.second.isCopyConstructor) {
+                        copyKey = methodSymbolKey(elemCanon, mk.second.sigKey);
+                        break;
+                    }
+                }
+            }
+            if (!copyKey.empty()) {
+                const int objBytes = semantic_->typeSizeOf(elemCanon);
+                if (objBytes > 0) {
+                    const std::string extra =
+                        elemCanon + "|" + std::to_string(objBytes);
+                    ir::IRValue newObj = emitResult(
+                        ir::Opcode::NewObject,
+                        {ir::IRValue::constant(elemCanon, "ptr")}, "ptr", extra,
+                        node->location);
+                    ir::IRValue srcSlot = lvalueAddress(node->value.get());
+                    emit(ir::Opcode::Call, {newObj, srcSlot}, ir::IRValue(),
+                         copyKey, "void", node->location);
+                    endReturn(newObj.toString());
+                    return;
+                }
+            }
+        }
         std::string ownedRetAddr;
         if (genOwnedAggregateReturn(node->value.get(), node->location,
                                     ownedRetAddr)) {
