@@ -113,6 +113,18 @@ const ClassMemberInfo* SemanticAnalyzer::lookupClassMember(
         // 沿继承链向上
         info = info->baseName.empty() ? nullptr : findClass(info->baseName);
     }
+    if (memberName == "设置" && className.find("向量$映射$整64$符号") != std::string::npos) {
+        fprintf(stderr, "[w740] lookup未命中 类=%s 方法=%s\n", className.c_str(), memberName.c_str());
+        const ClassInfo* dbg = findClass(className);
+        int depth = 0;
+        while (dbg != nullptr && depth < 3) {
+            fprintf(stderr, "[w740]   层%d 类=%s methods键:", depth, dbg->name.c_str());
+            for (const auto& mk : dbg->methods) fprintf(stderr, " %s", mk.first.c_str());
+            fprintf(stderr, "\n");
+            dbg = dbg->baseName.empty() ? nullptr : findClass(dbg->baseName);
+            depth++;
+        }
+    }
     return nullptr;
 }
 
