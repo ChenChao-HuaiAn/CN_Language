@@ -11,7 +11,6 @@
 #include <utility>
 
 #include <cstdio>
-#include <cstdlib>
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
