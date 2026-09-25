@@ -679,7 +679,6 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
 bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                                          const std::string& methodName,
                                          const std::string& canonObj) {
-    fprintf(stderr, "[w740] 实例方法调用 方法=%s 接收者=%s findClass命中=%d\n", methodName.c_str(), canonObj.c_str(), (int)(semantic_->findClass(canonObj) != nullptr));
     // 实例方法调用：对象为类实例（源码类型是类）。
     // v2.1 统一 .：对象源码类型为 类名*（指针）时剥指针取类名（与语义层
     //   clsName 类型驱动剥法一致）。注意方法调用路径不经过 visitMemberExpr
@@ -699,9 +698,6 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
     std::string owner;
     const ClassMemberInfo* m = findClassMethod(semantic_, canonObjForMethod, methodName, owner);
     if (m == nullptr) return false;  // 非方法（字段访问等，交回原路径）
-    fprintf(stderr, "[w740] IR解析 方法=%s owner=%s sigKey=%s key=%s 接收者=%s\n",
-            methodName.c_str(), owner.c_str(), m->sigKey.c_str(),
-            methodSymbolKey(owner, m->sigKey).c_str(), canonObjForMethod.c_str());
     if (m->isStatic) return false;   // 实例.静态方法 语义允许，但走静态路径（防御）
 
     // this 实参：自身/父类 -> this 指针；类变量 -> 变量值（对象指针）
