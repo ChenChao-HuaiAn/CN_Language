@@ -377,8 +377,27 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                            {ir::IRValue::var(unique, "ptr")},
                                            "ptr", unique, node->location);
                 } else if (semantic_ != nullptr &&
-                           semantic_->isClassType(types::canonical(types::stripRef(
-                               lookupSrcType(operandName))))) {
+                           [&] {
+                               // 772 轮（550 阶段二·甲案清单②·用户 2026-09-25 裁决
+                               //   甲=&容器变量=对象地址）：**容器类型并入 Load 域**——
+                               //   容器（向量/映射/链表/栈/队列/集合）不在 classes_ 表
+                               //   （stdlib 内置合成·isClassType 恒假），&容器变量/
+                               //   &容器引用 落兜底 AddrOf(槽)=二级语义→`向量<整64>*
+                               //   q = &表; q.大小()` 的 this=栈槽地址→方法读槽+8=
+                               //   静默错值（p3/p8 探针 大小=0·gdb rdi=栈地址铁证；
+                               //   与 588-a 类分支同一机理同款修复·容器=句柄槽模型
+                               //   Load 槽即对象地址·C++/Rust &container 同构）。
+                               const std::string addrSrc =
+                                   types::canonical(types::stripRef(
+                                       lookupSrcType(operandName)));
+                               if (semantic_->isClassType(addrSrc)) return true;
+                               return addrSrc.rfind("向量$", 0) == 0 ||
+                                      addrSrc.rfind("映射$", 0) == 0 ||
+                                      addrSrc.rfind("链表$", 0) == 0 ||
+                                      addrSrc.rfind("栈$", 0) == 0 ||
+                                      addrSrc.rfind("队列$", 0) == 0 ||
+                                      addrSrc.rfind("集合$", 0) == 0;
+                           }()) {
                     // 588-a（005〔原B-T81〕·用户 2026-09-21 裁决甲=取地址语义
                     //   一致化）：用户显式 &类变量 产**对象地址**——类=指针槽模型
                     //   （变量槽存句柄），Load 槽即对象地址，与 点* 类型标注一级
@@ -422,8 +441,18 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                 //   一致化——静态槽存句柄，LoadPtr 符号槽=对象地址（一级语义）；
                 //   包装节点（refWrapAddr）与非类静态维持符号地址（槽地址）不变。
                 const std::string stSrc = semantic_->globalStaticType(operandName);
+                const std::string stCanon =
+                    types::canonical(types::stripRef(stSrc));
                 if (!node->refWrapAddr &&
-                    semantic_->isClassType(types::canonical(types::stripRef(stSrc)))) {
+                    (semantic_->isClassType(stCanon) ||
+                     // 772 轮（550 阶段二）：静态容器变量与局部同口径（容器不在
+                     //   classes_ 表·甲案 LoadPtr 符号槽=对象地址）
+                     stCanon.rfind("向量$", 0) == 0 ||
+                     stCanon.rfind("映射$", 0) == 0 ||
+                     stCanon.rfind("链表$", 0) == 0 ||
+                     stCanon.rfind("栈$", 0) == 0 ||
+                     stCanon.rfind("队列$", 0) == 0 ||
+                     stCanon.rfind("集合$", 0) == 0)) {
                     const ir::IRValue sym = emitResult(ir::Opcode::ConstString, {}, "ptr",
                                                        "?gstatic_" + operandName,
                                                        node->location);
