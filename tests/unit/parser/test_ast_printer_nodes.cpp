@@ -159,11 +159,11 @@ TEST(AstPrinterNodes, TopLevelStaticsAndImports) {
     返回 全局计数;
 }
 )SRC");
-    // D25 缺口实证（471-a）：cn ast 不遍历顶层静态声明（globals 未打印）
-    //   ——ast_printer 覆盖率 14.6% 的构成性缺口之一（源码含「静态 整32
-    //   全局计数 = 7;」而输出声明数不含该声明）。登记待 printer 补齐后回填断言。
+    // D25 残余补齐（500-a）：globals 遍历已补——顶层静态声明打印回填断言
+    //   （471-a 缺口实证的构成性缺口已修复；走 visitVarDecl 含 [静态] 标注）
+    EXPECT_TRUE(contains(ast, "变量声明 全局计数 : 整32 [静态]"));
+    EXPECT_TRUE(contains(ast, "整数字面量 7"));
     EXPECT_TRUE(contains(ast, "函数 主 -> 整32"));
-    EXPECT_TRUE(contains(ast, "程序 声明数="));
 }
 
 

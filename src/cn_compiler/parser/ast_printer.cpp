@@ -72,6 +72,12 @@ void AstPrinter::print(Program* program) {
 void AstPrinter::visitProgram(Program* node) {
     printHeader("程序", node->location, "声明数=" + std::to_string(node->declarations.size()));
     ++depth_;
+    // D25（500-a）：顶层常量/静态变量声明打印——原 visitProgram 漏遍历
+    //   globals（ast_printer 覆盖率 14.6% 的构成性缺口·471-a 缺口实证：
+    //   源码含「静态 整32 全局计数 = 7;」而输出声明数不含该声明）。
+    for (const auto& g : node->globals) {
+        g->accept(*this);  // 走 visitVarDecl（含 [静态]/[常量] 标注+初始化器遍历）
+    }
     for (const auto& s : node->structs) {
         s->accept(*this);
     }
