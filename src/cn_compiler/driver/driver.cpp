@@ -25,6 +25,17 @@ namespace cn_compiler {
 namespace driver {
 
 // 公共编译流水线：词法 -> 语法 -> 语义 -> IR -> 代码生成
+// F2-35（556-a）：诊断输出通道统一收口——--json 时 stdout 结构化数组
+//   （formatJson），否则 stderr human 格式（原通道·行为零变更）
+static void emitDiagnostics(const Diagnostics& diagnostics,
+                            const DriverOptions& options) {
+    if (options.jsonDiagnostics) {
+        std::cout << diagnostics.formatJson();
+    } else {
+        emitDiagnostics(diagnostics, options);
+    }
+}
+
 // 任一阶段出错即打印诊断并返回非0，流水线产物保存在 output 中供调用方消费
 int runPipeline(const std::string& source, const std::string& fileName,
                 const DriverOptions& options, PipelineOutput& output) {
@@ -34,7 +45,7 @@ int runPipeline(const std::string& source, const std::string& fileName,
     Lexer lexer(source, fileName, diagnostics, options.macros);
     output.tokens = lexer.tokenize();
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
 
@@ -42,7 +53,7 @@ int runPipeline(const std::string& source, const std::string& fileName,
     Parser parser(diagnostics);
     output.program = parser.parse(output.tokens);
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
 
@@ -51,13 +62,13 @@ int runPipeline(const std::string& source, const std::string& fileName,
     // 239-a：内建编译期常量 调试模式 取值（--发布=假）
     semantic.setBuiltinReleaseMode(options.releaseMode);
     if (!semantic.analyze(output.program.get())) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     // plans/019 阶段4（2026-09-10）：观察期警告可见性——仅警告无错误时同样
     //   输出（安全区边界警告原被 hasErrors 短路吞掉，观察期失去意义）
     if (!diagnostics.hasErrors() && diagnostics.getWarningCount() > 0) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
     }
 
     // 4. IR生成（传入语义分析器引用：结构体布局/枚举值查询，Task 2.7）
@@ -67,7 +78,7 @@ int runPipeline(const std::string& source, const std::string& fileName,
     output.module = irGen.generate(output.program.get());
     output.hasModule = true;
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
 
@@ -143,12 +154,12 @@ int runPipeline(const std::string& source, const std::string& fileName,
         options.target, diagnostics, &semantic,
         options.optLevel, options.useRegAlloc, options.debugInfo);
     if (!backend) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     output.asmText = backend->generateAssembly(output.module);
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     return 0;
@@ -164,14 +175,14 @@ int runCheck(const std::string& source, const std::string& fileName,
     Lexer lexer(source, fileName, diagnostics, options.macros);
     std::vector<Token> tokens = lexer.tokenize();
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
 
     Parser parser(diagnostics);
     std::unique_ptr<Program> program = parser.parse(tokens);
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
 
@@ -179,12 +190,12 @@ int runCheck(const std::string& source, const std::string& fileName,
     // 239-a：内建编译期常量 调试模式 取值（--发布=假）
     semantic.setBuiltinReleaseMode(options.releaseMode);
     if (!semantic.analyze(program.get())) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     // plans/019 阶段4：观察期警告可见性（安全区边界警告输出——仅警告不阻断）
     if (diagnostics.getWarningCount() > 0) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
     }
     return 0;
 }

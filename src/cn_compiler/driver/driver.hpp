@@ -41,6 +41,9 @@ struct DriverOptions {
     bool verifyIr = false;           // 是否验证 IR 结构不变量
     // P3/D4（2026-08）：--cfi 开启接口间接调用控制流完整性（目标∈已知实现表）
     bool useCfi = false;
+    // F2-35（556-a）：--json 开启诊断 JSON 机器可读输出（LSP 后端铺路）——
+    //   诊断改走 stdout 结构化数组（human 格式保持 stderr 通道不变）
+    bool jsonDiagnostics = false;
     // ---- 货舱.toml 依赖管理（模块系统 v2.0 第 5 层，规格书09）----
     // hasCargoConfig：是否已加载货舱.toml（false = 未发现配置，依赖查找只走
     //   入口同目录 + stdlib 兜底）；cargoConfig 保存 [货舱]/[依赖] 解析结果。

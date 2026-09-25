@@ -470,6 +470,17 @@ bool restorePackageContext(const std::string& entryFile,
 
 // 多文件编译流水线（Task 3.6 模块系统）：
 //   入口文件 -> 递归加载依赖 -> 拓扑排序 -> AST 合并 -> 语义 -> IR -> 代码生成
+// F2-35（556-a）：诊断输出通道统一收口——--json 时 stdout 结构化数组
+//   （formatJson），否则 stderr human 格式（与 driver.cpp 同款·跨文件共用逻辑）
+static void emitDiagnostics(const Diagnostics& diagnostics,
+                            const DriverOptions& options) {
+    if (options.jsonDiagnostics) {
+        std::cout << diagnostics.formatJson();
+    } else {
+        std::cerr << diagnostics.format();
+    }
+}
+
 int runModulePipeline(const std::string& entryFile, const DriverOptions& options,
                       PipelineOutput& output) {
     Diagnostics diagnostics;
@@ -504,7 +515,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     // 3. 合并 AST 为单一 Program（被导入模块仅公开声明；入口模块全部声明）
     auto program = std::make_unique<Program>();
     if (!module::mergeModules(ordered, program.get(), diagnostics)) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     // plans/018 呈报一B（2026-09-07 用户终裁）：注入已加载模块名清单——
@@ -538,7 +549,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
             diagnostics.report(DiagnosticLevel::Error, program->location,
                                "入口模块 '" + entryName +
                                    "' 未定义入口函数 主（程序入口必须为 函数 主()）");
-            std::cerr << diagnostics.format();
+            emitDiagnostics(diagnostics, options);
             return 1;
         }
         // 243-a（D17）重新归因：主 返回 聚合类型时 runtime entry（期望 int）
@@ -601,7 +612,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
                                    "' 暂不支持（运行时入口 ABI 仅支持 整32 与 "
                                    "结果<T, E>——退出码=正常取 .值/错误取 .错误 码；"
                                    "其他聚合类型退出码语义待规范定义）");
-            std::cerr << diagnostics.format();
+            emitDiagnostics(diagnostics, options);
             return 1;
         }
     }
@@ -611,14 +622,14 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     // 239-a：内建编译期常量 调试模式 取值（--发布=假）
     semantic.setBuiltinReleaseMode(options.releaseMode);
     if (!semantic.analyze(program.get())) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     // plans/019 阶段4（2026-09-10）：观察期警告可见性——仅警告无错误时同样
     //   输出（安全区边界警告原被 hasErrors 短路吞掉；模块主管线=check/build
     //   实际路径）
     if (!diagnostics.hasErrors() && diagnostics.getWarningCount() > 0) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
     }
 
     // 5. IR 生成（绑定语义引用：类布局/虚表/结构体布局查询）
@@ -626,7 +637,7 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
     output.module = irGen.generate(program.get());
     output.hasModule = true;
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
 
@@ -673,12 +684,12 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
         options.target, diagnostics, &semantic,
         options.optLevel, options.useRegAlloc, options.debugInfo);
     if (!backend) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     output.asmText = backend->generateAssembly(output.module);
     if (diagnostics.hasErrors()) {
-        std::cerr << diagnostics.format();
+        emitDiagnostics(diagnostics, options);
         return 1;
     }
     return 0;

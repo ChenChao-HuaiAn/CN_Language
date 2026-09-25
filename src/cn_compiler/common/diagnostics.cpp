@@ -38,6 +38,64 @@ std::string Diagnostics::format() const {
     return oss.str();
 }
 
+// F2-35（556-a）：JSON 字符串转义（RFC 8259：引号/反斜杠/控制字符；
+//   UTF-8 多字节序列原样直出）
+static std::string escapeJsonString(const std::string& text) {
+    std::string out;
+    out.reserve(text.size() + 8);
+    for (unsigned char ch : text) {
+        switch (ch) {
+            case '"':  out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (ch < 0x20) {
+                    // 其余控制字符按 \u00XX 转义
+                    const char* hex = "0123456789abcdef";
+                    out += "\\u00";
+                    out += hex[(ch >> 4) & 0xF];
+                    out += hex[ch & 0xF];
+                } else {
+                    out += static_cast<char>(ch);
+                }
+                break;
+        }
+    }
+    return out;
+}
+
+// F2-35（556-a）：JSON 机器可读输出——诊断数组（LSP 后端铺路）。
+//   字段 = level（错误/警告/信息）/file/line/column/message；
+//   消息 UTF-8 直出，JSON 结构字符按 escapeJsonString 转义。
+std::string Diagnostics::formatJson() const {
+    auto levelJson = [](DiagnosticLevel level) -> const char* {
+        switch (level) {
+            case DiagnosticLevel::Error:   return "错误";
+            case DiagnosticLevel::Warning: return "警告";
+            case DiagnosticLevel::Info:    return "信息";
+        }
+        return "未知";
+    };
+    std::ostringstream oss;
+    oss << "[";
+    bool first = true;
+    for (const auto& d : diagnostics_) {
+        if (!first) oss << ",";
+        first = false;
+        oss << "{\"level\":\"" << levelJson(d.level)
+            << "\",\"file\":\"" << escapeJsonString(d.location.getFileName())
+            << "\",\"line\":" << d.location.getLine()
+            << ",\"column\":" << d.location.getColumn()
+            << ",\"message\":\"" << escapeJsonString(d.message) << "\"}";
+    }
+    oss << "]";
+    return oss.str();
+}
+
 // 清空所有诊断与计数
 void Diagnostics::clear() {
     diagnostics_.clear();

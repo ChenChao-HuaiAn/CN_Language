@@ -82,6 +82,9 @@ public:
     }
     // 格式化输出所有诊断信息
     std::string format() const;
+    // F2-35（556-a）：JSON 机器可读输出（LSP 后端铺路）——诊断数组，字段=
+    //   level（错误/警告/信息）/file/line/column/message；UTF-8 直出+控制字符转义
+    std::string formatJson() const;
     // 清空所有诊断与计数
     void clear();
 

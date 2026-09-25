@@ -5,6 +5,7 @@
 add_executable(cn_unit_tests
     common/test_source_location.cpp
     common/test_diagnostics.cpp
+    common/test_diagnostics_json.cpp
     lexer/test_token.cpp
     lexer/test_lexer.cpp
     lexer/test_lexer_string.cpp

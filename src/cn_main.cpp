@@ -45,6 +45,7 @@ struct CliOptions {
     bool debugInfo = false;          // 是否嵌入源码位置注释（--debug）
     bool releaseMode = false;        // 239-a：发布构建（--发布/--release）——内建常量 调试模式=假
     bool verifyIr = false;           // 是否验证 IR 结构不变量（--验证-ir，B-4）
+    bool jsonDiagnostics = false;    // F2-35（556-a）：--json 诊断 JSON 机器可读输出（check 命令）
     bool useCfi = false;             // P3/D4：接口间接调用 CFI 校验（--cfi，默认关保性能）
     // Task 6.6 条件编译：命令行注入宏（-D 宏名，可多次；#如果定义 判定用）
     std::unordered_set<std::string> macros;
@@ -130,6 +131,9 @@ std::string parseOptions(const std::vector<std::string>& args, size_t& index,
             // 239-a（规格书 3.8）：发布构建旗标——内建编译期常量 调试模式 取 假
             //   （ASCII 别名同 --验证-ir 先例：Windows argv GBK 乱码兜底）
             options.releaseMode = true;
+        } else if (current == "--json") {
+            // F2-35（556-a）：诊断 JSON 机器可读输出（check 命令·LSP 后端铺路）
+            options.jsonDiagnostics = true;
         } else if (current == "--验证-ir" || current == "--verify-ir") {
             // B-4（2026-08，规格书9.3）：优化前后验证 IR 结构不变量
             // （--verify-ir 为 ASCII 别名：Windows argv 为 GBK 编码，
@@ -443,6 +447,8 @@ static bool toDriverOptions(const CliOptions& options, const std::string& file,
     dopts.verifyIr = options.verifyIr;
     // P3/D4（2026-08）：接口间接调用 CFI 校验
     dopts.useCfi = options.useCfi;
+    // F2-35（556-a）：诊断 JSON 机器可读输出透传
+    dopts.jsonDiagnostics = options.jsonDiagnostics;
     // 模块系统 v2.0 第 5 层：货舱.toml + stdlib 目录
     dopts.stdlibDir = detectStdlibDir(options);
     if (!applyCargoConfig(options, file, dopts, error)) return false;
@@ -894,6 +900,14 @@ static int runCheckCommand(const CliOptions& options, const std::string& file) {
     }
     cn_compiler::driver::PipelineOutput output;
     const int rc = cn_compiler::driver::runModulePipeline(ansiToUtf8(file), dopts, output);
+    // F2-35（556-a）：--json 模式诊断已由流水线走 stdout JSON 通道；rc==0 时
+    //   输出零诊断空数组（纯 JSON 流·human「检查通过」行抑制）；rc 语义不变
+    if (options.jsonDiagnostics) {
+        if (rc == 0) {
+            std::cout << "[]\n";
+        }
+        return rc;
+    }
     if (rc == 0) {
         std::cout << "检查通过: " << file << "\n";
     }
