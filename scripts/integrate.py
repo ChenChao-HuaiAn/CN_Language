@@ -212,11 +212,16 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
     # 本机平台键（win/linux-x64）→ run_e2e.py 目标名（win-x64/linux-arm64/linux-x86_64）
     目标 = {"win": "win-x64", "linux-x64": "linux-x86_64", "linux-arm64": "linux-arm64"}[平台]
     # gate_lock 串行锁（449-a）× 并行红串行复验（447-a）合成：锁内 E2E 并行，红后锁内串行复验
-    # 794 防线（v2p/fix_s 编译 v2 全树聚合峰值 14.6GB·无防线时并行叠加触发系统 OOM
-    #   连环杀连坐 ZCode/桌面·9-26 两起实锤）：worker 限虚拟内存 16GB——超限进程
-    #   malloc 失败干净退出，其余进程不受累。24GB>fix_s/fix_p 实测峰值（14.6GB）+裕量·原 16GB 掐死自举编译（-11 假红）。
+    # 794 防线（ulimit -v 32GB 包裹）已由 798 摘除（机制级·随证据备案）：v2 全树编译
+    #   地址空间「按需分配·随上限水涨船高」（746-a 实测 8335MB@8GB→16484MB@16GB），
+    #   32GB 包裹下 AS 顶满→malloc 失败→未检查空指针→fix_p SIGSEGV（-11 假红·
+    #   本轮 78/79_v2 集成态实锤；794 自身「16GB 掐死 -11 假红」同族第三例）。
+    #   OOM 连坐防护由 797-a 三道机械化承接（run_e2e 每子进程 RLIMIT_AS 8GB·普通
+    #   用例+v2 全树编译 flock 串行互斥=「双 14GB 并行叠加」事故形态根除+guardian
+    #   oom_guard kill 10% 系统层）——包裹冗余且有害，摘除后全树编译 AS 不受限
+    #   （与隔离单跑环境一致·隔离单跑 78/79_v2/197_v2 全绿实证）。
     e2e = 运行捕获(["bash", "-c",
-                 "ulimit -v 33554432; exec " + sys.executable + " " +
+                 "exec " + sys.executable + " " +
                  str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                  " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
                  " --jobs 2"])
@@ -224,7 +229,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
         return None
     print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制·gate_lock 锁内）")
     串行 = 运行捕获(["bash", "-c",
-                  "ulimit -v 33554432; exec " + sys.executable + " " +
+                  "exec " + sys.executable + " " +
                   str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                   " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
                   " --jobs 1"])
