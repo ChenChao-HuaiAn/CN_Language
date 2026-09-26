@@ -577,19 +577,19 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         //   存量「结构体.类字段 句柄共享」语义大面积改变→v2p 行为分叉失控
         //   （91/94 回归+OOM 14.6GB 实证）——已收窄；结构体字段链的值语义
         //   随 793 偏移双表归一后的全局口径统一接力·021 058 行登记）。
-        const MemberExpr* 拆包源 = node->initializer->getType() == NodeType::MemberExpr
+        const MemberExpr* unwrapSrc = node->initializer->getType() == NodeType::MemberExpr
                                       ? static_cast<const MemberExpr*>(
                                             node->initializer.get())
                                       : nullptr;
-        if (semantic_ != nullptr && value.type == "ptr" && 拆包源 != nullptr &&
-            拆包源->memberName == "值") {
-            const std::string 基类型 =
-                exprSrcType(拆包源->object.get());
-            const std::string 基规范 = types::canonical(基类型);
-            const bool 是拆包位 =
-                SemanticAnalyzer::isResultType(基规范) || SemanticAnalyzer::isOptionalType(基规范);
+        if (semantic_ != nullptr && value.type == "ptr" && unwrapSrc != nullptr &&
+            unwrapSrc->memberName == "值") {
+            const std::string baseTypeSrc =
+                exprSrcType(unwrapSrc->object.get());
+            const std::string baseCanon = types::canonical(baseTypeSrc);
+            const bool isUnwrapSlot =
+                SemanticAnalyzer::isResultType(baseCanon) || SemanticAnalyzer::isOptionalType(baseCanon);
             const std::string canonTgt = types::canonical(srcType);
-            if (是拆包位 && semantic_->isClassType(canonTgt)) {
+            if (isUnwrapSlot && semantic_->isClassType(canonTgt)) {
                 const ClassInfo* ci = semantic_->findClass(canonTgt);
                 if (ci != nullptr) {
                     const std::string extra =

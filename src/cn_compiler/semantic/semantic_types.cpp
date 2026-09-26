@@ -442,13 +442,13 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
         //   特判只命中 结果$/结果联合$/可选$ 前缀合成体——全局类宽口径不动
         //   （91/94 回归实证全局改法与 793「偏移双表二义」域耦合·全局统一随
         //   793 双表归一后接力）。
-        const bool 合成体句柄字段 =
+        const bool synthHandleField =
             (decl->name.rfind("结果$", 0) == 0 ||
              decl->name.rfind("结果联合$", 0) == 0 ||
              decl->name.rfind("可选$", 0) == 0) &&
             isClassType(canonicalType(field.type));
-        const int handleAlign = 合成体句柄字段 ? 8 : fieldAlign;
-        const int handleSize = 合成体句柄字段 ? 8 : fieldSize;
+        const int handleAlign = synthHandleField ? 8 : fieldAlign;
+        const int handleSize = synthHandleField ? 8 : fieldSize;
         if (handleAlign > maxAlign) maxAlign = handleAlign;
         if (handleSize > maxFieldSize) maxFieldSize = handleSize;
         if (fieldSize > maxFieldSize) maxFieldSize = fieldSize;
