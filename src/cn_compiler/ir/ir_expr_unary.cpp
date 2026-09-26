@@ -353,10 +353,28 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
             if (node->operand->getType() == NodeType::IdentifierExpr && !unique.empty()) {
                 // 缺陷修复（[&] 引用捕获 &变量）：参数槽存被捕获变量地址，
                 //   &捕获变量 = Load 参数槽（取被捕获变量地址，而非参数槽自身地址）
-                if (isByRefCapture(operandName)) {
-                    // 776 终（550 阶段二·甲案）：引用类型操作数（引用形参/引用
+                if (node->refWrapAddr) {
+                    // 784-a（550 阶段二·A-1 wrap 契约精确化·分支提前）：语义层
+                    //   wrapRefArgs 包装节点=内部引用机制形态——产物=「操作数所
+                    //   绑定 place 的地址」：①操作数=普通变量（调用方直传）→
+                    //   AddrOf(变量槽)=place 地址；②操作数=引用形参（被调方实参
+                    //   再传递）→Load(源槽)=源槽内容=被绑定 place 地址（AddrOf
+                    //   会错成源槽自身地址·776-h 实验② v2p 符号表 设置 链崩实锤）。
+                    //   须先于 isByRefCapture 判定（wrap 节点操作数恒为引用形参·
+                    //   二者同时命中·契约优先）。
+                    if (isByRefCapture(operandName)) {
+                        lastExpr_ = emitResult(ir::Opcode::Load,
+                                               {ir::IRValue::var(unique, "ptr")},
+                                               "ptr", unique, node->location);
+                    } else {
+                        lastExpr_ = emitResult(ir::Opcode::AddrOf,
+                                               {ir::IRValue::var(unique, operand.type)},
+                                               "ptr", unique, node->location);
+                    }
+                } else if (isByRefCapture(operandName)) {
+                    // 776 终（550 阶段二·甲案）：用户显式 &引用（引用形参/引用
                     //   局部·byRef 槽存被引用 place 地址）的 & 求值=**堆对象地址**
-                    //   （两跳：Load 槽=place 地址→Load place=容器/类句柄·标量
+                    //   （两跳：Load 槽=place 地址→LoadPtr place=容器/类句柄·标量
                     //   引用单跳即 place 地址不变）——p3/p8/p10 迭代器指针字段
                     //   形态根治点（&引用形参 存指针字段→指针成员调用 this=
                     //   堆对象地址·大小=2）；闭包捕获（非引用类型）单跳槽地址
@@ -376,18 +394,18 @@ void IRGenerator::visitUnaryExpr(UnaryExpr* node) {
                                                      {ir::IRValue::var(unique, "ptr")},
                                                      "ptr", unique, node->location);
                     if (capIsObj) {
-                        capAddr = emitResult(ir::Opcode::Load, {capAddr},
+                        // 784-a（550 阶段二·codegen 槽语义对齐）：第二跳必须
+                        //   **LoadPtr**（解引用语义+空检查）而非 Load——codegen
+                        //   emitLoadStore 对「Load 寄存器操作数（id>=0）」发射
+                        //   寄存器槽复制（不解引用），q2 得 place 栈地址（p10
+                        //   大小=栈垃圾·gdb q2=0x7ffd… 实锤）；与
+                        //   visitIdentifierExpr byRef 读值路径（Load+LoadPtr）
+                        //   同构·与 A 链形态一致（Rust &mut transparent·堆对象
+                        //   地址）。
+                        capAddr = emitResult(ir::Opcode::LoadPtr, {capAddr},
                                              "ptr", "", node->location);
                     }
                     lastExpr_ = capAddr;
-                } else if (node->refWrapAddr) {
-                    // 588-a（005〔原B-T81〕甲案）：语义层 wrapRefArgs 包装节点=
-                    //   内部引用机制形态——维持 AddrOf(变量槽)（A-1 byRef 契约：
-                    //   引用形参槽存被引用左值地址；探针实证写回/读/方法调用/
-                    //   整体换绑全链依赖此形态，字节级保持）。
-                    lastExpr_ = emitResult(ir::Opcode::AddrOf,
-                                           {ir::IRValue::var(unique, operand.type)},
-                                           "ptr", unique, node->location);
                 } else if (types::isReference(lookupSrcType(operandName))) {
                     // T94（550-a）：引用变量取地址（&引用参数/&引用局部）=目标地址——
                     //   引用槽存目标地址（别名语义），&v = Load 槽内容（Rust 对照：
