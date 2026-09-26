@@ -61,6 +61,22 @@ if hasattr(sys.stderr, "reconfigure"):
 #   工作集 4155MB 超旧上限（605-a 撤守卫态 8192 口径同源扩展）。
 # 618-a：撤守卫源码级加载进一步抬升（fix_p 实测 4099MB 临界·617 补验实证）；
 #   CLI --max-mem-mb 仍可覆盖（605 worker 传递修复）。
+# 797-a（2026-09-26·三连 OOM 连坐根治）：当日 15:53:11/16:40:45/19:32:13 三次内核全局
+#   OOM（journalctl -k 实证），形态=--jobs 8 并行池中**两个 v2 全树编译同时在飞**
+#   （各自 anon-rss 14GB＝28GB/物理 32GB·8 个 python worker 同刻在进程表）→oom killer
+#   杀 v2p→app-zcode scope 同刻 'oom-kill' 失败→ZCode host 收 SIGTERM 整体退出
+#   （用户三次感知「ZCode 退出」·16:43 被迫重启电脑）。本默认 32768MB 系 746-a 按
+#   家机 128GB 给足，在 32GB 深度机＝比物理内存还大、形同虚设（教训库 OOM 连坐
+#   第 4 例：28.7/28.9/14.6/28GB——人工「ulimit -v 8388608」纪律必然被忘，机械化）。
+#   两道新防线（见 运行命令）：
+#   ① RLIMIT_AS=8GB 地址空间硬顶（地址空间顶MB默认）：全部子进程注入（教训库
+#      「ulimit -v 8388608」人工纪律机械化·daemon RLIMIT_AS 6GB 常驻先例 306-a）——
+#      失控进程在 8GB 处分配失败快速退出＝单用例诚实红，不再 OOM killer 全局连坐；
+#   ② v2 全树编译互斥（命令触及 CN语言编译器v2 自动判定·同刻至多一个）：直接消灭
+#      「双 14GB 全树编译并行」事故形态；全树编译合法豁免 AS 顶（746-a 实证 16GB+
+#      随上限水涨船高＝allocator 不积极归还，治本挂编译器内存管理域·793/058 关联）。
+地址空间顶MB默认 = 8192
+v2全树编译互斥锁路径 = pathlib.Path("target") / "e2e_v2全树编译.lock"
 
 
 def 提取用例编号(名称: str) -> str:
@@ -256,19 +272,59 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
       超过上限立即 终止进程树 并以退出码 -9（returncode）标记失败，
       stderr 给出"内存超限"原因。防 v2 锚定链等大规模编译用例内存失控卡死机器
       （2026-08-24 实测：v1 时代旧组件链（79_bootstrap_closed_loop）工作集涨到 26GB+）。
+
+    797-a 两道内存防线（对全部调用点自动生效·见模块头注释）：
+    ① 子进程注入 RLIMIT_AS=地址空间顶MB默认（8GB）——失控即分配失败快速退出，
+      不再 OOM killer 全局连坐；豁免＝命令触及 CN语言编译器v2 全树（唯一合法
+      大户·746-a 实证 16GB+），豁免形态同时受②互斥保护；
+    ② v2 全树编译互斥锁——全树编译同刻至多一个（串行排队），直接消灭
+      「双 14GB 全树编译并行＝28GB 全局 OOM」事故形态（Windows 侧暂不启用：
+      家机 128GB 无此压力·诚实边界·待家机自评接力）。
     """
-    # Linux 下增大栈大小限制（CN自举编译器函数栈帧较大，默认8MB可能不足）
+    # 797-a 自动判定：78/79 自举链的全部全树编译（cn_self/v2p/fix_p/fix_s 编译
+    #   CN语言编译器v2 树）命令行都含该路径字样；单文件编译/运行/工具链操作均不含。
+    全树编译 = any("CN语言编译器v2" in str(c) for c in 命令列表)
+    # Linux 下增大栈大小限制（CN自举编译器函数栈帧较大，默认8MB可能不足）；
+    # 797-a 追加地址空间硬顶（全树编译豁免——合法 16GB+）
     preexec_fn = None
     if sys.platform != "win32":
-        def _set_stack_limit():
+        def _set_child_limits():
             import resource
             try:
                 resource.setrlimit(resource.RLIMIT_STACK,
                                   (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
             except (ValueError, OSError):
                 pass
-        preexec_fn = _set_stack_limit
+            if not 全树编译:
+                try:
+                    顶字节 = 地址空间顶MB默认 * 1024 * 1024
+                    resource.setrlimit(resource.RLIMIT_AS, (顶字节, 顶字节))
+                except (ValueError, OSError):
+                    pass
+        preexec_fn = _set_child_limits
+    锁句柄 = None
+    if 全树编译 and sys.platform != "win32":
+        try:
+            import fcntl
+            v2全树编译互斥锁路径.parent.mkdir(parents=True, exist_ok=True)
+            锁句柄 = open(v2全树编译互斥锁路径, "w")
+            fcntl.flock(锁句柄.fileno(), fcntl.LOCK_EX)  # 阻塞等待＝全树编译串行排队
+        except Exception:
+            锁句柄 = None  # 锁失败不阻断（退化＝无互斥·guardian oom_guard 系统层兜底）
+    try:
+        return _运行命令实现(命令列表, 工作目录, 标准输入, preexec_fn,
+                          内存上限MB, 超时秒数)
+    finally:
+        if 锁句柄 is not None:
+            try:
+                锁句柄.close()  # close 即释放 flock
+            except Exception:
+                pass
 
+
+def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
+                 标准输入: str, preexec_fn,
+                 内存上限MB: int, 超时秒数: int) -> subprocess.CompletedProcess:
     # ---- 内存保护路径：Popen + 轮询工作集，超限立即终止 ----
     # 2026-08-24 防死锁修复：轮询期间必须持续排空 stdout/stderr 管道——
     #   78/79 组件链编译器输出量大，管道缓冲（约 64KB）写满后子进程阻塞在
