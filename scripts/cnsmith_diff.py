@@ -64,9 +64,26 @@ def 探测目标平台(target=None):
     return "linux-x86_64"
 
 
+信号名 = {-4: "SIGILL", -6: "SIGABRT", -8: "SIGFPE", -9: "SIGKILL",
+          -11: "SIGSEGV", -13: "SIGPIPE", -15: "SIGTERM", -24: "SIGXCPU"}
+
+
+def 是崩溃(rc):
+    """信号死亡（POSIX 负值）或 shell 形态 128+信号——与干净诊断（rc≥1）区分。"""
+    return rc < 0 or rc >= 128
+
+
 def run_one(cn, src, out_dir, level, target=None):
     """编译（level=优化旗标如 -O0/-O3）+运行，返回 (状态, 输出)。
-状态：ok/build_err/run_err"""
+状态：ok/build_err/compiler_crash/run_err
+判据（786-a 根治「rc 一刀切」）：
+  - 编译器进程信号死亡 → compiler_crash（T6 族「负向必诊断不崩溃」防线常设化——
+    崩溃混入 build_err 诊断桶=防线眼盲，786-a 前 t71 族假命中同源）；
+  - 编译诊断失败 rc≥1 → build_err（干净拒绝）；
+  - 产物运行信号死亡/超时 → run_err；
+  - 运行 rc≥0（含主函数返回非 0）→ ok，比对载荷=stdout+[rc=N]
+    （返回值纳入 O0/O3 差分：合法程序返回非 0 不再误报 run_err〔t71 linux 假命中
+    实证 rc=1=主函数返回值〕，且「O0/O3 返回值不一致」从此成为可检出的分歧面）。"""
     base = os.path.basename(src)[:-3]
     后缀 = ".exe" if (target or 探测目标平台()) == "win-x64" else ""
     exe = os.path.join(out_dir, "%s_%s%s" % (base, level.strip("-"), 后缀))
@@ -76,6 +93,10 @@ def run_one(cn, src, out_dir, level, target=None):
                        errors="replace", timeout=120,
                        **子进程防线参数())
     if b.returncode != 0:
+        if 是崩溃(b.returncode):
+            return "compiler_crash", "编译器崩溃 rc=%d %s: %s" % (
+                b.returncode, 信号名.get(b.returncode, ""),
+                ((b.stdout or "") + (b.stderr or ""))[:160])
         return "build_err", ((b.stdout or "") + (b.stderr or ""))[:200]
     try:
         r = subprocess.run([exe], capture_output=True, text=True,
@@ -83,21 +104,23 @@ def run_one(cn, src, out_dir, level, target=None):
                            **子进程防线参数())
     except subprocess.TimeoutExpired:
         return "run_err", "timeout"
-    if r.returncode != 0:
-        return "run_err", "rc=%d" % r.returncode
-    return "ok", r.stdout
+    if 是崩溃(r.returncode):
+        return "run_err", "rc=%d %s" % (r.returncode, 信号名.get(r.returncode, ""))
+    return "ok", "%s[rc=%d]" % (r.stdout, r.returncode)
 
 
 def run_sample(cn, src, out_dir, target):
     """单样本全链：O0 编译运行 + O3 编译运行 + 输出比对。
-返回 (样本名, 类别, 详情)；类别 ∈ {ok, diff, build_err, run_err}。"""
+返回 (样本名, 类别, 详情)；类别 ∈ {ok, diff, build_err, compiler_crash, run_err}。"""
     name = os.path.basename(src)
     s0, o0 = run_one(cn, src, out_dir, "-O0", target)
     if s0 != "ok":
-        return name, ("build_err" if s0 == "build_err" else "run_err"), o0
+        return name, s0, o0
     s3, o3 = run_one(cn, src, out_dir, "-O3", target)
     if s3 != "ok":
-        return name, "run_err", "O3 运行失败: " + o3
+        # O0 过而 O3 阶段失败：保留 O3 真实类别（build_err=「O0 过 O3 不过」的
+        #   优化器引入编译失败=高价值信号，不再错标 run_err·compiler_crash 同理）
+        return name, s3, "O3 阶段: " + o3
     if o0 != o3:
         return name, "diff", "输出分歧 O0/O3"
     return name, "ok", ""
@@ -121,7 +144,7 @@ def main():
     results = []
     if not srcs:
         print("=== CN-Smith 优化器差分采样 ===")
-        print("总数 0 ｜ 一致 0 ｜ 分歧 0 ｜ 编译失败 0 ｜ 运行失败 0")
+        print("总数 0 ｜ 一致 0 ｜ 分歧 0 ｜ 编译失败 0 ｜ 运行失败 0 ｜ 编译器崩溃 0")
         sys.exit(0)
 
     # 预热：串行编译首个样本——建立运行时 obj 缓存（target/ 固定落点，
@@ -155,22 +178,25 @@ def main():
     n_diff = sum(1 for _, k, _ in results if k == "diff")
     n_berr = sum(1 for _, k, _ in results if k == "build_err")
     n_rerr = sum(1 for _, k, _ in results if k == "run_err")
+    n_ccrash = sum(1 for _, k, _ in results if k == "compiler_crash")
     diffs = [(n, k, d) for n, k, d in results if k != "ok"]
     print("=== CN-Smith 优化器差分采样 ===")
-    print("总数 %d ｜ 一致 %d ｜ 分歧 %d ｜ 编译失败 %d ｜ 运行失败 %d"
-          % (len(srcs), n_ok, n_diff, n_berr, n_rerr))
+    print("总数 %d ｜ 一致 %d ｜ 分歧 %d ｜ 编译失败 %d ｜ 运行失败 %d ｜ 编译器崩溃 %d"
+          % (len(srcs), n_ok, n_diff, n_berr, n_rerr, n_ccrash))
     for name, kind, why in diffs[:10]:
         print("  分歧 [%s]:" % kind, name, "——", why)
     if diffs:
         # T28②根治（303-a）：清单行携带结构化类别标签 [diff/build_err/run_err]——
         #   原格式「名: 详情」把类别丢在详情文本里（run_err 详情=rc=-8 不含
         #   「运行失败」字样），daemon 只能文本反推→rc=-8 全部误归 diff/。
+        前缀表 = {"build_err": "编译失败: ", "run_err": "运行失败: ",
+                  "compiler_crash": "编译器崩溃: "}
         with open(os.path.join(a.out, "分歧清单.txt"), "w",
                   encoding="utf-8", newline="") as f:
             for name, kind, why in diffs:
-                前缀 = {"build_err": "编译失败: ", "run_err": "运行失败: "}.get(kind, "")
+                前缀 = 前缀表.get(kind, "")
                 f.write("%s [%s]: %s%s\n" % (name, kind, 前缀, why))
-    sys.exit(1 if (n_diff or n_rerr) else 0)
+    sys.exit(1 if (n_diff or n_rerr or n_ccrash) else 0)
 
 
 if __name__ == "__main__":

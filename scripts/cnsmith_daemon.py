@@ -46,7 +46,10 @@ def 编译器路径():
 指针文件 = os.path.join(库, "采样日志.md")
 工作 = os.path.join(根, "target", "cnsmith")
 差异清单 = os.path.join(工作, "work", "分歧清单.txt")
-类别集 = ("diff", "build_err", "run_err")
+# 类别集（786-a 扩 compiler_crash）：diff=优化器输出分歧｜build_err=编译干净拒绝｜
+#   run_err=产物运行信号死亡/超时｜compiler_crash=编译器自身崩溃（信号级·T6 负向
+#   防线常设化——786-a 前与 build_err 混桶=防线眼盲）
+类别集 = ("diff", "build_err", "run_err", "compiler_crash")
 
 指针文本 = """# CN-Smith 采样日志·索引指针（S1·三件套·M3 计时秒表）
 
