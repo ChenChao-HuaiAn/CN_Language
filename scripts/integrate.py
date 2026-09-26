@@ -216,7 +216,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
     #   连环杀连坐 ZCode/桌面·9-26 两起实锤）：worker 限虚拟内存 16GB——超限进程
     #   malloc 失败干净退出，其余进程不受累。24GB>fix_s/fix_p 实测峰值（14.6GB）+裕量·原 16GB 掐死自举编译（-11 假红）。
     e2e = 运行捕获(["bash", "-c",
-                 "ulimit -v 25165824; exec " + sys.executable + " " +
+                 "ulimit -v 33554432; exec " + sys.executable + " " +
                  str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                  " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
                  " --jobs 8"])
@@ -224,7 +224,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
         return None
     print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制·gate_lock 锁内）")
     串行 = 运行捕获(["bash", "-c",
-                  "ulimit -v 25165824; exec " + sys.executable + " " +
+                  "ulimit -v 33554432; exec " + sys.executable + " " +
                   str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                   " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
                   " --jobs 1"])
