@@ -1,0 +1,9 @@
+# p0927-02 立案样本（探针矩阵 v3·深度机 linux-x86_64 服务轮·基线 8283aeff·任务 060 P1-b）
+# 现象：`如果 (p.槽.正常) { 打印行(p.槽.值.值); }`（成员链基座的结果检查后真分支访问）
+#   被规则3 误拒；结构体字段（p.槽）/类字段（v3e w.槽）同族。
+# 根因：objectVarName 只认对象=IdentifierExpr（error_analysis.cpp:377-383）——
+#   `p.槽`=MemberExpr → varName="" → markChecked("") 空操作 → 访问侧 isChecked("")=false。
+#   该假设同时污染三消费点：裸条件跟踪（error_analysis.cpp:466）/574-a 复合守卫
+#   （semantic_stmt.cpp:446·&&+成员链基座同漏）/访问侧 checkResultMember
+#   （semantic_expr_access.cpp:70）。先拷局部变量可绕行（x3 绿）。
+# 处置：任务 060（键=基座表达式归一化〔成员链路径拼串起步·数组下标/调用返回另案〕）。
