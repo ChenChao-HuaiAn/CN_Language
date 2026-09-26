@@ -322,15 +322,13 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     }
     const StructDecl* decl = findStruct(type);
     if (decl != nullptr) return decl->totalSize;
-    // 类类型：值语义宽度 = 8 字节句柄（堆对象指针——类变量/字段/联合体成员/
-    //   数组元素一律存句柄，k 探针 IR 实锤：类字段访问=指针加载·H8-⑤ 指针槽
-    //   模型同源）。原返回 cls->totalSize（对象实宽·盒子=4）使 结果<类,E≤4>/
-    //   可选<类> 合成结构体按实宽算联合体（偏移 4/总宽 12·真实=偏移 8/总宽 16）
-    //   →相邻栈槽重叠自串改写→句柄损坏段错误（p0926_01/02/04 实锤 rc=139，
-    //   任务 058 缺陷Ⅱ-A）。对象实宽（NewObject 堆块等）由消费者直取
-    //   ci->totalSize（不经本函数，ir_decl/ir_expr_assign_ident 既有口径）。
+    // 类类型（Task 3.1）：实例大小（对象实宽口径——NewObject 堆块/类内联布局
+    //   消费面依赖）。「类作为值=8 字节句柄」的口径**只在结果/可选降级合成
+    //   结构体的联合体布局处特判**（computeLayout·058-ⅡA 缩面）——全局类宽
+    //   改句柄口径会连锁改变 v2 树含类字段结构体布局，引爆 793 在飞的「映射
+    //   字段偏移双表二义」域（91/94 两例实证·2026-09-26 795 轮回退）。
     const ClassInfo* cls = findClass(type);
-    if (cls != nullptr) return 8;
+    if (cls != nullptr) return cls->totalSize;
     const int baseSize = types::typeSize(type);
     if (baseSize > 0) return baseSize;
     // 字符串 = 指针（8字节）；未知类型防御性返回8
@@ -348,10 +346,10 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
         if (lowered != nullptr) return lowered->align;
         return 8;  // 防御：未降级按8对齐
     }
-    // 类类型：值语义对齐 = 8（句柄对齐·与 typeSizeOf 类分派同口径·058 Ⅱ-A）。
-    //   原返回 cls->align（对象字段最大对齐·盒子=4）使含类联合体对齐按 4 算。
+    // 类类型：对象实宽口径（与 typeSizeOf 类分派同步恢复——句柄口径只在
+    //   结果/可选合成结构体布局处特判·058-ⅡA 缩面·详见 computeLayout 注）。
     const ClassInfo* cls = findClass(type);
-    if (cls != nullptr) return 8;
+    if (cls != nullptr) return cls->align;
     const StructDecl* decl = findStruct(type);
     if (decl != nullptr) return decl->align;
     if (type == "整128" || type == "正128") return 16;
@@ -436,15 +434,31 @@ void SemanticAnalyzer::computeLayout(StructDecl* decl) {
         }
         const int fieldAlign = typeAlignOf(field.type);
         const int fieldSize = typeSizeOf(field.type);
-        if (fieldAlign > maxAlign) maxAlign = fieldAlign;
+        // 058-ⅡA（缩面·2026-09-26 795 轮）：结果/可选降级合成结构体（含
+        //   结果联合$ 内层联合体）的类字段=句柄宽 8/8——联合体成员装的是堆
+        //   对象指针（k 探针 IR 实锤类字段访问=指针加载）。原按 typeSizeOf(类)
+        //   =cls->totalSize 实宽（盒子=4）算联合体（对齐 4/偏移 4/总宽 12）→
+        //   相邻栈槽重叠自串改写→句柄损坏段错误（p0926_01/02/04 实锤 rc=139）。
+        //   特判只命中 结果$/结果联合$/可选$ 前缀合成体——全局类宽口径不动
+        //   （91/94 回归实证全局改法与 793「偏移双表二义」域耦合·全局统一随
+        //   793 双表归一后接力）。
+        const bool 合成体句柄字段 =
+            (decl->name.rfind("结果$", 0) == 0 ||
+             decl->name.rfind("结果联合$", 0) == 0 ||
+             decl->name.rfind("可选$", 0) == 0) &&
+            isClassType(canonicalType(field.type));
+        const int handleAlign = 合成体句柄字段 ? 8 : fieldAlign;
+        const int handleSize = 合成体句柄字段 ? 8 : fieldSize;
+        if (handleAlign > maxAlign) maxAlign = handleAlign;
+        if (handleSize > maxFieldSize) maxFieldSize = handleSize;
         if (fieldSize > maxFieldSize) maxFieldSize = fieldSize;
         if (decl->isUnion) {
             // 联合体：所有字段从偏移0开始
             field.offset = 0;
         } else {
-            // 结构体：字段对齐放置
-            field.offset = (decl->totalSize + fieldAlign - 1) / fieldAlign * fieldAlign;
-            decl->totalSize = field.offset + fieldSize;
+            // 结构体：字段对齐放置（合成体的类字段用句柄口径·058-ⅡA）
+            field.offset = (decl->totalSize + handleAlign - 1) / handleAlign * handleAlign;
+            decl->totalSize = field.offset + handleSize;
         }
     }
     if (decl->isUnion) {

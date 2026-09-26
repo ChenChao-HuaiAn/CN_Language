@@ -566,19 +566,30 @@ void IRGenerator::genVarDecl(VarDecl* node) {
             }
         }
         // 058-ⅡB（甲案·拆包绑定位值语义深拷〔基准=019〕·2026-09-26 795 轮）：
-        //   `类 b = r.值`（源=结果/可选/结构体 的 类字段成员链）此前落入通用
-        //   路径=句柄浅拷 + b 拥有式 RAII 登记 → b 与来源（容器/结果）双主，
-        //   b 析构释放来源对象 → 双释放（p0926_03 映射获取拆包 rc=134 实锤，
-        //   元素直连豁免与借出顶层登记双防线均不达 MemberExpr 拆包形态）。
-        //   修=对 MemberExpr 源同套上一分支的深拷语义：NewObject + 拷贝构造
-        //   （无拷贝构造则 CopyStruct 独立壳），byRef ABI 传成员链左值地址
-        //   （&r.值=字段地址·内容=句柄，与 &甲 槽地址体内解引同构）。
-        //   副作用面=结构体含类字段的读出绑定同步转值语义（写穿消失=019
-        //   安全区无别名同向·存量依赖写穿的用例随全量暴露甄别）。
-        if (semantic_ != nullptr && value.type == "ptr" &&
-            node->initializer->getType() == NodeType::MemberExpr) {
+        //   `类 b = r.值`（源=结果/可选 的 值 字段拆包）此前落入通用路径=句柄
+        //   浅拷 + b 拥有式 RAII 登记 → b 与来源（容器/结果）双主，b 析构释放
+        //   来源对象 → 双释放（p0926_03 映射获取拆包 rc=134 实锤，元素直连
+        //   豁免与借出顶层登记双防线均不达 MemberExpr 拆包形态）。
+        //   修=对「结果/可选 的 值 拆包」源同套上一分支的深拷语义：NewObject +
+        //   拷贝构造（无拷贝构造则 CopyStruct 独立壳），byRef ABI 传成员链左值
+        //   地址（&r.值=字段地址·内容=句柄，与 &甲 槽地址体内解引同构）。
+        //   **范围=结果/可选 拆包本面**（首版泛化到一切 MemberExpr 源曾把 v2 树
+        //   存量「结构体.类字段 句柄共享」语义大面积改变→v2p 行为分叉失控
+        //   （91/94 回归+OOM 14.6GB 实证）——已收窄；结构体字段链的值语义
+        //   随 793 偏移双表归一后的全局口径统一接力·021 058 行登记）。
+        const MemberExpr* 拆包源 = node->initializer->getType() == NodeType::MemberExpr
+                                      ? static_cast<const MemberExpr*>(
+                                            node->initializer.get())
+                                      : nullptr;
+        if (semantic_ != nullptr && value.type == "ptr" && 拆包源 != nullptr &&
+            拆包源->memberName == "值") {
+            const std::string 基类型 =
+                exprSrcType(拆包源->object.get());
+            const std::string 基规范 = types::canonical(基类型);
+            const bool 是拆包位 =
+                SemanticAnalyzer::isResultType(基规范) || SemanticAnalyzer::isOptionalType(基规范);
             const std::string canonTgt = types::canonical(srcType);
-            if (semantic_->isClassType(canonTgt)) {
+            if (是拆包位 && semantic_->isClassType(canonTgt)) {
                 const ClassInfo* ci = semantic_->findClass(canonTgt);
                 if (ci != nullptr) {
                     const std::string extra =
