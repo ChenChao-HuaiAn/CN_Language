@@ -322,9 +322,15 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
     }
     const StructDecl* decl = findStruct(type);
     if (decl != nullptr) return decl->totalSize;
-    // 类类型（Task 3.1）：实例大小（含虚表指针）
+    // 类类型：值语义宽度 = 8 字节句柄（堆对象指针——类变量/字段/联合体成员/
+    //   数组元素一律存句柄，k 探针 IR 实锤：类字段访问=指针加载·H8-⑤ 指针槽
+    //   模型同源）。原返回 cls->totalSize（对象实宽·盒子=4）使 结果<类,E≤4>/
+    //   可选<类> 合成结构体按实宽算联合体（偏移 4/总宽 12·真实=偏移 8/总宽 16）
+    //   →相邻栈槽重叠自串改写→句柄损坏段错误（p0926_01/02/04 实锤 rc=139，
+    //   任务 058 缺陷Ⅱ-A）。对象实宽（NewObject 堆块等）由消费者直取
+    //   ci->totalSize（不经本函数，ir_decl/ir_expr_assign_ident 既有口径）。
     const ClassInfo* cls = findClass(type);
-    if (cls != nullptr) return cls->totalSize;
+    if (cls != nullptr) return 8;
     const int baseSize = types::typeSize(type);
     if (baseSize > 0) return baseSize;
     // 字符串 = 指针（8字节）；未知类型防御性返回8
@@ -342,8 +348,10 @@ int SemanticAnalyzer::typeAlignOf(const std::string& typeRaw) const {
         if (lowered != nullptr) return lowered->align;
         return 8;  // 防御：未降级按8对齐
     }
+    // 类类型：值语义对齐 = 8（句柄对齐·与 typeSizeOf 类分派同口径·058 Ⅱ-A）。
+    //   原返回 cls->align（对象字段最大对齐·盒子=4）使含类联合体对齐按 4 算。
     const ClassInfo* cls = findClass(type);
-    if (cls != nullptr) return cls->align;
+    if (cls != nullptr) return 8;
     const StructDecl* decl = findStruct(type);
     if (decl != nullptr) return decl->align;
     if (type == "整128" || type == "正128") return 16;

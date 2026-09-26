@@ -565,6 +565,50 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 }
             }
         }
+        // 058-ⅡB（甲案·拆包绑定位值语义深拷〔基准=019〕·2026-09-26 795 轮）：
+        //   `类 b = r.值`（源=结果/可选/结构体 的 类字段成员链）此前落入通用
+        //   路径=句柄浅拷 + b 拥有式 RAII 登记 → b 与来源（容器/结果）双主，
+        //   b 析构释放来源对象 → 双释放（p0926_03 映射获取拆包 rc=134 实锤，
+        //   元素直连豁免与借出顶层登记双防线均不达 MemberExpr 拆包形态）。
+        //   修=对 MemberExpr 源同套上一分支的深拷语义：NewObject + 拷贝构造
+        //   （无拷贝构造则 CopyStruct 独立壳），byRef ABI 传成员链左值地址
+        //   （&r.值=字段地址·内容=句柄，与 &甲 槽地址体内解引同构）。
+        //   副作用面=结构体含类字段的读出绑定同步转值语义（写穿消失=019
+        //   安全区无别名同向·存量依赖写穿的用例随全量暴露甄别）。
+        if (semantic_ != nullptr && value.type == "ptr" &&
+            node->initializer->getType() == NodeType::MemberExpr) {
+            const std::string canonTgt = types::canonical(srcType);
+            if (semantic_->isClassType(canonTgt)) {
+                const ClassInfo* ci = semantic_->findClass(canonTgt);
+                if (ci != nullptr) {
+                    const std::string extra =
+                        canonTgt + "|" + std::to_string(ci->totalSize);
+                    ir::IRValue newObj = emitResult(
+                        ir::Opcode::NewObject,
+                        {ir::IRValue::constant(canonTgt, "ptr")},
+                        "ptr", extra, node->location);
+                    const ClassMemberInfo* copyCtor =
+                        semantic_->findCopyConstructor(canonTgt);
+                    if (copyCtor != nullptr) {
+                        const std::string copyOwner =
+                            copyCtor->ownerClass.empty() ? canonTgt
+                                                         : copyCtor->ownerClass;
+                        ir::IRValue srcAddr =
+                            lvalueAddress(node->initializer.get());
+                        emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
+                             methodSymbolKey(copyOwner, copyCtor->sigKey),
+                             "void", node->location);
+                    } else {
+                        emit(ir::Opcode::CopyStruct, {newObj, value},
+                             ir::IRValue(), std::to_string(ci->totalSize),
+                             "void", node->location);
+                    }
+                    emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique,
+                         "ptr", node->location);
+                    return;
+                }
+            }
+        }
         // plans/019 阶段4'（2026-09-10 方案A）：拥有型字符串初始化拥有化——
         //   字面量（只读段标签）与标识符拷贝（浅共享指针）经 __cn_str_copy 落堆
         //   （变量一律拥有堆串，RAII 返回块释放安全；Rust "x".to_string() 同款
