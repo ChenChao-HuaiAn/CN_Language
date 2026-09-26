@@ -219,7 +219,7 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
                  "ulimit -v 33554432; exec " + sys.executable + " " +
                  str(仓库根 / "scripts/gate_lock.py") + " run -- " + sys.executable +
                  " tests/e2e/run_e2e.py --target " + 目标 + " --cn " + str(cn路径) +
-                 " --jobs 8"])
+                 " --jobs 2"])
     if e2e.returncode == 0:
         return None
     print("  [复验] E2E 并行未全绿——串行复验区分真红与并行互踩（447-a 机制·gate_lock 锁内）")
