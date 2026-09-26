@@ -93,12 +93,13 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
         //   改为「NewObject+拷贝构造 的独立堆副本」——与 v2 副本语义对齐（052 甲），
         //   消除「取回-设置-写回」模式的 self 覆盖毁源（740-a 实测段错误域）。
         //   Rust 对照：&self[i] 借出 vs 返回 T 值语义。
-        // 791/792/793-a（055 波2a·源槽契约三笔）：①单态化命中——泛型克隆体名
-        //   分隔符=点号（向量$映射$整64$整64.元素）·name=="元素" 恒不命中=746-a
-        //   沉睡（p55 rc=7 实锤）。②拷贝构造的「其他」（映射&·引用形参）A-1
-        //   契约=place 地址（被调方 Load 槽+LoadPtr 两跳读值）——源=「存放壳
-        //   指针的临时槽」的地址：临时槽←LoadPtr(lvalueAddress)=壳地址·传
-        //   AddrOf(临时槽)（v2 698-a「句柄槽←壳地址·源=&句柄槽」完全同构）。
+        // 791/792/793/794-a（055 波2a·源槽契约·①单态化命中：泛型克隆体名分隔
+        //   符=点号·name=="元素" 恒不命中=746-a 沉睡 p55 rc=7 实锤。②拷贝构造
+        //   的「其他」（映射&·引用形参）A-1 契约=place 地址（被调方 Load 槽+
+        //   LoadPtr 两跳）——源=「存放元素本体地址的临时槽」的地址：临时槽←
+        //   lvalueAddress(数据[位置])=元素本体地址（数据区=内联 56B·步进=
+        //   typeSizeOf(K)）·传 AddrOf(临时槽)——791 修复 B 的 LoadPtr 多解一层
+        //   引（键值 1 被当地址 rc=139 实锤已撤）。
         const bool isElemMethod793 =
             function_ != nullptr &&
             (function_->name == "元素" ||
@@ -135,16 +136,13 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
                         node->location);
                     ir::IRValue handleSlotAddr =
                         lvalueAddress(node->value.get());
-                    ir::IRValue shellAddr = emitResult(
-                        ir::Opcode::LoadPtr, {handleSlotAddr}, "ptr", "",
-                        node->location);
                     const std::string srcTmp =
                         "__retcopysrc" + std::to_string(varCounter_++);
                     emit(ir::Opcode::Alloca, {},
                          ir::IRValue::reg(regCounter_++, "ptr"), srcTmp, "ptr",
                          node->location);
                     registerVarSlots(srcTmp, elemCanon);
-                    emit(ir::Opcode::Store, {shellAddr},
+                    emit(ir::Opcode::Store, {handleSlotAddr},
                          ir::IRValue::var(srcTmp, "ptr"), srcTmp, "ptr",
                          node->location);
                     ir::IRValue srcSlot = emitResult(

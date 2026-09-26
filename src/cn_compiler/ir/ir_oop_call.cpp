@@ -705,7 +705,59 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
     //   类静态统一「指针槽模型」（.data 槽存对象指针，主 入口 NewObject 入槽），
     //   genExpr(静态标识符) = 符号地址 + LoadPtr = 对象指针，与局部类变量
     //   读取完全一致。原特判传 .data 符号地址（对象内联模型）已随模型统一废弃。
-    ir::IRValue thisArg = genExpr(mem->object.get());
+    // 793/794-a（055 波2a·元素可变方法接收者=元素本体地址直发·p55 面②）：
+    // 「容器.元素(i).可变方法(...)」——746-a 副本化使 设置 写在副本上丢弃
+    //   （p55 面② rc=4 实锤）→ this 改=元素本体地址（容器数据基址+i×元素
+    //   大小·数据区=内联元素·步进=typeSizeOf）→可变方法写穿原容器（Swift
+    //   下标 set 同构·与 v2 790-a 同构）。非可变方法保持 genExpr（副本语义）。
+    ir::IRValue thisArg;
+    bool elemMutable794 = false;
+    if (mem->object->getType() == NodeType::CallExpr) {
+        CallExpr* elemCall794 = static_cast<CallExpr*>(mem->object.get());
+        if (elemCall794->callee->getType() == NodeType::MemberExpr) {
+            MemberExpr* elemMem794 =
+                static_cast<MemberExpr*>(elemCall794->callee.get());
+            const std::string elemName794 = elemMem794->memberName;
+            const bool isMutable794 =
+                methodName == "设置" || methodName == "删除" ||
+                methodName == "清空" || methodName == "插入" ||
+                methodName == "弹出";
+            if (isMutable794 && elemName794 == "元素" &&
+                elemCall794->arguments.size() == 1) {
+                ir::IRValue contShell794 =
+                    genExpr(elemMem794->object.get());
+                ir::IRValue faddr794 = emitResult(
+                    ir::Opcode::FieldAddr, {contShell794}, "ptr", "0",
+                    node->location);
+                ir::IRValue dataPtr794 = emitResult(
+                    ir::Opcode::LoadPtr, {faddr794}, "ptr", "", node->location);
+                ir::IRValue idxVal794 = genExpr(elemCall794->arguments[0].get());
+                const std::string elemCanon794 =
+                    types::canonical(elemMem794->semanticType.empty()
+                                         ? elemMem794->semanticType
+                                         : elemMem794->semanticType);
+                const int elemSize794 =
+                    semantic_->typeSizeOf(types::canonical(canonObjForMethod));
+                const std::int64_t stride794 =
+                    elemSize794 > 0 ? elemSize794 : 8;
+                ir::IRValue strideConst794 = emitResult(
+                    ir::Opcode::ConstInt,
+                    {ir::IRValue::constant(std::to_string(stride794), "i64")},
+                    "i64", "", node->location);
+                ir::IRValue scaled794 = emitResult(
+                    ir::Opcode::Mul, {idxVal794, strideConst794}, "i64", "",
+                    node->location);
+                ir::IRValue elemAddr794 = emitResult(
+                    ir::Opcode::Add, {dataPtr794, scaled794}, "ptr", "",
+                    node->location);
+                thisArg = elemAddr794;
+                elemMutable794 = true;
+            }
+        }
+    }
+    if (!elemMutable794) {
+        thisArg = genExpr(mem->object.get());
+    }
 
     // ---- 虚调用：方法在虚表中有槽位（虚拟 或 重写，vtableIndex>=0）且非 父类. 限定调用 ----
     // 重写方法 isVirtual=false 但 vtableIndex>=0（覆盖父类槽位），同样须虚分派。
