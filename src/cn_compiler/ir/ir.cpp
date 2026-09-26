@@ -854,8 +854,8 @@ bool IRGenerator::genArrayVarElemAddress(IndexExpr* idx, ir::IRValue& result) {
 ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
         // 其他对象（指针 p[i] / 数组字段 方形.顶点[i]）：地址 = 基址 + index*元素大小
         // （结构体指针/数组字段按元素大小，普通指针8字节；Task 2.7/修复10）
-        ir::IRValue obj = genExpr(idx->object.get());
         ir::IRValue index = genExpr(idx->index.get());
+        ir::IRValue obj = genExpr(idx->object.get());
         if (index.type != "i64") {
             index = emitResult(ir::Opcode::Cast, {index}, "i64", "", idx->location);
         }
