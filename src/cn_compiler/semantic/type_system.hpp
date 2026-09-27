@@ -91,6 +91,17 @@ std::string arrayElemOf(const std::string& type);
 // 提取数组长度（整32[10] -> 10；非数组类型返回 -1）
 int arrayLenOf(const std::string& type);
 
+// 剥离尾部复合后缀（061-a 合成体消费面收口）：类型文本 = 核心 + 后缀，
+//   后缀 = 结尾连续的 *（指针）、&（引用）、[N]（N 为纯十进制数字）组合——
+//   如 结果<整32,整32>[2] -> {"结果<整32,整32>", "[2]"}、
+//      结果<盒子,整32>* -> {"结果<盒子,整32>", "*"}、整32*[3] -> {"整32", "*[3]"}。
+//   无后缀时 suffix 为空串、core 原样返回。模板闭合 '>' / 限定 '::' 不属后缀。
+//   用途：结果/可选 模板判定（isResultType/isOptionalType）与变量声明重组
+//   （visitVarDecl）须对 core 判定、重组后接回 suffix——原实现前缀判定不校验
+//   尾缀，带后缀形态被重组覆盖（数组维度/指针形态丢失，061 P3-a/d2 实测）。
+void splitTypeSuffix(const std::string& type, std::string& coreOut,
+                     std::string& suffixOut);
+
 // ==================== 引用类型（A-1 引用参数，2026-08） ====================
 
 // 是否引用类型（类型名以 & 结尾，如 整32& / 账户& / T&）

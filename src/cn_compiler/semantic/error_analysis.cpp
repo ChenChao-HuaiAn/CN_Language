@@ -27,15 +27,27 @@ namespace cn_compiler {
 // ==================== 结果/可选模板类型解析（Task 3.5） ====================
 
 // 是否 结果<T,E> 模板类型（形如 "结果<整32,整32>"）
+// 061-a（2026-09-27 804 轮）：**裸形态**判定——带指针/数组/引用后缀的文本
+//   （结果<...>* / 结果<...>[2]）不是模板类型本体：原实现前缀判定不校验尾缀，
+//   canConvertType「模板与非模板不可转」一刀切拒绝 空类型*→合成体指针 转换
+//   （stdlib 容器克隆体 数据=重新分配(...) 实测红）、visitVarDecl 重组覆盖
+//   全文丢数组维度。需对 core 判定的调用点（变量声明重组等）先自行
+//   types::splitTypeSuffix 剥后缀再传入。
 bool SemanticAnalyzer::isResultType(const std::string& type) {
-    return type.rfind("结果<", 0) == 0 && type.find('>') != std::string::npos &&
-           type.find(',') != std::string::npos;
+    std::string core, suffix;
+    types::splitTypeSuffix(type, core, suffix);
+    if (!suffix.empty()) return false;
+    return core.rfind("结果<", 0) == 0 && core.find('>') != std::string::npos &&
+           core.find(',') != std::string::npos;
 }
 
-// 是否 可选<T> 模板类型（形如 "可选<整32>"）
+// 是否 可选<T> 模板类型（形如 "可选<整32>"；裸形态判据同 isResultType）
 bool SemanticAnalyzer::isOptionalType(const std::string& type) {
-    return type.rfind("可选<", 0) == 0 && type.find('>') != std::string::npos &&
-           type.find(',') == std::string::npos;
+    std::string core, suffix;
+    types::splitTypeSuffix(type, core, suffix);
+    if (!suffix.empty()) return false;
+    return core.rfind("可选<", 0) == 0 && core.find('>') != std::string::npos &&
+           core.find(',') == std::string::npos;
 }
 
 // 解析 结果<T,E> 参数（"结果<整32,整32>" -> ["整32","整32"]；未匹配返回空向量）
@@ -94,6 +106,31 @@ std::string SemanticAnalyzer::resultStructName(const std::string& t, const std::
 // 生成 可选<T> 的合成结构体名
 std::string SemanticAnalyzer::optionalStructName(const std::string& t) {
     return "可选$" + types::canonical(t);
+}
+
+// 061-d（2026-09-27 804 轮）：内置合成模板文本 → 合成结构体名统一形态。
+//   结果<T,E> -> 结果$T$E、可选<T> -> 可选$T（保留指针/数组后缀）；非合成
+//   模板文本原样返回。背景：resolveGenericTypeName 对 结果/可选 原样返回
+//   （非注册泛型类），致泛型容器实例名含尖括号（向量$结果<整32,整32>）——
+//   IR 层构造名解析/变量槽名拼装走 $ 形态与之永不相等 → findClass miss →
+//   构造回退普通调用（无 this）段错误（z2b 实测）。泛型容器实例化与 IR 层
+//   名字拼装各调用点统一经本函数后，注册/查询/克隆替换全链一致。
+std::string SemanticAnalyzer::canonicalizeSyntheticArgText(const std::string& type) {
+    std::string core, suffix;
+    types::splitTypeSuffix(type, core, suffix);
+    if (isResultType(core)) {
+        const std::vector<std::string> args = resultTypeArgs(core);
+        if (args.size() == 2) {
+            return resultStructName(types::canonical(args[0]),
+                                    types::canonical(args[1])) + suffix;
+        }
+    } else if (isOptionalType(core)) {
+        const std::string arg = optionalTypeArg(core);
+        if (!arg.empty()) {
+            return optionalStructName(types::canonical(arg)) + suffix;
+        }
+    }
+    return type;
 }
 
 // ==================== 内置构造器注册（Task 3.5） ====================

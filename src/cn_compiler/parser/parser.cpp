@@ -631,7 +631,10 @@ std::unique_ptr<Stmt> Parser::parseStaticVarDecl() {
     decl->isStatic = true;
     advance();  // 消费"静态"
     if (check(TokenType::Kw_Var)) advance();  // 兼容"静态 变量 名称"
-    decl->typeName = parseTypeName();
+    // 061-b（2026-09-27 804 轮）：与顶层静态（下方 parseTypeNameEx·P3-8）及普通
+    //   变量声明同一套完整类型识别器——原 parseTypeName 只吃标识符，遇 '<' 即停
+    //   （`静态 结果<盒子,整32> 槽 = ...` 报「预期变量名」·P3-b 实测）。
+    decl->typeName = parseTypeNameEx();
     if (check(TokenType::Identifier)) {
         decl->name = current().getValue();
         advance();

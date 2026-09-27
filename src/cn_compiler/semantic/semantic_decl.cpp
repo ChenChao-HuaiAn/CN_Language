@@ -45,6 +45,17 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   的内部实参 映射<整64, 整64> 须归一为 映射$整64$整64（resolveGenericTypeName
     //   对 结果 模板头原样返回，内部嵌套泛型不归一 -> .值 推导出模板形式，链式
     //   .获取() 的 findClass 失败报「映射<整64 不是类类型」）。
+    // 061-a（2026-09-27 804 轮）：合成体后缀保全——原重组「结果<"+...+">」覆盖
+    //   全文丢尾部指针/数组后缀：`结果<整32,整32>[2] 组` 登记为单个合成体
+    //   （下标访问报「要求数组或指针对象」P3-a 实测）、`结果<...>* p` 登记为值
+    //   （空类型*→合成体指针转换面连坐）。先剥后缀 → core 归一重组 →
+    //   ensureLoweredType → 后缀接回（语义/IR 层同文本）。
+    std::string varSuffix;
+    {
+        std::string core;
+        types::splitTypeSuffix(varType, core, varSuffix);
+        varType = core;
+    }
     if (SemanticAnalyzer::isResultType(varType)) {
         const std::vector<std::string> rargs = resultTypeArgs(varType);
         if (rargs.size() == 2) {
@@ -60,6 +71,10 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     if (SemanticAnalyzer::isResultType(varType) ||
         SemanticAnalyzer::isOptionalType(varType)) {
         ensureLoweredType(varType);
+    }
+    if (!varSuffix.empty()) {
+        varType += varSuffix;  // 合成体后缀接回（数组维度/指针形态保全）
+        if (!node->typeName.empty()) node->typeName = varType;
     }
     // H7 补完（2026-08-25）：类类型栈变量无初始化器裸声明（类名 变量）须可默认构造——
     //   类声明了构造但无 0 参构造（仅有带参构造）时无法默认构造，编译报错

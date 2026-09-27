@@ -480,7 +480,6 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
             if (b != std::string::npos && e != std::string::npos) {
                 a = a.substr(b, e - b + 1);
             }
-            // H3：嵌套实参（含 '<'）递归实例化为 映射$整64$整64
             // H3：嵌套实参（含 '<'）转为实例化名（映射<整64,整64> -> 映射$整64$整64）
             if (a.find('<') != std::string::npos) {
                 std::string ninst = a.substr(0, a.find('<'));
@@ -494,6 +493,11 @@ std::string IRGenerator::resolveGenericCtorInstanceName(std::string className) {
                 }
                 a = ninst;
             }
+            // 061-d（2026-09-27 804 轮）：合成模板实参（结果<T,E>/可选<T>）统一
+            //   合成体名 $ 形态（与语义层 instantiateGeneric 注册名一致——原裸拼
+            //   保留尖括号原文，与 IR 层 $ 形态查询永不相等 → findClass miss →
+            //   构造回退普通调用（无 this）段错误 z2b 实测）；非合成实参原样。
+            a = SemanticAnalyzer::canonicalizeSyntheticArgText(a);
         }
                     std::string inst = head;
         for (const auto& a : args) {

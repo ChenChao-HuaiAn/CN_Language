@@ -262,6 +262,10 @@ public:
     // 生成 结果<T,E>/可选<T> 的合成结构体名（IR 层布局用）
     static std::string resultStructName(const std::string& t, const std::string& e);
     static std::string optionalStructName(const std::string& t);
+    // 内置合成模板文本 → 合成结构体名统一形态（061-d：结果<T,E> -> 结果$T$E；
+    //   可选<T> -> 可选$T；非合成文本原样返回）——泛型容器实例化与 IR 层
+    //   名字拼装统一经此，消除 尖括号原文 vs $ 形态 两套注册/查询键
+    static std::string canonicalizeSyntheticArgText(const std::string& type);
     // 查找类符号（未找到返回nullptr）
     const ClassInfo* findClass(const std::string& name) const;
     // 全部类符号表只读访问（Task 3.1，供 codegen 遍历生成虚表/静态字段/类方法符号）

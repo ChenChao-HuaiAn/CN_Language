@@ -242,6 +242,27 @@ void IRGenerator::emitStaticInitsAtEntry() {
                 emitStructInitTo(static_cast<StructInitExpr*>(initExpr), symAddr,
                                  loc);
             } else if (initExpr->getType() == NodeType::CallExpr) {
+                // 061-c（2026-09-27 804 轮）：顶层静态初值 内置构造器 上下文类型——
+                //   正常(5)/错误(码)/某些(v) 的脱糖（handleResultCtor）依赖
+                //   node->resolvedType；局部变量声明由语义层推导赋值，顶层静态
+                //   初值无此推导 → resolvedType 空 + 主函数 returnTypeSrc=整32
+                //   → 脱糖放弃退化普通外部调用（链接 undefined reference to
+                //   _E6ADA3E5B8B8 实测）。此处按静态类型补上下文（与语义层
+                //   visitVarDecl 推导同效），脱糖产物=临时合成体槽 → 下方
+                //   emitStructCopyWithFields 写入静态槽。
+                {
+                    CallExpr* initCall = static_cast<CallExpr*>(initExpr);
+                    if (initCall->callee->getType() == NodeType::IdentifierExpr &&
+                        initCall->resolvedType.empty()) {
+                        const std::string calleeName =
+                            static_cast<IdentifierExpr*>(initCall->callee.get())
+                                ->name;
+                        if (calleeName == "正常" || calleeName == "错误" ||
+                            calleeName == "某些") {
+                            initCall->resolvedType = stType;
+                        }
+                    }
+                }
                 // 结构体返回调用：genExpr 物化返回（retbuf/临时槽），浅拷接管
                 ir::IRValue src = genExpr(initExpr);
                 emitStructCopyWithFields(symAddr, src, canonStatic, loc,

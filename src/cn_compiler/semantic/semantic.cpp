@@ -703,6 +703,19 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             const std::string stType =
                 g->typeName.empty() ? "自动"
                                     : resolveGenericTypeName(g->typeName, g->location);
+            // 061-c（2026-09-27 804 轮）：结果/可选 静态的合成结构体注册——
+            //   局部变量 visitVarDecl 有 ensureLoweredType，顶层静态此前漏接：
+            //   合成结构体未注册 → isStructType(静态类型)=false → IR 入口注入
+            //   走非结构体分支，初值 正常(5) 无脱糖退化为外部函数调用（链接
+            //   undefined reference to _E6ADA3E5B8B8 实测）。
+            {
+                std::string stCore, stSuffix;
+                types::splitTypeSuffix(stType, stCore, stSuffix);
+                (void)stSuffix;
+                if (isResultType(stCore) || isOptionalType(stCore)) {
+                    ensureLoweredType(stCore);
+                }
+            }
             // A-2（静态 crate 分桶）：同常量——多模块同名静态登记限定键（模块$名）
             staticModules_[g->name].insert(g->moduleName);
             if (globalStatics_.find(g->name) == globalStatics_.end()) {

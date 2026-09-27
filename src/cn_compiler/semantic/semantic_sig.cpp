@@ -389,6 +389,15 @@ bool SemanticAnalyzer::canConvertType(const std::string& fromRaw,
     }
     // 空指针常量 -> 可选<T>：视为空可选值（无）（Task 3.5，规格书07-三）
     if (from == "空类型*" && toOpt) return true;
+    // 061-d（2026-09-27 804 轮）：合成体名 ↔ 模板文本 同一性（A-3b 泛型类实例
+    //   同构）——容器克隆体签名用合成体名（结果$整32$整32，实参经
+    //   canonicalizeSyntheticArgText 统一 $ 形态），用户源码用模板文本
+    //   （结果<整32, 整32>），双向视为同一类型。指针/数组后缀保留比对。
+    {
+        const std::string fromSyn = canonicalizeSyntheticArgText(from);
+        const std::string toSyn = canonicalizeSyntheticArgText(to);
+        if (fromSyn != from || toSyn != to) return fromSyn == toSyn;
+    }
     if (fromResult || toResult || fromOpt || toOpt) return false;  // 模板与非模板不可转
     const bool fromEnum = isEnumType(from);
     const bool toEnum = isEnumType(to);

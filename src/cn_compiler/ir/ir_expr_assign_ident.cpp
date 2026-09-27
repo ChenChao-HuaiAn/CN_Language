@@ -36,6 +36,66 @@ bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr*
         ir::IRValue dstAddr = emitResult(
             ir::Opcode::ConstString, {}, "ptr",
             "?gstatic_" + ve->uniqueName, node->location);
+        // 061-b（2026-09-27 804 轮）：聚合静态局部（结构体/合成体/字符串）赋值
+        //   =87-a 顶层静态同款整体写（preFree=真：静态槽长期存活，重复赋值须
+        //   释放旧字段串）——原标量 StorePtr 对聚合只写 8 字节（半写+越界）。
+        if (!isCompoundAssignOp(node->op) && semantic_ != nullptr &&
+            !ve->srcType.empty()) {
+            const std::string canonAgg = types::canonical(ve->srcType);
+            if (semantic_->isStructType(canonAgg)) {
+                if (node->value->getType() == NodeType::StructInitExpr) {
+                    emitOwnedStrFieldPreFree(dstAddr, canonAgg, node->location);
+                    emitStructInitTo(
+                        static_cast<StructInitExpr*>(node->value.get()),
+                        dstAddr, node->location);
+                    lastExpr_ = dstAddr;
+                    return true;
+                }
+                if (node->value->getType() == NodeType::CallExpr) {
+                    // 内置构造器（正常/错误/某些）上下文类型——061-c 同款
+                    CallExpr* initCall =
+                        static_cast<CallExpr*>(node->value.get());
+                    if (initCall->callee->getType() ==
+                            NodeType::IdentifierExpr &&
+                        initCall->resolvedType.empty()) {
+                        const std::string calleeName =
+                            static_cast<IdentifierExpr*>(initCall->callee.get())
+                                ->name;
+                        if (calleeName == "正常" || calleeName == "错误" ||
+                            calleeName == "某些") {
+                            initCall->resolvedType = ve->srcType;
+                        }
+                    }
+                    ir::IRValue src = genExpr(node->value.get());
+                    emitStructCopyWithFields(dstAddr, src, canonAgg,
+                                             node->location, /*preFree=*/true,
+                                             /*deepCopy=*/false);
+                    lastExpr_ = dstAddr;
+                    return true;
+                }
+                if (emitStructWholeAssign(dstAddr, node->value.get(), canonAgg,
+                                          node->location, /*preFree=*/true)) {
+                    lastExpr_ = dstAddr;
+                    return true;
+                }
+                // 源形态未识别（语义层已诊断）：保持旧值（宁漏勿错）
+                lastExpr_ = dstAddr;
+                return true;
+            }
+            if (canonAgg == "字符串") {
+                ir::IRValue val = genExpr(node->value.get());
+                ir::IRValue norm = normalizeStringValueSource(
+                    node->value.get(), val, node->location);
+                ir::IRValue oldPtr = emitResult(ir::Opcode::LoadPtr, {dstAddr},
+                                                "ptr", "", node->location);
+                emit(ir::Opcode::Call, {oldPtr}, ir::IRValue(), "__cn_str_free",
+                     "void", node->location);
+                emit(ir::Opcode::StorePtr, {dstAddr, norm}, ir::IRValue(), "",
+                     "ptr", node->location);
+                lastExpr_ = norm;
+                return true;
+            }
+        }
         ir::IRValue val = genExpr(node->value.get());
         if (isCompoundAssignOp(node->op)) {
             // 读-算-写回（对齐 identifierGenericAssign 普通变量同款；目标读

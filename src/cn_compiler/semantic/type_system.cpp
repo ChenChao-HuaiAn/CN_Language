@@ -524,6 +524,37 @@ int arrayLenOf(const std::string& type) {
     }
 }
 
+// 剥离尾部复合后缀（061-a）：* / & / [纯数字] 的结尾连续组合。
+//   从尾部反向扫描：'*' 与 '&' 各剥一个；']' 时向前找配对 '[' 且内容须纯数字
+//   （与 arrayLenOf 同判据——非数字下标文本不是数组后缀，整段停止）。
+//   其余字符（含 '>'、':'）停止。coreOut/suffixOut 按切分点输出。
+void splitTypeSuffix(const std::string& type, std::string& coreOut,
+                     std::string& suffixOut) {
+    std::size_t end = type.size();
+    while (end > 0) {
+        const char c = type[end - 1];
+        if (c == '*' || c == '&') {
+            end--;
+            continue;
+        }
+        if (c == ']') {
+            // 找配对 '['（内容纯数字才认定为数组后缀）
+            const std::size_t lb = type.rfind('[', end - 1);
+            if (lb == std::string::npos) break;
+            const std::string len = type.substr(lb + 1, end - lb - 2);
+            if (len.empty() ||
+                len.find_first_not_of("0123456789") != std::string::npos) {
+                break;
+            }
+            end = lb;
+            continue;
+        }
+        break;
+    }
+    coreOut = type.substr(0, end);
+    suffixOut = type.substr(end);
+}
+
 // 基本类型字节大小（规格书3.x类型表）
 int typeSize(const std::string& typeRaw) {
     const std::string t = canonical(typeRaw);

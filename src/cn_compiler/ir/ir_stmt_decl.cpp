@@ -18,38 +18,53 @@ void IRGenerator::genVarDecl(VarDecl* node) {
     //   原实现按普通局部（栈帧 Alloca+每次调用重 Store 初值=跨调用状态丢失，
     //   步进计数 2_2_2 应 2_4_6 实锤）；静态全局通道复用（87-a/P3-8 机制）：
     //   .data 槽 ?gstatic_$静态$函数名$名 + 字面量初值直存（一次性初始化）。
-    //   诚实边界：非字面量初值诊断拒绝（入口注入机制需语句上下文——后续按需扩）；
-    //   类型面=标量整数族（结构体/容器静态局部留后续——立案面=计数器形态）。
+    // 061-b（2026-09-27 804 轮）：值语义静态局部扩面——原口径仅标量整数+字面量
+    //   初值（合成体 `静态 结果<...> 槽 = 正常(...)` 解析修通后落此报「仅支持
+    //   标量整数」P3-b 实测）。扩面=**guard 首次执行初始化通道**（C++ static
+    //   local guard variable 同款：初始化时机=首次执行到声明处，而非入口注入
+    //   ——初值含构造调用副作用时时机可观察，入口注入=语义妥协不做）：浮点/
+    //   布尔/字符/字符串/结构体（用户+合成体）+ 标量整数运行期初值。主槽+guard
+    //   布尔槽双 .data 符号；读/写/左值走既有 320-a isStaticLocal 通道。类/容器
+    //   （指针槽+NewObject 构造链）与数组（聚合槽）维持诊断拒绝（87-a 立账面，
+    //   非 061 范围）。
     if (node->isStatic && function_ != nullptr && !function_->name.empty() &&
         !node->funcPtr.isFunctionPtr() && !node->name.empty()) {
         const std::string key = "$静态$" + function_->name + "$" + node->name;
-        const std::string stType =
-            mapType(node->typeName.empty() ? "整32" : substGenericType(node->typeName));
+        const std::string srcTypeRaw =
+            node->typeName.empty() ? "整32" : substGenericType(node->typeName);
+        const std::string stType = mapType(srcTypeRaw);
         const bool scalarInt =
             stType == "i8" || stType == "i16" || stType == "i32" ||
             stType == "i64" || stType == "u8" || stType == "u16" ||
             stType == "u32" || stType == "u64" || stType == "i1" ||
             stType == "i128" || stType == "u128";
-        if (!scalarInt) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "静态局部变量当前仅支持标量整数类型（'"+ node->name +
-                                "'：" + node->typeName + "）——结构体/容器形态待后续支持");
+        // 类型分派：guard 通道域（值语义）/ 拒绝域（指针槽/聚合·87-a 立账面）
+        std::string stCore, stSuffix;
+        types::splitTypeSuffix(srcTypeRaw, stCore, stSuffix);
+        const std::string canonCore = types::canonical(stCore);
+        const std::string canonSrc = types::canonical(srcTypeRaw);
+        const bool guardScalar = canonSrc == "浮32" || canonSrc == "浮64" ||
+                                 canonSrc == "布尔" || canonSrc == "字符";
+        const bool guardString = (canonSrc == "字符串");
+        const bool guardStruct = stSuffix.empty() && semantic_ != nullptr &&
+                                 semantic_->isStructType(canonCore);
+        if (!scalarInt && !guardScalar && !guardString && !guardStruct) {
+            diagnostics_.report(
+                DiagnosticLevel::Error, node->location,
+                "静态局部变量暂不支持类/容器/数组类型（'" + node->name + "'：" +
+                    node->typeName + "）——指针槽/聚合形态待后续支持");
             return;
         }
-        // 初值：字面量直存 .data；非字面量（含无初值=零）——零值直存
-        std::string initText = "0";
-        bool okInit = true;
-        if (node->initializer != nullptr &&
-            node->initializer->getType() == NodeType::IntegerLiteral) {
-            initText = std::to_string(
-                static_cast<IntegerLiteral*>(node->initializer.get())->value);
-        } else if (node->initializer != nullptr) {
-            diagnostics_.report(DiagnosticLevel::Error, node->location,
-                                "静态局部变量初值须为字面量（运行期表达式入口注入"
-                                "待后续支持）");
-            okInit = false;
-        }
-        if (okInit) {
+        // ---- 标量整数直存通道（320-a 现状：整数字面量 .data 直存零开销）----
+        // 061-b：非字面量整数初值改落 guard 通道（原诊断拒绝=运行期初值缺口）
+        if (scalarInt && (node->initializer == nullptr ||
+                          node->initializer->getType() ==
+                              NodeType::IntegerLiteral)) {
+            std::string initText = "0";
+            if (node->initializer != nullptr) {
+                initText = std::to_string(
+                    static_cast<IntegerLiteral*>(node->initializer.get())->value);
+            }
             module_->globalStatics[key] = stType;
             // codegen .data 初值：globalStaticInits（字面量文本）
             //（与顶层静态字面量同通道——87-a）
@@ -59,11 +74,93 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 VarEntry e;
                 e.uniqueName = key;
                 e.type = stType;
-                e.srcType = node->typeName.empty() ? "整32" : substGenericType(node->typeName);
+                e.srcType = srcTypeRaw;
                 e.isStaticLocal = true;
                 varStack_.back()[node->name] = e;
             }
+            return;
         }
+        // ---- guard 首次执行初始化通道（061-b 值语义域）----
+        // .data：主槽=语义文本（codegen 按类型宽发射·87-a ①）+ guard 布尔槽
+        //（零占位=未初始化；globalStaticInits 不登记=运行期初始化）。
+        const SourceLocation sloc = node->location;
+        const std::string guardKey = key + "$已初始化";
+        module_->globalStatics[key] = srcTypeRaw;
+        module_->globalStatics[guardKey] = "i1";
+        if (!varStack_.empty()) {
+            VarEntry e;
+            e.uniqueName = key;
+            e.type = stType;
+            e.srcType = srcTypeRaw;
+            e.isStaticLocal = true;
+            varStack_.back()[node->name] = e;
+        }
+        // if (!guard) { <初值写主槽>; guard = 1; }
+        ir::IRValue guardAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                           "?gstatic_" + guardKey, sloc);
+        ir::IRValue guardVal =
+            emitResult(ir::Opcode::LoadPtr, {guardAddr}, "i1", "", sloc);
+        const std::string initLabel = "bb" + std::to_string(blockCounter_++);
+        const std::string endLabel = "bb" + std::to_string(blockCounter_++);
+        endBranch(guardVal.toString(), endLabel, initLabel);
+        setCurrentBlock(newBlock(initLabel));
+        ir::IRValue slotAddr = emitResult(ir::Opcode::ConstString, {}, "ptr",
+                                          "?gstatic_" + key, sloc);
+        if (node->initializer != nullptr) {
+            Expr* initExpr = node->initializer.get();
+            if (guardStruct) {
+                // 结构体/合成体：与顶层静态 87-a ①② 同款三分派
+                if (initExpr->getType() == NodeType::StructInitExpr) {
+                    emitStructInitTo(
+                        static_cast<StructInitExpr*>(initExpr), slotAddr, sloc);
+                } else {
+                    // 内置构造器（正常/错误/某些）上下文类型——061-c 同款
+                    //（handleResultCtor 依赖 resolvedType 脱糖）
+                    if (initExpr->getType() == NodeType::CallExpr) {
+                        CallExpr* initCall = static_cast<CallExpr*>(initExpr);
+                        if (initCall->callee->getType() ==
+                                NodeType::IdentifierExpr &&
+                            initCall->resolvedType.empty()) {
+                            const std::string calleeName =
+                                static_cast<IdentifierExpr*>(
+                                    initCall->callee.get())
+                                    ->name;
+                            if (calleeName == "正常" || calleeName == "错误" ||
+                                calleeName == "某些") {
+                                initCall->resolvedType = srcTypeRaw;
+                            }
+                        }
+                    }
+                    ir::IRValue src = genExpr(initExpr);
+                    emitStructCopyWithFields(slotAddr, src, canonCore, sloc,
+                                             /*preFree=*/false,
+                                             /*deepCopy=*/false);
+                }
+            } else if (guardString) {
+                // 字符串：来源分级归一化（87-a ③同款：字面量=驻留零分配/
+                // 拥有返回=接管/借用来源=复制落堆）
+                ir::IRValue val = genExpr(initExpr);
+                ir::IRValue norm =
+                    normalizeStringValueSource(initExpr, val, sloc);
+                emit(ir::Opcode::StorePtr, {slotAddr, norm}, ir::IRValue(), "",
+                     "ptr", sloc);
+            } else {
+                // 标量（浮点/布尔/字符/整数运行期初值）：自然宽度 Cast+StorePtr
+                ir::IRValue val = genExpr(initExpr);
+                if (val.type != stType && !stType.empty()) {
+                    val = emitResult(ir::Opcode::Cast, {val}, stType, "", sloc);
+                }
+                emit(ir::Opcode::StorePtr, {slotAddr, val}, ir::IRValue(), "",
+                     stType, sloc);
+            }
+        }
+        // guard = 1（无初值也置位：零值语义一次判定）
+        ir::IRValue one =
+            emitResult(ir::Opcode::ConstInt, {}, "i1", "1", sloc);
+        emit(ir::Opcode::StorePtr, {guardAddr, one}, ir::IRValue(), "", "i1",
+             sloc);
+        endJump(endLabel);
+        setCurrentBlock(newBlock(endLabel));
         return;
     }
     // 阶段3（Task 3.8，E2E 26 修复）：泛型实例化类型名替换——
@@ -89,7 +186,10 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                 std::size_t e = arg.find_last_not_of(" \t");
                 std::string trimmed = (b != std::string::npos && e != std::string::npos)
                     ? arg.substr(b, e - b + 1) : arg;
-                inst += "$" + types::canonical(trimmed);
+                // 061-d：合成模板实参（结果<...>/可选<...>）统一 $ 形态
+                //（与语义层 instantiateGeneric 注册名一致·canonicalizeSyntheticArgText）
+                inst += "$" + types::canonical(
+                    SemanticAnalyzer::canonicalizeSyntheticArgText(trimmed));
                 if (comma == std::string::npos) break;
                 pos = comma + 1;
             }

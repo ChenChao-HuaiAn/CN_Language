@@ -191,6 +191,16 @@ void IRGenerator::visitIdentifierExpr(IdentifierExpr* node) {
                 ir::IRValue addr = emitResult(
                     ir::Opcode::ConstString, {}, "ptr",
                     "?gstatic_" + ve->uniqueName, node->location);
+                // 061-b（2026-09-27 804 轮）：聚合静态局部（结构体/合成体）读=
+                //   符号地址（地址语义：CopyStruct 源/成员链基址均从地址起算，
+                //   与顶层静态左值 87-a 同款）——原 LoadPtr("ptr") 只读 8 字节，
+                //   16 字节合成体半读致返回/赋值读截断（z3v 段错误实测）。
+                //   标量静态局部维持 LoadPtr 读值（320-a 原行为）。
+                if (semantic_ != nullptr && !ve->srcType.empty() &&
+                    semantic_->isStructType(types::canonical(ve->srcType))) {
+                    lastExpr_ = addr;
+                    return;
+                }
                 lastExpr_ = emitResult(ir::Opcode::LoadPtr, {addr}, irT, "",
                                        node->location);
                 return;

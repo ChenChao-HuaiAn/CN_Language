@@ -345,6 +345,12 @@ std::string SemanticAnalyzer::instantiateGeneric(
         // 2026-08-25 H3（嵌套泛型）：实参若是嵌套泛型（映射<整64,整64>），
         //   递归实例化为 映射$整64$整64 ——否则 向量<...> 实例名含 '<' 无法查表。
         a = resolveGenericTypeName(a, loc);
+        // 061-d（2026-09-27 804 轮）：内置合成模板实参（结果<T,E>/可选<T>）转
+        //   合成结构体名（结果$T$E）——resolveGenericTypeName 对其原样返回
+        //   （非注册泛型），实例名 向量$结果<整32,整32> 含尖括号，与 IR 层
+        //   $ 形态拼装永不相等 → findClass miss → 构造回退普通调用（无 this）
+        //   段错误（z2b 实测）。
+        a = canonicalizeSyntheticArgText(a);
     }
 
     // 参数个数校验
