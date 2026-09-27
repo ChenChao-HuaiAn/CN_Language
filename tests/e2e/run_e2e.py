@@ -79,6 +79,25 @@ if hasattr(sys.stderr, "reconfigure"):
 v2全树编译互斥锁路径 = pathlib.Path("target") / "e2e_v2全树编译.lock"
 
 
+def 全树编译内存上限MB() -> int:
+    """按物理内存自适应（2026-09-27 OOM 连坐第 5 例根治·用户令「找项目自身原因」）：
+    746-a 的 32768 系家机 128GB 口径——在 32GB 深度机＝比物理内存还大、形同虚设
+    （797-a 注释自白）；本机 v2p 全树编译实测吃 **29GB**（dmesg 实证·物理 31GB
+    之上→内核全局 OOM→app-zcode scope 连坐 ZCode 退出）。⚠ 真正异常的是 v2p
+    自身内存（同任务宿主 cn 仅 307MB＝96 倍差距·语义阶段静态表堆对象膨胀——
+    021 新立任务根治）；本函数给「物理 × 0.55」上限（深度机 ~17GB）：超限
+    malloc 失败＝单用例诚实红，内核 OOM 不再触发、编辑器不再连坐。
+    三机共享参数按最小机器校准（教训库倒查条目）。"""
+    import re as _re
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as f:
+            m = _re.search(r"MemTotal:\s+(\d+) kB", f.read())
+        物理MB = int(m.group(1)) // 1024 if m else 32768
+    except Exception:
+        物理MB = 32768
+    return max(4096, int(物理MB * 0.55))
+
+
 def 提取用例编号(名称: str) -> str:
     """274-a 根治（2026-09-17 深度机）：编号提取保留 _v2 段——
     原 split("_")[0] 把 194_v2_x 与 194_x 都提为 "194"，宿主版与 v2 版用例
@@ -295,12 +314,13 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
                                   (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
             except (ValueError, OSError):
                 pass
-            if not 全树编译:
-                try:
-                    顶字节 = 地址空间顶MB默认 * 1024 * 1024
-                    resource.setrlimit(resource.RLIMIT_AS, (顶字节, 顶字节))
-                except (ValueError, OSError):
-                    pass
+            # 2026-09-27：全树编译不再无上限——给「物理×0.55」（超限=诚实红）
+            try:
+                顶MB = 全树编译内存上限MB() if 全树编译 else 地址空间顶MB默认
+                顶字节 = 顶MB * 1024 * 1024
+                resource.setrlimit(resource.RLIMIT_AS, (顶字节, 顶字节))
+            except (ValueError, OSError):
+                pass
         preexec_fn = _set_child_limits
     锁句柄 = None
     if 全树编译 and sys.platform != "win32":
