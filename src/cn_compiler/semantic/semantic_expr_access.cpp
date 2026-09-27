@@ -357,6 +357,16 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
         }
         return;
     }
+    if (objectType == "字符*") {
+        // 069 乙（829 轮·用户裁决）：字符*（借用字符串视图）下标读静默错值根除——
+        //   原落下方 指针分支（所指=字符·下标按 4 字节码点步进）与视图 UTF-8
+        //   字节序列语义错位（实测 [0] 对/[1..] 乱）；Rust 对照：&str 不提供
+        //   下标（无 Index<usize>）——按字节读须显式转换（字符串复制 转拥有）。
+        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                            "字符*（借用字符串视图）不支持下标访问——请先 字符串复制(...) 转为拥有字符串");
+        lastType_ = "整8";   // 语义上“意图为字节读”——按字节结果标注以减少连带诊断噪音
+        return;
+    }
     if (isPointerType(objectType)) {
         // 指针对象（p[i] 等价 *(p+i)）：结果类型为所指元素类型
         if (!isInteger(indexType)) {
