@@ -164,15 +164,15 @@ extern "C" void __cn_shr_i128(const std::uint64_t* a, std::uint64_t sh,
     sh &= 0x7f;
     std::uint64_t hi = a[1];
     std::uint64_t lo = a[0];
-    const std::uint64_t 符号 = (hi >> 63) ? ~std::uint64_t(0) : 0;
+    const std::uint64_t  sign = (hi >> 63) ? ~std::uint64_t(0) : 0;
     if (sh == 0) {
         /* 直通 */
     } else if (sh < 64) {
         lo = (lo >> sh) | (hi << (64 - sh));
-        hi = (hi >> sh) | (符号 << (64 - sh));
+        hi = (hi >> sh) | (sign << (64 - sh));
     } else {
         lo = hi >> (sh - 64);
-        hi = 符号;
+        hi = sign;
     }
     out[0] = lo;
     out[1] = hi;
