@@ -139,6 +139,53 @@ extern "C" void __cn_sub_i128(const std::uint64_t* a, const std::uint64_t* b,
     out[1] = hi;
 }
 
+// 左移：a << sh -> out（移位量掩码 & 0x7f = mod 128，与宿主内联 shld 分支同语义）
+extern "C" void __cn_shl_i128(const std::uint64_t* a, std::uint64_t sh,
+                              std::uint64_t* out) {
+    sh &= 0x7f;
+    std::uint64_t hi = a[1];
+    std::uint64_t lo = a[0];
+    if (sh == 0) {
+        /* 直通 */
+    } else if (sh < 64) {
+        hi = (hi << sh) | (lo >> (64 - sh));
+        lo = lo << sh;
+    } else {
+        hi = lo << (sh - 64);
+        lo = 0;
+    }
+    out[0] = lo;
+    out[1] = hi;
+}
+
+// 算术右移：a >> sh -> out（符号位填充；移位量掩码 & 0x7f）
+extern "C" void __cn_shr_i128(const std::uint64_t* a, std::uint64_t sh,
+                              std::uint64_t* out) {
+    sh &= 0x7f;
+    std::uint64_t hi = a[1];
+    std::uint64_t lo = a[0];
+    const std::uint64_t 符号 = (hi >> 63) ? ~std::uint64_t(0) : 0;
+    if (sh == 0) {
+        /* 直通 */
+    } else if (sh < 64) {
+        lo = (lo >> sh) | (hi << (64 - sh));
+        hi = (hi >> sh) | (符号 << (64 - sh));
+    } else {
+        lo = hi >> (sh - 64);
+        hi = 符号;
+    }
+    out[0] = lo;
+    out[1] = hi;
+}
+
+// 一元负：-a -> out（取反加一·two's complement）
+extern "C" void __cn_neg_i128(const std::uint64_t* a, std::uint64_t* out) {
+    const std::uint64_t lo = ~a[0] + 1;
+    const std::uint64_t hi = ~a[1] + (a[0] == 0 ? 1 : 0);
+    out[0] = lo;
+    out[1] = hi;
+}
+
 // 64×64 -> 128 位无符号乘法（跨平台实现）
 // MSVC：_umul128（<intrin.h> intrinsic）；GCC/Clang：__int128 内建
 // （GCC 7 无 _umul128，直接使用 __int128 生成 mul 指令）
