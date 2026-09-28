@@ -87,7 +87,14 @@ def 跑用例(v2p: pathlib.Path, 用例根: pathlib.Path, 用例: pathlib.Path, 
                     ignore=shutil.ignore_patterns("*.expected", "*.input", "*.args"))
     stdlib链 = 工作 / "stdlib"
     if not stdlib链.exists():
-        stdlib链.symlink_to(用例根.parent / "stdlib")
+        # 862：win 侧 symlink 需特权（WinError 1314 客户端没有所需的特权）——
+        #   junction 兜底（637-a bench 同款根治·run_e2e.py mklink /J 先例）
+        try:
+            stdlib链.symlink_to(用例根.parent / "stdlib")
+        except OSError:
+            subprocess.run(["cmd", "/c", "mklink", "/J", str(stdlib链),
+                            str((用例根.parent / "stdlib").resolve())],
+                           capture_output=True)
     入口 = 源码 / "主.cn"
     if not 入口.exists():
         cn们 = sorted(源码.glob("*.cn"))
