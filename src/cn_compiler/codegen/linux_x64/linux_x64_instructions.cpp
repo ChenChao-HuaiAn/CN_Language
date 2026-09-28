@@ -531,6 +531,42 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
         emitStackStore(writer, dstOff, "r10", "i64");
         return;
     }
+    // ---- 128 位目标转换（须先于整数扩展/窄截断等分支——857 根治：
+    //   「整数扩展（i8/i16/u8/u16 源）」分支原不检查 to 提前 return，
+    //   窄8/16→i128 被截胡只发 64 位低半、高半槽从未发射=未初始化栈垃圾
+    //   （探针实测 -3 物化成 -3×2^64·O0/O3 同病·072 x64l 面）。
+    //   128 目标两分支整体前置=特例先于通例，一劳永逸消除截胡类。）
+    // 同类型 i128 -> i128：双槽复制（须在 普通整数->i128 分支之前，
+    //   否则 i128 常量/寄存器被 loadOperandToX 当 64 位数值装载出错）
+    if ((from == "i128" && to == "i128") || (from == "u128" && to == "u128")) {
+        const int srcLoId = inst.operands[0].id + 1;
+        const int dstLoId = inst.result.id + 1;
+        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
+        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "i64", __LINE__);
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i64");
+        return;
+    }
+    // 普通整数 -> i128：扩展为 128 位（低64 = 源值；高64 = 符号位/0）
+    if (to == "i128" || to == "u128") {
+        const bool signedSrc = (from == "i8" || from == "i16" ||
+                                from == "i32" || from == "i64");
+        loadOperandToX(writer, inst.operands[0], "r10");
+        // 324-c（C24/T27·win 316-a C23 蓝本）：i32 源槽零扩展装载（mov r10d）
+        //   符号丢失——-1 变 +4294967295 + 高半 sar 63 得 0（m27_02~05 O0 错值
+        //   实锤·m27_02 O0=-2147483648=(-2^63)/4294967295 数学反验证吻合）；
+        //   i8/i16 经 emitStackLoad movsx 已 64 位符号扩展·i64/u32/u64 无需求。
+        if (from == "i32") writer.line("movsxd r10, r10d");
+        emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r10", "i64");  // 低64位
+        if (signedSrc) {
+            writer.line("mov r9, r10");
+            writer.line("sar r9, 63");
+        } else {
+            writer.line("mov r9, 0");
+        }
+        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");  // 高64位
+        return;
+    }
     // ---- 整数扩展（i8/i16/u8/u16 源）：装载即扩展，64 位存槽 ----
     if (from == "i8" || from == "i16" || from == "u8" || from == "u16") {
         loadOperandToX(writer, inst.operands[0], "r10");
@@ -578,37 +614,6 @@ void LinuxX64CodeGenerator::emitCast(LinuxX64AsmWriter& writer,
     if (from == "i64" && to == "i32") {
         loadOperandToX(writer, inst.operands[0], "r10");
         emitStackStore(writer, dstOff, "r10", to);
-        return;
-    }
-    // 同类型 i128 -> i128：双槽复制（须在 普通整数->i128 分支之前，
-    //   否则 i128 常量/寄存器被 loadOperandToX 当 64 位数值装载出错）
-    if ((from == "i128" && to == "i128") || (from == "u128" && to == "u128")) {
-        const int srcLoId = inst.operands[0].id + 1;
-        const int dstLoId = inst.result.id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "r10", "i64", __LINE__);
-        emitStackStore(writer, regSlotOffset(dstLoId), "r10", "i64");
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "r10", "i64", __LINE__);
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r10", "i64");
-        return;
-    }
-    // 普通整数 -> i128：扩展为 128 位（低64 = 源值；高64 = 符号位/0）
-    if (to == "i128" || to == "u128") {
-        const bool signedSrc = (from == "i8" || from == "i16" ||
-                                from == "i32" || from == "i64");
-        loadOperandToX(writer, inst.operands[0], "r10");
-        // 324-c（C24/T27·win 316-a C23 蓝本）：i32 源槽零扩展装载（mov r10d）
-        //   符号丢失——-1 变 +4294967295 + 高半 sar 63 得 0（m27_02~05 O0 错值
-        //   实锤·m27_02 O0=-2147483648=(-2^63)/4294967295 数学反验证吻合）；
-        //   i8/i16 经 emitStackLoad movsx 已 64 位符号扩展·i64/u32/u64 无需求。
-        if (from == "i32") writer.line("movsxd r10, r10d");
-        emitStackStore(writer, regSlotOffset(inst.result.id + 1), "r10", "i64");  // 低64位
-        if (signedSrc) {
-            writer.line("mov r9, r10");
-            writer.line("sar r9, 63");
-        } else {
-            writer.line("mov r9, 0");
-        }
-        emitStackStore(writer, regSlotOffset(inst.result.id), "r9", "i64");  // 高64位
         return;
     }
     // 默认：同宽度 mov（值语义传递）

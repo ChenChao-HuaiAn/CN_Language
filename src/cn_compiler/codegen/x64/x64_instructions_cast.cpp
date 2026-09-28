@@ -401,8 +401,14 @@ bool X64CodeGenerator::emitCastIntWidth(AsmWriter& writer, const ir::IRInstructi
     const std::string& dst, const std::string& src, const std::string& from, const std::string& to) {
     // ---- 整数扩展/截断 ----
     // 有符号扩展：movsx（8/16 -> 32/64）；无符号扩展：movzx
+    // 857（072 三后端同族收口）：to=i128/u128 时不得进本分支——下方 316-a
+    //   「窄整->i128/u128 宽化」分支才是完备处理（低半+高半双槽）；原分支
+    //   不看 to 提前 return，窄8/16→128 被截胡只写 32/64 位低半、高半槽
+    //   未发射=未初始化栈垃圾（x64l 探针实测 -3 物化成 -3×2^64·静默错值
+    //   违双目标②；win 运行级待家机复验·asm 文本已静态核验）
     const bool fromSigned = (from == "i8" || from == "i16" || from == "i32" || from == "i64");
-    if (from == "i8" || from == "i16" || from == "u8" || from == "u16") {
+    if ((from == "i8" || from == "i16" || from == "u8" || from == "u16") &&
+        to != "i128" && to != "u128") {
         // 小 -> 大：扩展（8/16位先扩展到32位，再经 movsxd 到64位；
         // MASM 不支持 movsx rax, [mem8/16] 一步到64位——A2022 操作数大小不匹配）
         const std::string ext = (fromSigned) ? "movsx" : "movzx";

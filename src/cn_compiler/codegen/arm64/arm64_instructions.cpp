@@ -632,6 +632,48 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         storeVirtualResult(writer, inst.result.id, res, "i64");
         return;
     }
+    // ---- 128 位目标转换（须先于整数扩展/窄截断等分支——857 根治（与 x64l
+    //   同构）：「整数扩展/截断（i8/i16/u8/u16 源）」分支原不检查 to 提前
+    //   return，窄8/16→i128 被截胡只发 64 位低半、高半槽从未发射=未初始化
+    //   栈垃圾（072 x64l 探针实测 -3 物化成 -3×2^64·O0/O3 同病；arm64 运行级
+    //   待单位机复验·代码级同构实锤）——原 850/324-c 注释「i8/i16 经
+    //   ldrsb/ldrsh 已免疫」只覆盖本分支装载面、未覆盖截胡，已被推翻。
+    //   128 目标两分支整体前置=特例先于通例。）
+    // 同类型 i128 -> i128：双槽复制（须在 普通整数->i128 分支之前，
+    //   否则 i128 常量/寄存器被 loadOperandToX 当 64 位数值装载，stoll 失败装载 0）
+    if ((from == "i128" && to == "i128") || (from == "u128" && to == "u128")) {
+        const int srcLoId = inst.operands[0].id + 1;
+        const int dstLoId = inst.result.id + 1;
+        emitStackLoad(writer, regSlotOffset(srcLoId), "x9", "i64");
+        storeVirtualResult(writer, dstLoId, "x9", "i64");
+        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x9", "i64");
+        storeVirtualResult(writer, inst.result.id, "x9", "i64");
+        return;
+    }
+    // 普通整数 -> i128：扩展为 128 位
+    if (to == "i128" || to == "u128") {
+        const bool signedSrc = (from == "i8" || from == "i16" ||
+                                from == "i32" || from == "i64");
+        loadOperandToX(writer, inst.operands[0], "x9");
+        // 072（M3 采样 p0928_04~06·x64l 324-c 同族·arm64 缺 ldrsw=后端不对称收口）：
+        //   i32 源槽装载（ldr w9）天然零扩展丢符号位——负值低半错（-100 装成
+        //   4294967196）+高半 asr 63 得 0（应 -1）+`n<0` 判定翻转=控制流污染
+        //   （违双目标②）；O3 折叠路径 mov imm64 巧合正确家族。补 sxtw 符号
+        //   扩展：u*/i64 源无需求；常量 emitMovImm 64 位装载后 sxtw 取低 32 恒等、
+        //   已分配 mov x9,x21 形态取低 32 亦恒等=零回归。
+        if (from == "i32") {
+            writer.line("sxtw x9, w9");
+        }
+        storeVirtualResult(writer, inst.result.id + 1, "x9", "i64");  // 低64位
+        if (signedSrc) {
+            // 符号扩展：算术右移 63 位
+            writer.line("asr x9, x9, #63");
+        } else {
+            emitMovImm(writer, "x9", 0);
+        }
+        storeVirtualResult(writer, inst.result.id, "x9", "i64");  // 高64位
+        return;
+    }
     // ---- 整数扩展/截断 ----
     if (from == "i8" || from == "i16" || from == "u8" || from == "u16") {
         const bool signedSrc = (from == "i8" || from == "i16");
@@ -722,42 +764,6 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         //   「mov x9, x20」中转）；未分配 -> 装载 x9 原路径逐字节不变
         const std::string src = operandSourceReg(writer, inst.operands[0], "x9");
         storeVirtualResult(writer, inst.result.id, src, to);
-        return;
-    }
-    // 同类型 i128 -> i128：双槽复制（须在 普通整数->i128 分支之前，
-    //   否则 i128 常量/寄存器被 loadOperandToX 当 64 位数值装载，stoll 失败装载 0）
-    if ((from == "i128" && to == "i128") || (from == "u128" && to == "u128")) {
-        const int srcLoId = inst.operands[0].id + 1;
-        const int dstLoId = inst.result.id + 1;
-        emitStackLoad(writer, regSlotOffset(srcLoId), "x9", "i64");
-        storeVirtualResult(writer, dstLoId, "x9", "i64");
-        emitStackLoad(writer, regSlotOffset(inst.operands[0].id), "x9", "i64");
-        storeVirtualResult(writer, inst.result.id, "x9", "i64");
-        return;
-    }
-    // 普通整数 -> i128：扩展为 128 位
-    if (to == "i128" || to == "u128") {
-        const bool signedSrc = (from == "i8" || from == "i16" ||
-                                from == "i32" || from == "i64");
-        loadOperandToX(writer, inst.operands[0], "x9");
-        // 072（M3 采样 p0928_04~06·x64l 324-c 同族·arm64 缺 ldrsw=后端不对称收口）：
-        //   i32 源槽装载（ldr w9）天然零扩展丢符号位——负值低半错（-100 装成
-        //   4294967196）+高半 asr 63 得 0（应 -1）+`n<0` 判定翻转=控制流污染
-        //   （违双目标②）；O3 折叠路径 mov imm64 巧合正确家族。补 sxtw 符号
-        //   扩展：i8/i16 经 emitStackLoad ldrsb/ldrsh 已 64 位符号扩展免疫、
-        //   u*/i64 源无需求；常量 emitMovImm 64 位装载后 sxtw 取低 32 恒等、
-        //   已分配 mov x9,x21 形态取低 32 亦恒等=零回归。
-        if (from == "i32") {
-            writer.line("sxtw x9, w9");
-        }
-        storeVirtualResult(writer, inst.result.id + 1, "x9", "i64");  // 低64位
-        if (signedSrc) {
-            // 符号扩展：算术右移 63 位
-            writer.line("asr x9, x9, #63");
-        } else {
-            emitMovImm(writer, "x9", 0);
-        }
-        storeVirtualResult(writer, inst.result.id, "x9", "i64");  // 高64位
         return;
     }
     // 默认：同宽度 mov（值语义传递）
