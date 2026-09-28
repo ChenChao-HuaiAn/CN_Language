@@ -42,14 +42,22 @@
 static std::atomic<long long> g_cn_alloc_live{0};   // 当前活动分配数
 static std::atomic<long long> g_cn_alloc_total{0};  // 累计分配次数
 
-// ---- 829 侦查：累计分配字节·按大小分档直方图（065 内存主体定位）----
+// ---- 829/863 侦查：累计分配字节直方图（065 内存主体 + 074 中块定位）----
 //   口径：累计「分配请求字节」（含 realloc 新尺寸）——allocator 不归还
 //   （746-a）→ 进程 RSS ≈ 累计；atexit 打印 stderr。零内置注册（不碰双端表）。
-static std::atomic<long long> g_binCount[8];
-static std::atomic<long long> g_binBytes[8];
+//   863（074 侦查）：16KB 以上按 1KB 粒度分桶（16..256KB）·>256KB 单桶；
+//   16KB 以下保留 5 档。纯 atomic 数组（禁 STL 静态容器——851 rc=1 教训）。
+static std::atomic<long long> g_binCount[258];
+static std::atomic<long long> g_binBytes[258];
 static int cnBinOf(std::size_t s) {
-    return s <= 64 ? 0 : s <= 256 ? 1 : s <= 1024 ? 2 : s <= 4096 ? 3
-         : s <= 16384 ? 4 : s <= 65536 ? 5 : s <= 262144 ? 6 : 7;
+    if (s <= 64) return 0;
+    if (s <= 256) return 1;
+    if (s <= 1024) return 2;
+    if (s <= 4096) return 3;
+    if (s <= 16384) return 4;
+    const std::size_t kb = (s + 1023) / 1024;
+    if (kb >= 16 && kb <= 256) return static_cast<int>(kb);
+    return 257;
 }
 static void cnBinAdd(std::size_t s) {
     const int b = cnBinOf(s);
@@ -57,12 +65,21 @@ static void cnBinAdd(std::size_t s) {
     g_binBytes[b] += static_cast<long long>(s);
 }
 static void cnBinReport() {
-    static const char* names[8] = {"<=64B","<=256B","<=1K","<=4K","<=16K","<=64K","<=256K",">256K"};
     std::fprintf(stderr, "[cnrt-alloc-hist] 档位 次数 累计字节\n");
-    for (int i = 0; i < 8; ++i) {
-        std::fprintf(stderr, "[cnrt-alloc-hist] %s %lld %lld\n", names[i],
+    static const char* 低档[5] = {"<=64B","<=256B","<=1K","<=4K","<=16K"};
+    for (int i = 0; i < 5; ++i) {
+        std::fprintf(stderr, "[cnrt-alloc-hist] %s %lld %lld\n", 低档[i],
                      (long long)g_binCount[i].load(), (long long)g_binBytes[i].load());
     }
+    for (int kb = 16; kb <= 256; ++kb) {
+        const long long c = g_binCount[kb].load();
+        if (c >= 300) {
+            std::fprintf(stderr, "[cnrt-alloc-hist] %dK %lld %lld\n", kb, c,
+                         (long long)g_binBytes[kb].load());
+        }
+    }
+    std::fprintf(stderr, "[cnrt-alloc-hist] >256K %lld %lld\n",
+                 (long long)g_binCount[257].load(), (long long)g_binBytes[257].load());
     std::fflush(stderr);
 }
 struct CnBinReportAtExit { CnBinReportAtExit() { std::atexit(cnBinReport); } };
@@ -71,7 +88,7 @@ static CnBinReportAtExit g_cnBinReportAtExit;
 // 829 侦查：累计分配字节查询（直方图总和·供 v2 树阶段差分定位——065 内存主体）
 extern "C" long long __cn_alloc_bytes() {
     long long t = 0;
-    for (int i = 0; i < 8; ++i) t += static_cast<long long>(g_binBytes[i].load());
+    for (int i = 0; i < 258; ++i) t += static_cast<long long>(g_binBytes[i].load());
     return t;
 }
 
