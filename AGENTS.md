@@ -320,6 +320,11 @@ Linux 主线模式（0-day robot 事后验收+patch 作者修复义务+revert �
 集成前在看板通告段标「集成中」可减少撞车。**禁止 force push 共享分支 `develop`**（铁律保留）。
 78/79 OOM 等平台固有败面与并行无关，按已知败面口径处理，不算打架。
 
+**integrate.py CLI 参数（866 轮登记）**：`--dry-run`（只走检查与门禁、不推送）；`--allow-known-red <名>`
+（点名披露既有已知红后放行集成——必须行内写明点名依据，禁止用于本轮新引入红）；`--try-build-done` /
+`--win-verified` 已随协议 v3 废除（传入仅打印提示、接受即忽略）。写集分类的触发面清单以
+`scripts/integrate.py` 内 `全量门禁触发模式` 常量为运行时权威（§8.3 列表与代码的任何出入以呈报裁决为准）。
+
 ### 8.3 异步验收制（跨平台正确性保障·v3 2026-09-21 用户裁决：废 try-build 前置回签）
 
 - **开发轮零等待**：集成不需要任何他机回签/批准——本机门禁绿（全量门禁跑在合并结果上）即准
@@ -407,8 +412,9 @@ Linux 主线模式（0-day robot 事后验收+patch 作者修复义务+revert �
 3. **标题必须行首独立成行**：`#` 标题前必须换行、独占一行；「正文。### 标题」式粘连是本事故的
    直接签名——出现即说明编辑锚点选错，必须回滚重做，不得提交。
 4. **写后即检（机械门禁）**：每次编辑共享文档后、提交前必须运行 `python3 scripts/check_handoff.py`
-   （校验面=交接.md／更新日志.md／plans/021／三机任务看板四文件结构与冲突标记；任一不过
-   禁止提交），与 check_progress_sync.py 同列 §6 提交前自检。**门禁覆盖面=出过事故的文件全集
+   （校验面=**五文件**：交接.md／更新日志.md／plans/021／plans/025／三机任务看板——结构与冲突标记、
+   重复节标题、≥30 字重复内容行（803 轮新立·343-a 同族）等多道检测；任一不过禁止提交），
+   与 check_progress_sync.py 同列 §6 提交前自检。**门禁覆盖面=出过事故的文件全集
    （项目记忆/教训.md 206）——新文件出现同类事故时必须同轮扩门禁，禁止「登记待办」。**
 5. **diff 规模警戒线**：共享文档分区单次编辑若「只增不删」（新增 >100 行而删除 <50 行）或净增
    >+80 行，即是「追加而非替换」的事故签名——必须停下核对，不得直接提交（健康的整节替换
@@ -476,7 +482,9 @@ Linux 主线模式（0-day robot 事后验收+patch 作者修复义务+revert �
 - **全量门禁串行锁**：`scripts/gate_lock.py`（目录锁=主树 `target/gate.lock`·跨 worktree 共享
   ·陈锁 4h 心跳接管）——**同机至多一个全量门禁在飞**（防 CPU/内存互抢：78/79 OOM 前科）。
   ci.ps1 已内置（acquire/finally-release·win 侧）；integrate.py linux 分支经 `gate_lock run --`
-  包装；手动长验证推荐 `python scripts/gate_lock.py run -- <命令>`。
+  包装；手动长验证推荐 `python scripts/gate_lock.py run -- <命令>`（595-a 口径：**run 形态等待默认
+  无限**（acquire 形态仍 7200s 超时）；**禁止用 run 包裹 ci.ps1／integrate.py**——二者已内置锁，
+  双层包装=自死锁，gate_lock 检测到会拒绝执行 rc=1 并提示裸跑）。
 - **构建提速**：`build.ps1 --parallel`（MSBuild /m）；**sccache 编译缓存**=Ninja 开发树专用
   （`target/build-ninja`·`cmd /c target\ninja_build.cmd`——VS 生成器 vcxproj ClCompile 原生任务
   **不支持** `CMAKE_CXX_COMPILER_LAUNCHER`，平台事实勿再试；Ninja+MSVC 必须 `/Z7` 替代 `/Zi`

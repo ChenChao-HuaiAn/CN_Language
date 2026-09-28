@@ -705,11 +705,13 @@ extern "C" void cn_install_veh() {
     AddVectoredExceptionHandler(1, cn_veh_filter);
 }
 namespace {
+// 718~735 自举侦查链设施：静态安装 UEF（崩溃时走 cn_crash_filter 输出诊断）。
+//   866 清理（0928 审计第 10 条·用户裁决机制级当场修）：撤销启动横幅
+//   「[crash] UEF installed」——侦查链已收尾，每程序启动必打的残留污染用户 stderr；
+//   安装与崩溃诊断路径保留（诊断契约见 plans/001 §10.2a）。
 struct cn_crash_auto_install {
     cn_crash_auto_install() {
         SetUnhandledExceptionFilter(cn_crash_filter);
-        DWORD written; char m[] = "[crash] UEF installed\n";
-        WriteFile(GetStdHandle(STD_ERROR_HANDLE), m, (DWORD)(sizeof(m) - 1), &written, nullptr);
     }
 };
 static const cn_crash_auto_install cn_crash_auto_install_instance;

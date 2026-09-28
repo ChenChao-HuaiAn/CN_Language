@@ -475,7 +475,7 @@ def 查重复节标题() -> list[str]:
     节内 ### 标题去重与粘连，**未覆盖 ## 节标题本身** = 假绿。
     """
     问题: list[str] = []
-    for 名 in ("HANDOFF.md", "更新日志.md", "plans/025-三机任务统筹与实施计划.md"):
+    for 名 in ("交接.md", "更新日志.md", "plans/025-三机任务统筹与实施计划.md"):  # 866：HANDOFF.md 已 425-a 改名交接.md（旧名 exists()=False 静默跳过=检测从未生效）
         路径 = 仓库根 / 名
         if not 路径.exists():
             continue
@@ -496,8 +496,8 @@ def 查重复内容行() -> list[str]:
     事故签名，直接拦截。
     """
     问题: list[str] = []
-    for 名 in ("HANDOFF.md", "更新日志.md", "plans/021-任务进度观察表.md",
-               "plans/025-三机任务统筹与实施计划.md", "三机任务看板.md"):
+    for 名 in ("交接.md", "更新日志.md", "plans/021-任务进度观察表.md",
+               "plans/025-三机任务统筹与实施计划.md", "三机任务看板.md"):  # 866：HANDOFF.md→交接.md（425-a 改名追平·同查重复节标题处）
         路径 = 仓库根 / 名
         if not 路径.exists():
             continue
@@ -515,7 +515,7 @@ def 查冲突标记() -> list[str]:
     判据=「<<<<<<< 」与「>>>>>>> 」在同一文件成对出现即拦截（单独的 ======= 可能是合法分隔线，不误报）。
     """
     问题: list[str] = []
-    for 名 in ("HANDOFF.md", "更新日志.md", "plans/021-任务进度观察表.md", "三机任务看板.md"):
+    for 名 in ("交接.md", "更新日志.md", "plans/021-任务进度观察表.md", "三机任务看板.md"):  # 866：HANDOFF.md→交接.md（425-a 改名追平·冲突标记检测同步生效）
         路径 = 仓库根 / 名
         if not 路径.exists():
             continue
