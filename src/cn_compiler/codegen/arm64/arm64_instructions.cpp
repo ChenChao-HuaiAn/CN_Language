@@ -740,6 +740,16 @@ void Arm64CodeGenerator::emitCast(Arm64AsmWriter& writer,
         const bool signedSrc = (from == "i8" || from == "i16" ||
                                 from == "i32" || from == "i64");
         loadOperandToX(writer, inst.operands[0], "x9");
+        // 072（M3 采样 p0928_04~06·x64l 324-c 同族·arm64 缺 ldrsw=后端不对称收口）：
+        //   i32 源槽装载（ldr w9）天然零扩展丢符号位——负值低半错（-100 装成
+        //   4294967196）+高半 asr 63 得 0（应 -1）+`n<0` 判定翻转=控制流污染
+        //   （违双目标②）；O3 折叠路径 mov imm64 巧合正确家族。补 sxtw 符号
+        //   扩展：i8/i16 经 emitStackLoad ldrsb/ldrsh 已 64 位符号扩展免疫、
+        //   u*/i64 源无需求；常量 emitMovImm 64 位装载后 sxtw 取低 32 恒等、
+        //   已分配 mov x9,x21 形态取低 32 亦恒等=零回归。
+        if (from == "i32") {
+            writer.line("sxtw x9, w9");
+        }
         storeVirtualResult(writer, inst.result.id + 1, "x9", "i64");  // 低64位
         if (signedSrc) {
             // 符号扩展：算术右移 63 位
