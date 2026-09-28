@@ -185,15 +185,24 @@ int SemanticAnalyzer::classFieldOffset(const std::string& className,
         c = c->baseName.empty() ? nullptr : findClass(c->baseName);
     }
     std::reverse(chain.begin(), chain.end());
-    // 精确偏移：虚表指针占位 + 接口分派区（P3-19）+ 沿继承链累加字段大小
+    // 精确偏移：虚表指针占位 + 接口分派区（P3-19）+ 沿继承链累加字段大小。
+    // 860-a（058 挂账①全局口径·双表归一）：本函数曾为独立第二实现——无对齐
+    //   放置且类字段按实宽累计，与 computeClassLayout（布局权威·NewObject
+    //   分配大小）在「窄字段后跟宽字段」形态偏移不一致（793「偏移双表二义」
+    //   同族）。此处逐位对齐 computeClassLayout：对齐放置 + 类字段句柄 8/8
+    //   （字段槽运行时装 NewObject 堆对象指针·探针 外层{内层;整32 y} 实锤）。
     int acc = info->hasVtable ? 8 : 0;
     if (info->ifaceRegionSize > 0) acc += info->ifaceRegionSize;
     for (const ClassInfo* ci : chain) {
         for (const auto& fname : ci->fieldOrder) {
             auto f = ci->fields.find(fname);
             if (f == ci->fields.end() || f->second.isStatic) continue;  // 静态不入实例
+            const bool handleField = isClassType(types::canonical(f->second.type));
+            const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type);
+            const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type);
+            acc = (acc + fieldAlign - 1) / fieldAlign * fieldAlign;
             if (fname == fieldName) return acc;
-            acc += typeSizeOf(f->second.type);
+            acc += fieldSize;
         }
     }
     return -1;
@@ -732,8 +741,15 @@ void SemanticAnalyzer::computeClassLayout(ClassInfo& info) {
         for (const auto& fname : ci->fieldOrder) {
             auto f = ci->fields.find(fname);
             if (f == ci->fields.end() || f->second.isStatic) continue;  // 静态成员不入实例
-            const int fieldAlign = typeAlignOf(f->second.type);
-            const int fieldSize = typeSizeOf(f->second.type);
+            // 058-ⅡA 全局口径（860 轮·与 computeLayout 同构）：类字段=句柄宽
+            //   8/8——字段槽运行时装 NewObject 堆对象指针（k 探针 IR 实锤类字段
+            //   访问=指针加载）。实宽布局下窄于 8B 的类字段（如 4B 盒子）被相邻
+            //   字段覆写句柄高 4 字节（探针 外层{内层 内;整32 y}：y@4 覆写 内@0
+            //   高半——IR/asm 双实锤 rc=139）；宽于 8B 的容器字段=16B 空洞浪费。
+            //   布局与运行时内容一致（058 挂账①全局口径·类布局侧）。
+            const bool handleField = isClassType(types::canonical(f->second.type));
+            const int fieldAlign = handleField ? 8 : typeAlignOf(f->second.type);
+            const int fieldSize = handleField ? 8 : typeSizeOf(f->second.type);
             if (fieldAlign > maxAlign) maxAlign = fieldAlign;
             offset = (offset + fieldAlign - 1) / fieldAlign * fieldAlign;
             offset += fieldSize;

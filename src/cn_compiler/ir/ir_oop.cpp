@@ -211,6 +211,12 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             }
         }
     }
+    // 860-a（058 挂账②·H7 字段版）：构造函数序言类字段级联构造（拷贝构造
+    //   除外——字段初始化=用户全权；详见 injectFieldCascadeConstruct）
+    if (mi.isConstructor && !mi.isCopyConstructor && !mi.isStatic &&
+        semantic_ != nullptr) {
+        injectFieldCascadeConstruct(member);
+    }
     // Feature 2 完整版（2026-08-25）：容器<T>（向量/链表/栈/队列）元素自动析构——
     //   入口块生成后、原方法体生成前注入元素析构（~类名/清空 全量循环、
     //   向量 删除/链表 删除头部/删除尾部 单元素，仅当实例化元素 T 为有析构类时）。
@@ -251,6 +257,76 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     genericTypeParams_ = savedTypeParams;  // 恢复泛型类型参数映射（emitClassMethod 开头设置）
     currentMethodIsCtor_ = savedIsCtor;    // 145-a：恢复构造体标志
     if (!varStack_.empty()) varStack_.pop_back();
+}
+
+// 860-a（058 挂账②·H7 字段版根治 2026-09-28）：构造函数序言类字段级联构造——
+//   构造函数体生成前，对本类「有默认构造的类字段」发射
+//     this → FieldAddr(字段偏移) → NewObject + 字段默认构造 Call → StorePtr 字段槽
+//   （对标 C++ 成员默认构造语义；与析构侧 injectFieldCascadeDestroy〔缺陷3·
+//   2026-09-02〕对称）。原语义=构造函数体未赋值的类字段槽为空/垃圾句柄，
+//   解引用 rc=1/段错误（探针 外层{内层 内} o.内.x 实锤 rc=139）。
+//   口径：①只注入本类声明字段（fieldOrder 含继承并入字段——父类字段由父类
+//   构造序言负责，本类重复注入=覆盖+泄漏）；②严格无参构造为「默认构造」
+//   （与 genVarDecl H7 链判定一致；无默认构造类字段维持空句柄现状语义）；
+//   ③拷贝构造不注入（调用方排除——拷贝构造字段初始化=用户全权，体手工
+//   赋值形态，级联产物会被体覆盖=泄漏）；④联合体多型激活不可判（164-a
+//   宁漏勿错）——类布局无联合体字段形态，天然不命中。
+void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {
+    if (semantic_ == nullptr || member == nullptr) return;
+    ir::IRFunction* fn = function_;
+    if (fn == nullptr || fn->blocks.empty()) return;
+    const ClassInfo* ci = semantic_->findClass(currentClass_);
+    if (ci == nullptr) return;
+    const std::string thisUnique = lookupVarName("自身");
+    if (thisUnique.empty()) return;
+    for (const auto& fname : ci->fieldOrder) {
+        const auto f = ci->fields.find(fname);
+        if (f == ci->fields.end() || f->second.isStatic) continue;
+        // 只级联本类声明字段（ownerClass 判据·对齐 findClassMember 回退式）
+        const std::string fOwner =
+            f->second.ownerClass.empty() ? currentClass_ : f->second.ownerClass;
+        if (fOwner != currentClass_) continue;
+        const std::string ftype = classFieldType(currentClass_, fname);
+        const std::string fcanon = types::canonical(ftype);
+        if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
+        const ClassInfo* fci = semantic_->findClass(fcanon);
+        if (fci == nullptr || fci->isAbstract) continue;
+        // 严格无参构造=默认构造（与 genVarDecl H7 链同判定口径）
+        const ClassMemberInfo* defCtor = nullptr;
+        for (const auto& mk : fci->methods) {
+            if (mk.second.isConstructor && mk.second.hasBody &&
+                mk.second.ownerClass == fcanon &&
+                mk.second.paramTypes.empty()) {
+                defCtor = &mk.second;
+                break;
+            }
+        }
+        if (defCtor == nullptr) continue;  // 无默认构造：字段=空句柄（现状语义）
+        const int offset = semantic_->classFieldOffset(currentClass_, fname);
+        if (offset < 0) continue;
+        ir::IRValue thisPtr = emitResult(
+            ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
+            "ptr", thisUnique, member->body->location);
+        ir::IRValue addr = emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
+                                      std::to_string(offset),
+                                      member->body->location);
+        // NewObject：extra = "类名|大小字节"（与 genVarDecl H7 链一致）
+        const std::string extra =
+            fcanon + "|" + std::to_string(fci->totalSize);
+        ir::IRValue obj = emitResult(
+            ir::Opcode::NewObject,
+            {ir::IRValue::constant(fcanon, "ptr")},
+            "ptr", extra, member->body->location);
+        // 字段默认构造调用（this=对象指针；ownerClass 限定同 ir_oop_call 路径）
+        std::vector<ir::IRValue> args;
+        args.push_back(obj);
+        emit(ir::Opcode::Call, args, ir::IRValue(),
+             methodSymbolKey(fcanon, defCtor->sigKey), "void",
+             member->body->location);
+        // 对象指针写入字段槽（StorePtr 操作数序={地址, 值}）
+        emit(ir::Opcode::StorePtr, {addr, obj}, ir::IRValue(), "", "ptr",
+             member->body->location);
+    }
 }
 
 // 缺陷3 根治（2026-09-02）：类字段级联析构注入——~类名() 体生成后、默认返回前，

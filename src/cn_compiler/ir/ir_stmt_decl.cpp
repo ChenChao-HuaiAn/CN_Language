@@ -814,6 +814,60 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                  {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
                  slotName, "i64", node->location);
         }
+        // 860-a（058 挂账②·结构体面）：结构体类字段级联构造——只对
+        //   「hasDtor ∧ 有拷贝构造 ∧ 有默认构造」闭合域字段注入
+        //   NewObject+默认构造+StorePtr（=ir_fields 资源字段收集域：该域的
+        //   结构体拷贝=postCopy 指针槽深拷、释放=preFree+DeleteObject——
+        //   构造/拷贝/释放三链闭合，活句柄全程无共享）。域外类字段（无析构/
+        //   无拷贝构造）维持上方零初始化的确定性空句柄（拷贝=memcpy 共享空
+        //   句柄无害；级联活句柄+浅拷共享=双主，142-a 两次泛化回退教训——
+        //   不越域）。构造字面量初始化（S{...} 字段穷举）不走本分支。
+        const std::string structCanon = types::canonical(srcType);
+        const StructDecl* sdecl = semantic_->findStruct(structCanon);
+        if (sdecl != nullptr && !unique.empty()) {
+            ir::IRValue base = emitResult(
+                ir::Opcode::AddrOf,
+                {ir::IRValue::var(unique, "i64")},
+                "ptr", unique, node->location);
+            for (const auto& f : sdecl->fields) {
+                const std::string fcanon = types::canonical(f.type);
+                if (!semantic_->isClassType(fcanon)) continue;
+                const ClassInfo* fci = semantic_->findClass(fcanon);
+                if (fci == nullptr || fci->isAbstract) continue;
+                bool hasDtor = false;
+                for (const auto& mk : fci->methods) {
+                    if (mk.second.isDestructor) { hasDtor = true; break; }
+                }
+                if (!hasDtor) continue;                       // 释放链闭合条件
+                if (semantic_->findCopyConstructor(fcanon) == nullptr) continue;
+                const ClassMemberInfo* defCtor = nullptr;     // 构造链闭合条件
+                for (const auto& mk : fci->methods) {
+                    if (mk.second.isConstructor && mk.second.hasBody &&
+                        mk.second.ownerClass == fcanon &&
+                        mk.second.paramTypes.empty()) {
+                        defCtor = &mk.second;
+                        break;
+                    }
+                }
+                if (defCtor == nullptr) continue;
+                ir::IRValue addr = emitResult(
+                    ir::Opcode::FieldAddr, {base}, "ptr",
+                    std::to_string(f.offset), node->location);
+                const std::string extra =
+                    fcanon + "|" + std::to_string(fci->totalSize);
+                ir::IRValue obj = emitResult(
+                    ir::Opcode::NewObject,
+                    {ir::IRValue::constant(fcanon, "ptr")},
+                    "ptr", extra, node->location);
+                std::vector<ir::IRValue> args;
+                args.push_back(obj);
+                emit(ir::Opcode::Call, args, ir::IRValue(),
+                     methodSymbolKey(fcanon, defCtor->sigKey), "void",
+                     node->location);
+                emit(ir::Opcode::StorePtr, {addr, obj}, ir::IRValue(), "",
+                     "ptr", node->location);
+            }
+        }
     }
     // 缺陷B根治（2026-09-03，单位机 ARM64 探针发现、win-x64 同现=IR 公共层）：
     //   数组栈变量无初始化器声明（整64[3] 数组）——元素槽为栈垃圾：数组[2] +=

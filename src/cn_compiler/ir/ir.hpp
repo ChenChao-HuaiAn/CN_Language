@@ -1041,6 +1041,10 @@ private:
     //   （DeleteObject 空安全；对标 C++ 成员析构语义——原 CN 无字段析构原语，
     //   容器字段只能泄漏，stdlib 被迫用裸指针+分配/释放 规避组合字段）。
     void injectFieldCascadeDestroy(const ClassMember* member);
+    // 860-a（058 挂账②·H7 字段版）：构造函数序言级联构造「有默认构造」本类
+    //   类字段（NewObject+默认构造+StorePtr；与析构侧对称，C++ 成员默认构造
+    //   同构——治构造体未赋值类字段空句柄解引）。
+    void injectFieldCascadeConstruct(const ClassMember* member);
     // ---- 阶段3 OOP 表达式/调用/字段钩子（ir_oop.cpp 实现，ir.cpp 调用点插入） ----
     // 构造调用（类名(实参) -> NewObject + 构造体调用）与成员方法调用
     //   （对象.方法：虚 -> VirtualCall；非虚 -> 直接 Call；类名.静态方法；父类.方法）
