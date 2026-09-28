@@ -284,6 +284,7 @@ void SemanticAnalyzer::registerBuiltins() {
         functions_[name] = info;
     };
     regMemLibFn("内存::活动分配数", "整64", {});
+    regMemLibFn("内存::总分配字节", "整64", {});   // 829 侦查：累计分配字节（直方图和）
     regMemLibFn("内存::总分配次数", "整64", {});
     regMemLibFn("内存::竞技场分配", "空类型*", {"整64"});
     regMemLibFn("内存::竞技场重置", "空类型", {});
