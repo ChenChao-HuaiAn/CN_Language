@@ -34,7 +34,7 @@ from pathlib import Path
 
 # 全量门禁触发面（触及 src/tests → 除快速门禁外另跑构建+单测+E2E；v3 起无 try-build 分类面——
 # v2 的 try_build_触发模式 随 581-a 废除，写集分类仅区分门禁深度）
-全量门禁触发模式 = ("src/", "tests/")
+全量门禁触发模式 = ("src/", "tests/", "CN语言编译器v2/", "stdlib/")   # 077（852 立·857 补）：v2 自举编译器源码/stdlib（行为面·Lang 侧）同样触发全量门禁
 
 
 def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
