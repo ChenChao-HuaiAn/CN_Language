@@ -197,12 +197,107 @@ void SemanticAnalyzer::registerErrorBuiltins() {
 
 // 结果/可选类型降级：扫描 AST 类型字符串，为用到的 结果<T,E>/可选<T>
 //   生成合成结构体（加入 program_->structs 并计算布局）
-// 扫描范围：函数返回类型、参数类型、变量声明类型、结构体字段类型、类字段类型。
+// 扫描范围（068 全量预降级·完备面）：函数返回/参数类型、函数体内显式类型局部
+//   变量声明（嵌套块递归）、结构体字段、类字段与方法签名、接口方法签名、
+//   泛型类模板成员、顶层常量/静态变量类型。
 // 设计：递归遍历收集类型字符串，识别模板类型后生成结构体声明并递归展开参数。
+// 068（全量预降级架构升级·合成体布局终态）：本函数即「入口一次性递归降级」
+//   的唯一入口——趟次前移至 registerGenericsAndComputeLayout 内（字段泛型归一
+//   后、第一趟b 统一布局前），后续全部趟次（联合体限定/类解析/静态注册/函数体
+//   检查）面对已降级+已布局的类型环境，消费点 ensureLoweredType 调用降级为
+//   幂等防御（正确性由本趟+067-001 typeSizeOf fail-fast 哨兵承载）。
+//   推断型局部声明（typeName 空）不入扫——类型在表达式求值时才确定，其合成体
+//   注册归属构造器求值路径（语义必需，非惰性时序）；泛型绑定形态归属
+//   instantiateGeneric（实例化语义的一部分）。Rust 参照=rustc collect 阶段
+//   在 wf-check 前建立完备类型环境。
+namespace {
+// 068：递归收集语句树内显式类型局部变量声明文本（嵌套块全覆盖）。
+//   仅收集 typeName 非空的声明；函数指针声明（funcPtr 非空）跳过；
+//   推断型（`变量 x = 某些(5)`）不在扫描面（见函数头注释）。
+void collectLocalVarTypeTexts(const Stmt* st, std::vector<std::string>& out) {
+    if (st == nullptr) return;
+    switch (st->getType()) {
+    case NodeType::VarDecl: {
+        const auto* v = static_cast<const VarDecl*>(st);
+        if (!v->typeName.empty() && !v->funcPtr.isFunctionPtr()) {
+            out.push_back(v->typeName);
+        }
+        break;
+    }
+    case NodeType::BlockStmt:
+        for (const auto& s2 : static_cast<const BlockStmt*>(st)->statements) {
+            collectLocalVarTypeTexts(s2.get(), out);
+        }
+        break;
+    case NodeType::IfStmt: {
+        const auto* i = static_cast<const IfStmt*>(st);
+        if (i->thenBranch) {
+            for (const auto& s2 : i->thenBranch->statements) {
+                collectLocalVarTypeTexts(s2.get(), out);
+            }
+        }
+        collectLocalVarTypeTexts(i->elseBranch.get(), out);
+        break;
+    }
+    case NodeType::WhileStmt: {
+        const auto* w = static_cast<const WhileStmt*>(st);
+        if (w->body) {
+            for (const auto& s2 : w->body->statements) {
+                collectLocalVarTypeTexts(s2.get(), out);
+            }
+        }
+        break;
+    }
+    case NodeType::ForStmt: {
+        const auto* f = static_cast<const ForStmt*>(st);
+        collectLocalVarTypeTexts(f->init.get(), out);
+        if (f->body) {
+            for (const auto& s2 : f->body->statements) {
+                collectLocalVarTypeTexts(s2.get(), out);
+            }
+        }
+        break;
+    }
+    case NodeType::RangeForStmt: {
+        const auto* r = static_cast<const RangeForStmt*>(st);
+        collectLocalVarTypeTexts(r->body.get(), out);
+        break;
+    }
+    case NodeType::SwitchStmt: {
+        const auto* sw = static_cast<const SwitchStmt*>(st);
+        for (const auto& c : sw->cases) {
+            for (const auto& s2 : c->statements) {
+                collectLocalVarTypeTexts(s2.get(), out);
+            }
+        }
+        if (sw->defaultCase) {
+            for (const auto& s2 : sw->defaultCase->statements) {
+                collectLocalVarTypeTexts(s2.get(), out);
+            }
+        }
+        break;
+    }
+    case NodeType::CaseLabel:
+        for (const auto& s2 : static_cast<const CaseLabel*>(st)->statements) {
+            collectLocalVarTypeTexts(s2.get(), out);
+        }
+        break;
+    case NodeType::DefaultLabel:
+        for (const auto& s2 : static_cast<const DefaultLabel*>(st)->statements) {
+            collectLocalVarTypeTexts(s2.get(), out);
+        }
+        break;
+    default:
+        break;
+    }
+}
+}  // namespace
+
 void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
     if (program_ == nullptr) program_ = node;
 
-    // 收集全部类型字符串（函数返回/参数、结构体字段、类字段）
+    // 收集全部类型字符串（函数返回/参数、函数体局部声明、结构体字段、类字段、
+    //   接口签名、泛型模板、顶层常量/静态）
     std::vector<std::string> typeStrings;
     for (auto& decl : node->declarations) {
         if (decl->getType() != NodeType::FunctionDecl) continue;
@@ -211,6 +306,9 @@ void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
         for (auto& p : fn->params) {
             if (!p->typeName.empty()) typeStrings.push_back(p->typeName);
         }
+        // 068 补扫：函数体内显式类型局部变量声明（此前靠 visitVarDecl 惰性
+        //   兜底——第二趟才注册，合成体布局晚于第一趟b 统一布局时点）
+        if (fn->body) collectLocalVarTypeTexts(fn->body.get(), typeStrings);
     }
     for (auto& s : node->structs) {
         for (auto& f : s->fields) {
@@ -252,83 +350,72 @@ void SemanticAnalyzer::lowerResultOptionalTypes(Program* node) {
             for (auto& p : m->params) {
                 if (!p->typeName.empty()) typeStrings.push_back(p->typeName);
             }
+            // 068 补扫：泛型模板方法体内显式类型局部声明（模板形态注册——
+            //   T 未绑定形态以模板名注册如 结果$T$整32，绑定形态由
+            //   instantiateGeneric 按实参重新注册，两者并存为既有语义）
+            if (m->body) collectLocalVarTypeTexts(m->body.get(), typeStrings);
         }
+    }
+    // 068 补扫：接口方法签名（成员结构与类同款·kind=Method）——此前漏扫，
+    //   实现类方法签名经类面扫描覆盖，但接口形态的 结果/可选 返回在此注册
+    //   才满足「入口一次性」完备面
+    for (auto& itf : node->interfaces) {
+        for (auto& m : itf->members) {
+            if ((m->kind == ClassMemberKind::Method ||
+                 m->kind == ClassMemberKind::Constructor ||
+                 m->kind == ClassMemberKind::Destructor) &&
+                !m->returnType.empty()) {
+                typeStrings.push_back(m->returnType);
+            }
+            for (auto& p : m->params) {
+                if (!p->typeName.empty()) typeStrings.push_back(p->typeName);
+            }
+        }
+    }
+    // 068 补扫：顶层常量/静态变量类型——此前漏扫，静态面靠 061-c 在
+    //   registerGlobalConstsAndStatics 内逐个散点补（惰性时序残面）
+    for (auto& g : node->globals) {
+        if (!g->typeName.empty()) typeStrings.push_back(g->typeName);
     }
 
     // 递归展开：模板参数本身可能是模板类型（结果<可选<整32>,整32>）
     std::vector<std::string> queue = typeStrings;
     std::unordered_set<std::string> processed;
     while (!queue.empty()) {
-        const std::string type = queue.back();
+        // 068 归一协同：弹出即 canonical+泛型归一——容器/类实参须实例化归一
+        //   （可选<向量<整32>> 的内层 向量<整32> -> 向量$整32），否则合成体名带
+        //   未归一文本（可选$向量<整32>）且其布局 typeSizeOf 按未知结构体防御
+        //   8 字节静默错尺寸（非 fail-fast 面·必须在此消除）。归一幂等（已归一
+        //   文本原样返回）；触发的泛型实例化与 visitVarDecl/instantiateGeneric
+        //   同一函数同一序列，仅时点提前到入口（「一次性降级全部类型实例」）。
+        //   模板 T 形态无泛型上下文原样保留（模板降级语义不变）。
+        const std::string type =
+            resolveGenericTypeName(types::canonical(queue.back()), SourceLocation());
         queue.pop_back();
         if (processed.count(type)) continue;
         processed.insert(type);
-        // 结果<T,E>
+        // 068 建体单一事实源=ensureLoweredType（067-001 递归收口版：参数降级
+        //   先于本体布局+loweredStructNames_ 幂等）。本循环原有的独立建体代码
+        //   （067 前遗留·与 ensureLoweredType 双实现·嵌套顺序靠趟末统一布局+
+        //   computeLayout 惰性递归间接保证）删除——双实现是时序缺陷温床（873
+        //   实验①实证：短路 ensureLoweredType 后老循环仍建体=防线旁路）。
+        ensureLoweredType(type);
+        // 递归展开实参（ensureLoweredType 内部已递归降级嵌套；此处入队为保证
+        //   扫描面完备——实参本身可能是预降级趟需独立登记的新顶层形态）
         if (isResultType(type)) {
             const std::vector<std::string> args = resultTypeArgs(type);
             if (args.size() == 2) {
-                const std::string t = types::canonical(args[0]);
-                const std::string e = types::canonical(args[1]);
-                const std::string sname = resultStructName(t, e);
-                if (loweredStructNames_.insert(sname).second) {
-                    // 内部联合体名
-                    const std::string uname = "结果联合$" + t + "$" + e;
-                    // 联合体：值/错误值（大小 = 较大者）
-                    StructDecl* unionDecl = new StructDecl();
-                    unionDecl->name = uname;
-                    unionDecl->isUnion = true;
-                    StructField fVal;
-                    fVal.name = "值";
-                    fVal.type = t;
-                    unionDecl->fields.push_back(fVal);
-                    StructField fErr;
-                    fErr.name = "错误值";
-                    fErr.type = e;
-                    unionDecl->fields.push_back(fErr);
-                    node->structs.emplace_back(unionDecl);
-                    // 外层结构体：是否正常（布尔）+ 联合体
-                    StructDecl* outerDecl = new StructDecl();
-                    outerDecl->name = sname;
-                    StructField fOk;
-                    fOk.name = "是否正常";
-                    fOk.type = "布尔";
-                    outerDecl->fields.push_back(fOk);
-                    StructField fUn;
-                    fUn.name = "错误值联合";
-                    fUn.type = uname;
-                    outerDecl->fields.push_back(fUn);
-                    node->structs.emplace_back(outerDecl);
-                    // 递归展开参数类型（嵌套模板）
-                    queue.push_back(t);
-                    queue.push_back(e);
-                }
+                queue.push_back(types::canonical(args[0]));
+                queue.push_back(types::canonical(args[1]));
             }
-        }
-        // 可选<T>
-        if (isOptionalType(type)) {
+        } else if (isOptionalType(type)) {
             const std::string t = types::canonical(optionalTypeArg(type));
-            if (!t.empty()) {
-                const std::string sname = optionalStructName(t);
-                if (loweredStructNames_.insert(sname).second) {
-                    // 合成结构体：可选$T { 布尔 是否某些; T 值 }
-                    StructDecl* decl = new StructDecl();
-                    decl->name = sname;
-                    StructField fSome;
-                    fSome.name = "是否某些";
-                    fSome.type = "布尔";
-                    decl->fields.push_back(fSome);
-                    StructField fVal;
-                    fVal.name = "值";
-                    fVal.type = t;
-                    decl->fields.push_back(fVal);
-                    node->structs.emplace_back(decl);
-                    // 递归展开参数类型
-                    queue.push_back(t);
-                }
-            }
+            if (!t.empty()) queue.push_back(t);
         }
     }
     // 计算合成结构体布局（递归：先联合体后外层；structs 顺序已保证）
+    //   068：ensureLoweredType 内部已即时布局新建体（067-001），此处统一重算
+    //   为「布局预计算完毕再进后续阶段」的显式承载（computeLayout 幂等）。
     for (auto& s : node->structs) {
         computeLayout(s.get());
     }

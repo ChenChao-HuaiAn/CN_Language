@@ -41,6 +41,10 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
     //   降级——lowerResultOptionalTypes（第一趟f）只处理函数签名/返回，局部变量
     //   类型（结果<点,整32>）未降级 -> IR registerVarSlots 的 isStructType 判 false
     //   -> 1 槽分配（应 2 槽），CopyStruct 16 字节溢出覆盖相邻变量槽（p.x 被写 &p 实测）。
+    // 068（全量预降级·2026-09-29 873 轮）：局部显式声明已入第一趟f 扫描面（函数体
+    //   AST 递归收集），本调用降级为幂等防御（正确性由预降级趟+067-001 fail-fast
+    //   哨兵承载）；推断型声明（typeName 空·类型出自表达式求值）仍以本路径/构造器
+    //   求值路径注册——语义必需非惰性时序。
     // 2026-08-30 根治：结果/可选 内部实参递归归一——结果<映射<整64, 整64>, 整32>
     //   的内部实参 映射<整64, 整64> 须归一为 映射$整64$整64（resolveGenericTypeName
     //   对 结果 模板头原样返回，内部嵌套泛型不归一 -> .值 推导出模板形式，链式
