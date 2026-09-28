@@ -32,9 +32,13 @@ from pathlib import Path
 分支名模式 = re.compile(r"^任务/(家机|单位机|深度机)-\d+-\S+$")
 最大重试 = 3
 
-# 全量门禁触发面（触及 src/tests → 除快速门禁外另跑构建+单测+E2E；v3 起无 try-build 分类面——
+# 全量门禁触发面（触及下列任一路径 → 除快速门禁外另跑构建+单测+E2E；v3 起无 try-build 分类面——
 # v2 的 try_build_触发模式 随 581-a 废除，写集分类仅区分门禁深度）
-全量门禁触发模式 = ("src/", "tests/", "CN语言编译器v2/", "stdlib/")   # 077（852 立·857 补）：v2 自举编译器源码/stdlib（行为面·Lang 侧）同样触发全量门禁
+# 077（852 立·857 补）：v2 自举编译器源码/stdlib（行为面·Lang 侧）触发全量门禁；
+# 876（用户裁决按甲办·0928 审计第 4 条收口）：构建编排三件补回——581-a 收窄时误失触发，
+#   构建/门禁编排改动不跑全量=验证者免检自相矛盾，补回消除免检面（AGENTS §8.3 同步）
+全量门禁触发模式 = ("src/", "tests/", "CN语言编译器v2/", "stdlib/",
+                   "CMakeLists.txt", "build.ps1", "scripts/ci.ps1")
 
 
 def 运行(命令: list[str], **kwargs) -> subprocess.CompletedProcess:
