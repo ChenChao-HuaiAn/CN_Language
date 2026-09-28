@@ -192,7 +192,20 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
                                       ir::IRValue valAddr, const std::string& valueType) {
     // 实参值（构造器单参数）
     if (!node->arguments.empty()) {
-        ir::IRValue val = genExpr(node->arguments[0].get());
+        ir::IRValue val;
+        // 067-002 治本（合成体消费面同族·d3 最小复现）：结构体字面量实参须
+        //   物化（复用 81-a materializeStructInitArg 单点设施）——原 genExpr
+        //   直通字面量节点返回空值 0 → 下方 CopyStruct 源=NULL 运行崩溃
+        //   （宿主 asm 铁证 `mov rsi,0` + `rep movsb`，d3/d2/546 实测
+        //   0xC0000005）。普通调用（46-a D3）与方法调用（81-a）路径早已物化，
+        //   内置构造器路径遗漏。Rust 对照：值上下文临时 place 物化。
+        if (node->arguments[0]->getType() == NodeType::StructInitExpr) {
+            val = materializeStructInitArg(
+                static_cast<StructInitExpr*>(node->arguments[0].get()),
+                node->location);
+        } else {
+            val = genExpr(node->arguments[0].get());
+        }
         // 宿主缺陷根治（2026-08-25）：结构体值（正常(s)）须 CopyStruct 拷入联合体
         //   内联存储——原 StorePtr 只存 8 字节地址，结果.值 读到地址而非结构体数据，
         //   嵌套 查.值.名ID 把地址当字段值（打印地址 实测）、直接拷贝读地址字节。

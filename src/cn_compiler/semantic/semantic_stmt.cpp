@@ -414,8 +414,16 @@ void SemanticAnalyzer::visitExprStmt(ExprStmt* node) {
 }
 void SemanticAnalyzer::visitIfStmt(IfStmt* node) {
     // 结果/可选 检查跟踪（条件为 结果.正常 / 可选.有值 时专用处理）
-    if (node->condition->getType() == NodeType::MemberExpr) {
-        MemberExpr* cond = static_cast<MemberExpr*>(node->condition.get());
+    // 067-002 同族（p0927_05 24 行）：取反形态 `如果 (!x.正常)` 先解包
+    //   `!`——原判定只认裸 MemberExpr → 取反走普通路径 → 真分支访问
+    //   .错误 误报「须在 否则 分支内访问」。
+    Expr* condTop = node->condition.get();
+    if (condTop != nullptr && condTop->getType() == NodeType::UnaryExpr) {
+        auto* u0 = static_cast<UnaryExpr*>(condTop);
+        if (u0->op == Operator::Bang) { condTop = u0->operand.get(); }
+    }
+    if (condTop != nullptr && condTop->getType() == NodeType::MemberExpr) {
+        MemberExpr* cond = static_cast<MemberExpr*>(condTop);
         const std::string condObjType = checkExpr(cond->object.get());
         const bool isResultCheck =
             isResultType(condObjType) && cond->memberName == "正常";

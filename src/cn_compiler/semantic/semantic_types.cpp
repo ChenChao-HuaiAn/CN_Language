@@ -316,7 +316,17 @@ int SemanticAnalyzer::typeSizeOf(const std::string& typeRaw) const {
             if (isOptionalType(type) && lowered->totalSize < 9) return lowered->totalSize + 8;
             return lowered->totalSize;
         }
-        // 未降级（防御）：结果 = 布尔+联合体（8+8=16）；可选 = 布尔+值
+        // 未降级=编译器内部缺陷（067-001 fail-fast）：递归收口后（ensureLoweredType
+        //   先于布局·lowerResultOptionalTypes 第一趟扫描）此分支不可达——到达即
+        //   布局时机回归。Rust ICE 同构：不再静默猜尺寸（原防御公式
+        //   typeSizeOf(T)+1 正是 p0927_01 静默错值的直接源头——把未降级内层
+        //   猜成 5B 真实 16B → CopyStruct 截断/越界写）。报内部错误后仍按
+        //   原防御值返回（只影响后续级联诊断质量·错误已报编译必失败不产物）。
+        diagnostics_.report(
+            DiagnosticLevel::Error, SourceLocation(),
+            "编译器内部错误：合成体 '" + type +
+                "' 被查询尺寸时尚未降级注册（067-001 布局时机无关化后不应到达）"
+                "——请报告此错误");
         if (isResultType(type)) return 16;
         return typeSizeOf(optionalTypeArg(type)) + 1;
     }

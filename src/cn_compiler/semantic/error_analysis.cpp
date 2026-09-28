@@ -37,8 +37,18 @@ bool SemanticAnalyzer::isResultType(const std::string& type) {
     std::string core, suffix;
     types::splitTypeSuffix(type, core, suffix);
     if (!suffix.empty()) return false;
-    return core.rfind("结果<", 0) == 0 && core.find('>') != std::string::npos &&
-           core.find(',') != std::string::npos;
+    if (core.rfind("结果<", 0) != 0) return false;
+    if (core.find('>') == std::string::npos) return false;
+    // 067-002 治本（嵌套合成体同族）：顶层逗号判据须平衡扫描（<> 深度）——
+    //   原 find(',') 见任意逗号即真，「结果<映射<整64,整64>>」（仅内层逗号）
+    //   误判为结果类型。合法结果恒含顶层逗号，本判据等价收紧。
+    int depth = 0;
+    for (char ch : core) {
+        if (ch == '<') { ++depth; }
+        else if (ch == '>') { --depth; if (depth < 0) break; }
+        else if (ch == ',' && depth == 1) { return true; }
+    }
+    return false;
 }
 
 // 是否 可选<T> 模板类型（形如 "可选<整32>"；裸形态判据同 isResultType）
@@ -46,8 +56,19 @@ bool SemanticAnalyzer::isOptionalType(const std::string& type) {
     std::string core, suffix;
     types::splitTypeSuffix(type, core, suffix);
     if (!suffix.empty()) return false;
-    return core.rfind("可选<", 0) == 0 && core.find('>') != std::string::npos &&
-           core.find(',') == std::string::npos;
+    if (core.rfind("可选<", 0) != 0) return false;
+    if (core.find('>') == std::string::npos) return false;
+    // 067-002 治本（嵌套合成体同族·m1 最小复现）：原 find(',')==npos 见任意
+    //   逗号即假——内层实参「结果<整32,整32>」的逗号被误判为「可选有两参」，
+    //   「可选<结果<整32,整32>>」不被识别（成员访问报「不是结构体/联合体/
+    //   类类型」）。可选恒单参：顶层（深度1）不得有逗号。
+    int depth = 0;
+    for (char ch : core) {
+        if (ch == '<') { ++depth; }
+        else if (ch == '>') { --depth; if (depth < 0) break; }
+        else if (ch == ',' && depth == 1) { return false; }
+    }
+    return true;
 }
 
 // 解析 结果<T,E> 参数（"结果<整32,整32>" -> ["整32","整32"]；未匹配返回空向量）
@@ -362,17 +383,16 @@ void SemanticAnalyzer::ensureLoweredType(const std::string& typeRaw) {
                 //   强制重算新建结构体，确保 联合体(内) -> 外层 的正确依赖顺序。
                 StructDecl* unionPtr = program_->structs[program_->structs.size() - 2].get();
                 StructDecl* outerPtr = program_->structs.back().get();
-                unionPtr->layoutComputed = false;
-                outerPtr->layoutComputed = false;
-                computeLayout(unionPtr);
-                computeLayout(outerPtr);
-                unionPtr->layoutComputed = false;
-                outerPtr->layoutComputed = false;
-                computeLayout(unionPtr);
-                computeLayout(outerPtr);
-                // 递归展开参数
+                // 067-001 治本（合成体布局时机无关化）：先递归降级参数类型，
+                //   再布局本体——联合体/外层布局时参数合成体必然已注册，
+                //   typeSizeOf 走降级真值。Task 6.1 的「重置重算两遍」防御
+                //   针对的正是「本体先于参数降级」的时序缺陷；时序已治本，
+                //   防御对象消失，幂等重算随之删除（保留会误导后来者以为
+                //   时序仍有问题）。Rust 参照=rustc collect 先于 wf-check。
                 ensureLoweredType(t);
                 ensureLoweredType(e);
+                computeLayout(unionPtr);
+                computeLayout(outerPtr);
             }
         }
     } else if (isOptionalType(type)) {
@@ -391,8 +411,19 @@ void SemanticAnalyzer::ensureLoweredType(const std::string& typeRaw) {
                 fVal.type = t;
                 decl->fields.push_back(fVal);
                 program_->structs.emplace_back(decl);
-                computeLayout(program_->structs.back().get());
+                // 067-001 治本（合成体布局时机无关化）：先递归降级参数类型，
+                //   再布局本体——外层 computeLayout 时内层合成体必然已注册，
+                //   typeSizeOf 走降级真值（防御公式不再参与正确性）。
+                //   原顺序（先布局后降级）使嵌套可选的外层把未降级内层按
+                //   typeSizeOf(T)+1 防御公式猜尺寸（p0927_01 实测：5B vs 真实
+                //   16B → CopyStruct 截断/越界写·插桩铁证）。Rust 参照=rustc
+                //   collect 阶段先于 wf-check（类型环境完备后才做依赖它的检查）。
+                //   注意：递归内部会 emplace 内层 decl——外层指针须在递归前
+                //   固定（unique_ptr 所指对象地址不随 vector 扩容搬家·back()
+                //   在递归后语义已变为内层·826 轮插桩实证）。
+                StructDecl* outerToLayout = program_->structs.back().get();
                 ensureLoweredType(t);
+                computeLayout(outerToLayout);
             }
         }
     }
@@ -411,10 +442,45 @@ void SemanticAnalyzer::checkResultDiscard(const std::string& exprType,
 }
 
 // 变量名提取（成员访问对象为标识符时返回变量名；否则空串）
+// 下标键文本（守卫跟踪键的精确性优先）：标识符名 / 整数字面量原文；
+//   其余形态（表达式/调用/嵌套下标）返回空串 = 该左值不参与守卫跟踪。
+//   保守方向：宁可少跟踪（多报"未检查"）也不误跟踪（放过"未检查"）——安全面优先。
+static std::string indexKeyText(Expr* index) {
+    if (index == nullptr) return "";
+    if (index->getType() == NodeType::IdentifierExpr) {
+        return static_cast<IdentifierExpr*>(index)->name;
+    }
+    if (index->getType() == NodeType::IntegerLiteral) {
+        return static_cast<IntegerLiteral*>(index)->raw;
+    }
+    return "";
+}
+
 std::string SemanticAnalyzer::objectVarName(Expr* object) {
     if (object == nullptr) return "";
     if (object->getType() == NodeType::IdentifierExpr) {
         return static_cast<IdentifierExpr*>(object)->name;
+    }
+    // 067-002 治本（守卫检查归属·p0927_03 误报）：下标/成员链左值形态纳入
+    //   守卫跟踪键——原仅标识符（其余返回空串）→ markChecked("") 空转 +
+    //   isChecked("") 恒假 → `如果 (组[0].正常) { 打印行(组[0].值); }` 合法代码
+    //   被误拒（假阳性「访问 结果.值 前必须检查 结果.正常（在 如果 真分支内访问）」）。
+    //   键文本须精确（下标=标识符名/整数字面量原文·其余形态空串不跟踪）；
+    //   同源消费点：visitMemberExpr 守卫查询 + 赋值语句守卫失效（`组[0]=x` 清
+    //   "组[0]" 标记——扩展后语义一致且更安全）。
+    if (object->getType() == NodeType::IndexExpr) {
+        auto* idx = static_cast<IndexExpr*>(object);
+        const std::string base = objectVarName(idx->object.get());
+        if (base.empty()) return "";
+        const std::string sub = indexKeyText(idx->index.get());
+        if (sub.empty()) return "";
+        return base + "[" + sub + "]";
+    }
+    if (object->getType() == NodeType::MemberExpr) {
+        auto* mem = static_cast<MemberExpr*>(object);
+        const std::string base = objectVarName(mem->object.get());
+        if (base.empty()) return "";
+        return base + "." + mem->memberName;
     }
     return "";
 }
@@ -498,37 +564,69 @@ void SemanticAnalyzer::checkResultMember(const std::string& objectType,
 //   - 如果 (o.有值) { 真分支：o 可访问 .值 } 否则 { 否则分支：无特殊 }
 // 规则2：检查 .正常 后未处理错误分支（无 else）-> 警告
 void SemanticAnalyzer::trackIfCheck(IfStmt* node) {
-    if (node->condition->getType() != NodeType::MemberExpr) return;
-    MemberExpr* cond = static_cast<MemberExpr*>(node->condition.get());
+    // 067-002 同族（p0927_05 24 行·045/060 取反守卫族）：`如果 (!x.正常)` 形态
+    //   ——取反交换两支语义（真分支=错误分支）。原实现仅认裸 MemberExpr → 取反
+    //   形态漏跟踪 → 真分支访问 .错误 误报「须在 否则 分支内访问」。
+    Expr* condExpr = node->condition.get();
+    bool negated = false;
+    if (condExpr != nullptr && condExpr->getType() == NodeType::UnaryExpr) {
+        auto* u = static_cast<UnaryExpr*>(condExpr);
+        if (u->op == Operator::Bang) {
+            negated = true;
+            condExpr = u->operand.get();
+        }
+    }
+    if (condExpr == nullptr || condExpr->getType() != NodeType::MemberExpr) return;
+    MemberExpr* cond = static_cast<MemberExpr*>(condExpr);
     const std::string varName = objectVarName(cond->object.get());
     const std::string memberName = cond->memberName;
     // 条件对象类型（结果<T,E> 或 可选<T>；已由 visitIfStmt 前置判断）
     const std::string condType = checkExpr(cond->object.get());
 
     if (isResultType(condType) && memberName == "正常") {
-        // 标记：真分支可访问 .值；否则分支可访问 .错误
-        markChecked(varName, "正常");
-        checkBlock(node->thenBranch.get());
-        // 规则2：未处理错误分支（无 else）-> 警告
-        if (node->elseBranch == nullptr) {
-            diagnostics_.report(DiagnosticLevel::Warning, node->location,
-                                "检查 结果.正常 后未处理错误分支（缺少 否则 { 处理 结果.错误 }）");
-        } else {
-            // 否则分支：标记可访问 .错误
-            markChecked(varName, "错误");
-            checkStmt(node->elseBranch.get());
+        // 标记语义：真分支可访问 .值；否则分支可访问 .错误；取反时两支互换。
+        if (!negated) {
+            markChecked(varName, "正常");
+            checkBlock(node->thenBranch.get());
+            if (node->elseBranch == nullptr) {
+                diagnostics_.report(DiagnosticLevel::Warning, node->location,
+                                    "检查 结果.正常 后未处理错误分支（缺少 否则 { 处理 结果.错误 }）");
+            } else {
+                markChecked(varName, "错误");
+                checkStmt(node->elseBranch.get());
+                unmarkChecked(varName);
+            }
             unmarkChecked(varName);
+        } else {
+            // 取反：真分支=错误分支（可访问 .错误）；否则分支=值分支（可访问 .值）
+            markChecked(varName, "错误");
+            checkBlock(node->thenBranch.get());
+            unmarkChecked(varName);
+            if (node->elseBranch != nullptr) {
+                markChecked(varName, "正常");
+                checkStmt(node->elseBranch.get());
+                unmarkChecked(varName);
+            }
         }
-        unmarkChecked(varName);
         return;
     }
     if (isOptionalType(condType) && memberName == "有值") {
-        markChecked(varName, "有值");
-        checkBlock(node->thenBranch.get());
-        if (node->elseBranch != nullptr) {
-            checkStmt(node->elseBranch.get());
+        if (!negated) {
+            markChecked(varName, "有值");
+            checkBlock(node->thenBranch.get());
+            if (node->elseBranch != nullptr) {
+                checkStmt(node->elseBranch.get());
+            }
+            unmarkChecked(varName);
+        } else {
+            // 取反：真分支=无值分支（无成员可访问）；否则分支=有值分支
+            checkBlock(node->thenBranch.get());
+            if (node->elseBranch != nullptr) {
+                markChecked(varName, "有值");
+                checkStmt(node->elseBranch.get());
+                unmarkChecked(varName);
+            }
         }
-        unmarkChecked(varName);
         return;
     }
     // 普通条件：按常规检查

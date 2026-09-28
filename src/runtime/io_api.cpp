@@ -667,10 +667,11 @@ static LONG WINAPI cn_veh_filter(EXCEPTION_POINTERS* info) {
         if (mod) { base = (uintptr_t)mod; }
         // 735：实参寄存器并入（追踪入参 NULL 产出方向——rcx=this/rdx=值形参…）
         int n = std::snprintf(buf, sizeof(buf),
-                              "[veh] code=%08X RIP=%p RSP=%p fault=%p base=%p RVA=%llx RAX=%p RCX=%p RDX=%p R8=%p R9=%p\n",
+                              "[veh] code=%08X RIP=%p RSP=%p RBP=%p fault=%p base=%p RVA=%llx RAX=%p RCX=%p RDX=%p R8=%p R9=%p\n",
                               (unsigned)info->ExceptionRecord->ExceptionCode,
                               (void*)info->ExceptionRecord->ExceptionAddress,
-                              (void*)info->ContextRecord->Rsp, fault, (void*)base,
+                              (void*)info->ContextRecord->Rsp,
+                              (void*)info->ContextRecord->Rbp, fault, (void*)base,
                               (unsigned long long)(info->ContextRecord->Rip - base),
                               (void*)info->ContextRecord->Rax, (void*)info->ContextRecord->Rcx,
                               (void*)info->ContextRecord->Rdx, (void*)info->ContextRecord->R8,

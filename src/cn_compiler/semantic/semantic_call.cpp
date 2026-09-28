@@ -18,6 +18,53 @@
 
 namespace cn_compiler {
 
+// 067-002（p0927_05 实证）：$ 合成名 → 尖括号模板形态——ctorTargetStack_ 消费点
+
+//   （isResultType/resultTypeArgs/optionalTypeArg）只认尖括号形态；容器/类方法
+
+//   形参类型为 $ 形态（结果$盒子$整32），不归一则实参目标类型推导失效。
+
+//   切分能力受限：结果 的 T 段若含 $（结果$向量$整32$整32）保守不转换（原行为）。
+
+static std::string syntheticNameToTemplate(const std::string& name) {
+
+    static const std::string kResult = "结果$";
+
+    static const std::string kOpt = "可选$";
+
+    if (name.rfind(kResult, 0) == 0) {
+
+        const std::string rest = name.substr(kResult.size());
+
+        const std::size_t pos = rest.find('$');
+
+        if (pos == std::string::npos) return name;
+
+        const std::string t = rest.substr(0, pos);
+
+        const std::string e = rest.substr(pos + 1);
+
+        if (t.find('$') != std::string::npos || e.find('$') != std::string::npos) {
+
+            return name;  // 歧义（T/E 含 $）——保守不转换
+
+        }
+
+        return "结果<" + t + ", " + e + ">";
+
+    }
+
+    if (name.rfind(kOpt, 0) == 0) {
+
+        return "可选<" + name.substr(kOpt.size()) + ">";
+
+    }
+
+    return name;
+
+}
+
+
 
 
 void SemanticAnalyzer::wrapRefArgs(CallExpr* node,
@@ -850,12 +897,34 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
         if (method != nullptr && !method->isStatic) {
             // 实例方法调用：校验参数个数与类型
             std::vector<std::string> argTypes;
-            for (auto& arg : node->arguments) {
-                argTypes.push_back(checkExpr(arg.get()));
+            for (std::size_t ai = 0; ai < node->arguments.size(); ++ai) {
+
+                // 067-002（p0927_05 15 行实证）：实参检查目标类型=形参类型压
+
+                //   ctorTargetStack_——内置构造器实参（错误(42)/正常(x)）的缺失 T/E
+
+                //   从**形参类型**推导；原实现让外层表达式目标（`结果<空类型,整32> 追2
+
+                //   = 表.追加(错误(42))`）滞留栈顶 → 实参推成 结果<空类型,整32> ≠
+
+                //   元素类型（结果$盒子$整32）→ 误拒。形参 $ 形态经 syntheticNameToTemplate 归一。
+
+                const bool hasParam = ai < method->paramTypes.size();
+
+                if (hasParam) {
+
+                    ctorTargetStack_.push_back(syntheticNameToTemplate(method->paramTypes[ai]));
+
+                }
+
+                argTypes.push_back(checkExpr(node->arguments[ai].get()));
+
+                if (hasParam) ctorTargetStack_.pop_back();
+
                 // P3-23 补完（D2）：绑定方法值不可作裸 fnptr 实参
-                if (argIsBoundMethodValue(arg.get())) {
+                if (argIsBoundMethodValue(node->arguments[ai].get())) {
                     diagnostics_.report(
-                        DiagnosticLevel::Error, arg->location,
+                        DiagnosticLevel::Error, node->arguments[ai]->location,
                         "实例方法作值不能直接作为函数指针实参传递（绑定 this 须先赋值给变量：变量 cb = 对象.方法）");
                 }
             }
