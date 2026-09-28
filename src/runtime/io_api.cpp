@@ -42,6 +42,39 @@
 static std::atomic<long long> g_cn_alloc_live{0};   // 当前活动分配数
 static std::atomic<long long> g_cn_alloc_total{0};  // 累计分配次数
 
+// ---- 829 侦查：累计分配字节·按大小分档直方图（065 内存主体定位）----
+//   口径：累计「分配请求字节」（含 realloc 新尺寸）——allocator 不归还
+//   （746-a）→ 进程 RSS ≈ 累计；atexit 打印 stderr。零内置注册（不碰双端表）。
+static std::atomic<long long> g_binCount[8];
+static std::atomic<long long> g_binBytes[8];
+static int cnBinOf(std::size_t s) {
+    return s <= 64 ? 0 : s <= 256 ? 1 : s <= 1024 ? 2 : s <= 4096 ? 3
+         : s <= 16384 ? 4 : s <= 65536 ? 5 : s <= 262144 ? 6 : 7;
+}
+static void cnBinAdd(std::size_t s) {
+    const int b = cnBinOf(s);
+    ++g_binCount[b];
+    g_binBytes[b] += static_cast<long long>(s);
+}
+static void cnBinReport() {
+    static const char* names[8] = {"<=64B","<=256B","<=1K","<=4K","<=16K","<=64K","<=256K",">256K"};
+    std::fprintf(stderr, "[cnrt-alloc-hist] 档位 次数 累计字节\n");
+    for (int i = 0; i < 8; ++i) {
+        std::fprintf(stderr, "[cnrt-alloc-hist] %s %lld %lld\n", names[i],
+                     (long long)g_binCount[i].load(), (long long)g_binBytes[i].load());
+    }
+    std::fflush(stderr);
+}
+struct CnBinReportAtExit { CnBinReportAtExit() { std::atexit(cnBinReport); } };
+static CnBinReportAtExit g_cnBinReportAtExit;
+
+// 829 侦查：累计分配字节查询（直方图总和·供 v2 树阶段差分定位——065 内存主体）
+extern "C" long long __cn_alloc_bytes() {
+    long long t = 0;
+    for (int i = 0; i < 8; ++i) t += static_cast<long long>(g_binBytes[i].load());
+    return t;
+}
+
 // ---- tracked 分配注册表（供 内存::释放全部() 批量释放）----
 // 2026-08-24 结构性加固（78_chain_build 段错误根治）：
 //   原实现用 std::malloc 手写链表（TrackedNode），reset/reset 之外的释放组合下
@@ -73,6 +106,7 @@ extern "C" void* cn_alloc(std::size_t size) {
     if (p != nullptr) {
         ++g_cn_alloc_total;
         ++g_cn_alloc_live;
+        cnBinAdd(size);   // 829 侦查直方图
     }
     return p;
 }
@@ -102,6 +136,7 @@ extern "C" void* cn_realloc(void* ptr, std::size_t size) {
         if (p != nullptr) {
             ++g_cn_alloc_total;
             ++g_cn_alloc_live;
+            cnBinAdd(size);   // 829 侦查直方图
         }
         return p;
     }
@@ -109,6 +144,7 @@ extern "C" void* cn_realloc(void* ptr, std::size_t size) {
         --g_cn_alloc_live;
         return std::realloc(ptr, 0);
     }
+    cnBinAdd(size);   // 829 侦查直方图（扩容：累计新尺寸）
     return std::realloc(ptr, size);
 }
 
@@ -122,6 +158,7 @@ extern "C" void* cn_alloc_tracked(std::size_t size) {
     if (p != nullptr) {
         ++g_cn_alloc_total;
         ++g_cn_alloc_live;
+        cnBinAdd(size);   // 829 侦查直方图
         trackedRegister(p, size);  // 注册到链表（含 size，供 realloc 精确拷贝）
     }
     return p;

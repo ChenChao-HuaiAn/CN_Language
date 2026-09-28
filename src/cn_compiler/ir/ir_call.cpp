@@ -319,6 +319,7 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         //   内存::竞技场分配 -> __cn_arena_alloc、内存::竞技场重置 -> __cn_arena_reset、
         //   内存::竞技场活动字节 -> __cn_arena_bytes、内存::释放全部 -> __cn_alloc_reset
         else if (calleeName == "内存::活动分配数" || calleeName == "内存.活动分配数") calleeName = "__cn_alloc_live";
+        else if (calleeName == "内存::总分配字节" || calleeName == "内存.总分配字节") calleeName = "__cn_alloc_bytes";
         else if (calleeName == "内存::总分配次数" || calleeName == "内存.总分配次数") calleeName = "__cn_alloc_total";
         else if (calleeName == "内存::竞技场分配" || calleeName == "内存.竞技场分配") calleeName = "__cn_arena_alloc";
         else if (calleeName == "内存::竞技场重置" || calleeName == "内存.竞技场重置") calleeName = "__cn_arena_reset";
@@ -470,7 +471,7 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         } else if (calleeName == "__cn_argv") {
             resultType = "ptr";       // 参数 -> 字符串（CRT 持有，越界 nullptr）
         } else if (calleeName == "__cn_alloc_live" || calleeName == "__cn_alloc_total" ||
-                   calleeName == "__cn_arena_bytes") {
+                   calleeName == "__cn_arena_bytes" || calleeName == "__cn_alloc_bytes") {
             resultType = "i64";       // 内存库（自举前置 C-1/C-3）：活动分配数/总分配次数/竞技场字节 -> 整64
         } else if (calleeName == "__cn_arena_alloc") {
             resultType = "ptr";       // 竞技场分配 -> 空类型*（失败 nullptr）
