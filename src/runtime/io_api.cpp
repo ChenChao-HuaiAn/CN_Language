@@ -66,9 +66,9 @@ static void cnBinAdd(std::size_t s) {
 }
 static void cnBinReport() {
     std::fprintf(stderr, "[cnrt-alloc-hist] 档位 次数 累计字节\n");
-    static const char* 低档[5] = {"<=64B","<=256B","<=1K","<=4K","<=16K"};
+    static const char* lowBinNames[5] = {"<=64B","<=256B","<=1K","<=4K","<=16K"};
     for (int i = 0; i < 5; ++i) {
-        std::fprintf(stderr, "[cnrt-alloc-hist] %s %lld %lld\n", 低档[i],
+        std::fprintf(stderr, "[cnrt-alloc-hist] %s %lld %lld\n", lowBinNames[i],
                      (long long)g_binCount[i].load(), (long long)g_binBytes[i].load());
     }
     for (int kb = 16; kb <= 256; ++kb) {
