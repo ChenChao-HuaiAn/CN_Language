@@ -7,6 +7,11 @@
 //               字符串查找→__cn_str_find
 #include "runtime/runtime.hpp"
 
+// 074 波3：宿主契约面分配（malloc·保持「调用方可用 std::free 释放」的 C 契约——
+//   __cn_format/__cn_str_from_bool/__cn_str_from_uint 三函数的结果内存被 C++ 单测
+//   以 std::free 释放，池块不可 std::free；其余字符串族走池，见 io_api.cpp 注释）。
+extern "C" void* cn_alloc_tracked_host(std::size_t size);
+
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -251,7 +256,7 @@ extern "C" char* __cn_str_from_uint(unsigned long long value) {
     char buffer[32];
     std::snprintf(buffer, sizeof(buffer), "%llu", value);
     const std::size_t len = std::strlen(buffer);
-    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked_host(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, buffer, len + 1);
     return result;
@@ -313,7 +318,7 @@ extern "C" char* __cn_str_from_char(int value) {
 extern "C" char* __cn_str_from_bool(int value) {
     const char* text = (value != 0) ? "\xE7\x9C\x9F" : "\xE5\x81\x87";  // "真"/"假"
     const std::size_t len = std::strlen(text);
-    char* result = static_cast<char*>(cn_alloc_tracked(len + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked_host(len + 1));
     if (result == nullptr) return nullptr;
     std::memcpy(result, text, len + 1);
     return result;
@@ -337,7 +342,7 @@ extern "C" char* __cn_format(const char* fmt, ...) {
         va_end(args);
         return nullptr;
     }
-    char* result = static_cast<char*>(cn_alloc_tracked(static_cast<std::size_t>(len) + 1));
+    char* result = static_cast<char*>(cn_alloc_tracked_host(static_cast<std::size_t>(len) + 1));
     if (result == nullptr) {
         va_end(args);
         return nullptr;
