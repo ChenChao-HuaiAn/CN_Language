@@ -154,30 +154,30 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
         const bool retIsResult = SemanticAnalyzer::isResultType(retCanon);
         const bool retIsOptional = SemanticAnalyzer::isOptionalType(retCanon);
         if (retIsResult || retIsOptional) {
-            const bool 名匹配 = (retIsOptional && (name == "某些" || name == "无")) ||
+            const bool nameMatched = (retIsOptional && (name == "某些" || name == "无")) ||
                                 (retIsResult && (name == "正常" || name == "错误"));
-            bool 放弃覆盖 = !名匹配;
-            if (!放弃覆盖 && !node->arguments.empty() && semantic_ != nullptr) {
-                std::string 存储类型;
+            bool abandonOverride = !nameMatched;
+            if (!abandonOverride && !node->arguments.empty() && semantic_ != nullptr) {
+                std::string storeType;
                 if (retIsResult) {
-                    const std::vector<std::string> 层参数 =
+                    const std::vector<std::string> layerArgs =
                         SemanticAnalyzer::resultTypeArgs(retCanon);
-                    if (层参数.size() == 2)
-                        存储类型 = (name == "错误") ? 层参数[1] : 层参数[0];
+                    if (layerArgs.size() == 2)
+                        storeType = (name == "错误") ? layerArgs[1] : layerArgs[0];
                 } else {
-                    存储类型 = SemanticAnalyzer::optionalTypeArg(retCanon);
+                    storeType = SemanticAnalyzer::optionalTypeArg(retCanon);
                 }
-                if (!存储类型.empty() &&
-                    semantic_->isStructType(types::canonical(存储类型))) {
-                    const std::string 实参类型 =
+                if (!storeType.empty() &&
+                    semantic_->isStructType(types::canonical(storeType))) {
+                    const std::string argType =
                         types::canonical(exprSrcType(node->arguments[0].get()));
-                    if (实参类型.empty() ||
-                        !semantic_->isStructType(实参类型)) {
-                        放弃覆盖 = true;
+                    if (argType.empty() ||
+                        !semantic_->isStructType(argType)) {
+                        abandonOverride = true;
                     }
                 }
             }
-            if (!放弃覆盖) node->resolvedType = function_->returnTypeSrc;
+            if (!abandonOverride) node->resolvedType = function_->returnTypeSrc;
         }
     }
     if (node->resolvedType.empty()) {
