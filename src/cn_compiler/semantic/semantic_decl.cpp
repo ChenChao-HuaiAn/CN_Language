@@ -668,6 +668,19 @@ void SemanticAnalyzer::visitInterfaceDecl(InterfaceDecl* node) {
 void SemanticAnalyzer::visitGenericDecl(GenericDecl* node) {
     (void)node;
 }
+
+// 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：字符串值形参消耗标记——
+//   体内赋值 / 转移() / 字符串释放() 命中即置 ParamDecl::ownedConsumed
+//   （IR 层据此 prologue 深拷·090 丙案「默认=值副本」兑现；非参数名不命中）。
+void SemanticAnalyzer::markStringParamConsumed(const std::string& name) {
+    for (auto& e : curStringParamDecls_) {
+        if (e.first == name) {
+            e.second->ownedConsumed = true;
+            return;
+        }
+    }
+}
+
 void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     // 函数符号必须已注册（原型声明无函数体）。Task 2.10：按签名 key 查询
     // plans/018 呈报二 A′：注册键 = 函数链接键公式键（registerFunction 同源），
@@ -726,6 +739,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     Stmt* savedFnBody874 = currentFnBody_;
     currentFnBody_ = node->body.get();
     pushScope();  // 参数作用域
+    curStringParamDecls_.clear();  // 102 甲案：字符串值形参收集（消耗标记用）
     for (auto& param : node->params) {
         // 函数指针参数：类型为 funcPtr 规范化字符串；普通参数用 typeName
         std::string paramType = param->funcPtr.isFunctionPtr()
@@ -733,6 +747,13 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
                                     : param->typeName;
         if (!declareVar(param->name, paramType, param->location)) {
             // 重复声明参数
+        }
+        // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：收集字符串**值**形参供
+        //   消耗标记（引用参数 字符串& 槽存地址·不适用；函数指针参数同）。
+        if (!param->funcPtr.isFunctionPtr() &&
+            types::canonical(paramType) == "字符串" &&
+            !types::isReference(paramType)) {
+            curStringParamDecls_.emplace_back(param->name, param.get());
         }
     }
     // 检查函数体
@@ -754,6 +775,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     currentFnUnsafe_ = false;  // plans/019 阶段4：函数级复位
     currentRefParams_.clear();
     currentFnParamNames_.clear();  // plans/019 阶段4' A2：参数名集复位
+    curStringParamDecls_.clear();  // 102 甲案：字符串值形参集复位（标记已完成落 AST）
     currentConstRefParams_.clear();  // plans/019 阶段3：只读借用状态复位
     refLocalBases_.clear();     // plans/019 阶段2：逃逸分析状态为函数级
     ptrLocalPointees_.clear();

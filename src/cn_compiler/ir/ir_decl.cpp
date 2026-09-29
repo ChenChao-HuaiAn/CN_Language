@@ -460,13 +460,35 @@ void IRGenerator::visitFunctionDecl(FunctionDecl* node) {
     blockCounter_ = 0;
     // 入口基本块（ASCII标签 bbN：ml64 不识别中文标识符，阶段一统一 ASCII）
     ir::IRBlock* entry = newBlock("bb0");
+    // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：**消耗形参 prologue 深拷**
+    //   ——字符串值形参被语义层标记 ownedConsumed（体内赋值/转移()/字符串释放）
+    //   时，入口把借用句柄经 __cn_str_copy 落堆为独立拥有副本（090 丙案
+    //   「默认=值副本」兑现：被调方重赋值/出口释放只作用于自身副本，不再释放
+    //   调用方缓冲区——885 实证 132 次重复释放面归零）。
+    //   第四句拷贝消除：非消耗形参直传零拷贝（字符串无原地写·只读借用别名
+    //   不可观察——语义层 checkIdentifierAssignTarget/checkTransferCall 判据）。
+    //   注册 ownedStringOrder_＝出口 RAII 释放自身副本（重赋值释放旧值同理正确）。
+    for (std::size_t pi = 0; pi < node->params.size() && pi < func.paramUniques.size();
+         ++pi) {
+        const auto& param = node->params[pi];
+        if (!param->ownedConsumed) continue;
+        const std::string& unique = func.paramUniques[pi];
+        ir::IRValue cur = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(unique, "ptr")}, "ptr",
+                                     unique, node->location);
+        ir::IRValue cp = emitResult(ir::Opcode::Call, {cur}, "ptr",
+                                    "__cn_str_copy", node->location);
+        emit(ir::Opcode::Store, {cp}, ir::IRValue(), unique, "ptr",
+             node->location);
+        ownedStringOrder_.push_back(unique);
+    }
     // P3-8 补全（2026-08-30）+ 宿主根治（2026-09-01）：顶层静态构造初始化——
     //   类/容器静态统一「指针槽模型」：.data 符号存 8 字节对象指针（与局部类
     //   变量槽同构），主 入口注入 NewObject + 无参构造 + StorePtr 指针入槽。
     //   原实现按「有无初始化表达式」分裂两种模型：有初始化 = NewObject 后
     //   StorePtr 指针入槽；无初始化 = 构造函数打在 .data 符号地址（对象内联
     //   本体）。读取路径（LoadPtr）只对指针模型正确——无初始化静态被读出
-    //   首 8 字节字段（如 数据 指针）当对象指针，复制/方法调用全错（实测
+    //   首 8 字节字段（如 数据/容器指针）当对象指针，复制/方法调用全错（实测
     //   运行时错误3 空指针）。统一后标识符读、方法 this、拷贝构造 byRef 传参
     //   （槽地址解引用即对象指针）全部与局部类变量一致。
     if (node->name == "主" && module_ != nullptr) {

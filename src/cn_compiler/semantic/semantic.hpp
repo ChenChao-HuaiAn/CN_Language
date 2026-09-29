@@ -1085,6 +1085,12 @@ private:
     //   判定用（参数=借用，返回 字符串 函数不能 返回 参数名；checkFunctionBody
     //   收集/复位）。与 currentRefParams_（仅引用参数）互补。
     std::unordered_set<std::string> currentFnParamNames_;
+    // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：当前函数的字符串值形参
+    //   （名 -> ParamDecl*）——体内赋值/转移()/字符串释放() 命中即置
+    //   ownedConsumed（checkFunctionBody 收集/复位；markStringParamConsumed 标记）。
+    //   IR 层据此对消耗形参 prologue 深拷（090 丙案「默认=值副本」兑现）。
+    std::vector<std::pair<std::string, class ParamDecl*>> curStringParamDecls_;
+    void markStringParamConsumed(const std::string& name);
     // plans/019 阶段4：当前函数是否 不安全 函数（checkFunctionBody 设定/复位）
     bool currentFnUnsafe_ = false;
     // plans/019 阶段3b（2026-09-10）：转移声明位登记（VarDecl 节点 -> 源变量名）

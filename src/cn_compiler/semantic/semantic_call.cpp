@@ -294,6 +294,11 @@ bool SemanticAnalyzer::checkTransferCall(CallExpr* node) {
             return true;
         }
         markMovedVar(ident->name, node->location.getLine());
+        // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：转移(字符串形参)＝消耗
+        //   （move 发射会清零形参槽＝清掉调用方缓冲区句柄——IR 层须先深拷）。
+        if (types::canonical(varType) == "字符串") {
+            markStringParamConsumed(ident->name);
+        }
         node->resolvedType = varType;  // IR 层展开识别（ir_call 特判）
         lastType_ = varType;
         return true;

@@ -59,6 +59,8 @@ static int cnBinOf(std::size_t s) {
     if (kb >= 16 && kb <= 256) return static_cast<int>(kb);
     return 257;
 }
+static void cnPoolReportLines();   // 074/102 观测点（定义于小对象池段后）
+
 static void cnBinAdd(std::size_t s) {
     const int b = cnBinOf(s);
     ++g_binCount[b];
@@ -80,6 +82,7 @@ static void cnBinReport() {
     }
     std::fprintf(stderr, "[cnrt-alloc-hist] >256K %lld %lld\n",
                  (long long)g_binCount[257].load(), (long long)g_binBytes[257].load());
+    cnPoolReportLines();   // 074/102 观测点：池规模与重复释放拦截计数（定义在小对象池段后）
     std::fflush(stderr);
 }
 struct CnBinReportAtExit { CnBinReportAtExit() { std::atexit(cnBinReport); } };
@@ -139,60 +142,6 @@ struct PoolState {
 };
 
 PoolState g_pool;
-void* g_cnFreeSite = nullptr;   // 885 侦查：__cn_str_free 的 CN 调用方（真正的释放语句位）
-int g_freePath = 0;             // 885 侦查：释放路径标签（1=str_free 2=vector_free_strings…）
-extern "C" void __cn_set_free_site(void* ra) { g_cnFreeSite = ra; }
-extern "C" void __cn_set_free_path(int p) { g_freePath = p; }
-static const int kFreeRaCap = 1 << 16;
-static void* g_freeRaKey[kFreeRaCap];
-static void* g_freeRaVal[kFreeRaCap];
-static int g_freePathFirst[kFreeRaCap];
-static char g_freeHead[kFreeRaCap][32];   // 885 侦查：首次释放时的字符串内容片段
-static void cnFreeRaRecord(void* ptr, void* ra) {
-    const std::size_t h = (reinterpret_cast<std::size_t>(ptr) >> 4) & (kFreeRaCap - 1);
-    for (int i = 0; i < 4; ++i) {
-        const std::size_t idx = (h + i) & (kFreeRaCap - 1);
-        if (g_freeRaKey[idx] == ptr || g_freeRaKey[idx] == nullptr) {
-            g_freeRaKey[idx] = ptr;
-            g_freeRaVal[idx] = ra;
-            g_freePathFirst[idx] = g_freePath;
-            std::memcpy(g_freeHead[idx], ptr, 31);
-            g_freeHead[idx][31] = 0;
-            return;
-        }
-    }
-}
-static int g_freePathLookupRet = 0;
-static const char* g_freeHeadLookupRet = nullptr;
-// 885 侦查：31 字节内容切片的 UTF-8 安全打印长——多字节字符在切片边界截半会使
-//   stderr 成为非法 UTF-8（严格解码消费侧崩溃实证：411/455 的 v2p 诊断流），
-//   诊断输出保持全文本合法（与仓内 wt.py errors=replace 消费侧容错配套）
-static int cnDiagUtf8ClipLen(const char* s) {
-    int i = 0;
-    while (i < 31 && s[i] != 0) {
-        const unsigned char c = static_cast<unsigned char>(s[i]);
-        const int need = (c & 0x80) == 0 ? 1
-                       : (c & 0xE0) == 0xC0 ? 2
-                       : (c & 0xF0) == 0xE0 ? 3 : 4;
-        if (i + need > 31) break;   // 序列被切片边界截断→止于上一完整字符
-        i += need;
-    }
-    return i;
-}
-static void* cnFreeRaLookup(void* ptr) {
-    const std::size_t h = (reinterpret_cast<std::size_t>(ptr) >> 4) & (kFreeRaCap - 1);
-    for (int i = 0; i < 4; ++i) {
-        const std::size_t idx = (h + i) & (kFreeRaCap - 1);
-        if (g_freeRaKey[idx] == ptr) {
-            g_freePathLookupRet = g_freePathFirst[idx];
-            g_freeHeadLookupRet = g_freeHead[idx];
-            return g_freeRaVal[idx];
-        }
-        if (g_freeRaKey[idx] == nullptr) return nullptr;
-    }
-    return nullptr;
-}
-
 // 档位选择：返回档位下标；>4KB 返回 -1（走 malloc）
 int poolClassOf(std::size_t size) {
     for (int i = 0; i < kPoolClassCount; ++i) {
@@ -344,43 +293,10 @@ bool poolFree(void* ptr, int cls) {
     if (bi < 0) return false;
     const PoolBlock& b = g_pool.dir[bi];
     if (!poolBitGet(b, idx)) {          // 已空闲（重复释放）→ 忽略，不入链
-        ++g_pool.rejectedFree;
-        if (g_pool.rejectedFree <= 3) {
-            // 885 侦查：前 3 次重复释放现场披露 + CN 调用栈扫描（VEH 同款法）
-            // 返回地址槽位取址全平台对等（intern_api CN_INTERN_RA 同款分流纪律）：
-            //   MSVC=_AddressOfReturnAddress；GCC/Clang=帧基址+一个指针宽（[rbp+8] 同位）
-#if defined(_MSC_VER)
-            void** sp = reinterpret_cast<void**>(_AddressOfReturnAddress());
-#else
-            void** sp = reinterpret_cast<void**>(
-                reinterpret_cast<char*>(__builtin_frame_address(0)) + sizeof(void*));
-#endif
-            int hit = 0;
-            std::fprintf(stderr, "[cnrt-pool-stack] n=%lld ptr=%p\n", g_pool.rejectedFree, ptr);
-            for (int k = 0; k < 300 && hit < 16; ++k) {
-                const std::uintptr_t v = reinterpret_cast<std::uintptr_t>(sp[k]);
-                if (v > 0x00007FF000000000ull) {   // 高地址=模块镜像候选（运行时按模块基址换算）
-                    std::fprintf(stderr, "[cnrt-pool-stack] n=%lld #%d ra=0x%llX\n",
-                                 g_pool.rejectedFree, k, (unsigned long long)v);
-                    ++hit;
-                }
-            }
-            std::fflush(stderr);
-        }
-        if (g_pool.rejectedFree <= 12) {   // 885 侦查：前 12 次现场披露（定位潜在双释放源）
-            std::fprintf(stderr, "[cnrt-pool-dup] 重复释放 ptr=%p cls=%d n=%lld 路径=%d 语句位=%p 首次路径=%d 首次语句位=%p" "\n",
-                         ptr, cls, g_pool.rejectedFree, g_freePath, g_cnFreeSite, g_freePathLookupRet,
-                         cnFreeRaLookup(ptr));
-            if (g_freeHeadLookupRet != nullptr) {
-                std::fprintf(stderr, "[cnrt-pool-dup]   首次释放内容=[%.*s]" "\n",
-                             cnDiagUtf8ClipLen(g_freeHeadLookupRet), g_freeHeadLookupRet);
-            }
-            std::fflush(stderr);
-        }
+        ++g_pool.rejectedFree;         // 102 验收观测点：重复释放计数（应恒为 0）
         return false;
     }
     poolBitClear(b, idx);
-    cnFreeRaRecord(ptr, g_cnFreeSite);
     *reinterpret_cast<void**>(ptr) = g_pool.freeHead[cls];
     g_pool.freeHead[cls] = ptr;
     --g_pool.live;
@@ -410,6 +326,15 @@ void poolReset() {
 }
 
 } // namespace
+
+// 074/102 观测点：池规模与重复释放拦截计数（102 验收判据＝拦截重复释放 应恒为 0）
+static void cnPoolReportLines() {
+    std::size_t poolBytes = 0;
+    for (std::size_t i = 0; i < g_pool.dirCount; ++i) poolBytes += g_pool.dir[i].bytes;
+    std::fprintf(stderr, "[cnrt-pool] 块 %llu 字节 %llu 活动对象 %lld 拦截重复释放 %lld\n",
+                 (unsigned long long)g_pool.dirCount, (unsigned long long)poolBytes,
+                 g_pool.live, g_pool.rejectedFree);
+}
 
 // ---- tracked 分配注册表（供 内存::释放全部() 批量释放）----
 // 2026-08-24 结构性加固（78_chain_build 段错误根治）：

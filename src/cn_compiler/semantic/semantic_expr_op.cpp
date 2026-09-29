@@ -700,6 +700,12 @@ void SemanticAnalyzer::checkIdentifierAssignTarget(AssignmentExpr* node,
     if (lookupVar(ident->name, varType)) {
         targetType = varType;
         lvalueOk = true;
+        // 102 甲案（2026-09-29 用户裁决·〔基准=019〕）：对字符串形参的赋值＝
+        //   消耗标记（IR 层 prologue 深拷兑现「默认=值副本」——原借用直传下
+        //   此赋值会释放调用方缓冲区）。非字符串形参名不命中，零影响。
+        if (types::canonical(varType) == "字符串") {
+            markStringParamConsumed(ident->name);
+        }
         // 188-a（D6 B11 变量常量传播）：赋值位登记——RHS 形态分级（`无` 字面量=
         //   种子／标识符=传播边／其余（复合赋值/调用/运算…）=失格），仅指针/字符串
         //   类型参与（非指针变量的 `无` 初始化与空指针判定无关）
