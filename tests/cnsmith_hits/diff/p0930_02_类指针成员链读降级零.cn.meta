@@ -1,0 +1,4 @@
+基线: e36f1f4e9
+轮: v9 家机采样服务轮
+类别: diff
+说明: 类指针成员链二级读(p.a.b)静默降级常量0——findStruct 只查结构体表不含类表·resolveNestedMemberObjSrcType/memberObjStructType/exprSrcType 三路全空（82-d 值链修复半截机制·类链漏对齐）；O0=O3 同错差分不可见·须人工核对输出；写链无恙（类表直通）·期望 r=30 实得 0

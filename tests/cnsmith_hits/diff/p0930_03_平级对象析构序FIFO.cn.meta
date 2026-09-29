@@ -1,0 +1,4 @@
+基线: e36f1f4e9
+轮: v9 家机采样服务轮
+类别: diff
+说明: 同层平级类对象析构序=声明序FIFO（genClassDestructorCalls 按 Alloca 正序发射）·违背规格06「与C++同名构造/析构语义一致」LIFO；块出口路径 genBlockExitDestruct 为 back()逆序LIFO——两路径不一致；含返回的块走函数级兜底=FIFO；期望 C1C2C3bodyD3D2D1 实得 C1C2C3bodyD1D2D3·语义级呈报待裁决
