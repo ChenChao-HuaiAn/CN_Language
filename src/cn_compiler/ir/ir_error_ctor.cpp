@@ -138,11 +138,46 @@ bool IRGenerator::resolveResultCtorTargetType(CallExpr* node, const std::string&
     //   CopyStruct 32 溢出崩溃）。优先用当前函数返回类型（returnTypeSrc，
     //   emitClassMethod 按实例 mi.type 设置）——返回 正常()/错误(码) 的 结果<T,E>
     //   与函数返回类型一致；仅当 returnTypeSrc 为空才回退共享 resolvedType。
+    // 081 嵌套合成体守卫（2026-09-29·p0928_08~11 四向跨函数段错误根治）：嵌套
+    //   返回类型（可选<结果<整32,整32>> 等）函数体内的**内层**构造器（如 正常(7)
+    //   的目标=内层 结果<整32,整32>）曾被无条件覆盖成外层类型——标量实参随
+    //   valueType=结构体 走 CopyStruct（值寄存器被当源地址解引用拷贝，gdb 实锤
+    //   `mov (%r9)` r9=7 段错误）。守卫双条件，任一命中即放弃覆盖（退回语义层
+    //   resolvedType——声明位/实参位推导准确）：①**名不匹配**=构造器名与返回类型
+    //   顶层语义不符（某些/无↔可选、正常/错误↔结果——正常(x) 不可能是可选<T> 的
+    //   顶层构造）；②**存储聚合×实参非聚合**=覆盖后存储类型（正常/某些取首层 T·
+    //   错误取第二层 E）为结构体/合成体而实参为标量或类型未知（字面量无语义层
+    //   resolvedType）。泛型残留治理面（存储标量、或实参同为聚合的标识符）覆盖
+    //   行为不变——两场景互斥不冲突。
     if (function_ != nullptr && !function_->returnTypeSrc.empty()) {
         const std::string retCanon = types::canonical(function_->returnTypeSrc);
-        if (SemanticAnalyzer::isResultType(retCanon) ||
-            SemanticAnalyzer::isOptionalType(retCanon)) {
-            node->resolvedType = function_->returnTypeSrc;
+        const bool retIsResult = SemanticAnalyzer::isResultType(retCanon);
+        const bool retIsOptional = SemanticAnalyzer::isOptionalType(retCanon);
+        if (retIsResult || retIsOptional) {
+            const bool 名匹配 = (retIsOptional && (name == "某些" || name == "无")) ||
+                                (retIsResult && (name == "正常" || name == "错误"));
+            bool 放弃覆盖 = !名匹配;
+            if (!放弃覆盖 && !node->arguments.empty() && semantic_ != nullptr) {
+                std::string 存储类型;
+                if (retIsResult) {
+                    const std::vector<std::string> 层参数 =
+                        SemanticAnalyzer::resultTypeArgs(retCanon);
+                    if (层参数.size() == 2)
+                        存储类型 = (name == "错误") ? 层参数[1] : 层参数[0];
+                } else {
+                    存储类型 = SemanticAnalyzer::optionalTypeArg(retCanon);
+                }
+                if (!存储类型.empty() &&
+                    semantic_->isStructType(types::canonical(存储类型))) {
+                    const std::string 实参类型 =
+                        types::canonical(exprSrcType(node->arguments[0].get()));
+                    if (实参类型.empty() ||
+                        !semantic_->isStructType(实参类型)) {
+                        放弃覆盖 = true;
+                    }
+                }
+            }
+            if (!放弃覆盖) node->resolvedType = function_->returnTypeSrc;
         }
     }
     if (node->resolvedType.empty()) {
