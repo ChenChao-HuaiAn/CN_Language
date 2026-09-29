@@ -66,7 +66,29 @@ static void cnBinAdd(std::size_t s) {
     ++g_binCount[b];
     g_binBytes[b] += static_cast<long long>(s);
 }
+// 891：CN_RT_MEM_STATS 环境探测（MSVC /W4 下 getenv=C4996·_dupenv_s 安全版，
+//   cn_main getEnvVar 同款；GCC/Clang 用 getenv）——一次探测结果缓存（atexit 时机恒定）。
+static bool cnMemStatsEnabled() {
+#if defined(_MSC_VER)
+    static int cached = -1;
+    if (cached < 0) {
+        char* v = nullptr;
+        std::size_t len = 0;
+        cached = (_dupenv_s(&v, &len, "CN_RT_MEM_STATS") == 0 && v != nullptr) ? 1 : 0;
+        if (v != nullptr) std::free(v);
+    }
+    return cached == 1;
+#else
+    return std::getenv("CN_RT_MEM_STATS") != nullptr;
+#endif
+}
+
 static void cnBinReport() {
+    // 891：观测输出改环境变量门控（默认静默——CN_RT_MEM_STATS=1 打印）。原每次
+    //   退出常打印：①与 CLI 契约门禁「程序输出→stdout、7 不入 stderr」格撞数字
+    //   （池/直方图计数字面含 7 即红·实测 [cnrt-pool] 块 7 触发）；②E2E 全量每例
+    //   stderr 噪声。设施不撤：074/102 内存轮以 env 显式开启（plans/001 附录口径同步）。
+    if (!cnMemStatsEnabled()) return;
     std::fprintf(stderr, "[cnrt-alloc-hist] 档位 次数 累计字节\n");
     static const char* lowBinNames[5] = {"<=64B","<=256B","<=1K","<=4K","<=16K"};
     for (int i = 0; i < 5; ++i) {
