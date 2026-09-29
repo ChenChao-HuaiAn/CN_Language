@@ -451,14 +451,18 @@ void SemanticAnalyzer::visitProgram(Program* node) {
         visitImportDecl(imp.get());
     }
     checkImportLocalConflicts(node);
-    // 第一趟a/e/b/b'：类型名注册 + 字段类型解析 + 泛型注册 + 布局计算
+    // 第一趟a/e/f/b/b'：类型名注册 + 字段类型解析 + 泛型注册 + 全量预降级 + 布局计算
+    //   （068：第一趟f 前移至 registerGenericsAndComputeLayout 内·布局计算之前）
     registerAndResolveTypeNames(node);
     registerGenericsAndComputeLayout(node);
     // 第一趟b'（164-a A4 联合体限定）+ 第一趟c（枚举求值）
     checkUnionsAndEnums(node);
-    // 第一趟d（类/接口注册）+ 第一趟f（结果/可选降级）+ 第一趟g（函数符号注册）
+    // 第一趟d（类/接口注册）+ 第一趟g（函数符号注册）
+    //   （第一趟f 原位调用已删除——068 前移后本处之后的全部趟次面对已降级+
+    //   已布局类型环境；visitVarDecl/061-c/instantiateGeneric/IR 层的
+    //   ensureLoweredType 调用保留为幂等防御，正确性由预降级趟+067-001
+    //   typeSizeOf fail-fast 哨兵承载）
     registerClassAndInterfaces(node);
-    lowerResultOptionalTypes(node);
     for (auto& decl : node->declarations) {
         if (decl->getType() == NodeType::FunctionDecl) {
             registerFunction(decl.get());
@@ -610,8 +614,15 @@ void SemanticAnalyzer::registerGenericsAndComputeLayout(Program* node) {
             }
         }
     }
+    // 第一趟f（068 前移=全量预降级）：入口一次性递归降级全部类型实例——
+    //   须在字段泛型归一之后（类型文本可解析）与第一趟b 统一布局之前（合成体
+    //   布局纳入统一布局时点·彻底消除惰性时序）。扫描面/归一协同/设计依据见
+    //   error_analysis.cpp lowerResultOptionalTypes 函数头注释。
+    lowerResultOptionalTypes(node);
     // 第一趟b：计算全部结构体/联合体布局（递归，循环引用检测）。
     //   同上迭代稳定性：computeLayout -> typeSizeOf 可能触发降级追加，按索引取本体。
+    //   068：本循环即「布局预计算完毕再进后续阶段」的显式承载——预降级新建
+    //   合成体已在趟内布局（computeLayout 幂等），此处统一重算为保证。
     for (std::size_t si = 0; si < node->structs.size(); ++si) {
         computeLayout(node->structs[si].get());
     }
