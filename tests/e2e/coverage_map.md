@@ -81,6 +81,7 @@
 
 | 用例 | 理由 |
 |---|---|
+| 551_类值装箱释放面 | 任务 100（889 家机·008 树波 4）：宿主正测 host-only——v2 侧类值装箱链路为既有特性缺口（「结构体实参须为标识符」P7c·021 任务 102 承载·C24 收口口径）；修复面=统一深拷装箱+合成体类值条件收集+盒亡条件析构+块终止保存恢复 | 
 | 09_integration,14_integration2,15_expressiveness | 综合集成（多单元串联冒烟，无单元级归属意义） |
 | 08_opt,13_opt2 | 优化器行为一致性（-O 级别输出一致；实现面 §九/规格 12.4，由锚定链支柱覆盖） |
 | 25_math,29_core,30_container,31_map_set,32_algorithm,33_io_input,34_file,35_string_ext,36_time,37_system,38_tool,52_library,64_hash_map | stdlib 功能用例（语言规范面外，stdlib 规范由其自身文档承载）；其中 37_system 另映射附录A 边界例（命令行参数产物契约·argv 消费面） |

@@ -241,6 +241,43 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
         } else {
             val = genExpr(node->arguments[0].get());
         }
+        // 任务 100（2026-09-29·008 树波 4）：类值装箱**统一深拷**——有析构∧有
+        //   拷贝构造类实参：NewObject+拷贝构造（源=实参左值地址）产出独立副本
+        //   句柄存盒。原路径（genExpr 句柄浅存+源 RAII 析构照发）=盒携悬垂句柄
+        //   跨作用域（p8 IR 铁证：装箱→删除对象→返回悬垂）——深拷后盒恒独立
+        //   副本，收集面（collectOwnedStrFields 类值条件打开）配套盒亡条件
+        //   析构，别名/悬垂/泄漏三面同根除；〔基准=019〕第 1 句默认值语义
+        //   （未显式 转移() 不自动 move·源照常可用），热路径零拷由第 4 句
+        //   LUE/转移() 承接。无拷贝构造类=不纳管（收集面同条件·深拷无从起）。
+        if (semantic_ != nullptr &&
+            semantic_->isClassType(types::canonical(valueType))) {
+            const std::string clsCanon = types::canonical(valueType);
+            const ClassInfo* ci = semantic_->findClass(clsCanon);
+            bool hasDtor = false;
+            if (ci != nullptr) {
+                for (const auto& mk : ci->methods) {
+                    if (mk.second.isDestructor) { hasDtor = true; break; }
+                }
+            }
+            const ClassMemberInfo* copyCtor =
+                semantic_->findCopyConstructor(clsCanon);
+            if (hasDtor && copyCtor != nullptr) {
+                const std::string copyOwner = copyCtor->ownerClass.empty()
+                                                  ? clsCanon
+                                                  : copyCtor->ownerClass;
+                ir::IRValue newObj = emitResult(
+                    ir::Opcode::NewObject,
+                    {ir::IRValue::constant(clsCanon, "ptr")}, "ptr",
+                    clsCanon + "|" + std::to_string(ci->totalSize),
+                    node->location);
+                ir::IRValue srcAddr =
+                    lvalueAddress(node->arguments[0].get());
+                emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
+                     methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
+                     node->location);
+                val = newObj;
+            }
+        }
         // 宿主缺陷根治（2026-08-25）：结构体值（正常(s)）须 CopyStruct 拷入联合体
         //   内联存储——原 StorePtr 只存 8 字节地址，结果.值 读到地址而非结构体数据，
         //   嵌套 查.值.名ID 把地址当字段值（打印地址 实测）、直接拷贝读地址字节。
