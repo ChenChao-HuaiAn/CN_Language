@@ -155,6 +155,7 @@ void SemanticAnalyzer::pushScope() {
     // plans/019 阶段3 扩展（A21 借出视图生命周期，第七十七轮）：与 scopes_ 平行维护
     borrowViewScopes_.emplace_back();  // 借出绑定登记（层 -> 名 -> 记录下标）
     scopeVarIds_.emplace_back();       // 变量身份 ID（同名遮蔽防误配容器）
+    strTaintedScopes_.emplace_back();  // 任务 094：字符串借用污染名单平行维护
 }
 void SemanticAnalyzer::popScope() {
     if (scopes_.size() > 1) {
@@ -164,6 +165,7 @@ void SemanticAnalyzer::popScope() {
         if (scopeMoved_.size() > 1) scopeMoved_.pop_back();    // 与 scopes_ 同步
         if (borrowViewScopes_.size() > 1) borrowViewScopes_.pop_back();
         if (scopeVarIds_.size() > 1) scopeVarIds_.pop_back();
+        if (strTaintedScopes_.size() > 1) strTaintedScopes_.pop_back();  // 094 同步
     }
 }
 
@@ -303,6 +305,67 @@ bool SemanticAnalyzer::reportMovedUse(const std::string& name, const SourceLocat
                             std::to_string(movedLine) + "；显式转移后源变量禁用）");
     return true;
 }
+
+// ==================== 任务 094：字符串借用污染名单（语义层等价实现） ====================
+
+void SemanticAnalyzer::markStrTainted(const std::string& name) {
+    if (strTaintedScopes_.empty()) strTaintedScopes_.emplace_back();
+    strTaintedScopes_.back().insert(name);
+}
+
+bool SemanticAnalyzer::isStrTainted(const std::string& name) const {
+    // 与 lookupVar/markMovedVar 同序：从内到外第一层含该名者决定污染态
+    //   （遮蔽正确：内层同名新声明=新变量，不受外层污染影响）。
+    for (std::size_t i = scopes_.size(); i-- > 0;) {
+        if (scopes_[i].count(name) > 0) {
+            return i < strTaintedScopes_.size() &&
+                   strTaintedScopes_[i].count(name) > 0;
+        }
+    }
+    return false;
+}
+
+bool SemanticAnalyzer::isOwnedStringBuiltin(const std::string& name) {
+    // 与 IR 层字符串拥有判定白名单同一集合（原 ir_expr_assign_ident.cpp
+    // identifierStringOwnAssign / ir_stmt_decl.cpp 拥有型初始化两处硬编码——
+    // 094 收口为单点，IR 层两处改调本方法，判据漂移根除）。
+    return name == "字符串复制" || name == "字符串连接" ||
+           name == "字符串拼接" || name == "字符串子串" ||
+           name == "字符串大写" || name == "字符串小写" ||
+           name == "字符串修剪" || name == "字符串反转";
+}
+
+bool SemanticAnalyzer::isOwnedStrRvalue(const Expr* rhs) const {
+    if (rhs == nullptr) return false;
+    // 与 IR 层 ownAssign/ownRet 判定同构：字面量/标识符恒拥有（IR 经
+    //   __cn_str_copy 落堆）；调用=retOwnedString（A2 返回类型契约·语义层
+    //   写回）∪ 白名单；其余形态（成员/下标/解引用/二元等）=非拥有（借用
+    //   句柄·保守登记与 IR else 分支同构——即使实际为新串也登记，方向=
+    //   装箱不清零源可用，宁漏禁勿误禁）。
+    const NodeType t = rhs->getType();
+    if (t == NodeType::StringLiteral || t == NodeType::IdentifierExpr) return true;
+    if (t == NodeType::CallExpr) {
+        const CallExpr* call = static_cast<const CallExpr*>(rhs);
+        if (call->retOwnedString) return true;
+        if (call->callee->getType() == NodeType::IdentifierExpr) {
+            return isOwnedStringBuiltin(
+                static_cast<const IdentifierExpr*>(call->callee.get())->name);
+        }
+        return false;
+    }
+    return false;
+}
+
+bool SemanticAnalyzer::isCurrentClassFieldName(const std::string& name) const {
+    if (contextClassStack_.empty()) return false;
+    const ClassInfo* cls = currentContextClass();
+    if (cls == nullptr) return false;
+    std::string owner;
+    const ClassMemberInfo* member = lookupClassMember(cls->name, name, owner);
+    return member != nullptr && !member->isStatic;
+}
+
+
 bool SemanticAnalyzer::declareVar(const std::string& name, const std::string& type,
                                   const SourceLocation& loc) {
     if (scopes_.empty()) pushScope();

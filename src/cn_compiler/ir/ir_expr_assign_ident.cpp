@@ -752,10 +752,8 @@ bool IRGenerator::identifierStringOwnAssign(AssignmentExpr* node, IdentifierExpr
             if (!ownAssign && ace->callee->getType() == NodeType::IdentifierExpr) {
                 const std::string& cn =
                     static_cast<const IdentifierExpr*>(ace->callee.get())->name;
-                ownAssign = cn == "字符串复制" || cn == "字符串连接" ||
-                            cn == "字符串拼接" || cn == "字符串子串" ||
-                            cn == "字符串大写" || cn == "字符串小写" ||
-                            cn == "字符串修剪" || cn == "字符串反转";
+                // 094 判据单点化：白名单收口 SemanticAnalyzer::isOwnedStringBuiltin
+                ownAssign = SemanticAnalyzer::isOwnedStringBuiltin(cn);
             }
         }
         if (ownAssign) {

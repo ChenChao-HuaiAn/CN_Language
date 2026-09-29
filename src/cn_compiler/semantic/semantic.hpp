@@ -180,6 +180,11 @@ public:
     //   展开判定（声明初始化位已在语义层改写为标识符，到 IR 的只剩表达式位）。
     static bool isTransferCall(const class CallExpr* node);
 
+    // 任务 094（2026-09-29·008 树波 4）判据单点化：字符串拥有判定白名单
+    //   （runtime 分配族）——语义层 isOwnedStrRvalue 与 IR 层字符串赋值/
+    //   初始化两处共同调用本静态方法（public 供 ir 层）。
+    static bool isOwnedStringBuiltin(const std::string& name);
+
     // 206-b（波 4·plans/022 §四.5）：复制(表达式) 泛型克隆内置——返回类型=
     //   实参类型（调用处特判：泛型内置无法用固定签名注册 functions_ 表）；
     //   字符串实参置 retOwnedString（A2 拥有契约：克隆产物归调用方拥有）。
@@ -478,6 +483,19 @@ private:
     bool lookupMoved(const std::string& name, int& outLine) const;
     // 已转移变量使用拒绝（读值/左值共用）——命中即报 E0382 对标诊断并返回 true
     bool reportMovedUse(const std::string& name, const SourceLocation& loc);
+    // ==================== 任务 094：字符串借用污染名单（语义层等价实现） ====================
+    // 登记（当前层；与 IR markStringTainted 五登记点判据逐条对齐·注释互指）；
+    //   查询（从内到外第一层含该名者——遮蔽语义与 lookupMoved 同构）。
+    void markStrTainted(const std::string& name);
+    bool isStrTainted(const std::string& name) const;
+    // 右值表达式是否产生「拥有串」（与 IR 层 ownAssign/ownRet 判定同构：
+    //   StringLiteral/IdentifierExpr 恒拥有；CallExpr=retOwnedString ∪ 白名单；
+    //   其余形态=非拥有）。白名单与 IR 层字符串赋值/初始化路径同一集合。
+    bool isOwnedStrRvalue(const Expr* rhs) const;
+    // 094：名字是否为当前类的字段（方法体裸字段名）——IR 层 lookupVarName 对
+    //   字段返回空（字段走 this 寻址·装箱/出参移交不清零源槽），语义层标记
+    //   须排除防误禁（探针 p6 实证：字段装箱后字段仍可用）。
+    bool isCurrentClassFieldName(const std::string& name) const;
     // ==================== plans/019 阶段3 扩展：A21 借出视图生命周期检查 ====================
     // （第七十七轮；plans/020 矩阵 A21 格靶子：借出视图 × 容器移除=UAF）
     // 借出视图 = 容器内元素句柄的浅拷（字符串元素容器的 元素/读取/栈顶/队首/
@@ -990,6 +1008,17 @@ private:
     //   与 lookupVar 同序解析（内层遮蔽正确：内层同名新声明在新作用域层，查不到
     //   外层转移标记）。
     std::vector<std::unordered_map<std::string, int>> scopeMoved_;
+    // 任务 094（2026-09-29·008 树波 4）：字符串借用污染名单（与 scopes_ 平行，
+    //   push/popScope 同步）。语义层等价实现——判据与 IR 层 stringTainted_
+    //   （ir.hpp markStringTainted 唯一入口）逐条对齐：①声明初始化非拥有
+    //   （ir_stmt_decl.cpp 调用返回非白名单）②赋值非拥有（ir_expr_assign_ident
+    //   identifierStringOwnAssign else 分支）③下标元素写浅存（ir_expr_assign
+    //   markIndexStringElemTainted）④转移污染传播（identifierStringTransferAssign
+    //   源污染→目标污染）。消费点=装箱构造实参「是否真 move」判定（094：
+    //   checkBuiltinCtorCall——IR 层 emitResultCtorValue 对非污染字符串局部
+    //   真 move 清源槽，语义层须同判据 markMovedVar 挂已转移拦截，根除
+    //   「装箱后旧名静默读空串」）。探针 p5/p5b/p5c/q1/q3（target/p886）锚定。
+    std::vector<std::unordered_set<std::string>> strTaintedScopes_;
     // plans/019 阶段3 扩展（第七十七轮 A21 借出视图生命周期检查）：
     //   borrowViews_ = 全部借出绑定（函数级结算用）；borrowViewScopes_ 与 scopes_
     //   平行（层 -> 变量名 -> borrowViews_ 下标；内层遮蔽/块出口清理）；

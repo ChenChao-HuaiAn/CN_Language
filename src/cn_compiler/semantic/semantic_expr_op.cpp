@@ -519,6 +519,94 @@ void SemanticAnalyzer::visitAssignmentExpr(AssignmentExpr* node) {
         checkCopyRequiresCtor(types::canonical(targetType), node->location);
     }
     lastType_ = targetType == "未知" ? valueType : targetType;
+    // 任务 094（2026-09-29·008 树波 4）：赋值位污染登记＋出参移交源禁用——
+    //   与 IR 层字符串赋值三路径＋下标污染逐形态同构（注释互指）：
+    //   identifierStringByRefAssign / identifierStringTransferAssign /
+    //   identifierStringOwnAssign（ir_expr_assign_ident.cpp）+
+    //   markIndexStringElemTainted（ir_expr_assign.cpp）。消费点=装箱 move
+    //   判定（污染源=借用装箱 IR 不清零→语义不 markMovedVar·q1/q3 实证）。
+    if (!isCompoundAssign(node->op)) {
+        // ①出参移交（IR byRef 路径·72-a）：目标=字符串引用（T&）·右值=标识符
+        //   →IR 句柄直写调用方槽＋清零源槽（真 move）——语义层 markMovedVar
+        //   挂既有已转移拦截（探针 p5c 实锤：移交后源静默读空串）。判据对齐：
+        //   目标非污染/源非污染（污染移交=借用句柄不清零）＋排除类字段。
+        if (node->target->getType() == NodeType::IdentifierExpr &&
+            node->value->getType() == NodeType::IdentifierExpr) {
+            const std::string& tgtName =
+                static_cast<const IdentifierExpr*>(node->target.get())->name;
+            const std::string& srcName =
+                static_cast<const IdentifierExpr*>(node->value.get())->name;
+            // 引用判定用 currentRefParams_（符号表类型经 canonicalType 已剥
+            //   "&"——插桩实证 [dbg886] 输出形参类型=[字符串]·isRef=0；
+            //   currentRefParams_ 由 checkFunctionBody 按 param->typeName 原文
+            //   isReference 收集=准确引用形参名集，与 IR 层 isByRefCapture 同源）。
+            std::string tgtSrcType;
+            if (currentRefParams_.count(tgtName) > 0 &&
+                lookupVar(tgtName, tgtSrcType) &&
+                types::canonical(tgtSrcType) == "字符串" &&
+                !isStrTainted(srcName) && !isCurrentClassFieldName(srcName)) {
+                markMovedVar(srcName, node->location.getLine());
+            }
+        }
+        // ②转移污染传播（IR identifierStringTransferAssign 723）：甲 = 转移(乙)
+        //   且乙为借用污染 → 移交的是借用句柄 → 甲同污染（登记）。源禁用已由
+        //   转移调用通用路径 markMovedVar 覆盖（semantic_call.cpp）。
+        if (node->target->getType() == NodeType::IdentifierExpr &&
+            node->value->getType() == NodeType::CallExpr) {
+            const CallExpr* tr =
+                static_cast<const CallExpr*>(node->value.get());
+            if (isTransferCall(tr) && !tr->arguments.empty() &&
+                tr->arguments[0]->getType() == NodeType::IdentifierExpr) {
+                const std::string& srcName =
+                    static_cast<const IdentifierExpr*>(tr->arguments[0].get())
+                        ->name;
+                const std::string& tgtName =
+                    static_cast<const IdentifierExpr*>(node->target.get())->name;
+                if (isStrTainted(srcName)) markStrTainted(tgtName);
+            }
+        }
+        // ③下标元素写浅存（IR markIndexStringElemTainted 同构）：串数组[i] = s
+        //   →右值句柄被外部槽持有 → s 污染退出 RAII（q3 实证：污染后装箱源
+        //   仍可用=合法形态）。
+        if (node->target->getType() == NodeType::IndexExpr &&
+            node->value->getType() == NodeType::IdentifierExpr) {
+            const IndexExpr* idx =
+                static_cast<const IndexExpr*>(node->target.get());
+            if (idx->object->getType() == NodeType::IdentifierExpr) {
+                const std::string& objName =
+                    static_cast<const IdentifierExpr*>(idx->object.get())->name;
+                std::string objType;
+                if (lookupVar(objName, objType)) {
+                    std::string elemType;
+                    if (types::isArray(objType)) elemType = types::arrayElemOf(objType);
+                    else if (types::isPointer(objType)) elemType = types::pointeeOf(objType);
+                    if (types::canonical(elemType) == "字符串") {
+                        markStrTainted(
+                            static_cast<const IdentifierExpr*>(node->value.get())
+                                ->name);
+                    }
+                }
+            }
+        }
+        // ④一般赋值非拥有来源污染（IR identifierStringOwnAssign else 分支）：
+        //   目标=字符串局部·右值非三拥有形态（字面量/标识符/ownRet∪白名单调用）
+        //   →markStrTainted。右值=转移调用已由②处理（IR transfer 分支先行
+        //   return·不走 ownAssign）·成员/下标/解引用借出赋值已被
+        //   checkBorrowViewAssign 拒绝（q1 实证·IR 不可达此点）。
+        if (node->target->getType() == NodeType::IdentifierExpr &&
+            !(node->value->getType() == NodeType::CallExpr &&
+              isTransferCall(static_cast<const CallExpr*>(node->value.get())))) {
+            const std::string& tgtName =
+                static_cast<const IdentifierExpr*>(node->target.get())->name;
+            std::string tgtSrcType;
+            if (lookupVar(tgtName, tgtSrcType) &&
+                types::canonical(tgtSrcType) == "字符串" &&
+                !types::isReference(tgtSrcType) &&
+                !isOwnedStrRvalue(node->value.get())) {
+                markStrTainted(tgtName);
+            }
+        }
+    }
     // plans/019 阶段2（2026-09-10）：局部地址逃逸检查——右值求值为当前函数
     //   局部的地址（&局部 / 引用局部绑局部）而赋值目标是比其寿命长的存储
     //   （静态/全局变量、静态/全局对象的字段或元素）时编译期拒绝（悬垂防线

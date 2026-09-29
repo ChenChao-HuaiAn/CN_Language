@@ -406,6 +406,29 @@ bool SemanticAnalyzer::checkBuiltinCtorCall(CallExpr* node) {
             } else {
                 lastType_ = "可选<" + (argType == "未知" ? "整32" : argType) + ">";
             }
+            // 任务 094（2026-09-29·008 树波 4）：装箱 move 语义对齐——IR 层
+            //   emitResultCtorValue（ir_error_ctor.cpp 70-a 设施）对「正常/某些 +
+            //   标识符实参 + 字符串值类型 + 非借用污染 + 局部槽」真 move 清源槽；
+            //   语义层同判据 markMovedVar 挂既有已转移拦截（reportMovedUse·
+            //   semantic_expr.cpp 标识符读主路径），根除「装箱后旧名编译不禁用、
+            //   运行静默读空串」（探针 p5/p5b 实锤：源输出空行）。判据逐条对齐：
+            //   ①仅 正常/某些（错误() 不清零=浅共享既有边界）②实参纯标识符
+            //   （转移(s) 实参=CallExpr·既有 markMovedVar 路径已覆盖）③值类型
+            //   字符串 ④非借用污染（isStrTainted——污染=借用装箱指针共享随源
+            //   存活，源合法可用·q1/q3 实证）⑤排除类字段（字段走 this 寻址·
+            //   IR lookupVarName 空=不清零·p6 实证字段装箱后仍可用，标记即误禁）。
+            //   Rust 对照：Ok(s)/Some(s) 对 String 即 move——源失效编译期拦截。
+            if ((builtinName == "正常" || builtinName == "某些") &&
+                node->arguments.size() == 1 &&
+                node->arguments[0]->getType() == NodeType::IdentifierExpr &&
+                types::canonical(argType) == "字符串") {
+                const std::string& srcName =
+                    static_cast<const IdentifierExpr*>(node->arguments[0].get())
+                        ->name;
+                if (!isCurrentClassFieldName(srcName) && !isStrTainted(srcName)) {
+                    markMovedVar(srcName, node->location.getLine());
+                }
+            }
             // 写回推导类型（Task 3.5 E2E 24 修复）：IR 层按 resolvedType 降级为
             //   合成结构体构造（分配槽 + 写 是否正常/是否某些 + 值/错误值）
             node->resolvedType = lastType_;

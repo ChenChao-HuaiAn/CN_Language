@@ -414,6 +414,26 @@ void SemanticAnalyzer::visitVarDecl(VarDecl* node) {
         registerBorrowView(node->name, node->location);
         lastExprIsBorrowView_ = false;
     }
+    // 任务 094（2026-09-29·008 树波 4）：声明初始化位污染登记——与 IR 层
+    //   ir_stmt_decl.cpp 拥有型字符串初始化判据**逐形态同构**：①字面量/标识符
+    //   =IR __cn_str_copy 拥有化（不登记；转移改写后 initializer 已是源标识符
+    //   →目标拥有·正确）②调用=retOwnedString ∪ 白名单（094 收口
+    //   isOwnedStringBuiltin）之外→登记（IR markStringTainted 同点）③其他形态
+    //   （下标/成员/解引用已被上方 A1 拦截不可达·二元等）=IR 不登记污染→
+    //   装箱照常清零→语义同不登记保持两边一致。消费点=checkBuiltinCtorCall
+    //   装箱 move 判定（污染=借用装箱源可用，不 markMovedVar）。
+    if (node->initializer != nullptr && !node->funcPtr.isFunctionPtr() &&
+        types::canonical(varType) == "字符串" &&
+        node->initializer->getType() == NodeType::CallExpr) {
+        const CallExpr* initCall =
+            static_cast<const CallExpr*>(node->initializer.get());
+        bool ownRet = initCall->retOwnedString;
+        if (!ownRet && initCall->callee->getType() == NodeType::IdentifierExpr) {
+            ownRet = isOwnedStringBuiltin(
+                static_cast<const IdentifierExpr*>(initCall->callee.get())->name);
+        }
+        if (!ownRet) markStrTainted(node->name);
+    }
 }
 void SemanticAnalyzer::visitImportDecl(ImportDecl* node) {
     if (node == nullptr || node->segments.empty()) return;
