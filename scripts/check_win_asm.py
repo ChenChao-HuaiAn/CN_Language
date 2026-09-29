@@ -106,7 +106,10 @@ def 跑用例(v2p: pathlib.Path, 用例根: pathlib.Path, 用例: pathlib.Path, 
     if 编译选项.exists():
         参.append(str(编译选项.resolve()))
     try:
-        结果 = subprocess.run(参, cwd=工作, capture_output=True, text=True, timeout=180)
+        # errors=replace：v2p 诊断流可能带运行时侦查插桩的历史字节（io_api 池噪音），
+        #   本门禁只消费 rc 与 asm 存在性——解码容错防整扫崩溃（wt.py 同款先例）
+        结果 = subprocess.run(参, cwd=工作, capture_output=True, text=True,
+                              errors="replace", timeout=180)
     except subprocess.TimeoutExpired:
         return {"名称": 名称, "状态": "超时"}
     asm = 工作 / "target" / "v2asm.asm"

@@ -139,7 +139,6 @@ struct PoolState {
 };
 
 PoolState g_pool;
-void* g_lastFreeRa = nullptr;   // 885 侦查：最近释放调用方（重复释放现场披露）
 void* g_cnFreeSite = nullptr;   // 885 侦查：__cn_str_free 的 CN 调用方（真正的释放语句位）
 int g_freePath = 0;             // 885 侦查：释放路径标签（1=str_free 2=vector_free_strings…）
 extern "C" void __cn_set_free_site(void* ra) { g_cnFreeSite = ra; }
@@ -165,6 +164,21 @@ static void cnFreeRaRecord(void* ptr, void* ra) {
 }
 static int g_freePathLookupRet = 0;
 static const char* g_freeHeadLookupRet = nullptr;
+// 885 侦查：31 字节内容切片的 UTF-8 安全打印长——多字节字符在切片边界截半会使
+//   stderr 成为非法 UTF-8（严格解码消费侧崩溃实证：411/455 的 v2p 诊断流），
+//   诊断输出保持全文本合法（与仓内 wt.py errors=replace 消费侧容错配套）
+static int cnDiagUtf8ClipLen(const char* s) {
+    int i = 0;
+    while (i < 31 && s[i] != 0) {
+        const unsigned char c = static_cast<unsigned char>(s[i]);
+        const int need = (c & 0x80) == 0 ? 1
+                       : (c & 0xE0) == 0xC0 ? 2
+                       : (c & 0xF0) == 0xE0 ? 3 : 4;
+        if (i + need > 31) break;   // 序列被切片边界截断→止于上一完整字符
+        i += need;
+    }
+    return i;
+}
 static void* cnFreeRaLookup(void* ptr) {
     const std::size_t h = (reinterpret_cast<std::size_t>(ptr) >> 4) & (kFreeRaCap - 1);
     for (int i = 0; i < 4; ++i) {
@@ -333,7 +347,14 @@ bool poolFree(void* ptr, int cls) {
         ++g_pool.rejectedFree;
         if (g_pool.rejectedFree <= 3) {
             // 885 侦查：前 3 次重复释放现场披露 + CN 调用栈扫描（VEH 同款法）
+            // 返回地址槽位取址全平台对等（intern_api CN_INTERN_RA 同款分流纪律）：
+            //   MSVC=_AddressOfReturnAddress；GCC/Clang=帧基址+一个指针宽（[rbp+8] 同位）
+#if defined(_MSC_VER)
             void** sp = reinterpret_cast<void**>(_AddressOfReturnAddress());
+#else
+            void** sp = reinterpret_cast<void**>(
+                reinterpret_cast<char*>(__builtin_frame_address(0)) + sizeof(void*));
+#endif
             int hit = 0;
             std::fprintf(stderr, "[cnrt-pool-stack] n=%lld ptr=%p\n", g_pool.rejectedFree, ptr);
             for (int k = 0; k < 300 && hit < 16; ++k) {
@@ -351,7 +372,8 @@ bool poolFree(void* ptr, int cls) {
                          ptr, cls, g_pool.rejectedFree, g_freePath, g_cnFreeSite, g_freePathLookupRet,
                          cnFreeRaLookup(ptr));
             if (g_freeHeadLookupRet != nullptr) {
-                std::fprintf(stderr, "[cnrt-pool-dup]   首次释放内容=[%.31s]" "\n", g_freeHeadLookupRet);
+                std::fprintf(stderr, "[cnrt-pool-dup]   首次释放内容=[%.*s]" "\n",
+                             cnDiagUtf8ClipLen(g_freeHeadLookupRet), g_freeHeadLookupRet);
             }
             std::fflush(stderr);
         }

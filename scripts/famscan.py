@@ -166,7 +166,10 @@ def main():
     open(os.path.join(out, "fam.cn"), "w", encoding="utf-8").write(gen_cn())
 
     def run(cmd, t=180):
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=t, cwd=root)
+        # errors=replace：编译器/CN 程序输出可能带运行时侦查插桩字节（io_api 池噪音），
+        #   解码容错防 famscan 整轮崩溃（wt.py 同款先例）
+        return subprocess.run(cmd, capture_output=True, text=True,
+                              errors="replace", timeout=t, cwd=root)
 
     c_out = None
     if have_gcc:
@@ -175,7 +178,8 @@ def main():
         if r.returncode != 0:
             print("C 参考编译失败（降级单 oracle）:\n", r.stderr[:800])
         else:
-            c_out = subprocess.run([os.path.join(out, "fam_c")], capture_output=True, text=True, timeout=15).stdout
+            c_out = subprocess.run([os.path.join(out, "fam_c")], capture_output=True, text=True,
+                                   errors="replace", timeout=15).stdout
             open(os.path.join(out, "rt_c.out"), "w").write(c_out)
 
     outs = {}
@@ -187,7 +191,8 @@ def main():
         s3 = os.path.join(out, "fam_" + suf + ".s")
         if os.path.isfile(s3) and not args.keep:
             os.rename(s3, os.path.join(out, "keep_" + suf + ".s"))  # build 副产 .s 移出防覆盖判断
-        o = subprocess.run([exe], capture_output=True, text=True, timeout=15).stdout
+        o = subprocess.run([exe], capture_output=True, text=True,
+                           errors="replace", timeout=15).stdout
         open(os.path.join(out, "rt_" + suf + ".out"), "w").write(o)
         outs[lvl] = parse(o)
 

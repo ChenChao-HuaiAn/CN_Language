@@ -62,7 +62,9 @@ def 编译器路径():
 
 
 def 跑(cmd, cwd=根, timeout=3600):
-    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True, timeout=timeout)
+    # errors=replace：编译器输出可能带运行时侦查插桩字节（io_api 池噪音）·解码容错
+    return subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
+                          errors="replace", timeout=timeout)
 
 
 def 远程头():
