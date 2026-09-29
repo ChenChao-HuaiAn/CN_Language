@@ -417,3 +417,64 @@ extern "C" long long __cn_str_to_bool(const char* str, int* ok) {
     }
     return 0;  // 非法输入：成功标志保持 0
 }
+
+// ---- 波2（074·2026-09-29）：字符串构建器四件套（Rust String::push_str 同款）----
+//   病根：`s = s + 段` 逐段拼接 O(L²) 分配（829/863 侦查：16K+ 中块≈3.3GB 主体
+//   =字符串族按长度分配）；本设施=可增长缓冲一次成型 O(L)（缓冲×2 增长）。
+//   用法（CN 侧）：句柄 = 字符串构建器新建(); 循环 字符串构建器追加(句柄, 段);
+//   结果 = 字符串构建器完成(句柄)。完成=新分配串（cn_alloc_tracked·与
+//   __cn_str_concat 同所有权）+ 缓冲释放；句柄一次性（完成后不可再用）。
+struct CnStrbuf2 { char* buf; std::size_t len; std::size_t cap; };
+
+extern "C" void* __cn_strbuf_new() {
+    CnStrbuf2* b = static_cast<CnStrbuf2*>(std::malloc(sizeof(CnStrbuf2)));
+    if (b == nullptr) return nullptr;
+    b->cap = 64;
+    b->len = 0;
+    b->buf = static_cast<char*>(std::malloc(b->cap));
+    if (b->buf == nullptr) { std::free(b); return nullptr; }
+    b->buf[0] = 0;
+    return b;
+}
+
+static void cnStrbufGrow2(CnStrbuf2* b, std::size_t need) {
+    if (b->len + need + 1 <= b->cap) return;
+    std::size_t nc = b->cap;
+    while (nc < b->len + need + 1) nc *= 2;
+    char* nb = static_cast<char*>(std::realloc(b->buf, nc));
+    if (nb == nullptr) return;
+    b->buf = nb;
+    b->cap = nc;
+}
+
+extern "C" void __cn_strbuf_append(void* h, const char* s) {
+    if (h == nullptr) return;
+    if (s == nullptr) s = "";
+    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
+    const std::size_t n = std::strlen(s);
+    cnStrbufGrow2(b, n);
+    if (b->len + n + 1 > b->cap) return;
+    std::memcpy(b->buf + b->len, s, n);
+    b->len += n;
+    b->buf[b->len] = 0;
+}
+
+extern "C" void __cn_strbuf_append_char(void* h, long long c) {
+    if (h == nullptr) return;
+    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
+    cnStrbufGrow2(b, 1);
+    if (b->len + 2 > b->cap) return;
+    b->buf[b->len] = static_cast<char>(c & 0xFF);
+    b->len += 1;
+    b->buf[b->len] = 0;
+}
+
+extern "C" char* __cn_strbuf_finish(void* h) {
+    if (h == nullptr) return nullptr;
+    CnStrbuf2* b = static_cast<CnStrbuf2*>(h);
+    char* result = static_cast<char*>(cn_alloc_tracked(b->len + 1));
+    if (result != nullptr) std::memcpy(result, b->buf, b->len + 1);
+    std::free(b->buf);
+    std::free(b);
+    return result;
+}

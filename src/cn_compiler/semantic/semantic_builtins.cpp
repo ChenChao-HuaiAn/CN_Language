@@ -291,6 +291,12 @@ void SemanticAnalyzer::registerBuiltins() {
     regMemLibFn("内存::竞技场活动字节", "整64", {});
     regMemLibFn("内存::释放全部", "空类型", {});
 
+    // 波2（074·872）：字符串构建器四件套（runtime string_api.cpp·Rust String::push_str 同款）
+    regMemLibFn("字符串构建器::新建", "整64", {});
+    regMemLibFn("字符串构建器::追加", "空类型", {"整64", "字符串"});
+    regMemLibFn("字符串构建器::追加字节", "空类型", {"整64", "整64"});
+    regMemLibFn("字符串构建器::完成", "字符串", {"整64"});
+
     // ---- 系统库（Task 6.5，规格书10.4 命令行参数；对应运行时 system_api.cpp）----
     // 中文名带 "系统." 前缀，与 stdlib/系统.cn 模块公开函数不冲突（数学库同模式）。
     // 运行时符号：系统.参数个数 -> __cn_argc、系统.参数 -> __cn_argv（IR 层映射）。

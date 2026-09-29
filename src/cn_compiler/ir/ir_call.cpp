@@ -325,6 +325,11 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
         else if (calleeName == "内存::竞技场重置" || calleeName == "内存.竞技场重置") calleeName = "__cn_arena_reset";
         else if (calleeName == "内存::竞技场活动字节" || calleeName == "内存.竞技场活动字节") calleeName = "__cn_arena_bytes";
         else if (calleeName == "内存::释放全部" || calleeName == "内存.释放全部") calleeName = "__cn_alloc_reset";
+        // 波2（074·872）：字符串构建器四件套（string_api.cpp·Rust String::push_str 同款）
+        else if (calleeName == "字符串构建器::新建" || calleeName == "字符串构建器.新建") calleeName = "__cn_strbuf_new";
+        else if (calleeName == "字符串构建器::追加" || calleeName == "字符串构建器.追加") calleeName = "__cn_strbuf_append";
+        else if (calleeName == "字符串构建器::追加字节" || calleeName == "字符串构建器.追加字节") calleeName = "__cn_strbuf_append_char";
+        else if (calleeName == "字符串构建器::完成" || calleeName == "字符串构建器.完成") calleeName = "__cn_strbuf_finish";
     }
 
     std::vector<ir::IRValue> args;
@@ -477,6 +482,10 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
             resultType = "ptr";       // 竞技场分配 -> 空类型*（失败 nullptr）
         } else if (calleeName == "__cn_arena_reset" || calleeName == "__cn_alloc_reset") {
             // 竞技场重置/释放全部：空类型返回（与 __cn_str_free 同惯例）
+        } else if (calleeName == "__cn_strbuf_new") {
+            resultType = "i64";       // 波2（074·872）：构建器句柄 -> 整64
+        } else if (calleeName == "__cn_strbuf_finish") {
+            resultType = "ptr";       // 波2（074·872）：完成 -> 字符串
         } else if (calleeName == "__cn_str_free") {
             // 字符串释放：空类型返回，resultType 保持 i32（与用户 void 函数调用一致：
             // 语义层"空类型"->mapType "void" 被下方过滤，emitResult 结果寄存器写入
