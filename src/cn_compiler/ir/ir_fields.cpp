@@ -92,52 +92,6 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
             OwnedStrField fld{base + f.offset, cond};
             fld.viaUnion = unionScope;
             out.push_back(fld);
-        } else if (fieldCanon.rfind("结果联合$", 0) == 0) {
-            // 任务 100（2026-09-29·008 树波 4）：合成结果联合的类值字段**就地
-            //   展开**——值字段（类句柄）位于联合宿主内，183-a 通用类字段
-            //   分支被 decl->isUnion 豁免挡死（116 防线·保留）；统一深拷模型
-            //   （emitResultCtorValue 类值装箱=NewObject+拷贝构造）下盒内恒
-            //   独立副本，条件（外壳「是否正常」）析构无双删风险。串字段
-            //   照旧走下方递归（79-a 现状零回归）。
-            const StructDecl* uDecl = semantic_->findStruct(fieldCanon);
-            if (uDecl != nullptr && !unionScope && !decl->isUnion) {
-                const std::string* uValType = nullptr;
-                int uValOff = -1;
-                for (const auto& uf : uDecl->fields) {
-                    if (uf.name == "值") {
-                        uValType = &uf.type;
-                        uValOff = uf.offset;
-                        break;
-                    }
-                }
-                if (uValType != nullptr && uValOff >= 0) {
-                    const std::string vt = types::canonical(*uValType);
-                    if (semantic_->isClassType(vt)) {
-                        const ClassInfo* vci = semantic_->findClass(vt);
-                        bool uHasDtor = false;
-                        if (vci != nullptr) {
-                            for (const auto& mk : vci->methods) {
-                                if (mk.second.isDestructor) { uHasDtor = true; break; }
-                            }
-                        }
-                        if (uHasDtor &&
-                            semantic_->findCopyConstructor(vt) != nullptr) {
-                            const int nOff =
-                                semantic_->fieldOffsetOf(decl, "是否正常");
-                            if (nOff >= 0) {
-                                OwnedStrField fld;
-                                fld.offset = base + f.offset + uValOff;
-                                fld.condOffset = base + nOff;
-                                fld.kind = OwnedStrField::Kind::ClassObj;
-                                fld.classCanon = vt;
-                                out.push_back(fld);
-                            }
-                        }
-                    }
-                }
-            }
-            collectOwnedStrFields(fieldCanon, base + f.offset, cond, out, visiting,
-                                  unionScope);
         } else if (fieldCanon.rfind("结果$", 0) == 0 ||
                    fieldCanon.rfind("可选$", 0) == 0 ||
                    semantic_->isStructType(fieldCanon)) {
@@ -216,12 +170,6 @@ void IRGenerator::collectOwnedStrFields(const std::string& canon, int base, int 
             OwnedStrField fld;
             fld.offset = base + f.offset;
             fld.condOffset = cond;
-            // 任务 100：可选外壳直系值字段（外壳=[是否某些,值] 平铺）注入
-            //   条件（无值态值槽=垃圾句柄·无条件 DeleteObject=堆损坏）。
-            if (decl->name.rfind("可选$", 0) == 0 && f.name == "值") {
-                const int sco = semantic_->fieldOffsetOf(decl, "是否某些");
-                if (sco >= 0) fld.condOffset = base + sco;
-            }
             fld.kind = OwnedStrField::Kind::ClassObj;
             fld.classCanon = fieldCanon;
             fld.viaUnion = unionScope;   // 164-a：联合体内类对象字段同标
@@ -402,19 +350,6 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
                                            const std::string& canon,
                                            const SourceLocation& loc) {
     if (base.id < 0 && !base.isConstant) return;  // 防御：无有效基址
-    // 任务 100：块终止保存/恢复——本函数可能在**已终止块**（79-a 函数尾兜底/
-    //   返回块析构追加段·setCurrentBlock(返回块) 后调用）上发射条件释放序列
-    //   （endBranch 终结当前块+末块 endLabel 无终止）——原终止（返回值/跳转
-    //   目标）被覆盖且末块坠落（emitBlock 对未终止块零防御·p8g 实锤：坠落
-    //   进下一 PROC 毁栈 0xC0000005）。块出口语境（genBlock·未终止）恢复=
-    //   空操作。串条件条目（emitFieldStringFreeIf）同语境免疫随本层覆盖。
-    const bool wasTerm = currentBlock_->terminated;
-    const std::string wasKind = currentBlock_->termKind;
-    const std::string wasRV = currentBlock_->termReturnValue;
-    const std::string wasTarget = currentBlock_->termTarget;
-    const std::string wasTrue = currentBlock_->termTrueTarget;
-    const std::string wasFalse = currentBlock_->termFalseTarget;
-    const std::string wasCond = currentBlock_->termCondition;
     for (const auto& f : ownedStrFieldsOf(canon)) {
         // 164-a（A4·plans/023 §十二）：联合体成员=用户手动管理（方案D）——
         //   自动释放跳过（p13 泄漏/p14 误释放 UAF 的结构性消除）
@@ -425,44 +360,16 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
         //   非容器类内部空返回；runtime 清槽幂等）+ DeleteObject（析构 +
         //   __cn_object_delete，空指针跳过=零初始化槽安全）+ 清槽（多路径幂等）。
         if (f.kind == OwnedStrField::Kind::ClassObj) {
-
             const std::string dtorKey = classDestructorSymbolKey(f.classCanon);
             if (!dtorKey.empty()) {
-                // 任务 100：合成体类值字段=条件析构（错误态值槽=垃圾句柄·
-                //   无条件 DeleteObject=堆损坏 0xC0000374）——与串字段
-                //   emitFieldStringFreeIf 同款条件包装。
-                if (f.condOffset >= 0) {
-                    ir::IRValue condAddr = emitResult(
-                        ir::Opcode::FieldAddr, {base}, "ptr",
-                        std::to_string(f.condOffset), loc);
-                    ir::IRValue condV = emitResult(ir::Opcode::LoadPtr,
-                                                    {condAddr}, "i1", "", loc);
-                    const std::string freeL = "bb" + std::to_string(blockCounter_++);
-                    const std::string endL = "bb" + std::to_string(blockCounter_++);
-                    endBranch(condV.toString(), freeL, endL);
-                    setCurrentBlock(newBlock(freeL));
-                    ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr,
-                                                    {fieldAddr}, "ptr", "", loc);
-                    emitContainerElemFreeFor(f.classCanon, objPtr, loc);
-                    emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
-                         f.classCanon, "void", loc);
-                    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64",
-                                                  "0", loc);
-                    emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "",
-                         "ptr", loc);
-                    endJump(endL);
-                    setCurrentBlock(newBlock(endL));
-                } else {
-                    ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr,
-                                                    {fieldAddr}, "ptr", "", loc);
-                    emitContainerElemFreeFor(f.classCanon, objPtr, loc);
-                    emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(),
-                         f.classCanon, "void", loc);
-                    ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64",
-                                                  "0", loc);
-                    emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "",
-                         "ptr", loc);
-                }
+                ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {fieldAddr}, "ptr",
+                                                "", loc);
+                emitContainerElemFreeFor(f.classCanon, objPtr, loc);
+                emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(), f.classCanon,
+                     "void", loc);
+                ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+                emit(ir::Opcode::StorePtr, {fieldAddr, zero}, ir::IRValue(), "", "ptr",
+                     loc);
             }
             continue;
         }
@@ -483,21 +390,6 @@ void IRGenerator::emitOwnedStrFieldFreesAt(const ir::IRValue& base,
             ir::IRValue condAddr = emitResult(ir::Opcode::FieldAddr, {base}, "ptr",
                                               std::to_string(f.condOffset), loc);
             emitFieldStringFreeIf(condAddr, fieldAddr, loc);
-        }
-    }
-    // 任务 100：恢复进入前终止（当前块=末条件块或原块·按保存态原样回填——
-    //   已终止块恢复其返回/跳转语义；未终止块保持可续接）。
-    if (wasTerm && !currentBlock_->terminated) {
-        if (wasKind == "返回") {
-            endReturn(wasRV);
-        } else if (wasKind == "跳转") {
-            endJump(wasTarget);
-        } else if (wasKind == "条件跳转") {
-            currentBlock_->termTrueTarget = wasTrue;
-            currentBlock_->termFalseTarget = wasFalse;
-            currentBlock_->termCondition = wasCond;
-            currentBlock_->terminated = true;
-            currentBlock_->termKind = wasKind;
         }
     }
 }
