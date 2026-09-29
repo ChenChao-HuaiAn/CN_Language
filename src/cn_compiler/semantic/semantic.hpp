@@ -185,6 +185,12 @@ public:
     //   字符串实参置 retOwnedString（A2 拥有契约：克隆产物归调用方拥有）。
     bool checkCopyBuiltinCall(class CallExpr* node);
 
+    // 874（任务 083）：LUE（最后使用消除）判定——与 v2 判据同构（plans/001
+    //   §5.3·〔基准=019〕）：纯局部标识符＋文本后向无同名＋循环跨迭代保守
+    //   （调用点被循环包围时源须在同一最内层循环体内声明）＋闭包保守。
+    //   通过 → 置 CallExpr::lueMove（IR 层 move 发射消费）。
+    bool lueEligible(class CallExpr* call, class Expr* arg);
+
     // 85-a（2026-09-12 第八十五轮）：借出方法名判定**上提 public**——IR 侧聚合
     //   返回位所有权保证（ir_fields.cpp isBorrowedAggregateSource）须按被调方
     //   方法名豁免：容器元素读出接口（元素/读取/栈顶/队首/头部元素/读取头部/
@@ -1127,6 +1133,9 @@ private:
     int rangeForCounter_ = 0;                     // C-2：遍历...中每个 索引变量唯一化计数
     // 当前上下文函数名（友元函数访问检查用，Task 3.9）
     std::string currentFunctionName_;
+    // 874（任务 083）：LUE 判定用当前函数体根（checkFunctionBody 设置/恢复·
+    //   泛型 recheck 递归检查栈式保存）；空=不在函数体上下文（LUE 不判定）。
+    class Stmt* currentFnBody_ = nullptr;
     // ---- 模块系统（Task 3.6）----
     // 已导入模块名集合（visitProgram 从 ImportDecl 收集；用于识别"模块.函数"限定调用）
     std::unordered_set<std::string> importedModules_;

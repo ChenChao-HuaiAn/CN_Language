@@ -698,6 +698,9 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     //   （多模块同名符号各自命中本模块的定义）
     const std::string savedModule = currentModuleName_;
     currentModuleName_ = node->moduleName;
+    // 874（任务 083）：LUE 判定用函数体根——栈式保存/恢复（泛型 recheck 递归）
+    Stmt* savedFnBody874 = currentFnBody_;
+    currentFnBody_ = node->body.get();
     pushScope();  // 参数作用域
     for (auto& param : node->params) {
         // 函数指针参数：类型为 funcPtr 规范化字符串；普通参数用 typeName
@@ -736,6 +739,7 @@ void SemanticAnalyzer::checkFunctionBody(FunctionDecl* node) {
     checkBorrowViewLifetimes();
     funcScopeStart_ = -1;
     currentFunctionName_.clear();  // 阶段3：退出函数上下文
+    currentFnBody_ = savedFnBody874;  // 874：恢复外层函数体上下文（栈式）
     currentModuleName_ = savedModule;  // A-2：恢复外层模块上下文
     popScope();
 }

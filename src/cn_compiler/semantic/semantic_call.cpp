@@ -330,6 +330,11 @@ bool SemanticAnalyzer::checkCopyBuiltinCall(CallExpr* node) {
     }
     node->resolvedType = lastType_;  // IR 层 genCopyBuiltin 分派依据
     node->retOwnedString = (lastType_ == "字符串");  // A2：克隆产物归调用方拥有
+    // 874（任务 083·〔基准=019〕）：LUE 判定——字符串/容器面（与 v2 限面同构：
+    //   结构体族随任务 078 扩面）；通过 → IR 层 move 发射（句柄直取+源槽清零）。
+    if (lastType_ == "字符串" || isClassType(types::canonical(lastType_))) {
+        node->lueMove = lueEligible(node, arg);
+    }
     return true;
 }
 

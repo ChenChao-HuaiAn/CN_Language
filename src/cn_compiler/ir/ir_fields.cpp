@@ -640,6 +640,21 @@ void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
             return;
         }
     }
+    // 874（任务 083·〔基准=019〕）：LUE move 发射（语义层 lueMove 标记·判据与
+    //   v2 同构）——字符串/容器：句柄直取（接管）+ 源槽清零，跳过深拷（复用
+    //   转移() 同款设施：ir_call.cpp 源槽清零模型）。槽解析失败（静态/非局部）
+    //   保守回退深拷。
+    if (node->lueMove && arg->getType() == NodeType::IdentifierExpr) {
+        const std::string lueSrc = static_cast<IdentifierExpr*>(arg)->name;
+        const std::string lueSlot = lookupVarName(lueSrc);
+        if (!lueSlot.empty()) {
+            lastExpr_ = genExpr(arg);
+            ir::IRValue lueZero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                             loc);
+            emit(ir::Opcode::Store, {lueZero}, ir::IRValue(), lueSlot, "i64", loc);
+            return;
+        }
+    }
     // ② 标量/指针：值语义天然（直通零开销）
     if (!semantic_->isStructType(type) && !semantic_->isClassType(type) &&
         type != "字符串") {
