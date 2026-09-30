@@ -31,6 +31,7 @@
 """
 from __future__ import annotations
 
+import datetime
 import re
 import subprocess
 import sys
@@ -588,6 +589,33 @@ def 查棘轮() -> list[str]:
     return 问题
 
 
+def 查025过期节() -> list[str]:
+    """plans/025 六要素节标题日期检查（904 日滚转·2026-09-30 用户令）。
+
+    各机节只保留当天+昨天的轮段：`### N.N 【…（…·YYYY-MM-DD·…）】` 形态的六要素
+    节标题日期非（今天|昨天）即拦截；「已滚转」指针节豁免；六要素节缺日期标注同样拦截
+    （日期是日滚转的机械锚，必须写）。
+    """
+    问题: list[str] = []
+    路径 = 仓库根 / "plans" / "025-三机任务统筹与实施计划.md"
+    if not 路径.exists():
+        return ["plans/025-三机任务统筹与实施计划.md 缺失"]
+    今天 = datetime.date.today()
+    昨天 = 今天 - datetime.timedelta(days=1)
+    允许 = {今天.isoformat(), 昨天.isoformat()}
+    for 行 in 路径.read_text(encoding="utf-8").splitlines():
+        m = re.match(r"^### \d+\.\d+ ", 行)
+        if not m or "已滚转" in 行:
+            continue
+        日期们 = re.findall(r"\d{4}-\d{2}-\d{2}", 行)
+        if not 日期们:
+            问题.append(f"plans/025 六要素节缺日期标注（日滚转锚）：{行[:60]}…")
+        elif not any(d in 允许 for d in 日期们):
+            问题.append(f"plans/025 六要素节标题日期 {日期们[0]} 非（今天|昨天）——按 904 日滚转规则"
+                        f"应滚转至 项目记忆/归档/（豁免「已滚转」指针节）：{行[:60]}…")
+    return 问题
+
+
 def 主流程() -> int:
     print("=== 共享文档结构门禁（六纪律机械自检，只读）===")
     交接路径 = 仓库根 / "交接.md"
@@ -597,7 +625,7 @@ def 主流程() -> int:
             print(f"    {标题[:44]}：{len(内容)} 行")
 
     全部问题 = (查交接() + 查日志() + 查总表() + 查看板() + 查重复节标题() + 查重复内容行() + 查冲突标记()
-                + 查采样日志() + 查开工自检() + 查棘轮())
+                + 查采样日志() + 查开工自检() + 查棘轮() + 查025过期节())
     if 全部问题:
         print(f"\n结论：结构缺陷 {len(全部问题)} 项，禁止提交 ✗")
         for 问题 in 全部问题:
