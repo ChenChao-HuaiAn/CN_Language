@@ -82,10 +82,12 @@ def 写入(机: str, 日志条: str, 交接节: str) -> None:
         p = 仓库根 / 文件
         t = p.read_text(encoding="utf-8")
         i = t.index(节头)
-        j = next((t.index(m.group(0), i + 10) for m in [re.compile(r"^## ", re.M)]
-                  for _ in [0] if (m.search(t[i + 10:]))), len(t))
-        j = len(t) if j == len(t) else j
-        p.write_text(t[:i] + 节头 + "\n\n" + 新体 + "\n" + t[j:], encoding="utf-8", newline="")
+        m2 = re.compile(r"^## ", re.M).search(t, i + len(节头))
+        j = m2.start() if m2 else len(t)
+        体 = 新体.rstrip()
+        if 体.startswith(节头):        # 交接草稿自带节头——剥掉统一由此拼
+            体 = 体[len(节头):].lstrip("\n")
+        p.write_text(t[:i] + 节头 + "\n\n" + 体 + "\n\n" + t[j:].lstrip("\n"), encoding="utf-8", newline="")
         print(f"[写入] {文件} {节头}（整节替换）")
 
 

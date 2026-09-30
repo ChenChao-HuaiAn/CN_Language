@@ -55,4 +55,27 @@ if 单测 is None:
 if not 步("单测", [单测]):
     raise SystemExit(1)
 
+# ④ L2 影响面子集（--l2·924 首版保守映射：写集中新增/改动的 E2E 用例目录全跑 +
+#    触 CN语言编译器v2/ 树加跑 v2 面+自举锚；src 模块→用例关键词精映射=后续演进（025 §1.99 边界）。
+#    映射不覆盖的改动=诚实兜底：提示走 L3 云端全量，不静默漏。）
+if "--l2" in sys.argv:
+    import subprocess as _sp
+    基准 = _sp.run(["git", "merge-base", "HEAD", "gitcode/develop"], cwd=仓库根,
+                   capture_output=True, text=True).stdout.strip()
+    改动 = (_sp.run(["git", "diff", "--name-only", 基准], cwd=仓库根,
+                    capture_output=True, text=True).stdout or "").split()
+    用例集 = sorted({p.split("/")[1] for p in 改动
+                     if p.startswith("tests/e2e/") and len(p.split("/")) > 2})
+    滤们 = 用例集 + (["_v2", "自举"] if any(p.startswith("CN语言编译器v2/") for p in 改动) else [])
+    if not 滤们:
+        print("[L2] 写集无新增/改动用例且未触 v2 树——无需子集（L3 云端全量兜底）")
+    else:
+        目标 = "win-x64" if 是win else "linux-x86_64"
+        for 滤 in 滤们:
+            if not 步("L2:" + 滤, [sys.executable, "tests/e2e/run_e2e.py",
+                                   "--target", 目标, "--cn", str(单测.parent / ("cn.exe" if 是win else "cn")),
+                                   "--filter", 滤]):
+                raise SystemExit(1)
+
+
 print("== L1 全绿（可提交；L2 影响面收工跑·L3 云端全量自动）==", flush=True)
