@@ -36,6 +36,7 @@ v3（581-a·2026-09-21 用户裁决）：**无任何集成前置的他机回签/
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import platform
 import re
@@ -450,20 +451,24 @@ def 直推看板提交(变换, 提交信息: str, 远程: str = 主远程) -> st
     临时 index（GIT_INDEX_FILE）+ commit-tree——零 checkout、不扰动工作树与当前分支
     （主树/多会话/任意分支上调用均安全）。变换返回 None=无需变更（直接返回）。
     push 被拒（他人刚推）→ fetch 重试 ≤3。返回失败信息（None=成功）。
+    行尾保真（920·清偿 917 通告欠账）：读看板/写 blob 全程 bytes——text=True 的
+    universal newlines 会把 CRLF 静默归一成 LF（行尾横跳源头·56f19797 只修了存量）。
     """
     for _ in range(3):
         运行(["git", "fetch", 远程])
         父 = 输出(["git", "rev-parse", f"{远程}/{集成分支}"])
-        原文 = subprocess.run(["git", "show", f"{父}:{看板文件名}"],
-                              cwd=仓库根, capture_output=True, text=True).stdout
-        if 原文 == "" and subprocess.run(["git", "show", f"{父}:{看板文件名}"],
-                                         cwd=仓库根, capture_output=True).returncode != 0:
+        原文b = subprocess.run(["git", "show", f"{父}:{看板文件名}"],
+                               cwd=仓库根, capture_output=True).stdout
+        if 原文b == b"" and subprocess.run(["git", "show", f"{父}:{看板文件名}"],
+                                           cwd=仓库根, capture_output=True).returncode != 0:
             return f"远端 develop 缺 {看板文件名}——窄通道直推前提不成立。"
+        原文 = 原文b.decode("utf-8")          # bytes.decode 不动行尾——变换在 str 层保 \r\n
         新文 = 变换(原文)
         if 新文 is None:
             return None
         blob = subprocess.run(["git", "hash-object", "-w", "--stdin"],
-                              input=新文, cwd=仓库根, capture_output=True, text=True).stdout.strip()
+                              input=新文.encode("utf-8"), cwd=仓库根,
+                              capture_output=True).stdout.decode().strip()
         索引文件 = Path(tempfile.mkdtemp(prefix="idx-")) / "index"
         环境 = dict(os.environ, GIT_INDEX_FILE=str(索引文件))
         def 索引命令(参数们: list[str]) -> subprocess.CompletedProcess:
@@ -485,7 +490,65 @@ def 远端看板文本(远程: str = 主远程) -> str:
     运行(["git", "fetch", 远程])
     父 = 输出(["git", "rev-parse", f"{远程}/{集成分支}"])
     return subprocess.run(["git", "show", f"{父}:{看板文件名}"],
-                          cwd=仓库根, capture_output=True, text=True).stdout
+                          cwd=仓库根, capture_output=True).stdout.decode("utf-8")
+
+
+# ── 队列服务层（920·协议 v4 五节点）：服务端优先+看板回退（行为超集·降级不失效）─────────
+# 治「git 被当状态数据库」（920 诊断：56% 提交只改看板·917 单批 8 对起批/排队乒乓）：
+#   中间态（集成中/失败恢复/封批）只进服务端**不再写 develop**=零 git 提交；
+#   边界（报名/销账）双写（服务端为主+看板兼容未升级 920 版的他机——三机升级后看板段写入退役）。
+# 配置：环境变量 CN_QUEUE_URL / CN_QUEUE_TOKEN，或 scripts/queue_client.json（gitignore·不入库）
+#   形如 {"url": "http://<TX_01>:8300", "令牌": "..."}。无配置=纯看板路径（现状行为）。
+队列服务URL = os.environ.get("CN_QUEUE_URL", "")
+队列服务令牌 = os.environ.get("CN_QUEUE_TOKEN", "")
+_客户端配置 = 仓库根 / "scripts" / "queue_client.json"
+if not 队列服务URL and _客户端配置.exists():
+    try:
+        _cfg = json.loads(_客户端配置.read_text(encoding="utf-8"))
+        队列服务URL = str(_cfg.get("url", ""))
+        队列服务令牌 = str(_cfg.get("令牌", ""))
+    except Exception:
+        pass
+
+
+def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
+    """GET（数据=None）/POST JSON——任何失败返回 None（调用方回退看板路径）。"""
+    if not 队列服务URL:
+        return None
+    import urllib.request
+    try:
+        if 数据 is None:
+            请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径,
+                                         headers={"Authorization": "Bearer " + 队列服务令牌})
+        else:
+            请求 = urllib.request.Request(队列服务URL.rstrip("/") + 路径,
+                                         data=json.dumps(数据, ensure_ascii=False).encode("utf-8"),
+                                         headers={"Content-Type": "application/json",
+                                                  "Authorization": "Bearer " + 队列服务令牌})
+        with urllib.request.urlopen(请求, timeout=4) as 响应:
+            return json.loads(响应.read().decode("utf-8"))
+    except Exception:
+        return None
+
+
+def 队列读() -> list[dict] | None:
+    """服务端队列（字段适配成看板行形态）——不可用返回 None（调用方读看板）。"""
+    态 = 服务调用("/api/state")
+    if 态 is None:
+        return None
+    return [{"分支": r.get("分支", ""), "基线": r.get("基线", ""),
+             "时刻": r.get("报名时刻", ""), "摘要": r.get("写集摘要", ""),
+             "状态": r.get("状态", "")} for r in 态.get("队列", [])]
+
+
+def 队列写(操作: str, 数据: dict) -> bool:
+    """写操作（join/update/touch/clear）——服务不可用/未配置返回 False（回退看板直推）。"""
+    结果 = 服务调用("/api/" + 操作, 数据)
+    if 结果 is None:
+        return False
+    if not 结果.get("ok"):
+        print(f"  [队列服务] {操作} 被拒：{结果.get('说明', '?')}——回退看板路径。")
+    return bool(结果.get("ok"))
 
 
 def 报名行(分支: str, 基线: str, 摘要: str) -> dict:
@@ -718,16 +781,21 @@ def 批流程(参数: argparse.Namespace) -> int:
     if 参数.dry_run:
         print(f"  [演练] 跳过看板报名直推（内存行代用）：{当前分支} @ {新行['时刻']} {摘要}")
     else:
+        # 920·边界双写：服务端（权威·实时）+看板段（兼容未升级 920 版的他机）
+        服务成 = 队列写("join", {"分支": 当前分支, "基线": 新行["基线"], "写集摘要": 摘要})
         问题 = 直推看板提交(报名变换, f"集成队列：{当前分支} 报名（911 批量集成·{摘要}）", 参数.remote)
-        if 问题:
+        if 问题 and not 服务成:
             return 失败(问题)
-        print(f"[2] 报名入队：{当前分支} @ {新行['时刻']}（{摘要}）")
+        print(f"[2] 报名入队：{当前分支} @ {新行['时刻']}（{摘要}）"
+              + ("｜服务端✓" if 服务成 else "｜服务端不可达·看板单写（回退）"))
 
     # ── ③ 等待成为批主（--wait 轮询；非 --wait 一次性判定后退出码 2）───────────────────
     等待起 = datetime.now()
     while True:
-        文 = 远端看板文本(参数.remote) if not 参数.dry_run else ""
-        队列 = 解析队列(文) if not 参数.dry_run else [新行]
+        队列 = 队列读() if not 参数.dry_run else None      # 920：服务端优先（实时）
+        if 队列 is None:
+            文 = 远端看板文本(参数.remote) if not 参数.dry_run else ""
+            队列 = 解析队列(文) if not 参数.dry_run else [新行]
         排队们 = [行 for 行 in 队列 if 行["状态"] == "排队"]
         集成中们 = [行 for 行 in 队列 if 行["状态"] == "集成中"]
         我在排队 = any(行["分支"] == 当前分支 for 行 in 排队们)
@@ -771,7 +839,11 @@ def 批流程(参数: argparse.Namespace) -> int:
         return None if 新 == 文 else 新
 
     if not 参数.dry_run:
-        直推看板提交(标集成中, f"集成队列：{当前分支} 批主起批（收拢期满封批）", 参数.remote)
+        # 920·中间态只进服务端（不写 develop=治起批/排队乒乓提交）；服务不可达回退看板直推
+        if 队列写("update", {"分支": 当前分支, "状态": "集成中"}):
+            print("  [队列服务] 已标集成中（服务端·零 git 提交——920 治乒乓）")
+        else:
+            直推看板提交(标集成中, f"集成队列：{当前分支} 批主起批（收拢期满封批）", 参数.remote)
     接管标 = "·takeover" if 参数.takeover else ""
     封批标 = "·seal-now" if 参数.seal_now else ""
     print(f"[3] 封批组链（批主={当前分支}{接管标}{封批标}）")
@@ -786,7 +858,9 @@ def 批流程(参数: argparse.Namespace) -> int:
         for 尝试 in range(1, 最大重试 + 1):
             运行(["git", "fetch", 参数.remote])
             最新 = 输出(["git", "rev-parse", f"{参数.remote}/{集成分支}"])
-            队列 = 解析队列(远端看板文本(参数.remote))
+            队列 = 队列读()                                   # 920：服务端优先
+            if 队列 is None:
+                队列 = 解析队列(远端看板文本(参数.remote))
             排队们 = [行 for 行 in 队列 if 行["状态"] == "排队"]
             # 批主自己行已被标「集成中」（组批前置直推）——成员候选必须含它，
             #   否则批主分支不进链（911 演练实录：链=develop→B→C 唯独无 A·幸未到 push）
@@ -867,7 +941,10 @@ def 批流程(参数: argparse.Namespace) -> int:
             def 恢复排队(文: str):
                 新 = 队列改状态(文, 当前分支, "排队")
                 return None if 新 == 文 else 新
-            直推看板提交(恢复排队, f"集成队列：{当前分支} 批主失败恢复排队", 参数.remote)
+            if 队列写("touch", {"分支": 当前分支}):    # 920·中间态服务端（零 git 提交）
+                print("  [队列服务] 批主失败恢复排队（服务端）")
+            else:
+                直推看板提交(恢复排队, f"集成队列：{当前分支} 批主失败恢复排队", 参数.remote)
 
     # ── ⑤ 销账：删成员远端分支→清队列行→镜像补推→验收提示 ─────────────────────────
     新tip = 链顶
@@ -885,7 +962,11 @@ def 批流程(参数: argparse.Namespace) -> int:
                 新 = 队列改状态(新, 分支, "归因出批" if 原因 == "归因" else "冲突出批")
             return None if 新 == 文 else 新
 
-        问题 = 直推看板提交(销账变换, f"集成队列：批集成销账（{当前分支} 批·{新tip[:8]}·"
+        # 920·边界双写：服务端销账（权威）+看板段（兼容旧机）
+        队列写("clear", {"分支们": [行["分支"] for 行 in 实际成员]})
+        for 分支, _原因 in 踢出们:
+            队列写("update", {"分支": 分支, "状态": "已踢出"})
+        问题 = 直推看板提交(销账变换, f"集成队列：批集成销账（{当前分支} 批·{newtip[:8]}·"
                                       f"成员 {len(实际成员)} 清行）", 参数.remote)
         if 问题:
             print(f"  [警告] 队列销账直推失败（{问题}）——请手动清理队列行。")
@@ -948,7 +1029,9 @@ def 主流程() -> int:
     if 参数.selftest:
         return 自测()
     if 参数.status:
-        队列 = 解析队列(远端看板文本(参数.remote))
+        队列 = 队列读()                                  # 920：服务端优先（实时）
+        if 队列 is None:
+            队列 = 解析队列(远端看板文本(参数.remote))
         if not 队列:
             print("[集成队列] 空（无人排队——bors 批组建·AGENTS.md §8.2-B）")
             return 0
