@@ -170,11 +170,14 @@ def 冲突标记检查(文件们: list[str]) -> str | None:
 
 
 def 快速门禁(文件们: list[str]) -> str | None:
-    """快速门禁：冲突标记 + 双文档结构门禁（纯文档/脚本写集的完整门禁）。"""
+    """快速门禁：冲突标记 + 三文档结构门禁（纯文档/脚本写集的完整门禁）。"""
     问题 = 冲突标记检查(文件们)
     if 问题:
         return 问题
-    for 脚本 in ("scripts/check_handoff.py", "scripts/check_progress_sync.py"):
+    # check_language_philosophy 补挂（920·阶段4 漂移修复）：AGENTS §3.1 门禁条声称
+    #   「integrate.py 快速门禁同挂」但实际从未调用——920 诊断实锤的文档/代码漂移点。
+    for 脚本 in ("scripts/check_handoff.py", "scripts/check_progress_sync.py",
+                 "scripts/check_language_philosophy.py"):
         结果 = 运行([sys.executable, 脚本])
         if 结果.returncode != 0:
             return f"{脚本} 未过——修复后重试。"
@@ -531,14 +534,26 @@ def 服务调用(路径: str, 数据: dict | None = None) -> dict | None:
         return None
 
 
-def 队列读() -> list[dict] | None:
-    """服务端队列（字段适配成看板行形态）——不可用返回 None（调用方读看板）。"""
+def 队列读(远程: str = 主远程) -> list[dict] | None:
+    """服务端队列（字段适配成看板行形态）+看板段双源合并——不可用返回 None（调用方读看板）。
+
+    过渡期双源合并（920）：旧版机（未升级服务层）报名只写看板段——纯服务端视图会漏掉
+    它们；服务端行权威（状态/时刻以服务端为准），看板段独有行并入（分支键去重）。
+    三机全部升级后看板段自然清空=退化为纯服务端读。
+    """
     态 = 服务调用("/api/state")
     if 态 is None:
         return None
-    return [{"分支": r.get("分支", ""), "基线": r.get("基线", ""),
+    行们 = [{"分支": r.get("分支", ""), "基线": r.get("基线", ""),
              "时刻": r.get("报名时刻", ""), "摘要": r.get("写集摘要", ""),
              "状态": r.get("状态", "")} for r in 态.get("队列", [])]
+    try:
+        看板行们 = 解析队列(远端看板文本(远程))
+    except Exception:
+        看板行们 = []
+    已知 = {行["分支"] for 行 in 行们}
+    行们.extend(行 for 行 in 看板行们 if 行["分支"] not in 已知)
+    return 行们
 
 
 def 队列写(操作: str, 数据: dict) -> bool:
@@ -792,7 +807,7 @@ def 批流程(参数: argparse.Namespace) -> int:
     # ── ③ 等待成为批主（--wait 轮询；非 --wait 一次性判定后退出码 2）───────────────────
     等待起 = datetime.now()
     while True:
-        队列 = 队列读() if not 参数.dry_run else None      # 920：服务端优先（实时）
+        队列 = 队列读(参数.remote) if not 参数.dry_run else None      # 920：服务端优先（实时）
         if 队列 is None:
             文 = 远端看板文本(参数.remote) if not 参数.dry_run else ""
             队列 = 解析队列(文) if not 参数.dry_run else [新行]
@@ -858,7 +873,7 @@ def 批流程(参数: argparse.Namespace) -> int:
         for 尝试 in range(1, 最大重试 + 1):
             运行(["git", "fetch", 参数.remote])
             最新 = 输出(["git", "rev-parse", f"{参数.remote}/{集成分支}"])
-            队列 = 队列读()                                   # 920：服务端优先
+            队列 = 队列读(参数.remote)                       # 920：服务端优先（双源合并）
             if 队列 is None:
                 队列 = 解析队列(远端看板文本(参数.remote))
             排队们 = [行 for 行 in 队列 if 行["状态"] == "排队"]
@@ -1029,7 +1044,7 @@ def 主流程() -> int:
     if 参数.selftest:
         return 自测()
     if 参数.status:
-        队列 = 队列读()                                  # 920：服务端优先（实时）
+        队列 = 队列读(参数.remote)                      # 920：服务端优先（双源合并）
         if 队列 is None:
             队列 = 解析队列(远端看板文本(参数.remote))
         if not 队列:
