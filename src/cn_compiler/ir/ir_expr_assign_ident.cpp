@@ -22,7 +22,7 @@ namespace cn_compiler {
 bool IRGenerator::assignToIdentifierTarget(AssignmentExpr* node, IdentifierExpr* ident) {
     // ---- 阶段3 OOP（Task 3.1）：方法体内直接字段赋值（无 自身. 前缀） ----
     // 字段名 不在当前方法作用域但命中类字段表 -> this+偏移 StorePtr。
-    if (handleClassFieldAssign(ident, node->value.get(), node->location)) {
+    if (handleClassFieldAssign(ident, node->value.get(), node->op, node->location)) {
         return true;
     }
     // 320-a（T41）：函数内静态局部赋值——varStack 命中且 isStaticLocal（无栈槽）
@@ -369,6 +369,19 @@ bool IRGenerator::identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr
                     emit(ir::Opcode::StorePtr, {capAddr, newObj}, ir::IRValue(), "",
                          "ptr", node->location);
                 } else {
+                    // 任务 095（2026-09-30·008 树波 4）：Store 覆盖前补**旧对象
+                    //   释放**——原路径直接 Store 新句柄覆盖目标槽，乙 原堆对象
+                    //   无人释放=泄漏（0929 审计 p6 实测残留 1；对照字符串路径
+                    //   identifierStringTransferAssign 有 free 旧）。Rust 对照：
+                    //   `b = a` 覆盖前 drop 旧值。释放模型=genClassDestructorCalls
+                    //   同款**单发 DeleteObject**（指令内含析构调用+free·空句柄
+                    //   空安全跳过）——首版 Call 析构+DeleteObject 双调=析构
+                    //   打印两次（p1 实测 4>3 实锤）。
+                    ir::IRValue oldObj = emitResult(
+                        ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")},
+                        "ptr", unique, node->location);
+                    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
+                         canonTarget, "void", node->location);
                     emit(ir::Opcode::Store, {newObj}, ir::IRValue(), unique, "ptr",
                          node->location);
                 }

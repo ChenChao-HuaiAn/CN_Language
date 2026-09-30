@@ -1088,12 +1088,12 @@ private:
     bool handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr);
     // 类字段赋值（visitAssignmentExpr 钩子）：对象.字段 = v / 类名.静态字段 = v
     bool handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
-                                 const SourceLocation& loc);
+                                 Operator op, const SourceLocation& loc);
     // 方法体内直接字段读取（visitIdentifierExpr 钩子）：字段名 无 自身. 前缀
     bool handleClassFieldRead(IdentifierExpr* node);
     // 方法体内直接字段赋值（visitAssignmentExpr 钩子）：字段名 = v
     bool handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
-                                const SourceLocation& loc);
+                                Operator op, const SourceLocation& loc);
     // ---- visitAssignmentExpr 族子方法（166-a 函数级拆分；行为等价于原 1034 行单函数）----
     // 族：成员左值（原 ir_expr_assign.cpp 19~314 段）
     bool assignToMemberTarget(AssignmentExpr* node);

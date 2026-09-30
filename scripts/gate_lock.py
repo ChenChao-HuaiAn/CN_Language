@@ -6,7 +6,8 @@
 **全机同一时刻至多一个全量门禁在飞**；锁放主树 target/（跨 worktree 共享——
 worktree 的 git-common-dir 都指回主树 .git）。
 
-  acquire [--timeout 秒]     阻塞获取锁（默认等待 2h；陈锁=心跳停 4h 自动接管）
+  acquire [--timeout 秒] [--owner PID] 阻塞获取锁（默认等待 2h；陈锁=存活锚死秒级接管〔917〕
+                                 /心跳停 4h 兜底）
   release                    释放锁（Ctrl+C 中断门禁后手动清锁用）
   run -- <命令...>           获取→执行→无论成败释放（推荐用法，透传退出码）
   status                     查看当前持锁者
@@ -45,7 +46,58 @@ def 读信息(锁: Path) -> dict:
         return {}
 
 
+def pid存活(pid) -> bool:
+    """探测进程是否存活（917·任务 109：陈锁秒级接管主判据）。
+    POSIX: os.kill(pid, 0)（信号 0=纯探测·PermissionError=别人的活进程）；
+    Windows: os.kill 的 sig=0 无特判会走 TerminateProcess——绝不可用于探测，
+    用 ctypes OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION)+GetExitCodeProcess。
+    无法判定一律保守判「活」（误清活锁=两场门禁并行，代价 >> 多等一会）。"""
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if sys.platform != "win32":
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return True
+        return True
+    import ctypes
+    内核 = ctypes.WinDLL("kernel32", use_last_error=True)
+    PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+    STILL_ACTIVE = 259
+    ERROR_ACCESS_DENIED = 5
+    句柄 = 内核.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not 句柄:
+        # ACCESS_DENIED=进程存在但无权限（保守判活）；其余（含 INVALID_PARAMETER）=不存在
+        return ctypes.get_last_error() == ERROR_ACCESS_DENIED
+    try:
+        码 = ctypes.c_ulong()
+        if 内核.GetExitCodeProcess(句柄, ctypes.byref(码)):
+            return 码.value == STILL_ACTIVE
+        return True  # 查询失败保守判活
+    finally:
+        内核.CloseHandle(句柄)
+
+
 def 是陈锁(锁: Path) -> bool:
+    """917（任务 109·021:173）：双判据——
+    ① 持锁存活锚已死=立即陈锁（主场景=TaskStop/强杀门禁后锁残留·排队者秒级接管·
+       旧 4h 空等根除）。锚=run 形态的 gate_lock 自身 pid / acquire 分离形态由调用方
+       传的 --owner pid（如 ci.ps1 传 $PID）。**acquire 未带 owner 的锁其 pid 是已
+       退出的 acquire 子进程、不可按 pid 判死**——无锚（旧 info/旧调用）回退②。
+    ② 心跳停超 4h=陈锁（原判据保留·兜底 pid 复用与无锚形态）。
+    pid 复用方向安全：死 pid 被新进程占→探测「活」→退回②（不误清）。"""
+    信息 = 读信息(锁)
+    owner = 信息.get("owner_pid")
+    if owner is None and 信息.get("形态") == "run":
+        owner = 信息.get("pid")
+    if owner and not pid存活(owner):
+        return True
     try:
         停跳 = time.time() - (锁 / "info.json").stat().st_mtime
         return 停跳 > 陈锁阈值
@@ -66,7 +118,7 @@ def 心跳线程(信息文件: Path) -> threading.Thread:
     return t
 
 
-def 获取(超时秒: int) -> Path | None:
+def 获取(超时秒: int, 形态: str = "run", owner_pid: int | None = None) -> Path | None:
     锁 = 主树锁目录()
     锁.parent.mkdir(parents=True, exist_ok=True)
     起始 = time.time()
@@ -77,7 +129,11 @@ def 获取(超时秒: int) -> Path | None:
             锁.mkdir()
         except FileExistsError:
             if 是陈锁(锁):
-                print(f"[gate_lock] 陈锁接管（心跳停超 {陈锁阈值 // 3600}h：{读信息(锁).get('命令', '?')}）", file=sys.stderr)
+                陈锁信息 = 读信息(锁)
+                owner = 陈锁信息.get("owner_pid") or (陈锁信息.get("pid") if 陈锁信息.get("形态") == "run" else None)
+                因 = (f"持锁存活锚 pid={owner} 已死（917 秒级接管）" if owner and not pid存活(owner)
+                      else f"心跳停超 {陈锁阈值 // 3600}h")
+                print(f"[gate_lock] 陈锁接管（{因}：{陈锁信息.get('命令', '?')}）", file=sys.stderr)
                 释放(锁, 静默=True)
                 continue
             if 超时秒 and time.time() - 起始 > 超时秒:
@@ -86,12 +142,15 @@ def 获取(超时秒: int) -> Path | None:
             持有者 = 信息.get("命令") or 持有者 or "?"  # 锁刚被释放的间隙保留上一次读到的持有者
             if time.time() - 上次打印 >= 30:
                 # 595-a（方案甲③）：等待进度改 stdout——全缓冲/管道下 stderr 进度
-                # 对等待方不可见（595 轮排队 2h 零感知教训）；flush 保实时。
+                #   对等待方不可见（595 轮排队 2h 零感知教训）；flush 保实时。
                 print(f"[gate_lock] 排队等待中 {int(time.time() - 起始)}s（{持有者} 持有）", flush=True)
                 上次打印 = time.time()
             time.sleep(2)
             continue
-        信息 = {"pid": os.getpid(), "命令": " ".join(sys.argv[1:]),
+        # owner_pid（917·任务 109）：存活锚——run 形态=gate_lock 自身（贯穿命令执行）；
+        #   acquire 分离形态=调用方进程（ci.ps1 传 $PID）——锚死=陈锁秒级接管。
+        信息 = {"pid": os.getpid(), "形态": 形态, "owner_pid": owner_pid or os.getpid(),
+                "命令": " ".join(sys.argv[1:]),
                 "获取时间": time.strftime("%Y-%m-%d %H:%M:%S")}
         try:
             (锁 / "info.json").write_text(json.dumps(信息, ensure_ascii=False), encoding="utf-8")
@@ -116,6 +175,10 @@ def 主流程() -> int:
     子 = 解析器.add_subparsers(dest="命令", required=True)
     p取 = 子.add_parser("acquire", help="阻塞获取锁")
     p取.add_argument("--timeout", type=int, default=7200, help="等待上限秒（0=无限）")
+    p取.add_argument("--owner", type=int, default=None, metavar="PID",
+                     help="持锁存活锚 pid（917·任务 109）：acquire 分离形态传调用方 pid"
+                          "（如 ci.ps1 传 $PID）——锚进程死=陈锁秒级接管；缺省=acquire 子进程"
+                          "自身（返回即退·不可作锚→回退心跳 4h 判据）")
     子.add_parser("release", help="释放锁")
     p跑 = 子.add_parser("run", help="获取→执行命令→释放（透传退出码）")
     p跑.add_argument("命令", nargs=argparse.REMAINDER)
@@ -126,7 +189,10 @@ def 主流程() -> int:
         锁 = 主树锁目录()
         if 锁.exists():
             信息 = 读信息(锁)
-            print(f"被持有：pid={信息.get('pid')} 命令={信息.get('命令')} 自 {信息.get('获取时间')}"
+            owner = 信息.get("owner_pid") or (信息.get("pid") if 信息.get("形态") == "run" else None)
+            锚态 = (f"锚 pid={owner} {'活' if pid存活(owner) else '死'}" if owner else "无锚（回退心跳 4h）")
+            print(f"被持有：pid={信息.get('pid')} 形态={信息.get('形态', '?')} {锚态} "
+                  f"命令={信息.get('命令')} 自 {信息.get('获取时间')}"
                   f"{'（陈锁）' if 是陈锁(锁) else ''}")
         else:
             print("空闲")
@@ -137,7 +203,8 @@ def 主流程() -> int:
     # 595-a（方案甲①）：run 形态等待默认无限（0）——串行队列本义=排队总能轮到，
     #   2h 硬超时制造「假放弃+假退出码」；真死锁由陈锁 4h 心跳接管兜底。
     #   acquire 形态维持 7200（ci.ps1 内部用·保留快速失败语义），可 --timeout 覆盖。
-    锁 = 获取(参数.timeout if 参数.命令 == "acquire" else 0)
+    锁 = 获取(参数.timeout if 参数.命令 == "acquire" else 0,
+             形态=参数.命令, owner_pid=getattr(参数, "owner", None))
     if 锁 is None:
         print("[gate_lock] 等待超时——另一门禁仍在飞，稍后再试或 gate_lock status 查看", file=sys.stderr)
         return 2

@@ -141,8 +141,9 @@ bool IRGenerator::handleClassFieldRead(IdentifierExpr* node) {
 
 // 方法体内直接字段赋值（无 自身. 前缀）：
 //   静态字段 -> 静态字段符号 StorePtr；实例字段 -> this+偏移 StorePtr
+// 915-a（任务 084）：op 形参新增——复合赋值先读旧值再算（见两处复合分支）
 bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
-                                         const SourceLocation& loc) {
+                                         Operator op, const SourceLocation& loc) {
     // 静态字段直接赋值（静态方法/普通方法内均可，Task 3.9）
     if (semantic_ != nullptr && !currentClass_.empty()) {
         const ClassInfo* ci = semantic_->findClass(currentClass_);
@@ -157,6 +158,18 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
                     val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
                 }
                 ir::IRValue addr = genStaticFieldAddr(currentClass_, ident->name, loc);
+                // 915-a（任务 084）：静态字段复合赋值先读旧值再算（原丢读取侧）
+                if (isCompoundAssignOp(op)) {
+                    ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addr},
+                                                     targetIrType, "", loc);
+                    ir::Opcode opcode;
+                    Operator baseOp = baseOpOfCompound(op);
+                    if (mapBinaryOp(baseOp, false, opcode)) {
+                        val = widenCompoundRhs(val, targetIrType, loc);  // 331-a T51
+                        val = emitResult(opcode, {current, val}, targetIrType, "",
+                                         loc);
+                    }
+                }
                 emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "",
                      targetIrType, loc);
                 lastExpr_ = val;
@@ -264,6 +277,18 @@ bool IRGenerator::handleClassFieldAssign(IdentifierExpr* ident, Expr* value,
         }
     }
     ir::IRValue addr = genInstanceFieldAddr(ident->name, loc);
+    // 915-a（任务 084·与 memberGenericAssign:276 同构）：复合赋值先读旧值
+    //   再算（原丢读取侧——方法体裸字段 `存量 += n` 实测存 n 应 存量+n）
+    if (isCompoundAssignOp(op)) {
+        ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addr}, targetIrType,
+                                         "", loc);
+        ir::Opcode opcode;
+        Operator baseOp = baseOpOfCompound(op);
+        if (mapBinaryOp(baseOp, false, opcode)) {
+            val = widenCompoundRhs(val, targetIrType, loc);  // 331-a T51
+            val = emitResult(opcode, {current, val}, targetIrType, "", loc);
+        }
+    }
     emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "", targetIrType, loc);
     lastExpr_ = val;
     return true;
@@ -467,8 +492,12 @@ bool IRGenerator::handleClassMemberLvalue(MemberExpr* node, ir::IRValue& outAddr
 
 // 类字段赋值：对象.字段 = v / 类名.静态字段 = v。
 // 目标地址（实例/静态）+ StorePtr（复合赋值先读再算）。
+// 915-a（任务 084·与 memberGenericAssign:276 逐行同构）：复合赋值
+//   （o.值 += 1 等）原只「genExpr(右值)+StorePtr」=丢读取侧静默错值
+//   （c.存量 += 7 实测存 7 应 22）——补「LoadPtr 旧值→widenCompoundRhs→
+//   baseOpOfCompound 运算→StorePtr」；求值顺序=右值先（C++17/Rust 同款）。
 bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
-                                          const SourceLocation& loc) {
+                                          Operator op, const SourceLocation& loc) {
     ir::IRValue addr;
     if (!handleClassMemberLvalue(target, addr)) return false;
     if (semantic_ == nullptr) return false;
@@ -486,6 +515,17 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     ir::IRValue val = genExpr(valueExpr);
     if (val.type != targetIrType && !targetIrType.empty()) {
         val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
+    }
+    // 915-a（任务 084）：复合赋值先读旧值再算（原丢读取侧）
+    if (isCompoundAssignOp(op)) {
+        ir::IRValue current = emitResult(ir::Opcode::LoadPtr, {addr}, targetIrType,
+                                         "", loc);
+        ir::Opcode opcode;
+        Operator baseOp = baseOpOfCompound(op);
+        if (mapBinaryOp(baseOp, false, opcode)) {
+            val = widenCompoundRhs(val, targetIrType, loc);  // 331-a T51
+            val = emitResult(opcode, {current, val}, targetIrType, "", loc);
+        }
     }
     emit(ir::Opcode::StorePtr, {addr, val}, ir::IRValue(), "", targetIrType, loc);
     lastExpr_ = val;

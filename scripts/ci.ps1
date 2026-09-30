@@ -9,8 +9,10 @@ Set-Location $root
 
 # 449-a：全量门禁串行锁（AGENTS.md §8.8）——同机多 worktree 并行时至多一个全量门禁在飞
 # （防 CPU/内存互抢：78/79 OOM 前科）。锁=主树 target/gate.lock（跨 worktree 共享），
-# 阻塞等待至获得；finally 释放（Ctrl+C/失败路径均覆盖；进程被杀则 4h 陈锁自动接管）。
-python scripts/gate_lock.py acquire
+# 阻塞等待至获得；finally 释放（Ctrl+C/失败路径均覆盖）。
+# 917（任务 109）：acquire 传 --owner $PID（powershell 自身=存活锚）——本进程被杀=陈锁
+# 秒级接管（旧 4h 心跳空等根除）；无锚旧形态回退 4h 心跳判据。
+python scripts/gate_lock.py acquire --owner $PID
 if ($LASTEXITCODE -ne 0) { Write-Host "[CI] 全量门禁锁等待超时（gate_lock status 查看）" -ForegroundColor Red; exit 1 }
 try {
 

@@ -270,11 +270,31 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
                     {ir::IRValue::constant(clsCanon, "ptr")}, "ptr",
                     clsCanon + "|" + std::to_string(ci->totalSize),
                     node->location);
-                ir::IRValue srcAddr =
-                    lvalueAddress(node->arguments[0].get());
-                emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
-                     methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
-                     node->location);
+                // 898（2026-09-30·116 红灯根治）：按实参形态分派源拷贝——拷贝构造
+                //   callee 契约=「其他=存句柄的槽地址」（callee 内两层 Load：[槽]
+                //   =句柄→[句柄]=字段）。①实参=类变量（Identifier）：lvalueAddress
+                //   产出=槽地址，直调拷贝构造 ✓（889 原路径）；②实参=下标/成员
+                //   （容器内联元素·类内联字段）：lvalueAddress 产出=**对象本体地址**
+                //   （一步即字段），直调=被调方 [对象]=首字段值再解引用=以字段值当
+                //   地址 C0000005（116 栈.弹出/队.出队 `正常(数据[i])` 崩点
+                //   fault=元素编号值实证）——改盒内字段拷（emitStructCopyWithFields
+                //   srcAddr=对象地址契约 ✓·拥有型串字段深拷）；类句柄字段浅拷=诚实
+                //   边界（随任务 096 拥有位统一解），较直调崩已纯改善。
+                const NodeType argKind = node->arguments[0]->getType();
+                if (argKind == NodeType::IndexExpr ||
+                    argKind == NodeType::MemberExpr) {
+                    ir::IRValue srcObj =
+                        lvalueAddress(node->arguments[0].get());
+                    emitStructCopyWithFields(newObj, srcObj, clsCanon,
+                                             node->location, /*preFree=*/false,
+                                             /*deepCopy=*/true);
+                } else {
+                    ir::IRValue srcAddr =
+                        lvalueAddress(node->arguments[0].get());
+                    emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
+                         methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
+                         node->location);
+                }
                 val = newObj;
             }
         }

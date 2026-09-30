@@ -52,7 +52,7 @@ bool IRGenerator::assignToMemberTarget(AssignmentExpr* node) {
     MemberExpr* member = static_cast<MemberExpr*>(node->target.get());
     // ---- 阶段3 OOP（Task 3.1）：类字段赋值（对象.字段 = v / 类名.静态字段 = v） ----
     // 实例字段 -> 对象指针+偏移 StorePtr；静态字段 -> ?static_ 符号 StorePtr。
-    if (handleClassMemberAssign(member, node->value.get(), node->location)) {
+    if (handleClassMemberAssign(member, node->value.get(), node->op, node->location)) {
         return true;
     }
     // 枚举成员赋值不合法（枚举值为只读常量；枚举类型名非指针，

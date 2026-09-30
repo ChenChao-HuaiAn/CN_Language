@@ -52,7 +52,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # 子进程（v2p / cn_self 编译 v2 全树）内存可能失控（v1 时代旧组件链实测 26GB+ 卡死）。
 # 超过 内存上限MB 的进程将被自动终止并判为失败。
 # 单位：MB。0 = 不启用（默认仅对 v2 锚定链等重负载用例启用，避免小用例轮询开销）。
-内存上限MB默认 = 32768
+内存上限MB默认 = 4096
 # 746-a：8192→32768——**79_v2 自举闭环转绿后**（743 复制(顶层) 修复·fix_s 首次
 #   全程跑通）fix_s 编译 v2 全树工作集**随上限水涨船高**（8335MB@8192 上限→
 #   16484MB@16384 上限＝按需分配模式·运行时 allocator 不积极归还）——一步
@@ -61,22 +61,24 @@ if hasattr(sys.stderr, "reconfigure"):
 #   工作集 4155MB 超旧上限（605-a 撤守卫态 8192 口径同源扩展）。
 # 618-a：撤守卫源码级加载进一步抬升（fix_p 实测 4099MB 临界·617 补验实证）；
 #   CLI --max-mem-mb 仍可覆盖（605 worker 传递修复）。
-# 797-a（2026-09-26·三连 OOM 连坐根治）：当日 15:53:11/16:40:45/19:32:13 三次内核全局
-#   OOM（journalctl -k 实证），形态=--jobs 8 并行池中**两个 v2 全树编译同时在飞**
-#   （各自 anon-rss 14GB＝28GB/物理 32GB·8 个 python worker 同刻在进程表）→oom killer
-#   杀 v2p→app-zcode scope 同刻 'oom-kill' 失败→ZCode host 收 SIGTERM 整体退出
-#   （用户三次感知「ZCode 退出」·16:43 被迫重启电脑）。本默认 32768MB 系 746-a 按
-#   家机 128GB 给足，在 32GB 深度机＝比物理内存还大、形同虚设（教训库 OOM 连坐
-#   第 4 例：28.7/28.9/14.6/28GB——人工「ulimit -v 8388608」纪律必然被忘，机械化）。
-#   两道新防线（见 运行命令）：
-#   ① RLIMIT_AS=8GB 地址空间硬顶（地址空间顶MB默认）：全部子进程注入（教训库
-#      「ulimit -v 8388608」人工纪律机械化·daemon RLIMIT_AS 6GB 常驻先例 306-a）——
-#      失控进程在 8GB 处分配失败快速退出＝单用例诚实红，不再 OOM killer 全局连坐；
-#   ② v2 全树编译互斥（命令触及 CN语言编译器v2 自动判定·同刻至多一个）：直接消灭
-#      「双 14GB 全树编译并行」事故形态；全树编译合法豁免 AS 顶（746-a 实证 16GB+
-#      随上限水涨船高＝allocator 不积极归还，治本挂编译器内存管理域·793/058 关联）。
+# 917（2026-09-30）：32768→4096 收紧——746-a 的「水涨船高」口径已被 074 内存
+#   治理消灭（v2p 全树编译峰值 RSS 20.75GB→227.8MB〔885 轮实测·净版〕·宿主 cn
+#   307MB·4096=18 倍余量）；旧默认 32768 在 32GB 机上比物理内存还大=保险丝形同
+#   虚设。未来回归（峰值再超 4GB）须立刻炸出诚实红，而非静默放行。
+# 797-a（2026-09-26·三连 OOM 连坐根治）：当日三次内核全局 OOM（journalctl -k
+#   实证），形态=--jobs 8 并行池中**两个 v2 全树编译同时在飞**（各自 anon-rss
+#   14GB＝28GB/物理 32GB）→oom killer 杀 v2p→ZCode host 收 SIGTERM 整体退出。
+#   防线（见 运行命令）：
+#   RLIMIT_AS=8GB 地址空间硬顶（地址空间顶MB默认）：全部子进程注入——失控进程
+#   在 8GB 处分配失败快速退出＝单用例诚实红，不再 OOM killer 全局连坐；全树
+#   编译豁免 AS 顶（746-a 实证地址空间按需分配·掐紧出 -11 假红·豁免顶=物理×
+#   0.55〔824 轮〕）。
+#   917（2026-09-30）：797-a ②「v2 全树编译 flock 互斥」退役摘除——其保护前提
+#   「双 14GB 全树编译并行＝28GB 全局 OOM」已被内存治理消灭（065→074：v2p 峰值
+#   20.75GB→227.8MB·8 并行叠加≈2GB 无压力）；78/79 三跳串行长尾（arm64 单跳
+#   ~8 分钟）并入并行。win 侧本就未启用（跑 jobs 8 数百轮零事故=现成实证）。
+#   回取=git 历史（797-a 原文）。
 地址空间顶MB默认 = 8192
-v2全树编译互斥锁路径 = pathlib.Path("target") / "e2e_v2全树编译.lock"
 
 
 def 全树编译内存上限MB() -> int:
@@ -291,13 +293,13 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
       stderr 给出"内存超限"原因。防 v2 锚定链等大规模编译用例内存失控卡死机器
       （2026-08-24 实测：v1 时代旧组件链（79_bootstrap_closed_loop）工作集涨到 26GB+）。
 
-    797-a 两道内存防线（对全部调用点自动生效·见模块头注释）：
+    797-a 内存防线（对全部调用点自动生效·见模块头注释）：
     ① 子进程注入 RLIMIT_AS=地址空间顶MB默认（8GB）——失控即分配失败快速退出，
-      不再 OOM killer 全局连坐；豁免＝命令触及 CN语言编译器v2 全树（唯一合法
-      大户·746-a 实证 16GB+），豁免形态同时受②互斥保护；
-    ② v2 全树编译互斥锁——全树编译同刻至多一个（串行排队），直接消灭
-      「双 14GB 全树编译并行＝28GB 全局 OOM」事故形态（Windows 侧暂不启用：
-      家机 128GB 无此压力·诚实边界·待家机自评接力）。
+      不再 OOM killer 全局连坐；豁免＝命令触及 CN语言编译器v2 全树（豁免顶=
+      物理×0.55·824 轮）；超时/超限一律 终止进程树（整棵子进程树连带管道写端
+      全清——917 普通路径同款根治，防孙进程持管道致 worker 永挂〔021 任务 108〕）。
+    ②（917 退役）v2 全树编译 flock 互斥已摘除——前提「双 14GB 并行 OOM」已被
+      内存治理消灭（v2p 峰值 227.8MB）；详见模块头 917 注释。
     """
     # 797-a 自动判定：78/79 自举链的全部全树编译（cn_self/v2p/fix_p/fix_s 编译
     #   CN语言编译器v2 树）命令行都含该路径字样；单文件编译/运行/工具链操作均不含。
@@ -321,24 +323,13 @@ def 运行命令(命令列表: list, 工作目录: pathlib.Path,
             except (ValueError, OSError):
                 pass
         preexec_fn = _set_child_limits
-    锁句柄 = None
-    if 全树编译 and sys.platform != "win32":
-        try:
-            import fcntl
-            v2全树编译互斥锁路径.parent.mkdir(parents=True, exist_ok=True)
-            锁句柄 = open(v2全树编译互斥锁路径, "w")
-            fcntl.flock(锁句柄.fileno(), fcntl.LOCK_EX)  # 阻塞等待＝全树编译串行排队
-        except Exception:
-            锁句柄 = None  # 锁失败不阻断（退化＝无互斥·guardian oom_guard 系统层兜底）
-    try:
-        return _运行命令实现(命令列表, 工作目录, 标准输入, preexec_fn,
-                          内存上限MB, 超时秒数)
-    finally:
-        if 锁句柄 is not None:
-            try:
-                锁句柄.close()  # close 即释放 flock
-            except Exception:
-                pass
+    # 917：797-a ②flock 全树编译互斥已摘除（保护前提消灭·见模块头注释）——原
+    #   「串行排队」使 78/79 三跳全树编译强制互斥（arm64 单跳 ~8 分钟×串行=长尾
+    #   期其余 worker 零 CPU 等待·曾被误判挂死〔教训 0930 条〕）；摘除后 78/79 与
+    #   普通用例并行，防线=每进程 RLIMIT_AS+RSS 轮询+oom_guard（叠加峰值
+    #   3×227.8MB 无压力）。
+    return _运行命令实现(命令列表, 工作目录, 标准输入, preexec_fn,
+                       内存上限MB, 超时秒数)
 
 
 def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
@@ -435,29 +426,58 @@ def _运行命令实现(命令列表: list, 工作目录: pathlib.Path,
         return subprocess.CompletedProcess(
             命令列表, 进程.returncode, 收集输出["stdout"], 收集输出["stderr"])
 
-    # ---- 普通路径（无内存保护）：与历史行为完全一致 ----
+    # ---- 普通路径（无内存保护）：Popen+communicate ----
     #    缺陷④防护（2026-09-04 用户裁决 C4）：编译步骤偶发零 CPU 挂起（终门禁
     #    cn build 66_switch_all 实测一次，taskkill 后单跑正常——疑 AV/文件锁/
-    #    句柄竞争）——超时秒数 >0 时启用超时保护+重试一次，防偶发挂起拖死门禁
-    if 超时秒数 and 超时秒数 > 0:
-        for 尝试轮 in range(2):
+    #    句柄竞争）——超时秒数 >0 时启用超时保护+重试一次，防偶发挂起拖死门禁。
+    #    917 根治「孤儿管道」（021 任务 108 根因域）：subprocess.run(timeout) 超时
+    #    只杀直接子进程——孙进程（编译器启动的 ml64/link/cvtres 等）存活持有
+    #    stdout 管道写端 → run 内部收尾 communicate() 等 EOF 永阻塞 = worker
+    #    永挂（447 停摆两轮实证形态之一）。改为显式 Popen+communicate(timeout)，
+    #    超时走 终止进程树（win taskkill /T /F·POSIX killpg）整树连管道写端全清，
+    #    再短窗收尾（10s 后放弃=部分输出+诚实红，绝不无限等）。
+    重试轮数 = 2 if (超时秒数 and 超时秒数 > 0) else 1
+    # stdin=PIPE 三件套（PIPE+communicate(input=标准输入)+关闭语义）与原版
+    #   subprocess.run(input=标准输入) 整体对拍——917 首版漏 stdin=PIPE 使
+    #   .input 用例（33_io_input）读 stdin 得 EOF（内容被静默丢弃·单跑稳定红
+    #   实证）——E2E 先行纪律抓获。
+    启动参数 = dict(
+        cwd=str(工作目录), stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", errors="replace", preexec_fn=preexec_fn)
+    if sys.platform != "win32":
+        启动参数["start_new_session"] = True  # killpg 终止整树的前提
+    for 尝试轮 in range(重试轮数):
+        进程 = subprocess.Popen(命令列表, **启动参数)
+        try:
+            出stdout, 出stderr = 进程.communicate(input=标准输入,
+                                          timeout=超时秒数 or None)
+            return subprocess.CompletedProcess(
+                命令列表, 进程.returncode, 出stdout, 出stderr)
+        except subprocess.TimeoutExpired as 超时异常:
+            终止进程树(进程)
             try:
-                return subprocess.run(
-                    命令列表, cwd=str(工作目录), capture_output=True,
-                    text=True, encoding="utf-8", errors="replace",
-                    input=标准输入, preexec_fn=preexec_fn, timeout=超时秒数)
-            except subprocess.TimeoutExpired as 超时异常:
-                标记 = f"[runner] 命令超时({超时秒数}s)第{尝试轮 + 1}次: {' '.join(str(c) for c in 命令列表[:3])}"
+                出stdout, 出stderr = 进程.communicate(timeout=10)
+            except Exception:
+                进程.kill()
+                try:
+                    进程.wait(timeout=5)
+                except Exception:
+                    pass
+                出stdout = 超时异常.stdout or ""
+                出stderr = 超时异常.stderr or ""
+                if isinstance(出stdout, bytes):
+                    出stdout = 出stdout.decode("utf-8", errors="replace")
+                if isinstance(出stderr, bytes):
+                    出stderr = 出stderr.decode("utf-8", errors="replace")
+            if 尝试轮 + 1 >= 重试轮数:
+                标记 = (f"[runner] 命令超时({超时秒数}s·进程树终止)重试耗尽: "
+                        + ' '.join(str(c) for c in 命令列表[:3]))
                 print(标记, file=sys.stderr)
-                if 尝试轮 == 1:
-                    return subprocess.CompletedProcess(
-                        命令列表, -9, (超时异常.stdout or b"").decode("utf-8", errors="replace") if isinstance(超时异常.stdout, bytes) else (超时异常.stdout or ""),
-                        标记 + "\n")
-        # 不可达（上方 return 覆盖两轮）
-    return subprocess.run(
-        命令列表, cwd=str(工作目录), capture_output=True,
-        text=True, encoding="utf-8", errors="replace",
-        input=标准输入, preexec_fn=preexec_fn)
+                return subprocess.CompletedProcess(
+                    命令列表, -9, 出stdout, 标记 + "\n" + 出stderr)
+            print(f"[runner] 命令超时({超时秒数}s·进程树终止)第{尝试轮 + 1}次，重试: "
+                  + ' '.join(str(c) for c in 命令列表[:3]), file=sys.stderr)
 
 
 # ============ asm size 说明符静态门禁（plans/021 §3-C14，111-a 落地）============
@@ -2136,6 +2156,11 @@ def 主程序() -> int:
                              "604-a 落地：串行路径已删，进程池隔离=每用例独立 worker"
                              " 进程（根治多线程 fork 死锁）。v2p 构建缓存池启动前主进程"
                              "预热：v2 源码与编译器未变不重建）")
+    解析器.add_argument("--stall-timeout", type=int, default=1800, metavar="秒",
+                        help="整池看门狗（917·021 任务 108 兜底）：全池连续 N 秒无任何"
+                             "用例完成=停摆判定→终止池+未完成用例诚实红+停摆诊断"
+                             "（默认 1800s；0=禁用）。arm64 慢机 79_v2 尾部合法静默"
+                             "最长 ~20 分钟——勿低于 1800（误触发=整轮门禁作废）")
     参数 = 解析器.parse_args()
 
     # 覆盖模块级默认（超限自动终止的防护阈值）
@@ -2251,21 +2276,51 @@ def 主程序() -> int:
     print()
     from multiprocessing import Pool
     池 = Pool(processes=参数.jobs)
+    # 917 整池看门狗（021 任务 108 兜底）：原「按提交顺序 get(timeout=1800)」在
+    #   worker 卡死时=每卡一个用例全员白等 1800s（N 个卡死=串行累加 N×30 分钟·
+    #   447 停摆形态）。改为轮询收集（ready 即收·完成顺序打印）+全局无进展看门狗：
+    #   连续 stall 秒零完成→停摆判定→terminate 池+未完成用例诚实红+诊断（封顶
+    #   一次等待）。默认 1800s>arm64 79_v2 尾部合法静默（~20 分钟）——正常全量
+    #   永不触发（判真挂死=子进程 CPU 时间零增长〔教训 0930 判据〕）。
+    待收们 = [
+        (d.name, 池.apply_async(并行用例任务,
+                                ((d, 编译器路径, 输出目录, 参数.verbose, 目标平台,
+                                  内存上限MB默认),)))
+        for d in 用例目录们
+    ]
+    停摆秒数 = max(0, 参数.stall_timeout)
+    最近进展时刻 = time.monotonic()
     try:
-        异步结果们 = [
-            (d.name, 池.apply_async(并行用例任务,
-                                    ((d, 编译器路径, 输出目录, 参数.verbose, 目标平台,
-                                      内存上限MB默认),)))
-            for d in 用例目录们
-        ]
-        for 名称, 异步结果 in 异步结果们:
-            print(f"运行用例: {名称}")
-            try:
-                _名称, 状态, 原因 = 异步结果.get(timeout=1800)
-            except Exception:
-                状态, 原因 = "失败", "worker 外层保险终止（超时 1800s/进程崩溃）"
-            记录结果(名称, 状态, 原因, 即时打印=True)
-            print()
+        while 待收们:
+            就绪们 = [项 for 项 in 待收们 if 项[1].ready()]
+            if 就绪们:
+                for 名称, 异步结果 in 就绪们:
+                    try:
+                        _名称, 状态, 原因 = 异步结果.get()
+                    except Exception:
+                        状态, 原因 = "失败", "worker 进程崩溃/结果取回异常"
+                    print(f"运行用例: {名称}")
+                    记录结果(名称, 状态, 原因, 即时打印=True)
+                    print()
+                    待收们.remove((名称, 异步结果))
+                最近进展时刻 = time.monotonic()
+                continue
+            if 停摆秒数 > 0 and time.monotonic() - 最近进展时刻 > 停摆秒数:
+                print(红色(f"\n⚠ 整池停摆判定（看门狗 {停摆秒数}s 零完成·917）——"
+                           f"未完成 {len(待收们)} 例强制诚实红："))
+                for 名称, _ in 待收们:
+                    print(f"  {红色('STALL')} {名称}")
+                    记录结果(名称, "失败",
+                             f"整池停摆（{停摆秒数}s 零进展·看门狗终止）",
+                             即时打印=False)
+                print(青色("排查提示：ps -eo pid,ppid,etime,time,args | grep -e run_e2e "
+                           "-e cn（win: tasklist /v）——判真挂死=子进程 CPU 时间零增长"
+                           "〔教训 0930 判据〕；合法长任务（78/79 全树编译）CPU 随墙上"
+                           "时钟 1:1 增长=非挂死，调大 --stall-timeout"))
+                池.terminate()  # 停摆路径：先强拆再收尾（close+join 对卡死 worker 永挂）
+                池.join()
+                break
+            time.sleep(1)
         池.close()
         池.join()
     finally:
