@@ -7,6 +7,7 @@
 //   5. 函数调用 -> Call（extra=函数名，操作数=实参寄存器）
 //   6. 字符串常量 -> 模块常量池去重收集
 // 7. D1 行数整改 112-a：按族拆出 ir_expr_unary/assign/index/member.cpp（纯重构零行为变更，声明仍在 ir.hpp）
+#include <cstdint>
 #include <string>
 #include <utility>
 

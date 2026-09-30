@@ -6,6 +6,7 @@
 //   4. 英文API命名（GCC 7 不支持中文标识符），中文仅用于注释/字符串/输出
 #pragma once
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>

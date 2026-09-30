@@ -6,6 +6,7 @@
 //   4. 控制流：如果/当/循环生成基本块与跳转；中断/继续通过循环上下文解析目标
 //   5. 函数调用 -> Call（extra=函数名，操作数=实参寄存器）
 //   6. 字符串常量 -> 模块常量池去重收集
+#include <cstdint>
 #include <string>
 #include <utility>
 

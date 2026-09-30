@@ -15,8 +15,9 @@
 //   NewObject.extra = "类名|大小字节"；VirtualCall.extra = "类名.虚方法名"；
 //   DeleteObject.extra = "类名"
 // 规范：英文API命名，中文仅注释；函数<=100行
-#include <cstdio>
 #include <algorithm>
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>

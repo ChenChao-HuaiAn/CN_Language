@@ -21,6 +21,7 @@
 //   与 .data 静态字段）；单指令降级在 linux_x64_instructions.cpp；i128 双槽运算在
 //   linux_x64_codegen_i128.cpp；终止与分派在 linux_x64_codegen_dispatch.cpp
 #pragma once
+#include <cstdint>
 #include <set>
 #include <string>
 #include <unordered_map>

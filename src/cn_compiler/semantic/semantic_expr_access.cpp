@@ -2,6 +2,7 @@
 //   族 = 成员/下标表达式检查（visitMemberExpr + visitIndexExpr）；纯重构零行为变更（成员函数实现搬迁——声明仍在 semantic.hpp）。
 #define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <string>

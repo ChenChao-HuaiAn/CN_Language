@@ -3,6 +3,7 @@
 //   166-a：原 1034 行单函数按「左值形态 → 处理族」两层提取为 24 个子方法；纯重构零行为变更——
 //   提取段逐行搬运（return; → return true;：段内 return 原即整函数返回，调用点随即 return 等价），
 //   产物 asm 逐字节一致为等价性硬证据。族边界勘定：族内无文件级 static/匿名命名空间依赖（plans/021 §3-D1）。
+#include <cstdint>
 #include <string>
 #include <utility>
 

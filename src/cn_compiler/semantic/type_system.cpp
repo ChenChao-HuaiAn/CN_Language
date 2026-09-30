@@ -6,6 +6,7 @@
 //   4. 字面量后缀（规格书4.3）：f/L/LL/U/UL/ULL -> 浮32/整64/整128/正32/正64/正128
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <string>
 #include <unordered_map>

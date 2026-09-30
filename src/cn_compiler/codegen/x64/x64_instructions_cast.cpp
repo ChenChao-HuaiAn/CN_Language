@@ -1,5 +1,6 @@
 // CN Win x64 代码生成器——指令级降级（D1 行数整改 118-a：自 x64_instructions.cpp 按族拆出）
 //   族 = 类型转换/比较/逻辑非（emitCast 扩展·截断·整浮互转 / emitCompare cmp+setcc / emitNot）；纯重构零行为变更（成员函数实现搬迁——声明仍在 x64_codegen.hpp）。
+#include <cstdint>
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"

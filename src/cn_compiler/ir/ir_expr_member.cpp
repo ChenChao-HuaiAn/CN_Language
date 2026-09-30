@@ -1,6 +1,7 @@
 // CN-IR生成器实现（D1 行数整改 112-a：自 ir_expr.cpp 按族拆出）
 //   族 = 结构体整体赋值/构造与成员访问（emitStructWholeAssign + visitInitListExpr + emitStructInitTo + visitStructInitExpr + visitMemberExpr）；纯重构零行为变更（成员函数实现搬迁——声明仍在 ir.hpp；
 //   族边界勘定：族内无文件级 static/匿名命名空间依赖，见 plans/021 §3-D1）。
+#include <cstdint>
 #include <string>
 #include <utility>
 

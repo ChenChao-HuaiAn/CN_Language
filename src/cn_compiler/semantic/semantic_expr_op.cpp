@@ -2,6 +2,7 @@
 //   族 = 运算符/赋值表达式检查（visitBinaryExpr + visitUnaryExpr + visitTernaryExpr + reportNonLvalueTarget + visitAssignmentExpr）；纯重构零行为变更（成员函数实现搬迁——声明仍在 semantic.hpp）。
 #define _CRT_SECURE_NO_WARNINGS
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <string>

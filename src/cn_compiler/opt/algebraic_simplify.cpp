@@ -10,6 +10,7 @@
 //        原指令成为死代码由 DCE 清理
 //   3. 类型安全：简化前后类型不变（x+0 的 0 是操作数类型位宽内的 0）
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <vector>

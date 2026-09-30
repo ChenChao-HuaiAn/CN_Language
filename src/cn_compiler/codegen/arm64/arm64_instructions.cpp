@@ -7,6 +7,7 @@
 // 寄存器策略：%vN 映射到 [x29,#-8*N-8] 栈槽；32位用 wN、64位用 xN；
 //            浮点用 sN/dN（AArch64 高级 SIMD 标量寄存器）
 // 规范：英文API命名，中文仅注释；函数<=100行
+#include <cstdint>
 #include <set>
 #include <string>
 

@@ -1,5 +1,6 @@
 // CN Win x64 代码生成器——指令级降级（D1 行数整改 118-a：自 x64_instructions.cpp 按族拆出）
 //   族 = i128 双槽运算（全 128 位：emitInt128Binary 加减 / emitInt128MulDivMod 乘除模 / emitInt128Compare 比较）；纯重构零行为变更（成员函数实现搬迁——声明仍在 x64_codegen.hpp）。
+#include <cstdint>
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"

@@ -11,6 +11,7 @@
 #include "runtime/runtime.hpp"
 
 #include <cinttypes>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 

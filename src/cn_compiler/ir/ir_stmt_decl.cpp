@@ -3,9 +3,10 @@
 //   genVarDecl —— AST VarDecl -> IR：泛型实例化类型名替换 / 初始化器分派
 //   （字面量/结构体构造/容器/字符串深拷）/ RAII 登记（串/类/字段/串数组）/ 静态变量 /
 //   块级作用域基线与零初始化兜底。
+#include <cstdint>
+#include <cstdio>
 #include <string>
 #include <utility>
-#include <cstdio>
 
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"

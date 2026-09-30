@@ -16,6 +16,7 @@
 //   拆分子模块 arm64_codegen_oop.cpp（新对象/虚调用/虚表地址）与
 //   arm64_codegen_vtable.cpp（.rodata 虚表数组与 .data 静态字段）
 #pragma once
+#include <cstdint>
 #include <set>
 #include <string>
 #include <unordered_map>

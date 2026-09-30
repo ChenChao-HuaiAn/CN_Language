@@ -2,6 +2,7 @@
 //   族 = 类型系统（类型名解析/结构体·枚举查找 declareTypeName→enumValueOf + 静态成员 findTopLevelComma + 布局计算 typeSizeOf→computeEnumValues）；纯重构零行为变更（成员函数实现搬迁——声明仍在 semantic.hpp；
 //   共享 helper 已由 115-a 头化在 semantic_internal.hpp）。
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <string>

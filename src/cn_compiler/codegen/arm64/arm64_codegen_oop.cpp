@@ -10,6 +10,7 @@
 //   vtable 槽位 == ClassInfo.vtableOrder 下标；子类重写覆盖槽位、新虚函数追加
 // AAPCS64：整型参数 x0~x7（this 在 x0）；间接调用 blr xN
 // 规范：英文API命名，中文仅注释；函数<=100行
+#include <cstdint>
 #include <string>
 #include <vector>
 

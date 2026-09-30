@@ -11,6 +11,7 @@
 //   拆分子模块 x64_codegen_oop.cpp（新对象/虚调用/虚表）与
 //   x64_codegen_vtable.cpp（.rdata 虚表数组与静态字段 .data 分配）
 #pragma once
+#include <cstdint>
 #include <set>
 #include <string>
 #include <unordered_map>

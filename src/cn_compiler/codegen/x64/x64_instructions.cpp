@@ -7,6 +7,7 @@
 // 寄存器策略：%vN 映射到 [rbp-8*N-8] 栈槽；32位用 eax 系列、64位用 rax 系列，
 //            i1 比较结果用 al + setcc；浮点用 SSE（movss/movsd/addss/addsd）
 // 规范：英文API命名，中文仅注释；函数<=100行
+#include <cstdint>
 #include <string>
 
 #include "cn_compiler/codegen/x64/x64_codegen.hpp"
