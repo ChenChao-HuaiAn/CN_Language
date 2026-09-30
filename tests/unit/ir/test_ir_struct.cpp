@@ -217,13 +217,17 @@ TEST(IrStructTest, ArrowArrayFieldAccessWorks) {
 }
 
 // BUG10c：数组字段越界应插桩运行时错误调用（错误码2）
+//   912（任务 114·001 §1.1a①）：常量下标越界已前移语义层编译期硬错误
+//   （不安全函数内同拦=分层①无条件）——本测试改用变量下标保 IR 层
+//   运行期检查发射验证面（测试意图不变·分层②兜底在位）。
 TEST(IrStructTest, ArrayFieldOutOfBoundsEmitsError) {
     IrResult r = generateIr(
         "结构体 坐标 { 整32 x;\n 整32 y; }\n"
         "结构体 形状 { 坐标[4] 顶点; }\n"
         "不安全 函数 主() -> 整32 {\n"
         "  形状 方形;\n"
-        "  返回 方形.顶点[4].x;\n"
+        "  整32 i = 4;\n"
+        "  返回 方形.顶点[i].x;\n"
         "}\n");
     ASSERT_TRUE(r.ok) << r.messages;
     // 越界检查：生成 Call __cn_runtime_error（错误码2）

@@ -342,6 +342,36 @@ void SemanticAnalyzer::visitIndexExpr(IndexExpr* node) {
     }
     // 数组退化：数组名作下标对象（数据[i]）按元素类型处理
     if (isArrayType(objectType)) {
+        // 114（912 轮·001 §1.1a① 分层安全第一层立法义务）：字面量下标 ×
+        //   静态数组长度——编译期能证明的必须在编译期拦（原放行到运行期
+        //   错误码 2 才拦）。读写两路径共用本函数（写路径
+        //   assignmentTargetDepth_>0 同样拦截）；不安全函数内同拦（编译期
+        //   确定性错误无条件）；常量传播面（变量持有常量初值）属后续
+        //   常量折叠波。rustc 对照：`a[5]`（len 3）常量下标 deny，unsafe
+        //   块内同样报。
+        const int arrLen114 = types::arrayLenOf(objectType);
+        if (arrLen114 > 0 && isIntLiteralExpr(node->index.get())) {
+            const Expr* idxE = node->index.get();
+            std::int64_t idxVal = 0;
+            if (idxE->getType() == NodeType::IntegerLiteral) {
+                idxVal = static_cast<const IntegerLiteral*>(idxE)->value;
+            } else {
+                // 一元负号字面量（isIntLiteralExpr 已限定该两形态）
+                const UnaryExpr* u = static_cast<const UnaryExpr*>(idxE);
+                const std::int64_t v =
+                    static_cast<const IntegerLiteral*>(u->operand.get())->value;
+                idxVal = static_cast<std::int64_t>(
+                    ~static_cast<std::uint64_t>(v) + 1);
+            }
+            if (idxVal < 0 || idxVal >= arrLen114) {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->index->location,
+                    "编译期下标越界：常量下标 " + std::to_string(idxVal) +
+                    " 超出数组长度 " + std::to_string(arrLen114) +
+                    "（001 §1.1a①——编译期能证必须编译期拦；运行期越界检查"
+                    "错误码 2 保留兜底）");
+            }
+        }
         // 数组对象：元素类型即结果
         if (!isInteger(indexType)) {
             diagnostics_.report(DiagnosticLevel::Error, node->index->location,
