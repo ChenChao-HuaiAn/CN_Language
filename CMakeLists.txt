@@ -109,6 +109,13 @@ if(MSVC)
     add_compile_options(/W4 /WX /utf-8 /wd4068)
 else()
     add_compile_options(-Wall -Wextra -Werror -finput-charset=UTF-8)
+    # -Wno-dangling-reference（GCC≥13 新警告·版本化禁用）：启发式误判「临时实参+返回引用」
+    #   ——tests/unit/opt/test_strength_reduce.cpp runPass 返回 static IRModule 成员引用实锤误报
+    #   （920 轮 g++15 云 CI 首构建暴露；LLVM 等项目同款禁用；真悬垂由 -Wdangling-pointer 覆盖）
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+       AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 13)
+        add_compile_options(-Wno-dangling-reference)
+    endif()
 endif()
 
 # 公共模块库：诊断系统（供编译器与单元测试共用）
