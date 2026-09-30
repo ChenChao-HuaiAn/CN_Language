@@ -151,6 +151,8 @@ def main():
     ap = argparse.ArgumentParser(description="缺陷族面扩散探针（B9·T23 复验基准）")
     ap.add_argument("--cn", default=None, help="CN 编译器路径（默认 <仓库根>/target/cn）")
     ap.add_argument("--out", default="/tmp/famscan", help="工作输出目录")
+    ap.add_argument("--target", default="linux-x86_64",
+                    help="CN 产物目标平台（须为本机可运行平台：深度机默认 linux-x86_64，单位机传 linux-arm64）")
     ap.add_argument("--keep", action="store_true", help="保留 .s/.asm 产物供人工审（默认仅留 .out/.json）")
     args = ap.parse_args()
 
@@ -185,7 +187,7 @@ def main():
     outs = {}
     for lvl, suf in (("-O0", "o0"), ("-O3", "o3")):
         exe = os.path.join(out, "fam_" + suf)
-        b = run([cn, "build", os.path.join(out, "fam.cn"), "--target", "linux-x86_64", lvl, "--output", exe])
+        b = run([cn, "build", os.path.join(out, "fam.cn"), "--target", args.target, lvl, "--output", exe])
         if b.returncode != 0:
             print("CN", lvl, "编译失败:\n", b.stderr[-2000:]); return 2
         s3 = os.path.join(out, "fam_" + suf + ".s")
