@@ -355,11 +355,16 @@ void IRGenerator::genWhile(WhileStmt* node) {
     setCurrentBlock(newBlock(endLabel));
 }
 void IRGenerator::genFor(ForStmt* node) {
+    // 916-a（任务 085·宿主侧）：循环头声明作用域=整条循环语句（C++ for-init
+    //   同款）——init 段入独立 varStack_ 帧，循环出口后弹出（原内联进外层帧：
+    //   循环头同名声明遮蔽外层且循环退出后不恢复——外层 x=10 实跑=循环头终值）
+    varStack_.emplace_back();
     // 初始化（入当前块）
     if (node->init != nullptr) {
         genStmt(node->init.get());
         if (currentBlock_->terminated) {
             // 初始化已终结（如返回）：后续不可达，补出口块
+            varStack_.pop_back();
             setCurrentBlock(newBlock("bb" + std::to_string(blockCounter_)));
             return;
         }
@@ -397,6 +402,7 @@ void IRGenerator::genFor(ForStmt* node) {
     if (!currentBlock_->terminated) endJump(condLabel);
     // 出口块
     setCurrentBlock(newBlock(endLabel));
+    varStack_.pop_back();   // 916-a：循环头声明作用域弹出
 }
 void IRGenerator::genSwitch(SwitchStmt* node) {
     const std::size_t caseCount = node->cases.size();
