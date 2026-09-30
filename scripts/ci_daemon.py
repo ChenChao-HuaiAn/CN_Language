@@ -26,6 +26,7 @@ from pathlib import Path
 # ===== 可调常量（集中区·911 先例） =====
 轮询间隔秒 = 90            # git ls-remote 周期
 e2e并行 = 3                # 4 核 3.6G 内存保守起点（实测后调）
+构建并行 = 2              # 首验实锤：全核 Make 编译 cc1plus 叠加 OOM（9daba 首轮 Killed·10-01）——限 2+swap 兜底
 单轮总超时秒 = 3 * 3600    # 防挂死（构建+单测+E2E+串行复验的理论上界）
 远端名 = "origin"
 分支 = os.environ.get("CN_CI_BRANCH", "develop")   # 常规盯 develop；任务分支预验=PR CI 同款用法
@@ -79,7 +80,7 @@ def 跑一轮(sha: str) -> dict:
             # ② 配置（默认生成器 Make·与 integrate 同口径；产物落 target/ 根=CMakeLists 16 行）
             if not 步骤("配置", ["cmake", "-S", ".", "-B", "target/build"], 600):
                 pass  # 步骤们 已记 rc——下方统一收尾
-            elif 步骤("构建", ["cmake", "--build", "target/build", "--parallel"], 单轮总超时秒):
+            elif 步骤("构建", ["cmake", "--build", "target/build", "--parallel", "2"], 单轮总超时秒):
                 # ③ 单测（产物三 fallback=integrate 同款）
                 单测 = next((p for p in [仓库根 / "target/build/tests/unit/cn_unit_tests",
                                          仓库根 / "target/build/cn_unit_tests",
