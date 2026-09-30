@@ -184,8 +184,13 @@ def 快速门禁(文件们: list[str]) -> str | None:
     return None
 
 
-def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | None:
+def 全量门禁(平台: str, 已知红们: list[str] | None = None, 快速通道: bool = False) -> str | None:
     """全量门禁：零警告构建 + 单测 + E2E 全量（平台相关；win=ci.ps1 一步到位）。
+
+    快速通道（920·用户裁决 2026-10-01「快速集即集成·全量云端事后兜底」）：
+    快速通道=True 时本机仅跑 L1（gate_quick.py=静态三检查+增量构建+全量单测·分钟级），
+    全量门禁由 TX_02 云 CI 对 develop 每推送自动跑（红灯治理兜底：引入者优先修·
+    超 48h 可 revert·不冻结其他集成——Chromium CQ/rustc bors 同构·AGENTS §5/§8 v4）。
 
     并行红串行复验（447-a·机制级工具改进）：runner 隔离键欠账已随 329-D12/T55 根治
     （557 轮集成·隔离键=编号+完整名 md5——558 轮实测 210_v2/457/458/459 互踩假红全消）。
@@ -193,6 +198,11 @@ def 全量门禁(平台: str, 已知红们: list[str] | None = None) -> str | No
     复验（--jobs 1）绿=并行环境因素嫌疑（产物互踩/挂死类）→警告放行（要求看板通告
     披露）；串行仍红=真失败。
     """
+    if 快速通道:
+        print("  [快速通道·920 用户裁决] 本机 L1（gate_quick：静态三检查+增量构建+全量单测）"
+              "——全量由 TX_02 云端对 develop 事后自动兜底（红灯治理适用）")
+        r = 运行([sys.executable, "scripts/gate_quick.py"])
+        return None if r.returncode == 0 else "L1 快速门禁未过（gate_quick.py——修复后重试）。"
     if 平台 == "win":
         # 449-a：gate_lock 串行锁在 ci.ps1 内部（acquire/finally-release）——此处勿再嵌套（死锁）。
         结果 = 运行(["powershell", "-ExecutionPolicy", "Bypass", "-File", "scripts/ci.ps1"])
@@ -713,7 +723,7 @@ def 单次集成尝试(平台: str, 上次已验基准: str | None, 参数: argp
         return False, 问题, None
     if 须全量 and (上次已验基准 is None or 增量须全量):
         print(f"[4] 全量门禁（平台={平台}·跑在合并结果上）")
-        问题 = 全量门禁(平台, 参数.allow_known_red)
+        问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane)
         if 问题:
             return False, 问题, None
     elif 须全量:
@@ -927,7 +937,7 @@ def 批流程(参数: argparse.Namespace) -> int:
                     print("  [6.5] 链顶树与本分支 HEAD 在写集面存在实质差异——等价前提不成立，走全量。")
             if 须全量 and not 等价免验 and (已验基准 is None or 增量须全量):
                 print(f"[5] 全量门禁（平台={平台}·跑在整批合并结果上）")
-                问题 = 全量门禁(平台, 参数.allow_known_red)
+                问题 = 全量门禁(平台, 参数.allow_known_red, 参数.fast_lane)
                 if 问题:
                     print("  [归因辅助] 批成员×写集（对照失败日志定位破坏者后 --drop 踢出重验）：")
                     for 行 in 实际成员:
@@ -1007,6 +1017,10 @@ def 主流程() -> int:
     解析器.add_argument("--join", action="store_true",
                         help="仅报名进看板集成队列（不组批——报名后可先做别的·稍后重跑组批）")
     解析器.add_argument("--status", action="store_true", help="查看当前集成队列（只读）")
+    解析器.add_argument("--fast-lane", action="store_true",
+                        help="快速通道（920·用户裁决 2026-10-01）：本机仅 L1（gate_quick·分钟级）"
+                             "即集成——全量由 TX_02 云端对 develop 事后自动跑+红灯治理兜底"
+                             "（Chromium CQ/rustc bors 同构）；默认关=维持本机全量铁律")
     解析器.add_argument("--solo", action="store_true",
                         help="旧单分支路径逃生门（不经队列直集成——队列机制异常时用）")
     解析器.add_argument("--selftest", action="store_true", help="正反例自测（纯函数面·CI 式）")
