@@ -35,6 +35,17 @@ e2e并行 = 3                # 4 核 3.6G 内存保守起点（实测后调）
 锁文件 = 仓库根 / "ci-logs" / "daemon.lock"
 
 
+def 物理内存MB() -> int:
+    """读 /proc/meminfo——max-mem 保险丝按物理内存适配用（924）。"""
+    try:
+        for 行 in open("/proc/meminfo"):
+            if 行.startswith("MemTotal:"):
+                return int(行.split()[1]) // 1024
+    except Exception:
+        pass
+    return 4096
+
+
 def 取远端SHA() -> str | None:
     """git ls-remote 只查 develop 头——零流量无副作用。"""
     输出 = subprocess.run(["git", "ls-remote", 远端名, "refs/heads/" + 分支],
@@ -94,8 +105,12 @@ def 跑一轮(sha: str) -> dict:
             if cn is None:
                 步骤们["e2e"] = {"rc": -1, "说明": "未找到 cn 产物"}
             elif 步骤们.get("构建", {}).get("rc") == 0:
-                e2e基 = [sys.executable, "tests/e2e/run_e2e.py", "--target", "linux-x86_64",
-                         "--cn", str(cn)]
+                # 924·运维小件：max-mem 按物理内存适配（4096 默认>3.6G 物理=形同虚设——920 预判）；
+                #   E2E 全程 nice -n 10 降优先级（CI 高负载 sshd 饿死 banner 超时实锤·运维手册④）
+                保内存 = min(4096, int(物理内存MB() * 0.8))
+                e2e基 = ["nice", "-n", "10", sys.executable, "tests/e2e/run_e2e.py",
+                         "--target", "linux-x86_64", "--cn", str(cn),
+                         "--max-mem-mb", str(保内存)]
                 if 步骤("e2e并行", e2e基 + ["--jobs", str(e2e并行)], 单轮总超时秒):
                     步骤们["e2e"] = {"rc": 0}
                 else:
