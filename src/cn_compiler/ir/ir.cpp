@@ -891,6 +891,13 @@ ir::IRValue IRGenerator::genGenericIndexAddress(IndexExpr* idx) {
                 }
             } else {
                 stride = ptrElemStride(st);
+                // 908（任务 092·读侧 306-a emitStrBoundsCheck 对称）：字符串下标
+                //   **写**路径检查（s[i]='x' 形态经此族——读侧 visitIndexExpr 字符串
+                //   分支已有、写侧缺失=防线不对称：w2 探针 s[9]='x' 静默越界堆写
+                //   实证；错误码 2 与读侧/数组防线同码）。
+                if (types::canonical(st) == "字符串") {
+                    emitStrBoundsCheck(index, obj, idx->location);
+                }
             }
         } else if (idx->object->getType() == NodeType::MemberExpr) {
             // 修复10/10b/10c：方形.顶点[0] / 方形指针->顶点[0] — object 为数组字段成员，
