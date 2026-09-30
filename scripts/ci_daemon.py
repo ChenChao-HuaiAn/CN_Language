@@ -28,7 +28,7 @@ from pathlib import Path
 e2e并行 = 3                # 4 核 3.6G 内存保守起点（实测后调）
 单轮总超时秒 = 3 * 3600    # 防挂死（构建+单测+E2E+串行复验的理论上界）
 远端名 = "origin"
-分支 = "develop"
+分支 = os.environ.get("CN_CI_BRANCH", "develop")   # 常规盯 develop；任务分支预验=PR CI 同款用法
 仓库根 = Path(__file__).resolve().parent.parent
 日志目录 = 仓库根 / "ci-logs"
 锁文件 = 仓库根 / "ci-logs" / "daemon.lock"

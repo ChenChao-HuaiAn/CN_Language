@@ -57,3 +57,7 @@ build_phase4/
 
 # ZCode 本地会话计划缓存（本机 AI 工作数据，不入库；.zcode/skills/ 为项目技能集仍入库）
 .zcode/plans/
+
+# 920 云 CI：本机配置与运行产物（防 git clean 误删·不入库）
+ci_config.json
+ci-logs/
