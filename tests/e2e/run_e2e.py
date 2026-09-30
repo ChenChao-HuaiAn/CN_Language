@@ -156,21 +156,20 @@ def 拷贝用例树干净(源目录, 目标目录, ignore=None):
 # 注：65_string_index 的 ARM64 跳过已摘除（2026-09-03）——原「char 符号扩展差异」
 #   在宿主 LoadPtr i8 双后端统一符号扩展（movsx/ldrsb）后不再成立，手动实测输出
 #   与期望逐行一致（字节和 -376），随全量回归复验。
+# 注：62_ffi / 69_memory_management 的 linux 两平台跳过已摘除（2026-09-30·905 轮
+#   用户令「跳过 2 例可适配本平台」）——62 改三平台通用 libc 函数（rand/llabs，
+#   原 GetTickCount64 依赖 kernel32）；69 改平台无关相对不变量断言（原 expected
+#   锁死启动基线/竞技场块大小等绝对值，linux 运行时初始化计数不同即红）。
+#   win 侧覆盖点变化（kernel32 链接验证点移除/绝对值改相对）见看板契约变更通告。
 平台跳过 = {
-    "linux-arm64": [
-        "62_ffi",                # 依赖 Windows API GetTickCount64
-        "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
-    ],
+    "linux-arm64": [],
     # plans/016（2026-09-05）：linux-x86_64 平台——宿主后端已支持（本机原生闭环）。
     # plans/017 T3（2026-09-06）：v2 自举编译器 X64L 后端（SysV GAS）落地 +
     #   run_e2e.py v2 闭环编排平台参数化——v2 闭环 23 例在本机解锁真实运行。
     # 78/79 迁移（2026-09-14）：v1 的 78_chain_build（v1 链仅 MASM 后端）与
     #   79_bootstrap_closed_loop（依赖 ml64/link）已迁移为 v2 版（78_v2/79_v2，
     #   三平台支持：win ml64/link；linux as/g++）——跳过项随 v1 用例一并摘除。
-    "linux-x86_64": [
-        "62_ffi",                # 依赖 Windows API GetTickCount64
-        "69_memory_management",  # 运行时初始化计数在 Linux 上行为不同
-    ],
+    "linux-x86_64": [],
     "win-x64": [
         # win-x64 暂无非平台限制用例
     ],
