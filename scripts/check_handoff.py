@@ -398,6 +398,33 @@ def 查看板() -> list[str]:
             问题.append(f"看板「{名}」通告段出现 {len(段标题们)} 个小节（应 ≤1——§8.6 一分区一记录："
                         "影响面执行完毕后删除本机通告段·历史由 git 历史与 plans/021 承载）："
                         + "；".join(段.strip()[:44] for 段 in 段标题们))
+    # 集成队列段格式校验（911 立·bors 批量集成·AGENTS.md §8.2-B）：段存在时行必须
+    #   5 列合法（分支名/时刻/状态）——行由 integrate.py plumbing 直推维护，手编易错；
+    #   「集成中」行 ≤1（同时至多一批在飞·§8.2 全表至多一个集成在飞）。
+    队列段标题 = "## 集成队列（bors 式批组建·911 立·AGENTS.md §8.2-B）"
+    段起 = next((n for n, 行 in enumerate(行们) if 行.strip() == 队列段标题), None)
+    if 段起 is not None:
+        集成中数 = 0
+        for 行 in 行们[段起 + 1:]:
+            if 行.startswith("## "):
+                break
+            if not 行.startswith("|"):
+                continue
+            列们 = [列.strip() for 列 in 行.split("|")[1:-1]]
+            if len(列们) != 5 or 列们[0] == "分支" or set(列们[0]) <= set("-: "):
+                continue
+            if not re.match(r"^任务/(家机|单位机|深度机)-\d+-\S+$", 列们[0]):
+                问题.append(f"看板集成队列行分支名非法「{列们[0][:44]}」——须形如 任务/<机>-<轮次>-<标识>"
+                            "（行由 integrate.py 维护·手勿编辑·AGENTS.md §8.2-B）")
+            if not re.match(r"^\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$", 列们[2]):
+                问题.append(f"看板集成队列行报名时刻非法「{列们[2]}」——须 MM-DD HH:MM[:SS]（integrate.py 口径·秒级）")
+            if 列们[4] not in ("排队", "集成中", "冲突出批", "归因出批"):
+                问题.append(f"看板集成队列行状态非法「{列们[4]}」——合法态=排队/集成中/冲突出批/归因出批")
+            if 列们[4] == "集成中":
+                集成中数 += 1
+        if 集成中数 > 1:
+            问题.append(f"看板集成队列「集成中」行 {集成中数} 条（应 ≤1——全表至多一批集成在飞·"
+                        "AGENTS.md §8.2；失联批由 --takeover 接管而非并行起批）")
     return 问题
 
 

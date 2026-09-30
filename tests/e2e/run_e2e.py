@@ -2125,6 +2125,9 @@ def 主程序() -> int:
                         help=f"重负载用例（78/79）运行子进程内存上限MB，超过自动终止（默认 {内存上限MB默认}MB；0=不启用）")
     解析器.add_argument("--verbose", "-v", action="store_true", help="详细输出（显示编译/运行命令）")
     解析器.add_argument("--filter", help="仅运行目录名包含指定模式的用例")
+    解析器.add_argument("--shard", default=None, metavar="i/n",
+                        help="分片运行（911·三机分片并行用）：用例名排序后按 index%%n==i 选取——"
+                             "各片退出码 0 的并集=全量绿；与 --filter 可叠加（先过滤后分片）")
     解析器.add_argument("--target-dir", default="target", help="可执行文件输出目录（默认 target）")
     解析器.add_argument("--strict", action="store_true",
                         help="将'未实现'用例视为失败（阶段一完成后全量验证用）")
@@ -2177,6 +2180,22 @@ def 主程序() -> int:
     if not 用例目录们:
         print(黄色("未找到E2E用例目录（过滤条件无匹配或无用例）"))
         return 1
+
+    # 分片（911·bors 批量集成配套·AGENTS.md §8.2-B）：--shard i/n=用例名排序后按
+    #   index%n==i 选取——三机各跑一片并行、批主汇总判绿（并集=全量用例集·
+    #   run_e2e --selftest 面校验守恒）。--filter 先行过滤后分片（两者可叠加）。
+    if 参数.shard:
+        try:
+            i文本, n文本 = 参数.shard.split("/")
+            片序, 片数 = int(i文本), int(n文本)
+            assert 0 <= 片序 < 片数 >= 1
+        except (ValueError, AssertionError):
+            print(红色(f"错误: --shard 形如 i/n（0 起·i<n）——收到「{参数.shard}」"))
+            return 2
+        全量数 = len(用例目录们)
+        用例目录们 = [d for 序, d in enumerate(用例目录们) if 序 % 片数 == 片序]
+        print(青色(f"分片: shard {片序}/{片数}（本片 {len(用例目录们)}/{全量数} 用例"
+                   f"·并集守恒由 名单取模 保证——批主汇总各片退出码判绿）"))
 
     # 逐个执行并统计（--jobs>1 并行模式，2026-09-11 用户裁决「E2E 太慢」提速：
     #   非 v2 用例并行池 + v2 用例单线程池**并发**执行——v2 用例共享 target/v2asm.s
