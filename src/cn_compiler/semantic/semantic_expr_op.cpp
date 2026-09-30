@@ -757,6 +757,22 @@ void SemanticAnalyzer::checkIndexMemberAssignTarget(AssignmentExpr* node,
                 reportUnsafeBoundary(node->location, "指针下标写",
                     static_cast<const IdentifierExpr*>(iobj)->name + "[i] = ...");
             }
+            // 910（任务 112 甲·用户裁决 2026-09-30·分层安全立法①编译期拦）：
+            //   字符串下标写=编译期拒绝——字符串为不可变拥有型（修改走拼接/
+            //   字符串子串 重建；原地字节操作用 字符 数组或不安全区指针——
+            //   与 069「字符* 视图下标拒绝」同一语义家族）。原实现静默无效写
+            //   （实测 s[1]='x' 后读回原值·rc=0 零诊断）——v2 侧「字符串下标
+            //   只读」拒绝既有（174_v2 锚定）·本补丁=宿主对齐双侧同拒。
+            if (lookupVar(static_cast<const IdentifierExpr*>(iobj)->name, iot) &&
+                types::canonical(iot) == "字符串") {
+                diagnostics_.report(
+                    DiagnosticLevel::Error, node->target->location,
+                    "下标左值赋值未支持（字符串下标只读）——字符串为不可变"
+                    "拥有型，原地修改请用 字符 数组或不安全区指针（112 甲）: " +
+                    static_cast<const IdentifierExpr*>(iobj)->name + "[i] = ...");
+                lvalueOk = false;
+                return;
+            }
         }
     }
     // plans/019 阶段3：对象为常量引用参数（只读借用经成员链写=写借用
