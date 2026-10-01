@@ -600,11 +600,16 @@ void IRGenerator::finishFunctionEmit(ir::IRFunction& func) {
     //   末尾插入 DeleteObject；若函数已有返回则不插入，避免破坏既有终止）
     genClassDestructorCalls();
     genStringFrees();
+    // 100（939）：盒内类值副本函数尾兜底（返回/跳出路径未达块出口的存量
+    //   登记——幂等：块出口已释放的条目值字段=0 空安全跳过）
+    emitPendingBoxCopiesRelease(0);
     stringTainted_.clear();
     // 72-a（2026-09-11 第七十二轮）：块级作用域名单复位（函数级状态——下一函数干净）
     ownedStringOrder_.clear();
     ownedClassOrder_.clear();
     ownedFieldOrder_.clear();
+    pendingBoxCopies_.clear();
+    scopeBoxCopiesBase_.clear();
     scopeStringBase_.clear();
     scopeClassBase_.clear();
     scopeFieldBase_.clear();

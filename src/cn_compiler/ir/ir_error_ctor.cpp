@@ -296,6 +296,17 @@ void IRGenerator::emitResultCtorValue(CallExpr* node, const std::string& name,
                          node->location);
                 }
                 val = newObj;
+                // 100（939·008 收官总攻·泄漏面根治）：**实例级登记**——深拷分叉
+                //   的盒内独立副本（盒=唯一拥有者）登记块出口条件释放（tag 真
+                //   DeleteObject+清槽幂等）。绕开收集面（183-a 116 双删回退史：
+                //   898 容器内联元素浅拷分叉**不登记**=不误伤容器元素管理）。
+                //   valAddr=盒值字段地址（下方 StorePtr 同址·虚拟寄存器跨块恒定）。
+                // 登记条件=结果盒（正常(类值)）：可选盒由收集面外壳路径覆盖
+                //   （551 基线绿·双登记=双删）；返回表达式内豁免（盒移交调用方
+                //   ——浅拷共享句柄·被调方释放=悬垂）。
+                if (name == "正常" && !inReturnExpr_) {
+                    pendingBoxCopies_.push_back({valAddr, clsCanon});
+                }
             }
         }
         // 宿主缺陷根治（2026-08-25）：结构体值（正常(s)）须 CopyStruct 拷入联合体

@@ -433,6 +433,30 @@ void IRGenerator::emitStrArrayStructFreesAt(const ir::IRValue& base, int len,
 }
 
 // 99-a（C11）：字段数组元素=字符串——逐元素 free+清槽（基址 + i×步进）
+// 100（939·008 收官总攻）：盒内类值独立副本释放——装箱深拷分叉的实例级
+//   名单（valAddr=盒值字段地址·clsCanon=类名）：LoadPtr 读当前值字段句柄 →
+//   DeleteObject（含析构+free·空句柄空安全跳过）→ StorePtr 0 清槽（幂等：
+//   多路径重复经过=第二读 0 跳过）。tag 条件不需要（valAddr 直读——错误态
+//   盒的值字段=垃圾句柄风险：**登记只发生在深拷分叉（值字段必为 newObj 有效
+//   句柄）**；错误态盒（错误(e) 装箱）不产生登记 ✓）。
+void IRGenerator::emitPendingBoxCopiesRelease(std::size_t fromIndex) {
+    const SourceLocation loc;
+    for (std::size_t i = pendingBoxCopies_.size(); i > fromIndex; --i) {
+        const auto& ent = pendingBoxCopies_[i - 1];
+        ir::IRValue objPtr = emitResult(ir::Opcode::LoadPtr, {ent.first}, "ptr",
+                                        "", loc);
+        // 字段级释放先行（副本含 tracked 拥有字段〔串/容器〕——
+        //   __cn_object_new 走 calloc 不计泄漏判据，tracked 串必须显式
+        //   free 才回落〔p104 定性：差 1=副本串〕；139-a 容器元素释放单点）
+        emitContainerElemFreeFor(ent.second, objPtr, loc);
+        emit(ir::Opcode::DeleteObject, {objPtr}, ir::IRValue(), ent.second,
+             "void", loc);
+        ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0", loc);
+        emit(ir::Opcode::StorePtr, {ent.first, zero}, ir::IRValue(), "", "ptr",
+             loc);
+    }
+}
+
 void IRGenerator::emitOwnedFieldFreesFor(const std::string& unique,
                                          const std::string& canon,
                                          const SourceLocation& loc) {

@@ -587,6 +587,29 @@ void IRGenerator::injectFieldCascadeDestroy(const ClassMember* member) {
         if (f == ci->fields.end() || f->second.isStatic) continue;
         const std::string ftype = classFieldType(currentClass_, *it);
         const std::string fcanon = types::canonical(ftype);
+        // 100（939·008 收官总攻）：**字符串字段清理注入**——结构体串字段
+        //   三件套（79-a）对类不对称缺失（类字段串=编译器不管→tracked 串
+        //   泄漏·p104 定性：副本串差 1；驻留句柄/空句柄 free=忽略/空安全）。
+        //   纯增益：类串字段无既有自动清理路径（容器字段=级联析构在下）。
+        if (fcanon == "字符串") {
+            const int offS = semantic_->classFieldOffset(currentClass_, *it);
+            if (offS >= 0) {
+                ir::IRValue thisS = emitResult(
+                    ir::Opcode::Load, {ir::IRValue::var(thisUnique, "ptr")},
+                    "ptr", thisUnique, member->body->location);
+                ir::IRValue addrS = emitResult(
+                    ir::Opcode::FieldAddr, {thisS}, "ptr",
+                    std::to_string(offS), member->body->location);
+                ir::IRValue strPtr = emitResult(
+                    ir::Opcode::LoadPtr, {addrS}, "ptr", "",
+                    member->body->location);
+                emit(ir::Opcode::Call, {strPtr}, ir::IRValue(),
+                     "__cn_str_free", "void", member->body->location);
+                emit(ir::Opcode::StorePtr, {addrS, ir::IRValue::constant("0", "i64")},
+                     ir::IRValue(), "", "ptr", member->body->location);
+            }
+            continue;
+        }
         if (ftype.empty() || !semantic_->isClassType(fcanon)) continue;
         const ClassInfo* fci = semantic_->findClass(fcanon);
         bool hasDtor = false;

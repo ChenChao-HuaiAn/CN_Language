@@ -748,6 +748,12 @@ private:
     std::vector<std::size_t> scopeClassBase_;    // genBlock 进入时 类对象名单 基线
     // 79-a（2026-09-12 第七十九轮）：genBlock 进入时 含串字段聚合名单 基线
     std::vector<std::size_t> scopeFieldBase_;
+    // 100（939·008 收官总攻）：盒内类值独立副本名单（发射期实例级登记——
+    //   889 装箱深拷分叉的 newObj 所在盒值字段地址 + 类规范名；块出口条件
+    //   DeleteObject。绕开收集面（116 双删回退史·898 浅拷分叉不登记）。
+    std::vector<std::size_t> scopeBoxCopiesBase_;
+    bool inReturnExpr_ = false;   // 100（939）：返回表达式求值期（盒副本登记豁免）
+    std::vector<std::pair<ir::IRValue, std::string>> pendingBoxCopies_;
     // 本函数拥有串名单（genVarDecl 登记：源码类型=字符串 且未被 stringTainted_ 污染）
     std::vector<std::string> ownedStringOrder_;
     // 本函数类对象名单（genVarDecl 登记：类类型局部——沿用 oopVarSrcTypes_ 判定）
@@ -846,6 +852,7 @@ private:
     // 局部槽版本（按名单 unique 取 AddrOf 基址）
     // 98-a（C9）：字符串元素数组逐元素释放发射（编译期展开 N 次；元素槽清槽幂等）
     void emitStrArrayElemFreesFor(const std::string& unique);
+    void emitPendingBoxCopiesRelease(std::size_t fromIndex);
     void emitOwnedFieldFreesFor(const std::string& unique, const std::string& canon,
                                 const SourceLocation& loc);
     // 深拷两阶段：preFree=释放目标旧字段值（须在 memcpy 之前；无条件句柄空安全）

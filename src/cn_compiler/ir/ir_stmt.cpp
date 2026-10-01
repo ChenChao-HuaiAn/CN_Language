@@ -21,6 +21,7 @@ void IRGenerator::visitExprStmt(ExprStmt* node) {
 }
 void IRGenerator::visitReturnStmt(ReturnStmt* node) {
     if (node->value != nullptr) {
+        inReturnExpr_ = true;   // 100（939）：返回值盒移交调用方（盒副本登记豁免）
         // 阶段3（Task 3.5）：可选<T> 函数返回 无 —— 构造空可选结构体
         //   （标志 是否某些=0 + 值=0）。原实现把 无（常量0）直接当返回地址，
         //   epilogue 从地址 0 拷贝 -> 0xC0000005 访问冲突崩溃（E2E 24 修复）。
@@ -198,6 +199,7 @@ void IRGenerator::visitReturnStmt(ReturnStmt* node) {
             }
         }
         endReturn(value.toString());
+        inReturnExpr_ = false;
     } else {
         endReturn("");
     }
@@ -559,6 +561,7 @@ void IRGenerator::genBlock(BlockStmt* node) {
     scopeStringBase_.push_back(ownedStringOrder_.size());
     scopeClassBase_.push_back(ownedClassOrder_.size());
     scopeFieldBase_.push_back(ownedFieldOrder_.size());
+    scopeBoxCopiesBase_.push_back(pendingBoxCopies_.size());   // 100（939）
     scopeStrArrayBase_.push_back(ownedStrArrayOrder_.size());   // 98-a（C9）
     for (auto& stmt : node->statements) {
         genStmt(stmt.get());
@@ -596,6 +599,10 @@ void IRGenerator::genBlock(BlockStmt* node) {
     scopeStrArrayBase_.pop_back();   // 98-a（C9）
     scopeClassBase_.pop_back();
     scopeFieldBase_.pop_back();
+    // 100（939）：本块登记的盒内副本出口释放（逆序）+名单回卷
+    emitPendingBoxCopiesRelease(scopeBoxCopiesBase_.back());
+    pendingBoxCopies_.resize(scopeBoxCopiesBase_.back());
+    scopeBoxCopiesBase_.pop_back();
     varStack_.pop_back();  // 退出子作用域
 }
 } // namespace cn_compiler
