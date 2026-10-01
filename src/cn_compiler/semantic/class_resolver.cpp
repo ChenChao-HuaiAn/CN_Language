@@ -124,10 +124,16 @@ const ClassMemberInfo* SemanticAnalyzer::findCopyConstructor(
     const ClassInfo* info = findClass(className);
     while (info != nullptr) {
         // 构造/析构 methods 按 sigKey 存储（构造 key = 名#参数串）
+        // 123（930）：每层只认**自有**拷贝构造（ownerClass）——类方法表含沿链
+        //   并入的祖先拷贝构造，unordered_map 迭代先命中时误选祖先版本（实
+        //   测 子 t = s 调 祖$祖#祖& 跳过子/父层）＝P3-20/117/桥接排除同族
+        //   判据；无自有才沿链上溯（隐式复印继承祖先定制复印·C++ 同序）。
         for (const auto& mk : info->methods) {
-            if (mk.second.isCopyConstructor) {
-                return &mk.second;
-            }
+            if (!mk.second.isCopyConstructor) continue;
+            const std::string own =
+                mk.second.ownerClass.empty() ? info->name
+                                             : mk.second.ownerClass;
+            if (own == info->name) return &mk.second;
         }
         info = info->baseName.empty() ? nullptr : findClass(info->baseName);
     }

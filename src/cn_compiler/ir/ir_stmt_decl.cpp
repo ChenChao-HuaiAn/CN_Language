@@ -656,6 +656,21 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                         emit(ir::Opcode::Call, {newObj, srcAddr}, ir::IRValue(),
                              methodSymbolKey(copyOwner, copyCtor->sigKey), "void",
                              node->location);
+                        // 123（930·用户裁决甲·边界定音）：findCopyConstructor 沿链
+                        //   可返回**继承来的**祖先拷贝构造（本类无自有形态）——它
+                        //   只拷其链覆盖的基类字段，派生侧各层字段原被静默清零
+                        //   （探针 e1 b.y=0 vs C++ b.y=7）。逐层补拷「祖先构造所
+                        //   在层之下」的全部层（中间层+本类层·value=源对象指针）。
+                        if (copyOwner != canonTgt) {
+                            const ClassInfo* lvl = semantic_->findClass(canonTgt);
+                            while (lvl != nullptr && lvl->name != copyOwner) {
+                                emitOwnedFieldsCopy(newObj, value, canonTgt,
+                                                    lvl->name, node->location);
+                                lvl = lvl->baseName.empty()
+                                          ? nullptr
+                                          : semantic_->findClass(lvl->baseName);
+                            }
+                        }
                     } else {
                         emit(ir::Opcode::CopyStruct, {newObj, value}, ir::IRValue(),
                              std::to_string(ci->totalSize), "void", node->location);

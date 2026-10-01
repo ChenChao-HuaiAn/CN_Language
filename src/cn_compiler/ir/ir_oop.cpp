@@ -221,8 +221,7 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     //   而构造侧单缺）——顺序=基类构造 → 本类字段级联（860-a）→ 用户体。
     //   只对本类自有构造注入：继承并入的构造条目在派生类上下文「桥接再发射」
     //   （asm 父$祖/子$父 来源·ownerClass=来源类）——桥=基类构造体本身，再注
-    //   入=重复调用/误报硬错误。拷贝构造不注入（字段初始化=用户全权·860-a 同
-    //   口径；基类拷贝构造链=登记边界）。
+    //   入=重复调用/误报硬错误。
     else if (mi.isConstructor && !mi.isCopyConstructor && !mi.isStatic &&
              member->ctorInitBase.empty() && semantic_ != nullptr &&
              (mi.ownerClass.empty() ? currentClass_ : mi.ownerClass) ==
@@ -232,6 +231,17 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             emitBaseCtorChain(currentClass_, ir::IRValue::var(thisUnique, "ptr"),
                               member->body->location);
         }
+    }
+    // 123（930·用户裁决甲·〔基准=019〕第一/四句）：拷贝构造基类链——编译器
+    //   负责继承部分、用户负责自有字段（结构性根治：用户无法「忘记」拷基类，
+    //   Rust 手写 Clone 须逐字段构造全结构体同款的结构性保证）。源=首形参
+    //   （类名& 其他）。仅本类自有拷贝构造注入（桥接再发射排除·117 同款）；
+    //   显式初始化列表形态交 P3-20（上方 if 已拦截）。
+    else if (mi.isConstructor && mi.isCopyConstructor && !mi.isStatic &&
+             member->ctorInitBase.empty() && semantic_ != nullptr &&
+             (mi.ownerClass.empty() ? currentClass_ : mi.ownerClass) ==
+                 currentClass_) {
+        emitBaseCopyChain(member);
     }
     // 860-a（058 挂账②·H7 字段版）：构造函数序言类字段级联构造（拷贝构造
     //   除外——字段初始化=用户全权；详见 injectFieldCascadeConstruct）
@@ -352,6 +362,137 @@ void IRGenerator::emitBaseCtorChain(const std::string& className,
         }
         anc = anc->baseName.empty() ? nullptr
                                     : semantic_->findClass(anc->baseName);
+    }
+}
+
+// 123（930·用户裁决甲）：拷贝构造基类链——派生类用户拷贝构造 序言 自动拷贝
+//   基类部分（原静默丢基类字段：探针 c2 b.x=0 vs C++ b.x=5）。规则：
+//   ①沿继承链上溯，祖先有**自有**用户拷贝构造（类名(类名&)·ownerClass）→
+//     Call 它（实参=[自身槽, 源形参槽]——源按引用约定原样转发本构造收到的
+//     形参槽，与调用方传参同形）并停止上溯（其自身序言经本函数再链更上层）；
+//   ②祖先无自有拷贝构造→该祖先**自有字段**逐个拷贝（emitOwnedFieldsCopy·
+//     派生上下文偏移——接口分派区可使基类字段移位，基类独立布局不可用），
+//     继续上溯（无构造层无硬错误面：字段拷=隐式复印同语义）。
+//   字段四分支：字符串=__cn_str_copy 深拷（源保持拥有）；类/容器字段=目标类
+//   有拷贝构造→NewObject+拷贝构造（引用实参=源字段槽地址·PostCopy 发现二
+//   同款）/无→浅拷句柄（CopyStruct 路径同款约定·090 族口径）；标量=逐字段
+//   CopyStruct 字节拷。释放对称：拷贝产物由既有析构链（~基 后置）释放。
+void IRGenerator::emitBaseCopyChain(const ClassMember* member) {
+    if (semantic_ == nullptr || member == nullptr || member->params.empty()) {
+        return;
+    }
+    const ClassInfo* ci = semantic_->findClass(currentClass_);
+    if (ci == nullptr || ci->baseName.empty()) return;
+    const std::string thisUnique = lookupVarName("自身");
+    const std::string otherUnique =
+        lookupVarName(member->params[0]->name);
+    if (thisUnique.empty() || otherUnique.empty()) return;
+    const SourceLocation& loc = member->body->location;
+    // 对象指针：自身槽一层 Load（genClassFieldAddr 同款）；源形参（类名&）槽
+    //   存被引用槽地址——须再解一层 LoadPtr 得源对象指针（asm 实证：函数体
+    //   其他.字段 成员访问同款两步·单层读=槽地址+0 处指针低 32 位=垃圾值）
+    ir::IRValue thisPtr = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(thisUnique, "ptr")},
+                                     "ptr", thisUnique, loc);
+    ir::IRValue srcSlot = emitResult(ir::Opcode::Load,
+                                     {ir::IRValue::var(otherUnique, "ptr")},
+                                     "ptr", otherUnique, loc);
+    ir::IRValue srcObj = emitResult(ir::Opcode::LoadPtr, {srcSlot}, "ptr", "",
+                                    loc);
+    const ClassInfo* anc = semantic_->findClass(ci->baseName);
+    while (anc != nullptr) {
+        const ClassMemberInfo* cctor = nullptr;
+        for (const auto& mk : anc->methods) {
+            const ClassMemberInfo& pm = mk.second;
+            if (!pm.isConstructor || !pm.isCopyConstructor || !pm.hasBody) {
+                continue;
+            }
+            // 只认本类自有拷贝构造（ownerClass）——并入的更深祖先构造误配
+            // =P3-20/117 同源判据
+            const std::string pmOwner =
+                pm.ownerClass.empty() ? anc->name : pm.ownerClass;
+            if (pmOwner != anc->name) continue;
+            cctor = &pm;
+            break;
+        }
+        if (cctor != nullptr) {
+            emit(ir::Opcode::Call,
+                 {ir::IRValue::var(thisUnique, "ptr"),
+                  ir::IRValue::var(otherUnique, "ptr")},
+                 ir::IRValue(), methodSymbolKey(anc->name, cctor->sigKey),
+                 "void", loc);
+            return;  // 其序言再链更上层
+        }
+        // 无自有拷贝构造：拷该祖先自有字段（派生上下文偏移）并继续上溯
+        emitOwnedFieldsCopy(thisPtr, srcObj, currentClass_, anc->name, loc);
+        anc = anc->baseName.empty() ? nullptr
+                                    : semantic_->findClass(anc->baseName);
+    }
+}
+
+// 123：按 owner 过滤拷贝 className 字段表中的实例字段（静态不入实例·class_）
+//   ——拷贝构造基类链（祖先层字段）与隐式复印自有字段补拷（ir_stmt_decl）
+//   共用。偏移恒按 className（最派生类）上下文取（classFieldOffset）。
+void IRGenerator::emitOwnedFieldsCopy(const ir::IRValue& thisPtr,
+                                      const ir::IRValue& srcObj,
+                                      const std::string& className,
+                                      const std::string& ownerClass,
+                                      const SourceLocation& loc) {
+    const ClassInfo* ci =
+        semantic_ != nullptr ? semantic_->findClass(className) : nullptr;
+    if (ci == nullptr) return;
+    for (const auto& fname : ci->fieldOrder) {
+        const auto f = ci->fields.find(fname);
+        if (f == ci->fields.end() || f->second.isStatic) continue;
+        const std::string fOwner = f->second.ownerClass.empty()
+                                       ? className
+                                       : f->second.ownerClass;
+        if (fOwner != ownerClass) continue;
+        const int off = semantic_->classFieldOffset(className, fname);
+        if (off < 0) continue;
+        const std::string canon =
+            types::canonical(classFieldType(className, fname));
+        ir::IRValue dstF = emitResult(ir::Opcode::FieldAddr, {thisPtr}, "ptr",
+                                      std::to_string(off), loc);
+        ir::IRValue srcF = emitResult(ir::Opcode::FieldAddr, {srcObj}, "ptr",
+                                      std::to_string(off), loc);
+        if (canon == "字符串") {
+            ir::IRValue val =
+                emitResult(ir::Opcode::LoadPtr, {srcF}, "ptr", "", loc);
+            ir::IRValue copy = emitResult(ir::Opcode::Call, {val}, "ptr",
+                                          "__cn_str_copy", loc);
+            emit(ir::Opcode::StorePtr, {dstF, copy}, ir::IRValue(), "", "ptr",
+                 loc);
+        } else if (semantic_->isClassType(canon)) {
+            const std::string copyKey = classCopyCtorSymbolKey(canon);
+            if (!copyKey.empty()) {
+                // 深拷：NewObject + 拷贝构造（引用实参=源字段槽地址）
+                const ClassInfo* fci = semantic_->findClass(canon);
+                const std::string extra =
+                    canon + "|" +
+                    std::to_string(fci != nullptr ? fci->totalSize : 0);
+                ir::IRValue newObj = emitResult(
+                    ir::Opcode::NewObject,
+                    {ir::IRValue::constant(canon, "ptr")}, "ptr", extra, loc);
+                emit(ir::Opcode::Call, {newObj, srcF}, ir::IRValue(), copyKey,
+                     "void", loc);
+                emit(ir::Opcode::StorePtr, {dstF, newObj}, ir::IRValue(), "",
+                     "ptr", loc);
+            } else {
+                // 无拷贝构造：浅拷句柄（整对象 CopyStruct 路径同款约定·090 族）
+                ir::IRValue val =
+                    emitResult(ir::Opcode::LoadPtr, {srcF}, "ptr", "", loc);
+                emit(ir::Opcode::StorePtr, {dstF, val}, ir::IRValue(), "",
+                     "ptr", loc);
+            }
+        } else {
+            // 标量：逐字段字节拷（地址对 + 字段宽）
+            const int size = semantic_->typeSizeOf(canon);
+            if (size > 0) {
+                emit(ir::Opcode::CopyStruct, {dstF, srcF}, ir::IRValue(),
+                     std::to_string(size), "void", loc);
+            }
+        }
     }
 }
 void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {

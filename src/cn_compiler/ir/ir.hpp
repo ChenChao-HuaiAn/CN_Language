@@ -1057,6 +1057,15 @@ private:
     //   实例化点。emitClassMethod 序言与 emitConstructorCall 共用（ir_oop.cpp）。
     void emitBaseCtorChain(const std::string& className,
                            const ir::IRValue& thisVal, const SourceLocation& loc);
+    // 123（930·用户裁决甲）：拷贝构造基类链——派生类用户拷贝构造序言自动拷
+    //   基类部分（祖先用户拷贝构造 Call / 祖先自有字段逐拷 walk-up）；
+    //   emitOwnedFieldsCopy=owner 过滤字段拷贝单点（ir_oop.cpp·与
+    //   ir_stmt_decl 隐式复印自有字段补拷共用）。
+    void emitBaseCopyChain(const ClassMember* member);
+    void emitOwnedFieldsCopy(const ir::IRValue& thisPtr, const ir::IRValue& srcObj,
+                             const std::string& className,
+                             const std::string& ownerClass,
+                             const SourceLocation& loc);
     // ---- 阶段3 OOP 表达式/调用/字段钩子（ir_oop.cpp 实现，ir.cpp 调用点插入） ----
     // 构造调用（类名(实参) -> NewObject + 构造体调用）与成员方法调用
     //   （对象.方法：虚 -> VirtualCall；非虚 -> 直接 Call；类名.静态方法；父类.方法）
