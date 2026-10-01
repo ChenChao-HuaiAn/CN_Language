@@ -145,6 +145,18 @@ int runPipeline(const std::string& source, const std::string& fileName,
             return 1;
         }
     }
+    // 任务 119（927）：常量值文本非空——空文本将发射空操作数（win A2008 静默
+    //   坏产物）或错值兜底（linux/arm64 发射 0 → 静默写错元素），无条件常开
+    //   前置拦截（与位宽/操作码/间接调用检查同族）。
+    {
+        const std::vector<std::string> constTextErrors =
+            ir::verifyConstValueTexts(output.module);
+        if (!constTextErrors.empty()) {
+            std::cerr << "IR 常量值文本验证失败：" << std::endl;
+            for (const auto& e : constTextErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
 
     // 5. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）
     // 阶段3（Task 3.1）：绑定 semantic 指针——OOP 指令（NewObject 虚表指针初始化/

@@ -295,6 +295,13 @@ std::vector<std::string> verifyKnownOpcodes(const IRModule& module);
 //   同族），把崩溃拦截前移到发射之前。
 std::vector<std::string> verifyCallIndirectTargets(const IRModule& module);
 
+// 常量值文本非空验证（任务 119·927）：常量指令（ConstInt/ConstBool/ConstFloat）
+//   的 extra 与常量操作数的 extra 承载发射层立即数文本——为空则后端发射空
+//   操作数（win ml64 A2008 静默坏产物）或错值兜底（linux/arm64 发射 0 →
+//   静默写错元素）。无条件常开（与位宽/操作码检查同族），发射前 100% 机械
+//   暴露，绝不放行到后端。返回错误消息（空=通过）。
+std::vector<std::string> verifyConstValueTexts(const IRModule& module);
+
 } // namespace ir
 
 // ==================== IR生成器 ====================

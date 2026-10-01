@@ -306,5 +306,47 @@ std::vector<std::string> verifyCallIndirectTargets(const IRModule& module) {
     return errors;
 }
 
+// ==================== 常量值文本非空（任务 119·927） ====================
+
+// 常量指令（ConstInt/ConstBool/ConstFloat）的 extra 与常量操作数（isConstant
+//   的 IRValue）的 extra 承载发射层的立即数文本——文本为空意味着后端将发射
+//   空操作数（win：`mov rax, ` → ml64 A2008 静默坏产物）或走错值兜底
+//   （linux/arm64：catch → 发射 0 → stride 错 0 → 元素偏移恒 0 → 静默写错
+//   元素）。119 实锤：ir_oop_call 元素链 self 合成曾把 stride 常量放
+//   operands[0]（extra 空）——-O3 被 const_fold normalize 回填掩盖、-O0 三
+//   后端两种坏产物。本检查无条件常开（与位宽/操作码/间接调用检查同族），
+//   在发射前把「常量无值文本」100% 机械暴露，绝不放行到后端。
+//   （对照 rustc：常量无值是 ICE 级内部错误，编译期中止。）
+std::vector<std::string> verifyConstValueTexts(const IRModule& module) {
+    std::vector<std::string> errors;
+    for (const auto& func : module.functions) {
+        for (const auto& block : func.blocks) {
+            for (const auto& inst : block->instructions) {
+                if ((inst.opcode == Opcode::ConstInt ||
+                     inst.opcode == Opcode::ConstBool ||
+                     inst.opcode == Opcode::ConstFloat) &&
+                    inst.extra.empty()) {
+                    errors.push_back(
+                        func.name + ":" + block->label + ": 常量指令 " +
+                        opcodeToString(inst.opcode) + " %v" +
+                        std::to_string(inst.result.id) +
+                        " 缺值文本（extra 为空）——后端将发射空操作数或错值"
+                        "兜底（编译器内部错误，任务 119 防线）");
+                }
+                for (const auto& op : inst.operands) {
+                    if (op.isConstant && op.extra.empty()) {
+                        errors.push_back(
+                            func.name + ":" + block->label + ": 指令 " +
+                            opcodeToString(inst.opcode) +
+                            " 的常量操作数缺值文本（extra 为空）——后端将发射"
+                            "空操作数或错值兜底（编译器内部错误，任务 119 防线）");
+                    }
+                }
+            }
+        }
+    }
+    return errors;
+}
+
 } // namespace ir
 } // namespace cn_compiler

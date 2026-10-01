@@ -225,3 +225,65 @@ TEST(IrVerifyErrors, InDomainConstantsPass) {
     IRModule module = buildIR(src);
     EXPECT_TRUE(verifyConstWidths(module).empty());
 }
+
+// ==================== verifyConstValueTexts：常量值文本非空（任务 119·927） ====================
+// 119 实弹：元素链 self 合成的 stride ConstInt 曾把值放 operands[0]（extra 空）
+//   →win -O0 发射 `mov rax, `（A2008 静默坏产物）/linux·arm64 -O0 catch 兜底
+//   发射 0（stride 错 0 → 写错元素·静默内存错写）。本检查无条件常开前置拦截。
+
+// 面①：ConstInt 指令 extra 空（119 原始形态——值错放 operands[0]）
+TEST(IrVerifyErrors, ConstIntEmptyExtraCaught) {
+    IRModule module = buildIR(kBaseSource);
+    auto& block = module.functions[0].blocks[0];
+    IRInstruction bad;
+    bad.opcode = Opcode::ConstInt;
+    bad.type = "i64";
+    bad.extra = "";  // 119 病根：值不在 extra
+    bad.result = IRValue::reg(52, "i64");
+    bad.operands.push_back(IRValue::constant("24", "i64"));  // 错放位置
+    block->instructions.push_back(bad);
+    const auto errors = cn_compiler::ir::verifyConstValueTexts(module);
+    EXPECT_TRUE(anyErrorContains(errors, "缺值文本"));
+}
+
+// 面②：ConstBool 指令 extra 空同族拦截
+TEST(IrVerifyErrors, ConstBoolEmptyExtraCaught) {
+    IRModule module = buildIR(kBaseSource);
+    auto& block = module.functions[0].blocks[0];
+    IRInstruction bad;
+    bad.opcode = Opcode::ConstBool;
+    bad.type = "i1";
+    bad.extra = "";
+    bad.result = IRValue::reg(53, "i1");
+    block->instructions.push_back(bad);
+    const auto errors = cn_compiler::ir::verifyConstValueTexts(module);
+    EXPECT_TRUE(anyErrorContains(errors, "缺值文本"));
+}
+
+// 面③：任意指令的内联常量操作数 extra 空（通用纵深——空操作数所有来源）
+TEST(IrVerifyErrors, InlineConstantOperandEmptyExtraCaught) {
+    IRModule module = buildIR(kBaseSource);
+    auto& block = module.functions[0].blocks[0];
+    IRInstruction bad;
+    bad.opcode = Opcode::Mul;
+    bad.type = "i64";
+    bad.result = IRValue::reg(54, "i64");
+    bad.operands.push_back(IRValue::reg(1, "i64"));
+    bad.operands.push_back(IRValue::constant("", "i64"));  // 空文本常量操作数
+    block->instructions.push_back(bad);
+    const auto errors = cn_compiler::ir::verifyConstValueTexts(module);
+    EXPECT_TRUE(anyErrorContains(errors, "常量操作数缺值文本"));
+}
+
+// 反证：健康 IR（含 正常/合法常量文本）零误报
+TEST(IrVerifyErrors, HealthyConstTextsPass) {
+    const char* src =
+        "函数 主() -> 整32 {\n"
+        "    整32 a = 24;\n"
+        "    整32 b = a * 2;\n"
+        "    返回 b;\n"
+        "}\n";
+    IRModule module = buildIR(src);
+    EXPECT_FALSE(module.functions.empty());
+    EXPECT_TRUE(cn_compiler::ir::verifyConstValueTexts(module).empty());
+}

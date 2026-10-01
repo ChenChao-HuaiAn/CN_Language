@@ -206,6 +206,15 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
     }
     // 整型/布尔常量：立即数 -> 结果目标（已分配直装分配寄存器·免 x10 中转·D8 451-a）
     std::string value = (inst.extra == "真") ? "1" : (inst.extra == "假") ? "0" : inst.extra;
+    // 任务 119（927）：常量值文本为空 = 硬错误（原「catch → 装载 0」兜底与
+    //   linux_x64 同族静默错值通道——空文本发射 0 → stride 错 0 → 写错元素）。
+    if (value.empty()) {
+        diagnostics_.report(Diagnostic::error(
+            inst.loc,
+            std::string("常量指令缺值文本（extra 为空）——无法发射立即数（") +
+                targetPlatform() + " 后端末防线·任务 119）"));
+        return;
+    }
     if (!value.empty() && value[0] == '0' && value.size() > 1 &&
         (value[1] == 'x' || value[1] == 'X' || value[1] == 'b' ||
          value[1] == 'B' || value[1] == 'o' || value[1] == 'O')) {
@@ -220,6 +229,8 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
     }
     const std::string res = resultTargetReg(inst.result.id, "x10");
     // 有符号解析优先；溢出（如 正64 最大值 > LLONG_MAX）回落无符号，避免装载 0
+    // 任务 119（927）：双层解析全失败（非法文本）= 硬错误——装载 0 兜底属
+    //   静默错值通道，一并根治（fail-fast·不产错值产物）。
     try {
         const long long v = std::stoll(value);
         emitMovImm(writer, res, static_cast<std::uint64_t>(v));
@@ -228,7 +239,12 @@ void Arm64CodeGenerator::emitConstLoad(Arm64AsmWriter& writer,
             const std::uint64_t u = std::stoull(value);
             emitMovImm(writer, res, u);
         } catch (...) {
-            emitMovImm(writer, res, 0);
+            diagnostics_.report(Diagnostic::error(
+                inst.loc,
+                std::string("常量值文本无法解析（\"") + value +
+                    "\"）——无法发射立即数（" + targetPlatform() +
+                    " 后端末防线·任务 119）"));
+            return;
         }
     }
     storeVirtualResult(writer, inst.result.id, res, inst.type);

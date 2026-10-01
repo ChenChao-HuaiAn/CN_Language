@@ -162,6 +162,17 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
     }
     // 整型/布尔常量：立即数（x86_64 mov reg, imm64 全范围一条指令）
     std::string value = (inst.extra == "真") ? "1" : (inst.extra == "假") ? "0" : inst.extra;
+    // 任务 119（927）：常量值文本为空 = 硬错误。原「catch → mov r10, 0」兜底把
+    //   空文本静默发射成 0——119 实弹：stride 错 0 → 元素偏移恒 0 → 写错元素
+    //   （`矩阵.元素(1).设置(0,99)` 写穿第 0 行·rc=0 静默内存错写）。错值比
+    //   编译失败更糟（fail-fast：编译器 bug 当场炸，不产错值产物）。
+    if (value.empty()) {
+        diagnostics_.report(Diagnostic::error(
+            inst.loc,
+            std::string("常量指令缺值文本（extra 为空）——无法发射立即数（") +
+                targetPlatform() + " 后端末防线·任务 119）"));
+        return;
+    }
     if (!value.empty() && value[0] == '0' && value.size() > 1 &&
         (value[1] == 'x' || value[1] == 'X' || value[1] == 'b' ||
          value[1] == 'B' || value[1] == 'o' || value[1] == 'O')) {
@@ -174,6 +185,8 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
         } catch (...) {
         }
     }
+    // 任务 119（927）：双层解析全失败（空/非法文本）同样硬错误——原兜底
+    //   mov r10, 0 属静默错值通道（与空文本同族），一并根治。
     try {
         const long long v = std::stoll(value);
         writer.line("mov r10, " + std::to_string(v));
@@ -182,7 +195,12 @@ void LinuxX64CodeGenerator::emitConstLoad(LinuxX64AsmWriter& writer,
             const std::uint64_t u = std::stoull(value);
             writer.line("mov r10, " + uint64HexText(u));
         } catch (...) {
-            writer.line("mov r10, 0");
+            diagnostics_.report(Diagnostic::error(
+                inst.loc,
+                std::string("常量值文本无法解析（\"") + value +
+                    "\"）——无法发射立即数（" + targetPlatform() +
+                    " 后端末防线·任务 119）"));
+            return;
         }
     }
     emitStackStore(writer, regSlotOffset(inst.result.id), "r10", inst.type);

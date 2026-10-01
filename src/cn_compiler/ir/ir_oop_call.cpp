@@ -745,10 +745,15 @@ bool IRGenerator::emitInstanceMethodCall(CallExpr* node, MemberExpr* mem,
                     semantic_->typeSizeOf(types::canonical(canonObjForMethod));
                 const std::int64_t stride794 =
                     elemSize794 > 0 ? elemSize794 : 8;
+                // 任务 119（927）：ConstInt 值文本必须走 extra（与全库其他发射点
+                //   同构的规范形态）。原写法把值放 operands[0]（IRValue::constant）
+                //   而 extra 为空——win -O0 发射空立即数（ml64 A2008 静默坏产物）、
+                //   linux/arm64 -O0 走 catch 兜底发射 0（stride 错 0 → 偏移恒 0 →
+                //   写错元素·静默内存错写）；仅 -O3 被 const_fold 的 normalize 回填
+                //   掩盖。ir_verify 新增常开检查（常量文本空=硬错误）拦截此形态。
                 ir::IRValue strideConst794 = emitResult(
-                    ir::Opcode::ConstInt,
-                    {ir::IRValue::constant(std::to_string(stride794), "i64")},
-                    "i64", "", node->location);
+                    ir::Opcode::ConstInt, {}, "i64",
+                    std::to_string(stride794), node->location);
                 ir::IRValue scaled794 = emitResult(
                     ir::Opcode::Mul, {idxVal794, strideConst794}, "i64", "",
                     node->location);

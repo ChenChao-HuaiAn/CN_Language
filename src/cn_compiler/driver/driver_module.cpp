@@ -678,6 +678,17 @@ int runModulePipeline(const std::string& entryFile, const DriverOptions& options
             return 1;
         }
     }
+    // 任务 119（927）：常量值文本非空（与单文件路径 runPipeline 同族第四道
+    //   常开防线——空文本=空操作数/错值兜底，绝不放行到后端）。
+    {
+        const std::vector<std::string> constTextErrors =
+            ir::verifyConstValueTexts(output.module);
+        if (!constTextErrors.empty()) {
+            std::cerr << "IR 常量值文本验证失败：" << std::endl;
+            for (const auto& e : constTextErrors) std::cerr << "  " << e << std::endl;
+            return 1;
+        }
+    }
 
     // 6. 代码生成（按目标平台分发后端：win-x64 -> MASM / linux-arm64 -> GAS）
     std::unique_ptr<Backend> backend = createBackend(

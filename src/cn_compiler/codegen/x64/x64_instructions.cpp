@@ -277,6 +277,16 @@ void X64CodeGenerator::emitConstLoad(AsmWriter& writer, const ir::IRInstruction&
     // 注意：MASM 不支持 0b/0o 前缀（A2048），十六进制 0x 也不支持（A2206），
     //       统一转换为十进制立即数（parser 已按 10/16/2/8 进制解析出数值）
     std::string value = (inst.extra == "真") ? "1" : (inst.extra == "假") ? "0" : inst.extra;
+    // 任务 119（927）：常量值文本为空 = 硬错误（不发射 `mov rax, ` 空操作数
+    //   ——ml64 A2008 静默坏产物）。与 IR 验证器 verifyConstValueTexts 构成
+    //   两道防线（验证器在前·本防线兜底，T11 面②同款）。
+    if (value.empty()) {
+        diagnostics_.report(Diagnostic::error(
+            inst.loc,
+            std::string("常量指令缺值文本（extra 为空）——无法发射立即数（") +
+                targetPlatform() + " 后端末防线·任务 119）"));
+        return;
+    }
     // 若为 0x/0b/0o 前缀（原始字面量文本），转十进制
     if (!value.empty() && value[0] == '0' && value.size() > 1 &&
         (value[1] == 'x' || value[1] == 'X' || value[1] == 'b' ||
