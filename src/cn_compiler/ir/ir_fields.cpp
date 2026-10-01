@@ -644,10 +644,45 @@ void IRGenerator::genCopyBuiltin(CallExpr* node, const SourceLocation& loc) {
     //   v2 同构）——字符串/容器：句柄直取（接管）+ 源槽清零，跳过深拷（复用
     //   转移() 同款设施：ir_call.cpp 源槽清零模型）。槽解析失败（静态/非局部）
     //   保守回退深拷。
+    // 078（934·008 总攻第二轮）：结构体面扩面——整块搬迁零拷贝：复槽分配 +
+    //   CopyStruct 位拷贝（拥有字段句柄直移=所有权交接）+ 源槽全清零（$s 槽
+    //   命名同 79-a 零初始化先例·源 RAII 对零句柄空安全跳过=幂等模型）。
+    //   拷贝语义=位拷而非 emitStructCopyWithFields 深拷——LUE 前提=源在拷贝后
+    //   不再使用（第四句(a) 最后使用消除），无别名无需字段级深拷。与深拷④
+    //   同款临时槽形态（调用方按槽地址消费）。
     if (node->lueMove && arg->getType() == NodeType::IdentifierExpr) {
         const std::string lueSrc = static_cast<IdentifierExpr*>(arg)->name;
         const std::string lueSlot = lookupVarName(lueSrc);
         if (!lueSlot.empty()) {
+            if (semantic_->isStructType(type)) {
+                ir::IRValue srcAddr = emitResult(
+                    ir::Opcode::AddrOf, {ir::IRValue::var(lueSlot, "i64")}, "ptr",
+                    lueSlot, loc);
+                const std::string tmp = "__luetmp" + std::to_string(varCounter_++);
+                emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
+                     tmp, "ptr", loc);
+                registerVarSlots(tmp, type);
+                ir::IRValue tmpAddr = emitResult(
+                    ir::Opcode::AddrOf, {ir::IRValue::var(tmp, "i64")}, "ptr", tmp,
+                    loc);
+                const int bytes = semantic_->typeSizeOf(type);
+                if (bytes > 0) {
+                    emit(ir::Opcode::CopyStruct, {tmpAddr, srcAddr}, ir::IRValue(),
+                         std::to_string(bytes), "void", loc);
+                }
+                auto slotIt = function_->varSlots.find(lueSlot);
+                const int slots =
+                    (slotIt != function_->varSlots.end() && slotIt->second > 0)
+                        ? slotIt->second : 1;
+                for (int s = 0; s < slots; ++s) {
+                    const std::string slotName =
+                        s == 0 ? lueSlot : lueSlot + "$s" + std::to_string(s);
+                    emit(ir::Opcode::Store, {ir::IRValue::constant("0", "i64")},
+                         ir::IRValue(), slotName, "i64", loc);
+                }
+                lastExpr_ = tmpAddr;
+                return;
+            }
             lastExpr_ = genExpr(arg);
             ir::IRValue lueZero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
                                              loc);
