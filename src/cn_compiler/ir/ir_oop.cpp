@@ -170,6 +170,11 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
             for (const auto& mk : parentI->methods) {
                 const ClassMemberInfo& pm = mk.second;
                 if (!pm.isConstructor) continue;
+                // 117：只匹配父类自有构造——父类方法表含沿链并入的更深祖先
+                //   构造（祖#参数·ownerClass=来源类），unordered_map 迭代先命中
+                //   时误发 Call 父$祖（asm 实证：子的列表打到祖父构造再发射，
+                //   父构造体整丢）——与 findCtorMember 的 ownerClass 限定同款。
+                if (pm.ownerClass != parentI->name) continue;
                 const int required =
                     static_cast<int>(pm.paramTypes.size()) - pm.defaultCount;
                 const int given = static_cast<int>(member->ctorInitArgs.size());
@@ -209,6 +214,23 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
                      methodSymbolKey(parentI->name, parentCtorSig), "void",
                      member->body->location);
             }
+        }
+    }
+    // 117（v10 采样 p0930_05·P1）：派生构造器无显式初始化列表时自动注入基类
+    //   构造链（C++ 语义·spec 06§三「与C++同名构造/析构语义一致」·析构链既全
+    //   而构造侧单缺）——顺序=基类构造 → 本类字段级联（860-a）→ 用户体。
+    //   只对本类自有构造注入：继承并入的构造条目在派生类上下文「桥接再发射」
+    //   （asm 父$祖/子$父 来源·ownerClass=来源类）——桥=基类构造体本身，再注
+    //   入=重复调用/误报硬错误。拷贝构造不注入（字段初始化=用户全权·860-a 同
+    //   口径；基类拷贝构造链=登记边界）。
+    else if (mi.isConstructor && !mi.isCopyConstructor && !mi.isStatic &&
+             member->ctorInitBase.empty() && semantic_ != nullptr &&
+             (mi.ownerClass.empty() ? currentClass_ : mi.ownerClass) ==
+                 currentClass_) {
+        const std::string thisUnique = lookupVarName("自身");
+        if (!thisUnique.empty()) {
+            emitBaseCtorChain(currentClass_, ir::IRValue::var(thisUnique, "ptr"),
+                              member->body->location);
         }
     }
     // 860-a（058 挂账②·H7 字段版）：构造函数序言类字段级联构造（拷贝构造
@@ -271,6 +293,67 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
 //   ③拷贝构造不注入（调用方排除——拷贝构造字段初始化=用户全权，体手工
 //   赋值形态，级联产物会被体覆盖=泄漏）；④联合体多型激活不可判（164-a
 //   宁漏勿错）——类布局无联合体字段形态，天然不命中。
+// 117（v10 采样 p0930_05·P1）：基类构造链注入——派生构造器无显式初始化列表
+//   时自动调用基类默认构造（C++ 语义·spec 06§三「与C++同名构造/析构语义一致」）。
+//   规则：①沿继承链上溯到首个「自有构造」的祖先——零实参可调版本（严格无参
+//   或全默认参）发射 Call（缺省实参就地常量求值·D23 同款）；②该祖先自有构造
+//   但无零实参可调版本=编译期硬错误（g++ 同款 no matching function for call）；
+//   ③无自有构造的中间层=隐式零初始化层（NewObject 已零初始化）继续上溯；
+//   ④只发一次调用——更上层由被调构造自身的序言递归注入（多级自然成链）。
+//   调用方：emitClassMethod 序言（有构造·无列表）与 emitConstructorCall
+//   （类自身无构造的实例化点）两处共用。
+void IRGenerator::emitBaseCtorChain(const std::string& className,
+                                    const ir::IRValue& thisVal,
+                                    const SourceLocation& loc) {
+    if (semantic_ == nullptr) return;
+    const ClassInfo* ci = semantic_->findClass(className);
+    if (ci == nullptr || ci->baseName.empty()) return;
+    const ClassInfo* anc = semantic_->findClass(ci->baseName);
+    while (anc != nullptr) {
+        bool hasOwnCtor = false;
+        const ClassMemberInfo* zeroArg = nullptr;
+        for (const auto& mk : anc->methods) {
+            const ClassMemberInfo& pm = mk.second;
+            if (!pm.isConstructor || !pm.hasBody) continue;
+            // 只认本类自有构造（ownerClass）——并入的更深祖先构造误配=
+            // P3-20 多级显式列表跳层同源根因（findCtorMember 同款判据）
+            const std::string pmOwner =
+                pm.ownerClass.empty() ? anc->name : pm.ownerClass;
+            if (pmOwner != anc->name) continue;
+            hasOwnCtor = true;
+            if (pm.paramTypes.empty() ||
+                pm.defaultCount == static_cast<int>(pm.paramTypes.size())) {
+                zeroArg = &pm;
+                break;
+            }
+        }
+        if (hasOwnCtor) {
+            if (zeroArg == nullptr) {
+                // 基类自有构造但无零实参可调版本：C++ 同款硬错误
+                diagnostics_.report(DiagnosticLevel::Error, loc,
+                    "基类 '" + anc->name + "' 无默认构造，派生类构造须用初始化"
+                    "列表显式调用（: " + anc->name + "(实参)）");
+            } else {
+                std::vector<ir::IRValue> ctorArgs;
+                ctorArgs.push_back(thisVal);
+                // D23 同款：零实参调用下全默认参构造按声明默认值补全
+                if (zeroArg->ast != nullptr) {
+                    for (const auto& pp : zeroArg->ast->params) {
+                        if (pp->hasDefault && pp->defaultExpr != nullptr) {
+                            ctorArgs.push_back(
+                                evalDefaultExpr(pp->defaultExpr.get()));
+                        }
+                    }
+                }
+                emit(ir::Opcode::Call, ctorArgs, ir::IRValue(),
+                     methodSymbolKey(anc->name, zeroArg->sigKey), "void", loc);
+            }
+            return;  // 首个自有构造祖先负责更上层（其序言递归注入）
+        }
+        anc = anc->baseName.empty() ? nullptr
+                                    : semantic_->findClass(anc->baseName);
+    }
+}
 void IRGenerator::injectFieldCascadeConstruct(const ClassMember* member) {
     if (semantic_ == nullptr || member == nullptr) return;
     ir::IRFunction* fn = function_;

@@ -1052,6 +1052,11 @@ private:
     //   类字段（NewObject+默认构造+StorePtr；与析构侧对称，C++ 成员默认构造
     //   同构——治构造体未赋值类字段空句柄解引）。
     void injectFieldCascadeConstruct(const ClassMember* member);
+    // 117（v10 p0930_05）：基类构造链注入——派生构造器无显式初始化列表时
+    //   自动调用基类默认构造（C++ 语义·spec 06§三）；亦用于类自身无构造的
+    //   实例化点。emitClassMethod 序言与 emitConstructorCall 共用（ir_oop.cpp）。
+    void emitBaseCtorChain(const std::string& className,
+                           const ir::IRValue& thisVal, const SourceLocation& loc);
     // ---- 阶段3 OOP 表达式/调用/字段钩子（ir_oop.cpp 实现，ir.cpp 调用点插入） ----
     // 构造调用（类名(实参) -> NewObject + 构造体调用）与成员方法调用
     //   （对象.方法：虚 -> VirtualCall；非虚 -> 直接 Call；类名.静态方法；父类.方法）

@@ -417,6 +417,11 @@ bool IRGenerator::emitConstructorCall(CallExpr* node) {
     const ClassMemberInfo* ctor = findCtorMember(ci, className, node);
     if (ctor != nullptr) {
         emitCtorInvoke(node, className, ctor, obj);
+    } else {
+        // 117：类自身无构造的实例化点——NewObject 零初始化后基类构造链仍须跑
+        //   （C++ 隐式默认构造语义；B1 形态：子类不写构造时基类构造原被整跳）。
+        //   有自有构造的类走 emitClassMethod 序言注入，不经此分支。
+        emitBaseCtorChain(className, obj, node->location);
     }
     lastExpr_ = obj;
     return true;
