@@ -558,12 +558,28 @@ const ClassMemberInfo* IRGenerator::findCtorMember(const ClassInfo* ci,
     }
     if (ctor == nullptr) {
         // 兜底：按 实参个数 匹配本类构造（与语义层一致的 ownerClass 限定）
+        //   933 防御纵深：跳过「引用形参 × 实参不可寻址」组合——语义层未记录
+        //   resolvedSignature 的场景（如顶层静态初值历史上不 visit 初值·933
+        //   语义层已根治），同参个数重载按遍历序误选拷贝构造（字符串字面量被
+        //   按 货物& 地址契约传入 → 被调方两跳错位 SIGSEGV·探针 p8 实锤）。
+        //   可寻址=标识符/成员链/下标（wrapRefArgs 左值口径）。
         const std::size_t givenArgs = node->arguments.size();
         const ClassMemberInfo* fallback = nullptr;
         for (const auto& mk : ci->methods) {
             if (mk.second.isConstructor && mk.second.hasBody &&
                 mk.second.ownerClass == className &&
                 mk.second.paramTypes.size() == givenArgs) {
+                bool refMismatch = false;
+                for (std::size_t i = 0; i < mk.second.paramTypes.size(); ++i) {
+                    if (types::isReference(mk.second.paramTypes[i]) &&
+                        node->arguments[i]->getType() != NodeType::IdentifierExpr &&
+                        node->arguments[i]->getType() != NodeType::MemberExpr &&
+                        node->arguments[i]->getType() != NodeType::IndexExpr) {
+                        refMismatch = true;
+                        break;
+                    }
+                }
+                if (refMismatch) continue;
                 fallback = &mk.second;
                 break;
             }

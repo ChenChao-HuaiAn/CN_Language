@@ -195,6 +195,13 @@ bool IRGenerator::assignToGlobalStatic(AssignmentExpr* node, IdentifierExpr* ide
         //   悬挂（源 RAII 析构后静态槽残留 freed 指针 -> 堆损坏）；右值为构造
         //   调用/临时对象（表 = 向量<...>()）本就是新对象，直接指针入槽。
     if (globalStaticClassAssign(node, ident, stType, value)) return true;
+        // 933（095 静态边缘形态）：静态类/容器目标 转移赋值 乙 = 转移(甲)——
+        //   原路径转移展开后 StorePtr 直接覆盖静态槽，旧静态对象（初值构造或
+        //   旧值）无人释放=泄漏（静态槽无块出口 RAII，赋值点是唯一 drop 时机；
+        //   探针 p7 实测 ~货物 0 次）。与局部 identifierClassTransferAssign
+        //   同款模型：LoadPtr 旧句柄 → 单发 DeleteObject（空句柄空安全）→
+        //   StorePtr 新句柄（value=转移展开已加载的源句柄·源槽清零在 ir_call）。
+    if (globalStaticClassTransferAssign(node, ident, stType, value)) return true;
         // 复合赋值（+= 等）：先读后算再写
         if (isCompoundAssignOp(node->op)) {
             ir::IRValue addrR = emitResult(
@@ -296,6 +303,38 @@ bool IRGenerator::globalStaticClassAssign(AssignmentExpr* node, IdentifierExpr* 
         }
     }
     return false;
+}
+
+// 933（095 静态边缘形态）：静态类/容器目标 转移赋值（globalStaticClassAssign
+//   平级后置）。语义=drop 旧静态对象 + 句柄移交（value=ir_call 转移展开已加载
+//   的源句柄·源槽清零在彼处完成）。静态槽无块出口 RAII——赋值点是旧值唯一
+//   drop 时机（Rust `static mut` 覆盖前 drop 对照；本语言静态写在 不安全
+//   函数内·语义层已收口）。自转移守卫=同名跳过（与局部版同意图）。
+bool IRGenerator::globalStaticClassTransferAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                                  const std::string& stType,
+                                                  const ir::IRValue& value) {
+    if (semantic_ == nullptr || isCompoundAssignOp(node->op)) return false;
+    const std::string canonTarget = types::canonical(stType);
+    if (!semantic_->isClassType(canonTarget)) return false;
+    if (node->value->getType() != NodeType::CallExpr) return false;
+    const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
+    if (!SemanticAnalyzer::isTransferCall(tr) || tr->arguments.empty() ||
+        tr->arguments[0]->getType() != NodeType::IdentifierExpr)
+        return false;
+    const std::string srcName =
+        static_cast<const IdentifierExpr*>(tr->arguments[0].get())->name;
+    if (srcName == ident->name) return false;   // 自转移=无操作
+    ir::IRValue slotAddr = emitResult(
+        ir::Opcode::ConstString, {}, "ptr", "?gstatic_" + ident->name,
+        node->location);
+    ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {slotAddr}, "ptr", "",
+                                    node->location);
+    emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
+         canonTarget, "void", node->location);
+    emit(ir::Opcode::StorePtr, {slotAddr, value}, ir::IRValue(), "",
+         "ptr", node->location);
+    lastExpr_ = value;
+    return true;
 }
 
 // 类对象赋值深拷贝（标识符目标；原 650~723 段）：乙 = 甲 独立新对象 + 拷贝构造
@@ -465,6 +504,9 @@ void IRGenerator::identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* 
         }
     }
     if (identifierStringAssign(node, ident, unique, targetType, value)) return;
+    // 任务 095 残留面（933）：类/容器目标 转移赋值（字符串三形态之后、通用
+    //   Store 之前——不匹配类目标则原样落到通用路径，零行为变化）
+    if (identifierClassTransferAssign(node, ident, unique, targetType, value)) return;
     // 简单赋值（Task 2.3：右值类型与目标类型不同时先隐式转换 Cast，
     // 如 整8 x = 30000 需截断、整32 -> 整64 需扩展、整 -> 浮 需转换）
     if (value.type != targetType) {
@@ -740,6 +782,59 @@ bool IRGenerator::identifierStringTransferAssign(AssignmentExpr* node, Identifie
         }
     }
     return false;
+}
+
+// 任务 095 残留面（933 轮·008 收官总攻）：类/容器目标 转移赋值 乙 = 转移(甲)
+//   （标识符目标）。原路径：ir_call 转移展开（值=源句柄直拷 + 源槽清零·459-a）
+//   后落入通用 Store 直接覆盖目标槽——乙 原堆对象/容器缓冲无人释放=泄漏
+//   （933 探针实锤：类目标 ~货物 打 1 次<应 2；容器目标 活动分配数 差 0 不回落；
+//   对照字符串目标 identifierStringTransferAssign〔72-a〕drop 旧+句柄移交+源清零
+//   三件齐·探针差 -1）。本分支补齐类/容器目标同构：**Store 覆盖前单发
+//   DeleteObject**（指令内含类析构调用+free·空句柄空安全跳过——与 552 类赋值
+//   旧值释放同款单发模型·preFree 旧版=析构打两次已证伪）+ 句柄移交（value=转移
+//   展开已加载的源句柄）。源槽清零由 ir_call 转移展开完成（本函数不重复）。
+//   Rust 对照：`b = a`（move）覆盖前 drop 旧值。自转移 甲 = 转移(甲) 守卫=
+//   同名跳过（此时源槽已被转移展开清零，通用路径 Store 写回原句柄=无操作语义，
+//   与字符串路径 :719 守卫同意图）。
+bool IRGenerator::identifierClassTransferAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                                const std::string& unique,
+                                                const std::string& targetType,
+                                                const ir::IRValue& value) {
+    if (semantic_ == nullptr || targetType != "ptr" || isCompoundAssignOp(node->op))
+        return false;
+    if (node->value->getType() != NodeType::CallExpr) return false;
+    const CallExpr* tr = static_cast<const CallExpr*>(node->value.get());
+    if (!SemanticAnalyzer::isTransferCall(tr) || tr->arguments.empty() ||
+        tr->arguments[0]->getType() != NodeType::IdentifierExpr)
+        return false;
+    const std::string srcName =
+        static_cast<const IdentifierExpr*>(tr->arguments[0].get())->name;
+    const std::string srcUnique = lookupVarName(srcName);
+    if (!srcUnique.empty() && srcUnique == unique) return false;   // 自转移=无操作
+    const std::string canonTarget = types::canonical(lookupSrcType(ident->name));
+    if (!semantic_->isClassType(canonTarget)) return false;
+    if (isByRefCapture(ident->name)) {
+        // A-1（引用参数）：目标槽存被引用类槽地址——旧句柄两跳读、写回经指针
+        ir::IRValue capAddr = emitResult(ir::Opcode::Load,
+                                         {ir::IRValue::var(unique, "ptr")},
+                                         "ptr", unique, node->location);
+        ir::IRValue oldObj = emitResult(ir::Opcode::LoadPtr, {capAddr}, "ptr",
+                                        "", node->location);
+        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
+             canonTarget, "void", node->location);
+        emit(ir::Opcode::StorePtr, {capAddr, value}, ir::IRValue(), "",
+             "ptr", node->location);
+    } else {
+        ir::IRValue oldObj = emitResult(
+            ir::Opcode::Load, {ir::IRValue::var(unique, "ptr")}, "ptr",
+            unique, node->location);
+        emit(ir::Opcode::DeleteObject, {oldObj}, ir::IRValue(),
+             canonTarget, "void", node->location);
+        emit(ir::Opcode::Store, {value}, ir::IRValue(), unique, "ptr",
+             node->location);
+    }
+    lastExpr_ = value;
+    return true;
 }
 
 // 一般拥有型字符串赋值（原 985~1028 段）：白名单 / 返回契约判定 -> free 旧 +

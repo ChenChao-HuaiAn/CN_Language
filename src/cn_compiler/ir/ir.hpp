@@ -1143,6 +1143,13 @@ private:
                                  const std::string& stType, const ir::IRValue& value);
     bool identifierClassCopyAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                    const std::string& unique);
+    bool identifierClassTransferAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                       const std::string& unique,
+                                       const std::string& targetType,
+                                       const ir::IRValue& value);
+    bool globalStaticClassTransferAssign(AssignmentExpr* node, IdentifierExpr* ident,
+                                         const std::string& stType,
+                                         const ir::IRValue& value);
     bool identifierStructLiteralAssign(AssignmentExpr* node, IdentifierExpr* ident,
                                        const std::string& unique);
     void identifierGenericAssign(AssignmentExpr* node, IdentifierExpr* ident,

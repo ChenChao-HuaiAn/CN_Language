@@ -801,6 +801,28 @@ void SemanticAnalyzer::registerGlobalConstsAndStatics(Program* node) {
             if (staticModules_[g->name].size() == 1) {
                 declareVar(g->name, stType, g->location);
             }
+            // 933（008 收官总攻·静态初值构造解析根治）：顶层静态初值为类构造
+            //   调用时补 checkCtorCall——原只登记类型不 visit 初值，构造调用
+            //   resolvedSignature 恒空 → IR 侧 findCtorMember 兜底「按实参个数」
+            //   无法区分同参个数重载（货物(字符串) vs 货物(货物&)），
+            //   unordered_map 遍历序误选拷贝构造 → 字符串字面量按 货物& 地址
+            //   契约传入两跳错位 SIGSEGV（933 探针 p8 实锤：静态 货物 乙 =
+            //   货物("乙") 段错误；局部形态 visitVarDecl→checkCtorCall 正常对照）。
+            //   与 061-c 同病（静态初值缺语义推导）同治：此处按实参类型匹配
+            //   重载+记录 resolvedSignature+引用实参包装（wrapRefArgs）。
+            //   非构造形态/泛型 callee 零行为变化（收窄口径）。
+            if (g->initializer != nullptr &&
+                g->initializer->getType() == NodeType::CallExpr) {
+                auto* initCall = static_cast<CallExpr*>(g->initializer.get());
+                if (initCall->callee->getType() == NodeType::IdentifierExpr &&
+                    initCall->resolvedSignature.empty()) {
+                    const std::string cn = types::canonical(
+                        static_cast<IdentifierExpr*>(initCall->callee.get())->name);
+                    if (isClassType(cn)) {
+                        checkCtorCall(initCall, cn);
+                    }
+                }
+            }
         }
     }
     // 239-a：内建编译期常量 调试模式（规格书 3.8）——
