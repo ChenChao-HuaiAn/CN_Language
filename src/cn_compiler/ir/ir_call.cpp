@@ -46,6 +46,58 @@ void IRGenerator::visitCallExpr(CallExpr* node) {
                 static_cast<IdentifierExpr*>(node->arguments[0].get())->name;
             const std::string srcUnique = lookupVarName(srcName);
             if (!srcUnique.empty()) {
+                // 096（937·008 收官总攻第三轮）：结构体源=**先物化副本再清零源**
+                //   （078 LUE 同款模式：复槽分配+CopyStruct 整块位拷〔拥有字段
+                //   句柄直移〕+lastExpr_=副本基址+源槽全清零）——实参消费方按
+                //   槽地址读结构体（清零后读源=0·p7 形态2 实测 0 实锤）。标量/
+                //   类/容器/字符串=值物化天然（句柄在寄存器）·单槽清零（459-a
+                //   现行·幂等模型：源 RAII 对零句柄空安全跳过）。
+                const std::string srcCanon =
+                    types::canonical(lookupSrcType(srcName));
+                if (semantic_ != nullptr && semantic_->isStructType(srcCanon)) {                    ir::IRValue srcAddr = emitResult(
+                        ir::Opcode::AddrOf, {ir::IRValue::var(srcUnique, "i64")},
+                        "ptr", srcUnique, node->location);
+                    const std::string tmp =
+                        "__xfertmp" + std::to_string(varCounter_++);
+                    emit(ir::Opcode::Alloca, {},
+                         ir::IRValue::reg(regCounter_++, "ptr"), tmp, "ptr",
+                         node->location);
+                    registerVarSlots(tmp, srcCanon);
+                    ir::IRValue tmpAddr = emitResult(
+                        ir::Opcode::AddrOf, {ir::IRValue::var(tmp, "i64")},
+                        "ptr", tmp, node->location);
+                    const int bytes = semantic_->typeSizeOf(srcCanon);
+                    if (bytes > 0) {
+                        emit(ir::Opcode::CopyStruct, {tmpAddr, srcAddr},
+                             ir::IRValue(), std::to_string(bytes), "void",
+                             node->location);
+                    }
+                    auto slotIt = function_->varSlots.find(srcUnique);
+                    const int slots =
+                        (slotIt != function_->varSlots.end() &&
+                         slotIt->second > 0) ? slotIt->second : 1;
+                    for (int s = 0; s < slots; ++s) {
+                        const std::string slotName =
+                            s == 0 ? srcUnique
+                                   : srcUnique + "$s" + std::to_string(s);
+                        ir::IRValue zero = emitResult(
+                            ir::Opcode::ConstInt, {}, "i64", "0",
+                            node->location);
+                        emit(ir::Opcode::Store, {zero}, ir::IRValue(), slotName,
+                             "i64", node->location);
+                    }
+                    lastExpr_ = tmpAddr;
+                    return;
+                }
+                // 096（937）：数组源**跳过清零**——数组名=退化借用指针（C 聚合
+                //   语义·栈上无单句柄所有权），清首槽=破坏栈聚合内容（p9 实测
+                //   转移(组) 后读 0·撤改动基线同崩=459-a 既有缺陷）；数组传参
+                //   本就退化为按址共享（零拷贝天然成立·转移 无额外增益·语义
+                //   层 459-a 放行面维持统一语法）。
+                if (semantic_ != nullptr &&
+                    types::isArray(types::canonical(lookupSrcType(srcName)))) {
+                    return;
+                }
                 ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
                                               node->location);
                 emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique,

@@ -539,6 +539,57 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         //   被调方返回移出已跳过字段释放）=浅拷接管（零拷贝，句柄唯一持有者转为
         //   目标）；源为标识符/成员（值语义拷贝）=深拷（字段级 __cn_str_copy 落堆，
         //   源保持拥有）——浅拷共享 + 双端释放=悬垂，深拷是安全前提。
+        // 096（937·008 收官总攻第三轮）：转移浅交接**前置**（原位于结构体声明
+        //   分支之后——结构体源先命中 emitStructCopyWithFields 深拷〔p7 实测
+        //   声明位分配 +1 实锤〕·转移分支永不可达）。结构体源=**整块搬迁零拷贝**
+        //   （CopyStruct 位拷·拥有字段句柄直移=所有权交接——078 同款设施模型）+
+        //   **源槽全清零**（$s 槽命名·79-a/078 同款幂等模型：源 RAII 对零句柄
+        //   空安全跳过）；类/容器/字符串源=句柄直拷+单槽清零（72-a 现行）。
+        //   〔基准=019〕第二句：转移()=显式放弃拷贝换零拷贝。
+        std::string transferSrcNameIr;
+        if (semantic_ != nullptr && value.type == "ptr" &&
+            node->initializer != nullptr &&
+            node->initializer->getType() == NodeType::IdentifierExpr &&
+            semantic_->isTransferDecl(static_cast<const void*>(node),
+                                      transferSrcNameIr)) {
+            const std::string srcUnique = lookupVarName(transferSrcNameIr);
+            const std::string tgtCanon = types::canonical(node->typeName);
+            if (semantic_->isStructType(tgtCanon)) {
+                ir::IRValue dstAddr = emitResult(
+                    ir::Opcode::AddrOf, {ir::IRValue::var(unique, "i64")}, "ptr",
+                    unique, node->location);
+                ir::IRValue srcAddr = emitResult(
+                    ir::Opcode::AddrOf, {ir::IRValue::var(srcUnique, "i64")},
+                    "ptr", srcUnique, node->location);
+                const int bytes = semantic_->typeSizeOf(tgtCanon);
+                if (bytes > 0) {
+                    emit(ir::Opcode::CopyStruct, {dstAddr, srcAddr},
+                         ir::IRValue(), std::to_string(bytes), "void",
+                         node->location);
+                }
+                auto slotIt = function_->varSlots.find(srcUnique);
+                const int slots =
+                    (slotIt != function_->varSlots.end() && slotIt->second > 0)
+                        ? slotIt->second : 1;
+                for (int s = 0; s < slots; ++s) {
+                    const std::string slotName =
+                        s == 0 ? srcUnique : srcUnique + "$s" + std::to_string(s);
+                    emit(ir::Opcode::Store,
+                         {ir::IRValue::constant("0", "i64")}, ir::IRValue(),
+                         slotName, "i64", node->location);
+                }
+                lastExpr_ = dstAddr;
+                return;
+            }
+            emit(ir::Opcode::Store, {value}, ir::IRValue(), unique,
+                 "ptr", node->location);
+            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
+                                          node->location);
+            emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique,
+                 "i64", node->location);
+            lastExpr_ = value;
+            return;
+        }
         if (semantic_ != nullptr && value.type == "ptr" &&
             semantic_->isStructType(types::canonical(node->typeName))) {
             const std::string declCanon = types::canonical(node->typeName);
@@ -578,21 +629,6 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         //   改为句柄直拷 + **源槽清零**：源变量 RAII 析构对零句柄走既有空安全
         //   跳过（DeleteObject test/je），目标析构真句柄=恰好一次释放；条件分支
         //   两路径均正确（条件假=转移未执行=句柄仍在源槽=源析构正常释放）。
-        std::string transferSrcNameIr;
-        if (semantic_ != nullptr && value.type == "ptr" &&
-            node->initializer != nullptr &&
-            node->initializer->getType() == NodeType::IdentifierExpr &&
-            semantic_->isTransferDecl(static_cast<const void*>(node),
-                                      transferSrcNameIr)) {
-            emit(ir::Opcode::Store, {value}, ir::IRValue(), unique,
-                 "ptr", node->location);
-            const std::string srcUnique = lookupVarName(transferSrcNameIr);
-            ir::IRValue zero = emitResult(ir::Opcode::ConstInt, {}, "i64", "0",
-                                          node->location);
-            emit(ir::Opcode::Store, {zero}, ir::IRValue(), srcUnique,
-                 "i64", node->location);
-            return;
-        }
         // 缺陷1 修复：类对象初始化（资源 乙 = 甲）——类对象是堆指针语义，
         //   直接 Store 源指针会让两个变量共享同一堆地址，RAII 重复释放堆损坏。
         //   正确语义：新建独立堆对象 + 逐字段 CopyStruct 深拷贝。
