@@ -173,6 +173,25 @@ void SemanticAnalyzer::visitMemberExpr(MemberExpr* node) {
     if (cls != nullptr) {
         std::string ownerClass;
         const ClassMemberInfo* member = lookupClassMember(structType, memberName, ownerClass);
+        // 122（928·用户裁决乙）：限定构造访问统一拒绝——命中形态（无参构造
+        //   signatureKey 空参=纯名·按名查找巧合命中）与构造意图 miss 形态
+        //   （memberName==类名=带参构造键带 # 后缀 miss）统一引导初始化列表。
+        if (member != nullptr && member->isConstructor) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "构造函数 '" + memberName +
+                                    "' 不能经成员访问调用（构造函数不是方法成员）——父类构造须经"
+                                    "初始化列表（: " + memberName + "(实参)）调用");
+            lastType_ = "未知";
+            return;
+        }
+        if (member == nullptr && memberName == structType) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "构造函数 '" + memberName + "' 不能经成员访问调用——"
+                                    "父类构造须经初始化列表（: " + memberName +
+                                    "(实参)）调用");
+            lastType_ = "未知";
+            return;
+        }
         if (member == nullptr) {
             diagnostics_.report(DiagnosticLevel::Error, node->location,
                                 "类 '" + structType + "' 没有成员 '" + memberName + "'");

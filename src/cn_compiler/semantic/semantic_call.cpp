@@ -769,7 +769,58 @@ bool SemanticAnalyzer::checkCtorCall(CallExpr* node, const std::string& classNam
                 lastType_ = className;  // 构造返回对象
                 return true;
             }
-            // 无构造函数：允许默认构造（返回类类型）
+            // 121（928·v10 后续）：无匹配构造≠默认构造——类有自有构造但实参
+            //   个数/类型无一可匹配，或类无构造却传了实参，均为编译期硬错误
+            //   （原两形态与「类无构造」分支合并静默放行：NewObject 零初始化+
+            //   实参整丢=字段垃圾值，t_N2b 探针 点("abc") x=4293200 实锤；
+            //   对照普通函数调用面「无匹配重载」先例/g++ no matching function）。
+            {
+                const ClassMemberInfo* diag = nullptr;   // 诊断基准（同数优先）
+                bool hasOwnCtor = false;
+                for (const auto& mk : ctorCls->methods) {
+                    const ClassMemberInfo& mi = mk.second;
+                    if (!mi.isConstructor || mi.ownerClass != className) continue;
+                    hasOwnCtor = true;
+                    if (diag == nullptr ||
+                        mi.paramTypes.size() == argTypes.size()) {
+                        diag = &mk.second;
+                        if (mi.paramTypes.size() == argTypes.size()) break;
+                    }
+                }
+                if (hasOwnCtor || !node->arguments.empty()) {
+                    if (hasOwnCtor && diag != nullptr) {
+                        // 复用选中态同款诊断（个数/类型）——文案与上方选中分支一致
+                        const int req =
+                            static_cast<int>(diag->paramTypes.size()) - diag->defaultCount;
+                        if (static_cast<int>(argTypes.size()) < req ||
+                            argTypes.size() > diag->paramTypes.size()) {
+                            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                                "构造函数 '" + className + "' 期望 " +
+                                                    std::to_string(diag->paramTypes.size()) +
+                                                    " 个实参，实际提供 " +
+                                                    std::to_string(argTypes.size()) + " 个");
+                        } else {
+                            for (std::size_t i = 0; i < argTypes.size(); ++i) {
+                                if (!canConvertWithLiteral(node->arguments[i].get(),
+                                                           argTypes[i], diag->paramTypes[i])) {
+                                    diagnostics_.report(
+                                        DiagnosticLevel::Error,
+                                        node->arguments[i]->location,
+                                        "构造函数 '" + className + "' 第 " +
+                                            std::to_string(i + 1) + " 个实参无法将 '" +
+                                            argTypes[i] + "' 隐式转换为 '" +
+                                            diag->paramTypes[i] + "'");
+                                }
+                            }
+                        }
+                    } else {
+                        diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                            "类 '" + className + "' 无构造函数，不接受实参（提供 " +
+                                                std::to_string(argTypes.size()) + " 个）");
+                    }
+                }
+            }
+            // 类真无构造+零实参：默认构造放行（117 语义：零初始化+基类链注入）
             lastType_ = className;
             return true;
         }
@@ -875,6 +926,19 @@ bool SemanticAnalyzer::checkMemberCallCore(CallExpr* node, MemberExpr* mem,
                        ? canonicalType(types::pointeeOf(objTypeForClass))
                        : canonicalType(objTypeForClass));
         method = lookupClassMember(clsName, methodName, ownerClass);
+        // 122（928·用户裁决乙）：父类.构造名()/自身.构造名() 限定构造调用统一
+        //   拒绝——构造函数不是方法成员（规格 06§七 父类. 仅限方法）；无参构造
+        //   因 signatureKey 空参形态（键=纯名）按名查找巧合命中曾被放行、带参
+        //   形态则误报「没有成员」——统一为引导性诊断（正规通道=初始化列表
+        //   : 父类(实参)；C++ 亦无体内限定调父构造语法）。
+        if (method != nullptr && method->isConstructor) {
+            diagnostics_.report(DiagnosticLevel::Error, node->location,
+                                "构造函数 '" + methodName +
+                                    "' 不能经成员访问调用（构造函数不是方法成员）——父类构造须经"
+                                    "初始化列表（: " + methodName + "(实参)）调用");
+            lastType_ = "未知";
+            return true;
+        }
         // 缺陷根治（第九十三轮，2026-09-13 B2 立案复现）：类名.实例方法() ——
         //   调用路径漏检（visitMemberExpr 对 类名.实例成员 已有拒绝，本路径
         //   直查成员表后即按实例方法调用生成，无 this → IR 生成 NULL 间接调用
