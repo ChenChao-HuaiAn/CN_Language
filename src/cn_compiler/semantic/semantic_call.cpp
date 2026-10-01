@@ -890,7 +890,12 @@ bool SemanticAnalyzer::checkInterfaceMethodCall(CallExpr* node, MemberExpr* mem,
                 }
                 lastType_ = imit->second.type;
                 node->retOwnedString = (lastType_ == "字符串");  // A2：接口方法拥有契约
-                lastExprIsRefReturn_ = false;  // 接口方法引用返回暂不支持（方法返回类型 canonical 剥 &）
+                // 118（929）：接口方法引用返回放行（-> T& 签名即 ABI·isRefReturn
+                //   注册时按 AST 原文判定）
+                if (imit->second.isRefReturn) {
+                    node->isRefReturnCall = true;
+                    lastExprIsRefReturn_ = true;
+                }
                 return true;
             }
     return false;
@@ -1072,7 +1077,13 @@ bool SemanticAnalyzer::checkInstanceMethodCall(CallExpr* node, MemberExpr* mem,
             //   清空/弹出/出队/删除头部/删除尾部/释放内部数组）——绑定位
             //   （声明初始化/赋值）消费标记，函数尾结算与活跃区间比对。
             noteBorrowCallSite(*mem, clsName, methodName, node);
-            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
+            // 118（929）：引用返回方法调用放行作赋值目标/复合赋值/引用绑定
+            //   （v.元素引用(i) = x 写穿容器·829 立法写通道·与函数形态
+            //   P3-18 同构——isRefReturn 注册时按 AST 原文判定，type 剥 & 不再可判）
+            if (method->isRefReturn) {
+                node->isRefReturnCall = true;
+                lastExprIsRefReturn_ = true;
+            }
             return true;
         }
     return false;
@@ -1109,7 +1120,11 @@ bool SemanticAnalyzer::checkStaticMethodCall(CallExpr* node, const std::string& 
             // A2：泛型实例化类成员（ownerClass 含 $）不置位——同实例方法口径
             node->retOwnedString = (lastType_ == "字符串" &&
                                     ownerClass.find('$') == std::string::npos);
-            lastExprIsRefReturn_ = false;  // 方法引用返回暂不支持（类型 canonical 剥 &）
+            // 118（929）：静态方法引用返回放行（与实例方法/接口同构）
+            if (method->isRefReturn) {
+                node->isRefReturnCall = true;
+                lastExprIsRefReturn_ = true;
+            }
             return true;
         }
     return false;

@@ -424,6 +424,8 @@ std::string SemanticAnalyzer::instantiateGeneric(
                     member->returnType.empty() ? "空类型" : member->returnType;
                 mi.type = types::canonical(
                     substTypeParam(retRaw, gen->typeParams, args));
+                mi.isRefReturn = !member->returnType.empty() &&
+                                 types::isReference(member->returnType);  // 118：AST 原文判引用（& 后缀替换不变）
                 mi.access = member->access;
                 mi.ownerClass = instanceName;
                 mi.isVirtual = member->isVirtual;
@@ -485,6 +487,8 @@ std::string SemanticAnalyzer::instantiateGeneric(
                 mi.name = member->operatorSym.empty() ? member->name : member->operatorSym;
                 mi.type = types::canonical(
                     substTypeParam(member->returnType, gen->typeParams, args));
+                mi.isRefReturn = !member->returnType.empty() &&
+                                 types::isReference(member->returnType);  // 118：AST 原文判引用（& 后缀替换不变）
                 mi.access = member->access;
                 mi.ownerClass = instanceName;
                 mi.isVirtual = member->isVirtual;

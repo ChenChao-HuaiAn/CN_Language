@@ -246,6 +246,8 @@ void SemanticAnalyzer::registerClassAndInterfaces(Program* node) {
                 ? "空类型"
                 : resolveGenericTypeName(types::canonical(member->returnType),
                                          member->location);
+            mi.isRefReturn = !member->returnType.empty() &&
+                             types::isReference(member->returnType);  // 118：AST 原文判引用（type 已剥 &）
             mi.access = AccessSpecifier::Public;
             mi.isVirtual = true;
             mi.isAbstract = true;  // 接口方法无实现体
@@ -444,6 +446,8 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
             mi.name = member->operatorSym.empty() ? member->name : member->operatorSym;
             mi.type = member->returnType.empty() ? "空类型"
                                                  : types::canonical(member->returnType);
+            mi.isRefReturn = !member->returnType.empty() &&
+                             types::isReference(member->returnType);  // 118：AST 原文判引用（type 已剥 &）
             mi.access = member->access;
             mi.ownerClass = info.name;  // P2-16：成员符号归属类名 = 冲突感知符号名（限定），保证定义/调用符号一致
             mi.isVirtual = member->isVirtual;
@@ -541,6 +545,8 @@ void SemanticAnalyzer::collectClassMembers(ClassDecl* node, ClassInfo& info) {
                 ? "空类型"
                 : resolveGenericTypeName(types::canonical(member->returnType),
                                          member->location);
+        mi.isRefReturn = !member->returnType.empty() &&
+                         types::isReference(member->returnType);  // 118：AST 原文判引用（type 已剥 &）
         mi.access = member->access;
         mi.ownerClass = info.name;  // P2-16：成员符号归属类名 = 冲突感知符号名（限定），保证定义/调用符号一致
         mi.isVirtual = member->isVirtual;

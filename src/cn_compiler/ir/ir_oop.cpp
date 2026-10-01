@@ -111,12 +111,21 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
     ir::IRFunction func;
     func.name = className + "." + mi.name;
     func.mangledName = methodSymbolKey(className, mi.sigKey);
-    func.returnType = mapType(mi.type.empty() ? "空类型" : mi.type);
+    // 118（929）：引用返回方法（-> T&·如 向量.元素引用）——返回类型映射 ptr
+    //   （返回被引用左值的地址·与普通函数 ir_decl isRefReturnFn 同构）
+    func.returnType = mi.isRefReturn
+                          ? "ptr"
+                          : mapType(mi.type.empty() ? "空类型" : mi.type);
     // 宿主缺陷根治（2026-08-25）：泛型类方法体 AST 共享——node->resolvedType 被
     //   多实例检查覆盖（映射$整64$整64.获取 与 映射$整64$符号.获取 共享 AST，
     //   残留 结果<符号,整32>）。设置 returnTypeSrc（本实例 mi.type，instantiateGeneric
     //   已按 typeArgs 替换）供 handleResultCtor 优先用实例返回类型。
-    func.returnTypeSrc = mi.type.empty() ? "空类型" : mi.type;
+    // 118（929）：引用返回时 returnTypeSrc 带回 '&'——ir_stmt visitReturn 的
+    //   isRefReturnFn 判定（types::isReference(returnTypeSrc)）为真 → 方法体
+    //   '返回 数据[位置]' 走 lvalueAddress 取地址（而非值拷贝）。
+    func.returnTypeSrc = mi.type.empty()
+                             ? "空类型"
+                             : (mi.isRefReturn ? mi.type + "&" : mi.type);
     // 结构体/类返回值标记（隐藏返回指针，Win x64 ABI）
     if (semantic_ != nullptr && !mi.type.empty()) {
         const std::string canon = types::canonical(mi.type);
@@ -131,7 +140,9 @@ void IRGenerator::emitClassMethod(const std::string& className, const ClassMembe
         // 修复（2026-08 自举检查发现）：结果/可选 返回同样走隐藏返回指针协议
         //   （与自定义结构体一致）——调用方 emitCall 按被调 structReturn 传返回
         //   缓冲；若走 __rctor 栈临时返回则调用方跨调用读 .值 悬垂
-        if (semantic_->isStructType(canon)) {
+        // 118（929）：引用返回=8B 地址直传 rax（Rust &T/&mut T 同款：签名即
+        //   ABI、零 sret）——structReturn 豁免，否则 retbuf+this 双装载错位
+        if (!mi.isRefReturn && semantic_->isStructType(canon)) {
             func.structReturn = true;
             func.structReturnSize = semantic_->typeSizeOf(canon);
         }

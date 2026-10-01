@@ -328,6 +328,13 @@ std::string IRGenerator::memberAssignObjSrcType(MemberExpr* member) {
                 }
             }
         }
+    } else if (member->object->getType() == NodeType::CallExpr) {
+        // 118（929）：对象=引用返回方法调用（v.元素引用(0).x = 9 链式）——
+        //   源类型经 exprSrcType 解析（方法调用返回类型查表已覆盖）；原缺此
+        //   分支 → objSrcType 空 → memberGenericAssign 写宽落默认 i64（8 字节）
+        //   → StorePtr 覆盖相邻字段（x 写对 y 清零·实测）。与 handleClassMemberAssign
+        //   的 exprSrcType 消费同构。
+        objSrcType = exprSrcType(member->object.get());
     }
     if (member->isDerefAccess && types::isPointer(objSrcType)) {
         objSrcType = types::pointeeOf(objSrcType);

@@ -22,6 +22,7 @@
 #include <utility>
 #include <vector>
 
+
 #include "cn_compiler/ir/ir.hpp"
 #include "cn_compiler/semantic/semantic.hpp"
 #include "cn_compiler/semantic/type_system.hpp"
@@ -279,6 +280,15 @@ void IRGenerator::widenI128Args(std::vector<ir::IRValue>& args,
                                   loc);
         }
     }
+}
+
+// 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——
+//   聚合 T（结构体/类容器元素=内联实宽存储·元素地址即对象本体）直传不 LoadPtr。
+static bool refReturnAggInline(const SemanticAnalyzer* sem, const ClassMemberInfo* m) {
+    if (sem == nullptr || m == nullptr || m->type.empty()) return false;
+    const std::string canon = types::canonical(m->type);
+    if (sem->isStructType(canon) || sem->isClassType(canon)) return true;
+    return false;
 }
 
 // ==================== 类方法调用/构造调用 ====================
@@ -668,7 +678,10 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
         //   同修（实例方法/虚调用已接·静态方法原缺 → 字面量实参 i64 直传 →
         //   被调方按 i128 指针解引用 SIGSEGV·探针 p_static 实证）。
         widenI128Args(args, m->paramTypes, node->location);
-        const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+        // 118（929）：引用返回方法（-> T&）——resultType=ptr（被引用左值地址）
+        const std::string resultType = m->isRefReturn
+                                           ? "ptr"
+                                           : mapType(m->type.empty() ? "空类型" : m->type);
         // 静态方法返回 空类型 时用 emit（不分配结果寄存器）
         if (resultType == "void" || resultType.empty()) {
             emit(ir::Opcode::Call, args, ir::IRValue(),
@@ -677,6 +690,18 @@ int IRGenerator::emitStaticMethodCall(CallExpr* node, MemberExpr* mem,
         } else {
             lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
                                    methodSymbolKey(owner, m->sigKey), node->location);
+            // 118（929）：引用返回读值默认 lvalue-to-rvalue（与直接函数调用
+            //   ir_call P3-18 同构）；赋值目标/复合赋值/引用绑定语境经
+            //   suppressRefDeref_ 抑制（取地址语义）。
+            //   分叉（v2p 实证）：聚合 T（结构体/类）容器元素=内联实宽存储
+            //   （typeSizeOf=实宽·非句柄槽），元素地址即对象本体——直传不得
+            //   LoadPtr（否则双重解引用=错值崩溃）；标量/字符串（槽存值/句柄）
+            //   须 LoadPtr 读值。
+            if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+                lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
+                                       mapType(m->type.empty() ? "空类型" : m->type),
+                                       "", node->location);
+            }
         }
         return 1;
     }
@@ -805,7 +830,10 @@ void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m
     //   （buildCallArgsOop 不感知形参类型；此处有 m->paramTypes）。
     widenI128Args(userArgs, m->paramTypes, node->location);
     for (auto& a : userArgs) args.push_back(a);
-    const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+    // 118（929）：引用返回方法（-> T&）——resultType=ptr（被引用左值地址）
+    const std::string resultType = m->isRefReturn
+                                       ? "ptr"
+                                       : mapType(m->type.empty() ? "空类型" : m->type);
     const std::string extra = owner + "." + methodName;  // "类名.虚方法名"
     if (resultType == "void" || resultType.empty()) {
         emit(ir::Opcode::VirtualCall, args, ir::IRValue(),
@@ -814,6 +842,15 @@ void IRGenerator::emitVirtualMethodCall(CallExpr* node, const ClassMemberInfo* m
     } else {
         lastExpr_ = emitResult(ir::Opcode::VirtualCall, args, resultType,
                                extra, node->location);
+        // 118（929）：引用返回读值默认 lvalue-to-rvalue（suppressRefDeref_
+        //   抑制=赋值目标/绑定语境取地址——与直接函数调用同构）。
+        //   聚合 T（结构体/类）内联实宽存储=地址即对象本体直传（分叉判据
+        //   详见静态方法路径注释）
+        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
+                                   mapType(m->type.empty() ? "空类型" : m->type),
+                                   "", node->location);
+        }
     }
     return;
 }
@@ -836,13 +873,18 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
     //   i128 指针解引用段错误（实弹 m53_01 容器 追加(100000000000)）。
     widenI128Args(userArgs, m->paramTypes, node->location);
     for (auto& a : userArgs) args.push_back(a);
-    const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+    // 118（929）：引用返回方法（-> T&）——resultType=ptr（被引用左值地址）
+    const std::string resultType = m->isRefReturn
+                                       ? "ptr"
+                                       : mapType(m->type.empty() ? "空类型" : m->type);
     // Task 6.1（容器库 追加/读取 返回 结果<空类型,整32> 合成结构体）：方法返回
     //   结构体时须走隐藏返回指针（与 visitCallExpr 普通函数 structReturn 一致）——
     //   调用方分配返回缓冲区（隐藏指针 rcx），被调方写入后返回缓冲区地址（rax）。
     //   原实现缺此处理：调用方传 this=rcx、实参=rdx，被调方把 this 当隐藏返回
     //   指针（prologue mov r12,rcx）-> 返回 rep movsb 从错误地址拷贝 -> 崩溃。
-    if (semantic_ != nullptr && !m->type.empty() &&
+    // 118（929）：引用返回豁免 structReturn——8B 地址直传 rax（零 sret·被调方
+    //   emitClassMethod 同款豁免）；否则结构体元素 元素引用 误走 retbuf 双装载错位
+    if (semantic_ != nullptr && !m->type.empty() && !m->isRefReturn &&
         semantic_->isStructType(types::canonical(m->type))) {
         const std::string temp = "__retbuf" + std::to_string(varCounter_++);
         emit(ir::Opcode::Alloca, {}, ir::IRValue::reg(regCounter_++, "ptr"),
@@ -874,6 +916,15 @@ void IRGenerator::emitDirectMethodCall(CallExpr* node, const ClassMemberInfo* m,
     } else {
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
                                methodSymbolKey(owner, m->sigKey), node->location);
+        // 118（929）：引用返回读值默认 lvalue-to-rvalue（suppressRefDeref_
+        //   抑制=赋值目标/绑定语境取地址——与直接函数调用同构）。
+        //   聚合 T（结构体/类）内联实宽存储=地址即对象本体直传（分叉判据
+        //   详见静态方法路径注释）
+        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
+                                   mapType(m->type.empty() ? "空类型" : m->type),
+                                   "", node->location);
+        }
     }
     return;
 }
@@ -921,7 +972,11 @@ bool IRGenerator::handleOperatorOverload(BinaryExpr* node, const ir::IRValue& le
     std::vector<ir::IRValue> args;
     args.push_back(left);
     args.push_back(right);
-    const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+    // 118（929）：引用返回运算符重载（运算符X -> T&）——ptr 地址 + 读值
+    //   lvalue-to-rvalue（运算结果恒右值消费；suppressRefDeref_ 同构防御）
+    const std::string resultType = m->isRefReturn
+                                       ? "ptr"
+                                       : mapType(m->type.empty() ? "空类型" : m->type);
     if (resultType == "void" || resultType.empty()) {
         emit(ir::Opcode::Call, args, ir::IRValue(),
              methodSymbolKey(owner, m->sigKey), "void", node->location);
@@ -929,6 +984,11 @@ bool IRGenerator::handleOperatorOverload(BinaryExpr* node, const ir::IRValue& le
     } else {
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
                                methodSymbolKey(owner, m->sigKey), node->location);
+        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
+                                   mapType(m->type.empty() ? "空类型" : m->type),
+                                   "", node->location);
+        }
     }
     return true;
 }
@@ -948,7 +1008,10 @@ bool IRGenerator::handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue
     // 单目调用：this=操作数指针，无右实参
     std::vector<ir::IRValue> args;
     args.push_back(operand);
-    const std::string resultType = mapType(m->type.empty() ? "空类型" : m->type);
+    // 118（929）：引用返回运算符重载同构（二元版同款注释）
+    const std::string resultType = m->isRefReturn
+                                       ? "ptr"
+                                       : mapType(m->type.empty() ? "空类型" : m->type);
     if (resultType == "void" || resultType.empty()) {
         emit(ir::Opcode::Call, args, ir::IRValue(),
              methodSymbolKey(owner, m->sigKey), "void", node->location);
@@ -956,6 +1019,11 @@ bool IRGenerator::handleUnaryOperatorOverload(UnaryExpr* node, const ir::IRValue
     } else {
         lastExpr_ = emitResult(ir::Opcode::Call, args, resultType,
                                methodSymbolKey(owner, m->sigKey), node->location);
+        if (m->isRefReturn && !suppressRefDeref_ && !refReturnAggInline(semantic_, m)) {
+            lastExpr_ = emitResult(ir::Opcode::LoadPtr, {lastExpr_},
+                                   mapType(m->type.empty() ? "空类型" : m->type),
+                                   "", node->location);
+        }
     }
     return true;
 }
@@ -999,4 +1067,4 @@ void IRGenerator::emitCfiCheck(const ir::IRValue& target,
     setCurrentBlock(newBlock(okLabel));
 }
 
-} // namespace cn_compiler
+} // namespace cn_compiler// 118（929）：引用返回方法的读值分叉判据（semantic 判定聚合内联）——

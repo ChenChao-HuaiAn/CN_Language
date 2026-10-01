@@ -749,6 +749,17 @@ ir::IRValue IRGenerator::lvalueAddress(Expr* node) {
     if (node->getType() == NodeType::MemberExpr) {
         return genMemberLvalueAddress(node);
     }
+    // 118（929）：引用返回方法/函数调用左值（v.元素引用(0).x = 9 链式基座 /
+    //   &v.元素引用(0) 取址）——调用结果即被引用左值地址；suppressRefDeref_
+    //   语境生成（抑制 ir_oop_call/ir_call 的默认 lvalue-to-rvalue LoadPtr）
+    if (node->getType() == NodeType::CallExpr &&
+        static_cast<CallExpr*>(node)->isRefReturnCall) {
+        const bool oldSuppress = suppressRefDeref_;
+        suppressRefDeref_ = true;
+        ir::IRValue addr = genExpr(node);
+        suppressRefDeref_ = oldSuppress;
+        return addr;
+    }
     // 其他表达式（防御性）：按表达式值处理
     return genExpr(node);
 }

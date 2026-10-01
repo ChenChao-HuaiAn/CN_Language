@@ -85,6 +85,12 @@ struct ClassMemberInfo {
     // plans/019 阶段4 第二层第一批（2026-09-10）：不安全 方法修饰（安全区边界
     //   ——方法体内五类越界操作豁免观察期警告）
     bool isUnsafe = false;
+    // 118（929·2026-10-01）：引用返回方法（-> T&·如 向量.元素引用）——按 AST
+    //   返回类型原文判定（type 字段经 canonical 剥 & 不可判）；供语义层左值
+    //   放行（lastExprIsRefReturn_）与 IR 层（returnType 映射 ptr/returnTypeSrc
+    //   带 &/调用方读值 lvalue-to-rvalue）识别——与 FunctionInfo.isRefReturn
+    //   同构（P3-18 函数形态的方法面补完·829 立法写通道）。
+    bool isRefReturn = false;
 };
 
 // 类符号信息：成员表 + 继承 + 虚表 + 接口实现 + 布局（Task 3.1~3.3）
