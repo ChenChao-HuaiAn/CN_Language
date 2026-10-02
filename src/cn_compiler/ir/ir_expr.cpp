@@ -368,6 +368,8 @@ void IRGenerator::visitBinaryExpr(BinaryExpr* node) {
     // ---- 字符串连接族（Task 2.5/2.9 + i128 段）：ptr + 数值/i128 -> 运行时拼接 ----
     if (genStringConcatBinary(node, left, right)) return;
     if (genStringConcatI128(node, left, right)) return;
+    // ---- 字符串比较族（962·166 立法）：字符串×字符串 六比较符 → helper ----
+    if (genStringCompareBinary(node, left, right)) return;
     // ---- 指针算术（Task 2.4）：ptr ± 整型 -> 指针（偏移量×元素大小） ----
     if (genPointerArithmetic(node, left, right)) return;
     // ---- 公共类型转换 + 算术/比较发射（92-a 浮点公共类型）----
@@ -422,6 +424,46 @@ bool IRGenerator::genShortCircuitBinary(BinaryExpr* node) {
         return true;
     }
     return false;
+}
+
+// ==================== 族⑤（962·166 立法）：字符串比较（==/!= 内容·四序字典序） ====================
+// （001 §比较语义修订版·用户裁决 2026-10-02）字符串×字符串 的六比较符分派 runtime
+//   helper：==/!= → __cn_str_eq（内容相等·布尔）；</<=/>/>= → __cn_str_cmp
+//   （字典序 i64）与 0 比较。判定依据=AST 源类型双侧字符串（IR 层 ptr×ptr 与
+//   真指针不可区分）；判空 s==无（右侧=空类型* 字面量）不经本族·仍走指针通道。
+bool IRGenerator::genStringCompareBinary(BinaryExpr* node, const ir::IRValue& left,
+                                         const ir::IRValue& right) {
+    const bool isCmp = (node->op == Operator::EqualEqual ||
+                        node->op == Operator::BangEqual ||
+                        node->op == Operator::Less ||
+                        node->op == Operator::Greater ||
+                        node->op == Operator::LessEqual ||
+                        node->op == Operator::GreaterEqual);
+    if (!isCmp) return false;
+    if (left.type != "ptr" || right.type != "ptr") return false;
+    if (!isStringTypedExpr(node->left.get()) || !isStringTypedExpr(node->right.get())) {
+        return false;
+    }
+    if (node->op == Operator::EqualEqual || node->op == Operator::BangEqual) {
+        ir::IRValue eq = emitResult(ir::Opcode::Call, {left, right}, "i1",
+                                    "__cn_str_eq", node->location);
+        if (node->op == Operator::EqualEqual) {
+            lastExpr_ = eq;
+        } else {
+            lastExpr_ = emitResult(ir::Opcode::Not, {eq}, "i1", "",
+                                   node->location);
+        }
+        return true;
+    }
+    ir::IRValue ord = emitResult(ir::Opcode::Call, {left, right}, "i64",
+                                 "__cn_str_cmp", node->location);
+    ir::IRValue zero = ir::IRValue::constant("0", "i64");
+    ir::Opcode cmpOp = (node->op == Operator::Less) ? ir::Opcode::Lt
+                     : (node->op == Operator::Greater) ? ir::Opcode::Gt
+                     : (node->op == Operator::LessEqual) ? ir::Opcode::Le
+                     : ir::Opcode::Ge;
+    lastExpr_ = emitResult(cmpOp, {ord, zero}, "i1", "", node->location);
+    return true;
 }
 
 // ==================== 族②：字符串连接（Task 2.5）+ 字符串+数值隐式拼接（Task 2.9） ====================
