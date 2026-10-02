@@ -408,6 +408,34 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                  addr, node->location);
                 continue;
             }
+            // 975（130 根治）：类元素×构造调用 → **构造到内联槽地址**
+            //   （数组元素容器=内联值语义——与追加/元素/析构的 elemStride 内联
+            //   访问模型一致·955 p2d 无初值形态同构）。原路径 genExpr(构造调用)
+            //   =NewObject 堆对象+槽存 8B 指针：与内联模型混用→槽[8..24) 未初始
+            //   化垃圾被当 size/cap → 追加概率性堆破坏（glibc old_top 断言·130
+            //   样本 3/20）+堆对象泄漏（指针被追加覆盖）。
+            if (semantic_ != nullptr &&
+                semantic_->isClassType(types::canonical(elemSrc)) &&
+                initList->elements[i]->getType() == NodeType::CallExpr) {
+                CallExpr* elemCall =
+                    static_cast<CallExpr*>(initList->elements[i].get());
+                if (elemCall->callee->getType() == NodeType::IdentifierExpr) {
+                    std::string ctorName = static_cast<IdentifierExpr*>(
+                        elemCall->callee.get())->name;
+                    ctorName = resolveGenericCtorInstanceName(ctorName);
+                    const ClassInfo* ciC = semantic_->findClass(ctorName);
+                    if (ciC != nullptr && !ciC->isAbstract) {
+                        const ClassMemberInfo* ctorC =
+                            findCtorMember(ciC, ctorName, elemCall);
+                        if (ctorC != nullptr) {
+                            emitCtorInvoke(elemCall, ctorName, ctorC, addr);
+                        } else {
+                            emitBaseCtorChain(ctorName, addr, node->location);
+                        }
+                        continue;
+                    }
+                }
+            }
             // 普通元素：生成值 + Cast + StorePtr
             ir::IRValue elem = genExpr(initList->elements[i].get());
             if (elem.type != elemIrType) {
@@ -437,8 +465,25 @@ void IRGenerator::genVarDecl(VarDecl* node) {
                                                 node->location);
                 ir::IRValue addr = emitResult(ir::Opcode::Add, {base, offset}, "ptr", "",
                                               node->location);
-                emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "", zeroIrType,
-                     node->location);
+                // 975（130 同族）：类/结构体元素槽补零=全宽（elemStride 逐 8B 槽）
+                //   ——原 zeroIrType（8B）只清首字段，内联聚合剩余字节=垃圾。
+                if (elemStride > 8) {
+                    for (std::int64_t sub = 0; sub < elemStride; sub += 8) {
+                        ir::IRValue subOff = emitResult(
+                            ir::Opcode::ConstInt, {},
+                            "i64", std::to_string(
+                                static_cast<long long>(i) * elemStride + sub),
+                            node->location);
+                        ir::IRValue subAddr = emitResult(
+                            ir::Opcode::Add, {base, subOff}, "ptr", "",
+                            node->location);
+                        emit(ir::Opcode::StorePtr, {subAddr, zero},
+                             ir::IRValue(), "", "i64", node->location);
+                    }
+                } else {
+                    emit(ir::Opcode::StorePtr, {addr, zero}, ir::IRValue(), "",
+                         zeroIrType, node->location);
+                }
             }
         }
         return;
