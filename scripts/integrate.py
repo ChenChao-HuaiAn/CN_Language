@@ -1017,10 +1017,12 @@ def 主流程() -> int:
     解析器.add_argument("--join", action="store_true",
                         help="仅报名进看板集成队列（不组批——报名后可先做别的·稍后重跑组批）")
     解析器.add_argument("--status", action="store_true", help="查看当前集成队列（只读）")
+    解析器.add_argument("--no-fast-lane", action="store_true",
+                        help="显式回退本机全量门禁（941·默认开后想本机全量验证时用）")
     解析器.add_argument("--fast-lane", action="store_true",
-                        help="快速通道（920·用户裁决 2026-10-01）：本机仅 L1（gate_quick·分钟级）"
+                        help="快速通道（保持兼容·941 起默认开）：本机仅 L1（gate_quick·分钟级）"
                              "即集成——全量由 TX_02 云端对 develop 事后自动跑+红灯治理兜底"
-                             "（Chromium CQ/rustc bors 同构）；默认关=维持本机全量铁律")
+                             "（Chromium CQ/rustc bors 同构）")
     解析器.add_argument("--solo", action="store_true",
                         help="旧单分支路径逃生门（不经队列直集成——队列机制异常时用）")
     解析器.add_argument("--selftest", action="store_true", help="正反例自测（纯函数面·CI 式）")
@@ -1051,6 +1053,8 @@ def 主流程() -> int:
     解析器.add_argument("--win-verified", action="store_true",
                         help=argparse.SUPPRESS)
     参数 = 解析器.parse_args()
+    # 941（用户裁决 2026-10-02）：快速通道默认开——--no-fast-lane 显式回退本机全量
+    参数.fast_lane = not 参数.no_fast_lane
     if 参数.try_build_done or 参数.win_verified:
         print("[v3] --try-build-done/--win-verified 已随协议 v3 废除（接受即忽略）——"
               "本机门禁绿即集成，跨平台由集成后异步验收保障（AGENTS.md §8.3）。")
