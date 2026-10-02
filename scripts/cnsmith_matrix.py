@@ -1,0 +1,230 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""CN-Smith 构件组合模板矩阵生成器（167·964 轮·用户裁决「自动取样按甲增强」）
+
+背景（plans/026 §支柱二·956 轮方法论实证）：随机差分面（cnsmith_gen.py）生成域=
+纯标量算术——类/容器/字符串/成员链等深组合形态零生成=结构性盲区（连续多轮零新
+命中）；956 手写探针矩阵 18 例命中 3（16.7%）=「生成面盲区的产出靠手写探针」。
+本工具=手写法机械化：骨架绿样本 ×（类型/消费点）构件轴枚举生成 + **期望值内嵌
+骨架语义同步推导**（逐值比对·防 O0/O3 一致地错的差分盲区·956 命中一即此类）。
+
+与既有设施关系：daemon（cnsmith_daemon.py）随机面+回归轨**保留**（防回归价值）；
+本工具作为第三轨道由 daemon 周期调用或手动跑。红样本入 tests/cnsmith_hits/
+（p+MMDD_NN 命名·与探针库同规）。
+
+用法：
+  python3 scripts/cnsmith_matrix.py [--cn target/cn] [--out target/cnsmith_matrix]
+                                    [--seed 1] [--axes 类型,消费点] [--keep-临时]
+判据：编译 rc=0 + 运行 rc=0 + 输出逐行==期望 → 绿；任何偏差 → 红（入库+计数）。
+"""
+import argparse
+import os
+import subprocess
+import sys
+import resource
+import time
+
+# ---------------------------------------------------------------------------
+# 构件轴（第一版两轴全笛卡尔·语句位置轴挂结构位待扩）
+# ---------------------------------------------------------------------------
+
+# 类型轴：类型名 × (示例值1, 示例值2, 运算)——运算须对两值封闭且期望可推导
+类型轴 = {
+    "整32":   (11, 22, "+", lambda a, b: a + b),
+    "整64":   (111111111111, 222222222222, "+", lambda a, b: a + b),
+    "浮64":   (1.5, 2.25, "+", lambda a, b: a + b),
+}
+
+# 消费点轴：骨架名 → (源码模板, 期望值序列推导)
+#   模板占位：{T}=类型 {A}=值1 {B}=值2 {OP}=运算文本 {EA}/{EB}/{ER}=期望值文本
+消费点轴 = {}
+
+def 注册骨架(名):
+    def deco(fn):
+        消费点轴[名] = fn
+        return fn
+    return deco
+
+@注册骨架("声明初始化与算术")
+def _(t, a, b, op, 期望):
+    return (
+        f"函数 主() -> 整32 {{\n"
+        f"    {t} 甲 = {a};\n"
+        f"    {t} 乙 = {b};\n"
+        f"    {t} 和 = 甲 {op} 乙;\n"
+        f"    打印(甲);\n    打印(乙);\n    打印(和);\n"
+        f"    返回 0;\n}}\n",
+        [_fmt(a), _fmt(b), _fmt(期望)],
+    )
+
+@注册骨架("赋值覆盖")
+def _(t, a, b, op, 期望):
+    return (
+        f"函数 主() -> 整32 {{\n"
+        f"    {t} 甲 = {a};\n"
+        f"    甲 = {b};\n"
+        f"    打印(甲);\n"
+        f"    返回 0;\n}}\n",
+        [_fmt(b)],
+    )
+
+@注册骨架("传参与返回")
+def _(t, a, b, op, 期望):
+    return (
+        f"函数 加一({t} x) -> {t} {{ 返回 x; }}\n"
+        f"函数 主() -> 整32 {{\n"
+        f"    {t} 甲 = {a};\n"
+        f"    {t} 回 = 加一(甲);\n"
+        f"    打印(回);\n"
+        f"    返回 0;\n}}\n",
+        [_fmt(a)],
+    )
+
+@注册骨架("分支与循环累计")
+def _(t, a, b, op, 期望):
+    累计 = a + b * 3  # 当循环 3 次累加（第一版仅 + 封闭）
+    return (
+        f"函数 主() -> 整32 {{\n"
+        f"    {t} 甲 = {a};\n"
+        f"    {t} 乙 = {b};\n"
+        f"    整32 轮 = 0;\n"
+        f"    当 (轮 < 3) {{\n"
+        f"        甲 = 甲 {op} 乙;\n"
+        f"        轮 = 轮 + 1;\n"
+        f"    }}\n"
+        f"    打印(甲);\n"
+        f"    返回 0;\n}}\n",
+        [_fmt(累计)],
+    )
+
+@注册骨架("字符串内容比较_166立法")
+def _(t, a, b, op, 期望):
+    # 字符串轴专属（类型轴外的独立骨架——期望覆盖 ==/!=/字典序）
+    return (
+        '函数 主() -> 整32 {\n'
+        '    字符串 甲 = "甲乙" + "丙";\n'
+        '    字符串 乙 = "甲乙" + "丙";\n'
+        '    字符串 丙 = "甲乙" + "川";\n'
+        '    如果 (甲 == 乙) { 打印("内容相等对"); }\n'
+        '    如果 (甲 != 丙) { 打印("不等对"); }\n'
+        '    如果 (甲 < 丙) { 打印("字典序对"); }\n'
+        '    返回 0;\n}\n',
+        ["内容相等对", "不等对", "字典序对"],
+    )
+
+@注册骨架("结构体成员链_104域")
+def _(t, a, b, op, 期望):
+    # 104 域回归骨架：结构体.成员 直读直写（类聚合字段形态避让——在案缺陷域）
+    return (
+        '结构体 对 { 整64 值; }\n'
+        '函数 主() -> 整32 {\n'
+        '    对 甲;\n'
+        '    甲.值 = 42;\n'
+        '    打印(甲.值);\n'
+        '    对 乙 = 甲;\n'
+        '    乙.值 = 乙.值 + 1;\n'
+        '    打印(乙.值);\n'
+        '    打印(甲.值);\n'
+        '    返回 0;\n}\n',
+        ["42", "43", "42"],
+    )
+
+@注册骨架("容器增删查")
+def _(t, a, b, op, 期望):
+    return (
+        '导入 容器::向量;\n'
+        '函数 主() -> 整32 {\n'
+        '    向量<整32> 表 = 向量<整32>();\n'
+        '    结果<空类型, 整32> p1 = 表.追加(7);\n'
+        '    结果<空类型, 整32> p2 = 表.追加(9);\n'
+        '    打印(表.元素(0));\n'
+        '    打印(表.元素(1));\n'
+        '    结果<空类型, 整32> d = 表.删除(0);\n'
+        '    打印(表.元素(0));\n'
+        '    返回 0;\n}\n',
+        ["7", "9", "9"],
+    )
+
+def _fmt(v):
+    if isinstance(v, float):
+        return f"{v:.6f}"   # CN 打印(浮64) 六位小数格式
+    return str(v)
+
+# ---------------------------------------------------------------------------
+# 执行器（复用 cnsmith_diff 的防线口径）
+# ---------------------------------------------------------------------------
+
+def 子进程防线():
+    def lim():
+        resource.setrlimit(resource.RLIMIT_AS, (6 * 1024**3, 6 * 1024**3))
+    return {"preexec_fn": lim}
+
+def 跑一例(cn, 源码路径, 产物路径, 仓库根):
+    b = subprocess.run([cn, "build", 源码路径, "--target", "linux-x86_64",
+                        "-O0", "--output", 产物路径],
+                       capture_output=True, text=True, encoding="utf-8",
+                       errors="replace", timeout=120, cwd=仓库根, **子进程防线())
+    if b.returncode != 0:
+        return ("build_err", ((b.stdout or "") + (b.stderr or ""))[:300], None)
+    try:
+        r = subprocess.run([产物路径], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace", timeout=20,
+                           **子进程防线())
+    except subprocess.TimeoutExpired:
+        return ("run_err", "timeout", None)
+    if r.returncode < 0 or r.returncode > 128:
+        return ("run_err", f"rc={r.returncode}", None)
+    实际 = [l for l in (r.stdout or "").replace("\r", "").split("\n") if l.strip()]
+    return ("ok", 实际, r.returncode)
+
+def main():
+    ap = argparse.ArgumentParser(description="CN-Smith 构件组合模板矩阵")
+    ap.add_argument("--cn", default="target/cn")
+    ap.add_argument("--out", default="target/cnsmith_matrix")
+    ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--axes", default="类型,消费点")
+    args = ap.parse_args()
+
+    仓库根 = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    cn = os.path.join(仓库根, args.cn)
+    out = os.path.join(仓库根, args.out)
+    os.makedirs(out, exist_ok=True)
+
+    绿 = 红 = 0
+    红例 = []
+    for 骨架名, 骨架 in 消费点轴.items():
+        for 类型名, (a, b, op, 期望fn) in 类型轴.items():
+            期望值 = 期望fn(a, b)
+            源码, 期望序列 = 骨架(类型名, a, b, op, 期望值)
+            名 = f"m_{骨架名}_{类型名}".replace("=", "_")
+            源码路径 = os.path.join(out, 名 + ".cn")
+            with open(源码路径, "w", encoding="utf-8") as f:
+                f.write(f"// cnsmith_matrix 自动生成（骨架={骨架名}·类型={类型名}·seed={args.seed}）\n" + 源码)
+            类别, 信息, rc = 跑一例(cn, 源码路径, os.path.join(out, 名 + ".bin"), 仓库根)
+            if 类别 == "ok" and 信息 == 期望序列:
+                绿 += 1
+            else:
+                红 += 1
+                红例.append((名, 类别, 信息, 期望序列))
+    # 字符串/结构体/容器骨架与类型轴无关——单跑一轮
+    for 骨架名, 骨架 in 消费点轴.items():
+        if 骨架名 in ("字符串内容比较_166立法", "结构体成员链_104域", "容器增删查"):
+            源码, 期望序列 = 骨架("整32", 0, 0, "加", 0)
+            名 = f"m_{骨架名}_固定"
+            源码路径 = os.path.join(out, 名 + ".cn")
+            with open(源码路径, "w", encoding="utf-8") as f:
+                f.write(f"// cnsmith_matrix 自动生成（骨架={骨架名}·seed={args.seed}）\n" + 源码)
+            类别, 信息, rc = 跑一例(cn, 源码路径, os.path.join(out, 名 + ".bin"), 仓库根)
+            if 类别 == "ok" and 信息 == 期望序列:
+                绿 += 1
+            else:
+                红 += 1
+                红例.append((名, 类别, 信息, 期望序列))
+
+    print(f"构件组合矩阵：绿 {绿} / 红 {红}（骨架 {len(消费点轴)} × 类型 {len(类型轴)}）")
+    for 名, 类别, 信息, 期望 in 红例:
+        print(f"  [红] {名} [{类别}] 实际={信息} 期望={期望}")
+    return 1 if 红 else 0
+
+if __name__ == "__main__":
+    sys.exit(main())
