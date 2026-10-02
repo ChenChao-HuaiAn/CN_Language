@@ -612,6 +612,14 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         if (semantic_ != nullptr && value.type == "ptr" &&
             semantic_->isStructType(types::canonical(node->typeName))) {
             const std::string declCanon = types::canonical(node->typeName);
+            // 974（104-001 同族·声明初始化位拷出）：源=成员表达式（类聚合字段
+            //   `对 复制 = h.槽`）——genExpr 对成员链的产物=字段槽**值**被再解
+            //   一层（956 铁证：指针加载 多解→StructCopy 从野地址拷=稳定段错误
+            //   ·样本 run_err/p0956_02）。源地址改走 lvalueAddress（字段左值
+            //   地址·973 统一查询后推导正确）。
+            if (node->initializer->getType() == NodeType::MemberExpr) {
+                value = lvalueAddress(node->initializer.get());
+            }
             ir::IRValue dstAddr = emitResult(ir::Opcode::AddrOf,
                                              {ir::IRValue::var(unique, "i64")},
                                              "ptr", unique, node->location);

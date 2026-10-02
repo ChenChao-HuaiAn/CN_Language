@@ -512,6 +512,29 @@ bool IRGenerator::handleClassMemberAssign(MemberExpr* target, Expr* valueExpr,
     }
     std::string targetIrType = mapType(fieldType);
     if (targetIrType.empty()) targetIrType = "i64";
+    // 974（104-001 根治）：字段=结构体/类（聚合值字段）→ 整体赋值单一助手
+    //   （emitStructWholeAssign：源地址→CopyStruct 按字段结构体大小值拷+串字段
+    //   深拷四分支+preFree 旧值释放·Rust place 拷贝语义）——原路径对聚合字段
+    //   照标量 StorePtr 单槽：结构体变量表达式=地址语义→把**源地址**当值存
+    //   （956 m9 读回地址·m8 拷出解引用段错误）。复合赋值对聚合无意义保持原路。
+    //   位置在 genExpr 前（避免源表达式双发副作用）；字段类型经 973 统一查询。
+    if (!isCompoundAssignOp(op)) {
+        const std::string fieldType974 =
+            structOrClassFieldType(exprSrcType(target->object.get()),
+                                   target->memberName);
+        const std::string canon974 = types::canonical(fieldType974);
+        if (!canon974.empty() &&
+            (semantic_->isStructType(canon974) ||
+             semantic_->isClassType(canon974))) {
+            if (structWholeAssignSrcFirst(target, valueExpr, canon974, loc)) {
+                return true;
+            }
+            if (emitStructWholeAssign(addr, valueExpr, canon974, loc,
+                                      /*preFree=*/true)) {
+                return true;
+            }
+        }
+    }
     ir::IRValue val = genExpr(valueExpr);
     if (val.type != targetIrType && !targetIrType.empty()) {
         val = emitResult(ir::Opcode::Cast, {val}, targetIrType, "", loc);
