@@ -50,7 +50,10 @@ void IRGenerator::injectContainerElemDestroy(const std::string& className,
     //   ③ **析构值(索引)** ＝ 单槽释放（仅值）：映射.设置 覆盖已有键时写入新值
     //      前调用（旧值句柄被覆盖即泄漏，探针 76-C；键保留=仍是有效元素）。
     //   K/V 为字符串时才注入（其余类型无堆资源，空体调用零开销）。
-    if (canonClass.rfind("映射$", 0) == 0) {
+    // 960（131 甲'）：字符串映射$V（键写死字符串的过渡类）同走映射注入族
+    //   （kStr 判定在 injectMapElemDestroy 内按 键数组 字段类型兜底）。
+    if (canonClass.rfind("映射$", 0) == 0 ||
+        canonClass.rfind("字符串映射$", 0) == 0) {
         injectMapElemDestroy(canonClass, mi, loc);
         return;
     }
@@ -367,7 +370,19 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
         auto vit = genericTypeParams_.find("V");
         if (kit != genericTypeParams_.end()) kType = kit->second;
         if (vit != genericTypeParams_.end()) vType = vit->second;
-        const bool kStr = (types::canonical(kType) == "字符串");
+        // 960（131 甲'）：键类型写死的 字符串映射<V> 无 K 泛型参数——按键数组
+        //   字段实际声明类型判定（对 泛型<K=字符串> 实例等价；两判据任一命中）。
+        bool kStr = (types::canonical(kType) == "字符串");
+        if (!kStr) {
+            const ClassInfo* ci = semantic_->findClass(canonClass);
+            if (ci != nullptr) {
+                auto fit = ci->fields.find("键数组");
+                if (fit != ci->fields.end() &&
+                    types::canonical(fit->second.type) == "字符串*") {
+                    kStr = true;
+                }
+            }
+        }
         const bool vStr = (types::canonical(vType) == "字符串");
         if (!kStr && !vStr) return;
         const std::string thisUniqueM = lookupVarName("自身");
@@ -379,8 +394,8 @@ void IRGenerator::injectMapElemDestroy(const std::string& canonClass,
         ir::IRValue selfPtrM = emitResult(ir::Opcode::Load,
                                           {ir::IRValue::var(thisUniqueM, "ptr")},
                                           "ptr", thisUniqueM, loc);
-        const bool isMapFull = (mi.name == "~映射" || mi.name == "清空" ||
-                                mi.name == "释放内部数组");
+        const bool isMapFull = (mi.name == "~映射" || mi.name == "~字符串映射" ||
+                                mi.name == "清空" || mi.name == "释放内部数组");
         const bool isMapSlot = (mi.name == "析构键值" || mi.name == "析构值");
         if (!isMapFull && !isMapSlot) {
             return;   // 映射其余方法不注入
