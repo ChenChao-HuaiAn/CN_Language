@@ -856,6 +856,20 @@ extern "C" void cn_memset(void* dst, std::size_t size) {
 // 清零开销可忽略）
 // 失败时报错误码4（内存分配失败，规格书附录B）并终止，成功返回对象指针
 // 虚表指针初始化由 codegen 负责（对象首地址 8 字节，NewObject 后写入）
+// 107（946·008 总攻第九轮）：盒内类值副本摘取辅助——v2 侧盒亡释放免切块
+//   路线（块出口条件块切割在 v2 编译期失控·945 实录）。语义：tag 假（错误态）
+//   返回 nullptr（值字段=错误码垃圾句柄免疫）；真→摘取值字段句柄+清槽（幂等：
+//   多释放点二过=字段已 0→句柄 0→调用方 IR_删除对象 空安全跳过）。调用方以
+//   返回句柄发 IR_删除对象(载荷类)（含类析构+free）——对齐宿主 pendingBoxCopies
+//   条件 DeleteObject 语义（939· Rust `a = b` drop 旧值对照）。
+extern "C" void* __cn_box_class_delete(void* tagAddr, void* fieldAddr) {
+    if (tagAddr == nullptr || fieldAddr == nullptr) return nullptr;
+    if (*static_cast<int*>(tagAddr) == 0) return nullptr;
+    void* handle = *static_cast<void**>(fieldAddr);
+    *static_cast<void**>(fieldAddr) = nullptr;
+    return handle;
+}
+
 extern "C" void* __cn_object_new(long long size) {
     void* ptr = std::calloc(1, static_cast<std::size_t>(size > 0 ? size : 1));
     if (ptr == nullptr) {
