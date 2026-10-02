@@ -425,6 +425,43 @@ void IRGenerator::emitStrArrayElemFreesFor(const std::string& unique) {
     if (it == oopVarSrcTypes_.end()) return;
     const std::string srcType = types::canonical(it->second);
     if (!types::isArray(srcType)) return;
+    // 955（008 总攻·六位置余三）：类容器元素数组分派——Call 元素类析构
+    //   （this=元素地址·内联体·析构释放内部数据指针；不 DeleteObject 不
+    //   free 本体）。幂等：析构后元素首字段清零+二次调用安全（容器析构
+    //   空数据指针跳过——p2d 泄漏面收口）。
+    const std::string elemCanon955 = types::canonical(types::arrayElemOf(srcType));
+    if (semantic_->isClassType(elemCanon955)) {
+        const ClassInfo* eci955 = semantic_->findClass(elemCanon955);
+        if (eci955 == nullptr) return;
+        const ClassMemberInfo* dtor955 = nullptr;
+        for (const auto& mk : eci955->methods) {
+            if (mk.second.isDestructor) { dtor955 = &mk.second; break; }
+        }
+        if (dtor955 == nullptr) return;
+        const std::string dtorOwner955 =
+            dtor955->ownerClass.empty() ? elemCanon955 : dtor955->ownerClass;
+        const int len955 = types::arrayLenOf(srcType);
+        if (len955 <= 0) return;
+        int stride955 = semantic_->typeSizeOf(elemCanon955);
+        if (stride955 <= 0) stride955 = 8;
+        const SourceLocation loc955;
+        ir::IRValue base955 = emitResult(ir::Opcode::AddrOf,
+                                         {ir::IRValue::var(unique, "ptr")}, "ptr",
+                                         unique, loc955);
+        for (int i = 0; i < len955; ++i) {
+            ir::IRValue addr955 = base955;
+            if (i > 0) {
+                ir::IRValue off955 = emitResult(
+                    ir::Opcode::ConstInt, {}, "i64",
+                    std::to_string(static_cast<long long>(i) * stride955), loc955);
+                addr955 = emitResult(ir::Opcode::Add, {base955, off955}, "ptr", "",
+                                     loc955);
+            }
+            emit(ir::Opcode::Call, {addr955}, ir::IRValue(),
+                 methodSymbolKey(dtorOwner955, dtor955->sigKey), "void", loc955);
+        }
+        return;
+    }
     if (types::arrayElemOf(srcType) != "字符串") return;
     const int len = types::arrayLenOf(srcType);
     if (len <= 0) return;

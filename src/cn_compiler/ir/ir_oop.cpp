@@ -845,6 +845,28 @@ std::string IRGenerator::exprSrcType(Expr* node) const {
             }
             return "";
         }
+        case NodeType::IndexExpr: {
+            // 955（008 总攻·六位置余三前置根治）：数组元素源码类型——`槽[0].大小()`
+            //   的接收者=IndexExpr 原缺分支 → objSrcType 空串 → isClassType 假 →
+            //   走通用间接调用路径被调=0 → call *r11 SIGSEGV（p2c 实锤·与转移
+            //   无关的既有缺陷）。数组名 lookupSrcType → arrayElemOf 元素类型。
+            const IndexExpr* ie = static_cast<const IndexExpr*>(node);
+            if (ie->object->getType() == NodeType::IdentifierExpr) {
+                std::string arrSrc = lookupSrcType(
+                    static_cast<const IdentifierExpr*>(ie->object.get())->name);
+                if (arrSrc.empty() && semantic_ != nullptr) {
+                    const std::string an =
+                        static_cast<const IdentifierExpr*>(ie->object.get())->name;
+                    if (semantic_->isGlobalStatic(an)) {
+                        arrSrc = semantic_->globalStaticType(an);
+                    }
+                }
+                if (!arrSrc.empty() && types::isArray(arrSrc)) {
+                    return types::arrayElemOf(arrSrc);
+                }
+            }
+            return "";
+        }
         case NodeType::MemberExpr: {
             MemberExpr* mem = static_cast<MemberExpr*>(node);
             const std::string objType = exprSrcType(mem->object.get());

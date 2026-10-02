@@ -275,6 +275,25 @@ void IRGenerator::genVarDecl(VarDecl* node) {
         types::arrayElemOf(types::canonical(srcType)) == "字符串") {
         ownedStrArrayOrder_.push_back(unique);
     }
+    // 955（008 总攻·六位置余三）：**类容器元素数组**同名单登记——出口按元素
+    //   类型分派（字符串=free；类容器=Call 元素类析构〔this=元素地址·内联体
+    //   不 DeleteObject——析构释放内部数据指针〕）。p2d 实证：赋值/方法调用
+    //   健康但块收尾不回基线=元素内部资源泄漏（98-a 只覆盖字符串元素）。
+    if (semantic_ != nullptr && types::isArray(srcType) && !unique.empty()) {
+        const std::string elemCanon955 =
+            types::canonical(types::arrayElemOf(types::canonical(srcType)));
+        if (semantic_->isClassType(elemCanon955)) {
+            const ClassInfo* eci955 = semantic_->findClass(elemCanon955);
+            if (eci955 != nullptr) {
+                for (const auto& mk : eci955->methods) {
+                    if (mk.second.isDestructor) {
+                        ownedStrArrayOrder_.push_back(unique);
+                        break;
+                    }
+                }
+            }
+        }
+    }
     // P3-18：引用变量（整32& r = x）——槽存被引用左值地址，条目 byRef=true
     //   （读/写/&r 经 Load/StorePtr 解引用；与 [&] 引用捕获同机制，codegen 已支持）
     //   P3-18 补完：绑定目标扩充到下标/解引用/成员/引用返回调用（同样取左值地址）。

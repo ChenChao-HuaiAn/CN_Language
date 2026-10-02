@@ -51,7 +51,14 @@ void IRGenerator::visitIndexExpr(IndexExpr* node) {
                                           node->location);
             // 结构体元素（Task 完善A）：数组元素作为"结构体值"时返回地址（ptr），
             //   供按值传参/赋值/整体拷贝使用；普通元素 LoadPtr 加载值
-            if (semantic_ != nullptr && semantic_->isStructType(types::canonical(elemSrc))) {
+            // 955（008 总攻·六位置余三前置根治）：**类容器元素同款地址语义**——
+            //   数组元素为 24B/56B 内联对象本体（C 布局·首字段=数据指针），原落
+            //   LoadPtr 把「首字段值」当地址读=多解一层：`槽[0].大小()` 的 this
+            //   装配=数据指针→读错（p2c 打 0）；传值/赋值消费位同理。与 746-a
+            //   「元素(i)=内联元素地址」契约对齐（消费位自行副本化/拷贝构造）。
+            if (semantic_ != nullptr &&
+                (semantic_->isStructType(types::canonical(elemSrc)) ||
+                 semantic_->isClassType(types::canonical(elemSrc)))) {
                 lastExpr_ = addr;
                 return;
             }
